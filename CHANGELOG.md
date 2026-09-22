@@ -7,6 +7,48 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 10.8.0-beta.3 — 22/09/2026
+
+**Le worker de la console se déploie depuis le dépôt.** Il se déployait en COLLANT son code dans
+l'éditeur du tableau de bord : un geste manuel par version, sur le seul service qui signe les
+licences. Skander : « plus me demander de faire la commande SQL ni d'éditer le code dans les
+workers ». La base D1 est réglée autrement — j'y accède directement ; le code, lui, ne pouvait
+l'être que par une action GitHub.
+
+**Ce que la configuration devait dire, et que personne n'écrivait.** `wrangler deploy` REMPLACE les
+liaisons du worker par celles de son fichier de configuration : une liaison absente en est
+SUPPRIMÉE. Sans `plateforme/wrangler.toml`, le premier déploiement aurait laissé `env.DB`
+indéfini — la console aurait répondu « Service momentanément indisponible » sur chaque écran, sans
+qu'une ligne de code soit en cause. Les deux liaisons (la base, le bucket de copie) et le
+déclencheur de nuit y sont donc déclarés, avec leurs identifiants réels. Ce ne sont pas des
+secrets : sans jeton ils n'ouvrent rien, et les cacher aurait rendu les pannes illisibles.
+
+**Les variables en clair survivent, par `--keep-vars`.** Les secrets, eux, survivent de toute
+façon — c'est leur définition. Mais `MAIL_FROM`, `RELAIS_BASE` et leurs voisines auraient été
+effacées à chaque déploiement, et rien ne l'aurait dit.
+
+**Jamais depuis `beta`.** La branche de travail porte du code non confirmé ; le pousser au service
+qui signe les licences de vrais clients serait publier sans le dire. Le workflow se déclenche sur
+`main`, et `workflow_dispatch` reste là pour déployer une bêta délibérément — même porte que le
+workflow Release.
+
+**Un job vert ne suffit pas** (9.8.1, re-appliquée) : après le déploiement, le workflow redemande au
+worker la page publique `/verifier` et exige d'y lire son titre. Elle n'existe qu'à partir de la
+10.5.0, donc elle prouve que c'est bien ce code-là qui tourne. Et l'adresse se lit dans la sortie de
+wrangler plutôt que dans un troisième secret — un secret qu'on oublie de poser rendrait le contrôle
+rouge pour une raison qui n'est pas une panne. Quand rien ne peut être mesuré, l'étape le DIT au
+lieu d'annoncer que tout va bien.
+
+**Deux garde-fous, quatre preuves.** Les noms de liaison du toml sont confrontés à ceux que le code
+LIT — `R2_BINDING` est lu dans la source, jamais recopié — et le workflow est relu pour `--keep-vars`
+et pour la branche. Réintroduits un par un : liaison D1 retirée, binding R2 renommé du seul côté du
+code, `--keep-vars` retiré, déclenchement ajouté sur `beta`. Les quatre tombent en nommant leur
+conséquence.
+
+**Fait au passage, sur le compte :** le bucket `skanfact-sauvegardes` est créé (R2 impose des
+minuscules ; la liaison reste `SAUVEGARDES`, c'est elle que le code lit). La copie de la base partira
+chaque nuit à 3 h de Tunis dès que le worker sera déployé avec cette configuration.
+
 ## 10.8.0-beta.2 — 22/09/2026
 
 **La migration de la base D1, écrite, prouvée, et appliquée.** `schema-a-coller.sql` crée une base

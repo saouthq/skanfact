@@ -1,0 +1,64 @@
+# La configuration de déploiement du worker de la console (10.8.0-beta.3).
+#
+# Jusqu'ici ce worker se déployait en COLLANT son code dans l'éditeur du tableau de bord, et sa
+# configuration vivait dans des écrans que personne ne relisait. Deux conséquences : chaque version
+# coûtait un geste manuel, et rien n'écrivait quelque part ce à quoi le worker est branché. Ce
+# fichier est la seconde moitié — il DIT la configuration, et le dépôt la garde.
+#
+# ─────────────────────────────────────────────────────────────────────────────────────────────
+# LES TROIS PIÈGES DU DÉPLOIEMENT PAR LIGNE DE COMMANDE, et ce qui les désamorce ici.
+#
+# 1. `wrangler deploy` REMPLACE les liaisons (bindings) par celles qu'il trouve dans ce fichier.
+#    Une liaison posée dans le tableau de bord et absente d'ici est SUPPRIMÉE. Sans les deux blocs
+#    ci-dessous, le premier déploiement laisserait `env.DB` indéfini : la console répondrait
+#    « Service momentanément indisponible » sur chaque écran, et rien n'aurait l'air cassé côté
+#    code. C'est pour ça qu'ils sont là, avec leurs identifiants réels.
+#
+# 2. Les VARIABLES en clair du tableau de bord subiraient le même sort — d'où `--keep-vars` dans
+#    le workflow, qui les conserve. Les SECRETS (ADMIN_SECRET, SRV_PRIVATE_KEY, REPONSE_PRIVATE_KEY,
+#    RESEND_API_KEY…) ne sont pas concernés : ils survivent à tout déploiement, c'est leur
+#    définition même. Aucun d'eux n'apparaît ici, et aucun n'y apparaîtra jamais.
+#
+# 3. Les identifiants ci-dessous ne sont pas des secrets. Un identifiant de compte ou de base ne
+#    donne accès à rien sans un jeton, et ce jeton vit chez GitHub — jamais dans ce dépôt, qui est
+#    public (règle de travail : « ne jamais commiter de token »). Les écrire ici est ce qui rend la
+#    configuration relisible ; les cacher n'aurait protégé personne et aurait rendu les pannes
+#    illisibles.
+# ─────────────────────────────────────────────────────────────────────────────────────────────
+
+name = "skanfact-api"
+main = "skanfact-api.mjs"
+
+# Le worker n'importe RIEN de Node — que des API Web standard (fetch, crypto.subtle, TextEncoder).
+# C'est ce qui rend cette date sans danger : les écarts de compatibilité portent presque tous sur
+# la couche Node, et il n'y en a pas ici. Aucun drapeau de compatibilité n'est nécessaire, et un
+# test compte les imports pour que ça reste vrai.
+compatibility_date = "2026-09-15"
+
+# L'adresse en `.workers.dev` reste servie. Le domaine `api.skanfact.tn` est un domaine
+# personnalisé, attaché à la zone et pas au script : il n'est pas touché par un déploiement, et
+# c'est pourquoi aucune `route` n'est déclarée ici — en déclarer une REMPLACERAIT les existantes.
+workers_dev = true
+
+# ---------- la base ----------
+# `DB` est le nom que le code lit (`env.DB`), partout. Le changer casserait tout sans un message.
+[[d1_databases]]
+binding = "DB"
+database_name = "skanfact"
+database_id = "a5c9d762-031a-4954-a982-05b7209e9227"
+
+# ---------- la copie de la base ----------
+# `SAUVEGARDES` est le nom que le code lit (`R2_BINDING` dans skanfact-api.mjs). Le BUCKET, lui,
+# s'appelle en minuscules : R2 l'impose. Les deux noms n'ont aucune raison d'être identiques, et
+# les confondre laisserait `etatSauvegarde` annoncer « pas branchée » sur un bucket qui existe.
+[[r2_buckets]]
+binding = "SAUVEGARDES"
+bucket_name = "skanfact-sauvegardes"
+
+# ---------- la copie part toute seule ----------
+# 2 h UTC, soit 3 h à Tunis : la base est le seul endroit où vit « qui a acheté quelle clé », et
+# une copie qui demande un clic est une copie qu'on ne fait pas (10.5.0). Le gestionnaire
+# `scheduled` écrit dans le journal en succès COMME en échec — une tâche de nuit muette qui échoue
+# trois mois d'affilée est pire que pas de tâche.
+[triggers]
+crons = ["0 2 * * *"]

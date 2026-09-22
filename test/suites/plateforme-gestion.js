@@ -1310,4 +1310,68 @@ module.exports = async ({ t, ta, assert, lireSource }) => {
 
     neuve.close(); ancienne.close();
   });
+
+  // ---------- le déploiement du worker par la CI (10.8.0-beta.3) ----------
+  //
+  // `wrangler deploy` REMPLACE les liaisons du worker par celles du fichier de configuration : une
+  // liaison absente d'ici est SUPPRIMÉE là-bas. Le jour où quelqu'un renomme `R2_BINDING` dans le
+  // code sans toucher au toml, le déploiement suivant débranche le bucket — et l'écran annoncera
+  // « la copie automatique n'est pas branchée » sur un bucket qui existe. Rien ne plante, et
+  // personne ne relie la cause à l'effet.
+  //
+  // Deux tables séparées divergent toujours (6.8.0, 7.23.0) : on les confronte.
+  t('10.8.0 : le wrangler.toml déclare exactement les liaisons que le worker LIT', () => {
+    const fs = require('fs'); const path = require('path');
+    const dans = (f) => fs.readFileSync(path.join(__dirname, '..', '..', f), 'utf8');
+    const toml = dans('plateforme/wrangler.toml');
+    const code = dans('plateforme/skanfact-api.mjs');
+
+    // Le nom de la base tel que le CODE le lit. `env.DB` est partout ; on exige que le toml le
+    // déclare, et pas un autre.
+    assert.ok(/\benv\.DB\b/.test(code), 'le worker ne lit plus env.DB : ce test vise la mauvaise liaison');
+    assert.ok(/\[\[d1_databases\]\][\s\S]{0,200}?binding\s*=\s*"DB"/.test(toml),
+      'wrangler.toml ne déclare pas la liaison D1 « DB » — un déploiement laisserait env.DB indéfini, '
+      + 'et la console répondrait « Service momentanément indisponible » sur chaque écran');
+
+    // Le nom du bucket, lui, vit dans une CONSTANTE exportée : on la lit plutôt que de la recopier.
+    const m = /R2_BINDING\s*=\s*'([^']+)'/.exec(code);
+    assert.ok(m, 'R2_BINDING est introuvable dans le worker');
+    assert.ok(new RegExp('\\[\\[r2_buckets\\]\\][\\s\\S]{0,200}?binding\\s*=\\s*"' + m[1] + '"').test(toml),
+      'wrangler.toml ne déclare pas la liaison R2 « ' + m[1] + ' » que le code lit');
+
+    // Un bucket R2 s'écrit en MINUSCULES — R2 l'impose. Le binding, lui, peut être en capitales :
+    // confondre les deux donne une configuration que Cloudflare refuse, au moment du déploiement.
+    const b = /bucket_name\s*=\s*"([^"]+)"/.exec(toml);
+    assert.ok(b && /^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/.test(b[1]),
+      'le nom du bucket doit être en minuscules, chiffres et tirets : R2 refuse le reste');
+
+    // Le gestionnaire `scheduled` existe : déclarer un cron qui ne réveille aucun code serait une
+    // tâche de nuit qui ne fait rien, et l'écran annoncerait une copie automatique qui n'a pas lieu.
+    assert.ok(/async scheduled\s*\(/.test(code), 'le worker n\'a pas de gestionnaire `scheduled`');
+    assert.ok(/\[triggers\][\s\S]{0,120}?crons\s*=\s*\[/.test(toml),
+      'aucun déclencheur programmé : la copie de la base redeviendrait un geste à faire à la main');
+  });
+
+  // Le workflow doit garder les variables du tableau de bord. Sans `--keep-vars`, chaque
+  // déploiement effacerait celles qui sont en clair (MAIL_FROM, RELAIS_BASE…) — les secrets, eux,
+  // survivent. C'est une ligne de commande, donc ça se vérifie comme une ligne de commande.
+  t('10.8.0 : le workflow du worker ne peut pas effacer les réglages du tableau de bord', () => {
+    const fs = require('fs'); const path = require('path');
+    const yml = fs.readFileSync(path.join(__dirname, '..', '..', '.github', 'workflows', 'worker.yml'), 'utf8');
+    const code = yml.split('\n').filter(l => !/^\s*#/.test(l)).join('\n');
+    assert.ok(/wrangler@\d+\.\d+\.\d+/.test(code),
+      'la version de wrangler n\'est pas épinglée : `@latest` change de comportement sans prévenir');
+    const dep = /run:.*wrangler@[^\n]*deploy[^\n]*/.exec(code);
+    assert.ok(dep, 'aucune commande de déploiement trouvée');
+    assert.ok(/--keep-vars/.test(dep[0]),
+      'le déploiement n\'a pas --keep-vars : il effacerait les variables en clair du worker');
+    // Jamais depuis la branche de travail : `beta` porte du code non confirmé, et ce worker signe
+    // les licences de vrais clients.
+    const pousse = /on:[\s\S]*?workflow_dispatch/.exec(code);
+    assert.ok(pousse && !/branches:\s*\[[^\]]*beta/.test(pousse[0]),
+      'le workflow se déclenche sur `beta` : la branche de travail ne déploie pas la production');
+    assert.ok(/workflow_dispatch/.test(code),
+      'sans workflow_dispatch, aucun moyen de déployer une bêta délibérément');
+  });
+
 };

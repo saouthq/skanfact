@@ -1,0 +1,101 @@
+# Déploie le worker de la console (10.8.0-beta.3).
+#
+# Pourquoi il existe. Le worker se déployait en collant son code dans l'éditeur du tableau de bord :
+# un geste manuel par version, sur le seul service qui SIGNE les licences. Skander : « plus me
+# demander de faire la commande SQL ni d'éditer le code dans les workers ». La base D1 est réglée
+# autrement (accès direct) ; le code, lui, ne peut l'être que par ici.
+#
+# Ce que ça change pour la sécurité, et il faut le dire : un jeton capable de déployer ce worker vit
+# désormais dans les secrets du dépôt. Il ne donne accès ni aux clés privées (elles sont dans les
+# secrets du WORKER, que ce jeton ne lit pas) ni à la base autrement que par le code déployé. Mais
+# quiconque peut pousser sur `main` peut déployer — c'est exactement le pouvoir qu'on veut donner,
+# et c'est exactement celui qu'il faut savoir qu'on donne.
+
+name: Worker
+
+on:
+  # `main` seulement, jamais `beta`. La branche de travail porte du code qui n'a pas encore été
+  # confirmé ; le pousser au service qui signe les licences de vrais clients serait publier sans le
+  # dire. Pour déployer une bêta délibérément, on passe par « Run workflow » en choisissant sa
+  # branche — même porte que le workflow Release.
+  push:
+    branches: [main]
+    paths:
+      - 'plateforme/skanfact-api.mjs'
+      - 'plateforme/wrangler.toml'
+      - '.github/workflows/worker.yml'
+  workflow_dispatch:
+
+# Deux déploiements simultanés sur le même script, c'est le dernier arrivé qui gagne — et on ne
+# sait plus lequel tourne. On ne les annule PAS en cours de route : un déploiement à moitié envoyé
+# est pire qu'un déploiement en trop.
+concurrency:
+  group: worker-deploy
+  cancel-in-progress: false
+
+jobs:
+  deployer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # Les tests AVANT le déploiement, et ce n'est pas une politesse. La suite `plateforme-gestion`
+      # exécute les vrais handlers du worker sur une vraie base SQLite, au vrai schéma : c'est elle
+      # qui attrape une requête qui nomme une colonne absente, et c'est la seule chose qui se tient
+      # entre une faute de frappe et la console de l'éditeur. Un déploiement spéculatif coûte plus
+      # cher qu'un run de CI.
+      - name: Tests
+        run: npm test
+
+      - name: Lint
+        run: npm run lint
+
+      # `--keep-vars` conserve les variables en CLAIR posées dans le tableau de bord. Sans lui,
+      # chaque déploiement les effacerait (voir wrangler.toml, piège n° 2). Les secrets, eux,
+      # survivent de toute façon.
+      #
+      # La version de wrangler est ÉPINGLÉE, et à une version qui existe vraiment (vérifié sur le
+      # registre). `@latest` change de comportement sans prévenir, et un déploiement qui se met à
+      # effacer une liaison le jour d'une version mineure est le genre de panne qu'on ne relie
+      # jamais à sa cause. La monter est une décision, pas un effet de bord.
+      #
+      # La sortie est gardée : c'est wrangler qui annonce l'adresse déployée, et c'est elle qu'on
+      # rappelle à l'étape suivante. La lire ici évite un troisième secret à poser — et un secret
+      # qu'on oublie de poser rendrait le contrôle rouge pour une raison qui n'est pas une panne.
+      - name: Déployer
+        id: deploy
+        working-directory: plateforme
+        run: npx --yes wrangler@4.136.2 deploy --keep-vars 2>&1 | tee /tmp/deploy.log
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      # Un job vert ne suffit pas : c'est très exactement le défaut que la 9.8.1 a corrigé sur la
+      # publication des applications — le poste réussissait et la release restait vide. On redemande
+      # donc au worker ce qu'il SERT. `/verifier` est la page publique : aucun secret pour la lire,
+      # et elle n'existe qu'à partir de la 10.5.0, donc elle prouve en plus que c'est bien le code
+      # d'aujourd'hui qui tourne.
+      #
+      # Si l'adresse ne se lit pas dans la sortie, on le DIT et on s'arrête là plutôt que de
+      # prétendre avoir vérifié : une étape qui n'a rien pu mesurer n'annonce jamais « tout va bien ».
+      - name: Vérifier que le worker répond
+        run: |
+          set -euo pipefail
+          url=$(grep -oE 'https://[a-z0-9._-]+\.workers\.dev' /tmp/deploy.log | head -1 || true)
+          if [ -z "$url" ]; then
+            echo "::warning::wrangler n'a annoncé aucune adresse workers.dev — rien n'a pu être vérifié."
+            exit 0
+          fi
+          echo "Contrôle de $url/verifier"
+          code=$(curl -s -o /tmp/verif.html -w '%{http_code}' --max-time 20 --retry 3 --retry-delay 5 "$url/verifier")
+          echo "HTTP $code"
+          test "$code" = "200"
+          grep -q "Vérifier une licence SkanFact" /tmp/verif.html
+          echo "Le worker sert la page de vérification : le code déployé est bien celui-ci."
