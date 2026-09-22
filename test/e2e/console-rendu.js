@@ -128,7 +128,9 @@ const APP_SECRET = 'secret-de-test-' + 'x'.repeat(20);
     // large accuse du code juste, aussi sûrement qu'un test trop étroit laisse passer le défaut
     // (9.1.0, 9.4.7).
     const h = await page.evaluate(SONDE_ENTETES,
-      { maxL: LARGEUR_MAX, maxR: LARGEUR_MAX_RECHERCHE, maxH: HAUTEUR_MAX, barres: 'main .bar' });
+      // La console porte désormais la MÊME barre d'actions que les deux applications
+      // (`.page-head .actions`), donc la sonde la trouve sans qu'on lui dise où : c'est son défaut.
+      { maxL: LARGEUR_MAX, maxR: LARGEUR_MAX_RECHERCHE, maxH: HAUTEUR_MAX, barres: '.page-head .actions' });
     controles += h.n;
     h.larges.forEach(x => fautes.push(`${ou} — ${x.tag} « ${x.id} » fait ${x.w} px (borne ${x.borne}) : il est étiré, pas large`));
     if (h.n && h.hauteur > HAUTEUR_MAX) {
@@ -209,6 +211,7 @@ const APP_SECRET = 'secret-de-test-' + 'x'.repeat(20);
   };
 
   const parcourir = async etiquette => {
+    const formsVus = new Set();
     for (const t of ONGLETS) {
       await onglet(t);
       const lignes = await page.$$eval('#table tbody tr', ls => ls.length).catch(() => 0);
@@ -216,26 +219,31 @@ const APP_SECRET = 'secret-de-test-' + 'x'.repeat(20);
         + ' et l\'instrument annoncerait que tout va bien');
       await mesurer(`${etiquette} · ${t}`);
       await mesurerDensite(`${etiquette} · ${t}`);
+      // Les formulaires : les seuls écrans de SAISIE de la console, et c'est là que vivent les
+      // champs. On ouvre ceux que CET écran porte — les gestes appartiennent désormais à leur
+      // page, et une liste écrite ici se périmerait au premier bouton déplacé. `formsVus` évite
+      // de remesurer quatre fois le même formulaire dans une passe.
+      for (const b of await page.$$eval('#page-actions button[id]', bs => bs.map(x => x.id))) {
+        if (formsVus.has(etiquette + b)) continue;
+        formsVus.add(etiquette + b);
+        await page.click('#' + b);
+        await page.waitForSelector('#form:not([hidden])');
+        await page.waitForTimeout(220);
+        await mesurer(`${etiquette} · formulaire ${b}`);
+        await page.click('#f-non');
+        await page.waitForFunction(() => document.getElementById('form').hidden, null, { timeout: 5000 });
+      }
     }
-    // Les deux formulaires : ce sont les seuls écrans de SAISIE de la console, et c'est là que les
-    // champs vivent. Un parcours qui ne fait que lire des tableaux ne les verrait jamais.
-    for (const [bouton, nom] of [['#emettre', 'émettre'], ['#nouveau-client', 'client']]) {
-      await page.click(bouton);
-      await page.waitForSelector('#form:not([hidden])');
-      await page.waitForTimeout(220);
-      await mesurer(`${etiquette} · formulaire ${nom}`);
-      // On referme par le VRAI bouton. Ma première version visait `#f-annuler, #f-fermer` — deux
-      // identifiants qui n'existent pas — sous un `.catch(() => {})`, puis posait `hidden` à la
-      // main quand le clic avait échoué. Deux fautes d'un coup : un refus avalé en silence (9.8.0),
-      // qui coûtait trente secondes d'attente Playwright par formulaire et par passe, et un e2e qui
-      // rejoue le code qu'il teste au lieu de passer par l'écran (6.8.1). Sans `.catch` : si le
-      // bouton change de nom, le parcours TOMBE, et c'est ce qu'on veut.
-      await page.click('#f-non');
-      await page.waitForFunction(() => document.getElementById('form').hidden, null, { timeout: 5000 });
-    }
+    // On referme par le VRAI bouton, `#f-non`. Ma première version visait `#f-annuler, #f-fermer`
+    // — deux identifiants qui n'existent pas — sous un `.catch(() => {})`, puis posait `hidden` à
+    // la main quand le clic avait échoué. Deux fautes d'un coup : un refus avalé en silence
+    // (9.8.0), qui coûtait trente secondes d'attente Playwright par formulaire et par passe, et un
+    // e2e qui rejoue le code qu'il teste au lieu de passer par l'écran (6.8.1).
+    //
     // Le panneau de résultat : l'écran que l'éditeur voit à CHAQUE vente, celui qui porte la clé.
     // Il n'existe qu'après une émission réussie — donc on émet, pour de vrai, par le formulaire.
     // Un instrument qui s'arrête aux écrans qu'une adresse ouvre ne verrait jamais celui-là (T-55).
+    await onglet('licences');
     await page.click('#emettre');
     await page.waitForSelector('#form:not([hidden]) [name=clientId]');
     await page.selectOption('#form [name=offre]', 'independant');

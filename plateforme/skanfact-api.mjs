@@ -1536,8 +1536,46 @@ const CONSOLE_HTML = `<!doctype html>
         --ink:#e3efec;--ink2:#9ab0b3;--line:#2b3f42;--acc:#41c1b0;--srv:#94a1e6;--alr:#e4785e;--warn:#e0a24a}}
   *{box-sizing:border-box}
   body{margin:0;background:var(--ground);color:var(--ink);font:15px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif}
-  header{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:18px 22px;
-         border-bottom:1px solid var(--line);background:var(--surface)}
+  /* ---------- la coque ----------
+     La console est la TROISIÈME surface du produit, et c'était la seule à ne pas ressembler aux
+     deux autres : un bandeau en haut, des pastilles d'onglets, et pas de rail. Les deux
+     applications portent la même coque depuis toujours — barre latérale de 224 px, entrées
+     groupées avec leur icône, contenu qui défile à côté. On la reprend ici À L'IDENTIQUE
+     (src/renderer/style.css § sidebar) plutôt que d'en inventer une troisième : un mécanisme
+     recopié de travers diverge (7.29.0), et surtout un éditeur qui passe de SkanFact à sa console
+     ne doit pas avoir l'impression de changer de logiciel. */
+  .coque{display:flex;height:100vh}
+  .rail{width:224px;background:var(--surface);border-inline-end:1px solid var(--line);
+        display:flex;flex-direction:column;padding:22px 14px;flex-shrink:0}
+  .marque{padding:6px 8px 18px;display:flex;flex-direction:column;gap:6px}
+  .marque b{font-size:15px;font-weight:700;letter-spacing:-.3px}
+  .rail nav{display:flex;flex-direction:column;gap:2px;overflow-y:auto;margin:0 -4px;padding:0 4px}
+  .nav-group{font-size:10px;text-transform:uppercase;letter-spacing:1.2px;color:#aab3be;
+             font-weight:700;padding:12px 12px 3px}
+  .nav-group:first-child{padding-top:2px}
+  @media (prefers-color-scheme:dark){.nav-group{color:#6c7785}}
+  .rail nav button{font:inherit;font-size:14px;color:var(--ink2);background:transparent;border:0;
+       text-align:start;padding:8px 12px;border-radius:10px;font-weight:500;cursor:pointer;
+       display:flex;align-items:center;gap:10px;width:100%;transition:background .12s,color .12s}
+  .rail nav button svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.8;
+       stroke-linecap:round;stroke-linejoin:round;opacity:.8;flex-shrink:0}
+  .rail nav button:hover{background:var(--surface2);color:var(--ink)}
+  .rail nav button[aria-selected=true]{background:rgba(15,157,143,.12);color:var(--acc);font-weight:600}
+  .rail nav button[aria-selected=true] svg{opacity:1}
+  .rail nav button .cpt{margin-inline-start:auto;font-size:11.5px;font-weight:700;
+       font-variant-numeric:tabular-nums;color:var(--alr)}
+  .rail-pied{margin-top:auto;display:flex;flex-direction:column;gap:2px;padding-top:12px;
+             border-top:1px solid var(--line)}
+  .rail-pied .btn{border:0;background:transparent;color:var(--ink2);text-align:start;padding:8px 12px}
+  .rail-pied .btn:hover{background:var(--surface2);color:var(--ink);border:0}
+  /* L'en-tête d'un écran : son nom, ce à quoi il sert, et les gestes qui lui appartiennent. La
+     console n'avait AUCUN titre de page — « Parc » et « Activations » ne disaient nulle part ce
+     qu'ils comptent, et il fallait lire le tableau pour le deviner. */
+  .page-head{display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:20px}
+  .page-head h1{margin:0;font-size:24px;font-weight:700;letter-spacing:-.4px}
+  .page-head .but{margin:4px 0 0;color:var(--ink2);font-size:13.5px;max-width:64ch}
+  .page-head .actions{margin-inline-start:auto;display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .page-head .actions input{width:auto;min-width:200px;max-width:280px}
   header h1{font-size:18px;margin:0;font-weight:700;letter-spacing:-.4px}
   /* L'échelle de titres des deux applications (9.4.3), portée ici : trois niveaux, un rôle chacun.
      Un titre gris de 11 px ne hiérarchise rien, il décore — et l'eyebrow ne sert QUE de
@@ -1545,7 +1583,8 @@ const CONSOLE_HTML = `<!doctype html>
      l'usage qu'en fait le bloc de l'argent ci-dessous. */
   .eyebrow{font-size:11px;color:var(--ink2);text-transform:uppercase;letter-spacing:1px;font-weight:700}
   header .sp{flex:1}
-  main{padding:22px;max-width:1280px;margin:0 auto}
+  main{padding:26px 28px 40px;flex:1;overflow-y:auto;min-width:0}
+  main > .dedans{max-width:1180px}
   .btn{font:inherit;font-size:14px;padding:8px 14px;border-radius:8px;border:1px solid var(--line);
        background:var(--surface);color:var(--ink);cursor:pointer}
   .btn:hover{border-color:var(--acc)}
@@ -1605,6 +1644,10 @@ const CONSOLE_HTML = `<!doctype html>
   .sous[role=button]:hover{border-color:var(--acc)}
   .sous:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
   .bar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:18px}
+  .etat-machine{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px 14px;margin-bottom:20px;
+                font-size:12.5px;color:var(--ink2)}
+  .etat-machine p{margin:0}
+  .etat-machine > div{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px}
   .panel{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px 20px;margin-bottom:20px}
   .panel h2{margin:0 0 4px;font-size:16px}
   .panel .why{margin:0 0 14px;color:var(--ink2);font-size:13.5px}
@@ -1668,32 +1711,51 @@ const CONSOLE_HTML = `<!doctype html>
   <p id="lockmsg" style="margin-top:14px;color:var(--alr)" hidden></p>
 </div>
 
-<div id="app" hidden>
-  <header>
-    <h1>SkanFact — console</h1>
-    <span class="pill e" id="etat-pill">…</span>
-    <span class="sp"></span>
-    <button id="refresh" class="btn" type="button">Actualiser</button>
-    <button id="out" class="btn" type="button">Fermer la session</button>
-  </header>
-  <main>
-    <div id="err" class="msg" hidden></div>
-    <div id="info" class="msg ok" hidden></div>
-    <div id="argent" class="argent"></div>
-    <div class="cards" id="cards"></div>
-    <div class="bar">
-      <button id="emettre" class="btn p" type="button">Émettre une licence…</button>
-      <button id="nouveau-client" class="btn" type="button">Nouveau client…</button>
-      <button id="exporter" class="btn" type="button" title="Range la base entière en un fichier JSON">Exporter la base…</button>
-      <span id="etat-txt" style="font-size:13px;color:var(--ink2)"></span>
+<div id="app" class="coque" hidden>
+  <div class="rail">
+    <div class="marque">
+      <b>SkanFact</b>
+      <span class="pill e" id="etat-pill">…</span>
     </div>
-    <div id="sante" class="bar" style="display:block"></div>
-    <div id="form" class="panel" hidden></div>
-    <div id="resultat" class="panel" hidden></div>
-    <div class="tabs" id="tabs" role="tablist"></div>
-    <div id="table"></div>
+    <!-- Le rail GARDE role=tablist et ses boutons data-t : ce sont toujours des onglets, ils
+         échangent la même région de contenu. Seule l'orientation change, et aria-orientation le
+         dit. Renommer aurait cassé les deux parcours pour un gain nul. -->
+    <nav id="tabs" role="tablist" aria-orientation="vertical" aria-label="Sections de la console"></nav>
+    <div class="rail-pied">
+      <button id="refresh" class="btn" type="button">Actualiser</button>
+      <button id="exporter" class="btn" type="button" title="Range la base entière en un fichier JSON">Exporter la base…</button>
+      <button id="out" class="btn" type="button">Fermer la session</button>
+    </div>
+  </div>
+  <main>
+    <div class="dedans">
+      <div id="err" class="msg" hidden></div>
+      <div id="info" class="msg ok" hidden></div>
+      <div class="page-head">
+        <div>
+          <h1 id="page-titre">…</h1>
+          <p class="but" id="page-but"></p>
+        </div>
+        <div class="actions" id="page-actions"></div>
+      </div>
+      <div id="form" class="panel" hidden></div>
+      <div id="resultat" class="panel" hidden></div>
+      <div id="bord" hidden>
+        <div id="argent" class="argent"></div>
+        <div class="cards" id="cards"></div>
+        <!-- L'état de la machinerie : le mail qui porte les clés, et les canaux de mise à jour.
+             Deux faits de même nature — « est-ce que ça marche ? » — donc une seule bande, discrète
+             tant que tout va bien. Séparés, la phrase du mail flottait en prose de 15 px au milieu
+             de l'écran et le bloc des canaux prenait deux lignes pour dire « non branché ». -->
+        <div class="etat-machine">
+          <div id="sante"></div>
+          <p id="etat-txt"></p>
+        </div>
+      </div>
+      <div id="table"></div>
+      <footer id="foot">Une clé livrée ne se reprend pas : une révocation s'applique chez le client à sa prochaine connexion, et seulement si sa version embarque la clé de réponse.</footer>
+    </div>
   </main>
-  <footer id="foot">Une clé livrée ne se reprend pas : une révocation s'applique chez le client à sa prochaine connexion, et seulement si sa version embarque la clé de réponse.</footer>
 </div>
 
 <script>
@@ -1705,6 +1767,13 @@ const CONSOLE_HTML = `<!doctype html>
   var onglet = 'alertes';
   var etat = null;        // ce que /v1/admin/etat a répondu : peut-on signer, peut-on envoyer
   var clients = [];       // pour le choix d'un client à l'émission
+  var aDecider = 0;       // le compteur du rail : le seul chiffre qui se voit depuis partout
+  var recherche = '';     // le filtre de l'écran courant, vidé quand on en change
+  var lignesEcran = [];   // ce que la route a rendu, avant filtrage — on filtre l'affichage, pas la source
+  // Où une recherche a un sens : les écrans qui portent des NOMS et des numéros. « À décider »
+  // tient en trois lignes repliées et « Parc » en une ligne par version : un champ de recherche y
+  // serait un contrôle de plus à lire pour rien.
+  var CHERCHABLES = ['licences', 'ventes', 'clients', 'cabinets', 'activations', 'evenements'];
   var $ = function (id) { return document.getElementById(id); };
   var h = function (s) {
     return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;')
@@ -1789,8 +1858,9 @@ const CONSOLE_HTML = `<!doctype html>
     $('app').hidden = true; $('lock').hidden = false; $('sec').value = ''; $('sec').focus();
   };
   $('refresh').onclick = function () { dessiner(); };
-  $('emettre').onclick = function () { formEmettre(null, null); };
-  $('nouveau-client').onclick = function () { formClient(); };
+  // « Émettre » et « Nouveau client » ne sont plus posés une fois pour toutes dans le gabarit :
+  // ce sont les gestes d'un ÉCRAN, et c'est dessinerTete qui les crée et les branche. Les
+  // brancher ici viserait des boutons qui n'existent pas encore.
 
   // --- les messages ---
   function montrerErreur(e) {
@@ -1813,8 +1883,11 @@ const CONSOLE_HTML = `<!doctype html>
       pill.className = 'pill r'; pill.textContent = 'émission impossible';
       txt.textContent = etat.emission.raison;
     }
-    $('emettre').disabled = !etat.emission.ok;
-    $('emettre').title = etat.emission.ok ? '' : etat.emission.raison;
+    // Le bouton n'existe que sur les écrans qui le portent : on ne l'éteint que s'il est là.
+    if ($('emettre')) {
+      $('emettre').disabled = !etat.emission.ok;
+      $('emettre').title = etat.emission.ok ? '' : etat.emission.raison;
+    }
   }
 
   // --- la santé des canaux de mise à jour (10.4.0) ---
@@ -2251,8 +2324,66 @@ const CONSOLE_HTML = `<!doctype html>
       { k: 'revoquee_le', t: 'État', f: function (v, r) { return etatLic(r); }, brut: true }
     ]
   };
-  var TITRES = { alertes: 'À décider', licences: 'Licences', ventes: 'Ventes', parc: 'Parc',
-    cabinets: 'Cabinets', activations: 'Activations', clients: 'Clients', evenements: 'Journal' };
+  // Les icônes du rail : le même langage que les deux applications — 18 px, trait de 1,8, pas de
+  // remplissage, la couleur du texte. Elles sont là pour qu'on retrouve une entrée d'un coup d'œil,
+  // jamais à la place du mot (7.29.0 : un pictogramme n'est pas un libellé, mais une icône À CÔTÉ
+  // d'un libellé est un repère).
+  var ICONES = {
+    alertes: 'M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z',
+    licences: 'M15 7a4 4 0 1 0-3.9 5H14v3h3v3h4v-4l-5.2-5.2A4 4 0 0 0 15 7z',
+    ventes: 'M3 6h18M3 12h18M3 18h12',
+    cabinets: 'M3 21h18M5 21V7l7-4 7 4v14M9 21v-5h6v5',
+    clients: 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM22 21v-2a4 4 0 0 0-3-3.9',
+    parc: 'M2 4h20v12H2zM8 20h8M12 16v4',
+    activations: 'M22 12h-4l-3 9L9 3l-3 9H2',
+    evenements: 'M4 4h16v16H4zM8 9h8M8 13h8M8 17h5'
+  };
+
+  // Chaque écran : son groupe dans le rail, son titre de page, et ce à quoi il sert. La console
+  // n'avait aucun titre de page — « Parc » et « Activations » ne disaient nulle part ce qu'ils
+  // comptent, et il fallait lire le tableau pour le deviner. Le champ « but » est ce qu'un éditeur veut
+  // savoir en arrivant, pas une définition.
+  var ECRANS = {
+    alertes: { g: 'Pilotage', t: 'À décider', h: 'À décider aujourd\\u2019hui',
+      but: 'Ce qui attend une décision : une clé signée qui n\\u2019est jamais partie, une licence livrée que personne n\\u2019a payée, une échéance proche.' },
+    parc: { g: 'Pilotage', t: 'Parc', h: 'Le parc installé',
+      but: 'Les deux applications, version par version : combien de postes, combien vus ces trente jours, combien sous licence.' },
+    licences: { g: 'Ventes', t: 'Licences', h: 'Licences émises',
+      but: 'Toutes les clés signées depuis cette console. Une licence remplacée reste ici avec son motif : rien ne s\\u2019efface.' },
+    ventes: { g: 'Ventes', t: 'Ventes', h: 'Ventes',
+      but: 'Une ligne par licence vendue. « Marquer payée » envoie la clé dans la seconde, si le client a une adresse.' },
+    cabinets: { g: 'Ventes', t: 'Cabinets', h: 'Cabinets comptables',
+      but: 'Ce qu\\u2019on vend à un cabinet est un QUOTA de dossiers hors SkanFact, jamais des postes.' },
+    clients: { g: 'Ventes', t: 'Clients', h: 'Clients',
+      but: 'Le nom et le matricule entrent dans la clé : un client peut acheter deux fois, renouveler, changer de matricule.' },
+    activations: { g: 'Traces', t: 'Activations', h: 'Activations',
+      but: 'Un ordinateur, une application, une date. C\\u2019est ce que les postes annoncent d\\u2019eux-mêmes — rien de plus.' },
+    evenements: { g: 'Traces', t: 'Journal', h: 'Journal',
+      but: 'Chaque émission, révocation, paiement et envoi, pour toujours. C\\u2019est ce qui permet de répondre à un client six mois plus tard.' }
+  };
+  var GROUPES = ['Pilotage', 'Ventes', 'Traces'];
+  // Les gestes de CHAQUE écran. « Émettre » vit sur le tableau de bord et sur Licences (c'est de
+  // là qu'on vend), « Nouveau client » partout où l'on peut avoir besoin d'en créer un avant
+  // d'émettre. Un geste posé sur les huit écrans ne serait plus le geste d'un écran.
+  // Chaque écran finit par le GESTE SUIVANT (7.27.0, 9.4.9). Après avoir créé un client on lui
+  // vend une licence : « Émettre » vit donc aussi sur Clients — c'est le parcours réel qui l'a
+  // montré, en cherchant le bouton là où on vient d'atterrir et en ne le trouvant pas.
+  var ACTIONS = {
+    alertes: ['emettre', 'client'], licences: ['emettre', 'client'],
+    clients: ['emettre', 'client'], cabinets: ['emettre'],
+    ventes: [], parc: [], activations: [], evenements: []
+  };
+  // Le gabarit ENTIER, identifiant compris, et pas un objet qu'on assemble : un contrôle de
+  // npm test relit les balises « button » du HTML et exige que chacun soit branché (c'est le
+  // défaut des treize boutons morts de la 7.0.0). Un identifiant construit par concaténation lui
+  // échappe — il a d'ailleurs lu « ' + b.id + ' » comme un identifiant et fait tomber le test. On
+  // garde donc l'identifiant LITTÉRAL, et le garde-fou continue de voir ces deux boutons-là.
+  var BOUTONS = {
+    emettre: '<button id="emettre" class="btn p" type="button">Émettre une licence…</button>',
+    client: '<button id="nouveau-client" class="btn" type="button">Nouveau client…</button>'
+  };
+  var TITRES = {};
+  Object.keys(ECRANS).forEach(function (k) { TITRES[k] = ECRANS[k].t; });
   // Chaque écran vide dit quoi faire, au lieu d'un tableau nu (7.0.0).
   var VIDES = {
     licences: 'Aucune licence émise depuis la console. « Émettre une licence… » ci-dessus signe la clé, enregistre la vente et l\\u2019envoie par mail.',
@@ -2265,14 +2396,72 @@ const CONSOLE_HTML = `<!doctype html>
     cabinets: 'Aucune licence de cabinet vendue. « Émettre une licence… » ci-dessus, avec le type « Cabinet comptable » : ce qu\\u2019on y vend est un quota de dossiers, jamais des postes.'
   };
 
+  // Le rail : les entrées rangées par groupe, chacune avec son icône. Le compteur rouge de
+  // « À décider » vit sur son entrée — c'est le seul chiffre qui doit se voir depuis n'importe
+  // quel écran, parce que c'est le seul qui demande quelque chose.
+  function dessinerRail() {
+    var html = '';
+    GROUPES.forEach(function (g) {
+      html += '<div class="nav-group">' + h(g) + '</div>';
+      Object.keys(ECRANS).forEach(function (k) {
+        if (ECRANS[k].g !== g) return;
+        html += '<button role="tab" data-t="' + k + '" aria-selected="' + (k === onglet) + '">'
+          + '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="' + ICONES[k] + '"/></svg>'
+          + '<span>' + h(ECRANS[k].t) + '</span>'
+          + (k === 'alertes' && aDecider ? '<span class="cpt">' + aDecider + '</span>' : '')
+          + '</button>';
+      });
+    });
+    $('tabs').innerHTML = html;
+    Array.prototype.forEach.call($('tabs').querySelectorAll('button[data-t]'), function (b) {
+      // Un filtre ne survit pas à la sortie de son écran : le retrouver trois jours plus tard sans
+      // savoir d'où il vient est le piège du filtre qui cache ce qu'on vient chercher (9.4.6).
+      b.onclick = function () { onglet = b.dataset.t; recherche = ''; dessiner(); };
+    });
+  }
+
+  // L'en-tête de l'écran : son nom, ce à quoi il sert, ses gestes, et sa recherche. La recherche
+  // n'apparaît que là où il y a quelque chose à chercher — une console qui vendra des centaines de
+  // licences ne se parcourt pas à la molette, et un champ posé sur un écran de quatre lignes est
+  // un contrôle de plus à lire pour rien.
+  function dessinerTete() {
+    var e = ECRANS[onglet] || { h: '', but: '' };
+    $('page-titre').textContent = e.h;
+    $('page-but').textContent = e.but;
+    var act = (ACTIONS[onglet] || []).map(function (a) { return BOUTONS[a]; }).join('');
+    if (CHERCHABLES.indexOf(onglet) >= 0) {
+      act += '<input id="q" type="search" placeholder="Chercher dans ' + h(TITRES[onglet].toLowerCase()) + '…"'
+        + ' aria-label="Chercher dans ' + h(TITRES[onglet].toLowerCase()) + '" value="' + h(recherche) + '">';
+    }
+    $('page-actions').innerHTML = act;
+    if ($('emettre')) { $('emettre').onclick = function () { formEmettre(null, null); }; }
+    if ($('nouveau-client')) { $('nouveau-client').onclick = function () { formClient(); }; }
+    // L'état de la signature décide si « Émettre » peut servir, et il est déjà connu quand on
+    // change d'écran : on le repose ici, sinon le bouton neuf naîtrait actif sur une console qui
+    // ne peut pas signer, et le refus n'arriverait qu'au moment de valider le formulaire.
+    if (etat && etat.emission && $('emettre')) {
+      $('emettre').disabled = !etat.emission.ok;
+      $('emettre').title = etat.emission.ok ? '' : etat.emission.raison;
+    }
+    var q = $('q');
+    if (q) {
+      q.oninput = function () { recherche = q.value; dessinerTable(); };
+      if (recherche) { q.focus(); q.setSelectionRange(recherche.length, recherche.length); }
+    }
+    // Le tableau de bord porte l'argent, les compteurs et la santé des canaux ; les autres écrans
+    // non. Avant, les six cartes se réaffichaient au-dessus de CHAQUE tableau : on payait quatre
+    // cents pixels pour relire six chiffres qu'on venait de voir.
+    $('bord').hidden = onglet !== 'alertes';
+    // La limite d'une révocation ne concerne que les écrans qui vendent ou qui révoquent. Affichée
+    // sous « Le parc installé », c'est une phrase qui ne parle pas de ce qu'on regarde — et une
+    // phrase qu'on lit partout finit par ne se lire nulle part.
+    $('foot').hidden = ['licences', 'ventes', 'cabinets', 'alertes'].indexOf(onglet) < 0;
+  }
+
   function dessiner() {
     $('err').hidden = true;
-    $('tabs').innerHTML = Object.keys(TITRES).map(function (k) {
-      return '<button role="tab" data-t="' + k + '" aria-selected="' + (k === onglet) + '">' + TITRES[k] + '</button>';
-    }).join('');
-    Array.prototype.forEach.call($('tabs').children, function (b) {
-      b.onclick = function () { onglet = b.dataset.t; dessiner(); };
-    });
+    dessinerRail();
+    dessinerTete();
 
     api('etat').then(function (e) { etat = e; dessinerEtat(); }, montrerErreur);
     api('clients').then(function (d) { clients = d.lignes || []; }, function () {});
@@ -2317,8 +2506,37 @@ const CONSOLE_HTML = `<!doctype html>
     // distingue « on attend la réponse » de « il n'y a rien », ni à l'œil ni pour un test.
     $('table').innerHTML = '<div class="chargement">Chargement…</div>';
     api(onglet).then(function (d) {
-      var lignes = d.lignes || [];
-      if (!lignes.length) { $('table').innerHTML = '<div class="wrap"><div class="vide">' + VIDES[onglet] + '</div></div>'; return; }
+      lignesEcran = d.lignes || [];
+      if (onglet === 'alertes') { aDecider = lignesEcran.reduce(function (s, x) { return s + (Number(x.n) || 1); }, 0); dessinerRail(); }
+      dessinerTable();
+    }, montrerErreur);
+  }
+
+  // Le tableau seul, pour que la frappe dans la recherche ne redessine ni le rail, ni l'en-tête,
+  // ni les chiffres : un champ qui se recrée à chaque caractère est un champ dans lequel on ne
+  // peut pas écrire (7.17.0), et c'est exactement ce qui arriverait en rappelant dessiner().
+  function dessinerTable() {
+    var q = recherche.trim().toLowerCase();
+    // On cherche dans ce que la ligne PORTE, pas dans ce que l'écran en affiche : le formatage
+    // d'une date ou d'un montant change avec la colonne, la donnée non.
+    var lignes = !q ? lignesEcran : lignesEcran.filter(function (r) {
+      return Object.keys(r).some(function (k) {
+        var v = r[k];
+        return (typeof v === 'string' || typeof v === 'number') && String(v).toLowerCase().indexOf(q) >= 0;
+      });
+    });
+    if (!lignes.length) {
+      // Un écran vide parce qu'on a filtré n'est PAS un écran vide : le dire évite de croire que
+      // la base a perdu quelque chose, et le bouton rend la main (9.4.6 — un filtre qu'on ne voit
+      // pas est un piège).
+      $('table').innerHTML = q
+        ? '<div class="wrap"><div class="vide">Rien qui corresponde à « ' + h(recherche.trim()) + ' » dans '
+          + h(TITRES[onglet].toLowerCase()) + '.<br><button type="button" class="btn" id="q-vider" style="margin-top:12px">Effacer la recherche</button></div></div>'
+        : '<div class="wrap"><div class="vide">' + VIDES[onglet] + '</div></div>';
+      if ($('q-vider')) $('q-vider').onclick = function () { recherche = ''; dessinerTete(); dessinerTable(); };
+      return;
+    }
+    {
       var cols = COLONNES[onglet];
       var html = '<div class="wrap"><table><thead><tr>' +
         cols.map(function (c) {
@@ -2353,7 +2571,7 @@ const CONSOLE_HTML = `<!doctype html>
         else if (act === 'payee') payee(r);
         else if (act === 'facturee') facturee(r);
       };
-    }, montrerErreur);
+    }
   }
 
   if (secret) {

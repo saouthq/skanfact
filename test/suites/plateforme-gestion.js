@@ -134,10 +134,17 @@ module.exports = async ({ t, ta, assert, lireSource }) => {
     const P = await API();
     // Une alerte qu'on ne peut pas ouvrir est une inquiétude, pas une tâche (7.15.0). Les onglets
     // nommés doivent exister dans la console, sinon le bouton mène nulle part.
+    // La table des écrans porte désormais, pour chacun, son groupe dans le rail, son titre de page
+    // et ce à quoi il sert : `TITRES` en est DÉDUIT. Ce test lisait `TITRES` quand c'était une
+    // liste plate ; il aurait continué de passer sur une liste vide (`{}`), donc sur rien. On lit
+    // la source de vérité, et on vérifie d'abord qu'elle n'est pas vide — un test qui compare à une
+    // liste vide accepte tout.
     const src = fs.readFileSync(path.join(__dirname, '..', '..', 'plateforme', 'skanfact-api.mjs'), 'utf8');
-    const m = /var TITRES = \{([^}]*)\}/.exec(src);
-    assert.ok(m, 'la table des onglets de la console doit se lire');
-    const onglets = m[1].split(',').map(x => x.split(':')[0].trim()).filter(Boolean);
+    const d = src.indexOf('var ECRANS = {');
+    assert.ok(d > 0, 'la table des écrans de la console doit se lire');
+    const bloc = src.slice(d, src.indexOf('\n  };', d));
+    const onglets = [...bloc.matchAll(/^\s{4}(\w+): \{ g: /gm)].map(x => x[1]);
+    assert.ok(onglets.length >= 8, 'huit écrans au moins : lus ' + onglets.length);
     const l = P.alertesPlateforme({
       licences: [{ id: 'l1', client: 'A', envoyee_le: '', fin: '2026-09-25' }],
       ventes: [{ id: 'v1', client: 'B' }], dernierExport: ''

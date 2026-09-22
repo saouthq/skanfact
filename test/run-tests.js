@@ -10360,6 +10360,35 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     sautsTiennent('Installer SkanFact (Windows).bat', bat, 5);
   });
 
+  // ---------- le gabarit de la console ne se coupe pas en deux ----------
+  // Ce contrôle passe AVANT l'import du module, et c'est tout son intérêt. Un backtick égaré dans
+  // un commentaire du gabarit le ferme LÀ : le reste du fichier est lu comme du code, l'import
+  // lève « Unexpected identifier 'npm' » mille lignes plus loin, et la relecture ne trouve rien —
+  // seul un bisect y arrive. Huit fois depuis la 7.20.0 (7.29.0, 7.31.0, 9.4.1, 9.4.2, et quatre
+  // fois en refondant la console — dont une en écrivant ce garde-fou). Un avertissement posé en
+  // tête du gabarit n'a arrêté personne ; ce qui manquait, ce n'était pas d'échouer — le module ne
+  // s'importe plus, donc `npm test` tombait déjà — c'était d'échouer en DISANT OÙ.
+  //
+  // Placé après l'import, il n'aurait jamais pu s'exécuter : la suite meurt avant de l'atteindre.
+  // Un test qu'on ne peut pas atteindre ne vaut pas mieux qu'un test qui ne peut pas échouer
+  // (7.2.0, T-55).
+  t('console : aucun backtick dans le gabarit — la faute qui a coûté huit fois', () => {
+    const src = lireSource('plateforme', 'skanfact-api.mjs');
+    const ouverture = 'const CONSOLE_HTML = `';
+    const d = src.indexOf(ouverture);
+    assert.ok(d > 0, 'le gabarit de la console doit exister');
+    const corps = src.slice(d + ouverture.length);
+    const fin = corps.indexOf('`');
+    assert.ok(fin > 0, 'le gabarit doit se fermer');
+    // Ce qui suit la fermeture doit être « ; » : c'est la preuve qu'on a trouvé LA fin du gabarit
+    // et non un backtick posé par erreur au milieu.
+    const apres = corps.slice(fin + 1).replace(/^\s*/, '').slice(0, 1);
+    assert.strictEqual(apres, ';',
+      'un backtick coupe le gabarit de la console avant sa fin — cherche-le dans un commentaire, '
+      + 'ligne ' + src.slice(0, d + ouverture.length + fin).split('\n').length
+      + ' de plateforme/skanfact-api.mjs');
+  });
+
   // ---------- le plan de contrôle (plateforme/skanfact-api.mjs) ----------
   // Même méthode que le relais : les décisions sont pures, elles se testent sans réseau et sans
   // base. Ce sont elles qui décident si la facturation de quelqu'un continue de fonctionner.
