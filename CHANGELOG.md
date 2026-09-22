@@ -7,6 +7,39 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 10.8.0-beta.4 — 22/09/2026
+
+**Le worker est déployé depuis le dépôt, pour de vrai.** La bêta précédente avait écrit la recette ;
+elle ne pouvait pas être lancée. `workflow_dispatch` n'existe, chez GitHub, que pour un workflow
+présent sur la **branche par défaut** : tant que `worker.yml` n'était que sur `beta`, il n'existait
+pour personne — un lancement répondait 404, sans rien d'autre à lire.
+
+**Et `main` était un champ de mines.** Elle est restée à la 10.0.0 : son worker fait 1 842 lignes
+contre 4 898 sur `beta`, il n'a pas bougé depuis le 17/09, et la base D1 porte déjà les colonnes
+qu'il ne connaît pas. Le déployer aurait effacé le parc des deux applications, les réglages en base,
+le suivi de prospect, la fiche client et la vérification publique.
+
+**D'où la règle, qui vaut indépendamment de cette transition : un déploiement se déclenche sur ce
+qui est DÉPLOYÉ — le code du worker et sa configuration — jamais sur la recette qui déploie.** Une
+production qui se redéploie parce qu'on a corrigé un commentaire est une production qu'on finit par
+ne plus regarder. Le filtre de chemins ne se nomme donc plus lui-même — ce qui rend, par
+construction, le dépôt du fichier sur `main` **inerte** : aucun chemin surveillé n'y existe encore.
+Vérifié après la poussée : zéro run déclenché. Le premier déploiement par poussée aura lieu quand
+`plateforme/` arrivera sur `main`, c'est-à-dire quand il y aura vraiment quelque chose à déployer.
+
+Le garde-fou se prouve dans les **deux** sens : le filtre vidé, le déclenchement cesserait en
+silence ; le filtre se nommant lui-même, la production se redéploierait pour une recette modifiée.
+
+**Vérifié avant de déployer quoi que ce soit** : le worker ne lit que `DB` et `SAUVEGARDES` sur
+`env`, les deux déclarés dans le `wrangler.toml`. Tout le reste — `ADMIN_SECRET`, `SRV_PRIVATE_KEY`,
+`REPONSE_PRIVATE_KEY`, `RESEND_API_KEY`, `RELAIS_*`, les prix, la signature de mail — sont des
+secrets ou des variables en clair, que `--keep-vars` et la définition même d'un secret préservent.
+Aucune route n'est déclarée, donc `api.skanfact.tn` n'est pas touché.
+
+**Le premier run a mesuré, il n'a pas seulement réussi** (la leçon de la 9.8.1) : `HTTP 200` sur
+`/verifier` et la page reconnue à son titre. Les huit versions jamais déployées sont arrivées d'un
+coup, et la copie de nuit vers R2 est armée (`0 2 * * *`).
+
 ## 10.8.0-beta.3 — 22/09/2026
 
 **Le worker de la console se déploie depuis le dépôt.** Il se déployait en COLLANT son code dans

@@ -1,4 +1,4 @@
-# La configuration de déploiement du worker de la console (10.8.0-beta.3).
+# La configuration de déploiement du worker de la console.
 #
 # Jusqu'ici ce worker se déployait en COLLANT son code dans l'éditeur du tableau de bord, et sa
 # configuration vivait dans des écrans que personne ne relisait. Deux conséquences : chaque version

@@ -5498,6 +5498,39 @@ Règles apprises, à ne pas recasser :
 Prouvé : trois défauts réintroduits un par un font tomber leur test, plus les deux directions du
 garde-fou élargi.
 
+### 10.8.0-beta.4 — le worker se déploie depuis le dépôt
+
+Le worker de la console se déployait en **collant son code dans l'éditeur du tableau de bord** : un
+geste manuel par version, sur le seul service qui signe les licences. Skander a donné un accès
+Cloudflare en MCP puis demandé la corvée qui va avec — un jeton, deux secrets, et une action GitHub.
+
+- **`workflow_dispatch` n'existe, chez GitHub, que pour un workflow présent sur la branche par
+  DÉFAUT.** Un workflow qui ne vit que sur `beta` n'existe pour personne : le lancement répond 404,
+  et rien d'autre ne se lit. Le fichier doit donc être posé sur `main` avant de pouvoir être lancé
+  sur quoi que ce soit — y compris sur la branche qui le porte.
+- **Un déploiement se déclenche sur ce qui est DÉPLOYÉ, jamais sur la recette qui déploie.** Le
+  filtre de chemins nomme le code du worker et sa configuration, jamais le fichier du workflow :
+  une production qui se redéploie parce qu'on a corrigé un commentaire est une production qu'on
+  finit par ne plus regarder. Effet immédiat, et c'est ce qui a permis la transition : poser le
+  fichier sur `main` devient **inerte**, puisque aucun chemin surveillé n'y existe encore.
+- **Une branche qui n'a pas suivi est un champ de mines.** `main` était restée à la 10.0.0 : son
+  worker faisait 1 842 lignes contre 4 898, il n'avait pas bougé depuis un mois, et la base D1
+  portait déjà les colonnes qu'il ne connaît pas. Le déployer aurait effacé huit versions de
+  console. **Avant de poser un déclencheur sur une branche, regarder ce que cette branche
+  déploierait.**
+- **`wrangler deploy` REMPLACE les liaisons par celles du fichier de configuration** (piège n° 1,
+  écrit en tête du `wrangler.toml`) : une liaison posée dans le tableau de bord et absente du
+  fichier est SUPPRIMÉE. On ne le devine pas — on **compte ce que le code lit sur `env`** et on
+  vérifie que le fichier les déclare toutes. Les variables en clair subissent le même sort, d'où
+  `--keep-vars` ; les secrets survivent de toute façon, c'est leur définition. Et aucune `route`
+  n'est déclarée : en déclarer une remplacerait le domaine personnalisé.
+- **Un job vert ne suffit pas** (9.8.1, re-posée) : l'étape de contrôle redemande au worker la page
+  qu'il SERT. Elle a duré zéro seconde, ce qui aurait pu vouloir dire « rien n'a pu être mesuré » —
+  c'est le journal qui tranche (`HTTP 200`, la page reconnue à son titre), jamais la pastille verte.
+  Et une étape qui n'a rien pu mesurer le DIT au lieu d'annoncer que tout va bien.
+- **Une version écrite dans l'entête d'un fichier se périme au bump suivant.** Les deux fichiers
+  neufs la portaient ; elle a été retirée le jour même.
+
 ## Pistes pour la suite (non demandées)
 
 - Séparation des installateurs arm64 / x64 pour diviser par deux les 222 Mo du dmg universel.

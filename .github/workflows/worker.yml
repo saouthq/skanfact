@@ -1,4 +1,4 @@
-# Déploie le worker de la console (10.8.0-beta.3).
+# Déploie le worker de la console (la console de l'éditeur, `plateforme/skanfact-api.mjs`).
 #
 # Pourquoi il existe. Le worker se déployait en collant son code dans l'éditeur du tableau de bord :
 # un geste manuel par version, sur le seul service qui SIGNE les licences. Skander : « plus me
