@@ -12,9 +12,19 @@ Le numéro affiché en bas de la barre latérale de l'app est celui de `package.
 **Deux applications, deux parcs — et le premier chiffre de cette version était faux.** Skander a
 ouvert le Parc : trois lignes, toutes « SkanFact », et « 10.4.0-beta.1 · 2 postes » sur un Mac où
 tournent SkanFact ET SkanFact Cabinet. *« Je veux savoir combien de postes cabinet et combien de
-postes entreprise. »* Correctif des **deux workers seulement** : aucune application ne change, rien
-à publier — il suffit de redéployer `skanfact-api` (et `skanfact-maj` s'il ne l'a pas encore été).
-**Une migration D1 est à coller**, elle est en fin d'entrée.
+postes entreprise. »* Correctif des **deux workers seulement** : les deux applications sont
+identiques à celles de la 10.4.0-beta.1, à l'octet près — `src/` et `build/` ne portent pas un
+fichier de différence. Ce qui change vit dans le worker de la console, déjà déployé, et dans une
+**migration D1** collée le 22/09/2026 (elle est en fin d'entrée, pour mémoire).
+
+**Pourquoi cette release existe quand même**, alors que la beta.2 et celle-ci n'avaient rien à
+livrer : Skander l'a demandée pour **éprouver le canal de mise à jour de bout en bout** — la
+publication, les quatre index de canal, la vérification depuis les deux applications,
+le téléchargement et l'installation. Une chaîne qu'on ne vérifie que sur les versions qui pressent
+finit par ne se vérifier jamais. Cette bêta ne change donc rien à ce que tu vois : si les deux
+applications passent en 10.4.0-beta.3 toutes seules, c'est la chaîne entière qui vient de répondre.
+Elle emporte au passage la **beta.2** (la ligne de santé des canaux qui accusait du code juste),
+jamais publiée pour la même raison.
 
 Quatre défauts, et le plus grave était invisible :
 
