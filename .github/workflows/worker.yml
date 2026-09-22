@@ -113,3 +113,26 @@ jobs:
           test "$code" = "200"
           grep -q "Vérifier une licence SkanFact" /tmp/verif.html
           echo "Le worker sert la page de vérification : le code déployé est bien celui-ci."
+
+          # Et l'autorisation que le SITE attend (10.8.0-beta.6). La page ci-dessus existe depuis la
+          # 10.5.0 : elle prouve qu'un code tourne, jamais qu'il porte la permission. Le workflow du
+          # relais mesure la sienne depuis le premier jour ; celui-ci ne le faisait pas — le jumeau
+          # manquant (7.3.0), appliqué à un CONTRÔLE. Sans cette étape, une permission retirée par
+          # accident ne se verrait que le jour où le site cesse de vérifier, c'est-à-dire chez un
+          # visiteur.
+          echo "Contrôle de OPTIONS $url/v1/verif/licence (origine du site : on attend 204 + l'en-tête)"
+          rep=$(curl -s -D - -o /dev/null --max-time 20 --retry 3 --retry-delay 5 \
+            -X OPTIONS -H 'Origin: https://skanfact.tn' -H 'Access-Control-Request-Method: POST' \
+            "$url/v1/verif/licence")
+          echo "$rep" | head -1
+          echo "$rep" | grep -qi '^HTTP/[0-9.]* 204' \
+            || { echo "::error::la demande de permission n'a pas répondu 204."; exit 1; }
+          echo "$rep" | grep -qi '^access-control-allow-origin: *https://skanfact.tn' \
+            || { echo "::error::le worker déployé n'autorise pas skanfact.tn : la page /verifier du site ne pourra pas vérifier chez elle."; exit 1; }
+
+          # L'autre sens, et c'est la moitié qu'on oublie (9.8.8) : une origine tierce reçoit sa
+          # réponse, jamais la permission de la lire.
+          tiers=$(curl -s -D - -o /dev/null --max-time 20 -X OPTIONS -H 'Origin: https://ailleurs.example' "$url/v1/verif/licence")
+          echo "$tiers" | grep -qi '^access-control-allow-origin:' \
+            && { echo "::error::l'autorisation est posée pour n'importe quelle page du web."; exit 1; }
+          echo "L'autorisation est posée pour le site, et pour lui seul."
