@@ -11605,6 +11605,8 @@
             <tr><td>Offre ${info('lic.offre')}</td><td><strong>${h(st.offreLabel || 'Entreprise')}</strong>${(st.reserves || []).length ? ' <span class="small muted">— Achats, Stock, Immobilisations, Trésorerie et marges, Paie et le dossier partagé restent lisibles ; leur création fait partie de l\'offre Entreprise.</span>' : ''}</td></tr>
             ${st.exp ? `<tr><td>Valable jusqu'au</td><td>${C.fmtDate(st.exp)}</td></tr>` : ''}
             ${st.cabinet ? `<tr><td>Cabinet parrain</td><td class="mono">${h(st.cabinet)}</td></tr>` : ''}
+            ${st.empreinte ? `<tr><td>Empreinte ${info('lic.empreinteCle')}</td><td><span class="mono">${h(st.empreinte)}</span>
+              <button type="button" class="btn btn-ghost btn-sm" id="lic-copier-emp">Copier</button></td></tr>` : ''}
           </tbody></table>` : ''}
          <label class="field mt">Clé de licence
            <textarea id="lic-key" rows="3" placeholder="SKAN1.…">${h(st.key || '')}</textarea></label>
@@ -11634,6 +11636,9 @@
       } catch (e) { toast(plainError(e), true); }
     };
     if ($('#lic-devenir')) $('#lic-devenir').onclick = devenirEditeur;
+    // Une suite de 32 caractères qu'on affiche sans bouton pour la prendre est une suite de
+    // 32 caractères qu'on recopie à la main, donc qu'on recopie faux (10.9.2).
+    if ($('#lic-copier-emp')) $('#lic-copier-emp').onclick = () => copierTexte(st.empreinte, 'Empreinte copiée');
     if ($('#lic-save')) $('#lic-save').onclick = () => setKey($('#lic-key').value.trim());
     if ($('#lic-clear')) $('#lic-clear').onclick = async () => {
       if (!await confirmDialog('Retirer la clé de licence de cet ordinateur ?')) return;

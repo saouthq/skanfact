@@ -2265,7 +2265,11 @@ function licenceCabinetStatus() {
     key: lic.key || '', cles: clesCabinet(), empreinte: empreinteDuCabinet(),
     comptes: compte.comptes, today: L.today()
   });
-  return { ...etat, comptage: compte, pastille: L.pastille(etat) };
+  // Le jumeau de `licenceStatus` de l'app entreprise (10.9.2) : l'empreinte de la clé se pose à la
+  // sortie unique, dérivée et jamais rangée. C'est elle que la page publique de vérification
+  // demande — et sans elle, le comptable n'avait aucun moyen de l'obtenir (règle 7.3.0).
+  return { ...etat, comptage: compte, pastille: L.pastille(etat),
+    empreinte: lic.key ? L.empreinteCle(lic.key) : '' };
 }
 
 ipcMain.handle('licence:status', () => { requireOpen(); return licenceCabinetStatus(); });

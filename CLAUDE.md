@@ -149,7 +149,9 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Un **moteur sans écran n'existe pas** ; une fonction jamais appelée est invisible | 7.2.0, 7.3.0, 7.19.0 |
 | Un **extrait sans son cadre** fait douter de l'outil : montrer l'ensemble, griser ce qui ne compte pas | 9.4.7 |
 | Un **état vide secondaire** s'annonce ; celui qui EST le corps d'un écran garde sa présence | 9.4.7 ; 10.6.0 — cent pixels pour dire « — » |
-| Une **phrase affichée** que rien ne tient est un bug, pas une imprécision | 7.3.0, 7.6.0, 8.0.0 ; 9.4.5 — un COMMENTAIRE aussi ; 9.8.1 et 9.8.4 — dans un fichier de CI aussi |
+| Une **phrase affichée** que rien ne tient est un bug, pas une imprécision | 7.3.0, 7.6.0, 8.0.0 ; 9.4.5 — un COMMENTAIRE aussi ; 9.8.1 et 9.8.4 — dans un fichier de CI aussi ; 10.9.2 — dire OÙ trouver une valeur qu'aucun écran n'affiche |
+| Quand quelqu'un **n'arrive pas à fournir** ce qu'on lui demande, chercher d'abord si on le lui a rendu possible | 10.9.2 |
+| Deux objets qui portent le **même mot** finissent confondus, y compris par leur auteur | 10.9.2 — l'empreinte d'un cabinet et celle d'une licence |
 | `navigate()` vers la page courante ne redessine **rien** : `vers()` | 7.15.0, 7.29.0 |
 | Un état lu une fois au démarrage **se périme** | 7.1.x, 8.0.0 |
 
@@ -5720,6 +5722,38 @@ les retirer.
   promesse, mais rien ne plante.
 
 Prouvé : six défauts réintroduits un par un font tomber leur test, dont celui d'origine.
+
+### 10.9.2 — Une valeur qu'aucun écran n'affiche n'existe pas, même si on dit où la trouver
+
+Skander a collé sa clé sur `skanfact.tn/verifier` et s'est fait répondre « empreinte illisible ». Il
+est l'auteur du produit ; un client se serait trompé dix fois sur dix.
+
+- **Une phrase qui dit OÙ trouver une valeur est une promesse, et elle se vérifie comme telle**
+  (7.3.0, dans sa forme la plus coûteuse). La page envoyait vers « Paramètres › L'application ›
+  Licence » — l'écran existait, la valeur n'y était nulle part, dans AUCUNE des deux applications.
+  On demandait donc quelque chose qu'il était impossible d'obtenir, et les deux autres défauts n'en
+  sont que les conséquences. **Quand un utilisateur n'arrive pas à fournir ce qu'on lui demande,
+  chercher d'abord si on le lui a rendu possible.**
+- **Deux objets qui portent le même mot finissent par être confondus** — y compris par ceux qui les
+  ont écrits. L'empreinte d'un CABINET fait vingt caractères en cinq groupes et se dicte au
+  téléphone ; celle d'une LICENCE en fait trente-deux d'un bloc. Le gabarit du site montrait la
+  première là où il fallait la seconde. Ce qui les sépare s'écrit maintenant sur la page et dans
+  les deux bulles, parce qu'une distinction qu'on garde en tête ne tient pas.
+- **Le geste naturel se comprend, il ne se refuse pas.** Ce qu'on a sous la main est la CLÉ : elle
+  arrive par mail, elle est dans le presse-papiers. Le site l'accepte et calcule l'empreinte
+  **dans le navigateur** — la clé ne part pas sur le réseau, parce qu'envoyer un titre de licence à
+  une route publique pour une question à laquelle son condensé répond serait donner plus que
+  nécessaire (10.5.0 : ce qui protège une réponse publique est la REQUÊTE).
+- **Une valeur dérivée se dérive ; elle ne se range pas.** L'empreinte se pose à la sortie UNIQUE de
+  chaque `licence:status`, pas dans les dix retours de `licenceState` — un seul oublié la rendrait
+  invisible dans l'état exact où l'on en a besoin. Rangée, elle finirait par désigner une clé
+  remplacée.
+- **Une longueur imposée par la cryptographie n'est pas un défaut de conception, et se démontre
+  plutôt que s'affirmer.** Une clé SkanFact ne peut pas descendre sous **92 caractères** : la
+  signature Ed25519 seule fait 64 octets, soit 86 en base64url. Un code court à la Microsoft
+  suppose un serveur d'activation — donc plus d'hors-ligne, et un logiciel qui meurt avec son
+  éditeur (6.4.0). Le découpage de la clé en ses trois morceaux (préfixe / charge / signature) est
+  ce qui a rendu la réponse vérifiable au lieu de péremptoire.
 
 ## Pistes pour la suite (non demandées)
 

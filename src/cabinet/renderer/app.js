@@ -6673,6 +6673,9 @@
       ${Object.keys(c.raisons).length ? `<h3 class="mt">Ce qui ne compte pas</h3>
         <ul class="small">${Object.keys(c.raisons).map(r => `<li>${esc(r)} <span class="muted">— ${pl(c.raisons[r], 'dossier')}</span></li>`).join('')}</ul>` : ''}
       <h3 class="mt">Ta clé ${info('lic.cle')}</h3>
+      ${licCab.empreinte ? `<p class="small">Empreinte de ta licence ${info('lic.empreinteCle')} :
+        <span class="mono">${esc(licCab.empreinte)}</span>
+        <button type="button" class="btn btn-sm" id="lic-copier-emp">Copier</button></p>` : ''}
       <label class="field">${lbl('Colle ta clé ici', 'lic.cle')}<textarea id="lic-key" rows="3" spellcheck="false" placeholder="SKAN1.…">${esc(licCab.key || '')}</textarea></label>
       <div class="modal-actions">
         ${licCab.key ? '<button class="btn" id="lic-clear">Retirer la clé</button>' : ''}
@@ -6682,6 +6685,15 @@
       <p class="muted small">Ce qui part dans la demande : ton <strong>empreinte</strong>, le nombre de dossiers comptés
       et la version. <strong>Jamais un nom de client</strong> — ton portefeuille ne sort pas d'ici.</p>`;
 
+    // Trente-deux caractères affichés sans bouton pour les prendre se recopient à la main,
+    // donc se recopient faux (10.9.2).
+    const cp = $('#lic-copier-emp', box);
+    if (cp) {
+      cp.onclick = async () => {
+        try { await navigator.clipboard.writeText(licCab.empreinte || ''); toast('Empreinte copiée.'); }
+        catch { await infoDialog('Copie impossible', 'Le presse-papiers n\'a pas répondu. Sélectionne l\'empreinte à la main.'); }
+      };
+    }
     const sv = $('#lic-save', box);
     if (sv) {
       sv.onclick = async () => {

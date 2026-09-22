@@ -795,6 +795,13 @@ function licenceStatus(matricule) {
     ...L.licenceState({ key: lic.key || '', cles: pub.cles, installedAt: installedAt(), armedAt: armedAt(),
       matricule: matricule || '', today: L.today(), editeur: editeurDeLaCleEnVigueur(),
       serveur: verdictServeur(lic) }),
+    // L'empreinte de la clé — 10.9.2. Elle se POSE ici, à la sortie unique, parce que
+    // `licenceState` a une dizaine de retours différents et qu'un seul oublié la rendrait
+    // invisible dans l'état exact où l'on en a besoin. Elle est DÉRIVÉE de la clé, jamais
+    // rangée : une empreinte stockée finirait par désigner une clé qu'on a remplacée.
+    // Ce n'est pas un secret — c'est un condensé — et c'est ce que la page publique de
+    // vérification demande. La clé, elle, ne sort jamais d'ici.
+    empreinte: lic.key ? L.empreinteCle(lic.key) : '',
     editeur: editeurActif()
   };
 }

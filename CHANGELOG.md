@@ -7,6 +7,36 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 10.9.2 — 22/09/2026
+
+**L'empreinte d'une licence existe enfin quelque part.** Skander a voulu vérifier une licence sur
+`skanfact.tn/verifier`, a collé sa clé, et s'est fait répondre « empreinte illisible ». Il est
+l'auteur du produit : un client se serait trompé dix fois sur dix. Trois défauts, tous de notre
+côté, et le premier explique les deux autres.
+
+**La page demandait une valeur qu'il était impossible d'obtenir.** Elle disait « vous trouvez
+l'empreinte dans SkanFact, sous Paramètres › L'application › Licence » — et **rien ne l'affichait**,
+ni dans l'application entreprise, ni dans le Cabinet. C'est « une phrase affichée que rien ne tient
+est un bug » (7.3.0), sur une phrase qui envoyait chercher un objet inexistant. Les deux
+applications l'affichent désormais dans leur panneau Licence, avec sa bulle et un bouton
+« Copier » : trente-deux caractères montrés sans bouton pour les prendre se recopient à la main,
+donc se recopient faux.
+
+**Le gabarit du site montrait le mauvais format** : `3F9A-2C1E-7B04-D158-6A2F`, c'est l'empreinte
+d'un **cabinet comptable** (vingt caractères, cinq groupes de quatre, dictée au téléphone pour le
+parrainage). L'empreinte d'une licence en fait trente-deux, d'un bloc. La page distingue enfin les
+deux au lieu d'en confondre une pour l'autre.
+
+**Et coller la CLÉ est maintenant compris**, au lieu d'être refusé. C'est le geste naturel : la clé
+arrive par mail, elle est dans le presse-papiers, c'est elle qu'on appelle « ma licence ». Le site
+la reconnaît à son préfixe et **calcule son empreinte dans le navigateur** (`crypto.subtle`, le même
+SHA-256 tronqué à 32 que `empreinteCle` côté application et côté serveur) : la clé ne part jamais
+sur le réseau — ce serait envoyer un titre de licence à une route publique pour poser une question
+à laquelle son condensé répond aussi bien.
+
+L'empreinte se **dérive** de la clé à la sortie unique de chaque `licence:status`, jamais rangée :
+une empreinte stockée finirait par désigner une clé qu'on a remplacée.
+
 ## 10.9.1 — 22/09/2026
 
 **La facture porte la raison sociale et l'adresse.** Correctif de la 10.9.0, trouvé en confrontant
