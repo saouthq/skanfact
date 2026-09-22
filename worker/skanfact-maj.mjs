@@ -331,7 +331,13 @@ async function remettre(courriel, env) {
     method: 'POST',
     headers: { Authorization: `Bearer ${env.RESEND_KEY}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      from: env.CONTACT_FROM || 'SkanFact <site@skanfact.tn>',
+      // L'expéditeur DOIT être sur le domaine que Resend a vérifié — `send.skanfact.tn`, la seule
+      // ligne DKIM de la zone, celle que le worker des licences utilise déjà. Une valeur par défaut
+      // sur un domaine non vérifié est refusée par Resend : le formulaire répondrait « l'envoi a
+      // échoué » sans que rien dans le code soit en cause, et on chercherait ailleurs. Ce n'est pas
+      // une boîte aux lettres : personne n'écrit à cette adresse, puisque `reply_to` renvoie au
+      // visiteur.
+      from: env.CONTACT_FROM || 'SkanFact <site@send.skanfact.tn>',
       to: [env.CONTACT_TO],
       reply_to: courriel.repondreA,     // répondre au visiteur, pas à soi-même
       subject: courriel.sujet,
