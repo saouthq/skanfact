@@ -556,3 +556,34 @@ directement, pas à travers les applications ; et les applications ne l'utiliser
 la publication suivante, celle qui embarquera enfin le secret. Jamais : poser un secret qu'on n'a
 pas d'abord rangé ailleurs qu'en mémoire — il n'existe aucun moyen de le relire, ni sur Cloudflare,
 ni sur GitHub.
+
+**R5 — La console n'envoie aucun mail, et c'est bloquant le jour où Konnect encaisse (noté le
+22/09/2026).** Déclencheur : le paiement en ligne (Konnect, § 15) marque une vente payée toute
+seule ; à cet instant la clé doit partir sans qu'on y pense. Constat : `GET /v1/admin/etat` répond
+aujourd'hui `mail: { ok: false, raison: "RESEND_API_KEY manque : la clé se copie et s'envoie à la
+main." }`, et c'est exactement ce que la console affiche. Ce n'est pas une panne — c'est le
+comportement voulu depuis la 8.5.0 : sans clé on ne fait rien **et on le dit**. Mais tant qu'il
+dure, chaque vente demande un geste humain, ce qui est tenable à un client par semaine et ne l'est
+plus le jour où un lien de paiement tourne la nuit.
+
+Une clé Resend existe déjà — `relais-contact`, créée le 22/09/2026 — et elle est posée sur le
+worker **du relais**, pour le formulaire de contact du site. **On en crée une SECONDE**, nommée
+pour la console (`console-licences`), plutôt que de recopier la première : le formulaire de contact
+est une porte publique, donc celle qui se fera abuser un jour et qu'on devra tourner en urgence —
+et tourner la clé d'un formulaire ne doit pas couper la livraison des licences vendues. Une clé par
+service, une révocation par service.
+
+Étapes : sur Resend, Create API key, permission **Sending access**, domaine `send.skanfact.tn`
+(déjà vérifié) ; la poser sur le worker **`skanfact-api`** en Secret `RESEND_API_KEY`, et nulle part
+ailleurs. Les deux autres réglages ont des défauts qui conviennent et ne sont à poser que pour en
+changer : `MAIL_FROM` vaut `SkanFact <licences@send.skanfact.tn>` — un expéditeur n'a pas besoin
+d'être une vraie boîte, seul le **domaine** doit être vérifié — et `MAIL_REPLY_TO` vaut
+`contact@skanfact.tn`, la seule boîte qui existe, donc une réponse du client arrive au bon endroit.
+Attention : l'expéditeur doit rester sur `send.skanfact.tn`, jamais `skanfact.tn` nu, qui n'est pas
+vérifié chez Resend — c'est le défaut qui a été corrigé côté relais le 22/09/2026.
+
+Vérification : `GET /v1/admin/etat` → `mail.ok` passe à `true` avec l'expéditeur nommé, puis une
+vraie vente marquée payée vers sa propre adresse — la clé doit arriver en **boîte de réception**,
+pas en indésirables, et `envoyee_le` se remplir. Jamais : une seule clé Resend pour les deux
+workers ; un expéditeur hors du domaine vérifié ; marquer une vente payée « pour essayer » sur un
+vrai client, puisque l'envoi part dans la seconde et ne se reprend pas.
