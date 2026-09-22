@@ -2400,14 +2400,14 @@ const VERIF_HTML = `<!doctype html>
 </style></head><body>
 <main class="carte">
   <h1>Vérifier une licence SkanFact</h1>
-  <p class="lead">Colle l'empreinte de ta licence — tu la trouves dans SkanFact, sous
-    <em>Paramètres &rsaquo; L'application &rsaquo; Licence</em>. Cette page ne dit jamais à qui une licence appartient.</p>
+  <p class="lead">Colle l’empreinte de ta licence — tu la trouves dans SkanFact, sous
+    <em>Paramètres &rsaquo; L’application &rsaquo; Licence</em>. Cette page ne dit jamais à qui une licence appartient.</p>
   <label for="emp">Empreinte de la licence</label>
   <input id="emp" spellcheck="false" autocapitalize="off" autocomplete="off" placeholder="3f9a2c1e…">
   <button id="go" type="button">Vérifier</button>
   <div id="out" hidden></div>
   <p class="pied">Une licence SkanFact se vérifie aussi <strong>hors ligne</strong>, sur ton ordinateur : cette page
-    n'est qu'une commodité, pas la source de vérité.</p>
+    n’est qu’une commodité, pas la source de vérité.</p>
 </main>
 <script>
 (function () {
@@ -2691,6 +2691,10 @@ const CONSOLE_HTML = `<!doctype html>
   .pill.w{color:var(--warn);border-color:var(--warn)}
   .pill.e{color:var(--ink2)}
   .vide,.chargement{padding:36px 22px;text-align:center;color:var(--ink2)}
+  /* Un état vide SECONDAIRE s'annonce, il ne se contemple pas (9.4.7). Un cadre de 36 px de marge
+     est la bonne présence quand le vide EST le corps de l'écran — au milieu d'une fiche déjà
+     pleine, il consacre cent pixels à dire qu'il n'y a rien, et repousse tout le reste. */
+  .vide.mini{padding:12px 16px;text-align:start;font-size:13.5px}
 
   /* ---------- 10.5.0 : trier, paginer, expliquer ---------- */
   /* Les deux applications ont des listes triables et paginées depuis la 1.9.0 et la 2.2.0 ; la
@@ -4395,6 +4399,24 @@ const CONSOLE_HTML = `<!doctype html>
     }, montrerErreur);
   }
 
+  // L'alignement d'un en-tête SUIT ses cellules ; il ne se recopie pas colonne par colonne.
+  // C'est très exactement la faute de la 7.23.0 : 139 en-têtes sur 338 étaient alignés autrement
+  // que leurs valeurs, parce que chacun portait sa classe à la main et qu'un oubli ne se voit pas
+  // à la relecture du HTML. Ici, on la DÉDUIT de la première ligne du corps : une colonne qui
+  // devient un nombre demain s'aligne toute seule, et l'instrument de rendu — qui mesure les deux
+  // — ne peut plus les voir diverger. Le grand tableau de la console, lui, déclare déjà ses
+  // colonnes numériques dans leur définition : il n'en a pas besoin.
+  function alignerEntetes(racine) {
+    Array.prototype.forEach.call(racine.querySelectorAll('table'), function (t) {
+      var prem = t.querySelector('tbody tr');
+      if (!prem) return;
+      var tetes = t.querySelectorAll('thead th');
+      Array.prototype.forEach.call(prem.cells, function (cel, i) {
+        if (tetes[i] && cel.classList.contains('num')) tetes[i].classList.add('num');
+      });
+    });
+  }
+
   // --- la FICHE d'un client ---
   // Répondre à « raconte-moi tout sur ce client » demandait cinq écrans : Clients, Licences,
   // Ventes, Activations, Journal. C'est ce qu'on ouvre à CHAQUE appel, donc l'écran qui devait
@@ -4418,8 +4440,10 @@ const CONSOLE_HTML = `<!doctype html>
       $('page-but').textContent = 'Tout ce que la plateforme sait de ce client : ses licences, ses postes, ses paiements, ce que tu lui as dit.';
       var paire = function (lib, val) { return val ? '<div><b>' + h(lib) + '</b>' + h(val) + '</div>' : ''; };
       var bloc = function (titre, corps) { return '<div class="bloc"><h2>' + h(titre) + '</h2>' + corps + '</div>'; };
-      var table = function (entetes, lignes2) {
-        if (!lignes2.length) return '<div class="wrap"><div class="vide">—</div></div>';
+      // Le troisième argument dit ce qui manque. « — » ne dit rien — ni si la liste est vide, ni
+      // si la plateforme n'a pas su la lire (9.4.7 : un état vide S'ANNONCE).
+      var table = function (entetes, lignes2, rien) {
+        if (!lignes2.length) return '<div class="wrap"><div class="vide mini">' + h(rien || '—') + '</div></div>';
         return '<div class="wrap"><table><thead><tr>' + entetes.map(function (t) { return '<th>' + h(t) + '</th>'; }).join('')
           + '</tr></thead><tbody>' + lignes2.join('') + '</tbody></table></div>';
       };
@@ -4435,16 +4459,16 @@ const CONSOLE_HTML = `<!doctype html>
       html += bloc('Licences', table(['Offre', 'Fin', 'État', 'Clé'], (d.licences || []).map(function (l) {
         return '<tr><td>' + h(libOffre(l)) + '</td><td>' + h(l.fin ? jour(l.fin) : 'à vie') + '</td><td>' + etatLic(l)
           + '</td><td class="mono">' + h(l.kid || '') + '</td></tr>';
-      })));
+      }), 'Aucune licence : ce client n\\u2019a encore rien acheté.'));
       html += bloc('Ventes', table(['Montant HT', 'État', 'Moyen', 'Facture'], (d.ventes || []).map(function (v) {
         return '<tr><td class="num">' + h(montant(v.montant_ht, v.devise)) + '</td><td>'
           + (v.payee_le ? '<span class="pill a">payée le ' + h(jour(v.payee_le)) + '</span>' : '<span class="pill w">à encaisser</span>')
           + '</td><td>' + h(v.moyen || '—') + '</td><td>' + h(v.facture_skanfact || 'à établir') + '</td></tr>';
-      })));
+      }), 'Aucune vente enregistrée.'));
       html += bloc('Ses postes', table(['Application', 'Ordinateur', 'Système', 'Version', 'Dernier signe'], (d.postes || []).map(function (p) {
         return '<tr><td>' + h(p.appNom || '') + '</td><td>' + h(p.device_nom || p.device_id) + '</td><td>' + h(p.plateforme || '—')
           + '</td><td class="mono">' + h(p.version || '—') + '</td><td>' + quandVu(p.derniere_fois) + '</td></tr>';
-      })));
+      }), 'Aucun poste ne s\\u2019est encore annoncé : soit l\\u2019application n\\u2019est pas installée, soit sa clé n\\u2019y est pas collée.'));
       // Ce qu'on lui a DIT : l'historique entier, pas seulement le dernier. « Je l'ai déjà appelé
       // deux fois » est précisément ce qu'on vient chercher avant de décrocher une troisième.
       html += bloc('Ce que tu lui as dit', (d.suivis || []).length
@@ -4455,8 +4479,9 @@ const CONSOLE_HTML = `<!doctype html>
         : '<div class="wrap"><div class="vide">Aucun contact noté. « Noter un contact… » ci-dessus garde ce que tu lui as dit — et fait taire ses alertes jusqu\\u2019à la date où tu veux le rappeler.</div></div>');
       html += bloc('Journal', table(['Quand', 'Quoi', 'Détail'], (d.journal || []).map(function (e) {
         return '<tr><td>' + h(horodate(e.quand)) + '</td><td class="mono">' + h(e.quoi) + '</td><td class="libre">' + h(e.detail || '') + '</td></tr>';
-      })));
+      }), 'Rien dans le journal pour ce client.'));
       el.innerHTML = html;
+      alignerEntetes(el);
       $('fiche-retour').onclick = fermerFiche;
       $('fiche-suivi').onclick = function () { formSuivi('client:' + c.id, c.nom, null); };
       $('fiche-devis').onclick = function () { ecrireDevis(c); };

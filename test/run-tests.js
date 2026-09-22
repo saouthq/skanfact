@@ -10779,6 +10779,20 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
       assert.ok(!/\\'/.test(vDedans), 'aucun \\\' dans le gabarit de vérification');
       assert.ok(!/\$\{/.test(vDedans), 'aucun ${ dans le gabarit de vérification');
 
+      // 10.6.0 — et la PROSE de cette page s'écrit avec une apostrophe typographique. Ce n'est pas
+      // une coquetterie : c'est la seule surface du produit que des INCONNUS ouvrent, et une page
+      // qui mélange « l'empreinte » et « n’est » dans le même paragraphe se lit comme un brouillon.
+      // On ne juge que le texte — le script de la page, lui, est du JavaScript et garde les siennes.
+      // Trouvé par l'instrument de rendu le jour où il a enfin ATTEINT cette page (T-55) : aucune
+      // relecture ne l'avait vu en quatre versions.
+      const vProse = vDedans
+        .replace(/<script[\s\S]*?<\/script>/gi, '')
+        .replace(/<style[\s\S]*?<\/style>/gi, '');
+      assert.ok(/Vérifier une licence/.test(vProse), 'le nettoyage a mangé la prose de la page de vérification');
+      const droites = vProse.match(/[A-Za-zÀ-ÿ]'[A-Za-zÀ-ÿ]/g) || [];
+      assert.deepStrictEqual(droites, [],
+        'la page publique écrit ses apostrophes en ’, jamais droites : ' + droites.join(', '));
+
       // Aucune requête vers l'extérieur : pas de bibliothèque, pas de police distante, rien qui
       // fasse sortir le secret d'administration de la page.
       assert.ok(!/<script[^>]+src=/i.test(dedans), 'aucun script externe dans la console');

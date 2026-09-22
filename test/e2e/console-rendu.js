@@ -19,8 +19,10 @@
 // Cloudflare, posé derrière un `http.createServer` avec une vraie base SQLite sur le vrai schéma —
 // partagé avec `e2e:console` (`console-serveur.js`).
 //
-// Ce qu'il mesure, sur les HUIT onglets et les deux formulaires, en clair ET en sombre, à 1440 et
-// à 1280 :
+// Ce qu'il mesure, sur les DIX écrans du rail, leurs formulaires, et les huit surfaces qu'aucune
+// adresse ne mène — le récapitulatif avant signature, la clé émise (résumée puis entière), le menu
+// d'une ligne, la relance composée, la fiche d'un client, le devis et son aperçu, la palette, le
+// pli scellé et la page publique de vérification —, en clair ET en sombre, à 1440 et à 1280 :
 //   1. aucun bouton illisible (contraste texte/fond sous 2,0) ni coupé par le bord de la fenêtre
 //   2. aucun en-tête de colonne aligné autrement que ses valeurs
 //   3. aucun contrôle de barre d'actions étiré, aucune barre empilée sur trois rangées
@@ -102,6 +104,10 @@ const APP_SECRET = 'secret-de-test-' + 'x'.repeat(20);
   });
 
   let boutons = 0, colonnes = 0, controles = 0, ecarts = 0, largeurs = 0;
+  // L'empreinte d'une licence RÉELLE, écrite par la route d'émission et relue par la page
+  // publique. Une empreinte inventée ferait afficher « inconnue » : on mesurerait alors l'écran
+  // du refus, jamais celui de la réponse — et c'est la réponse que des inconnus viennent lire.
+  let empreinteConnue = '';
 
   // Le dossier des captures et la fiche de chaque écran. Ils vivent ici, et pas dans le `try`,
   // parce que c'est `mesurer` qui photographie : la couverture des captures se DÉDUIT de celle des
@@ -371,6 +377,86 @@ const APP_SECRET = 'secret-de-test-' + 'x'.repeat(20);
     await mesurer(`${etiquette} · la relance composée`);
     await page.click('#relance-fermer');
     await page.waitForTimeout(200);
+
+    // ------------------------------------------------------ les six surfaces qu'aucun onglet ne mène
+    // T-55, une dernière fois et sur la troisième surface : un instrument qui n'ATTEINT pas un
+    // écran annonce « tout va bien » sur cet écran-là. Les huit onglets et les deux formulaires
+    // étaient mesurés ; six surfaces ne l'étaient par personne, et ce ne sont pas les moindres —
+    // la fiche d'un client est ce qu'on ouvre à chaque appel, le pli scellé est la procédure qui
+    // garde la boutique, et la page publique est la seule que des INCONNUS voient.
+
+    // 1. La fiche d'un client. Une seule action sur la ligne, donc un bouton nommé (7.29.0).
+    await onglet('clients');
+    await page.click('#table button[data-act="fiche"]');
+    await page.waitForSelector('#fiche:not([hidden]) #fiche-devis', { timeout: 15000 });
+    await page.waitForTimeout(240);
+    await mesurer(`${etiquette} · la fiche d’un client`);
+
+    // 2. Le formulaire du devis, et 3. l'aperçu qu'il compose. Le panneau de mail est le même
+    //    objet que la relance (`montrerMail`, une seule fonction — deux affichages du même objet
+    //    divergeraient, 7.29.0), mais il arrive ici avec un autre titre, un autre corps et depuis
+    //    un autre écran : c'est le chemin qu'on mesure, pas la fonction.
+    await page.click('#fiche-devis');
+    await page.waitForSelector('#form:not([hidden]) [name=offre]', { timeout: 5000 });
+    await page.waitForTimeout(200);
+    await mesurer(`${etiquette} · le formulaire du devis`);
+    await page.click('#f-ok');
+    await page.waitForSelector('#relance-txt', { timeout: 15000 });
+    await page.waitForTimeout(200);
+    await mesurer(`${etiquette} · le devis composé`);
+    await page.click('#relance-fermer');
+    await page.waitForTimeout(160);
+
+    // 4. La palette. Elle ne s'ouvre qu'au clavier — donc aucune adresse, aucun bouton, et aucune
+    //    sonde ne la voyait. C'est pourtant la couche qui passe PAR-DESSUS tout le reste : un
+    //    contraste faux y est un contraste faux sur chaque écran de la console.
+    await page.keyboard.press('Control+KeyK');
+    await page.waitForSelector('#palette:not([hidden]) #pal-q', { timeout: 5000 });
+    await page.waitForTimeout(200);
+    await mesurer(`${etiquette} · la palette`);
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => document.getElementById('palette').hidden, null, { timeout: 5000 });
+
+    // 5. Le pli scellé, dans les Réglages. Il vit derrière un bouton d'une section repliable :
+    //    deux clics qu'aucun parcours ne faisait, sur le texte qui explique comment la boutique
+    //    survit à l'absence de son éditeur.
+    await page.click('#tabs button[data-t="reglages"]');
+    await page.waitForSelector('#fiche:not([hidden]) [data-reg]');
+    await page.waitForTimeout(200);
+    // La section « La copie de la base » s'ouvre d'elle-même tant qu'aucune copie automatique
+    // n'est réglée — mais on ne PARIE pas dessus : si elle est repliée, on l'ouvre par son
+    // en-tête, comme une personne. Un parcours qui suppose un état trouve un écran vide le jour
+    // où l'état change, et accuse du code juste.
+    if (!(await page.isVisible('#reg-pli'))) {
+      await page.click('.collapse-h:has-text("La copie de la base")');
+      await page.waitForSelector('#reg-pli', { state: 'visible', timeout: 5000 });
+    }
+    await page.click('#reg-pli');
+    await page.waitForSelector('#pli-fermer', { timeout: 15000 });
+    await page.waitForTimeout(240);
+    await mesurer(`${etiquette} · le pli scellé`);
+    await page.click('#pli-fermer');
+    await page.waitForTimeout(160);
+
+    // 6. La page publique de vérification. C'est la SEULE surface du produit que des inconnus
+    //    ouvrent, elle a sa propre feuille de style — donc son propre thème sombre, ses propres
+    //    contrastes — et rien ne la regardait. On la visite pour de vrai et on pose une empreinte
+    //    qui existe, parce qu'un formulaire vide n'a pas de réponse à afficher et qu'on mesurerait
+    //    la moitié de l'écran (7.0.0 : vérifier que l'univers concerné est non vide).
+    await page.goto(base + '/verifier', { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('#emp');
+    await page.fill('#emp', empreinteConnue);
+    await page.click('#go');
+    await page.waitForSelector('#out:not([hidden])', { timeout: 15000 });
+    await page.waitForTimeout(200);
+    await mesurer(`${etiquette} · la page publique de vérification`);
+    // On revient par la porte : le secret vit dans `sessionStorage`, donc la console se rouvre
+    // seule. L'attendre est ce qui le PROUVE — sans cette attente, la passe suivante mesurerait
+    // l'écran de verrou en croyant mesurer un onglet.
+    await page.goto(base, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('#app', { state: 'visible', timeout: 15000 });
+    await page.waitForSelector('#tabs button');
+    await page.waitForTimeout(300);
   };
 
   try {
@@ -398,6 +484,9 @@ const APP_SECRET = 'secret-de-test-' + 'x'.repeat(20);
     await admin('licences', { clientId: c3.id, type: 'cabinet', duree: '1a', prix: 0,
       cabinet: '3f9a2c1e88b7d4056a12', dossiersHors: 10 });
     await admin('licences/' + l1.id + '/revoquer', { motif: 'rétractation sous quatorze jours' });
+    empreinteConnue = l1.empreinte || '';
+    if (!empreinteConnue) throw new Error('la licence émise ne porte pas d\'empreinte : la page publique'
+      + ' de vérification mesurerait un refus au lieu d\'une réponse');
     // Le parc : les DEUX applications s'annoncent. C'est la moitié que la console ne voyait pas
     // avant la 10.4.0, et un instrument qui ne la garnit pas ne la mesurerait pas non plus.
     await annonce('entreprise', '10.4.0', 'poste-entreprise-A', 'MacBook de Skander');
@@ -425,7 +514,7 @@ const APP_SECRET = 'secret-de-test-' + 'x'.repeat(20);
     j.ok(`la console s'ouvre sur ses ${n} onglets`);
 
     // ---------------------------------------------------------------- les quatre passes
-    j.etape('Les dix écrans, les formulaires et les deux panneaux, en clair, à 1440');
+    j.etape('Les dix écrans, leurs formulaires et les huit surfaces sans adresse, en clair, à 1440');
     await parcourir('clair 1440');
     j.ok(`${boutons} boutons, ${colonnes} colonnes, ${controles} contrôles, ${ecarts} écarts`);
 
@@ -497,7 +586,8 @@ const APP_SECRET = 'secret-de-test-' + 'x'.repeat(20);
   console.log(`\n${fiches.length} écrans photographiés dans ${OUT} (+ mesures.json) :`
     + ' chaque écran mesuré est un écran qu\'on peut regarder.');
   console.log(`\n${j.total()} étapes — ${boutons} boutons, ${colonnes} colonnes, ${ecarts} écarts, ${largeurs} largeurs`
-    + ` mesurés sur les dix écrans, les formulaires, la clé émise et la relance composée, en clair et en sombre,`
+    + ` mesurés sur les dix écrans du rail, leurs formulaires et les huit surfaces qu'aucune adresse ne mène,`
+    + ' en clair et en sombre,'
     + ' à 1440 et à 1280 : rien d\'illisible, rien de désaligné, rien de collé.'
     + `\n${controles} champ(s) dans une barre d'actions`
     + (controles ? ', aucun étiré.' : ' : la console n\'en a aucun aujourd\'hui — la sonde attend la refonte.'));

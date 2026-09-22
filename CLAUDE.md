@@ -22,7 +22,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Un bouton qui **accepte le clic et ne fait rien** | 7.0.0 — les treize « Voir » sans action ; 7.17.0 — les écrans qui ne répondent pas |
 | L'application **gèle** sans erreur (Cmd+Q sans effet, défilement qui marche encore) | 5.2.3 — boucle infinie de date ; 6.5.0 — le chien de garde ; 8.1.0 — la veille n'est pas un gel |
 | Un **écran blanc**, une fenêtre qui ne s'ouvre pas, rien en console | 7.20.0, 7.22.0, 7.23.0 — une fonction ou une variable d'un autre module ; 9.1.0 — le garde-fou d'erreur et le lint |
-| Un **texte illisible** (blanc sur blanc), un en-tête mal aligné, un fil vertical | 7.12.0, 7.23.0, 7.27.0, 7.30.0, 9.4.3 — le HTML est juste, c'est la feuille de style qui décide : **mesurer** |
+| Un **texte illisible** (blanc sur blanc), un en-tête mal aligné, un fil vertical | 7.12.0, 7.23.0, 7.27.0, 7.30.0, 9.4.3 — le HTML est juste, c'est la feuille de style qui décide : **mesurer** ; 10.6.0 — un alignement d'en-tête se DÉDUIT de ses cellules |
 | Une **exception qui échappe à un handler** : rien à l'écran qu'on ait écrit, rien au journal | 9.4.10 — `err.code` **ne traverse pas** le pont IPC |
 | Un bouton **hors de l'écran**, une barre empilée sur trois rangées | 7.13.0, 7.23.0 — `e2e:contraste` et `e2e:entetes` mesurent le bouton, jamais la page |
 
@@ -67,7 +67,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Une **réexportation** se prouve par l'identité d'objet, jamais par le résultat | 9.6.1 |
 | Une preuve par réintroduction ne vaut que sur un lot **VERT** : sinon on mesure le vide | 9.7.0 |
 | Quand une **mesure fait changer le code**, c'est l'INSTRUMENT qui se relit en premier : sinon il annonce un défaut qui n'existe plus | 9.9.1 — `npm run charge` mesurait le base64 d'un livre devenu binaire par sa faute |
-| Un **instrument qui n'ATTEINT pas l'écran** annonce « tout va bien » : l'état par défaut de l'objet qu'on ouvre cache la page autant que l'onglet par défaut | 9.8.8 — T-55, quatre écrans sur onze ; 9.4.3 |
+| Un **instrument qui n'ATTEINT pas l'écran** annonce « tout va bien » : l'état par défaut de l'objet qu'on ouvre cache la page autant que l'onglet par défaut | 9.8.8 — T-55, quatre écrans sur onze ; 9.4.3 ; 10.6.0 — cinq captures sur dix, et huit surfaces qu'aucune adresse ne mène |
 | Un test **trop LARGE** laisse passer le défaut, aussi sûrement qu'un test trop étroit accuse du code juste | 9.9.0 — la seconde piste d'audit qui satisfaisait l'assertion, la tranche qui avalait la porte ; 9.4.7 |
 | Un test dont les **DONNÉES ne discriminent pas** ne prouve rien : le modèle livré n'avait aucun préfixe imbriqué | 10.0.0 ; 9.6.1 |
 | **Élargir** une sonde se prouve dans les DEUX sens : qu'elle voie le défaut, et qu'elle ne voie rien ailleurs | 9.8.8 — T-49 bis, 28 accusations sur du code juste |
@@ -102,7 +102,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | electron-builder **ne déduit pas le canal du numéro** : on le NOMME, et la page de la release se relit | 9.8.8 — `latest.yml` sur une bêta, servi aux stables |
 | Le fournisseur GitHub d'electron-updater **ne connaît que « alpha » et « beta »** : `cabinet-beta` n'y passe jamais ; un repli se teste sur le canal qu'il doit servir | 9.8.8 — la bêta que le comptable ne voyait pas |
 | Une commande ne porte jamais `-c <fichier>` **et** `-c.<clé>=` : les deux visent la même option | 9.8.6 — et l'ambiguïté ne tombe que sous PowerShell |
-| Une **capture qui s'arrête au bas de l'écran** fait juger une page sur son premier écran | 9.4.3 |
+| Une **capture qui s'arrête au bas de l'écran** fait juger une page sur son premier écran | 9.4.3 ; 10.6.0 — la même faute sur la troisième surface, jamais portée |
 | Un fichier partagé a **trois** branchements : les deux `index.html`, dans l'ordre, et les `files` du Cabinet | 7.26.0 (`depot.js`), 7.29.0 (`rowmenu.js`), 9.1.0 (`compta.js`) |
 | Le Cabinet **n'écrit jamais** chez un client et ne lui renvoie rien | Cabinet 1.0.0 |
 | Une classe du Cabinet ne peut pas porter un nom déjà pris dans la feuille partagée | 6.8.0 — `.setup-card` |
@@ -116,7 +116,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Un **titre gris de 11 px ne hiérarchise rien** : il décore. Trois niveaux, un rôle chacun | 9.4.3 |
 | Un **total vit sous sa colonne** ; un raccourci s'affiche comme une **touche**, pas comme du texte | 9.4.5 |
 | Ce qui prend la place n'est pas le **nombre** d'objets mais leur **taille** : replier avant de paginer | 9.4.5 |
-| Un champ **pré-rempli** se sélectionne au clic, sinon la valeur proposée est imposée | 9.4.5 |
+| Un champ **pré-rempli** se sélectionne au clic, sinon la valeur proposée est imposée ; et il se RECALCULE quand ce dont il dépend change | 9.4.5 ; 10.6.0 — un Indépendant vendu 690 DT |
 | Une **classe posée par le code et inconnue de la feuille** ne se voit nulle part | 6.8.0, 7.23.0, 7.27.0, 8.1.0, 9.4.3 |
 | Un CSS **physique** décrit un écran, un CSS **logique** décrit une lecture ; l'exception est NOMMÉE | 9.4.10 |
 | Une **règle générale qui vise un élément** avale l'exception qu'on vient d'y poser (`:not()`) | 7.23.0, 7.27.0, 7.30.0, 9.4.8 |
@@ -124,7 +124,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Un **réglage qu'on ne peut pas changer à l'écran** est une constante ; ce qui n'est PAS réglable se dit | 10.5.0 — les prix, la signature, les seuils |
 | Le **plafond de largeur** suit le RÔLE, pas le conteneur ; on **pagine ce qu'on NOMME** | 10.5.0 — 700 px vides à droite d'un tableau serré ; 9.4.5 |
 | Une **réponse en retard** ne repeint pas l'écran qu'on a quitté | 10.5.0 — le Parc remplacé par les alertes, sous le titre du Parc |
-| Un **avertissement** se lit AVANT le geste, jamais sous le bouton | 9.4.2 |
+| Un **avertissement** se lit AVANT le geste, jamais sous le bouton ; un geste IRRÉVERSIBLE a son récapitulatif, désarmé à la moindre frappe | 9.4.2 ; 10.6.0 — « Émettre » signait au premier clic |
 | Une ligne garde **au plus UN** bouton visible ; le reste passe par `rowmenu.js` | 7.29.0 ; 9.4.8 — un en-tête de fiche aussi |
 | **UNE seule table d'actions par racine** : `bindRowMenus` écrase la précédente, en silence | 9.4.8 |
 | Un **champ qui compte dans une unité** le dit à côté de lui, pas en légende dessous | 9.4.8 |
@@ -139,7 +139,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | L'endroit qui **affiche** un état est celui où on s'attend à le changer | 7.14.0 |
 | Un **moteur sans écran n'existe pas** ; une fonction jamais appelée est invisible | 7.2.0, 7.3.0, 7.19.0 |
 | Un **extrait sans son cadre** fait douter de l'outil : montrer l'ensemble, griser ce qui ne compte pas | 9.4.7 |
-| Un **état vide secondaire** s'annonce ; celui qui EST le corps d'un écran garde sa présence | 9.4.7 |
+| Un **état vide secondaire** s'annonce ; celui qui EST le corps d'un écran garde sa présence | 9.4.7 ; 10.6.0 — cent pixels pour dire « — » |
 | Une **phrase affichée** que rien ne tient est un bug, pas une imprécision | 7.3.0, 7.6.0, 8.0.0 ; 9.4.5 — un COMMENTAIRE aussi ; 9.8.1 et 9.8.4 — dans un fichier de CI aussi |
 | `navigate()` vers la page courante ne redessine **rien** : `vers()` | 7.15.0, 7.29.0 |
 | Un état lu une fois au démarrage **se périme** | 7.1.x, 8.0.0 |
@@ -5291,6 +5291,74 @@ contact noté qui fait taire ses alertes, le tri renversé, la bulle, la palette
 pli scellé, et la page publique) et `npm run e2e:console-rendu` (**1 277 boutons, 364 colonnes,
 1 413 écarts, 57 largeurs**, sur les dix écrans — l'onglet Réglages compris, parce qu'un écran neuf
 qu'aucune sonde ne regarde est un écran qui dérive, T-55).
+
+### 10.6.0 — L'audit de la console, et l'instrument qui n'atteignait pas ses écrans
+
+Skander : « Ne modifie rien. Analyse cette plateforme comme un Product Designer SaaS senior »,
+puis « corrige tout ça ». Vingt-neuf constats — trois critiques, cinq majeurs, douze moyens, neuf
+finitions — et **le trou d'instrument qui explique pourquoi personne ne les avait vus.**
+
+Règles apprises, à ne pas recasser :
+
+- **Un champ pré-rempli une fois au dessin ment dès que la valeur dont il dépend change.** Le prix
+  proposé à l'émission était celui de l'offre *Entreprise* quelle que soit l'offre choisie : vendre
+  un Indépendant à 690 DT au lieu de 390 ne demandait aucune faute de frappe, et rien à l'écran ne
+  le montrait. Le prix suit l'offre, et il DIT d'où il vient — « proposé d'après l'offre » ou
+  « saisi à la main ». Un chiffre pré-rempli qu'on ne distingue pas d'un chiffre décidé est un
+  chiffre qu'on ne relit pas ; c'est le pendant de la règle 9.4.5 (« un champ pré-rempli se
+  sélectionne au clic »), du côté de ce que la valeur SIGNIFIE.
+- **Le format interne ne sort jamais sur un écran de saisie** (9.4.5, portée à la console) : les
+  dates s'écrivent et se lisent en `JJ/MM/AAAA`, la pièce garde l'ISO, et le 31 février est refusé
+  en le NOMMANT plutôt que borné en silence.
+- **Le dernier écran avant un geste irréversible doit exister.** Une clé livrée ne se reprend pas
+  (8.2.0) et « Émettre » signait au premier clic. Le premier clic rend le récapitulatif — à qui,
+  quelle offre, jusqu'à quand, combien — et le second signe. Le récapitulatif se DÉSARME à la
+  moindre frappe : un formulaire modifié après coup ferait signer autre chose que ce qu'on a relu.
+- **Une ligne garde au plus UN bouton visible** (7.29.0, jamais portée ici) : la console en portait
+  cinq, et à 1440 px les colonnes FIN, ENVOYÉE et ÉTAT des Licences étaient **entièrement hors de
+  l'écran** — 524 px de débordement mesurés, zéro après. La hauteur d'une ligne est passée de
+  210 px à 54.
+- **Une colonne vide se masque en le DISANT**, avec le bouton qui la rend : masquer sans le dire
+  serait un piège (7.12.0), et une colonne de tirets coûte de la largeur à toutes les autres (9.4.8).
+- **Arriver sur un titre replié, c'est arriver nulle part** (7.32.0) : les Réglages se replient par
+  section ET portent leur sommaire, qui OUVRE la section avant d'y descendre.
+- **Une valeur interne ne s'affiche pas** : `darwin` se dit « macOS », `licence.emise` se dit en
+  français. Le tableau est là pour être lu par une personne, pas relu par le serveur qui l'a écrit.
+- **L'alignement d'un en-tête SUIT ses cellules, il ne se recopie pas colonne par colonne.** La
+  faute de la 7.23.0, retrouvée sur la fiche d'un client : « Montant HT » aligné à gauche au-dessus
+  de valeurs alignées à droite. Il se DÉDUIT désormais de la première ligne du corps, donc une
+  colonne qui devient un nombre demain s'aligne toute seule.
+- **Un état vide SECONDAIRE s'annonce, il ne se contemple pas** (9.4.7, portée à la console) : un
+  cadre de cent pixels pour dire « — » au milieu d'une fiche pleine repousse tout le reste, et « — »
+  ne dit pas si la liste est vide ou si la plateforme n'a pas su la lire.
+- **La page publique écrit ses apostrophes en `’`.** C'est la seule surface du produit que des
+  INCONNUS ouvrent, et un paragraphe qui mélange « l'empreinte » et « n’est » se lit comme un
+  brouillon. Le garde-fou ne juge que la PROSE — le script de la page est du JavaScript et garde
+  les siennes.
+
+**Le trou qui explique les vingt-neuf, et c'est le même que T-55 (9.8.8) une surface plus loin.**
+`e2e:console-rendu` mesurait dix écrans en quatre passes et n'en **photographiait que cinq**,
+chacun coupé au bas de la fenêtre. Deux causes, deux règles :
+
+- **Une capture qui s'arrête au bas de l'écran fait juger une page sur son premier écran** (9.4.3) :
+  la console pose un cadre fixe (`height:100vh`) et fait défiler un élément interne, donc
+  `fullPage: true` rend exactement une capture d'écran. Le correctif existait pour les DEUX
+  applications depuis la 9.4.3 et n'avait jamais été porté à la troisième surface — le jumeau
+  manquant (7.3.0), appliqué à un INSTRUMENT.
+- **La couverture des captures se DÉDUIT de celle des mesures**, elle ne se recopie pas dans une
+  liste écrite à la main : c'est `mesurer` qui photographie, et deux écrans qui tomberaient sur le
+  même nom de fichier font TOMBER le parcours — une capture qui en écrase une autre est un écran
+  mesuré que personne ne peut plus regarder.
+
+Et **huit surfaces n'étaient atteintes par personne** : le récapitulatif avant signature, la clé
+émise (résumée puis entière), le menu d'une ligne, la relance composée, la fiche d'un client, le
+devis et son aperçu, la palette, le pli scellé et la page publique de vérification. Aucune
+n'a d'adresse : on les atteint par un GESTE, donc un instrument qui parcourt les onglets ne les
+voit pas. De 5 captures à **93**, de 1 277 boutons à **1 925**, 592 colonnes, 2 445 écarts — et
+l'instrument a trouvé deux défauts dans l'heure qui a suivi (l'en-tête désaligné, les apostrophes
+de la page publique), tous deux sur des écrans qu'aucune sonde n'avait jamais regardés.
+
+Prouvé : vingt-neuf défauts réintroduits un par un font tomber leur test.
 
 ## Pistes pour la suite (non demandées)
 

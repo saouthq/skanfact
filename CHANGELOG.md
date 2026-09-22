@@ -7,6 +7,55 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 10.6.0-beta.1 — 22/09/2026
+
+**L'audit de la console, en Product Designer, et les vingt-neuf constats corrigés d'un bloc.**
+Skander : « Ne modifie rien. Analyse cette plateforme comme un Product Designer SaaS senior »,
+puis « corrige tout ça ». Trois critiques, cinq majeurs, douze moyens, neuf finitions — et le
+trou d'instrument qui explique pourquoi personne ne les avait vus.
+
+Publiée en **bêta** : le premier des trois critiques change un PRIX sur une facture.
+
+**Les trois critiques.** Le formulaire d'émission proposait le prix de l'offre *Entreprise* quel
+que soit l'offre choisie, parce que le champ était pré-rempli une fois au dessin et que rien ne
+le recalculait : vendre un Indépendant à 690 DT au lieu de 390 ne demandait aucune faute de
+frappe. Le prix suit désormais l'offre, et il DIT d'où il vient (« proposé d'après l'offre » ou
+« saisi à la main ») — un chiffre pré-rempli qu'on ne distingue pas d'un chiffre décidé est un
+chiffre qu'on ne relit pas. Les dates se saisissaient au format interne (`2026-09-17`) sous une
+invite française ; elles s'écrivent et se lisent en `JJ/MM/AAAA`, le 31 février est refusé en le
+nommant. Et **émettre demande une confirmation** : le premier clic rend le récapitulatif — à qui,
+quelle offre, jusqu'à quand, combien — et le second signe. Une clé livrée ne se reprend pas
+(8.2.0) : c'est le dernier écran avant un geste irréversible, il n'existait pas.
+
+**Les cinq majeurs.** Une ligne garde au plus UN bouton visible et le reste passe par un menu
+(7.29.0) — la console en portait jusqu'à cinq, et à 1440 px les colonnes FIN, ENVOYÉE et ÉTAT
+des Licences étaient **entièrement hors de l'écran** (524 px de débordement, mesurés ; zéro
+après). Les colonnes entièrement vides se masquent en le DISANT, avec « Tout afficher » pour les
+rendre — masquer sans le dire serait un piège (7.12.0). Chaque écran finit par le geste suivant.
+Et la hauteur d'une ligne est passée de 210 px à 54.
+
+**Les douze moyens et les neuf finitions.** Les Réglages se replient par section avec leur
+sommaire (arriver sur un titre replié, c'est arriver nulle part — 7.32.0) ; les valeurs internes
+(`darwin`, `licence.emise`) se disent en français ; la clé émise s'affiche résumée avec « Voir la
+clé entière » derrière ; les champs conditionnels n'apparaissent que quand ils servent ; la barre
+d'enregistrement flotte ; les libellés nomment l'écran d'arrivée.
+
+**Le trou qui explique les vingt-neuf.** `e2e:console-rendu` mesurait dix écrans en quatre passes
+et n'en **photographiait que cinq**, chacun coupé au bas de la fenêtre — la console pose un cadre
+fixe (`height:100vh`) et fait défiler un élément interne, donc « page entière » rendait exactement
+une capture d'écran (le défaut résolu pour les deux applications en 9.4.3, jamais porté ici). Et
+huit surfaces n'étaient atteintes par personne : le récapitulatif avant signature, la clé émise,
+le menu d'une ligne, la relance composée, **la fiche d'un client**, le devis et son aperçu, **la
+palette**, **le pli scellé** et **la page publique de vérification** — la seule surface du produit
+que des inconnus ouvrent. L'instrument les atteint toutes : de 5 captures à **93**, de 1 277
+boutons à 1 925, 592 colonnes, 2 445 écarts.
+
+Il a trouvé deux défauts dans l'heure qui a suivi. Sur la fiche d'un client, l'en-tête « Montant
+HT » était aligné à gauche au-dessus de valeurs alignées à droite — la faute de la 7.23.0, sur un
+écran qu'aucune sonde n'avait jamais regardé ; l'alignement se DÉDUIT désormais des cellules, donc
+une colonne qui devient un nombre demain s'aligne toute seule. Et la page publique mélangeait
+apostrophes droites et typographiques dans le même paragraphe.
+
 ## 10.5.0-beta.1 — 22/09/2026
 
 **La console retenait ce qui EXISTE, et rien de ce qu'on en faisait.** Un essai se terminait,
