@@ -331,12 +331,27 @@ const RELACHE = `
   .scroll-y, nav { overflow: visible !important; }
 `;
 
+// La console de l'éditeur est la TROISIÈME surface, et elle a le même cadre fixe pour la même
+// raison — `.coque { height: 100vh }`, `main` qui défile à côté du rail. Ses sélecteurs ne sont pas
+// ceux des deux applications, donc elle a son propre relâchement ; il vit ICI, à côté de l'autre,
+// parce qu'un mécanisme recopié dans le parcours qui s'en sert diverge toujours (7.29.0). Ce qui
+// n'est PAS relâché : `.wrap`, le conteneur qui fait défiler un tableau large de côté — l'élargir
+// montrerait une page que personne ne voit, et c'est justement ce débordement que la sonde de
+// densité mesure.
+const RELACHE_CONSOLE = `
+  html, body { height: auto !important; overflow: visible !important; }
+  .coque { height: auto !important; min-height: 100vh; align-items: flex-start !important; }
+  main { overflow: visible !important; }
+  .rail { position: sticky !important; top: 0; align-self: flex-start !important; }
+  .rail nav { overflow: visible !important; }
+`;
+
 async function capturePleine(win, chemin, opts = {}) {
   await win.evaluate(css => {
     const s = document.createElement('style');
     s.id = '__capture-pleine'; s.textContent = css;
     document.head.appendChild(s);
-  }, RELACHE);
+  }, opts.css || RELACHE);
   await win.waitForTimeout(opts.pose || 150);
   try {
     await win.screenshot({ path: chemin, fullPage: true });
@@ -420,5 +435,5 @@ const SONDE_LARGEUR = ({ cibles, perte }) => {
 
 module.exports = {
   playwright, RACINE, ELECTRON, VERSION, journal, surveiller, dossierCaptures, ouvrirChromium,
-  capturePleine, SONDE_BOUTONS, SONDE_COLONNES, SONDE_ENTETES, SONDE_ESPACEMENT, SONDE_LARGEUR, montant
+  capturePleine, RELACHE_CONSOLE, SONDE_BOUTONS, SONDE_COLONNES, SONDE_ENTETES, SONDE_ESPACEMENT, SONDE_LARGEUR, montant
 };

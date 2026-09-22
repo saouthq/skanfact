@@ -25,12 +25,22 @@ function livreDeLExemple() {
   });
   return livre;
 }
-const sansComm = src => {
+// Le nettoyage des commentaires se prouve par un TÉMOIN, pas par un rapport de longueurs. Le
+// danger qu'il garde est réel — un `/*` non refermé, ou un `/*` cité dans une chaîne, et le
+// `[\s\S]*?` avale un bloc entier de code sans qu'un seul test s'en plaigne. Mais le rapport
+// « il doit rester plus de la moitié » n'est qu'un PROXY, et il est tombé sur du code
+// parfaitement juste le jour où `harnais.js` a franchi 50 % de prose (0,497) : c'est un fichier
+// d'instruments, il s'explique plus qu'il ne code, et c'est voulu. Un test trop étroit accuse du
+// code juste, aussi sûrement qu'un test trop large laisse passer le défaut (9.1.0, 9.4.7) — et le
+// « réparer » en baissant le chiffre n'aurait rien vérifié du tout (7.13.0). On exige donc ce que
+// la règle dit vraiment : un morceau de code que le fichier porte à coup sûr doit survivre.
+const sansComm = (src, temoin) => {
   const net = src.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
-  assert.ok(net.length > src.length * 0.5, 'le nettoyage des commentaires a mangé le code');
+  assert.ok(src.includes(temoin), 'témoin absent du fichier d\'origine : ' + temoin);
+  assert.ok(net.includes(temoin), 'le nettoyage des commentaires a mangé le code (' + temoin + ')');
   return net;
 };
-const cabApp = () => sansComm(lireSource('src', 'cabinet', 'renderer', 'app.js'));
+const cabApp = () => sansComm(lireSource('src', 'cabinet', 'renderer', 'app.js'), 'function draw(');
 const tranche = (src, deb, fin, min, max) => {
   const a = src.indexOf(deb); assert.ok(a >= 0, 'ancre introuvable : ' + deb);
   const b = src.indexOf(fin, a + deb.length); assert.ok(b > a, 'borne introuvable : ' + fin);
@@ -243,7 +253,7 @@ t('T-22 : dans le bilan, chaque rubrique porte un NOM DE COMPTE, jamais le libel
   toutes.forEach(l => assert.ok(!/Facture|Paiement|Achat |LOC-|FAC-/.test(l.libelle), `une rubrique porte un libellé d'écriture : ${l.compte} « ${l.libelle} »`));
   const c411 = toutes.find(l => l.compte === '411');
   assert.ok(c411 && /Clients/.test(c411.libelle), 'le 411 doit s\'appeler « Clients »');
-  const main = sansComm(lireSource('src', 'cabinet', 'main.js'));
+  const main = sansComm(lireSource('src', 'cabinet', 'main.js'), 'ipcMain.handle(');
   const libs = main.split('\n').filter(l => /const libelle = \(c\) =>/.test(l));
   assert.ok(libs.length >= 2, 'les deux résolveurs de main.js sont attendus');
   libs.forEach(l => assert.ok(l.includes('KC.libelleDuPlan(c)'), 'un résolveur de bilan ne retombe pas sur le plan comptable : ' + l.trim()));
@@ -306,7 +316,7 @@ t('T-03 / T-05 / T-36 : ce qu\'un bouton fait apparaître, ce qu\'il ne touche p
   assert.ok(/'lv\.relire': \{[^}]*ne touche jamais/.test(guide), 'la bulle ne dit pas que les validées ne bougent pas');
   // T-36 : le bandeau de l'exemple compte les livres partis, et main.js les compte à la source.
   assert.ok(app.includes('exempleRefait.livres') && app.includes('livre de démonstration est parti'), 'le bandeau ne dit pas que la saisie d\'essai est partie');
-  const main = sansComm(lireSource('src', 'cabinet', 'main.js'));
+  const main = sansComm(lireSource('src', 'cabinet', 'main.js'), 'ipcMain.handle(');
   assert.ok(/livres \+= \(r && r\.livres\) \|\| 0/.test(main) && /return \{ version: VERSION, mois, raison, livres:/.test(main), 'rafraichirExemple ne compte pas les livres');
 });
 
@@ -384,7 +394,7 @@ t('T-24 / T-25 / T-26 / T-27 : l\'exercice se relit, sa fenêtre liste, son moti
   // T-27 : la trace du dossier produit, dans le livre, avec le bouton qui retrouve le fichier.
   assert.ok(/id="cl-produits"/.test(vc) && /data-reveal="\$\{esc\(p\.chemin\)\}"/.test(vc), 'les dossiers produits n\'ont ni panneau ni bouton « Ouvrir le dossier »');
   assert.ok(/\$\$\('\[data-reveal\]', el\)\.forEach\(b => \{ b\.onclick = \(\) => api\.reveal\(b\.dataset\.reveal\); \}\);/.test(bc), '« Ouvrir le dossier » n\'est pas branché');
-  const main = sansComm(lireSource('src', 'cabinet', 'main.js'));
+  const main = sansComm(lireSource('src', 'cabinet', 'main.js'), 'ipcMain.handle(');
   assert.ok(/KC\.noterDossierCloture\(livre, \{ chemin: res\.filePath/.test(main), 'main.js n\'écrit pas la trace dans le livre');
   const K = require('../../src/renderer/compta.js');
   const livre = K.livreVide('D1', 2026);
@@ -692,7 +702,7 @@ t('T-49 : le geste qui allonge la grille vit sous la grille, avant la barre qui 
 // qui porte du TEXTE n'est pas l'emballage d'un bouton : c'est une phrase, et les voisins du
 // bouton y sont des mots. Un test trop large accuse du code juste (9.1.0, 9.4.7).
 t('T-49 bis : la sonde ne remonte d\'un cran que sur un VRAI emballage, jamais sur une phrase', () => {
-  const h = sansComm(lireSource('test', 'e2e', 'harnais.js'));
+  const h = sansComm(lireSource('test', 'e2e', 'harnais.js'), 'function capturePleine(');
   const i = h.indexOf('const seul = b.parentElement');
   assert.ok(i > 0, 'la remontée d\'un cran de la sonde d\'espacement a disparu');
   const regle = h.slice(i, i + 220);
@@ -814,7 +824,7 @@ t('T-51 bis : une pièce qu\'un import définitif n\'a pas pu valider est NOMMÉ
   // Et le compte rendu de l'écran le dit.
   const app = cabApp();
   assert.ok(/r\.nonValidees/.test(app), 'le compte rendu de relecture doit nommer les pièces restées en brouillard');
-  const main = sansComm(lireSource('src', 'cabinet', 'main.js'));
+  const main = sansComm(lireSource('src', 'cabinet', 'main.js'), 'ipcMain.handle(');
   assert.ok(/nonValidees/.test(main), 'le bilan de relecture doit remonter les non validées');
 });
 

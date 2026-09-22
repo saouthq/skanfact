@@ -28,10 +28,11 @@
 //
 //   npm run e2e:console-rendu
 
-const { playwright, ouvrirChromium, journal, dossierCaptures,
+const { playwright, ouvrirChromium, journal, dossierCaptures, capturePleine, RELACHE_CONSOLE,
   SONDE_BOUTONS, SONDE_COLONNES, SONDE_ENTETES, SONDE_ESPACEMENT, SONDE_LARGEUR } = require('./harnais');
 const { servir, SECRET } = require('./console-serveur');
 const path = require('path');
+const fs = require('fs');
 
 const SEUIL = 2.0;                       // le seuil de contraste : il n'est pas esthétique, il attrape l'illisible
 const LARGEUR_MAX = 300, LARGEUR_MAX_RECHERCHE = 400, HAUTEUR_MAX = 100;
@@ -102,6 +103,19 @@ const APP_SECRET = 'secret-de-test-' + 'x'.repeat(20);
 
   let boutons = 0, colonnes = 0, controles = 0, ecarts = 0, largeurs = 0;
 
+  // Le dossier des captures et la fiche de chaque écran. Ils vivent ici, et pas dans le `try`,
+  // parce que c'est `mesurer` qui photographie : la couverture des captures se DÉDUIT de celle des
+  // mesures, elle ne se recopie pas dans une liste écrite à la main. Avant la 10.5.1, le parcours
+  // mesurait dix écrans en quatre passes et n'en photographiait que CINQ — c'est-à-dire qu'on
+  // jugeait la console sur un huitième de ce que l'instrument avait sous les yeux. Même famille que
+  // `wipeData` déduit de `DEFAULT_DATA` (7.0.0) et que le sommaire des Paramètres déduit de l'écran
+  // (7.30.0) : une liste tenue à la main se périme au premier écran ajouté.
+  const OUT = dossierCaptures('console-rendu');
+  const fiches = [];
+  const nomFichier = ou => ou.toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
   // Les quatre sondes sur l'écran courant. `ou` nomme l'endroit ET le contexte (largeur, thème) :
   // une faute qui n'existe qu'en sombre à 1280 doit se lire comme telle, sinon on la cherche à
   // l'endroit où elle ne se produit pas.
@@ -163,6 +177,36 @@ const APP_SECRET = 'secret-de-test-' + 'x'.repeat(20);
     if (h.n && h.hauteur > HAUTEUR_MAX) {
       fautes.push(`${ou} — la barre d'actions fait ${h.hauteur} px de haut : ses contrôles s'empilent`);
     }
+
+    // La photo se prend ICI, à la fin de la mesure, pour tout écran mesuré — c'est ce qui rend les
+    // deux couvertures indivergeables. Et elle passe par `capturePleine` : la console a le MÊME
+    // cadre fixe que les deux applications (`.coque { height: 100vh }`, `main` qui défile à côté du
+    // rail), donc `fullPage: true` y rend exactement une capture d'écran et rien de plus — la page
+    // des Réglages fait deux écrans et demi, et on n'en voyait que le premier. C'est le défaut de
+    // la 9.4.3, sur la troisième surface, découvert de la même façon : en regardant la hauteur
+    // mesurée, toutes les pages annonçaient 900 px.
+    //
+    // On mesure la hauteur RELÂCHÉE, pas celle du cadre : c'est elle qui dit qu'un écran fait 0,4
+    // écran de haut et un autre 2,5 — ce qu'aucune capture ne montre et qu'aucune sonde ne juge.
+    const vue = await page.evaluate(css => {
+      const s = document.createElement('style');
+      s.id = '__mesure-hauteur'; s.textContent = css;
+      document.head.appendChild(s);
+      const h = Math.round(document.documentElement.scrollHeight);
+      s.remove();
+      return { hauteur: h, fenetre: Math.round(window.innerHeight), largeur: Math.round(window.innerWidth) };
+    }, RELACHE_CONSOLE);
+    const fichier = nomFichier(ou) + '.png';
+    // Deux écrans qui tombent sur le même nom de fichier, c'est une capture qui en écrase une
+    // autre — donc un écran mesuré que personne ne peut plus regarder, sans un mot. Le parcours
+    // TOMBE : un instrument qui perd la moitié de ce qu'il photographie annonce que tout va bien.
+    if (fiches.some(f => f.capture === fichier)) {
+      throw new Error(`deux écrans portent le même nom de capture (« ${fichier} ») : le second écrase`
+        + ' le premier, et un écran mesuré devient invisible');
+    }
+    await capturePleine(page, path.join(OUT, fichier), { css: RELACHE_CONSOLE });
+    fiches.push({ ou, capture: fichier, boutons: bs.length, colonnes: c.colonnes, ecarts: e.mesures,
+      champs: h.n, hauteur: vue.hauteur, ecrans: +(vue.hauteur / vue.fenetre).toFixed(2), largeur: vue.largeur });
   };
 
   // Deux mesures que les quatre sondes ne portent pas, et qui sont celles dont la refonte parle.
@@ -212,6 +256,12 @@ const APP_SECRET = 'secret-de-test-' + 'x'.repeat(20);
       return out;
     });
     if (d.flottaison != null) flottaison.push({ ou, y: d.flottaison });
+    // La densité rejoint la fiche de l'écran : sans elle, `mesures.json` dit combien de boutons
+    // porte un écran et pas s'il se lit de côté. Un relevé qui ne porte que ce qu'on JUGE laisse
+    // hors de vue ce qu'on a décidé de tolérer — et c'est précisément là que la prochaine dérive
+    // s'installe, puisque plus rien ne la compte.
+    const f = fiches[fiches.length - 1];
+    if (f && f.ou === ou) { f.flottaison = d.flottaison; f.deborde = d.deborde; }
     // Seulement sur l'onglet d'entrée : « Parc » a dix colonnes et le droit de se lire de côté.
     if (d.deborde > 2 && / · alertes$/.test(ou)) {
       fautes.push(`${ou} — l'écran d'entrée déborde de ${d.deborde} px : on l'ouvre pour voir ce qui`
@@ -355,13 +405,8 @@ const APP_SECRET = 'secret-de-test-' + 'x'.repeat(20);
     j.ok(`la console s'ouvre sur ses ${n} onglets`);
 
     // ---------------------------------------------------------------- les quatre passes
-    const OUT = dossierCaptures('console-rendu');
-    const capturer = async nom => page.screenshot({ path: path.join(OUT, nom + '.png'), fullPage: true });
-
-    j.etape('Les huit onglets et les deux formulaires, en clair, à 1440');
+    j.etape('Les dix écrans, les formulaires et les deux panneaux, en clair, à 1440');
     await parcourir('clair 1440');
-    await onglet('alertes'); await capturer('clair-alertes');
-    await onglet('licences'); await capturer('clair-licences');
     j.ok(`${boutons} boutons, ${colonnes} colonnes, ${controles} contrôles, ${ecarts} écarts`);
 
     j.etape('Les mêmes, en thème SOMBRE');
@@ -377,8 +422,6 @@ const APP_SECRET = 'secret-de-test-' + 'x'.repeat(20);
     const avant = boutons;
     await parcourir('sombre 1440');
     if (boutons === avant) throw new Error('aucun bouton mesuré en sombre : le parcours ne prouve rien');
-    await onglet('alertes'); await capturer('sombre-alertes');
-    await onglet('parc'); await capturer('sombre-parc');
     j.ok(`${boutons - avant} boutons mesurés en sombre (fond ${sombre})`);
 
     j.etape('Les mêmes, sur un portable de 1280 px');
@@ -388,13 +431,18 @@ const APP_SECRET = 'secret-de-test-' + 'x'.repeat(20);
     await page.emulateMedia({ colorScheme: 'light' });
     await page.waitForTimeout(300);
     await parcourir('clair 1280');
-    await onglet('alertes'); await capturer('clair-1280-alertes');
     j.ok('mesuré aux deux largeurs');
   } finally {
     await nav.close().catch(() => {});
     srv.close();
     restaurer();
   }
+
+  // Le relevé, à côté des captures — même forme que `dist-e2e/cabinet-premier-jour/mesures.json`
+  // et que celui des Paramètres : c'est lui qui dit qu'un écran fait 0,4 écran de haut et un autre
+  // 2,5, ce qu'aucune capture ne montre et qu'aucune sonde ne juge.
+  fs.writeFileSync(path.join(OUT, 'mesures.json'),
+    JSON.stringify({ ecrans: fiches.length, captures: fiches }, null, 2));
 
   if (bac.length) { console.error('\nErreurs de la page :\n' + bac.join('\n')); process.exit(2); }
   // Un instrument qui ne mesure rien annonce « tout va bien » : il doit échouer, pas se taire.
@@ -426,6 +474,8 @@ const APP_SECRET = 'secret-de-test-' + 'x'.repeat(20);
   // parce que c'est exactement ce que la refonte va ajouter, et qu'un `select` posé dans un
   // conteneur flex réclame toute la ligne sans qu'on le voie (7.23.0). On l'ÉCRIT plutôt que de
   // laisser un zéro passer pour une mesure.
+  console.log(`\n${fiches.length} écrans photographiés dans ${OUT} (+ mesures.json) :`
+    + ' chaque écran mesuré est un écran qu\'on peut regarder.');
   console.log(`\n${j.total()} étapes — ${boutons} boutons, ${colonnes} colonnes, ${ecarts} écarts, ${largeurs} largeurs`
     + ` mesurés sur les dix écrans, les formulaires, la clé émise et la relance composée, en clair et en sombre,`
     + ' à 1440 et à 1280 : rien d\'illisible, rien de désaligné, rien de collé.'
