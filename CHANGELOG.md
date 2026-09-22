@@ -23,7 +23,13 @@ déjà n'est jamais réécrite : on ne comble que ce qui est vide, parce qu'une 
 main vaut mieux que celle d'une commande. Sans `raison`, le contrat à six champs de la 10.9.0
 continue de fonctionner à l'identique.
 
-Publié en **bêta** : ça touche à l'argent et au format d'un fichier de données.
+Publié en **stable directe avec la 10.9.0, à la demande de Skander** (« publie toutes les
+plateformes, faut que tout soit à jour sur main partout »). La règle du projet veut la bêta pour ce
+qui touche à l'argent ou au format d'un fichier, et ces deux versions font les deux. Ce qui rend la
+décision tenable, et qui est noté ici parce qu'il cessera d'être vrai : **le paiement en ligne est
+FERMÉ tant que le portefeuille Konnect n'est pas réglé** — les routes d'achat répondent « paiement
+non configuré », le site le lit et le dit, et aucun client ne peut rien encaisser ni rien acheter.
+Le jour où ce réglage est posé, la règle de la bêta redevient la règle.
 
 Deux colonnes s'ajoutent (`commandes.contact`, `commandes.adresse`, `clients.contact`) —
 `plateforme/migration-a-coller.sql` les porte. Six défauts prouvés par réintroduction, dont celui
