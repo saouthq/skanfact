@@ -110,6 +110,27 @@ module.exports = async ({ ta, assert }) => {
     assert.strictEqual(P.retourAchat('', 'cmd_9', true), '');
   });
 
+  await ta('10.9.0 : un écran neuf porte son icône et son état vide — trois tables séparées divergent', async () => {
+    const fs = require('fs'); const path = require('path');
+    const src = fs.readFileSync(path.join(__dirname, '..', '..', 'plateforme', 'skanfact-api.mjs'), 'utf8');
+    const bloc = (nom) => {
+      const i = src.indexOf('var ' + nom + ' = {');
+      assert.ok(i > 0, nom + ' introuvable dans la page');
+      return src.slice(i, src.indexOf('\n  };', i));
+    };
+    // Les clés d'un objet littéral de la page, lues à plat : `alertes: {` ou `alertes: '…'`.
+    const cles = (nom) => [...bloc(nom).matchAll(/^\s{4}([a-z]+):/gm)].map(m => m[1]).sort();
+    const ecrans = cles('ECRANS');
+    assert.ok(ecrans.includes('commandes'), 'l\'écran des commandes doit exister : ' + ecrans.join(', '));
+    // Le défaut que le parcours réel a attrapé et qu'aucun test pur ne voyait : un écran ajouté à
+    // ECRANS sans son entrée dans ICONES sort un `<path d="undefined">`. Rien ne plante, rien
+    // n'apparaît, et le rail perd simplement un dessin. C'est « deux tables séparées divergent,
+    // toujours » (6.8.0) — et c'est le genre de trou qui se rouvre au prochain écran.
+    assert.deepStrictEqual(cles('ICONES'), ecrans, 'chaque écran du rail doit porter son icône');
+    // Et son état vide : un tableau nu n'apprend rien (7.0.0).
+    assert.deepStrictEqual(cles('VIDES'), ecrans, 'chaque écran doit dire quoi faire quand il est vide');
+  });
+
   // ------------------------------------------------- la vente entière, vrai worker et vraie base
 
   // Konnect n'est pas joignable d'ici, et ce n'est pas ce qu'on veut tester : ce qui compte est ce
