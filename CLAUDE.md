@@ -179,7 +179,8 @@ qui ouvrent vraiment l'application ») · CI GitHub sur Linux et Windows à chaq
 `DIRECTION.md` (prime sur tous) → `CAHIER-DES-CHARGES.md` (les spécifications citables) →
 `VERSIONS-A-VENIR.md` (tout ce qui reste à faire, 9.1.0 → 10.0.0) → `PLAN-DEVELOPPEMENT.md` (le
 calendrier et les jalons). `QUESTIONS.md` répond à tout le reste — c'est le document à ouvrir quand
-on est perdu. `PLAN-CABINET.md`, `PLAN-COMPTABLE.md`, `PLAN-PLATEFORME.md`, `PLAN-UX.md` pour un
+on est perdu. **`TARIFS-REFERENCE.md`** dit ce que le code tient en matière d'offres et de prix : c'est le
+contrat avec la session qui écrit `skanfact.tn`, et il se relit à chaque changement d'offre ou de prix. `PLAN-CABINET.md`, `PLAN-COMPTABLE.md`, `PLAN-PLATEFORME.md`, `PLAN-UX.md` pour un
 chantier précis ; `ROADMAP.md` est une **archive**.
 
 ---
