@@ -5143,6 +5143,58 @@ deux applications qui s'annoncent, l'export qui descend un VRAI fichier, la trac
 l'alerte qui disparaît) et `npm run e2e:pont` (le bouton de SkanFact, le fichier sur le disque en
 0600, son compte par table, et l'état qui suit).
 
+**Et le premier chiffre de cette version était faux (10.4.0-beta.3).** Skander a ouvert le Parc sur
+son Mac, où tournent LES DEUX applications : trois lignes, toutes « SkanFact », dont une à
+« 2 postes ». Quatre règles, et la première ne se voyait nulle part :
+
+- **Un identifiant DÉRIVÉ doit porter les mêmes termes que la clé d'unicité.** L'identifiant d'une
+  activation valait `empreinte_deviceId` : deux applications sur un poste se battaient pour la même
+  clé **PRIMAIRE**, la seconde écriture était refusée par la base, et `sansCasser` avalait le refus.
+  Le Cabinet n'apparaissait donc **jamais** dans le parc, sans une ligne nulle part. Ça tenait par
+  accident — chaque application a son propre `userData`, donc son propre `deviceId` — et un accident
+  n'est pas un garde-fou. L'index seul ne le voyait pas : il faut corriger LES DEUX, et un test qui
+  ne prouvait que l'index restait vert.
+- **Dans un index UNIQUE de SQLite, deux NULL sont DISTINCTS.** Sur `app` nu, une annonce arrivant
+  sur une ligne d'avant la 10.4.0 (app NULL) ne trouverait aucun conflit et créerait un **doublon** :
+  le poste compterait deux fois, sur l'écran fait pour le compter. `COALESCE(app, 'entreprise')`
+  range l'ancienne ligne là où elle appartient — l'app entreprise était seule à s'annoncer avant.
+- **Le serveur NOMME, la page AFFICHE.** Ma colonne « Application » appelait `APPS` et `appDe`, deux
+  fonctions du MODULE, depuis le gabarit de la console : ReferenceError pendant la construction,
+  écran bloqué sur « Chargement… », rien en console (7.22.0). La colonne qu'on venait d'ajouter n'a
+  jamais été dessinée une seule fois. C'est `e2e:console` qui l'a attrapé, jamais la relecture — et
+  une seconde table de noms dans la page aurait de toute façon divergé de celle du Parc.
+- **Un écran qui répond à une question doit porter la donnée qui y répond.** Le champ `app` était
+  écrit en base depuis la 10.4.0 et affiché NULLE PART : on ne pouvait pas répondre à « lequel de ces
+  deux postes est le Cabinet ? » depuis l'écran des Activations. Les **trois** moitiés se tiennent et
+  un test les confronte — la colonne déclarée, la route qui rend le champ, le nom calculé côté
+  serveur : retirer n'importe laquelle laisse l'écran mentir.
+- **Un taux de conversion se compte par ORDINATEUR**, jamais par ligne (un poste qui convertit garde
+  sa ligne d'essai et en gagne une autre), il est borné à 100 %, et il vaut `null` sans dénominateur :
+  « 0 % » sur zéro essai annonce un échec là où il n'y a pas encore de question (9.6.0).
+- **Une date qu'on APPROCHE le dit.** L'alerte « essai qui se termine » se calcule sur la première
+  fois que la plateforme a VU le poste — jamais sur le jour où l'essai a commencé, qui se compte sur
+  la machine. Elle écrit donc « vers le », et c'est la même exigence que « 7 pièces vérifiées,
+  intactes » (Cabinet 1.0.0) : une estimation à quelques jours reste parfaitement actionnable — on
+  appelle un client, on ne lui facture pas une échéance.
+- **La console COMPOSE une relance, elle ne l'envoie pas.** Le texte s'ouvre dans la messagerie de
+  l'éditeur, qui le relit et l'envoie lui-même : un mail parti sans être relu n'est pas une relance,
+  c'est un automate — et son ton dépend du client. Resend ne sert qu'à la clé, qui suit un paiement
+  et ne se discute pas. Rien ne s'y invente : ce qui manque **disparaît de la phrase** au lieu d'être
+  remplacé par un vide, et la date est française, jamais ISO — une date ISO dans un mail commercial
+  donne l'impression d'un envoi automatique.
+- **Masquer un chiffre VRAI est pire que l'afficher sous une autre unité.** « Postes » reste affiché
+  pour la ligne Cabinet — un poste installé est un poste installé — mais ce qu'on lui VEND est un
+  quota de dossiers (9.4.0), et cette unité-là vit sur l'écran Cabinets. La phrase de l'écran le dit,
+  plutôt qu'une colonne que seule une ligne sur trois remplirait (9.4.4).
+- **Deux assertions retournées vers la règle** (dix-septième et dix-huitième fois) : « six cartes à
+  zéro » décrivait l'état du jour et serait tombée sur le correctif — la règle est que les compteurs
+  sont à zéro et qu'un taux sans dénominateur dit « — ». Et une preuve par réintroduction qui laisse
+  le lot VERT ne prouve pas que le code est juste : elle prouve que le **test** ne peut pas voir ce
+  défaut-là. Deux fois dans cette version, et les deux ont donné un test qui manquait.
+- Piège re-rencontré, la **neuvième fois** : aucun backtick dans un commentaire à l'intérieur du
+  gabarit de la console. Le garde-fou posé en 10.4.0 a nommé la ligne exacte en deux secondes — c'est
+  la première fois que cette faute ne coûte pas un bisect.
+
 ## Pistes pour la suite (non demandées)
 
 - Séparation des installateurs arm64 / x64 pour diviser par deux les 222 Mo du dmg universel.
