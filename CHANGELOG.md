@@ -7,6 +7,35 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 10.4.0-beta.1 — 22/09/2026
+
+**La bêta qui rattrape cinq versions.** Aucune ligne de code nouvelle : cette préversion porte
+telles quelles la **10.0.1, la 10.1.0, la 10.2.0, la 10.3.0 et la 10.4.0**, écrites, testées et
+commitées mais **jamais publiées** — la dernière stable en ligne est la 10.0.0 du 21/09/2026.
+
+Une seule publication pour les cinq, parce qu'une publication coûte le quota d'Actions et que la
+règle du projet est de regrouper (§ 6.7.2). Et par la **bêta**, parce que quatre des cinq touchent
+ce que la règle protège : la devise d'un achat et le sens d'une pièce (10.1.0, 10.2.0) changent des
+**chiffres** qui partent chez un comptable ; la paie du Cabinet (10.3.0) ajoute deux listes au
+**format** de `livre.json` ; l'espace de gestion (10.4.0) ajoute une colonne à la base D1 et un
+champ à ce qui part d'une application vers un serveur. Seule la 10.0.1 aurait pu passer en stable
+direct — la sortir seule aurait coûté une publication de plus pour rien.
+
+Ce qu'il y a à tester, dans l'ordre où ça casserait le plus cher :
+
+- **Une facture d'achat en euros** (10.1.0) : son total à l'écran reste en euros, mais la TVA
+  déductible, les charges, le résultat, le stock, la trésorerie et les écritures la comptent
+  convertie. Treize agrégateurs sont concernés.
+- **Un avoir fournisseur et un acompte versé** (10.2.0) : l'avoir se saisit en positif, l'acompte
+  n'est pas une charge, et le compte d'avances revient à zéro une fois la facture imputée.
+- **Un bulletin de paie dans le Cabinet** (10.3.0) : le même salarié et la même saisie doivent
+  donner le même bulletin des deux côtés, au millime.
+- **La console** (10.4.0) : onglets « À décider », « Parc », « Cabinets », l'export de la base, et
+  la ligne d'argent groupée par devise.
+
+Rappel du chemin de retour : décocher « Recevoir les versions bêta » ramène à la stable, et une
+sauvegarde `avant-beta` est prise avant d'armer le canal.
+
 ## 10.4.0 — 21/09/2026
 
 **L'espace de gestion des deux plateformes.** Skander voulait « le contrôle dessus autant que

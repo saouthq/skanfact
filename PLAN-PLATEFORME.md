@@ -507,7 +507,7 @@ console interroge le relais : le relais d'abord, sinon elle reçoit un 404 et l'
 | 2 | Redéployer le **relais** (`worker/skanfact-maj.mjs` → worker `skanfact-maj`) — c'est lui qui gagne `/sante` | à faire |
 | 3 | Redéployer la **console** (`plateforme/skanfact-api.mjs` → worker `skanfact-api`) — onglets « À décider », « Parc », « Cabinets », export, ligne d'argent | à faire |
 | 4 | *(facultatif)* `RELAIS_BASE` (Text) et `RELAIS_SECRET` (Secret) sur **skanfact-api** | à faire |
-| 5 | Publier **10.2.0 + 10.3.0 + 10.4.0** en **bêta** (les trois touchent des chiffres ou un format : § « Publier une version » de `CLAUDE.md`) | à faire |
+| 5 | Publier **10.0.1 → 10.4.0** (cinq versions) en **bêta**, en une seule fois : `10.4.0-beta.1` | à faire |
 
 Sur l'étape 1 : rejouer l'`ALTER` une seconde fois répond « duplicate column » — c'est sans
 gravité, la colonne est posée. `NULL` y vaut « app entreprise », la seule qui s'annonçait avant la
@@ -525,5 +525,5 @@ Vérifié le 21/09/2026 : elle n'a **jamais** transité par une conversation.
 Vérification : rouvrir la console, la ligne sous les cartes passe de « canaux : non lus » à
 « Les N canaux stables servent une version ». Un **403** dit que `RELAIS_SECRET` ne correspond pas
 à l'`APP_SECRET` du relais ; un **404**, que le relais n'a pas été redéployé. Jamais : publier ces
-trois versions en stable direct ; laisser la console afficher un vert qu'elle ne peut pas prouver
+cinq versions en stable direct ; laisser la console afficher un vert qu'elle ne peut pas prouver
 (sans les deux réglages elle écrit « non lus » **avec la raison**, et c'est le comportement voulu).
