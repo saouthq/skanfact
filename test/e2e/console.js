@@ -96,8 +96,17 @@ const { servir, SECRET } = require('./console-serveur');
 
     etape('4. Une base vide : chaque écran dit quoi faire, et les cartes sont à zéro');
     await page.waitForFunction(() => document.querySelectorAll('#cards .card').length >= 6);
+    // La RÈGLE, pas la forme d'hier : sur une base vide, tout ce qui se COMPTE est à zéro, et le
+    // taux de conversion — qui n'a pas de dénominateur — dit « — » et jamais « 0 % ». Annoncer un
+    // échec là où rien n'a encore été tenté apprend à ignorer le chiffre (9.6.0). L'assertion
+    // d'avant exigeait six zéros : elle décrivait l'état du jour, et elle serait tombée sur le
+    // correctif.
     const zeros = await page.$$eval('#cards .card b', els => els.map(e => e.textContent.trim()));
-    doit(zeros.every(z => z === '0'), 'six cartes à zéro (' + zeros.join(' ') + ')');
+    const compteurs = zeros.filter(z => !/%|—/.test(z));
+    doit(compteurs.length >= 5 && compteurs.every(z => z === '0'),
+      'les compteurs sont à zéro (' + zeros.join(' ') + ')');
+    doit(zeros.some(z => z === '—') && !zeros.some(z => z === '0 %'),
+      'et la conversion sans dénominateur dit « — », jamais « 0 % »');
     await page.waitForSelector('#table .wrap .vide');
     const vide = (await page.textContent('#table .wrap .vide')).trim();
     doit(vide.length > 20 && !/chargement/i.test(vide), 'l\'écran vide porte une phrase : « ' + vide + ' »');
@@ -151,10 +160,29 @@ const { servir, SECRET } = require('./console-serveur');
     doit((await page.textContent('#resultat #cle')).trim() === cle, '« Voir la clé » refabrique EXACTEMENT la même clé (Ed25519 déterministe)');
     await page.click('#cle-fermer');
 
-    etape('8. Marquer la vente payée : la clé part par mail dans la seconde');
+    etape('7 bis. Relancer : la console COMPOSE, c\'est l\'éditeur qui envoie');
     await onglet('ventes');
     await page.waitForSelector('#table tbody tr');
     doit((await lignes()).some(l => /à encaisser/.test(l)), 'la vente se dit « à encaisser »');
+    await boutonDeLigne('Trabelsi', 'Relancer…');
+    await page.waitForSelector('#relance-txt');
+    const relance = (await page.textContent('#relance-txt')).replace(/\s+/g, ' ');
+    doit(/Trabelsi/.test(relance), 'la relance salue le client par son nom');
+    // 312 HT : 390 moins les 20 % de parrainage de l'étape 6. Le montant vient de la VENTE, il
+    // n'est pas recopié du tarif — une remise oubliée dans une relance, c'est un client qui
+    // reçoit un chiffre qu'il n'a jamais vu sur sa facture.
+    doit(/312,000 TND/.test(relance), 'et cite le montant réellement dû, avec sa devise : ' + relance.slice(0, 120));
+    doit(!/undefined|null|NaN|\(\)/.test(relance), 'aucun trou dans le texte composé');
+    // Le geste ouvre la messagerie de l'ÉDITEUR : rien ne part d'ici. Un mail de relance parti
+    // sans être relu n'est pas une relance, c'est un automate.
+    const href = await page.getAttribute('#relance-ouvrir', 'href');
+    doit(/^mailto:contact%40trabelsi\.tn\?subject=/.test(href || ''), 'le bouton ouvre un mailto : ' + String(href).slice(0, 48));
+    const avant = mails.length;
+    doit(mails.length === avant, 'et la console n\'envoie rien elle-même');
+    await page.click('#relance-fermer');
+    doit(await page.isHidden('#resultat'), 'la fenêtre se referme');
+
+    etape('8. Marquer la vente payée : la clé part par mail dans la seconde');
     await boutonDeLigne('Trabelsi', 'Marquer payée');
     await page.waitForSelector('#form:not([hidden]) [name=moyen]');
     await page.fill('#form [name=moyen]', 'virement');

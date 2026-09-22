@@ -7,6 +7,74 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 10.4.0-beta.3 — 22/09/2026
+
+**Deux applications, deux parcs — et le premier chiffre de cette version était faux.** Skander a
+ouvert le Parc : trois lignes, toutes « SkanFact », et « 10.4.0-beta.1 · 2 postes » sur un Mac où
+tournent SkanFact ET SkanFact Cabinet. *« Je veux savoir combien de postes cabinet et combien de
+postes entreprise. »* Correctif des **deux workers seulement** : aucune application ne change, rien
+à publier — il suffit de redéployer `skanfact-api` (et `skanfact-maj` s'il ne l'a pas encore été).
+**Une migration D1 est à coller**, elle est en fin d'entrée.
+
+Quatre défauts, et le plus grave était invisible :
+
+- **L'identifiant d'une activation n'a jamais porté l'application.** `empreinte_deviceId` :
+  deux applications sur un poste se battaient pour la **même clé primaire**, la seconde écriture
+  était refusée par la base, et `sansCasser` avalait le refus. Le Cabinet n'apparaissait donc
+  jamais dans le parc, **sans une ligne nulle part**. Ça tenait par accident jusqu'ici — chaque
+  application a son propre `userData`, donc son propre `deviceId` — mais un accident n'est pas un
+  garde-fou.
+- **`app` entre dans la clé d'unicité**, avec `COALESCE(app, 'entreprise')` et jamais `app` nu :
+  dans un index UNIQUE de SQLite, deux NULL sont **distincts**. Sur la clé nue, une annonce
+  arrivant sur une ligne d'avant la 10.4.0 (app NULL) ne trouverait aucun conflit et créerait un
+  **doublon** — le poste compterait deux fois, sur l'écran fait pour le compter.
+- **La colonne « Application » manquait à l'écran des Activations** — celui qui répond à « lequel
+  de ces deux postes est le Cabinet ? ». Le champ était écrit en base depuis la 10.4.0 et affiché
+  nulle part : une donnée enregistrée et jamais affichée n'existe pas (7.21.0). Les **trois**
+  moitiés se tiennent maintenant, et un test les confronte : la colonne déclarée, la route qui rend
+  le champ, et le NOM calculé côté serveur.
+- **Ma première version de cette colonne appelait `APPS` et `appDe` depuis la page** — deux
+  fonctions du module, absentes du gabarit. ReferenceError pendant la construction, écran bloqué
+  sur « Chargement… », rien en console (7.22.0). C'est `e2e:console` qui l'a attrapé, jamais la
+  relecture : le serveur NOMME, la page AFFICHE.
+
+Ce que la console sait faire en plus :
+
+- **Les compteurs se dédoublent** : essais entreprise / essais cabinet, postes entreprise / postes
+  cabinet. Additionner SkanFact et SkanFact Cabinet dans « 2 essais en cours », c'est mélanger deux
+  produits, deux marchés et deux tarifs dans un seul chiffre — la faute de la 7.16.0 portée au parc.
+- **Le taux de conversion**, le chiffre d'un produit qu'on vend, et il n'existait nulle part :
+  combien d'ordinateurs ont essayé, combien ont fini sous licence. Compté par **ordinateur** et
+  jamais par ligne (un poste qui convertit garde sa ligne d'essai et en gagne une autre), borné à
+  100 %, et **`null` sans dénominateur** : « 0 % de conversion » sur zéro essai annonce un échec là
+  où il n'y a pas encore de question (9.6.0). L'écran affiche « — ».
+- **Un essai qui se termine est une alerte** — le seul signal commercial de cette console, et il
+  manquait. Elle nomme l'application, et elle dit que la date est **approchée** (« vers le ») : la
+  plateforme sait quand elle a VU un poste, jamais quand son essai a commencé sur la machine.
+  Prétendre une précision qu'on n'a pas est ce que ce projet s'interdit depuis Cabinet 1.0.0.
+- **Relancer un client** : c'était le seul geste commercial que la console ne savait pas faire.
+  « Écrire… » sur une licence qui se termine, « Relancer… » sur une vente livrée et non encaissée.
+  La console **compose**, elle n'envoie pas : le texte s'ouvre dans la messagerie de l'éditeur, qui
+  le relit et l'envoie lui-même. Resend ne sert qu'à la clé, qui suit un paiement et ne se discute
+  pas ; une relance se relit toujours avant de partir. Rien ne s'y invente : ce qui manque disparaît
+  de la phrase au lieu d'être remplacé par un vide, et la date est française, pas ISO.
+- **Le Parc dit où se lit l'unité commerciale.** « Postes » reste un fait vrai pour la ligne Cabinet
+  — masquer un chiffre juste derrière un « — » serait pire — mais ce qu'on **vend** à un cabinet est
+  un quota de dossiers (9.4.0), et cette unité-là vit sur l'écran Cabinets. La phrase de l'écran le
+  dit, plutôt qu'une colonne que seule une ligne sur trois remplirait (9.4.4).
+
+Quatorze défauts réintroduits un par un font tomber leur test, et deux tests d'hier ont été
+**retournés vers la règle** : « six cartes à zéro » décrivait l'état du jour et serait tombé sur le
+correctif — la règle est que les compteurs sont à zéro et qu'un taux sans dénominateur dit « — ».
+
+**La migration à coller dans la console D1 de Cloudflare**, une fois le worker redéployé :
+
+```sql
+DROP INDEX IF EXISTS idx_activ_unique;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_activ_unique
+  ON activations(empreinte, device_id, COALESCE(app, 'entreprise'));
+```
+
 ## 10.4.0-beta.2 — 22/09/2026
 
 **L'instrument de surveillance accusait du code juste, dix minutes après avoir été branché.**

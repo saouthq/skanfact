@@ -10623,11 +10623,93 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
         'presque 24 h dans la même journée reste la même journée');
 
       // Les compteurs se recopient sans jamais inventer ; ce qu'on ne sait pas se dit.
-      const r2 = P.resumeStats({ clients: '3', licencesActives: 2, essaisEnCours: 7 });
+      // Depuis la 10.4.0-beta.3 les essais et les postes se comptent PAR APPLICATION : additionner
+      // SkanFact et SkanFact Cabinet dans « 2 essais en cours », c'est mélanger deux produits, deux
+      // marchés et deux tarifs dans un seul chiffre — la faute de la 7.16.0 portée au parc.
+      const r2 = P.resumeStats({
+        clients: '3', licencesActives: 2,
+        essais: { entreprise: 7, cabinet: 2 }, postes: { entreprise: 4, cabinet: 1 }
+      });
       assert.strictEqual(r2.clients, 3);
       assert.strictEqual(r2.licencesRevoquees, 0);
+      assert.strictEqual(r2.essaisEntreprise, 7);
+      assert.strictEqual(r2.essaisCabinet, 2, 'les deux applications ne se confondent plus');
+      assert.strictEqual(r2.postesCabinet, 1);
       assert.strictEqual(r2.incertain, false);
       assert.strictEqual(P.resumeStats({}).incertain, true, 'une base muette ne doit pas passer pour un vivier vide');
+
+      // La conversion : le chiffre d'un produit qu'on vend, et il n'existait nulle part.
+      const cv = P.resumeStats({ essaisVus: 8, essaisConvertis: 2 });
+      assert.strictEqual(cv.tauxConversion, 25);
+      // Un taux SANS dénominateur vaut null, jamais 0 % : sur zéro essai il n'y a pas encore de
+      // question, et annoncer un échec là où rien n'a été tenté apprend à ignorer le chiffre
+      // (9.6.0). L'écran affiche « — ».
+      assert.strictEqual(P.resumeStats({ essaisVus: 0, essaisConvertis: 0 }).tauxConversion, null);
+      // Et un taux ne dépasse jamais 100 % : une base qui rendrait plus de convertis que d'essais
+      // vus — un poste réinstallé, une ligne d'essai purgée — donnerait « 300 % de conversion »,
+      // c'est-à-dire un chiffre que personne ne croirait, sur un écran qui n'existe que pour être
+      // cru.
+      assert.strictEqual(P.resumeStats({ essaisVus: 2, essaisConvertis: 6 }).tauxConversion, 100);
+    });
+
+    // Un essai qui se termine est le SEUL signal commercial de cette console, et il n'existait
+    // nulle part : `alertesPlateforme` ne regardait que les licences, les ventes et la copie de la
+    // base. Un essai qui finit sans qu'on ait décroché son téléphone est une vente qu'on ne fera
+    // pas — c'est « ce qu'un écran NOMME, il l'ouvre » (7.15.0) appliqué à ce qu'il ne nommait pas.
+    t('10.4.0-beta.3 : un essai qui se termine se dit, et il dit QUELLE application', () => {
+      // L'arithmétique d'abord : une date de l'app est un JOUR du calendrier, jamais un instant
+      // (5.2.3). Le passage de mois et le 29 février sont les deux cas qu'une soustraction de
+      // millisecondes en heure locale rate.
+      assert.strictEqual(P.ajouterJours('2026-01-15', 30), '2026-02-14');
+      assert.strictEqual(P.ajouterJours('2024-02-01', 29), '2024-03-01', 'une année bissextile compte son 29');
+      assert.strictEqual(P.ajouterJours('2026-12-20', 30), '2027-01-19', 'un essai traverse le 1er janvier');
+      assert.strictEqual(P.ajouterJours('pas une date', 30), '', 'une date absente ne fabrique pas de jour');
+
+      // La durée de l'essai est celle de l'APPLICATION : deux chiffres écrits à deux endroits
+      // divergent, et le jour où ils divergeraient, la console appellerait des clients à la
+      // mauvaise semaine.
+      assert.strictEqual(P.ESSAI_JOURS, require('../src/licence.js').TRIAL_DAYS,
+        'la console et l\'application ne peuvent pas compter deux essais différents');
+
+      const jour = '2026-09-22';
+      const essai = (jours, app, id) => ({
+        device_id: id || ('d' + jours), device_nom: 'Poste ' + (id || jours), app,
+        // premiere_fois posée pour que la fin tombe à `jours` du jour de référence
+        premiere_fois: P.ajouterJours(jour, jours - P.ESSAI_JOURS) + 'T09:00:00Z'
+      });
+      const a = P.alertesPlateforme({ essais: [
+        essai(3, 'cabinet'), essai(-2, 'entreprise'), essai(20, 'entreprise')
+      ] }, jour);
+
+      // Un essai qui a encore trois semaines devant lui n'est pas une tâche : il n'apparaît pas.
+      // Une console qui crie sur chaque essai dès son premier jour cesse d'être lue (8.0.1).
+      assert.strictEqual(a.filter(x => /^Essai/.test(x.quoi)).length, 2,
+        'seuls les essais proches de la fin remontent');
+
+      const fin = a.find(x => x.quoi === 'Essai qui se termine');
+      assert.ok(fin, 'un essai à 3 jours de la fin doit remonter');
+      assert.strictEqual(fin.niveau, 'alerte', 'c\'est maintenant qu\'on appelle, pas après');
+      assert.strictEqual(fin.onglet, 'parc', 'une alerte qu\'on ne peut pas ouvrir est une inquiétude');
+      // Elle NOMME l'application : « un essai en cours » qui ne dit pas de quel produit ne se
+      // traduit en aucun coup de téléphone — on n'appelle pas un comptable pour lui vendre
+      // SkanFact entreprise.
+      assert.ok(/Cabinet/.test(fin.detail), 'l\'alerte doit nommer l\'application : ' + fin.detail);
+      // Et elle dit que la date est APPROCHÉE : la plateforme sait quand elle a VU ce poste, jamais
+      // quand son essai a commencé (il se compte sur la machine). Prétendre une précision qu'on n'a
+      // pas est exactement ce que « 7 pièces vérifiées, intactes » interdit.
+      assert.ok(/vers le/.test(fin.detail), 'la date d\'un essai est approchée, et le dit : ' + fin.detail);
+
+      const passe = a.find(x => x.quoi === 'Essai terminé');
+      assert.ok(passe && passe.niveau === 'attention',
+        'un essai déjà fini reste une vente à tenter, sans l\'urgence de la veille');
+
+      // Deux applications sur le MÊME ordinateur font deux essais distincts — c'est tout le sujet
+      // de cette version. Un identifiant qui ne porterait que le poste les fondrait en un.
+      const deux = P.alertesPlateforme({ essais: [
+        essai(3, 'entreprise', 'même-poste'), essai(3, 'cabinet', 'même-poste')
+      ] }, jour);
+      const ids = deux.filter(x => /^Essai/.test(x.quoi)).map(x => x.id);
+      assert.strictEqual(new Set(ids).size, 2, 'deux applications sur un poste font deux essais : ' + ids);
     });
 
     // La console est une page servie telle quelle par le worker. Trois règles du projet s'y
@@ -10750,10 +10832,23 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
       assert.ok(/if \(!cle\) \{[\s\S]{0,260}noterActivation\(env, ESSAI/.test(code),
         'une application sans clé doit être enregistrée comme essai');
       assert.ok(/etat: 'essai'/.test(code), 'et recevoir « essai » en réponse');
-      // Les essais ne se comptent que s'ils ont été vus récemment : un essai abandonné il y a six
-      // mois n'est pas un essai en cours, et le compter ferait croire à un vivier qui n'existe pas.
-      assert.ok(/derniere_fois >= \?'[\s\S]{0,40}ESSAI, recent/.test(code),
+      // Les essais EN COURS ne se comptent que s'ils ont été vus récemment : un essai abandonné il
+      // y a six mois n'est pas un essai en cours, et le compter ferait croire à un vivier qui
+      // n'existe pas. Le dénominateur de la conversion, lui, compte TOUT ce qui a été vu un jour —
+      // d'où la borne ici et son absence là-bas. On ancre sur la RÈGLE (cette requête-ci porte une
+      // borne de fraîcheur), jamais sur la ponctuation du SQL, qui a déjà fait tomber ce test sur
+      // du code juste le jour où la requête a gagné un GROUP BY.
+      const iEss = code.indexOf('const e = parApp(');
+      assert.ok(iEss > 0, 'le compte des essais en cours a déménagé : ancre à relire');
+      const qEss = code.slice(iEss, code.indexOf('));', iEss));
+      assert.ok(qEss.length < 400 && !qEss.includes('essaisVus'),
+        'tranche trop large : elle finirait par juger une autre requête (' + qEss.length + ')');
+      assert.ok(/derniere_fois >= \?/.test(qEss) && /\brecent\b/.test(qEss),
         'les essais en cours se comptent sur une fenêtre récente');
+      assert.ok(/\bESSAI\b/.test(qEss), 'et ils se comptent sur les activations SANS clé');
+      // La fenêtre est celle de tout le reste : deux nombres écrits à deux endroits divergent.
+      assert.ok(/const recent = [^\n]*PARC_FRAIS/.test(code),
+        'la fenêtre de fraîcheur ne se réécrit pas à la main');
     });
 
     // Le schéma est la seule chose qu'on ne peut pas corriger après coup sans migration : deux

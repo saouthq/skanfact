@@ -48,7 +48,9 @@ const ACTIONS = {
     // décision, la santé des canaux de mise à jour, et l'export de la base.
     'parc', 'cabinets', 'alertes', 'sante', 'export']
 };
-const SOUS_ACTIONS = ['revoquer', 'renouveler', 'changer-offre', 'envoyer', 'payee', 'facturee'];
+// `relance` est la seule sous-action qui se LIT (GET) : elle ne change rien, elle compose le texte
+// d'un mail que l'éditeur relira dans sa propre messagerie avant de l'envoyer.
+const SOUS_ACTIONS = ['revoquer', 'renouveler', 'changer-offre', 'envoyer', 'payee', 'facturee', 'relance'];
 const SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 
 // « /v1/licence/etat » → { v: 1, espace: 'licence', action: 'etat' }
@@ -279,16 +281,36 @@ export function lireCles(env) {
 export function resumeStats(r) {
   const n = x => Number(x) || 0;
   const d = r || {};
+  // 10.4.0-beta.3 — les essais et les postes se comptent PAR APPLICATION. Avant, « 2 essais en
+  // cours » additionnait SkanFact et SkanFact Cabinet : un éditeur qui a les deux sur son Mac
+  // lisait « 2 postes SkanFact » et ne pouvait pas savoir combien de comptables l'utilisaient.
+  // Deux produits, deux marchés, deux tarifs — les mélanger dans un compteur, c'est la faute de la
+  // 7.16.0 (additionner ce qui ne porte pas la même unité) appliquée au parc.
+  const ess = { entreprise: n((d.essais || {}).entreprise), cabinet: n((d.essais || {}).cabinet) };
+  const pos = { entreprise: n((d.postes || {}).entreprise), cabinet: n((d.postes || {}).cabinet) };
+  const vus = n(d.essaisVus);
+  const conv = Math.min(n(d.essaisConvertis), vus);
   return {
     clients: n(d.clients),
     licencesActives: n(d.licencesActives),
     licencesExpirees: n(d.licencesExpirees),
     licencesRevoquees: n(d.licencesRevoquees),
-    essaisEnCours: n(d.essaisEnCours),
-    postes: n(d.postes),
+    essaisEntreprise: ess.entreprise,
+    essaisCabinet: ess.cabinet,
+    postesEntreprise: pos.entreprise,
+    postesCabinet: pos.cabinet,
+    // La conversion : combien d'ordinateurs ont ESSAYÉ, et combien de ceux-là ont fini sous
+    // licence. C'est le chiffre d'un produit qu'on vend, et il n'existait nulle part. Il se déduit
+    // sans rien demander à personne : un poste qui convertit garde sa ligne d'essai et en gagne
+    // une sous sa vraie empreinte.
+    essaisVus: vus,
+    essaisConvertis: conv,
+    // Un taux sans dénominateur vaut `null`, jamais 0 % : « 0 % de conversion » sur zéro essai
+    // annonce un échec là où il n'y a pas encore de question (règle 9.6.0).
+    tauxConversion: vus ? Math.round((conv / vus) * 100) : null,
     // Ce qu'on ne peut PAS savoir se dit, au lieu d'être inventé : un essai qui n'a jamais eu de
     // réseau n'est nulle part, et le taux de conversion n'a de sens que là-dessus.
-    incertain: n(d.essaisEnCours) === 0 && n(d.postes) === 0
+    incertain: ess.entreprise + ess.cabinet + pos.entreprise + pos.cabinet === 0
   };
 }
 
@@ -358,6 +380,16 @@ export const dateValide = iso => {
   const d = new Date(iso + 'T00:00:00Z');
   return !isNaN(d.getTime()) && isoJour(d) === iso;
 };
+// Une date est un JOUR DE CALENDRIER, jamais un instant : arithmétique en UTC pur (règle 5.2.3).
+// `new Date(y, m, d)` construirait la date en heure locale et la relirait en UTC — à minuit à
+// Tunis, ajouter un jour n'en ajouterait aucun, et c'est le défaut qui a gelé l'application
+// entière en 5.1.0.
+export function ajouterJours(iso, jours) {
+  const d = new Date(iso + 'T00:00:00Z');
+  if (isNaN(d.getTime())) return '';
+  d.setUTCDate(d.getUTCDate() + (Number(jours) || 0));
+  return isoJour(d);
+}
 export function joursEntre(a, b) {
   const x = Date.parse(a + 'T00:00:00Z'), y = Date.parse(b + 'T00:00:00Z');
   if (isNaN(x) || isNaN(y)) return 0;
@@ -840,6 +872,10 @@ export function resumeParc(lignes, aujourdhui) {
 // est le défaut de `todoList` avant la 7.0.0.
 export const ALERTE_FIN = 30;        // jours avant la fin d'une licence
 export const ALERTE_EXPORT = 30;     // jours sans export de la base
+// L'essai dure trente jours et c'est la règle de l'application (8.0.0). Le chiffre est ÉCRIT ici
+// plutôt que deviné, et il doit rester d'accord avec `src/licence.js` : un test le confronte.
+export const ESSAI_JOURS = 30;
+export const ALERTE_ESSAI = 7;       // jours avant la fin d'un essai : c'est là qu'on décroche
 const NIVEAUX = { alerte: 0, attention: 1, calme: 2 };
 
 export function alertesPlateforme(d, aujourdhui) {
@@ -866,6 +902,36 @@ export function alertesPlateforme(d, aujourdhui) {
     add('attention', 'Vente à encaisser', v.client || v.id, 'Licence livrée, rien d\'encaissé.', 'ventes', 'pay:' + v.id);
   });
 
+  // Un ESSAI qui se termine est un client à appeler — c'est le seul signal commercial de cette
+  // console, et il n'existait nulle part : `alertesPlateforme` ne regardait que les licences, les
+  // ventes et la copie de la base. Un essai qui finit sans qu'on ait décroché son téléphone est une
+  // vente qu'on ne fera pas.
+  //
+  // Ce que la plateforme SAIT : la première fois qu'elle a vu ce poste. Ce qu'elle ne sait PAS : le
+  // jour où l'essai a vraiment commencé — il se compte sur la machine, et une installation restée
+  // trois semaines hors ligne s'annonce trois semaines trop tard. La date est donc APPROCHÉE, et le
+  // dit (« vers le »). Prétendre une précision qu'on n'a pas, c'est ce que cette application
+  // s'interdit depuis « 7 pièces vérifiées, intactes » (Cabinet 1.0.0). Une version future des
+  // applications pourrait envoyer sa vraie date de fin ; d'ici là, une estimation à quelques jours
+  // reste parfaitement actionnable — on appelle un client, on ne lui facture pas une échéance.
+  (o.essais || []).forEach(a => {
+    const debut = String(a.premiere_fois || '').slice(0, 10);
+    if (!dateValide(jour) || !dateValide(debut)) return;
+    const fin = ajouterJours(debut, ESSAI_JOURS);
+    const reste = joursEntre(jour, fin);
+    if (reste > ALERTE_ESSAI) return;
+    const qui = String(a.device_nom || a.device_id || 'un ordinateur');
+    const quoi = APPS[appDe(a.app)] || APPS.entreprise;
+    const id = 'essai:' + String(a.device_id || '') + ':' + appDe(a.app);
+    if (reste < 0) {
+      add('attention', 'Essai terminé', qui,
+        quoi + ' — essai commencé vers le ' + debut + ', fini vers le ' + fin + '. Personne n’a acheté.', 'parc', id);
+    } else {
+      add('alerte', 'Essai qui se termine', qui,
+        quoi + ' — il reste ' + reste + ' jour' + (reste === 1 ? '' : 's') + ' (vers le ' + fin + '). C’est maintenant qu’on appelle.', 'parc', id);
+    }
+  });
+
   // L'export de la base : la seule chose dont la disparition ne se rattrape pas. Sans lui, une base
   // perdue emporte QUI a acheté QUOI — et aucune clé vendue ne peut plus être réémise ni révoquée.
   //
@@ -880,6 +946,66 @@ export function alertesPlateforme(d, aujourdhui) {
   }
 
   return out.sort((a, b) => (NIVEAUX[a.niveau] - NIVEAUX[b.niveau]) || (a.quoi < b.quoi ? -1 : a.quoi > b.quoi ? 1 : 0));
+}
+
+// ---------- écrire à un client ----------
+// Relancer était le seul geste commercial que la console ne savait pas faire : elle signe, elle
+// envoie la clé, elle encaisse — et devant « licence qui se termine dans douze jours » ou « vente
+// livrée, rien d'encaissé », il n'y avait rien à cliquer. Un écran qui NOMME une échéance doit
+// porter le geste qui va avec (7.15.0).
+//
+// La console n'ENVOIE pas cette relance : elle l'OUVRE dans la messagerie de l'éditeur (`mailto:`).
+// Resend ne sert qu'à la clé, parce que c'est un envoi qui suit un paiement et ne se discute pas ;
+// une relance, elle, se relit toujours avant de partir — et son ton dépend du client. C'est le
+// même choix que `mail:compose` dans les deux applications depuis la 1.5.0.
+//
+// Aucune phrase n'invente un fait : tout ce qui est écrit vient de la ligne (le nom, l'offre, la
+// date de fin, le montant et sa devise), et ce qui manque disparaît de la phrase au lieu d'être
+// remplacé par un vide ou par un zéro.
+export function mailRelance(type, d) {
+  const o = d || {};
+  const nom = String(o.client || '').trim();
+  // Le client lit une date française, pas un format de fichier : « 14/10/2026 ». Une date ISO dans
+  // un mail commercial donne l'impression d'un envoi automatique — ce que ce mail n'est pas.
+  const fi = String(o.fin || '');
+  const fin = dateValide(fi) ? fi.slice(8, 10) + '/' + fi.slice(5, 7) + '/' + fi.slice(0, 4) : '';
+  const off = String(o.offre || '').trim();
+  const mt = o.montant != null && o.montant !== '' && !isNaN(Number(o.montant))
+    ? Number(o.montant).toFixed(3).replace('.', ',') + (o.devise ? ' ' + String(o.devise) : '') : '';
+  const lignes = [nom ? 'Bonjour ' + nom + ',' : 'Bonjour,', ''];
+
+  if (type === 'fin') {
+    lignes.push('Votre licence SkanFact' + (off ? ' (' + off + ')' : '')
+      + (fin ? ' se termine le ' + fin + '.' : ' arrive à son terme.'));
+    lignes.push('');
+    lignes.push('Je peux la renouveler dès maintenant : la nouvelle clé part du jour où l’actuelle se termine, vous ne perdez donc aucun jour.');
+    lignes.push('Vos données restent lisibles, imprimables et exportables quoi qu’il arrive — seule la création de nouvelles pièces attend la clé.');
+  } else if (type === 'expiree') {
+    lignes.push('Votre licence SkanFact' + (off ? ' (' + off + ')' : '')
+      + (fin ? ' s’est terminée le ' + fin + '.' : ' est arrivée à son terme.'));
+    lignes.push('');
+    lignes.push('Vos données sont intactes : tout reste lisible, imprimable et exportable. Seule la création de nouvelles pièces attend le renouvellement.');
+    lignes.push('Dites-moi si je vous prépare la nouvelle clé.');
+  } else if (type === 'impayee') {
+    lignes.push('Je reviens vers vous au sujet de votre licence SkanFact'
+      + (off ? ' (' + off + ')' : '') + (mt ? ', d’un montant de ' + mt + ' HT' : '') + '.');
+    lignes.push('');
+    lignes.push('Le règlement ne m’est pas encore parvenu. Si c’est déjà parti de votre côté, ne tenez pas compte de ce message.');
+  } else {
+    lignes.push('Je me permets de revenir vers vous au sujet de SkanFact.');
+  }
+
+  lignes.push('', 'Bien cordialement,', 'Skander Ben Amor — SkanFact');
+  const sujets = {
+    fin: 'Votre licence SkanFact' + (fin ? ' se termine le ' + fin : ' arrive à son terme'),
+    expiree: 'Votre licence SkanFact est arrivée à son terme',
+    impayee: 'Votre licence SkanFact — règlement'
+  };
+  return {
+    a: String(o.email || '').trim(),
+    sujet: sujets[type] || 'SkanFact',
+    corps: lignes.join('\n')
+  };
 }
 
 // Combien de sujets on ÉNUMÈRE avant de compter le reste. Trois, pour la raison de la Cabinet
@@ -985,11 +1111,23 @@ async function noterActivation(env, empreinte, licenceId, a, maintenant) {
   await sansCasser(env.DB.prepare(
     'INSERT INTO activations (id, licence_id, empreinte, device_id, device_nom, plateforme, version, app, premiere_fois, derniere_fois)' +
     ' VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)' +
-    ' ON CONFLICT(empreinte, device_id) DO UPDATE SET' +
+    // La cible du conflit doit correspondre à l'index EXACTEMENT, expression comprise
+    // (schema.sql) : une cible qui ne correspond à aucun index unique fait échouer l'écriture.
+    ' ON CONFLICT(empreinte, device_id, COALESCE(app, \'entreprise\')) DO UPDATE SET' +
     '   device_nom = excluded.device_nom, plateforme = excluded.plateforme,' +
     '   version = excluded.version, app = excluded.app, derniere_fois = excluded.derniere_fois'
   ).bind(
-    empreinte.slice(0, 12) + '_' + a.deviceId.slice(0, 12), licenceId, empreinte,
+    // L'identifiant porte les MÊMES trois termes que la clé d'unicité. Sans l'application, deux
+    // applications sur un poste se battent pour la même clé PRIMAIRE : la seconde écriture est
+    // refusée par la base, `sansCasser` avale le refus, et le Cabinet n'apparaît JAMAIS dans le
+    // parc — sans une ligne nulle part. C'est le défaut que cette version corrige, une couche plus
+    // bas que l'index, et l'index seul ne le voyait pas.
+    //
+    // Une ligne d'AVANT la 10.4.0 porte l'ancienne forme (sans suffixe) : l'insertion ne heurte
+    // donc pas sa clé primaire, elle heurte l'index unique, et c'est le DO UPDATE qui la met à
+    // jour — elle garde son identifiant, ce qu'elle doit.
+    empreinte.slice(0, 12) + '_' + a.deviceId.slice(0, 12) + '_' + appDe(a.app),
+    licenceId, empreinte,
     a.deviceId, a.deviceNom, a.plateforme, a.version, appDe(a.app), maintenant, maintenant
   ).run(), null);
 }
@@ -1045,7 +1183,9 @@ async function repondreAdmin(r, request, env) {
 
   if (request.method === 'GET') {
     if (r.action === 'stats') {
-      const recent = new Date(Date.now() - 30 * 86400000).toISOString();
+      // La MÊME fenêtre que celle du Parc et des alertes (`PARC_FRAIS`) : un 30 écrit ici et un
+      // PARC_FRAIS écrit là-bas diraient la même chose jusqu'au jour où l'un des deux change.
+      const recent = new Date(Date.now() - PARC_FRAIS * 86400000).toISOString();
       const c = (await un('SELECT COUNT(*) AS n FROM clients')) || {};
       // Une licence REMPLACÉE (renouvelée, offre changée) n'est pas une licence active de plus :
       // compter l'ancienne et la nouvelle ferait deux clients là où il n'y en a qu'un. Le statut se
@@ -1057,8 +1197,26 @@ async function repondreAdmin(r, request, env) {
         ' SUM(CASE WHEN revoquee_le IS NULL AND (fin IS NULL OR fin >= ?)' +
         '   AND NOT EXISTS (SELECT 1 FROM licences r WHERE r.remplace_id = l.id) THEN 1 ELSE 0 END) AS actives' +
         ' FROM licences l', aujourdhui, aujourdhui)) || {};
-      const e = (await un('SELECT COUNT(*) AS n FROM activations WHERE empreinte = ? AND derniere_fois >= ?', ESSAI, recent)) || {};
-      const p = (await un('SELECT COUNT(*) AS n FROM activations WHERE empreinte <> ?', ESSAI)) || {};
+      // Par APPLICATION : `COALESCE` range les lignes d'avant la 10.4.0 du côté de l'entreprise,
+      // qui était seule à s'annoncer — les compter à part inventerait une troisième application.
+      const parApp = l2 => {
+        const o = { entreprise: 0, cabinet: 0 };
+        (l2 || []).forEach(x => { if (o[x.app] !== undefined) o[x.app] = Number(x.n) || 0; });
+        return o;
+      };
+      const e = parApp(await tous(
+        'SELECT COALESCE(app, \'entreprise\') AS app, COUNT(*) AS n FROM activations' +
+        ' WHERE empreinte = ? AND derniere_fois >= ? GROUP BY 1', ESSAI, recent));
+      const p = parApp(await tous(
+        'SELECT COALESCE(app, \'entreprise\') AS app, COUNT(*) AS n FROM activations' +
+        ' WHERE empreinte <> ? GROUP BY 1', ESSAI));
+      // La conversion se compte par ORDINATEUR, jamais par ligne : un poste qui passe de l'essai à
+      // la licence garde sa ligne d'essai et en gagne une autre — compter les lignes le compterait
+      // deux fois, et un taux de conversion au-dessus de 100 % ne veut rien dire.
+      const ev = (await un('SELECT COUNT(DISTINCT device_id) AS n FROM activations WHERE empreinte = ?', ESSAI)) || {};
+      const ec = (await un(
+        'SELECT COUNT(DISTINCT device_id) AS n FROM activations WHERE empreinte <> ?' +
+        ' AND device_id IN (SELECT device_id FROM activations WHERE empreinte = ?)', ESSAI, ESSAI)) || {};
       // Les compteurs gardent leur forme (`resumeStats`, dont un test fixe les champs) ; l'argent
       // vient à côté, parce qu'un montant n'est pas un compteur : il porte une devise.
       const vs = await tous('SELECT montant_ht, devise, payee_le FROM ventes');
@@ -1067,12 +1225,37 @@ async function repondreAdmin(r, request, env) {
         licencesActives: l.actives,
         licencesExpirees: l.expirees,
         licencesRevoquees: l.revoquees,
-        essaisEnCours: e.n,
-        postes: p.n
+        essais: e,
+        postes: p,
+        essaisVus: ev.n,
+        essaisConvertis: ec.n
       }), argent: resumeArgent(vs, aujourdhui) });
     }
     if (r.action === 'clients') {
       return json({ lignes: await tous('SELECT id, nom, matricule, email, tel, adresse, notes, cree_le FROM clients ORDER BY cree_le DESC LIMIT 500') });
+    }
+    // La relance : le texte, pas l'envoi. C'est le SERVEUR qui décide de quoi on relance — il lit
+    // les dates, et il les lit avec la MÊME règle que l'alerte qui a fait cliquer (`ALERTE_FIN`).
+    // Deux règles, l'une pour l'alerte et l'autre pour le mail, finiraient par se contredire : on
+    // relancerait « votre licence se termine » sur une licence déjà terminée.
+    if (r.sous === 'relance' && r.id && (r.action === 'licences' || r.action === 'ventes')) {
+      if (r.action === 'licences') {
+        const l = await un(SEL_LICENCE + ' WHERE l.id = ?', r.id);
+        if (!l) return json({ erreur: 'Licence introuvable.' }, 404);
+        const finie = l.fin && l.fin < aujourdhui;
+        return json({ ...mailRelance(finie ? 'expiree' : 'fin', {
+          client: l.client, email: l.email, offre: libelleLicence(l), fin: l.fin
+        }), client: l.client });
+      }
+      const v = await un('SELECT v.*, c.nom AS client, c.email, l.offre, l.type, l.dossiers_hors'
+        + ' FROM ventes v LEFT JOIN clients c ON c.id = v.client_id'
+        + ' LEFT JOIN licences l ON l.id = v.licence_id WHERE v.id = ?', r.id);
+      if (!v) return json({ erreur: 'Vente introuvable.' }, 404);
+      if (v.payee_le) return json({ erreur: 'Cette vente est payée depuis le ' + v.payee_le + ' : il n\'y a rien à relancer.' }, 409);
+      return json({ ...mailRelance('impayee', {
+        client: v.client, email: v.email, offre: v.offre ? libelleLicence(v) : '',
+        montant: v.montant_ht, devise: v.devise
+      }), client: v.client });
     }
     if (r.action === 'licences' && r.id) {
       // Une licence, avec sa clé — refabriquée à l'identique depuis son contenu signé (voir
@@ -1087,12 +1270,16 @@ async function repondreAdmin(r, request, env) {
       return json({ lignes: await tous(SEL_LICENCE + ' ORDER BY l.emise_le DESC LIMIT 500') });
     }
     if (r.action === 'activations') {
-      return json({ lignes: await tous(
-        'SELECT a.empreinte, a.device_id, a.device_nom, a.plateforme, a.version,' +
+      const lignes = await tous(
+        'SELECT a.empreinte, a.device_id, a.device_nom, a.plateforme, a.version, a.app,' +
         ' a.premiere_fois, a.derniere_fois, c.nom AS client' +
         ' FROM activations a LEFT JOIN licences l ON l.id = a.licence_id' +
         ' LEFT JOIN clients c ON c.id = l.client_id' +
-        ' ORDER BY a.derniere_fois DESC LIMIT 500') });
+        ' ORDER BY a.derniere_fois DESC LIMIT 500');
+      // Le NOM de l'application se calcule ICI, comme sur le Parc, et il part avec la ligne : la
+      // console AFFICHE, elle ne retraduit pas. Une seconde table de noms dans la page divergerait
+      // de celle-ci au premier renommage — et `APPS` n'existe de toute façon pas dans la page.
+      return json({ lignes: lignes.map(l => ({ ...l, appNom: APPS[appDe(l.app)] })) });
     }
     if (r.action === 'ventes') {
       // `?non_facturees=1` : le pont comptable (§ 11). SkanFact TIRE les ventes qui n'ont pas encore
@@ -1154,7 +1341,13 @@ async function repondreAdmin(r, request, env) {
         'SELECT v.id, v.payee_le, c.nom AS client FROM ventes v LEFT JOIN clients c ON c.id = v.client_id' +
         ' ORDER BY v.rowid DESC LIMIT 500');
       const ex = await un('SELECT quand FROM evenements WHERE quoi = ? ORDER BY id DESC LIMIT 1', 'base.exportee');
-      return json({ lignes: grouperAlertes(alertesPlateforme({ licences, ventes, dernierExport: ex && ex.quand }, aujourdhui)) });
+      // Les essais EN COURS seulement : un poste qu'on n'a pas vu depuis des mois a désinstallé ou
+      // changé de machine, et le relancer sur un essai mort ne mène nulle part.
+      const essais = await tous(
+        'SELECT device_id, device_nom, app, premiere_fois FROM activations' +
+        ' WHERE empreinte = ? AND derniere_fois >= ? ORDER BY premiere_fois LIMIT 500',
+        ESSAI, new Date(Date.now() - PARC_FRAIS * 86400000).toISOString());
+      return json({ lignes: grouperAlertes(alertesPlateforme({ licences, ventes, essais, dernierExport: ex && ex.quand }, aujourdhui)) });
     }
 
     if (r.action === 'sante') return json(await santeCanaux(env));
@@ -1824,6 +2017,14 @@ const CONSOLE_HTML = `<!doctype html>
     var d = new Date(), p = function (n) { return String(n).padStart(2, '0'); };
     return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
   };
+  // Une date de l'app est un JOUR du calendrier : arithmétique en UTC pur (5.2.3). La borne est la
+  // même que celle de l'alerte — trente jours — et c'est voulu : « Écrire… » ne doit apparaître que
+  // sur les lignes que « À décider » vient d'annoncer.
+  var dansTrenteJours = function () {
+    var d = new Date(aujourdhui() + 'T00:00:00Z');
+    d.setUTCDate(d.getUTCDate() + 30);
+    return d.toISOString().slice(0, 10);
+  };
 
   function api(chemin, corps) {
     var o = { headers: { 'X-SkanFact-Admin': secret } };
@@ -2169,6 +2370,32 @@ const CONSOLE_HTML = `<!doctype html>
       el.scrollIntoView({ block: 'nearest' });
     }, montrerErreur);
   }
+  // Relancer un client. La console COMPOSE, elle n'envoie pas : le texte s'ouvre dans la messagerie
+  // de l'éditeur, qui le relit et l'envoie lui-même. Une relance part sous son nom, pas sous celui
+  // d'un serveur — et son ton dépend du client. Resend ne sert qu'à la clé, qui suit un paiement et
+  // ne se discute pas.
+  function ecrire(r) {
+    api(onglet + '/' + r.id + '/relance').then(function (j) {
+      var el = $('resultat');
+      var lien = 'mailto:' + encodeURIComponent(j.a) + '?subject=' + encodeURIComponent(j.sujet)
+        + '&body=' + encodeURIComponent(j.corps);
+      // Sans adresse, on ne fait pas semblant : on dit ce qui manque et où on le règle (7.0.0 — un
+      // refus dit ce qui est refusé, pourquoi, et le geste qui débloque).
+      el.innerHTML = '<h2>Écrire à ' + h(j.client || 'ce client') + '</h2>'
+        + (j.a
+          ? '<p class="why">À <strong>' + h(j.a) + '</strong>. Le texte s\\u2019ouvre dans ta messagerie : tu le relis, tu le modifies si tu veux, et c\\u2019est toi qui envoies.</p>'
+          : '<p class="why" style="color:var(--warn)">Ce client n\\u2019a pas d\\u2019adresse e-mail : ajoute-la sur l\\u2019écran Clients, et le bouton s\\u2019allumera. Le texte reste copiable ci-dessous.</p>')
+        + '<div class="cle" id="relance-txt" style="white-space:pre-wrap">' + h(j.sujet + '\\n\\n' + j.corps) + '</div>'
+        + '<div class="row">'
+        + (j.a ? '<a class="btn p" id="relance-ouvrir" href="' + h(lien) + '">Ouvrir dans ma messagerie</a>' : '')
+        + '<button id="relance-copier" class="btn" type="button">Copier le texte</button>'
+        + '<button id="relance-fermer" class="btn" type="button">Fermer</button></div>';
+      el.hidden = false;
+      $('relance-copier').onclick = function () { copier(j.sujet + '\\n\\n' + j.corps, $('relance-copier')); };
+      $('relance-fermer').onclick = function () { el.hidden = true; el.innerHTML = ''; };
+      el.scrollIntoView({ block: 'nearest' });
+    }, montrerErreur);
+  }
   function envoyer(lic) {
     formulaire('Envoyer la clé par mail', 'À <strong>' + h(lic.email || '(pas d\\u2019adresse)') + '</strong>, pour ' + h(lic.client) + ' — ' + (estCabinet(lic) ? '' : 'offre ') + h(libOffre(lic)) + (lic.envoyee_le ? '. Déjà envoyée le ' + jour(lic.envoyee_le) + ' : ceci renvoie la même clé.' : '.'),
       '', 'Envoyer', function () {
@@ -2208,12 +2435,16 @@ const CONSOLE_HTML = `<!doctype html>
   // Chaque carte porte SES deux formes : le libellé s'accorde avec son chiffre. Écrit en dur au
   // pluriel, il donnait « 0 essais en cours » (zéro prend le singulier en français) et aurait donné
   // « 1 licences actives ». C'est le premier écran que l'éditeur regarde tous les matins.
+  // Six places, et deux PRODUITS à distinguer. « 2 essais en cours » additionnait SkanFact et
+  // SkanFact Cabinet : un éditeur qui a les deux sur son Mac lisait « 2 postes SkanFact » et ne
+  // pouvait pas savoir combien de comptables l'utilisaient. Les essais se séparent donc, et ce qui
+  // se lit déjà ailleurs cède la place : « expirée » est une ligne d'« À décider », et le compte
+  // des ordinateurs vit dans le Parc, par application.
   var CARTES = [
-    { k: 'essaisEnCours', s: 'essai en cours', p: 'essais en cours', c: 'ess', t: 'activations' },
+    { k: 'essaisEntreprise', s: 'essai entreprise', p: 'essais entreprise', c: 'ess', t: 'parc' },
+    { k: 'essaisCabinet', s: 'essai cabinet', p: 'essais cabinet', c: 'ess', t: 'parc' },
     { k: 'licencesActives', s: 'licence active', p: 'licences actives', c: 'act', t: 'licences' },
-    { k: 'licencesExpirees', s: 'expirée', p: 'expirées', c: '', t: 'licences' },
     { k: 'licencesRevoquees', s: 'révoquée', p: 'révoquées', c: 'rev', t: 'licences' },
-    { k: 'postes', s: 'ordinateur vu', p: 'ordinateurs vus', c: '', t: 'activations' },
     { k: 'clients', s: 'client', p: 'clients', c: '', t: 'clients' }
   ];
 
@@ -2241,13 +2472,29 @@ const CONSOLE_HTML = `<!doctype html>
           var s = b('voir', 'Voir la clé');
           if (!r.revoquee_le) {
             if (r.resignable) s += b('envoyer', r.envoyee_le ? 'Renvoyer par mail' : 'Envoyer par mail');
-            if (!r.remplacee_par) s += b('renouveler', 'Renouveler') + b('offre', estCabinet(r) ? 'Changer le quota' : 'Changer d\\u2019offre');
+            if (!r.remplacee_par) {
+              s += b('renouveler', 'Renouveler') + b('offre', estCabinet(r) ? 'Changer le quota' : 'Changer d\\u2019offre');
+              // « Écrire… » n'apparaît que sur une licence qui SE TERMINE : c'est le geste que
+              // l'alerte annonce, et le poser sur chaque ligne ferait six boutons par ligne pour un
+              // besoin qui n'existe qu'une fois par an et par client (le budget de boutons, 7.29.0).
+              if (r.fin && r.fin <= dansTrenteJours()) s += b('ecrire', 'Écrire…');
+            }
             s += b('revoquer', 'Révoquer', ' d');
           }
           return s;
         } }
     ],
     activations: [
+      // L'APPLICATION d'abord : le champ était écrit en base depuis la 10.4.0 et affiché NULLE
+      // PART — seulement dans le libellé agrégé du Parc. On ne pouvait donc pas répondre à
+      // « lequel de ces deux postes est le Cabinet ? » depuis l'écran fait pour ça. Une donnée
+      // enregistrée et jamais affichée n'existe pas (7.21.0).
+      // Le NOM vient du serveur (appNom), jamais d'une table recopiée ici : APPS et appDe
+      // vivent dans le module, pas dans cette page, et les appeler d'ici lève une ReferenceError
+      // PENDANT la construction du gabarit — l'écran reste sur « Chargement… », rien en console,
+      // et la colonne qu'on vient d'ajouter n'a jamais été dessinée une seule fois (7.22.0). Une
+      // seconde table ici aurait de toute façon divergé de celle du Parc au premier renommage.
+      { k: 'appNom', t: 'Application' },
       { k: 'client', t: 'Client', f: function (v, r) { return v || (r.empreinte === 'ESSAI' ? '— en essai —' : '— licence inconnue —'); } },
       { k: 'device_nom', t: 'Ordinateur' },
       { k: 'plateforme', t: 'Système' },
@@ -2268,7 +2515,10 @@ const CONSOLE_HTML = `<!doctype html>
       { k: 'facture_skanfact', t: 'Facture', f: function (v) { return v || 'à établir'; } },
       { k: 'id', t: 'Actions', brut: true, a: true, f: function (v, r) {
           var b = function (act, lib) { return '<button type="button" class="btn s" data-act="' + act + '" data-id="' + h(r.id) + '">' + lib + '</button>'; };
-          return (r.payee_le ? '' : b('payee', 'Marquer payée')) + (r.facture_skanfact ? '' : b('facturee', 'N° de facture…'));
+          // Une vente livrée que personne n'a payée est la seule ligne de cet écran qui demande un
+          // geste vers le client. « Relancer… » n'apparaît donc que là.
+          return (r.payee_le ? '' : b('payee', 'Marquer payée') + b('ecrire', 'Relancer…'))
+            + (r.facture_skanfact ? '' : b('facturee', 'N° de facture…'));
         } }
     ],
     evenements: [
@@ -2346,8 +2596,15 @@ const CONSOLE_HTML = `<!doctype html>
   var ECRANS = {
     alertes: { g: 'Pilotage', t: 'À décider', h: 'À décider aujourd\\u2019hui',
       but: 'Ce qui attend une décision : une clé signée qui n\\u2019est jamais partie, une licence livrée que personne n\\u2019a payée, une échéance proche.' },
+    // Le Parc compte des POSTES, y compris pour le Cabinet — et c'est un fait vrai : un poste
+    // installé est un poste installé. Ce qu'on VEND à un cabinet est un quota de dossiers, jamais
+    // des postes (9.4.0), mais cette unité-là ne vit pas dans les activations : elle vit sur la
+    // licence, donc sur l'écran Cabinets. Plutôt que de masquer un chiffre vrai derrière un « — »,
+    // ou d'ajouter au parc une colonne que seule une ligne sur trois remplirait (9.4.4), l'écran
+    // DIT où se lit l'unité commerciale — et le mot est un lien (7.15.0).
     parc: { g: 'Pilotage', t: 'Parc', h: 'Le parc installé',
-      but: 'Les deux applications, version par version : combien de postes, combien vus ces trente jours, combien sous licence.' },
+      but: 'Les deux applications, version par version : combien de postes, combien vus ces trente jours, combien sous licence. '
+        + 'Un cabinet se FACTURE au dossier et jamais au poste : ce compte-là se lit sur l\\u2019écran Cabinets.' },
     licences: { g: 'Ventes', t: 'Licences', h: 'Licences émises',
       but: 'Toutes les clés signées depuis cette console. Une licence remplacée reste ici avec son motif : rien ne s\\u2019efface.' },
     ventes: { g: 'Ventes', t: 'Ventes', h: 'Ventes',
@@ -2468,10 +2725,19 @@ const CONSOLE_HTML = `<!doctype html>
     dessinerSante();
 
     api('stats').then(function (s) {
+      // La CONVERSION ferme la rangée : combien d'ordinateurs ont essayé, combien ont acheté.
+      // C'est le chiffre d'un produit qu'on vend, et il n'existait nulle part. Un taux sans
+      // dénominateur vaut « — » et jamais « 0 % » : sur zéro essai il n'y a pas encore de question,
+      // et annoncer un échec là où rien n'a été tenté apprend à ignorer le chiffre (9.6.0).
+      var conv = s.tauxConversion == null
+        ? '<div class="card zero"><b>—</b><span>aucun essai vu pour l\\u2019instant</span></div>'
+        : '<div class="card act" role="button" tabindex="0" data-t="parc" style="cursor:pointer"><b>'
+          + s.tauxConversion + ' %</b><span>' + h(pl(s.essaisConvertis, 'essai') + ' devenu'
+          + (s.essaisConvertis > 1 ? 's' : '') + ' client sur ' + s.essaisVus) + '</span></div>';
       $('cards').innerHTML = CARTES.map(function (c) {
         var n = Number(s[c.k]) || 0;
         return '<div class="card ' + c.c + (n ? '' : ' zero') + '" role="button" tabindex="0" data-t="' + c.t + '" style="cursor:pointer"><b>' + n + '</b><span>' + (n >= 2 ? c.p : c.s) + '</span></div>';
-      }).join('');
+      }).join('') + conv;
       // L'argent : combien encaissé cette année, combien attend. Groupé par DEVISE — additionner
       // des dinars et des euros est la faute de la 7.16.0, et elle ne se voit pas.
       var a = s.argent || { annee: '', lignes: [] };
@@ -2570,6 +2836,7 @@ const CONSOLE_HTML = `<!doctype html>
         else if (act === 'revoquer') revoquer(r);
         else if (act === 'payee') payee(r);
         else if (act === 'facturee') facturee(r);
+        else if (act === 'ecrire') ecrire(r);
       };
     }
   }

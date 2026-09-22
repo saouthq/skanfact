@@ -4,7 +4,7 @@ CREATE TABLE IF NOT EXISTS licences ( id TEXT PRIMARY KEY, client_id TEXT NOT NU
 CREATE UNIQUE INDEX IF NOT EXISTS idx_licences_empreinte ON licences(empreinte);
 CREATE INDEX IF NOT EXISTS idx_licences_client ON licences(client_id);
 CREATE TABLE IF NOT EXISTS activations ( id TEXT PRIMARY KEY, licence_id TEXT REFERENCES licences(id), empreinte TEXT NOT NULL, device_id TEXT NOT NULL, device_nom TEXT, plateforme TEXT, version TEXT, app TEXT, premiere_fois TEXT NOT NULL, derniere_fois TEXT NOT NULL );
-CREATE UNIQUE INDEX IF NOT EXISTS idx_activ_unique ON activations(empreinte, device_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_activ_unique ON activations(empreinte, device_id, COALESCE(app, 'entreprise'));
 CREATE TABLE IF NOT EXISTS ventes ( id TEXT PRIMARY KEY, client_id TEXT NOT NULL REFERENCES clients(id), licence_id TEXT REFERENCES licences(id), montant_ht REAL NOT NULL, tva REAL, devise TEXT NOT NULL, payee_le TEXT, moyen TEXT, facture_skanfact TEXT, importee_le TEXT );
 CREATE INDEX IF NOT EXISTS idx_ventes_afacturer ON ventes(facture_skanfact);
 CREATE TABLE IF NOT EXISTS jetons ( id TEXT PRIMARY KEY, nom TEXT NOT NULL, empreinte TEXT NOT NULL UNIQUE, cree_le TEXT NOT NULL, dernier_usage TEXT, revoque_le TEXT );

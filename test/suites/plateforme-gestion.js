@@ -393,6 +393,220 @@ module.exports = async ({ t, ta, assert, lireSource }) => {
     } finally { db.fermer(); }
   });
 
+  // `app` ENTRE dans la clé d'unicité. Sans elle, deux applications qui partagent une identité de
+  // poste se battent pour la même ligne : la seconde ÉCRASE la première, et le parc perd une moitié
+  // en silence. Ça tenait par accident — chaque application a son propre dossier `userData`, donc
+  // son propre deviceId — mais un accident n'est pas un garde-fou.
+  //
+  // Et COALESCE, jamais `app` nu : dans un index UNIQUE de SQLite, deux NULL sont DISTINCTS. Sur la
+  // clé nue, une annonce de l'app entreprise arrivant sur une ligne d'AVANT la 10.4.0 (app NULL) ne
+  // trouverait aucun conflit et créerait un DOUBLON — le poste compterait deux fois, et le premier
+  // chiffre que cette version existe pour donner serait faux.
+  await ta('10.4.0-beta.3 : deux applications sur un poste font deux lignes, et l\'ancienne se met à jour', async () => {
+    const { baseD1 } = require('../d1-sqlite');
+    const P = await API();
+    const ADMIN = 'K'.repeat(30), APP = 'app-secret-kkkkkkkkkkkk';
+    const db = baseD1();
+    const env = { DB: db, ADMIN_SECRET: ADMIN, APP_SECRET: APP };
+    try {
+      // Un identifiant de poste est un UUID tiré au hasard par l'application (src/main.js) : le
+      // test en pose un vrai. Une chaîne de fantaisie est REFUSÉE par `nettoyerActivation` — et
+      // refusée, elle n'écrit rien du tout, donc le test passerait à côté de ce qu'il mesure.
+      const POSTE = '3f9a2c1e-4b5d-4e77-9a10-2c1e4b5d4e77';
+      const annonce = (app, version) => P.default.fetch(new Request('https://x/v1/licence/etat', {
+        method: 'POST', headers: { 'x-skanfact-app': APP, 'content-type': 'application/json' },
+        body: JSON.stringify({ cle: '', deviceId: POSTE, deviceNom: 'Le Mac', plateforme: 'darwin', version, app })
+      }), env);
+
+      // Le cas de Skander : les deux applications sur le même Mac.
+      assert.strictEqual((await annonce('entreprise', '10.4.0')).status, 200);
+      assert.strictEqual((await annonce('cabinet', '10.4.0')).status, 200);
+      assert.strictEqual(db.lire('SELECT id FROM activations').length, 2,
+        'deux applications sur un poste sont deux postes du parc, pas un seul');
+
+      // La même application qui se réannonce met SA ligne à jour, elle n'en crée pas une seconde.
+      assert.strictEqual((await annonce('cabinet', '10.4.1')).status, 200);
+      const lignes = db.lire('SELECT app, version FROM activations ORDER BY app');
+      assert.strictEqual(lignes.length, 2, 'une réannonce met à jour, elle ne duplique pas');
+      assert.strictEqual(lignes.find(x => x.app === 'cabinet').version, '10.4.1',
+        '`derniere_fois` et la version sont les seuls champs qui se réécrivent');
+      assert.strictEqual(lignes.find(x => x.app === 'entreprise').version, '10.4.0',
+        'et la ligne de l\'AUTRE application ne bouge pas');
+
+      // Le cas dangereux : une ligne d'AVANT la 10.4.0, écrite quand l'app entreprise était seule à
+      // s'annoncer et que la colonne n'existait pas. Elle vaut 'entreprise' — ce qu'elle est
+      // vraiment — donc l'annonce suivante la MET À JOUR au lieu de doubler le poste.
+      const ANCIEN = '0011aabb-ccdd-4eff-8899-001122334455';
+      db.lire("INSERT INTO activations (id, empreinte, device_id, device_nom, version, app, premiere_fois, derniere_fois)"
+        + " VALUES ('act_vieux', 'ESSAI', '" + ANCIEN + "', 'Vieux PC', '9.8.8', NULL, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')");
+      const r = await P.default.fetch(new Request('https://x/v1/licence/etat', {
+        method: 'POST', headers: { 'x-skanfact-app': APP, 'content-type': 'application/json' },
+        body: JSON.stringify({ cle: '', deviceId: ANCIEN, deviceNom: 'Vieux PC', plateforme: 'win32', version: '10.4.0', app: 'entreprise' })
+      }), env);
+      assert.strictEqual(r.status, 200);
+      const anciennes = db.lire("SELECT id, app, version FROM activations WHERE device_id = '" + ANCIEN + "'");
+      assert.strictEqual(anciennes.length, 1,
+        'une ligne d\'avant la colonne n\'est pas un second poste : COALESCE la range du côté de l\'entreprise');
+      assert.strictEqual(anciennes[0].id, 'act_vieux', 'c\'est bien la ligne d\'origine qui se met à jour');
+      assert.strictEqual(anciennes[0].version, '10.4.0');
+    } finally { db.fermer(); }
+  });
+
+  // L'écran qui répond à « lequel de ces deux postes est le Cabinet ? » est celui des Activations,
+  // et c'était très exactement celui qui ne le disait pas : le champ était écrit en base depuis la
+  // 10.4.0 et affiché NULLE PART. Une donnée enregistrée et jamais affichée n'existe pas (7.21.0),
+  // et ici elle manquait à l'écran fait pour le diagnostic.
+  //
+  // Les TROIS moitiés se tiennent, et aucune ne suffit : la colonne déclarée, la requête qui la
+  // remplit, et la route qui rend le champ. Retirer `a.app` du SELECT laisserait la colonne dire
+  // « SkanFact » pour toujours — juste en apparence, faux pour toujours.
+  await ta('10.4.0-beta.3 : l\'écran des Activations dit QUELLE application, et la route la lui donne', async () => {
+    const { baseD1 } = require('../d1-sqlite');
+    const P = await API();
+    const ADMIN = 'Q'.repeat(30), APP = 'app-secret-qqqqqqqqqqqq';
+    const db = baseD1();
+    const env = { DB: db, ADMIN_SECRET: ADMIN, APP_SECRET: APP };
+    try {
+      // La colonne est DÉCLARÉE sur l'écran.
+      const src = fs.readFileSync(path.join(__dirname, '..', '..', 'plateforme', 'skanfact-api.mjs'), 'utf8');
+      const i = src.indexOf('    activations: [');
+      assert.ok(i > 0, 'les colonnes de l\'écran Activations sont introuvables');
+      const cols = src.slice(i, src.indexOf('\n    ],', i));
+      assert.ok(cols.length < 1500, 'tranche trop large : ' + cols.length);
+      assert.ok(/\{ k: 'appNom', t: 'Application' \}/.test(cols),
+        'sans colonne Application, l\'écran du diagnostic ne dit pas laquelle des deux applications');
+      // Et elle lit le NOM rendu par le serveur : `APPS` et `appDe` vivent dans le module, pas
+      // dans la page. Les appeler depuis le gabarit lève une ReferenceError PENDANT sa
+      // construction — l'écran reste sur « Chargement… », rien en console, et la colonne n'est
+      // jamais dessinée (7.22.0). C'est `e2e:console` qui l'a attrapé, jamais la relecture.
+      assert.ok(!/APPS\[|appDe\(/.test(cols),
+        'la page ne doit appeler aucune fonction du module : elle affiche ce que la route lui donne');
+
+      // Et la route la REMPLIT : deux applications s'annoncent, la route rend le champ pour les deux.
+      const annonce = app => P.default.fetch(new Request('https://x/v1/licence/etat', {
+        method: 'POST', headers: { 'x-skanfact-app': APP, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          cle: '', deviceId: '77aa1122-3344-4556-8899-aabbccdd' + (app === 'cabinet' ? '11' : '22'),
+          deviceNom: 'Mac', plateforme: 'darwin', version: '10.4.0', app
+        })
+      }), env);
+      await annonce('entreprise');
+      await annonce('cabinet');
+      const r = await P.default.fetch(new Request('https://x/v1/admin/activations', { headers: { 'x-skanfact-admin': ADMIN } }), env);
+      const j = await r.json();
+      assert.strictEqual(r.status, 200);
+      assert.strictEqual(j.lignes.length, 2);
+      assert.deepStrictEqual(j.lignes.map(x => x.app).sort(), ['cabinet', 'entreprise'],
+        'la route doit RENDRE l\'application : sans elle, la colonne dirait « SkanFact » pour toujours');
+      assert.deepStrictEqual(j.lignes.map(x => x.appNom).sort(), ['SkanFact', 'SkanFact Cabinet'],
+        'et son NOM, parce que c\'est le serveur qui nomme et la page qui affiche');
+    } finally { db.fermer(); }
+  });
+
+  // ------------------------------------------------------------------ relancer un client
+
+  // C'était le seul geste commercial que la console ne savait pas faire : elle signe, elle envoie
+  // la clé, elle encaisse — et devant « licence qui se termine dans douze jours », il n'y avait
+  // rien à cliquer. Un écran qui NOMME une échéance doit porter le geste qui va avec (7.15.0).
+  await ta('10.4.0-beta.3 : une relance se COMPOSE, elle ne s\'envoie pas toute seule', async () => {
+    const P = await API();
+    const fin = P.mailRelance('fin', { client: 'Trabelsi Informatique', email: 'a@b.tn', offre: 'Indépendant', fin: '2026-10-14' });
+    assert.strictEqual(fin.a, 'a@b.tn');
+    // Le client lit une date FRANÇAISE : une date ISO dans un mail commercial donne l'impression
+    // d'un envoi automatique, ce que ce mail n'est justement pas.
+    assert.ok(/14\/10\/2026/.test(fin.corps) && /14\/10\/2026/.test(fin.sujet),
+      'la date doit être lisible par un client : ' + fin.sujet);
+    assert.ok(!/2026-10-14/.test(fin.corps + fin.sujet), 'aucune date ISO dans un mail');
+    assert.ok(fin.corps.startsWith('Bonjour Trabelsi Informatique,'));
+    assert.ok(/Indépendant/.test(fin.corps), 'l\'offre du client est un fait de sa ligne');
+    // La promesse du produit se répète ici, parce que c'est le moment où le client se demande ce
+    // qu'il perd : jamais de données en otage (6.4.0).
+    assert.ok(/lisibles, imprimables et exportables/.test(fin.corps));
+
+    // Rien ne s'invente : ce qui manque DISPARAÎT de la phrase, il n'est pas remplacé par un vide.
+    const nu = P.mailRelance('fin', {});
+    assert.strictEqual(nu.a, '');
+    assert.ok(nu.corps.startsWith('Bonjour,'), 'sans nom, on ne salue pas un blanc');
+    assert.ok(!/\(\)/.test(nu.corps) && !/undefined|null|NaN/.test(nu.corps), 'aucun trou dans le texte : ' + nu.corps);
+    assert.ok(!/le \./.test(nu.corps), 'sans date, la phrase se réécrit au lieu de garder son « le »');
+
+    const im = P.mailRelance('impayee', { client: 'El Amen', montant: 690, devise: 'TND' });
+    assert.ok(/690,000 TND/.test(im.corps), 'le montant porte sa devise (7.16.0) : ' + im.corps);
+    // On relance sans accuser : le règlement a pu se croiser avec le mail.
+    assert.ok(/ne tenez pas compte/.test(im.corps));
+    assert.ok(!/690/.test(P.mailRelance('impayee', { client: 'X' }).corps),
+      'sans montant connu, on ne cite aucun chiffre');
+
+    const ex = P.mailRelance('expiree', { client: 'X', fin: '2026-01-05' });
+    assert.ok(/s’est terminée le 05\/01\/2026/.test(ex.corps), ex.corps);
+    assert.ok(/données sont intactes/.test(ex.corps));
+
+    // Et la console COMPOSE : elle n'appelle pas Resend pour une relance. Un mail parti sans être
+    // relu n'est pas une relance, c'est un automate — et le ton d'une relance dépend du client.
+    const src = fs.readFileSync(path.join(__dirname, '..', '..', 'plateforme', 'skanfact-api.mjs'), 'utf8');
+    const i = src.indexOf('function ecrire(r)');
+    assert.ok(i > 0, 'le geste « Écrire… » de la console est introuvable');
+    const geste = src.slice(i, src.indexOf('\n  function envoyer(', i));
+    assert.ok(geste.length < 2600, 'tranche trop large : ' + geste.length);
+    assert.ok(/mailto:/.test(geste), 'la relance s\'ouvre dans la messagerie de l\'éditeur');
+    assert.ok(!/envoyer|resend/i.test(geste), 'la console ne doit pas envoyer une relance elle-même');
+  });
+
+  await ta('10.4.0-beta.3 : la route de relance lit les dates avec la règle de l\'alerte', async () => {
+    const { baseD1 } = require('../d1-sqlite');
+    const P2 = await API();
+    const ADMIN = 'R'.repeat(30);
+    const db = baseD1();
+    const env = { DB: db, ADMIN_SECRET: ADMIN };
+    const get = ch => P2.default.fetch(new Request('https://x/v1/admin/' + ch, { headers: { 'x-skanfact-admin': ADMIN } }), env);
+    try {
+      const an = new Date().getUTCFullYear();
+      db.lire("INSERT INTO clients (id, nom, email, cree_le) VALUES ('cli_1', 'Trabelsi', 'a@b.tn', '2026-01-01')");
+      // Une licence FINIE et une licence qui COURT : c'est le serveur qui décide du texte, avec la
+      // même règle que l'alerte. Deux règles — l'une pour l'alerte, l'autre pour le mail — finiraient
+      // par se contredire, et on relancerait « votre licence se termine » sur une licence terminée.
+      db.lire("INSERT INTO licences (id, client_id, kid, empreinte, offre, debut, fin, emise_le)"
+        + " VALUES ('lic_finie', 'cli_1', 'srv-1', 'e1', 'independant', '2020-01-01', '2021-01-01', '2020-01-01')");
+      db.lire("INSERT INTO licences (id, client_id, kid, empreinte, offre, debut, fin, emise_le)"
+        + " VALUES ('lic_court', 'cli_1', 'srv-1', 'e2', 'entreprise', '" + an + "-01-01', '" + (an + 5) + "-01-01', '" + an + "-01-01')");
+      const f = await (await get('licences/lic_finie/relance')).json();
+      assert.ok(/est arrivée à son terme|s’est terminée/.test(f.sujet + f.corps), f.sujet);
+      const c = await (await get('licences/lic_court/relance')).json();
+      assert.ok(/se termine/.test(c.sujet), c.sujet);
+      assert.strictEqual(c.a, 'a@b.tn', 'la route rend l\'adresse du client');
+
+      // Une vente payée n'a rien à relancer, et le refus le DIT avec sa date.
+      db.lire("INSERT INTO ventes (id, client_id, licence_id, montant_ht, devise, payee_le)"
+        + " VALUES ('v_payee', 'cli_1', 'lic_court', 690, 'TND', '2026-02-02')");
+      db.lire("INSERT INTO ventes (id, client_id, licence_id, montant_ht, devise)"
+        + " VALUES ('v_due', 'cli_1', 'lic_court', 690, 'TND')");
+      const rp = await get('ventes/v_payee/relance');
+      assert.strictEqual(rp.status, 409);
+      assert.ok(/payée depuis le 2026-02-02/.test((await rp.json()).erreur));
+      const rd = await (await get('ventes/v_due/relance')).json();
+      assert.ok(/690,000 TND/.test(rd.corps), rd.corps);
+
+      // Une relance ne change RIEN : elle lit. Le journal n'a pas à s'en souvenir, et surtout
+      // aucune ligne ne doit avoir bougé.
+      assert.strictEqual(db.lire("SELECT id FROM ventes WHERE payee_le IS NULL").length, 1);
+    } finally { db.fermer(); }
+  });
+
+  // Le schéma est la seule chose qu'une migration seule peut corriger : la règle se lit AUSSI dans
+  // le fichier qu'on demande à Skander de coller, sinon une base neuve repartirait sans la clé.
+  t('10.4.0-beta.3 : la clé d\'unicité du parc porte l\'application, COALESCE comprise', () => {
+    ['schema.sql', 'schema-a-coller.sql'].forEach(f => {
+      const sql = fs.readFileSync(path.join(__dirname, '..', '..', 'plateforme', f), 'utf8')
+        .replace(/--[^\n]*/g, '');
+      const i = sql.indexOf('idx_activ_unique');
+      assert.ok(i > 0, f + ' : la clé d\'unicité du parc a disparu');
+      const idx = sql.slice(i, sql.indexOf(';', i));
+      assert.ok(/empreinte/.test(idx) && /device_id/.test(idx), f + ' : la clé perd un de ses termes');
+      assert.ok(/COALESCE\(\s*app\s*,\s*'entreprise'\s*\)/.test(idx),
+        f + ' : `app` nu laisserait deux NULL distincts, donc un doublon sur chaque ligne d\'avant la 10.4.0');
+    });
+  });
+
   await ta('10.4.0 : l\'export écrit sa trace dans le journal, et c\'est elle qui date l\'alerte', async () => {
     const { baseD1 } = require('../d1-sqlite');
     const P = await API();

@@ -253,6 +253,17 @@ const APP_SECRET = 'secret-de-test-' + 'x'.repeat(20);
     await mesurer(`${etiquette} · la clé émise`);
     await page.click('#cle-fermer');
     await page.waitForTimeout(200);
+
+    // La relance : l'autre panneau que seule une action de ligne ouvre. Il porte un texte long, un
+    // lien déguisé en bouton principal et deux boutons — trois surfaces qu'aucune adresse ne mène,
+    // donc invisibles pour un instrument qui se contente de parcourir les onglets (T-55).
+    await onglet('ventes');
+    await page.click('#table button[data-act="ecrire"]');
+    await page.waitForSelector('#relance-txt', { timeout: 15000 });
+    await page.waitForTimeout(200);
+    await mesurer(`${etiquette} · la relance composée`);
+    await page.click('#relance-fermer');
+    await page.waitForTimeout(200);
   };
 
   try {
@@ -375,7 +386,7 @@ const APP_SECRET = 'secret-de-test-' + 'x'.repeat(20);
   // conteneur flex réclame toute la ligne sans qu'on le voie (7.23.0). On l'ÉCRIT plutôt que de
   // laisser un zéro passer pour une mesure.
   console.log(`\n${j.total()} étapes — ${boutons} boutons, ${colonnes} colonnes, ${ecarts} écarts`
-    + ` mesurés sur les huit onglets, les deux formulaires et la clé émise, en clair et en sombre,`
+    + ` mesurés sur les huit onglets, les deux formulaires, la clé émise et la relance composée, en clair et en sombre,`
     + ' à 1440 et à 1280 : rien d\'illisible, rien de désaligné, rien de collé.'
     + `\n${controles} champ(s) dans une barre d'actions`
     + (controles ? ', aucun étiré.' : ' : la console n\'en a aucun aujourd\'hui — la sonde attend la refonte.'));

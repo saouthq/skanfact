@@ -83,7 +83,18 @@ CREATE TABLE IF NOT EXISTS activations (
   premiere_fois  TEXT NOT NULL,
   derniere_fois  TEXT NOT NULL
 );
-CREATE UNIQUE INDEX IF NOT EXISTS idx_activ_unique ON activations(empreinte, device_id);
+-- 10.4.0-beta.3 — `app` ENTRE dans la clé. Sans elle, deux applications qui partagent une identité
+-- de poste se battent pour la même ligne : la seconde écrase la première, et le parc perd une
+-- moitié en silence. Ça tenait par accident jusqu'ici — chaque application a son propre dossier
+-- `userData`, donc son propre `deviceId` — mais un accident n'est pas un garde-fou.
+--
+-- COALESCE et non `app` nu : dans un index UNIQUE de SQLite, deux NULL sont DISTINCTS. Sur la clé
+-- nue, une annonce de l'app entreprise arrivant sur une ligne d'avant la 10.4.0 (app NULL) ne
+-- trouverait aucun conflit et créerait un DOUBLON — le poste compterait deux fois. Avec COALESCE,
+-- l'ancienne ligne vaut 'entreprise' et se met à jour, ce qu'elle est vraiment : l'app entreprise
+-- était seule à s'annoncer avant.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_activ_unique
+  ON activations(empreinte, device_id, COALESCE(app, 'entreprise'));
 
 -- ---------- les ventes ----------
 -- Le pont comptable (§ 11) : SkanFact les TIRE, l'API ne pousse jamais.
