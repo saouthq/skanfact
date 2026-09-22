@@ -339,6 +339,33 @@ const APP_SECRET = 'secret-de-test-' + 'x'.repeat(20);
     await onglet('licences');
     await page.click('#emettre');
     await page.waitForSelector('#form:not([hidden]) [name=clientId]');
+
+    // Le formulaire d'émission a DEUX visages, et le second ne s'ouvre par aucune adresse : une
+    // licence de cabinet montre l'empreinte, le quota et « sans limite » là où une licence
+    // d'entreprise montre l'offre et le parrainage. Mesurer le seul visage par défaut, c'est T-55
+    // d'un cran plus bas — l'instrument atteint l'écran, mais dans l'état où le contrôle neuf
+    // n'existe pas. La preuve : la case « sans limite » de la 10.8.0 est passée sous les 2 445
+    // écarts de la 10.6.0 sans qu'un seul les fasse bouger.
+    await page.selectOption('#form [name=type]', 'cabinet');
+    await page.waitForFunction(() => {
+      const q = document.getElementById('f-sans-limite');
+      return q && q.style.display !== 'none';
+    }, { timeout: 5000 });
+    await page.waitForTimeout(160);
+    await mesurer(`${etiquette} · émettre une licence de cabinet`);
+    await page.check('#form [name="illimite"]');
+    await page.waitForFunction(() => {
+      const q = document.getElementById('f-quota');
+      return q && q.style.display === 'none';
+    }, { timeout: 5000 });
+    await page.waitForTimeout(160);
+    await mesurer(`${etiquette} · émettre sans limite de dossiers`);
+    await page.uncheck('#form [name="illimite"]');
+    await page.selectOption('#form [name=type]', 'entreprise');
+    await page.waitForFunction(() => {
+      const o = document.getElementById('f-offre');
+      return o && o.style.display !== 'none';
+    }, { timeout: 5000 });
     await page.selectOption('#form [name=offre]', 'independant');
     // Émettre demande une confirmation depuis la 10.6.0 : le premier clic rend le récapitulatif
     // — à qui, quelle offre, jusqu'à quand, combien — et le second signe. Le parcours mesure donc

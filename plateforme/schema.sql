@@ -55,6 +55,10 @@ CREATE TABLE IF NOT EXISTS licences (
   -- elle-même : Ed25519 est déterministe, donc signer de nouveau ce contenu avec la même clé privée
   -- redonne la même clé, à l'identique — et sans la clé privée, ce contenu ne vaut rien.
   charge            TEXT,
+  -- 10.8.0 — « sans limite » : une licence de cabinet qui ne compte PAS ses dossiers. NULL ou 0 =
+  -- tout ce qui a été vendu avant, c'est-à-dire un quota ordinaire. C'est un ÉTAT, pas un très
+  -- grand `dossiers_hors` : une clé à 99 999 afficherait un nombre que personne n'a décidé.
+  illimite          INTEGER,
   envoyee_le        TEXT,                 -- la clé est partie par mail (NULL = jamais envoyée)
   -- 9.4.1 : une licence de CABINET (SkanFact Cabinet). NULL = entreprise, c'est-à-dire tout ce qui
   -- a été émis avant. Son sujet est `cabinet_empreinte`, et ce qu'elle porte est un quota de

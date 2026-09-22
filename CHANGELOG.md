@@ -7,6 +7,62 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 10.8.0-beta.1 — 22/09/2026
+
+**Une licence de cabinet peut porter « sans limite de dossiers ».** Décidé avec Skander pour les
+premiers cabinets, dont le cabinet pilote : leur vendre un quota le jour où on leur demande de
+tester le produit n'a pas de sens, et le calibrer au jugé encore moins. La case existe désormais
+dans la console, et l'application s'y conforme — la grille ordinaire ne change pas d'un chiffre.
+
+**C'est un ÉTAT, pas un très grand nombre.** Une clé à 99 999 dossiers aurait fonctionné sans une
+ligne de code : c'est précisément ce qu'il ne fallait pas faire. Le cabinet aurait lu « 100 002
+dossiers autorisés » sur l'écran qui doit le rassurer — un chiffre que personne n'a décidé, et une
+barre de progression qui avance vers une limite imaginaire. `licenceCabinet` rend donc
+`autorises: null`, l'écran écrit « sans limite », et le verrou ne peut plus tomber.
+
+**Ce que la case change, et ce qu'elle ne change pas.** Elle cache le quota — réclamer un chiffre
+dont on vient de dire qu'il ne sert pas est un piège, et le champ porte une étoile d'obligation
+qu'on ne pourrait plus satisfaire — et elle efface le prix proposé, qui se calculait sur ce
+quota : un montant déduit d'un nombre de dossiers qui ne compte plus serait un chiffre faux
+(7.16.0). Le prix se saisit à la main, et l'écran le dit. Elle ne touche ni à l'essai, ni à la
+date de fin, ni à la révocation, ni au comptage : un cabinet sans limite voit toujours combien de
+dossiers il a.
+
+**Elle ne concerne QUE les dossiers d'un cabinet**, et la console refuse en le disant sur une
+licence d'entreprise — qui n'en compte aucun. Le champ entre en **queue** de la charge signée,
+après `type` et `dossiersHors` : au milieu, il changerait l'ordre des champs déjà signés, et une
+clé refabriquée depuis sa charge rangée en base ne serait plus identique à celle qu'on a envoyée
+(8.5.0). Une clé d'avant se comporte donc exactement comme avant.
+
+**Le statut de fondateur se POSE, il ne se déduit jamais du rang d'émission.** Skander : « vu que
+je vais tester l'application je vais créer des licences, est-ce que ça va pas me cramer mes 20
+licences sans limite ? » Non — parce que **rien ne compte**. Vérifié avant de répondre : le mot
+« fondateur » n'apparaît nulle part dans le code, et aucun compteur n'existe. La séparation qui
+rend ça propre, et qui vaut pour tout ce qu'on voudra compter un jour : **la clé porte ce que
+l'application doit faire respecter** (le quota) ; **la console porte ce que l'éditeur doit
+compter** (le statut commercial). L'application n'a pas à savoir qu'on compte jusqu'à vingt. Une
+clé de test n'est simplement pas marquée.
+
+**Et deux instruments réparés, chacun par sa preuve :**
+
+- **Le garde-fou que j'ai écrit ne pouvait pas voir son propre défaut.** Il interdit qu'une
+  déclaration locale masque une fonction du module de la console — la faute qui a tué le
+  formulaire d'émission la veille, sans une ligne dans aucune console (`node --check`, le lint et
+  le garde-fou du backtick passent tous les trois). Il ne lisait que `function nom(` : la page en
+  a 47 sous cette forme et **22 sous la forme `var nom = function`**, qui est très exactement
+  celle où vivait le défaut. Réintroduit, il restait vert. Il lit maintenant les deux familles —
+  et il ne dit rien sur les 69 fonctions du code juste.
+- **L'instrument de rendu ouvrait le formulaire d'émission dans le seul état où la case neuve
+  n'existe pas.** Le formulaire a deux visages — une licence d'entreprise montre l'offre et le
+  parrainage, une licence de cabinet montre l'empreinte, le quota et « sans limite » — et le
+  parcours ne mesurait que le premier. C'est T-55 d'un cran plus bas : l'instrument atteint
+  l'écran, mais dans l'état où le contrôle neuf n'est pas rendu. Il bascule désormais le type et
+  coche la case : **de 93 à 101 écrans, 2 125 boutons, 648 colonnes, 2 669 écarts**, et rien
+  d'illisible, de désaligné ni de collé sur les deux états qu'il n'avait jamais vus.
+
+Trois preuves par réintroduction, plus les deux directions du garde-fou élargi. `npm test` :
+763 tests. `e2e:console` et `e2e:cabinet-licence` verts.
+
 ## 10.7.0-beta.1 — 22/09/2026
 
 **Achats sort des réserves de l'offre Indépendant.** Signalé par la session qui développe

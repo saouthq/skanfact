@@ -1,6 +1,6 @@
 # Tarifs SkanFact — la référence
 
-*État du code au 22/09/2026, version 10.7.0-beta.1.*
+*État du code au 22/09/2026, version 10.8.0-beta.1.*
 
 Ce document dit ce que le **code fait**, pour que la page Tarifs de `skanfact.tn` ne promette rien
 que l'application ne tienne. Il vit ici, dans le dépôt, et pas dans un fichier qu'on se passe de
@@ -104,6 +104,7 @@ Ce n'est pas une offre de SkanFact.
 |---|---|
 | Dossiers dont le client est sur SkanFact | Gratuits, sans limite de nombre |
 | Dossiers hors SkanFact | **3 gratuits** (`CABINET_GRATUITS`), puis une licence |
+| Une licence peut aussi être **sans limite** | Depuis la 10.8.0 — une case à l'émission, pas une offre publique (§ 7, Q1) |
 | Postes | Illimités — on vend des dossiers, jamais des ordinateurs |
 | Prix d'un dossier au-delà | **Non fixé** — à 0 dans le code, donc rien n'est proposé nulle part |
 | Ce qui s'arrête si le quota est dépassé | **La validation d'une écriture, et rien d'autre** |
@@ -147,10 +148,11 @@ plus fort qu'un dossier à 20 DT.
    sens. Formulation retenue par les deux sessions :
    *« Les 20 premiers cabinets inscrits avant le 31/12/2027 gardent la gratuité totale, sans limite
    de dossiers et sans date de fin. »*
-2. **L'application ne sait pas encore dire « sans limite ».** Le quota se calcule
-   `CABINET_GRATUITS + ce que la clé a acheté` : il n'existe aucun état « illimité ». Une clé avec un
-   quota énorme fonctionnerait, mais l'écran afficherait un nombre absurde. **Non livré, non
-   planifié** — voir § 7.
+2. ~~**L'application ne sait pas encore dire « sans limite ».**~~ **Livré en 10.8.0** (22/09/2026,
+   bêta). La console coche « sans limite de dossiers » sur une licence de cabinet, l'application
+   affiche « sans limite » et ne verrouille plus jamais. Ce n'est pas un quota énorme : c'est un
+   état — une clé à 99 999 dossiers aurait fait lire « 100 002 dossiers autorisés » au cabinet.
+   Voir § 7, Q1.
 3. **Monter est facile, redescendre est impossible.** Le palier gratuit est une constante de
    l'application, pas une valeur dans la clé vendue : le relever vaut pour toutes les installations,
    le rabaisser verrouillerait des cabinets qui allaient bien la veille. Porte à sens unique.
@@ -194,14 +196,38 @@ spécifiques.
 
 ### Q1 — Le « sans limite » : prévu, sur quelle version ?
 
-**Non planifié à ce jour, et ce n'est pas un oubli : la décision commerciale n'est pas prise.**
-Le changement lui-même est petit (une demi-journée) : donner un état « illimité » au quota, le dire
-proprement à l'écran plutôt qu'un grand nombre, et retourner l'assertion du parcours
-`e2e:cabinet-licence` qui fixe aujourd'hui les trois dossiers gratuits.
+**Livré en 10.8.0**, le 22/09/2026, en bêta. La réponse d'hier disait « non planifié » ; elle ne
+l'est plus. Skander a tranché le jour même, et pour la raison qui rendait la question urgente : le
+cabinet pilote teste l'application en ce moment et se cogne au quatrième dossier.
 
-Il a un usage **indépendant** de l'offre fondatrice, et c'est ce qui le rend utile tout de suite : le
-cabinet pilote (le comptable de Skander) teste l'application en ce moment et se cogne au quatrième
-dossier. Une clé « sans limite » lui rend l'application utilisable sans rien promettre publiquement.
+Ce que ça fait : la console coche « sans limite de dossiers » sur une licence **de cabinet**, la clé
+signée la porte, l'application affiche « sans limite » au lieu d'un nombre et ne verrouille plus
+jamais. Le quota reste caché tant que la case est cochée, et le prix se saisit à la main — il se
+calculait sur le nombre de dossiers, qui ne compte plus.
+
+Ce que ça ne fait pas, et c'est volontaire : ce n'est pas un très grand nombre. Une clé à 99 999
+dossiers aurait fonctionné sans une ligne de code, et le cabinet aurait lu « 100 002 dossiers
+autorisés » sur l'écran qui doit le rassurer — un chiffre que personne n'a décidé.
+
+**Pour le site :** rien à écrire. Le « sans limite » est une capacité de l'outil d'émission, pas une
+offre publique. Il ne devient une phrase sur la page Tarifs que si Skander tranche le § 5.
+
+### Q1 bis — Les licences de test ne consomment aucune place de fondateur
+
+Question de Skander en découvrant la 10.8.0 : « vu que je vais tester l'application je vais créer
+des licences, est-ce que ça va pas me cramer mes 20 licences sans limite ? »
+
+**Non, et par construction : rien ne compte.** Vérifié dans le code avant de répondre — le mot
+« fondateur » n'existe nulle part, et aucun compteur d'émissions n'existe. La règle posée pour que
+ça reste vrai le jour où on comptera :
+
+> **Le statut de fondateur se POSE, il ne se déduit jamais du rang d'émission.** Une case explicite
+> au moment d'émettre. Une clé de test n'est simplement pas marquée.
+
+Et la séparation qui la rend propre : **la clé porte ce que l'application doit faire respecter** (le
+quota) ; **la console porte ce que l'éditeur doit compter** (le statut commercial). L'application n'a
+pas à savoir qu'on compte jusqu'à vingt. Conséquence pratique pour le site : le compteur « il reste
+N places » ne peut pas être alimenté automatiquement aujourd'hui — ne pas en écrire un.
 
 **Le site ne doit pas publier l'offre avant que ce soit livré** — c'est le bon réflexe, et la raison
 est une règle du projet : une phrase affichée que rien ne tient est un bug, pas une imprécision.

@@ -470,6 +470,11 @@ function licenceCabinet(opts) {
   const nue = s => String(s || '').replace(/[\s.:_-]/g, '').toUpperCase();
   const base = { comptes, gratuits: CABINET_GRATUITS, quota: 0, autorises: CABINET_GRATUITS, key: opts.key || '', exp: '', daysLeft: null };
   const fin = (x) => {
+    // « Sans limite » (10.8.0) est un ÉTAT, pas un très grand nombre. Une clé qui porterait un quota
+    // de 99 999 fonctionnerait et afficherait « 100 002 dossiers autorisés » : un chiffre que
+    // personne n'a décidé, sur l'écran qui doit rassurer. `autorisesInfini` existait déjà pour la
+    // version non armée ; on le réemploie plutôt que d'inventer un second mot.
+    if (x.autorisesInfini) return { ...base, ...x, autorises: null, locked: false, depasse: 0 };
     const autorises = CABINET_GRATUITS + Math.max(0, Number(x.quota) || 0);
     // UN seul endroit décide du verrou, et c'est un dépassement de quota. Une clé illisible ou
     // d'un autre cabinet n'accorde rien — mais elle ne punit rien non plus tant qu'on est dans les
@@ -511,9 +516,16 @@ function licenceCabinet(opts) {
           + ' Si c\'est une erreur, écris à ' + CONTACT + '.' });
     }
     if (!exp || left >= 0) {
-      return fin({ state: 'active', quota, exp, daysLeft: left,
+      // `illimite` (10.8.0) est en QUEUE de la charge signée, comme `type` et `dossiersHors` avant
+      // lui : au milieu, il changerait l'ordre des champs déjà signés, et une clé refabriquée
+      // depuis sa charge rangée en base ne serait plus identique à celle qu'on a envoyée. Une clé
+      // qui ne le porte pas vaut `false` : rien de ce qui a été vendu ne bouge.
+      const illimite = payload.illimite === true;
+      return fin({ state: 'active', quota, exp, daysLeft: left, autorisesInfini: illimite,
         label: (exp ? `Licence active jusqu'au ${exp}` : 'Licence sans limite de durée')
-          + ` — ${quota} dossier${quota === 1 ? '' : 's'} hors SkanFact en plus des ${CABINET_GRATUITS} gratuits`,
+          + (illimite
+            ? ' — dossiers hors SkanFact sans limite'
+            : ` — ${quota} dossier${quota === 1 ? '' : 's'} hors SkanFact en plus des ${CABINET_GRATUITS} gratuits`),
         detail: left != null && left <= 30 ? `Elle se termine dans ${left} jour${left === 1 ? '' : 's'} : pense à la renouveler.` : '' });
     }
     return fin({ state: 'expiree', quota: 0, exp, daysLeft: left, label: `Licence expirée le ${exp}`,

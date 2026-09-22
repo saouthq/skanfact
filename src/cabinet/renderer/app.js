@@ -6665,7 +6665,7 @@
       ceux dont le client n'a pas l'application. Les ${licCab.gratuits} premiers sont gratuits.</p>
       <div class="grid-2 mt">
         <div><div class="k-label">Comptés</div><div class="ver">${c.comptes}</div></div>
-        <div><div class="k-label">Couverts</div><div class="ver">${licCab.autorises}</div></div>
+        <div><div class="k-label">Couverts</div><div class="ver">${licCab.autorises == null ? 'sans limite' : licCab.autorises}</div></div>
       </div>
       ${c.comptes ? `<h3 class="mt">Les dossiers comptés ${info('lic.comptes')}</h3>
         <ul class="small">${c.liste.slice(0, 40).map(d => `<li>${esc(d.name || d.id)} <span class="muted">— ${esc(d.raison)}</span></li>`).join('')}</ul>`

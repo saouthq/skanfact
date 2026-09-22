@@ -626,12 +626,20 @@ export function nettoyerEmission(corps, depuis) {
   const cabinet = String(c.cabinet || '').toLowerCase().replace(/[\s:._-]/g, '');
   if (cabinet && !CABINET.test(cabinet)) return { ok: false, erreur: 'L\'empreinte du cabinet fait vingt caractères hexadécimaux (cinq groupes de quatre).' };
   let dossiersHors = 0;
+  // 10.8.0 — « sans limite ». Un ÉTAT, pas un quota énorme : une clé à 99 999 dossiers ferait
+  // afficher au cabinet un nombre que personne n'a décidé. Quand il est posé, le quota ne se
+  // demande plus — réclamer un chiffre dont on vient de dire qu'il ne sert pas est un piège.
+  const illimite = c.illimite === true || c.illimite === 'true' || c.illimite === 1 || c.illimite === '1';
   if (type === 'cabinet') {
     if (!cabinet) return { ok: false, erreur: 'Une licence de cabinet est attachée à son EMPREINTE : les vingt caractères que le comptable lit dans SkanFact Cabinet → Réglages → Mon cabinet.' };
-    dossiersHors = Math.round(Number(c.dossiersHors));
-    if (!Number.isFinite(dossiersHors) || dossiersHors < 1 || dossiersHors > 5000) {
-      return { ok: false, erreur: 'Combien de dossiers hors SkanFact cette licence couvre-t-elle, en plus des trois gratuits ? (entre 1 et 5000)' };
+    if (!illimite) {
+      dossiersHors = Math.round(Number(c.dossiersHors));
+      if (!Number.isFinite(dossiersHors) || dossiersHors < 1 || dossiersHors > 5000) {
+        return { ok: false, erreur: 'Combien de dossiers hors SkanFact cette licence couvre-t-elle, en plus des trois gratuits ? (entre 1 et 5000) — ou coche « sans limite ».' };
+      }
     }
+  } else if (illimite) {
+    return { ok: false, erreur: '« Sans limite » ne concerne que les dossiers d\'un CABINET : une licence d\'entreprise n\'en compte aucun.' };
   }
   const payeeLe = c.payeeLe ? String(c.payeeLe).trim() : '';
   if (payeeLe && !dateValide(payeeLe)) return { ok: false, erreur: 'La date de paiement n\'est pas une date (AAAA-MM-JJ).' };
@@ -639,7 +647,7 @@ export function nettoyerEmission(corps, depuis) {
   return {
     ok: true,
     e: {
-      type, dossiersHors,
+      type, dossiersHors, illimite: type === 'cabinet' && illimite,
       offre, exp, prix: Math.round(prix * 1000) / 1000, remise, devise, cabinet,
       // Ce qui entre dans la CLÉ : la forme que l'application écrit et que le cabinet compare.
       cabinetCanon: cabinet ? canonEmpreinte(cabinet) : '',
@@ -654,6 +662,7 @@ export function nettoyerEmission(corps, depuis) {
 export function libelleLicence(l) {
   const x = l || {};
   if (x.type === 'cabinet') {
+    if (x.illimite === true || x.illimite === 1) return 'Cabinet — dossiers sans limite';
     const n = Math.max(0, Number(x.dossiersHors != null ? x.dossiersHors : x.dossiers_hors) || 0);
     return 'Cabinet — ' + n + ' dossier' + (n === 1 ? '' : 's') + ' hors SkanFact';
   }
@@ -725,7 +734,12 @@ export function chargeLicence(o) {
     // clé elle-même. L'application ignore ce qu'elle ne connaît pas : un `type` absent vaut
     // `entreprise`, donc rien de ce qui a été vendu ne bouge.
     type: String(x.type || 'entreprise'),
-    dossiersHors: Math.max(0, Math.round(Number(x.dossiersHors) || 0))
+    dossiersHors: Math.max(0, Math.round(Number(x.dossiersHors) || 0)),
+    // 10.8.0 — « sans limite ». En QUEUE, pour la même raison que les deux champs ci-dessus : au
+    // milieu, il changerait l'ordre des champs déjà signés. Une clé qui ne le porte pas vaut
+    // `false`, donc rien de ce qui a été vendu ne bouge. C'est un ÉTAT, pas un très grand quota :
+    // une clé à 99 999 dossiers afficherait un nombre que personne n'a décidé.
+    illimite: x.illimite === true
   };
 }
 
@@ -1564,7 +1578,7 @@ async function repondreAdmin(r, request, env) {
     'SELECT l.id, l.client_id, l.kid, l.empreinte, l.offre, l.postes, l.debut, l.fin, l.prix, l.devise, l.remise,' +
     ' l.cabinet_empreinte, l.emise_le, l.remplace_id, l.remplacee_motif, l.revoquee_le, l.revoquee_motif, l.envoyee_le,' +
     // 9.4.1 — le type et le quota (NULL sur tout ce qui a été émis avant : une entreprise).
-    ' COALESCE(l.type, \'entreprise\') AS type, l.dossiers_hors,' +
+    ' COALESCE(l.type, \'entreprise\') AS type, l.dossiers_hors, l.illimite,' +
     ' l.charge IS NOT NULL AS resignable, c.nom AS client, c.matricule, c.email,' +
     ' (SELECT r2.id FROM licences r2 WHERE r2.remplace_id = l.id LIMIT 1) AS remplacee_par,' +
     ' (SELECT COUNT(*) FROM activations a2 WHERE a2.licence_id = l.id) AS activations,' +
@@ -1702,7 +1716,7 @@ async function repondreAdmin(r, request, env) {
           lien: t.lienPaiement, signature: t.signature
         }), client: l.client, clientId: l.client_id });
       }
-      const v = await un('SELECT v.*, c.nom AS client, c.email, l.offre, l.type, l.dossiers_hors'
+      const v = await un('SELECT v.*, c.nom AS client, c.email, l.offre, l.type, l.dossiers_hors, l.illimite'
         + ' FROM ventes v LEFT JOIN clients c ON c.id = v.client_id'
         + ' LEFT JOIN licences l ON l.id = v.licence_id WHERE v.id = ?', r.id);
       if (!v) return json({ erreur: 'Vente introuvable.' }, 404);
@@ -1744,7 +1758,7 @@ async function repondreAdmin(r, request, env) {
       const lignes = await tous(
         'SELECT v.id, v.client_id, v.licence_id, v.montant_ht, v.tva, v.devise, v.payee_le, v.moyen, v.facture_skanfact, v.importee_le,' +
         ' c.nom AS client, c.matricule, c.email, l.offre, l.fin, l.debut, l.kid, l.emise_le, l.prix, l.remise, l.cabinet_empreinte, l.envoyee_le, l.revoquee_le,' +
-        ' COALESCE(l.type, \'entreprise\') AS type, l.dossiers_hors,' +
+        ' COALESCE(l.type, \'entreprise\') AS type, l.dossiers_hors, l.illimite,' +
         ' l.empreinte, l.charge IS NOT NULL AS resignable' +
         ' FROM ventes v LEFT JOIN clients c ON c.id = v.client_id LEFT JOIN licences l ON l.id = v.licence_id' +
         (nonFacturees ? ' WHERE v.facture_skanfact IS NULL' : '') +
@@ -1783,7 +1797,7 @@ async function repondreAdmin(r, request, env) {
       // comptait les clients amenés, jamais ce qu'ils rapportent. Un canal de vente qu'on ne chiffre
       // pas est un canal qu'on ne sait pas récompenser, ni arrêter.
       return json({ lignes: await tous(
-        'SELECT l.id, l.empreinte, l.cabinet_empreinte, l.debut, l.fin, l.dossiers_hors, l.revoquee_le, l.envoyee_le,' +
+        'SELECT l.id, l.empreinte, l.cabinet_empreinte, l.debut, l.fin, l.dossiers_hors, l.illimite, l.revoquee_le, l.envoyee_le,' +
         ' l.prix, l.devise, l.client_id, c.nom AS client, c.email,' +
         ' (SELECT COUNT(*) FROM licences p WHERE p.cabinet_empreinte = l.cabinet_empreinte' +
         '   AND COALESCE(p.type, \'entreprise\') = \'entreprise\' AND p.revoquee_le IS NULL) AS parraines,' +
@@ -2055,7 +2069,7 @@ async function repondreAdmin(r, request, env) {
     if (r.sous === 'envoyer') {
       const cle = await cleDeLicence(env, l);
       if (!cle.cle) return json({ erreur: cle.raison }, 409);
-      const m = mailLicence({ type: l.type, dossiersHors: l.dossiers_hors, offre: l.offre, exp: l.fin || '', cle: cle.cle, signature: env.MAIL_SIGNATURE });
+      const m = mailLicence({ type: l.type, dossiersHors: l.dossiers_hors, illimite: l.illimite, offre: l.offre, exp: l.fin || '', cle: cle.cle, signature: env.MAIL_SIGNATURE });
       const envoi = await envoyerMail(env, { a: l.email, sujet: m.sujet, texte: m.texte });
       if (!envoi.ok) {
         await journaliser(env, 'mail.echec', { client_id: l.client_id, licence_id: l.id, detail: envoi.raison });
@@ -2151,7 +2165,7 @@ async function repondreAdmin(r, request, env) {
     const charge = chargeLicence({
       kid: ks.kid, id, sub: o.client.id, nom: o.client.nom, matricule: o.client.matricule || '',
       offre: o.e.offre, exp: o.e.exp, cabinet: o.e.cabinetCanon, emisLe: o.aujourdhui,
-      type: o.e.type, dossiersHors: o.e.dossiersHors
+      type: o.e.type, dossiersHors: o.e.dossiersHors, illimite: o.e.illimite === true
     });
     const chargeTexte = JSON.stringify(charge);
     let cle;
@@ -2160,10 +2174,11 @@ async function repondreAdmin(r, request, env) {
     const empreinte = await empreinteCle(cle);
     const ok = await executer(
       'INSERT INTO licences (id, client_id, kid, empreinte, offre, postes, debut, fin, prix, devise, remise, cabinet_empreinte,' +
-      ' emise_le, remplace_id, remplacee_motif, charge, type, dossiers_hors) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      ' emise_le, remplace_id, remplacee_motif, charge, type, dossiers_hors, illimite) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       id, o.client.id, ks.kid, empreinte, o.e.offre, null, o.e.debut || o.aujourdhui, o.e.exp || null, o.e.prix, o.e.devise,
       o.e.remise, o.e.cabinet || null, o.maintenant, o.remplace ? o.remplace.id : null, o.motif, chargeTexte,
-      o.e.type === 'cabinet' ? 'cabinet' : null, o.e.type === 'cabinet' ? o.e.dossiersHors : null);
+      o.e.type === 'cabinet' ? 'cabinet' : null, o.e.type === 'cabinet' ? o.e.dossiersHors : null,
+      o.e.illimite === true ? 1 : null);
     if (!ok) return json({ erreur: 'La base a refusé l\'écriture de la licence.' }, 500);
     const venteId = 'v_' + idCourt();
     await executer(
@@ -2177,7 +2192,8 @@ async function repondreAdmin(r, request, env) {
     const mail = o.e.payeeLe ? await envoyerSiPossible(envx, id, o.maintenant) : { envoye: false, raison: 'la vente n\'est pas encore payée' };
     return json({
       licence: { id, client: o.client.nom, matricule: o.client.matricule, email: o.client.email, kid: ks.kid, empreinte, offre: o.e.offre,
-        type: o.e.type, dossiers_hors: o.e.type === 'cabinet' ? o.e.dossiersHors : null, cabinet_empreinte: o.e.cabinet || null,
+        type: o.e.type, dossiers_hors: o.e.type === 'cabinet' ? o.e.dossiersHors : null,
+        illimite: o.e.illimite === true ? 1 : null, cabinet_empreinte: o.e.cabinet || null,
         debut: o.e.debut || o.aujourdhui, fin: o.e.exp || null, prix: o.e.prix, remise: o.e.remise, devise: o.e.devise, emise_le: o.maintenant,
         remplace_id: o.remplace ? o.remplace.id : null, remplacee_motif: o.motif },
       cle, vente: { id: venteId, montant_ht: o.e.montant, devise: o.e.devise, payee_le: o.e.payeeLe || null }, mail
@@ -2210,7 +2226,7 @@ async function repondreAdmin(r, request, env) {
     if (!l.email) return { envoye: false, raison: 'ce client n\'a pas d\'adresse e-mail : copie la clé et envoie-la toi-même' };
     const cle = await cleDeLicence(envx, l);
     if (!cle.cle) return { envoye: false, raison: cle.raison };
-    const m = mailLicence({ type: l.type, dossiersHors: l.dossiers_hors, offre: l.offre, exp: l.fin || '', cle: cle.cle, signature: envx.MAIL_SIGNATURE });
+    const m = mailLicence({ type: l.type, dossiersHors: l.dossiers_hors, illimite: l.illimite, offre: l.offre, exp: l.fin || '', cle: cle.cle, signature: envx.MAIL_SIGNATURE });
     const envoi = await envoyerMail(envx, { a: l.email, sujet: m.sujet, texte: m.texte });
     if (!envoi.ok) {
       await journaliser(envx, 'mail.echec', { client_id: l.client_id, licence_id: l.id, detail: envoi.raison });
@@ -2345,7 +2361,7 @@ async function repondreVerif(request, env) {
     return json({ ok: false, etat: 'illisible', phrase: 'Ce n\'est pas une empreinte de licence : attendu une suite de chiffres et de lettres a–f.' });
   }
   const l = await sansCasser(env.DB.prepare(
-    'SELECT offre, type, dossiers_hors, fin, revoquee_le, emise_le,' +
+    'SELECT offre, type, dossiers_hors, illimite, fin, revoquee_le, emise_le,' +
     ' (SELECT COUNT(*) FROM licences r2 WHERE r2.remplace_id = licences.id) AS remplacee' +
     ' FROM licences WHERE empreinte = ?').bind(nue).first(), null);
   if (!l) return json({ ok: false, etat: 'inconnue', phrase: 'Cette empreinte ne correspond à aucune licence émise par SkanFact.' });
@@ -3272,8 +3288,10 @@ const CONSOLE_HTML = `<!doctype html>
     // s'il est réglé (PRIX_CABINET_DOSSIER) : les tarifs du Cabinet ne sont pas fixés, et un chiffre
     // inventé ici deviendrait un tarif par simple préremplissage.
     var champQuota = function (valeur, cache) {
-      return '<label class="f" id="f-quota"' + (cache ? ' style="display:none"' : '') + '><span>Dossiers hors SkanFact couverts, en plus des 3 gratuits *</span>' +
-        '<input name="dossiersHors" type="number" min="1" max="5000" step="1" value="' + h(valeur == null ? '' : valeur) + '"></label>';
+      return '<label class="c w" id="f-sans-limite"' + (cache ? ' style="display:none"' : '') + '>'
+        + '<input type="checkbox" name="illimite"> Sans limite de dossiers</label>'
+        + '<label class="f" id="f-quota"' + (cache ? ' style="display:none"' : '') + '><span>Dossiers hors SkanFact couverts, en plus des 3 gratuits *</span>'
+        + '<input name="dossiersHors" type="number" min="1" max="5000" step="1" value="' + h(valeur == null ? '' : valeur) + '"></label>';
     };
     var prixCabinet = function (n) { return t.cabinetDossier > 0 && n > 0 ? Math.round(t.cabinetDossier * n * 1000) / 1000 : ''; };
     // Le PRIX PROPOSÉ, en une seule fonction — celle que le rendu et les gestionnaires appellent
@@ -3304,7 +3322,7 @@ const CONSOLE_HTML = `<!doctype html>
     if (!lic) {
       titre = 'Émettre une licence';
       why = 'Trois choses dans le même geste : la clé signée par le serveur, la vente, la ligne de journal. Si la vente est déjà payée, la clé part par mail tout de suite (quand le client a une adresse). ' +
-        'Une licence de <strong>cabinet</strong> porte l\\u2019empreinte du cabinet et un quota de dossiers hors SkanFact, jamais une offre : SkanFact Cabinet la reconnaît, SkanFact la refuse.';
+        'Une licence de <strong>cabinet</strong> porte l\\u2019empreinte du cabinet et un quota de dossiers hors SkanFact \\u2014 ou aucune limite \\u2014, jamais une offre : SkanFact Cabinet la reconnaît, SkanFact la refuse.';
       champs = '<label class="f w"><span>Client *</span>' + choixClient + '</label>' +
         '<label class="f w"><span>Type</span><select name="type">' +
           '<option value="entreprise">Entreprise — s\\u2019installe dans SkanFact (une offre, un matricule)</option>' +
@@ -3373,8 +3391,10 @@ const CONSOLE_HTML = `<!doctype html>
       // récapitule pas un formulaire incomplet — la relecture porterait sur un geste qui ne peut
       // pas aboutir, et c'est le refus normal qui doit parler (7.0.0).
       if (cabinet && !val('cabinet')) return '';
+      var sansLimite = !!(document.querySelector('#form [name="illimite"]') || {}).checked;
       var quoi = cabinet
-        ? (val('dossiersHors') ? val('dossiersHors') + ' dossiers hors SkanFact' : '')
+        ? (sansLimite ? 'dossiers hors SkanFact SANS LIMITE'
+          : (val('dossiersHors') ? val('dossiersHors') + ' dossiers hors SkanFact' : ''))
         : (etat.offres[val('offre')] || {}).label;
       if (!quoi) return '';
       var d = val('duree'), dl = val('dateLibre');
@@ -3389,6 +3409,7 @@ const CONSOLE_HTML = `<!doctype html>
     formulaire(titre, why, champs, ok, function () {
       var corps = { type: val('type') || undefined, offre: val('offre'), duree: val('duree'), dateLibre: val('dateLibre'), prix: val('prix'),
         dossiersHors: val('dossiersHors'),
+        illimite: !!(document.querySelector('#form [name="illimite"]') || {}).checked,
         remise: val('parrain') ? t.remiseParrainage : 0, cabinet: val('cabinet'),
         payeeLe: val('payee') ? val('payeeLe') : '', moyen: val('moyen'), devise: t.devise };
       var chemin;
@@ -3441,13 +3462,43 @@ const CONSOLE_HTML = `<!doctype html>
       var s = e && e.previousElementSibling; if (!s) return;
       s.textContent = obligatoire ? 'Empreinte du cabinet (le sujet de la clé) *' : 'Empreinte du cabinet (facultatif)';
     };
+    // « Sans limite » (10.8.0) : la case cache le quota, parce que réclamer un chiffre dont on vient
+    // de dire qu'il ne sert pas est un piège — et le champ porte une étoile d'obligation qu'on ne
+    // peut plus satisfaire. Les deux moitiés vont ensemble : cocher cache, décocher rend.
+    var sl = document.querySelector('#form [name="illimite"]');
+    // Tous les formulaires n'ont pas de sélecteur de type : le renouvellement d'une licence de
+    // cabinet n'en a pas, et son quota est visible DÈS LE RENDU. Sans cette lecture, la mise à jour le
+    // cachait au branchement — le champ obligatoire d'un formulaire qui ne peut plus aboutir.
+    // C'est le parcours de la console qui l'a vu : la relecture, non.
+    // ⚠️ Le nom NE PEUT PAS être « estCabinet » : la page en a déjà une, au niveau du module, et un
+    // « var » local masque la fonction du module dans TOUT le corps — y compris au-dessus de sa propre
+    // affectation, où il vaut « undefined ». La première version a donc tué « formEmettre » à sa
+    // troisième ligne, avant même d'arriver ici : le formulaire ne s'ouvrait plus, et rien
+    // n'apparaissait dans aucune console qu'on regarde. C'est la bombe silencieuse de la 7.22.0,
+    // dans une variante neuve : masquer, au lieu d'appeler ce qui n'existe pas.
+    var qEl = document.getElementById('f-quota');
+    var quotaAuDepart = !!qEl && qEl.style.display !== 'none';
+    var typeCabinet = function () { return st ? st.value === 'cabinet' : quotaAuDepart; };
+    var majQuota = function () {
+      var cabinet = typeCabinet();
+      montrerChamp('f-sans-limite', cabinet);
+      montrerChamp('f-quota', cabinet && !(sl && sl.checked));
+    };
     if (st) st.onchange = function () {
       var cabinet = st.value === 'cabinet';
-      montrerChamp('f-offre', !cabinet); montrerChamp('f-quota', cabinet); montrerChamp('f-parrain', !cabinet);
+      montrerChamp('f-offre', !cabinet); montrerChamp('f-parrain', !cabinet);
+      majQuota();
       etiquetteEmpreinte(cabinet);
       poserPrix(prixPropose(cabinet ? 'cabinet' : 'entreprise', so ? so.value : offreInitiale, sq && sq.value),
         cabinet ? 'proposé d\\u2019après le quota' : 'proposé d\\u2019après l\\u2019offre');
     };
+    if (sl) sl.onchange = function () {
+      majQuota();
+      // Sans quota, il n'y a plus de prix à proposer : le laisser afficher un montant calculé sur
+      // un nombre de dossiers qui ne compte plus serait un chiffre faux (7.16.0).
+      if (sl.checked) poserPrix('', 'sans limite : le prix se saisit à la main');
+    };
+    majQuota();
     if (sq) sq.oninput = function () {
       var q = Number(sq.value) || 0; if (!(t.cabinetDossier > 0)) return;
       // Émission ou renouvellement : le prix plein du quota. Changement : la différence au prorata.

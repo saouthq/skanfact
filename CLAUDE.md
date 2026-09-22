@@ -22,6 +22,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Un bouton qui **accepte le clic et ne fait rien** | 7.0.0 — les treize « Voir » sans action ; 7.17.0 — les écrans qui ne répondent pas |
 | L'application **gèle** sans erreur (Cmd+Q sans effet, défilement qui marche encore) | 5.2.3 — boucle infinie de date ; 6.5.0 — le chien de garde ; 8.1.0 — la veille n'est pas un gel |
 | Un **écran blanc**, une fenêtre qui ne s'ouvre pas, rien en console | 7.20.0, 7.22.0, 7.23.0 — une fonction ou une variable d'un autre module ; 9.1.0 — le garde-fou d'erreur et le lint |
+| Un **`var` local qui MASQUE une fonction du module** : elle vaut `undefined` dans tout le corps, y compris au-dessus de son affectation — `node --check`, le lint et le garde-fou du backtick passent tous les trois | 10.8.0 — le formulaire d'émission mort à sa troisième ligne |
 | Un **texte illisible** (blanc sur blanc), un en-tête mal aligné, un fil vertical | 7.12.0, 7.23.0, 7.27.0, 7.30.0, 9.4.3 — le HTML est juste, c'est la feuille de style qui décide : **mesurer** ; 10.6.0 — un alignement d'en-tête se DÉDUIT de ses cellules |
 | Une **exception qui échappe à un handler** : rien à l'écran qu'on ait écrit, rien au journal | 9.4.10 — `err.code` **ne traverse pas** le pont IPC |
 | Un bouton **hors de l'écran**, une barre empilée sur trois rangées | 7.13.0, 7.23.0 — `e2e:contraste` et `e2e:entetes` mesurent le bouton, jamais la page |
@@ -49,7 +50,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Une **balance auxiliaire** ne somme que les comptes COLLECTIFS, et son total se confronte à la générale | 9.8.8 — douze clients « soldés » contre un 411 débiteur |
 | Un **écart** se calcule avec ses DEUX termes, sinon il ne peut jamais atteindre zéro | 9.8.8 — l'écart de suspens sans le solde de départ |
 | Une **liste de colonnes** et les lignes qui la remplissent se confrontent clé par clé | 9.8.8 — quatre colonnes vides dans chaque paquet depuis la 6.1.0 |
-| La valeur par défaut d'une **règle qu'on ne connaît pas** est celle qui ne fait rien | 9.1.1 — le seuil de retenue à 0, la TFP qu'aucun métier ne porte ; 9.6.0 — une case fiscale vaut `null`, jamais 0 |
+| La valeur par défaut d'une **règle qu'on ne connaît pas** est celle qui ne fait rien | 9.1.1 — le seuil de retenue à 0, la TFP qu'aucun métier ne porte ; 9.6.0 — une case fiscale vaut `null`, jamais 0 ; 10.8.0 — un droit illimité vaut `null`, jamais 99 999 |
 | Une **réserve d'offre** se juge sur ce qu'elle fait au PAQUET, pas sur ce qu'elle retire de l'écran | 10.7.0 — on ouvre ce qui fausse, pas tout |
 | Une écriture **validée** ne se modifie jamais : elle se contre-passe, à la date du jour | 9.2.0 |
 | Une **extourne** n'est pas une contre-passation : l'originale reste dans son exercice, avec son numéro | 9.3.0, 9.8.0 |
@@ -68,10 +69,10 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Une **réexportation** se prouve par l'identité d'objet, jamais par le résultat | 9.6.1 |
 | Une preuve par réintroduction ne vaut que sur un lot **VERT** : sinon on mesure le vide | 9.7.0 |
 | Quand une **mesure fait changer le code**, c'est l'INSTRUMENT qui se relit en premier : sinon il annonce un défaut qui n'existe plus | 9.9.1 — `npm run charge` mesurait le base64 d'un livre devenu binaire par sa faute |
-| Un **instrument qui n'ATTEINT pas l'écran** annonce « tout va bien » : l'état par défaut de l'objet qu'on ouvre cache la page autant que l'onglet par défaut | 9.8.8 — T-55, quatre écrans sur onze ; 9.4.3 ; 10.6.0 — cinq captures sur dix, et huit surfaces qu'aucune adresse ne mène |
+| Un **instrument qui n'ATTEINT pas l'écran** annonce « tout va bien » : l'état par défaut de l'objet qu'on ouvre cache la page autant que l'onglet par défaut | 9.8.8 — T-55, quatre écrans sur onze ; 9.4.3 ; 10.6.0 — cinq captures sur dix, et huit surfaces qu'aucune adresse ne mène ; 10.8.0 — un formulaire à DEUX visages, mesuré dans un seul |
 | Un test **trop LARGE** laisse passer le défaut, aussi sûrement qu'un test trop étroit accuse du code juste | 9.9.0 — la seconde piste d'audit qui satisfaisait l'assertion, la tranche qui avalait la porte ; 9.4.7 |
 | Un test dont les **DONNÉES ne discriminent pas** ne prouve rien : le modèle livré n'avait aucun préfixe imbriqué | 10.0.0 ; 9.6.1 |
-| **Élargir** une sonde se prouve dans les DEUX sens : qu'elle voie le défaut, et qu'elle ne voie rien ailleurs | 9.8.8 — T-49 bis, 28 accusations sur du code juste |
+| **Élargir** une sonde se prouve dans les DEUX sens : qu'elle voie le défaut, et qu'elle ne voie rien ailleurs | 9.8.8 — T-49 bis, 28 accusations sur du code juste ; 10.8.0 — le garde-fou qui ne lisait qu'une famille de déclarations sur deux |
 | Un **refus qu'on avale** en silence est pire que le refus : l'écran affirme alors le contraire du vrai | 9.8.0 |
 | Un parcours qui compare du texte **aplatit les espaces** : `textContent` garde les retours de la source | 9.8.0 |
 | Un **adaptateur** vaut mieux qu'une seconde implémentation ; deux moteurs divergent | 9.7.0 |
@@ -87,6 +88,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Un test qui **appelle une fonction autrement que son unique appelant** ne prouve rien de l'application | 9.8.7 |
 | Un **commentaire de gabarit** `${/* */''}` survit au nettoyage ligne à ligne : un test tombe sur une phrase citée | 9.8.8 |
 | `\'` dans un gabarit rend une **apostrophe nue** : le fichier reste analysable, la PAGE meurt | 10.5.0 — écran vide, rien dans aucune console |
+| Un **garde-fou écrit et jamais prouvé** couvre ce qu'on a pensé, pas ce qui casse : il se prouve sur le défaut RÉEL qui l'a fait écrire | 10.8.0 — 47 noms lus sur 103, et le défaut vivait dans les 56 autres |
 | Un **compte de fichiers** n'est pas un compte de livres : l'index et la génération précédente font « 2 » | 9.8.8 |
 
 **Les deux applications**
@@ -5440,6 +5442,61 @@ du propriétaire, pas de cette version.
 
 Prouvé : trois défauts réintroduits un par un font tomber leur test, et le parcours réel exerce
 les deux moitiés — ce que l'offre ouvre et ce qu'elle ferme.
+
+### 10.8.0 — « Sans limite » est un état, pas un très grand nombre
+
+Une licence de cabinet peut porter « sans limite de dossiers ». Décidé pour les premiers cabinets,
+dont le pilote : leur vendre un quota le jour où on leur demande de tester le produit n'a pas de
+sens, et le calibrer au jugé encore moins.
+
+Règles apprises, à ne pas recasser :
+
+- **Un droit illimité s'écrit comme un ÉTAT, jamais comme un très grand nombre.** Une clé à 99 999
+  dossiers aurait fonctionné sans une ligne de code — et c'est précisément ce qu'il ne fallait pas
+  faire : le cabinet aurait lu « 100 002 dossiers autorisés » sur l'écran qui doit le rassurer, et
+  une barre de progression aurait avancé vers une limite imaginaire. `autorises` vaut `null`,
+  l'écran écrit « sans limite », et le verrou ne peut plus tomber. C'est la règle du « — » plutôt
+  que du zéro (9.6.0), vue par l'autre bout : **un nombre que personne n'a décidé ne s'affiche
+  pas**, qu'il soit trop petit ou trop grand.
+- **Ce qui ne sert plus se cache, et ce qui en dépendait s'efface.** La case cache le quota —
+  réclamer un chiffre dont on vient de dire qu'il ne compte pas est un piège, et le champ porte une
+  étoile d'obligation qu'on ne pourrait plus satisfaire — et elle vide le prix proposé, qui se
+  calculait sur ce quota : un montant déduit d'un nombre de dossiers qui ne compte plus serait un
+  chiffre faux (7.16.0). Le prix se saisit à la main, et l'écran dit pourquoi.
+- **Un champ de la charge signée entre en QUEUE** (8.5.0, 9.4.1, re-rencontrée) : au milieu, il
+  changerait l'ordre des champs déjà signés, et une clé refabriquée depuis sa charge rangée en base
+  ne serait plus identique à celle qu'on a envoyée. Une clé d'avant se comporte exactement comme
+  avant, et un test fixe la liste exacte — l'ajout est une **décision**, jamais un effet de bord.
+- **Le statut de fondateur se POSE, il ne se déduit jamais du rang d'émission.** Skander : « vu que
+  je vais tester l'application je vais créer des licences, est-ce que ça va pas me cramer mes 20
+  licences sans limite ? » Non, parce que **rien ne compte** — vérifié avant de répondre plutôt
+  qu'affirmé de mémoire : le mot « fondateur » n'apparaît nulle part dans le code. La séparation qui
+  rend ça propre, et qui vaudra pour tout ce qu'on voudra compter un jour : **la clé porte ce que
+  l'application doit faire respecter** (le quota) ; **la console porte ce que l'éditeur doit
+  compter** (le statut commercial). L'application n'a pas à savoir qu'on compte jusqu'à vingt.
+- **Un garde-fou qui couvre la moitié des noms rassure sans protéger.** Celui de la veille interdit
+  qu'une déclaration locale masque une fonction du module de la console — la faute qui avait tué le
+  formulaire d'émission sans une ligne dans aucune console. Il ne lisait que `function nom(` : la
+  page en a 47 sous cette forme et **22 sous la forme `var nom = function`**, qui est très
+  exactement la famille où vivait le défaut. Réintroduit, il restait **vert**. Je ne l'ai su qu'en
+  essayant de le faire tomber — et c'est la seule façon de le savoir (7.2.0). Élargi, il se prouve
+  dans les deux sens : il nomme le défaut, et il ne dit rien sur les 69 fonctions du code juste
+  (9.8.8).
+- **Un instrument peut ATTEINDRE l'écran et le mesurer dans le seul état où le contrôle neuf
+  n'existe pas.** Le formulaire d'émission a deux visages — une licence d'entreprise montre l'offre
+  et le parrainage, une licence de cabinet montre l'empreinte, le quota et « sans limite » — et le
+  parcours ne basculait jamais le type. La case est donc passée sous 2 445 écarts sans en faire
+  bouger un seul. C'est **T-55 d'un cran plus bas** (9.8.8) : là-bas c'était l'objet ouvert qui
+  cachait sept onglets, ici c'est l'état par défaut d'un formulaire qui cache la moitié de ses
+  champs. De 93 à 101 écrans, 2 125 boutons, 648 colonnes, 2 669 écarts. **Un formulaire à
+  plusieurs visages se mesure dans chacun.**
+- **Une phrase du formulaire promettait le quota sans condition** : « une licence de cabinet porte
+  l'empreinte du cabinet et un quota de dossiers hors SkanFact ». Vraie jusqu'à cette version, fausse
+  après — et c'est la capture du nouvel état qui l'a montrée. Une phrase affichée que rien ne tient
+  est un bug (7.3.0), y compris celle qu'on a écrite soi-même deux versions plus tôt.
+
+Prouvé : trois défauts réintroduits un par un font tomber leur test, plus les deux directions du
+garde-fou élargi.
 
 ## Pistes pour la suite (non demandées)
 

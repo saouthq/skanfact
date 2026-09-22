@@ -3987,6 +3987,131 @@ t('10.7.0 : la ligne « à immobiliser » n\'accuse pas un client dont l\'offre 
     'réserver un AUTRE module ne doit pas changer cette ligne');
 });
 
+// 10.8.0 — « SANS LIMITE » EST UN ÉTAT, PAS UN TRÈS GRAND NOMBRE.
+//
+// Sans lui, une licence de cabinet « illimitée » ne pouvait s'écrire qu'en posant un quota énorme :
+// l'application aurait fonctionné, et affiché « 100 002 dossiers autorisés » — un chiffre que
+// personne n'a décidé, sur l'écran même qui doit rassurer. C'est la règle du projet depuis la
+// 7.16.0 : un chiffre qu'on ne peut pas expliquer est pire qu'un chiffre absent.
+//
+// Le test porte les DEUX sens. Sans la seconde moitié, poser `autorisesInfini` partout le
+// satisferait — et on aurait ouvert le quota de tout le monde en croyant l'ouvrir pour un seul
+// (9.8.8, T-49 bis : élargir une sonde se prouve dans les deux sens).
+t('10.8.0 : « sans limite » ouvre le quota d\'un cabinet, et de lui seul', () => {
+  const lic2 = require('../src/licence.js');
+  const k = lic2.generateKeys();
+  const EMP = '3f9a2c1e88b7d4056a12';
+  const cle = o => lic2.signLicence({ nom: 'Cabinet Ben Youssef', type: 'cabinet', cabinet: EMP,
+    exp: '2027-09-22', ...o }, k.privateKey);
+  const S = (key, comptes) => lic2.licenceCabinet({ publicKey: k.publicKey, key, empreinte: EMP,
+    comptes, today: '2026-09-22' });
+
+  // 1. Une clé ORDINAIRE compte toujours, et verrouille au-delà de son quota. C'est la moitié qui
+  //    prouve que le test discrimine : sans elle, n'importe quel code passerait.
+  const ordinaire = cle({ dossiersHors: 5 });
+  assert.strictEqual(S(ordinaire, 8).autorises, lic2.CABINET_GRATUITS + 5);
+  assert.strictEqual(S(ordinaire, 8).locked, false, '3 gratuits + 5 achetés couvrent 8 dossiers');
+  assert.strictEqual(S(ordinaire, 9).locked, true, 'au-delà, la validation attend une licence');
+
+  // 2. Une clé SANS LIMITE ne compte plus rien, et ne verrouille jamais — même à 600 dossiers.
+  const sansLimite = cle({ dossiersHors: 0, illimite: true });
+  const st = S(sansLimite, 600);
+  assert.strictEqual(st.state, 'active');
+  assert.strictEqual(st.locked, false, 'une licence sans limite ne verrouille jamais');
+  assert.strictEqual(st.depasse, 0);
+  // `autorises` vaut NULL, jamais un nombre : c'est ce qui permet à l'écran d'écrire « sans limite »
+  // au lieu d'un chiffre inventé. Un très grand nombre ici serait le défaut qu'on corrige.
+  assert.strictEqual(st.autorises, null, 'un quota sans limite n\'a pas de nombre à afficher');
+  assert.ok(/sans limite/i.test(st.label), 'l\'écran doit le DIRE : ' + st.label);
+  // Resserré : ma première version interdisait TOUT nombre à quatre chiffres, et elle est tombée
+  // sur l'année de fin — qui est légitime. Un test trop large accuse du code juste, aussi sûrement
+  // qu'un test trop étroit laisse passer le défaut (9.4.7). La règle vraie : aucun NOMBRE DE
+  // DOSSIERS, puisque c'est précisément ce qu'on ne sait plus compter.
+  assert.ok(!/\d+\s*dossier/i.test(st.label), 'aucun nombre de dossiers dans le libellé : ' + st.label);
+
+  // 3. Le défaut est celui qui ne change rien : une clé qui ne porte pas le champ — c'est-à-dire
+  //    TOUTES celles vendues avant la 10.8.0 — compte exactement comme avant.
+  assert.strictEqual(S(cle({ dossiersHors: 2 }), 6).locked, true,
+    'une clé d\'avant la 10.8.0 garde son quota : rien de ce qui a été vendu ne bouge');
+
+  // 4. Et « sans limite » ne déborde pas sur l\'absence de clé : un cabinet sans licence garde ses
+  //    trois dossiers gratuits, pas l\'infini.
+  const sansCle = lic2.licenceCabinet({ publicKey: k.publicKey, empreinte: EMP, comptes: 9, today: '2026-09-22' });
+  assert.strictEqual(sansCle.autorises, lic2.CABINET_GRATUITS);
+  assert.strictEqual(sansCle.locked, true, 'sans clé, le palier gratuit s\'applique — « sans limite » ne fuit pas');
+});
+
+// Le serveur doit savoir l'ÉMETTRE, et refuser ce qui n'a pas de sens.
+ta('10.8.0 : la console émet « sans limite » sans réclamer un quota qui ne sert pas', async () => {
+  const P = await import('../plateforme/skanfact-api.mjs');
+  const base = { type: 'cabinet', cabinet: '3f9a2c1e88b7d4056a12', duree: '1a', prix: 0 };
+
+  // Coché : le quota ne se demande plus. Réclamer un chiffre dont on vient de dire qu'il ne sert
+  // pas est un piège — et le champ porte une étoile d'obligation qu'on ne peut plus satisfaire.
+  const ok = P.nettoyerEmission({ ...base, illimite: true }, '2026-09-22');
+  assert.strictEqual(ok.ok, true, ok.erreur);
+  assert.strictEqual(ok.e.illimite, true);
+  assert.strictEqual(ok.e.dossiersHors, 0, 'sans limite : il n\'y a plus de quota à porter');
+
+  // Décoché : le quota redevient obligatoire, et le refus NOMME la case qui débloque (7.0.0).
+  const sans = P.nettoyerEmission(base, '2026-09-22');
+  assert.strictEqual(sans.ok, false);
+  assert.ok(/sans limite/.test(sans.erreur), 'le refus doit nommer la case qui débloque : ' + sans.erreur);
+
+  // « Sans limite » n'a aucun sens pour une entreprise : elle ne compte aucun dossier. On refuse
+  // plutôt que d'ignorer en silence — un drapeau avalé est un drapeau qu'on croit posé.
+  const ent = P.nettoyerEmission({ type: 'entreprise', offre: 'entreprise', duree: '1a', prix: 690, illimite: true }, '2026-09-22');
+  assert.strictEqual(ent.ok, false);
+  assert.ok(/CABINET/.test(ent.erreur), ent.erreur);
+
+  // Le libellé, partagé par le journal, le mail et la console : un seul endroit l'écrit.
+  assert.strictEqual(P.libelleLicence({ type: 'cabinet', illimite: 1 }), 'Cabinet — dossiers sans limite');
+  assert.strictEqual(P.libelleLicence({ type: 'cabinet', dossiers_hors: 5 }), 'Cabinet — 5 dossiers hors SkanFact');
+});
+
+// 10.8.0 — UN `var` LOCAL NE MASQUE PAS UNE FONCTION DU MODULE.
+//
+// Le piège, rencontré en livrant « sans limite » : la page portait déjà `estCabinet(lic)` au niveau
+// du module, et un `var estCabinet = function …` écrit dans `formEmettre` l'a masqué dans TOUT le
+// corps de la fonction — y compris trois lignes AU-DESSUS de sa propre affectation, où il vaut
+// `undefined`. Le formulaire d'émission ne s'ouvrait plus du tout, et rien n'apparaissait dans
+// aucune console qu'on regarde : `node --check` passe, le lint passe, le garde-fou du backtick
+// passe. C'est la bombe silencieuse de la 7.22.0 dans une variante neuve — masquer, au lieu
+// d'appeler ce qui n'existe pas — et c'est le parcours réel qui l'a trouvée, jamais la relecture.
+//
+// Le test lit les déclarations du GABARIT de la console et refuse qu'un nom déclaré à l'intérieur
+// d'une fonction reprenne celui d'une fonction du module.
+t('10.8.0 : aucune déclaration locale ne masque une fonction du module de la console', () => {
+  const src = lireSource('plateforme', 'skanfact-api.mjs');
+  const i = src.indexOf('const CONSOLE_HTML = ');
+  assert.ok(i > 0, 'le gabarit de la console est introuvable');
+  const page = src.slice(i, src.indexOf('</html>`', i));
+  // On juge du CODE : les commentaires citent des noms pour les expliquer, et ce test-ci en cite
+  // trois. Sans ce nettoyage, il tomberait sur sa propre explication (6.8.0, 7.25.0, 9.4.10).
+  const code = page.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
+  assert.ok(code.includes('function formEmettre('), 'le nettoyage a mangé le code');
+
+  // Les fonctions du module, à deux espaces d'indentation, sous leurs DEUX formes — et c'est la
+  // preuve par réintroduction qui l'a exigé : la première version de ce test ne lisait que
+  // `function nom(`, la page en a 47 ; ses 22 autres fonctions s'écrivent `var nom = function`, et
+  // c'est très exactement la famille où vivait le défaut. Un garde-fou qui couvre la moitié des
+  // noms rassure sans protéger (10.0.1).
+  const duModule = new Set([
+    ...[...code.matchAll(/^ {2}function ([A-Za-z_$][\w$]*)\s*\(/gm)].map(m => m[1]),
+    ...[...code.matchAll(/^ {2}var ([A-Za-z_$][\w$]*)\s*=\s*(?:function\b|\([^)]*\)\s*=>)/gm)].map(m => m[1]),
+  ]);
+  assert.ok(duModule.size >= 50, 'trop peu de fonctions lues : le découpage est faux — ' + duModule.size);
+
+  // Les déclarations locales : `var`, `let` ou `const` indentés plus profond que deux espaces. On ne
+  // juge que les noms de FONCTIONS : c'est un appel qui meurt, et une donnée locale qui reprend le
+  // nom d'une donnée du module est laide sans être mortelle.
+  const masquees = [...code.matchAll(/^ {4,}(?:var|let|const) ([A-Za-z_$][\w$]*)\s*=/gm)]
+    .map(m => m[1]).filter(n => duModule.has(n));
+  assert.deepStrictEqual([...new Set(masquees)], [],
+    'ces noms sont déclarés en local ET définis au niveau du module : le `var` local vaut `undefined` '
+    + 'dans tout le corps, y compris au-dessus de son affectation — la page meurt sans un mot');
+});
+
 t('éditeur : la clé privée ne traverse jamais le pont, et l\'app livrée embarque la clé publique', () => {
   const main = lireSource('src', 'main.js').replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
   // La tranche part de `clePubliqueEditeur()` — la première lecture de la clé privée (8.0.0 : elle
@@ -11121,12 +11246,15 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
       const master = lic.generateKeys(), srv = lic.generateKeys(), autre = lic.generateKeys();
       const charge = P.chargeLicence({ kid: 'srv-1', id: '3f9a2c1e', sub: 'cli_1', nom: 'Menuiserie Trabelsi', matricule: '1234567A/M/P/000', offre: 'independant', exp: '2027-09-15', cabinet: '', emisLe: '2026-09-15' });
       assert.strictEqual(charge.format, 2);
-      // Les deux champs de la 9.4.0 (`type`, `dossiersHors`) sont en QUEUE, et c'est la seule place
-      // possible : les insérer au milieu changerait l'ordre des champs déjà signés, et une clé
-      // refabriquée depuis sa charge rangée en base ne serait plus identique à celle qu'on a
-      // envoyée — or c'est exactement ce qui permet de ne jamais ranger la clé elle-même.
-      assert.deepStrictEqual(Object.keys(charge), ['format', 'kid', 'id', 'sub', 'nom', 'matricule', 'offre', 'exp', 'cabinet', 'note', 'emisLe', 'type', 'dossiersHors'],
+      // Les champs ajoutés après coup (`type` et `dossiersHors` en 9.4.0, `illimite` en 10.8.0) sont
+      // en QUEUE, et c'est la seule place possible : les insérer au milieu changerait l'ordre des
+      // champs déjà signés, et une clé refabriquée depuis sa charge rangée en base ne serait plus
+      // identique à celle qu'on a envoyée — or c'est exactement ce qui permet de ne jamais ranger la
+      // clé elle-même. Cette liste EXACTE est le contrat : un champ ajouté est une DÉCISION, jamais
+      // un effet de bord. Ce test a d'ailleurs fait son travail en tombant sur `illimite`.
+      assert.deepStrictEqual(Object.keys(charge), ['format', 'kid', 'id', 'sub', 'nom', 'matricule', 'offre', 'exp', 'cabinet', 'note', 'emisLe', 'type', 'dossiersHors', 'illimite'],
         'l\'ordre des champs est celui que l\'application écrit — un champ déplacé change la signature');
+      assert.strictEqual(charge.illimite, false, 'une clé qui ne demande rien n\'est pas « sans limite » : le défaut est celui qui ne change rien');
       assert.strictEqual(charge.type, 'entreprise', 'un type absent vaut « entreprise » : rien de ce qui a été vendu ne bouge');
       assert.strictEqual(charge.dossiersHors, 0);
       const cle = await P.signerLicence(charge, srv.privateKey);
