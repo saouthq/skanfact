@@ -17,7 +17,16 @@ on:
     paths:
       - 'worker/skanfact-maj.mjs'
       - 'worker/wrangler.toml'
+  # L'essai de contact envoie un VRAI message dans la boîte de `CONTACT_TO`. C'est la seule
+  # chose que les contrôles automatiques ne peuvent pas prouver : ils vérifient que la porte
+  # s'ouvre, pas que la lettre arrive. Il est donc à la DEMANDE, jamais sur une poussée — un
+  # déploiement qui envoie un mail à chaque fois finit par remplir la boîte qu'il teste.
   workflow_dispatch:
+    inputs:
+      essai_contact:
+        description: "Envoyer un message d'essai au formulaire de contact"
+        type: boolean
+        default: false
 
 concurrency:
   group: relais-deploy
@@ -91,3 +100,34 @@ jobs:
           echo "HTTP $c"
           test "$c" = "204"
           echo "Le relais sert /contact au site : le code déployé est bien celui-ci."
+          echo "$url" > /tmp/relais.url
+
+      # La lettre arrive-t-elle ? Un `204` sur OPTIONS dit que la porte s'ouvre ; il ne dit rien
+      # de Resend, du domaine vérifié, ni de la boîte qui reçoit. Seul un envoi réel le prouve —
+      # et c'est aussi le seul qui coûte un message, donc il ne part que si on le demande.
+      #
+      # Les trois réponses possibles disent chacune autre chose, et l'étape les distingue :
+      # `{"ok":true}` la chaîne entière tient ; `503 configurer` il manque RESEND_KEY ou
+      # CONTACT_TO sur le worker ; `502` Resend a refusé — presque toujours un expéditeur qui
+      # n'est pas sur le domaine vérifié.
+      - name: Envoyer un message d'essai au formulaire
+        if: ${{ inputs.essai_contact }}
+        run: |
+          set -euo pipefail
+          url=$(cat /tmp/relais.url 2>/dev/null || true)
+          if [ -z "$url" ]; then
+            echo "::warning::adresse du relais inconnue — aucun essai envoyé."
+            exit 0
+          fi
+          corps='{"nom":"Essai automatique","email":"contact@skanfact.tn","societe":"SkanFact","corps":"Message d'"'"'essai envoyé par le workflow Relais pour vérifier que le formulaire du site arrive bien dans cette boîte. Aucune action requise."}'
+          code=$(curl -s -o /tmp/contact.json -w '%{http_code}' --max-time 25 \
+                   -X POST -H 'Origin: https://skanfact.tn' -H 'Content-Type: application/json' \
+                   -d "$corps" "$url/contact")
+          echo "HTTP $code"; cat /tmp/contact.json; echo
+          case "$code" in
+            200) grep -q '"ok":true' /tmp/contact.json \
+                   && echo "Le message est parti : regarde la boîte de CONTACT_TO." ;;
+            503) echo "::error::le formulaire n'est pas branché : il manque RESEND_KEY ou CONTACT_TO sur le worker."; exit 1 ;;
+            502) echo "::error::Resend a refusé l'envoi — vérifie que CONTACT_FROM est sur le domaine vérifié."; exit 1 ;;
+            *)   echo "::error::réponse inattendue ($code)."; exit 1 ;;
+          esac
