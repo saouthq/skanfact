@@ -265,6 +265,13 @@ const L = require('../../src/licence.js');
   if (st1.reserves.includes('achats')) throw new Error('l\'offre Indépendant ne doit plus réserver Achats : sans lui, la TVA déductible du paquet vaut zéro et le client déclare un chiffre faux (10.7.0)');
   const panneau = await win.textContent('#lic-panel');
   if (!/Indépendant/.test(panneau)) throw new Error('le panneau Licence ne nomme pas l\'offre');
+  // 10.9.2 — l'empreinte de la clé s'AFFICHE, avec son bouton pour la prendre. La page
+  // skanfact.tn/verifier envoyait la chercher ici, et rien ne l'y montrait : on demandait une
+  // valeur impossible à obtenir. Et c'est bien CELLE de la clé collée — une empreinte affichée
+  // qui ne serait pas la sienne enverrait vérifier la licence de quelqu'un d'autre.
+  const attendue = require('../../src/licence.js').empreinteCle(l1.key);
+  if (!panneau.includes(attendue)) throw new Error('le panneau Licence doit afficher l\'empreinte ' + attendue + ' : ' + panneau.slice(0, 200));
+  if (!await win.$('#lic-copier-emp')) throw new Error('trente-deux caractères affichés sans bouton « Copier » se recopient à la main, donc faux');
   // Le métier « informatique » n'affiche pas le module Pilotage : on affiche TOUT (aucun choix de
   // modules enregistré = tout), sinon « pas de cadenas sur Statistiques » serait vrai faute de lien.
   await win.evaluate(async () => { delete window.__data.company.modules; await window.skanfact.saveData(window.__data); });

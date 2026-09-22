@@ -3349,6 +3349,37 @@ t('8.4.0 : une licence sans kid reste vérifiée par la clé maître — sinon t
 // pas une Ed25519 lisible, si elle est CONFONDUE avec la maître ou srv-1 (une seule clé pour deux
 // usages, c'est la compromission de l'une qui emporte l'autre), ou si une privée s'est glissée dans
 // le fichier.
+// 10.9.2 — L'empreinte d'une licence existe en TROIS exemplaires : l'application la calcule pour
+// l'afficher, le worker pour ranger la licence en base, et le navigateur du site pour convertir
+// une clé collée. Si elles divergent, l'empreinte que le client copie ne désigne plus rien, et la
+// page de vérification répond « inconnue » sur une licence parfaitement valable. Rien ne le
+// vérifiait avant ce test.
+ta('10.9.2 : l\'empreinte d\'une clé est la MÊME dans l\'application, dans le worker et dans le navigateur', async () => {
+  const P = await import('../plateforme/skanfact-api.mjs');
+  const paire = lic.generateKeys();
+  const cle = lic.signLicence({ nom: 'Trabelsi', matricule: '1234567A', exp: '2030-01-01' }, paire.privateKey);
+
+  const cote = lic.empreinteCle(cle);            // src/licence.js — Node, createHash
+  const serveur = await P.empreinteCle(cle);     // le worker — WebCrypto
+  assert.strictEqual(cote, serveur, 'application et serveur doivent rendre la MÊME empreinte');
+  assert.match(cote, /^[0-9a-f]{32}$/, 'trente-deux hexadécimaux, sans séparateur');
+
+  // Le troisième exemplaire vit dans le navigateur (`empreinteDeLaCle` du site). On le rejoue ici
+  // avec l'API du navigateur — `crypto.webcrypto` est la même que celle du worker — plutôt que de
+  // se fier à sa relecture : c'est la seule façon de savoir que les trois s'accordent.
+  // `globalThis.crypto` EST WebCrypto en Node 18+ : c'est exactement l'objet qu'un navigateur
+  // expose, donc rejouer le calcul du site ici n'est pas une imitation.
+  const buf = await globalThis.crypto.subtle.digest('SHA-256', new TextEncoder().encode(cle.trim()));
+  let hex = '';
+  new Uint8Array(buf).forEach(o => { hex += ('0' + o.toString(16)).slice(-2); });
+  assert.strictEqual(hex.slice(0, 32), cote, 'le navigateur du site doit rendre la même empreinte');
+
+  // Et elle se TRIME, des trois côtés : une clé collée depuis un mail arrive avec un retour à la
+  // ligne, et une empreinte calculée sur la clé « plus un saut de ligne » ne désigne rien.
+  assert.strictEqual(lic.empreinteCle('  ' + cle + '\n'), cote, 'un copier-coller ne change pas l\'empreinte');
+  assert.strictEqual(await P.empreinteCle(cle + '\n'), cote);
+});
+
 t('9.4.1 : la clé de réponse du plan de contrôle est embarquée, distincte, et vérifie vraiment', () => {
   const crypto = require('crypto');
   const f = path.join(__dirname, '..', 'build', 'licences-publiques.json');
