@@ -1,6 +1,6 @@
 # Tarifs SkanFact — la référence
 
-*État du code au 22/09/2026, version 10.8.0-beta.1.*
+*État du code au 23/09/2026, version 10.9.2 — publiée en stable.*
 
 Ce document dit ce que le **code fait**, pour que la page Tarifs de `skanfact.tn` ne promette rien
 que l'application ne tienne. Il vit ici, dans le dépôt, et pas dans un fichier qu'on se passe de
@@ -234,6 +234,12 @@ est une règle du projet : une phrase affichée que rien ne tient est un bug, pa
 
 ### Q2 — `skanfact.tn/verifier` n'existe pas
 
+> **Dépassé le 23/09/2026.** La page existe désormais sur le site (`verifier.html`) et interroge le
+> worker directement (CORS depuis la 10.8.0-beta.6). Elle accepte la **clé entière** et en calcule
+> l'empreinte dans le navigateur, et l'application affiche l'empreinte de la licence depuis la
+> 10.9.2. La réponse d'origine est gardée ci-dessous : elle explique pourquoi le site ne
+> reconstruit pas la vérification.
+
 **L'erreur est de mon côté, et je la corrige ici.** La page de vérification existe et fonctionne,
 mais elle n'est **pas servie par le site** : c'est le worker Cloudflare qui la sert, à
 `<domaine de l'API>/verifier` — donc `api.skanfact.tn/verifier` une fois le worker déployé sur ce
@@ -264,18 +270,14 @@ dit.
 
 | | Version |
 |---|---|
-| Dernière **stable** publiée | **v10.0.0** (21/09/2026) |
-| Dernière **préversion** publiée | v10.4.0-beta.3 (22/09/2026) |
-| Code du dépôt | 10.7.0-beta.1 (non publié) |
+| Dernière **stable** publiée | **v10.9.2** (23/09/2026) |
+| Code du dépôt | 10.9.2 |
 
-Entre la dernière stable et le code, **huit versions n'ont jamais été publiées** : 10.0.1, 10.1.0,
-10.2.0, 10.3.0, 10.4.0, 10.5.0, 10.6.0 et 10.7.0. Le pied du site a donc raison de lire 10.0.0 —
-c'est bien la dernière version qu'un client peut installer.
-
-La prochaine stable passera par une release publiée, comme toutes les autres : le chemin est décrit
-dans `CLAUDE.md` § « Publier une version ». Rien de ce qui est écrit ici ne dépend d'une version non
-publiée, **sauf le passage d'Achats à l'offre Indépendant (§ 2)** : il est livré en 10.7.0-beta.1 et
-donc pas encore chez les clients. Le site peut l'annoncer le jour de la publication, pas avant.
+*Mis à jour le 23/09/2026.* Le passage d'Achats à l'offre Indépendant (§ 2) est livré en stable
+depuis la 10.9.2 : il est chez les clients, et le site l'annonce. La page Tarifs disait encore
+« Lecture seule » sur Achats pour l'Indépendant, et la carte Entreprise se vendait par « Vous
+achetez » : les deux ont été corrigés le même jour, avec la description structurée de l'accueil.
+Rien de ce qui est écrit ici ne dépend plus d'une version non publiée.
 
 ---
 
