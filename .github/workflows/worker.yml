@@ -132,7 +132,12 @@ jobs:
 
           # L'autre sens, et c'est la moitié qu'on oublie (9.8.8) : une origine tierce reçoit sa
           # réponse, jamais la permission de la lire.
+          # `grep … && { exit 1; }` fonctionne, mais son sort sous `set -e` tient à une subtilité de
+          # bash (l'échec du premier membre d'un `&&` est ignoré). Un contrôle dont on doit
+          # connaître les règles du shell pour savoir s'il mesure vraiment n'est pas un contrôle.
           tiers=$(curl -s -D - -o /dev/null --max-time 20 -X OPTIONS -H 'Origin: https://ailleurs.example' "$url/v1/verif/licence")
-          echo "$tiers" | grep -qi '^access-control-allow-origin:' \
-            && { echo "::error::l'autorisation est posée pour n'importe quelle page du web."; exit 1; }
+          if echo "$tiers" | grep -qi '^access-control-allow-origin:'; then
+            echo "::error::l'autorisation est posée pour n'importe quelle page du web."
+            exit 1
+          fi
           echo "L'autorisation est posée pour le site, et pour lui seul."
