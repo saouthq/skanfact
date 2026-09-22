@@ -46,7 +46,14 @@ const ACTIONS = {
   // 10.5.0 — la vérification PUBLIQUE d'une empreinte de licence : sans secret, et sans rien
   // divulguer de plus que ce que celui qui la présente sait déjà. C'est le seul espace ouvert.
   verif: ['licence'],
+  // 10.9.0 — l'ACHAT en ligne, ouvert au site. Public comme `verif`, et pour la même raison : c'est
+  // un visiteur qui l'appelle, depuis une page, avant d'être qui que ce soit pour nous. Ce qui le
+  // protège n'est pas un secret — il n'en a pas — c'est que RIEN de ce qu'il envoie ne décide d'un
+  // montant, et que la preuve du paiement se redemande au prestataire, jamais au navigateur.
+  achat: ['tarifs', 'commander', 'etat', 'webhook'],
   admin: ['etat', 'stats', 'clients', 'licences', 'activations', 'ventes', 'evenements', 'importer',
+    // 10.9.0 — les commandes en ligne, et le bouton qui redemande une preuve au prestataire.
+    'commandes',
     // 10.4.0 — l'espace de gestion : le parc des DEUX applications, les cabinets, ce qui demande une
     // décision, la santé des canaux de mise à jour, et l'export de la base.
     'parc', 'cabinets', 'alertes', 'sante', 'export',
@@ -55,7 +62,9 @@ const ACTIONS = {
 };
 // `relance` et `devis` sont les sous-actions qui se LISENT (GET) : elles ne changent rien, elles
 // composent le texte d'un mail que l'éditeur relira dans sa propre messagerie avant de l'envoyer.
-const SOUS_ACTIONS = ['revoquer', 'renouveler', 'changer-offre', 'envoyer', 'payee', 'facturee', 'relance', 'suivi', 'devis'];
+const SOUS_ACTIONS = ['revoquer', 'renouveler', 'changer-offre', 'envoyer', 'payee', 'facturee', 'relance', 'suivi', 'devis',
+  // 10.9.0 — redemander au prestataire où en est une commande, et abandonner un panier resté ouvert.
+  'verifier', 'abandonner'];
 const SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 
 // « /v1/licence/etat » → { v: 1, espace: 'licence', action: 'etat' }
@@ -366,6 +375,13 @@ export const DUREES = [
   { id: 'vie', label: 'À vie', mois: null },
   { id: 'date', label: 'Jusqu\'à une date précise', mois: null }
 ];
+// ---------- le prestataire de paiement (10.9.0) ----------
+// La production. C'est le DÉFAUT d'un réglage, pas une adresse figée : le bac à sable du
+// prestataire porte un autre nom d'hôte, et essayer un paiement sans encaisser un dinar ne doit pas
+// demander un déploiement. C'est aussi pour ça qu'elle est exportée — le test qui compte les
+// sorties du worker la nomme par RÉFÉRENCE, jamais par motif (10.8.0-beta.6).
+export const KONNECT_API = 'https://api.konnect.network/api/v2';
+
 // ---------- les réglages : ce qui se DÉCIDE, et qui se change depuis l'écran ----------
 // 10.5.0. Jusqu'ici un prix vivait dans une variable du worker (`PRIX_ENTREPRISE`) et une signature
 // de mail vivait EN DUR dans `mailRelance` : changer un tarif demandait un déploiement, changer une
@@ -398,6 +414,20 @@ export const REGLAGES = [
     aide: 'L\'adresse où un client règle en ligne. Elle est ajoutée aux relances d\'impayé quand elle est réglée, et disparaît de la phrase sinon.' },
   { id: 'signature_mail', groupe: 'Prix', label: 'Signature des mails', type: 'texte', env: 'MAIL_SIGNATURE', defaut: 'Skander Ben Amor — SkanFact',
     aide: 'La dernière ligne des mails composés par la console. Vide, le mail s\'arrête à la formule de politesse.' },
+
+  // — Ce qu'un achat en ligne fait payer (10.9.0). Les deux premiers sont des règles de DROIT, pas
+  // des choix : ils portent leur « À VÉRIFIER », et ils sont réglables pour que la loi de finances
+  // suivante ne demande pas un déploiement (règle 5.0.0 — aucun taux en dur dans un calcul).
+  { id: 'tva_licence', groupe: 'Paiement en ligne', label: 'TVA sur une licence', type: 'pourcent', env: 'TVA_LICENCE', defaut: 19,
+    aide: 'À VÉRIFIER avec le comptable. Ce qui est demandé en ligne doit être exactement ce que la facture dira : un écart d\'un millime laisse un solde impayé sur la pièce.' },
+  { id: 'timbre_fiscal', groupe: 'Paiement en ligne', label: 'Timbre fiscal, par facture', type: 'montant', env: 'TIMBRE_FISCAL', defaut: 1,
+    aide: 'À VÉRIFIER. SkanFact l\'ajoute tout seul à la facture : ne pas l\'encaisser en ligne laisserait la pièce due d\'un dinar, pour toujours.' },
+  { id: 'konnect_wallet', groupe: 'Paiement en ligne', label: 'Identifiant du portefeuille', type: 'texte', env: 'KONNECT_WALLET', defaut: '',
+    aide: 'Le compte qui reçoit l\'argent, tel que le prestataire le nomme. Vide, l\'achat en ligne est fermé et le site l\'annonce — il n\'échoue pas en silence.' },
+  { id: 'konnect_api', groupe: 'Paiement en ligne', label: 'Adresse du prestataire', type: 'url', env: 'KONNECT_API', defaut: KONNECT_API,
+    aide: 'La production par défaut. C\'est ici qu\'on pose l\'adresse du bac à sable pour essayer un paiement sans encaisser un dinar.' },
+  { id: 'achat_retour', groupe: 'Paiement en ligne', label: 'Page de retour du site', type: 'url', env: 'ACHAT_RETOUR', defaut: '',
+    aide: 'Où le payeur revient une fois la carte passée. La référence de sa commande y est ajoutée, et c\'est elle qui permet à la page de dire où en est sa clé.' },
 
   // — Quand la console doit parler. Chaque seuil est un jour où l'on décroche son téléphone.
   { id: 'alerte_fin', groupe: 'Alertes', label: 'Licence qui se termine', type: 'jours', defaut: 30,
@@ -578,6 +608,16 @@ export function idCourt() {
   return hex(b);
 }
 
+// Une référence PUBLIQUE, qui voyage dans une adresse de retour et que n'importe qui peut essayer
+// de deviner : seize octets, pas quatre. `idCourt` suffit pour une licence ou une vente — on ne les
+// atteint qu'avec le secret d'administration — mais une commande se relit sans secret, et une
+// référence qu'on peut énumérer est une référence qu'on énumérera.
+export function idLong() {
+  const b = new Uint8Array(16);
+  crypto.getRandomValues(b);
+  return hex(b);
+}
+
 export function nettoyerClient(corps) {
   const c = corps && typeof corps === 'object' ? corps : {};
   const nom = texteNet(c.nom, 120);
@@ -704,6 +744,169 @@ export function nettoyerImport(l) {
       envoyeeLe: dateValide(c.envoyeeLe) ? c.envoyeeLe : '', facture
     }
   };
+}
+
+// ---------- l'achat en ligne (10.9.0) ----------
+// Tout ce qui suit est pur : les décisions d'un paiement se testent sans réseau et sans base, comme
+// celles d'une licence. Ce qui les rend délicates n'est pas le calcul, c'est QUI parle — un
+// visiteur, avant d'être quoi que ce soit pour nous.
+
+// Ce qui s'achète en ligne, et ce qui ne s'achète pas. Une licence de CABINET en est absente, et ce
+// n'est pas un oubli : son tarif n'est pas fixé (l'avis de l'Ordre n'est pas revenu, DIRECTION.md
+// § 8), et le réglage `prix_cabinet_dossier` vaut zéro pour cette raison. Vendre en ligne au prix
+// zéro, ou à un prix inventé pour l'occasion, sont aussi faux l'un que l'autre.
+export const OFFRES_EN_LIGNE = ['independant', 'entreprise'];
+
+// La durée d'un achat en ligne : un an, et rien d'autre. Une durée choisie par l'acheteur serait un
+// second levier sur le prix, et il n'en a aucun.
+export const DUREE_EN_LIGNE = '1a';
+
+// Le prix HT d'une offre, tel que la console le règle. `null` quand rien n'est réglé : l'appelant
+// le DIT au lieu de vendre à zéro.
+export function prixEnLigne(offre, valeurs) {
+  if (!OFFRES_EN_LIGNE.includes(String(offre || ''))) return null;
+  const v = valeurs || {};
+  const p = Number(offre === 'independant' ? v.prix_independant : v.prix_entreprise);
+  return Number.isFinite(p) && p > 0 ? p : null;
+}
+
+// Ce que le SITE a le droit d'envoyer. La liste est courte exprès, et on remarquera ce qui n'y est
+// pas : ni prix, ni remise, ni durée, ni type de licence. Le navigateur décrit un acheteur et une
+// offre ; tout ce qui chiffre est calculé ici. Un montant venu de la page se ferait corriger à
+// 1 DT par la première console de développement venue.
+//
+// L'adresse e-mail est OBLIGATOIRE — contrairement à une émission depuis la console, où l'éditeur
+// peut copier la clé à la main. En ligne il n'y a personne pour la copier : sans adresse, on
+// vendrait une clé qui n'arrive nulle part.
+export function nettoyerCommande(corps) {
+  const c = corps && typeof corps === 'object' ? corps : {};
+  const offre = String(c.offre || '').trim();
+  if (!OFFRES_EN_LIGNE.includes(offre)) {
+    return { ok: false, erreur: 'Choisis une offre : Indépendant ou Entreprise. Une licence de cabinet se règle avec nous.' };
+  }
+  const nom = texteNet(c.nom, 120);
+  if (!nom || nom.length < 2) return { ok: false, erreur: 'Indique le nom de ton entreprise (deux caractères au moins).' };
+  const email = (texteNet(c.email, 200) || '').toLowerCase();
+  if (!EMAIL.test(email)) return { ok: false, erreur: 'Indique une adresse e-mail : c\'est par là que la clé arrive.' };
+  // L'empreinte du parrain se lit avec ou sans ses séparateurs (9.4.1) — mais on ne retire que les
+  // SÉPARATEURS : un « G » tapé pour un « 6 » doit rester une faute visible (8.1.0). Annoncée
+  // fausse, elle est refusée ici plutôt que silencieusement ignorée : quelqu'un qui tape le code de
+  // son comptable attend une remise, et l'absence de réponse est la pire façon de la lui refuser.
+  const cabinet = String(c.cabinet || '').trim().toLowerCase().replace(/[\s:._-]/g, '');
+  if (cabinet && !CABINET.test(cabinet)) {
+    return { ok: false, erreur: 'Le code de ton comptable fait vingt caractères (cinq groupes de quatre) : vérifie-le, ou laisse la case vide.' };
+  }
+  return {
+    ok: true,
+    c: {
+      offre, nom, email, cabinet,
+      matricule: (texteNet(c.matricule, 30) || '').toUpperCase(),
+      tel: texteNet(c.tel, 40) || ''
+    }
+  };
+}
+
+// Ce qui est réellement demandé au payeur. Trois choses s'ajoutent au prix, et l'ordre compte :
+// la remise s'applique au HT, la TVA au HT remisé, et le timbre vient APRÈS la TVA — c'est un
+// droit fixe par facture, pas une base imposable.
+//
+// Le timbre n'est pas une coquetterie : SkanFact l'ajoute tout seul à la facture qu'il émettra
+// depuis cette vente. Ne pas l'encaisser laisserait la pièce due d'un dinar, pour toujours, sur
+// chaque vente en ligne — un impayé permanent que personne ne comprendrait six mois plus tard.
+export function montantCommande(o) {
+  const x = o || {};
+  const r3 = n => Math.round(n * 1000) / 1000;
+  const ht = Math.max(0, Number(x.prixHT) || 0);
+  const remise = Math.min(100, Math.max(0, Number(x.remise) || 0));
+  const montantHT = r3(ht * (1 - remise / 100));
+  const tva = r3(montantHT * Math.max(0, Number(x.tvaTaux) || 0) / 100);
+  const timbre = r3(Math.max(0, Number(x.timbre) || 0));
+  return { ht: r3(ht), remise, montantHT, tva, timbre, ttc: r3(montantHT + tva + timbre) };
+}
+
+// Le prestataire compte en MILLIMES, en entier. Un montant à trois décimales s'y traduit sans
+// perte — le dinar en a exactement trois — mais `Math.round` reste indispensable : 301.29 * 1000
+// vaut 301289.99999999994 en virgule flottante, et un centième de millime en moins ferait refuser
+// le paiement pour cause de montant qui ne correspond pas.
+export function millimes(montant) {
+  return Math.round((Number(montant) || 0) * 1000);
+}
+
+// La seule chose qui PROUVE un paiement. Le webhook du prestataire n'est pas signé : n'importe qui
+// peut l'appeler. Il ne vaut donc que comme notification — « va regarder » — et c'est cette
+// fonction qui juge ce que le prestataire a répondu à notre propre question, posée avec notre clé.
+//
+// Trois conditions, et chacune ferme une porte :
+//   - le statut est « completed » : ni « pending », ni « failed », ni un mot qu'on ne connaît pas ;
+//   - la commande référencée est bien LA nôtre (`orderId`) : sans ça, la preuve d'un paiement
+//     pourrait être présentée pour une autre commande, moins chère ;
+//   - le montant encaissé est celui qu'on a demandé : un paiement partiel n'est pas un paiement.
+export function verdictPaiement(o) {
+  const x = o || {};
+  const p = x.paiement && typeof x.paiement === 'object' ? x.paiement : null;
+  if (!p) return { ok: false, etat: 'inconnu', raison: 'Le prestataire n\'a pas rendu ce paiement.' };
+  const statut = String(p.status || '').toLowerCase();
+  if (statut !== 'completed') {
+    return { ok: false, etat: statut || 'inconnu', raison: 'Le paiement n\'est pas encaissé (état « ' + (statut || 'inconnu') + '»).' };
+  }
+  const commande = x.commande || {};
+  if (String(p.orderId || '') !== String(commande.id || '')) {
+    return { ok: false, etat: 'autre', raison: 'Ce paiement porte la référence d\'une autre commande.' };
+  }
+  const du = millimes(commande.montant_ttc);
+  const recu = Math.round(Number(p.amount) || 0);
+  if (recu !== du) {
+    return { ok: false, etat: 'montant', raison: 'Le montant encaissé (' + recu + ' millimes) n\'est pas celui de la commande (' + du + ').' };
+  }
+  return { ok: true, etat: 'completed', raison: '' };
+}
+
+// Où le payeur revient. L'adresse vient d'un réglage ; la référence de sa commande y est ajoutée,
+// et c'est elle qui permet à la page du site de dire où en est sa clé. `r` dit d'où il revient —
+// une page qui ne le sait pas afficherait « merci » à quelqu'un qui vient d'annuler.
+export function retourAchat(base, id, ok) {
+  const b = String(base || '').trim();
+  if (!b) return '';
+  try {
+    const u = new URL(b);
+    u.searchParams.set('commande', String(id || ''));
+    u.searchParams.set('r', ok ? 'ok' : 'echec');
+    return u.toString();
+  } catch { return ''; }
+}
+
+// Ce que la page publique de retour apprend, et ce qu'elle n'apprend pas. Elle ne rend JAMAIS la
+// clé : la référence voyage dans une adresse, qui se copie, se partage et se retrouve dans un
+// historique de navigateur. La clé part par mail, et si le mail échoue, c'est la console qui le
+// dit en rouge — pas une page publique qui la distribuerait à qui a l'adresse.
+export function etatCommandePublic(cmd) {
+  const c = cmd || {};
+  const base = { offre: c.offre || '', montant: c.montant_ttc, devise: c.devise || '' };
+  if (c.etat === 'payee') {
+    return { ...base, etat: 'payee',
+      phrase: 'Paiement reçu. Ta clé de licence part à ' + masquerEmail(c.email) + ' — vérifie tes indésirables si elle tarde.' };
+  }
+  if (c.etat === 'abandonnee') {
+    return { ...base, etat: 'abandonnee', phrase: 'Cette commande a été abandonnée. Reprends-en une nouvelle quand tu veux.' };
+  }
+  if (c.paiement_le) {
+    // Payé, et la clé n'est pas partie. On ne le cache pas : le client a donné son argent, il a le
+    // droit de savoir que quelque chose cloche, et de savoir que nous le savons.
+    return { ...base, etat: 'en_cours',
+      phrase: 'Paiement reçu. La clé n\'est pas encore partie — nous en sommes prévenus, et elle arrivera à ' + masquerEmail(c.email) + '.' };
+  }
+  return { ...base, etat: 'ouverte', phrase: 'Cette commande attend son paiement.' };
+}
+
+// « sk****r@gmail.com ». Assez pour qu'on reconnaisse SON adresse, pas assez pour l'apprendre à
+// quelqu'un qui aurait récupéré le lien.
+export function masquerEmail(email) {
+  const e = String(email || '');
+  const at = e.indexOf('@');
+  if (at < 1) return '';
+  const nom = e.slice(0, at);
+  const cache = nom.length <= 2 ? nom[0] + '*' : nom[0] + '*'.repeat(Math.min(6, nom.length - 2)) + nom[nom.length - 1];
+  return cache + e.slice(at);
 }
 
 // ---------- la clé : ce que le serveur signe ----------
@@ -1136,6 +1339,19 @@ export function alertesPlateforme(d, aujourdhui, seuils) {
       'pay:' + v.id, v.client_id ? 'client:' + v.client_id : '');
   });
 
+  // 10.9.0 — LA ligne la plus grave de cette console : un paiement encaissé en ligne dont la clé
+  // n'est pas partie. Le client a donné son argent et n'a rien. Aucun autre signal ne le dit : la
+  // commande n'est pas une vente (elle n'apparaît nulle part ailleurs), la licence n'existe pas
+  // encore (donc pas de « clé jamais envoyée »), et la page du site ne peut que répondre « nous en
+  // sommes prévenus ». Si cette alerte n'existe pas, personne ne l'est.
+  (o.commandes || []).forEach(c => {
+    if (c.etat !== 'ouverte' || !c.paiement_le) return;
+    add('alerte', 'Paiement encaissé, clé non partie', c.nom || c.id,
+      c.montant_ttc + ' ' + (c.devise || '') + ' payés le ' + String(c.paiement_le).slice(0, 10)
+      + (c.echec ? ' — ' + String(c.echec).slice(0, 160) : '') + ' Le client attend.',
+      'commandes', 'cmd:' + c.id);
+  });
+
   // Un client qui a PAYÉ et ne s'annonce plus. C'est une désinstallation, une réinstallation ratée
   // ou un réseau coupé — dans les trois cas on appelle, et dans les trois cas on ne l'apprenait
   // nulle part : le Parc comptait ces postes « endormis » sans que rien ne le dise. Un départ de
@@ -1550,6 +1766,146 @@ async function journaliser(env, quoi, o) {
   ).bind(new Date().toISOString(), quoi, x.client_id || null, x.licence_id || null, x.detail || null, 'console').run(), null);
 }
 
+// ---------- parler à la base ----------
+// Trois lignes, mais au niveau du MODULE : `repondreAdmin` et l'atelier ci-dessous les partagent,
+// et le webhook de paiement aussi. Recopiées dans chacun, elles auraient fini par ne plus traiter
+// une panne de la même façon.
+const dbTous = async (env, sql, ...p) => {
+  const res = await sansCasser(env.DB.prepare(sql).bind(...p).all(), null);
+  return (res && res.results) || [];
+};
+const dbUn = async (env, sql, ...p) => (await sansCasser(env.DB.prepare(sql).bind(...p).first(), null)) || null;
+const dbExecuter = async (env, sql, ...p) => !!(await sansCasser(env.DB.prepare(sql).bind(...p).run(), null));
+
+// Une licence, telle que la console et les mails la lisent.
+const SEL_LICENCE =
+  'SELECT l.id, l.client_id, l.kid, l.empreinte, l.offre, l.postes, l.debut, l.fin, l.prix, l.devise, l.remise,' +
+  ' l.cabinet_empreinte, l.emise_le, l.remplace_id, l.remplacee_motif, l.revoquee_le, l.revoquee_motif, l.envoyee_le,' +
+  // 9.4.1 — le type et le quota (NULL sur tout ce qui a été émis avant : une entreprise).
+  ' COALESCE(l.type, \'entreprise\') AS type, l.dossiers_hors, l.illimite,' +
+  ' l.charge IS NOT NULL AS resignable, c.nom AS client, c.matricule, c.email,' +
+  ' (SELECT r2.id FROM licences r2 WHERE r2.remplace_id = l.id LIMIT 1) AS remplacee_par,' +
+  ' (SELECT COUNT(*) FROM activations a2 WHERE a2.licence_id = l.id) AS activations,' +
+  // Pour un cabinet : combien de ses clients ont une licence d'entreprise parrainée par lui — la
+  // preuve, côté éditeur, que ce cabinet amène du monde (et ce qui, un jour, décidera d'une remise).
+  ' (SELECT COUNT(*) FROM licences p WHERE COALESCE(l.type, \'entreprise\') = \'cabinet\' AND p.cabinet_empreinte = l.cabinet_empreinte' +
+  '   AND COALESCE(p.type, \'entreprise\') = \'entreprise\' AND p.revoquee_le IS NULL) AS parraines' +
+  ' FROM licences l LEFT JOIN clients c ON c.id = l.client_id';
+
+// ---------- les gestes composés : émettre, refabriquer une clé, l'envoyer ----------
+// Sortis de `repondreAdmin` en 10.9.0, parce qu'un paiement en ligne émet la MÊME licence par le
+// MÊME chemin. C'est ce que le plan annonce depuis le premier jour (§ 12 : « le jour où un
+// encaissement en ligne est branché, il déclenche le même bouton. Rien à réécrire ») — et recopier
+// l'émission pour le webhook aurait donné deux façons de vendre, donc deux façons de se tromper
+// (9.7.0 : un adaptateur vaut mieux qu'une seconde implémentation).
+//
+// `emettre` rend des DONNÉES — `{ ok, corps, status }` — jamais une `Response` : la console en fait
+// du JSON, le webhook en tire un identifiant de licence.
+//
+// `valeurs` porte les réglages EFFECTIFS (base, puis variable, puis défaut). La signature des mails
+// se lisait jusqu'ici dans `env.MAIL_SIGNATURE` : le réglage « Signature des mails » de la console
+// était donc réglable et ignoré par les mails qu'il nomme.
+export function atelierLicences(env, valeurs) {
+  const un = (sql, ...p) => dbUn(env, sql, ...p);
+  const executer = (sql, ...p) => dbExecuter(env, sql, ...p);
+  const v = valeurs || {};
+  const signatureMail = v.signature_mail != null ? v.signature_mail : env.MAIL_SIGNATURE;
+
+  async function emettre(o) {
+    const ks = await cleServeur(env);
+    if (!ks.ok) return { ok: false, corps: { erreur: 'Émission impossible : ' + ks.raison }, status: 503 };
+    const id = idCourt();
+    // L'empreinte entre dans la clé sous sa forme CANONIQUE (majuscules, tirets) — celle que
+    // `licence:emettre` écrit dans SkanFact et que `licenceCabinet` compare ; la base garde la forme
+    // nue, sur laquelle les jointures se font. Le type et le quota (9.4.0) vont en QUEUE de charge.
+    const charge = chargeLicence({
+      kid: ks.kid, id, sub: o.client.id, nom: o.client.nom, matricule: o.client.matricule || '',
+      offre: o.e.offre, exp: o.e.exp, cabinet: o.e.cabinetCanon, emisLe: o.aujourdhui,
+      type: o.e.type, dossiersHors: o.e.dossiersHors, illimite: o.e.illimite === true
+    });
+    const chargeTexte = JSON.stringify(charge);
+    let cle;
+    try { cle = await signerLicence(chargeTexte, ks.privee); }
+    catch (err) { return { ok: false, corps: { erreur: 'La signature a échoué : ' + (err && err.message) }, status: 500 }; }
+    const empreinte = await empreinteCle(cle);
+    const ok = await executer(
+      'INSERT INTO licences (id, client_id, kid, empreinte, offre, postes, debut, fin, prix, devise, remise, cabinet_empreinte,' +
+      ' emise_le, remplace_id, remplacee_motif, charge, type, dossiers_hors, illimite) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      id, o.client.id, ks.kid, empreinte, o.e.offre, null, o.e.debut || o.aujourdhui, o.e.exp || null, o.e.prix, o.e.devise,
+      o.e.remise, o.e.cabinet || null, o.maintenant, o.remplace ? o.remplace.id : null, o.motif, chargeTexte,
+      o.e.type === 'cabinet' ? 'cabinet' : null, o.e.type === 'cabinet' ? o.e.dossiersHors : null,
+      o.e.illimite === true ? 1 : null);
+    if (!ok) return { ok: false, corps: { erreur: 'La base a refusé l\'écriture de la licence.' }, status: 500 };
+    const venteId = 'v_' + idCourt();
+    await executer(
+      'INSERT INTO ventes (id, client_id, licence_id, montant_ht, tva, devise, payee_le, moyen) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      venteId, o.client.id, id, o.e.montant, null, o.e.devise, o.e.payeeLe || null, o.e.payeeLe ? o.e.moyen : null);
+    await journaliser(env, o.motif ? 'licence.' + o.motif : 'licence.emise', {
+      client_id: o.client.id, licence_id: id,
+      detail: libelleLicence(o.e) + (o.e.exp ? ' jusqu\'au ' + fmtJour(o.e.exp) : ' à vie') + ' — ' + o.e.montant + ' ' + o.e.devise + ' HT'
+        + (o.remplace ? ' (remplace ' + o.remplace.id + ')' : '')
+    });
+    const mail = o.e.payeeLe ? await envoyerSiPossible(id, o.maintenant) : { envoye: false, raison: 'la vente n\'est pas encore payée' };
+    return { ok: true, status: 201, corps: {
+      licence: { id, client: o.client.nom, matricule: o.client.matricule, email: o.client.email, kid: ks.kid, empreinte, offre: o.e.offre,
+        type: o.e.type, dossiers_hors: o.e.type === 'cabinet' ? o.e.dossiersHors : null,
+        illimite: o.e.illimite === true ? 1 : null, cabinet_empreinte: o.e.cabinet || null,
+        debut: o.e.debut || o.aujourdhui, fin: o.e.exp || null, prix: o.e.prix, remise: o.e.remise, devise: o.e.devise, emise_le: o.maintenant,
+        remplace_id: o.remplace ? o.remplace.id : null, remplacee_motif: o.motif },
+      cle, vente: { id: venteId, montant_ht: o.e.montant, devise: o.e.devise, payee_le: o.e.payeeLe || null }, mail,
+      licenceId: id, empreinte
+    } };
+  }
+
+  // La clé d'une licence rangée : refabriquée depuis son contenu, avec la clé du serveur — à
+  // condition que ce soit elle qui l'ait signée.
+  async function cleDeLicence(l) {
+    if (!l.resignable) return { cle: '', raison: 'Cette licence n\'a pas été émise depuis la console : sa clé est dans SkanFact.' };
+    const ks = await cleServeur(env);
+    if (!ks.ok) return { cle: '', raison: 'Émission impossible : ' + ks.raison };
+    if (l.kid !== ks.kid) return { cle: '', raison: 'Cette licence a été signée par « ' + l.kid + ' », pas par la clé de ce serveur (« ' + ks.kid + ' »).' };
+    const row = await un('SELECT charge FROM licences WHERE id = ?', l.id);
+    if (!row || !row.charge) return { cle: '', raison: 'Le contenu signé de cette licence manque.' };
+    try {
+      const cle = await signerLicence(row.charge, ks.privee);
+      // Ce qu'on refabrique doit être ce qu'on a rangé : sinon la clé renvoyée au client n'est pas
+      // celle que la base suit, et une révocation viserait une empreinte que personne ne présente.
+      if (await empreinteCle(cle) !== l.empreinte) return { cle: '', raison: 'La clé refabriquée ne correspond pas à l\'empreinte rangée : la clé du serveur a changé.' };
+      return { cle, raison: '' };
+    } catch (err) { return { cle: '', raison: 'Signature impossible : ' + (err && err.message) }; }
+  }
+
+  async function envoyerSiPossible(licenceId, quand) {
+    if (!licenceId) return { envoye: false, raison: 'aucune licence liée' };
+    const l = await un(SEL_LICENCE + ' WHERE l.id = ?', licenceId);
+    if (!l) return { envoye: false, raison: 'licence introuvable' };
+    if (l.envoyee_le) return { envoye: false, raison: 'déjà envoyée le ' + l.envoyee_le.slice(0, 10) };
+    if (!l.email) return { envoye: false, raison: 'ce client n\'a pas d\'adresse e-mail : copie la clé et envoie-la toi-même' };
+    const cle = await cleDeLicence(l);
+    if (!cle.cle) return { envoye: false, raison: cle.raison };
+    const m = mailLicence({ type: l.type, dossiersHors: l.dossiers_hors, illimite: l.illimite, offre: l.offre, exp: l.fin || '', cle: cle.cle, signature: signatureMail });
+    const envoi = await envoyerMail(env, { a: l.email, sujet: m.sujet, texte: m.texte });
+    if (!envoi.ok) {
+      await journaliser(env, 'mail.echec', { client_id: l.client_id, licence_id: l.id, detail: envoi.raison });
+      return { envoye: false, raison: envoi.raison };
+    }
+    await executer('UPDATE licences SET envoyee_le = ? WHERE id = ?', quand, l.id);
+    await journaliser(env, 'mail.envoye', { client_id: l.client_id, licence_id: l.id, detail: l.email });
+    return { envoye: true, a: l.email };
+  }
+  return { emettre, cleDeLicence, envoyerSiPossible };
+}
+
+// Ce que la console renvoie d'une émission : les mêmes données, habillées en réponse HTTP. Les deux
+// champs ajoutés pour le webhook (`licenceId`, `empreinte`) n'ont rien à faire dans le corps qu'elle
+// lit — ils y répéteraient ce que `licence.id` et `licence.empreinte` disent déjà.
+function reponseEmission(res) {
+  if (!res.ok) return json(res.corps, res.status);
+  const { licenceId, empreinte, ...corps } = res.corps;
+  void licenceId; void empreinte;
+  return json(corps, res.status);
+}
+
 async function repondreAdmin(r, request, env) {
   const a = autoriseAdmin(request.headers, env);
   if (!a.ok) return json({ erreur: a.message }, a.code);
@@ -1558,35 +1914,22 @@ async function repondreAdmin(r, request, env) {
 
   const maintenant = new Date().toISOString();
   const aujourdhui = maintenant.slice(0, 10);
-  const tous = async (sql, ...p) => {
-    const res = await sansCasser(env.DB.prepare(sql).bind(...p).all(), null);
-    return (res && res.results) || [];
-  };
-  const un = async (sql, ...p) => (await sansCasser(env.DB.prepare(sql).bind(...p).first(), null)) || null;
-  const executer = async (sql, ...p) => !!(await sansCasser(env.DB.prepare(sql).bind(...p).run(), null));
+  const tous = (sql, ...p) => dbTous(env, sql, ...p);
+  const un = (sql, ...p) => dbUn(env, sql, ...p);
+  const executer = (sql, ...p) => dbExecuter(env, sql, ...p);
   // Les réglages s'appliquent à TOUT ce qui suit : les prix proposés, les seuils qui décident
   // d'une alerte, la signature d'un mail. Lus UNE fois par requête — les relire à chaque usage
   // ferait dire deux choses différentes au même écran si quelqu'un enregistre entre-temps.
   const enBase = await lireReglages(env);
   const seuils = reglagesEffectifs(env, enBase).valeurs;
+  // Les trois gestes composés vivent au niveau du module depuis la 10.9.0 : le webhook de paiement
+  // émet la même licence par le même chemin.
+  const { emettre, cleDeLicence, envoyerSiPossible } = atelierLicences(env, seuils);
   let corps = {};
   if (request.method === 'POST') { try { corps = await request.json(); } catch { corps = {}; } }
   if (request.method !== 'GET' && request.method !== 'POST') return json({ erreur: 'Méthode non autorisée.' }, 405);
 
   // ----- lectures -----
-  const SEL_LICENCE =
-    'SELECT l.id, l.client_id, l.kid, l.empreinte, l.offre, l.postes, l.debut, l.fin, l.prix, l.devise, l.remise,' +
-    ' l.cabinet_empreinte, l.emise_le, l.remplace_id, l.remplacee_motif, l.revoquee_le, l.revoquee_motif, l.envoyee_le,' +
-    // 9.4.1 — le type et le quota (NULL sur tout ce qui a été émis avant : une entreprise).
-    ' COALESCE(l.type, \'entreprise\') AS type, l.dossiers_hors, l.illimite,' +
-    ' l.charge IS NOT NULL AS resignable, c.nom AS client, c.matricule, c.email,' +
-    ' (SELECT r2.id FROM licences r2 WHERE r2.remplace_id = l.id LIMIT 1) AS remplacee_par,' +
-    ' (SELECT COUNT(*) FROM activations a2 WHERE a2.licence_id = l.id) AS activations,' +
-    // Pour un cabinet : combien de ses clients ont une licence d'entreprise parrainée par lui — la
-    // preuve, côté éditeur, que ce cabinet amène du monde (et ce qui, un jour, décidera d'une remise).
-    ' (SELECT COUNT(*) FROM licences p WHERE COALESCE(l.type, \'entreprise\') = \'cabinet\' AND p.cabinet_empreinte = l.cabinet_empreinte' +
-    '   AND COALESCE(p.type, \'entreprise\') = \'entreprise\' AND p.revoquee_le IS NULL) AS parraines' +
-    ' FROM licences l LEFT JOIN clients c ON c.id = l.client_id';
 
   if (request.method === 'GET') {
     if (r.action === 'stats') {
@@ -1732,7 +2075,7 @@ async function repondreAdmin(r, request, env) {
       // depuis SkanFact) n'est pas refabricable ici, et on le dit plutôt que d'inventer.
       const l = await un(SEL_LICENCE + ' WHERE l.id = ?', r.id);
       if (!l) return json({ erreur: 'Licence introuvable.' }, 404);
-      const cle = await cleDeLicence(env, l);
+      const cle = await cleDeLicence(l);
       return json({ licence: l, cle: cle.cle || '', cleRaison: cle.raison || '' });
     }
     if (r.action === 'licences') {
@@ -1750,6 +2093,15 @@ async function repondreAdmin(r, request, env) {
       // de celle-ci au premier renommage — et `APPS` n'existe de toute façon pas dans la page.
       return json({ lignes: lignes.map(l => ({ ...l, appNom: APPS[appDe(l.app)] })) });
     }
+    // 10.9.0 — les commandes en ligne. Une commande n'est pas une vente : c'est ce qu'un visiteur a
+    // demandé, et ce qui en est advenu. L'écran existe pour UNE ligne surtout — celle d'un paiement
+    // encaissé dont la clé n'est pas partie : le client a payé, il n'a rien, et il faut le savoir.
+    if (r.action === 'commandes') {
+      const lignes = await tous(
+        'SELECT c.*, cl.nom AS client_nom FROM commandes c LEFT JOIN clients cl ON cl.id = c.client_id' +
+        ' ORDER BY c.cree_le DESC LIMIT 300');
+      return json({ lignes });
+    }
     if (r.action === 'ventes') {
       // `?non_facturees=1` : le pont comptable (§ 11). SkanFact TIRE les ventes qui n'ont pas encore
       // de facture, et reçoit avec chacune la clé (refabriquée) pour tenir son miroir local — un
@@ -1765,7 +2117,7 @@ async function repondreAdmin(r, request, env) {
         ' ORDER BY COALESCE(v.payee_le, \'\') ASC, v.rowid DESC LIMIT 500');
       if (nonFacturees) {
         for (const v of lignes) {
-          const cle = v.licence_id ? await cleDeLicence(env, { id: v.licence_id, kid: v.kid, empreinte: v.empreinte, resignable: v.resignable }) : { cle: '' };
+          const cle = v.licence_id ? await cleDeLicence({ id: v.licence_id, kid: v.kid, empreinte: v.empreinte, resignable: v.resignable }) : { cle: '' };
           v.cle = cle.cle || '';
         }
       }
@@ -1838,8 +2190,16 @@ async function repondreAdmin(r, request, env) {
         ' LEFT JOIN licences l ON l.id = a.licence_id LEFT JOIN clients c ON c.id = l.client_id' +
         ' ORDER BY a.derniere_fois DESC LIMIT 500');
       const suivis = await lireSuivis(tous);
+      // Les commandes ENCAISSÉES dont la clé n'est pas partie : un client a payé et n'a rien.
+      // On ne lit que celles-là — un panier abandonné n'a rien à faire dans « À décider ».
+      const commandes = await tous(
+        // `etat` est SÉLECTIONNÉ alors que le WHERE le filtre déjà : sans lui, la ligne arrive
+        // au constructeur d'alertes sans le champ qu'il teste, et elle est écartée en silence.
+        // Un lecteur ne doit jamais dépendre d'un filtre qu'il ne voit pas.
+        'SELECT id, nom, montant_ttc, devise, etat, paiement_le, echec FROM commandes' +
+        ' WHERE etat = \'ouverte\' AND paiement_le IS NOT NULL ORDER BY paiement_le LIMIT 100');
       return json({ lignes: grouperAlertes(alertesPlateforme(
-        { licences, ventes, essais, postes, suivis, dernierExport: ex && ex.quand }, aujourdhui, seuils)) });
+        { licences, ventes, essais, postes, suivis, commandes, dernierExport: ex && ex.quand }, aujourdhui, seuils)) });
     }
 
     // Les RÉGLAGES (10.5.0). L'écran rend les trois choses ensemble : ce qu'on peut régler, ce qui
@@ -2006,7 +2366,7 @@ async function repondreAdmin(r, request, env) {
     if (!client) return json({ erreur: 'Choisis un client existant (crée-le d\'abord).' }, 400);
     const n = nettoyerEmission(corps, aujourdhui);
     if (!n.ok) return json({ erreur: n.erreur }, 400);
-    return emettre(env, { client, e: n.e, aujourdhui, maintenant, remplace: null, motif: null });
+    return reponseEmission(await emettre({ client, e: n.e, aujourdhui, maintenant, remplace: null, motif: null }));
   }
 
   if (r.action === 'licences' && r.id && r.sous) {
@@ -2063,13 +2423,13 @@ async function repondreAdmin(r, request, env) {
         if (!n.ok) return json({ erreur: n.erreur }, 400);
         motif = 'offre';
       }
-      return emettre(env, { client, e: n.e, aujourdhui, maintenant, remplace: l, motif });
+      return reponseEmission(await emettre({ client, e: n.e, aujourdhui, maintenant, remplace: l, motif }));
     }
 
     if (r.sous === 'envoyer') {
-      const cle = await cleDeLicence(env, l);
+      const cle = await cleDeLicence(l);
       if (!cle.cle) return json({ erreur: cle.raison }, 409);
-      const m = mailLicence({ type: l.type, dossiersHors: l.dossiers_hors, illimite: l.illimite, offre: l.offre, exp: l.fin || '', cle: cle.cle, signature: env.MAIL_SIGNATURE });
+      const m = mailLicence({ type: l.type, dossiersHors: l.dossiers_hors, illimite: l.illimite, offre: l.offre, exp: l.fin || '', cle: cle.cle, signature: seuils.signature_mail });
       const envoi = await envoyerMail(env, { a: l.email, sujet: m.sujet, texte: m.texte });
       if (!envoi.ok) {
         await journaliser(env, 'mail.echec', { client_id: l.client_id, licence_id: l.id, detail: envoi.raison });
@@ -2130,6 +2490,28 @@ async function repondreAdmin(r, request, env) {
     return json(bilan);
   }
 
+  // 10.9.0 — les deux gestes d'une commande. « Redemander » est le TROISIÈME chemin vers
+  // `finaliserCommande` : le webhook, la page de retour du client, et ce bouton. Trois chemins vers
+  // la même fonction, jamais trois façons de livrer.
+  if (r.action === 'commandes' && r.id && r.sous) {
+    const cmd = await un('SELECT * FROM commandes WHERE id = ?', r.id);
+    if (!cmd) return json({ erreur: 'Commande introuvable.' }, 404);
+    if (r.sous === 'verifier') {
+      const res = await finaliserCommande(env, seuils, cmd, maintenant);
+      return json({ livree: !!res.ok, raison: res.raison || '', mail: res.mail || null });
+    }
+    if (r.sous === 'abandonner') {
+      // Un paiement déjà encaissé ne s'abandonne pas : ce serait garder l'argent en fermant la
+      // porte. Tant que la clé n'est pas partie, la ligne rouge doit rester rouge.
+      if (cmd.paiement_le) return json({ erreur: 'Cette commande est PAYÉE : elle se livre (« Redemander au prestataire »), ou elle se rembourse — elle ne s\'abandonne pas.' }, 409);
+      if (cmd.etat !== 'ouverte') return json({ erreur: 'Cette commande n\'est plus ouverte.' }, 409);
+      await executer('UPDATE commandes SET etat = ? WHERE id = ?', 'abandonnee', cmd.id);
+      await journaliser(env, 'commande.abandonnee', { detail: cmd.nom + ' — ' + cmd.montant_ttc + ' ' + cmd.devise + ' TTC (' + cmd.id + ')' });
+      return json({ ok: true });
+    }
+    return json({ erreur: 'Introuvable.' }, 404);
+  }
+
   if (r.action === 'ventes' && r.id && r.sous) {
     const v = await un('SELECT v.*, c.email, c.nom AS client FROM ventes v LEFT JOIN clients c ON c.id = v.client_id WHERE v.id = ?', r.id);
     if (!v) return json({ erreur: 'Vente introuvable.' }, 404);
@@ -2140,7 +2522,7 @@ async function repondreAdmin(r, request, env) {
       if (v.payee_le) return json({ erreur: 'Cette vente est déjà marquée payée le ' + v.payee_le + '.' }, 409);
       await executer('UPDATE ventes SET payee_le = ?, moyen = ? WHERE id = ?', date, texteNet(corps.moyen, 40), v.id);
       await journaliser(env, 'vente.payee', { client_id: v.client_id, licence_id: v.licence_id, detail: String(v.montant_ht) + ' ' + v.devise + (corps.moyen ? ' (' + texteNet(corps.moyen, 40) + ')' : '') });
-      const mail = await envoyerSiPossible(env, v.licence_id, maintenant);
+      const mail = await envoyerSiPossible(v.licence_id, maintenant);
       return json({ ok: true, payee_le: date, mail });
     }
     if (r.sous === 'facturee') {
@@ -2154,88 +2536,6 @@ async function repondreAdmin(r, request, env) {
   }
   return json({ erreur: 'Introuvable.' }, 404);
 
-  // ----- les gestes composés -----
-  async function emettre(envx, o) {
-    const ks = await cleServeur(envx);
-    if (!ks.ok) return json({ erreur: 'Émission impossible : ' + ks.raison }, 503);
-    const id = idCourt();
-    // L'empreinte entre dans la clé sous sa forme CANONIQUE (majuscules, tirets) — celle que
-    // `licence:emettre` écrit dans SkanFact et que `licenceCabinet` compare ; la base garde la forme
-    // nue, sur laquelle les jointures se font. Le type et le quota (9.4.0) vont en QUEUE de charge.
-    const charge = chargeLicence({
-      kid: ks.kid, id, sub: o.client.id, nom: o.client.nom, matricule: o.client.matricule || '',
-      offre: o.e.offre, exp: o.e.exp, cabinet: o.e.cabinetCanon, emisLe: o.aujourdhui,
-      type: o.e.type, dossiersHors: o.e.dossiersHors, illimite: o.e.illimite === true
-    });
-    const chargeTexte = JSON.stringify(charge);
-    let cle;
-    try { cle = await signerLicence(chargeTexte, ks.privee); }
-    catch (err) { return json({ erreur: 'La signature a échoué : ' + (err && err.message) }, 500); }
-    const empreinte = await empreinteCle(cle);
-    const ok = await executer(
-      'INSERT INTO licences (id, client_id, kid, empreinte, offre, postes, debut, fin, prix, devise, remise, cabinet_empreinte,' +
-      ' emise_le, remplace_id, remplacee_motif, charge, type, dossiers_hors, illimite) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      id, o.client.id, ks.kid, empreinte, o.e.offre, null, o.e.debut || o.aujourdhui, o.e.exp || null, o.e.prix, o.e.devise,
-      o.e.remise, o.e.cabinet || null, o.maintenant, o.remplace ? o.remplace.id : null, o.motif, chargeTexte,
-      o.e.type === 'cabinet' ? 'cabinet' : null, o.e.type === 'cabinet' ? o.e.dossiersHors : null,
-      o.e.illimite === true ? 1 : null);
-    if (!ok) return json({ erreur: 'La base a refusé l\'écriture de la licence.' }, 500);
-    const venteId = 'v_' + idCourt();
-    await executer(
-      'INSERT INTO ventes (id, client_id, licence_id, montant_ht, tva, devise, payee_le, moyen) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-      venteId, o.client.id, id, o.e.montant, null, o.e.devise, o.e.payeeLe || null, o.e.payeeLe ? o.e.moyen : null);
-    await journaliser(envx, o.motif ? 'licence.' + o.motif : 'licence.emise', {
-      client_id: o.client.id, licence_id: id,
-      detail: libelleLicence(o.e) + (o.e.exp ? ' jusqu\'au ' + fmtJour(o.e.exp) : ' à vie') + ' — ' + o.e.montant + ' ' + o.e.devise + ' HT'
-        + (o.remplace ? ' (remplace ' + o.remplace.id + ')' : '')
-    });
-    const mail = o.e.payeeLe ? await envoyerSiPossible(envx, id, o.maintenant) : { envoye: false, raison: 'la vente n\'est pas encore payée' };
-    return json({
-      licence: { id, client: o.client.nom, matricule: o.client.matricule, email: o.client.email, kid: ks.kid, empreinte, offre: o.e.offre,
-        type: o.e.type, dossiers_hors: o.e.type === 'cabinet' ? o.e.dossiersHors : null,
-        illimite: o.e.illimite === true ? 1 : null, cabinet_empreinte: o.e.cabinet || null,
-        debut: o.e.debut || o.aujourdhui, fin: o.e.exp || null, prix: o.e.prix, remise: o.e.remise, devise: o.e.devise, emise_le: o.maintenant,
-        remplace_id: o.remplace ? o.remplace.id : null, remplacee_motif: o.motif },
-      cle, vente: { id: venteId, montant_ht: o.e.montant, devise: o.e.devise, payee_le: o.e.payeeLe || null }, mail
-    }, 201);
-  }
-
-  // La clé d'une licence rangée : refabriquée depuis son contenu, avec la clé du serveur — à
-  // condition que ce soit elle qui l'ait signée.
-  async function cleDeLicence(envx, l) {
-    if (!l.resignable) return { cle: '', raison: 'Cette licence n\'a pas été émise depuis la console : sa clé est dans SkanFact.' };
-    const ks = await cleServeur(envx);
-    if (!ks.ok) return { cle: '', raison: 'Émission impossible : ' + ks.raison };
-    if (l.kid !== ks.kid) return { cle: '', raison: 'Cette licence a été signée par « ' + l.kid + ' », pas par la clé de ce serveur (« ' + ks.kid + ' »).' };
-    const row = await un('SELECT charge FROM licences WHERE id = ?', l.id);
-    if (!row || !row.charge) return { cle: '', raison: 'Le contenu signé de cette licence manque.' };
-    try {
-      const cle = await signerLicence(row.charge, ks.privee);
-      // Ce qu'on refabrique doit être ce qu'on a rangé : sinon la clé renvoyée au client n'est pas
-      // celle que la base suit, et une révocation viserait une empreinte que personne ne présente.
-      if (await empreinteCle(cle) !== l.empreinte) return { cle: '', raison: 'La clé refabriquée ne correspond pas à l\'empreinte rangée : la clé du serveur a changé.' };
-      return { cle, raison: '' };
-    } catch (err) { return { cle: '', raison: 'Signature impossible : ' + (err && err.message) }; }
-  }
-
-  async function envoyerSiPossible(envx, licenceId, quand) {
-    if (!licenceId) return { envoye: false, raison: 'aucune licence liée' };
-    const l = await un(SEL_LICENCE + ' WHERE l.id = ?', licenceId);
-    if (!l) return { envoye: false, raison: 'licence introuvable' };
-    if (l.envoyee_le) return { envoye: false, raison: 'déjà envoyée le ' + l.envoyee_le.slice(0, 10) };
-    if (!l.email) return { envoye: false, raison: 'ce client n\'a pas d\'adresse e-mail : copie la clé et envoie-la toi-même' };
-    const cle = await cleDeLicence(envx, l);
-    if (!cle.cle) return { envoye: false, raison: cle.raison };
-    const m = mailLicence({ type: l.type, dossiersHors: l.dossiers_hors, illimite: l.illimite, offre: l.offre, exp: l.fin || '', cle: cle.cle, signature: envx.MAIL_SIGNATURE });
-    const envoi = await envoyerMail(envx, { a: l.email, sujet: m.sujet, texte: m.texte });
-    if (!envoi.ok) {
-      await journaliser(envx, 'mail.echec', { client_id: l.client_id, licence_id: l.id, detail: envoi.raison });
-      return { envoye: false, raison: envoi.raison };
-    }
-    await executer('UPDATE licences SET envoyee_le = ? WHERE id = ?', quand, l.id);
-    await journaliser(envx, 'mail.envoye', { client_id: l.client_id, licence_id: l.id, detail: l.email });
-    return { envoye: true, a: l.email };
-  }
 }
 
 // ---------- l'état d'une licence, demandé par une application ----------
@@ -2326,6 +2626,7 @@ export default {
     if (r.v !== 1) return json({ erreur: 'Version d\'interface inconnue.' }, 404);
     if (r.espace === 'admin') return repondreAdmin(r, request, env);
     if (r.espace === 'verif') return repondreVerif(request, env);
+    if (r.espace === 'achat') return repondreAchat(r, request, env);
     return repondreLicence(request, env);
   },
 
@@ -2370,17 +2671,19 @@ export function origineDuSite(origine, env) {
 // Une origine inconnue reçoit quand même sa réponse, simplement sans l'en-tête : refuser
 // fabriquerait une panne là où il n'y en a pas — la page hébergée par ce worker lui-même
 // n'envoie aucune origine, et c'est elle qui sert aujourd'hui.
-function entetesVerif(request, env) {
+function entetesPubliques(request, env, methodes) {
   const h = new Headers({ 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'Vary': 'Origin' });
   const origine = request.headers.get('Origin') || '';
   if (origineDuSite(origine, env)) {
     h.set('Access-Control-Allow-Origin', origine);
-    h.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    h.set('Access-Control-Allow-Methods', methodes);
     h.set('Access-Control-Allow-Headers', 'Content-Type');
     h.set('Access-Control-Max-Age', '86400');
   }
   return h;
 }
+
+function entetesVerif(request, env) { return entetesPubliques(request, env, 'POST, OPTIONS'); }
 
 // Ce qu'on rend : l'état, et rien de nominatif. Ce qu'on ne rend pas : le nom du client, son
 // matricule, son adresse, ses postes. Une empreinte inconnue est dite inconnue — refuser de
@@ -2413,6 +2716,310 @@ async function repondreVerif(request, env) {
   if (l.fin && l.fin < jour) return json({ ok: false, etat: 'expiree', offre: quoi, fin: l.fin, phrase: 'Cette licence s\'est terminée le ' + l.fin + '.' });
   return json({ ok: true, etat: 'valable', offre: quoi, fin: l.fin || '',
     phrase: 'Licence valable' + (l.fin ? ' jusqu\'au ' + l.fin + '.' : ', sans date de fin.') });
+}
+
+// ---------- l'achat en ligne (10.9.0) ----------
+// Le site appelle trois routes ; le prestataire de paiement en appelle une quatrième. Aucune ne
+// demande de secret, et c'est assumé : elles s'adressent à un visiteur, avant qu'il ne soit qui que
+// ce soit pour nous. Ce qui les protège n'est pas un mot de passe, c'est la répartition des rôles.
+//
+//   GET  /v1/achat/tarifs          ce que coûte une licence aujourd'hui, réglages compris
+//   POST /v1/achat/commander       crée une commande et rend l'adresse de paiement
+//   GET  /v1/achat/etat/<cmd_…>    où en est MA commande (jamais la clé : elle part par mail)
+//   POST /v1/achat/webhook         le prestataire dit « va regarder » — et on va regarder
+//
+// La règle qui gouverne tout : **rien de ce que le navigateur envoie ne décide d'un montant**, et
+// **la preuve d'un paiement se redemande au prestataire**, avec notre clé, jamais au navigateur ni
+// au webhook. Le webhook de Konnect n'est pas signé : n'importe qui peut l'appeler. Il ne vaut donc
+// que comme notification, et c'est la question qu'il déclenche qui fait foi.
+
+// Ce que le prestataire répond à « où en est ce paiement ? ». On ne rend jamais son corps brut plus
+// loin : seuls le statut, le montant et la référence de commande servent à décider (`verdictPaiement`).
+async function konnectPaiement(env, valeurs, ref) {
+  const cfg = konnectConfig(env, valeurs);
+  if (!cfg.ok) return { ok: false, raison: cfg.raison };
+  try {
+    const r = await fetch(cfg.base + '/payments/' + encodeURIComponent(ref), {
+      headers: { 'x-api-key': cfg.cle, 'Accept': 'application/json' }
+    });
+    const j = await r.json().catch(() => null);
+    if (!r.ok) return { ok: false, raison: 'Le prestataire a répondu ' + r.status + ((j && j.message) ? ' : ' + j.message : '') };
+    // Konnect enveloppe sa réponse dans `payment`. On accepte les deux formes : une enveloppe qui
+    // change de nom ne doit pas se traduire par « paiement introuvable » chez quelqu'un qui a payé.
+    const p = (j && j.payment) || j;
+    if (!p || typeof p !== 'object') return { ok: false, raison: 'Le prestataire a répondu quelque chose d\'illisible.' };
+    return { ok: true, paiement: p };
+  } catch (err) { return { ok: false, raison: 'Prestataire injoignable : ' + (err && err.message) }; }
+}
+
+// Ce qu'il faut pour vendre en ligne, et ce qui manque quand ça ne marche pas. Trois réglages, et
+// chacun porte sa phrase : « le paiement en ligne ne répond pas » n'aide personne.
+export function konnectConfig(env, valeurs) {
+  const e = env || {}; const v = valeurs || {};
+  const cle = String(e.KONNECT_API_KEY || '').trim();
+  if (!cle) return { ok: false, raison: 'La clé du prestataire de paiement (KONNECT_API_KEY) n\'est pas posée : l\'achat en ligne est fermé.' };
+  const portefeuille = String(v.konnect_wallet || '').trim();
+  if (!portefeuille) return { ok: false, raison: 'L\'identifiant du portefeuille n\'est pas réglé (Réglages → Paiement en ligne) : l\'argent n\'aurait nulle part où aller.' };
+  const base = String(v.konnect_api || KONNECT_API).trim().replace(/\/+$/, '');
+  let ok = false;
+  try { const u = new URL(base); ok = u.protocol === 'https:'; } catch { ok = false; }
+  if (!ok) return { ok: false, raison: 'L\'adresse du prestataire n\'est pas une adresse https valable.' };
+  return { ok: true, cle, portefeuille, base };
+}
+
+// La commande est déjà écrite quand on arrive ici : si le prestataire refuse, on garde la trace de
+// son refus sur la commande plutôt que de la faire disparaître. Un panier qui s'évapore ne laisse
+// rien à comprendre le jour où trois clients d'affilée n'arrivent pas à payer.
+async function konnectInit(env, valeurs, cmd, urls) {
+  const cfg = konnectConfig(env, valeurs);
+  if (!cfg.ok) return { ok: false, raison: cfg.raison };
+  // Le nom d'une entreprise n'a ni prénom ni nom de famille. On envoie ce qu'on a, plutôt que de
+  // découper au premier espace : « Société Générale de Tunisie » ne se coupe pas en deux.
+  const corps = {
+    receiverWalletId: cfg.portefeuille,
+    token: cmd.devise,
+    amount: millimes(cmd.montant_ttc),
+    type: 'immediate',
+    description: 'SkanFact — licence ' + (OFFRES[cmd.offre] || {}).label + ' (1 an)',
+    lifespan: 30,
+    firstName: cmd.nom,
+    lastName: '',
+    email: cmd.email,
+    phoneNumber: cmd.tel || '',
+    orderId: cmd.id,
+    webhook: urls.webhook,
+    successUrl: urls.succes,
+    failUrl: urls.echec,
+    silentWebhook: true,
+    checkoutForm: false
+  };
+  try {
+    const r = await fetch(cfg.base + '/payments/init-payment', {
+      method: 'POST',
+      headers: { 'x-api-key': cfg.cle, 'Content-Type': 'application/json' },
+      body: JSON.stringify(corps)
+    });
+    const j = await r.json().catch(() => null);
+    if (!r.ok) return { ok: false, raison: 'Le prestataire a refusé la demande (' + r.status + ')' + ((j && j.message) ? ' : ' + j.message : '') };
+    const payUrl = String((j && (j.payUrl || j.pay_url)) || '');
+    const ref = String((j && (j.paymentRef || j.payment_ref)) || '');
+    if (!payUrl || !ref) return { ok: false, raison: 'Le prestataire n\'a pas rendu d\'adresse de paiement.' };
+    return { ok: true, payUrl, ref };
+  } catch (err) { return { ok: false, raison: 'Prestataire injoignable : ' + (err && err.message) }; }
+}
+
+// Le geste complet, du paiement prouvé à la clé partie. Il est IDEMPOTENT : un webhook se livre
+// deux fois, une page de retour s'actualise, et rien de tout ça ne doit émettre deux licences.
+//
+// Il est aussi PARTAGÉ entre le webhook et la page de retour, et c'est délibéré : un chemin de
+// secours ne sert que s'il se déclenche tout seul (6.7.2). Le jour où le webhook n'arrive pas — le
+// prestataire est en panne, le worker était en train de se déployer — c'est la page que le client
+// regarde qui finit le travail, sans que personne ait rien à faire.
+async function finaliserCommande(env, valeurs, cmd, maintenant) {
+  const un = (sql, ...p) => dbUn(env, sql, ...p);
+  const executer = (sql, ...p) => dbExecuter(env, sql, ...p);
+  const aujourdhui = maintenant.slice(0, 10);
+  const noter = async raison => {
+    await executer('UPDATE commandes SET echec = ? WHERE id = ?', raison, cmd.id);
+    return { ok: false, raison };
+  };
+
+  if (cmd.etat === 'payee') return { ok: true, deja: true };
+  if (cmd.etat === 'abandonnee') return { ok: false, raison: 'Cette commande a été abandonnée.' };
+  if (!cmd.paiement_ref) return { ok: false, raison: 'Cette commande n\'a pas de référence de paiement.' };
+
+  // La preuve. On ne croit jamais ce que le webhook raconte : on repose la question avec notre clé,
+  // et on la pose sur la référence que NOUS avons rangée à la création de la commande.
+  const rep = await konnectPaiement(env, valeurs, cmd.paiement_ref);
+  if (!rep.ok) return { ok: false, raison: rep.raison, muet: true };
+  const v = verdictPaiement({ paiement: rep.paiement, commande: cmd });
+  // Un paiement encore en attente n'est pas un incident : c'est l'état NORMAL d'une commande dont
+  // le client n'a pas fini de taper son code. Il ne laisse donc aucune trace d'échec.
+  if (!v.ok) return v.etat === 'pending' ? { ok: false, raison: v.raison, muet: true } : noter(v.raison);
+
+  if (!cmd.paiement_le) {
+    await executer('UPDATE commandes SET paiement_le = ? WHERE id = ?', maintenant, cmd.id);
+    await journaliser(env, 'commande.payee', { detail: cmd.nom + ' — ' + cmd.montant_ttc + ' ' + cmd.devise + ' TTC (' + cmd.id + ')' });
+  }
+
+  // Le client n'existe qu'à partir d'ici : une commande abandonnée ne laisse aucune fiche derrière
+  // elle. On le retrouve par son ADRESSE d'abord — c'est l'identité qu'un acheteur en ligne donne,
+  // et c'est celle qui reçoit la clé — puis par son matricule, unique quand il est là.
+  let client = await un('SELECT id, nom, matricule, email FROM clients WHERE email = ?', cmd.email);
+  if (!client && cmd.matricule) client = await un('SELECT id, nom, matricule, email FROM clients WHERE matricule = ?', cmd.matricule);
+  if (!client) {
+    const cid = 'cli_' + idCourt();
+    const ok = await executer('INSERT INTO clients (id, nom, matricule, email, tel, cree_le) VALUES (?, ?, ?, ?, ?, ?)',
+      cid, cmd.nom, cmd.matricule || null, cmd.email, cmd.tel || null, maintenant);
+    if (!ok) return noter('La base a refusé l\'écriture du client.');
+    client = { id: cid, nom: cmd.nom, matricule: cmd.matricule || null, email: cmd.email };
+    await journaliser(env, 'client.cree', { client_id: cid, detail: cmd.nom + ' — achat en ligne' });
+  }
+
+  // La MÊME émission que celle de la console : mêmes contrôles, même clé, même mail (§ 12).
+  const n = nettoyerEmission({
+    type: 'entreprise', offre: cmd.offre, duree: DUREE_EN_LIGNE,
+    prix: cmd.prix_ht, remise: cmd.remise, devise: cmd.devise,
+    cabinet: cmd.parraine ? (cmd.cabinet || '') : '',
+    payeeLe: (cmd.paiement_le || maintenant).slice(0, 10), moyen: 'carte (en ligne)'
+  }, aujourdhui);
+  if (!n.ok) return noter('Émission impossible : ' + n.erreur);
+
+  const { emettre } = atelierLicences(env, valeurs);
+  const res = await emettre({ client, e: n.e, aujourdhui, maintenant, remplace: null, motif: null });
+  if (!res.ok) return noter((res.corps && res.corps.erreur) || 'L\'émission a échoué.');
+
+  await executer('UPDATE commandes SET etat = ?, licence_id = ?, client_id = ?, echec = NULL WHERE id = ?',
+    'payee', res.corps.licenceId, client.id, cmd.id);
+  await journaliser(env, 'commande.livree', {
+    client_id: client.id, licence_id: res.corps.licenceId,
+    detail: libelleLicence(n.e) + ' — ' + cmd.montant_ttc + ' ' + cmd.devise + ' TTC, payée en ligne'
+      + (res.corps.mail && res.corps.mail.envoye ? ' — clé envoyée à ' + cmd.email : ' — clé NON envoyée : ' + ((res.corps.mail || {}).raison || 'raison inconnue'))
+  });
+  // Le mail peut échouer alors que la licence existe : le client a payé et sa clé est là, mais elle
+  // n'est pas partie. On ne transforme pas ça en échec de commande — la vente est faite — et c'est
+  // l'alerte « clé jamais envoyée » de la console qui s'en charge.
+  return { ok: true, licenceId: res.corps.licenceId, mail: res.corps.mail };
+}
+
+async function repondreAchat(r, request, env) {
+  // Le webhook est appelé par le PRESTATAIRE, de serveur à serveur : aucune page ne le lit. Lui
+  // accorder une autorisation de navigateur ouvrirait à n'importe quel site une route qui écrit.
+  const h = r.action === 'webhook'
+    ? new Headers({ 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
+    : entetesPubliques(request, env, 'GET, POST, OPTIONS');
+  const rep = (obj, status) => new Response(JSON.stringify(obj), { status: status || 200, headers: h });
+
+  if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: h });
+  if (!env || !env.DB) return rep({ erreur: 'Service momentanément indisponible.' }, 503);
+
+  const maintenant = new Date().toISOString();
+  const un = (sql, ...p) => dbUn(env, sql, ...p);
+  const executer = (sql, ...p) => dbExecuter(env, sql, ...p);
+  const valeurs = reglagesEffectifs(env, await lireReglages(env)).valeurs;
+
+  // ----- ce que ça coûte -----
+  // Le site lisait ses prix dans son propre HTML : deux endroits pour un même chiffre, donc deux
+  // chiffres le jour d'une augmentation. Il les lit ici, là où la console les règle.
+  if (r.action === 'tarifs') {
+    if (request.method !== 'GET') return rep({ erreur: 'Méthode non autorisée.' }, 405);
+    const cfg = konnectConfig(env, valeurs);
+    const devise = String(valeurs.devise || 'TND').toUpperCase();
+    const offres = OFFRES_EN_LIGNE.map(id => {
+      const ht = prixEnLigne(id, valeurs);
+      const m = ht == null ? null : montantCommande({ prixHT: ht, remise: 0, tvaTaux: valeurs.tva_licence, timbre: valeurs.timbre_fiscal });
+      return { id, label: (OFFRES[id] || {}).label || id, ht, ttc: m ? m.ttc : null, tva: m ? m.tva : null, timbre: m ? m.timbre : null };
+    });
+    return rep({
+      devise, duree: DUREE_EN_LIGNE, tva: valeurs.tva_licence, timbre: valeurs.timbre_fiscal,
+      remiseParrainage: valeurs.remise_parrainage, offres,
+      // Fermé, on le DIT avec sa raison : une page qui affiche un bouton « Payer » sur un paiement
+      // qui n'existe pas fait perdre un client au moment exact où il voulait acheter.
+      ouvert: cfg.ok && offres.every(o => o.ht != null) && devise === 'TND',
+      raison: !cfg.ok ? cfg.raison
+        : (devise !== 'TND' ? 'Le paiement en ligne n\'accepte que le dinar tunisien.'
+          : (offres.some(o => o.ht == null) ? 'Un tarif n\'est pas réglé.' : ''))
+    });
+  }
+
+  // ----- commander -----
+  if (r.action === 'commander') {
+    if (request.method !== 'POST') return rep({ erreur: 'Méthode non autorisée.' }, 405);
+    let corps = {};
+    try { corps = await request.json(); } catch { corps = {}; }
+    const n = nettoyerCommande(corps);
+    if (!n.ok) return rep({ erreur: n.erreur }, 400);
+
+    const cfg = konnectConfig(env, valeurs);
+    if (!cfg.ok) return rep({ erreur: cfg.raison }, 503);
+    const devise = String(valeurs.devise || 'TND').toUpperCase();
+    // Le prestataire compte en MILLIMES et `millimes()` multiplie par mille : sur une devise à deux
+    // décimales, le montant partirait dix fois trop grand. On refuse plutôt que d'encaisser faux.
+    if (devise !== 'TND') return rep({ erreur: 'Le paiement en ligne n\'accepte que le dinar tunisien.' }, 503);
+    const ht = prixEnLigne(n.c.offre, valeurs);
+    if (ht == null) return rep({ erreur: 'Le tarif de cette offre n\'est pas réglé : écris-nous, on s\'en occupe à la main.' }, 503);
+
+    // Le parrainage : la remise ne se pose que sur un cabinet que la BASE connaît. Vingt caractères
+    // hexadécimaux se tapent au hasard ; ce qui ne se fabrique pas, c'est une licence de cabinet
+    // vivante portant cette empreinte. L'empreinte annoncée est gardée dans les deux cas — un
+    // parrainage qu'on n'a pas su reconnaître reste une information pour l'éditeur.
+    const parrain = n.c.cabinet
+      ? await un('SELECT id FROM licences WHERE cabinet_empreinte = ? AND type = \'cabinet\' AND revoquee_le IS NULL LIMIT 1', n.c.cabinet)
+      : null;
+    const remise = parrain ? Number(valeurs.remise_parrainage) || 0 : 0;
+    const m = montantCommande({ prixHT: ht, remise, tvaTaux: valeurs.tva_licence, timbre: valeurs.timbre_fiscal });
+
+    const id = 'cmd_' + idLong();
+    const ok = await executer(
+      'INSERT INTO commandes (id, cree_le, offre, duree, nom, email, matricule, tel, cabinet, parraine,' +
+      ' prix_ht, montant_ht, remise, tva, timbre, montant_ttc, devise, etat)' +
+      ' VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      id, maintenant, n.c.offre, DUREE_EN_LIGNE, n.c.nom, n.c.email, n.c.matricule || null, n.c.tel || null,
+      n.c.cabinet || null, parrain ? 1 : null, m.ht, m.montantHT, m.remise, m.tva, m.timbre, m.ttc, devise, 'ouverte');
+    if (!ok) return rep({ erreur: 'Service momentanément indisponible.' }, 503);
+
+    const origine = new URL(request.url).origin;
+    const retour = String(valeurs.achat_retour || '');
+    const init = await konnectInit(env, valeurs, { ...n.c, id, devise, montant_ttc: m.ttc }, {
+      webhook: origine + '/v1/achat/webhook',
+      succes: retourAchat(retour, id, true),
+      echec: retourAchat(retour, id, false)
+    });
+    if (!init.ok) {
+      await executer('UPDATE commandes SET echec = ? WHERE id = ?', init.raison, id);
+      await journaliser(env, 'commande.refusee', { detail: n.c.nom + ' — ' + init.raison });
+      return rep({ erreur: 'Le paiement n\'a pas pu être ouvert. Réessaie dans un instant, ou écris-nous.' }, 502);
+    }
+    await executer('UPDATE commandes SET paiement_ref = ? WHERE id = ?', init.ref, id);
+    await journaliser(env, 'commande.creee', {
+      detail: n.c.nom + ' — ' + (OFFRES[n.c.offre] || {}).label + ', ' + m.ttc + ' ' + devise + ' TTC'
+        + (parrain ? ' (parrainé, −' + remise + ' %)' : '') + ' — ' + id
+    });
+    return rep({ commande: id, payUrl: init.payUrl, montant: m.ttc, devise, detail: m, parraine: !!parrain }, 201);
+  }
+
+  // ----- où en est ma commande -----
+  if (r.action === 'etat') {
+    if (request.method !== 'GET') return rep({ erreur: 'Méthode non autorisée.' }, 405);
+    if (!r.id) return rep({ erreur: 'Référence de commande manquante.' }, 400);
+    let cmd = await un('SELECT * FROM commandes WHERE id = ?', r.id);
+    // Une référence inconnue est dite inconnue. Répondre « en attente » par prudence enverrait
+    // quelqu'un attendre une clé qui n'arrivera jamais.
+    if (!cmd) return rep({ etat: 'inconnue', phrase: 'Cette référence de commande n\'existe pas.' }, 404);
+    // Le chemin de secours : tant que le paiement n'est pas confirmé, chaque consultation redemande
+    // au prestataire. C'est borné par la patience de l'acheteur, et c'est ce qui sauve la vente le
+    // jour où le webhook n'arrive pas.
+    if (cmd.etat === 'ouverte' && cmd.paiement_ref && !cmd.paiement_le) {
+      await sansCasser(finaliserCommande(env, valeurs, cmd, maintenant), null);
+      cmd = (await un('SELECT * FROM commandes WHERE id = ?', r.id)) || cmd;
+    }
+    return rep(etatCommandePublic(cmd));
+  }
+
+  // ----- le prestataire dit « va regarder » -----
+  if (r.action === 'webhook') {
+    // GET autant que POST : le webhook de Konnect arrive avec sa référence dans l'ADRESSE, et son
+    // verbe a changé par le passé. Refuser sur le verbe perdrait des paiements pour une question
+    // de forme, alors que la référence — la seule chose qui compte — est là.
+    if (request.method !== 'POST' && request.method !== 'GET') return rep({ erreur: 'Méthode non autorisée.' }, 405);
+    const url = new URL(request.url);
+    let ref = String(url.searchParams.get('payment_ref') || url.searchParams.get('paymentRef') || '').trim();
+    if (!ref && request.method === 'POST') {
+      const corps = await request.json().catch(() => null);
+      ref = String((corps && (corps.payment_ref || corps.paymentRef)) || '').trim();
+    }
+    // On ne cherche JAMAIS la commande autrement que par la référence qu'on a nous-mêmes rangée en
+    // la créant : c'est ce qui fait qu'un appel inventé ne désigne rien.
+    const cmd = ref ? await un('SELECT * FROM commandes WHERE paiement_ref = ?', ref) : null;
+    // 200 quoi qu'il arrive : un webhook qui reçoit une erreur est réessayé sans fin, et une
+    // réponse qui distingue « référence inconnue » de « référence connue » apprendrait à un
+    // curieux lesquelles existent.
+    if (!cmd) return rep({ ok: true });
+    await sansCasser(finaliserCommande(env, valeurs, cmd, maintenant), null);
+    return rep({ ok: true });
+  }
+
+  return rep({ erreur: 'Introuvable.' }, 404);
 }
 
 // ---------- la page de la console ----------
@@ -3707,6 +4314,25 @@ const CONSOLE_HTML = `<!doctype html>
         });
       });
   }
+  // 10.9.0 — redemander au prestataire. C'est le troisième chemin vers la même fonction : le
+  // webhook, la page de retour du client, et ce bouton. Un chemin de secours ne sert que s'il
+  // existe le jour où les deux autres n'ont rien donné (6.7.2).
+  function verifierCommande(c) {
+    api('commandes/' + c.id + '/verifier', {}).then(function (j) {
+      montrerInfo(j.livree ? 'Paiement confirm\u00e9 : la cl\u00e9 a \u00e9t\u00e9 \u00e9mise' + (j.mail && j.mail.envoye ? ' et envoy\u00e9e \u00e0 ' + j.mail.a : ' — mais le mail n\u2019est pas parti : ' + ((j.mail || {}).raison || '')) + '.'
+        : 'Rien de neuf : ' + (j.raison || 'le prestataire ne confirme pas ce paiement.'));
+      dessiner();
+    });
+  }
+  function abandonnerCommande(c) {
+    formulaire('Marquer cette commande abandonn\u00e9e ?',
+      h(c.nom) + ' — ' + montant(c.montant_ttc, c.devise) + ' TTC, ouverte le ' + jour(c.cree_le) + '.<br>'
+      + '<strong style="color:var(--warn)">Ce que \u00e7a fait vraiment :</strong> elle sort des paniers en attente et cesse d\u2019\u00eatre livrable. '
+      + 'Rien n\u2019est encaiss\u00e9 \u00e0 ce stade — mais si le client paie malgr\u00e9 tout, son paiement ne livrera plus rien et il faudra le rembourser.',
+      '', 'Marquer abandonn\u00e9e', function () {
+        return api('commandes/' + c.id + '/abandonner', {}).then(function () { fermerForm(); montrerInfo('Commande abandonn\u00e9e.'); dessiner(); });
+      });
+  }
   function facturee(v) {
     formulaire('Numéro de la facture SkanFact', h(v.client) + ' — ' + montant(v.montant_ht, v.devise) + ' HT. Le numéro de la facture émise dans SkanFact, pour que la vente et la comptabilité se retrouvent.',
       champ('numero', 'Numéro *', 'placeholder="FAC-2026-012" maxlength="40"', true),
@@ -3984,6 +4610,31 @@ const CONSOLE_HTML = `<!doctype html>
           return celluleActions(r.id, actes);
         } }
     ],
+    commandes: [
+      { k: 'cree_le', t: 'Quand', f: function (v) { return horodate(v); } },
+      { k: 'nom', t: 'Acheteur', tr: true },
+      { k: 'offre', t: 'Offre', f: function (v) { return libOffre({ offre: v, type: 'entreprise' }); } },
+      { k: 'montant_ttc', t: 'Montant TTC', n: true, f: function (v, r) { return montant(v, r.devise); } },
+      // L'\u00c9TAT, et la seule ligne qui compte vraiment : payée et pas livrée. Elle est rouge, et
+      // elle porte sa raison — « quelque chose a échoué » n'aide personne à décrocher son téléphone.
+      { k: 'etat', t: '\u00c9tat', brut: true, f: function (v, r) {
+          if (v === 'payee') return '<span class="pill a">livr\u00e9e</span>';
+          if (v === 'abandonnee') return '<span class="pill e">abandonn\u00e9e</span>';
+          if (r.paiement_le) return '<span class="pill r" title="' + h(r.echec || '') + '">PAY\u00c9E, cl\u00e9 non partie</span>';
+          return '<span class="pill w">en attente de paiement</span>';
+        } },
+      { k: 'echec', t: 'Dernier refus', tr: true },
+      { k: 'id', t: 'Actions', brut: true, a: true, f: function (v, r) {
+          var actes = [];
+          if (r.etat === 'ouverte' && r.paiement_ref) {
+            actes.push({ act: 'verifier', lib: 'Redemander au prestataire', quoi: 'reposer la question, et livrer si c\u2019est pay\u00e9' });
+          }
+          if (r.etat === 'ouverte' && !r.paiement_le) {
+            actes.push({ act: 'abandonner', lib: 'Marquer abandonn\u00e9e', quoi: 'un panier que personne n\u2019a pay\u00e9' });
+          }
+          return celluleActions(r.id, actes);
+        } }
+    ],
     evenements: [
       // Le journal portait l'heure UTC à côté d'une date UTC : une vente encaissée à 00 h 30 à Tunis
       // s'y lisait la veille à 23 h 30. Tout ce qui s'affiche passe par la même horloge, la locale.
@@ -4123,6 +4774,11 @@ const CONSOLE_HTML = `<!doctype html>
       but: 'Toutes les clés signées depuis cette console. Une licence remplacée reste ici avec son motif : rien ne s\\u2019efface.' },
     ventes: { g: 'Ventes', t: 'Ventes', h: 'Ventes',
       but: 'Une ligne par licence vendue. « Marquer payée » envoie la clé dans la seconde, si le client a une adresse.' },
+    // 10.9.0 — les commandes en ligne. L'écran existe pour UNE ligne surtout : un paiement encaissé
+    // dont la clé n'est pas partie. Le client a payé, il n'a rien, et sans cet écran personne ne le
+    // saurait — le site, lui, ne peut que dire « nous en sommes prévenus ».
+    commandes: { g: 'Ventes', t: 'Commandes', h: 'Commandes en ligne',
+      but: 'Ce qu\u2019un visiteur du site a demandé, et ce qui en est advenu. Une commande devient une vente le jour où le paiement est PROUV\u00c9 : le webhook du prestataire n\u2019est qu\u2019une notification, c\u2019est la question qu\u2019on lui repose qui fait foi.' },
     cabinets: { g: 'Ventes', t: 'Cabinets', h: 'Cabinets comptables',
       but: 'Ce qu\\u2019on vend à un cabinet est un QUOTA de dossiers hors SkanFact, jamais des postes.' },
     clients: { g: 'Ventes', t: 'Clients', h: 'Clients',
@@ -4182,6 +4838,7 @@ const CONSOLE_HTML = `<!doctype html>
     parc: 'Aucune application ne s\\u2019est encore annoncée. SkanFact s\\u2019annonce depuis la 8.4.1, SkanFact Cabinet depuis la 10.4.0.',
     cabinets: 'Aucune licence de cabinet vendue. « Émettre une licence… » ci-dessus, avec le type « Cabinet comptable » : ce qu\\u2019on y vend est un quota de dossiers, jamais des postes.',
     essais: 'Aucun essai en cours. Un poste s\\u2019annonce tout seul au premier lancement : ceux qui apparaîtront ici sont les gens à appeler avant la fin de leur mois.',
+    commandes: 'Aucune commande en ligne. Le site en cr\u00e9e une d\u00e8s qu\u2019un visiteur choisit son offre — et tant que le portefeuille du prestataire n\u2019est pas r\u00e9gl\u00e9 (R\u00e9glages \u2192 Paiement en ligne), l\u2019achat en ligne est ferm\u00e9 et le site le dit.',
     reglages: ''
   };
 
@@ -4846,6 +5503,8 @@ const CONSOLE_HTML = `<!doctype html>
         else if (act === 'payee') payee(r);
         else if (act === 'facturee') facturee(r);
         else if (act === 'ecrire') ecrire(r);
+        else if (act === 'verifier') verifierCommande(r);
+        else if (act === 'abandonner') abandonnerCommande(r);
       };
       $('table').onclick = agir;
       // Le menu vit sur le body : son clic n'arrive pas au tableau. Le MÊME gestionnaire le sert —

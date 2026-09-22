@@ -252,6 +252,36 @@ Sans eux, la console écrit « canaux : non lus » et dit pourquoi — elle n'af
 qu'elle ne peut pas prouver. Ce qu'elle surveille est très précisément le défaut de la 9.8.8 : un
 index **stable** servi par une **préversion**, c'est-à-dire une bêta proposée à tout le monde.
 
+### 4 sexies. Le paiement en ligne (10.9.0) — un secret, deux réglages
+
+Le site `skanfact.tn` peut vendre tout seul : le visiteur choisit son offre, paie par carte, et la
+clé part par mail dans la seconde. **Tant que ce qui suit n'est pas posé, l'achat en ligne est
+FERMÉ** — le site le lit (`GET /v1/achat/tarifs` répond `ouvert: false` avec sa raison) et affiche
+le formulaire de demande d'avant. Rien ne casse, rien ne ment.
+
+| À poser | Où | Quoi |
+|---|---|---|
+| `KONNECT_API_KEY` | Cloudflare → **Secret** | la clé d'API du compte Konnect. Un secret, jamais un réglage : la console ne doit pas pouvoir le lire. |
+| `konnect_wallet` | Console → **Réglages → Paiement en ligne** | l'identifiant du portefeuille qui reçoit l'argent. |
+| `achat_retour` | idem | la page du site où le payeur revient (`https://skanfact.tn/merci`, par exemple). |
+
+Deux autres réglages y vivent, avec leur **« À VÉRIFIER »** : la **TVA** (19 % par défaut) et le
+**timbre fiscal** (1 DT). Ils décident de ce qui est réellement encaissé, et ils doivent dire
+exactement ce que la facture dira — un écart d'un millime laisse la pièce impayée pour toujours.
+
+Le `konnect_api` par défaut est la production. Pour essayer un paiement **sans encaisser un dinar**,
+poser l'adresse du bac à sable de Konnect dans ce réglage, faire un achat, puis la remettre à vide.
+
+**Ce qui prouve un paiement.** Le webhook de Konnect n'est pas signé : n'importe qui peut l'appeler.
+Il ne vaut donc que comme notification — « va regarder » — et le worker repose la question à Konnect
+avec sa clé (`GET /payments/<ref>`). Trois conditions, et les trois : l'état est `completed`, le
+paiement porte la référence de NOTRE commande, et le montant encaissé est celui qu'on a demandé.
+
+**Si la clé ne part pas** (Konnect a encaissé, mais la signature ou le mail échouent), la commande
+reste rouge dans **Console → Commandes** avec sa raison, « À décider » la crie, et le bouton
+« Redemander au prestataire » rejoue la livraison. C'est le pire état possible — le client a payé et
+n'a rien — et c'est le seul endroit où il se voit.
+
 ### 4 ter. Vendre une licence de cabinet (9.4.1)
 
 Depuis la 9.4.0, SkanFact Cabinet est payant au-delà de trois dossiers hors SkanFact — et c'est un

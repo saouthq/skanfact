@@ -11488,15 +11488,23 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
       // l'en-tête `Origin` d'une requête qui ARRIVE, et rien ne part jamais vers elles. On les
       // nomme par RÉFÉRENCE plutôt que par motif — sinon `https://skanfact.tn/collecte`, une vraie
       // sortie, passerait sous le même nez. Toute autre adresse fait encore tomber ce test.
-      assert.deepStrictEqual([...new Set(urls)].sort(), [P.MAIL_API, ...P.ORIGINES_SITE].sort(),
+      assert.deepStrictEqual([...new Set(urls)].sort(), [P.MAIL_API, P.KONNECT_API, ...P.ORIGINES_SITE].sort(),
         'une adresse sortante inattendue dans le worker : ' + urls.join(', '));
       // `await fetch(` : l'appel SORTANT — pas `async fetch(request, env)`, qui est le point d'entrée.
       // DEUX depuis la 10.4.0, et pas un de plus : le mail qui porte la clé, et le relais de mise à
       // jour dont l'adresse vient d'un RÉGLAGE (jamais d'une adresse écrite ici — c'est ce que
       // l'assertion du dessus vérifie). Ajouter une sortie à ce worker est une décision, et ce
       // compte est là pour qu'elle ne se prenne jamais par inadvertance.
-      assert.strictEqual((code.match(/await fetch\(/g) || []).length, 2, 'deux appels réseau sortants : le mail, et le relais');
+      assert.strictEqual((code.match(/await fetch\(/g) || []).length, 4,
+        'quatre appels réseau sortants : le mail, le relais, et les deux questions au prestataire de paiement');
       assert.ok(/await fetch\(base \+ '\/sante'/.test(code), 'la seconde sortie est la santé des canaux, lue au relais');
+      // 10.9.0 — les deux autres parlent au prestataire de paiement, et leur adresse vient d'un
+      // RÉGLAGE (`konnect_api`, dont le défaut est la constante ci-dessus) : c'est ce qui permet
+      // d'essayer un paiement sur le bac à sable sans déployer. La seconde est la plus importante
+      // du lot : c'est elle qui PROUVE un paiement, parce que le webhook, lui, n'est pas signé.
+      assert.ok(/await fetch\(cfg\.base \+ '\/payments\/init-payment'/.test(code), 'la troisième sortie ouvre le paiement');
+      assert.ok(/await fetch\(cfg\.base \+ '\/payments\/' \+ encodeURIComponent\(ref\)/.test(code),
+        'la quatrième sortie redemande au prestataire où en est un paiement — c\'est la seule preuve');
     });
 
     // Une vente complète contre une VRAIE base (SQLite, vrai schéma) et le vrai worker : le client,
@@ -14217,6 +14225,7 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
   require('./suites/paie-cabinet.js')({ t, assert, lireSource });
   // Celle-ci reçoit `ta` en plus : elle interroge le vrai worker sur une vraie base SQLite.
   await require('./suites/plateforme-gestion.js')({ t, ta, assert, lireSource });
+  await require('./suites/paiement.js')({ ta, assert });
 
   // ---------- 9.4.10 : aucune suite découpée ne reste sur le bord de la route ----------
   // Le danger d'un découpage, c'est le fichier qu'on écrit et que personne ne charge : les tests

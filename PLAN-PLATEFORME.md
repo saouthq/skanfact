@@ -367,9 +367,56 @@ virement. Une automatisation qui suppose une carte bancaire ne servirait à pers
 
 Le jour où un encaissement en ligne est branché, il déclenche **le même bouton**. Rien à réécrire.
 
+### Ce qui a été branché (10.9.0)
+
+Konnect, et la phrase ci-dessus a été tenue au pied de la lettre : `finaliserCommande` appelle le
+MÊME `emettre` que la console, donc la même clé, la même vente, le même mail. Une seconde émission
+« pour le web » aurait donné deux façons de vendre, donc deux façons de se tromper.
+
+**Ce qui décide, et ce qui ne décide pas.** Le navigateur envoie une DEMANDE : une offre, un nom,
+une adresse, un matricule, éventuellement le code du comptable qui l'a envoyé. Il n'envoie ni prix,
+ni remise, ni durée — et un prix qu'il enverrait quand même ne servirait à rien. Tout ce qui chiffre
+vient des réglages de la console (10.5.0), y compris la TVA et le timbre fiscal, qui portent leur
+« À VÉRIFIER ».
+
+**Ce qui prouve.** Le webhook de Konnect **n'est pas signé** : n'importe qui peut l'appeler avec
+n'importe quelle référence. Il ne vaut donc que comme notification, et la preuve est la question
+qu'on repose à Konnect avec notre clé. Trois conditions, et chacune ferme une porte : l'état est
+`completed` ; le paiement porte la référence de NOTRE commande (sinon la preuve d'un achat à 390
+ferait livrer celui à 690) ; le montant encaissé est celui qu'on a demandé.
+
+**Trois chemins vers la même livraison, et c'est voulu** (6.7.2 — un chemin de secours ne sert que
+s'il se déclenche tout seul) : le webhook, la page de retour que le client consulte, et un bouton
+dans la console. Tous les trois appellent `finaliserCommande`, qui est idempotent.
+
+**Le pire état, et où il se voit.** Konnect a encaissé et la clé n'est pas partie : le client a payé
+et n'a rien. La commande reste `ouverte` avec `paiement_le` rempli et sa raison d'échec, l'écran
+Commandes la montre en rouge, et « À décider » la crie. Sans cette ligne, personne ne le saurait —
+la commande n'est pas une vente, la licence n'existe pas encore, et la page du site ne peut que
+répondre « nous en sommes prévenus ».
+
+**Ce qui ne se vend PAS en ligne** : une licence de **cabinet**. Son tarif n'est pas fixé (§ 8), et
+vendre au prix zéro ou à un prix inventé pour l'occasion sont aussi faux l'un que l'autre.
+
+### Le contrat avec le site
+
+| Route | Verbe | Ce que le site envoie | Ce qu'il reçoit |
+|---|---|---|---|
+| `/v1/achat/tarifs` | GET | rien | `{ ouvert, raison, devise, offres: [{ id, label, ht, ttc }], tva, timbre, remiseParrainage }` |
+| `/v1/achat/commander` | POST | `{ offre, nom, email, matricule?, tel?, cabinet? }` | `{ commande, payUrl, montant, devise, detail, parraine }` |
+| `/v1/achat/etat/<commande>` | GET | rien | `{ etat, phrase, offre, montant, devise }` |
+| `/v1/achat/webhook` | POST | *(Konnect seul)* | — |
+
+Aucun secret : ces routes s'adressent à un visiteur. Les trois premières portent l'autorisation
+CORS pour `skanfact.tn` ; le webhook, appelé de serveur à serveur, n'en porte AUCUNE.
+
+`etat` vaut `ouverte`, `payee`, `en_cours` (payé, clé pas encore partie), `abandonnee` ou
+`inconnue`, et il porte toujours une `phrase` en français, prête à afficher. Il **ne rend jamais la
+clé** : une référence de commande voyage dans une adresse, qui se copie et se partage. La clé part
+par mail, et l'adresse est masquée dans la phrase.
+
 **À VÉRIFIER, aucun n'est technique :**
-- Les solutions locales (Konnect, Paymee, Flouci, ClicToPay) : laquelle accepte une SUARL, à quel
-  coût, avec quel délai de versement.
+- Le contrat Konnect lui-même : commission, délai de versement, et ce que la SUARL doit fournir.
 - Les plateformes internationales type Paddle ou Lemon Squeezy, qui géreraient la TVA européenne :
   question de rapatriement des devises et d'Office des Changes. C'est un sujet de banquier.
 

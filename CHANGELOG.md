@@ -7,6 +7,56 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 10.9.0 — 22/09/2026
+
+**Le paiement en ligne.** Le site `skanfact.tn` peut vendre tout seul : le visiteur choisit son
+offre, paie par carte chez Konnect, et sa clé de licence part par mail dans la seconde. C'est ce que
+`PLAN-PLATEFORME.md` § 12 annonçait depuis le premier jour — « le jour où un encaissement en ligne
+est branché, il déclenche **le même bouton**, rien à réécrire » — et la phrase a été tenue au pied
+de la lettre : le webhook appelle la MÊME émission que la console, donc la même clé, la même vente
+et le même mail. Une seconde émission « pour le web » aurait donné deux façons de vendre, donc deux
+façons de se tromper.
+
+**Tant que la clé Konnect et le portefeuille ne sont pas posés, l'achat en ligne est FERMÉ**, le
+site le lit et le dit, et le formulaire de demande d'avant continue de servir. Rien ne casse et rien
+ne ment (`plateforme/README.md` § 4 sexies).
+
+Les deux dangers du jour, et ce qui les ferme :
+
+- **Le navigateur ment.** Il envoie une demande — une offre, un nom, une adresse — jamais un prix.
+  Un prix qu'il enverrait quand même ne sert à rien : tout ce qui chiffre vient des réglages de la
+  console, TVA et timbre fiscal compris. Le **timbre** est encaissé, et ce n'est pas un détail :
+  SkanFact l'ajoute tout seul à la facture, donc ne pas le prendre en ligne laisserait chaque vente
+  due d'un dinar, pour toujours.
+- **Le webhook de Konnect n'est pas signé** : n'importe qui peut l'appeler. Il ne vaut donc que
+  comme notification, et la preuve est la question qu'on repose à Konnect avec notre clé. Trois
+  conditions, et les trois : l'état est « encaissé », le paiement porte la référence de NOTRE
+  commande, et le montant est celui qu'on a demandé. Un paiement partiel n'est pas un paiement.
+
+Le reste :
+
+- **Trois chemins vers la même livraison**, et c'est voulu (6.7.2) : le webhook, la page de retour
+  que le client consulte, et un bouton dans la console. Le jour où le webhook n'arrive pas, c'est la
+  page que le client regarde qui finit le travail, sans que personne ait rien à faire.
+- **Le pire état a son écran** : Konnect a encaissé et la clé n'est pas partie. La commande reste
+  rouge dans **Console → Commandes** avec sa raison, et « À décider » la crie. Sans cette ligne,
+  personne ne saurait qu'un client a payé pour rien.
+- **La remise de parrainage ne se pose que sur un cabinet que la base CONNAÎT.** Vingt caractères
+  hexadécimaux se tapent au hasard ; ce qui ne se fabrique pas, c'est une licence de cabinet vivante
+  portant cette empreinte.
+- **Une licence de cabinet ne se vend pas en ligne** : son tarif n'est pas fixé, et vendre à zéro ou
+  à un prix inventé sont aussi faux l'un que l'autre.
+- La page publique **ne rend jamais la clé** : une référence de commande voyage dans une adresse,
+  qui se copie. La clé part par mail, et l'adresse est masquée dans la phrase de retour.
+- Le client n'est créé qu'**au paiement** : une commande abandonnée ne laisse aucune fiche derrière
+  elle, et la table des clients reste ce qu'elle dit être.
+- Au passage, un défaut de la 10.5.0 : le réglage « Signature des mails » de la console était
+  réglable **et ignoré** par les mails qu'il nomme — ils lisaient la variable du worker.
+
+Treize défauts remis un par un font tomber leur test, et le quatorzième a été trouvé par un test
+neuf : la requête de l'alerte ne sélectionnait pas la colonne que le constructeur d'alertes teste,
+et la ligne était écartée en silence.
+
 ## 10.8.1 — 22/09/2026
 
 **Les finitions de la console.** Cinq défauts trouvés en relisant ses captures écran par écran.

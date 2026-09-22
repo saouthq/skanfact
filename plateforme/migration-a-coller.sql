@@ -73,3 +73,35 @@ CREATE TABLE IF NOT EXISTS suivis (
   source TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_suivis_sujet ON suivis(sujet);
+
+-- ---------- 10.9.0 — les commandes en ligne ----------
+-- Une table : `IF NOT EXISTS` la rend inoffensive à rejouer. Tant qu'elle est vide et que la clé
+-- Konnect n'est pas posée, rien ne change à l'écran — le paiement en ligne est simplement fermé,
+-- et la console le dit.
+CREATE TABLE IF NOT EXISTS commandes (
+  id           TEXT PRIMARY KEY,
+  cree_le      TEXT NOT NULL,
+  offre        TEXT NOT NULL,
+  duree        TEXT NOT NULL,
+  nom          TEXT NOT NULL,
+  email        TEXT NOT NULL,
+  matricule    TEXT,
+  tel          TEXT,
+  cabinet      TEXT,
+  parraine     INTEGER,
+  prix_ht      REAL NOT NULL,
+  montant_ht   REAL NOT NULL,
+  remise       REAL NOT NULL,
+  tva          REAL NOT NULL,
+  timbre       REAL NOT NULL,
+  montant_ttc  REAL NOT NULL,
+  devise       TEXT NOT NULL,
+  paiement_ref TEXT,
+  paiement_le  TEXT,
+  etat         TEXT NOT NULL,
+  licence_id   TEXT REFERENCES licences(id),
+  client_id    TEXT REFERENCES clients(id),
+  echec        TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_commandes_ref ON commandes(paiement_ref);
+CREATE INDEX IF NOT EXISTS idx_commandes_etat ON commandes(etat, cree_le);

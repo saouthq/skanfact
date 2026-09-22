@@ -11,5 +11,8 @@ CREATE TABLE IF NOT EXISTS jetons ( id TEXT PRIMARY KEY, nom TEXT NOT NULL, empr
 CREATE TABLE IF NOT EXISTS evenements ( id INTEGER PRIMARY KEY AUTOINCREMENT, quand TEXT NOT NULL, quoi TEXT NOT NULL, client_id TEXT, licence_id TEXT, detail TEXT, par_qui TEXT );
 CREATE INDEX IF NOT EXISTS idx_evt_quand ON evenements(quand);
 CREATE TABLE IF NOT EXISTS reglages ( cle TEXT PRIMARY KEY, valeur TEXT NOT NULL, change_le TEXT NOT NULL );
+CREATE TABLE IF NOT EXISTS commandes ( id TEXT PRIMARY KEY, cree_le TEXT NOT NULL, offre TEXT NOT NULL, duree TEXT NOT NULL, nom TEXT NOT NULL, email TEXT NOT NULL, matricule TEXT, tel TEXT, cabinet TEXT, parraine INTEGER, prix_ht REAL NOT NULL, montant_ht REAL NOT NULL, remise REAL NOT NULL, tva REAL NOT NULL, timbre REAL NOT NULL, montant_ttc REAL NOT NULL, devise TEXT NOT NULL, paiement_ref TEXT, paiement_le TEXT, etat TEXT NOT NULL, licence_id TEXT REFERENCES licences(id), client_id TEXT REFERENCES clients(id), echec TEXT );
+CREATE INDEX IF NOT EXISTS idx_commandes_ref ON commandes(paiement_ref);
+CREATE INDEX IF NOT EXISTS idx_commandes_etat ON commandes(etat, cree_le);
 CREATE TABLE IF NOT EXISTS suivis ( id TEXT PRIMARY KEY, sujet TEXT NOT NULL, quand TEXT NOT NULL, moyen TEXT, note TEXT, rappel TEXT, issue TEXT, motif TEXT, source TEXT );
 CREATE INDEX IF NOT EXISTS idx_suivis_sujet ON suivis(sujet);

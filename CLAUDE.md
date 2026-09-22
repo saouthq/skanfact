@@ -41,6 +41,8 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Une donnée qui n'a pas de **case** se réinvente — et ce qu'on réinvente est faux | 9.8.5 — le tiers déduit du libellé, le compte nommé par la première écriture |
 | Un compte porte un **nom de compte** ; un compte nommé par le cabinet ne se réécrit jamais | 9.8.5, 6.3.0 |
 | Un **rapprochement faux** ferme la question : une ambiguïté n'est JAMAIS « certain » | 9.5.0 |
+| Un **prix ne vient jamais du navigateur** ; ce qui prouve un paiement est la question qu'on REPOSE au prestataire | 10.9.0 |
+| Ce qu'on **encaisse** est exactement ce que la facture dira — **timbre compris**, sinon la pièce reste due d'un dinar | 10.9.0 |
 | Une écriture qui SOLDE un compte ne compte pas dans ce qu'elle déclare | 9.6.0 |
 | Un taux qui dépend du **droit** se saisit ; un taux qui dépend d'un **calcul** se déduit | 9.7.0 — le coefficient dégressif |
 | Le **prix d'une cession** ne s'invente pas ; la sortie d'actif, oui | 9.0.0, 9.7.0 |
@@ -137,6 +139,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Une saisie refusée se **MONTRE** : on amène le champ à l'écran (`refus()`) | 7.0.0, 7.20.0 |
 | Ce qui **détruit** demande ; ce qui **se répare** laisse un « Annuler » (`toastUndo`) | 7.12.0 ; 9.4.6 — porté au Cabinet |
 | Un écran qui **NOMME** un ensemble doit pouvoir l'ouvrir | 7.15.0, 7.17.0, 7.21.0, 10.4.0 |
+| Un **lecteur ne dépend jamais d'un filtre qu'il ne voit pas** : la colonne testée se SÉLECTIONNE | 10.9.0 — la ligne écartée en silence |
 | Chaque écran **finit par le geste suivant** : le métier est une boucle, pas quatre pages | 7.27.0, 9.4.9 |
 | Une **prose sous un tableau** remplace la découvrabilité : l'explication va dans la bulle du titre | 9.4.9 |
 | L'endroit qui **affiche** un état est celui où on s'attend à le changer | 7.14.0 |
@@ -161,6 +164,8 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Jamais de **token** commité | Règles de travail, 6.7.0 |
 | Jamais une **donnée de plus** dans ce qui part vers le serveur : la liste se compte | 8.4.0, 10.4.0 |
 | Jamais une **base de ventes sans copie** : D1 est le seul endroit où vit qui a acheté quelle clé | 10.4.0 ; 10.5.0 — une copie qui demande un clic ne se fait pas |
+| Jamais **croire un webhook non signé** : il notifie, il ne prouve pas | 10.9.0 |
+| Jamais **abandonner une commande payée** : ce serait garder l'argent en fermant la porte | 10.9.0 |
 | Jamais un **secret qu'on ne peut pas remplacer** sans se fermer la porte | 10.5.0 — le second secret de rotation |
 | Ce qui **protège une réponse publique** est la REQUÊTE, jamais la forme de la réponse | 10.5.0 — la vérification d'une empreinte |
 | Jamais **chiffrer en croyant signer** : seule une signature dit d'où ça vient | 9.2.0 |
@@ -5602,6 +5607,74 @@ boutons ont fait le voyage.
 Verdict du jour, qu'on ne pouvait pas connaître : **722 champs** (146 app entreprise, 319 Cabinet,
 257 console), aucun illisible. Prouvé en remettant le défaut d'origine dans la feuille de style — la
 sonde le nomme à 1,18 exactement.
+
+### 10.9.0 — Le paiement en ligne
+
+Le premier endroit du projet où de l'argent change de mains sans que personne ne regarde. Ce que
+`PLAN-PLATEFORME.md` § 12 promettait depuis le premier jour — « le jour où un encaissement en ligne
+est branché, il déclenche **le même bouton** » — a été tenu littéralement : `emettre`,
+`cleDeLicence` et `envoyerSiPossible` sont sortis de `repondreAdmin` pour vivre au niveau du module
+(`atelierLicences`), et le webhook les appelle tels quels.
+
+Règles apprises, à ne pas recasser :
+
+- **Le navigateur envoie une DEMANDE, jamais une décision.** `nettoyerCommande` rend exactement six
+  champs — offre, nom, email, matricule, téléphone, code du parrain — et un test fixe cette liste :
+  un champ de plus, et c'est le navigateur qui décide de quelque chose. Le prix, la remise et la
+  durée viennent des réglages ; un prix envoyé par la page ne sert à rien, et le test le prouve en
+  en envoyant un ridicule.
+- **Un webhook non signé ne vaut que comme notification.** Celui de Konnect n'est pas signé :
+  n'importe qui peut l'appeler avec n'importe quelle référence. Ce qui PROUVE est la question qu'on
+  repose au prestataire avec notre clé — c'est la règle 10.5.0 (« ce qui protège une réponse
+  publique est la REQUÊTE ») appliquée dans l'autre sens. Trois conditions, et chacune ferme une
+  porte : l'état est `completed` ; le paiement porte la référence de NOTRE commande (sinon la preuve
+  d'un achat à 390 ferait livrer celui à 690) ; le montant encaissé est celui qu'on a demandé.
+- **Et on ne cherche jamais la commande autrement que par la référence qu'on a soi-même rangée** en
+  la créant : c'est ce qui fait qu'un appel inventé ne désigne rien.
+- **Ce qu'on encaisse est exactement ce que la facture dira, timbre compris.** SkanFact ajoute le
+  timbre fiscal tout seul à la pièce : ne pas l'encaisser laisserait chaque vente en ligne due d'un
+  dinar, pour toujours — un impayé permanent que personne ne comprendrait six mois plus tard. La TVA
+  et le timbre sont des **réglages** avec leur « À VÉRIFIER » (règle 5.0.0 : aucun taux en dur).
+- **L'ordre des trois compte** : la remise s'applique au HT, la TVA au HT remisé, le timbre APRÈS la
+  TVA — c'est un droit fixe par facture, pas une base imposable.
+- **Trois chemins vers la même livraison, et c'est voulu** (6.7.2) : le webhook, la page de retour
+  du client, et un bouton dans la console. Le jour où le webhook n'arrive pas, c'est la page que le
+  client regarde qui finit le travail. `finaliserCommande` est donc IDEMPOTENT — un webhook se livre
+  deux fois, une page s'actualise — et un test le vérifie en rejouant les trois.
+- **Une commande n'est pas une vente, et `paiement_le` n'est pas `etat`.** Les deux séparés donnent
+  le seul état qui compte vraiment : encaissé, et clé pas partie. Le client a payé et n'a rien.
+  L'alerte est rouge, elle porte la raison, et sans elle personne ne le saurait — la commande
+  n'apparaît nulle part ailleurs, la licence n'existe pas, et le site ne peut que dire « nous en
+  sommes prévenus ». Corollaire : **on n'abandonne pas une commande payée** — ce serait garder
+  l'argent en fermant la porte.
+- **Le client n'est créé qu'au paiement** : une commande abandonnée ne laisse aucune fiche derrière
+  elle, et la table des clients reste ce qu'elle dit être.
+- **Une remise ne se pose que sur un parrain que la BASE connaît.** Vingt caractères hexadécimaux se
+  tapent au hasard ; ce qui ne se fabrique pas, c'est une licence de cabinet vivante portant cette
+  empreinte. L'empreinte annoncée est gardée dans les deux cas — un parrainage qu'on n'a pas su
+  reconnaître reste une information.
+- **Une référence PUBLIQUE ne s'énumère pas** : `idLong` (seize octets) et non `idCourt` (quatre).
+  Une licence ne s'atteint qu'avec le secret d'administration ; une commande se relit sans secret.
+- **Et elle ne rend jamais la clé** : une référence voyage dans une adresse, qui se copie, se
+  partage et se retrouve dans un historique. La clé part par mail, l'adresse est masquée.
+- **Une offre dont le prix n'est pas fixé ne se vend pas en ligne.** Le Cabinet en est absent, et ce
+  n'est pas un oubli : vendre à zéro ou à un prix inventé pour l'occasion sont aussi faux l'un que
+  l'autre (règle 9.1.1).
+- **Le prestataire compte en MILLIMES, en entier**, et `Math.round` est indispensable :
+  `301.29 * 1000` vaut `301289.99999999994`. Un centième de millime en moins ferait refuser le
+  paiement pour cause de montant qui ne correspond pas. Corollaire : l'achat en ligne **refuse** une
+  devise autre que le dinar, parce que `millimes()` serait dix fois trop grand sur deux décimales.
+- **Un lecteur ne doit jamais dépendre d'un filtre qu'il ne voit pas.** La requête de l'alerte
+  filtrait sur `etat` sans le SÉLECTIONNER : la ligne arrivait au constructeur sans le champ qu'il
+  teste, et elle était écartée **en silence**. C'est le jumeau du « champ lu mais jamais écrit »
+  (7.3.0), du côté de la lecture — et c'est un test neuf qui l'a trouvé, pas la relecture.
+- **Un réglage réglable et ignoré est pire qu'un réglage absent** : « Signature des mails » vivait
+  dans la console depuis la 10.5.0 et les mails lisaient la variable du worker. Trouvé en sortant
+  `envoyerSiPossible` de sa fermeture — un déménagement force à regarder d'où chaque valeur vient.
+- Piège de méthode : `String.replace` avec un motif TEXTE ne remplace que la PREMIÈRE occurrence.
+  Trois appels à réécrire, un seul réécrit, et le test tombé était à mille lignes de là.
+
+Prouvé : treize défauts réintroduits un par un font tomber leur test.
 
 ## Pistes pour la suite (non demandées)
 

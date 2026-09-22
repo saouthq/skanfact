@@ -155,6 +155,50 @@ CREATE TABLE IF NOT EXISTS reglages (
   change_le TEXT NOT NULL
 );
 
+-- ---------- les commandes en ligne (10.9.0) ----------
+-- Ce qu'un visiteur du site a demandé, AVANT d'avoir payé. Une commande n'est pas une vente : elle
+-- devient une vente le jour où le paiement est PROUVÉ, et pas une seconde avant.
+--
+-- Quatre décisions, et chacune répond à une façon de se faire voler :
+--
+--   1. Le PRIX ne vient jamais du navigateur. Cette table le porte parce que c'est le serveur qui
+--      l'a calculé, depuis ses propres réglages, au moment de la commande. Un montant envoyé par la
+--      page se ferait corriger à 1 DT par la première console de développement venue.
+--   2. Le CLIENT n'est créé qu'au paiement. Une commande abandonnée ne laisse donc aucune fiche
+--      derrière elle, et la table des clients reste ce qu'elle dit être : les gens qui ont acheté.
+--   3. `paiement_le` et `etat` sont DEUX choses. Un paiement encaissé dont la clé n'est pas partie
+--      est le pire état possible — le client a payé et n'a rien — et il doit pouvoir se lire :
+--      `paiement_le` rempli avec `etat` encore « ouverte », c'est l'alerte rouge de la console.
+--   4. `id` est une référence PUBLIQUE (elle voyage dans l'adresse de retour) : seize octets, pas
+--      quatre. Une référence qu'on peut énumérer est une référence qu'on énumérera.
+CREATE TABLE IF NOT EXISTS commandes (
+  id           TEXT PRIMARY KEY,
+  cree_le      TEXT NOT NULL,
+  offre        TEXT NOT NULL,             -- 'independant' ou 'entreprise' — jamais 'cabinet' (§ tarifs)
+  duree        TEXT NOT NULL,             -- l'identifiant d'une durée de DUREES
+  nom          TEXT NOT NULL,
+  email        TEXT NOT NULL,             -- obligatoire : c'est par là que la clé part
+  matricule    TEXT,
+  tel          TEXT,
+  cabinet      TEXT,                      -- l'empreinte du parrain, telle qu'annoncée par l'acheteur
+  parraine     INTEGER,                   -- 1 seulement si la base CONNAÎT ce cabinet
+  prix_ht      REAL NOT NULL,             -- le tarif affiché, avant remise
+  montant_ht   REAL NOT NULL,             -- ce qui est facturé HT : remise déduite
+  remise       REAL NOT NULL,             -- en pourcentage, et seulement si le parrain est connu
+  tva          REAL NOT NULL,
+  timbre       REAL NOT NULL,
+  montant_ttc  REAL NOT NULL,             -- ce qui est réellement demandé au payeur
+  devise       TEXT NOT NULL,
+  paiement_ref TEXT,                      -- la référence rendue par le prestataire
+  paiement_le  TEXT,                      -- quand le prestataire a CONFIRMÉ (voir la décision 3)
+  etat         TEXT NOT NULL,             -- 'ouverte' | 'payee' | 'abandonnee'
+  licence_id   TEXT REFERENCES licences(id),
+  client_id    TEXT REFERENCES clients(id),
+  echec        TEXT                       -- la dernière raison pour laquelle la clé n'a pas pu partir
+);
+CREATE INDEX IF NOT EXISTS idx_commandes_ref ON commandes(paiement_ref);
+CREATE INDEX IF NOT EXISTS idx_commandes_etat ON commandes(etat, cree_le);
+
 -- ---------- le suivi commercial (10.5.0) ----------
 -- Ce que l'éditeur a FAIT d'un prospect ou d'un client : appelé, écrit, rappeler le 12, perdu parce
 -- que trop cher. La console savait ce qui EXISTE et ne retenait rien de ce qu'on en faisait : un
