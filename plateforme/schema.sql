@@ -22,7 +22,8 @@
 -- ---------- les clients ----------
 CREATE TABLE IF NOT EXISTS clients (
   id          TEXT PRIMARY KEY,           -- identifiant à nous, stable à vie
-  nom         TEXT NOT NULL,
+  nom         TEXT NOT NULL,              -- la raison sociale, jamais la personne qui a commandé
+  contact     TEXT,                       -- qui suit le dossier chez lui
   matricule   TEXT,                       -- peut changer : ce n'est PAS l'identifiant
   email       TEXT,
   tel         TEXT,
@@ -176,7 +177,12 @@ CREATE TABLE IF NOT EXISTS commandes (
   cree_le      TEXT NOT NULL,
   offre        TEXT NOT NULL,             -- 'independant' ou 'entreprise' — jamais 'cabinet' (§ tarifs)
   duree        TEXT NOT NULL,             -- l'identifiant d'une durée de DUREES
+  -- `nom` est la RAISON SOCIALE : c'est elle qui va sur la facture, avec le matricule et l'adresse.
+  -- `contact` est la personne qui suit le dossier — utile pour l'appeler, sans valeur sur la pièce.
+  -- Les confondre ferait établir une facture au nom d'un salarié avec le matricule de sa société.
   nom          TEXT NOT NULL,
+  contact      TEXT,
+  adresse      TEXT,                      -- une facture tunisienne la porte : sans elle, elle est incomplète
   email        TEXT NOT NULL,             -- obligatoire : c'est par là que la clé part
   matricule    TEXT,
   tel          TEXT,

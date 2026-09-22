@@ -38,7 +38,8 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Un compteur et la liste qu'il annonce se calculent avec la **même fonction** | 6.8.1 — le bandeau des relances ; 7.15.0 — « Reste à encaisser » |
 | Un montant **négatif change de colonne**, il ne garde pas son signe | 6.3.0 — les écritures comptables |
 | Un **agrégat** porte une devise, une unité, et une période nommée | 7.0.1, 7.16.0, 3.1.0 ; 9.4.9 — une courbe d'une barre cède la place au chiffre |
-| Une donnée qui n'a pas de **case** se réinvente — et ce qu'on réinvente est faux | 9.8.5 — le tiers déduit du libellé, le compte nommé par la première écriture |
+| Une donnée qui n'a pas de **case** se réinvente — et ce qu'on réinvente est faux | 9.8.5 — le tiers déduit du libellé, le compte nommé par la première écriture ; 10.9.1 — ou elle se perd en silence |
+| Une facture se libelle à la **SOCIÉTÉ** ; deux champs d'un formulaire ne disent jamais la même chose | 10.9.1 — la pièce légale au nom d'un salarié |
 | Un compte porte un **nom de compte** ; un compte nommé par le cabinet ne se réécrit jamais | 9.8.5, 6.3.0 |
 | Un **rapprochement faux** ferme la question : une ambiguïté n'est JAMAIS « certain » | 9.5.0 |
 | Un **prix ne vient jamais du navigateur** ; ce qui prouve un paiement est la question qu'on REPOSE au prestataire | 10.9.0 |
@@ -92,6 +93,8 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | `\'` dans un gabarit rend une **apostrophe nue** : le fichier reste analysable, la PAGE meurt | 10.5.0 — écran vide, rien dans aucune console |
 | Un **garde-fou écrit et jamais prouvé** couvre ce qu'on a pensé, pas ce qui casse : il se prouve sur le défaut RÉEL qui l'a fait écrire | 10.8.0 — 47 noms lus sur 103, et le défaut vivait dans les 56 autres |
 | Un **compte de fichiers** n'est pas un compte de livres : l'index et la génération précédente font « 2 » | 9.8.8 |
+| Une assertion « **rien n'a changé** » passe toujours quand le geste n'a pas eu lieu : l'ancrer sur sa réussite | 10.9.1 ; 9.4.7 |
+| Un **contrat entre deux moitiés** se relit champ par champ contre le FORMULAIRE, jamais contre le commentaire qui le décrit | 10.9.1 — six champs annoncés, huit envoyés |
 
 **Les deux applications**
 
@@ -5675,6 +5678,46 @@ Règles apprises, à ne pas recasser :
   Trois appels à réécrire, un seul réécrit, et le test tombé était à mille lignes de là.
 
 Prouvé : treize défauts réintroduits un par un font tomber leur test.
+
+### 10.9.1 — Deux champs sur un formulaire ne sont jamais deux façons de dire la même chose
+
+Trouvé en reprenant la session du site : elle demandait « confirmer que le serveur conserve `raison`
+et `adresse`, sinon je les retire ». Il ne les conservait pas — et la réponse honnête n'était pas de
+les retirer.
+
+- **Un formulaire qui distingue deux champs le fait pour une raison, et le serveur doit la
+  connaître.** Le site sépare la RAISON SOCIALE (`autocomplete="organization"`) de la personne qui
+  suit le dossier (« Qui suit le dossier »). Le worker n'avait qu'un `nom` et le documentait comme
+  « le nom de ton entreprise » : il recevait donc un salarié et l'inscrivait comme client. Aucune
+  console ne le montre, aucun test ne tombe, et la première chose qui l'aurait dit est une facture —
+  une pièce légale — libellée au nom d'une personne, sans adresse, sous le matricule de sa société.
+  **Le contrat entre deux moitiés écrites séparément se relit CHAMP PAR CHAMP contre le formulaire
+  réel, pas contre le commentaire qui le décrit** : celui de `site.js` annonçait six champs pendant
+  que le `fetch`, vingt lignes plus bas, en envoyait huit.
+- **Une donnée qui n'a pas de case se perd en silence** (9.8.5, vue de l'autre bout) : là-bas elle
+  se réinventait, ici elle disparaissait. Les deux viennent du même manque.
+- **Un champ dont l'absence se paie AILLEURS se demande là où c'est gratuit.** L'adresse figure sur
+  la facture ; l'acheteur est devant son écran au moment de la commande, et c'est le seul instant où
+  elle ne coûte rien. La réclamer trois jours plus tard, c'est un mail et une facture en retard.
+- **Le repli garde l'ancien contrat vivant** : sans `raison`, `nom` reprend son rôle d'avant. C'est
+  la règle de la licence sans `kid` (8.4.0) — un contrat qui s'élargit ne casse jamais celui qui
+  l'appelait hier — et le test l'exige dans les deux sens.
+- **Un contact identique à la société est du BRUIT, pas une information** : sans `raison`, on ne
+  fabrique pas un contact qui répète le nom du client. Une case remplie pour être remplie se lit
+  comme une donnée, et fait croire qu'on connaît quelqu'un.
+- **Une fiche qui existe appartient à son auteur** : une deuxième commande ne réécrit rien, elle
+  COMBLE ce qui est vide. Écraser une adresse corrigée à la main serait perdre une correction que
+  personne ne se rappellerait avoir faite (même règle qu'un compte nommé par le cabinet, 9.8.5).
+- **Une assertion « rien n'a changé » passe toujours quand le geste n'a pas eu lieu.** Ma preuve du
+  point précédent — une seconde vente qui ne doit pas réécrire la fiche — passait aussi si la
+  seconde vente échouait. Elle exige maintenant que la seconde licence existe AVANT de juger
+  (9.4.7 : un e2e qui saute sa moitié ne prouve rien).
+- **La moitié SkanFact n'est visible que du parcours réel** : `creerBrouillonsConsole` écrivait
+  `address: ''` en dur, et aucun test pur ne l'atteint. C'est `e2e:pont` qui le prouve, et il a
+  fallu l'y ajouter — un pont qui promet « zéro ressaisie » et livre une fiche vide ne tient pas sa
+  promesse, mais rien ne plante.
+
+Prouvé : six défauts réintroduits un par un font tomber leur test, dont celui d'origine.
 
 ## Pistes pour la suite (non demandées)
 

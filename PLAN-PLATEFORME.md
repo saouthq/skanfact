@@ -403,12 +403,18 @@ vendre au prix zéro ou à un prix inventé pour l'occasion sont aussi faux l'un
 | Route | Verbe | Ce que le site envoie | Ce qu'il reçoit |
 |---|---|---|---|
 | `/v1/achat/tarifs` | GET | rien | `{ ouvert, raison, devise, offres: [{ id, label, ht, ttc }], tva, timbre, remiseParrainage }` |
-| `/v1/achat/commander` | POST | `{ offre, nom, email, matricule?, tel?, cabinet? }` | `{ commande, payUrl, montant, devise, detail, parraine }` |
+| `/v1/achat/commander` | POST | `{ offre, raison, nom?, adresse?, email, matricule?, tel?, cabinet? }` | `{ commande, payUrl, montant, devise, detail, parraine }` |
 | `/v1/achat/etat/<commande>` | GET | rien | `{ etat, phrase, offre, montant, devise }` |
 | `/v1/achat/webhook` | POST | *(Konnect seul)* | — |
 
 Aucun secret : ces routes s'adressent à un visiteur. Les trois premières portent l'autorisation
 CORS pour `skanfact.tn` ; le webhook, appelé de serveur à serveur, n'en porte AUCUNE.
+
+**`raison` est la raison sociale, `nom` la personne qui suit le dossier** (10.9.1). C'est `raison`
+qui nomme le client sur la facture, avec le matricule et l'adresse ; le contact sert à l'appeler et
+n'apparaît sur aucune pièce. Sans `raison`, on retombe sur `nom` — le contrat à six champs d'avant
+reste juste pour qui n'a qu'un seul nom à donner. Ni prix ni remise ne sont acceptés, dans aucun des
+deux cas : tout ce qui chiffre est calculé par le worker.
 
 `etat` vaut `ouverte`, `payee`, `en_cours` (payé, clé pas encore partie), `abandonnee` ou
 `inconnue`, et il porte toujours une `phrase` en français, prête à afficher. Il **ne rend jamais la

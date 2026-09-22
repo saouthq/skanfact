@@ -84,6 +84,8 @@ CREATE TABLE IF NOT EXISTS commandes (
   offre        TEXT NOT NULL,
   duree        TEXT NOT NULL,
   nom          TEXT NOT NULL,
+  contact      TEXT,
+  adresse      TEXT,
   email        TEXT NOT NULL,
   matricule    TEXT,
   tel          TEXT,
@@ -105,3 +107,8 @@ CREATE TABLE IF NOT EXISTS commandes (
 );
 CREATE INDEX IF NOT EXISTS idx_commandes_ref ON commandes(paiement_ref);
 CREATE INDEX IF NOT EXISTS idx_commandes_etat ON commandes(etat, cree_le);
+
+-- ---------- 10.9.1 — la personne qui suit le dossier ----------
+-- `clients.nom` porte la raison sociale et elle seule. Le contact est une information de plus, pas
+-- une autre façon de nommer le client : les confondre mettrait un salarié sur une facture.
+ALTER TABLE clients ADD COLUMN contact TEXT;

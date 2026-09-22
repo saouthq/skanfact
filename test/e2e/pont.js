@@ -74,7 +74,10 @@ const { baseD1 } = require('../d1-sqlite');
   // (même matricule, autre graphie), payé ; et un client inconnu, pas encore payé.
   const MF_TRABELSI = '1234567A/M/P/000';
   const c1 = await admin('POST', '/v1/admin/clients', { nom: 'Menuiserie Trabelsi', matricule: '1234567A', email: 'contact@trabelsi.tn' });
-  const c2 = await admin('POST', '/v1/admin/clients', { nom: 'Pharmacie El Amen', matricule: '7654321B', email: 'pharmacie@elamen.tn' });
+  // 10.9.1 — le contact, l'adresse et le téléphone voyagent avec la vente : une facture tunisienne
+  // les porte, et un pont fait pour « zéro ressaisie » n'a pas le droit de les laisser derrière lui.
+  const c2 = await admin('POST', '/v1/admin/clients', { nom: 'Pharmacie El Amen', matricule: '7654321B', email: 'pharmacie@elamen.tn',
+    contact: 'Leïla Ben Youssef', adresse: '3 avenue Habib Bourguiba, 4000 Sousse', tel: '73 000 000' });
   if (c1.status !== 201 || c2.status !== 201) throw new Error('la console refuse les clients : ' + JSON.stringify([c1.j, c2.j]));
   const v1 = await admin('POST', '/v1/admin/licences', { clientId: c1.j.client.id, offre: 'entreprise', duree: '1a', prix: 690, payeeLe: '2026-09-14', moyen: 'virement' });
   const v2 = await admin('POST', '/v1/admin/licences', { clientId: c2.j.client.id, offre: 'independant', duree: '1a', prix: 390, remise: 20 });
@@ -181,6 +184,9 @@ const { baseD1 } = require('../d1-sqlite');
   if (apres.brouillons.some(b => b.number || b.status !== 'brouillon')) throw new Error('un brouillon ne porte pas de numéro : ' + JSON.stringify(apres.brouillons));
   if (apres.trabelsi !== 1) throw new Error('Trabelsi (même matricule, autre graphie) ne doit pas être créé une seconde fois : ' + apres.trabelsi);
   if (!apres.elamen || apres.elamen.matricule !== '7654321B' || apres.elamen.email !== 'pharmacie@elamen.tn') throw new Error('la Pharmacie El Amen devait être créée avec matricule et email : ' + JSON.stringify(apres.elamen));
+  if (apres.elamen.contact !== 'Leïla Ben Youssef' || apres.elamen.address !== '3 avenue Habib Bourguiba, 4000 Sousse' || apres.elamen.phone !== '73 000 000') {
+    throw new Error('10.9.1 — la fiche doit arriver complète, sinon il faut la ressaisir sur la première facture : ' + JSON.stringify(apres.elamen));
+  }
   const bTrab = apres.brouillons.find(b => b.prix === 690), bAmen = apres.brouillons.find(b => b.prix === 312);
   if (!bTrab || !bAmen) throw new Error('les montants HT de la console doivent être repris tels quels (690, et 390 − 20 % = 312) : ' + JSON.stringify(apres.brouillons));
   if (bTrab.tva !== 19 || !/Entreprise/.test(bTrab.label) || !/Indépendant/.test(bAmen.label)) throw new Error('TVA du régime et libellé de l\'offre attendus : ' + JSON.stringify(apres.brouillons));

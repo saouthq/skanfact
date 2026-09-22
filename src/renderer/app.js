@@ -11932,9 +11932,19 @@
       if (data.documents.some(d => d.venteConsoleId === v.id)) return;
       let client = C.clientPourVente(data.clients, v);
       if (!client) {
-        client = { id: C.uid(), name: v.client || 'Client de la console', contact: '', matricule: v.matricule || '', address: '', phone: '', email: v.email || '', notes: '', withholdingRate: '' };
+        // 10.9.1 — une vente en ligne porte tout ce qu'une facture réclame : la raison sociale
+        // (`v.client`), le contact, l'adresse, le téléphone. Les laisser vides obligeait à les
+        // ressaisir sur la première facture, dans un pont fait pour ne rien ressaisir.
+        client = { id: C.uid(), name: v.client || 'Client de la console', contact: v.contact || '', matricule: v.matricule || '',
+          address: v.adresse || '', phone: v.tel || '', email: v.email || '', notes: '', withholdingRate: '' };
         data.clients.push(client); clientsCrees++;
-      } else if (!client.email && v.email) client.email = v.email;
+      } else {
+        // Une fiche qui existe déjà appartient à son auteur : on COMBLE ce qui est vide, jamais
+        // plus. Écraser une adresse corrigée à la main par celle d'une commande serait perdre
+        // une correction que personne ne se rappellerait avoir faite.
+        [['email', 'email'], ['contact', 'contact'], ['address', 'adresse'], ['phone', 'tel'], ['matricule', 'matricule']]
+          .forEach(([ici, la]) => { if (!client[ici] && v[la]) client[ici] = v[la]; });
+      }
       const inv = newDocument('facture');
       applyClientDefaults(inv, client.id);
       // La console vend dans SA devise (le tarif) : la facture la garde. Mais elle écrit le dinar

@@ -30,7 +30,7 @@ module.exports = async ({ ta, assert }) => {
       // Ce qui suit est envoyé par la page et ne doit RIEN décider.
       prix: 1, montant: 1, remise: 99, duree: 'vie', type: 'cabinet', dossiersHors: 500 });
     assert.strictEqual(bon.ok, true, bon.erreur);
-    assert.deepStrictEqual(Object.keys(bon.c).sort(), ['cabinet', 'email', 'matricule', 'nom', 'offre', 'tel'],
+    assert.deepStrictEqual(Object.keys(bon.c).sort(), ['adresse', 'cabinet', 'contact', 'email', 'matricule', 'nom', 'offre', 'tel'],
       'un champ de plus ici, et c\'est le navigateur qui décide de quelque chose');
     assert.strictEqual(bon.c.email, 'contact@atelier.tn');
     assert.strictEqual(bon.c.matricule, '1234567A');
@@ -44,6 +44,33 @@ module.exports = async ({ ta, assert }) => {
     assert.strictEqual(P.nettoyerCommande({ offre: 'entreprise', nom: 'X Y', email: 'a@b.tn', cabinet: 'pas-une-empreinte' }).ok, false);
     assert.strictEqual(P.nettoyerCommande({ offre: 'entreprise', nom: 'X Y', email: 'a@b.tn', cabinet: '3F9A-2C1E-0000-1111-2222' }).c.cabinet,
       '3f9a2c1e000011112222', 'l\'empreinte se range nue, comme partout depuis la 9.4.1');
+  });
+
+  // Le défaut réel de la 10.9.0 : le site envoie `raison` (la société) ET `nom` (la personne qui
+  // suit le dossier), et le worker ne gardait que `nom`. SkanFact établissait donc une facture —
+  // une pièce légale — au nom d'un salarié, sans adresse, sous le matricule de sa société.
+  await ta('10.9.1 : ce qui va sur la facture est la SOCIÉTÉ, jamais la personne qui a commandé', async () => {
+    const P = await API();
+    const r = P.nettoyerCommande({
+      offre: 'entreprise', raison: 'Atelier Ben Salah SARL', nom: 'Mohamed Ben Salah',
+      adresse: '12 rue de Carthage, 1002 Tunis', email: 'a@b.tn', matricule: '1234567A'
+    });
+    assert.strictEqual(r.ok, true, r.erreur);
+    assert.strictEqual(r.c.nom, 'Atelier Ben Salah SARL', 'c\'est la raison sociale qui nomme le client');
+    assert.strictEqual(r.c.contact, 'Mohamed Ben Salah', 'la personne reste, à part : on l\'appelle, on ne la facture pas');
+    assert.strictEqual(r.c.adresse, '12 rue de Carthage, 1002 Tunis');
+
+    // Sans `raison`, on retombe sur le contrat à six champs : il reste juste pour qui n'a qu'un
+    // seul nom à donner. Mais il ne fabrique PAS un contact qui répéterait la société — une case
+    // « contact » qui redit le nom du client n'apprend rien à personne.
+    const seul = P.nettoyerCommande({ offre: 'entreprise', nom: 'Atelier Ben Salah SARL', email: 'a@b.tn' });
+    assert.strictEqual(seul.c.nom, 'Atelier Ben Salah SARL');
+    assert.strictEqual(seul.c.contact, '', 'un contact identique à la société est du bruit, pas une information');
+
+    // Une adresse tapée de travers est refusée en DISANT pourquoi : elle figure sur la facture.
+    const court = P.nettoyerCommande({ offre: 'entreprise', raison: 'X Y', nom: 'Z', adresse: 'abc', email: 'a@b.tn' });
+    assert.strictEqual(court.ok, false);
+    assert.ok(/facture/.test(court.erreur), 'le refus dit à quoi sert le champ');
   });
 
   await ta('10.9.0 : ce qu\'on encaisse est exactement ce que la facture dira — timbre compris', async () => {
@@ -200,7 +227,9 @@ module.exports = async ({ ta, assert }) => {
 
       // La commande. La page envoie un prix ridicule : il ne sert à rien.
       const c = await appeler('POST', '/v1/achat/commander',
-        { offre: 'entreprise', nom: 'Atelier Ben Salah', email: 'atelier@exemple.tn', matricule: '1234567A', prix: 1, remise: 90 });
+        { offre: 'entreprise', raison: 'Atelier Ben Salah SARL', nom: 'Mohamed Ben Salah',
+          adresse: '12 rue de Carthage, 1002 Tunis', tel: '20 000 000',
+          email: 'atelier@exemple.tn', matricule: '1234567A', prix: 1, remise: 90 });
       assert.strictEqual(c.status, 201, JSON.stringify(c.j));
       assert.strictEqual(c.j.montant, 822.1, 'le prix envoyé par la page ne doit rien changer');
       assert.strictEqual(c.j.payUrl, 'https://pay.example/abc');
@@ -243,11 +272,20 @@ module.exports = async ({ ta, assert }) => {
       assert.strictEqual(ventes.length, 1);
       assert.strictEqual(Number(ventes[0].montant_ht), 690);
       assert.ok(ventes[0].payee_le, 'une vente en ligne est payée par construction');
+      // 10.9.1 — la vente porte tout ce qu'une facture tunisienne réclame. Sans ça, SkanFact
+      // ouvrait une fiche client vide et il fallait la ressaisir, dans un pont fait pour ne rien
+      // ressaisir. Et le NOM du client est la société, jamais la personne qui a commandé.
+      assert.strictEqual(ventes[0].client, 'Atelier Ben Salah SARL', 'une facture se libelle à la société');
+      assert.strictEqual(ventes[0].adresse, '12 rue de Carthage, 1002 Tunis');
+      assert.strictEqual(ventes[0].contact, 'Mohamed Ben Salah');
+      assert.strictEqual(ventes[0].tel, '20 000 000');
 
       // Le client n'existait pas avant le paiement : une commande abandonnée ne laisse aucune fiche.
       const clients = (await appeler('GET', '/v1/admin/clients', null, { 'x-skanfact-admin': 'A'.repeat(30) })).j.lignes;
       assert.strictEqual(clients.length, 1);
       assert.strictEqual(clients[0].email, 'atelier@exemple.tn');
+      assert.strictEqual(clients[0].nom, 'Atelier Ben Salah SARL');
+      assert.strictEqual(clients[0].adresse, '12 rue de Carthage, 1002 Tunis');
 
       // IDEMPOTENCE : un webhook se livre deux fois, une page de retour s'actualise. Ni l'un ni
       // l'autre ne doit émettre une seconde licence ni facturer une seconde fois.
@@ -261,6 +299,22 @@ module.exports = async ({ ta, assert }) => {
       const fini = await appeler('GET', '/v1/achat/etat/' + c.j.commande);
       assert.strictEqual(fini.j.etat, 'payee');
       assert.ok(/a\*+r@exemple\.tn/.test(fini.j.phrase), fini.j.phrase);
+
+      // 10.9.1 — un client qui REVIENT. Sa fiche lui appartient : l'éditeur a pu la corriger à la
+      // main, et une deuxième commande ne la réécrit pas. Elle ne COMBLE que ce qui est vide.
+      const c2 = await appeler('POST', '/v1/achat/commander',
+        { offre: 'independant', raison: 'RAISON RETAPÉE DE TRAVERS', nom: 'Quelqu\'un d\'autre',
+          adresse: 'une autre adresse entierement', email: 'atelier@exemple.tn' });
+      assert.strictEqual(c2.status, 201, JSON.stringify(c2.j));
+      await appeler('POST', '/v1/achat/webhook?payment_ref=ref_' + c2.j.commande);
+      // Sans cette ligne, l'assertion qui suit passerait pour une mauvaise raison : une seconde
+      // vente qui échoue laisse évidemment la fiche intacte, et ne prouve rien du garde-fou.
+      assert.strictEqual((await appeler('GET', '/v1/admin/licences', null, { 'x-skanfact-admin': 'A'.repeat(30) })).j.lignes.length, 2,
+        'la seconde vente doit VRAIMENT aboutir, sinon on ne teste rien');
+      const apres = (await appeler('GET', '/v1/admin/clients', null, { 'x-skanfact-admin': 'A'.repeat(30) })).j.lignes;
+      assert.strictEqual(apres.length, 1, 'un client qui revient ne fabrique pas une seconde fiche');
+      assert.strictEqual(apres[0].nom, 'Atelier Ben Salah SARL', 'une fiche existante ne se fait pas réécrire par une commande');
+      assert.strictEqual(apres[0].adresse, '12 rue de Carthage, 1002 Tunis');
     } finally { k.fin(); db.fermer(); }
   });
 

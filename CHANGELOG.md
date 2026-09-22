@@ -7,6 +7,28 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 10.9.1 — 22/09/2026
+
+**La facture porte la raison sociale et l'adresse.** Correctif de la 10.9.0, trouvé en confrontant
+le contrat du worker au formulaire réel du site. Le site distingue deux champs que la page appelle
+par leur nom : la **raison sociale** (« Atelier Ben Salah SARL ») et la **personne qui suit le
+dossier** (« Mohamed Ben Salah »). Le worker ne gardait que le second, et jetait l'adresse. Une
+vente en ligne créait donc une fiche client au nom d'un salarié, sans adresse, sous le matricule
+fiscal de sa société — et c'est ce nom-là qui serait parti sur la facture, qui est une pièce légale.
+
+Ce qui change, de bout en bout : `raison` nomme le client, `nom` devient le contact, `adresse` est
+gardée, et les trois voyagent avec la vente jusqu'à SkanFact, qui ouvre enfin une fiche complète au
+lieu d'une fiche à ressaisir — dans un pont dont le but est « zéro ressaisie ». Une fiche qui existe
+déjà n'est jamais réécrite : on ne comble que ce qui est vide, parce qu'une adresse corrigée à la
+main vaut mieux que celle d'une commande. Sans `raison`, le contrat à six champs de la 10.9.0
+continue de fonctionner à l'identique.
+
+Publié en **bêta** : ça touche à l'argent et au format d'un fichier de données.
+
+Deux colonnes s'ajoutent (`commandes.contact`, `commandes.adresse`, `clients.contact`) —
+`plateforme/migration-a-coller.sql` les porte. Six défauts prouvés par réintroduction, dont celui
+d'origine ; `npm run e2e:pont` vérifie la moitié SkanFact, que nul test pur ne peut voir.
+
 ## 10.9.0 — 22/09/2026
 
 **Le paiement en ligne.** Le site `skanfact.tn` peut vendre tout seul : le visiteur choisit son

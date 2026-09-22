@@ -627,7 +627,10 @@ export function nettoyerClient(corps) {
   return {
     ok: true,
     client: {
+      // `nom` est la raison sociale — c'est elle qui nomme le client sur la facture. `contact`
+      // est la personne qui suit le dossier : on l'appelle, on ne la facture jamais (10.9.1).
       nom,
+      contact: texteNet(c.contact, 120),
       matricule: (texteNet(c.matricule, 30) || '').toUpperCase() || null,
       email: email ? email.toLowerCase() : null,
       tel: texteNet(c.tel, 40),
@@ -778,14 +781,30 @@ export function prixEnLigne(offre, valeurs) {
 // L'adresse e-mail est OBLIGATOIRE — contrairement à une émission depuis la console, où l'éditeur
 // peut copier la clé à la main. En ligne il n'y a personne pour la copier : sans adresse, on
 // vendrait une clé qui n'arrive nulle part.
+//
+// 10.9.1 — `raison` et `adresse` ne sont pas du confort : ce sont les deux champs qui manquaient
+// pour que la facture soit une facture. Le formulaire du site distingue la RAISON SOCIALE de la
+// personne qui suit le dossier ; la 10.9.0 ne gardait que `nom`, c'est-à-dire la personne, et
+// SkanFact établissait donc une pièce légale au nom d'un salarié, sans adresse, sous le matricule
+// fiscal de sa société. Ce qui va sur la facture est la société ; le contact ne la nomme jamais.
+// `raison` absente, on retombe sur `nom` : c'est le contrat à six champs d'avant, et il reste juste
+// pour qui n'a qu'un seul nom à donner.
 export function nettoyerCommande(corps) {
   const c = corps && typeof corps === 'object' ? corps : {};
   const offre = String(c.offre || '').trim();
   if (!OFFRES_EN_LIGNE.includes(offre)) {
     return { ok: false, erreur: 'Choisis une offre : Indépendant ou Entreprise. Une licence de cabinet se règle avec nous.' };
   }
-  const nom = texteNet(c.nom, 120);
-  if (!nom || nom.length < 2) return { ok: false, erreur: 'Indique le nom de ton entreprise (deux caractères au moins).' };
+  const personne = texteNet(c.nom, 120) || '';
+  const nom = texteNet(c.raison, 120) || personne;
+  if (!nom || nom.length < 2) return { ok: false, erreur: 'Indique la raison sociale de ton entreprise (deux caractères au moins).' };
+  // Le contact ne vaut que s'il est DISTINCT de la société : sans `raison`, les deux champs
+  // portent la même chaîne, et répéter le nom du client dans une case « contact » n'apprend rien.
+  const contact = texteNet(c.raison, 120) ? personne : '';
+  // Elle figure sur la facture. On la demande ici plutôt que de la courir après au moment de
+  // l'établir — l'acheteur est devant son écran, et c'est le seul moment où c'est gratuit.
+  const adresse = texteNet(c.adresse, 300) || '';
+  if (adresse && adresse.length < 5) return { ok: false, erreur: 'L\'adresse est trop courte : elle figure sur la facture.' };
   const email = (texteNet(c.email, 200) || '').toLowerCase();
   if (!EMAIL.test(email)) return { ok: false, erreur: 'Indique une adresse e-mail : c\'est par là que la clé arrive.' };
   // L'empreinte du parrain se lit avec ou sans ses séparateurs (9.4.1) — mais on ne retire que les
@@ -799,7 +818,7 @@ export function nettoyerCommande(corps) {
   return {
     ok: true,
     c: {
-      offre, nom, email, cabinet,
+      offre, nom, contact, adresse, email, cabinet,
       matricule: (texteNet(c.matricule, 30) || '').toUpperCase(),
       tel: texteNet(c.tel, 40) || ''
     }
@@ -1985,7 +2004,7 @@ async function repondreAdmin(r, request, env) {
     // quatre écrans — Clients, Licences, Ventes, Activations — plus le Journal. C'est l'écran
     // qu'on ouvre à chaque appel, donc celui qui devait exister en premier.
     if (r.action === 'clients' && r.id && !r.sous) {
-      const c = await un('SELECT id, nom, matricule, email, tel, adresse, notes, cree_le FROM clients WHERE id = ?', r.id);
+      const c = await un('SELECT id, nom, contact, matricule, email, tel, adresse, notes, cree_le FROM clients WHERE id = ?', r.id);
       if (!c) return json({ erreur: 'Client introuvable.' }, 404);
       const [licences, ventes, postes, suivis, journal] = [
         await tous(SEL_LICENCE + ' WHERE l.client_id = ? ORDER BY l.emise_le DESC LIMIT 200', r.id),
@@ -2109,7 +2128,10 @@ async function repondreAdmin(r, request, env) {
       const nonFacturees = new URL(request.url).searchParams.get('non_facturees') === '1';
       const lignes = await tous(
         'SELECT v.id, v.client_id, v.licence_id, v.montant_ht, v.tva, v.devise, v.payee_le, v.moyen, v.facture_skanfact, v.importee_le,' +
-        ' c.nom AS client, c.matricule, c.email, l.offre, l.fin, l.debut, l.kid, l.emise_le, l.prix, l.remise, l.cabinet_empreinte, l.envoyee_le, l.revoquee_le,' +
+        // 10.9.1 — le contact, l'adresse et le téléphone voyagent avec la vente. Sans eux, SkanFact
+        // créait une fiche client vide de tout ce qu'une facture tunisienne doit porter, et il
+        // fallait les ressaisir à la main — dans un pont dont le but est « zéro ressaisie ».
+        ' c.nom AS client, c.matricule, c.email, c.contact, c.adresse, c.tel, l.offre, l.fin, l.debut, l.kid, l.emise_le, l.prix, l.remise, l.cabinet_empreinte, l.envoyee_le, l.revoquee_le,' +
         ' COALESCE(l.type, \'entreprise\') AS type, l.dossiers_hors, l.illimite,' +
         ' l.empreinte, l.charge IS NOT NULL AS resignable' +
         ' FROM ventes v LEFT JOIN clients c ON c.id = v.client_id LEFT JOIN licences l ON l.id = v.licence_id' +
@@ -2271,8 +2293,8 @@ async function repondreAdmin(r, request, env) {
     if (!n.ok) return json({ erreur: n.erreur }, 400);
     const id = 'cli_' + idCourt();
     const ok = await executer(
-      'INSERT INTO clients (id, nom, matricule, email, tel, adresse, notes, cree_le) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-      id, n.client.nom, n.client.matricule, n.client.email, n.client.tel, n.client.adresse, n.client.notes, maintenant);
+      'INSERT INTO clients (id, nom, contact, matricule, email, tel, adresse, notes, cree_le) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      id, n.client.nom, n.client.contact, n.client.matricule, n.client.email, n.client.tel, n.client.adresse, n.client.notes, maintenant);
     if (!ok) return json({ erreur: 'La base a refusé l\'écriture du client.' }, 500);
     await journaliser(env, 'client.cree', { client_id: id, detail: n.client.nom });
     return json({ client: { id, ...n.client, cree_le: maintenant } }, 201);
@@ -2845,15 +2867,25 @@ async function finaliserCommande(env, valeurs, cmd, maintenant) {
   // Le client n'existe qu'à partir d'ici : une commande abandonnée ne laisse aucune fiche derrière
   // elle. On le retrouve par son ADRESSE d'abord — c'est l'identité qu'un acheteur en ligne donne,
   // et c'est celle qui reçoit la clé — puis par son matricule, unique quand il est là.
-  let client = await un('SELECT id, nom, matricule, email FROM clients WHERE email = ?', cmd.email);
-  if (!client && cmd.matricule) client = await un('SELECT id, nom, matricule, email FROM clients WHERE matricule = ?', cmd.matricule);
+  let client = await un('SELECT id, nom, matricule, email, contact, adresse, tel FROM clients WHERE email = ?', cmd.email);
+  if (!client && cmd.matricule) client = await un('SELECT id, nom, matricule, email, contact, adresse, tel FROM clients WHERE matricule = ?', cmd.matricule);
   if (!client) {
     const cid = 'cli_' + idCourt();
-    const ok = await executer('INSERT INTO clients (id, nom, matricule, email, tel, cree_le) VALUES (?, ?, ?, ?, ?, ?)',
-      cid, cmd.nom, cmd.matricule || null, cmd.email, cmd.tel || null, maintenant);
+    const ok = await executer('INSERT INTO clients (id, nom, contact, matricule, email, tel, adresse, cree_le) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      cid, cmd.nom, cmd.contact || null, cmd.matricule || null, cmd.email, cmd.tel || null, cmd.adresse || null, maintenant);
     if (!ok) return noter('La base a refusé l\'écriture du client.');
     client = { id: cid, nom: cmd.nom, matricule: cmd.matricule || null, email: cmd.email };
     await journaliser(env, 'client.cree', { client_id: cid, detail: cmd.nom + ' — achat en ligne' });
+  } else {
+    // Un client déjà connu ne se fait pas réécrire par une commande : c'est peut-être l'éditeur
+    // qui a corrigé sa fiche à la main. On ne COMBLE que ce qui est vide — l'adresse d'une
+    // deuxième commande vaut mieux qu'une case restée blanche sur la facture.
+    const combler = { contact: cmd.contact, adresse: cmd.adresse, tel: cmd.tel, matricule: cmd.matricule };
+    const champs = Object.keys(combler).filter(k => combler[k] && !client[k]);
+    if (champs.length) {
+      await executer('UPDATE clients SET ' + champs.map(k => k + ' = ?').join(', ') + ' WHERE id = ?',
+        ...champs.map(k => combler[k]), client.id);
+    }
   }
 
   // La MÊME émission que celle de la console : mêmes contrôles, même clé, même mail (§ 12).
@@ -2951,10 +2983,11 @@ async function repondreAchat(r, request, env) {
 
     const id = 'cmd_' + idLong();
     const ok = await executer(
-      'INSERT INTO commandes (id, cree_le, offre, duree, nom, email, matricule, tel, cabinet, parraine,' +
+      'INSERT INTO commandes (id, cree_le, offre, duree, nom, contact, adresse, email, matricule, tel, cabinet, parraine,' +
       ' prix_ht, montant_ht, remise, tva, timbre, montant_ttc, devise, etat)' +
-      ' VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      id, maintenant, n.c.offre, DUREE_EN_LIGNE, n.c.nom, n.c.email, n.c.matricule || null, n.c.tel || null,
+      ' VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      id, maintenant, n.c.offre, DUREE_EN_LIGNE, n.c.nom, n.c.contact || null, n.c.adresse || null,
+      n.c.email, n.c.matricule || null, n.c.tel || null,
       n.c.cabinet || null, parrain ? 1 : null, m.ht, m.montantHT, m.remise, m.tva, m.timbre, m.ttc, devise, 'ouverte');
     if (!ok) return rep({ erreur: 'Service momentanément indisponible.' }, 503);
 
@@ -5210,7 +5243,7 @@ const CONSOLE_HTML = `<!doctype html>
         '<button type="button" class="btn" id="fiche-suivi">Noter un contact\\u2026</button>' +
         '<button type="button" class="btn" id="fiche-devis">Écrire un devis\\u2026</button>' +
         '</div>' +
-        '<div class="paires">' + paire('Matricule', c.matricule) + paire('Courriel', c.email) +
+        '<div class="paires">' + paire('Matricule', c.matricule) + paire('Contact', c.contact) + paire('Courriel', c.email) +
           paire('Téléphone', c.tel) + paire('Adresse', c.adresse) + paire('Client depuis', jour(c.cree_le)) + '</div>' +
         (c.notes ? '<p class="but">' + h(c.notes) + '</p>' : '');
 
