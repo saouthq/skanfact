@@ -7,6 +7,37 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 10.8.0-beta.2 — 22/09/2026
+
+**La migration de la base D1, écrite, prouvée, et appliquée.** `schema-a-coller.sql` crée une base
+NEUVE : tout y est en `CREATE TABLE IF NOT EXISTS`, donc il ne fait rien sur la base de production,
+qui a été collée une fois et n'a plus bougé. Chaque colonne ajoutée depuis lui manquait — et le
+worker d'aujourd'hui les LIT. `plateforme/migration-a-coller.sql` est l'autre moitié.
+
+**Ce que la base portait vraiment**, relevé plutôt que supposé : elle était déjà à jour **jusqu'à la
+10.5.0** — `app`, l'index du parc avec `COALESCE`, `reglages`, `suivis`. Il ne manquait **qu'une
+colonne**, `licences.illimite`, ajoutée le jour même après copie complète de la base. Les deux
+licences existantes sont intactes, `illimite` à `NULL` : le quota ordinaire, exactement le bon
+défaut.
+
+**Le piège que la migration désamorce, et qui ne dit rien.** `CREATE UNIQUE INDEX IF NOT EXISTS` sur
+un nom **déjà pris ne remplace rien** — il ne fait rien, sans un mot. L'ancien `idx_activ_unique`
+portait sur `(empreinte, device_id)` : sans un `DROP INDEX` avant, le correctif du parc de la
+10.4.0-beta.3 ne se serait **jamais** appliqué, et les deux applications d'un même poste auraient
+continué à s'écraser. Prouvé en retirant le DROP : les deux bases divergent, sur cette ligne
+exactement.
+
+**Et un garde-fou qui rassurait sans protéger, élargi.** Ma première version du test ne vérifiait que
+l'idempotence — rejouée sur une base à jour, la migration ne casse rien. Elle restait **verte** quand
+je retirais `illimite` de la migration : c'est-à-dire qu'elle ne voyait pas l'oubli qui coûte cher,
+une colonne ajoutée au schéma et jamais reportée. Le test compare désormais une base **d'origine**
+plus la migration au schéma du jour, et NOMME ce qui manque. Trois preuves par réintroduction :
+colonne oubliée, `DROP` retiré, table en trop — les trois tombent.
+
+Au passage, une faute de la même famille dans le test lui-même : son filtre cherchait `licences`
+dans l'instruction ENTIÈRE, donc il sautait `CREATE TABLE ventes`, dont la clé étrangère nomme
+licences. Un motif trop large attrape du code juste (9.4.7) — ici, dans un test.
+
 ## 10.8.0-beta.1 — 22/09/2026
 
 **Une licence de cabinet peut porter « sans limite de dossiers ».** Décidé avec Skander pour les

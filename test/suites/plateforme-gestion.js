@@ -1197,4 +1197,117 @@ module.exports = async ({ t, ta, assert, lireSource }) => {
     } finally { db.fermer(); }
   });
 
+  // ---------- la migration d'une base DÉJÀ EN SERVICE (10.8.0-beta.2) ----------
+  //
+  // `schema-a-coller.sql` crée une base NEUVE : tout y est en `CREATE TABLE IF NOT EXISTS`, donc il
+  // ne fait rien sur une base qui existe déjà. La base de production, elle, a été collée une fois et
+  // n'a plus bougé — chaque colonne ajoutée depuis (type, dossiers_hors, app, illimite) lui manque,
+  // et le worker d'aujourd'hui les LIT. Un déploiement sans la migration casse la console.
+  //
+  // Ce test tient les deux choses qu'on ne voit pas autrement :
+  //
+  //   1. La migration est IDEMPOTENTE et cohérente avec le schéma : rejouée sur une base à jour,
+  //      elle ne peut échouer que sur « duplicate column name » — jamais sur autre chose — et elle
+  //      ne change rien. C'est ce qui rend le geste sûr quand on ne sait plus où en est la base.
+  //   2. Un index qui CHANGE DE DÉFINITION doit être précédé d'un `DROP INDEX`.
+  //      `CREATE UNIQUE INDEX IF NOT EXISTS` sur un nom déjà pris ne remplace RIEN et ne dit rien :
+  //      l'ancien `idx_activ_unique` (empreinte, device_id) serait resté, et le correctif du parc de
+  //      la 10.4.0-beta.3 ne se serait jamais appliqué — la moitié des postes continuant à s'écraser.
+  //      Prouvé en retirant le DROP : les deux bases divergent, sur cette ligne exactement.
+  t('10.8.0 : la migration D1 est rejouable, et elle REFAIT les index qui ont changé', () => {
+    const { DatabaseSync } = require('node:sqlite');
+    const fs = require('fs'); const path = require('path');
+    const lu = (f) => fs.readFileSync(path.join(__dirname, '..', '..', 'plateforme', f), 'utf8');
+    // La console D1 prend une instruction à la fois : on découpe comme elle, commentaires retirés.
+    const instructions = (sql) => sql.split('\n').filter(l => !/^\s*--/.test(l)).join('\n')
+      .split(';').map(x => x.trim()).filter(Boolean);
+    const empreinte = (db) => {
+      const out = [];
+      for (const t of db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all())
+        out.push('TABLE ' + t.name + ' = ' + db.prepare('PRAGMA table_info(' + t.name + ')').all().map(c => c.name).sort().join(','));
+      for (const i of db.prepare("SELECT name, sql FROM sqlite_master WHERE type='index' AND sql IS NOT NULL ORDER BY name").all())
+        out.push('INDEX ' + i.name + ' = ' + i.sql.replace(/\s+/g, ' ').replace('IF NOT EXISTS ', ''));
+      return out.join('\n');
+    };
+    const poser = (db, sql, tolerer) => {
+      const refus = [];
+      for (const q of instructions(sql)) {
+        try { db.exec(q); }
+        catch (e) {
+          if (tolerer && /duplicate column name/i.test(e.message)) { refus.push(q); continue; }
+          throw new assert.AssertionError({ message: 'instruction refusée :\n  ' + q.slice(0, 130) + '\n  → ' + e.message });
+        }
+      }
+      return refus;
+    };
+
+    const schema = lu('schema-a-coller.sql');
+    const migration = lu('migration-a-coller.sql');
+
+    // ── La base NEUVE d'aujourd'hui : la cible.
+    const neuve = new DatabaseSync(':memory:');
+    poser(neuve, schema);
+    const cible = empreinte(neuve);
+
+    // ── Une base D'ORIGINE (P 0.1 ter), telle qu'elle a été collée la première fois. C'est de
+    // l'HISTOIRE : ces deux définitions ne changeront plus jamais, donc elles peuvent vivre ici.
+    // Les autres tables n'ont pas bougé depuis, on les prend dans le schéma du jour — sauf celles
+    // que la migration CRÉE, qu'une base d'origine n'a évidemment pas.
+    const ORIGINE = `
+      CREATE TABLE licences ( id TEXT PRIMARY KEY, client_id TEXT NOT NULL REFERENCES clients(id),
+        kid TEXT NOT NULL, empreinte TEXT NOT NULL, offre TEXT NOT NULL, postes INTEGER,
+        debut TEXT NOT NULL, fin TEXT, prix REAL, devise TEXT, remise REAL, cabinet_empreinte TEXT,
+        emise_le TEXT NOT NULL, remplace_id TEXT REFERENCES licences(id), remplacee_motif TEXT,
+        revoquee_le TEXT, revoquee_motif TEXT );
+      CREATE UNIQUE INDEX idx_licences_empreinte ON licences(empreinte);
+      CREATE INDEX idx_licences_client ON licences(client_id);
+      CREATE TABLE activations ( id TEXT PRIMARY KEY, licence_id TEXT REFERENCES licences(id),
+        empreinte TEXT NOT NULL, device_id TEXT NOT NULL, device_nom TEXT, plateforme TEXT,
+        version TEXT, premiere_fois TEXT NOT NULL, derniere_fois TEXT NOT NULL );
+      CREATE UNIQUE INDEX idx_activ_unique ON activations(empreinte, device_id)`;
+    // Ce qu'on saute se reconnaît au NOM DE L'OBJET CRÉÉ, jamais à une mention. Ma première version
+    // testait `/\blicences\b/` sur l'instruction entière : elle sautait donc `CREATE TABLE ventes`,
+    // dont la définition NOMME licences dans sa clé étrangère — et l'index de ventes tombait sur une
+    // table absente. Un motif trop large attrape du code juste (9.4.7), ici dans un test.
+    const objetCree = (q) => {
+      const m = /^CREATE\s+(?:UNIQUE\s+)?(?:TABLE|INDEX)\s+(?:IF NOT EXISTS\s+)?([A-Za-z_][\w]*)/i.exec(q);
+      return m ? m[1] : '';
+    };
+    const REFAITES = new Set(['licences', 'activations', 'idx_licences_empreinte', 'idx_licences_client', 'idx_activ_unique']);
+    const CREEES_PAR_MIGRATION = new Set(['reglages', 'suivis', 'idx_suivis_sujet']);
+    const ancienne = new DatabaseSync(':memory:');
+    for (const q of instructions(schema)) {
+      const nom = objetCree(q);
+      if (REFAITES.has(nom)) continue;            // repris dans ORIGINE, sous leur forme d'alors
+      if (CREEES_PAR_MIGRATION.has(nom)) continue; // n'existaient pas dans une base d'origine
+      ancienne.exec(q);
+    }
+    poser(ancienne, ORIGINE);
+
+    // ── LA règle : la migration doit amener cette base-là exactement au schéma du jour.
+    // C'est elle qui attrape l'oubli qui coûte cher — une colonne ajoutée à `schema.sql` et jamais
+    // reportée dans la migration. La base de production ne l'aurait pas, le worker la LIRAIT, et la
+    // console tomberait sur une colonne qui n'existe pas. Un test qui ne vérifie que l'idempotence
+    // laisse passer exactement ça : je l'ai prouvé en retirant `illimite` de la migration, et il
+    // restait vert.
+    poser(ancienne, migration, true);
+    const obtenu = empreinte(ancienne);
+    if (obtenu !== cible) {
+      const a = obtenu.split('\n'), b = cible.split('\n');
+      const manque = b.filter(l => !a.includes(l)), trop = a.filter(l => !b.includes(l));
+      assert.fail('une base d\'origine + la migration ne donne PAS le schéma d\'aujourd\'hui.\n'
+        + manque.map(l => '  MANQUE  : ' + l).join('\n') + (trop.length ? '\n' + trop.map(l => '  EN TROP : ' + l).join('\n') : '')
+        + '\n  → ajoute ce qui manque dans plateforme/migration-a-coller.sql');
+    }
+
+    // ── Et elle doit être REJOUABLE : sur une base déjà à jour, elle ne peut échouer que sur
+    // « duplicate column name », et elle ne change rien. C'est ce qui rend le geste sûr quand on ne
+    // sait plus où en est la base de production.
+    const refus = poser(neuve, migration, true);
+    assert.ok(refus.length > 0, 'aucune colonne refusée : la migration n\'ajoute donc rien que le schéma porte');
+    assert.strictEqual(empreinte(neuve), cible,
+      'rejouée sur une base à jour, la migration a CHANGÉ le schéma');
+
+    neuve.close(); ancienne.close();
+  });
 };
