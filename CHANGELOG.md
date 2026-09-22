@@ -7,6 +7,30 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 10.8.0-beta.5 — 22/09/2026
+
+**Le relais de mise à jour se déploie aussi depuis le dépôt.** C'était le dernier worker qu'il
+fallait coller à la main — celui qui sert les mises à jour de toutes les installations, et qui porte
+depuis la 10.4.0 le formulaire de contact du site. Il a son `worker/wrangler.toml` et son workflow
+`Relais`, jumeau de celui de la console.
+
+**`--keep-vars` compte encore plus ici.** Le relais n'a aucune liaison — ni base, ni bucket — mais
+il porte **sept variables en clair** : `GITHUB_OWNER`, `GITHUB_REPO`, `CONTACT_TO`, `CONTACT_FROM`,
+`CONTACT_ORIGINES`, `LICENCE_REQUISE`, `LICENCE_PUBLIC_KEY`. Effacées, il répondrait toujours, mais
+il chercherait les releases d'un dépôt vide et n'enverrait plus un seul message de contact. Une
+panne qui ne se voit pas.
+
+**Deux fichiers de workflow plutôt qu'un qui déploierait les deux.** Les deux workers changent à des
+moments différents ; un relais qui se redéploie parce qu'on a corrigé la console rendrait illisible
+la seule question qu'on se pose devant un incident — qu'est-ce qui a bougé, et quand.
+
+**Les garde-fous sont jugés par UNE boucle, pas recopiés** (9.4.3 : un instrument qui ne couvre
+qu'un des deux ne protège qu'un des deux). Elle exige, pour chacun : wrangler épinglé,
+`--keep-vars`, jamais `beta` en déclenchement, un filtre qui nomme le code et sa configuration sans
+se nommer lui-même, un `name` qui désigne le worker **en ligne** (un nom qui diverge n'en met pas un
+à jour, il en crée un second pendant que l'ancien continue de servir l'ancien code), et **aucune
+route déclarée** — en déclarer une remplacerait le domaine personnalisé.
+
 ## 10.8.0-beta.4 — 22/09/2026
 
 **Le worker est déployé depuis le dépôt, pour de vrai.** La bêta précédente avait écrit la recette ;

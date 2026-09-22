@@ -1352,6 +1352,61 @@ module.exports = async ({ t, ta, assert, lireSource }) => {
       'aucun déclencheur programmé : la copie de la base redeviendrait un geste à faire à la main');
   });
 
+  t('10.8.0 : les deux workers se déploient depuis le dépôt, aux mêmes conditions', () => {
+    const fs = require('fs'); const path = require('path');
+    const dans = (f) => fs.readFileSync(path.join(__dirname, '..', '..', f), 'utf8');
+
+    // Un instrument qui ne couvre qu'un des deux ne protège qu'un des deux (9.4.3). Les deux
+    // workers portent les mêmes garde-fous, et c'est la MÊME boucle qui les juge : recopier le
+    // contrôle pour le second, c'est garantir qu'il divergera.
+    const WORKERS = [
+      { yml: '.github/workflows/worker.yml', toml: 'plateforme/wrangler.toml', nom: 'skanfact-api', src: 'skanfact-api.mjs' },
+      { yml: '.github/workflows/relais.yml', toml: 'worker/wrangler.toml', nom: 'skanfact-maj', src: 'skanfact-maj.mjs' },
+    ];
+
+    for (const w of WORKERS) {
+      const yml = dans(w.yml);
+      const code = yml.split('\n').filter(l => !/^\s*#/.test(l)).join('\n');
+      const toml = dans(w.toml);
+
+      assert.ok(/wrangler@\d+\.\d+\.\d+/.test(code),
+        w.yml + ' : la version de wrangler n\'est pas épinglée');
+      const dep = /run:.*wrangler@[^\n]*deploy[^\n]*/.exec(code);
+      assert.ok(dep && /--keep-vars/.test(dep[0]),
+        w.yml + ' : le déploiement n\'a pas --keep-vars, il effacerait les variables en clair');
+      assert.ok(/workflow_dispatch/.test(code), w.yml + ' : aucun lancement délibéré possible');
+      const pousse = /on:[\s\S]*?workflow_dispatch/.exec(code);
+      assert.ok(pousse && !/branches:\s*\[[^\]]*beta/.test(pousse[0]),
+        w.yml + ' : la branche de travail ne déploie pas la production');
+
+      // Le filtre nomme ce qui est déployé, et jamais la recette (voir le test précédent).
+      const filtre = /paths:\s*\n((?:\s*-\s*'[^']*'\s*\n)+)/.exec(code);
+      assert.ok(filtre && filtre[1].includes(w.src) && filtre[1].includes('wrangler.toml'),
+        w.yml + ' : le filtre ne nomme plus le code du worker et sa configuration');
+      assert.ok(!/workflows\/[a-z]+\.yml/.test(filtre[1]),
+        w.yml + ' : le workflow se surveille lui-même');
+
+      // Le nom doit être celui du worker EN LIGNE : un nom qui diverge ne met pas à jour le
+      // service, il en crée un second à côté, et l'ancien continue de servir l'ancien code.
+      assert.ok(new RegExp('^name\\s*=\\s*"' + w.nom + '"', 'm').test(toml),
+        w.toml + ' : le nom ne désigne pas le worker « ' + w.nom + ' » — un déploiement en créerait un second');
+
+      // Aucune route déclarée : en déclarer une REMPLACERAIT celles que la zone porte déjà, et le
+      // domaine personnalisé cesserait de servir sans qu'une ligne de code soit en cause.
+      assert.ok(!/^\s*routes?\s*=/m.test(toml) && !/^\s*\[\[routes\]\]/m.test(toml),
+        w.toml + ' : une route est déclarée — elle remplacerait le domaine personnalisé');
+    }
+
+    // Le relais n'a AUCUNE liaison, et c'est ce qui rend son toml si court. Si le code s'en met à
+    // lire une, le toml doit la déclarer le même jour — sinon elle vaudrait `undefined` en ligne.
+    const relais = dans('worker/skanfact-maj.mjs');
+    const tomlRelais = dans('worker/wrangler.toml');
+    assert.ok(!/\[\[d1_databases\]\]|\[\[r2_buckets\]\]|\[\[kv_namespaces\]\]/.test(tomlRelais),
+      'worker/wrangler.toml déclare une liaison : le relais n\'en lit aucune, il faut vérifier laquelle a été ajoutée');
+    assert.ok(!/\benv\.(DB|SAUVEGARDES)\b/.test(relais),
+      'le relais lit une liaison que son wrangler.toml ne déclare pas : elle vaudrait undefined en ligne');
+  });
+
   // Le workflow doit garder les variables du tableau de bord. Sans `--keep-vars`, chaque
   // déploiement effacerait celles qui sont en clair (MAIL_FROM, RELAIS_BASE…) — les secrets, eux,
   // survivent. C'est une ligne de commande, donc ça se vérifie comme une ligne de commande.

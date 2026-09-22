@@ -1,0 +1,25 @@
+# La configuration de déploiement du relais de mise à jour.
+#
+# Les trois pièges du déploiement par ligne de commande sont expliqués en entier dans
+# `plateforme/wrangler.toml` — ils valent ici à l'identique. Ce qui change pour ce worker-ci :
+#
+# Il n'a AUCUNE liaison. Il ne lit sur `env` que des secrets (`GITHUB_TOKEN`, `APP_SECRET`,
+# `RESEND_KEY`) et des variables en clair (`GITHUB_OWNER`, `GITHUB_REPO`, `CONTACT_TO`,
+# `CONTACT_FROM`, `CONTACT_ORIGINES`, `LICENCE_REQUISE`, `LICENCE_PUBLIC_KEY`) — ni base, ni
+# bucket, ni file d'attente. Il n'y a donc rien à déclarer, et rien qu'un déploiement puisse
+# supprimer… à une exception près, et c'est la plus dangereuse de toutes ici : les variables en
+# CLAIR seraient effacées sans `--keep-vars`. Ce worker en porte sept. Sans elles il répondrait
+# toujours, mais il chercherait les releases d'un dépôt vide et n'enverrait plus aucun mail de
+# contact — une panne qui ne se voit pas.
+#
+# Aucune `route` n'est déclarée : en déclarer une REMPLACERAIT celles que la zone porte déjà.
+
+name = "skanfact-maj"
+main = "skanfact-maj.mjs"
+
+# Aucun import de Node, que des API Web standard — comme l'autre worker, et un test le vérifie.
+compatibility_date = "2026-09-15"
+
+# L'adresse en `.workers.dev` reste servie : c'est elle que les applications construites portent
+# dans `updateBase`, et la couper priverait de mises à jour toutes les versions déjà installées.
+workers_dev = true

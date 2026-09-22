@@ -1,0 +1,71 @@
+# Déploie le relais de mise à jour (`worker/skanfact-maj.mjs`).
+#
+# Jumeau de `.github/workflows/worker.yml`, qui porte le raisonnement en entier — pourquoi un
+# déploiement se déclenche sur ce qui est DÉPLOYÉ et jamais sur la recette, pourquoi `--keep-vars`,
+# pourquoi la version de wrangler est épinglée, et pourquoi un job vert ne suffit pas. Ce fichier ne
+# redit pas ces raisons ; il les applique au second worker.
+#
+# Deux fichiers plutôt qu'un seul qui déploierait les deux : les deux workers changent à des moments
+# différents, et un relais qui se redéploie parce qu'on a corrigé la console rendrait illisible la
+# seule question qu'on se pose devant un incident — « qu'est-ce qui a bougé, et quand ? ».
+
+name: Relais
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'worker/skanfact-maj.mjs'
+      - 'worker/wrangler.toml'
+  workflow_dispatch:
+
+concurrency:
+  group: relais-deploy
+  cancel-in-progress: false
+
+jobs:
+  deployer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # `route`, `fichierAutorise`, `memeSecret`, `licenceValide`, `autorise`, `origineAutorisee`,
+      # `contactValide` et `releaseAdmissible` sont purs et testés par `npm test` : c'est cette
+      # suite qui se tient entre une faute de frappe et les mises à jour de tous les clients.
+      - name: Tests
+        run: npm test
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Déployer
+        working-directory: worker
+        run: npx --yes wrangler@4.136.2 deploy --keep-vars 2>&1 | tee /tmp/relais.log
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      # `/sante` est la seule route du relais qui ne demande ni secret ni licence : elle dit ce que
+      # chaque canal sert aujourd'hui. La redemander prouve que le code déployé est bien celui-ci,
+      # et pas qu'un job a réussi (9.8.1).
+      - name: Vérifier que le relais répond
+        run: |
+          set -euo pipefail
+          url=$(grep -oE 'https://[a-z0-9._-]+\.workers\.dev' /tmp/relais.log | head -1 || true)
+          if [ -z "$url" ]; then
+            echo "::warning::wrangler n'a annoncé aucune adresse workers.dev — rien n'a pu être vérifié."
+            exit 0
+          fi
+          echo "Contrôle de $url/sante"
+          code=$(curl -s -o /tmp/sante.json -w '%{http_code}' --max-time 20 --retry 3 --retry-delay 5 "$url/sante")
+          echo "HTTP $code"
+          test "$code" = "200"
+          head -c 400 /tmp/sante.json; echo
+          echo "Le relais répond sur /sante : le code déployé est bien celui-ci."
