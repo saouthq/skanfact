@@ -504,10 +504,10 @@ console interroge le relais : le relais d'abord, sinon elle reçoit un 404 et l'
 | | Étape | État |
 |---|---|---|
 | 1 | `ALTER TABLE activations ADD COLUMN app TEXT;` dans D1 | **fait le 21/09/2026, succès** |
-| 2 | Redéployer le **relais** (`worker/skanfact-maj.mjs` → worker `skanfact-maj`) — c'est lui qui gagne `/sante` | à faire |
-| 3 | Redéployer la **console** (`plateforme/skanfact-api.mjs` → worker `skanfact-api`) — onglets « À décider », « Parc », « Cabinets », export, ligne d'argent | à faire |
-| 4 | *(facultatif)* `RELAIS_BASE` (Text) et `RELAIS_SECRET` (Secret) sur **skanfact-api** | à faire |
-| 5 | Publier **10.0.1 → 10.4.0** (cinq versions) en **bêta**, en une seule fois : `10.4.0-beta.1` | à faire |
+| 2 | Redéployer le **relais** (`worker/skanfact-maj.mjs` → worker `skanfact-maj`) — c'est lui qui gagne `/sante` | **fait le 22/09/2026** |
+| 3 | Redéployer la **console** (`plateforme/skanfact-api.mjs` → worker `skanfact-api`) — onglets « À décider », « Parc », « Cabinets », export, ligne d'argent | **fait le 22/09/2026** |
+| 4 | `RELAIS_BASE` (Text) et `RELAIS_SECRET` (Secret) sur **skanfact-api** | à faire — voir R4 |
+| 5 | Publier **10.0.1 → 10.4.0** (cinq versions) en **bêta**, en une seule fois : `10.4.0-beta.1` | **fait le 22/09/2026** |
 
 Sur l'étape 1 : rejouer l'`ALTER` une seconde fois répond « duplicate column » — c'est sans
 gravité, la colonne est posée. `NULL` y vaut « app entreprise », la seule qui s'annonçait avant la
@@ -527,3 +527,32 @@ Vérification : rouvrir la console, la ligne sous les cartes passe de « canaux 
 à l'`APP_SECRET` du relais ; un **404**, que le relais n'a pas été redéployé. Jamais : publier ces
 cinq versions en stable direct ; laisser la console afficher un vert qu'elle ne peut pas prouver
 (sans les deux réglages elle écrit « non lus » **avec la raison**, et c'est le comportement voulu).
+
+**R4 — Le relais n'a jamais servi à personne, et rien ne le disait (constaté le 22/09/2026).**
+Déclencheur : on cherchait la valeur de `RELAIS_SECRET` pour l'étape 4 de R3. Constat, lu dans
+l'`app.asar` de `/Applications/SkanFact.app` fraîchement mise à jour en `10.4.0-beta.1`, donc
+construite par la CI le matin même : **`updateBase` vide et `updateSecret` à 0 caractère**. Les
+secrets de dépôt `UPDATE_BASE` et `UPDATE_SECRET` n'ont donc jamais été posés. Conséquence, depuis
+la **6.7.0** : `configureFeed` teste `relayBase()`, le trouve vide, et part droit sur GitHub — les deux
+applications n'ont jamais présenté quoi que ce soit au relais, et le worker `skanfact-maj` tourne
+pour personne depuis qu'il existe.
+
+**Ce que ça apprend, et c'est le cœur :** le repli a si bien fonctionné qu'il a **caché** que le
+chemin principal n'existait pas. C'est la règle de la 6.7.2 (« un chemin de secours ne sert que
+s'il se déclenche tout seul ») prise par l'autre bout — *un repli qui se déclenche toujours rend le
+chemin principal indistinguable d'un chemin mort*. Aucun écran ne l'a jamais dit : l'application
+annonce `relay: false` quand le relais est **en panne**, jamais quand il n'a **jamais été branché**,
+et les deux se ressemblent de l'extérieur. L'instrument qui l'aurait vu est très exactement celui
+que l'étape 4 installe (`/sante` + la ligne des canaux, 10.4.0) : il est né trois ans trop tard.
+
+Étapes, toutes sur le Mac de Skander : `openssl rand -hex 24 | tr -d '\n' | pbcopy` (la valeur ne
+s'affiche jamais) ; la ranger dans le gestionnaire de mots de passe sous un nom **non ambigu** —
+`APP_SECRET du relais (= UPDATE_SECRET)`, parce que c'est le nom flou « APP_SECRET » qui a coûté
+une matinée, les deux workers en ayant chacun un ; la poser sur le worker `skanfact-maj`
+(`APP_SECRET`), sur le worker `skanfact-api` (`RELAIS_SECRET`, plus `RELAIS_BASE` = l'adresse racine
+du relais), et dans les secrets du dépôt (`UPDATE_SECRET`, plus `UPDATE_BASE` à la même adresse).
+Vérification : la ligne des canaux de la console s'allume **immédiatement** — elle parle au relais
+directement, pas à travers les applications ; et les applications ne l'utiliseront qu'à partir de
+la publication suivante, celle qui embarquera enfin le secret. Jamais : poser un secret qu'on n'a
+pas d'abord rangé ailleurs qu'en mémoire — il n'existe aucun moyen de le relire, ni sur Cloudflare,
+ni sur GitHub.
