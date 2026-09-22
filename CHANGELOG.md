@@ -7,6 +7,128 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 10.5.0-beta.1 — 22/09/2026
+
+**La console retenait ce qui EXISTE, et rien de ce qu'on en faisait.** Un essai se terminait,
+l'alerte se levait, Skander appelait le prospect — et le lendemain la même alerte se relevait à
+l'identique. Une alerte qui ne se referme pas cesse d'être lue au cinquième prospect, et emmène
+avec elle celles qui comptaient. Et un prix qui se change en modifiant le code n'est pas un prix,
+c'est une constante : il faut un déploiement pour l'ajuster, donc on ne l'ajuste jamais.
+
+**Les deux applications ne changent pas d'un octet** : `src/` et `build/` ne portent aucune
+différence. Tout ce qui suit vit dans le worker de la console — il se déploie sur Cloudflare, pas
+par une release — et dans une **migration D1** à coller (en fin d'entrée).
+
+### Régler, depuis l'écran
+
+- **Un onglet Réglages**, et quinze valeurs qui vivaient dans le code ou dans les variables du
+  worker : les trois prix, la remise de parrainage, la devise, le lien de paiement, la signature
+  des mails, et sept seuils d'alerte. **Trois rangs** décident, dans cet ordre : ce qui est réglé à
+  l'écran, sinon la variable du worker, sinon le défaut — poser une valeur ici doit pouvoir
+  CORRIGER une variable mal réglée sans toucher à Cloudflare, jamais l'inverse.
+- **Chaque valeur dit d'OÙ elle vient.** Sans ça, un écran de nombres laisse croire qu'ils ont tous
+  été décidés, alors que la plupart sont des défauts que personne n'a jamais regardés.
+- **Un refus nomme le champ ET la forme attendue**, et ce qui était bon est enregistré quand même :
+  un formulaire tout-ou-rien ferait recommencer quinze champs pour une virgule.
+- **Vider un champ numérique le rend à son rang suivant** ; vider un champ de texte le laisse vide
+  pour de bon. « Aucune version minimale » est une décision, pas un oubli.
+- **Ce que la console NE règle pas est écrit, avec la raison** : la durée de l'essai est la règle de
+  l'application, pas une politique de la console — réglée ici, elle annoncerait des fins d'essai
+  fausses. Le taire donnerait l'impression d'un oubli.
+
+### Vendre
+
+- **Un écran Essais**, nommés un par un : quel poste, quelle application, quel système, ce qu'il
+  reste, et ce qu'on en a fait. Le Parc les agrège par version — utile pour compter, inutile pour
+  décrocher son téléphone. C'est la file d'appels du matin, et elle n'existait pas.
+- **« Noter un contact »**, sur un prospect comme sur un client : comment, ce qui s'est dit, quand
+  rappeler, et l'issue. Tant qu'un rappel est posé dans le futur, ce sujet ne redemande rien — et
+  le jour venu, il revient de lui-même. **Rien ne s'écrase** : chaque contact est une ligne de plus,
+  parce que « je l'ai déjà appelé deux fois » est ce qu'on vient chercher avant la troisième.
+- **Un « perdu » sans motif est refusé** : c'est la seule chose que ce suivi peut apprendre.
+- **Le lien de paiement** entre dans les relances quand il est réglé, et **disparaît de la phrase**
+  sinon — pas un vide, pas un « … ». C'est ce qui transforme une relance en encaissement.
+- **Un devis**, composé depuis la fiche d'un client : la console ne parlait qu'à ceux qui avaient
+  déjà acheté. Le prix vient des Réglages, jamais du code.
+- **Le parrainage est chiffré** : clients amenés, **dont payants**, et CA encaissé. Vendre en
+  passant par les cabinets est le modèle du produit — « amené » et « payé » ne sont pas la même
+  nouvelle, et les confondre féliciterait un cabinet qui n'a rien rapporté.
+
+### Garder, et supporter
+
+- **La fiche d'un client** : licences, ventes, postes, ce qu'on lui a dit, journal. Répondre à
+  « raconte-moi tout sur ce client » demandait cinq écrans. C'est celui qu'on ouvre à chaque appel.
+- **Un client sous licence devenu muet.** Un poste qui a payé et ne s'annonce plus, c'est une
+  désinstallation, une réinstallation ratée ou un réseau coupé : dans les trois cas on appelle, et
+  dans les trois cas on ne l'apprenait nulle part. Un départ de client payant ne faisait aucun bruit.
+- **Un poste resté sur une version ancienne**, avec le MOTIF de la version minimale. Pour un
+  logiciel comptable ce n'est pas un confort : une version ancienne tourne sur du code dont on a
+  corrigé des chiffres depuis. Rien tant que le seuil n'est pas réglé : la console n'écrit aucune
+  règle à la place de personne.
+- **Un jalon de renouvellement à soixante jours**, calme : une licence annuelle se négocie en
+  amont, et une occasion criée en rouge apprend à ignorer le rouge. Il ne double jamais l'alerte
+  pressante de trente jours.
+- **Une page publique de vérification** (`/verifier`) : un client colle l'empreinte de sa licence et
+  lit son état. Sans secret — celui qui présente une empreinte la connaît déjà — et **jamais** le
+  nom du client : la requête ne va pas chercher la table des clients, et c'est elle qui protège,
+  pas la forme de la réponse.
+
+### Ne pas perdre la boutique
+
+- **La copie de la base part toute seule**, par déclencheur programmé, dans un bucket R2. Une copie
+  qui demande un clic est une copie qu'on ne fait pas — l'alerte à trente jours existait
+  précisément parce que le geste ne se faisait pas. Tant que le bucket n'existe pas, l'écran **DIT**
+  ce qui manque au lieu d'afficher un vert rassurant.
+- **Un second secret d'administration** le temps d'une rotation. Sans lui, remplacer le secret ferme
+  la console à la seconde où on le remplace — et c'est ce qui fait qu'on ne le remplace jamais, y
+  compris le jour où il faudrait. Il est tenu aux mêmes exigences : un secret de rotation court
+  serait une porte de service.
+- **Le pli scellé**, préparé par la console : ce qu'il doit contenir, comment le sceller, et ce qui
+  reste vrai sans lui. Aucune clé privée n'en sort — ce qui sort est une PROCÉDURE. C'est le point
+  le plus grave du projet : une seule personne peut émettre une licence.
+
+### L'ergonomie, et trois défauts vus sur capture
+
+- **Le plafond de largeur suit le RÔLE.** Un seul plafond de 1180 px s'appliquait à tout : juste
+  pour de la prose, faux pour un tableau de dix colonnes qui se serrait pendant que 700 px restaient
+  vides à droite. Une **cinquième sonde** le mesure désormais — les quatre autres regardaient des
+  objets, aucune ne voyait la place perdue.
+- **Tri par colonne et pagination**, que les deux applications ont depuis la 1.9.0 et la 2.2.0. Le
+  pied **nomme** ce qu'il compte (« 4 licences », jamais « 4 lignes ») et dit quand la borne de cinq
+  cents lignes est atteinte : une troncature muette se lit comme « tout est là ».
+- **Les bulles « i »** sur les colonnes qui sont des définitions — « Endormi n'est PAS perdu » était
+  écrit nulle part. Et **Cmd+K**, qui mène à un écran, un geste ou un client par son nom.
+- « Les **4** canaux stables servent une version » s'affichait au-dessus de **huit** lignes : le
+  verdict ne compte que les stables, le détail listait tout. Un compteur et la liste qu'il annonce
+  se calculent avec la même fonction (6.8.1) — ici on ne retire rien, on SÉPARE.
+- L'export écrivait « **evenements** : 3 · **jetons** : 0 » — les noms de tables SQL tels quels,
+  accent manquant compris.
+- Le bandeau d'export **suivait d'écran en écran** : « activations : 4 » restait affiché pendant que
+  le Parc, juste en dessous, en montrait cinq.
+
+### Deux défauts trouvés par les parcours, invisibles autrement
+
+- **Une réponse en retard repeignait l'écran qu'on avait quitté.** Deux dessins qui se chevauchent —
+  « Actualiser » puis un clic sur un onglet — et c'est la réponse la plus LENTE qui gagnait : le
+  tableau du Parc se faisait remplacer par les alertes, sous le titre du Parc. Il n'apparaît que
+  lorsqu'un écran devient plus lent qu'un autre, donc il serait arrivé un jour, en production.
+- **La rangée de boutons qui clôt un bloc** n'avait d'écart que DANS un panneau : posée ailleurs,
+  « Enregistrer » touchait « Annuler » à zéro pixel. Un correctif qui dépend d'une classe qu'on
+  pense à mettre n'est pas un correctif (9.8.3).
+
+Treize défauts réintroduits un par un font tomber leur test. Deux sont restés VERTS et ont appris
+quelque chose : une assertion sur la seule réponse de la page publique ne prouvait rien — c'est la
+REQUÊTE qui protège, et elle n'était gardée par rien ; et une assertion « la tranche ne déborde pas »
+ne pouvait pas échouer, parce que le gabarit est la dernière chose du fichier.
+
+**La migration à coller dans la console D1 de Cloudflare**, une fois le worker redéployé :
+
+```sql
+CREATE TABLE IF NOT EXISTS reglages ( cle TEXT PRIMARY KEY, valeur TEXT NOT NULL, change_le TEXT NOT NULL );
+CREATE TABLE IF NOT EXISTS suivis ( id TEXT PRIMARY KEY, sujet TEXT NOT NULL, quand TEXT NOT NULL, moyen TEXT, note TEXT, rappel TEXT, issue TEXT, motif TEXT, source TEXT );
+CREATE INDEX IF NOT EXISTS idx_suivis_sujet ON suivis(sujet);
+```
+
 ## 10.4.0-beta.3 — 22/09/2026
 
 **Deux applications, deux parcs — et le premier chiffre de cette version était faux.** Skander a

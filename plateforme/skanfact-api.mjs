@@ -43,14 +43,19 @@
 // d'une réponse doit changer, /v2/ naîtra à côté pendant que /v1/ continuera de répondre.
 const ACTIONS = {
   licence: ['etat'],
+  // 10.5.0 — la vérification PUBLIQUE d'une empreinte de licence : sans secret, et sans rien
+  // divulguer de plus que ce que celui qui la présente sait déjà. C'est le seul espace ouvert.
+  verif: ['licence'],
   admin: ['etat', 'stats', 'clients', 'licences', 'activations', 'ventes', 'evenements', 'importer',
     // 10.4.0 — l'espace de gestion : le parc des DEUX applications, les cabinets, ce qui demande une
     // décision, la santé des canaux de mise à jour, et l'export de la base.
-    'parc', 'cabinets', 'alertes', 'sante', 'export']
+    'parc', 'cabinets', 'alertes', 'sante', 'export',
+    // 10.5.0 — les réglages (prix, seuils), les essais nommés un par un, et le pli scellé.
+    'reglages', 'essais', 'pli']
 };
-// `relance` est la seule sous-action qui se LIT (GET) : elle ne change rien, elle compose le texte
-// d'un mail que l'éditeur relira dans sa propre messagerie avant de l'envoyer.
-const SOUS_ACTIONS = ['revoquer', 'renouveler', 'changer-offre', 'envoyer', 'payee', 'facturee', 'relance'];
+// `relance` et `devis` sont les sous-actions qui se LISENT (GET) : elles ne changent rien, elles
+// composent le texte d'un mail que l'éditeur relira dans sa propre messagerie avant de l'envoyer.
+const SOUS_ACTIONS = ['revoquer', 'renouveler', 'changer-offre', 'envoyer', 'payee', 'facturee', 'relance', 'suivi', 'devis'];
 const SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 
 // « /v1/licence/etat » → { v: 1, espace: 'licence', action: 'etat' }
@@ -242,21 +247,47 @@ export function memeSecret(a, b) {
   return d === 0;
 }
 
-// La console. Un seul secret, long et tiré au hasard, posé dans les réglages du worker — il n'y a
-// qu'un administrateur, et une table d'utilisateurs pour une personne serait du décor.
+// La console. Un secret long et tiré au hasard, posé dans les réglages du worker — il n'y a qu'un
+// administrateur, et une table d'utilisateurs pour une personne serait du décor.
 //
 // Un secret trop court est refusé À LA CONFIGURATION, pas à l'usage : mieux vaut un écran qui dit
 // « mal réglé » qu'une console qu'on croit fermée et qui s'ouvre en devinant « skanfact ».
+//
+// 10.5.0 — un SECOND secret est accepté, `ADMIN_SECRET_2`, et il n'existe que pour une raison :
+// changer le premier. Sans lui, remplacer le secret ferme la console à la seconde où on le
+// remplace — et c'est ce qui fait qu'on ne le remplace jamais, y compris le jour où il faudrait.
+// Les deux valent pendant la rotation ; on retire le second quand elle est finie. Le second est
+// tenu aux MÊMES exigences que le premier : un secret de rotation court serait une porte de
+// service, c'est-à-dire exactement ce qu'on croit ne pas avoir.
 export const ADMIN_MIN = 24;
 export function autoriseAdmin(headers, env) {
-  const attendu = String((env && env.ADMIN_SECRET) || '').trim();
+  const e = env || {};
+  const attendu = String(e.ADMIN_SECRET || '').trim();
+  const second = String(e.ADMIN_SECRET_2 || '').trim();
   if (!attendu) return { ok: false, code: 503, message: 'Console non configurée : ADMIN_SECRET manque.' };
   if (attendu.length < ADMIN_MIN) {
     return { ok: false, code: 503, message: 'Console mal configurée : ADMIN_SECRET fait moins de ' + ADMIN_MIN + ' caractères.' };
   }
+  if (second && second.length < ADMIN_MIN) {
+    return { ok: false, code: 503, message: 'Console mal configurée : ADMIN_SECRET_2 fait moins de ' + ADMIN_MIN + ' caractères. Retire-le ou allonge-le.' };
+  }
   const donne = (headers && headers.get('x-skanfact-admin')) || '';
-  if (!memeSecret(donne, attendu)) return { ok: false, code: 403, message: 'Accès refusé.' };
-  return { ok: true };
+  if (memeSecret(donne, attendu)) return { ok: true, secret: 'principal' };
+  if (second && memeSecret(donne, second)) return { ok: true, secret: 'rotation' };
+  return { ok: false, code: 403, message: 'Accès refusé.' };
+}
+
+// Ce que l'écran des réglages dit de la rotation. On n'affiche jamais un secret, ni un fragment :
+// ce qu'on montre, c'est s'il y en a un second et ce qu'il reste à faire.
+export function etatSecret(env) {
+  const e = env || {};
+  const second = String(e.ADMIN_SECRET_2 || '').trim();
+  if (!second) {
+    return { rotation: false, phrase: 'Un seul secret d\'administration.',
+      quoi: 'Pour le changer sans te fermer la porte : pose le nouveau dans « ADMIN_SECRET_2 », ouvre la console avec, puis remplace « ADMIN_SECRET » par lui et retire le second.' };
+  }
+  return { rotation: true, phrase: 'Rotation en cours : deux secrets ouvrent la console.',
+    quoi: 'Termine-la — recopie le nouveau dans « ADMIN_SECRET », puis SUPPRIME « ADMIN_SECRET_2 ». Deux portes laissées ouvertes, c\'est une porte de plus à perdre.' };
 }
 
 // Les clés publiques en vigueur, lues depuis les réglages du worker. Mal réglé, on ne PEUT pas
@@ -335,22 +366,135 @@ export const DUREES = [
   { id: 'vie', label: 'À vie', mois: null },
   { id: 'date', label: 'Jusqu\'à une date précise', mois: null }
 ];
-// Les prix proposés par défaut dans le formulaire, MODIFIABLES à chaque émission et remplaçables
-// par les variables `PRIX_INDEPENDANT` / `PRIX_ENTREPRISE` / `REMISE_PARRAINAGE` du worker. Ce sont
-// ceux de la page Tarifs de skanfact.tn au 15/09/2026, HT, en dinars ; ils ne servent qu'à
-// préremplir un champ — aucun montant n'est jamais calculé à partir d'eux sans passer par l'écran.
-export function tarifs(env) {
-  const n = (v, d) => { const x = Number(v); return Number.isFinite(x) && x >= 0 ? x : d; };
+// ---------- les réglages : ce qui se DÉCIDE, et qui se change depuis l'écran ----------
+// 10.5.0. Jusqu'ici un prix vivait dans une variable du worker (`PRIX_ENTREPRISE`) et une signature
+// de mail vivait EN DUR dans `mailRelance` : changer un tarif demandait un déploiement, changer une
+// signature demandait un commit. Un réglage qu'on ne peut pas changer depuis l'écran n'est pas un
+// réglage, c'est une constante avec un nom trompeur.
+//
+// TROIS RANGS, du plus fort au plus faible : la table `reglages` de la base, sinon la variable du
+// worker, sinon le défaut écrit ici. L'ordre compte — poser une valeur depuis l'écran doit pouvoir
+// CORRIGER une variable mal réglée sans toucher à Cloudflare, jamais l'inverse.
+//
+// Et une chose n'est PAS réglable, exprès : la durée de l'essai (`ESSAI_JOURS`). Ce n'est pas une
+// politique de la console, c'est la règle de l'application (8.0.0) — un chiffre réglé ici la
+// laisserait diverger en silence de ce que le client vit vraiment sur sa machine, et la console
+// annoncerait des fins d'essai fausses. L'écran des réglages le DIT plutôt que de le taire.
+export const REGLAGES = [
+  // — Ce qu'on vend.
+  { id: 'prix_independant', groupe: 'Prix', label: 'Indépendant, par an', type: 'montant', env: 'PRIX_INDEPENDANT', defaut: 390,
+    aide: 'Proposé dans le formulaire d\'émission. Il ne décide de rien : le montant se corrige à chaque vente.' },
+  { id: 'prix_entreprise', groupe: 'Prix', label: 'Entreprise, par an', type: 'montant', env: 'PRIX_ENTREPRISE', defaut: 690,
+    aide: 'Proposé dans le formulaire d\'émission. Il ne décide de rien : le montant se corrige à chaque vente.' },
+  // Aucun défaut pour le Cabinet : ses tarifs ne sont pas fixés (l'avis de l'Ordre n'est pas revenu,
+  // DIRECTION.md § 8), et un chiffre inventé deviendrait un tarif par simple préremplissage.
+  { id: 'prix_cabinet_dossier', groupe: 'Prix', label: 'Un dossier de cabinet, par an', type: 'montant', env: 'PRIX_CABINET_DOSSIER', defaut: 0,
+    aide: 'Ce qu\'un cabinet paie par dossier hors SkanFact, au-delà des trois gratuits. À zéro, le formulaire ne propose aucun montant et il se décide à la main.' },
+  { id: 'remise_parrainage', groupe: 'Prix', label: 'Remise de parrainage', type: 'pourcent', env: 'REMISE_PARRAINAGE', defaut: 20,
+    aide: 'La remise de la première année pour un client amené par un cabinet. Elle ne se réapplique pas au renouvellement.' },
+  { id: 'devise', groupe: 'Prix', label: 'Devise', type: 'devise', env: 'DEVISE', defaut: 'TND',
+    aide: 'Trois lettres. Elle est écrite sur chaque vente : la changer ne convertit rien de ce qui est déjà vendu.' },
+  { id: 'lien_paiement', groupe: 'Prix', label: 'Lien de paiement', type: 'url', env: 'LIEN_PAIEMENT', defaut: '',
+    aide: 'L\'adresse où un client règle en ligne. Elle est ajoutée aux relances d\'impayé quand elle est réglée, et disparaît de la phrase sinon.' },
+  { id: 'signature_mail', groupe: 'Prix', label: 'Signature des mails', type: 'texte', env: 'MAIL_SIGNATURE', defaut: 'Skander Ben Amor — SkanFact',
+    aide: 'La dernière ligne des mails composés par la console. Vide, le mail s\'arrête à la formule de politesse.' },
+
+  // — Quand la console doit parler. Chaque seuil est un jour où l'on décroche son téléphone.
+  { id: 'alerte_fin', groupe: 'Alertes', label: 'Licence qui se termine', type: 'jours', defaut: 30,
+    aide: 'Combien de jours avant la fin d\'une licence elle entre dans « À décider ».' },
+  { id: 'jalon_renouvellement', groupe: 'Alertes', label: 'Préparer le renouvellement', type: 'jours', defaut: 60,
+    aide: 'Un premier jalon, plus calme, qui laisse le temps de négocier. À zéro, il n\'existe pas.' },
+  { id: 'alerte_essai', groupe: 'Alertes', label: 'Essai qui se termine', type: 'jours', defaut: 7,
+    aide: 'Combien de jours avant la fin estimée d\'un essai on appelle le prospect.' },
+  { id: 'silence_client', groupe: 'Alertes', label: 'Client sous licence devenu muet', type: 'jours', defaut: 45,
+    aide: 'Un poste qui a payé et ne s\'annonce plus : désinstallation, réinstallation ratée ou réseau coupé. Dans les trois cas on appelle. À zéro, l\'alerte n\'existe pas.' },
+  { id: 'alerte_export', groupe: 'Alertes', label: 'Copie de la base trop ancienne', type: 'jours', defaut: 30,
+    aide: 'La base est le seul endroit où vit « qui a acheté quelle clé ».' },
+  { id: 'parc_frais', groupe: 'Alertes', label: 'Un poste est « vu » depuis', type: 'jours', defaut: 30,
+    aide: 'La fenêtre de fraîcheur du Parc : au-delà, un poste est compté « endormi ». Endormi n\'est pas perdu — il se compte à part, il ne se retranche pas.' },
+  { id: 'version_minimale', groupe: 'Alertes', label: 'Version minimale attendue', type: 'texte', defaut: '',
+    aide: 'Un poste sur une version antérieure entre dans « À décider ». Vide, l\'alerte n\'existe pas. Pour un logiciel comptable, un poste resté en arrière tourne sur du code dont on a corrigé des chiffres depuis.' },
+  { id: 'version_motif', groupe: 'Alertes', label: 'Pourquoi cette version', type: 'texte', defaut: '',
+    aide: 'Ce que la version minimale a corrigé. Sans ce motif, l\'alerte demande une mise à jour sans dire pourquoi — et on ne la fait pas.' }
+];
+const REGLAGE_PAR_ID = new Map(REGLAGES.map(r => [r.id, r]));
+
+// Nettoyer UNE valeur selon son type. Rend `null` quand la valeur ne peut pas être retenue : c'est
+// l'appelant qui décide s'il refuse ou s'il retombe sur le rang suivant.
+export function valeurReglage(id, brut) {
+  const def = REGLAGE_PAR_ID.get(id);
+  if (!def) return null;
+  const s = String(brut == null ? '' : brut).trim();
+  if (def.type === 'montant' || def.type === 'pourcent' || def.type === 'jours') {
+    if (s === '') return null;
+    const x = Number(s.replace(',', '.'));
+    if (!Number.isFinite(x) || x < 0) return null;
+    if (def.type === 'pourcent' && x > 100) return null;
+    // Un seuil est un nombre de jours entiers ; un demi-jour ne veut rien dire sur un calendrier.
+    if (def.type === 'jours') return Math.round(x);
+    return Math.round(x * 1000) / 1000;
+  }
+  if (def.type === 'devise') {
+    // Une devise est un code à trois lettres. « dinar » ou « TND  » silencieusement acceptés
+    // feraient passer des factures à deux décimales au lieu de trois (règle 7.30.0).
+    const c = s.toUpperCase();
+    return /^[A-Z]{3}$/.test(c) ? c : null;
+  }
+  if (def.type === 'url') {
+    if (s === '') return '';
+    // Tout ce qui vient d'un copier-coller se `trim()` — et une adresse qui ne s'analyse pas n'est
+    // pas une adresse : la poser quand même la ferait partir telle quelle dans un mail (6.7.2).
+    try { const u = new URL(s); if (u.protocol !== 'https:' && u.protocol !== 'http:') return null; } catch { return null; }
+    return s.slice(0, 300);
+  }
+  return s.slice(0, 200);
+}
+
+// Pourquoi une valeur est refusée. Un refus dit TROIS choses (7.0.0) : ce qui est refusé, pourquoi,
+// et ce qui débloque — ici, la forme attendue. « Valeur invalide » oblige à deviner.
+export function refusReglage(def, brut) {
+  const d = def || {};
+  const formes = {
+    montant: 'un montant positif, en chiffres (par exemple 390 ou 390,5)',
+    pourcent: 'un pourcentage entre 0 et 100',
+    jours: 'un nombre de jours entier et positif (0 = pas d\'alerte)',
+    devise: 'un code de trois lettres (TND, EUR, USD…)',
+    url: 'une adresse qui commence par https://',
+    texte: 'du texte'
+  };
+  return 'attendu : ' + (formes[d.type] || formes.texte) + ' — reçu « ' + String(brut).slice(0, 40) + ' ».';
+}
+
+// Les valeurs qui s'appliquent VRAIMENT, et d'où chacune vient. La source part avec la valeur : un
+// écran de réglages qui n'affiche que des nombres laisse croire qu'ils ont tous été décidés, alors
+// que la plupart sont des défauts que personne n'a jamais regardés.
+export function reglagesEffectifs(env, base) {
+  const e = env || {};
+  const b = base || {};
+  const valeurs = {}, sources = {};
+  REGLAGES.forEach(def => {
+    const enBase = Object.prototype.hasOwnProperty.call(b, def.id) ? valeurReglage(def.id, b[def.id]) : null;
+    if (enBase !== null) { valeurs[def.id] = enBase; sources[def.id] = 'base'; return; }
+    const enEnv = def.env && e[def.env] != null && String(e[def.env]).trim() !== '' ? valeurReglage(def.id, e[def.env]) : null;
+    if (enEnv !== null) { valeurs[def.id] = enEnv; sources[def.id] = 'worker'; return; }
+    valeurs[def.id] = def.defaut; sources[def.id] = 'defaut';
+  });
+  return { valeurs, sources };
+}
+
+// Les tarifs, sous la forme que le formulaire d'émission attend depuis la 8.5.0. Ils ne servent
+// qu'à préremplir un champ — aucun montant n'est jamais calculé à partir d'eux sans passer par
+// l'écran. La forme ne bouge pas ; ce qui change, c'est d'où viennent les nombres.
+export function tarifs(env, base) {
+  const v = reglagesEffectifs(env, base).valeurs;
   return {
-    independant: n(env && env.PRIX_INDEPENDANT, 390),
-    entreprise: n(env && env.PRIX_ENTREPRISE, 690),
-    // 9.4.1 — le prix d'UN dossier hors SkanFact, par an, pour une licence de cabinet. Aucun
-    // défaut : les prix du Cabinet ne sont pas fixés (l'avis de l'Ordre n'est pas revenu,
-    // DIRECTION.md § 8), et un chiffre inventé ici deviendrait un tarif par simple préremplissage.
-    // Zéro = « le formulaire ne propose rien, le montant se décide à la main ».
-    cabinetDossier: n(env && env.PRIX_CABINET_DOSSIER, 0),
-    remiseParrainage: n(env && env.REMISE_PARRAINAGE, 20),
-    devise: String((env && env.DEVISE) || 'TND').slice(0, 3).toUpperCase()
+    independant: v.prix_independant,
+    entreprise: v.prix_entreprise,
+    cabinetDossier: v.prix_cabinet_dossier,
+    remiseParrainage: v.remise_parrainage,
+    devise: v.devise,
+    lienPaiement: v.lien_paiement,
+    signature: v.signature_mail
   };
 }
 
@@ -704,6 +848,10 @@ export async function envoyerMail(env, m) {
 export async function etatPlateforme(env) {
   const e = env || {};
   const ks = await cleServeur(e);
+  // Les réglages viennent de la base quand elle est là. `etatPlateforme` répond AVANT le contrôle
+  // « la base est-elle branchée ? » — c'est ce qui permet à l'écran de dire pourquoi elle ne l'est
+  // pas — donc la lecture doit survivre à son absence sans rien casser.
+  const base = await lireReglages(e);
   return {
     base: !!e.DB,
     emission: { ok: ks.ok, kid: ks.kid, raison: ks.ok ? '' : ks.raison },
@@ -711,10 +859,36 @@ export async function etatPlateforme(env) {
       ? { ok: true, expediteur: String(e.MAIL_FROM || 'SkanFact <licences@send.skanfact.tn>') }
       : { ok: false, raison: 'RESEND_API_KEY manque : la clé se copie et s\'envoie à la main.' },
     reponse: !!e.REPONSE_PRIVATE_KEY,
-    tarifs: tarifs(e),
+    tarifs: tarifs(e, base),
+    seuils: reglagesEffectifs(e, base).valeurs,
     offres: OFFRES,
     durees: DUREES
   };
+}
+
+// Les réglages rangés en base, sous forme d'objet. Jamais bloquant : une table absente (une base
+// d'avant la 10.5.0, une migration pas encore collée) doit laisser la console fonctionner sur les
+// variables du worker et ses défauts, exactement comme avant. Un écran qui refuse de s'ouvrir
+// parce qu'un réglage manque est pire que le réglage manquant.
+export async function lireReglages(env) {
+  if (!env || !env.DB) return {};
+  const res = await sansCasser(env.DB.prepare('SELECT cle, valeur FROM reglages').all(), null);
+  const out = {};
+  ((res && res.results) || []).forEach(l => { out[l.cle] = l.valeur; });
+  return out;
+}
+
+// Le DERNIER suivi de chaque sujet, sous forme de table. C'est le plus récent qui décide : un
+// prospect rappelé hier n'est pas « perdu » parce qu'on l'avait noté ainsi le mois dernier, et un
+// historique se lit sur la fiche, pas dans ce qui fait taire une alerte.
+export async function lireSuivis(tous) {
+  const lignes = await tous(
+    'SELECT s.sujet, s.quand, s.moyen, s.note, s.rappel, s.issue, s.motif, s.source, c.nom' +
+    ' FROM suivis s LEFT JOIN clients c ON (\'client:\' || c.id) = s.sujet' +
+    ' ORDER BY s.quand ASC LIMIT 2000');
+  const out = {};
+  lignes.forEach(l => { out[l.sujet] = l; });
+  return out;
 }
 
 // ======================================================================================
@@ -877,15 +1051,46 @@ export const ALERTE_EXPORT = 30;     // jours sans export de la base
 export const ESSAI_JOURS = 30;
 export const ALERTE_ESSAI = 7;       // jours avant la fin d'un essai : c'est là qu'on décroche
 const NIVEAUX = { alerte: 0, attention: 1, calme: 2 };
+// Les seuils par défaut : ceux de la 10.4.0, pour que `alertesPlateforme(d, jour)` sans troisième
+// argument se comporte exactement comme avant. Ce sont les valeurs de `REGLAGES`, et un test les
+// confronte — deux tables de défauts divergeraient au premier changement de tarif.
+export const SEUILS_DEFAUT = {
+  alerte_fin: ALERTE_FIN, jalon_renouvellement: 60, alerte_essai: ALERTE_ESSAI,
+  silence_client: 45, alerte_export: ALERTE_EXPORT, version_minimale: '', version_motif: ''
+};
 
-export function alertesPlateforme(d, aujourdhui) {
+// Un sujet SUIVI ne redemande rien : c'est toute la raison d'être du suivi (10.5.0). Trois états
+// seulement — rappelé plus tard, gagné, perdu — et tout le reste redemande, parce qu'un prospect
+// qu'on a « regardé » n'est pas un prospect traité.
+//
+// On suit une OCCURRENCE, jamais une règle (7.21.0) : le sujet d'un suivi est l'identifiant du
+// prospect ou du client, donc faire taire l'échéance d'octobre ne fait pas taire celle de novembre.
+export function suiviTait(suivis, sujet, jour) {
+  const s = (suivis || {})[sujet];
+  if (!s) return false;
+  if (s.issue === 'perdu' || s.issue === 'gagne') return true;
+  const r = String(s.rappel || '').slice(0, 10);
+  return !!(r && dateValide(r) && dateValide(jour) && r >= jour);
+}
+
+export function alertesPlateforme(d, aujourdhui, seuils) {
   const o = d || {};
+  const s = { ...SEUILS_DEFAUT, ...(seuils || {}) };
   const jour = String(aujourdhui || '').slice(0, 10);
+  const suivis = o.suivis || {};
   const out = [];
-  const add = (niveau, quoi, sujet, detail, onglet, id) => out.push({ id: id || (quoi + ':' + sujet), niveau, quoi, sujet, detail, onglet });
+  // `sujet2` est l'identifiant du SUIVI auquel l'alerte appartient — le client pour ce qui se
+  // négocie, le poste pour un essai. Les alertes qui ne parlent pas à quelqu'un (une clé qu'on a
+  // oublié d'envoyer, une base jamais copiée) n'en ont pas : ce sont des gestes de l'éditeur, et
+  // un coup de téléphone ne les règle pas.
+  const add = (niveau, quoi, sujet, detail, onglet, id, sujet2) => {
+    if (sujet2 && suiviTait(suivis, sujet2, jour)) return;
+    out.push({ id: id || (quoi + ':' + sujet), niveau, quoi, sujet, detail, onglet, suivi: sujet2 || '' });
+  };
 
   (o.licences || []).forEach(l => {
     const nom = l.client || l.id;
+    const cli = l.client_id ? 'client:' + l.client_id : '';
     // Une clé jamais envoyée est une vente livrée à personne : le client a payé et attend.
     if (!l.envoyee_le && !l.revoquee_le && !l.remplacee_par) {
       add('alerte', 'Clé jamais envoyée', nom, 'La licence est signée et n\'est jamais partie.', 'licences', 'env:' + l.id);
@@ -893,14 +1098,55 @@ export function alertesPlateforme(d, aujourdhui) {
     if (l.revoquee_le || l.remplacee_par || !l.fin) return;
     const reste = dateValide(jour) && dateValide(l.fin) ? joursEntre(jour, l.fin) : null;
     if (reste === null) return;
-    if (reste < 0) add('attention', 'Licence expirée', nom, 'Finie le ' + l.fin + '. Un renouvellement se propose, il ne se devine pas.', 'licences', 'exp:' + l.id);
-    else if (reste <= ALERTE_FIN) add('attention', 'Licence qui se termine', nom, 'Fin le ' + l.fin + ' (' + reste + ' jour' + (reste === 1 ? '' : 's') + ').', 'licences', 'fin:' + l.id);
+    if (reste < 0) add('attention', 'Licence expirée', nom, 'Finie le ' + l.fin + '. Un renouvellement se propose, il ne se devine pas.', 'licences', 'exp:' + l.id, cli);
+    else if (reste <= s.alerte_fin) add('attention', 'Licence qui se termine', nom, 'Fin le ' + l.fin + ' (' + reste + ' jour' + (reste === 1 ? '' : 's') + ').', 'licences', 'fin:' + l.id, cli);
+    // Le jalon : une licence annuelle se NÉGOCIE en amont. À trente jours on presse, à soixante on
+    // prépare — et le ton d'un appel n'est pas le même. Calme exprès : ce n'est pas une urgence,
+    // c'est une occasion, et une occasion criée en rouge apprend à ignorer le rouge (8.0.1).
+    else if (s.jalon_renouvellement > 0 && reste <= s.jalon_renouvellement) {
+      add('calme', 'Renouvellement à préparer', nom, 'Fin le ' + l.fin + ' (' + reste + ' jours) : le temps d\'en parler sans presser.', 'licences', 'jal:' + l.id, cli);
+    }
   });
 
   (o.ventes || []).forEach(v => {
     if (v.payee_le) return;
-    add('attention', 'Vente à encaisser', v.client || v.id, 'Licence livrée, rien d\'encaissé.', 'ventes', 'pay:' + v.id);
+    add('attention', 'Vente à encaisser', v.client || v.id, 'Licence livrée, rien d\'encaissé.', 'ventes',
+      'pay:' + v.id, v.client_id ? 'client:' + v.client_id : '');
   });
+
+  // Un client qui a PAYÉ et ne s'annonce plus. C'est une désinstallation, une réinstallation ratée
+  // ou un réseau coupé — dans les trois cas on appelle, et dans les trois cas on ne l'apprenait
+  // nulle part : le Parc comptait ces postes « endormis » sans que rien ne le dise. Un départ de
+  // client payant qui ne fait aucun bruit est le pire signal manquant d'un éditeur.
+  if (s.silence_client > 0) {
+    (o.postes || []).forEach(p => {
+      if (p.empreinte === ESSAI) return;
+      const vu = String(p.derniere_fois || '').slice(0, 10);
+      if (!dateValide(jour) || !dateValide(vu)) return;
+      const mut = joursEntre(vu, jour);
+      if (mut <= s.silence_client) return;
+      const quoi = APPS[appDe(p.app)] || APPS.entreprise;
+      add('attention', 'Client sous licence devenu muet', p.client || p.device_nom || p.device_id,
+        quoi + ' — plus un signe depuis le ' + vu + ' (' + mut + ' jours). Désinstallation, réinstallation ratée ou réseau coupé : dans les trois cas, on appelle.',
+        'parc', 'muet:' + String(p.device_id || '') + ':' + appDe(p.app), p.client_id ? 'client:' + p.client_id : '');
+    });
+  }
+
+  // Un poste resté en arrière. Pour un logiciel COMPTABLE ce n'est pas un confort : une version
+  // ancienne tourne sur du code dont on a corrigé des chiffres depuis. Le seuil et son MOTIF se
+  // règlent ensemble — une alerte qui réclame une mise à jour sans dire ce qu'elle corrige ne se
+  // fait pas, et c'est ce motif que l'on répète au client au téléphone.
+  const vmin = String(s.version_minimale || '').trim();
+  if (vmin) {
+    (o.postes || []).forEach(p => {
+      const v = String(p.version || '').trim();
+      if (!v || compVersion(v, vmin) >= 0) return;
+      const quoi = APPS[appDe(p.app)] || APPS.entreprise;
+      add('attention', 'Poste sur une version ancienne', p.client || p.device_nom || p.device_id,
+        quoi + ' ' + v + ' — attendu ' + vmin + ' au minimum.' + (s.version_motif ? ' ' + String(s.version_motif).trim() : ''),
+        'parc', 'ver:' + String(p.device_id || '') + ':' + appDe(p.app));
+    });
+  }
 
   // Un ESSAI qui se termine est un client à appeler — c'est le seul signal commercial de cette
   // console, et il n'existait nulle part : `alertesPlateforme` ne regardait que les licences, les
@@ -919,17 +1165,29 @@ export function alertesPlateforme(d, aujourdhui) {
     if (!dateValide(jour) || !dateValide(debut)) return;
     const fin = ajouterJours(debut, ESSAI_JOURS);
     const reste = joursEntre(jour, fin);
-    if (reste > ALERTE_ESSAI) return;
+    if (reste > s.alerte_essai) return;
     const qui = String(a.device_nom || a.device_id || 'un ordinateur');
     const quoi = APPS[appDe(a.app)] || APPS.entreprise;
     const id = 'essai:' + String(a.device_id || '') + ':' + appDe(a.app);
     if (reste < 0) {
       add('attention', 'Essai terminé', qui,
-        quoi + ' — essai commencé vers le ' + debut + ', fini vers le ' + fin + '. Personne n’a acheté.', 'parc', id);
+        quoi + ' — essai commencé vers le ' + debut + ', fini vers le ' + fin + '. Personne n’a acheté.', 'parc', id, id);
     } else {
       add('alerte', 'Essai qui se termine', qui,
-        quoi + ' — il reste ' + reste + ' jour' + (reste === 1 ? '' : 's') + ' (vers le ' + fin + '). C’est maintenant qu’on appelle.', 'parc', id);
+        quoi + ' — il reste ' + reste + ' jour' + (reste === 1 ? '' : 's') + ' (vers le ' + fin + '). C’est maintenant qu’on appelle.', 'parc', id, id);
     }
+  });
+
+  // Un rappel arrivé à échéance : on avait dit « je le rappelle le 12 », on est le 12. Sans cette
+  // ligne, un prospect mis en attente disparaîtrait pour toujours de l'écran qui devait le rendre.
+  Object.keys(suivis).forEach(sujet => {
+    const su = suivis[sujet];
+    if (!su || su.issue === 'perdu' || su.issue === 'gagne') return;
+    const r = String(su.rappel || '').slice(0, 10);
+    if (!r || !dateValide(r) || !dateValide(jour) || r > jour) return;
+    add('alerte', 'Rappel prévu aujourd\'hui', su.nom || sujet,
+      'Tu avais noté de rappeler le ' + r + (su.note ? ' — ' + String(su.note).slice(0, 120) : '') + '.',
+      sujet.indexOf('essai:') === 0 ? 'essais' : 'clients', 'rap:' + sujet);
   });
 
   // L'export de la base : la seule chose dont la disparition ne se rattrape pas. Sans lui, une base
@@ -940,9 +1198,9 @@ export function alertesPlateforme(d, aujourdhui) {
   // logiciel qu'on vient d'installer apprend à ignorer les alertes.
   const aPerdre = (o.licences || []).length > 0 || (o.ventes || []).length > 0;
   const exp = String(o.dernierExport || '').slice(0, 10);
-  if (aPerdre && !exp) add('alerte', 'La base n\'a jamais été exportée', 'Plateforme', 'Un export range la base entière dans ~/.skanfact/. Sans lui, une base perdue emporte toutes les ventes.', 'parc', 'exp:base');
-  else if (aPerdre && dateValide(jour) && dateValide(exp) && joursEntre(exp, jour) > ALERTE_EXPORT) {
-    add('attention', 'Export de la base ancien', 'Plateforme', 'Dernier export le ' + exp + '.', 'parc', 'exp:base');
+  if (aPerdre && !exp) add('alerte', 'La base n\'a jamais été exportée', 'Plateforme', 'Un export range la base entière dans ~/.skanfact/. Sans lui, une base perdue emporte toutes les ventes.', 'reglages', 'exp:base');
+  else if (aPerdre && dateValide(jour) && dateValide(exp) && joursEntre(exp, jour) > s.alerte_export) {
+    add('attention', 'Export de la base ancien', 'Plateforme', 'Dernier export le ' + exp + '.', 'reglages', 'exp:base');
   }
 
   return out.sort((a, b) => (NIVEAUX[a.niveau] - NIVEAUX[b.niveau]) || (a.quoi < b.quoi ? -1 : a.quoi > b.quoi ? 1 : 0));
@@ -991,15 +1249,36 @@ export function mailRelance(type, d) {
       + (off ? ' (' + off + ')' : '') + (mt ? ', d’un montant de ' + mt + ' HT' : '') + '.');
     lignes.push('');
     lignes.push('Le règlement ne m’est pas encore parvenu. Si c’est déjà parti de votre côté, ne tenez pas compte de ce message.');
+  } else if (type === 'devis') {
+    // Un prospect demande un prix ÉCRIT avant d'acheter, et la console ne savait rien lui donner :
+    // elle ne parlait qu'aux clients déjà facturés. Le prix vient des réglages, jamais du code.
+    lignes.push('Merci de votre intérêt pour SkanFact.');
+    lignes.push('');
+    lignes.push('Voici ce que je vous propose' + (off ? ' — ' + off : '') + (mt ? ' : ' + mt + ' HT par an' : '') + '.');
+    lignes.push('Vos données restent chez vous : SkanFact fonctionne sans connexion, et vos pièces restent lisibles, imprimables et exportables quoi qu’il arrive.');
   } else {
     lignes.push('Je me permets de revenir vers vous au sujet de SkanFact.');
   }
 
-  lignes.push('', 'Bien cordialement,', 'Skander Ben Amor — SkanFact');
+  // Le lien de paiement : ce qui transforme une relance en encaissement. Réglé, il s'ajoute aux
+  // messages où il a un sens — jamais sur une relance qui ne demande pas d'argent. Non réglé, il
+  // DISPARAÎT de la phrase au lieu de laisser un vide (même règle que les faits ci-dessus).
+  const lien = String(o.lien || '').trim();
+  if (lien && (type === 'impayee' || type === 'fin' || type === 'expiree' || type === 'devis')) {
+    lignes.push('', type === 'impayee' ? 'Vous pouvez régler en ligne ici : ' + lien : 'Pour régler en ligne : ' + lien);
+  }
+
+  // La signature se règle depuis l'écran : elle était écrite EN DUR ici, donc changer de nom
+  // demandait un commit. Vide, le mail s'arrête à la formule de politesse plutôt que de laisser
+  // une ligne blanche sous « Bien cordialement ».
+  const sig = String(o.signature == null ? 'Skander Ben Amor — SkanFact' : o.signature).trim();
+  lignes.push('', 'Bien cordialement,');
+  if (sig) lignes.push(sig);
   const sujets = {
     fin: 'Votre licence SkanFact' + (fin ? ' se termine le ' + fin : ' arrive à son terme'),
     expiree: 'Votre licence SkanFact est arrivée à son terme',
-    impayee: 'Votre licence SkanFact — règlement'
+    impayee: 'Votre licence SkanFact — règlement',
+    devis: 'SkanFact — votre proposition'
   };
   return {
     a: String(o.email || '').trim(),
@@ -1028,7 +1307,7 @@ export function grouperAlertes(lignes, nommees) {
   (lignes || []).forEach(a => {
     const cle = [a.niveau, a.quoi, a.detail, a.onglet].join('\u0000');
     if (!par.has(cle)) {
-      par.set(cle, { id: cle, niveau: a.niveau, quoi: a.quoi, detail: a.detail, onglet: a.onglet, n: 0, tous: [], ids: [] });
+      par.set(cle, { id: cle, niveau: a.niveau, quoi: a.quoi, detail: a.detail, onglet: a.onglet, n: 0, tous: [], ids: [], suivis: [] });
       ordre.push(cle);
     }
     const g = par.get(cle);
@@ -1036,6 +1315,10 @@ export function grouperAlertes(lignes, nommees) {
     // Rien ne se perd dans un repli : le groupe garde l'identifiant de CHACUN de ses membres. Sans
     // eux, replier reviendrait à jeter ce qui permettra un jour d'agir sur une alerte précise.
     if (a.id) g.ids.push(a.id);
+    // Le sujet du SUIVI, pour que la ligne porte « Suivre… » quand elle ne parle que d'un seul
+    // prospect. Replié sur trois clients, le bouton n'a plus de destinataire unique — et un geste
+    // qui agirait sur trois personnes d'un coup sans le dire serait pire que pas de geste.
+    if (a.suivi && g.suivis.indexOf(a.suivi) < 0) g.suivis.push(a.suivi);
     // Le même client deux fois sous la même alerte ne se nomme qu'une fois : on compte les
     // occurrences, on n'écrit pas deux fois son nom.
     if (a.sujet && g.tous.indexOf(a.sujet) < 0) g.tous.push(a.sujet);
@@ -1071,6 +1354,103 @@ export function enveloppeExport(tables, quand) {
     comptes[nom] = lignes.length;
   });
   return { v: 1, quoi: 'skanfact-console', quand: String(quand || ''), comptes, tables: contenu };
+}
+
+// Le NOM de chaque table, en français. L'écran écrivait `evenements` et `jetons` — les noms SQL,
+// tels quels, accent manquant compris. C'est la même famille que « 1 dossier(s) » : ça ne casse
+// rien, et ça dit à celui qui lit que personne n'a regardé cet écran.
+// Le SINGULIER, parce que `pl` accorde : une table nommée « clients » ici donnerait « 0 clientss »
+// au premier export vide. Le pluriel irrégulier s'écrit à côté quand la règle du « s » ne suffit
+// pas — « jetons de poste » et non « jeton de postes ».
+export const EXPORT_LABELS = {
+  clients: ['client'], licences: ['licence'], activations: ['activation'],
+  ventes: ['vente'], jetons: ['jeton de poste', 'jetons de poste'], evenements: ['événement']
+};
+export function resumeExport(comptes) {
+  return EXPORT_TABLES.map(t => {
+    const l = EXPORT_LABELS[t] || [t];
+    return pl(Number((comptes || {})[t]) || 0, l[0], l[1]);
+  }).join(' · ');
+}
+
+// ---------- la copie automatique de la base (10.5.0) ----------
+// Jusqu'ici la copie demandait un CLIC, et une copie qui demande un clic est une copie qu'on ne
+// fait pas : l'alerte à trente jours existait précisément parce que le geste ne se faisait pas.
+// Le déclencheur programmé du worker l'écrit dans un bucket R2, toutes les nuits.
+//
+// Tant que le bucket n'existe pas, rien ne plante et rien ne ment : l'écran DIT ce qui manque,
+// exactement comme le relais non branché (10.4.0). Un mécanisme qui ne peut pas fonctionner doit
+// le dire, jamais s'afficher en vert.
+export const R2_BINDING = 'SAUVEGARDES';
+export function etatSauvegarde(env, dernierExport) {
+  const e = env || {};
+  const dernier = String(dernierExport || '').slice(0, 10);
+  if (!e[R2_BINDING]) {
+    return { auto: false, dernier,
+      raison: 'La copie automatique n\'est pas branchée : il manque un bucket R2 nommé « ' + R2_BINDING + ' » dans les réglages du worker.',
+      quoi: 'Crée un bucket R2, lie-le au worker sous ce nom, et ajoute un déclencheur programmé (cron) — la copie partira toute seule chaque nuit. D\'ici là, « Exporter la base… » reste le seul chemin, et c\'est un geste à faire à la main.' };
+  }
+  return { auto: true, dernier, raison: '', quoi: 'Une copie complète part chaque nuit dans le bucket « ' + R2_BINDING + ' ». « Exporter la base… » reste là pour en prendre une tout de suite.' };
+}
+
+// Ce que le pli scellé doit contenir, et pourquoi. Aucune clé privée n'en sort : ce qui sort est
+// une PROCÉDURE et des chiffres. Le pli lui-même se prépare à la main — c'est le but : si la
+// console pouvait le fabriquer seule, elle porterait déjà tout ce qu'il protège.
+export function pliScelle(o) {
+  const d = o || {};
+  const c = d.comptes || {};
+  return [
+    'PLI SCELLÉ — SkanFact, préparé le ' + String(d.quand || ''),
+    '',
+    'Pourquoi ce pli existe : aujourd\'hui, une seule personne peut émettre, renouveler ou révoquer',
+    'une licence SkanFact. La clé privée et le secret d\'administration vivent au même endroit. Si',
+    'cette personne est absente six mois, aucun client ne peut être servi — et aucune sauvegarde',
+    'ne répare ça, parce que ce n\'est pas une question de données.',
+    '',
+    'CE QUE LE PLI DOIT CONTENIR',
+    '  1. La clé privée de licence (~/.skanfact/licence-privee.pem). C\'est elle qui signe les clés',
+    '     vendues. Sans elle, aucune licence ne peut plus être émise ni renouvelée.',
+    '  2. Le secret d\'administration de la console (réglage « ADMIN_SECRET » du worker).',
+    '  3. Les accès Cloudflare (compte, worker, base D1) et le registrar du domaine.',
+    '  4. Une copie récente de la base : ' + resumeExport(c) + '.',
+    '  5. Cette page, qui dit dans quel ordre s\'en servir.',
+    '',
+    'COMMENT LE SCELLER',
+    '  Le fichier chez une personne, le mot de passe chez une AUTRE : un pli dont les deux moitiés',
+    '  voyagent ensemble n\'est pas scellé, c\'est une copie de plus. Deux supports distincts, et',
+    '  l\'exercice se rejoue une fois par an — un pli qu\'on n\'a jamais ouvert est un pli dont on ne',
+    '  sait pas s\'il fonctionne.',
+    '',
+    'CE QUI RESTE VRAI SANS LE PLI',
+    '  Les clés déjà vendues continuent de fonctionner : elles sont vérifiées sur le poste du',
+    '  client, hors ligne, contre une clé publique embarquée dans l\'application. Un client ne perd',
+    '  jamais ses données ni son logiciel. Ce qui s\'arrête, c\'est la VENTE : plus une licence',
+    '  émise, plus un renouvellement, plus une révocation.',
+    '',
+    d.kid ? 'Clé de signature en service : ' + d.kid : 'Aucune clé de signature n\'est en service sur ce worker.'
+  ].join('\n');
+}
+
+// Écrire la copie dans R2. Rend toujours un verdict lisible — jamais une exception : ce code
+// tourne dans un déclencheur programmé que personne ne regarde, et une panne muette y est pire
+// qu'ailleurs.
+export async function exporterVersR2(env, quand) {
+  const e = env || {};
+  if (!e.DB) return { ok: false, raison: 'La base n\'est pas branchée sur ce worker.' };
+  const bucket = e[R2_BINDING];
+  if (!bucket || typeof bucket.put !== 'function') return { ok: false, raison: 'Aucun bucket R2 « ' + R2_BINDING + ' » n\'est lié à ce worker.' };
+  const tables = {};
+  for (const nom of EXPORT_TABLES) {
+    const res = await sansCasser(e.DB.prepare('SELECT * FROM ' + nom).all(), null);
+    tables[nom] = (res && res.results) || [];
+  }
+  const doc = enveloppeExport(tables, quand);
+  const texte = JSON.stringify(doc);
+  const somme = hex(await crypto.subtle.digest('SHA-256', enc.encode(texte)));
+  const nom = 'console-' + String(quand || '').slice(0, 10) + '.json';
+  try { await bucket.put(nom, JSON.stringify({ ...doc, sha256: somme })); }
+  catch (err) { return { ok: false, raison: 'R2 a refusé l\'écriture : ' + ((err && err.message) || err) }; }
+  return { ok: true, nom, comptes: doc.comptes, sha256: somme };
 }
 
 // ---------- le journal, filtrable ----------
@@ -1162,6 +1542,11 @@ async function repondreAdmin(r, request, env) {
   };
   const un = async (sql, ...p) => (await sansCasser(env.DB.prepare(sql).bind(...p).first(), null)) || null;
   const executer = async (sql, ...p) => !!(await sansCasser(env.DB.prepare(sql).bind(...p).run(), null));
+  // Les réglages s'appliquent à TOUT ce qui suit : les prix proposés, les seuils qui décident
+  // d'une alerte, la signature d'un mail. Lus UNE fois par requête — les relire à chaque usage
+  // ferait dire deux choses différentes au même écran si quelqu'un enregistre entre-temps.
+  const enBase = await lireReglages(env);
+  const seuils = reglagesEffectifs(env, enBase).valeurs;
   let corps = {};
   if (request.method === 'POST') { try { corps = await request.json(); } catch { corps = {}; } }
   if (request.method !== 'GET' && request.method !== 'POST') return json({ erreur: 'Méthode non autorisée.' }, 405);
@@ -1231,21 +1616,83 @@ async function repondreAdmin(r, request, env) {
         essaisConvertis: ec.n
       }), argent: resumeArgent(vs, aujourdhui) });
     }
+    // La FICHE d'un client (10.5.0). Répondre à « raconte-moi tout sur ce client » demandait
+    // quatre écrans — Clients, Licences, Ventes, Activations — plus le Journal. C'est l'écran
+    // qu'on ouvre à chaque appel, donc celui qui devait exister en premier.
+    if (r.action === 'clients' && r.id && !r.sous) {
+      const c = await un('SELECT id, nom, matricule, email, tel, adresse, notes, cree_le FROM clients WHERE id = ?', r.id);
+      if (!c) return json({ erreur: 'Client introuvable.' }, 404);
+      const [licences, ventes, postes, suivis, journal] = [
+        await tous(SEL_LICENCE + ' WHERE l.client_id = ? ORDER BY l.emise_le DESC LIMIT 200', r.id),
+        await tous('SELECT id, licence_id, montant_ht, devise, payee_le, moyen, facture_skanfact FROM ventes WHERE client_id = ? ORDER BY rowid DESC LIMIT 200', r.id),
+        await tous('SELECT a.device_id, a.device_nom, a.plateforme, a.version, a.app, a.empreinte, a.premiere_fois, a.derniere_fois' +
+          ' FROM activations a JOIN licences l ON l.id = a.licence_id WHERE l.client_id = ? ORDER BY a.derniere_fois DESC LIMIT 200', r.id),
+        await tous('SELECT id, quand, moyen, note, rappel, issue, motif, source FROM suivis WHERE sujet = ? ORDER BY quand DESC LIMIT 200', 'client:' + r.id),
+        await tous('SELECT id, quand, quoi, detail FROM evenements WHERE client_id = ? ORDER BY id DESC LIMIT 200', r.id)
+      ];
+      return json({
+        client: c,
+        licences, ventes, journal,
+        postes: postes.map(p => ({ ...p, appNom: APPS[appDe(p.app)] })),
+        suivis
+      });
+    }
+    // Le DEVIS : un prospect demande un prix écrit avant d'acheter, et la console ne parlait qu'aux
+    // clients déjà facturés. Le prix vient des réglages — jamais d'un nombre écrit dans le code.
+    if (r.action === 'clients' && r.id && r.sous === 'devis') {
+      const c = await un('SELECT id, nom, email FROM clients WHERE id = ?', r.id);
+      if (!c) return json({ erreur: 'Client introuvable.' }, 404);
+      const t = tarifs(env, await lireReglages(env));
+      const offre = OFFRES[new URL(request.url).searchParams.get('offre')] ? new URL(request.url).searchParams.get('offre') : 'entreprise';
+      return json({ ...mailRelance('devis', {
+        client: c.nom, email: c.email, offre: OFFRES[offre].label,
+        montant: t[offre], devise: t.devise, lien: t.lienPaiement, signature: t.signature
+      }), client: c.nom });
+    }
     if (r.action === 'clients') {
-      return json({ lignes: await tous('SELECT id, nom, matricule, email, tel, adresse, notes, cree_le FROM clients ORDER BY cree_le DESC LIMIT 500') });
+      // Chaque client porte ce qu'on a besoin de savoir AVANT de l'ouvrir : ce qu'il a acheté, ce
+      // qu'il doit, et quand on lui a parlé pour la dernière fois. Une liste de noms nus oblige à
+      // ouvrir chaque fiche pour trouver celle qu'on cherche.
+      return json({ lignes: await tous(
+        'SELECT c.id, c.nom, c.matricule, c.email, c.tel, c.adresse, c.notes, c.cree_le,' +
+        ' (SELECT COUNT(*) FROM licences l WHERE l.client_id = c.id AND l.revoquee_le IS NULL' +
+        '   AND NOT EXISTS (SELECT 1 FROM licences r2 WHERE r2.remplace_id = l.id)) AS licences,' +
+        ' (SELECT COUNT(*) FROM ventes v WHERE v.client_id = c.id AND v.payee_le IS NULL) AS impayees,' +
+        ' (SELECT MAX(s.quand) FROM suivis s WHERE s.sujet = \'client:\' || c.id) AS vu_le' +
+        ' FROM clients c ORDER BY c.cree_le DESC LIMIT 500') });
+    }
+    // Les ESSAIS, un par un et nommés. Le Parc les agrège par version : utile pour compter, inutile
+    // pour décrocher son téléphone. C'est la file d'appels du matin, et elle n'existait pas.
+    if (r.action === 'essais') {
+      const recent = new Date(Date.now() - (seuils.parc_frais || PARC_FRAIS) * 86400000).toISOString();
+      const lignes = await tous(
+        'SELECT device_id, device_nom, plateforme, version, app, premiere_fois, derniere_fois' +
+        ' FROM activations WHERE empreinte = ? AND derniere_fois >= ? ORDER BY premiere_fois LIMIT 500', ESSAI, recent);
+      const suivis = await lireSuivis(tous);
+      return json({ lignes: lignes.map(l => {
+        const sujet = 'essai:' + l.device_id + ':' + appDe(l.app);
+        const debut = String(l.premiere_fois || '').slice(0, 10);
+        const fin = dateValide(debut) ? ajouterJours(debut, ESSAI_JOURS) : '';
+        const su = suivis[sujet] || null;
+        return { ...l, id: sujet, sujet, appNom: APPS[appDe(l.app)], fin,
+          reste: fin && dateValide(aujourdhui) ? joursEntre(aujourdhui, fin) : null,
+          suivi_le: su ? su.quand : null, rappel: su ? su.rappel : null, issue: su ? su.issue : null, note: su ? su.note : null };
+      }) });
     }
     // La relance : le texte, pas l'envoi. C'est le SERVEUR qui décide de quoi on relance — il lit
     // les dates, et il les lit avec la MÊME règle que l'alerte qui a fait cliquer (`ALERTE_FIN`).
     // Deux règles, l'une pour l'alerte et l'autre pour le mail, finiraient par se contredire : on
     // relancerait « votre licence se termine » sur une licence déjà terminée.
     if (r.sous === 'relance' && r.id && (r.action === 'licences' || r.action === 'ventes')) {
+      const t = tarifs(env, enBase);
       if (r.action === 'licences') {
         const l = await un(SEL_LICENCE + ' WHERE l.id = ?', r.id);
         if (!l) return json({ erreur: 'Licence introuvable.' }, 404);
         const finie = l.fin && l.fin < aujourdhui;
         return json({ ...mailRelance(finie ? 'expiree' : 'fin', {
-          client: l.client, email: l.email, offre: libelleLicence(l), fin: l.fin
-        }), client: l.client });
+          client: l.client, email: l.email, offre: libelleLicence(l), fin: l.fin,
+          lien: t.lienPaiement, signature: t.signature
+        }), client: l.client, clientId: l.client_id });
       }
       const v = await un('SELECT v.*, c.nom AS client, c.email, l.offre, l.type, l.dossiers_hors'
         + ' FROM ventes v LEFT JOIN clients c ON c.id = v.client_id'
@@ -1254,8 +1701,8 @@ async function repondreAdmin(r, request, env) {
       if (v.payee_le) return json({ erreur: 'Cette vente est payée depuis le ' + v.payee_le + ' : il n\'y a rien à relancer.' }, 409);
       return json({ ...mailRelance('impayee', {
         client: v.client, email: v.email, offre: v.offre ? libelleLicence(v) : '',
-        montant: v.montant_ht, devise: v.devise
-      }), client: v.client });
+        montant: v.montant_ht, devise: v.devise, lien: t.lienPaiement, signature: t.signature
+      }), client: v.client, clientId: v.client_id });
     }
     if (r.action === 'licences' && r.id) {
       // Une licence, avec sa clé — refabriquée à l'identique depuis son contenu signé (voir
@@ -1323,11 +1770,23 @@ async function repondreAdmin(r, request, env) {
     if (r.action === 'cabinets') {
       // Un cabinet par ligne : sa licence, son quota, et combien de ses clients ont une licence
       // parrainée par lui. C'est la moitié de l'activité que la console ne montrait nulle part.
+      // Le parrainage, CHIFFRÉ (10.5.0). Vendre aux entreprises en passant par les cabinets est le
+      // modèle de vente du produit (DIRECTION.md) — et il n'était mesuré nulle part : la colonne
+      // comptait les clients amenés, jamais ce qu'ils rapportent. Un canal de vente qu'on ne chiffre
+      // pas est un canal qu'on ne sait pas récompenser, ni arrêter.
       return json({ lignes: await tous(
         'SELECT l.id, l.empreinte, l.cabinet_empreinte, l.debut, l.fin, l.dossiers_hors, l.revoquee_le, l.envoyee_le,' +
-        ' l.prix, l.devise, c.nom AS client, c.email,' +
+        ' l.prix, l.devise, l.client_id, c.nom AS client, c.email,' +
         ' (SELECT COUNT(*) FROM licences p WHERE p.cabinet_empreinte = l.cabinet_empreinte' +
         '   AND COALESCE(p.type, \'entreprise\') = \'entreprise\' AND p.revoquee_le IS NULL) AS parraines,' +
+        // Payants : ceux dont au moins une vente est encaissée. « Amené » et « payé » ne sont pas
+        // la même nouvelle, et les confondre ferait féliciter un cabinet qui n'a rien rapporté.
+        ' (SELECT COUNT(DISTINCT p.client_id) FROM licences p JOIN ventes v2 ON v2.licence_id = p.id' +
+        '   WHERE p.cabinet_empreinte = l.cabinet_empreinte AND COALESCE(p.type, \'entreprise\') = \'entreprise\'' +
+        '   AND p.revoquee_le IS NULL AND v2.payee_le IS NOT NULL) AS payants,' +
+        ' (SELECT COALESCE(SUM(v2.montant_ht), 0) FROM licences p JOIN ventes v2 ON v2.licence_id = p.id' +
+        '   WHERE p.cabinet_empreinte = l.cabinet_empreinte AND COALESCE(p.type, \'entreprise\') = \'entreprise\'' +
+        '   AND v2.payee_le IS NOT NULL) AS ca_amene,' +
         ' (SELECT COUNT(*) FROM activations a WHERE a.licence_id = l.id) AS postes,' +
         ' (SELECT MAX(a.derniere_fois) FROM activations a WHERE a.licence_id = l.id) AS vu' +
         ' FROM licences l LEFT JOIN clients c ON c.id = l.client_id' +
@@ -1338,7 +1797,7 @@ async function repondreAdmin(r, request, env) {
     if (r.action === 'alertes') {
       const licences = await tous(SEL_LICENCE + ' ORDER BY l.emise_le DESC LIMIT 500');
       const ventes = await tous(
-        'SELECT v.id, v.payee_le, c.nom AS client FROM ventes v LEFT JOIN clients c ON c.id = v.client_id' +
+        'SELECT v.id, v.client_id, v.payee_le, c.nom AS client FROM ventes v LEFT JOIN clients c ON c.id = v.client_id' +
         ' ORDER BY v.rowid DESC LIMIT 500');
       const ex = await un('SELECT quand FROM evenements WHERE quoi = ? ORDER BY id DESC LIMIT 1', 'base.exportee');
       // Les essais EN COURS seulement : un poste qu'on n'a pas vu depuis des mois a désinstallé ou
@@ -1346,8 +1805,56 @@ async function repondreAdmin(r, request, env) {
       const essais = await tous(
         'SELECT device_id, device_nom, app, premiere_fois FROM activations' +
         ' WHERE empreinte = ? AND derniere_fois >= ? ORDER BY premiere_fois LIMIT 500',
-        ESSAI, new Date(Date.now() - PARC_FRAIS * 86400000).toISOString());
-      return json({ lignes: grouperAlertes(alertesPlateforme({ licences, ventes, essais, dernierExport: ex && ex.quand }, aujourdhui)) });
+        ESSAI, new Date(Date.now() - (seuils.parc_frais || PARC_FRAIS) * 86400000).toISOString());
+      // Les postes SOUS LICENCE, avec leur client : ils portent deux alertes à eux seuls — le
+      // silence d'un client qui a payé, et la version restée en arrière. Une seule requête pour
+      // les deux : ce sont les mêmes lignes, et deux requêtes finiraient par les filtrer
+      // différemment.
+      const postes = await tous(
+        'SELECT a.device_id, a.device_nom, a.version, a.app, a.empreinte, a.derniere_fois,' +
+        ' l.client_id, c.nom AS client FROM activations a' +
+        ' LEFT JOIN licences l ON l.id = a.licence_id LEFT JOIN clients c ON c.id = l.client_id' +
+        ' ORDER BY a.derniere_fois DESC LIMIT 500');
+      const suivis = await lireSuivis(tous);
+      return json({ lignes: grouperAlertes(alertesPlateforme(
+        { licences, ventes, essais, postes, suivis, dernierExport: ex && ex.quand }, aujourdhui, seuils)) });
+    }
+
+    // Les RÉGLAGES (10.5.0). L'écran rend les trois choses ensemble : ce qu'on peut régler, ce qui
+    // s'applique aujourd'hui, et d'OÙ chaque valeur vient. Sans la troisième, un écran de nombres
+    // laisse croire qu'ils ont tous été décidés, alors que la plupart sont des défauts que
+    // personne n'a jamais regardés.
+    if (r.action === 'reglages') {
+      const { valeurs, sources } = reglagesEffectifs(env, enBase);
+      const ex = await un('SELECT quand FROM evenements WHERE quoi = ? ORDER BY id DESC LIMIT 1', 'base.exportee');
+      return json({
+        definitions: REGLAGES, valeurs, sources,
+        // Ce que la console NE règle pas, et pourquoi. Le taire donnerait l'impression d'un oubli ;
+        // le dire évite qu'on cherche le champ pendant dix minutes.
+        fixes: [
+          { label: 'Durée de l\'essai', valeur: ESSAI_JOURS + ' jours',
+            pourquoi: 'C\'est la règle de l\'application, pas une politique de la console : l\'essai se compte sur la machine du client. Réglé ici, il annoncerait des fins d\'essai fausses.' }
+        ],
+        // L'état de la machinerie que cet écran commande : la copie automatique, et la rotation du
+        // secret. Chacun DIT ce qui lui manque plutôt que d'afficher un vert rassurant.
+        sauvegarde: etatSauvegarde(env, ex && ex.quand),
+        secret: etatSecret(env)
+      });
+    }
+
+    // Le PLI SCELLÉ. Ce n'est pas du code, c'est le point le plus grave du projet : personne
+    // d'autre que l'éditeur ne peut émettre une licence — la clé privée et le secret vivent en un
+    // seul endroit. La console ne peut pas le résoudre ; elle peut préparer ce qu'il faut mettre
+    // dans le pli, et compter ce qui serait perdu. Aucune clé privée n'en sort jamais : ce qui
+    // sort, c'est une PROCÉDURE et des chiffres.
+    if (r.action === 'pli') {
+      const comptes = {};
+      for (const nom of EXPORT_TABLES) {
+        const c = await un('SELECT COUNT(*) AS n FROM ' + nom);
+        comptes[nom] = (c && c.n) || 0;
+      }
+      const ks = await cleServeur(env);
+      return json({ texte: pliScelle({ comptes, kid: ks.kid || '', quand: aujourdhui }), comptes });
     }
 
     if (r.action === 'sante') return json(await santeCanaux(env));
@@ -1360,8 +1867,11 @@ async function repondreAdmin(r, request, env) {
       // manifeste (9.2.0) : re-sérialiser pour empreindre, c'est empreindre autre chose.
       const texte = JSON.stringify(env1);
       const somme = hex(await crypto.subtle.digest('SHA-256', enc.encode(texte)));
-      await journaliser(env, 'base.exportee', { detail: EXPORT_TABLES.map(t => t + ' ' + env1.comptes[t]).join(', ') });
-      return new Response(JSON.stringify({ ...env1, sha256: somme }), {
+      await journaliser(env, 'base.exportee', { detail: resumeExport(env1.comptes) });
+      // Le résumé part AVEC l'export, en français : l'écran écrivait les noms de tables SQL tels
+      // quels (« evenements », sans accent). Une seule table de noms, côté serveur — une seconde
+      // dans la page divergerait au premier renommage (6.8.0).
+      return new Response(JSON.stringify({ ...env1, sha256: somme, resume: resumeExport(env1.comptes) }), {
         status: 200,
         headers: {
           'Content-Type': 'application/json; charset=utf-8',
@@ -1384,6 +1894,87 @@ async function repondreAdmin(r, request, env) {
     if (!ok) return json({ erreur: 'La base a refusé l\'écriture du client.' }, 500);
     await journaliser(env, 'client.cree', { client_id: id, detail: n.client.nom });
     return json({ client: { id, ...n.client, cree_le: maintenant } }, 201);
+  }
+
+  // ----- 10.5.0 : régler depuis l'écran -----
+  // Un prix ou un seuil se change ici, jamais dans le code ni dans les réglages de Cloudflare. Ce
+  // qui est REFUSÉ est nommé champ par champ : un formulaire qui avale une valeur fausse et affiche
+  // « enregistré » est le pire des deux (9.8.0).
+  //
+  // Vider un champ NUMÉRIQUE le rend à son rang suivant — la variable du worker, sinon le défaut :
+  // c'est le seul moyen de défaire une valeur sans avoir à deviner ce qu'elle valait avant. Vider
+  // un champ de TEXTE, lui, le laisse vide pour de bon : « aucune version minimale » est une
+  // décision, pas un oubli.
+  if (r.action === 'reglages' && !r.id) {
+    const recus = (corps && typeof corps.valeurs === 'object' && corps.valeurs) || {};
+    const poses = [], refuses = [];
+    for (const def of REGLAGES) {
+      if (!Object.prototype.hasOwnProperty.call(recus, def.id)) continue;
+      const brut = String(recus[def.id] == null ? '' : recus[def.id]).trim();
+      const v = valeurReglage(def.id, brut);
+      if (v === null) {
+        if (brut !== '') { refuses.push({ id: def.id, label: def.label, raison: refusReglage(def, brut) }); continue; }
+        await executer('DELETE FROM reglages WHERE cle = ?', def.id);
+        poses.push({ id: def.id, label: def.label, valeur: '' });
+        continue;
+      }
+      const ok = await executer(
+        'INSERT INTO reglages (cle, valeur, change_le) VALUES (?, ?, ?)' +
+        ' ON CONFLICT(cle) DO UPDATE SET valeur = excluded.valeur, change_le = excluded.change_le',
+        def.id, String(v), maintenant);
+      if (!ok) { refuses.push({ id: def.id, label: def.label, raison: 'la base a refusé l\'écriture' }); continue; }
+      poses.push({ id: def.id, label: def.label, valeur: String(v) });
+    }
+    // Le journal dit CE QUI A CHANGÉ, pas « des réglages ont changé » : c'est la seule trace qui
+    // explique, six mois plus tard, pourquoi une vente porte ce montant-là.
+    if (poses.length) await journaliser(env, 'reglages.changes', { detail: poses.map(p => p.label + ' = ' + (p.valeur === '' ? '(rendu au défaut)' : p.valeur)).join(', ') });
+    const apres = reglagesEffectifs(env, await lireReglages(env));
+    // Un refus porte une PHRASE, pas seulement une liste : l'écran affiche ce que le serveur dit,
+    // et sans cette phrase il aurait rendu « Le serveur a répondu 400 » — c'est-à-dire rien.
+    // Un refus dit ce qui est refusé, pourquoi, et ce qui débloque (7.0.0).
+    const erreur = refuses.length
+      ? refuses.map(r => '« ' + r.label +' » n\'a pas été enregistré (' + r.raison + ')').join(' ')
+        + (poses.length ? ' Le reste a été enregistré.' : '')
+      : undefined;
+    return json({ erreur, poses, refuses, valeurs: apres.valeurs, sources: apres.sources }, refuses.length ? 400 : 200);
+  }
+
+  // Le SUIVI d'un prospect ou d'un client. Rien ne s'écrase : chaque contact est une ligne de plus,
+  // et c'est la plus récente qui décide de ce que l'alerte fait. Un suivi qu'on corrigerait en
+  // écrasant le précédent perdrait précisément ce qui sert — « je l'ai déjà appelé deux fois ».
+  if (r.sous === 'suivi' && r.id && (r.action === 'clients' || r.action === 'essais')) {
+    let sujet, nom = '';
+    if (r.action === 'clients') {
+      const c = await un('SELECT id, nom FROM clients WHERE id = ?', r.id);
+      if (!c) return json({ erreur: 'Client introuvable.' }, 404);
+      sujet = 'client:' + c.id; nom = c.nom;
+    } else {
+      // Un essai est désigné par son POSTE et son application : le même ordinateur peut essayer les
+      // deux applications, et les confondre ferait taire une alerte qu'on n'a pas traitée.
+      const app = appDe(corps && corps.app);
+      const a = await un('SELECT device_id, device_nom FROM activations WHERE device_id = ? AND empreinte = ? AND COALESCE(app, \'entreprise\') = ?', r.id, ESSAI, app);
+      if (!a) return json({ erreur: 'Aucun essai connu sur ce poste pour cette application.' }, 404);
+      sujet = 'essai:' + a.device_id + ':' + app; nom = a.device_nom || a.device_id;
+    }
+    const issue = ['gagne', 'perdu'].indexOf(String(corps.issue || '')) >= 0 ? String(corps.issue) : '';
+    const rappel = corps.rappel ? String(corps.rappel).trim() : '';
+    if (rappel && !dateValide(rappel)) return json({ erreur: 'La date de rappel n\'est pas une date (AAAA-MM-JJ).' }, 400);
+    // Un « perdu » sans motif n'apprend rien, et c'est la SEULE chose que cet écran peut apprendre :
+    // pourquoi on ne vend pas. C'est le même refus que la révocation sans motif (8.2.0).
+    const motif = texteNet(corps.motif, 200);
+    if (issue === 'perdu' && (!motif || motif.length < 3)) {
+      return json({ erreur: 'Dis pourquoi c\'est perdu : c\'est la seule chose que ce suivi peut t\'apprendre.' }, 400);
+    }
+    const id = 's_' + idCourt();
+    const ok = await executer(
+      'INSERT INTO suivis (id, sujet, quand, moyen, note, rappel, issue, motif, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      id, sujet, maintenant, texteNet(corps.moyen, 40), texteNet(corps.note, 500), rappel || null, issue || null, motif || null, texteNet(corps.source, 120));
+    if (!ok) return json({ erreur: 'La base a refusé l\'écriture du suivi.' }, 500);
+    await journaliser(env, 'suivi.note', {
+      client_id: r.action === 'clients' ? r.id : null,
+      detail: nom + (issue ? ' — ' + (issue === 'gagne' ? 'gagné' : 'perdu : ' + motif) : '') + (rappel ? ' — rappeler le ' + rappel : '')
+    });
+    return json({ ok: true, id, sujet }, 201);
   }
 
   if (r.action === 'licences' && !r.id) {
@@ -1695,13 +2286,69 @@ export default {
     // regarder les erreurs, et donc rater la vraie le jour où elle arrive.
     if (url.pathname === '/favicon.ico') return new Response(null, { status: 204 });
 
+    // La page PUBLIQUE de vérification (10.5.0). Un client — ou son comptable — colle l'empreinte
+    // de sa licence et lit si elle est valable, jusqu'à quand, et pour quelle offre. Sans secret,
+    // parce que celui qui présente une empreinte la connaît déjà : on ne lui apprend rien qu'il
+    // n'ait. Ce que cette page ne dit JAMAIS, c'est à qui la licence appartient.
+    if (url.pathname === '/verifier') {
+      if (request.method !== 'GET') return json({ erreur: 'Méthode non autorisée.' }, 405);
+      return new Response(VERIF_HTML, {
+        headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer' }
+      });
+    }
+
     const r = routeApi(url.pathname);
     if (!r) return json({ erreur: 'Introuvable.' }, 404);
     if (r.v !== 1) return json({ erreur: 'Version d\'interface inconnue.' }, 404);
     if (r.espace === 'admin') return repondreAdmin(r, request, env);
+    if (r.espace === 'verif') return repondreVerif(request, env);
     return repondreLicence(request, env);
+  },
+
+  // Le déclencheur programmé : la copie de la base part toute seule. Elle ne rend rien à personne
+  // — donc tout ce qu'elle peut faire, c'est ÉCRIRE dans le journal, en succès comme en échec.
+  // Une tâche de nuit muette qui échoue trois mois d'affilée est pire que pas de tâche : on croit
+  // être protégé.
+  async scheduled(evenement, env, ctx) {
+    const quand = new Date((evenement && evenement.scheduledTime) || Date.now()).toISOString();
+    const faire = async () => {
+      const res = await exporterVersR2(env, quand);
+      if (res.ok) await journaliser(env, 'base.exportee', { detail: 'copie automatique — ' + resumeExport(res.comptes) });
+      else await journaliser(env, 'base.export.echec', { detail: res.raison });
+    };
+    if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(faire());
+    else await faire();
   }
 };
+
+// ---------- la vérification publique ----------
+// Ce qu'on rend : l'état, et rien de nominatif. Ce qu'on ne rend pas : le nom du client, son
+// matricule, son adresse, ses postes. Une empreinte inconnue est dite inconnue — refuser de
+// répondre ferait croire à une panne, et répondre « valable » par prudence serait un mensonge.
+async function repondreVerif(request, env) {
+  if (request.method !== 'POST') return json({ erreur: 'Méthode non autorisée.' }, 405);
+  if (!env || !env.DB) return json({ erreur: 'Service momentanément indisponible.' }, 503);
+  let corps = {};
+  try { corps = await request.json(); } catch { corps = {}; }
+  // L'empreinte se lit avec ou sans ses séparateurs, comme partout (9.4.1) — mais on ne retire que
+  // les SÉPARATEURS : un « G » tapé pour un « 6 » doit rester une faute visible (8.1.0).
+  const nue = String((corps && corps.empreinte) || '').trim().toLowerCase().replace(/[\s-]/g, '');
+  if (!/^[0-9a-f]{16,64}$/.test(nue)) {
+    return json({ ok: false, etat: 'illisible', phrase: 'Ce n\'est pas une empreinte de licence : attendu une suite de chiffres et de lettres a–f.' });
+  }
+  const l = await sansCasser(env.DB.prepare(
+    'SELECT offre, type, dossiers_hors, fin, revoquee_le, emise_le,' +
+    ' (SELECT COUNT(*) FROM licences r2 WHERE r2.remplace_id = licences.id) AS remplacee' +
+    ' FROM licences WHERE empreinte = ?').bind(nue).first(), null);
+  if (!l) return json({ ok: false, etat: 'inconnue', phrase: 'Cette empreinte ne correspond à aucune licence émise par SkanFact.' });
+  const jour = new Date().toISOString().slice(0, 10);
+  const quoi = libelleLicence(l);
+  if (l.revoquee_le) return json({ ok: false, etat: 'revoquee', offre: quoi, phrase: 'Cette licence a été révoquée.' });
+  if (l.remplacee) return json({ ok: false, etat: 'remplacee', offre: quoi, phrase: 'Cette licence a été remplacée par une plus récente : c\'est la nouvelle clé qui vaut.' });
+  if (l.fin && l.fin < jour) return json({ ok: false, etat: 'expiree', offre: quoi, fin: l.fin, phrase: 'Cette licence s\'est terminée le ' + l.fin + '.' });
+  return json({ ok: true, etat: 'valable', offre: quoi, fin: l.fin || '',
+    phrase: 'Licence valable' + (l.fin ? ' jusqu\'au ' + l.fin + '.' : ', sans date de fin.') });
+}
 
 // ---------- la page de la console ----------
 // Une seule page, servie telle quelle. Aucune bibliothèque, aucune requête vers l'extérieur.
@@ -1717,6 +2364,64 @@ export default {
 // Les règles d'interface du projet s'appliquent ici comme ailleurs : un chiffre affiché s'ouvre,
 // un geste qui change l'état d'une licence DEMANDE d'abord (dans un formulaire qui rappelle de
 // quoi on parle), un bouton qui ne peut rien faire dit pourquoi, le pluriel s'accorde.
+// La page publique de vérification. Volontairement minuscule et sans dépendance : elle doit
+// s'ouvrir sur le téléphone d'un comptable dans un couloir, et ne rien savoir faire d'autre.
+const VERIF_HTML = `<!doctype html>
+<html lang="fr"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Vérifier une licence SkanFact</title>
+<style>
+  :root{color-scheme:light dark;--bg:#f5f7fa;--surface:#fff;--ink:#1a2430;--ink2:#5b6b7c;--line:#dde4ec;--acc:#0f9d8f;--alr:#c0392b;--ok:#1b7f5f}
+  @media (prefers-color-scheme:dark){:root{--bg:#141a21;--surface:#1c242e;--ink:#e8eef5;--ink2:#9aa9b8;--line:#2b3644}}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+       padding:32px 16px;display:flex;justify-content:center}
+  .carte{width:100%;max-width:560px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:26px}
+  h1{margin:0 0 6px;font-size:21px}
+  p.lead{margin:0 0 20px;color:var(--ink2);font-size:14px}
+  label{display:block;font-size:12.5px;color:var(--ink2);margin-bottom:6px}
+  input{width:100%;font:inherit;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;padding:11px 13px;border-radius:9px;
+        border:1px solid var(--line);background:var(--surface);color:var(--ink)}
+  button{margin-top:14px;font:inherit;font-weight:600;padding:11px 18px;border-radius:9px;border:1px solid var(--acc);
+         background:var(--acc);color:#fff;cursor:pointer}
+  button:disabled{opacity:.5;cursor:not-allowed}
+  #out{margin-top:20px;padding:14px 16px;border-radius:10px;border:1px solid var(--line);font-size:14.5px}
+  #out.ok{border-color:var(--ok);color:var(--ok)}
+  #out.non{border-color:var(--alr);color:var(--alr)}
+  .pied{margin-top:22px;color:var(--ink2);font-size:12.5px}
+</style></head><body>
+<main class="carte">
+  <h1>Vérifier une licence SkanFact</h1>
+  <p class="lead">Colle l'empreinte de ta licence — tu la trouves dans SkanFact, sous
+    <em>Paramètres &rsaquo; L'application &rsaquo; Licence</em>. Cette page ne dit jamais à qui une licence appartient.</p>
+  <label for="emp">Empreinte de la licence</label>
+  <input id="emp" spellcheck="false" autocapitalize="off" autocomplete="off" placeholder="3f9a2c1e…">
+  <button id="go" type="button">Vérifier</button>
+  <div id="out" hidden></div>
+  <p class="pied">Une licence SkanFact se vérifie aussi <strong>hors ligne</strong>, sur ton ordinateur : cette page
+    n'est qu'une commodité, pas la source de vérité.</p>
+</main>
+<script>
+(function () {
+  var $ = function (i) { return document.getElementById(i); };
+  var sortie = function (cls, texte) { var o = $('out'); o.className = cls; o.textContent = texte; o.hidden = false; };
+  var aller = function () {
+    var v = $('emp').value.trim();
+    if (!v) { sortie('non', 'Colle d\\u2019abord une empreinte.'); return; }
+    $('go').disabled = true;
+    fetch('/v1/verif/licence', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ empreinte: v }) })
+      .then(function (r) { return r.json(); })
+      .then(function (j) { sortie(j.ok ? 'ok' : 'non', (j.offre ? j.offre + ' — ' : '') + (j.phrase || j.erreur || 'Réponse illisible.')); })
+      .catch(function () { sortie('non', 'La vérification n\\u2019a pas pu aboutir. Réessaie dans un instant.'); })
+      .then(function () { $('go').disabled = false; });
+  };
+  $('go').onclick = aller;
+  $('emp').onkeydown = function (e) { if (e.key === 'Enter') aller(); };
+  $('emp').focus();
+})();
+</script>
+</body></html>`;
+
 const CONSOLE_HTML = `<!doctype html>
 <html lang="fr"><head>
 <meta charset="utf-8">
@@ -1777,7 +2482,17 @@ const CONSOLE_HTML = `<!doctype html>
   .eyebrow{font-size:11px;color:var(--ink2);text-transform:uppercase;letter-spacing:1px;font-weight:700}
   header .sp{flex:1}
   main{padding:26px 28px 40px;flex:1;overflow-y:auto;min-width:0}
-  main > .dedans{max-width:1180px}
+  /* 10.5.0 — LE PLAFOND SUIT LE RÔLE, pas le conteneur.
+     Un seul plafond de 1180 px s'appliquait à tout : la prose comme les tableaux. Juste pour du
+     texte — une ligne de 1900 px est illisible, c'est pourquoi « .page-head .but » tient déjà en
+     64 caractères — et faux pour un tableau de dix colonnes, qui se serrait à 1180 px pendant que
+     700 px restaient vides à droite sur un écran ordinaire.
+     Ce qui se LIT garde une mesure de lecture ; ce qui se COMPARE — un tableau, une rangée de
+     cartes — prend la place disponible, avec un plafond haut pour ne pas devenir une piste
+     d'aéroport sur un 4K. Mesuré par « e2e:console-rendu », sinon la prochaine dérive passera aussi
+     inaperçue que celle-ci. */
+  main > .dedans{max-width:1600px}
+  #form, #resultat, footer, .msg, .etat-machine{max-width:980px}
   .btn{font:inherit;font-size:14px;padding:8px 14px;border-radius:8px;border:1px solid var(--line);
        background:var(--surface);color:var(--ink);cursor:pointer}
   .btn:hover{border-color:var(--acc)}
@@ -1844,7 +2559,11 @@ const CONSOLE_HTML = `<!doctype html>
   .panel{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px 20px;margin-bottom:20px}
   .panel h2{margin:0 0 4px;font-size:16px}
   .panel .why{margin:0 0 14px;color:var(--ink2);font-size:13.5px}
-  .panel .row{display:flex;gap:10px;margin-top:16px;flex-wrap:wrap}
+  /* La rangée de boutons qui clôt un bloc. Elle était bornée aux rangées vivant DANS un panneau : posée ailleurs —
+     l'écran des Réglages, une fiche — elle ne recevait AUCUN écart, et « Enregistrer » touchait
+     « Annuler » à zéro pixel. Un correctif qui dépend d'une classe qu'on pense à mettre n'est pas
+     un correctif (9.8.3) : la règle vise la rangée, où qu'elle soit. */
+  .row{display:flex;gap:10px;margin-top:16px;flex-wrap:wrap}
   .cle{font-family:ui-monospace,"SFMono-Regular",Menlo,monospace;font-size:12.5px;word-break:break-all;
        background:var(--surface2);border:1px solid var(--line);border-radius:8px;padding:12px 14px;margin:10px 0;user-select:all}
   .note{font-size:13px;color:var(--warn);margin:8px 0 0}
@@ -1881,6 +2600,74 @@ const CONSOLE_HTML = `<!doctype html>
   .pill.w{color:var(--warn);border-color:var(--warn)}
   .pill.e{color:var(--ink2)}
   .vide,.chargement{padding:36px 22px;text-align:center;color:var(--ink2)}
+
+  /* ---------- 10.5.0 : trier, paginer, expliquer ---------- */
+  /* Les deux applications ont des listes triables et paginées depuis la 1.9.0 et la 2.2.0 ; la
+     console n'avait ni l'un ni l'autre, et tronquait à 500 lignes EN SILENCE. Une troncature muette
+     se lit comme « tout est là » — et le Journal, qui grossit sans fin, y arrivera bien avant les
+     clients. */
+  th.tri{cursor:pointer;user-select:none}
+  th.tri:hover{color:var(--ink)}
+  th.tri .fl{opacity:.35;margin-inline-start:5px;font-weight:700}
+  th.tri[aria-sort] .fl{opacity:1;color:var(--acc)}
+  .pager{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 14px;border-top:1px solid var(--line);
+         font-size:12.5px;color:var(--ink2)}
+  .pager .sp{flex:1}
+  .pager .btn{font-size:12.5px;padding:4px 10px}
+  /* Une borne ATTEINTE se dit. Tant qu'on est sous les 500, cette ligne n'existe pas. */
+  .coupe{color:var(--warn)}
+
+  /* La bulle « i ». Les deux applications en ont partout depuis la 1.8.0 ; la console n'en avait
+     aucune, alors que la moitié de ses en-têtes sont des DÉFINITIONS (« Endormis », « Vus (30 j) »,
+     « Sous licence »). Une colonne dont le titre ne se comprend pas se devine, et une devinette se
+     trompe. */
+  button.i{appearance:none;border:1px solid var(--line);background:var(--surface);color:var(--ink2);
+           width:16px;height:16px;border-radius:999px;font-size:10.5px;line-height:1;padding:0;cursor:help;
+           margin-inline-start:6px;vertical-align:middle;font-weight:700}
+  button.i:hover,button.i:focus-visible{border-color:var(--acc);color:var(--acc)}
+  button.i + button.i{margin-inline-start:8px}
+  #info-pop{position:fixed;z-index:900;max-width:320px;background:var(--surface);color:var(--ink);
+            border:1px solid var(--acc);border-radius:10px;padding:11px 13px;font-size:13px;line-height:1.45;
+            box-shadow:0 8px 28px rgba(0,0,0,.18);text-transform:none;letter-spacing:normal}
+
+  /* La palette (Cmd+K), comme dans les deux applications. */
+  #palette{position:fixed;inset:0;z-index:600;background:rgba(10,16,22,.45);display:flex;
+           align-items:flex-start;justify-content:center;padding-block-start:14vh}
+  #palette .boite{width:min(560px,92vw);background:var(--surface);border:1px solid var(--line);
+                  border-radius:14px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.28)}
+  #palette input{border:0;border-bottom:1px solid var(--line);border-radius:0;padding:15px 18px;font-size:15px}
+  #palette input:focus-visible{outline:none;border-bottom-color:var(--acc)}
+  #palette ul{list-style:none;margin:0;padding:6px;max-height:46vh;overflow-y:auto}
+  #palette li{padding:9px 13px;border-radius:8px;cursor:pointer;font-size:14px;display:flex;gap:10px;align-items:baseline}
+  #palette li .ou{color:var(--ink2);font-size:12px;margin-inline-start:auto}
+  #palette li[aria-selected="true"]{background:var(--surface2);color:var(--acc)}
+  #palette .rien{padding:18px;color:var(--ink2);font-size:13.5px;text-align:center}
+
+  /* La FICHE d'un client : l'écran qu'on ouvre à chaque appel. */
+  .fiche-tete{display:flex;align-items:flex-start;gap:14px;flex-wrap:wrap;margin-bottom:18px}
+  .fiche-tete .id{color:var(--ink2);font-size:13px}
+  .fiche-tete .sp{flex:1}
+  .bloc{margin-bottom:22px}
+  .bloc > h2{margin:0 0 10px;font-size:15.5px}
+  .bloc .wrap{margin:0}
+  .paires{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px 18px;margin:0 0 6px}
+  .paires div{font-size:13.5px}
+  .paires b{display:block;font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--ink2);font-weight:700}
+  .fil{list-style:none;margin:0;padding:0}
+  .fil li{border-inline-start:2px solid var(--line);padding:0 0 12px 14px;font-size:13.5px}
+  .fil li:last-child{padding-bottom:0}
+  .fil .q{display:block;color:var(--ink2);font-size:11.5px;font-variant-numeric:tabular-nums}
+
+  /* Les réglages : un champ par ligne, avec ce qu'il fait et d'où sa valeur vient. */
+  .reg{display:grid;grid-template-columns:minmax(220px,1fr) 200px;gap:6px 18px;align-items:start;
+       padding:14px 0;border-bottom:1px solid var(--line)}
+  .reg:last-child{border-bottom:0}
+  .reg .quoi b{display:block;font-size:14px;font-weight:600}
+  .reg .quoi span{display:block;color:var(--ink2);font-size:12.5px;margin-block-start:3px}
+  .reg .src{grid-column:1;font-size:11.5px;color:var(--ink2)}
+  .reg .src.defaut{color:var(--warn)}
+  @media (max-width:640px){.reg{grid-template-columns:1fr}.reg .src{grid-column:auto}}
+
   .msg{padding:14px 18px;border-radius:10px;border:1px solid var(--alr);
        background:var(--surface);color:var(--ink);margin-bottom:20px}
   .msg.ok{border-color:var(--acc)}
@@ -1945,11 +2732,17 @@ const CONSOLE_HTML = `<!doctype html>
           <p id="etat-txt"></p>
         </div>
       </div>
+      <div id="fiche" hidden></div>
       <div id="table"></div>
       <footer id="foot">Une clé livrée ne se reprend pas : une révocation s'applique chez le client à sa prochaine connexion, et seulement si sa version embarque la clé de réponse.</footer>
     </div>
   </main>
 </div>
+
+<!-- La bulle « i » se pose en position fixe : dans un en-tête de tableau collant, une infobulle
+     en position absolue serait rognée par le conteneur qui défile. -->
+<div id="info-pop" hidden role="tooltip"></div>
+<div id="palette" hidden></div>
 
 <script>
 (function () {
@@ -1963,10 +2756,19 @@ const CONSOLE_HTML = `<!doctype html>
   var aDecider = 0;       // le compteur du rail : le seul chiffre qui se voit depuis partout
   var recherche = '';     // le filtre de l'écran courant, vidé quand on en change
   var lignesEcran = [];   // ce que la route a rendu, avant filtrage — on filtre l'affichage, pas la source
+  // Le tri et la pagination, par ÉCRAN : revenir sur Licences doit retrouver le tri qu'on y avait
+  // posé, pas celui du Journal. Vidés quand on change d'écran ? Non — c'est justement ce qu'on
+  // veut garder, contrairement à la recherche, qui cache ce qu'on vient chercher (9.4.6).
+  var tris = {};          // écran → { k: colonne, sens: 1 | -1 }
+  var pages = {};         // écran → numéro de page, à partir de 1
+  var PAR_PAGE = 50;
+  var fiche = null;       // { type: 'client', id } quand on regarde une fiche au lieu d'une liste
+  var reg = null;         // ce que /v1/admin/reglages a répondu
+  var generation = 0;     // le numéro du dessin en cours : une réponse en retard ne repeint rien
   // Où une recherche a un sens : les écrans qui portent des NOMS et des numéros. « À décider »
   // tient en trois lignes repliées et « Parc » en une ligne par version : un champ de recherche y
   // serait un contrôle de plus à lire pour rien.
-  var CHERCHABLES = ['licences', 'ventes', 'clients', 'cabinets', 'activations', 'evenements'];
+  var CHERCHABLES = ['licences', 'ventes', 'clients', 'cabinets', 'activations', 'evenements', 'essais'];
   var $ = function (id) { return document.getElementById(id); };
   var h = function (s) {
     return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;')
@@ -2104,10 +2906,17 @@ const CONSOLE_HTML = `<!doctype html>
       }
       var v = s.verdict || { niveau: 'calme', phrase: '' };
       var cls = v.niveau === 'alerte' ? 'r' : (v.niveau === 'attention' ? 'w' : 'a');
-      var detail = (s.canaux || []).filter(function (c) { return c.servi; })
-        .map(function (c) { return h(c.fichier) + ' → ' + h(c.tag); }).join(' · ');
-      el.innerHTML = '<span class="pill ' + cls + '">' + h(v.phrase) + '</span>'
-        + (detail ? '<div class="quand" style="margin-block-start:6px">' + detail + '</div>' : '');
+      // Le verdict ne compte QUE les canaux stables ; le détail listait tout ce qui est servi,
+      // bêtas comprises. Résultat : « Les 4 canaux stables servent une version » au-dessus de HUIT
+      // lignes. Un compteur et la liste qu'il annonce se calculent avec la même fonction (6.8.1) —
+      // ici on ne retire rien, on SÉPARE, parce que ce que sert le canal d'essai est utile aussi.
+      var servis = (s.canaux || []).filter(function (c) { return c.servi; });
+      var rendu = function (liste) { return liste.map(function (c) { return h(c.fichier) + ' \\u2192 ' + h(c.tag); }).join(' \\u00b7 '); };
+      var stables = servis.filter(function (c) { return !c.essai; });
+      var essais = servis.filter(function (c) { return c.essai; });
+      var detail = (stables.length ? '<div class="quand" style="margin-block-start:6px">Stables : ' + rendu(stables) + '</div>' : '')
+        + (essais.length ? '<div class="quand">Essais : ' + rendu(essais) + '</div>' : '');
+      el.innerHTML = '<span class="pill ' + cls + '">' + h(v.phrase) + '</span>' + detail;
     }, function (e) {
       el.innerHTML = '<span class="pill e">canaux : non lus</span> <span class="quand">' + h(e.message || '') + '</span>';
     });
@@ -2116,8 +2925,11 @@ const CONSOLE_HTML = `<!doctype html>
   // --- l'export de la base ---
   // La base porte « qui a acheté quelle clé » — et le contenu signé de chaque licence, celui qui
   // permet de la refabriquer à l'identique. L'avertissement se lit AVANT le geste.
-  $('exporter').onclick = function () {
-    var b = $('exporter'); b.disabled = true;
+  // Les NOMS des tables, en français. L'écran écrivait « evenements : 3 · jetons : 0 » — les noms
+  // SQL tels quels, accent manquant compris. Ça ne casse rien, et ça dit à celui qui lit que
+  // personne n'a regardé cet écran. La table vit côté serveur, en un seul exemplaire.
+  function exporterBase(b) {
+    b.disabled = true;
     fetch('/v1/admin/export', { headers: { 'X-SkanFact-Admin': secret } }).then(function (r) {
       if (!r.ok) throw new Error('Le serveur a répondu ' + r.status + '.');
       return r.json();
@@ -2128,12 +2940,12 @@ const CONSOLE_HTML = `<!doctype html>
       a.download = 'skanfact-console-' + aujourdhui() + '.json';
       document.body.appendChild(a); a.click(); a.remove();
       setTimeout(function () { URL.revokeObjectURL(a.href); }, 5000);
-      var comptes = Object.keys(j.comptes || {}).map(function (t) { return t + ' : ' + j.comptes[t]; }).join(' · ');
-      montrerInfo('Base exportée — ' + comptes + '. Ce fichier n\\u2019est pas chiffré et porte tes clients : range-le où tu ranges tes clés.');
+      montrerInfo('Base exportée — ' + (j.resume || '') + '. Ce fichier n\\u2019est pas chiffré et porte tes clients : range-le où tu ranges tes clés.');
       b.disabled = false;
       dessiner();
     }, function (e) { b.disabled = false; montrerErreur(e); });
-  };
+  }
+  $('exporter').onclick = function () { exporterBase($('exporter')); };
 
   // --- les formulaires : une seule zone, un seul formulaire à la fois ---
   // Chaque formulaire RAPPELLE de quoi on parle (le client, la licence, le montant) avant de
@@ -2376,12 +3188,20 @@ const CONSOLE_HTML = `<!doctype html>
   // ne se discute pas.
   function ecrire(r) {
     api(onglet + '/' + r.id + '/relance').then(function (j) {
+      montrerMail(j, 'Écrire à ' + (j.client || 'ce client'));
+    }, montrerErreur);
+  }
+  // Un mail composé par la console, quel qu'il soit : relance, devis. Une seule fonction, parce
+  // que deux affichages du même objet finiraient par diverger — l'un porterait le bouton « copier »
+  // et l'autre pas, sans que personne ne l'ait décidé (7.29.0).
+  function montrerMail(j, titre) {
+    {
       var el = $('resultat');
       var lien = 'mailto:' + encodeURIComponent(j.a) + '?subject=' + encodeURIComponent(j.sujet)
         + '&body=' + encodeURIComponent(j.corps);
       // Sans adresse, on ne fait pas semblant : on dit ce qui manque et où on le règle (7.0.0 — un
       // refus dit ce qui est refusé, pourquoi, et le geste qui débloque).
-      el.innerHTML = '<h2>Écrire à ' + h(j.client || 'ce client') + '</h2>'
+      el.innerHTML = '<h2>' + h(titre) + '</h2>'
         + (j.a
           ? '<p class="why">À <strong>' + h(j.a) + '</strong>. Le texte s\\u2019ouvre dans ta messagerie : tu le relis, tu le modifies si tu veux, et c\\u2019est toi qui envoies.</p>'
           : '<p class="why" style="color:var(--warn)">Ce client n\\u2019a pas d\\u2019adresse e-mail : ajoute-la sur l\\u2019écran Clients, et le bouton s\\u2019allumera. Le texte reste copiable ci-dessous.</p>')
@@ -2394,7 +3214,7 @@ const CONSOLE_HTML = `<!doctype html>
       $('relance-copier').onclick = function () { copier(j.sujet + '\\n\\n' + j.corps, $('relance-copier')); };
       $('relance-fermer').onclick = function () { el.hidden = true; el.innerHTML = ''; };
       el.scrollIntoView({ block: 'nearest' });
-    }, montrerErreur);
+    }
   }
   function envoyer(lic) {
     formulaire('Envoyer la clé par mail', 'À <strong>' + h(lic.email || '(pas d\\u2019adresse)') + '</strong>, pour ' + h(lic.client) + ' — ' + (estCabinet(lic) ? '' : 'offre ') + h(libOffre(lic)) + (lic.envoyee_le ? '. Déjà envoyée le ' + jour(lic.envoyee_le) + ' : ceci renvoie la même clé.' : '.'),
@@ -2505,7 +3325,18 @@ const CONSOLE_HTML = `<!doctype html>
     clients: [
       { k: 'nom', t: 'Nom' }, { k: 'matricule', t: 'Matricule', m: true },
       { k: 'email', t: 'Courriel' }, { k: 'tel', t: 'Téléphone' },
-      { k: 'cree_le', t: 'Créé', f: function (v) { return jour(v); } }
+      // Ce qu'on a besoin de savoir AVANT d'ouvrir une fiche. Une liste de noms nus oblige à ouvrir
+      // chaque client pour trouver celui qu'on cherche.
+      { k: 'licences', t: 'Licences', n: true, i: 'Ses licences en cours : ni révoquées, ni remplacées par une plus récente.' },
+      { k: 'impayees', t: 'Impayées', n: true, brut: true,
+        f: function (v) { return Number(v) ? '<span class="pill w">' + v + '</span>' : '—'; } },
+      { k: 'vu_le', t: 'Dernier contact', brut: true,
+        i: 'La dernière fois que tu as noté un contact avec ce client. Vide, personne ne lui a parlé depuis cette console.',
+        f: function (v) { return v ? quandVu(v) : '<span class="quand">jamais noté</span>'; } },
+      { k: 'cree_le', t: 'Créé', f: function (v) { return jour(v); } },
+      { k: 'id', t: 'Actions', brut: true, a: true, f: function (v, r) {
+          return '<button type="button" class="btn s" data-act="fiche" data-id="' + h(r.id) + '">Ouvrir la fiche</button>';
+        } }
     ],
     ventes: [
       { k: 'client', t: 'Client' },
@@ -2552,22 +3383,58 @@ const CONSOLE_HTML = `<!doctype html>
       { k: 'version', t: 'Version', m: true, f: function (v, r) {
           return (v || '— version inconnue —') + (r.essai ? ' <span class="pill w">essai</span>' : '');
         }, brut: true },
-      { k: 'postes', t: 'Postes', n: true },
+      { k: 'postes', t: 'Postes', n: true, i: 'Le nombre d\\u2019ordinateurs distincts qui se sont annoncés sur cette version. Un poste qui change de version apparaît sur les deux lignes.' },
       // « Endormi » n'est pas « perdu » : un portable refermé pour les vacances compte à part, il
       // ne se retranche pas.
-      { k: 'vus', t: 'Vus (30 j)', n: true },
-      { k: 'endormis', t: 'Endormis', n: true },
-      { k: 'licences', t: 'Sous licence', n: true },
-      { k: 'enEssai', t: 'En essai', n: true },
+      { k: 'vus', t: 'Vus (30 j)', n: true, i: 'Les postes qui se sont annoncés dans les trente derniers jours. La fenêtre se règle dans Réglages.' },
+      { k: 'endormis', t: 'Endormis', n: true, i: 'Les postes qu\\u2019on n\\u2019a pas vus dans la fenêtre. Endormi n\\u2019est PAS perdu : un portable refermé pour les vacances en fait partie. Ils se comptent à part, ils ne se retranchent pas — « vus » plus « endormis » font « postes ».' },
+      { k: 'licences', t: 'Sous licence', n: true, i: 'Les postes qui présentent une clé, par opposition à ceux qui sont encore en essai.' },
+      { k: 'enEssai', t: 'En essai', n: true, i: 'Les postes sans clé. Ils deviennent des clients ou ils disparaissent : c\\u2019est l\\u2019écran Essais qui dit lesquels appeler.' },
       { k: 'darwin', t: 'Mac', n: true },
       { k: 'win32', t: 'Windows', n: true },
       { k: 'dernier', t: 'Dernier vu', f: function (v) { return quandVu(v); }, brut: true }
     ],
+    // Les essais, nommés un par un : la file d'appels du matin.
+    essais: [
+      { k: 'appNom', t: 'Application' },
+      { k: 'device_nom', t: 'Ordinateur' },
+      { k: 'plateforme', t: 'Système' },
+      { k: 'version', t: 'Version', m: true },
+      { k: 'premiere_fois', t: 'Vu depuis', f: function (v) { return v ? jour(v) : '—'; } },
+      { k: 'reste', t: 'Reste', n: true, brut: true,
+        i: 'Ce qu\\u2019il reste avant la fin ESTIMÉE de l\\u2019essai. La plateforme sait quand elle a vu ce poste pour la première fois, jamais quand l\\u2019essai a commencé sur la machine : une installation restée trois semaines hors ligne s\\u2019annonce trois semaines trop tard.',
+        f: function (v, r) {
+          if (v == null) return '—';
+          if (v < 0) return '<span class="pill e">fini vers le ' + h(jour(r.fin)) + '</span>';
+          return '<span class="pill ' + (v <= 7 ? 'r' : 'w') + '">' + v + ' j</span>';
+        } },
+      { k: 'suivi_le', t: 'Suivi', brut: true,
+        i: 'Ce que tu as fait de ce prospect. Tant qu\\u2019un rappel est posé dans le futur, ce poste ne redemande rien dans « À décider ».',
+        f: function (v, r) {
+          if (r.issue === 'gagne') return '<span class="pill a">gagné</span>';
+          if (r.issue === 'perdu') return '<span class="pill e">perdu</span>' + (r.motif ? '<span class="quand">' + h(r.motif) + '</span>' : '');
+          if (r.rappel) return '<span class="pill w">rappeler le ' + h(jour(r.rappel)) + '</span>' + (v ? '<span class="quand">vu le ' + h(jour(v)) + '</span>' : '');
+          if (v) return '<span class="pill e">noté le ' + h(jour(v)) + '</span>';
+          return '<span class="quand">jamais contacté</span>';
+        } },
+      { k: 'id', t: 'Actions', brut: true, a: true, f: function (v, r) {
+          return '<button type="button" class="btn s" data-act="suivre" data-id="' + h(r.id) + '">Noter un contact…</button>';
+        } }
+    ],
     cabinets: [
       { k: 'client', t: 'Cabinet' },
       { k: 'cabinet_empreinte', t: 'Empreinte', m: true },
-      { k: 'dossiers_hors', t: 'Dossiers couverts', n: true },
-      { k: 'parraines', t: 'Clients parrainés', n: true },
+      { k: 'dossiers_hors', t: 'Dossiers couverts', n: true, i: 'Le quota vendu à ce cabinet, en plus des trois dossiers hors SkanFact gratuits. C\\u2019est ce qu\\u2019on lui facture : jamais ses postes, qui sont illimités.' },
+      { k: 'parraines', t: 'Clients parrainés', n: true, i: 'Les entreprises dont la licence porte l\\u2019empreinte de ce cabinet. « Amené » n\\u2019est pas « payé » : la colonne d\\u2019à côté dit combien ont réglé.' },
+      { k: 'payants', t: 'dont payants', n: true, brut: true,
+        i: 'Parmi les clients parrainés, ceux dont au moins une vente est encaissée. Vendre en passant par les cabinets est le modèle du produit — c\\u2019est ici qu\\u2019on voit s\\u2019il fonctionne.',
+        f: function (v, r) {
+          var n = Number(v) || 0;
+          if (!Number(r.parraines)) return '—';
+          return '<span class="pill ' + (n ? 'a' : 'e') + '">' + n + '</span>';
+        } },
+      { k: 'ca_amene', t: 'CA amené', n: true, f: function (v, r) { return Number(v) ? montant(v, r.devise) : '—'; },
+        i: 'Le total encaissé sur les licences d\\u2019entreprise parrainées par ce cabinet, toutes années confondues.' },
       { k: 'postes', t: 'Postes', n: true },
       { k: 'fin', t: 'Fin', f: function (v) { return v ? jour(v) : 'à vie'; } },
       { k: 'vu', t: 'Vu', f: function (v) { return quandVu(v); }, brut: true },
@@ -2586,7 +3453,9 @@ const CONSOLE_HTML = `<!doctype html>
     clients: 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM22 21v-2a4 4 0 0 0-3-3.9',
     parc: 'M2 4h20v12H2zM8 20h8M12 16v4',
     activations: 'M22 12h-4l-3 9L9 3l-3 9H2',
-    evenements: 'M4 4h16v16H4zM8 9h8M8 13h8M8 17h5'
+    evenements: 'M4 4h16v16H4zM8 9h8M8 13h8M8 17h5',
+    essais: 'M12 2v6M9 2h6M7 8h10l3 10a3 3 0 0 1-3 4H7a3 3 0 0 1-3-4z',
+    reglages: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 1 1-4 0v-.1A1.6 1.6 0 0 0 7 19.4l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.6 1.6 0 0 0 3 14a2 2 0 1 1 0-4 1.6 1.6 0 0 0 1.1-2.7L4 7.2a2 2 0 1 1 2.8-2.8l.1.1A1.6 1.6 0 0 0 9.6 3.6V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 2.7 1.1l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8'
   };
 
   // Chaque écran : son groupe dans le rail, son titre de page, et ce à quoi il sert. La console
@@ -2602,6 +3471,11 @@ const CONSOLE_HTML = `<!doctype html>
     // licence, donc sur l'écran Cabinets. Plutôt que de masquer un chiffre vrai derrière un « — »,
     // ou d'ajouter au parc une colonne que seule une ligne sur trois remplirait (9.4.4), l'écran
     // DIT où se lit l'unité commerciale — et le mot est un lien (7.15.0).
+    // Les ESSAIS, un par un et nommés. Le Parc les agrège par version : utile pour compter, inutile
+    // pour décrocher son téléphone. C'est la file d'appels du matin, et elle n'existait pas — la
+    // console savait ce qui EXISTE et ne retenait rien de ce qu'on en faisait.
+    essais: { g: 'Pilotage', t: 'Essais', h: 'Les essais en cours',
+      but: 'Chaque poste qui essaie SkanFact, avec ce qu\\u2019il lui reste et ce que tu en as fait. La date de fin est APPROCHÉE : l\\u2019essai se compte sur la machine du client, la plateforme ne sait que depuis quand elle le voit.' },
     parc: { g: 'Pilotage', t: 'Parc', h: 'Le parc installé',
       but: 'Les deux applications, version par version : combien de postes, combien vus ces trente jours, combien sous licence. '
         + 'Un cabinet se FACTURE au dossier et jamais au poste : ce compte-là se lit sur l\\u2019écran Cabinets.' },
@@ -2616,9 +3490,22 @@ const CONSOLE_HTML = `<!doctype html>
     activations: { g: 'Traces', t: 'Activations', h: 'Activations',
       but: 'Un ordinateur, une application, une date. C\\u2019est ce que les postes annoncent d\\u2019eux-mêmes — rien de plus.' },
     evenements: { g: 'Traces', t: 'Journal', h: 'Journal',
-      but: 'Chaque émission, révocation, paiement et envoi, pour toujours. C\\u2019est ce qui permet de répondre à un client six mois plus tard.' }
+      but: 'Chaque émission, révocation, paiement et envoi, pour toujours. C\\u2019est ce qui permet de répondre à un client six mois plus tard.' },
+    // Les RÉGLAGES. Un prix qui se change en modifiant le code n'est pas un prix, c'est une
+    // constante : il faut un déploiement pour l'ajuster, donc on ne l'ajuste pas.
+    reglages: { g: 'Console', t: 'Réglages', h: 'Réglages de la console',
+      but: 'Les prix proposés, les seuils qui décident d\\u2019une alerte, la signature des mails. Chaque valeur dit d\\u2019où elle vient : posée ici, venue des réglages du worker, ou restée au défaut.' }
   };
-  var GROUPES = ['Pilotage', 'Ventes', 'Traces'];
+  var GROUPES = ['Pilotage', 'Ventes', 'Traces', 'Console'];
+  // Ce que chaque écran COMPTE, au singulier — la fonction de pluriel accorde. Le pied disait « 4 lignes » : une
+  // ligne n'est le nom de rien, et c'est précisément le mot qu'on emploie quand on n'a pas
+  // regardé l'écran. On pagine ce qu'on NOMME (9.4.5).
+  var NOM_LIGNE = {
+    alertes: ['décision', 'décisions'], parc: ['version installée', 'versions installées'],
+    essais: ['essai en cours', 'essais en cours'], licences: ['licence', 'licences'],
+    ventes: ['vente', 'ventes'], cabinets: ['cabinet', 'cabinets'], clients: ['client', 'clients'],
+    activations: ['activation', 'activations'], evenements: ['événement', 'événements']
+  };
   // Les gestes de CHAQUE écran. « Émettre » vit sur le tableau de bord et sur Licences (c'est de
   // là qu'on vend), « Nouveau client » partout où l'on peut avoir besoin d'en créer un avant
   // d'émettre. Un geste posé sur les huit écrans ne serait plus le geste d'un écran.
@@ -2628,7 +3515,10 @@ const CONSOLE_HTML = `<!doctype html>
   var ACTIONS = {
     alertes: ['emettre', 'client'], licences: ['emettre', 'client'],
     clients: ['emettre', 'client'], cabinets: ['emettre'],
-    ventes: [], parc: [], activations: [], evenements: []
+    ventes: [], parc: [], activations: [], evenements: [],
+    // Un essai qui devient client passe par « Nouveau client… » : c'est le geste SUIVANT de cet
+    // écran, et il n'y en a pas d'autre (7.27.0).
+    essais: ['client'], reglages: []
   };
   // Le gabarit ENTIER, identifiant compris, et pas un objet qu'on assemble : un contrôle de
   // npm test relit les balises « button » du HTML et exige que chacun soit branché (c'est le
@@ -2650,7 +3540,9 @@ const CONSOLE_HTML = `<!doctype html>
     evenements: 'Rien dans le journal : chaque émission, révocation, paiement et envoi y sera écrit, pour toujours.',
     alertes: 'Rien à décider aujourd\\u2019hui : aucune clé en attente d\\u2019envoi, aucune vente à encaisser, aucune licence qui se termine dans les trente jours.',
     parc: 'Aucune application ne s\\u2019est encore annoncée. SkanFact s\\u2019annonce depuis la 8.4.1, SkanFact Cabinet depuis la 10.4.0.',
-    cabinets: 'Aucune licence de cabinet vendue. « Émettre une licence… » ci-dessus, avec le type « Cabinet comptable » : ce qu\\u2019on y vend est un quota de dossiers, jamais des postes.'
+    cabinets: 'Aucune licence de cabinet vendue. « Émettre une licence… » ci-dessus, avec le type « Cabinet comptable » : ce qu\\u2019on y vend est un quota de dossiers, jamais des postes.',
+    essais: 'Aucun essai en cours. Un poste s\\u2019annonce tout seul au premier lancement : ceux qui apparaîtront ici sont les gens à appeler avant la fin de leur mois.',
+    reglages: ''
   };
 
   // Le rail : les entrées rangées par groupe, chacune avec son icône. Le compteur rouge de
@@ -2673,7 +3565,10 @@ const CONSOLE_HTML = `<!doctype html>
     Array.prototype.forEach.call($('tabs').querySelectorAll('button[data-t]'), function (b) {
       // Un filtre ne survit pas à la sortie de son écran : le retrouver trois jours plus tard sans
       // savoir d'où il vient est le piège du filtre qui cache ce qu'on vient chercher (9.4.6).
-      b.onclick = function () { onglet = b.dataset.t; recherche = ''; dessiner(); };
+      // Un message de succès ne SUIT pas d'écran en écran. « Base exportée — activations : 4 »
+      // restait affiché pendant que le Parc, juste en dessous, en montrait cinq : un compte figé à
+      // côté d'un compte vivant, sur le même écran. Un état lu une fois se périme (7.1.x).
+      b.onclick = function () { onglet = b.dataset.t; recherche = ''; fiche = null; $('info').hidden = true; dessiner(); };
     });
   }
 
@@ -2717,11 +3612,21 @@ const CONSOLE_HTML = `<!doctype html>
 
   function dessiner() {
     $('err').hidden = true;
+    $('fiche').hidden = true;
+    $('fiche').innerHTML = '';
     dessinerRail();
     dessinerTete();
 
     api('etat').then(function (e) { etat = e; dessinerEtat(); }, montrerErreur);
     api('clients').then(function (d) { clients = d.lignes || []; }, function () {});
+
+    // Une FICHE remplace la liste : ce n'est pas un onglet, c'est un objet qu'on ouvre. Le rail
+    // garde l'onglet d'où l'on vient allumé, et « ← Clients » ramène — arriver sur le bon contenu
+    // avec le mauvais onglet en surbrillance est pire que ne pas y aller (7.21.0).
+    if (fiche) { dessinerFiche(); return; }
+    // Les réglages ne sont pas une liste : ils n'ont ni tri, ni pagination, ni recherche.
+    if (onglet === 'reglages') { dessinerReglages(); return; }
+
     dessinerSante();
 
     api('stats').then(function (s) {
@@ -2771,11 +3676,292 @@ const CONSOLE_HTML = `<!doctype html>
     // « Chargement » n'est PAS un écran vide : même apparence, classe différente, sinon rien ne
     // distingue « on attend la réponse » de « il n'y a rien », ni à l'œil ni pour un test.
     $('table').innerHTML = '<div class="chargement">Chargement…</div>';
+    // La RÉPONSE d'un écran qu'on a quitté ne le repeint pas. Deux dessins peuvent se chevaucher —
+    // « Actualiser » puis un clic sur un onglet, ou simplement deux clics rapides — et c'est la
+    // réponse la plus LENTE qui gagnait : le tableau du Parc se faisait remplacer par les alertes,
+    // sous le titre du Parc. Le défaut n'apparaît que lorsqu'un écran devient plus lent qu'un
+    // autre, donc il serait arrivé un jour, en production, sans qu'on sache pourquoi.
+    // C'est le message d'avancement en retard de la 6.8.1, côté lecture.
+    var mien = ++generation;
     api(onglet).then(function (d) {
+      if (mien !== generation) return;
       lignesEcran = d.lignes || [];
       if (onglet === 'alertes') { aDecider = lignesEcran.reduce(function (s, x) { return s + (Number(x.n) || 1); }, 0); dessinerRail(); }
       dessinerTable();
+    }, function (e) { if (mien === generation) montrerErreur(e); });
+  }
+
+  // --- les RÉGLAGES ---
+  // Un prix qui se change en modifiant le code n'est pas un prix, c'est une constante : il faut un
+  // déploiement pour l'ajuster, donc on ne l'ajuste jamais. Chaque valeur dit d'OÙ elle vient —
+  // sans ça, un écran de nombres laisse croire qu'ils ont tous été décidés, alors que la plupart
+  // sont des défauts que personne n'a regardés.
+  function dessinerReglages() {
+    $('table').innerHTML = '';
+    $('bord').hidden = true;
+    $('foot').hidden = true;
+    var el = $('fiche');
+    el.hidden = false;
+    el.innerHTML = '<div class="chargement">Chargement…</div>';
+    api('reglages').then(function (d) {
+      reg = d;
+      var SOURCES = { base: 'réglé ici', worker: 'vient des réglages du worker', defaut: 'valeur par défaut, jamais décidée' };
+      var groupes = [];
+      (d.definitions || []).forEach(function (def) { if (groupes.indexOf(def.groupe) < 0) groupes.push(def.groupe); });
+      var html = '';
+      groupes.forEach(function (g) {
+        html += '<div class="bloc"><h2>' + h(g) + '</h2><div class="panel">';
+        (d.definitions || []).filter(function (def) { return def.groupe === g; }).forEach(function (def) {
+          var v = d.valeurs[def.id];
+          var src = d.sources[def.id];
+          var type = def.type === 'montant' || def.type === 'pourcent' || def.type === 'jours' ? 'number' : 'text';
+          var pas = def.type === 'montant' ? ' step="0.001" min="0"' : (def.type === 'jours' ? ' step="1" min="0"' : (def.type === 'pourcent' ? ' step="0.5" min="0" max="100"' : ''));
+          html += '<div class="reg"><div class="quoi"><b>' + h(def.label) + bulle(def.aide) + '</b><span>' + h(def.aide) + '</span></div>'
+            + '<input data-reg="' + h(def.id) + '" type="' + type + '"' + pas + ' value="' + h(v == null ? '' : v) + '"'
+            + ' aria-label="' + h(def.label) + '">'
+            + '<span class="src ' + h(src) + '">' + h(SOURCES[src] || src) + '</span></div>';
+        });
+        html += '</div></div>';
+      });
+      // Ce que la console NE règle pas, et pourquoi. Le taire donnerait l'impression d'un oubli.
+      html += '<div class="bloc"><h2>Ce qui ne se règle pas ici</h2><div class="panel">' +
+        (d.fixes || []).map(function (f) {
+          return '<div class="reg"><div class="quoi"><b>' + h(f.label) + ' : ' + h(f.valeur) + '</b><span>' + h(f.pourquoi) + '</span></div></div>';
+        }).join('') + '</div></div>';
+
+      // La copie de la base et la rotation du secret : deux choses que cet écran COMMANDE, et qui
+      // disent chacune ce qui leur manque plutôt que d'afficher un vert rassurant.
+      var s = d.sauvegarde || {}, sec = d.secret || {};
+      html += '<div class="bloc"><h2>La copie de la base</h2><div class="panel">' +
+        '<p class="why">' + (s.auto ? '' : '<strong>') + h(s.raison || s.quoi) + (s.auto ? '' : '</strong>') + '</p>' +
+        (s.auto ? '' : '<p class="why">' + h(s.quoi) + '</p>') +
+        '<p class="note">' + (s.dernier ? 'Dernière copie le ' + h(jour(s.dernier)) + '.' : 'Aucune copie n\\u2019a jamais été prise.') + '</p>' +
+        '<div class="row"><button id="reg-exporter" class="btn" type="button">Exporter la base maintenant…</button>' +
+        '<button id="reg-pli" class="btn" type="button">Préparer le pli scellé…</button></div>' +
+        '</div></div>';
+      html += '<div class="bloc"><h2>Le secret d\\u2019administration</h2><div class="panel">' +
+        '<p class="why">' + h(sec.phrase || '') + '</p><p class="why">' + h(sec.quoi || '') + '</p></div></div>';
+
+      html += '<div class="row"><button id="reg-ok" class="btn p" type="button">Enregistrer les réglages</button>' +
+        '<button id="reg-annuler" class="btn" type="button">Annuler</button></div>' +
+        '<p id="reg-msg" class="note" hidden></p>';
+      el.innerHTML = html;
+      $('reg-ok').onclick = enregistrerReglages;
+      $('reg-annuler').onclick = function () { dessinerReglages(); };
+      $('reg-exporter').onclick = function () { exporterBase($('reg-exporter')); };
+      $('reg-pli').onclick = montrerPli;
     }, montrerErreur);
+  }
+
+  function enregistrerReglages() {
+    var b = $('reg-ok'); b.disabled = true;
+    var valeurs = {};
+    Array.prototype.forEach.call($('fiche').querySelectorAll('[data-reg]'), function (i) { valeurs[i.dataset.reg] = i.value; });
+    api('reglages', { valeurs: valeurs }).then(function (j) {
+      b.disabled = false;
+      montrerInfo(j.poses.length ? pl(j.poses.length, 'réglage') + ' enregistré' + (j.poses.length > 1 ? 's' : '') + '.' : 'Rien n\\u2019a changé.');
+      // Le formulaire se redessine : les prix proposés à l'émission viennent de là, et une valeur
+      // rendue au défaut doit RÉAPPARAÎTRE dans son champ, sinon on croit l'avoir effacée.
+      api('etat').then(function (e) { etat = e; }, function () {});
+      dessinerReglages();
+    }, function (e) {
+      b.disabled = false;
+      // Un refus NOMME le champ : « valeur invalide » oblige à relire quinze champs pour trouver
+      // lequel (7.0.0 — un refus dit ce qui est refusé, pourquoi, et ce qui débloque).
+      var m = $('reg-msg');
+      if (m) { m.textContent = e && e.message ? e.message : 'Échec.'; m.hidden = false; m.scrollIntoView({ block: 'nearest' }); }
+    });
+  }
+
+  function montrerPli() {
+    api('pli').then(function (j) {
+      var el = $('resultat');
+      el.innerHTML = '<h2>Le pli scellé</h2>'
+        + '<p class="why">Aucune clé privée ne sort d\\u2019ici : ce texte est une <strong>procédure</strong>. C\\u2019est à toi de rassembler le pli, et de le garder ailleurs que sur cet ordinateur.</p>'
+        + '<div class="cle" style="white-space:pre-wrap">' + h(j.texte) + '</div>'
+        + '<div class="row"><button id="pli-copier" class="btn" type="button">Copier</button>'
+        + '<button id="pli-fermer" class="btn" type="button">Fermer</button></div>';
+      el.hidden = false;
+      $('pli-copier').onclick = function () { copier(j.texte, $('pli-copier')); };
+      $('pli-fermer').onclick = function () { el.hidden = true; el.innerHTML = ''; };
+      el.scrollIntoView({ block: 'nearest' });
+    }, montrerErreur);
+  }
+
+  // --- la FICHE d'un client ---
+  // Répondre à « raconte-moi tout sur ce client » demandait cinq écrans : Clients, Licences,
+  // Ventes, Activations, Journal. C'est ce qu'on ouvre à CHAQUE appel, donc l'écran qui devait
+  // exister en premier. Tout est ici, et rien n'y est saisi : on agit depuis les listes, qui
+  // portent déjà les gestes et leurs garde-fous (7.29.0).
+  function ouvrirFiche(id) {
+    fiche = { type: 'client', id: id };
+    dessiner();
+  }
+  function fermerFiche() { fiche = null; dessiner(); }
+
+  function dessinerFiche() {
+    $('table').innerHTML = '';
+    $('bord').hidden = true;
+    $('foot').hidden = true;
+    var el = $('fiche');
+    el.hidden = false;
+    el.innerHTML = '<div class="chargement">Chargement…</div>';
+    api('clients/' + encodeURIComponent(fiche.id)).then(function (d) {
+      var c = d.client || {};
+      $('page-titre').textContent = c.nom || 'Client';
+      $('page-but').textContent = 'Tout ce que la plateforme sait de ce client : ses licences, ses postes, ses paiements, ce que tu lui as dit.';
+      var paire = function (lib, val) { return val ? '<div><b>' + h(lib) + '</b>' + h(val) + '</div>' : ''; };
+      var bloc = function (titre, corps) { return '<div class="bloc"><h2>' + h(titre) + '</h2>' + corps + '</div>'; };
+      var table = function (entetes, lignes2) {
+        if (!lignes2.length) return '<div class="wrap"><div class="vide">—</div></div>';
+        return '<div class="wrap"><table><thead><tr>' + entetes.map(function (t) { return '<th>' + h(t) + '</th>'; }).join('')
+          + '</tr></thead><tbody>' + lignes2.join('') + '</tbody></table></div>';
+      };
+      var html = '<div class="fiche-tete">' +
+        '<button type="button" class="btn" id="fiche-retour">\\u2190 Clients</button><span class="sp"></span>' +
+        '<button type="button" class="btn" id="fiche-suivi">Noter un contact\\u2026</button>' +
+        '<button type="button" class="btn" id="fiche-devis">Écrire un devis\\u2026</button>' +
+        '</div>' +
+        '<div class="paires">' + paire('Matricule', c.matricule) + paire('Courriel', c.email) +
+          paire('Téléphone', c.tel) + paire('Adresse', c.adresse) + paire('Client depuis', jour(c.cree_le)) + '</div>' +
+        (c.notes ? '<p class="but">' + h(c.notes) + '</p>' : '');
+
+      html += bloc('Licences', table(['Offre', 'Fin', 'État', 'Clé'], (d.licences || []).map(function (l) {
+        return '<tr><td>' + h(libOffre(l)) + '</td><td>' + h(l.fin ? jour(l.fin) : 'à vie') + '</td><td>' + etatLic(l)
+          + '</td><td class="mono">' + h(l.kid || '') + '</td></tr>';
+      })));
+      html += bloc('Ventes', table(['Montant HT', 'État', 'Moyen', 'Facture'], (d.ventes || []).map(function (v) {
+        return '<tr><td class="num">' + h(montant(v.montant_ht, v.devise)) + '</td><td>'
+          + (v.payee_le ? '<span class="pill a">payée le ' + h(jour(v.payee_le)) + '</span>' : '<span class="pill w">à encaisser</span>')
+          + '</td><td>' + h(v.moyen || '—') + '</td><td>' + h(v.facture_skanfact || 'à établir') + '</td></tr>';
+      })));
+      html += bloc('Ses postes', table(['Application', 'Ordinateur', 'Système', 'Version', 'Dernier signe'], (d.postes || []).map(function (p) {
+        return '<tr><td>' + h(p.appNom || '') + '</td><td>' + h(p.device_nom || p.device_id) + '</td><td>' + h(p.plateforme || '—')
+          + '</td><td class="mono">' + h(p.version || '—') + '</td><td>' + quandVu(p.derniere_fois) + '</td></tr>';
+      })));
+      // Ce qu'on lui a DIT : l'historique entier, pas seulement le dernier. « Je l'ai déjà appelé
+      // deux fois » est précisément ce qu'on vient chercher avant de décrocher une troisième.
+      html += bloc('Ce que tu lui as dit', (d.suivis || []).length
+        ? '<ul class="fil">' + d.suivis.map(function (s) {
+            return '<li>' + h((s.moyen ? s.moyen + ' — ' : '') + (s.note || (s.issue === 'gagne' ? 'gagné' : (s.issue === 'perdu' ? 'perdu : ' + (s.motif || '') : '—'))))
+              + '<span class="q">' + h(horodate(s.quand) + (s.rappel ? ' \\u00b7 rappel le ' + jour(s.rappel) : '') + (s.source ? ' \\u00b7 venu par : ' + s.source : '')) + '</span></li>';
+          }).join('') + '</ul>'
+        : '<div class="wrap"><div class="vide">Aucun contact noté. « Noter un contact… » ci-dessus garde ce que tu lui as dit — et fait taire ses alertes jusqu\\u2019à la date où tu veux le rappeler.</div></div>');
+      html += bloc('Journal', table(['Quand', 'Quoi', 'Détail'], (d.journal || []).map(function (e) {
+        return '<tr><td>' + h(horodate(e.quand)) + '</td><td class="mono">' + h(e.quoi) + '</td><td class="libre">' + h(e.detail || '') + '</td></tr>';
+      })));
+      el.innerHTML = html;
+      $('fiche-retour').onclick = fermerFiche;
+      $('fiche-suivi').onclick = function () { formSuivi('client:' + c.id, c.nom, null); };
+      $('fiche-devis').onclick = function () { ecrireDevis(c); };
+    }, montrerErreur);
+  }
+
+  // --- noter un contact ---
+  // Ce que la console ne retenait PAS : un essai se terminait, l'alerte se levait, on appelait — et
+  // le lendemain la même alerte se relevait à l'identique. Une alerte qui ne se referme pas cesse
+  // d'être lue au cinquième prospect, et emmène avec elle celles qui comptaient.
+  function formSuivi(sujet, nom, app) {
+    var estEssai = String(sujet).indexOf('essai:') === 0;
+    formulaire('Noter un contact — ' + nom,
+      'Ce que tu as fait, et quand tu veux y revenir. Tant qu\\u2019un rappel est posé dans le futur, ' + h(nom) + ' ne redemande rien dans « À décider ». Rien ne s\\u2019écrase : chaque contact est une ligne de plus, et la fiche les garde tous.',
+      '<label class="f"><span>Comment</span><select name="moyen">' +
+        ['appel', 'mail', 'message', 'visite', 'autre'].map(function (m) { return '<option value="' + m + '">' + m + '</option>'; }).join('') +
+        '</select></label>' +
+      champ('rappel', 'Le rappeler le', 'type="date"') +
+      '<label class="f w"><span>Ce qui s\\u2019est dit</span><textarea name="note" rows="2" maxlength="500"></textarea></label>' +
+      '<label class="f"><span>Issue</span><select name="issue">' +
+        '<option value="">— en cours —</option><option value="gagne">Gagné</option><option value="perdu">Perdu</option>' +
+        '</select></label>' +
+      champ('motif', 'Si perdu, pourquoi *', 'maxlength="200" placeholder="trop cher, a choisi un concurrent, a fermé…"') +
+      champ('source', 'Comment il nous a connus', 'maxlength="120" placeholder="bouche-à-oreille, cabinet X, recherche Google…"', true),
+      'Enregistrer le contact', function () {
+        var chemin = estEssai
+          ? 'essais/' + encodeURIComponent(String(sujet).split(':')[1]) + '/suivi'
+          : 'clients/' + encodeURIComponent(String(sujet).slice('client:'.length)) + '/suivi';
+        return api(chemin, { app: estEssai ? (app || String(sujet).split(':')[2]) : undefined,
+          moyen: val('moyen'), note: val('note'), rappel: val('rappel'), issue: val('issue'), motif: val('motif'), source: val('source') })
+          .then(function () { fermerForm(); montrerInfo('Contact noté pour ' + nom + '.'); dessiner(); });
+      });
+  }
+
+  // Le devis : la console composait des relances à des clients déjà facturés, et rien pour
+  // quelqu'un qui n'a encore rien acheté. Le prix vient des réglages, jamais du code.
+  function ecrireDevis(c) {
+    var offres = Object.keys(etat.offres).map(function (k) { return '<option value="' + k + '">' + h(etat.offres[k].label) + '</option>'; }).join('');
+    formulaire('Écrire un devis — ' + c.nom,
+      'La console compose le texte ; c\\u2019est toi qui l\\u2019envoies, depuis ta messagerie. Le prix est celui de tes Réglages — corrige-le dans le message si tu proposes autre chose.',
+      '<label class="f w"><span>Offre proposée</span><select name="offre">' + offres + '</select></label>',
+      'Composer le devis', function () {
+        return api('clients/' + encodeURIComponent(c.id) + '/devis?offre=' + encodeURIComponent(val('offre')))
+          .then(function (j) { fermerForm(); montrerMail(j, 'Devis pour ' + (j.client || c.nom)); });
+      });
+  }
+
+  // --- la bulle « i » ---
+  // Les deux applications en ont partout depuis la 1.8.0 ; la console n'en avait AUCUNE, alors que
+  // la moitié de ses en-têtes sont des définitions (« Endormis », « Sous licence », « Vus (30 j) »).
+  // Un titre de colonne qui ne se comprend pas se devine, et une devinette se trompe.
+  //
+  // Le texte voyage dans l'attribut, jamais dans une table à part : une seconde table divergerait
+  // de la colonne au premier renommage (6.8.0), et une bulle sans endroit où s'afficher est une
+  // entrée morte (9.4.9).
+  function bulle(texte) {
+    return '<button type="button" class="i" data-bulle="' + h(texte) + '" aria-label="Qu\\u2019est-ce que c\\u2019est ?">i</button>';
+  }
+  var bulleOuverte = null;
+  function fermerBulle() { $('info-pop').hidden = true; bulleOuverte = null; }
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest ? e.target.closest('button.i') : null;
+    if (!b) { if (bulleOuverte) fermerBulle(); return; }
+    e.preventDefault(); e.stopPropagation();
+    if (bulleOuverte === b) { fermerBulle(); return; }
+    var pop = $('info-pop');
+    pop.textContent = b.dataset.bulle || '';
+    pop.hidden = false;
+    var r = b.getBoundingClientRect();
+    // On place APRÈS avoir affiché : la hauteur d'une bulle dépend de son texte, et la mesurer
+    // avant de la rendre donne zéro — la bulle sortait alors par le bas de la fenêtre.
+    var w = pop.offsetWidth, hh = pop.offsetHeight;
+    pop.style.left = Math.max(8, Math.min(window.innerWidth - w - 8, r.left + r.width / 2 - w / 2)) + 'px';
+    pop.style.top = (r.bottom + hh + 10 > window.innerHeight ? Math.max(8, r.top - hh - 8) : r.bottom + 8) + 'px';
+    bulleOuverte = b;
+  });
+
+  // --- le pied de pagination ---
+  // Il porte TROIS choses : où l'on en est, combien il y a en tout, et — quand la borne du serveur
+  // est atteinte — le fait qu'on ne voit pas tout. Sans la troisième, cinq cents lignes affichées
+  // se lisent comme « il y en a cinq cents » (9.4.5).
+  function pagerBar(total, page, pageMax) {
+    var de = (page - 1) * PAR_PAGE + 1, a = Math.min(total, page * PAR_PAGE);
+    var nom = NOM_LIGNE[onglet] || ['ligne', 'lignes'];
+    return '<div class="pager">' +
+      '<span>' + (total > PAR_PAGE ? de + '\\u2013' + a + ' sur ' + pl(total, nom[0], nom[1]) : pl(total, nom[0], nom[1])) + '</span>' +
+      (total >= 500 ? '<span class="coupe">\\u00b7 la console s\\u2019arrête à 500 lignes : affine la recherche pour voir le reste.</span>' : '') +
+      '<span class="sp"></span>' +
+      (pageMax > 1 ? '<button type="button" class="btn" data-page="' + (page - 1) + '"' + (page <= 1 ? ' disabled' : '') + '>Précédent</button>' +
+        '<span>page ' + page + ' sur ' + pageMax + '</span>' +
+        '<button type="button" class="btn" data-page="' + (page + 1) + '"' + (page >= pageMax ? ' disabled' : '') + '>Suivant</button>' : '') +
+      '</div>';
+  }
+  function brancherPager() {
+    Array.prototype.forEach.call($('table').querySelectorAll('.pager [data-page]'), function (b) {
+      b.onclick = function () { pages[onglet] = Number(b.dataset.page); dessinerTable(); };
+    });
+  }
+  function brancherTri() {
+    Array.prototype.forEach.call($('table').querySelectorAll('th[data-tri]'), function (th) {
+      var aller = function () {
+        var k = th.dataset.tri, t = tris[onglet];
+        // Un second clic RENVERSE, il ne repart pas de zéro : c'est ce qu'on attend d'un en-tête,
+        // et c'est ce que font les deux applications.
+        tris[onglet] = (t && t.k === k) ? { k: k, sens: -t.sens } : { k: k, sens: 1 };
+        pages[onglet] = 1;
+        dessinerTable();
+      };
+      th.onclick = aller;
+      th.onkeydown = function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); aller(); } };
+    });
   }
 
   // Le tableau seul, pour que la frappe dans la recherche ne redessine ni le rail, ni l'en-tête,
@@ -2804,21 +3990,60 @@ const CONSOLE_HTML = `<!doctype html>
     }
     {
       var cols = COLONNES[onglet];
+      // LE TRI. Les deux applications trient leurs listes depuis la 1.9.0 ; la console arrivait
+      // dans l'ordre de la requête et rien d'autre. On compare ce que la ligne PORTE, jamais ce que
+      // la colonne en affiche — un montant formaté se trierait comme du texte, et « 1 000 » se
+      // rangerait avant « 9 ».
+      var tri = tris[onglet];
+      if (tri) {
+        var col = cols.filter(function (c) { return c.k === tri.k; })[0];
+        lignes = lignes.slice().sort(function (a, b) {
+          var x = a[tri.k], y = b[tri.k];
+          // Ce qui manque va TOUJOURS au bout, dans les deux sens : une colonne vide n'est pas une
+          // petite valeur, et la voir remonter en tête au premier clic ferait croire à un tri faux.
+          var vx = x == null || x === '', vy = y == null || y === '';
+          if (vx && vy) return 0;
+          if (vx) return 1;
+          if (vy) return -1;
+          var d = col && col.n ? (Number(x) || 0) - (Number(y) || 0) : String(x).localeCompare(String(y), 'fr', { numeric: true });
+          return d * tri.sens;
+        });
+      }
+      // LA PAGINATION. Le « LIMIT 500 » du serveur tronquait en SILENCE, et le Journal — qui grossit sans fin —
+      // l'atteindra bien avant les clients. Une troncature muette se lit comme « tout est là ».
+      var total = lignes.length;
+      var pageMax = Math.max(1, Math.ceil(total / PAR_PAGE));
+      // On borne AVANT de découper : un filtre qui vient de réduire la sélection laisserait sinon
+      // la page courante hors des bornes, donc un tableau vide sans raison (9.4.5).
+      if (!pages[onglet] || pages[onglet] > pageMax) pages[onglet] = Math.min(pages[onglet] || 1, pageMax);
+      var page = pages[onglet];
+      var visibles = total > PAR_PAGE ? lignes.slice((page - 1) * PAR_PAGE, page * PAR_PAGE) : lignes;
       var html = '<div class="wrap"><table><thead><tr>' +
         cols.map(function (c) {
-          var cl = (c.n ? 'num' : '') + (c.a ? ' acts' : '');
-          return '<th' + (cl.trim() ? ' class="' + cl.trim() + '"' : '') + '>' + c.t + '</th>';
+          var cl = (c.n ? 'num' : '') + (c.a ? ' acts' : '') + (c.a ? '' : ' tri');
+          var actif = tri && tri.k === c.k;
+          return '<th' + (cl.trim() ? ' class="' + cl.trim() + '"' : '') + (c.a ? '' : ' data-tri="' + h(c.k) + '" tabindex="0" role="button"')
+            + (actif ? ' aria-sort="' + (tri.sens > 0 ? 'ascending' : 'descending') + '"' : '') + '>' + c.t
+            + (c.a ? '' : '<span class="fl" aria-hidden="true">' + (actif ? (tri.sens > 0 ? '\\u2191' : '\\u2193') : '\\u21c5') + '</span>')
+            + (c.i ? bulle(c.i) : '') + '</th>';
         }).join('') +
         '</tr></thead><tbody>' +
-        lignes.map(function (r) {
+        visibles.map(function (r) {
           return '<tr>' + cols.map(function (c) {
             var v = r[c.k];
             var texte = c.f ? c.f(v, r) : (v == null || v === '' ? '—' : v);
             var cl = (c.n ? 'num ' : '') + (c.m ? 'mono ' : '') + (c.l ? 'libre ' : '') + (c.a ? 'acts' : '');
             return '<td' + (cl.trim() ? ' class="' + cl.trim() + '"' : '') + '>' + (c.brut ? texte : h(texte)) + '</td>';
           }).join('') + '</tr>';
-        }).join('') + '</tbody></table></div>';
+        }).join('') + '</tbody>' +
+        // Le pied est TOUJOURS là, même sur quatre lignes : c'est lui qui dit « tu vois tout ».
+        // Ne l'afficher qu'au-delà d'une page laisserait le cas le plus dangereux — cinq cents
+        // lignes rendues par le serveur, tronquées en silence — se lire comme une liste complète.
+        '<tfoot><tr><td colspan="' + cols.length + '" style="padding:0">' + pagerBar(total, page, pageMax) + '</td></tr></tfoot>' +
+        '</table></div>';
       $('table').innerHTML = html;
+      brancherTri();
+      brancherPager();
       // Les boutons de ligne : un seul gestionnaire, qui retrouve la LIGNE au moment du clic (le
       // tableau a pu être redessiné entre-temps — piège 7.17.0).
       $('table').onclick = function (e) {
@@ -2829,7 +4054,9 @@ const CONSOLE_HTML = `<!doctype html>
         if (b.dataset.act === 'aller') { onglet = b.dataset.onglet; dessiner(); return; }
         var r = lignes.find(function (x) { return String(x.id) === b.dataset.id; }); if (!r) return;
         var act = b.dataset.act;
-        if (act === 'voir') voirCle(r.id);
+        if (act === 'fiche') ouvrirFiche(r.id);
+        else if (act === 'suivre') formSuivi(r.sujet || r.id, r.device_nom || r.client || r.id, r.app);
+        else if (act === 'voir') voirCle(r.id);
         else if (act === 'envoyer') envoyer(r);
         else if (act === 'renouveler') formEmettre(r, 'renouveler');
         else if (act === 'offre') formEmettre(r, 'offre');
@@ -2840,6 +4067,80 @@ const CONSOLE_HTML = `<!doctype html>
       };
     }
   }
+
+  // --- la palette (Cmd+K) ---
+  // Les deux applications l'ont depuis la 1.5.0 ; la console obligeait à viser une entrée du rail.
+  // Les entrées se DÉDUISENT des écrans et des gestes existants : une liste écrite à la main
+  // nommerait un jour un écran disparu, et c'est exactement ce qui a cassé Cmd+K en 7.30.0.
+  function entreesPalette() {
+    var out = [];
+    GROUPES.forEach(function (g) {
+      Object.keys(ECRANS).forEach(function (k) {
+        if (ECRANS[k].g !== g) return;
+        out.push({ t: ECRANS[k].h, ou: g, go: function () { onglet = k; recherche = ''; fiche = null; dessiner(); } });
+      });
+    });
+    out.push({ t: 'Émettre une licence…', ou: 'Geste', go: function () { onglet = 'licences'; fiche = null; dessiner(); formEmettre(null, null); } });
+    out.push({ t: 'Nouveau client…', ou: 'Geste', go: function () { onglet = 'clients'; fiche = null; dessiner(); formClient(); } });
+    out.push({ t: 'Exporter la base…', ou: 'Geste', go: function () { exporterBase($('exporter')); } });
+    // Chaque client par son nom : c'est ce qu'on cherche quand on décroche le téléphone, et le
+    // chemin le plus court y menait par deux écrans.
+    clients.forEach(function (c) { out.push({ t: c.nom, ou: 'Client', go: function () { ouvrirFiche(c.id); } }); });
+    return out;
+  }
+  var palChoix = 0, palListe = [];
+  function fermerPalette() { $('palette').hidden = true; $('palette').innerHTML = ''; }
+  function ouvrirPalette() {
+    var el = $('palette');
+    el.hidden = false;
+    el.innerHTML = '<div class="boite"><input id="pal-q" type="search" placeholder="Aller à… (écran, geste, client)" aria-label="Chercher un écran, un geste ou un client"><ul id="pal-l" role="listbox"></ul></div>';
+    var tout = entreesPalette();
+    var rendre = function (q) {
+      var s = q.trim().toLowerCase();
+      palListe = (!s ? tout : tout.filter(function (e) { return (e.t + ' ' + e.ou).toLowerCase().indexOf(s) >= 0; })).slice(0, 40);
+      palChoix = 0;
+      $('pal-l').innerHTML = palListe.length
+        ? palListe.map(function (e, i) { return '<li role="option" data-i="' + i + '" aria-selected="' + (i === 0) + '">' + h(e.t) + '<span class="ou">' + h(e.ou) + '</span></li>'; }).join('')
+        : '<li class="rien" role="option" aria-selected="false">Rien qui corresponde.</li>';
+      Array.prototype.forEach.call($('pal-l').querySelectorAll('li[data-i]'), function (li) {
+        li.onclick = function () { var e = palListe[Number(li.dataset.i)]; fermerPalette(); if (e) e.go(); };
+      });
+    };
+    rendre('');
+    var q = $('pal-q');
+    q.oninput = function () { rendre(q.value); };
+    q.onkeydown = function (ev) {
+      if (ev.key === 'Escape') { ev.preventDefault(); fermerPalette(); return; }
+      if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
+        ev.preventDefault();
+        if (!palListe.length) return;
+        palChoix = (palChoix + (ev.key === 'ArrowDown' ? 1 : palListe.length - 1)) % palListe.length;
+        Array.prototype.forEach.call($('pal-l').querySelectorAll('li[data-i]'), function (li, i) {
+          li.setAttribute('aria-selected', String(i === palChoix));
+          if (i === palChoix) li.scrollIntoView({ block: 'nearest' });
+        });
+        return;
+      }
+      if (ev.key === 'Enter') { ev.preventDefault(); var e = palListe[palChoix]; fermerPalette(); if (e) e.go(); }
+    };
+    // Cliquer À CÔTÉ ferme : une couche qu'on ne peut quitter qu'au clavier enferme celui qui l'a
+    // ouverte par erreur (5.2.2 — une promesse posée par une couche doit toujours se résoudre).
+    el.onclick = function (ev) { if (ev.target === el) fermerPalette(); };
+    q.focus();
+  }
+  document.addEventListener('keydown', function (e) {
+    if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+      e.preventDefault();
+      if ($('lock').hidden) { $('palette').hidden ? ouvrirPalette() : fermerPalette(); }
+      return;
+    }
+    // Échap ferme ce qui est ouvert, du plus haut au plus bas : la bulle passe avant la palette,
+    // sinon elle survivrait seule au-dessus d'un écran redevenu normal.
+    if (e.key === 'Escape') {
+      if (bulleOuverte) { fermerBulle(); return; }
+      if (!$('palette').hidden) { fermerPalette(); return; }
+    }
+  });
 
   if (secret) {
     api('stats').then(function () { $('lock').hidden = true; $('app').hidden = false; dessiner(); },

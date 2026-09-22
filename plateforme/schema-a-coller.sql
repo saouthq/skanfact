@@ -10,3 +10,6 @@ CREATE INDEX IF NOT EXISTS idx_ventes_afacturer ON ventes(facture_skanfact);
 CREATE TABLE IF NOT EXISTS jetons ( id TEXT PRIMARY KEY, nom TEXT NOT NULL, empreinte TEXT NOT NULL UNIQUE, cree_le TEXT NOT NULL, dernier_usage TEXT, revoque_le TEXT );
 CREATE TABLE IF NOT EXISTS evenements ( id INTEGER PRIMARY KEY AUTOINCREMENT, quand TEXT NOT NULL, quoi TEXT NOT NULL, client_id TEXT, licence_id TEXT, detail TEXT, par_qui TEXT );
 CREATE INDEX IF NOT EXISTS idx_evt_quand ON evenements(quand);
+CREATE TABLE IF NOT EXISTS reglages ( cle TEXT PRIMARY KEY, valeur TEXT NOT NULL, change_le TEXT NOT NULL );
+CREATE TABLE IF NOT EXISTS suivis ( id TEXT PRIMARY KEY, sujet TEXT NOT NULL, quand TEXT NOT NULL, moyen TEXT, note TEXT, rappel TEXT, issue TEXT, motif TEXT, source TEXT );
+CREATE INDEX IF NOT EXISTS idx_suivis_sujet ON suivis(sujet);

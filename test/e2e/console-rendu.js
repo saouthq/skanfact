@@ -29,12 +29,18 @@
 //   npm run e2e:console-rendu
 
 const { playwright, ouvrirChromium, journal, dossierCaptures,
-  SONDE_BOUTONS, SONDE_COLONNES, SONDE_ENTETES, SONDE_ESPACEMENT } = require('./harnais');
+  SONDE_BOUTONS, SONDE_COLONNES, SONDE_ENTETES, SONDE_ESPACEMENT, SONDE_LARGEUR } = require('./harnais');
 const { servir, SECRET } = require('./console-serveur');
 const path = require('path');
 
 const SEUIL = 2.0;                       // le seuil de contraste : il n'est pas esthétique, il attrape l'illisible
 const LARGEUR_MAX = 300, LARGEUR_MAX_RECHERCHE = 400, HAUTEUR_MAX = 100;
+// La part de la largeur OFFERTE qu'un tableau a le droit de laisser vide. Le seuil se tire du
+// code, pas du goût : un tableau plus étroit que son conteneur signifie qu'un plafond le borne, et
+// un plafond posé sur un objet qui se compare colonne par colonne est un choix — il doit être
+// assumé, pas hérité d'un plafond pensé pour de la prose. 15 % laisse la marge d'un tableau qui
+// n'a simplement pas besoin de toute la place ; au-delà, c'est une borne.
+const PERTE_MAX = 0.15;
 
 // L'écart minimum entre un bouton et ce qui le touche : QUATRE pixels, la même ligne que les deux
 // applications, et pour la même raison — au-dessus, l'espace vient d'un `gap` DÉCIDÉ en CSS ; en
@@ -49,7 +55,13 @@ const SEGMENTS = ['.tabs', 'td.acts'];
 // Les huit onglets, dans l'ordre où la console les range. Le parcours REFUSE un onglet vide : un
 // tableau sans lignes n'a pas de colonnes à comparer, et un instrument qui mesure le vide annonce
 // que tout va bien. C'est la leçon T-55, appliquée d'avance.
-const ONGLETS = ['alertes', 'licences', 'ventes', 'parc', 'cabinets', 'activations', 'clients', 'evenements'];
+// Les onglets qui portent une LISTE. `essais` entre ici en 10.5.0 : un écran neuf qu'aucune sonde
+// ne regarde est un écran qui dérive — c'est T-55, et il a coûté six versions au Cabinet.
+const ONGLETS = ['alertes', 'licences', 'ventes', 'parc', 'cabinets', 'activations', 'clients', 'evenements', 'essais'];
+// Les écrans qui ne sont PAS des listes : ils n'ont ni tableau, ni tri, ni pagination, et les
+// attendre comme une liste expire sur un écran parfaitement dessiné. On les mesure quand même —
+// c'est là que vivent quinze champs de saisie.
+const SANS_TABLE = ['reglages'];
 
 // Ce qu'un onglet DOIT contenir après le garnissage. « Le premier venu » ne suffit pas : c'est
 // exactement ce qui a fait mesurer quatre écrans sur onze au Cabinet pendant six versions.
@@ -88,7 +100,7 @@ const APP_SECRET = 'secret-de-test-' + 'x'.repeat(20);
     body: JSON.stringify({ deviceId: poste, deviceNom: nom, plateforme: 'darwin', version, app })
   });
 
-  let boutons = 0, colonnes = 0, controles = 0, ecarts = 0;
+  let boutons = 0, colonnes = 0, controles = 0, ecarts = 0, largeurs = 0;
 
   // Les quatre sondes sur l'écran courant. `ou` nomme l'endroit ET le contexte (largeur, thème) :
   // une faute qui n'existe qu'en sombre à 1280 doit se lire comme telle, sinon on la cherche à
@@ -106,11 +118,26 @@ const APP_SECRET = 'secret-de-test-' + 'x'.repeat(20);
     // (colonne d'actions collée à droite, colonne explicative qui revient à la ligne) ; c'est à ce
     // moment-là qu'il devient un garde-fou. L'armer plus tôt aurait laissé l'instrument rouge en
     // permanence, et un instrument rouge cesse d'être lu (9.1.0).
-    bs.filter(b => b.hors > 2 && !b.defilant).forEach(b =>
+    bs.filter(b => b.hors > 2 && !b.defilant && b.cls !== 'i').forEach(b =>
       fautes.push(`${ou} → « ${b.texte} » (${b.id || b.cls}) dépasse de ${b.hors} px hors de la fenêtre`));
-    bs.filter(b => b.hors > 2 && b.defilant).forEach(b =>
+    // Une BULLE « i » n'est pas un geste : c'est une annotation collée au titre qu'elle explique
+    // (10.5.0). Elle suit forcément sa colonne — si celle-ci est à droite d'un tableau qui défile,
+    // la bulle aussi, et l'accuser reviendrait à reprocher à une note de bas de page d'être en bas
+    // de la page. L'exception est NOMMÉE, parce qu'une exception anonyme est un trou (9.4.10) ; et
+    // elle ne porte QUE sur l'atteignabilité : le contraste de la bulle, lui, reste jugé — une
+    // explication illisible n'explique rien.
+    const geste = b => b.cls !== 'i';
+    bs.filter(b => b.hors > 2 && b.defilant && geste(b)).forEach(b =>
       fautes.push(`${ou} → « ${b.texte} » n'est atteignable qu'en faisant défiler le tableau de ${b.hors} px :`
         + ' un geste qu\'on doit aller chercher est un geste qu\'on ne fait pas'));
+
+    // La LARGEUR (10.5.0) : un tableau qui se serre pendant que la moitié de l'écran reste vide.
+    // Ça ne plante pas, ça ne déborde pas, ce n'est pas illisible — et c'est ce que le propriétaire
+    // a vu du premier coup d'œil sur une capture, alors que quatre sondes le regardaient déjà.
+    const lg = await page.evaluate(SONDE_LARGEUR, { cibles: '#table .wrap', perte: PERTE_MAX });
+    largeurs += 1;
+    lg.gaspillages.forEach(x => fautes.push(`${ou} — un tableau fait ${x.largeur} px dans ${x.offert} px :`
+      + ` ${x.perdu} px perdus à droite pendant que les colonnes se serrent`));
 
     const c = await page.evaluate(SONDE_COLONNES);
     colonnes += c.colonnes;
@@ -234,6 +261,16 @@ const APP_SECRET = 'secret-de-test-' + 'x'.repeat(20);
         await page.waitForFunction(() => document.getElementById('form').hidden, null, { timeout: 5000 });
       }
     }
+    // Les écrans qui ne sont pas des listes. Quinze champs de saisie y vivent, et aucune sonde ne
+    // les regardait : l'instrument aurait annoncé « tout va bien » sur l'écran où l'on règle les
+    // PRIX (T-55).
+    for (const t of SANS_TABLE) {
+      await page.click(`#tabs button[data-t="${t}"]`);
+      await page.waitForSelector('#fiche:not([hidden]) [data-reg]');
+      await page.waitForTimeout(200);
+      await mesurer(`${etiquette} · ${t}`);
+    }
+
     // On referme par le VRAI bouton, `#f-non`. Ma première version visait `#f-annuler, #f-fermer`
     // — deux identifiants qui n'existent pas — sous un `.catch(() => {})`, puis posait `hidden` à
     // la main quand le clic avait échoué. Deux fautes d'un coup : un refus avalé en silence
@@ -309,8 +346,12 @@ const APP_SECRET = 'secret-de-test-' + 'x'.repeat(20);
     await page.waitForSelector('#tabs button');
     await page.waitForTimeout(400);
     const n = await page.$$eval('#tabs button', bs => bs.length);
-    if (n !== ONGLETS.length) throw new Error(`la console offre ${n} onglets et le parcours en connaît `
-      + `${ONGLETS.length} : un onglet neuf ne serait mesuré par personne`);
+    // Le compte porte sur TOUS les écrans du rail, listes ou non : c'est le garde-fou T-55. Le
+    // laisser sur les seules listes aurait rendu l'écran des Réglages invisible à l'instrument —
+    // c'est-à-dire exactement l'écran où l'on change des PRIX.
+    const TOUS = ONGLETS.length + SANS_TABLE.length;
+    if (n !== TOUS) throw new Error(`la console offre ${n} onglets et le parcours en connaît `
+      + `${TOUS} : un onglet neuf ne serait mesuré par personne`);
     j.ok(`la console s'ouvre sur ses ${n} onglets`);
 
     // ---------------------------------------------------------------- les quatre passes
@@ -357,7 +398,7 @@ const APP_SECRET = 'secret-de-test-' + 'x'.repeat(20);
 
   if (bac.length) { console.error('\nErreurs de la page :\n' + bac.join('\n')); process.exit(2); }
   // Un instrument qui ne mesure rien annonce « tout va bien » : il doit échouer, pas se taire.
-  if (!boutons || !colonnes || !ecarts) { console.error('\nRien n\'a été mesuré : le parcours ne prouve rien.'); process.exit(2); }
+  if (!boutons || !colonnes || !ecarts || !largeurs) { console.error('\nRien n\'a été mesuré : le parcours ne prouve rien.'); process.exit(2); }
   const f1280 = flottaison.filter(x => / 1280 /.test(x.ou));
   if (f1280.length) {
     const pire = f1280.reduce((a, b) => (b.y > a.y ? b : a));
@@ -385,8 +426,8 @@ const APP_SECRET = 'secret-de-test-' + 'x'.repeat(20);
   // parce que c'est exactement ce que la refonte va ajouter, et qu'un `select` posé dans un
   // conteneur flex réclame toute la ligne sans qu'on le voie (7.23.0). On l'ÉCRIT plutôt que de
   // laisser un zéro passer pour une mesure.
-  console.log(`\n${j.total()} étapes — ${boutons} boutons, ${colonnes} colonnes, ${ecarts} écarts`
-    + ` mesurés sur les huit onglets, les deux formulaires, la clé émise et la relance composée, en clair et en sombre,`
+  console.log(`\n${j.total()} étapes — ${boutons} boutons, ${colonnes} colonnes, ${ecarts} écarts, ${largeurs} largeurs`
+    + ` mesurés sur les dix écrans, les formulaires, la clé émise et la relance composée, en clair et en sombre,`
     + ' à 1440 et à 1280 : rien d\'illisible, rien de désaligné, rien de collé.'
     + `\n${controles} champ(s) dans une barre d'actions`
     + (controles ? ', aucun étiré.' : ' : la console n\'en a aucun aujourd\'hui — la sonde attend la refonte.'));

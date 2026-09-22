@@ -390,7 +390,35 @@ function montant(texte) {
   return negatif ? -n : n;
 }
 
+// 5. LA LARGEUR (10.5.0). Les quatre sondes précédentes mesurent des objets — leur couleur, leur
+//    débordement, leur alignement, leur écart. Aucune ne regardait la PLACE PERDUE : la console
+//    bornait tout son contenu à 1180 px, prose et tableaux confondus, et sur une fenêtre ordinaire
+//    un tableau de dix colonnes se serrait pendant que 700 px restaient vides à droite. Ça ne
+//    plante pas, ça ne déborde pas, ça n'est pas illisible — et c'est ce que Skander a vu du
+//    premier coup d'œil sur une capture.
+//
+//    La règle mesurée n'est PAS « tout en pleine largeur » : une ligne de prose de 1900 px est
+//    illisible. Ce qu'on interdit, c'est qu'un TABLEAU — un objet qui se compare colonne par
+//    colonne — laisse plus que `perte` de la largeur disponible inutilisée. La prose, elle, a le
+//    droit d'être bornée : la sonde ne juge que ce qu'on lui désigne.
+const SONDE_LARGEUR = ({ cibles, perte }) => {
+  const dispo = document.documentElement.clientWidth;
+  const out = [];
+  document.querySelectorAll(cibles).forEach(el => {
+    const r = el.getBoundingClientRect();
+    if (!r.width || el.offsetParent === null) return;
+    // La place RÉELLEMENT offerte à cet élément : celle de son parent, pas celle de la fenêtre —
+    // un tableau dans un rail étroit n'a pas à remplir l'écran.
+    const p = el.parentElement ? el.parentElement.getBoundingClientRect().width : dispo;
+    const libre = Math.max(0, p - r.width);
+    if (libre > p * perte) {
+      out.push({ quoi: el.className || el.tagName, largeur: Math.round(r.width), offert: Math.round(p), perdu: Math.round(libre) });
+    }
+  });
+  return { dispo, gaspillages: out };
+};
+
 module.exports = {
   playwright, RACINE, ELECTRON, VERSION, journal, surveiller, dossierCaptures, ouvrirChromium,
-  capturePleine, SONDE_BOUTONS, SONDE_COLONNES, SONDE_ENTETES, SONDE_ESPACEMENT, montant
+  capturePleine, SONDE_BOUTONS, SONDE_COLONNES, SONDE_ENTETES, SONDE_ESPACEMENT, SONDE_LARGEUR, montant
 };

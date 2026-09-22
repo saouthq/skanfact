@@ -195,11 +195,22 @@ module.exports = async ({ t, ta, assert, lireSource }) => {
     // l'enveloppe, puis AJOUTÉE à côté. Le test relit la source parce que c'est l'ORDRE des deux
     // lignes qui fait la règle, et qu'une inversion ne se verrait nulle part.
     const src = fs.readFileSync(path.join(__dirname, '..', '..', 'plateforme', 'skanfact-api.mjs'), 'utf8');
-    const i = src.indexOf('const texte = JSON.stringify(env1);');
-    const j = src.indexOf('sha256: somme');
-    assert.ok(i > 0 && j > i, 'la somme se calcule sur l\'enveloppe AVANT d\'y être ajoutée');
-    assert.ok(!/JSON\.stringify\(\{ \.\.\.env1, sha256[^)]*\)\s*\)\s*;?\s*const somme/.test(src),
-      'la somme ne doit jamais porter sur un objet qui la contient déjà');
+    // La règle vaut pour CHAQUE endroit qui empreint un export — il y en a deux depuis la 10.5.0
+    // (le bouton, et la copie automatique de nuit). Une assertion ancrée sur la première
+    // occurrence venue jugeait un seul des deux, et l'ordre des fonctions dans le fichier
+    // décidait lequel : c'est exactement la tranche qui se périme quand une fonction déménage.
+    const sites = [...src.matchAll(/const (\w+) = hex\(await crypto\.subtle\.digest\('SHA-256', enc\.encode\((\w+)\)\)\);/g)];
+    assert.ok(sites.length >= 2, 'les deux chemins d\'export doivent empreindre : ' + sites.length);
+    sites.forEach(m => {
+      const nom = m[2];
+      const decl = src.lastIndexOf('const ' + nom + ' = ', m.index);
+      assert.ok(decl > 0, 'la variable empreinte (' + nom + ') doit être déclarée juste avant');
+      const ligne = src.slice(decl, src.indexOf('\n', decl));
+      assert.ok(/JSON\.stringify\(/.test(ligne), 'on empreint une sérialisation, pas autre chose : ' + ligne.trim());
+      assert.ok(!/sha256/.test(ligne), 'la somme ne doit jamais porter sur un objet qui la contient déjà : ' + ligne.trim());
+      // …et elle est AJOUTÉE à côté, après coup.
+      assert.ok(/sha256: somme/.test(src.slice(m.index, m.index + 600)), 'la somme se range à côté de l\'enveloppe');
+    });
   });
 
   await ta('10.4.0 : le journal se filtre, et un filtre inventé ne passe pas', async () => {
@@ -790,4 +801,392 @@ module.exports = async ({ t, ta, assert, lireSource }) => {
     assert.strictEqual(bis[0].sujets, 'A, B');
     assert.strictEqual(bis[0].n, 3, 'le compte suit les occurrences, pas les noms distincts');
   });
+
+  // ==========================================================================================
+  // 10.5.0 — les réglages, le suivi commercial, et ce qui garde la boutique
+  // ==========================================================================================
+  // Le constat qui commande tout : la console savait ce qui EXISTE, et ne retenait rien de ce
+  // qu'on en FAISAIT. Un essai se terminait, l'alerte se levait, on appelait — et le lendemain la
+  // même alerte se relevait à l'identique. Une alerte qui ne se referme pas cesse d'être lue au
+  // cinquième prospect, et emmène avec elle celles qui comptaient.
+  // Et un prix qui se change en modifiant le code n'est pas un prix : c'est une constante.
+
+  await ta('10.5.0 : un réglage se nettoie selon son TYPE, et un refus dit la forme attendue', async () => {
+    const P = await API();
+    assert.strictEqual(P.valeurReglage('prix_entreprise', '880'), 880);
+    assert.strictEqual(P.valeurReglage('prix_entreprise', '880,5'), 880.5, 'la virgule décimale est celle qu\'on tape');
+    assert.strictEqual(P.valeurReglage('prix_entreprise', '-1'), null, 'un prix négatif n\'existe pas');
+    assert.strictEqual(P.valeurReglage('remise_parrainage', '120'), null, 'un pourcentage ne dépasse pas 100');
+    assert.strictEqual(P.valeurReglage('alerte_fin', '30,7'), 31, 'un seuil est un nombre de JOURS entiers : un demi-jour ne veut rien dire');
+    assert.strictEqual(P.valeurReglage('alerte_fin', '0'), 0, 'zéro est une valeur légitime : « pas d\'alerte »');
+    // Une devise est un code à trois lettres. « dinar » accepté en silence ferait passer toutes
+    // les factures à deux décimales au lieu de trois (7.30.0).
+    assert.strictEqual(P.valeurReglage('devise', 'eur'), 'EUR');
+    assert.strictEqual(P.valeurReglage('devise', 'dinar'), null);
+    // Une adresse qui ne s'analyse pas n'est pas une adresse : la poser la ferait partir telle
+    // quelle dans un mail (6.7.2 — le secret avec une espace en fin).
+    assert.strictEqual(P.valeurReglage('lien_paiement', 'paiement.tn'), null);
+    assert.strictEqual(P.valeurReglage('lien_paiement', 'https://paiement.tn/a'), 'https://paiement.tn/a');
+    assert.strictEqual(P.valeurReglage('lien_paiement', ''), '', 'un champ de texte vidé RESTE vide : c\'est une décision');
+    assert.strictEqual(P.valeurReglage('prix_entreprise', ''), null, 'un champ numérique vidé retombe au rang suivant');
+    assert.ok(/pourcentage entre 0 et 100/.test(P.refusReglage({ type: 'pourcent' }, '250')),
+      'le refus donne la FORME attendue : « valeur invalide » oblige à deviner');
+  });
+
+  await ta('10.5.0 : les trois rangs d\'un réglage, dans cet ordre, et la source part avec la valeur', async () => {
+    const P = await API();
+    const sans = P.reglagesEffectifs({}, {});
+    assert.strictEqual(sans.valeurs.prix_entreprise, 690);
+    assert.strictEqual(sans.sources.prix_entreprise, 'defaut',
+      'la source part AVEC la valeur : un écran de nombres laisse croire qu\'ils ont tous été décidés');
+    const worker = P.reglagesEffectifs({ PRIX_ENTREPRISE: '750' }, {});
+    assert.strictEqual(worker.valeurs.prix_entreprise, 750);
+    assert.strictEqual(worker.sources.prix_entreprise, 'worker');
+    const base = P.reglagesEffectifs({ PRIX_ENTREPRISE: '750' }, { prix_entreprise: '880' });
+    assert.strictEqual(base.valeurs.prix_entreprise, 880, 'l\'écran CORRIGE le worker, jamais l\'inverse');
+    assert.strictEqual(base.sources.prix_entreprise, 'base');
+    // Chaque réglage déclaré doit être calculable : un identifiant oublié dans la table rendrait
+    // un champ qui s'affiche, s'enregistre, et n'est jamais lu (le défaut de `matricule`, 6.8.0).
+    P.REGLAGES.forEach(def => {
+      assert.ok(Object.prototype.hasOwnProperty.call(sans.valeurs, def.id), 'réglage sans valeur : ' + def.id);
+      assert.ok(def.label && def.aide && def.groupe, 'un réglage dit ce qu\'il fait : ' + def.id);
+    });
+    // La durée de l'essai n'est PAS réglable, et c'est une décision : c'est la règle de
+    // l'application, pas une politique de la console. Réglée ici, elle annoncerait des fins
+    // d'essai fausses. Le test tombe si quelqu'un l'ajoute sans y penser.
+    assert.ok(!P.REGLAGES.some(d => /essai_jours|duree_essai/.test(d.id)),
+      'la durée de l\'essai se compte sur la machine du client : la console ne la décide pas');
+  });
+
+  await ta('10.5.0 : les seuils par défaut sont ceux de la table — deux listes divergeraient', async () => {
+    const P = await API();
+    const parId = new Map(P.REGLAGES.map(r => [r.id, r.defaut]));
+    Object.keys(P.SEUILS_DEFAUT).forEach(k => {
+      assert.ok(parId.has(k), 'seuil sans réglage : ' + k);
+      assert.strictEqual(P.SEUILS_DEFAUT[k], parId.get(k), 'le défaut de ' + k + ' diverge entre la table et les alertes');
+    });
+    // Et les seuils historiques n'ont pas bougé : `alertesPlateforme(d, jour)` sans troisième
+    // argument doit se comporter EXACTEMENT comme en 10.4.0.
+    assert.strictEqual(P.SEUILS_DEFAUT.alerte_fin, P.ALERTE_FIN);
+    assert.strictEqual(P.SEUILS_DEFAUT.alerte_essai, P.ALERTE_ESSAI);
+    assert.strictEqual(P.SEUILS_DEFAUT.alerte_export, P.ALERTE_EXPORT);
+  });
+
+  await ta('10.5.0 : un sujet SUIVI ne redemande rien — et seulement lui', async () => {
+    const P = await API();
+    const jour = '2026-09-22';
+    const base = {
+      licences: [{ id: 'l1', client_id: 'c1', client: 'Alpha', fin: '2026-10-01', envoyee_le: 'x' },
+                 { id: 'l2', client_id: 'c2', client: 'Beta', fin: '2026-10-01', envoyee_le: 'x' }],
+      ventes: [{ id: 'v1', client_id: 'c1', client: 'Alpha' }]
+    };
+    const sans = P.alertesPlateforme(base, jour);
+    assert.ok(sans.some(a => a.sujet === 'Alpha'), 'sans suivi, le client crie');
+    // Rappelé plus tard : il se tait JUSQU'À la date, pas au-delà.
+    const tait = P.alertesPlateforme({ ...base, suivis: { 'client:c1': { rappel: '2026-10-05' } } }, jour);
+    assert.ok(!tait.some(a => a.sujet === 'Alpha'), 'un rappel dans le futur fait taire ce client');
+    assert.ok(tait.some(a => a.sujet === 'Beta'), 'et SEULEMENT lui : les autres crient toujours');
+    const echu = P.alertesPlateforme({ ...base, suivis: { 'client:c1': { rappel: '2026-09-20', nom: 'Alpha' } } }, jour);
+    assert.ok(echu.some(a => a.sujet === 'Alpha'), 'un rappel échu rend le client à l\'écran');
+    assert.ok(echu.some(a => /Rappel prévu/.test(a.quoi)),
+      'et le rappel lui-même devient une ligne : un prospect mis en attente ne doit pas disparaître pour toujours');
+    // « Perdu » ferme définitivement ; « gagné » aussi.
+    ['perdu', 'gagne'].forEach(issue => {
+      const f = P.alertesPlateforme({ ...base, suivis: { 'client:c1': { issue } } }, jour);
+      assert.ok(!f.some(a => a.sujet === 'Alpha'), issue + ' ferme le sujet');
+    });
+    // Ce qui n'est PAS un geste vers le client ne se fait jamais taire par un coup de téléphone.
+    const cle = P.alertesPlateforme({
+      licences: [{ id: 'l3', client_id: 'c1', client: 'Alpha', envoyee_le: null }],
+      suivis: { 'client:c1': { issue: 'perdu' } }
+    }, jour);
+    assert.ok(cle.some(a => /Clé jamais envoyée/.test(a.quoi)),
+      'une clé signée et jamais partie reste à FAIRE : c\'est un geste de l\'éditeur, pas une conversation');
+  });
+
+  await ta('10.5.0 : un client payant devenu muet, et un poste resté en arrière', async () => {
+    const P = await API();
+    const jour = '2026-09-22';
+    const postes = [
+      { device_id: 'd1', device_nom: 'Mac de Leïla', app: 'entreprise', empreinte: 'abc', version: '10.4.0', derniere_fois: '2026-07-01T09:00:00Z', client_id: 'c9', client: 'Leïla SARL' },
+      { device_id: 'd2', device_nom: 'PC', app: 'cabinet', empreinte: 'def', version: '8.4.1', derniere_fois: '2026-09-21T09:00:00Z', client_id: 'c8', client: 'Cabinet Nord' },
+      { device_id: 'd3', device_nom: 'essai', app: 'entreprise', empreinte: P.ESSAI, version: '8.4.1', derniere_fois: '2026-07-01T09:00:00Z' }
+    ];
+    const a = P.alertesPlateforme({ postes }, jour);
+    const muet = a.filter(x => /devenu muet/.test(x.quoi));
+    assert.strictEqual(muet.length, 1, 'un seul poste sous licence est muet — l\'essai abandonné n\'est pas un client qui part');
+    assert.strictEqual(muet[0].sujet, 'Leïla SARL');
+    assert.ok(/83 jours|8\d jours/.test(muet[0].detail), 'et l\'alerte dit depuis COMBIEN de temps : ' + muet[0].detail);
+    // Le seuil à zéro éteint l'alerte : la valeur par défaut d'une règle qu'on ne veut pas est
+    // celle qui ne fait rien (9.1.1).
+    assert.ok(!P.alertesPlateforme({ postes }, jour, { silence_client: 0 }).some(x => /devenu muet/.test(x.quoi)));
+    // La version minimale : rien tant qu'elle n'est pas réglée. La console n'écrit aucune règle.
+    assert.ok(!a.some(x => /version ancienne/.test(x.quoi)), 'sans version minimale réglée, aucune alerte');
+    const vieux = P.alertesPlateforme({ postes }, jour, { version_minimale: '10.0.0', version_motif: 'la TVA par taux a été corrigée.' });
+    const vs = vieux.filter(x => /version ancienne/.test(x.quoi));
+    assert.strictEqual(vs.length, 2, 'les deux postes en 8.4.1 sont signalés, quelle que soit leur application');
+    assert.ok(/la TVA par taux a été corrigée/.test(vs[0].detail),
+      'et le MOTIF est dans l\'alerte : une mise à jour réclamée sans raison ne se fait pas');
+  });
+
+  await ta('10.5.0 : le jalon de renouvellement prépare, il ne presse pas', async () => {
+    const P = await API();
+    const jour = '2026-09-22';
+    const lic = c => ({ licences: [{ id: 'l1', client_id: 'c1', client: 'Alpha', fin: c, envoyee_le: 'x' }] });
+    const loin = P.alertesPlateforme(lic('2026-11-10'), jour).filter(a => /Renouvellement à préparer/.test(a.quoi));
+    assert.strictEqual(loin.length, 1, 'à cinquante jours, on prépare');
+    assert.strictEqual(loin[0].niveau, 'calme', 'et calmement : une occasion criée en rouge apprend à ignorer le rouge');
+    const proche = P.alertesPlateforme(lic('2026-10-10'), jour);
+    assert.ok(proche.some(a => /Licence qui se termine/.test(a.quoi)), 'à dix-huit jours, on presse');
+    assert.ok(!proche.some(a => /Renouvellement à préparer/.test(a.quoi)),
+      'et les deux ne se doublent JAMAIS : deux lignes pour la même licence, c\'est du bruit');
+    assert.ok(!P.alertesPlateforme(lic('2026-11-10'), jour, { jalon_renouvellement: 0 })
+      .some(a => /Renouvellement à préparer/.test(a.quoi)), 'à zéro, le jalon n\'existe pas');
+  });
+
+  await ta('10.5.0 : le mail porte le lien de paiement et la signature réglée, et rien d\'autre', async () => {
+    const P = await API();
+    const avec = P.mailRelance('impayee', { client: 'Alpha', montant: 690, devise: 'TND', lien: 'https://pay.tn/x', signature: 'Moi — SkanFact' });
+    assert.ok(/https:\/\/pay\.tn\/x/.test(avec.corps), 'le lien réglé est dans la relance');
+    assert.ok(/Moi — SkanFact$/.test(avec.corps.trim()), 'et la signature vient du réglage, plus du code');
+    const sans = P.mailRelance('impayee', { client: 'Alpha', montant: 690, devise: 'TND' });
+    assert.ok(!/régler en ligne/.test(sans.corps), 'sans lien, la phrase DISPARAÎT — pas un vide, pas un « … »');
+    assert.ok(/Skander Ben Amor/.test(sans.corps), 'et la signature par défaut ne change rien pour qui n\'y a pas touché');
+    assert.strictEqual(P.mailRelance('impayee', { client: 'A', signature: '' }).corps.trim().split('\n').pop(), 'Bien cordialement,',
+      'une signature vidée arrête le mail à la formule de politesse');
+    // Le DEVIS : ce que la console ne savait pas faire — parler à quelqu'un qui n'a rien acheté.
+    const devis = P.mailRelance('devis', { client: 'Beta', offre: 'Entreprise', montant: 880, devise: 'TND' });
+    assert.ok(/880,000 TND HT par an/.test(devis.corps), 'le devis porte le prix RÉGLÉ : ' + devis.corps.slice(0, 200));
+    assert.ok(/proposition/.test(devis.sujet));
+  });
+
+  await ta('10.5.0 : l\'export nomme ses tables en français, et le pluriel s\'accorde', async () => {
+    const P = await API();
+    const r = P.resumeExport({ clients: 1, licences: 2, activations: 4, ventes: 0, jetons: 0, evenements: 3 });
+    // L'écran écrivait « evenements : 3 · jetons : 0 » — les noms de tables SQL tels quels, accent
+    // manquant compris. Ça ne casse rien, et ça dit à celui qui lit que personne n'a regardé.
+    assert.ok(/1 client\b/.test(r) && /2 licences/.test(r) && /3 événements/.test(r), r);
+    assert.ok(!/evenements|jetons :/.test(r), 'aucun nom de table SQL à l\'écran : ' + r);
+    // `pl` accorde : une étiquette écrite au pluriel donnerait « 0 clientss » au premier export vide.
+    assert.ok(/0 vente\b/.test(P.resumeExport({})) && !/ss\b/.test(P.resumeExport({ clients: 2, licences: 2, activations: 2, ventes: 2, jetons: 2, evenements: 2 })),
+      'le singulier est ce qu\'on écrit, l\'accord est ce que la fonction fait');
+    assert.ok(/2 jetons de poste/.test(P.resumeExport({ jetons: 2 })),
+      'et le pluriel irrégulier s\'écrit à côté : « jeton de postes » serait faux');
+  });
+
+  await ta('10.5.0 : le pli scellé est une procédure, et aucune clé privée n\'en sort', async () => {
+    const P = await API();
+    const texte = P.pliScelle({ comptes: { clients: 3, licences: 4, activations: 5, ventes: 4, jetons: 0, evenements: 12 }, kid: 'srv-1', quand: '2026-09-22' });
+    assert.ok(/une seule personne peut émettre/.test(texte), 'le pli nomme le vrai risque');
+    assert.ok(/3 clients/.test(texte) && /12 événements/.test(texte), 'et compte ce qui serait perdu, en français');
+    assert.ok(!/PRIVATE KEY|BEGIN /.test(texte), 'aucune clé privée : ce qui sort est une PROCÉDURE');
+    assert.ok(/chez une personne, le mot de passe chez une AUTRE/.test(texte),
+      'et il dit comment sceller : un pli dont les deux moitiés voyagent ensemble n\'est pas scellé');
+    assert.ok(/continuent de fonctionner/.test(texte),
+      'il dit aussi ce qui reste vrai sans lui : un client ne perd jamais son logiciel');
+  });
+
+  await ta('10.5.0 : la copie automatique DIT ce qui lui manque, et écrit quand elle le peut', async () => {
+    const P = await API();
+    const rien = P.etatSauvegarde({}, '');
+    assert.strictEqual(rien.auto, false);
+    assert.ok(/bucket R2/.test(rien.raison), 'non branchée, elle le dit — jamais un vert rassurant (10.4.0)');
+    assert.ok(/cron|déclencheur/.test(rien.quoi), 'et elle dit quoi faire pour la brancher');
+    const seau = { fiches: {}, async put(nom, corps) { this.fiches[nom] = corps; } };
+    assert.strictEqual(P.etatSauvegarde({ [P.R2_BINDING]: seau }, '2026-09-01').auto, true);
+    // Sans base, elle refuse proprement : ce code tourne la nuit, une panne muette y est pire.
+    assert.strictEqual((await P.exporterVersR2({ [P.R2_BINDING]: seau }, '2026-09-22T00:00:00Z')).ok, false);
+    const { baseD1 } = require('../d1-sqlite');
+    const db = baseD1();
+    try {
+      db.lire("INSERT INTO clients (id, nom, cree_le) VALUES ('c1', 'Alpha', '2026-01-01T00:00:00Z')");
+      const r = await P.exporterVersR2({ DB: db, [P.R2_BINDING]: seau }, '2026-09-22T00:00:00Z');
+      assert.ok(r.ok, 'la copie part : ' + (r.raison || ''));
+      assert.strictEqual(r.nom, 'console-2026-09-22.json');
+      const doc = JSON.parse(seau.fiches['console-2026-09-22.json']);
+      assert.strictEqual(doc.comptes.clients, 1, 'et elle porte un COMPTE par table');
+      assert.strictEqual(doc.sha256, r.sha256);
+      assert.ok(Array.isArray(doc.tables.licences), 'toutes les tables y sont, même vides');
+    } finally { db.fermer(); }
+  });
+
+  await ta('10.5.0 : un second secret ouvre la console le temps d\'une rotation, aux mêmes exigences', async () => {
+    const P = await API();
+    const A = 'A'.repeat(30), B = 'B'.repeat(30);
+    const h = v => ({ get: n => (n === 'x-skanfact-admin' ? v : null) });
+    assert.strictEqual(P.autoriseAdmin(h(A), { ADMIN_SECRET: A }).ok, true);
+    assert.strictEqual(P.autoriseAdmin(h(B), { ADMIN_SECRET: A }).ok, false, 'sans rotation, un seul secret ouvre');
+    const deux = { ADMIN_SECRET: A, ADMIN_SECRET_2: B };
+    assert.strictEqual(P.autoriseAdmin(h(A), deux).secret, 'principal');
+    assert.strictEqual(P.autoriseAdmin(h(B), deux).secret, 'rotation',
+      'pendant la rotation, les deux ouvrent — sinon remplacer le secret ferme la console à la seconde où on le remplace');
+    // Un secret de rotation court serait une porte de service : refusé À LA CONFIGURATION.
+    const court = P.autoriseAdmin(h(A), { ADMIN_SECRET: A, ADMIN_SECRET_2: 'court' });
+    assert.strictEqual(court.ok, false);
+    assert.strictEqual(court.code, 503, 'mal réglé se DIT (503), ne se refuse pas (403)');
+    assert.ok(/ADMIN_SECRET_2/.test(court.message));
+    assert.strictEqual(P.etatSecret({ ADMIN_SECRET: A }).rotation, false);
+    assert.ok(/SUPPRIME/.test(P.etatSecret(deux).quoi), 'et la console rappelle de FINIR la rotation');
+  });
+
+  await ta('10.5.0 : la vérification publique dit l\'état, et jamais à qui la licence appartient', async () => {
+    const { baseD1 } = require('../d1-sqlite');
+    const P = await API();
+    const db = baseD1();
+    const env = { DB: db };
+    try {
+      db.lire("INSERT INTO clients (id, nom, matricule, cree_le) VALUES ('c1','Menuiserie Trabelsi','1234567A','2026-01-01T00:00:00Z')");
+      const pose = (id, emp, fin, rev) => db.lire(
+        "INSERT INTO licences (id, client_id, kid, empreinte, offre, debut, fin, emise_le, revoquee_le) VALUES (?,?,?,?,?,?,?,?,?)",
+        id, 'c1', 'srv-1', emp, 'entreprise', '2026-01-01', fin, '2026-01-01T00:00:00Z', rev);
+      pose('l1', 'aaaa1111bbbb2222cccc', '2099-01-01', null);
+      pose('l2', 'dddd3333eeee4444ffff', '2020-01-01', null);
+      pose('l3', '11112222333344445555', '2099-01-01', '2026-02-02');
+      const verif = async emp => (await (await P.default.fetch(new Request('https://x/v1/verif/licence', {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ empreinte: emp })
+      }), env)).json());
+      const ok = await verif('AAAA-1111-BBBB-2222-CCCC');
+      assert.strictEqual(ok.etat, 'valable', 'l\'empreinte se lit avec ou sans ses séparateurs');
+      assert.ok(!/Trabelsi|1234567A/.test(JSON.stringify(ok)),
+        'et la réponse ne dit JAMAIS à qui elle appartient : celui qui présente une clé ne doit rien apprendre de plus');
+      // Ce qui PROTÈGE, c'est que la requête ne va jamais chercher le client — pas la forme de la
+      // réponse. Une assertion sur la seule réponse restait verte quand on étalait la ligne dans
+      // le JSON « pour avoir tout sous la main », parce qu'il n'y avait rien à étaler. On garde
+      // donc la CAUSE : cette route ne lit pas la table des clients, et ne la joint pas.
+      const src = fs.readFileSync(path.join(__dirname, '..', '..', 'plateforme', 'skanfact-api.mjs'), 'utf8');
+      const i = src.indexOf('async function repondreVerif(');
+      assert.ok(i > 0, 'la route publique est introuvable');
+      const corps = src.slice(i, src.indexOf('\n}', i));
+      assert.ok(corps.length > 400 && corps.length < 4000, 'tranche de repondreVerif inattendue : ' + corps.length);
+      assert.ok(!/\bclients\b/.test(corps),
+        'la vérification publique ne LIT jamais la table des clients : c\'est la requête qui protège, pas la forme de la réponse');
+      assert.ok(!/JOIN/i.test(corps), 'ni ne joint quoi que ce soit');
+      assert.strictEqual((await verif('dddd3333eeee4444ffff')).etat, 'expiree');
+      assert.strictEqual((await verif('11112222333344445555')).etat, 'revoquee');
+      assert.strictEqual((await verif('0000000000000000ffff')).etat, 'inconnue',
+        'une empreinte inconnue est dite inconnue : répondre « valable » par prudence serait un mensonge');
+      // Un G tapé pour un 6 doit rester une faute VISIBLE (8.1.0) : on retire les séparateurs,
+      // jamais « tout ce qui n'est pas hexadécimal ».
+      assert.strictEqual((await verif('GGGG-1111-BBBB-2222-CCCC')).etat, 'illisible');
+      // Et cette route est la SEULE ouverte : elle n'écrit rien, et ne répond qu'en POST.
+      assert.strictEqual((await P.default.fetch(new Request('https://x/v1/verif/licence'), env)).status, 405);
+    } finally { db.fermer(); }
+  });
+
+  await ta('10.5.0 : régler un prix depuis l\'écran, et le suivi qui fait taire une alerte', async () => {
+    const { baseD1 } = require('../d1-sqlite');
+    const P = await API();
+    const ADMIN = 'R'.repeat(30);
+    const db = baseD1();
+    const env = { DB: db, ADMIN_SECRET: ADMIN };
+    const appel = (chemin, corps) => P.default.fetch(new Request('https://x/v1/admin/' + chemin, corps
+      ? { method: 'POST', headers: { 'x-skanfact-admin': ADMIN, 'content-type': 'application/json' }, body: JSON.stringify(corps) }
+      : { headers: { 'x-skanfact-admin': ADMIN } }), env);
+    try {
+      // Un réglage refusé est NOMMÉ, et le reste passe quand même : un formulaire tout-ou-rien
+      // ferait recommencer quinze champs pour une virgule.
+      const r1 = await appel('reglages', { valeurs: { prix_entreprise: '880', remise_parrainage: '250' } });
+      assert.strictEqual(r1.status, 400);
+      const j1 = await r1.json();
+      assert.strictEqual(j1.refuses.length, 1);
+      assert.strictEqual(j1.refuses[0].id, 'remise_parrainage');
+      assert.ok(/Remise de parrainage/.test(j1.erreur), 'le refus porte une PHRASE, pas seulement une liste');
+      assert.strictEqual(j1.valeurs.prix_entreprise, 880, 'et ce qui était bon est enregistré');
+      // Vider un champ NUMÉRIQUE le rend à son rang suivant : c'est le seul moyen de défaire une
+      // valeur sans avoir à deviner ce qu'elle valait avant.
+      const j2 = await (await appel('reglages', { valeurs: { prix_entreprise: '' } })).json();
+      assert.strictEqual(j2.valeurs.prix_entreprise, 690);
+      assert.strictEqual(j2.sources.prix_entreprise, 'defaut');
+      assert.strictEqual(db.lire("SELECT cle FROM reglages WHERE cle = 'prix_entreprise'").length, 0);
+      // Le journal dit CE QUI a changé : c'est la seule trace qui explique, six mois plus tard,
+      // pourquoi une vente porte ce montant-là.
+      const trace = db.lire("SELECT detail FROM evenements WHERE quoi = 'reglages.changes' ORDER BY id");
+      assert.ok(trace.length >= 2 && /Entreprise/.test(trace[0].detail), 'le journal nomme le réglage : ' + trace[0].detail);
+
+      // Le SUIVI : un « perdu » sans motif est refusé — c'est la seule chose que ce suivi apprend.
+      db.lire("INSERT INTO clients (id, nom, cree_le) VALUES ('c1','Alpha','2026-01-01T00:00:00Z')");
+      assert.strictEqual((await appel('clients/c1/suivi', { issue: 'perdu' })).status, 400);
+      assert.strictEqual((await appel('clients/c1/suivi', { rappel: '2026-13-99' })).status, 400, 'une date impossible se refuse');
+      assert.strictEqual((await appel('clients/c1/suivi', { moyen: 'appel', note: 'rappelle vendredi', rappel: '2099-01-15' })).status, 201);
+      assert.strictEqual((await appel('clients/c1/suivi', { moyen: 'appel', note: 'relancé' })).status, 201);
+      assert.strictEqual(db.lire('SELECT id FROM suivis').length, 2,
+        'rien ne s\'écrase : chaque contact est une ligne de plus — « je l\'ai déjà appelé deux fois » est ce qu\'on vient chercher');
+      // …et c'est le PLUS RÉCENT qui décide de ce que l'alerte fait.
+      const dernier = await P.lireSuivis(async (sql, ...p) => db.lire(sql, ...p));
+      assert.strictEqual(dernier['client:c1'].note, 'relancé');
+      assert.strictEqual(dernier['client:c1'].nom, 'Alpha', 'et il porte le nom du client, pour la ligne « Rappel prévu »');
+      assert.strictEqual((await appel('clients/c404/suivi', { moyen: 'appel' })).status, 404);
+    } finally { db.fermer(); }
+  });
+
+  await ta('10.5.0 : la fiche d\'un client rassemble les cinq écrans, et les essais se nomment', async () => {
+    const { baseD1 } = require('../d1-sqlite');
+    const P = await API();
+    const ADMIN = 'F'.repeat(30), APP = 'app-secret-ffffffffffff';
+    const db = baseD1();
+    const env = { DB: db, ADMIN_SECRET: ADMIN, APP_SECRET: APP };
+    try {
+      db.lire("INSERT INTO clients (id, nom, email, cree_le) VALUES ('c1','Alpha','a@b.tn','2026-01-01T00:00:00Z')");
+      db.lire("INSERT INTO licences (id, client_id, kid, empreinte, offre, debut, fin, emise_le) VALUES ('l1','c1','srv-1','aa11','entreprise','2026-01-01','2099-01-01','2026-01-01T00:00:00Z')");
+      db.lire("INSERT INTO ventes (id, client_id, licence_id, montant_ht, devise) VALUES ('v1','c1','l1',690,'TND')");
+      db.lire("INSERT INTO activations (id, licence_id, empreinte, device_id, device_nom, plateforme, version, app, premiere_fois, derniere_fois) VALUES ('a1','l1','aa11','poste-1','Mac','darwin','10.4.0','entreprise','2026-02-01T00:00:00Z','2026-09-01T00:00:00Z')");
+      db.lire("INSERT INTO evenements (quand, quoi, client_id, detail) VALUES ('2026-01-01T00:00:00Z','licence.emise','c1','Entreprise')");
+      const f = await (await P.default.fetch(new Request('https://x/v1/admin/clients/c1', { headers: { 'x-skanfact-admin': ADMIN } }), env)).json();
+      assert.strictEqual(f.client.nom, 'Alpha');
+      ['licences', 'ventes', 'postes', 'suivis', 'journal'].forEach(k =>
+        assert.ok(Array.isArray(f[k]), 'la fiche porte ' + k + ' : cinq écrans en un'));
+      assert.strictEqual(f.licences.length, 1);
+      assert.strictEqual(f.postes[0].appNom, 'SkanFact', 'le NOM vient du serveur : la page affiche, elle ne retraduit pas');
+      assert.strictEqual(f.journal.length, 1);
+      assert.strictEqual((await P.default.fetch(new Request('https://x/v1/admin/clients/c404', { headers: { 'x-skanfact-admin': ADMIN } }), env)).status, 404);
+
+      // Les ESSAIS : nommés un par un, avec ce qu'il leur reste. Le Parc les agrège par version —
+      // utile pour compter, inutile pour décrocher son téléphone.
+      await P.default.fetch(new Request('https://x/v1/licence/etat', {
+        method: 'POST', headers: { 'x-skanfact-app': APP, 'content-type': 'application/json' },
+        body: JSON.stringify({ cle: '', deviceId: 'poste-essai-9', deviceNom: 'PC de Sonia', plateforme: 'win32', version: '10.4.0', app: 'cabinet' })
+      }), env);
+      const e = await (await P.default.fetch(new Request('https://x/v1/admin/essais', { headers: { 'x-skanfact-admin': ADMIN } }), env)).json();
+      assert.strictEqual(e.lignes.length, 1);
+      assert.strictEqual(e.lignes[0].appNom, 'SkanFact Cabinet');
+      assert.strictEqual(e.lignes[0].sujet, 'essai:poste-essai-9:cabinet',
+        'le sujet du suivi est le MÊME identifiant que celui de l\'alerte — deux façons de nommer le même prospect ne referment rien');
+      assert.ok(e.lignes[0].fin && e.lignes[0].reste !== null, 'la fin estimée et ce qu\'il reste sont calculés');
+      assert.strictEqual(e.lignes[0].suivi_le, null, 'et la console dit qu\'on ne lui a jamais parlé');
+      // Un essai se suit par son POSTE et son APPLICATION : le même ordinateur peut essayer les
+      // deux, et les confondre ferait taire une alerte qu'on n'a pas traitée.
+      const su = (app) => P.default.fetch(new Request('https://x/v1/admin/essais/poste-essai-9/suivi', {
+        method: 'POST', headers: { 'x-skanfact-admin': ADMIN, 'content-type': 'application/json' },
+        body: JSON.stringify({ app, moyen: 'appel', note: 'intéressé', source: 'bouche-à-oreille' })
+      }), env);
+      assert.strictEqual((await su('entreprise')).status, 404, 'aucun essai de CETTE application sur ce poste');
+      assert.strictEqual((await su('cabinet')).status, 201);
+      assert.strictEqual(db.lire("SELECT sujet FROM suivis")[0].sujet, 'essai:poste-essai-9:cabinet');
+    } finally { db.fermer(); }
+  });
+
+  await ta('10.5.0 : le parrainage est CHIFFRÉ — amené n\'est pas payé', async () => {
+    const { baseD1 } = require('../d1-sqlite');
+    const P = await API();
+    const ADMIN = 'P'.repeat(30);
+    const db = baseD1();
+    const env = { DB: db, ADMIN_SECRET: ADMIN };
+    try {
+      const emp = 'abcdef0123456789abcd';
+      db.lire("INSERT INTO clients (id, nom, cree_le) VALUES ('cab','Cabinet Nord','2026-01-01T00:00:00Z')");
+      db.lire("INSERT INTO clients (id, nom, cree_le) VALUES ('c1','Alpha','2026-01-01T00:00:00Z')");
+      db.lire("INSERT INTO clients (id, nom, cree_le) VALUES ('c2','Beta','2026-01-01T00:00:00Z')");
+      db.lire("INSERT INTO licences (id, client_id, kid, empreinte, offre, debut, emise_le, type, dossiers_hors, cabinet_empreinte) VALUES ('lc','cab','srv-1','k0','cabinet','2026-01-01','2026-01-01T00:00:00Z','cabinet',10,?)", emp);
+      db.lire("INSERT INTO licences (id, client_id, kid, empreinte, offre, debut, emise_le, cabinet_empreinte) VALUES ('l1','c1','srv-1','k1','entreprise','2026-01-01','2026-01-01T00:00:00Z',?)", emp);
+      db.lire("INSERT INTO licences (id, client_id, kid, empreinte, offre, debut, emise_le, cabinet_empreinte) VALUES ('l2','c2','srv-1','k2','entreprise','2026-01-01','2026-01-01T00:00:00Z',?)", emp);
+      db.lire("INSERT INTO ventes (id, client_id, licence_id, montant_ht, devise, payee_le) VALUES ('v1','c1','l1',552,'TND','2026-02-01')");
+      db.lire("INSERT INTO ventes (id, client_id, licence_id, montant_ht, devise) VALUES ('v2','c2','l2',690,'TND')");
+      const j = await (await P.default.fetch(new Request('https://x/v1/admin/cabinets', { headers: { 'x-skanfact-admin': ADMIN } }), env)).json();
+      assert.strictEqual(j.lignes.length, 1);
+      assert.strictEqual(j.lignes[0].parraines, 2, 'deux clients amenés');
+      assert.strictEqual(j.lignes[0].payants, 1, 'un seul a payé — « amené » et « payé » ne sont pas la même nouvelle');
+      assert.strictEqual(j.lignes[0].ca_amene, 552, 'et le CA attribué ne compte que ce qui est ENCAISSÉ');
+    } finally { db.fermer(); }
+  });
+
 };

@@ -85,6 +85,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | `npm test \| tail` **masque le code de sortie** : un commit part avec un test rouge | 9.2.0 |
 | Un test qui **appelle une fonction autrement que son unique appelant** ne prouve rien de l'application | 9.8.7 |
 | Un **commentaire de gabarit** `${/* */''}` survit au nettoyage ligne à ligne : un test tombe sur une phrase citée | 9.8.8 |
+| `\'` dans un gabarit rend une **apostrophe nue** : le fichier reste analysable, la PAGE meurt | 10.5.0 — écran vide, rien dans aucune console |
 | Un **compte de fichiers** n'est pas un compte de livres : l'index et la génération précédente font « 2 » | 9.8.8 |
 
 **Les deux applications**
@@ -120,6 +121,9 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Un CSS **physique** décrit un écran, un CSS **logique** décrit une lecture ; l'exception est NOMMÉE | 9.4.10 |
 | Une **règle générale qui vise un élément** avale l'exception qu'on vient d'y poser (`:not()`) | 7.23.0, 7.27.0, 7.30.0, 9.4.8 |
 | Une **phrase rassurante** se vérifie d'abord sur un univers non vide | 7.0.0, 7.3.0, 9.4.2 ; 10.4.0 — une alerte aussi |
+| Un **réglage qu'on ne peut pas changer à l'écran** est une constante ; ce qui n'est PAS réglable se dit | 10.5.0 — les prix, la signature, les seuils |
+| Le **plafond de largeur** suit le RÔLE, pas le conteneur ; on **pagine ce qu'on NOMME** | 10.5.0 — 700 px vides à droite d'un tableau serré ; 9.4.5 |
+| Une **réponse en retard** ne repeint pas l'écran qu'on a quitté | 10.5.0 — le Parc remplacé par les alertes, sous le titre du Parc |
 | Un **avertissement** se lit AVANT le geste, jamais sous le bouton | 9.4.2 |
 | Une ligne garde **au plus UN** bouton visible ; le reste passe par `rowmenu.js` | 7.29.0 ; 9.4.8 — un en-tête de fiche aussi |
 | **UNE seule table d'actions par racine** : `bindRowMenus` écrase la précédente, en silence | 9.4.8 |
@@ -152,7 +156,9 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Jamais **embarquer une clé publique dont la privée a été VUE** : elle est brûlée, on la recrée | 9.4.1 |
 | Jamais de **token** commité | Règles de travail, 6.7.0 |
 | Jamais une **donnée de plus** dans ce qui part vers le serveur : la liste se compte | 8.4.0, 10.4.0 |
-| Jamais une **base de ventes sans copie** : D1 est le seul endroit où vit qui a acheté quelle clé | 10.4.0 |
+| Jamais une **base de ventes sans copie** : D1 est le seul endroit où vit qui a acheté quelle clé | 10.4.0 ; 10.5.0 — une copie qui demande un clic ne se fait pas |
+| Jamais un **secret qu'on ne peut pas remplacer** sans se fermer la porte | 10.5.0 — le second secret de rotation |
+| Ce qui **protège une réponse publique** est la REQUÊTE, jamais la forme de la réponse | 10.5.0 — la vérification d'une empreinte |
 | Jamais **chiffrer en croyant signer** : seule une signature dit d'où ça vient | 9.2.0 |
 | Jamais une **cellule CSV** exécutée par un tableur (`=` `+` `-` `@`) | 9.1.1 |
 | Jamais **écraser le travail du cabinet** avec un mois que le client renvoie | 9.2.0 |
@@ -5194,6 +5200,97 @@ son Mac, où tournent LES DEUX applications : trois lignes, toutes « SkanFact �
 - Piège re-rencontré, la **neuvième fois** : aucun backtick dans un commentaire à l'intérieur du
   gabarit de la console. Le garde-fou posé en 10.4.0 a nommé la ligne exacte en deux secondes — c'est
   la première fois que cette faute ne coûte pas un bisect.
+
+### 10.5.0 — Les réglages, le suivi commercial, et ce qui garde la boutique
+
+La console savait ce qui EXISTE, et ne retenait **rien de ce qu'on en faisait**. Un essai se
+terminait, l'alerte se levait, on appelait — et le lendemain la même alerte se relevait à
+l'identique. Aucune mémoire commerciale, et quinze valeurs — dont les prix — qui demandaient un
+déploiement pour bouger.
+
+Règles apprises, à ne pas recasser :
+
+- **Un réglage qu'on ne peut pas changer depuis l'écran n'est pas un réglage, c'est une constante
+  avec un nom trompeur.** Trois rangs décident, dans cet ordre : la base, la variable du worker, le
+  défaut — l'ordre compte, poser une valeur depuis l'écran doit pouvoir CORRIGER une variable mal
+  réglée sans toucher à Cloudflare, jamais l'inverse.
+- **Ce qui n'est PAS réglable se dit, avec sa raison.** La durée de l'essai est la règle de
+  l'application (8.0.0), pas une politique de la console : réglée ici, elle laisserait la console
+  annoncer des fins d'essai fausses. Un test tombe si quelqu'un l'ajoute à la table.
+- **Vider un champ NUMÉRIQUE le rend à son rang suivant ; vider un champ de TEXTE le laisse vide.**
+  C'est le seul moyen de défaire une valeur sans deviner ce qu'elle valait avant — et « aucune
+  version minimale » reste une décision, jamais un oubli.
+- **Un refus nomme le champ ET la forme attendue, et ce qui était bon passe quand même.** Un
+  formulaire tout-ou-rien fait recommencer quinze champs pour une virgule ; « valeur invalide »
+  oblige à relire les quinze pour trouver lequel (7.0.0).
+- **On suit une OCCURRENCE, jamais une règle** (7.21.0, re-trouvée) : le sujet d'un suivi est
+  l'identifiant du prospect ou du client, et c'est le MÊME que celui de l'alerte. Deux façons de
+  nommer le même prospect donneraient un suivi qui ne referme jamais rien.
+- **Ce qui n'est pas une conversation ne se fait pas taire par un coup de téléphone.** Une clé
+  signée et jamais partie reste à FAIRE : c'est un geste de l'éditeur, pas une négociation.
+- **Rien ne s'écrase : chaque contact est une ligne de plus**, et c'est la plus récente qui décide.
+  « Je l'ai déjà appelé deux fois » est précisément ce qu'on vient chercher avant la troisième.
+- **Un « perdu » sans motif n'apprend rien**, et c'est la seule chose que cet écran peut apprendre :
+  pourquoi on ne vend pas. Même refus que la révocation sans motif (8.2.0).
+- **Un départ de client payant ne fait aucun bruit.** « Endormi » se comptait déjà, et rien ne
+  criait : un poste sous licence muet depuis N jours est une désinstallation, une réinstallation
+  ratée ou un réseau coupé — dans les trois cas on appelle.
+- **Une alerte qui réclame une mise à jour sans dire ce qu'elle corrige ne se fait pas** : le seuil
+  de version et son MOTIF se règlent ensemble, et c'est ce motif qu'on répète au client.
+- **Un jalon calme ne double jamais une alerte pressante.** À soixante jours on prépare, à trente on
+  presse ; deux lignes pour la même licence, c'est du bruit — et une occasion criée en rouge apprend
+  à ignorer le rouge (8.0.1).
+- **Ce qui PROTÈGE une réponse publique, c'est la REQUÊTE, pas la forme de la réponse.** Mon
+  assertion « le nom du client n'apparaît pas » restait verte quand on étalait la ligne entière dans
+  le JSON — parce qu'il n'y avait rien à étaler. Le garde-fou vit sur le SELECT : la vérification
+  publique ne lit jamais la table des clients.
+- **La signature d'un mail et les prix sont des RÉGLAGES, pas du code.** « Skander Ben Amor » était
+  écrit en dur dans `mailRelance` : changer de nom demandait un commit.
+- **Une copie qui demande un clic est une copie qu'on ne fait pas.** L'alerte à trente jours
+  existait précisément parce que le geste ne se faisait pas. Le déclencheur programmé l'écrit dans
+  R2 ; non branché, l'écran le DIT (10.4.0) au lieu d'un vert rassurant.
+- **Un secret qu'on ne peut pas remplacer sans se fermer la porte ne se remplace jamais** — y
+  compris le jour où il faudrait. Un second secret vaut le temps d'une rotation, aux MÊMES
+  exigences : un secret de rotation court serait une porte de service.
+- **Le plafond de largeur suit le RÔLE, pas le conteneur.** Un seul plafond pour la prose et pour
+  les tableaux : juste pour du texte, faux pour dix colonnes qui se serrent pendant que 700 px
+  restent vides. Les quatre sondes mesuraient des OBJETS ; aucune ne voyait la place perdue —
+  d'où la cinquième (`SONDE_LARGEUR`).
+- **On pagine ce qu'on NOMME** (9.4.5, re-trouvée) : le pied disait « 4 lignes ». Une ligne n'est le
+  nom de rien, et c'est le mot qu'on emploie quand on n'a pas regardé l'écran.
+- **Une bulle « i » n'est pas un geste** : c'est une annotation collée au titre qu'elle explique, et
+  elle suit forcément sa colonne. L'exception à la sonde est NOMMÉE, et ne porte que sur
+  l'atteignabilité — le contraste d'une bulle reste jugé, une explication illisible n'explique rien.
+- **Un message de succès ne suit pas d'écran en écran.** « Base exportée — activations : 4 » restait
+  affiché pendant que le Parc en montrait cinq : un compte figé à côté d'un compte vivant, sur le
+  même écran (7.1.x).
+- **Une réponse en retard ne repeint pas l'écran qu'on a quitté.** Deux dessins qui se chevauchent,
+  et c'est la réponse la plus LENTE qui gagne : le tableau du Parc se faisait remplacer par les
+  alertes, sous le titre du Parc. Le défaut n'apparaît que lorsqu'un écran devient plus lent qu'un
+  autre — donc il serait arrivé un jour, en production, sans qu'on sache pourquoi. C'est le message
+  d'avancement en retard de la 6.8.1, côté lecture.
+- **Un correctif qui dépend d'une classe qu'on pense à mettre n'est pas un correctif** (9.8.3,
+  re-trouvée) : la rangée de boutons n'avait d'écart que dans un panneau, et « Enregistrer »
+  touchait « Annuler » à zéro pixel partout ailleurs.
+- **`\'` dans un gabarit est le jumeau du backtick, en plus sournois.** Le template le rend en
+  apostrophe NUE : le fichier reste analysable — `node --check` passe, le lint passe, le garde-fou
+  du backtick passe — et c'est le NAVIGATEUR qui reçoit une chaîne cassée et n'exécute plus une
+  ligne de la page. Écran vide, curseur nulle part, rien dans aucune console qu'on regarde. Une
+  apostrophe s'écrit `\u2019` dans ces gabarits ; un test le tient depuis la 10.5.0, pour les DEUX
+  pages. (Le backtick, lui, en est à sa **onzième** occurrence, dont deux dans cette version.)
+- **Un test qui ne peut pas échouer ne se garde pas**, même écrit de bonne foi : mon « la tranche ne
+  déborde pas du gabarit » visait `export default`, qui est AVANT le gabarit. Retiré, avec la raison
+  écrite à sa place ; la borne reste, et son seul effet — protéger le jour où quelque chose
+  s'ajoutera après — est écrit plutôt que prétendu.
+- Piège rencontré : `pl(n, mot)` accorde, donc l'étiquette s'écrit au SINGULIER. Une table nommée
+  « clients » donnait « 0 clientss » au premier export vide.
+
+Les parcours qui comptent sont `npm run e2e:console` (dix étapes de plus : les réglages refusés puis
+posés, le lien de paiement qui entre dans la relance et en disparaît, la fiche d'un client, le
+contact noté qui fait taire ses alertes, le tri renversé, la bulle, la palette, les essais nommés, le
+pli scellé, et la page publique) et `npm run e2e:console-rendu` (**1 277 boutons, 364 colonnes,
+1 413 écarts, 57 largeurs**, sur les dix écrans — l'onglet Réglages compris, parce qu'un écran neuf
+qu'aucune sonde ne regarde est un écran qui dérive, T-55).
 
 ## Pistes pour la suite (non demandées)
 

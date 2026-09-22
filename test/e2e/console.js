@@ -53,6 +53,13 @@ const { servir, SECRET } = require('./console-serveur');
     await page.waitForSelector('#table .wrap');
   };
   const lignes = () => page.$$eval('#table tbody tr', ls => ls.map(l => l.textContent.replace(/\s+/g, ' ')));
+  // Les Réglages ne sont pas une liste : ils n'ont ni tableau, ni tri, ni pagination. Les attendre
+  // comme une liste (`#table .wrap`) expire au bout de trente secondes sur un écran parfaitement
+  // dessiné — on reconnaît un écran à ce qu'il CONTIENT (7.28.0).
+  const allerReglages = async () => {
+    await page.click('#tabs button[data-t="reglages"]');
+    await page.waitForSelector('#fiche:not([hidden]) [data-reg]');
+  };
   // Un bouton de ligne, repéré par ce qu'il DIT et par la ligne qui porte ce texte.
   const boutonDeLigne = async (texteLigne, libelle) => {
     const b = await page.$('xpath=//tbody/tr[contains(., "' + texteLigne + '")]//button[normalize-space()="' + libelle + '"]');
@@ -417,8 +424,14 @@ const { servir, SECRET } = require('./console-serveur');
       'le fichier porte la date du jour : ' + fichier.suggestedFilename());
     await page.waitForFunction(() => /Base exportée/.test((document.getElementById('info') || {}).textContent || ''));
     const texteInfo = await info();
-    doit(/licences : \d+/.test(texteInfo) && /clients : \d+/.test(texteInfo),
+    // La RÈGLE : chaque table est NOMMÉE avec son compte — un export tronqué ressemble à un export
+    // complet, et c'est ce compte qui le dit au moment de le relire. L'assertion d'avant exigeait
+    // la FORME « licences : 2 », c'est-à-dire les noms de tables SQL tels quels : elle gravait
+    // « evenements » sans accent et « jetons » en jargon, et serait tombée sur le correctif.
+    doit(/\d+ licences?\b/.test(texteInfo) && /\d+ clients?\b/.test(texteInfo),
       'le message dit le COMPTE par table : un export tronqué ressemble à un export complet');
+    doit(/événements/.test(texteInfo) && !/evenements/.test(texteInfo),
+      'et il les nomme en français, jamais avec le nom de la table SQL');
     doit(/n’est pas chiffré|n'est pas chiffré/.test(texteInfo),
       'et il dit ce que le fichier porte, avant qu\'on le range n\'importe où');
     doit(db.lire("SELECT id FROM evenements WHERE quoi = 'base.exportee'").length === 1,
@@ -433,6 +446,181 @@ const { servir, SECRET } = require('./console-serveur');
     const sante = (await page.textContent('#sante')).replace(/\s+/g, ' ');
     doit(/non lus/.test(sante) && /RELAIS_BASE/.test(sante),
       'la console n\'invente pas ce qu\'elle ne peut pas lire : « ' + sante.trim().slice(0, 90) + '… »');
+
+    // ================= 10.5.0 =================
+    etape('13 sexies. Les RÉGLAGES : un prix se change à l\'écran, jamais dans le code');
+    await allerReglages();
+    doit(await page.inputValue('[data-reg="prix_entreprise"]') === '690', 'le prix en vigueur est affiché');
+    // D'OÙ vient chaque valeur : sans ça, un écran de nombres laisse croire qu'ils ont tous été
+    // décidés, alors que la plupart sont des défauts que personne n'a jamais regardés.
+    doit(await page.evaluate(() => {
+      const l = document.querySelector('[data-reg="prix_entreprise"]').closest('.reg');
+      return /jamais décidée/.test(l.querySelector('.src').textContent);
+    }), 'et il DIT qu\'il n\'a jamais été décidé : c\'est un défaut, pas un choix');
+    // Ce que la console ne règle PAS, et pourquoi : le taire donnerait l'impression d'un oubli.
+    doit(/durée de l’essai|durée de l'essai/i.test(await page.innerText('#fiche')),
+      'l\'écran nomme ce qu\'il ne règle pas, et la raison');
+    // Un refus NOMME le champ : « valeur invalide » oblige à relire quinze champs.
+    await page.fill('[data-reg="remise_parrainage"]', '250');
+    await page.click('#reg-ok');
+    await page.waitForFunction(() => { const m = document.getElementById('reg-msg'); return m && !m.hidden; });
+    const refus = await page.textContent('#reg-msg');
+    doit(/parrainage/i.test(refus) && /0 et 100/.test(refus),
+      'un refus nomme le réglage ET la forme attendue : « ' + refus.trim().slice(0, 80) + '… »');
+    // Et le bon chemin : on change, on enregistre, ça s'applique — sans toucher au code.
+    await page.fill('[data-reg="remise_parrainage"]', '20');
+    await page.fill('[data-reg="prix_entreprise"]', '880');
+    await page.fill('[data-reg="lien_paiement"]', 'https://paiement.example.tn/skanfact');
+    await page.click('#reg-ok');
+    await page.waitForFunction(() => /réglage/.test((document.getElementById('info') || {}).textContent || ''));
+    doit(db.lire("SELECT valeur FROM reglages WHERE cle = 'prix_entreprise'")[0].valeur === '880',
+      'le prix est rangé en base, pas dans un fichier qu\'il faut redéployer');
+    await page.waitForSelector('[data-reg="prix_entreprise"]');
+    doit(await page.evaluate(() => {
+      const l = document.querySelector('[data-reg="prix_entreprise"]').closest('.reg');
+      return /réglé ici/.test(l.querySelector('.src').textContent);
+    }), 'et la source a changé : il vient maintenant de l\'écran');
+    // L'effet, mesuré là où il compte : le formulaire d'émission propose le nouveau prix.
+    await onglet('licences');
+    await page.click('#emettre');
+    await page.waitForSelector('#form:not([hidden])');
+    doit(await page.inputValue('#form [name="prix"]') === '880',
+      'le formulaire d\'émission propose le prix qu\'on vient de régler');
+    await page.click('#f-non');
+
+    etape('13 septies. Le lien de paiement entre dans la relance — et rien d\'inventé sans lui');
+    await onglet('ventes');
+    await page.waitForSelector('#table tbody tr');
+    await boutonDeLigne('à encaisser', 'Relancer…');
+    await page.waitForSelector('#resultat:not([hidden]) #relance-txt');
+    const avecLien = await page.textContent('#relance-txt');
+    doit(/paiement\.example\.tn/.test(avecLien), 'le lien réglé se retrouve dans le texte');
+    await page.click('#relance-fermer');
+    // Vidé, il DISPARAÎT de la phrase au lieu de laisser un trou : ce qui manque ne s'écrit pas.
+    db.lire("DELETE FROM reglages WHERE cle = 'lien_paiement'");
+    await boutonDeLigne('à encaisser', 'Relancer…');
+    await page.waitForSelector('#resultat:not([hidden]) #relance-txt');
+    doit(!/régler en ligne/.test(await page.textContent('#relance-txt')),
+      'sans lien réglé, aucune phrase de paiement — pas un vide, pas un « … »');
+    await page.click('#relance-fermer');
+
+    etape('13 octies. La FICHE d\'un client : cinq écrans en un');
+    await onglet('clients');
+    await page.waitForSelector('#table tbody tr');
+    await boutonDeLigne('Trabelsi', 'Ouvrir la fiche');
+    await page.waitForSelector('#fiche:not([hidden]) #fiche-retour');
+    const ficheTxt = (await page.innerText('#fiche')).replace(/\s+/g, ' ');
+    doit(/Licences/.test(ficheTxt) && /Ventes/.test(ficheTxt) && /Ses postes/.test(ficheTxt) && /Journal/.test(ficheTxt),
+      'tout ce qu\'on cherchait sur cinq écrans est sur un seul');
+    doit(await page.evaluate(() => document.querySelector('#tabs button[data-t="clients"]').getAttribute('aria-selected') === 'true'),
+      'et le rail garde allumé l\'onglet d\'où l\'on vient (7.21.0)');
+
+    etape('13 nonies. Noter un contact : l\'alerte se referme, et « perdu » exige un motif');
+    await page.click('#fiche-suivi');
+    await page.waitForSelector('#form:not([hidden]) [name="issue"]');
+    await page.selectOption('#form [name="issue"]', 'perdu');
+    await page.click('#f-ok');
+    await page.waitForFunction(() => { const m = document.getElementById('f-msg'); return m && !m.hidden; });
+    doit(/pourquoi/i.test(await page.textContent('#f-msg')),
+      'un « perdu » sans motif est refusé : c\'est la seule chose que ce suivi peut apprendre');
+    await page.selectOption('#form [name="issue"]', '');
+    await page.fill('#form [name="note"]', 'appelé, rappelle après le 15');
+    await page.fill('#form [name="rappel"]', '2099-01-15');
+    await valider();
+    await page.waitForSelector('#fiche:not([hidden])');
+    doit(db.lire("SELECT id FROM suivis WHERE sujet LIKE 'client:%'").length === 1,
+      'le contact est rangé — rien ne s\'écrase, chaque appel est une ligne de plus');
+    await page.click('#refresh');
+    await onglet('alertes');
+    await page.waitForSelector('#table .wrap');
+    // Le test ne doit pas pouvoir passer À VIDE (9.4.7) : on vérifie d'abord qu'il reste vraiment
+    // une vente impayée pour CE client — sinon « l'alerte a disparu » ne prouverait que son absence.
+    const cliTrab = db.lire("SELECT id FROM clients WHERE nom LIKE '%Trabelsi%'")[0].id;
+    doit(db.lire('SELECT id FROM ventes WHERE client_id = ? AND payee_le IS NULL', cliTrab).length > 0,
+      'ce client a bien une vente qui attend : l\'alerte AVAIT de quoi se lever');
+    const ligneVente = (await lignes()).filter(l => /Vente à encaisser/.test(l)).join(' ');
+    doit(!/Trabelsi/.test(ligneVente),
+      'et son alerte se tait jusqu\'à la date de rappel — les autres clients, eux, crient toujours');
+
+    etape('13 decies. Trier, paginer, et ne jamais tronquer en silence');
+    await onglet('licences');
+    await page.waitForSelector('#table tbody tr');
+    await page.click('th[data-tri="client"]');
+    await page.waitForSelector('th[data-tri="client"][aria-sort="ascending"]');
+    const croissant = (await page.$$eval('#table tbody tr td:first-child', c => c.map(x => x.textContent.trim()))).filter(Boolean);
+    await page.click('th[data-tri="client"]');
+    await page.waitForSelector('th[data-tri="client"][aria-sort="descending"]');
+    const decroissant = (await page.$$eval('#table tbody tr td:first-child', c => c.map(x => x.textContent.trim()))).filter(Boolean);
+    doit(croissant.length > 1 && croissant.join('|') === decroissant.slice().reverse().join('|'),
+      'un second clic RENVERSE le tri, il ne repart pas de zéro');
+    doit(/\d+ licences?/.test(await page.innerText('#table')),
+      'le pied dit COMBIEN il y en a : cinq cents lignes affichées se lisaient « il y en a cinq cents »');
+
+    etape('13 undecies. La bulle « i » : une colonne dont le titre est une définition l\'explique');
+    await onglet('parc');
+    await page.waitForSelector('#table tbody tr');
+    await page.click('th[data-tri="endormis"] button.i');
+    await page.waitForSelector('#info-pop:not([hidden])');
+    doit(/pas perdu/i.test(await page.textContent('#info-pop')),
+      '« Endormi n\'est PAS perdu » — la nuance qui n\'était écrite nulle part');
+    await page.keyboard.press('Escape');
+    doit(await page.isHidden('#info-pop'), 'et Échap la referme');
+
+    etape('13 duodecies. La palette (Cmd+K) : aller n\'importe où sans viser');
+    await page.keyboard.press('Control+k');
+    await page.waitForSelector('#palette:not([hidden]) #pal-q');
+    await page.fill('#pal-q', 'essais');
+    await page.waitForFunction(() => document.querySelectorAll('#pal-l li[data-i]').length > 0);
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(() => document.querySelector('#tabs button[data-t="essais"]').getAttribute('aria-selected') === 'true');
+    doit(await page.isHidden('#palette'), 'la palette se referme et mène à l\'écran demandé');
+
+    etape('13 terdecies. Les ESSAIS, nommés un par un — la file d\'appels du matin');
+    await page.waitForSelector('#table tbody tr');
+    const essais = (await lignes()).join('\n');
+    doit(/poste-cabinet-A/.test(essais) && /SkanFact Cabinet/.test(essais),
+      'chaque poste en essai a SA ligne, avec son application');
+    doit(/jamais contacté/.test(essais), 'et la console dit qu\'on ne lui a jamais parlé');
+    await boutonDeLigne('poste-cabinet-A', 'Noter un contact…');
+    await page.waitForSelector('#form:not([hidden]) [name="source"]');
+    await page.fill('#form [name="note"]', 'intéressé, revient vendredi');
+    await page.fill('#form [name="source"]', 'bouche-à-oreille');
+    await valider();
+    await page.waitForSelector('#table tbody tr');
+    doit(/noté le/.test((await lignes()).join('\n')),
+      'le suivi se lit sur la ligne : on sait qui a déjà été appelé');
+    doit(db.lire("SELECT source FROM suivis WHERE sujet LIKE 'essai:%'")[0].source === 'bouche-à-oreille',
+      'et d\'où il vient est SAISI, jamais pisté');
+
+    etape('13 quaterdecies. Le pli scellé : une procédure, et pas une clé privée');
+    await allerReglages();
+    await page.click('#reg-pli');
+    await page.waitForSelector('#resultat:not([hidden]) #pli-copier');
+    const pli = await page.innerText('#resultat');
+    doit(/PLI SCELLÉ/.test(pli) && /une seule personne peut émettre/.test(pli),
+      'le pli nomme le vrai risque : personne d\'autre ne peut vendre');
+    doit(!/PRIVATE KEY/.test(pli) && !/BEGIN /.test(pli),
+      'et aucune clé privée n\'en sort : ce qui sort est une PROCÉDURE');
+    await page.click('#pli-fermer');
+    // La copie automatique : non branchée, elle le DIT — jamais un vert rassurant.
+    doit(/bucket R2/.test(await page.innerText('#fiche')),
+      'la copie automatique dit ce qui lui manque au lieu de se taire');
+
+    etape('13 quindecies. La page publique de vérification : sans secret, et sans rien divulguer');
+    const pub = await ctx.newPage();
+    await pub.goto(base + '/verifier', { waitUntil: 'domcontentloaded' });
+    const empreinte = db.lire('SELECT empreinte FROM licences LIMIT 1')[0].empreinte;
+    await pub.fill('#emp', empreinte);
+    await pub.click('#go');
+    await pub.waitForSelector('#out:not([hidden])');
+    const verdict = await pub.textContent('#out');
+    doit(/valable|terminée|révoquée|remplacée/i.test(verdict), 'une empreinte connue reçoit son état : « ' + verdict.trim().slice(0, 60) + ' »');
+    doit(!/Trabelsi/i.test(verdict), 'et JAMAIS le nom du client : celui qui présente une clé ne doit rien apprendre de plus');
+    await pub.fill('#emp', 'ffffffffffffffffffff');
+    await pub.click('#go');
+    await pub.waitForFunction(() => /aucune licence/i.test(document.getElementById('out').textContent));
+    doit(true, 'une empreinte inconnue est dite inconnue, au lieu d\'une panne');
+    await pub.close();
 
     etape('14. Fermer la session referme vraiment');
     await page.click('#out');

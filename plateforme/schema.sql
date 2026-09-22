@@ -135,3 +135,43 @@ CREATE TABLE IF NOT EXISTS evenements (
   par_qui    TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_evt_quand ON evenements(quand);
+
+-- ---------- les réglages de la console (10.5.0) ----------
+-- Un prix, un seuil d'alerte, une signature de mail : tout ce qui se décide plutôt que se calcule.
+-- Jusqu'ici ces valeurs vivaient dans les VARIABLES du worker (`PRIX_ENTREPRISE`…) ou, pire, en dur
+-- dans le code : changer un tarif demandait un déploiement. Un réglage qu'on ne peut pas changer
+-- depuis l'écran n'est pas un réglage, c'est une constante avec un nom trompeur.
+--
+-- Trois rangs, du plus fort au plus faible : ce que porte cette table, sinon la variable du worker,
+-- sinon la valeur par défaut écrite dans `REGLAGES`. L'ordre compte — poser une valeur ici doit
+-- pouvoir CORRIGER une variable mal réglée sans toucher à Cloudflare, jamais l'inverse.
+CREATE TABLE IF NOT EXISTS reglages (
+  cle       TEXT PRIMARY KEY,
+  valeur    TEXT NOT NULL,
+  change_le TEXT NOT NULL
+);
+
+-- ---------- le suivi commercial (10.5.0) ----------
+-- Ce que l'éditeur a FAIT d'un prospect ou d'un client : appelé, écrit, rappeler le 12, perdu parce
+-- que trop cher. La console savait ce qui EXISTE et ne retenait rien de ce qu'on en faisait : un
+-- essai se terminait, l'alerte se levait, on appelait — et le lendemain la même alerte se relevait
+-- à l'identique. Une alerte qui ne se referme pas cesse d'être lue au cinquième prospect.
+--
+-- `sujet` désigne ce qu'on suit, avec le MÊME identifiant que l'alerte correspondante : un essai
+-- (« essai:<device_id>:<app> ») ou un client (« client:<id> »). Deux façons de nommer le même
+-- prospect donneraient un suivi qui ne referme jamais rien.
+--
+-- `rappel` est la seule date qui fait taire : d'ici là, le sujet ne redemande rien. `issue` clôt —
+-- gagné, ou perdu avec son motif, qui est la seule chose qui apprend quelque chose.
+CREATE TABLE IF NOT EXISTS suivis (
+  id     TEXT PRIMARY KEY,
+  sujet  TEXT NOT NULL,
+  quand  TEXT NOT NULL,                   -- horodatage ISO de la saisie
+  moyen  TEXT,                            -- appel, mail, visite, message
+  note   TEXT,
+  rappel TEXT,                            -- AAAA-MM-JJ, ou vide
+  issue  TEXT,                            -- '', 'gagne', 'perdu'
+  motif  TEXT,                            -- pourquoi perdu : la seule chose qui apprend
+  source TEXT                             -- comment il nous a connus, saisi à la main
+);
+CREATE INDEX IF NOT EXISTS idx_suivis_sujet ON suivis(sujet);

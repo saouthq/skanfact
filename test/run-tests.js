@@ -10718,23 +10718,60 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
       const src = fs.readFileSync(path.join(__dirname, '..', 'plateforme', 'skanfact-api.mjs'), 'utf8');
       const i = src.indexOf('const CONSOLE_HTML = ');
       assert.ok(i > 0, 'le gabarit de la console est introuvable');
-      const page = src.slice(i + 'const CONSOLE_HTML = '.length);
-      // 11 Ko en lecture seule (P 0.1), 36 Ko avec la vente (P 0.2) : la borne haute garde une
-      // marge, elle ne fixe pas une taille.
-      assert.ok(page.length > 3000 && page.length < 80000, 'tranche de la console inattendue : ' + page.length);
+      // La tranche se borne sur la FIN du gabarit, pas sur la fin du fichier. Sans cette borne
+      // elle emportait `export default` et tout ce qui le suit : un contrôle « aucun script
+      // externe dans la console » jugeait alors du code de worker, et le jour où l'un d'eux
+      // portera une adresse, le test accusera la console (règle des tranches, 7.21.0 et 10.4.0).
+      const finPage = src.indexOf('</html>`', i);
+      assert.ok(finPage > i, 'la fin du gabarit de la console est introuvable');
+      const page = src.slice(i + 'const CONSOLE_HTML = '.length, finPage + '</html>`'.length);
+      // Pas d'assertion « la tranche ne déborde pas » ici : le gabarit est aujourd'hui la dernière
+      // chose du fichier, donc une tranche non bornée rendrait exactement la même chose — une telle
+      // assertion ne pourrait pas échouer, et un test qui ne peut pas échouer est pire que pas de
+      // test (6.8.1). La borne reste, parce qu'elle protège le jour où quelque chose s'ajoutera
+      // après ; c'est son seul effet, et il est écrit plutôt que prétendu.
+      // 11 Ko en lecture seule (P 0.1), 36 Ko avec la vente (P 0.2), 80 Ko avec l'espace de
+      // gestion (10.4.0) : la borne haute garde une marge, elle ne fixe pas une taille.
+      assert.ok(page.length > 3000 && page.length < 140000, 'tranche de la console inattendue : ' + page.length);
       // Les boutons de LIGNE n'ont pas d'identifiant : ils portent un `data-act`, et un seul
       // gestionnaire les retrouve. Chaque action posée dans une ligne doit avoir sa branche.
-      // L'attribut est construit (`'data-act="' + act + '"'`) : on lit les appels `b('voir', …)`
-      // qui posent chaque bouton, pas un attribut littéral qui n'existe pas dans la source.
-      const acts = [...new Set([...page.matchAll(/\bb\('([a-z-]+)', '/g)].map(m => m[1]))];
+      // Deux formes coexistent : l'attribut construit par un helper (`b('voir', …)`) et l'attribut
+      // écrit LITTÉRALEMENT dans une colonne. Ne lire que la première laissait passer toute
+      // action posée en clair — et c'est la forme la plus courante depuis la 10.5.0.
+      const acts = [...new Set([
+        ...[...page.matchAll(/\bb\('([a-z-]+)', '/g)].map(m => m[1]),
+        ...[...page.matchAll(/data-act="([a-z-]+)"/g)].map(m => m[1])
+      ])];
       assert.ok(acts.length >= 5, 'trop peu d\'actions de ligne lues : ' + acts.join(', '));
-      acts.forEach(a => assert.ok(page.includes("act === '" + a + "'"), 'action de ligne sans branche : ' + a));
+      acts.forEach(a => assert.ok(
+        page.includes("act === '" + a + "'") || page.includes("dataset.act === '" + a + "'"),
+        'action de ligne sans branche : ' + a));
 
       // Un backtick ou un ${ dans ce gabarit referme le template literal et casse le fichier. Le
       // projet s'est fait piéger trois fois (7.20.0, 7.29.0, 7.31.0) — ici le test le garde.
       const dedans = page.slice(1, page.lastIndexOf('`'));
       assert.ok(!dedans.includes('`'), 'aucun backtick dans le gabarit de la console');
       assert.ok(!/\$\{/.test(dedans), 'aucun ${ dans le gabarit de la console');
+
+      // 10.5.0 — et AUCUN `\'` non plus. Le piège est le jumeau du backtick, une couche plus
+      // sournoise : dans un template literal, `\'` est une séquence d'échappement qui rend une
+      // apostrophe NUE. Le fichier reste parfaitement analysable — `node --check` passe, le lint
+      // passe, le test de backtick passe — et c'est le NAVIGATEUR qui reçoit
+      // `'ce qu'il reste'`, casse la chaîne, et n'exécute plus une ligne de la page.
+      // Écran vide, curseur nulle part, rien dans aucune console qu'on regarde.
+      // La parade du projet existe depuis la 8.5.0 et n'avait jamais été gardée : une apostrophe
+      // s'écrit `\\u2019` dans ces gabarits — c'est la typographie française, en plus.
+      assert.ok(!/\\'/.test(dedans), 'aucun \\\' dans le gabarit de la console : le template le rend en apostrophe nue et casse la page');
+
+      // La même règle vaut pour la page publique de vérification, qui est un gabarit de même
+      // nature. Un garde-fou qui ne couvre qu'une des deux pages ne protège qu'une des deux (9.4.3).
+      const iv = src.indexOf('const VERIF_HTML = ');
+      assert.ok(iv > 0, 'le gabarit de la page de vérification est introuvable');
+      const verif = src.slice(iv + 'const VERIF_HTML = '.length, src.indexOf('</html>`', iv) + '</html>`'.length);
+      const vDedans = verif.slice(1, verif.lastIndexOf('`'));
+      assert.ok(!vDedans.includes('`'), 'aucun backtick dans le gabarit de vérification');
+      assert.ok(!/\\'/.test(vDedans), 'aucun \\\' dans le gabarit de vérification');
+      assert.ok(!/\$\{/.test(vDedans), 'aucun ${ dans le gabarit de vérification');
 
       // Aucune requête vers l'extérieur : pas de bibliothèque, pas de police distante, rien qui
       // fasse sortir le secret d'administration de la page.
@@ -11009,10 +11046,18 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
       // Les tarifs ne servent qu'à préremplir, et se règlent sans toucher au code.
       // `cabinetDossier: 0` (9.4.1) : AUCUN prix par défaut pour un dossier de cabinet — les tarifs
       // du Cabinet ne sont pas fixés, et un chiffre écrit ici deviendrait un tarif par préremplissage.
-      assert.deepStrictEqual(P.tarifs({}), { independant: 390, entreprise: 690, cabinetDossier: 0, remiseParrainage: 20, devise: 'TND' });
+      assert.deepStrictEqual(P.tarifs({}), { independant: 390, entreprise: 690, cabinetDossier: 0, remiseParrainage: 20,
+        devise: 'TND', lienPaiement: '', signature: 'Skander Ben Amor — SkanFact' });
       assert.strictEqual(P.tarifs({ PRIX_ENTREPRISE: '750' }).entreprise, 750);
       assert.strictEqual(P.tarifs({ PRIX_CABINET_DOSSIER: '120' }).cabinetDossier, 120);
       assert.strictEqual(P.tarifs({ PRIX_ENTREPRISE: 'cher' }).entreprise, 690, 'un réglage illisible retombe sur le défaut');
+      // 10.5.0 — les TROIS RANGS, dans cet ordre : la base d'abord, la variable du worker ensuite,
+      // le défaut en dernier. L'ordre compte — poser une valeur depuis l'écran doit pouvoir
+      // CORRIGER une variable mal réglée sans toucher à Cloudflare, jamais l'inverse.
+      assert.strictEqual(P.tarifs({ PRIX_ENTREPRISE: '750' }, { prix_entreprise: '880' }).entreprise, 880,
+        'ce qui est réglé depuis l\'écran gagne contre la variable du worker');
+      assert.strictEqual(P.tarifs({ PRIX_ENTREPRISE: '750' }, { prix_entreprise: 'cher' }).entreprise, 750,
+        'une valeur illisible en base ne remplace rien : on retombe sur le rang suivant');
     });
 
     // ---------- 9.4.1 : la console vend une licence de CABINET ----------
