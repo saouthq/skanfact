@@ -769,6 +769,7 @@
     ecrituresOD: [],         // opérations diverses saisies à la main : { id, date, piece, label, lignes:[{compte,label,debit,credit}] } (8.9.0)
     licences: [],            // licences SkanFact ÉMISES par l'éditeur depuis ce dossier (7.33.0) — vide chez un client
     pontImporte: '',         // jour où l'historique des licences est parti vers la console (8.7.0) — vide chez un client
+    exportConsole: '',       // jour du dernier export de la base de la console (10.4.0) — vide chez un client
     deleted: [],             // pièces supprimées, pour qu'elles ne reviennent pas d'un autre poste (v4)
     conflictArchive: [],     // versions écartées lors d'une fusion : rien n'est détruit sans trace
     closedUntil: '',         // dernier jour clôturé : rien de daté avant ne bouge plus (6.0.0)
@@ -1214,9 +1215,21 @@
     data.purchases.forEach(p => {
       if (!Array.isArray(p.payments)) p.payments = [];
       if (!Array.isArray(p.lines)) p.lines = [];
-      if (p.kind !== 'depense') p.kind = 'facture';
+      if (!PURCHASE_KINDS.some(k => k[0] === p.kind)) p.kind = 'facture';
+      // 10.2.0 : le rattachement d'un avoir ou d'un acompte à la facture qu'il concerne. Absent de
+      // cette liste, le champ serait jeté au prochain chargement et l'imputation disparaîtrait en
+      // silence — le 409 resterait débiteur pour toujours (défaut `matricule`, 6.8.0).
+      p.achatLie = PURCHASE_LIES.includes(p.kind) ? String(p.achatLie || '') : '';
       p.withholdingRate = Number(p.withholdingRate) || 0;
       p.fees = Number(p.fees) || 0;
+      // La devise d'un achat (10.1.0). Un achat d'avant n'en portait pas : on lui pose celle de la
+      // société avec un taux de 1, donc ses chiffres ne bougent pas d'un millime. Le faire ici et
+      // pas à la lecture évite qu'un achat sans devise traverse un écran qui, lui, en attendrait
+      // une — un champ absent de cette liste est jeté au prochain chargement (défaut `matricule`
+      // de la 6.8.0), et un champ jamais posé se réinvente.
+      if (!p.currency) p.currency = (data.company || {}).currency || 'TND';
+      if (p.currency === ((data.company || {}).currency || 'TND')) p.exchangeRate = 1;
+      else p.exchangeRate = Number(p.exchangeRate) > 0 ? Number(p.exchangeRate) : '';
     });
     // Geler le timbre des pièces DÉJÀ émises sur la valeur en vigueur aujourd'hui. Sans ça, elles
     // resteraient à la merci du prochain changement de réglage — c'est-à-dire dans l'état qu'on
@@ -1372,7 +1385,17 @@
   // ---------- achats, fournisseurs et dépenses (3.0.0, données v4) ----------
   // Symétrique des ventes, mais on ne maîtrise ni la numérotation (c'est celle du fournisseur)
   // ni la date (c'est celle de sa facture) : rien n'est verrouillé, tout reste modifiable.
-  const PURCHASE_KINDS = [['facture', 'Facture d\'achat'], ['depense', 'Dépense']];
+  // 10.2.0 : l'avoir fournisseur et l'acompte versé. Les deux manquaient, et les deux se ressaisissaient
+  // à la main — un avoir en tapant des montants négatifs (ce qu'aucune comptabilité n'accepte, règle
+  // 6.3.0), un acompte en ne le saisissant pas du tout jusqu'à la facture finale.
+  const PURCHASE_KINDS = [
+    ['facture', 'Facture d\'achat'], ['depense', 'Dépense'],
+    ['avoir', 'Avoir fournisseur'], ['acompte', 'Acompte versé']
+  ];
+  // Les pièces qui se RATTACHENT à une facture d'achat. Un avoir la diminue, un acompte l'a déjà
+  // payée en partie : dans les deux cas le montant se saisit POSITIF et c'est le sens de la pièce
+  // qui décide de la colonne (règle 6.3.0).
+  const PURCHASE_LIES = ['avoir', 'acompte'];
   // Destination d'une ligne d'achat. C'est ce choix qui alimentera le stock (4.0.0) et les
   // immobilisations (3.4.0) : il est posé dès maintenant pour ne pas avoir à ressaisir l'historique.
   const LINE_DESTINATIONS = [
@@ -1389,7 +1412,7 @@
     'Honoraires (comptable, avocat)', 'Publicité et communication', 'Frais bancaires',
     'Impôts et taxes', 'Formation', 'Divers'
   ];
-  const PURCHASE_STATUSES = ['à payer', 'partiel', 'retard', 'payée'];
+  const PURCHASE_STATUSES = ['à payer', 'partiel', 'retard', 'payée', 'à imputer', 'imputé'];
 
   function expenseCategories(data) {
     const extra = (data && Array.isArray(data.expenseCategories) ? data.expenseCategories : [])
@@ -1434,14 +1457,88 @@
     const byDestination = {};
     LINE_DESTINATIONS.forEach(([k]) => { byDestination[k] = 0; });
     lines.forEach(l => { byDestination[l.destination] = round3(byDestination[l.destination] + l.ht); });
-    return { lines, totalHT, vatByRate, totalVAT, deductibleVAT, fees, totalTTC, withholdingRate, withholding, netToPay, byDestination };
+
+    // LA DEVISE DE L'ACHAT (10.1.0). Une facture fournisseur venue de l'étranger — une licence
+    // logicielle, du matériel — est libellée en euros ou en dollars. Jusqu'ici l'achat n'avait
+    // AUCUNE devise : ses chiffres étaient pris pour des dinars, et la TVA déductible, la charge,
+    // le résultat, le seuil de rentabilité, la trésorerie, les écritures et le paquet du comptable
+    // comptaient 1 000 DT là où l'entreprise avait payé 3 400 DT. Rien à l'écran ne le montrait.
+    // C'est exactement la faute de la 7.0.1 (le timbre en euros) et de la 7.16.0 (les cartes de
+    // l'accueil), jamais portée du côté des achats.
+    //
+    // La règle du projet : « tout ce qui ADDITIONNE plusieurs pièces se convertit dans la devise de
+    // base ». Les montants natifs restent en tête — c'est ce que l'écran de LA pièce affiche, et
+    // c'est ce que le fournisseur a écrit sur sa facture — et `base` porte les mêmes montants
+    // convertis, pour tout ce qui agrège. Deux noms différents : un agrégateur qui oublie de
+    // convertir se lit, au lieu de passer inaperçu.
+    //
+    // Sur un achat sans devise (tous ceux d'avant la 10.1.0, que la migration met à la devise de la
+    // société avec un taux de 1), `base` est identique aux montants natifs : aucun chiffre existant
+    // ne bouge.
+    // LE SENS DE LA PIÈCE (10.2.0). Un avoir fournisseur se saisit avec des montants POSITIFS — c'est
+    // ce que le fournisseur a écrit sur son avoir — et son effet comptable est l'inverse d'une
+    // facture. La règle apprise en 10.1.0 s'applique telle quelle : ce qui agrège lit `base`, donc
+    // c'est `base` qui porte le signe. Les treize agrégateurs passés à `.base` deviennent justes
+    // sans qu'aucun n'ait à se souvenir du sens — là où les ventes recopient
+    // `type === 'avoir' ? -1 : 1` dans une quinzaine d'endroits, et où le premier qui l'oublie
+    // fabrique un chiffre faux que rien ne montre.
+    const sens = purchase.kind === 'avoir' ? -1 : 1;
+    const conv = v => round3(sens * toBase(purchase, v, company || {}));
+    const baseVatByRate = {};
+    Object.keys(vatByRate).forEach(k => {
+      baseVatByRate[k] = { base: conv(vatByRate[k].base), vat: conv(vatByRate[k].vat), deductible: conv(vatByRate[k].deductible) };
+    });
+    // UN ACOMPTE N'EST PAS UNE CHARGE (10.2.0). C'est de l'argent posé d'avance sur un fournisseur
+    // qui n'a pas encore livré : une créance, pas une consommation. Plutôt que de demander à chaque
+    // agrégateur de s'en souvenir — le défaut même que `base` existe pour éviter —, ses
+    // destinations sont VIDES et le montant vit dans `base.avance`. Le résultat, le seuil de
+    // rentabilité, la marge d'une affaire et le stock deviennent justes sans une ligne de plus, et
+    // un agrégateur écrit demain le sera aussi. Seul `journalEntries` connaît `avance` : c'est lui
+    // qui doit savoir dans quel compte la ranger.
+    const estAvance = purchase.kind === 'acompte';
+    const baseByDestination = {};
+    Object.keys(byDestination).forEach(k => { baseByDestination[k] = estAvance ? 0 : conv(byDestination[k]); });
+    const base = {
+      totalHT: conv(totalHT), totalVAT: conv(totalVAT), deductibleVAT: conv(deductibleVAT),
+      fees: estAvance ? 0 : conv(fees), totalTTC: conv(totalTTC), withholding: conv(withholding),
+      netToPay: conv(netToPay), vatByRate: baseVatByRate, byDestination: baseByDestination,
+      avance: estAvance ? conv(round3(totalHT + fees)) : 0
+    };
+    return {
+      lines, totalHT, vatByRate, totalVAT, deductibleVAT, fees, totalTTC, withholdingRate, withholding, netToPay, byDestination,
+      currency: purchase.currency || (company || {}).currency || '', rate: rateOf(purchase, company || {}), sens, base
+    };
+  }
+
+  // Les avoirs et les acomptes rattachés à une facture d'achat (10.2.0). Le symétrique de
+  // `creditsFor` côté ventes. `achatLie` porte l'identifiant de la facture concernée ; tant qu'il
+  // est vide, la pièce est LIBRE — un avoir qu'on n'a pas encore imputé, un acompte versé avant que
+  // la facture n'arrive. C'est un état normal, pas une erreur : « À faire » le rappelle.
+  function piecesLieesAchat(data, purchaseId, kind) {
+    if (!purchaseId) return [];
+    return (data.purchases || []).filter(p => p.achatLie === purchaseId && (!kind || p.kind === kind));
   }
 
   // Situation d'un achat : payé, reste dû. Le symétrique exact d'invoiceBalance.
-  function purchaseBalance(purchase, company) {
+  // `data` est FACULTATIF : sans lui, les pièces rattachées ne sont pas déduites — c'est ce que
+  // veut l'écran d'une pièce isolée, et c'est ce qui garde compatibles les appels d'avant la 10.2.0.
+  function purchaseBalance(purchase, company, data) {
     const totals = purchaseTotals(purchase, company);
     const paid = round3((purchase.payments || []).reduce((s, p) => s + (Number(p.amount) || 0), 0));
-    return { totals, paid, remaining: round3(totals.netToPay - paid) };
+    // Un avoir imputé est CONSOMMÉ par la facture qu'il diminue : le compter une seconde fois comme
+    // un crédit en attente chez le fournisseur ferait payer deux fois moins.
+    // Un avoir IMPUTÉ est consommé par la facture qu'il diminue : il ne vaut plus rien tout seul, et
+    // un règlement porté dessus — le fournisseur qui rembourse en plus d'avoir avoisé — serait le
+    // compter deux fois. Un avoir LIBRE, lui, est un crédit qu'on détient : son reste est négatif,
+    // et il revient à zéro le jour où le fournisseur le rembourse pour de bon.
+    if (purchase.kind === 'avoir') {
+      return { totals, paid, liees: [], impute: 0, remaining: purchase.achatLie ? 0 : round3(paid - totals.netToPay) };
+    }
+    const liees = data ? piecesLieesAchat(data, purchase.id) : [];
+    // Un avoir et un acompte se déduisent de la même façon, et dans la MÊME devise : un fournisseur
+    // avoise et encaisse dans la devise où il a facturé. L'éditeur le refuse autrement.
+    const impute = round3(liees.reduce((s, x) => s + purchaseTotals(x, company).netToPay, 0));
+    return { totals, paid, liees, impute, remaining: round3(totals.netToPay - paid - impute) };
   }
 
   // Statut déduit des paiements, jamais saisi — comme pour une facture de vente.
@@ -1464,14 +1561,19 @@
     if (!achat || achat.kind === 'depense') return null;       // une dépense n'a pas de numéro qui fasse foi
     const num = String(achat.number || '').trim().toLowerCase();
     if (!num || !achat.supplierId) return null;
+    // Un avoir peut légitimement porter le même numéro qu'une facture chez certains fournisseurs :
+    // ce sont deux séries différentes. On ne compare que des pièces de même nature (10.2.0).
+    const kind = achat.kind || 'facture';
     return (data.purchases || []).find(x => x.id !== achat.id && x.supplierId === achat.supplierId
+      && (x.kind || 'facture') === kind
       && String(x.number || '').trim().toLowerCase() === num) || null;
   }
 
-  function purchaseStatus(purchase, company, todayIso) {
-    const b = purchaseBalance(purchase, company);
+  function purchaseStatus(purchase, company, todayIso, data) {
+    const b = purchaseBalance(purchase, company, data);
+    if (purchase.kind === 'avoir') return purchase.achatLie ? 'imputé' : 'à imputer';
     if (b.remaining <= 0.0005) return 'payée';
-    if (b.paid > 0) return 'partiel';
+    if (b.paid > 0 || b.impute > 0) return 'partiel';
     if (purchase.dueDate && purchase.dueDate < (todayIso || today())) return 'retard';
     return 'à payer';
   }
@@ -1480,13 +1582,16 @@
   function payablesList(data, company, todayIso) {
     const t = todayIso || today();
     return (data.purchases || []).map(p => {
-      const b = purchaseBalance(p, company);
+      // Un avoir n'est jamais une dette : il ne se règle pas, il s'impute. Rien à filtrer ici —
+      // `purchaseBalance` rend déjà un reste nul ou négatif pour un avoir, et un garde-fou de plus
+      // serait du code qu'aucun test ne peut faire tomber.
+      const b = purchaseBalance(p, company, data);
       if (b.remaining <= 0.0005) return null;
       const late = p.dueDate && p.dueDate < t ? daysBetween(p.dueDate, t) : 0;
       return {
         id: p.id, supplierId: p.supplierId, number: p.number || '', date: p.date, dueDate: p.dueDate || '',
-        subject: p.subject || '', remaining: b.remaining, total: b.totals.netToPay, late,
-        status: purchaseStatus(p, company, t)
+        subject: p.subject || '', remaining: toBase(p, b.remaining, company), total: b.totals.base.netToPay, late,
+        currency: p.currency || company.currency, status: purchaseStatus(p, company, t, data)
       };
     }).filter(Boolean).sort((a, b) => (b.late - a.late) || (a.dueDate || '9999').localeCompare(b.dueDate || '9999'));
   }
@@ -1500,7 +1605,10 @@
       const m = PAYMENT_METHODS.find(k => k[0] === x.method);
       out.push({
         id: x.id, purchaseId: p.id, date: x.date, number: p.number || '', supplier: name(p.supplierId), supplierId: p.supplierId || '',
-        amount: round3(Number(x.amount) || 0), method: m ? m[1] : (x.method || ''), reference: x.reference || '', note: x.note || '', accountId: x.accountId || ''
+        // Un règlement porté par un AVOIR est un remboursement : l'argent ENTRE (10.2.0). Le signe
+        // suffit — `entrySet` change alors la colonne tout seul, et la trésorerie suit.
+        amount: round3((p.kind === 'avoir' ? -1 : 1) * toBase(p, Number(x.amount) || 0, company)), method: m ? m[1] : (x.method || ''),
+        currency: p.currency || company.currency, reference: x.reference || '', note: x.note || '', accountId: x.accountId || ''
       });
     }));
     return out.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
@@ -1516,10 +1624,11 @@
         const t = purchaseTotals(p, company);
         return {
           id: p.id, date: p.date, number: p.number || '', supplier: name(p.supplierId),
-          kind: p.kind === 'depense' ? 'Dépense' : 'Facture d\'achat', category: p.category || '',
-          ht: t.totalHT, tva: t.totalVAT, deductible: t.deductibleVAT, fees: t.fees,
-          ttc: t.totalTTC, rs: t.withholding, net: t.netToPay,
-          status: purchaseStatus(p, company, '9999-12-31'), subject: p.subject || ''
+          kind: (PURCHASE_KINDS.find(k => k[0] === (p.kind || 'facture')) || PURCHASE_KINDS[0])[1], category: p.category || '',
+          ht: t.base.totalHT, tva: t.base.totalVAT, deductible: t.base.deductibleVAT, fees: t.base.fees,
+          ttc: t.base.totalTTC, rs: t.base.withholding, net: t.base.netToPay,
+          currency: t.currency, rate: t.rate,
+          status: purchaseStatus(p, company, '9999-12-31', data), subject: p.subject || ''
         };
       });
   }
@@ -1541,12 +1650,16 @@
     const mine = (data.purchases || []).filter(p => p.supplierId === supplierId);
     let ht = 0, remaining = 0, late = 0;
     mine.forEach(p => {
-      const b = purchaseBalance(p, company);
-      ht = round3(ht + b.totals.totalHT);
+      const b = purchaseBalance(p, company, data);
+      ht = round3(ht + b.totals.base.totalHT);
       if (b.remaining > 0.0005) {
-        remaining = round3(remaining + b.remaining);
-        if (purchaseStatus(p, company, todayIso) === 'retard') late = round3(late + b.remaining);
+        remaining = round3(remaining + toBase(p, b.remaining, company));
+        if (purchaseStatus(p, company, todayIso, data) === 'retard') late = round3(late + toBase(p, b.remaining, company));
       }
+      // Un avoir non imputé est un CRÉDIT chez ce fournisseur : il vient en moins de ce qu'on lui
+      // doit, et il se voit sur sa fiche (10.2.0). Le laisser hors du compte ferait payer une
+      // facture qu'un avoir couvrait déjà.
+      if (p.kind === 'avoir' && !p.achatLie) remaining = round3(remaining + toBase(p, b.remaining, company));
     });
     const dates = mine.map(p => p.date).filter(Boolean).sort();
     return { count: mine.length, ht, remaining, late, first: dates[0] || '', last: dates[dates.length - 1] || '' };
@@ -1558,7 +1671,7 @@
     return (data.purchases || [])
       .map(p => ({ p, t: purchaseTotals(p, company) }))
       .filter(x => x.t.withholding > 0.0005 && !x.p.withholdingCertificate)
-      .map(x => ({ id: x.p.id, supplier: name(x.p.supplierId), number: x.p.number || '', date: x.p.date, amount: x.t.withholding, rate: x.t.withholdingRate }))
+      .map(x => ({ id: x.p.id, supplier: name(x.p.supplierId), number: x.p.number || '', date: x.p.date, amount: x.t.base.withholding, rate: x.t.withholdingRate }))
       .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
   }
 
@@ -1666,8 +1779,8 @@
     let cost = 0, paid = 0;
     buys.forEach(p => {
       const t = purchaseTotals(p, company);
-      cost = round3(cost + t.totalHT + t.fees);
-      paid = round3(paid + purchaseBalance(p, company).paid);
+      cost = round3(cost + t.base.totalHT + t.base.fees);
+      paid = round3(paid + toBase(p, purchaseBalance(p, company, data).paid, company));
     });
     // Devis en cours : ce qui est proposé mais pas encore vendu, pour voir l'affaire en entier.
     const quotes = (data.documents || []).filter(d => d.projectId === projectId && d.type === 'devis' && d.status !== 'brouillon');
@@ -1700,7 +1813,7 @@
     });
     // Les achats rattachés au même client ET à la même affaire, s'il y en a une.
     const linked = (data.purchases || []).filter(p => rec && p.projectId && p.projectId === rec.projectId);
-    linked.forEach(p => { const t = purchaseTotals(p, company); cost = round3(cost + t.totalHT + t.fees); });
+    linked.forEach(p => { const t = purchaseTotals(p, company); cost = round3(cost + t.base.totalHT + t.base.fees); });
     const margin = round3(revenue - cost);
     const dates = invoices.map(d => d.date).filter(Boolean).sort();
     const months = dates.length ? Math.max(1, Math.round(daysBetween(dates[0], dates[dates.length - 1]) / 30) + 1) : 0;
@@ -1734,7 +1847,7 @@
     (data.purchases || []).filter(p => inPeriod(p.date, period && period.from, period && period.to)).forEach(p => {
       const t = purchaseTotals(p, company);
       // Le stock et les immobilisations ne sont pas des charges de la période.
-      const charge = round3(t.byDestination.charge + t.fees);
+      const charge = round3(t.base.byDestination.charge + t.base.fees);
       if (isFixedCategory(data, p.category)) fixed = round3(fixed + charge);
       else variable = round3(variable + charge);
     });
@@ -1817,15 +1930,24 @@
     });
 
     (data.purchases || []).forEach(p => {
+      // Un acompte versé n'est pas de la marchandise : c'est de l'argent posé d'avance (10.2.0).
+      // Un avoir fournisseur, si : la marchandise RESSORT du stock, elle retourne chez lui.
+      if (p.kind === 'acompte') return;
+      const sens = p.kind === 'avoir' ? -1 : 1;
       (p.lines || []).forEach((l, i) => {
         if (l.destination !== 'stock') return;
         const c = itemOfLine(l, data);
         if (!keep(c)) return;
         if (limit && p.date > limit) return;
-        const qty = Number(l.qty) || 0;
+        const qty = sens * (Number(l.qty) || 0);
         if (!qty) return;
+        // Le coût d'entrée est en DEVISE DE BASE (10.1.0) : le coût moyen pondéré mélange des
+        // entrées de plusieurs achats, et le stock se valorise au bilan en dinars. Un composant
+        // payé 120 € entrait à 120 DT, donc la valeur du stock, le coût des ventes et la marge
+        // étaient faux ensemble et dans le même sens.
         out.push({ id: `buy-${p.id}-${i}`, date: p.date, itemId: c.id, label: c.label, qty,
-          unitCost: Number(l.unitPrice) || 0, source: 'achat', ref: p.number || '', docId: p.id, note: '' });
+          unitCost: toBase(p, Number(l.unitPrice) || 0, data.company || {}),
+          source: 'achat', ref: p.number || '', docId: p.id, note: '' });
       });
     });
 
@@ -1992,141 +2114,33 @@
   //  3. Le bulletin garde une COPIE de ce qui a servi à le calculer. Changer un barème ne doit jamais
   //     réécrire l'histoire d'un bulletin déjà remis à un salarié.
 
-  const CONTRACT_TYPES = [
-    ['cdi', 'CDI — contrat à durée indéterminée'],
-    ['cdd', 'CDD — contrat à durée déterminée'],
-    ['sivp', 'SIVP — stage d\'initiation à la vie professionnelle'],
-    ['karama', 'Contrat Karama'],
-    ['stage', 'Stage'],
-    ['autre', 'Autre']
-  ];
-  const contractLabel = k => (CONTRACT_TYPES.find(x => x[0] === k) || [, k])[1];
-
-  // Valeurs de départ, toutes modifiables. Régime tunisien, secteur non agricole.
-  // À VÉRIFIER avec le comptable : chacune de ces lignes peut changer d'une loi de finances à l'autre.
-  const DEFAULT_PAYROLL = {
-    cnssEmployee: 9.18,        // part salarié
-    cnssEmployer: 16.57,       // part employeur
-    accidentRate: 0.4,         // accident du travail : dépend de l'activité
-    tfpRate: 2,                // taxe de formation professionnelle : 2 % (1 % pour les industries manufacturières) — 9.0.0
-    foprolosRate: 1,           // FOPROLOS (logement social) : 1 % de la masse salariale — 9.0.0
-    solidarity: 1,             // contribution sociale de solidarité, en points sur la base imposable
-    proRate: 10,               // frais professionnels : % du salaire imposable…
-    proCap: 2000,              // …plafonnés à ce montant par an
-    headOfFamily: 300,         // déduction annuelle chef de famille
-    perChild: 100,             // déduction annuelle par enfant à charge
-    maxChildren: 4,
-    workedDays: 26,            // jours ouvrables d'un mois complet
-    offDays: [0],              // jours chômés de la semaine (0 = dimanche) — semaine de six jours
-    leaveDaysPerYear: 18,      // droit annuel à congé payé, en jours ouvrables
-    // Barème IRPP annuel progressif : `upTo` en dinars (null = au-delà), `rate` en %.
-    brackets: [
-      { upTo: 5000, rate: 0 },
-      { upTo: 10000, rate: 15 },
-      { upTo: 20000, rate: 25 },
-      { upTo: 30000, rate: 30 },
-      { upTo: 40000, rate: 33 },
-      { upTo: 50000, rate: 36 },
-      { upTo: 70000, rate: 38 },
-      { upTo: null, rate: 40 }
-    ]
-  };
+  // Le moteur de paie vit dans `compta.js` depuis la 10.3.0, et core.js le réexporte à l'identique.
+  // La règle de découpage de la 9.1.0, relue dans les deux sens (9.6.1) : ces fonctions prennent un
+  // SALARIÉ et une SAISIE, jamais `data`. Elles étaient du mauvais côté depuis la 5.0.0, et ça ne
+  // s'était jamais vu parce que personne d'autre n'en avait besoin — le Cabinet, lui, en a besoin
+  // pour tenir la paie des dossiers qui ne sont PAS sur SkanFact, et il ne charge pas core.js.
+  // La seule alternative au déménagement était la recopie, et une copie diverge, toujours.
+  const CONTRACT_TYPES = Compta.CONTRACT_TYPES;
+  const contractLabel = Compta.contractLabel;
+  const DEFAULT_PAYROLL = Compta.DEFAULT_PAYROLL;
 
   function payrollSettings(data) {
-    const s = (data && data.payrollSettings) || {};
-    const r = {
-      ...DEFAULT_PAYROLL, ...s,
-      brackets: Array.isArray(s.brackets) && s.brackets.length ? s.brackets : DEFAULT_PAYROLL.brackets
-    };
+    const regle = (data && data.payrollSettings) || {};
+    const r = Compta.baremesPaie(regle);
     // La TFP du métier, PROPOSÉE (9.1.1) : seulement tant que personne n'a réglé le taux à la main
     // — ni en le saisissant (`tfpRate` présent), ni en touchant le champ (`tfpTouche`). C'est le
     // motif de `regimeTouche` (7.25.0) et de la durée proposée par la famille d'un bien : proposer
     // ne veut rien dire si la proposition écrase ensuite ce qu'on a décidé.
-    if (s.tfpRate === undefined && !s.tfpTouche) {
+    if (regle.tfpRate === undefined && !regle.tfpTouche) {
       const p = tfpSuggere(((data && data.company) || {}).activity);
       if (p !== null) r.tfpRate = p;
     }
     return r;
   }
 
-  // Impôt annuel sur un revenu imposable, barème progressif par tranches.
-  function irppAnnual(base, brackets) {
-    const total = Math.max(0, Number(base) || 0);
-    let from = 0, tax = 0;
-    for (const b of brackets) {
-      const to = b.upTo == null ? Infinity : Number(b.upTo);
-      // La tranche ne porte que sur la part du revenu comprise entre `from` et `to` — surtout pas sur
-      // toute la tranche quand le revenu s'arrête au milieu (c'est l'erreur classique du barème).
-      const slice = Math.max(0, Math.min(total, to) - from);
-      if (slice > 0) tax += slice * (Number(b.rate) || 0) / 100;
-      from = to;
-      if (from >= total) break;
-    }
-    return round3(tax);
-  }
-
-  // Le calcul d'un bulletin. `input` porte ce qui varie d'un mois à l'autre :
-  // { gross, bonuses:[{label, amount, taxable}], deductions:[{label, amount}], absentDays, workedDays }
-  // Retourne TOUT le détail, pour que le bulletin imprimé et l'écran disent exactement la même chose.
-  function computePayslip(employee, input, settings) {
-    const s = settings || DEFAULT_PAYROLL;
-    const i = input || {};
-    const emp = employee || {};
-    const baseGross = round3(Number(i.gross != null ? i.gross : emp.grossSalary) || 0);
-    const workedDays = Number(i.workedDays) || 26;      // jours ouvrables du mois, modifiable
-    const absent = Math.max(0, Number(i.absentDays) || 0);
-    // Absence non rémunérée : le brut est réduit au prorata des jours.
-    const absenceCut = absent > 0 && workedDays > 0 ? round3(baseGross * absent / workedDays) : 0;
-
-    const bonuses = (i.bonuses || []).map(b => ({ label: b.label || 'Prime', amount: round3(Number(b.amount) || 0), taxable: b.taxable !== false }));
-    const taxableBonus = round3(bonuses.filter(b => b.taxable).reduce((a, b) => a + b.amount, 0));
-    const freeBonus = round3(bonuses.filter(b => !b.taxable).reduce((a, b) => a + b.amount, 0));
-
-    const gross = round3(baseGross - absenceCut + taxableBonus + freeBonus);
-    const cnssBase = round3(baseGross - absenceCut + taxableBonus);   // les primes non imposables sont hors assiette
-    const cnssEmployee = round3(cnssBase * (Number(s.cnssEmployee) || 0) / 100);
-
-    // Base imposable mensuelle → annualisée pour appliquer le barème, puis ramenée au mois.
-    const afterCnss = round3(cnssBase - cnssEmployee);
-    const annualAfterCnss = round3(afterCnss * 12);
-    const pro = round3(Math.min(annualAfterCnss * (Number(s.proRate) || 0) / 100, Number(s.proCap) || 0));
-    const children = Math.min(Number(emp.children) || 0, Number(s.maxChildren) || 0);
-    const family = round3((emp.headOfFamily ? (Number(s.headOfFamily) || 0) : 0) + children * (Number(s.perChild) || 0));
-    const annualTaxable = round3(Math.max(0, annualAfterCnss - pro - family));
-    const irppYear = irppAnnual(annualTaxable, s.brackets);
-    const irpp = round3(irppYear / 12);
-    const css = round3(annualTaxable * (Number(s.solidarity) || 0) / 100 / 12);
-
-    const deductions = (i.deductions || []).map(d => ({ label: d.label || 'Retenue', amount: round3(Number(d.amount) || 0) }));
-    const otherDeductions = round3(deductions.reduce((a, d) => a + d.amount, 0));
-
-    const net = round3(gross - cnssEmployee - irpp - css - otherDeductions);
-    const cnssEmployer = round3(cnssBase * (Number(s.cnssEmployer) || 0) / 100);
-    const accident = round3(cnssBase * (Number(s.accidentRate) || 0) / 100);
-    // 9.0.0 : la TFP et le FOPROLOS sont des taxes patronales sur la masse salariale, déclarées
-    // chaque mois avec la TVA. Elles entrent dans le coût employeur, jamais dans le net.
-    const tfp = round3(cnssBase * (Number(s.tfpRate) || 0) / 100);
-    const foprolos = round3(cnssBase * (Number(s.foprolosRate) || 0) / 100);
-    const employerCharges = round3(cnssEmployer + accident + tfp + foprolos);
-    const employerCost = round3(gross + employerCharges);
-
-    return {
-      baseGross, absenceCut, absentDays: absent, workedDays,
-      bonuses, taxableBonus, freeBonus, gross,
-      cnssBase, cnssEmployee, afterCnss, pro, family, children,
-      annualTaxable, irppYear, irpp, css,
-      deductions, otherDeductions, net,
-      cnssEmployer, accident, tfp, foprolos, employerCharges, employerCost,
-      rates: {
-        cnssEmployee: Number(s.cnssEmployee) || 0, cnssEmployer: Number(s.cnssEmployer) || 0,
-        accidentRate: Number(s.accidentRate) || 0, solidarity: Number(s.solidarity) || 0,
-        tfpRate: Number(s.tfpRate) || 0, foprolosRate: Number(s.foprolosRate) || 0
-      }
-    };
-  }
-  // Les charges patronales d'un bulletin, telles qu'il les a FIGÉES (5.0.0) : un bulletin d'avant la
-  // 9.0.0 n'a ni TFP ni FOPROLOS, et ne doit pas en gagner après coup.
-  const employerChargesOf = c => round3((Number(c.cnssEmployer) || 0) + (Number(c.accident) || 0) + (Number(c.tfp) || 0) + (Number(c.foprolos) || 0));
+  const irppAnnual = Compta.irppAnnual;
+  const computePayslip = Compta.computePayslip;
+  const employerChargesOf = Compta.employerChargesOf;
 
   const activeEmployees = (data, dateIso) => {
     const t = dateIso || today();
@@ -2633,8 +2647,8 @@
         const t = purchaseTotals(p, company || (data.company || {}));
         const sup = (data.suppliers || []).find(s2 => s2.id === p.supplierId) || {};
         return { purchaseId: p.id, supplier: sup.name || '—', matricule: sup.matricule || '',
-          number: p.number || '', date: p.date, base: round3(t.totalTTC - t.fees),
-          rate: Number(p.withholdingRate) || 0, amount: t.withholding, certificate: !!p.withholdingCertificate };
+          number: p.number || '', date: p.date, base: round3(t.base.totalTTC - t.base.fees),
+          rate: Number(p.withholdingRate) || 0, amount: t.base.withholding, certificate: !!p.withholdingCertificate };
       })
       .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
     const heldBySupplier = {};
@@ -2983,7 +2997,11 @@
       out.push({
         id: p.id, kind: 'decaissement', date: p.date, accountId: p.accountId || fallback,
         label: `Règlement ${pu.number || 'sans numéro'}`, party: supplierName(pu.supplierId),
-        amount: -round3(Number(p.amount) || 0), method: p.method || '',
+        // Ce qui sort du compte sort en DINARS (10.1.0), comme l'encaissement client dix lignes
+        // plus haut : régler 500 € vide le compte de 1 700 DT, pas de 500. Sans ça, la trésorerie
+        // de la page et celle du grand livre se contredisaient — et c'est le test des états
+        // financiers qui l'a dit, pas la relecture.
+        amount: -round3(toBase(pu, Number(p.amount) || 0, company)), method: p.method || '',
         reference: p.reference || '', purchaseId: pu.id, reconciled: !!p.reconciled, source: 'achat'
       });
     }));
@@ -3056,7 +3074,7 @@
     });
     // Ce qui doit sortir : le reste dû de chaque achat.
     (data.purchases || []).forEach(p => {
-      const rest = purchaseBalance(p, company).remaining;
+      const rest = purchaseBalance(p, company, data).remaining;
       if (rest <= 0.0005) return;
       const due = p.dueDate && p.dueDate > t ? p.dueDate : t;
       if (due > horizon) return;
@@ -3234,7 +3252,7 @@
       const t = purchaseTotals(p, company);
       Object.keys(t.vatByRate).forEach(rate => {
         if (!byRate[rate]) byRate[rate] = { collected: 0, deductible: 0 };
-        byRate[rate].deductible = round3(byRate[rate].deductible + t.vatByRate[rate].deductible);
+        byRate[rate].deductible = round3(byRate[rate].deductible + t.base.vatByRate[rate].deductible);
       });
     });
     const collected = round3(sales.reduce((s, r) => s + r.tva, 0));
@@ -3357,9 +3375,9 @@
     const cogs = costOfGoodsSold(data, period);
     (data.purchases || []).filter(p => inPeriod(p.date, period && period.from, period && period.to)).forEach(p => {
       const t = purchaseTotals(p, company);
-      charges = round3(charges + t.byDestination.charge + t.fees);
-      stock = round3(stock + t.byDestination.stock);
-      immo = round3(immo + t.byDestination.immobilisation);
+      charges = round3(charges + t.base.byDestination.charge + t.base.fees);
+      stock = round3(stock + t.base.byDestination.stock);
+      immo = round3(immo + t.base.byDestination.immobilisation);
     });
     // L'achat d'une immobilisation n'est pas une charge, mais son AMORTISSEMENT en est une : sans lui,
     // le résultat de l'année d'un gros investissement serait artificiellement bon (3.5.0).
@@ -3829,6 +3847,8 @@
     charges: '606',              // Achats consommés (fournitures, services)
     immobilisations: '22',       // Immobilisations corporelles — le compte exact dépend du bien (8.8.0 : 22, le 24 du SCE est « à statut juridique particulier »)
     fraisAccessoires: '608',     // Frais accessoires d'achat (transport, douane)
+    avancesFournisseurs: '409',  // Avances et acomptes versés à un fournisseur (10.2.0) — À VÉRIFIER
+
     banque: '532',               // Banques
     caisse: '54',                // Caisse
     salairesBruts: '640',        // Rémunérations du personnel
@@ -3865,7 +3885,8 @@
     tvaCollectee: 'TVA collectée', tvaDeductible: 'TVA déductible', timbre: 'Timbre fiscal',
     rsSubie: 'Retenue à la source subie', rsOperee: 'Retenue à la source opérée',
     achatsStock: 'Achats de marchandises', charges: 'Charges', immobilisations: 'Immobilisations',
-    fraisAccessoires: 'Frais accessoires d\'achat', banque: 'Banque', caisse: 'Caisse',
+    fraisAccessoires: 'Frais accessoires d\'achat', avancesFournisseurs: 'Avances et acomptes versés',
+    banque: 'Banque', caisse: 'Caisse',
     salairesBruts: 'Salaires bruts', chargesPatronales: 'Charges patronales',
     personnel: 'Personnel — net à payer', cnss: 'CNSS', irpp: 'IRPP retenu',
     resultat: 'Résultat des exercices passés',
@@ -3985,7 +4006,7 @@
     const lettreVente = doc => (doc && doc.type === 'facture' && doc.status !== 'annulée' && invoiceBalance(doc, data, company).remaining <= 0.0005) ? doc.number : '';
     const docsById = {}; (data.documents || []).forEach(d => { docsById[d.id] = d; });
     const lettreDoc = id => { const d = docsById[id]; if (!d) return ''; if (d.type === 'avoir') return d.creditOf ? lettreVente(docsById[d.creditOf]) : ''; return lettreVente(d); };
-    const lettreAchat = p => (p && purchaseBalance(p, company).remaining <= 0.0005 && (p.payments || []).length) ? (p.number || p.id) : '';
+    const lettreAchat = p => (p && purchaseBalance(p, company, data).remaining <= 0.0005 && (p.payments || []).length) ? (p.number || p.id) : '';
     const achatsById = {}; (data.purchases || []).forEach(p => { achatsById[p.id] = p; });
 
     // --- ventes : factures et avoirs émis
@@ -4024,19 +4045,52 @@
           const sup = ((data.suppliers || []).find(s => s.id === p.supplierId) || {}).name || '';
           const num = p.number || '(sans numéro)';
           const e = entrySet({ date: p.date, journal: 'AC', piece: num, tiers: sup, tiersId: p.supplierId || '', source: 'achat', docId: p.id, currency: cur, lettre: lettreAchat(p) });
-          const label = `${p.kind === 'depense' ? 'Dépense' : 'Achat'} ${num}${sup ? ' — ' + sup : ''}`;
+          const NATURE = { depense: 'Dépense', avoir: 'Avoir fournisseur', acompte: 'Acompte versé' };
+          const label = `${NATURE[p.kind] || 'Achat'} ${num}${sup ? ' — ' + sup : ''}`;
+          // Un acompte versé n'est pas une charge : c'est une créance sur le fournisseur tant qu'il
+          // n'a pas livré (10.2.0). Il va donc aux avances, quelle que soit la destination des
+          // lignes — et c'est l'imputation, plus bas, qui le solde le jour de la facture.
+          // L'avoir, lui, garde les comptes de la facture : ses montants `base` sont NÉGATIFS et
+          // `entrySet` change la colonne tout seul (règle 6.3.0).
           const dest = { charge: acc.charges, stock: acc.achatsStock, immobilisation: acc.immobilisations };
-          Object.keys(t.byDestination).forEach(k => {
-            if (t.byDestination[k]) e.debit(dest[k] || acc.charges, `${label} (${k})`, t.byDestination[k], { destination: k });
+          // Tout ce qui entre dans un LIVRE est en devise de base (10.1.0) : une écriture porte la
+          // devise de la comptabilité, jamais celle de la facture du fournisseur. Le montant
+          // d'origine reste sur la pièce, et c'est elle qu'on rouvre pour le lire.
+          if (t.base.avance) e.debit(acc.avancesFournisseurs, label, t.base.avance);
+          Object.keys(t.base.byDestination).forEach(k => {
+            if (t.base.byDestination[k]) e.debit(dest[k] || acc.charges, `${label} (${k})`, t.base.byDestination[k], { destination: k });
           });
-          if (t.fees) e.debit(acc.fraisAccessoires, `Frais accessoires ${num}`, t.fees);
-          if (t.deductibleVAT) e.debit(acc.tvaDeductible, `TVA déductible ${num}`, t.deductibleVAT);
+          if (t.base.fees) e.debit(acc.fraisAccessoires, `Frais accessoires ${num}`, t.base.fees);
+          if (t.base.deductibleVAT) e.debit(acc.tvaDeductible, `TVA déductible ${num}`, t.base.deductibleVAT);
           // TVA non déductible : elle n'est pas récupérable, elle grossit la charge.
-          const nonDeductible = round3(t.totalVAT - t.deductibleVAT);
-          if (nonDeductible) e.debit(acc.charges, `TVA non déductible ${num}`, nonDeductible);
-          if (t.withholding) e.credit(acc.rsOperee, `Retenue à la source opérée ${num}`, t.withholding);
-          e.credit(cptFourn(p.supplierId), label, t.netToPay, { role: 'fournisseurs' });
+          const nonDeductible = round3(t.base.totalVAT - t.base.deductibleVAT);
+          if (nonDeductible) e.debit(p.kind === 'acompte' ? acc.avancesFournisseurs : acc.charges, `TVA non déductible ${num}`, nonDeductible);
+          if (t.base.withholding) e.credit(acc.rsOperee, `Retenue à la source opérée ${num}`, t.base.withholding);
+          e.credit(cptFourn(p.supplierId), label, t.base.netToPay, { role: 'fournisseurs' });
           out.push(...e.done());
+
+          // L'IMPUTATION DE L'ACOMPTE (10.2.0). L'acompte a posé une avance au 409 et l'a réglée ;
+          // la facture crédite le fournisseur de son total. Sans cette pièce, le 401 resterait
+          // débiteur de l'acompte et le 409 débiteur pour toujours : deux comptes faux qui
+          // s'annulent au bilan sans jamais se solder, donc que personne ne voit passer.
+          // Un AVOIR n'en a pas besoin : ses montants `base` sont négatifs, donc son écriture
+          // débite déjà le fournisseur — il ne reste qu'à lettrer.
+          if (p.kind !== 'avoir' && p.kind !== 'acompte') {
+            piecesLieesAchat(data, p.id, 'acompte').forEach(a => {
+              const ta = purchaseTotals(a, company);
+              // L'imputation REPREND ce que l'acompte avait posé, ligne par ligne, et recrédite le
+              // fournisseur. La TVA en fait partie : celle de la facture porte sur le montant
+              // ENTIER, acompte compris, donc la garder des deux côtés la déduirait deux fois.
+              const im = entrySet({ date: p.date, journal: 'OD', piece: num, tiers: sup, tiersId: p.supplierId || '', source: 'achat', docId: p.id, currency: cur });
+              const lbl = `Imputation acompte ${a.number || ''} sur ${num}`.replace('  ', ' ');
+              im.debit(cptFourn(p.supplierId), lbl, ta.base.netToPay, { role: 'fournisseurs' });
+              if (ta.base.withholding) im.debit(acc.rsOperee, lbl, ta.base.withholding);
+              const avance = round3(ta.base.totalTTC - ta.base.deductibleVAT);
+              if (avance) im.credit(acc.avancesFournisseurs, lbl, avance);
+              if (ta.base.deductibleVAT) im.credit(acc.tvaDeductible, lbl, ta.base.deductibleVAT);
+              out.push(...im.done());
+            });
+          }
         });
     }
 
@@ -4416,9 +4470,12 @@
       });
     } else {
       (data.purchases || []).forEach(p => {
-        const b = purchaseBalance(p, company);
+        const b = purchaseBalance(p, company, data);
         const r = tiersDe(p.supplierId || '');
-        if (b.remaining <= 0.0005) { if ((p.payments || []).length) r.lettrees++; return; }
+        // Un avoir non imputé laisse le fournisseur DÉBITEUR : son reste est négatif, et il est
+        // tout aussi ouvert qu'une facture impayée (10.2.0). Ne regarder que les restes positifs
+        // faisait dire au lettrage un chiffre différent du solde du 401, sur la même donnée.
+        if (Math.abs(b.remaining) <= 0.0005) { if ((p.payments || []).length) r.lettrees++; return; }
         r.ouverts.push({ id: p.id, piece: p.number || '(sans numéro)', date: p.date, echeance: p.dueDate || '', montant: b.totals.netToPay, regle: b.paid, reste: b.remaining, retard: !!(p.dueDate && p.dueDate < t) });
         r.reste = round3(r.reste + b.remaining);
       });
@@ -4867,6 +4924,135 @@
     return { buckets, total };
   }
 
+  // ---------- le relevé de compte d'un client (10.2.0) ----------
+  // Le document qui manquait le plus au quotidien : « qu'est-ce que ce client me doit, en tout ? »
+  // Une relance porte sur UNE facture ; un client qui en a six ouvertes reçoit six relances et
+  // recompose le total lui-même — ou ne le fait pas. Le relevé est la pièce qu'on envoie à la
+  // comptabilité d'en face pour qu'elle rapproche son compte du nôtre.
+  //
+  // Il ne se saisit pas et ne s'enregistre pas : il se DÉDUIT des pièces à l'instant où on
+  // l'imprime, comme les statuts (règle « les statuts ne se saisissent jamais à la main »). Un
+  // relevé rangé se périmerait à l'encaissement suivant.
+  function releveClient(data, clientId, company, opts) {
+    opts = opts || {};
+    const t = opts.date || today();
+    const client = (data.clients || []).find(c => c.id === clientId) || {};
+    const lignes = [];
+    (data.documents || [])
+      .filter(d => d.clientId === clientId && (d.type === 'facture' || d.type === 'avoir')
+        && d.status !== 'brouillon' && d.status !== 'annulée' && d.date <= t)
+      .sort((a, b) => (a.date || '').localeCompare(b.date || ''))
+      .forEach(d => {
+        if (d.type === 'avoir') {
+          // Un avoir qui vient en déduction d'une facture est DÉJÀ compté dans le reste dû de cette
+          // facture (`invoiceBalance`) : le remontrer ferait un relevé deux fois trop favorable.
+          // Seul un avoir libre — non rattaché — est une somme que le client peut encore employer.
+          if (d.creditOf) return;
+          const net = round3(toBase(d, computeTotals(d, company).netToPay, company));
+          if (net <= 0.0005) return;
+          lignes.push({ id: d.id, type: 'avoir', date: d.date, number: d.number || '', dueDate: '',
+            libelle: d.subject || 'Avoir', montant: -net, regle: 0, reste: -net, retard: 0 });
+          return;
+        }
+        const b = invoiceBalance(d, data, company);
+        if (b.remaining <= 0.0005) return;
+        const montant = round3(toBase(d, b.totals.netToPay, company));
+        const reste = round3(toBase(d, b.remaining, company));
+        lignes.push({
+          id: d.id, type: 'facture', date: d.date, number: d.number || '', dueDate: d.dueDate || '',
+          libelle: d.subject || '', montant, regle: round3(montant - reste), reste,
+          retard: d.dueDate && d.dueDate < t ? daysBetween(d.dueDate, t) : 0
+        });
+      });
+    const somme = k => round3(lignes.reduce((s, l) => s + l[k], 0));
+    const echu = round3(lignes.filter(l => l.retard > 0).reduce((s, l) => s + l.reste, 0));
+    return {
+      client, date: t, currency: company.currency || 'DT', lignes,
+      montant: somme('montant'), regle: somme('regle'), total: somme('reste'),
+      echu, aVenir: round3(somme('reste') - echu),
+      plusAncien: lignes.reduce((n, l) => Math.max(n, l.retard), 0)
+    };
+  }
+
+  // Le relevé imprimable. Un document à part, comme les pièces du personnel (5.1.0) : ce n'est pas
+  // une facture, il ne porte ni numéro, ni TVA, ni timbre — l'y faire passer par `documentHtml`
+  // lui donnerait des mentions légales qui n'ont rien à y faire.
+  function releveHtml(releve, company, opts) {
+    opts = opts || {};
+    const r = releve;
+    const cur = r.currency;
+    const fmt = n => money(n, null, decimalsFor(cur), 'fr');
+    const ink = company.primaryColor || '#1b2430';
+    const accent = company.accentColor || '#0f9d8f';
+    const hex = accent.replace('#', '');
+    const [rr, gg, bb] = [0, 2, 4].map(i => parseInt(hex.slice(i, i + 2), 16));
+    const tint = a => `rgba(${rr}, ${gg}, ${bb}, ${a})`;
+    const c = r.client || {};
+    return `<!DOCTYPE html>
+<html lang="fr"><head><meta charset="utf-8">
+<title>Relevé de compte — ${escapeHtml(c.name || '')}</title>
+<style>
+  @page { size: A4; margin: 0; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; color: ${ink}; font-size: 10pt; line-height: 1.55; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .page { width: 210mm; min-height: 297mm; padding: 18mm 18mm; background: #fff; display: flex; flex-direction: column; }
+  .head { display: flex; justify-content: space-between; align-items: flex-start; gap: 18px; padding-bottom: 14px; border-bottom: 2px solid ${tint(0.35)}; }
+  .co-name { font-size: 14pt; font-weight: 700; }
+  .co-sub { font-size: 8pt; color: #6a7480; line-height: 1.5; }
+  h1 { font-size: 15pt; letter-spacing: 1.2px; text-transform: uppercase; color: ${accent}; margin: 24px 0 4px; }
+  .asof { font-size: 9pt; color: #6a7480; margin: 0 0 18px; }
+  .who { margin: 0 0 18px; padding: 10px 14px; background: ${tint(0.07)}; border-inline-start: 3px solid ${accent}; border-radius: 0 6px 6px 0; }
+  .who b { font-size: 11pt; }
+  table.l { width: 100%; border-collapse: collapse; }
+  table.l th { font-size: 8pt; text-transform: uppercase; letter-spacing: .6px; color: #6a7480; text-align: start; padding: 6px 7px; border-bottom: 1.5px solid ${tint(0.4)}; }
+  table.l td { padding: 6px 7px; border-bottom: 1px solid #eef1f4; vertical-align: top; }
+  table.l td.n, table.l th.n { text-align: end; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  tr.late td { background: rgba(214, 69, 65, .06); }
+  .lateflag { color: #b4322e; font-size: 8pt; }
+  tr.tot td { border-top: 1.5px solid ${ink}; border-bottom: none; font-weight: 700; font-size: 11.5pt; padding-top: 9px; }
+  .recap { margin-top: 16px; display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .recap div { border: 1px solid #e6eaee; border-radius: 8px; padding: 9px 12px; }
+  .recap .k { font-size: 8pt; text-transform: uppercase; letter-spacing: .6px; color: #6a7480; }
+  .recap .v { font-size: 12pt; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .pay { margin-top: 16px; font-size: 9pt; }
+  .foot { margin-top: auto; padding-top: 10px; border-top: 1px solid #eef1f4; font-size: 7.5pt; color: #8b949e; text-align: center; }
+</style></head>
+<body><div class="page">
+  <div class="head">
+    <div><div class="co-name">${escapeHtml(company.name || '')}</div>
+      <div class="co-sub">${escapeHtml(company.address || '').replace(/\n/g, '<br>')}
+        ${company.matricule ? `<br>MF : ${escapeHtml(company.matricule)}` : ''}</div></div>
+    <div class="co-sub" style="text-align:end">${company.phone ? escapeHtml(company.phone) + '<br>' : ''}${company.email ? escapeHtml(company.email) : ''}</div>
+  </div>
+  <h1>Relevé de compte</h1>
+  <p class="asof">Situation arrêtée au ${fmtDate(r.date)}${opts.stampText ? ' — ' + escapeHtml(opts.stampText) : ''}</p>
+  <div class="who"><b>${escapeHtml(c.name || '')}</b>${c.matricule ? `<br>MF : ${escapeHtml(c.matricule)}` : ''}
+    ${c.address ? '<br>' + escapeHtml(c.address).replace(/\n/g, '<br>') : ''}</div>
+  ${r.lignes.length ? `<table class="l">
+    <thead><tr><th>Date</th><th>Pièce</th><th>Objet</th><th>Échéance</th><th class="n">Montant</th><th class="n">Réglé</th><th class="n">Reste dû</th></tr></thead>
+    <tbody>
+      ${r.lignes.map(l => `<tr class="${l.retard > 0 ? 'late' : ''}">
+        <td>${fmtDate(l.date)}</td>
+        <td>${escapeHtml(l.number || '—')}</td>
+        <td>${escapeHtml(l.libelle || '')}</td>
+        <td>${l.dueDate ? fmtDate(l.dueDate) : '—'}${l.retard > 0 ? `<div class="lateflag">${l.retard} j de retard</div>` : ''}</td>
+        <td class="n">${fmt(l.montant)}</td>
+        <td class="n">${l.regle ? fmt(l.regle) : '—'}</td>
+        <td class="n">${fmt(l.reste)}</td></tr>`).join('')}
+      <tr class="tot"><td colspan="6">Total dû au ${fmtDate(r.date)}</td><td class="n">${fmt(r.total)} ${escapeHtml(cur)}</td></tr>
+    </tbody></table>
+  <div class="recap">
+    <div><div class="k">Échu</div><div class="v">${fmt(r.echu)} ${escapeHtml(cur)}</div></div>
+    <div><div class="k">À échoir</div><div class="v">${fmt(r.aVenir)} ${escapeHtml(cur)}</div></div>
+  </div>`
+    : '<p>Aucune pièce ouverte à cette date : le compte est soldé. Merci de votre confiance.</p>'}
+  ${r.total > 0.0005 && company.rib ? `<p class="pay">Règlement par virement : <b>${escapeHtml(company.rib)}</b>${company.bank ? ' — ' + escapeHtml(company.bank) : ''}</p>` : ''}
+  <p class="pay">Ce relevé ne remplace pas les factures qu'il récapitule. Si un règlement s'est croisé avec son envoi, merci de ne pas en tenir compte.</p>
+  <div class="foot">${escapeHtml(company.name || '')}${company.matricule ? ' — MF ' + escapeHtml(company.matricule) : ''}</div>
+</div></body></html>`;
+  }
+
   // Classement des payeurs : délai moyen constaté par client, sur ses factures soldées.
   function payerRanking(data, company, limit) {
     const out = [];
@@ -5025,6 +5211,18 @@
 
   // Les trois manques que « À faire » doit remonter, dans cet ordre de gravité. Une licence
   // révoquée n'y figure jamais : on ne réclame pas l'argent qu'on vient de rendre.
+  // L'export de la base de la console : depuis combien de jours, et faut-il le réclamer ?
+  // Réclamé au bout de trente jours — et tout de suite s'il n'a JAMAIS eu lieu, parce que « jamais »
+  // n'est pas un retard, c'est un filet qui n'existe pas.
+  const EXPORT_CONSOLE_DELAI = 30;
+  function exportConsoleAFaire(data, todayIso) {
+    const t = todayIso || today();
+    const du = String((data && data.exportConsole) || '').slice(0, 10);
+    if (!du) return { du: '', jours: null, reclame: true };
+    const jours = daysBetween(du, t);
+    return { du, jours, reclame: jours > EXPORT_CONSOLE_DELAI };
+  }
+
   function licencesAFaire(data, company, todayIso) {
     const t = todayIso || today();
     const vivantes = (data.licences || []).filter(l => l && !l.revoqueeLe && !l.remplaceePar);
@@ -5289,12 +5487,22 @@
     // Lignes d'achat marquées « immobilisation » sans fiche : sans elles, aucune dotation n'est calculée
     // et le résultat de l'année est faussement bon (3.5.0).
     const toImmo = assetsToCreate(data);
-    if (toImmo.length) out.push({
-      id: 'immobilisations', level: 'info',
-      label: `${toImmo.length} achat${toImmo.length > 1 ? 's' : ''} à immobiliser`,
-      detail: `${fmt(round3(toImmo.reduce((sum, x) => sum + x.amount, 0)))} achetés en immobilisation sans plan d'amortissement. Tant que la fiche manque, rien n'est déduit.`,
-      count: toImmo.length, route: '#/immos', docs: []
-    });
+    if (toImmo.length) {
+      const montantImmo = fmt(round3(toImmo.reduce((sum, x) => sum + x.amount, 0)));
+      // « Tant que la fiche manque, rien n'est déduit » est vrai quand on PEUT créer la fiche. Quand
+      // l'offre ferme le module, c'est faux — et c'est un reproche adressé à quelqu'un à qui on n'a
+      // rien offert (7.20.0). La ligne d'achat part au cabinet dans les écritures, au compte 22, et
+      // c'est LUI qui crée la fiche depuis la 9.7.0 : rien n'est perdu, et l'app doit le dire.
+      const immoFerme = (opts && opts.reserves || []).includes('immos');
+      out.push({
+        id: 'immobilisations', level: 'info',
+        label: `${toImmo.length} achat${toImmo.length > 1 ? 's' : ''} à immobiliser`,
+        detail: immoFerme
+          ? `${montantImmo} achetés en immobilisation. Ton comptable les voit dans les écritures du paquet et établit leur plan d'amortissement : tu n'as rien à faire.`
+          : `${montantImmo} achetés en immobilisation sans plan d'amortissement. Tant que la fiche manque, rien n'est déduit.`,
+        count: toImmo.length, route: '#/immos', docs: []
+      });
+    }
     // Attestations de retenue que TU dois remettre à tes fournisseurs prestataires
     const wOut = withholdingsToIssue(data, company);
     if (wOut.length) out.push({
@@ -5377,6 +5585,30 @@
       count: sansTaux.length, route: '#/factures', docs: sansTaux
     });
 
+    // Le JUMEAU côté achats (10.1.0). Un achat n'avait aucune devise avant cette version : ceux qui
+    // en reçoivent une sans taux tombent dans le même trou, en pire — la TVA DÉDUCTIBLE part alors
+    // fausse dans une déclaration qu'on ne refait pas. Une ligne à part, parce que le geste qui la
+    // règle n'est pas au même endroit (règle 7.15.0 : ce qu'un écran nomme, il doit l'ouvrir).
+    const achatsSansTaux = (data.purchases || []).filter(p => missingRate(p, company));
+    if (achatsSansTaux.length) out.push({
+      id: 'taux-achat', level: 'danger',
+      label: `${plFr(achatsSansTaux.length, 'achat')} en devise sans taux de change`,
+      detail: 'Tant que le taux manque, ces montants comptent comme des dinars : ta TVA déductible et tes charges sont fausses.',
+      count: achatsSansTaux.length, route: '#/achats', purchases: achatsSansTaux
+    });
+
+    // Les avoirs et les acomptes qui n'ont pas trouvé leur facture (10.2.0). Un avoir non imputé est
+    // de l'argent qu'on a déjà, un acompte non imputé est de l'argent déjà sorti : les deux sont
+    // justes tant que la facture n'est pas arrivée, et faux le jour où elle est payée en entier.
+    // Rien à l'écran ne le disait — d'où la ligne, avec le geste qui la règle.
+    const nonImputes = (data.purchases || []).filter(p => PURCHASE_LIES.includes(p.kind) && !p.achatLie);
+    if (nonImputes.length) out.push({
+      id: 'achat-impute', level: 'warn',
+      label: `${plFr(nonImputes.length, 'pièce')} fournisseur à rattacher à sa facture`,
+      detail: 'Un avoir ou un acompte qui ne pointe aucune facture ne vient en déduction de rien : tu risques de payer deux fois.',
+      count: nonImputes.length, route: '#/achats', purchases: nonImputes
+    });
+
     // Les licences que l'ÉDITEUR a émises et qui finissent dans les trente jours — sur son poste
     // seulement (`opts.editeur` : la clé privée existe sur cet ordinateur). Chez un client, cette
     // liste est vide et la ligne n'existe pas : elle parlerait de licences qu'il n'a pas émises.
@@ -5405,6 +5637,21 @@
       detail: 'Le client a sa clé, elle fonctionne, et la facture n\'est pas réglée. C\'est le cas qui coûte : une licence hors ligne ne se reprend pas.',
       count: licSuite.impayees.length, route: '#/licences', docs: []
     });
+    // L'export de la base de la console (10.4.0). C'est la SEULE chose dont la disparition ne se
+    // rattrape pas : la base D1 est le seul endroit où vit « qui a acheté quelle clé », et sans
+    // elle aucune licence vendue ne peut plus être renvoyée, renouvelée ni révoquée. Décidé avant
+    // la première vente (QUESTIONS.md, 4e relecture) ; la ligne ne vit que sur le poste de
+    // l'éditeur, comme les quatre du dessus.
+    if (editeurIci) {
+      const ex = exportConsoleAFaire(data, t);
+      if (ex.reclame) out.push({
+        id: 'console-export', level: ex.du ? 'warn' : 'danger',
+        label: ex.du ? `La base de la console n'a pas été exportée depuis ${plFr(ex.jours, 'jour')}` : 'La base de la console n\'a jamais été exportée',
+        detail: 'Un export la range en un fichier dans ~/.skanfact/. Sans lui, une base perdue emporte toutes les ventes : plus aucune clé vendue ne peut être renvoyée ni révoquée. Paramètres → L\'application → Éditeur.',
+        count: 1, route: '#/licences'
+      });
+    }
+
     const licExp = licSuite.expirant;
     if (licExp.length) out.push({
       id: 'licences-expirent', level: 'warn',
@@ -6332,7 +6579,7 @@
       if (!final) return abandon();
       body.setAttribute('data-sf-pages', String(final.length));
       return final.length;
-    } catch (e) {
+    } catch (_) {
       return abandon();
     }
   }
@@ -6502,7 +6749,7 @@
     reminderLevel, REMINDER_LABELS, daysBetween, overdueInvoices, todoList, companyGaps, documentHistory, DEFAULT_EMAIL_TEMPLATES, DEFAULT_EMAIL_TEMPLATES_EN, emailFor,
     CURRENCIES, normCurrency, decimalsFor, toBase, rateOf, missingRate, monthKeys, monthlySeries, topClients, quoteStats, avgPaymentDelay, clientSummary, I18N,
     EXTRA_TYPES, SALES_TYPES, CONVERSIONS, CONVERSION_LABELS, convertDoc, derivedDocs, DEFAULT_CLAUSES, CLAUSE_LABELS,
-    PURCHASE_KINDS, LINE_DESTINATIONS, DEFAULT_EXPENSE_CATEGORIES, PURCHASE_STATUSES, expenseCategories,
+    PURCHASE_KINDS, PURCHASE_LIES, piecesLieesAchat, LINE_DESTINATIONS, DEFAULT_EXPENSE_CATEGORIES, PURCHASE_STATUSES, expenseCategories,
     vatReturn, vatChain, DEFAULT_FISCAL_DEADLINES, fiscalDeadlines, nextDeadline, upcomingFiscal, fiscalFilingId, fiscalDone, simpleResult,
     ACCOUNT_KINDS, MOVE_KINDS, cashMovements, accountBalance, cashPosition, cashForecast, reconciliation,
     lineCost, documentMargin, marginBy, PROJECT_STATUSES, projectMargin, projectList, recurringProfitability,
@@ -6523,13 +6770,14 @@
     serialList, availableSerials, clientFleet, warrantiesEnding, serialGap, serialGaps,
     mergeData, trackDeletion, MERGE_LISTS, LIST_LABELS, piecesLiees,
     purchaseTotals, purchaseBalance, purchaseStatus, achatDoublon, facturesDuDevis, payablesList, purchaseJournal, purchaseSummary, supplierSummary, withholdingsToIssue, supplierPayments,
-    periodBounds, issuedIn, salesTotals, revenueByMonth, topItems, clientMovement, AGING_BUCKETS, agedReceivables, payerRanking, quoteFunnel, objectiveProgress,
+    periodBounds, issuedIn, salesTotals, revenueByMonth, topItems, clientMovement, AGING_BUCKETS, agedReceivables, releveClient, releveHtml, payerRanking, quoteFunnel, objectiveProgress,
     amountToWords, intToWords, intToWordsEn, documentHtml, fitToPage, paginate, pageCount,
     MODULES, PAGES, moduleById, pageById, pageTitle, moduleCount, moduleCounts, modulesRevenus, moduleOn, moduleWhy, navPages,
     sousModuleOn, sousModuleById, sousModules, OPTION_LABELS,
     MODULES_PAR_ACTIVITE, modulesSuggeres, wipeData, rendreLesEmprunts, estDemo, exemplePerime, firstSteps, liste, defaultVat, seuilRetenue, newLine,
     canalDe, estBeta, pastilleLicence, empreinteCabinet, licencesDuCabinet,
     LICENCE_MOTIFS, prorataOffre, licenceSuivi, licencesAFaire,
+    EXPORT_CONSOLE_DELAI, exportConsoleAFaire,
     LICENCE_PREAVIS, licenceEtat, licenceRows, licencesExpirant,
     clientPourVente, chargeHistorique, facturesAAnnoncer
   };

@@ -464,7 +464,7 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
     if (marks < 5) throw new Error('repères de tri : ' + marks);
   });
   await step('listes : pagination, taille de page, filtres réinitialisables', async () => {
-    await win.evaluate(() => { try { localStorage.removeItem('skanfact.rowsPerPage'); } catch (e) {} location.hash = '#/dashboard'; });
+    await win.evaluate(() => { try { localStorage.removeItem('skanfact.rowsPerPage'); } catch (_) {} location.hash = '#/dashboard'; });
     await win.evaluate(() => { location.hash = '#/factures'; });
     await win.waitForSelector('#list-wrap .pager');
     const info1 = await win.textContent('#list-wrap .pg-info');
@@ -481,7 +481,7 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
     await win.waitForFunction(() => document.querySelector('#list-wrap .pg-info').textContent.startsWith('1–'));
     await win.selectOption('.pg-size select', '0');
     await win.waitForFunction(() => !document.querySelector('#list-wrap .pager') || document.querySelector('#list-wrap .pg-page').textContent.includes('1 / 1'));
-    const kept = await win.evaluate(() => { try { return localStorage.getItem('skanfact.rowsPerPage'); } catch (e) { return null; } });
+    const kept = await win.evaluate(() => { try { return localStorage.getItem('skanfact.rowsPerPage'); } catch (_) { return null; } });
     if (kept !== '0') throw new Error('taille de page non mémorisée : ' + kept);
     await win.selectOption('.pg-size select', '25');
     await win.waitForSelector('#list-wrap .pager');
@@ -1374,7 +1374,6 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
     await win.waitForSelector('#sa-body [data-pick]');
     // cocher une unité encore en stock
     const libre = await win.evaluate(() => {
-      const d = window.__data;
       const row = Array.from(document.querySelectorAll('#sa-body [data-pick]')).find(cb => !cb.checked);
       return row ? row.dataset.pick : null;
     });
@@ -1735,7 +1734,10 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
     if (before) throw new Error('rien ne devrait être clôturé au départ : ' + before);
 
     // on clôture le premier mois proposé
-    const label = await win.textContent('#do-close');
+    // Le bouton NOMME le mois qu'il va clôturer — « Clôturer » tout court demanderait lequel, sur
+    // un geste irréversible. Le libellé était lu depuis toujours sans être comparé à rien (10.0.1).
+    const label = (await win.textContent('#do-close')).trim();
+    if (!/\d{4}/.test(label)) throw new Error('le bouton de clôture ne nomme pas la période : « ' + label + ' »');
     await win.click('#do-close');
     await win.waitForSelector('#modal-root #ok');
     await win.click('#modal-root #ok');

@@ -291,6 +291,12 @@
       p.payments = (o.payments || []).map(x => ({ id: C.uid(), date: x.date, amount: x.amount === 'all' ? C.purchaseTotals(p, co).netToPay : x.amount, method: x.method || 'virement', reference: x.reference || (x.method === 'virement' || !x.method ? vir(x.date) : ''), note: '' }));
       return p;
     };
+    // Une pièce de la démo se retrouve par son NUMÉRO, jamais par son indice (10.1.0).
+    // `d.purchases[1]` liait la fiche d'un bien à la deuxième pièce de la liste : insérer un achat
+    // plus haut la faisait désigner la mauvaise, l'ordinateur portable repartait « à immobiliser »,
+    // et seul un parcours réel le voyait. C'est le piège déjà écrit pour le catalogue (« tout
+    // nouvel article s'ajoute à la fin », 4.0.0) — retiré ici, au lieu d'être contourné.
+    const achatParNumero = n => d.purchases.find(p => p.number === n);
     d.purchases = [
       // matériel revendu à l'École : rattaché à l'affaire, c'est ce qui rend sa marge exacte
       buy({ projectId: prjLauriers.id, supplierId: sp[0].id, number: 'FA-2026-1187', date: mo(2, 18), dueDate: C.addDays(mo(2, 18), 30), category: 'Achats de marchandises',
@@ -299,6 +305,15 @@
         // où elle est vendue (coût des marchandises vendues, 4.0.0).
         lines: [bline('Poste de travail complet', 12, 850, 19, 'stock'), bline('Pare-feu UTM', 1, 1200, 19, 'stock')],
         payments: [{ date: C.addDays(mo(2, 18), 28), amount: 'all' }] }),
+      // UN ACHAT EN EUROS (10.1.0), parce que c'est le cas où l'application se trompait le plus
+      // cher et le plus silencieusement. Une licence annuelle achetée à l'étranger : la facture est
+      // en euros, la comptabilité en dinars, et le taux du jour voyage AVEC la pièce.
+      buy({ supplierId: sp[0].id, number: 'INV-2026-77120', date: mo(4, 6), dueDate: C.addDays(mo(4, 6), 30),
+        category: 'Logiciels et abonnements', subject: 'Licences antivirus — renouvellement annuel',
+        currency: 'EUR', exchangeRate: 3.38, fees: 0,
+        lines: [bline('Licence antivirus 25 postes (12 mois)', 1, 940, 19)],
+        payments: [{ date: C.addDays(mo(4, 6), 20), amount: 'all' }],
+        notes: 'Facture en euros. Le taux retenu est celui du jour de la facture — À VÉRIFIER avec le comptable : quel cours retenir.' }),
       // immobilisation : reprise par le module 3.4.0
       buy({ supplierId: sp[0].id, number: 'FA-2026-0940', date: mo(7, 9), dueDate: C.addDays(mo(7, 9), 30), category: 'Petit équipement',
         subject: 'Ordinateur portable de l\'entreprise', fees: 1,
@@ -331,8 +346,28 @@
       buy({ supplierId: sp[0].id, number: 'FA-2026-1402', date: daysAgo(18), dueDate: C.addDays(daysAgo(18), 30), category: 'Petit équipement',
         subject: 'Imprimante multifonction du bureau', fees: 1,
         lines: [bline('Imprimante multifonction couleur', 1, 1450, 19, 'immobilisation')],
-        notes: 'À immobiliser : durée d\'amortissement à confirmer avec le comptable.' })
+        notes: 'À immobiliser : durée d\'amortissement à confirmer avec le comptable.' }),
+      // ---------- les pièces qui se RATTACHENT à une facture (10.2.0) ----------
+      // Un acompte versé à la commande : l'argent est sorti, mais ce n'est pas encore une charge —
+      // c'est une avance sur un fournisseur, qui se solde le jour de sa facture.
+      buy({ kind: 'acompte', supplierId: sp[0].id, number: 'ACPT-2026-11', date: daysAgo(30), dueDate: daysAgo(30),
+        category: 'Petit équipement', subject: 'Acompte à la commande de l\'imprimante',
+        lines: [bline('Acompte 30 % à la commande', 1, 500, 19)],
+        payments: [{ date: daysAgo(30), amount: 'all' }] }),
+      // Un avoir déjà imputé : le bailleur a fait un geste sur un loyer resté impayé.
+      buy({ kind: 'avoir', supplierId: sp[3].id, number: 'AV-2026-0233', date: mo(1, 28),
+        category: 'Loyer et charges locatives', subject: 'Geste commercial sur le loyer',
+        lines: [bline('Remise exceptionnelle', 1, 200, 19)] }),
+      // Un avoir qui n'a pas encore trouvé sa facture : un crédit qu'on a chez ce fournisseur, et
+      // que « À faire » rappelle tant qu'il n'est rattaché à rien.
+      buy({ kind: 'avoir', supplierId: sp[0].id, number: 'AV-2026-0221', date: daysAgo(9),
+        category: 'Achats de marchandises', subject: 'Rabais de fin d\'année',
+        lines: [bline('Rabais commercial', 1, 300, 19)],
+        notes: 'À déduire de la prochaine facture de ce fournisseur.' })
     ];
+    // Le rattachement se pose APRÈS : une pièce se retrouve par son numéro, jamais par son indice.
+    achatParNumero('ACPT-2026-11').achatLie = achatParNumero('FA-2026-1402').id;
+    achatParNumero('AV-2026-0233').achatLie = achatParNumero('LOC-2026-08').id;
     d.expenseCategories = [];
 
     // ---------- paie (5.0.0) ----------
@@ -408,10 +443,10 @@
       ser(kPoste, 'PC-2025-0118'),
       ser(kPoste, 'PC-2025-0119'),
       // entrés par la facture d'achat FA-2026-1187, puis livrés à l'École
-      ser(kPare, 'UTM-2026-0210', { inDate: mo(2, 18), inPurchaseId: d.purchases[0].id, status: 'vendu', outDate: factEcole.date, outDocId: factEcole.id, clientId: cl[7].id })
+      ser(kPare, 'UTM-2026-0210', { inDate: mo(2, 18), inPurchaseId: achatParNumero('FA-2026-1187').id, status: 'vendu', outDate: factEcole.date, outDocId: factEcole.id, clientId: cl[7].id })
     ];
     for (let i = 1; i <= 12; i++) {
-      d.serials.push(ser(kPoste, 'PC-2026-' + String(300 + i), { inDate: mo(2, 18), inPurchaseId: d.purchases[0].id,
+      d.serials.push(ser(kPoste, 'PC-2026-' + String(300 + i), { inDate: mo(2, 18), inPurchaseId: achatParNumero('FA-2026-1187').id,
         status: 'vendu', outDate: factEcole.date, outDocId: factEcole.id, clientId: cl[7].id }));
     }
     // Une unité livrée il y a presque deux ans : sa garantie de 24 mois se termine dans quelques semaines.
@@ -422,7 +457,7 @@
     // ---------- immobilisations (3.5.0) ----------
     // Le portable acheté plus haut, immobilisé comme il se doit ; une camionnette plus ancienne, encore
     // en cours d'amortissement ; et un serveur revendu cette année, pour montrer une plus-value.
-    const immoLaptop = d.purchases[1];                       // FA-2026-0940, ligne « Ordinateur portable »
+    const immoLaptop = achatParNumero('FA-2026-0940');       // ligne « Ordinateur portable »
     d.assets = [
       { id: C.uid(), label: 'Ordinateur portable 16 Go', category: 'informatique', date: immoLaptop.date,
         amount: 2600, residual: 0, years: 3, supplierId: sp[0].id, purchaseId: immoLaptop.id, lineIndex: 0,

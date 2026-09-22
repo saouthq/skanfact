@@ -305,6 +305,74 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
   }
   j.ok('aucun panneau vide sur un client qui n\'a ni affaire ni contrat');
 
+  // ---------- 10.2.0 : l'avoir fournisseur et le relevé de compte ----------
+  j.etape('Un avoir se crée DEPUIS la facture, déjà rattaché, et la diminue');
+  const facAvoir = await win.evaluate(() => {
+    const C = window.SkanCore, d = window.__data;
+    const p = d.purchases.find(x => (x.kind || 'facture') === 'facture' && C.purchaseBalance(x, d.company, d).remaining > 1);
+    return p ? { id: p.id, number: p.number, reste: C.purchaseBalance(p, d.company, d).remaining } : null;
+  });
+  if (!facAvoir) throw new Error('aucune facture d\'achat ouverte dans l\'exemple : le parcours ne prouverait rien');
+  // On passe par le VRAI menu de la ligne, pas par l'adresse : c'est le chemin de l'utilisateur,
+  // et c'est lui qui pose le rattachement, la devise et le fournisseur sans qu'on les ressaisisse.
+  await aller('#/achats');
+  await win.waitForSelector('#q');
+  await win.fill('#q', facAvoir.number);
+  await win.waitForSelector(`tr[data-id="${facAvoir.id}"] [data-rowmenu]`, { timeout: 4000 });
+  await win.click(`tr[data-id="${facAvoir.id}"] [data-rowmenu]`);
+  const btn = await win.evaluateHandle(() => [...document.querySelectorAll('.row-menu button')]
+    .find(b => /avoir sur cette/i.test(b.textContent)));
+  if (!btn.asElement()) throw new Error('le menu d\'une facture d\'achat ne propose pas l\'avoir');
+  await btn.asElement().click();
+  await win.waitForFunction(() => location.hash.startsWith('#/achat/new'), { timeout: 4000 });
+  await win.waitForSelector('#b-head');
+  const prerempli = await win.evaluate(() => ({
+    nature: document.querySelector('[name=kind]').value,
+    lie: (document.querySelector('[name=achatLie]') || {}).value || '',
+    champVisible: !document.querySelector('#b-lie-field').hidden
+  }));
+  if (prerempli.nature !== 'avoir') throw new Error(`la nature n'est pas « avoir » : ${prerempli.nature}`);
+  if (prerempli.lie !== facAvoir.id) throw new Error('l\'avoir n\'arrive pas rattaché à la facture');
+  if (!prerempli.champVisible) throw new Error('le champ « Facture concernée » est masqué sur un avoir');
+  // On saisit 100 HT et on enregistre par le vrai bouton.
+  await win.fill('#b-lines input[data-k=label]', 'Retour de marchandise');
+  await win.fill('#b-lines input[data-k=unitPrice]', '100');
+  await win.click('#save');
+  await win.waitForFunction(() => !location.hash.startsWith('#/achat/new'), { timeout: 5000 }).catch(() => {});
+  const apresAvoir = await win.evaluate(id => {
+    const C = window.SkanCore, d = window.__data;
+    const p = d.purchases.find(x => x.id === id);
+    return { reste: C.purchaseBalance(p, d.company, d).remaining, avoirs: C.piecesLieesAchat(d, id).length };
+  }, facAvoir.id);
+  if (!apresAvoir.avoirs) throw new Error('l\'avoir enregistré n\'est rattaché à rien');
+  if (!(apresAvoir.reste < facAvoir.reste - 100)) throw new Error(`le reste n'a pas baissé : ${facAvoir.reste} → ${apresAvoir.reste}`);
+  j.ok(`${facAvoir.number} : reste ${facAvoir.reste} → ${apresAvoir.reste} après un avoir de 100 HT`);
+
+  j.etape('Le relevé de compte s\'ouvre depuis la fiche du client et porte son total');
+  const clientDu = await win.evaluate(() => {
+    const C = window.SkanCore, d = window.__data;
+    const c = d.clients.find(x => C.releveClient(d, x.id, d.company).total > 1);
+    return c ? { id: c.id, total: C.releveClient(d, c.id, d.company).total } : null;
+  });
+  if (!clientDu) throw new Error('aucun client ne doit quoi que ce soit : le relevé ne prouverait rien');
+  await aller('#/client/' + clientDu.id);
+  await win.waitForSelector('.page-head [data-rowmenu]', { timeout: 5000 });
+  await win.click('.page-head [data-rowmenu]');
+  const releveBtn = await win.evaluateHandle(() => [...document.querySelectorAll('.row-menu button')]
+    .find(b => /Relevé de compte/i.test(b.textContent)));
+  if (!releveBtn.asElement()) throw new Error('le menu de la fiche client ne propose pas le relevé');
+  await releveBtn.asElement().click();
+  await win.waitForSelector('#rv-body table', { timeout: 4000 });
+  const relu = await win.evaluate(() => ({
+    lignes: document.querySelectorAll('#rv-body tbody tr').length,
+    pied: (document.querySelector('#rv-body tfoot') || {}).textContent || '',
+    pdf: !!document.querySelector('#rv-pdf'), mail: !!document.querySelector('#rv-mail')
+  }));
+  if (!relu.lignes) throw new Error('le relevé s\'ouvre vide sur un client qui doit de l\'argent');
+  if (!/Total dû au/.test(relu.pied)) throw new Error(`le pied ne nomme pas le total : ${relu.pied}`);
+  if (!relu.pdf || !relu.mail) throw new Error('le relevé n\'offre pas les deux sorties (PDF, email)');
+  j.ok(`${relu.lignes} pièce(s) ouverte(s), le pied porte le total, PDF et email offerts`);
+
   await app.close();
   if (bac.length) { console.error('\nErreurs du renderer :\n' + bac.join('\n')); process.exit(2); }
   console.log(`\n${j.total()} étapes — les fiches montrent ce que l'application sait.`);

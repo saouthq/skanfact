@@ -26,7 +26,12 @@ module.exports = {
     // les secrets du dépôt. Ils n'existent JAMAIS dans Git : vides, l'application retombe sur
     // l'ancien fonctionnement (jeton saisi à la main), donc rien ne casse s'ils ne sont pas définis.
     updateBase: process.env.UPDATE_BASE || '',
-    updateSecret: process.env.UPDATE_SECRET || ''
+    updateSecret: process.env.UPDATE_SECRET || '',
+    // 10.4.0 — le plan de contrôle. Depuis que le Cabinet a sa licence (9.4.0), l'éditeur a besoin
+    // de voir SON parc aussi : sans ces deux réglages, la console ne connaît qu'une des deux
+    // applications. Vides, rien ne part et rien ne s'affiche — comme pour le relais ci-dessus.
+    plateformeBase: process.env.PLATEFORME_BASE || '',
+    plateformeSecret: process.env.PLATEFORME_SECRET || ''
   },
   // L'application GRATUITE du comptable embarquait le code source complet de l'application PAYANTE :
   // `src/**/*` emportait `src/renderer/app.js`, `core.js`, toute la logique de facturation, de paie

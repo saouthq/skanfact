@@ -789,6 +789,19 @@ complète et validation du pilote **avant** publication.
 
 ---
 
+## Les versions qui ont suivi le plan — livrées le 21/09/2026
+
+Elles ne figuraient dans aucun plan : elles sont nées d'une relecture du produit fini, à la demande
+de Skander (« est-ce que ce qu'on a développé répond vraiment au métier ? », puis « la gestion des
+deux plateformes »). Elles sont ici pour que l'inventaire reste vrai.
+
+| Version | Ce qu'elle a comblé |
+|---|---|
+| **10.1.0** | **Un achat n'avait aucune devise.** Une facture fournisseur de 1 000 € comptait 1 000 dinars dans la TVA déductible, les charges, le résultat, le stock, la trésorerie et le paquet du comptable. La faute de la 7.0.1 et de la 7.16.0, jamais portée du côté des achats |
+| **10.2.0** | L'**avoir fournisseur**, l'**acompte versé** et le **relevé de compte client** : trois pièces du métier qui n'existaient pas. Le SENS d'une pièce se porte désormais dans `base`, jamais dans la mémoire de chaque agrégateur |
+| **10.3.0** | La **paie des clients dans le Cabinet** : pour les cinquante-huit clients sur soixante qui ne sont pas sur SkanFact, le comptable établissait les bulletins ailleurs et retapait l'écriture à la main |
+| **10.4.0** | L'**espace de gestion des deux plateformes**. La console ne voyait qu'une des deux applications — SkanFact Cabinet n'existait nulle part — et **rien ne rangeait la base**, alors que D1 est le seul endroit où vit « qui a acheté quelle clé ». L'export était décidé avant la première vente (`QUESTIONS.md`, 4e relecture) et n'avait jamais été écrit |
+
 ## Au-delà de la 10.0.0
 
 Oui, il y aura une suite — la 10.0.0 arrive vers J4 (30/06/2028) et ne ferme rien. Ce qui suit n'a
@@ -804,7 +817,7 @@ encore. Chaque ligne est déjà décidée comme « hors périmètre jusqu'à » 
 | **Lecture de photo de facture** (en pause depuis la 8.7.0) | une application sur téléphone | le code de la 4.2.0 est intact et attend ; sans téléphone, il ne sert à personne |
 | **Application sur téléphone** | le besoin qui rendrait la photo utile : saisir une dépense sur le terrain | un second produit, pas une version |
 | **Serveur de transport des paquets** | un cabinet qui le demande — c'est écrit noir sur blanc dans `PLAN-PLATEFORME.md` § 7.0.0 | le paquet marche, et un serveur qui transporte des comptabilités change le niveau de responsabilité |
-| **Paie de cabinet** | un cabinet qui la demande | le moteur de paie existe côté entreprise depuis la 5.0.0 et se partagerait par `compta.js` |
+| **Congés, avances et documents du personnel côté cabinet** | un cabinet qui les demande — la paie de base est livrée en 10.3.0 | l'app entreprise les a depuis la 5.1.0 ; le cabinet établit les bulletins, le suivi des congés appartient à l'employeur |
 | **GED de cabinet, gestion du temps, facturation des honoraires** | un cabinet qui les demande | le comptable a déjà des outils, et SkanFact entreprise sait facturer |
 | **Portail client, inscription en autonomie, abonnement géré par le client** | le volume — au-delà de ce qu'un clic par vente peut absorber | `PLAN-PLATEFORME.md` § 13 : construire la surface avant la production est la façon la plus courante de ne jamais vendre |
 | **Installateurs séparés arm64 / x64** | la taille du `.dmg` universel (222 Mo) devenue un frein | confort, pas fonction |

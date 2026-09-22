@@ -496,3 +496,94 @@ renouveler) et renvoyer les clés ; publier. Vérification : une clé `srv-1` re
 de la nouvelle version, une clé `srv-2` acceptée, une clé **sans `kid`** toujours acceptée
 (`master`). Jamais : toucher à `master` — une autre clé maître invaliderait toutes les licences
 vendues depuis la 8.0.0.
+
+**R3 — Mettre l'espace de gestion (10.4.0) en service.** Déclencheur : la 10.4.0 est écrite,
+testée et commitée ; il reste à la mettre en ligne. Les étapes sont dans cet ordre parce que la
+console interroge le relais : le relais d'abord, sinon elle reçoit un 404 et l'annonce.
+
+| | Étape | État |
+|---|---|---|
+| 1 | `ALTER TABLE activations ADD COLUMN app TEXT;` dans D1 | **fait le 21/09/2026, succès** |
+| 2 | Redéployer le **relais** (`worker/skanfact-maj.mjs` → worker `skanfact-maj`) — c'est lui qui gagne `/sante` | **fait le 22/09/2026** |
+| 3 | Redéployer la **console** (`plateforme/skanfact-api.mjs` → worker `skanfact-api`) — onglets « À décider », « Parc », « Cabinets », export, ligne d'argent | **fait le 22/09/2026** |
+| 4 | `RELAIS_BASE` (Text) et `RELAIS_SECRET` (Secret) sur **skanfact-api** | à faire — voir R4 |
+| 5 | Publier **10.0.1 → 10.4.0** (cinq versions) en **bêta**, en une seule fois : `10.4.0-beta.1` | **fait le 22/09/2026** |
+
+Sur l'étape 1 : rejouer l'`ALTER` une seconde fois répond « duplicate column » — c'est sans
+gravité, la colonne est posée. `NULL` y vaut « app entreprise », la seule qui s'annonçait avant la
+10.4.0 (§ 10.4.0 de `CLAUDE.md`).
+
+Sur l'étape 4 : `RELAIS_BASE` est l'adresse **racine** du worker du relais (rien après), et
+`RELAIS_SECRET` est l'`APP_SECRET` **du relais**, c'est-à-dire le secret de dépôt `UPDATE_SECRET`.
+**Ce n'est PAS l'`APP_SECRET` de la console**, qui vaut `PLATEFORME_SECRET` : les deux workers
+vérifient le même en-tête `X-SkanFact-App` mais contre deux secrets différents, et les recopier
+l'un sur l'autre donne un 403 permanent. La valeur se retrouve dans `relais.local.json` à la racine
+du clone sur le Mac de Skander (en clair, mode 600, écrit par `Installer SkanFact.command`, jamais
+commité), ou dans le `package.json` de `app.asar` d'une application installée construite par la CI.
+Vérifié le 21/09/2026 : elle n'a **jamais** transité par une conversation.
+
+Vérification : rouvrir la console, la ligne sous les cartes passe de « canaux : non lus » à
+« Les N canaux stables servent une version ». Un **403** dit que `RELAIS_SECRET` ne correspond pas
+à l'`APP_SECRET` du relais ; un **404**, que le relais n'a pas été redéployé. Jamais : publier ces
+cinq versions en stable direct ; laisser la console afficher un vert qu'elle ne peut pas prouver
+(sans les deux réglages elle écrit « non lus » **avec la raison**, et c'est le comportement voulu).
+
+**R4 — Le relais n'a jamais servi à personne, et rien ne le disait (constaté le 22/09/2026).**
+Déclencheur : on cherchait la valeur de `RELAIS_SECRET` pour l'étape 4 de R3. Constat, lu dans
+l'`app.asar` de `/Applications/SkanFact.app` fraîchement mise à jour en `10.4.0-beta.1`, donc
+construite par la CI le matin même : **`updateBase` vide et `updateSecret` à 0 caractère**. Les
+secrets de dépôt `UPDATE_BASE` et `UPDATE_SECRET` n'ont donc jamais été posés. Conséquence, depuis
+la **6.7.0** : `configureFeed` teste `relayBase()`, le trouve vide, et part droit sur GitHub — les deux
+applications n'ont jamais présenté quoi que ce soit au relais, et le worker `skanfact-maj` tourne
+pour personne depuis qu'il existe.
+
+**Ce que ça apprend, et c'est le cœur :** le repli a si bien fonctionné qu'il a **caché** que le
+chemin principal n'existait pas. C'est la règle de la 6.7.2 (« un chemin de secours ne sert que
+s'il se déclenche tout seul ») prise par l'autre bout — *un repli qui se déclenche toujours rend le
+chemin principal indistinguable d'un chemin mort*. Aucun écran ne l'a jamais dit : l'application
+annonce `relay: false` quand le relais est **en panne**, jamais quand il n'a **jamais été branché**,
+et les deux se ressemblent de l'extérieur. L'instrument qui l'aurait vu est très exactement celui
+que l'étape 4 installe (`/sante` + la ligne des canaux, 10.4.0) : il est né trois ans trop tard.
+
+Étapes, toutes sur le Mac de Skander : `openssl rand -hex 24 | tr -d '\n' | pbcopy` (la valeur ne
+s'affiche jamais) ; la ranger dans le gestionnaire de mots de passe sous un nom **non ambigu** —
+`APP_SECRET du relais (= UPDATE_SECRET)`, parce que c'est le nom flou « APP_SECRET » qui a coûté
+une matinée, les deux workers en ayant chacun un ; la poser sur le worker `skanfact-maj`
+(`APP_SECRET`), sur le worker `skanfact-api` (`RELAIS_SECRET`, plus `RELAIS_BASE` = l'adresse racine
+du relais), et dans les secrets du dépôt (`UPDATE_SECRET`, plus `UPDATE_BASE` à la même adresse).
+Vérification : la ligne des canaux de la console s'allume **immédiatement** — elle parle au relais
+directement, pas à travers les applications ; et les applications ne l'utiliseront qu'à partir de
+la publication suivante, celle qui embarquera enfin le secret. Jamais : poser un secret qu'on n'a
+pas d'abord rangé ailleurs qu'en mémoire — il n'existe aucun moyen de le relire, ni sur Cloudflare,
+ni sur GitHub.
+
+**R5 — La console n'envoie aucun mail, et c'est bloquant le jour où Konnect encaisse (noté le
+22/09/2026).** Déclencheur : le paiement en ligne (Konnect, § 15) marque une vente payée toute
+seule ; à cet instant la clé doit partir sans qu'on y pense. Constat : `GET /v1/admin/etat` répond
+aujourd'hui `mail: { ok: false, raison: "RESEND_API_KEY manque : la clé se copie et s'envoie à la
+main." }`, et c'est exactement ce que la console affiche. Ce n'est pas une panne — c'est le
+comportement voulu depuis la 8.5.0 : sans clé on ne fait rien **et on le dit**. Mais tant qu'il
+dure, chaque vente demande un geste humain, ce qui est tenable à un client par semaine et ne l'est
+plus le jour où un lien de paiement tourne la nuit.
+
+Une clé Resend existe déjà — `relais-contact`, créée le 22/09/2026 — et elle est posée sur le
+worker **du relais**, pour le formulaire de contact du site. **On en crée une SECONDE**, nommée
+pour la console (`console-licences`), plutôt que de recopier la première : le formulaire de contact
+est une porte publique, donc celle qui se fera abuser un jour et qu'on devra tourner en urgence —
+et tourner la clé d'un formulaire ne doit pas couper la livraison des licences vendues. Une clé par
+service, une révocation par service.
+
+Étapes : sur Resend, Create API key, permission **Sending access**, domaine `send.skanfact.tn`
+(déjà vérifié) ; la poser sur le worker **`skanfact-api`** en Secret `RESEND_API_KEY`, et nulle part
+ailleurs. Les deux autres réglages ont des défauts qui conviennent et ne sont à poser que pour en
+changer : `MAIL_FROM` vaut `SkanFact <licences@send.skanfact.tn>` — un expéditeur n'a pas besoin
+d'être une vraie boîte, seul le **domaine** doit être vérifié — et `MAIL_REPLY_TO` vaut
+`contact@skanfact.tn`, la seule boîte qui existe, donc une réponse du client arrive au bon endroit.
+Attention : l'expéditeur doit rester sur `send.skanfact.tn`, jamais `skanfact.tn` nu, qui n'est pas
+vérifié chez Resend — c'est le défaut qui a été corrigé côté relais le 22/09/2026.
+
+Vérification : `GET /v1/admin/etat` → `mail.ok` passe à `true` avec l'expéditeur nommé, puis une
+vraie vente marquée payée vers sa propre adresse — la clé doit arriver en **boîte de réception**,
+pas en indésirables, et `envoyee_le` se remplir. Jamais : une seule clé Resend pour les deux
+workers ; un expéditeur hors du domaine vérifié ; marquer une vente payée « pour essayer » sur un
+vrai client, puisque l'envoi part dans la seconde et ne se reprend pas.

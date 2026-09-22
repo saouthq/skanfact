@@ -33,13 +33,27 @@ const CONTACT = 'contact@skanfact.tn';
 // ---------- les offres (7.33.0) ----------
 // Ce que la page Tarifs du site promet, et rien d'autre. L'offre voyage DANS la clé signée : un client
 // ne peut pas se la changer. `reserves` liste les modules (ids de core.MODULES) dont la CRÉATION est
-// réservée à l'offre du dessus — jamais la lecture : quelqu'un qui repasse d'Entreprise à Indépendant
-// garde ses bulletins de paie lisibles pour toujours, il ne peut plus en établir de nouveaux.
+// réservée à l'offre du dessus — jamais la lecture, jamais l'export, jamais l'envoi au comptable
+// (6.4.0 : aucune donnée en otage). Quelqu'un qui repasse d'Entreprise à Indépendant garde ses
+// bulletins de paie lisibles pour toujours, il ne peut plus en établir de nouveaux.
 // `partage` n'est pas un module de la barre latérale : c'est le dossier partagé à deux (3.2.0).
 // Une clé sans `offre` (émise avant la 7.33.0) vaut Entreprise, et une offre inconnue aussi : en cas de
 // doute, on ouvre — jamais de données en otage.
+//
+// « achats » en est sorti en 10.7.0, et ce n'est pas une concession commerciale : c'est un
+// correctif. Mesuré sur le jeu de démonstration, exercice 2026 entier — un client qui n'a jamais
+// pu enregistrer un achat envoie à son comptable un paquet qui déclare **7 441,33 DT** de TVA au
+// lieu de **3 250,16** : la collectée y est, la déductible vaut zéro, et l'écart de 4 191 DT est
+// annoncé à l'administration sur un logiciel vendu 390. C'est le seul des six modules réservés qui
+// change un chiffre que le client DÉPOSE et PAIE ; les cinq autres ne touchent ni la TVA ni une
+// case déclarée, et ce qu'ils portent (stock, amortissements, bulletins) est très exactement ce
+// que le cabinet fait à sa place depuis les 9.7.0 et 10.3.0. Le module s'appelle d'ailleurs
+// « Achats et fournisseurs — ce que tu dépenses, et LA TVA QUE TU RÉCUPÈRES DESSUS ».
+//
+// La règle qui en sort, et qu'un test tient : **une offre peut fermer un confort, jamais une case
+// de déclaration.** Remettre « achats » ici fait tomber ce test, avec le chiffre.
 const OFFRES = {
-  independant: { label: 'Indépendant', reserves: ['achats', 'stock', 'immos', 'pilotage', 'paie', 'partage'] },
+  independant: { label: 'Indépendant', reserves: ['stock', 'immos', 'pilotage', 'paie', 'partage'] },
   entreprise: { label: 'Entreprise', reserves: [] }
 };
 const OFFRE_DEFAUT = 'entreprise';
@@ -456,6 +470,11 @@ function licenceCabinet(opts) {
   const nue = s => String(s || '').replace(/[\s.:_-]/g, '').toUpperCase();
   const base = { comptes, gratuits: CABINET_GRATUITS, quota: 0, autorises: CABINET_GRATUITS, key: opts.key || '', exp: '', daysLeft: null };
   const fin = (x) => {
+    // « Sans limite » (10.8.0) est un ÉTAT, pas un très grand nombre. Une clé qui porterait un quota
+    // de 99 999 fonctionnerait et afficherait « 100 002 dossiers autorisés » : un chiffre que
+    // personne n'a décidé, sur l'écran qui doit rassurer. `autorisesInfini` existait déjà pour la
+    // version non armée ; on le réemploie plutôt que d'inventer un second mot.
+    if (x.autorisesInfini) return { ...base, ...x, autorises: null, locked: false, depasse: 0 };
     const autorises = CABINET_GRATUITS + Math.max(0, Number(x.quota) || 0);
     // UN seul endroit décide du verrou, et c'est un dépassement de quota. Une clé illisible ou
     // d'un autre cabinet n'accorde rien — mais elle ne punit rien non plus tant qu'on est dans les
@@ -497,9 +516,16 @@ function licenceCabinet(opts) {
           + ' Si c\'est une erreur, écris à ' + CONTACT + '.' });
     }
     if (!exp || left >= 0) {
-      return fin({ state: 'active', quota, exp, daysLeft: left,
+      // `illimite` (10.8.0) est en QUEUE de la charge signée, comme `type` et `dossiersHors` avant
+      // lui : au milieu, il changerait l'ordre des champs déjà signés, et une clé refabriquée
+      // depuis sa charge rangée en base ne serait plus identique à celle qu'on a envoyée. Une clé
+      // qui ne le porte pas vaut `false` : rien de ce qui a été vendu ne bouge.
+      const illimite = payload.illimite === true;
+      return fin({ state: 'active', quota, exp, daysLeft: left, autorisesInfini: illimite,
         label: (exp ? `Licence active jusqu'au ${exp}` : 'Licence sans limite de durée')
-          + ` — ${quota} dossier${quota === 1 ? '' : 's'} hors SkanFact en plus des ${CABINET_GRATUITS} gratuits`,
+          + (illimite
+            ? ' — dossiers hors SkanFact sans limite'
+            : ` — ${quota} dossier${quota === 1 ? '' : 's'} hors SkanFact en plus des ${CABINET_GRATUITS} gratuits`),
         detail: left != null && left <= 30 ? `Elle se termine dans ${left} jour${left === 1 ? '' : 's'} : pense à la renouveler.` : '' });
     }
     return fin({ state: 'expiree', quota: 0, exp, daysLeft: left, label: `Licence expirée le ${exp}`,

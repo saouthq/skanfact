@@ -339,7 +339,11 @@ remplacées). Le site et l'aide suivent les versions.
 
 ## 7. L'ordre
 
-> **21/09/2026 : les étapes 1 à 11 sont livrées, la 10.0.0 est publiée.** Le tableau reste écrit tel
+> **21/09/2026 : les étapes 1 à 11 sont livrées, la 10.0.0 est publiée**, et trois versions sont
+> venues après le plan en répondant à « est-ce que ça répond vraiment au métier ? » : la 10.1.0 (la
+> devise d'un achat), la 10.2.0 (l'avoir fournisseur, l'acompte versé, le relevé de compte client) et
+> la 10.3.0 (**la paie des clients du cabinet** — celle des dossiers hors SkanFact, qui sont ceux qui
+> paient). Le tableau reste écrit tel
 > qu'il a été décidé — c'est l'ordre qui a été suivi, et il explique pourquoi chaque version est
 > arrivée à sa place. Ce qui reste devant nous est l'**étape 0 bis** (les six choses qui bloquent la
 > vente et qui ne sont pas du code) et les **dépendances de la colonne de droite** : le plan de

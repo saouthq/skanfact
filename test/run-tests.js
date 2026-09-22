@@ -395,7 +395,7 @@ t('chiffrement : aller-retour, mauvais mot de passe, fichier verrouillé, sauveg
   assert.ok(isEncrypted(env) && !JSON.stringify(env).includes('"a":1'));
   assert.deepStrictEqual(decryptData(env, 'secret'), { a: 1 });
   assert.throws(() => decryptData(env, 'wrong'));
-  let day = new Date('2026-09-11T09:00:00');
+  const day = new Date('2026-09-11T09:00:00');
   const s = createStorage(tmpDir(), { now: () => day });
   s.write({ ...core.DEFAULT_DATA, clients: [{ id: 'a', name: 'X' }] });
   s.write({ ...core.DEFAULT_DATA, clients: [{ id: 'a', name: 'X2' }] }); // crée la sauvegarde du jour (en clair)
@@ -1604,7 +1604,7 @@ t('fusion : la même pièce modifiée des deux côtés est signalée, pas écras
 t('fusion : une pièce supprimée ne ressuscite pas', () => {
   const theirs = base({ documents: [mkDoc('001'), mkDoc('002')], syncWrittenAt: 100 });
   // ici on supprime 002 et on le note
-  let mine = base({ documents: [mkDoc('001')], syncWrittenAt: 200 });
+  const mine = base({ documents: [mkDoc('001')], syncWrittenAt: 200 });
   core.trackDeletion(mine, 'documents', '002', 'Facture FAC-2026-002');
   const r = core.mergeData(mine, theirs);
   assert.deepStrictEqual(r.data.documents.map(d => d.id), ['001']);
@@ -2104,7 +2104,7 @@ t('achats : une ligne « immobilisation » attend sa fiche, une seule fois', () 
       ], payments: []
     }]
   });
-  let todo = core.assetsToCreate(data);
+  const todo = core.assetsToCreate(data);
   assert.strictEqual(todo.length, 1);
   assert.strictEqual(todo[0].label, 'Serveur');
   assert.strictEqual(todo[0].amount, 7000);
@@ -2513,7 +2513,7 @@ t('paie : les bulletins manquants du mois sont ceux des salariés actifs', () =>
     payslips: []
   });
   // en septembre 2026 : seul « Présent » doit avoir un bulletin
-  let manquants = core.missingPayslips(d, 2026, 9).map(e => e.name);
+  const manquants = core.missingPayslips(d, 2026, 9).map(e => e.name);
   assert.deepStrictEqual(manquants, ['Présent']);
   d.payslips.push({ id: 'b1', employeeId: 'e1', year: 2026, month: 9, gross: 1200, computed: core.computePayslip(d.employees[0], {}, core.payrollSettings(d)) });
   assert.deepStrictEqual(core.missingPayslips(d, 2026, 9), []);
@@ -3463,8 +3463,10 @@ t('8.4.0 : le plan de contrôle ne peut ni faire attendre l\'application, ni emp
   const corps = zone.match(/postPlateforme\(\{([^}]*)\}\)/);
   assert.ok(corps, 'l\'appel à postPlateforme est introuvable');
   const champs = corps[1].split(',').map(x => x.split(':')[0].trim()).filter(Boolean).sort();
-  assert.deepStrictEqual(champs, ['cle', 'deviceId', 'deviceNom', 'plateforme', 'version'],
-    'le plan de contrôle ne doit emporter que la clé, le poste, la plateforme et la version : ' + champs.join(', '));
+  // `app` depuis la 10.4.0 : LAQUELLE des deux applications s'annonce. Ajouter un champ ici est une
+  // DÉCISION, et ce test tombe pour l'exiger — c'est exactement pour ça qu'il liste les champs.
+  assert.deepStrictEqual(champs, ['app', 'cle', 'deviceId', 'deviceNom', 'plateforme', 'version'],
+    'le plan de contrôle ne doit emporter que la clé, le poste, la plateforme, la version et le nom de l\'application : ' + champs.join(', '));
 
   // L'adresse et le secret se nettoient AVANT usage : une espace invisible en fin de secret avait
   // cassé les mises à jour en 6.7.2, et rien ne l'avait montré.
@@ -3573,8 +3575,21 @@ t('8.5.0 : la clé du serveur se fabrique sur le poste de l\'éditeur, se dit à
   ['SRV_PRIVATE_KEY', 'RESEND_API_KEY', 'ALTER TABLE licences ADD COLUMN charge TEXT', 'ALTER TABLE licences ADD COLUMN envoyee_le TEXT'].forEach(m =>
     assert.ok(readme.includes(m), 'plateforme/README.md doit nommer : ' + m));
   // Les parcours : la console contre une VRAIE base, et l'application contre une clé de la console.
+  //
+  // Le décor (worker réel + D1 réelle) vit dans `console-serveur.js` depuis que le parcours de
+  // RENDU en a eu besoin à l'identique : une seconde copie aurait divergé (7.29.0). Ce test
+  // s'ancrait sur le FICHIER qui le portait, donc il est tombé au déménagement — la règle, elle,
+  // n'a pas bougé : les deux parcours doivent faire tourner le vrai worker, jamais une imitation
+  // (c'est la leçon de P 0.2, où des réponses écrites à la main cachaient une requête SQL fausse
+  // jusqu'à Cloudflare). On juge donc ce que les parcours CHARGENT, pas où le code est rangé.
+  const serveur = lireSource('test', 'e2e', 'console-serveur.js');
+  assert.ok(/require\('\.\.\/d1-sqlite'\)/.test(serveur) && /P\.default\.fetch\(/.test(serveur),
+    'le décor partagé doit faire tourner le vrai worker sur une vraie base');
   const e2eC = lireSource('test', 'e2e', 'console.js');
-  assert.ok(/require\('\.\.\/d1-sqlite'\)/.test(e2eC) && /P\.default\.fetch\(/.test(e2eC), 'e2e:console doit faire tourner le vrai worker sur une vraie base');
+  const e2eR = lireSource('test', 'e2e', 'console-rendu.js');
+  [['console.js', e2eC], ['console-rendu.js', e2eR]].forEach(([nom, src]) =>
+    assert.ok(/require\('\.\/console-serveur'\)/.test(src),
+      'e2e:' + nom + ' doit prendre son serveur dans le décor partagé, jamais une imitation à lui'));
   assert.ok(/L\.verifyKey\(cle, cles\)/.test(e2eC), 'e2e:console doit vérifier la clé émise avec src/licence.js');
   const e2eP = lireSource('test', 'e2e', 'plateforme.js');
   assert.ok(/\/v1\/admin\/licences/.test(e2eP) && /kid !== 'srv-1'/.test(e2eP), 'e2e:plateforme doit coller une clé émise par la console dans l\'application');
@@ -3810,7 +3825,10 @@ t('licence : l\'offre voyage dans la clé, le matricule l\'attache, et l\'essai 
   const st = S({ key: indep, matricule: '1234567 A' });
   assert.strictEqual(st.state, 'active');
   assert.strictEqual(st.offre, 'independant');
-  assert.deepStrictEqual(st.reserves, ['achats', 'stock', 'immos', 'pilotage', 'paie', 'partage']);
+  // La liste EXACTE, parce que c'est le contrat d'une clé signée : ce qu'une offre ferme est une
+  // décision, jamais un effet de bord. « achats » en est sorti en 10.7.0 — voir le garde-fou
+  // général plus bas, c'est lui qui dit POURQUOI et qui tombe si on l'y remet.
+  assert.deepStrictEqual(st.reserves, ['stock', 'immos', 'pilotage', 'paie', 'partage']);
   assert.ok(/Indépendant/.test(st.label), 'l\'écran doit nommer l\'offre : ' + st.label);
   const entr = lic.signLicence({ nom: 'Y', offre: 'entreprise', exp: '2027-09-14' }, k.privateKey);
   assert.deepStrictEqual(S({ key: entr }).reserves, []);
@@ -3866,6 +3884,232 @@ t('licence : l\'offre voyage dans la clé, le matricule l\'attache, et l\'essai 
   assert.ok(!/\(s\)/.test(S({ installedAt: '2026-08-16' }).label + S({ installedAt: '2026-08-16' }).detail));
   assert.ok(/1 jour restant\b/.test(S({ installedAt: '2026-08-16' }).label), S({ installedAt: '2026-08-16' }).label);
   assert.ok(/0 jours restants/.test(S({ installedAt: '2026-08-15' }).label), 'le dernier jour se lit « 0 jours restants »');
+});
+
+// 10.7.0 — UNE OFFRE PEUT FERMER UN CONFORT, JAMAIS UNE CASE DE DÉCLARATION.
+//
+// Le garde-fou qui explique pourquoi « achats » est sorti des réserves de l'Indépendant, et le
+// seul qui empêche de l'y remettre. Il ne lit pas une liste : il MESURE. Pour chaque module que
+// l'offre réserve, on vide ce que ce module permet de créer — c'est exactement l'état des données
+// d'un client qui n'a jamais pu y toucher — et on recalcule la TVA de l'exercice que le paquet
+// porte au comptable. Si elle bouge, l'offre vend une déclaration fausse.
+//
+// Le chiffre qui l'a fait écrire : avec « achats » réservé, le jeu de démonstration déclare
+// 7 441,33 DT au lieu de 3 250,16 — 4 191 DT annoncés EN TROP sur l'exercice, parce que la TVA
+// déductible tombe à zéro pendant que la collectée reste entière. Sur un logiciel vendu 390 DT.
+//
+// Il est GÉNÉRAL exprès : il tombe aussi le jour où quelqu'un réservera un module neuf qui touche
+// à la déclaration. Une liste de modules interdits se périmerait au premier module ajouté.
+t('10.7.0 : aucun module réservé par une offre ne change la TVA que le client DÉCLARE', () => {
+  const lic2 = require('../src/licence.js');
+  const { buildDemoData } = require('../src/renderer/demo.js');
+  const soc = { name: 'Essai', matricule: '1111111A', regime: 'reel', currency: 'DT',
+    stampFee: 1, vatRate: 19, activity: 'informatique' };
+  const plein = buildDemoData(soc, '2026-09-22');
+
+  // Ce qu'un client qui n'a JAMAIS pu créer dans ce module a dans ses données. La table couvre les
+  // modules que `MODULES` déclare ; un module réservé qui n'y figure pas fait TOMBER le test, sinon
+  // on mesurerait le vide et on annoncerait que tout va bien (T-55).
+  const VIDES = {
+    achats: d => { d.purchases = []; d.suppliers = []; },
+    stock: d => { d.stockAdjustments = []; d.serials = []; (d.catalog || []).forEach(c => { c.tracked = false; }); },
+    immos: d => { d.assets = []; },
+    paie: d => { d.employees = []; d.payslips = []; d.leaves = []; d.advances = []; d.socialFilings = []; },
+    pilotage: d => { d.projects = []; d.accounts = []; d.movements = []; },
+    pieces: d => { d.documents = (d.documents || []).filter(x => !core.EXTRA_TYPES.includes(x.type)); d.recurring = []; },
+    partage: () => {}                       // ne crée aucune donnée : deux postes sur le même dossier
+  };
+  const tvaDeLAnnee = d => Math.round(core.vatChain(d, soc, '2026', 0)
+    .reduce((s, x) => s + (x.toPay || 0), 0) * 1000) / 1000;
+  const reference = tvaDeLAnnee(plein);
+  assert.ok(reference > 0, 'le jeu de démonstration doit déclarer de la TVA, sinon le test ne discrimine rien');
+
+  const offres = lic2.OFFRES || {};
+  const vus = [];
+  Object.keys(offres).forEach(o => {
+    (offres[o].reserves || []).forEach(m => {
+      assert.ok(VIDES[m], `le module réservé « ${m} » n'est pas décrit ici : le test mesurerait le vide`);
+      vus.push(m);
+      const d = JSON.parse(JSON.stringify(plein));
+      VIDES[m](d);
+      const sans = tvaDeLAnnee(d);
+      assert.strictEqual(sans, reference,
+        `l'offre ${o} réserve « ${m} », et sans ce module la TVA déclarée de l'exercice passe de `
+        + `${reference} à ${sans} DT. Une offre peut fermer un confort, jamais une case que le client `
+        + 'dépose et paie (10.7.0).');
+    });
+  });
+  assert.ok(vus.length >= 5, 'aucune réserve mesurée : le test ne prouve rien');
+
+  // Et la moitié qui prouve que le test SAIT voir : « achats » remis dans les réserves le fait
+  // tomber. Sans cette assertion, un jour où `vatChain` cesserait de lire les achats, le garde-fou
+  // resterait vert sur un produit cassé (7.2.0 — un test se prouve en réintroduisant son défaut).
+  const sansAchats = JSON.parse(JSON.stringify(plein));
+  VIDES.achats(sansAchats);
+  assert.notStrictEqual(tvaDeLAnnee(sansAchats), reference,
+    'fermer Achats DOIT changer la TVA déclarée — si ce n\'est plus vrai, c\'est le moteur de TVA '
+    + 'qui a cessé de lire les achats, et le garde-fou ci-dessus ne prouve plus rien');
+});
+
+// 10.7.0 — ON NE REPROCHE PAS CE QU'ON N'A PAS OFFERT (7.20.0), et une phrase affichée que rien
+// ne tient est un bug (7.3.0). Les deux se croisent ici : « Tant que la fiche manque, rien n'est
+// déduit » est vrai quand on PEUT créer la fiche. Quand l'offre ferme le module, c'est faux — la
+// ligne d'achat part au cabinet dans les écritures, au compte 22, et c'est lui qui établit le plan
+// depuis la 9.7.0. Avec Achats ouvert à l'Indépendant, ce cas devient le cas COURANT.
+t('10.7.0 : la ligne « à immobiliser » n\'accuse pas un client dont l\'offre ferme le module', () => {
+  const soc = { name: 'Essai', matricule: '1111111A', regime: 'reel', currency: 'DT', stampFee: 1, vatRate: 19 };
+  const d = {
+    ...core.migrateData({}),
+    company: soc,
+    suppliers: [{ id: 'f1', name: 'Informatique Plus' }],
+    purchases: [{ id: 'a1', kind: 'facture', supplierId: 'f1', number: 'F-77', date: '2026-03-04',
+      lines: [{ label: 'Ordinateur portable', qty: 1, unitPrice: 2400, vat: 19, destination: 'immobilisation' }] }]
+  };
+  const ligne = o => (core.todoList(d, soc, '2026-09-22', o) || []).find(x => x.id === 'immobilisations');
+
+  // Ouvert : on réclame la fiche, et on dit ce qu'il en coûte de ne pas la faire.
+  const ouvert = ligne({});
+  assert.ok(ouvert, 'la ligne doit exister quand une ligne d\'achat attend sa fiche');
+  assert.ok(/rien n'est déduit/.test(ouvert.detail), 'module ouvert : la ligne dit ce qu\'on perd — ' + ouvert.detail);
+
+  // Fermé par l'offre : la ligne reste (le client doit savoir qu'il a investi), mais elle dit la
+  // VÉRITÉ — le cabinet s'en charge — et elle ne réclame plus un geste impossible.
+  const ferme = ligne({ reserves: ['immos'] });
+  assert.ok(ferme, 'la ligne ne disparaît pas : un achat immobilisé reste une information');
+  assert.ok(!/rien n'est déduit/.test(ferme.detail),
+    'module fermé par l\'offre : la ligne ne peut pas affirmer que rien n\'est déduit — ' + ferme.detail);
+  assert.ok(/comptable/.test(ferme.detail), 'elle doit dire QUI le fait : ' + ferme.detail);
+  assert.strictEqual(ouvert.count, ferme.count, 'le compte ne change pas, seule la phrase change');
+
+  // Et la moitié qui prouve que le test discrimine : une réserve qui ne concerne PAS ce module ne
+  // change rien. Sans elle, un `reserves` non vide suffirait à satisfaire l'assertion (9.8.8).
+  assert.strictEqual(ligne({ reserves: ['paie', 'stock'] }).detail, ouvert.detail,
+    'réserver un AUTRE module ne doit pas changer cette ligne');
+});
+
+// 10.8.0 — « SANS LIMITE » EST UN ÉTAT, PAS UN TRÈS GRAND NOMBRE.
+//
+// Sans lui, une licence de cabinet « illimitée » ne pouvait s'écrire qu'en posant un quota énorme :
+// l'application aurait fonctionné, et affiché « 100 002 dossiers autorisés » — un chiffre que
+// personne n'a décidé, sur l'écran même qui doit rassurer. C'est la règle du projet depuis la
+// 7.16.0 : un chiffre qu'on ne peut pas expliquer est pire qu'un chiffre absent.
+//
+// Le test porte les DEUX sens. Sans la seconde moitié, poser `autorisesInfini` partout le
+// satisferait — et on aurait ouvert le quota de tout le monde en croyant l'ouvrir pour un seul
+// (9.8.8, T-49 bis : élargir une sonde se prouve dans les deux sens).
+t('10.8.0 : « sans limite » ouvre le quota d\'un cabinet, et de lui seul', () => {
+  const lic2 = require('../src/licence.js');
+  const k = lic2.generateKeys();
+  const EMP = '3f9a2c1e88b7d4056a12';
+  const cle = o => lic2.signLicence({ nom: 'Cabinet Ben Youssef', type: 'cabinet', cabinet: EMP,
+    exp: '2027-09-22', ...o }, k.privateKey);
+  const S = (key, comptes) => lic2.licenceCabinet({ publicKey: k.publicKey, key, empreinte: EMP,
+    comptes, today: '2026-09-22' });
+
+  // 1. Une clé ORDINAIRE compte toujours, et verrouille au-delà de son quota. C'est la moitié qui
+  //    prouve que le test discrimine : sans elle, n'importe quel code passerait.
+  const ordinaire = cle({ dossiersHors: 5 });
+  assert.strictEqual(S(ordinaire, 8).autorises, lic2.CABINET_GRATUITS + 5);
+  assert.strictEqual(S(ordinaire, 8).locked, false, '3 gratuits + 5 achetés couvrent 8 dossiers');
+  assert.strictEqual(S(ordinaire, 9).locked, true, 'au-delà, la validation attend une licence');
+
+  // 2. Une clé SANS LIMITE ne compte plus rien, et ne verrouille jamais — même à 600 dossiers.
+  const sansLimite = cle({ dossiersHors: 0, illimite: true });
+  const st = S(sansLimite, 600);
+  assert.strictEqual(st.state, 'active');
+  assert.strictEqual(st.locked, false, 'une licence sans limite ne verrouille jamais');
+  assert.strictEqual(st.depasse, 0);
+  // `autorises` vaut NULL, jamais un nombre : c'est ce qui permet à l'écran d'écrire « sans limite »
+  // au lieu d'un chiffre inventé. Un très grand nombre ici serait le défaut qu'on corrige.
+  assert.strictEqual(st.autorises, null, 'un quota sans limite n\'a pas de nombre à afficher');
+  assert.ok(/sans limite/i.test(st.label), 'l\'écran doit le DIRE : ' + st.label);
+  // Resserré : ma première version interdisait TOUT nombre à quatre chiffres, et elle est tombée
+  // sur l'année de fin — qui est légitime. Un test trop large accuse du code juste, aussi sûrement
+  // qu'un test trop étroit laisse passer le défaut (9.4.7). La règle vraie : aucun NOMBRE DE
+  // DOSSIERS, puisque c'est précisément ce qu'on ne sait plus compter.
+  assert.ok(!/\d+\s*dossier/i.test(st.label), 'aucun nombre de dossiers dans le libellé : ' + st.label);
+
+  // 3. Le défaut est celui qui ne change rien : une clé qui ne porte pas le champ — c'est-à-dire
+  //    TOUTES celles vendues avant la 10.8.0 — compte exactement comme avant.
+  assert.strictEqual(S(cle({ dossiersHors: 2 }), 6).locked, true,
+    'une clé d\'avant la 10.8.0 garde son quota : rien de ce qui a été vendu ne bouge');
+
+  // 4. Et « sans limite » ne déborde pas sur l\'absence de clé : un cabinet sans licence garde ses
+  //    trois dossiers gratuits, pas l\'infini.
+  const sansCle = lic2.licenceCabinet({ publicKey: k.publicKey, empreinte: EMP, comptes: 9, today: '2026-09-22' });
+  assert.strictEqual(sansCle.autorises, lic2.CABINET_GRATUITS);
+  assert.strictEqual(sansCle.locked, true, 'sans clé, le palier gratuit s\'applique — « sans limite » ne fuit pas');
+});
+
+// Le serveur doit savoir l'ÉMETTRE, et refuser ce qui n'a pas de sens.
+ta('10.8.0 : la console émet « sans limite » sans réclamer un quota qui ne sert pas', async () => {
+  const P = await import('../plateforme/skanfact-api.mjs');
+  const base = { type: 'cabinet', cabinet: '3f9a2c1e88b7d4056a12', duree: '1a', prix: 0 };
+
+  // Coché : le quota ne se demande plus. Réclamer un chiffre dont on vient de dire qu'il ne sert
+  // pas est un piège — et le champ porte une étoile d'obligation qu'on ne peut plus satisfaire.
+  const ok = P.nettoyerEmission({ ...base, illimite: true }, '2026-09-22');
+  assert.strictEqual(ok.ok, true, ok.erreur);
+  assert.strictEqual(ok.e.illimite, true);
+  assert.strictEqual(ok.e.dossiersHors, 0, 'sans limite : il n\'y a plus de quota à porter');
+
+  // Décoché : le quota redevient obligatoire, et le refus NOMME la case qui débloque (7.0.0).
+  const sans = P.nettoyerEmission(base, '2026-09-22');
+  assert.strictEqual(sans.ok, false);
+  assert.ok(/sans limite/.test(sans.erreur), 'le refus doit nommer la case qui débloque : ' + sans.erreur);
+
+  // « Sans limite » n'a aucun sens pour une entreprise : elle ne compte aucun dossier. On refuse
+  // plutôt que d'ignorer en silence — un drapeau avalé est un drapeau qu'on croit posé.
+  const ent = P.nettoyerEmission({ type: 'entreprise', offre: 'entreprise', duree: '1a', prix: 690, illimite: true }, '2026-09-22');
+  assert.strictEqual(ent.ok, false);
+  assert.ok(/CABINET/.test(ent.erreur), ent.erreur);
+
+  // Le libellé, partagé par le journal, le mail et la console : un seul endroit l'écrit.
+  assert.strictEqual(P.libelleLicence({ type: 'cabinet', illimite: 1 }), 'Cabinet — dossiers sans limite');
+  assert.strictEqual(P.libelleLicence({ type: 'cabinet', dossiers_hors: 5 }), 'Cabinet — 5 dossiers hors SkanFact');
+});
+
+// 10.8.0 — UN `var` LOCAL NE MASQUE PAS UNE FONCTION DU MODULE.
+//
+// Le piège, rencontré en livrant « sans limite » : la page portait déjà `estCabinet(lic)` au niveau
+// du module, et un `var estCabinet = function …` écrit dans `formEmettre` l'a masqué dans TOUT le
+// corps de la fonction — y compris trois lignes AU-DESSUS de sa propre affectation, où il vaut
+// `undefined`. Le formulaire d'émission ne s'ouvrait plus du tout, et rien n'apparaissait dans
+// aucune console qu'on regarde : `node --check` passe, le lint passe, le garde-fou du backtick
+// passe. C'est la bombe silencieuse de la 7.22.0 dans une variante neuve — masquer, au lieu
+// d'appeler ce qui n'existe pas — et c'est le parcours réel qui l'a trouvée, jamais la relecture.
+//
+// Le test lit les déclarations du GABARIT de la console et refuse qu'un nom déclaré à l'intérieur
+// d'une fonction reprenne celui d'une fonction du module.
+t('10.8.0 : aucune déclaration locale ne masque une fonction du module de la console', () => {
+  const src = lireSource('plateforme', 'skanfact-api.mjs');
+  const i = src.indexOf('const CONSOLE_HTML = ');
+  assert.ok(i > 0, 'le gabarit de la console est introuvable');
+  const page = src.slice(i, src.indexOf('</html>`', i));
+  // On juge du CODE : les commentaires citent des noms pour les expliquer, et ce test-ci en cite
+  // trois. Sans ce nettoyage, il tomberait sur sa propre explication (6.8.0, 7.25.0, 9.4.10).
+  const code = page.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
+  assert.ok(code.includes('function formEmettre('), 'le nettoyage a mangé le code');
+
+  // Les fonctions du module, à deux espaces d'indentation, sous leurs DEUX formes — et c'est la
+  // preuve par réintroduction qui l'a exigé : la première version de ce test ne lisait que
+  // `function nom(`, la page en a 47 ; ses 22 autres fonctions s'écrivent `var nom = function`, et
+  // c'est très exactement la famille où vivait le défaut. Un garde-fou qui couvre la moitié des
+  // noms rassure sans protéger (10.0.1).
+  const duModule = new Set([
+    ...[...code.matchAll(/^ {2}function ([A-Za-z_$][\w$]*)\s*\(/gm)].map(m => m[1]),
+    ...[...code.matchAll(/^ {2}var ([A-Za-z_$][\w$]*)\s*=\s*(?:function\b|\([^)]*\)\s*=>)/gm)].map(m => m[1]),
+  ]);
+  assert.ok(duModule.size >= 50, 'trop peu de fonctions lues : le découpage est faux — ' + duModule.size);
+
+  // Les déclarations locales : `var`, `let` ou `const` indentés plus profond que deux espaces. On ne
+  // juge que les noms de FONCTIONS : c'est un appel qui meurt, et une donnée locale qui reprend le
+  // nom d'une donnée du module est laide sans être mortelle.
+  const masquees = [...code.matchAll(/^ {4,}(?:var|let|const) ([A-Za-z_$][\w$]*)\s*=/gm)]
+    .map(m => m[1]).filter(n => duModule.has(n));
+  assert.deepStrictEqual([...new Set(masquees)], [],
+    'ces noms sont déclarés en local ET définis au niveau du module : le `var` local vaut `undefined` '
+    + 'dans tout le corps, y compris au-dessus de son affectation — la page meurt sans un mot');
 });
 
 t('éditeur : la clé privée ne traverse jamais le pont, et l\'app livrée embarque la clé publique', () => {
@@ -3940,7 +4184,14 @@ t('éditeur : le renderer relit la licence avec le matricule, et la page Licence
   assert.ok(/\.\.\.\(licence\.editeur \? \[\['Licences émises'/.test(app), 'l\'entrée de palette « Licences émises » doit être conditionnelle');
   assert.ok(/\.\.\.\(licence\.editeur \? \[\['licence', /.test(app), 'le gabarit d\'email « licence » ne s\'édite que chez l\'éditeur');
   // « À faire » reçoit le drapeau, et la ligne mène à la page.
-  assert.ok(/C\.todoList\(data, company\(\), null, \{ copieExterne, editeur: !!licence\.editeur \}\)/.test(app), 'todoList doit recevoir editeur');
+  // On ancre sur ce que l'appel PORTE, jamais sur sa forme : recopier la ligne mot pour mot la
+  // fait tomber dès qu'elle gagne un argument légitime, et on la « répare » en recopiant la
+  // nouvelle — donc sans rien prouver (7.16.0). C'est arrivé en 10.7.0, avec `reserves`.
+  const appelTodo = (app.match(/C\.todoList\([\s\S]{0,400}?\}\s*\)/) || [''])[0];
+  assert.ok(/editeur:\s*!!licence\.editeur/.test(appelTodo), 'todoList doit recevoir editeur : ' + appelTodo.slice(0, 120));
+  // Et `reserves` (10.7.0) : sans lui, la ligne « à immobiliser » affirme « rien n'est déduit »
+  // à quelqu'un dont l'offre ferme le module — c'est faux, le cabinet la crée depuis le paquet.
+  assert.ok(/reserves:\s*licence\.reserves/.test(appelTodo), 'todoList doit recevoir reserves : ' + appelTodo.slice(0, 200));
   // Émettre = signer dans main.js + un BROUILLON (jamais nextNumber) + l'historique + la page de la facture.
   const form = app.slice(app.indexOf('function licenceForm('), app.indexOf('async function envoyerLicence('));
   assert.ok(/bridge\.licenceEmettre\(\{/.test(form) && !/signLicence/.test(form), 'le formulaire signe par le pont, jamais lui-même');
@@ -5461,7 +5712,6 @@ t('audit C4 : une bombe à décompression est refusée au lieu de tuer l\'applic
   // Un ZIP de quelques centaines de kilo-octets peut produire plusieurs gigaoctets. Le paquet vient
   // de l'extérieur, par mail : la mémoire du processus explosait avant qu'aucun contrôle ne
   // s'exécute, et l'application mourait sans un mot.
-  const zlib = require('zlib');
   const zip = require('../src/zip.js');
   const gros = Buffer.alloc(600 * 1024 * 1024, 0);                 // > MAX_FICHIER une fois gonflé
   const b = zip.zipBuffer([{ name: 'bombe.bin', data: gros }]);
@@ -6528,7 +6778,11 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     assert.strictEqual(W.releaseAdmissible(null, 'latest.yml'), false);
     // Et c'est bien la fonction que la recherche appelle — un garde-fou jamais appelé est invisible.
     const src = fs.readFileSync(path.join(__dirname, '..', 'worker', 'skanfact-maj.mjs'), 'utf8').split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
-    const tf = src.slice(src.indexOf('async function trouveFichier('), src.indexOf('const typeDe ='));
+    // La tranche se borne sur la FIN de la fonction (l'accolade en colonne 0), jamais sur son
+    // voisin : un voisin déménage, et la tranche avale alors le code d'à côté — c'est ce qui est
+    // arrivé en 9.8.1, et c'est arrivé de nouveau en 10.4.0 quand `resumeCanaux` s'est glissé ici.
+    const debutTf = src.indexOf('async function trouveFichier(');
+    const tf = src.slice(debutTf, src.indexOf('\n}\n', debutTf) + 3);
     assert.ok(tf.length > 300 && tf.length < 2000, 'tranche trouveFichier suspecte : ' + tf.length);
     assert.ok(/if \(!releaseAdmissible\(rel, fichier\)\) continue;/.test(tf), 'trouveFichier ne consulte pas releaseAdmissible');
     assert.strictEqual(W.fichierAutorise('app', 'SkanFact-Cabinet-6.6.0-mac-universal.zip'), false, 'préfixe du cabinet servi sur le canal entreprise');
@@ -8311,7 +8565,10 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     // La LISTE offre le geste sans qu'on ait à ouvrir le devis. Depuis la 7.28.0 les actions d'une
     // ligne vivent dans un menu et non plus dans une rangée de boutons : ce n'est donc plus un
     // `data-facturer` qu'on cherche, mais l'entrée du menu — la RÈGLE n'a pas changé, sa forme si.
-    const menuDoc = code.slice(code.indexOf('bindRowMenus(document, id => {'), code.indexOf('function duplicateDoc'));
+    // La tranche s'ancre sur la FONCTION, pas sur la forme de son appel à `bindRowMenus` : celui-ci
+    // a changé de racine en 10.2.0 (deux tables d'actions sur `document` se mangent), et un ancrage
+    // sur son texte exact tombait alors sur du code juste (piège 7.21.0).
+    const menuDoc = code.slice(code.indexOf('function bindDocTable('), code.indexOf('function duplicateDoc'));
     assert.ok(menuDoc.length > 400 && !menuDoc.includes('clientForm('), 'découpage du menu de ligne raté');
     assert.ok(/label: 'Facturer ce devis'/.test(menuDoc), 'la LISTE doit aussi porter le geste, sans avoir à ouvrir le devis');
     // Les deux chemins passent par la MÊME fonction : recopiés, ils divergeraient au premier
@@ -9293,7 +9550,8 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     // Depuis la 7.28.0 les deux réponses vivent dans le menu de la ligne, avec une phrase entière
     // au lieu d'un « Accepté ✓ ». On teste la RÈGLE — les réponses sont offertes depuis la liste,
     // sur les devis en attente seulement, et chacune laisse un retour en arrière.
-    const menu = app.slice(app.indexOf('bindRowMenus(document, id => {'), app.indexOf('function duplicateDoc'));
+    // Ancrée sur la FONCTION, pas sur la forme de son appel à `bindRowMenus` (voir 10.2.0).
+    const menu = app.slice(app.indexOf('function bindDocTable('), app.indexOf('function duplicateDoc'));
     assert.ok(menu.length > 400 && !menu.includes('clientForm('), 'découpage du menu de ligne raté');
     assert.ok(/label: 'Le client a accepté'/.test(menu) && /label: 'Le client a refusé'/.test(menu),
       'rien ne permet de répondre à un devis depuis la liste');
@@ -9732,7 +9990,8 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
       // forme `return brut` laissait passer `return dit(brut.split(…))`, vérifié en le réintroduisant.
       const rendus = [];
       for (let k = f.indexOf('return dit('); k >= 0; k = f.indexOf('return dit(', k + 1)) {
-        let p = f.indexOf('(', k), prof = 0, fin = p;
+        const p = f.indexOf('(', k);
+        let prof = 0, fin = p;
         for (; fin < f.length; fin++) {
           if (f[fin] === '(') prof++;
           else if (f[fin] === ')') { prof--; if (!prof) break; }
@@ -10337,6 +10596,35 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     sautsTiennent('Installer SkanFact (Windows).bat', bat, 5);
   });
 
+  // ---------- le gabarit de la console ne se coupe pas en deux ----------
+  // Ce contrôle passe AVANT l'import du module, et c'est tout son intérêt. Un backtick égaré dans
+  // un commentaire du gabarit le ferme LÀ : le reste du fichier est lu comme du code, l'import
+  // lève « Unexpected identifier 'npm' » mille lignes plus loin, et la relecture ne trouve rien —
+  // seul un bisect y arrive. Huit fois depuis la 7.20.0 (7.29.0, 7.31.0, 9.4.1, 9.4.2, et quatre
+  // fois en refondant la console — dont une en écrivant ce garde-fou). Un avertissement posé en
+  // tête du gabarit n'a arrêté personne ; ce qui manquait, ce n'était pas d'échouer — le module ne
+  // s'importe plus, donc `npm test` tombait déjà — c'était d'échouer en DISANT OÙ.
+  //
+  // Placé après l'import, il n'aurait jamais pu s'exécuter : la suite meurt avant de l'atteindre.
+  // Un test qu'on ne peut pas atteindre ne vaut pas mieux qu'un test qui ne peut pas échouer
+  // (7.2.0, T-55).
+  t('console : aucun backtick dans le gabarit — la faute qui a coûté huit fois', () => {
+    const src = lireSource('plateforme', 'skanfact-api.mjs');
+    const ouverture = 'const CONSOLE_HTML = `';
+    const d = src.indexOf(ouverture);
+    assert.ok(d > 0, 'le gabarit de la console doit exister');
+    const corps = src.slice(d + ouverture.length);
+    const fin = corps.indexOf('`');
+    assert.ok(fin > 0, 'le gabarit doit se fermer');
+    // Ce qui suit la fermeture doit être « ; » : c'est la preuve qu'on a trouvé LA fin du gabarit
+    // et non un backtick posé par erreur au milieu.
+    const apres = corps.slice(fin + 1).replace(/^\s*/, '').slice(0, 1);
+    assert.strictEqual(apres, ';',
+      'un backtick coupe le gabarit de la console avant sa fin — cherche-le dans un commentaire, '
+      + 'ligne ' + src.slice(0, d + ouverture.length + fin).split('\n').length
+      + ' de plateforme/skanfact-api.mjs');
+  });
+
   // ---------- le plan de contrôle (plateforme/skanfact-api.mjs) ----------
   // Même méthode que le relais : les décisions sont pures, elles se testent sans réseau et sans
   // base. Ce sont elles qui décident si la facturation de quelqu'un continue de fonctionner.
@@ -10450,7 +10738,10 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
       });
       assert.deepStrictEqual(bon, {
         deviceId: 'a1b2c3d4-e5f6-4789-ab12-34567890abcd',
-        deviceNom: 'Le Mac de Skander', plateforme: 'darwin', version: '8.4.0'
+        deviceNom: 'Le Mac de Skander', plateforme: 'darwin', version: '8.4.0',
+        // 10.4.0 : sans `app`, l'annonce est celle de SkanFact — c'est ce qu'elle était forcément
+        // avant que l'app du comptable sache s'annoncer.
+        app: 'entreprise'
       });
       assert.strictEqual(P.nettoyerActivation({ version: '8.4.0-beta.1' }).version, '8.4.0-beta.1');
 
@@ -10568,11 +10859,93 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
         'presque 24 h dans la même journée reste la même journée');
 
       // Les compteurs se recopient sans jamais inventer ; ce qu'on ne sait pas se dit.
-      const r2 = P.resumeStats({ clients: '3', licencesActives: 2, essaisEnCours: 7 });
+      // Depuis la 10.4.0-beta.3 les essais et les postes se comptent PAR APPLICATION : additionner
+      // SkanFact et SkanFact Cabinet dans « 2 essais en cours », c'est mélanger deux produits, deux
+      // marchés et deux tarifs dans un seul chiffre — la faute de la 7.16.0 portée au parc.
+      const r2 = P.resumeStats({
+        clients: '3', licencesActives: 2,
+        essais: { entreprise: 7, cabinet: 2 }, postes: { entreprise: 4, cabinet: 1 }
+      });
       assert.strictEqual(r2.clients, 3);
       assert.strictEqual(r2.licencesRevoquees, 0);
+      assert.strictEqual(r2.essaisEntreprise, 7);
+      assert.strictEqual(r2.essaisCabinet, 2, 'les deux applications ne se confondent plus');
+      assert.strictEqual(r2.postesCabinet, 1);
       assert.strictEqual(r2.incertain, false);
       assert.strictEqual(P.resumeStats({}).incertain, true, 'une base muette ne doit pas passer pour un vivier vide');
+
+      // La conversion : le chiffre d'un produit qu'on vend, et il n'existait nulle part.
+      const cv = P.resumeStats({ essaisVus: 8, essaisConvertis: 2 });
+      assert.strictEqual(cv.tauxConversion, 25);
+      // Un taux SANS dénominateur vaut null, jamais 0 % : sur zéro essai il n'y a pas encore de
+      // question, et annoncer un échec là où rien n'a été tenté apprend à ignorer le chiffre
+      // (9.6.0). L'écran affiche « — ».
+      assert.strictEqual(P.resumeStats({ essaisVus: 0, essaisConvertis: 0 }).tauxConversion, null);
+      // Et un taux ne dépasse jamais 100 % : une base qui rendrait plus de convertis que d'essais
+      // vus — un poste réinstallé, une ligne d'essai purgée — donnerait « 300 % de conversion »,
+      // c'est-à-dire un chiffre que personne ne croirait, sur un écran qui n'existe que pour être
+      // cru.
+      assert.strictEqual(P.resumeStats({ essaisVus: 2, essaisConvertis: 6 }).tauxConversion, 100);
+    });
+
+    // Un essai qui se termine est le SEUL signal commercial de cette console, et il n'existait
+    // nulle part : `alertesPlateforme` ne regardait que les licences, les ventes et la copie de la
+    // base. Un essai qui finit sans qu'on ait décroché son téléphone est une vente qu'on ne fera
+    // pas — c'est « ce qu'un écran NOMME, il l'ouvre » (7.15.0) appliqué à ce qu'il ne nommait pas.
+    t('10.4.0-beta.3 : un essai qui se termine se dit, et il dit QUELLE application', () => {
+      // L'arithmétique d'abord : une date de l'app est un JOUR du calendrier, jamais un instant
+      // (5.2.3). Le passage de mois et le 29 février sont les deux cas qu'une soustraction de
+      // millisecondes en heure locale rate.
+      assert.strictEqual(P.ajouterJours('2026-01-15', 30), '2026-02-14');
+      assert.strictEqual(P.ajouterJours('2024-02-01', 29), '2024-03-01', 'une année bissextile compte son 29');
+      assert.strictEqual(P.ajouterJours('2026-12-20', 30), '2027-01-19', 'un essai traverse le 1er janvier');
+      assert.strictEqual(P.ajouterJours('pas une date', 30), '', 'une date absente ne fabrique pas de jour');
+
+      // La durée de l'essai est celle de l'APPLICATION : deux chiffres écrits à deux endroits
+      // divergent, et le jour où ils divergeraient, la console appellerait des clients à la
+      // mauvaise semaine.
+      assert.strictEqual(P.ESSAI_JOURS, require('../src/licence.js').TRIAL_DAYS,
+        'la console et l\'application ne peuvent pas compter deux essais différents');
+
+      const jour = '2026-09-22';
+      const essai = (jours, app, id) => ({
+        device_id: id || ('d' + jours), device_nom: 'Poste ' + (id || jours), app,
+        // premiere_fois posée pour que la fin tombe à `jours` du jour de référence
+        premiere_fois: P.ajouterJours(jour, jours - P.ESSAI_JOURS) + 'T09:00:00Z'
+      });
+      const a = P.alertesPlateforme({ essais: [
+        essai(3, 'cabinet'), essai(-2, 'entreprise'), essai(20, 'entreprise')
+      ] }, jour);
+
+      // Un essai qui a encore trois semaines devant lui n'est pas une tâche : il n'apparaît pas.
+      // Une console qui crie sur chaque essai dès son premier jour cesse d'être lue (8.0.1).
+      assert.strictEqual(a.filter(x => /^Essai/.test(x.quoi)).length, 2,
+        'seuls les essais proches de la fin remontent');
+
+      const fin = a.find(x => x.quoi === 'Essai qui se termine');
+      assert.ok(fin, 'un essai à 3 jours de la fin doit remonter');
+      assert.strictEqual(fin.niveau, 'alerte', 'c\'est maintenant qu\'on appelle, pas après');
+      assert.strictEqual(fin.onglet, 'parc', 'une alerte qu\'on ne peut pas ouvrir est une inquiétude');
+      // Elle NOMME l'application : « un essai en cours » qui ne dit pas de quel produit ne se
+      // traduit en aucun coup de téléphone — on n'appelle pas un comptable pour lui vendre
+      // SkanFact entreprise.
+      assert.ok(/Cabinet/.test(fin.detail), 'l\'alerte doit nommer l\'application : ' + fin.detail);
+      // Et elle dit que la date est APPROCHÉE : la plateforme sait quand elle a VU ce poste, jamais
+      // quand son essai a commencé (il se compte sur la machine). Prétendre une précision qu'on n'a
+      // pas est exactement ce que « 7 pièces vérifiées, intactes » interdit.
+      assert.ok(/vers le/.test(fin.detail), 'la date d\'un essai est approchée, et le dit : ' + fin.detail);
+
+      const passe = a.find(x => x.quoi === 'Essai terminé');
+      assert.ok(passe && passe.niveau === 'attention',
+        'un essai déjà fini reste une vente à tenter, sans l\'urgence de la veille');
+
+      // Deux applications sur le MÊME ordinateur font deux essais distincts — c'est tout le sujet
+      // de cette version. Un identifiant qui ne porterait que le poste les fondrait en un.
+      const deux = P.alertesPlateforme({ essais: [
+        essai(3, 'entreprise', 'même-poste'), essai(3, 'cabinet', 'même-poste')
+      ] }, jour);
+      const ids = deux.filter(x => /^Essai/.test(x.quoi)).map(x => x.id);
+      assert.strictEqual(new Set(ids).size, 2, 'deux applications sur un poste font deux essais : ' + ids);
     });
 
     // La console est une page servie telle quelle par le worker. Trois règles du projet s'y
@@ -10581,23 +10954,80 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
       const src = fs.readFileSync(path.join(__dirname, '..', 'plateforme', 'skanfact-api.mjs'), 'utf8');
       const i = src.indexOf('const CONSOLE_HTML = ');
       assert.ok(i > 0, 'le gabarit de la console est introuvable');
-      const page = src.slice(i + 'const CONSOLE_HTML = '.length);
-      // 11 Ko en lecture seule (P 0.1), 36 Ko avec la vente (P 0.2) : la borne haute garde une
-      // marge, elle ne fixe pas une taille.
-      assert.ok(page.length > 3000 && page.length < 80000, 'tranche de la console inattendue : ' + page.length);
+      // La tranche se borne sur la FIN du gabarit, pas sur la fin du fichier. Sans cette borne
+      // elle emportait `export default` et tout ce qui le suit : un contrôle « aucun script
+      // externe dans la console » jugeait alors du code de worker, et le jour où l'un d'eux
+      // portera une adresse, le test accusera la console (règle des tranches, 7.21.0 et 10.4.0).
+      const finPage = src.indexOf('</html>`', i);
+      assert.ok(finPage > i, 'la fin du gabarit de la console est introuvable');
+      const page = src.slice(i + 'const CONSOLE_HTML = '.length, finPage + '</html>`'.length);
+      // Pas d'assertion « la tranche ne déborde pas » ici : le gabarit est aujourd'hui la dernière
+      // chose du fichier, donc une tranche non bornée rendrait exactement la même chose — une telle
+      // assertion ne pourrait pas échouer, et un test qui ne peut pas échouer est pire que pas de
+      // test (6.8.1). La borne reste, parce qu'elle protège le jour où quelque chose s'ajoutera
+      // après ; c'est son seul effet, et il est écrit plutôt que prétendu.
+      // 11 Ko en lecture seule (P 0.1), 36 Ko avec la vente (P 0.2), 80 Ko avec l'espace de
+      // gestion (10.4.0), 147 Ko avec le menu d'actions et la refonte (10.6.0) : la borne haute
+      // garde une marge, elle ne fixe pas une taille.
+      assert.ok(page.length > 3000 && page.length < 200000, 'tranche de la console inattendue : ' + page.length);
       // Les boutons de LIGNE n'ont pas d'identifiant : ils portent un `data-act`, et un seul
       // gestionnaire les retrouve. Chaque action posée dans une ligne doit avoir sa branche.
-      // L'attribut est construit (`'data-act="' + act + '"'`) : on lit les appels `b('voir', …)`
-      // qui posent chaque bouton, pas un attribut littéral qui n'existe pas dans la source.
-      const acts = [...new Set([...page.matchAll(/\bb\('([a-z-]+)', '/g)].map(m => m[1]))];
+      // TROIS formes coexistent, et c'est la troisième fois que ce test se fait périmer par une
+      // écriture nouvelle : l'attribut construit par un helper (`b('voir', …)`), l'attribut écrit
+      // LITTÉRALEMENT dans une colonne, et — depuis que les gestes d'une ligne vivent dans un menu
+      // (10.6.0) — l'action déclarée comme une DONNÉE (`{ act: 'voir', lib: … }`). Ne lire qu'une
+      // forme laisse passer toutes celles écrites autrement, et un bouton mort est pire qu'un
+      // bouton absent (7.0.0). On lit donc les trois, et le compte minimum garde le test d'être
+      // satisfait par le vide le jour où une quatrième forme apparaîtra.
+      const acts = [...new Set([
+        ...[...page.matchAll(/\bb\('([a-z-]+)', '/g)].map(m => m[1]),
+        ...[...page.matchAll(/data-act="([a-z-]+)"/g)].map(m => m[1]),
+        ...[...page.matchAll(/\bact: '([a-z-]+)'/g)].map(m => m[1])
+      ])];
       assert.ok(acts.length >= 5, 'trop peu d\'actions de ligne lues : ' + acts.join(', '));
-      acts.forEach(a => assert.ok(page.includes("act === '" + a + "'"), 'action de ligne sans branche : ' + a));
+      acts.forEach(a => assert.ok(
+        page.includes("act === '" + a + "'") || page.includes("dataset.act === '" + a + "'"),
+        'action de ligne sans branche : ' + a));
 
       // Un backtick ou un ${ dans ce gabarit referme le template literal et casse le fichier. Le
       // projet s'est fait piéger trois fois (7.20.0, 7.29.0, 7.31.0) — ici le test le garde.
       const dedans = page.slice(1, page.lastIndexOf('`'));
       assert.ok(!dedans.includes('`'), 'aucun backtick dans le gabarit de la console');
       assert.ok(!/\$\{/.test(dedans), 'aucun ${ dans le gabarit de la console');
+
+      // 10.5.0 — et AUCUN `\'` non plus. Le piège est le jumeau du backtick, une couche plus
+      // sournoise : dans un template literal, `\'` est une séquence d'échappement qui rend une
+      // apostrophe NUE. Le fichier reste parfaitement analysable — `node --check` passe, le lint
+      // passe, le test de backtick passe — et c'est le NAVIGATEUR qui reçoit
+      // `'ce qu'il reste'`, casse la chaîne, et n'exécute plus une ligne de la page.
+      // Écran vide, curseur nulle part, rien dans aucune console qu'on regarde.
+      // La parade du projet existe depuis la 8.5.0 et n'avait jamais été gardée : une apostrophe
+      // s'écrit `\\u2019` dans ces gabarits — c'est la typographie française, en plus.
+      assert.ok(!/\\'/.test(dedans), 'aucun \\\' dans le gabarit de la console : le template le rend en apostrophe nue et casse la page');
+
+      // La même règle vaut pour la page publique de vérification, qui est un gabarit de même
+      // nature. Un garde-fou qui ne couvre qu'une des deux pages ne protège qu'une des deux (9.4.3).
+      const iv = src.indexOf('const VERIF_HTML = ');
+      assert.ok(iv > 0, 'le gabarit de la page de vérification est introuvable');
+      const verif = src.slice(iv + 'const VERIF_HTML = '.length, src.indexOf('</html>`', iv) + '</html>`'.length);
+      const vDedans = verif.slice(1, verif.lastIndexOf('`'));
+      assert.ok(!vDedans.includes('`'), 'aucun backtick dans le gabarit de vérification');
+      assert.ok(!/\\'/.test(vDedans), 'aucun \\\' dans le gabarit de vérification');
+      assert.ok(!/\$\{/.test(vDedans), 'aucun ${ dans le gabarit de vérification');
+
+      // 10.6.0 — et la PROSE de cette page s'écrit avec une apostrophe typographique. Ce n'est pas
+      // une coquetterie : c'est la seule surface du produit que des INCONNUS ouvrent, et une page
+      // qui mélange « l'empreinte » et « n’est » dans le même paragraphe se lit comme un brouillon.
+      // On ne juge que le texte — le script de la page, lui, est du JavaScript et garde les siennes.
+      // Trouvé par l'instrument de rendu le jour où il a enfin ATTEINT cette page (T-55) : aucune
+      // relecture ne l'avait vu en quatre versions.
+      const vProse = vDedans
+        .replace(/<script[\s\S]*?<\/script>/gi, '')
+        .replace(/<style[\s\S]*?<\/style>/gi, '');
+      assert.ok(/Vérifier une licence/.test(vProse), 'le nettoyage a mangé la prose de la page de vérification');
+      const droites = vProse.match(/[A-Za-zÀ-ÿ]'[A-Za-zÀ-ÿ]/g) || [];
+      assert.deepStrictEqual(droites, [],
+        'la page publique écrit ses apostrophes en ’, jamais droites : ' + droites.join(', '));
 
       // Aucune requête vers l'extérieur : pas de bibliothèque, pas de police distante, rien qui
       // fasse sortir le secret d'administration de la page.
@@ -10695,10 +11125,23 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
       assert.ok(/if \(!cle\) \{[\s\S]{0,260}noterActivation\(env, ESSAI/.test(code),
         'une application sans clé doit être enregistrée comme essai');
       assert.ok(/etat: 'essai'/.test(code), 'et recevoir « essai » en réponse');
-      // Les essais ne se comptent que s'ils ont été vus récemment : un essai abandonné il y a six
-      // mois n'est pas un essai en cours, et le compter ferait croire à un vivier qui n'existe pas.
-      assert.ok(/derniere_fois >= \?'[\s\S]{0,40}ESSAI, recent/.test(code),
+      // Les essais EN COURS ne se comptent que s'ils ont été vus récemment : un essai abandonné il
+      // y a six mois n'est pas un essai en cours, et le compter ferait croire à un vivier qui
+      // n'existe pas. Le dénominateur de la conversion, lui, compte TOUT ce qui a été vu un jour —
+      // d'où la borne ici et son absence là-bas. On ancre sur la RÈGLE (cette requête-ci porte une
+      // borne de fraîcheur), jamais sur la ponctuation du SQL, qui a déjà fait tomber ce test sur
+      // du code juste le jour où la requête a gagné un GROUP BY.
+      const iEss = code.indexOf('const e = parApp(');
+      assert.ok(iEss > 0, 'le compte des essais en cours a déménagé : ancre à relire');
+      const qEss = code.slice(iEss, code.indexOf('));', iEss));
+      assert.ok(qEss.length < 400 && !qEss.includes('essaisVus'),
+        'tranche trop large : elle finirait par juger une autre requête (' + qEss.length + ')');
+      assert.ok(/derniere_fois >= \?/.test(qEss) && /\brecent\b/.test(qEss),
         'les essais en cours se comptent sur une fenêtre récente');
+      assert.ok(/\bESSAI\b/.test(qEss), 'et ils se comptent sur les activations SANS clé');
+      // La fenêtre est celle de tout le reste : deux nombres écrits à deux endroits divergent.
+      assert.ok(/const recent = [^\n]*PARC_FRAIS/.test(code),
+        'la fenêtre de fraîcheur ne se réécrit pas à la main');
     });
 
     // Le schéma est la seule chose qu'on ne peut pas corriger après coup sans migration : deux
@@ -10803,12 +11246,15 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
       const master = lic.generateKeys(), srv = lic.generateKeys(), autre = lic.generateKeys();
       const charge = P.chargeLicence({ kid: 'srv-1', id: '3f9a2c1e', sub: 'cli_1', nom: 'Menuiserie Trabelsi', matricule: '1234567A/M/P/000', offre: 'independant', exp: '2027-09-15', cabinet: '', emisLe: '2026-09-15' });
       assert.strictEqual(charge.format, 2);
-      // Les deux champs de la 9.4.0 (`type`, `dossiersHors`) sont en QUEUE, et c'est la seule place
-      // possible : les insérer au milieu changerait l'ordre des champs déjà signés, et une clé
-      // refabriquée depuis sa charge rangée en base ne serait plus identique à celle qu'on a
-      // envoyée — or c'est exactement ce qui permet de ne jamais ranger la clé elle-même.
-      assert.deepStrictEqual(Object.keys(charge), ['format', 'kid', 'id', 'sub', 'nom', 'matricule', 'offre', 'exp', 'cabinet', 'note', 'emisLe', 'type', 'dossiersHors'],
+      // Les champs ajoutés après coup (`type` et `dossiersHors` en 9.4.0, `illimite` en 10.8.0) sont
+      // en QUEUE, et c'est la seule place possible : les insérer au milieu changerait l'ordre des
+      // champs déjà signés, et une clé refabriquée depuis sa charge rangée en base ne serait plus
+      // identique à celle qu'on a envoyée — or c'est exactement ce qui permet de ne jamais ranger la
+      // clé elle-même. Cette liste EXACTE est le contrat : un champ ajouté est une DÉCISION, jamais
+      // un effet de bord. Ce test a d'ailleurs fait son travail en tombant sur `illimite`.
+      assert.deepStrictEqual(Object.keys(charge), ['format', 'kid', 'id', 'sub', 'nom', 'matricule', 'offre', 'exp', 'cabinet', 'note', 'emisLe', 'type', 'dossiersHors', 'illimite'],
         'l\'ordre des champs est celui que l\'application écrit — un champ déplacé change la signature');
+      assert.strictEqual(charge.illimite, false, 'une clé qui ne demande rien n\'est pas « sans limite » : le défaut est celui qui ne change rien');
       assert.strictEqual(charge.type, 'entreprise', 'un type absent vaut « entreprise » : rien de ce qui a été vendu ne bouge');
       assert.strictEqual(charge.dossiersHors, 0);
       const cle = await P.signerLicence(charge, srv.privateKey);
@@ -10859,10 +11305,18 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
       // Les tarifs ne servent qu'à préremplir, et se règlent sans toucher au code.
       // `cabinetDossier: 0` (9.4.1) : AUCUN prix par défaut pour un dossier de cabinet — les tarifs
       // du Cabinet ne sont pas fixés, et un chiffre écrit ici deviendrait un tarif par préremplissage.
-      assert.deepStrictEqual(P.tarifs({}), { independant: 390, entreprise: 690, cabinetDossier: 0, remiseParrainage: 20, devise: 'TND' });
+      assert.deepStrictEqual(P.tarifs({}), { independant: 390, entreprise: 690, cabinetDossier: 0, remiseParrainage: 20,
+        devise: 'TND', lienPaiement: '', signature: 'Skander Ben Amor — SkanFact' });
       assert.strictEqual(P.tarifs({ PRIX_ENTREPRISE: '750' }).entreprise, 750);
       assert.strictEqual(P.tarifs({ PRIX_CABINET_DOSSIER: '120' }).cabinetDossier, 120);
       assert.strictEqual(P.tarifs({ PRIX_ENTREPRISE: 'cher' }).entreprise, 690, 'un réglage illisible retombe sur le défaut');
+      // 10.5.0 — les TROIS RANGS, dans cet ordre : la base d'abord, la variable du worker ensuite,
+      // le défaut en dernier. L'ordre compte — poser une valeur depuis l'écran doit pouvoir
+      // CORRIGER une variable mal réglée sans toucher à Cloudflare, jamais l'inverse.
+      assert.strictEqual(P.tarifs({ PRIX_ENTREPRISE: '750' }, { prix_entreprise: '880' }).entreprise, 880,
+        'ce qui est réglé depuis l\'écran gagne contre la variable du worker');
+      assert.strictEqual(P.tarifs({ PRIX_ENTREPRISE: '750' }, { prix_entreprise: 'cher' }).entreprise, 750,
+        'une valeur illisible en base ne remplace rien : on retombe sur le rang suivant');
     });
 
     // ---------- 9.4.1 : la console vend une licence de CABINET ----------
@@ -11030,9 +11484,19 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
       // première version de ce test effaçait `//api.resend.com/…` et ne trouvait plus rien.
       const code = src.slice(0, src.indexOf('const CONSOLE_HTML')).replace(/(^|[^:])\/\/[^\n]*/g, '$1');
       const urls = [...code.matchAll(/https?:\/\/[^\s'"`)]+/g)].map(m2 => m2[0]);
-      assert.deepStrictEqual([...new Set(urls)], [P.MAIL_API], 'une adresse sortante inattendue dans le worker : ' + urls.join(', '));
+      // Les trois origines du site (10.8.0) ne sont PAS des sorties : elles sont comparées à
+      // l'en-tête `Origin` d'une requête qui ARRIVE, et rien ne part jamais vers elles. On les
+      // nomme par RÉFÉRENCE plutôt que par motif — sinon `https://skanfact.tn/collecte`, une vraie
+      // sortie, passerait sous le même nez. Toute autre adresse fait encore tomber ce test.
+      assert.deepStrictEqual([...new Set(urls)].sort(), [P.MAIL_API, ...P.ORIGINES_SITE].sort(),
+        'une adresse sortante inattendue dans le worker : ' + urls.join(', '));
       // `await fetch(` : l'appel SORTANT — pas `async fetch(request, env)`, qui est le point d'entrée.
-      assert.strictEqual((code.match(/await fetch\(/g) || []).length, 1, 'un seul appel réseau sortant');
+      // DEUX depuis la 10.4.0, et pas un de plus : le mail qui porte la clé, et le relais de mise à
+      // jour dont l'adresse vient d'un RÉGLAGE (jamais d'une adresse écrite ici — c'est ce que
+      // l'assertion du dessus vérifie). Ajouter une sortie à ce worker est une décision, et ce
+      // compte est là pour qu'elle ne se prenne jamais par inadvertance.
+      assert.strictEqual((code.match(/await fetch\(/g) || []).length, 2, 'deux appels réseau sortants : le mail, et le relais');
+      assert.ok(/await fetch\(base \+ '\/sante'/.test(code), 'la seconde sortie est la santé des canaux, lue au relais');
     });
 
     // Une vente complète contre une VRAIE base (SQLite, vrai schéma) et le vrai worker : le client,
@@ -11730,10 +12194,21 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     const i = app.indexOf('    function issue() {');
     assert.ok(i > 0, 'issue() introuvable');
     const entete = app.slice(i, i + 200);
-    // Les DEUX moitiés : l'état (après un rechargement) et le drapeau (pendant le geste).
-    assert.ok(/emissionEnCours/.test(entete), 'issue() doit refuser pendant le geste');
     assert.ok(/isIssued\(\)/.test(entete), 'issue() doit refuser une pièce déjà émise');
     assert.ok(app.includes('const isIssued = () =>'), 'isIssued doit exister');
+
+    // La RÈGLE, et pas la mention. La version de la 9.1.0 exigeait le mot `emissionEnCours` dans
+    // l'entête — un drapeau que RIEN n'armait : il valait `false` pour toujours, et le test passait
+    // sur un garde-fou qui n'existait pas (retourné en 10.0.1). Ce qui protège vraiment, c'est que
+    // `issue()` ne rende JAMAIS la main entre le contrôle et `nextNumber` : sans `await`, aucun
+    // second clic ne peut s'y glisser. Un `await` posé là un jour rouvrirait le trou en silence.
+    const fin = app.indexOf('\n    bindBack(backTo);', i);
+    const corpsIssue = app.slice(i, fin);
+    assert.ok(corpsIssue.length > 400 && corpsIssue.length < 2000, 'tranche de issue() : ' + corpsIssue.length);
+    assert.ok(!corpsIssue.includes("$('#issue').onclick"), 'la tranche ne doit pas avaler le gestionnaire du bouton, qui LUI est asynchrone');
+    assert.ok(corpsIssue.includes('C.nextNumber('), 'la tranche doit contenir nextNumber');
+    assert.ok(!/\bawait\b/.test(corpsIssue), 'issue() doit rester ENTIÈREMENT synchrone : un await entre le contrôle et nextNumber rouvre le double numéro');
+    assert.ok(!/\basync\b/.test(corpsIssue), 'issue() ne doit pas devenir asynchrone');
 
     // Et le bouton le DIT : `data-busy` + `disabled`. Un bouton qui refuse en silence fait
     // recliquer, ce qui est exactement le geste qu'on cherche à empêcher.
@@ -12018,7 +12493,7 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
   });
 
   t('9.2.0 : un mois renvoyé remplace les brouillards et ne TOUCHE JAMAIS une validée', () => {
-    const { l, v } = faitLivre();
+    const { l } = faitLivre();
     // Mars arrive une première fois, provisoire : deux pièces, en brouillard.
     const p1 = [
       { date: '2026-03-04', journal: 'VT', piece: 'FAC-2026-010', docId: 'd10', libelle: 'A', lignes: [{ compte: '411001', debit: 1190 }, { compte: '706', credit: 1000 }, { compte: '4367', credit: 190 }] },
@@ -13034,7 +13509,11 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
       // cabinet parce qu'une question naît d'une LIGNE — elle porte l'écriture, la pièce et le
       // compte sur lesquels elle est née, et ces trois-là n'existent que dans l'exercice où ils
       // ont été écrits. Ajoutée, donc compatible : absente d'un livre écrit avant, elle vaut `[]`.
-      SOCLE.concat(['inventaires', 'revisions', 'questions']).sort(),
+      // 10.3.0 : les SALARIÉS du dossier et leurs BULLETINS. Un cabinet a soixante clients dont
+      // deux utilisent SkanFact ; pour les cinquante-huit autres, il n'existait aucun moyen de
+      // tenir la paie. Elles vivent dans le livre de l'EXERCICE parce qu'un bulletin appartient à
+      // un mois et que son calcul est figé comme une écriture validée.
+      SOCLE.concat(['inventaires', 'revisions', 'questions', 'salaries', 'bulletins']).sort(),
       'la forme du livre a changé — si c\'est voulu, c\'est une décision à écrire dans le cahier');
     // 9.8.5 — la forme d'une LIGNE est figée elle aussi. Ce test manquait, et c'est le trou par
     // lequel T-13 est passé : la 9.2.0 a écrit une ligne SANS `tiers`, personne ne l'a vu, et le
@@ -13728,10 +14207,16 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
   require('./suites/moteur.js')({ t, assert, lireSource });
   require('./suites/immobilisations.js')({ t, assert, lireSource });
   require('./suites/cloture.js')({ t, assert, lireSource });
+  require('./suites/pannes.js')({ t, assert, lireSource });
   require('./suites/equipe.js')({ t, assert, lireSource });
   require('./suites/revision.js')({ t, assert, lireSource });
   require('./suites/liasse.js')({ t, assert, lireSource });
   require('./suites/terrain.js')({ t, assert, lireSource });
+  require('./suites/devise-achat.js')({ t, assert, lireSource });
+  require('./suites/avoir-fournisseur.js')({ t, assert, lireSource });
+  require('./suites/paie-cabinet.js')({ t, assert, lireSource });
+  // Celle-ci reçoit `ta` en plus : elle interroge le vrai worker sur une vraie base SQLite.
+  await require('./suites/plateforme-gestion.js')({ t, ta, assert, lireSource });
 
   // ---------- 9.4.10 : aucune suite découpée ne reste sur le bord de la route ----------
   // Le danger d'un découpage, c'est le fichier qu'on écrit et que personne ne charge : les tests

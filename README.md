@@ -50,7 +50,9 @@ l'activation de l'application chez un utilisateur, pas les droits sur le code so
 
 ## Installation
 
-Les installateurs sont dans l'onglet **Releases** du dépôt : https://github.com/saouthq/skanfact/releases/latest (dépôt privé : il faut être connecté à GitHub avec un compte qui y a accès).
+Les installateurs sont dans l'onglet **Releases** du dépôt : https://github.com/saouthq/skanfact/releases/latest — le dépôt est public, aucun compte n'est nécessaire pour télécharger.
+
+Chaque release porte les deux applications côte à côte : **SkanFact** (l'entreprise) et **SkanFact Cabinet** (le comptable). Ce sont deux programmes distincts, qui ne partagent aucune donnée ; installe celui dont tu as besoin.
 
 Pour installer chez quelqu'un d'autre (un proche qui gère sa propre entreprise), voir l'article « Installer SkanFact pour quelqu'un d'autre » dans la rubrique Aide de l'application.
 
@@ -63,6 +65,19 @@ xattr -cr /Applications/SkanFact.app
 **Windows** : télécharge `SkanFact-x.y.z-win-x64.exe` et lance-le. SmartScreen affiche « Windows a protégé votre ordinateur » (app non signée) : **Informations complémentaires → Exécuter quand même**. L'installateur est en français, crée les raccourcis Bureau et menu Démarrer, et se désinstalle depuis les Paramètres Windows.
 
 Une seule fenêtre SkanFact peut être ouverte à la fois (deux instances écrivant le même fichier corrompraient les données).
+
+### SkanFact Cabinet (le comptable)
+
+Même geste, autres fichiers : `SkanFact-Cabinet-x.y.z-mac-universal.dmg` et
+`SkanFact-Cabinet-x.y.z-win-x64.exe`, dans la même release. Elle s'installe à côté de SkanFact sans
+la gêner — deux applications, deux icônes, deux dossiers de données.
+
+C'est le logiciel du cabinet comptable : il reçoit les paquets mensuels chiffrés de ses clients,
+tient leur comptabilité (saisie, livres, banque, déclarations, clôture) et ne renvoie jamais rien
+chez eux. Au premier lancement il demande **un mot de passe**, obligatoire : toute la base est
+chiffrée avec lui, et il n'existe aucun moyen de le récupérer. Le premier geste à faire ensuite est
+d'exporter la **clé de secours** (Réglages → Mon cabinet) et de la ranger ailleurs que sur cet
+ordinateur : sans elle, un poste perdu rend illisibles pour toujours tous les paquets déjà reçus.
 
 ### Construire depuis les sources (secours)
 
@@ -83,28 +98,60 @@ Au démarrage, l'app vérifie en silence s'il existe une version plus récente s
 
 Le jour où l'app est signée, passe `MAC_SIGNED` à `true` dans `src/main.js` : electron-updater fera tout.
 
-### Dépôt privé
+### Si le dépôt redevient privé
 
-Le dépôt `saouthq/skanfact` est privé. Pour que l'app installée puisse vérifier les mises à jour, il lui faut un token GitHub en lecture seule :
+Il est public depuis le 13/09/2026, et les mises à jour fonctionnent sans rien configurer. La
+bascule tient en **une seule ligne** — `private` dans `src/depot.js`, que les deux applications
+lisent — et le champ « jeton d'accès » revient alors tout seul dans leurs Paramètres. Ne jamais
+redéclarer ce drapeau ailleurs : il avait été écrit dans les deux `main.js`, et ils ont divergé.
+
+Le jour où c'est le cas, pour que l'app installée puisse vérifier les mises à jour :
 
 1. https://github.com/settings/personal-access-tokens/new → Token name `skanfact-app`, Expiration 1 an, Repository access → Only select repositories → `skanfact`, Permissions → Contents : **Read-only**. Generate.
-2. Dans l'app : Paramètres → Mises à jour → colle le token → Enregistrer.
+2. Dans l'app : Paramètres → Mises à jour → colle le jeton → Enregistrer.
 
 Il est stocké dans `~/Library/Application Support/SkanFact/update-config.json`, jamais dans le code ni dans le dépôt.
 
+Le relais Cloudflare (`worker/`), quand il est configuré, rend ce jeton inutile : c'est LUI qui
+détient celui du dépôt, et les applications ne présentent que leur propre secret. Une seule chose à
+vérifier le jour de la bascule, et elle est notée dans `worker/README.md` : que le `GITHUB_TOKEN` du
+worker ait bien **Contents: Read-only** sur le dépôt. Sur un dépôt public, un jeton sans droits
+suffit à lire les releases — la panne ne se verrait qu'au moment de la bascule, et couperait les
+mises à jour de tout le monde d'un coup.
+
 ### Publier une nouvelle version
 
-Le code est sur le dépôt privé `https://github.com/saouthq/skanfact` (branche `main`). Deux façons, au choix :
+Le code est sur `https://github.com/saouthq/skanfact` : `main` est la branche **stable**, `beta` la
+branche de travail. C'est **le numéro de version qui décide de tout le reste** — il n'existe aucune
+case ni aucun drapeau à poser au lancement :
 
-- **Sans commande** : mets à jour `version` dans `package.json` et ajoute l'entrée dans `CHANGELOG.md` (c'est ce que Claude fait), pousse sur `main`, puis onglet **Actions → Release → Run workflow**.
+- `X.Y.Z-beta.N` → la release est marquée **préversion** (donc `/releases/latest` continue de pointer
+  sur la dernière stable) et les deux applications sont construites sur leur canal d'essai. Seul
+  celui qui a coché « Recevoir les versions bêta » la voit.
+- `X.Y.Z` → la stable, pour tout le monde.
+
+Ce qui touche **à l'argent, à une clé, au moteur comptable ou au format d'un fichier** passe par la
+bêta ; un correctif d'interface, de documentation ou de publication peut partir en stable direct. Le
+motif du choix s'écrit dans l'entrée du `CHANGELOG.md`.
+
+Deux façons de publier, au choix :
+
+- **Sans commande** : mets à jour `version` dans `package.json` et ajoute l'entrée dans `CHANGELOG.md` (c'est ce que Claude fait), pousse sur la branche visée, puis onglet **Actions → Release → Run workflow** en choisissant cette branche.
 - **En Terminal**, après avoir commité :
 
 ```bash
-npm run release          # correction (1.3.0 → 1.3.1)
-npm run release minor    # nouvelle fonctionnalité (→ 1.4.0)
+npm run release            # correction (10.0.0 → 10.0.1)
+npm run release minor      # nouvelle fonctionnalité (→ 10.1.0)
+npm run release preminor   # ouvre une bêta (→ 10.1.0-beta.0)
+npm run release prerelease  # bêta suivante (→ 10.1.0-beta.1)
 ```
 
-GitHub Actions (`.github/workflows/release.yml`) construit les installateurs Mac (`.dmg` + `.zip`) et Windows (`.exe`), crée la release `vX.Y.Z` avec les notes tirées de `CHANGELOG.md` (3 à 5 min). Les apps installées verront la nouvelle version au prochain démarrage.
+GitHub Actions (`.github/workflows/release.yml`) crée la page de la release **une seule fois**, puis
+les deux postes (macOS et Windows) y déposent : `.dmg` + `.zip` (mac universal) et `.exe` (win x64)
+**pour chacune des deux applications**, plus les quatre fichiers d'index du canal — **16 fichiers**
+pour une stable. Un dernier job relit la page : un index du mauvais canal est retiré, un index
+attendu qui manque fait tomber le run. Un job vert ne suffit pas : vérifier que la release contient
+bien ces fichiers avant de dire que c'est publié.
 
 ## Où sont mes données ?
 

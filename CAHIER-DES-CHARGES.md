@@ -194,10 +194,21 @@ vatRate: number (0|7|13|19 ou libre), noDiscount?: boolean, itemId?: string, cos
 withholdingRate?: number|'' }` — un taux vide veut dire « celui de la société ». **Cible 9.1.1** :
 `stampExempt?: boolean` (SPEC-DATA-001b).
 
-**Achat** (`newPurchase(kind, supplierId)`) : `{ id, kind: 'facture'|'depense', supplierId, number
-(celui du fournisseur), date, dueDate, subject, category, notes, fees: number, withholdingRate,
-lines: [{ label, qty, unit, unitPrice, vatRate, destination: 'charge'|'stock'|'immobilisation',
-deductible: boolean }], payments, attachments, createdAt, projectId? }`.
+**Achat** (`newPurchase(kind, supplierId)`) : `{ id, kind: 'facture'|'depense'|'avoir'|'acompte',
+supplierId, number (celui du fournisseur), date, dueDate, subject, category, notes, fees: number,
+withholdingRate, currency, exchangeRate, achatLie, lines: [{ label, qty, unit, unitPrice, vatRate,
+destination: 'charge'|'stock'|'immobilisation', deductible: boolean }], payments, attachments,
+createdAt, projectId? }`.
+
+`currency` / `exchangeRate` (10.1.0) : la devise de la pièce du fournisseur et le taux du jour.
+`migrateData` pose la devise de la société avec un taux de 1 sur tout achat qui n'en portait pas,
+donc aucun chiffre existant ne bouge ; `missingRate` refuse l'enregistrement quand la devise diffère
+et que le taux manque. `achatLie` (10.2.0) : l'identifiant de la facture d'achat qu'un `avoir` ou un
+`acompte` diminue — vide tant que la pièce n'est pas rattachée, ce qui est un état normal que
+`todoList` rappelle (`achat-impute`). Les deux pièces doivent être dans la même devise.
+`purchaseTotals` rend `sens` (−1 pour un avoir) et un bloc `base` SIGNÉ ET CONVERTI : c'est lui que
+lisent tous les agrégateurs, et `base.avance` (non nul pour un acompte seulement) porte ce qui va au
+compte d'avances au lieu d'une charge.
 
 **Licence émise** (`data.licences[]`) : `{ id, clientId, nom, matricule, offre: 'independant'|
 'entreprise', exp, key, emisLe, cabinet (empreinte), note, invoiceId, itemId, prix, tva, emails: [],
@@ -319,6 +330,16 @@ dossier, `clePublique: string` (base64 SPKI DER Ed25519 du client), `cleEpinglee
 **Cible 9.1.0** : `settings.cleSecoursReporteeLe: number|null` (« pas maintenant », une fois).
 
 ### SPEC-DATA-005 — `livre.json` (Cible 9.2.0, `format: 1`) — **la spécification la plus importante**
+
+**10.3.0 — deux listes de plus : `salaries[]` et `bulletins[]`.** Un cabinet a soixante clients dont
+deux utilisent SkanFact ; pour les autres, la paie se tient ici. Elles vivent dans le livre de
+l'EXERCICE parce qu'un bulletin appartient à un mois et que son calcul est figé comme une écriture
+validée. Un salarié : `{ id, nom, cin, cnss, poste, contrat, embauche, sortie, brut, chefDeFamille,
+enfants, actif, note }` — il ne se supprime pas, il devient `actif: false`. Un bulletin :
+`{ id, salarieId, annee, mois, brut, joursTravailles, joursAbsence, primes[], retenues[], calcul,
+payeLe, ecritureId, creeLe, auteur }` — `calcul` est la COPIE figée rendue par `computePayslip`,
+`ecritureId` retient l'écriture de paie qui le porte (sans quoi elle se repasserait). Ajoutées,
+donc compatibles : absentes d'un livre écrit avant, elles valent `[]`.
 
 Un fichier **par dossier et par exercice** : `userData/dossiers/<client>/livre-<AAAA>.json`. Un
 index léger par dossier, `livre-index.json`, liste les exercices et leur état (ouvert / clos) pour
@@ -1495,7 +1516,8 @@ l'enveloppe (entreprise, matricule, période, définitif, format). Nom du fichie
 
 Le routage est `routeApi(pathname)` : `/v<n>/<espace>/<action>[/<id>[/<sous>]]` avec `ACTIONS =
 { licence: ['etat'], admin: ['etat', 'stats', 'clients', 'licences', 'activations', 'ventes',
-'evenements', 'importer'] }`, `SOUS_ACTIONS = ['revoquer', 'renouveler', 'changer-offre', 'envoyer',
+'evenements', 'importer', 'parc', 'cabinets', 'alertes', 'sante', 'export'] }` (les cinq dernières
+depuis la 10.4.0), `SOUS_ACTIONS = ['revoquer', 'renouveler', 'changer-offre', 'envoyer',
 'payee', 'facturee']`, `SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/`. Tout le reste → 404. `/` et
 `/console` servent la console (HTML inline). Ce tableau donne le contrat ; **les JSON exacts, lus
 dans les handlers (lignes 579 à 1 016), sont en 7.1 bis** — v1, point 5/19 de la relecture. Trois cellules
@@ -1510,9 +1532,13 @@ de la v0 étaient fausses et sont corrigées ici (voir le Journal des versions).
 | SPEC-API-005 | GET/POST | `/v1/admin/licences[/<id>[/revoquer|renouveler|changer-offre|envoyer]]` | admin | POST émission `{ clientId, offre, duree, dateLibre?, prix, devise?, remise?, cabinet?, payeeLe?, moyen? }` (`nettoyerEmission`) ; `revoquer { motif }` (obligatoire) ; `renouveler { … }` ; `changer-offre { offre, prixNouveau }` ; `envoyer` | licence `{ id, kid, empreinte, offre, debut, fin, statut (déduit : révoquée > expirée > remplacée > active), charge, cle (refabriquée, jamais stockée) }` | 400 ; 403 ; 404 ; **409** renouveler une révoquée/remplacée ; 503 clé serveur incohérente |
 | SPEC-API-006 | GET | `/v1/admin/activations` | admin | — | `[{ empreinte (ou 'ESSAI'), device_id, device_nom, plateforme, version, premiere_fois, derniere_fois }]` | 403 |
 | SPEC-API-007 | GET/POST | `/v1/admin/ventes[?non_facturees=1][/<id>/payee|facturee]` | admin | `payee { moyen?, date? }` → envoie la clé si Resend réglé et adresse présente (une fois, `envoyee_le`) ; `facturee { numero }` | ventes avec `cle` refabriquée quand non facturées | 400, 403, 404 |
-| SPEC-API-008 | GET | `/v1/admin/evenements` | admin | — | journal `{ quand, quoi, client_id, licence_id, detail, par_qui }` | 403 |
+| SPEC-API-008 | GET | `/v1/admin/evenements` | admin | filtres facultatifs `?client=&licence=&quoi=&depuis=` (10.4.0) — un filtre qui ne passe pas la validation est ignoré, jamais interprété | journal `{ quand, quoi, client_id, licence_id, detail, par_qui }` | 403 |
+| **SPEC-API-012** | GET | `/v1/admin/parc` | admin | — | 10.4.0 — le parc des DEUX applications, groupé par (app, version) : `{ lignes: [{ app, appNom, version, essai, postes, vus, endormis, darwin, win32, linux, licences, enEssai, dernier }] }`. « Endormi » = plus vu depuis 30 jours ; il se compte à part, il ne se retranche pas | 403 |
+| **SPEC-API-013** | GET | `/v1/admin/cabinets` | admin | — | 10.4.0 — une licence de cabinet par ligne, avec `dossiers_hors`, `parraines`, `postes`, `vu` | 403 |
+| **SPEC-API-014** | GET | `/v1/admin/alertes` | admin | — | 10.4.0 — ce qui demande une décision : `{ lignes: [{ id, niveau (alerte\|attention\|calme), quoi, sujet, detail, onglet }] }`, trié par urgence. Rien n'est réclamé sur une base où rien n'a été vendu | 403 |
+| **SPEC-API-015** | GET | `/v1/admin/sante` | admin | — | 10.4.0 — ce que chaque canal de mise à jour sert : `{ ok, canaux: [...], verdict }` si `RELAIS_BASE`+`RELAIS_SECRET` sont posés, sinon `{ ok: false, raison, canaux: [] }` — jamais un vert qu'on ne peut pas prouver | 403 |
 | SPEC-API-009 | POST | `/v1/admin/importer` | admin | `{ licences: [18 champs de `chargeHistorique`] }` | `{ importees, dejaLa, ignorees: [{ id, raison }] }` (le champ s'appelle **`ignorees`**, pas `refusees` — corrigé en v1) — **refuse** une vente incomplète, ne la met pas à null | 403 ; 503 sans clé publique |
-| **SPEC-API-011** | GET | `/v1/admin/export` | admin | — | **Cible Phase 0** : `{ format: 1, exporteLe, tables: { clients: [...], licences: [...], activations: [...], ventes: [...], jetons: [...], evenements: [...] } }` — toutes les lignes, `charge` incluse, **jamais** une clé privée (il n'y en a pas en base) | 403 |
+| **SPEC-API-011** | GET | `/v1/admin/export` | admin | — | **Livré en 10.4.0** : `{ v: 1, quoi: 'skanfact-console', quand, comptes: { <table>: <n> }, tables: { clients, licences, activations, ventes, jetons, evenements }, sha256 }` — toutes les lignes, `charge` incluse, **jamais** une clé privée (il n'y en a pas en base). Le `sha256` porte sur l'enveloppe SANS lui : un manifeste ne peut pas contenir sa propre empreinte (6.1.0). `Content-Disposition: attachment`, et un événement `base.exportee` au journal — c'est lui qui date l'alerte. *(Les noms de champs suivent ceux du worker, `v` et `quand` ; la v1 du cahier proposait `format`/`exporteLe`.)* | 403 |
 
 Seule requête sortante du worker : Resend (un test compte les `fetch(`). Toute réponse restrictive
 est **signée, datée, adressée** (`sujet` = `empreinteCle` = SHA-256 tronqué à 32 hex de la clé).
@@ -1650,7 +1676,7 @@ l'envoi ne réécrit rien (`dejaLa`). 503 sans clé publique.
 |---|---|---|
 | `clients` | `id TEXT PK, nom TEXT NOT NULL, matricule, email, tel, adresse, notes, cree_le TEXT NOT NULL` | `idx_clients_matricule(matricule)` |
 | `licences` | `id PK, client_id NOT NULL → clients, kid NOT NULL, empreinte NOT NULL, offre NOT NULL, postes INTEGER, debut NOT NULL, fin, prix REAL, devise, remise REAL, cabinet_empreinte, emise_le NOT NULL, remplace_id → licences, remplacee_motif, revoquee_le, revoquee_motif, charge TEXT (le JSON signé, refabriqué en clé), envoyee_le` | `idx_licences_client(client_id)` ; `idx_licences_empreinte` **UNIQUE**(empreinte) |
-| `activations` | `id PK, licence_id → licences, empreinte NOT NULL ('ESSAI' pour un essai), device_id NOT NULL, device_nom, plateforme, version, premiere_fois NOT NULL, derniere_fois NOT NULL` | `idx_activ_unique` **UNIQUE**(empreinte, device_id) — un essai ne compte qu'une fois par machine |
+| `activations` | `id PK, licence_id → licences, empreinte NOT NULL ('ESSAI' pour un essai), device_id NOT NULL, device_nom, plateforme, version, app (10.4.0 : 'entreprise' \| 'cabinet' ; NULL = entreprise, seule à s'annoncer avant), premiere_fois NOT NULL, derniere_fois NOT NULL` | `idx_activ_unique` **UNIQUE**(empreinte, device_id) — un essai ne compte qu'une fois par machine |
 | `ventes` | `id PK, client_id NOT NULL, licence_id, montant_ht REAL NOT NULL, tva REAL, devise NOT NULL, payee_le, moyen, facture_skanfact, importee_le` | `idx_ventes_afacturer(facture_skanfact)` |
 | `jetons` | `id PK, nom NOT NULL, empreinte NOT NULL UNIQUE, cree_le NOT NULL, dernier_usage, revoque_le` | — |
 | `evenements` | `id INTEGER PK AUTOINCREMENT, quand NOT NULL, quoi NOT NULL, client_id, licence_id, detail, par_qui` | `idx_evt_quand(quand)` |
@@ -1878,6 +1904,7 @@ portent pas, et un test les nomme.
 | `ERR-ENT-074` | « La console ne répond pas. Vérifie ta connexion… » | pont | réessayer | Livré |
 | `ERR-ENT-075` | « La console refuse ce secret d'administration… » | pont | Paramètres → Éditeur | Livré |
 | `ERR-ENT-076` | « La console a répondu <n>. » (ou le message de la console) | pont | — | Livré |
+| `ERR-ENT-077` | « La console n'a pas rendu un export lisible. » | export de la base de la console (10.4.0) | réessayer ; la console est peut-être sur une version plus ancienne que celle qui connaît `/v1/admin/export` | Livré |
 | `ERR-CAB-040` | « Ce relevé ne se boucle pas : <début> au départ, <mouvements> de mouvements, cela fait <attendu> — et le relevé annonce <fin>. Il manque <écart>… » / « Ce fichier a déjà été importé le <date>… » | import d'un relevé (9.5.0) | compléter le fichier, ou corriger le solde de fin | Livré |
 | `ERR-CAB-041` | « Cette ligne d'écriture ne touche pas le compte <n>. » / « Cette ligne de relevé n'existe pas. » | rapprochement (9.5.0) | choisir la bonne ligne | Livré |
 | `ERR-CAB-042` | « La période d'une déclaration mensuelle s'écrit AAAA-MM. » / « La déclaration de <mois> est marquée déposée le <date>… » / « L'écriture de cette déclaration existe déjà… » / « Cette déclaration n'est pas marquée déposée : on ne paie pas ce qu'on n'a pas déposé. » | déclaration (9.6.0) | dé-pointer, ou préparer d'abord | Livré |
@@ -1901,6 +1928,12 @@ portent pas, et un test les nomme.
 | `ERR-ENT-082` | « Ce dossier de clôture ne porte aucun document à ouvrir. » | états d'une clôture reçue (9.8.0) | — | Livré |
 | `ERR-ENT-083` | « Ce fichier n'a pas pu être lu. » / « Ce fichier n'est pas un envoi de questions SkanFact. » / « Ce fichier ne contient aucune question. » / « L'envoi de questions est abîmé. » | import d'un `.skanask` (9.10.0) | redemander le fichier au cabinet | Livré |
 | `ERR-ENT-084` | « Cet envoi de questions est protégé par un mot de passe… » (l'application le DEMANDE au lieu d'afficher du rouge) / « Mot de passe incorrect, ou fichier modifié depuis son envoi. » | import d'un `.skanask` (9.10.0) | le mot de passe, dit au téléphone | Livré |
+| `ERR-ENT-085` | « Le disque est plein : rien n'a été enregistré… » et les neuf autres phrases de `PANNES_DISQUE` (quota, accès refusé, lecture seule, fichier occupé, dossier introuvable, disque muet, trop de fichiers ouverts) | **toute** panne système, posée UNE fois dans l'enveloppe d'`ipcMain.handle` (10.0.1) | libérer de la place, fermer l'autre programme, rebrancher le support — la phrase le dit | Livré |
+| `ERR-CAB-076` | les mêmes dix phrases, table identique au caractère près (un test compare les deux corps) | **toute** panne système du Cabinet, même enveloppe (10.0.1) | idem | Livré |
+| `ERR-CAB-078` | « Le nom du salarié est obligatoire. » / « La date d'embauche est obligatoire. » / « La date de sortie précède l'embauche. » / « Le salaire brut mensuel doit être supérieur à zéro. » / « Salarié introuvable. » | fiche d'un salarié d'un dossier (10.3.0) | compléter la fiche | Livré |
+| `ERR-CAB-079` | « Choisis un salarié. » / « Le mois doit être compris entre 1 et 12. » / « Ce bulletin est daté de AAAA et ce livre porte l'exercice AAAA. » / « Le brut du mois doit être supérieur à zéro. » / « X a déjà un bulletin pour <mois> <année>. » / « L'écriture de paie de ce mois est déjà passée : contre-passe-la d'abord. » | bulletin de paie d'un dossier (10.3.0) | corriger la saisie, ou contre-passer l'écriture du mois | Livré |
+| `ERR-CAB-080` | « Aucun bulletin à passer pour ce mois. » | écriture de paie du mois (10.3.0) | établir les bulletins d'abord | Livré |
+| `ERR-CAB-077` | « Un import de paquets est déjà en cours. Attends qu'il finisse — ou arrête-le depuis la fenêtre d'avancement — avant d'en lancer un second. » | seconde entrée simultanée dans `cab:importPack` (10.0.1) | attendre, ou arrêter l'import en cours | Livré |
 
 ---
 

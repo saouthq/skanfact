@@ -7,6 +7,895 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 10.8.0 — 22/09/2026
+
+**La stable qui rattrape neuf versions.** La dernière stable en ligne était la **10.0.0** du
+21/09/2026 ; tout ce qui a été écrit depuis — 10.0.1, 10.1.0, 10.2.0, 10.3.0, 10.4.0, 10.5.0,
+10.6.0, 10.7.0 et 10.8.0 — n'était sorti que sur le canal d'essai, et les quatre dernières nulle
+part. Publiée en stable directe **à la demande de Skander** : la règle du projet veut la bêta pour
+ce qui touche à un chiffre, à une clé, au moteur comptable ou au format d'un fichier, et plusieurs
+de ces versions le font. C'est sa décision, elle est notée ici, et elle se prend sur un parc où
+aucun client payant n'est encore installé.
+
+Ce que cette stable apporte, dans l'ordre de ce qui casserait le plus cher :
+
+- **La devise d'un achat** (10.1.0). Une facture fournisseur en euros comptait 1 000 **dinars** dans
+  la TVA déductible, les charges, le résultat, le seuil de rentabilité, le stock, la trésorerie, les
+  écritures et le paquet du comptable. Treize agrégateurs corrigés, et un garde-fou qui MESURE :
+  pour chacun, un achat de 1 000 € à 3,4 doit rendre 3 400.
+- **L'avoir fournisseur, l'acompte versé et le relevé de compte client** (10.2.0). Le SENS d'une
+  pièce se porte désormais dans ses totaux convertis, au lieu d'être recopié de mémoire dans chaque
+  agrégateur — la faute que les ventes traînent depuis la 1.4.0.
+- **Achats sort des réserves de l'Indépendant** (10.7.0), et ce n'est pas une décision commerciale :
+  mesuré sur un exercice entier, un client qui ne peut pas saisir ses achats envoie à son comptable
+  un paquet qui déclare **7 441 DT de TVA au lieu de 3 250** — 4 191 DT payés en trop sur un
+  logiciel vendu 390. Une offre peut fermer un confort, jamais une case de déclaration, et un
+  garde-fou le mesure désormais module par module.
+- **La paie des clients dans le Cabinet** (10.3.0) : le comptable établit les bulletins de ses
+  cinquante-huit clients hors SkanFact au lieu de les retaper. Le même salarié et la même saisie
+  donnent le même bulletin des deux côtés, au millime, et un test le prouve.
+- **L'espace de gestion des deux plateformes** (10.4.0, 10.5.0, 10.6.0) : la console voit enfin le
+  parc des DEUX applications, se souvient de ce qu'on fait d'un prospect, garde ses prix et ses
+  seuils en base au lieu d'un déploiement, exporte sa propre base toutes les nuits, et a passé un
+  audit de design de vingt-neuf constats.
+- **Les licences sans limite de dossiers** (10.8.0) pour les premiers cabinets : « sans limite » est
+  un ÉTAT, jamais un très grand nombre — une clé à 99 999 dossiers aurait affiché une barre de
+  progression vers une limite imaginaire.
+- **Le site vérifie une licence chez lui** (10.8.0-beta.6) : le visiteur ne quitte plus
+  `skanfact.tn` au moment précis où il se rassure sur une clé qu'on vient de lui vendre.
+- **Les pannes se disent en français** (10.0.1) : disque plein, dossier absent, support débranché,
+  droits refusés. Et zéro avertissement de lint, pour que le prochain soit lisible.
+- **La sonde de contraste mesure de nouveau les champs de saisie** (10.8.0-beta.7), perdue pendant
+  onze versions dans une refonte d'instrument. Verdict des trois surfaces : 722 champs, aucun
+  illisible.
+
+Le détail de chaque version est dans les entrées qui suivent.
+
+## 10.8.0-beta.7 — 22/09/2026
+
+**La sonde de contraste avait perdu les champs de saisie, et personne ne pouvait le savoir.** La
+session qui développe le site nous a posé une question simple — « est-ce que votre instrument mesure
+les champs, ou seulement les boutons ? ». Réponse du jour : **seulement les boutons**. Or CLAUDE.md
+affirmait depuis la 7.30.0 que « e2e:contraste mesure désormais les champs autant que les boutons ».
+C'était vrai : la moitié « champs » existait, écrite pour un défaut que la relecture du CSS ne peut
+pas voir — en thème sombre, chaque `<input>` gardait son fond CLAIR avec le texte clair du thème,
+contraste **1,18**, c'est-à-dire du blanc sur du blanc, depuis que le thème existait. Elle a été
+**perdue dans la refonte de la 9.4.3**, quand la sonde a déménagé dans `harnais.js` pour être
+partagée : seuls les boutons ont fait le voyage. Onze versions pendant lesquelles le garde-fou écrit
+pour attraper ce défaut-là ne pouvait plus l'attraper, sur **aucune** des trois surfaces.
+
+- **Une sonde, deux listes nommées.** `SONDE_CONTRASTE` rend `{ boutons, champs }` : une seule
+  sonde parce que ses quatre fonctions de mesure (luminance, fond opaque, débordement) seraient
+  sinon recopiées dans une seconde — et une copie diverge, toujours (7.29.0). Deux listes séparées
+  parce que les comptes ne se mélangent pas : « 2 125 boutons » doit rester comparable d'une version
+  à l'autre, et un instrument doit dire combien il a mesuré de quoi.
+- **Les trois surfaces, pas une.** L'app entreprise, le Cabinet et la console la partagent — c'est
+  la règle 9.4.3, dont l'oubli est très exactement ce qui a laissé l'app du comptable dériver.
+- **Un instrument qui ne mesure rien annonce « tout va bien ».** Les trois parcours TOMBENT
+  désormais si le compte de champs est nul, comme ils le font déjà pour les écarts d'espacement.
+  Sans ce garde-fou, la disparition de 9.4.3 se reproduirait à l'identique et sans un mot.
+- **`select` et `textarea` comptent autant qu'`input`** : c'est précisément parce qu'ils n'étaient
+  PAS touchés par le défaut d'origine (dans une liste de sélecteurs, chacun porte sa propre
+  spécificité) que l'écran paraissait à moitié correct. Un champ désactivé a le droit d'être pâle,
+  comme un bouton ; un champ en lecture seule, non — il se lit, donc il doit être lisible.
+
+Verdict des trois surfaces, aujourd'hui : **722 champs mesurés** (146 dans l'app entreprise, 319
+dans le Cabinet, 257 dans la console), en clair, en sombre, à 1440 et à 1280 — **aucun illisible**.
+Le défaut n'est donc pas revenu pendant les onze versions où plus personne ne regardait, et c'est
+une chose qu'on ne pouvait pas savoir.
+
+Prouvé en réintroduisant le défaut d'origine dans la feuille de style : la sonde le nomme sur trois
+champs, à 1,18 exactement. Trois seulement, parce que `input[type=text]` couvrait encore le reste —
+la démonstration qu'un défaut « à moitié » est celui qui se voit le moins.
+
+Correctif d'outillage : il ne touche ni un chiffre, ni une clé, ni le moteur comptable, ni le format
+d'un fichier. Aucune des deux applications ne change d'une ligne.
+
+## 10.8.0-beta.6 — 22/09/2026
+
+**Le site peut vérifier une licence sans envoyer le visiteur ailleurs.** La page
+`skanfact.tn/verifier` ne pouvait que renvoyer vers `api.skanfact.tn/verifier` : le visiteur
+quittait le site, atterrissait sur une autre adresse, une page nue, sans en-tête ni retour — au
+moment précis où il cherche à se rassurer sur une licence qu'on vient de lui vendre. La route
+publique `POST /v1/verif/licence` accepte désormais d'être interrogée depuis les trois adresses du
+site, donc la vérification se fait DANS la page du site.
+
+Ce que ça ne change pas, et il faut le dire : cette autorisation ne protège rien et n'en a pas la
+charge. La route est publique par construction — `curl` l'a toujours interrogée et l'interroge
+toujours. Ce qui protège la réponse, c'est la REQUÊTE : elle ne lit jamais la table des clients,
+donc elle ne peut rien dire de plus que l'état d'une empreinte que le demandeur connaît déjà. Ce
+qui change est seulement ceci : quelle PAGE a le droit de lire la réponse dans un navigateur.
+
+- La liste des trois adresses est la **même** que celle du relais (formulaire de contact), et un
+  test compare les deux : les deux workers servent le même site, et deux listes qui divergent
+  donneraient un site dont une moitié fonctionne.
+- Une origine inconnue reçoit quand même sa réponse, sans l'en-tête. Refuser fabriquerait une
+  panne là où il n'y en a pas : la page servie par le worker lui-même n'envoie aucune origine, et
+  c'est elle qui sert aujourd'hui.
+- L'autorisation s'arrête à l'espace public. Un test vérifie qu'aucune page web ne peut lire
+  `/v1/admin/…` ni `/v1/licence/etat` — sans cette moitié, il laisserait passer une autorisation
+  posée partout, c'est-à-dire la console ouverte au navigateur de n'importe quel visiteur.
+
+Correctif de plateforme : rien ici ne touche à un chiffre, à une clé, au moteur comptable ni au
+format d'un fichier. Les deux applications ne changent pas d'une ligne.
+
+## 10.8.0-beta.5 — 22/09/2026
+
+**Le relais de mise à jour se déploie aussi depuis le dépôt.** C'était le dernier worker qu'il
+fallait coller à la main — celui qui sert les mises à jour de toutes les installations, et qui porte
+depuis la 10.4.0 le formulaire de contact du site. Il a son `worker/wrangler.toml` et son workflow
+`Relais`, jumeau de celui de la console.
+
+**`--keep-vars` compte encore plus ici.** Le relais n'a aucune liaison — ni base, ni bucket — mais
+il porte **sept variables en clair** : `GITHUB_OWNER`, `GITHUB_REPO`, `CONTACT_TO`, `CONTACT_FROM`,
+`CONTACT_ORIGINES`, `LICENCE_REQUISE`, `LICENCE_PUBLIC_KEY`. Effacées, il répondrait toujours, mais
+il chercherait les releases d'un dépôt vide et n'enverrait plus un seul message de contact. Une
+panne qui ne se voit pas.
+
+**Deux fichiers de workflow plutôt qu'un qui déploierait les deux.** Les deux workers changent à des
+moments différents ; un relais qui se redéploie parce qu'on a corrigé la console rendrait illisible
+la seule question qu'on se pose devant un incident — qu'est-ce qui a bougé, et quand.
+
+**Et l'essai qui prouve que la lettre ARRIVE.** Les contrôles automatiques vérifient que la porte
+s'ouvre — `/sante` répond 403, `OPTIONS /contact` répond 204 — et ne disent rien de Resend, du
+domaine vérifié ni de la boîte qui reçoit. Un envoi réel est le seul à le prouver, et c'est aussi le
+seul qui coûte un message : il ne part donc **que si on le demande** (une case au lancement du
+workflow). Un déploiement qui enverrait un mail à chaque fois finirait par remplir la boîte qu'il
+teste. Les trois réponses possibles disent chacune autre chose, et l'étape les distingue au lieu de
+rendre un échec muet : la chaîne tient, `RESEND_KEY`/`CONTACT_TO` manquent, ou Resend refuse
+l'expéditeur — presque toujours un `CONTACT_FROM` hors du domaine vérifié.
+
+**Les garde-fous sont jugés par UNE boucle, pas recopiés** (9.4.3 : un instrument qui ne couvre
+qu'un des deux ne protège qu'un des deux). Elle exige, pour chacun : wrangler épinglé,
+`--keep-vars`, jamais `beta` en déclenchement, un filtre qui nomme le code et sa configuration sans
+se nommer lui-même, un `name` qui désigne le worker **en ligne** (un nom qui diverge n'en met pas un
+à jour, il en crée un second pendant que l'ancien continue de servir l'ancien code), et **aucune
+route déclarée** — en déclarer une remplacerait le domaine personnalisé.
+
+## 10.8.0-beta.4 — 22/09/2026
+
+**Le worker est déployé depuis le dépôt, pour de vrai.** La bêta précédente avait écrit la recette ;
+elle ne pouvait pas être lancée. `workflow_dispatch` n'existe, chez GitHub, que pour un workflow
+présent sur la **branche par défaut** : tant que `worker.yml` n'était que sur `beta`, il n'existait
+pour personne — un lancement répondait 404, sans rien d'autre à lire.
+
+**Et `main` était un champ de mines.** Elle est restée à la 10.0.0 : son worker fait 1 842 lignes
+contre 4 898 sur `beta`, il n'a pas bougé depuis le 17/09, et la base D1 porte déjà les colonnes
+qu'il ne connaît pas. Le déployer aurait effacé le parc des deux applications, les réglages en base,
+le suivi de prospect, la fiche client et la vérification publique.
+
+**D'où la règle, qui vaut indépendamment de cette transition : un déploiement se déclenche sur ce
+qui est DÉPLOYÉ — le code du worker et sa configuration — jamais sur la recette qui déploie.** Une
+production qui se redéploie parce qu'on a corrigé un commentaire est une production qu'on finit par
+ne plus regarder. Le filtre de chemins ne se nomme donc plus lui-même — ce qui rend, par
+construction, le dépôt du fichier sur `main` **inerte** : aucun chemin surveillé n'y existe encore.
+Vérifié après la poussée : zéro run déclenché. Le premier déploiement par poussée aura lieu quand
+`plateforme/` arrivera sur `main`, c'est-à-dire quand il y aura vraiment quelque chose à déployer.
+
+Le garde-fou se prouve dans les **deux** sens : le filtre vidé, le déclenchement cesserait en
+silence ; le filtre se nommant lui-même, la production se redéploierait pour une recette modifiée.
+
+**Vérifié avant de déployer quoi que ce soit** : le worker ne lit que `DB` et `SAUVEGARDES` sur
+`env`, les deux déclarés dans le `wrangler.toml`. Tout le reste — `ADMIN_SECRET`, `SRV_PRIVATE_KEY`,
+`REPONSE_PRIVATE_KEY`, `RESEND_API_KEY`, `RELAIS_*`, les prix, la signature de mail — sont des
+secrets ou des variables en clair, que `--keep-vars` et la définition même d'un secret préservent.
+Aucune route n'est déclarée, donc `api.skanfact.tn` n'est pas touché.
+
+**Le premier run a mesuré, il n'a pas seulement réussi** (la leçon de la 9.8.1) : `HTTP 200` sur
+`/verifier` et la page reconnue à son titre. Les huit versions jamais déployées sont arrivées d'un
+coup, et la copie de nuit vers R2 est armée (`0 2 * * *`).
+
+## 10.8.0-beta.3 — 22/09/2026
+
+**Le worker de la console se déploie depuis le dépôt.** Il se déployait en COLLANT son code dans
+l'éditeur du tableau de bord : un geste manuel par version, sur le seul service qui signe les
+licences. Skander : « plus me demander de faire la commande SQL ni d'éditer le code dans les
+workers ». La base D1 est réglée autrement — j'y accède directement ; le code, lui, ne pouvait
+l'être que par une action GitHub.
+
+**Ce que la configuration devait dire, et que personne n'écrivait.** `wrangler deploy` REMPLACE les
+liaisons du worker par celles de son fichier de configuration : une liaison absente en est
+SUPPRIMÉE. Sans `plateforme/wrangler.toml`, le premier déploiement aurait laissé `env.DB`
+indéfini — la console aurait répondu « Service momentanément indisponible » sur chaque écran, sans
+qu'une ligne de code soit en cause. Les deux liaisons (la base, le bucket de copie) et le
+déclencheur de nuit y sont donc déclarés, avec leurs identifiants réels. Ce ne sont pas des
+secrets : sans jeton ils n'ouvrent rien, et les cacher aurait rendu les pannes illisibles.
+
+**Les variables en clair survivent, par `--keep-vars`.** Les secrets, eux, survivent de toute
+façon — c'est leur définition. Mais `MAIL_FROM`, `RELAIS_BASE` et leurs voisines auraient été
+effacées à chaque déploiement, et rien ne l'aurait dit.
+
+**Jamais depuis `beta`.** La branche de travail porte du code non confirmé ; le pousser au service
+qui signe les licences de vrais clients serait publier sans le dire. Le workflow se déclenche sur
+`main`, et `workflow_dispatch` reste là pour déployer une bêta délibérément — même porte que le
+workflow Release.
+
+**Un job vert ne suffit pas** (9.8.1, re-appliquée) : après le déploiement, le workflow redemande au
+worker la page publique `/verifier` et exige d'y lire son titre. Elle n'existe qu'à partir de la
+10.5.0, donc elle prouve que c'est bien ce code-là qui tourne. Et l'adresse se lit dans la sortie de
+wrangler plutôt que dans un troisième secret — un secret qu'on oublie de poser rendrait le contrôle
+rouge pour une raison qui n'est pas une panne. Quand rien ne peut être mesuré, l'étape le DIT au
+lieu d'annoncer que tout va bien.
+
+**Deux garde-fous, quatre preuves.** Les noms de liaison du toml sont confrontés à ceux que le code
+LIT — `R2_BINDING` est lu dans la source, jamais recopié — et le workflow est relu pour `--keep-vars`
+et pour la branche. Réintroduits un par un : liaison D1 retirée, binding R2 renommé du seul côté du
+code, `--keep-vars` retiré, déclenchement ajouté sur `beta`. Les quatre tombent en nommant leur
+conséquence.
+
+**Fait au passage, sur le compte :** le bucket `skanfact-sauvegardes` est créé (R2 impose des
+minuscules ; la liaison reste `SAUVEGARDES`, c'est elle que le code lit). La copie de la base partira
+chaque nuit à 3 h de Tunis dès que le worker sera déployé avec cette configuration.
+
+## 10.8.0-beta.2 — 22/09/2026
+
+**La migration de la base D1, écrite, prouvée, et appliquée.** `schema-a-coller.sql` crée une base
+NEUVE : tout y est en `CREATE TABLE IF NOT EXISTS`, donc il ne fait rien sur la base de production,
+qui a été collée une fois et n'a plus bougé. Chaque colonne ajoutée depuis lui manquait — et le
+worker d'aujourd'hui les LIT. `plateforme/migration-a-coller.sql` est l'autre moitié.
+
+**Ce que la base portait vraiment**, relevé plutôt que supposé : elle était déjà à jour **jusqu'à la
+10.5.0** — `app`, l'index du parc avec `COALESCE`, `reglages`, `suivis`. Il ne manquait **qu'une
+colonne**, `licences.illimite`, ajoutée le jour même après copie complète de la base. Les deux
+licences existantes sont intactes, `illimite` à `NULL` : le quota ordinaire, exactement le bon
+défaut.
+
+**Le piège que la migration désamorce, et qui ne dit rien.** `CREATE UNIQUE INDEX IF NOT EXISTS` sur
+un nom **déjà pris ne remplace rien** — il ne fait rien, sans un mot. L'ancien `idx_activ_unique`
+portait sur `(empreinte, device_id)` : sans un `DROP INDEX` avant, le correctif du parc de la
+10.4.0-beta.3 ne se serait **jamais** appliqué, et les deux applications d'un même poste auraient
+continué à s'écraser. Prouvé en retirant le DROP : les deux bases divergent, sur cette ligne
+exactement.
+
+**Et un garde-fou qui rassurait sans protéger, élargi.** Ma première version du test ne vérifiait que
+l'idempotence — rejouée sur une base à jour, la migration ne casse rien. Elle restait **verte** quand
+je retirais `illimite` de la migration : c'est-à-dire qu'elle ne voyait pas l'oubli qui coûte cher,
+une colonne ajoutée au schéma et jamais reportée. Le test compare désormais une base **d'origine**
+plus la migration au schéma du jour, et NOMME ce qui manque. Trois preuves par réintroduction :
+colonne oubliée, `DROP` retiré, table en trop — les trois tombent.
+
+Au passage, une faute de la même famille dans le test lui-même : son filtre cherchait `licences`
+dans l'instruction ENTIÈRE, donc il sautait `CREATE TABLE ventes`, dont la clé étrangère nomme
+licences. Un motif trop large attrape du code juste (9.4.7) — ici, dans un test.
+
+## 10.8.0-beta.1 — 22/09/2026
+
+**Une licence de cabinet peut porter « sans limite de dossiers ».** Décidé avec Skander pour les
+premiers cabinets, dont le cabinet pilote : leur vendre un quota le jour où on leur demande de
+tester le produit n'a pas de sens, et le calibrer au jugé encore moins. La case existe désormais
+dans la console, et l'application s'y conforme — la grille ordinaire ne change pas d'un chiffre.
+
+**C'est un ÉTAT, pas un très grand nombre.** Une clé à 99 999 dossiers aurait fonctionné sans une
+ligne de code : c'est précisément ce qu'il ne fallait pas faire. Le cabinet aurait lu « 100 002
+dossiers autorisés » sur l'écran qui doit le rassurer — un chiffre que personne n'a décidé, et une
+barre de progression qui avance vers une limite imaginaire. `licenceCabinet` rend donc
+`autorises: null`, l'écran écrit « sans limite », et le verrou ne peut plus tomber.
+
+**Ce que la case change, et ce qu'elle ne change pas.** Elle cache le quota — réclamer un chiffre
+dont on vient de dire qu'il ne sert pas est un piège, et le champ porte une étoile d'obligation
+qu'on ne pourrait plus satisfaire — et elle efface le prix proposé, qui se calculait sur ce
+quota : un montant déduit d'un nombre de dossiers qui ne compte plus serait un chiffre faux
+(7.16.0). Le prix se saisit à la main, et l'écran le dit. Elle ne touche ni à l'essai, ni à la
+date de fin, ni à la révocation, ni au comptage : un cabinet sans limite voit toujours combien de
+dossiers il a.
+
+**Elle ne concerne QUE les dossiers d'un cabinet**, et la console refuse en le disant sur une
+licence d'entreprise — qui n'en compte aucun. Le champ entre en **queue** de la charge signée,
+après `type` et `dossiersHors` : au milieu, il changerait l'ordre des champs déjà signés, et une
+clé refabriquée depuis sa charge rangée en base ne serait plus identique à celle qu'on a envoyée
+(8.5.0). Une clé d'avant se comporte donc exactement comme avant.
+
+**Le statut de fondateur se POSE, il ne se déduit jamais du rang d'émission.** Skander : « vu que
+je vais tester l'application je vais créer des licences, est-ce que ça va pas me cramer mes 20
+licences sans limite ? » Non — parce que **rien ne compte**. Vérifié avant de répondre : le mot
+« fondateur » n'apparaît nulle part dans le code, et aucun compteur n'existe. La séparation qui
+rend ça propre, et qui vaut pour tout ce qu'on voudra compter un jour : **la clé porte ce que
+l'application doit faire respecter** (le quota) ; **la console porte ce que l'éditeur doit
+compter** (le statut commercial). L'application n'a pas à savoir qu'on compte jusqu'à vingt. Une
+clé de test n'est simplement pas marquée.
+
+**Et deux instruments réparés, chacun par sa preuve :**
+
+- **Le garde-fou que j'ai écrit ne pouvait pas voir son propre défaut.** Il interdit qu'une
+  déclaration locale masque une fonction du module de la console — la faute qui a tué le
+  formulaire d'émission la veille, sans une ligne dans aucune console (`node --check`, le lint et
+  le garde-fou du backtick passent tous les trois). Il ne lisait que `function nom(` : la page en
+  a 47 sous cette forme et **22 sous la forme `var nom = function`**, qui est très exactement
+  celle où vivait le défaut. Réintroduit, il restait vert. Il lit maintenant les deux familles —
+  et il ne dit rien sur les 69 fonctions du code juste.
+- **L'instrument de rendu ouvrait le formulaire d'émission dans le seul état où la case neuve
+  n'existe pas.** Le formulaire a deux visages — une licence d'entreprise montre l'offre et le
+  parrainage, une licence de cabinet montre l'empreinte, le quota et « sans limite » — et le
+  parcours ne mesurait que le premier. C'est T-55 d'un cran plus bas : l'instrument atteint
+  l'écran, mais dans l'état où le contrôle neuf n'est pas rendu. Il bascule désormais le type et
+  coche la case : **de 93 à 101 écrans, 2 125 boutons, 648 colonnes, 2 669 écarts**, et rien
+  d'illisible, de désaligné ni de collé sur les deux états qu'il n'avait jamais vus.
+
+Trois preuves par réintroduction, plus les deux directions du garde-fou élargi. `npm test` :
+763 tests. `e2e:console` et `e2e:cabinet-licence` verts.
+
+## 10.7.0-beta.1 — 22/09/2026
+
+**Achats sort des réserves de l'offre Indépendant.** Signalé par la session qui développe
+`skanfact.tn` : « tu ne peux pas vendre 390 DT une version qui oblige le cabinet à ressaisir,
+alors que le cabinet est ton canal de distribution ». L'argument est juste, et le vrai motif est
+plus grave que celui-là.
+
+**Le chiffre.** Mesuré sur le jeu de démonstration, exercice 2026 entier, en vidant simplement
+les achats et les fournisseurs — c'est-à-dire l'état exact des données d'un client qui n'a jamais
+pu en créer : le paquet qu'il envoie à son comptable déclare **7 441,33 DT de TVA au lieu de
+3 250,16**. La collectée y est entière, la déductible vaut **zéro**, et l'écart de **4 191 DT**
+part à l'administration sur un logiciel vendu 390. Sur le seul mois d'août : 313,50 DT annoncés
+alors que rien n'est dû. Le journal des achats est vide (13 lignes → 0), celui des règlements
+fournisseurs aussi (8 → 0), et les écritures tombent de 382 à 314.
+
+Ce n'est donc pas « le cabinet doit ressaisir » : **c'est l'offre qui vend une déclaration
+fausse**, en silence, dans le fichier même qui sert à déclarer. Le module s'appelle d'ailleurs
+« Achats et fournisseurs — ce que tu dépenses, et *la TVA que tu récupères dessus* ».
+
+**Les cinq autres réserves ne bougent pas, et c'est mesuré aussi.** Les six modules ont été
+testés un par un : stock, immobilisations, paie, pilotage et partage ne changent **ni la TVA ni
+aucune case déposée** — ils retirent des écritures de gestion (la paie 68, les immobilisations 7,
+la trésorerie 38), pas un chiffre que le client dépose et paie. Et ce qu'ils portent est très
+exactement ce que le cabinet fait à sa place depuis les 9.7.0 (amortissements) et 10.3.0 (paie).
+La ligne reste donc nette : **Indépendant = tout ce qu'il faut pour facturer ET déclarer juste ;
+Entreprise = gérer** (stock, immobilisations, salariés, trésorerie et marges, deux postes).
+
+**La règle qui en sort, et le garde-fou qui la tient : une offre peut fermer un confort, jamais
+une case de déclaration.** Le test ne lit pas une liste de modules interdits — il MESURE : pour
+chaque module qu'une offre réserve, il vide ce que ce module permet de créer et recalcule la TVA
+de l'exercice. Si elle bouge, il tombe, avec le chiffre dans le message. Il est général exprès :
+il tombera aussi le jour où quelqu'un réservera un module neuf qui touche à la déclaration.
+
+**La contrepartie, livrée avec.** Avec Achats ouvert, un Indépendant peut désormais saisir un
+achat en « immobilisation » sans pouvoir créer la fiche du bien. C'est voulu — le cabinet la crée
+depuis les écritures du paquet, au compte 22, depuis la 9.7.0 — mais l'application ne doit pas le
+lui **reprocher** : « Tant que la fiche manque, rien n'est déduit » devient faux. La ligne d'« À
+faire » dit maintenant que le comptable s'en charge, l'avertissement de l'éditeur d'achat aussi,
+et la pastille rouge de la barre latérale disparaît — un compteur de tâches à côté d'un cadenas
+dit deux choses contraires.
+
+**Et un instrument rouge depuis la 10.5.0, réparé au passage.** `e2e:plateforme` — le parcours qui
+prouve qu'une révocation signée ferme vraiment la création chez un client — portait une base de
+données écrite **à la main**, un objet qui n'implémentait que `first()` et `run()`. C'est
+exactement ce que la 8.5.0 avait condamné et corrigé pour `e2e:console` (« les tests ne rejouent
+plus le worker, ils le font tourner ») : la leçon n'avait jamais été portée ici. Le prix s'est payé
+en 10.5.0, quand une route a commencé à appeler `.all()` : le parcours est mort sur
+`env.DB.prepare(...).all is not a function`, et personne ne l'a vu — un parcours rouge qu'on ne
+relance pas cesse d'exister. Il tourne désormais sur la VRAIE base SQLite, sur le schéma qu'on
+demande à Skander de coller, avec de vraies révocations écrites en SQL. La fidélité a livré son
+premier constat dans la foulée : la vraie base **met à jour** l'annonce d'un poste déjà connu au
+lieu d'en empiler une — c'est tout l'intérêt, on compte des ordinateurs, pas des démarrages — là
+où la fausse en ajoutait une à chaque fois.
+
+Les prix ne changent pas : ils se règlent dans la console depuis la 10.5.0, et c'est une décision
+du propriétaire, pas de cette version.
+
+## 10.6.0-beta.1 — 22/09/2026
+
+**L'audit de la console, en Product Designer, et les vingt-neuf constats corrigés d'un bloc.**
+Skander : « Ne modifie rien. Analyse cette plateforme comme un Product Designer SaaS senior »,
+puis « corrige tout ça ». Trois critiques, cinq majeurs, douze moyens, neuf finitions — et le
+trou d'instrument qui explique pourquoi personne ne les avait vus.
+
+Publiée en **bêta** : le premier des trois critiques change un PRIX sur une facture.
+
+**Les trois critiques.** Le formulaire d'émission proposait le prix de l'offre *Entreprise* quel
+que soit l'offre choisie, parce que le champ était pré-rempli une fois au dessin et que rien ne
+le recalculait : vendre un Indépendant à 690 DT au lieu de 390 ne demandait aucune faute de
+frappe. Le prix suit désormais l'offre, et il DIT d'où il vient (« proposé d'après l'offre » ou
+« saisi à la main ») — un chiffre pré-rempli qu'on ne distingue pas d'un chiffre décidé est un
+chiffre qu'on ne relit pas. Les dates se saisissaient au format interne (`2026-09-17`) sous une
+invite française ; elles s'écrivent et se lisent en `JJ/MM/AAAA`, le 31 février est refusé en le
+nommant. Et **émettre demande une confirmation** : le premier clic rend le récapitulatif — à qui,
+quelle offre, jusqu'à quand, combien — et le second signe. Une clé livrée ne se reprend pas
+(8.2.0) : c'est le dernier écran avant un geste irréversible, il n'existait pas.
+
+**Les cinq majeurs.** Une ligne garde au plus UN bouton visible et le reste passe par un menu
+(7.29.0) — la console en portait jusqu'à cinq, et à 1440 px les colonnes FIN, ENVOYÉE et ÉTAT
+des Licences étaient **entièrement hors de l'écran** (524 px de débordement, mesurés ; zéro
+après). Les colonnes entièrement vides se masquent en le DISANT, avec « Tout afficher » pour les
+rendre — masquer sans le dire serait un piège (7.12.0). Chaque écran finit par le geste suivant.
+Et la hauteur d'une ligne est passée de 210 px à 54.
+
+**Les douze moyens et les neuf finitions.** Les Réglages se replient par section avec leur
+sommaire (arriver sur un titre replié, c'est arriver nulle part — 7.32.0) ; les valeurs internes
+(`darwin`, `licence.emise`) se disent en français ; la clé émise s'affiche résumée avec « Voir la
+clé entière » derrière ; les champs conditionnels n'apparaissent que quand ils servent ; la barre
+d'enregistrement flotte ; les libellés nomment l'écran d'arrivée.
+
+**Le trou qui explique les vingt-neuf.** `e2e:console-rendu` mesurait dix écrans en quatre passes
+et n'en **photographiait que cinq**, chacun coupé au bas de la fenêtre — la console pose un cadre
+fixe (`height:100vh`) et fait défiler un élément interne, donc « page entière » rendait exactement
+une capture d'écran (le défaut résolu pour les deux applications en 9.4.3, jamais porté ici). Et
+huit surfaces n'étaient atteintes par personne : le récapitulatif avant signature, la clé émise,
+le menu d'une ligne, la relance composée, **la fiche d'un client**, le devis et son aperçu, **la
+palette**, **le pli scellé** et **la page publique de vérification** — la seule surface du produit
+que des inconnus ouvrent. L'instrument les atteint toutes : de 5 captures à **93**, de 1 277
+boutons à 1 925, 592 colonnes, 2 445 écarts.
+
+Il a trouvé deux défauts dans l'heure qui a suivi. Sur la fiche d'un client, l'en-tête « Montant
+HT » était aligné à gauche au-dessus de valeurs alignées à droite — la faute de la 7.23.0, sur un
+écran qu'aucune sonde n'avait jamais regardé ; l'alignement se DÉDUIT désormais des cellules, donc
+une colonne qui devient un nombre demain s'aligne toute seule. Et la page publique mélangeait
+apostrophes droites et typographiques dans le même paragraphe.
+
+## 10.5.0-beta.1 — 22/09/2026
+
+**La console retenait ce qui EXISTE, et rien de ce qu'on en faisait.** Un essai se terminait,
+l'alerte se levait, Skander appelait le prospect — et le lendemain la même alerte se relevait à
+l'identique. Une alerte qui ne se referme pas cesse d'être lue au cinquième prospect, et emmène
+avec elle celles qui comptaient. Et un prix qui se change en modifiant le code n'est pas un prix,
+c'est une constante : il faut un déploiement pour l'ajuster, donc on ne l'ajuste jamais.
+
+**Les deux applications ne changent pas d'un octet** : `src/` et `build/` ne portent aucune
+différence. Tout ce qui suit vit dans le worker de la console — il se déploie sur Cloudflare, pas
+par une release — et dans une **migration D1** à coller (en fin d'entrée).
+
+### Régler, depuis l'écran
+
+- **Un onglet Réglages**, et quinze valeurs qui vivaient dans le code ou dans les variables du
+  worker : les trois prix, la remise de parrainage, la devise, le lien de paiement, la signature
+  des mails, et sept seuils d'alerte. **Trois rangs** décident, dans cet ordre : ce qui est réglé à
+  l'écran, sinon la variable du worker, sinon le défaut — poser une valeur ici doit pouvoir
+  CORRIGER une variable mal réglée sans toucher à Cloudflare, jamais l'inverse.
+- **Chaque valeur dit d'OÙ elle vient.** Sans ça, un écran de nombres laisse croire qu'ils ont tous
+  été décidés, alors que la plupart sont des défauts que personne n'a jamais regardés.
+- **Un refus nomme le champ ET la forme attendue**, et ce qui était bon est enregistré quand même :
+  un formulaire tout-ou-rien ferait recommencer quinze champs pour une virgule.
+- **Vider un champ numérique le rend à son rang suivant** ; vider un champ de texte le laisse vide
+  pour de bon. « Aucune version minimale » est une décision, pas un oubli.
+- **Ce que la console NE règle pas est écrit, avec la raison** : la durée de l'essai est la règle de
+  l'application, pas une politique de la console — réglée ici, elle annoncerait des fins d'essai
+  fausses. Le taire donnerait l'impression d'un oubli.
+
+### Vendre
+
+- **Un écran Essais**, nommés un par un : quel poste, quelle application, quel système, ce qu'il
+  reste, et ce qu'on en a fait. Le Parc les agrège par version — utile pour compter, inutile pour
+  décrocher son téléphone. C'est la file d'appels du matin, et elle n'existait pas.
+- **« Noter un contact »**, sur un prospect comme sur un client : comment, ce qui s'est dit, quand
+  rappeler, et l'issue. Tant qu'un rappel est posé dans le futur, ce sujet ne redemande rien — et
+  le jour venu, il revient de lui-même. **Rien ne s'écrase** : chaque contact est une ligne de plus,
+  parce que « je l'ai déjà appelé deux fois » est ce qu'on vient chercher avant la troisième.
+- **Un « perdu » sans motif est refusé** : c'est la seule chose que ce suivi peut apprendre.
+- **Le lien de paiement** entre dans les relances quand il est réglé, et **disparaît de la phrase**
+  sinon — pas un vide, pas un « … ». C'est ce qui transforme une relance en encaissement.
+- **Un devis**, composé depuis la fiche d'un client : la console ne parlait qu'à ceux qui avaient
+  déjà acheté. Le prix vient des Réglages, jamais du code.
+- **Le parrainage est chiffré** : clients amenés, **dont payants**, et CA encaissé. Vendre en
+  passant par les cabinets est le modèle du produit — « amené » et « payé » ne sont pas la même
+  nouvelle, et les confondre féliciterait un cabinet qui n'a rien rapporté.
+
+### Garder, et supporter
+
+- **La fiche d'un client** : licences, ventes, postes, ce qu'on lui a dit, journal. Répondre à
+  « raconte-moi tout sur ce client » demandait cinq écrans. C'est celui qu'on ouvre à chaque appel.
+- **Un client sous licence devenu muet.** Un poste qui a payé et ne s'annonce plus, c'est une
+  désinstallation, une réinstallation ratée ou un réseau coupé : dans les trois cas on appelle, et
+  dans les trois cas on ne l'apprenait nulle part. Un départ de client payant ne faisait aucun bruit.
+- **Un poste resté sur une version ancienne**, avec le MOTIF de la version minimale. Pour un
+  logiciel comptable ce n'est pas un confort : une version ancienne tourne sur du code dont on a
+  corrigé des chiffres depuis. Rien tant que le seuil n'est pas réglé : la console n'écrit aucune
+  règle à la place de personne.
+- **Un jalon de renouvellement à soixante jours**, calme : une licence annuelle se négocie en
+  amont, et une occasion criée en rouge apprend à ignorer le rouge. Il ne double jamais l'alerte
+  pressante de trente jours.
+- **Une page publique de vérification** (`/verifier`) : un client colle l'empreinte de sa licence et
+  lit son état. Sans secret — celui qui présente une empreinte la connaît déjà — et **jamais** le
+  nom du client : la requête ne va pas chercher la table des clients, et c'est elle qui protège,
+  pas la forme de la réponse.
+
+### Ne pas perdre la boutique
+
+- **La copie de la base part toute seule**, par déclencheur programmé, dans un bucket R2. Une copie
+  qui demande un clic est une copie qu'on ne fait pas — l'alerte à trente jours existait
+  précisément parce que le geste ne se faisait pas. Tant que le bucket n'existe pas, l'écran **DIT**
+  ce qui manque au lieu d'afficher un vert rassurant.
+- **Un second secret d'administration** le temps d'une rotation. Sans lui, remplacer le secret ferme
+  la console à la seconde où on le remplace — et c'est ce qui fait qu'on ne le remplace jamais, y
+  compris le jour où il faudrait. Il est tenu aux mêmes exigences : un secret de rotation court
+  serait une porte de service.
+- **Le pli scellé**, préparé par la console : ce qu'il doit contenir, comment le sceller, et ce qui
+  reste vrai sans lui. Aucune clé privée n'en sort — ce qui sort est une PROCÉDURE. C'est le point
+  le plus grave du projet : une seule personne peut émettre une licence.
+
+### L'ergonomie, et trois défauts vus sur capture
+
+- **Le plafond de largeur suit le RÔLE.** Un seul plafond de 1180 px s'appliquait à tout : juste
+  pour de la prose, faux pour un tableau de dix colonnes qui se serrait pendant que 700 px restaient
+  vides à droite. Une **cinquième sonde** le mesure désormais — les quatre autres regardaient des
+  objets, aucune ne voyait la place perdue.
+- **Tri par colonne et pagination**, que les deux applications ont depuis la 1.9.0 et la 2.2.0. Le
+  pied **nomme** ce qu'il compte (« 4 licences », jamais « 4 lignes ») et dit quand la borne de cinq
+  cents lignes est atteinte : une troncature muette se lit comme « tout est là ».
+- **Les bulles « i »** sur les colonnes qui sont des définitions — « Endormi n'est PAS perdu » était
+  écrit nulle part. Et **Cmd+K**, qui mène à un écran, un geste ou un client par son nom.
+- « Les **4** canaux stables servent une version » s'affichait au-dessus de **huit** lignes : le
+  verdict ne compte que les stables, le détail listait tout. Un compteur et la liste qu'il annonce
+  se calculent avec la même fonction (6.8.1) — ici on ne retire rien, on SÉPARE.
+- L'export écrivait « **evenements** : 3 · **jetons** : 0 » — les noms de tables SQL tels quels,
+  accent manquant compris.
+- Le bandeau d'export **suivait d'écran en écran** : « activations : 4 » restait affiché pendant que
+  le Parc, juste en dessous, en montrait cinq.
+
+### Deux défauts trouvés par les parcours, invisibles autrement
+
+- **Une réponse en retard repeignait l'écran qu'on avait quitté.** Deux dessins qui se chevauchent —
+  « Actualiser » puis un clic sur un onglet — et c'est la réponse la plus LENTE qui gagnait : le
+  tableau du Parc se faisait remplacer par les alertes, sous le titre du Parc. Il n'apparaît que
+  lorsqu'un écran devient plus lent qu'un autre, donc il serait arrivé un jour, en production.
+- **La rangée de boutons qui clôt un bloc** n'avait d'écart que DANS un panneau : posée ailleurs,
+  « Enregistrer » touchait « Annuler » à zéro pixel. Un correctif qui dépend d'une classe qu'on
+  pense à mettre n'est pas un correctif (9.8.3).
+
+Treize défauts réintroduits un par un font tomber leur test. Deux sont restés VERTS et ont appris
+quelque chose : une assertion sur la seule réponse de la page publique ne prouvait rien — c'est la
+REQUÊTE qui protège, et elle n'était gardée par rien ; et une assertion « la tranche ne déborde pas »
+ne pouvait pas échouer, parce que le gabarit est la dernière chose du fichier.
+
+**La migration à coller dans la console D1 de Cloudflare**, une fois le worker redéployé :
+
+```sql
+CREATE TABLE IF NOT EXISTS reglages ( cle TEXT PRIMARY KEY, valeur TEXT NOT NULL, change_le TEXT NOT NULL );
+CREATE TABLE IF NOT EXISTS suivis ( id TEXT PRIMARY KEY, sujet TEXT NOT NULL, quand TEXT NOT NULL, moyen TEXT, note TEXT, rappel TEXT, issue TEXT, motif TEXT, source TEXT );
+CREATE INDEX IF NOT EXISTS idx_suivis_sujet ON suivis(sujet);
+```
+
+## 10.4.0-beta.3 — 22/09/2026
+
+**Deux applications, deux parcs — et le premier chiffre de cette version était faux.** Skander a
+ouvert le Parc : trois lignes, toutes « SkanFact », et « 10.4.0-beta.1 · 2 postes » sur un Mac où
+tournent SkanFact ET SkanFact Cabinet. *« Je veux savoir combien de postes cabinet et combien de
+postes entreprise. »* Correctif des **deux workers seulement** : les deux applications sont
+identiques à celles de la 10.4.0-beta.1, à l'octet près — `src/` et `build/` ne portent pas un
+fichier de différence. Ce qui change vit dans le worker de la console, déjà déployé, et dans une
+**migration D1** collée le 22/09/2026 (elle est en fin d'entrée, pour mémoire).
+
+**Pourquoi cette release existe quand même**, alors que la beta.2 et celle-ci n'avaient rien à
+livrer : Skander l'a demandée pour **éprouver le canal de mise à jour de bout en bout** — la
+publication, les quatre index de canal, la vérification depuis les deux applications,
+le téléchargement et l'installation. Une chaîne qu'on ne vérifie que sur les versions qui pressent
+finit par ne se vérifier jamais. Cette bêta ne change donc rien à ce que tu vois : si les deux
+applications passent en 10.4.0-beta.3 toutes seules, c'est la chaîne entière qui vient de répondre.
+Elle emporte au passage la **beta.2** (la ligne de santé des canaux qui accusait du code juste),
+jamais publiée pour la même raison.
+
+Quatre défauts, et le plus grave était invisible :
+
+- **L'identifiant d'une activation n'a jamais porté l'application.** `empreinte_deviceId` :
+  deux applications sur un poste se battaient pour la **même clé primaire**, la seconde écriture
+  était refusée par la base, et `sansCasser` avalait le refus. Le Cabinet n'apparaissait donc
+  jamais dans le parc, **sans une ligne nulle part**. Ça tenait par accident jusqu'ici — chaque
+  application a son propre `userData`, donc son propre `deviceId` — mais un accident n'est pas un
+  garde-fou.
+- **`app` entre dans la clé d'unicité**, avec `COALESCE(app, 'entreprise')` et jamais `app` nu :
+  dans un index UNIQUE de SQLite, deux NULL sont **distincts**. Sur la clé nue, une annonce
+  arrivant sur une ligne d'avant la 10.4.0 (app NULL) ne trouverait aucun conflit et créerait un
+  **doublon** — le poste compterait deux fois, sur l'écran fait pour le compter.
+- **La colonne « Application » manquait à l'écran des Activations** — celui qui répond à « lequel
+  de ces deux postes est le Cabinet ? ». Le champ était écrit en base depuis la 10.4.0 et affiché
+  nulle part : une donnée enregistrée et jamais affichée n'existe pas (7.21.0). Les **trois**
+  moitiés se tiennent maintenant, et un test les confronte : la colonne déclarée, la route qui rend
+  le champ, et le NOM calculé côté serveur.
+- **Ma première version de cette colonne appelait `APPS` et `appDe` depuis la page** — deux
+  fonctions du module, absentes du gabarit. ReferenceError pendant la construction, écran bloqué
+  sur « Chargement… », rien en console (7.22.0). C'est `e2e:console` qui l'a attrapé, jamais la
+  relecture : le serveur NOMME, la page AFFICHE.
+
+Ce que la console sait faire en plus :
+
+- **Les compteurs se dédoublent** : essais entreprise / essais cabinet, postes entreprise / postes
+  cabinet. Additionner SkanFact et SkanFact Cabinet dans « 2 essais en cours », c'est mélanger deux
+  produits, deux marchés et deux tarifs dans un seul chiffre — la faute de la 7.16.0 portée au parc.
+- **Le taux de conversion**, le chiffre d'un produit qu'on vend, et il n'existait nulle part :
+  combien d'ordinateurs ont essayé, combien ont fini sous licence. Compté par **ordinateur** et
+  jamais par ligne (un poste qui convertit garde sa ligne d'essai et en gagne une autre), borné à
+  100 %, et **`null` sans dénominateur** : « 0 % de conversion » sur zéro essai annonce un échec là
+  où il n'y a pas encore de question (9.6.0). L'écran affiche « — ».
+- **Un essai qui se termine est une alerte** — le seul signal commercial de cette console, et il
+  manquait. Elle nomme l'application, et elle dit que la date est **approchée** (« vers le ») : la
+  plateforme sait quand elle a VU un poste, jamais quand son essai a commencé sur la machine.
+  Prétendre une précision qu'on n'a pas est ce que ce projet s'interdit depuis Cabinet 1.0.0.
+- **Relancer un client** : c'était le seul geste commercial que la console ne savait pas faire.
+  « Écrire… » sur une licence qui se termine, « Relancer… » sur une vente livrée et non encaissée.
+  La console **compose**, elle n'envoie pas : le texte s'ouvre dans la messagerie de l'éditeur, qui
+  le relit et l'envoie lui-même. Resend ne sert qu'à la clé, qui suit un paiement et ne se discute
+  pas ; une relance se relit toujours avant de partir. Rien ne s'y invente : ce qui manque disparaît
+  de la phrase au lieu d'être remplacé par un vide, et la date est française, pas ISO.
+- **Le Parc dit où se lit l'unité commerciale.** « Postes » reste un fait vrai pour la ligne Cabinet
+  — masquer un chiffre juste derrière un « — » serait pire — mais ce qu'on **vend** à un cabinet est
+  un quota de dossiers (9.4.0), et cette unité-là vit sur l'écran Cabinets. La phrase de l'écran le
+  dit, plutôt qu'une colonne que seule une ligne sur trois remplirait (9.4.4).
+
+Quatorze défauts réintroduits un par un font tomber leur test, et deux tests d'hier ont été
+**retournés vers la règle** : « six cartes à zéro » décrivait l'état du jour et serait tombé sur le
+correctif — la règle est que les compteurs sont à zéro et qu'un taux sans dénominateur dit « — ».
+
+**La migration à coller dans la console D1 de Cloudflare**, une fois le worker redéployé :
+
+```sql
+DROP INDEX IF EXISTS idx_activ_unique;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_activ_unique
+  ON activations(empreinte, device_id, COALESCE(app, 'entreprise'));
+```
+
+## 10.4.0-beta.2 — 22/09/2026
+
+**L'instrument de surveillance accusait du code juste, dix minutes après avoir été branché.**
+Correctif des deux workers uniquement : aucune application ne change, et **aucune publication
+n'est nécessaire** — il suffit de redéployer `skanfact-maj` et `skanfact-api`.
+
+La ligne de santé des canaux (10.4.0), branchée pour la première fois, a annoncé « 2 canaux
+stables muets : `latest-linux.yml`, `cabinet-linux.yml` ». Vrai au pied de la lettre, et faux comme
+signal : ni `package.json` ni `build/cabinet.config.js` ne déclarent de cible Linux, ces fichiers
+n'existeront jamais. Un orange qui ne peut **jamais** s'éteindre apprend à ignorer la barre entière
+(8.0.1), et c'est un test trop large : il accuse du code juste (9.4.7).
+
+- **`CANAUX[].attendus`** sépare ce que le relais a le DROIT de servir (`yml`, volontairement
+  permissif — le jour où une cible Linux existe, il la sert sans qu'on y retouche) de ce que le
+  projet PUBLIE. `resumeCanaux` marque chaque ligne, la console ne juge que celles-là. Les autres
+  restent dans la réponse : un index servi alors qu'on ne l'attend pas est une information.
+- **La liste est confrontée aux deux `ATTENDUS` du workflow de publication** par un test : deux
+  tables séparées divergent, toujours (6.8.0). Le workflow savait depuis la 9.8.8 que quatre index
+  seulement sont publiés ; le relais ne partageait pas cette connaissance.
+- **`c.attendu !== false` et non `=== true`** : un relais d'avant cette version n'envoie pas le
+  champ, et on préfère qu'il juge trop plutôt qu'il se taise — un instrument muet annonce que tout
+  va bien (9.8.8, T-55).
+
+Trois défauts réintroduits un par un font tomber leur test. Et la preuve elle-même a appris quelque
+chose : mes trois premières injections ont rendu « 0 rouge » parce que je comptais des lignes
+« not ok » que ce harnais ne produit pas — une assertion qui tombe **lève**, et le lot s'arrête.
+C'est la mesure qui était fausse, pas le code (9.9.1).
+
+## 10.4.0-beta.1 — 22/09/2026
+
+**La bêta qui rattrape cinq versions.** Aucune ligne de code nouvelle : cette préversion porte
+telles quelles la **10.0.1, la 10.1.0, la 10.2.0, la 10.3.0 et la 10.4.0**, écrites, testées et
+commitées mais **jamais publiées** — la dernière stable en ligne est la 10.0.0 du 21/09/2026.
+
+Une seule publication pour les cinq, parce qu'une publication coûte le quota d'Actions et que la
+règle du projet est de regrouper (§ 6.7.2). Et par la **bêta**, parce que quatre des cinq touchent
+ce que la règle protège : la devise d'un achat et le sens d'une pièce (10.1.0, 10.2.0) changent des
+**chiffres** qui partent chez un comptable ; la paie du Cabinet (10.3.0) ajoute deux listes au
+**format** de `livre.json` ; l'espace de gestion (10.4.0) ajoute une colonne à la base D1 et un
+champ à ce qui part d'une application vers un serveur. Seule la 10.0.1 aurait pu passer en stable
+direct — la sortir seule aurait coûté une publication de plus pour rien.
+
+Ce qu'il y a à tester, dans l'ordre où ça casserait le plus cher :
+
+- **Une facture d'achat en euros** (10.1.0) : son total à l'écran reste en euros, mais la TVA
+  déductible, les charges, le résultat, le stock, la trésorerie et les écritures la comptent
+  convertie. Treize agrégateurs sont concernés.
+- **Un avoir fournisseur et un acompte versé** (10.2.0) : l'avoir se saisit en positif, l'acompte
+  n'est pas une charge, et le compte d'avances revient à zéro une fois la facture imputée.
+- **Un bulletin de paie dans le Cabinet** (10.3.0) : le même salarié et la même saisie doivent
+  donner le même bulletin des deux côtés, au millime.
+- **La console** (10.4.0) : onglets « À décider », « Parc », « Cabinets », l'export de la base, et
+  la ligne d'argent groupée par devise.
+
+Rappel du chemin de retour : décocher « Recevoir les versions bêta » ramène à la stable, et une
+sauvegarde `avant-beta` est prise avant d'armer le canal.
+
+## 10.4.0 — 21/09/2026
+
+**L'espace de gestion des deux plateformes.** Skander voulait « le contrôle dessus autant que
+auditeur ». En regardant ce que la console savait faire, deux trous se sont ouverts, et le second
+n'avait jamais été nommé.
+
+Le premier : **la console ne voyait qu'une des deux applications**. Seule SkanFact s'annonçait.
+SkanFact Cabinet, qui porte pourtant sa licence depuis la 9.4.0 et son canal d'essai depuis la
+9.1.0, n'existait nulle part — ni combien de postes tournent, ni sur quelle version, ni depuis
+quand une installation ne s'est plus montrée. Un éditeur qui ne voit qu'une moitié de son parc ne
+la contrôle pas : il la découvre.
+
+Le second : **rien ne rangeait la base**. D1 est le seul endroit où vit « qui a acheté quelle clé »,
+le contenu signé compris — celui qui permet de refabriquer une clé à l'identique et de la renvoyer
+à un client qui a perdu la sienne. La perdre emporte toutes les ventes, et plus aucune clé vendue
+ne peut être renvoyée, renouvelée ni révoquée. C'était décidé avant la première vente
+(`QUESTIONS.md`, 4e relecture) et ça n'avait jamais été écrit.
+
+**À publier par la bêta** : ça touche une clé, le format de la base et ce qui part d'une
+application vers un serveur.
+
+- **SkanFact Cabinet s'annonce**, exactement comme SkanFact : la clé, l'identité du poste, le
+  système, la version, et le nom de l'application. **Rien d'autre** — jamais un dossier, jamais un
+  client, jamais un chiffre. L'app du comptable détient la comptabilité de dizaines d'entreprises,
+  et c'est un test qui compte les champs qui doit arrêter quiconque voudra « juste ajouter » un
+  compteur de dossiers. Tout reste facultatif : sans adresse et sans secret, rien ne part.
+- **La colonne `app`** sur les activations. `NULL` = tout ce qui a été noté avant, c'est-à-dire
+  l'app entreprise : elle était seule à s'annoncer. Une colonne s'AJOUTE, aucune ne se renomme.
+- **L'onglet « Parc »** : les deux applications, groupées par version. Cinq cents lignes brutes ne
+  répondaient pas à la seule question qu'on se pose avant de publier un correctif — combien de
+  postes sont restés sur une version d'il y a six mois ? Et « endormi » se compte **à part**, il ne
+  se retranche pas : un portable refermé pour les vacances n'est pas un poste perdu.
+- **L'onglet « À décider »**, l'écran d'entrée de la console : clés jamais envoyées, ventes à
+  encaisser, licences qui se terminent, base jamais exportée. Trié par urgence, jamais par ordre
+  d'écriture, et chaque ligne OUVRE l'onglet qui la règle. Sur une console où rien n'a été vendu,
+  rien n'est réclamé : on vérifie que l'univers est non vide avant de crier (7.0.0).
+- **L'onglet « Cabinets »** : un cabinet par ligne, son quota, ses clients parrainés, ses postes.
+  La moitié de l'activité que la console ne montrait nulle part.
+- **« Exporter la base… »**, des deux côtés : un bouton dans la console (le fichier descend dans le
+  navigateur) et un dans SkanFact → Paramètres → L'application → Éditeur, qui le range dans
+  `~/.skanfact/`, en 0600, à côté des clés — jamais dans les données, jamais dans une sauvegarde,
+  jamais dans un dossier partagé. L'enveloppe porte un **compte par table** : un export tronqué
+  ressemble à un export complet, et c'est le jour où l'on en a besoin qu'on s'en aperçoit. Une
+  ligne « À faire » le réclame à trente jours — et tout de suite s'il n'a jamais eu lieu.
+- **La santé des canaux de mise à jour.** La 9.8.8 a coûté une publication : un `latest.yml` posé
+  par erreur sur une préversion s'est retrouvé servi à toutes les installations stables. Le
+  workflow le vérifie au moment de publier — mais rien, ensuite, ne disait ce que chaque canal sert.
+  Le relais gagne `/sante`, la console l'affiche, et **non branchée, elle le DIT** au lieu d'un vert
+  rassurant.
+- **Combien j'ai encaissé, combien m'attend.** La question qu'un éditeur se pose en ouvrant sa
+  console, et qui n'avait de réponse nulle part — les ventes se lisaient ligne par ligne, aucun
+  total ne les résumait. Groupé par **devise** (additionner des dinars et des euros est la faute de
+  la 7.16.0, et elle ne se voit pas) et « encaissé » porte son **année** ; « en attente » n'en porte
+  pas, parce qu'une vente de l'an dernier qui n'est pas payée attend toujours.
+- **Le journal se filtre** (par client, par licence, par geste, par période) : cinq cents dernières
+  lignes sans filtre, ce n'est pas une piste d'audit, c'est un flux.
+- **Un défaut trouvé en chemin** : `dateValide` **levait** sur une date impossible (« 2026-13-99 »
+  passe la forme et ne fait pas une date, et `toISOString` lève dessus). Un jour tapé de travers
+  dans le champ de date libre de la console ne rendait pas un refus — il rendait un 500.
+
+*Si la base D1 a été créée avant la 10.4.0, une ligne à coller dans la console D1 :
+`ALTER TABLE activations ADD COLUMN app TEXT;` (voir `plateforme/README.md`).*
+
+## 10.3.0 — 21/09/2026
+
+**La paie des clients, dans SkanFact Cabinet.** Le travail mensuel le plus réclamé après la TVA, et
+le Cabinet ne savait pas le faire. Un cabinet a soixante clients dont deux utilisent SkanFact :
+pour les cinquante-huit autres — ceux qui PAIENT — il n'existait aucun moyen de tenir la paie. Le
+comptable établissait les bulletins ailleurs et **retapait l'écriture à la main**.
+
+Concrètement, une boulangerie de l'Ariana, six salariés, pas sur SkanFact : chaque mois son patron
+envoie « Mohamed a pris trois jours sans solde, Sonia a fait une prime, on a embauché Karim le 10 ».
+Il fallait six bulletins, l'écriture de paie, la déclaration CNSS du trimestre — et rien de tout ça
+n'existait côté cabinet.
+
+**À publier par la bêta** : ça touche des chiffres, des écritures et le format d'un fichier.
+
+- **Le moteur de paie a déménagé** de `core.js` vers `compta.js`, partagé par les deux applications.
+  La règle de découpage de la 9.1.0, relue dans les deux sens (9.6.1) : ces fonctions prennent un
+  SALARIÉ et une SAISIE, jamais `data`. Elles étaient du mauvais côté depuis la 5.0.0. `core.js`
+  les réexporte à l'identique — un test compare les OBJETS, jamais leurs résultats.
+- **Les salariés et les bulletins vivent dans le livre de l'exercice.** Un bulletin garde une COPIE
+  de son calcul : changer un barème plus tard ne réécrit jamais un bulletin déjà remis. Un salarié
+  qui part ne s'efface pas — on note sa sortie, et son nom reste sur les bulletins existants.
+- **L'écriture de paie du mois** arrive en brouillard, au dernier jour du mois, avec exactement les
+  comptes de l'app entreprise. Chaque bulletin retient l'écriture qui le porte : la repasser
+  compterait la paie deux fois, et le bouton s'éteint en disant pourquoi.
+- **La déclaration CNSS du trimestre** : un salarié par ligne, son assiette et les deux parts, à
+  recopier sur le portail. SkanFact Cabinet ne dépose rien et ne se connecte à aucune administration.
+- **Les contrôles NOMMENT et ne bloquent pas** : les salariés sans bulletin sont cités par leur nom,
+  ceux dont le numéro CNSS manque aussi. L'écriture passe quand même — un mois traité avec deux
+  manques signalés vaut mieux qu'un mois jamais traité.
+- Un aperçu du net se recalcule pendant la frappe, avec le moteur qui enregistrera ; le détail d'un
+  bulletin s'ouvre ligne par ligne, avec les taux qui ont servi ce jour-là.
+
+Douze tests de comportement, chacun prouvé en réintroduisant son défaut.
+
+## 10.2.0 — 21/09/2026
+
+**L'avoir fournisseur, l'acompte versé et le relevé de compte client.** Trois gestes du métier que
+l'application ne savait pas faire, trouvés en répondant à « est-ce que ce qu'on a développé répond
+vraiment au métier ? ». Un avoir de fournisseur se saisissait en tapant des montants négatifs — ce
+qu'aucune comptabilité n'accepte (règle 6.3.0) — ou ne se saisissait pas du tout. Un acompte versé
+à la commande n'existait nulle part tant que la facture n'était pas arrivée. Et un client qui avait
+six factures ouvertes recevait six relances, à charge pour lui d'en faire le total.
+
+**À publier par la bêta** : ça touche des chiffres et des écritures.
+
+- **Avoir fournisseur** : les montants se saisissent en POSITIF, comme le fournisseur les a écrits,
+  et c'est le sens de la pièce qui décide de la colonne. Il se rattache à la facture qu'il diminue
+  (le reste à payer baisse d'autant), ou reste libre — un crédit qu'on détient chez ce fournisseur,
+  que la fiche du fournisseur compte et que « À faire » rappelle. La marchandise rendue RESSORT du
+  stock, la TVA déductible baisse, la charge baisse, et un remboursement reçu entre en trésorerie
+  au lieu d'en sortir.
+- **Acompte versé** : ce n'est pas une charge, c'est une avance sur un fournisseur qui n'a pas
+  encore livré. Elle va au compte d'avances (409 — À VÉRIFIER), n'entre ni dans le résultat, ni
+  dans le seuil de rentabilité, ni dans le stock, et se solde toute seule le jour de la facture par
+  une écriture d'imputation qui rend aussi la TVA déjà déduite — sans elle, la TVA de l'acompte
+  était déduite deux fois.
+- **Les deux se créent depuis la pièce concernée** : le menu d'une facture d'achat propose « Saisir
+  un avoir sur cette pièce » et « Saisir un acompte versé », qui arrivent déjà rattachés et dans la
+  bonne devise. Un avoir dans une autre devise que la facture qu'il vise est refusé, en le disant.
+- **Relevé de compte client** : toutes les pièces encore ouvertes à une date, leur total, ce qui est
+  échu et ce qui ne l'est pas. Il s'ouvre depuis la fiche du client, depuis la liste des clients et
+  depuis chaque ligne des relances, s'exporte en PDF et s'envoie par email avec le PDF joint. Il se
+  déduit à l'instant où on l'imprime — un relevé enregistré se périmerait au prochain encaissement.
+- **Un en-tête de fiche a un budget de boutons**, comme une ligne de liste : « Modifier »,
+  « Écrire » et le relevé vivent désormais dans un menu « Actions », et les deux gestes quotidiens
+  (« + Facture », « + Devis ») gardent leur place.
+
+**Corrigé au passage**, trouvé par le parcours réel : le bouton « Actions » d'un en-tête de fiche
+disparaissait dès qu'un tableau de documents se dessinait sur la même page. Deux menus d'actions
+posés sur la même racine se mangent — celui du tableau retire les boutons qu'il ne reconnaît pas.
+
+Quinze tests de comportement, chacun prouvé en réintroduisant son défaut, plus deux étapes de bout
+en bout dans l'application réelle (`npm run e2e:fiches`).
+
+## 10.1.0 — 21/09/2026
+
+**La devise d'un achat.** Trouvé en répondant à la question « est-ce que les deux applications
+répondent vraiment au métier ? » : **un achat n'avait aucune devise**. Une facture fournisseur de
+1 000 € saisie telle quelle comptait 1 000 dinars — dans la TVA déductible, dans les charges, dans
+le résultat, dans le seuil de rentabilité, dans le stock, dans la trésorerie, dans les écritures et
+dans le paquet envoyé au comptable. Trois fois et demie trop peu, partout, et **rien à l'écran ne
+le montrait**. C'est la faute de la 7.0.1 (le timbre compté en euros) et de la 7.16.0 (les cartes de
+l'accueil), jamais portée du côté des achats.
+
+**À publier par la bêta** : ça touche des chiffres, et c'est très exactement le cas que la règle
+réserve au canal d'essai.
+
+- **Un achat porte sa devise et son taux**, comme une facture de vente depuis la 1.6.0. On saisit ce
+  qui est imprimé sur la pièce du fournisseur, sans rien convertir de tête ; l'écran annonce sous
+  les totaux le montant qui entrera en comptabilité, avec le taux appliqué.
+- **Le taux est OBLIGATOIRE dès que la devise diffère**, et l'enregistrement le refuse en amenant le
+  champ à l'écran. Les achats déjà saisis qui en manqueraient remontent en rouge dans « À faire »,
+  avec leur propre ligne et leur propre bouton — la ligne des ventes mène aux factures, celle-ci aux
+  achats.
+- **Treize endroits convertissent désormais** : la TVA déductible de la déclaration, le journal des
+  achats, le résultat, le seuil de rentabilité, les écritures comptables, le coût moyen pondéré du
+  stock, la marge d'une affaire, la rentabilité d'un contrat, ce qu'on doit aux fournisseurs, la
+  fiche d'un fournisseur, la retenue à la source à reverser, la déclaration d'employeur, et la
+  sortie d'argent en trésorerie. Chacun a son test, et chacun a été prouvé en remettant le défaut.
+- **Rien ne bouge pour ceux qui n'achètent qu'en dinars** : la migration pose la devise de la
+  société avec un taux de 1, donc aucun chiffre déjà déclaré ne change d'un millime.
+- **La devise d'origine est NOMMÉE partout où le montant est converti** — le journal des achats, la
+  liste, ce qu'on doit. Un chiffre converti dont on ne sait plus d'où il vient ne se vérifie plus
+  contre la facture papier.
+- **Et l'absorbeur d'arrondis dit enfin ce qu'il avale.** Il existe depuis la 6.3.0 pour les
+  quelques millimes que laisse une TVA calculée ligne par ligne ; il avalait en réalité n'importe
+  quel écart et rendait une pièce équilibrée, plausible et fausse. Trouvé en prouvant la conversion :
+  le défaut remis laissait **2 856 DT** de trou et la pièce sortait juste. La pièce reste équilibrée
+  (une pièce déséquilibrée ne s'importe nulle part), mais au-delà d'un millime par ligne l'écart est
+  marqué — et un test vérifie qu'aucune écriture des 24 mois du jeu d'exemple n'en porte.
+- **Le jeu d'exemple montre le cas** : une licence antivirus achetée en euros, avec son taux.
+
+## 10.0.1 — 21/09/2026
+
+**Les pannes se disent en français, et l'outillage cesse de crier pour rien.** Correctif
+d'entretien, publié **en stable direct** : rien ici ne touche à un chiffre, à une clé, au moteur
+comptable ni au format d'un fichier — c'est très exactement le cas que la règle de publication
+autorise sans passer par la bêta.
+
+- **Un disque plein ne dit plus « ENOSPC ».** Dix pannes du système (disque plein, quota atteint,
+  accès refusé, dossier en lecture seule, support débranché, trop de fichiers ouverts…) sont
+  traduites en une phrase française, **au niveau du pont IPC des deux applications** — on enveloppe
+  une fois, pas quatre-vingts fois. Les tables des deux applications sont identiques au caractère
+  près, et un test les compare.
+- **Un enregistrement qui échoue ouvre une fenêtre, plus un bandeau de 2,6 secondes.** Elle dit ce
+  qui s'est passé, rappelle que **ce qui est à l'écran est intact**, et propose « Réessayer ».
+  Perdre l'information la plus importante de la journée dans un message qui s'efface était le
+  contraire de ce que cette application promet.
+- **Deux imports de paquets à la fois sont refusés** dans l'app du comptable, en nommant celui qui
+  est déjà en cours : les deux écrivaient dans le même état, et le second effaçait le travail du
+  premier sans un mot.
+- **Le journal des règlements fournisseurs a enfin son écran.** Il partait dans le paquet du
+  comptable depuis la 6.1.0 et n'était visible nulle part : on ne pouvait ni le lire, ni le trier,
+  ni l'exporter. Comptabilité → Achats, avec sa bulle qui dit en quoi il diffère du journal des
+  achats (celui-ci porte les dates de facture, celui-là les dates de paiement).
+- **Le dossier de réception dit pourquoi il ne s'ouvre pas** : « accès refusé » et « support
+  débranché » n'appellent pas le même geste, et l'application devinait la seconde dans les deux cas.
+- **Un fichier de données illisible écrit sa raison au journal.** L'écran continue de dire « un
+  fichier a été mis de côté » — c'est ce qu'il faut à l'utilisateur —, mais « JSON mal formé » et
+  « structure inattendue » ne se dépannent pas pareil, et c'était le seul endroit du stockage où
+  l'erreur disparaissait sans trace.
+- **Le garde-fou de double-numéro dit enfin la vérité.** Un drapeau que rien n'armait était censé
+  refuser pendant le geste, et le test de la 9.1.0 le cherchait par son NOM. Ce qui protège
+  vraiment, c'est le bouton qui se désactive pendant l'attente et le fait que l'émission ne rende
+  jamais la main entre le contrôle et l'attribution du numéro — c'est cette règle-là que le test
+  exige maintenant.
+- **`npm run charge:entreprise`** : dix ans d'activité (4 800 factures, 1 440 achats, 300 clients,
+  3,8 Mo), et six gestes mesurés sur les vraies primitives, chiffrement et écriture atomique
+  compris. Tout passe ; la marge la plus étroite est la préparation du paquet mensuel.
+- **Le lint passe de 90 avertissements à zéro.** Onze variables mortes retirées — dont deux dont le
+  commentaire décrivait un mécanisme inexistant —, `catch (_)` reconnu comme la façon d'écrire « je
+  jette délibérément cette erreur », et trois parcours de test qui mesuraient une valeur sans jamais
+  la comparer à rien s'en servent enfin.
+- **Le README dit vrai** : le dépôt est public, l'app du comptable a sa section d'installation, et
+  la publication décrit le chemin réel (bêta, stable, seize fichiers, job de vérification).
+
 ## 10.0.0 — 21/09/2026
 
 **La liasse et l'annuel.** La dernière version du plan accepté, et le document où une erreur coûte

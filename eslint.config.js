@@ -87,7 +87,15 @@ const COMMUNES = {
   'no-unsafe-negation': 'error',
   'no-unreachable': 'error',
   // En avertissement, pas en erreur : la base en porte, et les corriger est un autre chantier.
-  'no-unused-vars': ['warn', { args: 'none', varsIgnorePattern: '^_' }],
+  //
+  // `caughtErrorsIgnorePattern` (10.0.1) : `catch (_) {}` est la façon dont ce dépôt écrit « je
+  // jette délibérément cette erreur » — un `localStorage` refusé en navigation privée, un
+  // `JSON.parse` sur un réglage qu'on sait pouvoir être absent. ESLint 9 vérifie les liaisons de
+  // `catch` par défaut et n'applique PAS `varsIgnorePattern` : trente avertissements sur une
+  // convention volontaire, au milieu desquels les vrais se perdaient. Ce qui reste signalé est
+  // alors la bonne question : `catch (e)` où `e` n'est jamais lu, c'est-à-dire un endroit où
+  // quelqu'un comptait s'en servir.
+  'no-unused-vars': ['warn', { args: 'none', varsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' }],
   'prefer-const': 'warn',
   'no-empty': ['warn', { allowEmptyCatch: true }]
 };

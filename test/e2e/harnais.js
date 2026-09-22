@@ -71,7 +71,7 @@ function dossierCaptures(nom) {
   return d;
 }
 
-// ---------------------------------------------------------------------------- les trois sondes de rendu
+// ---------------------------------------------------------------------------- les sondes de rendu
 //
 // Elles vivaient chacune DANS son parcours — `contraste.js`, `colonnes.js`, `entetes.js` — et les
 // trois ne regardaient que l'application entreprise. L'app Cabinet a hérité de ses fonctionnalités
@@ -83,9 +83,24 @@ function dossierCaptures(nom) {
 // Chacune est une fonction PURE du document, passée telle quelle à `win.evaluate` : elle ne connaît
 // ni Playwright, ni Electron, ni laquelle des deux applications elle mesure.
 
-// 1. Les boutons : lisibles, et dans la fenêtre. On remonte les ancêtres jusqu'à un fond opaque,
-//    parce qu'un bouton dont le fond est `transparent` est peint par ce qu'il y a derrière.
-const SONDE_BOUTONS = () => {
+// 1. Le contraste : les boutons ET les champs de saisie, lisibles, et dans la fenêtre. On remonte
+//    les ancêtres jusqu'à un fond opaque, parce qu'un élément dont le fond est `transparent` est
+//    peint par ce qu'il y a derrière.
+//
+//    Pourquoi les DEUX, et pourquoi dans la même sonde. La moitié « champs » existait, écrite en
+//    7.30.0 pour un défaut que la relecture du CSS ne pouvait pas voir : en thème sombre, chaque
+//    `<input>` gardait son fond CLAIR avec le texte clair du thème — contraste 1,18, c'est-à-dire
+//    du blanc sur du blanc, depuis que le thème existe. Elle a été PERDUE dans la refonte de la
+//    9.4.3, quand la sonde a déménagé ici pour être partagée : seuls les boutons ont fait le
+//    voyage, et CLAUDE.md a continué d'affirmer pendant onze versions que « e2e:contraste mesure
+//    désormais les champs autant que les boutons ». Une règle que plus rien ne tient est un bug
+//    (7.3.0), et celle-ci couvrait trois surfaces au lieu d'une.
+//
+//    Une seule sonde parce que les quatre fonctions de mesure (luminance, fond opaque, débordement)
+//    seraient sinon recopiées dans une seconde — et une copie diverge, toujours (7.29.0). Deux
+//    listes NOMMÉES parce que les comptes ne se mélangent pas : « 2 125 boutons » doit rester
+//    comparable d'une version à l'autre, et un instrument doit dire combien il a mesuré de quoi.
+const SONDE_CONTRASTE = () => {
   const lum = ([r, g, b]) => {
     const f = c => { c /= 255; return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
     return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
@@ -99,24 +114,70 @@ const SONDE_BOUTONS = () => {
     }
     return [255, 255, 255];
   };
-  const out = [];
+  // Un bouton qui dépasse n'est pas toujours HORS de l'écran : s'il vit dans un conteneur qui
+  // défile vraiment de côté, il est à une molette, et le projet a tranché que ce n'est pas un
+  // défaut (7.13.0 sur `.scroll-x`, 9.4.4). La sonde rend donc le FAIT — « il est dans quelque
+  // chose qui défile » — et laisse l'appelant décider : elle ne connaît ni la classe que telle
+  // surface emploie pour le marquer (`.scroll-x` dans les applications, `.wrap` dans la console),
+  // ni ce que cet appelant-là veut en faire.
+  const defile = el => {
+    for (let n = el; n && n !== document.body; n = n.parentElement) {
+      const o = getComputedStyle(n).overflowX;
+      if ((o === 'auto' || o === 'scroll') && n.scrollWidth > n.clientWidth + 1) return true;
+    }
+    return false;
+  };
+  const visible = (el, s, r) => r.width && r.height && s.visibility !== 'hidden' && s.display !== 'none';
+  const contraste = (t, f) => {
+    const a = lum(t), c = lum(f);
+    return +(((Math.max(a, c) + 0.05) / (Math.min(a, c) + 0.05))).toFixed(2);
+  };
+
+  const boutons = [];
   document.querySelectorAll('button, .btn').forEach(b => {
     const r = b.getBoundingClientRect();
     const s = getComputedStyle(b);
-    if (!r.width || !r.height || s.visibility === 'hidden' || s.display === 'none') return;
+    if (!visible(b, s, r)) return;
     if (!b.textContent.trim()) return;             // un pictogramme seul n'est pas jugé ici
     if (b.disabled || s.opacity < 0.3) return;     // un bouton désactivé a le droit d'être pâle
-    const t = rgb(s.color).slice(0, 3), f = fondDe(b);
-    const a = lum(t), c = lum(f);
-    out.push({
+    const f = fondDe(b);
+    boutons.push({
       texte: b.textContent.trim().replace(/\s+/g, ' ').slice(0, 40),
       id: b.id || '', cls: String(b.className || '').split(' ')[0],
       color: s.color, bg: `rgb(${f.join(',')})`,
-      ratio: +(((Math.max(a, c) + 0.05) / (Math.min(a, c) + 0.05))).toFixed(2),
-      hors: Math.round(Math.max(0, r.right - document.documentElement.clientWidth))
+      ratio: contraste(rgb(s.color).slice(0, 3), f),
+      hors: Math.round(Math.max(0, r.right - document.documentElement.clientWidth)),
+      defilant: defile(b)
     });
   });
-  return out;
+
+  // Les CHAMPS DE SAISIE, par la même méthode et pour le même défaut. Une case à cocher, un bouton
+  // radio, un sélecteur de fichier, une réglette et un sélecteur de couleur n'affichent aucun texte
+  // qui leur soit propre : les juger reviendrait à mesurer la couleur d'un dessin du système.
+  // `select` et `textarea` comptent autant que `input` — c'est précisément parce qu'ils n'étaient
+  // PAS touchés par le défaut de la 7.30.0 (dans une liste de sélecteurs, chacun porte sa propre
+  // spécificité) que l'écran paraissait à moitié correct, ce qui est la pire façon d'être faux.
+  //
+  // Un champ DÉSACTIVÉ a le droit d'être pâle, comme un bouton. Un champ en lecture seule, non : il
+  // se lit, donc il doit être lisible.
+  const champs = [];
+  document.querySelectorAll('input:not([type=checkbox]):not([type=radio]):not([type=file])'
+    + ':not([type=range]):not([type=color]):not([type=hidden]), select, textarea').forEach(el => {
+    const r = el.getBoundingClientRect();
+    const s = getComputedStyle(el);
+    if (!visible(el, s, r)) return;
+    if (el.disabled || s.opacity < 0.3) return;
+    const t = rgb(s.color); if (t.length < 3) return;
+    const f = fondDe(el);
+    champs.push({
+      texte: 'champ ' + (el.name || el.id || el.getAttribute('aria-label') || el.tagName.toLowerCase()),
+      id: el.id || '', cls: String(el.className || '').split(' ')[0],
+      color: s.color, bg: `rgb(${f.join(',')})`,
+      ratio: contraste(t.slice(0, 3), f)
+    });
+  });
+
+  return { boutons, champs };
 };
 
 // 2. Les colonnes : l'en-tête aligné comme ses valeurs. `table.list th` (une classe, deux éléments)
@@ -156,18 +217,28 @@ const SONDE_COLONNES = () => {
 // 3. Les barres d'en-tête : aucun contrôle étiré d'un bord à l'autre, aucune barre sur trois rangées.
 //    Un `select` hérite de `width: 100%` de la règle générale des champs ; dans un conteneur flex,
 //    chacun réclame donc toute la ligne (7.23.0).
-const SONDE_ENTETES = ({ maxL, maxR, maxH }) => {
-  const head = document.querySelector('#view .page-head');
-  if (!head) return { n: 0, larges: [], hauteur: 0 };
-  const actions = head.querySelector('.actions');
-  if (!actions) return { n: 0, larges: [], hauteur: 0 };
-  const ctrls = [...actions.querySelectorAll('select, input:not([type=checkbox]):not([type=radio])')];
-  const larges = ctrls.map(c => ({
-    tag: c.tagName.toLowerCase(), id: c.id || c.name || '(sans nom)',
-    w: Math.round(c.getBoundingClientRect().width),
-    borne: c.type === 'search' ? maxR : maxL
-  })).filter(x => x.w > x.borne);
-  return { n: ctrls.length, larges, hauteur: Math.round(actions.getBoundingClientRect().height), maxH };
+//
+//    `barres` nomme les conteneurs à juger, parce que les trois surfaces du produit ne rangent pas
+//    leurs actions sous le même nom : les deux applications ont `#view .page-head .actions`, la
+//    console de l'éditeur a `main .bar`. La sonde ne connaît ni l'une ni l'autre — c'est l'appelant
+//    qui dit où regarder, et le défaut jugé reste exactement le même. Un second exemplaire de cette
+//    sonde, écrit pour la console, aurait divergé au premier ajustement (7.29.0).
+const SONDE_ENTETES = ({ maxL, maxR, maxH, barres }) => {
+  const zones = [...document.querySelectorAll(barres || '#view .page-head .actions')]
+    .filter(a => { const r = a.getBoundingClientRect(); return r.width > 0 && r.height > 0; });
+  if (!zones.length) return { n: 0, larges: [], hauteur: 0 };
+  let n = 0, hauteur = 0; const larges = [];
+  zones.forEach(actions => {
+    const ctrls = [...actions.querySelectorAll('select, input:not([type=checkbox]):not([type=radio])')];
+    n += ctrls.length;
+    ctrls.map(c => ({
+      tag: c.tagName.toLowerCase(), id: c.id || c.name || '(sans nom)',
+      w: Math.round(c.getBoundingClientRect().width),
+      borne: c.type === 'search' ? maxR : maxL
+    })).filter(x => x.w > x.borne).forEach(x => larges.push(x));
+    if (ctrls.length) hauteur = Math.max(hauteur, Math.round(actions.getBoundingClientRect().height));
+  });
+  return { n, larges, hauteur, maxH };
 };
 
 // 4. L'ESPACEMENT des boutons. Signalé par Skander sur l'app Cabinet : « plein de boutons mal
@@ -196,7 +267,11 @@ const SONDE_ENTETES = ({ maxL, maxR, maxH }) => {
 //      · `.row-menu` — les entrées d'un menu déroulant sont une LISTE : les espacer en ferait des
 //                      objets séparés flottant dans une boîte ;
 //      · `.pager`    — même raison qu'un jeu d'onglets : une pagination est une bande.
-const SONDE_ESPACEMENT = ({ min, exceptions }) => {
+//
+//    `racine` borne la sonde au corps de la page, parce qu'une barre de fenêtre ou un pied n'ont
+//    pas les mêmes règles d'espacement que le contenu. Les deux applications passent `#view`, la
+//    console `body` : elle n'a pas de cadre fixe, tout son écran EST le contenu.
+const SONDE_ESPACEMENT = ({ min, exceptions, racine }) => {
   const visible = el => {
     const r = el.getBoundingClientRect();
     const s = getComputedStyle(el);
@@ -227,7 +302,8 @@ const SONDE_ESPACEMENT = ({ min, exceptions }) => {
     };
   };
   const out = []; let mesures = 0;
-  document.querySelectorAll('#view button, #view .btn').forEach(b => {
+  const R = racine || '#view';
+  document.querySelectorAll(R + ' button, ' + R + ' .btn').forEach(b => {
     if (!visible(b)) return;
     if (!(b.textContent || '').trim()) return;          // un pictogramme seul n'est pas jugé ici
     if (exceptions.some(sel => b.closest(sel))) return;
@@ -302,12 +378,27 @@ const RELACHE = `
   .scroll-y, nav { overflow: visible !important; }
 `;
 
+// La console de l'éditeur est la TROISIÈME surface, et elle a le même cadre fixe pour la même
+// raison — `.coque { height: 100vh }`, `main` qui défile à côté du rail. Ses sélecteurs ne sont pas
+// ceux des deux applications, donc elle a son propre relâchement ; il vit ICI, à côté de l'autre,
+// parce qu'un mécanisme recopié dans le parcours qui s'en sert diverge toujours (7.29.0). Ce qui
+// n'est PAS relâché : `.wrap`, le conteneur qui fait défiler un tableau large de côté — l'élargir
+// montrerait une page que personne ne voit, et c'est justement ce débordement que la sonde de
+// densité mesure.
+const RELACHE_CONSOLE = `
+  html, body { height: auto !important; overflow: visible !important; }
+  .coque { height: auto !important; min-height: 100vh; align-items: flex-start !important; }
+  main { overflow: visible !important; }
+  .rail { position: sticky !important; top: 0; align-self: flex-start !important; }
+  .rail nav { overflow: visible !important; }
+`;
+
 async function capturePleine(win, chemin, opts = {}) {
   await win.evaluate(css => {
     const s = document.createElement('style');
     s.id = '__capture-pleine'; s.textContent = css;
     document.head.appendChild(s);
-  }, RELACHE);
+  }, opts.css || RELACHE);
   await win.waitForTimeout(opts.pose || 150);
   try {
     await win.screenshot({ path: chemin, fullPage: true });
@@ -361,7 +452,35 @@ function montant(texte) {
   return negatif ? -n : n;
 }
 
+// 5. LA LARGEUR (10.5.0). Les quatre sondes précédentes mesurent des objets — leur couleur, leur
+//    débordement, leur alignement, leur écart. Aucune ne regardait la PLACE PERDUE : la console
+//    bornait tout son contenu à 1180 px, prose et tableaux confondus, et sur une fenêtre ordinaire
+//    un tableau de dix colonnes se serrait pendant que 700 px restaient vides à droite. Ça ne
+//    plante pas, ça ne déborde pas, ça n'est pas illisible — et c'est ce que Skander a vu du
+//    premier coup d'œil sur une capture.
+//
+//    La règle mesurée n'est PAS « tout en pleine largeur » : une ligne de prose de 1900 px est
+//    illisible. Ce qu'on interdit, c'est qu'un TABLEAU — un objet qui se compare colonne par
+//    colonne — laisse plus que `perte` de la largeur disponible inutilisée. La prose, elle, a le
+//    droit d'être bornée : la sonde ne juge que ce qu'on lui désigne.
+const SONDE_LARGEUR = ({ cibles, perte }) => {
+  const dispo = document.documentElement.clientWidth;
+  const out = [];
+  document.querySelectorAll(cibles).forEach(el => {
+    const r = el.getBoundingClientRect();
+    if (!r.width || el.offsetParent === null) return;
+    // La place RÉELLEMENT offerte à cet élément : celle de son parent, pas celle de la fenêtre —
+    // un tableau dans un rail étroit n'a pas à remplir l'écran.
+    const p = el.parentElement ? el.parentElement.getBoundingClientRect().width : dispo;
+    const libre = Math.max(0, p - r.width);
+    if (libre > p * perte) {
+      out.push({ quoi: el.className || el.tagName, largeur: Math.round(r.width), offert: Math.round(p), perdu: Math.round(libre) });
+    }
+  });
+  return { dispo, gaspillages: out };
+};
+
 module.exports = {
   playwright, RACINE, ELECTRON, VERSION, journal, surveiller, dossierCaptures, ouvrirChromium,
-  capturePleine, SONDE_BOUTONS, SONDE_COLONNES, SONDE_ENTETES, SONDE_ESPACEMENT, montant
+  capturePleine, RELACHE_CONSOLE, SONDE_CONTRASTE, SONDE_COLONNES, SONDE_ENTETES, SONDE_ESPACEMENT, SONDE_LARGEUR, montant
 };

@@ -73,6 +73,32 @@ function logError(where, err) {
 // (Electron sérialise l'erreur en une chaîne) ; l'écran le détache avant d'afficher la phrase.
 const erreur = (code, message) => Object.assign(new Error(`${message} [${code}]`), { code, refus: true });
 
+// 10.0.1 — La panne SYSTÈME est la seule famille de refus que la règle de la 7.26.0 n'avait jamais
+// couverte, et c'est celle où l'utilisateur perd son travail. Ici elle coûte plus cher qu'ailleurs :
+// un livre qui ne s'écrit pas, c'est une journée de saisie. La table est identique au caractère
+// près dans `src/main.js` — un test compare les deux corps, comme pour `round3` (9.1.0) — d'où la
+// phrase NEUTRE (« l'application ») : les deux applications écrivent sur le même disque et doivent
+// en dire la même chose.
+const PANNES_DISQUE = {
+  ENOSPC: 'Le disque est plein : rien n\'a été enregistré. Libère de la place, puis réessaie — ton travail est encore à l\'écran.',
+  EDQUOT: 'Le quota de ce disque est atteint : rien n\'a été enregistré. Libère de la place, puis réessaie — ton travail est encore à l\'écran.',
+  EACCES: 'L\'accès au fichier de données est refusé : rien n\'a été enregistré. Un antivirus ou un autre programme le tient peut-être ouvert — ferme-le, puis réessaie.',
+  EPERM: 'L\'accès au fichier de données est refusé : rien n\'a été enregistré. Un antivirus ou un autre programme le tient peut-être ouvert — ferme-le, puis réessaie.',
+  EROFS: 'Le dossier de données est en lecture seule : rien n\'a été enregistré. Choisis un autre emplacement dans les réglages, puis réessaie.',
+  EBUSY: 'Le fichier de données est utilisé par un autre programme : rien n\'a été enregistré. Ferme-le, puis réessaie.',
+  ENOENT: 'Le dossier de données est introuvable : rien n\'a été enregistré. Un disque externe ou un dossier iCloud s\'est peut-être déconnecté — rebranche-le, puis réessaie.',
+  EIO: 'Le disque ne répond plus : rien n\'a été enregistré. Fais une copie de tes données dès qu\'il répond de nouveau.',
+  EMFILE: 'Trop de fichiers sont ouverts sur cet ordinateur : rien n\'a été enregistré. Redémarre l\'application, puis réessaie.',
+  ENFILE: 'Trop de fichiers sont ouverts sur cet ordinateur : rien n\'a été enregistré. Redémarre l\'application, puis réessaie.'
+};
+// `e.code` d'abord — mais une erreur qui a déjà traversé une frontière l'a perdu (9.4.10), et il ne
+// reste alors que le préfixe du message. On lit les deux plutôt que de rater la moitié des cas.
+function panneDisque(e) {
+  const direct = e && e.code;
+  const dansLeTexte = (String((e && e.message) || '').match(/^([A-Z]{3,6}):/) || [])[1];
+  return PANNES_DISQUE[direct] || PANNES_DISQUE[dansLeTexte] || '';
+}
+
 // Et un refus laisse une trace, toujours. On enveloppe `ipcMain.handle` UNE fois plutôt qu'à chaque
 // enregistrement : quatre-vingts points d'appel, c'est quatre-vingts occasions d'en oublier un — et
 // la forme `ipcMain.handle(` reste celle que les tranches de source des tests reconnaissent.
@@ -84,7 +110,15 @@ ipcMain.handle = (canal, fn) => handleBrut(canal, async (...a) => {
   // (même règle que le rouge sur une situation normale, 8.0.1). Ce qui manquait est l'autre moitié :
   // une exception qu'aucune phrase n'attendait n'écrivait RIEN nulle part — elle repartait vers
   // l'écran habillée en « Error invoking remote method », et le journal restait muet.
-  catch (e) { if (!(e && e.refus)) logToFile('panne ' + canal, e); throw e; }
+  //
+  // Une panne système, elle, va au journal ET reçoit sa phrase : c'est une panne (donc on l'écrit)
+  // dont on connaît la cause (donc on la nomme). La traduire ICI plutôt qu'à l'écran, c'est la
+  // règle de la 9.4.10 : on enveloppe une fois, pas quatre-vingts.
+  catch (e) {
+    if (!(e && e.refus)) logToFile('panne ' + canal, e);
+    const phrase = (e && e.refus) ? '' : panneDisque(e);
+    throw phrase ? erreur('ERR-CAB-076', phrase) : e;
+  }
 });
 
 function getStore() {
@@ -338,6 +372,7 @@ ipcMain.handle('cab:unlock', (_e, password) => {
     // déjà un cabinet sur un autre ordinateur » de l'écran de mot de passe : on reprend AVANT de créer.
     const keys = Z.generateCabinetKeys();
     state = s.create(password, K.migrate({ cabinet: { name: '', email: '', phone: '', publicKey: keys.publicKey, privateKey: keys.privateKey } }));
+    demarrerPlateforme();
     return { created: true, state: safeState() };
   }
   const r = s.unlock(password);
@@ -357,6 +392,9 @@ ipcMain.handle('cab:unlock', (_e, password) => {
   // L'exemple se refait AVANT la première écriture : une seule écriture pour les deux rattrapages.
   const exemple = rafraichirExemple();
   if (moved.moved || moved.recovered || exemple) s.write(state);
+  // L'annonce au plan de contrôle part APRÈS l'ouverture : avant, il n'y a pas de clé de licence à
+  // présenter, et le poste s'annoncerait comme un essai alors qu'il est peut-être sous licence.
+  demarrerPlateforme();
   return { created: false, state: safeState(), reorganized: moved, exemple };
 });
 
@@ -387,6 +425,7 @@ ipcMain.handle('cab:adopt', (_e, { path: p, password } = {}) => {
   // vient de reprendre, sans quoi des paquets bien présents passeraient pour perdus.
   const moved = s.reorganize(state);
   s.write(state);
+  demarrerPlateforme();
   return {
     state: safeState(), reorganized: moved,
     repris: { dossiers: state.dossiers.length, sauvegardes: r.backups, paquets: r.packs }
@@ -692,12 +731,28 @@ ipcMain.handle('cab:exportPairing', async () => {
 // morte. Beaucoup la tuent au bout de dix secondes, en plein rangement. D'où la respiration entre
 // deux paquets : une ligne, et l'application redevient vivante.
 let importAnnule = false;
+// Et un import à la fois : le second se refuse au lieu de piétiner le filet du premier (10.0.1).
+let importEnCours = false;
 // Arrêter un import en cours. Le drapeau est lu ENTRE deux paquets, jamais pendant : un paquet
 // interrompu au milieu de sa copie serait pire que pas de paquet du tout.
 ipcMain.on('cab:importCancel', () => { importAnnule = true; });
 
 ipcMain.handle('cab:importPack', async (_e, opts) => {
   requireOpen();
+  // 10.0.1 — Deux imports à la fois. Le cas n'est pas théorique : la fenêtre a DEUX portes (le
+  // bouton, qui ouvre un sélecteur de fichiers, et le glisser-déposer, qui n'en ouvre aucun), et
+  // rien n'empêchait de lâcher vingt paquets sur la fenêtre pendant que vingt autres s'ingéraient.
+  // Ce qui casse alors n'est pas l'import : c'est le FILET. Le second `backupNow('avant-import')`
+  // écrase le premier par un état qui contient déjà la moitié du premier import — donc « défaire
+  // l'import » ne ramène plus rien de reconnaissable. Et les deux boucles écrivent `state` à tour
+  // de rôle, chacune sur ce que l'autre vient de poser.
+  //
+  // On refuse la seconde, on dit pourquoi, et on nomme ce qui débloque (règle 7.0.0). Le refus
+  // passe AVANT le sélecteur de fichiers : demander vingt paquets pour les refuser ensuite serait
+  // la pire des deux façons de dire non.
+  if (importEnCours) {
+    throw erreur('ERR-CAB-077', 'Un import de paquets est déjà en cours. Attends qu\'il finisse — ou arrête-le depuis la fenêtre d\'avancement — avant d\'en lancer un second.');
+  }
   opts = opts || {};
   let files = opts.paths;
   if (!files || !files.length) {
@@ -709,40 +764,46 @@ ipcMain.handle('cab:importPack', async (_e, opts) => {
     if (r.canceled || !r.filePaths.length) return null;
     files = r.filePaths;
   }
-  // Une sauvegarde AVANT d'ingérer : un import qui range mal (ou un paquet inattendu) doit pouvoir
-  // être défait. Même règle que l'app entreprise avant un import.
-  getStore().backupNow('avant-import');
-  importAnnule = false;                    // un arrêt demandé à l'import précédent ne vaut pas ici
-  const progres = p => {
-    try { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('import:progress', p); } catch {}
-  };
-  const results = [];
-  let restants = 0;
-  for (let i = 0; i < files.length; i++) {
-    const f = files[i];
-    progres({ numero: i + 1, total: files.length, faits: i, nom: path.basename(f) });
-    // LA respiration. Le message d'avancement part vers l'écran, et une demande d'arrêt a le temps
-    // d'arriver. Sans elle, la boucle entière tenait le processus principal sans un mot.
-    await new Promise(res => setImmediate(res));
-    // L'arrêt prend effet ENTRE deux paquets : ce qui est rangé l'est pour de bon, et rien n'est
-    // laissé à moitié écrit.
-    if (importAnnule) { restants = files.length - i; break; }
-    try { results.push({ file: f, ...ingest(f, opts.password) }); }
-    catch (err) { results.push({ file: f, error: err.message || String(err) }); }
-    // Le paquet est rangé : on peut enfin dire de QUI il venait. « paquet 7 sur 20 — Pharmacie El
-    // Menzah » dit quelque chose ; un nom de fichier, non.
-    const dernier = results[results.length - 1];
-    progres({ numero: i + 1, total: files.length, faits: i + 1, nom: (dernier.dossier && dernier.dossier.name) || path.basename(f) });
-  }
-  // Un vrai paquet est arrivé : les dossiers d'exemple s'effacent d'eux-mêmes. Les laisser
-  // reviendrait à afficher des retards imaginaires à côté des vrais.
-  const demoOut = results.some(r => !r.error) && state.dossiers.some(d => d.demo);
-  if (demoOut) retirerExemple();
-  save();
-  // Un paquet venu de la boîte de réception et rangé ne doit plus être proposé.
-  markSeen(results.filter(r => !r.error).map(r => r.file));
-  importAnnule = false;
-  return { results, demoRemoved: demoOut, restants, state: safeState() };
+  // Le drapeau se lève ICI, une fois les fichiers connus : un sélecteur qu'on referme sans rien
+  // choisir n'a rien commencé, et n'a donc rien à bloquer. Il retombe dans le `finally`, sinon un
+  // import qui échoue au milieu fermerait la porte pour le reste de la session.
+  importEnCours = true;
+  try {
+    // Une sauvegarde AVANT d'ingérer : un import qui range mal (ou un paquet inattendu) doit pouvoir
+    // être défait. Même règle que l'app entreprise avant un import.
+    getStore().backupNow('avant-import');
+    importAnnule = false;                    // un arrêt demandé à l'import précédent ne vaut pas ici
+    const progres = p => {
+      try { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('import:progress', p); } catch {}
+    };
+    const results = [];
+    let restants = 0;
+    for (let i = 0; i < files.length; i++) {
+      const f = files[i];
+      progres({ numero: i + 1, total: files.length, faits: i, nom: path.basename(f) });
+      // LA respiration. Le message d'avancement part vers l'écran, et une demande d'arrêt a le temps
+      // d'arriver. Sans elle, la boucle entière tenait le processus principal sans un mot.
+      await new Promise(res => setImmediate(res));
+      // L'arrêt prend effet ENTRE deux paquets : ce qui est rangé l'est pour de bon, et rien n'est
+      // laissé à moitié écrit.
+      if (importAnnule) { restants = files.length - i; break; }
+      try { results.push({ file: f, ...ingest(f, opts.password) }); }
+      catch (err) { results.push({ file: f, error: err.message || String(err) }); }
+      // Le paquet est rangé : on peut enfin dire de QUI il venait. « paquet 7 sur 20 — Pharmacie El
+      // Menzah » dit quelque chose ; un nom de fichier, non.
+      const dernier = results[results.length - 1];
+      progres({ numero: i + 1, total: files.length, faits: i + 1, nom: (dernier.dossier && dernier.dossier.name) || path.basename(f) });
+    }
+    // Un vrai paquet est arrivé : les dossiers d'exemple s'effacent d'eux-mêmes. Les laisser
+    // reviendrait à afficher des retards imaginaires à côté des vrais.
+    const demoOut = results.some(r => !r.error) && state.dossiers.some(d => d.demo);
+    if (demoOut) retirerExemple();
+    save();
+    // Un paquet venu de la boîte de réception et rangé ne doit plus être proposé.
+    markSeen(results.filter(r => !r.error).map(r => r.file));
+    importAnnule = false;
+    return { results, demoRemoved: demoOut, restants, state: safeState() };
+  } finally { importEnCours = false; }
 });
 
 // Le format de paquet que cette version sait lire. Un paquet plus récent se refuse avec une phrase
@@ -1021,7 +1082,17 @@ function scanInbox() {
   if (!dir) return { dir: null, nouveaux: [] };
   let entries = [];
   try { entries = fs.readdirSync(dir, { withFileTypes: true }); }
-  catch (e) { return { dir, erreur: 'Dossier introuvable (support débranché ?)', nouveaux: [] }; }
+  catch (e) {
+    // La raison change le GESTE, donc elle se lit (10.0.1). « Support débranché ? » sur un dossier
+    // que le système refuse d'ouvrir envoie chercher une clé USB qui est là : on ne devine pas une
+    // cause quand `e.code` la donne.
+    const erreur = e && (e.code === 'EACCES' || e.code === 'EPERM')
+      ? 'Ce dossier existe mais l\'accès est refusé. Vérifie ses autorisations, ou choisis-en un autre.'
+      : e && e.code === 'ENOTDIR'
+        ? 'Ce chemin désigne un fichier, pas un dossier. Choisis le dossier qui contient les paquets.'
+        : 'Dossier introuvable — un disque ou une clé USB débranchée, ou un dossier déplacé.';
+    return { dir, erreur, nouveaux: [] };
+  }
   const vus = inboxSeen();
   const nouveaux = [];
   entries.forEach(e => {
@@ -1607,6 +1678,90 @@ ipcMain.handle('cab:ecrireDotations', (_e, { dossierId, annee } = {}) => {
   return { ok: true, ids, livre: ouvrirLivre(dossierId, annee).livre };
 });
 
+// ---------- la paie d'un dossier (10.3.0) ----------
+// Un cabinet a soixante clients dont deux utilisent SkanFact : pour les cinquante-huit autres — ceux
+// qui PAIENT — il n'existait aucun moyen de tenir la paie. Le comptable établissait les bulletins
+// ailleurs et retapait l'écriture à la main.
+//
+// Tout passe par `ecrireLeLivre`, la porte unique (9.2.0) : verrou, écriture et piste d'audit dans
+// le même mouvement. Deux portes, c'est la garantie qu'un jour l'une oubliera l'audit.
+ipcMain.handle('cab:paie', (_e, { dossierId, annee, mois } = {}) => {
+  requireOpen();
+  const livre = livreOuErreur(dossierId, annee);
+  const m = Number(mois) || 1;
+  const bulletins = KC.bulletinsDuMois(livre, annee, m);
+  return {
+    salaries: livre.salaries || [],
+    bulletins,
+    masse: KC.masseSalariale(bulletins),
+    annee: KC.masseSalariale((livre.bulletins || []).filter(b => Number(b.annee) === Number(annee))),
+    controles: KC.controlesPaie(livre, annee, m),
+    aEcrire: bulletins.some(b => !b.ecritureId),
+    baremes: KC.baremesPaie(dossierDe(dossierId).paie || {})
+  };
+});
+
+ipcMain.handle('cab:saveSalarie', (_e, { dossierId, annee, salarie } = {}) => {
+  requireOpen();
+  droitBlock(dossierId, 'saisie');
+  const livre = livreOuErreur(dossierId, annee);
+  const r = KC.ajouterSalarie(livre, salarie, quiSuisJe(), Date.now());
+  if (!r.ok) throw erreur('ERR-CAB-078', r.motif);
+  ecrireLeLivre(dossierId, livre, 'salarié', r.salarie.nom);
+  return { ok: true, salarie: r.salarie, livre: ouvrirLivre(dossierId, annee).livre };
+});
+
+ipcMain.handle('cab:retirerSalarie', (_e, { dossierId, annee, id } = {}) => {
+  requireOpen();
+  droitBlock(dossierId, 'saisie');
+  const livre = livreOuErreur(dossierId, annee);
+  const r = KC.retirerSalarie(livre, id, quiSuisJe(), Date.now());
+  if (!r.ok) throw erreur('ERR-CAB-078', r.motif);
+  ecrireLeLivre(dossierId, livre, 'salarié retiré', id);
+  return { ok: true, livre: ouvrirLivre(dossierId, annee).livre };
+});
+
+ipcMain.handle('cab:saveBulletin', (_e, { dossierId, annee, bulletin } = {}) => {
+  requireOpen();
+  droitBlock(dossierId, 'saisie');
+  const livre = livreOuErreur(dossierId, annee);
+  const r = KC.ajouterBulletin(livre, bulletin, dossierDe(dossierId).paie || {}, quiSuisJe(), Date.now());
+  if (!r.ok) throw erreur('ERR-CAB-079', r.motif);
+  ecrireLeLivre(dossierId, livre, 'bulletin de paie', `${r.bulletin.salarieId} ${r.bulletin.annee}-${r.bulletin.mois}`);
+  return { ok: true, bulletin: r.bulletin, livre: ouvrirLivre(dossierId, annee).livre };
+});
+
+ipcMain.handle('cab:supprimerBulletin', (_e, { dossierId, annee, id } = {}) => {
+  requireOpen();
+  droitBlock(dossierId, 'saisie');
+  const livre = livreOuErreur(dossierId, annee);
+  const r = KC.supprimerBulletin(livre, id, quiSuisJe(), Date.now());
+  if (!r.ok) throw erreur('ERR-CAB-079', r.motif);
+  ecrireLeLivre(dossierId, livre, 'bulletin supprimé', id);
+  return { ok: true, livre: ouvrirLivre(dossierId, annee).livre };
+});
+
+// L'écriture de paie du mois, en BROUILLARD : elle se relit avant d'être validée. Chaque bulletin
+// du lot la porte, sinon le bouton se rallumerait et la paie serait comptée deux fois (9.7.0).
+ipcMain.handle('cab:ecrirePaie', (_e, { dossierId, annee, mois } = {}) => {
+  requireOpen();
+  droitBlock(dossierId, 'validation');
+  const livre = livreOuErreur(dossierId, annee);
+  const d = dossierDe(dossierId);
+  const prop = KC.ecritureDePaie(livre, annee, mois, { comptes: (d.comptesPaie || {}) });
+  if (!prop.ok) throw erreur('ERR-CAB-080', prop.motif);
+  const e = KC.ajouterEcriture(livre, prop.ecriture, quiSuisJe(), Date.now());
+  KC.noterEcriturePaie(livre, prop.lot, e.id, quiSuisJe(), Date.now());
+  ecrireLeLivre(dossierId, livre, 'écriture de paie', `${annee}-${String(mois).padStart(2, '0')}`);
+  return { ok: true, id: e.id, livre: ouvrirLivre(dossierId, annee).livre };
+});
+
+ipcMain.handle('cab:cnss', (_e, { dossierId, annee, trimestre } = {}) => {
+  requireOpen();
+  const livre = livreOuErreur(dossierId, annee);
+  return KC.cnssDuTrimestre(livre, annee, trimestre);
+});
+
 ipcMain.handle('cab:inventaire', (_e, { dossierId, annee } = {}) => {
   requireOpen();
   const livre = livreOuErreur(dossierId, annee);
@@ -2156,6 +2311,86 @@ function licenceBlockCab(quoi) {
     + 'Réglages → Mon cabinet → Licence : tu y verras exactement quels dossiers sont comptés, et pourquoi.');
   e.licence = etat;
   throw e;
+}
+
+// ================================================ s'annoncer au plan de contrôle (10.4.0)
+//
+// Jusqu'ici, seule l'app entreprise s'annonçait : la console voyait UNE des deux applications, et
+// l'éditeur ne savait rien du parc des comptables — ni combien de postes tournent, ni sur quelle
+// version, ni depuis quand une installation ne s'est plus montrée. Un éditeur qui ne voit qu'une
+// moitié de son parc ne la contrôle pas, il la découvre.
+//
+// Ce qui part est écrit en toutes lettres, et un test le compte : la clé, l'identité du poste, le
+// système, la version, et le nom de l'application. **Rien d'autre** — jamais un dossier, jamais un
+// client, jamais un chiffre. L'app du comptable détient la comptabilité de dizaines d'entreprises :
+// c'est ce test qui doit arrêter quiconque voudra « juste ajouter » un compteur de dossiers.
+//
+// Tout est facultatif : sans adresse et sans secret, rien ne part et rien ne s'affiche (règle 1 du
+// § 8 de PLAN-PLATEFORME.md). Et rien ne REVIENT qui restreigne quoi que ce soit ici : la licence
+// du cabinet est vérifiée sur le poste, hors ligne, contre la clé publique embarquée.
+const PLATEFORME_DEBUT = 20 * 1000;
+const plateformeBase = () => String(
+  (!app.isPackaged && process.env.SKANFACT_PLATEFORME_BASE !== undefined)
+    ? process.env.SKANFACT_PLATEFORME_BASE : (PKG.plateformeBase || '')
+).trim().replace(/\/+$/, '');
+const plateformeSecret = () => String(
+  (!app.isPackaged && process.env.SKANFACT_PLATEFORME_SECRET !== undefined)
+    ? process.env.SKANFACT_PLATEFORME_SECRET : (PKG.plateformeSecret || '')
+).trim();
+
+// L'identité du POSTE, pas celle du cabinet : elle vit dans `app-config.json` (jamais dans l'état
+// chiffré, qui voyage par la copie externe — deux postes partageraient alors une seule identité).
+function identitePoste() {
+  const cfg = readAppCfg();
+  if (!cfg.deviceId) {
+    cfg.deviceId = require('crypto').randomUUID();
+    try { cfg.deviceName = cfg.deviceName || require('os').hostname().replace(/\.local$/, ''); }
+    catch { cfg.deviceName = 'Cet ordinateur'; }
+    writeAppCfg(cfg);
+  }
+  return { id: cfg.deviceId, name: cfg.deviceName || 'Cet ordinateur' };
+}
+
+// Ne jette jamais : c'est un appel de confort, pas une étape du démarrage. Une panne du plan de
+// contrôle n'est pas une panne de l'application — elle va au journal (6.7.2) et rien à l'écran,
+// parce qu'il n'y a rien que le comptable puisse faire et qu'un rouge sur une situation normale
+// apprend à ignorer les rouges (8.0.1).
+async function annoncerPlateforme() {
+  const base = plateformeBase(), secret = plateformeSecret();
+  if (!base || !secret) return { fait: false, raison: 'plan de contrôle non configuré' };
+  const poste = identitePoste();
+  const cle = String(((state && state.licence) || {}).key || '').trim();
+  let url;
+  try { url = new URL(base + '/v1/licence/etat'); } catch { return { fait: false, raison: 'adresse invalide' }; }
+  // En clair seulement en développement (le faux serveur des parcours) : la clé de licence voyage
+  // dans ce corps de requête.
+  if (url.protocol !== 'https:' && app.isPackaged) return { fait: false, raison: 'le plan de contrôle exige https' };
+  const donnees = Buffer.from(JSON.stringify({
+    cle, deviceId: poste.id, deviceNom: poste.name,
+    plateforme: process.platform, version: app.getVersion(), app: 'cabinet'
+  }), 'utf8');
+  try {
+    await new Promise((resolve, reject) => {
+      const req = require(url.protocol === 'http:' ? 'http' : 'https').request(url, {
+        method: 'POST', timeout: 8000,
+        headers: { 'Content-Type': 'application/json', 'Content-Length': donnees.length, 'X-SkanFact-App': secret }
+      }, res => { res.resume(); res.on('end', () => (res.statusCode === 200 ? resolve() : reject(new Error('HTTP ' + res.statusCode)))); });
+      req.on('timeout', () => req.destroy(new Error('délai dépassé')));
+      req.on('error', reject);
+      req.end(donnees);
+    });
+  } catch (e) { logToFile('plan de contrôle', e); return { fait: false, raison: String((e && e.message) || e) }; }
+  return { fait: true };
+}
+
+let plateformeArmee = false;
+function demarrerPlateforme() {
+  if (plateformeArmee || !plateformeBase()) return;
+  plateformeArmee = true;
+  // Même cadence que la vérification de mise à jour, et pour la même raison : l'application du
+  // comptable reste ouverte toute la semaine.
+  setTimeout(() => { annoncerPlateforme(); }, PLATEFORME_DEBUT);
+  setInterval(() => { annoncerPlateforme(); }, MAJ_INTERVALLE);
 }
 
 // La date de la dernière validation, retenue SUR LE DOSSIER. On pourrait la déduire du livre, mais
@@ -2800,7 +3035,7 @@ function noterVerification(resultat, version) {
   try {
     fs.mkdirSync(path.dirname(MAJ_ETAT()), { recursive: true });
     fs.writeFileSync(MAJ_ETAT(), JSON.stringify({ at: Date.now(), resultat, version: version || '' }));
-  } catch (e) { /* une date non écrite ne doit jamais empêcher une mise à jour */ }
+  } catch (_) { /* une date non écrite ne doit jamais empêcher une mise à jour */ }
 }
 const sendUpd = (s, payload) => { try { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('update:event', { state: s, ...(payload || {}) }); } catch {} };
 

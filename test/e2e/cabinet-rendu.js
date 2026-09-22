@@ -20,7 +20,7 @@
 //
 //   xvfb-run -a node test/e2e/cabinet-rendu.js
 const { playwright, RACINE, ELECTRON, journal, surveiller, dossierCaptures, capturePleine,
-  SONDE_BOUTONS, SONDE_COLONNES, SONDE_ENTETES, SONDE_ESPACEMENT } = require('./harnais');
+  SONDE_CONTRASTE, SONDE_COLONNES, SONDE_ENTETES, SONDE_ESPACEMENT } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
 
@@ -55,15 +55,15 @@ const PAGES = ['#/dossiers', '#/relances', '#/echeances', '#/ecritures', '#/prod
   const attendre = (ms = 280) => win.waitForTimeout(ms);
   const aller = async hash => { await win.evaluate(x => { location.hash = x; }, hash); await attendre(350); };
 
-  let boutons = 0, colonnes = 0, controles = 0, ecarts = 0;
+  let boutons = 0, champs = 0, colonnes = 0, controles = 0, ecarts = 0;
 
   // Les trois sondes sur l'écran courant. `ou` nomme l'endroit ET le contexte (largeur, thème) :
   // une faute qui n'existe qu'en sombre à 1280 doit se lire comme telle, sinon on la cherche à
   // l'endroit où elle ne se produit pas.
   const mesurer = async ou => {
-    const bs = await win.evaluate(SONDE_BOUTONS);
-    boutons += bs.length;
-    bs.filter(b => b.ratio < SEUIL).forEach(b =>
+    const { boutons: bs, champs: chs } = await win.evaluate(SONDE_CONTRASTE);
+    boutons += bs.length; champs += chs.length;
+    [...bs, ...chs].filter(b => b.ratio < SEUIL).forEach(b =>
       fautes.push(`${ou} → « ${b.texte} » (${b.id || b.cls}) : contraste ${b.ratio} — ${b.color} sur ${b.bg}`));
     bs.filter(b => b.hors > 2).forEach(b =>
       fautes.push(`${ou} → « ${b.texte} » (${b.id || b.cls}) dépasse de ${b.hors} px hors de la fenêtre`));
@@ -121,9 +121,10 @@ const PAGES = ['#/dossiers', '#/relances', '#/echeances', '#/ecritures', '#/prod
       await attendre(450);
       await mesurer(`${etiquette} fiche · ${onglet}`);
       if (onglet !== 'comptabilite') continue;
-      // Sept onglets sur onze — Saisie, Déclaration, Banque, Immobilisations, Inventaire, Exercice
-      // et Recherche — n'existent QUE si le dossier a un livre, et un dossier neuf n'en a pas. Sans
-      // ce geste, l'instrument mesurait quatre écrans sur onze et déclarait le Cabinet propre :
+      // Neuf onglets sur treize — Saisie, Déclaration, Banque, Immobilisations, Inventaire, Paie,
+      // Révision, Exercice, Liasse et Recherche — n'existent QUE si le dossier a un livre, et un
+      // dossier neuf n'en a pas. Sans ce geste, l'instrument mesurait quatre écrans et déclarait
+      // le Cabinet propre :
       // c'est pour ça que « + Ajouter une ligne » collé au titre (T-49) a été trouvé sur une
       // capture et pas ici, et c'est la leçon de la 9.4.3 (un parcours qui n'ouvre que l'onglet par
       // défaut juge un sixième de la page), une couche plus bas.
@@ -139,11 +140,11 @@ const PAGES = ['#/dossiers', '#/relances', '#/echeances', '#/ecritures', '#/prod
       }, { timeout: 25000 });
       for (const b2 of await barres()) {
         if (b2.sel !== '#c-tabs') continue;
-        // DOUZE depuis la 10.0.0 : la Révision (9.10.0) et la Liasse (10.0.0) sont venues s'ajouter
-        // aux dix précédents. Le seuil dit ce que le livre DOIT ouvrir — s'il n'est pas créé, quatre
-        // écrans seulement existent, et l'instrument déclarerait le Cabinet propre sans avoir vu
-        // l'écran où un comptable passe ses journées (T-55).
-        if (b2.tabs.length < 12) throw new Error(`la comptabilité n'offre que ${b2.tabs.length} onglets : le livre n'a pas été créé, et huit écrans ne seraient pas mesurés`);
+        // TREIZE depuis la 10.3.0 : la Révision (9.10.0), la Liasse (10.0.0) et la Paie (10.3.0)
+        // sont venues s'ajouter aux dix précédents. Le seuil dit ce que le livre DOIT ouvrir —
+        // s'il n'est pas créé, quatre écrans seulement existent, et l'instrument déclarerait le
+        // Cabinet propre sans avoir vu l'écran où un comptable passe ses journées (T-55).
+        if (b2.tabs.length < 13) throw new Error(`la comptabilité n'offre que ${b2.tabs.length} onglets : le livre n'a pas été créé, et neuf écrans ne seraient pas mesurés`);
         for (const t of b2.tabs) {
           await win.click(`#c-tabs button[data-tab="${t}"]`);
           await attendre(450);
@@ -186,7 +187,7 @@ const PAGES = ['#/dossiers', '#/relances', '#/echeances', '#/ecritures', '#/prod
   // ------------------------------------------------------------------ les quatre passes
   j.etape('Toutes les pages et tous leurs onglets, en clair, à 1440');
   await parcourir('clair 1440');
-  j.ok(`${boutons} boutons, ${colonnes} colonnes, ${controles} contrôles`);
+  j.ok(`${boutons} boutons, ${champs} champs, ${colonnes} colonnes, ${controles} contrôles`);
 
   j.etape('Les mêmes, en thème SOMBRE');
   // Le thème se pose par le vrai réglage, pas par une classe injectée : c'est le chemin qu'un
@@ -232,13 +233,13 @@ const PAGES = ['#/dossiers', '#/relances', '#/echeances', '#/ecritures', '#/prod
 
   if (bac.length) { console.error('\nErreurs du renderer :\n' + bac.join('\n')); process.exit(2); }
   // Un instrument qui ne mesure rien annonce « tout va bien » : il doit échouer, pas se taire.
-  if (!boutons || !colonnes || !ecarts) { console.error('\nRien n\'a été mesuré : le parcours ne prouve rien.'); process.exit(2); }
+  if (!boutons || !champs || !colonnes || !ecarts) { console.error('\nRien n\'a été mesuré : le parcours ne prouve rien.'); process.exit(2); }
   if (fautes.length) {
     const u = [...new Set(fautes)];
     console.error(`\n${u.length} défaut(s) de rendu dans l'app Cabinet :\n  ` + u.join('\n  '));
     process.exit(1);
   }
-  console.log(`\n${j.total()} étapes — ${boutons} boutons, ${colonnes} colonnes, ${controles} contrôles,`
+  console.log(`\n${j.total()} étapes — ${boutons} boutons, ${champs} champs, ${colonnes} colonnes, ${controles} contrôles,`
     + ` ${ecarts} écarts mesurés en clair et en sombre, à 1440 et à 1280 : rien d'illisible, rien de`
     + ' désaligné, rien d\'étiré, rien de collé.');
 })().catch(e => { console.error(e); process.exit(1); });

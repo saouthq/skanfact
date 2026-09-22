@@ -43,10 +43,7 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
   await win.waitForSelector('.modal #ok'); await win.click('.modal #ok');
   await win.waitForTimeout(1800);
 
-  const onglets = await win.evaluate(() => {
-    location.hash = '#/parametres';
-    return null;
-  });
+  await win.evaluate(() => { location.hash = '#/parametres'; });
   await win.waitForSelector('#set-tabs');
   const ids = await win.evaluate(() => [...document.querySelectorAll('#set-tabs button')].map(b => ({ id: b.dataset.tab, label: b.textContent.trim() })));
   mesures.entreprise.onglets = ids;

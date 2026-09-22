@@ -186,9 +186,39 @@
     clearTimeout(saveTimer);
     const doSave = () => bridge.saveData(data)
       .then(r => { if (r && r.conflict) return resolveConflict(r); })
-      .catch(e => toast('Erreur de sauvegarde : ' + e.message, true));
+      .catch(echecEnregistrement);
     if (immediate) return doSave();
     saveTimer = setTimeout(doSave, 300);
+  }
+
+  // 10.0.1 — Ce chemin-ci affichait `e.message` brut : le SEUL des trente endroits de ce fichier
+  // qui ne passait pas par `plainError`, et c'est celui où l'utilisateur perd son travail. Sur un
+  // disque plein, il lisait « Erreur de sauvegarde : Error invoking remote method 'data:save':
+  // Error: ENOSPC: no space left on device, write /Users/… ». La phrase vient maintenant du
+  // processus principal (`PANNES_DISQUE`) et dit quoi faire.
+  //
+  // Et ce n'est plus un bandeau : un message qui s'efface en 2,6 secondes annonce une perte de
+  // travail à quelqu'un qui regarde son clavier, et la frappe suivante le fait disparaître. On
+  // pose une fenêtre, elle offre le geste qui débloque (règle 7.0.0 : ce qui est refusé, pourquoi,
+  // et le bouton qui sort), et un drapeau empêche qu'un enregistrement automatique toutes les
+  // 300 ms n'en empile dix.
+  let echecOuvert = false;
+  function echecEnregistrement(e) {
+    if (echecOuvert) return;
+    echecOuvert = true;
+    const code = codeErreur(e);
+    modal(`<h2>Rien n'a été enregistré</h2>
+      <p>${h(plainError(e))}</p>
+      <p class="small muted">Ce que tu vois à l'écran est intact : rien n'est perdu tant que
+      l'application reste ouverte.${code ? ` <span class="mono">${h(code)}</span>` : ''}</p>
+      <div class="modal-actions">
+        <button class="btn" data-close>Fermer</button>
+        <button class="btn btn-primary" id="reessayer">Réessayer</button>
+      </div>`, (root, close) => {
+      // `close()` déclenche `onDismiss`, qui rouvre la porte : si le second essai échoue aussi, la
+      // fenêtre revient. C'est voulu — on ne se tait pas parce qu'on a déjà parlé une fois.
+      $('#reessayer', root).onclick = () => { close(); save(true); };
+    }, () => { echecOuvert = false; });
   }
 
   async function resolveConflict(r) {
@@ -437,7 +467,7 @@
     if (lien) lien.onclick = () => closeInfoPop();
     const r = btn.getBoundingClientRect();
     const w = pop.offsetWidth, hh = pop.offsetHeight;
-    let left = Math.min(Math.max(8, r.left + r.width / 2 - w / 2), window.innerWidth - w - 8);
+    const left = Math.min(Math.max(8, r.left + r.width / 2 - w / 2), window.innerWidth - w - 8);
     let top = r.bottom + 8;
     if (top + hh > window.innerHeight - 8) top = Math.max(8, r.top - hh - 8);
     pop.style.left = left + 'px'; pop.style.top = top + 'px';
@@ -888,7 +918,7 @@
     $$('select[data-rs]', root || document).forEach(sel => {
       if (sel.dataset.rsBound) return;
       sel.dataset.rsBound = '1';
-      let o = {}; try { o = JSON.parse(sel.dataset.rs || '{}'); } catch (e) { o = {}; }
+      let o = {}; try { o = JSON.parse(sel.dataset.rs || '{}'); } catch (_) { o = {}; }
       bindWithholdingSelect(sel, o);
     });
   }
@@ -1087,8 +1117,6 @@
   //
   // Le menu liste aussi ce qu'on ne peut faire nulle part ailleurs en un geste : créer une seconde
   // entreprise, et rejoindre un dossier partagé.
-  let dossiersConnus = null;                  // dernière liste lue, pour ne pas re-demander à chaque clic
-
   // Deux noms pour la même chose, à dix pixels d'écart : l'en-tête affichait « Atelier Un SUARL »
   // (la société, dans les données) pendant que le menu et Paramètres → Dossiers affichaient
   // « Mon entreprise » (le nom du dossier, posé par main.js à la création). Personne ne peut savoir
@@ -1121,7 +1149,6 @@
     if (!bridge.listDossiers) return toast('Les dossiers ne sont pas disponibles ici.', true);
     let r;
     try { r = await bridge.listDossiers(); } catch (e) { return toast(plainError(e), true); }
-    dossiersConnus = r;
     const autres = (r.dossiers || []).filter(d => d.id !== r.current);
     // Pour le dossier ouvert on connaît la vraie société : on l'affiche plutôt que l'étiquette du
     // dossier, qui peut être restée générique sur une installation ancienne.
@@ -2011,7 +2038,13 @@
 
     // Les actions d'une ligne, dans l'ordre où on en a besoin : ouvrir, puis ce qu'on envoie, puis
     // ce qui change l'état de la pièce.
-    bindRowMenus(document, id => {
+    //
+    // La racine est celle du TABLEAU quand on la connaît (10.2.0). Posée sur `document`, cette
+    // table d'actions retirait tout bouton de menu qu'elle ne reconnaît pas — c'est sa règle
+    // (7.29.0 : une ligne sans action perd son bouton) — donc celui de l'en-tête de la fiche
+    // client disparaissait à chaque dessin du tableau, sans une erreur nulle part. UNE table
+    // d'actions par racine (9.4.8), et deux tables sur la même racine se mangent.
+    bindRowMenus(anchor ? $(anchor) : document, id => {
       const d = docById(id); if (!d) return [];
       const a = [{ icon: 'ouvrir', label: 'Ouvrir', hint: 'Voir la pièce et la modifier', run: () => navigate('#/doc/' + id) },
                  { icon: 'pdf', label: 'Exporter en PDF', run: () => exportPdf(d) }];
@@ -2930,16 +2963,23 @@
     // que le PDF s'exporte — donnaient DEUX passages dans `issue()`, donc deux appels à
     // `nextNumber` : la pièce prenait un numéro, puis le suivant, et le premier restait en trou.
     //
-    // Deux moitiés, et les deux comptent : `isIssued` refuse une pièce déjà émise (l'état fait foi,
-    // même après un rechargement), `emissionEnCours` refuse pendant le geste (l'état n'a pas encore
-    // changé). L'une sans l'autre laisse passer un des deux cas.
-    let emissionEnCours = false;
+    // Deux moitiés, et les deux comptent. Pendant l'ATTENTE, c'est le bouton qui refuse
+    // (`data-busy` + `disabled`, posés avant le `await` et retirés dans un `finally`) ; une fois
+    // le geste passé, c'est l'ÉTAT (`isIssued`), qui fait foi même après un rechargement.
+    //
+    // Ce qui tient les deux ensemble, c'est que `issue()` est ENTIÈREMENT SYNCHRONE : entre le
+    // `isIssued()` d'entrée et le `nextNumber`, rien ne rend la main au navigateur, donc aucun
+    // second clic ne peut s'y glisser. Un `await` posé là-dedans un jour rouvrirait le trou sans
+    // qu'aucun écran ne le montre — c'est très exactement ce qu'un test interdit désormais.
+    // (Il a existé ici un drapeau `emissionEnCours` que RIEN n'armait : une troisième moitié
+    // annoncée par un commentaire, jamais écrite, et que le test de la 9.1.0 cherchait par son
+    // NOM. Retiré en 10.0.1 ; le test exige maintenant la règle.)
     const isIssued = () => {
       const d = docById(doc.id) || doc;
       return !!(d.number && d.status && d.status !== 'brouillon');
     };
     function issue() {
-      if (emissionEnCours || isIssued()) return false;
+      if (isIssued()) return false;
       if (!validate()) return false;
       // Avant `nextNumber` : le compteur est écrit même quand l'enregistrement échoue ensuite. Un
       // garde-fou posé après aurait troué la numérotation à chaque tentative refusée.
@@ -3342,10 +3382,68 @@
         toast('PDF enregistré : ' + p.split(/[\\/]/).pop());
         if (company().openAfterExport !== false) bridge.openPath(p);
       }
-    } catch (e) { toast('Erreur PDF : ' + e.message, true); }
+    } catch (e) { toast('Export PDF impossible : ' + plainError(e), true); }
   }
 
   // ---------- Clients ----------
+  // ---------- le relevé de compte d'un client (10.2.0) ----------
+  // Une relance porte sur UNE facture. Un client qui en a six ouvertes recevait six relances et
+  // devait recomposer le total lui-même — ou ne le faisait pas. Le relevé est la pièce qu'on envoie
+  // à la comptabilité d'en face pour qu'elle rapproche son compte du nôtre, et c'est le document
+  // que tout logiciel de facturation sait sortir sauf celui-ci.
+  function releveForm(clientId) {
+    const c = clientById(clientId);
+    if (!c) return;
+    const cur = company().currency;
+    let au = C.today();
+    const dessiner = (root) => {
+      const r = C.releveClient(data, c.id, company(), { date: au });
+      $('#rv-body', root).innerHTML = r.lignes.length ? `
+        <table class="list"><thead><tr><th>Date</th><th>Pièce</th><th>Échéance</th><th class="r">Montant</th><th class="r">Réglé</th><th class="r">Reste dû</th></tr></thead>
+        <tbody>${r.lignes.map(l => `<tr class="clickable" data-go="${h(l.id)}"><td class="nw">${C.fmtDate(l.date)}</td>
+          <td class="nw">${h(l.number || '—')}${l.libelle ? `<div class="small muted">${h(l.libelle)}</div>` : ''}</td>
+          <td class="nw">${l.dueDate ? C.fmtDate(l.dueDate) : '<span class="muted">—</span>'}${l.retard > 0 ? `<div class="small warn-text">${pl(l.retard, 'jour')} de retard</div>` : ''}</td>
+          <td class="r nw">${C.money(l.montant, cur)}</td><td class="r nw">${l.regle ? C.money(l.regle, cur) : '<span class="muted">—</span>'}</td>
+          <td class="r nw"><strong>${C.money(l.reste, cur)}</strong></td></tr>`).join('')}</tbody>
+        <tfoot><tr><td colspan="5">Total dû au ${C.fmtDate(r.date)} — dont ${C.money(r.echu, cur)} échu</td>
+          <td class="r"><strong>${C.money(r.total, cur)}</strong></td></tr></tfoot></table>`
+        : '<div class="empty mini">Rien d\'ouvert à cette date : le compte de ce client est soldé. Le relevé le dira, et c\'est une bonne nouvelle à envoyer.</div>';
+      $$('#rv-body tr[data-go]', root).forEach(tr => tr.onclick = () => navigate('#/doc/' + tr.dataset.go));
+    };
+    modal(`<h2>Relevé de compte — ${h(c.name)}</h2>
+      <p class="small muted">Toutes les pièces encore ouvertes à la date choisie, et leur total. Clique une ligne pour ouvrir la pièce.</p>
+      <form id="rvf" class="grid-2">${dateFieldHtml(lbl('Situation arrêtée au', 'rv.date'), 'au', au, {})}</form>
+      <div id="rv-body" class="scroll-x"></div>
+      <div class="modal-actions"><button class="btn" data-close>Fermer</button>
+        <button class="btn" id="rv-mail">Envoyer au client…</button>
+        <button class="btn btn-primary" id="rv-pdf">Exporter en PDF</button></div>`,
+      (root, close) => {
+        dessiner(root);
+        $('#rvf', root).onchange = () => { au = formValues($('#rvf', root)).au || C.today(); dessiner(root); };
+        const html = () => C.releveHtml(C.releveClient(data, c.id, company(), { date: au }), company(), { stampText: C.estDemo(data) ? 'EXEMPLE' : '' });
+        const nom = () => `Releve_${String(c.name).replace(/[^\w\- àâäéèêëïîôöùûüç]/gi, '').trim().replace(/\s+/g, '_')}_${au}.pdf`;
+        $('#rv-pdf', root).onclick = async () => {
+          try { const f = await bridge.exportPdf(html(), nom()); if (f) { toast('PDF enregistré : ' + f.split(/[\\/]/).pop()); close(); } }
+          catch (e) { toast(plainError(e), true); }
+        };
+        $('#rv-mail', root).onclick = async () => {
+          const b = $('#rv-mail', root); b.disabled = true; b.textContent = 'Préparation…';
+          try {
+            const att = await bridge.exportPdfSilent(html(), nom());
+            const r = C.releveClient(data, c.id, company(), { date: au });
+            await bridge.composeMail({
+              to: c.email || '', mode: company().mailClient === 'mailto' ? 'mailto' : 'auto', attachment: att,
+              subject: `Relevé de compte au ${C.fmtDate(au)} — ${company().name}`,
+              body: `Bonjour,\n\nVous trouverez ci-joint le relevé de votre compte au ${C.fmtDate(au)}.\n\n`
+                + (r.total > 0.0005 ? `Solde restant dû : ${C.money(r.total, cur)}${r.echu > 0.0005 ? `, dont ${C.money(r.echu, cur)} échu` : ''}.\n\n` : 'Votre compte est soldé. Merci de votre confiance.\n\n')
+                + `Si un règlement s'est croisé avec cet envoi, merci de ne pas en tenir compte.\n\nCordialement,\n${company().name}`
+            });
+            close(); toast('Message ouvert dans ta messagerie');
+          } catch (e) { b.disabled = false; b.textContent = 'Envoyer au client…'; toast(plainError(e), true); }
+        };
+      });
+  }
+
   function clientForm(client, done) {
     const c = client || { id: C.uid(), name: '', contact: '', matricule: '', address: '', phone: '', email: '', notes: '', withholdingRate: '' };
     modal(`<h2>${client ? 'Modifier le client' : 'Nouveau client'}</h2>
@@ -3432,6 +3530,7 @@
           { icon: 'client', label: 'Ouvrir la fiche', hint: 'Documents, affaires, contrats, matériel installé', run: () => navigate('#/client/' + id) },
           { icon: 'nouveau', label: 'Nouveau devis', hint: `Pour ${c.name}`, run: () => navigate('#/doc/new/devis/client/' + id) },
           { sep: true },
+          { icon: 'pdf', label: 'Relevé de compte…', hint: 'Toutes ses pièces ouvertes, et le total', run: () => releveForm(id) },
           { icon: 'modifier', label: 'Modifier le client', hint: 'Coordonnées, contact, matricule', run: () => clientForm(c, () => draw()) }
         ];
       });
@@ -3469,8 +3568,11 @@
           <div class="small muted">${[c.contact, c.matricule ? 'MF ' + c.matricule : '', c.phone, c.email].filter(Boolean).map(h).join(' · ')}</div></div>
         <div class="actions">
           ${backButton('#/clients')}
-          ${c.email ? '<button class="btn" id="mailto">Écrire</button>' : ''}
-          <button class="btn" id="edit">Modifier</button>
+          ${/* Un en-tête de fiche a un budget de boutons, comme une ligne de liste (7.29.0, porté du
+                Cabinet en 9.4.8). « Écrire » dépend d'une adresse qu'un client sur deux n'a pas,
+                donc la barre changeait de forme d'une fiche à l'autre ; le relevé de compte les
+                rejoint plutôt que de faire un sixième bouton. */''}
+          ${RowMenu.bouton('CL:' + c.id, 'Actions', 'btn')}
           <button class="btn" id="new-fac">+ Facture</button>
           <button class="btn btn-primary" id="new-dev">+ Devis</button>
         </div></div>
@@ -3557,10 +3659,22 @@
     };
     drawDocs();
     bindBack('#/clients');
-    $('#edit').onclick = () => clientForm(c, () => render(true));
     $('#new-dev').onclick = () => navigate('#/doc/new/devis/client/' + c.id);
     $('#new-fac').onclick = () => navigate('#/doc/new/facture/client/' + c.id);
-    if ($('#mailto')) $('#mailto').onclick = () => bridge.composeMail({ to: c.email, subject: '', body: '', attachment: null, mode: 'mailto' });
+    // UNE seule table d'actions par racine (9.4.8) : le tableau des documents de la fiche branche
+    // la sienne sur `#cl-docs`, et une seconde table posée sur `document` écraserait la première —
+    // en silence, et en RETIRANT le bouton dont elle ne connaît pas l'identifiant (7.29.0 : une
+    // ligne sans action perd son bouton). C'est ce qui l'a fait disparaître de l'en-tête.
+    bindRowMenus($('.page-head .actions'), id => {
+      if (id !== 'CL:' + c.id) return [];
+      const ouvert = C.releveClient(data, c.id, company()).total;
+      const a2 = [{ icon: 'modifier', label: 'Modifier la fiche', hint: 'Coordonnées, conditions, retenue', run: () => clientForm(c, () => render(true)) }];
+      if (c.email) a2.push({ icon: 'email', label: 'Écrire au client', hint: h(c.email), run: () => bridge.composeMail({ to: c.email, subject: '', body: '', attachment: null, mode: 'mailto' }) });
+      a2.push({ sep: true }, { icon: 'pdf', label: 'Relevé de compte…',
+        hint: ouvert > 0.0005 ? `${C.money(ouvert, cur)} encore dû` : 'Le compte est soldé',
+        run: () => releveForm(c.id) });
+      return a2;
+    });
     if ($('#go-rel')) $('#go-rel').onclick = () => navigate('#/relances');
     // Ces notes s'enregistrent au fil de la frappe. C'est agréable, mais c'était surprenant tant que
     // rien ne le disait — la fenêtre de modification, elle, attend « Enregistrer » (audit).
@@ -4037,7 +4151,7 @@
           save(true); close();
           toast(r && r.state === 'mail' ? 'Message ouvert dans Mail avec le PDF joint' : 'Message ouvert dans ta messagerie' + (attachment ? ' — glisse le PDF affiché dans le Finder' : ''));
           render();
-        } catch (e) { b.disabled = false; b.textContent = 'Ouvrir dans la messagerie'; toast('Erreur : ' + e.message.replace(/^.*Error: /, ''), true); }
+        } catch (e) { b.disabled = false; b.textContent = 'Ouvrir dans la messagerie'; toast(plainError(e), true); }
       }; });
   }
   function sendReminder(item) {
@@ -4525,7 +4639,11 @@
           { icon: 'telephone', label: 'Noter un appel téléphonique', hint: 'Ce que le client a répondu, et quand rappeler', run: () => phoneReminderForm(x, draw) },
           { sep: true },
           { icon: 'argent', label: 'Paiement reçu', hint: `Reste ${C.money(x.remaining, docCur(x.doc))}`, run: () => paymentForm(x.doc, draw) },
-          { icon: 'horloge', label: x.snoozed ? 'Changer la date de report' : 'Ne pas relancer avant…', hint: 'La facture sort de la liste jusqu\'à cette date', run: () => snoozeForm(x, draw) }
+          { icon: 'horloge', label: x.snoozed ? 'Changer la date de report' : 'Ne pas relancer avant…', hint: 'La facture sort de la liste jusqu\'à cette date', run: () => snoozeForm(x, draw) },
+          // Relancer sur UNE facture quand le client en a six ouvertes, c'est envoyer six messages
+          // pour un seul problème. Le relevé les met sur une page, avec le total (10.2.0).
+          { sep: true },
+          { icon: 'pdf', label: 'Relevé de compte du client…', hint: 'Toutes ses pièces ouvertes, et le total', run: () => releveForm(x.doc.clientId) }
         ];
       });
       $$('[data-qrem]').forEach(b => b.onclick = () => sendByEmail(docById(b.dataset.qrem), 'relanceDevis', null, () => {}));
@@ -4639,6 +4757,13 @@
     'salaires-double': { label: 'Voir les mouvements', run: vers('#/tresorerie', () => { tresoState.tab = 'mouvements'; }) },
     tresorerie: { label: 'Voir la prévision', run: vers('#/tresorerie', () => { tresoState.tab = 'prevision'; }) },
     'taux-change': { label: 'Voir les pièces', run: vers('#/factures', filtre('facture')) },
+    // Le jumeau côté achats (10.1.0). Les deux lignes nomment des pièces différentes et mènent donc
+    // à deux listes différentes : une seule entrée pour les deux enverrait la moitié des gens sur
+    // un écran où ce qu'on vient de leur annoncer n'existe pas.
+    'taux-achat': { label: 'Voir les achats', run: vers('#/achats', () => { buyState.q = ''; buyState.st = ''; buyState.kind = ''; buyState.cat = ''; buyState.year = ''; buyState.page = 1; }) },
+    // Les avoirs et acomptes sans facture (10.2.0). On pose le filtre sur la liste : arriver sur
+    // quarante achats quand deux posent question est la même impasse que ne pas pouvoir cliquer.
+    'achat-impute': { label: 'Voir les pièces à rattacher', run: vers('#/achats', () => { buyState.q = ''; buyState.st = A_RATTACHER; buyState.kind = ''; buyState.cat = ''; buyState.year = ''; buyState.page = 1; }) },
     sauvegarde: { label: 'Choisir un dossier', run: vers('#/parametres', () => { settingsTab = 'donnees'; settingsFocus = 'p-externe'; }) },
     'licences-expirent': { label: 'Voir les licences', run: vers('#/licences') },
     // Chaque ligne emmène sur la liste AVEC sa vue : arriver sur cent licences quand trois seulement
@@ -4648,7 +4773,10 @@
     'licences-impayees': { label: 'Voir les impayées', run: vers('#/licences', () => { licState.q = ''; licState.st = ''; licState.tri = 'impaye'; licState.page = 1; }) },
     // Les questions du comptable (9.10.0). Elles vivent dans l'onglet Cabinet, à côté du paquet
     // qui les a apportées et de celui qui emportera les réponses.
-    questions: { label: 'Voir les questions', run: vers('#/compta', () => { comptaState.tab = 'cabinet'; pageFocus = 'p-questions'; }) }
+    questions: { label: 'Voir les questions', run: vers('#/compta', () => { comptaState.tab = 'cabinet'; pageFocus = 'p-questions'; }) },
+    // L'export de la base de la console (10.4.0) : le bouton vit dans le panneau Éditeur, et la
+    // ligne y mène directement — un raccourci vise un PANNEAU, pas une page (7.18.0).
+    'console-export': { label: 'Exporter la base', run: vers('#/parametres', () => { settingsTab = 'app'; settingsFocus = 'p-editeur'; }) }
   };
 
   // « Ce qui manque » (Comptabilité → Cabinet) et les contrôles avant clôture disent exactement ce
@@ -4673,7 +4801,11 @@
   const TODO_VISIBLE = 5;
 
   function todoPanel() {
-    let items = C.todoList(data, company(), null, { copieExterne, editeur: !!licence.editeur });
+    // `reserves` : ce que l'offre ferme. Sans lui, la ligne « à immobiliser » affirmerait
+    // « rien n'est déduit » à quelqu'un qui ne PEUT pas créer la fiche — et c'est faux, le cabinet
+    // la crée depuis le paquet (9.7.0). On ne reproche pas ce qu'on n'a pas offert (7.20.0).
+    let items = C.todoList(data, company(), null, { copieExterne, editeur: !!licence.editeur,
+      reserves: licence.reserves || [] });
     // Tant que « Tes premiers pas » est à l'écran, il porte déjà la fiche société — en étape 1, et
     // formulée comme une étape. La répéter dix centimètres plus bas sous le titre « À faire » et le
     // libellé « Fiche société incomplète », c'est dire deux fois la même chose, dont une fois comme
@@ -4753,7 +4885,13 @@
       tr.className = 'nav-count' + (hole ? '' : '');
     }
     const im = $('#nav-immos');
-    if (im) { const n = C.assetsToCreate(data).length; im.hidden = !n; im.textContent = n; }
+    // Une pastille rouge qui compte des tâches à côté d'un cadenas dit deux choses contraires :
+    // « tu as deux choses à faire » et « tu ne peux pas ». Quand l'offre ferme le module, ce n'est
+    // plus la tâche du client — c'est celle du cabinet (9.7.0), et le compteur disparaît.
+    if (im) {
+      const n = (licence.reserves || []).includes('immos') ? 0 : C.assetsToCreate(data).length;
+      im.hidden = !n; im.textContent = n;
+    }
     const pay = $('#nav-paie');
     if (pay) {
       const t = C.today();
@@ -5009,7 +5147,8 @@
     q: '',                                 // recherche, commune aux journaux de la page
     journal: { sort: null, page: 1 },      // journal des ventes
     pays: { sort: null, page: 1 },         // encaissements
-    buys: { sort: null, page: 1 }          // journal des achats
+    buys: { sort: null, page: 1 },         // journal des achats
+    decs: { sort: null, page: 1 }          // règlements fournisseurs (10.0.1)
   };
   // Les onglets de l'option Comptabilité (9.1.0). Trois, et seulement trois : ce sont des écrans de
   // COMPTABLE. Les journaux, la TVA, le calendrier fiscal, les clôtures et le paquet du comptable
@@ -5191,13 +5330,21 @@
 
   // ---------- Achats et dépenses ----------
   const purchaseById = id => data.purchases.find(p => p.id === id);
-  const buyStatus = p => C.purchaseStatus(p, company(), C.today());
+  // Le statut tient compte des pièces rattachées (10.2.0) : sans `data`, un avoir imputé sur une
+  // facture ne la diminuerait nulle part à l'écran, alors que les écritures, elles, le savent.
+  const buyStatus = p => C.purchaseStatus(p, company(), C.today(), data);
+  const A_RATTACHER = 'à rattacher';
 
   function purchaseColumns(opts) {
     opts = opts || {};
     const cur = company().currency;
-    const netOf = p => C.purchaseTotals(p, company()).netToPay;
-    const restOf = p => C.purchaseBalance(p, company()).remaining;
+    // La colonne additionne des pièces de plusieurs devises : elle affiche donc le montant CONVERTI,
+    // et la devise d'origine se lit sous le chiffre quand elle diffère (10.1.0). Trier sur le montant
+    // natif comparerait des euros à des dinars — c'est la faute de la 7.18.0, côté achats.
+    const netOf = p => C.purchaseTotals(p, company()).base.netToPay;
+    const restOf = p => C.toBase(p, C.purchaseBalance(p, company(), data).remaining, company());
+    const devise = p => (p.currency && p.currency !== company().currency)
+      ? `<div class="small muted">${h(C.money(C.purchaseTotals(p, company()).netToPay, p.currency))}</div>` : '';
     const cols = [
       { key: 'date', label: 'Date', cls: 'nw', val: p => p.date || '', get: p => C.fmtDate(p.date) },
       // Le trombone : on voit d'un coup d'œil quelles pièces ont leur justificatif — et lesquelles
@@ -5212,7 +5359,7 @@
       { key: 'category', label: 'Catégorie', asc: true, val: p => (p.category || '').toLowerCase(), get: p => `${h(p.category || '')}${p.kind === 'depense' ? '<div class="small muted">dépense</div>' : ''}` || '<span class="muted">—</span>' },
       { key: 'due', label: 'Échéance', cls: 'nw', val: p => p.dueDate || '', get: p => p.dueDate ? C.fmtDate(p.dueDate) : '<span class="muted">—</span>' },
       { key: 'status', label: 'Statut', val: p => buyStatus(p), get: p => buyBadge(buyStatus(p)) },
-      { key: 'net', label: 'Net à payer', r: true, val: netOf, get: p => C.money(netOf(p), cur) },
+      { key: 'net', label: 'Net à payer', r: true, val: netOf, get: p => C.money(netOf(p), cur) + devise(p) },
       { key: 'rest', label: 'Reste', r: true, val: restOf, get: p => { const x = restOf(p); return x > 0.0005 ? C.money(x, cur) : '<span class="muted">—</span>'; } }
     );
     return { cols, netOf, restOf };
@@ -5233,12 +5380,15 @@
         .filter(p => !s.kind || p.kind === s.kind)
         .filter(p => !s.year || (p.date || '').startsWith(s.year))
         .filter(p => !s.cat || p.category === s.cat)
-        .filter(p => !s.st || buyStatus(p) === s.st)
+        // `à rattacher` n'est pas un statut mais une QUESTION : quelles pièces ne viennent en
+        // déduction de rien ? Elle vit dans le même sélecteur parce que c'est là qu'on la cherche,
+        // et elle se réinitialise comme les autres — un filtre qu'on ne voit pas est un piège.
+        .filter(p => !s.st || (s.st === A_RATTACHER ? (C.PURCHASE_LIES.includes(p.kind) && !p.achatLie) : buyStatus(p) === s.st))
         .filter(p => !s.q || [p.number, supplierName(p.supplierId), p.subject, p.category].join(' ').toLowerCase().includes(s.q)), cols, s.sort);
       const filtered = !!(s.q || s.st || s.kind || s.cat || s.year);
       const { rows: page, pg } = paginate(rows, s);
       // Les totaux portent sur toute la sélection, jamais sur la page affichée.
-      const totHT = rows.reduce((a, p) => a + C.purchaseTotals(p, company()).totalHT, 0);
+      const totHT = rows.reduce((a, p) => a + C.purchaseTotals(p, company()).base.totalHT, 0);
       const totNet = rows.reduce((a, p) => a + netOf(p), 0);
       const totRest = rows.reduce((a, p) => a + Math.max(0, restOf(p)), 0);
       $('#list-wrap').innerHTML = rows.length ? `<table class="list sortable"><thead>${sortHead(cols, s.sort, '<th class="row-actions-h"></th>')}</thead><tbody>
@@ -5257,6 +5407,12 @@
         const reste = restOf(p);
         const a = [{ icon: 'ouvrir', label: 'Ouvrir la pièce', hint: 'Lignes, TVA, justificatifs', run: () => navigate('#/achat/' + id) }];
         if (reste > 0.0005) a.push({ icon: 'argent', label: 'Enregistrer un règlement', hint: `Reste ${C.money(reste, cur)}`, run: () => supplierPaymentForm(p, () => draw()) });
+        // L'avoir et l'acompte se créent DEPUIS la facture qu'ils concernent (10.2.0) : c'est là
+        // qu'on y pense, et le rattachement est alors posé tout seul. Un quatrième bouton en haut
+        // de page aurait fait quatre boutons pour deux gestes rares (règle 7.29.0).
+        if (!C.PURCHASE_LIES.includes(p.kind)) a.push({ sep: true },
+          { icon: 'restaurer', label: 'Saisir un avoir sur cette pièce', hint: 'Retour, rabais, erreur du fournisseur', run: () => navigate(`#/achat/new/${p.supplierId || '-'}/avoir/${id}`) },
+          { icon: 'argent', label: 'Saisir un acompte versé', hint: 'Payé d\'avance, à déduire de cette facture', run: () => navigate(`#/achat/new/${p.supplierId || '-'}/acompte/${id}`) });
         a.push({ sep: true }, { icon: 'copier', label: 'Dupliquer', hint: 'Même fournisseur, mêmes lignes, à la date du jour', run: () => duplicatePurchase(p) });
         return a;
       });
@@ -5270,7 +5426,7 @@
       <div class="filters">
         <input type="text" id="q" placeholder="Rechercher : n°, fournisseur, objet, catégorie…" value="${h(s.q)}">
         <select id="kind"><option value="">Tout</option>${C.PURCHASE_KINDS.map(([v, l]) => `<option value="${v}" ${s.kind === v ? 'selected' : ''}>${l}s</option>`).join('')}</select>
-        <select id="st"><option value="">Tous les statuts</option>${C.PURCHASE_STATUSES.map(x => `<option value="${x}" ${s.st === x ? 'selected' : ''}>${h(x)}</option>`).join('')}</select>
+        <select id="st"><option value="">Tous les statuts</option>${C.PURCHASE_STATUSES.map(x => `<option value="${x}" ${s.st === x ? 'selected' : ''}>${h(x)}</option>`).join('')}<option value="${A_RATTACHER}" ${s.st === A_RATTACHER ? 'selected' : ''}>à rattacher (avoir ou acompte)</option></select>
         ${cats.length > 1 ? `<select id="cat"><option value="">Toutes les catégories</option>${cats.map(c => `<option value="${h(c)}" ${s.cat === c ? 'selected' : ''}>${h(c)}</option>`).join('')}</select>` : ''}
         ${years.length > 1 ? `<select id="yr"><option value="">Toutes les années</option>${years.map(y => `<option value="${y}" ${s.year === y ? 'selected' : ''}>${y}</option>`).join('')}</select>` : ''}
         ${info('list.filters')}
@@ -5348,9 +5504,9 @@
     const sup = supplierId ? supplierById(supplierId) : null;
     const days = sup && sup.paymentTermsDays !== '' && sup.paymentTermsDays != null ? Number(sup.paymentTermsDays) : 30;
     return {
-      id: C.uid(), kind: kind === 'depense' ? 'depense' : 'facture', supplierId: supplierId || '', number: '',
-      date, dueDate: kind === 'depense' ? '' : C.addDays(date, days),
-      subject: '', category: '', notes: '', fees: 0,
+      id: C.uid(), kind: C.PURCHASE_KINDS.some(k => k[0] === kind) ? kind : 'facture', supplierId: supplierId || '', number: '',
+      date, dueDate: kind === 'depense' || kind === 'avoir' ? '' : C.addDays(date, days),
+      subject: '', category: '', notes: '', fees: 0, achatLie: '',
       withholdingRate: sup && Number(sup.withholdingRate) ? Number(sup.withholdingRate) : 0,
       // Côté ACHAT, le taux est celui du FOURNISSEUR, pas le nôtre : une entreprise exonérée paie
       // quand même la TVA de ses fournisseurs. Le réglage `defaultVatRate` ne s'applique donc pas ici.
@@ -5411,6 +5567,16 @@
     } else if (parts[0] === 'new') {
       const sup = parts[1] && parts[1] !== '-' ? parts[1] : '';
       p = newPurchase(parts[2] || (parts[1] === 'depense' ? 'depense' : 'facture'), supplierById(sup) ? sup : '');
+      // Un avoir créé depuis une facture arrive déjà rattaché, dans sa devise : le rattachement est
+      // le geste qu'on oublie, et l'oublier fait payer deux fois (10.2.0).
+      const vise = parts[3] ? purchaseById(parts[3]) : null;
+      if (vise && C.PURCHASE_LIES.includes(p.kind)) {
+        p.achatLie = vise.id;
+        p.currency = vise.currency || company().currency;
+        p.exchangeRate = vise.exchangeRate || 1;
+        p.category = vise.category || '';
+        p.subject = (p.kind === 'avoir' ? 'Avoir sur ' : 'Acompte sur ') + (vise.number || vise.subject || 'la facture');
+      }
       isNew = true;
     } else {
       const stored = purchaseById(parts[0]);
@@ -5418,7 +5584,20 @@
       p = deepCopy(stored);
     }
     const isDep = p.kind === 'depense';
-    const cur = company().currency;
+    // 10.2.0 : un avoir ou un acompte se RATTACHE à la facture qu'il diminue. Le rattachement est
+    // facultatif — un avoir peut arriver avant la facture suivante, un acompte avant la commande —
+    // et tant qu'il manque, « À faire » le rappelle.
+    const natureLabel = k => (C.PURCHASE_KINDS.find(x => x[0] === k) || C.PURCHASE_KINDS[0])[1];
+    const lieItems = supId => data.purchases
+      .filter(x => x.id !== p.id && !C.PURCHASE_LIES.includes(x.kind) && (!supId || x.supplierId === supId))
+      .sort((a2, b2) => (b2.date || '').localeCompare(a2.date || ''))
+      .map(x => ({ v: x.id, label: x.number || 'Sans numéro',
+        sub: [C.fmtDate(x.date), x.subject || '', C.money(C.purchaseTotals(x, company()).netToPay, x.currency || company().currency)].filter(Boolean).join(' · '),
+        text: `${x.number || ''} ${x.subject || ''} ${supplierName(x.supplierId)}` }));
+    // La devise de la PIÈCE (10.1.0), plus celle de la société. Une facture fournisseur venue de
+    // l'étranger est libellée en euros ou en dollars : l'écran la montre telle que le fournisseur
+    // l'a écrite, et tout ce qui agrège passe par `t.base`.
+    let cur = p.currency || company().currency;
     const stored = isNew ? null : purchaseById(p.id);
     const cats = C.expenseCategories(data);
 
@@ -5429,7 +5608,7 @@
 
     $('#view').innerHTML = `
       <div class="page-head">
-        <div><h1>${isNew ? (isDep ? 'Nouvelle dépense' : 'Nouvelle facture d\'achat') : `${isDep ? 'Dépense' : 'Facture d\'achat'} ${h(p.number || 'sans numéro')}`}
+        <div><h1>${isNew ? (isDep ? 'Nouvelle dépense' : p.kind === 'avoir' ? 'Nouvel avoir fournisseur' : p.kind === 'acompte' ? 'Nouvel acompte versé' : 'Nouvelle facture d\'achat') : `${natureLabel(p.kind)} ${h(p.number || 'sans numéro')}`}
           <span class="dirty-dot" id="dirty-dot" hidden title="Modifications non enregistrées">non enregistré</span></h1>
           ${isNew ? '' : `<div class="small muted">${h(supplierName(p.supplierId))} · ${C.fmtDate(p.date)}</div>`}</div>
         <div class="actions">
@@ -5453,6 +5632,9 @@
               </div>
               ${field(lbl(isDep ? 'Référence du justificatif' : 'Numéro de la facture', 'buy.number'), 'number', p.number || '', 'text', isDep ? 'placeholder="Ticket, reçu…"' : 'placeholder="Celui écrit sur la facture du fournisseur"')}
               <label class="field">${lbl('Nature', 'buy.kind')}<select name="kind">${C.PURCHASE_KINDS.map(([v, l]) => `<option value="${v}" ${p.kind === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+              <div class="field" id="b-lie-field" ${C.PURCHASE_LIES.includes(p.kind) ? '' : 'hidden'}>${lbl('Facture concernée', 'buy.lie')}
+                ${combo({ name: 'achatLie', value: p.achatLie || '', items: lieItems(p.supplierId), placeholder: '— À rattacher plus tard —', search: 'Rechercher : n°, objet…' })}
+              </div>
               ${dateFieldHtml(lbl('Date de la pièce', 'buy.date'), 'date', p.date, {})}
               ${dateFieldHtml(lbl('Échéance de paiement', 'buy.due'), 'dueDate', p.dueDate || '', { quick: true })}
               <div class="field">${lbl('Catégorie de charge', 'buy.category')}
@@ -5464,6 +5646,8 @@
               </div>
               <label class="field">${lbl('Retenue à la source opérée', 'buy.withholding')}${withholdingSelect('withholdingRate', p.withholdingRate)}</label>
               ${field(lbl('Timbre et frais', 'buy.fees'), 'fees', p.fees || 0, 'number', 'step="0.001" min="0" class="num"')}
+              <label class="field">${lbl('Devise de la facture', 'buy.currency')}<select name="currency">${C.CURRENCIES.map(c => `<option value="${c}" ${c === cur ? 'selected' : ''}>${c}</option>`).join('')}</select></label>
+              <label class="field" id="b-rate-field" ${cur === company().currency ? 'hidden' : ''}><span class="fl"><span class="b-rate-lbl">Taux : 1 ${h(cur)} = ? ${h(company().currency)}</span> <span class="req">obligatoire</span> ${info('buy.rate')}</span><input type="number" name="exchangeRate" value="${h(p.exchangeRate || '')}" step="0.0001" min="0" class="num" placeholder="ex. 3.4"></label>
             </form>
           </div>
           <div class="panel"><h2>Lignes ${info('buy.lines')}</h2>
@@ -5512,7 +5696,6 @@
       const q = $(`tr[data-i="${i}"] input[data-k=qty]`, body); if (q) { q.focus(); q.select(); }
     };
     function drawLines() {
-      const n = p.lines.length;
       body.innerHTML = p.lines.map((l, i) => `<tr data-i="${i}">
         <td><input type="text" data-k="label" value="${h(l.label || '')}" placeholder="Désignation"></td>
         <td><input type="number" class="num" data-k="qty" value="${l.qty}" step="0.01"></td>
@@ -5587,7 +5770,10 @@
         ${t.deductibleVAT !== t.totalVAT ? `<tr><td>dont TVA déductible</td><td>${C.money(t.deductibleVAT, cur)}</td></tr>` : ''}
         ${t.fees ? `<tr><td>Timbre et frais</td><td>${C.money(t.fees, cur)}</td></tr>` : ''}
         ${t.withholding ? `<tr><td>Total TTC</td><td>${C.money(t.totalTTC, cur)}</td></tr><tr><td>Retenue opérée ${pct(t.withholdingRate)}%</td><td>- ${C.money(t.withholding, cur)}</td></tr>` : ''}
-        <tr class="grand"><td>Net à payer</td><td>${C.money(t.netToPay, cur)}</td></tr>
+        <tr class="grand"><td>${p.kind === 'avoir' ? 'Montant de l\'avoir' : p.kind === 'acompte' ? 'Montant de l\'acompte' : 'Net à payer'}</td><td>${C.money(t.netToPay, cur)}</td></tr>
+        ${p.kind === 'avoir' ? `<tr><td colspan="2" class="small muted">Ce montant vient EN MOINS${p.achatLie ? ' de la facture ' + h((purchaseById(p.achatLie) || {}).number || 'rattachée') : ' — rattache-le à une facture pour qu\'il la diminue'}.</td></tr>` : ''}
+        ${p.kind === 'acompte' ? `<tr><td colspan="2" class="small muted">Une avance, pas une charge : elle se soldera${p.achatLie ? ' sur la facture ' + h((purchaseById(p.achatLie) || {}).number || 'rattachée') : ' le jour où tu la rattacheras à sa facture'}.</td></tr>` : ''}
+        ${cur !== company().currency ? `<tr><td class="small muted">soit, en comptabilité ${C.missingRate(p, company()) ? '<span class="warn-text">(taux manquant)</span>' : `<span class="muted">(1 ${h(cur)} = ${pct(t.rate)} ${h(company().currency)})</span>`}</td><td class="small">${C.money(t.base.netToPay, company().currency)}</td></tr>` : ''}
         ${dest.length ? `<tr><td colspan="2" class="small muted" style="padding-top:8px">${dest.map(([k, lab]) => `${lab} ${C.money(t.byDestination[k], cur)}`).join(' · ')}</td></tr>` : ''}
       </table>`;
       // Une ligne « stock » dont le libellé ne retrouve aucun article suivi n'entrera dans aucun stock :
@@ -5607,7 +5793,14 @@
         // Le refus dit ce qui est refusé, pourquoi, ET le bouton qui débloque (7.0.0) : chaque ligne
         // fautive porte « Choisir l'article… », qui ramène au champ et ouvre les propositions.
         if (orphelines.length) morceaux.push(`<span class="small warn-text">${pl(orphelines.length, 'ligne')} en destination « stock » ${orphelines.length > 1 ? 'ne correspondent' : 'ne correspond'} à aucun article suivi du catalogue : ${orphelines.map(({ l, i }) => `« ${h(l.label || 'sans désignation')} » <button type="button" class="btn btn-sm" data-orph="${i}">Choisir l'article…</button>`).join(', ')}. ${orphelines.length > 1 ? 'Elles n\'entreront' : 'Elle n\'entrera'} dans aucun stock. ${info('stk.orphan')}</span>`);
-        if (immos.length) morceaux.push(`<div class="small warn-text mt">${pl(immos.length, 'ligne')} en immobilisation : l'amortissement ne commencera qu'une fois la fiche du bien créée (famille, durée, date de mise en service). En attendant, ${immos.length > 1 ? 'ces montants ne sont déduits' : 'ce montant n\'est déduit'} nulle part. ${info('immo.attente')}
+        // Quand l'offre ferme le module Immobilisations, l'avertissement change de sens : on ne
+        // reproche pas ce qu'on n'a pas offert (7.20.0), et « ce montant n'est déduit nulle part »
+        // serait faux — la ligne part au cabinet dans les écritures, au compte 22, et c'est lui qui
+        // établit le plan depuis la 9.7.0. Le refus se dirait deux fois, dont une à tort.
+        const immoFerme = (licence.reserves || []).includes('immos');
+        if (immos.length) morceaux.push(immoFerme
+          ? `<div class="small muted mt">${pl(immos.length, 'ligne')} en immobilisation : ${immos.length > 1 ? 'ces achats partent' : 'cet achat part'} à ton comptable dans les écritures du paquet, et c'est lui qui établit le plan d'amortissement. ${info('immo.attente')}</div>`
+          : `<div class="small warn-text mt">${pl(immos.length, 'ligne')} en immobilisation : l'amortissement ne commencera qu'une fois la fiche du bien créée (famille, durée, date de mise en service). En attendant, ${immos.length > 1 ? 'ces montants ne sont déduits' : 'ce montant n\'est déduit'} nulle part. ${info('immo.attente')}
           <button class="btn btn-sm mt" id="b-immo" type="button">Voir les biens à créer</button></div>`);
         box.hidden = !morceaux.length;
         box.innerHTML = morceaux.join('');
@@ -5633,8 +5826,29 @@
       p.fees = Number(p.fees) || 0;
       p.withholdingRate = Number(p.withholdingRate) || 0;
       touch();
+      // La devise de la pièce (10.1.0) : le champ du taux n'apparaît que quand il sert, et son
+      // libellé NOMME les deux monnaies — « 1 EUR = ? TND » se remplit sans réfléchir, « Taux de
+      // change » tout court se remplit à l'envers une fois sur deux.
+      if (e && e.target && e.target.name === 'currency') {
+        cur = p.currency || company().currency;
+        const rf = $('#b-rate-field', head);
+        if (rf) { rf.hidden = cur === company().currency; $('.b-rate-lbl', rf).textContent = `Taux : 1 ${cur} = ? ${company().currency}`; }
+        drawLines();
+      }
+      // La nature décide du rattachement (10.2.0) : seuls un avoir et un acompte en ont un, et
+      // repasser en facture efface le lien plutôt que de le laisser dormir dans les données.
+      if (e && e.target && e.target.name === 'kind') {
+        const lf = $('#b-lie-field', head);
+        const lie = C.PURCHASE_LIES.includes(p.kind);
+        if (lf) lf.hidden = !lie;
+        if (!lie && p.achatLie) { p.achatLie = ''; lieCombo.setValue(''); }
+      }
       if (e && e.target && e.target.name === 'supplierId' && p.supplierId !== appliedSupplier) {
         appliedSupplier = p.supplierId;
+        // La liste des factures à rattacher suit le fournisseur : proposer celles d'un autre serait
+        // proposer une imputation impossible (même règle que l'affaire qui suit le client, 3.4.0).
+        lieCombo.setItems(lieItems(p.supplierId));
+        if (p.achatLie && !lieItems(p.supplierId).some(x => x.v === p.achatLie)) { p.achatLie = ''; lieCombo.setValue(''); }
         // nouveau fournisseur : on reprend son délai de paiement et son taux de retenue
         const sup = supplierById(p.supplierId);
         if (sup) {
@@ -5647,6 +5861,7 @@
       }
       refresh();
     };
+    const lieCombo = bindCombo($('[data-combo=achatLie]', head), { items: lieItems(p.supplierId), placeholder: '— À rattacher plus tard —' });
     const supCombo = bindCombo($('[data-combo=supplierId]', head), {
       items: supplierItems(), placeholder: '— Choisir un fournisseur —',
       onAdd: () => supplierForm(null, sup => { supCombo.setItems(supplierItems()); supCombo.setValue(sup.id); })
@@ -5805,7 +6020,24 @@
     function validate() {
       if (!p.supplierId) return refus('[data-combo=supplierId] .combo-btn', 'Choisis un fournisseur.');
       if (!p.date) return refus('[name=date]', 'La date de la pièce est obligatoire.');
+      // Le taux de change d'un achat (10.1.0) : même règle que sur un document de vente depuis la
+      // 7.0.1. Son oubli ne se voit nulle part ICI et fausse tout AILLEURS — la TVA déductible, la
+      // charge, le résultat, le stock, les écritures et le paquet du comptable compteraient
+      // 1 euro = 1 dinar. Il est donc obligatoire, pas conseillé.
+      if (C.missingRate(p, company())) {
+        return refus('[name=exchangeRate]',
+          `Indique le taux de change : combien vaut 1 ${p.currency} en ${company().currency} ? Sans lui, ta TVA déductible et tes charges compteraient 1 ${p.currency} = 1 ${company().currency}.`);
+      }
       if (!p.lines.some(l => (l.label || '').trim() || Number(l.unitPrice))) return refus('#b-lines input[data-k=label]', 'Saisis au moins une ligne avec un montant.');
+      // Un avoir et la facture qu'il diminue sont dans la MÊME devise (10.2.0) : un fournisseur
+      // avoise dans la monnaie où il a facturé. Déduire 300 € de 1 000 DT donnerait un reste dû
+      // faux, et personne ne le verrait — c'est exactement la faute de la 10.1.0, un cran plus loin.
+      if (C.PURCHASE_LIES.includes(p.kind) && p.achatLie) {
+        const cible = purchaseById(p.achatLie);
+        if (cible && (cible.currency || company().currency) !== (p.currency || company().currency)) {
+          return refus('[name=currency]', `Cette pièce est en ${p.currency} et la facture ${cible.number || 'qu\'elle vise'} est en ${cible.currency}. Elles doivent être dans la même devise pour que la déduction ait un sens.`);
+        }
+      }
       if (p.dueDate && p.dueDate < p.date) return refus('[name=dueDate]', 'L\'échéance ne peut pas précéder la date de la pièce.');
       return true;
     }
@@ -5933,7 +6165,6 @@
 
   // ---------- Affaires et marges ----------
   const projectById = id => data.projects.find(p => p.id === id);
-  const projectName = id => (projectById(id) || {}).name || '';
   // Liste utilisée par tous les sélecteurs d'affaire : les affaires en cours d'abord.
   const projectItems = (clientId) => data.projects
     .filter(p => !clientId || !p.clientId || p.clientId === clientId)
@@ -6267,8 +6498,8 @@
     const auto = slip ? null : C.payslipInputFor(data, emp, year, month);
     const p = slip || { id: C.uid(), employeeId: emp.id, year, month, ...auto, paidDate: '', accountId: '',
       method: emp.method || 'virement', reference: '', issuedAt: C.today() };
-    let bonuses = deepCopy(p.bonuses || []);
-    let deductions = deepCopy(p.deductions || []);
+    const bonuses = deepCopy(p.bonuses || []);
+    const deductions = deepCopy(p.deductions || []);
 
     modal(`<h2>Bulletin de ${h(emp.name)} — ${h(MONTHS_LONG[Number(p.month) - 1])} ${h(String(p.year))}</h2>
       <form id="bf" class="grid-2">
@@ -6485,7 +6716,7 @@
     const bal = C.leaveBalance(data, e.id, Number((e.endDate || C.today()).slice(0, 4)));
     const last = C.payslipsOf(data).filter(p => p.employeeId === e.id)[0];
     const daily = last ? C.round3(last.c.gross / (Number(st.workedDays) || 26)) : C.round3(e.grossSalary / 26);
-    let lines = [
+    const lines = [
       { label: 'Salaire du mois en cours', amount: 0 },
       { label: `Indemnité de congés non pris (${pct(Math.max(0, bal.remaining))} jour${sPl(Math.max(0, bal.remaining))})`, amount: C.round3(daily * Math.max(0, bal.remaining)) },
       { label: 'Indemnité de préavis', amount: 0 },
@@ -6989,7 +7220,7 @@
             <button type="button" class="btn" id="rf-reset">Revenir aux valeurs livrées</button>
           </div>
         </form>`;
-      let brackets = deepCopy(st.brackets);
+      const brackets = deepCopy(st.brackets);
       const drawBrackets = () => {
         let from = 0;
         $('#rf-br').innerHTML = brackets.map((b, i) => {
@@ -7594,7 +7825,7 @@
     // core.js : elle est testable sans Electron, ce qui compte quand on manipule ce qu'une machine a cru lire.
     const prep = C.ocrToPurchase(read, data);
     const head = { ...prep.head, category: '' };
-    let lines = prep.lines;
+    const lines = prep.lines;
 
     const computed = () => C.round3(lines.reduce((a, l) => a + l.qty * l.unitPrice, 0));
     const gapHT = () => prep.readHT == null ? null : C.round3(computed() - prep.readHT);
@@ -7749,7 +7980,6 @@
     const lines = (doc.lines || []).map(l => ({ l, item: C.itemOfLine(l, data) }))
       .filter(x => x.item && x.item.serialized);
     if (!lines.length) return toast('Aucune ligne de ce document ne porte un article suivi par numéro de série.', true);
-    const cur = company().currency;
     const chosen = {};                       // itemId → Set d'identifiants
     const draw = (root) => {
       const body = $('#sa-body', root);
@@ -8973,7 +9203,7 @@
               if (v.remember) { data.company.accountantEmail = v.to; save(true); }
               close();
               toast(r && r.state === 'mail' ? 'Message ouvert dans Mail avec le journal joint' : 'Message ouvert — glisse le fichier affiché dans le Finder');
-            } catch (e) { b.disabled = false; b.textContent = 'Ouvrir dans la messagerie'; toast('Erreur : ' + e.message.replace(/^.*Error: /, ''), true); }
+            } catch (e) { b.disabled = false; b.textContent = 'Ouvrir dans la messagerie'; toast(plainError(e), true); }
           }; });
       };
       // La carte « Reste à encaisser » affichait le même chiffre que sa jumelle de l'accueil et,
@@ -8996,7 +9226,7 @@
         const files = rows.map(r => { const d = docById(r.id); return { name: `${d.number}_${(r.client || '').replace(/[^\w\-àâäéèêëïîôöùûüç ]/gi, '').trim().replace(/\s+/g, '_')}.pdf`, html: C.documentHtml(d, clientById(d.clientId), company(), { stampText: stampFor(d) }) }; });
         toast(`Génération de ${files.length} PDF…`);
         try { const dir = await bridge.exportPdfMany(files, `SkanFact-${tag}`); if (dir) { toast(`${files.length} PDF exportés`); bridge.openPath(dir); } }
-        catch (e) { toast('Erreur : ' + e.message, true); }
+        catch (e) { toast(plainError(e), true); }
       };
     };
     // ---------- onglet Achats : le journal symétrique de celui des ventes ----------
@@ -9016,6 +9246,24 @@
         { key: 'net', label: 'Net payé', r: true, val: r => r.net, get: r => C.money(r.net) },
         { key: 'status', label: 'Statut', val: r => r.status, get: r => buyBadge(r.status) }
       ];
+      // 10.0.1 — Les règlements fournisseurs partaient dans le paquet du comptable
+      // (`journaux/reglements-fournisseurs.csv`, depuis la 6.1.0) et n'avaient AUCUN écran ici : le
+      // seul des cinq journaux que ton comptable recevait sans que tu puisses l'ouvrir. `decColumns`
+      // existait, lue par personne — la signature d'un mécanisme écrit et jamais branché (7.3.0).
+      // Le panneau est le jumeau exact des « Encaissements » de l'onglet Ventes : même place, même
+      // export, même ligne cliquable — l'argent qui sort se lit comme l'argent qui entre.
+      const allDecs = C.supplierPayments(data, company(), p);
+      const decs = allDecs.filter(r => !q || `${r.number || ''} ${r.supplier || ''} ${r.reference || ''} ${r.method || ''}`.toLowerCase().includes(q));
+      const decTotal = decs.reduce((s, r) => s + r.amount, 0);
+      const decCols = [
+        { key: 'date', label: 'Date', asc: true, cls: 'nw', val: r => r.date || '', get: r => C.fmtDate(r.date) },
+        { key: 'number', label: 'Pièce', asc: true, cls: 'nw', val: r => (r.number || '').toLowerCase(), get: r => r.number ? `<strong>${h(r.number)}</strong>` : '<span class="muted">sans numéro</span>' },
+        { key: 'supplier', label: 'Fournisseur', asc: true, val: r => (r.supplier || '').toLowerCase(), get: r => h(r.supplier) },
+        { key: 'method', label: 'Mode', asc: true, val: r => r.method || '', get: r => h(r.method) },
+        { key: 'reference', label: 'Référence', asc: true, val: r => (r.reference || '').toLowerCase(), get: r => h(r.reference) },
+        { key: 'amount', label: 'Montant', r: true, val: r => r.amount, get: r => C.money(r.amount, cur) }
+      ];
+      const decPage = paginate(applySort(decs, decCols, comptaState.decs.sort), comptaState.decs);
       const pg = paginate(applySort(rows, cols, comptaState.buys.sort), comptaState.buys);
       $('#c-body').innerHTML = `
         <div class="filters">
@@ -9039,9 +9287,16 @@
           </tbody><tfoot><tr><td colspan="4"><strong>Total</strong></td><td class="r"><strong>${C.money(sum.ht)}</strong></td><td class="r"><strong>${C.money(sum.tva)}</strong></td>
             <td class="r"><strong>${C.money(sum.deductible)}</strong></td><td class="r"><strong>${C.money(sum.net)}</strong></td><td></td></tr></tfoot></table></div>${pagerBar(pg.pg, { noun: 'pièce' })}`
             : '<div class="empty">Aucun achat sur cette période.</div>'}
+        </div>
+        <div class="panel"><h2>Règlements fournisseurs — ${h(label)} ${info('compta.decaissements')}</h2>
+          <div class="inline mb"><button class="btn" id="exp-decs">Exporter en CSV</button></div>
+          ${decs.length ? `<div id="d-wrap"><table class="list compact sortable"><thead>${sortHead(decCols, comptaState.decs.sort)}</thead><tbody>
+            ${decPage.rows.map(r => `<tr class="clickable" data-bid="${r.purchaseId}">${decCols.map(c => `<td class="${c.r ? 'r nw' : ''}${c.cls ? ' ' + c.cls : ''}">${c.get(r)}</td>`).join('')}</tr>`).join('')}
+          </tbody><tfoot><tr><td colspan="5"><strong>Total réglé</strong></td><td class="r"><strong>${C.money(decTotal, cur)}</strong></td></tr></tfoot></table></div>${pagerBar(decPage.pg, { noun: 'règlement' })}`
+            : '<div class="empty">Aucun règlement fournisseur sur cette période.</div>'}
         </div>`;
       $$('#c-body tr[data-bid]').forEach(tr => tr.onclick = () => navigate('#/achat/' + tr.dataset.bid));
-      $('#cpt-q').oninput = e => { comptaState.q = e.target.value; comptaState.buys.page = 1; draw(); const el = $('#cpt-q'); el.focus(); el.setSelectionRange(el.value.length, el.value.length); };
+      $('#cpt-q').oninput = e => { comptaState.q = e.target.value; comptaState.buys.page = 1; comptaState.decs.page = 1; draw(); const el = $('#cpt-q'); el.focus(); el.setSelectionRange(el.value.length, el.value.length); };
       if ($('#reset-f')) $('#reset-f').onclick = () => { comptaState.q = ''; draw(); };
       const panel = $('#b-wrap') && $('#b-wrap').closest('.panel');
       if (panel) {
@@ -9051,6 +9306,20 @@
       $('#exp-buys').onclick = async () => {
         if (!rows.length) return toast('Rien à exporter sur cette période.', true);
         const f = await bridge.saveText(`journal-achats-${tagOf()}.csv`, C.toCsv(rows, buyJournalColumns()));
+        if (f) toast('Exporté : ' + f.split(/[\\/]/).pop());
+      };
+      // Le panneau des règlements a son tri, sa pagination et son export — comme les autres listes
+      // depuis la 2.2.0, et l'export porte sur la SÉLECTION entière, jamais sur la page affichée.
+      const dPanel = $('#d-wrap') && $('#d-wrap').closest('.panel');
+      if (dPanel) {
+        bindSort(dPanel, key => { comptaState.decs.sort = toggleSort(comptaState.decs.sort, key, decCols); comptaState.decs.page = 1; draw(); });
+        bindPager(dPanel, comptaState.decs, () => draw(), '#d-wrap');
+      }
+      $('#exp-decs').onclick = async () => {
+        if (!decs.length) return toast('Rien à exporter sur cette période.', true);
+        // `decColumns()` est la MÊME liste que celle du paquet envoyé au comptable (6.1.0) : deux
+        // exports du même mois ne peuvent pas dire deux choses différentes.
+        const f = await bridge.saveText(`reglements-fournisseurs-${tagOf()}.csv`, C.toCsv(decs, decColumns()));
         if (f) toast('Exporté : ' + f.split(/[\\/]/).pop());
       };
     }
@@ -10123,7 +10392,7 @@
     }
 
     const tagOf = () => comptaState.month ? `${comptaState.year}-${comptaState.month}` : comptaState.year;
-    const resetPages = () => { comptaState.journal.page = 1; comptaState.pays.page = 1; comptaState.buys.page = 1; };
+    const resetPages = () => { comptaState.journal.page = 1; comptaState.pays.page = 1; comptaState.buys.page = 1; comptaState.decs.page = 1; };
     $('#c-year').onchange = e => { comptaState.year = e.target.value; resetPages(); draw(); };
     $('#c-month').onchange = e => { comptaState.month = e.target.value; resetPages(); draw(); };
     // La porte mène à LA CASE, pas à la page qui mène à la page qui la contient. Les Paramètres
@@ -11528,7 +11797,22 @@
         <button type="button" class="btn" id="ed-pont-ventes">Voir les ventes à facturer</button>
         ${C.chargeHistorique(data, company()).length && !data.pontImporte ? '<button type="button" class="btn" id="ed-pont-import">Envoyer l\'historique à la console…</button>' : ''}
       </div>
-      ${data.pontImporte ? `<p class="small muted mt">Historique envoyé à la console le ${C.fmtDate(data.pontImporte)}.</p>` : ''}` : ''}`;
+      ${data.pontImporte ? `<p class="small muted mt">Historique envoyé à la console le ${C.fmtDate(data.pontImporte)}.</p>` : ''}
+      ${blocExportConsole()}` : ''}`;
+  }
+
+  // L'export de la base de la console (10.4.0). La base du service est le SEUL endroit où vit
+  // « qui a acheté quelle clé » : sans copie, la perdre emporte toutes les ventes, et plus aucune
+  // clé vendue ne peut être renvoyée, renouvelée ni révoquée. L'avertissement se lit AVANT le
+  // geste, jamais sous le bouton (9.4.2).
+  function blocExportConsole() {
+    const e = C.exportConsoleAFaire(data, C.today());
+    const etat = !e.du
+      ? '<span class="badge retard">Jamais exportée</span>'
+      : (e.reclame ? `<span class="badge partielle">Exportée il y a ${pl(e.jours, 'jour')}</span>` : `<span class="badge payée">Exportée le ${C.fmtDate(e.du)}</span>`);
+    return `<p class="mt"><strong>La copie de la base</strong> ${etat}</p>
+      <p class="small">La base de la console porte tes clients, tes licences et tes ventes — et le contenu signé de chaque clé, celui qui permet de la refabriquer à l'identique. L'export la range dans un seul fichier de <code>~/.skanfact/</code>, à côté de tes clés : jamais dans tes données, jamais dans une sauvegarde, jamais dans un dossier partagé.</p>
+      <div class="inline mt"><button type="button" class="btn ${e.reclame ? 'btn-primary' : ''}" id="ed-export-base">Exporter la base…</button></div>`;
   }
   function brancherPont() {
     const champ = $('#ed-pont-secret');
@@ -11551,6 +11835,18 @@
     };
     if ($('#ed-pont-ventes')) $('#ed-pont-ventes').onclick = () => navigate('#/licences');
     if ($('#ed-pont-import')) $('#ed-pont-import').onclick = envoyerHistoriqueConsole;
+    if ($('#ed-export-base')) $('#ed-export-base').onclick = async () => {
+      const b = $('#ed-export-base'); b.disabled = true;
+      try {
+        const r = await bridge.pontExporterBase();
+        // Le COMPTE par table, dit : un export tronqué ressemble à un export complet, et c'est le
+        // jour où l'on en a besoin qu'on s'en aperçoit (règle du manifeste, 6.1.0).
+        const lignes = Object.keys(r.comptes || {}).map(t => `${t} : ${r.comptes[t]}`).join('\n');
+        data.exportConsole = r.jour; save(true);
+        await confirmDialog(`Base exportée.\n\n${r.chemin}\n\n${lignes}\n\nEmpreinte : ${String(r.sha256 || '').slice(0, 16)}…\n\nCe fichier n'est pas chiffré et porte tes clients : garde-le où tu gardes tes clés.`, 'Fermer', false);
+        drawEditeurPanel();
+      } catch (e) { b.disabled = false; toast(plainError(e), true); }
+    };
   }
 
   // L'historique des licences émises DANS SkanFact part UNE fois vers la console, pour qu'elle
@@ -12189,7 +12485,6 @@
           if (v.prix === '' || !(Number(v.prix) >= 0)) return refus('#co-prix', 'Indique le prix plein de la nouvelle offre.');
           const pr = C.prorataOffre(lic, Number(v.prix), Number(lic.prix) || 0);
           if (licenceBlock('Créer une facture de licence')) return;
-          const client = clientById(lic.clientId);
           const b = $('#ok', root); b.disabled = true;
           let r;
           try {
@@ -12552,7 +12847,7 @@
       if (!ok) { if (box) box.checked = false; return; }
       // Le filet, pris AVANT d'armer le canal : au moment où la bêta s'installera, l'utilisateur
       // sera peut-être ailleurs, et c'est trop tard pour y penser.
-      try { await bridge.createBackup('avant-beta'); } catch (e) { /* pas de filet ≠ pas de canal */ }
+      try { await bridge.createBackup('avant-beta'); } catch (_) { /* pas de filet ≠ pas de canal */ }
     }
     const r = await bridge.updateSetBeta(!!on);
     upd.app.beta = r.beta;
@@ -12898,7 +13193,7 @@
       // reperdait le fichier importé ; sans le désarmement, le garde-fou réclamait ensuite des
       // modifications qui n'existent plus.
       if (d) { clearGuard(); data = migrate(d); save(true); applyTheme(); $('#brand-company').textContent = data.company.name; toast('Données importées'); render(); }
-    } catch (e) { toast('Import impossible : ' + e.message.replace(/^.*Error: /, ''), true); }
+    } catch (e) { toast('Import impossible : ' + plainError(e), true); }
   }
   // « Exporter » et « Importer » vivaient dans le pied de la barre latérale, donc toujours visibles,
   // alors que « Paramètres » et « Aide » ne l'étaient jamais. Les deux boutons dont un débutant n'a

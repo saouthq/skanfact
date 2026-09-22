@@ -4,7 +4,7 @@
 // Ce qu'il déroule : création du cabinet (mot de passe), réglages, dossier créé à la main, exemple,
 // tri, pagination, recherche, Cmd+K, fiche complète, relance enregistrée, relance groupée,
 // sauvegardes, restauration, changement de mot de passe, clé de secours, bulles « i ».
-const { playwright, RACINE, ELECTRON, VERSION } = require('./harnais');
+const { playwright, RACINE, ELECTRON } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
 const root = RACINE;

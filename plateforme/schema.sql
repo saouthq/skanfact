@@ -55,6 +55,10 @@ CREATE TABLE IF NOT EXISTS licences (
   -- elle-même : Ed25519 est déterministe, donc signer de nouveau ce contenu avec la même clé privée
   -- redonne la même clé, à l'identique — et sans la clé privée, ce contenu ne vaut rien.
   charge            TEXT,
+  -- 10.8.0 — « sans limite » : une licence de cabinet qui ne compte PAS ses dossiers. NULL ou 0 =
+  -- tout ce qui a été vendu avant, c'est-à-dire un quota ordinaire. C'est un ÉTAT, pas un très
+  -- grand `dossiers_hors` : une clé à 99 999 afficherait un nombre que personne n'a décidé.
+  illimite          INTEGER,
   envoyee_le        TEXT,                 -- la clé est partie par mail (NULL = jamais envoyée)
   -- 9.4.1 : une licence de CABINET (SkanFact Cabinet). NULL = entreprise, c'est-à-dire tout ce qui
   -- a été émis avant. Son sujet est `cabinet_empreinte`, et ce qu'elle porte est un quota de
@@ -76,10 +80,25 @@ CREATE TABLE IF NOT EXISTS activations (
   device_nom     TEXT,
   plateforme     TEXT,
   version        TEXT,
+  -- 10.4.0 — 'entreprise' ou 'cabinet'. NULL = tout ce qui a été noté avant, c'est-à-dire l'app
+  -- entreprise : elle était seule à s'annoncer. Sans cette colonne, la moitié du parc — celle des
+  -- comptables — n'existait nulle part, et deux applications se confondaient sur la même version.
+  app            TEXT,
   premiere_fois  TEXT NOT NULL,
   derniere_fois  TEXT NOT NULL
 );
-CREATE UNIQUE INDEX IF NOT EXISTS idx_activ_unique ON activations(empreinte, device_id);
+-- 10.4.0-beta.3 — `app` ENTRE dans la clé. Sans elle, deux applications qui partagent une identité
+-- de poste se battent pour la même ligne : la seconde écrase la première, et le parc perd une
+-- moitié en silence. Ça tenait par accident jusqu'ici — chaque application a son propre dossier
+-- `userData`, donc son propre `deviceId` — mais un accident n'est pas un garde-fou.
+--
+-- COALESCE et non `app` nu : dans un index UNIQUE de SQLite, deux NULL sont DISTINCTS. Sur la clé
+-- nue, une annonce de l'app entreprise arrivant sur une ligne d'avant la 10.4.0 (app NULL) ne
+-- trouverait aucun conflit et créerait un DOUBLON — le poste compterait deux fois. Avec COALESCE,
+-- l'ancienne ligne vaut 'entreprise' et se met à jour, ce qu'elle est vraiment : l'app entreprise
+-- était seule à s'annoncer avant.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_activ_unique
+  ON activations(empreinte, device_id, COALESCE(app, 'entreprise'));
 
 -- ---------- les ventes ----------
 -- Le pont comptable (§ 11) : SkanFact les TIRE, l'API ne pousse jamais.
@@ -120,3 +139,43 @@ CREATE TABLE IF NOT EXISTS evenements (
   par_qui    TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_evt_quand ON evenements(quand);
+
+-- ---------- les réglages de la console (10.5.0) ----------
+-- Un prix, un seuil d'alerte, une signature de mail : tout ce qui se décide plutôt que se calcule.
+-- Jusqu'ici ces valeurs vivaient dans les VARIABLES du worker (`PRIX_ENTREPRISE`…) ou, pire, en dur
+-- dans le code : changer un tarif demandait un déploiement. Un réglage qu'on ne peut pas changer
+-- depuis l'écran n'est pas un réglage, c'est une constante avec un nom trompeur.
+--
+-- Trois rangs, du plus fort au plus faible : ce que porte cette table, sinon la variable du worker,
+-- sinon la valeur par défaut écrite dans `REGLAGES`. L'ordre compte — poser une valeur ici doit
+-- pouvoir CORRIGER une variable mal réglée sans toucher à Cloudflare, jamais l'inverse.
+CREATE TABLE IF NOT EXISTS reglages (
+  cle       TEXT PRIMARY KEY,
+  valeur    TEXT NOT NULL,
+  change_le TEXT NOT NULL
+);
+
+-- ---------- le suivi commercial (10.5.0) ----------
+-- Ce que l'éditeur a FAIT d'un prospect ou d'un client : appelé, écrit, rappeler le 12, perdu parce
+-- que trop cher. La console savait ce qui EXISTE et ne retenait rien de ce qu'on en faisait : un
+-- essai se terminait, l'alerte se levait, on appelait — et le lendemain la même alerte se relevait
+-- à l'identique. Une alerte qui ne se referme pas cesse d'être lue au cinquième prospect.
+--
+-- `sujet` désigne ce qu'on suit, avec le MÊME identifiant que l'alerte correspondante : un essai
+-- (« essai:<device_id>:<app> ») ou un client (« client:<id> »). Deux façons de nommer le même
+-- prospect donneraient un suivi qui ne referme jamais rien.
+--
+-- `rappel` est la seule date qui fait taire : d'ici là, le sujet ne redemande rien. `issue` clôt —
+-- gagné, ou perdu avec son motif, qui est la seule chose qui apprend quelque chose.
+CREATE TABLE IF NOT EXISTS suivis (
+  id     TEXT PRIMARY KEY,
+  sujet  TEXT NOT NULL,
+  quand  TEXT NOT NULL,                   -- horodatage ISO de la saisie
+  moyen  TEXT,                            -- appel, mail, visite, message
+  note   TEXT,
+  rappel TEXT,                            -- AAAA-MM-JJ, ou vide
+  issue  TEXT,                            -- '', 'gagne', 'perdu'
+  motif  TEXT,                            -- pourquoi perdu : la seule chose qui apprend
+  source TEXT                             -- comment il nous a connus, saisi à la main
+);
+CREATE INDEX IF NOT EXISTS idx_suivis_sujet ON suivis(sujet);

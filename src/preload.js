@@ -74,6 +74,7 @@ contextBridge.exposeInMainWorld('skanfact', {
   pontStatus: () => ipcRenderer.invoke('pont:status'),
   pontSetSecret: (secret) => ipcRenderer.invoke('pont:setSecret', secret),
   pontRequete: (chemin, corps) => ipcRenderer.invoke('pont:requete', chemin, corps),
+  pontExporterBase: () => ipcRenderer.invoke('pont:exporterBase'),
   cleServeurCreer: () => ipcRenderer.invoke('editeur:cleServeurCreer'),
   cleServeurCopier: (quoi) => ipcRenderer.invoke('editeur:cleServeurCopier', quoi),
   onPackProgress: (cb) => { ipcRenderer.on('pack:progress', (_e, d) => cb(d)); },

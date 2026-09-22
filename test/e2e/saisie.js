@@ -289,6 +289,14 @@ const étape = m => { pas++; console.log('\n' + pas + '. ' + m); };
   if (JSON.stringify(nums) !== JSON.stringify(attendus)) {
     throw new Error('la numérotation a un trou : ' + nums.join(',') + ' au lieu de 1..' + nums.length);
   }
+  // Et les numéros d'AVANT n'ont pas bougé (10.0.1). « 1..n sans trou » ne dit rien de ça : une
+  // renumérotation complète donnerait 1..n tout autant. Un numéro naît à la validation et ne bouge
+  // plus (règle 9.2.0), donc les anciens doivent être exactement le début de la nouvelle suite.
+  // Le tableau d'avant était mesuré depuis la 9.3.0 et n'était comparé à rien.
+  const debut = nums.slice(0, avant.length).sort((a, b) => a - b);
+  if (JSON.stringify(debut) !== JSON.stringify([...avant].sort((a, b) => a - b))) {
+    throw new Error('des numéros déjà attribués ont bougé : ' + avant.join(',') + ' → ' + debut.join(','));
+  }
   if (L.ecritures.find(e => e.id === idFaux).numero !== null) throw new Error('la pièce refusée a consommé un numéro');
   ok('la suite des numéros est 1..' + nums.length + ' sans trou — le contrôle passe bien AVANT l\'attribution');
 

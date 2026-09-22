@@ -749,6 +749,13 @@
       // la pièce et le compte sur lesquels elle est née, et ces trois-là n'existent que dans
       // l'exercice où ils ont été écrits. Absente d'un livre écrit avant, elle vaut `[]`.
       questions: [],
+      // Les septième et huitième, ajoutées en 10.3.0 : les SALARIÉS du dossier et leurs BULLETINS.
+      // Un cabinet a soixante clients dont deux utilisent SkanFact : pour les cinquante-huit autres
+      // — ceux qui PAIENT — il n'existait aucun moyen de tenir la paie, alors que c'est le travail
+      // mensuel le plus réclamé après la TVA. Elles vivent dans le livre de l'exercice parce qu'un
+      // bulletin appartient à un mois, et que son calcul est figé comme une écriture validée.
+      // Absentes d'un livre écrit avant, elles valent `[]`.
+      salaries: [], bulletins: [],
       ouverture: { date: null, source: null, lignes: [] },
       audit: []
     };
@@ -789,6 +796,12 @@
   // Pure et idempotente : la relancer sur un livre déjà migré ne change rien.
   function migrerLivre(livre) {
     if (!livre || typeof livre !== 'object') return livre;
+    // Les listes AJOUTÉES après coup valent `[]` à la lecture (10.3.0) : un livre écrit par une
+    // version d'avant n'en porte pas, et l'écran qui les lit ne doit pas tomber. Une liste ajoutée
+    // est compatible ; un champ renommé ne l'est pas (9.7.0).
+    ['salaries', 'bulletins', 'inventaires', 'revisions', 'questions'].forEach(k => {
+      if (!Array.isArray(livre[k])) livre[k] = [];
+    });
     (livre.ecritures || []).forEach(e => {
       (e.lignes || []).forEach(l => { if (typeof l.tiers !== 'string') l.tiers = ''; });
     });
@@ -1934,8 +1947,7 @@
 
   // L'échéancier et la balance âgée lisent les lignes de tiers NON LETTRÉES — jamais une liste à
   // part (SPEC-UI-CAB-022). Une seconde liste se désynchroniserait au premier lettrage.
-  function echeancierDepuisLignes(entries, compteOuRole, todayIso, opts) {
-    const o = opts || {};
+  function echeancierDepuisLignes(entries, compteOuRole, todayIso) {
     const l = lettrageDepuisLignes(entries, compteOuRole, todayIso);
     const aujourdhui = txt(todayIso);
     const lignes = [];
@@ -3899,7 +3911,7 @@
       let touchees = 0;
       (Array.isArray(autre.revisions) ? autre.revisions : []).forEach(v => {
         if (!v || !txt(v.periode)) return;
-        let m = miennes.find(x => txt(x.periode) === txt(v.periode));
+        const m = miennes.find(x => txt(x.periode) === txt(v.periode));
         if (!m) { miennes.push(v); touchees++; return; }
         const avant = (m.comptes || []).length + (m.notes || []).length + (m.questionnaire || []).length;
         const vusC = new Set((m.comptes || []).map(c => txt(c.compte)));
@@ -3968,6 +3980,20 @@
           if (gap > 0) last.credit = round3(last.credit + gap); else last.debit = round3(last.debit - gap);
           if (last.credit < 0) { last.debit = round3(last.debit - last.credit); last.credit = 0; }
           if (last.debit < 0) { last.credit = round3(last.credit - last.debit); last.debit = 0; }
+          // MAIS L'ABSORBEUR DIT CE QU'IL A AVALÉ (10.1.0), au-delà de ce qu'un arrondi peut
+          // produire. Il existe depuis la 6.3.0 pour les quelques millimes que laisse une TVA
+          // calculée ligne par ligne ; il avalait en réalité N'IMPORTE QUEL écart, et rendait une
+          // pièce parfaitement équilibrée, parfaitement plausible, et fausse. Trouvé en prouvant la
+          // conversion de devise des achats : le défaut réintroduit (le fournisseur crédité du
+          // montant natif au lieu du converti) laissait 2 856 DT de trou, et la pièce sortait juste
+          // — donc le test ne pouvait pas le voir, et un vrai défaut du même genre passerait de
+          // même. On continue d'équilibrer (une pièce déséquilibrée ne s'importe nulle part), mais
+          // on MARQUE : `ecartAbsorbe` porte le trou, et c'est lui qui se vérifie.
+          //
+          // La tolérance est un millime par ligne : c'est le maximum que `round3` peut laisser, et
+          // pas un seuil choisi au jugé.
+          const tolerance = round3(0.001 * lines.length);
+          if (Math.abs(gap) > tolerance) lines.forEach(l => { l.ecartAbsorbe = gap; });
         }
         return lines;
       }
@@ -4077,6 +4103,416 @@
     return assetCumulated(asset, out && dateIso > out ? out : dateIso);
   }
 
+
+  // ---------- la paie (10.3.0, déménagée de core.js) ----------
+  // Le moteur de paie prend un SALARIÉ et une SAISIE, jamais `data` : il était du mauvais côté
+  // depuis la 5.0.0 (règle de découpage de la 9.1.0, relue dans les deux sens en 9.6.1). Le Cabinet
+  // en a besoin pour tenir la paie des dossiers qui ne sont PAS sur SkanFact — un cabinet a soixante
+  // clients dont deux utilisent SkanFact — et il ne charge pas core.js. La seule alternative était
+  // la recopie ; core.js le réexporte à l'identique, et un test compare les OBJETS, jamais leurs
+  // résultats (9.6.1).
+  //
+  // Les trois principes de la 5.0.0 ne bougent pas : aucun taux n'est écrit en dur dans un calcul,
+  // les valeurs livrées sont INDICATIVES (« À VÉRIFIER avec le comptable »), et un bulletin garde
+  // une COPIE de ce qui a servi à le calculer.
+
+  const CONTRACT_TYPES = [
+    ['cdi', 'CDI — contrat à durée indéterminée'],
+    ['cdd', 'CDD — contrat à durée déterminée'],
+    ['sivp', 'SIVP — stage d\'initiation à la vie professionnelle'],
+    ['karama', 'Contrat Karama'],
+    ['stage', 'Stage'],
+    ['autre', 'Autre']
+  ];
+  const contractLabel = k => (CONTRACT_TYPES.find(x => x[0] === k) || [, k])[1];
+
+  // Valeurs de départ, toutes modifiables. Régime tunisien, secteur non agricole.
+  // À VÉRIFIER avec le comptable : chacune de ces lignes peut changer d'une loi de finances à l'autre.
+  const DEFAULT_PAYROLL = {
+    cnssEmployee: 9.18,        // part salarié
+    cnssEmployer: 16.57,       // part employeur
+    accidentRate: 0.4,         // accident du travail : dépend de l'activité
+    tfpRate: 2,                // taxe de formation professionnelle : 2 % (1 % pour les industries manufacturières) — 9.0.0
+    foprolosRate: 1,           // FOPROLOS (logement social) : 1 % de la masse salariale — 9.0.0
+    solidarity: 1,             // contribution sociale de solidarité, en points sur la base imposable
+    proRate: 10,               // frais professionnels : % du salaire imposable…
+    proCap: 2000,              // …plafonnés à ce montant par an
+    headOfFamily: 300,         // déduction annuelle chef de famille
+    perChild: 100,             // déduction annuelle par enfant à charge
+    maxChildren: 4,
+    workedDays: 26,            // jours ouvrables d'un mois complet
+    offDays: [0],              // jours chômés de la semaine (0 = dimanche) — semaine de six jours
+    leaveDaysPerYear: 18,      // droit annuel à congé payé, en jours ouvrables
+    // Barème IRPP annuel progressif : `upTo` en dinars (null = au-delà), `rate` en %.
+    brackets: [
+      { upTo: 5000, rate: 0 },
+      { upTo: 10000, rate: 15 },
+      { upTo: 20000, rate: 25 },
+      { upTo: 30000, rate: 30 },
+      { upTo: 40000, rate: 33 },
+      { upTo: 50000, rate: 36 },
+      { upTo: 70000, rate: 38 },
+      { upTo: null, rate: 40 }
+    ]
+  };
+
+  // Impôt annuel sur un revenu imposable, barème progressif par tranches.
+  function irppAnnual(base, brackets) {
+    const total = Math.max(0, Number(base) || 0);
+    let from = 0, tax = 0;
+    for (const b of brackets) {
+      const to = b.upTo == null ? Infinity : Number(b.upTo);
+      // La tranche ne porte que sur la part du revenu comprise entre `from` et `to` — surtout pas sur
+      // toute la tranche quand le revenu s'arrête au milieu (c'est l'erreur classique du barème).
+      const slice = Math.max(0, Math.min(total, to) - from);
+      if (slice > 0) tax += slice * (Number(b.rate) || 0) / 100;
+      from = to;
+      if (from >= total) break;
+    }
+    return round3(tax);
+  }
+
+  // Le calcul d'un bulletin. `input` porte ce qui varie d'un mois à l'autre :
+  // { gross, bonuses:[{label, amount, taxable}], deductions:[{label, amount}], absentDays, workedDays }
+  // Retourne TOUT le détail, pour que le bulletin imprimé et l'écran disent exactement la même chose.
+  function computePayslip(employee, input, settings) {
+    const s = settings || DEFAULT_PAYROLL;
+    const i = input || {};
+    const emp = employee || {};
+    const baseGross = round3(Number(i.gross != null ? i.gross : emp.grossSalary) || 0);
+    const workedDays = Number(i.workedDays) || 26;      // jours ouvrables du mois, modifiable
+    const absent = Math.max(0, Number(i.absentDays) || 0);
+    // Absence non rémunérée : le brut est réduit au prorata des jours.
+    const absenceCut = absent > 0 && workedDays > 0 ? round3(baseGross * absent / workedDays) : 0;
+
+    const bonuses = (i.bonuses || []).map(b => ({ label: b.label || 'Prime', amount: round3(Number(b.amount) || 0), taxable: b.taxable !== false }));
+    const taxableBonus = round3(bonuses.filter(b => b.taxable).reduce((a, b) => a + b.amount, 0));
+    const freeBonus = round3(bonuses.filter(b => !b.taxable).reduce((a, b) => a + b.amount, 0));
+
+    const gross = round3(baseGross - absenceCut + taxableBonus + freeBonus);
+    const cnssBase = round3(baseGross - absenceCut + taxableBonus);   // les primes non imposables sont hors assiette
+    const cnssEmployee = round3(cnssBase * (Number(s.cnssEmployee) || 0) / 100);
+
+    // Base imposable mensuelle → annualisée pour appliquer le barème, puis ramenée au mois.
+    const afterCnss = round3(cnssBase - cnssEmployee);
+    const annualAfterCnss = round3(afterCnss * 12);
+    const pro = round3(Math.min(annualAfterCnss * (Number(s.proRate) || 0) / 100, Number(s.proCap) || 0));
+    const children = Math.min(Number(emp.children) || 0, Number(s.maxChildren) || 0);
+    const family = round3((emp.headOfFamily ? (Number(s.headOfFamily) || 0) : 0) + children * (Number(s.perChild) || 0));
+    const annualTaxable = round3(Math.max(0, annualAfterCnss - pro - family));
+    const irppYear = irppAnnual(annualTaxable, s.brackets);
+    const irpp = round3(irppYear / 12);
+    const css = round3(annualTaxable * (Number(s.solidarity) || 0) / 100 / 12);
+
+    const deductions = (i.deductions || []).map(d => ({ label: d.label || 'Retenue', amount: round3(Number(d.amount) || 0) }));
+    const otherDeductions = round3(deductions.reduce((a, d) => a + d.amount, 0));
+
+    const net = round3(gross - cnssEmployee - irpp - css - otherDeductions);
+    const cnssEmployer = round3(cnssBase * (Number(s.cnssEmployer) || 0) / 100);
+    const accident = round3(cnssBase * (Number(s.accidentRate) || 0) / 100);
+    // 9.0.0 : la TFP et le FOPROLOS sont des taxes patronales sur la masse salariale, déclarées
+    // chaque mois avec la TVA. Elles entrent dans le coût employeur, jamais dans le net.
+    const tfp = round3(cnssBase * (Number(s.tfpRate) || 0) / 100);
+    const foprolos = round3(cnssBase * (Number(s.foprolosRate) || 0) / 100);
+    const employerCharges = round3(cnssEmployer + accident + tfp + foprolos);
+    const employerCost = round3(gross + employerCharges);
+
+    return {
+      baseGross, absenceCut, absentDays: absent, workedDays,
+      bonuses, taxableBonus, freeBonus, gross,
+      cnssBase, cnssEmployee, afterCnss, pro, family, children,
+      annualTaxable, irppYear, irpp, css,
+      deductions, otherDeductions, net,
+      cnssEmployer, accident, tfp, foprolos, employerCharges, employerCost,
+      rates: {
+        cnssEmployee: Number(s.cnssEmployee) || 0, cnssEmployer: Number(s.cnssEmployer) || 0,
+        accidentRate: Number(s.accidentRate) || 0, solidarity: Number(s.solidarity) || 0,
+        tfpRate: Number(s.tfpRate) || 0, foprolosRate: Number(s.foprolosRate) || 0
+      }
+    };
+  }
+  // Les charges patronales d'un bulletin, telles qu'il les a FIGÉES (5.0.0) : un bulletin d'avant la
+  // 9.0.0 n'a ni TFP ni FOPROLOS, et ne doit pas en gagner après coup.
+  const employerChargesOf = c => round3((Number(c.cnssEmployer) || 0) + (Number(c.accident) || 0) + (Number(c.tfp) || 0) + (Number(c.foprolos) || 0));
+
+
+  // La fusion des barèmes, pure : les valeurs livrées, écrasées par ce que l'utilisateur a réglé.
+  // `core.payrollSettings(data)` l'appelle puis ajoute la TFP PROPOSÉE par le métier (9.1.1), qui
+  // demande `data.company` — c'est la moitié qui reste du côté de l'entreprise.
+  function baremesPaie(reglages) {
+    const s = reglages || {};
+    return {
+      ...DEFAULT_PAYROLL, ...s,
+      brackets: Array.isArray(s.brackets) && s.brackets.length ? s.brackets : DEFAULT_PAYROLL.brackets
+    };
+  }
+
+  // ---------- la paie d'un DOSSIER du cabinet (10.3.0) ----------
+  //
+  // Ce que le Cabinet ne savait pas faire, et que ses clients lui demandent tous les mois. Un
+  // cabinet a soixante clients dont deux utilisent SkanFact : pour les cinquante-huit autres — ceux
+  // qui PAIENT — il n'existait aucun moyen de tenir la paie. Le comptable établissait les bulletins
+  // ailleurs et retapait l'écriture à la main dans SkanFact Cabinet.
+  //
+  // Le moteur est celui de l'app entreprise, déménagé juste au-dessus : `computePayslip`. Deux
+  // chemins, un seul résultat — c'est la même exigence que la parité des balances (9.1.0).
+  //
+  // Les comptes proposés suivent l'usage ; À VÉRIFIER. Ils sont surchargeables par le dossier, et
+  // aucun numéro de compte n'est une vérité (règle 6.3.0).
+  const COMPTES_PAIE = {
+    salairesBruts: '640',        // Rémunérations du personnel
+    chargesPatronales: '645',    // Charges sociales patronales
+    taxesSalaires: '661',        // TFP et FOPROLOS : impôts et taxes sur rémunérations (charge)
+    tfpFoprolos: '4335',         // TFP et FOPROLOS à payer (dette envers l'État)
+    cnss: '4531',                // CNSS (part salariale + part patronale + accident)
+    irpp: '4321',                // IRPP et contribution sociale retenus à la source
+    personnel: '425'             // Personnel — rémunérations dues
+  };
+  const MOIS_PAIE = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin',
+    'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+  const moisPaie = m => MOIS_PAIE[Number(m) - 1] || '';
+  const TRIMESTRES_PAIE = [[1, '1er trimestre', [1, 2, 3]], [2, '2e trimestre', [4, 5, 6]],
+    [3, '3e trimestre', [7, 8, 9]], [4, '4e trimestre', [10, 11, 12]]];
+
+  // Un salarié se REFUSE tant qu'il manque ce sans quoi aucun bulletin n'est possible. Le reste —
+  // CIN, numéro CNSS, poste — se complète plus tard : on ne bloque pas une paie parce qu'un numéro
+  // manque, on le signale.
+  function salarieValide(sal) {
+    const e = sal || {};
+    if (!String(e.nom || '').trim()) return { ok: false, motif: 'Le nom du salarié est obligatoire.' };
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(e.embauche || ''))) return { ok: false, motif: 'La date d\'embauche est obligatoire.' };
+    if (e.sortie && String(e.sortie) < String(e.embauche)) return { ok: false, motif: 'La date de sortie précède l\'embauche.' };
+    if (!(Number(e.brut) > 0)) return { ok: false, motif: 'Le salaire brut mensuel doit être supérieur à zéro.' };
+    return { ok: true, motif: '' };
+  }
+
+  // La forme d'un salarié est FIXÉE, comme celle d'une écriture : ce qu'on ne connaît pas est jeté,
+  // sinon chaque appelant y glisserait ses champs à lui (même règle qu'`ajouterEcriture`).
+  function normaliserSalarie(sal, id) {
+    const e = sal || {};
+    return {
+      id: String(id || e.id || ''), nom: String(e.nom || '').trim(),
+      cin: String(e.cin || '').trim(), cnss: String(e.cnss || '').trim(),
+      poste: String(e.poste || '').trim(),
+      contrat: CONTRACT_TYPES.some(c => c[0] === e.contrat) ? e.contrat : 'cdi',
+      embauche: String(e.embauche || ''), sortie: String(e.sortie || ''),
+      brut: round3(Number(e.brut) || 0),
+      chefDeFamille: !!e.chefDeFamille, enfants: Math.max(0, Number(e.enfants) || 0),
+      actif: e.actif !== false, note: String(e.note || '')
+    };
+  }
+
+  function ajouterSalarie(livre, salarie, qui, quand) {
+    const v = salarieValide(salarie);
+    if (!v.ok) return { ok: false, motif: v.motif };
+    const s = normaliserSalarie(salarie, (salarie && salarie.id) || ('sal-' + (Number(quand) || 0) + '-' + livre.salaries.length));
+    const dejaLa = livre.salaries.findIndex(x => x.id === s.id);
+    if (dejaLa >= 0) livre.salaries[dejaLa] = s; else livre.salaries.push(s);
+    trace(livre, qui, dejaLa >= 0 ? 'salarie-modifie' : 'salarie-ajoute', s.nom, quand);
+    return { ok: true, salarie: s };
+  }
+
+  // On ne SUPPRIME pas un salarié : son nom vit sur des bulletins, et un bulletin remis ne se
+  // réécrit pas. Il devient inactif — même règle que `retiree: true` sur une clé de signature.
+  function retirerSalarie(livre, id, qui, quand) {
+    const s = livre.salaries.find(x => x.id === id);
+    if (!s) return { ok: false, motif: 'Salarié introuvable.' };
+    s.actif = false;
+    trace(livre, qui, 'salarie-retire', s.nom, quand);
+    return { ok: true };
+  }
+
+  const salariesActifs = (livre, dateIso) => (livre.salaries || []).filter(s =>
+    (!s.embauche || s.embauche <= dateIso) && (!s.sortie || s.sortie >= dateIso));
+
+  const bulletinsDuMois = (livre, annee, mois) => (livre.bulletins || [])
+    .filter(b => Number(b.annee) === Number(annee) && Number(b.mois) === Number(mois));
+
+  function bulletinValide(b, livre) {
+    const x = b || {};
+    const s = (livre.salaries || []).find(y => y.id === x.salarieId);
+    if (!s) return { ok: false, motif: 'Choisis un salarié.' };
+    const m = Number(x.mois);
+    if (!(m >= 1 && m <= 12)) return { ok: false, motif: 'Le mois doit être compris entre 1 et 12.' };
+    if (Number(x.annee) !== Number(livre.exercice.annee)) {
+      return { ok: false, motif: `Ce bulletin est daté de ${x.annee} et ce livre porte l'exercice ${livre.exercice.annee}.` };
+    }
+    if (!(Number(x.brut) > 0)) return { ok: false, motif: 'Le brut du mois doit être supérieur à zéro.' };
+    const jumeau = (livre.bulletins || []).find(y => y.id !== x.id && y.salarieId === x.salarieId
+      && Number(y.annee) === Number(x.annee) && Number(y.mois) === Number(m));
+    if (jumeau) return { ok: false, motif: `${s.nom} a déjà un bulletin pour ${moisPaie(m)} ${x.annee}.` };
+    return { ok: true, motif: '' };
+  }
+
+  // Le bulletin garde une COPIE de son calcul (règle 5.0.0) : changer un barème ne doit jamais
+  // réécrire un bulletin déjà remis à un salarié.
+  function ajouterBulletin(livre, bulletin, baremes, qui, quand) {
+    const v = bulletinValide(bulletin, livre);
+    if (!v.ok) return { ok: false, motif: v.motif };
+    const s = livre.salaries.find(y => y.id === bulletin.salarieId);
+    const saisie = {
+      gross: round3(Number(bulletin.brut) || 0),
+      workedDays: Number(bulletin.joursTravailles) || 26,
+      absentDays: Math.max(0, Number(bulletin.joursAbsence) || 0),
+      bonuses: (bulletin.primes || []).map(p => ({ label: String(p.label || 'Prime'), amount: round3(Number(p.amount) || 0), taxable: p.taxable !== false })),
+      deductions: (bulletin.retenues || []).map(d => ({ label: String(d.label || 'Retenue'), amount: round3(Number(d.amount) || 0) }))
+    };
+    const emp = { grossSalary: s.brut, headOfFamily: s.chefDeFamille, children: s.enfants };
+    const b = {
+      id: String(bulletin.id || ('bul-' + (Number(quand) || 0) + '-' + livre.bulletins.length)),
+      salarieId: s.id, annee: Number(bulletin.annee), mois: Number(bulletin.mois),
+      brut: saisie.gross, joursTravailles: saisie.workedDays, joursAbsence: saisie.absentDays,
+      primes: saisie.bonuses, retenues: saisie.deductions,
+      calcul: computePayslip(emp, saisie, baremesPaie(baremes)),
+      payeLe: String(bulletin.payeLe || ''), ecritureId: null,
+      creeLe: Number(quand) || 0, auteur: String(qui || '')
+    };
+    const dejaLa = livre.bulletins.findIndex(x => x.id === b.id);
+    if (dejaLa >= 0) {
+      // Un bulletin dont l'écriture est PASSÉE ne se réécrit pas : l'écriture ferait mentir le
+      // livre. On contre-passe, puis on refait — même règle que pour une dotation (9.7.0).
+      if (livre.bulletins[dejaLa].ecritureId) {
+        return { ok: false, motif: 'L\'écriture de paie de ce mois est déjà passée : contre-passe-la d\'abord.' };
+      }
+      b.ecritureId = null;
+      livre.bulletins[dejaLa] = b;
+    } else livre.bulletins.push(b);
+    trace(livre, qui, dejaLa >= 0 ? 'bulletin-modifie' : 'bulletin-ajoute', `${s.nom} ${moisPaie(b.mois)} ${b.annee}`, quand);
+    return { ok: true, bulletin: b };
+  }
+
+  function supprimerBulletin(livre, id, qui, quand) {
+    const i = livre.bulletins.findIndex(b => b.id === id);
+    if (i < 0) return { ok: false, motif: 'Bulletin introuvable.' };
+    if (livre.bulletins[i].ecritureId) return { ok: false, motif: 'L\'écriture de paie de ce mois est déjà passée : contre-passe-la d\'abord.' };
+    const b = livre.bulletins[i];
+    livre.bulletins.splice(i, 1);
+    trace(livre, qui, 'bulletin-supprime', `${b.salarieId} ${moisPaie(b.mois)} ${b.annee}`, quand);
+    return { ok: true };
+  }
+
+  // La masse salariale d'un lot de bulletins. Tout se lit sur la COPIE figée (`calcul`) : un
+  // bulletin d'avant la 9.0.0 n'a ni TFP ni FOPROLOS, et ne doit pas en gagner après coup.
+  function masseSalariale(bulletins) {
+    const z = { brut: 0, cnssSalarie: 0, irpp: 0, css: 0, retenues: 0, net: 0,
+      cnssEmployeur: 0, accident: 0, tfp: 0, foprolos: 0, chargesPatronales: 0, cout: 0, assiette: 0 };
+    (bulletins || []).forEach(b => {
+      const c = b.calcul || {};
+      z.brut = round3(z.brut + (c.gross || 0));
+      z.assiette = round3(z.assiette + (c.cnssBase || 0));
+      z.cnssSalarie = round3(z.cnssSalarie + (c.cnssEmployee || 0));
+      z.irpp = round3(z.irpp + (c.irpp || 0));
+      z.css = round3(z.css + (c.css || 0));
+      z.retenues = round3(z.retenues + (c.otherDeductions || 0));
+      z.net = round3(z.net + (c.net || 0));
+      z.cnssEmployeur = round3(z.cnssEmployeur + (c.cnssEmployer || 0));
+      z.accident = round3(z.accident + (c.accident || 0));
+      z.tfp = round3(z.tfp + (c.tfp || 0));
+      z.foprolos = round3(z.foprolos + (c.foprolos || 0));
+      z.chargesPatronales = round3(z.chargesPatronales + employerChargesOf(c));
+      z.cout = round3(z.cout + (c.employerCost || 0));
+    });
+    z.count = (bulletins || []).length;
+    return z;
+  }
+
+  // L'écriture de paie du mois, en BROUILLARD. Les comptes sont ceux du dossier quand il en a, et
+  // le schéma est EXACTEMENT celui de l'app entreprise (`journalEntries`, section `paie`) : deux
+  // moteurs divergent, et le client et son comptable auraient alors deux écritures pour le même
+  // mois sans savoir laquelle croire.
+  function ecritureDePaie(livre, annee, mois, opts) {
+    const o = opts || {};
+    const comptes = { ...COMPTES_PAIE, ...(o.comptes || {}) };
+    const lot = bulletinsDuMois(livre, annee, mois).filter(b => !b.ecritureId);
+    if (!lot.length) return { ok: false, motif: 'Aucun bulletin à passer pour ce mois.' };
+    const dernier = new Date(Date.UTC(Number(annee), Number(mois), 0)).getUTCDate();
+    const date = o.date || `${annee}-${String(mois).padStart(2, '0')}-${String(dernier).padStart(2, '0')}`;
+    const nomDe = id => ((livre.salaries || []).find(s => s.id === id) || {}).nom || '';
+    const set = entrySet({ date, journal: o.journal || 'PAIE', piece: `PAIE-${annee}-${String(mois).padStart(2, '0')}` });
+    lot.forEach(b => {
+      const c = b.calcul || {};
+      const qui = nomDe(b.salarieId);
+      const label = `Salaire ${qui} ${moisPaie(mois)} ${annee}`;
+      set.debit(comptes.salairesBruts, label, c.gross);
+      set.debit(comptes.chargesPatronales, `Charges patronales — ${qui}`, round3((c.cnssEmployer || 0) + (c.accident || 0)));
+      set.debit(comptes.taxesSalaires, `TFP et FOPROLOS — ${qui}`, round3((c.tfp || 0) + (c.foprolos || 0)));
+      set.credit(comptes.tfpFoprolos, `TFP et FOPROLOS à payer — ${qui}`, round3((c.tfp || 0) + (c.foprolos || 0)));
+      set.credit(comptes.cnss, `CNSS — ${qui}`, round3((c.cnssEmployee || 0) + (c.cnssEmployer || 0) + (c.accident || 0)));
+      set.credit(comptes.irpp, `IRPP et contribution sociale — ${qui}`, round3((c.irpp || 0) + (c.css || 0)));
+      set.credit(comptes.personnel, label, round3((c.net || 0) + (c.otherDeductions || 0)));
+    });
+    return {
+      ok: true, date, lot: lot.map(b => b.id),
+      ecriture: {
+        date, journal: o.journal || 'PAIE', piece: `PAIE-${annee}-${String(mois).padStart(2, '0')}`,
+        libelle: `Paie de ${moisPaie(mois)} ${annee}`, source: 'saisie',
+        lignes: set.done().map(l => ({ compte: l.account, libelle: l.label, debit: l.debit, credit: l.credit }))
+      }
+    };
+  }
+
+  // L'écriture est passée : chaque bulletin du lot la porte. Sans ce report, le bouton se
+  // rallumerait et la paie du mois serait comptée deux fois (défaut de la dotation, 9.7.0).
+  function noterEcriturePaie(livre, ids, ecritureId, qui, quand) {
+    (ids || []).forEach(id => {
+      const b = (livre.bulletins || []).find(x => x.id === id);
+      if (b) b.ecritureId = ecritureId;
+    });
+    trace(livre, qui, 'paie-ecriture', plFr((ids || []).length, 'bulletin'), quand);
+    return { ok: true };
+  }
+
+  // La déclaration CNSS d'un trimestre : un salarié par ligne, son assiette et les deux parts.
+  // SkanFact ne DÉPOSE rien et ne se connecte à aucune administration (règle 5.2.0) : c'est un
+  // tableau à recopier. L'échéance proposée est le 15 du mois qui suit le trimestre — À VÉRIFIER.
+  function cnssDuTrimestre(livre, annee, trimestre) {
+    const t = TRIMESTRES_PAIE.find(x => x[0] === Number(trimestre)) || TRIMESTRES_PAIE[0];
+    const dans = (livre.bulletins || []).filter(b => Number(b.annee) === Number(annee) && t[2].includes(Number(b.mois)));
+    const par = {};
+    dans.forEach(b => {
+      const s = (livre.salaries || []).find(x => x.id === b.salarieId) || {};
+      const k = b.salarieId;
+      par[k] = par[k] || { salarieId: k, nom: s.nom || '', cnss: s.cnss || '', mois: 0, assiette: 0, partSalarie: 0, partEmployeur: 0, accident: 0 };
+      const c = b.calcul || {};
+      par[k].mois++;
+      par[k].assiette = round3(par[k].assiette + (c.cnssBase || 0));
+      par[k].partSalarie = round3(par[k].partSalarie + (c.cnssEmployee || 0));
+      par[k].partEmployeur = round3(par[k].partEmployeur + (c.cnssEmployer || 0));
+      par[k].accident = round3(par[k].accident + (c.accident || 0));
+    });
+    const lignes = Object.keys(par).map(k => par[k]).sort((a, b) => (a.nom || '').localeCompare(b.nom || '', 'fr'));
+    const som = k => round3(lignes.reduce((s, l) => s + l[k], 0));
+    const finMois = t[2][2] + 1;
+    return {
+      annee: Number(annee), trimestre: Number(trimestre), libelle: t[1], mois: t[2],
+      lignes, salaries: lignes.length, bulletins: dans.length,
+      assiette: som('assiette'), partSalarie: som('partSalarie'), partEmployeur: som('partEmployeur'),
+      accident: som('accident'),
+      total: round3(som('partSalarie') + som('partEmployeur') + som('accident')),
+      // Le 4e trimestre bascule sur l'année suivante : `finMois` vaut alors 13.
+      echeance: finMois > 12 ? `${Number(annee) + 1}-01-15` : `${annee}-${String(finMois).padStart(2, '0')}-15`
+    };
+  }
+
+  // Ce qui manque avant de déclarer ou de passer l'écriture. On NOMME, on ne bloque jamais
+  // (règle 6.0.0) : un mois déclaré avec deux manques signalés vaut mieux qu'un mois jamais déclaré.
+  function controlesPaie(livre, annee, mois) {
+    const out = [];
+    const add = (id, niveau, quoi, detail, n) => out.push({ id, niveau, quoi, detail, count: n });
+    const fin = `${annee}-${String(mois).padStart(2, '0')}-28`;
+    const attendus = salariesActifs(livre, fin).filter(s => s.actif);
+    const faits = bulletinsDuMois(livre, annee, mois);
+    const sans = attendus.filter(s => !faits.some(b => b.salarieId === s.id));
+    if (sans.length) add('bulletins-manquants', 'warn', `${plFr(sans.length, 'salarié')} sans bulletin`,
+      sans.map(s => s.nom).join(', '), sans.length);
+    const sansCnss = attendus.filter(s => !s.cnss);
+    if (sansCnss.length) add('cnss-manquant', 'warn', `${plFr(sansCnss.length, 'salarié')} sans numéro CNSS`,
+      'La déclaration trimestrielle le demande pour chaque salarié.', sansCnss.length);
+    const nonPayes = faits.filter(b => !b.payeLe);
+    if (nonPayes.length) add('non-payes', 'info', `${plFr(nonPayes.length, 'bulletin')} non réglé${nonPayes.length > 1 ? 's' : ''}`,
+      'Le net reste dû au personnel tant que le règlement n\'est pas noté.', nonPayes.length);
+    return out;
+  }
   return {
     round3, cleDePiece, csvDangereux, nombreDepuisCsv, dateDepuisCsv,
     ecritureValide, entreesDepuisCsv,
@@ -4132,6 +4568,13 @@
     fusionnerQuestionsRecues, questionsDeLaPiece, repondreQuestion, reponsesAEnvoyer, questionsSansReponse,
     // Le cabinet à plusieurs (9.9.0)
     fusionnerLivres, empreinteEcriture,
+    // La paie (10.3.0)
+    CONTRACT_TYPES, contractLabel, DEFAULT_PAYROLL, baremesPaie,
+    irppAnnual, computePayslip, employerChargesOf,
+    COMPTES_PAIE, MOIS_PAIE, moisPaie, TRIMESTRES_PAIE,
+    salarieValide, normaliserSalarie, ajouterSalarie, retirerSalarie, salariesActifs,
+    bulletinsDuMois, bulletinValide, ajouterBulletin, supprimerBulletin, masseSalariale,
+    ecritureDePaie, noterEcriturePaie, cnssDuTrimestre, controlesPaie,
     // La pièce équilibrée et l'amortissement (9.6.1)
     ajouterJoursIso, entrySet,
     DEFAULT_ASSET_CLASSES, assetClassLabel, assetClassYears, days360,

@@ -9,8 +9,10 @@
 //      embarquée — sans quoi on croirait la révocation en service alors qu'elle ne l'est pas ;
 //   3. « Émettre une licence » signe une clé (vérifiable avec la clé publique), crée un BROUILLON de
 //      facture avec la bonne ligne, et l'inscrit dans l'historique ;
-//   4. la clé collée dans Paramètres → Licence active l'offre Indépendant : l'Achat refuse la
-//      création, les Statistiques restent ouvertes, le menu porte un cadenas ;
+//   4. la clé collée dans Paramètres → Licence active l'offre Indépendant : **Achats est OUVERT**
+//      (10.7.0 — une offre peut fermer un confort, jamais une case de déclaration), les
+//      Immobilisations refusent la création, les Statistiques restent ouvertes, le cadenas est là
+//      et là seulement ;
 //   5. une clé émise pour un autre matricule est refusée en nommant les deux ;
 //   6. « Renouveler » fabrique une seconde clé et une seconde facture, la première sort du compte ;
 //   7. rien de ce qui passe le pont ne contient la clé privée ;
@@ -248,7 +250,7 @@ const L = require('../../src/licence.js');
   j.ok('la page liste la licence, et le menu offre les quatre gestes');
 
   // ---------------------------------------------------- 4. la clé activée chez le client
-  j.etape('La clé Indépendant, collée : Achats refuse de créer, Statistiques reste ouverte');
+  j.etape('La clé Indépendant, collée : Achats reste OUVERT, les Immobilisations refusent, Statistiques reste ouverte');
   // On change le matricule de la société pour celui du client : c'est SON dossier qu'on simule.
   await win.evaluate(async mf => { window.__data.company.matricule = mf; await window.skanfact.saveData(window.__data); }, '1234567A/M/P/000');
   await ouvrirParametres('p-licence');
@@ -256,7 +258,11 @@ const L = require('../../src/licence.js');
   await win.click('#lic-save');
   await win.waitForTimeout(800);
   const st1 = await win.evaluate(mf => window.skanfact.licenceStatus(mf), '1234567A/M/P/000');
-  if (st1.state !== 'active' || st1.offre !== 'independant' || !st1.reserves.includes('achats')) throw new Error('la clé collée devrait activer l\'offre Indépendant : ' + JSON.stringify(st1).slice(0, 200));
+  // On exige la RÈGLE, pas la liste du jour : l'offre Indépendant réserve quelque chose (sinon elle
+  // ne se distingue pas d'Entreprise) et ne réserve PAS « achats » — c'est le correctif de la
+  // 10.7.0, et cette assertion est ce qui l'empêche de repartir en arrière.
+  if (st1.state !== 'active' || st1.offre !== 'independant' || !st1.reserves.length) throw new Error('la clé collée devrait activer l\'offre Indépendant : ' + JSON.stringify(st1).slice(0, 200));
+  if (st1.reserves.includes('achats')) throw new Error('l\'offre Indépendant ne doit plus réserver Achats : sans lui, la TVA déductible du paquet vaut zéro et le client déclare un chiffre faux (10.7.0)');
   const panneau = await win.textContent('#lic-panel');
   if (!/Indépendant/.test(panneau)) throw new Error('le panneau Licence ne nomme pas l\'offre');
   // Le métier « informatique » n'affiche pas le module Pilotage : on affiche TOUT (aucun choix de
@@ -272,36 +278,73 @@ const L = require('../../src/licence.js');
     stats: !!document.querySelector('nav a[data-route="stats"] svg.nav-lock'),
     devis: !!document.querySelector('nav a[data-route="devis"] svg.nav-lock')
   }));
-  if (!cadenas.achats || !cadenas.tresorerie || !cadenas.paie || !cadenas.statsLien || cadenas.stats || cadenas.devis) throw new Error('cadenas mal posés : ' + JSON.stringify(cadenas));
-  // Achats : le bandeau à l'entrée, et le refus à la création — sans rien masquer. La page reste,
-  // la liste se lit ; c'est un NOUVEAU fournisseur qui est refusé, dans son propre formulaire.
+  // Le cadenas se pose sur ce que l'offre ferme, et NULLE PART ailleurs. Achats en est sorti en
+  // 10.7.0 : un cadenas resté là serait la trace visible du défaut qu'on vient de corriger.
+  if (cadenas.achats) throw new Error('Achats ne doit plus porter de cadenas : l\'offre Indépendant ne le réserve plus (10.7.0)');
+  if (!cadenas.tresorerie || !cadenas.paie || !cadenas.statsLien || cadenas.stats || cadenas.devis) throw new Error('cadenas mal posés : ' + JSON.stringify(cadenas));
+
+  // Achats, OUVERT : ni bandeau, ni refus — et un fournisseur se crée VRAIMENT. C'est la moitié
+  // qui compte : sans elle, « pas de cadenas » serait vrai sur une page qui refuse quand même.
   await aller('#/achats');
   await win.waitForSelector('#view .page-head');
-  if (!await win.$('.offre-banner')) throw new Error('la page Achats ne prévient pas que la création fait partie de l\'offre Entreprise');
-  const bandeau = (await win.textContent('.offre-banner')).replace(/\s+/g, ' ');
-  if (!/Offre Indépendant/.test(bandeau) || !/tout lire/.test(bandeau)) throw new Error('le bandeau ne dit pas ce qui reste ouvert : ' + bandeau);
+  if (await win.$('.offre-banner')) throw new Error('la page Achats ne doit plus porter de bandeau d\'offre (10.7.0)');
   await aller('#/fournisseurs');
   await win.waitForSelector('#new'); await win.click('#new');
   await win.waitForSelector('#modal-root #sf');
   const nAvant = await win.evaluate(() => window.__data.suppliers.length);
   await win.fill('#modal-root input[name=name]', 'Fournisseur Test');
   await win.click('#modal-root #sf ~ .modal-actions #ok, #modal-root .modal-actions #ok');
+  await win.waitForFunction(n => window.__data.suppliers.length === n + 1, nAvant, { timeout: 8000 });
+  if (await win.$('#modal-root .modal-bg:last-child .modal h2')) {
+    const t2 = await win.textContent('#modal-root .modal-bg:last-child .modal h2');
+    if (/Offre/.test(t2)) throw new Error('créer un fournisseur ne doit plus être refusé : ' + t2);
+  }
+  await win.evaluate(() => { const b2 = document.querySelector('#modal-root [data-close]'); if (b2) b2.click(); });
+  await win.waitForTimeout(300);
+
+  // Les Immobilisations, elles, restent réservées : le bandeau à l'entrée et le refus à la
+  // création, sans rien masquer. On prend un module ENCORE fermé, sinon le parcours ne prouverait
+  // plus qu'une offre ferme quoi que ce soit — un test qui n'exerce plus son refus ne protège de
+  // rien. Et c'est celui-là qui compte : avec Achats ouvert, un Indépendant peut désormais saisir
+  // un achat en « immobilisation » sans pouvoir créer la fiche. C'est voulu, le cabinet la crée
+  // depuis le paquet (9.7.0) — encore faut-il que l'app ne le lui REPROCHE pas.
+  await aller('#/immos');
+  await win.waitForSelector('#view .page-head');
+  if (!await win.$('.offre-banner')) throw new Error('la page Immobilisations ne prévient pas que la création fait partie de l\'offre Entreprise');
+  const bandeau = (await win.textContent('.offre-banner')).replace(/\s+/g, ' ');
+  if (!/Offre Indépendant/.test(bandeau) || !/tout lire/.test(bandeau)) throw new Error('le bandeau ne dit pas ce qui reste ouvert : ' + bandeau);
+  const immoAvant = await win.evaluate(() => window.__data.assets.length);
+  await win.click('#new-imm');
+  await win.waitForSelector('#modal-root #imf', { timeout: 8000 });
+  // Le garde-fou vit DANS le formulaire, sur la branche création (7.33.0 : `assetForm` s'ouvre
+  // depuis plusieurs pages). Le refus arrive donc à l'enregistrement, pas à l'ouverture — c'est
+  // ce qui permet de remplir, de voir le plan d'amortissement, et de comprendre ce qu'on perd.
+  await win.fill('#modal-root input[name=label]', 'Ordinateur portable');
+  await win.fill('#modal-root input[name=amount]', '2400');
+  await win.fill('#modal-root input[name=years]', '3');
+  await win.evaluate(() => {
+    const hid = document.querySelector('#modal-root input[name=date]');
+    hid.value = '2026-03-04';
+    const t = hid.closest('.datefield').querySelector('.d-txt');
+    if (t) t.value = '04/03/2026';
+  });
+  await win.click('#modal-root #ok');
   await win.waitForFunction(() => document.querySelectorAll('#modal-root .modal-bg').length === 2, null, { timeout: 8000 });
   const refusTxt = (await win.textContent('#modal-root .modal-bg:last-child .modal')).replace(/\s+/g, ' ');
-  if (!/Offre Indépendant/.test(refusTxt) || !/Entreprise/.test(refusTxt) || !/lisible/.test(refusTxt)) throw new Error('le refus ne dit pas l\'offre et ce qui reste ouvert : ' + refusTxt.slice(0, 160));
-  await win.click('#modal-root .modal-bg:last-child [data-close]');
-  await win.waitForFunction(() => document.querySelectorAll('#modal-root .modal-bg').length === 1);
-  await win.click('#modal-root [data-close]');
-  await win.waitForFunction(() => !document.querySelector('#modal-root .modal'));
-  const nApres = await win.evaluate(() => window.__data.suppliers.length);
-  if (nApres !== nAvant) throw new Error('un fournisseur a été créé malgré l\'offre Indépendant');
+  if (!/Offre Indépendant/.test(refusTxt) || !/Entreprise/.test(refusTxt) || !/lisible/.test(refusTxt)) throw new Error('le refus ne dit pas l\'offre et ce qui reste ouvert : ' + refusTxt.slice(0, 200));
+  await win.evaluate(() => { const b2 = document.querySelector('#modal-root .modal-bg:last-child [data-close]'); if (b2) b2.click(); });
+  await win.waitForTimeout(400);
+  await win.evaluate(() => { const b2 = document.querySelector('#modal-root [data-close]'); if (b2) b2.click(); });
+  await win.waitForTimeout(300);
+  const nApres = await win.evaluate(() => window.__data.assets.length);
+  if (nApres !== immoAvant) throw new Error('une immobilisation a été créée malgré l\'offre Indépendant');
   await aller('#/stats');
   await win.waitForSelector('#view .page-head');
   await win.waitForTimeout(300);
   if (await win.$('.offre-banner')) throw new Error('les Statistiques ne doivent porter aucun bandeau d\'offre');
   const titre = await win.textContent('#view h1');
   if (!/Statistiques/.test(titre)) throw new Error('la page Statistiques ne s\'est pas ouverte : ' + titre);
-  j.ok('bandeau sur Achats, refus nommé sur un nouveau fournisseur, rien créé, cadenas sur Achats seulement, Statistiques libres');
+  j.ok('Achats ouvert (fournisseur créé, ni cadenas ni bandeau), Immobilisations réservées (bandeau, refus nommé, rien créé), Statistiques libres');
 
   // ---------------------------------------------------- 5. la clé d'un autre
   j.etape('Une clé émise pour un autre matricule est refusée, en nommant les deux');
