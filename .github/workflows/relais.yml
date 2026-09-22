@@ -52,9 +52,20 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
-      # `/sante` est la seule route du relais qui ne demande ni secret ni licence : elle dit ce que
-      # chaque canal sert aujourd'hui. La redemander prouve que le code déployé est bien celui-ci,
-      # et pas qu'un job a réussi (9.8.1).
+      # Un job vert ne suffit pas (9.8.1) : on redemande au relais ce qu'il SERT. Mais ce worker
+      # n'a aucune route publique qui rende du contenu — c'est voulu, tout y est derrière le secret
+      # de l'application. On mesure donc ce qu'un inconnu peut mesurer : le CODE DE REFUS.
+      #
+      # `/sante` sans secret doit répondre 403. Ce n'est pas un échec, c'est la preuve : 404 dirait
+      # que la route n'existe pas (relais d'avant la 10.4.0, donc code périmé), 503 que `APP_SECRET`
+      # manque. Seul 403 dit à la fois « la route est là » et « le secret est posé ».
+      #
+      # `OPTIONS /contact` avec une origine autorisée doit répondre 204. C'est la seule porte
+      # publique du relais, celle que le site appelle, et elle se vérifie sans aucun secret.
+      #
+      # Le premier essai de ce contrôle exigeait 200 sur `/sante` : il a fait tomber un déploiement
+      # parfaitement réussi. Un instrument qui juge sur une supposition annonce un défaut qui
+      # n'existe pas — on lit la source de ce qu'on mesure avant d'écrire le seuil.
       - name: Vérifier que le relais répond
         run: |
           set -euo pipefail
@@ -63,9 +74,20 @@ jobs:
             echo "::warning::wrangler n'a annoncé aucune adresse workers.dev — rien n'a pu être vérifié."
             exit 0
           fi
-          echo "Contrôle de $url/sante"
-          code=$(curl -s -o /tmp/sante.json -w '%{http_code}' --max-time 20 --retry 3 --retry-delay 5 "$url/sante")
-          echo "HTTP $code"
-          test "$code" = "200"
-          head -c 400 /tmp/sante.json; echo
-          echo "Le relais répond sur /sante : le code déployé est bien celui-ci."
+
+          echo "Contrôle de $url/sante (sans secret : on attend 403)"
+          s=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 --retry 3 --retry-delay 5 "$url/sante")
+          echo "HTTP $s"
+          case "$s" in
+            403) echo "  → la route existe et APP_SECRET est posé." ;;
+            404) echo "::error::/sante répond 404 : le code déployé est antérieur à la 10.4.0."; exit 1 ;;
+            503) echo "::error::/sante répond 503 : APP_SECRET manque sur le worker."; exit 1 ;;
+            *)   echo "::error::/sante répond $s, attendu 403."; exit 1 ;;
+          esac
+
+          echo "Contrôle de OPTIONS $url/contact (origine autorisée : on attend 204)"
+          c=$(curl -s -o /dev/null -w '%{http_code}' -X OPTIONS --max-time 20 --retry 3 --retry-delay 5 \
+                -H 'Origin: https://skanfact.tn' "$url/contact")
+          echo "HTTP $c"
+          test "$c" = "204"
+          echo "Le relais sert /contact au site : le code déployé est bien celui-ci."
