@@ -7,6 +7,25 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 10.8.1 — 22/09/2026
+
+**Les finitions de la console.** Cinq défauts trouvés en relisant ses captures écran par écran.
+Aucune ligne des deux applications ne change : la console se déploie par son propre workflow, il
+n'y a donc pas d'installeur à reprendre.
+
+- **Le journal d'un client affichait des codes bruts** (`licence.emise`, `suivi.note`) pendant que
+  la page Journal, deux clics plus loin, les traduit. Les deux écrans lisent désormais la même
+  table (`nomEvt`), et le code d'origine reste en infobulle — c'est lui qu'on cite dans un
+  dépannage.
+- **« Ouvrir licences » se lit comme une commande de terminal.** Un libellé décrit l'écran
+  d'arrivée dans la langue où on le nommerait à voix haute : « Ouvrir les licences ».
+- **« 2 révoquées » ne dit pas révoquées de quoi.** Le libellé de la carte porte le mot
+  « licence », comme les cinq autres.
+- **La colonne « Clé » de la fiche d'un client ne portait pas de clé**, mais l'identifiant de la
+  clé qui l'a signée : elle s'appelle « Signée par ».
+- **Un état vide de cent pixels au milieu d'une fiche pleine** repoussait tout le reste : celui
+  des contacts passe en `mini`, comme les autres états vides secondaires (9.4.7).
+
 ## 10.8.0 — 22/09/2026
 
 **La stable qui rattrape neuf versions.** La dernière stable en ligne était la **10.0.0** du

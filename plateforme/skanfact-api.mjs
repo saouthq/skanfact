@@ -3728,7 +3728,7 @@ const CONSOLE_HTML = `<!doctype html>
     { k: 'essaisEntreprise', s: 'essai entreprise', p: 'essais entreprise', c: 'ess', t: 'parc' },
     { k: 'essaisCabinet', s: 'essai cabinet', p: 'essais cabinet', c: 'ess', t: 'parc' },
     { k: 'licencesActives', s: 'licence active', p: 'licences actives', c: 'act', t: 'licences' },
-    { k: 'licencesRevoquees', s: 'révoquée', p: 'révoquées', c: 'rev', t: 'licences' },
+    { k: 'licencesRevoquees', s: 'licence révoquée', p: 'licences révoquées', c: 'rev', t: 'licences' },
     { k: 'clients', s: 'client', p: 'clients', c: '', t: 'clients' }
   ];
 
@@ -3758,6 +3758,16 @@ const CONSOLE_HTML = `<!doctype html>
     'base.export.echec': 'Export de la base en échec',
     'reglages.changes': 'Réglages modifiés',
     'suivi.note': 'Contact noté'
+  };
+  var nomEvt = function (v) {
+    return NOM_EVT[v] ? '<span title="' + h(v) + '">' + h(NOM_EVT[v]) + '</span>' : '<span class="mono">' + h(v) + '</span>';
+  };
+  // L'article d'un titre d'onglet. « Ouvrir licences » se lit comme une commande de terminal ;
+  // un libellé décrit l'écran d'ARRIVÉE, dans la langue où on le nommerait à voix haute (7.29.0).
+  var ARTICLE = { activations: 'les ', alertes: 'les ', cabinets: 'les ', clients: 'les ', essais: 'les ',
+    evenements: 'le ', licences: 'les ', parc: 'le ', reglages: 'les ', ventes: 'les ' };
+  var article = function (vue) {
+    return (ARTICLE[vue] || '') + String(TITRES[vue] || vue).toLowerCase();
   };
   var NOM_OS = { darwin: 'macOS', win32: 'Windows', linux: 'Linux' };
 
@@ -3978,9 +3988,7 @@ const CONSOLE_HTML = `<!doctype html>
       // Le journal portait l'heure UTC à côté d'une date UTC : une vente encaissée à 00 h 30 à Tunis
       // s'y lisait la veille à 23 h 30. Tout ce qui s'affiche passe par la même horloge, la locale.
       { k: 'quand', t: 'Quand', f: function (v) { return horodate(v); } },
-      { k: 'quoi', t: 'Quoi', brut: true, f: function (v) {
-          return NOM_EVT[v] ? '<span title="' + h(v) + '">' + h(NOM_EVT[v]) + '</span>' : h(v);
-        } },
+      { k: 'quoi', t: 'Quoi', brut: true, f: function (v) { return nomEvt(v); } },
       { k: 'client', t: 'Client', tr: true },
       { k: 'detail', t: 'Détail', tr: true }
     ],
@@ -4001,7 +4009,7 @@ const CONSOLE_HTML = `<!doctype html>
       // Le libellé décrit l'écran d'ARRIVÉE : cinq « Ouvrir » identiques menant à cinq endroits
       // différents obligent à cliquer pour savoir où l'on va (7.29.0).
       { k: 'onglet', t: 'Où', brut: true, a: true, f: function (v) {
-          return celluleActions('', [{ act: 'aller', onglet: v, lib: 'Ouvrir ' + (TITRES[v] || v).toLowerCase() }]);
+          return celluleActions('', [{ act: 'aller', onglet: v, lib: 'Ouvrir ' + article(v) }]);
         } }
     ],
     parc: [
@@ -4548,7 +4556,7 @@ const CONSOLE_HTML = `<!doctype html>
           paire('Téléphone', c.tel) + paire('Adresse', c.adresse) + paire('Client depuis', jour(c.cree_le)) + '</div>' +
         (c.notes ? '<p class="but">' + h(c.notes) + '</p>' : '');
 
-      html += bloc('Licences', table(['Offre', 'Fin', 'État', 'Clé'], (d.licences || []).map(function (l) {
+      html += bloc('Licences', table(['Offre', 'Fin', 'État', 'Signée par'], (d.licences || []).map(function (l) {
         return '<tr><td>' + h(libOffre(l)) + '</td><td>' + h(l.fin ? jour(l.fin) : 'à vie') + '</td><td>' + etatLic(l)
           + '</td><td class="mono">' + h(l.kid || '') + '</td></tr>';
       }), 'Aucune licence : ce client n\\u2019a encore rien acheté.'));
@@ -4568,9 +4576,9 @@ const CONSOLE_HTML = `<!doctype html>
             return '<li>' + h((s.moyen ? s.moyen + ' — ' : '') + (s.note || (s.issue === 'gagne' ? 'gagné' : (s.issue === 'perdu' ? 'perdu : ' + (s.motif || '') : '—'))))
               + '<span class="q">' + h(horodate(s.quand) + (s.rappel ? ' \\u00b7 rappel le ' + jour(s.rappel) : '') + (s.source ? ' \\u00b7 venu par : ' + s.source : '')) + '</span></li>';
           }).join('') + '</ul>'
-        : '<div class="wrap"><div class="vide">Aucun contact noté. « Noter un contact… » ci-dessus garde ce que tu lui as dit — et fait taire ses alertes jusqu\\u2019à la date où tu veux le rappeler.</div></div>');
+        : '<div class="wrap"><div class="vide mini">Aucun contact noté. « Noter un contact… » ci-dessus garde ce que tu lui as dit — et fait taire ses alertes jusqu\\u2019à la date où tu veux le rappeler.</div></div>');
       html += bloc('Journal', table(['Quand', 'Quoi', 'Détail'], (d.journal || []).map(function (e) {
-        return '<tr><td>' + h(horodate(e.quand)) + '</td><td class="mono">' + h(e.quoi) + '</td><td class="libre">' + h(e.detail || '') + '</td></tr>';
+        return '<tr><td>' + h(horodate(e.quand)) + '</td><td>' + nomEvt(e.quoi) + '</td><td class="libre">' + h(e.detail || '') + '</td></tr>';
       }), 'Rien dans le journal pour ce client.'));
       el.innerHTML = html;
       alignerEntetes(el);
