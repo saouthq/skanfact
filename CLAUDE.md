@@ -5530,6 +5530,12 @@ Cloudflare en MCP puis demandé la corvée qui va avec — un jeton, deux secret
   Et une étape qui n'a rien pu mesurer le DIT au lieu d'annoncer que tout va bien.
 - **Une version écrite dans l'entête d'un fichier se périme au bump suivant.** Les deux fichiers
   neufs la portaient ; elle a été retirée le jour même.
+- **Un contrôle automatique prouve que la PORTE s'ouvre, jamais que la lettre arrive.** Le relais
+  de mise à jour a reçu le même traitement (`worker/wrangler.toml`, workflow `Relais`), et son
+  formulaire de contact a en plus un envoi RÉEL, à la demande : un déploiement qui enverrait un
+  mail à chaque fois remplirait la boîte qu'il teste. Chacune des trois réponses possibles porte sa
+  phrase — la chaîne tient, un réglage manque, ou Resend refuse l'expéditeur — parce qu'un échec
+  qui ne dit pas lequel des trois se cherche dans les trois.
 
 ## Pistes pour la suite (non demandées)
 

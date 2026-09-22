@@ -24,6 +24,15 @@ panne qui ne se voit pas.
 moments différents ; un relais qui se redéploie parce qu'on a corrigé la console rendrait illisible
 la seule question qu'on se pose devant un incident — qu'est-ce qui a bougé, et quand.
 
+**Et l'essai qui prouve que la lettre ARRIVE.** Les contrôles automatiques vérifient que la porte
+s'ouvre — `/sante` répond 403, `OPTIONS /contact` répond 204 — et ne disent rien de Resend, du
+domaine vérifié ni de la boîte qui reçoit. Un envoi réel est le seul à le prouver, et c'est aussi le
+seul qui coûte un message : il ne part donc **que si on le demande** (une case au lancement du
+workflow). Un déploiement qui enverrait un mail à chaque fois finirait par remplir la boîte qu'il
+teste. Les trois réponses possibles disent chacune autre chose, et l'étape les distingue au lieu de
+rendre un échec muet : la chaîne tient, `RESEND_KEY`/`CONTACT_TO` manquent, ou Resend refuse
+l'expéditeur — presque toujours un `CONTACT_FROM` hors du domaine vérifié.
+
 **Les garde-fous sont jugés par UNE boucle, pas recopiés** (9.4.3 : un instrument qui ne couvre
 qu'un des deux ne protège qu'un des deux). Elle exige, pour chacun : wrangler épinglé,
 `--keep-vars`, jamais `beta` en déclenchement, un filtre qui nomme le code et sa configuration sans
