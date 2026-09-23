@@ -6389,6 +6389,16 @@ fixe (9.4.3) et sa table d'onglets nommait sept onglets disparus, sautés sans u
   d'aperçu, ne revient dans la barre que quand la colonne est masquée. `e2e:entreprise` ouvre la
   facture depuis la fiche d'un client au nom long et exige une seule rangée — la mesure H-E19
   partait toujours de la liste, donc du label le plus court.
+- **Chercher n'est pas modifier, et ce qu'on a cherché est le nom de ce qu'on crée.** La recherche
+  d'une liste (`combo`) vivait dans le formulaire de la pièce : sa frappe remontait jusqu'à
+  `head.oninput`, qui marquait la pièce modifiée et rallumait « Enregistrer » (U-11) sur une facture
+  où rien n'avait changé. Et « + Nouveau fournisseur » après « Bois du Sahel » introuvable ouvrait
+  une fiche VIDE. Le combo arrête ses propres événements et passe sa recherche à `onAdd(saisi)` ; le
+  test lit CHAQUE appel et exige que la recherche y serve, pas seulement qu'elle y entre — un
+  paramètre reçu et ignoré est le jumeau d'un champ lu et jamais écrit (7.3.0).
+- **Une invite écrite par l'auteur porte son métier** (le jumeau de l'Objet du devis, deux fois de
+  plus) : « disques durs pour la Clinique » sur un achat, « Maintenance et supervision » sur un
+  contrat. Le test lit maintenant TOUS les champs Objet, pas celui qu'on venait de corriger.
 
 **Puis le rapport d'une entreprise qui a tenu SkanFact** (E-01 → E-14, une session QA qui a joué une
 vraie SUARL au régime réel, du premier écran au paquet du comptable). Ce qu'il a appris :

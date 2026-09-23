@@ -837,6 +837,11 @@
     };
     btn.onclick = () => (pop.hidden ? open() : close());
     q.oninput = () => { sel = 0; draw(); };
+    // Chercher n'est pas modifier : la frappe dans la recherche d'une liste ne remonte pas au
+    // formulaire qui la contient. Sans ça, taper « Bois du Sahel » pour trouver un fournisseur
+    // affichait « Modifications non enregistrées » et rallumait « Enregistrer » en vert (U-11) sur
+    // une pièce où rien n'avait changé (10.12.0, une menuiserie).
+    for (const ev of ['input', 'change']) q.addEventListener(ev, e => e.stopPropagation());
     q.onkeydown = e => {
       if (e.key === 'ArrowDown') { e.preventDefault(); sel = Math.min(sel + 1, shown.length - 1); draw(); }
       else if (e.key === 'ArrowUp') { e.preventDefault(); sel = Math.max(sel - 1, 0); draw(); }
@@ -845,7 +850,10 @@
       else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); btn.focus(); }
       else if (e.key === 'Tab') close();
     };
-    if (add) add.onclick = () => { close(); if (o.onAdd) o.onAdd(); };
+    // Ce qu'on vient de taper dans la recherche est le NOM de ce qu'on va créer : « Bois du Sahel »
+    // introuvable, « + Nouveau fournisseur » ouvrait une fiche vide, et il fallait le retaper (10.12.0,
+    // une menuiserie). Une information donnée une fois se réutilise là où elle sert.
+    if (add) add.onclick = () => { const saisi = (q && q.value || '').trim(); close(); if (o.onAdd) o.onAdd(saisi); };
     el.setItems = (items, value) => { el._items = items; if (value !== undefined) el._value = value; paint(); if (!pop.hidden) draw(); };
     el.setValue = (v, silent) => { el._value = v; paint(); if (hidden && !silent) hidden.dispatchEvent(new Event('change', { bubbles: true })); };
     paint();
@@ -2988,7 +2996,7 @@
     // une corvée. « + Nouveau client » crée la fiche et la sélectionne dans la foulée.
     const clientCombo = bindCombo($('[data-combo=clientId]', head), {
       items: clientItems(), placeholder: '— Choisir un client —', vide: 'Aucun client pour l\'instant',
-      onAdd: () => clientForm(null, c => { clientCombo.setItems(clientItems()); clientCombo.setValue(c.id); })
+      onAdd: saisi => clientForm(null, c => { clientCombo.setItems(clientItems()); clientCombo.setValue(c.id); }, { name: saisi })
     });
     // Une adresse fausse ou un matricule oublié se découvrent EN REGARDANT l'aperçu : il fallait
     // pourtant quitter le document (donc le garde-fou « modifications non enregistrées »), aller aux
@@ -3006,9 +3014,9 @@
     bindCombo($('[data-combo=creditOf]', head), { items: invoiceItems(), placeholder: '— Facture concernée —' });
     const projectCombo = bindCombo($('[data-combo=projectId]', head), {
       items: projectItems(doc.clientId), placeholder: '— Aucune affaire —',
-      onAdd: () => projectForm(null, p => {
+      onAdd: saisi => projectForm(null, p => {
         projectCombo.setItems(projectItems(doc.clientId)); projectCombo.setValue(p.id); doc.projectId = p.id; touch();
-      }, { clientId: doc.clientId || '', startDate: doc.date || C.today() })
+      }, { name: saisi, clientId: doc.clientId || '', startDate: doc.date || C.today() })
     });
 
     // --- totaux + aperçu
@@ -3858,8 +3866,8 @@
       });
   }
 
-  function clientForm(client, done) {
-    const c = client || { id: C.uid(), name: '', contact: '', matricule: '', address: '', phone: '', email: '', notes: '', withholdingRate: '' };
+  function clientForm(client, done, preset) {
+    const c = client || Object.assign({ id: C.uid(), name: '', contact: '', matricule: '', address: '', phone: '', email: '', notes: '', withholdingRate: '' }, preset || {});
     modal(`<h2>${client ? 'Modifier le client' : 'Nouveau client'}</h2>
       <form id="cf" class="grid-2">
         <label class="field span-2 obligatoire"><span>Nom / Raison sociale</span><input type="text" name="name" value="${h(c.name)}" required></label>
@@ -4643,7 +4651,7 @@
       <form id="rf" class="grid-3">
         <div class="field span-2">Client${combo({ name: 'clientId', value: r.clientId, items: clientItems(), placeholder: '— Choisir un client —', search: 'Rechercher : nom, contact, MF…', add: '+ Nouveau client' })}</div>
         <label class="field">Période<select name="every">${C.PERIODS.map(p => `<option value="${p[0]}" ${p[0] === r.every ? 'selected' : ''}>${p[1]}</option>`).join('')}</select></label>
-        <label class="field span-2">Objet des factures <span class="muted">({mois} = mois facturé)</span><input type="text" name="subject" value="${h(r.subject)}" placeholder="Maintenance et supervision — {mois}"></label>
+        <label class="field span-2">Objet des factures <span class="muted">({mois} = mois facturé)</span><input type="text" name="subject" value="${h(r.subject)}" placeholder="Contrat d'entretien — {mois}"></label>
         ${field('Jour du mois', 'day', r.day || 1, 'number', 'min="1" max="31" class="num"')}
         ${dateFieldHtml('Prochaine facture', 'nextDate', r.nextDate || C.today(), { quick: true })}
         <label class="field">Retenue à la source${withholdingSelect('withholdingRate', r.withholdingRate)}</label>
@@ -4659,7 +4667,7 @@
       (root, close) => {
         const cliCombo = bindCombo($('[data-combo=clientId]', root), {
           items: clientItems(), placeholder: '— Choisir un client —',
-          onAdd: () => clientForm(null, c => { cliCombo.setItems(clientItems()); cliCombo.setValue(c.id); })
+          onAdd: saisi => clientForm(null, c => { cliCombo.setItems(clientItems()); cliCombo.setValue(c.id); }, { name: saisi })
         });
         // La suppression vit ici, comme pour les clients, les prestations et les textes : c'est la
         // fenêtre où l'on voit ce qu'on supprime (audit — elle était sur la ligne de la liste).
@@ -6199,7 +6207,7 @@
               <div class="field">${lbl('Catégorie de charge', 'buy.category')}
                 ${combo({ name: 'category', value: p.category || '', items: cats.map(c => ({ v: c, label: c })), placeholder: '— Choisir une catégorie —', search: 'Rechercher une catégorie…', add: '+ Nouvelle catégorie' })}
               </div>
-              <label class="field span-2">${lbl('Objet', 'buy.subject')}<input type="text" name="subject" value="${h(p.subject || '')}" placeholder="Ex : disques durs pour la Clinique"></label>
+              <label class="field span-2">${lbl('Objet', 'buy.subject')}<input type="text" name="subject" value="${h(p.subject || '')}" placeholder="Ce que tu as acheté, et pour quel client ou quel chantier"></label>
               <div class="field">${lbl('Affaire (optionnel)', 'buy.project')}
                 ${combo({ name: 'projectId', value: p.projectId || '', items: projectItems(''), placeholder: '— Aucune affaire —', search: 'Rechercher une affaire…', add: '+ Nouvelle affaire' })}
               </div>
@@ -6214,7 +6222,7 @@
               <button class="btn btn-sm" id="add-line">+ Ligne</button>
               <span class="small muted">Saisis au moins le total hors taxes et son taux de TVA : c'est ce qui permet de récupérer la TVA.</span></div>
             <table class="lines-edit buy-lines"><thead><tr><th>Désignation</th><th class="r" style="width:62px">Qté</th><th class="r" style="width:92px">P.U. HT</th><th style="width:76px">TVA</th>
-              <th style="width:150px">Destination ${info('buy.destination')}</th><th style="width:74px">Déduct. ${info('buy.deductible')}</th><th class="r">Total HT</th><th></th></tr></thead>
+              <th style="width:150px">Destination ${info('buy.destination')}</th><th class="nw" style="width:96px">Déduct. ${info('buy.deductible')}</th><th class="r">Total HT</th><th></th></tr></thead>
               <tbody id="b-lines"></tbody></table>
             <div class="totals-box" id="b-totals"></div>
             <div id="b-stock-hint" hidden></div>
@@ -6423,17 +6431,17 @@
     const lieCombo = bindCombo($('[data-combo=achatLie]', head), { items: lieItems(p.supplierId), placeholder: '— À rattacher plus tard —' });
     const supCombo = bindCombo($('[data-combo=supplierId]', head), {
       items: supplierItems(), placeholder: '— Choisir un fournisseur —', vide: 'Aucun fournisseur pour l\'instant',
-      onAdd: () => supplierForm(null, sup => { supCombo.setItems(supplierItems()); supCombo.setValue(sup.id); })
+      onAdd: saisi => supplierForm(null, sup => { supCombo.setItems(supplierItems()); supCombo.setValue(sup.id); }, { name: saisi })
     });
     const buyProjectCombo = bindCombo($('[data-combo=projectId]', head), {
       items: projectItems(''), placeholder: '— Aucune affaire —',
-      onAdd: () => projectForm(null, pr => {
+      onAdd: saisi => projectForm(null, pr => {
         buyProjectCombo.setItems(projectItems('')); buyProjectCombo.setValue(pr.id); p.projectId = pr.id; touch();
-      }, { startDate: p.date || C.today() })
+      }, { name: saisi, startDate: p.date || C.today() })
     });
     bindCombo($('[data-combo=category]', head), {
       items: cats.map(c => ({ v: c, label: c })), placeholder: '— Choisir une catégorie —',
-      onAdd: () => promptDialog('Nouvelle catégorie de charge', 'Nom de la catégorie', '', name => {
+      onAdd: saisi => promptDialog('Nouvelle catégorie de charge', 'Nom de la catégorie', saisi, name => {
         const v = (name || '').trim(); if (!v) return;
         if (!C.expenseCategories(data).includes(v)) { data.expenseCategories.push(v); save(true); }
         const el = $('[data-combo=category]', head);
@@ -8505,10 +8513,10 @@
       (root, close) => {
         const supCombo = bindCombo($('[data-combo=supplierId]', root), {
           items: data.suppliers.map(x => ({ v: x.id, label: x.name, text: x.name })), placeholder: '— À choisir —',
-          onAdd: () => supplierForm(null, sup => {
+          onAdd: saisi => supplierForm(null, sup => {
             supCombo.setItems(data.suppliers.map(x => ({ v: x.id, label: x.name, text: x.name })));
             supCombo.setValue(sup.id);
-          }, head.supplierName && !head.supplierId ? { name: head.supplierName, matricule: head.matricule || '' } : null)
+          }, head.supplierName && !head.supplierId ? { name: saisi || head.supplierName, matricule: head.matricule || '' } : { name: saisi })
         });
         bindCombo($('[data-combo=category]', root), { items: C.expenseCategories(data).map(c => ({ v: c, label: c })), placeholder: '— À choisir —' });
         bindDateFields(root);
@@ -12853,7 +12861,7 @@
       (root, close) => {
         const form = $('#lf', root);
         const cc = bindCombo($('[data-combo=clientId]', root), { items: clientItems(), placeholder: '— Choisir un client —',
-          onAdd: () => clientForm(null, c => { cc.setItems(clientItems()); cc.setValue(c.id); }) });
+          onAdd: saisi => clientForm(null, c => { cc.setItems(clientItems()); cc.setValue(c.id); }, { name: saisi }) });
         // Le combo des clients propose « + Nouveau client » depuis toujours ; celui du catalogue, non
         // — alors que l'éditeur qui vend ses deux offres n'a, au premier jour, AUCUNE prestation de
         // licence dans son catalogue. Il retapait donc son prix à chaque émission, de mémoire, dans
@@ -12861,7 +12869,7 @@
         // Une fois la prestation créée, le prix et la TVA viennent d'elle — c'est à ça qu'elle sert.
         const ic = bindCombo($('[data-combo=itemId]', root), { items, placeholder: '— Facultatif : la ligne de la facture —',
           add: '+ Nouvelle prestation',
-          onAdd: () => catalogForm(null, it => {
+          onAdd: saisi => catalogForm(saisi ? articleNeuf({ label: saisi }) : null, it => {
             if (!it) return;   // « Supprimer » depuis la fenêtre du catalogue rappelle done(null).
             const maj = data.catalog.slice().sort((a, b) => a.label.localeCompare(b.label, 'fr')).map(c => ({
               v: c.id, label: c.label, sub: c.description || '', right: C.money(c.unitPrice, cur) + ' HT', text: `${c.label} ${c.description || ''}`

@@ -317,6 +317,14 @@ du premier écran à son catalogue, pour voir ce qu'un chef d'entreprise subit :
   tombait sur « Enregistrer le brouillon ». Le retour s'abrège à dix-huit caractères, et
   « Agrandir » — en double avec celui de la colonne d'aperçu — ne revient dans la barre que quand
   cette colonne est masquée.
+- **« + Nouveau fournisseur » reprend ce qu'on vient de chercher.** « Bois du Sahel » introuvable,
+  la fiche s'ouvrait vide et il fallait retaper le nom — et la frappe dans la recherche avait déjà
+  marqué la pièce « modifiée », « Enregistrer » rallumé en vert sur une facture d'achat où rien
+  n'avait changé. Toutes les listes à « + Nouveau… » (clients, fournisseurs, affaires, catégories,
+  prestations) préremplissent le nom ; chercher ne modifie plus rien.
+- **Les invites ne supposent plus le métier de l'auteur** : l'Objet d'un achat proposait « disques
+  durs pour la Clinique », celui d'un contrat « Maintenance et supervision » — à une menuiserie.
+- La colonne « Déduct. » d'une facture d'achat garde sa bulle sur la même ligne.
 
 **L'application entreprise mesurée en entier.** Ses instruments ne regardaient qu'une partie de
 l'application : aucun n'ouvrait une fiche ni une pièce par statut, et l'un visitait une adresse qui

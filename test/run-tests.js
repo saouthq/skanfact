@@ -7367,7 +7367,9 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     // deux et le bouton n'apparaît pas, ou apparaît sans rien faire.
     assert.ok(/add: '\+ Nouvelle prestation'/.test(app), 'l\'entrée « + Nouvelle prestation » doit être déclarée dans le gabarit ET dans le branchement');
     assert.strictEqual((app.match(/add: '\+ Nouvelle prestation'/g) || []).length, 2, 'il en faut une dans combo() et une dans bindCombo()');
-    assert.ok(/onAdd: \(\) => catalogForm\(/.test(zone), 'l\'ajout doit ouvrir la fiche du catalogue');
+    // (Retourné en 10.12.0 : l'assertion exigeait `onAdd: () =>` — la forme d'avant que la recherche
+    // tapée préremplisse la fiche. La règle est que l'ajout OUVRE la fiche du catalogue.)
+    assert.ok(/onAdd: (\(\)|saisi) => catalogForm\(/.test(zone), 'l\'ajout doit ouvrir la fiche du catalogue');
     // catalogForm rappelle done(null) quand on SUPPRIME depuis sa fenêtre : sans garde, le
     // formulaire de licence planterait sur it.id au moment le plus inattendu.
     assert.ok(/if \(!it\) return;/.test(zone), 'le rappel du catalogue doit survivre à une suppression (done(null))');

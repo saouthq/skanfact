@@ -437,6 +437,28 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
   if (!relu.pdf || !relu.mail) throw new Error('le relevé n\'offre pas les deux sorties (PDF, email)');
   j.ok(`${relu.lignes} pièce(s) ouverte(s), le pied porte le total, PDF et email offerts`);
 
+  // 10.12.0 — une menuiserie cherche « Bois du Sahel », ne le trouve pas, clique « + Nouveau
+  // fournisseur » : la fiche s'ouvrait VIDE, et la frappe dans la recherche avait déjà marqué la pièce
+  // « modifiée ». On tape comme un humain, touche par touche.
+  j.etape('« + Nouveau fournisseur » reprend ce qu\'on a cherché, et chercher ne modifie pas la pièce');
+  await win.keyboard.press('Escape');
+  await win.waitForFunction(() => !document.querySelector('#modal-root .modal'), null, { timeout: 4000 });
+  await aller('#/achat/new');
+  await win.waitForSelector('[data-combo=supplierId] .combo-btn');
+  await win.click('[data-combo=supplierId] .combo-btn');
+  await win.waitForSelector('[data-combo=supplierId] .combo-q');
+  await win.keyboard.type('Bois du Sahel', { delay: 20 });
+  await win.waitForTimeout(200);
+  const salie = await win.evaluate(() => { const d = document.querySelector('#dirty-dot'); return !!(d && !d.hidden); });
+  if (salie) throw new Error('chercher un fournisseur marque la pièce « modifiée »');
+  await win.click('[data-combo=supplierId] .combo-add');
+  await win.waitForSelector('#sf input[name=name]', { timeout: 4000 });
+  const nom = await win.inputValue('#sf input[name=name]');
+  if (nom !== 'Bois du Sahel') throw new Error(`la fiche du nouveau fournisseur ne reprend pas la recherche : « ${nom} »`);
+  await win.keyboard.press('Escape');
+  await win.waitForFunction(() => !document.querySelector('#modal-root .modal'), null, { timeout: 4000 });
+  j.ok('la pièce reste intacte pendant la recherche, et la fiche arrive nommée « Bois du Sahel »');
+
   await fermer(app);
   if (bac.length) { console.error('\nErreurs du renderer :\n' + bac.join('\n')); process.exit(2); }
   console.log(`\n${j.total()} étapes — les fiches montrent ce que l'application sait.`);

@@ -536,6 +536,12 @@ module.exports = ({ t, assert, lireSource }) => {
     assert.ok(/name="subject"[^>]*placeholder="\$\{h\(exempleObjet\(\)\)\}"/.test(app), 'l\'Objet ne passe pas par son invite neutre');
     const f0 = app.indexOf('const exempleObjet = () =>');
     assert.ok(f0 > 0 && !/Ex :/.test(app.slice(f0, f0 + 120)), 'l\'invite de l\'Objet propose encore un exemple de métier');
+    // Et TOUS les champs Objet : l'achat proposait « Ex : disques durs pour la Clinique », le contrat
+    // récurrent « Maintenance et supervision » — le métier de l'auteur, à une menuiserie (10.12.0).
+    const invites = app.match(/name="subject"[^>]*placeholder="[^"]*"/g) || [];
+    assert.ok(invites.length >= 4, 'champs Objet trouvés : ' + invites.length);
+    for (const i of invites) assert.ok(!/placeholder="Ex/.test(i) && !/Clinique|supervision|disques/i.test(i), 'une invite d\'Objet suppose un métier : ' + i);
+    assert.ok(!/Clinique|Disques durs/.test(guide), 'la bulle de l\'Objet d\'un achat suppose encore un métier');
   });
   // La « Marge estimée » apparaît au premier coût connu : posée à CÔTÉ de la carte des totaux, elle
   // la faisait sauter de 250 px vers la gauche pendant la frappe (10.12.0, parcours d'une menuiserie).
@@ -630,5 +636,22 @@ module.exports = ({ t, assert, lireSource }) => {
     assert.ok(/depositIds[\s\S]{0,120}map\(docById\)/.test(f), 'le solde ne nomme pas les acomptes déduits');
     assert.ok(/doc\.deposit \? ligne\('Acompte du devis'/.test(f), 'l\'acompte ne nomme pas son devis');
     assert.ok(/\$\{origine\}/.test(f), 'la ligne d\'origine n\'est pas posée dans le récapitulatif');
+  });
+  // Taper « Bois du Sahel » dans la recherche d'un fournisseur, ne rien trouver, cliquer « + Nouveau
+  // fournisseur » : la fiche s'ouvrait vide, et la frappe avait déjà marqué la pièce « modifiée »
+  // (10.12.0, une menuiserie).
+  t('« + Nouveau… » d\'une liste reprend ce qu\'on a tapé, et chercher ne modifie pas la pièce', () => {
+    const app = code('src', 'renderer', 'app.js');
+    assert.ok(/add\.onclick = \(\) => \{ const saisi = \(q && q\.value \|\| ''\)\.trim\(\); close\(\); if \(o\.onAdd\) o\.onAdd\(saisi\); \}/.test(app),
+      'le combo ne passe pas la recherche à onAdd');
+    assert.ok(!/onAdd: \(\) =>/.test(app), 'un « + Nouveau… » jette encore ce qu\'on a tapé');
+    // Chaque appel, jusqu'au suivant (ou 700 caractères) : la recherche doit y servir, pas seulement y entrer.
+    const debuts = [...app.matchAll(/onAdd: saisi => /g)].map(m => m.index);
+    const appels = debuts.map((d, i) => app.slice(d, Math.min(debuts[i + 1] || Infinity, d + 700)));
+    assert.ok(appels.length >= 9, 'appels onAdd trouvés : ' + appels.length);
+    for (const a of appels) assert.ok((a.match(/saisi/g) || []).length >= 2, 'un « + Nouveau… » reçoit la recherche sans s\'en servir : ' + a.slice(0, 120));
+    assert.ok(/function clientForm\(client, done, preset\)/.test(app), 'la fiche client ne sait pas recevoir un nom proposé');
+    assert.ok(/for \(const ev of \['input', 'change'\]\) q\.addEventListener\(ev, e => e\.stopPropagation\(\)\)/.test(app),
+      'la frappe dans la recherche d\'une liste remonte encore au formulaire');
   });
 };
