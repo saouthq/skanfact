@@ -674,4 +674,40 @@ module.exports = ({ t, assert, lireSource }) => {
     assert.ok(avant > 0 && perte > avant, 'la marge d\'un article sans prix de vente se calcule encore — et crie « à perte »');
     assert.ok(/if \(!pv\) \{ el\.innerHTML = '<span class="small muted">/.test(f), 'l\'absence de prix se dit en couleur d\'alerte');
   });
+  // « Prix de vente du stock : 0,000 DT — ce qu'il rapporterait vendu » sur 1 540 DT de planches :
+  // un article sans prix n'a pas de prix, il ne vaut pas zéro (10.12.0, une menuiserie).
+  t('Le stock sans prix de vente dit « — », jamais « 0 rapporterait vendu »', () => {
+    const app = code('src', 'renderer', 'app.js');
+    assert.ok(!/r\.qty\) \* r\.unitPrice, 0\)\), cur\)\}<\/div><div class="sub">ce qu'il rapporterait vendu/.test(app), 'la carte additionne encore des prix absents comme des zéros');
+    assert.ok(/const prices = t\.rows\.filter\(r => Number\(r\.unitPrice\) > 0\)/.test(app), 'la carte ne distingue pas les articles sans prix');
+    assert.ok(/prices\.length \? C\.money\(total, cur\) : '—'/.test(app), 'sans aucun prix, la carte affiche un montant');
+    assert.ok(/Number\(r\.unitPrice\) > 0 \? C\.money\(r\.unitPrice, cur\) : '<span class="muted" title="Pas de prix de vente fixé">—<\/span>'/.test(app), 'la colonne montre 0,000 pour un prix absent');
+  });
+  // Une menuiserie achète 40 planches à 38,5 DT, en utilise 10 sur un chantier, en casse 2, en revend 4,
+  // en reprend 1 sur avoir et en retrouve 1 à l'inventaire. Jusqu'en 10.12.0, seules les 4 vendues
+  // entraient dans la charge : 154 DT — le bois du chantier et la casse disparaissaient du résultat.
+  t('Toute sortie de stock est une charge — la matière d\'un chantier et la casse aussi, un retour la rend', () => {
+    const d = vierge();
+    d.catalog = [{ id: 'pl', label: 'Planche chêne massif 27 mm', unit: 'u', unitPrice: 60, unitCost: 38.5, vatRate: 19, tracked: true }];
+    d.suppliers = [{ id: 's1', name: 'Bois du Sahel' }];
+    d.clients = [{ id: 'c1', name: 'Hôtel Dar El Marsa' }];
+    d.purchases = [{ id: 'a1', kind: 'facture', supplierId: 's1', number: 'BS-1', date: '2026-09-01', currency: 'DT',
+      lines: [{ label: 'Planche chêne massif 27 mm', itemId: 'pl', qty: 40, unitPrice: 38.5, vatRate: 19, destination: 'stock', deductible: true }], payments: [], fees: 0 }];
+    d.documents = [
+      { id: 'f1', type: 'facture', status: 'envoyée', number: 'FAC-2026-001', date: '2026-09-10', clientId: 'c1',
+        lines: [{ label: 'Planche chêne massif 27 mm', itemId: 'pl', qty: 4, unitPrice: 60, vatRate: 19 }], payments: [] },
+      { id: 'v1', type: 'avoir', status: 'émis', number: 'AVO-2026-001', date: '2026-09-12', clientId: 'c1', creditOf: 'f1',
+        lines: [{ label: 'Planche chêne massif 27 mm', itemId: 'pl', qty: 1, unitPrice: 60, vatRate: 19 }] }];
+    d.stockAdjustments = [
+      { id: 'm1', date: '2026-09-05', itemId: 'pl', qty: -10, unitCost: '', source: 'consommation', note: 'Chantier Dar El Marsa' },
+      { id: 'm2', date: '2026-09-06', itemId: 'pl', qty: -2, unitCost: '', source: 'casse', note: '' },
+      { id: 'm3', date: '2026-09-30', itemId: 'pl', qty: 1, unitCost: '', source: 'inventaire', note: '' }];
+    const periode = { from: '2026-09-01', to: '2026-09-30' };
+    // Calculé à la main : (4 vendues − 1 reprise + 10 utilisées + 2 cassées − 1 retrouvée) × 38,5 = 14 × 38,5.
+    assert.strictEqual(core.costOfGoodsSold(d, periode), 539);
+    assert.strictEqual(core.simpleResult(d, d.company, periode).cogs, 539);
+    // Le stock et la charge se tiennent : 40 achetées, 26 restent, 14 sont passées en charge.
+    assert.strictEqual(core.stockOf(d, 'pl').qty, 26);
+    assert.ok(core.MOVE_SOURCES.some(([k]) => k === 'consommation'), 'la nature « chantier ou fabrication » n\'existe pas');
+  });
 };

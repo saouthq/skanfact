@@ -1943,8 +1943,12 @@
   const MOVE_SOURCES = [
     ['achat', 'Achat'], ['vente', 'Vente'], ['livraison', 'Bon de livraison'],
     ['avoir', 'Retour sur avoir'], ['depart', 'Stock de départ'],
-    ['inventaire', 'Inventaire'], ['casse', 'Casse ou perte'], ['ajustement', 'Ajustement']
+    ['inventaire', 'Inventaire'], ['casse', 'Casse ou perte'],
+    ['consommation', 'Utilisé sur un chantier ou en fabrication'], ['ajustement', 'Ajustement']
   ];
+  // Les seuls mouvements qui ne sont PAS une charge de la période : l'achat (c'est de l'argent devenu
+  // stock) et le stock de départ (ce qu'on avait avant de commencer à compter).
+  const SOURCES_HORS_CHARGE = ['achat', 'depart'];
   const moveSourceLabel = k => (MOVE_SOURCES.find(m => m[0] === k) || [, k])[1];
 
   // Les articles du catalogue suivis en stock.
@@ -2143,10 +2147,18 @@
   // du moment. C'est LUI la charge de la période, pas l'achat — acheter de la marchandise ne coûte rien
   // tant qu'elle est sur l'étagère, et la vendre coûte ce qu'elle a coûté. C'est la « variation de stock »
   // que le résultat simplifié annonçait comme manquante jusqu'ici.
+  //
+  // TOUTE sortie qui n'est pas un achat ni le stock de départ coûte ce qu'elle a coûté : la vente, mais
+  // aussi la casse, l'écart d'inventaire et la matière utilisée sur un chantier. Jusqu'en 10.12.0 seules
+  // les ventes comptaient : une menuiserie qui achète des planches et les transforme en portes ne voyait
+  // jamais son bois en charge — son résultat était gonflé de tout ce qu'elle avait consommé. Et un retour
+  // sur avoir rend son coût : sans ça, la marchandise revenue en rayon restait comptée comme vendue.
+  // (La comptabilité, elle, passe les achats au 607 et l'inventaire au 603 : ce chiffre ne sert qu'aux
+  // vues de gestion — résultat simplifié, seuil de rentabilité.)
   function costOfGoodsSold(data, period) {
     return round3(stockJournal(data, period)
-      .filter(m => m.qty < 0 && ['vente', 'livraison'].includes(m.source))
-      .reduce((s, m) => s + Math.abs(m.qty) * (Number(m.unitApplied) || 0), 0));
+      .filter(m => !SOURCES_HORS_CHARGE.includes(m.source))
+      .reduce((s, m) => s - (Number(m.qty) || 0) * (Number(m.unitApplied) || 0), 0));
   }
 
   // Ce qu'un document sortirait du stock : appelé avant d'émettre une facture ou un bon de livraison,

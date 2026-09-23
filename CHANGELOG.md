@@ -331,6 +331,17 @@ du premier écran à son catalogue, pour voir ce qu'un chef d'entreprise subit :
 - **Un prix de vente à 0 n'est plus « une vente à perte »** : l'article créé depuis un achat arrive
   avec son coût et sans prix, et la fiche criait « Marge : − 38,500 DT — tu vends à perte » en orange
   sur une planche qu'on ne revend pas telle quelle. Elle dit que la marge viendra avec le prix.
+- **La matière utilisée et la casse sont enfin des charges.** Le résultat simplifié et le seuil de
+  rentabilité ne comptaient comme charge que les articles VENDUS : une menuiserie qui achète des
+  planches et les transforme en portes ne voyait jamais son bois en charge, et une casse faisait
+  disparaître de la valeur du stock sans rien coûter au résultat. Toute sortie de stock qui n'est pas
+  un achat ni le stock de départ compte désormais, à son coût moyen — et un retour sur avoir rend son
+  coût. Nouvelle nature de mouvement : « Utilisé sur un chantier ou en fabrication ». La comptabilité
+  ne change pas (les achats au 607, l'inventaire au 603). La carte s'appelle « Coût des sorties de
+  stock ».
+- **Le stock sans prix de vente dit « — »**, plus « 0,000 DT, ce qu'il rapporterait vendu » sur
+  1 540 DT de planches ; la note d'un mouvement de stock n'invite plus « Deux disques tombés à la
+  livraison ».
 
 **L'application entreprise mesurée en entier.** Ses instruments ne regardaient qu'une partie de
 l'application : aucun n'ouvrait une fiche ni une pièce par statut, et l'un visitait une adresse qui

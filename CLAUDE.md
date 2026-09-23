@@ -6404,6 +6404,14 @@ fixe (9.4.3) et sa table d'onglets nommait sept onglets disparus, sautés sans u
   appelle la même fonction. Et **un zéro saisi par défaut n'est pas un chiffre décidé** (le jumeau de
   « un prix posé par le logiciel n'est pas un prix décidé ») : un prix de vente à 0 faisait calculer
   une marge négative et crier « à perte » en orange — du rouge sur une situation normale (8.0.1).
+- **Une charge se définit par ce qui N'EN EST PAS, pas par la liste de ce qui en est.**
+  `costOfGoodsSold` retenait `['vente', 'livraison']` : chaque nature de mouvement ajoutée depuis la
+  4.0.0 (casse, inventaire, ajustement) sortait de la valeur du stock sans jamais entrer dans le
+  résultat, et une menuiserie qui transforme ses planches n'avait AUCUN coût de matière. La liste est
+  retournée : tout ce qui n'est ni un achat ni le stock de départ, dans les deux sens (un retour sur
+  avoir, un surplus d'inventaire rendent leur coût). Le motif est celui de la 10.7.0 — une liste qui
+  énumère ce qui compte se périme au premier ajout, une liste de ce qui ne compte pas tient.
+  Le test pose les six mouvements d'un mois et attend 14 × 38,5, calculé à la main (7.0.1).
 
 **Puis le rapport d'une entreprise qui a tenu SkanFact** (E-01 → E-14, une session QA qui a joué une
 vraie SUARL au régime réel, du premier écran au paquet du comptable). Ce qu'il a appris :

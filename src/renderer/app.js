@@ -6947,7 +6947,7 @@
           <div class="vat-box" style="max-width:680px">
             <div class="vat-line"><span>Chiffre d'affaires HT</span><span class="num">${C.money(b.revenue, cur)}</span></div>
             <div class="vat-line minus"><span>− Charges variables ${info('mg.variable')}</span><span class="num">${C.money(b.variable, cur)}</span></div>
-            ${b.cogs ? `<div class="vat-line sub-line"><span class="muted">dont coût des marchandises vendues ${info('stk.cogs')}</span><span class="num muted">${C.money(b.cogs, cur)}</span></div>` : ''}
+            ${b.cogs ? `<div class="vat-line sub-line"><span class="muted">dont coût des sorties de stock ${info('stk.cogs')}</span><span class="num muted">${C.money(b.cogs, cur)}</span></div>` : ''}
             <div class="vat-line"><span>= Marge sur coûts variables <span class="muted">(${pct(b.rate)} %)</span></span><span class="num">${C.money(b.marginOnVariable, cur)}</span></div>
             <div class="vat-line minus"><span>− Charges fixes ${info('mg.fixed')}</span><span class="num">${C.money(b.fixed, cur)}</span></div>
             ${b.payroll ? `<div class="vat-line sub-line"><span class="muted">dont coût de la paie ${info('pay.employerCost')}</span><span class="num muted">${C.money(b.payroll, cur)}</span></div>` : ''}
@@ -8066,17 +8066,17 @@
     const a = { id: C.uid(), date: C.today(), itemId: itemId || items[0].id, qty: 0, unitCost: '', source: 'casse', reference: '', note: '', createdAt: Date.now() };
     const cur = company().currency;
     modal(`<h2>Mouvement de stock</h2>
-      <p class="small muted">Ce qui n'a ni facture ni achat : casse, perte, vol, cadeau, correction d'inventaire. Les entrées d'achat et les sorties de vente remontent toutes seules — ne les saisis pas ici.</p>
+      <p class="small muted">Ce qui n'a ni facture ni achat : la matière utilisée sur un chantier, la casse, la perte, un cadeau, une correction d'inventaire. Les entrées d'achat et les sorties de vente remontent toutes seules — ne les saisis pas ici.</p>
       <form id="adf" class="grid-2">
         ${dateFieldHtml('Date', 'date', a.date, {})}
         <div class="field">Article
           ${combo({ name: 'itemId', value: a.itemId, items: items.map(c => ({ v: c.id, label: c.label, sub: c.unit || '', text: c.label })), placeholder: '— Choisir un article —', search: 'Rechercher un article…' })}
         </div>
-        <label class="field">${lbl('Nature', 'stk.moveKind')}<select name="source">${C.MOVE_SOURCES.filter(([k]) => ['casse', 'inventaire', 'ajustement'].includes(k)).map(([v, l]) => `<option value="${v}" ${a.source === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+        <label class="field">${lbl('Nature', 'stk.moveKind')}<select name="source">${C.MOVE_SOURCES.filter(([k]) => ['casse', 'consommation', 'inventaire', 'ajustement'].includes(k)).map(([v, l]) => `<option value="${v}" ${a.source === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
         ${field(lbl('Quantité', 'stk.adjustQty'), 'qty', 0, 'number', 'step="0.01" class="num" placeholder="-2 pour une sortie"')}
         ${field('Coût unitaire (optionnel)', 'unitCost', '', 'number', 'step="0.001" min="0" class="num" placeholder="laisse vide : coût moyen"')}
         ${field('Référence', 'reference', '', 'text', '')}
-        <label class="field span-2">Note<input type="text" name="note" placeholder="Deux disques tombés à la livraison"></label>
+        <label class="field span-2">Note<input type="text" name="note" placeholder="Ce qui s'est passé, en une phrase"></label>
         <div class="field span-2" id="adj-hint"></div>
       </form>
       <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
@@ -8171,7 +8171,15 @@
           <div class="stat"><div class="lbl">Valeur du stock ${info('stk.value')}</div><div class="val">${C.money(t.value, cur)}</div><div class="sub">${pl(t.count, 'article')} suivi${sPl(t.count)}</div></div>
           <div class="stat" ${t.low ? 'data-stat="low" role="button" tabindex="0"' : ''}><div class="lbl">Sous le seuil ${info('stk.min')}</div><div class="val ${t.low ? 'due' : ''}">${t.low}</div><div class="sub">${t.low ? 'à recommander — voir lesquels' : 'à recommander'}</div></div>
           <div class="stat" ${t.negative ? 'data-stat="neg" role="button" tabindex="0"' : ''}><div class="lbl">Stocks négatifs ${info('stk.negative')}</div><div class="val ${t.negative ? 'due' : ''}">${t.negative}</div><div class="sub">${t.negative ? 'une entrée manque quelque part — voir lesquels' : 'rien d\'impossible'}</div></div>
-          <div class="stat"><div class="lbl">Prix de vente du stock</div><div class="val">${C.money(C.round3(t.rows.reduce((a, r) => a + Math.max(0, r.qty) * r.unitPrice, 0)), cur)}</div><div class="sub">ce qu'il rapporterait vendu</div></div>
+          ${(() => {
+            // Un article sans prix de vente (une planche qu'on transforme, pas qu'on revend) ne vaut
+            // pas « 0 » vendu : il n'a pas de prix. Le compter à zéro faisait annoncer « 0,000 DT, ce
+            // qu'il rapporterait vendu » sur 1 540 DT de bois (10.12.0, une menuiserie).
+            const prices = t.rows.filter(r => Number(r.unitPrice) > 0), sans = t.rows.length - prices.length;
+            const total = C.round3(prices.reduce((a, r) => a + Math.max(0, r.qty) * r.unitPrice, 0));
+            return `<div class="stat"><div class="lbl">Prix de vente du stock</div><div class="val">${prices.length ? C.money(total, cur) : '—'}</div>
+              <div class="sub">${!prices.length ? 'aucun prix de vente fixé' : sans ? `ce qu'il rapporterait vendu — ${pl(sans, 'article')} sans prix, non compté${sPl(sans)}` : 'ce qu\'il rapporterait vendu'}</div></div>`;
+          })()}
         </div>
         <div class="panel"><h2>État du stock ${info('stk.state')}</h2>
           <div class="filters">
@@ -8188,7 +8196,7 @@
               <td class="r nw">${r.minStock ? pct(r.minStock) : '<span class="muted">—</span>'}</td>
               <td class="r nw">${C.money(r.cmp, cur)}</td>
               <td class="r nw"><strong>${C.money(Math.max(0, r.value), cur)}</strong></td>
-              <td class="r nw">${C.money(r.unitPrice, cur)}</td></tr>`).join('')}
+              <td class="r nw">${Number(r.unitPrice) > 0 ? C.money(r.unitPrice, cur) : '<span class="muted" title="Pas de prix de vente fixé">—</span>'}</td></tr>`).join('')}
             <tr class="total-row"><td colspan="5"><strong>Total</strong></td>
               <td class="r"><strong>${C.money(C.round3(rows.reduce((a, r) => a + Math.max(0, r.value), 0)), cur)}</strong></td><td></td></tr>
           </tbody></table></div>
@@ -10048,7 +10056,7 @@
           <div class="stats compact-stats">
             <div class="stat"><div class="lbl">Produits (ventes HT)</div><div class="val">${C.money(res.produits, cur)}</div><div class="sub">${pl(res.salesCount, 'pièce')}</div></div>
             <div class="stat"><div class="lbl">Charges HT</div><div class="val">${C.money(res.charges, cur)}</div><div class="sub">${pl(res.buysCount, 'pièce')} d'achat</div></div>
-            <div class="stat"><div class="lbl">Coût des marchandises vendues ${info('stk.cogs')}</div><div class="val">${C.money(res.cogs, cur)}</div><div class="sub">${res.cogs ? 'sorties de stock, au coût moyen' : 'aucune sortie de stock'}</div></div>
+            <div class="stat"><div class="lbl">Coût des sorties de stock ${info('stk.cogs')}</div><div class="val">${C.money(res.cogs, cur)}</div><div class="sub">${res.cogs ? 'ventes, matière utilisée et casse, au coût moyen' : 'aucune sortie de stock'}</div></div>
             <div class="stat"><div class="lbl">Coût de la paie ${info('pay.employerCost')}</div><div class="val">${C.money(res.payroll, cur)}</div><div class="sub">${res.payroll ? 'brut + charges patronales' : 'aucun bulletin sur la période'}</div></div>
             <div class="stat"><div class="lbl">Dotation aux amortissements ${info('immo.annuity')}</div><div class="val">${C.money(res.depreciation, cur)}</div><div class="sub">${res.depreciation ? 'une charge qui ne sort pas d\'argent' : 'aucun bien amorti sur la période'}</div></div>
             <div class="stat"><div class="lbl">Résultat avant impôt</div><div class="val ${res.resultat >= 0 ? 'ok' : 'due'}">${C.money(res.resultat, cur)}</div><div class="sub">${res.marge == null ? '' : res.marge + ' % du chiffre d\'affaires'}</div></div>
