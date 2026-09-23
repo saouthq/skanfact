@@ -54,7 +54,7 @@ const NODE = {
 // Les modules que les deux applications posent sur `window` et se partagent.
 const PARTAGES = {
   SkanCore: 'readonly', SkanCompta: 'readonly', SkanDemo: 'readonly', SkanGuide: 'readonly',
-  SkanOnboarding: 'readonly', RowMenu: 'readonly', Reglages: 'readonly',
+  SkanOnboarding: 'readonly', RowMenu: 'readonly', Reglages: 'readonly', MajUI: 'readonly',
   CabCore: 'readonly', CabGuide: 'readonly'
 };
 

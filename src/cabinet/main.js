@@ -3078,6 +3078,8 @@ function noterVerification(resultat, version) {
     fs.writeFileSync(MAJ_ETAT(), JSON.stringify({ at: Date.now(), resultat, version: version || '' }));
   } catch (_) { /* une date non écrite ne doit jamais empêcher une mise à jour */ }
 }
+const memePrete = info => !!(downloaded && updateInfo && info && updateInfo.version === info.version);
+const notesTexte = n => !n ? '' : Array.isArray(n) ? n.map(x => (x && x.note) || '').join('\n') : String(n);
 const sendUpd = (s, payload) => { try { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('update:event', { state: s, ...(payload || {}) }); } catch {} };
 
 // Voir src/main.js : **on ne montre jamais une phrase qu'on n'a pas écrite.** Le message brut
@@ -3096,7 +3098,7 @@ function updateProblem(err) {
     // Sur le canal d'essai, l'index qui manque est le plus souvent une bêta qui n'existe pas encore :
     // c'est le cas normal entre deux essais (7.25.0), pas une publication en cours.
     return readUpdateCfg().beta
-      ? dit('Aucune version d\'essai publiée pour l\'instant. Tu as la dernière version ; décoche la case pour revenir au canal normal.', true)
+      ? dit('Aucune version d\'essai publiée pour l\'instant. Tu as la dernière version ; désactive « Versions d\'essai » pour revenir au canal normal.', true)
       : dit('Une nouvelle version vient d\'être publiée et ses fichiers finissent de monter en ligne. Réessaie dans quelques minutes.', true);
   }
   if (/NO_PUBLISHED_VERSIONS|LATEST_VERSION_NOT_FOUND/.test(code)) return dit('Aucune version publiée pour l\'instant.', true);
@@ -3120,12 +3122,12 @@ function updateProblem(err) {
 // La liste des releases du dépôt, telle que l'API la rend (de la plus récente à la plus ancienne,
 // vingt au plus — plusieurs préversions peuvent s'intercaler entre deux stables, 7.25.0). Le jeton
 // n'est envoyé qu'à l'API, jamais au CDN des fichiers.
-function releasesGithub(token) {
+function releasesGithub(token, chemin) {
   return new Promise((resolve, reject) => {
     const https = require('https');
     const entetes = { 'User-Agent': `SkanFact-Cabinet/${VERSION}`, Accept: 'application/vnd.github+json' };
     if (token) entetes.Authorization = `Bearer ${String(token).trim()}`;
-    const req = https.get(`https://api.github.com/repos/${GITHUB.owner}/${GITHUB.repo}/releases?per_page=20`, { headers: entetes, timeout: 15000 }, res => {
+    const req = https.get(`https://api.github.com/repos/${GITHUB.owner}/${GITHUB.repo}/releases${chemin || '?per_page=20'}`, { headers: entetes, timeout: 15000 }, res => {
       let corps = '';
       res.setEncoding('utf8');
       res.on('data', d => { corps += d; });
@@ -3158,7 +3160,10 @@ async function feedGithub(u) {
     return;
   }
   const fichier = K.nomIndex('cabinet-beta', process.platform);
-  const rel = K.releasePourIndex(await releasesGithub(cfg.token), fichier);
+  // La liste peut rendre une release récente SANS ses fichiers (23/09/2026) : on relit celle qui
+  // paraît vide avant de retomber sur une plus ancienne, sinon on sert une vieille bêta.
+  const relire = r => releasesGithub(cfg.token, `/${r.id}/assets?per_page=100`).catch(() => null);
+  const rel = await K.releasePourIndexRelue(await releasesGithub(cfg.token), fichier, relire);
   if (!rel) {
     // Pas de bêta publiée : le même code que le fournisseur générique sur un index absent, pour que
     // `updateProblem` en fasse la même phrase grise.
@@ -3214,10 +3219,23 @@ function getUpdater() {
     const ul = lvl => m => { try { fs.appendFileSync(ulog, `${new Date().toISOString()} ${lvl} ${m}\n`); } catch {} };
     autoUpdater.logger = { info: ul('info'), warn: ul('warn'), error: ul('error'), debug: ul('debug') };
     autoUpdater.on('checking-for-update', () => { if (!silentCheck) sendUpd('checking'); });
-    autoUpdater.on('update-available', info => { updateInfo = info; downloaded = false; downloadedFile = null; enTelechargement = autoUpdater.autoDownload; noterVerification('available', info.version); sendUpd('available', { version: info.version }); });
-    autoUpdater.on('update-not-available', () => { noterVerification('none'); if (!silentCheck) sendUpd('none'); });
-    autoUpdater.on('download-progress', p => sendUpd('downloading', { percent: Math.round(p.percent), version: updateInfo && updateInfo.version }));
-    autoUpdater.on('update-downloaded', info => { downloaded = true; enTelechargement = false; downloadedFile = info.downloadedFile || null; sendUpd('downloaded', { version: info.version }); });
+    autoUpdater.on('update-available', info => {
+      noterVerification('available', info.version);
+      // La MÊME version que celle déjà téléchargée : elle reste prête.
+      if (memePrete(info)) { sendUpd('downloaded', { version: info.version, notes: notesTexte(info.releaseNotes) }); return; }
+      updateInfo = info; downloaded = false; downloadedFile = null; enTelechargement = autoUpdater.autoDownload;
+      sendUpd('available', { version: info.version, notes: notesTexte(info.releaseNotes) });
+    });
+    autoUpdater.on('update-not-available', () => {
+      noterVerification('none');
+      if (silentCheck) return;
+      if (downloaded && updateInfo) sendUpd('downloaded', { version: updateInfo.version, notes: notesTexte(updateInfo.releaseNotes) });
+      else sendUpd('none');
+    });
+    autoUpdater.on('download-progress', p => { if (!downloaded) sendUpd('downloading', { percent: Math.round(p.percent), version: updateInfo && updateInfo.version, transferred: p.transferred, total: p.total }); });
+    // Les notes voyagent avec l'annonce, comme dans l'app entreprise : la fenêtre « prête à
+    // installer » dit ce que la version change, pas seulement son numéro.
+    autoUpdater.on('update-downloaded', info => { downloaded = true; enTelechargement = false; downloadedFile = info.downloadedFile || null; sendUpd('downloaded', { version: info.version, notes: notesTexte(info.releaseNotes) }); });
     autoUpdater.on('error', err => { noterVerification('error'); const pendant = enTelechargement; enTelechargement = false; if ((pendant || !silentCheck) && !silencerErreur) sendUpd('error', updateProblem(err)); });
     // Le flux se branche dans `checkForUpdates` (il peut demander la liste des releases à GitHub,
     // donc attendre) : ici on ne pose que ce qui est synchrone.
@@ -3240,7 +3258,8 @@ async function checkForUpdates(isSilent) {
   if (!relayBase() && GITHUB.private && !readUpdateCfg().token) return { state: 'token' };
   const u = getUpdater();
   if (!u) return updaterUnavailable();
-  if (downloaded) { sendUpd('downloaded', { version: updateInfo && updateInfo.version }); return { state: 'ok' }; }
+  // Une version téléchargée n'arrête plus la recherche (23/09/2026, voir src/main.js) : la 10.9.3
+  // prête cachait la 10.10.0 publiée entre-temps, et il fallait installer l'une pour voir l'autre.
   const patiente = () => new Promise((_, rej) => setTimeout(() => rej(new Error('ETIMEDOUT: pas de réponse')), 45000));
   // **Le repli n'est pas un réglage, c'est un réflexe.** Deux chemins existent — le relais et
   // GitHub en direct — et le second ne servait que lorsque le premier était MAL RÉGLÉ, pas quand il
@@ -3342,6 +3361,16 @@ ipcMain.handle('upd:setToken', (_e, token) => {
   return { hasToken: !!cfg.token };
 });
 ipcMain.handle('upd:check', () => checkForUpdates(false));
+// La dernière version stable et la dernière version d'essai PUBLIÉES (voir src/main.js) : l'écran
+// écrivait « Numérotées 9.2.0-beta.1 », figé depuis la 9.1.0.
+ipcMain.handle('upd:canaux', async () => {
+  try {
+    return await require('../canaux').lireCanaux({
+      app: 'cabinet', plateforme: process.platform, relaisBase: relayBase(), relaisSecret: relaySecret(),
+      owner: GITHUB.owner, repo: GITHUB.repo, token: readUpdateCfg().token, userAgent: `SkanFact-Cabinet/${VERSION}`
+    });
+  } catch (_) { return null; }
+});
 ipcMain.handle('upd:download', () => {
   const u = getUpdater();
   if (!u || !updateInfo) return { state: 'error', message: 'Aucune mise à jour détectée.' };

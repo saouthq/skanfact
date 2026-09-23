@@ -790,9 +790,14 @@
       upd.state = ev.state;
       if (ev.version) upd.version = ev.version;
       if (ev.percent != null) upd.percent = ev.percent;
+      upd.transferred = ev.transferred; upd.total = ev.total;
       if (ev.message) upd.message = ev.message;
+      if (ev.detail != null) upd.detail = ev.detail;
+      if (ev.soft != null) upd.soft = !!ev.soft;
+      if (ev.notes != null) upd.notes = ev.notes;
       drawUpdatePanel();
       updateBanner();
+      if (ev.state === 'downloaded') proposerInstallation(ev);
     });
     api.updVersion().then(v => {
       upd.app = v;
@@ -8359,35 +8364,14 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
   // Même mécanique que dans SkanFact, avec un canal séparé : l'app cabinet ne reçoit QUE ses
   // versions à elle. Sur macOS l'app n'est pas signée, donc elle se remplace elle-même dans le
   // dossier Applications puis se relance — c'est ce que fait mac-update.sh.
+  // L'écran vit dans `src/renderer/majui.js` depuis le 23/09/2026, le même que celui de l'app
+  // entreprise (« le même workflow que Apple », Skander). Ici ne restent que le jeton d'accès, la
+  // panne de relais et les branchements.
+  const ICONE_CAB = '<span class="brand-mark cab"><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></span>';
   function drawUpdatePanel() {
     const el = $('#upd-panel'); if (!el) return;
     const a = upd.app || {};
     const macNonSigne = a.platform === 'darwin' && !a.macSigned;
-    const btnCheck = '<button class="btn" id="u-check">Vérifier maintenant</button>';
-    let corps = '';
-    if (!a.packaged) corps = `<p class="muted small">Mode développement : la vérification n'est active que dans l'application installée.</p>${btnCheck}`;
-    else if (upd.state === 'checking') corps = '<p class="muted">Vérification en cours…</p>';
-    else if (upd.state === 'none') corps = `<p>Tu as la dernière version.</p>${btnCheck}`;
-    // Ces deux états n'offraient aucun bouton : une coupure de réseau à 40 % figeait la barre pour
-    // de bon. Le moteur sait relancer depuis toujours, aucun écran ne l'appelait (règle 7.3.0).
-    else if (upd.state === 'available') corps = `<p><strong>Version ${esc(upd.version)} disponible</strong> — téléchargement en cours…</p>
-      <div class="inline"><button class="btn btn-ghost btn-sm" id="u-retry">Relancer le téléchargement</button></div>`;
-    else if (upd.state === 'downloading') corps = `<p>Téléchargement de la version ${esc(upd.version)}… ${upd.percent} %</p>
-      <div class="progress"><div style="width:${upd.percent}%"></div></div>
-      <div class="inline"><button class="btn btn-ghost btn-sm" id="u-retry">Relancer le téléchargement</button></div>`;
-    else if (upd.state === 'downloaded') corps = `<p><strong>Version ${esc(upd.version)} prête.</strong>
-      ${macNonSigne ? 'L\'application se ferme, se remplace dans le dossier Applications et se relance (une dizaine de secondes).' : 'L\'application se ferme, s\'installe et redémarre.'}</p>
-      <button class="btn btn-primary" id="u-install">Installer et redémarrer</button>`;
-    else if (upd.state === 'error') corps = `<p class="${upd.soft ? 'muted' : 'small'}"${upd.soft ? '' : ' style="color:var(--danger)"'}>${esc(upd.message)}</p>
-      ${upd.detail ? `<details class="tech"><summary>Détails techniques</summary><code>${esc(upd.detail)}</code></details>` : ''}
-      <div class="inline">${btnCheck}<button class="btn btn-ghost" id="u-rel">Voir les versions</button></div>`;
-    else if (!a.relay && a.private && (upd.state === 'token' || !a.hasToken)) corps = `<p class="muted small">Les mises à jour ne sont pas encore activées sur cet ordinateur : colle le jeton d'accès ci-dessous.</p>${btnCheck}`;
-    // L'état au repos : il n'affichait qu'un bouton, c'est-à-dire rien. On répond avec ce que la
-    // dernière vérification a constaté — silencieuse comprise, puisqu'elle ne dit rien par ailleurs.
-    else if (a.lastResult === 'none') corps = `<p>Tu as la dernière version.</p>${btnCheck}`;
-    else if (a.lastResult === 'error') corps = `<p class="muted">La dernière vérification n'a pas abouti. SkanFact réessaiera tout seul ; tu peux aussi relancer maintenant.</p>${btnCheck}`;
-    else corps = `<p class="muted">Aucune vérification n'a encore eu lieu sur cet ordinateur.</p>${btnCheck}`;
-
     // Avec le relais, il n'y a rien à saisir : c'est lui qui détient l'accès au dépôt. On ne montre
     // pas un champ que personne n'a à remplir.
     // Un relais en panne se dit : un écran qui affirme « rien à configurer » devant une mise à jour
@@ -8399,7 +8383,8 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
     // « SkanFact est distribué depuis un dépôt privé » alors que le dépôt était public depuis
     // treize versions : le comptable cherchait un jeton que personne n'avait à lui donner.
     const jeton = a.relay
-      ? '<p class="small muted mt">Les mises à jour arrivent toutes seules : rien à configurer.</p>'
+      // La ligne « Mises à jour automatiques — Activées » le dit déjà (23/09/2026).
+      ? ''
       : a.private ? noteRelais + `<div class="token-box">
       <div class="k-label">Accès au dépôt</div>
       <p class="small muted">SkanFact est distribué depuis un dépôt privé : un jeton de lecture est nécessaire pour recevoir les mises à jour.
@@ -8411,31 +8396,15 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
       <div class="k-label">Ancien jeton d'accès</div>
       <p class="small muted">Les mises à jour arrivent sans rien présenter. Un jeton datant de l'époque où le dépôt était privé est encore enregistré sur cet ordinateur ; il ne sert plus à rien.</p>
       <div class="inline"><button class="btn btn-sm btn-ghost" id="u-token-clear">Retirer ce jeton</button></div>
-    </div>` : '<p class="small muted mt">Les mises à jour arrivent toutes seules : rien à configurer.</p>');
+    </div>` : '');
 
-    // Ce qui rend la phrase du dessus vérifiable : QUAND on l'a constaté, et à quel rythme c'est
-    // refait. « Les mises à jour arrivent toutes seules » se disait sur une application qui ne
-    // vérifiait qu'une fois, quatre secondes après l'ouverture — et un comptable n'éteint pas son
-    // poste de la semaine.
-    const heures = a.autoEvery ? Math.round(a.autoEvery / 3600000) : 0;
-    const quand = !a.packaged ? '' : `<p class="small muted mt">Dernière vérification : <b>${esc(quandVerif(a.lastCheck) || 'jamais encore')}</b>${heures ? ` — SkanFact regarde tout seul toutes les ${heures} heures et au retour sur l'application.` : ''}</p>`;
-    // Le canal d'essai du cabinet (9.1.0). Le comptable pilote a besoin de recevoir une version
-    // avant les autres : sans ce canal, la seule façon de lui faire essayer quelque chose est de
-    // la publier à TOUS les cabinets d'un coup.
-    //
-    // Le repère « bêta » suit la VERSION INSTALLÉE, jamais le canal choisi : ce qui compte, c'est
-    // ce qui tourne. Les deux se contredisent une journée entière quand on décoche la case en
-    // tournant sur une bêta (règle 7.25.0).
-    const etatBeta = !a.packaged ? '' : (a.prerelease
-      ? `<p class="small mt"><b>Tu tournes sur une version d'essai</b> (${esc(a.version || '')}).${a.beta ? '' : ' Tu es revenu au canal normal : SkanFact Cabinet la remplacera par la prochaine version stable.'}</p>`
-      : '');
-    const beta = !a.packaged ? '' : `<div class="beta-box">
-      <label class="check"><input type="checkbox" id="u-beta" ${a.beta ? 'checked' : ''}> <b>Recevoir les versions d'essai</b></label>
-      <p class="small muted">Les versions d'essai, avant les autres. Numérotées <code>9.2.0-beta.1</code>. À laisser décoché sur l'ordinateur qui sert à travailler.</p>
-      ${etatBeta}
-    </div>`;
-
-    el.innerHTML = `<div class="update-head"><div><div class="k-label">Version installée</div><div class="ver">${esc(a.version || '…')}</div></div></div>${corps}${quand}${beta}${jeton}`;
+    el.innerHTML = MajUI.panneau({
+      p: 'u', nom: 'SkanFact Cabinet', icone: ICONE_CAB, a, u: upd,
+      notes: notesMaj(upd.notes), quand: quandVerif(a.lastCheck), macNonSigne,
+      tokenManquant: !a.relay && a.private && (upd.state === 'token' || !a.hasToken),
+      heures: a.autoEvery ? Math.round(a.autoEvery / 3600000) : 0,
+      canaux: upd.canaux, aideEssai: info('u.essai'), fin: jeton
+    });
 
     const relire = async () => { upd.app = await api.updVersion(); drawUpdatePanel(); };
     const verifier = async () => {
@@ -8460,14 +8429,15 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
       const r = await api.updDownload();
       if (r && r.state === 'error') { upd.state = 'error'; upd.message = r.message || ''; upd.detail = r.detail || ''; upd.soft = !!r.soft; drawUpdatePanel(); }
     };
-    if ($('#u-rel')) $('#u-rel').onclick = () => api.updOpenReleases();
+    if ($('#u-releases')) $('#u-releases').onclick = () => api.updOpenReleases();
+    if ($('#u-log')) $('#u-log').onclick = () => api.openLog();
     if ($('#u-beta')) $('#u-beta').onchange = async (ev) => {
       const on = ev.target.checked;
       if (on) {
         const ok = await confirmDialog('Recevoir les versions d\'essai',
           '<p>Les versions d\'essai arrivent avant les autres et peuvent contenir des défauts.</p>' +
           '<p class="small">Elles s\'installent <b>par-dessus SkanFact Cabinet</b> et travaillent sur les mêmes dossiers, les mêmes paquets et la même clé. Une sauvegarde va être prise tout de suite, avant tout changement.</p>' +
-          '<p class="small">Tu pourras revenir au canal normal à tout moment en décochant la case.</p>',
+          '<p class="small">Tu pourras revenir au canal normal à tout moment en désactivant « Versions d\'essai ».</p>',
           'Recevoir les versions d\'essai');
         // Un refus DÉCOCHE vraiment la case : la laisser cochée après un « Annuler » ferait croire
         // que le canal est armé alors qu'il ne l'est pas.
@@ -8483,11 +8453,7 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
       toast(r.beta ? 'Versions d\'essai activées — sauvegarde « avant-beta » prise' : 'Retour au canal normal');
       verifier();
     };
-    if ($('#u-install')) $('#u-install').onclick = async () => {
-      const b = $('#u-install'); b.disabled = true; b.textContent = 'Installation…';
-      const r = await api.updInstall();
-      if (r && r.state === 'error') { upd.state = 'error'; upd.message = r.message; drawUpdatePanel(); }
-    };
+    if ($('#u-install')) $('#u-install').onclick = () => installerMaj($('#u-install'));
     if ($('#u-token-save')) $('#u-token-save').onclick = async () => {
       const t = $('#u-token').value.trim();
       if (!t) return toast('Colle un jeton d\'abord', 'error');
@@ -8502,7 +8468,47 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
       upd.app = { ...(upd.app || {}), hasToken: r.hasToken };
       upd.state = 'idle'; drawUpdatePanel();
     };
-    if (!upd.app) relire();
+    // Le panneau vient d'APPARAÎTRE (un nouvel élément, pas un redessin par un événement) : on
+    // relit les canaux et on cherche, comme macOS quand on ouvre « Mise à jour de logiciels ».
+    const neuf = !el.dataset.monte;
+    el.dataset.monte = '1';
+    if (!upd.app) relire().then(ouvrirPanneauMaj);
+    else if (neuf) ouvrirPanneauMaj();
+  }
+
+  async function installerMaj(b) {
+    if (b) { b.disabled = true; b.textContent = 'Redémarrage…'; }
+    const r = await api.updInstall();
+    if (r && r.state === 'error') { upd.state = 'error'; upd.message = r.message; upd.detail = r.detail || ''; upd.soft = !!r.soft; drawUpdatePanel(); }
+  }
+
+  // Les notes de version (le CHANGELOG, en Markdown) rendues par le module partagé.
+  const notesMaj = md => MajUI.notesHtml(md);
+
+  // À l'ouverture du panneau, comme macOS : la vraie dernière version d'essai publiée, et une
+  // recherche si la dernière date.
+  function ouvrirPanneauMaj() {
+    api.updCanaux().then(c => { upd.canaux = c || null; drawUpdatePanel(); }).catch(() => {});
+    const a = upd.app || {};
+    if (a.packaged && (!upd.state || upd.state === 'idle' || upd.state === 'none') && Date.now() - (a.lastCheck || 0) > 60 * 1000) {
+      const b = $('#u-check'); if (b) b.click();
+    }
+  }
+
+  // La fenêtre de Sparkle, une fois par version et par jour au plus (voir majui.js).
+  function proposerInstallation(ev) {
+    const p = $('#upd-panel');
+    if (p && p.offsetParent) return;
+    if (document.querySelector('#modal-root .modal')) return;
+    const lire = k => { try { return localStorage.getItem(k); } catch (_) { return null; } };
+    const ecrire = (k, v) => { try { localStorage.setItem(k, v); } catch (_) { /* rappel perdu, rien de grave */ } };
+    if (!MajUI.doitProposer(ev.version, lire, Date.now())) return;
+    MajUI.noterProposee(ev.version, ecrire, Date.now());
+    const a = upd.app || {};
+    modal(MajUI.fenetrePrete({
+      nom: 'SkanFact Cabinet', icone: ICONE_CAB, version: ev.version, installee: a.version,
+      notes: notesMaj(ev.notes || upd.notes), macNonSigne: a.platform === 'darwin' && !a.macSigned
+    }), (root, close) => { $('#maj-go', root).onclick = () => { close(); installerMaj(); }; });
   }
 
   // ---------- aide (refondue en 7.28.0) ----------

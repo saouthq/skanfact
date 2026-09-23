@@ -176,6 +176,50 @@ export function releaseAdmissible(rel, fichier) {
   return true;
 }
 
+// **Un fichier absent de la LISTE n'est pas un fichier absent de la RELEASE** (23/09/2026). La 10.10.0
+// était publiée, complète, ses seize fichiers téléchargeables — et « Vérifier maintenant » répondait
+// « Tu as la dernière version » dans les deux applications. La liste des releases de l'API GitHub
+// (`/releases?per_page=20`) rendait pour la 10.10.0, selon le serveur qui répondait, 16 fichiers ou
+// AUCUN, encore une heure après la publication : un instantané pris à la création de la page, quand
+// elle était vide. Ce relais prend la première release qui porte le fichier : sur la réponse vide,
+// il sautait la 10.10.0 et servait l'index de la 10.9.3. Et les fichiers qui portent un numéro de
+// version (`SkanFact-10.10.0-mac-universal.zip`) auraient été introuvables, donc le téléchargement
+// refusé. L'endpoint d'UNE release (`/releases/{id}/assets`) est juste : avant de conclure qu'une
+// release ne porte pas le fichier, on le lui demande. Trois fois au plus par requête, et seulement
+// quand la liste dit « absent » — le cas normal (le fichier est dans la première release) ne coûte
+// aucun appel de plus.
+export const RELECTURES_MAX = 3;
+export async function trouveDans(releases, fichier, relire, max = RELECTURES_MAX) {
+  let relues = 0;
+  for (const rel of (releases || [])) {
+    if (!releaseAdmissible(rel, fichier)) continue;
+    let a = (rel.assets || []).find(x => x && x.name === fichier);
+    if (!a && relire && relues < max) {
+      relues++;
+      const frais = await relire(rel);
+      if (Array.isArray(frais)) {
+        rel.assets = frais;
+        a = frais.find(x => x && x.name === fichier);
+      }
+    }
+    if (a) return { asset: a, tag: rel.tag_name };
+  }
+  return null;
+}
+
+// Les fichiers d'une release, lus à la source. `null` si GitHub refuse : on garde alors ce que la
+// liste disait, plutôt que de faire échouer la mise à jour de tout le monde.
+function relireAssets(env) {
+  const base = `https://api.github.com/repos/${env.GITHUB_OWNER}/${env.GITHUB_REPO}/releases`;
+  return async rel => {
+    if (!rel || rel.id == null) return null;
+    try {
+      const r = await github(`${base}/${rel.id}/assets?per_page=100`, env);
+      return r.ok ? await r.json() : null;
+    } catch { return null; }
+  };
+}
+
 async function trouveFichier(fichier, env) {
   const base = `https://api.github.com/repos/${env.GITHUB_OWNER}/${env.GITHUB_REPO}/releases`;
   // On regarde la dernière release, puis les précédentes : une mise à jour peut demander un fichier
@@ -185,12 +229,22 @@ async function trouveFichier(fichier, env) {
   const r = await github(`${base}?per_page=20`, env);
   if (!r.ok) return { erreur: `GitHub a répondu ${r.status}` };
   const releases = await r.json();
-  for (const rel of releases) {
-    if (!releaseAdmissible(rel, fichier)) continue;
-    const a = (rel.assets || []).find(x => x.name === fichier);
-    if (a) return { asset: a, tag: rel.tag_name };
+  const f = await trouveDans(releases, fichier, relireAssets(env));
+  return f || { erreur: 'fichier introuvable dans les dernières versions' };
+}
+
+// Les releases les plus récentes, relues une par une (voir `trouveDans`) : c'est sur elles que la
+// liste ment, et c'est d'elles que l'état des canaux parle.
+export async function rafraichirRecentes(releases, relire, n = RELECTURES_MAX) {
+  let faites = 0;
+  for (const rel of (releases || [])) {
+    if (faites >= n) break;
+    if (!rel || rel.draft) continue;
+    faites++;
+    const frais = await relire(rel);
+    if (Array.isArray(frais)) rel.assets = frais;
   }
-  return { erreur: 'fichier introuvable dans les dernières versions' };
+  return releases;
 }
 
 // ---------- la santé des canaux (10.4.0) ----------
@@ -242,7 +296,7 @@ async function servirSante(request, env) {
   if (!r.ok) return new Response(JSON.stringify({ erreur: `GitHub a répondu ${r.status}`, canaux: [] }), {
     status: 502, headers: { 'Content-Type': 'application/json; charset=utf-8' }
   });
-  const releases = await r.json();
+  const releases = await rafraichirRecentes(await r.json(), relireAssets(env));
   return new Response(JSON.stringify({ v: 1, canaux: resumeCanaux(releases) }), {
     headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }
   });

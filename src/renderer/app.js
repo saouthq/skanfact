@@ -10831,7 +10831,7 @@
     drawUpdatePanel();
     // Les vérifications silencieuses (toutes les quatre heures) n'envoient rien quand il n'y a rien
     // à annoncer : sans cette relecture, la date affichée serait celle du démarrage, pour toujours.
-    bridge.updateVersion().then(v => { upd.app = v; drawUpdatePanel(); }).catch(() => {});
+    bridge.updateVersion().then(v => { upd.app = v; drawUpdatePanel(); ouvrirPanneauMaj(); }).catch(() => {});
     drawOcrPanel();
     $('#go-modules').onclick = () => navigate('#/modules');
     $$('#redo-setup, #redo-setup-2').forEach(b => b.onclick = rejouerAssistant);
@@ -11482,16 +11482,19 @@
   }
 
   // ---------- mises à jour ----------
-  const upd = { state: 'idle', version: '', percent: 0, message: '', notes: '', app: null };
+  const upd = { state: 'idle', version: '', percent: 0, message: '', notes: '', app: null, canaux: null };
   bridge.onUpdateEvent(ev => {
     upd.state = ev.state;
     if (ev.version) upd.version = ev.version;
     if (ev.percent != null) upd.percent = ev.percent;
+    upd.transferred = ev.transferred; upd.total = ev.total;
     if (ev.message) upd.message = ev.message;
+    if (ev.detail != null) upd.detail = ev.detail;
+    if (ev.soft != null) upd.soft = !!ev.soft;
     if (ev.notes != null) upd.notes = ev.notes;
     drawUpdatePanel();
     drawUpdatePill();
-    if (ev.state === 'downloaded' && location.hash !== '#/parametres') toast('Version ' + ev.version + ' prête à installer — voir Paramètres');
+    if (ev.state === 'downloaded') proposerInstallation(ev);
   });
 
   // ---------- lecture de factures : la clé et le consentement (4.2.0) ----------
@@ -12738,47 +12741,13 @@
     return `le ${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} à ${heure}`;
   }
 
+  // L'écran des mises à jour vit dans `src/renderer/majui.js` depuis le 23/09/2026, le même que
+  // celui du Cabinet : « le même workflow que Apple » (Skander). Ici ne restent que ce qui est propre
+  // à cette application — le jeton d'accès, la panne de relais — et les branchements.
   function drawUpdatePanel() {
     const el = $('#update-panel'); if (!el) return;
     const a = upd.app || {};
     const isMacUnsigned = a.platform === 'darwin' && !a.macSigned;
-    let body = '';
-    const btnCheck = `<button class="btn" id="upd-check">Vérifier maintenant</button>`;
-    if (!a.packaged) body = `<p class="muted small">Mode développement (npm start) : la vérification des mises à jour n'est active que dans l'application installée.</p>${btnCheck}`;
-    else if (upd.state === 'checking') body = `<p class="muted">Vérification en cours…</p>`;
-    else if (upd.state === 'none') body = `<p>Tu as la dernière version. <span class="muted">(${h(a.version)})</span></p>${btnCheck}`;
-    // Ces deux états n'offraient AUCUN bouton. Une coupure de réseau à 40 % laissait donc la barre
-    // figée pour de bon : « Vérifier » refuse d'agir pendant un téléchargement, et rien d'autre
-    // n'était proposé. Le moteur savait relancer (`update:download`) depuis la 1.7.0 — aucun écran
-    // ne l'appelait, c'est-à-dire qu'il n'existait pas (règle 7.3.0).
-    else if (upd.state === 'available') body = `<p><strong>Version ${h(upd.version)} disponible</strong> — téléchargement en cours…</p>${notesHtml(upd.notes)}
-      <div class="inline"><button class="btn btn-ghost btn-sm" id="upd-retry">Relancer le téléchargement</button></div>`;
-    else if (upd.state === 'downloading') body = `<p>Téléchargement de la version ${h(upd.version)}… ${upd.percent}%</p><div class="progress"><div style="width:${upd.percent}%"></div></div>
-      <div class="inline"><button class="btn btn-ghost btn-sm" id="upd-retry">Relancer le téléchargement</button></div>`;
-    else if (upd.state === 'downloaded') body = `<p><strong>Version ${h(upd.version)} prête à installer.</strong> ${isMacUnsigned ? 'SkanFact se ferme, remplace l\'application dans le dossier Applications et se relance (une dizaine de secondes).' : 'L\'app se ferme, s\'installe et redémarre (quelques secondes).'}</p>
-      ${notesHtml(upd.notes)}<button class="btn btn-primary" id="upd-install">Installer et redémarrer</button>`;
-    else if (upd.state === 'unconfigured') body = `<p class="muted">Les mises à jour automatiques ne sont pas configurées (package.json → build.publish).</p>${btnCheck}`;
-    // Un échec de mise à jour se lit en français, en une phrase qui dit quoi faire. Le texte
-    // d'origine — anglais, avec une URL et parfois une pile d'appels — n'est pas jeté : il est
-    // replié derrière « Détails techniques », parce que c'est lui qui sert au dépannage. Et ce qui
-    // n'est pas une panne (`soft` : version en cours de publication, bêta pas encore là) s'affiche
-    // en gris : du rouge sur une situation normale apprend à ignorer le rouge.
-    else if (upd.state === 'error') body = `<p class="${upd.soft ? 'muted' : 'small'}"${upd.soft ? '' : ' style="color:var(--danger)"'}>${h(upd.message)}</p>
-      ${upd.detail ? `<details class="tech"><summary>Détails techniques</summary><code>${h(upd.detail)}</code></details>` : ''}
-      <div class="inline">${btnCheck}<button class="btn btn-ghost" id="upd-releases">Voir les versions</button>${upd.soft ? '' : `<button class="btn btn-ghost" id="upd-log">Ouvrir le journal</button>`}</div>`;
-    else if (!a.relay && a.private && (upd.state === 'token' || !a.hasToken)) body = `<p class="muted">Les mises à jour automatiques ne sont pas encore activées sur cet ordinateur : colle ton token GitHub ci-dessous et clique sur Enregistrer.</p>${btnCheck}`;
-    // L'état au repos — celui qu'on voit neuf fois sur dix en ouvrant la page. Il n'affichait qu'un
-    // bouton « Vérifier », c'est-à-dire rien : ni si l'application est à jour, ni depuis quand on
-    // le sait. On répond avec ce que la DERNIÈRE vérification a constaté, silencieuse comprise.
-    else if (a.lastResult === 'none') body = `<p>Tu as la dernière version. <span class="muted">(${h(a.version)})</span></p>${btnCheck}`;
-    else if (a.lastResult === 'error') body = `<p class="muted">La dernière vérification n'a pas abouti. SkanFact réessaiera tout seul ; tu peux aussi relancer maintenant.</p>
-      <div class="inline">${btnCheck}<button class="btn btn-ghost" id="upd-releases">Voir les versions</button></div>`;
-    else body = `<p class="muted">Aucune vérification n'a encore eu lieu sur cet ordinateur.</p>${btnCheck}`;
-    // Ce qui rend la phrase du dessus vérifiable : QUAND on l'a constaté, et à quel rythme c'est
-    // refait. Sans ces deux lignes, « tu as la dernière version » pouvait dater d'un mois — jusqu'à
-    // la 7.30.0, l'application vérifiait une seule fois, cinq secondes après l'ouverture.
-    const rythme = a.autoEvery ? Math.round(a.autoEvery / 3600000) : 0;
-    const pied = !a.packaged ? '' : `<p class="small muted mt upd-quand">Dernière vérification : <b>${h(quandVerif(a.lastCheck) || 'jamais encore')}</b>${rythme ? ` — SkanFact regarde tout seul toutes les ${rythme} heures et au retour sur l'application.` : ''}</p>`;
     // Quand le relais est en place, il n'y a plus rien à saisir : c'est lui qui détient l'accès au
     // dépôt. Montrer un champ « token » que personne n'a à remplir ne ferait qu'inquiéter.
     // Et si le relais a échoué, on le DIT et on remontre le champ : un écran qui affirme « rien à
@@ -12799,7 +12768,8 @@
       // Un vieux jeton peut traîner sur le poste (le dépôt a été privé). Il ne sert plus à rien et
       // il n'est plus lu : le dire ici n'apprend rien à personne et donne l'air d'un réglage à
       // faire. On ne le mentionne QUE là où on peut le retirer — les deux autres branches.
-      ? `<p class="small muted mt">Les mises à jour arrivent toutes seules : rien à configurer sur cet ordinateur.</p>`
+      // Depuis le 23/09/2026, la ligne « Mises à jour automatiques — Activées » le dit déjà.
+      ? ''
       : a.private ? relayNote + `<div class="token-box">
       <div class="k-label">Jeton d'accès au dépôt</div>
       <p class="small muted">SkanFact est distribué depuis un dépôt <b>privé</b> : un jeton de lecture est nécessaire pour recevoir les mises à jour. Il reste sur cet ordinateur et n'est envoyé à personne d'autre qu'à GitHub. ${info('upd.token')}</p>
@@ -12811,7 +12781,13 @@
       <p class="small muted">Le dépôt de SkanFact est <b>public</b> : les mises à jour arrivent sans rien présenter. Un jeton datant de l'époque où il était privé est encore enregistré sur cet ordinateur ; il ne sert plus à rien.</p>
       <div class="inline"><button class="btn btn-sm btn-ghost" id="upd-token-clear">Retirer ce jeton</button></div>
     </div>` : '');
-    el.innerHTML = `<div class="update-head"><div><div class="k-label">Version installée</div><div class="ver">${h(a.version || '…')}${a.prerelease ? ' <span class="beta-tag">bêta</span>' : ''}</div></div><button class="btn btn-sm btn-ghost" id="upd-changelog">Nouveautés</button></div>${body}${pied}${tokenBlock}${betaBlock(a)}`;
+    el.innerHTML = MajUI.panneau({
+      p: 'upd', nom: 'SkanFact', icone: '<span class="brand-mark">SF</span>', a, u: upd,
+      notes: notesHtml(upd.notes), quand: quandVerif(a.lastCheck), macNonSigne: isMacUnsigned,
+      tokenManquant: !a.relay && a.private && (upd.state === 'token' || !a.hasToken),
+      heures: a.autoEvery ? Math.round(a.autoEvery / 3600000) : 0,
+      canaux: upd.canaux, aideEssai: info('upd.beta'), avecNouveautes: true, fin: tokenBlock
+    });
     $('#upd-changelog').onclick = showChangelog;
     if ($('#upd-beta')) $('#upd-beta').onchange = e => setBeta(e.target.checked);
     if ($('#upd-token-save')) $('#upd-token-save').onclick = async () => {
@@ -12829,48 +12805,54 @@
     };
     if ($('#upd-releases')) $('#upd-releases').onclick = () => bridge.updateOpenReleases();
     if ($('#upd-log')) $('#upd-log').onclick = () => bridge.openLog();
-    if ($('#upd-install')) $('#upd-install').onclick = async () => {
-      const b = $('#upd-install'); b.disabled = true; b.textContent = 'Installation…';
-      const r = await bridge.updateInstall();
-      if (r && r.state === 'error') { upd.state = 'error'; upd.message = r.message; drawUpdatePanel(); }
-    };
+    if ($('#upd-install')) $('#upd-install').onclick = () => installerMaj($('#upd-install'));
   }
 
-  // Le canal bêta (7.25.0).
-  //
-  // Ce que fait la case : elle choisit QUELLES versions cet ordinateur reçoit. Décochée — et elle
-  // l'est chez tout le monde tant que personne n'y touche — l'application ne voit que les versions
-  // stables et ignore les essais, y compris s'ils sont publiés le jour même.
-  //
-  // Pourquoi une question avant de la cocher : une bêta s'installe PAR-DESSUS l'application qui
-  // tient la vraie comptabilité, et une version d'essai a le droit d'avoir des défauts — c'est
-  // précisément à ça qu'elle sert. On prévient, on prend une sauvegarde nommée, on n'interdit pas.
-  // La case reste visible en mode développement : c'est un réglage de l'installation, pas un état
-  // du moment, et le seul endroit où on puisse la vérifier avant de publier quoi que ce soit.
-  function betaBlock(a) {
-    const etat = a.beta
-      ? (a.prerelease
-        ? '<p class="small muted mt">Tu es sur le canal bêta et tu tournes sur une version d\'essai. Les corrections arrivent ici en premier.</p>'
-        : '<p class="small muted mt">Tu es sur le canal bêta. Aucune version d\'essai n\'est plus récente que la tienne pour l\'instant.</p>')
-      : (a.prerelease
-        // On peut quitter le canal en tournant sur une bêta : on y reste jusqu'à ce que la stable
-        // suivante sorte. Le dire vaut mieux que laisser croire que la case n'a rien fait.
-        ? '<p class="small mt">Tu es revenu au canal normal, mais la version installée est une bêta. SkanFact la remplacera par la prochaine version stable.</p>'
-        : '');
-    return `<div class="beta-box">
-      <label class="check"><input type="checkbox" id="upd-beta" ${a.beta ? 'checked' : ''}> <b>Recevoir les versions bêta</b> ${info('upd.beta')}</label>
-      <p class="small muted">Les versions d'essai, avant tout le monde. Numérotées <code>7.26.0-beta.1</code>. À laisser décoché sur l'ordinateur qui sert à travailler.</p>
-      ${etat}
-    </div>`;
+  // Installer, d'où que vienne le clic (le panneau ou la fenêtre « prête »).
+  async function installerMaj(b) {
+    if (b) { b.disabled = true; b.textContent = 'Redémarrage…'; }
+    const r = await bridge.updateInstall();
+    if (r && r.state === 'error') { upd.state = 'error'; upd.message = r.message; upd.detail = r.detail || ''; upd.soft = !!r.soft; drawUpdatePanel(); }
   }
 
+  // À l'ouverture du panneau, comme le panneau « Mise à jour de logiciels » de macOS : on relit les
+  // canaux publiés (la vraie dernière version d'essai), et on cherche si la dernière recherche date.
+  function ouvrirPanneauMaj() {
+    bridge.updateCanaux().then(c => { upd.canaux = c || null; drawUpdatePanel(); }).catch(() => {});
+    const a = upd.app || {};
+    if (a.packaged && (upd.state === 'idle' || upd.state === 'none') && Date.now() - (a.lastCheck || 0) > 60 * 1000) runCheck();
+  }
+
+  // La fenêtre de Sparkle : une version vient de finir de se télécharger. Une fois par version et
+  // par jour au plus, jamais par-dessus une autre question, et pas quand le panneau est déjà sous
+  // les yeux — il dit la même chose, avec le même bouton.
+  function proposerInstallation(ev) {
+    const panneau = $('#update-panel');
+    if (panneau && panneau.offsetParent) return;
+    if (document.querySelector('#modal-root .modal')) return;
+    const lire = k => { try { return localStorage.getItem(k); } catch (_) { return null; } };
+    const ecrire = (k, v) => { try { localStorage.setItem(k, v); } catch (_) { /* rappel perdu, rien de grave */ } };
+    if (!MajUI.doitProposer(ev.version, lire, Date.now())) return;
+    MajUI.noterProposee(ev.version, ecrire, Date.now());
+    const a = upd.app || {};
+    modal(MajUI.fenetrePrete({
+      nom: 'SkanFact', icone: '<span class="brand-mark">SF</span>', version: ev.version, installee: a.version,
+      notes: notesHtml(ev.notes || upd.notes), macNonSigne: a.platform === 'darwin' && !a.macSigned
+    }), (root, close) => { $('#maj-go', root).onclick = () => { close(); installerMaj(); }; });
+  }
+
+  // Le canal bêta (7.25.0). Ce que fait l'interrupteur « Versions d'essai » : il choisit QUELLES
+  // versions cet ordinateur reçoit. Désactivé — et il l'est chez tout le monde tant que personne n'y
+  // touche — l'application ignore les essais, y compris publiés le jour même. Une question avant de
+  // l'activer : une bêta s'installe PAR-DESSUS l'application qui tient la vraie comptabilité. On
+  // prévient, on prend une sauvegarde nommée, on n'interdit pas.
   async function setBeta(on) {
     const box = $('#upd-beta');
     if (on) {
       const ok = await confirmDialog(
         'Les versions bêta sont des versions d\'essai : elles arrivent avant les autres et peuvent contenir des défauts.\n\n' +
         'Elles s\'installent par-dessus SkanFact et travaillent sur les mêmes données. Une sauvegarde va être prise tout de suite, avant tout changement.\n\n' +
-        'Tu pourras revenir au canal normal à tout moment en décochant la case.',
+        'Tu pourras revenir au canal normal à tout moment en désactivant « Versions d\'essai ».',
         'Recevoir les bêtas', false);
       if (!ok) { if (box) box.checked = false; return; }
       // Le filet, pris AVANT d'armer le canal : au moment où la bêta s'installera, l'utilisateur
@@ -12886,7 +12868,9 @@
   }
 
   async function runCheck() {
-    if (upd.state === 'downloading' || upd.state === 'downloaded') return drawUpdatePanel();
+    // Pendant un téléchargement seulement : une version PRÊTE n'empêche plus de chercher la suivante
+    // (23/09/2026 — la 10.9.3 prête cachait la 10.10.0 publiée entre-temps).
+    if (upd.state === 'downloading') return drawUpdatePanel();
     upd.state = 'checking'; drawUpdatePanel();
     const r = await bridge.updateCheck();
     // Le détail technique et la gravité voyagent avec le message : sans eux, « Détails techniques »

@@ -5339,7 +5339,9 @@ t('canal d\'essai du Cabinet : jamais par le fournisseur GitHub d\'electron-upda
     'le fournisseur GitHub ne sert que le canal stable, sous la garde `!cfg.beta`');
   assert.ok(!/provider: 'github'[^\n]*(UPDATE_CHANNEL\(\)|cabinet-beta)/.test(fg),
     'le fournisseur GitHub ne doit jamais recevoir cabinet-beta : il ne connaît que alpha et beta, et irait chercher beta-mac.yml, l\'index de l\'app entreprise');
-  assert.ok(/K\.releasePourIndex\(await releasesGithub\(/.test(fg) && /K\.nomIndex\('cabinet-beta', process\.platform\)/.test(fg),
+  // Depuis le 23/09/2026 la règle pure RELIT une release que la liste rend vide (la liste de l'API a
+  // rendu la 10.10.0 sans aucun fichier) : `releasePourIndexRelue`, qui applique la même règle.
+  assert.ok(/K\.releasePourIndex(Relue)?\(await releasesGithub\(/.test(fg) && /K\.nomIndex\('cabinet-beta', process\.platform\)/.test(fg),
     'la release de la bêta se choisit par la règle pure, sur la vraie liste des releases');
   assert.ok(/provider: 'generic', url: `https:\/\/github\.com\/\$\{GITHUB\.owner\}\/\$\{GITHUB\.repo\}\/releases\/download\/\$\{rel\.tag\}`, channel: 'cabinet-beta'/.test(fg),
     'la bêta se lit par le fournisseur générique, sur la page de CETTE release, canal cabinet-beta');
@@ -6813,10 +6815,16 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     // La tranche se borne sur la FIN de la fonction (l'accolade en colonne 0), jamais sur son
     // voisin : un voisin déménage, et la tranche avale alors le code d'à côté — c'est ce qui est
     // arrivé en 9.8.1, et c'est arrivé de nouveau en 10.4.0 quand `resumeCanaux` s'est glissé ici.
+    // Depuis le 23/09/2026 la recherche vit dans `trouveDans` (qui relit une release que la liste
+    // rend vide) : trouveFichier doit passer par elle, et elle par releaseAdmissible.
     const debutTf = src.indexOf('async function trouveFichier(');
     const tf = src.slice(debutTf, src.indexOf('\n}\n', debutTf) + 3);
     assert.ok(tf.length > 300 && tf.length < 2000, 'tranche trouveFichier suspecte : ' + tf.length);
-    assert.ok(/if \(!releaseAdmissible\(rel, fichier\)\) continue;/.test(tf), 'trouveFichier ne consulte pas releaseAdmissible');
+    assert.ok(/await trouveDans\(releases, fichier, /.test(tf), 'trouveFichier ne passe pas par trouveDans');
+    const debutTd = src.indexOf('export async function trouveDans(');
+    const td = src.slice(debutTd, src.indexOf('\n}\n', debutTd) + 3);
+    assert.ok(td.length > 200 && td.length < 1500, 'tranche trouveDans suspecte : ' + td.length);
+    assert.ok(/if \(!releaseAdmissible\(rel, fichier\)\) continue;/.test(td), 'trouveDans ne consulte pas releaseAdmissible');
     assert.strictEqual(W.fichierAutorise('app', 'SkanFact-Cabinet-6.6.0-mac-universal.zip'), false, 'préfixe du cabinet servi sur le canal entreprise');
     assert.strictEqual(W.fichierAutorise('cabinet', 'SkanFact-Cabinet-6.6.0-win-x64.exe'), true);
     assert.strictEqual(W.fichierAutorise('cabinet', 'SkanFact-6.6.0-win-x64.exe'), false);
@@ -9980,9 +9988,11 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
 
     // 3. Le champ de saisie existe, et il est posé SOUS la condition — jamais en dur.
     const i = app.indexOf('const tokenBlock = a.relay');
-    const j = app.indexOf('el.innerHTML = `<div class="update-head">');
+    // Le panneau se dessine par le module partagé depuis le 23/09/2026 (majui.js) : le bloc jeton
+    // s'arrête là où on le lui passe.
+    const j = app.indexOf('el.innerHTML = MajUI.panneau(');
     const bloc = app.slice(i, j);
-    assert.ok(i > 0 && j > i && bloc.length > 400, 'découpage du bloc jeton raté');
+    assert.ok(i > 0 && j > i && bloc.length > 400 && bloc.length < 4000, 'découpage du bloc jeton raté');
     assert.ok(bloc.includes('id="upd-token"'), 'plus aucun champ où coller un jeton : un dépôt privé serait un cul-de-sac');
     assert.ok(bloc.indexOf('a.private ?') > 0 && bloc.indexOf('a.private ?') < bloc.indexOf('id="upd-token"'),
       'le champ jeton doit être posé SOUS `a.private`, sinon il s\'affiche sur un dépôt public');
@@ -10050,13 +10060,17 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
       assert.ok(/, true\)/.test(f), nom + ' : aucun cas n\'est marqué « pas une panne »');
     });
 
-    // Côté écran : la phrase, le détail replié, et le gris pour ce qui n'est pas une panne.
-    const app = lireApp();
-    const e = app.slice(app.indexOf("else if (upd.state === 'error')"), app.indexOf('const relayNote'));
-    assert.ok(e.length > 200 && e.includes('upd.message'), 'découpage du bloc erreur raté');
-    assert.ok(/upd\.soft \?/.test(e), 'un échec sans gravité s\'affiche encore en rouge');
-    assert.ok(/details class="tech"/.test(e) && /upd\.detail/.test(e), 'le détail technique n\'est pas montrable');
-    assert.ok(/id="upd-log"/.test(e), 'aucun accès au journal depuis l\'erreur');
+    // Côté écran : la phrase, le détail replié, et le gris pour ce qui n'est pas une panne. L'écran
+    // vit dans le module partagé depuis le 23/09/2026 : on le juge sur ce qu'il REND, pour les deux
+    // gravités, plutôt que sur sa forme.
+    const M = require('../src/renderer/majui.js');
+    const rendu = soft => M.etat({ p: 'upd', nom: 'SkanFact', a: { packaged: true, version: '1.0.0' },
+      u: { state: 'error', message: 'Une phrase écrite', detail: 'Cannot find latest-mac.yml', soft } });
+    const dur = rendu(false), doux = rendu(true);
+    assert.ok(dur.includes('Une phrase écrite') && /maj-erreur/.test(dur), 'une panne ne s\'affiche pas comme une panne');
+    assert.ok(!/maj-erreur/.test(doux) && /maj-neutre/.test(doux), 'un échec sans gravité s\'affiche encore en rouge');
+    assert.ok(/details class="tech"/.test(dur) && dur.includes('Cannot find latest-mac.yml'), 'le détail technique n\'est pas montrable');
+    assert.ok(/id="upd-log"/.test(dur) && !/id="upd-log"/.test(doux), 'aucun accès au journal depuis une panne (et pas sur ce qui n\'en est pas une)');
   });
 
   // Un relais en panne bascule TOUT SEUL sur GitHub.
@@ -14265,6 +14279,7 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
   // Celle-ci reçoit `ta` en plus : elle interroge le vrai worker sur une vraie base SQLite.
   await require('./suites/plateforme-gestion.js')({ t, ta, assert, lireSource });
   await require('./suites/paiement.js')({ ta, assert });
+  await require('./suites/mises-a-jour.js')({ ta, t, assert, lireSource });
 
   // ---------- 9.4.10 : aucune suite découpée ne reste sur le bord de la route ----------
   // Le danger d'un découpage, c'est le fichier qu'on écrit et que personne ne charge : les tests

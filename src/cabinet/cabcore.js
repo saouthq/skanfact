@@ -1676,6 +1676,27 @@
     return null;
   }
 
+  // La même règle, sans croire la LISTE (23/09/2026, jumelle de `trouveDans` dans le relais) : la
+  // liste des releases de l'API GitHub a rendu la 10.10.0 SANS aucun fichier, selon le serveur qui
+  // répondait, une heure après sa publication. On relit une release qui paraît vide de ce fichier
+  // avant de passer à la suivante — trois au plus. `relire(rel)` rend ses fichiers, ou `null`.
+  async function releasePourIndexRelue(releases, fichier, relire, max = 3) {
+    const stable = INDEX_STABLES.includes(String(fichier || ''));
+    let relues = 0;
+    for (const rel of Array.isArray(releases) ? releases : []) {
+      if (!rel || rel.draft) continue;
+      if (rel.prerelease && stable) continue;
+      let assets = Array.isArray(rel.assets) ? rel.assets : [];
+      if (!assets.some(a => a && a.name === fichier) && relire && relues < max) {
+        relues++;
+        const frais = await relire(rel);
+        if (Array.isArray(frais)) assets = frais;
+      }
+      if (assets.some(a => a && a.name === fichier)) return { tag: String(rel.tag_name || ''), prerelease: !!rel.prerelease };
+    }
+    return null;
+  }
+
   // Le fichier d'appairage remis aux clients. Il ne contient QUE la clé publique : rien de secret,
   // mais tout ce qu'il faut pour que leurs paquets n'appartiennent qu'à ce cabinet.
   function pairingFile(cabinet, fingerprint) {
@@ -1699,7 +1720,7 @@
     DEFAULT_DEADLINES, deadlineSettings, echeances, dayOf,
     TVA_PERIODES, migrateRegime, regimes, regimeDe, periodeTva, deposeCnss,
     dossierMonths, dossierRow, dossierList, cabinetTodo, relanceMail, pairingFile,
-    INDEX_STABLES, nomIndex, releasePourIndex, moisManquants,
+    INDEX_STABLES, nomIndex, releasePourIndex, releasePourIndexRelue, moisManquants,
     // Le cabinet à plusieurs (9.9.0)
     ROLES_COLLAB, RANG_ROLE, LIBELLE_ROLE, DETAIL_ROLE, ETAPES_PRODUCTION,
     migrateCollaborateur, collaborateurs, collaborateurDe, collaborateurValide,

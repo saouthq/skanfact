@@ -25,6 +25,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Un **`var` local qui MASQUE une fonction du module** : elle vaut `undefined` dans tout le corps, y compris au-dessus de son affectation — `node --check`, le lint et le garde-fou du backtick passent tous les trois | 10.8.0 — le formulaire d'émission mort à sa troisième ligne |
 | Un **texte illisible** (blanc sur blanc), un en-tête mal aligné, un fil vertical | 7.12.0, 7.23.0, 7.27.0, 7.30.0, 9.4.3 — le HTML est juste, c'est la feuille de style qui décide : **mesurer** ; 10.6.0 — un alignement d'en-tête se DÉDUIT de ses cellules |
 | Une **exception qui échappe à un handler** : rien à l'écran qu'on ait écrit, rien au journal | 9.4.10 — `err.code` **ne traverse pas** le pont IPC |
+| Une **version publiée que les applications ne voient pas** (« tu as la dernière version ») | 10.11.0 — la liste de l'API rend la release SANS ses fichiers ; une version téléchargée cachait la suivante |
 | Un bouton **hors de l'écran**, une barre empilée sur trois rangées | 7.13.0, 7.23.0 — `e2e:contraste` et `e2e:entetes` mesurent le bouton, jamais la page |
 
 **Les chiffres**
@@ -5809,6 +5810,63 @@ Règles apprises, à ne pas recasser :
 
 Prouvé : treize défauts réintroduits un par un font tomber leur test ; `e2e:paie`, `e2e:cloture`
 et `e2e:cabinet` refont la paie négative, la liasse et le dossier hors SkanFact dans l'application.
+
+### 10.11.0 — Les mises à jour, retournées
+
+Skander, trois captures : la 10.10.0 était publiée et ses deux applications répondaient « Tu as la
+dernière version » ; une 10.9.3 téléchargée empêchait de voir la 10.10.0 ; la ligne des bêtas citait
+« 9.2.0-beta.1 ». Et : « au niveau UI/UX je veux le même workflow que Apple pour la mise à jour ».
+
+- **Une liste d'API peut mentir sur ce qu'elle contient.** `/releases?per_page=20` rendait la
+  10.10.0 avec 16 fichiers ou AUCUN, selon le serveur, encore une heure après sa publication — un
+  instantané pris à la création de la page, quand elle était vide. L'endpoint d'UNE release
+  (`/releases/{id}/assets`) était juste. Le relais prend la première release qui porte le fichier :
+  sur la réponse vide, il sautait la 10.10.0 et servait la 10.9.3 — et les fichiers qui portent un
+  numéro de version (`…-10.10.0-mac-universal.zip`) auraient été introuvables. `trouveDans` relit
+  une release qui paraît vide avant de passer à la suivante : trois au plus, et ZÉRO appel de plus
+  dans le cas normal (le fichier est dans la première release admissible). Même règle au Cabinet
+  (`cabcore.releasePourIndexRelue`), dans `/sante` et dans `src/canaux.js`. **Le relais se
+  redéploie pour que les installations existantes en profitent** — c'est lui, pas l'application,
+  qui choisit la version servie.
+- **Diagnostiquer avant de corriger, et diagnostiquer le SERVICE, pas le client.** Le code déployé
+  du relais (lu par le MCP Cloudflare) était celui du dépôt ; la même requête à l'API rendait deux
+  réponses différentes à deux secondes d'écart. Sans cette mesure, on aurait cherché dans
+  electron-updater.
+- **Un raccourci « déjà prêt » dans une fonction de recherche cache tout ce qui vient après.**
+  `if (downloaded) { sendUpdate('downloaded'); return }` en tête de `checkForUpdates`, dans les
+  DEUX `main.js`, et `runCheck` qui refusait de chercher dans l'écran : une version téléchargée
+  rendait la suivante invisible, pour la recherche automatique comme pour le bouton. On cherche
+  toujours ; `memePrete(info)` garde prête la version déjà sur le disque sans repasser par
+  « téléchargement ».
+- **Un numéro affiché vient de ce qui est publié, ou ne s'affiche pas.** « Numérotées
+  9.2.0-beta.1 » et « 7.26.0-beta.1 » étaient des exemples écrits à la main, faux depuis des mois.
+  `src/canaux.js` (chargé par les DEUX `main.js`, entré dans les `files` du Cabinet) lit la dernière
+  stable et la dernière bêta via `/sante` du relais, sinon l'API ; la ligne « Versions d'essai » la
+  nomme avec sa date, dit « aucun essai en cours » quand la dernière bêta est devenue stable, et
+  ne dit AUCUN numéro quand elle ne sait pas. Un test interdit tout `X.Y.Z-beta.N` écrit dans les
+  écrans.
+- **Le même écran dans les deux applications : un module, trois branchements** (`src/renderer/
+  majui.js`, les deux `index.html`, les `files` du Cabinet). Les deux panneaux avaient déjà divergé
+  (identifiants, phrases, boutons). Ce qu'on reprend de macOS et de Sparkle : l'application et sa
+  version en tête ; UN bloc d'état (coche verte / disponible avec barre et Mo / prête avec
+  « Redémarrer maintenant » ET « Rechercher une version plus récente » / erreur grise ou rouge) ; des
+  LIGNES de réglage avec leur valeur ou leur interrupteur ; la recherche lancée à l'ouverture du
+  panneau ; et la fenêtre « prête à installer » (notes, « Plus tard », « Redémarrer maintenant »),
+  **une fois par version et par jour au plus**, jamais par-dessus une autre question ni quand le
+  panneau est déjà sous les yeux. Le module rend du HTML et des décisions ; chaque application
+  garde son pont, son jeton d'accès et sa panne de relais.
+- **Un interrupteur est la case elle-même, redessinée** (`input.switch`, `appearance: none`), pas une
+  case cachée sous un décor : il garde son clavier, son étiquette, et ce que `e2e:beta` clique.
+- **Quatre assertions retournées vers la règle** (vingt-deuxième à vingt-cinquième fois) : la bêta
+  « choisie par `K.releasePourIndex` » (elle l'est par sa variante qui relit), `trouveFichier` qui
+  « appelle releaseAdmissible » (elle passe par `trouveDans`, qui l'appelle), le bloc jeton borné sur
+  l'ancien gabarit, et le bloc d'erreur lu dans la source — il est jugé désormais sur ce que le
+  module REND, pour les deux gravités.
+- **Une assertion sur une MENTION laisse passer le défaut** (7.2.0, re-rencontrée) : « `memePrete(info)`
+  figure dans la source » restait vert avec `if (false && memePrete(info))`. Elle exige la branche.
+- Écran de verrouillage du Cabinet : deux boutons pleine largeur l'un sous l'autre se lisent comme
+  un seul bloc à deux étages — `.lock-card .btn + .btn` dans la feuille partagée, pour les deux
+  applications, jamais sur un identifiant.
 
 ## Pistes pour la suite (non demandées)
 

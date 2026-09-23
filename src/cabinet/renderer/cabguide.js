@@ -13,6 +13,7 @@
 
   const INFO = {
     // — le cabinet —
+    'u.essai': { t: 'Versions d\'essai', d: 'Activé, ce poste reçoit les versions d\'essai de SkanFact Cabinet <b>avant</b> tous les autres cabinets. Elles peuvent contenir des défauts : c\'est à ça qu\'elles servent. Une sauvegarde « avant-beta » est prise au moment où tu l\'actives, et désactiver te ramène au canal normal à la prochaine version stable. La ligne dit quelle version d\'essai est en cours, telle qu\'elle est publiée.' },
     'cab.name': { t: 'Nom du cabinet', d: 'Le nom sous lequel tes clients te connaissent. Il apparaît en bas des relances que tu envoies et dans le fichier d\'appairage que tu leur remets. Écris-le comme sur ton papier à en-tête.' },
     'cab.email': { t: 'Email du cabinet', d: 'L\'adresse à laquelle tes clients te répondent. Elle est écrite dans le fichier d\'appairage : c\'est aussi comme ça qu\'ils savent que le fichier vient bien de toi.' },
     'cab.phone': { t: 'Téléphone du cabinet', d: 'Facultatif. Utile si tu veux qu\'il apparaisse dans tes messages de relance : en Tunisie, un client rappelle plus souvent qu\'il ne répond à un mail.' },

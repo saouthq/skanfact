@@ -166,8 +166,6 @@ body.dark .demo-banner .btn { background: #4a3c20; color: #f5d9a0; border-color:
   background: #ede0ff; color: #5b2ea6; border: 1px solid #d6bcf5;
 }
 body.dark .beta-tag { background: #35255a; color: #cdb0f5; border-color: #4c3878; }
-.beta-box { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
-.beta-box .small { margin: 4px 0 0 24px; }
 .mod-banner { align-items: center; }
 
 /* ---------- « Tes premiers pas » (7.0.0) ---------- */
@@ -517,7 +515,6 @@ table.lines-edit select { padding-inline-end: 4px; min-width: 70px; }
 .update-pill.calme { color: var(--muted); background: var(--ink-soft); font-weight: 500; }
 .update-pill.calme:hover { background: var(--border); }
 .app-version { font-size: 11px; color: #b0b8c2; padding: 8px 12px 0; }
-#update-panel .update-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 12px; }
 .notes-md { background: var(--bg); border-radius: 10px; padding: 10px 14px; margin: 8px 0 12px; font-size: 13px; }
 .notes-md h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .8px; color: var(--muted); margin: 10px 0 4px; }
 .notes-md h3:first-child { margin-top: 0; }
@@ -526,7 +523,58 @@ table.lines-edit select { padding-inline-end: 4px; min-width: 70px; }
 .notes-md li { margin: 2px 0; }
 .changelog { max-height: 60vh; overflow-y: auto; }
 .changelog .notes-md { background: transparent; padding: 0; }
-#update-panel .ver { font-size: 20px; font-weight: 700; margin-top: 2px; }
+/* L'écran des mises à jour (src/renderer/majui.js, 23/09/2026), le même dans les deux
+   applications, dessiné d'après le panneau « Mise à jour de logiciels » de macOS : l'application et
+   sa version en tête, UN bloc d'état qui répond à « suis-je à jour ? », et des lignes de réglage
+   avec leur valeur ou leur interrupteur à droite. Tout passe par les jetons de couleur : le
+   panneau se retourne en sombre avec le reste. */
+.maj { display: flex; flex-direction: column; gap: 16px; }
+.maj-app { display: flex; align-items: center; gap: 14px; }
+.maj-icone { flex: none; display: flex; }
+.maj-icone .brand-mark { width: 52px; height: 52px; border-radius: 13px; font-size: 19px; margin: 0; }
+.maj-icone .brand-mark svg { width: 26px; height: 26px; }
+.maj-icone.grande .brand-mark { width: 60px; height: 60px; border-radius: 15px; }
+.maj-id { flex: 1; min-width: 0; }
+.maj-nom { font-size: 17px; font-weight: 700; }
+.maj-ver { color: var(--muted); font-size: 13px; margin-top: 2px; }
+.maj-etat { display: flex; align-items: flex-start; gap: 14px; padding: 16px 18px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); }
+.maj-pictos { flex: none; display: flex; color: var(--muted); }
+.maj-pictos svg { width: 28px; height: 28px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.maj-ajour .maj-pictos { color: var(--success); }
+.maj-dispo .maj-pictos, .maj-pret .maj-pictos { color: var(--primary); }
+.maj-erreur .maj-pictos, .maj-erreur > .maj-txt > .maj-sous { color: var(--danger); }
+.maj-pret { border-color: var(--primary); background: var(--primary-soft); }
+.maj-txt { flex: 1; min-width: 0; }
+.maj-titre { font-weight: 700; font-size: 15px; }
+.maj-sous { color: var(--muted); font-size: 13px; line-height: 1.5; margin-top: 3px; }
+.maj-sous.maj-note { color: var(--text); }
+.maj-droite { flex: none; align-self: center; }
+.maj-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.maj-etat .progress { max-width: 460px; margin-top: 10px; }
+.maj-notes { margin-top: 10px; font-size: 13px; }
+.maj-notes summary { cursor: pointer; color: var(--primary); font-weight: 600; width: max-content; }
+.maj-notes .notes-md { max-height: 240px; overflow: auto; background: var(--panel); }
+.maj-spin { flex: none; width: 22px; height: 22px; border-radius: 50%; border: 2.5px solid var(--border); border-top-color: var(--primary); animation: maj-tourne .8s linear infinite; }
+@keyframes maj-tourne { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .maj-spin { animation-duration: 2.4s; } }
+.maj-lignes { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.maj-ligne { display: flex; align-items: center; gap: 16px; padding: 13px 16px; }
+.maj-ligne + .maj-ligne { border-top: 1px solid var(--border); }
+.maj-ligne-txt { flex: 1; min-width: 0; }
+.maj-ligne-titre { font-weight: 600; font-size: 14px; }
+.maj-valeur { flex: none; color: var(--muted); font-size: 13px; }
+/* L'interrupteur des réglages : la case elle-même, redessinée (et non une case cachée sous un
+   décor) — elle garde son clavier, son étiquette et ce que les tests cliquent. */
+input.switch { appearance: none; -webkit-appearance: none; flex: none; position: relative; width: 40px; height: 24px; margin: 0; padding: 0; border: none; border-radius: 12px; background: var(--border); cursor: pointer; transition: background .15s; }
+input.switch::before { content: ''; position: absolute; top: 2px; inset-inline-start: 2px; width: 20px; height: 20px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .25); transition: inset-inline-start .15s; }
+input.switch:checked { background: var(--primary); }
+input.switch:checked::before { inset-inline-start: 18px; }
+input.switch:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+/* La fenêtre « prête à installer », celle de Sparkle. */
+.maj-fenetre-tete { display: flex; align-items: flex-start; gap: 16px; }
+.maj-fenetre h2 { margin: 0 0 6px; font-size: 17px; }
+.maj-fenetre-notes { margin-top: 16px; padding: 12px 14px; max-height: 280px; overflow: auto; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg); font-size: 13px; }
+.maj-fenetre-notes .notes-md { background: transparent; padding: 0; margin: 6px 0 0; }
 .progress { height: 8px; background: var(--ink-soft); border-radius: 999px; overflow: hidden; margin-top: 8px; }
 .progress div { height: 100%; background: var(--primary); border-radius: 999px; transition: width .2s; }
 
@@ -1322,6 +1370,10 @@ kbd { font: inherit; font-size: 12px; font-family: -apple-system, system-ui, san
 .lock-card h2 { margin: 0 0 6px; font-size: 18px; }
 .lock-card input { text-align: center; font-size: 16px; margin: 16px 0 12px; }
 .lock-card .btn { width: 100%; justify-content: center; }
+/* Deux boutons pleine largeur l'un sous l'autre se lisent comme UN bloc à deux étages : le
+   second (« J'ai déjà un cabinet… ») touchait « Ouvrir » à zéro pixel. L'écart se pose ici, pour
+   les deux applications, et non sur un identifiant. */
+.lock-card .btn + .btn { margin-top: 10px; }
 .lock-err { color: var(--danger); font-size: 13px; margin-bottom: 10px; }
 
 /* ---------- Paramètres : le sommaire, la recherche, ce qui manque (7.30.0) ----------

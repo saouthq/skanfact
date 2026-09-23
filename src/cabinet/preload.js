@@ -179,6 +179,7 @@ contextBridge.exposeInMainWorld('cabinet', {
   // mises à jour (6.6.0)
   updVersion: () => ipcRenderer.invoke('upd:version'),
   updCheck: () => ipcRenderer.invoke('upd:check'),
+  updCanaux: () => ipcRenderer.invoke('upd:canaux'),
   updDownload: () => ipcRenderer.invoke('upd:download'),
   updInstall: () => ipcRenderer.invoke('upd:install'),
   updSetToken: (t) => ipcRenderer.invoke('upd:setToken', t),

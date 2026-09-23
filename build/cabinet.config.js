@@ -46,6 +46,8 @@ module.exports = {
     'src/renderer/style.css',          // la feuille partagée, chargée par son index.html
     'src/renderer/rowmenu.js',         // le menu d'actions d'une ligne, partagé lui aussi
     'src/renderer/reglages.js',        // le sommaire et la recherche des réglages, partagés aussi
+    'src/renderer/majui.js',           // l'écran des mises à jour, le même dans les deux applications
+    'src/canaux.js',                   // la dernière version stable et d'essai publiées
     'src/renderer/compta.js',          // le moteur comptable : la balance du cabinet est celle du client
     // La licence du cabinet (9.4.0) : elle se vérifie HORS LIGNE, comme celle de l'entreprise, donc
     // le module et les clés publiques entrent dans le paquet. Le glob des clés est le MÊME que côté

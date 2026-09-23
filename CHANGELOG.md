@@ -7,6 +7,43 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 10.11.0 — 23/09/2026
+
+**Les mises à jour, retournées.** Trois défauts vus par Skander sur ses deux applications, et l'écran
+refait « comme Apple », à sa demande.
+
+**Ce qui empêchait de recevoir la 10.10.0**
+- **« Tu as la dernière version » alors que la 10.10.0 était en ligne.** La liste des versions que
+  GitHub rend au relais annonçait la 10.10.0 **sans aucun fichier**, selon le serveur qui répondait,
+  encore une heure après sa publication. Le relais sautait donc la 10.10.0 et servait la 10.9.3. Il
+  relit maintenant une version qui paraît vide avant de passer à la précédente (trois au plus, et
+  aucun appel de plus dans le cas normal) ; le Cabinet fait de même sur son canal d'essai. *Le relais
+  doit être redéployé pour que les applications déjà installées en profitent.*
+- **Une version téléchargée cachait la suivante.** La 10.9.3 prête à installer, la 10.10.0 publiée
+  entre-temps restait invisible : ni la recherche automatique ni le bouton ne la voyaient, et il
+  fallait installer l'une pour découvrir l'autre. La recherche a lieu à chaque fois ; si c'est la
+  même version, elle reste prête sans repasser par le téléchargement.
+
+**L'écran des mises à jour, comme sur un Mac** — le même dans les deux applications
+- En tête, l'application et sa version ; dessous, un seul bloc qui répond à « suis-je à jour ? » :
+  une coche verte, ou la mise à jour disponible avec sa barre et « 39,1 Mo sur 93,5 Mo », ou « prête
+  à être installée » avec **Redémarrer maintenant** et **Rechercher une version plus récente**.
+- La recherche se lance d'elle-même à l'ouverture du panneau, comme dans les Réglages de macOS.
+- Quand une version finit de se télécharger, une fenêtre dit ce qu'elle apporte et propose **Plus
+  tard** ou **Redémarrer maintenant** — une fois par jour au plus, jamais par-dessus une autre question.
+- Les réglages deviennent des lignes : « Mises à jour automatiques — Activées », et « Versions
+  d'essai » avec un interrupteur.
+- **La ligne des versions d'essai dit la vraie dernière bêta publiée**, avec sa date — ou aucun
+  numéro. Elle écrivait « Numérotées 9.2.0-beta.1 » dans le Cabinet et « 7.26.0-beta.1 » dans
+  SkanFact, deux exemples figés depuis des mois.
+
+**Et**
+- Écran de verrouillage du Cabinet : « Ouvrir » et « J'ai déjà un cabinet sur un autre ordinateur… »
+  se touchaient, et la phrase au-dessus touchait « Ouvrir ».
+
+Publiée en stable directe si elle l'est : elle ne touche ni à l'argent, ni à une clé, ni au moteur
+comptable, ni au format d'un fichier — c'est le chemin de publication et un écran.
+
 ## 10.10.0 — 23/09/2026
 
 **Un expert-comptable a tenu le Cabinet comme s'il l'utilisait depuis des mois.** Onze dossiers, un

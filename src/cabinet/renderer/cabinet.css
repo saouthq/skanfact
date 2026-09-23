@@ -87,7 +87,10 @@
 .lock-warn { color: var(--danger); font-weight: 700; }
 /* Le texte courant de la carte est centré (titre, sous-titre) ; une phrase de trois lignes centrée
    ne se lit pas. Tout ce qui est une PHRASE y revient à gauche. */
-.lock-card .lock-note { text-align: start; width: 100%; margin: 6px 0 2px; }
+.lock-card .lock-note { text-align: start; width: 100%; margin: 6px 0 16px; }
+/* Une note vide ne doit pas laisser son écart derrière elle. */
+.lock-card .lock-note:empty { display: none; }
+.lock-card .lock-note:empty + .btn { margin-top: 16px; }
 .warn-box.grave { background: var(--danger-soft); border-inline-start-color: var(--danger); }
 
 /* Ce qui doit être lu avant d'agir : jamais une ligne grise de plus. */
@@ -279,11 +282,8 @@
 body.dark .badge.b-hors { background: #2a3440; color: #9aa7b4; }
 .btn-ghost.danger:hover { color: var(--danger); background: var(--danger-soft); }
 
-/* Panneau des mises à jour. Les règles de style.css sont accrochées à `#update-panel`, l'identifiant
-   de l'app entreprise : on reprend les deux qui manquent plutôt que de renommer un identifiant
-   partout, et sans toucher au fichier partagé. */
-#upd-panel .update-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 12px; }
-#upd-panel .ver { font-size: 20px; font-weight: 700; margin-top: 2px; }
+/* Le panneau des mises à jour vit dans la feuille partagée depuis le 23/09/2026 (`.maj-*`, voir
+   src/renderer/majui.js) : les deux applications ont le même écran. */
 
 /* Reprendre un cabinet venu d'un autre ordinateur : les mêmes lignes que l'assistant, mais dans une
    fenêtre. `#setup .wiz-step` est accroché à l'assistant, il ne s'applique pas ici — et réutiliser un

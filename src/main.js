@@ -2361,6 +2361,8 @@ function notesToText(notes) {
 }
 
 function sendUpdate(state, payload) { send('update:event', { state, ...(payload || {}) }); }
+// Une annonce qui porte la version déjà téléchargée ne remet rien à zéro.
+function memePrete(info) { return !!(downloaded && updateInfo && info && updateInfo.version === info.version); }
 
 function getUpdater() {
   if (updater) return updater;
@@ -2378,12 +2380,25 @@ function getUpdater() {
     const ul = (lvl) => (m) => { try { fs.appendFileSync(ulog, `${new Date().toISOString()} ${lvl} ${m}\n`); } catch {} };
     autoUpdater.logger = { info: ul('info'), warn: ul('warn'), error: ul('error'), debug: ul('debug') };
     autoUpdater.on('checking-for-update', () => { if (!silent) sendUpdate('checking'); });
-    autoUpdater.on('update-available', (info) => { updateInfo = info; downloaded = false; downloadedFile = null; enTelechargement = autoUpdater.autoDownload; noterVerification('available', info.version); sendUpdate('available', { version: info.version, notes: notesToText(info.releaseNotes) }); });
+    autoUpdater.on('update-available', (info) => {
+      noterVerification('available', info.version);
+      // La MÊME version que celle déjà téléchargée : elle reste prête, l'écran ne repasse pas par
+      // « téléchargement » pour un fichier qui est déjà sur le disque.
+      if (memePrete(info)) { sendUpdate('downloaded', { version: info.version, notes: notesToText(info.releaseNotes) }); return; }
+      updateInfo = info; downloaded = false; downloadedFile = null; enTelechargement = autoUpdater.autoDownload;
+      sendUpdate('available', { version: info.version, notes: notesToText(info.releaseNotes) });
+    });
     // La date se note même quand la vérification était silencieuse : c'est justement celle-là qu'on
     // ne peut constater nulle part ailleurs, et c'est elle qui rend la phrase « tu as la dernière
     // version » vérifiable le lendemain.
-    autoUpdater.on('update-not-available', () => { noterVerification('none'); if (!silent) sendUpdate('none'); });
-    autoUpdater.on('download-progress', (p) => sendUpdate('downloading', { percent: Math.round(p.percent), version: updateInfo && updateInfo.version }));
+    autoUpdater.on('update-not-available', () => {
+      noterVerification('none');
+      if (silent) return;
+      // Rien de plus récent en ligne, mais une version attend déjà sur le disque : c'est elle qu'on montre.
+      if (downloaded && updateInfo) sendUpdate('downloaded', { version: updateInfo.version, notes: notesToText(updateInfo.releaseNotes) });
+      else sendUpdate('none');
+    });
+    autoUpdater.on('download-progress', (p) => { if (!downloaded) sendUpdate('downloading', { percent: Math.round(p.percent), version: updateInfo && updateInfo.version, transferred: p.transferred, total: p.total }); });
     autoUpdater.on('update-downloaded', (info) => { downloaded = true; enTelechargement = false; downloadedFile = info.downloadedFile || null; sendUpdate('downloaded', { version: info.version, notes: notesToText(info.releaseNotes) }); });
     autoUpdater.on('error', (err) => { noterVerification('error'); const pendant = enTelechargement; enTelechargement = false; if ((pendant || !silent) && !silencerErreur) sendUpdate('error', updateProblem(err)); });
     configureFeed(autoUpdater);
@@ -2436,7 +2451,7 @@ function updateProblem(err) {
   // si la nouvelle version est là.
   if (/CHANNEL_FILE_NOT_FOUND/.test(code) || /Cannot find .+ in the (latest )?release/i.test(brut)) {
     return readUpdateCfg().beta
-      ? dit('Aucune version bêta publiée pour l\'instant. Tu as la dernière version stable ; décoche la case pour revenir au canal normal.', true)
+      ? dit('Aucune version bêta publiée pour l\'instant. Tu as la dernière version stable ; désactive « Versions d\'essai » pour revenir au canal normal.', true)
       : dit('Une nouvelle version vient d\'être publiée et ses fichiers d\'installation finissent de monter en ligne. Réessaie dans quelques minutes.', true);
   }
   if (/NO_PUBLISHED_VERSIONS|LATEST_VERSION_NOT_FOUND/.test(code)) return dit('Aucune version publiée pour l\'instant.', true);
@@ -2465,7 +2480,11 @@ async function checkForUpdates(isSilent) {
   if (!relayBase() && GITHUB.private && !readUpdateCfg().token) return { state: 'token' };
   const u = getUpdater();
   if (!u) return updaterUnavailable();
-  if (downloaded) { sendUpdate('downloaded', { version: updateInfo && updateInfo.version, notes: notesToText(updateInfo && updateInfo.releaseNotes) }); return { state: 'ok' }; }
+  // **Une version téléchargée n'arrête plus la recherche** (23/09/2026). Cette ligne rendait
+  // « prête » sans rien demander dès qu'une mise à jour attendait d'être installée : la 10.9.3
+  // téléchargée, la 10.10.0 publiée entre-temps restait invisible — ni la vérification des quatre
+  // heures ni le bouton ne pouvaient la voir, et il fallait installer la 10.9.3 pour découvrir la
+  // suivante. On demande toujours ; si c'est la même version, `update-available` la garde prête.
   // 45 s maximum : sans réponse on rend la main avec un message plutôt que d'attendre sans fin.
   const patiente = () => new Promise((_, rej) => setTimeout(() => rej(new Error('ETIMEDOUT: pas de réponse')), 45000));
   // **Le repli n'est pas un réglage, c'est un réflexe.** Il y a DEUX chemins pour se mettre à jour —
@@ -2570,6 +2589,17 @@ ipcMain.handle('update:setToken', (_e, token) => {
 });
 
 ipcMain.handle('update:check', () => checkForUpdates(false));
+// La dernière version stable et la dernière version d'essai PUBLIÉES (23/09/2026) : l'écran écrivait
+// « Numérotées 7.26.0-beta.1 », un exemple figé depuis la 7.25.0. Un numéro affiché vient de ce qui
+// est en ligne, ou ne s'affiche pas.
+ipcMain.handle('update:canaux', async () => {
+  try {
+    return await require('./canaux').lireCanaux({
+      app: 'app', plateforme: process.platform, relaisBase: relayBase(), relaisSecret: relaySecret(),
+      owner: GITHUB.owner, repo: GITHUB.repo, token: readUpdateCfg().token, userAgent: `SkanFact/${app.getVersion()}`
+    });
+  } catch (_) { return null; }
+});
 
 ipcMain.handle('update:download', async () => {
   const u = getUpdater();
