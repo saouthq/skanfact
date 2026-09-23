@@ -16,6 +16,9 @@
 #   ecran.sh position                position du pointeur (cursor_position)
 set -euo pipefail
 export DISPLAY=${SKANFACT_ECRAN:-:99}
+# Sans une locale UTF-8, xdotool refuse les accents (« Invalid multi-byte sequence ») : un
+# comptable tape « Associés », « Médenine », « Sfax — Siège ».
+export LC_ALL=C.UTF-8 LANG=C.UTF-8
 TRAVAIL=/tmp/skanfact-humain
 mkdir -p "$TRAVAIL"
 a=${1:-}; shift || true
