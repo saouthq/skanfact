@@ -10622,7 +10622,7 @@
              qui a enregistré en dernier sur un dossier partagé. Il vit donc sous les dossiers, là
              où cette question se pose, au lieu de faire un titre pour une ligne. -->
         <h3 class="mt">Le nom de cet ordinateur ${info('data.device')}</h3>
-        <p class="small muted mb">Il ne sert qu'à dire qui a enregistré en dernier quand vous travaillez à deux sur un dossier partagé.</p>
+        <p class="small muted mb">Il dit qui a enregistré en dernier quand vous travaillez à deux sur un dossier partagé. Il part aussi, avec la version installée, dans le signal de présence que l'application envoie à SkanFact toutes les quatre heures : choisissez un nom qui ne vous gêne pas, comme « PC du bureau ».</p>
         <div class="inline"><input type="text" id="dev-name" value="" style="max-width:280px"><button type="button" class="btn" id="dev-save">Renommer</button></div>
       </div>
       ${panneau('p-sauvegardes', info('data.backups'))}

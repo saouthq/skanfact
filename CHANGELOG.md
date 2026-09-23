@@ -7,6 +7,25 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 10.9.3 — 23/09/2026
+
+**Le nom de l'ordinateur ne sert pas « qu'à » ce que l'écran disait.** Trois lectures du site
+dans la peau d'un expert-comptable, d'un gérant de PME et d'un commercial ont trouvé, chacune de
+son côté, que la politique de confidentialité et la page « Vos données » affirmaient que rien ne
+part pendant l'essai et que « rien ne nous dit si vous ouvrez le logiciel ». C'est faux depuis la
+8.4.0 : les deux applications signalent leur présence à SkanFact vingt secondes après
+l'ouverture, puis toutes les quatre heures, essai compris — la clé s'il y en a une, un
+identifiant tiré au hasard, **le nom de l'ordinateur**, le système et la version. Jamais une
+pièce, un client ni un montant.
+
+Le site dit désormais la vérité, champ par champ. L'application la disait aussi mal : sous
+« Le nom de cet ordinateur », Paramètres affirmait qu'il « ne sert qu'à dire qui a enregistré en
+dernier », et sa bulle qu'il « ne quitte jamais tes données ». Les deux disent maintenant qu'il
+part dans ce signal, et conseillent un nom qui ne gêne pas, comme « PC du bureau ».
+
+**Publiée en stable directe** : un correctif de texte, qui ne touche ni un chiffre, ni une clé, ni
+le moteur comptable, ni le format d'un fichier.
+
 ## 10.9.2 — 22/09/2026
 
 **L'empreinte d'une licence existe enfin quelque part.** Skander a voulu vérifier une licence sur

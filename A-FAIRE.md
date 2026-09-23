@@ -20,7 +20,30 @@ Rien ici ne demande d'écrire du code. Tant que ces lignes tiennent, on ne peut 
 | **RNE, capital social**, et un numéro de téléphone — ou la décision de ne pas en publier | `conditions-vente.html`, mentions légales | Skander |
 | **Vérification d'identité Konnect**, puis `KONNECT_API_KEY` en Secret Cloudflare, `konnect_wallet` et `achat_retour` dans Console → Réglages | plateforme | Skander |
 | **TVA 19 % et timbre 1 DT** sur une facture de licence — « À VÉRIFIER » depuis la 10.9.0 | réglages de la console | le comptable |
+| **Une convention « cabinet fondateur »** : « gratuit à vie » sans aucun écrit inquiète un expert-comptable au lieu de le rassurer, et les conditions de vente ne parlent pas du Cabinet | à écrire | Skander |
+| **La signature des exécutables** (Windows et Mac) : la première chose qu'un expert-comptable refuse, c'est « Exécuter quand même » sur le poste qui porte cinquante-cinq comptabilités | certificats | Skander |
 | **Prix du Cabinet** (par dossier au-delà de trois) et de l'option Comptabilité : `prix_cabinet_dossier` vaut 0, donc le Cabinet ne se vend pas en ligne | `TARIFS-REFERENCE.md` | Skander, après l'avis de l'Ordre |
+
+## 1 bis. Deux décisions de produit ouvertes par l'audit « trois regards » (23/09/2026)
+
+Le site dit maintenant la vérité sur les deux ; reste à décider si la vérité doit changer.
+
+- **Envoyer le nom de l'ordinateur au serveur, ou non.** Le signal de présence (8.4.0) envoie le
+  nom du poste tel que le système l'affiche, souvent « MacBook de Prénom » : une donnée
+  personnelle. Il sert à reconnaître un poste dans la console ; l'identifiant tiré au hasard suffit
+  à compter. Le retirer rendrait la politique de confidentialité plus courte et plus facile à
+  défendre. Si c'est décidé : `annoncerPlateforme` dans les deux `main.js`, la colonne
+  `device_nom` de la console, et les pages du site listées dans le `CLAUDE.md` du site.
+- **Faire partir la licence du paiement, ou de la fin de l'essai.** Aujourd'hui les douze mois
+  partent de l'émission : acheter au dixième jour d'essai en fait perdre vingt. Le site le dit et
+  conseille d'acheter en fin d'essai. Changer la règle serait un argument de vente (« achetez quand
+  vous voulez, vous ne perdez rien »), mais la plateforme ne connaît pas la date de fin d'essai d'un
+  poste : c'est une version, pas une ligne.
+- **Un email facultatif à l'essai** (« prévenez-moi avant la fin ») : demandé par la lecture
+  commerciale, pas fait, parce qu'il suppose une route qui garde l'adresse et l'engagement
+  d'envoyer les messages. Et le champ « Comment nous avez-vous connus ? » ne part que par email :
+  une commande payée par carte passe par la plateforme, dont la liste de champs est fixée par un
+  test.
 
 ## 2. Le site
 
