@@ -5755,6 +5755,61 @@ est l'auteur du produit ; un client se serait trompé dix fois sur dix.
   éditeur (6.4.0). Le découpage de la clé en ses trois morceaux (préfixe / charge / signature) est
   ce qui a rendu la réponse vérifiable au lieu de péremptoire.
 
+### 10.10.0 — Un expert-comptable a tenu le Cabinet
+
+Seize constats d'une session QA qui a joué un expert-comptable tunisien pendant « plusieurs mois » :
+onze dossiers, cent quatre écritures, la paie, la clôture, la liasse. Publiée en bêta.
+
+Règles apprises, à ne pas recasser :
+
+- **Un modèle de rubriques se confronte aux comptes que le MOTEUR écrit, pas au plan idéal.** La
+  liasse cherchait 281/282/283 ; les deux applications écrivent leurs dotations sur le 28 nu
+  (`DEFAULT_ACCOUNTS.amortissements`). Sur un dossier alimenté par SkanFact, elle ne pouvait donc
+  JAMAIS tomber juste — et le test de la 10.0.0 passait, parce que son jeu de données utilisait 282.
+  Un test dont les données ne ressemblent pas à ce que le produit écrit ne prouve rien (10.0.0,
+  9.6.1). Il tourne maintenant sur le livre bâti depuis les paquets de l'exemple.
+- **Un solde peut changer de sens sans changer de nature.** Une perte reportée (13 débiteur), des
+  avoirs qui dépassent les ventes d'un compte, un stock qui baisse : `deuxSens` garde le compte dans
+  sa rubrique, en négatif. Les exclure les faisait sortir de la liasse ; et la raison d'une rubrique
+  vide dit désormais le SENS qu'elle attend, sinon elle contredit le bandeau des orphelins.
+- **Un correctif d'un modèle que le client a COPIÉ doit atteindre la copie.** `migrerModeleLiasse`
+  relit à la lecture une rubrique restée identique à celle de la 10.0.0, et ne touche jamais une
+  rubrique réécrite par le cabinet (même règle que `migrerLivre`, 9.8.5).
+- **Deux portes pour deux contenus** : `infoDialog` échappe (une phrase), `infoHtml` reçoit du HTML
+  déjà échappé morceau par morceau. Passer un tableau à la première affichait « <table class=… » —
+  sur la liasse ET sur le rapport de fusion, que personne n'avait signalé.
+- **Le moteur comptable irréprochable rend un défaut de saisie dangereux.** Un bulletin à brut
+  négatif donnait une pièce équilibrée, colonnes inversées, plausible dans un journal de cent pièces.
+  Ce qui manquait était un REFUS : `saisiePaieValide`, dans le moteur partagé, appelée par le
+  Cabinet et par l'app entreprise (le jumeau, 7.3.0), et par le bouton pendant la frappe (9.4.5).
+- **Un sélecteur construit sur une source ignore ce que l'autre crée.** Les exercices se lisaient
+  dans les paquets reçus ; « Ouvrir 2027 » écrivait un livre qu'aucun écran n'ouvrait, et un dossier
+  hors SkanFact — sans paquet par construction — n'avait pas de comptabilité du tout. Les exercices
+  se lisent aussi dans l'index des livres, et le geste qui crée un exercice l'ajoute lui-même.
+- **Le dossier qu'on FACTURE ne peut pas être celui qu'on sert le moins.** L'Aide promettait la
+  saisie d'un client hors SkanFact, l'écran promettait « dès son premier paquet ». Deux phrases
+  contraires, dont l'une était fausse pour toujours (7.3.0).
+- **Un montant qui sort du moteur dans une phrase s'écrit comme l'écran** (`fmtMontant`,
+  `fmtJour`) : « 100.000 » se lit cent mille. Un test interdit tout `toFixed(` hors du formateur.
+  Le document remis au client (les états de clôture) passe par le même formateur, devise comprise.
+- **On ne propose pas un geste qui sera refusé** : l'extourne de décembre devient « Extourner à
+  l'ouverture de N+1 », qui pose un drapeau (aucun chiffre) qu'« Ouvrir N+1 » consomme.
+- **Un contrôle rapproche un tableau de son compte** (tableau d'amortissement ↔ 28), comme la
+  balance auxiliaire se confronte à son collectif (9.8.8) — seulement quand le cabinet tient le parc.
+- **Une cellule collée illisible se refuse en nommant la ligne**, jamais un zéro en silence.
+- **Le test de T-09 ne regardait que `modal()`** : sept « Annuler » écrits APRÈS le correctif
+  portaient `dismiss` nu, que rien ne lit. On regarde maintenant chaque bouton, dans les deux
+  applications. Un garde-fou qui teste le mécanisme sans tester ses usages laisse repasser le défaut
+  à la première fenêtre neuve.
+- **Deux tests gravaient le défaut, retournés** (vingtième et vingt et unième fois) : « sept
+  onglets » écrit à la main, et « dès son premier envoi » exigé d'un dossier sans paquet.
+- Piège re-rencontré, **septième fois** : un commentaire de gabarit `${/* */''}` posé dans un
+  ternaire casse le fichier. Et un commentaire qui cite la phrase fautive fait tomber le test qui
+  l'interdit — on lit le code sans ses commentaires.
+
+Prouvé : treize défauts réintroduits un par un font tomber leur test ; `e2e:paie`, `e2e:cloture`
+et `e2e:cabinet` refont la paie négative, la liasse et le dossier hors SkanFact dans l'application.
+
 ## Pistes pour la suite (non demandées)
 
 - Séparation des installateurs arm64 / x64 pour diviser par deux les 222 Mo du dmg universel.

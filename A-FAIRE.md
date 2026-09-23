@@ -45,6 +45,15 @@ Le site dit maintenant la vérité sur les deux ; reste à décider si la vérit
   une commande payée par carte passe par la plateforme, dont la liste de champs est fixée par un
   test.
 
+## 1 ter. Ce que le rapport QA du Cabinet (23/09/2026) laisse à décider
+
+- **L'export « toutes les écritures de tous les clients »** ne lit que les paquets reçus : un client
+  hors SkanFact, tenu à la main depuis la 10.10.0, n'y entre pas (la page le dit, et son
+  livre-journal s'exporte depuis sa fiche). Faut-il qu'il y entre ? C'est une question de métier —
+  à quoi sert ce fichier chez le pilote — pas de code.
+- **La liasse n'a toujours pas été confrontée à une liasse réelle.** Elle tombe juste sur l'exemple ;
+  le modèle de rubriques reste « À VÉRIFIER » tant que le pilote ne l'a pas comparée à la sienne.
+
 ## 2. Le site
 
 Mesuré par la session qui l'a écrit, le 22/09/2026. Aucun de ces points n'est faux — ils sont

@@ -128,6 +128,22 @@ const étape = m => { pas++; console.log('\n' + pas + '. ' + m); };
   const net2 = await win.evaluate(() => document.querySelector('#bf-apercu').textContent);
   if (net1 === net2) throw new Error('le net n\'a pas bougé après une prime de 200 : l\'aperçu ne calcule rien');
   if (!/Net à payer/.test(net2)) throw new Error('l\'aperçu doit NOMMER le net : ' + net2);
+  // C-11 (10.10.0) — quarante jours d'absence sur vingt-six : le bouton s'éteint PENDANT la frappe,
+  // et le motif nomme les deux chiffres. Avant, le net passait à −586 DT et le bulletin s'enregistrait.
+  await win.fill('#bf [name=joursAbsence]', '40');
+  await attendre(250);
+  const neg = await win.evaluate(() => ({
+    eteint: document.querySelector('.modal-bg #ok').disabled,
+    motif: (document.querySelector('#bf-refus') || {}).textContent || '',
+    visible: !(document.querySelector('#bf-refus') || {}).hidden
+  }));
+  if (!neg.eteint || !neg.visible || !/40 jours/.test(neg.motif) || !/26 jours ouvrables/.test(neg.motif)) {
+    throw new Error('quarante jours d\'absence ne sont pas refusés pendant la frappe : ' + JSON.stringify(neg));
+  }
+  await shot('03b-absence-refusee');
+  await win.fill('#bf [name=joursAbsence]', '0');
+  await attendre(250);
+  if (await win.evaluate(() => document.querySelector('.modal-bg #ok').disabled)) throw new Error('le bouton reste éteint sur un bulletin juste');
   await shot('03-bulletin');
   await win.click('.modal-bg #ok');
   await win.waitForFunction(() => !document.querySelector('#bf'), { timeout: 10000 });

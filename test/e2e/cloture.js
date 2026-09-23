@@ -112,6 +112,33 @@ const CIBLE = path.join(dir, 'cloture.skanclose');
   const sansAN = await wc.$('#cl-sans-ouverture');
   ok(`six contrôles affichés, bilan équilibré${sansAN ? ' (livre sans à-nouveaux, et l\'écran le dit)' : ''}, et la limite des états est écrite`);
 
+  // ------------------------------------------------ la liasse (C-08, C-09 — 10.10.0)
+  étape('La liasse tombe juste, et chaque rubrique s\'ouvre sur un VRAI tableau');
+  await wc.click('#cl-liasse');
+  await wc.waitForFunction(() => {
+    const e = document.querySelector('#c-livres');
+    return e && !e.textContent.includes('Lecture de la liasse') && e.querySelector('[data-rub]');
+  }, { timeout: 20000 });
+  const liasse = await wc.evaluate(() => ({
+    juste: /Actif = passif, et le résultat du bilan est celui de l'état de résultat/.test(document.querySelector('#c-livres').textContent),
+    orphelins: !!document.querySelector('#li-orphelins'),
+    texte: document.querySelector('#c-livres').textContent.replace(/\s+/g, ' ').slice(0, 300)
+  }));
+  if (!liasse.juste || liasse.orphelins) throw new Error('la liasse de l\'exemple ne tombe pas juste : ' + liasse.texte);
+  await wc.click('#c-livres [data-rub]');
+  await wc.waitForSelector('.modal-bg', { timeout: 10000 });
+  const fen = await wc.evaluate(() => {
+    const m = document.querySelector('.modal-bg');
+    return { tableau: !!m.querySelector('table td'), brut: /<table|&lt;/.test(m.textContent) };
+  });
+  if (!fen.tableau || fen.brut) throw new Error('« Voir les comptes » n\'affiche pas un vrai tableau : ' + JSON.stringify(fen));
+  await wc.screenshot({ path: path.join(OUT, '01b-liasse-comptes.png') });
+  await wc.click('.modal-bg #ok');
+  await wc.waitForFunction(() => !document.querySelector('.modal-bg'), { timeout: 10000 });
+  await wc.click('#c-tabs button[data-tab="exercice"]');
+  await wc.waitForSelector('#cl-liasse', { timeout: 20000 });
+  ok('liasse équilibrée sans compte orphelin, et une rubrique s\'ouvre sur son tableau de comptes');
+
   // ------------------------------------------------ clôturer
   étape('Clôturer : définitif, tracé, et impossible deux fois');
   await wc.click('#cl-cloturer');

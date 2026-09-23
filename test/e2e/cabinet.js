@@ -185,6 +185,26 @@ const étape = m => { pas++; console.log('\n' + pas + '. ' + m); };
   if (/n'existe plus/.test(encoreLa)) throw new Error('la fiche a disparu après le changement d\'identifiant');
   ok(`identifiant suivi : ${idAvant} → ${idApres}`);
 
+  // 3ter — C-07 (10.10.0) : un client hors SkanFact n'envoie jamais de paquet. Sa comptabilité se
+  // tient ICI, et l'onglet le propose — il promettait « dès son premier paquet ».
+  étape('Tenir la comptabilité d\'un client hors SkanFact');
+  await win.evaluate(id => { location.hash = '#/dossier/' + encodeURIComponent(id) + '/comptabilite'; }, idApres);
+  await win.waitForSelector('#lv-reprendre', { timeout: 15000 });
+  const offre = await win.evaluate(() => document.querySelector('#c-livres').textContent.replace(/\s+/g, ' '));
+  if (!/Commencer le livre de/.test(offre) || /premier paquet/.test(offre)) throw new Error('un client hors SkanFact ne se voit pas proposer son livre : ' + offre.slice(0, 200));
+  await win.click('#lv-reprendre');
+  await win.waitForSelector('#rf', { timeout: 10000 });
+  await win.click('.modal-bg #ok');
+  await win.waitForFunction(() => !!document.querySelector('#c-tabs button[data-tab="saisie"]'), { timeout: 15000 });
+  const tenu = await win.evaluate(() => ({
+    onglets: document.querySelectorAll('#c-tabs button').length,
+    annees: [...document.querySelectorAll('#lv-annee option')].map(o => o.value)
+  }));
+  if (tenu.onglets < 14) throw new Error('le livre d\'un client hors SkanFact n\'ouvre pas tous ses onglets : ' + tenu.onglets);
+  if (!tenu.annees.length) throw new Error('le sélecteur d\'exercice est vide pour un dossier sans paquet');
+  await shot('05b-hors-skanfact-livre');
+  ok(`livre commencé sans un seul paquet, ${tenu.onglets} onglets, exercice ${tenu.annees.join(', ')}`);
+
   // 4 — l'exemple, puis les listes
   étape('Jeu d\'exemple, tri, pagination, recherche');
   await ouvrirReglages('pan-exemple');
