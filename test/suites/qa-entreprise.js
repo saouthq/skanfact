@@ -571,4 +571,64 @@ module.exports = ({ t, assert, lireSource }) => {
     const a0 = app.indexOf('function accountForm(');
     assert.ok(/\.\.\.\(modele \|\| \{\}\)/.test(app.slice(a0, a0 + 400)), 'accountForm ne reprend pas le modèle qu\'on lui passe');
   });
+  // « Timbre fiscal par facture : 1 » — un dinar, un millime ? La règle 9.4.8 veut l'unité à côté du
+  // champ ; dans l'assistant elle suit la devise choisie juste au-dessus (10.12.0).
+  t('Le timbre fiscal dit son unité, dans les Paramètres et dans l\'assistant', () => {
+    const app = code('src', 'renderer', 'app.js');
+    const champs = app.match(/lbl\(`Timbre fiscal par facture[^`]*`/g) || [];
+    assert.strictEqual(champs.length, 2, 'deux champs du timbre attendus, trouvé : ' + champs.length);
+    for (const c of champs) assert.ok(/normCurrency\(/.test(c), 'le champ du timbre ne dit pas sa devise : ' + c);
+    assert.ok(!/lbl\('Timbre fiscal par facture'/.test(app), 'un champ du timbre reste sans unité');
+    assert.ok(/unite\.textContent = C\.normCurrency\(devise\.value\)/.test(app), 'l\'unité du timbre ne suit pas la devise choisie dans l\'assistant');
+  });
+  // Une menuiserie facture l'acompte de 30 % d'un devis accepté : le devis quittait « À faire », parce
+  // que l'acompte porte `fromQuoteId` comme une facture totale — les 70 % restants n'étaient réclamés
+  // nulle part (10.12.0). Seule une facture totale ou de solde ferme la ligne.
+  t('Un devis dont seul l\'acompte est facturé reste « à facturer », pour son solde', () => {
+    const d = vierge();
+    d.clients = [{ id: 'c1', name: 'Hôtel Dar El Marsa' }];
+    const q = { id: 'q1', type: 'devis', status: 'accepté', number: 'DEV-2026-001', date: '2026-09-01', clientId: 'c1',
+      lines: [{ label: 'Portes', qty: 1, unitPrice: 10000, vatRate: 19 }] };
+    const acompte = { id: 'f1', type: 'facture', status: 'envoyée', number: 'FAC-2026-001', date: '2026-09-02', clientId: 'c1',
+      fromQuoteId: 'q1', deposit: { percent: 30, quoteId: 'q1', quoteNumber: 'DEV-2026-001' },
+      lines: [{ label: 'Acompte 30 %', qty: 1, unitPrice: 3000, vatRate: 19 }] };
+    d.documents = [q, acompte];
+    const l = core.todoList(d, d.company, '2026-09-10').find(x => x.id === 'devis-acceptes');
+    assert.ok(l, 'le devis dont seul l\'acompte est facturé a disparu de « À faire »');
+    // 10 000 HT + 19 % = 11 900 TTC ; l'acompte 3 000 + 19 % = 3 570 (son timbre n'était pas au devis).
+    assert.strictEqual(l.amount, 8330, 'le reste à facturer ne déduit pas l\'acompte : ' + l.amount);
+    assert.ok(/Facturer le solde/.test(l.detail), 'la ligne ne dit pas le geste qui facture le solde : ' + l.detail);
+    // La facture de solde, même en brouillon, ferme la ligne.
+    d.documents.push({ id: 'f2', type: 'facture', status: 'brouillon', date: '2026-09-10', clientId: 'c1', fromQuoteId: 'q1',
+      settles: { quoteId: 'q1', depositIds: ['f1'] }, lines: [] });
+    assert.ok(!core.todoList(d, d.company, '2026-09-10').some(x => x.id === 'devis-acceptes'), 'la facture de solde ne ferme pas la ligne');
+  });
+  // Le menu d'un devis dont l'acompte est facturé ne proposait que « Refacturer la totalité »
+  // (facturer une seconde fois l'acompte), et l'éditeur gardait « Facture de solde » en VERT sur un
+  // devis déjà soldé — un clic, une seconde facture de solde (10.12.0).
+  t('Le solde d\'un devis se facture depuis sa ligne, et jamais deux fois', () => {
+    const app = code('src', 'renderer', 'app.js');
+    const i = app.indexOf('async function facturerSolde(');
+    assert.ok(i > 0, 'facturerSolde n\'existe plus');
+    const f = app.slice(i, app.indexOf('\n  function ', i));
+    assert.ok(/if \(totales\.length && !await confirmDialog\(/.test(f), 'facturerSolde crée un second solde sans rien demander');
+    assert.ok(/\$\('#settle'\)\.onclick = \(\) => facturerSolde\(doc\)/.test(app), 'le bouton de l\'éditeur ne passe pas par facturerSolde');
+    assert.ok(/if \(acomptes\.length && !totales\.length\)\s*a\.push\(\{ icon: 'facture', label: 'Facturer le solde'[\s\S]{0,160}run: \(\) => facturerSolde\(d\)/.test(app),
+      'le menu de la ligne ne propose pas « Facturer le solde » quand l\'acompte seul est facturé');
+    assert.ok(/const soldable = issuedDeposits\.length > 0 && !dejaFacture\.length;/.test(app), 'le solde reste proposé sur un devis déjà soldé');
+    assert.ok(/: soldable\s*\?\s*`<button class="btn btn-primary" id="settle2">/.test(app), 'le vert « Facture de solde » ne dépend pas de soldable');
+    assert.ok(/\$\{soldable \? ligneMenu\(`<button id="settle">/.test(app), 'l\'entrée « Facture de solde » du menu ne dépend pas de soldable');
+  });
+  // Le récapitulatif d'émission d'une facture de solde ne disait ni le devis ni l'acompte déduit —
+  // ce qu'un gérant vérifie avant d'envoyer (10.12.0).
+  t('Le récapitulatif d\'émission nomme le devis d\'un solde et l\'acompte qu\'il déduit', () => {
+    const app = code('src', 'renderer', 'app.js');
+    const i = app.indexOf('function confirmerEmission(');
+    const f = app.slice(i, app.indexOf('\n  function ', i + 10));
+    assert.ok(f.length > 800, 'tranche de confirmerEmission : ' + f.length);
+    assert.ok(/doc\.settles\s*\?\s*ligne\('Solde du devis'/.test(f), 'le solde ne nomme pas son devis');
+    assert.ok(/depositIds[\s\S]{0,120}map\(docById\)/.test(f), 'le solde ne nomme pas les acomptes déduits');
+    assert.ok(/doc\.deposit \? ligne\('Acompte du devis'/.test(f), 'l\'acompte ne nomme pas son devis');
+    assert.ok(/\$\{origine\}/.test(f), 'la ligne d\'origine n\'est pas posée dans le récapitulatif');
+  });
 };

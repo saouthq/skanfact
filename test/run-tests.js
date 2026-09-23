@@ -9412,8 +9412,10 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     // un second clic fabriquait une seconde facture complète.
     assert.ok(/const devisFacturable = [\s\S]{0,220}?!dejaFacture\.length && !issuedDeposits\.length/.test(app),
       'le bouton coloré reste offert sur un devis déjà facturé');
-    // Un acompte émis : le geste suivant est le SOLDE, pas 100 % du devis.
-    assert.ok(/issuedDeposits\.length\s*\n?\s*\? `<button class="btn btn-primary" id="settle2">Facture de solde/.test(app),
+    // Un acompte émis, et rien n'a encore facturé le reste : le geste suivant est le SOLDE, pas 100 %
+    // du devis. (Retourné en 10.12.0 : l'assertion exigeait `issuedDeposits.length`, c'est-à-dire le
+    // défaut — le vert restait sur un devis déjà soldé. La condition est `soldable`.)
+    assert.ok(/soldable\s*\n?\s*\? `<button class="btn btn-primary" id="settle2">Facture de solde/.test(app),
       'après un acompte, le bouton principal doit être la facture de solde');
     // Déjà facturé : on mène à la facture.
     assert.ok(/id="voir-facture">Voir \$\{h\(dejaFacture\[0\]\.number/.test(app), 'rien ne mène à la facture déjà établie');

@@ -683,12 +683,20 @@
       ? `${reste > 0.0005 ? `Il ne reste que ${C.money(reste, cur)} à payer sur ${h(inv.number)}` : `${h(inv.number)} est déjà payée`} : cet avoir laisse <strong>${C.money(aRendre, cur)}</strong> à rendre à ${h(cl ? cl.name : 'ton client')} — par un remboursement, ou en déduction de sa prochaine facture.`
       : `${reste > 0.0005 ? `Il ne reste que ${C.money(reste, cur)} à corriger sur ${h(inv.number)}` : `${h(inv.number)} est déjà entièrement couverte par un avoir`} : cet avoir la dépasse de <strong>${C.money(aRendre, cur)}</strong>. Vérifie son montant avant de l'émettre.`) : '';
     const ligne = (k, v) => `<div><span>${h(k)}</span><span>${v}</span></div>`;
+    // Une facture tirée d'un devis le DIT avant l'émission : le solde nomme le devis et les acomptes
+    // qu'il déduit, l'acompte sa part du devis. C'est ce qu'un gérant vérifie avant d'envoyer — que
+    // l'acompte déjà payé n'est pas refacturé (10.12.0, une menuiserie).
+    const deduits = doc.settles ? (doc.settles.depositIds || []).map(docById).filter(Boolean).map(d => d.number || 'un acompte en brouillon') : [];
+    const origine = doc.settles
+      ? ligne('Solde du devis', `${h(doc.settles.quoteNumber || '—')}${deduits.length ? ` · acompte${sPl(deduits.length)} ${h(deduits.join(', '))} déduit${sPl(deduits.length)}` : ''}`)
+      : doc.deposit ? ligne('Acompte du devis', `${h(doc.deposit.quoteNumber || '—')} · ${h(String(doc.deposit.percent).replace('.', ','))} %`) : '';
     return new Promise(resolve => {
       let settled = false;
       const finish = (close, v) => { settled = true; close(); resolve(v); };
       modal(`<h2>Émettre ${isAv ? 'l\'avoir' : 'la facture'} ${h(numero)} ?</h2>
         <div class="kv recap-emission">
           ${ligne('Client', `<strong>${h(cl ? cl.name : '—')}</strong>`)}
+          ${origine}
           ${inv ? ligne('Facture corrigée', `${h(inv.number || '—')} · ${C.money(bInv.totals.netToPay, cur)}`) : ''}
           ${ligne('Date', C.fmtDate(doc.date))}
           ${!isAv && doc.dueDate ? ligne('Échéance', C.fmtDate(doc.dueDate)) : ''}
@@ -1223,7 +1231,12 @@
   // disait « ← le document » : lequel, quand on est soi-même sur un document ? Il dit maintenant
   // « ← Devis DEV-2026-001 », « ← Hôtel Les Oliviers SARL ». Un nom trop long s'abrège — la barre
   // d'actions porte déjà dix commandes — et la bulle du bouton le garde entier.
-  const nomCourt = s => { const t = String(s || '').trim(); return t.length > 26 ? t.slice(0, 25).trimEnd() + '…' : t; };
+  //
+  // Dix-huit caractères, pas vingt-six : la longueur du retour dépend de la page d'où l'on vient, et
+  // à 1440 px « ← Factures » tenait sur la barre de la facture quand « ← Hôtel Dar El Marsa SARL » la
+  // faisait passer sur deux rangées — tout le formulaire descendait de 43 px, et le clic visé sur
+  // « Émettre » tombait sur « Enregistrer le brouillon » (10.12.0, une menuiserie).
+  const nomCourt = s => { const t = String(s || '').trim(); return t.length > 18 ? t.slice(0, 17).trimEnd() + '…' : t; };
   const pageLabel = (hash, entier) => {
     const [route, id] = (hash || '').replace(/^#\/?/, '').split('/');
     const nom = t => entier ? t : nomCourt(t);
@@ -2325,8 +2338,13 @@
         const { totales, acomptes, brouillons } = piecesDuDevis(d.id);
         if (totales.length || acomptes.length || brouillons.length) {
           const faite = totales[0] || acomptes[0] || brouillons[0];
-          a.push({ sep: true },
-            { icon: 'facture', label: faite.number ? `Voir ${faite.number}` : (faite.deposit ? 'Voir l\'acompte en brouillon' : 'Voir la facture en brouillon'), hint: `Ce devis a déjà donné ${totales.concat(acomptes, brouillons).map(nomDePiece).join(', ')}`, run: () => navigate('#/doc/' + faite.id) },
+          const nature = faite.deposit ? 'l\'acompte' : faite.settles ? 'la facture de solde' : 'la facture';
+          a.push({ sep: true });
+          // Un acompte est émis et rien n'a encore facturé le reste : le geste suivant est le SOLDE.
+          if (acomptes.length && !totales.length)
+            a.push({ icon: 'facture', label: 'Facturer le solde', hint: `Le devis, ${pl(acomptes.length, 'acompte')} déduit${sPl(acomptes.length)}`, run: () => facturerSolde(d) });
+          a.push(
+            { icon: 'facture', label: faite.number ? `Voir ${nature} ${faite.number}` : `Voir ${nature} en brouillon`, hint: `Ce devis a déjà donné ${totales.concat(acomptes, brouillons).map(nomDePiece).join(', ')}`, run: () => navigate('#/doc/' + faite.id) },
             { sep: true },
             { icon: 'copier', label: 'Refacturer la totalité…', hint: 'Une facture de plus, pour le montant entier du devis', danger: true, run: () => facturerDevis(d) });
         } else {
@@ -2565,12 +2583,16 @@
     const brouillonsAcompte = isNew || !isQ ? [] : piecesDuDevis(doc.id).brouillons;
     const devisFacturable = !isNew && isQ && !dejaFacture.length && !issuedDeposits.length && !brouillonsAcompte.length
       && (doc.status === 'accepté' || doc.status === 'envoyé');
+    // Le solde n'est à facturer que tant qu'aucune facture de solde (ou totale) n'existe : sans ça,
+    // « Facture de solde » restait le bouton VERT d'un devis déjà soldé, et un clic en fabriquait une
+    // seconde — le client facturé deux fois les 70 % (10.12.0, une menuiserie).
+    const soldable = issuedDeposits.length > 0 && !dejaFacture.length;
     // Une entrée de menu et sa bulle vivent côte à côte dans une LIGNE (10.12.0) : la bulle posée
     // À L'INTÉRIEUR du bouton faisait un bouton dans un bouton, que le navigateur ferme d'office —
     // elle tombait seule sur la ligne suivante du menu.
     const ligneMenu = (bouton, cle) => `<div class="ml-ligne">${bouton}${info(cle)}</div>`;
     const autresChemins = `${ligneMenu('<button id="deposit">Facture d\'acompte…</button>', 'ed.deposit')}
-        ${issuedDeposits.length ? ligneMenu(`<button id="settle">Facture de solde (${issuedDeposits.length} acompte${issuedDeposits.length > 1 ? 's' : ''} déduit${issuedDeposits.length > 1 ? 's' : ''})</button>`, 'ed.settle') : ''}
+        ${soldable ? ligneMenu(`<button id="settle">Facture de solde (${issuedDeposits.length} acompte${issuedDeposits.length > 1 ? 's' : ''} déduit${issuedDeposits.length > 1 ? 's' : ''})</button>`, 'ed.settle') : ''}
         ${dejaFacture.length || issuedDeposits.length || brouillonsAcompte.length ? `<button id="convert" class="danger">Refacturer la totalité…</button>` : ''}`;
     // UN seul bouton principal, et c'est l'étape suivante (10.12.0, la règle U-11 du Cabinet portée
     // ici). Un devis enregistré et inchangé gardait « Enregistrer » en vert : il disait qu'il restait
@@ -2584,7 +2606,7 @@
            <div class="more"><button class="btn" id="bill-btn" aria-label="Autres façons de facturer">▾</button>
              <div class="more-list" id="bill-list" hidden>${autresChemins}</div></div>`
         // Un acompte est émis : le geste suivant est le SOLDE, pas une facture de plus.
-        : issuedDeposits.length
+        : soldable
         ? `<button class="btn btn-primary" id="settle2">Facture de solde</button>${info('ed.settle')}
            <div class="more"><button class="btn" id="bill-btn" aria-label="Autres façons de facturer">▾</button>
              <div class="more-list" id="bill-list" hidden>${autresChemins}</div></div>`
@@ -2746,6 +2768,9 @@
         t.setAttribute('aria-pressed', previewHidden ? 'false' : 'true');
         t.title = previewHidden ? 'Remettre l\'aperçu du document à droite' : 'Masquer l\'aperçu et travailler sur toute la largeur';
       }
+      // « Agrandir » vit aussi en tête de la colonne d'aperçu : en double dans la barre d'actions, il
+      // la faisait passer sur deux rangées à 1440 px. Il n'y revient que quand la colonne est masquée.
+      const g = $('#pv-big'); if (g) g.hidden = !previewHidden;
     };
     $('#pv-toggle').onclick = () => {
       previewHidden = !previewHidden;
@@ -3475,12 +3500,7 @@
       });
     };
     if ($('#settle2')) $('#settle2').onclick = () => $('#settle') ? $('#settle').click() : null;
-    if ($('#settle')) $('#settle').onclick = () => {
-      const inv = invoiceFromQuote(doc, C.settlementLines(doc, issuedDeposits), doc.discountRate);
-      inv.settles = { quoteId: doc.id, quoteNumber: doc.number, depositIds: issuedDeposits.map(d => d.id) }; inv.fromQuoteId = doc.id; inv.fromQuoteNumber = doc.number;
-      inv.subject = `Solde — ${doc.subject || doc.number}`;
-      data.documents.push(inv); save(true); toast(`Brouillon de facture de solde créé (${pl(issuedDeposits.length, 'acompte')} déduit${sPl(issuedDeposits.length)})`); navigate('#/doc/' + inv.id);
-    };
+    if ($('#settle')) $('#settle').onclick = () => facturerSolde(doc);
     if ($('#pay')) $('#pay').onclick = () => paymentForm(docById(doc.id), () => render());
     if ($('#credit')) $('#credit').onclick = () => navigate('#/doc/new/avoir/' + doc.id);
     // Les deux mêmes sorties, portées cette fois par le bandeau plutôt que cachées dans « Plus ▾ » :
@@ -3654,6 +3674,24 @@
     acceptQuote(q.id);
     data.documents.push(inv); save(true);
     toast('Brouillon de facture créé — clique sur « Émettre » quand elle est prête');
+    navigate('#/doc/' + inv.id);
+  }
+
+  // La facture de solde d'un devis dont un acompte au moins est émis. Une seule fonction pour
+  // l'éditeur et pour le menu de la liste (règle 7.29.0 : le garde-fou vit avec le geste) : le menu
+  // ne proposait que « Refacturer la totalité », c'est-à-dire de facturer une seconde fois l'acompte.
+  async function facturerSolde(q) {
+    if (!q) return;
+    const { totales, acomptes } = piecesDuDevis(q.id);
+    if (!acomptes.length) return;
+    if (totales.length && !await confirmDialog(
+      `Ce devis a déjà donné ${totales.map(nomDePiece).join(', ')}.\n\nUne facture de solde de plus facturerait une seconde fois ce qui reste à payer.`,
+      'Créer quand même', true)) return;
+    const inv = invoiceFromQuote(q, C.settlementLines(q, acomptes), q.discountRate);
+    inv.settles = { quoteId: q.id, quoteNumber: q.number, depositIds: acomptes.map(d => d.id) }; inv.fromQuoteId = q.id; inv.fromQuoteNumber = q.number;
+    inv.subject = `Solde — ${q.subject || q.number}`;
+    data.documents.push(inv); save(true);
+    toast(`Brouillon de facture de solde créé (${pl(acomptes.length, 'acompte')} déduit${sPl(acomptes.length)})`);
     navigate('#/doc/' + inv.id);
   }
 
@@ -11120,7 +11158,7 @@
 
         <section data-pane="documents" hidden>
         ${panneau('p-facturation')}<div class="grid-3">
-          ${field(lbl('Timbre fiscal par facture', 'doc.stampFee'), 'stampFee', c.stampFee, 'number', 'step="0.001" min="0" class="num"')}
+          ${field(lbl(`Timbre fiscal par facture (${C.normCurrency(c.currency)})`, 'doc.stampFee'), 'stampFee', c.stampFee, 'number', 'step="0.001" min="0" class="num"')}
           ${field(lbl('Validité des devis (jours)', 'doc.quoteValidity'), 'quoteValidityDays', c.quoteValidityDays, 'number', 'min="0" class="num"')}
           ${field(lbl('Délai de paiement (jours)', 'doc.paymentDays'), 'paymentTermsDays', c.paymentTermsDays, 'number', 'min="0" class="num"')}
           <label class="field">${lbl('Retenue à la source par défaut', 'doc.withholdingDefault')}${withholdingSelect('defaultWithholdingRate', c.defaultWithholdingRate)}</label>
@@ -13641,7 +13679,7 @@
         }
         if (s.id === 'facturation') return `<form id="sf-form" class="grid-3">
           <label class="field">${lbl('Devise', 'doc.currency')}<select name="currency">${C.CURRENCIES.map(x => `<option value="${x}" ${C.normCurrency(a.currency) === x ? 'selected' : ''}>${x}</option>`).join('')}</select></label>
-          ${field(lbl('Timbre fiscal par facture', 'doc.stampFee'), 'stampFee', a.stampFee, 'number', 'step="0.001" min="0" class="num"')}
+          ${field(lbl(`Timbre fiscal par facture (<span data-unite-timbre>${C.normCurrency(a.currency)}</span>)`, 'doc.stampFee'), 'stampFee', a.stampFee, 'number', 'step="0.001" min="0" class="num"')}
           <label class="field">${lbl('Retenue à la source par défaut', 'doc.withholdingDefault')}${withholdingSelect('defaultWithholdingRate', a.defaultWithholdingRate)}</label>
           ${field(lbl('Validité des devis (jours)', 'doc.quoteValidity'), 'quoteValidityDays', a.quoteValidityDays, 'number', 'min="0" class="num"')}
           ${field(lbl('Délai de paiement (jours)', 'doc.paymentDays'), 'paymentTermsDays', a.paymentTermsDays, 'number', 'min="0" class="num"')}
@@ -13683,6 +13721,10 @@
         // guidé que son jumeau dans les Paramètres, jamais moins » (7.3.0).
         bindWithholdingFields(root);
         bindRibFields(root);
+        // Le timbre se règle dans la devise choisie JUSTE au-dessus : l'unité suit la liste, sinon le
+        // champ annonce des dinars pendant qu'on vient de choisir l'euro (règle 9.4.8).
+        const devise = $('select[name=currency]', root), unite = $('[data-unite-timbre]', root);
+        if (devise && unite) devise.addEventListener('change', () => { unite.textContent = C.normCurrency(devise.value); });
         // Choisir un métier redessine l'écran : on relit d'abord TOUT ce que l'écran porte, sinon le
         // régime et la case « préremplir » repartent à leur valeur d'avant le clic — on ne jette
         // jamais ce que quelqu'un vient de saisir (règle 7.1.x, « Passer » ne jette rien).

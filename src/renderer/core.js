@@ -5500,13 +5500,25 @@
       count: due.length, route: '#/contrats', docs: []
     });
 
-    // Devis acceptés dont aucune facture (même brouillon) n'a été tirée : le travail est vendu, pas facturé
-    const billed = new Set((data.documents || []).filter(d => d.type === 'facture' && d.fromQuoteId).map(d => d.fromQuoteId));
+    // Devis acceptés dont le montant n'a pas été facturé EN ENTIER (même en brouillon) : le travail
+    // est vendu, pas facturé. Un ACOMPTE porte `fromQuoteId` lui aussi (7.29.0) : le compter comme la
+    // facture du devis faisait disparaître de « À faire » un devis dont 30 % seulement étaient
+    // facturés — et les 70 % restants n'étaient réclamés nulle part (10.12.0, une menuiserie qui
+    // avait facturé son acompte). Seule une facture totale ou de solde ferme la ligne ; les acomptes,
+    // eux, se retranchent du montant annoncé — sans leur timbre, que le devis ne portait pas.
+    const tirees = (data.documents || []).filter(d => d.type === 'facture' && d.fromQuoteId);
+    const billed = new Set(tirees.filter(d => !d.deposit).map(d => d.fromQuoteId));
+    const acomptesDe = id => tirees.filter(d => d.deposit && d.fromQuoteId === id && effectiveStatus(d, data, company, t) !== 'annulée');
     const accepted = (data.documents || []).filter(d => d.type === 'devis' && d.status === 'accepté' && !billed.has(d.id));
-    const acceptedAmount = round3(accepted.reduce((s, d) => s + toBase(d, computeTotals(d, company).totalTTC, company), 0));
+    const resteDe = q => Math.max(0, round3(toBase(q, computeTotals(q, company).totalTTC, company)
+      - acomptesDe(q.id).reduce((s, a) => { const ta = computeTotals(a, company); return s + toBase(a, ta.totalTTC - (ta.stamp || 0), company); }, 0)));
+    const acceptedAmount = round3(accepted.reduce((s, d) => s + resteDe(d), 0));
+    const avecAcompte = accepted.filter(q => acomptesDe(q.id).length).length;
     if (accepted.length) out.push({
       id: 'devis-acceptes', level: 'warn', label: `${accepted.length} devis accepté${accepted.length > 1 ? 's' : ''} à facturer`,
-      detail: `${fmt(acceptedAmount)} TTC vendus et pas encore facturés : le bouton « Facturer » est sur chaque ligne.`,
+      detail: avecAcompte
+        ? `${fmt(acceptedAmount)} TTC vendus et pas encore facturés, acomptes déduits : pour un devis dont l'acompte est facturé, « Facturer le solde » est dans le menu de sa ligne.`
+        : `${fmt(acceptedAmount)} TTC vendus et pas encore facturés : le bouton « Facturer » est sur chaque ligne.`,
       count: accepted.length, amount: acceptedAmount, route: '#/devis', docs: accepted
     });
 

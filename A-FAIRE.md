@@ -152,6 +152,18 @@ Constats de l'audit du 22/09/2026 restés hors de la 10.6.0.
   - **Un avoir tiré d'une facture ne porte pas le timbre** (réglage « avoir sans timbre par défaut —
     À VÉRIFIER ») : un avoir « total » laisse donc la facture due d'un dinar, et elle ne passe jamais
     « annulée ». Question au comptable : le timbre d'une facture annulée par avoir se rend-il ?
+- **La menuiserie tenue à la souris** (23/09/2026, fin de 10.12.0-beta.1 : devis, acompte, facture
+  payée sur un compte créé depuis le paiement) a vu, sans les corriger :
+  - **Le menu « Plus ▾ » d'une facture tirée d'un devis** laisse une rangée seule sur sa ligne quand
+    la barre d'actions passe à la ligne : à mesurer à 1280 et 1440 avant d'y toucher.
+  - **Un acompte provisionnel est réclamé à une société neuve** dans le calendrier fiscal, qui n'a
+    par définition aucun impôt de l'an dernier sur lequel le calculer. À VÉRIFIER avec le comptable
+    pilote : la règle d'exonération la première année est une règle de droit, pas d'interface.
+  - **Un RIB valide ne dit rien** : le contrôle orange (10.12.0, E-11) avertit d'un RIB douteux, mais
+    un RIB juste n'affiche aucune confirmation. Un « ✓ clé vérifiée » discret rassurerait au moment
+    où l'on colle vingt chiffres ; à écrire avec la même fonction (`verifRib`).
+  - La touche Tab passe par la bulle « i » de chaque libellé : c'est **voulu** (7.0.0 et 9.3.0 — une
+    explication doit rester atteignable au clavier), gardé ici pour ne pas le « corriger » un jour.
 - Les trois pistes jamais demandées, gardées pour mémoire : séparer les installateurs arm64 / x64
   (les 222 Mo du dmg universel), la signature Apple et Windows (certificats payants — mais elle
   passe **avant la première vente**, cf. `QUESTIONS.md` : un expert-comptable ne clique pas sur

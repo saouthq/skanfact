@@ -171,7 +171,9 @@ const SANS_MARQUEURS = `
   // ---------------------------------------------------------------- 9. le document en grand
   // « Agrandir » (#pv-big), pas « Aperçu » (#pv-toggle) : le second ne fait que replier la colonne
   // de droite. Un sélecteur à plusieurs chances rend la PREMIÈRE du document, pas la bonne.
-  const grand = await win.$('#pv-big');
+  // (Depuis la 10.12.0, celui de la barre ne se montre que quand la colonne d'aperçu est masquée :
+  // la colonne porte le sien. On prend celui qui est VISIBLE.)
+  const grand = await win.$('#pv-big:not([hidden])') || await win.$('#pv-hide');
   if (!grand) throw new Error('le bouton « Agrandir » est absent de la facture émise');
   await grand.click();
   await win.waitForSelector('#pv-full-frame', { timeout: 5000 });

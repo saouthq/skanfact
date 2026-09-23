@@ -299,6 +299,24 @@ du premier écran à son catalogue, pour voir ce qu'un chef d'entreprise subit :
   sauter la carte des totaux de 250 px vers la gauche pendant la frappe.
 - L'Objet d'un devis ne propose plus « Ex : Audit de sécurité du réseau » à tous les métiers ; le
   relevé de compte d'un client ne défile plus de côté quand une pièce porte un long libellé.
+- « Timbre fiscal par facture » dit son unité, dans les Paramètres et dans l'assistant — où elle
+  suit la devise choisie juste au-dessus.
+- **Le solde d'un devis n'était réclamé nulle part.** Un acompte porte le lien vers son devis comme
+  une facture entière : dès l'acompte facturé, le devis quittait « À faire » — et les 70 % restants
+  (4 598 DT sur ce chantier) n'apparaissaient plus sur aucun écran. Le devis y reste tant qu'aucune
+  facture de solde n'existe, pour le montant qui reste, acomptes déduits.
+- **« Facturer le solde » depuis la liste des devis.** Le menu de la ligne ne proposait que
+  « Refacturer la totalité… », c'est-à-dire de facturer une seconde fois l'acompte. Et sur un devis
+  déjà soldé, l'éditeur gardait « Facture de solde » en vert : un clic en fabriquait une seconde. Les
+  deux passent par la même fonction, qui demande avant un second solde.
+- **L'émission d'un solde nomme son devis et l'acompte qu'il déduit**, celle d'un acompte sa part du
+  devis : c'est ce qu'on vérifie avant d'envoyer.
+- **La barre d'une facture ne change plus de forme selon la page d'où l'on vient.** À 1440 px,
+  « ← Factures » tenait sur une rangée et « ← Hôtel Dar El Marsa SARL » la faisait passer sur deux :
+  « Plus ▾ » seul en dessous, tout le formulaire 43 px plus bas, et le clic visé sur « Émettre »
+  tombait sur « Enregistrer le brouillon ». Le retour s'abrège à dix-huit caractères, et
+  « Agrandir » — en double avec celui de la colonne d'aperçu — ne revient dans la barre que quand
+  cette colonne est masquée.
 
 **L'application entreprise mesurée en entier.** Ses instruments ne regardaient qu'une partie de
 l'application : aucun n'ouvrait une fiche ni une pièce par statut, et l'un visitait une adresse qui

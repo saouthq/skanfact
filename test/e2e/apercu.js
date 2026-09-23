@@ -57,9 +57,13 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
 
     // La commande de l'aperçu est dans la barre d'actions, en HAUT de la page — pas au bas du
     // formulaire. On le mesure : elle doit être visible sans faire défiler.
+    // Deux « Agrandir » existent : celui de la colonne d'aperçu, et celui de la barre qui ne revient
+    // que quand la colonne est masquée (10.12.0, en double il faisait passer la barre sur deux
+    // rangées). La RÈGLE est qu'il y en a toujours UN de visible sans défiler.
     const cmd = await win.evaluate(() => {
-      const b = document.querySelector('#pv-big');
+      const b = ['#pv-big', '#pv-hide'].map(s => document.querySelector(s)).find(e => e && e.offsetParent);
       if (!b) return null;
+      b.setAttribute('data-agrandir', '');
       const r = b.getBoundingClientRect();
       return { y: Math.round(r.top), visible: r.top >= 0 && r.bottom <= window.innerHeight && r.right <= document.documentElement.clientWidth };
     });
@@ -68,7 +72,7 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
 
     const colonne = await win.$eval('#preview', f => Math.round(f.getBoundingClientRect().width));
 
-    await win.click('#pv-big');
+    await win.click('[data-agrandir]');
     await win.waitForSelector('#pv-full-frame');
     await win.waitForTimeout(700);
     const grand = await win.$eval('#pv-full-frame', f => Math.round(f.getBoundingClientRect().width));

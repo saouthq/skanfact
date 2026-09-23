@@ -6367,6 +6367,28 @@ fixe (9.4.3) et sa table d'onglets nommait sept onglets disparus, sautés sans u
   fausse : c'est celle qu'on répète à un client. Le test lit les trois fichiers sans leurs
   commentaires, interdit les formes absolues, et exige que l'accueil nomme les mises à jour ET la
   licence.
+- **Un lien qui sert à deux choses ne décide pas seul d'une troisième.** L'acompte porte
+  `fromQuoteId` comme une facture entière (7.29.0), et « À faire » jugeait « ce devis est facturé »
+  sur ce seul lien : dès l'acompte émis, le devis disparaissait, et les 70 % restants n'étaient
+  réclamés NULLE PART — sur la page d'un chantier, 4 598 DT. Ce qui ferme un devis est une facture
+  totale ou de solde ; les acomptes se retranchent, sans leur timbre (le devis ne le portait pas).
+  C'est la même faute que E-03 (le brouillon d'acompte que `piecesDuDevis` ne voyait pas), vue par
+  l'autre bout : un devis a TROIS sortes de pièces filles, et chaque lecteur doit les distinguer.
+- **Le geste suivant d'une ligne n'est pas le geste destructeur** (7.16.0, 7.29.0) : le menu d'un
+  devis acompté ne proposait que « Refacturer la totalité… » en rouge. `facturerSolde` sert
+  l'éditeur ET la liste, et porte sa propre question (le garde-fou vit avec le geste). Au passage,
+  le vert « Facture de solde » ne regardait que les acomptes émis, jamais un solde existant :
+  `soldable` exige les deux. Une assertion de la 7.16.0 exigeait `issuedDeposits.length` — elle
+  décrivait le défaut, retournée.
+- **Ce qui dépend de la page d'où l'on VIENT change la géométrie de celle où l'on est** — troisième
+  occurrence de « ce qui apparaît ne pousse rien » sur le même en-tête (H-E1, H-E19). Le bouton
+  retour nomme sa destination (H-E10), donc sa largeur suit l'origine : « ← Factures » tenait,
+  « ← Hôtel Dar El Marsa SARL » faisait passer la barre sur deux rangées, et le clic visé sur
+  « Émettre » tombait sur « Enregistrer le brouillon ». Deux moitiés, prouvées chacune seule : le
+  retour s'abrège à dix-huit caractères, et « Agrandir », présent aussi en tête de la colonne
+  d'aperçu, ne revient dans la barre que quand la colonne est masquée. `e2e:entreprise` ouvre la
+  facture depuis la fiche d'un client au nom long et exige une seule rangée — la mesure H-E19
+  partait toujours de la liste, donc du label le plus court.
 
 **Puis le rapport d'une entreprise qui a tenu SkanFact** (E-01 → E-14, une session QA qui a joué une
 vraie SUARL au régime réel, du premier écran au paquet du comptable). Ce qu'il a appris :

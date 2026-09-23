@@ -560,6 +560,49 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
     await win.keyboard.press('Escape');
     await win.waitForFunction(() => !document.querySelector('.cal-pop:not([hidden])'));
   });
+  await step('une facture ouverte depuis la fiche d\'un client au nom long garde sa barre sur une rangée', async () => {
+    // 10.12.0 — vu au test humain, à 1440 px : la longueur du retour dépend de la page d'où l'on
+    // vient. « ← Factures » tenait sur la barre ; « ← Hôtel Dar El Marsa SARL » la faisait passer sur
+    // deux rangées, « Plus ▾ » seul en dessous, et tout le formulaire descendait de 43 px — le clic
+    // visé sur « Émettre » tombait sur « Enregistrer le brouillon ». Et « Agrandir » y était en double.
+    const taille0 = await win.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight }));
+    await win.setViewportSize({ width: 1440, height: 900 });
+    // L'étape d'avant laisse une facture neuve modifiée : on répond à la question en l'abandonnant.
+    await win.evaluate(() => { location.hash = '#/'; });
+    await win.waitForTimeout(300);
+    if (await win.$('#modal-root #b')) { await win.click('#modal-root #b'); }
+    await win.waitForFunction(() => !document.querySelector('#modal-root .modal'));
+    await win.evaluate(() => {
+      const d = window.__data;
+      d.clients.push({ id: 'e2e-nom-long', name: 'Société Méditerranéenne de Menuiserie et d\'Agencement SARL' });
+      d.documents.push({ id: 'e2e-barre', type: 'facture', status: 'brouillon', clientId: 'e2e-nom-long', date: '2026-09-20', dueDate: '2026-10-20',
+        subject: 'Portes', lines: [{ label: 'Porte', qty: 1, unit: 'u', unitPrice: 100, vatRate: 19 }], currency: 'DT', lang: 'fr',
+        payments: [], reminders: [], emails: [], attachments: [], applyStamp: true });
+      location.hash = '#/client/e2e-nom-long';
+    });
+    await win.waitForFunction(() => /Méditerranéenne/.test((document.querySelector('#view h1') || {}).textContent || ''));
+    await win.evaluate(() => { location.hash = '#/doc/e2e-barre'; });
+    await win.waitForSelector('#view .editor'); await win.waitForSelector('#view #back');
+    await win.waitForTimeout(250);
+    const r = await win.evaluate(() => {
+      const els = [...document.querySelectorAll('#view .page-head .actions > *')].filter(e => e.offsetParent);
+      const centres = els.map(e => { const b = e.getBoundingClientRect(); return { nom: e.id || (e.textContent || '').trim().slice(0, 16), c: Math.round(b.top + b.height / 2) }; });
+      const agrandir = [...document.querySelectorAll('#view button')].filter(b => b.offsetParent && b.textContent.trim() === 'Agrandir').length;
+      return { retour: document.querySelector('#back').textContent.trim(), centres, agrandir };
+    });
+    if (!/Société/.test(r.retour)) throw new Error('le retour ne mène pas à la fiche du client : ' + r.retour);
+    const c0 = r.centres[0].c;
+    const decales = r.centres.filter(x => Math.abs(x.c - c0) > 6);
+    if (decales.length) throw new Error(`la barre passe sur deux rangées avec « ${r.retour} » : ${decales.map(x => x.nom).join(', ')} en dessous`);
+    if (r.agrandir !== 1) throw new Error(`« Agrandir » visible ${r.agrandir} fois (une seule attendue)`);
+    await win.evaluate(() => {
+      const d = window.__data;
+      d.documents = d.documents.filter(x => x.id !== 'e2e-barre');
+      d.clients = d.clients.filter(x => x.id !== 'e2e-nom-long');
+      location.hash = '#/';
+    });
+    await win.setViewportSize(taille0);
+  });
   await step('facture neuve : choisir le client ne déplace rien, et « Émettre » reste le seul vert', async () => {
     // 10.12.0 (H-E19) — vu au test humain, à 1440 px : choisir le client (le tout premier geste)
     // allumait le marqueur « non enregistré » À CÔTÉ du titre ; l'en-tête, élargi, passait sur deux
