@@ -876,6 +876,9 @@ function createCabStore(dir, opts) {
       ecritures: livre.ecritures.length,
       brouillards: livre.ecritures.filter(x => x.statut === 'brouillard').length,
       production: productionDuLivre(livre),
+      // Ce que le livre sait de la qualité d'employeur, mois par mois (10.12.0, U-21) : c'est ce
+      // que le calendrier lit pour ne réclamer la CNSS qu'aux employeurs, sans ouvrir de livre.
+      employeur: KC.moisEmployeur(livre),
       // Les questions au client, résumées dans l'index pour la même raison que la production : le
       // tableau du portefeuille et « À faire » doivent les compter sans déchiffrer soixante livres
       // (mesure de la 9.1.0). `aRelancer` est la règle des deux paquets, calculée ici une fois.
@@ -894,6 +897,20 @@ function createCabStore(dir, opts) {
     idx.exercices = idx.exercices.filter(x => x.annee !== e.annee).concat([e]).sort((a, b) => a.annee - b.annee);
     try { fs.writeFileSync(indexPath(dossier, collisions), JSON.stringify(idx), 'utf8'); } catch { /* l'index se reconstruit */ }
     return idx;
+  }
+
+  // Un index écrit par une version d'AVANT ne porte pas ce que la suivante y lit (10.12.0) : sans
+  // `employeur`, le calendrier compterait « par prudence » la CNSS d'un client dont le livre dit
+  // pourtant qu'il n'a pas de salarié — et la carte écrirait « trimestre pas saisi ici » sur un
+  // trimestre saisi. On relit le livre de chaque exercice qui en manque, une fois : la lecture est
+  // celle de toujours, et l'écriture ne touche que l'index, jamais le livre.
+  function relireIndexAncien(dossier, collisions) {
+    let n = 0;
+    lireIndexLivres(dossier, collisions).exercices.filter(e => !('employeur' in e)).forEach(e => {
+      const r = lireLivre(dossier, e.annee, collisions);
+      if (r.livre) { majIndexLivres(dossier, r.livre, collisions); n++; }
+    });
+    return n;
   }
 
   function packPathFor(dossier, month, collisions) {
@@ -1181,7 +1198,7 @@ function createCabStore(dir, opts) {
     packPathFor, storePack, removePack, removeDossierFiles, reorganize, packStats, folderName, folderIndex,
     rangerPieceJointe, cheminPieceJointe,
     // Le livre (9.2.0)
-    livreDir, livrePath, lireLivre, lireLivreFichier, ecrireLivre, enteteLivre, lireIndexLivres,
+    livreDir, livrePath, lireLivre, lireLivreFichier, ecrireLivre, enteteLivre, lireIndexLivres, relireIndexAncien,
     lireVerrou, poserVerrou, leverVerrou, productionDuLivre,
     setExternalDir, mirrorExternal
   };

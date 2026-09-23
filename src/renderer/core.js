@@ -3592,7 +3592,7 @@
 
   // Nom de fichier : lisible d'un coup d'œil dans une boîte mail encombrée, et triable.
   function packFileName(company, period, definitive) {
-    const slug = String(company.name || 'entreprise').normalize('NFD').replace(/[̀-ͯ]/g, '')
+    const slug = String(company.name || 'entreprise').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
       .replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'entreprise';
     return `${slug}-${period.month}${definitive ? '' : '-provisoire'}.skanpack`;
   }

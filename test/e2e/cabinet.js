@@ -142,6 +142,13 @@ const étape = m => { pas++; console.log('\n' + pas + '. ' + m); };
   if (!/clé de secours/i.test(secu)) throw new Error('la clé de secours n\'est pas proposée');
   if (!/jamais enregistré de clé de secours/i.test(secu)) throw new Error('l\'absence de clé de secours n\'est pas signalée');
   ok('absence de clé de secours signalée en rouge');
+  // 10.12.0 (U-13) — sur l'onglet qui porte le panneau Sécurité, la clé se dit UNE fois : le bandeau
+  // au-dessus des onglets se tait (il existe pour les AUTRES onglets), et un seul vert, le sien.
+  const bandeauAussi = await win.evaluate(() => { const b = document.querySelector('#rec-banniere'); return !!(b && !b.hidden && b.offsetParent && b.textContent.trim()); });
+  if (bandeauAussi) throw new Error('la clé de secours se dit encore deux fois sur « Données et sécurité » : bandeau et panneau');
+  const vertSecu = await win.evaluate(() => [...document.querySelectorAll('#pan-secu .btn-primary')].map(b => b.id));
+  if (vertSecu.join() !== 's-rec') throw new Error('sans clé, le seul vert du panneau Sécurité doit être « Enregistrer ma clé de secours… » — vu : ' + vertSecu.join(' | '));
+  ok('la clé se dit une fois sur son onglet, et son bouton est le seul vert du panneau');
   const sauv = await win.textContent('#pan-backup');
   if (!/Aucune copie hors de cet ordinateur/i.test(sauv)) throw new Error('l\'absence de copie externe n\'est pas signalée');
   ok('absence de copie externe signalée');
@@ -368,6 +375,10 @@ const étape = m => { pas++; console.log('\n' + pas + '. ' + m); };
   const relTxt = await win.textContent('#view');
   if (!/Dernière relance/.test(relTxt)) throw new Error('la colonne « dernière relance » manque');
   ok('colonne « dernière relance » présente');
+  // 10.12.0 (U-11) — un seul vert : chaque ligne portait le sien, quatre verts pour trois clients.
+  const vertsRel = await win.evaluate(() => [...document.querySelectorAll('#view .btn-primary')].filter(b => b.offsetParent).map(b => b.id || b.textContent.trim()));
+  if (vertsRel.length !== 1) throw new Error(`un seul bouton vert attendu sur les Relances, vu ${vertsRel.length} : ${vertsRel.join(' | ')}`);
+  ok('un seul vert sur les Relances : ' + vertsRel[0]);
   await shot('11-relances');
 
   // 9 — sauvegardes : en prendre une, la lire, restaurer
@@ -695,6 +706,23 @@ const étape = m => { pas++; console.log('\n' + pas + '. ' + m); };
   await win.waitForFunction(() => /Équilibrée/.test((document.querySelector('#lv-verdict') || {}).textContent || ''), null, { timeout: 4000 });
   ok('auxiliaire clients affichée puis refermée, sans livre — ' + apresAux.slice(0, 80) + '…');
   await shot('14b-balance-auxiliaire-sans-livre');
+
+  // 11 ter — 10.12.0 : l'ADRESSE d'un écran du livre, sur ce même dossier sans livre. Depuis que le
+  // sous-onglet vit dans l'adresse (U-06), « /comptabilite/banque » peut y mener — un marque-page, un
+  // « précédent », la palette. La vue était calculée avant que l'écran indisponible soit ramené au
+  // livre-journal : `vueBanque` lisait un livre absent, et la page restait sur « Lecture de la
+  // comptabilité… » pour toujours, sans un mot. C'est le test humain qui l'a trouvé.
+  étape('Adresse d\'un écran du livre sur un dossier sans livre (U-06)');
+  for (const ecran of ['banque', 'saisie', 'liasse']) {
+    await win.evaluate(([id, e]) => { location.hash = '#/dossier/' + encodeURIComponent(id) + '/comptabilite/' + e; }, [idSansLivre, ecran]);
+    await win.waitForFunction(() => /\/comptabilite\/journal$/.test(location.hash)
+      && !!document.querySelector('#c-tabs button[data-tab="journal"][aria-selected="true"]'), null, { timeout: 5000 })
+      .catch(async () => {
+        const vu = await win.evaluate(() => location.hash + ' — ' + ((document.querySelector('#c-livres') || {}).innerText || '').slice(0, 80));
+        throw new Error(`« /comptabilite/${ecran} » sur un dossier sans livre ne se ramène pas au livre-journal : ${vu}`);
+      });
+  }
+  ok('« banque », « saisie » et « liasse » se ramènent au livre-journal, et l\'adresse le dit');
 
   // 12 — la fenêtre étroite ne déborde pas
   étape('Fenêtre étroite (960 px, le minimum)');

@@ -303,7 +303,7 @@ const étape = m => { pas++; console.log('\n' + pas + '. ' + m); };
   if (/aucun montant/.test(verdict.motif)) throw new Error('la ligne où l\'on a tapé « 12a » est dite « sans montant »');
   if (!verdict.brouillard || verdict.titre !== verdict.motif) throw new Error('le bouton du brouillard ne s\'éteint pas sur le même motif : ' + verdict.titre);
   const totalCredit = await win.evaluate(() => (document.querySelector('#sa-tc') || {}).textContent || '');
-  if (!/^1[\s  ]250,500$/.test(totalCredit.trim())) throw new Error('« 1 250,500 » n\'est pas lu au crédit : ' + totalCredit);
+  if (!/^1\s250,500$/.test(totalCredit.trim())) throw new Error('« 1 250,500 » n\'est pas lu au crédit : ' + totalCredit);
   await win.hover(cellule(0, 'libelle'));
   await attendre(150);
   const survole = await bordEtAttendu(cellule(0, 'debit'));
@@ -601,7 +601,7 @@ const étape = m => { pas++; console.log('\n' + pas + '. ' + m); };
   // Et ils s'ÉCRIVENT comme l'écran les écrit (H-3) : « 1 000,000 », jamais « 1000.000 » — en
   // français, le point sépare les milliers. L'assertion d'avant exigeait le point : elle gravait le
   // défaut. L'espace des milliers est insécable ; on la ramène à une espace pour comparer.
-  const fr = v => String(v || '').replace(/[\s  ]/g, ' ');
+  const fr = v => String(v || '').replace(/\s/g, ' ');   // `\s` couvre aussi les espaces insécables
   if (fr(rempli[0].d) !== '1 000,000') throw new Error('la ligne de base n\'a pas reçu le montant en français : ' + JSON.stringify(rempli[0]));
   const tva = rempli.find(r => r.c === '4366');
   if (!tva || fr(tva.d) !== '190,000') throw new Error('la TVA à 19 % de 1000 devrait être 190,000 : ' + JSON.stringify(tva));

@@ -29,8 +29,15 @@
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
-  const sansAccents = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  const sansAccents = s => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   const motsDe = q => String(q || '').trim().toLowerCase().split(/\s+/).filter(Boolean);
+  // 10.12.0 (U-30) — la phrase d'une recherche vide suit ce qu'on a TAPÉ. « Essaie un seul mot »
+  // s'affichait après un seul mot : il demandait l'impossible. Plusieurs mots : chacun doit se
+  // trouver dans le réglage, on le dit. Un seul : on le nomme. Écrite ICI, une fois, pour les deux
+  // applications — chacune y ajoute sa sortie par `rienTrouve(mots, phrase)`.
+  const phraseRien = mots => (mots.length > 1
+    ? 'Aucun réglage ne porte tous ces mots — chacun doit s\'y trouver. Essaie-les un par un.'
+    : `Aucun réglage ne parle de « ${ech(mots[0] || '')} ». Essaie un mot voisin.`);
 
   // Le texte d'un élément, sans ce qui n'est pas du texte : les bulles « i » (dont le contenu est la
   // lettre i) et les zones de saisie (on indexe le LIBELLÉ d'un champ, jamais ce que l'utilisateur y
@@ -114,7 +121,8 @@
   //   ouvrirOnglet : (pane) => void — l'hôte sait seul comment basculer
   //   ongletCourant : () => pane affiché
   //   pluriel    : (n, mot) => '3 réglages'
-  //   riensTrouve: () => html affiché quand rien ne correspond
+  //   rienTrouve : (mots, phrase) => html affiché quand rien ne correspond — `phrase` est déjà
+  //                écrite ici selon le nombre de mots ; l'hôte n'y ajoute que sa sortie
   //
   // Rend `{ montrer, rafraichirSommaire, chercher }`.
   function installer(opts) {
@@ -173,7 +181,7 @@
             ${detail ? `<span class="set-hit-d">${surligner(detail, bruts)}</span>` : ''}
           </button>`;
         }).join('')}</div>`
-        : (opts.rienTrouve ? opts.rienTrouve() : '<div class="empty"><p>Aucun réglage ne porte ces mots. Essaie un seul mot.</p></div>');
+        : (opts.rienTrouve ? opts.rienTrouve(bruts, phraseRien(bruts)) : `<div class="empty"><p>${phraseRien(bruts)}</p></div>`);
       $$('[data-go]', res).forEach(b => b.onclick = () => {
         champ.value = ''; chercher(); montrer(b.dataset.go);
       });

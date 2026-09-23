@@ -40,6 +40,8 @@
 .dot-lvl.danger { background: var(--danger); }
 
 .fingerprint { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; letter-spacing: .5px; }
+/* L'empreinte et son « Copier » sur une ligne : le bouton se lit comme appartenant à ce qu'il copie. */
+.empreinte-ligne { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; }
 
 /* Le résultat d'un import : une ligne par paquet, dite en français. */
 .imp-list { list-style: none; margin: 0; padding: 0; }
@@ -112,8 +114,28 @@
   background: var(--info-soft); border-inline-start: 3px solid var(--info); border-radius: 8px;
   padding: 11px 14px; font-size: 13px; line-height: 1.55;
 }
-/* Ce qui suit un bouton dans une cellule n'est pas collé à lui par une espace de gabarit. */
-.dc-hors { margin-inline-start: 6px; }
+/* 10.12.0 (U-11) — les quatre étapes d'une déclaration se lisent dans leur ORDRE : une rangée qui
+   passe à la ligne, des flèches entre les gestes, et une seule couleur, celle de l'étape suivante.
+   Le `gap` décide des deux écarts à la fois (règle 9.8.8, T-56) — jamais une espace de gabarit. */
+.dc-etapes { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.dc-fleche { inline-size: 16px; block-size: 16px; flex: none; fill: none; stroke: var(--muted); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.dc-coche { color: var(--success); font-weight: 700; margin-inline-end: 5px; }
+.btn-primary .dc-coche { color: inherit; }
+.dc-motif { margin-block: 0 10px; }
+/* U-14 — la raison d'une case vide se lit en entier, sous son libellé, jamais coupée. */
+.dc-raison { margin-block-start: 3px; max-inline-size: 72ch; white-space: normal; line-height: 1.45; }
+/* U-13 — des contrôles qui passent tiennent en une ligne : un bandeau vert de plus au-dessus des
+   chiffres n'apprenait rien. Seul un contrôle qui échoue garde un bandeau (orange, avec son geste). */
+/* Un état ACCOMPLI se dit sur une ligne, en gris, avec sa coche : pas dans un encadré vert qui
+   pèse autant qu'une alerte (U-13). Partagé par la Déclaration, l'Inventaire et la Révision. */
+/* L'avancement d'une révision et son étape suivante, sur la même ligne (U-11) : le chiffre dit où on
+   en est, le bouton à côté dit où aller. */
+.rv-avance { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 14px; }
+.rv-avance .lead { margin: 0; }
+.ligne-ok { color: var(--muted); }
+.ligne-ok > span { color: var(--success); font-weight: 700; margin-inline-end: 4px; }
+/* Une réserve « À VÉRIFIER » posée sous le champ qu'elle concerne (U-20) : du texte, pas un libellé. */
+.champ-note { font-weight: 400; line-height: 1.45; margin: 0; }
 .err-inline { color: var(--danger); font-weight: 600; }
 .ok-inline { color: var(--success); font-weight: 600; }
 
@@ -261,6 +283,9 @@
      cette ligne, un grand livre imprimé ne serait qu'une liste de soldes. */
   details.gl-compte > *:not(summary) { display: block !important; }
   details.gl-compte > summary { list-style: none; }
+  /* Une section repliée de l'Exercice s'imprime entière : un état financier replié à l'écran reste un état financier. */
+  details.pli > *:not(summary) { display: block !important; }
+  details.pli > summary::before, details.pli .pli-chiffre, .cl-somm { display: none !important; }
   .print-only { display: block; margin-bottom: 14px; font-size: 11px; color: #666; }
   body, #app, main#view { display: block; background: #fff; padding: 0; margin: 0; }
   .panel { break-inside: avoid; box-shadow: none; border: 1px solid #ddd; margin-bottom: 12px; }
@@ -397,7 +422,7 @@ tr.cp-miroir td { background: var(--info-soft); }
   width: 100%; border: 1px solid transparent; background: transparent;
   padding-block: 6px; padding-inline: 6px; border-radius: 6px; font-size: 13px;
 }
-.sa-grille input:focus { border-color: var(--primary); background: var(--card); }
+.sa-grille input:focus { border-color: var(--primary); background: var(--panel); }
 .sa-grille input.sa-montant { font-variant-numeric: tabular-nums; }
 .sa-grille .sa-nom { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 10.12.0 (U-01) — la règle générale des champs porte quatre `:not()` et la ligne compacte des
@@ -415,7 +440,7 @@ tr.cp-miroir td { background: var(--info-soft); }
    ligne, c'est-à-dire au moment précis où l'on vient la corriger. Le survol ne touche plus ni la case
    active ni la case refusée — l'exclusion est dans le sélecteur, pas dans une surenchère. */
 #sa-lignes tr:hover input:not(:focus):not(.sa-ko) { border-color: var(--border); }
-#sa-lignes input:focus { border-color: var(--primary); background: var(--card); box-shadow: 0 0 0 3px rgba(15, 157, 143, .15); }
+#sa-lignes input:focus { border-color: var(--primary); background: var(--panel); box-shadow: 0 0 0 3px rgba(15, 157, 143, .15); }
 #sa-lignes input.sa-ko { border-color: var(--danger); }
 /* 10.12.0 (U-26) — des largeurs FIXES. En largeur automatique, l'intitulé du compte qui apparaît
    pendant la frappe faisait recalculer la grille à chaque caractère : les colonnes sautaient sous le
@@ -576,7 +601,7 @@ body.dark .theme-op:hover { border-color: #3c4654; }
   display: inline-flex; align-items: center; justify-content: center;
   inline-size: 20px; block-size: 20px; border-radius: 5px;
   font-size: 12px; font-weight: 700; line-height: 1;
-  border: 1px solid var(--border); color: var(--muted); background: var(--card);
+  border: 1px solid var(--border); color: var(--muted); background: var(--panel);
 }
 .prod-recu   { background: #fdecec; border-color: #f3b9b9; color: #a12c2c; }
 .prod-saisi  { background: #fdecec; border-color: #e88; color: #9a1f1f; }
@@ -605,7 +630,21 @@ body.dark .theme-op:hover { border-color: #3c4654; }
    noms tombaient à quatre lettres (« Phar… », « Tran… »), pendant que le tableau défilait déjà sur
    le côté — l'écrasement ne gagnait donc rien. L'exemple seul masque cette colonne : le test humain,
    fait sur l'exemple, ne pouvait pas le voir. 220 px tiennent « Menuiserie Trabelsi SUARL ». */
-.dl-table td.dl-client { max-width: 0; width: 30%; min-width: 220px; }
+/* 10.12.0 (H-9 bis, trouvé par `e2e:cabinet-rendu`) — mais un plancher PREND de la place : posé
+   seul, il faisait déborder la liste de 29 px à 1280 et de 18 px à 1366 (le portable le plus
+   courant, qu'aucun instrument ne mesurait), et la colonne d'actions recouvrait « Reçu le ». La
+   place s'est trouvée ailleurs, sans rien retirer : le badge « provisoire » passe SOUS le mois quand
+   la ligne manque de place (`dl-mois`, le mois lui-même ne se coupe jamais), et les cellules gardent
+   12 px de marge au lieu de 16 au-dessus de 1340. Et la colonne Client ne réclame que 20 % : à 30 %,
+   elle prenait la place avant que « Dernier mois » ait la sienne, et le badge passait à la ligne sur
+   un écran où il tenait. Mesuré dans l'app, sur l'exemple : 1280, 1340, 1341, 1366, 1440, 1920 — le
+   tableau tient partout, aucun nom n'est coupé, le badge reste sur la ligne dès 1340. */
+.dl-table td.dl-client { max-width: 0; width: 20%; min-width: 220px; }
+.dl-table td.dl-mois { white-space: normal; }
+.dl-table td.dl-mois .badge { white-space: nowrap; }
+@media (min-width: 1341px) {
+  table.list.dl-table th, table.list.dl-table td { padding-inline: 12px; }
+}
 .dl-table .dl-cell { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .dl-table .dl-cell .dot-lvl { flex: none; margin-inline-end: 1px; }
 .dl-table .dl-cell .badge { flex: none; }
@@ -625,9 +664,43 @@ table.prod tbody tr { cursor: pointer; }
 
 /* ------------------------------------------------------------------ l'équipe (9.9.0) */
 /* La ligne de la personne qui travaille sur CE poste : un repère discret, pas une alarme. */
-tr.eq-moi > td { background: var(--hover); }
+tr.eq-moi > td { background: var(--primary-soft); }
 /* Le sélecteur « Je suis » vit DANS le bandeau, sous sa phrase : posé à côté, il se lisait comme
    un filtre de la page. Un écart de rangée, pas une marge posée à la main — au premier passage à
    la ligne, une marge horizontale seule ne décide de rien (T-56). */
 .mt-s { margin-block-start: 8px; }
 #eq-moi { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+
+/* U-16 — sur la liasse, le MONTANT est le lien vers ses comptes. Il se reconnaît au repos (couleur et
+   soulignement pointillé), pas au survol : un bouton sans bordure ni couleur n'est pas un bouton. */
+.montant-lien { font: inherit; font-variant-numeric: tabular-nums; background: none; border: none; padding: 0;
+  color: var(--primary); cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
+.montant-lien:hover { text-decoration-style: solid; }
+.montant-lien:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; border-radius: 2px; }
+
+/* U-19 — une section de page qui se replie (l'Exercice : 3 037 px d'un bloc). Le titre reste un vrai
+   titre de panneau ; le chevron dit qu'il s'ouvre, et le chiffre de droite dit ce que la section
+   cache tant qu'elle est repliée — ouverte, il est dans la section, et le répéter ferait deux fois
+   le même chiffre à dix pixels d'écart. */
+details.pli > summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 6px 10px; flex-wrap: wrap; }
+details.pli > summary::-webkit-details-marker { display: none; }
+details.pli > summary::before { content: "▸"; color: var(--muted); font-size: 12px; }
+details.pli[open] > summary::before { content: "▾"; }
+details.pli > summary > h2 { margin: 0; }
+details.pli > summary:hover > h2 { color: var(--primary); }
+details.pli .pli-chiffre { margin-inline-start: auto; font-variant-numeric: tabular-nums; }
+details.pli[open] .pli-chiffre { display: none; }
+details.pli[open] > summary { margin-block-end: 12px; }
+.cl-somm { flex-direction: row; margin: 0 0 4px; }
+
+/* U-19 — une fenêtre qui porte une grille de six colonnes (le modèle de liasse). Les largeurs
+   suivent ce que chaque colonne CONTIENT : « AC1 » tenait dans une case de 140 px pendant que le
+   libellé de la rubrique — la seule colonne qu'on lit — était coupé au milieu d'un mot. */
+.modal.cab-large { width: 1240px; }
+.sa-liasse { table-layout: fixed; width: 100%; }
+.sa-liasse th:nth-child(1) { width: 86px; }
+.sa-liasse th:nth-child(2) { width: 190px; }
+.sa-liasse th:nth-child(4) { width: 200px; }
+.sa-liasse th:nth-child(5) { width: 180px; }
+.sa-liasse th:nth-child(6) { width: 104px; }
+.sa-liasse th:nth-child(7) { width: 52px; }

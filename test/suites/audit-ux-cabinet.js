@@ -277,12 +277,67 @@ t('U-25 : la fiche nomme la période de son CA, et ne colle plus deux bulles sur
 t('U-22 : la phrase qui désigne « Relancer » suit la condition du bouton', () => {
   const src = code('src', 'cabinet', 'renderer', 'app.js');
   const fiche = tranche(src, 'function drawDossier(');
-  const bouton = /\$\{(row\.missingCount \|\| row\.provisionalCount) \? '<button class="btn btn-primary" id="rel">Relancer<\/button>'/.exec(fiche);
+  // La couleur du bouton est l'affaire du test U-11 ci-dessous ; celui-ci ne juge que sa CONDITION.
+  const bouton = /\$\{(row\.missingCount \|\| row\.provisionalCount) \? `<button class="[^"]*" id="rel">Relancer<\/button>`/.exec(fiche);
   assert.ok(bouton, 'le bouton « Relancer » et sa condition sont introuvables');
   const i = fiche.indexOf('Le bouton « Relancer », en haut');
   assert.ok(i > 0, 'la phrase est introuvable');
   const avant = fiche.slice(Math.max(0, i - 200), i);
   assert.ok(avant.includes('${' + bouton[1]), 'la phrase doit être gardée par la MÊME condition que le bouton');
+});
+
+// U-11 sur la fiche : « Relancer » n'est le bouton principal que là où il est l'étape suivante. Sur
+// l'onglet Comptabilité, l'étape suivante est le geste du livre (« Créer le livre… ») : deux boutons
+// verts l'un au-dessus de l'autre, et l'œil ne sait plus lequel est la suite. On ÉVALUE la classe du
+// bouton pour chaque onglet, au lieu de recopier sa forme — une assertion qui recopie tombe sur du
+// code juste au premier ajustement (7.16.0).
+t('U-11 : sur la fiche, « Relancer » n\'est vert que sur les onglets où il est l\'étape suivante', () => {
+  const src = code('src', 'cabinet', 'renderer', 'app.js');
+  const fiche = tranche(src, 'function drawDossier(');
+  const m = /`<button class="([^"]*)" id="rel">Relancer<\/button>`/.exec(fiche);
+  assert.ok(m, 'le bouton « Relancer » de la fiche est introuvable');
+  const classe = onglet => evaluer('`' + m[1] + '`', { onglet }).split(/\s+/);
+  ['suivi', 'paquets'].forEach(o => assert.ok(classe(o).includes('btn-primary'),
+    `sur l'onglet « ${o} », relancer EST l'étape suivante : le bouton doit rester principal`));
+  assert.ok(!classe('comptabilite').includes('btn-primary'),
+    'sur l\'onglet Comptabilité, « Relancer » est vert à côté du geste du livre : deux boutons principaux');
+});
+
+// Une liste de mois se dit par le formateur des relances (Cabinet 1.0.0 : « personne n'écrit
+// juin 2026, juillet 2026 et août 2026 »), jamais recollée à la main. Le bandeau des livres
+// incomplets écrivait « Il manque juin 2026 et juillet 2026 et août 2026 » — lu sur une capture du
+// test humain ; quatre autres listes répétaient l'année à chaque mois. Une `<option>` par mois reste
+// légitime : ce n'est pas une phrase.
+t('Une liste de mois passe par K.monthListLabel ou K.missingLabel, jamais par un join', () => {
+  const app = code('src', 'cabinet', 'renderer', 'app.js');
+  const fautes = app.split('\n').filter(l =>
+    /\.map\((?:K\.monthLabel|moisLabelCourt|\w+ => (?:K\.monthLabel|moisLabelCourt)\([^()]*\))\)\.join\(/.test(l));
+  assert.deepStrictEqual(fautes.map(l => l.trim().slice(0, 100)), [], 'une liste de mois est recollée à la main');
+  // L'instrument voit bien la faute qu'il interdit (un test qui ne peut pas échouer ne se garde pas).
+  assert.ok(/\.map\((?:K\.monthLabel|moisLabelCourt|\w+ => (?:K\.monthLabel|moisLabelCourt)\([^()]*\))\)\.join\(/
+    .test("manquants.map(moisLabelCourt).join(' et ')"), 'la sonde ne reconnaît plus la faute d\'origine');
+  // Et le formateur dit ce qu'un humain écrit.
+  assert.strictEqual(C.missingLabel(['2026-06', '2026-07', '2026-08']), 'juin, juillet et août 2026');
+  assert.strictEqual(C.monthListLabel(['2026-04', '2026-05']), 'avril et mai 2026');
+  assert.strictEqual(C.monthListLabel(['2025-12', '2026-01']), 'décembre 2025 et janvier 2026');
+});
+
+// U-06, trouvé par le test humain : l'adresse d'un écran du livre (« /comptabilite/banque ») sur un
+// dossier qui n'a PAS de livre. La vue était calculée avant que l'écran indisponible ne soit ramené au
+// livre-journal : `vueBanque` lisait `s.livre.releves` sur un livre absent, TypeError, et la page
+// restait sur « Lecture de la comptabilité… » pour toujours. La garde passe AVANT tout ce qui lit
+// l'écran demandé. `e2e:cabinet` refait le geste dans l'application.
+t('U-06 : un écran du livre, demandé sur un dossier sans livre, se ramène au livre-journal AVANT d\'être dessiné', () => {
+  const src = code('src', 'cabinet', 'renderer', 'app.js');
+  const f = tranche(src, 'function drawLivres(');
+  assert.ok(f.length > 3000 && f.includes('vueBanque(dossier)'), 'la tranche de drawLivres est trop courte ou ne contient pas ses vues : ' + f.length);
+  const garde = f.indexOf('if (!ongletDispo(s.onglet))');
+  const vue = f.indexOf('const corps =');
+  assert.ok(garde > 0, 'la garde qui ramène un écran indisponible au livre-journal a disparu de drawLivres');
+  assert.ok(vue > 0, 'le calcul de la vue est introuvable');
+  assert.ok(garde < vue, 'la vue est calculée AVANT que l\'écran indisponible soit ramené au livre-journal : vueBanque lit un livre absent et la page reste figée');
+  // Rien d'autre ne lit l'écran demandé avant la garde.
+  assert.ok(!/s\.onglet\b/.test(f.slice(0, garde)), 'l\'écran demandé est lu avant d\'avoir été ramené à un écran qui existe');
 });
 
 
@@ -793,6 +848,684 @@ t('H-7 : chaque barre d\'onglets porte un nom, dans les deux applications', () =
     barres.forEach(b => assert.ok(/aria-label="[^"]+"/.test(b),
       `app ${quoi} : une barre d'onglets n'a pas de nom, un lecteur d'écran dit seulement « liste d'onglets » — ${b.slice(0, 90)}`));
   });
+});
+
+// ============================================================================================
+// Lot C — la hiérarchie : ce qui se lit comme une valeur, ce qui se lit comme un exemple, et ce
+// que dit un écran quand il ne trouve rien.
+// ============================================================================================
+
+t('U-18 : un texte d\'exemple se lit comme un exemple — gris, en graisse normale, dans les deux thèmes', () => {
+  const style = lireSource('src', 'renderer', 'style.css');
+  const commune = regles(style).find(r => r.selecteurs.includes('input::placeholder') && r.selecteurs.includes('textarea::placeholder')
+    && !r.selecteurs.some(s => /dark/.test(s)));
+  assert.ok(commune, 'aucune règle commune pour le texte d\'exemple des champs');
+  // Un champ hérite du gras de son étiquette (`font: inherit`) : « +216 … » en 600 se lisait comme
+  // un numéro déjà saisi. Mesuré dans les Réglages du Cabinet : poids 600, texte et exemple.
+  assert.ok(/font-weight:\s*400/.test(commune.corps), 'le texte d\'exemple hérite encore du gras de son étiquette');
+  assert.ok(/color:\s*var\(--muted\)/.test(commune.corps), 'le texte d\'exemple n\'est pas gris en thème clair');
+  const sombre = regles(style).find(r => r.selecteurs.includes('body.dark input::placeholder'));
+  assert.ok(sombre && /color:/.test(sombre.corps), 'le thème sombre a perdu le gris de son texte d\'exemple');
+});
+
+t('U-30 : la loupe vit avec le champ, et « rien trouvé » suit ce qu\'on a tapé — dans les deux applications', () => {
+  [['cabinet', code('src', 'cabinet', 'renderer', 'app.js')], ['entreprise', code('src', 'renderer', 'app.js')]].forEach(([quoi, app]) => {
+    const i = app.indexOf('<div class="help-search">');
+    assert.ok(i > 0, `app ${quoi} : la recherche de l'Aide a disparu`);
+    const bloc = app.slice(i, app.indexOf('id="aide-n"', i));
+    assert.ok(bloc.length > 100 && bloc.length < 1200, `app ${quoi} : tranche suspecte (${bloc.length})`);
+    // La loupe et le champ dans UNE enveloppe, que le compte des résultats ne fait pas grandir.
+    assert.ok(/<span class="hs-champ"><svg class="hs-loupe"[\s\S]*?id="aide-q"[^>]*><\/span>/.test(bloc),
+      `app ${quoi} : la loupe se centre sur un bloc qui grandit — elle descendra sous le texte dès qu'un compte s'affiche`);
+  });
+  const css = regles(lireSource('src', 'renderer', 'style.css')).find(r => r.selecteurs.includes('.help-search .hs-champ'));
+  assert.ok(css && /position:\s*relative/.test(css.corps), 'l\'enveloppe de la loupe n\'est pas son repère');
+  // La phrase d'une recherche vide des Réglages, écrite UNE fois pour les deux applications, jugée
+  // sur ce qu'elle rend : un mot se NOMME, plusieurs mots se disent chacun nécessaires.
+  const reg = lireSource('src', 'renderer', 'reglages.js');
+  const ech = evaluer(/const ech = (s => String[\s\S]*?\.replace\(\/'\/g, '&#39;'\));/.exec(reg)[1]);
+  const phraseRien = evaluer(/const phraseRien = (mots => \([\s\S]*?`\));/.exec(reg)[1], { ech });
+  const un = phraseRien(['rapprochement']);
+  assert.ok(/« rapprochement »/.test(un) && !/seul mot/.test(un), 'après un seul mot, la phrase demande encore d\'essayer « un seul mot » : ' + un);
+  assert.ok(/un par un/.test(phraseRien(['banque', 'relevé'])), 'après plusieurs mots, la phrase ne dit pas que chacun doit s\'y trouver');
+  assert.ok(/&lt;b&gt;/.test(phraseRien(['<b>'])), 'le mot tapé revient dans la page sans être échappé');
+  assert.ok(/opts\.rienTrouve\(bruts, phraseRien\(bruts\)\)/.test(reg), 'les applications ne reçoivent plus la phrase calculée');
+  // Nulle part la vieille phrase : elle a vécu dans quatre endroits des deux applications.
+  // (du CODE : le commentaire qui explique le correctif cite la phrase, et accuserait du code juste.)
+  [['cabinet', code('src', 'cabinet', 'renderer', 'app.js')], ['entreprise', code('src', 'renderer', 'app.js')], ['reglages.js', code('src', 'renderer', 'reglages.js')]].forEach(([quoi, src]) =>
+    assert.ok(!/Essaie un seul mot/.test(src), `${quoi} : « Essaie un seul mot » s'affiche encore sans regarder ce qu'on a tapé`));
+});
+
+t('U-11 / U-13 / U-14 : la déclaration — ses étapes dans l\'ordre, un seul vert, des raisons entières', () => {
+  const app = code('src', 'cabinet', 'renderer', 'app.js');
+  const vue = tranche(app, 'function vueDeclaration(');
+  assert.ok(vue.length > 3000 && vue.length < 12000, 'tranche suspecte : ' + vue.length);
+  // U-11 — l'étape suivante, jugée sur ce qu'elle REND dans les cinq états du mois : « Préparer la
+  // déclaration » était deux fois à l'écran, et une fois préparée plus rien ne disait la suite.
+  const m = /const suivante = ([^;]+);/.exec(vue);
+  assert.ok(m, 'l\'étape suivante n\'est plus calculée');
+  const suivante = (posee, ecrite, deposee, payee) => evaluer(m[1], { posee, ecrite, deposee, payee });
+  assert.strictEqual(suivante(null, false, false, false), 'preparer', 'avant tout, l\'étape suivante est « Préparer »');
+  assert.strictEqual(suivante({}, false, false, false), 'ecriture', 'une déclaration préparée attend son écriture avant le dépôt');
+  assert.strictEqual(suivante({}, true, false, false), 'deposee', 'une écriture déjà passée par le client ne doit pas rester l\'étape suivante');
+  assert.strictEqual(suivante({}, true, true, false), 'payee', 'une déclaration déposée attend son paiement');
+  assert.strictEqual(suivante({}, true, true, true), '', 'un mois payé n\'a plus d\'étape suivante');
+  // Chaque bouton ne prend la couleur que si c'est SON étape.
+  [['dc-preparer', 'preparer'], ['dc-ecriture', 'ecriture'], ['dc-deposee', 'deposee'], ['dc-payee', 'payee']].forEach(([id, pas]) =>
+    assert.ok(new RegExp(`class="\\$\\{cls\\('${pas}'\\)\\}" id="${id}"`).test(vue), `${id} ne prend pas la couleur de SON étape`));
+  const cls = evaluer(/const cls = (pas => [^;]+);/.exec(vue)[1], { suivante: 'deposee' });
+  assert.ok(/btn-primary/.test(cls('deposee')) && !/btn-primary/.test(cls('payee')), 'la couleur ne suit pas l\'étape suivante');
+  assert.ok(!/btn-primary/.test(vue.replace(/' btn-primary'/, '')), 'un second bouton principal est écrit en dur dans la déclaration');
+  // Les étapes passent AVANT les cases : la suite se voit sans descendre sous quatorze lignes.
+  const iSuite = vue.indexOf('id="dc-suite"'), iCases = vue.indexOf('<h2>Les cases');
+  assert.ok(iSuite > 0 && iSuite < iCases, 'les étapes vivent encore sous les cases');
+  // U-13 — aucun bandeau vert ni bleu avant les chiffres ; seul un contrôle qui ÉCHOUE en garde un
+  // (orange, avec son geste). La promesse « ne dépose rien » vit avec les pense-bêtes qu'elle décrit.
+  const avantCases = vue.slice(0, iCases);
+  assert.ok(!/ok-box|info-box/.test(avantCases), 'un bandeau vert ou bleu est revenu avant les chiffres');
+  assert.ok(/echecs\.length \? `<div class="warn-box/.test(avantCases), 'un contrôle qui échoue ne dit plus rien');
+  assert.ok(/ne dépose rien/.test(vue.slice(iSuite, iCases)), 'la promesse a quitté les pense-bêtes qu\'elle décrit');
+  // U-14 — la raison d'une case se lit en entier, sous son libellé, jamais coupée par une ellipse.
+  assert.ok(!/\.slice\(0, 60\)/.test(vue), 'la raison d\'une case est encore coupée à soixante caractères');
+  assert.ok(/<div class="small muted dc-raison">\$\{esc\(raison\)\}<\/div>/.test(vue), 'la raison ne vit plus sous le libellé');
+  assert.ok(!/<td class="tronq"/.test(vue), 'une cellule tronquée est revenue dans le tableau des cases');
+});
+
+t('U-12 : un écran de travail s\'ouvre sur le dernier mois qui a des données, sinon le mois courant — jamais un mois futur', () => {
+  // La règle, jugée sur ce qu'elle REND : la Paie s'ouvrait sur décembre et le 4e trimestre en
+  // septembre, la Déclaration sur janvier faute d'écriture.
+  assert.strictEqual(C.moisDeTravail([3, 8], 2026, '2026-09-23'), 8, 'le dernier mois qui a des données doit l\'emporter');
+  assert.strictEqual(C.moisDeTravail([], 2026, '2026-09-23'), 9, 'sans données, l\'écran doit s\'ouvrir sur le mois courant');
+  assert.strictEqual(C.moisDeTravail([], 2025, '2026-09-23'), 12, 'un exercice passé sans données s\'ouvre sur son dernier mois');
+  assert.strictEqual(C.moisDeTravail([], 2027, '2026-09-23'), 1, 'un exercice futur s\'ouvre sur son premier mois, jamais sur un mois qui n\'existe pas');
+  assert.strictEqual(C.moisDeTravail([13, 0, 'x'], 2026, '2026-02-10'), 2, 'un mois hors bornes ne doit pas passer pour une donnée');
+  // Et les DEUX écrans passent par elle — une seconde règle écrite ailleurs divergerait.
+  const app = code('src', 'cabinet', 'renderer', 'app.js');
+  const paie = tranche(app, 'function vuePaie(');
+  assert.ok(/s\.paieMois = K\.moisDeTravail\(/.test(paie), 'la Paie ne choisit plus son mois par la règle commune');
+  assert.ok(!/exercice\.au[^\n]*slice\(5, 7\)\)\s*\|\|\s*12/.test(paie), 'la Paie s\'ouvre encore sur le dernier mois de l\'exercice');
+  const propose = tranche(app, 'function moisPropose(');
+  assert.ok(/K\.moisDeTravail\(/.test(propose), 'la Déclaration ne choisit plus son mois par la règle commune');
+});
+
+t('U-11 / U-13 / U-23 / U-24 : la Paie — un seul vert à l\'étape suivante, des raisons visibles, des états vides qui disent quoi faire', () => {
+  const app = code('src', 'cabinet', 'renderer', 'app.js');
+  const vue = tranche(app, 'function vuePaie(');
+  assert.ok(vue.length > 3000 && vue.length < 16000, 'tranche suspecte : ' + vue.length);
+  // U-11 — jugée sur ce qu'elle rend : « + Bulletin… » était vert sur un dossier sans salarié.
+  const m = /const suivante = ([^;]+);/.exec(vue);
+  assert.ok(m, 'l\'étape suivante de la Paie n\'est plus calculée');
+  const suivante = (actifs, manquants, aPasser) => evaluer(m[1], { actifs, manquants, aPasser });
+  assert.strictEqual(suivante([], 0, 0), 'salarie', 'sans salarié, l\'étape suivante est de le déclarer');
+  assert.strictEqual(suivante([{}], 1, 0), 'bulletin', 'un salarié sans bulletin : l\'étape suivante est le bulletin');
+  assert.strictEqual(suivante([{}], 0, 1), 'ecrire', 'les bulletins faits : l\'étape suivante est l\'écriture');
+  assert.strictEqual(suivante([{}], 0, 0), '', 'un mois écrit n\'a plus d\'étape suivante');
+  [['pa-salarie', 'salarie'], ['pa-bulletin', 'bulletin'], ['pa-ecrire', 'ecrire']].forEach(([id, pas]) =>
+    assert.ok(new RegExp(`class="\\$\\{cls\\('${pas}'\\)\\}" id="${id}"`).test(vue), `${id} ne prend pas la couleur de SON étape`));
+  assert.ok(!/btn-primary/.test(vue.replace(/' btn-primary'/, '')), 'un second bouton principal est écrit en dur dans la Paie');
+  // U-23 — la raison d'un bouton éteint se LIT à côté, pas seulement dans son infobulle.
+  assert.ok(/id="pa-motifs"/.test(vue) && /pourquoiBulletin && /.test(vue) && /pourquoiEcrire && /.test(vue), 'les raisons des boutons éteints ne s\'affichent plus');
+  assert.ok(/title="\$\{esc\(pourquoiBulletin\)\}"/.test(vue) && /title="\$\{esc\(pourquoiEcrire\)\}"/.test(vue), 'l\'infobulle et la phrase ne disent plus la même chose');
+  // U-13 — l'orange pour ce qui demande un geste ; l'état normal (« non réglé ») en gris.
+  assert.ok(/const aFaire = controles\.filter\(c => c\.niveau !== 'info'\)/.test(vue) && /aFaire\.length \? `<div class="warn-box/.test(vue),
+    'un état normal repasse en orange dans les contrôles de la Paie');
+  // U-24 — le panneau des salariés porte son geste, et une année sans bulletin ne montre pas des zéros.
+  assert.ok(/Aucun salarié déclaré[\s\S]{0,160}id="pa-salarie2"/.test(vue), 'le panneau des salariés vide n\'a pas de bouton');
+  assert.ok(/!anneeEntiere\.count \? `<div class="empty mini">/.test(vue), 'la masse salariale d\'une année sans bulletin est un tableau de zéros');
+  // Deux tableaux côte à côte débordaient chacun de leur moitié (règle 3.4.0) : ils sont empilés.
+  assert.ok(!/<div class="split mt">\s*<div class="panel"><h2>Les salariés/.test(vue), 'les salariés et la CNSS sont revenus côte à côte');
+});
+
+t('La règle H-3 portée à la Paie et à la fiche : montants en français, dates JJ/MM/AAAA, et un brut qui suit le salarié', () => {
+  const app = code('src', 'cabinet', 'renderer', 'app.js');
+  const sal = tranche(app, 'function salarieForm(');
+  const bul = tranche(app, 'function bulletinForm(');
+  // Un champ numérique du navigateur refuse la virgule sans un mot : « 1 250,500 » y valait zéro.
+  [['salarié', sal, ['brut']], ['bulletin', bul, ['brut', 'primeAmount', 'retAmount']]].forEach(([quoi, src, noms]) => noms.forEach(n => {
+    const champ = new RegExp(`<input name="${n}"[^>]*>`).exec(src);
+    assert.ok(champ, `${quoi} : le champ ${n} a disparu`);
+    assert.ok(!/type="number"/.test(champ[0]), `${quoi} : ${n} est encore un champ numérique, qui refuse la virgule`);
+    assert.ok(/montantChamp\(/.test(champ[0]), `${quoi} : ${n} ne s'écrit pas en français`);
+    assert.ok(new RegExp(`lireMontant\\(\\$\\('\\[name=${n}\\]', f\\)\\.value\\)`).test(src), `${quoi} : ${n} ne se relit pas par la porte commune`);
+  }));
+  const fiche = /<input[^>]*id="f-fees"[^>]*>/.exec(app);
+  assert.ok(fiche && !/type="number"/.test(fiche[0]) && /lireMontant\(\$\('#f-fees', layer\)\.value\)/.test(app), 'les honoraires mensuels refusent encore la virgule');
+  // Le format interne ne sort jamais sur un écran de saisie (règle 9.4.5).
+  assert.ok(!/placeholder="AAAA-MM-JJ"/.test(app), 'un champ de date affiche encore le format interne');
+  assert.ok(/K\.dateTapee\(t, s\.annee\)/.test(sal) && /refus\(champ, /.test(sal), 'une date tapée ne se lit pas en français, ou se refuse sans montrer son champ');
+  // Un chiffre pré-rempli suit ce dont il dépend (règle 10.6.0), tant qu'on n'y a pas touché.
+  assert.ok(/brutTouche = true/.test(bul) && /if \(brutTouche\) return;[\s\S]{0,160}\[name=brut\]', f\)\.value = montantChamp\(sal\.brut\)/.test(bul),
+    'changer de salarié garde le brut du premier de la liste');
+});
+
+t('Un montant ne se coupe jamais en fin de ligne : milliers et devise insécables, comme le moteur', () => {
+  const app = code('src', 'cabinet', 'renderer', 'app.js');
+  const dinar = evaluer(/const dinar = (cur => [^;]+);/.exec(app)[1]);
+  const money = evaluer(/const money = (\(n, cur\) => \{[\s\S]*?\n  \});/.exec(app)[1], { dinar });
+  const ecrit = money(1500.225);
+  assert.ok(!/ /.test(ecrit), `« ${ecrit} » porte une espace sécable : « 1 » en fin de ligne, « 500,225 DT » sur la suivante`);
+  assert.strictEqual(ecrit.replace(/[\u202f\u00a0]/g, ' '), '1 500,225 DT', 'le montant ne s\'écrit plus en français');
+  // L'espace des milliers est celle du moteur : deux formateurs, deux espaces, et un seul se coupait.
+  assert.strictEqual(money(1234567.891).replace(/\u00a0DT$/, ''), KC.fmtMontant(1234567.891), 'l\'écran et le moteur n\'écrivent plus les milliers de la même façon');
+  // Ce qui retirait la devise en cherchant une espace ORDINAIRE ne la trouvait plus.
+  assert.ok(!/replace\(' ' \+ devise, ''\)/.test(app), 'la devise se retire encore par une espace ordinaire');
+});
+
+t('H-9 bis : la liste des dossiers tient sa largeur sans écraser les noms — le badge passe sous le mois', () => {
+  const css = regles(lireSource('src', 'cabinet', 'renderer', 'cabinet.css'));
+  const mois = css.find(r => r.selecteurs.includes('.dl-table td.dl-mois'));
+  assert.ok(mois && /white-space:\s*normal/.test(mois.corps), 'la cellule « Dernier mois » ne peut plus passer à la ligne : le tableau déborde à 1280');
+  const badge = css.find(r => r.selecteurs.includes('.dl-table td.dl-mois .badge'));
+  assert.ok(badge && /white-space:\s*nowrap/.test(badge.corps), 'le badge peut se couper au milieu');
+  const client = css.find(r => r.selecteurs.includes('.dl-table td.dl-client'));
+  const pc = Number((/width:\s*(\d+)%/.exec(client.corps) || [])[1]);
+  assert.ok(pc > 0 && pc <= 22, `la colonne Client réclame ${pc} % : elle prend la place avant que « Dernier mois » ait la sienne, et le badge passe à la ligne sur un écran où il tenait`);
+  const app = code('src', 'cabinet', 'renderer', 'app.js');
+  assert.ok(/<td class="dl-mois">[^\n]*<span class="nw">\$\{esc\(r\.lastLabel \|\| '—'\)\}<\/span>/.test(app), 'le mois lui-même peut se couper (« août » / « 2026 »)');
+});
+
+t('U-11 / U-20 / U-23 : Immobilisations et Inventaire — un seul vert à l\'étape suivante, des raisons en clair, les réserves là où on décide', () => {
+  const app = code('src', 'cabinet', 'renderer', 'app.js');
+  const im = tranche(app, 'function vueImmobilisations(');
+  assert.ok(im.length > 2500 && im.length < 12000, 'tranche suspecte : ' + im.length);
+  // U-11 — jugée sur ce qu'elle REND : « Ajouter un bien… » était vert en permanence, à côté
+  // d'acquisitions sans fiche et d'écritures en attente.
+  const m = /const suivante = ([^;]+);/.exec(im);
+  assert.ok(m, 'l\'étape suivante des immobilisations n\'est plus calculée');
+  const suivante = (aCreer, aEcrire, rows) => evaluer(m[1], { d: { aCreer }, e: { aEcrire, rows } });
+  assert.strictEqual(suivante([{}], 2, [{}]), 'creer', 'une acquisition sans fiche passe avant tout : elle ne s\'amortit nulle part');
+  assert.strictEqual(suivante([], 2, [{}]), 'ecrire', 'des dotations en attente : l\'étape suivante est de les écrire');
+  assert.strictEqual(suivante([], 0, []), 'neuf', 'un exercice sans bien : l\'étape suivante est le premier bien');
+  assert.strictEqual(suivante([], 0, [{}]), '', 'tout est écrit : plus rien n\'est vert');
+  [['im-neuf', 'neuf'], ['im-ecrire', 'ecrire']].forEach(([id, pas]) =>
+    assert.ok(new RegExp(`class="\\$\\{cls\\('${pas}'\\)\\}" id="${id}"`).test(im), `${id} ne prend pas la couleur de SON étape`));
+  // Le seul vert écrit en dur est celui de la PREMIÈRE acquisition sans fiche — il n'existe que
+  // quand l'étape suivante est de la créer.
+  assert.ok(/data-creer=[^>]*>/.test(im) && /k === 0 \? ' btn-primary' : ''/.test(im), 'la première acquisition sans fiche ne porte plus le vert');
+  assert.strictEqual((im.replace(/' btn-primary'/g, '').match(/btn-primary/g) || []).length, 0, 'un bouton principal est écrit en dur dans les immobilisations');
+  // U-23 — la raison d'un bouton éteint se LIT, et « passées » seulement si une écriture l'est.
+  assert.ok(/id="im-motifs"/.test(im) && /title="\$\{esc\(pourquoiEcrire\)\}"/.test(im), 'le bouton éteint ne dit plus pourquoi, en clair');
+  const pq = /const pourquoiEcrire = ([\s\S]+?);\n/.exec(im);
+  const pourquoi = (aEcrire, rows) => evaluer(pq[1], { e: { aEcrire, rows }, s: { annee: 2026 } });
+  assert.strictEqual(pourquoi(1, [{}]), '', 'un bouton allumé n\'a pas de raison d\'être éteint');
+  assert.ok(/passées/.test(pourquoi(0, [{ ecrite: true }])), 'des écritures passées ne se disent pas');
+  assert.ok(!/passées/.test(pourquoi(0, [{ ecrite: false }])), 'un parc entièrement amorti prétend avoir « déjà passé » ses écritures');
+  // U-20 — plus de panneau permanent de réserves : la bulle de la méthode, et la fiche qui les
+  // rappelle au moment du choix, depuis la SEULE source (compta.js).
+  assert.ok(!/Ce que cet écran ne décide pas/.test(im), 'le panneau permanent des réserves est revenu sous le tableau');
+  assert.ok(/Méthode \$\{info\('im\.verifier'\)\}/.test(im), 'la colonne Méthode ne porte plus la bulle des réserves');
+  const fiche = tranche(app, 'function immoForm(');
+  assert.ok(/lbl\('Méthode', 'im\.verifier'\)/.test(fiche), 'la fiche ne porte plus la bulle au moment du choix');
+  assert.ok(/id="im-degr-n">\$\{esc\(KC\.IMMO_A_VERIFIER\.tauxDegressif\)\}/.test(fiche), 'la réserve du dégressif ne vient plus du moteur');
+  assert.ok(/\$\('#im-degr-n', rootModal\)\.style\.display = deg \? '' : 'none'/.test(fiche), 'la réserve du dégressif s\'affiche sur un bien linéaire');
+  assert.ok(/KC\.IMMO_A_VERIFIER\.subvention/.test(fiche), 'la réserve de la subvention n\'est plus dite nulle part');
+  // H-3 — ce qu'on rouvre se relit en français : « 1500.5 », c'est quinze cent mille pour qui lit.
+  ['valeur', 'residuelle', 'subvention', 'cessionPrix'].forEach(n => {
+    const champ = new RegExp(`<input name="${n}"[^>]*>`).exec(fiche);
+    assert.ok(champ && /montantChamp\(/.test(champ[0]), `fiche d'un bien : ${n} ne s'écrit pas en français`);
+  });
+
+  const iv = tranche(app, 'function vueInventaire(');
+  assert.ok(iv.length > 1500 && iv.length < 9000, 'tranche suspecte : ' + iv.length);
+  // U-11 — sans inventaire, le geste vit dans l'état vide : un seul « Saisir l'inventaire… ».
+  assert.ok(/\$\{inv \? `<button class="\$\{cls\('reprendre'\)\}" id="iv-saisir">/.test(iv), 'la barre montre encore « Saisir » à côté de l\'état vide qui le porte');
+  assert.ok(/class="\$\{cls\('ecrire'\)\}" id="iv-ecrire"/.test(iv), 'la variation à écrire ne prend plus la couleur de son étape');
+  const mi = /const suivante = ([^;]+);/.exec(iv);
+  assert.strictEqual(evaluer(mi[1], { ecrivable: true }), 'ecrire');
+  assert.strictEqual(evaluer(mi[1], { ecrivable: false }), '');
+  // U-23 / U-13 — le panneau de la variation vient AVANT les lignes comptées (le résumé avant le
+  // détail), et sa ligne d'état — grise, jamais un encadré vert — est la raison du bouton éteint.
+  assert.ok(iv.indexOf('id="iv-variation"') > 0 && iv.indexOf('id="iv-variation"') < iv.indexOf('Ce qui a été compté'), 'la variation vit encore sous deux cents lignes comptées');
+  assert.ok(/<p class="small ligne-ok mt" id="iv-motifs">/.test(iv), 'la raison du bouton éteint n\'est plus une ligne d\'état grise');
+  assert.ok(!/ok-box/.test(iv), 'un encadré vert est revenu sur un état normal de l\'inventaire');
+});
+
+t('U-11 / U-13 : la Révision — le vert ouvre le cycle suivant, puis l\'arrêt ; l\'orange seulement pour un geste', () => {
+  const app = code('src', 'cabinet', 'renderer', 'app.js');
+  const vue = tranche(app, 'function vueRevision(');
+  assert.ok(vue.length > 4000 && vue.length < 16000, 'tranche suspecte : ' + vue.length);
+  // L'étape suivante, jugée sur ce qu'elle REND dans ses cinq états. À 0 compte signé sur 19, le
+  // vert de l'écran était « Arrêter la révision… » : le geste de la fin, proposé au début.
+  const bloc = /(const ouvertIncomplet = [\s\S]+?const suivante = [^;]+;)/.exec(vue);
+  assert.ok(bloc, 'l\'étape suivante de la révision n\'est plus calculée');
+  // Un objet né dans un autre contexte n'a pas le même prototype : on compare ce qu'il PORTE.
+  const etape = (d, cycle) => JSON.parse(JSON.stringify(evaluer(`(() => { ${bloc[1]} return { suivante, prochain: prochain && prochain.cycle }; })()`, { d, cycle })));
+  const f = (c, revus, total) => ({ cycle: c, label: c, revus, total });
+  const d0 = { faite: false, hors: [], feuilles: [f('ventes', 0, 5), f('achats', 0, 4), f('tresorerie', 2, 2)] };
+  assert.deepStrictEqual(etape(d0, ''), { suivante: 'cycle', prochain: 'ventes' }, 'au départ, le vert doit ouvrir le premier cycle qui a des comptes à revoir');
+  assert.deepStrictEqual(etape(d0, 'ventes'), { suivante: 'signer', prochain: 'achats' }, 'dans un cycle qui a encore des comptes à revoir, ce sont ses lignes qui sont la suite — rien de vert au-dessus');
+  const d1 = { ...d0, feuilles: [f('ventes', 5, 5), f('achats', 1, 4), f('tresorerie', 2, 2)] };
+  assert.deepStrictEqual(etape(d1, 'ventes'), { suivante: 'cycle', prochain: 'achats' }, 'un cycle terminé : le vert passe au cycle SUIVANT qui en a');
+  const d2 = { ...d0, feuilles: [f('ventes', 5, 5), f('achats', 4, 4), f('tresorerie', 2, 2)], hors: [{ revu: false }] };
+  assert.strictEqual(etape(d2, '').suivante, 'hors', 'des comptes hors cycle à revoir : le vert les ouvre');
+  const d3 = { ...d2, hors: [{ revu: true }] };
+  assert.strictEqual(etape(d3, '').suivante, 'arreter', 'tout est signé : l\'étape suivante est l\'arrêt');
+  assert.strictEqual(etape({ ...d3, faite: true }, '').suivante, '', 'une révision arrêtée n\'a plus d\'étape suivante');
+  // Aucun vert écrit en dur : chacun ne naît que de SON étape.
+  assert.ok(/class="btn btn-sm\$\{suivante === 'arreter' \? ' btn-primary' : ''\}" id="rv-arreter"/.test(vue), '« Arrêter la révision… » ne suit plus l\'étape suivante');
+  assert.ok(/suivante === 'cycle' \? `<button class="btn btn-sm btn-primary" id="rv-suivant"/.test(vue), 'le cycle suivant n\'est plus proposé en couleur');
+  assert.ok(/suivante === 'hors' \? `<button class="btn btn-sm btn-primary" id="rv-voir-hors"/.test(vue), 'les comptes hors cycle ne sont plus proposés en couleur');
+  const verts = (vue.match(/btn-primary/g) || []).length;
+  assert.strictEqual(verts, 3, `un vert de trop est écrit en dur dans la révision (${verts})`);
+  assert.ok(/id="rv-poser">/.test(vue) && !/btn-primary" id="rv-poser"/.test(vue), '« Poser les questions de ton cabinet » est redevenu un second vert');
+  // U-13 — l'orange pour ce qui demande un geste ; l'état de départ (« 19 comptes ne sont pas
+  // signés ») ne s'y répète pas, l'avancement le dit déjà.
+  assert.ok(/const aFaire = controles\.filter\(c => c\.gravite !== 'info'\)/.test(vue) && /aFaire\.length \? `<div class="warn-box/.test(vue),
+    'un état normal repasse en orange dans la révision');
+  assert.ok(/c\.id !== 'comptes'/.test(vue), 'les comptes non signés se répètent sous l\'avancement qui les compte déjà');
+  // Une révision arrêtée se dit une fois, sur le badge — plus d'encadré vert qui le répète.
+  assert.ok(!/ok-box/.test(vue), 'un encadré vert est revenu sur un état normal de la révision');
+  assert.ok(/id="rv-arretee"/.test(vue), 'la date et le nom de l\'arrêt ne se lisent plus à côté du badge');
+  // U-28 — la question d'arrêt nomme la période, jamais « 2026-08 ».
+  const br = tranche(app, 'function brancherRevision(');
+  assert.ok(/K\.de\(moisLabelCourt\(per\)\)/.test(br) && !/Arrêter la révision de \$\{esc\(s\.revision\.dossier\.periode\)\}/.test(br),
+    'la question d\'arrêt écrit encore la période au format du fichier');
+  // Le vert des comptes hors cycle ouvre le volet ET l'amène à l'écran.
+  assert.ok(/s\.revHors = true; pageFocus = 'rv-hors'/.test(br) && /id="rv-hors" \$\{s\.revHors \? 'open' : ''\}/.test(vue), 'le volet des comptes hors cycle ne s\'ouvre pas sous le doigt');
+});
+
+t('U-11 / U-13 : les Relances — un seul vert (le groupe, ou la ligne quand elle est seule), l\'explication dans la bulle du titre', () => {
+  const app = code('src', 'cabinet', 'renderer', 'app.js');
+  const vue = tranche(app, 'function drawRelances(');
+  assert.ok(vue.length > 3000 && vue.length < 14000, 'tranche suspecte : ' + vue.length);
+  // Chaque ligne portait son « Écrire » en vert : quatre verts pour trois clients.
+  const m = /const vertLigne = ([^;]+);/.exec(vue);
+  assert.ok(m, 'la couleur du bouton de ligne n\'est plus décidée');
+  assert.ok(/btn-primary/.test(evaluer(m[1], { rows: [{}] })), 'un seul client : son « Écrire » EST l\'étape suivante, il doit être vert');
+  assert.ok(!/btn-primary/.test(evaluer(m[1], { rows: [{}, {}, {}] })), 'plusieurs clients : chaque « Écrire » redevient un second vert à côté du geste de groupe');
+  assert.ok(/<button class="\$\{vertLigne\}" data-rel=/.test(vue), 'le bouton de ligne ne suit plus la règle');
+  assert.ok(/rows\.length > 1 \? `<div class="actions"><button class="btn btn-primary" id="group">/.test(vue), 'le geste de groupe n\'est plus le vert d\'une liste de plusieurs clients');
+  // La bulle du groupe vit À CÔTÉ de son bouton : un bouton dans un bouton n'est pas du HTML.
+  assert.ok(!/id="group">[^<]*\$\{[^}]*info\('r\.group'\)[^<]*<\/button>/.test(vue), 'la bulle est encore posée DANS le bouton de groupe');
+  // U-13 — l'explication permanente vit dans la bulle du titre, pas entre deux bandeaux.
+  assert.ok(/<h1>Relances \$\{info\('r\.page'\)\}<\/h1>/.test(vue), 'le titre des Relances ne porte plus son explication');
+  assert.ok(!/Un message qui nomme les mois manquants fait bouger/.test(vue), 'le paragraphe permanent est revenu sous le titre');
+  const G = require('../../src/cabinet/renderer/cabguide.js');
+  assert.ok(G.INFO['r.page'] && /nomme les mois/.test(G.INFO['r.page'].d), 'la bulle du titre ne porte pas l\'explication retirée de l\'écran');
+  // `rel.due` veut dire « jour ATTEINT » : la phrase ne dit « ton jour de relance » que le jour même
+  // (trouvé en testant comme un humain : « On est le 23, ton jour de relance » avec un jour au 10).
+  assert.ok(/rel\.jour === rel\.day\s*\?\s*', ton jour de relance\.'\s*:\s*` : ton jour de relance, le \$\{rel\.day\}, est passé\.`/.test(vue),
+    'la ligne du jour de relance affirme que c\'est aujourd\'hui alors que le jour est seulement atteint');
+});
+
+t('U-11 : l\'assistant — un seul vert par écran, sur le geste tant qu\'il n\'est pas fait, puis sur « Continuer »', () => {
+  const app = code('src', 'cabinet', 'renderer', 'app.js');
+  const i = app.indexOf('function runSetup(');
+  const fin = app.indexOf('function palettePossible(', i);
+  assert.ok(i > 0 && fin > i, 'l\'assistant est introuvable');
+  const asst = app.slice(i, fin);
+  assert.ok(asst.length > 4000 && asst.length < 30000, 'tranche suspecte : ' + asst.length);
+  // Le geste de l'écran et « Continuer » étaient verts ensemble : deux flèches vers deux endroits.
+  const vert = evaluer(/const vert = (id => [^;]+);/.exec(asst)[1], { faits: new Set() });
+  assert.strictEqual(vert('w-rec'), 'btn btn-primary', 'un geste pas encore fait doit porter le vert');
+  const vertFait = evaluer(/const vert = (id => [^;]+);/.exec(asst)[1], { faits: new Set(['w-rec']) });
+  assert.strictEqual(vertFait('w-rec'), 'btn', 'un geste fait garde son vert à côté de « Continuer »');
+  ['w-rec', 'w-pair'].forEach(id => {
+    assert.ok(new RegExp(`<button class="\\$\\{vert\\('${id}'\\)\\}" id="${id}"`).test(asst), `${id} ne suit plus la règle du vert`);
+    assert.ok(new RegExp(`geste: '${id}'`).test(asst), `l'écran de ${id} ne dit plus quel geste porte le vert`);
+  });
+  assert.ok(/<button class="\$\{e\.geste && !faits\.has\(e\.geste\) \? 'btn' : 'btn btn-primary'\}" id="w-next">/.test(asst),
+    '« Continuer » est vert pendant que le geste de l\'écran attend encore');
+  // Le geste fait fait PASSER le vert : il le retire au geste et le donne à « Continuer ».
+  const passe = /const fait = id => \{([\s\S]+?)\n      \};/.exec(asst);
+  assert.ok(passe && /classList\.remove\('btn-primary'\)/.test(passe[1]) && /#w-next[\s\S]*classList\.add\('btn-primary'\)/.test(passe[1]),
+    'le vert ne passe plus du geste fait à « Continuer »');
+  assert.ok(/exportRecovery\(\(\) => fait\('w-rec'\)\)/.test(asst) && /fait\('w-pair'\)/.test(asst), 'un geste fait ne le dit plus');
+  // Aucun autre vert écrit en dur dans l'assistant.
+  assert.ok(!/class="btn btn-primary" id="w-(rec|pair)"/.test(asst), 'un second vert est écrit en dur dans l\'assistant');
+});
+
+t('U-13 : la clé de secours se dit UNE fois sur « Données et sécurité », en orange seulement quand elle manque', () => {
+  const app = code('src', 'cabinet', 'renderer', 'app.js');
+  const pan = tranche(app, 'function drawBackupPanels(');
+  // Le panneau la disait dans un encadré orange MÊME une fois enregistrée, puis une seconde fois
+  // dans sa ligne d'état.
+  assert.ok(!/recoveryLine\(/.test(app), 'la seconde phrase sur la clé est revenue dans le panneau');
+  assert.ok(/\$\{recoveryAt === null \? `<div class="warn-box mt">/.test(pan), 'l\'encadré orange ne dépend plus de l\'absence de clé');
+  assert.ok(/: recoveryAt \? `<p class="small ligne-ok mt" id="s-rec-ok">/.test(pan), 'une clé enregistrée ne se dit plus sur une ligne grise');
+  assert.ok(/<button class="btn\$\{recoveryAt === null \? ' btn-primary' : ''\}" id="s-rec">/.test(pan), 'le bouton de la clé reste vert une fois la clé enregistrée');
+  // Le bandeau au-dessus des onglets se tait sur l'onglet qui porte le panneau Sécurité.
+  const reg = tranche(app, 'function drawReglages(');
+  assert.ok(/<div id="rec-banniere">\$\{recoveryBanner\(\)\}<\/div>/.test(reg), 'le bandeau de la clé n\'est plus isolé');
+  assert.ok(/rb\.hidden = id === REG_PANNEAUX\['pan-secu'\]\.onglet/.test(reg), 'le bandeau se répète sur l\'onglet qui dit déjà tout');
+});
+
+t('U-11 : les Réglages n\'ont AUCUN bouton principal au repos — « Enregistrer » prend la couleur à la première modification', () => {
+  // Mesuré dans l'application (10.12.0) : six boutons verts sur « Mon cabinet », six sur
+  // « Comptabilité ». Un vert qui ne désigne rien ne se remarque plus, y compris le jour où il compte.
+  const app = code('src', 'cabinet', 'renderer', 'app.js');
+  const zones = ['function drawReglages(', 'function dessinerEquipe(', 'function dessinerLicence('].map(d => tranche(app, d));
+  zones.forEach((z, i) => assert.ok(z.length > 400, 'tranche suspecte n° ' + i + ' : ' + z.length));
+  zones.forEach((z, i) => assert.strictEqual((z.match(/btn-primary/g) || []).length, 0,
+    'un bouton principal est écrit en dur dans les Réglages (zone ' + i + ') : ' + ((z.match(/.{60}btn-primary.{40}/) || [''])[0])));
+  // Chaque « Enregistrer » qui a son « ✓ enregistré » porte `data-enreg`, sinon `flash` ne le rend pas au repos.
+  const paires = [...zones.join('\n').matchAll(/<span class="saved" id="[\w-]+" hidden><\/span><button ([^>]*)>/g)];
+  assert.ok(paires.length >= 5, 'les boutons d\'enregistrement des panneaux ne sont plus trouvés : ' + paires.length);
+  paires.forEach(m => assert.ok(/\bdata-enreg\b/.test(m[1]), 'un « Enregistrer » ne porte pas data-enreg : ' + m[1]));
+  assert.ok(/id="lic-save" data-enreg/.test(zones[2]), '« Enregistrer la clé » ne suit plus la modification');
+  // Le mécanisme lui-même, jugé sur ce qu'il FAIT : une frappe dans le panneau colore son bouton,
+  // « ✓ enregistré » le rend au repos.
+  const iS = app.indexOf('const sale = el =>');
+  const sale = evaluer(app.slice(app.indexOf('el =>', iS), app.indexOf('\n  };', iS) + 4).replace(/;\s*$/, ''));
+  const classes = new Set();
+  const bouton = { classList: { add: c => classes.add(c), remove: c => classes.delete(c) } };
+  const panneau = { querySelector: q => (q === '[data-enreg]' ? bouton : null) };
+  sale({ closest: q => (q === '.panel' ? panneau : null) });
+  assert.ok(classes.has('btn-primary'), 'une modification ne rend plus son « Enregistrer » principal');
+  const flash = evaluer(tranche(app, 'function flash(el, text)'), { clearTimeout() {}, setTimeout() {} });
+  flash({ textContent: '', hidden: true, parentElement: panneau });
+  assert.ok(!classes.has('btn-primary'), '« ✓ enregistré » laisse le bouton en couleur');
+  // Les deux portes par lesquelles une modification arrive : les champs (délégation sur le corps) et
+  // les brouillons de table (ajout, retrait, reprise d'un modèle).
+  assert.ok(/corps\.addEventListener\('input', e => sale\(e\.target\)\)/.test(zones[0]) && /corps\.addEventListener\('change', e => sale\(e\.target\)\)/.test(zones[0]),
+    'une frappe dans un panneau ne le marque plus modifié');
+  for (const [f, b] of [['dessinerRegimes', 'regBrouillon'], ['dessinerCorrespondance', 'corrBrouillon'], ['dessinerCycles', 'cyclesBrouillon'],
+    ['dessinerQuestionnaire', 'questBrouillon']]) {
+    assert.ok(new RegExp(`if \\(${b} !== null\\) sale\\(box\\);`).test(tranche(app, `function ${f}(`)), f + ' : une ligne ajoutée ou retirée ne marque plus le panneau');
+  }
+});
+
+t('L\'empreinte du cabinet se COPIE, là où elle s\'affiche — Réglages et assistant', () => {
+  // Elle se dicte au téléphone et se colle dans un mail : vingt caractères sans bouton se recopient
+  // à la main, donc faux (10.9.2). La licence avait son « Copier » ; l'empreinte du cabinet, non.
+  const app = code('src', 'cabinet', 'renderer', 'app.js');
+  const reg = tranche(app, 'function drawReglages(');
+  assert.ok(/<span class="fingerprint">\$\{esc\(c\.fingerprint \|\| '—'\)\}<\/span>\$\{c\.fingerprint\s*\? '<button type="button" class="btn btn-sm" id="c-copier-emp">Copier<\/button>'/.test(reg), 'Réglages : l\'empreinte n\'a plus son bouton « Copier »');
+  assert.ok(/\$\('#c-copier-emp'\)\.onclick = \(\) => copierEmpreinte\(S\.cabinet\.fingerprint\)/.test(reg), 'Réglages : le bouton « Copier » ne copie plus l\'empreinte');
+  assert.ok(/id="w-copier-emp">Copier<\/button>/.test(app) && /\$\('#w-copier-emp', el\)\.onclick = \(\) => copierEmpreinte\(S\.cabinet\.fingerprint\)/.test(app), 'assistant : l\'empreinte n\'a plus son bouton « Copier »');
+  // Une seule porte pour copier une empreinte : trois copies du même bloc divergeraient.
+  assert.strictEqual((app.match(/navigator\.clipboard\.writeText\(texte/g) || []).length, 1, 'la copie d\'empreinte n\'a plus une seule porte');
+  assert.ok(/cp\.onclick = \(\) => copierEmpreinte\(licCab\.empreinte\)/.test(app), 'la licence a repris sa propre copie');
+});
+
+t('U-16 : la liasse masque ses rubriques vides (et le dit), le MONTANT ouvre ses comptes, et la réserve se dit sur une ligne', () => {
+  // 17 rubriques vides sur 26, chacune avec sa phrase grise, noyaient les 9 qui portent un montant ;
+  // une colonne entière répétait « Voir les comptes ». Jugé sur ce que la VRAIE vue rend, sur une
+  // liasse calculée par le moteur.
+  const app = code('src', 'cabinet', 'renderer', 'app.js');
+  const L = {
+    liasse: liasseDe(livreAvecPaie()), clos: false, natures: [], retraitements: [], tauxImpot: null,
+    fiscal: { resultatComptable: 0, reintegrations: 0, deductions: 0, base: 0, deficitaire: false, taux: null, impot: null, raisonImpot: '' },
+    employeur: { cases: [], raisonNominatif: '' }
+  };
+  const lignes = L.liasse.etats.flatMap(e => e.lignes);
+  const vides = lignes.filter(x => x.montant === null).length, pleines = lignes.length - vides;
+  assert.ok(vides >= 5 && pleines >= 3, `le jeu ne discrimine pas : ${pleines} pleines, ${vides} vides`);
+  const rendre = liasseVides => evaluer(tranche(app, 'function vueLiasse('), {
+    livresState: { liasse: L, annee: 2026, liasseVides },
+    esc: s => String(s == null ? '' : s), money: n => String(n), info: () => '', pl: (n, a, b) => `${n} ${n > 1 ? (b || a + 's') : a}`
+  })({ id: 'D1' });
+  const masque = rendre(undefined), tout = rendre(true);
+  // Par défaut : aucune ligne vide, et la case dit combien elle en cache.
+  assert.strictEqual((masque.match(/<tr class="row-muted">/g) || []).length, 0, 'des rubriques vides s\'affichent encore par défaut');
+  assert.ok(new RegExp(`<input type="checkbox" id="li-masquer" checked> Masquer les rubriques vides \\(${vides}\\)`).test(masque), 'la case ne dit plus combien de rubriques elle cache');
+  // Décochée : toutes reviennent, avec leur raison.
+  assert.strictEqual((tout.match(/<tr class="row-muted">/g) || []).length, vides, 'décocher ne rend pas toutes les rubriques vides');
+  assert.ok(!/id="li-masquer" checked/.test(tout), 'la case reste cochée alors que tout est affiché');
+  // Le montant est le lien, et il n'existe plus de colonne de boutons.
+  assert.ok(!/Voir les comptes<\/button>/.test(masque), 'la colonne « Voir les comptes » est revenue');
+  const liens = (masque.match(/<button type="button" class="montant-lien" data-rub="[^"]+"/g) || []).length;
+  assert.strictEqual(liens, lignes.filter(x => x.montant !== null && x.detail.length).length, 'un montant qui a des comptes ne s\'ouvre plus d\'un clic');
+  // U-13 — la réserve À VÉRIFIER reste, sur une ligne grise ; un état juste ne se dit plus dans un encadré vert.
+  assert.ok(/id="li-regle"><b>À VÉRIFIER<\/b>/.test(masque) && !/<div class="warn-box mb"><b>À VÉRIFIER/.test(masque), 'la réserve est redevenue un encadré orange permanent');
+  assert.ok(!/ok-box/.test(masque), 'un encadré vert est revenu sur une liasse qui tombe juste');
+  // La case agit, et le lien se reconnaît au repos (couleur, soulignement).
+  assert.ok(/mq\.onchange = \(\) => \{ s\.liasseVides = !mq\.checked; drawLivres\(root, dossier\); \}/.test(tranche(app, 'function brancherLiasse(')), 'la case ne redessine plus la liasse');
+  const css = lireSource('src', 'cabinet', 'renderer', 'cabinet.css');
+  assert.ok(/\.montant-lien \{[^}]*color: var\(--primary\)[^}]*text-decoration: underline/.test(css), 'le montant cliquable ne se reconnaît plus au repos');
+});
+
+t('U-19 : les pages longues se replient — l\'Exercice en sections qui portent leur chiffre, le modèle de liasse dans une fenêtre', () => {
+  const app = code('src', 'cabinet', 'renderer', 'app.js');
+  // L'Exercice : 3 037 px d'un bloc. Quatre sections repliables, chacune nommée par le sommaire.
+  const vue = tranche(app, 'function vueCloture(');
+  const pl = [...vue.matchAll(/section\('(\w+)', 'cl-sec-\w+'/g)].map(m => m[1]);
+  assert.deepStrictEqual(pl, ['controles', 'etats', 'sig', 'an'], 'les quatre sections de l\'Exercice ne se replient plus : ' + pl.join(','));
+  assert.ok(/<details class="panel mt pli" id="\$\{id\}" data-pli="\$\{k\}"/.test(vue) && /<span class="pli-chiffre small muted">\$\{chiffre\}<\/span>/.test(vue),
+    'une section repliée ne porte plus son chiffre');
+  // Le sommaire est un <div> (le piège du <nav> de la barre latérale, 7.27.0) qui nomme chaque section.
+  assert.ok(/<div class="set-somm cl-somm" role="navigation"/.test(vue) && !/<nav class="set-somm/.test(vue), 'le sommaire est redevenu un <nav>, que la barre latérale empile');
+  assert.ok(/data-cl-sec="\$\{k\}"/.test(vue), 'le sommaire ne nomme plus les sections');
+  // Une section qui porte une ALERTE s'ouvre toujours, même repliée à la main.
+  const ouvert = /const ouvert = (k => [^;]+);/.exec(vue);
+  assert.ok(ouvert, 'la règle d\'ouverture des sections n\'est plus écrite');
+  const o = (ctx, k) => evaluer(ouvert[1], ctx)(k);
+  const repli = { plis: { controles: false, etats: false, sig: false, an: false }, echecs: [], ex: { clos: false }, alerteEtats: false };
+  assert.strictEqual(o(repli, 'etats'), false, 'une section repliée à la main se rouvre sans raison');
+  assert.strictEqual(o({ ...repli, alerteEtats: true }, 'etats'), true, 'un déséquilibre reste caché dans une section repliée');
+  assert.strictEqual(o({ ...repli, echecs: [{}] }, 'controles'), true, 'des contrôles à voir restent cachés avant la clôture');
+  const br = tranche(app, 'function brancherCloture(');
+  assert.ok(/dt\.ontoggle = \(\) => \{ plis\[dt\.dataset\.pli\] = dt\.open; \}/.test(br), 'une section repliée ne le reste pas au prochain dessin');
+  assert.ok(/dt\.open = true; plis\[b\.dataset\.clSec\] = true;\s*pageFocus = dt\.id; focaliser\(el\);/.test(br), 'le sommaire mène à un titre replié, sans l\'ouvrir ni l\'amener à l\'écran');
+  // Les ratios s'écrivent comme des montants : deux décimales, le vrai signe moins.
+  const pc = evaluer(/const pourcent = (v => \{[^\n]+\});/.exec(app)[1]);
+  assert.strictEqual(pc(56.33), '56,33\u00a0%');
+  assert.strictEqual(pc(-3.998), '−4,00\u00a0%', 'un ratio négatif s\'écrit encore avec un tiret et trois décimales');
+  assert.strictEqual(pc(null), '—');
+  assert.ok(/r\.unite === '%' \? pourcent\(r\.valeur\)/.test(vue), 'les ratios ne passent plus par le formateur de pourcentage');
+  // Réglages → Comptabilité : la grille du modèle de liasse (1 998 px) quitte la page pour une fenêtre.
+  const reg = tranche(app, 'function drawReglages(');
+  assert.ok(!/id="sr-liasse"><\/div>/.test(reg) && /id="sr-liasse-resume">\$\{resumeLiasse\(\)\}/.test(reg), 'la grille du modèle de liasse est revenue dans la page des Réglages');
+  const f = tranche(app, 'function modeleLiasseForm(');
+  assert.ok(f.indexOf('let change = () => false;') > 0 && f.indexOf('let change = () => false;') < f.indexOf('modal('), 'la garde de la fenêtre est lue avant sa déclaration (zone morte)');
+  assert.ok(/<div id="sr-liasse"><\/div>/.test(f) && /data-close>Annuler/.test(f), 'la fenêtre du modèle ne porte plus sa grille ou son « Annuler »');
+  assert.ok(/mod\.onclick = \(\) => modeleLiasseForm\(relire\)/.test(tranche(app, 'function brancherLiasse(')), 'la liasse d\'un dossier renvoie encore aux Réglages au lieu d\'ouvrir le modèle');
+});
+
+t('Un bouton principal ÉTEINT perd sa couleur, dans les deux thèmes et au survol — il ne reste pas le bloc le plus visible de l\'écran', () => {
+  // Vu au test humain (10.12.0) : « Enregistrer et valider », éteint sur une pièce vide, restait un
+  // pavé vert d'eau à 50 % — en thème sombre, il se lisait comme un bouton qu'on peut cliquer.
+  const css = lireSource('src', 'renderer', 'style.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  const regle = /(\.btn-primary:disabled[^{]*)\{([^}]*)\}/.exec(css);
+  assert.ok(regle, 'le bouton principal éteint n\'a plus de règle à lui');
+  ['.btn-primary:disabled:hover', 'body.dark .btn-primary:disabled', 'body.dark .btn-primary:disabled:hover'].forEach(sel =>
+    assert.ok(regle[1].split(',').map(x => x.trim()).includes(sel), `« ${sel} » n'est pas couvert : le vert revient ${/hover/.test(sel) ? 'au survol' : 'en thème sombre'}`));
+  assert.ok(/background:\s*var\(--panel\)/.test(regle[2]) && /color:\s*var\(--muted\)/.test(regle[2]), 'le bouton principal éteint garde sa couleur');
+});
+
+t('U-21 : la CNSS ne vise que les employeurs que les livres connaissent — et ne pas savoir n\'est pas « non »', () => {
+  // Le moteur : ce que le livre SAIT, mois par mois.
+  const livre = {
+    plan: [{ compte: '6411', role: 'salairesBruts' }],
+    ecritures: [
+      { date: '2026-07-31', statut: 'validee', lignes: [{ compte: '6411', debit: 900 }, { compte: '425', credit: 900 }] },
+      { date: '2026-08-31', statut: 'validee', lignes: [{ compte: '706', credit: 100 }, { compte: '411', debit: 100 }] },
+      { date: '2026-06-30', statut: 'contrepassee', lignes: [{ compte: '6411', debit: 50 }, { compte: '425', credit: 50 }] }
+    ],
+    bulletins: [{ annee: 2026, mois: 9 }]
+  };
+  const m = KC.moisEmployeur(livre);
+  assert.strictEqual(m['2026-07'], true, 'une écriture sur le compte de rémunération du plan fait un employeur');
+  assert.strictEqual(m['2026-08'], false, 'un mois saisi sans ligne de personnel dit « non » pour ce mois');
+  assert.strictEqual(m['2026-09'], true, 'un bulletin fait un employeur');
+  assert.ok(!('2026-06' in m), 'une écriture contre-passée ne dit rien');
+  assert.ok(!('2026-10' in m), 'un mois sans écriture n\'a pas de clé : ne pas savoir n\'est pas « non »');
+  assert.deepStrictEqual(KC.moisEmployeur(null), {}, 'sans livre, rien n\'est su');
+
+  // Le calendrier : un client ne sort de la CNSS que sur un trimestre ENTIÈREMENT saisi sans
+  // personnel ; un trimestre incomplet ou sans livre reste compté, par prudence, et la carte le dit.
+  const p = mo => ({ month: mo, label: C.monthLabel(mo), definitive: true, missing: [] });
+  const packs = [p('2026-07'), p('2026-08'), p('2026-09')];
+  const S = C.migrate({ settings: { relanceDay: 10 }, dossiers: ['emp', 'non', 'part', 'rien'].map(id => ({ id, name: id, tvaPeriod: 'trimestrielle', packs })) });
+  const cnss = opts => C.echeances(S, '2026-10-05', opts).find(e => e.id === 'cnss');
+  const sans = cnss();
+  assert.strictEqual(sans.clients, 4, 'sans connaissance, tout le monde reste compté');
+  const employeurs = {
+    emp: { '2026-07': false, '2026-08': true },
+    non: { '2026-07': false, '2026-08': false, '2026-09': false },
+    part: { '2026-07': false }
+  };
+  const avec = cnss({ employeurs });
+  assert.strictEqual(avec.clients, 3, 'un trimestre entièrement saisi sans une ligne de personnel doit sortir de la CNSS');
+  assert.ok(/2 clients dont le trimestre n'est pas encore saisi ici sont comptés par prudence/.test(avec.detail), 'la prudence ne se dit plus : ' + avec.detail);
+  assert.ok(/1 client d'après sa Paie/.test(avec.detail), 'le client connu n\'est plus nommé comme tel : ' + avec.detail);
+  // Tous inconnus : la carte ne prétend pas que « leur Paie le dit » (trouvé en testant comme un humain),
+  // et ne répète pas deux fois « pas saisi ici » dans la même phrase (trouvé en la relisant à l'écran).
+  const inconnusSeuls = cnss({ employeurs: { part: { '2026-07': false } } });
+  assert.ok(!/le disent/.test(inconnusSeuls.detail) && /Le trimestre de ces 4 clients n'est pas encore saisi ici : ils sont comptés par prudence\.$/.test(inconnusSeuls.detail),
+    'la carte affirme ce que la Paie dit alors qu\'aucun client n\'est connu : ' + inconnusSeuls.detail);
+  assert.strictEqual((inconnusSeuls.detail.match(/saisi ici/g) || []).length, 1, 'la phrase répète « saisi ici » : ' + inconnusSeuls.detail);
+  const unSeul = C.echeances(C.migrate({ settings: { relanceDay: 10 }, dossiers: [{ id: 'x', name: 'x', tvaPeriod: 'trimestrielle', packs }] }), '2026-10-05', { employeurs: {} }).find(e => e.id === 'cnss');
+  assert.ok(/Le trimestre de ce client n'est pas encore saisi ici : il est compté par prudence\.$/.test(unSeul.detail), 'le singulier ne s\'accorde plus : ' + unSeul.detail);
+  // Tous connus : aucune prudence à annoncer.
+  const tousConnus = C.echeances(C.migrate({ settings: { relanceDay: 10 }, dossiers: [{ id: 'emp', name: 'emp', tvaPeriod: 'trimestrielle', packs }] }), '2026-10-05', { employeurs: { emp: { '2026-08': true } } }).find(e => e.id === 'cnss');
+  assert.ok(/le disent\.$/.test(tousConnus.detail) && !/prudence/.test(tousConnus.detail), 'une prudence est annoncée sur des clients tous connus : ' + tousConnus.detail);
+  assert.ok(!/ne sait pas lesquels/.test(avec.detail + sans.detail), 'l\'aveu d\'ignorance est revenu alors que les livres savent');
+  // « À faire » lit la MÊME connaissance que la page (règle 6.8.1).
+  const cc = lireSource('src', 'cabinet', 'cabcore.js');
+  assert.ok(/echeances\(state, todayIso, \{ avant: 1, apres: 1, employeurs: \(opts \|\| \{\}\)\.employeurs \}\)/.test(cc), '« À faire » compte la CNSS sans la connaissance des employeurs');
+  const app = code('src', 'cabinet', 'renderer', 'app.js');
+  assert.ok(/K\.echeances\(S, null, \{ employeurs: employeursConnus\(\) \}\)/.test(app), 'la page Échéances ne passe plus la connaissance des employeurs');
+  assert.ok(/K\.cabinetTodo\(S, null, \{[^}]*employeurs: employeursConnus\(\) \}\)/.test(app), '« À faire » ne reçoit plus la connaissance des employeurs');
+  // Et l'index la range, sinon rien ne la porte jusqu'à l'écran.
+  assert.ok(/employeur: KC\.moisEmployeur\(livre\)/.test(lireSource('src', 'cabinet', 'cabstore.js')), 'l\'index des livres ne range plus ce qu\'il sait des employeurs');
+});
+
+t('U-21 : un index écrit avant la 10.12.0 se relit une fois — sinon la CNSS est réclamée à tout le monde le matin de la mise à jour', () => {
+  // Trouvé en redémarrant l'application sur le code du jour : l'index n'est réécrit que lorsqu'un
+  // livre l'est. Sans relecture, un cabinet qui met à jour voit tous ses clients « comptés par
+  // prudence », et la carte écrit « trimestre pas saisi ici » sur des trimestres saisis.
+  const fs = require('fs'), os = require('os'), path = require('path');
+  const { createCabStore } = require('../../src/cabinet/cabstore.js');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cab-index-'));
+  try {
+    const s = createCabStore(dir);
+    s.create('mot-de-passe-du-test', C.migrate({ cabinet: { name: 'Test' } }));
+    const d = { id: 'MF:1234567A', name: 'Salaries SARL' };
+    const livre = KC.livreVide(d.id, 2026, { plan: [{ compte: '640', libelle: 'Salaires' }, { compte: '425', libelle: 'Personnel' }] });
+    const e = KC.ajouterEcriture(livre, { date: '2026-07-31', journal: 'OD', piece: 'PAIE-07', libelle: 'Paie de juillet',
+      lignes: [{ compte: '640', debit: 900 }, { compte: '425', credit: 900 }] }, 'Amine', 1);
+    assert.ok(KC.validerEcriture(livre, e.id, 'Amine', 2).ok, 'la pièce du test ne se valide pas');
+    assert.ok(s.ecrireLivre(d, livre, null).ok, 'le livre du test ne s\'écrit pas');
+    const f = path.join(s.livreDir(d, null), 'livre-index.json');
+    const ancien = JSON.parse(fs.readFileSync(f, 'utf8'));
+    assert.strictEqual(ancien.exercices[0].employeur['2026-07'], true, 'le livre neuf ne range pas ce qu\'il sait');
+    // L'index tel que l'écrivait la 10.11.0 : sans la case.
+    delete ancien.exercices[0].employeur;
+    fs.writeFileSync(f, JSON.stringify(ancien));
+    assert.strictEqual(s.relireIndexAncien(d, null), 1, 'l\'exercice d\'avant n\'a pas été relu');
+    assert.strictEqual((s.lireIndexLivres(d, null).exercices[0].employeur || {})['2026-07'], true, 'la relecture n\'a pas rendu la case à l\'index');
+    // Une fois relu, il ne se relit plus : la condition est l'ABSENCE de la case, pas son contenu.
+    assert.strictEqual(s.relireIndexAncien(d, null), 0, 'un index à jour se relit encore à chaque appel');
+    // Et la relecture ne réécrit JAMAIS le livre : seule la révision du disque le prouve.
+    assert.strictEqual(s.enteteLivre(s.livrePath(d, 2026, null)).revision, 1, 'la relecture a réécrit le livre');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  // Le résumé que les deux écrans lisent attend la relecture AVANT de lire les index.
+  const main = lireSource('src', 'cabinet', 'main.js');
+  const i = main.indexOf("ipcMain.handle('cab:questionsEnAttente'");
+  const h = main.slice(i, main.indexOf('ipcMain.handle(', i + 10));
+  assert.ok(h.length > 200 && h.length < 2500, 'tranche du handler suspecte : ' + h.length);
+  assert.ok(h.indexOf('await relireIndexAnciens()') > 0 && h.indexOf('await relireIndexAnciens()') < h.indexOf('lireIndexLivres'),
+    'le résumé lit les index sans avoir relu ceux d\'avant');
+});
+
+t('Aucun « Relancer ces 1 client » : un déterminant pluriel devant un compte se garde du singulier, dans les deux applications', () => {
+  // Trouvé par Browser Use, qui lit le NOM de chaque bouton : « Relancer ces 1 client » sur une
+  // échéance à un seul client. La capture ne le montrait pas — la carte était sous la ligne de
+  // flottaison. Le même motif dormait à cinq autres endroits : « ses 1 paquet », « Les 1 livre de la
+  // sauvegarde », « Établir les 1 bulletin manquant », « Voir les 1 facture », « Ces 1 dossier ».
+  // `pl()` accorde le NOM ; le déterminant, lui, reste au pluriel — seule une branche `> 1` le garde.
+  const fichiers = [['src', 'renderer', 'app.js'], ['src', 'cabinet', 'renderer', 'app.js'], ['src', 'cabinet', 'cabcore.js'], ['src', 'renderer', 'core.js'], ['src', 'renderer', 'compta.js']];
+  const motif = /\b(?:[Cc]es|[Ll]es|[Ss]es|[Ll]eurs|mêmes|[Tt]ous les|[Tt]outes les) \$\{(?:pl|plFr|K\.pl|C\.pl|KC\.plFr)\(/g;
+  const fautes = [];
+  let vus = 0;
+  for (const f of fichiers) {
+    const src = code(...f);
+    let m;
+    while ((m = motif.exec(src))) {
+      vus++;
+      // La garde : on est DANS la branche « > 1 » d'un ternaire, sans backtick entre les deux.
+      if (!/> 1 \? `[^`]*$/.test(src.slice(Math.max(0, m.index - 200), m.index))) {
+        fautes.push(f.join('/') + ' : …' + src.slice(m.index - 30, m.index + 60).replace(/\s+/g, ' '));
+      }
+    }
+  }
+  assert.ok(vus >= 6, 'le motif ne voit plus les phrases qu\'il doit garder : ' + vus);
+  assert.deepStrictEqual(fautes, [], 'un déterminant pluriel devant un compte qui peut valoir 1');
+});
+
+t('Chaque bulle « i » porte un NOM qui dit ce qu\'elle explique — plus trois « Qu\'est-ce que c\'est ? » par page', () => {
+  // Trouvé par Browser Use : l'arbre d'accessibilité des Échéances nommait ses trois bulles de la
+  // même façon, et le titre de la page devenait « Échéances Qu'est-ce que c'est ? ». Un lecteur
+  // d'écran ne distingue pas trois boutons qui portent le même nom (règle 9.4.4, vue par l'oreille).
+  const escTest = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+  const G = { INFO: { 'ec.dates': { t: 'D\'où viennent <ces> dates', d: '' } } };
+  for (const [nom, chemin, ctx] of [
+    ['Cabinet', ['src', 'cabinet', 'renderer', 'app.js'], { G, esc: escTest }],
+    ['entreprise', ['src', 'renderer', 'app.js'], { G, h: escTest }]
+  ]) {
+    const info = evaluer(tranche(code(...chemin), 'function info(key)'), ctx);
+    const html = info('ec.dates');
+    assert.ok(/aria-label="Explication : D'où viennent &lt;ces> dates"/.test(html), nom + ' : la bulle ne porte plus le titre de ce qu\'elle explique : ' + html);
+    assert.strictEqual(info('inconnue'), '', nom + ' : une clé sans texte pose encore une bulle');
+  }
+  // Et chaque bulle a un titre, sinon son nom retomberait sur la clé technique (« ec.dates »).
+  for (const g of [require('../../src/renderer/guide.js'), require('../../src/cabinet/renderer/cabguide.js')]) {
+    const sans = Object.keys(g.INFO).filter(k => !String((g.INFO[k] || {}).t || '').trim());
+    assert.deepStrictEqual(sans, [], 'des bulles sans titre');
+  }
+});
+
+t('U-21 / U-13 : les Échéances disent leur règle UNE fois, en tête — plus sous chaque carte, plus en orange', () => {
+  const app = code('src', 'cabinet', 'renderer', 'app.js');
+  const i = app.indexOf('function drawEcheances(');
+  const z = app.slice(i, app.indexOf('\n  }\n', i));
+  // La page a un premier `view.innerHTML` (aucun client) AVANT la carte : on borne après elle.
+  const iCarte = z.indexOf('const carte = e =>');
+  const carte = z.slice(iCarte, z.indexOf('view.innerHTML', iCarte));
+  assert.ok(carte.length > 800, 'tranche de la carte suspecte : ' + carte.length);
+  assert.ok(!/ne dépose rien/.test(carte) && !/info\('ec\.depot'\)/.test(carte), 'la règle du pense-bête se répète encore sous chaque carte');
+  assert.ok((z.match(/ne dépose rien à ta place/g) || []).length === 1, 'la règle du pense-bête doit se dire exactement une fois');
+  assert.ok(/id="ec-regle"/.test(z) && /À VÉRIFIER/.test(z.slice(z.indexOf('id="ec-regle"'))), 'les jours proposés ne disent plus qu\'ils sont À VÉRIFIER');
+  assert.ok(!/warn-box/.test(z), 'un encadré orange permanent est revenu sur les Échéances');
+  assert.ok(/<h1>Échéances \$\{info\('ec\.dates'\)\}<\/h1>/.test(z), 'l\'explication de la page a quitté la bulle du titre');
+  assert.ok(/<h2>Déjà passées \$\{info\('ec\.passees'\)\}<\/h2>/.test(z), 'la note des échéances passées est revenue en prose sous le titre');
+  // Les deux gestes d'une carte NOMMENT leur échéance pour un lecteur d'écran (vu par Browser Use) :
+  // cinq « Marquer déposée » identiques ne disent pas lequel on déclenche.
+  for (const attr of ['data-relq', 'data-depot']) {
+    const b = carte.slice(carte.indexOf(attr + '='), carte.indexOf('</button>', carte.indexOf(attr + '=')));
+    assert.ok(/aria-label="\$\{esc\(\w+ \+ ' — ' \+ e\.label\)\}"/.test(b), attr + ' : le bouton ne nomme plus son échéance : ' + b);
+  }
+});
+
+t('Aucune variable CSS utilisée sans être définie : une variable inconnue rend sa déclaration invalide, en silence', () => {
+  // Trouvé en testant comme un humain (10.12.0) : « Exporter le tableau », ÉTEINT, portait en thème
+  // sombre une bordure blanche plus vive que celle d'un bouton actif. `.btn-ghost` lisait `--line`,
+  // qu'aucune feuille ne définissait depuis la 9.4.2 : la déclaration devenait invalide et la
+  // bordure retombait sur la couleur du texte. Trois autres dormaient de même (`--accent` sur le
+  // repère d'un panneau visé, `--card` sur les champs de la saisie au focus et les pastilles de la
+  // production, `--hover` sur la ligne « moi » de l'équipe, qui ne s'est jamais vue).
+  const fs = require('fs'), path = require('path');
+  const racine = path.resolve(__dirname, '..', '..');
+  const feuilles = ['src/renderer/style.css', 'src/cabinet/renderer/cabinet.css'].map(f => fs.readFileSync(path.join(racine, f), 'utf8'));
+  const definies = new Set(feuilles.flatMap(css => [...css.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/(--[a-z0-9-]+)\s*:/g)].map(m => m[1])));
+  const sources = feuilles.slice();
+  ['src/renderer', 'src/cabinet/renderer'].forEach(d => fs.readdirSync(path.join(racine, d))
+    .filter(f => /\.(js|html)$/.test(f)).forEach(f => sources.push(fs.readFileSync(path.join(racine, d, f), 'utf8'))));
+  const utilisees = new Set(sources.flatMap(src => [...src.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/var\((--[a-z0-9-]+)/g)].map(m => m[1])));
+  assert.ok(definies.size > 15 && utilisees.size > 15, `lecture suspecte : ${definies.size} définies, ${utilisees.size} utilisées`);
+  const inconnues = [...utilisees].filter(v => !definies.has(v));
+  assert.deepStrictEqual(inconnues, [], 'variable CSS utilisée et définie nulle part : ' + inconnues.join(', '));
+  // Et le trait discret existe dans les DEUX thèmes : défini en clair seulement, le sombre
+  // hériterait d'un gris clair qui crie sur un fond noir.
+  const css = feuilles[0];
+  assert.ok(/:root\s*\{[^}]*--line:/.test(css) && /body\.dark\s*\{[^}]*--line:/.test(css), 'le trait des boutons discrets n\'est pas défini dans les deux thèmes');
+});
+
+t('Aucun caractère combinant écrit en dur dans le code : l\'intervalle des accents s\'écrit ÉCHAPPÉ (9.2.1)', () => {
+  // Un intervalle écrit avec les VRAIS caractères combinants (U+0300 à U+036F, invisibles) fonctionne — et personne ne peut le relire, et un
+  // éditeur qui normalise le texte le casse en silence. Six endroits l'avaient, dans cinq fichiers.
+  const fs = require('fs'), path = require('path');
+  const racine = path.resolve(__dirname, '..', '..');
+  const fichiers = [];
+  const parcourir = d => fs.readdirSync(d, { withFileTypes: true }).forEach(e => {
+    const p = path.join(d, e.name);
+    if (e.isDirectory()) { if (!/^(node_modules|dist|\.git)/.test(e.name)) parcourir(p); } else if (/\.(js|mjs)$/.test(e.name)) fichiers.push(p);
+  });
+  ['src', 'test', 'scripts', 'plateforme', 'worker'].forEach(d => { if (fs.existsSync(path.join(racine, d))) parcourir(path.join(racine, d)); });
+  assert.ok(fichiers.length > 50, 'le parcours des sources ne voit presque rien : ' + fichiers.length);
+  const fautifs = fichiers.filter(f => /[\u0300-\u036f]/.test(fs.readFileSync(f, 'utf8'))).map(f => path.relative(racine, f));
+  assert.deepStrictEqual(fautifs, [], 'un caractère combinant écrit en dur : ' + fautifs.join(', '));
 });
 
 };

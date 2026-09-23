@@ -2685,9 +2685,31 @@ ipcMain.handle('cab:production', (_e, opts) => {
   };
 });
 
+// Les index écrits par une version d'avant se relisent UNE fois par ouverture (10.12.0,
+// `cabstore.relireIndexAncien`) : sans eux, la CNSS serait réclamée « par prudence » à tous les
+// clients le matin de la mise à jour. En rendant la main entre deux dossiers — soixante dossiers ne
+// figent pas l'écran —, et la promesse est gardée : deux lectures simultanées n'en font qu'une.
+let indexRelus = null;
+function relireIndexAnciens() {
+  if (indexRelus && indexRelus.pour === state) return indexRelus.fait;
+  const pour = state;
+  const fait = (async () => {
+    const idx = indexDossiers();
+    for (const d of (pour && pour.dossiers) || []) {
+      if (state !== pour) return;            // le cabinet a été refermé entre-temps
+      try { getStore().relireIndexAncien(d, idx); } catch (e) { logToFile('index', e); }
+      await new Promise(res => setImmediate(res));
+    }
+  })();
+  indexRelus = { pour, fait };
+  return fait;
+}
+
 // Les questions sans réponse, résumées dossier par dossier depuis les INDEX (jamais en
 // déchiffrant soixante livres — mesure de la 9.1.0). C'est ce que « À faire » compte.
-ipcMain.handle('cab:questionsEnAttente', () => {
+ipcMain.handle('cab:questionsEnAttente', async () => {
+  requireOpen();
+  await relireIndexAnciens();
   requireOpen();
   const idx = indexDossiers();
   return (state.dossiers || []).filter(d => !d.archived).map(d => {
@@ -2697,8 +2719,11 @@ ipcMain.handle('cab:questionsEnAttente', () => {
       aRelancer: s.aRelancer + Number((e.questions || {}).aRelancer || 0),
       repondues: s.repondues + Number((e.questions || {}).repondues || 0)
     }), { ouvertes: 0, aRelancer: 0, repondues: 0 });
-    return { dossierId: d.id, name: d.name, ...q };
-  }).filter(r => r.ouvertes || r.repondues);
+    // 10.12.0 (U-21) — et ce que chaque livre sait des salariés, mois par mois, fusionné sur les
+    // exercices : le calendrier en tire la CNSS des seuls employeurs (`cabcore.echeances`).
+    const employeur = Object.assign({}, ...(i.exercices || []).map(e => (e.employeur && typeof e.employeur === 'object') ? e.employeur : {}));
+    return { dossierId: d.id, name: d.name, ...q, employeur };
+  }).filter(r => r.ouvertes || r.repondues || Object.keys(r.employeur).length);
 });
 
 // ---------------------------------------------------------------- réunir deux postes (9.9.0)

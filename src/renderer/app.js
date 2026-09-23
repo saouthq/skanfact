@@ -435,7 +435,9 @@
   function info(key) {
     const x = G.INFO[key];
     if (!x) return '';
-    return `<button type="button" class="i" data-info="${h(key)}" aria-label="Qu'est-ce que c'est ?" title="Qu'est-ce que c'est ?">i</button>`;
+    // Le NOM que lit un lecteur d'écran dit ce que la bulle explique (10.12.0, porté du Cabinet) :
+    // des bulles toutes nommées « Qu'est-ce que c'est ? » sont des boutons qu'on ne distingue pas.
+    return `<button type="button" class="i" data-info="${h(key)}" aria-label="Explication : ${h(x.t || key)}" title="Qu'est-ce que c'est ?">i</button>`;
   }
   // Un libellé de champ suivi de sa bulle. Le <span> garde les deux sur la même ligne dans un label en colonne.
   const lbl = (text, key) => key ? `<span class="fl">${text} ${info(key)}</span>` : text;
@@ -1729,7 +1731,7 @@
       <div class="stats">
         <div class="stat" data-stat="ca-mois" role="button" tabindex="0" title="Voir le journal des ventes du mois"><div class="lbl">CA du mois (HT) ${info('dash.caMonth')}</div><div class="val">${C.money(sumHT(ofMonth), cur)}</div><div class="sub">${C.money(sumTTC(ofMonth), cur)} TTC, avoirs déduits</div></div>
         <div class="stat" data-stat="ca-annee" role="button" tabindex="0" title="Voir les statistiques de l'année"><div class="lbl">CA de l'année (HT) ${info('dash.caYear')}</div><div class="val">${C.money(sumHT(ofYear), cur)}</div><div class="sub">${year} · ${C.money(sumTTC(ofYear), cur)} TTC</div></div>
-        <div class="stat" data-stat="encaisser" role="button" tabindex="0" title="Voir les ${pl(open.length, 'facture')} qui restent à encaisser"><div class="lbl">Reste à encaisser ${info('dash.open')}</div><div class="val">${C.money(openAmount, cur)}</div><div class="sub">${pl(open.length, 'facture')}, ${late.length} en retard</div></div>
+        <div class="stat" data-stat="encaisser" role="button" tabindex="0" title="${open.length > 1 ? `Voir les ${pl(open.length, 'facture')} qui restent à encaisser` : open.length ? 'Voir la facture qui reste à encaisser' : 'Aucune facture ne reste à encaisser'}"><div class="lbl">Reste à encaisser ${info('dash.open')}</div><div class="val">${C.money(openAmount, cur)}</div><div class="sub">${pl(open.length, 'facture')}, ${late.length} en retard</div></div>
         <div class="stat" data-stat="devis" role="button" tabindex="0" title="Voir les devis envoyés sans réponse"><div class="lbl">Devis en attente ${info('dash.quotes')}</div><div class="val">${C.money(sumQ(pendingQuotes), cur)}</div><div class="sub">${pendingQuotes.length} devis ${pendingQuotes.length > 1 ? 'envoyés' : 'envoyé'}${expiredQuotes.length ? ` · <a href="#/devis" class="warn-link" id="go-expired">${expiredQuotes.length} ${expiredQuotes.length > 1 ? 'expirés' : 'expiré'}</a>` : ''}</div></div>
       </div>
       <div class="dash-grid">
@@ -6867,7 +6869,7 @@
         <div class="panel"><h2>Bulletins du mois</h2>
           <div class="filters">
             <select id="p-month">${MONTHS_LONG.map((l, i) => `<option value="${i + 1}" ${m === i + 1 ? 'selected' : ''}>${l}</option>`).join('')}</select>
-            ${missing.length ? `<button class="btn btn-sm btn-primary" id="p-gen">Établir les ${pl(missing.length, 'bulletin')} manquant${sPl(missing.length)}</button>` : '<span class="small ok-text">Tous les bulletins du mois sont établis.</span>'}
+            ${missing.length ? `<button class="btn btn-sm btn-primary" id="p-gen">${missing.length > 1 ? `Établir les ${pl(missing.length, 'bulletin')} manquants` : 'Établir le bulletin manquant'}</button>` : '<span class="small ok-text">Tous les bulletins du mois sont établis.</span>'}
           </div>
           ${month.length ? `<div class="scroll-x"><table class="list compact"><thead><tr>
             <th>Salarié</th><th class="r">Brut</th><th class="r">CNSS</th><th class="r">IRPP</th><th class="r">Net à payer</th><th class="r">Coût employeur</th><th>Payé le</th><th></th></tr></thead><tbody>
@@ -10732,8 +10734,8 @@
       ouvrirOnglet: pane => showTab(pane),
       ongletCourant: () => settingsTab,
       pluriel: pl,
-      rienTrouve: () => `<div class="empty"><p>Aucun réglage ne porte ces mots. Essaie un seul mot — ou regarde
-        dans l'Aide, qui explique à quoi sert chaque réglage.</p>
+      rienTrouve: (mots, phrase) => `<div class="empty"><p>${phrase} Ou regarde dans l'Aide, qui explique à quoi
+        sert chaque réglage.</p>
         <button type="button" class="btn btn-primary" id="set-vers-aide">Ouvrir l'aide</button></div>`,
       apresResultats: res => { if ($('#set-vers-aide', res)) $('#set-vers-aide', res).onclick = () => navigate('#/aide'); }
     });
@@ -11305,8 +11307,11 @@
         <div class="actions">${backButton('#/dashboard', 'aide')}<button class="btn" id="aide-support">Signaler un problème</button><button class="btn" id="aide-idee">Proposer une amélioration</button><button class="btn" id="aide-changelog">Nouveautés de la version</button></div></div>
       ${a ? '' : `<p class="lead">Comment marche SkanFact, et comment tenir la gestion d'une petite entreprise sans rien oublier. Cherche un mot, ou choisis un domaine. Partout ailleurs dans l'application, les petits <span class="i-demo">i</span> expliquent le champ juste à côté, et le <b>?</b> en haut de chaque page ouvre l'article de cette page.</p>`}
       <div class="help-search">
-        <svg class="hs-loupe" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20.5 20.5l-4.2-4.2"/></svg>
-        <input type="search" id="aide-q" placeholder="Rechercher : un mot, une question… (« assiette », « relance », « timbre »)" autocomplete="off" spellcheck="false" value="${h(aideQ)}">
+        ${/* 10.12.0 (U-30, trouvé dans l'app du comptable) — la loupe vit AVEC le champ : centrée
+              sur le bloc entier, elle descendait sous la ligne du texte dès que le compte des
+              résultats s'affichait. */''}
+        <span class="hs-champ"><svg class="hs-loupe" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20.5 20.5l-4.2-4.2"/></svg>
+        <input type="search" id="aide-q" placeholder="Rechercher : un mot, une question… (« assiette », « relance », « timbre »)" autocomplete="off" spellcheck="false" value="${h(aideQ)}"></span>
         <div class="help-count small muted" id="aide-n" hidden></div>
       </div>
       <div id="aide-res" hidden></div>
@@ -11394,7 +11399,9 @@
               <span class="ht">${aideSurligne(x.title, surligne)}</span>
               <span class="hs">${ex || aideSurligne(x.sub, surligne)}</span></button>`;
         }).join('')}</div>`
-        : `<div class="empty"><p>Aucun article ne contient ces mots. Essaie un seul mot — ou ouvre le glossaire, qui définit les cinquante-neuf termes employés dans l'application.</p>
+        : `<div class="empty"><p>${mots.split(/\s+/).filter(Boolean).length > 1
+          ? 'Aucun article ne contient tous ces mots — chacun doit s\'y trouver. Essaie-les un par un'
+          : `Aucun article ne parle de « ${h(mots)} ». Essaie un mot voisin`} — ou ouvre le glossaire, qui définit les cinquante-neuf termes employés dans l'application.</p>
             <button class="btn btn-primary" data-art="vocabulaire">Ouvrir « Le vocabulaire »</button></div>`;
       brancher();
     };

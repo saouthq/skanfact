@@ -1537,7 +1537,7 @@
   // pas les mêmes colonnes ni le même ordre, et aligner à l'aveugle met des libellés dans « Débit »
   // sans que rien ne plante.
   const normEntete = s => String(s || '').toLowerCase()
-    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-z0-9]/g, '');
   function colonnesPar(tete, alias) {
     const out = {};
@@ -4610,6 +4610,30 @@
 
   // La masse salariale d'un lot de bulletins. Tout se lit sur la COPIE figée (`calcul`) : un
   // bulletin d'avant la 9.0.0 n'a ni TFP ni FOPROLOS, et ne doit pas en gagner après coup.
+  // 10.12.0 (U-21) — ce que le livre SAIT de la qualité d'employeur d'un dossier, mois par mois :
+  // `true` si le mois porte un bulletin ou une écriture sur les rémunérations ou la CNSS, `false`
+  // si le mois a des écritures et aucune de personnel. Un mois sans écriture n'a PAS de clé : ne pas
+  // savoir n'est pas « non » (règle 9.6.0). Le calendrier ne retire un client de la CNSS que sur un
+  // trimestre entièrement saisi sans une ligne de personnel — jamais sur un livre qui commence.
+  function moisEmployeur(livre) {
+    const out = {};
+    if (!livre) return out;
+    const compteDe = role => txt((((livre.plan || []).find(c => c.role === role)) || {}).compte) || COMPTES_PAIE[role];
+    const prefixes = [compteDe('salairesBruts'), compteDe('cnss')].filter(Boolean);
+    (livre.ecritures || []).forEach(e => {
+      if (e.statut === 'contrepassee') return;
+      const m = String(e.mois || String(e.date || '').slice(0, 7));
+      if (!/^\d{4}-\d{2}$/.test(m)) return;
+      const perso = (e.lignes || []).some(l => prefixes.some(p => txt(l.compte).startsWith(p)));
+      out[m] = !!(out[m] || perso);
+    });
+    (livre.bulletins || []).forEach(b => {
+      const m = `${b.annee}-${String(b.mois).padStart(2, '0')}`;
+      if (/^\d{4}-\d{2}$/.test(m)) out[m] = true;
+    });
+    return out;
+  }
+
   function masseSalariale(bulletins) {
     const z = { brut: 0, cnssSalarie: 0, irpp: 0, css: 0, retenues: 0, net: 0,
       cnssEmployeur: 0, accident: 0, tfp: 0, foprolos: 0, chargesPatronales: 0, cout: 0, assiette: 0 };
@@ -4801,7 +4825,7 @@
     irppAnnual, computePayslip, employerChargesOf,
     COMPTES_PAIE, MOIS_PAIE, moisPaie, TRIMESTRES_PAIE,
     salarieValide, normaliserSalarie, ajouterSalarie, retirerSalarie, salariesActifs,
-    bulletinsDuMois, bulletinValide, saisiePaieValide, ajouterBulletin, supprimerBulletin, masseSalariale,
+    bulletinsDuMois, bulletinValide, saisiePaieValide, ajouterBulletin, supprimerBulletin, masseSalariale, moisEmployeur,
     ecritureDePaie, noterEcriturePaie, cnssDuTrimestre, controlesPaie,
     // La pièce équilibrée et l'amortissement (9.6.1)
     ajouterJoursIso, entrySet,

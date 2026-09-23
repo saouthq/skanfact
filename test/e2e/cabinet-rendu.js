@@ -155,6 +155,32 @@ const PAGES = ['#/dossiers', '#/relances', '#/echeances', '#/ecritures', '#/prod
         await ongletCompta(win, o.tab);
         await attendre(450);
         await mesurer(`${etiquette} fiche · compta · ${o.tab}`);
+        // 10.12.0 (U-19) — l'Exercice se replie en sections, et une section FERMÉE cache ses
+        // tableaux (soldes de gestion, à-nouveaux) à toutes les sondes. On les mesure aussi ouvertes :
+        // la leçon T-55 un cran plus bas — l'état par défaut de ce qu'on ouvre cache la page.
+        const fermees = await win.evaluate(() => {
+          const d = [...document.querySelectorAll('#view details.pli:not([open])')];
+          d.forEach(x => { x.open = true; });
+          return d.length;
+        });
+        if (fermees) {
+          await attendre(250);
+          await mesurer(`${etiquette} fiche · compta · ${o.tab} (${fermees} section${fermees > 1 ? 's' : ''} rouverte${fermees > 1 ? 's' : ''})`);
+        }
+        // Le modèle de liasse vit dans une FENÊTRE depuis la 10.12.0 (U-19) : aucune adresse n'y
+        // mène, seulement un geste — donc un instrument qui parcourt les onglets ne la verrait
+        // jamais (la leçon de la 10.6.0 : huit surfaces qu'aucune adresse ne mène).
+        if (o.tab === 'liasse') {
+          const ouvrir = await win.$('#li-modele');
+          if (!ouvrir) throw new Error('la liasse ne propose plus d\'ouvrir son modèle : la fenêtre ne serait jamais mesurée');
+          await ouvrir.click();
+          await win.waitForSelector('.modal.cab-large #sr-liasse table', { timeout: 6000 });
+          await attendre(300);
+          await mesurer(`${etiquette} fiche · compta · liasse · fenêtre du modèle`);
+          await win.keyboard.press('Escape');
+          await win.waitForFunction(() => !document.querySelector('.modal.cab-large'), null, { timeout: 5000 })
+            .catch(() => { throw new Error('la fenêtre du modèle ne se referme pas à Échap sans modification'); });
+        }
       }
     }
   };

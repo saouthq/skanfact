@@ -310,10 +310,19 @@ t('T-23 : le vert du bilan ne se pose que sur un exercice qui a ses à-nouveaux'
 
 t('T-17 : les trois gestes d\'une déclaration disent pourquoi ils attendent, et le bouton qui débloque est là', () => {
   const app = cabApp();
-  const z = tranche(app, '<h2>Ce qui suit ${info(\'dc.suite\')}</h2>', 'id="dc-payee"', 300, 3000);
-  assert.ok(z.includes('prépare-la d\'abord') && z.includes('id="dc-preparer2"'), 'le motif ne se lit pas au-dessus des boutons, ou le bouton n\'est pas répété');
+  // 10.12.0 (U-11) — retourné vers la règle. Ce test exigeait un SECOND « Préparer la déclaration »
+  // sous « Ce qui suit » : c'était la parade de la 9.8.8, parce que les gestes qu'il débloque
+  // vivaient deux écrans plus bas. Les quatre étapes sont maintenant sur UNE rangée : la règle —
+  // le motif se lit au-dessus des boutons, et le bouton qui débloque est dans la même rangée que ce
+  // qu'il débloque — tient par construction, avec un seul « Préparer ».
+  const z = tranche(app, '<h2>Les étapes du mois ${info(\'dc.suite\')}</h2>', 'id="dc-payee"', 300, 3000);
+  assert.ok(/\$\{motif \? `<p class="small muted dc-motif">/.test(z), 'le motif ne se lit pas au-dessus des boutons');
+  assert.ok(z.indexOf('dc-motif') < z.indexOf('id="dc-preparer"') && z.includes('id="dc-ecriture"') && z.includes('id="dc-deposee"'),
+    'le bouton qui débloque ne vit pas dans la même rangée que les gestes qu\'il débloque');
+  const i = app.indexOf('const motif = ');
+  assert.ok(i > 0 && /prépare-la d\\'abord/.test(app.slice(i, i + 400)), 'le motif ne dit plus quel geste débloque');
   assert.ok(/id="dc-deposee"[^>]*title="\$\{!posee \? 'Prépare la déclaration d\\'abord\.'/.test(z), '« Marquer déposée » éteint n\'explique rien');
-  assert.ok(/\[\$\('#dc-preparer', el\), \$\('#dc-preparer2', el\)\]\.forEach/.test(app), 'les deux boutons « Préparer » ne font pas le même geste');
+  assert.strictEqual((app.match(/id="dc-preparer\w*"/g) || []).length, 1, 'un second bouton « Préparer » est revenu (U-11) : deux boutons pour un geste');
   // T-21, côté écran : le bouton du paiement reste allumé tant qu'un paiement est posé.
   assert.ok(app.includes("id=\"dc-payee\" ${!posee || (!(posee.deposee && posee.deposee.le) && !(posee.payee && posee.payee.le)) ? 'disabled' : ''}"), 'le bouton du paiement s\'éteint dès que le dépôt est vide, même payée');
   assert.ok(app.includes('Dépôt et paiement annulés'), 'le geste double n\'est pas dit');
@@ -793,10 +802,14 @@ t('T-57 : une bulle qui suit un BOUTON a son écart, et rien ne se colle par une
   assert.ok(/^\.btn \+ button\.i \{ margin-inline-start: \d+px; \}$/m.test(css),
     'une bulle posée après un bouton doit porter son propre écart dans la feuille PARTAGÉE');
   const app = cabApp();
-  assert.ok(/const hors = c\.horsTotal \? `<span class="muted small dc-hors"/.test(app),
-    'la mention « hors total » ne se sépare pas du bouton par une espace de gabarit (3,6 px, décidés par personne)');
+  // 10.12.0 (U-14) — la mention « hors total » ne SUIT plus un bouton : elle vit sous le libellé de
+  // sa case, en bloc (`dc-raison`), là où l'œil lit la case. La règle tient donc par construction —
+  // aucune espace de gabarit ne peut plus coller un texte à un bouton dans cette cellule — et on
+  // exige que la mention ne soit jamais recollée derrière le bouton des écritures.
+  assert.ok(/const raison = c\.montant == null \? c\.motif : c\.horsTotal \|\| ''/.test(app), 'la note « hors total » ne vit plus sous le libellé');
+  assert.ok(!/data-cases="\$\{k\}"[^`]*<\/button>\$\{hors\}/.test(app), 'la mention « hors total » est revenue coller au bouton des écritures');
   const cab = lireSource('src', 'cabinet', 'renderer', 'cabinet.css');
-  assert.ok(/^\.dc-hors \{ margin-inline-start: \d+px; \}$/m.test(cab), '.dc-hors doit exister dans la feuille');
+  assert.ok(/^\.dc-raison \{[^}]*white-space: normal/m.test(cab), '.dc-raison doit exister dans la feuille, et passer à la ligne');
 });
 
 // T-50 (9.8.8-beta.3) — le brouillard et la recherche affichaient « 2026-03-04 » sous une grille

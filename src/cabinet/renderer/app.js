@@ -139,6 +139,28 @@
     el.hidden = false;
     clearTimeout(el.__t);
     el.__t = setTimeout(() => { el.hidden = true; }, 2600);
+    // U-11 — « ✓ enregistré » rend son « Enregistrer » au repos : le vert ne désigne que ce qui
+    // reste à enregistrer (voir `sale`).
+    const b = el.parentElement && el.parentElement.querySelector('[data-enreg]');
+    if (b) b.classList.remove('btn-primary');
+  }
+
+  // U-11 — un panneau de réglages n'a pas de bouton principal AU REPOS : six « Enregistrer » verts
+  // sur le même onglet ne désignaient plus rien (mesuré sur « Mon cabinet » et « Comptabilité »). Le
+  // bouton `data-enreg` d'un panneau prend la couleur à la première modification — une frappe, un
+  // choix, une ligne ajoutée ou retirée — et `flash` la lui rend au « ✓ enregistré ».
+  const sale = el => {
+    const p = el && el.closest && el.closest('.panel');
+    const b = p && p.querySelector('[data-enreg]');
+    if (b) b.classList.add('btn-primary');
+  };
+
+  // Ce qui se dicte au téléphone se copie aussi : vingt caractères affichés sans bouton pour les
+  // prendre se recopient à la main, donc se recopient faux (10.9.2). Une seule porte pour les trois
+  // empreintes de l'application — celle du cabinet (Réglages, assistant) et celle de la licence.
+  async function copierEmpreinte(texte) {
+    try { await navigator.clipboard.writeText(texte || ''); toast('Empreinte copiée.'); }
+    catch { await infoDialog('Copie impossible', 'Le presse-papiers n\'a pas répondu. Sélectionne l\'empreinte à la main.'); }
   }
 
   // Un refus MONTRE le champ. L'app entreprise a `refus()` depuis la 7.0.0 ; celle-ci n'en avait
@@ -216,7 +238,10 @@
 
   function info(key) {
     if (!G.INFO[key]) return '';
-    return `<button type="button" class="i" data-info="${esc(key)}" aria-label="Qu'est-ce que c'est ?" title="Qu'est-ce que c'est ?">i</button>`;
+    // Le NOM que lit un lecteur d'écran dit ce que la bulle explique (10.12.0) : trois bulles
+    // nommées « Qu'est-ce que c'est ? » sur une page sont trois boutons qu'on ne distingue pas —
+    // c'est Browser Use, qui lit l'arbre d'accessibilité, qui l'a montré.
+    return `<button type="button" class="i" data-info="${esc(key)}" aria-label="Explication : ${esc(G.INFO[key].t || key)}" title="Qu'est-ce que c'est ?">i</button>`;
   }
   const lbl = (text, key) => key ? `<span class="fl">${text} ${info(key)}</span>` : text;
 
@@ -470,19 +495,26 @@
   const nbExemple = () => (S && (S.dossiers || []).filter(d => d.demo).length)
     || K.demoDossiers(new Date().toISOString().slice(0, 10)).length;
 
+  // 10.12.0 — un montant ne se COUPE jamais en fin de ligne : l'espace des milliers est l'espace
+  // insécable fine du moteur (`fmtMontant`, U+202F), et la devise tient au nombre par une insécable.
+  // « coût employeur 1 500,225 DT » se lisait « …coût employeur 1 » / « 500,225 DT » dans l'aperçu
+  // d'un bulletin : deux formateurs, deux espaces, et seul celui de l'écran se laissait couper.
   const money = (n, cur) => {
     if (n == null || n === '') return '—';
     const v = Number(n);
     if (!isFinite(v)) return '—';
     const dec = dinar(cur) ? 3 : 2;
-    const corps = Math.abs(v).toFixed(dec).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
-    return (v < 0 ? '−' : '') + corps + ' ' + (cur || 'DT');
+    const corps = Math.abs(v).toFixed(dec).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '\u202f');
+    return (v < 0 ? '−' : '') + corps + '\u00a0' + (cur || 'DT');
   };
   // Un montant AFFICHÉ, sans sa devise : la grille de saisie, le brouillard, les abonnements et
   // la recherche écrivaient « 4.500 » à côté d'un total à « 0,000 » (T-28). En français, le point
   // décimal fait lire quatre mille cinq cents — sur l'écran dont le métier est de contrôler des
   // montants.
   const montant = n => money(n).replace(/\s(DT|[A-Z]{3})$/, '');
+  // Un taux s'écrit comme un montant (10.12.0) : « 56,33 % » à côté de « -3,998 % », deux précisions
+  // et deux signes moins dans le même tableau des ratios. Deux décimales, le vrai signe moins.
+  const pourcent = v => { const n = Number(v); return v == null || !isFinite(n) ? '—' : (n < 0 ? '−' : '') + Math.abs(n).toFixed(2).replace('.', ',') + '\u00a0%'; };
   // Un montant DANS UN CHAMP (10.12.0, H-3 — trouvé en testant comme un humain). La 9.8.8 gardait
   // `toFixed(3)` pour « remplir un champ, qui se relit en interne » : mais un champ, c'est le
   // COMPTABLE qui le relit. Tab soldait une pièce en écrivant « 250.000 » sous un total à
@@ -1353,15 +1385,22 @@
   // pas une seule valeur : elles coûtaient de la largeur à toutes les autres et serraient les noms
   // de clients. On les masque, on le DIT, et on laisse un bouton pour les rendre — masquer sans le
   // dire serait pire que le défaut (règle 7.12.0 : un filet ne doit pas devenir un piège).
+  // 10.12.0 — et « Tout afficher » se DÉFAIT : mémorisé, il n'avait aucun retour, et les colonnes
+  // vides restaient pour toujours — un réglage qui accepte un clic et se retire la possibilité de
+  // revenir en arrière (7.12.0). Le nombre de colonnes vides AFFICHÉES est gardé pour le dire.
   function colonnesUtiles(rows) {
-    if (prefs.get('colTout', false) === true) return { provisoires: true, signale: true, relance: true, honoraires: true, masquees: 0 };
     const c = {
       provisoires: rows.some(r => r.provisionalCount > 0),
       signale: rows.some(r => r.issues > 0),
       relance: rows.some(r => r.lastRelanceAt),
       honoraires: rows.some(r => r.fees > 0)
     };
-    c.masquees = ['provisoires', 'signale', 'relance', 'honoraires'].filter(k => !c[k]).length;
+    const vides = ['provisoires', 'signale', 'relance', 'honoraires'].filter(k => !c[k]).length;
+    if (prefs.get('colTout', false) === true) {
+      return { provisoires: true, signale: true, relance: true, honoraires: true, masquees: 0, videsAffichees: vides };
+    }
+    c.masquees = vides;
+    c.videsAffichees = 0;
     return c;
   }
 
@@ -1470,7 +1509,7 @@
     const demoCount = (S.dossiers || []).filter(d => d.demo).length;
     // `recoveryAt` vaut `undefined` tant que la réponse n'est pas revenue : on ne réclame que sur un
     // non franc. La date ne vit pas dans l'état chiffré, elle ne peut donc pas venir de `S`.
-    const todo = K.cabinetTodo(S, null, { cleSecours: recoveryAt === undefined ? null : recoveryAt !== null, licence: licCab, questions: questionsAttente });
+    const todo = K.cabinetTodo(S, null, { cleSecours: recoveryAt === undefined ? null : recoveryAt !== null, licence: licCab, questions: questionsAttente, employeurs: employeursConnus() });
     const p = K.portfolio(S);
 
     // Écran d'ouverture d'un cabinet qui vient d'installer l'application : il n'a rien reçu, et il
@@ -1520,8 +1559,8 @@
       ${portfolioPanel(p)}
       ${inboxBanner()}
       ${todoPanel(todo)}
-      ${demoCount ? `<div class="banner"><span>Ces ${pl(demoCount, 'dossier')} sont <strong>fictifs</strong> : ils montrent les quatre situations
-        que tu rencontreras. Ils disparaîtront au premier vrai paquet importé.${exempleRefait ? ` <strong>Ils viennent d'être remis à jour</strong>
+      ${demoCount ? `<div class="banner"><span>${demoCount > 1 ? `Ces ${pl(demoCount, 'dossier')} sont <strong>fictifs</strong> : ils montrent les quatre situations
+        que tu rencontreras. Ils disparaîtront` : 'Ce dossier est <strong>fictif</strong> : c\'est ce qui reste de l\'exemple. Il disparaîtra'} au premier vrai paquet importé.${exempleRefait ? ` <strong>${demoCount > 1 ? 'Ils viennent' : 'Il vient'} d'être remis à jour</strong>
         ${exempleRefait.raison === 'version' ? `avec la version ${esc(exempleRefait.version)}` : 'sur le mois en cours'} : un exemple qui date
         montrerait des retards qui n'existent pas. Tes vrais dossiers n'ont pas bougé.${exempleRefait.livres
           ? ` ${pl(exempleRefait.livres, 'livre de démonstration est parti', 'livres de démonstration sont partis')} avec l'ancien exemple : ce qui avait été saisi dessus n'existe plus.` : ''}` : ''}</span>
@@ -1552,7 +1591,7 @@
                 comme un humain) : dans la cellule du nom, il le coupait — « Garage Ben… » — alors
                 que la ligne avait de la place partout ailleurs. Ici, il remplace un tiret qui ne
                 disait rien par la RAISON pour laquelle il n'y a pas de dernier mois. */''}
-          <td class="nw">${r.manual && !r.lastLabel ? '<span class="badge b-hors" title="Pas encore sur SkanFact : rien ne lui est réclamé">hors SkanFact</span>' : esc(r.lastLabel || '—')}${r.lastMonth && !r.lastDefinitive ? ' <span class="badge partielle">provisoire</span>' : ''}</td>
+          <td class="dl-mois">${r.manual && !r.lastLabel ? '<span class="badge b-hors" title="Pas encore sur SkanFact : rien ne lui est réclamé">hors SkanFact</span>' : `<span class="nw">${esc(r.lastLabel || '—')}</span>`}${r.lastMonth && !r.lastDefinitive ? ' <span class="badge partielle">provisoire</span>' : ''}</td>
           <td class="r nw">${esc(r.lastFigures ? money(r.lastFigures.ca, r.lastFigures.devise) : '—')}</td>
           ${col.honoraires ? `<td class="r nw">${r.fees ? esc(money(r.fees)) : '—'}</td>` : ''}
           <td class="r">${r.missingCount || '—'}</td>
@@ -1572,7 +1611,9 @@
         <p class="legende">${legendeNiveaux()}</p>
         <p class="muted small">Les totaux et l'export portent sur la sélection entière, pas sur la page affichée.${
   col.masquees ? ` ${pl(col.masquees, 'colonne vide est masquée', 'colonnes vides sont masquées')}, pour laisser la place aux autres.
-          <button type="button" class="btn btn-ghost btn-sm" id="col-tout">Tout afficher</button>` : ''}</p>`
+          <button type="button" class="btn btn-ghost btn-sm" id="col-tout">Tout afficher</button>`
+    : col.videsAffichees ? ` ${pl(col.videsAffichees, 'colonne vide est affichée', 'colonnes vides sont affichées')} : elles élargissent le tableau.
+          <button type="button" class="btn btn-ghost btn-sm" id="col-vides">Masquer les colonnes vides</button>` : ''}</p>`
         : `<div class="empty">Aucun dossier ne correspond à cette recherche.</div>`}`;
 
     $('#imp').onclick = () => doImport();
@@ -1608,6 +1649,8 @@
     bindPager(view, render);
     const ct = $('#col-tout');
     if (ct) ct.onclick = () => { prefs.set('colTout', true); render(); };
+    const cv = $('#col-vides');
+    if (cv) cv.onclick = () => { prefs.set('colTout', false); render(); };
     $$('tr[data-id]', view).forEach(tr => {
       tr.onclick = e => {
         // Le menu d'actions vit DANS la ligne : sans cette garde, l'ouvrir ouvrirait aussi la fiche
@@ -1786,7 +1829,11 @@
         <div class="d-ident">${ident}</div>
         <div class="d-etat" id="d-etat">${etat}</div>
       </div><div class="actions">
-        ${row.missingCount || row.provisionalCount ? '<button class="btn btn-primary" id="rel">Relancer</button>' : ''}
+        ${/* U-11 — un seul vert par écran. Sur l'onglet Comptabilité, l'étape suivante est celle du
+              livre (le créer, saisir, déclarer) et « Relancer » y redevient un bouton ordinaire : deux
+              verts côte à côte ne désignent plus rien. Il reprend sa couleur sur le Suivi et les
+              Paquets, où c'est lui qui répond au manque. */''}
+        ${row.missingCount || row.provisionalCount ? `<button class="btn${onglet === 'comptabilite' ? '' : ' btn-primary'}" id="rel">Relancer</button>` : ''}
         <button class="btn" id="edit">Modifier la fiche</button>
         ${/* Un en-tête de fiche a un budget de boutons, comme une ligne de liste (7.29.0).
               « Imprimer » est un geste rare : il occupait une place premium à côté de ceux qu'on
@@ -1860,7 +1907,7 @@
         <tbody>${relances.map(r => `<tr>
           <td class="nw">${esc(fmtWhen(r.at))} <span class="muted small">${esc(ago(r.at))}</span></td>
           <td class="nw">${esc(labelOf(K.RELANCE_WAYS, r.via) || r.via)}</td>
-          <td>${esc((r.months || []).map(K.monthLabel).join(', ') || '—')}</td>
+          <td>${esc(K.monthListLabel(r.months || []) || '—')}</td>
           <td class="muted">${esc(r.note || '')}</td></tr>`).join('')}</tbody></table>`
         : `<div class="empty mini">Aucune relance enregistrée pour ce client.<br>
           <span class="small">${/* 10.12.0 (U-22) — la phrase suit la condition du bouton : sur un client à
@@ -2319,7 +2366,7 @@
         // sinon le mois paraît classé alors que deux pièces attendent encore (règle 9.8.0).
         (r.nonValidees || []).length ? `<p>${esc(pl(r.nonValidees.length, 'écriture n\'a pas pu être validée', 'écritures n\'ont pas pu être validées'))} et ${r.nonValidees.length > 1 ? 'restent' : 'reste'} en brouillard :</p>` +
           puces(r.nonValidees.slice(0, 8).map(x => `<li>${esc(x.journal || '')} ${esc(x.piece || '(sans référence)')} (${esc(moisLabelCourt(x.mois))}) : ${esc(x.motif || '')}</li>`)) : '',
-        r.illisibles.length ? `<p>${esc(pl(r.illisibles.length, 'mois', 'mois'))} illisible${r.illisibles.length > 1 ? 's' : ''} : ${esc(r.illisibles.map(x => moisLabelCourt(x.mois)).join(', '))}.</p>` : ''
+        r.illisibles.length ? `<p>${esc(pl(r.illisibles.length, 'mois', 'mois'))} illisible${r.illisibles.length > 1 ? 's' : ''} : ${esc(K.monthListLabel(r.illisibles.map(x => x.mois)))}.</p>` : ''
       ].filter(Boolean);
       // La suite : le brouillard s'il en reste — c'est lui qui attend une décision —, sinon le
       // livre-journal, pour relire ce qui vient d'entrer.
@@ -2597,16 +2644,30 @@
            Les tableaux ci-dessous sont lus dans les paquets reçus. Tes sauvegardes sont dans les Réglages.</div>`
         : '';
 
+    // Un écran qui n'existe qu'avec un livre (« Banque », « Saisie »…) se ramène au livre-journal
+    // AVANT que quoi que ce soit ne le dessine. Depuis que le sous-onglet vit dans l'adresse (U-06),
+    // « /comptabilite/banque » peut désigner un dossier qui n'a pas encore de livre : la garde vivait
+    // plus bas, APRÈS le calcul de la vue, et `vueBanque` lisait `s.livre.releves` sur un livre
+    // absent — TypeError, et la page restait sur « Lecture de la comptabilité… » pour toujours, sans
+    // un mot. L'adresse est corrigée sans ajouter d'entrée à l'historique : elle ne doit pas
+    // promettre un écran qu'on ne montre pas.
+    if (!ongletDispo(s.onglet)) {
+      s.onglet = 'journal';
+      if (location.hash.startsWith('#/dossier/' + encodeURIComponent(dossier.id) + '/comptabilite/')) {
+        history.replaceState(null, '', adresseCompta(dossier, 'journal'));
+      }
+    }
+
     const periode = lignesDeLaPeriode(dossier);
     const { lignes, illisibles, anciens, manquants, source } = periode;
     // Les vues et l'export lisent la MÊME période (lignes, ouverture, bornes) : recalculée dans
     // chacune, elle finirait par diverger (7.29.0).
     s.periode = periode;
     const avert = [];
-    if (manquants.length) avert.push(`Il manque ${manquants.length > 3
-      ? pl(manquants.length, 'mois', 'mois') + ' sur cette période'
-      : manquants.map(moisLabelCourt).join(' et ')} : ces livres sont incomplets.`);
-    if (anciens.length) avert.push(`${anciens.length > 1 ? 'Des paquets viennent' : 'Un paquet vient'} d'une version d'avant la 8.8.0 : pas de numéro ni de tiers (${anciens.map(moisLabelCourt).join(', ')}).`);
+    // « juin 2026 et juillet 2026 et août 2026 » : personne n'écrit ça. Le formateur des relances le
+    // sait depuis la 1.0.0 (« juin, juillet et août 2026 », l'intervalle au-delà de trois mois).
+    if (manquants.length) avert.push(`Il manque ${K.missingLabel(manquants)} : ces livres sont incomplets.`);
+    if (anciens.length) avert.push(`${anciens.length > 1 ? 'Des paquets viennent' : 'Un paquet vient'} d'une version d'avant la 8.8.0 : pas de numéro ni de tiers (${K.monthListLabel(anciens)}).`);
     illisibles.forEach(i => avert.push(`${moisLabelCourt(i.month)} : ${i.motif}.`));
 
     // La SAISIE n'a pas besoin de lignes existantes : c'est l'écran par lequel elles arrivent. La
@@ -2660,14 +2721,6 @@
 
     // Le second niveau ne montre que les écrans du groupe ouvert. Sans livre, un seul groupe existe
     // (les quatre vues lues dans les paquets) : on ne pose pas de premier niveau pour un seul choix.
-    if (!ongletDispo(s.onglet)) {
-      s.onglet = 'journal';
-      // L'adresse ne doit pas promettre un écran qu'on ne montre pas (« /banque » sur un dossier
-      // sans livre) : on la corrige sans ajouter d'entrée à l'historique.
-      if (location.hash.startsWith('#/dossier/' + encodeURIComponent(dossier.id) + '/comptabilite/')) {
-        history.replaceState(null, '', adresseCompta(dossier, 'journal'));
-      }
-    }
     const gOuvert = groupeCompta(s.onglet);
     s.dernierParGroupe = s.dernierParGroupe || {};
     s.dernierParGroupe[gOuvert.id] = s.onglet;
@@ -3012,40 +3065,82 @@
     // propres livres. C'est elle qui éteint le bouton : la repasser compterait la TVA deux fois.
     const ecrite = !!d.ecritureExistante;
     const echecs = (d.controles || []).filter(c => !c.ok);
+    const deposee = !!(posee && posee.deposee && posee.deposee.le), payee = !!(posee && posee.payee && posee.payee.le);
+    // 10.12.0 (U-11) — UN seul bouton principal, et c'est l'ÉTAPE SUIVANTE. « Préparer la
+    // déclaration » vivait deux fois (en haut, neutre ; en bas, en vert), et une fois préparée, plus
+    // rien ne disait ce qui venait après. Les quatre gestes du mois se lisent maintenant dans leur
+    // ordre, en haut, et le vert suit le travail : préparer, écrire, déposer, payer.
+    const suivante = !posee ? 'preparer' : !ecrite ? 'ecriture' : !deposee ? 'deposee' : !payee ? 'payee' : '';
+    const cls = pas => 'btn btn-sm' + (pas === suivante ? ' btn-primary' : '');
+    const fait = ok => ok ? '<span class="dc-coche" aria-hidden="true">✓</span>' : '';
+    // La flèche est DESSINÉE : le caractère « → » se posait sous la ligne des boutons, sa hauteur
+    // venant de la police et pas de la rangée.
+    const fleche = '<svg class="dc-fleche" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h9M8.5 4.5 12 8l-3.5 3.5"/></svg>';
+    // Un bouton éteint dit POURQUOI, en gris et AU-DESSUS des boutons (T-17, règles 9.4.5 et
+    // 9.4.2) — et une seule phrase, celle de l'étape qui bloque, pas quatre.
+    // Une étape FAITE se dit sur son bouton (« ✓ Écriture du mois passée ») ; la phrase n'explique
+    // que celles qui ATTENDENT — la première version redisait l'écriture faite et taisait le
+    // paiement, qui était pourtant le seul bouton éteint.
+    const motif = !posee ? (ecrite ? 'Les deux pense-bêtes attendent la déclaration : prépare-la d\'abord.'
+      : 'Les trois étapes suivantes attendent la déclaration : prépare-la d\'abord.')
+      : !deposee && !payee ? '« Marquer payée » attend le dépôt : on ne paie pas ce qu\'on n\'a pas déposé.' : '';
     return `<div class="filters">
       <label class="f-lab">Mois<select id="dc-mois" aria-label="Le mois à déclarer">${tous.map((m, i) =>
         `<option value="${m}" ${m === d.periode ? 'selected' : ''}>${MOIS_COURTS[i]} ${esc(s.annee)}</option>`).join('')}</select></label>
       ${info('dc.etat')}
       <span class="small muted">État</span>
       <span class="badge ${etat.etat === 'payé' ? 'b-paid' : etat.etat === 'déclaré' ? 'b-part' : etat.etat === 'saisi' ? 'b-due' : ''}">${esc(etat.etat)}</span>
-      <button class="btn btn-sm" id="dc-preparer">${posee ? 'Recalculer' : 'Préparer la déclaration'}</button>
+      <span class="grow"></span>
       <button class="btn btn-sm btn-ghost" id="dc-csv">Exporter les cases</button>
     </div>
-    <div class="info-box mb">Ces chiffres se <b>recopient</b> sur le portail. SkanFact ne dépose rien et ne se
-      connecte à aucune administration : « Marquer déposée » est un pense-bête, jamais un accusé de réception.</div>
-    ${echecs.length ? `<div class="warn-box mb">${echecs.map(c => `<div>${esc(c.detail)}</div>`).join('')}</div>`
-      : `<div class="ok-box mb">Les trois contrôles passent : aucun brouillard sur le mois, aucun compte d'attente ouvert, et le report de TVA tombe juste.</div>`}
+    ${/* 10.12.0 (U-13) — les bandeaux ne s'empilent plus avant le premier chiffre. La promesse (« ne
+          dépose rien ») vit avec les deux pense-bêtes qu'elle décrit ; les contrôles qui passent
+          tiennent en une ligne discrète, et seul un contrôle qui ÉCHOUE garde l'orange : il porte
+          un geste à faire. Un vert de plus au-dessus des cases n'apprenait rien. */''}
+    <div class="panel dc-suite" id="dc-suite"><h2>Les étapes du mois ${info('dc.suite')}</h2>
+      ${motif ? `<p class="small muted dc-motif">${esc(motif)}</p>` : ''}
+      <div class="dc-etapes">
+        <button class="${cls('preparer')}" id="dc-preparer">${posee ? fait(true) + 'Préparée — recalculer' : 'Préparer la déclaration'}</button>${fleche}
+        <button class="${cls('ecriture')}" id="dc-ecriture" ${!posee || ecrite ? 'disabled' : ''}
+          title="${!posee ? 'Prépare la déclaration d\'abord.' : ecrite ? 'Elle existe déjà : la refaire compterait la TVA du mois deux fois.' : ''}">${ecrite ? fait(true) + 'Écriture du mois passée' : 'Écrire l\'écriture du mois'}</button>${fleche}
+        <button class="${cls('deposee')}" id="dc-deposee" ${!posee ? 'disabled' : ''} title="${!posee ? 'Prépare la déclaration d\'abord.' : ''}">${
+          deposee ? fait(true) + 'Déposée le ' + esc(fmtJour(posee.deposee.le)) + ' — annuler' : 'Marquer déposée'}</button>${fleche}
+        ${/* Le bouton du paiement reste ALLUMÉ tant qu'un paiement est posé (T-21) : éteint dès que
+              le dépôt est vide, il enfermait dans « payée mais pas déposée » sans aucune issue. */''}
+        <button class="${cls('payee')}" id="dc-payee" ${!posee || (!(posee.deposee && posee.deposee.le) && !(posee.payee && posee.payee.le)) ? 'disabled' : ''}
+          title="${!posee ? 'Prépare la déclaration d\'abord.' : !(posee.deposee && posee.deposee.le) && !(posee.payee && posee.payee.le) ? 'On ne paie pas ce qu\'on n\'a pas déposé.' : ''}">${
+          payee ? fait(true) + 'Payée le ' + esc(fmtJour(posee.payee.le)) + ' — annuler' : 'Marquer payée'}</button>
+      </div>
+      <p class="small muted mt">Ces chiffres se <b>recopient</b> sur le portail : SkanFact ne dépose rien et ne se connecte à aucune
+      administration — « déposée » et « payée » sont des pense-bêtes, jamais un accusé de réception. L'écriture du mois
+      (${esc(d.comptes.collectee)} / ${esc(d.comptes.deductible)} → ${esc(d.comptes.aPayer)}) arrive en <b>brouillard</b>, au dernier jour
+      du mois ; ${(s.livre.releves || []).length
+        ? 'le règlement viendra du relevé bancaire — pointer « payée » ne l\'écrit pas, sinon il serait compté deux fois.'
+        : 'ce dossier n\'a pas de relevé bancaire : le règlement se saisit dans la grille, sur le journal de banque.'}</p>
+    </div>
+    ${echecs.length ? `<div class="warn-box mt">${echecs.map(c => `<div>${esc(c.detail)}</div>`).join('')}</div>`
+      : `<p class="small ligne-ok mt"><span aria-hidden="true">✓</span> Les trois contrôles passent : aucun brouillard sur le mois, aucun compte d'attente ouvert, le report de TVA tombe juste.</p>`}
     <div class="panel mt"><h2>Les cases ${info('dc.cases')}</h2>
       <div class="scroll-x"><table class="list compact"><thead><tr>
         <th>Case</th><th class="r nw">Montant</th><th class="nw">D'où ça vient</th></tr></thead>
       <tbody>${ORDRE_CASES.filter(k => d.cases[k]).map(k => {
         const c = d.cases[k];
         const n = (c.ecritures || []).length;
-        // Une ligne qui N'ENTRE PAS dans le total le dit dans sa colonne « d'où ça vient » (T-16) :
-        // un total posé au bas d'une colonne se lit comme la somme de la colonne (9.4.5), et l'IRPP
-        // imprimé juste au-dessus faisait plus de deux fois le total qui le sautait sans un mot.
-        // L'écart avec le bouton qui précède vient d'une CLASSE, pas d'une espace de gabarit : une
-        // espace entre deux balises vaut 3,6 px, c'est-à-dire un écart que personne n'a décidé.
-        const hors = c.horsTotal ? `<span class="muted small dc-hors" title="${esc(c.horsTotal)}">— ${esc(c.horsTotal.split(' — ')[0])}, À VÉRIFIER</span>` : '';
+        // 10.12.0 (U-14) — la RAISON d'une case se lit en entier, sous son libellé. Elle vivait dans
+        // la colonne « d'où ça vient », coupée à soixante caractères (« La taxe de formation
+        // professionnell… »), et la note de l'IRPP à dix (« Non compris d… ») : on ouvrait une
+        // infobulle pour lire la seule phrase qui dit pourquoi une case est vide. Une ligne qui
+        // N'ENTRE PAS dans le total le dit toujours (T-16) — un total posé au bas d'une colonne se
+        // lit comme la somme de la colonne (9.4.5) —, mais sous le libellé, là où l'œil lit la case.
+        const raison = c.montant == null ? c.motif : c.horsTotal || '';
         return `<tr class="${k === 'aDecaisser' ? 'dc-total' : ''}">
-          <td>${esc(LIBELLE_CASE[k] || k)}</td>
+          <td>${esc(LIBELLE_CASE[k] || k)}${raison ? `<div class="small muted dc-raison">${esc(raison)}</div>` : ''}</td>
           <td class="r nw">${c.montant == null ? '<span class="muted">—</span>' : esc(money(c.montant))}</td>
-          <td class="tronq" title="${esc(c.horsTotal || c.motif || (n ? pl(n, 'écriture') : ''))}">${
-            c.montant == null ? `<span class="muted small">${esc((c.motif || '').slice(0, 60))}…</span>`
-              : n ? `<button type="button" class="btn btn-sm btn-ghost" data-cases="${k}" aria-expanded="${declState.ouverte === k ? 'true' : 'false'}">${esc(pl(n, 'écriture'))} ${declState.ouverte === k ? '▴' : '▾'}</button>${hors}`
+          <td class="nw">${
+            c.montant == null ? '<span class="muted small">à vérifier</span>'
+              : n ? `<button type="button" class="btn btn-sm btn-ghost" data-cases="${k}" aria-expanded="${declState.ouverte === k ? 'true' : 'false'}">${esc(pl(n, 'écriture'))} ${declState.ouverte === k ? '▴' : '▾'}</button>`
                 : c.sens === 'creance' ? '<span class="muted small">à récupérer — hors total</span>'
-                  : c.composantes ? `<span class="muted small">somme de : ${esc(c.composantes.map(x => LIBELLE_CASE[x] || x).join(' + '))}</span>`
-                    : `<span class="muted small">calculé</span>${hors}`}</td></tr>`;
+                  : `<span class="muted small">calculé</span>`}</td></tr>`;
       }).join('')}</tbody></table></div>
       ${d.parTaux
         ? `<h3 class="sub-h">TVA collectée par taux</h3><table class="list compact"><tbody>${d.parTaux.map(x =>
@@ -3054,34 +3149,7 @@
            (${esc(d.comptes.collectee)}1, ${esc(d.comptes.collectee)}2…). Ce dossier n'en a qu'un : le total est juste,
            sa répartition ne s'invente pas.</p>`}
     </div>
-    ${declState.ouverte && d.cases[declState.ouverte] ? panneauPieces(d.cases[declState.ouverte], LIBELLE_CASE[declState.ouverte]) : ''}
-    <div class="panel mt"><h2>Ce qui suit ${info('dc.suite')}</h2>
-      ${/* Un bouton éteint dit POURQUOI, et le motif se lit AU-DESSUS des boutons, en gris — pas
-            dans une infobulle qu'il faut deviner au survol, invisible au clavier et au doigt
-            (T-17, règles 9.4.5 et 9.4.2). Et le bouton qui débloque est répété ICI : « Préparer la
-            déclaration » vivait deux écrans plus haut, et les deux ne se rencontraient jamais. */''}
-      ${!posee ? `<p class="small muted">Ces trois gestes attendent la déclaration : prépare-la d'abord.
-        <button type="button" class="btn btn-sm btn-primary" id="dc-preparer2" style="margin-inline-start:8px">Préparer la déclaration</button></p>`
-        : ecrite ? `<p class="small muted">L'écriture du mois existe déjà : la refaire compterait la TVA du mois deux fois.</p>`
-          : !(posee.deposee && posee.deposee.le) && !(posee.payee && posee.payee.le)
-            ? `<p class="small muted">« Marquer payée » attend le dépôt : on ne paie pas ce qu'on n'a pas déposé.</p>` : ''}
-      <div class="inline">
-        <button class="btn btn-sm" id="dc-ecriture" ${!posee || ecrite ? 'disabled' : ''}
-          title="${!posee ? 'Prépare la déclaration d\'abord.' : ecrite ? 'Elle existe déjà : la refaire compterait la TVA du mois deux fois.' : ''}">Écrire l'écriture du mois</button>
-        <button class="btn btn-sm" id="dc-deposee" ${!posee ? 'disabled' : ''} title="${!posee ? 'Prépare la déclaration d\'abord.' : ''}">${
-          posee && posee.deposee && posee.deposee.le ? 'Déposée le ' + esc(fmtJour(posee.deposee.le)) + ' — annuler' : 'Marquer déposée'}</button>
-        ${/* Le bouton du paiement reste ALLUMÉ tant qu'un paiement est posé (T-21) : éteint dès que
-              le dépôt est vide, il enfermait dans « payée mais pas déposée » sans aucune issue. */''}
-        <button class="btn btn-sm" id="dc-payee" ${!posee || (!(posee.deposee && posee.deposee.le) && !(posee.payee && posee.payee.le)) ? 'disabled' : ''}
-          title="${!posee ? 'Prépare la déclaration d\'abord.' : !(posee.deposee && posee.deposee.le) && !(posee.payee && posee.payee.le) ? 'On ne paie pas ce qu\'on n\'a pas déposé.' : ''}">${
-          posee && posee.payee && posee.payee.le ? 'Payée le ' + esc(fmtJour(posee.payee.le)) + ' — annuler' : 'Marquer payée'}</button>
-      </div>
-      <p class="small muted mt">L'écriture du mois (${esc(d.comptes.collectee)} / ${esc(d.comptes.deductible)} → ${esc(d.comptes.aPayer)})
-      arrive en <b>brouillard</b>, au dernier jour du mois : c'est toi qui la valides.
-      ${(s.livre.releves || []).length
-        ? 'Le règlement, lui, viendra du relevé bancaire — pointer « payée » ne l\'écrit pas, sinon il serait compté deux fois.'
-        : 'Ce dossier n\'a pas de relevé bancaire : le règlement se saisit dans la grille, sur le journal de banque.'}</p>
-    </div>`;
+    ${declState.ouverte && d.cases[declState.ouverte] ? panneauPieces(d.cases[declState.ouverte], LIBELLE_CASE[declState.ouverte]) : ''}`;
   }
 
   const panneauPieces = (c, titre) => `<div class="panel mt" id="dc-pieces"><h2>${esc(titre)} — les pièces</h2>
@@ -3094,10 +3162,12 @@
 
   // Le mois proposé : le DERNIER qui porte des écritures, pas janvier. Un comptable ouvre cet
   // écran pour le mois qu'il vient de saisir ; le faire commencer au premier mois de l'exercice
-  // serait onze clics par déclaration.
+  // serait onze clics par déclaration. Sans écriture, le mois courant (U-12) : la règle vit dans
+  // `K.moisDeTravail`, la même que celle de la Paie.
   function moisPropose(livre) {
-    const dates = (livre.ecritures || []).map(e => e.date).filter(Boolean).sort();
-    return (dates.length ? dates[dates.length - 1] : (livre.exercice.du || '')).slice(0, 7);
+    const annee = Number(String((livre.exercice || {}).du || '').slice(0, 4)) || Number(livresState.annee);
+    const faits = (livre.ecritures || []).map(e => String(e.date || '')).filter(d => d.startsWith(annee + '-')).map(d => Number(d.slice(5, 7)));
+    return `${annee}-${String(K.moisDeTravail(faits, annee, K.today())).padStart(2, '0')}`;
   }
 
   function brancherDeclaration(el, root, dossier) {
@@ -3113,17 +3183,16 @@
       if (declState.ouverte) pageFocus = 'dc-pieces';
       drawLivres(root, dossier);
     }; });
-    // Le MÊME geste sur les deux boutons (celui du haut et celui répété sous « Ce qui suit », T-17).
-    [$('#dc-preparer', el), $('#dc-preparer2', el)].forEach(prep => {
-      if (!prep) return;
-      prep.onclick = async () => {
-        prep.disabled = true;
-        try {
-          const r = await api.poserDeclaration({ dossierId: dossier.id, annee: s.annee, periode: s.decl.periode });
-          s.livre = r.livre; s.cloture = null; toast('Déclaration préparée.'); await chargerDeclaration(root, dossier);
-        } catch (e) { toast(plainError(e), 'error'); prep.disabled = false; }
-      };
-    });
+    // UN bouton « Préparer » (U-11) : il était répété sous « Ce qui suit » (T-17) parce que les
+    // gestes qu'il débloque vivaient deux écrans plus bas ; ils sont maintenant sur la même rangée.
+    const prep = $('#dc-preparer', el);
+    if (prep) prep.onclick = async () => {
+      prep.disabled = true;
+      try {
+        const r = await api.poserDeclaration({ dossierId: dossier.id, annee: s.annee, periode: s.decl.periode });
+        s.livre = r.livre; s.cloture = null; toast('Déclaration préparée.'); await chargerDeclaration(root, dossier);
+      } catch (e) { toast(plainError(e), 'error'); prep.disabled = false; }
+    };
     const ec = $('#dc-ecriture', el);
     if (ec) ec.onclick = async () => {
       ec.disabled = true;
@@ -3213,6 +3282,18 @@
     const sansOuverture = !((s.livre.ouverture || {}).lignes || []).length && !(capitaux && capitaux.total);
     const groupe = g => `<tr class="gl-g"><th colspan="2">${esc(g.titre)}</th><th class="r nw">${money0(g.total)}</th></tr>`
       + g.lignes.map(l => `<tr><td class="nw">${esc(l.compte)}</td><td class="tronq" title="${esc(l.libelle)}">${esc(l.libelle)}</td><td class="r nw">${money0(l.montant)}</td></tr>`).join('');
+    // U-19 — 3 037 px en quatre sections qu'on lisait d'un bloc. Chacune se REPLIE, et repliée elle
+    // porte son chiffre (règle 9.4.5 : un objet replié porte son chiffre) ; un sommaire les nomme en
+    // tête. Une section qui porte une ALERTE s'ouvre toujours — on ne replie pas un déséquilibre,
+    // ni les contrôles d'un exercice qu'on s'apprête à clôturer.
+    const plis = s.clPlis || (s.clPlis = { controles: true, etats: true, sig: false, an: false });
+    const alerteEtats = !e.equilibre || sansOuverture;
+    const ouvert = k => plis[k] || (k === 'etats' && alerteEtats) || (k === 'controles' && echecs.length > 0 && !ex.clos);
+    const sigLigne = id => (d.sig.lignes.find(l => l.id === id) || {}).montant;
+    const section = (k, id, titre, chiffre, corps) => `<details class="panel mt pli" id="${id}" data-pli="${k}" ${ouvert(k) ? 'open' : ''}>
+      <summary>${titre}<span class="pli-chiffre small muted">${chiffre}</span></summary>${corps}</details>`;
+    const SECTIONS = [['controles', 'cl-sec-controles', 'Avant de clôturer'], ['etats', 'cl-sec-etats', 'Les états financiers'],
+      ['sig', 'cl-sec-sig', 'Soldes intermédiaires'], ['an', 'cl-sec-an', `Les à-nouveaux de ${Number(ex.annee) + 1}`]];
     return `<div class="filters">
       ${info('cl.etat')}
       <span class="small muted">Exercice ${esc(ex.annee)}</span>
@@ -3235,14 +3316,21 @@
           vivait dans la branche « clos » — donc il s'évaporait à la seconde où on le donnait, et
           seul le dernier revenait une fois reclos. L'historique complet est en dessous. */''}
     ${!ex.clos && (ex.reouvertures || []).length ? (() => { const d = ex.reouvertures[ex.reouvertures.length - 1] || {}; return `<div class="warn-box mb" id="cl-rouvert"><b>Exercice rouvert${d.le ? ' le ' + esc(fmtJour(new Date(d.le).toISOString().slice(0, 10))) : ''}${d.par ? ' par ' + esc(d.par) : ''}</b> : « ${esc(d.motif || '')} »</div>`; })() : ''}
+    ${/* U-13 — un état NORMAL se dit sur une ligne grise ; l'orange reste pour ce qui demande un
+          geste (des contrôles à regarder). Le badge « clos » le disait déjà : l'encadré vert le
+          répétait en plus gros. */''}
     ${ex.clos
-    ? `<div class="ok-box mb"><b>Exercice clos</b>${ex.closLe ? ' le ' + esc(fmtJour(new Date(ex.closLe).toISOString().slice(0, 10))) : ''}${
+    ? `<p class="small ligne-ok mb" id="cl-clos"><span aria-hidden="true">✓</span> Exercice clos${ex.closLe ? ' le ' + esc(fmtJour(new Date(ex.closLe).toISOString().slice(0, 10))) : ''}${
       ex.closPar ? ' par ' + esc(ex.closPar) : ''}.${(ex.reouvertures || []).length
-      ? ` Rouvert ${pl(ex.reouvertures.length, 'fois', 'fois')} — ${esc((ex.reouvertures[ex.reouvertures.length - 1] || {}).motif || '')}` : ''}</div>`
+      ? ` Rouvert ${pl(ex.reouvertures.length, 'fois', 'fois')} — ${esc((ex.reouvertures[ex.reouvertures.length - 1] || {}).motif || '')}` : ''}</p>`
     : echecs.length
       ? `<div class="warn-box mb"><b>${pl(echecs.length, 'contrôle', 'contrôles')} ${echecs.length > 1 ? 'signalent' : 'signale'} quelque chose.</b>
            Ils ne bloquent pas : un exercice clos avec des manques signalés vaut mieux qu'un exercice jamais clos.</div>`
-      : `<div class="ok-box mb">Les six contrôles passent.</div>`}
+      : '<p class="small ligne-ok mb" id="cl-ok"><span aria-hidden="true">✓</span> Les six contrôles passent.</p>'}
+    ${/* Un <div> et non un <nav> : la règle `nav { flex-direction: column }` de la barre latérale
+          empilait les pastilles en quatre barres pleine largeur — le piège du fil d'Ariane (7.27.0). */''}
+    <div class="set-somm cl-somm" role="navigation" aria-label="Les sections de l'exercice">${SECTIONS.map(([k, , l]) =>
+      `<button type="button" class="somm-chip" data-cl-sec="${k}">${esc(l)}</button>`).join('')}</div>
     ${/* Le dossier de clôture produit laisse une TRACE (T-27) : quand, où, scellé ou non, et le
           bouton qui retrouve le fichier — un fichier qu'on ne retrouve pas est un fichier qu'on ne
           peut pas envoyer. C'est ce qui répond, le lundi matin, à « lesquels ont reçu le leur ? ». */''}
@@ -3255,13 +3343,14 @@
     ${(ex.reouvertures || []).length || ex.clos ? `<details class="mt" id="cl-historique"><summary>Clôtures et réouvertures ${info('cl.historique')}</summary>
       <ul class="small">${(ex.reouvertures || []).map(d => `<li>Clos${d.closLe ? ' le ' + esc(fmtJour(new Date(d.closLe).toISOString().slice(0, 10))) : ''}, rouvert${d.le ? ' le ' + esc(fmtJour(new Date(d.le).toISOString().slice(0, 10))) : ''}${d.par ? ' par ' + esc(d.par) : ''} : « ${esc(d.motif || '')} »</li>`).join('')}${
         ex.clos ? `<li>Clos${ex.closLe ? ' le ' + esc(fmtJour(new Date(ex.closLe).toISOString().slice(0, 10))) : ''}${ex.closPar ? ' par ' + esc(ex.closPar) : ''} — en cours.</li>` : ''}</ul></details>` : ''}
-    <div class="panel mt"><h2>Avant de clôturer ${info('cl.controles')}</h2>
-      <table class="list compact"><tbody>${(d.controles || []).map(c => `<tr>
+    ${section('controles', 'cl-sec-controles', `<h2>Avant de clôturer</h2>${info('cl.controles')}`,
+    echecs.length ? esc(pl(echecs.length, 'contrôle à voir', 'contrôles à voir')) : 'tous passent',
+    `<table class="list compact"><tbody>${(d.controles || []).map(c => `<tr>
         <td class="nw">${c.ok ? '<span class="badge b-paid">ok</span>' : '<span class="badge b-late">à voir</span>'}</td>
         <td>${esc(LIBELLE_CONTROLE[c.id] || c.id)}</td>
-        <td class="small muted">${esc(c.detail || 'rien à signaler')}</td></tr>`).join('')}</tbody></table>
-    </div>
-    <div class="panel mt"><h2>Les états financiers ${info('cl.etats')}</h2>
+        <td class="small muted">${esc(c.detail || 'rien à signaler')}</td></tr>`).join('')}</tbody></table>`)}
+    ${section('etats', 'cl-sec-etats', `<h2>Les états financiers</h2>${info('cl.etats')}`,
+    `résultat ${money0(e.resultat)} · ${e.equilibre ? 'actif = passif' : 'actif et passif diffèrent'}`, `
       <p class="small muted">Déduits de la <b>balance</b>, rubrique par rubrique — la présentation d'ensemble
       qui dit où en est le dossier. La <b>liasse</b>, avec ses codes de rubriques et le résultat fiscal, vit dans
       son onglet à elle. <em>À VÉRIFIER : la présentation exacte du système comptable des entreprises n'est
@@ -3289,23 +3378,23 @@
            n'a été reprise et les capitaux propres sont à zéro : ce que les comptes portaient avant la première écriture n'y est pas.
            Actif et passif s'équilibrent — c'est la seule chose garantie — mais ce n'est pas encore un bilan qu'on montre à une banque.
            <div class="mt"><button type="button" class="btn btn-sm" id="cl-reprise">Reprendre les soldes d'ouverture…</button></div></div>`
-      : `<div class="ok-box mt">Actif = passif, au millime.</div>`}
+      : '<p class="small ligne-ok mt"><span aria-hidden="true">✓</span> Actif = passif, au millime.</p>'}
       <h3 class="sub-h">État de résultat</h3>
       <div class="scroll-x"><table class="list compact"><tbody>${groupe(e.produits)}${groupe(e.charges)}
-        <tr class="dc-total"><td colspan="2"><b>Résultat de l'exercice</b></td><td class="r nw"><b>${money0(e.resultat)}</b></td></tr></tbody></table></div>
-    </div>
-    <div class="panel mt"><h2>Soldes intermédiaires et ratios ${info('cl.sig')}</h2>
+        <tr class="dc-total"><td colspan="2"><b>Résultat de l'exercice</b></td><td class="r nw"><b>${money0(e.resultat)}</b></td></tr></tbody></table></div>`)}
+    ${section('sig', 'cl-sec-sig', `<h2>Soldes intermédiaires et ratios</h2>${info('cl.sig')}`,
+    sigLigne('va') == null ? '' : `valeur ajoutée ${money0(sigLigne('va'))} · EBE ${money0(sigLigne('ebe'))}`, `
       <table class="list compact"><thead><tr><th>Solde</th><th class="r nw">Montant</th><th>Comment il se calcule</th></tr></thead>
       <tbody>${d.sig.lignes.map(l => `<tr class="${l.id === 'net' ? 'dc-total' : ''}">
         <td>${esc(l.label)}</td><td class="r nw">${money0(l.montant)}</td>
         <td class="small muted">${esc(l.formule)}</td></tr>`).join('')}</tbody></table>
       <table class="list compact mt"><tbody>${d.sig.ratios.map(r => `<tr>
         <td>${esc(r.label)}</td>
-        <td class="r nw">${r.valeur == null ? '<span class="muted">—</span>' : esc(String(r.valeur).replace('.', ',')) + ' ' + esc(r.unite)}</td></tr>`).join('')}</tbody></table>
+        <td class="r nw">${r.valeur == null ? '<span class="muted">—</span>' : esc(r.unite === '%' ? pourcent(r.valeur) : String(r.valeur).replace('.', ',') + ' ' + r.unite)}</td></tr>`).join('')}</tbody></table>
       <p class="small muted mt">Un ratio sans dénominateur ne vaut rien : il affiche « — », jamais 0 %.
-      Les rubriques retenues sont celles de l'usage — <b>À VÉRIFIER</b>.</p>
-    </div>
-    <div class="panel mt"><h2>Les à-nouveaux de ${esc(Number(ex.annee) + 1)} ${info('cl.anouveaux')}</h2>
+      Les rubriques retenues sont celles de l'usage — <b>À VÉRIFIER</b>.</p>`)}
+    ${section('an', 'cl-sec-an', `<h2>Les à-nouveaux de ${esc(Number(ex.annee) + 1)}</h2>${info('cl.anouveaux')}`,
+    esc(`${pl(d.anouveaux.lignes.length, 'ligne')} · ${money(d.anouveaux.debit)} au débit et au crédit`), `
       <p class="small muted">Calculés sur les écritures <b>réelles</b> de cet exercice et son ouverture :
       les comptes de bilan se reportent, le net des comptes de gestion va au résultat. Ils se posent
       en <b>brouillard</b> dans le livre suivant, et se refont tant qu'ils ne sont pas validés —
@@ -3320,8 +3409,7 @@
       <tfoot><tr><th colspan="2">${esc(pl(d.anouveaux.lignes.length, 'ligne'))}</th>
         <th class="r nw">${money0(d.anouveaux.debit)}</th><th class="r nw">${money0(d.anouveaux.credit)}</th></tr></tfoot></table></div>
       ${d.extournes.length ? `<p class="small muted mt">${pl(d.extournes.length, 'écriture s\'extourne', 'écritures s\'extournent')}
-        au 1er janvier : elles partiront avec les à-nouveaux. L'originale, elle, reste dans son exercice avec son numéro.</p>` : ''}
-    </div>`;
+        au 1er janvier : elles partiront avec les à-nouveaux. L'originale, elle, reste dans son exercice avec son numéro.</p>` : ''}`)}`;
   }
 
   // Réunir le livre d'un autre poste (9.9.0). Le compte rendu n'est jamais un « c'est fait » : il
@@ -3360,6 +3448,16 @@
     // l'écran qui décide d'une clôture, et la fenêtre de confirmation les affichait périmés.
     const rev = `${(s.livre.audit || []).length}:${(s.livre.ecritures || []).length}`;
     if (!s.cloture || s.clotureRev !== rev) { s.clotureRev = rev; chargerCloture(root, dossier); return; }
+    // U-19 — une section repliée ou dépliée le RESTE au prochain dessin ; le sommaire ouvre la
+    // section qu'il nomme et l'amène à l'écran (un sommaire qui mène à un titre replié ne mène nulle part).
+    const plis = s.clPlis || (s.clPlis = {});
+    $$('details.pli[data-pli]', el).forEach(dt => { dt.ontoggle = () => { plis[dt.dataset.pli] = dt.open; }; });
+    $$('[data-cl-sec]', el).forEach(b => { b.onclick = () => {
+      const dt = $(`details.pli[data-pli="${b.dataset.clSec}"]`, el);
+      if (!dt) return;
+      dt.open = true; plis[b.dataset.clSec] = true;
+      pageFocus = dt.id; focaliser(el);
+    }; });
     const rep = $('#cl-reprise', el);
     if (rep) rep.onclick = () => repriseForm(root, dossier);
     const vli = $('#cl-liasse', el);
@@ -3456,25 +3554,36 @@
     const li = L.liasse, f = L.fiscal;
     const money0 = n => esc(money(n));
     const nature = id => (L.natures.find(x => x.id === id) || {}).label || id;
+    // U-16 — dix-sept rubriques vides sur vingt-six, chacune avec sa phrase grise, noyaient les neuf
+    // qui portent un montant. Elles sont MASQUÉES par défaut, et la case dit combien : masquer sans le
+    // dire serait un piège (7.12.0). Le total ne bouge pas — une rubrique vide n'y met rien.
+    const vides = li.etats.flatMap(e => e.lignes).filter(x => x.montant === null).length;
+    const montrees = e => (s.liasseVides ? e.lignes : e.lignes.filter(x => x.montant !== null));
+    // Le MONTANT est le lien : une colonne entière de « Voir les comptes » répétait le même bouton
+    // sur chaque ligne (règle 7.29.0) ; c'est le chiffre qu'on veut ouvrir, c'est lui qu'on clique.
     const ligne = x => `<tr class="${x.montant === null ? 'row-muted' : ''}">
       <td class="nw small muted">${esc(x.id)}</td>
       <td>${esc(x.label)}${x.deduit || x.charge ? ' <span class="small muted">(en moins)</span>' : ''}
         ${x.montant === null ? `<div class="small muted">${esc(x.raison)}</div>` : ''}</td>
-      <td class="r nw">${x.montant === null ? '<span class="muted">—</span>' : money0(x.montant)}</td>
-      <td class="row-actions">${x.detail.length ? `<button type="button" class="btn btn-sm" data-rub="${esc(x.id)}">Voir les comptes</button>` : ''}</td></tr>`;
+      <td class="r nw">${x.montant === null ? '<span class="muted">—</span>'
+        : x.detail.length ? `<button type="button" class="montant-lien" data-rub="${esc(x.id)}" title="Voir les comptes qui forment ce montant">${money0(x.montant)}</button>`
+          : money0(x.montant)}</td></tr>`;
     return `<div class="filters">
       ${info('li.liasse')}
       <span class="small muted">Exercice ${esc(s.annee)}</span>
       <span class="badge ${L.clos ? 'b-paid' : 'b-due'}">${L.clos ? 'clos' : 'ouvert'}</span>
+      ${vides ? `<label class="check inline small"><input type="checkbox" id="li-masquer" ${s.liasseVides ? '' : 'checked'}> Masquer les rubriques vides (${vides})</label>` : ''}
       <button class="btn btn-sm" id="li-modele">Ajuster le modèle de rubriques…</button>
       <button class="btn btn-sm" id="li-csv">Exporter la liasse en CSV</button>
     </div>
-    <div class="warn-box mb"><b>À VÉRIFIER avec ton client et l'administration.</b> Les rubriques ci-dessous suivent
-      l'usage ; la présentation exacte du système comptable des entreprises n'est validée par personne ici, et
-      <b>aucun taux d'impôt n'est écrit dans SkanFact</b>. Chaque rubrique s'ouvre sur les comptes qui l'ont remplie :
-      compare-la à ce que le portail attend avant de la recopier.</div>
+    ${/* U-13 — la réserve vaut pour tout l'écran : elle se dit UNE fois, sur une ligne, sans l'orange
+          d'un geste à faire. Un encadré orange permanent apprend à ignorer l'orange — y compris le
+          jour où la liasse ne tombe pas juste, qui est le seul où il doit crier. */''}
+    <p class="small muted mb" id="li-regle"><b>À VÉRIFIER</b> avec ton client et l'administration : les rubriques suivent
+      l'usage, la présentation exacte n'est validée par personne ici, et <b>aucun taux d'impôt n'est écrit dans SkanFact</b>.
+      Un montant souligné s'ouvre sur les comptes qui l'ont rempli.</p>
     ${li.equilibre && li.coherent
-    ? '<div class="ok-box mb">Actif = passif, et le résultat du bilan est celui de l\'état de résultat.</div>'
+    ? '<p class="small ligne-ok mb" id="li-juste"><span aria-hidden="true">✓</span> Actif = passif, et le résultat du bilan est celui de l\'état de résultat.</p>'
     : `<div class="warn-box mb"><b>La liasse ne tombe pas juste.</b>
         ${li.equilibre ? '' : `Actif ${money0(li.totalActif)} contre passif ${money0(li.totalPassif)}, écart ${money0(li.totalActif - li.totalPassif)}. `}
         ${li.coherent ? '' : `Le résultat du bilan (${money0(li.resultat)}) n'est pas celui de l'état de résultat (${money0(li.resultatEtat)}). `}
@@ -3485,9 +3594,9 @@
       <div class="small">Ajuste le modèle de rubriques pour les rattacher.</div></div>` : ''}
 
     ${li.etats.map(e => `<div class="panel"><h2>${esc(e.label)}</h2>
-      <div class="scroll-x"><table class="list compact"><thead><tr><th class="nw">Code</th><th>Rubrique</th><th class="r">Montant</th><th></th></tr></thead>
-      <tbody>${e.lignes.map(ligne).join('')}</tbody>
-      <tfoot><tr><th colspan="2">${esc(e.id === 'resultat' ? 'Résultat de l\'exercice' : 'Total')}</th><th class="r nw">${money0(e.total)}</th><th></th></tr></tfoot></table></div></div>`).join('')}
+      <div class="scroll-x"><table class="list compact"><thead><tr><th class="nw">Code</th><th>Rubrique</th><th class="r">Montant</th></tr></thead>
+      <tbody>${montrees(e).map(ligne).join('') || '<tr><td colspan="3" class="small muted">Aucune rubrique de cet état ne porte de montant.</td></tr>'}</tbody>
+      <tfoot><tr><th colspan="2">${esc(e.id === 'resultat' ? 'Résultat de l\'exercice' : 'Total')}</th><th class="r nw">${money0(e.total)}</th></tr></tfoot></table></div></div>`).join('')}
 
     <div class="panel"><h2>Résultat fiscal et impôt ${info('li.fiscal')}</h2>
       <table class="list compact"><tbody>
@@ -3544,6 +3653,8 @@
         <tfoot><tr><th colspan="2">Total</th><th class="r nw">${esc(money(x.montant))}</th></tr></tfoot></table>`);
     }; });
 
+    const mq = $('#li-masquer', el);
+    if (mq) mq.onchange = () => { s.liasseVides = !mq.checked; drawLivres(root, dossier); };
     const t = $('#li-taux-ok', el);
     if (t) t.onclick = async () => {
       try {
@@ -3561,7 +3672,7 @@
       } catch (e) { toast(plainError(e), 'error'); }
     }; });
     const mod = $('#li-modele', el);
-    if (mod) mod.onclick = () => versReglages('pan-liasse');
+    if (mod) mod.onclick = () => modeleLiasseForm(relire);
     const csv = $('#li-csv', el);
     if (csv) csv.onclick = async () => {
       // `K.toCsvLine` échappe comme le reste du Cabinet : un libellé de rubrique qui commence par
@@ -3647,22 +3758,46 @@
     ? `<span class="badge b-paid">revu</span> ${esc(c.revuPar || '')}${c.revuLe ? ' · ' + esc(fmtJour(new Date(c.revuLe).toISOString().slice(0, 10))) : ''}`
     : '<span class="muted">à revoir</span>'}</td>
       ${rowMenuCell('RV:' + c.compte)}</tr>`;
+    // 10.12.0 (U-11) — un seul vert, et c'est l'ÉTAPE SUIVANTE. À 0 compte signé sur 19, le vert
+    // de l'écran était « Arrêter la révision… » : le geste de la FIN, proposé au début. Tant que des
+    // comptes attendent leur signature, le vert ouvre le PROCHAIN cycle qui en a ; dans un cycle
+    // ouvert qui en a encore, ce sont ses lignes « à revoir » qui sont la suite — rien n'est vert
+    // au-dessus d'elles ; quand tout est signé, le vert passe à l'arrêt ; une révision arrêtée n'a
+    // plus d'étape suivante. Signer reste un geste compte par compte : un « tout signer » serait
+    // une signature sans revue.
+    const ouvertIncomplet = d.feuilles.some(f => f.cycle === cycle && f.revus < f.total);
+    const iOuvert = d.feuilles.findIndex(f => f.cycle === cycle);
+    const prochain = d.feuilles.slice(iOuvert + 1).concat(d.feuilles.slice(0, iOuvert + 1)).find(f => f.revus < f.total && f.cycle !== cycle) || null;
+    const horsARevoir = d.hors.filter(c => !c.revu).length;
+    const suivante = d.faite ? '' : ouvertIncomplet ? 'signer' : prochain ? 'cycle' : horsARevoir ? 'hors' : 'arreter';
+    // U-13 — l'orange pour ce qui demande un geste (un brouillard à valider, une note à lever, une
+    // question qui attend). « 19 comptes ne sont pas signés » est l'état de DÉPART d'une révision,
+    // et l'avancement le dit déjà en tête des feuilles : il ne se répète pas en alerte.
+    const controles = r.controles || [];
+    const aFaire = controles.filter(c => c.gravite !== 'info');
+    const etatsNormaux = controles.filter(c => c.gravite === 'info' && c.id !== 'comptes');
     return `<div class="filters">
       ${info('rv.dossier')}
       <label class="f-lab" for="rv-periode">La période révisée</label>
       <select id="rv-periode">${mois.map(m => `<option value="${esc(m || String(s.annee))}" ${String(d.periode) === (m || String(s.annee)) ? 'selected' : ''}>${m ? esc(moisLabelCourt(m)) : 'L\'exercice ' + esc(s.annee)}</option>`).join('')}</select>
-      <span class="badge ${d.faite ? 'b-paid' : 'b-due'}">${d.faite ? 'révision arrêtée' : 'en cours'}</span>
-      <button class="btn btn-sm ${d.faite ? '' : 'btn-primary'}" id="rv-arreter">${d.faite ? 'Rouvrir la révision' : 'Arrêter la révision…'}</button>
+      ${/* Une révision arrêtée se dit UNE fois, sur l'état : le badge porte la date et le nom.
+            Un encadré vert en dessous répétait le badge, en pesant autant qu'une alerte. */''}
+      <span class="badge ${d.faite ? 'b-paid' : 'b-due'}">${d.faite ? 'révision arrêtée' : 'en cours'}</span>${d.faite && (d.faiteLe || d.faitePar)
+    ? `<span class="small muted" id="rv-arretee">${d.faiteLe ? 'le ' + esc(fmtJour(new Date(d.faiteLe).toISOString().slice(0, 10))) : ''}${d.faitePar ? ' par ' + esc(d.faitePar) : ''}</span>` : ''}
+      <button class="btn btn-sm${suivante === 'arreter' ? ' btn-primary' : ''}" id="rv-arreter">${d.faite ? 'Rouvrir la révision' : 'Arrêter la révision…'}</button>
       <button class="btn btn-sm" id="rv-note">Note de revue…</button>
       <button class="btn btn-sm" id="rv-question">Poser une question…</button>
       <span class="nw"><button class="btn btn-sm" id="rv-envoyer">Envoyer les questions au client…</button>${info('rv.envoi')}</span>
     </div>
-    ${d.faite ? `<div class="ok-box mb"><b>Révision arrêtée</b>${d.faiteLe ? ' le ' + esc(fmtJour(new Date(d.faiteLe).toISOString().slice(0, 10))) : ''}${d.faitePar ? ' par ' + esc(d.faitePar) : ''}.</div>` : ''}
-    ${(r.controles || []).length ? `<div class="warn-box mb">${r.controles.map(c => `<div>${esc(c.texte)}</div>`).join('')}
+    ${aFaire.length ? `<div class="warn-box mb">${aFaire.map(c => `<div>${esc(c.texte)}</div>`).join('')}
       <div class="small">Ils ne bloquent pas : une révision arrêtée avec des manques signalés vaut mieux qu'une révision jamais arrêtée.</div></div>` : ''}
+    ${etatsNormaux.length ? `<p class="small muted mb" id="rv-etats">${etatsNormaux.map(c => esc(c.texte)).join(' · ')}</p>` : ''}
 
     <div class="panel"><h2>Les feuilles maîtresses ${info('rv.feuilles')}</h2>
-      <p class="lead">${esc(d.revus)} compte${d.revus > 1 ? 's' : ''} signé${d.revus > 1 ? 's' : ''} sur ${esc(d.total)}${d.reste ? ` — ${esc(pl(d.reste, 'reste à revoir', 'restent à revoir'))}` : ''}.</p>
+      <div class="rv-avance"><p class="lead">${esc(d.revus)} compte${d.revus > 1 ? 's' : ''} signé${d.revus > 1 ? 's' : ''} sur ${esc(d.total)}${d.reste ? ` — ${esc(pl(d.reste, 'reste à revoir', 'restent à revoir'))}` : ''}.</p>
+      ${suivante === 'cycle' ? `<button class="btn btn-sm btn-primary" id="rv-suivant" data-cycle="${esc(prochain.cycle)}">Revoir ${esc(prochain.label)} (${esc(pl(prochain.total - prochain.revus, 'compte', 'comptes'))})</button>`
+    : suivante === 'hors' ? `<button class="btn btn-sm btn-primary" id="rv-voir-hors">Revoir les comptes hors cycle (${esc(horsARevoir)})</button>`
+      : suivante === 'signer' ? `<span class="small muted" id="rv-signer">Signe les comptes « à revoir » de ce cycle : menu « Actions » de la ligne.</span>` : ''}</div>
       <div class="stats rangee cy-cartes">${d.feuilles.map(f => `<button type="button" class="stat cy-carte${cycle === f.cycle ? ' cy-on' : ''}" data-cycle="${esc(f.cycle)}" aria-pressed="${cycle === f.cycle}">
         <span class="eyebrow">${esc(f.label)}</span>
         <span class="val">${esc(f.revus)} / ${esc(f.total)}</span>
@@ -3674,7 +3809,7 @@
           <tfoot><tr><th colspan="2">${esc(feuille.label)}</th><th class="r nw">${money0(feuille.totaux.ouverture)}</th><th class="r nw">${money0(feuille.totaux.debit)}</th><th class="r nw">${money0(feuille.totaux.credit)}</th><th class="r nw">${money0(feuille.totaux.solde)}</th><th class="r nw">${money0(feuille.totaux.variation)}</th><th colspan="2"></th></tr></tfoot></table></div>`
       : `<div class="empty mini mt">Aucun compte de ce cycle n'est mouvementé sur la période.</div>`)
     : `<div class="empty mini mt">Choisis un cycle ci-dessus pour ouvrir sa feuille maîtresse.</div>`}
-      ${d.hors.length ? `<details class="mt"><summary>${esc(pl(d.hors.length, 'compte hors cycle', 'comptes hors cycle'))} ${info('rv.hors')}</summary>
+      ${d.hors.length ? `<details class="mt" id="rv-hors" ${s.revHors ? 'open' : ''}><summary>${esc(pl(d.hors.length, 'compte hors cycle', 'comptes hors cycle'))} ${info('rv.hors')}</summary>
         <div class="scroll-x"><table class="list compact"><thead><tr><th>Compte</th><th>Intitulé</th><th class="r">Ouverture</th><th class="r">Débit</th><th class="r">Crédit</th><th class="r">Solde</th><th class="r">Variation</th><th>Revu</th><th></th></tr></thead>
           <tbody>${d.hors.map(ligneCompte).join('')}</tbody></table></div></details>` : ''}
     </div>
@@ -3696,7 +3831,7 @@
           <td class="row-actions"><button type="button" class="btn btn-sm" data-qq="${esc(q.id)}">Répondre</button></td></tr>`).join('')}</tbody></table>`
     : r.modeles.length
       ? `<div class="empty mini">Le questionnaire de ton cabinet n'est pas encore posé sur cette période.</div>
-         <div class="inline mt"><button class="btn btn-sm btn-primary" id="rv-poser">Poser les ${esc(pl(r.modeles.length, 'question'))} de ton cabinet</button></div>`
+         <div class="inline mt"><button class="btn btn-sm" id="rv-poser">Poser les ${esc(pl(r.modeles.length, 'question'))} de ton cabinet</button></div>`
       : `<div class="empty mini">Ton cabinet n'a pas encore écrit son questionnaire de fin d'exercice.
          Il s'écrit une fois, pour tous tes dossiers.</div>
          <div class="inline mt"><button class="btn btn-sm" id="rv-modeles">Écrire le questionnaire…</button></div>`}
@@ -3733,6 +3868,10 @@
     const per = $('#rv-periode', el);
     if (per) per.onchange = () => { s.revPeriode = per.value; s.revisionRev = ''; chargerRevision(root, dossier); };
     $$('[data-cycle]', el).forEach(b => { b.onclick = () => { s.revCycle = s.revCycle === b.dataset.cycle ? '' : b.dataset.cycle; drawLivres(root, dossier); }; });
+    // Les comptes hors cycle vivent dans un volet replié : le geste qui les désigne l'ouvre ET
+    // l'amène à l'écran — un volet qu'on déplie hors de la vue, c'est un clic qui ne fait rien.
+    const vh = $('#rv-voir-hors', el);
+    if (vh) vh.onclick = () => { s.revHors = true; pageFocus = 'rv-hors'; drawLivres(root, dossier); };
 
     const geste = async (id, g) => {
       try {
@@ -3820,7 +3959,10 @@
       const faite = !s.revision.dossier.faite;
       if (faite) {
         const c = s.revision.controles || [];
-        const ok = await confirmDialog(`Arrêter la révision de ${esc(s.revision.dossier.periode)} ?`,
+        // U-28 — une période se NOMME : « Arrêter la révision de 2026-08 ? » était le format du
+        // fichier, écrit dans une question posée à un comptable.
+        const per = String(s.revision.dossier.periode);
+        const ok = await confirmDialog(`Arrêter la révision ${/^\d{4}-\d{2}$/.test(per) ? K.de(moisLabelCourt(per)) : 'de l\'exercice ' + per} ?`,
           '<p>La période est marquée révisée dans le tableau de production. Tu peux la rouvrir à tout moment.</p>'
           + (c.length ? `<p><b>${pl(c.length, 'point signalé', 'points signalés')} :</b></p><ul>${c.map(x => `<li>${esc(x.texte)}</li>`).join('')}</ul>` : ''),
           'Arrêter la révision', false);
@@ -3992,32 +4134,57 @@
     if (!d) return `<div class="empty mini">Lecture des immobilisations…</div>`;
     const e = d.etat;
     const y = Number(s.annee);
+    // 10.12.0 (U-11) — un seul bouton en couleur, et c'est l'ÉTAPE SUIVANTE : une acquisition sans
+    // fiche d'abord (tant qu'elle n'en a pas, elle ne s'amortit nulle part), puis les écritures en
+    // attente, puis — sur un exercice vide — le premier bien. Quand tout est fait, rien n'est vert.
+    // « Ajouter un bien… » était vert en permanence, à côté d'écritures qui attendaient.
+    const suivante = d.aCreer.length ? 'creer' : e.aEcrire ? 'ecrire' : !e.rows.length ? 'neuf' : '';
+    const cls = pas => 'btn btn-sm' + (pas === suivante ? ' btn-primary' : '');
+    // U-23 — un bouton éteint dit POURQUOI à côté de lui : l'infobulle ne se voit ni au clavier ni
+    // au doigt. « Passées » seulement si une écriture l'est vraiment — un parc entièrement amorti
+    // n'a rien à écrire, il n'a rien « déjà passé ».
+    const pourquoiEcrire = e.aEcrire ? ''
+      : !e.rows.length ? 'Rien à écrire : aucun bien sur cet exercice.'
+        : e.rows.some(r => r.ecrite) ? `Celles de ${s.annee} sont passées — les repasser compterait la dotation deux fois.`
+          : `Aucune dotation ni sortie sur ${s.annee} : rien à écrire.`;
+    const motifs = !e.rows.length ? ['« Passer les écritures » et « Exporter le tableau » attendent un premier bien.']
+      : pourquoiEcrire ? ['« Passer les écritures » : ' + pourquoiEcrire.charAt(0).toLowerCase() + pourquoiEcrire.slice(1)] : [];
     return `<div class="filters">
       ${info('im.etat')}
       <span class="small muted">Exercice ${esc(s.annee)}</span>
-      <button class="btn btn-sm btn-primary" id="im-neuf">Ajouter un bien…</button>
-      <button class="btn btn-sm" id="im-ecrire" ${e.aEcrire ? '' : 'disabled'}
-        title="${e.aEcrire ? '' : 'Aucune dotation ni sortie en attente sur cet exercice.'}">Passer les écritures d'inventaire${
+      <button class="${cls('neuf')}" id="im-neuf">Ajouter un bien…</button>
+      <button class="${cls('ecrire')}" id="im-ecrire" ${e.aEcrire ? '' : 'disabled'}
+        title="${esc(pourquoiEcrire)}">Passer les écritures d'inventaire${
   e.aEcrire ? ` (${e.aEcrire})` : ''}</button>
-      <button class="btn btn-sm btn-ghost" id="im-csv" ${e.rows.length ? '' : 'disabled'}>Exporter le tableau</button>
+      <button class="btn btn-sm btn-ghost" id="im-csv" ${e.rows.length ? '' : 'disabled'}
+        title="${e.rows.length ? '' : 'Rien à exporter : le tableau est vide.'}">Exporter le tableau</button>
     </div>
+    ${motifs.length ? `<p class="small muted mb" id="im-motifs">${motifs.map(esc).join(' · ')}</p>` : ''}
     ${d.aCreer.length ? `<div class="warn-box mb"><b>${pl(d.aCreer.length, 'ligne', 'lignes')} au compte
       d'immobilisation ${d.aCreer.length > 1 ? 'n\'ont' : 'n\'a'} pas de fiche.</b>
       Tant qu'une fiche n'existe pas, ce bien ne s'amortit nulle part. On ne la crée jamais tout seul :
       la durée d'amortissement est une décision, pas une donnée.
       <div class="scroll-x mt"><table class="list compact"><thead><tr><th class="nw">Date</th><th>Libellé</th>
         <th class="nw">Compte</th><th class="r nw">Montant</th><th></th></tr></thead>
-      <tbody>${d.aCreer.slice(0, 12).map(l => `<tr>
+      <tbody>${d.aCreer.slice(0, 12).map((l, k) => `<tr>
         <td class="nw">${esc(fmtJour(l.date))}</td><td class="tronq" title="${esc(l.libelle)}">${esc(l.libelle)}</td>
         <td class="nw">${esc(l.compte)}</td><td class="r nw">${esc(money(l.montant))}</td>
-        <td class="row-actions"><button class="btn btn-sm" data-creer="${esc(l.docId)}">Créer la fiche du bien…</button></td>
-      </tr>`).join('')}</tbody></table></div></div>` : ''}
+        <td class="row-actions"><button class="btn btn-sm${k === 0 ? ' btn-primary' : ''}" data-creer="${esc(l.docId)}">Créer la fiche du bien…</button></td>
+      </tr>`).join('')}</tbody></table></div>${d.aCreer.length > 12
+    ? `<p class="small mt">… et ${esc(pl(d.aCreer.length - 12, 'autre ligne', 'autres lignes'))} : elles remontent ici à mesure que les fiches se créent.</p>` : ''}</div>` : ''}
     <div class="panel mt"><h2>Les biens de l'exercice ${info('im.tableau')}</h2>
       ${!e.rows.length
     ? `<div class="empty mini">Aucun bien sur cet exercice. <button class="btn btn-sm" id="im-neuf2">Ajouter un bien…</button></div>`
     : `<div class="scroll-x"><table class="list compact"><thead><tr>
-        <th>Bien</th><th class="nw">Mise en service</th><th class="nw">Méthode</th>
-        <th class="r nw">Valeur</th><th class="r nw">Cumul au 01/01</th><th class="r nw">Dotation ${esc(s.annee)}</th>
+        ${/* U-20 — les réserves (taux dégressif, bascule, subvention, dérogatoire) vivent dans la
+              bulle de la MÉTHODE, là où la décision se lit et se prend : un panneau permanent de quatre
+              paragraphes, sous le tableau, se lisait une fois et restait pour toujours (règle 9.4.9). */''}
+        ${/* Les en-têtes de plusieurs mots passent à la ligne (comme la Paie) : tenus sur une
+              seule, « Mise en service », « Cumul au 01/01 » et « Dotation 2026 » réclamaient leur
+              largeur et coupaient le nom du bien à « Serveur Dell R45… » sur un tableau qui avait
+              la place de l'écrire. Les VALEURS, elles, ne se coupent jamais. */''}
+        <th>Bien</th><th>Mise en service</th><th class="nw">Méthode ${info('im.verifier')}</th>
+        <th class="r nw">Valeur</th><th class="r">Cumul au 01/01</th><th class="r">Dotation ${esc(s.annee)}</th>
         <th class="r nw">Cumul</th><th class="r nw">VNC</th><th></th></tr></thead>
       <tbody>${e.rows.map(r => `<tr>
         <td class="tronq" title="${esc(r.libelle)}">${esc(r.libelle)}${r.cession
@@ -4036,15 +4203,7 @@
         <th class="r nw">${esc(money(e.dotation))}</th><th class="r nw">${esc(money(e.cumul))}</th>
         <th class="r nw">${esc(money(e.vnc))}</th><th></th></tr></tfoot></table></div>`}
     </div>
-    ${immoState.ouverte ? panneauPlan(d, immoState.ouverte, y) : ''}
-    <div class="panel mt"><h2>Ce que cet écran ne décide pas ${info('im.verifier')}</h2>
-      <p class="small muted">${esc(KC.IMMO_A_VERIFIER.tauxDegressif)}</p>
-      <p class="small muted">${esc(KC.IMMO_A_VERIFIER.bascule)}</p>
-      <p class="small muted">${esc(KC.IMMO_A_VERIFIER.subvention)}</p>
-      <p class="small muted">L'amortissement <b>dérogatoire</b> n'existe pas ici : le format du livre ne lui
-      réserve rien, et personne ne l'a demandé. Le jour où un cabinet en a besoin, c'est une décision de
-      format — pas une case à cocher qu'on aurait posée « au cas où ».</p>
-    </div>`;
+    ${immoState.ouverte ? panneauPlan(d, immoState.ouverte, y) : ''}`;
   }
 
   // Le plan d'un bien, année par année. C'est lui qui répond à « d'où sort cette dotation ? » —
@@ -4170,17 +4329,24 @@
           <input name="dateMiseEnService" placeholder="JJ/MM/AAAA" value="${esc(fmtJour(f.dateMiseEnService || ''))}"></label>
         <label class="field"><span>Date d'acquisition</span>
           <input name="dateAcquisition" placeholder="JJ/MM/AAAA" value="${esc(fmtJour(f.dateAcquisition || ''))}"></label>
+        ${/* H-3 — un montant s'écrit dans son champ comme à l'écran (« 1 500,000 »), jamais
+              « 1500.5 » : c'est le comptable qui relit le champ, et en français le point sépare
+              les milliers. Il se relit par la porte commune (`lireMontant`), qui comprend les deux. */''}
         <label class="field obligatoire"><span>Valeur d'acquisition (HT)</span>
-          <input name="valeur" class="num" inputmode="decimal" value="${esc(String(f.valeur || ''))}"></label>
+          <input name="valeur" class="num" inputmode="decimal" placeholder="0,000" value="${esc(montantChamp(f.valeur))}"></label>
         <label class="field"><span>Valeur résiduelle</span>
-          <input name="residuelle" class="num" inputmode="decimal" value="${esc(String(f.residuelle || 0))}"></label>
-        <label class="field"><span>Méthode</span>
+          <input name="residuelle" class="num" inputmode="decimal" placeholder="0,000" value="${esc(montantChamp(f.residuelle))}"></label>
+        <label class="field">${lbl('Méthode', 'im.verifier')}
           <select name="methode">${KC.IMMO_METHODES.map(m =>
     `<option value="${m}" ${(f.methode || 'lineaire') === m ? 'selected' : ''}>${esc(METHODE_LABEL[m])}</option>`).join('')}</select></label>
         <label class="field" id="im-taux-l"><span>Taux dégressif (%)</span>
-          <input name="tauxDegressif" class="num" inputmode="decimal" value="${esc(f.tauxDegressif == null ? '' : String(f.tauxDegressif))}"></label>
+          <input name="tauxDegressif" class="num" inputmode="decimal" value="${esc(f.tauxDegressif == null ? '' : String(f.tauxDegressif).replace('.', ','))}"></label>
         <label class="check span-2" id="im-bascule-l"><input type="checkbox" name="bascule" ${f.bascule ? 'checked' : ''}>
           Basculer au linéaire quand il devient plus favorable</label>
+        ${/* U-20 — la réserve se lit là où la décision se prend : sous le taux dégressif, et
+              seulement quand on a choisi le dégressif. Elle vivait dans un panneau permanent,
+              sous le tableau, où personne ne la relisait au moment de choisir. */''}
+        <p class="small muted champ-note span-2" id="im-degr-n">${esc(KC.IMMO_A_VERIFIER.tauxDegressif)} ${esc(KC.IMMO_A_VERIFIER.bascule)}</p>
         <label class="field obligatoire"><span>Compte du bien</span>
           <input name="compte" value="${esc(f.compte || '22')}" list="im-c1"><datalist id="im-c1">${dl('2').map(c => `<option value="${esc(c)}">`).join('')}</datalist></label>
         <label class="field"><span>Compte d'amortissement</span>
@@ -4188,11 +4354,12 @@
         <label class="field"><span>Compte de dotation</span>
           <input name="compteDotation" value="${esc(f.compteDotation || '681')}" list="im-c2"><datalist id="im-c2">${dl('6').map(c => `<option value="${esc(c)}">`).join('')}</datalist></label>
         <label class="field"><span>Subvention reçue (À VÉRIFIER)</span>
-          <input name="subvention" class="num" inputmode="decimal" value="${esc(String((f.subvention && f.subvention.montant) || ''))}"></label>
+          <input name="subvention" class="num" inputmode="decimal" placeholder="0,000" value="${esc(montantChamp(f.subvention && f.subvention.montant))}">
+          <span class="champ-note" id="im-sub-n">${esc(KC.IMMO_A_VERIFIER.subvention)}</span></label>
         <label class="field"><span>Date de cession ou de rebut</span>
           <input name="cessionDate" placeholder="JJ/MM/AAAA" value="${esc(fmtJour((f.cession && f.cession.date) || ''))}"></label>
         <label class="field"><span>Prix de cession (0 = rebut)</span>
-          <input name="cessionPrix" class="num" inputmode="decimal" value="${esc(String((f.cession && f.cession.prix) || ''))}"></label>
+          <input name="cessionPrix" class="num" inputmode="decimal" placeholder="0,000" value="${esc(montantChamp(f.cession && f.cession.prix))}"></label>
       </form>
       ${f.reprise ? `<div class="warn-box mt"><b>Cette ligne est un à-nouveau.</b> Elle porte un bien — ou tout un parc —
         <b>déjà amorti</b>${deja28 ? ` : le compte 28 en reprend ${esc(money(deja28))} au même jour` : ''}. Indique sa <b>vraie</b> date de
@@ -4234,12 +4401,20 @@
         const deg = v('methode') === 'degressif';
         $('#im-taux-l', rootModal).style.display = deg ? '' : 'none';
         $('#im-bascule-l', rootModal).style.display = deg ? '' : 'none';
+        $('#im-degr-n', rootModal).style.display = deg ? '' : 'none';
+        // La réserve de la subvention n'apparaît qu'une fois un montant tapé : elle ne concerne
+        // pas les neuf biens sur dix qui n'en ont pas.
+        $('#im-sub-n', rootModal).style.display = lireMontant(v('subvention')) ? '' : 'none';
       };
+      // U-13 — un refus avant le premier geste accuse un formulaire que personne n'a encore
+      // touché : « Le bien n'a pas de libellé » s'affichait en orange à l'ouverture d'un bien neuf.
+      // Il attend la première frappe ; une fiche qu'on rouvre, elle, se juge tout de suite.
+      let touche = !!f.id;
       const maj = () => {
         majTaux();
         const p = lire();
         const val = KC.immoValide(p);
-        if (!val.ok) { apercu.innerHTML = `<div class="warn-box mt">${esc(val.motifs[0])}</div>`; return; }
+        if (!val.ok) { apercu.innerHTML = touche ? `<div class="warn-box mt">${esc(val.motifs[0])}</div>` : ''; return; }
         const plan = KC.planDuBien(p);
         // Le cumul déjà pratiqué au premier jour de l'exercice : c'est ce qu'on vérifie quand on
         // reprend un bien, et la fiche l'annonce avant qu'on l'enregistre (C-10).
@@ -4251,19 +4426,22 @@
           <br><b>Déjà amorti au 01/01/${esc(s.annee)} : ${esc(money(avant))}</b>${f.reprise && deja28 && Math.abs(KC.round3(avant - deja28)) >= 0.001
     ? ` <span class="err-inline">— le compte 28 en reprend ${esc(money(deja28))}</span>` : ''}.</div>`;
       };
-      $$('input,select', rootModal).forEach(x => { x.oninput = maj; x.onchange = maj; });
+      const majTouche = () => { touche = true; maj(); };
+      $$('input,select', rootModal).forEach(x => { x.oninput = majTouche; x.onchange = majTouche; });
       // La famille PROPOSE sa durée, elle ne l'impose pas : dès que la durée a été touchée, on n'y
       // revient plus (même motif que `regimeTouche`, 7.25.0).
       let dureeTouchee = !!f.duree;
-      const dd = $('[name=duree]', rootModal); if (dd) dd.oninput = () => { dureeTouchee = true; maj(); };
+      const dd = $('[name=duree]', rootModal); if (dd) dd.oninput = () => { dureeTouchee = true; majTouche(); };
       const fam = $('[name=famille]', rootModal);
       if (fam) fam.onchange = () => {
         const o = fam.selectedOptions[0];
         if (o && o.dataset.duree && !dureeTouchee) dd.value = o.dataset.duree;
-        maj();
+        majTouche();
       };
       maj();
       $('#ok', rootModal).onclick = async () => {
+        // Cliquer « Ajouter » sur un formulaire vide est un geste : le refus se montre dès lors.
+        majTouche();
         try {
           const r = await api.saveImmobilisation({ dossierId: dossier.id, annee: s.annee, fiche: lire() });
           s.livre = r.livre; close(); toast(neuf ? 'Bien ajouté.' : 'Fiche enregistrée.');
@@ -4291,12 +4469,15 @@
   function vuePaie(dossier) {
     const s = livresState;
     const L = s.livre;
-    if (!s.paieMois) s.paieMois = Number(String(L.exercice.au || '').slice(5, 7)) || 12;
+    // U-12 — le dernier mois qui a des bulletins, sinon le mois courant : jamais décembre en
+    // septembre, un mois futur qui avait l'air d'un dossier vide.
+    if (!s.paieMois) s.paieMois = K.moisDeTravail((L.bulletins || []).filter(b => Number(b.annee) === Number(s.annee)).map(b => b.mois), s.annee, K.today());
     const m = s.paieMois;
     const bulletins = KC.bulletinsDuMois(L, s.annee, m);
     const masse = KC.masseSalariale(bulletins);
     const anneeEntiere = KC.masseSalariale((L.bulletins || []).filter(b => Number(b.annee) === Number(s.annee)));
     const controles = KC.controlesPaie(L, s.annee, m);
+    const aFaire = controles.filter(c => c.niveau !== 'info'), etatsNormaux = controles.filter(c => c.niveau === 'info');
     const aPasser = bulletins.filter(b => !b.ecritureId).length;
     const nomDe = id => ((L.salaries || []).find(x => x.id === id) || {}).nom || '—';
     const t = s.paieTrimestre || Math.ceil(m / 3);
@@ -4317,39 +4498,62 @@
         ${RowMenu.cellule('PAIE:' + b.id)}</tr>`;
     }).join('');
 
+    // U-11 — le bouton en couleur est l'ÉTAPE SUIVANTE du mois : un salarié à déclarer, puis les
+    // bulletins qui manquent, puis l'écriture. « + Bulletin… » était vert sur un dossier sans
+    // salarié — principal ET éteint, c'est-à-dire un geste qu'on montre du doigt et qu'on refuse.
+    const manquants = (controles.find(c => c.id === 'bulletins-manquants') || {}).count || 0;
+    const suivante = !actifs.length ? 'salarie' : manquants ? 'bulletin' : aPasser ? 'ecrire' : '';
+    const cls = pas => 'btn btn-sm' + (pas === suivante ? ' btn-primary' : '');
+    // U-23 — un bouton éteint dit POURQUOI à côté de lui, pas seulement au survol : l'infobulle ne
+    // se voit ni au clavier ni au doigt (règle 9.4.5). Le `title` reste, pour qui survole.
+    const pourquoiBulletin = actifs.length ? '' : 'Déclare d\'abord un salarié.';
+    const pourquoiEcrire = aPasser ? '' : (bulletins.length ? 'L\'écriture de ce mois est déjà passée : la repasser compterait la paie deux fois.' : 'Aucun bulletin pour ce mois.');
+    const motifs = [pourquoiBulletin && '« + Bulletin » attend un salarié : déclare-le d\'abord.',
+      pourquoiEcrire && (bulletins.length ? '« Passer l\'écriture » : celle de ce mois est déjà passée — la repasser compterait la paie deux fois.'
+        : '« Passer l\'écriture » attend les bulletins du mois.')].filter(Boolean);
     return `<div class="filters">
       ${info('pa.mois')}
       <label class="f-lab" for="pa-mois">Mois</label>
       <select id="pa-mois">${KC.MOIS_PAIE.map((lab, i) => `<option value="${i + 1}" ${i + 1 === m ? 'selected' : ''}>${esc(lab)} ${esc(s.annee)}</option>`).join('')}</select>
-      <button class="btn btn-sm" id="pa-salarie">+ Salarié…</button>
-      <button class="btn btn-sm btn-primary" id="pa-bulletin" ${actifs.length ? '' : 'disabled'}
-        title="${actifs.length ? '' : 'Déclare d\'abord un salarié.'}">+ Bulletin…</button>
-      <button class="btn btn-sm" id="pa-ecrire" ${aPasser ? '' : 'disabled'}
-        title="${aPasser ? '' : (bulletins.length ? 'L\'écriture de ce mois est déjà passée : la repasser compterait la paie deux fois.' : 'Aucun bulletin pour ce mois.')}">Passer l'écriture de paie</button>
+      <button class="${cls('salarie')}" id="pa-salarie">+ Salarié…</button>
+      <button class="${cls('bulletin')}" id="pa-bulletin" ${actifs.length ? '' : 'disabled'}
+        title="${esc(pourquoiBulletin)}">+ Bulletin…</button>
+      <button class="${cls('ecrire')}" id="pa-ecrire" ${aPasser ? '' : 'disabled'}
+        title="${esc(pourquoiEcrire)}">Passer l'écriture de paie</button>
     </div>
-    ${controles.length ? `<div class="warn-box mb">${controles.map(c => `<div><b>${esc(c.quoi)}</b> — ${esc(c.detail)}</div>`).join('')}
+    ${motifs.length ? `<p class="small muted mb" id="pa-motifs">${motifs.map(esc).join(' · ')}</p>` : ''}
+    ${/* U-13 — l'orange seulement quand il y a un geste à faire. « 1 bulletin non réglé » est
+          l'état NORMAL d'un bulletin qu'on vient d'établir : il se dit, en gris, sans alarme. */''}
+    ${aFaire.length ? `<div class="warn-box mb">${aFaire.map(c => `<div><b>${esc(c.quoi)}</b> — ${esc(c.detail)}</div>`).join('')}
       <div class="small muted">Ces contrôles NOMMENT, ils ne bloquent rien : un mois traité avec deux manques signalés vaut mieux qu'un mois jamais traité.</div></div>` : ''}
+    ${etatsNormaux.length ? `<p class="small muted mb">${etatsNormaux.map(c => `${esc(c.quoi)} — ${esc(c.detail)}`).join(' · ')}</p>` : ''}
 
     <div class="panel mt"><h2>Les bulletins de ${esc(KC.moisPaie(m))} ${esc(s.annee)} ${info('pa.bulletins')}</h2>
       ${bulletins.length
-    ? `<div class="scroll-x"><table class="list compact"><thead><tr><th>Salarié</th>
-        <th class="r nw">Brut</th><th class="r nw">CNSS salarié</th><th class="r nw">IRPP + CSS</th>
-        <th class="r nw">Net à payer</th><th class="r nw">Charges patronales</th><th class="r nw">Coût employeur</th>
+    ? `<div class="scroll-x"><table class="list compact pa-bulletins"><thead><tr><th>Salarié</th>
+        ${/* Les en-têtes de plusieurs mots passent sur deux lignes : tenus sur une seule, ils
+              réclamaient 174 px pour « Charges patronales » et laissaient 90 px au nom du salarié,
+              coupé à « Sonia Kh… » sur un tableau qui avait la place de l'écrire. */''}
+        <th class="r nw">Brut</th><th class="r">CNSS salarié</th><th class="r nw">IRPP + CSS</th>
+        <th class="r">Net à payer</th><th class="r">Charges patronales</th><th class="r">Coût employeur</th>
         <th class="nw">Écriture</th><th class="row-actions-h"></th></tr></thead>
         <tbody>${lignesBulletins}</tbody>
-        <tfoot><tr><th>${esc(pl(masse.count, 'bulletin'))}</th>
+        <tfoot><tr><th class="nw">${esc(pl(masse.count, 'bulletin'))}</th>
           <th class="r nw">${esc(money(masse.brut))}</th><th class="r nw">${esc(money(masse.cnssSalarie))}</th>
           <th class="r nw">${esc(money(KC.round3(masse.irpp + masse.css)))}</th><th class="r nw">${esc(money(masse.net))}</th>
           <th class="r nw">${esc(money(masse.chargesPatronales))}</th><th class="r nw">${esc(money(masse.cout))}</th>
           <th colspan="2"></th></tr></tfoot></table></div>`
-    : `<div class="empty">Aucun bulletin pour ${esc(KC.moisPaie(m))} ${esc(s.annee)}.
-        <p class="small muted">Un bulletin garde une COPIE de son calcul : changer un barème plus tard ne réécrit jamais un bulletin déjà remis.</p>
-        ${actifs.length ? '<button class="btn btn-primary" id="pa-bulletin2">Établir un bulletin…</button>'
-    : '<button class="btn btn-primary" id="pa-salarie2">Déclarer un salarié…</button>'}</div>`}
+    : `<div class="empty">Aucun bulletin pour ${esc(KC.moisPaie(m))} ${esc(s.annee)}${actifs.length ? '.' : ' : il faut d\'abord un salarié.'}
+        ${/* Le geste de l'état vide n'est PAS un second vert : la couleur est à l'étape suivante, en
+              haut (U-11). Sans salarié, il n'y a rien à établir ici — le panneau des salariés, juste
+              en dessous, porte le geste qui débloque. « Un bulletin garde une copie de son calcul »
+              vit dans la bulle du mois (9.4.9) : répétée ici, c'était une notice sous un vide. */''}
+        ${actifs.length ? '<div class="mt"><button class="btn" id="pa-bulletin2">Établir un bulletin…</button></div>' : ''}</div>`}
     </div>
 
-    <div class="split mt">
-      <div class="panel"><h2>Les salariés ${info('pa.salaries')}</h2>
+    ${/* Empilés, pas côte à côte (règle 3.4.0) : deux tableaux de cinq et six colonnes dans un
+          `.split` débordaient chacun de leur moitié — 107 et 46 px à 1440 — et coupaient les noms. */''}
+    <div class="panel mt"><h2>Les salariés ${info('pa.salaries')}</h2>
         ${(L.salaries || []).length
     ? `<div class="scroll-x"><table class="list compact"><thead><tr><th>Nom</th><th class="nw">N° CNSS</th>
         <th>Poste</th><th class="nw">Contrat</th><th class="r nw">Brut mensuel</th><th class="row-actions-h"></th></tr></thead>
@@ -4360,9 +4564,10 @@
           <td class="nw small">${esc(KC.contractLabel(x.contrat).split(' —')[0])}</td>
           <td class="r nw">${esc(money(x.brut))}</td>
           ${RowMenu.cellule('SAL:' + x.id)}</tr>`).join('')}</tbody></table></div>`
-    : `<div class="empty mini">Aucun salarié déclaré. C'est par là qu'une paie commence.</div>`}
-      </div>
-      <div class="panel"><h2>La déclaration CNSS ${info('pa.cnss')}</h2>
+    : `<div class="empty mini">Aucun salarié déclaré. C'est par là qu'une paie commence.
+        <div class="mt"><button class="btn btn-sm" id="pa-salarie2">Déclarer un salarié…</button></div></div>`}
+    </div>
+    <div class="panel mt"><h2>La déclaration CNSS ${info('pa.cnss')}</h2>
         <div class="filters">
           <label class="f-lab" for="pa-trim">Trimestre</label>
           <select id="pa-trim">${KC.TRIMESTRES_PAIE.map(x => `<option value="${x[0]}" ${x[0] === t ? 'selected' : ''}>${esc(x[1])} ${esc(s.annee)}</option>`).join('')}</select>
@@ -4382,10 +4587,11 @@
         exacte du dépôt dépendent du régime. SkanFact Cabinet ne dépose rien et ne se connecte à aucune administration :
         c'est un tableau à recopier sur le portail.</p>`
     : `<div class="empty mini">Aucun bulletin sur ce trimestre : il n'y a rien à déclarer.</div>`}
-      </div>
     </div>
 
     <div class="panel mt"><h2>La masse salariale de l'exercice ${info('pa.masse')}</h2>
+      ${/* U-24 — un tableau de zéros n'apprend rien : sans bulletin sur l'exercice, on le dit. */''}
+      ${!anneeEntiere.count ? `<div class="empty mini">Aucun bulletin sur l'exercice ${esc(s.annee)} : la masse salariale se calcule dès le premier.</div>` : `
       <table class="list compact"><tbody>
         <tr><td>Brut versé</td><td class="r nw">${esc(money(anneeEntiere.brut))}</td></tr>
         <tr><td>Retenues salariales (CNSS, IRPP, CSS)</td><td class="r nw">${esc(money(KC.round3(anneeEntiere.cnssSalarie + anneeEntiere.irpp + anneeEntiere.css)))}</td></tr>
@@ -4393,7 +4599,7 @@
         <tr><td>Charges patronales (CNSS, accident, TFP, FOPROLOS)</td><td class="r nw">${esc(money(anneeEntiere.chargesPatronales))}</td></tr>
         <tr class="dc-total"><td><b>Coût employeur</b></td><td class="r nw"><b>${esc(money(anneeEntiere.cout))}</b></td></tr>
       </tbody></table>
-      <p class="small muted mt">Ce qui entre dans le résultat, c'est le <b>coût employeur</b> — jamais le net, jamais le brut seul.</p>
+      <p class="small muted mt">Ce qui entre dans le résultat, c'est le <b>coût employeur</b> — jamais le net, jamais le brut seul.</p>`}
     </div>`;
   }
 
@@ -4484,27 +4690,42 @@
       <form id="sf" class="grid-2">
         <label class="field obligatoire span-2"><span>Nom et prénom</span><input name="nom" value="${esc(e.nom || '')}"></label>
         <label class="field"><span>N° CIN</span><input name="cin" value="${esc(e.cin || '')}"></label>
-        <label class="field"><span>N° CNSS</span><input name="cnss" value="${esc(e.cnss || '')}" placeholder="La déclaration trimestrielle le demande"></label>
+        <label class="field"><span>N° CNSS</span><input name="cnss" value="${esc(e.cnss || '')}"></label>
         <label class="field span-2"><span>Poste occupé</span><input name="poste" value="${esc(e.poste || '')}"></label>
         <label class="field"><span>Type de contrat</span><select name="contrat">${KC.CONTRACT_TYPES.map(c => `<option value="${c[0]}" ${c[0] === (e.contrat || 'cdi') ? 'selected' : ''}>${esc(c[1].split(' —')[0])}</option>`).join('')}</select></label>
-        <label class="field obligatoire"><span>Salaire brut mensuel</span><input name="brut" type="number" step="0.001" min="0" class="num" value="${esc(String(e.brut || ''))}"></label>
-        <label class="field obligatoire"><span>Date d'embauche</span><input name="embauche" placeholder="AAAA-MM-JJ" value="${esc(e.embauche || '')}"></label>
-        <label class="field"><span>Date de sortie</span><input name="sortie" placeholder="AAAA-MM-JJ" value="${esc(e.sortie || '')}"></label>
+        ${/* 10.12.0 — la règle H-3 portée à la Paie (le jumeau manquant) : un montant s'écrit et se
+              relit en français (« 1 250,500 »), une date se saisit JJ/MM/AAAA. Les champs
+              numériques du navigateur refusaient la virgule sans un mot, et « AAAA-MM-JJ » était
+              le format interne affiché sur un écran de saisie (règle 9.4.5). */''}
+        <label class="field obligatoire"><span>Salaire brut mensuel</span><input name="brut" type="text" inputmode="decimal" class="num" placeholder="0,000" value="${esc(montantChamp(e.brut))}"></label>
+        <label class="field obligatoire"><span>Date d'embauche</span><input name="embauche" placeholder="JJ/MM/AAAA" value="${esc(e.embauche ? fmtJour(e.embauche) : '')}"></label>
+        <label class="field"><span>Date de sortie</span><input name="sortie" placeholder="JJ/MM/AAAA" value="${esc(e.sortie ? fmtJour(e.sortie) : '')}"></label>
         <label class="check span-2"><input type="checkbox" name="chefDeFamille" ${e.chefDeFamille ? 'checked' : ''}> Chef de famille (déduction annuelle)</label>
         <label class="field"><span>Enfants à charge</span><input name="enfants" type="number" min="0" step="1" class="num" value="${esc(String(e.enfants || 0))}"></label>
       </form>
-      <p class="small muted">Le chef de famille et les enfants à charge entrent dans le calcul de l'IRPP.
+      <p class="small muted">Le numéro CNSS n'est pas nécessaire pour calculer un bulletin ; la déclaration trimestrielle le
+      demande. Le chef de famille et les enfants à charge entrent dans le calcul de l'IRPP.
       <b>À VÉRIFIER</b> — les conditions et les montants dépendent de la loi de finances.</p>
       <div class="modal-actions"><button class="btn" data-close>Annuler</button>
         <button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
     (rootModal, close) => {
       $('#ok', rootModal).onclick = async () => {
         const f = $('#sf', rootModal);
+        // Une date tapée et illisible se REFUSE en montrant son champ ; vide, elle reste vide.
+        const dateDe = (nom, quoi) => {
+          const champ = $(`[name=${nom}]`, f), t = champ.value.trim();
+          if (!t) return '';
+          const iso = K.dateTapee(t, s.annee);
+          if (!iso) { refus(champ, `${quoi} : « ${t} » n'est pas une date lisible. Écris-la JJ/MM/AAAA.`); return null; }
+          return iso;
+        };
+        const embauche = dateDe('embauche', 'Date d\'embauche'); if (embauche === null) return;
+        const sortie = dateDe('sortie', 'Date de sortie'); if (sortie === null) return;
         const v = {
           id: x ? x.id : '', nom: $('[name=nom]', f).value, cin: $('[name=cin]', f).value,
           cnss: $('[name=cnss]', f).value, poste: $('[name=poste]', f).value,
-          contrat: $('[name=contrat]', f).value, brut: Number($('[name=brut]', f).value),
-          embauche: $('[name=embauche]', f).value.trim(), sortie: $('[name=sortie]', f).value.trim(),
+          contrat: $('[name=contrat]', f).value, brut: lireMontant($('[name=brut]', f).value),
+          embauche, sortie,
           chefDeFamille: $('[name=chefDeFamille]', f).checked, enfants: Number($('[name=enfants]', f).value) || 0,
           actif: x ? x.actif : true
         };
@@ -4530,14 +4751,14 @@
         <label class="field obligatoire span-2"><span>Salarié</span>
           <select name="salarieId" ${b ? 'disabled' : ''}>${actifs.map(x => `<option value="${esc(x.id)}" ${x.id === salDefaut ? 'selected' : ''}>${esc(x.nom)}</option>`).join('')}</select></label>
         <label class="field"><span>Mois</span><select name="mois">${KC.MOIS_PAIE.map((lab, i) => `<option value="${i + 1}" ${i + 1 === Number(e.mois) ? 'selected' : ''}>${esc(lab)}</option>`).join('')}</select></label>
-        <label class="field obligatoire"><span>Brut du mois</span><input name="brut" type="number" step="0.001" min="0" class="num" value="${esc(String(brutDefaut))}"></label>
+        <label class="field obligatoire"><span>Brut du mois</span><input name="brut" type="text" inputmode="decimal" class="num" placeholder="0,000" value="${esc(montantChamp(brutDefaut))}"></label>
         <label class="field"><span>Jours ouvrables du mois</span><input name="joursTravailles" type="number" min="1" step="1" class="num" value="${esc(String(e.joursTravailles || 26))}"></label>
         <label class="field"><span>Jours d'absence non payés</span><input name="joursAbsence" type="number" min="0" step="1" class="num" value="${esc(String(e.joursAbsence || 0))}"></label>
         <label class="field span-2"><span>Prime (facultatif)</span><input name="primeLabel" value="${esc(((e.primes || [])[0] || {}).label || '')}" placeholder="Prime de rendement"></label>
-        <label class="field"><span>Montant de la prime</span><input name="primeAmount" type="number" step="0.001" min="0" class="num" value="${esc(String(((e.primes || [])[0] || {}).amount || ''))}"></label>
+        <label class="field"><span>Montant de la prime</span><input name="primeAmount" type="text" inputmode="decimal" class="num" placeholder="0,000" value="${esc(montantChamp(((e.primes || [])[0] || {}).amount))}"></label>
         <label class="check"><input type="checkbox" name="primeTaxable" ${((e.primes || [])[0] || {}).taxable !== false ? 'checked' : ''}> Prime imposable</label>
         <label class="field span-2"><span>Retenue (facultatif)</span><input name="retLabel" value="${esc(((e.retenues || [])[0] || {}).label || '')}" placeholder="Remboursement d'avance"></label>
-        <label class="field"><span>Montant de la retenue</span><input name="retAmount" type="number" step="0.001" min="0" class="num" value="${esc(String(((e.retenues || [])[0] || {}).amount || ''))}"></label>
+        <label class="field"><span>Montant de la retenue</span><input name="retAmount" type="text" inputmode="decimal" class="num" placeholder="0,000" value="${esc(montantChamp(((e.retenues || [])[0] || {}).amount))}"></label>
       </form>
       <div id="bf-apercu" class="ok-box mt"></div>
       <p class="small warn-text" id="bf-refus" role="status" aria-live="polite" hidden></p>
@@ -4547,11 +4768,11 @@
       const f = $('#bf', rootModal);
       const lire = () => {
         const sal = (L.salaries || []).find(x => x.id === (b ? b.salarieId : $('[name=salarieId]', f).value)) || {};
-        const primeM = Number($('[name=primeAmount]', f).value) || 0;
-        const retM = Number($('[name=retAmount]', f).value) || 0;
+        const primeM = lireMontant($('[name=primeAmount]', f).value);
+        const retM = lireMontant($('[name=retAmount]', f).value);
         return {
           id: b ? b.id : '', salarieId: sal.id, annee: s.annee, mois: Number($('[name=mois]', f).value) || 1,
-          brut: Number($('[name=brut]', f).value) || 0,
+          brut: lireMontant($('[name=brut]', f).value),
           joursTravailles: Number($('[name=joursTravailles]', f).value) || 26,
           joursAbsence: Number($('[name=joursAbsence]', f).value) || 0,
           primes: primeM ? [{ label: $('[name=primeLabel]', f).value || 'Prime', amount: primeM, taxable: $('[name=primeTaxable]', f).checked }] : [],
@@ -4587,6 +4808,17 @@
         bouton.disabled = !verdict.ok;
         bouton.title = verdict.ok ? '' : verdict.motif;
       };
+      // Le brut PROPOSÉ suit le salarié choisi, tant qu'on n'y a pas touché (règle 10.6.0 : un champ
+      // pré-rempli se recalcule quand ce dont il dépend change). Changer de salarié gardait le brut
+      // du premier de la liste : un bulletin juste en apparence, au mauvais salaire.
+      let brutTouche = !!b;
+      $('[name=brut]', f).addEventListener('input', () => { brutTouche = true; });
+      const choixSal = $('[name=salarieId]', f);
+      if (choixSal) choixSal.addEventListener('change', () => {
+        if (brutTouche) return;
+        const sal = (L.salaries || []).find(x => x.id === choixSal.value) || {};
+        $('[name=brut]', f).value = montantChamp(sal.brut);
+      });
       f.oninput = f.onchange = maj;
       maj();
       $('#ok', rootModal).onclick = async () => {
@@ -4607,43 +4839,53 @@
     if (!d) return `<div class="empty mini">Lecture de l'inventaire…</div>`;
     const inv = d.inventaire;
     const v = d.variation || {};
+    // 10.12.0 (U-11) — un seul vert, l'étape suivante. Sans inventaire, le geste vit dans l'état
+    // vide, qui EST le corps de l'écran : deux « Saisir l'inventaire… » verts à quarante pixels
+    // l'un de l'autre, c'était le même bouton montré deux fois. Une fois compté, le vert passe à
+    // l'écriture de la variation, puis s'éteint : il n'y a plus rien à faire.
+    const ecrivable = !!(inv && v.ok && v.ecriture && !inv.ecritureId);
+    const suivante = ecrivable ? 'ecrire' : '';
+    const cls = pas => 'btn btn-sm' + (pas === suivante ? ' btn-primary' : '');
+    // U-23 — la raison d'un bouton éteint se lit à côté de lui : le panneau de la variation vient
+    // donc JUSTE sous la barre (le résumé avant le détail), et sa ligne d'état est cette raison.
+    // Sous deux cents lignes comptées, elle n'était plus « à côté » de rien.
+    const pourquoi = !inv || ecrivable ? '' : inv.ecritureId ? 'L\'écriture de variation est passée : la repasser compterait le stock deux fois.' : (v.motif || '');
     return `<div class="filters">
       ${info('iv.etat')}
       <span class="small muted">Exercice ${esc(s.annee)}</span>
-      <button class="btn btn-sm btn-primary" id="iv-saisir">${inv ? 'Reprendre l\'inventaire…' : 'Saisir l\'inventaire…'}</button>
-      <button class="btn btn-sm" id="iv-ecrire" ${inv && v.ok && v.ecriture && !inv.ecritureId ? '' : 'disabled'}
-        title="${!inv ? 'Saisis l\'inventaire d\'abord.'
-    : inv.ecritureId ? 'Déjà passée : la repasser compterait le stock deux fois.'
-      : !v.ecriture ? 'Le stock compté est exactement celui des comptes : rien à écrire.' : ''}">Écrire la variation de stock</button>
+      ${inv ? `<button class="${cls('reprendre')}" id="iv-saisir">Reprendre l'inventaire…</button>
+      <button class="${cls('ecrire')}" id="iv-ecrire" ${ecrivable ? '' : 'disabled'}
+        title="${esc(pourquoi)}">Écrire la variation de stock</button>` : ''}
     </div>
     ${!inv
     ? `<div class="empty">Aucun inventaire saisi pour ${esc(s.annee)}.
         <p class="small muted">Un inventaire, c'est ce qui reste au dernier jour, compté et valorisé.
-        La différence avec ce que portent les comptes devient une écriture (${esc(KC.COMPTES_IMMO.variationStocks)} / ${esc(KC.COMPTES_IMMO.stocks)}).</p>
+        La différence avec ce que portent les comptes devient une écriture <span class="nw">(${esc(KC.COMPTES_IMMO.variationStocks)} / ${esc(KC.COMPTES_IMMO.stocks)})</span>.</p>
         <button class="btn btn-primary" id="iv-saisir2">Saisir l'inventaire…</button></div>`
-    : `<div class="panel mt"><h2>Ce qui a été compté au ${esc(fmtJour(inv.date))} ${info('iv.lignes')}</h2>
-        <div class="scroll-x"><table class="list compact"><thead><tr><th class="nw">Réf.</th><th>Désignation</th>
-          <th class="r nw">Quantité</th><th class="r nw">Coût unitaire</th><th class="r nw">Valeur</th></tr></thead>
-        <tbody>${inv.lignes.map(l => `<tr><td class="nw">${esc(l.ref)}</td>
-          <td class="tronq" title="${esc(l.libelle)}">${esc(l.libelle)}</td>
-          <td class="r nw">${esc(String(l.quantite))}</td><td class="r nw">${esc(money(l.cout))}</td>
-          <td class="r nw">${esc(money(l.valeur))}</td></tr>`).join('')}</tbody>
-        <tfoot><tr><th colspan="4">${esc(pl(inv.lignes.length, 'ligne comptée', 'lignes comptées'))}</th>
-          <th class="r nw">${esc(money(inv.total))}</th></tr></tfoot></table></div></div>
-      <div class="panel mt"><h2>La variation ${info('iv.variation')}</h2>
+    : `<div class="panel mt" id="iv-variation"><h2>La variation ${info('iv.variation')}</h2>
         ${v.ok
     ? `<table class="list compact"><tbody>
             <tr><td>Stock aux comptes à l'ouverture</td><td class="r nw">${esc(money(v.initial))}</td></tr>
             <tr><td>Stock compté au ${esc(fmtJour(inv.date))}</td><td class="r nw">${esc(money(v.final))}</td></tr>
             <tr class="dc-total"><td><b>Variation</b></td><td class="r nw"><b>${esc(money(v.ecart))}</b></td></tr></tbody></table>
-          ${v.ecart
-    ? `<p class="small muted mt">Le stock ${v.ecart > 0 ? 'augmente' : 'diminue'} :
+          ${/* U-13 — un état NORMAL se dit sur une ligne grise avec sa coche : « rien à écrire » et
+                « déjà passée » ne demandent aucun geste, ils ne méritent pas un encadré vert qui pèse
+                autant qu'une alerte. */''}
+          ${pourquoi ? `<p class="small ligne-ok mt" id="iv-motifs"><span aria-hidden="true">✓</span> ${esc(pourquoi)}</p>`
+    : `<p class="small muted mt">Le stock ${v.ecart > 0 ? 'augmente' : 'diminue'} :
               on ${v.ecart > 0 ? 'débite' : 'crédite'} le stock et on ${v.ecart > 0 ? 'crédite' : 'débite'} la variation.
-              L'écriture arrive en <b>brouillard</b>, au ${esc(fmtJour(inv.date))}.</p>`
-    : `<div class="ok-box mt">${esc(v.motif || '')}</div>`}
-          ${inv.ecritureId ? '<div class="ok-box mt">L\'écriture de variation est passée.</div>' : ''}`
+              L'écriture arrive en <b>brouillard</b>, au ${esc(fmtJour(inv.date))}.</p>`}`
     : `<div class="warn-box">${esc(v.motif || '')}</div>`}
-      </div>`}`;
+      </div>
+      <div class="panel mt"><h2>Ce qui a été compté au ${esc(fmtJour(inv.date))} ${info('iv.lignes')}</h2>
+        <div class="scroll-x"><table class="list compact"><thead><tr><th class="nw">Réf.</th><th>Désignation</th>
+          <th class="r nw">Quantité</th><th class="r nw">Coût unitaire</th><th class="r nw">Valeur</th></tr></thead>
+        <tbody>${inv.lignes.map(l => `<tr><td class="nw">${esc(l.ref)}</td>
+          <td class="tronq" title="${esc(l.libelle)}">${esc(l.libelle)}</td>
+          <td class="r nw">${esc(String(l.quantite).replace('.', ','))}</td><td class="r nw">${esc(money(l.cout))}</td>
+          <td class="r nw">${esc(money(l.valeur))}</td></tr>`).join('')}</tbody>
+        <tfoot><tr><th colspan="4">${esc(pl(inv.lignes.length, 'ligne comptée', 'lignes comptées'))}</th>
+          <th class="r nw">${esc(money(inv.total))}</th></tr></tfoot></table></div></div>`}`;
   }
 
   function brancherInventaire(el, root, dossier) {
@@ -4673,8 +4915,10 @@
     const dejaLa = (s.inv && s.inv.inventaire) || null;
     // On saisit en COLLANT une liste depuis un tableur : ligne par ligne dans un formulaire,
     // personne ne compterait deux cents références (même règle que les dossiers collés, 6.8.0).
+    // Ce qu'on rouvre se relit en français (H-3) : « 7.5 » dans une liste de coûts, c'est sept
+    // mille cinq cents pour qui lit « 7.500 ». Le moteur relit les deux formes.
     const depart = dejaLa
-      ? dejaLa.lignes.map(l => [l.ref, l.libelle, l.quantite, l.cout].join('\t')).join('\n')
+      ? dejaLa.lignes.map(l => [l.ref, l.libelle, String(l.quantite).replace('.', ','), montantChamp(l.cout) || '0'].join('\t')).join('\n')
       : '';
     modal(`<h2>L'inventaire de ${esc(s.annee)}</h2>
       <p class="small muted">Une ligne par référence : <b>référence, désignation, quantité, coût unitaire</b>,
@@ -4685,8 +4929,8 @@
         <label class="field"><span>Compte de stock</span>
           <input name="compte" value="${esc((dejaLa && dejaLa.compte) || KC.COMPTES_IMMO.stocks)}"></label>
       </form>
-      <label class="field"><span>Les lignes comptées</span>
-        <textarea id="iv-lignes" rows="10" placeholder="REF-01&#9;Câble HDMI 2 m&#9;24&#9;7.500">${esc(depart)}</textarea></label>
+      <label class="field mt"><span>Les lignes comptées</span>
+        <textarea id="iv-lignes" rows="10" placeholder="REF-01&#9;Câble HDMI 2 m&#9;24&#9;7,500">${esc(depart)}</textarea></label>
       <div id="iv-apercu" class="small muted"></div>
       <div class="modal-actions"><button class="btn" data-close>Annuler</button>
         <button class="btn btn-primary" id="ok">Enregistrer l'inventaire</button></div>`,
@@ -4707,13 +4951,18 @@
       const maj = () => {
         const inv = lire();
         const v = KC.inventaireValide(inv);
+        // U-13 — le refus attend le premier geste : « un inventaire sans une seule ligne… » en
+        // orange sur une fenêtre qu'on vient d'ouvrir, c'était reprocher ce qu'on n'a pas encore eu
+        // le temps de faire. Le bouton éteint dit déjà pourquoi, au survol et sous le doigt.
         apercu.innerHTML = v.ok
           ? `<div class="ok-box mt">${esc(pl(inv.lignes.length, 'ligne'))} — total ${esc(money(KC.totalInventaire(inv)))}.</div>`
-          : `<div class="warn-box mt">${v.motifs.slice(0, 5).map(m => `<div>${esc(m)}</div>`).join('')}${v.motifs.length > 5 ? `<div>… et ${v.motifs.length - 5} de plus.</div>` : ''}</div>`;
+          : !touche ? ''
+            : `<div class="warn-box mt">${v.motifs.slice(0, 5).map(m => `<div>${esc(m)}</div>`).join('')}${v.motifs.length > 5 ? `<div>… et ${v.motifs.length - 5} de plus.</div>` : ''}</div>`;
         const b = $('#ok', rootModal);
         b.disabled = !v.ok; b.title = v.ok ? '' : v.motifs[0];
       };
-      $$('input,textarea', rootModal).forEach(x => { x.oninput = maj; });
+      let touche = !!dejaLa;
+      $$('input,textarea', rootModal).forEach(x => { x.oninput = () => { touche = true; maj(); }; });
       maj();
       $('#ok', rootModal).onclick = async () => {
         try {
@@ -6270,7 +6519,7 @@
     // ou deux barres, et onze « pas reçu ». L'information réelle EST le chiffre — et le fait qu'il
     // ne porte que sur deux mois, ce qu'aucun graphique ne dit aussi clairement qu'une phrase.
     if (recus < 3) {
-      const nommes = mois.filter((m, i) => vals[i] != null).map(m => K.monthLabel(m)).join(' et ');
+      const nommes = K.monthListLabel(mois.filter((m, i) => vals[i] != null));
       return `<div class="ca-maigre">
         <div><span class="eyebrow">Chiffre d'affaires déclaré</span>
           <div class="ca-somme">${esc(money(total, devise))}</div></div>
@@ -6282,7 +6531,7 @@
         const v = vals[i];
         const haut = v == null ? 0 : Math.max(2, Math.round((v / max) * 100));
         return `<div class="ca-col${v == null ? ' off' : ''}" title="${esc(K.monthLabel(m))} : ${v == null ? 'pas reçu' : esc(money(v, devise))}">
-          <div class="ca-v">${v == null ? '' : esc(money(v, devise).replace(' ' + devise, ''))}</div>
+          <div class="ca-v">${v == null ? '' : esc(money(v, devise).replace(/\s\S+$/, ''))}</div>
           <div class="ca-bar" style="height:${haut}%"></div>
           <div class="ca-m">${esc(K.MONTHS_FR[i].slice(0, 3))}</div></div>`;
       }).join('')}</div>
@@ -6406,7 +6655,7 @@
         <label class="field">${lbl('TVA', 'd.tvaPeriod')}<select id="f-tva">
           <option value="">— non précisé —</option>${K.TVA_PERIODS.map(r => `<option value="${esc(r.id)}" ${d.tvaPeriod === r.id ? 'selected' : ''}>${esc(r.label)}</option>`).join('')}</select></label>
         <label class="field">${lbl('Début de mission', 'd.from')}<input type="text" id="f-from" value="${esc(d.from || '')}" placeholder="2026-01" pattern="\\d{4}-\\d{2}"></label>
-        <label class="field">${lbl('Honoraires mensuels', 'd.fees')}<input type="number" id="f-fees" value="${d.fees || ''}" step="0.001" min="0" placeholder="0"></label>
+        <label class="field">${lbl('Honoraires mensuels', 'd.fees')}<input type="text" inputmode="decimal" class="num" id="f-fees" value="${esc(montantChamp(d.fees))}" placeholder="0,000"></label>
       </div>
       <label class="field mt">${lbl('Note interne', 'd.note')}<textarea id="f-note" rows="3">${esc(d.note || '')}</textarea></label>`;
   }
@@ -6422,7 +6671,7 @@
       regime: $('#f-regime', layer).value,
       tvaPeriod: $('#f-tva', layer).value,
       from: /^\d{4}-\d{2}$/.test(from) ? from : '',
-      fees: Number($('#f-fees', layer).value) || 0,
+      fees: lireMontant($('#f-fees', layer).value),
       note: $('#f-note', layer).value
     };
   }
@@ -6473,7 +6722,7 @@
         $('#del', layer).onclick = async () => {
           const n = (dossier.packs || []).length;
           const ok = await confirmTyped('Supprimer ce dossier ?',
-            `<p>Le dossier <strong>${esc(dossier.name)}</strong> et ${n ? `ses ${pl(n, 'paquet')}` : 'son historique'} seront <strong>effacés de ce poste</strong>.
+            `<p>Le dossier <strong>${esc(dossier.name)}</strong> et ${n > 1 ? `ses ${pl(n, 'paquet')}` : n ? 'son paquet' : 'son historique'} seront <strong>effacés de ce poste</strong>.
              ${n ? 'Les pièces comptables que ce client t\'a envoyées seront supprimées du disque.' : ''}</p>
              <p class="muted small">Une sauvegarde est prise juste avant, ses livres compris. Si le client est simplement parti, préfère <strong>l'archivage</strong> : il disparaît des listes sans rien perdre.</p>
              ${backupInfo && backupInfo.external && backupInfo.external.dir ? '<p class="muted small">La copie externe n\'est pas touchée : une sauvegarde qui efface ce que tu effaces n\'en est plus une. Si le client demande l\'effacement de ses pièces, supprime-les aussi là-bas.</p>' : ''}`,
@@ -6538,21 +6787,29 @@
       $('#rl-imp').onclick = () => doImport();
       return;
     }
+    // 10.12.0 (U-11) — un seul vert : le geste de GROUPE quand il y a plusieurs clients à relancer,
+    // le « Écrire » de la ligne quand il n'y en a qu'un. Chaque ligne portait son « Écrire » en vert :
+    // quatre boutons verts pour trois clients, et plus aucun ne disait par où commencer. Le bouton
+    // de la ligne reste visible (c'est le geste pour lequel la page existe, 7.29.0) — sans couleur.
+    const vertLigne = rows.length === 1 ? 'btn btn-primary btn-sm' : 'btn btn-sm';
     view.innerHTML = `
-      <div class="page-head"><h1>Relances</h1>
+      ${/* U-13 — l'explication de la page vit dans la bulle du titre (règle 9.4.9) : un paragraphe
+            permanent s'intercalait entre deux bandeaux, avant le premier nom. */''}
+      <div class="page-head"><h1>Relances ${info('r.page')}</h1>
         ${rows.length > 1 ? `<div class="actions"><button class="btn btn-primary" id="group">${
   coches.length ? `Relancer ${pl(coches.length, 'client')} coché${coches.length > 1 ? 's' : ''}`
-    : filtre ? `Relancer ${pl(rows.length, 'client')}` : 'Relancer tout le monde'} ${info('r.group')}</button></div>` : ''}</div>
+    : filtre ? `Relancer ${pl(rows.length, 'client')}` : 'Relancer tout le monde'}</button>${info('r.group')}</div>` : ''}</div>
       ${filtre ? `<div class="banner"><span><strong>${pl(rows.length, 'client')}</strong> sur ${toutes.length}${
   relState.depuis ? ` — ceux qu'il te manque pour « ${esc(relState.depuis)} »` : ''}.</span>
         <button class="btn btn-sm" id="rl-tout">Voir tout le monde</button></div>` : ''}
-      <p class="muted small mb">Un message qui nomme les mois manquants fait bouger ; « envoie-moi tes documents » non.
-      SkanFact prépare le texte, ton logiciel de messagerie l'envoie — et la relance est enregistrée pour que tu saches, lundi, qui tu as déjà relancé.</p>
-      ${rel.due && rel.total ? `<div class="banner"><span>On est le <strong>${rel.jour}</strong> : tu as fixé le ${rel.day} du mois comme jour de relance.
+      ${/* `rel.due` vaut « le jour de relance est ATTEINT », pas « c'est aujourd'hui » : le 23 avec
+            un jour réglé au 10, la phrase doit dire que le jour est passé, pas que c'est lui. */''}
+      ${rel.due && rel.total ? `<p class="small mb" id="rl-jour">On est le <strong>${rel.jour}</strong>${rel.jour === rel.day
+    ? ', ton jour de relance.' : ` : ton jour de relance, le ${rel.day}, est passé.`}
         ${[
     rel.count ? `${pl(rel.count, 'dossier')} ${rel.count > 1 ? 'ont' : 'a'} des mois manquants` : '',
     rel.provisoires ? `${pl(rel.provisoires, rel.count ? 'autre' : 'dossier')} ${rel.provisoires > 1 ? 'ont' : 'a'} envoyé un mois qui n'est pas clôturé` : ''
-  ].filter(Boolean).join(', et ')}.</span></div>` : ''}
+  ].filter(Boolean).join(', et ')}.</p>` : ''}
       ${rows.length ? `<div class="scroll-x"><table class="list">
         ${/* M11 — « tout le monde ou personne » : un comptable relance les cinq clients d'une
               échéance, ou ceux qu'il n'a pas eus au téléphone. La case d'en-tête coche ce que
@@ -6569,7 +6826,7 @@
             ? esc(K.missingLabel(r.missingMonths))
             : `<span class="muted">${pl(r.provisionalCount, 'mois', 'mois')} non clôturé${r.provisionalCount > 1 ? 's' : ''}</span>`}</td>
           <td class="muted nw">${r.lastRelanceAt ? esc(fmtDay(r.lastRelanceAt)) + ` <span class="small">(${esc(ago(r.lastRelanceAt))}, ${esc(labelOf(K.RELANCE_WAYS, r.lastRelanceVia) || r.lastRelanceVia)})</span>` : 'jamais'}</td>
-          ${rowMenuCell(r.id, `<button class="btn btn-primary btn-sm" data-rel="${esc(r.id)}">Écrire</button>`)}</tr>`).join('')}</tbody></table></div>`
+          ${rowMenuCell(r.id, `<button class="${vertLigne}" data-rel="${esc(r.id)}">Écrire</button>`)}</tr>`).join('')}</tbody></table></div>`
         : `<div class="todo-ok">Personne à relancer : tous tes dossiers sont à jour.</div>`}`;
     const findRow = id => K.dossierList(S).find(x => x.id === id);
     // « Écrire » reste le seul bouton visible de la ligne : c'est le geste pour lequel cette page
@@ -6816,7 +7073,7 @@
   }
 
   function drawEcheances(view) {
-    const liste = K.echeances(S);
+    const liste = K.echeances(S, null, { employeurs: employeursConnus() });
     const prochaines = liste.filter(e => !e.passee);
     const passees = liste.filter(e => e.passee).reverse();
 
@@ -6845,6 +7102,11 @@
       const sig = e.manquants.join('|');
       const memeListe = !!sig && sig === derniersManquants;
       derniersManquants = sig;
+      // Cinq « Marquer déposée » sur une page sont cinq boutons qu'un lecteur d'écran ne distingue
+      // pas (vu par Browser Use, 10.12.0) : le NOM porte l'échéance, le libellé visible reste court —
+      // la carte le dit déjà autour de lui.
+      const relLab = e.manquants.length > 1 ? `Relancer ces ${pl(e.manquants.length, 'client')}` : 'Relancer ce client';
+      const depLab = depose ? 'Annuler « déposée »' : 'Marquer déposée';
       return `<div class="ech lvl-${depose ? 'ok' : e.level}${depose ? ' ech-fait' : ''}">
       <div class="ech-date"><div class="ech-j">${esc(e.date.slice(8))}</div><div class="ech-m">${esc(K.monthLabel(e.date.slice(0, 7)).split(' ')[0])}</div></div>
       <div class="ech-txt">
@@ -6857,36 +7119,35 @@
           <span class="muted small">sur ${pl(e.clients, 'client')}</span>
         </div>
         ${e.manquants.length ? `<div class="small mt ech-qui">${memeListe
-          ? `<span class="muted">Les mêmes ${pl(e.manquants.length, 'client')} que l'échéance du dessus.</span>`
+          ? `<span class="muted">${e.manquants.length > 1 ? `Les mêmes ${pl(e.manquants.length, 'client')}` : 'Le même client'} que l'échéance du dessus.</span>`
           : `${esc(e.manquants.slice(0, 8).join(', '))}${e.manquants.length > 8 ? '…' : ''}`}
           ${/* Un lien souligné au milieu d'une phrase n'est pas un geste : c'est un vrai bouton, et
                 il emmène aux Relances FILTRÉES sur ces clients-là — « Les relancer » qui ouvre les
                 soixante n'a pas tenu sa promesse (règle 7.15.0). */''}
-          <button class="btn btn-sm" data-relq="${esc(cle)}">Relancer ces ${pl(e.manquants.length, 'client')}</button></div>` : ''}
+          <button class="btn btn-sm" data-relq="${esc(cle)}" aria-label="${esc(relLab + ' — ' + e.label)}">${esc(relLab)}</button></div>` : ''}
         ${/* Pointer une occurrence, jamais une règle (7.21.0) : la TVA d'avril cesse de réclamer,
               celle de mai reste due. Et c'est un PENSE-BÊTE — le Cabinet ne dépose rien et ne se
-              connecte à aucune administration : c'est écrit sous le bouton. */''}
-        <div class="ech-fin"><button class="btn btn-sm ${depose ? '' : 'btn-ghost'}" data-depot="${esc(cle)}">${
-  depose ? 'Annuler « déposée »' : 'Marquer déposée'}</button>
-          <span class="muted small">Un pense-bête : SkanFact ne dépose rien à ta place. ${info('ec.depot')}</span></div>
+              connecte à aucune administration : c'est écrit UNE fois, en tête de la page (U-21). */''}
+        <div class="ech-fin"><button class="btn btn-sm ${depose ? '' : 'btn-ghost'}" data-depot="${esc(cle)}" aria-label="${esc(depLab + ' — ' + e.label)}">${esc(depLab)}</button></div>
       </div></div>`;
     };
 
+    const jours = K.deadlineSettings(S);
     view.innerHTML = `
-      <div class="page-head"><h1>Échéances</h1></div>
-      <p class="muted small mb">Chaque échéance est rattachée aux <strong>paquets que tu n'as pas reçus</strong> : c'est la seule chose
-      qu'un calendrier papier ne peut pas te dire. ${info('ec.dates')}</p>
-      <div class="warn-box mb"><strong>À VÉRIFIER avec l'usage de ton cabinet.</strong> Les jours proposés suivent la pratique courante en Tunisie
-      (TVA le ${K.deadlineSettings(S).tvaDay}, CNSS le ${K.deadlineSettings(S).cnssDay} du mois suivant) mais dépendent de la forme juridique,
-      du régime et de la loi de finances. Tu les règles dans <a href="#/reglages">Réglages</a>.</div>
+      ${/* 10.12.0 (U-21, U-13) — ce qui vaut pour TOUTES les cartes se dit UNE fois, en tête : « Un
+            pense-bête : SkanFact ne dépose rien à ta place » se répétait sous chacune, et le rappel
+            des jours proposés vivait dans un encadré orange PERMANENT — une réserve, pas un geste
+            à faire. L'explication de la page vit dans la bulle du titre (règle 9.4.9). */''}
+      <div class="page-head"><h1>Échéances ${info('ec.dates')}</h1></div>
+      <p class="muted small mb" id="ec-regle">Des pense-bêtes : SkanFact Cabinet ne dépose rien à ta place ${info('ec.depot')} ·
+      jours proposés : TVA le ${esc(jours.tvaDay)}, CNSS le ${esc(jours.cnssDay)} du mois suivant — <strong>À VÉRIFIER</strong>,
+      ils se règlent dans <a href="#/reglages">Réglages</a>.</p>
 
       <div class="panel"><h2>À venir</h2>
         ${prochaines.length ? `<div class="ech-list">${prochaines.map(carte).join('')}</div>`
           : '<div class="empty mini">Rien dans les trois prochains mois.</div>'}</div>
 
-      ${passees.length ? `<div class="panel"><h2>Déjà passées</h2>
-        <p class="small muted">SkanFact ne sait pas ce que tu as déposé : pointe celles que tu as faites, et cette liste ne garde que les mois
-        qu'on n'a jamais pu déclarer faute de pièces. ${info('ec.passees')}</p>
+      ${passees.length ? `<div class="panel"><h2>Déjà passées ${info('ec.passees')}</h2>
         <div class="ech-list">${passees.slice(0, 8).map(carte).join('')}</div></div>` : ''}`;
 
     // Le pointage : on écrit, puis on propose de défaire. Au moment où l'on comprend qu'on s'est
@@ -7022,7 +7283,7 @@
       `<h2>${pl(r.lignes, 'écriture')} regroupée${r.lignes > 1 ? 's' : ''}</h2>
        <div class="kv mt">
          <div><span>Clients</span><span>${r.dossiers}</span></div>
-         <div><span>Mois</span><span>${esc(r.mois.map(K.monthLabel).join(', '))}</span></div>
+         <div><span>Mois</span><span>${esc(K.monthListLabel(r.mois))}</span></div>
          <div><span>Fichier</span><span class="path">${esc(r.path)}</span></div>
        </div>
        ${r.illisibles && r.illisibles.length ? `<div class="warn-box mt"><strong>${pl(r.illisibles.length, 'paquet')} n'${r.illisibles.length > 1 ? 'ont' : 'a'} pas pu être lu${r.illisibles.length > 1 ? 's' : ''}</strong> :
@@ -7166,7 +7427,7 @@
             l'écran proposerait un geste que l'enregistrement refuse. */''}
       ${g.ok ? '' : `<p class="muted small mt">${esc(g.motif || '')} ${esc(g.geste || '')}</p>`}
       <div class="modal-actions">
-        <button class="btn btn-primary" id="eq-add" ${g.ok ? '' : 'disabled'}>Ajouter un collaborateur…</button>
+        <button class="btn" id="eq-add" ${g.ok ? '' : 'disabled'}>Ajouter un collaborateur…</button>
       </div>
       <p class="muted small">Une identité <strong>déclarée</strong>, pas un mot de passe : celui du cabinet ouvre déjà
       toute la base, donc un second par personne ne protégerait rien de plus. Ce que les rôles apportent, c'est de
@@ -7287,7 +7548,7 @@
       <div class="modal-actions">
         ${licCab.key ? '<button class="btn" id="lic-clear">Retirer la clé</button>' : ''}
         <button class="btn" id="lic-ask">Demander une licence…</button>
-        <button class="btn btn-primary" id="lic-save">Enregistrer la clé</button>
+        <button class="btn" id="lic-save" data-enreg>Enregistrer la clé</button>
       </div>
       <p class="muted small">Ce qui part dans la demande : ton <strong>empreinte</strong>, le nombre de dossiers comptés
       et la version. <strong>Jamais un nom de client</strong> — ton portefeuille ne sort pas d'ici.</p>`;
@@ -7296,10 +7557,7 @@
     // donc se recopient faux (10.9.2).
     const cp = $('#lic-copier-emp', box);
     if (cp) {
-      cp.onclick = async () => {
-        try { await navigator.clipboard.writeText(licCab.empreinte || ''); toast('Empreinte copiée.'); }
-        catch { await infoDialog('Copie impossible', 'Le presse-papiers n\'a pas répondu. Sélectionne l\'empreinte à la main.'); }
-      };
+      cp.onclick = () => copierEmpreinte(licCab.empreinte);
     }
     const sv = $('#lic-save', box);
     if (sv) {
@@ -7349,7 +7607,7 @@
     // sortir d'un champ qui avale le clavier.
     $$('[data-touche]', view).forEach(inp => {
       const vue = $(`[data-vue="${inp.dataset.touche}"]`, view);
-      const poser = v => { inp.value = v; if (vue) vue.innerHTML = kbd(v); };
+      const poser = v => { inp.value = v; if (vue) vue.innerHTML = kbd(v); sale(inp); };
       inp.onkeydown = ev => {
         if (ev.key === 'Escape') { inp.blur(); return; }
         // Un modificateur seul n'est pas un raccourci : on attend la touche qui l'accompagne.
@@ -7365,6 +7623,7 @@
         const inp = $(`[data-touche="${k}"]`, view), vue = $(`[data-vue="${k}"]`, view);
         if (inp) inp.value = d;
         if (vue) vue.innerHTML = kbd(d);
+        sale(b);
       };
     });
     const sr = $('#sr-save', view);
@@ -7465,31 +7724,63 @@
     };
     dessinerCycles(view); dessinerQuestionnaire(view);
 
-    // 10.0.0 — le modèle de liasse. Même mécanique : vide = celui que le moteur PROPOSE, et dès
-    // qu'on en écrit un, il le remplace entièrement — jamais un mélange des deux, qui donnerait un
-    // rattachement de compte que personne n'a décidé.
-    const la = $('#sr-liasse-add', view);
-    if (la) la.onclick = () => { liasseBrouillon = lireLiasse(view).concat([{ id: '', etat: 'bilan-actif', label: '', comptes: [], signe: 1, deduit: false, charge: false }]); dessinerLiasse(view); };
-    const lr = $('#sr-liasse-reset', view);
-    if (lr) lr.onclick = async () => {
-      if (!await confirmDialog('Reprendre le modèle proposé ?',
-        '<p>Tes rubriques à toi seront remplacées par celles que SkanFact propose. Tu pourras les remodifier ensuite.</p>', 'Reprendre', false)) return;
-      liasseBrouillon = KC.MODELE_LIASSE.map(r => ({ ...r, comptes: (r.comptes || []).slice() }));
-      dessinerLiasse(view);
-    };
-    const ls = $('#sr-liasse-save', view);
-    if (ls) ls.onclick = async () => {
-      const table = lireLiasse(view).filter(r => r.id || r.label || r.comptes.length);
-      const boiteux = table.filter(r => !r.id || !r.label);
-      if (boiteux.length) return toast('Chaque rubrique a besoin d\'un code et d\'un libellé : sans eux, elle s\'imprimerait « ».', 'error');
-      const doublons = table.map(r => r.id).filter((x, i, a) => a.indexOf(x) !== i);
-      if (doublons.length) return toast(`Le code « ${doublons[0]} » est posé deux fois : deux rubriques ne peuvent pas porter le même.`, 'error');
-      try {
-        S = await api.saveLiasse({ modele: table });
-        liasseBrouillon = null; dessinerLiasse(view); flash($('#sr-liasse-saved', view));
-      } catch (e) { toast(plainError(e), 'error'); }
-    };
-    dessinerLiasse(view);
+    // 10.0.0 — le modèle de liasse, qui se modifie désormais dans sa fenêtre (U-19).
+    const lo = $('#sr-liasse-ouvrir', view);
+    if (lo) lo.onclick = () => modeleLiasseForm(() => { const r = $('#sr-liasse-resume', view); if (r) r.innerHTML = resumeLiasse(); });
+  }
+
+  // Le modèle en UNE phrase : ce qui sert (le proposé ou le tien) et combien de rubriques par état.
+  const resumeLiasse = () => {
+    const propre = (S.liasse || []).length > 0;
+    const table = propre ? S.liasse : KC.MODELE_LIASSE;
+    const par = KC.LIASSE_ETATS.map(e => `${e.label} : ${table.filter(r => r.etat === e.id).length}`).join(' · ');
+    return `<p class="small"><b>${propre ? 'Ton modèle' : 'Le modèle proposé par SkanFact'}</b> — ${esc(pl(table.length, 'rubrique'))} (${esc(par)}).</p>`;
+  };
+
+  // U-19 — la fenêtre du modèle. Même mécanique qu'avant : vide = celui que le moteur PROPOSE, et
+  // dès qu'on en écrit un, il le remplace entièrement — jamais un mélange des deux, qui donnerait
+  // un rattachement de compte que personne n'a décidé. Elle s'ouvre des Réglages ET de la liasse
+  // d'un dossier : on ajuste le modèle là où l'on voit ce qu'il produit.
+  function modeleLiasseForm(apres) {
+    liasseBrouillon = null;
+    // Le garde-fou de saisie en ses trois morceaux (6.8.1) : déclaré AVANT la fenêtre — `modal()`
+    // appelle son montage tout de suite, et une variable lue avant sa ligne est une zone morte —,
+    // armé au montage, passé à `modal()`.
+    let change = () => false;
+    modal(`<h2>Le modèle de liasse ${info('li.modele')}</h2>
+      <p class="small">Le compte va dans la rubrique dont le préfixe est le plus <strong>long</strong>, parmi celles du bon
+      sens de solde — le 44 débiteur est une créance sur l'État, le même 44 créditeur est une dette envers lui.
+      <em>À VÉRIFIER : la présentation exacte n'est validée par personne ici.</em></p>
+      <div id="sr-liasse"></div>
+      <div class="sous-table"><button class="btn btn-sm" id="sr-liasse-add">Ajouter une rubrique</button>
+        <button class="btn btn-sm" id="sr-liasse-reset">Reprendre le modèle proposé</button></div>
+      <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="sr-liasse-save">Enregistrer le modèle</button></div>`,
+    (layer, close) => {
+      $('.modal', layer).classList.add('cab-large');
+      dessinerLiasse(layer);
+      change = suivreSaisie(layer);
+      $('#sr-liasse-add', layer).onclick = () => { liasseBrouillon = lireLiasse(layer).concat([{ id: '', etat: 'bilan-actif', label: '', comptes: [], signe: 1, deduit: false, charge: false }]); dessinerLiasse(layer); };
+      $('#sr-liasse-reset', layer).onclick = async () => {
+        if (!await confirmDialog('Reprendre le modèle proposé ?',
+          '<p>Tes rubriques à toi seront remplacées par celles que SkanFact propose. Tu pourras les remodifier ensuite.</p>', 'Reprendre', false)) return;
+        liasseBrouillon = KC.MODELE_LIASSE.map(r => ({ ...r, comptes: (r.comptes || []).slice() }));
+        dessinerLiasse(layer);
+      };
+      $('#sr-liasse-save', layer).onclick = async () => {
+        const table = lireLiasse(layer).filter(r => r.id || r.label || r.comptes.length);
+        const boiteux = table.filter(r => !r.id || !r.label);
+        if (boiteux.length) return toast('Chaque rubrique a besoin d\'un code et d\'un libellé : sans eux, elle s\'imprimerait « ».', 'error');
+        const doublons = table.map(r => r.id).filter((x, i, a) => a.indexOf(x) !== i);
+        if (doublons.length) return toast(`Le code « ${doublons[0]} » est posé deux fois : deux rubriques ne peuvent pas porter le même.`, 'error');
+        try {
+          S = await api.saveLiasse({ modele: table });
+          liasseBrouillon = null;
+          close();
+          toast('Modèle de liasse enregistré.');
+          if (apres) apres();
+        } catch (e) { toast(plainError(e), 'error'); }
+      };
+    }, () => { liasseBrouillon = null; }, { garde: () => change() || liasseBrouillon !== null });
   }
 
   let liasseBrouillon = null;
@@ -7514,7 +7805,7 @@
     const rows = propose ? KC.MODELE_LIASSE : table;
     const d = propose ? 'disabled' : '';
     box.innerHTML = `${propose ? '<div class="sa-vide">Le modèle proposé sert tant que tu n\'en écris pas un autre.</div>' : ''}
-      <div class="scroll-x"><table class="list compact sa-table"><thead><tr>
+      <div class="scroll-x"><table class="list compact sa-table sa-liasse"><thead><tr>
         <th class="nw">Code</th><th class="nw">État</th><th>Libellé</th><th>Comptes</th><th class="nw">Solde</th><th class="nw">En moins</th><th></th></tr></thead>
       <tbody>${rows.map((r, i) => `<tr data-lr="${i}">
         <td><input data-k="id" value="${esc(r.id)}" ${d} placeholder="AC1"></td>
@@ -7559,6 +7850,7 @@
     $$('[data-cyx]', box).forEach(b => { b.onclick = () => {
       const t = lireCycles(view); t.splice(Number(b.dataset.cyx), 1); cyclesBrouillon = t; dessinerCycles(view);
     }; });
+    if (cyclesBrouillon !== null) sale(box);
   }
 
   function dessinerQuestionnaire(view) {
@@ -7574,6 +7866,7 @@
     $$('[data-qx]', box).forEach(b => { b.onclick = () => {
       const t = lireQuestionnaire(view); t.splice(Number(b.dataset.qx), 1); questBrouillon = t; dessinerQuestionnaire(view);
     }; });
+    if (questBrouillon !== null) sale(box);
   }
 
   let regBrouillon = null;
@@ -7618,6 +7911,7 @@
     $$('[data-rgx]', box).forEach(b => { b.onclick = () => {
       const t = lireRegimes(view); t.splice(Number(b.dataset.rgx), 1); regBrouillon = t; dessinerRegimes(view);
     }; });
+    if (regBrouillon !== null) sale(box);
   }
 
   function dessinerGuides(view) {
@@ -7766,6 +8060,7 @@
         dessinerCorrespondance(view);
       };
     });
+    if (corrBrouillon !== null) sale(box);
   }
 
   const REG_TABS = [['cabinet', 'Mon cabinet'], ['compta', 'Comptabilité'], ['donnees', 'Données et sécurité'], ['app', 'L\'application']];
@@ -7812,7 +8107,10 @@
           <input type="search" id="set-q" placeholder="Chercher un réglage…" autocomplete="off" spellcheck="false">
         </div></div>
       <div id="set-res" class="set-res" hidden></div>
-      ${recoveryBanner()}
+      ${/* U-13 — le bandeau existe pour que l'alerte ne se cache pas derrière un onglet (7.32.0).
+            Sur l'onglet qui porte le panneau Sécurité, elle y est dite en entier : le bandeau se tait,
+            sinon la clé de secours se lisait trois fois sur le même écran. */''}
+      <div id="rec-banniere">${recoveryBanner()}</div>
       <div id="set-corps">
       <div class="tabs" id="set-tabs" role="tablist" aria-label="Les réglages du cabinet">${REG_TABS.map(([id, label]) =>
         `<button role="tab" data-tab="${id}" class="${id === reglagesTab ? 'active' : ''}">${label}</button>`).join('')}</div>
@@ -7831,7 +8129,7 @@
         <p class="muted small">Les jours de dépôt alimentent la page <a href="#/echeances">Échéances</a>.
         <strong>À VÉRIFIER</strong> : ils dépendent de la forme juridique, du régime et de la loi de finances.</p>
         <p class="muted small mt">Ce nom apparaît en bas des relances que tu envoies et dans le fichier d'appairage remis à tes clients.</p>
-        <div class="modal-actions"><span class="saved" id="c-saved" hidden></span><button class="btn btn-primary" id="c-save">Enregistrer mon cabinet</button></div>
+        <div class="modal-actions"><span class="saved" id="c-saved" hidden></span><button class="btn" id="c-save" data-enreg>Enregistrer mon cabinet</button></div>
       </div>
 
       ${panneauReg('pan-appairage', info('cab.pairing'))}
@@ -7839,10 +8137,11 @@
         À partir de là, les paquets qu'il fabrique sont chiffrés <strong>pour toi seul</strong> : personne d'autre ne peut les ouvrir,
         même en interceptant le mail, et il n'a plus aucun mot de passe à te communiquer.</p>
         <div class="mt"><div class="muted small">${lbl('Empreinte de ton cabinet', 'cab.fingerprint')}</div>
-          <div class="fingerprint">${esc(c.fingerprint || '—')}</div></div>
+          <div class="empreinte-ligne"><span class="fingerprint">${esc(c.fingerprint || '—')}</span>${c.fingerprint
+            ? '<button type="button" class="btn btn-sm" id="c-copier-emp">Copier</button>' : ''}</div></div>
         <p class="muted small mt">Cette empreinte identifie ton cabinet. Ton client la voit après l'import : s'il te la lit au téléphone
         et qu'elle correspond, c'est bien à toi qu'il envoie.</p>
-        <div class="modal-actions"><button class="btn btn-primary" id="c-pair">Enregistrer le fichier d'appairage…</button></div>
+        <div class="modal-actions"><button class="btn" id="c-pair">Enregistrer le fichier d'appairage…</button></div>
       </div>
 
       ${panneauReg('pan-regimes', info('rg.regimes'))}
@@ -7853,7 +8152,7 @@
         <div id="sr-regimes"></div>
         <div class="sous-table"><button class="btn btn-sm" id="sr-reg-add">Ajouter un régime</button>
           <button class="btn btn-sm" id="sr-reg-base">Partir des trois régimes proposés</button></div>
-        <div class="modal-actions"><span class="saved" id="sr-reg-saved" hidden></span><button class="btn btn-primary" id="sr-reg-save">Enregistrer les régimes</button></div>
+        <div class="modal-actions"><span class="saved" id="sr-reg-saved" hidden></span><button class="btn" id="sr-reg-save" data-enreg>Enregistrer les régimes</button></div>
       </div>
 
       ${panneauReg('pan-equipe', info('eq.equipe'))}
@@ -7908,14 +8207,14 @@
           ${champTouche('dupliquer', 'Dupliquer la pièce', 'sa.kDupliquer')}
           ${champTouche('valider', 'Enregistrer et valider', 'sa.kValider')}
         </div>
-        <div class="modal-actions"><span class="saved" id="sr-saved" hidden></span><button class="btn btn-primary" id="sr-save">Enregistrer la grille de saisie</button></div>
+        <div class="modal-actions"><span class="saved" id="sr-saved" hidden></span><button class="btn" id="sr-save" data-enreg>Enregistrer la grille de saisie</button></div>
       </div>
 
       ${panneauReg('pan-guides', info('sa.guides'))}
         <p class="small">Un guide préremplit une pièce : un journal, des comptes, et d'où vient chaque montant.
         Il n'écrit rien tout seul — après le clic, tout reste modifiable.</p>
         <div id="sr-guides"></div>
-        <div class="modal-actions"><button class="btn btn-primary" id="sr-guide-new">Nouveau guide…</button></div>
+        <div class="modal-actions"><button class="btn" id="sr-guide-new">Nouveau guide…</button></div>
       </div>
 
       ${panneauReg('pan-comptes', info('sa.correspondance'))}
@@ -7923,7 +8222,7 @@
         Une écriture déjà validée n'est jamais réécrite : elle porte le compte sous lequel tu l'as validée.</p>
         <div id="sr-corr"></div>
         <div class="sous-table"><button class="btn btn-sm" id="sr-corr-add">Ajouter une ligne</button></div>
-        <div class="modal-actions"><span class="saved" id="sr-corr-saved" hidden></span><button class="btn btn-primary" id="sr-corr-save">Enregistrer la correspondance</button></div>
+        <div class="modal-actions"><span class="saved" id="sr-corr-saved" hidden></span><button class="btn" id="sr-corr-save" data-enreg>Enregistrer la correspondance</button></div>
       </div>
 
       ${panneauReg('pan-questionnaire', info('rv.reglages'))}
@@ -7938,7 +8237,7 @@
         dossier avant de clôturer. Il part vide — ce sont les tiennes, pas les nôtres.</p>
         <div id="sr-quest"></div>
         <div class="sous-table"><button class="btn btn-sm" id="sr-quest-add">Ajouter une question</button></div>
-        <div class="modal-actions"><span class="saved" id="sr-quest-saved" hidden></span><button class="btn btn-primary" id="sr-quest-save">Enregistrer ma méthode</button></div>
+        <div class="modal-actions"><span class="saved" id="sr-quest-saved" hidden></span><button class="btn" id="sr-quest-save" data-enreg>Enregistrer ma méthode</button></div>
       </div>
 
       ${panneauReg('pan-liasse', info('li.modele'))}
@@ -7947,10 +8246,11 @@
         débiteur est une créance sur l'État, le même 44 créditeur est une dette envers lui.
         <em>À VÉRIFIER : la présentation exacte du système comptable des entreprises n'est validée par personne ici.
         Confronte-la à ce que le portail attend avant de déposer.</em></p>
-        <div id="sr-liasse"></div>
-        <div class="sous-table"><button class="btn btn-sm" id="sr-liasse-add">Ajouter une rubrique</button>
-          <button class="btn btn-sm" id="sr-liasse-reset">Reprendre le modèle proposé</button></div>
-        <div class="modal-actions"><span class="saved" id="sr-liasse-saved" hidden></span><button class="btn btn-primary" id="sr-liasse-save">Enregistrer le modèle</button></div>
+        ${/* U-19 — la grille de vingt-six rubriques faisait la MOITIÉ de l'onglet (1 998 px sur 4 193)
+              pour un réglage qu'on touche une fois par an. Le panneau le résume ; il se modifie dans
+              une fenêtre, la même que celle qu'ouvre la liasse d'un dossier. */''}
+        <div id="sr-liasse-resume">${resumeLiasse()}</div>
+        <div class="modal-actions"><button class="btn" id="sr-liasse-ouvrir">Voir et modifier le modèle…</button></div>
       </div>
       </section>
 
@@ -8000,7 +8300,7 @@
              un en retard, un qui n'a envoyé que du provisoire, un dont les pièces sont incomplètes, et un client hors SkanFact.</p>
              <p class="small muted">C'est aussi ce qu'il faut montrer à un confrère à qui tu parles de SkanFact.
              L'exemple s'efface tout seul dès qu'un vrai paquet arrive : aucun risque de mélange.</p>
-             <div class="modal-actions"><button class="btn btn-primary" id="r-demo-on">Charger l'exemple</button></div>`}
+             <div class="modal-actions"><button class="btn" id="r-demo-on">Charger l'exemple</button></div>`}
       </div>
       </section>
       </div>`;
@@ -8012,6 +8312,7 @@
     // silencieusement inerte, et on atterrit sur le bon panneau dans un onglet masqué.
     const showTab = id => {
       reglagesTab = id;
+      const rb = $('#rec-banniere'); if (rb) rb.hidden = id === REG_PANNEAUX['pan-secu'].onglet;
       $$('#set-tabs button').forEach(b => b.classList.toggle('active', b.dataset.tab === id));
       $$('[data-pane]').forEach(p => { p.hidden = p.dataset.pane !== id; });
       reg.rafraichirSommaire(id);
@@ -8023,8 +8324,7 @@
       ouvrirOnglet: pane => showTab(pane),
       ongletCourant: () => reglagesTab,
       pluriel: pl,
-      rienTrouve: () => `<div class="empty"><p>Aucun réglage ne porte ces mots. Essaie un seul mot —
-        ou regarde dans l'<a href="#/aide">aide</a>.</p></div>`
+      rienTrouve: (mots, phrase) => `<div class="empty"><p>${phrase} Ou regarde dans l'<a href="#/aide">aide</a>.</p></div>`
     });
     $$('#set-tabs button').forEach(b => b.onclick = () => { reglagesFocus = ''; showTab(b.dataset.tab); });
     showTab(reglagesTab);
@@ -8056,6 +8356,11 @@
       };
     });
     brancherReglagesCompta(view);
+    // U-11 — une frappe ou un choix dans un panneau rend son « Enregistrer » principal (`sale`).
+    // La délégation vit sur le CORPS, redessiné à chaque passage : aucun écouteur ne s'empile d'un
+    // dessin à l'autre, et la recherche des réglages, posée hors du corps, ne salit rien.
+    const corps = $('#set-corps', view);
+    if (corps) { corps.addEventListener('input', e => sale(e.target)); corps.addEventListener('change', e => sale(e.target)); }
     dessinerEquipe(view);
     dessinerLicence(view);
     bindRecoveryBanner(view);
@@ -8093,6 +8398,7 @@
         flash($('#c-saved'));
       } catch (e) { toast(plainError(e), 'error'); }
     };
+    if ($('#c-copier-emp')) $('#c-copier-emp').onclick = () => copierEmpreinte(S.cabinet.fingerprint);
     $('#c-pair').onclick = async () => {
       if (!(S.cabinet.name || '').trim()) return toast('Renseigne d\'abord le nom de ton cabinet.', 'error');
       try {
@@ -8173,13 +8479,19 @@
       <p class="small">Le fichier de ce cabinet est chiffré avec ton mot de passe (AES-256). Il contient la clé qui ouvre les paquets de
       tes clients : si ce poste est perdu ou volé, personne ne peut les lire.</p>
 
-      <div class="warn-box mt"><strong>${lbl('Ta clé n\'existe qu\'ici.', 'b.recovery')}</strong>
-      Ni nous, ni personne d\'autre ne peut la reconstituer. Sans elle et sans cet ordinateur, <strong>aucun paquet déjà reçu ne pourra plus être ouvert</strong>,
-      et tes clients devront tous réimporter un nouveau fichier d'appairage.
-      <div class="mt">${recoveryLine()}</div></div>
+      ${/* U-13 — UNE phrase, et l'orange seulement quand il y a un geste à faire. Le panneau disait
+            « Ta clé n'existe qu'ici » dans un encadré orange MÊME une fois la clé enregistrée, puis
+            la même chose une seconde fois dans sa ligne d'état. `undefined` = on ne sait pas encore
+            (la date arrive par une promesse) : on ne crie pas. */''}
+      ${recoveryAt === null ? `<div class="warn-box mt"><strong>${lbl('Tu n\'as jamais enregistré de clé de secours.', 'b.recovery')}</strong>
+      Elle n'existe qu'ici : ni nous, ni personne d'autre ne peut la reconstituer. Sans elle et sans cet ordinateur,
+      <strong>aucun paquet déjà reçu ne pourra plus être ouvert</strong>, et tes clients devront tous réimporter un nouveau
+      fichier d'appairage. Trois minutes maintenant, une fois pour toutes.</div>`
+    : recoveryAt ? `<p class="small ligne-ok mt" id="s-rec-ok"><span aria-hidden="true">✓</span> Clé de secours enregistrée le ${esc(fmtDay(recoveryAt))}
+      ${info('b.recovery')} — vérifie qu'elle n'est pas sur ${CE_POSTE()}.</p>` : ''}
 
       <div class="modal-actions wrap">
-        <button class="btn btn-primary" id="s-rec">Enregistrer ma clé de secours…</button>
+        <button class="btn${recoveryAt === null ? ' btn-primary' : ''}" id="s-rec">Enregistrer ma clé de secours…</button>
         <button class="btn" id="s-rec-in">Restaurer une clé de secours…</button>
         <span class="grow"></span>
         <button class="btn" id="s-pw">${lbl('Changer le mot de passe…', 'b.password')}</button>
@@ -8236,13 +8548,6 @@
     };
   }
 
-  function recoveryLine() {
-    const at = recoveryAt;
-    return at
-      ? `<span class="ok-inline">✓ Clé de secours enregistrée le ${esc(fmtDay(at))}.</span> <span class="muted small">Vérifie qu'elle n'est pas sur ${CE_POSTE()}.</span>`
-      : `<span class="err-inline">⚠ Tu n'as jamais enregistré de clé de secours.</span> <span class="muted small">C'est le filet le plus important : trois minutes maintenant, ou tout est perdu le jour où le disque lâche.</span>`;
-  }
-
   // Le bandeau qui ne peut pas se cacher derrière un onglet. Les onglets rangent — mais ils rangent
   // AUSSI ce qu'il ne faut jamais ranger : cet avertissement-ci ne vivait que dans le panneau
   // Sécurité, à un écran et demi de défilement. Il est maintenant au-dessus de la barre d'onglets,
@@ -8289,6 +8594,10 @@
   // en déchiffrant soixante livres (mesure de la 9.1.0), et comme `recoveryAt` : on ne redessine
   // que si le chiffre a vraiment changé, pour ne pas effacer une saisie en cours.
   let questionsAttente = [];
+  // Ce que les livres savent des employeurs, mois par mois, lu dans le même résumé des index
+  // (10.12.0, U-21). La page Échéances et « À faire » le reçoivent tous les deux : deux écrans qui
+  // comptent la même CNSS avec deux connaissances différentes finiraient par se contredire.
+  const employeursConnus = () => Object.fromEntries(questionsAttente.map(q => [q.dossierId, q.employeur || {}]));
   function chargerQuestionsAttente(redessiner) {
     if (!api.questionsEnAttente) return Promise.resolve();
     const avant = JSON.stringify(questionsAttente);
@@ -8328,7 +8637,9 @@
              ni rendus, ni détruits — et c'est écrit avant le clic. */''}
        ${peek.livres == null && peek.actuels.livres
          ? `<p class="warn-box mt">Cette sauvegarde <strong>ne porte pas les livres</strong> (${pl(peek.actuels.livres, 'livre')} aujourd'hui) : ils resteront tels qu'ils sont. Seules les sauvegardes prises à la main (« Sauvegarder maintenant ») et celles d'avant un geste important les emportent — pas la sauvegarde quotidienne.</p>`
-         : peek.livres != null ? `<p class="small">Les ${pl(peek.livres, 'livre')} de la sauvegarde remplaceront ceux d'aujourd'hui qui portent le même nom.</p>` : ''}
+         : peek.livres > 1 ? `<p class="small">Les ${pl(peek.livres, 'livre')} de la sauvegarde remplaceront ceux d'aujourd'hui qui portent le même nom.</p>`
+         : peek.livres === 1 ? '<p class="small">Le livre de la sauvegarde remplacera celui d\'aujourd\'hui qui porte le même nom.</p>'
+         : peek.livres === 0 ? '<p class="small">La sauvegarde ne porte aucun livre : ceux d\'aujourd\'hui resteront tels qu\'ils sont.</p>' : ''}
        <p class="muted small">Une sauvegarde de l'état actuel, livres compris, est prise juste avant : tu pourras revenir en arrière.</p>`,
       'Restaurer', dd > 0 || dp > 0);
     if (!ok) return;
@@ -8514,6 +8825,18 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
       document.body.appendChild(el);
       let etape = 0;
       const fin = () => { el.remove(); resolve(); };
+      // 10.12.0 (U-11) — un seul vert par écran, et c'est l'étape suivante. Sur « Ne rien perdre »
+      // et « Le fichier à remettre », le geste de l'écran ET « Continuer » étaient verts : deux
+      // flèches vers deux endroits. Le vert est au geste tant qu'il n'est pas fait, puis il passe
+      // à « Continuer ». `faits` le retient d'un écran à l'autre (← Retour ne le remet pas à zéro).
+      const faits = new Set();
+      const vert = id => faits.has(id) ? 'btn' : 'btn btn-primary';
+      const fait = id => {
+        faits.add(id);
+        const ok = $('#' + id + '-ok', el); if (ok) ok.hidden = false;
+        const g = $('#' + id, el); if (g) g.classList.remove('btn-primary');
+        const n = $('#w-next', el); if (n) n.classList.add('btn-primary');
+      };
 
       const etapes = [
         {
@@ -8592,19 +8915,22 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
             <div class="wiz-steps mt">
               <div class="wiz-step"><div><strong>1. Une copie hors de cet ordinateur</strong>
                 <div class="muted small">Clé USB, disque externe, iCloud Drive. La base, les sauvegardes et les paquets y seront recopiés à chaque enregistrement.</div></div>
-                <button class="btn" id="w-ext">Choisir un dossier…</button><span class="ok-inline" id="w-ext-ok" hidden>✓ fait</span></div>
+                <button class="btn" id="w-ext">Choisir un dossier…</button><span class="ok-inline" id="w-ext-ok" ${faits.has('w-ext') ? '' : 'hidden'}>✓ fait</span></div>
               <div class="wiz-step"><div><strong>2. La clé de secours</strong>
                 <div class="muted small">Un petit fichier protégé par son propre mot de passe, à ranger ailleurs que sur ${CE_POSTE()}.</div></div>
-                <button class="btn btn-primary" id="w-rec">Enregistrer la clé…</button><span class="ok-inline" id="w-rec-ok" hidden>✓ fait</span></div>
+                <button class="${vert('w-rec')}" id="w-rec">Enregistrer la clé…</button><span class="ok-inline" id="w-rec-ok" ${faits.has('w-rec') ? '' : 'hidden'}>✓ fait</span></div>
             </div>
             <p class="muted small mt">Tu peux les faire plus tard (Réglages → Données et sécurité → Sécurité), mais « plus tard » est exactement le moment où l'on oublie.</p>`,
           mount: () => {
             $('#w-ext', el).onclick = async () => {
-              try { const r = await api.pickExternal(); if (r && r.dir) { $('#w-ext-ok', el).hidden = false; refreshBackupInfo(); } }
+              try { const r = await api.pickExternal(); if (r && r.dir) { faits.add('w-ext'); $('#w-ext-ok', el).hidden = false; refreshBackupInfo(); } }
               catch (e) { toast(plainError(e), 'error'); }
             };
-            $('#w-rec', el).onclick = () => { exportRecovery(() => { $('#w-rec-ok', el).hidden = false; }); };
+            $('#w-rec', el).onclick = () => { exportRecovery(() => fait('w-rec')); };
           },
+          // Le geste qui porte le vert tant qu'il n'est pas fait : la clé, pas le dossier externe
+          // — sans clé, perdre le poste rend les paquets reçus illisibles pour toujours.
+          geste: 'w-rec',
           next: () => true
         },
         {
@@ -8614,19 +8940,22 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
             (Paramètres → Envois → Ton cabinet comptable). À partir de là, les paquets qu'il fabrique sont chiffrés
             <strong>pour toi seul</strong>, et il n'a plus aucun mot de passe à te communiquer.</p>
             <div class="mt"><div class="muted small">${lbl('Empreinte de ton cabinet', 'cab.fingerprint')}</div>
-              <div class="fingerprint">${esc(S.cabinet.fingerprint || '—')}</div></div>
+              <div class="empreinte-ligne"><span class="fingerprint">${esc(S.cabinet.fingerprint || '—')}</span>${S.cabinet.fingerprint
+                ? '<button type="button" class="btn btn-sm" id="w-copier-emp">Copier</button>' : ''}</div></div>
             <p class="muted small mt">S'il te la lit au téléphone après l'import et qu'elle correspond, c'est bien à toi qu'il envoie.</p>
             <div class="wiz-steps mt">
               <div class="wiz-step"><div><strong>Le fichier d'appairage</strong>
                 <div class="muted small">Un envoi par mail suffit : il ne contient rien de secret.</div></div>
-                <button class="btn btn-primary" id="w-pair">Enregistrer le fichier…</button><span class="ok-inline" id="w-pair-ok" hidden>✓ fait</span></div>
+                <button class="${vert('w-pair')}" id="w-pair">Enregistrer le fichier…</button><span class="ok-inline" id="w-pair-ok" ${faits.has('w-pair') ? '' : 'hidden'}>✓ fait</span></div>
             </div>`,
           mount: () => {
+            if ($('#w-copier-emp', el)) $('#w-copier-emp', el).onclick = () => copierEmpreinte(S.cabinet.fingerprint);
             $('#w-pair', el).onclick = async () => {
-              try { const r = await api.exportPairing(); if (r) { $('#w-pair-ok', el).hidden = false; toast('Fichier enregistré.'); } }
+              try { const r = await api.exportPairing(); if (r) { fait('w-pair'); toast('Fichier enregistré.'); } }
               catch (e) { toast(plainError(e), 'error'); }
             };
           },
+          geste: 'w-pair',
           next: () => true
         }
       ];
@@ -8646,7 +8975,7 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
             ${etape > 0 ? '<button class="btn" id="w-back">← Retour</button>' : ''}
             <span class="grow"></span>
             ${etape < etapes.length - 1 ? '<button class="btn btn-ghost" id="w-skip">Passer</button>' : ''}
-            <button class="btn btn-primary" id="w-next">${etape === etapes.length - 1 ? 'Commencer' : 'Continuer'}</button>
+            <button class="${e.geste && !faits.has(e.geste) ? 'btn' : 'btn btn-primary'}" id="w-next">${etape === etapes.length - 1 ? 'Commencer' : 'Continuer'}</button>
           </div></div>`;
         if (e.mount) e.mount();
         typographie(el);
@@ -8961,8 +9290,10 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
       <div class="page-head"><h1>Comment ça marche</h1></div>
       ${a ? '' : `<p class="lead">Ce que fait SkanFact Cabinet, ce qu'il ne fait pas, et ce qu'il faut avoir mis de côté pour ne rien perdre. Partout ailleurs dans l'application, les petits <span class="i-demo">i</span> expliquent le champ juste à côté.</p>`}
       <div class="help-search">
-        <svg class="hs-loupe" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20.5 20.5l-4.2-4.2"/></svg>
-        <input type="search" id="aide-q" placeholder="Rechercher : un mot, une question… (« empreinte », « clé de secours »)" autocomplete="off" spellcheck="false" value="${esc(aideQ)}">
+        ${/* 10.12.0 (U-30) — la loupe vit AVEC le champ. Centrée sur le bloc entier, elle
+              descendait sous la ligne du texte dès que le compte des résultats s'affichait. */''}
+        <span class="hs-champ"><svg class="hs-loupe" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20.5 20.5l-4.2-4.2"/></svg>
+        <input type="search" id="aide-q" placeholder="Rechercher : un mot, une question… (« empreinte », « clé de secours »)" autocomplete="off" spellcheck="false" value="${esc(aideQ)}"></span>
         <div class="help-count small muted" id="aide-n" hidden></div>
       </div>
       <div id="aide-res" hidden></div>
@@ -9017,9 +9348,18 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
       n.textContent = trouves.length
         ? `${pl(trouves.length, 'article')} sur ${G.ARTICLES.length}, le plus proche en premier`
         : `Aucun article sur ${G.ARTICLES.length}`;
+      // 10.12.0 (U-30) — la phrase suit ce qu'on a TAPÉ : « Essaie un seul mot » après un seul mot
+      // demandait l'impossible. Plusieurs mots : chacun doit être dans l'article, on le dit. Un seul :
+      // on le nomme. Et le refus a sa sortie (règle 7.0.0) — revenir aux articles d'un clic.
+      const nMots = mots.split(/\s+/).filter(Boolean).length;
       res.innerHTML = trouves.length
         ? `<div class="help-arts help-res">${trouves.map(aideCarte).join('')}</div>`
-        : '<div class="empty">Aucun article ne contient ces mots. Essaie un seul mot.</div>';
+        : `<div class="empty"><p>${nMots > 1
+          ? 'Aucun article ne contient tous ces mots — chacun doit s\'y trouver. Essaie-les un par un.'
+          : `Aucun article ne parle de « ${esc(mots)} ». Essaie un mot voisin, ou parcours les articles.`}</p>
+          <div class="inline mt"><button type="button" class="btn btn-sm" id="aide-effacer">Revenir aux ${esc(pl(G.ARTICLES.length, 'article'))}</button></div></div>`;
+      const effacer = $('#aide-effacer');
+      if (effacer) effacer.onclick = () => { q.value = ''; chercher(); q.focus(); };
       brancher();
     };
     q.oninput = chercher;

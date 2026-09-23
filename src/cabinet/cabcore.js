@@ -35,6 +35,19 @@
     const d = new Date();
     return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
   }
+  // 10.12.0 (U-12) — le mois sur lequel un écran de travail s'ouvre, et la MÊME règle partout : le
+  // DERNIER mois qui a des données, sinon le mois courant. La Paie s'ouvrait sur décembre et sur le
+  // quatrième trimestre en septembre — deux périodes futures, donc deux écrans vides qui avaient
+  // l'air d'un dossier vide —, pendant que la Déclaration s'ouvrait sur janvier faute d'écriture.
+  // Un exercice PASSÉ sans données s'ouvre sur son dernier mois, un exercice futur sur son premier :
+  // jamais un mois qui n'existe pas encore.
+  function moisDeTravail(moisAvecDonnees, annee, aujourdhui) {
+    const faits = (moisAvecDonnees || []).map(Number).filter(m => m >= 1 && m <= 12);
+    if (faits.length) return Math.max(...faits);
+    const a = Number(annee), y = Number(String(aujourdhui || '').slice(0, 4)), m = Number(String(aujourdhui || '').slice(5, 7));
+    if (y === a && m >= 1 && m <= 12) return m;
+    return y > a ? 12 : 1;
+  }
   function monthsBetween(from, to) {
     const out = [];
     let m = from;
@@ -611,9 +624,9 @@
   // donnaient tous deux la clé vide « NOM: » : dans un portefeuille tunisien, tous les clients dont
   // la raison sociale est en arabe tombaient dans un SEUL dossier, et leurs paquets s'écrasaient les
   // uns les autres. Un cabinet de Sfax qui colle ses soixante clients en aurait perdu la moitié.
-  const sansAccents = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  const sansAccents = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
   function normNom(s) {
-    return String(s || '').normalize('NFKC').normalize('NFD').replace(/[̀-ͯ]/g, '')
+    return String(s || '').normalize('NFKC').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
       .replace(/[^\p{L}\p{N}]+/gu, ' ').trim().toUpperCase();
   }
   function dossierKey(manifest) {
@@ -1076,7 +1089,9 @@
     });
     // Une échéance qui approche avec des pièces qui manquent : c'est le seul cas où une date compte
     // plus qu'un état. Une échéance proche mais complète n'a pas à crier.
-    const urgente = echeances(state, todayIso, { avant: 1, apres: 1 })
+    // La MÊME connaissance des employeurs que la page Échéances : un compteur et la liste qu'il
+    // annonce se calculent avec la même fonction ET les mêmes données (règle 6.8.1).
+    const urgente = echeances(state, todayIso, { avant: 1, apres: 1, employeurs: (opts || {}).employeurs })
       .filter(e => !e.passee && e.jours <= 12 && e.manquants.length)
       .sort((a, b) => a.jours - b.jours)[0];
     if (urgente) out.push({
@@ -1435,9 +1450,27 @@
         const trimestriels = actifs.filter(d => periodeTva(state, d) === 'trimestrielle' && concerne(d, moisTrim));
         if (trimestriels.length) out.push(ligneEcheance('tva-t', `TVA du ${trim}ᵉ trimestre`, dayOf(depot, cfg.tvaDay), moisTrim, trimestriels, t, attendus,
           'Déclaration trimestrielle de TVA. Il te faut les trois mois du trimestre.'));
-        const employeurs = actifs.filter(d => deposeCnss(state, d) && concerne(d, moisTrim));
+        // 10.12.0 (U-21) — la CNSS ne vise que les EMPLOYEURS, d'après ce que leur livre sait
+        // (`moisEmployeur`, lu dans les index). « SkanFact ne sait pas lesquels : à toi de filtrer »
+        // se lisait pendant que la Paie connaissait les salariés. Un client ne sort de la liste que
+        // sur un trimestre ENTIÈREMENT saisi sans une ligne de personnel ; sans livre ou sur un
+        // trimestre incomplet il reste compté, par prudence, et la carte le DIT — ne pas savoir
+        // n'est pas « non » (règle 9.6.0), et une CNSS oubliée coûte plus qu'un rappel de trop.
+        const employeurDe = d => {
+          const m = ((opts.employeurs || {})[d.id]) || {};
+          const vus = moisTrim.map(x => m[x]).filter(x => typeof x === 'boolean');
+          return vus.some(Boolean) ? true : vus.length === moisTrim.length ? false : null;
+        };
+        const employeurs = actifs.filter(d => deposeCnss(state, d) && concerne(d, moisTrim) && employeurDe(d) !== false);
+        const inconnus = employeurs.filter(d => employeurDe(d) === null).length;
+        // La phrase suit ce qui est SU : « leur Paie le dit » ne s'écrit pas au-dessus de clients
+        // qui sont tous comptés faute de savoir (trouvé en testant comme un humain).
+        const connus = employeurs.length - inconnus;
+        const prudence = `${pl(inconnus, 'client')} dont le trimestre n'est pas encore saisi ici ${inconnus > 1 ? 'sont comptés' : 'est compté'} par prudence`;
         if (employeurs.length) out.push(ligneEcheance('cnss', `CNSS du ${trim}ᵉ trimestre`, dayOf(depot, cfg.cnssDay), moisTrim, employeurs, t, attendus,
-          'Déclaration sociale trimestrielle, pour les clients qui ont des salariés. SkanFact ne sait pas lesquels : à toi de filtrer.'));
+          !inconnus ? 'Déclaration sociale trimestrielle des clients employeurs : leur Paie ou leurs comptes de rémunération le disent.'
+            : !connus ? `Déclaration sociale trimestrielle des clients employeurs. ${inconnus > 1 ? `Le trimestre de ces ${inconnus} clients n'est pas encore saisi ici : ils sont comptés` : 'Le trimestre de ce client n\'est pas encore saisi ici : il est compté'} par prudence.`
+              : `Déclaration sociale trimestrielle des clients employeurs : ${pl(connus, 'client')} d'après ${connus > 1 ? 'leur Paie ou leurs comptes' : 'sa Paie ou ses comptes'} de rémunération, et ${prudence}.`));
       }
     }
     // Les échéances ANNUELLES déclarées par le cabinet, régime par régime. Elles portent sur
@@ -1765,7 +1798,7 @@
     FORMAT, MONTHS_FR, DEFAULT_STATE, DEFAULT_SETTINGS, DEFAULT_SAISIE, TVA_PERIODS, REGIMES, RELANCE_WAYS, SORTS,
     guidesDuDossier, correspondanceDuDossier, dateTapee,
     GRACE_MOIS, DORMANT_MOIS, dossierFacturable, comptageDossiers, licenceDuPaquet,
-    monthLabel, monthListLabel, missingLabel, addMonth, monthsBetween, today, de, libelleLot,
+    monthLabel, monthListLabel, missingLabel, addMonth, monthsBetween, moisDeTravail, today, de, libelleLot,
     cleEcheance, echeanceDeposee,
     migrate, migrateDossier, dossierKey, packSummary, filePack, demoDossiers, rebaserPaquet, checkIntegrity,
     exemplePerime,

@@ -2,6 +2,11 @@
   --bg: #f5f7fa;
   --panel: #ffffff;
   --border: #e6eaf0;
+  /* Le trait d'un bouton discret (`.btn-ghost`) : plus marqué qu'une bordure de carte, moins que
+     le texte. Il était utilisé depuis la 9.4.2 et défini NULLE PART (10.12.0) — une variable
+     inconnue rend sa déclaration invalide, et la bordure retombait sur la couleur du texte : un
+     trait plein en clair, blanc vif en sombre, y compris sur un bouton éteint. */
+  --line: #c9d1db;
   --text: #1b2430;
   --muted: #7b8794;
   --primary: #0f9d8f;
@@ -264,7 +269,7 @@ main { --main-haut: 32px; flex: 1; overflow-y: auto; padding: var(--main-haut) 3
 .panel { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 22px 24px; margin-bottom: 18px; box-shadow: var(--shadow); }
 /* Un lien qui promet un réglage précis l'amène et le désigne : sans repère, on atterrit au milieu
    d'une pile de panneaux identiques et on cherche le titre à la main. */
-.panel.flash { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(15, 157, 143, .18); }
+.panel.flash { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(15, 157, 143, .18); }
 /* ---------- l'échelle de titres (9.4.3) ----------
    Avant, UN seul style de titre de section existait dans les deux applications : 11 px, gris,
    en capitales, `letter-spacing: 1.2px`. Il donnait exactement le même poids à « COMPTABILITÉ »
@@ -350,6 +355,13 @@ input[type=color]:not([type=checkbox]):not([type=radio]):not([type=file]):not([t
 .sidebar-foot .btn-ghost, .setup-foot .btn-ghost { border-color: transparent; }
 .btn-sm { padding: 6px 11px; font-size: 12px; border-radius: 8px; }
 .btn:disabled { opacity: .5; cursor: not-allowed; }
+/* Un bouton principal ÉTEINT ne garde pas sa couleur (10.12.0, vu au test humain) : à 50 %
+   d'opacité, un vert d'eau plein restait le bloc le plus visible de l'écran, et en thème sombre il
+   se lisait comme un bouton ordinaire qu'on peut cliquer. Il prend l'allure de n'importe quel bouton
+   éteint ; la raison, elle, est écrite à côté (9.4.5). Posé APRÈS les deux thèmes, et pour les
+   deux applications, qui partagent cette feuille. */
+.btn-primary:disabled, .btn-primary:disabled:hover,
+body.dark .btn-primary:disabled, body.dark .btn-primary:disabled:hover { background: var(--panel); color: var(--muted); border-color: var(--border); box-shadow: none; }
 
 /* ---------- tables ---------- */
 /* overflow: clip (et non hidden) : les coins restent arrondis, mais la table ne devient pas
@@ -593,7 +605,7 @@ details.tech > summary { cursor: pointer; font-size: 12px; color: var(--muted); 
 details.tech > summary:hover { color: var(--text); }
 details.tech > code {
   display: block; margin-top: 6px; padding: 8px 10px;
-  background: var(--panel-2, #f1f4f7); border: 1px solid var(--border); border-radius: 6px;
+  background: var(--ink-soft); border: 1px solid var(--border); border-radius: 6px;
   font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 11px; line-height: 1.5;
   color: var(--muted); word-break: break-all; white-space: pre-wrap;
 }
@@ -774,7 +786,7 @@ body.dark .btn-back { border-color: #2b3540; }
 
 /* ---------- thème sombre ---------- */
 body.dark {
-  --bg: #12161c; --panel: #1a2029; --border: #2a3340; --text: #e6eaf0; --muted: #8c98a8;
+  --bg: #12161c; --panel: #1a2029; --border: #2a3340; --line: #3b4656; --text: #e6eaf0; --muted: #8c98a8;
   --primary: #1fb8a8; --primary-hover: #26cbba; --primary-soft: #14302e; --primary-soft-2: #1a403c; --ink-soft: #232b36;
   --danger: #ef6b64; --danger-soft: #3a2224; --success: #34c27f; --success-soft: #1a3328; --warning: #e39a4a; --warning-soft: #3a2c1c; --info: #6ea3f0; --info-soft: #1d2b44;
   --shadow: 0 1px 2px rgba(0,0,0,.3), 0 6px 20px rgba(0,0,0,.25);
@@ -797,8 +809,15 @@ body.dark input:not([type=checkbox]):not([type=radio]):not([type=file]):not([typ
 body.dark select:focus, body.dark textarea:focus { background: #0e1217; }
 body.dark input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=range]):disabled,
 body.dark select:disabled, body.dark textarea:disabled { background: #1f2630; color: #8c98a8; }
-/* Le texte d'invite doit rester lisible sans se confondre avec une valeur saisie. */
+/* Le texte d'invite doit rester lisible sans se confondre avec une valeur saisie (le gris du thème
+   sombre bat la règle commune ci-dessous par sa spécificité : `body.dark` en tête). */
 body.dark input::placeholder, body.dark textarea::placeholder { color: #6f7c8c; }
+/* 10.12.0 (U-18) — et il se lit comme un EXEMPLE, dans les deux thèmes : gris, en graisse normale.
+   Un champ hérite du gras de son étiquette (`font: inherit`, et une étiquette de formulaire est à
+   600) : « +216 … » ou « SKAN1.… » en gras se prenaient pour des valeurs déjà saisies, et on
+   passait le champ sans le remplir. `opacity: 1` : Firefox atténue l'invite par défaut, et deux
+   atténuations s'additionnent. */
+input::placeholder, textarea::placeholder { font-weight: 400; color: var(--muted); opacity: 1; }
 body.dark .btn { background: var(--ink-soft); color: var(--text); }
 body.dark .btn:hover { background: #2c3644; }
 body.dark .btn-primary { background: var(--primary); color: #0b1512; }
@@ -1201,6 +1220,10 @@ body.dark .th-piloter   { --th: #4dbcd6; --th-bg: #12303a; }
 
 /* La recherche est la porte d'entrée de l'aide : elle a la taille d'une porte. */
 .help-search { position: relative; max-width: 640px; margin: 0 0 20px; }
+/* 10.12.0 (U-30) — la loupe se centre sur le CHAMP, pas sur le bloc : le compte des résultats
+   s'affiche sous le champ et agrandit le bloc, et la loupe descendait alors de 11 px sous la ligne
+   du texte (mesuré dans l'application du comptable, puis retrouvé dans l'autre). */
+.help-search .hs-champ { position: relative; display: block; }
 .help-search .hs-loupe {
   position: absolute; inset-inline-start: 14px; top: 50%; transform: translateY(-50%); width: 17px; height: 17px;
   stroke: var(--muted); fill: none; stroke-width: 2; stroke-linecap: round; pointer-events: none;

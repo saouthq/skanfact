@@ -112,11 +112,22 @@ const étape = m => { pas++; console.log('\n' + pas + '. ' + m); };
   if (!/Aucun bien sur cet exercice/.test(vide)) {
     throw new Error('l\'exemple devrait commencer sans aucune fiche de bien');
   }
-  if (!/n'existe pas|ne l'a demandé/.test(vide)) {
-    throw new Error('l\'écran doit dire ce qu\'il ne décide pas (taux, bascule, dérogatoire)');
-  }
+  // 10.12.0 (U-20) — les réserves (taux dégressif, bascule, subvention, dérogatoire) ne vivent plus
+  // dans un panneau permanent sous le tableau : la bulle de l'écran les annonce, et la fiche les
+  // rappelle au moment où on les choisit (étape 3). Le panneau qui revient fait tomber le parcours.
+  if (/Ce que cet écran ne décide pas/.test(vide)) throw new Error('le panneau permanent des réserves est revenu (U-20)');
+  await win.click('#c-livres .i[data-info="im.etat"]');
+  await attendre(300);
+  const bulle = await win.evaluate(() => (document.querySelector('#info-pop') || {}).textContent || '');
+  if (!/À VÉRIFIER/.test(bulle)) throw new Error('la bulle de l\'écran doit dire ce qui reste À VÉRIFIER : ' + bulle);
+  await win.click('#info-pop .ip-close');
   const propositions = await win.$$eval('[data-creer]', b => b.length);
   if (!propositions) throw new Error('les acquisitions du paquet devraient remonter avec leur bouton');
+  // U-11 — un seul bouton en couleur, et c'est l'étape suivante : la première acquisition sans
+  // fiche. « Ajouter un bien… » était vert en permanence, à côté de ce qui attendait vraiment.
+  const verts = await win.evaluate(() => [...document.querySelectorAll('#c-livres .btn-primary')]
+    .filter(b => b.offsetParent).map(b => b.id || (b.dataset.creer ? 'creer' : '') || b.textContent.trim()));
+  if (verts.length !== 1 || verts[0] !== 'creer') throw new Error(`un seul vert, sur « Créer la fiche du bien… », attendu — vu : ${verts.join(' | ') || 'aucun'}`);
   ok(`${propositions} ligne(s) d'acquisition sans fiche, chacune avec son bouton « Créer la fiche du bien… »`);
 
   // ---------------------------------------------------------------- 3. créer un bien, en le VOYANT
@@ -139,8 +150,17 @@ const étape = m => { pas++; console.log('\n' + pas + '. ' + m); };
   const sansTaux = await win.evaluate(() => (document.querySelector('#im-apercu') || {}).textContent || '');
   if (!/TAUX|taux/.test(sansTaux)) throw new Error('un dégressif sans taux doit être refusé en nommant le taux : ' + sansTaux);
   await shot('03-degressif-sans-taux');
+  // U-20 — la réserve du dégressif se lit là où on le choisit, et seulement quand on l'a choisi.
+  const note = await win.evaluate(() => { const n = document.querySelector('#im-degr-n'); return n && n.offsetParent ? n.textContent : ''; });
+  if (!/À VÉRIFIER/.test(note)) throw new Error('choisir le dégressif doit montrer sa réserve sous le taux : « ' + note + ' »');
+  if (!(await win.evaluate(() => !!document.querySelector('.modal-bg .i[data-info="im.verifier"]')))) {
+    throw new Error('la méthode doit porter la bulle de ce qui reste À VÉRIFIER');
+  }
   await win.selectOption('.modal-bg [name=methode]', 'lineaire');
   await attendre(300);
+  if (!(await win.evaluate(() => { const n = document.querySelector('#im-degr-n'); return !n || !n.offsetParent; }))) {
+    throw new Error('la réserve du dégressif reste affichée sur un bien linéaire');
+  }
   await win.click('.modal-bg #ok');
   await win.waitForFunction(() => !document.querySelector('.modal-bg'), { timeout: 10000 });
   await attendre(800);
@@ -189,6 +209,9 @@ const étape = m => { pas++; console.log('\n' + pas + '. ' + m); };
   if (Math.abs(deb - cre) > 0.001) throw new Error('la dotation n\'est pas équilibrée');
   const eteint = await win.evaluate(() => !!(document.querySelector('#im-ecrire') || {}).disabled);
   if (!eteint) throw new Error('le bouton doit s\'éteindre : repasser la dotation la compterait deux fois');
+  // U-23 — et il dit POURQUOI, à côté de lui : l'infobulle ne se voit ni au clavier ni au doigt.
+  const motifIm = await win.evaluate(() => { const m = document.querySelector('#im-motifs'); return m && m.offsetParent ? m.textContent : ''; });
+  if (!/passées/.test(motifIm)) throw new Error('le bouton éteint doit dire pourquoi, en clair (U-23) : « ' + motifIm + ' »');
   await shot('05-dotations-passees');
   ok(`${dot.length} écriture(s) d'inventaire au ${d0.date}, et le bouton s'éteint`);
 
@@ -226,6 +249,10 @@ const étape = m => { pas++; console.log('\n' + pas + '. ' + m); };
   await shot('07-inventaire-vide');
   const videInv = await win.evaluate(() => (document.querySelector('#c-livres') || {}).textContent || '');
   if (!/Aucun inventaire saisi/.test(videInv)) throw new Error('l\'écran vide de l\'inventaire ne s\'annonce pas');
+  // U-11 — le geste vit dans l'état vide, qui est le corps de l'écran : un seul « Saisir
+  // l'inventaire… », en couleur. Il était montré deux fois, en vert les deux fois.
+  const vertsInv = await win.evaluate(() => [...document.querySelectorAll('#c-livres .btn-primary')].filter(b => b.offsetParent).map(b => b.id));
+  if (vertsInv.join() !== 'iv-saisir2') throw new Error('un seul vert attendu sur l\'inventaire vide, dans l\'état vide — vu : ' + (vertsInv.join(' | ') || 'aucun'));
   await win.click('#iv-saisir, #iv-saisir2');
   await win.waitForSelector('#iv-lignes', { timeout: 10000 });
   await win.fill('.modal-bg #iv-lignes', 'REF-01\tCâble HDMI 2 m\t24\t7.500\nREF-02\tOnduleur 650 VA\t3\t180.000');
@@ -248,6 +275,9 @@ const étape = m => { pas++; console.log('\n' + pas + '. ' + m); };
   // ---------------------------------------------------------------- 8. la variation ne passe qu'une fois
   étape('La variation de stock s\'écrit une fois, et une seule');
   const peut = await win.evaluate(() => !(document.querySelector('#iv-ecrire') || {}).disabled);
+  if (peut && !(await win.evaluate(() => document.querySelector('#iv-ecrire').classList.contains('btn-primary')))) {
+    throw new Error('une variation à écrire est l\'étape suivante : son bouton doit être le vert (U-11)');
+  }
   if (peut) {
     await win.click('#iv-ecrire');
     await win.waitForFunction(() => /brouillard|stock/.test((document.querySelector('#toast') || {}).textContent || ''), { timeout: 15000 });
@@ -258,6 +288,8 @@ const étape = m => { pas++; console.log('\n' + pas + '. ' + m); };
     if (stk[0].statut !== 'brouillard') throw new Error('la variation doit arriver en brouillard');
     const re = await win.evaluate(() => !!(document.querySelector('#iv-ecrire') || {}).disabled);
     if (!re) throw new Error('le bouton doit s\'éteindre : repasser la variation compterait le stock deux fois');
+    const motifIv = await win.evaluate(() => { const m = document.querySelector('#iv-motifs'); return m && m.offsetParent ? m.textContent : ''; });
+    if (!/passée/.test(motifIv)) throw new Error('le bouton éteint doit dire pourquoi, sous lui (U-23) : « ' + motifIv + ' »');
     ok('une écriture STK en brouillard, et le bouton s\'éteint');
   } else {
     // Le stock compté vaut exactement celui des comptes : c'est un cas légitime, et l'écran doit

@@ -81,22 +81,37 @@ const étape = m => { pas++; console.log('\n' + pas + '. ' + m); };
   const L0 = await livre();
   const dernier = L0.ecritures.map(e => e.date).sort().pop().slice(0, 7);
   if (mois !== dernier) throw new Error(`le mois proposé devrait être le dernier saisi (${dernier}), vu ${mois}`);
-  const promesse = await win.evaluate(() => (document.querySelector('#c-livres .info-box') || {}).textContent || '');
+  // 10.12.0 (U-13) — la promesse vit avec les pense-bêtes qu'elle décrit, dans le panneau des
+  // étapes, et non plus dans un bandeau posé avant les chiffres : on lit la RÈGLE (l'écran le dit),
+  // jamais la forme qui la portait.
+  const promesse = await win.evaluate(() => (document.querySelector('#dc-suite') || {}).textContent || '');
   if (!/ne dépose rien/.test(promesse)) throw new Error('l\'écran doit dire que l\'application ne dépose rien');
+  // U-11 — un seul bouton principal parmi les étapes, et c'est l'étape suivante.
+  const principaux = await win.$$eval('#c-livres .btn-primary', bs => bs.filter(b => b.offsetParent).map(b => b.id || b.textContent.trim()));
+  if (principaux.length !== 1) throw new Error('un seul bouton principal par écran, vu : ' + JSON.stringify(principaux));
+  if (principaux[0] !== 'dc-preparer') throw new Error('avant toute préparation, l\'étape suivante est « Préparer », vu ' + principaux[0]);
   await shot('01-declaration');
-  ok('mois proposé ' + mois + ', et la limite est écrite à l\'écran');
+  ok('mois proposé ' + mois + ', la limite est écrite, et le seul bouton principal est « Préparer »');
 
   // ------------------------------------------- 3. une case inconnue vaut « — », jamais « 0,000 »
   étape('Une case dont la règle n\'est pas connue affiche « — » et sa raison');
+  // U-14 — la raison se lit EN ENTIER, sous le libellé : elle était coupée à soixante caractères.
+  // Une raison qui finit par « … » ou qui déborde de sa boîte ne se lit pas : on mesure.
   const inconnues = await win.$$eval('#c-livres tbody tr', trs => trs
-    .filter(tr => /TFP|FOPROLOS|TCL|Acomptes/.test(tr.cells[0].textContent))
-    .map(tr => ({ nom: tr.cells[0].textContent.trim(), montant: tr.cells[1].textContent.trim(), raison: tr.cells[2].textContent.trim() })));
+    .filter(tr => /^(TFP|FOPROLOS|TCL|Acomptes)/.test(tr.cells[0].textContent.trim()))
+    .map(tr => {
+      const r = tr.cells[0].querySelector('.dc-raison');
+      return { nom: tr.cells[0].firstChild.textContent.trim(), montant: tr.cells[1].textContent.trim(),
+        raison: r ? r.textContent.trim() : '', coupee: r ? (r.scrollWidth > r.clientWidth + 1 || /…$/.test(r.textContent.trim())) : true };
+    }));
   if (inconnues.length !== 4) throw new Error('les quatre cases à vérifier devraient être là, vu ' + inconnues.length);
   inconnues.forEach(c => {
     if (c.montant !== '—') throw new Error(`${c.nom} affiche « ${c.montant} » : un zéro se recopierait sur le formulaire`);
     if (!c.raison) throw new Error(`${c.nom} ne dit pas POURQUOI elle est vide`);
+    if (c.coupee) throw new Error(`${c.nom} : sa raison est coupée — « ${c.raison.slice(0, 60)} »`);
+    if (!/VÉRIFIER/.test(c.raison)) throw new Error(`${c.nom} : la raison ne dit pas « À VÉRIFIER » — « ${c.raison} »`);
   });
-  ok('quatre cases « — », chacune avec sa raison');
+  ok('quatre cases « — », chacune avec sa raison entière');
 
   // ------------------------------------------------------ 4. un chiffre s'ouvre sur ses pièces
   étape('Un chiffre s\'ouvre sur les écritures qui le font');
@@ -126,7 +141,10 @@ const étape = m => { pas++; console.log('\n' + pas + '. ' + m); };
   if (Math.abs(d.cases.tvaCollectee.montant - attendu) > 0.001) {
     throw new Error(`l'écran affiche ${collectee} et le disque ${d.cases.tvaCollectee.montant}`);
   }
-  ok('déclaration enregistrée, l\'écran et le disque disent la même chose');
+  // Le vert suit le travail : une fois préparée, l'étape principale n'est plus « Préparer ».
+  const apres = await win.$$eval('#dc-suite .btn-primary', bs => bs.map(b => b.id));
+  if (apres.length !== 1 || apres[0] === 'dc-preparer') throw new Error('après la préparation, le bouton principal doit passer à l\'étape suivante, vu ' + JSON.stringify(apres));
+  ok('déclaration enregistrée, l\'écran et le disque disent la même chose, et le vert passe à ' + apres[0]);
 
   // ------------------------------------------ 6. un mois DÉJÀ déclaré par le client
   // Le jeu d'exemple porte les livres d'un client à jour : sa propre écriture de déclaration est

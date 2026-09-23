@@ -119,7 +119,7 @@ const APP_SECRET = 'secret-de-test-' + 'x'.repeat(20);
   const OUT = dossierCaptures('console-rendu');
   const fiches = [];
   const nomFichier = ou => ou.toLowerCase()
-    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
   // Les quatre sondes sur l'écran courant. `ou` nomme l'endroit ET le contexte (largeur, thème) :

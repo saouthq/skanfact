@@ -415,6 +415,34 @@ const LARGE = 1440, HAUT = 900;
   }
   ok(`le portefeuille commence à ${flottaison.entete} px, sous le seuil de ${SEUIL_FLOTTAISON}`);
 
+  // H-9 bis (10.12.0) — la liste tient aussi dans sa LARGEUR, et à trois tailles, pas deux. Le
+  // plancher du nom (H-9) la faisait déborder de 29 px à 1280 et de 18 px à 1366 : la colonne
+  // d'actions, collante, recouvrait alors « Reçu le ». 1366×768 est l'écran de portable le plus
+  // courant, et aucun instrument ne le mesurait — `e2e:cabinet-rendu` passe à 1440 et à 1280, et
+  // les cellules changent de marge à 1340 : c'est entre les deux que le défaut vivait. On mesure le
+  // débordement du tableau ET les noms coupés : l'un sans l'autre se « répare » en écrasant l'autre.
+  étape('La liste des clients tient dans sa largeur, noms entiers, de 1280 à 1440');
+  const largeurs = [];
+  for (const [w, h] of [[1280, 800], [1366, 768], [1440, 900]]) {
+    await win.setViewportSize({ width: w, height: h });
+    await attendre(350);
+    const m = await win.evaluate(() => {
+      const t = document.querySelector('#view table.dl-table');
+      if (!t) return null;
+      const cadre = t.closest('.scroll-x') || t.parentElement;
+      return { deborde: t.scrollWidth - cadre.clientWidth,
+        coupes: [...t.querySelectorAll('.dl-nom')].filter(n => n.scrollWidth > n.clientWidth + 1).map(n => n.textContent.trim()) };
+    });
+    if (!m) throw new Error('la liste des dossiers a disparu à ' + w + ' px : la mesure ne prouve rien');
+    largeurs.push({ largeur: w, ...m });
+    if (m.deborde > 1) mesures.defauts.push(`à ${w} px, la liste des clients déborde de ${m.deborde} px : la colonne d'actions recouvre la dernière colonne`);
+    if (m.coupes.length) mesures.defauts.push(`à ${w} px, des noms de clients sont coupés : ${m.coupes.join(' · ')}`);
+  }
+  mesures.largeurListe = largeurs;
+  await win.setViewportSize({ width: 1280, height: 800 });
+  await attendre(250);
+  ok(largeurs.map(l => `${l.largeur} px : ${l.deborde > 1 ? 'déborde de ' + l.deborde : 'tient'}, ${l.coupes.length ? 'noms coupés : ' + l.coupes.length : 'noms entiers'}`).join(' · '));
+
   // U-01 (10.12.0) — la même règle, sur l'écran où un comptable passe ses journées. La grille de
   // saisie commençait à 764 px sur un écran de 800 : UNE ligne visible, sous 480 px d'en-tête, de
   // période, de bandeaux, d'onglets et d'aide des touches. On mesure le haut de la première ligne
