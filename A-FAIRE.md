@@ -102,7 +102,7 @@ Constats de l'audit du 22/09/2026 restés hors de la 10.6.0.
   détail dans `CHANGELOG.md` et `CLAUDE.md` § 10.12.0. Reste à le faire relire par le cabinet pilote.
 - **Le test humain de l'app entreprise** (23/09/2026, en chef d'entreprise qui fait son premier
   devis, sa première facture, puis son premier achat) a livré ses corrections en 10.12.0 (H-E1 →
-  H-E22). Ce qu'il a vu
+  H-E28). Ce qu'il a vu
   et qui reste à décider ou à faire :
   - **Un trop-perçu ne se rembourse pas dans SkanFact.** Un avoir émis sur une facture déjà payée
     laisse une somme due au client : la carte « Trop-perçu » le dit, mais aucun geste n'enregistre
@@ -112,11 +112,10 @@ Constats de l'audit du 22/09/2026 restés hors de la 10.6.0.
     annoncent un « reste à payer » qui ne déduit pas ce qu'on doit à ce même client (1 012,500 DT
     affichés quand il nous doit 505,560 net) — c'est le même chantier, le relevé de compte, lui, est
     juste.
-  - **Les champs de montant suivent la langue du SYSTÈME**, pas celle de l'application : sur un
-    poste réglé en anglais, un prix s'affiche « 507.94 » et le navigateur décide des décimales. Le
-    Cabinet a résolu la même chose en 10.12.0 (H-3 : un montant s'écrit et se relit en français) ;
-    l'app entreprise a une trentaine de champs `type=number` que `formValues` lit par `Number()` —
-    un portage à faire écran par écran, avec son test.
+  - ~~Les champs de montant suivent la langue du SYSTÈME~~ — **fait en 10.12.0 (H-E28)**, et c'était
+    pire qu'un affichage : sur un poste en anglais, « 2,5 » tapé devenait 25. L'application pose sa
+    langue (`--lang fr-FR`) avant de démarrer. Reste, si un jour on le veut : les espaces de milliers
+    DANS un champ (« 1 250,500 »), que le Cabinet sait lire (H-3) et qu'un `type=number` refuse.
   - **Toutes les questions s'intitulent « Confirmation »** : le titre devrait dire le geste
     (« Supprimer ce paiement ? »), la phrase en dessous dit déjà le reste. 78 appels ; dériver le
     titre du libellé du bouton donnerait « Passer ? » ou « Le client a refusé ? » — c'est à écrire

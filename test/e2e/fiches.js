@@ -116,6 +116,49 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
   await win.waitForFunction(() => location.hash === '#/catalogue', { timeout: 4000 });
   j.ok(`${suivis} article${suivis > 1 ? 's' : ''} suivi${suivis > 1 ? 's' : ''} — la fiche s'ouvre et le retour ramène au Catalogue (${sansSuivi} ligne(s) non suivie(s) sur la page)`);
 
+  // ---------------------------------------------------- 2 bis. le pied du Catalogue (10.12.0, H-E26)
+  // La valeur du stock tombait sous la colonne TVA, deux colonnes avant « Stock » ; et « moyenne »
+  // faisait la moyenne de prix à l'heure, au lot et à la pièce — un chiffre sans unité.
+  j.etape('Le pied du Catalogue : la valeur du stock sous « Stock », pas de moyenne entre unités');
+  await win.waitForSelector('#list-wrap tfoot tr', { timeout: 4000 });
+  const pied = await win.evaluate(() => {
+    const th = [...document.querySelectorAll('#list-wrap thead th')].find(t => /^Stock/.test(t.textContent.trim()));
+    const cell = document.querySelector('#list-wrap tfoot [data-pied=stock]');
+    const unites = new Set((window.__data.catalog || []).map(c => (c.unit || '').trim()));
+    const foot = document.querySelector('#list-wrap tfoot');
+    if (!th || !cell || !foot) return null;
+    const a = th.getBoundingClientRect(), b = cell.getBoundingClientRect();
+    return { dx: Math.abs(a.left - b.left) + Math.abs(a.right - b.right), valeur: cell.textContent.trim(), unites: unites.size, texte: foot.textContent.replace(/\s+/g, ' ').trim() };
+  });
+  if (!pied) throw new Error('le pied du Catalogue, sa cellule de stock ou l\'en-tête « Stock » est introuvable');
+  if (pied.dx > 2) throw new Error(`la valeur du stock n'est pas sous la colonne « Stock » (écart ${Math.round(pied.dx)} px)`);
+  if (!/\d/.test(pied.valeur)) throw new Error('le pied ne donne plus la valeur du stock : ' + pied.valeur);
+  if (pied.unites > 1 && /moyenne/.test(pied.texte)) throw new Error(`le pied fait la moyenne de prix de ${pied.unites} unités différentes : ${pied.texte}`);
+  j.ok(`« ${pied.valeur} » sous « Stock », ${pied.unites} unités et ${/moyenne/.test(pied.texte) ? 'une' : 'aucune'} moyenne`);
+
+  // ---------------------------------------------------- 2 ter. une virgule est une décimale (10.12.0, H-E28)
+  // Un champ `type=number` se lisait dans la langue du SYSTÈME : sur ce poste de test (anglais),
+  // « 2,5 » TAPÉ dans un prix devenait 25 — dix fois trop cher, sans un mot. On tape au clavier,
+  // touche par touche : poser la valeur par le code (« 2.5 ») ne passe jamais par ce chemin-là.
+  j.etape('Un prix tapé « 2,5 » vaut 2,5 — pas 25');
+  await win.click('#new');
+  await win.waitForSelector('#modal-root input[name=unitPrice]');
+  await win.click('#modal-root input[name=unitPrice]');
+  await win.keyboard.press('Control+a');
+  await win.keyboard.type('2,5');
+  await win.click('#modal-root input[name=unitCost]');
+  await win.keyboard.press('Control+a');
+  await win.keyboard.type('1.2');
+  const saisi = await win.evaluate(() => ({ prix: document.querySelector('#modal-root input[name=unitPrice]').value, cout: document.querySelector('#modal-root input[name=unitCost]').value }));
+  if (saisi.prix !== '2.5') throw new Error(`« 2,5 » tapé dans le prix vaut « ${saisi.prix} » : la virgule n'est pas lue comme une décimale`);
+  if (saisi.cout !== '1.2') throw new Error(`« 1.2 » tapé dans le coût vaut « ${saisi.cout} » : le point n'est plus accepté`);
+  // Échap sur une fenêtre modifiée demande d'abord s'il faut abandonner la saisie : on abandonne.
+  await win.keyboard.press('Escape');
+  await win.waitForSelector('#modal-root .modal-bg:nth-child(2) #ok', { timeout: 4000 });
+  await win.click('#modal-root .modal-bg:last-child #ok');
+  await win.waitForFunction(() => !document.querySelector('#modal-root .modal-bg'), null, { timeout: 4000 });
+  j.ok('« 2,5 » → 2.5 et « 1.2 » → 1.2, au clavier');
+
   // ---------------------------------------------------- 3. le catalogue dans l'éditeur d'achat
   j.etape('L\'éditeur d\'achat propose le catalogue, au coût d\'achat');
   await aller('#/achat/new');

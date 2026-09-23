@@ -23,6 +23,15 @@ const IS_MAC = process.platform === 'darwin';
 // (src/mac-update.sh). Passe à true le jour où l'app est signée : electron-updater fera tout.
 const MAC_SIGNED = false;
 
+// ---------- la langue des champs de montant (10.12.0, H-E28) ----------
+// Un champ `type=number` se lit dans la langue du SYSTÈME, pas dans celle de l'application : sur un
+// poste réglé en anglais, « 2,5 » tapé dans un prix devenait 25 — la virgule avalée comme un
+// séparateur de milliers, sans un mot, et une facture dix fois trop chère. Trouvé en tapant au
+// clavier comme un humain ; aucun test ne le voyait, parce qu'un test pose la valeur par le code
+// (« 2.5 »), jamais par les touches. SkanFact parle français : ses champs aussi, sur tous les postes.
+// La virgule y est la décimale, et le point reste accepté. Posé AVANT `ready`, sinon rien ne change.
+app.commandLine.appendSwitch('lang', 'fr-FR');
+
 let mainWindow = null;
 let storage = null;
 let rendererDirty = false;   // l'interface a-t-elle un document modifié non enregistré ?

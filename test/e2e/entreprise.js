@@ -255,6 +255,48 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
     await win.waitForFunction(() => document.querySelector('#view h1') && document.querySelector('#view h1').textContent === 'Factures');
     const l = await win.textContent('#list-wrap'); if (!l.includes('FAC-') || !l.includes('AVO-')) throw new Error('liste');
   });
+  // 10.12.0 (H-E25, vu au test humain) — la palette recalculait le montant d'une pièce à sa façon :
+  // l'avoir y valait « 119,000 DT » quand la liste, juste derrière, disait « − 119,000 DT ». Deux
+  // écrans qui montrent la même pièce ne peuvent pas dire deux montants. Et un mot que seul le CORPS
+  // d'un article contient (« assiette », l'exemple que l'Aide donne elle-même) rendait « Aucun
+  // résultat » dans la palette et trois articles dans l'Aide.
+  await step('palette Cmd+K : l\'avoir au même montant que la liste, et les mots du corps de l\'Aide', async () => {
+    const liste = await win.evaluate(() => {
+      const ths = [...document.querySelectorAll('#list-wrap thead th')].map(th => th.textContent.trim());
+      const col = ths.findIndex(x => /^Net à payer/.test(x));
+      const tr = [...document.querySelectorAll('#list-wrap tbody tr')].find(r => /AVO-\d{4}-\d{3}/.test(r.textContent));
+      return tr && col >= 0 ? { num: tr.textContent.match(/AVO-\d{4}-\d{3}/)[0], montant: tr.children[col].textContent.trim() } : null;
+    });
+    if (!liste) throw new Error('l\'avoir ou sa colonne « Net à payer » est introuvable dans la liste des factures');
+    if (!/^[−-]/.test(liste.montant)) throw new Error('la liste ne montre plus l\'avoir en négatif : ' + liste.montant);
+    await win.keyboard.press('Control+k');
+    await win.waitForSelector('#pal-q');
+    await win.fill('#pal-q', liste.num.toLowerCase());
+    await win.waitForFunction(n => [...document.querySelectorAll('#pal-res .res .main')].some(m => m.textContent.startsWith(n)), liste.num);
+    const pal = await win.evaluate(n => { const r = [...document.querySelectorAll('#pal-res .res')].find(x => (x.querySelector('.main') || {}).textContent.startsWith(n)); return r && r.querySelector('.amt') ? r.querySelector('.amt').textContent.trim() : ''; }, liste.num);
+    if (pal !== liste.montant) throw new Error(`la palette dit « ${pal} » pour ${liste.num}, la liste « ${liste.montant} »`);
+    await win.fill('#pal-q', 'assiette');
+    await win.waitForFunction(() => /Aide|Aucun résultat/.test((document.querySelector('#pal-res') || {}).textContent || ''));
+    const aides = await win.evaluate(() => [...document.querySelectorAll('#pal-res .res')].filter(r => (r.querySelector('.kind') || {}).textContent === 'Aide').length);
+    if (!aides) throw new Error('« assiette » ne rend aucun article dans la palette, alors que la page Aide en trouve');
+    await win.keyboard.press('Escape');
+    await win.waitForFunction(() => document.querySelector('#palette-root').hidden);
+  });
+  // 10.12.0 (H-E27, vu au test humain) — sans article suivi, le seul vert de la page Stock était
+  // « + Mouvement », un mouvement de rien ; et l'état vide disait le geste en prose (« ouvre le
+  // Catalogue, modifie la prestation et coche… »). Le geste est dans la page, et il se fait d'un clic.
+  await step('stock vide : le geste qui manque est dans la page, pas un « + Mouvement » de rien', async () => {
+    await win.evaluate(() => { location.hash = '#/stock'; });
+    await win.waitForSelector('#st-new');
+    const etat = await win.evaluate(() => ({ adj: !!document.querySelector('#st-adj'), verts: [...document.querySelectorAll('#view .btn-primary')].map(b => b.id) }));
+    if (etat.adj) throw new Error('sans article suivi, l\'en-tête propose encore « + Mouvement »');
+    if (etat.verts.join() !== 'st-new') throw new Error('boutons principaux de la page Stock vide : ' + etat.verts.join());
+    await win.click('#st-new');
+    await win.waitForSelector('#modal-root input[name=tracked]');
+    if (!await win.evaluate(() => document.querySelector('#modal-root input[name=tracked]').checked)) throw new Error('« + Nouvel article suivi » ouvre une fiche qui n\'est pas suivie en stock');
+    await win.keyboard.press('Escape');
+    await win.waitForFunction(() => !document.querySelector('#modal-root .modal-bg'));
+  });
   await step('paramètres + panneau mises à jour + sauvegarde', async () => {
     await win.evaluate(() => { location.hash = '#/parametres'; });
     await setTab('app');

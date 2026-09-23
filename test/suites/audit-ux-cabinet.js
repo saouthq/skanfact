@@ -2766,6 +2766,36 @@ t('H-E24 : le pied d\'une liste mêlée ne totalise que les factures et les avoi
   assert.ok(/\$\{melange \? 'factures et avoirs : ' : ''\}/.test(f), 'le pied ne dit plus sur quoi porte son total');
 });
 
+// La palette Cmd+K recalculait le montant d'une pièce à sa façon : l'avoir en POSITIF quand toutes
+// les listes le montrent en négatif, et dans la devise de la société quand la pièce porte la sienne.
+// Et elle cherchait les articles d'Aide dans leur titre seul : « assiette », l'exemple que la page
+// Aide donne elle-même, n'y rendait rien. `e2e:entreprise` refait les deux gestes à l'écran.
+t('H-E25 : la palette montre le montant de la liste, dans la devise de la pièce, et cherche l\'Aide comme l\'Aide', () => {
+  const ent = code('src', 'renderer', 'app.js');
+  const cols = ent.slice(ent.indexOf('function docColumns(opts) {'), ent.indexOf('const cols = [', ent.indexOf('function docColumns(opts) {')));
+  assert.ok(cols.length > 40 && cols.length < 400, 'tranche de docColumns : ' + cols.length);
+  assert.ok(/const amountOf = montantDeListe;/.test(cols), 'la liste ne prend plus son montant dans montantDeListe');
+  const pal = tranche(ent, 'function openPalette() {');
+  assert.ok(pal.length > 2000 && !pal.includes('function closePalette'), 'tranche de la palette : ' + pal.length);
+  const docs = (/const docs = data\.documents\.map\([\s\S]*?\}\);/.exec(pal) || [''])[0];
+  assert.ok(docs, 'la liste des pièces de la palette a disparu');
+  assert.ok(/amt: C\.money\(montantDeListe\(d\), docCur\(d\)\)/.test(docs), 'la palette ne montre plus le montant de la liste, dans la devise de la pièce');
+  assert.ok(!/computeTotals/.test(docs), 'la palette recalcule le montant d\'une pièce à sa façon');
+  assert.ok(/aideFiltre\(G\.ARTICLES,/.test(pal), 'la palette ne cherche plus l\'Aide avec le moteur de la page Aide');
+  assert.ok(/\.\.\.aidesPour\(words\)/.test(pal), 'les articles d\'Aide ne sont plus proposés par la palette');
+});
+
+// Un champ `type=number` se lit dans la langue du SYSTÈME : sur un poste en anglais, « 2,5 » tapé
+// dans un prix devenait 25 (vu au test humain, en tapant au clavier). L'application pose SA langue
+// avant d'être prête — après, le commutateur ne change plus rien. `e2e:fiches` tape les touches.
+t('H-E28 : l\'application pose le français avant de démarrer, pour que « 2,5 » reste 2,5', () => {
+  const m = code('src', 'main.js');
+  const i = m.search(/app\.commandLine\.appendSwitch\('lang', 'fr(-FR)?'\)/);
+  assert.ok(i >= 0, 'l\'application ne pose plus sa langue : les champs de montant suivent celle du système');
+  const verrou = m.indexOf('app.requestSingleInstanceLock()');
+  assert.ok(verrou > 0 && i < verrou, 'la langue est posée APRÈS le démarrage : le commutateur ne sert plus à rien');
+});
+
 // Le marqueur « non enregistré » vivait À CÔTÉ du titre : au premier geste il élargissait l'en-tête,
 // qui passait sur deux rangées à 1440 px, et tout le formulaire descendait de 40 px sous le curseur
 // (le clic suivant tombait à côté). Le point de la grille du Cabinet avait appris la leçon en H-2 :

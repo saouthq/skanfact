@@ -2080,10 +2080,18 @@
   }
 
   // ---------- listes devis / factures ----------
+  // Le montant qu'une LISTE montre pour une pièce : le net à payer d'une facture ou d'une proforma,
+  // le total TTC des autres, et l'avoir en NÉGATIF — il retire. Une seule fonction pour les listes
+  // et pour la palette Cmd+K (10.12.0, H-E25) : la palette recalculait le sien et montrait
+  // AVO-2026-001 à « 506,940 DT » pendant que la liste des factures, sur le même poste, disait
+  // « − 506,940 DT » — et une facture en euros y passait en dinars. Deux écrans qui montrent la
+  // même pièce ne peuvent pas dire deux montants (règle 6.8.1).
+  const montantDeListe = d => { const t = C.computeTotals(d, company()); return d.type === 'avoir' ? -t.netToPay : (['facture', 'proforma'].includes(d.type) ? t.netToPay : t.totalTTC); };
+
   // Colonnes d'une liste de documents. `get` sert à l'affichage, `val` au tri (nombre ou texte comparable).
   function docColumns(opts) {
     const cur = doc => docCur(doc);
-    const amountOf = d => { const t = C.computeTotals(d, company()); return d.type === 'avoir' ? -t.netToPay : (['facture', 'proforma'].includes(d.type) ? t.netToPay : t.totalTTC); };
+    const amountOf = montantDeListe;
     const restOf = d => d.type === 'facture' && d.status !== 'brouillon' ? balance(d).remaining : null;
     const cols = [
       { key: 'number', label: 'Numéro', cls: 'nw', val: d => (d.number ? '1' : '0') + (d.number || ''), get: d => `<strong>${d.number ? h(d.number) : '<span class="muted">Brouillon</span>'}</strong>` },
@@ -4206,15 +4214,22 @@
     ];
     const draw = drawList('#list-wrap', catalogState.presta, prestaCols, () => data.catalog.slice(), {
       noun: 'prestation', placeholder: 'Rechercher une prestation…', text: c => `${c.label} ${c.description || ''} ${c.unit || ''}`,
+      // 10.12.0 (H-E26, vu au test humain) — deux chiffres du pied mentaient sans rien casser :
+      // « moyenne 58,333 DT » faisait la moyenne de 25 DT de l'heure, d'un lot à 0 DT et d'une pièce
+      // à 150 DT — un prix moyen n'a de sens que dans UNE unité (un agrégat porte son unité, 7.0.1) ;
+      // et la valeur du stock tombait sous la colonne TVA, deux colonnes avant la sienne (un total vit
+      // SOUS sa colonne, 9.4.5). La moyenne ne s'affiche plus que si toute la sélection partage son
+      // unité, et elle la nomme ; la valeur du stock vit sous « Stock ».
       foot: (kept) => {
         const tracked = kept.filter(c => c.tracked);
         const stockValue = C.round3(tracked.reduce((a, c) => a + Math.max(0, C.stockOf(data, c.id).value), 0));
-        const avg = kept.length ? C.round3(kept.reduce((a, c) => a + (Number(c.unitPrice) || 0), 0) / kept.length) : 0;
+        const unites = [...new Set(kept.map(c => (c.unit || '').trim()))];
+        const avg = kept.length && unites.length === 1 ? C.round3(kept.reduce((a, c) => a + (Number(c.unitPrice) || 0), 0) / kept.length) : null;
         return `<tr><td><strong>${pl(kept.length, 'prestation')}</strong>${tracked.length ? `<span class="muted"> · ${pl(tracked.length, 'suivie')} en stock</span>` : ''}</td>
-          <td class="r"><span class="muted">moyenne</span> <strong>${C.money(avg, cur)}</strong></td>
-          <td colspan="2"></td>
-          <td class="r">${tracked.length ? `<span class="muted">stock</span> <strong>${C.money(stockValue, cur)}</strong>` : ''}</td>
-          <td colspan="3"></td></tr>`;
+          <td class="r">${avg != null ? `<span class="muted">moyenne</span> <strong>${C.money(avg, cur)}</strong>${unites[0] ? `<span class="muted"> / ${h(unites[0])}</span>` : ''}` : ''}</td>
+          <td colspan="4"></td>
+          <td class="r" data-pied="stock">${tracked.length ? `<span class="muted">valeur</span> <strong>${C.money(stockValue, cur)}</strong>` : ''}</td>
+          <td></td></tr>`;
       },
       empty: 'Catalogue vide. Ajoute tes prestations récurrentes pour remplir les devis en un clic.',
       // Le Catalogue AFFICHE une quantité en stock et n'offrait aucun moyen d'aller voir d'où elle
@@ -5329,17 +5344,27 @@
       // Les mots qu'on tape vraiment, et qui ne sont dans aucun libellé : « maj », « backup »,
       // « démo », « logo », « mot de passe »… `text` sert déjà au filtrage, on lui ajoute les alias.
       .map(a => { const al = ALIAS[a.main]; return al ? { ...a, text: a.text + ' ' + al } : a; });
-    const helps = G.ARTICLES.map(x => ({ kind: 'Aide', main: x.title, sub: x.sub, text: `aide ${x.title} ${x.sub}`.toLowerCase(), run: () => navigate('#/aide/' + x.id) }));
-    const docs = data.documents.map(d => { const t = C.computeTotals(d, company()); const cn = clientName(d.clientId); return { kind: C.TITLES[d.type], main: d.number || 'Brouillon', sub: `${cn}${d.subject ? ' — ' + d.subject : ''}`, amt: C.money(d.type === 'devis' ? t.totalTTC : t.netToPay, cur), text: `${d.number} ${cn} ${d.subject || ''} ${d.type}`.toLowerCase(), run: () => navigate('#/doc/' + d.id), ts: d.createdAt || 0 }; });
+    // Les articles d'Aide se cherchent avec le MOTEUR de la page Aide (`aideFiltre` : titre, puis
+    // sous-titre, puis corps). La palette ne lisait que le titre et le sous-titre : « assiette » —
+    // le mot que la page Aide donne elle-même en exemple dans son champ de recherche — rendait
+    // « Aucun résultat » ici et trois articles là-bas (10.12.0, H-E25). Deux recherches sur le même
+    // corpus qui ne disent pas la même chose, et on conclut que la chose n'est expliquée nulle part.
+    // Quatre au plus, APRÈS ce qu'on ouvre — le jumeau exact de la palette du Cabinet.
+    const aidePalette = x => ({ kind: 'Aide', main: x.title, sub: x.sub, text: `aide ${x.title} ${x.sub}`.toLowerCase(), run: () => navigate('#/aide/' + x.id) });
+    const aidesPour = words => {
+      const mots = words.filter(w => w !== 'aide');
+      return (mots.length ? aideFiltre(G.ARTICLES, mots.join(' ')).slice(0, 4) : G.ARTICLES).map(aidePalette);
+    };
+    const docs = data.documents.map(d => { const cn = clientName(d.clientId); return { kind: C.TITLES[d.type], main: d.number || 'Brouillon', sub: `${cn}${d.subject ? ' — ' + d.subject : ''}`, amt: C.money(montantDeListe(d), docCur(d)), text: `${d.number} ${cn} ${d.subject || ''} ${d.type}`.toLowerCase(), run: () => navigate('#/doc/' + d.id), ts: d.createdAt || 0 }; });
     const clients = data.clients.map(c => ({ kind: 'Client', main: c.name, sub: [c.contact, c.email, c.phone].filter(Boolean).join(' · '), text: `${c.name} ${c.contact || ''} ${c.email || ''} ${c.phone || ''} ${c.matricule || ''}`.toLowerCase(), run: () => navigate('#/client/' + c.id) }));
     const items = data.catalog.map(c => ({ kind: 'Prestation', main: c.label, sub: C.money(c.unitPrice, cur) + ' HT', text: `${c.label} ${c.description || ''}`.toLowerCase(), run: () => navigate('#/catalogue') }));
-    const all = [...actions, ...reglagesDePalette(), ...docs, ...clients, ...items, ...helps];
+    const all = [...actions, ...reglagesDePalette(), ...docs, ...clients, ...items];
     let sel = 0, shown = [];
     const input = $('#pal-q'), res = $('#pal-res');
     const draw = () => {
       const q = input.value.trim().toLowerCase();
       const words = q.split(/\s+/).filter(Boolean);
-      shown = (q ? all.filter(x => words.every(w => x.text.includes(w))) : [...docs.slice().sort((a, b) => b.ts - a.ts).slice(0, 6), ...actions.slice(0, 4)]).slice(0, 12);
+      shown = (q ? [...all.filter(x => words.every(w => x.text.includes(w))), ...aidesPour(words)] : [...docs.slice().sort((a, b) => b.ts - a.ts).slice(0, 6), ...actions.slice(0, 4)]).slice(0, 12);
       if (q) shown.sort((a, b) => (b.text.startsWith(q) ? 1 : 0) - (a.text.startsWith(q) ? 1 : 0));
       sel = Math.min(sel, Math.max(0, shown.length - 1));
       res.innerHTML = shown.length ? shown.map((x, i) => `<div class="res ${i === sel ? 'sel' : ''}" data-i="${i}"><span class="kind">${h(x.kind)}</span><span class="main">${h(x.main)}${x.sub ? `<span class="sub">${h(x.sub)}</span>` : ''}</span>${x.amt ? `<span class="amt">${h(x.amt)}</span>` : ''}</div>`).join('') : `<div class="res"><span class="main muted">Aucun résultat</span></div>`;
@@ -7805,11 +7830,17 @@
     // cinq onglets et renvoyait l'état du stock sur les cinq.
     const ST_LABELS = { etat: 'l\'état du stock', mouvements: 'les mouvements', series: 'les numéros de série',
       inventaire: 'l\'inventaire', alertes: 'ce qu\'il faut recommander' };
+    // 10.12.0 (H-E27, vu au test humain) — sans article suivi, le seul bouton vert de la page était
+    // « + Mouvement » : un mouvement de rien, puisqu'aucun article n'est compté ; et l'état vide
+    // expliquait le geste en prose (« ouvre le Catalogue, modifie la prestation et coche… »), la
+    // notice de montage que la 7.0.0 avait retirée partout ailleurs. Le geste qui manque est EN
+    // BAS, dans l'état vide, et il se fait d'un clic ; l'en-tête ne propose rien qu'on ne puisse
+    // pas encore faire — ni mouvement, ni export d'un stock qui n'existe pas.
     const stHead = () => {
-      const a = items.length ? ST_ACTION[s.tab] : ST_ACTION.etat;   // même garde-fou que sur Paie
+      const a = items.length ? ST_ACTION[s.tab] : null;
       return `<h1>Stock</h1>
         <div class="actions">
-          <button class="btn" id="st-csv" data-csv="${h(s.tab)}">Exporter ${h(ST_LABELS[s.tab] || ST_LABELS.etat)}</button>
+          ${items.length ? `<button class="btn" id="st-csv" data-csv="${h(s.tab)}">Exporter ${h(ST_LABELS[s.tab] || ST_LABELS.etat)}</button>` : ''}
           <button class="btn" id="st-war">Garanties</button>
           ${a ? `<button class="btn btn-primary" id="${a[0]}">${a[1]}</button>` : ''}
         </div>`;
@@ -7817,8 +7848,9 @@
     $('#view').innerHTML = `
       <div class="page-head" id="st-head">${stHead()}</div>
       ${items.length ? '' : `<div class="panel"><h2>Aucun article suivi</h2>
-        <p class="small">Le stock ne se saisit pas : il se déduit de tes achats et de tes ventes. Pour qu'un article soit compté, ouvre le <a href="#/catalogue">Catalogue</a>, modifie la prestation et coche <b>« Suivi en stock »</b>. Indique ce que tu as en rayon aujourd'hui, et SkanFact suit le reste tout seul.</p>
-        <p class="small muted">Les prestations (du temps, du conseil) n'ont pas de stock : ne coche la case que pour de la marchandise.</p></div>`}
+        <p class="small">Le stock ne se saisit pas : il se déduit de tes achats et de tes ventes. Un article compté est un article du Catalogue marqué <b>« Suivi en stock »</b> : indique ce que tu as en rayon aujourd'hui, et SkanFact suit le reste tout seul.</p>
+        <p class="small muted">Les prestations (du temps, du conseil) n'ont pas de stock : on ne suit que de la marchandise.</p>
+        <div class="inline mt"><button class="btn btn-primary" id="st-new">+ Nouvel article suivi</button>${data.catalog.length ? '<button class="btn" id="st-pick">Choisir dans le Catalogue</button>' : ''}</div></div>`}
       <div class="tabs" id="st-tabs" role="tablist" aria-label="Le stock" ${items.length ? '' : 'hidden'}>${STOCK_TABS.map(([id, label]) =>
         `<button role="tab" data-tab="${id}" class="${id === s.tab ? 'active' : ''}">${label}${id === 'alertes' && alerts.length ? ` <span class="nav-count">${alerts.length}</span>` : ''}</button>`).join('')}</div>
       <div id="st-body"></div>`;
@@ -8019,7 +8051,9 @@
       if ($('#se-st')) $('#se-st').onchange = e => { s.ser.status = e.target.value; s.ser.page = 1; drawSerials(); };
       // L'état vide expliquait le geste en prose et laissait retraverser l'application de mémoire.
       if ($('#ser-pick')) $('#ser-pick').onclick = () => navigate('#/catalogue');
-      if ($('#ser-new')) $('#ser-new').onclick = () => catalogForm(null, () => render());
+      // « + Nouvelle prestation suivie » ouvrait une fiche VIERGE, cases décochées : le bouton promettait
+      // un suivi que le formulaire ne posait pas (10.12.0, H-E27). La fiche arrive suivie, par numéro.
+      if ($('#ser-new')) $('#ser-new').onclick = () => catalogForm(articleNeuf({ tracked: true, serialized: true }), it => { if (it) render(); }, { creation: true, titre: 'Nouvel article suivi par numéro' });
       $$('#st-body [data-ser]').forEach(b => b.onclick = () => { const x = data.serials.find(y => y.id === b.dataset.ser); if (x) serialForm(x, () => draw()); });
       bindPager($('#st-body'), s.ser, () => drawSerials(), '#st-body');
     }
@@ -8028,7 +8062,9 @@
       if ($('#st-adj')) $('#st-adj').onclick = () => adjustForm(null, () => draw());
       if ($('#se-add')) $('#se-add').onclick = () => serialIntakeForm(null, () => draw());
       $('#st-war').onclick = () => navigate('#/garanties');
-      $('#st-csv').onclick = exportStock;
+      if ($('#st-csv')) $('#st-csv').onclick = exportStock;
+      if ($('#st-new')) $('#st-new').onclick = () => catalogForm(articleNeuf({ tracked: true }), it => { if (it) render(); }, { creation: true, titre: 'Nouvel article suivi' });
+      if ($('#st-pick')) $('#st-pick').onclick = () => navigate('#/catalogue');
     };
     const draw = () => {
       $('#st-head').innerHTML = stHead(); bindStHead();

@@ -182,6 +182,21 @@ même façon, ce qui en a fait trouver une trentaine d'autres. Tout est ici.
   mêle des devis aux factures, le pied ne totalise que les factures et les avoirs, et le dit.
 - « Paramètres » et « Aide », allumés dans le pied de la barre latérale, passaient encore en gras :
   ils suivent la règle du menu.
+- **Sur un ordinateur réglé en anglais, un prix tapé « 2,5 » devenait 25** : les champs de montant
+  suivaient la langue du système, qui prend la virgule pour un séparateur de milliers — une facture dix
+  fois trop chère, sans un mot. SkanFact impose désormais le français à ses champs sur tous les postes :
+  la virgule est la décimale, le point reste accepté.
+- **La recherche (Ctrl K) montrait un avoir en positif**, et dans la devise de l'entreprise, quand la
+  liste des factures, juste derrière, le disait en négatif et dans sa devise : elle prend maintenant le
+  montant de la liste. Et un mot que seul le texte d'un article d'Aide contient (« assiette », l'exemple
+  que l'Aide donne elle-même) y rendait « Aucun résultat » : elle cherche l'Aide comme la page Aide.
+- **La page Stock, sans article suivi, n'avait qu'un bouton vert : « + Mouvement »** — un mouvement de
+  rien — et expliquait en toutes lettres où aller cocher une case. Elle propose « + Nouvel article
+  suivi » (la fiche arrive déjà suivie) et « Choisir dans le Catalogue ». Même correction sur l'onglet
+  des numéros de série, dont « + Nouvelle prestation suivie » ouvrait une fiche non suivie.
+- **Le pied du Catalogue faisait la moyenne d'un prix à l'heure, d'un lot et d'une pièce**, et posait la
+  valeur du stock sous la colonne TVA : la moyenne ne paraît plus que dans une seule unité (qu'elle
+  nomme), et la valeur du stock vit sous « Stock ».
 
 **La console de l'éditeur**
 - **Le Journal écrivait « commande.creee »** en chasse fixe : les cinq événements de la vente en ligne

@@ -27,6 +27,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Une **exception qui échappe à un handler** : rien à l'écran qu'on ait écrit, rien au journal | 9.4.10 — `err.code` **ne traverse pas** le pont IPC |
 | Une **version publiée que les applications ne voient pas** (« tu as la dernière version ») | 10.11.0 — la liste de l'API rend la release SANS ses fichiers ; une version téléchargée cachait la suivante |
 | Un bouton **hors de l'écran**, une barre empilée sur trois rangées | 7.13.0, 7.23.0 — `e2e:contraste` et `e2e:entetes` mesurent le bouton, jamais la page |
+| Un prix tapé **« 2,5 » qui devient 25** chez un client, juste chez l'auteur : un `type=number` suit la langue du SYSTÈME | 10.12.0 — H-E28, la langue posée par `main.js` avant `ready` ; un test qui POSE la valeur ne passe jamais par ce chemin, il faut TAPER les touches |
 | Un **refus qui promet une sortie qui n'existe pas** (« contre-passe d'abord », puis la même phrase) | 10.12.0 — une écriture contre-passée libère ce qu'elle portait |
 | Un **clic qui tombe à côté** : ce qui vient d'apparaître a poussé le formulaire, la frappe part sur la page | 10.12.0 — « Fiche du client » né sous le champ, 45 px ; le repère « non enregistré » qui fait passer l'en-tête sur deux rangées, 40 px (H-E19) |
 | Un **clic qui ouvre autre chose que ce qu'il visait** : une proposition que personne n'a demandée s'est posée sous le curseur | 10.12.0 (H-E20) — « + Créer … au catalogue » sur la quantité et le prix |
@@ -41,6 +42,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Tout ce qui **additionne** plusieurs pièces se convertit dans la devise de base | 7.0.1 — le timbre en euros ; 7.16.0 — les cartes de l'accueil |
 | Une pièce émise garde une **copie** de ce qui a servi à la calculer | 7.1.x — le timbre ; 5.0.0 — `slip.computed` ; 9.0.0 — les charges patronales |
 | Un compteur et la liste qu'il annonce se calculent avec la **même fonction** | 6.8.1 — le bandeau des relances ; 7.15.0 — « Reste à encaisser » |
+| Deux écrans qui montrent la **même pièce** ne disent qu'un montant, et deux recherches sur le même corpus qu'une réponse | 10.12.0 — H-E25, la palette et la liste ; la palette et la page Aide |
 | Un montant **négatif change de colonne**, il ne garde pas son signe | 6.3.0 — les écritures comptables |
 | Un **agrégat** porte une devise, une unité, et une période nommée | 7.0.1, 7.16.0, 3.1.0 ; 9.4.9 — une courbe d'une barre cède la place au chiffre |
 | Une donnée qui n'a pas de **case** se réinvente — et ce qu'on réinvente est faux | 9.8.5 — le tiers déduit du libellé, le compte nommé par la première écriture ; 10.9.1 — ou elle se perd en silence |
@@ -6244,6 +6246,40 @@ puis corrigée par un avoir alors qu'elle était déjà payée) :
   l'avoir — 1 520,440 DT « net à payer », le devis compté deux fois. Quand une liste mêle les factures
   à d'autres pièces, `docTable` ne totalise que les factures et les avoirs, et le pied le DIT
   (« factures et avoirs : … »). `e2e:entreprise` le vérifie sur des montants calculés à la main.
+
+**Et en tapant au clavier ce que tape un chef d'entreprise** (H-E25 → H-E28) :
+
+- **Un champ `type=number` se lit dans la langue du SYSTÈME, pas dans celle de l'application**
+  (H-E28, le plus grave de ce lot) : sur un poste réglé en anglais, « 2,5 » tapé dans un prix devenait
+  **25** — la virgule avalée comme séparateur de milliers, sans un mot, une facture dix fois trop chère.
+  Le carnet `A-FAIRE.md` le rangeait en « affichage » (« 507.94 ») ; c'était une SAISIE fausse. Le
+  remède tient en une ligne de `main.js`, `app.commandLine.appendSwitch('lang', 'fr-FR')`, posée
+  AVANT `ready` : la virgule devient la décimale, le point reste accepté, et la trentaine de champs
+  sont couverts d'un coup — au lieu du portage champ par champ que le Cabinet a fait en H-3 (ses champs
+  sont du texte). **Aucun test ne pouvait le voir** : un parcours pose la valeur par le code (« 2.5 »),
+  jamais par les touches, et le code ne passe pas par la conversion localisée. `e2e:fiches` TAPE
+  maintenant « 2,5 » touche par touche, et tombe sans le commutateur. Symptôme à reconnaître : un
+  montant juste chez l'auteur (Mac en français) et faux chez un client — le fuseau de la 5.2.3, en
+  version langue.
+- **Deux écrans qui montrent la même pièce ne disent qu'un montant** (H-E25 ; règle 6.8.1) : la
+  palette Ctrl K recalculait le sien — un avoir en POSITIF quand toutes les listes le montrent en
+  négatif, et dans la devise de la société quand la pièce porte la sienne. Une fonction,
+  `montantDeListe`, pour la liste et la palette. Et **deux recherches sur le même corpus ne disent pas
+  deux choses** : la palette ne lisait que le titre des articles d'Aide, la page Aide lit leur corps —
+  « assiette », l'exemple que la page Aide donne dans son propre champ, rendait « Aucun résultat »
+  d'un côté et trois articles de l'autre. La palette appelle `aideFiltre`, le moteur de la page ; c'est
+  le jumeau inversé de la 10.12.0 (le Cabinet avait appris à lire le corps, l'entreprise non).
+- **Un état vide qui dit le geste en prose, encore** (H-E27 ; règle 7.0.0) : la page Stock sans article
+  suivi disait « ouvre le Catalogue, modifie la prestation et coche… », et son seul vert était
+  « + Mouvement » — un mouvement de rien. Le geste est dans la page (« + Nouvel article suivi », la
+  fiche arrive déjà suivie) et l'en-tête ne propose rien qu'on ne puisse pas encore faire. Au même
+  endroit, **un bouton qui promet ce que son formulaire ne pose pas** : « + Nouvelle prestation
+  suivie » ouvrait une fiche aux cases décochées.
+- **Un agrégat porte son unité, et un total vit sous SA colonne** (H-E26 ; 7.0.1, 9.4.5) : le pied du
+  Catalogue faisait la moyenne de 25 DT de l'heure, d'un lot à 0 et d'une pièce à 150 — et posait la
+  valeur du stock sous la colonne TVA, deux colonnes avant « Stock » (un colspan faux, invisible tant
+  que l'entreprise n'a aucun article suivi). La moyenne ne paraît plus que dans une seule unité, qu'elle
+  nomme ; `e2e:fiches` mesure la cellule sous son en-tête.
 
 **Et la console, par le parcours qui la mesure** : garnir l'onglet Commandes (10.9.0) a fait parler
 la sonde du texte coupé et les captures. Trois tables de mots de la page (`NOM_LIGNE`, `ARTICLE`,
