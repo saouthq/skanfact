@@ -112,11 +112,6 @@
   background: var(--info-soft); border-inline-start: 3px solid var(--info); border-radius: 8px;
   padding: 11px 14px; font-size: 13px; line-height: 1.55;
 }
-/* Un bandeau qui porte des GESTES n'est pas de la prose. Écrit en prose avec deux
-   `margin-inline-start` posés à la main, il ne décidait que l'écart HORIZONTAL : au premier passage
-   à la ligne, « Relire les paquets reçus » se retrouvait collé sous « Voir le brouillard », à zéro
-   pixel. Un `gap` de rangée flex décide des deux à la fois (9.8.3). */
-.box-gestes { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
 /* Ce qui suit un bouton dans une cellule n'est pas collé à lui par une espace de gabarit. */
 .dc-hors { margin-inline-start: 6px; }
 .err-inline { color: var(--danger); font-weight: 600; }
@@ -203,10 +198,64 @@
 .lien-manque:hover { color: var(--primary); }
 .d-etat { font-size: 13.5px; margin-top: 6px; line-height: 1.6; }
 
+/* 10.12.0 (U-01) — le retour vit sur la ligne du titre. Posé seul au-dessus, il coûtait une rangée
+   à chaque écran de la fiche : sur un portable, la grille de saisie commençait au bas de l'écran. */
+.fiche-titre { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.fiche-titre .btn-back { flex: none; }
+
+/* La barre de la comptabilité : ce que je regarde (la période) et d'où ça vient (le livre ou les
+   paquets), sur UNE ligne. Elle remplace trois rangées — le titre « Comptabilité », les listes de
+   période, et un bandeau vert qui disait « Le livre de 2026 ». */
+.c-barre { margin-block-end: 12px; }
+/* Une rangée qui porte des GESTES n'est pas de la prose (T-56). Écrite avec des
+   `margin-inline-start` posés à la main, elle ne décidait que l'écart HORIZONTAL : au premier
+   passage à la ligne, « Relire les paquets reçus » se collait sous la case du brouillard, à zéro
+   pixel. Un `gap` de rangée flex décide des deux à la fois (9.8.3). */
+.c-livre { display: inline-flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; font-size: 13px; }
+.c-livre .check { margin: 0; }
+.c-alerte { padding-block: 8px; }
+.c-alerte-geste { margin-block-start: 8px; }
+
+/* 10.12.0 (U-06) — trois groupes, puis les écrans du groupe ouvert. Le premier niveau est un
+   contrôle SEGMENTÉ, pas une seconde rangée d'onglets : deux rangées de la même forme se lisent
+   comme une seule liste coupée en deux, ce qui était exactement le défaut. La barre reste en haut
+   quand on descend dans un long journal : on change d'écran sans remonter. */
+.c-nav {
+  display: flex; align-items: flex-end; gap: 6px 18px; flex-wrap: wrap;
+  border-bottom: 1px solid var(--border); margin-block-end: 16px;
+  position: sticky; top: calc(-1 * var(--main-haut, 32px)); z-index: 4; background: var(--panel);
+  padding-block-start: 6px;
+}
+.c-nav .tabs { border-bottom: none; margin-block-end: 0; }
+.c-groupes {
+  display: inline-flex; flex: none; gap: 2px; padding: 3px; margin-block-end: 6px;
+  border: 1px solid var(--border); border-radius: 9px; background: var(--ink-soft);
+}
+.c-groupes button {
+  font: inherit; font-size: 13px; font-weight: 600; color: var(--muted); cursor: pointer; white-space: nowrap;
+  background: transparent; border: 1px solid transparent; border-radius: 6px; padding-block: 5px; padding-inline: 12px;
+}
+.c-groupes button:hover { color: var(--text); }
+.c-groupes button.active { background: var(--panel); color: var(--text); border-color: var(--border); box-shadow: 0 1px 2px rgba(0, 0, 0, .06); }
+.c-groupes button.active .tab-n { background: var(--primary-soft); color: var(--primary); }
+/* 10.12.0 (U-09) — une pièce commencée qui n'est pas enregistrée : un point orange sur l'onglet de
+   la fiche, sur le groupe et sur la Saisie. Orange, parce qu'il demande un geste (U-13).
+   Il vit HORS DU FLUX, dans le coin de l'onglet (H-2, trouvé en testant comme un humain) : posé à
+   la suite du libellé, il apparaissait à la PREMIÈRE frappe et poussait toute la rangée d'onglets
+   de 11 px, sous les yeux de qui tape. Rien ne bouge pendant la frappe (U-26). */
+#d-tabs button, .c-groupes button, #c-tabs button { position: relative; }
+.sa-sale {
+  position: absolute; inset-block-start: 3px; inset-inline-end: 3px;
+  color: var(--warning); font-size: 9px; line-height: 1; pointer-events: none;
+}
+/* Le compte rendu d'un geste (U-27) : des paragraphes et des listes, pas un bloc de texte brut. */
+.cr-corps p { margin: 0 0 10px; font-size: 13.5px; line-height: 1.55; }
+.cr-liste { margin: 0 0 12px; padding-inline-start: 18px; font-size: 13px; line-height: 1.6; }
+
 @media print {
   .sidebar, .page-head .actions, .btn-back, button.i, .filters, .row-actions, #toast, #drop-veil { display: none !important; }
   /* La fiche imprimée reste la fiche ENTIÈRE : les onglets ne sont qu'un rangement d'écran. */
-  #d-tabs { display: none !important; }
+  #d-tabs, .c-nav { display: none !important; }
   section[data-onglet][hidden] { display: block !important; }
   /* Même principe pour le grand livre : un compte replié à l'écran est un compte imprimé. Sans
      cette ligne, un grand livre imprimé ne serait qu'une liste de soldes. */
@@ -324,7 +373,18 @@ tr.cp-miroir td { background: var(--info-soft); }
 .sa-tete { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; margin-block-end: 12px; }
 .sa-tete .field { min-width: 130px; }
 .sa-tete .field.sa-grow { flex: 1; min-width: 220px; }
-.sa-tete input.sa-ko { border-color: var(--danger); }
+/* 10.12.0 (U-01) — chaque champ a la largeur de ce qu'il contient. Sans elle, les quatre prenaient
+   la largeur de leur case intrinsèque (~220 px chacun), et à 1280 « Joindre » tombait sur une
+   rangée à lui, entre l'en-tête de la pièce et ses lignes. */
+.sa-tete .field.sa-j { flex: none; inline-size: 190px; }
+.sa-tete .field.sa-d { flex: none; inline-size: 130px; min-width: 0; }
+.sa-tete .field.sa-p { flex: none; inline-size: 150px; min-width: 0; }
+/* 10.12.0 (H-3 bis) — `.sa-tete input.sa-ko` (0,2,1) PERDAIT contre la règle générale des champs
+   (0,4,1, ses quatre `:not()`) : une date refusée n'est jamais devenue rouge, depuis que la marque
+   existe. Sixième fois que ce motif revient (7.23.0, 7.27.0, 7.30.0, 9.4.4, U-01) — mesuré dans
+   l'application (getComputedStyle), jamais vu à la relecture. L'identifiant l'emporte, comme pour
+   la grille. */
+#sa-tete input.sa-ko { border-color: var(--danger); }
 
 .sa-outils { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-block-end: 10px; }
 .sa-outils select { width: auto; }
@@ -340,6 +400,39 @@ tr.cp-miroir td { background: var(--info-soft); }
 .sa-grille input:focus { border-color: var(--primary); background: var(--card); }
 .sa-grille input.sa-montant { font-variant-numeric: tabular-nums; }
 .sa-grille .sa-nom { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 10.12.0 (U-01) — la règle générale des champs porte quatre `:not()` et la ligne compacte des
+   tableaux deux classes : `.sa-grille input` et `.sa-grille td` PERDAIENT contre elles depuis la
+   9.3.0 (cinquième fois que ce motif revient, 7.23.0, 7.27.0, 7.30.0, 9.4.4). Les cases gardaient
+   leur bordure et leur rembourrage de champ ordinaire, et une ligne de grille faisait 55 px : six
+   lignes visibles sur un portable. L'identifiant de la grille l'emporte, et c'est voulu. */
+#sa-lignes td { padding-block: 2px; padding-inline: 4px; }
+#sa-lignes input {
+  font-size: 13px; padding-block: 6px; padding-inline: 8px; border: 1px solid transparent;
+  background: var(--ink-soft); border-radius: 6px; box-shadow: none;
+}
+/* 10.12.0 (H-3 bis, vu au test humain) — la règle du survol (1,1,2) battait celle du focus et celle
+   de l'erreur (1,1,1 chacune) : la case « 12a » perdait son rouge dès que la souris passait sur sa
+   ligne, c'est-à-dire au moment précis où l'on vient la corriger. Le survol ne touche plus ni la case
+   active ni la case refusée — l'exclusion est dans le sélecteur, pas dans une surenchère. */
+#sa-lignes tr:hover input:not(:focus):not(.sa-ko) { border-color: var(--border); }
+#sa-lignes input:focus { border-color: var(--primary); background: var(--card); box-shadow: 0 0 0 3px rgba(15, 157, 143, .15); }
+#sa-lignes input.sa-ko { border-color: var(--danger); }
+/* 10.12.0 (U-26) — des largeurs FIXES. En largeur automatique, l'intitulé du compte qui apparaît
+   pendant la frappe faisait recalculer la grille à chaque caractère : les colonnes sautaient sous le
+   curseur. Le libellé prend ce qui reste. */
+.sa-grille { table-layout: fixed; width: 100%; }
+.sa-grille col.sa-c-compte { width: 120px; }
+.sa-grille col.sa-c-nom { width: 22%; }
+.sa-grille col.sa-c-mt { width: 132px; }
+.sa-grille col.sa-c-sup { width: 48px; }
+.sa-grille .sa-nom { max-width: none; }
+/* « Joindre » au bout de la ligne des champs, aligné sur le bas des cases. */
+.sa-tete .sa-joindre { flex: none; margin-block-end: 1px; }
+/* Les touches, sous la grille et repliables : un résumé qui se reconnaît comme un geste. */
+.sa-touches { margin-block: 10px 22px; }
+.sa-touches > summary { cursor: pointer; font-size: 12.5px; color: var(--muted); width: max-content; }
+.sa-touches > summary:hover { color: var(--text); }
+.sa-touches[open] > summary { margin-block-end: 6px; }
 /* La cellule qui porte le « ✕ » d'une ligne qu'on est en train de TAPER. Elle ne s'appelle pas
    `row-actions` exprès : cette classe-là désigne les actions d'une ligne de LISTE, et un test
    interdit qu'on y mette un pictogramme (7.29.0). Ici le « ✕ » est juste — on retire une ligne
@@ -490,7 +583,36 @@ body.dark .theme-op:hover { border-color: #3c4654; }
 .prod-revise { background: #fff6e5; border-color: #f0cf95; color: #8a5a06; }
 .prod-declare{ background: #eef4ff; border-color: #bcd0f5; color: #2b4f9e; }
 .prod-fini   { background: #e8f6ee; border-color: #a8dcc0; color: #1d6b42; }
-.prod-hors   { opacity: .35; }
+.prod-hors   { opacity: .45; border-color: transparent; background: transparent; }
+/* 10.12.0 (U-02) — un tableau de livre TIENT dans sa page : ses colonnes de texte (tiers, libellé,
+   intitulé) se PARTAGENT la place qui reste, et se tronquent — le texte entier reste au survol. À
+   leurs plafonds de 190 et 320 px, le livre-journal faisait 1 162 px dans un cadre de 1 079, et le
+   Crédit passait sous la colonne d'actions. `max-width: 0` est ce qui permet à une cellule de
+   descendre sous la largeur de son texte ; la largeur en % dit ce qu'elle reçoit du reste. */
+/* 10.12.0 (H-9) — avec un PLANCHER : à la fenêtre minimale (960 px), le tableau déborde de toute
+   façon (Pièce, Débit, Crédit et Actions ne se tronquent pas), et sans plancher le Tiers tombait à
+   49 px — « Cli… ». Serrer une colonne de texte n'a de sens que si ça fait TENIR le tableau ; quand
+   il défile quand même, on garde le texte lisible. Mesuré : à 1440 et à 1280, rien ne change. */
+#c-livres table.list:not(.sa-grille) td.tronq { max-width: 0; width: 22%; min-width: 90px; }
+#c-livres table.list:not(.sa-grille) td.tronq.lg { width: 34%; min-width: 120px; }
+/* « 2 / 5 » : l'univers du compte, plus discret que le compte. */
+.stat .val-sur { font-weight: 600; color: var(--muted); font-size: .8em; }
+/* La liste des dossiers : la colonne Client est SOUPLE — elle prend ce que les chiffres laissent,
+   et le nom se tronque ; jamais sa pastille ni son badge. `max-width: 0` sur la cellule est ce qui
+   lui permet de descendre sous la largeur du texte (même mécanisme que les livres). */
+/* 10.12.0 (H-9, trouvé par `e2e:cabinet` sur dix dossiers) — et un PLANCHER. Sans lui, dès que la
+   colonne « Honoraires » apparaît, `max-width: 0` laissait la colonne descendre à 92 px : TOUS les
+   noms tombaient à quatre lettres (« Phar… », « Tran… »), pendant que le tableau défilait déjà sur
+   le côté — l'écrasement ne gagnait donc rien. L'exemple seul masque cette colonne : le test humain,
+   fait sur l'exemple, ne pouvait pas le voir. 220 px tiennent « Menuiserie Trabelsi SUARL ». */
+.dl-table td.dl-client { max-width: 0; width: 30%; min-width: 220px; }
+.dl-table .dl-cell { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.dl-table .dl-cell .dot-lvl { flex: none; margin-inline-end: 1px; }
+.dl-table .dl-cell .badge { flex: none; }
+.dl-table .dl-nom { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Le nom se tronque, le badge reste entier (U-29). */
+.prod-client { white-space: nowrap; }
+.prod-client .prod-nom { display: inline-block; max-inline-size: 220px; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; }
 body.dark .prod-recu   { background: #3a1f20; border-color: #6a3436; color: #f0b4b4; }
 body.dark .prod-saisi  { background: #3a1f20; border-color: #7d3a3c; color: #f6bcbc; }
 body.dark .prod-revise { background: #3a2f18; border-color: #6d5726; color: #f0d29a; }

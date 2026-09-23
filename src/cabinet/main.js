@@ -323,9 +323,41 @@ function createWindow() {
   // Si l'interface cesse de répondre, il nomme la fonction coupable dans le journal, interrompt la
   // boucle et recharge la page — puis le dit. Sans lui, un gel du cabinet ne laissait rien du tout.
   startWatchdog(mainWindow);
-  mainWindow.on('close', rememberBounds);
-  mainWindow.on('closed', () => { mainWindow = null; });
+  // 10.12.0 (U-09) — une pièce commencée dans la grille de saisie vit en mémoire : fermer la fenêtre
+  // l'effaçait sans une question. C'est le garde-fou de l'app entreprise (2.4.0), porté au Cabinet :
+  // l'interface nomme les dossiers dont une pièce n'est pas enregistrée, la fermeture demande.
+  mainWindow.on('close', (e) => {
+    if (saisiesEnCours.length && !fermerQuandMeme) {
+      e.preventDefault();
+      const r = dialog.showMessageBoxSync(mainWindow, {
+        type: 'warning', buttons: ['Annuler', 'Fermer sans enregistrer'], defaultId: 0, cancelId: 0,
+        title: 'Une pièce n\'est pas enregistrée',
+        message: saisiesEnCours.length > 1
+          ? `Des pièces commencées ne sont pas enregistrées : ${saisiesEnCours.join(', ')}.`
+          : `Une pièce commencée pour ${saisiesEnCours[0]} n'est pas enregistrée.`,
+        detail: 'Si tu fermes maintenant, elle est perdue. Enregistre-la en brouillard : elle ne prend aucun numéro, et tu la reprendras quand tu voudras.'
+      });
+      if (r !== 1) return;
+      fermerQuandMeme = true;
+      mainWindow.close();
+      return;
+    }
+    rememberBounds();
+  });
+  mainWindow.on('closed', () => { mainWindow = null; saisiesEnCours = []; fermerQuandMeme = false; });
+  // Une interface rechargée (le menu, ou le chien de garde après un gel) repart sans pièce en
+  // mémoire : la liste de la précédente ne vaut plus rien, et garder la question ferait demander
+  // pour une pièce qui n'existe plus. La nouvelle interface redira ce qu'elle a.
+  mainWindow.webContents.on('did-navigate', () => { saisiesEnCours = []; });
 }
+
+// Ce que l'interface déclare, à chaque pièce commencée ou enregistrée : les NOMS des dossiers, rien
+// d'autre — la pièce elle-même ne traverse pas le pont, elle n'a rien à faire ici.
+let saisiesEnCours = [];
+let fermerQuandMeme = false;
+ipcMain.on('cab:saisieEnCours', (_e, noms) => {
+  saisiesEnCours = Array.isArray(noms) ? noms.map(n => String(n || '').slice(0, 120)).filter(Boolean).slice(0, 20) : [];
+});
 
 function buildMenu() {
   const mac = process.platform === 'darwin';
@@ -345,6 +377,12 @@ function buildMenu() {
       { label: 'Dossiers', accelerator: 'CmdOrCtrl+1', click: act('go:dossiers') },
       { label: 'Relances', accelerator: 'CmdOrCtrl+2', click: act('go:relances') },
       { label: 'Réglages', accelerator: 'CmdOrCtrl+3', click: act('go:reglages') },
+      // 10.12.0 (U-06) — l'onglet d'une fiche et l'écran de sa comptabilité vivent dans l'adresse
+      // depuis la 9.2.2 et la 10.12.0 ; sans « Précédent », rien ne s'en servait. Le jumeau de
+      // l'app entreprise (2.4.0), jamais porté (7.3.0).
+      { type: 'separator' },
+      { label: 'Précédent', accelerator: 'CmdOrCtrl+[', click: act('back') },
+      { label: 'Suivant', accelerator: 'CmdOrCtrl+]', click: act('forward') },
       { type: 'separator' }, { role: 'reload', label: 'Recharger' }, { role: 'toggleDevTools', label: 'Outils de développement' },
       { type: 'separator' }, { role: 'resetZoom', label: 'Taille réelle' }, { role: 'zoomIn', label: 'Agrandir' }, { role: 'zoomOut', label: 'Réduire' }
     ] },
@@ -3378,7 +3416,13 @@ ipcMain.handle('upd:download', () => {
   enTelechargement = true;
   try { u.downloadUpdate(); return { state: 'ok' }; } catch (e) { return { state: 'error', ...updateProblem(e) }; }
 });
-ipcMain.handle('upd:install', () => {
+ipcMain.handle('upd:install', (_e, opts) => {
+  // U-09 : l'installation ferme l'application sans passer par la question de la fermeture. Une
+  // pièce commencée est donc un REFUS ici, sauf si l'interface a posé la question et reçu « oui ».
+  if (saisiesEnCours.length && !(opts && opts.force)) {
+    return { state: 'error', soft: true, message: `Une pièce commencée n'est pas enregistrée (${saisiesEnCours.join(', ')}) : enregistre-la avant de redémarrer.` };
+  }
+  if (opts && opts.force) fermerQuandMeme = true;
   const u = getUpdater();
   if (!u) return updaterUnavailable();
   if (IS_MAC && !MAC_SIGNED) return installOnMac();

@@ -480,7 +480,97 @@ const SONDE_LARGEUR = ({ cibles, perte }) => {
   return { dispo, gaspillages: out };
 };
 
+// ---------------------------------------------------------------- 6. la colonne collante
+// 10.12.0 (U-02) — la colonne d'actions d'un tableau large reste collée au bord droit (9.4.4), pour
+// que le menu d'une ligne reste sous la main. Collée, elle passe PAR-DESSUS ce qui défile dessous —
+// et elle recouvrait « Débit » et « Crédit » dans le livre-journal, « Signalés » dans la liste des
+// dossiers, juillet et août dans la Production (où c'était la colonne « À saisir », une DONNÉE, qui
+// collait). Aucune des cinq sondes ne pouvait le voir : chacune mesure un objet, jamais la relation
+// entre deux cellules. Celle-ci compare chaque cellule collante horizontalement à ses voisines de
+// ligne, sur l'écran tel qu'il s'ouvre : une cellule de donnée qu'elle recouvre de plus de 2 px est
+// une donnée qu'on ne lit pas. Les en-têtes collés en HAUT (`thead th`, collants verticalement) ne
+// sont pas concernés : on ne juge que ce qui colle au bord de la ligne.
+const SONDE_COLLANT = () => {
+  const out = [];
+  let tables = 0;
+  document.querySelectorAll('.scroll-x').forEach(sx => {
+    const t = sx.querySelector('table');
+    if (!t || sx.offsetParent === null) return;
+    tables++;
+    const collante = c => {
+      const cs = getComputedStyle(c);
+      return cs.position === 'sticky' && (cs.insetInlineEnd !== 'auto' || cs.insetInlineStart !== 'auto');
+    };
+    [...t.rows].forEach(tr => {
+      const cells = [...tr.cells];
+      cells.filter(collante).forEach(c => {
+        const rc = c.getBoundingClientRect();
+        cells.forEach(d => {
+          if (d === c || collante(d) || !d.textContent.trim()) return;
+          const rd = d.getBoundingClientRect();
+          const recouvre = Math.min(rc.right, rd.right) - Math.max(rc.left, rd.left);
+          if (recouvre > 2) {
+            out.push({ table: String(t.className || '').slice(0, 40), cellule: d.textContent.trim().replace(/\s+/g, ' ').slice(0, 24), px: Math.round(recouvre) });
+          }
+        });
+      });
+    });
+  });
+  return { tables, couverts: out };
+};
+
+// ---------------------------------------------------------------- la comptabilité d'un dossier
+// 10.12.0 (U-06) — les quatorze écrans de la comptabilité d'un dossier du Cabinet sont rangés en
+// trois groupes (Saisir, Consulter, Déclarer et clôturer) : un écran ne se clique qu'une fois son
+// groupe ouvert. Ces deux fonctions passent par le groupe COMME UN COMPTABLE — elles ouvrent les
+// groupes un par un jusqu'à trouver l'écran, sans connaître le rangement. Une copie de la table des
+// groupes ici divergerait de celle de l'application au premier écran déplacé (7.29.0) ; celle-ci
+// n'a rien à recopier, et un écran devenu introuvable fait TOMBER le parcours.
+const selOngletCompta = onglet => `#c-tabs button[data-tab="${onglet}"]`;
+
+// Vrai si l'écran existe dans l'un des groupes — c'est-à-dire, pour un écran du livre, si le livre
+// existe. Le groupe qui le contient reste ouvert.
+async function ongletComptaPresent(win, onglet, { timeout = 15000 } = {}) {
+  await win.waitForSelector('#c-livres .c-nav', { timeout });
+  if (await win.$(selOngletCompta(onglet))) return true;
+  const groupes = await win.$$eval('#c-groupes button', bs => bs.map(b => b.dataset.groupe));
+  for (const g of groupes) {
+    await win.click(`#c-groupes button[data-groupe="${g}"]`);
+    const vu = await win.waitForSelector(selOngletCompta(onglet), { timeout: 2500 }).then(() => true, () => false);
+    if (vu) return true;
+  }
+  return false;
+}
+
+// Ouvre un écran de la comptabilité, et attend que son onglet soit l'onglet actif.
+async function ongletCompta(win, onglet, { timeout = 15000 } = {}) {
+  if (!(await ongletComptaPresent(win, onglet, { timeout }))) {
+    throw new Error(`l'écran « ${onglet} » de la comptabilité est introuvable dans les trois groupes`);
+  }
+  await win.click(selOngletCompta(onglet));
+  await win.waitForSelector(`${selOngletCompta(onglet)}.active`, { timeout });
+}
+
+// Tous les écrans atteignables, groupe par groupe — pour les instruments qui doivent les VOIR tous
+// (T-55 : un instrument qui n'atteint pas l'écran annonce « tout va bien »).
+async function ongletsCompta(win) {
+  await win.waitForSelector('#c-livres .c-nav', { timeout: 15000 });
+  // `innerText`, pas `textContent` : le point d'une pièce non enregistrée est caché, et son « ● »
+  // ne fait pas partie du nom de l'écran.
+  const lire = () => win.$$eval('#c-tabs button', bs => bs.map(b => ({ tab: b.dataset.tab, label: b.innerText.trim() })));
+  const groupes = await win.$$eval('#c-groupes button', bs => bs.map(b => b.dataset.groupe));
+  if (!groupes.length) return lire();
+  const tous = [];
+  for (const g of groupes) {
+    await win.click(`#c-groupes button[data-groupe="${g}"]`);
+    await win.waitForSelector(`#c-groupes button[data-groupe="${g}"].active`, { timeout: 8000 });
+    (await lire()).forEach(o => { if (!tous.some(x => x.tab === o.tab)) tous.push({ ...o, groupe: g }); });
+  }
+  return tous;
+}
+
 module.exports = {
   playwright, RACINE, ELECTRON, VERSION, journal, surveiller, dossierCaptures, ouvrirChromium,
-  capturePleine, RELACHE_CONSOLE, SONDE_CONTRASTE, SONDE_COLONNES, SONDE_ENTETES, SONDE_ESPACEMENT, SONDE_LARGEUR, montant
+  capturePleine, RELACHE_CONSOLE, SONDE_CONTRASTE, SONDE_COLONNES, SONDE_ENTETES, SONDE_ESPACEMENT, SONDE_LARGEUR, montant,
+  ongletCompta, ongletComptaPresent, ongletsCompta, SONDE_COLLANT
 };

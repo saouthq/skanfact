@@ -316,8 +316,22 @@ t('9.4.5 : les totaux de la grille vivent SOUS leurs colonnes, et le bouton éte
   // ecritureSaisie(p)`, `b.disabled = !v.ok`, `motif.textContent = v.ok ? …`) : elles sont tombées
   // le jour où les deux boutons ont cessé d'exiger la même chose (T-51), sur du code juste — la
   // quinzième fois que ce motif revient. On exige la RÈGLE, pas sa forme.
-  assert.ok(/KC\.ecritureValide\(/.test(m),
-    'le contrôle en direct doit passer par `ecritureValide`, jamais par une règle recopiée');
+  //
+  // Et la RÈGLE, pas sa forme, une fois encore : le contrôle en direct et le refus à
+  // l'enregistrement passent par la MÊME porte, et cette porte finit sur `ecritureValide`. Depuis la
+  // 10.12.0 (H-3) elle s'appelle `verdictSaisie` — elle nomme d'abord un montant illisible —, et
+  // l'assertion qui exigeait `KC.ecritureValide(` dans `majSolde` est tombée sur du code juste.
+  const porte = /\b(verdictSaisie|KC\.ecritureValide)\(/.exec(m);
+  assert.ok(porte, 'le contrôle en direct doit passer par `ecritureValide` (ou la porte qui y mène), jamais par une règle recopiée');
+  const ie = app.indexOf('const enregistrer = async (puisValider) => {');
+  const enr = app.slice(ie, app.indexOf('\n    };', ie));
+  assert.ok(ie > 0 && enr.length > 300, 'la tranche de l\'enregistrement est introuvable');
+  assert.ok(enr.includes(porte[1] + '('), 'l\'enregistrement doit juger par la MÊME porte que le contrôle en direct');
+  if (porte[1] === 'verdictSaisie') {
+    const iv = app.indexOf('const verdictSaisie = ');
+    const v = app.slice(iv, app.indexOf('\n  };', iv));
+    assert.ok(iv > 0 && /KC\.ecritureValide\(/.test(v), 'la porte doit finir sur `ecritureValide`');
+  }
   // Le brouillard accepte une pièce à moitié tapée, la validation exige un libellé : DEUX verdicts,
   // et chaque bouton suit le sien. Un seul verdict éteindrait le brouillard sur le motif de la
   // validation, et enfermerait la saisie en cours.

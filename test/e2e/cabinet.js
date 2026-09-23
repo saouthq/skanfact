@@ -4,7 +4,7 @@
 // Ce qu'il déroule : création du cabinet (mot de passe), réglages, dossier créé à la main, exemple,
 // tri, pagination, recherche, Cmd+K, fiche complète, relance enregistrée, relance groupée,
 // sauvegardes, restauration, changement de mot de passe, clé de secours, bulles « i ».
-const { playwright, RACINE, ELECTRON } = require('./harnais');
+const { playwright, RACINE, ELECTRON, ongletCompta, ongletComptaPresent, ongletsCompta } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
 const root = RACINE;
@@ -195,11 +195,13 @@ const étape = m => { pas++; console.log('\n' + pas + '. ' + m); };
   await win.click('#lv-reprendre');
   await win.waitForSelector('#rf', { timeout: 10000 });
   await win.click('.modal-bg #ok');
-  await win.waitForFunction(() => !!document.querySelector('#c-tabs button[data-tab="saisie"]'), { timeout: 15000 });
-  const tenu = await win.evaluate(() => ({
-    onglets: document.querySelectorAll('#c-tabs button').length,
-    annees: [...document.querySelectorAll('#lv-annee option')].map(o => o.value)
-  }));
+  // Le livre existe : le sélecteur de groupes apparaît (10.12.0, U-06), et on compte les écrans
+  // de TOUS les groupes — pas seulement ceux du groupe ouvert.
+  await win.waitForSelector('#c-groupes', { timeout: 15000 });
+  const tenu = {
+    onglets: (await ongletsCompta(win)).length,
+    annees: await win.evaluate(() => [...document.querySelectorAll('#lv-annee option')].map(o => o.value))
+  };
   if (tenu.onglets < 14) throw new Error('le livre d\'un client hors SkanFact n\'ouvre pas tous ses onglets : ' + tenu.onglets);
   if (!tenu.annees.length) throw new Error('le sélecteur d\'exercice est vide pour un dossier sans paquet');
   await shot('05b-hors-skanfact-livre');
@@ -216,6 +218,28 @@ const étape = m => { pas++; console.log('\n' + pas + '. ' + m); };
   if (stats.length < 4) throw new Error('le tableau de bord du portefeuille manque');
   ok('portefeuille : ' + (await win.textContent('.stats')).replace(/\s+/g, ' ').slice(0, 110));
   await shot('06-dossiers');
+
+  // 10.12.0 (H-1, vu au test humain) — l'étiquette « hors SkanFact » vit dans « Dernier mois »,
+  // qu'elle explique, et plus dans la cellule du nom, qui se tronque : « Garage Ben Salem »
+  // s'affichait « Garage Ben… » alors que la ligne avait de la place partout ailleurs.
+  const hors = await win.evaluate(() => [...document.querySelectorAll('tr[data-id]')]
+    .filter(tr => tr.querySelector('.b-hors')).map(tr => {
+      const nom = tr.querySelector('td.dl-client'), span = nom.querySelector('.dl-nom');
+      return {
+        nom: span.textContent.trim(),
+        badgeDansLeNom: !!nom.querySelector('.b-hors'),
+        coupe: span.scrollWidth > span.clientWidth + 1 || nom.scrollWidth > nom.clientWidth + 1,
+        badgeSuit: !!(nom.nextElementSibling && nom.nextElementSibling.querySelector('.b-hors'))
+      };
+    }));
+  if (!hors.length) throw new Error('aucun dossier hors SkanFact dans la liste : l\'étape ne prouverait rien');
+  hors.forEach(h => {
+    if (h.badgeDansLeNom) throw new Error(`« hors SkanFact » vit encore dans la cellule qui se tronque (${h.nom})`);
+    if (!h.badgeSuit) throw new Error(`« hors SkanFact » n'explique plus le tiret de « Dernier mois » (${h.nom})`);
+    // Un nom COURT ne se coupe jamais ; un nom très long peut légitimement se tronquer, avec sa bulle.
+    if (h.nom.length <= 20 && h.coupe) throw new Error(`le nom court « ${h.nom} » est coupé dans la liste`);
+  });
+  ok(`« hors SkanFact » explique le dernier mois, et le nom se lit en entier (${hors.map(h => h.nom).join(', ')})`);
 
   const noms = async () => win.evaluate(() => [...document.querySelectorAll('tr[data-id] td:first-child')].map(t => t.textContent.trim()));
   const avant = await noms();
@@ -653,9 +677,9 @@ const étape = m => { pas++; console.log('\n' + pas + '. ' + m); };
   if (!idSansLivre) throw new Error('le dossier Trabelsi de l\'exemple manque');
   await win.evaluate(id => { location.hash = '#/dossier/' + encodeURIComponent(id) + '/comptabilite'; }, idSansLivre);
   await win.waitForSelector('#c-tabs button[data-tab="balance"]');
-  const aUnLivre = await win.$('#c-tabs button[data-tab="saisie"]');
+  const aUnLivre = await ongletComptaPresent(win, 'saisie');
   if (aUnLivre) throw new Error('ce dossier a un livre : le test doit porter sur un dossier lu dans ses paquets');
-  await win.click('#c-tabs button[data-tab="balance"]');
+  await ongletCompta(win, 'balance');
   await win.waitForSelector('#lv-aux');
   const avantAux = (await win.textContent('#lv-verdict')).replace(/\s+/g, ' ');
   if (!/Équilibrée/.test(avantAux)) throw new Error('la balance générale devrait annoncer son équilibre : ' + avantAux);

@@ -8,7 +8,7 @@
 // L'application est ARMÉE pour de vrai : une clé publique d'essai est embarquée par
 // `SKANFACT_CLE_EMBARQUEE` (honoré en développement seulement, règle 8.0.0), et les licences du
 // parcours sont signées par sa moitié privée, qui ne quitte jamais le dossier temporaire du test.
-const { playwright, RACINE, ELECTRON } = require('./harnais');
+const { playwright, RACINE, ELECTRON, ongletComptaPresent } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
 const L = require(path.join(RACINE, 'src', 'licence.js'));
@@ -132,10 +132,10 @@ const signer = (o) => L.signLicence({
     await win.click('.modal-bg .btn-primary');
     await attendre(600);
   }
-  await win.waitForFunction(() => {
-    const t = document.querySelector('#c-tabs');
-    return t && t.textContent.includes('Saisie');
-  }, { timeout: 25000 });
+  // 10.12.0 (U-06) — les écrans du livre sont rangés en groupes : on attend que le livre soit là
+  // (le sélecteur de groupes n'existe qu'avec un livre), puis on trouve l'écran par ses groupes.
+  await win.waitForSelector('#c-groupes', { timeout: 25000 });
+  if (!(await ongletComptaPresent(win, 'saisie'))) throw new Error('le livre est ouvert et l\'écran « Saisie » reste introuvable');
   ok('relire les paquets et créer le livre : ouvert, malgré le verrou');
 
   const annee = await win.evaluate(() => (document.querySelector('#lv-annee') || {}).value || '');

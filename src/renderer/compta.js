@@ -176,6 +176,11 @@
     } else if (dVirgule >= 0) {
       // Une seule virgule : décimale (« 1234,567 »). Plusieurs : séparateur de milliers.
       s = s.split(',').length === 2 ? s.replace(',', '.') : s.replace(/,/g, '');
+    } else if (s.split('.').length > 2) {
+      // Plusieurs points et aucune virgule : « 1.250.000 », des milliers. Un seul point reste une
+      // décimale (« 250.500 »). Sans cette ligne, `Number` rendait NaN et le montant valait ZÉRO,
+      // en silence — la grille de saisie affichait « 1.250.000 » sur une ligne « sans montant ».
+      s = s.replace(/\./g, '');
     }
     const n = Number(s);
     return isFinite(n) ? n : 0;
@@ -4737,7 +4742,7 @@
     return out;
   }
   return {
-    round3, fmtMontant, fmtJour, fmtMois, cleDePiece, csvDangereux, nombreDepuisCsv, dateDepuisCsv,
+    round3, fmtMontant, fmtJour, fmtMois, cleDePiece, csvDangereux, nombreDepuisCsv, nombreStrict, dateDepuisCsv,
     ecritureValide, entreesDepuisCsv,
     entriesBalance, entriesByAccount,
     balanceDepuisLignes, grandLivreDepuisLignes, balanceAuxiliaireDepuisLignes, collectifsDeTiers, COMPTES_TIERS,

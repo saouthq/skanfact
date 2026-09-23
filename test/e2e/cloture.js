@@ -8,7 +8,7 @@
 // Ce qu'aucun test pur ne peut prouver : que le fichier écrit sur le DISQUE par une application est
 // relu par l'autre, signature comprise ; que l'exercice se verrouille vraiment chez le client ; et
 // qu'un dossier non signé le DIT au lieu de passer en silence.
-const { playwright, RACINE, ELECTRON } = require('./harnais');
+const { playwright, RACINE, ELECTRON, ongletCompta, ongletComptaPresent } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
 const OUT = process.argv[2] || path.join(RACINE, 'dist-e2e', 'cloture');
@@ -74,15 +74,15 @@ const CIBLE = path.join(dir, 'cloture.skanclose');
   if (!cible || !cible.n) throw new Error('aucun dossier de l\'exemple ne porte d\'écritures');
   await wc.evaluate(o => { location.hash = '#/dossier/' + encodeURIComponent(o.id) + '/comptabilite'; }, cible);
   await wc.waitForSelector('#c-livres', { timeout: 15000 });
-  await wc.waitForFunction(() => {
-    const t = document.querySelector('#c-tabs');
-    return t && t.textContent.includes('Exercice');
-  }, { timeout: 30000 });
+  // 10.12.0 (U-06) — les écrans du livre sont rangés en groupes : on attend que le livre soit là
+  // (le sélecteur de groupes n'existe qu'avec un livre), puis on trouve l'écran par ses groupes.
+  await wc.waitForSelector('#c-groupes', { timeout: 30000 });
+  if (!(await ongletComptaPresent(wc, 'exercice'))) throw new Error('le livre est ouvert et l\'écran « Exercice » reste introuvable');
   ok(`dossier ouvert — ${cible.n} écritures`);
 
   // ------------------------------------------------ les contrôles nomment sans bloquer
   étape('Les contrôles NOMMENT, et la clôture passe quand même');
-  await wc.click('#c-tabs button[data-tab="exercice"]');
+  await ongletCompta(wc, 'exercice');
   await wc.waitForFunction(() => {
     const e = document.querySelector('#c-livres');
     return e && !e.textContent.includes('Lecture de l\'exercice');
@@ -135,7 +135,7 @@ const CIBLE = path.join(dir, 'cloture.skanclose');
   await wc.screenshot({ path: path.join(OUT, '01b-liasse-comptes.png') });
   await wc.click('.modal-bg #ok');
   await wc.waitForFunction(() => !document.querySelector('.modal-bg'), { timeout: 10000 });
-  await wc.click('#c-tabs button[data-tab="exercice"]');
+  await ongletCompta(wc, 'exercice');
   await wc.waitForSelector('#cl-liasse', { timeout: 20000 });
   ok('liasse équilibrée sans compte orphelin, et une rubrique s\'ouvre sur son tableau de comptes');
 
@@ -228,7 +228,7 @@ const CIBLE = path.join(dir, 'cloture.skanclose');
   await wc.selectOption('#lv-annee', String(anneeAvant));
   await wc.waitForFunction(y => (document.querySelector('#lv-annee') || {}).value === y, String(anneeAvant), { timeout: 10000 });
   await attendreC(1200);
-  await wc.click('#c-tabs button[data-tab="exercice"]');
+  await ongletCompta(wc, 'exercice');
   await wc.waitForSelector('#cl-fichier', { timeout: 15000 });
   ok(`${suivant.lignes} lignes d'à-nouveaux en brouillard au ${suivant.date}, ${Number(anneeAvant) + 1} atteignable depuis le sélecteur, et les refaire ne double rien`);
 

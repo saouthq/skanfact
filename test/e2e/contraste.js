@@ -16,7 +16,7 @@
 // l'esthétique, il attrape ce qu'on ne peut pas lire du tout.
 //
 //   xvfb-run -a node test/e2e/contraste.js
-const { playwright, RACINE, ELECTRON, journal, surveiller, SONDE_CONTRASTE, SONDE_ESPACEMENT } = require('./harnais');
+const { playwright, RACINE, ELECTRON, journal, surveiller, SONDE_CONTRASTE, SONDE_ESPACEMENT, SONDE_COLLANT } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
 
@@ -34,7 +34,7 @@ const ECART_MIN = 4;   // voir la justification dans cabinet-rendu.js
 const SEGMENTS = ['.tabs', '.row-menu', '.pager'];
 
 (async () => {
-  const j = journal(); const bac = []; const fautes = []; let ecarts = 0; let mesuresChamps = 0;
+  const j = journal(); const bac = []; const fautes = []; let ecarts = 0; let mesuresChamps = 0; let collants = 0;
   const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'skanfact-contraste-'));
   const app = await electron.launch({ args: ['--no-sandbox', `--user-data-dir=${userData}`, RACINE], executablePath: ELECTRON });
   const win = await app.firstWindow(); surveiller(win, '', bac);
@@ -54,6 +54,12 @@ const SEGMENTS = ['.tabs', '.row-menu', '.pager'];
     e.colles.forEach(x => fautes.push(`${ou} — « ${x.bouton} » touche « ${x.voisin} » (${x.cote},`
       + ` ${x.sens}) : ${x.ecart} px, minimum ${ECART_MIN}`));
     mesuresChamps += champs.length;
+    // U-02 (10.12.0) : la règle de la colonne collante vit dans la feuille PARTAGÉE — elle se mesure
+    // donc dans les DEUX applications (9.4.3 : un instrument qui ne couvre qu'une application ne
+    // protège qu'une application).
+    const k = await win.evaluate(SONDE_COLLANT);
+    collants += k.tables;
+    k.couverts.forEach(x => fautes.push(`${ou} — la colonne collante recouvre « ${x.cellule} » (${x.px} px, tableau ${x.table || 'sans classe'})`));
     return boutons.length;
   };
 
@@ -165,6 +171,7 @@ const SEGMENTS = ['.tabs', '.row-menu', '.pager'];
     console.error(`\n${u.length} défaut(s) — bouton ou champ illisible, coupé, ou collé à son voisin :\n` + u.join('\n'));
     process.exit(1);
   }
-  console.log(`\n${j.total()} étapes — aucun bouton ni champ illisible, aucun collé `
-    + `(${mesuresChamps} champs, ${ecarts} écarts mesurés).`);
+  if (!collants) { console.error('\nAucun tableau mesuré : le parcours ne prouve plus rien des colonnes collantes.'); process.exit(2); }
+  console.log(`\n${j.total()} étapes — aucun bouton ni champ illisible, aucun collé, aucune donnée recouverte `
+    + `(${mesuresChamps} champs, ${ecarts} écarts, ${collants} tableaux mesurés).`);
 })().catch(e => { console.error(e); process.exit(1); });

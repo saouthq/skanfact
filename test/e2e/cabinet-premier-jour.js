@@ -12,7 +12,7 @@
 //
 // Ce n'est pas qu'un instrument : les assertions à la fin sont des règles du projet, et elles
 // doivent tomber si quelqu'un les recasse.
-const { playwright, RACINE, ELECTRON, capturePleine } = require('./harnais');
+const { playwright, RACINE, ELECTRON, capturePleine, ongletCompta, ongletsCompta } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
 const OUT = process.argv[2] || path.join(RACINE, 'dist-e2e', 'cabinet-premier-jour');
@@ -295,13 +295,15 @@ const LARGE = 1440, HAUT = 900;
   // grand livre, balance, lettrage, et, dès qu'un livre existe, saisie et recherche — et jusqu'ici
   // seul son onglet d'ouverture était photographié : on jugeait la page sur un sixième d'elle-même.
   // On les parcourt tous, en cliquant comme un comptable.
+  // 10.12.0 (U-06) — les écrans sont rangés en trois groupes : on ouvre chaque groupe, puis chacun
+  // de ses écrans. Lire la seule barre visible ne verrait que le groupe ouvert — un tiers de la
+  // comptabilité, et ce serait T-55 une fois de plus.
   const sousOnglets = async prefixe => {
-    const liste = await win.evaluate(() => [...document.querySelectorAll('#c-tabs button')]
-      .map(b => ({ tab: b.dataset.tab, t: (b.textContent || '').trim().replace(/\s+/g, ' ') })));
+    const liste = (await ongletsCompta(win)).map(o => ({ tab: o.tab, t: o.label.replace(/\s+/g, ' ') }));
     if (!liste.length) { dit('aucun sous-onglet de Comptabilité'); return []; }
     dit('sous-onglets : ' + liste.map(o => o.t).join(' · '));
     for (const o of liste) {
-      await win.click(`#c-tabs button[data-tab="${o.tab}"]`);
+      await ongletCompta(win, o.tab);
       await attendre(650);
       await mesurer(prefixe + o.tab, 'fiche client, Comptabilité → ' + o.t);
     }
@@ -412,6 +414,31 @@ const LARGE = 1440, HAUT = 900;
       + `${flottaison.ecran} px : le portefeuille est sous la ligne de flottaison (seuil ${SEUIL_FLOTTAISON})`);
   }
   ok(`le portefeuille commence à ${flottaison.entete} px, sous le seuil de ${SEUIL_FLOTTAISON}`);
+
+  // U-01 (10.12.0) — la même règle, sur l'écran où un comptable passe ses journées. La grille de
+  // saisie commençait à 764 px sur un écran de 800 : UNE ligne visible, sous 480 px d'en-tête, de
+  // période, de bandeaux, d'onglets et d'aide des touches. On mesure le haut de la première ligne
+  // de la grille et le nombre de lignes qui tiennent dans la fenêtre. Seuils écrits AVANT la mesure
+  // du correctif (421 px, onze lignes) : huit lignes, c'est une pièce de ventes entière sans défiler.
+  étape('La grille de saisie se voit sans défiler, sur un portable');
+  await aller(base + '/comptabilite/saisie', '#sa-lignes');
+  await attendre(500);
+  const grille = await win.evaluate(() => {
+    const tr = document.querySelector('#sa-lignes tr');
+    if (!tr) return null;
+    const r = tr.getBoundingClientRect();
+    return { ligne: Math.round(r.top), hauteur: Math.round(r.height), ecran: window.innerHeight,
+      visibles: Math.floor((window.innerHeight - r.top) / r.height) };
+  });
+  if (!grille) throw new Error('aucune ligne dans la grille de saisie : la mesure ne prouve rien');
+  mesures.grilleSaisie = grille;
+  dit(`première ligne de la grille à ${grille.ligne} px, lignes de ${grille.hauteur} px : ${grille.visibles} visibles sur ${grille.ecran} px`);
+  const SEUIL_GRILLE = 480, LIGNES_MIN = 8;
+  if (grille.ligne > SEUIL_GRILLE || grille.visibles < LIGNES_MIN) {
+    mesures.defauts.push(`la grille de saisie commence à ${grille.ligne} px (seuil ${SEUIL_GRILLE}) et montre `
+      + `${grille.visibles} lignes (minimum ${LIGNES_MIN}) sur un écran de ${grille.ecran} px`);
+  }
+  ok(`la grille commence à ${grille.ligne} px et montre ${grille.visibles} lignes`);
 
   // ================================================================ le rapport
   const tousChamps = mesures.ecrans.flatMap(e => e.champs);

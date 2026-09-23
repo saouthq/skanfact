@@ -4,7 +4,7 @@
 // pas connue s'affiche « — » avec sa raison et non « 0,000 » — c'est-à-dire qu'on ne recopie pas un
 // zéro inventé sur un formulaire fiscal —, que chaque chiffre s'ouvre sur les pièces qui le font, et
 // que les deux pense-bêtes se pointent ET se dé-pointent.
-const { playwright, RACINE, ELECTRON, montant } = require('./harnais');
+const { playwright, RACINE, ELECTRON, montant, ongletCompta, ongletComptaPresent } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
 const OUT = process.argv[2] || path.join(RACINE, 'dist-e2e', 'declaration');
@@ -59,7 +59,7 @@ const étape = m => { pas++; console.log('\n' + pas + '. ' + m); };
     return e && !e.textContent.includes('Lecture des paquets');
   }, { timeout: 30000 });
   if (await win.$('#lv-relire')) {
-    if (await win.$('#c-tabs button[data-tab="declaration"]')) {
+    if (await ongletComptaPresent(win, 'declaration')) {
       throw new Error('l\'onglet Déclaration s\'affiche alors que le dossier n\'a pas encore de livre');
     }
     await win.click('#lv-relire');
@@ -67,15 +67,15 @@ const étape = m => { pas++; console.log('\n' + pas + '. ' + m); };
     await win.click('.modal-bg .btn-primary');
     await attendre(600);
   }
-  await win.waitForFunction(() => {
-    const t = document.querySelector('#c-tabs');
-    return t && t.textContent.includes('Déclaration');
-  }, { timeout: 25000 });
+  // 10.12.0 (U-06) — les écrans du livre sont rangés en groupes : on attend que le livre soit là
+  // (le sélecteur de groupes n'existe qu'avec un livre), puis on trouve l'écran par ses groupes.
+  await win.waitForSelector('#c-groupes', { timeout: 25000 });
+  if (!(await ongletComptaPresent(win, 'declaration'))) throw new Error('le livre est ouvert et l\'écran « Déclaration » reste introuvable');
   ok('livre ouvert, et l\'onglet Déclaration est là');
 
   // ---------------------------------------------------------------- 2. les cases
   étape('L\'écran s\'ouvre sur le DERNIER mois saisi, et dit ce qu\'il ne fera jamais');
-  await win.click('#c-tabs button[data-tab="declaration"]');
+  await ongletCompta(win, 'declaration');
   await win.waitForSelector('#dc-mois', { timeout: 15000 });
   const mois = await win.evaluate(() => document.querySelector('#dc-mois').value);
   const L0 = await livre();

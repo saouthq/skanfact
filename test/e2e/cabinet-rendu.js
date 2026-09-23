@@ -20,7 +20,7 @@
 //
 //   xvfb-run -a node test/e2e/cabinet-rendu.js
 const { playwright, RACINE, ELECTRON, journal, surveiller, dossierCaptures, capturePleine,
-  SONDE_CONTRASTE, SONDE_COLONNES, SONDE_ENTETES, SONDE_ESPACEMENT } = require('./harnais');
+  SONDE_CONTRASTE, SONDE_COLONNES, SONDE_ENTETES, SONDE_ESPACEMENT, SONDE_COLLANT, ongletCompta, ongletsCompta } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
 
@@ -37,7 +37,9 @@ const LARGEUR_MAX = 300, LARGEUR_MAX_RECHERCHE = 400, HAUTEUR_MAX = 100;
 // Les trois conteneurs où des boutons se touchent par construction, nommés parce qu'une exception
 // anonyme est un trou : les onglets, le menu d'une ligne, la pagination.
 const ECART_MIN = 4;
-const SEGMENTS = ['.tabs', '.row-menu', '.pager'];
+// `.c-groupes` (10.12.0, U-06) : le contrôle segmenté des trois groupes de la comptabilité — ses
+// boutons se touchent PAR CONSTRUCTION, comme les onglets d'une barre.
+const SEGMENTS = ['.tabs', '.row-menu', '.pager', '.c-groupes'];
 
 // Les pages du Cabinet. Une page qui en gagnera une demain sera mesurée sans que personne y pense,
 // à condition de l'ajouter ici — et le parcours REFUSE une page qui ne s'ouvre pas, plutôt que de
@@ -55,7 +57,7 @@ const PAGES = ['#/dossiers', '#/relances', '#/echeances', '#/ecritures', '#/prod
   const attendre = (ms = 280) => win.waitForTimeout(ms);
   const aller = async hash => { await win.evaluate(x => { location.hash = x; }, hash); await attendre(350); };
 
-  let boutons = 0, champs = 0, colonnes = 0, controles = 0, ecarts = 0;
+  let boutons = 0, champs = 0, colonnes = 0, controles = 0, ecarts = 0, collants = 0;
 
   // Les trois sondes sur l'écran courant. `ou` nomme l'endroit ET le contexte (largeur, thème) :
   // une faute qui n'existe qu'en sombre à 1280 doit se lire comme telle, sinon on la cherche à
@@ -76,6 +78,11 @@ const PAGES = ['#/dossiers', '#/relances', '#/echeances', '#/ecritures', '#/prod
     ecarts += e.mesures;
     e.colles.forEach(x => fautes.push(`${ou} — « ${x.bouton} » touche « ${x.voisin} » (${x.cote},`
       + ` ${x.sens}) : ${x.ecart} px, minimum ${ECART_MIN}`));
+
+    // U-02 : aucune donnée sous une colonne collante.
+    const k = await win.evaluate(SONDE_COLLANT);
+    collants += k.tables;
+    k.couverts.forEach(x => fautes.push(`${ou} — la colonne collante recouvre « ${x.cellule} » (${x.px} px, tableau ${x.table || 'sans classe'})`));
 
     const h = await win.evaluate(SONDE_ENTETES, { maxL: LARGEUR_MAX, maxR: LARGEUR_MAX_RECHERCHE, maxH: HAUTEUR_MAX });
     controles += h.n;
@@ -134,22 +141,20 @@ const PAGES = ['#/dossiers', '#/relances', '#/echeances', '#/ecritures', '#/prod
         await win.click('.modal-bg .btn-primary');
         await attendre(700);
       }
-      await win.waitForFunction(() => {
-        const t = document.querySelector('#c-tabs');
-        return t && t.textContent.includes('Saisie');
-      }, { timeout: 25000 });
-      for (const b2 of await barres()) {
-        if (b2.sel !== '#c-tabs') continue;
-        // TREIZE depuis la 10.3.0 : la Révision (9.10.0), la Liasse (10.0.0) et la Paie (10.3.0)
-        // sont venues s'ajouter aux dix précédents. Le seuil dit ce que le livre DOIT ouvrir —
-        // s'il n'est pas créé, quatre écrans seulement existent, et l'instrument déclarerait le
-        // Cabinet propre sans avoir vu l'écran où un comptable passe ses journées (T-55).
-        if (b2.tabs.length < 13) throw new Error(`la comptabilité n'offre que ${b2.tabs.length} onglets : le livre n'a pas été créé, et neuf écrans ne seraient pas mesurés`);
-        for (const t of b2.tabs) {
-          await win.click(`#c-tabs button[data-tab="${t}"]`);
-          await attendre(450);
-          await mesurer(`${etiquette} fiche · compta · ${t}`);
-        }
+      // Le sélecteur de groupes n'existe qu'avec un livre (10.12.0, U-06).
+      await win.waitForSelector('#c-groupes', { timeout: 25000 });
+      // QUATORZE écrans, rangés en trois groupes depuis la 10.12.0 : la barre visible ne montre
+      // que ceux du groupe ouvert, donc on les lit groupe par groupe. Le seuil dit ce que le livre
+      // DOIT ouvrir — s'il n'est pas créé, quatre écrans seulement existent, et l'instrument
+      // déclarerait le Cabinet propre sans avoir vu l'écran où un comptable passe ses journées
+      // (T-55) ; s'il ne lisait que le groupe ouvert, il en verrait cinq (la même faute, un cran
+      // plus bas).
+      const ecrans = await ongletsCompta(win);
+      if (ecrans.length < 14) throw new Error(`la comptabilité n'offre que ${ecrans.length} écrans : le livre n'a pas été créé, ou un groupe n'a pas été ouvert`);
+      for (const o of ecrans) {
+        await ongletCompta(win, o.tab);
+        await attendre(450);
+        await mesurer(`${etiquette} fiche · compta · ${o.tab}`);
       }
     }
   };
@@ -233,13 +238,13 @@ const PAGES = ['#/dossiers', '#/relances', '#/echeances', '#/ecritures', '#/prod
 
   if (bac.length) { console.error('\nErreurs du renderer :\n' + bac.join('\n')); process.exit(2); }
   // Un instrument qui ne mesure rien annonce « tout va bien » : il doit échouer, pas se taire.
-  if (!boutons || !champs || !colonnes || !ecarts) { console.error('\nRien n\'a été mesuré : le parcours ne prouve rien.'); process.exit(2); }
+  if (!boutons || !champs || !colonnes || !ecarts || !collants) { console.error('\nRien n\'a été mesuré : le parcours ne prouve rien.'); process.exit(2); }
   if (fautes.length) {
     const u = [...new Set(fautes)];
     console.error(`\n${u.length} défaut(s) de rendu dans l'app Cabinet :\n  ` + u.join('\n  '));
     process.exit(1);
   }
   console.log(`\n${j.total()} étapes — ${boutons} boutons, ${champs} champs, ${colonnes} colonnes, ${controles} contrôles,`
-    + ` ${ecarts} écarts mesurés en clair et en sombre, à 1440 et à 1280 : rien d'illisible, rien de`
-    + ' désaligné, rien d\'étiré, rien de collé.');
+    + ` ${ecarts} écarts, ${collants} tableaux sous colonne collante, mesurés en clair et en sombre, à 1440 et à 1280 :`
+    + ' rien d\'illisible, rien de désaligné, rien d\'étiré, rien de collé, rien de recouvert.');
 })().catch(e => { console.error(e); process.exit(1); });

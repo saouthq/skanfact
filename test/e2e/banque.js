@@ -7,7 +7,7 @@
 // Il joue trois banques différentes avec trois formats de colonnes : c'est la réponse au « quelles
 // banques, et quel format chacune exporte ? » qui bloquait cette version — on ne connaît aucun
 // format, donc on n'en code aucun, et on prouve que l'association par NOM les absorbe.
-const { playwright, RACINE, ELECTRON, montant } = require('./harnais');
+const { playwright, RACINE, ELECTRON, montant, ongletCompta, ongletComptaPresent } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
 const OUT = process.argv[2] || path.join(RACINE, 'dist-e2e', 'banque');
@@ -81,7 +81,7 @@ const CSV_INCONNU = 'Jour;Ce que c\'est;Combien\n'
   if (await win.$('#lv-relire')) {
     // L'onglet Banque ne peut pas exister avant le livre : un relevé bancaire vit DANS le livre,
     // et un onglet qui mène à « il n'y a rien » est un onglet mort.
-    if (await win.$('#c-tabs button[data-tab="banque"]')) {
+    if (await ongletComptaPresent(win, 'banque')) {
       throw new Error('l\'onglet Banque s\'affiche alors que le dossier n\'a pas encore de livre');
     }
     await win.click('#lv-relire');
@@ -89,15 +89,15 @@ const CSV_INCONNU = 'Jour;Ce que c\'est;Combien\n'
     await win.click('.modal-bg .btn-primary');
     await attendre(600);
   }
-  await win.waitForFunction(() => {
-    const t = document.querySelector('#c-tabs');
-    return t && t.textContent.includes('Banque');
-  }, { timeout: 25000 });
+  // 10.12.0 (U-06) — les écrans du livre sont rangés en groupes : on attend que le livre soit là
+  // (le sélecteur de groupes n'existe qu'avec un livre), puis on trouve l'écran par ses groupes.
+  await win.waitForSelector('#c-groupes', { timeout: 25000 });
+  if (!(await ongletComptaPresent(win, 'banque'))) throw new Error('le livre est ouvert et l\'écran « Banque » reste introuvable');
   ok('livre ouvert, et l\'onglet Banque est là');
 
   // ---------------------------------------------------------------- 2. l'état vide porte son geste
   étape('L\'onglet Banque, vide, propose l\'import');
-  await win.click('#c-tabs button[data-tab="banque"]');
+  await ongletCompta(win, 'banque');
   await win.waitForSelector('#bq-import', { timeout: 10000 });
   const vide = await win.evaluate(() => (document.querySelector('#c-livres .empty') || {}).textContent || '');
   if (!/Aucun relevé/.test(vide)) throw new Error('l\'état vide doit dire ce qui manque : ' + vide.slice(0, 80));
@@ -318,7 +318,7 @@ const CSV_INCONNU = 'Jour;Ce que c\'est;Combien\n'
 
   // ------------------------------------------------- 12. le lettrage, l'autre écran
   étape('Le lettrage est un AUTRE écran, avec sa balance âgée');
-  await win.click('#c-tabs button[data-tab="lettrage"]');
+  await ongletCompta(win, 'lettrage');
   await win.waitForSelector('#lv-compte', { timeout: 10000 });
   const aAge = await win.evaluate(() => /par ancienneté/.test((document.querySelector('#c-livres') || {}).textContent || ''));
   const auto = await win.$('#lv-auto');
@@ -333,7 +333,7 @@ const CSV_INCONNU = 'Jour;Ce que c\'est;Combien\n'
 
   // ------------------------------------------------- 13. les montants relus gardent leur signe
   étape('Les montants affichés se relisent avec leur signe');
-  await win.click('#c-tabs button[data-tab="banque"]');
+  await ongletCompta(win, 'banque');
   await win.waitForSelector('#bq-releve', { timeout: 8000 });
   const affiches = await win.$$eval('#c-livres tbody tr[data-lig] td.r', tds => tds.map(t => t.textContent.trim()));
   const negatifs = affiches.map(montant).filter(v => v < 0);

@@ -259,6 +259,12 @@
     // la fermerait sans rien montrer et Entrée lancerait une recherche au lieu de valider. C'est le
     // même défaut pris par l'autre bout — on la referme.
     if (fermerPalette) fermerPalette();
+    // 10.12.0 (H-8, vu au test humain) — le curseur REVIENT d'où il venait quand la fenêtre se
+    // ferme. Un refus amène le curseur dans la case fautive (7.0.0), puis la fenêtre qui l'explique
+    // le prenait et ne le rendait jamais : on fermait « Fermer », et il fallait recliquer dans la
+    // case qu'on venait de nous montrer. Seulement si le curseur était DANS la fenêtre : un appelant
+    // qui l'a déjà posé ailleurs garde sa décision.
+    const avant = document.activeElement;
     const root = $('#modal-root');
     const layer = document.createElement('div');
     layer.className = 'modal-bg';
@@ -272,8 +278,12 @@
     const close = () => {
       if (done) return;
       done = true;
+      const curseurDedans = layer.contains(document.activeElement);
       layer.remove();
       document.removeEventListener('keydown', onKey);
+      if (curseurDedans && avant && avant !== document.body && avant.isConnected && !avant.disabled) {
+        try { avant.focus(); } catch (_) { /* un élément qui ne prend pas le curseur : on n'insiste pas */ }
+      }
     };
     let question = false;   // une seule question à la fois, sinon Échap répété les empile
     const dismiss = async () => {
@@ -471,8 +481,19 @@
   // Un montant AFFICHÉ, sans sa devise : la grille de saisie, le brouillard, les abonnements et
   // la recherche écrivaient « 4.500 » à côté d'un total à « 0,000 » (T-28). En français, le point
   // décimal fait lire quatre mille cinq cents — sur l'écran dont le métier est de contrôler des
-  // montants. `toFixed(3)` ne sert plus qu'à REMPLIR un champ de saisie, qui se relit en interne.
+  // montants.
   const montant = n => money(n).replace(/\s(DT|[A-Z]{3})$/, '');
+  // Un montant DANS UN CHAMP (10.12.0, H-3 — trouvé en testant comme un humain). La 9.8.8 gardait
+  // `toFixed(3)` pour « remplir un champ, qui se relit en interne » : mais un champ, c'est le
+  // COMPTABLE qui le relit. Tab soldait une pièce en écrivant « 250.000 » sous un total à
+  // « 250,000 » — en français, deux cent cinquante mille. Un champ s'écrit donc comme l'écran
+  // (virgule, espaces de milliers), avec un moins ASCII pour qu'il se relise tel quel.
+  const montantChamp = n => { const v = Number(n); return v ? (v < 0 ? '-' : '') + montant(Math.abs(v)) : ''; };
+  // Et il se LIT par une seule porte, qui comprend ce qu'un comptable tape : « 1 250,500 »,
+  // « 1.250,500 », « 1250.5 ». La lecture d'avant — `Number(x.replace(',', '.'))` — rendait ZÉRO
+  // pour l'espace des milliers, sans un mot : un prix de cession « 1 500,000 » devenait une mise au
+  // rebut. Ce qui ne se lit pas du tout vaut 0 ici ; la grille de saisie, elle, le NOMME.
+  const lireMontant = v => { const n = KC.nombreStrict(v); return Number.isFinite(n) ? n : 0; };
   // Une virgule décimale, comme les montants juste à côté : « 2.4 Mo » dans un tableau où tout le
   // reste s'écrit « 46 800,000 DT » se voit tout de suite.
   const fmtBytes = n => !n ? '—' : n >= 1073741824 ? (n / 1073741824).toFixed(1).replace('.', ',') + ' Go'
@@ -781,6 +802,14 @@
     );
   }
 
+  // « Précédent » et « Suivant » (10.12.0, U-06) : l'historique du navigateur, puisque chaque écran a
+  // son adresse. Jamais sous une fenêtre ouverte — on changerait l'écran du dessous pendant qu'une
+  // question attend sa réponse par-dessus.
+  function naviguerHistorique(sens) {
+    if ($('#modal-root') && $('#modal-root').children.length) return;
+    if (sens === 'back') history.back(); else history.forward();
+  }
+
   function start(created, reorganized, aRecuperer, exemple) {
     // L'exemple a pu être refait pendant l'ouverture (9.4.2). Le bandeau des dossiers fictifs le
     // dit — un toast de trois secondes sur un jeu de données qui a changé n'informe personne.
@@ -817,7 +846,13 @@
       else if (name === 'backup') quickBackup();
       else if (name === 'palette') openPalette();
       else if (name === 'support') supportDialog();
+      else if (name === 'back' || name === 'forward') naviguerHistorique(name);
       else if (name.startsWith('go:')) location.hash = '#/' + name.slice(3);
+    });
+    // Les boutons latéraux de la souris font ce qu'ils font partout ailleurs.
+    window.addEventListener('mouseup', e => {
+      if (e.button === 3) { e.preventDefault(); naviguerHistorique('back'); }
+      else if (e.button === 4) { e.preventDefault(); naviguerHistorique('forward'); }
     });
     // Un paquet double-cliqué dans le Finder : c'est le geste le plus naturel après avoir reçu un mail.
     api.onFileOpen(f => handleDropped([f]));
@@ -1188,7 +1223,7 @@
       relState.coches.clear();
     }
     const view = $('#view');
-    if (route === 'dossier') drawDossier(view, arg, hash.split('/')[2]);
+    if (route === 'dossier') drawDossier(view, arg, hash.split('/')[2], hash.split('/')[3]);
     else if (route === 'production') drawProduction(view);
     else if (route === 'ecritures') drawEcritures(view);
     else if (route === 'echeances') drawEcheances(view);
@@ -1319,13 +1354,14 @@
   // de clients. On les masque, on le DIT, et on laisse un bouton pour les rendre — masquer sans le
   // dire serait pire que le défaut (règle 7.12.0 : un filet ne doit pas devenir un piège).
   function colonnesUtiles(rows) {
-    if (prefs.get('colTout', false) === true) return { provisoires: true, signale: true, relance: true, masquees: 0 };
+    if (prefs.get('colTout', false) === true) return { provisoires: true, signale: true, relance: true, honoraires: true, masquees: 0 };
     const c = {
       provisoires: rows.some(r => r.provisionalCount > 0),
       signale: rows.some(r => r.issues > 0),
-      relance: rows.some(r => r.lastRelanceAt)
+      relance: rows.some(r => r.lastRelanceAt),
+      honoraires: rows.some(r => r.fees > 0)
     };
-    c.masquees = ['provisoires', 'signale', 'relance'].filter(k => !c[k]).length;
+    c.masquees = ['provisoires', 'signale', 'relance', 'honoraires'].filter(k => !c[k]).length;
     return c;
   }
 
@@ -1347,22 +1383,26 @@
     // 10.12.0 (U-04) — un mois NOMMÉ, et le nombre de clients qu'il couvre (`caDuPortefeuille`).
     const ca = p.ca || {};
     const caVal = !ca.mois ? '—' : ca.montant == null ? esc(pl(ca.devises, 'devise')) : esc(money(ca.montant, ca.devise));
+    // Le MOIS se lit sur la ligne du dessous, à côté du nombre de clients qu'il couvre : écrit dans
+    // l'étiquette, il poussait le chevron hors de la carte. Les honoraires ne sont pas du chiffre
+    // d'affaires : ils vivent dans la colonne « Honoraires » du tableau, avec leur total en pied.
     const caSub = !ca.mois ? 'aucun paquet ne porte de chiffres'
-      : [ca.montant == null ? 'pas de total entre deux devises' : '',
-        `${pl(ca.clients, 'client')} sur ${ca.sur}`,
-        p.honoraires ? 'honoraires ' + esc(money(p.honoraires)) + ' / mois' : ''].filter(Boolean).join(' · ');
+      : [esc(K.monthLabel(ca.mois)), ca.montant == null ? 'pas de total entre deux devises' : '',
+        `${pl(ca.clients, 'client')} sur ${ca.sur}`].filter(Boolean).join(' · ');
     return `<div class="stats rangee">
       ${item('tous', 'clients suivis', p.total,
-    `${p.surSkanfact} sur SkanFact${p.horsSkanfact ? ` · ${p.horsSkanfact} pas encore` : ''}`, '',
+    `${p.surSkanfact} sur SkanFact${p.horsSkanfact ? ` · ${p.horsSkanfact} hors SkanFact` : ''}`, '',
     'Voir tous tes clients, par ordre alphabétique')}
-      ${item('ajour', 'à jour', p.aJour,
-    `${p.surSkanfact > 1 ? `sur ${p.surSkanfact} clients SkanFact` : `sur ${p.surSkanfact || 0} client SkanFact`}${p.enRetard ? ` · ${p.enRetard} en retard` : ''}${p.provisoires ? ` · ${p.provisoires} en provisoire` : ''}`,
-    p.enRetard ? '' : 'ok', 'Voir tes clients SkanFact, les plus urgents d\'abord')}
+      ${/* « 2 / 5 » : le compte et son univers, dans le même chiffre. « 2 à jour sur 5 » à côté de
+            « 6 clients suivis » se lisait comme une erreur — le 5, ce sont les clients sur
+            SkanFact, les seuls à qui l'on réclame quelque chose. */''}
+      ${item('ajour', 'à jour', `${p.aJour}<span class="val-sur"> / ${p.surSkanfact || 0}</span>`,
+    `${p.enRetard ? `${p.enRetard} en retard` : 'aucun retard'}${p.provisoires ? ` · ${p.provisoires} en provisoire` : ''}`,
+    p.enRetard ? '' : 'ok', 'Voir tes clients sur SkanFact, les plus urgents d\'abord')}
       ${item('manquants', 'mois manquants', p.moisManquants,
     p.paquets ? pl(p.paquets, 'paquet') + ' reçu' + (p.paquets > 1 ? 's' : '') : 'aucun paquet reçu',
     p.moisManquants ? 'due' : 'ok', 'Voir qui doit envoyer, et le relancer')}
-      ${item('ca', ca.mois ? `de CA en ${esc(K.monthLabel(ca.mois))}` : 'de CA', caVal, caSub, '',
-    'Classer tes clients par chiffre d\'affaires')}
+      ${item('ca', 'de CA', caVal, caSub, '', 'Classer tes clients par chiffre d\'affaires')}
     </div>`;
   }
   // Chaque chiffre ouvre l'ensemble qu'il nomme. « À jour », « clients suivis » et le chiffre
@@ -1496,23 +1536,34 @@
         <span class="grow"></span>
         <button class="btn btn-ghost btn-sm" id="csv">Exporter en CSV</button>
       </div>
-      ${rows.length ? `<div class="scroll-x"><table class="list sortable">
-        <thead><tr>${sortHead('Client', 'nom')}${sortHead('Dernier mois reçu', 'dernier')}
-        ${sortHead('CA du dernier mois', 'ca', null, true)}${sortHead('Mois manquants', 'manquants', null, true)}
-        ${col.provisoires ? '<th class="r nw">Provisoires</th>' : ''}${col.signale ? '<th class="r nw">Signalé</th>' : ''}
+      ${/* 10.12.0 (U-02) — le tableau TIENT dans sa page. À 1440 déjà, il faisait 160 px de trop :
+            la colonne d'actions, collante, couvrait « Signalé ». Le nom du client se tronque (jamais
+            son badge), « pas encore sur SkanFact » devient « hors SkanFact » — la légende dit le
+            reste —, les en-têtes perdent le mot que la colonne voisine dit déjà, et la réception
+            se lit au jour près (l'heure reste au survol). */''}
+      ${rows.length ? `<div class="scroll-x"><table class="list sortable dl-table">
+        <thead><tr>${sortHead('Client', 'nom')}${sortHead('Dernier mois', 'dernier')}
+        ${sortHead('CA de ce mois', 'ca', null, true)}${col.honoraires ? '<th class="r nw">Honoraires</th>' : ''}${sortHead('Manquants', 'manquants', null, true)}
+        ${col.provisoires ? '<th class="r nw">Provisoires</th>' : ''}${col.signale ? '<th class="r nw">Signalés</th>' : ''}
         ${col.relance ? sortHead('Relancé le', 'relance', 'r.history') : ''}${sortHead('Reçu le', 'recu')}<th></th></tr></thead>
         <tbody>${shown.map(r => `<tr class="clickable" data-id="${esc(r.id)}">
-          <td class="nw"><span class="dot-lvl ${r.level === 'ok' ? '' : esc(r.level)}" title="${esc(NIVEAUX[r.level] || '')}"></span>${esc(r.name)}${r.archived ? ' <span class="badge">archivé</span>' : ''}${r.manual ? ' <span class="badge b-hors">pas encore sur SkanFact</span>' : ''}</td>
-          <td class="nw">${esc(r.lastLabel || '—')}${r.lastMonth && !r.lastDefinitive ? ' <span class="badge partielle">provisoire</span>' : ''}</td>
+          <td class="dl-client"><div class="dl-cell"><span class="dot-lvl ${r.level === 'ok' ? '' : esc(r.level)}" title="${esc(NIVEAUX[r.level] || '')}"></span><span class="dl-nom" title="${esc(r.name)}">${esc(r.name)}</span>${r.archived ? ' <span class="badge">archivé</span>' : ''}</div></td>
+          ${/* « hors SkanFact » vit dans « Dernier mois », pas à côté du nom (H-1, trouvé en testant
+                comme un humain) : dans la cellule du nom, il le coupait — « Garage Ben… » — alors
+                que la ligne avait de la place partout ailleurs. Ici, il remplace un tiret qui ne
+                disait rien par la RAISON pour laquelle il n'y a pas de dernier mois. */''}
+          <td class="nw">${r.manual && !r.lastLabel ? '<span class="badge b-hors" title="Pas encore sur SkanFact : rien ne lui est réclamé">hors SkanFact</span>' : esc(r.lastLabel || '—')}${r.lastMonth && !r.lastDefinitive ? ' <span class="badge partielle">provisoire</span>' : ''}</td>
           <td class="r nw">${esc(r.lastFigures ? money(r.lastFigures.ca, r.lastFigures.devise) : '—')}</td>
+          ${col.honoraires ? `<td class="r nw">${r.fees ? esc(money(r.fees)) : '—'}</td>` : ''}
           <td class="r">${r.missingCount || '—'}</td>
           ${col.provisoires ? `<td class="r">${r.provisionalCount || '—'}</td>` : ''}
           ${col.signale ? `<td class="r">${r.issues || '—'}</td>` : ''}
           ${col.relance ? `<td class="muted nw">${r.lastRelanceAt ? esc(fmtDay(r.lastRelanceAt)) + ` <span class="small">(${esc(ago(r.lastRelanceAt))})</span>` : '—'}</td>` : ''}
-          <td class="muted nw">${esc(fmtWhen(r.lastAt))}</td>
+          <td class="muted nw" title="${esc(r.lastAt ? fmtWhen(r.lastAt) : '')}">${esc(r.lastAt ? fmtDay(r.lastAt) : '—')}</td>
           ${RowMenu.cellule('D:' + r.id, '')}</tr>`).join('')}</tbody>
         <tfoot><tr><td class="nw"><strong>${pl(rows.length, 'dossier')}</strong></td><td></td>
           <td class="r nw">${totalCA(rows)}</td>
+          ${col.honoraires ? `<td class="r nw"><strong>${esc(money(rows.reduce((a, r) => a + (Number(r.fees) || 0), 0)))}</strong><div class="small muted nw">par mois</div></td>` : ''}
           <td class="r"><strong>${rows.reduce((s, r) => s + r.missingCount, 0) || '—'}</strong></td>
           ${col.provisoires ? `<td class="r"><strong>${rows.reduce((s, r) => s + r.provisionalCount, 0) || '—'}</strong></td>` : ''}
           ${col.signale ? `<td class="r"><strong>${rows.reduce((s, r) => s + r.issues, 0) || '—'}</strong></td>` : ''}
@@ -1659,7 +1710,7 @@
   let ficheOnglet = 'suivi';
   let ficheDossierId = '';
 
-  function drawDossier(view, id, ongletDemande) {
+  function drawDossier(view, id, ongletDemande, sousOnglet) {
     const dossier = (S.dossiers || []).find(d => d.id === decodeURIComponent(id || ''));
     if (!dossier) { view.innerHTML = `<div class="empty">Ce dossier n'existe plus.</div>`; return; }
     const row = K.dossierRow(dossier);
@@ -1693,7 +1744,7 @@
     // La période se NOMME : les mois qu'il additionne vraiment, du premier au dernier reçu.
     const moisAnnee = packsAnnee.map(p => p.month).sort();
     const periodeCA = moisAnnee.length > 1
-      ? `${MOIS_COURTS[Number(moisAnnee[0].slice(5, 7)) - 1]}–${MOIS_COURTS[Number(moisAnnee[moisAnnee.length - 1].slice(5, 7)) - 1]} ${anneeVue}`
+      ? `${MOIS_COURTS[Number(moisAnnee[0].slice(5, 7)) - 1]}–${MOIS_COURTS[Number(moisAnnee[moisAnnee.length - 1].slice(5, 7)) - 1]} ${anneeVue}`.toLowerCase()
       : moisAnnee.length ? K.monthLabel(moisAnnee[0]) : anneeVue;
     const etat = [
       packs.length ? pl(packs.length, 'mois reçu', 'mois reçus') : (dossier.manual ? 'pas encore sur SkanFact' : 'aucun paquet reçu pour l\'instant'),
@@ -1726,9 +1777,12 @@
     const ongletBtn = (o, label, n) => `<button role="tab" data-tab="${o}" class="${onglet === o ? 'active' : ''}" aria-selected="${onglet === o}">${label}${n ? `<span class="tab-n">${n}</span>` : ''}</button>`;
 
     view.innerHTML = `
-      <button class="btn btn-ghost btn-sm btn-back" id="back">← Dossiers</button>
+      ${/* 10.12.0 (U-01) — le bouton retour vit sur la LIGNE du titre. Posé seul au-dessus, il coûtait
+            une rangée entière à chaque écran de la fiche, et sur un portable de 1280×800 la grille de
+            saisie commençait à 764 px : une seule ligne visible. */''}
       <div class="page-head"><div>
-        <h1>${esc(dossier.name)}${dossier.archived ? ' <span class="badge">archivé</span>' : ''}${dossier.manual ? ' <span class="badge b-hors">pas encore sur SkanFact</span>' : ''}</h1>
+        <div class="fiche-titre"><button class="btn btn-ghost btn-sm btn-back" id="back" title="Revenir à la liste des dossiers">← Dossiers</button>
+        <h1>${esc(dossier.name)}${dossier.archived ? ' <span class="badge">archivé</span>' : ''}${dossier.manual ? ' <span class="badge b-hors">pas encore sur SkanFact</span>' : ''}</h1></div>
         <div class="d-ident">${ident}</div>
         <div class="d-etat" id="d-etat">${etat}</div>
       </div><div class="actions">
@@ -1750,9 +1804,9 @@
         ? `<div class="warn-box mb"><strong>Au moins un paquet de ce client contient un fichier que son manifeste n'annonce pas ${info('p.intrus')}</strong>
            Personne ne l'a vérifié et il ne compte pas dans les pièces intactes. Ouvre-le seulement si tu sais d'où il vient. ${onglet !== 'paquets' ? '<button class="btn btn-sm" data-vers="paquets">Voir les paquets</button>' : ''}</div>` : ''}
 
-      <div class="tabs" id="d-tabs" role="tablist">
+      <div class="tabs" id="d-tabs" role="tablist" aria-label="La fiche de ${esc(dossier.name)}">
         ${ongletBtn('suivi', 'Suivi', row.missingCount)}
-        ${ongletBtn('comptabilite', 'Comptabilité', 0)}
+        ${ongletBtn('comptabilite', 'Comptabilité' + pointSale(dossier.id), 0)}
         ${ongletBtn('paquets', 'Paquets', packs.length)}
       </div>
 
@@ -1832,12 +1886,16 @@
             un client hors SkanFact — le seul qu'on FACTURE — se voyait promettre sa comptabilité pour
             le jour de son premier envoi, un envoi qui ne viendra jamais, pendant que l'Aide lui disait
             de saisir « Comptabilité → Saisie ». Le moteur savait créer son livre ; l'écran, non. */''}
-      <div class="panel" id="c-compta"><h2>Comptabilité ${info('lv.compta')}</h2>
+      ${/* 10.12.0 (U-01) — le titre « Comptabilité » répétait l'onglet qu'on venait de cliquer, et
+            trois rangées (titre, période, bandeau du livre) passaient devant la grille. Elles n'en
+            font plus qu'UNE : ce que je regarde (la période) et d'où ça vient (le livre ou les
+            paquets). Sa bulle explique la comptabilité entière, sur le nom du livre. */''}
+      <div class="panel" id="c-compta">
         ${/* Deux listes déroulantes nues au-dessus d'un livre-journal ne disent pas ce qu'elles
               choisissent : « L'exercice / 2026 » pouvait tout aussi bien être un filtre de journal.
               Le mot « Période » devant, et chaque contrôle porte son `aria-label` — un lecteur
               d'écran n'a pas de capture d'écran pour deviner. */''}
-        <div class="filters">
+        <div class="filters c-barre">
           <span class="f-lab">Période</span>
           <select id="lv-mode" aria-label="Quelle période">
             <option value="exercice" ${livresState.mode === 'exercice' ? 'selected' : ''}>L'exercice</option>
@@ -1848,6 +1906,8 @@
           <select id="lv-mois" aria-label="Le mois" ${livresState.mode === 'mois' ? '' : 'hidden'}>${months.map(m => `<option value="${esc(m.month)}" ${livresState.mois === m.month ? 'selected' : ''}>${esc(K.monthLabel(m.month))}</option>`).join('')}</select>
           <input type="month" id="lv-du" aria-label="Du mois" ${livresState.mode === 'intervalle' ? '' : 'hidden'} value="${esc(livresState.du)}">
           <input type="month" id="lv-au" aria-label="Au mois" ${livresState.mode === 'intervalle' ? '' : 'hidden'} value="${esc(livresState.au)}">
+          <span class="grow"></span>
+          <span class="c-livre" id="c-livre-etat"><b>Comptabilité</b> ${info('lv.compta')}</span>
         </div>
         <div id="c-livres"><div class="empty">Lecture de la comptabilité…</div></div>
       </div>
@@ -1916,11 +1976,11 @@
     // client à l'autre en gardant « mars 2026 » afficherait un livre vide sans raison visible
     // (même garde-fou que `ficheYear`, plus haut).
     if ($('#c-compta', view)) {
-      if (livresState.dossierId !== dossier.id) {
-        livresState.dossierId = dossier.id; livresState.data = null;
-        livresState.annee = ''; livresState.mois = ''; livresState.du = ''; livresState.au = '';
-        livresState.onglet = 'journal'; livresState.compte = ''; livresState.journal = ''; livresState.q = ''; livresState.aux = false;
-        livresState.page = 1;
+      changerDeDossierCompta(dossier.id);
+      // Le sous-onglet de l'ADRESSE passe avant la mémoire (U-06) : « précédent », la palette et
+      // toute autre page y mènent en le nommant. Sans sous-onglet, on garde celui où l'on était.
+      if (sousOnglet && ONGLETS_COMPTA[sousOnglet] && livresState.onglet !== sousOnglet) {
+        livresState.onglet = sousOnglet; livresState.page = 1;
       }
       const relire = () => drawLivres(view, dossier);
       const mode = $('#lv-mode', view);
@@ -2029,6 +2089,25 @@
     // ne disent pas la même chose, et les confondre serait exactement le genre de chiffre qui ment.
     livre: null, livreEtat: '', brouillard: false
   };
+
+  // L'écran de comptabilité où l'on était, PAR DOSSIER (10.12.0, H-5 — trouvé en testant comme un
+  // humain). Changer de client remettait tout à zéro, écran compris : on laissait Béji dans sa
+  // Saisie, une pièce commencée, pour jeter un œil au journal d'un autre client — et Béji rouvrait
+  // sur son livre-journal pendant que sa pièce attendait deux clics plus loin. La fiche retient son
+  // onglet par dossier depuis la 9.2.2 ; sa comptabilité, jamais. Le reste (période, filtres,
+  // page) repart à zéro : c'est de l'état de lecture, et un filtre qu'on ne voit pas cache ce
+  // qu'on est venu chercher (9.4.6).
+  const ecransCompta = {};
+  function changerDeDossierCompta(dossierId) {
+    const s = livresState;
+    if (s.dossierId === dossierId) return;
+    if (s.dossierId) ecransCompta[s.dossierId] = { onglet: s.onglet, dernierParGroupe: { ...(s.dernierParGroupe || {}) } };
+    const m = ecransCompta[dossierId] || {};
+    s.dossierId = dossierId; s.data = null;
+    s.annee = ''; s.mois = ''; s.du = ''; s.au = '';
+    s.onglet = m.onglet || 'journal'; s.compte = ''; s.journal = ''; s.q = ''; s.aux = false;
+    s.page = 1; s.dernierParGroupe = { ...(m.dernierParGroupe || {}) };
+  }
 
   function moisLabelCourt(m) { return K.monthLabel(m); }
 
@@ -2204,26 +2283,55 @@
   // Créer le livre à partir de ce qui a déjà été reçu. Rejouer ne double RIEN : chaque mois
   // remplace ses brouillards et laisse les validées intactes — c'est la même fonction que l'import
   // d'un paquet neuf, donc le geste est sûr à répéter, et c'est ce qui le rend utilisable.
+  // Un compte rendu qui PROPOSE la suite (10.12.0, U-27). « Créer le livre » finissait sur une
+  // fenêtre à un seul bouton, « OK » : on venait de créer quelque chose, et l'écran ne disait pas
+  // quoi en faire. Chaque écran finit par le geste suivant (7.27.0, 9.4.9). Le geste principal vient
+  // en dernier, à droite, là où l'œil finit la lecture ; « Fermer » reste toujours là.
+  function compteRendu(title, html, gestes) {
+    const ordre = (gestes || []).slice().sort((a, b) => (a.primaire ? 1 : 0) - (b.primaire ? 1 : 0));
+    return new Promise(resolve => {
+      modal(`<h2>${esc(title)}</h2><div class="cr-corps">${html}</div>
+        <div class="modal-actions"><button class="btn" id="cr-fermer">Fermer</button>
+        ${ordre.map((g, i) => `<button class="btn${g.primaire ? ' btn-primary' : ''}"${g.primaire ? ' id="ok"' : ''} data-cr="${i}">${esc(g.label)}</button>`).join('')}</div>`,
+      (layer, close) => {
+        $('#cr-fermer', layer).onclick = () => { close(); resolve(null); };
+        $$('[data-cr]', layer).forEach(b => { b.onclick = () => { close(); resolve(ordre[Number(b.dataset.cr)]); }; });
+      }, () => resolve(null));
+    });
+  }
+
   async function relireLesPaquets(root, dossier) {
     const s = livresState;
+    const creation = !s.livre;
     try {
       const r = await api.relireLesPaquets(dossier.id, s.annee);
       s.livre = r.livre; s.livreEtat = r.livre ? 'ouvert' : s.livreEtat;
-      const lignes = [
-        `${pl(r.mois, 'mois', 'mois')} relu${r.mois > 1 ? 's' : ''}.`,
-        `${pl(r.ajoutees, 'écriture ajoutée', 'écritures ajoutées')}${r.validees ? `, dont ${pl(r.validees, 'validée', 'validées')} (mois définitifs)` : ' (en brouillard)'}.`,
-        r.remplacees ? `${pl(r.remplacees, 'écriture remplacée', 'écritures remplacées')} par une version renvoyée.` : '',
+      // Le compte rendu s'écrit en HTML, chaque morceau venu des données échappé UNE fois : écrit en
+      // texte puis passé à `infoDialog`, une pièce « A&B » s'affichait « A&amp;B » (échappée deux fois).
+      const puces = l => `<ul class="cr-liste">${l.join('')}</ul>`;
+      const blocs = [
+        `<p>${esc(pl(r.mois, 'mois', 'mois'))} relu${r.mois > 1 ? 's' : ''} : ${esc(pl(r.ajoutees, 'écriture ajoutée', 'écritures ajoutées'))}${r.validees ? `, dont ${esc(pl(r.validees, 'validée', 'validées'))} (mois définitifs)` : ' (en brouillard)'}.</p>`,
+        r.remplacees ? `<p>${esc(pl(r.remplacees, 'écriture remplacée', 'écritures remplacées'))} par une version renvoyée.</p>` : '',
         // Les écarts ne s'appliquent JAMAIS seuls : on les montre, le comptable tranche.
-        r.ecarts.length ? `${pl(r.ecarts.length, 'écriture validée diffère', 'écritures validées diffèrent')} du mois renvoyé — elles n'ont pas été touchées :\n` +
-          r.ecarts.slice(0, 8).map(e => `  • ${esc(e.piece || e.id)} (${moisLabelCourt(e.mois)}) : ${esc(montant(e.avant))} → ${esc(montant(e.apres))}`).join('\n') : '',
+        r.ecarts.length ? `<p>${esc(pl(r.ecarts.length, 'écriture validée diffère', 'écritures validées diffèrent'))} du mois renvoyé — elles n'ont pas été touchées :</p>` +
+          puces(r.ecarts.slice(0, 8).map(e => `<li>${esc(e.piece || e.id)} (${esc(moisLabelCourt(e.mois))}) : ${esc(montant(e.avant))} → ${esc(montant(e.apres))}</li>`)) : '',
         // Un mois définitif dont une pièce n'a pas pu être VALIDÉE reste en brouillard : on le dit,
         // sinon le mois paraît classé alors que deux pièces attendent encore (règle 9.8.0).
-        (r.nonValidees || []).length ? `${pl(r.nonValidees.length, 'écriture n\'a pas pu être validée', 'écritures n\'ont pas pu être validées')} et ${r.nonValidees.length > 1 ? 'restent' : 'reste'} en brouillard :\n` +
-          r.nonValidees.slice(0, 8).map(x => `  • ${esc(x.journal || '')} ${esc(x.piece || '(sans référence)')} (${moisLabelCourt(x.mois)}) : ${esc(x.motif || '')}`).join('\n') : '',
-        r.illisibles.length ? `${pl(r.illisibles.length, 'mois', 'mois')} illisible${r.illisibles.length > 1 ? 's' : ''} : ${r.illisibles.map(x => moisLabelCourt(x.mois)).join(', ')}.` : ''
+        (r.nonValidees || []).length ? `<p>${esc(pl(r.nonValidees.length, 'écriture n\'a pas pu être validée', 'écritures n\'ont pas pu être validées'))} et ${r.nonValidees.length > 1 ? 'restent' : 'reste'} en brouillard :</p>` +
+          puces(r.nonValidees.slice(0, 8).map(x => `<li>${esc(x.journal || '')} ${esc(x.piece || '(sans référence)')} (${esc(moisLabelCourt(x.mois))}) : ${esc(x.motif || '')}</li>`)) : '',
+        r.illisibles.length ? `<p>${esc(pl(r.illisibles.length, 'mois', 'mois'))} illisible${r.illisibles.length > 1 ? 's' : ''} : ${esc(r.illisibles.map(x => moisLabelCourt(x.mois)).join(', '))}.</p>` : ''
       ].filter(Boolean);
-      await infoDialog(`Le livre de ${s.annee}`, lignes.join('\n\n'));
-      drawLivres(root, dossier);
+      // La suite : le brouillard s'il en reste — c'est lui qui attend une décision —, sinon le
+      // livre-journal, pour relire ce qui vient d'entrer.
+      const br = ((s.livre || {}).ecritures || []).filter(e => e.statut === 'brouillard').length;
+      const suite = await compteRendu(creation ? `Le livre de ${s.annee} est créé` : `Le livre de ${s.annee} : paquets relus`, blocs.join(''), [
+        { label: 'Voir le livre-journal', onglet: 'journal', primaire: !br },
+        // Le libellé dit l'écran d'ARRIVÉE (7.29.0) : le geste ouvre la Saisie, où le brouillard se
+        // relit et se valide — il ne valide rien lui-même.
+        { label: br ? `Voir le brouillard (${br})` : 'Ouvrir la saisie', onglet: 'saisie', primaire: !!br }
+      ]);
+      if (suite && s.livre) allerSousOnglet(root, dossier, suite.onglet);
+      else drawLivres(root, dossier);
     } catch (e) { await infoDialog('Impossible de relire les paquets', plainError(e)); }
   }
 
@@ -2361,7 +2469,73 @@
   // nommait SEPT, écrits à la main en 9.8.8 ; il en arrivait DIX — Paie, Révision et Liasse, les
   // trois plus récents, et ceux qui font du Cabinet autre chose qu'un récepteur de paquets. La
   // phrase se DÉDUIT de cette liste, et un test confronte la liste aux boutons que la barre pose.
-  const ONGLETS_DU_LIVRE = ['Saisie', 'Déclaration', 'Banque', 'Immobilisations', 'Inventaire', 'Paie', 'Révision', 'Exercice', 'Liasse', 'Recherche'];
+  // 10.12.0 (U-06) — quatorze sous-onglets sur deux rangées, rangés dans l'ordre où ils sont
+  // arrivés version après version : « Liasse » et « Recherche » seuls sur la seconde, la Saisie à
+  // côté de la Balance. Un comptable ne pense pas en quatorze écrans : il SAISIT, il CONSULTE, puis
+  // il DÉCLARE ET CLÔTURE — c'est l'ordre de son mois, et celui des logiciels qu'il connaît. Trois
+  // groupes, et le second niveau ne montre que les écrans du groupe ouvert. Une seule table : les
+  // libellés, les groupes, la phrase « Créer le livre ouvre… » et la palette en dérivent.
+  const ONGLETS_COMPTA = {
+    saisie: 'Saisie', banque: 'Banque', paie: 'Paie', immobilisations: 'Immobilisations', inventaire: 'Inventaire',
+    journal: 'Livre-journal', 'grand-livre': 'Grand livre', balance: 'Balance', lettrage: 'Lettrage', recherche: 'Recherche',
+    declaration: 'Déclaration', revision: 'Révision', exercice: 'Exercice', liasse: 'Liasse'
+  };
+  const GROUPES_COMPTA = [
+    { id: 'saisir', label: 'Saisir', onglets: ['saisie', 'banque', 'paie', 'immobilisations', 'inventaire'] },
+    { id: 'consulter', label: 'Consulter', onglets: ['journal', 'grand-livre', 'balance', 'lettrage', 'recherche'] },
+    { id: 'cloturer', label: 'Déclarer et clôturer', onglets: ['declaration', 'revision', 'exercice', 'liasse'] }
+  ];
+  // Ce qui se lit SANS livre, dans les paquets reçus. Le reste n'existe qu'une fois le livre créé.
+  const ONGLETS_SANS_LIVRE = ['journal', 'grand-livre', 'balance', 'lettrage'];
+  const ONGLETS_DU_LIVRE = Object.keys(ONGLETS_COMPTA).filter(o => !ONGLETS_SANS_LIVRE.includes(o)).map(o => ONGLETS_COMPTA[o]);
+  const groupeCompta = onglet => GROUPES_COMPTA.find(g => g.onglets.includes(onglet)) || GROUPES_COMPTA[1];
+  const ongletDispo = o => !!ONGLETS_COMPTA[o] && (!!livresState.livre || ONGLETS_SANS_LIVRE.includes(o));
+
+  // L'adresse d'un écran de comptabilité : `#/dossier/<id>/comptabilite/<sous-onglet>`. Le
+  // sous-onglet vivait dans la mémoire de la page : « précédent » ne revenait pas dessus, et aucune
+  // autre page — ni la palette — ne pouvait y mener. `pushState` ne déclenche pas de redessin : on
+  // dessine soi-même, une fois.
+  function adresseCompta(dossier, onglet) {
+    return '#/dossier/' + encodeURIComponent(dossier.id) + '/comptabilite/' + onglet;
+  }
+  function allerSousOnglet(root, dossier, onglet) {
+    const s = livresState;
+    if (!ongletDispo(onglet)) onglet = 'journal';
+    if (s.onglet !== onglet) s.page = 1;
+    s.onglet = onglet;
+    const h = adresseCompta(dossier, onglet);
+    if (location.hash !== h) history.pushState(null, '', h);
+    drawLivres(root, dossier);
+  }
+
+  // La pastille d'un sous-onglet : « ce qui attend une décision », jamais un inventaire (T-10).
+  function pastilleCompta(o) {
+    const s = livresState;
+    const L = s.livre;
+    if (!L) return null;
+    if (o === 'saisie') {
+      const n = (L.ecritures || []).filter(e => e.statut === 'brouillard').length;
+      return n && !(L.exercice && L.exercice.clos) ? { n, titre: `${n} en brouillard` } : null;
+    }
+    if (o === 'banque') {
+      const n = (L.releves || []).reduce((a, r) => a + r.lignes.filter(l => !(l.rapprochement && l.rapprochement.ecritureId)).length, 0);
+      return n ? { n, titre: `${n} ligne${n > 1 ? 's' : ''} de relevé sans réponse` } : null;
+    }
+    if (o === 'immobilisations') {
+      const n = (L.immobilisations || []).length ? KC.etatImmobilisations(L, s.annee).aEcrire : 0;
+      return n ? { n, titre: `${n} dont la dotation de l'exercice n'est pas passée` } : null;
+    }
+    // La PAIE (10.3.0) : les mois dont l'écriture n'est pas passée, jamais le nombre de bulletins.
+    if (o === 'paie') {
+      const n = new Set((L.bulletins || []).filter(x => !x.ecritureId).map(x => x.mois)).size;
+      return n ? { n, titre: `${n} mois dont l'écriture de paie n'est pas passée` } : null;
+    }
+    if (o === 'revision') {
+      const n = (L.questions || []).filter(q => q.statut !== 'close' && q.statut !== 'repondue').length;
+      return n ? { n, titre: `${n} question${n > 1 ? 's' : ''} en attente de réponse` } : null;
+    }
+    return null;
+  }
 
   function drawLivres(root, dossier) {
     const s = livresState;
@@ -2369,6 +2543,10 @@
     if (!el) return;
     if (!s.data) { el.innerHTML = '<div class="empty">Lecture des paquets…</div>'; return; }
     if (s.data.erreur) { el.innerHTML = `<div class="warn-box">${esc(s.data.erreur)}</div>`; return; }
+    // Le livre se lit encore : on ne décide de rien. Sans cette garde, un sous-onglet venu de
+    // l'adresse (« banque ») serait jugé indisponible le temps de la lecture et remplacé pour de bon
+    // par le livre-journal.
+    if (!s.livreEtat) { el.innerHTML = '<div class="empty">Lecture du livre…</div>'; return; }
     majSelecteurExercice(root);
     // Aucun paquet, et pas encore de livre : le dossier se TIENT ici, à la main (C-07). Un client
     // hors SkanFact n'enverra jamais rien ; un client sur SkanFact qui n'a encore rien envoyé peut
@@ -2408,7 +2586,10 @@
                 plusieurs minutes et conclu qu'il fallait publier une version. */''}
           Créer le livre ouvre ${ONGLETS_DU_LIVRE.length} onglets de plus : <b>${ONGLETS_DU_LIVRE.slice(0, -1).map(esc).join(', ')}</b> et <b>${esc(ONGLETS_DU_LIVRE[ONGLETS_DU_LIVRE.length - 1])}</b>.</div>
         <div class="modal-actions mb">
-          <button class="btn btn-primary" id="lv-relire">Créer le livre à partir des paquets reçus…</button>
+          ${/* Sans points de suspension (U-27) : ils promettent une fenêtre qui demande quelque chose
+                avant d'agir, et ce geste-là agit tout de suite — sûrement : il ne touche à aucune
+                validée, et son compte rendu propose la suite. */''}
+          <button class="btn btn-primary" id="lv-relire">Créer le livre à partir des paquets reçus</button>
           <button class="btn" id="lv-reprendre">Reprendre ce dossier (balance d'ouverture)…</button>
         </div>`
       : s.livreEtat === 'illisible' || s.livreEtat === 'version-inconnue' || s.livreEtat === 'erreur'
@@ -2422,10 +2603,6 @@
     // chacune, elle finirait par diverger (7.29.0).
     s.periode = periode;
     const avert = [];
-    if (source === 'livre') {
-      const br = s.livre.ecritures.filter(e => e.statut === 'brouillard').length;
-      if (br && !s.brouillard) avert.push(`${pl(br, 'écriture')} en brouillard ${br > 1 ? 'ne sont' : 'n\'est'} pas comptée${br > 1 ? 's' : ''} ici : un brouillard n'est pas encore de la comptabilité. Coche « Voir le brouillard » pour ${br > 1 ? 'les' : 'l\''}afficher.`);
-    }
     if (manquants.length) avert.push(`Il manque ${manquants.length > 3
       ? pl(manquants.length, 'mois', 'mois') + ' sur cette période'
       : manquants.map(moisLabelCourt).join(' et ')} : ces livres sont incomplets.`);
@@ -2459,55 +2636,94 @@
     // D'OÙ viennent ces chiffres. Deux sources, et l'écran le dit en toutes lettres : une balance
     // lue dans les paquets du client et une balance tenue par le cabinet ne disent pas la même
     // chose dès la première saisie, et rien ne permettrait de savoir laquelle on regarde.
-    const bandeau = source === 'livre'
-      ? `<div class="ok-box mb box-gestes"><span><b>Le livre de ${esc(s.annee)}</b> — ${pl((s.livre.ecritures || []).filter(e => e.statut === 'validee').length, 'écriture validée', 'écritures validées')}${
-          (s.livre.ecritures || []).some(e => e.statut === 'brouillard') ? ', ' + pl(s.livre.ecritures.filter(e => e.statut === 'brouillard').length, 'en brouillard', 'en brouillard') : ''}.</span>
-          <label class="check"><input type="checkbox" id="lv-brouillard" ${s.brouillard ? 'checked' : ''}> Voir le brouillard</label>
-          <span class="nw"><button class="btn btn-sm" id="lv-relire2">Relire les paquets reçus</button>${info('lv.relire')}</span></div>`
-      : '';
+    // 10.12.0 (U-01) — elle monte dans la barre de la période : un bandeau vert de 54 px pour dire
+    // « Le livre de 2026 », plus un bandeau orange en dessous, c'étaient deux rangées de plus entre
+    // l'onglet et la grille. Le brouillard non compté ne fait plus une phrase à part : il se lit sur
+    // la case qui le montre (« 3 en brouillard, non comptées »).
+    const nbBr = source === 'livre' ? (s.livre.ecritures || []).filter(e => e.statut === 'brouillard').length : 0;
+    const etatLivre = source === 'livre'
+      ? `<b>Le livre de ${esc(s.annee)}</b> ${info('lv.compta')}
+        <span class="muted">${pl((s.livre.ecritures || []).filter(e => e.statut === 'validee').length, 'écriture validée', 'écritures validées')}</span>
+        ${nbBr ? `<label class="check" title="Un brouillard n'est pas encore de la comptabilité : il n'entre dans les tableaux que si tu coches cette case."><input type="checkbox" id="lv-brouillard" ${s.brouillard ? 'checked' : ''}> Compter ${esc(pl(nbBr, 'écriture'))} en brouillard</label>` : ''}
+        <span class="nw"><button class="btn btn-sm" id="lv-relire2">Relire les paquets reçus</button>${info('lv.relire')}</span>`
+      : `<b>Lu dans les paquets reçus</b> ${info('lv.compta')}`;
+    const barre = $('#c-livre-etat', root) || $('#c-livre-etat');
+    if (barre) barre.innerHTML = etatLivre;
 
-    el.innerHTML = `${sansLivre}${bandeau}${avert.length ? `<div class="warn-box mb">${avert.map(a => `<div>${esc(a)}</div>`).join('')}</div>` : ''}
+    // Les manques et les paquets anciens : sous la barre, seulement quand il y a quelque chose à
+    // dire (U-13 — l'orange est réservé à ce qui demande un geste, et le geste est là). Pas sur les
+    // écrans de SAISIE : « ces livres sont incomplets » parle de ce qu'on lit, et au-dessus de la
+    // grille il repoussait les lignes qu'on tape sous la ligne de flottaison (U-01).
+    const alerte = s.onglet && groupeCompta(s.onglet).id === 'saisir' ? [] : avert;
+    const relancerManquants = manquants.length
+      ? '<div class="c-alerte-geste"><button type="button" class="btn btn-sm" id="lv-relancer">Relancer le client pour ces mois</button></div>' : '';
+
+    // Le second niveau ne montre que les écrans du groupe ouvert. Sans livre, un seul groupe existe
+    // (les quatre vues lues dans les paquets) : on ne pose pas de premier niveau pour un seul choix.
+    if (!ongletDispo(s.onglet)) {
+      s.onglet = 'journal';
+      // L'adresse ne doit pas promettre un écran qu'on ne montre pas (« /banque » sur un dossier
+      // sans livre) : on la corrige sans ajouter d'entrée à l'historique.
+      if (location.hash.startsWith('#/dossier/' + encodeURIComponent(dossier.id) + '/comptabilite/')) {
+        history.replaceState(null, '', adresseCompta(dossier, 'journal'));
+      }
+    }
+    const gOuvert = groupeCompta(s.onglet);
+    s.dernierParGroupe = s.dernierParGroupe || {};
+    s.dernierParGroupe[gOuvert.id] = s.onglet;
+    const groupes = GROUPES_COMPTA.filter(g => g.onglets.some(ongletDispo));
+    const totalGroupe = g => g.onglets.reduce((a, o) => a + ((pastilleCompta(o) || {}).n || 0), 0);
+    const boutonOnglet = o => {
+      const p = pastilleCompta(o);
+      return `<button type="button" role="tab" data-tab="${o}" class="${s.onglet === o ? 'active' : ''}" aria-selected="${s.onglet === o}">${esc(ONGLETS_COMPTA[o])}${
+        o === 'saisie' ? pointSale(dossier.id) : ''}${
+        p ? ` <span class="tab-n" title="${esc(p.titre)}">${p.n}</span>` : ''}${
+        o === 'exercice' && s.livre && s.livre.exercice && s.livre.exercice.clos ? ' <span class="badge b-paid">clos</span>' : ''}</button>`;
+    };
+
+    // L'alerte vit SOUS la barre des groupes, jamais au-dessus (H-6, trouvé en testant comme un
+    // humain) : elle se tait sur « Saisir » (U-01) et parle sur « Consulter », donc posée au-dessus
+    // elle faisait SAUTER la barre de 89 px d'un groupe à l'autre — le bouton qu'on vient de cliquer
+    // partait sous le pointeur. Une barre de navigation ne bouge pas quand on s'en sert.
+    const alerteHtml = alerte.length ? `<div class="warn-box mb c-alerte">${alerte.map(a => `<div>${esc(a)}</div>`).join('')}${relancerManquants}</div>` : '';
+    el.innerHTML = `${sansLivre}
       ${/* Une pastille = « ce qui attend une décision », PARTOUT (T-10). Saisie compte les
             brouillards, Banque les lignes non rapprochées, Immobilisations les biens dont la
             dotation de l'exercice n'est pas passée — jamais le nombre de fiches, qui est un
             inventaire. « clos » n'est pas un compteur : c'est un badge. Et sur un exercice clos, la
             Saisie se tait : un compteur sur un écran qui refuse de traiter apprend à ignorer
-            les pastilles, y compris celles qui disent vrai. */''}
-      <div class="tabs" id="c-tabs">
-        ${s.livre ? `<button data-tab="saisie" class="${s.onglet === 'saisie' ? 'active' : ''}">Saisie${
-          (s.livre.ecritures || []).some(e => e.statut === 'brouillard') && !(s.livre.exercice && s.livre.exercice.clos)
-            ? ` <span class="tab-n">${(s.livre.ecritures || []).filter(e => e.statut === 'brouillard').length}</span>` : ''}</button>` : ''}
-        <button data-tab="journal" class="${s.onglet === 'journal' ? 'active' : ''}">Livre-journal</button>
-        <button data-tab="grand-livre" class="${s.onglet === 'grand-livre' ? 'active' : ''}">Grand livre</button>
-        <button data-tab="balance" class="${s.onglet === 'balance' ? 'active' : ''}">Balance</button>
-        <button data-tab="lettrage" class="${s.onglet === 'lettrage' ? 'active' : ''}">Lettrage</button>
-        ${s.livre ? `<button data-tab="declaration" class="${s.onglet === 'declaration' ? 'active' : ''}">Déclaration</button>` : ''}
-        ${s.livre ? `<button data-tab="banque" class="${s.onglet === 'banque' ? 'active' : ''}">Banque${
-          (() => { const n = (s.livre.releves || []).reduce((a, r) => a + r.lignes.filter(l => !(l.rapprochement && l.rapprochement.ecritureId)).length, 0);
-            return n ? ` <span class="tab-n">${n}</span>` : ''; })()}</button>` : ''}
-        ${s.livre ? `<button data-tab="immobilisations" class="${s.onglet === 'immobilisations' ? 'active' : ''}">Immobilisations${
-  (() => { const n = (s.livre.immobilisations || []).length ? KC.etatImmobilisations(s.livre, s.annee).aEcrire : 0;
-    return n ? ` <span class="tab-n" title="${n} dont la dotation de l'exercice n'est pas passée">${n}</span>` : ''; })()}</button>` : ''}
-        ${s.livre ? `<button data-tab="inventaire" class="${s.onglet === 'inventaire' ? 'active' : ''}">Inventaire</button>` : ''}
-        ${/* La PAIE (10.3.0). La pastille compte les mois dont l'écriture n'est pas passée — ce qui
-              attend une décision, jamais le nombre de bulletins, qui est un inventaire (T-10). */''}
-        ${s.livre ? `<button data-tab="paie" class="${s.onglet === 'paie' ? 'active' : ''}">Paie${
-  (() => { const n = new Set((s.livre.bulletins || []).filter(x => !x.ecritureId).map(x => x.mois)).size;
-    return n ? ` <span class="tab-n" title="${n} mois dont l'écriture de paie n'est pas passée">${n}</span>` : ''; })()}</button>` : ''}
-        ${s.livre ? `<button data-tab="revision" class="${s.onglet === 'revision' ? 'active' : ''}">Révision${
-  (() => { const n = (s.livre.questions || []).filter(q => q.statut !== 'close' && q.statut !== 'repondue').length;
-    return n ? ` <span class="tab-n" title="${n} question${n > 1 ? 's' : ''} en attente de réponse">${n}</span>` : ''; })()}</button>` : ''}
-        ${s.livre ? `<button data-tab="exercice" class="${s.onglet === 'exercice' ? 'active' : ''}">Exercice${
-  s.livre.exercice && s.livre.exercice.clos ? ' <span class="badge b-paid">clos</span>' : ''}</button>` : ''}
-        ${s.livre ? `<button data-tab="liasse" class="${s.onglet === 'liasse' ? 'active' : ''}">Liasse</button>` : ''}
-        ${s.livre ? `<button data-tab="recherche" class="${s.onglet === 'recherche' ? 'active' : ''}">Recherche</button>` : ''}
-      </div>${corps}`;
+            les pastilles, y compris celles qui disent vrai. Le groupe additionne celles de ses
+            écrans : on voit où l'attention est demandée sans ouvrir chaque groupe. */''}
+      <div class="c-nav">
+        ${groupes.length > 1 ? `<div class="c-groupes" id="c-groupes" role="tablist" aria-label="Que fais-tu dans ce dossier ?">${groupes.map(g => {
+          const n = totalGroupe(g);
+          return `<button type="button" role="tab" data-groupe="${g.id}" class="${g.id === gOuvert.id ? 'active' : ''}" aria-selected="${g.id === gOuvert.id}">${esc(g.label)}${
+            g.id === 'saisir' ? pointSale(dossier.id) : ''}${n ? ` <span class="tab-n">${n}</span>` : ''}</button>`;
+        }).join('')}</div>` : ''}
+        <div class="tabs" id="c-tabs" role="tablist" aria-label="${esc(gOuvert.label)}">${gOuvert.onglets.filter(ongletDispo).map(boutonOnglet).join('')}</div>
+      </div>${alerteHtml}${corps}`;
 
-    $$('#c-tabs button', el).forEach(b => { b.onclick = () => { s.onglet = b.dataset.tab; s.page = 1; drawLivres(root, dossier); }; });
-    const cb = $('#lv-brouillard', el);
+    $$('#c-tabs button', el).forEach(b => { b.onclick = () => allerSousOnglet(root, dossier, b.dataset.tab); });
+    // Un groupe ouvre l'écran qu'on y avait laissé, sinon son premier : on revient là où on était.
+    $$('#c-groupes button', el).forEach(b => {
+      b.onclick = () => {
+        const g = GROUPES_COMPTA.find(x => x.id === b.dataset.groupe);
+        if (!g) return;
+        const avant = (s.dernierParGroupe || {})[g.id];
+        allerSousOnglet(root, dossier, ongletDispo(avant) && g.onglets.includes(avant) ? avant : g.onglets.find(ongletDispo));
+      };
+    });
+    // La case du brouillard et « Relire » vivent dans la barre de la période, HORS de `el`.
+    const cb = $('#lv-brouillard');
     if (cb) cb.onchange = () => { s.brouillard = cb.checked; drawLivres(root, dossier); };
-    [$('#lv-relire', el), $('#lv-relire2', el)].forEach(b => { if (b) b.onclick = () => relireLesPaquets(root, dossier); });
+    [$('#lv-relire', el), $('#lv-relire2')].forEach(b => { if (b) b.onclick = () => relireLesPaquets(root, dossier); });
     const rp = $('#lv-reprendre', el); if (rp) rp.onclick = () => repriseForm(root, dossier);
+    // Le manque NOMMÉ porte son geste (7.15.0) : la relance part préremplie sur CES mois-là.
+    const rm = $('#lv-relancer', el);
+    if (rm) rm.onclick = () => {
+      const r = K.dossierList(S).find(x => x.id === dossier.id);
+      if (r) writeRelance({ ...r, missingMonths: manquants.slice() });
+    };
     if (s.onglet === 'saisie') { brancherSaisie(el, root, dossier); dessinerAbonnements(el, dossier); }
     else if (s.onglet === 'recherche') brancherRecherche(el, root, dossier);
     else if (s.onglet === 'banque') brancherBanque(el, root, dossier);
@@ -2522,6 +2738,7 @@
     // APRÈS le dessin, jamais pendant (7.27.0) : un `scrollIntoView` posé dans un gabarit est
     // effacé par le `innerHTML` qui suit.
     focaliser(el);
+    signalerSaisies();
   }
 
   // Le livre-journal : une pièce par (date, journal, numéro), numérotée 1..n. Le filtre de journal
@@ -3146,7 +3363,7 @@
     const rep = $('#cl-reprise', el);
     if (rep) rep.onclick = () => repriseForm(root, dossier);
     const vli = $('#cl-liasse', el);
-    if (vli) vli.onclick = () => { s.onglet = 'liasse'; drawLivres(root, dossier); };
+    if (vli) vli.onclick = () => allerSousOnglet(root, dossier, 'liasse');
     const fus = $('#cl-fusion', el);
     if (fus) fus.onclick = () => fusionnerLivre(root, dossier);
     const clo = $('#cl-cloturer', el);
@@ -3196,7 +3413,12 @@
   async function ouvrirExercice(root, dossier, annee, onglet) {
     const s = livresState;
     s.mode = 'exercice'; s.annee = String(annee); s.page = 1;
-    if (onglet) s.onglet = onglet;
+    if (onglet) {
+      s.onglet = onglet;
+      // L'adresse suit l'écran (U-06) : sans elle, le prochain redessin ramènerait l'ancien onglet.
+      const h = adresseCompta(dossier, onglet);
+      if (location.hash !== h) history.pushState(null, '', h);
+    }
     s.livreCle = dossier.id + '|' + s.annee;
     await chargerLeLivre(dossier);
     const mode = $('#lv-mode'); if (mode) mode.value = 'exercice';
@@ -3377,7 +3599,7 @@
         const ligne = {
           id: 'rt' + Date.now().toString(36), nature: sel.value,
           libelle: $('#rt-libelle', couche).value.trim(),
-          montant: Number(String($('#rt-montant', couche).value).replace(',', '.')) || 0
+          montant: lireMontant($('#rt-montant', couche).value)
         };
         const v = KC.retraitementValide(ligne);
         if (!v.ok) return toast(v.motifs[0], 'error');
@@ -3992,14 +4214,16 @@
           duree: Number(v('duree')) || 0,
           dateMiseEnService: jour('dateMiseEnService'),
           dateAcquisition: jour('dateAcquisition') || jour('dateMiseEnService'),
-          valeur: Number(String(v('valeur')).replace(',', '.')) || 0,
-          residuelle: Number(String(v('residuelle')).replace(',', '.')) || 0,
+          valeur: lireMontant(v('valeur')),
+          residuelle: lireMontant(v('residuelle')),
           methode: v('methode'),
           tauxDegressif: v('tauxDegressif') === '' ? null : Number(String(v('tauxDegressif')).replace(',', '.')),
           bascule: !!($('[name=bascule]', rootModal) || {}).checked,
           compte: v('compte'), compteAmort: v('compteAmort'), compteDotation: v('compteDotation'),
-          subvention: v('subvention') ? { montant: Number(String(v('subvention')).replace(',', '.')) || 0 } : null,
-          cession: cd ? { date: cd, prix: Number(String(v('cessionPrix')).replace(',', '.')) || 0, motif: Number(v('cessionPrix')) ? 'cession' : 'rebut' } : null,
+          subvention: v('subvention') ? { montant: lireMontant(v('subvention')) } : null,
+          // Le motif se lit sur le prix LU, jamais sur le texte : « 1 500,000 » donnait `Number` NaN,
+          // et une vraie cession s'écrivait « mise au rebut » (H-3).
+          cession: cd ? { date: cd, prix: lireMontant(v('cessionPrix')), motif: lireMontant(v('cessionPrix')) ? 'cession' : 'rebut' } : null,
           origine: f.origine || { source: 'saisie', docId: '', mois: '' }
         };
       };
@@ -4840,7 +5064,7 @@
           if (!compte || !premiere) return;
           const avant = KC.lignesBancaires(s.livre, compte).filter(c => c.date < premiere);
           const solde = KC.round3(avant.reduce((a, c) => a + c.montant, 0));
-          champDebut.value = solde.toFixed(3);
+          champDebut.value = montantChamp(solde) || '0';
           if (hint) hint.textContent = `d'après le livre : ${money(solde)} au ${fmtJour(premiere)} (veille de la première ligne)`;
         };
         const montrer = () => {
@@ -4942,7 +5166,40 @@
   // on met à jour la donnée, puis le seul élément qui en dépend (`#sa-solde`). Redessiner la grille
   // à chaque caractère détruirait le champ sous le curseur — c'est le défaut de la 7.17.0, et il
   // rendait un champ littéralement impossible à remplir.
-  const saisieState = { dossierId: '', piece: null, focusApres: null };
+  const saisieState = { dossierId: '', piece: null, focusApres: null, enAttente: {} };
+
+  // 10.12.0 (U-09) — une pièce COMMENCÉE et pas enregistrée. Elle vivait en mémoire, sans trace :
+  // fermer la fenêtre l'effaçait sans une question, et ouvrir la saisie d'un AUTRE client la
+  // remplaçait par une pièce vide. Trois parades : elle est garée par dossier (`enAttente`) au lieu
+  // d'être écrasée, un point le dit sur l'onglet, et la fermeture de la fenêtre demande.
+  // « Touchée » ET « commencée » : la date et le journal proposés ne comptent pas, un champ tapé
+  // puis vidé non plus — on ne demande pas de confirmer la perte d'une pièce vide.
+  const pieceCommencee = p => !!p && (lignesReelles(p).length > 0 || !!String(p.libelle || '').trim()
+    || !!String(p.piece || '').trim() || !!p.pieceJointe);
+  const pieceEnCours = p => !!(p && p.touchee && pieceCommencee(p));
+  const saleDe = id => (saisieState.dossierId === id && pieceEnCours(saisieState.piece)) || pieceEnCours(saisieState.enAttente[id]);
+  // Le point qui le dit. Un point SEUL ne dit rien (9.4.4) : il porte son titre, et son nom pour
+  // qui ne voit pas l'écran.
+  const pointSale = id => `<span class="sa-sale" data-sale="${esc(id)}" role="img" aria-label="Une pièce commencée n'est pas enregistrée" title="Une pièce commencée n'est pas enregistrée"${saleDe(id) ? '' : ' hidden'}>●</span>`;
+  // Les NOMS des dossiers dont une pièce commencée n'est pas enregistrée — ce que la fermeture et
+  // l'installation d'une mise à jour nomment avant de fermer.
+  function nomsDesSaisies() {
+    const ids = Object.keys(saisieState.enAttente).filter(id => pieceEnCours(saisieState.enAttente[id]));
+    if (pieceEnCours(saisieState.piece) && saisieState.dossierId) ids.unshift(saisieState.dossierId);
+    return [...new Set(ids)].map(id => ((S.dossiers || []).find(d => d.id === id) || {}).name).filter(Boolean);
+  }
+  // `null` et pas '' : une interface qui (re)démarre DIT qu'elle n'a rien en cours, même si c'est
+  // aussi ce qu'elle disait avant. Sinon, après un rechargement, le processus principal garde la
+  // liste de l'interface précédente et demande pour une pièce qui n'existe plus (7.28.0 : un
+  // drapeau se remet à jour quand l'état DISPARAÎT, pas seulement quand il se pose).
+  let dernierSignal = null;
+  function signalerSaisies() {
+    const noms = nomsDesSaisies();
+    const cle = noms.join('|');
+    if (cle !== dernierSignal) { dernierSignal = cle; try { api.saisieEnCours(noms); } catch (_) { /* pont absent en test */ } }
+    // Le point de l'onglet se met à jour SANS redessiner : on est au milieu d'une frappe (7.17.0).
+    $$('[data-sale]').forEach(x => { x.hidden = !saleDe(x.dataset.sale); });
+  }
 
   // Un jour du calendrier, jamais un instant : `K.today()` rend le jour LOCAL, et la comparaison se
   // fait sur des chaînes `AAAA-MM-JJ` — aucune arithmétique de date, donc aucune question de fuseau
@@ -4966,13 +5223,38 @@
   // Les lignes telles que le moteur les attend : les champs texte redeviennent des nombres ici, et
   // nulle part ailleurs. Une ligne entièrement vide ne compte pas — on en laisse toujours une au
   // bout de la grille pour pouvoir taper la suivante.
+  // Les montants passent par `lireMontant` (H-3) : « 1 250,500 » tapé avec l'espace des milliers
+  // valait zéro, et la ligne « n'avait aucun montant » sous les yeux de qui venait de le taper.
   const lignesReelles = p => (p.lignes || [])
-    .filter(l => String(l.compte || '').trim() || Number(l.debit) || Number(l.credit))
+    .filter(l => String(l.compte || '').trim() || lireMontant(l.debit) || lireMontant(l.credit))
     .map(l => ({
       compte: String(l.compte || '').trim(), libelle: String(l.libelle || ''),
-      debit: Number(String(l.debit).replace(',', '.')) || 0,
-      credit: Number(String(l.credit).replace(',', '.')) || 0
+      debit: lireMontant(l.debit),
+      credit: lireMontant(l.credit)
     }));
+
+  // Un montant qu'on ne sait pas lire n'est pas un zéro : « 12a » passait pour une ligne « sans
+  // montant ». Le refus NOMME la case et ce qui y est écrit (règle 10.10.0 : une cellule illisible
+  // se refuse en nommant la ligne). Et c'est la MÊME fonction qui éteint les boutons pendant la
+  // frappe et qui refuse à l'enregistrement (9.4.5) : `verdictSaisie`.
+  // UNE définition de « illisible », pour la phrase, pour la case marquée pendant la frappe ET pour
+  // la case redessinée : la marque ne posait qu'à la frappe, et une pièce rouverte gardait « 12a »
+  // sans rouge pendant que la phrase le nommait.
+  const montantIllisible = v => { const brut = String(v == null ? '' : v).trim(); return !!brut && !Number.isFinite(KC.nombreStrict(brut)); };
+  const montantsIllisibles = p => {
+    const out = [];
+    (p.lignes || []).forEach((l, i) => ['debit', 'credit'].forEach(k => {
+      if (montantIllisible(l[k])) {
+        out.push(`Ligne ${i + 1} : « ${String(l[k]).trim()} » n'est pas un montant (${k === 'debit' ? 'débit' : 'crédit'}).`);
+      }
+    }));
+    return out;
+  };
+  const verdictSaisie = (p, plan, opts) => {
+    const illisibles = montantsIllisibles(p);
+    if (illisibles.length) return { ok: false, motif: illisibles[0], motifs: illisibles };
+    return KC.ecritureValide(ecritureSaisie(p), plan, opts);
+  };
 
   const ecritureSaisie = p => ({
     date: p.date, journal: p.journal, piece: p.piece, libelle: p.libelle,
@@ -5048,7 +5330,17 @@
       return `<div class="warn-box"><b>L'exercice ${esc(s.annee)} est clos.</b> On n'y saisit plus. Rouvre-le si tu dois vraiment y toucher : la réouverture demande un motif, et c'est elle qui expliquera plus tard pourquoi un chiffre a changé.</div>`;
     }
     if (!saisieState.piece || saisieState.dossierId !== dossier.id) {
+      // Une pièce commencée pour un AUTRE client se gare, elle ne s'écrase pas (U-09) : on la
+      // retrouve telle quelle en revenant sur son dossier.
+      if (saisieState.dossierId && saisieState.dossierId !== dossier.id && pieceEnCours(saisieState.piece)) {
+        saisieState.enAttente[saisieState.dossierId] = saisieState.piece;
+      }
+      const garee = saisieState.enAttente[dossier.id];
+      delete saisieState.enAttente[dossier.id];
       saisieState.dossierId = dossier.id;
+      saisieState.piece = garee || null;
+    }
+    if (!saisieState.piece) {
       const j = r.journalParDefaut || dossier.dernierJournal || (s.livre.journaux[0] || {}).code || '';
       // La date est PROPOSÉE : aujourd'hui si l'on est dans l'exercice ouvert, sinon son dernier
       // jour. La grille s'ouvrait vide, et le refus annonçait « La date manque » sur un écran où
@@ -5061,27 +5353,33 @@
       .slice().sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
     const guides = K.guidesDuDossier(S, dossier);
 
-    return `<div class="sa-tete">
-        <label class="field"><span class="fl">Journal ${info('sa.journal')}</span>
+    return `<div class="sa-tete" id="sa-tete">
+        <label class="field sa-j"><span class="fl">Journal ${info('sa.journal')}</span>
           <select id="sa-journal">${s.livre.journaux.map(j => `<option value="${esc(j.code)}" ${p.journal === j.code ? 'selected' : ''}>${esc(j.code)} — ${esc(j.libelle)}</option>`).join('')}</select></label>
-        <label class="field"><span class="fl">Date ${info('sa.date')}</span>
+        <label class="field sa-d"><span class="fl">Date ${info('sa.date')}</span>
           ${/* Le champ montre le jour en FRANÇAIS, la pièce garde l'ISO. L'écran affichait
                 « 2026-09-17 » sous une invite qui annonce « 04/03/2026 » : le format interne
                 fuyait dans l'écran où un comptable tunisien lit une date. La saisie reste
                 tolérante — `dateTapee` accepte 4, 4/3, 04/03/2026 et l'ISO. */''}
           <input id="sa-date" autocomplete="off" placeholder="${r.dateComplete ? '04/03/2026' : '4'}" value="${esc(dateAffichee(p.date, r))}"></label>
-        <label class="field"><span class="fl">Pièce ${info('sa.piece')}</span>
+        <label class="field sa-p"><span class="fl">Pièce ${info('sa.piece')}</span>
           <input id="sa-piece" autocomplete="off" value="${esc(p.piece)}"></label>
         <label class="field sa-grow"><span class="fl">Libellé ${info('sa.libelle')}</span>
           <input id="sa-libelle" autocomplete="off" value="${esc(p.libelle)}"></label>
+        ${/* 10.12.0 (U-01) — « Joindre » vit au bout de la ligne des champs, et l'aide des touches
+              sous la grille : chacune coûtait une rangée AU-DESSUS, entre l'en-tête de la pièce et
+              ses lignes — sur un portable, c'était la grille qu'on ne voyait plus. */''}
+        <button type="button" class="btn btn-sm sa-joindre" id="sa-joindre">${p.pieceJointe ? 'Justificatif joint ✓' : 'Joindre un justificatif…'}</button>
       </div>
-      <div class="sa-outils">
-        ${guides.length ? `<select id="sa-guide" aria-label="Partir d'un guide d'écritures"><option value="">Partir d'un guide…</option>${guides.map(g => `<option value="${esc(g.id)}">${esc(g.nom)}</option>`).join('')}</select>
-          <input id="sa-guide-montant" class="sa-montant" inputmode="decimal" placeholder="Montant" autocomplete="off">` : ''}
-        <button type="button" class="btn btn-sm" id="sa-joindre">${p.pieceJointe ? 'Justificatif joint ✓' : 'Joindre un justificatif…'}</button>
-        ${aideTouches()}
-      </div>
-      <div class="scroll-x"><table class="list compact sa-grille"><thead><tr>
+      ${guides.length ? `<div class="sa-outils">
+        <select id="sa-guide" aria-label="Partir d'un guide d'écritures"><option value="">Partir d'un guide…</option>${guides.map(g => `<option value="${esc(g.id)}">${esc(g.nom)}</option>`).join('')}</select>
+          <input id="sa-guide-montant" class="sa-montant" inputmode="decimal" placeholder="Montant" aria-label="Montant du guide" autocomplete="off">
+      </div>` : ''}
+      ${/* 10.12.0 (U-26) — des largeurs FIXES : l'intitulé du compte apparaît pendant la frappe, et
+            la grille se recalculait à chaque caractère — les colonnes sautaient sous le curseur. */''}
+      <div class="scroll-x"><table class="list compact sa-grille"><colgroup>
+        <col class="sa-c-compte"><col class="sa-c-nom"><col class="sa-c-lib"><col class="sa-c-mt"><col class="sa-c-mt"><col class="sa-c-sup">
+      </colgroup><thead><tr>
         <th class="nw">Compte</th><th>Intitulé</th><th>Libellé</th>
         <th class="r nw">Débit</th><th class="r nw">Crédit</th><th></th></tr></thead>
         <tbody id="sa-lignes">${lignesSaisieHtml()}</tbody>
@@ -5104,6 +5402,10 @@
           <button type="button" class="btn btn-primary" id="sa-okvalider">Enregistrer et valider</button>
         </div>
       </div>
+      ${/* Les touches : sous la grille, là où les doigts les cherchent pendant qu'ils tapent — et
+            repliables, le choix retenu. Un comptable qui les connaît n'a pas à les relire à chaque
+            pièce ; un débutant les trouve à l'endroit du geste. */''}
+      <details class="sa-touches" id="sa-touches"${prefs.get('saTouches', true) === false ? '' : ' open'}><summary>Les touches de la grille</summary>${aideTouches()}</details>
       <h2 class="mt">Le brouillard ${info('sa.brouillard')}</h2>
       ${/* Les lots proposés sont ceux qui EXISTENT dans le brouillard (T-29) : « Valider tout le
             journal VT » quand le seul brouillard est en BQ ouvrait une fenêtre pour dire qu'il n'y
@@ -5159,8 +5461,8 @@
       <td><input data-k="compte" class="sa-compte" ${lab('Compte', i)} autocomplete="off" value="${esc(l.compte)}"></td>
       <td class="sa-nom muted small" data-nom="${i}">${esc(nom(l.compte))}</td>
       <td><input data-k="libelle" ${lab('Libellé', i)} autocomplete="off" value="${esc(l.libelle)}"></td>
-      <td><input data-k="debit" class="r sa-montant" ${lab('Débit', i)} inputmode="decimal" autocomplete="off" value="${esc(l.debit)}"></td>
-      <td><input data-k="credit" class="r sa-montant" ${lab('Crédit', i)} inputmode="decimal" autocomplete="off" value="${esc(l.credit)}"></td>
+      <td><input data-k="debit" class="r sa-montant${montantIllisible(l.debit) ? ' sa-ko' : ''}" ${lab('Débit', i)}${montantIllisible(l.debit) ? ' aria-invalid="true"' : ''} inputmode="decimal" autocomplete="off" value="${esc(l.debit)}"></td>
+      <td><input data-k="credit" class="r sa-montant${montantIllisible(l.credit) ? ' sa-ko' : ''}" ${lab('Crédit', i)}${montantIllisible(l.credit) ? ' aria-invalid="true"' : ''} inputmode="decimal" autocomplete="off" value="${esc(l.credit)}"></td>
       <td class="sa-sup"><button type="button" class="btn btn-sm" data-sup="${i}" title="Retirer cette ligne" aria-label="Retirer cette ligne">✕</button></td>
     </tr>`).join('');
   }
@@ -5224,9 +5526,8 @@
       // libellé (T-51). Éteindre le brouillard sur le motif de la validation enfermerait la saisie
       // en cours ; ne rien dire ferait cliquer un bouton vif pour lire un refus.
       const plan = ((s.livre || {}).plan || []).map(c => c.compte);
-      const ecr = ecritureSaisie(p);
-      const v = KC.ecritureValide(ecr, plan);
-      const vv = KC.ecritureValide(ecr, plan, { valider: true });
+      const v = verdictSaisie(p, plan);
+      const vv = verdictSaisie(p, plan, { valider: true });
       const motif = $('#sa-refus', el);
       const bOk = $('#sa-ok', el), bVal = $('#sa-okvalider', el);
       if (bOk) { bOk.disabled = !v.ok; bOk.title = v.ok ? '' : v.motif; }
@@ -5268,6 +5569,7 @@
         const i = ligneDe(inp), k = inp.dataset.k;
         inp.oninput = () => {
           p.lignes[i][k] = inp.value;
+          p.touchee = true;
           if (k === 'compte') {
             const c = (s.livre.plan || []).find(x => x.compte === inp.value.trim());
             const cell = $(`[data-nom="${i}"]`, corps);
@@ -5284,7 +5586,13 @@
               if (el2) el2.value = '';
             }
           }
+          // La case qu'on ne sait pas lire se VOIT, pas seulement dans la phrase sous la grille (H-3).
+          if (k === 'debit' || k === 'credit') {
+            inp.classList.toggle('sa-ko', montantIllisible(inp.value));
+            if (montantIllisible(inp.value)) inp.setAttribute('aria-invalid', 'true'); else inp.removeAttribute('aria-invalid');
+          }
           majSolde();
+          signalerSaisies();
         };
         inp.onkeydown = ev => {
           const touche = toucheDe(ev);
@@ -5310,15 +5618,15 @@
             const prop = soldeProposable();
             if (prop && prop.i === i) {
               ev.preventDefault();
-              p.lignes[i].debit = prop.debit ? prop.debit.toFixed(3) : '';
-              p.lignes[i].credit = prop.credit ? prop.credit.toFixed(3) : '';
+              p.lignes[i].debit = montantChamp(prop.debit);
+              p.lignes[i].credit = montantChamp(prop.credit);
               redessinerLignes({ i, k: prop.debit ? 'debit' : 'credit' });
             }
           }
         };
         if (k === 'compte') {
           suggererCompte(inp, () => s.livre.plan || [], c => {
-            p.lignes[i].compte = c.compte;
+            p.lignes[i].compte = c.compte; p.touchee = true;
             if (!String(p.lignes[i].libelle || '').trim()) p.lignes[i].libelle = c.libelle || '';
             redessinerLignes({ i, k: 'libelle' });
           });
@@ -5328,20 +5636,24 @@
         b.onclick = () => {
           const i = Number(b.dataset.sup);
           if (p.lignes.length <= 1) { p.lignes[0] = ligneVide(); } else { p.lignes.splice(i, 1); }
+          p.touchee = true;
           redessinerLignes();
+          signalerSaisies();
         };
       });
     }
 
     // L'entête : chaque champ écrit dans la pièce, aucun ne redessine la grille.
     const j = $('#sa-journal', el);
-    if (j) j.onchange = () => { p.journal = j.value; api.dernierJournal(dossier.id, j.value).catch(() => {}); };
+    if (j) j.onchange = () => { p.journal = j.value; p.touchee = true; api.dernierJournal(dossier.id, j.value).catch(() => {}); };
     const dt = $('#sa-date', el);
     if (dt) {
       const lire = () => {
         const iso = K.dateTapee(dt.value, s.annee, p.date || `${s.annee}-${String(new Date().getMonth() + 1).padStart(2, '0')}`);
         p.date = iso || '';
-        dt.classList.toggle('sa-ko', !!dt.value.trim() && !iso);
+        const ko = !!dt.value.trim() && !iso;
+        dt.classList.toggle('sa-ko', ko);
+        if (ko) dt.setAttribute('aria-invalid', 'true'); else dt.removeAttribute('aria-invalid');
         if (iso) dt.value = dateAffichee(iso, r);
       };
       dt.onblur = lire;
@@ -5351,8 +5663,8 @@
       // parcours réel qui l'a montré, jamais la relecture.
       dt.onfocus = () => dt.select();
     }
-    const pc = $('#sa-piece', el); if (pc) pc.oninput = () => { p.piece = pc.value; };
-    const lb = $('#sa-libelle', el); if (lb) lb.oninput = () => { p.libelle = lb.value; };
+    const pc = $('#sa-piece', el); if (pc) pc.oninput = () => { p.piece = pc.value; p.touchee = true; signalerSaisies(); };
+    const lb = $('#sa-libelle', el); if (lb) lb.oninput = () => { p.libelle = lb.value; p.touchee = true; signalerSaisies(); };
 
     // L'en-tête a sa propre chaîne, et c'est ENTRÉE — la même touche que dans la grille. Tab ne
     // peut pas la faire : chaque libellé porte sa bulle « i », qui est un vrai bouton et prend donc
@@ -5379,14 +5691,15 @@
       gs.onchange = () => {
         const g = K.guidesDuDossier(S, dossier).find(x => x.id === gs.value);
         if (!g) return;
-        const montant = Number(String(($('#sa-guide-montant', el) || {}).value || '').replace(',', '.')) || 0;
+        const montant = lireMontant(($('#sa-guide-montant', el) || {}).value);
         const ecr = KC.ecritureDepuisGuide(g, { date: p.date, journal: g.journal, piece: p.piece, libelle: p.libelle, montant });
         p.journal = ecr.journal; p.libelle = ecr.libelle;
         p.lignes = ecr.lignes.map(l => ({
           compte: l.compte, libelle: l.libelle,
-          debit: l.debit ? l.debit.toFixed(3) : '', credit: l.credit ? l.credit.toFixed(3) : ''
+          debit: montantChamp(l.debit), credit: montantChamp(l.credit)
         }));
         p.lignes.push(ligneVide());
+        p.touchee = true;
         gs.value = '';
         drawLivres(root, dossier);
       };
@@ -5394,11 +5707,13 @@
 
     const jo = $('#sa-joindre', el);
     if (jo) jo.onclick = () => joindreJustificatif(root, dossier);
+    const tch = $('#sa-touches', el);
+    if (tch) tch.addEventListener('toggle', () => prefs.set('saTouches', tch.open));
 
     const dupliquerPiece = () => {
       const base = lignesReelles(p);
       if (!base.length) return;
-      p.lignes = base.map(l => ({ compte: l.compte, libelle: l.libelle, debit: l.debit ? l.debit.toFixed(3) : '', credit: l.credit ? l.credit.toFixed(3) : '' }))
+      p.lignes = base.map(l => ({ compte: l.compte, libelle: l.libelle, debit: montantChamp(l.debit), credit: montantChamp(l.credit) }))
         .concat([ligneVide()]);
       p.id = ''; p.piece = '';
       toast('Pièce dupliquée : la nouvelle n\'a ni numéro ni pièce, tape-les.');
@@ -5410,18 +5725,21 @@
       // Le contrôle porte sur le geste DEMANDÉ : valider exige un libellé, le brouillard non
       // (T-51). Sans ce drapeau, le pont refusait la validation APRÈS l'enregistrement, et l'écran
       // annonçait « Enregistrement impossible » sur une pièce pourtant bien rangée en brouillard.
-      const v = KC.ecritureValide(ecr, (s.livre.plan || []).map(c => c.compte), puisValider ? { valider: true } : null);
+      const v = verdictSaisie(p, (s.livre.plan || []).map(c => c.compte), puisValider ? { valider: true } : null);
       // Une saisie refusée se MONTRE : on amène le champ fautif à l'écran et on y met le curseur
-      // (règle 7.0.0). Un message seul oblige à relire toute la grille.
+      // (règle 7.0.0). Un message seul oblige à relire toute la grille. Un montant illisible amène
+      // à SA case, pas au compte de la ligne.
       if (!v.ok) {
         const premier = v.motifs[0] || v.motif;
-        if (/date/i.test(premier) && dt) { dt.focus(); dt.classList.add('sa-ko'); }
+        const illisible = /n'est pas un montant \((débit|crédit)\)/.exec(premier);
+        // Le montant illisible passe EN PREMIER : sa phrase cite ce qui est écrit dans la case, et
+        // « « date » n'est pas un montant » enverrait sinon le curseur dans le champ Date.
+        const ligneFautive = /Ligne (\d+)/.exec(premier);
+        if (illisible && ligneFautive) allerA(Number(ligneFautive[1]) - 1, illisible[1] === 'débit' ? 'debit' : 'credit');
+        else if (/date/i.test(premier) && dt) { dt.focus(); dt.classList.add('sa-ko'); dt.setAttribute('aria-invalid', 'true'); }
         else if (/journal/i.test(premier) && j) j.focus();
         else if (/libellé/i.test(premier) && lb) lb.focus();
-        else {
-          const m = /Ligne (\d+)/.exec(premier);
-          if (m) allerA(Number(m[1]) - 1, 'compte');
-        }
+        else if (ligneFautive) allerA(Number(ligneFautive[1]) - 1, 'compte');
         await infoDialog('Cette écriture n\'entre pas', v.motifs.join('\n'));
         return;
       }
@@ -5447,8 +5765,22 @@
 
     const ok = $('#sa-ok', el); if (ok) ok.onclick = () => enregistrer(false);
     const okv = $('#sa-okvalider', el); if (okv) okv.onclick = () => enregistrer(true);
+    // « Vider » jetait une pièce commencée sans un mot ni un retour (U-09) : ce qui se répare laisse
+    // un « Annuler » sous la main (7.12.0) — on rend la pièce telle qu'elle était, lignes comprises.
     const vd = $('#sa-vider', el);
-    if (vd) vd.onclick = () => { saisieState.piece = pieceVide(p.journal, p.date); drawLivres(root, dossier); };
+    if (vd) vd.onclick = () => {
+      const avant = saisieState.piece;
+      saisieState.piece = pieceVide(p.journal, p.date);
+      drawLivres(root, dossier);
+      if (pieceEnCours(avant)) {
+        toastUndo('Pièce vidée.', () => {
+          // Rendue à SON dossier : si l'on est passé à un autre client entre-temps, elle attend là
+          // où elle était, comme toute pièce commencée qu'on quitte.
+          if (saisieState.dossierId === dossier.id && $('#sa-lignes')) { saisieState.piece = avant; drawLivres(root, dossier); }
+          else { saisieState.enAttente[dossier.id] = avant; signalerSaisies(); }
+        });
+      }
+    };
 
     $$('[data-lot-journal]', el).forEach(b => { b.onclick = () => validerUnLot(root, dossier, { journal: b.dataset.lotJournal }); });
     $$('[data-lot-mois]', el).forEach(b => { b.onclick = () => validerUnLot(root, dossier, { mois: b.dataset.lotMois }); });
@@ -5477,7 +5809,7 @@
     pieceJointe: e.pieceJointe || null,
     lignes: (e.lignes || []).map(l => ({
       compte: l.compte, libelle: l.libelle,
-      debit: l.debit ? Number(l.debit).toFixed(3) : '', credit: l.credit ? Number(l.credit).toFixed(3) : ''
+      debit: montantChamp(l.debit), credit: montantChamp(l.credit)
     })).concat([ligneVide()])
   });
 
@@ -5508,7 +5840,7 @@
           'Enregistrer et joindre');
         if (!suite) return;
         const ecr = ecritureSaisie(saisieState.piece);
-        const v = KC.ecritureValide(ecr, (s.livre.plan || []).map(c => c.compte));
+        const v = verdictSaisie(saisieState.piece, (s.livre.plan || []).map(c => c.compte));
         if (!v.ok) { await infoDialog('Cette écriture n\'entre pas', v.motifs.join('\n')); return; }
         try {
           const res = await api.saisir(dossier.id, s.annee, ecr);
@@ -5671,7 +6003,7 @@
           if (!nom) return refus($('#ab-nom', layer), 'Donne un nom à cet abonnement : c\'est lui que tu liras dans la liste.');
           const depuis = $('#ab-depuis', layer).value;
           if (!/^\d{4}-\d{2}-\d{2}$/.test(depuis)) return refus($('#ab-depuis', layer), 'Il faut une date de départ : c\'est elle qui dit à partir de quel mois générer.');
-          const montant = Number(String($('#ab-montant', layer).value).replace(',', '.'));
+          const montant = lireMontant($('#ab-montant', layer).value);
           if (!Number.isFinite(montant) || montant <= 0) return refus($('#ab-montant', layer), 'Le montant doit être un nombre positif : c\'est lui que le guide répartit.');
           const neuf = {
             ...a, nom, guideId: $('#ab-guide', layer).value, depuis,
@@ -5764,7 +6096,7 @@
       a.push({ icon: 'oui', label: 'Valider cette écriture', hint: 'Elle prend son numéro et ne se modifiera plus',
         run: () => validerEcriture(root, dossier, e) });
       a.push({ icon: 'modifier', label: 'Reprendre dans la grille', hint: 'Elle remonte dans la saisie, modifiable',
-        run: () => { saisieState.piece = pieceDepuis(e); livresState.onglet = 'saisie'; drawLivres(root, dossier); } });
+        run: () => { saisieState.piece = pieceDepuis(e); allerSousOnglet(root, dossier, 'saisie'); } });
       a.push({ icon: 'supprimer', label: 'Supprimer ce brouillard', hint: 'Il n\'a pas de numéro : rien ne restera', danger: true,
         run: () => supprimerBrouillard(root, dossier, e) });
     }
@@ -6374,6 +6706,17 @@
   // est fausse le jour où quelqu'un oublie de cocher.
   let prodState = { lignes: null, etapes: [], collaborateurs: [], collab: '', mois: 12 };
 
+  // 10.12.0 (U-17) — une FORME par état. « Reçu » et « hors mission » portaient le même point,
+  // « à réviser » et « à déclarer » le même rond : seule la couleur les distinguait, et une couleur
+  // seule n'est pas une information (9.4.4). Et la légende de `recu` disait « reçu, rien de saisi »
+  // pour l'étape où le paquet n'est justement PAS arrivé — l'étape est celle où le mois est BLOQUÉ.
+  // Une seule table pour les cases et la légende : écrites à deux endroits, elles avaient divergé.
+  const SIGNE_PRODUCTION = { recu: '○', saisi: '!', revise: '◐', declare: '◉', fini: '✓', hors: '–' };
+  const LEGENDE_PRODUCTION = [
+    ['recu', 'pas encore reçu'], ['saisi', 'reçu, rien de saisi'], ['revise', 'saisi, à réviser'],
+    ['declare', 'révisé, à déclarer'], ['fini', 'déclaré'], ['hors', 'hors mission']
+  ];
+
   async function drawProduction(view) {
     if (!prodState.lignes) {
       view.innerHTML = `<div class="page-head"><h1>Production</h1></div>
@@ -6424,13 +6767,18 @@
     : `<div class="${retard ? 'warn-box' : 'ok-box'} mb">${retard
       ? `${pl(retard, 'mois', 'mois')} ${retard > 1 ? 'sont reçus et pas encore saisis' : 'est reçu et pas encore saisi'}.`
       : 'Tout ce qui est reçu est saisi.'}</div>
+      ${/* 10.12.0 (U-02) — des en-têtes de mois COURTS, l'année seulement quand elle change : douze
+            « juillet 2026 » sur deux lignes faisaient déborder la grille, et la dernière colonne,
+            collante, cachait juillet et août. (U-29) Le nom du client se tronque, jamais son badge :
+            coupé par les points de suspension, « exemple » devenait « exem… ». */''}
       <div class="panel"><div class="scroll-x"><table class="list compact prod">
-        <thead><tr><th>Client</th>${colonnes.map(m => `<th class="r nw">${esc(K.monthLabel(m).replace(/ \d{4}$/, ''))}<br><span class="muted small">${esc(m.slice(0, 4))}</span></th>`).join('')}<th class="r nw">À saisir</th></tr></thead>
+        <thead><tr><th>Client</th>${colonnes.map((m, i) => `<th class="r nw" title="${esc(K.monthLabel(m))}">${esc(MOIS_COURTS[Number(m.slice(5, 7)) - 1] || m)}${
+    i === 0 || m.slice(5, 7) === '01' ? `<br><span class="muted small">${esc(m.slice(0, 4))}</span>` : ''}</th>`).join('')}<th class="r nw">À saisir</th></tr></thead>
         <tbody>${lignes.map(l => `<tr data-id="${esc(l.id)}">
-          <td class="tronq" title="${esc(l.name)}">${esc(l.name)}${l.demo ? ' <span class="badge">exemple</span>' : ''}</td>
+          <td class="prod-client"><span class="prod-nom" title="${esc(l.name)}">${esc(l.name)}</span>${l.demo ? ' <span class="badge">exemple</span>' : ''}</td>
           ${colonnes.map(m => {
     const c = (parDossier.get(l.id) || new Map()).get(m);
-    if (!c) return '<td class="r prod-c"><span class="prod-p prod-hors" title="Hors mission">·</span></td>';
+    if (!c) return '<td class="r prod-c"><span class="prod-p prod-hors" title="Hors mission : rien n\'est attendu pour ce mois">–</span></td>';
     const t = [
       `${K.monthLabel(m)} — ${c.recu ? 'reçu' : 'pas reçu'}`,
       c.saisi ? `${pl(c.saisi, 'écriture')} dont ${c.brouillards} au brouillard` : 'rien de saisi',
@@ -6440,22 +6788,15 @@
       `déclaré : ${c.declare === null ? '—' : c.declare ? 'oui' : 'non'}`,
       c.qui ? `dernier geste : ${c.qui}` : ''
     ].filter(Boolean).join(' · ');
-    return `<td class="r prod-c"><span class="prod-p prod-${esc(c.etape)}" title="${esc(t)}">${
-      c.etape === 'fini' ? '✓' : c.etape === 'recu' ? '·' : c.etape === 'saisi' ? '!' : '◦'}</span></td>`;
+    return `<td class="r prod-c"><span class="prod-p prod-${esc(c.etape)}" title="${esc(t)}">${esc(SIGNE_PRODUCTION[c.etape] || '?')}</span></td>`;
   }).join('')}
           <td class="r nw">${l.aSaisir ? `<b class="err-inline">${l.aSaisir}</b>` : '—'}</td></tr>`).join('')}</tbody>
       </table></div>
       ${/* Une couleur seule n'est pas une information (9.4.4) : la légende nomme chaque étape, et
             elle est engendrée depuis `ETAPES_PRODUCTION` — écrite à la main, elle oublierait la
             cinquième le jour où le cabinet en ajoute une. */''}
-      <div class="prod-leg small muted">
-        <span><span class="prod-p prod-recu">·</span> reçu, rien de saisi</span>
-        <span><span class="prod-p prod-saisi">!</span> à saisir</span>
-        <span><span class="prod-p prod-revise">◦</span> saisi, pas encore révisé ni déclaré</span>
-        <span><span class="prod-p prod-declare">◦</span> révisé, pas déclaré</span>
-        <span><span class="prod-p prod-fini">✓</span> déclaré</span>
-        <span><span class="prod-p prod-hors">·</span> hors mission</span>
-      </div>
+      <div class="prod-leg small muted">${LEGENDE_PRODUCTION.map(([etape, mot]) =>
+    `<span><span class="prod-p prod-${etape}">${esc(SIGNE_PRODUCTION[etape])}</span> ${esc(mot)}</span>`).join('')}</div>
       <p class="muted small">Clique une ligne pour ouvrir la comptabilité du client.
       « Révisé » affiche « — » tant que le dossier de révision n'existe pas : ne pas savoir n'est pas « non ».</p>
       </div>`}`;
@@ -7473,7 +7814,7 @@
       <div id="set-res" class="set-res" hidden></div>
       ${recoveryBanner()}
       <div id="set-corps">
-      <div class="tabs" id="set-tabs" role="tablist">${REG_TABS.map(([id, label]) =>
+      <div class="tabs" id="set-tabs" role="tablist" aria-label="Les réglages du cabinet">${REG_TABS.map(([id, label]) =>
         `<button role="tab" data-tab="${id}" class="${id === reglagesTab ? 'active' : ''}">${label}</button>`).join('')}</div>
       <div class="set-somm" id="set-somm"></div>
       <section data-pane="cabinet"${reglagesTab === 'cabinet' ? '' : ' hidden'}>
@@ -8528,8 +8869,24 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
   }
 
   async function installerMaj(b) {
+    // U-09 : redémarrer pour installer ferme l'application SANS passer par la question de la
+    // fermeture (l'installeur de Windows arrête le processus, le script de macOS attend sa fin). On
+    // pose donc la même question AVANT, ici.
+    const enCours = nomsDesSaisies();
+    let force = false;
+    if (enCours.length) {
+      const ok = await confirmDialog(
+        enCours.length > 1 ? 'Des pièces ne sont pas enregistrées' : 'Une pièce n\'est pas enregistrée',
+        `<p>${enCours.length > 1
+          ? `Des pièces commencées ne sont pas enregistrées : <b>${enCours.map(esc).join('</b>, <b>')}</b>.`
+          : `Une pièce commencée pour <b>${esc(enCours[0])}</b> n'est pas enregistrée.`}
+          Redémarrer maintenant la perd. Enregistre-la en brouillard d'abord : elle ne prend aucun numéro.</p>`,
+        'Redémarrer sans l\'enregistrer', true);
+      if (!ok) return;
+      force = true;
+    }
     if (b) { b.disabled = true; b.textContent = 'Redémarrage…'; }
-    const r = await api.updInstall();
+    const r = await api.updInstall(force ? { force: true } : undefined);
     if (r && r.state === 'error') { upd.state = 'error'; upd.message = r.message; upd.detail = r.detail || ''; upd.soft = !!r.soft; drawUpdatePanel(); }
   }
 

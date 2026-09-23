@@ -526,10 +526,22 @@
     // utilisation (250) et l'écran de verrouillage (200). En dessous d'eux, ses boutons existaient
     // mais les clics atterrissaient sur l'écran du dessus — la question paraissait morte.
     layer.style.zIndex = String(400 + root.children.length);
+    // 10.12.0 (H-8) — le curseur revient d'où il venait quand la fenêtre se ferme, s'il était dans
+    // la fenêtre : sans ça il tombait sur la page, et le clavier ne servait plus à rien jusqu'au
+    // clic suivant. Trouvé dans l'app du comptable (le refus qui montrait la case puis la reprenait) ;
+    // une règle apprise d'un côté se vérifie de l'autre (7.3.0).
+    const avant = document.activeElement;
     layer.innerHTML = `<div class="modal">${html}</div>`;
     root.appendChild(layer);
     const under = modalClose;
-    const close = () => { layer.remove(); if (modalClose === close) modalClose = under; if (onDismiss) onDismiss(); };
+    const close = () => {
+      const curseurDedans = layer.contains(document.activeElement);
+      layer.remove(); if (modalClose === close) modalClose = under;
+      if (curseurDedans && avant && avant !== document.body && avant.isConnected && !avant.disabled) {
+        try { avant.focus(); } catch (_) { /* un élément qui ne prend pas le curseur : on n'insiste pas */ }
+      }
+      if (onDismiss) onDismiss();
+    };
     modalClose = close;
     layer.addEventListener('click', e => { if (e.target === layer) close(); });
     $$('[data-close]', layer).forEach(b => b.addEventListener('click', close));
@@ -4000,7 +4012,7 @@
       </div>`;
     };
     $('#view').innerHTML = `<div class="page-head" id="cat-head">${head()}</div>
-      <div class="tabs" id="cat-tabs" role="tablist">${TABS.map(([id, label]) => `<button role="tab" data-tab="${id}" class="${id === catalogTab ? 'active' : ''}">${label}</button>`).join('')}</div>
+      <div class="tabs" id="cat-tabs" role="tablist" aria-label="Le catalogue">${TABS.map(([id, label]) => `<button role="tab" data-tab="${id}" class="${id === catalogTab ? 'active' : ''}">${label}</button>`).join('')}</div>
       <div data-pane="presta"><div id="list-wrap"></div></div>
       <div data-pane="modeles" hidden><div id="tpl-wrap"></div></div>
       <div data-pane="textes" hidden><div id="snip-wrap"></div></div>`;
@@ -6118,7 +6130,7 @@
     $('#view').innerHTML = `
       <div class="page-head"><h1>Proforma, bons et contrats</h1>
         <div class="actions"><button class="btn btn-primary" id="new">+ ${h(NEW_LABELS[type])}</button></div></div>
-      <div class="tabs" id="a-tabs" role="tablist">${AUTRES_TABS.map(([t, label]) =>
+      <div class="tabs" id="a-tabs" role="tablist" aria-label="Les autres pièces">${AUTRES_TABS.map(([t, label]) =>
         `<button role="tab" data-tab="${t}" class="${t === type ? 'active' : ''}">${h(label)}${data.documents.some(d => d.type === t) ? ` <span class="tab-n">${data.documents.filter(d => d.type === t).length}</span>` : ''}</button>`).join('')}</div>
       <p class="small muted mb">${h(tab[2])} ${info('autres.' + type)}</p>
       <div class="filters">
@@ -6228,7 +6240,7 @@
           <select id="mg-year" ${MG_SANS_ANNEE.includes(s.tab) ? 'hidden' : ''}>${years.map(y => `<option ${y === s.year ? 'selected' : ''}>${y}</option>`).join('')}</select>
           <button class="btn btn-primary" id="new-proj">+ Nouvelle affaire</button>
         </div></div>
-      <div class="tabs" id="mg-tabs" role="tablist">${MARGE_TABS.map(([id, label]) =>
+      <div class="tabs" id="mg-tabs" role="tablist" aria-label="Les marges">${MARGE_TABS.map(([id, label]) =>
         `<button role="tab" data-tab="${id}" class="${id === s.tab ? 'active' : ''}">${label}</button>`).join('')}</div>
       <div id="mg-body"></div>`;
 
@@ -6836,7 +6848,7 @@
         <p class="small">Ce module calcule les bulletins de paie à partir de barèmes que <b>tu règles toi-même</b> : CNSS, impôt sur le revenu, contribution de solidarité. Les valeurs livrées sont celles couramment appliquées en Tunisie, mais elles changent à chaque loi de finances — <em>fais valider les premiers bulletins par ton comptable avant de les remettre.</em></p>
         <p class="small muted">Commence par créer la fiche d'un salarié, avec son brut mensuel.</p>
         <button class="btn btn-primary mt" id="emp-first">+ Créer mon premier salarié</button></div>`}
-      <div class="tabs" id="p-tabs" role="tablist" ${data.employees.length ? '' : 'hidden'}>${PAIE_TABS.map(([id, label]) =>
+      <div class="tabs" id="p-tabs" role="tablist" aria-label="La paie" ${data.employees.length ? '' : 'hidden'}>${PAIE_TABS.map(([id, label]) =>
         `<button role="tab" data-tab="${id}" class="${id === s.tab ? 'active' : ''}">${label}</button>`).join('')}</div>
       <div id="p-body"></div>`;
 
@@ -7507,7 +7519,7 @@
       ${items.length ? '' : `<div class="panel"><h2>Aucun article suivi</h2>
         <p class="small">Le stock ne se saisit pas : il se déduit de tes achats et de tes ventes. Pour qu'un article soit compté, ouvre le <a href="#/catalogue">Catalogue</a>, modifie la prestation et coche <b>« Suivi en stock »</b>. Indique ce que tu as en rayon aujourd'hui, et SkanFact suit le reste tout seul.</p>
         <p class="small muted">Les prestations (du temps, du conseil) n'ont pas de stock : ne coche la case que pour de la marchandise.</p></div>`}
-      <div class="tabs" id="st-tabs" role="tablist" ${items.length ? '' : 'hidden'}>${STOCK_TABS.map(([id, label]) =>
+      <div class="tabs" id="st-tabs" role="tablist" aria-label="Le stock" ${items.length ? '' : 'hidden'}>${STOCK_TABS.map(([id, label]) =>
         `<button role="tab" data-tab="${id}" class="${id === s.tab ? 'active' : ''}">${label}${id === 'alertes' && alerts.length ? ` <span class="nav-count">${alerts.length}</span>` : ''}</button>`).join('')}</div>
       <div id="st-body"></div>`;
 
@@ -8267,7 +8279,7 @@
           <button class="btn" id="im-csv">Exporter en CSV</button>
           <button class="btn btn-primary" id="new-imm">+ Nouveau bien</button>
         </div></div>
-      <div class="tabs" id="im-tabs" role="tablist">${IMMO_TABS.map(([id, label]) =>
+      <div class="tabs" id="im-tabs" role="tablist" aria-label="Les immobilisations">${IMMO_TABS.map(([id, label]) =>
         `<button role="tab" data-tab="${id}" class="${id === s.tab ? 'active' : ''}">${label}${id === 'attente' && waiting.length ? ` <span class="nav-count">${waiting.length}</span>` : ''}</button>`).join('')}</div>
       <div id="im-body"></div>`;
 
@@ -8538,7 +8550,7 @@
     $('#view').innerHTML = `
       <div class="page-head"><h1>Trésorerie</h1>
         <div class="actions"><button class="btn" id="new-move">+ Mouvement</button><button class="btn" id="new-acc">+ Compte</button></div></div>
-      <div class="tabs" id="t-tabs" role="tablist">${TRESO_TABS.map(([id, label]) =>
+      <div class="tabs" id="t-tabs" role="tablist" aria-label="La trésorerie">${TRESO_TABS.map(([id, label]) =>
         `<button role="tab" data-tab="${id}" class="${id === s.tab ? 'active' : ''}">${label}</button>`).join('')}</div>
       <div id="t-body"></div>`;
 
@@ -9074,7 +9086,7 @@
           <select id="c-year">${years.map(y => `<option ${y === comptaState.year ? 'selected' : ''}>${y}</option>`).join('')}</select>
           <select id="c-month"><option value="">Toute l'année</option>${MONTHS.map((m, i) => { const v = String(i + 1).padStart(2, '0'); return `<option value="${v}" ${v === comptaState.month ? 'selected' : ''}>${m}</option>`; }).join('')}</select>
         </div></div>
-      <div class="tabs" id="c-tabs" role="tablist">${COMPTA_TABS.filter(([id]) => !ONGLETS_OPTION.includes(id) || C.sousModuleOn(data, 'compta.livres')).map(([id, label]) =>
+      <div class="tabs" id="c-tabs" role="tablist" aria-label="La comptabilité">${COMPTA_TABS.filter(([id]) => !ONGLETS_OPTION.includes(id) || C.sousModuleOn(data, 'compta.livres')).map(([id, label]) =>
         `<button role="tab" data-tab="${id}" class="${id === comptaState.tab ? 'active' : ''}${ONGLETS_OPTION.includes(id) ? ' opt' : ''}">${label}${ONGLETS_OPTION.includes(id) && !(licence.options || []).includes('compta') ? ' 🔒' : ''}</button>`).join('')}
         ${!C.sousModuleOn(data, 'compta.livres') ? `<button class="btn btn-sm btn-ghost" id="c-plus" title="Grand livre, balance, états financiers">+ Comptabilité complète</button>` : ''}</div>
       <div id="c-body"></div>`;
@@ -9708,7 +9720,7 @@
       const vue = balState.vue;
       const tag = comptaState.month ? `${comptaState.year}-${comptaState.month}` : comptaState.year;
       const VUES = [['generale', 'Générale'], ['clients', 'Auxiliaire clients'], ['fournisseurs', 'Auxiliaire fournisseurs'], ['lettrage', 'Lettrage']];
-      const sel = `<div class="tabs mt" id="bal-vues" role="tablist">${VUES.map(([id, label]) => `<button role="tab" data-vue="${id}" class="${id === vue ? 'active' : ''}">${label}</button>`).join('')}</div>`;
+      const sel = `<div class="tabs mt" id="bal-vues" role="tablist" aria-label="Les vues de la balance">${VUES.map(([id, label]) => `<button role="tab" data-vue="${id}" class="${id === vue ? 'active' : ''}">${label}</button>`).join('')}</div>`;
       let corps, csvRows = [], csvCols = [], nomCsv = '';
       if (vue === 'generale') {
         const b = C.balanceGenerale(data, company(), p, {});
@@ -10459,7 +10471,7 @@
         </div></div>
       <div id="set-res" class="set-res" hidden></div>
       <div id="set-corps">
-      <div class="tabs" id="set-tabs" role="tablist">${TABS.map(([id, label]) => `<button role="tab" data-tab="${id}" class="${id === settingsTab ? 'active' : ''}">${label}</button>`).join('')}</div>
+      <div class="tabs" id="set-tabs" role="tablist" aria-label="Les paramètres">${TABS.map(([id, label]) => `<button role="tab" data-tab="${id}" class="${id === settingsTab ? 'active' : ''}">${label}</button>`).join('')}</div>
       <div class="set-somm" id="set-somm"></div>
       <form id="pf">
         <section data-pane="societe">

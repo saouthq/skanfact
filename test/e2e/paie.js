@@ -7,7 +7,7 @@
 //
 // Le geste qui compte : un dossier HORS SkanFact. C'est lui qui paie le cabinet, et c'est très
 // exactement celui pour lequel rien n'existait avant cette version.
-const { playwright, RACINE, ELECTRON } = require('./harnais');
+const { playwright, RACINE, ELECTRON, ongletCompta, ongletComptaPresent } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
 const OUT = process.argv[2] || path.join(RACINE, 'dist-e2e', 'paie');
@@ -62,7 +62,7 @@ const étape = m => { pas++; console.log('\n' + pas + '. ' + m); };
     return e && !e.textContent.includes('Lecture des paquets');
   }, { timeout: 30000 });
   if (await win.$('#lv-relire')) {
-    if (await win.$('#c-tabs button[data-tab="paie"]')) {
+    if (await ongletComptaPresent(win, 'paie')) {
       throw new Error('l\'onglet Paie s\'affiche alors que le dossier n\'a pas encore de livre');
     }
     await win.click('#lv-relire');
@@ -70,16 +70,16 @@ const étape = m => { pas++; console.log('\n' + pas + '. ' + m); };
     await win.click('.modal-bg .btn-primary');
     await attendre(600);
   }
-  await win.waitForFunction(() => {
-    const t = document.querySelector('#c-tabs');
-    return t && t.textContent.includes('Paie');
-  }, { timeout: 25000 });
+  // 10.12.0 (U-06) — les écrans du livre sont rangés en groupes : on attend que le livre soit là
+  // (le sélecteur de groupes n'existe qu'avec un livre), puis on trouve l'écran par ses groupes.
+  await win.waitForSelector('#c-groupes', { timeout: 25000 });
+  if (!(await ongletComptaPresent(win, 'paie'))) throw new Error('le livre est ouvert et l\'écran « Paie » reste introuvable');
   ok('livre ouvert, et l\'onglet Paie est là');
 
 
   // ---------------------------------------------------------------- 2. un dossier sans paie le DIT
   étape('Un dossier sans salarié ne prétend rien : il dit par où commencer');
-  await win.click('#c-tabs button[data-tab="paie"]');
+  await ongletCompta(win, 'paie');
   await win.waitForSelector('#pa-mois', { timeout: 15000 });
   await shot('01-paie-vide');
   const vide = await win.evaluate(() => ({

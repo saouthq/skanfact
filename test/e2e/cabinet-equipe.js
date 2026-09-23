@@ -10,7 +10,7 @@
 // livres — deux cabinets créés séparément ont deux sels, donc deux clés.
 //
 //   xvfb-run -a node test/e2e/cabinet-equipe.js
-const { playwright, RACINE, ELECTRON } = require('./harnais');
+const { playwright, RACINE, ELECTRON, ongletComptaPresent } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
 
@@ -104,10 +104,10 @@ async function ouvrirLivre(win) {
     await win.click('.modal-bg .btn-primary');
     await attendre(win, 1500);
   }
-  await win.waitForFunction(() => {
-    const t = document.querySelector('#c-tabs');
-    return t && t.textContent.includes('Saisie');
-  }, { timeout: 30000 });
+  // 10.12.0 (U-06) — les écrans du livre sont rangés en groupes : on attend que le livre soit là
+  // (le sélecteur de groupes n'existe qu'avec un livre), puis on trouve l'écran par ses groupes.
+  await win.waitForSelector('#c-groupes', { timeout: 30000 });
+  if (!(await ongletComptaPresent(win, 'saisie'))) throw new Error('le livre est ouvert et l\'écran « Saisie » reste introuvable');
   const annee = await win.evaluate(() => Number((document.querySelector('#lv-annee') || {}).value) || new Date().getFullYear());
   return { id, annee };
 }

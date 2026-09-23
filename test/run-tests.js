@@ -13174,7 +13174,7 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
   t('9.2.2 : la fiche d\'un dossier est en trois onglets, l\'onglet vit dans l\'adresse, les alertes restent au-dessus, et l\'impression imprime tout', () => {
     const app = lireSource('src', 'cabinet', 'renderer', 'app.js');
     const css = lireSource('src', 'cabinet', 'renderer', 'cabinet.css');
-    const fiche = app.slice(app.indexOf('function drawDossier(view, id, ongletDemande)'), app.indexOf('const labelOf = (list, id) =>'));
+    const fiche = app.slice(app.indexOf('function drawDossier(view, id, ongletDemande'), app.indexOf('const labelOf = (list, id) =>'));
     assert.ok(fiche.length > 5000 && fiche.length < 30000, 'tranche drawDossier suspecte : ' + fiche.length);
     // Trois onglets, pas quatre : la fiche d'identité (151 px) aurait fait un onglet d'un demi-écran,
     // ce que la 7.30.0 a retiré des Paramètres. Elle vit dans l'en-tête.
@@ -13183,7 +13183,10 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     assert.ok(!fiche.includes('<h2>La fiche</h2>'), 'le panneau « La fiche » à quatre tirets est revenu');
     assert.ok(fiche.includes('<div class="d-ident">${ident}</div>') && fiche.includes('<div class="d-etat" id="d-etat">${etat}</div>'), 'l\'identité et l\'état ne sont plus dans l\'en-tête');
     // L'onglet vit dans l'ADRESSE : « précédent » revient dessus, et une autre page peut y emmener.
-    assert.ok(/drawDossier\(view, arg, hash\.split\('\/'\)\[2\]\)/.test(app), 'le routeur ne transmet plus l\'onglet de l\'adresse');
+    // 10.12.0 (U-06) — retourné vers la règle : il recopiait l'appel au caractère près et tombait
+    // le jour où l'adresse a gagné le sous-onglet de la comptabilité. La règle est que l'onglet de
+    // l'adresse arrive à la fiche, quel que soit ce qui le suit.
+    assert.ok(/drawDossier\(view, arg, hash\.split\('\/'\)\[2\][,)]/.test(app), 'le routeur ne transmet plus l\'onglet de l\'adresse');
     assert.ok(fiche.includes("const versOnglet = o => { location.hash = '#/dossier/' + encodeURIComponent(dossier.id) + '/' + o; };"), 'changer d\'onglet ne change plus l\'adresse');
     assert.ok(/\$\$\('#d-tabs button', view\)\.forEach\(b => b\.onclick = \(\) => versOnglet\(b\.dataset\.tab\)\);/.test(fiche), 'les onglets ne sont plus branchés');
     // Sans onglet dans l'adresse : celui où l'on était sur CE dossier, sinon Suivi — jamais celui
@@ -13212,7 +13215,7 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     assert.ok(paquets.includes('Paquets reçus') && paquets.includes('caChart(packs, anneeVue)'), 'les paquets et le graphique de CA ne sont plus ensemble');
     // Imprimer imprime la fiche ENTIÈRE : les onglets ne sont qu'un rangement d'écran.
     const print = css.slice(css.indexOf('@media print'));
-    assert.ok(/#d-tabs \{ display: none !important; \}/.test(print) && /section\[data-onglet\]\[hidden\] \{ display: block !important; \}/.test(print), 'l\'impression n\'imprime que l\'onglet ouvert');
+    assert.ok(/#d-tabs[^{]*\{ display: none !important; \}/.test(print) && /section\[data-onglet\]\[hidden\] \{ display: block !important; \}/.test(print), 'l\'impression n\'imprime que l\'onglet ouvert');
     // Et les deux classes neuves de l'en-tête sont définies (une classe jamais définie ne se voit nulle part, 8.1.0).
     assert.ok(/^\.d-ident \{/m.test(css) && /^\.d-etat \{/m.test(css), '.d-ident ou .d-etat n\'est pas défini');
   });
@@ -14340,7 +14343,11 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
   t('9.4.10 : aucun parcours ne relit un montant en perdant son signe', () => {
     const dossier = path.join(__dirname, 'e2e');
     const harnais = lireSource('test', 'e2e', 'harnais.js');
-    assert.ok(/function montant\(/.test(harnais) && /montant\s*\n?\s*\};|, montant\s*$/m.test(harnais.replace(/\r/g, '')),
+    // 10.12.0 — retourné vers la règle : il exigeait que `montant` soit le DERNIER nom exporté, et
+    // il est tombé le jour où les aides de navigation de la comptabilité se sont ajoutées après
+    // lui. La règle est que le harnais l'exporte, pas à quel rang.
+    const exports = (/module\.exports = \{([\s\S]*?)\};/.exec(harnais) || [])[1] || '';
+    assert.ok(/function montant\(/.test(harnais) && /(^|[\s,])montant([\s,]|$)/.test(exports),
       'harnais.js ne fournit plus le lecteur de montant partagé');
     assert.ok(/\[\^\\d,\.\]/.test(harnais), 'le lecteur partagé ne nettoie plus le texte affiché');
     // Et on lit du CODE : le commentaire du harnais CITE le motif fautif pour expliquer pourquoi il

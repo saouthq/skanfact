@@ -87,8 +87,20 @@
   const cellule = (id, avant) => `<td class="actions row-actions">${avant || ''}${bouton(id, 'Actions')}</td>`;
 
   // `actionsDe(id)` rend les actions de CETTE ligne : { icon, label, hint, danger, run } ou { sep: true }.
+  //
+  // Une racine ne juge que SES lignes (10.12.0, trouvé en testant comme un humain). La fiche d'un
+  // client pose sa table sur toute la vue, qui CONTIENT le livre-journal — lequel a sa propre table.
+  // La fiche ne connaît pas les pièces : elle leur rendait « aucune action », et la règle qui suit
+  // (une ligne sans action perd son bouton) retirait le menu de chaque pièce. Selon l'ordre des deux
+  // dessins, le journal s'ouvrait avec ou sans ses actions — sans une erreur nulle part. Une racine
+  // qui a posé sa table le dit (`data-menus`) ; celle du dessus passe son chemin sur ses boutons.
+  // C'est la troisième fois que deux tables se mangent (9.4.8, 10.2.0) : la règle vit ici, une fois.
   function brancherMenus(racine, actionsDe) {
-    $$('[data-rowmenu]', racine || document).forEach(b => {
+    const r = racine || document;
+    if (r.setAttribute) r.setAttribute('data-menus', '');
+    $$('[data-rowmenu]', r).forEach(b => {
+      const proprio = b.parentElement ? b.parentElement.closest('[data-menus]') : null;
+      if (proprio && proprio !== r) return;
       const actions = (actionsDe(b.dataset.rowmenu) || []).filter(Boolean);
       const reelles = actions.filter(a => !a.sep);
       // Une ligne sans action perd son bouton : un menu vide est pire qu'un menu absent — c'est

@@ -73,6 +73,9 @@ contextBridge.exposeInMainWorld('cabinet', {
   saveAbonnements: (dossierId, abonnements) => ipcRenderer.invoke('cab:saveAbonnements', { dossierId, abonnements }),
   genererAbonnements: (o) => ipcRenderer.invoke('cab:genererAbonnements', o || {}),
   dernierJournal: (dossierId, journal) => ipcRenderer.invoke('cab:dernierJournal', { dossierId, journal }),
+  // 10.12.0 (U-09) — les dossiers dont une pièce commencée n'est pas enregistrée : la fermeture de
+  // la fenêtre demande avant de la perdre. Des noms, jamais la pièce.
+  saisieEnCours: (noms) => ipcRenderer.send('cab:saisieEnCours', noms),
   // Le cabinet à plusieurs (9.9.0). Rien ici ne sort du cabinet : une identité déclarée, des droits
   // posés sur SES dossiers, un tableau lu dans SES index. Le client ne voit jamais qui, chez son
   // comptable, a saisi son mois — et n'a pas à le voir.
@@ -181,7 +184,7 @@ contextBridge.exposeInMainWorld('cabinet', {
   updCheck: () => ipcRenderer.invoke('upd:check'),
   updCanaux: () => ipcRenderer.invoke('upd:canaux'),
   updDownload: () => ipcRenderer.invoke('upd:download'),
-  updInstall: () => ipcRenderer.invoke('upd:install'),
+  updInstall: (opts) => ipcRenderer.invoke('upd:install', opts),
   updSetToken: (t) => ipcRenderer.invoke('upd:setToken', t),
   updSetBeta: (on) => ipcRenderer.invoke('upd:setBeta', on),
   updOpenReleases: () => ipcRenderer.invoke('upd:openReleases'),

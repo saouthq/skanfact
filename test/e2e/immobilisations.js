@@ -5,7 +5,7 @@
 // plan d'amortissement se voit avant d'être enregistré, que les écritures d'inventaire arrivent en
 // brouillard et ne se repassent pas deux fois, et que l'inventaire de stock se colle depuis un
 // tableur et produit sa variation dans le bon sens.
-const { playwright, RACINE, ELECTRON } = require('./harnais');
+const { playwright, RACINE, ELECTRON, ongletCompta, ongletComptaPresent } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
 const OUT = process.argv[2] || path.join(RACINE, 'dist-e2e', 'immobilisations');
@@ -35,7 +35,7 @@ const étape = m => { pas++; console.log('\n' + pas + '. ' + m); };
     return r.livre;
   });
   const onglet = async nom => {
-    await win.click(`#c-tabs button[data-tab="${nom}"]`);
+    await ongletCompta(win, nom);
     await attendre(500);
   };
 
@@ -86,7 +86,7 @@ const étape = m => { pas++; console.log('\n' + pas + '. ' + m); };
   if (await win.$('#lv-relire')) {
     // Sans livre, PAS d'onglet Immobilisations : un dossier permanent sans livre n'a nulle part où
     // ranger ses fiches, et un onglet qui s'ouvre sur rien est un bouton mort.
-    if (await win.$('#c-tabs button[data-tab="immobilisations"]')) {
+    if (await ongletComptaPresent(win, 'immobilisations')) {
       throw new Error('l\'onglet Immobilisations s\'affiche alors que le dossier n\'a pas de livre');
     }
     await win.click('#lv-relire');
@@ -94,10 +94,10 @@ const étape = m => { pas++; console.log('\n' + pas + '. ' + m); };
     await win.click('.modal-bg .btn-primary');
     await attendre(600);
   }
-  await win.waitForFunction(() => {
-    const t = document.querySelector('#c-tabs');
-    return t && t.textContent.includes('Immobilisations');
-  }, { timeout: 25000 });
+  // 10.12.0 (U-06) — les écrans du livre sont rangés en groupes : on attend que le livre soit là
+  // (le sélecteur de groupes n'existe qu'avec un livre), puis on trouve l'écran par ses groupes.
+  await win.waitForSelector('#c-groupes', { timeout: 25000 });
+  if (!(await ongletComptaPresent(win, 'immobilisations'))) throw new Error('le livre est ouvert et l\'écran « Immobilisations » reste introuvable');
   ok('livre ouvert, et les deux onglets neufs sont là');
 
   // ------------------------------------------- 2. ce que le paquet a apporté et qui n'a pas de fiche

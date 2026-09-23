@@ -7,6 +7,9 @@
 // construisent un vrai livre depuis les paquets de l'exemple ; les tests de source relisent le
 // renderer du Cabinet, commentaires retirés.
 module.exports = ({ t, assert, lireSource }) => {
+// Évalue un morceau de source dans un contexte VIDE, où l'on ne pose que ce qu'il lit : une table
+// ou une fonction pure se juge sur ce qu'elle rend, pas sur sa forme.
+const evaluer = (src, ctx) => require('vm').runInNewContext('(' + src + ')', { ...(ctx || {}) });
 const fs = require('fs'), path = require('path');
 const K = require('../../src/renderer/compta.js');
 const core = require('../../src/renderer/core.js');
@@ -48,6 +51,21 @@ const tranche = (src, deb, fin, min, max) => {
   assert.ok(z.length >= min && z.length <= max, `tranche suspecte (${z.length}) entre ${deb} et ${fin}`);
   return z;
 };
+
+// Les tables de la navigation de la comptabilité (10.12.0, U-06), ÉVALUÉES telles que
+// l'application les porte : juger leur texte à coups d'expressions régulières décrirait leur
+// forme ; les évaluer dit ce qu'elles montrent. `ongletDispo` lit `livresState.livre` : on le lui
+// passe explicitement.
+function tablesCompta(app) {
+  const pris = (re, quoi) => { const m = re.exec(app); assert.ok(m, quoi + ' a disparu'); return m[1]; };
+  const ONGLETS_COMPTA = evaluer(pris(/const ONGLETS_COMPTA = (\{[\s\S]*?\n  \});/, 'la table des onglets de la comptabilité'));
+  const GROUPES_COMPTA = evaluer(pris(/const GROUPES_COMPTA = (\[[\s\S]*?\n  \]);/, 'la table des groupes'));
+  const ONGLETS_SANS_LIVRE = evaluer(pris(/const ONGLETS_SANS_LIVRE = (\[[^\]]*\]);/, 'la liste des écrans lus sans livre'));
+  const ONGLETS_DU_LIVRE = evaluer(pris(/const ONGLETS_DU_LIVRE = ([^;]+);/, 'la liste des onglets du livre'), { ONGLETS_COMPTA, ONGLETS_SANS_LIVRE });
+  const porte = pris(/const ongletDispo = (o => [^;]+);/, 'la porte des onglets');
+  const ongletDispo = (o, livre) => evaluer(porte, { ONGLETS_COMPTA, ONGLETS_SANS_LIVRE, livresState: { livre } })(o);
+  return { ONGLETS_COMPTA, GROUPES_COMPTA, ONGLETS_SANS_LIVRE, ONGLETS_DU_LIVRE, ongletDispo };
+}
 
 t('T-01 : le journal de trésorerie du paquet porte sa nature, son compte, ses entrées et ses sorties', () => {
   // `cashCsvColumns` réclamait quatre clés que `cashMovements` n'écrivait pas : quatre colonnes
@@ -308,15 +326,26 @@ t('T-03 / T-05 / T-36 : ce qu\'un bouton fait apparaître, ce qu\'il ne touche p
   // Révision, Liasse). La phrase se DÉDUIT de `ONGLETS_DU_LIVRE`, et la liste se confronte à la
   // barre d'onglets dans les DEUX sens : chaque nom annoncé est un onglet qui n'existe qu'avec un
   // livre, et chaque onglet qui n'existe qu'avec un livre est annoncé.
-  const m = /const ONGLETS_DU_LIVRE = \[([^\]]+)\];/.exec(app);
-  assert.ok(m, 'la liste des onglets du livre a disparu');
-  const onglets = m[1].split(',').map(x => x.trim().replace(/^'|'$/g, ''));
+  // 10.12.0 (U-06) — retourné une seconde fois, et pour la même raison : il lisait la barre
+  // d'onglets écrite à la main, bouton par bouton. Elle se DÉDUIT désormais d'une table (les
+  // quatorze écrans, rangés en trois groupes) et d'une seule porte, `ongletDispo`. On évalue donc
+  // la table et la porte telles que l'application les porte, et on confronte ce qu'elles
+  // montrent à ce que le bandeau annonce — dans les DEUX sens, comme avant.
+  const tables = tablesCompta(app);
+  const labels = tables.ONGLETS_COMPTA;
+  const annonces = tables.ONGLETS_DU_LIVRE;
+  const sansLivre = Object.keys(labels).filter(o => !tables.ongletDispo(o, null));
+  assert.ok(sansLivre.length >= 10, 'la porte des onglets n\'a pas été lue : ' + sansLivre.length);
+  // Chaque onglet qui n'existe qu'avec un livre est annoncé, et chaque onglet annoncé n'existe
+  // qu'avec un livre.
+  sansLivre.forEach(o => assert.ok(annonces.includes(labels[o]), `l'onglet « ${labels[o]} » n'existe qu'avec un livre et le bandeau ne l'annonce pas`));
+  annonces.forEach(lb => assert.ok(sansLivre.some(o => labels[o] === lb), `« ${lb} » est annoncé mais existe déjà sans livre : le bandeau ment`));
+  // Et avec un livre, tout existe : rien d'annoncé ne reste introuvable.
+  Object.keys(labels).forEach(o => assert.ok(tables.ongletDispo(o, {}), `« ${labels[o]} » reste absent même avec un livre`));
   assert.ok(app.includes('Créer le livre ouvre ${ONGLETS_DU_LIVRE.length} onglets de plus'), 'le bandeau ne se déduit plus de la liste (T-03, C-02)');
-  const tabs = tranche(app, '<div class="tabs" id="c-tabs">', '</div>${corps}', 500, 4000);
-  onglets.forEach(o => assert.ok(new RegExp(`\\$\\{s\\.livre \\? \`<button data-tab="[a-z-]+"[^>]*>${o}`).test(tabs), `${o} n'est pas conditionné au livre, ou le bandeau ment`));
-  const conditionnes = [...tabs.matchAll(/\$\{s\.livre \? `<button data-tab="[a-z-]+"[^>]*>([^<$]+)/g)].map(x => x[1].trim());
-  assert.ok(conditionnes.length >= 10, 'la barre d\'onglets n\'a pas été lue : ' + conditionnes.length);
-  conditionnes.forEach(o => assert.ok(onglets.includes(o), `l'onglet « ${o} » n'existe qu'avec un livre et le bandeau ne l'annonce pas`));
+  // La barre ne pose QUE ce que la porte laisse passer : sans ce filtre, les écrans du livre
+  // s'afficheraient sans livre, et le bandeau qui les annonce mentirait.
+  assert.ok(/id="c-tabs"[^>]*>\$\{gOuvert\.onglets\.filter\(ongletDispo\)\.map\(boutonOnglet\)/.test(app), 'la barre d\'onglets ne passe plus par la porte `ongletDispo`');
   // T-05 : la réassurance se lit AVANT le geste — une bulle à côté du bouton, avec sa clé d'aide.
   assert.ok(/id="lv-relire2"[^`]*Relire les paquets reçus<\/button>\$\{info\('lv\.relire'\)\}/.test(app), '« Relire les paquets reçus » n\'a pas sa bulle');
   const guide = lireSource('src', 'cabinet', 'renderer', 'cabguide.js');
@@ -329,11 +358,20 @@ t('T-03 / T-05 / T-36 : ce qu\'un bouton fait apparaître, ce qu\'il ne touche p
 
 t('T-10 : une pastille compte ce qui attend une décision, partout', () => {
   const app = cabApp();
-  const tabs = tranche(app, '<div class="tabs" id="c-tabs">', '</div>${corps}', 500, 4000);
-  assert.ok(/etatImmobilisations\(s\.livre, s\.annee\)\.aEcrire/.test(tabs), 'Immobilisations compte encore ses fiches, pas les dotations à passer');
-  assert.ok(!/immobilisations \|\| \[\]\)\.length\}<\/span>/.test(tabs), 'la pastille des immobilisations affiche encore un inventaire');
-  assert.ok(/<span class="badge b-paid">clos<\/span>/.test(tabs) && !/tab-n">clos/.test(tabs), '« clos » est encore habillé en compteur');
-  assert.ok(/statut === 'brouillard'\) && !\(s\.livre\.exercice && s\.livre\.exercice\.clos\)/.test(tabs), 'la Saisie garde sa pastille sur un exercice clos');
+  // 10.12.0 (U-06) — retourné vers la règle : les pastilles vivaient chacune dans son bouton,
+  // elles vivent dans UNE fonction que chaque onglet appelle, et que chaque groupe additionne.
+  const p = tranche(app, 'function pastilleCompta(o) {', 'function drawLivres(root, dossier) {', 800, 4000);
+  const immo = tranche(p, "if (o === 'immobilisations') {", 'return n ?', 30, 400);
+  assert.ok(/etatImmobilisations\(L, s\.annee\)\.aEcrire/.test(immo), 'Immobilisations compte encore ses fiches, pas les dotations à passer');
+  assert.ok(!/const n = \(L\.immobilisations \|\| \[\]\)\.length;/.test(immo), 'la pastille des immobilisations affiche encore un inventaire');
+  const saisie = tranche(p, "if (o === 'saisie') {", '}', 30, 400);
+  assert.ok(/statut === 'brouillard'/.test(saisie) && /!\(L\.exercice && L\.exercice\.clos\)/.test(saisie), 'la Saisie garde sa pastille sur un exercice clos');
+  const bouton = tranche(app, 'const boutonOnglet = o => {', 'el.innerHTML = `${sansLivre}', 200, 2000);
+  assert.ok(/const p = pastilleCompta\(o\);/.test(bouton), 'un onglet ne demande plus sa pastille à la fonction commune');
+  assert.ok(/<span class="badge b-paid">clos<\/span>/.test(bouton) && !/tab-n">clos/.test(bouton), '« clos » est encore habillé en compteur');
+  // Un groupe replié cache ses écrans : sa pastille est la SOMME des leurs, sinon ce qui attend
+  // une décision dans « Déclarer et clôturer » disparaît dès qu'on est dans « Saisir ».
+  assert.ok(/const totalGroupe = g => g\.onglets\.reduce\(\(a, o\) => a \+ \(\(pastilleCompta\(o\) \|\| \{\}\)\.n \|\| 0\), 0\);/.test(app), 'la pastille d\'un groupe n\'additionne plus celles de ses écrans');
 });
 
 t('T-11 / T-14 : chaque pièce ouverte du lettrage s\'ouvre, et les soldés tiennent sur une ligne', () => {
@@ -411,17 +449,21 @@ t('T-24 / T-25 / T-26 / T-27 : l\'exercice se relit, sa fenêtre liste, son moti
   assert.ok(livre.audit.some(a => a.quoi === 'dossier de clôture produit' && a.detail === 'x.skanclose'), 'la piste d\'audit ne porte pas le dossier produit');
 });
 
-t('T-28 : un montant AFFICHÉ porte la virgule ; toFixed(3) ne sert plus qu\'à remplir un champ', () => {
+// La 9.8.8 laissait `toFixed(3)` REMPLIR un champ, « qui se relit en interne ». Le test humain de
+// la 10.12.0 (H-3) a montré ce que ça donne : Tab soldait une pièce en écrivant « 250.000 » sous un
+// total à « 250,000 » — en français, deux cent cinquante mille. Un champ, c'est le COMPTABLE qui le
+// relit. L'exception est retirée : plus aucun `toFixed(3)` ; l'écran passe par `montant()`, un
+// champ par `montantChamp()`, et tout se relit par `lireMontant()`.
+t('T-28 / H-3 : un montant porte la virgule PARTOUT — à l\'écran comme dans un champ', () => {
   const app = cabApp();
   assert.ok(/const montant = n => money\(n\)\.replace/.test(app), 'le formateur sans devise manque');
-  const restes = app.split('\n').filter(l => l.includes('.toFixed(3)'));
-  restes.forEach(l => {
-    // Autorisé : remplir la VALEUR d'un champ de saisie (`debit: x ? x.toFixed(3) : ''`,
-    // `p.lignes[i].debit = …`, `champDebut.value = …`). Tout le reste est du texte rendu.
-    assert.ok(/(debit|credit): [\w.()]+ \? [\w.()]+\.toFixed\(3\) : ''|p\.lignes\[i\]\.(debit|credit) = |\.value = [\w.]+\.toFixed\(3\)/.test(l),
-      'un montant est rendu à l\'écran par toFixed(3), donc avec un point : ' + l.trim().slice(0, 110));
-  });
-  assert.ok(restes.length >= 4, 'les champs de saisie doivent garder toFixed(3), sinon le test ne garde rien');
+  assert.ok(/const montantChamp = /.test(app) && /const lireMontant = /.test(app), 'le format et la lecture d\'un champ manquent');
+  const restes = app.split('\n').filter(l => l.includes('.toFixed(3)')).map(l => l.trim().slice(0, 110));
+  assert.deepStrictEqual(restes, [], 'un montant s\'écrit encore avec un point (toFixed(3))');
+  // Et aucun champ ne se relit plus par la lecture naïve, qui rendait ZÉRO pour l'espace des milliers.
+  // (Un TAUX dégressif n'est pas un montant : il reste lu à part, et nommé ici pour que ça se voie.)
+  const naifs = app.split('\n').filter(l => /Number\(String\(.*\.replace\(',', '\.'\)\)/.test(l) && !/tauxDegressif/.test(l)).map(l => l.trim().slice(0, 110));
+  assert.deepStrictEqual(naifs, [], 'un montant se relit encore par Number(x.replace(\',\', \'.\'))');
 });
 
 t('T-29 / T-31 / T-32 / T-33 : les lots existent, Tab est expliqué, une ligne s\'ajoute à la souris, la liste sort du tableau', () => {
@@ -724,18 +766,22 @@ t('T-49 bis : la sonde ne remonte d\'un cran que sur un VRAI emballage, jamais s
 // atteignait les sept écrans cachés (T-55). Les deux sont des écarts que PERSONNE n'a décidés.
 t('T-56 : le bandeau du livre est une rangée de gestes, pas de la prose à marges posées à la main', () => {
   const app = cabApp();
-  const i = app.indexOf('<div class="ok-box mb box-gestes">');
-  assert.ok(i > 0, 'le bandeau du livre ouvert doit porter la classe qui décide de ses écarts');
-  const bandeau = app.slice(i, i + 900);
+  // 10.12.0 (U-01) — retourné vers la règle, pas retiré : le bandeau vert (« Le livre de 2026 »,
+  // 54 px) est monté dans la barre de la période, à côté de ce qu'il qualifie. La règle ne change
+  // pas : une rangée de gestes décide de ses écarts par un gap, jamais par une marge à la main.
+  assert.ok(/<span class="c-livre" id="c-livre-etat">/.test(app), 'la rangée du livre ouvert doit porter la classe qui décide de ses écarts');
+  const i = app.indexOf('const etatLivre = source === ');
+  assert.ok(i > 0, 'l\'état du livre n\'est plus composé à un seul endroit');
+  const bandeau = app.slice(i, i + 1200);
   assert.ok(!/style="margin-inline-start/.test(bandeau),
     'une marge posée à la main ne décide que l\'écart horizontal : au passage à la ligne, le bouton se colle sous la case');
   assert.ok(/<span class="nw"><button class="btn btn-sm" id="lv-relire2"/.test(bandeau),
     'le bouton et sa bulle forment UN objet de la rangée, sinon le gap les sépare et la bulle ne dit plus ce qu\'elle explique');
   // Une classe posée par le code et inconnue de la feuille ne se voit nulle part (6.8.0, 8.1.0, 9.4.3).
   const css = lireSource('src', 'cabinet', 'renderer', 'cabinet.css');
-  const regle = css.match(/^\.box-gestes \{[^}]*\}/m);
-  assert.ok(regle, '.box-gestes doit exister dans la feuille du Cabinet');
-  assert.ok(/display: flex/.test(regle[0]) && /flex-wrap: wrap/.test(regle[0]) && /gap:/.test(regle[0]),
+  const regle = css.match(/^\.c-livre \{[^}]*\}/m);
+  assert.ok(regle, '.c-livre doit exister dans la feuille du Cabinet');
+  assert.ok(/display: (inline-)?flex/.test(regle[0]) && /flex-wrap: wrap/.test(regle[0]) && /gap:/.test(regle[0]),
     'la rangée doit pouvoir passer à la ligne ET porter un gap, sinon elle ne règle qu\'un des deux écarts');
 });
 

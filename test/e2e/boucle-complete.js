@@ -3,7 +3,7 @@
 //   entreprise : importer l'appairage → clôturer un mois → fabriquer le paquet
 //   cabinet : importer le paquet → le dossier apparaît, les mois se lisent, une pièce s'ouvre
 // C'est le seul test qui prouve que le plan tient debout de bout en bout.
-const { playwright, RACINE, ELECTRON } = require('./harnais');
+const { playwright, RACINE, ELECTRON, ongletCompta } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
 const root = RACINE;
@@ -262,7 +262,7 @@ async function launchCabinet() {
   await shot(win, 'livres-journal');
 
   // La balance, et son verdict écrit en toutes lettres.
-  await win.click('#c-tabs button[data-tab=balance]');
+  await ongletCompta(win, 'balance');
   await win.waitForSelector('#lv-verdict');
   const bal = await win.evaluate(() => {
     const v = document.querySelector('#lv-verdict');
@@ -276,7 +276,7 @@ async function launchCabinet() {
 
   // Le grand livre et le lettrage s'ouvrent, et disent ce qu'ils savent — y compris ce qu'ils ne
   // savent PAS : il n'y a pas d'à-nouveau dans un livre lu mois par mois, et l'écran l'écrit.
-  await win.click('#c-tabs button[data-tab=grand-livre]');
+  await ongletCompta(win, 'grand-livre');
   // On reconnaît un compte à ce qu'il EST (`.gl-compte`), jamais à la balise qui le titrait : depuis
   // la 9.4.5 chaque compte est replié sur sa ligne de synthèse, et le `h2` que ce parcours attendait
   // n'existe plus. C'est le motif de la 7.28.0, une fois de plus — un e2e ancré sur une forme se
@@ -292,7 +292,7 @@ async function launchCabinet() {
   if (!gl.comptes) throw new Error('le grand livre est vide');
   if (gl.soldes !== gl.comptes) throw new Error(`${gl.comptes} comptes mais ${gl.soldes} soldes visibles : un compte replié sans son chiffre n'apprend rien`);
   if (!gl.ouverture) throw new Error('le grand livre doit DIRE qu\'il n\'a pas d\'à-nouveau');
-  await win.click('#c-tabs button[data-tab=lettrage]');
+  await ongletCompta(win, 'lettrage');
   await win.waitForSelector('#lv-verdict');
   const let1 = (await win.textContent('#lv-verdict')).trim();
   // Un écart de lettrage est ATTENDU sur un livre lu mois par mois, sans à-nouveau : un règlement
@@ -304,7 +304,7 @@ async function launchCabinet() {
   if (/info-box/.test(tonLettrage) && !/mois par mois/.test(let1)) throw new Error('l\'écart doit être EXPLIQUÉ, pas seulement affiché');
   console.log(`12 quater. grand livre : ${gl.comptes} comptes, ouverture annoncée inconnue · lettrage : ${let1.slice(0, 80)}`);
   await shot(win, 'livres-lettrage');
-  await win.click('#c-tabs button[data-tab=journal]');
+  await ongletCompta(win, 'journal');
 
   // Les cinq boutons fantômes de la ligne d'un paquet sont devenus un menu d'actions (7.29.0) :
   // on passe par le VRAI bouton et le VRAI menu, comme un comptable.
@@ -442,10 +442,21 @@ async function launchCabinet() {
   await win.waitForSelector('#modal-root .modal', { timeout: 20000 });
   const rapportLivre = (await win.textContent('#modal-root .modal')).replace(/\s+/g, ' ');
   if (!/écriture/.test(rapportLivre)) throw new Error('le compte rendu ne dit pas ce qui est entré : ' + rapportLivre.slice(0, 120));
-  await win.click('#modal-root #ok');
-  await win.waitForTimeout(500);
+  // 10.12.0 (U-27) — le compte rendu PROPOSE la suite : relire le livre-journal, ou aller au
+  // brouillard qui attend une décision. Une fenêtre à un seul « OK » laissait le comptable devant
+  // un livre neuf sans lui dire quoi en faire.
+  const suites = await win.$$eval('#modal-root [data-cr]', bs => bs.map(b => ({ t: b.textContent.trim(), p: b.classList.contains('btn-primary') })));
+  if (!suites.some(x => /livre-journal/.test(x.t)) || !suites.some(x => /brouillard|saisie/i.test(x.t))) {
+    throw new Error('le compte rendu ne propose pas la suite : ' + JSON.stringify(suites));
+  }
+  if (suites.filter(x => x.p).length !== 1) throw new Error('le compte rendu doit avoir UN geste principal : ' + JSON.stringify(suites));
+  // Ce parcours relit le livre-journal : on prend ce geste-là, comme un comptable qui veut voir.
+  await win.evaluate(() => [...document.querySelectorAll('#modal-root [data-cr]')].find(b => /livre-journal/.test(b.textContent)).click());
+  await win.waitForSelector('#c-tabs button[data-tab="journal"].active', { timeout: 8000 });
+  await win.waitForTimeout(300);
   const livre = await win.evaluate(() => {
-    const t = document.querySelector('#c-livres').textContent;
+    // L'état du livre vit dans la barre de la période (10.12.0, U-01), au-dessus des écrans.
+    const t = document.querySelector('#c-compta').textContent;
     return {
       bandeau: /Le livre de/.test(t),
       brouillard: !!document.querySelector('#lv-brouillard'),
@@ -453,7 +464,7 @@ async function launchCabinet() {
     };
   });
   if (!livre.bandeau) throw new Error('l\'écran doit dire qu\'il montre désormais LE LIVRE, pas les paquets');
-  if (!livre.brouillard) throw new Error('la case « Voir le brouillard » manque');
+  if (!livre.brouillard) throw new Error('la case qui compte le brouillard manque');
   console.log(`13 quater. le livre est créé à partir des paquets reçus — ${rapportLivre.slice(0, 90)}`);
   await shot(win, 'livre-cree');
 
@@ -467,7 +478,7 @@ async function launchCabinet() {
   await win.waitForTimeout(400);
   const brApres = await win.evaluate(() => document.querySelectorAll('#c-livres tbody tr').length);
   if (brAvant.coche) throw new Error('le brouillard ne doit pas être affiché par défaut');
-  if (brApres <= brAvant.lignes) throw new Error(`cocher « Voir le brouillard » doit montrer PLUS de lignes (${brAvant.lignes} → ${brApres})`);
+  if (brApres <= brAvant.lignes) throw new Error(`cocher « Compter … en brouillard » doit montrer PLUS de lignes (${brAvant.lignes} → ${brApres})`);
   const nbBr = await win.evaluate(() => document.querySelectorAll('#c-livres tr.br-ligne').length);
   if (!nbBr) throw new Error('une écriture en brouillard doit se distinguer à l\'œil (classe .br-ligne)');
   console.log(`13 quinquies. brouillard : ${brAvant.lignes} ligne(s) sans, ${brApres} avec — ${nbBr} marquée(s)`);
@@ -502,7 +513,7 @@ async function launchCabinet() {
   // de 2025, et lire le livre de 2026 aurait rendu un livre vide — une assertion qui échoue sur du
   // code juste (piège de la période écrite en dur, 7.17.0).
   const anneeLivre = await win.evaluate(() => {
-    const m = (document.querySelector('#c-livres') || {}).textContent || '';
+    const m = (document.querySelector('#c-compta') || {}).textContent || '';
     return (m.match(/Le livre de (\d{4})/) || [])[1] || ((document.querySelector('#lv-annee') || {}).value || '');
   });
   if (!/^\d{4}$/.test(anneeLivre)) throw new Error('impossible de savoir quel exercice l\'écran montre : ' + anneeLivre);

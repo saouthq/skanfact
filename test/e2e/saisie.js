@@ -7,7 +7,7 @@
 //
 // Il vérifie aussi les trois refus qui font une comptabilité : une validée ne se modifie pas, ne se
 // supprime pas, et un lot qui contient une pièce fausse ne troue pas la numérotation.
-const { playwright, RACINE, ELECTRON } = require('./harnais');
+const { playwright, RACINE, ELECTRON, ongletCompta, ongletComptaPresent } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
 const OUT = process.argv[2] || path.join(RACINE, 'dist-e2e', 'saisie');
@@ -83,7 +83,7 @@ const étape = m => { pas++; console.log('\n' + pas + '. ' + m); };
   // C'est aussi ce qui prouve que la Saisie n'apparaît qu'une fois le livre ouvert : elle n'aurait
   // aucun sens avant, et un onglet qui mène à « il n'y a rien » est un onglet mort.
   if (await win.$('#lv-relire')) {
-    if (await win.$('#c-tabs button[data-tab="saisie"]')) {
+    if (await ongletComptaPresent(win, 'saisie')) {
       throw new Error('l\'onglet Saisie s\'affiche alors que le dossier n\'a pas encore de livre');
     }
     await win.click('#lv-relire');
@@ -92,15 +92,48 @@ const étape = m => { pas++; console.log('\n' + pas + '. ' + m); };
     await attendre(600);
     ok('livre créé à partir des paquets reçus');
   }
-  await win.waitForFunction(() => {
-    const t = document.querySelector('#c-tabs');
-    return t && t.textContent.includes('Saisie');
-  }, { timeout: 25000 });
+  // 10.12.0 (U-06) — les écrans du livre sont rangés en groupes : on attend que le livre soit là
+  // (le sélecteur de groupes n'existe qu'avec un livre), puis on trouve l'écran par ses groupes.
+  await win.waitForSelector('#c-groupes', { timeout: 25000 });
+  if (!(await ongletComptaPresent(win, 'saisie'))) throw new Error('le livre est ouvert et l\'écran « Saisie » reste introuvable');
   ok('la fiche du dossier ouvre sur sa comptabilité, et l\'onglet Saisie est là');
+
+  // 10.12.0 (H-4, vu au test humain) — les pièces du livre-journal gardent leur menu d'actions, y
+  // compris quand le livre est DÉJÀ en mémoire : la table de la fiche, liée APRÈS le journal sur
+  // toute la vue, retirait leurs boutons. Rejoué comme un comptable : l'onglet Suivi, puis retour à
+  // la comptabilité — c'est ce retour qui trouve le livre en mémoire.
+  await ongletCompta(win, 'journal');
+  await win.waitForSelector('#c-livres tbody [data-rowmenu]', { timeout: 15000 });
+  const menusDuJournal = () => win.evaluate(() => document.querySelectorAll('#c-livres tbody [data-rowmenu]').length);
+  const menusAvant = await menusDuJournal();
+  await win.click('#d-tabs button[data-tab="suivi"]');
+  await win.waitForSelector('section[data-onglet="suivi"]:not([hidden])', { timeout: 8000 });
+  await win.click('#d-tabs button[data-tab="comptabilite"]');
+  await win.waitForSelector('#c-livres .c-nav', { timeout: 15000 });
+  await attendre(500);
+  const menusApres = await menusDuJournal();
+  if (!menusAvant) throw new Error('le livre-journal n\'a aucun menu d\'actions à sa première ouverture');
+  if (menusApres !== menusAvant) throw new Error(`le livre-journal a perdu ses menus d'actions au retour sur la comptabilité (${menusAvant} → ${menusApres})`);
+  ok(`le livre-journal garde ses ${menusAvant} menus d'actions, livre en mémoire compris`);
+
+  // 10.12.0 (H-6) — la barre des groupes ne saute pas d'un groupe à l'autre. L'alerte « ces livres
+  // sont incomplets », qui se tait sur la Saisie (U-01), était posée AU-DESSUS de la barre : la
+  // barre descendait dans « Consulter » et remontait dans « Saisir », sous le pointeur.
+  const hautDeLaBarre = () => win.evaluate(() => {
+    const v = document.querySelector('#view'); if (v) v.scrollTop = 0;
+    return Math.round(document.querySelector('#c-livres .c-nav').getBoundingClientRect().top);
+  });
+  if (!(await win.$('#c-livres .c-alerte'))) throw new Error('le dossier choisi n\'a pas d\'alerte de complétude : cette étape ne prouverait rien');
+  const hautConsulter = await hautDeLaBarre();
+  await win.click('#c-groupes button[data-groupe="saisir"]');
+  await win.waitForSelector('#c-groupes button[data-groupe="saisir"].active', { timeout: 8000 });
+  const hautSaisir = await hautDeLaBarre();
+  if (hautConsulter !== hautSaisir) throw new Error(`la barre des groupes saute de ${hautConsulter - hautSaisir} px en passant de Consulter à Saisir`);
+  ok(`la barre des groupes reste à sa place d'un groupe à l'autre (${hautSaisir} px), alerte comprise`);
 
   // ---------------------------------------------------------------- 2. une pièce entière au clavier
   étape('Taper une pièce ENTIÈRE au clavier, sans toucher la souris dans la grille');
-  await win.click('#c-tabs button[data-tab="saisie"]');
+  await ongletCompta(win, 'saisie');
   await win.waitForSelector('#sa-lignes', { timeout: 10000 });
   await shot('01-grille-vide');
 
@@ -124,8 +157,20 @@ const étape = m => { pas++; console.log('\n' + pas + '. ' + m); };
   // L'en-tête se descend à ENTRÉE, la même touche que la grille. Tab ne peut pas le faire : chaque
   // libellé porte sa bulle « i », qui est un vrai bouton et prend le focus au passage — c'est le
   // défaut que ce parcours a trouvé, et il n'apparaissait dans aucune console.
+  // 10.12.0 (H-2) — le point « non enregistrée » apparaît à la frappe qui commence la pièce, et il
+  // ne pousse RIEN : posé dans le flux, il décalait les trois rangées d'onglets sous la souris.
+  const bordsDesOnglets = () => win.evaluate(() => [...document.querySelectorAll('#d-tabs button, #c-groupes button, #c-tabs button')]
+    .map(b => { const r = b.getBoundingClientRect(); return Math.round(r.left) + ':' + Math.round(r.width); }).join(' '));
+  const ongletsAvant = await bordsDesOnglets();
   await win.click('#sa-piece');
   await win.keyboard.type('FAC-E2E-1');
+  await attendre(150);
+  if (!(await win.evaluate(() => [...document.querySelectorAll('[data-sale]')].some(x => !x.hidden)))) {
+    throw new Error('la pièce commencée n\'est signalée par aucun point');
+  }
+  const ongletsApres = await bordsDesOnglets();
+  if (ongletsApres !== ongletsAvant) throw new Error('le point « non enregistrée » a décalé les onglets à la première frappe :\n  ' + ongletsAvant + '\n  ' + ongletsApres);
+  ok('le point de la pièce commencée apparaît sans décaler un seul onglet');
   await win.keyboard.press('Enter');
   const apresPiece = await win.evaluate(() => (document.activeElement || {}).id);
   if (apresPiece !== 'sa-libelle') throw new Error('Entrée depuis la pièce n\'amène pas au libellé (focus : ' + apresPiece + ')');
@@ -182,9 +227,12 @@ const étape = m => { pas++; console.log('\n' + pas + '. ' + m); };
     const tr = document.querySelector('#sa-lignes tr[data-i="2"]');
     return { d: tr.querySelector('input[data-k=debit]').value, c: tr.querySelector('input[data-k=credit]').value };
   });
-  if (pose.c !== '191.000') throw new Error('Tab n\'a pas soldé la pièce (crédit posé : « ' + pose.c + ' », attendu 191.000)');
+  // 10.12.0 (H-3) — l'assertion exigeait « 191.000 » : elle gravait le défaut. En français, un point
+  // entre des chiffres sépare les MILLIERS — « 250.000 » se lit deux cent cinquante mille. Tab écrit
+  // le montant comme le reste de l'écran l'écrit (une assertion de plus retournée vers la règle).
+  if (pose.c !== '191,000') throw new Error('Tab n\'a pas soldé la pièce en français (crédit posé : « ' + pose.c + ' », attendu 191,000)');
   if (pose.d) throw new Error('le solde s\'est posé au débit alors qu\'il manquait du crédit');
-  ok('Tab pose 191,000 au crédit — le montant a changé de COLONNE, il n\'a pas gardé un signe');
+  ok('Tab pose « 191,000 » au crédit — en français, et dans la bonne COLONNE, pas avec un signe');
 
   const soldeTexte = await win.evaluate(() => document.querySelector('#sa-solde').textContent);
   if (!/Équilibrée/.test(soldeTexte)) throw new Error('la pièce n\'est pas annoncée équilibrée : ' + soldeTexte);
@@ -215,6 +263,110 @@ const étape = m => { pas++; console.log('\n' + pas + '. ' + m); };
   if (suite.j !== 'VT' || !suite.d) throw new Error('la grille a perdu le journal ou la date entre deux pièces');
   if (suite.p) throw new Error('la grille a gardé le numéro de pièce : on en refabriquerait un doublon');
   ok('la grille enchaîne : même journal, même date, pièce vide');
+
+  // ---------------------------------------------------------------- 3 bis. ce que le test humain a vu
+  // 10.12.0 (H-3, H-3 bis, H-8) — trouvés en tapant comme un comptable, jamais par un test :
+  // « 12a » passait pour une ligne « sans montant », « 1 250,500 » valait zéro, la case refusée
+  // perdait son rouge dès que la souris passait sur sa ligne, une date impossible n'était JAMAIS
+  // rouge, et la fenêtre du refus prenait le curseur sans le rendre.
+  étape('Un montant illisible se NOMME, reste rouge, et le refus rend le curseur à sa case');
+  const cellule = (i, k) => `#sa-lignes tr[data-i="${i}"] input[data-k=${k}]`;
+  // La couleur d'erreur telle que le navigateur la RÉSOUT à cet endroit (thème compris) : une sonde
+  // posée à côté de la case, jamais une valeur écrite dans le test.
+  const bordEtAttendu = sel => win.evaluate(s => {
+    const d = document.querySelector(s);
+    const sonde = document.createElement('span');
+    sonde.style.borderTop = '1px solid var(--danger)';
+    d.parentElement.appendChild(sonde);
+    const attendu = getComputedStyle(sonde).borderTopColor;
+    sonde.remove();
+    return { bord: getComputedStyle(d).borderTopColor, attendu, ko: d.classList.contains('sa-ko'), aria: d.getAttribute('aria-invalid'),
+      survol: !!d.closest('tr') && d.closest('tr').matches(':hover') };
+  }, sel);
+  await win.click(cellule(0, 'compte'));
+  await win.keyboard.type('606');
+  await win.keyboard.press('Escape');
+  await win.click(cellule(0, 'debit'));
+  await win.keyboard.type('12a');
+  await win.click(cellule(1, 'compte'));
+  await win.keyboard.type('532');
+  await win.keyboard.press('Escape');
+  await win.click(cellule(1, 'credit'));
+  await win.keyboard.type('1 250,500');                // l'espace des milliers, comme on le tape
+  await attendre(200);
+  // Le motif vit sous les totaux (`#sa-refus`), et c'est le MÊME que celui des deux boutons éteints.
+  const verdict = await win.evaluate(() => ({
+    motif: (document.querySelector('#sa-refus') || {}).textContent || '',
+    brouillard: document.querySelector('#sa-ok').disabled, titre: document.querySelector('#sa-ok').title
+  }));
+  if (!/Ligne 1 : « 12a » n'est pas un montant \(débit\)/.test(verdict.motif)) throw new Error('le montant illisible n\'est pas nommé : ' + verdict.motif);
+  if (/aucun montant/.test(verdict.motif)) throw new Error('la ligne où l\'on a tapé « 12a » est dite « sans montant »');
+  if (!verdict.brouillard || verdict.titre !== verdict.motif) throw new Error('le bouton du brouillard ne s\'éteint pas sur le même motif : ' + verdict.titre);
+  const totalCredit = await win.evaluate(() => (document.querySelector('#sa-tc') || {}).textContent || '');
+  if (!/^1[\s  ]250,500$/.test(totalCredit.trim())) throw new Error('« 1 250,500 » n\'est pas lu au crédit : ' + totalCredit);
+  await win.hover(cellule(0, 'libelle'));
+  await attendre(150);
+  const survole = await bordEtAttendu(cellule(0, 'debit'));
+  if (!survole.survol) throw new Error('la ligne de « 12a » n\'est pas survolée : l\'étape ne prouverait rien');
+  if (!survole.ko || survole.aria !== 'true') throw new Error('la case « 12a » n\'est pas marquée fautive');
+  if (survole.bord !== survole.attendu) throw new Error(`la case « 12a » perd son rouge au survol de sa ligne (${survole.bord} au lieu de ${survole.attendu})`);
+  ok('« 12a » est nommé et reste rouge sous la souris ; « 1 250,500 » est lu au millime');
+
+  await win.click(cellule(1, 'credit'));
+  await win.keyboard.press('Control+Enter');
+  await win.waitForSelector('.modal-bg', { timeout: 8000 });
+  const refusDit = await win.evaluate(() => document.querySelector('.modal-bg .modal').innerText.replace(/\s+/g, ' '));
+  if (!/« 12a » n'est pas un montant/.test(refusDit)) throw new Error('le refus ne nomme pas le montant illisible : ' + refusDit);
+  await win.keyboard.press('Enter');
+  await win.waitForFunction(() => !document.querySelector('.modal-bg'), { timeout: 8000 });
+  // Lu sans présumer qu'il est dans une ligne : quand le défaut revient, le curseur est sur la PAGE,
+  // et le parcours doit le dire dans sa phrase, pas tomber sur une erreur de lecture.
+  const curseur = await win.evaluate(() => {
+    const a = document.activeElement;
+    const tr = a && a.closest ? a.closest('#sa-lignes tr') : null;
+    return tr ? tr.dataset.i + ':' + a.dataset.k : (a ? a.tagName + (a.id ? '#' + a.id : '') : 'aucun');
+  });
+  if (curseur !== '0:debit') throw new Error('après le refus, le curseur n\'est pas dans la case « 12a » (focus : ' + curseur + ')');
+  ok('le refus nomme « 12a », et le curseur revient dans sa case une fois la fenêtre fermée');
+
+  await win.click('#sa-date');
+  await win.keyboard.type('31/02/' + annee);
+  await win.keyboard.press('Tab');
+  await attendre(150);
+  const dateRefusee = await bordEtAttendu('#sa-date');
+  if (!dateRefusee.ko || dateRefusee.aria !== 'true') throw new Error('« 31/02 » n\'est pas marqué comme une date impossible');
+  if (dateRefusee.bord !== dateRefusee.attendu) throw new Error(`une date impossible n'est pas rouge : la règle générale des champs l'écrase (${dateRefusee.bord})`);
+  ok('« 31/02 » est refusé, et la case Date devient rouge — elle ne l\'avait jamais été');
+  await win.click('#sa-date');
+  await win.keyboard.type('4/3');
+  await win.keyboard.press('Tab');
+  await win.click('#sa-vider');
+  await win.waitForFunction(() => ![...document.querySelectorAll('#sa-lignes input')].some(i => i.value), { timeout: 8000 });
+
+  // 10.12.0 (H-5) — chaque dossier rouvre sur l'écran où on l'a laissé. Béji rouvrait sur le
+  // livre-journal pendant que sa pièce attendait dans la Saisie ; un AUTRE dossier, lui, n'hérite
+  // pas de la Saisie du premier.
+  étape('Chaque dossier rouvre sur l\'écran de comptabilité où on l\'a laissé');
+  const ouvrirComptaDe = async id => {
+    await win.evaluate(() => { location.hash = '#/dossiers'; });
+    await win.waitForSelector(`tr[data-id="${id}"]`, { timeout: 10000 });
+    await win.click(`tr[data-id="${id}"] td.dl-client`);
+    await win.waitForSelector('#d-tabs button[data-tab="comptabilite"]', { timeout: 10000 });
+    if (!(await win.$('#d-tabs button[data-tab="comptabilite"].active'))) await win.click('#d-tabs button[data-tab="comptabilite"]');
+    await win.waitForSelector('#c-livres', { timeout: 15000 });
+    await win.waitForFunction(() => !document.querySelector('#c-livres').textContent.includes('Lecture des paquets'), { timeout: 30000 });
+    await attendre(300);
+    return win.evaluate(() => { const b = document.querySelector('#c-tabs button.active'); return b ? b.dataset.tab : '(aucun écran)'; });
+  };
+  await win.evaluate(() => { location.hash = '#/dossiers'; });
+  await win.waitForSelector('tr[data-id]', { timeout: 10000 });
+  const autre = await win.evaluate(c => [...document.querySelectorAll('tr[data-id]')].map(t => t.dataset.id).find(id => id !== c), cible);
+  if (!autre) throw new Error('l\'exemple n\'a qu\'un dossier : l\'étape ne prouverait rien');
+  const chezLAutre = await ouvrirComptaDe(autre);
+  if (chezLAutre === 'saisie') throw new Error('un autre dossier s\'ouvre sur la Saisie du premier');
+  const auRetour = await ouvrirComptaDe(cible);
+  if (auRetour !== 'saisie') throw new Error('le dossier ne rouvre pas sur la Saisie où on l\'avait laissé (écran : ' + auRetour + ')');
+  ok(`l'autre dossier s'ouvre sur « ${chezLAutre} », et le premier retrouve sa Saisie`);
 
   étape('Valider : le numéro naît ici, et l\'écriture ne se modifie plus');
   const avantNums = L.ecritures.filter(e => e.statut === 'validee').length;
@@ -339,11 +491,11 @@ const étape = m => { pas++; console.log('\n' + pas + '. ' + m); };
   ok('application rouverte : ce qui suit est relu sur le disque');
   await win.evaluate(id => { location.hash = '#/dossier/' + encodeURIComponent(id) + '/comptabilite'; }, cible);
   await win.waitForSelector('#c-tabs', { timeout: 15000 });
-  await win.waitForFunction(() => {
-    const t = document.querySelector('#c-tabs');
-    return t && t.textContent.includes('Recherche');
-  }, { timeout: 25000 });
-  await win.click('#c-tabs button[data-tab="recherche"]');
+  // 10.12.0 (U-06) — les écrans du livre sont rangés en groupes : on attend que le livre soit là
+  // (le sélecteur de groupes n'existe qu'avec un livre), puis on trouve l'écran par ses groupes.
+  await win.waitForSelector('#c-groupes', { timeout: 25000 });
+  if (!(await ongletComptaPresent(win, 'recherche'))) throw new Error('le livre est ouvert et l\'écran « Recherche » reste introuvable');
+  await ongletCompta(win, 'recherche');
   await win.waitForSelector('#re-q', { timeout: 8000 });
   await win.click('#re-q');
   await win.keyboard.type('1191');
@@ -370,7 +522,7 @@ const étape = m => { pas++; console.log('\n' + pas + '. ' + m); };
   // FAC-E2E-1 est datée du 4 mars et validée APRÈS des pièces de mois postérieurs : le moteur
   // recomptait 1..n par date et l'affichait « n° 1 », en poussant toutes les validées d'avant d'un
   // cran. On lit la colonne N° de l'écran et on la confronte au livre sur le disque, pièce par pièce.
-  await win.click('#c-tabs button[data-tab="journal"]');
+  await ongletCompta(win, 'journal');
   await win.waitForSelector('#lv-journal', { timeout: 8000 });
   await win.selectOption('#lv-journal', 'VT');
   await attendre(400);
@@ -432,7 +584,7 @@ const étape = m => { pas++; console.log('\n' + pas + '. ' + m); };
 
   await win.evaluate(id => { location.hash = '#/dossier/' + encodeURIComponent(id) + '/comptabilite'; }, cible);
   await win.waitForSelector('#c-tabs', { timeout: 15000 });
-  await win.click('#c-tabs button[data-tab="saisie"]');
+  await ongletCompta(win, 'saisie');
   await win.waitForSelector('#sa-guide', { timeout: 10000 });
   await win.fill('#sa-guide-montant', '1000');
   await win.selectOption('#sa-guide', { label: 'Achat avec TVA 19 %' });
@@ -446,11 +598,15 @@ const étape = m => { pas++; console.log('\n' + pas + '. ' + m); };
     cr: tr.querySelector('input[data-k=credit]').value
   })));
   // Les trois montants se calculent à la MAIN : 1000 de base, 19 % de TVA, 1190 au fournisseur.
-  if (rempli[0].d !== '1000.000') throw new Error('la ligne de base n\'a pas reçu le montant : ' + JSON.stringify(rempli[0]));
+  // Et ils s'ÉCRIVENT comme l'écran les écrit (H-3) : « 1 000,000 », jamais « 1000.000 » — en
+  // français, le point sépare les milliers. L'assertion d'avant exigeait le point : elle gravait le
+  // défaut. L'espace des milliers est insécable ; on la ramène à une espace pour comparer.
+  const fr = v => String(v || '').replace(/[\s  ]/g, ' ');
+  if (fr(rempli[0].d) !== '1 000,000') throw new Error('la ligne de base n\'a pas reçu le montant en français : ' + JSON.stringify(rempli[0]));
   const tva = rempli.find(r => r.c === '4366');
-  if (!tva || tva.d !== '190.000') throw new Error('la TVA à 19 % de 1000 devrait être 190,000 : ' + JSON.stringify(tva));
+  if (!tva || fr(tva.d) !== '190,000') throw new Error('la TVA à 19 % de 1000 devrait être 190,000 : ' + JSON.stringify(tva));
   const four = rempli.find(r => r.c === '401');
-  if (!four || four.cr !== '1190.000') throw new Error('le fournisseur devrait recevoir le solde 1190,000 : ' + JSON.stringify(four));
+  if (!four || fr(four.cr) !== '1 190,000') throw new Error('le fournisseur devrait recevoir le solde 1 190,000 : ' + JSON.stringify(four));
   const soldeGuide = await win.evaluate(() => document.querySelector('#sa-solde').textContent);
   if (!/Équilibrée/.test(soldeGuide)) throw new Error('la pièce du guide ne tombe pas juste : ' + soldeGuide);
   ok('le guide préremplit 1000 / 190 / 1190 et la pièce tombe juste');
@@ -463,6 +619,45 @@ const étape = m => { pas++; console.log('\n' + pas + '. ' + m); };
   }
   ok('le guide n\'a rien enregistré — il préremplit, on décide');
 
+  // ---------------------------------------------------------------- 9 bis. la pièce commencée (U-09)
+  étape('Une pièce commencée se VOIT, et la fermeture la nomme avant de la perdre (U-09)');
+  // Le guide vient de remplir la grille SANS enregistrer : c'est une pièce commencée. Elle vivait en
+  // mémoire, sans trace — fermer la fenêtre l'effaçait sans une question.
+  const points = await win.evaluate(() => [...document.querySelectorAll('[data-sale]')]
+    .filter(x => !x.hidden && x.getBoundingClientRect().width > 0).length);
+  if (points < 2) throw new Error(`la pièce commencée ne se voit pas : ${points} point visible sur l'onglet de la fiche, le groupe et la Saisie`);
+  const nomDossier = (await win.textContent('#view h1')).trim();
+  // La boîte de la fermeture est NATIVE : elle ne se clique pas depuis la page. On la remplace dans
+  // le processus principal par une réponse écrite d'avance (« Annuler »), et on retient ce qu'elle
+  // a demandé.
+  await app.evaluate(({ dialog }) => {
+    global.__questions = [];
+    dialog.showMessageBoxSync = (_w, o) => { global.__questions.push({ message: o.message, boutons: o.buttons }); return 0; };
+  });
+  await app.evaluate(({ BrowserWindow }) => { BrowserWindow.getAllWindows()[0].close(); });
+  await attendre(500);
+  const questions = await app.evaluate(() => global.__questions);
+  const fenetres = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length);
+  if (!questions.length) throw new Error('fermer avec une pièce commencée ne pose aucune question');
+  if (!fenetres) throw new Error('« Annuler » a quand même fermé la fenêtre');
+  if (!questions[0].message.includes(nomDossier)) throw new Error('la question ne nomme pas le dossier : ' + questions[0].message);
+  if (!questions[0].boutons.includes('Fermer sans enregistrer')) throw new Error('la question n\'offre pas de fermer quand même : ' + questions[0].boutons.join(' / '));
+  ok(`la fermeture demande, nomme « ${nomDossier} », et « Annuler » garde la fenêtre`);
+
+  // « Vider » jetait la pièce sans un mot : il laisse maintenant un « Annuler » sous la main.
+  await win.click('#sa-vider');
+  await win.waitForSelector('#toast .toast-undo', { timeout: 5000 });
+  await win.click('#toast .toast-undo');
+  await win.waitForFunction(() => {
+    const v = document.querySelector('#sa-lignes tr[data-i="0"] input[data-k=compte]');
+    return v && v.value === '607';
+  }, { timeout: 5000 });
+  ok('« Vider » se défait : la pièce revient, lignes comprises');
+  await win.click('#sa-vider');
+  await win.waitForFunction(() => [...document.querySelectorAll('[data-sale]')].every(x => x.hidden), { timeout: 5000 });
+  await app.evaluate(() => { global.__questions = []; });
+  ok('vidée pour de bon, le point disparaît — et la fermeture ne demandera plus rien');
+
   // ---------------------------------------------------------------- 8. rien de cassé
   étape('Aucune erreur JavaScript pendant tout le parcours');
   if (errors.length) {
@@ -474,6 +669,8 @@ const étape = m => { pas++; console.log('\n' + pas + '. ' + m); };
   console.log('\nTOUT EST VERT — captures dans ' + OUT);
   await Promise.race([app.close(), new Promise(r => setTimeout(r, 15000))
     .then(() => { throw new Error('l\'application ne se ferme pas : une fenêtre attend une réponse'); })]);
+  // Aucune pièce en cours : la fermeture n'a rien eu à demander (sinon la boîte remplacée aurait
+  // répondu « Annuler », et la fermeture aurait échoué au-dessus).
   fs.rmSync(dir, { recursive: true, force: true });
 })().catch(async e => {
   console.error('\n✗ ' + e.message);
