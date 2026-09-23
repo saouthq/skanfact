@@ -6247,7 +6247,7 @@ puis corrigée par un avoir alors qu'elle était déjà payée) :
   à d'autres pièces, `docTable` ne totalise que les factures et les avoirs, et le pied le DIT
   (« factures et avoirs : … »). `e2e:entreprise` le vérifie sur des montants calculés à la main.
 
-**Et en tapant au clavier ce que tape un chef d'entreprise** (H-E25 → H-E29) :
+**Et en tapant au clavier ce que tape un chef d'entreprise** (H-E25 → H-E30) :
 
 - **Un champ `type=number` se lit dans la langue du SYSTÈME, pas dans celle de l'application**
   (H-E28, le plus grave de ce lot) : sur un poste réglé en anglais, « 2,5 » tapé dans un prix devenait
@@ -6283,7 +6283,9 @@ puis corrigée par un avoir alors qu'elle était déjà payée) :
 - **Un bouton qui change de page mène au GESTE, pas à un endroit d'où le chercher** (H-E29 ; 7.21.0) :
   « Partir d'une facture existante » ouvrait la liste des factures, et le geste (« Rendre récurrente »)
   vivait dans l'éditeur, deux écrans plus loin — rien ne le disait. On choisit la facture sur place ;
-  le contrat s'ouvre prérempli (`recurrenceFromInvoice`, déjà écrit pour l'éditeur).
+  le contrat s'ouvre prérempli (`recurrenceFromInvoice`, déjà écrit pour l'éditeur). Même famille
+  sur « Proforma, bons et contrats » (H-E30) : l'onglet vide renvoyait au menu « Transformer » d'un
+  devis ; il propose la pièce de départ, lue dans `CONVERSIONS` à l'envers, et appelle `convertDoc`.
 - **Un parcours ancré sur une COULEUR se périme au premier arbitrage du bouton principal** :
   `e2e:argent` cliquait `.page-head .btn-primary` pour créer un client ; depuis U-11, le vert d'une
   liste vide est celui de l'état vide, et le parcours attendait trente secondes un bouton qui n'était

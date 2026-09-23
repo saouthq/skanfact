@@ -6485,7 +6485,7 @@
         <span class="f-note" id="f-note" hidden></span>
       `, mine.length, filtreActif)}
       ${vide ? etatVide(VIDE_AUTRES[type][0], [`${h(tab[2])} ${info('autres.' + type)}`, h(VIDE_AUTRES[type][1])],
-        [['vide-new', '+ ' + NEW_LABELS[type], true]]) : '<div id="list-wrap"></div>'}`;
+        [['vide-new', '+ ' + NEW_LABELS[type], true], ...(sourcesAutres(type).length ? [['vide-depuis', DEPUIS_AUTRES[type] || 'Partir d\'une pièce existante']] : [])]) : '<div id="list-wrap"></div>'}`;
 
     const draw = (sortKey) => {
       if (typeof sortKey === 'string' && sortKey) { s.sort = toggleSort(s.sort, sortKey, cols); s.page = 1; }
@@ -6509,12 +6509,39 @@
     $$('#a-tabs button').forEach(b => b.onclick = () => { autresTab = b.dataset.tab; navigate('#/autres/' + b.dataset.tab); });
     $('#new').onclick = () => navigate('#/doc/new/' + type);
     if ($('#vide-new')) $('#vide-new').onclick = () => navigate('#/doc/new/' + type);
+    // 10.12.0 (H-E30, la famille de H-E29) — l'état vide disait « tu peux en tirer une d'un devis
+    // existant, depuis son menu « Transformer » » : le geste était sur une autre pièce, deux écrans
+    // plus loin. On choisit la pièce de départ ICI, et la conversion est celle du menu (`convertDoc`).
+    if ($('#vide-depuis')) $('#vide-depuis').onclick = () => {
+      const items = sourcesAutres(type).map(d => ({ v: d.id, label: `${d.number || 'Brouillon'} — ${C.TITLES[d.type]} — ${clientName(d.clientId)} — ${C.money(montantDeListe(d), docCur(d))}` }));
+      modal(`<h2>${h(DEPUIS_AUTRES[type] || 'Partir d\'une pièce existante')}</h2>
+        <p class="small muted">La nouvelle pièce reprend son client et ses lignes, en brouillon : tu la relis avant de l'envoyer.</p>
+        <div class="field"><span>Pièce de départ</span>${combo({ name: 'depuis', items, value: items[0].v, placeholder: '— Choisis une pièce —', search: 'Rechercher une pièce…' })}</div>
+        <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="vide-depuis-ok">Continuer</button></div>`,
+      (layer, close) => {
+        bindCombo($('[data-combo=depuis]', layer), { items, placeholder: '— Choisis une pièce —' });
+        $('#vide-depuis-ok', layer).onclick = () => {
+          const src = docById($('input[name=depuis]', layer).value);
+          if (!src) return toast('Choisis la pièce dont la nouvelle reprend les lignes.');
+          if (licenceBlock('Créer une pièce')) return;
+          close();
+          const out = C.convertDoc(src, type, company(), C.today());
+          data.documents.push(out); save(true);
+          toast(`${C.TITLES[type]} créé en brouillon à partir de ${src.number || 'ce brouillon'}`);
+          navigate('#/doc/' + out.id);
+        };
+      });
+    };
     if ($('#q')) $('#q').oninput = e => { s.q = e.target.value.toLowerCase(); s.page = 1; draw(); };
     if ($('#st')) $('#st').onchange = e => { s.st = e.target.value; s.page = 1; draw(); };
     if ($('#yr')) $('#yr').onchange = e => { s.year = e.target.value; s.page = 1; draw(); };
     if (!vide) draw();
   };
   const NEW_LABELS = { proforma: 'Nouvelle proforma', commande: 'Nouveau bon de commande', livraison: 'Nouveau bon de livraison', contrat: 'Nouveau contrat' };
+  // Les pièces dont une autre peut partir : la table des conversions de core.js, lue à l'envers.
+  const sourcesAutres = type => data.documents.filter(d => d.type !== type && (C.CONVERSIONS[d.type] || []).includes(type))
+    .sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.number || '').localeCompare(a.number || ''));
+  const DEPUIS_AUTRES = { proforma: 'Partir d\'un devis existant', commande: 'Partir d\'un devis existant', livraison: 'Partir d\'une pièce existante', contrat: 'Partir d\'un devis existant' };
   // Un onglet vide dit à quoi sert la pièce et donne le geste qui la crée (10.12.0) : [titre, seconde phrase].
   const VIDE_AUTRES = {
     proforma: ['Un prix ferme, avant la facture', 'Tu peux aussi en tirer une d\'un devis existant, depuis son menu « Transformer ».'],

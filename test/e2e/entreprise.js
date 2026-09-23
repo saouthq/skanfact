@@ -318,6 +318,16 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
     if (question) await question.click();
     await win.waitForFunction(() => !document.querySelector('#modal-root .modal-bg'));
   });
+  // 10.12.0 (H-E30) — même famille : l'onglet Proformas vide renvoyait au menu « Transformer » d'un
+  // devis. On part du devis sur place, et la proforma s'ouvre en brouillon.
+  await step('proformas : partir d\'un devis existant crée la proforma sur place', async () => {
+    await win.evaluate(() => { location.hash = '#/autres/proforma'; });
+    await win.waitForSelector('#vide-depuis', { timeout: 4000 }).catch(() => { throw new Error('l\'onglet Proformas vide ne propose pas de partir d\'un devis existant'); });
+    await win.click('#vide-depuis');
+    await win.waitForSelector('#vide-depuis-ok');
+    await win.click('#vide-depuis-ok');
+    await win.waitForFunction(() => location.hash.startsWith('#/doc/') && /proforma/i.test((document.querySelector('#view h1') || {}).textContent || ''), null, { timeout: 4000 });
+  });
   await step('paramètres + panneau mises à jour + sauvegarde', async () => {
     await win.evaluate(() => { location.hash = '#/parametres'; });
     await setTab('app');

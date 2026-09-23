@@ -199,7 +199,8 @@ même façon, ce qui en a fait trouver une trentaine d'autres. Tout est ici.
   nomme), et la valeur du stock vit sous « Stock ».
 - **« Partir d'une facture existante » (Facturation récurrente) emmenait à la liste des factures**, où
   rien ne disait quoi faire ensuite. On choisit la facture sur place, et le contrat s'ouvre prérempli
-  de son client, de ses lignes et de sa devise.
+  de son client, de ses lignes et de sa devise. Même chose sur « Proforma, bons et contrats » : un
+  onglet vide propose « Partir d'un devis existant » au lieu de renvoyer au menu « Transformer ».
 
 **La console de l'éditeur**
 - **Le Journal écrivait « commande.creee »** en chasse fixe : les cinq événements de la vente en ligne

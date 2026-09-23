@@ -124,10 +124,9 @@ Constats de l'audit du 22/09/2026 restés hors de la 10.6.0.
     statut déduit depuis la 1.4.0 (la bulle le dit), mais un créateur d'entreprise qui n'a rien
     envoyé le lit comme une erreur. Changer le mot touche les données (la valeur `envoyée`), les
     filtres, les relances et l'aide : à décider (« émise » ?), pas à glisser dans un correctif.
-  - **« Proforma, bons et contrats » dit encore le geste en prose** : son état vide renvoie au menu
-    « Transformer » d'un devis (« Tu peux aussi en tirer une d'un devis existant… »), sans bouton. C'est
-    la famille de H-E29 (« Partir d'une facture existante », corrigé) : un « Partir d'un devis… » qui
-    choisit la pièce sur place et appelle `convertDoc`, sur les quatre onglets.
+  - **Une pièce tirée d'une autre s'ouvre marquée « Modifications non enregistrées »** alors qu'elle
+    vient d'être enregistrée (même chemin que « Transformer ») : vu en 10.12.0 en partant d'un devis
+    depuis l'onglet Proformas (H-E30), non corrigé — à comprendre avant d'y toucher.
   - **Un avoir tiré d'une facture ne porte pas le timbre** (réglage « avoir sans timbre par défaut —
     À VÉRIFIER ») : un avoir « total » laisse donc la facture due d'un dinar, et elle ne passe jamais
     « annulée ». Question au comptable : le timbre d'une facture annulée par avoir se rend-il ?
