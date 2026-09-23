@@ -4742,7 +4742,30 @@
               [['rec-first', '+ Créer mon premier contrat', true],
                ['rec-depuis', 'Partir d\'une facture existante']])}`;
       if ($('#rec-first')) $('#rec-first').onclick = () => recurrenceForm(null, draw);
-      if ($('#rec-depuis')) $('#rec-depuis').onclick = () => navigate('#/factures');
+      // 10.12.0 (H-E29, vu au test humain) — « Partir d'une facture existante » emmenait à la liste des
+      // factures, et rien n'y disait quoi faire : le geste (« Rendre récurrente », dans l'éditeur de
+      // la facture) était deux écrans plus loin. Un bouton qui change de page doit y mener au geste,
+      // pas à un endroit d'où le chercher (7.21.0). On choisit la facture ICI ; le contrat s'ouvre
+      // prérempli de son client, de ses lignes et de sa devise.
+      if ($('#rec-depuis')) $('#rec-depuis').onclick = () => {
+        const factures = data.documents.filter(d => d.type === 'facture')
+          .sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.number || '').localeCompare(a.number || ''))
+          .map(d => ({ v: d.id, label: `${d.number || 'Brouillon'} — ${clientName(d.clientId)}${d.subject ? ' — ' + d.subject : ''} — ${C.money(montantDeListe(d), docCur(d))}` }));
+        if (!factures.length) return toast('Aucune facture pour l\'instant : crée ton premier contrat de zéro.');
+        modal(`<h2>Partir de quelle facture ?</h2>
+          <p class="small muted">Le contrat reprend son client, ses lignes et sa devise ; tu choisis ensuite la périodicité et la prochaine échéance.</p>
+          <div class="field"><span>Facture de départ</span>${combo({ name: 'depuis', items: factures, value: factures[0].v, placeholder: '— Choisis une facture —', search: 'Rechercher une facture…' })}</div>
+          <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="rec-depuis-ok">Continuer</button></div>`,
+        (layer, close) => {
+          bindCombo($('[data-combo=depuis]', layer), { items: factures, placeholder: '— Choisis une facture —' });
+          $('#rec-depuis-ok', layer).onclick = () => {
+            const doc = docById($('input[name=depuis]', layer).value);
+            if (!doc) return toast('Choisis la facture dont le contrat reprend les lignes.');
+            close();
+            recurrenceForm(recurrenceFromInvoice(doc), draw);
+          };
+        });
+      };
       // Seul `#c-wrap` se redessine : l'en-tête suit l'état vide ICI, pas au dessin de la page. Tant
       // que l'état vide porte son bouton principal, celui de l'en-tête est secondaire (U-11).
       const nouveau = $('#new');

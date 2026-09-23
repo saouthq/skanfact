@@ -297,6 +297,27 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
     await win.keyboard.press('Escape');
     await win.waitForFunction(() => !document.querySelector('#modal-root .modal-bg'));
   });
+  // 10.12.0 (H-E29, vu au test humain) — « Partir d'une facture existante » emmenait à la liste des
+  // factures, où rien ne disait quoi faire. On choisit la facture sur place, et le contrat s'ouvre
+  // prérempli de son client et de ses lignes.
+  await step('facturation récurrente : partir d\'une facture ouvre le contrat prérempli, sans quitter la page', async () => {
+    await win.evaluate(() => { location.hash = '#/contrats'; });
+    await win.waitForSelector('#rec-depuis');
+    await win.click('#rec-depuis');
+    await win.waitForSelector('#rec-depuis-ok', { timeout: 4000 }).catch(() => { throw new Error('« Partir d\'une facture existante » ne propose pas de choisir la facture'); });
+    if (await win.evaluate(() => location.hash) !== '#/contrats') throw new Error('le bouton a quitté la page au lieu de proposer la facture');
+    await win.click('#rec-depuis-ok');
+    await win.waitForFunction(() => /Nouveau contrat récurrent/.test((document.querySelector('#modal-root .modal-bg:last-child') || {}).textContent || ''), null, { timeout: 4000 });
+    const pre = await win.evaluate(() => {
+      const m = document.querySelector('#modal-root .modal-bg:last-child');
+      return { client: (m.querySelector('input[name=clientId]') || {}).value || '', remplis: [...m.querySelectorAll('input[type=text]')].filter(i => i.value.trim()).length };
+    });
+    if (!pre.client || pre.remplis < 2) throw new Error(`le contrat n'est pas prérempli depuis la facture (client « ${pre.client} », ${pre.remplis} champs remplis)`);
+    await win.click('#modal-root .modal-bg:last-child [data-close]');
+    const question = await win.waitForSelector('#modal-root .modal-bg:nth-child(2) #ok', { timeout: 1500 }).catch(() => null);
+    if (question) await question.click();
+    await win.waitForFunction(() => !document.querySelector('#modal-root .modal-bg'));
+  });
   await step('paramètres + panneau mises à jour + sauvegarde', async () => {
     await win.evaluate(() => { location.hash = '#/parametres'; });
     await setTab('app');

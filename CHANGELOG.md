@@ -197,6 +197,9 @@ même façon, ce qui en a fait trouver une trentaine d'autres. Tout est ici.
 - **Le pied du Catalogue faisait la moyenne d'un prix à l'heure, d'un lot et d'une pièce**, et posait la
   valeur du stock sous la colonne TVA : la moyenne ne paraît plus que dans une seule unité (qu'elle
   nomme), et la valeur du stock vit sous « Stock ».
+- **« Partir d'une facture existante » (Facturation récurrente) emmenait à la liste des factures**, où
+  rien ne disait quoi faire ensuite. On choisit la facture sur place, et le contrat s'ouvre prérempli
+  de son client, de ses lignes et de sa devise.
 
 **La console de l'éditeur**
 - **Le Journal écrivait « commande.creee »** en chasse fixe : les cinq événements de la vente en ligne

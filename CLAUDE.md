@@ -6247,7 +6247,7 @@ puis corrigée par un avoir alors qu'elle était déjà payée) :
   à d'autres pièces, `docTable` ne totalise que les factures et les avoirs, et le pied le DIT
   (« factures et avoirs : … »). `e2e:entreprise` le vérifie sur des montants calculés à la main.
 
-**Et en tapant au clavier ce que tape un chef d'entreprise** (H-E25 → H-E28) :
+**Et en tapant au clavier ce que tape un chef d'entreprise** (H-E25 → H-E29) :
 
 - **Un champ `type=number` se lit dans la langue du SYSTÈME, pas dans celle de l'application**
   (H-E28, le plus grave de ce lot) : sur un poste réglé en anglais, « 2,5 » tapé dans un prix devenait
@@ -6280,6 +6280,14 @@ puis corrigée par un avoir alors qu'elle était déjà payée) :
   valeur du stock sous la colonne TVA, deux colonnes avant « Stock » (un colspan faux, invisible tant
   que l'entreprise n'a aucun article suivi). La moyenne ne paraît plus que dans une seule unité, qu'elle
   nomme ; `e2e:fiches` mesure la cellule sous son en-tête.
+- **Un bouton qui change de page mène au GESTE, pas à un endroit d'où le chercher** (H-E29 ; 7.21.0) :
+  « Partir d'une facture existante » ouvrait la liste des factures, et le geste (« Rendre récurrente »)
+  vivait dans l'éditeur, deux écrans plus loin — rien ne le disait. On choisit la facture sur place ;
+  le contrat s'ouvre prérempli (`recurrenceFromInvoice`, déjà écrit pour l'éditeur).
+- **Un parcours ancré sur une COULEUR se périme au premier arbitrage du bouton principal** :
+  `e2e:argent` cliquait `.page-head .btn-primary` pour créer un client ; depuis U-11, le vert d'une
+  liste vide est celui de l'état vide, et le parcours attendait trente secondes un bouton qui n'était
+  plus vert. Il vise `#new`, ce que le bouton FAIT (septième occurrence de « un e2e se périme »).
 
 **Et la console, par le parcours qui la mesure** : garnir l'onglet Commandes (10.9.0) a fait parler
 la sonde du texte coupé et les captures. Trois tables de mots de la page (`NOM_LIGNE`, `ARTICLE`,

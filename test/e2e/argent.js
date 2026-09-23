@@ -58,7 +58,9 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
   j.etape('Un client, une facture émise');
   await win.evaluate(() => { location.hash = '#/clients'; });
   await win.waitForSelector('#view .page-head');
-  await win.click('#view .page-head .btn-primary');
+  // Le bouton se reconnaît à ce qu'il FAIT (#new), jamais à sa couleur : sur une liste vide, le vert
+  // est celui de l'état vide depuis la 10.12.0 (U-11), et ce parcours visait `.btn-primary`.
+  await win.click('#view .page-head #new');
   await win.waitForSelector('#modal-root input[name=name]');
   await win.fill('#modal-root input[name=name]', 'Société Dupont');
   await win.click('#modal-root .modal-actions .btn-primary');
