@@ -6331,6 +6331,23 @@ fixe (9.4.3) et sa table d'onglets nommait sept onglets disparus, sautés sans u
   alignés à gauche au-dessus de chiffres alignés à droite, dans les cinq éditeurs de lignes. Elle lit
   maintenant l'alignement du champ unique et visible d'une cellule sans texte — et a trouvé aussitôt
   deux colonnes de plus (« Jusqu'à » des Barèmes, « Jour limite » du calendrier fiscal).
+- **Un champ de nombre sélectionne ce qu'il contient quand on y entre** (9.4.5, jamais portée à
+  l'app entreprise). Un prix proposé à 0, aligné à droite : le clic à gauche posait le curseur
+  devant, et « 850 » devenait 8 500 DT. Aucun parcours ne pouvait le voir — ils font Ctrl+A avant de
+  taper, ou posent la valeur par le code. `e2e:fiches` clique maintenant à gauche du champ, sans
+  Ctrl+A, comme un humain ; sans la règle, il retrouve exactement « 8500 ». Le `mouseup` qui suit le
+  clic désélectionne : on l'annule une fois, pour ce clic-là.
+- **Une liste dont la ligne ne s'ouvre pas au clic est la seule à le faire** : le Catalogue exigeait
+  « Actions ▾ → Modifier » pendant que les premiers pas disaient « Ouvre-en une ». `drawList` reçoit
+  `ouvrir`, et un test exige chacune des trois listes qu'il construit.
+- **Deux panneaux qui proposent chacun « la suite » se contredisent** (7.18.0, re-trouvée sur
+  l'accueil) : « Et maintenant » ne parle que quand les premiers pas se taisent, et le vert de
+  l'en-tête s'éteint tant qu'ils proposent l'étape suivante. Au dernier écran de l'assistant, le
+  vert passe de « Choisir un dossier… » à « Terminer » une fois la copie en place — deux verts
+  faisaient cliquer « Terminer » en croyant avoir fini l'étape qu'on sautait.
+- **Le jumeau du Finder** (E-14) vivait encore dans la phrase qui décide de la sécurité des données :
+  « iCloud Drive » proposé sous Windows. `NUAGE` suit la plateforme comme `EXPLORATEUR`, et un test
+  refuse « iCloud » sans OneDrive dans les quatre fichiers qui parlent à l'utilisateur.
 - **Une promesse sur ce qui part se vérifie contre le CODE** (8.0.0, re-trouvée quatre fois) :
   l'assistant, l'article « Démarrer », le panneau et l'article de la licence écrivaient « rien n'est
   envoyé sur Internet » ou « présentée qu'au service de mise à jour », alors que la licence se

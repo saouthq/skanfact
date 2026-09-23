@@ -14,6 +14,10 @@
   // dans le Cabinet). SkanFact est distribué sous Windows : « glisse le PDF affiché dans le Finder »
   // ne voulait rien dire à qui ne l'a jamais vu. Aucun autre endroit n'écrit le nom en clair.
   const EXPLORATEUR = SUR_MAC ? 'le Finder' : 'l\'Explorateur';
+  // Le dossier en ligne qu'on a déjà sur son ordinateur : iCloud Drive sur un Mac, OneDrive sous
+  // Windows. Proposer « iCloud Drive » à un utilisateur Windows, c'est le même défaut que le Finder
+  // (E-14) — la seule phrase de l'assistant qui décide de la sécurité de ses données.
+  const NUAGE = SUR_MAC ? 'iCloud Drive' : 'OneDrive';
   // L'aide est écrite avec la touche du Mac (⌘) : ailleurs, elle se lit avec celle de l'ordinateur.
   // Un utilisateur Windows devait faire la conversion lui-même, sur la foi d'une note au bas du
   // tableau des raccourcis. Les bulles et les articles passent par ici, et nulle part ailleurs.
@@ -1927,13 +1931,18 @@
     const duGrain = data.documents.length > 0;
     const duGraphique = series.some(x => x.invoiced || x.collected);
 
+    // UN seul vert (U-11) : tant que « Tes premiers pas » porte l'étape suivante en vert (« + Créer un
+    // client »), « + Nouvelle facture » ne l'est pas — deux verts disaient deux « prochaines étapes »,
+    // dont une impossible sans client. Le panneau fini, l'en-tête reprend son vert.
+    const pas = premiersPas();
+    const pasEnCours = /btn-primary/.test(pas);
     $('#view').innerHTML = `
       <div class="page-head"><h1>Accueil</h1>
         <div class="actions">
           <button class="btn" id="new-devis">+ Nouveau devis</button>
-          <button class="btn btn-primary" id="new-facture">+ Nouvelle facture</button>
+          <button class="btn ${pasEnCours ? '' : 'btn-primary'}" id="new-facture">+ Nouvelle facture</button>
         </div></div>
-      ${premiersPas()}
+      ${pas}
       ${todoPanel()}
       ${!duGrain ? '' : `
       <!-- Les quatre chiffres menaient nulle part (7.15.0). « Reste à encaisser : 8 400 DT,
@@ -1962,7 +1971,9 @@
       </div>`}
       ${!recent.length ? '' : `<div class="panel"><h2>Documents récents <span class="small muted">— les ${recent.length} dernières pièces sur ${data.documents.length}</span></h2>${docTable(recent, { noFoot: true })}
         <div class="inline mt"><a class="btn btn-sm" href="#/factures">Toutes les factures</a><a class="btn btn-sm" href="#/devis">Tous les devis</a></div></div>`}
-      ${duGrain || !data.clients.length ? '' : `
+      ${/* « Et maintenant » redisait la suite À CÔTÉ des premiers pas, et pas la même : « + Créer ton
+         premier devis » en vert sous « Remplir le catalogue » en vert. Deux panneaux qui se
+         contredisent à dix centimètres (7.18.0) ; il ne parle que quand les premiers pas se taisent. */''}${duGrain || !data.clients.length || pas ? '' : `
       <div class="panel"><h2>Et maintenant</h2>
         <p>Tu as ${data.clients.length} client${data.clients.length > 1 ? 's' : ''} et aucun document. La suite tient en un geste :</p>
         <div class="inline mt"><button class="btn btn-primary" id="start-devis">+ Créer ton premier devis</button>
@@ -4075,10 +4086,13 @@
       <form id="kf" class="grid-2">
         <label class="field span-2 obligatoire">${lbl('Désignation', 'cat.catalog')}<input type="text" name="label" value="${h(it.label)}"></label>
         <label class="field span-2">Description<textarea name="description">${h(it.description || '')}</textarea></label>
-        ${field('Prix unitaire HT', 'unitPrice', it.unitPrice, 'number', 'step="0.001" min="0" class="num"')}
-        ${field(lbl('Coût de revient HT', 'cat.cost'), 'unitCost', it.unitCost || 0, 'number', 'step="0.001" min="0" class="num"')}
-        <label class="field">TVA<select name="vatRate">${C.VAT_RATES.map(r => `<option value="${r}" ${Number(it.vatRate) === r ? 'selected' : ''}>${r}%</option>`).join('')}</select></label>
+        ${/* La phrase de marge parle des deux prix : elle vit SOUS eux. Elle tombait entre la TVA et
+           l'Unité, qui occupaient chacune une rangée à moitié vide — on la lisait comme une remarque
+           sur la TVA (10.12.0, parcours d'une menuiserie). Les prix disent leur unité (9.4.8). */''}
+        ${field(`Prix unitaire HT (${h(company().currency || 'DT')})`, 'unitPrice', it.unitPrice, 'number', 'step="0.001" min="0" class="num"')}
+        ${field(lbl(`Coût de revient HT (${h(company().currency || 'DT')})`, 'cat.cost'), 'unitCost', it.unitCost || 0, 'number', 'step="0.001" min="0" class="num"')}
         <div class="field span-2" id="marge-hint"></div>
+        <label class="field">TVA<select name="vatRate">${C.VAT_RATES.map(r => `<option value="${r}" ${Number(it.vatRate) === r ? 'selected' : ''}>${r}%</option>`).join('')}</select></label>
         <div class="field">${lbl('Unité', 'ed.unit')}<select name="unit" id="cat-unit">${unitOptions(it.unit || '', C.usedUnits(data))}</select></div>
         <label class="check span-2"><input type="checkbox" name="tracked" ${it.tracked ? 'checked' : ''}> Suivi en stock ${info('stk.tracked')}</label>
         <!-- Cette case vivait À L'INTÉRIEUR du bloc masqué par « Suivi en stock » : quelqu'un qui
@@ -4279,7 +4293,7 @@
         const foot = opts.foot ? opts.foot(kept, all) : '';
         $('.rows', wrap).innerHTML = kept.length
           ? `<table class="list sortable"><thead>${sortHead(cols, state.sort, '<th class="row-actions-h"></th>')}</thead><tbody>
-              ${page.map(r => `<tr>${cols.map(c => `<td class="${c.r ? 'r nw' : ''}">${c.get(r)}</td>`).join('')}${rowMenuCell(r.id)}</tr>`).join('')}
+              ${page.map(r => `<tr${opts.ouvrir ? ` class="clickable" data-ouvrir="${h(r.id)}"` : ''}>${cols.map(c => `<td class="${c.r ? 'r nw' : ''}">${c.get(r)}</td>`).join('')}${rowMenuCell(r.id)}</tr>`).join('')}
             </tbody>${foot ? `<tfoot>${foot}</tfoot>` : ''}</table>${pagerBar(pg, { noun: opts.noun, grandTotal: all.length })}`
           : `<div class="empty">${state.q ? 'Rien ne correspond à cette recherche.' : h(opts.empty)}</div>`;
         const note = $('.f-note', wrap);
@@ -4291,6 +4305,14 @@
         // `rows()` est relu ici plutôt que capturé : une action peut avoir modifié la liste entre
         // le dessin et le clic, et une référence gardée désignerait alors un objet qui n'y est plus.
         bindRowMenus(wrap, id => opts.menu(rows().find(r => r.id === id), redraw));
+        // La ligne s'ouvre au clic, comme celles des Clients, des Factures et des Achats. Le Catalogue
+        // était la seule liste où « Ouvre-en une » (Tes premiers pas) voulait dire « trouve le menu
+        // Actions ▾ puis Modifier » : un clic sur la ligne ne faisait rien, sans un mot (10.12.0).
+        if (opts.ouvrir) $$('tr[data-ouvrir]', wrap).forEach(tr => tr.onclick = e => {
+          if (e.target.closest('button, a, input, select, textarea, label')) return;
+          const r = rows().find(x => x.id === tr.dataset.ouvrir);
+          if (r) opts.ouvrir(r, redraw);
+        });
       };
       return redraw;
     };
@@ -4340,6 +4362,7 @@
       // Le Catalogue AFFICHE une quantité en stock et n'offrait aucun moyen d'aller voir d'où elle
       // vient : la fiche de l'article — mouvements, coût moyen, historique — n'était atteignable que
       // depuis la page Stock. Un chiffre qu'on lit doit s'ouvrir (7.15.0).
+      ouvrir: (c, redraw) => catalogForm(c, redraw),
       menu: (c, redraw) => c ? [
         { icon: 'modifier', label: 'Modifier la prestation', hint: 'Prix, coût, TVA, unité, suivi en stock', run: () => catalogForm(c, redraw) },
         c.tracked ? { icon: 'stock', label: 'Voir la fiche stock', hint: 'Mouvements, coût moyen, historique', run: () => navigate('#/article/' + c.id) } : null,
@@ -4356,6 +4379,7 @@
     const drawTemplates = drawList('#tpl-wrap', catalogState.modeles, tplCols, () => data.templates.slice(), {
       noun: 'modèle', placeholder: 'Rechercher un modèle…', text: t => `${t.name} ${t.subject || ''}`,
       empty: 'Aucun modèle. Depuis un devis ou une facture : Plus ▾ → « Enregistrer comme modèle ».',
+      ouvrir: (t, redraw) => templateForm(t, redraw),
       menu: (t, redraw) => t ? [
         { icon: 'nouveau', label: `Nouveau ${t.type === 'devis' ? 'devis' : 'facture'}`, hint: 'Un brouillon prérempli avec ce modèle', run: () => navigate(`#/doc/new/${t.type}/tpl/${t.id}`) },
         { sep: true },
@@ -4370,6 +4394,7 @@
     const drawSnippets = drawList('#snip-wrap', catalogState.textes, snipCols, () => data.snippets.slice(), {
       noun: 'texte', placeholder: 'Rechercher un texte…', text: x => `${x.name} ${x.text || ''}`,
       empty: 'Aucun texte prédéfini. Conditions de garantie, modalités, mentions récurrentes… à insérer dans les notes d\'un document en un clic.',
+      ouvrir: (x, redraw) => snippetForm(x, redraw),
       menu: (x, redraw) => x ? [{ icon: 'modifier', label: 'Modifier le texte', hint: 'Nom et contenu', run: () => snippetForm(x, redraw) }] : []
     });
     const TABS = CATALOG_TABS;
@@ -5568,6 +5593,24 @@
   const SURFACES_OVERLAY = RowMenu.SURFACES;
   document.addEventListener('mousedown', e => {
     if (closeOverlay && !e.target.closest(SURFACES_OVERLAY)) closeOverlay();
+  });
+
+  // Un champ de NOMBRE sélectionne ce qu'il contient quand on y entre, comme une cellule de tableur
+  // (règle 9.4.5 : « un champ pré-rempli se sélectionne au clic, sinon la valeur proposée est
+  // imposée »). Trouvé en tenant une menuiserie (10.12.0) : le prix d'une prestation neuve vaut 0,
+  // aligné à droite ; un clic à gauche posait le curseur DEVANT le 0, et « 850 » tapé donnait
+  // 8 500 DT — dix fois le prix, sans rien qui le signale. Le `mouseup` qui suit un clic désélectionne :
+  // on l'annule une fois, pour ce clic-là seulement ; un second clic place le curseur normalement.
+  let nombreJusteEntre = null;
+  const estNombre = el => el && el.tagName === 'INPUT' && el.type === 'number' && !el.readOnly && !el.disabled;
+  document.addEventListener('focusin', e => {
+    if (!estNombre(e.target) || e.target.value === '') return;
+    nombreJusteEntre = e.target;
+    try { e.target.select(); } catch (_) { /* un champ sans sélection possible reste tel quel */ }
+  });
+  document.addEventListener('mouseup', e => {
+    if (nombreJusteEntre && e.target === nombreJusteEntre) e.preventDefault();
+    nombreJusteEntre = null;
   });
 
   // ---------- Paramètres ----------
@@ -11219,7 +11262,7 @@
         <div id="backup-list" class="mt"></div>
       </div>
       ${panneau('p-externe', info('data.external'))}
-        <p class="small muted">iCloud Drive, clé USB, disque réseau. À chaque enregistrement, le fichier de données et les sauvegardes y sont copiés. Si le Mac meurt, tout est ailleurs. <b>C'est le réglage le plus important de cette page.</b></p>
+        <p class="small muted">${NUAGE}, clé USB, disque réseau. À chaque enregistrement, le fichier de données et les sauvegardes y sont copiés. Si cet ordinateur meurt, tout est ailleurs. <b>C'est le réglage le plus important de cette page.</b></p>
         <div id="ext-status" class="small mt"></div>
         <div class="inline mt"><button class="btn btn-primary" id="ext-choose">Choisir un dossier…</button><button class="btn btn-ghost" id="ext-remove" hidden>Retirer</button></div>
       </div>
@@ -13598,7 +13641,7 @@
         </form>
         <p class="small muted">Ton RIB apparaîtra sur chaque facture, dans le bloc « Règlement ». <b>Relis-le caractère par caractère</b> : une erreur ici, c'est un paiement qui n'arrive jamais. Tu peux laisser vide et le remplir plus tard.</p>`;
         if (s.id === 'sauvegarde') return `<p>Tes données vivent dans un seul fichier, sur cet ordinateur. S'il tombe en panne, est volé ou perdu, ta comptabilité disparaît avec lui.</p>
-          <p>Choisis un dossier dans <b>iCloud Drive</b>, sur une <b>clé USB</b> ou un disque réseau : à chaque enregistrement, SkanFact y recopiera tout, sans que tu aies à y penser.</p>
+          <p>Choisis un dossier dans <b>${NUAGE}</b>, sur une <b>clé USB</b> ou un disque réseau : à chaque enregistrement, SkanFact y recopiera tout, sans que tu aies à y penser.</p>
           <div class="inline mt"><button type="button" class="btn btn-primary" id="sf-ext">Choisir un dossier…</button><span id="sf-ext-st" class="small muted">Aucun dossier choisi.</span></div>
           <p class="small muted mt" id="sf-ext-note" hidden></p>
           <p class="small muted mt">Tu peux le faire plus tard dans Paramètres → Données et sécurité, mais l'expérience montre que « plus tard » n'arrive jamais.</p>`;
@@ -13618,7 +13661,7 @@
           <div class="setup-foot">
             <button class="btn btn-ghost" id="sf-skip">Passer et tout régler plus tard</button>
             ${i > 0 ? '<button class="btn" id="sf-prev">Retour</button>' : ''}
-            <button class="btn btn-primary" id="sf-next">${i === steps.length - 1 ? 'Terminer' : 'Continuer'}</button>
+            <button class="btn ${s.id === 'sauvegarde' ? '' : 'btn-primary'}" id="sf-next">${i === steps.length - 1 ? 'Terminer' : 'Continuer'}</button>
           </div>
         </div>`;
         const form = $('#sf-form', root);
@@ -13670,6 +13713,13 @@
         const direExt = x => {
           const st = $('#sf-ext-st', root), note = $('#sf-ext-note', root);
           if (!st) return;
+          // UN seul vert (U-11) : tant qu'aucun dossier ne reçoit la copie, l'étape suivante est de
+          // le choisir ; une fois la copie en place, c'est « Terminer ». Deux verts côte à côte
+          // laissaient cliquer « Terminer » en croyant avoir fini l'étape qu'on venait de sauter.
+          const faite = !!(x && x.dir && !x.lastError);
+          const bExt = $('#sf-ext', root), bNext = $('#sf-next', root);
+          if (bExt) bExt.classList.toggle('btn-primary', !faite);
+          if (bNext) bNext.classList.toggle('btn-primary', faite);
           if (!x || !x.dir) { st.textContent = 'Aucun dossier choisi.'; st.className = 'small muted'; if (note) note.hidden = true; return; }
           if (x.lastError) {
             st.innerHTML = `<span style="color:var(--danger)">La copie a échoué : ${h(x.lastError)}</span>`;

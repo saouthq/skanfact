@@ -267,6 +267,27 @@ clics et de vraies frappes. Ce qu'elle a trouvé, corrigé :
   sa version. Les phrases le disent, et redisent ce qui ne part jamais : tes documents, tes clients,
   tes chiffres.
 
+**Une menuiserie tenue à la souris et au clavier** — une vraie entreprise (Menuiserie Kmar SARL),
+du premier écran à son catalogue, pour voir ce qu'un chef d'entreprise subit :
+- **Un prix tapé dans un champ à 0 devenait dix fois trop cher.** Le prix d'une prestation neuve
+  vaut 0, aligné à droite : un clic à gauche du champ posait le curseur DEVANT le 0, et « 850 » tapé
+  donnait 8 500 DT. Tout champ de nombre sélectionne maintenant ce qu'il contient quand on y entre,
+  comme une cellule de tableur : la frappe remplace la valeur proposée.
+- **Une ligne du Catalogue s'ouvre au clic**, comme celles des Clients, des Factures et des Achats.
+  « Tes premiers pas » disait « Ouvre-en une, mets ton prix » : le clic ne faisait rien, il fallait
+  trouver « Actions ▾ → Modifier ». Vrai aussi pour les modèles et les textes prédéfinis.
+- **Un seul bouton vert à la fois**, trois fois : à la dernière étape de l'assistant, « Choisir un
+  dossier… » et « Terminer » étaient verts côte à côte (le vert passe à « Terminer » une fois la
+  copie en place) ; sur l'accueil, « + Nouvelle facture » était vert au-dessus de « + Créer un
+  client », l'étape suivante ; et le panneau « Et maintenant » proposait « + Créer ton premier
+  devis » en vert juste sous « Remplir le catalogue » en vert — il ne s'affiche plus tant que « Tes
+  premiers pas » parle.
+- **« OneDrive » sous Windows** : la copie de sauvegarde proposait « iCloud Drive » à tout le monde,
+  y compris sur la plateforme où SkanFact est distribué. Et « Si le Mac meurt » est devenu « Si cet
+  ordinateur meurt ».
+- La fiche d'une prestation range la phrase de marge sous les deux prix qu'elle compare (elle
+  tombait sous la TVA), met TVA et Unité sur la même rangée, et dit la devise des deux prix.
+
 **L'application entreprise mesurée en entier.** Ses instruments ne regardaient qu'une partie de
 l'application : aucun n'ouvrait une fiche ni une pièce par statut, et l'un visitait une adresse qui
 n'existe pas. `npm run e2e:entreprise-rendu` ouvre toutes les pages, tous leurs onglets, chaque

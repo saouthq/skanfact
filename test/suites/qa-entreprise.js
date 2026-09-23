@@ -476,4 +476,56 @@ module.exports = ({ t, assert, lireSource }) => {
     const p = accueil.slice(accueil.indexOf('sur cet ordinateur</b>') - 200, accueil.indexOf('sur cet ordinateur</b>') + 400);
     assert.ok(/mises à jour/.test(p) && /licence/.test(p), 'l\'écran d\'accueil ne dit pas ce qui se connecte : ' + p.slice(0, 200));
   });
+  // Trouvé en tenant une menuiserie de bout en bout (10.12.0), à la dernière étape de l'assistant :
+  // « Choisir un dossier… » et « Terminer » en vert côte à côte — on cliquait « Terminer » en croyant
+  // avoir fini l'étape qu'on venait de sauter (U-11) ; et « iCloud Drive » proposé à un utilisateur
+  // Windows, la plateforme où SkanFact est distribué (le jumeau du « Finder », E-14).
+  t('L\'étape « Protéger tes données » : un seul vert, et le dossier en ligne de l\'ordinateur', () => {
+    const app = code('src', 'renderer', 'app.js');
+    const pied = app.slice(app.indexOf('id="sf-skip"'), app.indexOf('id="sf-skip"') + 400);
+    assert.ok(/class="btn \$\{s\.id === 'sauvegarde' \? '' : 'btn-primary'\}" id="sf-next"/.test(pied),
+      '« Continuer / Terminer » est vert à l\'étape de la sauvegarde, à côté de « Choisir un dossier… » : ' + pied.slice(0, 200));
+    const f0 = app.indexOf('const direExt = x =>');
+    const direExt = app.slice(f0, app.indexOf('\n        };', f0));
+    assert.ok(direExt.length > 200 && direExt.length < 2500, 'tranche de direExt : ' + direExt.length);
+    assert.ok(/classList\.toggle\('btn-primary', !faite\)/.test(direExt) && /classList\.toggle\('btn-primary', faite\)/.test(direExt),
+      'le vert ne passe pas de « Choisir un dossier… » à « Terminer » une fois la copie en place');
+    const nus = ['app.js', 'guide.js', 'onboarding.js', 'core.js'].map(f => [f, code('src', 'renderer', f)])
+      .filter(([f, c]) => (f === 'app.js' ? c.replace(/const NUAGE = [^\n]+/, '') : c).split(/iCloud(?: Drive)?/).slice(1)
+        .some(apres => !/^\s*(\(Mac\)|, OneDrive|,? ?(ou|et) OneDrive)/.test(apres)))
+      .map(([f]) => f);
+    assert.deepStrictEqual(nus, [], '« iCloud Drive » proposé sans OneDrive : un utilisateur Windows n\'en a pas');
+    assert.ok(!/Si le Mac meurt/.test(app), 'une phrase suppose encore que l\'ordinateur est un Mac');
+  });
+  // Même famille, sur l'accueil d'une entreprise neuve : « + Nouvelle facture » en vert dans
+  // l'en-tête, « + Créer un client » en vert dans « Tes premiers pas » — la seconde est l'étape
+  // suivante, la première impossible sans client (U-11).
+  t('L\'accueil n\'a qu\'un vert : celui des premiers pas tant qu\'ils proposent l\'étape suivante', () => {
+    const app = code('src', 'renderer', 'app.js');
+    const e0 = app.indexOf('<div class="page-head"><h1>Accueil</h1>');
+    const entete = app.slice(e0, e0 + 400);
+    assert.ok(e0 > 0, 'en-tête de l\'accueil introuvable');
+    assert.ok(/id="new-facture"/.test(entete) && !/class="btn btn-primary" id="new-facture"/.test(entete),
+      '« + Nouvelle facture » est vert quoi qu\'il arrive : ' + entete.slice(0, 300));
+    const avant = app.slice(e0 - 500, e0);
+    assert.ok(/const pasEnCours = \/btn-primary\/\.test\(pas\)/.test(avant), 'le vert de l\'en-tête ne lit pas celui des premiers pas');
+    // Et le panneau « Et maintenant » ne redit pas une autre suite tant que les premiers pas parlent.
+    const m0 = app.indexOf('<h2>Et maintenant</h2>');
+    assert.ok(m0 > 0 && /\|\| pas \? '' : `\s*$/.test(app.slice(m0 - 120, m0).split('\n').slice(-2)[0]),
+      '« Et maintenant » s\'affiche sous les premiers pas, avec un second vert : ' + app.slice(m0 - 120, m0));
+  });
+  // Le Catalogue était la seule liste dont la ligne ne s'ouvrait pas au clic : « Tes premiers pas »
+  // disait « Ouvre-en une, mets ton prix », et le clic ne faisait rien (10.12.0, parcours d'une
+  // menuiserie). Chaque liste construite par `drawList` porte son geste d'ouverture, et le branche.
+  t('Chaque ligne du Catalogue (prestations, modèles, textes) s\'ouvre au clic', () => {
+    const app = code('src', 'renderer', 'app.js');
+    const appels = app.split('drawList(\'#').slice(1).map(x => x.slice(0, x.indexOf('\n    });')));
+    assert.strictEqual(appels.length, 3, 'appels à drawList : ' + appels.length);
+    appels.forEach(a => assert.ok(/\bouvrir: \([a-z], redraw\) => \w+Form\(/.test(a),
+      'une liste du Catalogue ne s\'ouvre pas au clic : ' + a.slice(0, 60)));
+    const d0 = app.indexOf('const drawList = (');
+    const corps = app.slice(d0, app.indexOf('return redraw;', d0));
+    assert.ok(/data-ouvrir=/.test(corps) && /tr\[data-ouvrir\]/.test(corps) && /opts\.ouvrir\(r, redraw\)/.test(corps),
+      'drawList ne rend pas la ligne cliquable, ou ne branche pas le clic');
+  });
 };

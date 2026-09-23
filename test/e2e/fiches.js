@@ -159,6 +159,23 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
   await win.waitForFunction(() => !document.querySelector('#modal-root .modal-bg'), null, { timeout: 4000 });
   j.ok('« 2,5 » → 2.5 et « 1.2 » → 1.2, au clavier');
 
+  // ---------------------------------------------------- 2 quater. un clic dans un 0 le remplace (10.12.0)
+  // Le prix d'une prestation neuve vaut 0, aligné à droite. Un clic à GAUCHE du champ posait le
+  // curseur devant le 0 : « 850 » tapé donnait 8 500. On clique où clique un humain, sans Ctrl+A.
+  j.etape('Un clic dans un prix à 0 puis « 850 » donne 850 — pas 8 500');
+  await win.click('#new');
+  await win.waitForSelector('#modal-root input[name=unitPrice]');
+  const boite = await win.locator('#modal-root input[name=unitPrice]').boundingBox();
+  await win.mouse.click(boite.x + 12, boite.y + boite.height / 2);
+  await win.keyboard.type('850');
+  const prix0 = await win.evaluate(() => document.querySelector('#modal-root input[name=unitPrice]').value);
+  if (prix0 !== '850') throw new Error(`un clic dans le prix à 0 puis « 850 » donne « ${prix0} » : la valeur proposée s'est collée à la frappe`);
+  await win.keyboard.press('Escape');
+  await win.waitForSelector('#modal-root .modal-bg:nth-child(2) #ok', { timeout: 4000 });
+  await win.click('#modal-root .modal-bg:last-child #ok');
+  await win.waitForFunction(() => !document.querySelector('#modal-root .modal-bg'), null, { timeout: 4000 });
+  j.ok('le 0 proposé est remplacé par la frappe');
+
   // ---------------------------------------------------- 3. le catalogue dans l'éditeur d'achat
   j.etape('L\'éditeur d\'achat propose le catalogue, au coût d\'achat');
   await aller('#/achat/new');

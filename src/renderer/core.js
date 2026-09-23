@@ -5704,7 +5704,7 @@
     const pas = firstSteps(data, company, opts || {});
     if (pas.sauvegardeSeule) out.push({
       id: 'sauvegarde', level: 'warn', label: 'Tes données ne sont copiées nulle part',
-      detail: 'Un disque qui lâche, un ordinateur volé, et tout est perdu. Une copie automatique vers iCloud, un disque ou une clé USB prend deux minutes à mettre en place.',
+      detail: 'Un disque qui lâche, un ordinateur volé, et tout est perdu. Une copie automatique vers iCloud ou OneDrive, un disque ou une clé USB prend deux minutes à mettre en place.',
       count: 1, route: '#/parametres'
     });
 
@@ -5922,7 +5922,7 @@
         quoi: 'En un clic, sans rien ressaisir. C\'est à ce moment-là que le numéro est attribué et que la pièce se verrouille.',
         action: 'factures' },
       { id: 'sauvegarde', titre: 'Mettre tes données à l\'abri', fait: !!o.copieExterne,
-        quoi: 'Une copie automatique vers iCloud, un disque ou une clé USB. C\'est l\'étape que tout le monde saute, et la seule dont l\'absence coûte tout.',
+        quoi: 'Une copie automatique vers iCloud ou OneDrive, un disque ou une clé USB. C\'est l\'étape que tout le monde saute, et la seule dont l\'absence coûte tout.',
         action: 'sauvegarde' }
     ];
     if (unPaiement) {

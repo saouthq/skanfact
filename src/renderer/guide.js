@@ -377,7 +377,7 @@
 <h3>6. Transformer un devis accepté en facture</h3>
 <p>Quand le client dit oui, passe le devis en « accepté » : le bouton <b>Facturer ce devis</b> devient le bouton vert de l'écran, et il existe aussi sur chaque ligne de la liste. La facture reprend tout, sans ressaisie. Voir <a href="#/aide/facture">La facture : réclamer ton argent</a>.</p>
 <h3>7. Mettre tes données à l'abri</h3>
-<p><b>Paramètres → Données et sécurité → Choisir un dossier</b>, puis un dossier dans iCloud Drive ou sur une clé USB. À chaque enregistrement, tout y est recopié. Fais-le maintenant, pas « plus tard » : c'est la seule étape dont l'oubli coûte tout. Le même écran liste tes sauvegardes et sait <b>revenir en arrière</b>.</p>
+<p><b>Paramètres → Données et sécurité → Choisir un dossier</b>, puis un dossier dans iCloud Drive (Mac), OneDrive (Windows) ou sur une clé USB. À chaque enregistrement, tout y est recopié. Fais-le maintenant, pas « plus tard » : c'est la seule étape dont l'oubli coûte tout. Le même écran liste tes sauvegardes et sait <b>revenir en arrière</b>.</p>
 <h3>Explore avec l'exemple</h3>
 <p>Sur l'accueil, le bouton <b>Voir un exemple rempli</b> charge treize mois d'activité fictive. Clique partout, casse tout, ça n'a aucune importance : <b>tes données sont mises de côté avant</b>, et un bandeau orange reste affiché sur chaque page tant que l'exemple est chargé.</p>
 <p>Pour en sortir, ce même bandeau porte <b>Repartir de mes données</b> : il te rend exactement ce que tu avais. N'utilise pas « Tout effacer » pour ça — ce bouton-là efface pour de bon, il ne restaure rien.</p>
@@ -1059,7 +1059,7 @@
 <h3>Les trois filets de sécurité</h3>
 <ul>
   <li><b>La sauvegarde quotidienne</b> : chaque jour, l'état de tes données au premier enregistrement est copié dans un dossier <b>backups</b>. Trente jours sont conservés. Une fausse manipulation aujourd'hui se répare en revenant à hier.</li>
-  <li><b>La copie externe</b> : le dossier que tu as choisi (iCloud Drive, clé USB, disque réseau) reçoit une copie à chaque enregistrement. C'est ce qui te sauve si l'ordinateur est perdu, volé ou noyé.</li>
+  <li><b>La copie externe</b> : le dossier que tu as choisi (iCloud Drive, OneDrive, clé USB, disque réseau) reçoit une copie à chaque enregistrement. C'est ce qui te sauve si l'ordinateur est perdu, volé ou noyé.</li>
   <li><b>L'export</b> : un fichier unique que tu peux ranger où tu veux. Fais-en un avant chaque grande manipulation.</li>
 </ul>
 <h3>Restaurer</h3>
@@ -1157,7 +1157,7 @@
 <h3>Ce qu'il faut leur dire</h3>
 <p>Trois choses suffisent pour bien démarrer :</p>
 <ul>
-  <li>Mettre en place la <b>copie externe</b> tout de suite (iCloud Drive ou clé USB).</li>
+  <li>Mettre en place la <b>copie externe</b> tout de suite (iCloud Drive, OneDrive ou clé USB).</li>
   <li>Une facture, une fois émise, ne se modifie plus : on corrige par un <b>avoir</b>.</li>
   <li>Les petits <b>i</b> à côté des champs expliquent tout, et cette rubrique Aide répond au reste.</li>
 </ul>
