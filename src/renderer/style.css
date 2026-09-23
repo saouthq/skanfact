@@ -485,6 +485,49 @@ table.lines-edit tr + tr td { border-top: 1px solid var(--ink-soft); padding-top
 table.lines-edit input, table.lines-edit select, table.lines-edit textarea { padding: 7px 9px; font-size: 13px; }
 table.lines-edit textarea { min-height: 32px; margin-top: 5px; }
 table.lines-edit .total { text-align: end; padding-top: 12px; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
+/* La grille des lignes d'un DOCUMENT se range selon la place qu'elle a (10.12.0). Mesuré à côté de
+   l'aperçu : 98 px pour la désignation à 1440, 84 px à 1280, et 45 px pour le prix unitaire —
+   « ence murale » visible sur « Dépose et évacuation de l'ancienne faïence murale ». En disposition
+   automatique, la colonne la plus importante de la pièce était celle qui cédait, et les colonnes
+   sautaient pendant la frappe. Chaque ligne est une GRILLE : étroite, la désignation prend toute la
+   largeur et les chiffres passent dessous, sous des en-têtes rangés de la même façon ; large (sans
+   l'aperçu, ou sur un grand écran), tout tient sur une rangée. La largeur qui décide est celle du
+   CADRE, pas celle de la fenêtre : c'est l'aperçu qui la mange. */
+.lignes-cadre { container-type: inline-size; }
+table.lignes-doc, table.lignes-doc > thead, table.lignes-doc > tbody { display: block; }
+table.lignes-doc tr {
+  display: grid; column-gap: 2px; align-items: start;
+  grid-template-columns: 64px 104px 108px 84px minmax(0, 1fr) 126px;
+  grid-template-areas: "lab lab lab lab lab outils" "qte unite pu tva total total";
+}
+/* Chaque ligne est SA grille : une colonne « auto » y prendrait la largeur de son propre contenu.
+   Les outils (↑ ↓ ⧉ ✕, 114 px et leur marge) valent 126 px dans une ligne et 0 dans l'en-tête, qui
+   n'en a pas — tous les titres se décalaient alors d'une colonne vers la droite. La colonne est
+   donc FIXE, la même partout. */
+table.lignes-doc th, table.lignes-doc td { display: block; min-width: 0; }
+table.lignes-doc tr > :nth-child(1) { grid-area: lab; }
+table.lignes-doc tr > :nth-child(2) { grid-area: qte; }
+table.lignes-doc tr > :nth-child(3) { grid-area: unite; }
+table.lignes-doc tr > :nth-child(4) { grid-area: pu; }
+table.lignes-doc tr > :nth-child(5) { grid-area: tva; }
+table.lignes-doc tr > :nth-child(6) { grid-area: total; }
+table.lignes-doc tr > :nth-child(7) { grid-area: outils; }
+/* Une ligne se sépare de la suivante par un trait sur la LIGNE entière : posé sur chaque cellule,
+   il coupait la ligne en deux au passage à la seconde rangée. */
+table.lignes-doc tbody tr + tr { border-top: 1px solid var(--ink-soft); padding-top: 5px; }
+table.lignes-doc tr + tr td { border-top: none; padding-top: 5px; }
+table.lignes-doc tbody tr + tr td.total { padding-top: 12px; }
+table.lignes-doc th { padding-bottom: 4px; }
+/* La bascule sur UNE rangée se décide sur ce qui reste à la désignation : 602 px de colonnes fixes et
+   leurs espaces, plus 340 px pour elle. À 880 px, elle n'en gardait que 293 sur un portable sans
+   l'aperçu — c'est le parcours qui l'a mesuré. */
+@container (min-width: 960px) {
+  table.lignes-doc tr {
+    grid-template-columns: minmax(0, 1fr) 64px 104px 108px 84px 116px 126px;
+    grid-template-areas: "lab qte unite pu tva total outils";
+  }
+  table.lignes-doc th { padding-bottom: 8px; }
+}
 .totals-box { margin-top: 14px; display: flex; justify-content: flex-end; }
 .totals-box table { background: var(--primary-soft); border-radius: 12px; padding: 8px 6px; }
 .totals-box table td { padding: 4px 14px; text-align: end; font-variant-numeric: tabular-nums; color: #3d4a57; }
@@ -521,7 +564,16 @@ body.dark .toast-undo:hover { background: rgba(18,22,28,.1); }
 .small { font-size: 12px; }
 .mt { margin-top: 12px; }
 .filters { display: flex; gap: 8px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
-.filters input:not([type=checkbox]):not([type=radio]) { width: 300px; background: #fff; }
+/* La recherche d'une barre de filtres devait faire 300 px — sur le papier. La règle générale des
+   champs porte quatre :not() et gagnait (spécificité 0,4,1 contre 0,3,1) : la recherche prenait
+   toute la ligne et renvoyait les filtres, la bulle et le compteur sur une seconde rangée, au-dessus
+   de chaque liste ; sur le Catalogue, une bulle « i » restait seule sous la recherche (test humain,
+   10.12.0). Même famille que .help-search (7.27.0) : le HTML est juste, c'est la feuille qui décide.
+   La recherche est souple, pour que son texte d'invite reste lisible. Elle ne touche QUE la
+   largeur : plus spécifique que la règle du thème sombre, un fond posé ici mettrait du blanc sous
+   un texte clair (le défaut de la 7.30.0). Et seulement la recherche posée DANS la barre : un champ
+   date rangé dans une étiquette de filtre garde sa largeur à lui. */
+.filters > input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=range]) { width: auto; flex: 1 1 260px; max-width: 440px; }
 .filters select { width: auto; background: #fff; }
 .logo-preview { max-height: 60px; max-width: 200px; display: block; margin-bottom: 8px; border: 1px solid var(--border); padding: 6px; border-radius: 10px; background: #fff; }
 code { background: var(--ink-soft); padding: 2px 6px; border-radius: 6px; font-size: 12px; }
@@ -705,6 +757,12 @@ table.mini input, table.mini select { padding: 6px 8px; font-size: 13px; }
 .more-list button { font: inherit; font-size: 13px; text-align: start; background: transparent; border: none; padding: 9px 12px; border-radius: 8px; cursor: pointer; color: var(--text); }
 .more-list button:hover { background: var(--ink-soft); }
 .more-list button.danger { color: var(--danger); }
+/* Une entrée de menu et sa bulle sur UNE ligne (10.12.0). La bulle vivait À L'INTÉRIEUR du bouton :
+   un bouton dans un bouton n'existe pas en HTML, le navigateur fermait le premier au second, et la
+   bulle tombait seule sur la ligne suivante du menu « Facturer ▾ ». */
+.more-list .ml-ligne { display: flex; align-items: center; gap: 4px; }
+.more-list .ml-ligne > button:not(.i) { flex: 1 1 auto; }
+.more-list .ml-ligne > button.i { margin-inline-end: 8px; }
 .section-head h2.small { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); }
 
 /* ---------- tableau de bord : graphiques ---------- */
@@ -1084,8 +1142,19 @@ button.i + button.i { margin-inline-start: 6px; }
    Les 2 px de l'annotation valent face à un LIBELLÉ, qui ne se clique pas ; face à un bouton, le
    bord de l'un est le bord de l'autre et on ne sait pas lequel on vise. */
 .btn + button.i { margin-inline-start: 6px; }
+/* La bulle d'un bouton caché se cache avec lui (10.12.0). Sortie du bouton — un bouton dans un
+   bouton n'existe pas en HTML —, celle de « Lire une photo… » restait seule à l'écran pendant que
+   la lecture est en pause : deux « i » orphelins à côté de « Joindre un justificatif… ». */
+.btn[hidden] + button.i { display: none; }
 /* libellé + bulle sur une seule ligne dans un champ (.field est une colonne flex) */
 .fl { display: flex; align-items: center; gap: 4px; }
+/* Un lien qui dépend de la valeur du champ vit dans la LIGNE DU LIBELLÉ (10.12.0) : il apparaît et
+   disparaît sans rien déplacer. Posé sous le champ, « Fiche du client » poussait tout le
+   formulaire de 45 px au choix du client, et le clic suivant tombait dans le vide. Souligné et
+   coloré au repos : un lien sans ces deux signes ne se reconnaît pas (9.4.2). */
+.fl-ligne { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.lien-fl { font: inherit; font-size: 12px; font-weight: 600; background: none; border: none; padding: 0; color: var(--primary); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; white-space: nowrap; }
+.lien-fl:hover { text-decoration-thickness: 2px; }
 .i-demo { display: inline-grid; place-items: center; width: 15px; height: 15px; border-radius: 50%; background: var(--primary-soft-2); color: var(--primary); font: italic 800 10px/1 Georgia, serif; vertical-align: 1px; }
 
 #info-pop {

@@ -8805,7 +8805,7 @@
         <button class="btn${recoveryAt === null ? ' btn-primary' : ''}" id="s-rec">Enregistrer ma clé de secours…</button>
         <button class="btn" id="s-rec-in">Restaurer une clé de secours…</button>
         <span class="grow"></span>
-        <button class="btn" id="s-pw">${lbl('Changer le mot de passe…', 'b.password')}</button>
+        <button class="btn" id="s-pw">Changer le mot de passe…</button>${info('b.password')}
         <button class="btn" id="s-lock">Verrouiller maintenant</button>
       </div>
 

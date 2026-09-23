@@ -223,7 +223,10 @@ const SONDE_COLONNES = () => {
 //    console de l'éditeur a `main .bar`. La sonde ne connaît ni l'une ni l'autre — c'est l'appelant
 //    qui dit où regarder, et le défaut jugé reste exactement le même. Un second exemplaire de cette
 //    sonde, écrit pour la console, aurait divergé au premier ajustement (7.29.0).
-const SONDE_ENTETES = ({ maxL, maxR, maxH, barres }) => {
+//    `recherche` (10.12.0) dit ce qui compte comme un champ de RECHERCHE, jugé à `maxR` : les barres
+//    de filtres de l'app entreprise en posent en `type="text"` (`#q`, `.q`), et leur recherche
+//    prenait toute la ligne sans qu'aucune mesure ne regarde ces barres-là.
+const SONDE_ENTETES = ({ maxL, maxR, maxH, barres, recherche }) => {
   const zones = [...document.querySelectorAll(barres || '#view .page-head .actions')]
     .filter(a => { const r = a.getBoundingClientRect(); return r.width > 0 && r.height > 0; });
   if (!zones.length) return { n: 0, larges: [], hauteur: 0 };
@@ -232,9 +235,9 @@ const SONDE_ENTETES = ({ maxL, maxR, maxH, barres }) => {
     const ctrls = [...actions.querySelectorAll('select, input:not([type=checkbox]):not([type=radio])')];
     n += ctrls.length;
     ctrls.map(c => ({
-      tag: c.tagName.toLowerCase(), id: c.id || c.name || '(sans nom)',
+      tag: c.tagName.toLowerCase(), id: c.id || c.name || c.className || '(sans nom)',
       w: Math.round(c.getBoundingClientRect().width),
-      borne: c.type === 'search' ? maxR : maxL
+      borne: (recherche ? c.matches(recherche) : c.type === 'search') ? maxR : maxL
     })).filter(x => x.w > x.borne).forEach(x => larges.push(x));
     if (ctrls.length) hauteur = Math.max(hauteur, Math.round(actions.getBoundingClientRect().height));
   });

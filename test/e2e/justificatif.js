@@ -49,6 +49,21 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
     await win.click('#sf-next'); await win.waitForTimeout(120);
   }
   await win.waitForFunction(() => !document.querySelector('#setup'));
+  // 10.12.0 — une liste VIDE ne montre ni recherche ni filtres : elle dit à quoi elle sert et donne
+  // le geste qui la remplit. Quatre y échappaient encore (test humain) : Clients, Fournisseurs,
+  // Achats, et les autres pièces. On le regarde sur une installation neuve, là où ça se voit.
+  const videUtile = () => win.evaluate(() => {
+    const v = document.querySelector('#view .vide-utile');
+    return { filtres: !!document.querySelector('#view .filters'), titre: v ? v.querySelector('h2').textContent.trim() : null,
+      boutons: v ? [...v.querySelectorAll('button:not(.i)')].map(b => b.id) : [] };
+  });
+  for (const [hash, bouton] of [['#/clients', 'vide-client'], ['#/fournisseurs', 'vide-fournisseur'], ['#/achats', 'vide-achat'], ['#/autres/proforma', 'vide-new']]) {
+    await aller(hash);
+    const v = await videUtile();
+    doit(!v.filtres, `${hash} vide affiche encore une recherche et des filtres au-dessus de rien`);
+    doit(v.titre && v.boutons.includes(bouton), `${hash} vide n'offre pas son geste (${bouton}) : ${JSON.stringify(v)}`);
+  }
+  j.ok('quatre listes vides : une phrase qui dit à quoi elles servent, et leur bouton');
   await aller('#/fournisseurs');
   await win.waitForSelector('#new'); await win.click('#new');
   await win.waitForSelector('#modal-root input[name=name]');
@@ -58,7 +73,10 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
   await win.waitForFunction(() => !document.querySelector('#modal-root .modal'));
   const fournisseur = await win.evaluate(() => window.__data.suppliers[0]);
   doit(fournisseur && fournisseur.name === 'Fournitures Test SARL', 'fournisseur créé');
-  j.ok('fournisseur créé : ' + fournisseur.name);
+  // Le premier fournisseur fait apparaître la liste ET sa barre de recherche.
+  await win.waitForSelector('#list-wrap table.list');
+  doit(await win.$('#view .filters #q'), 'le premier fournisseur créé, la barre de recherche ne revient pas');
+  j.ok('fournisseur créé : ' + fournisseur.name + ', et la liste prend sa barre de recherche');
 
   try {
     // ------------------------------------------------ 1. le bouton est là, seul, sans question

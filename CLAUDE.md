@@ -28,6 +28,8 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Une **version publiée que les applications ne voient pas** (« tu as la dernière version ») | 10.11.0 — la liste de l'API rend la release SANS ses fichiers ; une version téléchargée cachait la suivante |
 | Un bouton **hors de l'écran**, une barre empilée sur trois rangées | 7.13.0, 7.23.0 — `e2e:contraste` et `e2e:entetes` mesurent le bouton, jamais la page |
 | Un **refus qui promet une sortie qui n'existe pas** (« contre-passe d'abord », puis la même phrase) | 10.12.0 — une écriture contre-passée libère ce qu'elle portait |
+| Un **clic qui tombe à côté** : ce qui vient d'apparaître a poussé le formulaire, la frappe part sur la page | 10.12.0 — « Fiche du client » né sous le champ, 45 px |
+| Une **bulle « i » seule sur sa ligne**, ou visible à côté d'un bouton caché : un bouton DANS un bouton | 10.12.0 — neuf cas, le parseur ferme le premier |
 
 **Les chiffres**
 
@@ -103,6 +105,8 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Un **garde-fou neuf change le geste des parcours** : l'e2e répond à la question, comme un humain | 10.12.0 |
 | Un **instrument de test humain** doit ouvrir le produit qu'ont les clients — sinon on juge un autre objet | 10.12.0 — « v44.4.1 » : Electron lancé par `src/main.js` |
 | Un **rappel qui sert à deux choses** reçoit les arguments des deux : seule une chaîne est une colonne | 10.12.0 — onze listes perdaient leur tri à chaque fiche enregistrée ; 7.17.0 |
+| Un test qui **COMPTE des usages** (« au moins trois ») laisse passer tous ceux qu'il ne compte pas : il exige la règle sur CHAQUE usage | 10.12.0 — quatre listes hors de `filtersBar` ; 7.33.0 |
+| Une assertion sur une **pile** lit son SOMMET : c'est là que « ← » va | 10.12.0 — le devis vierge n'était jamais la dernière entrée |
 
 **Les deux applications**
 
@@ -167,6 +171,10 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Un état lu une fois au démarrage **se périme** | 7.1.x, 8.0.0 |
 | **Un seul bouton principal** par écran, et c'est l'étape suivante — calculée, jamais posée à la main | 10.12.0 (U-11) |
 | Une **colonne collante** réserve sa largeur : elle ne recouvre jamais une donnée | 10.12.0 (U-02) |
+| Une **page de création** n'entre pas dans la pile : après l'enregistrement, « ← » ne mène jamais à une pièce VIERGE | 10.12.0 — `remplacerPage` ; 2.4.0 |
+| Ce qui **apparaît selon une valeur** vit dans une place qui existe déjà : sinon tout ce qui suit descend sous le curseur | 10.12.0 |
+| Une **grille se décide sur la place du CADRE** ; chaque rangée étant sa propre grille, aucune colonne automatique | 10.12.0 — la désignation à 84 px à côté de l'aperçu |
+| Une **liste vide** dit à quoi elle sert et donne le geste qui la remplit — ni recherche, ni filtres au-dessus du vide | 7.0.0 ; 10.12.0 — quatre listes de plus |
 | Un écran de travail s'ouvre sur le **dernier mois qui a des données**, jamais un mois futur | 10.12.0 (U-12) |
 | Une **recherche** garde des pièces entières ; un champ qui redessine son écran garde la frappe | 10.12.0 |
 | Un dossier **tenu au cabinet** prend ses mois dans son livre : jamais « hors mission » ni « pas reçu » | 10.12.0 |
@@ -6055,6 +6063,48 @@ directement sur l'app entreprise comme tu as fait avec l'app cabinet »). Ce que
   soit un ÉLÉMENT (`span:first-child::after`) — le piège noté en 8.1.0, jamais tenu par un test.
   Quinze libellés nus dans les deux applications, dont la fiche client, la plus ouverte de toutes ;
   `lbl(texte)` sans clé de bulle rend lui aussi un texte nu, et le test le refuse.
+
+**Puis l'éditeur de devis, tapé comme un artisan le tape** (H-E1 → H-E8, un devis de carrelage de
+six lignes, à la souris et au clavier, à côté de l'aperçu puis sans) :
+
+- **Une page de CRÉATION n'a rien à faire dans la pile de navigation** (H-E3). Enregistrer un devis
+  neuf laissait « ← le document » : il menait à `#/doc/new/devis`, c'est-à-dire à un devis VIERGE —
+  le même défaut après une émission, un export PDF et un achat neuf. `remplacerPage(hash)` dit à
+  `pushHistory` que la page qu'on quitte est remplacée, pas visitée. C'est le « on y est déjà » de
+  `goBack` (2.4.0), vu de l'autre bout.
+- **Ce qui apparaît selon une valeur vit dans une place qui existe déjà** (H-E1). Choisir un client
+  faisait naître « Fiche du client » SOUS le champ : tout descendait de 45 px, et le clic suivant, visé
+  sur « Objet », tombait dans le vide — la frappe partait sur la page, les espaces la faisaient défiler.
+  Aucun test ne voit un clic qui tombe à côté ; le lien vit dans la ligne du libellé, où il ne pousse rien.
+- **Une grille se décide sur la place du CADRE, pas de la fenêtre** (H-E2) : à côté de l'aperçu, la
+  désignation — la colonne qu'on lit — avait 84 px, et le prix 45. Chaque `<tr>` y est SA grille, donc
+  **aucune colonne automatique** : une largeur qui dépend du contenu n'est pas la même d'une rangée à
+  l'autre, et l'en-tête se décalait d'une colonne. Le seuil de la requête de conteneur est décidé sur
+  ce qui RESTE à la désignation (960 px, pas 880), et c'est `e2e:editeur` qui l'a dit.
+- **Un bouton dans un bouton n'existe pas** (H-E4) : `info()` rend un `<button class="i">`, et posé à
+  l'intérieur d'un autre bouton le parseur ferme le premier. Chaque bulle du menu « Facturer ▾ » tombait
+  seule sur sa ligne, et `#photo` caché laissait sa bulle visible (`.btn[hidden] + button.i`). Neuf cas,
+  dont un dans le Cabinet ; le test compte toute bulle posée dans un bouton.
+- **Un seul bouton principal par écran, et c'est l'étape suivante** (U-11, porté à l'app entreprise,
+  H-E5) : un devis enregistré et inchangé gardait « Enregistrer » en vert. L'étape suivante est de
+  l'envoyer ; « Enregistrer » redevient principal à la première frappe.
+- **Une liste vide dit à quoi elle sert et donne le geste qui la remplit** (7.0.0, re-trouvée sur
+  quatre pages) : Clients, Fournisseurs, Achats et Autres pièces posaient une recherche et des filtres
+  au-dessus de zéro ligne. **Et le test de la règle exigeait « au moins trois » `filtersBar`** : un
+  compte laisse passer tout ce qu'il ne compte pas, ici quatre listes. Il exige désormais que CHAQUE
+  recherche de liste (`#q`) soit posée par `filtersBar`, qu'aucune barre ne soit nue, et que les
+  boutons des états vides soient branchés.
+- **La règle générale des champs gagne encore** (sixième fois : 7.27.0, 7.30.0, 9.4.4…) : la recherche
+  des listes devait faire 300 px **depuis la 2.2.0** et prenait toute la ligne — `input:not(…)` à quatre
+  `:not()` bat une classe. Filtres, bulle et compteur passaient sur une seconde rangée au-dessus de
+  chaque liste. `e2e:entetes` mesure maintenant aussi les barres de filtres, et tombe s'il n'en voit
+  aucune. La règle neuve ne pose PAS de fond : la règle sombre (0,4,2) la perdrait, et le blanc sur
+  blanc de la 7.30.0 reviendrait.
+- **La fenêtre porte le titre de la page** (H-E7) : « Nouveau document » au-dessus de « Nouveau devis ».
+  Sans titre propre, il se lit dans le `h1` de l'écran — une seule source, celle qu'on voit.
+- Piège de test : mon assertion e2e « le retour ne mène plus au devis vierge » lisait les trois
+  dernières entrées de la pile — elle restait verte avec le défaut remis, parce que le devis vierge
+  n'était jamais la dernière. **Une assertion sur une pile lit son SOMMET** : c'est là que « ← » va.
 
 **Et la console, par le parcours qui la mesure** : garnir l'onglet Commandes (10.9.0) a fait parler
 la sonde du texte coupé et les captures. Trois tables de mots de la page (`NOM_LIGNE`, `ARTICLE`,

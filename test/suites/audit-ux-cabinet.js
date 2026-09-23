@@ -2547,4 +2547,137 @@ t('Le test humain ouvre l\'application que les clients ont : sa VRAIE version', 
   assert.ok(/const VERSION = PKG\.version;/.test(cab), 'le Cabinet ne lit plus sa version dans package.json');
 });
 
+// ---------------------------------------------------------------------------------------------
+// L'éditeur de l'app entreprise, parcouru au test humain (10.12.0). Six défauts qu'aucun parcours
+// ne voyait : ils vivaient dans l'ORDRE des gestes et dans ce que l'écran montre, pas dans un calcul.
+
+// Enregistrer un devis NEUF laissait « ← le document » en bouton retour, et il menait à
+// « #/doc/new/devis » — un devis VIERGE. La pile retenait la page de création comme une page où
+// revenir. Même chose à l'émission, à l'export PDF, et pour un achat neuf.
+t('Enregistrer une pièce NEUVE remplace sa page de création : le retour ne rouvre pas une pièce vierge', () => {
+  const ent = code('src', 'renderer', 'app.js');
+  const nus = [...ent.matchAll(/if \(isNew\) navigate\(/g)].length;
+  assert.strictEqual(nus, 0, nus + ' navigation(s) après enregistrement empilent encore la page « …/new »');
+  const remplace = [...ent.matchAll(/if \(isNew\) remplacerPage\('#\/(doc|achat)\/'/g)].map(m => m[1]);
+  assert.ok(remplace.filter(x => x === 'doc').length >= 4 && remplace.includes('achat'),
+    'enregistrer, émettre, exporter (document) et enregistrer (achat) : ' + remplace.join(','));
+  // `remplacerPage` ne vaut que si `pushHistory` saute vraiment la page remplacée.
+  const push = tranche(ent, 'function pushHistory(');
+  assert.ok(push.length < 700, 'tranche de pushHistory : ' + push.length);
+  assert.ok(/if \(remplacee && previous === remplacee\) return;/.test(push), 'pushHistory empile encore la page qu\'on vient de remplacer');
+  assert.ok(/function remplacerPage\(hash\) \{ pageRemplacee = currentHash; navigate\(hash\); \}/.test(ent),
+    'remplacerPage ne retient plus la page à remplacer : ce ne serait qu\'un navigate');
+});
+
+// Une bulle « i » posée À L'INTÉRIEUR d'un bouton fait un bouton dans un bouton, qui n'existe pas
+// en HTML : le navigateur ferme le premier au second. Dans le menu « Facturer ▾ », chaque bulle
+// tombait seule sur la ligne suivante ; celle de « Lire une photo… » restait affichée alors que
+// le bouton est caché (la lecture est en pause). Huit dans l'app entreprise, une dans le Cabinet.
+t('Aucun bouton n\'en contient un autre : une bulle « i » vit À CÔTÉ du bouton qu\'elle explique', () => {
+  const fautes = [];
+  ['src/renderer/app.js', 'src/cabinet/renderer/app.js', 'src/renderer/rowmenu.js', 'src/renderer/reglages.js', 'src/renderer/majui.js'].forEach(f => {
+    const src = code(...f.split('/')).replace(/<!--[\s\S]*?-->/g, '');
+    const re = /<button\b/g; let m, vus = 0;
+    while ((m = re.exec(src))) {
+      // Fin de la balise ouvrante : le premier « > » hors des ${…} (un attribut calculé en porte).
+      let i = m.index + 7, prof = 0;
+      for (; i < src.length; i++) {
+        const c = src[i];
+        if (c === '$' && src[i + 1] === '{') { prof++; i++; continue; }
+        if (prof && c === '{') prof++;
+        else if (prof && c === '}') prof--;
+        else if (!prof && c === '>') break;
+      }
+      const fin = src.indexOf('</button>', i);
+      if (fin < 0) continue;
+      vus++;
+      const corps = src.slice(i + 1, fin);
+      if (/<button\b|\$\{info\(|\blbl\([^)]*,\s*'/.test(corps)) fautes.push(f + ' : ' + src.slice(m.index, fin + 9).replace(/\s+/g, ' ').slice(0, 120));
+    }
+    if (/app\.js$/.test(f)) assert.ok(vus > 100, f + ' : les boutons ne sont plus trouvés (' + vus + ')');
+  });
+  assert.deepStrictEqual(fautes, [], 'un bouton en contient un autre');
+  const css = lireSource('src', 'renderer', 'style.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.ok(/\.btn\[hidden\] \+ button\.i \{ display: none; \}/.test(css), 'la bulle d\'un bouton caché reste affichée');
+  assert.ok(/\.more-list \.ml-ligne \{ display: flex;/.test(css), 'une entrée de menu et sa bulle ne tiennent plus sur une ligne');
+});
+
+// Choisir un client faisait apparaître « Fiche du client » SOUS le champ : tout le formulaire
+// descendait de 45 px, et le clic visé sur « Objet » tombait dans le vide — la frappe avec. Ce qui
+// apparaît selon une valeur vit dans la ligne du libellé, où il ne déplace rien.
+t('Choisir un client ne déplace aucun champ : le lien vers sa fiche vit dans la ligne du libellé', () => {
+  const ent = code('src', 'renderer', 'app.js');
+  const i = ent.indexOf('id="cl-edit"');
+  assert.ok(i > 0, 'le lien vers la fiche du client a disparu');
+  const ligne = ent.slice(ent.lastIndexOf('<span class="fl-ligne">', i), i);
+  assert.ok(ligne.length > 0 && ligne.length < 120 && !/<\/span>\s*<\/span>|combo\(/.test(ligne.replace(/\$\{lbl\([^}]*\}/, '')),
+    'le lien n\'est plus dans la ligne du libellé : ' + ligne.slice(0, 120));
+  const apres = ent.slice(i, i + 600);
+  assert.ok(apres.indexOf('</span>') < apres.indexOf("combo({ name: 'clientId'"), 'le lien doit précéder le champ, dans son libellé');
+  const css = lireSource('src', 'renderer', 'style.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.ok(/\.lien-fl \{[^}]*color: var\(--primary\);[^}]*text-decoration: underline;/.test(css),
+    'un lien qui ne se souligne ni ne se colore au repos ne se reconnaît pas (9.4.2)');
+});
+
+// À côté de l'aperçu, la désignation d'une ligne avait 98 px à 1440 et 84 px à 1280 — la colonne la
+// plus importante de la pièce était celle qui cédait —, et le prix 45 px. Chaque ligne devient une
+// grille qui se range selon la largeur de son CADRE. Et parce que chaque ligne est SA grille, une
+// colonne « auto » y vaudrait la largeur de son propre contenu : 126 px dans une ligne, 0 dans
+// l'en-tête — tous les titres se décalaient d'une colonne (vu à l'écran, pas à la relecture).
+t('La grille des lignes d\'un document : la désignation a sa place, et aucune colonne ne se règle ligne par ligne', () => {
+  const css = lireSource('src', 'renderer', 'style.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.ok(/\.lignes-cadre \{ container-type: inline-size; \}/.test(css), 'la grille ne se règle plus sur la largeur de son cadre');
+  const gabarits = [...css.matchAll(/table\.lignes-doc tr \{[^}]*grid-template-columns:([^;]+);/g)].map(m => m[1].trim());
+  assert.strictEqual(gabarits.length, 2, 'deux dispositions attendues (étroite, large) : ' + gabarits.length);
+  gabarits.forEach(g => assert.ok(!/\bauto\b/.test(g), 'colonne « auto » : elle vaudrait 0 dans l\'en-tête et décalerait tous les titres — ' + g));
+  assert.ok(/grid-template-areas: "lab lab lab lab lab outils" "qte unite pu tva total total"/.test(css),
+    'à côté de l\'aperçu, la désignation ne prend plus toute la largeur');
+  assert.ok(/@container \(min-width: \d+px\) \{\s*table\.lignes-doc tr \{/.test(css), 'la disposition large ne dépend plus de la place du cadre');
+  const ent = code('src', 'renderer', 'app.js');
+  assert.ok(/<div class="lignes-cadre"><table class="lines-edit lignes-doc">/.test(ent), 'l\'éditeur de document ne pose plus la grille');
+});
+
+// Un devis enregistré et inchangé gardait « Enregistrer » en vert : il disait qu'il restait quelque
+// chose à enregistrer, quand l'étape suivante est de l'ENVOYER (la règle U-11 du Cabinet).
+t('Une pièce enregistrée a UN bouton principal, l\'étape suivante ; « Enregistrer » le redevient dès qu\'on modifie', () => {
+  const ent = code('src', 'renderer', 'app.js');
+  assert.ok(/<button class="btn \$\{isNew && \(isQ \|\| isExtra\) \? 'btn-primary' : ''\}" id="save">/.test(ent),
+    '« Enregistrer » reste principal sur une pièce déjà enregistrée et inchangée');
+  assert.ok(/<button class="btn \$\{envoiSuivant \? 'btn-primary' : ''\}" id="email">/.test(ent), 'l\'envoi n\'est plus l\'étape suivante d\'un devis enregistré');
+  assert.ok(/const envoiSuivant = !isNew && !locked && !devisFacturable && doc\.status === 'brouillon'/.test(ent),
+    'l\'envoi ne peut être principal ni sur une pièce neuve, ni sur un devis déjà facturable');
+  const touch = ent.slice(ent.indexOf('function touch() {'), ent.indexOf('function untouch('));
+  assert.ok(touch.length > 50 && touch.length < 600, 'tranche de touch : ' + touch.length);
+  assert.ok(/\$\('#save'\);[^\n]*classList\.add\('btn-primary'\)/.test(touch) && /\$\('#email'\);[^\n]*classList\.remove\('btn-primary'\)/.test(touch),
+    'modifier la pièce doit rendre « Enregistrer » principal ET retirer l\'envoi — deux principaux n\'en font aucun');
+});
+
+// La fenêtre s'appelait « Nouveau document » au-dessus d'une page qui dit « Nouveau devis », et
+// « SkanFact » tout court sur un achat, la fiche d'un fournisseur, d'un salarié, d'un bien.
+t('Une page hors du catalogue prend le titre qu\'elle affiche pour nommer la fenêtre', () => {
+  const ent = code('src', 'renderer', 'app.js');
+  const f = ent.slice(ent.indexOf('function setWindowTitle('), ent.indexOf('document.title = title;'));
+  assert.ok(f.length > 100 && f.length < 1600, 'tranche de setWindowTitle : ' + f.length);
+  assert.ok(!/'Nouveau document'/.test(f), 'le titre générique « Nouveau document » revient');
+  assert.ok(/if \(!t\) \{[\s\S]{0,160}\$\('#view \.page-head h1'\)[\s\S]{0,120}innerText/.test(f),
+    'sans titre au catalogue, la fenêtre doit prendre celui de la page (et ignorer ce qui est caché)');
+});
+
+// La recherche d'une barre de filtres devait faire 300 px : la règle générale des champs porte
+// quatre :not() et gagnait, la recherche prenait toute la ligne et renvoyait filtres, bulle et
+// compteur sur une seconde rangée, au-dessus de chaque liste — sur le Catalogue, une bulle « i »
+// restait seule sous la recherche. Même famille que .help-search (7.27.0).
+t('La recherche d\'une barre de filtres ne prend pas toute la ligne : sa règle bat celle des champs', () => {
+  const css = lireSource('src', 'renderer', 'style.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  const general = (css.match(/^input((?::not\(\[type=\w+\]\))+), select, textarea \{[^}]*width: 100%/m) || [])[1] || '';
+  const nGeneral = (general.match(/:not\(/g) || []).length;
+  assert.ok(nGeneral >= 4, 'la règle générale des champs n\'est plus trouvée : ' + nGeneral);
+  const m = css.match(/^\.filters > input((?::not\(\[type=\w+\]\))+) \{([^}]*)\}/m);
+  assert.ok(m, 'la règle de la recherche des filtres a disparu');
+  assert.ok((m[1].match(/:not\(/g) || []).length >= nGeneral,
+    'la règle des filtres porte moins de :not() que la règle générale : elle perd, et la recherche reprend toute la ligne');
+  assert.ok(/max-width: \d+px/.test(m[2]), 'la recherche n\'a plus de borne : elle reprend toute la ligne');
+  assert.ok(!/background/.test(m[2]), 'un fond posé par cette règle, plus spécifique que celle du thème sombre, mettrait du blanc sous un texte clair');
+});
+
 };

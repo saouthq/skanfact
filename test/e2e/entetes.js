@@ -31,6 +31,8 @@ const LARGEUR_MAX_RECHERCHE = 400;
 // Une barre d'actions tient sur une rangée, deux au pire quand elle porte neuf commandes à 1280 px.
 // Trois rangées, c'est le défaut qu'on cherche.
 const HAUTEUR_MAX = 100;
+// La recherche d'une barre de filtres est souple (260 à 440 px) : au-delà, elle a pris la ligne.
+const LARGEUR_MAX_RECHERCHE_FILTRE = 460;
 
 (async () => {
   const j = journal(); const bac = [];
@@ -61,7 +63,7 @@ const HAUTEUR_MAX = 100;
   await win.waitForSelector('.demo-banner');
   j.ok('prêt — les pages ont des années et des périodes à proposer');
 
-  let controles = 0; const fautes = [];
+  let controles = 0, filtres = 0; const fautes = [];
   for (const hash of PAGES) {
     await aller(hash);
     // La sonde vit dans `harnais.js` depuis la 9.4.3, partagée avec le Cabinet.
@@ -71,9 +73,18 @@ const HAUTEUR_MAX = 100;
     if (r.n && r.hauteur > HAUTEUR_MAX) {
       fautes.push(`${hash} — la barre d'actions fait ${r.hauteur} px de haut : ses contrôles s'empilent`);
     }
+    // 10.12.0 — les barres de FILTRES aussi. Leur recherche devait faire 300 px et prenait toute la
+    // ligne (la règle générale des champs gagnait) : filtres, bulle et compteur passaient sur une
+    // seconde rangée au-dessus de chaque liste. Aucune mesure ne regardait ces barres-là. On n'y
+    // juge que la largeur : un filtre actif allonge légitimement la barre de son compteur.
+    const f = await win.evaluate(SONDE_ENTETES, { maxL: LARGEUR_MAX, maxR: LARGEUR_MAX_RECHERCHE_FILTRE, maxH: 9999,
+      barres: '#view .filters', recherche: '#q, .q, [type=search]' });
+    controles += f.n; filtres += f.n;
+    f.larges.forEach(x => fautes.push(`${hash} — filtre ${x.tag} « ${x.id} » fait ${x.w} px (borne ${x.borne}) : il prend toute la ligne`));
   }
   j.etape(`${PAGES.length} en-têtes mesurés`);
-  j.ok(`${controles} contrôle(s) dans les barres d'actions`);
+  j.ok(`${controles} contrôle(s) dans les barres d'actions et de filtres, dont ${filtres} dans les filtres`);
+  if (!filtres) { console.error('\nAucune barre de filtres mesurée : la seconde moitié du test ne prouve rien.'); process.exit(2); }
 
   await app.close();
   if (bac.length) { console.error('\nErreurs du renderer :\n' + bac.join('\n')); process.exit(2); }

@@ -139,6 +139,10 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
   j.etape('La fiche du client se corrige depuis le document');
   const cache = await win.evaluate(() => { const b = document.querySelector('#cl-edit'); return !b || b.hidden; });
   if (!cache) throw new Error('le bouton « Fiche du client » est offert alors qu\'aucun client n\'est choisi');
+  // 10.12.0 — et il apparaît SANS RIEN DÉPLACER. Posé sous le champ, il poussait tout le formulaire
+  // de 45 px au choix du client : le clic visé sur « Objet » tombait dans le vide, et la frappe
+  // avec (test humain). On mesure où est le champ suivant avant et après.
+  const objetAvant = await win.$eval('#f-head input[name=subject]', e => Math.round(e.getBoundingClientRect().top));
   await win.evaluate(() => {
     const d = window.__data;
     const hid = document.querySelector('[data-combo=clientId] input[type=hidden]');
@@ -148,6 +152,10 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
   await win.waitForTimeout(320);
   const visible = await win.evaluate(() => { const b = document.querySelector('#cl-edit'); return !!b && !b.hidden; });
   if (!visible) throw new Error('le bouton « Fiche du client » n\'apparaît pas une fois le client choisi');
+  const objetApres = await win.$eval('#f-head input[name=subject]', e => Math.round(e.getBoundingClientRect().top));
+  if (Math.abs(objetApres - objetAvant) > 1) {
+    throw new Error(`choisir le client a déplacé le champ « Objet » de ${objetApres - objetAvant} px : le clic suivant tombe à côté`);
+  }
   await win.click('#cl-edit');
   await win.waitForSelector('#modal-root input[name=name]', { timeout: 4000 });
   const nomOuvert = await win.$eval('#modal-root input[name=name]', e => e.value);
@@ -263,6 +271,121 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
     if (!(await win.$('#pay'))) throw new Error('le bouton a disparu aussi des factures qui restent dues');
   }
   j.ok('absent sur une facture soldée, présent sur une facture qui reste due');
+
+  // ------------------------------------------------------------- 8. la grille des lignes (10.12.0)
+  // Test humain : à côté de l'aperçu, la désignation avait 98 px à 1440 et 84 px à 1280, le prix
+  // 45 px — on lisait « ence murale » de ce qu'on venait de taper. On MESURE, aux deux largeurs,
+  // avec et sans l'aperçu, et on exige que chaque en-tête tombe sur sa colonne.
+  j.etape('La grille des lignes laisse lire la désignation et le prix, et ses en-têtes tombent sur leurs colonnes');
+  const grille = () => win.evaluate(() => {
+    const lab = document.querySelector('#lines tr input[data-k=label]');
+    const pu = document.querySelector('#lines tr input[data-k=unitPrice]');
+    const th = [...document.querySelectorAll('table.lignes-doc thead th')];
+    const td = [...document.querySelector('#lines tr').children];
+    const decales = th.map((t, i) => ({ t: t.textContent.trim(), dx: Math.round(t.getBoundingClientRect().left - td[i].getBoundingClientRect().left) }))
+      .filter(x => x.t && Math.abs(x.dx) > 1);
+    return { lab: Math.round(lab.getBoundingClientRect().width), pu: Math.round(pu.getBoundingClientRect().width), decales };
+  });
+  const mesures = [];
+  for (const [w, h] of [[1440, 900], [1280, 800]]) {
+    await win.setViewportSize({ width: w, height: h });
+    await aller('#/doc/new/devis');
+    await win.waitForSelector('#lines tr input[data-k=label]');
+    await win.waitForTimeout(250);
+    for (const apercu of [true, false]) {
+      const masque = await win.evaluate(() => document.querySelector('.editor').classList.contains('no-preview'));
+      if (masque === apercu) { await win.click('#pv-toggle'); await win.waitForTimeout(250); }
+      const m = await grille();
+      const quoi = `${w} px ${apercu ? 'avec' : 'sans'} l'aperçu`;
+      if (m.lab < 300) throw new Error(`${quoi} : la désignation n'a que ${m.lab} px`);
+      if (m.pu < 80) throw new Error(`${quoi} : le prix unitaire n'a que ${m.pu} px`);
+      if (m.decales.length) throw new Error(`${quoi} : en-têtes décalés de leur colonne — ${m.decales.map(x => x.t + ' ' + x.dx + ' px').join(', ')}`);
+      mesures.push(`${quoi} : ${m.lab}/${m.pu} px`);
+    }
+    // on laisse l'aperçu affiché, comme on l'a trouvé
+    if (await win.evaluate(() => document.querySelector('.editor').classList.contains('no-preview'))) { await win.click('#pv-toggle'); await win.waitForTimeout(200); }
+  }
+  await win.setViewportSize({ width: 1440, height: 900 });
+  j.ok('désignation / prix — ' + mesures.join(' · '));
+
+  // ------------------------------------------------------------- 9. après « Enregistrer » (10.12.0)
+  // Test humain : enregistrer un devis NEUF laissait « ← le document » en bouton retour, et il
+  // menait à #/doc/new/devis — un devis VIERGE. La page enregistrée remplace celle de création.
+  j.etape('Après avoir enregistré un devis neuf, le retour mène à la liste et l\'étape suivante est l\'envoi');
+  await aller('#/devis');
+  await win.waitForSelector('#new');
+  await win.click('#new');
+  await win.waitForSelector('#lines tr input[data-k=label]');
+  await win.evaluate(() => {
+    const hid = document.querySelector('[data-combo=clientId] input[type=hidden]');
+    hid.value = window.__data.clients[0].id;
+    hid.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await win.fill('#f-head input[name=subject]', 'Devis du parcours de l\'éditeur');
+  await win.fill('#lines tr input[data-k=label]', 'Prestation mesurée');
+  await win.fill('#lines tr input[data-k=unitPrice]', '120');
+  await win.waitForTimeout(250);
+  await win.click('#save');
+  await win.waitForFunction(() => /^#\/doc\/(?!new)/.test(location.hash), { timeout: 5000 });
+  await win.waitForSelector('#back');
+  const retour = await win.evaluate(() => ({ texte: document.querySelector('#back').textContent.trim(), pile: window.__navStack.slice(-3) }));
+  if (!/Devis/.test(retour.texte)) throw new Error(`le bouton retour dit « ${retour.texte} » au lieu de mener aux Devis`);
+  // Le SOMMET de la pile est la page d'avant la création : une page de création visitée plus tôt
+  // et quittée sans enregistrer reste, elle, un endroit où l'on est vraiment passé.
+  if (retour.pile[retour.pile.length - 1] !== '#/devis') throw new Error(`la page de création est restée au sommet de la pile : ${retour.pile.join(' → ')}`);
+  // UN seul bouton principal : l'envoi. « Enregistrer » ne l'est plus tant que rien n'a bougé.
+  const primaires = () => win.evaluate(() => [...document.querySelectorAll('.page-head .actions .btn-primary')].map(b => b.id));
+  const p1 = await primaires();
+  if (p1.length !== 1 || p1[0] !== 'email') throw new Error(`devis enregistré et inchangé : boutons principaux ${JSON.stringify(p1)} au lieu de l'envoi seul`);
+  await win.fill('#f-head input[name=subject]', 'Devis du parcours de l\'éditeur (modifié)');
+  await win.waitForTimeout(200);
+  const p2 = await primaires();
+  if (p2.length !== 1 || p2[0] !== 'save') throw new Error(`après une modification : boutons principaux ${JSON.stringify(p2)} au lieu de « Enregistrer » seul`);
+  await win.click('#save');
+  await win.waitForTimeout(300);
+  await win.click('#back');
+  await win.waitForFunction(() => location.hash === '#/devis', { timeout: 4000 });
+  j.ok(`« ${retour.texte} » mène à la liste ; principal : l'envoi, puis « Enregistrer » dès qu'on modifie`);
+
+  // ------------------------------------------------------------- 10. le titre de la fenêtre (10.12.0)
+  j.etape('La fenêtre porte le titre de la page, pièce neuve et achat compris');
+  await aller('#/doc/new/devis');
+  await win.waitForFunction(() => /Nouveau devis — SkanFact/.test(document.title), { timeout: 3000 })
+    .catch(async () => { throw new Error(`titre sur un devis neuf : « ${await win.evaluate(() => document.title)} »`); });
+  await aller('#/achat/new');
+  await win.waitForFunction(() => /Nouvelle facture d.achat — SkanFact/.test(document.title), { timeout: 3000 })
+    .catch(async () => { throw new Error(`titre sur un achat neuf : « ${await win.evaluate(() => document.title)} »`); });
+  // Et la bulle d'un bouton caché se cache avec lui : la lecture de photo est en pause.
+  const orpheline = await win.evaluate(() => {
+    const b = document.querySelector('#photo'); if (!b || !b.hidden) return null;
+    const i = b.nextElementSibling; return i && i.matches('button.i') ? getComputedStyle(i).display : 'aucune bulle';
+  });
+  if (orpheline !== 'none' && orpheline !== 'aucune bulle') throw new Error(`la bulle de « Lire une photo… » reste affichée (${orpheline}) alors que le bouton est caché`);
+  j.ok('« Nouveau devis », « Nouvelle facture d\'achat », et aucune bulle orpheline');
+
+  // ------------------------------------------------------------- 11. une bulle dans un menu (10.12.0)
+  // Une bulle posée DANS un bouton fait un bouton dans un bouton : le navigateur ferme le premier,
+  // et la bulle tombait seule sur la ligne suivante du menu « Facturer ▾ ».
+  j.etape('Dans le menu « Facturer ▾ », chaque bulle reste sur la ligne de son entrée');
+  const brouillonDevis = await win.evaluate(() => {
+    const d = window.__data;
+    const q = d.documents.find(x => x.type === 'devis' && x.status === 'brouillon' && x.number);
+    return q ? q.id : null;
+  });
+  if (!brouillonDevis) throw new Error('aucun devis en brouillon : le menu ne peut pas être ouvert');
+  await aller('#/doc/' + brouillonDevis);
+  await win.waitForSelector('#bill-btn');
+  await win.click('#bill-btn');
+  await win.waitForFunction(() => { const l = document.querySelector('#bill-list'); return l && !l.hidden; });
+  const lignes = await win.evaluate(() => [...document.querySelectorAll('#bill-list button.i')].map(i => {
+    const voisin = i.previousElementSibling;
+    const a = i.getBoundingClientRect(), b = voisin ? voisin.getBoundingClientRect() : null;
+    return { entree: voisin ? voisin.textContent.trim() : '(rien)', ecart: b ? Math.round(Math.abs((a.top + a.bottom) / 2 - (b.top + b.bottom) / 2)) : 999 };
+  }));
+  if (!lignes.length) throw new Error('aucune bulle dans le menu « Facturer ▾ » : le test ne prouve rien');
+  const seules = lignes.filter(x => x.ecart > 6);
+  if (seules.length) throw new Error('bulles tombées sous leur entrée : ' + seules.map(x => `${x.entree} (${x.ecart} px)`).join(', '));
+  j.ok(lignes.map(x => x.entree).join(' · '));
 
   await app.close();
   if (bac.length) { console.error('\nErreurs du renderer :\n' + bac.join('\n')); process.exit(2); }

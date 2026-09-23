@@ -8745,7 +8745,19 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     // quand la liste est vide À CAUSE d'un filtre : sinon on ne peut plus le retirer.
     assert.ok(/function filtersBar\(html, total, filtered\) \{[\s\S]{0,120}if \(!total && !filtered\) return ''/.test(code),
       'filtersBar doit se taire sur une liste vide, mais rester quand un filtre est actif');
-    assert.ok((code.match(/filtersBar\(`/g) || []).length >= 3, 'les listes principales doivent passer par filtersBar');
+    // 10.12.0 — le compte (« au moins trois ») laissait QUATRE listes hors de la règle : Clients,
+    // Fournisseurs, Achats et les autres pièces affichaient recherche et filtres au-dessus du vide,
+    // avec une phrase sans bouton (test humain). La règle, pas un compte : toute liste principale
+    // — celle dont la recherche s'appelle `#q` — pose sa barre par filtersBar.
+    const barresNues = [...code.matchAll(/<div class="filters">\s*<input type="(?:text|search)" id="q"/g)].length;
+    assert.strictEqual(barresNues, 0, barresNues + ' liste(s) posent encore recherche et filtres sans condition');
+    const recherches = [...code.matchAll(/id="q" placeholder="Rechercher/g)].length;
+    const parFiltersBar = [...code.matchAll(/filtersBar\(`\s*<input type="text" id="q"/g)].length;
+    assert.ok(recherches >= 7, 'les recherches des listes ne sont plus trouvées : ' + recherches);
+    assert.strictEqual(parFiltersBar, recherches, `recherches « #q » : ${recherches}, posées par filtersBar : ${parFiltersBar}`);
+    ['vide-client', 'vide-fournisseur', 'vide-achat', 'vide-dep'].forEach(id =>
+      assert.ok(new RegExp(`\\$\\('#${id}'\\)\\) \\$\\('#${id}'\\)\\.onclick`).test(code),
+        `le bouton « ${id} » d'un état vide n'est pas branché — un bouton inerte est pire qu'une phrase`));
 
     // Avant d'écrire une phrase rassurante, vérifier que l'univers concerné est non vide. La règle
     // était déjà écrite pour l'accueil en 7.0.0 ; deux écrans ne l'appliquaient pas.

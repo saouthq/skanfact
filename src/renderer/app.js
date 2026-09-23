@@ -1082,8 +1082,17 @@
     modules: 'Tous les modules'
   };
   const pageLabel = hash => PAGE_LABELS[(hash || '').replace(/^#\/?/, '').split('/')[0]] || 'Accueil';
+  // Une page de CRÉATION qu'on vient d'enregistrer n'est pas un endroit où revenir : son adresse
+  // (« #/doc/new/devis », « #/achat/new ») rouvre une pièce VIERGE. Après « Enregistrer », le
+  // bouton retour disait « ← le document » et fabriquait un second devis vide au lieu de ramener
+  // à la liste — trouvé par le test humain (10.12.0). La page enregistrée REMPLACE donc celle de
+  // création dans la pile : on retient laquelle, et `pushHistory` ne l'empile pas.
+  let pageRemplacee = null;
+  function remplacerPage(hash) { pageRemplacee = currentHash; navigate(hash); }
   function pushHistory(previous) {
     if (goingBack) { goingBack = false; return; }
+    const remplacee = pageRemplacee; pageRemplacee = null;
+    if (remplacee && previous === remplacee) return;
     if (!previous || previous === location.hash) return;
     navStack.push(previous);
     if (navStack.length > 60) navStack.shift();
@@ -1630,7 +1639,7 @@
     let t = '';
     if (name === 'doc') {
       const d = parts[0] === 'new' ? null : docById(parts[0]);
-      t = d ? docLabel(d) + ' — ' + clientName(d.clientId) : 'Nouveau document';
+      t = d ? docLabel(d) + ' — ' + clientName(d.clientId) : '';
     } else if (name === 'client') {
       t = (clientById(parts[0]) || {}).name || 'Client';
     } else {
@@ -1638,6 +1647,14 @@
       // lien : la fenêtre se serait appelée « SkanFact » tout court sur ses pages. Le titre vient
       // maintenant de core.PAGES, la même source que le lien.
       t = C.pageTitle(name);
+    }
+    // Une page qui n'est pas au catalogue (une pièce neuve, un achat, la fiche d'un fournisseur,
+    // d'un salarié, d'un bien…) prend le titre qu'elle AFFICHE (10.12.0). La fenêtre s'appelait
+    // « SkanFact » tout court sur un achat, et « Nouveau document » au-dessus d'une page qui dit
+    // « Nouveau devis ». `innerText` ignore ce qui est caché (le repère « non enregistré »).
+    if (!t) {
+      const h1 = $('#view .page-head h1');
+      t = h1 ? (h1.innerText || '').split('\n')[0].trim() : '';
     }
     const title = (t ? t + ' — ' : '') + 'SkanFact';
     document.title = title;
@@ -2362,17 +2379,27 @@
     const dejaFacture = isNew || !isQ ? [] : piecesDuDevis(doc.id).totales;
     const devisFacturable = !isNew && isQ && !dejaFacture.length && !issuedDeposits.length
       && (doc.status === 'accepté' || doc.status === 'envoyé');
-    const autresChemins = `<button id="deposit">Facture d'acompte… ${info('ed.deposit')}</button>
-        ${issuedDeposits.length ? `<button id="settle">Facture de solde (${issuedDeposits.length} acompte${issuedDeposits.length > 1 ? 's' : ''} déduit${issuedDeposits.length > 1 ? 's' : ''}) ${info('ed.settle')}</button>` : ''}
+    // Une entrée de menu et sa bulle vivent côte à côte dans une LIGNE (10.12.0) : la bulle posée
+    // À L'INTÉRIEUR du bouton faisait un bouton dans un bouton, que le navigateur ferme d'office —
+    // elle tombait seule sur la ligne suivante du menu.
+    const ligneMenu = (bouton, cle) => `<div class="ml-ligne">${bouton}${info(cle)}</div>`;
+    const autresChemins = `${ligneMenu('<button id="deposit">Facture d\'acompte…</button>', 'ed.deposit')}
+        ${issuedDeposits.length ? ligneMenu(`<button id="settle">Facture de solde (${issuedDeposits.length} acompte${issuedDeposits.length > 1 ? 's' : ''} déduit${issuedDeposits.length > 1 ? 's' : ''})</button>`, 'ed.settle') : ''}
         ${dejaFacture.length || issuedDeposits.length ? `<button id="convert" class="danger">Refacturer la totalité…</button>` : ''}`;
+    // UN seul bouton principal, et c'est l'étape suivante (10.12.0, la règle U-11 du Cabinet portée
+    // ici). Un devis enregistré et inchangé gardait « Enregistrer » en vert : il disait qu'il restait
+    // quelque chose à enregistrer, quand l'étape suivante est de l'ENVOYER. « Enregistrer » redevient
+    // principal dès qu'on modifie (`touch`), et l'envoi cède alors la place.
+    const envoiSuivant = !isNew && !locked && !devisFacturable && doc.status === 'brouillon'
+      && (isQ || doc.type === 'proforma' || doc.type === 'contrat');
     const facturerMenu = !isNew && isQ
       ? (devisFacturable
-        ? `<button class="btn btn-primary" id="convert">Facturer ce devis ${info('ed.convert')}</button>
+        ? `<button class="btn btn-primary" id="convert">Facturer ce devis</button>${info('ed.convert')}
            <div class="more"><button class="btn" id="bill-btn" aria-label="Autres façons de facturer">▾</button>
              <div class="more-list" id="bill-list" hidden>${autresChemins}</div></div>`
         // Un acompte est émis : le geste suivant est le SOLDE, pas une facture de plus.
         : issuedDeposits.length
-        ? `<button class="btn btn-primary" id="settle2">Facture de solde ${info('ed.settle')}</button>
+        ? `<button class="btn btn-primary" id="settle2">Facture de solde</button>${info('ed.settle')}
            <div class="more"><button class="btn" id="bill-btn" aria-label="Autres façons de facturer">▾</button>
              <div class="more-list" id="bill-list" hidden>${autresChemins}</div></div>`
         // Déjà facturé : on mène à la facture au lieu d'en proposer une seconde.
@@ -2381,7 +2408,7 @@
            <div class="more"><button class="btn" id="bill-btn" aria-label="Autres façons de facturer">▾</button>
              <div class="more-list" id="bill-list" hidden>${autresChemins}</div></div>`
         : `<div class="more"><button class="btn" id="bill-btn">Facturer ▾</button><div class="more-list" id="bill-list" hidden>
-             <button id="convert">Convertir en facture ${info('ed.convert')}</button>${autresChemins}
+             ${ligneMenu('<button id="convert">Convertir en facture</button>', 'ed.convert')}${autresChemins}
            </div></div>`)
       : '';
 
@@ -2410,16 +2437,16 @@
             <button class="btn btn-sm" id="pv-toggle" aria-pressed="false">Aperçu</button>
             <button class="btn btn-sm" id="pv-big" title="Voir le document en grand (⌘⇧A)">Agrandir</button>
           </div>
-          ${!isNew ? `<button class="btn" id="email">Email</button>` : ''}
+          ${!isNew ? `<button class="btn ${envoiSuivant ? 'btn-primary' : ''}" id="email">Email</button>` : ''}
           <button class="btn" id="pdf">PDF</button>
           ${locked && isInv && doc.status !== 'annulée' && bal && bal.remaining > 0.0005 ? `<button class="btn btn-primary" id="pay">Enregistrer un paiement</button>` : ''}
           ${facturerMenu}${transformMenu}
-          ${!locked ? `<button class="btn ${(isQ || isExtra) && !devisFacturable ? 'btn-primary' : ''}" id="save">Enregistrer${isQ || isExtra ? '' : ' le brouillon'}</button>` : ''}
+          ${!locked ? `<button class="btn ${isNew && (isQ || isExtra) ? 'btn-primary' : ''}" id="save">Enregistrer${isQ || isExtra ? '' : ' le brouillon'}</button>` : ''}
           ${!locked && (isInv || isAv) ? `<button class="btn btn-primary" id="issue">${isInv ? 'Émettre la facture' : 'Émettre l\'avoir'}</button> ${info('ed.issue')}` : ''}
           ${!isNew && (!isAv || !locked) ? `<div class="more"><button class="btn" id="more-btn" aria-label="Autres actions">Plus ▾</button><div class="more-list" id="more-list" hidden>
             ${!isAv ? `<button id="dup">Dupliquer</button><button id="as-template">Enregistrer comme modèle…</button>` : ''}
             ${hasSerials ? `<button id="serials">Numéros de série livrés…</button>` : ''}
-            ${isInv ? `<button id="make-recurring">Rendre récurrent (contrat)… ${info('ed.recurring')}</button>` : ''}
+            ${isInv ? `<div class="ml-ligne"><button id="make-recurring">Rendre récurrent (contrat)…</button>${info('ed.recurring')}</div>` : ''}
             ${locked && isInv && doc.status !== 'annulée' ? `<button id="credit">Créer un avoir…</button>` : ''}
             ${canUnlock ? `<button id="unlock">Modifier malgré l'émission…</button>` : ''}
             ${!locked ? `<button id="del" class="danger">Supprimer</button>` : ''}
@@ -2442,9 +2469,11 @@
         <div>
           <div class="panel"><h2>Informations</h2>
             <form id="f-head" class="grid-3">
-              <div class="field">${lbl('Client', 'ed.client')}
+              <!-- Le lien vers la fiche vit dans la LIGNE DU LIBELLÉ (10.12.0). Posé sous le champ,
+                   il apparaissait au choix du client et poussait tout le formulaire de 45 px : le
+                   clic visé sur « Objet » tombait dans le vide, et la frappe avec. -->
+              <div class="field"><span class="fl-ligne">${lbl('Client', 'ed.client')}<button type="button" class="lien-fl" id="cl-edit" ${doc.clientId ? '' : 'hidden'} title="Corriger l'adresse, le matricule, l'email de ce client">✎ Modifier la fiche</button></span>
                 ${combo({ name: 'clientId', value: doc.clientId, items: clientItems(), placeholder: '— Choisir un client —', search: 'Rechercher : nom, contact, MF…', add: locked ? null : '+ Nouveau client', ro: locked })}
-                <button type="button" class="btn btn-sm btn-ghost mt" id="cl-edit" ${doc.clientId ? '' : 'hidden'} title="Corriger l'adresse, le matricule, l'email de ce client">✎ Fiche du client</button>
               </div>
               ${isAv ? `<div class="field span-2">Facture concernée${combo({ name: 'creditOf', value: doc.creditOf, items: invoiceItems(), placeholder: '— Facture concernée —', search: 'Rechercher : n°, client, objet…', ro: locked })}</div>` : ''}
               ${dateFieldHtml(lbl('Date', 'ed.date'), 'date', doc.date, { ro: locked })}
@@ -2472,8 +2501,12 @@
               <div id="cat-pick">${combo({ items: [], placeholder: 'Ajouter depuis le catalogue…', search: 'Rechercher une prestation…' })}</div>
               <button class="btn btn-sm" id="add-line">+ Ligne vide</button>
             </div>`}
-            <table class="lines-edit"><thead><tr><th>Désignation</th><th style="width:62px">Qté</th><th style="width:104px">Unité ${info('ed.unit')}</th><th style="width:92px">P.U. HT</th><th style="width:80px">TVA ${info('ed.vat')}</th><th class="r">Total HT</th><th></th></tr></thead>
-              <tbody id="lines"></tbody></table>
+            <!-- La grille des lignes se range selon la place qu'elle a (10.12.0) : à côté de l'aperçu,
+                 la désignation prend toute la largeur et les chiffres passent dessous ; sans
+                 l'aperçu, tout tient sur une rangée. Elle n'avait que 84 à 98 px pour la colonne la
+                 plus importante de la pièce, et 45 px pour le prix sur un portable. -->
+            <div class="lignes-cadre"><table class="lines-edit lignes-doc"><thead><tr><th>Désignation</th><th>Qté</th><th>Unité ${info('ed.unit')}</th><th>P.U. HT</th><th>TVA ${info('ed.vat')}</th><th class="r">Total HT</th><th></th></tr></thead>
+              <tbody id="lines"></tbody></table></div>
             <div class="totals-box" id="totals"></div>
           </div>
           ${bal ? `<div class="panel" id="pay-panel"><h2>Paiements et situation ${info('ed.payments')}</h2><div id="pay-body"></div></div>` : ''}
@@ -2528,6 +2561,7 @@
       dirty = true;
       const el = $('#dirty-dot'); if (el) el.hidden = false;
       const s = $('#save'); if (s) s.classList.add('btn-primary');
+      const e = $('#email'); if (e) e.classList.remove('btn-primary');
       reportDirty();
     }
     function untouch() { dirty = false; const el = $('#dirty-dot'); if (el) el.hidden = true; reportDirty(); }
@@ -3064,7 +3098,7 @@
       return true;
     }
     bindBack(backTo);
-    if ($('#save')) $('#save').onclick = () => { if (persist()) { toast(isQ || isExtra ? 'Enregistré : ' + doc.number : 'Brouillon enregistré'); unlockedIds.delete(doc.id); if (isNew) navigate('#/doc/' + doc.id); else render(true); } };
+    if ($('#save')) $('#save').onclick = () => { if (persist()) { toast(isQ || isExtra ? 'Enregistré : ' + doc.number : 'Brouillon enregistré'); unlockedIds.delete(doc.id); if (isNew) remplacerPage('#/doc/' + doc.id); else render(true); } };
     if ($('#issue')) $('#issue').onclick = async () => {
       // `data-busy` sur le bouton : il se désactive VISIBLEMENT pendant le geste. Un bouton qui
       // refuse en silence fait recliquer (règle 7.0.0) ; celui-ci dit qu'il travaille.
@@ -3076,7 +3110,7 @@
         const n = doc.number || peekNumber(doc.type, doc.date);
         const warn = issueWarnings();
         if (!await confirmDialog(`Émettre ${isInv ? 'la facture' : 'l\'avoir'} ${n} ? Le numéro devient définitif et le document ne sera plus modifiable. Pour corriger après coup, il faudra faire un avoir.${warn.length ? '\n\n⚠ ' + warn.join('\n⚠ ') : ''}`, warn.length ? 'Émettre quand même' : 'Émettre', false)) return;
-        if (issue()) { if (isNew) navigate('#/doc/' + doc.id); else render(); }
+        if (issue()) { if (isNew) remplacerPage('#/doc/' + doc.id); else render(); }
       } finally {
         // On relit le bouton : la page a pu se redessiner pendant l'attente, et la poignée d'avant
         // désigne alors un élément détaché (règle 7.6.0).
@@ -3086,7 +3120,7 @@
     };
     if ($('#serials')) $('#serials').onclick = () => serialAssignForm(docById(doc.id) || doc, () => render(true));
     if ($('#bill-btn')) $('#bill-btn').onclick = e => { e.stopPropagation(); const l = $('#bill-list'); const open = l.hidden; closeMenus(); l.hidden = !open; };
-    $$('#bill-list button').forEach(b => b.addEventListener('click', () => { $('#bill-list').hidden = true; }));
+    $$('#bill-list button:not(.i)').forEach(b => b.addEventListener('click', () => { $('#bill-list').hidden = true; }));
     $('#pdf').onclick = async () => {
       if (locked) return exportPdf(docById(doc.id) || doc);
       if (!validate()) return;
@@ -3098,7 +3132,7 @@
         if (c === 'a') { if (!issue()) return; }
         else if (!persist()) return;   // sans ce refus, on exportait un document qui n'a pas été écrit
         exportPdf(docById(doc.id));
-        if (isNew) navigate('#/doc/' + doc.id); else render();
+        if (isNew) remplacerPage('#/doc/' + doc.id); else render();
         return;
       }
       if (!persist()) return;
@@ -3117,7 +3151,7 @@
           if (st) { st.status = 'envoyé'; doc.status = 'envoyé'; save(true); toast(`${st.number} marqué envoyé`); }
         }
       }
-      if (isNew) navigate('#/doc/' + doc.id); else render();
+      if (isNew) remplacerPage('#/doc/' + doc.id); else render();
     };
     if ($('#del')) $('#del').onclick = async () => {
       // Une suppression qui laisse des liens morts doit au moins les nommer : une facture qui
@@ -3233,7 +3267,7 @@
     if ($('#as-template')) $('#as-template').onclick = () => saveAsTemplate(doc);
     if ($('#make-recurring')) $('#make-recurring').onclick = () => recurrenceForm(recurrenceFromInvoice(doc), () => { toast('Contrat créé'); navigate('#/contrats'); });
     if ($('#more-btn')) $('#more-btn').onclick = e => { e.stopPropagation(); const l = $('#more-list'); const open = l.hidden; closeMenus(); l.hidden = !open; };
-    $$('#more-list button').forEach(b => b.addEventListener('click', () => { $('#more-list').hidden = true; }));
+    $$('#more-list button:not(.i)').forEach(b => b.addEventListener('click', () => { $('#more-list').hidden = true; }));
     if ($('#conv-btn')) $('#conv-btn').onclick = e => { e.stopPropagation(); const l = $('#conv-list'); const open = l.hidden; closeMenus(); l.hidden = !open; };
     $$('#conv-list button').forEach(b => b.addEventListener('click', async () => {
       $('#conv-list').hidden = true;
@@ -3602,17 +3636,30 @@
       bindSort($('#list-wrap'), draw);
       bindPager($('#list-wrap'), s, () => draw(), '#list-wrap');
     };
+    // Une recherche et des filtres au-dessus de ZÉRO ligne n'aident personne (`filtersBar`), et un
+    // état vide en prose sans bouton est une notice de montage (7.0.0). Devis, Factures, Contrats et
+    // Relances avaient ce traitement ; Clients, Fournisseurs, Achats et les autres pièces y
+    // échappaient encore — trouvé par le test humain (10.12.0).
+    const vide = !data.clients.length && !(s.q || s.f);
     $('#view').innerHTML = `<div class="page-head"><h1>Clients</h1><div class="actions"><button class="btn btn-primary" id="new">+ Nouveau client</button></div></div>
-      <div class="filters">
+      ${filtersBar(`
         <input type="text" id="q" placeholder="Rechercher : nom, contact, MF, email…" value="${h(s.q)}">
         <select id="f">${FILTERS.map(([v, l]) => `<option value="${v}" ${s.f === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
         ${info('list.sort')}
         <span class="f-note" id="f-note" hidden></span>
-      </div><div id="list-wrap"></div>`;
-    $('#new').onclick = () => clientForm(null, () => draw());
-    $('#q').oninput = e => { s.q = e.target.value.toLowerCase(); s.page = 1; draw(); };
-    $('#f').onchange = e => { s.f = e.target.value; s.page = 1; draw(); };
-    draw();
+      `, data.clients.length, !!(s.q || s.f))}
+      ${vide ? etatVide('Les clients pour qui tu travailles',
+        ['Un client se crée une fois : son adresse et son matricule fiscal se reportent ensuite tout seuls sur ses devis et ses factures.',
+         'Tu peux aussi le créer depuis un devis, au moment où tu en as besoin.'],
+        [['vide-client', '+ Ajouter mon premier client', true], ['vide-demo', 'Voir un exemple rempli']]) : '<div id="list-wrap"></div>'}`;
+    // Le premier client fait apparaître la liste ET sa barre de recherche : c'est toute la page qui
+    // se redessine, pas seulement la liste.
+    $('#new').onclick = () => clientForm(null, () => (vide ? routes.clients() : draw()));
+    if ($('#vide-client')) $('#vide-client').onclick = () => clientForm(null, () => routes.clients());
+    if ($('#vide-demo')) $('#vide-demo').onclick = loadDemo;
+    if ($('#q')) $('#q').oninput = e => { s.q = e.target.value.toLowerCase(); s.page = 1; draw(); };
+    if ($('#f')) $('#f').onchange = e => { s.f = e.target.value; s.page = 1; draw(); };
+    if (!vide) draw();
   };
 
   // ---------- fiche client ----------
@@ -5338,17 +5385,23 @@
       bindSort($('#list-wrap'), draw);
       bindPager($('#list-wrap'), s, () => draw(), '#list-wrap');
     };
+    const vide = !data.suppliers.length && !(s.q || s.f);
     $('#view').innerHTML = `<div class="page-head"><h1>Fournisseurs</h1><div class="actions"><button class="btn btn-primary" id="new">+ Nouveau fournisseur</button></div></div>
-      <div class="filters">
+      ${filtersBar(`
         <input type="text" id="q" placeholder="Rechercher : nom, contact, matricule…" value="${h(s.q)}">
         <select id="f">${FILTERS.map(([v, l]) => `<option value="${v}" ${s.f === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
         ${info('list.sort')}
         <span class="f-note" id="f-note" hidden></span>
-      </div><div id="list-wrap"></div>`;
-    $('#new').onclick = () => supplierForm(null, () => draw());
-    $('#q').oninput = e => { s.q = e.target.value.toLowerCase(); s.page = 1; draw(); };
-    $('#f').onchange = e => { s.f = e.target.value; s.page = 1; draw(); };
-    draw();
+      `, data.suppliers.length, !!(s.q || s.f))}
+      ${vide ? etatVide('Ceux chez qui tu achètes',
+        ['Un fournisseur se crée une fois : ses coordonnées et son délai de paiement se reportent ensuite sur chaque facture d\'achat, et c\'est sur sa fiche que se lit ce que tu lui dois.',
+         'Tu peux aussi le créer depuis une facture d\'achat, au moment de la saisir.'],
+        [['vide-fournisseur', '+ Ajouter mon premier fournisseur', true]]) : '<div id="list-wrap"></div>'}`;
+    $('#new').onclick = () => supplierForm(null, () => (vide ? routes.fournisseurs() : draw()));
+    if ($('#vide-fournisseur')) $('#vide-fournisseur').onclick = () => supplierForm(null, () => routes.fournisseurs());
+    if ($('#q')) $('#q').oninput = e => { s.q = e.target.value.toLowerCase(); s.page = 1; draw(); };
+    if ($('#f')) $('#f').onchange = e => { s.f = e.target.value; s.page = 1; draw(); };
+    if (!vide) draw();
   };
 
   routes.fournisseur = (parts) => {
@@ -5494,11 +5547,12 @@
       bindSort($('#list-wrap'), draw);
       bindPager($('#list-wrap'), s, () => draw(), '#list-wrap');
     };
+    const videAchats = !data.purchases.length && !(s.q || s.st || s.kind || s.cat || s.year);
     $('#view').innerHTML = `
       <div class="page-head"><h1>Achats et dépenses</h1>
         <div class="actions"><button class="btn" id="new-dep">+ Dépense</button><button class="btn btn-primary" id="new">+ Facture d'achat</button></div></div>
       ${payablesPanel()}
-      <div class="filters">
+      ${filtersBar(`
         <input type="text" id="q" placeholder="Rechercher : n°, fournisseur, objet, catégorie…" value="${h(s.q)}">
         <select id="kind"><option value="">Tout</option>${C.PURCHASE_KINDS.map(([v, l]) => `<option value="${v}" ${s.kind === v ? 'selected' : ''}>${l}s</option>`).join('')}</select>
         <select id="st"><option value="">Tous les statuts</option>${C.PURCHASE_STATUSES.map(x => `<option value="${x}" ${s.st === x ? 'selected' : ''}>${h(x)}</option>`).join('')}<option value="${A_RATTACHER}" ${s.st === A_RATTACHER ? 'selected' : ''}>à rattacher (avoir ou acompte)</option></select>
@@ -5506,17 +5560,22 @@
         ${years.length > 1 ? `<select id="yr"><option value="">Toutes les années</option>${years.map(y => `<option value="${y}" ${s.year === y ? 'selected' : ''}>${y}</option>`).join('')}</select>` : ''}
         ${info('list.filters')}
         <span class="f-note" id="f-note" hidden></span>
-      </div>
-      <div id="list-wrap"></div>`;
+      `, data.purchases.length, !!(s.q || s.st || s.kind || s.cat || s.year))}
+      ${videAchats ? etatVide('Ce que tu dépenses, et la TVA que tu récupères',
+        ['Saisis ici tes factures fournisseurs et tes dépenses : c\'est ce qui permet de récupérer la TVA que tu as payée, et de connaître ta marge réelle.',
+         'Commence par joindre la photo ou le PDF de la facture : la saisie se fait en la regardant.'],
+        [['vide-achat', '+ Saisir ma première facture d\'achat', true], ['vide-dep', '+ Noter une dépense']]) : '<div id="list-wrap"></div>'}`;
     $('#new').onclick = () => navigate('#/achat/new');
     $('#new-dep').onclick = () => navigate('#/achat/new/-/depense');
-    $('#q').oninput = e => { s.q = e.target.value.toLowerCase(); s.page = 1; draw(); };
-    $('#st').onchange = e => { s.st = e.target.value; s.page = 1; draw(); };
-    $('#kind').onchange = e => { s.kind = e.target.value; s.page = 1; draw(); };
+    if ($('#vide-achat')) $('#vide-achat').onclick = () => navigate('#/achat/new');
+    if ($('#vide-dep')) $('#vide-dep').onclick = () => navigate('#/achat/new/-/depense');
+    if ($('#q')) $('#q').oninput = e => { s.q = e.target.value.toLowerCase(); s.page = 1; draw(); };
+    if ($('#st')) $('#st').onchange = e => { s.st = e.target.value; s.page = 1; draw(); };
+    if ($('#kind')) $('#kind').onchange = e => { s.kind = e.target.value; s.page = 1; draw(); };
     if ($('#cat')) $('#cat').onchange = e => { s.cat = e.target.value; s.page = 1; draw(); };
     if ($('#yr')) $('#yr').onchange = e => { s.year = e.target.value; s.page = 1; draw(); };
     bindPayables();
-    draw();
+    if (!videAchats) draw();
   };
 
   // Bandeau « à payer » : le pendant des relances, côté sortant.
@@ -5689,8 +5748,8 @@
         <div class="actions">
           ${backButton('#/achats')}
           ${!isNew && C.purchaseBalance(stored, company()).remaining > 0.0005 ? '<button class="btn" id="pay">Enregistrer un règlement</button>' : ''}
-          <button class="btn" id="attach-top">Joindre un justificatif… ${info('ed.attachments')}</button>
-          <button class="btn" id="photo" hidden>Lire une photo… ${info('ocr.photo')}</button>
+          <button class="btn" id="attach-top">Joindre un justificatif…</button>${info('ed.attachments')}
+          <button class="btn" id="photo" hidden>Lire une photo…</button>${info('ocr.photo')}
           <button class="btn btn-primary" id="save">Enregistrer</button>
           ${isNew ? '' : `<div class="more"><button class="btn" id="more-btn">Plus ▾</button><div class="more-list" id="more-list" hidden>
             <button id="dup">Dupliquer</button>
@@ -6148,11 +6207,11 @@
       if (!await doublonOk()) return;
       if (!persist()) return;
       toast('Enregistré');
-      if (isNew) navigate('#/achat/' + p.id); else render(true);
+      if (isNew) remplacerPage('#/achat/' + p.id); else render(true);
     };
     if ($('#pay')) $('#pay').onclick = () => supplierPaymentForm(purchaseById(p.id), () => render());
     if ($('#more-btn')) $('#more-btn').onclick = e => { e.stopPropagation(); const l = $('#more-list'); const open = l.hidden; closeMenus(); l.hidden = !open; };
-    $$('#more-list button').forEach(b => b.addEventListener('click', () => { $('#more-list').hidden = true; }));
+    $$('#more-list button:not(.i)').forEach(b => b.addEventListener('click', () => { $('#more-list').hidden = true; }));
     if ($('#dup')) $('#dup').onclick = () => { untouch(); duplicatePurchase(purchaseById(p.id)); };
     if ($('#del')) $('#del').onclick = async () => {
       if (!await confirmDialog(`Supprimer ${p.number || 'cette pièce'} ? Les règlements enregistrés seront perdus.`)) return;
@@ -6189,21 +6248,24 @@
     const { cols } = docColumns({ quotes: true, extra: type });
     const mine = data.documents.filter(d => d.type === type);
     const years = Array.from(new Set(mine.map(d => (d.date || '').slice(0, 4)).filter(Boolean))).sort().reverse();
+    const filtreActif = !!(s.q || s.st || s.year);
+    const vide = !mine.length && !filtreActif;
 
     $('#view').innerHTML = `
       <div class="page-head"><h1>Proforma, bons et contrats</h1>
         <div class="actions"><button class="btn btn-primary" id="new">+ ${h(NEW_LABELS[type])}</button></div></div>
       <div class="tabs" id="a-tabs" role="tablist" aria-label="Les autres pièces">${AUTRES_TABS.map(([t, label]) =>
         `<button role="tab" data-tab="${t}" class="${t === type ? 'active' : ''}">${h(label)}${data.documents.some(d => d.type === t) ? ` <span class="tab-n">${data.documents.filter(d => d.type === t).length}</span>` : ''}</button>`).join('')}</div>
-      <p class="small muted mb">${h(tab[2])} ${info('autres.' + type)}</p>
-      <div class="filters">
+      ${vide ? '' : `<p class="small muted mb">${h(tab[2])} ${info('autres.' + type)}</p>`}
+      ${filtersBar(`
         <input type="text" id="q" placeholder="Rechercher : n°, client, objet…" value="${h(s.q)}">
         <select id="st"><option value="">Tous les statuts</option>${C.STATUSES[type].map(x => `<option value="${x}" ${s.st === x ? 'selected' : ''}>${h(C.statusLabel(x))}</option>`).join('')}</select>
         ${years.length > 1 ? `<select id="yr"><option value="">Toutes les années</option>${years.map(y => `<option value="${y}" ${s.year === y ? 'selected' : ''}>${y}</option>`).join('')}</select>` : ''}
         ${info('list.filters')}
         <span class="f-note" id="f-note" hidden></span>
-      </div>
-      <div id="list-wrap"></div>`;
+      `, mine.length, filtreActif)}
+      ${vide ? etatVide(VIDE_AUTRES[type][0], [`${h(tab[2])} ${info('autres.' + type)}`, h(VIDE_AUTRES[type][1])],
+        [['vide-new', '+ ' + NEW_LABELS[type], true]]) : '<div id="list-wrap"></div>'}`;
 
     const draw = (sortKey) => {
       if (typeof sortKey === 'string' && sortKey) { s.sort = toggleSort(s.sort, sortKey, cols); s.page = 1; }
@@ -6215,7 +6277,8 @@
       const filtered = !!(s.q || s.st || s.year);
       $('#list-wrap').innerHTML = docTable(list, {
         quotes: true, extra: type, sort: s.sort, onSort: true, page: s, grandTotal: mine.length,
-        empty: filtered ? 'Aucun document ne correspond à ces filtres.' : EMPTY_LABELS[type]
+        // Une liste vide SANS filtre ne se dessine plus : c'est l'état vide utile qui la remplace.
+        empty: 'Aucun document ne correspond à ces filtres.'
       });
       const note = $('#f-note');
       note.hidden = !filtered;
@@ -6225,17 +6288,19 @@
     };
     $$('#a-tabs button').forEach(b => b.onclick = () => { autresTab = b.dataset.tab; navigate('#/autres/' + b.dataset.tab); });
     $('#new').onclick = () => navigate('#/doc/new/' + type);
-    $('#q').oninput = e => { s.q = e.target.value.toLowerCase(); s.page = 1; draw(); };
-    $('#st').onchange = e => { s.st = e.target.value; s.page = 1; draw(); };
+    if ($('#vide-new')) $('#vide-new').onclick = () => navigate('#/doc/new/' + type);
+    if ($('#q')) $('#q').oninput = e => { s.q = e.target.value.toLowerCase(); s.page = 1; draw(); };
+    if ($('#st')) $('#st').onchange = e => { s.st = e.target.value; s.page = 1; draw(); };
     if ($('#yr')) $('#yr').onchange = e => { s.year = e.target.value; s.page = 1; draw(); };
-    draw();
+    if (!vide) draw();
   };
   const NEW_LABELS = { proforma: 'Nouvelle proforma', commande: 'Nouveau bon de commande', livraison: 'Nouveau bon de livraison', contrat: 'Nouveau contrat' };
-  const EMPTY_LABELS = {
-    proforma: 'Aucune proforma. Tu peux en tirer une d\'un devis existant, depuis le menu « Transformer » de ce devis.',
-    commande: 'Aucun bon de commande. Enregistre ici ce que le client commande avant la livraison ou la facture.',
-    livraison: 'Aucun bon de livraison. Il se tire d\'un devis, d\'une commande ou d\'une facture, en un clic.',
-    contrat: 'Aucun contrat. Rédige ici la pièce que ton client signe : objet, durée, reconduction, préavis.'
+  // Un onglet vide dit à quoi sert la pièce et donne le geste qui la crée (10.12.0) : [titre, seconde phrase].
+  const VIDE_AUTRES = {
+    proforma: ['Un prix ferme, avant la facture', 'Tu peux aussi en tirer une d\'un devis existant, depuis son menu « Transformer ».'],
+    commande: ['Ce que le client a commandé', 'Enregistre-le ici, avant la livraison ou la facture.'],
+    livraison: ['La preuve que tu as livré', 'Il se tire aussi d\'un devis, d\'une commande ou d\'une facture, en un clic depuis leur menu « Transformer ».'],
+    contrat: ['La pièce que ton client signe', 'Objet, durée, reconduction, préavis : rédige-la ici, puis fais-la signer.']
   };
 
   // ---------- Affaires et marges ----------

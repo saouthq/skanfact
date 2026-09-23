@@ -92,6 +92,31 @@ même façon, ce qui en a fait trouver une trentaine d'autres. Tout est ici.
 - **« * obligatoire » s'affichait sous neuf fenêtres sans aucune étoile au-dessus** — client,
   fournisseur, salarié, affaire, modèle, texte, compte, opération ; et six de plus dans le Cabinet. Le
   champ obligatoire porte son étoile.
+- **Enregistrer un devis neuf laissait « ← le document » en bouton retour**, et il ouvrait un devis
+  VIERGE. Même chose après l'émission d'une facture, l'export d'un brouillon et l'enregistrement d'un
+  achat neuf. Le retour mène désormais à la liste d'où l'on vient.
+- **La désignation d'une ligne n'avait que 84 à 98 px** à côté de l'aperçu, et le prix unitaire 45 px
+  sur un portable : on lisait « ence murale » de « Dépose et évacuation de l'ancienne faïence murale ».
+  À côté de l'aperçu, la désignation prend toute la largeur et les chiffres passent dessous (409 à
+  489 px pour elle, 96 pour le prix) ; sans l'aperçu, tout tient sur une rangée.
+- **Choisir un client faisait sauter tout le formulaire de 45 px** : « Fiche du client » apparaissait
+  sous le champ, et le clic suivant, visé sur « Objet », tombait dans le vide. Le lien « Modifier la
+  fiche » vit dans la ligne du libellé, où il ne déplace rien.
+- **Dans le menu « Facturer ▾ », chaque bulle « i » tombait seule sur sa ligne**, et celle de « Lire une
+  photo… » restait affichée à côté de « Joindre un justificatif… » alors que la lecture est en pause :
+  une bulle posée À L'INTÉRIEUR d'un bouton, que le navigateur coupait en deux. Neuf cas, dont un dans
+  le Cabinet.
+- **Un devis enregistré gardait « Enregistrer » en vert** : il disait qu'il restait quelque chose à
+  enregistrer. L'étape suivante — l'envoyer — est le bouton principal ; « Enregistrer » le redevient
+  dès qu'on modifie.
+- **Clients, Fournisseurs, Achats et les autres pièces affichaient une recherche et des filtres
+  au-dessus de zéro ligne**, et une phrase sans bouton : ils disent maintenant à quoi ils servent et
+  donnent le geste qui les remplit, comme les Devis et les Factures.
+- **La recherche des listes prenait toute la ligne** et renvoyait filtres et bulle sur une seconde
+  rangée — sur le Catalogue, une bulle « i » restait seule sous la recherche. Les filtres tiennent sur
+  une rangée, et la liste remonte d'autant.
+- La fenêtre porte le titre de la page : « Nouveau devis », « Nouvelle facture d'achat », la fiche
+  d'un fournisseur — plus « Nouveau document » ni « SkanFact » tout court.
 
 **La console de l'éditeur**
 - **Le Journal écrivait « commande.creee »** en chasse fixe : les cinq événements de la vente en ligne
