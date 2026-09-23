@@ -341,8 +341,12 @@ const L = require('../../src/licence.js');
   if (!/Offre Indépendant/.test(refusTxt) || !/Entreprise/.test(refusTxt) || !/lisible/.test(refusTxt)) throw new Error('le refus ne dit pas l\'offre et ce qui reste ouvert : ' + refusTxt.slice(0, 200));
   await win.evaluate(() => { const b2 = document.querySelector('#modal-root .modal-bg:last-child [data-close]'); if (b2) b2.click(); });
   await win.waitForTimeout(400);
+  // 10.12.0 — la fiche a été remplie : « Annuler » DEMANDE avant de jeter la saisie, et l'on abandonne
+  // (le parcours répond comme un humain — sinon la question reste par-dessus la page suivante).
   await win.evaluate(() => { const b2 = document.querySelector('#modal-root [data-close]'); if (b2) b2.click(); });
-  await win.waitForTimeout(300);
+  await win.waitForFunction(() => /Abandonner cette saisie/.test((document.querySelector('#modal-root .modal-bg:last-child') || {}).textContent || ''));
+  await win.click('#modal-root .modal-bg:last-child #ok');
+  await win.waitForFunction(() => !document.querySelector('#modal-root .modal-bg'));
   const nApres = await win.evaluate(() => window.__data.assets.length);
   if (nApres !== immoAvant) throw new Error('une immobilisation a été créée malgré l\'offre Indépendant');
   await aller('#/stats');

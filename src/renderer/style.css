@@ -417,7 +417,11 @@ td:not(.row-actions):not(.line-tools) .btn + .btn { margin-inline-start: 6px; }
 .empty.mini { padding: 14px 16px; text-align: start; border: none; background: transparent; }
 
 /* ---------- badges ---------- */
-.badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 600; background: var(--ink-soft); color: var(--muted); }
+/* Une pastille est UN mot, elle ne se coupe jamais (10.12.0, vu au test humain) : « en attente » passait
+   sur deux lignes dans sa pilule, au fond de la colonne Réponse de la Révision — une pastille cassée
+   se lit comme un défaut d'affichage, pas comme un état. La liste des dossiers le disait pour elle
+   seule depuis la 9.4.4 ; c'est la règle de toutes les pastilles. */
+.badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 600; background: var(--ink-soft); color: var(--muted); white-space: nowrap; }
 .badge.envoyé, .badge.envoyée { background: var(--info-soft); color: var(--info); }
 .badge.accepté, .badge.payée { background: var(--success-soft); color: var(--success); }
 .badge.refusé, .badge.annulée { background: var(--danger-soft); color: var(--danger); }

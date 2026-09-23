@@ -3020,8 +3020,36 @@ t('dates : le même résultat à Tunis, à Los Angeles, à Kiritimati et en UTC'
       const local = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
       assert.strictEqual(core.today(), local, `${tz} : today() = jour local`);
       assert.ok(/^\d{4}-\d{2}-\d{2}$/.test(core.nextRecurrenceDate('2026-01-31', 'mois', 31)), `${tz} : récurrence`);
+      // Un INSTANT se lit comme le jour LOCAL (10.12.0) : 23 h 30 UTC le 31 mai est déjà le 1er juin à
+      // Tunis — la contre-passation d'un geste fait à 0 h 30 tombait dans le mois d'avant.
+      const instant = Date.UTC(2026, 4, 31, 23, 30);
+      const di = new Date(instant);
+      assert.strictEqual(core.jourDeLInstant(instant),
+        `${di.getFullYear()}-${String(di.getMonth() + 1).padStart(2, '0')}-${String(di.getDate()).padStart(2, '0')}`, `${tz} : jour local d'un instant`);
+      if (tz === 'Africa/Tunis') assert.strictEqual(core.jourDeLInstant(instant), '2026-06-01', 'Tunis : 0 h 30 le 1er juin se lit le 31 mai');
+      if (tz === 'America/Los_Angeles') assert.strictEqual(core.jourDeLInstant(new Date(instant).toISOString()), '2026-05-31', 'Los Angeles : une chaîne ISO se lit aussi en jour local');
+      assert.strictEqual(core.jourDeLInstant(''), '', `${tz} : pas d'instant, pas de jour`);
+      assert.strictEqual(core.jourDeLInstant('n\'importe quoi'), '', `${tz} : instant illisible → vide`);
     }
   } finally { if (tzBefore === undefined) delete process.env.TZ; else process.env.TZ = tzBefore; }
+});
+
+t('dates : un instant ne se convertit jamais en jour par le jour UTC — ni « aujourd\'hui », ni un horodatage (règle 5.2.3)', () => {
+  // Seize endroits des deux applications faisaient `new Date(t).toISOString().slice(0, 10)` ; l'un
+  // d'eux datait une ÉCRITURE (la contre-passation). Le worker compte en UTC par décision (10.4.0) :
+  // il n'est pas concerné. Le code se lit sans ses lignes de commentaire (6.8.0).
+  const fichiers = ['src/main.js', 'src/renderer/app.js', 'src/renderer/core.js', 'src/renderer/compta.js',
+    'src/cabinet/main.js', 'src/cabinet/cabcore.js', 'src/cabinet/cabstore.js', 'src/cabinet/renderer/app.js', 'src/cabinet/exemple-vitrine.js'];
+  const fautifs = [];
+  fichiers.forEach(f => {
+    const code = fs.readFileSync(path.join(__dirname, '..', f), 'utf8').split('\n').map((l, i) => [l, i + 1]).filter(([l]) => !/^\s*\/\//.test(l));
+    code.forEach(([l, n]) => { if (/new Date\((?!Date\.UTC)[^()]*\)\.toISOString\(\)\.slice\(0, ?10\)/.test(l)) fautifs.push(`${f}:${n}`); });
+  });
+  assert.deepStrictEqual(fautifs, [], 'un jour UTC tiré d\'un instant : ' + fautifs.join(', '));
+  // Et la contre-passation date sa miroir du jour LOCAL : c'est la seule qui écrit une date dans le livre.
+  const cab = fs.readFileSync(path.join(__dirname, '..', 'src', 'cabinet', 'renderer', 'app.js'), 'utf8');
+  const cp = cab.slice(cab.indexOf('async function contrepasserEcriture('), cab.indexOf('async function contrepasserEcriture(') + 400);
+  assert.ok(/const jour = K\.today\(\);/.test(cp), 'la contre-passation ne se date plus du jour local');
 });
 
 // ---------- superposition des couches (src/renderer/style.css) ----------
@@ -10262,7 +10290,10 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     assert.ok(/if \(!reelles\.length\) \{ b\.remove\(\); return; \}/.test(rm),
       'une ligne sans action garde son bouton : il ouvrira un menu vide');
     // Une SEULE action ne se cache pas derrière un menu : le bouton la nomme et l'exécute (7.29.0).
-    assert.ok(/if \(reelles\.length === 1\) \{[\s\S]{0,400}?a\.run\(\);/.test(rm),
+    // On juge la BRANCHE entière, jusqu'à son `return;` — pas une fenêtre de 400 caractères, tombée
+    // sur du code juste le jour où la branche a gagné le mot court d'une action (10.12.0).
+    const solo = /if \(reelles\.length === 1\) \{([\s\S]*?)\n\s*return;\s*\}/.exec(rm);
+    assert.ok(solo && /a\.run\(\);/.test(solo[1]) && !/ouvrir\(/.test(solo[1]),
       'un choix unique s\'ouvre quand même en menu : un clic et une lecture de plus pour rien');
     // Chaque action porte une phrase, jamais un pictogramme.
     // Seulement les actions de menu : un objet `{ icon, label, …, run }`. D'autres tables de
@@ -13769,9 +13800,12 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     // reliait à rien : Échap et le clic à côté fermaient, le seul chemin ÉCRIT sur l'écran ne
     // faisait rien. L'app entreprise avait cette ligne depuis la 1.8.0 (le jumeau manquant, 7.3.0).
     // On teste la règle dans le corps de `modal()` de chaque application, commentaires retirés.
+    // 10.12.0 — l'app entreprise passe AUSSI par `dismiss` : elle n'en avait pas, donc « Annuler »
+    // jetait la saisie en silence, et ce test l'EXIGEAIT (`via: 'close'`) — il décrivait l'état du
+    // jour, pas la règle. La règle : « Annuler » vaut Échap, dans les deux applications.
     const cas = [
       { f: ['src', 'cabinet', 'renderer', 'app.js'], via: 'dismiss' },
-      { f: ['src', 'renderer', 'app.js'], via: 'close' },
+      { f: ['src', 'renderer', 'app.js'], via: 'dismiss' },
     ];
     // `codeSeulement` VIDE les chaînes — et le sélecteur `'[data-close]'` en est une. On retire donc
     // les seuls commentaires (celui qui explique la règle cite le sélecteur), en gardant les chaînes.
@@ -13789,8 +13823,8 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
       assert.ok(zone.length > 400 && zone.length < 6000, `${f.join('/')} : tranche suspecte (${zone.length})`);
       const m = zone.match(/\$\$\('\[data-close\]', layer\)\.forEach\(b => b\.addEventListener\('click', (\w+)\)\)/);
       assert.ok(m, f.join('/') + ' : les boutons [data-close] d\'une fenêtre ne sont reliés à rien');
-      // Au Cabinet, « Annuler » vaut Échap : il passe par `dismiss`, qui pose la question de la
-      // garde de saisie. Relié à `close`, il jetterait huit champs sans un mot.
+      // « Annuler » vaut Échap : il passe par `dismiss`, qui pose la question de la garde de
+      // saisie. Relié à `close`, il jetterait huit champs sans un mot.
       assert.strictEqual(m[1], via, `${f.join('/')} : [data-close] doit passer par ${via}, pas ${m[1]}`);
     });
     // Et le Cabinet a bien des fenêtres qui s'en servent : sans elles, la ligne ne protégerait rien.

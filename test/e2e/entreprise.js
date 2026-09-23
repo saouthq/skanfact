@@ -644,7 +644,11 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
     await win.click('#modal-root .modal-bg:last-child [data-close]');
     await win.waitForFunction(() => document.querySelectorAll('#modal-root .modal-bg').length === 1);
     if (await win.inputValue('#pf2 input[name=amount]') !== '999999') throw new Error('saisie perdue');
+    // 10.12.0 — « Annuler » sur un formulaire qu'on vient de remplir DEMANDE avant de jeter la saisie :
+    // le parcours répond, comme un humain (un e2e qui attendait la fermeture restait bloqué).
     await win.click('#modal-root .modal-bg:last-child [data-close]');
+    await win.waitForFunction(() => /Abandonner cette saisie/.test((document.querySelector('#modal-root .modal-bg:last-child') || {}).textContent || ''));
+    await win.click('#modal-root .modal-bg:last-child #ok');
     await win.waitForFunction(() => !document.querySelector('#modal-root .modal-bg'));
     await win.selectOption('#st', '');
   });
@@ -1170,7 +1174,11 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
     await win.waitForFunction(() => (document.querySelector('#marge-hint') || {}).textContent.includes('90'));
     await win.fill('#kf input[name=unitCost]', '200');
     await win.waitForFunction(() => (document.querySelector('#marge-hint') || {}).textContent.includes('perte'));
+    // 10.12.0 — la fiche a été modifiée : « Annuler » demande avant de jeter, et l'on abandonne.
     await win.click('#modal-root [data-close]');
+    await win.waitForFunction(() => /Abandonner cette saisie/.test((document.querySelector('#modal-root .modal-bg:last-child') || {}).textContent || ''));
+    await win.click('#modal-root .modal-bg:last-child #ok');
+    await win.waitForFunction(() => !document.querySelector('#modal-root .modal-bg'));
   });
   await step('immobilisations : tableau, fiche, création depuis un achat, cession', async () => {
     await win.evaluate(() => { location.hash = '#/immos'; });

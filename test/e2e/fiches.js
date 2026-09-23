@@ -71,8 +71,12 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
   await win.waitForTimeout(200);
   const corrige = await win.evaluate(() => !!document.querySelector('#cf input[name=name]').closest('.champ-faute'));
   if (corrige) throw new Error('le champ reste accusé après correction');
+  // 10.12.0 — « Annuler » sur une fiche qu'on vient de remplir DEMANDE avant de jeter la saisie :
+  // on répond comme un humain, sinon la question reste par-dessus la page suivante.
   await win.click('#modal-root [data-close]');
-  await win.waitForTimeout(220);
+  await win.waitForFunction(() => /Abandonner cette saisie/.test((document.querySelector('#modal-root .modal-bg:last-child') || {}).textContent || ''));
+  await win.click('#modal-root .modal-bg:last-child #ok');
+  await win.waitForFunction(() => !document.querySelector('#modal-root .modal-bg'));
   j.ok(`étoile posée, légende « ${vu.legende.trim()} », curseur ramené sur le champ vide`);
 
   // ---------------------------------------------------- 2. le Catalogue mène à la fiche de l'article

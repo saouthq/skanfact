@@ -7,6 +7,79 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 10.12.0-beta.1 — 23/09/2026
+
+**Le Cabinet, parcouru comme un comptable le vivrait.** Un audit d'interface en trente constats,
+fait à la souris et au clavier sur l'application ouverte — puis chaque correction revérifiée de la
+même façon, ce qui en a fait trouver une trentaine d'autres. Tout est ici.
+
+**Les chiffres qui se contredisaient**
+- **La déclaration d'employeur ne voyait aucune charge patronale** (« aucun mouvement sur 65 »)
+  pendant que la paie en écrivait 627 890 DT au 645. Elle lit maintenant les comptes de la paie, et
+  ne les compte plus deux fois. La liasse nomme ses rubriques comme le plan (65 = charges
+  financières).
+- **La case IRPP de la déclaration du mois tombait à presque rien** : l'IRPP de juin, reversé en
+  juillet, se retranchait de celui retenu en juillet. Elle compte ce qui est RETENU dans le mois.
+- **« Il manque 6 mois »** s'affichait sur des mois hors mission : le Suivi et la Comptabilité lisent
+  le même début de mission.
+- **Le chiffre d'affaires du portefeuille** additionnait le mars d'un client et l'août d'un autre. Il
+  porte sur un mois nommé, et la carte et le pied du tableau disent le même chiffre.
+- **L'écart de rapprochement** s'affichait en rouge sans rien pour dire s'il était expliqué. Les
+  suspens se totalisent de chaque côté, et une phrase dit si « banque − livre » redonne tout l'écart.
+- L'intitulé des à-nouveaux porte le nom du compte ; plus aucun mois écrit « 2026-07 » dans une phrase.
+
+**La saisie et le livre**
+- La grille de saisie passe au-dessus de la ligne de flottaison : sur un portable de 1280×800, elle
+  montrait UNE ligne, elle en montre dix. Ses colonnes ne sautent plus pendant la frappe, et une
+  pièce commencée se signale et se demande à la fermeture de l'application.
+- **Les treize écrans de la comptabilité sont rangés en trois groupes** — Saisir, Consulter, Déclarer
+  et clôturer —, l'écran vit dans l'adresse, et chaque dossier rouvre là où on l'a laissé.
+- Aucune colonne collante ne recouvre plus une donnée (Débit et Crédit du livre-journal, « Signalés »
+  des Dossiers, juillet et août de la Production).
+- Un montant s'écrit et se relit en français dans chaque champ (« 250.000 » se lisait deux cent
+  cinquante mille) ; un montant illisible reste rouge et se nomme.
+- **La recherche du livre-journal** perdait les lettres tapées (« P » au lieu de « PAIE-2026-08 ») et
+  coupait les pièces (« 24 pièces déséquilibrées » sur un livre juste). Elle garde la frappe, le
+  curseur, et des pièces entières.
+- **Une écriture contre-passée libère ce qu'elle portait** : la paie, la dotation, la déclaration ou
+  l'inventaire redeviennent « à passer ». Le refus disait « contre-passe-la d'abord » et, une fois fait,
+  répétait la même phrase. La fenêtre nomme ce qui sera libéré avant qu'on confirme ; sur un brouillard,
+  le refus dit « supprime-la ».
+- Une pièce contre-passée n'élargit plus le livre-journal au point de cacher le Crédit.
+
+**Un seul bouton principal par écran, et c'est l'étape suivante**
+- Révision, Relances, Déclaration, Paie, Immobilisations, Inventaire, assistant, Réglages : un seul
+  vert, sur ce qui est à faire maintenant. Les Réglages n'en ont aucun au repos.
+- L'orange est gardé pour ce qui demande un geste ; les états normaux se disent en gris.
+- Un bouton éteint dit pourquoi, à côté de lui. Une dotation n'est plus réclamée en septembre : elle
+  se passe à l'inventaire, au dernier mois de l'exercice (le bouton la prépare si on le veut).
+- La liasse masque ses rubriques vides en le disant ; l'Exercice et les Réglages de la comptabilité se
+  replient en sections avec un sommaire ; le modèle de liasse se modifie dans une fenêtre.
+
+**Trouver**
+- **Cmd+K connaît la comptabilité** : « balance », « béji balance », « rapprochement »… ouvrent le bon
+  écran du bon client, et proposent aussi l'article d'Aide qui l'explique.
+- **Sept articles d'Aide de plus** : Banque, Déclaration, Immobilisations, Paie, Révision, Exercice,
+  Liasse — chacun finit par son geste, et la bulle du titre de l'écran y mène.
+- **Le jeu d'exemple montre ce qui impressionne un comptable** : un client sur SkanFact avec son relevé
+  rapproché (une ambiguïté à trancher, un suspens de chaque côté) et une révision entamée ; un client
+  hors SkanFact dont le cabinet tient l'année entière — recettes, achats, paie de deux salariés, TVA,
+  CNSS, biens. Ses mois se lisent dans son livre (« à saisir », « déclaré »), jamais « hors mission ».
+
+**Et**
+- Un autre écran s'ouvre en haut ; un geste qui détruit vit en bas de son menu, après un trait.
+- Dans l'app entreprise aussi : une fenêtre de formulaire ne jette plus ce qu'on vient de taper sur
+  Échap ou « Annuler » — elle demande (sauf un simple mot de confirmation, comme « EFFACER ») ; une
+  pastille ne se coupe plus sur deux lignes.
+- Les phrases s'accordent à ce qu'elles comptent : « 1 paquet n'est pas définitif… Son mois… Il est
+  quand même exporté », « elle reste en brouillard », et plus aucune date « 2026-08-31 » dans un message.
+- Les instruments de mesure du rendu voient désormais les fenêtres, le texte coupé à côté d'une colonne
+  vide, les deux dossiers pleins de l'exemple, et le livre-journal d'une pièce contre-passée — et ils
+  ont trouvé tout de suite, dans la Paie d'un portable, « Renseigner le n° de … » collé sous sa phrase.
+
+**Publiée en bêta** : elle touche au moteur comptable (déclaration d'employeur, IRPP du mois,
+contre-passation, rapprochement).
+
 ## 10.11.0 — 23/09/2026
 
 **Les mises à jour, retournées.** Trois défauts vus par Skander sur ses deux applications, et l'écran

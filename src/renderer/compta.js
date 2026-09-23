@@ -43,6 +43,18 @@
     const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || ''));
     return m ? `${m[3]}/${m[2]}/${m[1]}` : String(iso || '');
   }
+  // Un INSTANT — l'horodatage d'un geste (`le`, `closLe`, `revuLe`, `at`…) — se lit comme le JOUR
+  // LOCAL de celui qui l'a fait, jamais comme le jour UTC (règle 5.2.3). Seize endroits des deux
+  // applications faisaient `new Date(t).toISOString().slice(0, 10)` : à Tunis entre minuit et une
+  // heure, c'est la veille — et le 1er du mois, le mois d'avant. L'un d'eux DATAIT une écriture : la
+  // contre-passation d'un geste fait le 1er juin à 0 h 30 tombait le 31 mai, dans un mois peut-être
+  // déjà déclaré (règle 6.0.0). « Aujourd'hui » s'écrit donc `jourDeLInstant(Date.now())`.
+  function jourDeLInstant(t) {
+    if (t === '' || t == null) return '';
+    const d = new Date(t);
+    if (isNaN(d.getTime())) return '';
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
   // 10.12.0 (U-28) — un mois dans une phrase se dit « juillet 2026 », jamais « 2026-07 » : c'est la
   // même règle que fmtJour (C-04), sur la dernière forme machine qui sortait encore du moteur.
   const MOIS_FR = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin',
@@ -51,6 +63,10 @@
     const m = /^(\d{4})-(\d{2})$/.exec(String(ym || ''));
     return m && MOIS_FR[Number(m[2]) - 1] ? `${MOIS_FR[Number(m[2]) - 1]} ${m[1]}` : String(ym || '');
   }
+  // « de » devant un mois s'élide (10.12.0) : « Déclaration de août 2026 » était le libellé d'une
+  // ÉCRITURE du livre, relue dans le journal et le grand livre. Avril, août et octobre commencent
+  // par une voyelle ; le jumeau de `de()` du Cabinet (Cabinet 1.0.0), pour un moteur qui ne le charge pas.
+  const deMois = label => (/^[aeiouéèê]/i.test(String(label || '')) ? 'd\'' : 'de ') + String(label || '');
 
   // La clé d'une pièce comptable. Trois champs, toujours les mêmes, partout : c'est ce qui fait
   // qu'une pièce est UNE pièce, et que ses lignes s'équilibrent entre elles.
@@ -838,7 +854,60 @@
       const nom = libelleDuPlan(c.compte);
       if (nom) c.libelle = nom;
     });
+    // Un livre écrit avant la 10.12.0 garde les liens vers des écritures CONTRE-PASSÉES (ou des
+    // brouillards supprimés) : ils se défont à la lecture, sans réécrire aucune écriture — comme les
+    // noms de compte ci-dessus, une migration rend un état, jamais un chiffre.
+    const enVigueur = new Set((livre.ecritures || []).filter(e => e.statut !== 'contrepassee').map(e => e.id));
+    liensMorts(livre, id => !enVigueur.has(id));
     return livre;
+  }
+
+  // Une écriture CONTRE-PASSÉE ou supprimée ne porte plus rien (10.12.0). Quatre objets retenaient
+  // son identifiant — les bulletins d'une paie, la ligne d'une dotation dans le plan d'un bien, une
+  // déclaration, un inventaire — et continuaient de se dire « écrits ». Le refus disait
+  // « contre-passe-la d'abord » ; une fois la contre-passation faite, il répétait la même phrase : la
+  // paie ne se refaisait plus, la fiche du bien ne se corrigeait plus, la déclaration ne se
+  // réécrivait plus. Trois impasses derrière un message qui promettait une sortie, trouvées en
+  // complétant l'année du garage de l'exemple. Le lien se défait au moment où l'écriture cesse de
+  // valoir, à UN endroit pour les quatre.
+  function liensMorts(livre, mort) {
+    let n = 0;
+    const defaire = (o, cle, vide) => { if (o && txt(o[cle]) && mort(txt(o[cle]))) { o[cle] = vide; n++; } };
+    (livre.bulletins || []).forEach(b => defaire(b, 'ecritureId', null));
+    (livre.immobilisations || []).forEach(f => (f.plan || []).forEach(p => defaire(p, 'ecritureId', '')));
+    (livre.declarations || []).forEach(d => defaire(d, 'ecritureId', ''));
+    (livre.inventaires || []).forEach(i => defaire(i, 'ecritureId', ''));
+    return n;
+  }
+  const libererEcriture = (livre, id) => liensMorts(livre, x => x === txt(id));
+  // Ce qu'une écriture PORTE, dit en mots (10.12.0) : ce que la supprimer ou la contre-passer rendra
+  // « à passer ». Une suppression nomme ce qu'elle casse (7.19.0) — et elle le dit AVANT le geste :
+  // sinon la paie d'août redevient « à passer » sans que personne sache pourquoi. Les mêmes quatre
+  // objets que `liensMorts`, dans le même ordre : deux listes séparées divergeraient.
+  function ceQuePorte(livre, id) {
+    const cible = txt(id);
+    if (!cible || !livre) return [];
+    const out = [];
+    const moisPaie = new Set();
+    (livre.bulletins || []).forEach(b => {
+      if (txt(b.ecritureId) === cible) moisPaie.add(`${Number(b.annee)}-${String(Number(b.mois)).padStart(2, '0')}`);
+    });
+    [...moisPaie].sort().forEach(m => out.push(`la paie ${deMois(fmtMois(m))}`));
+    (livre.immobilisations || []).forEach(f => (f.plan || []).forEach(p => {
+      if (txt(p.ecritureId) === cible) out.push(`la dotation ${p.annee} de « ${txt(f.libelle) || 'ce bien'} »`);
+    }));
+    (livre.declarations || []).forEach(d => { if (txt(d.ecritureId) === cible) out.push(`la déclaration ${deMois(fmtMois(d.periode))}`); });
+    (livre.inventaires || []).forEach(i => { if (txt(i.ecritureId) === cible) out.push(`l'inventaire du ${fmtJour(i.date)}`); });
+    return out;
+  }
+  // Le geste qui LIBÈRE un objet de son écriture, selon ce qu'elle est (10.12.0) : « contre-passe-la
+  // d'abord » sur une écriture encore au BROUILLARD était un conseil impossible — un brouillard ne se
+  // contre-passe pas (« il se modifie »), et c'était une impasse de plus. Il se supprime.
+  function gesteQuiLibere(livre, id) {
+    const e = (livre.ecritures || []).find(x => x.id === txt(id));
+    return e && e.statut === 'brouillard'
+      ? 'elle est encore au brouillard : supprime-la d\'abord dans la Saisie'
+      : 'contre-passe-la d\'abord';
   }
 
   const trace = (livre, qui, quoi, detail, quand) =>
@@ -944,8 +1013,9 @@
     const r = validerEcriture(livre, miroir.id, qui, quand);
     if (!r.ok) { livre.ecritures = livre.ecritures.filter(x => x.id !== miroir.id); return r; }
     e.statut = 'contrepassee';
+    const liberes = libererEcriture(livre, id);
     trace(livre, qui, 'contre-passation', `${e.journal} ${e.piece} n° ${e.numero} → n° ${miroir.numero}`, quand);
-    return { ok: true, ecriture: miroir };
+    return { ok: true, ecriture: miroir, liberes };
   }
 
   // La clé d'une écriture venue d'un paquet : c'est elle qui dit « c'est la même pièce, renvoyée ».
@@ -1281,7 +1351,8 @@
       return { ok: false, motif: 'Cette écriture est rapprochée d\'une ligne de relevé : défais le rapprochement d\'abord, sinon il désignerait une écriture disparue.' };
     }
     livre.ecritures = livre.ecritures.filter(x => x.id !== id);
-    return { ok: true, ecriture: e };
+    const liberes = libererEcriture(livre, id);
+    return { ok: true, ecriture: e, liberes };
   }
 
   // Valider un LOT — un journal, un mois, ou une sélection. Chaque pièce passe par `validerEcriture`
@@ -1769,10 +1840,21 @@
       // le feraient, comme celle du lettrage.
       (e.lignes || []).forEach((l, i) => {
         if (txt(l.compte) !== n) return;
-        out.push({ ecritureId: e.id, ligne: i, date: e.date, libelle: l.libelle || e.libelle, piece: e.piece, statut: e.statut, montant: round3(num(l.debit) - num(l.credit)) });
+        out.push({ ecritureId: e.id, ligne: i, date: e.date, libelle: l.libelle || e.libelle, piece: e.piece, journal: e.journal, statut: e.statut, montant: round3(num(l.debit) - num(l.credit)) });
       });
     });
     return out;
+  }
+
+  // Ce qui peut répondre d'une ligne de relevé : tout le compte, SAUF l'à-nouveau (10.12.0, vu au
+  // test humain). Le solde reporté au 1er janvier n'est pas un mouvement que la banque a passé :
+  // il se compare au solde de départ du relevé, jamais à une de ses lignes. La fenêtre « Choisir
+  // l'écriture en face » le proposait en tête des candidats (« Banque — solde reporté,
+  // 18 500,000 »), et l'automatique pouvait l'apparier à un virement du même montant en janvier.
+  // UNE fonction pour l'automatique, les suspens et la fenêtre : trois filtres écrits à la main
+  // divergeraient au premier ajout. Les SOLDES, eux, lisent `lignesBancaires` : l'à-nouveau y compte.
+  function lignesARapprocher(livre, compte) {
+    return lignesBancaires(livre, compte).filter(c => txt(c.journal) !== 'AN');
   }
 
   const motsDe = s => sansAccents(String(s || '').toLowerCase()).split(/[^a-z0-9]+/).filter(m => m.length >= 4);
@@ -1799,7 +1881,7 @@
     const jours = o.jours == null ? RELEVE_JOURS : Math.max(0, Number(o.jours) || 0);
     const R = (livre.releves || []).find(x => x.id === releveId);
     if (!R) return { ok: false, motif: 'Ce relevé n\'existe pas.' };
-    const dispo = lignesBancaires(livre, R.compte);
+    const dispo = lignesARapprocher(livre, R.compte);
     // Ce qui est déjà rapproché ailleurs ne se propose plus : sinon la même écriture répondrait de
     // deux lignes du relevé, et le compte tomberait juste deux fois pour un seul mouvement.
     const prises = new Set();
@@ -1809,27 +1891,64 @@
     const compte = { certain: 0, probable: 0, 'a-confirmer': 0, aucun: 0 };
     const detail = [];
     R.lignes.forEach(l => {
-      if (l.rapprochement && l.rapprochement.niveau !== 'aucun') { compte[l.rapprochement.niveau]++; return; }
-      const candidats = dispo
-        .filter(c => !prises.has(c.ecritureId + '#' + c.ligne))
-        .filter(c => round3(c.montant - num(l.montant)) === 0)
-        .filter(c => ecartJours(c.date, l.date) <= jours);
-      let niveau = 'aucun';
-      if (candidats.length === 1) niveau = 'certain';
-      else if (candidats.length > 1) {
-        const scores = candidats.map(c => motsCommuns(c.libelle, l.libelle));
-        const meilleur = Math.max(...scores);
-        niveau = meilleur > 0 && scores.filter(s => s === meilleur).length === 1 ? 'probable' : 'a-confirmer';
-      }
+      // Une ligne POSÉE (d'office ou à la main) ne se rejuge pas. Une SUGGESTION, si : l'ambiguïté a
+      // pu disparaître depuis (un doublon supprimé), et c'est ce que le comptable revient vérifier.
+      if (l.rapprochement && l.rapprochement.ecritureId) { compte[l.rapprochement.niveau]++; return; }
+      const { candidats, niveau } = jugerLigne(l, dispo, prises, jours);
       if (niveau === 'certain') {
         const c = candidats[0];
         l.rapprochement = { niveau: 'certain', ecritureId: c.ecritureId, ligne: c.ligne, le: txt(o.date), par: 'auto' };
         prises.add(c.ecritureId + '#' + c.ligne);
+      } else {
+        // 10.12.0 — l'ambiguïté se GARDE, jamais l'écriture. Elle ne vivait que dans le message de fin :
+        // la ligne restait « Sans réponse — rien dans le livre en face » avec deux candidats au même
+        // montant, et la carte « À trancher » ne pouvait jamais dépasser zéro. Le niveau est rangé,
+        // l'écriture reste vide : rien n'est posé d'office, et l'écran dit enfin ce qui l'attend.
+        l.rapprochement = { niveau, ecritureId: '', ligne: -1, le: niveau === 'aucun' ? '' : txt(o.date), par: niveau === 'aucun' ? '' : 'auto' };
       }
       compte[niveau]++;
       detail.push({ ligneId: l.id, niveau, candidats: niveau === 'certain' ? [] : candidats });
     });
     return { ok: true, compte, detail, jours };
+  }
+
+  // Le jugement d'UNE ligne de relevé, partagé par l'automatique et par la fenêtre qui fait trancher
+  // (10.12.0). Un seul candidat au bon montant, à ± n jours : certain. Plusieurs : le libellé ne
+  // départage que si un candidat partage STRICTEMENT plus de mots que tous les autres — il est alors
+  // « probable », et c'est lui qu'on désigne ; sinon « à confirmer », sans préférence. Deux jugements
+  // écrits séparément finiraient par dire « probable » d'un côté et désigner une autre écriture de
+  // l'autre.
+  function jugerLigne(l, dispo, prises, jours) {
+    const candidats = dispo
+      .filter(c => !prises.has(c.ecritureId + '#' + c.ligne))
+      .filter(c => round3(c.montant - num(l.montant)) === 0)
+      .filter(c => ecartJours(c.date, l.date) <= jours);
+    if (candidats.length === 1) return { candidats, niveau: 'certain', meilleur: candidats[0] };
+    if (!candidats.length) return { candidats, niveau: 'aucun', meilleur: null };
+    const scores = candidats.map(c => motsCommuns(c.libelle, l.libelle));
+    const haut = Math.max(...scores);
+    const seul = haut > 0 && scores.filter(x => x === haut).length === 1;
+    return { candidats, niveau: seul ? 'probable' : 'a-confirmer', meilleur: seul ? candidats[scores.indexOf(haut)] : null };
+  }
+
+  // Ce que l'automatique juge d'UNE ligne, rendu à la fenêtre qui fait trancher (10.12.0, vu au test
+  // humain) : la ligne disait « Probable » et la fenêtre montrait deux écritures à égalité — le
+  // comptable devait refaire de tête le jugement que le logiciel venait de faire. Ce qui est déjà
+  // rapproché AILLEURS ne se propose pas ; ce que cette ligne-ci porterait, si.
+  function candidatsDeLigne(livre, releveId, ligneId, opts) {
+    const o = opts || {};
+    const jours = o.jours == null ? RELEVE_JOURS : Math.max(0, Number(o.jours) || 0);
+    const R = (livre.releves || []).find(x => x.id === releveId);
+    const l = R && R.lignes.find(x => x.id === ligneId);
+    if (!l) return { candidats: [], niveau: 'aucun', meilleur: null, libres: [] };
+    const prises = new Set();
+    (livre.releves || []).forEach(x => x.lignes.forEach(y => {
+      if (y.id !== l.id && y.rapprochement && y.rapprochement.ecritureId) prises.add(y.rapprochement.ecritureId + '#' + y.rapprochement.ligne);
+    }));
+    const dispo = lignesARapprocher(livre, R.compte);
+    // `libres` : tout le compte encore disponible, quel qu'en soit le montant — la fenêtre montre
+    // aussi « les autres écritures du compte », et elle ne refait pas le tri des déjà-prises.
+    return { ...jugerLigne(l, dispo, prises, jours), libres: dispo.filter(c => !prises.has(c.ecritureId + '#' + c.ligne)) };
   }
 
   // Poser ou défaire un rapprochement à la main. Même `certain` reste défaisable : l'automatique
@@ -1879,14 +1998,20 @@
   // passer un chèque émis jamais encaissé — c'est-à-dire l'écart le plus courant.
   function suspens(livre, releveId) {
     const R = (livre.releves || []).find(x => x.id === releveId);
-    if (!R) return { banque: [], livre: [], ecart: 0 };
+    if (!R) return { banque: [], livre: [], ecart: 0, totalBanque: 0, totalLivre: 0 };
     const rapprochees = new Set();
     (livre.releves || []).filter(x => x.compte === R.compte).forEach(x => x.lignes.forEach(l => {
       if (l.rapprochement && l.rapprochement.ecritureId) rapprochees.add(l.rapprochement.ecritureId + '#' + l.rapprochement.ligne);
     }));
     const cote = R.lignes.filter(l => !(l.rapprochement && l.rapprochement.ecritureId));
     const toutes = lignesBancaires(livre, R.compte).filter(c => c.date <= (R.au || '9999-12-31'));
-    const cotL = toutes.filter(c => !rapprochees.has(c.ecritureId + '#' + c.ligne));
+    // 10.12.0 — l'à-nouveau n'est jamais un suspens. C'est le solde de départ du compte, pas un
+    // mouvement qui attend la banque : le lister côté livre faisait d'un rapprochement PARFAIT
+    // depuis le 1er janvier un « écart 0,000 — dont 18 500,000 d'avant les relevés », et mettait la
+    // balance d'ouverture en tête des pièces à pointer. Il reste dans le solde comptable, où il
+    // compte ; il sort de la liste, où il n'a rien à faire. La règle vit dans `lignesARapprocher`.
+    const aPointer = new Set(lignesARapprocher(livre, R.compte).map(c => c.ecritureId + '#' + c.ligne));
+    const cotL = toutes.filter(c => !rapprochees.has(c.ecritureId + '#' + c.ligne) && aPointer.has(c.ecritureId + '#' + c.ligne));
     const sB = round3(cote.reduce((s, l) => s + num(l.montant), 0));
     const sL = round3(cotL.reduce((s, c) => s + c.montant, 0));
     // L'ÉCART est celui du rapprochement classique : le solde que la banque annonce à la date du
@@ -1901,7 +2026,10 @@
     const soldeComptable = round3(toutes.reduce((s, c) => s + c.montant, 0));
     const ecart = round3(num(R.soldeFin) - soldeComptable);
     const ecartSuspens = round3(sB - sL);
-    return { banque: cote, livre: cotL, ecart, soldeComptable, soldeFin: round3(num(R.soldeFin)), ecartSuspens, avant: round3(ecart - ecartSuspens) };
+    // Les deux TOTAUX aussi (10.12.0, vu au test humain) : l'écran les affichait sans les sommer, et
+    // rien ne disait que « banque − livre » redonne l'écart. Un total que l'écran recalculerait
+    // arrondirait autrement que celui-ci (9.3.0) : il vient d'ici.
+    return { banque: cote, livre: cotL, ecart, soldeComptable, soldeFin: round3(num(R.soldeFin)), ecartSuspens, avant: round3(ecart - ecartSuspens), totalBanque: sB, totalLivre: sL };
   }
 
   // L'écriture PROPOSÉE depuis une ligne non rapprochée. Elle n'est jamais enregistrée ici : cette
@@ -2121,6 +2249,39 @@
     return { debit, credit, ecritures, sous };
   }
 
+  // Ce qu'on RETIENT dans le mois n'est pas ce qu'on REVERSE (10.12.0). La case « IRPP » lisait le
+  // mouvement NET du 4321 : l'IRPP de juin, reversé en juillet, se retranchait de celui retenu en
+  // juillet, et la case tombait à presque rien — un chiffre faux à recopier sur le portail, trouvé en
+  // faisant reverser son IRPP au garage de l'exemple. Un reversement se reconnaît à sa FORME : il
+  // solde la dette dans une pièce qui touche la trésorerie (classe 5). Une correction — la
+  // contre-passation d'une paie — la solde sans trésorerie : elle compte, elle. Pour une CRÉANCE
+  // (retenue subie), c'est l'inverse : ce qui la rembourse passe par la trésorerie.
+  function retenuDuMois(livre, compte, du, au, exclure, sens) {
+    const n = txt(compte);
+    const ecritures = [];
+    let v = 0;
+    if (!n) return { v: 0, e: [] };
+    const creance = sens === 'creance';
+    (livre.ecritures || []).forEach(e => {
+      if (e.statut === 'brouillard') return;
+      if (du && e.date < du) return;
+      if (au && e.date > au) return;
+      if (exclure && exclure(e)) return;
+      const tresorerie = (e.lignes || []).some(l => /^5/.test(txt(l.compte)));
+      let touche = false;
+      (e.lignes || []).forEach(l => {
+        if (!txt(l.compte).startsWith(n)) return;
+        const naitre = creance ? num(l.debit) : num(l.credit);
+        const solder = tresorerie ? 0 : (creance ? num(l.credit) : num(l.debit));
+        if (!naitre && !solder) return;
+        touche = true;
+        v = round3(v + naitre - solder);
+      });
+      if (touche) ecritures.push(e.id);
+    });
+    return { v, e: ecritures };
+  }
+
   const caseDe = (montant, ecritures) => ({ montant: round3(montant), ecritures: ecritures || [] });
   const caseInconnue = motif => ({ montant: null, ecritures: [], motif });
 
@@ -2149,10 +2310,10 @@
     const avant = mouvementCompte(livre, cDed, livre.exercice.du, veille(du));
     const reporte = Math.max(0, round3(avant.debit - avant.credit));
     const net = round3(collectee - deductible - reporte);
-    const timbre = (() => { const m = mouvementCompte(livre, compteDuRole(livre, 'timbre'), du, au, horsDeclaration); return { v: round3(m.credit - m.debit), e: m.ecritures }; })();
-    const rsOp = (() => { const m = mouvementCompte(livre, compteDuRole(livre, 'rsOperee'), du, au, horsDeclaration); return { v: round3(m.credit - m.debit), e: m.ecritures }; })();
-    const rsSub = (() => { const m = mouvementCompte(livre, compteDuRole(livre, 'rsSubie'), du, au, horsDeclaration); return { v: round3(m.debit - m.credit), e: m.ecritures }; })();
-    const irpp = (() => { const m = mouvementCompte(livre, compteDuRole(livre, 'irpp'), du, au, horsDeclaration); return { v: round3(m.credit - m.debit), e: m.ecritures }; })();
+    const timbre = retenuDuMois(livre, compteDuRole(livre, 'timbre'), du, au, horsDeclaration);
+    const rsOp = retenuDuMois(livre, compteDuRole(livre, 'rsOperee'), du, au, horsDeclaration);
+    const rsSub = retenuDuMois(livre, compteDuRole(livre, 'rsSubie'), du, au, horsDeclaration, 'creance');
+    const irpp = retenuDuMois(livre, compteDuRole(livre, 'irpp'), du, au, horsDeclaration);
 
     // Le détail par TAUX ne s'invente pas : il demande un sous-compte de TVA collectée par taux.
     // Quand le plan n'en a qu'un, on le DIT au lieu de rendre un tableau à une ligne qui laisserait
@@ -2184,13 +2345,54 @@
       // l'écrire dans le libellé, et à un test de refuser une composante ajoutée sans son nom.
       aDecaisser: { ...caseDe(round3(Math.max(0, net) + timbre.v + rsOp.v), []), composantes: ['netAPayer', 'timbre', 'retenuesOperees'] }
     };
+    // TFP et FOPROLOS (10.12.0). « Aucun compte du plan ne la porte » était FAUX pour tout dossier
+    // dont la paie est tenue : l'écriture de paie — celle du Cabinet comme celle de l'app entreprise —
+    // les crédite ENSEMBLE au 4335. Quand le Cabinet tient la paie, les deux montants sont figés sur
+    // chaque bulletin, au taux qui a servi : on les lit là. Quand seul le compte les porte (un livre
+    // venu des paquets), on DIT ce qu'il porte et pourquoi on ne le sépare pas — sans inventer une
+    // répartition. Trouvé en rendant l'année du garage de l'exemple complète.
+    const bulletinsDuMoisDecl = (livre.bulletins || []).filter(b => `${b.annee}-${String(b.mois).padStart(2, '0')}` === p);
+    const valideeDecl = id => (livre.ecritures || []).some(e => e.id === id && e.statut === 'validee');
+    const bulletinsEcrits = bulletinsDuMoisDecl.filter(b => b.ecritureId && valideeDecl(b.ecritureId));
+    // L'IRPP d'un mois dont les bulletins sont établis mais pas encore ÉCRITS : le 4321 ne le porte
+    // pas encore, et la case disait « 0,000 — calculé ». Un zéro se recopie sur le portail (9.6.0) :
+    // tant que la paie du mois n'est pas validée, la case attend, et dit pourquoi.
+    if (bulletinsDuMoisDecl.length > bulletinsEcrits.length) {
+      cases.irpp = { ...caseInconnue('La paie de ce mois n\'a pas encore d\'écriture validée : l\'IRPP retenu se lira sur ses bulletins dès qu\'elle le sera.'), horsTotal: cases.irpp.horsTotal, attente: 'paie' };
+    }
+    const cTfp = txt(((livre.plan || []).find(c => c.role === 'tfpFoprolos') || {}).compte) || COMPTES_PAIE.tfpFoprolos;
+    const nomTaxe = { tfp: 'la TFP', foprolos: 'le FOPROLOS' };
     Object.keys(CASES_A_VERIFIER).forEach(k => {
       const c = compteDuRole(livre, k);
       // Si le plan du dossier porte un compte pour cette taxe, on la calcule ; sinon on le dit.
       const declare = (livre.plan || []).some(x => x.role === k);
-      if (!declare) { cases[k] = caseInconnue(CASES_A_VERIFIER[k]); return; }
-      const m = mouvementCompte(livre, c, du, au);
-      cases[k] = caseDe(round3(m.credit - m.debit), m.ecritures);
+      if (declare) {
+        const m = mouvementCompte(livre, c, du, au);
+        cases[k] = caseDe(round3(m.credit - m.debit), m.ecritures);
+        return;
+      }
+      if (nomTaxe[k]) {
+        if (bulletinsEcrits.length) {
+          cases[k] = {
+            ...caseDe(bulletinsEcrits.reduce((s, b) => s + (Number((b.calcul || {})[k]) || 0), 0), [...new Set(bulletinsEcrits.map(b => b.ecritureId))]),
+            horsTotal: `Lu sur ${plFr(bulletinsEcrits.length, 'bulletin')} du mois, au taux figé sur chacun. Non compris dans le total à décaisser — À VÉRIFIER avec le comptable : le taux dépend du secteur, et le versement suit cette déclaration ou non selon le régime.`
+          };
+          return;
+        }
+        if (bulletinsDuMoisDecl.length) {
+          // `attente` : ce n'est pas une règle inconnue, c'est une ÉTAPE — l'écran mène à la paie.
+          cases[k] = { ...caseInconnue(`La paie de ce mois n'a pas encore d'écriture validée : ${nomTaxe[k]} se lira sur ses bulletins dès qu'elle le sera.`), attente: 'paie' };
+          return;
+        }
+        const porte = retenuDuMois(livre, cTfp, du, au, horsDeclaration);
+        if (porte.v) {
+          cases[k] = caseInconnue(k === 'tfp'
+            ? `Le compte ${cTfp} porte ${fmtMontant(porte.v, 'DT')} ce mois-ci, TFP et FOPROLOS ENSEMBLE : leur répartition ne s'invente pas, elle se lit sur les bulletins du client. À VÉRIFIER avec le comptable.`
+            : `Porté avec la TFP sur le compte ${cTfp} : voir la ligne au-dessus.`);
+          return;
+        }
+      }
+      cases[k] = caseInconnue(CASES_A_VERIFIER[k]);
     });
 
     return {
@@ -2198,7 +2400,10 @@
       cases, parTaux, comptes,
       // L'écriture de déclaration DÉJÀ passée sur ce mois, quelle que soit sa pièce : c'est elle qui
       // éteint le bouton « Écrire l'écriture du mois ». La repasser compterait la TVA deux fois.
-      ecritureExistante: ((livre.ecritures || []).find(e => e.date >= du && e.date <= au && e.statut !== 'brouillard' && estEcritureDeclaration(e, comptes)) || {}).id || '',
+      // 10.12.0 — un BROUILLARD compte : exclu, il laissait le bouton allumé après l'écriture, et un
+      // second clic en fabriquait une seconde. Une écriture CONTRE-PASSÉE et son miroir, non : on
+      // contre-passe précisément pour refaire, et le bouton restait éteint pour toujours.
+      ecritureExistante: ((livre.ecritures || []).find(e => e.date >= du && e.date <= au && e.statut !== 'contrepassee' && !e.contrepasseDe && estEcritureDeclaration(e, comptes)) || {}).id || '',
       controles: controlesDeclaration(livre, p, { ...cases, au, comptes }, o)
     };
   }
@@ -2272,7 +2477,7 @@
     if (aPayer) lignes.push({ compte: decl.comptes.aPayer, libelle: 'À décaisser', debit: 0, credit: aPayer });
     return {
       journal: 'OD', date: decl.au, piece: 'DECL-' + decl.periode,
-      libelle: `Déclaration de ${fmtMois(decl.periode)}`, source: 'declaration', lignes
+      libelle: `Déclaration ${deMois(fmtMois(decl.periode))}`, source: 'declaration', lignes
     };
   }
 
@@ -2284,7 +2489,7 @@
     livre.declarations = Array.isArray(livre.declarations) ? livre.declarations : [];
     const avant = livre.declarations.find(d => d.periode === decl.periode && d.type === decl.type);
     if (avant && avant.deposee && avant.deposee.le) {
-      return { ok: false, motif: `La déclaration de ${fmtMois(decl.periode)} est marquée déposée le ${fmtJour(avant.deposee.le)}. Dé-pointe-la d'abord si tu veux la refaire — sinon deux chiffres différents auraient porté le même dépôt.` };
+      return { ok: false, motif: `La déclaration ${deMois(fmtMois(decl.periode))} est marquée déposée le ${fmtJour(avant.deposee.le)}. Dé-pointe-la d'abord si tu veux la refaire — sinon deux chiffres différents auraient porté le même dépôt.` };
     }
     const obj = {
       id: avant ? avant.id : 'DECL-' + decl.periode + '-' + String(quand || 0),
@@ -2597,7 +2802,7 @@
     if (change.length) {
       return {
         ok: false,
-        motif: `La dotation de ${change[0].annee} est déjà passée en écriture : ce changement la rendrait fausse. Contre-passe l'écriture de dotation de ${change[0].annee}, puis recommence.`
+        motif: `La dotation de ${change[0].annee} est déjà passée en écriture : ce changement la rendrait fausse. L'écriture de dotation de ${change[0].annee} : ${gesteQuiLibere(livre, change[0].ecritureId)}, puis recommence.`
       };
     }
     Object.assign(f, patch || {});
@@ -2613,7 +2818,7 @@
     if (!f) return { ok: false, motif: 'Cette immobilisation n\'existe pas.' };
     const ecrite = (f.plan || []).find(p => p.ecritureId);
     if (ecrite) {
-      return { ok: false, motif: `La dotation de ${ecrite.annee} est passée en écriture : supprimer la fiche laisserait une dotation sans bien. Contre-passe l'écriture d'abord.` };
+      return { ok: false, motif: `La dotation de ${ecrite.annee} est passée en écriture : supprimer la fiche laisserait une dotation sans bien. L'écriture de dotation : ${gesteQuiLibere(livre, ecrite.ecritureId)}.` };
     }
     livre.immobilisations = (livre.immobilisations || []).filter(x => x.id !== id);
     trace(livre, qui, 'immobilisation supprimée', f.libelle, quand);
@@ -2653,6 +2858,18 @@
       // Ce qui reste à passer en écriture : c'est ce chiffre qui fait le bouton.
       aEcrire: rows.filter(r => !r.ecrite && (r.dotation || r.cession)).length
     };
+  }
+
+  // Ce que les Immobilisations RÉCLAMENT à une date (10.12.0, vu au test humain). Une sortie d'actif
+  // s'écrit à sa date : elle se réclame tout de suite. Une dotation est une écriture d'INVENTAIRE
+  // (9.0.0) : elle ne se réclame qu'à partir du dernier mois de l'exercice. Compter en septembre les
+  // dotations de décembre posait une pastille — et un bouton vert — sur un geste qui n'est pas
+  // encore dû, et apprenait à ignorer les pastilles qui disent vrai. La préparer plus tôt reste
+  // possible : `aEcrire` ne bouge pas, c'est lui qui arme le bouton.
+  function aReclamerImmobilisations(etat, exercice, aujourdhui) {
+    const au = txt((exercice || {}).au);
+    const dues = !au || String(aujourdhui || '') >= au.slice(0, 7) + '-01';
+    return ((etat && etat.rows) || []).filter(r => !r.ecrite && (r.cession || (dues && r.dotation))).length;
   }
 
   // Les lignes d'un compte d'immobilisation qui n'ont AUCUNE fiche : le pont avec ce que le client
@@ -2807,7 +3024,9 @@
     const annee = Number(String(inv.date).slice(0, 4));
     const avant = livre.inventaires.find(x => Number(String(x.date).slice(0, 4)) === annee);
     if (avant && avant.ecritureId) {
-      return { ok: false, motif: `L'inventaire de ${annee} est déjà passé en écriture. Contre-passe l'écriture de variation de stock avant de le refaire.` };
+      // Le geste qui débloque dépend de l'écriture (10.12.0) : un brouillard se supprime, il ne se
+      // contre-passe pas — la même porte que la paie et les dotations.
+      return { ok: false, motif: `L'inventaire de ${annee} est déjà passé en écriture (la variation de stock) : ${gesteQuiLibere(livre, avant.ecritureId)}, puis refais-le.` };
     }
     const obj = {
       id: avant ? avant.id : 'inv_' + annee + '_' + String(quand || 0).toString(36),
@@ -2915,7 +3134,9 @@
 
     // La TVA de chaque mois de l'exercice a-t-elle sa déclaration préparée ? On ne réclame pas le
     // mois en cours ni un mois sans la moindre écriture : on ne réclame pas le néant (6.8.0).
-    const moisAvecEcritures = [...new Set((livre.ecritures || []).filter(dedans).map(e => String(e.date).slice(0, 7)))].sort();
+    // 10.12.0 — l'à-nouveau n'est pas l'activité d'un mois : un dossier repris le 1er janvier se
+    // voyait réclamer la TVA de janvier pour sa seule balance d'ouverture — le néant, encore (6.8.0).
+    const moisAvecEcritures = [...new Set((livre.ecritures || []).filter(e => dedans(e) && e.journal !== 'AN').map(e => String(e.date).slice(0, 7)))].sort();
     const declarees = new Set((livre.declarations || []).map(d => d.periode));
     const sansDecl = moisAvecEcritures.filter(m => !declarees.has(m));
     out.push({
@@ -2979,7 +3200,23 @@
   // Un dossier SANS livre (lu dans ses paquets) n'a pas d'ouverture : `{}`, jamais une exception.
   // C'est ce qui rendait le bouton « Balance auxiliaire » muet sur tout dossier hors livre (T-46) :
   // le redessin plantait ici, en silence, et l'écran restait celui d'avant le clic.
+  //
+  // 10.12.0 — … que les écritures du livre ne portent PAS déjà. `balanceOuverture` range une reprise
+  // à DEUX endroits : `livre.ouverture` (d'où elle vient) et l'écriture AN, pièce OUVERTURE (ce
+  // qu'elle est). Toutes les lectures ajoutaient les deux : une reprise de 10 000 en banque
+  // s'affichait 20 000 dans la balance, les états, la liasse, les feuilles de révision — et dans les
+  // à-nouveaux de l'exercice suivant. Actif et passif doublaient ENSEMBLE, donc « équilibré » restait
+  // vrai et rien ne le montrait, sur les seuls dossiers que le cabinet reprend à la main : ceux qu'il
+  // facture. C'est la vitrine de l'exemple (U-10) qui l'a fait voir, par le contrôle de la 10.10.0
+  // (C-10) : « le 28 porte 7 200, le tableau des biens en justifie 3 600 ».
   function soldesDepuisOuverture(livre) {
+    const porteeParUneEcriture = ((livre && livre.ecritures) || []).some(e => e.journal === 'AN' && e.piece === 'OUVERTURE');
+    return porteeParUneEcriture ? {} : soldesRepris(livre);
+  }
+  // Ce qui a été REPRIS, compte par compte : la SOURCE de la reprise, pas une balance. L'auxiliaire
+  // s'en sert pour dire qu'une reprise faite par compte collectif ne se répartit pas entre les
+  // tiers ; aucune lecture ne doit l'ajouter à des lignes qui la portent déjà.
+  function soldesRepris(livre) {
     const o = {};
     ((livre && livre.ouverture && livre.ouverture.lignes) || []).forEach(l => {
       o[txt(l.compte)] = round3((o[txt(l.compte)] || 0) + num(l.debit) - num(l.credit));
@@ -3820,7 +4057,11 @@
     const o = opts || {};
     return ((livre && livre.questions) || []).filter(q => {
       if (q.statut === 'close' || q.statut === 'repondue') return false;
-      if (o.periode && txt(q.periode) !== txt(o.periode)) return false;
+      // 10.12.0 — une ANNÉE contient ses mois. La révision de l'exercice se demande sur « 2026 », une
+      // question naît sur le mois de sa pièce (« 2026-08 ») : comparées à l'identique, les questions
+      // de l'année n'existaient pour aucun contrôle de l'exercice — « arrêter la révision » se faisait
+      // sans dire qu'un client attendait une réponse. C'est la vitrine de l'exemple qui l'a montré.
+      if (o.periode && txt(q.periode) !== txt(o.periode) && !txt(q.periode).startsWith(txt(o.periode) + '-')) return false;
       return true;
     });
   }
@@ -4589,7 +4830,7 @@
       // Un bulletin dont l'écriture est PASSÉE ne se réécrit pas : l'écriture ferait mentir le
       // livre. On contre-passe, puis on refait — même règle que pour une dotation (9.7.0).
       if (livre.bulletins[dejaLa].ecritureId) {
-        return { ok: false, motif: 'L\'écriture de paie de ce mois est déjà passée : contre-passe-la d\'abord.' };
+        return { ok: false, motif: `L'écriture de paie de ce mois est déjà passée : ${gesteQuiLibere(livre, livre.bulletins[dejaLa].ecritureId)}.` };
       }
       b.ecritureId = null;
       livre.bulletins[dejaLa] = b;
@@ -4601,7 +4842,7 @@
   function supprimerBulletin(livre, id, qui, quand) {
     const i = livre.bulletins.findIndex(b => b.id === id);
     if (i < 0) return { ok: false, motif: 'Bulletin introuvable.' };
-    if (livre.bulletins[i].ecritureId) return { ok: false, motif: 'L\'écriture de paie de ce mois est déjà passée : contre-passe-la d\'abord.' };
+    if (livre.bulletins[i].ecritureId) return { ok: false, motif: `L'écriture de paie de ce mois est déjà passée : ${gesteQuiLibere(livre, livre.bulletins[i].ecritureId)}.` };
     const b = livre.bulletins[i];
     livre.bulletins.splice(i, 1);
     trace(livre, qui, 'bulletin-supprime', `${b.salarieId} ${moisPaie(b.mois)} ${b.annee}`, quand);
@@ -4693,7 +4934,7 @@
       ok: true, date, lot: lot.map(b => b.id),
       ecriture: {
         date, journal: o.journal || 'PAIE', piece: `PAIE-${annee}-${String(mois).padStart(2, '0')}`,
-        libelle: `Paie de ${moisPaie(mois)} ${annee}`, source: 'saisie',
+        libelle: `Paie ${deMois(moisPaie(mois))} ${annee}`, source: 'saisie',
         lignes: set.done().map(l => ({ compte: l.account, libelle: l.label, debit: l.debit, credit: l.credit }))
       }
     };
@@ -4754,19 +4995,33 @@
     if (sans.length) add('bulletins-manquants', 'warn', `${plFr(sans.length, 'salarié')} sans bulletin`,
       sans.map(s => s.nom).join(', '), sans.length);
     const sansCnss = attendus.filter(s => !s.cnss);
-    if (sansCnss.length) add('cnss-manquant', 'warn', `${plFr(sansCnss.length, 'salarié')} sans numéro CNSS`,
-      'La déclaration trimestrielle le demande pour chaque salarié.', sansCnss.length);
+    // On NOMME (10.3.0) : « 1 salarié sans numéro CNSS » ne se traduit en aucun geste, « Yassine
+    // Gharbi » si — et `ids` permet à l'écran d'ouvrir sa fiche (vu au test humain, 10.12.0).
+    if (sansCnss.length) {
+      add('cnss-manquant', 'warn', `${plFr(sansCnss.length, 'salarié')} sans numéro CNSS`,
+        `${sansCnss.map(s => s.nom).join(', ')} — la déclaration trimestrielle demande le numéro de chaque salarié.`, sansCnss.length);
+      out[out.length - 1].ids = sansCnss.map(s => s.id);
+    }
     const negatifs = faits.filter(b => !((b.calcul || {}).gross > 0) || (b.calcul || {}).net < 0);
     if (negatifs.length) add('bulletin-negatif', 'err', `${plFr(negatifs.length, 'bulletin')} à salaire négatif`,
       negatifs.map(b => ((livre.salaries || []).find(s => s.id === b.salarieId) || {}).nom || '').filter(Boolean).join(', ')
         + ' — l\'absence ou une retenue dépasse le mois : à corriger avant l\'écriture.', negatifs.length);
-    const nonPayes = faits.filter(b => !b.payeLe);
-    if (nonPayes.length) add('non-payes', 'info', `${plFr(nonPayes.length, 'bulletin')} non réglé${nonPayes.length > 1 ? 's' : ''}`,
-      'Le net reste dû au personnel tant que le règlement n\'est pas noté.', nonPayes.length);
+    // Le net dû au personnel se LIT dans le livre (10.12.0). « 2 bulletins non réglés — tant que le
+    // règlement n'est pas noté » promettait un geste qu'aucun écran du Cabinet n'offre : `payeLe` vient
+    // du modèle de l'app entreprise, et rien ne le pose ici. Chaque bulletin du Cabinet se disait donc
+    // « non réglé » pour toujours, y compris sur un compte du personnel soldé. Ce que le comptable veut
+    // savoir, c'est ce que ce compte porte encore à la fin du mois — et il ne porte rien tant que
+    // l'écriture de paie n'est pas passée : c'est alors l'étape suivante, pas un impayé.
+    const cPers = txt(((livre.plan || []).find(c => c.role === 'personnel') || {}).compte) || COMPTES_PAIE.personnel;
+    const finMois = `${annee}-${String(mois).padStart(2, '0')}-${String(new Date(Date.UTC(Number(annee), Number(mois), 0)).getUTCDate()).padStart(2, '0')}`;
+    const mp = mouvementCompte(livre, cPers, (livre.exercice || {}).du || '', finMois);
+    const duPersonnel = round3(mp.credit - mp.debit);
+    if (duPersonnel > 0) add('non-payes', 'info', `${fmtMontant(duPersonnel, 'DT')} dus au personnel`,
+      `le compte ${cPers} porte ce net au ${fmtJour(finMois)} : le règlement des salaires n'est pas encore écrit.`, 1);
     return out;
   }
   return {
-    round3, fmtMontant, fmtJour, fmtMois, cleDePiece, csvDangereux, nombreDepuisCsv, nombreStrict, dateDepuisCsv,
+    round3, fmtMontant, fmtJour, jourDeLInstant, fmtMois, deMois, cleDePiece, csvDangereux, nombreDepuisCsv, nombreStrict, dateDepuisCsv,
     ecritureValide, entreesDepuisCsv,
     entriesBalance, entriesByAccount,
     balanceDepuisLignes, grandLivreDepuisLignes, balanceAuxiliaireDepuisLignes, collectifsDeTiers, COMPTES_TIERS,
@@ -4781,13 +5036,13 @@
     planDepuisCsv, balanceDepuisCsv,
     // La saisie (9.3.0)
     premierDuMoisSuivant, ajouterMoisIso, sansAccents, soldeDeLignes, comptesQuiCorrespondent,
-    modifierEcriture, supprimerEcriture, validerLot, extourner, prevoirExtourne, chercherEcritures,
+    modifierEcriture, supprimerEcriture, validerLot, extourner, prevoirExtourne, chercherEcritures, ceQuePorte,
     guideValide, ecritureDepuisGuide, occurrencesAGenerer,
     correspondanceValide, compteCorrespondant, appliquerCorrespondance,
     // La banque (9.5.0)
     RELEVE_NIVEAUX, RELEVE_JOURS, AGING_BUCKETS,
     colonnesReleve, releveDepuisCsv, releveValide, releveDejaImporte, ajouterReleve, supprimerReleve,
-    lignesBancaires, rapprocherAuto, rapprocherLigne, derapprocherReleve, suspens,
+    lignesBancaires, lignesARapprocher, candidatsDeLigne, rapprocherAuto, rapprocherLigne, derapprocherReleve, suspens,
     compteDuLibelle, ecritureProposee, lettrageAuto,
     echeancierDepuisLignes, balanceAgeeDepuisLignes,
     // La déclaration mensuelle (9.6.0)
@@ -4798,10 +5053,10 @@
     bienVersActif, planDegressif, planDuBien, cumulDuBien, vncDuBien,
     resultatCession, repriseSubvention, immoValide,
     ajouterImmobilisation, modifierImmobilisation, supprimerImmobilisation,
-    etatImmobilisations, immobilisationsACreer, ecrituresImmobilisations, noterEcritureImmo,
+    etatImmobilisations, aReclamerImmobilisations, immobilisationsACreer, ecrituresImmobilisations, noterEcritureImmo,
     inventaireValide, lignesInventaireDepuisTexte, totalInventaire, poserInventaire, variationDeStock,
     // La clôture d'exercice (9.8.0)
-    GUIDES_INVENTAIRE, controlesCloture, soldesDepuisOuverture,
+    GUIDES_INVENTAIRE, controlesCloture, soldesDepuisOuverture, soldesRepris,
     cloturerExercice, rouvrirExercice, noterDossierCloture, anouveauxDe, ecritureAnouveaux, extournesDe,
     etatsDepuisLignes, sigDepuisLignes, dossierDeCloture, clotureValide,
     // La liasse et l'annuel (10.0.0)

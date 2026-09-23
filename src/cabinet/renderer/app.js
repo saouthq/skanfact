@@ -18,6 +18,14 @@
   // Charger ou retirer l'exemple à la main passe par ici, et NON par `api.demo` directement : le
   // bandeau « ils viennent d'être remis à jour » ne doit pas survivre à un exemple qu'on vient de
   // recharger soi-même — il annoncerait un rattrapage qui n'a pas eu lieu.
+  // Ce que dit le chargement de l'exemple : il COMPTE ses dossiers. La phrase disait « ces cinq
+  // dossiers » depuis la 9.4.2 ; le dossier hors SkanFact (10.0.0) en a fait six, et la phrase n'a
+  // pas suivi — une phrase qu'on écrit en dur se périme au premier dossier ajouté (7.3.0).
+  function phraseExemple() {
+    const n = (S.dossiers || []).filter(d => d.demo).length;
+    return n === 1 ? 'Exemple chargé : ce dossier est fictif.' : `Exemple chargé : ces ${n} dossiers sont fictifs.`;
+  }
+
   async function chargerOuRetirerExemple(on) {
     exempleRefait = null;
     return api.demo(on);
@@ -251,8 +259,18 @@
     closeInfoPop();
     const pop = document.createElement('div');
     pop.id = 'info-pop';
-    pop.innerHTML = `<div class="ip-head">${esc(x.t)}<button type="button" class="ip-close" aria-label="Fermer">✕</button></div><div class="ip-body">${x.d}</div>`;
+    // 10.12.0 (U-08) — une bulle qui explique bien, et s'arrête là, est un cul-de-sac : `a` désigne
+    // l'article qui développe. Le mécanisme existe dans l'app entreprise depuis la 7.0.0 ; la bulle
+    // du titre de chaque écran de comptabilité y mène désormais aussi.
+    const art = x.a ? (G.ARTICLES.find(y => y.id === x.a) || null) : null;
+    pop.innerHTML = `<div class="ip-head">${esc(x.t)}<button type="button" class="ip-close" aria-label="Fermer">✕</button></div>`
+      + `<div class="ip-body">${x.d}`
+      + (art ? `<p class="ip-more"><a href="#/aide/${esc(art.id)}">Lire « ${esc(art.t)} » →</a></p>` : '')
+      + '</div>';
     document.body.appendChild(pop);
+    // Le lien ferme la bulle : sans ça, elle restait ouverte par-dessus l'article qu'elle vient d'ouvrir.
+    const lien = $('.ip-more a', pop);
+    if (lien) lien.onclick = () => closeInfoPop();
     const r = btn.getBoundingClientRect();
     const w = pop.offsetWidth, hh = pop.offsetHeight;
     pop.style.left = Math.min(Math.max(8, r.left + r.width / 2 - w / 2), window.innerWidth - w - 8) + 'px';
@@ -311,9 +329,10 @@
       }
     };
     let question = false;   // une seule question à la fois, sinon Échap répété les empile
+    let gardeAuto = null;   // posé après le montage, voir plus bas
     const dismiss = async () => {
       if (done || question) return;
-      const garde = opts && opts.garde;
+      const garde = (opts && opts.garde) || gardeAuto;
       if (garde && garde()) {
         question = true;
         const jeter = await confirmDialog(
@@ -354,12 +373,24 @@
       if (principal && !principal.disabled) { e.preventDefault(); principal.click(); }
     });
     if (onMount) onMount(layer, close);
+    // 10.12.0 (vu au test humain) — une fenêtre qui porte un FORMULAIRE garde sa saisie d'office.
+    // Cinq fenêtres posaient leur garde-fou à la main ; sept formulaires du livre — la fiche d'un
+    // salarié, un bulletin, un bien, un inventaire, un relevé, la reprise d'ouverture, l'écriture
+    // écrite depuis la banque — n'en avaient aucun : Échap, ou un clic à côté de la fenêtre, jetait
+    // dix champs sans un mot. C'est le défaut de la 6.8.1, sept fenêtres plus loin, et une règle
+    // posée fenêtre par fenêtre manquera toujours la suivante. L'instantané se prend APRÈS le
+    // montage : ce que la fenêtre préremplit n'est pas une saisie. Une fenêtre qui pose son propre
+    // garde-fou garde le sien ; `garde: false` dit, en le nommant, qu'on n'en veut pas.
+    if (!(opts && 'garde' in opts) && layer.querySelector('form')) gardeAuto = suivreSaisie(layer);
     // Le focus va au premier champ de SAISIE. Il allait au premier `input, select, textarea,
     // button` : dans une confirmation, qui n'a pas de champ, c'était le bouton « Annuler ».
     const saisie = layer.querySelector('input:not([type=hidden]):not([disabled]), select, textarea');
     const principal = $('.modal-actions .btn-primary, .modal-actions .btn-danger', layer);
     const cible = saisie || (principal && !principal.disabled ? principal : null);
-    if (cible) cible.focus();
+    // Un appelant qui a déjà posé le curseur DANS la fenêtre garde sa décision (10.12.0) :
+    // « Renseigner le n° de Yassine Gharbi… » ouvrait sa fiche avec le curseur dans le NOM — le
+    // champ qu'on vient de nommer était le seul qu'il fallait aller chercher.
+    if (cible && !layer.contains(document.activeElement)) cible.focus();
     return close;
   }
 
@@ -493,7 +524,7 @@
   // (« Cinq dossiers » était écrit à la main avant que l'exemple gagne son client hors SkanFact en
   // 10.0.0 : deux écrans comptaient six, le troisième en annonçait cinq.)
   const nbExemple = () => (S && (S.dossiers || []).filter(d => d.demo).length)
-    || K.demoDossiers(new Date().toISOString().slice(0, 10)).length;
+    || K.demoDossiers(K.today()).length;
 
   // 10.12.0 — un montant ne se COUPE jamais en fin de ligne : l'espace des milliers est l'espace
   // insécable fine du moteur (`fmtMontant`, U+202F), et la devise tient au nombre par une insécable.
@@ -846,7 +877,16 @@
     // L'exemple a pu être refait pendant l'ouverture (9.4.2). Le bandeau des dossiers fictifs le
     // dit — un toast de trois secondes sur un jeu de données qui a changé n'informe personne.
     exempleRefait = exemple || null;
-    window.addEventListener('hashchange', render);
+    // Un AUTRE écran commence en haut (10.12.0, vu au test humain) : la position de défilement de
+    // l'écran quitté ne dit rien du suivant, et la Paie ouverte depuis une Saisie défilée arrivait à
+    // mi-page, sous les bulletins qu'on venait chercher. Seul un vrai changement d'adresse remet en
+    // haut : un redessin sur place (enregistrer, filtrer) garde sa position, et les sous-onglets de
+    // la comptabilité passent par `pushState` avec leur propre règle (`allerSousOnglet`).
+    window.addEventListener('hashchange', () => {
+      const vue = $('#view');
+      if (vue) vue.scrollTop = 0;
+      render();
+    });
     api.onUpdateEvent(ev => {
       upd.state = ev.state;
       if (ev.version) upd.version = ev.version;
@@ -1234,6 +1274,7 @@
     else location.hash = hash;
   }
 
+  let routeLue = '';
   function render() {
     const hash = location.hash.replace(/^#\//, '') || 'dossiers';
     const [route, arg] = hash.split('/');
@@ -1254,6 +1295,12 @@
       if (relState.seulement) { relState.seulement = null; relState.depuis = ''; }
       relState.coches.clear();
     }
+    // Le résumé des index (questions, employeurs, dossiers tenus au cabinet) se relit quand on ENTRE
+    // sur une page qui le lit (10.12.0) : lu une fois au démarrage, il se périmait (7.1.x) — un mois
+    // saisi dans la journée restait « à saisir » au calendrier jusqu'au lendemain. On ne redessine
+    // que s'il a changé : la page ne clignote pas, et rien ne boucle.
+    if (route !== routeLue && (route === 'echeances' || route === 'dossiers')) chargerQuestionsAttente(true);
+    routeLue = route;
     const view = $('#view');
     if (route === 'dossier') drawDossier(view, arg, hash.split('/')[2], hash.split('/')[3]);
     else if (route === 'production') drawProduction(view);
@@ -1509,7 +1556,7 @@
     const demoCount = (S.dossiers || []).filter(d => d.demo).length;
     // `recoveryAt` vaut `undefined` tant que la réponse n'est pas revenue : on ne réclame que sur un
     // non franc. La date ne vit pas dans l'état chiffré, elle ne peut donc pas venir de `S`.
-    const todo = K.cabinetTodo(S, null, { cleSecours: recoveryAt === undefined ? null : recoveryAt !== null, licence: licCab, questions: questionsAttente, employeurs: employeursConnus() });
+    const todo = K.cabinetTodo(S, null, { cleSecours: recoveryAt === undefined ? null : recoveryAt !== null, licence: licCab, questions: questionsAttente, employeurs: employeursConnus(), tenus: tenusConnus() });
     const p = K.portfolio(S);
 
     // Écran d'ouverture d'un cabinet qui vient d'installer l'application : il n'a rien reçu, et il
@@ -1528,8 +1575,12 @@
           </div>
           <p class="small muted mt"><strong>Commence par tes clients.</strong> Ajoute-les même s'ils n'utilisent pas encore SkanFact :
           l'application devient le tableau de bord de ton portefeuille, et rien ne leur est réclamé tant qu'ils n'ont pas commencé.</p>
-          <p class="small muted">L'exemple montre les quatre situations que tu rencontreras : un client à jour,
-          un en retard, un qui n'a envoyé que du provisoire, un dont les pièces sont incomplètes. Il s'efface
+          ${/* 10.12.0 — « les quatre situations » datait de l'exemple à quatre dossiers : il en a six, dont
+                les deux qu'un cabinet tient de bout en bout (U-10). Un compte écrit à la main se périme au
+                dossier suivant : la phrase énumère, elle ne compte pas. */''}
+          <p class="small muted">L'exemple montre ce que tu rencontreras : un client à jour, un en retard, un qui n'a
+          envoyé que du provisoire, un qui s'est endormi, un dont les pièces sont incomplètes et dont tu rapproches la
+          banque — et un client hors SkanFact dont tu tiens toute la comptabilité, paie et biens compris. Il s'efface
           tout seul au premier vrai paquet, et tu peux l'effacer à la main quand tu veux.</p>
         </div>
         ${inboxBanner()}
@@ -1542,7 +1593,7 @@
         </div>`;
       $('#imp').onclick = () => doImport();
       $('#new-d').onclick = () => newDossierForm();
-      $('#demo-on').onclick = async () => { S = await chargerOuRetirerExemple(true); render(); toast('Exemple chargé : ces cinq dossiers sont fictifs.'); };
+      $('#demo-on').onclick = async () => { S = await chargerOuRetirerExemple(true); render(); toast(phraseExemple()); };
       bindInboxBanner(view);
       bindRecoveryBanner(view);
       return;
@@ -1559,8 +1610,8 @@
       ${portfolioPanel(p)}
       ${inboxBanner()}
       ${todoPanel(todo)}
-      ${demoCount ? `<div class="banner"><span>${demoCount > 1 ? `Ces ${pl(demoCount, 'dossier')} sont <strong>fictifs</strong> : ils montrent les quatre situations
-        que tu rencontreras. Ils disparaîtront` : 'Ce dossier est <strong>fictif</strong> : c\'est ce qui reste de l\'exemple. Il disparaîtra'} au premier vrai paquet importé.${exempleRefait ? ` <strong>${demoCount > 1 ? 'Ils viennent' : 'Il vient'} d'être remis à jour</strong>
+      ${demoCount ? `<div class="banner"><span>${demoCount > 1 ? `Ces ${pl(demoCount, 'dossier')} sont <strong>fictifs</strong> : ils montrent les situations
+        que tu rencontreras, du client en retard à celui dont tu tiens toute la comptabilité. Ils disparaîtront` :'Ce dossier est <strong>fictif</strong> : c\'est ce qui reste de l\'exemple. Il disparaîtra'} au premier vrai paquet importé.${exempleRefait ? ` <strong>${demoCount > 1 ? 'Ils viennent' : 'Il vient'} d'être remis à jour</strong>
         ${exempleRefait.raison === 'version' ? `avec la version ${esc(exempleRefait.version)}` : 'sur le mois en cours'} : un exemple qui date
         montrerait des retards qui n'existent pas. Tes vrais dossiers n'ont pas bougé.${exempleRefait.livres
           ? ` ${pl(exempleRefait.livres, 'livre de démonstration est parti', 'livres de démonstration sont partis')} avec l'ancien exemple : ce qui avait été saisi dessus n'existe plus.` : ''}` : ''}</span>
@@ -1621,11 +1672,7 @@
     const dOff = $('#demo-off');
     if (dOff) dOff.onclick = async () => { S = await chargerOuRetirerExemple(false); render(); toast('Exemple effacé.'); };
     const q = $('#q');
-    q.oninput = () => {
-      listState.q = q.value; listState.page = 1;
-      const pos = q.selectionStart; render();
-      const n = $('#q'); if (n) { n.focus(); n.setSelectionRange(pos, pos); }
-    };
+    q.oninput = () => { listState.q = q.value; listState.page = 1; sansPerdreLaFrappe(q, render); };
     $('#arch').onchange = e => { listState.withArchived = e.target.checked; listState.page = 1; render(); };
     $('#onlysf').onchange = e => { listState.onlySkanfact = e.target.checked; listState.page = 1; render(); };
     const rf = $('#reset-f');
@@ -1753,6 +1800,60 @@
   let ficheOnglet = 'suivi';
   let ficheDossierId = '';
 
+  // Les mois d'un dossier TENU AU CABINET (10.12.0, vu au test humain) : ceux de son LIVRE, lus
+  // dans l'index sans déchiffrer le livre (mesure de la 9.1.0), avec la MÊME fonction que le tableau
+  // de production — deux écrans qui disent l'état d'un mois ne peuvent pas se contredire (6.8.1).
+  // Chaque mois porte son geste : saisir celui qui n'a rien, ouvrir la déclaration des autres.
+  const MOT_TENU = { saisi: 'à saisir', revise: 'saisi', declare: 'révisé', fini: 'déclaré' };
+  const CASE_TENU = { saisi: 'manquant', revise: 'provisoire', declare: 'provisoire', fini: 'complet' };
+  async function dessinerMoisTenus(dossier) {
+    let index = null;
+    try { index = await api.livreIndex(dossier.id); } catch (_) { index = null; }
+    // La page a pu changer pendant la lecture : la zone se redemande APRÈS l'attente, et elle doit
+    // être celle de CE dossier (7.6.0).
+    const zone = document.getElementById('d-mois-tenu');
+    if (!zone || zone.dataset.id !== dossier.id) return;
+    const mois = K.productionDuDossier(dossier, index, K.today(), (S.settings || {}).relanceDay);
+    if (!mois.length) {
+      zone.innerHTML = `<div class="empty mini">Ce client n'utilise pas SkanFact : rien ne lui est réclamé, sa comptabilité se tient ici.
+        <div class="inline mt"><button type="button" class="btn btn-sm" data-vers="comptabilite">Ouvrir sa comptabilité</button></div></div>`;
+      $$('[data-vers]', zone).forEach(b => { b.onclick = () => { location.hash = '#/dossier/' + encodeURIComponent(dossier.id) + '/' + b.dataset.vers; }; });
+      return;
+    }
+    const parMois = new Map(mois.map(m => [m.mois, m]));
+    const annees = [...new Set(mois.map(m => m.mois.slice(0, 4)))].sort().reverse();
+    const premier = mois[0].mois;
+    const ceMois = K.today().slice(0, 7);
+    zone.innerHTML = annees.map(y => `<div class="year-row"><div class="year-lab">${esc(y)}</div>
+      <div class="mgrid">${MOIS_COURTS.map((nom, k) => {
+      const cle = `${y}-${String(k + 1).padStart(2, '0')}`;
+      const m = parMois.get(cle);
+      if (!m) {
+        const avant = cle < premier;
+        const raison = avant ? 'hors mission' : cle === ceMois ? 'en cours' : 'à venir';
+        return `<div class="mcell hors" title="${esc(avant
+          ? 'Avant le premier exercice tenu ici : rien à saisir pour ce mois.'
+          : 'Le mois en cours et les suivants ne sont pas encore à saisir.')}">
+          <div class="m-lab">${esc(nom)}</div><div class="m-st">${esc(raison)}</div></div>`;
+      }
+      const quoi = m.etape === 'saisi' ? `Saisir ${m.label}` : `Ouvrir la déclaration ${KC.deMois(m.label)}`;
+      return `<button type="button" class="mcell ${CASE_TENU[m.etape] || 'hors'} clickable" data-tenu="${esc(cle)}" data-etape="${esc(m.etape)}"
+        title="${esc(quoi)}" aria-label="${esc(m.label)} — ${esc(MOT_TENU[m.etape] || '')}. ${esc(quoi)}">
+        <div class="m-lab">${esc(nom)}</div><div class="m-st">${esc(MOT_TENU[m.etape] || '')}</div></button>`;
+    }).join('')}</div></div>`).join('')
+      + '<p class="muted small mt">Tenu au cabinet : chaque mois se lit dans le livre — <strong>à saisir</strong> tant qu\'il n\'a aucune écriture, <strong>déclaré</strong> quand sa déclaration est marquée déposée. Rien n\'est réclamé au client.</p>';
+    $$('[data-tenu]', zone).forEach(b => { b.onclick = () => ouvrirMoisTenu(dossier, b.dataset.tenu, b.dataset.etape); });
+  }
+
+  // Ouvre le mois d'un dossier tenu là où il se traite : la Saisie s'il n'a rien, sa Déclaration
+  // sinon — sur CE mois et sur SON exercice, pas sur le dernier regardé.
+  function ouvrirMoisTenu(dossier, mois, etape) {
+    changerDeDossierCompta(dossier.id);
+    livresState.annee = mois.slice(0, 4);
+    if (etape !== 'saisi') { declState.mois = mois; declState.ouverte = ''; }
+    location.hash = '#/dossier/' + encodeURIComponent(dossier.id) + '/comptabilite/' + (etape === 'saisi' ? 'saisie' : 'declaration');
+  }
+
   function drawDossier(view, id, ongletDemande, sousOnglet) {
     const dossier = (S.dossiers || []).find(d => d.id === decodeURIComponent(id || ''));
     if (!dossier) { view.innerHTML = `<div class="empty">Ce dossier n'existe plus.</div>`; return; }
@@ -1790,7 +1891,9 @@
       ? `${MOIS_COURTS[Number(moisAnnee[0].slice(5, 7)) - 1]}–${MOIS_COURTS[Number(moisAnnee[moisAnnee.length - 1].slice(5, 7)) - 1]} ${anneeVue}`.toLowerCase()
       : moisAnnee.length ? K.monthLabel(moisAnnee[0]) : anneeVue;
     const etat = [
-      packs.length ? pl(packs.length, 'mois reçu', 'mois reçus') : (dossier.manual ? 'pas encore sur SkanFact' : 'aucun paquet reçu pour l\'instant'),
+      // Un dossier tenu au cabinet dit ce que ça VEUT DIRE (10.12.0) : « pas encore sur SkanFact »
+      // répétait le badge du titre, dix pixels plus haut.
+      packs.length ? pl(packs.length, 'mois reçu', 'mois reçus') : (dossier.manual ? 'tenu au cabinet : aucun paquet attendu' : 'aucun paquet reçu pour l\'instant'),
       row.missingCount ? `<span class="warn-text">${pl(row.missingCount, 'manquant')}</span>` : '',
       row.provisionalCount ? `<span class="warn-text">${pl(row.provisionalCount, 'provisoire')}</span>` : '',
       dernierRecu ? 'dernier paquet le ' + esc(fmtDay(dernierRecu)) : '',
@@ -1858,15 +1961,20 @@
       </div>
 
       <section data-onglet="suivi" ${onglet === 'suivi' ? '' : 'hidden'}>
-      <div class="panel"><h2>Les mois de ce client ${info('p.definitif')}</h2>
+      <div class="panel"><h2>Les mois de ce client ${dossier.manual ? info('p.moisTenus') : info('p.definitif')}</h2>
         ${/* Les DOUZE mois de chaque année, pas seulement ceux attendus. L'écran en montrait six
               sous une étiquette « 2026 », sans dire pourquoi : on ne savait pas si la mission
               commençait en mars ou si l'application avait perdu les deux premiers. Les mois hors
               mission sont là, en gris, et ils DISENT pourquoi — c'est le calendrier qui explique
               l'extrait, pas l'inverse. Et chaque mois attendu porte son geste : ouvrir le paquet
               quand il est là, relancer sur CE mois quand il manque (règle 7.15.0 — un écran qui
-              nomme un ensemble doit pouvoir l'ouvrir). */''}
-        ${months.length ? years.map(y => `<div class="year-row"><div class="year-lab">${esc(y)}</div>
+              nomme un ensemble doit pouvoir l'ouvrir).
+              Un dossier TENU AU CABINET (10.12.0) n'attend aucun paquet : ses mois viennent de son
+              LIVRE, lus dans l'index après le dessin (`dessinerMoisTenus`). « Commence à attendre ses
+              mois » ne voulait rien dire pour un client qui n'envoie rien, et le garage de l'exemple
+              — sept mois déclarés — y paraissait vierge. */''}
+        ${dossier.manual ? `<div id="d-mois-tenu" data-id="${esc(dossier.id)}"><span class="muted small">Lecture du livre…</span></div>`
+          : months.length ? years.map(y => `<div class="year-row"><div class="year-lab">${esc(y)}</div>
           <div class="mgrid">${MOIS_COURTS.map((nom, k) => {
     const mois = `${y}-${String(k + 1).padStart(2, '0')}`;
     const m = months.find(x => x.month === mois);
@@ -1895,10 +2003,8 @@
       title="${esc(quoi)}" aria-label="${esc(m.label)} — ${esc(etat)}. ${esc(quoi)}">
       <div class="m-lab">${esc(nom)}</div><div class="m-st">${esc(etat)}</div></button>`;
   }).join('')}</div></div>`).join('')
-          : `<span class="muted small">${dossier.manual
-              ? 'Ce client n\'utilise pas encore SkanFact : rien ne lui est réclamé. Renseigne un « début de mission » dans sa fiche si tu veux commencer à attendre ses mois.'
-              : 'Aucun mois attendu pour l\'instant : l\'attente démarre au premier paquet reçu, ou à la date de début de mission que tu renseignes dans la fiche.'}</span>`}
-        ${months.length ? `<p class="muted small mt">Un mois <strong>provisoire</strong> n'a pas été clôturé chez le client : ses chiffres peuvent encore changer,
+          : '<span class="muted small">Aucun mois attendu pour l\'instant : l\'attente démarre au premier paquet reçu, ou à la date de début de mission que tu renseignes dans la fiche.</span>'}
+        ${!dossier.manual && months.length ? `<p class="muted small mt">Un mois <strong>provisoire</strong> n'a pas été clôturé chez le client : ses chiffres peuvent encore changer,
         ne déclare pas dessus. Le mois en cours n'est jamais réclamé.</p>` : ''}
       </div>
 
@@ -2018,6 +2124,7 @@
         if (r) writeRelance({ ...r, missingMonths: [c.dataset.relm] });
       };
     });
+    if (dossier.manual) dessinerMoisTenus(dossier);
 
     // Les livres du dossier (9.1.0). L'état de la période est propre au dossier : passer d'un
     // client à l'autre en gardant « mars 2026 » afficherait un livre vide sans raison visible
@@ -2154,6 +2261,9 @@
     s.annee = ''; s.mois = ''; s.du = ''; s.au = '';
     s.onglet = m.onglet || 'journal'; s.compte = ''; s.journal = ''; s.q = ''; s.aux = false;
     s.page = 1; s.dernierParGroupe = { ...(m.dernierParGroupe || {}) };
+    // Le mois de déclaration choisi chez un client ne suit pas chez le suivant (10.12.0) : juillet
+    // 2026 du garage ouvrait la déclaration de juillet 2026 d'un client dont on regarde 2025.
+    declState.mois = ''; declState.ouverte = '';
   }
 
   function moisLabelCourt(m) { return K.monthLabel(m); }
@@ -2320,8 +2430,11 @@
     const reprise = ((s.livre.ouverture || {}).lignes || []).length;
     const debutEx = String((s.livre.exercice || {}).du || '');
     if (p.du && p.du > debutEx) return `Ouverture au ${esc(fmtJour(p.du))} : les soldes repris${reprise ? '' : ' (aucun)'} plus les mouvements de l'exercice avant cette date ${info('lv.ouverture')}`;
+    // 10.12.0 — la reprise est une pièce du journal AN : sur l'exercice entier, elle est dans les
+    // MOUVEMENTS, et la colonne d'ouverture est nulle. La phrase disait le contraire — et la balance
+    // comptait les deux.
     return reprise
-      ? `Ouverture au ${esc(fmtJour(debutEx))} : la balance d'ouverture reprise (${pl(reprise, 'compte')}) ${info('lv.ouverture')}`
+      ? `Ouverture au ${esc(fmtJour(debutEx))} : nulle sur l'exercice entier — la balance d'ouverture reprise (${pl(reprise, 'compte')}) est la pièce OUVERTURE du journal AN, dans les mouvements ${info('lv.ouverture')}`
       : `Ouverture au ${esc(fmtJour(debutEx))} : nulle — aucune balance d'ouverture reprise ; si l'exercice porte une pièce d'à-nouveau, c'est elle qui porte les soldes reportés ${info('lv.ouverture')}`;
   }
 
@@ -2496,10 +2609,24 @@
     } catch (err) { await infoDialog('Validation refusée', plainError(err)); }
   }
 
+  // Ce qu'une écriture PORTE, dit dans la question AVANT le geste (10.12.0) : la supprimer ou la
+  // contre-passer rend « à passer » la paie, la dotation, la déclaration ou l'inventaire qu'elle
+  // portait. Une suppression nomme ce qu'elle casse (7.19.0) ; sans cette phrase, la paie d'août
+  // redevenait « à passer » dans l'onglet voisin sans que personne sache pourquoi.
+  // Le pronom suit le titre de la question : « Supprimer ce brouillard ? » appelle « ce qu'IL porte »,
+  // « Contre-passer cette écriture ? » appelle « ce qu'ELLE porte ».
+  function ceQuellePorte(e, pronom) {
+    const q = KC.ceQuePorte(livresState.livre, e.id);
+    if (!q.length) return '';
+    const liste = q.length > 1 ? `${q.slice(0, -1).join(', ')} et ${q[q.length - 1]}` : q[0];
+    return `<p>Ce qu'${pronom === 'il' ? 'il' : 'elle'} porte redeviendra « à passer » : <b>${esc(liste)}</b>.</p>`;
+  }
+
   async function contrepasserEcriture(root, dossier, e) {
-    const jour = new Date().toISOString().slice(0, 10);
+    const jour = K.today();
     const ok = await confirmDialog('Contre-passer cette écriture ?',
       `<p><b>n° ${esc(String(e.numero))} — ${esc(e.journal)} ${esc(e.piece)}</b></p>
+       ${ceQuellePorte(e, 'elle')}
        <p class="small muted">Une écriture miroir sera enregistrée <b>à la date d'aujourd'hui</b> (${esc(fmtJour(jour))}),
        pas à celle de l'écriture d'origine : corriger aujourd'hui une écriture d'un mois déjà déclaré
        changerait ce mois-là sans que personne le voie. Les deux resteront dans le journal.</p>`, 'Contre-passer');
@@ -2532,6 +2659,26 @@
     { id: 'consulter', label: 'Consulter', onglets: ['journal', 'grand-livre', 'balance', 'lettrage', 'recherche'] },
     { id: 'cloturer', label: 'Déclarer et clôturer', onglets: ['declaration', 'revision', 'exercice', 'liasse'] }
   ];
+  // Les mots qu'un comptable TAPE pour trouver un écran, qui ne sont pas son libellé (U-07) :
+  // « rapprochement » ne figure nulle part sur l'onglet Banque, « tva » nulle part sur Déclaration.
+  // Une clé par écran de ONGLETS_COMPTA — un test confronte les deux tables, sinon un quinzième
+  // écran naîtrait introuvable dans la palette.
+  const MOTS_COMPTA = {
+    saisie: 'saisir écriture écritures pièce brouillard grille guide',
+    banque: 'relevé relevés rapprochement rapprocher bancaire suspens',
+    paie: 'salaire salaires bulletin bulletins salarié salariés personnel cnss',
+    immobilisations: 'immos immobilisation amortissement amortissements dotation dotations biens cession',
+    inventaire: 'stock stocks variation',
+    journal: 'journaux pièces',
+    'grand-livre': 'comptes compte solde',
+    balance: 'auxiliaire soldes',
+    lettrage: 'lettrer impayés ouvertes échues',
+    recherche: 'chercher montant',
+    declaration: 'tva mensuelle retenue source timbre dépôt',
+    revision: 'réviser cycles cycle questions questionnaire',
+    exercice: 'clôture clôturer à-nouveaux nouveaux sig soldes intermédiaires résultat',
+    liasse: 'fiscale états financiers bilan annuelle'
+  };
   // Ce qui se lit SANS livre, dans les paquets reçus. Le reste n'existe qu'une fois le livre créé.
   const ONGLETS_SANS_LIVRE = ['journal', 'grand-livre', 'balance', 'lettrage'];
   const ONGLETS_DU_LIVRE = Object.keys(ONGLETS_COMPTA).filter(o => !ONGLETS_SANS_LIVRE.includes(o)).map(o => ONGLETS_COMPTA[o]);
@@ -2548,11 +2695,24 @@
   function allerSousOnglet(root, dossier, onglet) {
     const s = livresState;
     if (!ongletDispo(onglet)) onglet = 'journal';
-    if (s.onglet !== onglet) s.page = 1;
+    const change = s.onglet !== onglet;
+    if (change) s.page = 1;
     s.onglet = onglet;
     const h = adresseCompta(dossier, onglet);
     if (location.hash !== h) history.pushState(null, '', h);
     drawLivres(root, dossier);
+    // Un AUTRE écran commence par son haut, juste sous la barre collante (vu au test humain :
+    // « Ouvrir la paie du mois », cliqué au bas de la déclaration, arrivait au milieu de la Paie,
+    // sous les bulletins qu'on venait chercher). La barre reste collée « pour changer d'écran sans
+    // remonter » ; la position de défilement de l'ancien écran, elle, ne dit rien du nouveau. On
+    // remonte au point où la zone commence — jamais en haut de la fiche, et jamais on ne descend.
+    if (change) {
+      const vue = $('#view'), zone = $('#c-livres', root) || $('#c-livres');
+      if (vue && zone) {
+        const debut = zone.getBoundingClientRect().top - vue.getBoundingClientRect().top + vue.scrollTop;
+        if (vue.scrollTop > debut) vue.scrollTop = Math.max(0, debut);
+      }
+    }
   }
 
   // La pastille d'un sous-onglet : « ce qui attend une décision », jamais un inventaire (T-10).
@@ -2568,9 +2728,11 @@
       const n = (L.releves || []).reduce((a, r) => a + r.lignes.filter(l => !(l.rapprochement && l.rapprochement.ecritureId)).length, 0);
       return n ? { n, titre: `${n} ligne${n > 1 ? 's' : ''} de relevé sans réponse` } : null;
     }
+    // Ce qui est DÛ, pas ce qui est possible : une dotation ne se réclame qu'au dernier mois de
+    // l'exercice (10.12.0) — la même fonction décide du bouton vert de l'écran.
     if (o === 'immobilisations') {
-      const n = (L.immobilisations || []).length ? KC.etatImmobilisations(L, s.annee).aEcrire : 0;
-      return n ? { n, titre: `${n} dont la dotation de l'exercice n'est pas passée` } : null;
+      const n = (L.immobilisations || []).length ? KC.aReclamerImmobilisations(KC.etatImmobilisations(L, s.annee), L.exercice, K.today()) : 0;
+      return n ? { n, titre: `${pl(n, 'écriture')} d'immobilisation à passer` } : null;
     }
     // La PAIE (10.3.0) : les mois dont l'écriture n'est pas passée, jamais le nombre de bulletins.
     if (o === 'paie') {
@@ -2666,7 +2828,14 @@
     const avert = [];
     // « juin 2026 et juillet 2026 et août 2026 » : personne n'écrit ça. Le formateur des relances le
     // sait depuis la 1.0.0 (« juin, juillet et août 2026 », l'intervalle au-delà de trois mois).
-    if (manquants.length) avert.push(`Il manque ${K.missingLabel(manquants)} : ces livres sont incomplets.`);
+    // Un dossier tenu AU CABINET (hors SkanFact) ne se voit rien réclamer (6.8.0) : ses mois vides
+    // sont une saisie qui reste à faire, pas un paquet à relancer (vu au test humain, 10.12.0).
+    const tenuAuCabinet = !!dossier.manual && source === 'livre';
+    if (manquants.length) {
+      avert.push(tenuAuCabinet
+        ? `Aucune écriture sur ${K.missingLabel(manquants)} : ${manquants.length > 1 ? 'ces mois restent' : 'ce mois reste'} à saisir.`
+        : `Il manque ${K.missingLabel(manquants)} : ces livres sont incomplets.`);
+    }
     if (anciens.length) avert.push(`${anciens.length > 1 ? 'Des paquets viennent' : 'Un paquet vient'} d'une version d'avant la 8.8.0 : pas de numéro ni de tiers (${K.monthListLabel(anciens)}).`);
     illisibles.forEach(i => avert.push(`${moisLabelCourt(i.month)} : ${i.motif}.`));
 
@@ -2706,7 +2875,8 @@
       ? `<b>Le livre de ${esc(s.annee)}</b> ${info('lv.compta')}
         <span class="muted">${pl((s.livre.ecritures || []).filter(e => e.statut === 'validee').length, 'écriture validée', 'écritures validées')}</span>
         ${nbBr ? `<label class="check" title="Un brouillard n'est pas encore de la comptabilité : il n'entre dans les tableaux que si tu coches cette case."><input type="checkbox" id="lv-brouillard" ${s.brouillard ? 'checked' : ''}> Compter ${esc(pl(nbBr, 'écriture'))} en brouillard</label>` : ''}
-        <span class="nw"><button class="btn btn-sm" id="lv-relire2">Relire les paquets reçus</button>${info('lv.relire')}</span>`
+        ${/* Un dossier qui ne reçoit aucun paquet n'a rien à relire : le bouton y était un geste sans objet. */''}
+        ${(dossier.packs || []).length ? `<span class="nw"><button class="btn btn-sm" id="lv-relire2">Relire les paquets reçus</button>${info('lv.relire')}</span>` : ''}`
       : `<b>Lu dans les paquets reçus</b> ${info('lv.compta')}`;
     const barre = $('#c-livre-etat', root) || $('#c-livre-etat');
     if (barre) barre.innerHTML = etatLivre;
@@ -2716,8 +2886,10 @@
     // écrans de SAISIE : « ces livres sont incomplets » parle de ce qu'on lit, et au-dessus de la
     // grille il repoussait les lignes qu'on tape sous la ligne de flottaison (U-01).
     const alerte = s.onglet && groupeCompta(s.onglet).id === 'saisir' ? [] : avert;
-    const relancerManquants = manquants.length
-      ? '<div class="c-alerte-geste"><button type="button" class="btn btn-sm" id="lv-relancer">Relancer le client pour ces mois</button></div>' : '';
+    const relancerManquants = !manquants.length ? ''
+      : tenuAuCabinet
+        ? '<div class="c-alerte-geste"><button type="button" class="btn btn-sm" id="lv-saisir">Ouvrir la saisie</button></div>'
+        : '<div class="c-alerte-geste"><button type="button" class="btn btn-sm" id="lv-relancer">Relancer le client pour ces mois</button></div>';
 
     // Le second niveau ne montre que les écrans du groupe ouvert. Sans livre, un seul groupe existe
     // (les quatre vues lues dans les paquets) : on ne pose pas de premier niveau pour un seul choix.
@@ -2777,6 +2949,8 @@
       const r = K.dossierList(S).find(x => x.id === dossier.id);
       if (r) writeRelance({ ...r, missingMonths: manquants.slice() });
     };
+    const sm = $('#lv-saisir', el);
+    if (sm) sm.onclick = () => allerSousOnglet(root, dossier, 'saisie');
     if (s.onglet === 'saisie') { brancherSaisie(el, root, dossier); dessinerAbonnements(el, dossier); }
     else if (s.onglet === 'recherche') brancherRecherche(el, root, dossier);
     else if (s.onglet === 'banque') brancherBanque(el, root, dossier);
@@ -2799,6 +2973,10 @@
   // qui est affiché (règle des listes depuis la 2.2.0, côté entreprise).
   // Le badge d'un miroir : ce qu'il annule, et le numéro de l'origine. Partagé par le journal et le
   // grand livre — au grand livre, les deux lignes d'une correction étaient strictement indiscernables.
+  // Il passe SOUS la référence quand la place manque (10.12.0, vu au test humain) : posé dans une
+  // cellule qui interdit le retour à la ligne, « contre-passation ↩ n° 65 » élargissait la colonne
+  // Pièce à 259 px, et la colonne d'actions collante recouvrait le Crédit. La référence, elle, ne se
+  // coupe jamais — ses tirets sont des points de coupure pour le navigateur.
   const miroirBadge = e => e.contrepasseDe
     ? ` <span class="badge" title="${esc(e.libellePiece || '')}">contre-passation${e.origineNumero ? ` ↩ n° ${esc(String(e.origineNumero))}` : ''}</span>`
     : e.extourneDe
@@ -2809,8 +2987,15 @@
     const s = livresState;
     const journaux = [...new Set(lignes.map(l => l.journal).filter(Boolean))].sort();
     const q = s.q.trim().toLowerCase();
-    const gardees = lignes.filter(l => (!s.journal || l.journal === s.journal)
-      && (!q || `${l.piece} ${l.tiers} ${l.label} ${l.account}`.toLowerCase().includes(q)));
+    // La recherche garde des PIÈCES, jamais des lignes (10.12.0, vu au test humain) : une pièce dont
+    // une seule ligne correspond sortait coupée, un débit sans son crédit — et l'écran annonçait
+    // « 24 pièces déséquilibrées » en rouge sur un livre parfaitement juste. C'est la raison même de
+    // la pagination par pièce (9.4.5), qu'un filtre ne doit pas défaire.
+    const duJournal = lignes.filter(l => !s.journal || l.journal === s.journal);
+    const trouvees = q
+      ? new Set(duJournal.filter(l => `${l.piece} ${l.tiers} ${l.label} ${l.account}`.toLowerCase().includes(q)).map(KC.cleDePiece))
+      : null;
+    const gardees = trouvees ? duJournal.filter(l => trouvees.has(KC.cleDePiece(l))) : duJournal;
     const lj = KC.journalDepuisLignes(gardees);
     const cz = KC.centralisateurDepuisLignes(gardees);
     // On pagine les PIÈCES, jamais les lignes : une pièce coupée en deux montrerait un débit sans
@@ -2836,7 +3021,7 @@
         <td class="r muted">${e.premiere ? (e.statut === 'brouillard' ? '<span class="badge">brouillard</span>' : e.numero || '') : ''}</td>
         <td class="nw">${e.premiere ? esc(fmtJour(e.date)) : ''}</td>
         <td>${e.premiere ? esc(e.journal) : ''}</td>
-        <td class="nw">${e.premiere ? esc(e.piece) + miroirBadge(e) : ''}</td>
+        <td>${e.premiere ? `<span class="nw">${esc(e.piece)}</span>${miroirBadge(e)}` : ''}</td>
         <td class="nw">${esc(e.account)}</td>
         <td class="tronq" title="${esc(e.tiers)}">${esc(e.tiers)}</td>
         <td class="tronq lg" title="${esc(e.label)}">${esc(e.label)}</td>
@@ -2899,7 +3084,7 @@
             <strong class="gl-m gl-solde">Solde ${esc(money(c.solde))}</strong></span></summary>
         <div class="scroll-x"><table class="list compact"><thead><tr><th class="nw">Date</th><th class="nw">Pièce</th><th>Libellé</th>
           <th class="r nw">Débit</th><th class="r nw">Crédit</th><th class="r nw">Solde</th></tr></thead>
-        <tbody>${c.lignes.map(e => `<tr class="${e.statut === 'contrepassee' ? 'cp-ligne' : e.contrepasseDe || e.extourneDe ? 'cp-miroir' : ''}"><td class="nw">${esc(fmtJour(e.date))}</td><td class="nw">${esc(e.piece)}${miroirBadge(e)}</td>
+        <tbody>${c.lignes.map(e => `<tr class="${e.statut === 'contrepassee' ? 'cp-ligne' : e.contrepasseDe || e.extourneDe ? 'cp-miroir' : ''}"><td class="nw">${esc(fmtJour(e.date))}</td><td><span class="nw">${esc(e.piece)}</span>${miroirBadge(e)}</td>
           <td class="tronq lg" title="${esc(e.label)}">${esc(e.label)}</td>
           <td class="r nw">${e.debit ? esc(money(e.debit)) : ''}</td><td class="r nw">${e.credit ? esc(money(e.credit)) : ''}</td>
           <td class="r nw">${esc(money(e.solde))}</td></tr>`).join('')}</tbody>
@@ -2937,7 +3122,7 @@
       const C = b.collectifs;
       const nomRole = role === 'clients' ? 'clients' : 'fournisseurs';
       const soldeGen = KC.round3(generale.rows.filter(r => C.some(c => String(r.account).startsWith(c))).reduce((a, r) => a + r.solde, 0));
-      const reprisMap = KC.soldesDepuisOuverture(s.livre);
+      const reprisMap = KC.soldesRepris(s.livre);
       const repris = KC.round3(Object.keys(reprisMap).filter(k => C.some(c => k.startsWith(c))).reduce((a, k) => a + reprisMap[k], 0));
       if (!b.rows.length) {
         const surCollectif = lignes.some(l => C.some(c => String(l.account).startsWith(c)));
@@ -3064,6 +3249,9 @@
     // L'écriture de déclaration déjà passée — la nôtre, ou celle que le client avait déjà dans ses
     // propres livres. C'est elle qui éteint le bouton : la repasser compterait la TVA deux fois.
     const ecrite = !!d.ecritureExistante;
+    // Au BROUILLARD, elle existe (un second clic en fabriquerait une seconde) mais n'est pas encore
+    // un fait : le bouton le dit, et nomme ce qui reste — la valider dans la Saisie.
+    const auBrouillard = ecrite && ((s.livre.ecritures || []).find(e => e.id === d.ecritureExistante) || {}).statut === 'brouillard';
     const echecs = (d.controles || []).filter(c => !c.ok);
     const deposee = !!(posee && posee.deposee && posee.deposee.le), payee = !!(posee && posee.payee && posee.payee.le);
     // 10.12.0 (U-11) — UN seul bouton principal, et c'est l'ÉTAPE SUIVANTE. « Préparer la
@@ -3102,7 +3290,8 @@
       <div class="dc-etapes">
         <button class="${cls('preparer')}" id="dc-preparer">${posee ? fait(true) + 'Préparée — recalculer' : 'Préparer la déclaration'}</button>${fleche}
         <button class="${cls('ecriture')}" id="dc-ecriture" ${!posee || ecrite ? 'disabled' : ''}
-          title="${!posee ? 'Prépare la déclaration d\'abord.' : ecrite ? 'Elle existe déjà : la refaire compterait la TVA du mois deux fois.' : ''}">${ecrite ? fait(true) + 'Écriture du mois passée' : 'Écrire l\'écriture du mois'}</button>${fleche}
+          title="${!posee ? 'Prépare la déclaration d\'abord.' : ecrite ? 'Elle existe déjà : la refaire compterait la TVA du mois deux fois.' : ''}">${
+          auBrouillard ? fait(true) + 'Écriture au brouillard — à valider' : ecrite ? fait(true) + 'Écriture du mois passée' : 'Écrire l\'écriture du mois'}</button>${fleche}
         <button class="${cls('deposee')}" id="dc-deposee" ${!posee ? 'disabled' : ''} title="${!posee ? 'Prépare la déclaration d\'abord.' : ''}">${
           deposee ? fait(true) + 'Déposée le ' + esc(fmtJour(posee.deposee.le)) + ' — annuler' : 'Marquer déposée'}</button>${fleche}
         ${/* Le bouton du paiement reste ALLUMÉ tant qu'un paiement est posé (T-21) : éteint dès que
@@ -3123,25 +3312,34 @@
     <div class="panel mt"><h2>Les cases ${info('dc.cases')}</h2>
       <div class="scroll-x"><table class="list compact"><thead><tr>
         <th>Case</th><th class="r nw">Montant</th><th class="nw">D'où ça vient</th></tr></thead>
-      <tbody>${ORDRE_CASES.filter(k => d.cases[k]).map(k => {
+      <tbody>${(() => { let paieDite = ''; return ORDRE_CASES.filter(k => d.cases[k]).map(k => {
         const c = d.cases[k];
         const n = (c.ecritures || []).length;
+        // Plusieurs cases attendent la MÊME étape (IRPP, TFP, FOPROLOS) : la phrase et le bouton se
+        // disent une fois, sur la première ; les suivantes y renvoient (9.4.6 — une explication se
+        // lit une fois, et trois boutons identiques empilés ne disent pas trois choses).
+        const suite = c.montant == null && c.attente === 'paie' && paieDite;
+        if (c.montant == null && c.attente === 'paie' && !paieDite) paieDite = LIBELLE_CASE[k] || k;
         // 10.12.0 (U-14) — la RAISON d'une case se lit en entier, sous son libellé. Elle vivait dans
         // la colonne « d'où ça vient », coupée à soixante caractères (« La taxe de formation
         // professionnell… »), et la note de l'IRPP à dix (« Non compris d… ») : on ouvrait une
         // infobulle pour lire la seule phrase qui dit pourquoi une case est vide. Une ligne qui
         // N'ENTRE PAS dans le total le dit toujours (T-16) — un total posé au bas d'une colonne se
         // lit comme la somme de la colonne (9.4.5) —, mais sous le libellé, là où l'œil lit la case.
-        const raison = c.montant == null ? c.motif : c.horsTotal || '';
+        const raison = suite ? `Attend, comme la ligne « ${paieDite} », que la paie du mois soit écrite.` : c.montant == null ? c.motif : c.horsTotal || '';
         return `<tr class="${k === 'aDecaisser' ? 'dc-total' : ''}">
           <td>${esc(LIBELLE_CASE[k] || k)}${raison ? `<div class="small muted dc-raison">${esc(raison)}</div>` : ''}</td>
           <td class="r nw">${c.montant == null ? '<span class="muted">—</span>' : esc(money(c.montant))}</td>
           <td class="nw">${
-            c.montant == null ? '<span class="muted small">à vérifier</span>'
+            // Une case qui attend une ÉTAPE (la paie du mois pas encore écrite) n'est pas une règle
+            // « à vérifier » : elle mène à l'écran où l'étape se fait (7.15.0).
+            suite ? '<span class="muted small">attend la paie</span>'
+              : c.montant == null && c.attente === 'paie' ? '<button type="button" class="btn btn-sm btn-ghost" data-vers-paie>Ouvrir la paie du mois</button>'
+              : c.montant == null ? '<span class="muted small">à vérifier</span>'
               : n ? `<button type="button" class="btn btn-sm btn-ghost" data-cases="${k}" aria-expanded="${declState.ouverte === k ? 'true' : 'false'}">${esc(pl(n, 'écriture'))} ${declState.ouverte === k ? '▴' : '▾'}</button>`
                 : c.sens === 'creance' ? '<span class="muted small">à récupérer — hors total</span>'
                   : `<span class="muted small">calculé</span>`}</td></tr>`;
-      }).join('')}</tbody></table></div>
+      }).join(''); })()}</tbody></table></div>
       ${d.parTaux
         ? `<h3 class="sub-h">TVA collectée par taux</h3><table class="list compact"><tbody>${d.parTaux.map(x =>
             `<tr><td>${esc(x.compte)}</td><td class="r nw">${esc(money(x.montant))}</td></tr>`).join('')}</tbody></table>`
@@ -3182,6 +3380,11 @@
       declState.ouverte = declState.ouverte === b.dataset.cases ? '' : b.dataset.cases;
       if (declState.ouverte) pageFocus = 'dc-pieces';
       drawLivres(root, dossier);
+    }; });
+    // La paie du mois déclaré, ouverte sur CE mois : c'est lui qu'il faut écrire.
+    $$('[data-vers-paie]', el).forEach(b => { b.onclick = () => {
+      s.paieMois = Number(String(s.decl && s.decl.periode || '').slice(5, 7)) || s.paieMois;
+      allerSousOnglet(root, dossier, 'paie');
     }; });
     // UN bouton « Préparer » (U-11) : il était répété sous « Ce qui suit » (T-17) parce que les
     // gestes qu'il débloque vivaient deux écrans plus bas ; ils sont maintenant sur la même rangée.
@@ -3315,12 +3518,12 @@
           exercice en train de changer, et c'est là que « pourquoi est-il ouvert ? » se pose. Il
           vivait dans la branche « clos » — donc il s'évaporait à la seconde où on le donnait, et
           seul le dernier revenait une fois reclos. L'historique complet est en dessous. */''}
-    ${!ex.clos && (ex.reouvertures || []).length ? (() => { const d = ex.reouvertures[ex.reouvertures.length - 1] || {}; return `<div class="warn-box mb" id="cl-rouvert"><b>Exercice rouvert${d.le ? ' le ' + esc(fmtJour(new Date(d.le).toISOString().slice(0, 10))) : ''}${d.par ? ' par ' + esc(d.par) : ''}</b> : « ${esc(d.motif || '')} »</div>`; })() : ''}
+    ${!ex.clos && (ex.reouvertures || []).length ? (() => { const d = ex.reouvertures[ex.reouvertures.length - 1] || {}; return `<div class="warn-box mb" id="cl-rouvert"><b>Exercice rouvert${d.le ? ' le ' + esc(fmtJour(KC.jourDeLInstant(d.le))) : ''}${d.par ? ' par ' + esc(d.par) : ''}</b> : « ${esc(d.motif || '')} »</div>`; })() : ''}
     ${/* U-13 — un état NORMAL se dit sur une ligne grise ; l'orange reste pour ce qui demande un
           geste (des contrôles à regarder). Le badge « clos » le disait déjà : l'encadré vert le
           répétait en plus gros. */''}
     ${ex.clos
-    ? `<p class="small ligne-ok mb" id="cl-clos"><span aria-hidden="true">✓</span> Exercice clos${ex.closLe ? ' le ' + esc(fmtJour(new Date(ex.closLe).toISOString().slice(0, 10))) : ''}${
+    ? `<p class="small ligne-ok mb" id="cl-clos"><span aria-hidden="true">✓</span> Exercice clos${ex.closLe ? ' le ' + esc(fmtJour(KC.jourDeLInstant(ex.closLe))) : ''}${
       ex.closPar ? ' par ' + esc(ex.closPar) : ''}.${(ex.reouvertures || []).length
       ? ` Rouvert ${pl(ex.reouvertures.length, 'fois', 'fois')} — ${esc((ex.reouvertures[ex.reouvertures.length - 1] || {}).motif || '')}` : ''}</p>`
     : echecs.length
@@ -3336,13 +3539,13 @@
           peut pas envoyer. C'est ce qui répond, le lundi matin, à « lesquels ont reçu le leur ? ». */''}
     ${(ex.dossiersProduits || []).length ? `<div class="panel mt" id="cl-produits"><h2>Dossiers de clôture produits ${info('cl.produits')}</h2>
       <table class="list compact"><tbody>${ex.dossiersProduits.slice().reverse().map((p, i) => `<tr>
-        <td class="nw">${esc(fmtJour(new Date(p.le).toISOString().slice(0, 10)))}${p.par ? ` <span class="muted small">par ${esc(p.par)}</span>` : ''}</td>
+        <td class="nw">${esc(fmtJour(KC.jourDeLInstant(p.le)))}${p.par ? ` <span class="muted small">par ${esc(p.par)}</span>` : ''}</td>
         <td class="tronq lg" title="${esc(p.chemin)}">${esc(String(p.chemin || '').split(/[\\/]/).pop())}</td>
         <td class="nw small muted">${p.scelle ? 'scellé' : 'non scellé'} · ${p.pdf ? 'avec PDF' : 'sans PDF'}${p.signe ? ' · signé' : ''}</td>
         <td class="row-actions"><button type="button" class="btn btn-sm" data-reveal="${esc(p.chemin)}">Ouvrir le dossier</button></td></tr>`).join('')}</tbody></table></div>` : ''}
     ${(ex.reouvertures || []).length || ex.clos ? `<details class="mt" id="cl-historique"><summary>Clôtures et réouvertures ${info('cl.historique')}</summary>
-      <ul class="small">${(ex.reouvertures || []).map(d => `<li>Clos${d.closLe ? ' le ' + esc(fmtJour(new Date(d.closLe).toISOString().slice(0, 10))) : ''}, rouvert${d.le ? ' le ' + esc(fmtJour(new Date(d.le).toISOString().slice(0, 10))) : ''}${d.par ? ' par ' + esc(d.par) : ''} : « ${esc(d.motif || '')} »</li>`).join('')}${
-        ex.clos ? `<li>Clos${ex.closLe ? ' le ' + esc(fmtJour(new Date(ex.closLe).toISOString().slice(0, 10))) : ''}${ex.closPar ? ' par ' + esc(ex.closPar) : ''} — en cours.</li>` : ''}</ul></details>` : ''}
+      <ul class="small">${(ex.reouvertures || []).map(d => `<li>Clos${d.closLe ? ' le ' + esc(fmtJour(KC.jourDeLInstant(d.closLe))) : ''}, rouvert${d.le ? ' le ' + esc(fmtJour(KC.jourDeLInstant(d.le))) : ''}${d.par ? ' par ' + esc(d.par) : ''} : « ${esc(d.motif || '')} »</li>`).join('')}${
+        ex.clos ? `<li>Clos${ex.closLe ? ' le ' + esc(fmtJour(KC.jourDeLInstant(ex.closLe))) : ''}${ex.closPar ? ' par ' + esc(ex.closPar) : ''} — en cours.</li>` : ''}</ul></details>` : ''}
     ${section('controles', 'cl-sec-controles', `<h2>Avant de clôturer</h2>${info('cl.controles')}`,
     echecs.length ? esc(pl(echecs.length, 'contrôle à voir', 'contrôles à voir')) : 'tous passent',
     `<table class="list compact"><tbody>${(d.controles || []).map(c => `<tr>
@@ -3429,11 +3632,11 @@
         `<p>${pl(q.valideesAjoutees.length, 'écriture validée', 'écritures validées')} et ${pl(q.brouillardsAjoutes.length, 'brouillard')} `
         + `${q.valideesAjoutees.length + q.brouillardsAjoutes.length > 1 ? 'sont arrivés' : 'est arrivé'} de l'autre poste.</p>`
         + bloc('À regarder — même numéro que chez toi, sur une autre écriture :', q.numerosEnDoublon,
-          x => `n° ${x.numero} · ${x.piece} du ${x.date} — un numéro naît à la validation et ne se réattribue jamais ; il faut en contre-passer une`)
+          x => `n° ${x.numero} · ${x.piece} du ${fmtJour(x.date)} — un numéro naît à la validation et ne se réattribue jamais ; il faut en contre-passer une`)
         + bloc('À regarder — la même écriture validée des deux côtés, avec un contenu différent :', q.valideesEnConflit,
-          x => `${x.piece} du ${x.date} — la tienne est gardée telle quelle`)
+          x => `${x.piece} du ${fmtJour(x.date)} — la tienne est gardée telle quelle`)
         + bloc('À regarder — un brouillard modifié des deux côtés :', q.brouillardsEnConflit,
-          x => `${x.piece} du ${x.date} — les DEUX sont gardés, à toi de choisir`)
+          x => `${x.piece} du ${fmtJour(x.date)} — les DEUX sont gardés, à toi de choisir`)
         + (q.aRegarder ? '' : '<p class="muted small">Rien à trancher : les deux versions se complétaient.</p>'));
       s.livre = r.livre;
       render();
@@ -3755,7 +3958,7 @@
       <td class="r nw"><b>${money0(c.solde)}</b></td>
       <td class="r nw">${money0(c.variation)}</td>
       <td class="nw small">${c.revu
-    ? `<span class="badge b-paid">revu</span> ${esc(c.revuPar || '')}${c.revuLe ? ' · ' + esc(fmtJour(new Date(c.revuLe).toISOString().slice(0, 10))) : ''}`
+    ? `<span class="badge b-paid">revu</span> ${esc(c.revuPar || '')}${c.revuLe ? ' · ' + esc(fmtJour(KC.jourDeLInstant(c.revuLe))) : ''}`
     : '<span class="muted">à revoir</span>'}</td>
       ${rowMenuCell('RV:' + c.compte)}</tr>`;
     // 10.12.0 (U-11) — un seul vert, et c'est l'ÉTAPE SUIVANTE. À 0 compte signé sur 19, le vert
@@ -3783,7 +3986,7 @@
       ${/* Une révision arrêtée se dit UNE fois, sur l'état : le badge porte la date et le nom.
             Un encadré vert en dessous répétait le badge, en pesant autant qu'une alerte. */''}
       <span class="badge ${d.faite ? 'b-paid' : 'b-due'}">${d.faite ? 'révision arrêtée' : 'en cours'}</span>${d.faite && (d.faiteLe || d.faitePar)
-    ? `<span class="small muted" id="rv-arretee">${d.faiteLe ? 'le ' + esc(fmtJour(new Date(d.faiteLe).toISOString().slice(0, 10))) : ''}${d.faitePar ? ' par ' + esc(d.faitePar) : ''}</span>` : ''}
+    ? `<span class="small muted" id="rv-arretee">${d.faiteLe ? 'le ' + esc(fmtJour(KC.jourDeLInstant(d.faiteLe))) : ''}${d.faitePar ? ' par ' + esc(d.faitePar) : ''}</span>` : ''}
       <button class="btn btn-sm${suivante === 'arreter' ? ' btn-primary' : ''}" id="rv-arreter">${d.faite ? 'Rouvrir la révision' : 'Arrêter la révision…'}</button>
       <button class="btn btn-sm" id="rv-note">Note de revue…</button>
       <button class="btn btn-sm" id="rv-question">Poser une question…</button>
@@ -3817,7 +4020,7 @@
     <div class="panel"><h2>Notes de revue ${info('rv.notes')}</h2>
       ${d.notes.length
     ? `<table class="list compact"><tbody>${d.notes.slice().reverse().map(n => `<tr class="${n.levee ? '' : 'row-warn'}">
-          <td>${esc(n.texte)}<div class="small muted">${esc(n.par || '')}${n.le ? ' · ' + esc(fmtJour(new Date(n.le).toISOString().slice(0, 10))) : ''}${n.cycle ? ' · ' + esc(libelleDuCycle(r, n.cycle)) : ''}${n.compte ? ' · ' + esc(n.compte) : ''}</div></td>
+          <td>${esc(n.texte)}<div class="small muted">${esc(n.par || '')}${n.le ? ' · ' + esc(fmtJour(KC.jourDeLInstant(n.le))) : ''}${n.cycle ? ' · ' + esc(libelleDuCycle(r, n.cycle)) : ''}${n.compte ? ' · ' + esc(n.compte) : ''}</div></td>
           <td class="nw">${n.levee ? `<span class="badge b-paid">levée</span>` : '<span class="badge b-due">ouverte</span>'}</td>
           <td class="row-actions"><button type="button" class="btn btn-sm" data-note="${esc(n.id)}">${n.levee ? 'Rouvrir' : 'Lever'} la note</button></td></tr>`).join('')}</tbody></table>`
     : '<div class="empty mini">Aucune note de revue sur cette période.</div>'}
@@ -4138,7 +4341,11 @@
     // fiche d'abord (tant qu'elle n'en a pas, elle ne s'amortit nulle part), puis les écritures en
     // attente, puis — sur un exercice vide — le premier bien. Quand tout est fait, rien n'est vert.
     // « Ajouter un bien… » était vert en permanence, à côté d'écritures qui attendaient.
-    const suivante = d.aCreer.length ? 'creer' : e.aEcrire ? 'ecrire' : !e.rows.length ? 'neuf' : '';
+    // 10.12.0 (vu au test humain) — « écrire » n'est l'étape suivante que quand c'est DÛ : en
+    // septembre, les dotations de décembre ne le sont pas. Le bouton reste armé (on peut préparer
+    // l'inventaire plus tôt), il ne prend plus la couleur — la même règle que la pastille.
+    const dues = KC.aReclamerImmobilisations(e, s.livre && s.livre.exercice, K.today());
+    const suivante = d.aCreer.length ? 'creer' : dues ? 'ecrire' : !e.rows.length ? 'neuf' : '';
     const cls = pas => 'btn btn-sm' + (pas === suivante ? ' btn-primary' : '');
     // U-23 — un bouton éteint dit POURQUOI à côté de lui : l'infobulle ne se voit ni au clavier ni
     // au doigt. « Passées » seulement si une écriture l'est vraiment — un parc entièrement amorti
@@ -4147,8 +4354,10 @@
       : !e.rows.length ? 'Rien à écrire : aucun bien sur cet exercice.'
         : e.rows.some(r => r.ecrite) ? `Celles de ${s.annee} sont passées — les repasser compterait la dotation deux fois.`
           : `Aucune dotation ni sortie sur ${s.annee} : rien à écrire.`;
+    const au = String((s.livre && s.livre.exercice && s.livre.exercice.au) || `${s.annee}-12-31`);
     const motifs = !e.rows.length ? ['« Passer les écritures » et « Exporter le tableau » attendent un premier bien.']
-      : pourquoiEcrire ? ['« Passer les écritures » : ' + pourquoiEcrire.charAt(0).toLowerCase() + pourquoiEcrire.slice(1)] : [];
+      : pourquoiEcrire ? ['« Passer les écritures » : ' + pourquoiEcrire.charAt(0).toLowerCase() + pourquoiEcrire.slice(1)]
+        : !dues ? [`Les dotations de ${s.annee} s'écrivent à l'inventaire, au ${fmtJour(au)} : rien ne presse, le bouton les prépare dès maintenant si tu le veux.`] : [];
     return `<div class="filters">
       ${info('im.etat')}
       <span class="small muted">Exercice ${esc(s.annee)}</span>
@@ -4480,6 +4689,12 @@
     const aFaire = controles.filter(c => c.niveau !== 'info'), etatsNormaux = controles.filter(c => c.niveau === 'info');
     const aPasser = bulletins.filter(b => !b.ecritureId).length;
     const nomDe = id => ((L.salaries || []).find(x => x.id === id) || {}).nom || '—';
+    // Trois états, le vocabulaire du LIVRE (10.12.0) : « brouillon » disait un bulletin sans aucune
+    // écriture, et « écrite » une écriture encore au brouillard — pendant que la déclaration du même
+    // mois disait « pas encore d'écriture validée ». Deux écrans ne se contredisent pas (6.8.1).
+    const statutDe = id => ((L.ecritures || []).find(e => e.id === id) || {}).statut;
+    const etatDe = b => !b.ecritureId ? 'a-passer' : statutDe(b.ecritureId) === 'brouillard' ? 'brouillard' : 'ecrite';
+    const auBrouillard = bulletins.some(b => etatDe(b) === 'brouillard');
     const t = s.paieTrimestre || Math.ceil(m / 3);
     const cnss = KC.cnssDuTrimestre(L, s.annee, t);
     const actifs = (L.salaries || []).filter(x => x.actif);
@@ -4494,7 +4709,7 @@
         <td class="r nw"><b>${esc(money(c.net))}</b></td>
         <td class="r nw">${esc(money(KC.employerChargesOf(c)))}</td>
         <td class="r nw">${esc(money(c.employerCost))}</td>
-        <td class="nw">${b.ecritureId ? '<span class="badge b-paid">écrite</span>' : '<span class="badge b-due">brouillon</span>'}</td>
+        <td class="nw">${{ 'a-passer': '<span class="badge b-due">à passer</span>', brouillard: '<span class="badge b-part">au brouillard</span>', ecrite: '<span class="badge b-paid">écrite</span>' }[etatDe(b)]}</td>
         ${RowMenu.cellule('PAIE:' + b.id)}</tr>`;
     }).join('');
 
@@ -4502,7 +4717,8 @@
     // bulletins qui manquent, puis l'écriture. « + Bulletin… » était vert sur un dossier sans
     // salarié — principal ET éteint, c'est-à-dire un geste qu'on montre du doigt et qu'on refuse.
     const manquants = (controles.find(c => c.id === 'bulletins-manquants') || {}).count || 0;
-    const suivante = !actifs.length ? 'salarie' : manquants ? 'bulletin' : aPasser ? 'ecrire' : '';
+    // Au brouillard, l'étape suivante est de VALIDER : la paie n'entre dans les livres qu'à ce moment.
+    const suivante = !actifs.length ? 'salarie' : manquants ? 'bulletin' : aPasser ? 'ecrire' : auBrouillard ? 'valider' : '';
     const cls = pas => 'btn btn-sm' + (pas === suivante ? ' btn-primary' : '');
     // U-23 — un bouton éteint dit POURQUOI à côté de lui, pas seulement au survol : l'infobulle ne
     // se voit ni au clavier ni au doigt (règle 9.4.5). Le `title` reste, pour qui survole.
@@ -4524,11 +4740,17 @@
     ${motifs.length ? `<p class="small muted mb" id="pa-motifs">${motifs.map(esc).join(' · ')}</p>` : ''}
     ${/* U-13 — l'orange seulement quand il y a un geste à faire. « 1 bulletin non réglé » est
           l'état NORMAL d'un bulletin qu'on vient d'établir : il se dit, en gris, sans alarme. */''}
-    ${aFaire.length ? `<div class="warn-box mb">${aFaire.map(c => `<div><b>${esc(c.quoi)}</b> — ${esc(c.detail)}</div>`).join('')}
+    ${aFaire.length ? `<div class="warn-box mb">${aFaire.map(c => `<div class="ctrl-geste"><span><b>${esc(c.quoi)}</b> — ${esc(c.detail)}</span>${
+      // Ce que le contrôle nomme, il l'ouvre (7.15.0) : le numéro manquant se renseigne sur la fiche.
+      // Le geste vit dans une rangée flex, pas dans la phrase (règle 9.8.8, T-56) : à 1280 px il
+      // passait à la ligne collé sous le texte, à 3 px (mesuré par e2e:cabinet-rendu).
+      (c.ids || []).map(id => `<button type="button" class="btn btn-sm" data-sal-cnss="${esc(id)}">Renseigner le n° de ${esc(nomDe(id))}…</button>`).join('')}</div>`).join('')}
       <div class="small muted">Ces contrôles NOMMENT, ils ne bloquent rien : un mois traité avec deux manques signalés vaut mieux qu'un mois jamais traité.</div></div>` : ''}
     ${etatsNormaux.length ? `<p class="small muted mb">${etatsNormaux.map(c => `${esc(c.quoi)} — ${esc(c.detail)}`).join(' · ')}</p>` : ''}
+    ${auBrouillard ? `<p class="small mb" id="pa-brouillard">L'écriture de paie ${esc(KC.deMois(KC.moisPaie(m)))} est <b>au brouillard</b> : elle n'entre dans les livres — et dans la déclaration du mois — qu'une fois validée.
+      <button type="button" class="${cls('valider')}" id="pa-valider">La valider dans la saisie</button></p>` : ''}
 
-    <div class="panel mt"><h2>Les bulletins de ${esc(KC.moisPaie(m))} ${esc(s.annee)} ${info('pa.bulletins')}</h2>
+    <div class="panel mt"><h2>Les bulletins ${esc(KC.deMois(KC.moisPaie(m)))} ${esc(s.annee)} ${info('pa.bulletins')}</h2>
       ${bulletins.length
     ? `<div class="scroll-x"><table class="list compact pa-bulletins"><thead><tr><th>Salarié</th>
         ${/* Les en-têtes de plusieurs mots passent sur deux lignes : tenus sur une seule, ils
@@ -4611,14 +4833,20 @@
     const trim = $('#pa-trim', el);
     if (trim) trim.onchange = () => { s.paieTrimestre = Number(trim.value) || 1; redraw(); };
     [$('#pa-salarie', el), $('#pa-salarie2', el)].forEach(b => { if (b) b.onclick = () => salarieForm(root, dossier, null); });
+    $$('[data-sal-cnss]', el).forEach(b => { b.onclick = () => {
+      const x = (s.livre.salaries || []).find(y => y.id === b.dataset.salCnss);
+      if (x) salarieForm(root, dossier, x, { focus: 'cnss' });
+    }; });
     [$('#pa-bulletin', el), $('#pa-bulletin2', el)].forEach(b => { if (b) b.onclick = () => bulletinForm(root, dossier, null); });
+    const pv = $('#pa-valider', el);
+    if (pv) pv.onclick = () => allerSousOnglet(root, dossier, 'saisie');
     const ec = $('#pa-ecrire', el);
     if (ec) ec.onclick = async () => {
       ec.disabled = true;
       try {
         const r = await api.ecrirePaie({ dossierId: dossier.id, annee: s.annee, mois: s.paieMois });
         s.livre = r.livre;
-        toast(`Écriture de paie de ${KC.moisPaie(s.paieMois)} passée en brouillard.`);
+        toast(`Écriture de paie ${KC.deMois(KC.moisPaie(s.paieMois))} passée en brouillard.`);
         redraw();
       } catch (err) { toast(plainError(err), 'error'); ec.disabled = false; }
     };
@@ -4683,7 +4911,7 @@
       <div class="modal-actions"><button class="btn btn-primary" data-close>Fermer</button></div>`);
   }
 
-  function salarieForm(root, dossier, x) {
+  function salarieForm(root, dossier, x, opts) {
     const s = livresState;
     const e = x || { contrat: 'cdi', actif: true, enfants: 0 };
     modal(`<h2>${x ? 'Modifier ' + esc(x.nom) : 'Déclarer un salarié'}</h2>
@@ -4709,6 +4937,8 @@
       <div class="modal-actions"><button class="btn" data-close>Annuler</button>
         <button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
     (rootModal, close) => {
+      // Ouverte pour UN champ (le numéro CNSS qu'un contrôle vient de nommer), elle y met le curseur.
+      if (opts && opts.focus) { const c = $(`[name=${opts.focus}]`, rootModal); if (c) c.focus(); }
       $('#ok', rootModal).onclick = async () => {
         const f = $('#sf', rootModal);
         // Une date tapée et illisible se REFUSE en montrant son champ ; vide, elle reste vide.
@@ -4861,7 +5091,8 @@
     ? `<div class="empty">Aucun inventaire saisi pour ${esc(s.annee)}.
         <p class="small muted">Un inventaire, c'est ce qui reste au dernier jour, compté et valorisé.
         La différence avec ce que portent les comptes devient une écriture <span class="nw">(${esc(KC.COMPTES_IMMO.variationStocks)} / ${esc(KC.COMPTES_IMMO.stocks)})</span>.</p>
-        <button class="btn btn-primary" id="iv-saisir2">Saisir l'inventaire…</button></div>`
+        <button class="btn btn-primary" id="iv-saisir2">Saisir l'inventaire…</button>
+        <div class="small mt">${lienArticle('immobilisations')}</div></div>`
     : `<div class="panel mt" id="iv-variation"><h2>La variation ${info('iv.variation')}</h2>
         ${v.ok
     ? `<table class="list compact"><tbody>
@@ -4999,7 +5230,8 @@
       return `<div class="empty">Aucun relevé bancaire importé pour ${esc(s.annee)}.
         <div class="small mt">Un relevé se lit tel que la banque l'exporte : on associe ses colonnes par leur NOM,
         une fois par banque. Ensuite le rapprochement propose, et c'est toi qui tranches.</div>
-        <div class="mt"><button class="btn btn-primary" id="bq-import">Importer un relevé…</button></div></div>`;
+        <div class="mt"><button class="btn btn-primary" id="bq-import">Importer un relevé…</button></div>
+        <div class="small mt">${lienArticle('banque')}</div></div>`;
     }
     const R = releves.find(r => r.id === banqueState.releve) || releves[0];
     banqueState.releve = R.id;
@@ -5052,7 +5284,12 @@
           <td class="nw"><span class="badge ${NIVEAU_CLASSE[r.niveau] || ''}">${esc(NIVEAU_LABEL[r.niveau] || r.niveau)}</span>${
             r.par === 'auto' ? ' <span class="muted small">auto</span>' : ''}</td>
           <td class="tronq" title="${e ? esc((e.journal || '') + ' ' + (e.piece || '') + ' — ' + (e.libelle || '') + (lg ? ` — ligne ${Number(r.ligne) + 1} (${lg.compte || ''})` : '')) : ''}">${
-            e ? `${esc((e.journal || '') + ' ' + (e.piece || ''))}${mFace != null ? ` <span class="muted nw">· ${esc(money(mFace))}</span>` : ''}` : ''}</td>
+            // La pièce se coupe, son montant jamais (10.12.0) : coupé avec le reste, « BQ PAIE-2026-07
+            // · −1 443,… » ne disait plus quelle ligne de la pièce répond — c'est tout T-12. Et une
+            // ambiguïté commence par ce qu'elle DEMANDE : c'est la fin d'une phrase qu'on coupe.
+            e ? `<span class="face"><span class="face-p">${esc((e.journal || '') + ' ' + (e.piece || ''))}</span>${
+              mFace != null ? `<span class="muted face-m">· ${esc(money(mFace))}</span>` : ''}</span>`
+              : r.niveau === 'probable' || r.niveau === 'a-confirmer' ? '<span class="muted">À trancher : plusieurs écritures au même montant</span>' : ''}</td>
           ${RowMenu.cellule('LIG:' + l.id)}</tr>`;
       }).join('')}
       </tbody></table></div>
@@ -5064,13 +5301,23 @@
       <div class="split">
         <div><h3 class="sub-h">Côté banque · ${pl(sus.banque.length, 'ligne')}</h3>
           ${sus.banque.length ? `<table class="list compact"><tbody>${sus.banque.map(l =>
-            `<tr><td class="nw">${esc(fmtJour(l.date))}</td><td class="tronq" title="${esc(l.libelle)}">${esc(l.libelle)}</td><td class="r nw">${esc(money(l.montant))}</td></tr>`).join('')}</tbody></table>`
+            `<tr><td class="nw">${esc(fmtJour(l.date))}</td><td class="tronq" title="${esc(l.libelle)}">${esc(l.libelle)}</td><td class="r nw">${esc(money(l.montant))}</td></tr>`).join('')}</tbody>
+            <tfoot><tr><td colspan="2"><strong>Total côté banque</strong></td><td class="r nw"><strong>${esc(money(sus.totalBanque))}</strong></td></tr></tfoot></table>`
             : '<div class="empty mini">Rien : tout ce que la banque porte est dans le livre.</div>'}</div>
         <div><h3 class="sub-h">Côté livre · ${pl(sus.livre.length, 'ligne')}</h3>
           ${sus.livre.length ? `<table class="list compact"><tbody>${sus.livre.map(l =>
-            `<tr><td class="nw">${esc(fmtJour(l.date))}</td><td class="tronq" title="${esc(l.libelle)}">${esc(l.libelle)}</td><td class="r nw">${esc(money(l.montant))}</td></tr>`).join('')}</tbody></table>`
+            `<tr><td class="nw">${esc(fmtJour(l.date))}</td><td class="tronq" title="${esc(l.libelle)}">${esc(l.libelle)}</td><td class="r nw">${esc(money(l.montant))}</td></tr>`).join('')}</tbody>
+            <tfoot><tr><td colspan="2"><strong>Total côté livre</strong></td><td class="r nw"><strong>${esc(money(sus.totalLivre))}</strong></td></tr></tfoot></table>`
             : '<div class="empty mini">Rien : tout ce que le livre porte est sur le relevé.</div>'}</div>
       </div>
+      ${/* Le VERDICT (10.12.0, vu au test humain sur la vitrine) : un écart de −3 650,591 en rouge,
+            deux listes sans total, et rien pour dire que la banque moins le livre redonne l'écart au
+            millime. Ce qu'un comptable vient chercher ici, c'est si l'écart est EXPLIQUÉ — sinon il
+            refait l'addition à la main. Les deux termes sont écrits (9.8.8), et la part qui ne
+            s'explique par aucun suspens se nomme comme sur la carte. */''}
+      ${sus.banque.length || sus.livre.length ? `<p class="small mt">${sus.avant
+        ? `Les suspens expliquent <b>${esc(money(sus.ecartSuspens))}</b> de l'écart : ${esc(money(sus.totalBanque))} côté banque − ${esc(money(sus.totalLivre))} côté livre. Le reste, <b>${esc(money(sus.avant))}</b>, vient d'avant les relevés importés.`
+        : `Les suspens expliquent tout l'écart : <b>${esc(money(sus.totalBanque))}</b> côté banque − <b>${esc(money(sus.totalLivre))}</b> côté livre = <b>${esc(money(sus.ecartSuspens))}</b>.`}</p>` : ''}
     </div>`;
   }
 
@@ -5158,7 +5405,10 @@
       <tbody>${(e.lignes || []).map((l, i) => `<tr class="${i === ligneMarquee ? 'br-ligne' : ''}"><td class="nw">${esc(l.compte || '')}${i === ligneMarquee ? ' <span class="badge">en face</span>' : ''}</td>
         <td class="tronq" title="${esc(l.libelle || '')}">${esc(l.libelle || '')}</td>
         <td class="r nw">${Number(l.debit) ? esc(money(l.debit)) : ''}</td><td class="r nw">${Number(l.credit) ? esc(money(l.credit)) : ''}</td></tr>`).join('')}</tbody></table></div>
-      <div class="modal-actions"><button class="btn" data-close>Fermer</button></div>`);
+      <div class="modal-actions"><button class="btn" data-close>Fermer</button></div>`,
+    // Une fenêtre de CONTRÔLE se lit : à 580 px, chaque libellé tombait à « TVA, timbres et
+    // retenues de j… » — la ligne qu'on est venu vérifier.
+    layer => { $('.modal', layer).classList.add('cab-moyen'); });
   }
 
   async function retirerReleve(root, dossier, rel) {
@@ -5176,28 +5426,44 @@
 
   // Choisir l'écriture en face, à la main. On montre TOUS les candidats du bon montant d'abord, puis
   // le reste du compte : une ambiguïté se tranche en voyant les deux, pas en cherchant.
+  // 10.12.0 (vu au test humain) — et la fenêtre DIT ce que l'automatique a jugé : la ligne portait
+  // « Probable » pendant que la fenêtre montrait ses deux écritures à égalité. Le jugement vient du
+  // moteur (`candidatsDeLigne`, le même que l'automatique) ; le plus probable passe en tête et son
+  // bouton est le seul en couleur — rien n'est posé tant qu'on n'a pas cliqué.
   function choisirEcritureForm(root, dossier, R, ligne) {
     const s = livresState;
-    const toutes = KC.lignesBancaires(s.livre, R.compte);
-    const prises = new Set();
-    (s.livre.releves || []).forEach(x => x.lignes.forEach(l => {
-      if (l.rapprochement && l.rapprochement.ecritureId && l.id !== ligne.id) prises.add(l.rapprochement.ecritureId + '#' + l.rapprochement.ligne);
-    }));
-    const libres = toutes.filter(c => !prises.has(c.ecritureId + '#' + c.ligne));
-    const memeMontant = libres.filter(c => KC.round3(c.montant - ligne.montant) === 0);
-    const autres = libres.filter(c => KC.round3(c.montant - ligne.montant) !== 0);
+    const jours = ((dossier.banque || {}).jours != null) ? dossier.banque.jours : KC.RELEVE_JOURS;
+    const jug = KC.candidatsDeLigne(s.livre, R.id, ligne.id, { jours });
+    const cle = c => c.ecritureId + '#' + c.ligne;
+    const prefere = jug.meilleur ? cle(jug.meilleur) : '';
+    const memeMontant = jug.libres.filter(c => KC.round3(c.montant - ligne.montant) === 0)
+      .sort((a, b) => (cle(b) === prefere) - (cle(a) === prefere) || a.date.localeCompare(b.date));
+    const autres = jug.libres.filter(c => KC.round3(c.montant - ligne.montant) !== 0);
+    const jugement = !memeMontant.length ? ''
+      : jug.niveau === 'certain' ? `Une seule écriture porte ce montant à ${pl(jours, 'jour')} près : c'est très probablement elle.`
+        : jug.niveau === 'probable' ? 'La plus probable est en tête : son libellé partage le plus de mots avec celui de la banque. Rien n\'est posé tant que tu n\'as pas cliqué.'
+          : jug.niveau === 'a-confirmer' ? 'Rien ne les départage — ni la date, ni le libellé : c\'est à toi de choisir.'
+            : `Aucune à ${pl(jours, 'jour')} près de la banque : vérifie la date avant de rapprocher.`;
     const ligneHtml = c => `<tr><td class="nw">${esc(fmtJour(c.date))}</td><td class="tronq" title="${esc(c.libelle)}">${esc(c.libelle)}</td>
       <td class="nw">${esc(c.piece)}</td><td class="r nw">${esc(money(c.montant))}</td>
-      <td class="actions"><button type="button" class="btn btn-sm" data-pick="${esc(c.ecritureId)}|${c.ligne}">Rapprocher</button></td></tr>`;
+      <td class="actions"><button type="button" class="btn btn-sm${cle(c) === prefere ? ' btn-primary' : ''}" data-pick="${esc(c.ecritureId)}|${c.ligne}">Rapprocher</button></td></tr>`;
     modal(`<h2>Rapprocher ${esc(fmtJour(ligne.date))} · ${esc(money(ligne.montant))}</h2>
       <p class="small muted">${esc(ligne.libelle)}</p>
       <h3 class="sub-h">Du même montant · ${pl(memeMontant.length, 'écriture')}</h3>
+      ${jugement ? `<p class="small muted" id="ce-jugement">${esc(jugement)}</p>` : ''}
       ${memeMontant.length ? `<div class="scroll-x"><table class="list compact"><tbody>${memeMontant.map(ligneHtml).join('')}</tbody></table></div>`
         : '<div class="empty mini">Aucune écriture du compte ' + esc(R.compte) + ' ne porte ce montant.</div>'}
       ${autres.length ? `<h3 class="sub-h">Les autres écritures du compte · ${pl(autres.length, 'écriture')}</h3>
         <div class="scroll-x" style="max-height:230px"><table class="list compact"><tbody>${autres.slice(0, 60).map(ligneHtml).join('')}</tbody></table></div>` : ''}
-      <div class="modal-actions"><button class="btn" data-close>Annuler</button></div>`,
+      ${/* La fenêtre finit par le geste SUIVANT (7.27.0) : quand rien dans le livre ne porte le
+            montant, ce qu'il reste à faire, c'est l'écrire — et ce bouton-là est alors le principal. */''}
+      <div class="modal-actions"><button class="btn" data-close>Annuler</button>
+        <button class="btn ${memeMontant.length ? '' : 'btn-primary'}" id="ce-ecrire">Écrire l'écriture manquante…</button></div>`,
       (rootModal, close) => {
+        // Cinq colonnes et un bouton par ligne : dans la fenêtre ordinaire de 580 px, « Rapprocher »
+        // vivait derrière un défilement de côté — on voyait « R », pas le geste (vu au test humain).
+        $('.modal', rootModal).classList.add('cab-moyen');
+        $('#ce-ecrire', rootModal).onclick = () => { close(); ecrireDepuisBanque(root, dossier, R, ligne); };
         $$('[data-pick]', rootModal).forEach(b => { b.onclick = async () => {
           const [ecritureId, i] = b.dataset.pick.split('|');
           try {
@@ -6064,7 +6330,7 @@
 
   async function supprimerBrouillard(root, dossier, e) {
     const ok = await confirmDialog('Supprimer ce brouillard ?',
-      `<p>${esc(e.journal)} ${esc(e.piece || '(sans pièce)')} du ${esc(fmtJour(e.date))}.</p><p>Il n'a pas de numéro : il ne laissera aucun trou dans la numérotation, et rien n'en restera.</p>`,
+      `<p>${esc(e.journal)} ${esc(e.piece || '(sans pièce)')} du ${esc(fmtJour(e.date))}.</p>${ceQuellePorte(e, 'il')}<p>Il n'a pas de numéro : il ne laissera aucun trou dans la numérotation, et rien n'en restera.</p>`,
       'Supprimer', true);
     if (!ok) return;
     try {
@@ -6115,9 +6381,14 @@
       && (!filtre.journal || e.journal === filtre.journal)
       && (!filtre.mois || String(e.date || '').slice(0, 7) === filtre.mois));
     if (!cibles.length) { await infoDialog('Rien à valider', 'Aucune écriture en brouillard ne correspond.'); return; }
-    const quoi = filtre.journal ? `du journal ${filtre.journal}` : `de ${moisLabelCourt(filtre.mois)}`;
+    const quoi = filtre.journal ? `du journal ${filtre.journal}` : KC.deMois(moisLabelCourt(filtre.mois));
+    // L'accord suit le nombre (10.12.0, vu au test humain) : « Chacune… Celles qui… » sous « Valider
+    // 1 écriture » se lisait comme un modèle de phrase qu'on n'a pas fini de remplir.
+    const une = cibles.length === 1;
     const ok = await confirmDialog(`Valider ${pl(cibles.length, 'écriture')} ${quoi} ?`,
-      '<p>Chacune prend son numéro et ne se modifiera plus : une validée se contre-passe.</p><p>Celles qui ne tombent pas juste ne seront pas validées, et te seront nommées.</p>',
+      une
+        ? '<p>Elle prend son numéro et ne se modifiera plus : une validée se contre-passe.</p><p>Si elle ne tombe pas juste, elle ne sera pas validée, et te sera nommée.</p>'
+        : '<p>Chacune prend son numéro et ne se modifiera plus : une validée se contre-passe.</p><p>Celles qui ne tombent pas juste ne seront pas validées, et te seront nommées.</p>',
       'Valider');
     if (!ok) return;
     try {
@@ -6125,8 +6396,11 @@
       s.livre = r.livre;
       const lignes = [`${pl(r.validees.length, 'écriture validée', 'écritures validées')}.`];
       if (r.refusees.length) {
-        lignes.push(`${pl(r.refusees.length, 'écriture n\'est pas entrée', 'écritures ne sont pas entrées')} — elles restent en brouillard :`);
-        r.refusees.slice(0, 10).forEach(x => lignes.push(`  • ${x.journal} ${x.piece || '(sans pièce)'} du ${x.date} : ${x.motif}`));
+        // L'accord suit le nombre, et la date s'écrit comme à l'écran (U-28) : « 1 écriture n'est pas
+        // entrée — elles restent en brouillard », « du 2026-08-31 », vus en relisant ce message.
+        const plus = r.refusees.length > 1;
+        lignes.push(`${pl(r.refusees.length, 'écriture n\'est pas entrée', 'écritures ne sont pas entrées')} — ${plus ? 'elles restent' : 'elle reste'} en brouillard :`);
+        r.refusees.slice(0, 10).forEach(x => lignes.push(`  • ${x.journal} ${x.piece || '(sans pièce)'} du ${fmtJour(x.date)} : ${x.motif}`));
       }
       await infoDialog('Validation', lignes.join('\n'));
       drawLivres(root, dossier);
@@ -6313,18 +6587,26 @@
         }).join('')}</tbody></table></div>`}`;
   }
 
+  // Un champ de recherche redessiné à la frappe perd le curseur, et on n'y tape qu'une lettre
+  // (7.17.0). On le rend À SA PLACE, sélection comprise — pas au bout : corriger une faute au milieu
+  // d'un mot renvoyait le curseur à la fin. UNE fonction pour tous les champs : la parade était
+  // recopiée à deux endroits, et le troisième (le livre-journal) l'avait oubliée.
+  function sansPerdreLaFrappe(champ, redessin) {
+    const id = champ.id, debut = champ.selectionStart, fin = champ.selectionEnd;
+    redessin();
+    const n = document.getElementById(id);
+    if (!n) return;
+    if (document.activeElement !== n) n.focus();
+    try { n.setSelectionRange(debut, fin); } catch (_) { /* un champ sans sélection : rien à rendre */ }
+  }
+
   function brancherRecherche(el, root, dossier) {
     const s = livresState;
     const q = $('#re-q', el);
     if (q) {
       // On redessine à la frappe, mais le champ de recherche est REMIS et le curseur replacé au
       // bout : sans ça on ne peut taper qu'une lettre (défaut 7.17.0).
-      q.oninput = () => {
-        rechState.q = q.value;
-        drawLivres(root, dossier);
-        const n = $('#re-q');
-        if (n) { n.focus(); n.setSelectionRange(n.value.length, n.value.length); }
-      };
+      q.oninput = () => { rechState.q = q.value; sansPerdreLaFrappe(q, () => drawLivres(root, dossier)); };
     }
     const j = $('#re-journal', el); if (j) j.onchange = () => { rechState.journal = j.value; drawLivres(root, dossier); };
     const st = $('#re-statut', el); if (st) st.onchange = () => { rechState.statut = st.value; drawLivres(root, dossier); };
@@ -6341,13 +6623,17 @@
   // c'est exactement le défaut que la 7.29.0 a trouvé sur le devis déjà facturé.
   function actionsEcriture(root, dossier, e) {
     const a = [];
+    // Le geste qui DÉTRUIT vit tout en bas, après un trait (7.29.0). Vu au test humain (10.12.0) :
+    // posé au milieu, « Supprimer ce brouillard » était la ligne juste au-dessus de « Joindre un
+    // justificatif… » — un clic qui glisse d'une ligne efface une pièce au lieu d'y joindre un scan.
+    let detruire = null;
     if (e.statut === 'brouillard') {
       a.push({ icon: 'oui', label: 'Valider cette écriture', hint: 'Elle prend son numéro et ne se modifiera plus',
         run: () => validerEcriture(root, dossier, e) });
       a.push({ icon: 'modifier', label: 'Reprendre dans la grille', hint: 'Elle remonte dans la saisie, modifiable',
         run: () => { saisieState.piece = pieceDepuis(e); allerSousOnglet(root, dossier, 'saisie'); } });
-      a.push({ icon: 'supprimer', label: 'Supprimer ce brouillard', hint: 'Il n\'a pas de numéro : rien ne restera', danger: true,
-        run: () => supprimerBrouillard(root, dossier, e) });
+      detruire = { icon: 'supprimer', label: 'Supprimer ce brouillard', hint: 'Il n\'a pas de numéro : rien ne restera', danger: true,
+        run: () => supprimerBrouillard(root, dossier, e) };
     }
     if (e.statut === 'validee') {
       a.push({ icon: 'contrat', label: 'Contre-passer cette écriture', hint: 'Une écriture miroir, à la date du jour',
@@ -6368,11 +6654,13 @@
       }
     }
     a.push({ icon: 'texte', label: e.pieceJointe ? 'Remplacer le justificatif…' : 'Joindre un justificatif…',
+      court: 'Justificatif…',
       hint: 'Le fichier est copié dans le dossier du client', run: () => joindreJustificatif(root, dossier, e.id) });
     if (e.pieceJointe) {
       a.push({ icon: 'ouvrir', label: 'Ouvrir le justificatif', hint: esc(e.pieceJointe),
         run: async () => { try { await api.ouvrirJustificatif(dossier.id, e.pieceJointe); } catch (x) { await infoDialog('Justificatif introuvable', plainError(x)); } } });
     }
+    if (detruire) a.push({ sep: true }, detruire);
     return a;
   }
 
@@ -6423,7 +6711,10 @@
     // Tout ce qui change la SÉLECTION remet la page à 1 : sans ça, filtrer sur un journal depuis la
     // page 7 donne un tableau vide, et rien à l'écran n'explique pourquoi.
     const j = $('#lv-journal', el); if (j) j.onchange = () => { s.journal = j.value; s.page = 1; redraw(); };
-    const q = $('#lv-q', el); if (q) q.oninput = () => { s.q = q.value; s.page = 1; redraw(); };
+    // Le champ de recherche du livre-journal est redessiné à chaque frappe : sans la parade, on n'y
+    // tapait qu'une lettre (vu au test humain, 10.12.0 — « PAIE-2026-08 » devenait « P »). La
+    // Recherche et la page Dossiers l'avaient ; lui, jamais (le jumeau manquant, 7.3.0).
+    const q = $('#lv-q', el); if (q) q.oninput = () => { s.q = q.value; s.page = 1; sansPerdreLaFrappe(q, redraw); };
     const c = $('#lv-compte', el); if (c) c.onchange = () => { s.compte = c.value; s.page = 1; redraw(); };
     const a = $('#lv-aux', el); if (a) a.onclick = () => { s.aux = !s.aux; s.page = 1; redraw(); };
     const ar = $('#lv-aux-role', el); if (ar) ar.onchange = () => { s.auxRole = ar.value; s.page = 1; redraw(); };
@@ -6969,8 +7260,10 @@
   // pour l'étape où le paquet n'est justement PAS arrivé — l'étape est celle où le mois est BLOQUÉ.
   // Une seule table pour les cases et la légende : écrites à deux endroits, elles avaient divergé.
   const SIGNE_PRODUCTION = { recu: '○', saisi: '!', revise: '◐', declare: '◉', fini: '✓', hors: '–' };
+  // « à saisir » et non « reçu, rien de saisi » : un dossier TENU AU CABINET n'a rien à recevoir,
+  // et son mois vide est quand même une saisie à faire (10.12.0). C'est le mot de la colonne.
   const LEGENDE_PRODUCTION = [
-    ['recu', 'pas encore reçu'], ['saisi', 'reçu, rien de saisi'], ['revise', 'saisi, à réviser'],
+    ['recu', 'pas encore reçu'], ['saisi', 'à saisir'], ['revise', 'saisi, à réviser'],
     ['declare', 'révisé, à déclarer'], ['fini', 'déclaré'], ['hors', 'hors mission']
   ];
 
@@ -7021,9 +7314,11 @@
     : (S.dossiers || []).filter(d => !d.archived).length
       ? 'Aucun livre n\'est encore ouvert.<br><span class="small">Le tableau de production suit les <b>livres</b> de tes dossiers, pas leurs paquets : ouvre la comptabilité d\'un client et relis ses paquets pour qu\'il apparaisse ici.</span><div class="inline mt"><button class="btn btn-sm btn-primary" id="pr-vers-dossiers">Voir mes dossiers</button></div>'
       : 'Aucun dossier dans le portefeuille.<div class="inline mt"><button class="btn btn-sm btn-primary" id="pr-vers-dossiers">Ajouter un client</button></div>'}</div></div>`
+    // « reçus et pas encore saisis » comptait aussi les mois d'un dossier tenu au cabinet, qui ne
+    // reçoit rien : la phrase dit ce que la colonne compte, pour les deux sortes de dossiers.
     : `<div class="${retard ? 'warn-box' : 'ok-box'} mb">${retard
-      ? `${pl(retard, 'mois', 'mois')} ${retard > 1 ? 'sont reçus et pas encore saisis' : 'est reçu et pas encore saisi'}.`
-      : 'Tout ce qui est reçu est saisi.'}</div>
+      ? `${pl(retard, 'mois', 'mois')} ${retard > 1 ? 'attendent' : 'attend'} leur saisie.`
+      : 'Aucun mois n\'attend de saisie.'}</div>
       ${/* 10.12.0 (U-02) — des en-têtes de mois COURTS, l'année seulement quand elle change : douze
             « juillet 2026 » sur deux lignes faisaient déborder la grille, et la dernière colonne,
             collante, cachait juillet et août. (U-29) Le nom du client se tronque, jamais son badge :
@@ -7037,7 +7332,7 @@
     const c = (parDossier.get(l.id) || new Map()).get(m);
     if (!c) return '<td class="r prod-c"><span class="prod-p prod-hors" title="Hors mission : rien n\'est attendu pour ce mois">–</span></td>';
     const t = [
-      `${K.monthLabel(m)} — ${c.recu ? 'reçu' : 'pas reçu'}`,
+      `${K.monthLabel(m)} — ${c.recu === null ? 'tenu au cabinet' : c.recu ? 'reçu' : 'pas reçu'}`,
       c.saisi ? `${pl(c.saisi, 'écriture')} dont ${c.brouillards} au brouillard` : 'rien de saisi',
       // « — » et non « non » : la révision n'a pas encore d'écrivain, et ne pas savoir
       // n'est pas savoir que non (règle des cases fiscales, 9.6.0).
@@ -7073,7 +7368,7 @@
   }
 
   function drawEcheances(view) {
-    const liste = K.echeances(S, null, { employeurs: employeursConnus() });
+    const liste = K.echeances(S, null, { employeurs: employeursConnus(), tenus: tenusConnus() });
     const prochaines = liste.filter(e => !e.passee);
     const passees = liste.filter(e => e.passee).reverse();
 
@@ -7116,8 +7411,16 @@
           <span class="ok-inline">${e.prets} prêt${e.prets > 1 ? 's' : ''}</span>
           ${e.provisoires.length ? `<span class="warn-inline">${e.provisoires.length} en provisoire</span>` : ''}
           ${e.manquants.length ? `<span class="err-inline">${e.manquants.length} sans ${e.mois.length > 1 ? 'les mois' : 'le mois'}</span>` : ''}
+          ${(e.aSaisir || []).length ? `<span class="err-inline">${e.aSaisir.length} à saisir au cabinet</span>` : ''}
           <span class="muted small">sur ${pl(e.clients, 'client')}</span>
         </div>
+        ${/* 10.12.0 — un dossier TENU AU CABINET dont le mois n'a aucune écriture : on ne le relance
+              pas (il n'envoie rien), on le SAISIT. Un seul : sa saisie, directement ; plusieurs : la
+              Production, qui nomme leurs mois un par un. */''}
+        ${(e.aSaisir || []).length ? `<div class="small mt ech-qui">${esc(e.aSaisir.slice(0, 8).join(', '))}${e.aSaisir.length > 8 ? '…' : ''}
+          ${e.aSaisir.length === 1
+            ? `<button class="btn btn-sm" data-saisir-tenu="${esc(e.aSaisirIds[0])}" aria-label="${esc('Ouvrir sa saisie — ' + e.label)}">Ouvrir sa saisie</button>`
+            : `<button class="btn btn-sm" data-vers-production="1" aria-label="${esc('Voir dans la Production — ' + e.label)}">Voir dans la Production</button>`}</div>` : ''}
         ${e.manquants.length ? `<div class="small mt ech-qui">${memeListe
           ? `<span class="muted">${e.manquants.length > 1 ? `Les mêmes ${pl(e.manquants.length, 'client')}` : 'Le même client'} que l'échéance du dessus.</span>`
           : `${esc(e.manquants.slice(0, 8).join(', '))}${e.manquants.length > 8 ? '…' : ''}`}
@@ -7182,6 +7485,10 @@
         vers('#/relances');
       };
     });
+    $$('[data-saisir-tenu]', view).forEach(b2 => {
+      b2.onclick = () => { location.hash = '#/dossier/' + encodeURIComponent(b2.dataset.saisirTenu) + '/comptabilite/saisie'; };
+    });
+    $$('[data-vers-production]', view).forEach(b2 => { b2.onclick = () => { location.hash = '#/production'; }; });
   }
 
   // ---------- écritures regroupées ----------
@@ -7213,6 +7520,9 @@
     if (!ecrState.from || !mois.includes(ecrState.from)) ecrState.from = mois[mois.length - 1];
     if (!ecrState.to || ecrState.to < ecrState.from) ecrState.to = ecrState.from;
     const plan = K.ecrituresPlan(S, { from: ecrState.from, to: ecrState.to, ids: ecrState.ids });
+    // L'accord suit le compte (10.12.0, vu au test humain) : « 1 paquet n'est pas définitif … Leur mois …
+    // Ils sont quand même exportés » se lisait sur l'exemple, qui en a UN.
+    const provPlus = plan.provisoires.length > 1;
     const opts = m => mois.map(x => `<option value="${esc(x)}" ${m === x ? 'selected' : ''}>${esc(K.monthLabel(x))}</option>`).join('');
 
     view.innerHTML = `
@@ -7241,9 +7551,9 @@
           <div class="stat"><div class="lbl">Période</div><div class="val" style="font-size:16px">${esc(plan.mois.length ? (plan.mois.length > 1 ? K.monthLabel(plan.mois[0]) + ' → ' + K.monthLabel(plan.mois[plan.mois.length - 1]) : K.monthLabel(plan.mois[0])) : '—')}</div></div>
         </div>
 
-        ${plan.provisoires.length ? `<div class="warn-box mt">${info('e.provisoire')} <strong>${pl(plan.provisoires.length, 'paquet')} ${plan.provisoires.length > 1 ? 'ne sont' : 'n\'est'} pas définitif${plan.provisoires.length > 1 ? 's' : ''}</strong> :
+        ${plan.provisoires.length ? `<div class="warn-box mt">${info('e.provisoire')} <strong>${pl(plan.provisoires.length, 'paquet')} ${provPlus ? 'ne sont' : 'n\'est'} pas définitif${provPlus ? 's' : ''}</strong> :
           ${esc(plan.provisoires.slice(0, 6).join(' · '))}${plan.provisoires.length > 6 ? ' …' : ''}.
-          Leur mois n'a pas été clôturé chez le client : les chiffres peuvent encore changer. Ils sont quand même exportés.</div>` : ''}
+          ${provPlus ? 'Leur mois n\'a' : 'Son mois n\'a'} pas été clôturé chez le client : les chiffres peuvent encore changer. ${provPlus ? 'Ils sont quand même exportés' : 'Il est quand même exporté'}.</div>` : ''}
         ${plan.sansPaquet.length ? `<p class="small mt">${info('e.manquants')} <span class="err-inline">${pl(plan.sansPaquet.length, 'client')} n'${plan.sansPaquet.length > 1 ? 'ont' : 'a'} rien envoyé sur cette période</span> :
           ${esc(plan.sansPaquet.slice(0, 8).join(', '))}${plan.sansPaquet.length > 8 ? '…' : ''}. <a href="#/relances">Les relancer</a></p>` : ''}
 
@@ -7453,6 +7763,7 @@
       if (!c) return [];
       return [
         { icon: 'modifier', label: 'Modifier ce collaborateur', detail: 'Son nom et son rôle.', run: () => formCollaborateur(c) },
+        { sep: true },
         { icon: 'supprimer', label: 'Retirer du cabinet', danger: true,
           detail: 'Son nom reste sur les écritures qu\'il a validées : une piste d\'audit ne s\'efface pas.',
           run: () => retirerCollaborateur(c) }
@@ -8365,7 +8676,7 @@
     dessinerLicence(view);
     bindRecoveryBanner(view);
     if ($('#r-demo-on')) $('#r-demo-on').onclick = async () => {
-      S = await chargerOuRetirerExemple(true); toast('Exemple chargé : ces cinq dossiers sont fictifs.'); location.hash = '#/dossiers';
+      S = await chargerOuRetirerExemple(true); toast(phraseExemple()); location.hash = '#/dossiers';
     };
     if ($('#r-demo-off')) $('#r-demo-off').onclick = async () => { S = await chargerOuRetirerExemple(false); render(); toast('Exemple effacé.'); };
     $('#c-save').onclick = async () => {
@@ -8598,6 +8909,9 @@
   // (10.12.0, U-21). La page Échéances et « À faire » le reçoivent tous les deux : deux écrans qui
   // comptent la même CNSS avec deux connaissances différentes finiraient par se contredire.
   const employeursConnus = () => Object.fromEntries(questionsAttente.map(q => [q.dossierId, q.employeur || {}]));
+  // Les livres des dossiers TENUS AU CABINET (10.12.0), du même résumé : ils entrent dans le
+  // calendrier et dans « À faire » avec leurs mois à saisir, jamais comme des retardataires.
+  const tenusConnus = () => Object.fromEntries(questionsAttente.filter(q => q.tenu).map(q => [q.dossierId, q.tenu]));
   function chargerQuestionsAttente(redessiner) {
     if (!api.questionsEnAttente) return Promise.resolve();
     const avant = JSON.stringify(questionsAttente);
@@ -9027,36 +9341,72 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
     const close = () => { root.remove(); document.removeEventListener('keydown', onKey, true); fermerPalette = null; };
     let sel = 0, items = [];
 
+    // Chaque entrée dit ce qu'elle EST (U-07) : un réglage étiqueté « action » faisait croire que
+    // taper « tva » lançait quelque chose.
     const actions = [
       { kind: 'action', main: 'Importer un paquet…', go: () => doImport() },
       { kind: 'action', main: 'Nouveau dossier client…', go: () => newDossierForm() },
       { kind: 'action', main: 'Sauvegarder maintenant', go: () => quickBackup() },
-      { kind: 'action', main: 'Relances', go: () => { location.hash = '#/relances'; } },
-      { kind: 'action', main: 'Échéances', go: () => { location.hash = '#/echeances'; } },
-      { kind: 'action', main: 'Écritures — exporter un mois', go: () => { location.hash = '#/ecritures'; } },
+      { kind: 'page', main: 'Relances', go: () => { location.hash = '#/relances'; } },
+      { kind: 'page', main: 'Échéances', go: () => { location.hash = '#/echeances'; } },
+      { kind: 'page', main: 'Écritures — exporter un mois', text: 'export exporter regrouper cabinet', go: () => { location.hash = '#/ecritures'; } },
+      { kind: 'page', main: 'Production', text: 'tableau avancement portefeuille', go: () => { location.hash = '#/production'; } },
       // Un réglage par PANNEAU, engendré depuis REG_PANNEAUX : taper « clé de secours » mène au
       // panneau Sécurité, pas en haut d'une page. Une liste écrite à la main se périmerait au
       // prochain découpage — c'est exactement ce qui est arrivé côté entreprise en 7.30.0.
       ...Object.keys(REG_PANNEAUX).map(id => ({
-        kind: 'action', main: `Réglages → ${REG_PANNEAUX[id].titre}`,
-        text: ('reglages ' + REG_PANNEAUX[id].titre + ' ' + REG_PANNEAUX[id].mots).toLowerCase(),
+        kind: 'réglage', main: `Réglages → ${REG_PANNEAUX[id].titre}`,
+        text: K.sansAccents('reglages ' + REG_PANNEAUX[id].titre + ' ' + REG_PANNEAUX[id].mots),
         go: () => versReglages(id)
       })),
-      { kind: 'action', main: 'Aide', go: () => { location.hash = '#/aide'; } }
+      { kind: 'page', main: 'Aide', go: () => { location.hash = '#/aide'; } }
     ];
+    // Le dossier OUVERT, lu dans l'adresse au moment où la palette s'ouvre : c'est de lui qu'on
+    // parle quand on tape « balance » sur sa fiche.
+    const ouvert = (/^#\/dossier\/([^/]+)/.exec(location.hash) || [])[1];
+    const courantId = ouvert ? decodeURIComponent(ouvert) : null;
+    const ecransPalette = Object.fromEntries(Object.keys(ONGLETS_COMPTA).map(k => [k, { label: ONGLETS_COMPTA[k], mots: MOTS_COMPTA[k] || '' }]));
+    // Les ARTICLES d'Aide (10.12.0, vu au test humain) : « rapprochement » ne rendait que l'écran
+    // Banque — jamais l'article qui explique comment on rapproche. La palette de l'app entreprise
+    // les liste depuis toujours ; celle du Cabinet jamais (le jumeau manquant, 7.3.0). On cherche
+    // dans le titre, le sous-titre ET le corps sans ses balises — « lettrage » n'est dans aucun
+    // titre —, on classe (titre, puis sous-titre, puis corps : 7.27.0), et on en garde quatre :
+    // la palette montre d'abord ce qu'on OUVRE, l'explication vient après.
+    const articlesPalette = (G.ARTICLES || []).map(a => ({
+      a, titre: K.sansAccents(a.t), sous: K.sansAccents(a.s),
+      corps: K.sansAccents(String(a.d || '').replace(/<[^>]+>/g, ' '))
+    }));
+    const aidesPour = qa => articlesPalette
+      .map(x => ({ x, rang: x.titre.includes(qa) ? 3 : x.sous.includes(qa) ? 2 : x.corps.includes(qa) ? 1 : 0 }))
+      .filter(r => r.rang).sort((p, q) => q.rang - p.rang).slice(0, 4)
+      .map(({ x }) => ({ kind: 'aide', main: x.a.t, sub: x.a.s, go: () => { aideQ = ''; location.hash = '#/aide/' + x.a.id; } }));
 
     function draw() {
-      const q = $('#pal-q', root).value.trim().toLowerCase();
+      const brut = $('#pal-q', root).value.trim();
+      const q = brut.toLowerCase();
       const rows = K.dossierList(S, null, { q, withArchived: true }).slice(0, 30).map(r => ({
         kind: 'client', main: r.name,
         sub: [r.matricule, r.missingCount ? pl(r.missingCount, 'mois', 'mois') + ' manquant' + (r.missingCount > 1 ? 's' : '') : ''].filter(Boolean).join(' · '),
         go: () => { location.hash = '#/dossier/' + encodeURIComponent(r.id); }
       }));
+      // Les écrans de comptabilité, en couples client + écran : « balance » sur une fiche ouvre SA
+      // balance, « béji balance » celle de Béji. Un écran du livre sur un dossier dont on SAIT qu'il
+      // n'a pas de livre le dit : l'adresse le ramènerait au livre-journal, où le bouton qui crée le
+      // livre attend.
+      const ecrans = K.paletteCompta(brut, ecransPalette, S.dossiers, courantId).map(p => {
+        const sansLivre = p.dossierId === livresState.dossierId && livresState.livreEtat === 'absent' && !ONGLETS_SANS_LIVRE.includes(p.ecran);
+        return {
+          kind: 'écran', main: `${ONGLETS_COMPTA[p.ecran]} — ${p.dossierNom}`,
+          sub: sansLivre ? 'Comptabilité › s\'ouvre une fois son livre créé' : `Comptabilité › ${groupeCompta(p.ecran).label}`,
+          go: () => { location.hash = adresseCompta({ id: p.dossierId }, p.ecran); }
+        };
+      });
       // On cherche aussi dans les synonymes : « backup », « token », « cle de secours » ne figurent
       // dans aucun libellé, et deux réponses vides suffisent à faire croire que la palette ne
       // connaît pas l'application.
-      const acts = actions.filter(a => !q || a.main.toLowerCase().includes(q) || (a.text || '').includes(q));
-      items = rows.concat(acts);
+      const qa = K.sansAccents(brut);
+      const acts = actions.filter(a => !qa || K.sansAccents(a.main).includes(qa) || (a.text || '').includes(qa));
+      items = ecrans.concat(rows, acts, qa ? aidesPour(qa) : []);
       if (sel >= items.length) sel = Math.max(0, items.length - 1);
       $('#pal-res', root).innerHTML = items.length
         ? items.map((x, i) => `<div class="res ${i === sel ? 'sel' : ''}" data-i="${i}">
@@ -9263,13 +9613,15 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
   const sansBalises = x => String(x || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
   const aideIcone = a => `<svg viewBox="0 0 24 24" aria-hidden="true">${a.icon || ''}</svg>`;
 
+  // Accents ignorés (10.12.0, U-08) : « declaration » tapé sans accent ne trouvait pas « La déclaration
+  // du mois » — la même règle que la recherche des clients, qui l'applique depuis la 6.8.1.
   function aideTrouves(q) {
-    const mots = q.toLowerCase().trim().split(/\s+/).filter(Boolean);
+    const mots = K.sansAccents(q).trim().split(/\s+/).filter(Boolean);
     if (!mots.length) return G.ARTICLES;
     const notes = [];
     G.ARTICLES.forEach((a, i) => {
-      const titre = `${a.t} ${a.s || ''}`.toLowerCase();
-      const corps = sansBalises(a.d).toLowerCase();
+      const titre = K.sansAccents(`${a.t} ${a.s || ''}`);
+      const corps = K.sansAccents(sansBalises(a.d));
       if (!mots.every(m => titre.includes(m) || corps.includes(m))) return;
       notes.push({ a, rang: mots.every(m => titre.includes(m)) ? 0 : 1, i });
     });
@@ -9279,6 +9631,35 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
   const aideCarte = a => `<button class="help-art grande ${esc(a.couleur || '')}" data-art="${esc(a.id)}">
       <span class="ht"><span class="ha-ico">${aideIcone(a)}</span>${esc(a.t)}</span>
       <span class="hs">${esc(a.s || '')}</span></button>`;
+
+  // Le chemin d'un écran VIDE vers l'article qui l'explique (10.12.0, U-08) : c'est le jour où
+  // l'écran est vide qu'on a le plus besoin de l'article — et la bulle de son titre n'existe pas
+  // encore, puisque le titre n'apparaît qu'avec la première ligne.
+  const lienArticle = id => {
+    const a = G.ARTICLES.find(x => x.id === id);
+    return a ? `<a class="lien-aide" href="#/aide/${esc(id)}">Comment ça marche : « ${esc(a.t)} » →</a>` : '';
+  };
+
+  // Le geste qui finit un article (7.27.0 côté entreprise, 7.28.0 ici). Un écran de comptabilité
+  // n'a pas d'adresse à lui seul : il vit dans CHAQUE dossier. Le geste mène donc à celui du dossier
+  // ouvert en dernier — en le nommant, pour qu'on sache où l'on va — et, quand aucun ne l'a été, fait
+  // choisir le dossier plutôt que d'en deviner un (10.12.0, U-08).
+  function gesteAide(g) {
+    const pourquoi = '<span class="small muted">On lit une explication pour faire quelque chose.</span>';
+    if (g.ecran) {
+      const d = (S.dossiers || []).find(x => x.id === livresState.dossierId && !x.archived);
+      // Un écran du livre sur un dossier qui n'en a pas : le bouton ne promet pas un écran que
+      // l'adresse ramènerait au livre-journal — il mène à la comptabilité, où l'on crée le livre.
+      if (d && livresState.livreEtat === 'absent' && !ONGLETS_SANS_LIVRE.includes(g.ecran)) {
+        return `<button class="btn btn-primary" data-ecran="journal" data-dossier="${esc(d.id)}">Ouvrir la comptabilité ${esc(K.de(d.name))}</button>
+          <span class="small muted">${esc(ONGLETS_COMPTA[g.ecran] || '')} s'ouvre une fois son livre créé : le bouton qui le crée est en tête de sa comptabilité.</span>`;
+      }
+      if (d) return `<button class="btn btn-primary" data-ecran="${esc(g.ecran)}" data-dossier="${esc(d.id)}">${esc(g.label)} ${esc(K.de(d.name))}</button>${pourquoi}`;
+      return `<button class="btn btn-primary" data-geste="#/">Choisir le dossier</button>
+        <span class="small muted">${esc(ONGLETS_COMPTA[g.ecran] || '')} vit dans chaque dossier, onglet Comptabilité.</span>`;
+    }
+    return `<button class="btn btn-primary" data-geste="${esc(g.hash)}"${g.panneau ? ` data-panneau="${esc(g.panneau)}"` : ''}>${esc(g.label)}</button>${pourquoi}`;
+  }
 
   function drawAide(view, arg) {
     const a = G.ARTICLES.find(x => x.id === arg) || null;
@@ -9309,8 +9690,7 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
               <h2 class="help-h"><span class="ha-ico">${aideIcone(a)}</span>${esc(a.t)}</h2>
               <p class="help-sub">${esc(a.s || '')}</p>
               ${a.d}
-              ${a.geste ? `<div class="help-geste"><button class="btn btn-primary" data-geste="${esc(a.geste.hash)}"${a.geste.panneau ? ` data-panneau="${esc(a.geste.panneau)}"` : ''}>${esc(a.geste.label)}</button>
-                <span class="small muted">On lit une explication pour faire quelque chose.</span></div>` : ''}
+              ${a.geste ? `<div class="help-geste">${gesteAide(a.geste)}</div>` : ''}
               <p class="small muted help-foot">Une question que cette aide ne tranche pas ? <b>Réglages → L'application → Aide et dépannage</b> : le rapport ne contient aucune donnée de tes clients.</p>
             </article>
             <div class="help-suite">
@@ -9333,6 +9713,7 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
         if (b.dataset.panneau) return versReglages(b.dataset.panneau);
         location.hash = b.dataset.geste;
       });
+      $$('[data-ecran]').forEach(b => b.onclick = () => { location.hash = adresseCompta({ id: b.dataset.dossier }, b.dataset.ecran); });
     };
     brancher();
 

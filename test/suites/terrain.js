@@ -371,7 +371,9 @@ t('T-10 : une pastille compte ce qui attend une décision, partout', () => {
   // elles vivent dans UNE fonction que chaque onglet appelle, et que chaque groupe additionne.
   const p = tranche(app, 'function pastilleCompta(o) {', 'function drawLivres(root, dossier) {', 800, 4000);
   const immo = tranche(p, "if (o === 'immobilisations') {", 'return n ?', 30, 400);
-  assert.ok(/etatImmobilisations\(L, s\.annee\)\.aEcrire/.test(immo), 'Immobilisations compte encore ses fiches, pas les dotations à passer');
+  // 10.12.0 — retourné vers la règle : la pastille compte ce qui est DÛ à la date du jour (une
+  // dotation au dernier mois de l'exercice, une sortie tout de suite), par la fonction du moteur.
+  assert.ok(/aReclamerImmobilisations\(KC\.etatImmobilisations\(L, s\.annee\)/.test(immo), 'Immobilisations compte encore ses fiches, pas les écritures dues');
   assert.ok(!/const n = \(L\.immobilisations \|\| \[\]\)\.length;/.test(immo), 'la pastille des immobilisations affiche encore un inventaire');
   const saisie = tranche(p, "if (o === 'saisie') {", '}', 30, 400);
   assert.ok(/statut === 'brouillard'/.test(saisie) && /!\(L\.exercice && L\.exercice\.clos\)/.test(saisie), 'la Saisie garde sa pastille sur un exercice clos');
@@ -403,7 +405,15 @@ t('T-12 : « En face » montre la LIGNE appariée avec son montant, et l\'écrit
   const app = cabApp();
   const z = tranche(app, 'function vueBanque(', 'function brancherBanque(', 3000, 14000);
   assert.ok(/const lg = e && Array\.isArray\(e\.lignes\) \? e\.lignes\[Number\(r\.ligne\)\] : null/.test(z), 'la ligne appariée n\'est pas relue');
-  assert.ok(/mFace != null \? ` <span class="muted nw">· \$\{esc\(money\(mFace\)\)\}<\/span>` : ''/.test(z), 'le montant de la ligne en face n\'est pas affiché');
+  // Le montant vit dans son PROPRE élément, à côté de la pièce et jamais dedans (10.12.0) : coupé
+  // avec elle, « BQ PAIE-2026-07 · −1 443,… » ne disait plus quelle ligne de la pièce répond — ce
+  // qui est tout T-12. L'assertion recopiait le gabarit d'avant et tombait sur le correctif : on
+  // exige la RÈGLE (le montant hors de ce qui se coupe), pas une forme.
+  assert.ok(/mFace != null \? `<span class="[^"]*\bface-m\b[^"]*">· \$\{esc\(money\(mFace\)\)\}<\/span>`/.test(z), 'le montant de la ligne en face n\'est pas affiché');
+  assert.ok(/<span class="face-p">\$\{esc\(\(e\.journal/.test(z), 'la pièce en face ne se coupe pas à part de son montant');
+  const css = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'cabinet', 'renderer', 'cabinet.css'), 'utf8');
+  assert.ok(/\.face-m\s*\{[^}]*flex:\s*none/.test(css) && /\.face-p\s*\{[^}]*text-overflow:\s*ellipsis/.test(css),
+    'la feuille ne garde pas le montant entier pendant que la pièce se coupe');
   const m = tranche(app, 'function brancherBanque(', 'function ecritureDialog(', 2000, 9000);
   assert.ok(/label: 'Voir l\\'écriture en face'[\s\S]{0,220}run: \(\) => ecritureDialog\(e, Number\(r\.ligne\)\)/.test(m), 'une ligne rapprochée n\'ouvre pas son écriture');
   assert.ok(app.includes('function ecritureDialog('), 'la fenêtre de lecture d\'une écriture manque');
@@ -518,7 +528,10 @@ t('T-34 : le miroir d\'une contre-passation se reconnaît, au journal comme au g
   const app = cabApp();
   assert.ok(/const miroirBadge = e => e\.contrepasseDe/.test(app), 'le badge du miroir manque');
   const vj = tranche(app, 'function vueJournal(', 'function nomDeCompte(', 2000, 9000);
-  assert.ok(/e\.contrepasseDe \|\| e\.extourneDe \? 'cp-miroir'/.test(vj) && /esc\(e\.piece\) \+ miroirBadge\(e\)/.test(vj), 'le livre-journal ne marque pas le miroir');
+  // La RÈGLE (la ligne est marquée, la cellule de la pièce porte le badge), pas la forme de la
+  // cellule : le badge a quitté la concaténation `esc(e.piece) + …` en 10.12.0 pour passer sous la
+  // référence, et l'assertion recopiée est tombée sur du code juste.
+  assert.ok(/e\.contrepasseDe \|\| e\.extourneDe \? 'cp-miroir'/.test(vj) && /esc\(e\.piece\)[^\n]{0,40}miroirBadge\(e\)/.test(vj), 'le livre-journal ne marque pas le miroir');
   const gl = tranche(app, 'function vueGrandLivre(', 'function vueBalance(', 1500, 8000);
   assert.ok(/'cp-ligne' : e\.contrepasseDe \|\| e\.extourneDe \? 'cp-miroir'/.test(gl) && /miroirBadge\(e\)/.test(gl), 'le grand livre ne marque ni l\'originale ni le miroir');
   assert.ok(/^tr\.cp-miroir td \{/m.test(lireSource('src', 'cabinet', 'renderer', 'cabinet.css')), 'la classe du miroir n\'existe pas dans la feuille');
@@ -806,7 +819,11 @@ t('T-57 : une bulle qui suit un BOUTON a son écart, et rien ne se colle par une
   // sa case, en bloc (`dc-raison`), là où l'œil lit la case. La règle tient donc par construction —
   // aucune espace de gabarit ne peut plus coller un texte à un bouton dans cette cellule — et on
   // exige que la mention ne soit jamais recollée derrière le bouton des écritures.
-  assert.ok(/const raison = c\.montant == null \? c\.motif : c\.horsTotal \|\| ''/.test(app), 'la note « hors total » ne vit plus sous le libellé');
+  // La RÈGLE, pas la ligne (10.12.0 — l'assertion recopiait `const raison = …` mot pour mot, et elle
+  // est tombée dès qu'une case a su renvoyer à la précédente) : la raison se tire du motif ou de la
+  // note « hors total », et elle est posée SOUS le libellé.
+  assert.ok(/const raison = [^;]*c\.montant == null \? c\.motif : c\.horsTotal \|\| ''/.test(app), 'la raison d\'une case ne se tire plus de son motif ou de sa note « hors total »');
+  assert.ok(/<td>\$\{esc\(LIBELLE_CASE\[k\] \|\| k\)\}\$\{raison \? `<div class="small muted dc-raison">/.test(app), 'la note « hors total » ne vit plus sous le libellé');
   assert.ok(!/data-cases="\$\{k\}"[^`]*<\/button>\$\{hors\}/.test(app), 'la mention « hors total » est revenue coller au bouton des écritures');
   const cab = lireSource('src', 'cabinet', 'renderer', 'cabinet.css');
   assert.ok(/^\.dc-raison \{[^}]*white-space: normal/m.test(cab), '.dc-raison doit exister dans la feuille, et passer à la ligne');

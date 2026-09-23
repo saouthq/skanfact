@@ -978,7 +978,13 @@ function createCabStore(dir, opts) {
 
   function removePack(p) {
     try { if (p && p.startsWith(packRoot)) fs.unlinkSync(p); return true; }
-    catch (e) { log('suppression paquet', e); return false; }
+    catch (e) {
+      // 10.12.0 — DÉJÀ parti n'est pas une panne : `removeDossierFiles` vient de supprimer le dossier
+      // entier, puis repasse sur chaque paquet. Dix-neuf « erreurs » dans le journal à chaque exemple
+      // rechargé, et c'est la ligne qui compte qu'on ne voyait plus (9.4.10).
+      if (e && e.code === 'ENOENT') return true;
+      log('suppression paquet', e); return false;
+    }
   }
 
   // Supprimer un dossier : ses paquets partent avec lui. On ne garde pas les pièces d'un client qu'on

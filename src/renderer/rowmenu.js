@@ -109,12 +109,17 @@
       // Une SEULE action : un vrai bouton qui la nomme, pas un menu. Ouvrir une liste pour un choix
       // unique, c'est un clic et une lecture de plus pour rien — et le libellé, lui, se lit sans
       // avoir à ouvrir quoi que ce soit.
+      // `court` (10.12.0, vu au test humain) : dans un tableau DENSE, l'action seule prend la largeur
+      // de sa phrase. Une pièce contre-passée ne gardait que « Joindre un justificatif… » : 203 px,
+      // et la colonne d'actions collante recouvrait le Crédit du livre-journal. Le bouton porte alors
+      // le mot court ; la phrase entière reste dans l'infobulle et dans ce que lit un lecteur d'écran.
       if (reelles.length === 1) {
         const a = reelles[0];
         b.classList.add('row-menu-solo');
         b.removeAttribute('aria-haspopup'); b.removeAttribute('aria-expanded');
-        b.title = a.hint || a.label;
-        b.innerHTML = `${ico(a.icon)}<span>${h(a.label)}</span>`;
+        b.title = a.court ? [a.label, a.hint].filter(Boolean).join(' — ') : (a.hint || a.label);
+        if (a.court) b.setAttribute('aria-label', a.label);
+        b.innerHTML = `${ico(a.icon)}<span>${h(a.court || a.label)}</span>`;
         b.onclick = e => { e.stopPropagation(); a.run(); };
         return;
       }

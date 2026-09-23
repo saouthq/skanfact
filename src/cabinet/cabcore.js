@@ -350,16 +350,40 @@
   // cent quatre-vingts livres pour dessiner une grille (c'est la mesure de la 9.1.0 qui l'interdit).
   function productionDuDossier(dossier, index, todayIso, graceDay) {
     const parMois = {};
-    ((index && index.exercices) || []).forEach(ex => {
+    const exercices = (index && index.exercices) || [];
+    exercices.forEach(ex => {
       const p = (ex && ex.production) || {};
       Object.keys(p).forEach(m => { parMois[m] = p[m]; });
     });
-    return dossierMonths(dossier, todayIso, graceDay).map(m => {
+    // Un dossier TENU AU CABINET (10.12.0, vu au test humain) n'envoie aucun paquet : ses mois sont
+    // ceux de ses LIVRES, du premier mois de l'exercice à celui qui vient de finir. Sans eux, le
+    // garage de l'exemple — sept déclarations déposées et payées — paraissait « hors mission » sur
+    // toute sa ligne, pendant que sa Déclaration disait juillet « payé » : deux écrans qui se
+    // contredisent (6.8.1). Et sa chaîne commence à la SAISIE : « pas encore reçu » ne se dit pas
+    // d'un client à qui l'on ne réclame jamais de paquet (`recu` vaut null — ne pas savoir n'est
+    // pas « non », 9.6.0). Un dossier SUR SkanFact, lui, ne prend pas ses mois dans son livre : on
+    // ne lui attribue pas un retard sur des mois qu'on ne lui a jamais réclamés.
+    const tenu = !!(dossier && dossier.manual);
+    const liste = dossierMonths(dossier, todayIso, graceDay).map(m => ({ month: m.month, label: m.label, pack: m.pack, state: m.state }));
+    if (tenu) {
+      const dernier = addMonth(String(todayIso || today()).slice(0, 7), -1);   // le mois en cours n'est jamais dû
+      const vus = new Set(liste.map(m => m.month));
+      exercices.forEach(ex => {
+        const du = String((ex && ex.du) || '').slice(0, 7);
+        const au = String((ex && ex.au) || '').slice(0, 7);
+        if (!/^\d{4}-\d{2}$/.test(du) || !/^\d{4}-\d{2}$/.test(au)) return;
+        monthsBetween(du, au < dernier ? au : dernier).forEach(m => {
+          if (!vus.has(m)) { vus.add(m); liste.push({ month: m, label: monthLabel(m), pack: null, state: 'tenu' }); }
+        });
+      });
+      liste.sort((a, b) => (a.month < b.month ? -1 : a.month > b.month ? 1 : 0));
+    }
+    return liste.map(m => {
       const p = parMois[m.month] || {};
-      const recu = !!m.pack;
+      const recu = tenu ? null : !!m.pack;
       const saisi = Number(p.ecritures) || 0;
       return {
-        mois: m.month, label: m.label, recu, etat: m.state, pack: m.pack || null,
+        mois: m.month, label: m.label, recu, etat: tenu ? 'tenu' : m.state, pack: m.pack || null,
         saisi, validees: Number(p.validees) || 0, brouillards: Number(p.brouillards) || 0,
         // `null` et non `false` : sans livre sur cet exercice, on ne SAIT pas — et ne pas savoir
         // n'est pas « non ». L'écran écrit « — » (règle des cases fiscales, 9.6.0).
@@ -375,7 +399,7 @@
         // non ; la révision ne distingue que les deux états intermédiaires. C'est la règle « la
         // valeur par défaut d'une règle qu'on ne connaît pas est celle qui ne fait rien » (9.1.1),
         // appliquée à une étape dont personne ne tient encore le stylo.
-        etape: !recu ? 'recu' : !saisi ? 'saisi' : p.declare ? 'fini' : p.revise ? 'declare' : 'revise'
+        etape: recu === false ? 'recu' : !saisi ? 'saisi' : p.declare ? 'fini' : p.revise ? 'declare' : 'revise'
       };
     });
   }
@@ -1091,15 +1115,31 @@
     // plus qu'un état. Une échéance proche mais complète n'a pas à crier.
     // La MÊME connaissance des employeurs que la page Échéances : un compteur et la liste qu'il
     // annonce se calculent avec la même fonction ET les mêmes données (règle 6.8.1).
-    const urgente = echeances(state, todayIso, { avant: 1, apres: 1, employeurs: (opts || {}).employeurs })
-      .filter(e => !e.passee && e.jours <= 12 && e.manquants.length)
+    const urgente = echeances(state, todayIso, { avant: 1, apres: 1, employeurs: (opts || {}).employeurs, tenus: (opts || {}).tenus })
+      // Un mois qu'un dossier TENU AU CABINET attend encore de saisir bloque la déclaration autant
+      // qu'un paquet qui n'est pas arrivé (10.12.0) — mais il ne se dit pas pareil : on ne l'a pas
+      // « envoyé », on ne l'a pas saisi.
+      .filter(e => !e.passee && e.jours <= 12 && (e.manquants.length || e.aSaisir.length))
       .sort((a, b) => a.jours - b.jours)[0];
-    if (urgente) out.push({
-      id: 'echeance', level: urgente.jours <= 5 ? 'danger' : 'warn',
-      label: `${urgente.label} : ${pl(urgente.manquants.length, 'client')} ${urgente.manquants.length > 1 ? 'n\'ont' : 'n\'a'} pas envoyé ${urgente.mois.length > 1 ? 'ses mois' : 'son mois'}`,
-      detail: `À déposer dans ${urgente.jours} jour${urgente.jours > 1 ? 's' : ''} (${urgente.date}). ${urgente.manquants.slice(0, 5).join(', ')}${urgente.manquants.length > 5 ? '…' : ''}`,
-      count: urgente.manquants.length, rows: []
-    });
+    if (urgente) {
+      const m = urgente.manquants.length, a = urgente.aSaisir.length;
+      const plusieursMois = urgente.mois.length > 1;
+      const morceaux = [
+        // « 2 clients n'ont pas envoyé son mois » : l'accord suit les clients, pas l'échéance.
+        m ? `${pl(m, 'client')} ${m > 1 ? `n'ont pas envoyé ${plusieursMois ? 'leurs mois' : 'leur mois'}` : `n'a pas envoyé ${plusieursMois ? 'ses mois' : 'son mois'}`}` : '',
+        a ? `${pl(a, m ? 'autre' : 'client')} tenu${a > 1 ? 's' : ''} au cabinet ${a > 1 ? 'sont' : 'est'} encore à saisir` : ''
+      ].filter(Boolean);
+      const noms = urgente.manquants.concat(urgente.aSaisir);
+      // La date en lettres : « (2026-09-28) » est le format de la machine, pas celui d'un comptable
+      // (U-28, porté ici).
+      const leJour = `${Number(urgente.date.slice(8, 10))} ${monthLabel(urgente.date.slice(0, 7))}`;
+      out.push({
+        id: 'echeance', level: urgente.jours <= 5 ? 'danger' : 'warn',
+        label: `${urgente.label} : ${morceaux.join(', ')}`,
+        detail: `À déposer dans ${urgente.jours} jour${urgente.jours > 1 ? 's' : ''} (le ${leJour}). ${noms.slice(0, 5).join(', ')}${noms.length > 5 ? '…' : ''}`,
+        count: m + a, rows: []
+      });
+    }
     const late = rows.filter(r => r.missingCount > 0);
     if (late.length) out.push({
       id: 'manquants', level: 'danger',
@@ -1111,7 +1151,8 @@
     if (prov.length) out.push({
       id: 'provisoires', level: 'warn',
       label: `${pl(prov.length, 'dossier')} n'${prov.length > 1 ? 'ont' : 'a'} envoyé que du provisoire`,
-      detail: 'Leur mois n\'est pas clôturé : les chiffres peuvent encore bouger. À relancer avant de déclarer.',
+      // L'accord suit le nombre de dossiers (10.12.0) : « 1 dossier… Leur mois » se lisait dans « À faire ».
+      detail: `${prov.length > 1 ? 'Leur' : 'Son'} mois n'est pas clôturé : les chiffres peuvent encore bouger. À relancer avant de déclarer.`,
       count: prov.length, rows: prov
     });
     // Les questions posées au client et restées sans réponse au bout de DEUX paquets (9.10.0).
@@ -1130,7 +1171,7 @@
     if (holes.length) out.push({
       id: 'pieces', level: 'warn',
       label: `${pl(holes.length, 'dossier')} ${holes.length > 1 ? 'ont' : 'a'} des pièces manquantes`,
-      detail: 'Justificatifs d\'achat absents, factures en brouillon, attestations non remises — la page de garde de leur paquet en donne le détail.',
+      detail: `Justificatifs d'achat absents, factures en brouillon, attestations non remises — la page de garde de ${holes.length > 1 ? 'leur' : 'son'} paquet en donne le détail.`,
       count: holes.length, rows: holes
     });
     return out;
@@ -1221,9 +1262,9 @@
   }
 
   // Un jeu d'exemple. Un comptable qui ouvre l'application pour la première fois tombe sinon sur un
-  // écran vide, et ne voit pas ce qu'elle lui apporterait. Cinq dossiers suffisent à montrer les
-  // quatre situations : à jour, en retard, provisoire, pièces manquantes. Les données sont
-  // ouvertement fictives et l'écran le dit.
+  // écran vide, et ne voit pas ce qu'elle lui apporterait. Six dossiers montrent ce qu'un cabinet
+  // rencontre : à jour, en retard, provisoire, pièces manquantes, endormi — et hors SkanFact, tenu
+  // au cabinet de bout en bout. Les données sont ouvertement fictives et l'écran le dit.
   function demoDossiers(todayIso) {
     const cur = (todayIso || today()).slice(0, 7);
     const M = n => addMonth(cur, n);
@@ -1261,16 +1302,19 @@
         [pack(M(-4), true, null, 84300, 1), pack(M(-5), true, null, 79150, 1)]),    // deux mois de retard
       d('Studio Sfax Design', '3344556C/N/M/000', 'hello@sfaxdesign.tn',
         [pack(M(-1), false, null, 12400, 2), pack(M(-2), true, null, 15750, 2)]),   // dernier mois provisoire
-      d('Transports Béji & Fils', '4455667D/P/M/000', '',
+      // Les deux VITRINES de la 10.12.0 (U-10) : un client sur SkanFact dont le cabinet rapproche la
+      // banque et révise l'exercice, et le client hors SkanFact dont il tient les biens et la paie.
+      // Le scénario les NOMME ; `exemple-vitrine.js` les remplit, par les vrais moteurs.
+      { ...d('Transports Béji & Fils', '4455667D/P/M/000', '',
         [pack(M(-1), true, [{ id: 'justif', level: 'warn', label: 'achats sans justificatif joint', count: 6 }], 46800, 3),
-         pack(M(-2), true, [{ id: 'brouillon', level: 'warn', label: 'factures restées en brouillon', count: 2 }], 44120, 3)]),
+         pack(M(-2), true, [{ id: 'brouillon', level: 'warn', label: 'factures restées en brouillon', count: 2 }], 44120, 3)]), vitrine: 'skanfact' },
       d('Café des Jasmins', '5566778E/C/M/000', 'jasmins@example.tn',
         [pack(M(-6), true, null, 9870, 4)]),                                        // parti ou endormi
       // Un client HORS SkanFact (10.0.0). Un cabinet a soixante clients dont deux sur SkanFact
       // (6.8.0) : un exemple qui ne montrerait que ceux qui envoient leurs paquets donnerait une
       // image fausse du portefeuille — et surtout, ce dossier-là est celui qui COMPTE dans la
       // licence. On ne lui réclame rien : il n'a rien promis d'envoyer.
-      { ...d('Garage Ben Salem', '6677889F/G/M/000', '', []), manual: true,
+      { ...d('Garage Ben Salem', '6677889F/G/M/000', '', []), manual: true, vitrine: 'hors',
         note: 'Client hors SkanFact : ses pièces arrivent sur papier. Le cabinet tient sa comptabilité à la main, dans la Saisie.' }
     ];
   }
@@ -1430,7 +1474,18 @@
     // écran à l'autre.
     const actifs = (state.dossiers || []).filter(d => !d.archived);
     const attendus = new Map();
-    actifs.forEach(d => attendus.set(d, new Map(dossierMonths(d, t, grace).map(m => [m.month, m.state]))));
+    actifs.forEach(d => {
+      const parMois = new Map(dossierMonths(d, t, grace).map(m => [m.month, m.state]));
+      // Un dossier TENU AU CABINET (10.12.0, vu au test humain) : ses mois sont ceux de son LIVRE —
+      // la MÊME fonction que la Production et le Suivi —, et ce qui lui manque n'est pas un paquet
+      // à réclamer, c'est une saisie que le cabinet doit faire lui-même avant la date. Sans lui, le
+      // calendrier comptait « sur 5 clients » un portefeuille de six : le garage de l'exemple, dont
+      // le cabinet dépose lui-même la TVA, n'y figurait jamais — alors qu'un cabinet a soixante
+      // clients dont deux sur SkanFact (6.8.0), et que ce sont ceux-là qu'il déclare.
+      const tenu = d.manual && (opts.tenus || {})[d.id];
+      if (tenu) productionDuDossier(d, tenu, t, grace).forEach(m => parMois.set(m.mois, m.etape === 'saisi' ? 'a-saisir' : 'tenu'));
+      attendus.set(d, parMois);
+    });
     const concerne = (d, mois) => mois.some(m => attendus.get(d).has(m));
 
     const out = [];
@@ -1510,24 +1565,30 @@
 
   function ligneEcheance(id, label, date, mois, dossiers, todayIso, attendus, detail) {
     const liste = Array.isArray(mois) ? mois : [mois];
-    const manquants = [], provisoires = [];
+    // `aSaisir` : les dossiers tenus au cabinet dont un mois n'a encore aucune écriture (10.12.0).
+    // Jamais mêlés aux `manquants` : un manquant se RELANCE, un mois à saisir se saisit — relancer
+    // un client qui n'envoie rien serait la faute que la 10.12.0 a retirée du livre.
+    const manquants = [], provisoires = [], aSaisir = [], aSaisirIds = [];
     dossiers.forEach(d => {
       // Un mois qui n'est pas attendu de ce client (avant son début de mission) n'est pas un manque.
       const etats = liste.map(m => attendus.get(d).get(m)).filter(Boolean);
       if (!etats.length) return;
       if (etats.some(e => e === 'manquant')) manquants.push(d.name);
+      else if (etats.some(e => e === 'a-saisir')) { aSaisir.push(d.name); aSaisirIds.push(d.id); }
       else if (etats.some(e => e === 'provisoire')) provisoires.push(d.name);
     });
     const jours = Math.round((Date.parse(date + 'T00:00:00Z') - Date.parse(todayIso + 'T00:00:00Z')) / 86400000);
     const clients = dossiers.length;
+    const bloques = manquants.length + aSaisir.length;
     return {
       id, label, date, detail, mois: liste,
-      clients, manquants, provisoires,
-      prets: clients - manquants.length - provisoires.length,
+      clients, manquants, provisoires, aSaisir, aSaisirIds,
+      prets: clients - manquants.length - provisoires.length - aSaisir.length,
       jours, passee: jours < 0,
       // Ce qui décide de la couleur : une échéance proche avec des pièces qui manquent est le seul
-      // cas vraiment urgent. Une échéance proche mais complète n'a pas à crier.
-      level: manquants.length && jours <= 10 ? 'danger' : manquants.length ? 'warn' : jours <= 3 && jours >= 0 ? 'warn' : 'ok'
+      // cas vraiment urgent. Une échéance proche mais complète n'a pas à crier. Un mois qu'on doit
+      // encore saisir soi-même bloque la déclaration autant qu'un paquet qui n'est pas arrivé.
+      level: bloques && jours <= 10 ? 'danger' : bloques ? 'warn' : jours <= 3 && jours >= 0 ? 'warn' : 'ok'
     };
   }
 
@@ -1794,8 +1855,48 @@
     };
   }
 
+  // 10.12.0 (U-07) — la palette connaît la comptabilité. « balance » rendait « Rien ne correspond. » :
+  // elle ne cherchait que des clients, six pages et les panneaux des Réglages, alors que le comptable
+  // passe ses journées dans les quatorze écrans d'un dossier. Chaque mot de la recherche désigne soit
+  // un ÉCRAN (un mot de trois lettres au moins qui commence un mot de son libellé ou de ses
+  // synonymes : « rappro » → Banque, « tva » → Déclaration), soit un CLIENT (tout le reste :
+  // « béji balance »). Rend des couples { dossierId, dossierNom, ecran }, le dossier OUVERT d'abord,
+  // puis les clients nommés — ou tout le portefeuille quand aucun client n'est nommé et qu'aucun
+  // dossier n'est ouvert. Pure : l'écran ne fait qu'afficher et naviguer.
+  //   ecrans   : { cle: { label, mots } } — la table de l'écran, jamais recopiée ici
+  //   dossiers : [{ id, name, matricule, archived }]
+  function paletteCompta(q, ecrans, dossiers, courantId, max) {
+    const plafond = max || 8;
+    const mots = sansAccents(q).split(/\s+/).filter(Boolean);
+    if (!mots.length) return [];
+    const cles = Object.keys(ecrans || {});
+    const jetons = c => sansAccents(`${ecrans[c].label} ${ecrans[c].mots || ''}`).split(/[\s'’-]+/).filter(Boolean);
+    const designe = (m, c) => m.length >= 3 && jetons(c).some(t => t.startsWith(m));
+    const motsEcran = mots.filter(m => cles.some(c => designe(m, c)));
+    if (!motsEcran.length) return [];
+    const vues = cles.filter(c => motsEcran.every(m => designe(m, c)));
+    if (!vues.length) return [];
+    const motsClient = mots.filter(m => !motsEcran.includes(m));
+    const actifs = (dossiers || []).filter(d => d && d.id && !d.archived);
+    const nomme = d => motsClient.every(m => sansAccents(`${d.name || ''} ${d.matricule || ''}`).includes(m));
+    const courant = actifs.find(d => d.id === courantId);
+    let clients = motsClient.length ? actifs.filter(nomme) : (courant ? [courant] : actifs);
+    // Le dossier ouvert passe devant : c'est de lui qu'on parle quand on tape « balance » sur sa fiche.
+    clients = clients.slice().sort((a, b) => (b.id === courantId) - (a.id === courantId)
+      || String(a.name || '').localeCompare(String(b.name || ''), 'fr'));
+    const out = [];
+    for (const d of clients) {
+      for (const c of vues) {
+        if (out.length >= plafond) return out;
+        out.push({ dossierId: d.id, dossierNom: d.name || '', ecran: c, courant: d.id === courantId });
+      }
+    }
+    return out;
+  }
+
   return {
     FORMAT, MONTHS_FR, DEFAULT_STATE, DEFAULT_SETTINGS, DEFAULT_SAISIE, TVA_PERIODS, REGIMES, RELANCE_WAYS, SORTS,
+    sansAccents, paletteCompta,
     guidesDuDossier, correspondanceDuDossier, dateTapee,
     GRACE_MOIS, DORMANT_MOIS, dossierFacturable, comptageDossiers, licenceDuPaquet,
     monthLabel, monthListLabel, missingLabel, addMonth, monthsBetween, moisDeTravail, today, de, libelleLot,

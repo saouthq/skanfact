@@ -150,7 +150,9 @@ const étape = m => { pas++; console.log('\n' + pas + '. ' + m); };
   await attendre(500);
   const table = await win.evaluate(() => document.querySelector('#view').textContent);
   if (!/Coût employeur/.test(table)) throw new Error('la table des bulletins doit montrer le coût employeur');
-  if (!/brouillon/.test(table)) throw new Error('un bulletin sans écriture doit le DIRE');
+  // « à passer » (10.12.0) : « brouillon » disait un bulletin sans écriture avec le mot qu'on prend
+  // pour une écriture au brouillard.
+  if (!/à passer/.test(table)) throw new Error('un bulletin sans écriture doit le DIRE');
   ok('bulletin établi, net recalculé en direct, coût employeur affiché');
 
   // ---------------------------------------------------------------- 5. l'écriture de paie
@@ -183,7 +185,11 @@ const étape = m => { pas++; console.log('\n' + pas + '. ' + m); };
   }));
   if (!bouton.eteint) throw new Error('la paie du mois est passée : le bouton doit s\'éteindre');
   if (!/deux fois/.test(bouton.titre)) throw new Error('le bouton éteint doit dire POURQUOI : ' + bouton.titre);
-  if (!/écrite/.test(bouton.texte)) throw new Error('le bulletin doit afficher qu\'il est écrit');
+  // Au BROUILLARD, pas « écrite » (10.12.0) : la déclaration du même mois attend son écriture
+  // VALIDÉE, et les deux écrans ne se contredisent plus. L'étape suivante est nommée, en vert.
+  if (!/au brouillard/.test(bouton.texte)) throw new Error('le bulletin doit dire que son écriture est au brouillard');
+  const valider = await win.evaluate(() => { const b = document.querySelector('#pa-valider'); return b ? { primaire: b.classList.contains('btn-primary'), texte: b.textContent } : null; });
+  if (!valider || !valider.primaire) throw new Error('l\'étape suivante — valider l\'écriture — n\'est pas proposée en vert : ' + JSON.stringify(valider));
   await shot('04-ecriture');
   ok(`écriture ${paie.piece} en brouillard, équilibrée à ${deb.toFixed(3)}, et le bouton s'éteint en disant pourquoi`);
 

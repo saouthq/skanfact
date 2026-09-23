@@ -31,7 +31,7 @@
 //   npm run e2e:console-rendu
 
 const { playwright, ouvrirChromium, journal, dossierCaptures, capturePleine, RELACHE_CONSOLE,
-  SONDE_CONTRASTE, SONDE_COLONNES, SONDE_ENTETES, SONDE_ESPACEMENT, SONDE_LARGEUR } = require('./harnais');
+  SONDE_CONTRASTE, SONDE_COLONNES, SONDE_ENTETES, SONDE_ESPACEMENT, SONDE_LARGEUR, SONDE_TRONQUE } = require('./harnais');
 const { servir, SECRET } = require('./console-serveur');
 const path = require('path');
 const fs = require('fs');
@@ -49,6 +49,10 @@ const PERTE_MAX = 0.15;
 // applications, et pour la même raison — au-dessus, l'espace vient d'un `gap` DÉCIDÉ en CSS ; en
 // dessous, il ne vient de nulle part (9.8.3).
 const ECART_MIN = 4;
+// Le vide qu'une colonne peut garder pendant qu'une voisine coupe son texte (10.12.0) — la même
+// règle que dans les deux applications, parce que c'est la même sonde : la console coupe ses noms
+// longs dans un `.cut`, et une colonne de dates qui garde 100 px à côté est une place perdue.
+const VIDE_MAX = 40;
 // Les exceptions, NOMMÉES — une exception anonyme est un trou (9.4.10). `.tabs` est un contrôle
 // segmenté : ses boutons se touchent par construction, et l'onglet actif se reconnaît à sa pastille
 // pleine, pas à son écart. `td.acts` porte déjà sa propre marge (`margin:2px 4px 2px 0`), décidée
@@ -103,7 +107,7 @@ const APP_SECRET = 'secret-de-test-' + 'x'.repeat(20);
     body: JSON.stringify({ deviceId: poste, deviceNom: nom, plateforme: 'darwin', version, app })
   });
 
-  let boutons = 0, champs = 0, colonnes = 0, controles = 0, ecarts = 0, largeurs = 0;
+  let boutons = 0, champs = 0, colonnes = 0, controles = 0, ecarts = 0, largeurs = 0, tableaux = 0;
   // L'empreinte d'une licence RÉELLE, écrite par la route d'émission et relue par la page
   // publique. Une empreinte inventée ferait afficher « inconnue » : on mesurerait alors l'écran
   // du refus, jamais celui de la réponse — et c'est la réponse que des inconnus viennent lire.
@@ -167,6 +171,13 @@ const APP_SECRET = 'secret-de-test-' + 'x'.repeat(20);
     ecarts += e.mesures;
     e.colles.forEach(x => fautes.push(`${ou} — « ${x.bouton} » touche « ${x.voisin} » (${x.cote},`
       + ` ${x.sens}) : ${x.ecart} px, minimum ${ECART_MIN}`));
+
+    // Le texte coupé à côté du vide (10.12.0, trouvé dans le Cabinet au test humain). La console n'a
+    // pas de `#view` : tout son écran est le contenu (voir la sonde d'espacement, `racine: 'body'`).
+    const tq = await page.evaluate(SONDE_TRONQUE, { vide: VIDE_MAX, racines: ['body'] });
+    tableaux += tq.tables;
+    tq.gaspillages.forEach(x => fautes.push(`${ou} — « ${x.coupee} » coupé à ${x.visible} px pendant que la colonne`
+      + ` « ${x.colonne} » garde ${x.libre} px vides (maximum ${VIDE_MAX})`));
 
     // La sonde juge une BARRE D'ACTIONS — un conteneur flex où chaque contrôle réclame toute la
     // ligne (7.23.0). Elle ne juge PAS un formulaire : un champ de `#form .grid` est censé remplir
@@ -582,7 +593,7 @@ const APP_SECRET = 'secret-de-test-' + 'x'.repeat(20);
 
   if (bac.length) { console.error('\nErreurs de la page :\n' + bac.join('\n')); process.exit(2); }
   // Un instrument qui ne mesure rien annonce « tout va bien » : il doit échouer, pas se taire.
-  if (!boutons || !champs || !colonnes || !ecarts || !largeurs) { console.error('\nRien n\'a été mesuré : le parcours ne prouve rien.'); process.exit(2); }
+  if (!boutons || !champs || !colonnes || !ecarts || !largeurs || !tableaux) { console.error('\nRien n\'a été mesuré : le parcours ne prouve rien.'); process.exit(2); }
   const f1280 = flottaison.filter(x => / 1280 /.test(x.ou));
   if (f1280.length) {
     const pire = f1280.reduce((a, b) => (b.y > a.y ? b : a));
@@ -612,7 +623,7 @@ const APP_SECRET = 'secret-de-test-' + 'x'.repeat(20);
   // laisser un zéro passer pour une mesure.
   console.log(`\n${fiches.length} écrans photographiés dans ${OUT} (+ mesures.json) :`
     + ' chaque écran mesuré est un écran qu\'on peut regarder.');
-  console.log(`\n${j.total()} étapes — ${boutons} boutons, ${champs} champs, ${colonnes} colonnes, ${ecarts} écarts, ${largeurs} largeurs`
+  console.log(`\n${j.total()} étapes — ${boutons} boutons, ${champs} champs, ${colonnes} colonnes, ${ecarts} écarts, ${largeurs} largeurs, ${tableaux} tableaux jugés pour le texte coupé`
     + ` mesurés sur les dix écrans du rail, leurs formulaires et les huit surfaces qu'aucune adresse ne mène,`
     + ' en clair et en sombre,'
     + ' à 1440 et à 1280 : rien d\'illisible, rien de désaligné, rien de collé.'

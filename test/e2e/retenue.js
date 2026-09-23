@@ -188,8 +188,15 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
     return c.id;
   });
   await aller('#/client/' + idClient);
-  await win.waitForSelector('#edit');
-  await win.click('#edit');
+  // Depuis la 10.2.0, « Modifier la fiche » vit dans le menu « Actions » de l'en-tête (le budget de
+  // boutons d'une fiche) : ce parcours cherchait encore `#edit`, et personne ne l'avait relancé
+  // depuis (7.28.0 — un e2e se périme). On ouvre le menu comme un utilisateur.
+  await win.waitForSelector('.page-head .actions .row-menu-btn');
+  await win.click('.page-head .actions .row-menu-btn');
+  await win.waitForSelector('.row-menu');
+  const iMod = await win.evaluate(() => [...document.querySelectorAll('.row-menu .rm-l')].findIndex(x => /^Modifier la fiche/.test(x.textContent.trim())));
+  if (iMod < 0) throw new Error('le menu de la fiche client ne propose pas « Modifier la fiche »');
+  await win.click(`.row-menu button >> nth=${iMod}`);
   await win.waitForSelector('#cf select[name=withholdingRate]');
   const fiche = await lire('#cf select[name=withholdingRate]');
   if (fiche.valeur !== '0.75') throw new Error(`la fiche affiche « ${fiche.valeur} » au lieu de 0.75 : le taux est perdu`);

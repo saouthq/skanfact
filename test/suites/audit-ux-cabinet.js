@@ -1,6 +1,7 @@
 'use strict';
 // ============================================================================================
-// L'audit UI/UX du Cabinet, corrigé (10.12.0) — U-01 à U-30 d'`A-FAIRE.md` § 4 bis.
+// L'audit UI/UX du Cabinet, corrigé (10.12.0) — U-01 à U-30, l'audit du 23/09/2026 (sorti
+// d'`A-FAIRE.md` une fois corrigé, comme toute ligne du carnet ; les règles sont dans CLAUDE.md).
 //
 // L'audit a été mené comme un comptable l'aurait vécu : l'application ouverte sur un écran
 // virtuel, parcourue à la souris et au clavier, et chaque constat relu dans le code avant d'être
@@ -352,6 +353,149 @@ function tablesCompta(app) {
   return { ONGLETS_COMPTA, GROUPES_COMPTA, ONGLETS_SANS_LIVRE };
 }
 
+// Trouvé en passant par e2e:aide, dans l'app ENTREPRISE : deux panneaux asynchrones des Paramètres
+// écrivaient dans un élément APRÈS une attente, alors que la page avait changé — « Cannot set
+// properties of null », une exception qui échappait à tout le monde (règle 7.6.0).
+t('Un panneau asynchrone des Paramètres n\'écrit que dans une page encore affichée (7.6.0)', () => {
+  const app = code('src', 'renderer', 'app.js');
+  ['async function drawDossiers(', 'const drawExternal = async () =>'].forEach(debut => {
+    const i = app.indexOf(debut);
+    assert.ok(i > 0, 'introuvable : ' + debut);
+    const apres = app.slice(app.indexOf('await bridge.listDossiers()', i), app.indexOf('await bridge.listDossiers()', i) + 900);
+    const garde = apres.indexOf('if (!el.isConnected) return;');
+    const ecriture = apres.search(/\$\('#[a-z-]+'\)\.(value|hidden|innerHTML|textContent) =/);
+    assert.ok(garde > 0, `${debut} écrit après son attente sans vérifier que la page est encore là`);
+    assert.ok(ecriture < 0 || garde < ecriture, `${debut} écrit dans la page AVANT de vérifier qu'elle est encore là`);
+  });
+});
+
+// ================================================================ lot D — trouver
+
+// U-07 : « balance » rendait « Rien ne correspond. » La palette cherche désormais dans les quatorze
+// écrans de comptabilité — sur les VRAIES tables de l'écran, évaluées, jamais recopiées ici.
+t('U-07 : la palette connaît les écrans de comptabilité, et les couples « client + écran »', () => {
+  const app = code('src', 'cabinet', 'renderer', 'app.js');
+  const { ONGLETS_COMPTA } = tablesCompta(app);
+  const m = /const MOTS_COMPTA = (\{[\s\S]*?\n  \});/.exec(app);
+  assert.ok(m, 'la table des synonymes des écrans a disparu');
+  const MOTS = donnees(m[1]);
+  // Deux tables séparées divergent toujours : chaque écran a ses mots, et aucun mot ne vise un
+  // écran qui n'existe pas.
+  assert.deepStrictEqual(Object.keys(MOTS).sort(), Object.keys(ONGLETS_COMPTA).sort(),
+    'MOTS_COMPTA et ONGLETS_COMPTA ne nomment pas les mêmes écrans : un écran naîtrait introuvable');
+  const ecrans = Object.fromEntries(Object.keys(ONGLETS_COMPTA).map(k => [k, { label: ONGLETS_COMPTA[k], mots: MOTS[k] }]));
+  const dossiers = [
+    { id: 'A', name: 'Garage Ben Salem', matricule: '1111111A' },
+    { id: 'B', name: 'Société Béji Frères', matricule: '2222222B' },
+    { id: 'C', name: 'Pharmacie El Menzah', matricule: '3333333C' },
+    { id: 'Z', name: 'Béji Archivé', matricule: '9999999Z', archived: true }
+  ];
+  const vues = r => r.map(x => x.dossierId + ':' + x.ecran);
+  // Sur la fiche ouverte, « balance » ouvre SA balance — et d'elle seule.
+  assert.deepStrictEqual(vues(C.paletteCompta('balance', ecrans, dossiers, 'C')), ['C:balance']);
+  // « béji balance » : les autres mots nomment le client, accents ignorés, archivés exclus.
+  assert.deepStrictEqual(vues(C.paletteCompta('beji balance', ecrans, dossiers, 'C')), ['B:balance']);
+  assert.deepStrictEqual(vues(C.paletteCompta('Béji BALANCE', ecrans, dossiers, null)), ['B:balance']);
+  // Hors d'une fiche, « balance » propose le portefeuille actif, par nom, borné.
+  assert.deepStrictEqual(vues(C.paletteCompta('balance', ecrans, dossiers, null)), ['A:balance', 'C:balance', 'B:balance'],
+    'hors d\'une fiche, chaque client actif est proposé, par ordre alphabétique');
+  assert.ok(C.paletteCompta('saisie', ecrans, Array.from({ length: 40 }, (_, i) => ({ id: 'D' + i, name: 'Client ' + i })), null).length <= 8, 'la liste est bornée');
+  // Les mots qu'un comptable tape, qui ne sont pas des libellés.
+  assert.deepStrictEqual(vues(C.paletteCompta('rapprochement', ecrans, dossiers, 'C')), ['C:banque']);
+  assert.deepStrictEqual(vues(C.paletteCompta('tva', ecrans, dossiers, 'C')), ['C:declaration']);
+  assert.deepStrictEqual(vues(C.paletteCompta('amortissements', ecrans, dossiers, 'C')), ['C:immobilisations']);
+  assert.deepStrictEqual(vues(C.paletteCompta('grand livre', ecrans, dossiers, 'C')), ['C:grand-livre'], '« grand livre » ne vise que le grand livre');
+  assert.deepStrictEqual(vues(C.paletteCompta('clôture', ecrans, dossiers, 'C')), ['C:exercice']);
+  // Ce qui n'est pas un écran ne rend rien ici — la recherche de clients s'en charge.
+  assert.deepStrictEqual(C.paletteCompta('garage', ecrans, dossiers, 'C'), []);
+  assert.deepStrictEqual(C.paletteCompta('ba', ecrans, dossiers, 'C'), [], 'deux lettres ne désignent pas un écran');
+  assert.deepStrictEqual(C.paletteCompta('', ecrans, dossiers, 'C'), []);
+  // Et la palette s'en sert : elle ne cherche plus seulement des clients et des réglages.
+  const pal = tranche(app, 'function openPalette(');
+  assert.ok(/K\.paletteCompta\(/.test(pal), 'la palette ne cherche pas dans les écrans de comptabilité');
+  assert.ok(!/kind: 'action', main: `Réglages/.test(pal), 'un réglage est encore étiqueté « action »');
+});
+
+// Vu au test humain : « rapprochement » dans Cmd+K rendait l'écran Banque et jamais l'article qui
+// explique comment on rapproche. La palette de l'app entreprise liste ses articles depuis toujours :
+// le jumeau manquant (7.3.0). On juge le VRAI morceau de la palette, évalué sur le vrai corpus.
+t('La palette propose les articles d\'Aide — cherchés dans leur corps, classés, bornés, et seulement sur une question', () => {
+  const G = require('../../src/cabinet/renderer/cabguide.js');
+  const app = code('src', 'cabinet', 'renderer', 'app.js');
+  const pal = tranche(app, 'function openPalette(');
+  const bloc = (/(const articlesPalette = [\s\S]*?const aidesPour = [\s\S]*?\}\)\);)\n/.exec(pal) || [])[1];
+  assert.ok(bloc, 'la palette ne connaît plus les articles d\'Aide');
+  const ctx = { G, K: { sansAccents: C.sansAccents }, location: { hash: '' } };
+  const aidesPour = require('vm').runInNewContext(`(() => { let aideQ = 'reste'; ${bloc} return { aidesPour, lire: () => aideQ }; })()`, ctx);
+  const titres = q => aidesPour.aidesPour(q).map(x => x.main);
+  const banque = G.ARTICLES.find(a => /rapprochement/i.test(a.t));
+  assert.ok(banque, 'le corpus n\'a plus d\'article sur le rapprochement');
+  // Le classement se prouve sur un mot dont le PREMIER article du corpus ne le porte que dans son
+  // corps : sur « rapprochement », l'article de la banque vient déjà en tête sans classer, et le
+  // test restait vert avec le tri retiré (des données qui ne discriminent pas, 10.0.0).
+  const naturel = G.ARTICLES.find(a => /banque/i.test(C.sansAccents(a.t + ' ' + a.s + ' ' + a.d)));
+  assert.ok(naturel && naturel.id !== banque.id, 'le jeu ne discrimine plus : le premier article qui parle de banque est déjà celui de la banque');
+  assert.strictEqual(titres('banque')[0], banque.t, 'l\'article dont le TITRE porte le mot doit venir en tête');
+  // « lettrage » n'est dans aucun titre : c'est le CORPS qui répond (7.27.0).
+  const corps = G.ARTICLES.filter(a => !/lettrage/i.test(a.t + ' ' + a.s) && /lettrage/i.test(a.d));
+  assert.ok(corps.length, 'le jeu ne discrimine plus : il faut un article qui ne parle de lettrage que dans son corps');
+  assert.ok(corps.some(a => titres('lettrage').includes(a.t)), 'la palette ne cherche que dans les titres : « lettrage » ne trouve pas son article');
+  assert.ok(G.ARTICLES.some(a => /é/.test(a.d)) && titres('ecriture').length, 'les accents empêchent de trouver un article');
+  assert.ok(aidesPour.aidesPour('e').length <= 4, 'la palette montre d\'abord ce qu\'on OUVRE : quatre articles au plus');
+  // Ouvrir un article vide la recherche de l'Aide, sinon l'article s'ouvre filtré (7.23.0).
+  aidesPour.aidesPour('rapprochement')[0].go();
+  assert.strictEqual(aidesPour.lire(), '', 'ouvrir un article depuis la palette garde la recherche de l\'Aide : la page peut s\'ouvrir vide');
+  assert.strictEqual(ctx.location.hash, '#/aide/' + banque.id);
+  // Sans question, rien : la liste de départ reste celle des gestes.
+  assert.ok(/items = ecrans\.concat\(rows, acts, qa \? aidesPour\(qa\) : \[\]\)/.test(pal), 'les articles s\'affichent sans question, ou ne s\'affichent plus du tout');
+  // Le titre passe avant sa description : le Cabinet pose `.sub` À CÔTÉ de `.main`.
+  const css = lireSource('src', 'cabinet', 'renderer', 'cabinet.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.ok(/\.palette \.res \.main:has\(\+ \.sub\) \{ flex: 0 1 auto; \}/.test(css), 'le titre d\'une ligne de palette se coupe encore avant sa description');
+  assert.ok(/\.palette \.res \.main \+ \.sub \{[^}]*flex: 1 1 0;[^}]*min-width: 0;[^}]*text-overflow: ellipsis/.test(css), 'la description ne cède pas sa place au titre');
+});
+
+// U-08 : dix articles, et aucun ne couvrait Banque, Déclaration, Immobilisations, Paie, Révision,
+// Exercice ni Liasse — « rapprochement » ne trouvait rien. Un article par écran, qui finit par son
+// geste, et la bulle du titre de l'écran y mène. La recherche est jugée par la VRAIE fonction de
+// l'Aide, évaluée sur le vrai corpus.
+t('U-08 : un article par écran de comptabilité, qui finit par son geste — et la bulle de l\'écran y mène', () => {
+  const G = require('../../src/cabinet/renderer/cabguide.js');
+  const app = code('src', 'cabinet', 'renderer', 'app.js');
+  const f = /function aideTrouves\(q\) \{[\s\S]*?\n  \}/.exec(app);
+  const sb = /const sansBalises = (x => [^\n]*);/.exec(app);
+  assert.ok(f && sb, 'la recherche de l\'Aide est introuvable');
+  const trouver = evaluer(`(function () { const sansBalises = ${sb[1]}; ${f[0]}; return aideTrouves; })()`, { G, K: C });
+  const premier = q => (trouver(q)[0] || {}).id;
+  assert.strictEqual(premier('rapprochement'), 'banque', '« rapprochement » ne mène pas à l\'article de la banque');
+  assert.ok(trouver('declaration').some(a => a.id === 'declaration'), 'un mot tapé sans accent ne trouve pas son article');
+  assert.ok(trouver('tva').some(a => a.id === 'declaration'));
+  assert.ok(trouver('amortissement').some(a => a.id === 'immobilisations'));
+  assert.ok(trouver('liasse').some(a => a.id === 'liasse'));
+  const ECRANS = { banque: 'vueBanque', declaration: 'vueDeclaration', revision: 'vueRevision', paie: 'vuePaie',
+    immobilisations: 'vueImmobilisations', exercice: 'vueCloture', liasse: 'vueLiasse' };
+  Object.entries(ECRANS).forEach(([ecran, vue]) => {
+    const a = G.ARTICLES.find(x => x.geste && x.geste.ecran === ecran);
+    assert.ok(a, `aucun article ne mène à l'écran « ${ecran} »`);
+    assert.ok(a.d.length > 600 && a.t && a.s, `l'article de « ${ecran} » est trop court pour expliquer quoi que ce soit`);
+    // La bulle posée DANS l'écran mène à son article : sans elle, l'article existe et personne ne le trouve.
+    const corps = tranche(app, `function ${vue}(`);
+    const cles = [...corps.matchAll(/info\('([^']+)'\)/g)].map(m => m[1]);
+    assert.ok(cles.some(k => G.INFO[k] && G.INFO[k].a === a.id), `aucune bulle de l'écran « ${ecran} » ne mène à « ${a.t} »`);
+  });
+  // Toute bulle qui promet un article le trouve.
+  Object.entries(G.INFO).filter(([, v]) => v.a).forEach(([k, v]) =>
+    assert.ok(G.ARTICLES.some(x => x.id === v.a), `la bulle « ${k} » mène à un article qui n'existe pas : ${v.a}`));
+  // Et une phrase fausse depuis la 9.9.0 a disparu.
+  assert.ok(!G.ARTICLES.some(x => /ne gère pas encore plusieurs collaborateurs/.test(x.d)),
+    'l\'Aide dit encore que le Cabinet ne gère pas plusieurs collaborateurs');
+  // Le geste d'un écran de dossier vise le dossier ouvert, ou fait CHOISIR le dossier — jamais un écran vide.
+  assert.ok(/function gesteAide\(g\)[\s\S]*?livresState\.dossierId[\s\S]*?Choisir le dossier/.test(app),
+    'le geste d\'un article ne sait pas mener à l\'écran d\'un dossier');
+  // La bulle ouvre l'article, et se referme en le faisant.
+  assert.ok(/ip-more[\s\S]{0,400}lien\.onclick = \(\) => closeInfoPop\(\)/.test(tranche(app, 'function openInfoPop(')),
+    'la bulle ne mène pas à son article, ou reste ouverte par-dessus');
+});
+
 t('U-06 : quatorze écrans, trois groupes dans l\'ordre du mois, chaque écran dans UN groupe', () => {
   const app = code('src', 'cabinet', 'renderer', 'app.js');
   const { ONGLETS_COMPTA, GROUPES_COMPTA, ONGLETS_SANS_LIVRE } = tablesCompta(app);
@@ -524,7 +668,8 @@ t('U-17 / U-29 : une forme par état de production, et le badge hors de la cellu
   const signes = donnees(/const SIGNE_PRODUCTION = (\{[^}]*\});/.exec(app)[1]);
   const legende = donnees(/const LEGENDE_PRODUCTION = (\[[\s\S]*?\]);/.exec(app)[1]);
   // Chaque étape que le MOTEUR peut rendre a sa forme et son mot, lus dans cabcore — jamais recopiés.
-  const expr = /etape: (!recu \? '[^\n]*)/.exec(cab)[1];
+  const expr = (/etape: ([^\n]*'recu'[^\n]*)/.exec(cab) || [])[1];
+  assert.ok(expr, 'l\'expression qui décide de l\'étape de production est introuvable');
   const etapes = [...expr.matchAll(/'([a-z]+)'/g)].map(m => m[1]).concat(['hors']);
   etapes.forEach(e => {
     assert.ok(signes[e], `l'étape « ${e} » n'a pas de forme`);
@@ -614,10 +759,56 @@ t('H-4 : une racine ne juge que SES lignes — la fiche ne retire plus les actio
   assert.strictEqual(typeof piece2.onclick, 'function', 'le journal dessiné après la fiche doit avoir ses actions');
 });
 
+// Vu au test humain, après la contre-passation de PAIE-2026-08 : l'originale ne garde qu'une action,
+// le miroir porte « contre-passation ↩ n° 65 », et les deux élargissaient le livre-journal jusqu'à ce
+// que la colonne d'actions collante recouvre le Crédit. `e2e:cabinet-rendu` contre-passe désormais
+// une pièce par les vrais boutons et mesure ce journal-là ; ces deux tests tiennent les deux causes.
+t('Une action SEULE porte son mot court quand elle en a un — la phrase entière reste lue et survolée', () => {
+  const RM = chargerRowMenu();
+  const El = fauxDom();
+  const racine = new El(null, {});
+  const b = new El(racine, { 'data-rowmenu': 'E:cp' });
+  let fait = 0;
+  RM.brancherMenus(racine, () => [{ icon: 'texte', label: 'Joindre un justificatif…', court: 'Justificatif…',
+    hint: 'Le fichier est copié dans le dossier du client', run: () => { fait++; } }]);
+  assert.ok(/<span>Justificatif…<\/span>/.test(b.innerHTML), 'le bouton seul porte encore la phrase entière : 203 px dans la colonne d\'actions, le Crédit dessous');
+  assert.strictEqual(b.attrs['aria-label'], 'Joindre un justificatif…', 'un lecteur d\'écran doit entendre la phrase entière, pas le mot court');
+  assert.ok(b.title.includes('Joindre un justificatif…') && b.title.includes('copié'), 'l\'infobulle doit dire la phrase ET son explication');
+  b.onclick({ stopPropagation: () => {} });
+  assert.strictEqual(fait, 1, 'le bouton court n\'exécute plus son action');
+  // Sans mot court, rien ne change : la phrase EST le bouton (7.29.0).
+  const autre = new El(null, {});
+  const b2 = new El(autre, { 'data-rowmenu': 'X:1' });
+  RM.brancherMenus(autre, () => [{ icon: 'loupe', label: 'Ouvrir le paquet', hint: 'Dans le Finder', run: () => {} }]);
+  assert.ok(/<span>Ouvrir le paquet<\/span>/.test(b2.innerHTML) && !('aria-label' in b2.attrs), 'une action sans mot court a changé de forme');
+  // Et le Cabinet s'en sert là où la phrase coûtait le Crédit : l'action du justificatif.
+  const app = code('src', 'cabinet', 'renderer', 'app.js');
+  const actions = tranche(app, 'function actionsEcriture(');
+  assert.ok(/label: e\.pieceJointe \? 'Remplacer le justificatif…' : 'Joindre un justificatif…',\s*court: '[^']{6,}'/.test(actions),
+    'l\'action du justificatif n\'a plus de mot court : seule sur une pièce contre-passée, elle élargit le journal');
+});
+
+t('Le badge d\'un miroir passe SOUS sa référence — jamais dans une cellule qui interdit le retour à la ligne', () => {
+  const app = code('src', 'cabinet', 'renderer', 'app.js');
+  const usages = [...app.matchAll(/miroirBadge\(e\)/g)].map(m => m.index);
+  assert.ok(usages.length >= 2, 'le journal ET le grand livre doivent montrer le miroir');
+  usages.forEach(i => {
+    const cellule = app.slice(app.lastIndexOf('<td', i), i);
+    assert.ok(!/^<td[^>]*class="[^"]*\bnw\b/.test(cellule), `le badge d'un miroir vit dans une cellule « nw » : « contre-passation ↩ n° 65 » élargit la colonne Pièce (${cellule.slice(0, 60)})`);
+    assert.ok(/<span class="nw">\$\{esc\(e\.piece\)\}<\/span>/.test(cellule), 'la référence d\'une pièce peut se couper à ses tirets : elle doit rester d\'un bloc');
+  });
+  // La colonne collante porte la teinte de sa ligne : son fond opaque coupait la bande d'un miroir
+  // ou d'un brouillard juste avant le bouton.
+  const css = lireSource('src', 'cabinet', 'renderer', 'cabinet.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  ['br-ligne', 'cp-miroir'].forEach(k => assert.ok(new RegExp(`\\.scroll-x table\\.list tr\\.${k} td\\.row-actions[^{]*\\{[^}]*background: var\\(--info-soft\\)`).test(css),
+    `la colonne d'actions d'une ligne « ${k} » garde le fond du panneau : la bande de la ligne s'arrête avant son bouton`));
+});
+
 t('H-5 : chaque dossier rouvre sur l\'écran de comptabilité où on l\'a laissé', () => {
   const app = code('src', 'cabinet', 'renderer', 'app.js');
   const livresState = { dossierId: '', onglet: 'journal', dernierParGroupe: {} };
-  const changer = evaluer(tranche(app, 'function changerDeDossierCompta('), { livresState, ecransCompta: {} });
+  const declState = { mois: '', ouverte: '' };
+  const changer = evaluer(tranche(app, 'function changerDeDossierCompta('), { livresState, ecransCompta: {}, declState });
   changer('BEJI');
   assert.strictEqual(livresState.onglet, 'journal', 'un dossier jamais ouvert s\'ouvre sur le livre-journal');
   livresState.onglet = 'saisie'; livresState.dernierParGroupe = { saisir: 'saisie' };
@@ -631,9 +822,14 @@ t('H-5 : chaque dossier rouvre sur l\'écran de comptabilité où on l\'a laiss�
   assert.strictEqual(livresState.onglet, 'balance', 'le second dossier retrouve aussi le sien');
   // Le reste repart à zéro : un filtre qu'on ne voit pas cache ce qu'on est venu chercher (9.4.6).
   livresState.q = 'loyer'; livresState.journal = 'AC';
+  // Le mois de déclaration choisi chez l'un (10.12.0) : juillet 2026 du garage ouvrait la
+  // déclaration de juillet 2026 d'un client dont on regarde 2025.
+  declState.mois = '2026-07'; declState.ouverte = 'tva';
   changer('BEJI');
   assert.strictEqual(livresState.q, '', 'une recherche d\'un dossier ne suit pas dans l\'autre');
   assert.strictEqual(livresState.journal, '', 'un filtre de journal ne suit pas dans l\'autre');
+  assert.strictEqual(declState.mois, '', 'le mois de déclaration d\'un dossier suit dans l\'autre');
+  assert.strictEqual(declState.ouverte, '', 'la case ouverte d\'un dossier suit dans l\'autre');
   assert.ok(/changerDeDossierCompta\(dossier\.id\);/.test(app), 'la fiche ne passe pas par la mémoire par dossier');
 });
 
@@ -955,12 +1151,15 @@ t('U-11 / U-13 / U-23 / U-24 : la Paie — un seul vert à l\'étape suivante, d
   // U-11 — jugée sur ce qu'elle rend : « + Bulletin… » était vert sur un dossier sans salarié.
   const m = /const suivante = ([^;]+);/.exec(vue);
   assert.ok(m, 'l\'étape suivante de la Paie n\'est plus calculée');
-  const suivante = (actifs, manquants, aPasser) => evaluer(m[1], { actifs, manquants, aPasser });
+  const suivante = (actifs, manquants, aPasser, auBrouillard) => evaluer(m[1], { actifs, manquants, aPasser, auBrouillard: !!auBrouillard });
   assert.strictEqual(suivante([], 0, 0), 'salarie', 'sans salarié, l\'étape suivante est de le déclarer');
   assert.strictEqual(suivante([{}], 1, 0), 'bulletin', 'un salarié sans bulletin : l\'étape suivante est le bulletin');
   assert.strictEqual(suivante([{}], 0, 1), 'ecrire', 'les bulletins faits : l\'étape suivante est l\'écriture');
-  assert.strictEqual(suivante([{}], 0, 0), '', 'un mois écrit n\'a plus d\'étape suivante');
-  [['pa-salarie', 'salarie'], ['pa-bulletin', 'bulletin'], ['pa-ecrire', 'ecrire']].forEach(([id, pas]) =>
+  // 10.12.0 — une écriture de paie au BROUILLARD n'est pas encore dans les livres : l'étape suivante
+  // est de la valider, pas « rien » (la Paie disait « écrite » pendant que la déclaration l'attendait).
+  assert.strictEqual(suivante([{}], 0, 0, true), 'valider', 'une paie au brouillard n\'a pas d\'étape suivante');
+  assert.strictEqual(suivante([{}], 0, 0), '', 'un mois écrit et validé n\'a plus d\'étape suivante');
+  [['pa-salarie', 'salarie'], ['pa-bulletin', 'bulletin'], ['pa-ecrire', 'ecrire'], ['pa-valider', 'valider']].forEach(([id, pas]) =>
     assert.ok(new RegExp(`class="\\$\\{cls\\('${pas}'\\)\\}" id="${id}"`).test(vue), `${id} ne prend pas la couleur de SON étape`));
   assert.ok(!/btn-primary/.test(vue.replace(/' btn-primary'/, '')), 'un second bouton principal est écrit en dur dans la Paie');
   // U-23 — la raison d'un bouton éteint se LIT à côté, pas seulement dans son infobulle.
@@ -1032,11 +1231,13 @@ t('U-11 / U-20 / U-23 : Immobilisations et Inventaire — un seul vert à l\'ét
   // d'acquisitions sans fiche et d'écritures en attente.
   const m = /const suivante = ([^;]+);/.exec(im);
   assert.ok(m, 'l\'étape suivante des immobilisations n\'est plus calculée');
-  const suivante = (aCreer, aEcrire, rows) => evaluer(m[1], { d: { aCreer }, e: { aEcrire, rows } });
+  // 10.12.0 — retourné vers la règle : le vert suit ce qui est DÛ (`dues`, la fonction du moteur),
+  // plus ce qui est seulement préparable — en septembre, la dotation de décembre ne l'est pas.
+  const suivante = (aCreer, dues, rows) => evaluer(m[1], { d: { aCreer }, dues, e: { aEcrire: dues, rows } });
   assert.strictEqual(suivante([{}], 2, [{}]), 'creer', 'une acquisition sans fiche passe avant tout : elle ne s\'amortit nulle part');
-  assert.strictEqual(suivante([], 2, [{}]), 'ecrire', 'des dotations en attente : l\'étape suivante est de les écrire');
+  assert.strictEqual(suivante([], 2, [{}]), 'ecrire', 'des écritures dues en attente : l\'étape suivante est de les écrire');
   assert.strictEqual(suivante([], 0, []), 'neuf', 'un exercice sans bien : l\'étape suivante est le premier bien');
-  assert.strictEqual(suivante([], 0, [{}]), '', 'tout est écrit : plus rien n\'est vert');
+  assert.strictEqual(suivante([], 0, [{}]), '', 'rien de dû : plus rien n\'est vert');
   [['im-neuf', 'neuf'], ['im-ecrire', 'ecrire']].forEach(([id, pas]) =>
     assert.ok(new RegExp(`class="\\$\\{cls\\('${pas}'\\)\\}" id="${id}"`).test(im), `${id} ne prend pas la couleur de SON étape`));
   // Le seul vert écrit en dur est celui de la PREMIÈRE acquisition sans fiche — il n'existe que
@@ -1373,10 +1574,12 @@ t('U-21 : la CNSS ne vise que les employeurs que les livres connaissent — et n
   assert.ok(!/ne sait pas lesquels/.test(avec.detail + sans.detail), 'l\'aveu d\'ignorance est revenu alors que les livres savent');
   // « À faire » lit la MÊME connaissance que la page (règle 6.8.1).
   const cc = lireSource('src', 'cabinet', 'cabcore.js');
-  assert.ok(/echeances\(state, todayIso, \{ avant: 1, apres: 1, employeurs: \(opts \|\| \{\}\)\.employeurs \}\)/.test(cc), '« À faire » compte la CNSS sans la connaissance des employeurs');
+  // (La règle, pas la forme : l'appel peut porter d'autres connaissances — les livres des dossiers
+  // tenus au cabinet l'ont rejoint en 10.12.0 —, il doit porter CELLE-CI.)
+  assert.ok(/echeances\(state, todayIso, \{ avant: 1, apres: 1, employeurs: \(opts \|\| \{\}\)\.employeurs[,\s]/.test(cc), '« À faire » compte la CNSS sans la connaissance des employeurs');
   const app = code('src', 'cabinet', 'renderer', 'app.js');
-  assert.ok(/K\.echeances\(S, null, \{ employeurs: employeursConnus\(\) \}\)/.test(app), 'la page Échéances ne passe plus la connaissance des employeurs');
-  assert.ok(/K\.cabinetTodo\(S, null, \{[^}]*employeurs: employeursConnus\(\) \}\)/.test(app), '« À faire » ne reçoit plus la connaissance des employeurs');
+  assert.ok(/K\.echeances\(S, null, \{ employeurs: employeursConnus\(\)[,\s]/.test(app), 'la page Échéances ne passe plus la connaissance des employeurs');
+  assert.ok(/K\.cabinetTodo\(S, null, \{[^}]*employeurs: employeursConnus\(\)[,\s]/.test(app), '« À faire » ne reçoit plus la connaissance des employeurs');
   // Et l'index la range, sinon rien ne la porte jusqu'à l'écran.
   assert.ok(/employeur: KC\.moisEmployeur\(livre\)/.test(lireSource('src', 'cabinet', 'cabstore.js')), 'l\'index des livres ne range plus ce qu\'il sait des employeurs');
 });
@@ -1526,6 +1729,768 @@ t('Aucun caractère combinant écrit en dur dans le code : l\'intervalle des acc
   assert.ok(fichiers.length > 50, 'le parcours des sources ne voit presque rien : ' + fichiers.length);
   const fautifs = fichiers.filter(f => /[\u0300-\u036f]/.test(fs.readFileSync(f, 'utf8'))).map(f => path.relative(racine, f));
   assert.deepStrictEqual(fautifs, [], 'un caractère combinant écrit en dur : ' + fautifs.join(', '));
+});
+
+// ================================================================ lot D — U-10 : l'exemple qui montre
+
+// Le livre d'un client SUR SkanFact, bâti comme l'exemple le bâtit : une ouverture, puis ses
+// paquets relus par le moteur. Les gabarits sont figés (2025-09 → 2026-08) : la date est fixée
+// aussi, et le test ne dépend pas du jour où il tourne.
+const V = require('../../src/cabinet/exemple-vitrine.js');
+function livreVitrine() {
+  const G = require('../../src/cabinet/exemple-paquets.json');
+  const l = KC.livreVide('MF:TEST', 2026);
+  const o = V.ouvrirClientSkanfact(l, { qui: 'test', quand: 1 });
+  assert.ok(o.ok && !o.deja, 'l\'ouverture de la vitrine n\'a pas été posée');
+  // Un client venu à SkanFact APRÈS janvier, comme celui de l'exemple : son paquet de janvier (et
+  // l'à-nouveau qu'il porte) n'existe pas — c'est le cabinet qui pose l'ouverture.
+  G.mois.filter(m => m.mois >= '2026-02' && m.mois <= '2026-12').sort((a, b) => a.mois.localeCompare(b.mois)).forEach((m, i) => {
+    const csv = m.fichiers.find(f => f.chemin === 'journaux/ecritures.csv').texte;
+    KC.importerPaquet(l, m.mois, KC.piecesDepuisLignes(KC.entreesDepuisCsv(csv)), true, 'import', 10 + i);
+  });
+  return l;
+}
+
+t('U-10 : la banque de l\'exemple — des relevés qui se bouclent, une ambiguïté jamais posée, un suspens de chaque côté, et un écart tout entier expliqué', () => {
+  const l = livreVitrine();
+  // Un livre qui porte déjà un à-nouveau n'en reçoit pas un second : l'ouverture compterait deux fois.
+  const nAN = l.ecritures.filter(e => e.journal === 'AN').length;
+  assert.ok(V.ouvrirClientSkanfact(l, { qui: 'test', quand: 2 }).deja, 'une seconde ouverture a été tentée');
+  assert.strictEqual(l.ecritures.filter(e => e.journal === 'AN').length, nAN);
+  const b = V.garnirBanque(l, { qui: 'test', quand: 100, aujourdhui: '2026-09-23' });
+  assert.ok(b.ok, b.motif);
+  assert.strictEqual(b.mois, '2026-08', 'le relevé montré est celui du dernier mois TERMINÉ');
+  assert.ok(b.precedents.length >= 3, 'la banque doit être rapprochée depuis le début de l\'exercice');
+  const R = b.releve;
+  assert.strictEqual(l.releves[0].id, R.id, 'le mois montré s\'importe en premier : c\'est lui que l\'écran ouvre');
+  // L'ambiguïté : deux candidats du même montant, et l'automatique ne pose RIEN (9.5.0).
+  const amb = (b.auto.detail || []).find(x => x.candidats.some(c => c.ecritureId === b.ambigu.ecritureId));
+  assert.ok(amb, 'le règlement annoncé n\'est candidat d\'aucune ligne : l\'ambiguïté n\'existe pas');
+  assert.ok(amb.candidats.length >= 2 && amb.niveau !== 'certain', 'une ambiguïté n\'est jamais « certaine »');
+  const ligneAmb = R.lignes.find(x => x.id === amb.ligneId);
+  assert.strictEqual(ligneAmb.rapprochement.ecritureId, '', 'l\'automatique a posé une ligne ambiguë');
+  assert.ok(['probable', 'a-confirmer'].includes(ligneAmb.rapprochement.niveau),
+    'la ligne ambiguë se dit « sans réponse » : l\'écran affirmerait qu\'il n\'y a rien en face');
+  assert.strictEqual(l.ecritures.find(e => e.id === b.ambigu.ecritureId).statut, 'brouillard');
+  assert.ok(b.auto.compte.certain >= 3, 'rien de certain : le relevé ne montre pas ce que le moteur sait faire');
+  // Une ligne que le livre n'a pas (la commission), et un encaissement que la banque n'a pas encore.
+  const S = KC.suspens(l, R.id);
+  assert.ok(S.banque.some(x => /COMMISSION/.test(x.libelle) && x.montant < 0), 'la commission sans écriture manque');
+  assert.ok(S.livre.some(x => x.date === b.tardive.date && x.montant === b.tardive.montant), 'l\'encaissement crédité le mois suivant manque');
+  assert.strictEqual(S.avant, 0, 'l\'écart doit s\'expliquer tout entier par les suspens du mois');
+  assert.strictEqual(KC.round3(S.ecart - S.ecartSuspens), 0);
+  // Les mois d'avant : entiers et rapprochés, sans rien d'« avant ».
+  l.releves.filter(r => r.id !== R.id).forEach(r => {
+    const s = KC.suspens(l, r.id);
+    assert.deepStrictEqual([s.ecart, s.avant, s.banque.length, s.livre.length], [0, 0, 0, 0], `le relevé ${r.du} ne tombe pas juste`);
+  });
+  assert.ok(KC.balanceDepuisLignes(KC.lignesDuLivre(l), KC.soldesDepuisOuverture(l)).ok, 'la vitrine a déséquilibré le livre');
+  // Et une suggestion se REJUGE : le doublon supprimé, l'automatique pose la bonne écriture.
+  KC.supprimerEcriture(l, b.ambigu.ecritureId, 'test', 101);
+  KC.rapprocherAuto(l, R.id, { date: '2026-09-23' });
+  assert.strictEqual(R.lignes.find(x => x.id === amb.ligneId).rapprochement.niveau, 'certain', 'une ambiguïté levée ne se rejuge jamais');
+});
+
+// Vu au test humain sur le garage de l'exemple, en septembre : « Immobilisations 2 » sur l'onglet et
+// « Passer les écritures d'inventaire » en vert, pour des dotations qui ne s'écrivent qu'au 31
+// décembre (9.0.0). Un compteur qui réclame un geste pas encore dû apprend à ignorer les compteurs.
+t('Une dotation ne se RÉCLAME qu\'au dernier mois de l\'exercice ; une sortie d\'actif, tout de suite', () => {
+  const l = KC.livreVide('MF:TEST', 2026);
+  const bien = x => ({ libelle: 'Bien', compte: '2241', compteAmort: '2841', compteDotation: '681', valeur: 3600, duree: 3,
+    dateAcquisition: '2026-02-01', dateMiseEnService: '2026-02-01', ...x });
+  assert.ok(KC.ajouterImmobilisation(l, bien({ libelle: 'Compresseur' }), 'test', 1).ok);
+  const ex = l.exercice;
+  const du = jour => KC.aReclamerImmobilisations(KC.etatImmobilisations(l, 2026), ex, jour);
+  assert.strictEqual(KC.etatImmobilisations(l, 2026).aEcrire, 1, 'la dotation doit rester PRÉPARABLE : le bouton s\'arme sur aEcrire');
+  assert.strictEqual(du('2026-09-23'), 0, 'en septembre, la dotation de décembre est réclamée');
+  assert.strictEqual(du('2026-11-30'), 0, 'la veille du dernier mois, la dotation est réclamée');
+  assert.strictEqual(du('2026-12-01'), 1, 'au dernier mois, la dotation doit être réclamée');
+  assert.strictEqual(du('2027-02-15'), 1, 'après la fin de l\'exercice, la dotation doit être réclamée');
+  // Une sortie d'actif s'écrit à sa date : elle se réclame tout de suite.
+  assert.ok(KC.ajouterImmobilisation(l, bien({ libelle: 'Camion', cession: { date: '2026-06-30', prix: 0, motif: 'rebut' } }), 'test', 2).ok);
+  assert.strictEqual(du('2026-09-23'), 1, 'une sortie d\'actif de juin n\'est pas réclamée en septembre');
+  // Une écriture passée ne se réclame plus, quelle que soit la date.
+  l.immobilisations.forEach(f => assert.ok(KC.noterEcritureImmo(l, f.id, 2026, 'E-' + f.id).ok));
+  assert.strictEqual(du('2027-02-15'), 0, 'une écriture déjà passée est encore réclamée : elle serait comptée deux fois');
+  // L'écran : la pastille ET le bouton vert lisent la MÊME fonction — un compteur et le geste qu'il
+  // annonce ne peuvent pas se contredire (6.8.1).
+  const app = code('src', 'cabinet', 'renderer', 'app.js');
+  const vue = tranche(app, 'function vueImmobilisations(');
+  assert.ok(/const dues = KC\.aReclamerImmobilisations\(e,/.test(vue) && /dues \? 'ecrire'/.test(vue), 'le bouton vert ne suit pas ce qui est dû');
+  assert.ok(/id="im-ecrire" \$\{e\.aEcrire \? '' : 'disabled'\}/.test(vue), 'préparer l\'inventaire plus tôt doit rester possible');
+  assert.ok(/!dues \? \[`Les dotations de \$\{s\.annee\} s'écrivent à l'inventaire/.test(vue), 'le bouton qui n\'est plus vert ne dit pas pourquoi');
+});
+
+// Vu au test humain sur la vitrine : −3 650,591 en rouge sur la carte, deux listes de suspens sans
+// total, et rien pour dire que la banque moins le livre redonne l'écart au millime — un comptable
+// refaisait l'addition à la main pour savoir s'il restait un mystère.
+t('Les suspens se TOTALISENT, et l\'écran dit s\'ils expliquent tout l\'écart — ou ce qui vient d\'avant les relevés', () => {
+  const l = livreVitrine();
+  const b = V.garnirBanque(l, { qui: 'test', quand: 100, aujourdhui: '2026-09-23' });
+  const S = KC.suspens(l, b.releve.id);
+  const somme = xs => KC.round3(xs.reduce((s, x) => s + x.montant, 0));
+  // Des montants qui ne se divisent pas en rond : un total arrondi ailleurs se verrait (9.6.1).
+  assert.ok(S.banque.length && S.livre.length, 'la vitrine n\'a plus de suspens des deux côtés : le test ne discrimine plus');
+  assert.strictEqual(S.totalBanque, somme(S.banque), 'le total côté banque n\'est pas la somme de sa liste');
+  assert.strictEqual(S.totalLivre, somme(S.livre), 'le total côté livre n\'est pas la somme de sa liste');
+  assert.strictEqual(KC.round3(S.totalBanque - S.totalLivre), S.ecartSuspens, 'banque − livre ne redonne pas la part expliquée de l\'écart');
+  assert.strictEqual(KC.round3(S.ecartSuspens + S.avant), S.ecart, 'la part expliquée et la part d\'avant ne refont pas l\'écart');
+  // L'écran : un pied sous chaque côté, lu dans le moteur (jamais recalculé), et le verdict dans
+  // ses DEUX formes — tout expliqué, ou la part d'avant les relevés nommée.
+  const app = code('src', 'cabinet', 'renderer', 'app.js');
+  const i = app.indexOf('<h2>Les suspens');
+  const panneau = app.slice(i, app.indexOf('function brancherBanque(', i));
+  assert.ok(i > 0 && panneau.length > 800 && panneau.length < 6000, 'la tranche du panneau des suspens est introuvable : ' + panneau.length);
+  assert.ok(/<tfoot>[\s\S]{0,160}money\(sus\.totalBanque\)/.test(panneau), 'le côté banque n\'a pas de total');
+  assert.ok(/<tfoot>[\s\S]{0,160}money\(sus\.totalLivre\)/.test(panneau), 'le côté livre n\'a pas de total');
+  assert.ok(!/\.reduce\(/.test(panneau), 'l\'écran refait une somme : deux arrondis finiraient par diverger (9.3.0)');
+  assert.ok(/sus\.avant\s*\?[\s\S]{0,400}money\(sus\.avant\)[\s\S]{0,300}Les suspens expliquent tout l'écart/.test(panneau),
+    'le verdict n\'a pas ses deux formes : tout expliqué, ou la part d\'avant les relevés');
+});
+
+t('U-10 : la révision de l\'exemple est ENTAMÉE — deux comptes signés, une note, une question posée sur une pièce', () => {
+  const l = livreVitrine();
+  const b = V.garnirBanque(l, { qui: 'test', quand: 100, aujourdhui: '2026-09-23' });
+  const r = V.garnirRevision(l, { qui: 'test', quand: 200, periode: '2026', banque: b });
+  assert.deepStrictEqual(r.signes, ['706', '4367']);
+  const d = KC.dossierDeRevision(l, { periode: '2026' });
+  assert.strictEqual(d.revus, 2, 'deux comptes signés');
+  assert.ok(d.reste > 0, 'une révision FINIE ne montre pas qu\'elle se fait');
+  assert.strictEqual(d.notes.filter(n => !n.levee).length, 1);
+  assert.ok(/3 247,560|double la remise/.test(d.notes[0].texte), 'la note parle de la banque');
+  // La question naît d'une LIGNE : elle porte l'écriture, donc elle s'affichera en face de la pièce.
+  const q = (l.questions || [])[0];
+  assert.ok(q && q.ecritureId && q.attendu === 'piece' && q.statut === 'ouverte', 'la question n\'est pas posée sur une pièce');
+  assert.ok(/^6/.test(q.compte) && !/^64/.test(q.compte), 'la question vise une charge, jamais la paie');
+  assert.ok(KC.controlesRevision(l, '2026').some(c => c.id === 'questions'), 'la question ouverte doit se lire avant d\'arrêter la révision');
+});
+
+t('U-10 : le client hors SkanFact tient une ANNÉE — aucun mois vide, chaque mois terminé écrit, déclaré et payé ; seul le dernier attend', () => {
+  const h = V.livreHorsSkanfact('MF:TEST2', { qui: 'test', quand: 1, aujourdhui: '2026-09-23' });
+  assert.deepStrictEqual(h.motifs, [], 'un moteur a refusé la vitrine');
+  const l = h.livre;
+  assert.strictEqual(h.annee, 2026);
+  assert.strictEqual(h.biens.length, 2);
+  assert.deepStrictEqual(KC.immobilisationsACreer(l, 2026), [], 'une fiche rattachée ne se repropose pas');
+  // Le parc repris et le 28 disent la même chose (C-10) : c'est ce contrôle qui a trouvé la double
+  // ouverture — il doit rester silencieux sur un exemple juste.
+  const c = KC.controlesCloture(l, {});
+  assert.ok(!c.some(x => x.id === 'amortissements' && !x.ok), 'le tableau des biens et le 28 divergent');
+  assert.strictEqual(h.salaries.length, 2);
+  assert.ok(KC.controlesPaie(l, 2026, 8).some(x => x.id === 'cnss-manquant'), 'le numéro CNSS manquant doit se nommer');
+  // La paie : un bulletin chaque mois pour le mécanicien, écrit et réglé jusqu'au mois d'avant ; le
+  // dernier mois attend son écriture — l'étape suivante que l'écran met en vert.
+  assert.deepStrictEqual([...new Set(l.bulletins.filter(x => x.salarieId === 'sal-exemple-1').map(x => x.mois))], [1, 2, 3, 4, 5, 6, 7, 8],
+    'le mécanicien, embauché depuis trois ans, n\'est pas payé tous les mois');
+  assert.ok(l.bulletins.filter(x => x.mois < 8).every(x => x.ecritureId), 'un mois terminé garde une paie sans écriture');
+  assert.ok(l.bulletins.filter(x => x.mois === 8).every(x => !x.ecritureId), 'la paie du dernier mois n\'attend plus rien');
+  const bal = KC.balanceDepuisLignes(KC.lignesDuLivre(l, { brouillard: true }), KC.soldesDepuisOuverture(l));
+  assert.ok(bal.ok);
+  const solde = c2 => ((bal.rows.find(r => r.account === c2) || {}).solde) || 0;
+  assert.ok(solde('532') > 0, 'la banque de l\'exemple est à découvert');
+  // Réglé, déclaré, payé : les comptes qui disent qu'un mois est FINI sont soldés.
+  assert.strictEqual(solde('425'), 0, 'des salaires restent dus au personnel');
+  assert.strictEqual(solde('4365'), 0, 'une déclaration déposée n\'est pas payée');
+  assert.strictEqual(solde('401'), 0, 'un fournisseur de pièces reste à payer');
+  // Aucun mois VIDE : c'est ce que le bandeau « aucune écriture sur … » montrait au comptable.
+  assert.deepStrictEqual(C.moisManquants(l.ecritures.map(e => e.date), '2026-01', '2026-08', '2026-09-23'), [], 'un mois de l\'exemple n\'a aucune écriture');
+  // Chaque mois terminé est déclaré, déposé et payé ; le dernier est l'étape suivante.
+  assert.deepStrictEqual(h.declarations, ['2026-01', '2026-02', '2026-03', '2026-04', '2026-05', '2026-06', '2026-07']);
+  (l.declarations || []).forEach(d => assert.ok(d.deposee.le && d.payee.le && d.ecritureId, `la déclaration de ${d.periode} n'est pas menée au bout`));
+  assert.ok(!KC.declarationMensuelle(l, '2026-08').ecritureExistante, 'la déclaration du dernier mois est déjà faite : l\'exemple n\'a plus d\'étape suivante');
+  assert.deepStrictEqual(h.cnss, [1, 2], 'la CNSS des trimestres échus n\'est pas versée');
+  // L'IRPP de juillet est CE QUI A ÉTÉ RETENU en juillet — le reversement de juin, payé en juillet,
+  // ne le diminue pas (le défaut que cette année complète a trouvé dans le moteur).
+  const retenuJuillet = KC.round3(l.bulletins.filter(x => x.mois === 7).reduce((s, x) => s + x.calcul.irpp + x.calcul.css, 0));
+  assert.strictEqual(KC.declarationMensuelle(l, '2026-07').cases.irpp.montant, retenuJuillet);
+  // Relatif au jour, et jamais dans le futur — y compris en février (un seul mois) et en janvier
+  // (l'exercice qui vient de finir, jamais un exercice vide).
+  [['2026-02-10', 2026, 1], ['2027-01-15', 2026, 12], ['2026-09-23', 2026, 8]].forEach(([jour, annee, mois]) => {
+    const x = V.livreHorsSkanfact('MF:T', { qui: 't', quand: 1, aujourdhui: jour });
+    assert.deepStrictEqual(x.motifs, [], jour + ' : ' + x.motifs.join(' ; '));
+    assert.strictEqual(x.annee, annee, jour);
+    assert.strictEqual(new Set(x.bulletins.map(b => b.mois)).size, mois, jour);
+    assert.strictEqual(x.paie.attend, mois, jour + ' : ce n\'est pas le dernier mois terminé qui attend');
+    x.livre.ecritures.forEach(e => assert.ok(e.date <= jour, `${jour} : une écriture datée du ${e.date}`));
+  });
+});
+
+t('Ce qu\'on RETIENT dans le mois n\'est pas diminué de ce qu\'on REVERSE pour le mois d\'avant (trouvé en complétant l\'exemple)', () => {
+  // Deux mois de paie, et l'IRPP de juin reversé en juillet. Les DONNÉES discriminent (9.6.1) : sans
+  // le reversement, l'ancienne lecture (mouvement net du 4321) et la nouvelle diraient la même chose.
+  const l = KC.livreVide('MAT:1', 2026);
+  KC.ajouterSalarie(l, { id: 's', nom: 'Salah', embauche: '2024-01-01', brut: 1150, cnss: '1', chefDeFamille: true, enfants: 2 }, 'moi', 1);
+  const paie = mois => {
+    KC.ajouterBulletin(l, { salarieId: 's', annee: 2026, mois, brut: 1150, joursTravailles: 26 }, {}, 'moi', 2);
+    const p = KC.ecritureDePaie(l, 2026, mois, {});
+    const e = KC.ajouterEcriture(l, p.ecriture, 'moi', 3);
+    KC.noterEcriturePaie(l, p.lot, e.id, 'moi', 4);
+    KC.validerEcriture(l, e.id, 'moi', 5);
+    return p;
+  };
+  paie(6);
+  const juillet = paie(7);
+  const irppMois = KC.round3(juillet.ecriture.lignes.filter(x => x.compte === '4321').reduce((s, x) => s + x.credit, 0));
+  const rev = KC.ajouterEcriture(l, { date: '2026-07-20', journal: 'BQ', piece: 'RSAL-06', libelle: 'Retenues de juin',
+    lignes: [{ compte: '4321', debit: irppMois }, { compte: '532', credit: irppMois }] }, 'moi', 6);
+  KC.validerEcriture(l, rev.id, 'moi', 7);
+  const d = KC.declarationMensuelle(l, '2026-07');
+  assert.strictEqual(d.cases.irpp.montant, irppMois, `la case IRPP de juillet vaut ${d.cases.irpp.montant} : le reversement de juin la diminue`);
+  assert.ok(!d.cases.irpp.ecritures.includes(rev.id), 'le reversement se donne pour une pièce de la retenue');
+  // Une CORRECTION, elle, compte — sur un livre venu des paquets (la paie vit chez le client, le livre
+  // n'a que l'écriture) : la contre-passation d'une paie ramène la case à zéro.
+  const p2 = KC.livreVide('MAT:2', 2026);
+  const od = KC.ajouterEcriture(p2, { date: '2026-07-31', journal: 'OD', piece: 'PAIE-07', libelle: 'Paie de juillet',
+    lignes: [{ compte: '640', debit: 1000 }, { compte: '4321', credit: 80 }, { compte: '425', credit: 920 }] }, 'moi', 1);
+  KC.validerEcriture(p2, od.id, 'moi', 2);
+  assert.strictEqual(KC.declarationMensuelle(p2, '2026-07').cases.irpp.montant, 80);
+  assert.ok(KC.contrepasser(p2, od.id, 'moi', '2026-07-31', 3).ok);
+  assert.strictEqual(KC.declarationMensuelle(p2, '2026-07').cases.irpp.montant, 0, 'une paie contre-passée garde son IRPP dans la déclaration');
+});
+
+t('Une écriture contre-passée LIBÈRE ce qu\'elle portait — la paie, la dotation, la déclaration, l\'inventaire (« contre-passe d\'abord » menait à une impasse)', () => {
+  // La paie : établie, écrite, validée, puis contre-passée pour corriger un brut.
+  const l = KC.livreVide('MAT:1', 2026);
+  KC.ajouterSalarie(l, { id: 's', nom: 'Salah', embauche: '2024-01-01', brut: 1150, cnss: '1' }, 'moi', 1);
+  KC.ajouterBulletin(l, { id: 'b7', salarieId: 's', annee: 2026, mois: 7, brut: 1150, joursTravailles: 26 }, {}, 'moi', 2);
+  const p = KC.ecritureDePaie(l, 2026, 7, {});
+  const e = KC.ajouterEcriture(l, p.ecriture, 'moi', 3);
+  KC.noterEcriturePaie(l, p.lot, e.id, 'moi', 4);
+  KC.validerEcriture(l, e.id, 'moi', 5);
+  const refus = KC.ajouterBulletin(l, { id: 'b7', salarieId: 's', annee: 2026, mois: 7, brut: 1200 }, {}, 'moi', 6);
+  assert.ok(!refus.ok && /contre-passe/.test(refus.motif), 'le bulletin écrit se modifie sans contre-passation');
+  // Ce que le geste va rendre « à passer » se DIT avant lui, avec les mêmes objets que ce qu'il libère.
+  assert.deepStrictEqual(KC.ceQuePorte(l, e.id), ['la paie de juillet 2026'], 'la question ne nomme pas ce que l\'écriture porte');
+  assert.deepStrictEqual(KC.ceQuePorte(l, 'inconnue'), []);
+  const cp = KC.contrepasser(l, e.id, 'moi', '2026-07-31', 7);
+  assert.deepStrictEqual(KC.ceQuePorte(l, e.id), [], 'une fois libérée, l\'écriture porte encore quelque chose');
+  assert.ok(cp.ok && cp.liberes === 1, 'la contre-passation ne dit pas ce qu\'elle a libéré');
+  assert.ok(KC.ajouterBulletin(l, { id: 'b7', salarieId: 's', annee: 2026, mois: 7, brut: 1200 }, {}, 'moi', 8).ok,
+    'après la contre-passation, le bulletin refuse encore d\'être corrigé : le refus promettait une sortie qui n\'existe pas');
+  assert.ok(KC.ecritureDePaie(l, 2026, 7, {}).ok, 'la paie corrigée ne peut plus être repassée');
+  // Et la déclaration ATTEND la nouvelle paie, au lieu de déclarer ce qui a été annulé.
+  const irpp = KC.declarationMensuelle(l, '2026-07').cases.irpp;
+  assert.ok(irpp.montant === null && irpp.attente === 'paie', 'la case IRPP ne dit pas qu\'elle attend la paie');
+
+  // La dotation d'un bien : passée, validée, contre-passée → la fiche se corrige, la dotation se repropose.
+  const I = KC.livreVide('MAT:2', 2026);
+  const f = KC.ajouterImmobilisation(I, { libelle: 'Four', compte: '223', valeur: 12000, dateAcquisition: '2025-01-01',
+    dateMiseEnService: '2025-01-01', duree: 10, methode: 'lineaire' }, 'moi', 1).fiche;
+  const dot = KC.ecrituresImmobilisations(I, 2026).find(x => x.genre === 'dotation');
+  const ed = KC.ajouterEcriture(I, dot, 'moi', 2);
+  KC.validerEcriture(I, ed.id, 'moi', 3);
+  KC.noterEcritureImmo(I, f.id, 2026, ed.id);
+  assert.ok(!KC.modifierImmobilisation(I, f.id, { duree: 8 }, 'moi', 4).ok, 'une dotation écrite laisse changer le plan');
+  assert.deepStrictEqual(KC.ceQuePorte(I, ed.id), ['la dotation 2026 de « Four »']);
+  assert.ok(KC.contrepasser(I, ed.id, 'moi', '2026-12-31', 5).ok);
+  assert.ok(KC.modifierImmobilisation(I, f.id, { duree: 8 }, 'moi', 6).ok, 'la fiche reste verrouillée après la contre-passation de sa dotation');
+  assert.ok(KC.ecrituresImmobilisations(I, 2026).some(x => x.genre === 'dotation'), 'la dotation corrigée ne se repropose pas');
+
+  // La déclaration : un BROUILLARD compte déjà (pas de seconde écriture au second clic) ; une
+  // écriture contre-passée ne compte plus (on la refait).
+  const D = KC.livreVide('MAT:3', 2026);
+  const v = KC.ajouterEcriture(D, { date: '2026-05-31', journal: 'VT', piece: 'R', libelle: 'Recettes',
+    lignes: [{ compte: '532', debit: 119 }, { compte: '706', credit: 100 }, { compte: '4367', credit: 19 }] }, 'moi', 1);
+  KC.validerEcriture(D, v.id, 'moi', 2);
+  const decl = KC.declarationMensuelle(D, '2026-05');
+  KC.poserDeclaration(D, decl, 'moi', 3);
+  const b = KC.ajouterEcriture(D, KC.ecritureDeclaration(D, decl), 'moi', 4);
+  assert.strictEqual(KC.declarationMensuelle(D, '2026-05').ecritureExistante, b.id, 'une écriture de déclaration au brouillard ne compte pas : un second clic en fabrique une seconde');
+  KC.validerEcriture(D, b.id, 'moi', 5);
+  const posee = (D.declarations || []).find(x => x.periode === '2026-05');
+  if (posee && !posee.ecritureId) posee.ecritureId = b.id;
+  assert.deepStrictEqual(KC.ceQuePorte(D, b.id), ['la déclaration de mai 2026'], 'la déclaration portée n\'est pas nommée');
+  assert.ok(KC.contrepasser(D, b.id, 'moi', '2026-05-31', 6).ok);
+  assert.strictEqual(KC.declarationMensuelle(D, '2026-05').ecritureExistante, '', 'la déclaration contre-passée ne peut plus être réécrite');
+
+  // Un livre ANCIEN qui garde un lien mort se répare à la lecture, sans toucher une écriture.
+  const A = KC.livreVide('MAT:4', 2026);
+  A.bulletins = [{ id: 'x', salarieId: 's', annee: 2026, mois: 1, ecritureId: 'e-disparue' }];
+  A.inventaires = [{ id: 'i', date: '2026-12-31', ecritureId: 'e-disparue' }];
+  const avant = JSON.stringify(A.ecritures);
+  KC.migrerLivre(A);
+  assert.ok(A.bulletins[0].ecritureId === null && A.inventaires[0].ecritureId === '', 'un lien mort d\'un livre ancien verrouille encore');
+  assert.strictEqual(JSON.stringify(A.ecritures), avant, 'la migration a touché une écriture');
+  // L'inventaire, quatrième objet : nommé par sa date, et son refus dit le geste selon l'écriture.
+  const V2 = KC.livreVide('MAT:5', 2026);
+  V2.inventaires = [{ id: 'inv', date: '2026-12-31', ecritureId: 'e-inv', lignes: [] }];
+  V2.ecritures = [{ id: 'e-inv', statut: 'brouillard', lignes: [] }];
+  assert.deepStrictEqual(KC.ceQuePorte(V2, 'e-inv'), ['l\'inventaire du 31/12/2026']);
+  const refusInv = KC.poserInventaire(V2, { date: '2026-12-31', lignes: [{ compte: '31', libelle: 'Pièces', quantite: 1, prixUnitaire: 10 }] }, 'moi', 1);
+  assert.ok(!refusInv.ok && /supprime-la/.test(refusInv.motif) && !/Contre-passe/.test(refusInv.motif),
+    'le refus d\'un inventaire au brouillard conseille encore une contre-passation impossible : ' + refusInv.motif);
+  // Les deux questions — supprimer un brouillard, contre-passer — le disent AVANT le geste.
+  const app = code('src', 'cabinet', 'renderer', 'app.js');
+  // Le pronom suit le titre : « ce brouillard » → il, « cette écriture » → elle.
+  assert.ok(/\$\{ceQuellePorte\(e, 'elle'\)\}/.test(tranche(app, 'async function contrepasserEcriture(')), 'la contre-passation ne dit pas ce qu\'elle rendra « à passer »');
+  assert.ok(/\$\{ceQuellePorte\(e, 'il'\)\}/.test(tranche(app, 'async function supprimerBrouillard(')), 'la suppression d\'un brouillard ne dit pas ce qu\'il rendra « à passer »');
+});
+
+t('TFP et FOPROLOS se lisent sur les bulletins du mois quand le Cabinet tient la paie — et la raison dit la vérité sinon', () => {
+  const h = V.livreHorsSkanfact('MF:TEST4', { qui: 'test', quand: 1, aujourdhui: '2026-09-23' });
+  const d = KC.declarationMensuelle(h.livre, '2026-07');
+  const b = h.livre.bulletins.filter(x => x.mois === 7);
+  assert.strictEqual(d.cases.tfp.montant, KC.round3(b.reduce((s, x) => s + x.calcul.tfp, 0)), 'la TFP de juillet n\'est pas celle des bulletins');
+  assert.strictEqual(d.cases.foprolos.montant, KC.round3(b.reduce((s, x) => s + x.calcul.foprolos, 0)));
+  assert.ok(/À VÉRIFIER/.test(d.cases.tfp.horsTotal) && /total/.test(d.cases.tfp.horsTotal), 'une ligne hors du total doit le dire (9.8.8)');
+  assert.ok(d.cases.tfp.ecritures.length === 1, 'la TFP ne mène pas à l\'écriture de paie');
+  // Le dernier mois : bulletins établis, écriture pas encore passée — la raison le dit, sans parler
+  // d'un compte « que le plan ne porte pas ».
+  const a = KC.declarationMensuelle(h.livre, '2026-08').cases.tfp;
+  assert.ok(a.montant === null && /pas encore d'écriture validée/.test(a.motif), 'raison : ' + a.motif);
+  // Un livre venu des PAQUETS (la paie reste dans l'app entreprise) : le 4335 porte les deux ensemble.
+  const l = KC.livreVide('MAT:2', 2026);
+  const e = KC.ajouterEcriture(l, { date: '2026-05-31', journal: 'OD', piece: 'PAIE-05', libelle: 'Paie',
+    lignes: [{ compte: '640', debit: 1000 }, { compte: '661', debit: 30 }, { compte: '4335', credit: 30 }, { compte: '425', credit: 1000 }] }, 'moi', 1);
+  KC.validerEcriture(l, e.id, 'moi', 2);
+  const p = KC.declarationMensuelle(l, '2026-05').cases;
+  assert.ok(p.tfp.montant === null && /4335/.test(p.tfp.motif) && /ENSEMBLE/.test(p.tfp.motif), 'raison : ' + p.tfp.motif);
+  assert.ok(!/aucun compte du plan/.test(p.tfp.motif), 'la raison nie un compte que le livre porte');
+});
+
+t('La balance d\'ouverture ne compte qu\'UNE fois — balance, états et à-nouveaux (défaut révélé par U-10)', () => {
+  const l = KC.livreVide('MAT:1', 2026);
+  assert.ok(KC.balanceOuverture(l, [{ compte: '532', debit: 10000 }, { compte: '101', credit: 10000 }], '2026-01-01', 'balance', 'moi', 1).ok);
+  const e = KC.ajouterEcriture(l, { date: '2026-03-10', journal: 'BQ', piece: 'X', libelle: 'Frais', lignes: [{ compte: '627', debit: 25 }, { compte: '532', credit: 25 }] }, 'moi', 2);
+  KC.validerEcriture(l, e.id, 'moi', 3);
+  const lignes = KC.lignesDuLivre(l, { du: l.exercice.du, au: l.exercice.au });
+  const bq = KC.balanceDepuisLignes(lignes, KC.soldesDepuisOuverture(l)).rows.find(r => r.account === '532');
+  assert.strictEqual(bq.solde, 9975, `la banque vaut ${bq.solde} : l'ouverture est comptée deux fois`);
+  assert.strictEqual(KC.etatsDepuisLignes(lignes, KC.soldesDepuisOuverture(l), {}).totalActif, 9975);
+  assert.strictEqual(KC.anouveauxDe(l).lignes.find(x => x.compte === '532').debit, 9975, 'les à-nouveaux de l\'an prochain doubleraient la reprise');
+  // La SOURCE de la reprise reste lisible : l'auxiliaire en a besoin pour expliquer un écart.
+  assert.deepStrictEqual(KC.soldesRepris(l), { 532: 10000, 101: -10000 });
+});
+
+t('L\'à-nouveau n\'est jamais un suspens de banque, ni un mois à déclarer (défauts révélés par U-10)', () => {
+  const l = KC.livreVide('MAT:1', 2026);
+  assert.ok(KC.balanceOuverture(l, [{ compte: '532', debit: 10000 }, { compte: '101', credit: 10000 }], '2026-01-01', 'balance', 'moi', 1).ok);
+  const e = KC.ajouterEcriture(l, { date: '2026-06-10', journal: 'VT', piece: 'F1', libelle: 'Vente', lignes: [{ compte: '532', debit: 119 }, { compte: '706', credit: 100 }, { compte: '4367', credit: 19 }] }, 'moi', 2);
+  KC.validerEcriture(l, e.id, 'moi', 3);
+  const r = KC.ajouterReleve(l, { compte: '532', du: '2026-01-01', au: '2026-06-30', soldeDebut: 10000, soldeFin: 10119,
+    empreinte: 'x', lignes: [{ date: '2026-06-10', libelle: 'VERSEMENT', montant: 119 }] }, 'moi', 4);
+  assert.ok(r.ok, r.motif);
+  KC.rapprocherAuto(l, r.releve.id, {});
+  const s = KC.suspens(l, r.releve.id);
+  assert.deepStrictEqual([s.ecart, s.avant, s.livre.length], [0, 0, 0], 'un rapprochement parfait depuis le 1er janvier affiche l\'ouverture en suspens');
+  // Et la TVA de janvier n'est pas réclamée pour la seule balance d'ouverture.
+  const tva = KC.controlesCloture(l, {}).find(x => x.id === 'tva');
+  assert.ok(!/janvier/.test(tva.detail) && /juin/.test(tva.detail), 'contrôle TVA : ' + tva.detail);
+});
+
+t('U-10 : les vitrines passent par les VRAIES portes, et le scénario les nomme', () => {
+  const vit = C.demoDossiers('2026-09-23').filter(d => d.vitrine);
+  assert.deepStrictEqual(vit.map(d => d.vitrine).sort(), ['hors', 'skanfact'], 'deux vitrines, une de chaque sorte');
+  assert.ok(vit.find(d => d.vitrine === 'skanfact').packs.length, 'la vitrine SkanFact doit avoir ses paquets');
+  assert.ok(vit.find(d => d.vitrine === 'hors').manual, 'la vitrine hors SkanFact doit être un dossier tenu à la main');
+  const main = code('src', 'cabinet', 'main.js');
+  // main.js ferme ses fonctions en colonne 0 : la tranche va jusqu'à la fonction suivante.
+  const charge = main.slice(main.indexOf('function chargerExemple()'), main.indexOf('function rafraichirExemple()'));
+  assert.ok(charge.length > 800 && charge.length < 6000, 'tranche chargerExemple suspecte : ' + charge.length);
+  assert.ok(/garnirVitrines\(scenario\)/.test(charge), 'l\'exemple ne remplit plus ses vitrines');
+  const g = main.slice(main.indexOf('function garnirVitrines('), main.indexOf('function retirerExemple('));
+  assert.ok(g.length > 400 && g.length < 4000, 'tranche garnirVitrines suspecte : ' + g.length);
+  assert.ok(/ecrireLeLivre\(d\.id, livre, 'exemple'/.test(g), 'la vitrine doit écrire par la porte unique (verrou, audit)');
+  assert.ok(!/getStore\(\)\.ecrireLivre/.test(g), 'la vitrine contourne la porte unique');
+  assert.ok(/importerPaquetsDans\(d, livre, annee\)/.test(g), 'la vitrine doit relire ses paquets comme le geste réel');
+  const h = main.slice(main.indexOf("ipcMain.handle('cab:relireLesPaquets'"), main.indexOf('function importerPaquetsDans('));
+  assert.ok(/importerPaquetsDans\(d, livre, annee\)/.test(h), '« Créer le livre » et l\'exemple doivent partager la relecture');
+});
+
+// ================================================================ lot D — ce que le test humain de la Banque a vu
+
+// Un compte 532 qui s'ouvre à 500, deux règlements de 300 à un jour d'écart, et trois lignes de
+// relevé : un chèque dont le libellé désigne l'un des deux, un VERSEMENT de 500 le lendemain de
+// l'ouverture (le montant de l'à-nouveau, à ± 3 jours : l'appât), et un virement qui ne ressemble à
+// rien. Les DONNÉES discriminent (9.6.1, 10.0.0) : sans elles, « l'à-nouveau n'est jamais candidat »
+// serait vrai par hasard.
+function livreDeBanque() {
+  const l = KC.livreVide('MAT:1', 2026);
+  assert.ok(KC.balanceOuverture(l, [{ compte: '532', debit: 500 }, { compte: '101', credit: 500 }], '2026-01-01', 'balance', 'moi', 1).ok);
+  const ecr = (date, piece, libelle) => {
+    const e = KC.ajouterEcriture(l, { date, journal: 'BQ', piece, libelle, lignes: [{ compte: '532', debit: 300 }, { compte: '411', credit: 300 }] }, 'moi', 2);
+    KC.validerEcriture(l, e.id, 'moi', 3);
+    return e;
+  };
+  const a = ecr('2026-01-02', 'F1', 'Règlement Dupont chèque 111');
+  const b = ecr('2026-01-03', 'F2', 'Règlement Martin');
+  const r = KC.ajouterReleve(l, { compte: '532', du: '2026-01-01', au: '2026-01-31', soldeDebut: 500, soldeFin: 1600, empreinte: 'x', lignes: [
+    { date: '2026-01-02', libelle: 'REMISE CHEQUE DUPONT', montant: 300 },
+    { date: '2026-01-02', libelle: 'VERSEMENT', montant: 500 },
+    { date: '2026-01-03', libelle: 'VIR RECU', montant: 300 }] }, 'moi', 4);
+  assert.ok(r.ok, r.motif);
+  return { l, a, b, R: r.releve };
+}
+
+t('L\'à-nouveau n\'est jamais un candidat de rapprochement — ni pour l\'automatique, ni dans la fenêtre (vu au test humain)', () => {
+  const { l, R } = livreDeBanque();
+  const tout = KC.lignesBancaires(l, '532'), aPointer = KC.lignesARapprocher(l, '532');
+  assert.strictEqual(tout.length, 3, 'les soldes lisent l\'à-nouveau : il doit rester dans lignesBancaires');
+  assert.strictEqual(aPointer.length, 2);
+  assert.ok(aPointer.every(c => c.journal !== 'AN'), 'l\'à-nouveau est proposé en face d\'une ligne de relevé');
+  const auto = KC.rapprocherAuto(l, R.id, { date: '2026-02-01' });
+  const versement = R.lignes.find(x => x.libelle === 'VERSEMENT');
+  assert.strictEqual(versement.rapprochement.niveau, 'aucun', 'un versement de 500 a été apparié au solde reporté');
+  assert.ok(!(auto.detail.find(x => x.ligneId === versement.id).candidats || []).length);
+  assert.ok(!KC.candidatsDeLigne(l, R.id, versement.id).libres.some(c => c.journal === 'AN'), 'la fenêtre propose encore l\'ouverture');
+  // Et le solde, lui, la compte toujours : l'écart de ce relevé parfait est nul.
+  assert.strictEqual(KC.suspens(l, R.id).soldeComptable, 1100);
+});
+
+t('La fenêtre qui fait trancher dit ce que l\'automatique a jugé — le MÊME jugement, le plus probable en tête (vu au test humain)', () => {
+  const { l, a, R } = livreDeBanque();
+  const auto = KC.rapprocherAuto(l, R.id, { date: '2026-02-01' });
+  const cheque = R.lignes.find(x => x.libelle === 'REMISE CHEQUE DUPONT');
+  const vir = R.lignes.find(x => x.libelle === 'VIR RECU');
+  const jc = KC.candidatsDeLigne(l, R.id, cheque.id);
+  assert.strictEqual(jc.niveau, 'probable');
+  assert.strictEqual(jc.meilleur && jc.meilleur.ecritureId, a.id, 'le chèque de Dupont ne désigne pas le règlement de Dupont');
+  const jv = KC.candidatsDeLigne(l, R.id, vir.id);
+  assert.strictEqual(jv.niveau, 'a-confirmer');
+  assert.strictEqual(jv.meilleur, null, 'une égalité a désigné un gagnant');
+  // Un seul jugement : ce que la fenêtre dit est ce que l'automatique a rangé, ligne par ligne.
+  R.lignes.forEach(x => assert.strictEqual(KC.candidatsDeLigne(l, R.id, x.id).niveau, auto.detail.find(d => d.ligneId === x.id).niveau, x.libelle));
+  // L'écran lit le moteur, sans refaire le tri des déjà-prises ; il met le plus probable en tête et
+  // en couleur, s'élargit, et finit par le geste suivant.
+  const app = code('src', 'cabinet', 'renderer', 'app.js');
+  const f = tranche(app, 'function choisirEcritureForm(');
+  assert.ok(f.length > 1200 && f.length < 7000, 'tranche suspecte : ' + f.length);
+  assert.ok(/KC\.candidatsDeLigne\(s\.livre, R\.id, ligne\.id/.test(f), 'la fenêtre ne lit pas le jugement du moteur');
+  assert.ok(!/prises\.add/.test(f), 'la fenêtre refait son propre tri des écritures déjà prises');
+  assert.ok(/cle\(c\) === prefere \? ' btn-primary'/.test(f), 'le plus probable n\'est pas le seul bouton en couleur');
+  assert.ok(/classList\.add\('cab-moyen'\)/.test(f), 'la fenêtre garde la largeur où « Rapprocher » défilait de côté');
+  assert.ok(/id="ce-ecrire"/.test(f) && /ecrireDepuisBanque\(root, dossier, R, ligne\)/.test(f), 'la fenêtre ne finit pas par « Écrire l\'écriture manquante »');
+});
+
+t('Le texte coupé à côté du vide se MESURE, sur les vitrines et dans les fenêtres — et une fenêtre ne défile jamais de côté', () => {
+  const harnais = code('test', 'e2e', 'harnais.js');
+  assert.ok(/const SONDE_TRONQUE = /.test(harnais) && /const SONDE_DEFILEMENT = /.test(harnais), 'les deux sondes manquent au harnais');
+  const rendu = code('test', 'e2e', 'cabinet-rendu.js');
+  assert.ok(/SONDE_TRONQUE, \{ vide: VIDE_MAX, racines: fenetre \? \['#view', FENETRE\] : \['#view'\] \}/.test(rendu), 'cabinet-rendu ne mesure pas le texte coupé, ou pas dans la fenêtre');
+  assert.ok(/SONDE_DEFILEMENT, \{ racine: FENETRE \}/.test(rendu), 'cabinet-rendu ne juge pas une fenêtre qui défile de côté');
+  // Les vitrines se DÉDUISENT du scénario, jamais écrites à la main — et le parcours les ouvre.
+  assert.ok(/demoDossiers\(\)\s*\.filter\(d => d\.vitrine\)/.test(rendu), 'les vitrines ne sont pas lues dans le scénario');
+  assert.ok(!/MF:\d/.test(rendu), 'un identifiant de dossier écrit à la main se périmera au premier renommage');
+  assert.ok(/for \(const cible of \[null, \.\.\.VITRINES\]\)/.test(rendu), 'le parcours ne mesure pas les vitrines');
+  assert.ok(/fenetresBanque\([\s\S]{0,120}?, cible && cible\.vitrine === 'skanfact'\)/.test(rendu), 'les fenêtres de la banque de la vitrine ne sont pas exigées');
+  // Le même instrument sur la troisième surface (règle 9.4.3 : un instrument qui ne couvre qu'une
+  // surface n'en protège qu'une).
+  assert.ok(/SONDE_TRONQUE, \{ vide: VIDE_MAX, racines: \['body'\] \}/.test(code('test', 'e2e', 'console-rendu.js')), 'la console n\'est pas mesurée');
+});
+
+t('Un paquet DÉJÀ parti n\'est pas une panne au journal — une vraie panne, si (vu en rechargeant l\'exemple)', () => {
+  const fs = require('fs'), os = require('os'), path = require('path');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cab-rm-'));
+  const journalise = [];
+  const S = require('../../src/cabinet/cabstore.js').createCabStore(dir, { log: (quoi, e) => journalise.push(`${quoi} ${e && e.code}`) });
+  // `removeDossierFiles` supprime le dossier entier, puis repasse sur chaque paquet : dix-neuf
+  // « erreurs » au journal à chaque exemple rechargé, et la ligne qui compte ne se voyait plus.
+  assert.strictEqual(S.removePack(path.join(dir, 'paquets', 'client', 'absent.skanpack')), true, 'un paquet déjà parti ne compte pas comme retiré');
+  assert.deepStrictEqual(journalise, [], 'un paquet déjà parti a été écrit au journal comme une panne');
+  // Une vraie panne reste une panne : un dossier ne s'efface pas comme un fichier.
+  const d = path.join(dir, 'paquets', 'pas-un-fichier.skanpack');
+  fs.mkdirSync(d, { recursive: true });
+  assert.strictEqual(S.removePack(d), false);
+  assert.strictEqual(journalise.length, 1, 'une vraie panne ne va plus au journal');
+});
+
+t('Le message de l\'exemple COMPTE ses dossiers : il en annonçait cinq, le scénario en porte six (vu au test humain)', () => {
+  const app = code('src', 'cabinet', 'renderer', 'app.js');
+  const f = /function phraseExemple\(\) \{[\s\S]*?\n  \}/.exec(app);
+  assert.ok(f, 'phraseExemple introuvable');
+  const dossiers = C.demoDossiers('2026-09-23');
+  const phrase = evaluer(`(function () { ${f[0]}; return phraseExemple; })()`, { S: { dossiers } })();
+  assert.ok(phrase.includes(`ces ${dossiers.length} dossiers`), phrase);
+  // Les deux portes qui chargent l'exemple disent la même phrase — et aucune ne l'écrit en dur.
+  assert.strictEqual((app.match(/toast\(phraseExemple\(\)\)/g) || []).length, 2, 'une porte de l\'exemple a sa propre phrase');
+  assert.ok(!/Exemple chargé : ces (cinq|six|\d+) dossiers/.test(app), 'un compte de dossiers est écrit en dur dans une phrase');
+});
+
+t('La Paie NOMME le salarié sans numéro CNSS et ouvre sa fiche (règle 10.3.0, vu au test humain)', () => {
+  const h = V.livreHorsSkanfact('MF:TEST3', { qui: 'test', quand: 1, aujourdhui: '2026-09-23' });
+  const c = KC.controlesPaie(h.livre, 2026, 8).find(x => x.id === 'cnss-manquant');
+  const sans = h.livre.salaries.filter(s => !s.cnss);
+  assert.ok(c && sans.length && sans.every(s => c.detail.includes(s.nom)), 'le contrôle compte les salariés sans les nommer : ' + (c && c.detail));
+  assert.deepStrictEqual(c.ids, sans.map(s => s.id), 'l\'écran ne saurait pas quelle fiche ouvrir');
+  const app = code('src', 'cabinet', 'renderer', 'app.js');
+  assert.ok(/data-sal-cnss="\$\{esc\(id\)\}"/.test(tranche(app, 'function vuePaie(')), 'le contrôle ne porte pas le geste qui le lève');
+  assert.ok(/\[data-sal-cnss\][\s\S]{0,220}salarieForm\(root, dossier, x, \{ focus: 'cnss' \}\)/.test(tranche(app, 'function brancherPaie(')), 'le geste n\'ouvre pas la fiche du salarié sur son numéro');
+  // Et la fenêtre respecte le curseur que son appelant a posé : sinon le focus repart au premier champ.
+  assert.ok(/if \(cible && !layer\.contains\(document\.activeElement\)\) cible\.focus\(\);/.test(tranche(app, 'function modal(')), 'modal() reprend le curseur posé par l\'appelant');
+});
+
+t('Une pastille ne se coupe jamais ; un dossier tenu au cabinet ne répète pas son badge et ne propose pas de relire des paquets qu\'il ne reçoit pas', () => {
+  // Du CSS, lu tel quel : la règle vit sur la classe, pour toutes les pastilles des deux applications.
+  const css = lireSource('src', 'renderer', 'style.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.ok(/^\.badge \{[^}]*white-space: nowrap/m.test(css), '« en attente » repasse sur deux lignes dans sa pastille');
+  const app = code('src', 'cabinet', 'renderer', 'app.js');
+  assert.ok(!/dossier\.manual \? 'pas encore sur SkanFact'/.test(app), 'la phrase d\'état répète le badge du titre');
+  assert.ok(/\(dossier\.packs \|\| \[\]\)\.length \? `<span class="nw"><button class="btn btn-sm" id="lv-relire2"/.test(app),
+    '« Relire les paquets reçus » s\'offre à un dossier qui n\'en reçoit aucun');
+});
+
+t('Un dossier tenu AU CABINET ne se voit jamais relancer : ses mois vides sont une saisie à faire (règle 6.8.0, vu au test humain)', () => {
+  // Le bandeau des mois sans écriture proposait « Relancer le client pour ces mois » au garage de
+  // l'exemple — un client qui n'est pas sur SkanFact, à qui l'on ne réclame jamais rien. Son geste,
+  // c'est la saisie.
+  const app = code('src', 'cabinet', 'renderer', 'app.js');
+  const dl = tranche(app, 'function drawLivres(');
+  assert.ok(dl.length > 4000 && dl.length < 30000, 'tranche drawLivres suspecte : ' + dl.length);
+  assert.ok(/const tenuAuCabinet = !!dossier\.manual && source === 'livre';/.test(dl), 'le bandeau ne sait plus qu\'un dossier est tenu au cabinet');
+  const geste = (/const relancerManquants = [\s\S]*?;\n/.exec(dl) || [''])[0];
+  assert.ok(/tenuAuCabinet\s*\?\s*'[^']*id="lv-saisir"[^']*'\s*:\s*'[^']*id="lv-relancer"/.test(geste),
+    'un dossier tenu au cabinet se voit proposer « Relancer le client »');
+  assert.ok(/tenuAuCabinet\s*\?\s*`Aucune écriture sur \$\{K\.missingLabel\(manquants\)\}[^`]*à saisir\.`/.test(dl),
+    'le bandeau d\'un dossier tenu au cabinet parle encore d\'un livre « incomplet » à réclamer');
+  assert.ok(/const sm = \$\('#lv-saisir', el\);\s*if \(sm\) sm\.onclick = \(\) => allerSousOnglet\(root, dossier, 'saisie'\);/.test(dl),
+    '« Ouvrir la saisie » n\'ouvre pas la saisie');
+  // Et la relance n'est posée QUE par ce bouton : aucun autre chemin du livre ne relance un dossier.
+  assert.strictEqual((dl.match(/id="lv-relancer"/g) || []).length, 1, 'un second bouton de relance est apparu dans le livre');
+});
+
+t('Un dossier TENU AU CABINET montre ses mois : ceux de son livre, jamais « hors mission » ni « pas reçu » (vu au test humain)', () => {
+  // Le garage de l'exemple — sept déclarations déposées et payées — était « hors mission » sur toute
+  // sa ligne de la Production, et son Suivi l'invitait à « commencer à attendre ses mois ».
+  const garage = { id: 'G', name: 'Garage', matricule: 'G', manual: true, packs: [] };
+  const index = { exercices: [{ annee: 2026, du: '2026-01-01', au: '2026-12-31', production: {
+    '2026-01': { ecritures: 9, validees: 9, brouillards: 0, declare: true },
+    '2026-02': { ecritures: 5, validees: 5, brouillards: 0 }
+  } }] };
+  const mois = C.productionDuDossier(garage, index, '2026-04-10', 10);
+  // Du premier mois de l'exercice à celui qui vient de finir : avril, le mois en cours, n'est pas dû.
+  assert.deepStrictEqual(mois.map(m => m.mois), ['2026-01', '2026-02', '2026-03'], 'les mois d\'un dossier tenu ne viennent pas de son livre');
+  assert.deepStrictEqual(mois.map(m => m.etape), ['fini', 'revise', 'saisi'], 'la chaîne d\'un dossier tenu est fausse');
+  // « Pas reçu » ne se dit pas d'un client à qui l'on ne réclame rien : null, jamais false (9.6.0).
+  assert.ok(mois.every(m => m.recu === null), 'un dossier tenu se voit attribuer un « reçu »');
+  // Sans livre, rien à tenir : pas de mois inventés.
+  assert.deepStrictEqual(C.productionDuDossier(garage, { exercices: [] }, '2026-04-10', 10), []);
+  // Un dossier SUR SkanFact ne prend pas ses mois dans son livre : on ne lui compte pas en retard
+  // des mois qu'on ne lui a jamais réclamés.
+  const client = { ...garage, manual: false, packs: [{ month: '2026-03', definitive: true }] };
+  assert.deepStrictEqual(C.productionDuDossier(client, index, '2026-04-10', 10).map(m => m.mois), ['2026-03'],
+    'un dossier sur SkanFact prend ses mois dans son livre');
+  // Le tableau entier compte la saisie à faire du dossier tenu, sans lui compter aucun « reçu ».
+  const lignes = C.production(C.migrate({ dossiers: [garage] }), { G: index }, { today: '2026-04-10' });
+  assert.strictEqual(lignes[0].aSaisir, 1, 'la saisie à faire d\'un dossier tenu ne compte pas');
+  assert.strictEqual(lignes[0].recus, 0);
+
+  const app = code('src', 'cabinet', 'renderer', 'app.js');
+  // La Production le DIT : « tenu au cabinet » dans la bulle d'un mois, et une phrase qui compte ce
+  // que la colonne compte — « reçus et pas encore saisis » ne se dit pas d'un dossier tenu.
+  assert.ok(/c\.recu === null \? 'tenu au cabinet'/.test(app), 'la bulle d\'un mois tenu dit « pas reçu »');
+  const prod = tranche(app, 'async function drawProduction(');
+  assert.ok(!/sont reçus et pas encore saisis|est reçu et pas encore saisi/.test(prod), 'le bandeau de production compte les mois tenus comme « reçus »');
+  // Le Suivi lit la MÊME fonction que la Production, et chaque mois porte son geste.
+  const tenus = tranche(app, 'async function dessinerMoisTenus(');
+  assert.ok(tenus.length > 1500 && tenus.length < 6000, 'tranche dessinerMoisTenus suspecte : ' + tenus.length);
+  assert.ok(/K\.productionDuDossier\(dossier, index,/.test(tenus), 'le Suivi d\'un dossier tenu ne lit pas la fonction de la Production');
+  assert.ok(/zone\.dataset\.id !== dossier\.id/.test(tenus), 'la zone n\'est pas redemandée après la lecture (7.6.0)');
+  assert.ok(/ouvrirMoisTenu\(dossier, b\.dataset\.tenu, b\.dataset\.etape\)/.test(tenus), 'un mois tenu ne mène nulle part');
+  const ouvrir = tranche(app, 'function ouvrirMoisTenu(');
+  assert.ok(/etape === 'saisi' \? 'saisie' : 'declaration'/.test(ouvrir) && /declState\.mois = mois/.test(ouvrir) && /livresState\.annee = mois\.slice\(0, 4\)/.test(ouvrir),
+    'un mois tenu n\'ouvre pas la saisie ou la déclaration de CE mois, sur SON exercice');
+  const fiche = tranche(app, 'function drawDossier(');
+  assert.ok(/if \(dossier\.manual\) dessinerMoisTenus\(dossier\);/.test(fiche), 'la fiche d\'un dossier tenu ne dessine pas ses mois');
+  assert.ok(!/commencer à attendre ses mois/.test(fiche), 'la fiche invite encore à « attendre » les mois d\'un client qui n\'envoie rien');
+  // L'exemple a six dossiers : « les quatre situations », écrit à l'époque des quatre, était une
+  // phrase que rien ne tenait plus (7.3.0). Un compte écrit à la main se périme au dossier suivant.
+  assert.ok(!/\b(deux|trois|quatre|cinq|six|sept|huit) situations\b/.test(app), 'l\'écran annonce un nombre de situations écrit à la main');
+  assert.ok(/client hors SkanFact dont tu tiens toute la comptabilité/.test(app), 'le premier écran ne dit plus ce que montre le dossier tenu au cabinet');
+});
+
+t('Un dossier TENU AU CABINET entre dans les échéances : son mois vide se SAISIT, il ne se relance pas (vu au test humain)', () => {
+  // Le calendrier comptait « sur 5 clients » un portefeuille de six : le garage de l'exemple, dont le
+  // cabinet dépose lui-même la TVA, n'y figurait jamais.
+  const garage = { id: 'G', name: 'Garage', matricule: 'G', manual: true, packs: [], tvaPeriod: 'mensuelle' };
+  const S = C.migrate({ settings: { relanceDay: 10 }, dossiers: [garage] });
+  const tenus = { G: { exercices: [{ annee: 2026, du: '2026-01-01', au: '2026-12-31', production: {
+    '2026-07': { ecritures: 12, validees: 12, brouillards: 0, declare: true } } }] } };
+  // Sans le résumé des livres, le calendrier ne sait rien de lui : c'est l'état d'avant.
+  assert.ok(!C.echeances(S, '2026-09-20', {}).some(e => e.label === 'TVA d\'août 2026'), 'le décor du test est faux');
+  const ech = C.echeances(S, '2026-09-20', { tenus });
+  const aout = ech.find(e => e.label === 'TVA d\'août 2026');
+  assert.ok(aout, 'la TVA d\'août d\'un dossier tenu au cabinet n\'est pas au calendrier');
+  assert.deepStrictEqual(aout.aSaisir, ['Garage'], 'un mois tenu sans écriture n\'est pas « à saisir »');
+  assert.deepStrictEqual(aout.aSaisirIds, ['G'], 'le geste ne sait pas quel dossier ouvrir');
+  assert.deepStrictEqual(aout.manquants, [], 'un dossier tenu au cabinet se voit RELANCER');
+  assert.strictEqual(aout.prets, 0);
+  assert.strictEqual(aout.level, 'danger', 'une échéance à huit jours dont le mois reste à saisir ne crie pas');
+  const juillet = ech.find(e => e.label === 'TVA de juillet 2026');
+  assert.ok(juillet && juillet.prets === 1 && !juillet.aSaisir.length, 'un mois tenu déjà saisi n\'est pas « prêt »');
+  // « À faire » le dit dans ses mots — pas « n'a pas envoyé » —, et sa date en lettres.
+  const ligne = C.cabinetTodo(S, '2026-09-20', { tenus }).find(x => x.id === 'echeance');
+  assert.ok(ligne, '« À faire » ne remonte pas l\'échéance d\'un mois tenu encore à saisir');
+  assert.ok(/1 client tenu au cabinet est encore à saisir/.test(ligne.label) && !/envoyé/.test(ligne.label), 'la ligne parle d\'envoi pour un client qui n\'envoie rien : ' + ligne.label);
+  assert.ok(!/\d{4}-\d{2}-\d{2}/.test(ligne.detail), 'la date de la ligne est au format machine : ' + ligne.detail);
+  // L'accord suit les clients : deux clients n'ont pas envoyé LEUR mois, jamais « son mois ».
+  const deux = C.migrate({ settings: { relanceDay: 10 }, dossiers: ['A', 'B'].map(id => ({ id, name: id, matricule: id, from: '2026-07', tvaPeriod: 'mensuelle', packs: [{ month: '2026-07', definitive: true }] })) });
+  const l2 = C.cabinetTodo(deux, '2026-09-20', {}).find(x => x.id === 'echeance');
+  assert.ok(l2 && /2 clients n'ont pas envoyé leur mois/.test(l2.label), 'l\'accord ne suit pas les clients : ' + (l2 && l2.label));
+  // Et « 1 dossier… Leur mois », « leur paquet » se lisaient dans « À faire » de l'exemple, qui a UN
+  // dossier provisoire et UN dossier aux pièces signalées.
+  const exemple = C.migrate({ settings: { relanceDay: 10 }, dossiers: C.demoDossiers('2026-09-23') });
+  const todoEx = C.cabinetTodo(exemple, '2026-09-23', {});
+  const prov = todoEx.find(x => x.id === 'provisoires'), pieces = todoEx.find(x => x.id === 'pieces');
+  assert.ok(prov && /^1 dossier/.test(prov.label) && /^Son mois/.test(prov.detail), 'un seul dossier provisoire : « Leur mois » — ' + (prov && prov.detail));
+  assert.ok(pieces && /^1 dossier/.test(pieces.label) && /de son paquet/.test(pieces.detail), 'un seul dossier aux pièces signalées : « leur paquet » — ' + (pieces && pieces.detail));
+  // L'écran : le mois à saisir porte son geste, jamais celui de la relance.
+  const app = code('src', 'cabinet', 'renderer', 'app.js');
+  const carte = tranche(app, 'function drawEcheances(');
+  assert.ok(/data-saisir-tenu=/.test(carte) && /data-vers-production=/.test(carte), 'un mois tenu à saisir n\'a pas de geste sur la carte');
+  assert.ok(/tenus: tenusConnus\(\)/.test(carte), 'la page Échéances ne reçoit pas les livres des dossiers tenus');
+  assert.ok(/tenus: tenusConnus\(\)/.test(tranche(app, 'function drawDossiers(')), '« À faire » ne reçoit pas les livres des dossiers tenus');
+  // Et le résumé se relit en ENTRANT sur ces pages : lu une fois au démarrage, il se périmait.
+  assert.ok(/route !== routeLue && \(route === 'echeances' \|\| route === 'dossiers'\)\) chargerQuestionsAttente\(true\)/.test(tranche(app, 'function render(')),
+    'le résumé des livres n\'est relu qu\'au démarrage');
+});
+
+t('La recherche du livre-journal garde la frappe, le curseur, et des PIÈCES entières (vu au test humain)', () => {
+  const app = code('src', 'cabinet', 'renderer', 'app.js');
+  // (1) Le curseur : « PAIE-2026-08 » tapé devenait « P ». La parade, exécutée sur un faux document :
+  // le champ neuf reprend le focus ET la sélection d'avant, pas le bout du champ.
+  let actif = null;
+  const neuf = { id: 'lv-q', focus() { actif = neuf; }, setSelectionRange(a, b) { neuf.sel = [a, b]; } };
+  const doc = { getElementById: id => (id === 'lv-q' ? neuf : null), get activeElement() { return actif; } };
+  const garder = evaluer(tranche(app, 'function sansPerdreLaFrappe('), { document: doc });
+  let dessins = 0;
+  garder({ id: 'lv-q', selectionStart: 3, selectionEnd: 5 }, () => { dessins++; });
+  assert.strictEqual(dessins, 1, 'la recherche ne redessine plus');
+  assert.strictEqual(actif, neuf, 'le champ redessiné ne reprend pas le curseur : on n\'y tape qu\'une lettre');
+  assert.deepStrictEqual(neuf.sel, [3, 5], 'le curseur repart au bout du champ au lieu de rester à sa place');
+  // Les trois champs qui se redessinent à la frappe passent par elle — celui du livre-journal l'avait oubliée.
+  assert.ok(/s\.q = q\.value; s\.page = 1; sansPerdreLaFrappe\(q, redraw\)/.test(app), 'la recherche du livre-journal perd encore la frappe');
+  assert.ok(/rechState\.q = q\.value; sansPerdreLaFrappe\(q,/.test(app), 'la Recherche a perdu sa parade');
+  assert.ok(/listState\.q = q\.value; listState\.page = 1; sansPerdreLaFrappe\(q, render\)/.test(app), 'la recherche des Dossiers a perdu sa parade');
+  // Et aucun AUTRE champ ne redessine son écran à la frappe sans elle.
+  [...app.matchAll(/\.oninput = \(\) => \{([^\n]*)\};/g)].forEach(m => {
+    if (/\b(render|redraw|drawLivres)\(/.test(m[1])) assert.ok(/sansPerdreLaFrappe\(/.test(m[1]), 'un champ redessine son écran à la frappe sans rendre le curseur : ' + m[0]);
+  });
+  // (2) Le filtre : une pièce dont UNE ligne correspond sort ENTIÈRE. Le vrai code du filtre, exécuté.
+  const vj = tranche(app, 'function vueJournal(');
+  const i = vj.indexOf('const duJournal'), j = vj.indexOf('const lj = ');
+  assert.ok(i > 0 && j > i, 'le filtre du livre-journal est introuvable');
+  const filtre = evaluer(`function (lignes, s, q, KC) { ${vj.slice(i, j)} return gardees; }`, {});
+  const L = [
+    { journal: 'AC', piece: 'LOY-08', date: '2026-08-01', account: '613', label: 'Loyer d\'août', tiers: '', debit: 800, credit: 0 },
+    { journal: 'AC', piece: 'LOY-08', date: '2026-08-01', account: '401', label: 'Agence Le Lac', tiers: 'Le Lac', debit: 0, credit: 800 },
+    { journal: 'VT', piece: 'REC-08', date: '2026-08-31', account: '532', label: 'Recettes', tiers: '', debit: 100, credit: 0 },
+    { journal: 'VT', piece: 'REC-08', date: '2026-08-31', account: '706', label: 'Réparations', tiers: '', debit: 0, credit: 100 }
+  ];
+  const g = filtre(L, { journal: '' }, 'loyer', KC);
+  assert.deepStrictEqual(g.map(l => l.account), ['613', '401'], 'la pièce trouvée sort coupée, ou une autre pièce la suit');
+  assert.strictEqual(KC.journalDepuisLignes(g).off.length, 0, 'une pièce juste est annoncée déséquilibrée par le filtre');
+  assert.strictEqual(filtre(L, { journal: 'VT' }, '', KC).length, 2, 'le filtre par journal ne garde plus son journal');
+});
+
+t('Un message du Cabinet écrit ses dates comme l\'écran, et accorde ce qu\'il compte — la validation d\'un lot, la fusion de deux livres (vu en relisant)', () => {
+  const app = code('src', 'cabinet', 'renderer', 'app.js');
+  // Aucune date interpolée BRUTE après « du », « le » ou « au » : « … du 2026-08-31 » se lisait dans
+  // le compte rendu d'un lot et dans celui de la fusion des deux livres (U-28, jamais porté ici).
+  const bruts = [...app.matchAll(/\b(?:du|le|au) \$\{[a-zA-Z_.]*\bdate\}/g)].map(m => m[0]);
+  assert.deepStrictEqual(bruts, [], 'une date part au format machine dans une phrase : ' + bruts.join(' | '));
+  assert.ok((app.match(/du \$\{fmtJour\(x\.date\)\}/g) || []).length >= 4, 'le décor du test est faux : les quatre messages corrigés ont disparu');
+  // L'accord suit le nombre : « Valider 1 écriture » ne dit pas « Chacune… Celles qui… », et « 1
+  // écriture n'est pas entrée » ne dit pas « elles restent en brouillard ».
+  const lot = tranche(app, 'async function validerUnLot(');
+  assert.ok(/const une = cibles\.length === 1;/.test(lot) && /'<p>Elle prend son numéro/.test(lot) && /'<p>Chacune prend son numéro/.test(lot),
+    'la question de la validation d\'un lot ne s\'accorde plus au nombre de pièces');
+  assert.ok(/\$\{plus \? 'elles restent' : 'elle reste'\} en brouillard/.test(lot), 'une seule pièce refusée « restent en brouillard »');
+});
+
+t('Le bandeau des paquets provisoires s\'accorde à son compte — « 1 paquet… Son mois… Il est exporté » (vu au test humain, page Écritures)', () => {
+  // L'exemple en a UN (Studio Sfax Design, août) : l'écran disait « 1 paquet n'est pas définitif … Leur
+  // mois n'a pas été clôturé … Ils sont quand même exportés ». Le verbe s'accordait, pas la phrase suivante.
+  const app = code('src', 'cabinet', 'renderer', 'app.js');
+  const de = tranche(app, 'function drawEcritures(');
+  assert.ok(de.length > 2000 && de.length < 20000, 'tranche drawEcritures suspecte : ' + de.length);
+  const i = de.indexOf("info('e.provisoire')");
+  assert.ok(i > 0, 'le bandeau des provisoires est introuvable');
+  const bandeau = de.slice(i, de.indexOf('</div>', i));
+  assert.ok(/const provPlus = plan\.provisoires\.length > 1;/.test(de), 'l\'accord ne suit pas le compte des provisoires');
+  // Chaque pluriel n'existe QUE dans la branche « plusieurs » : écrit en dur, il se lirait sur un paquet seul.
+  [['Leur mois', 'Son mois'], ['Ils sont quand même exportés', 'Il est quand même exporté']].forEach(([plur, sing]) => {
+    assert.strictEqual(bandeau.split(plur).length - 1, 1, `« ${plur} » est écrit hors de sa branche : ${bandeau.replace(/\s+/g, ' ')}`);
+    assert.ok(new RegExp(`provPlus \\? '${plur}[^']*(?:\\\\'[^']*)*' : '${sing}`).test(bandeau), `« ${plur} » n'a pas sa forme au singulier (« ${sing} »)`);
+  });
+});
+
+t('Un AUTRE écran commence en haut : un changement d\'adresse remet la vue du Cabinet à zéro (le jumeau de l\'app entreprise, vu au test humain)', () => {
+  // L'app entreprise remet `#view` en haut à chaque route (7.27.0) ; le Cabinet gardait la position
+  // de l'écran quitté, et la Paie ouverte depuis une Saisie défilée arrivait à mi-page.
+  const app = code('src', 'cabinet', 'renderer', 'app.js');
+  const m = /window\.addEventListener\('hashchange', \(\) => \{([\s\S]*?)\n    \}\);/.exec(app);
+  assert.ok(m, 'le changement d\'adresse ne passe plus par un gestionnaire qui remet la vue en haut');
+  const corps = m[1];
+  assert.ok(/vue\.scrollTop = 0/.test(corps) && corps.indexOf('vue.scrollTop = 0') < corps.indexOf('render()'),
+    'la vue n\'est pas remise en haut AVANT le dessin du nouvel écran');
+  assert.ok(!/window\.addEventListener\('hashchange', render\)/.test(app), 'un second gestionnaire redessine sans remettre la vue en haut');
+  // Les sous-onglets de la comptabilité ne passent PAS par là : ils ont leur règle, sous la barre collante.
+  assert.ok(/history\.pushState\(null, '', h\)/.test(tranche(app, 'function allerSousOnglet(')), 'les sous-onglets changent l\'adresse par hashchange : ils remonteraient au haut de la fiche');
+});
+
+t('Le geste qui DÉTRUIT vit tout en bas d\'un menu, après un trait, dans les DEUX applications (7.29.0, vu au test humain)', () => {
+  // « Supprimer ce brouillard » était la ligne juste au-dessus de « Joindre un justificatif… » : un
+  // clic qui glisse d'une ligne effaçait une pièce au lieu d'y joindre un scan. La règle datait de la
+  // 7.29.0 et rien ne la tenait. Chaque action `danger: true` doit suivre un trait, et rien ne doit
+  // venir après elle dans son menu.
+  ['src/renderer/app.js', 'src/cabinet/renderer/app.js'].forEach(f => {
+    const src = code(...f.split('/'));
+    const places = [...src.matchAll(/danger: true/g)].map(m => m.index);
+    assert.ok(places.length >= 2, `${f} : le décor du test est faux, aucune action destructive trouvée`);
+    places.forEach(i => {
+      const ligne = src.slice(0, i).split('\n').length;
+      const avant = src.slice(Math.max(0, i - 420), i);
+      assert.ok(/sep: true/.test(avant) || /detruire = \{[^\n]*$/.test(avant), `${f}:${ligne} : une action destructive sans trait au-dessus d'elle`);
+    });
+  });
+  // Les actions d'une écriture : le brouillard se supprime EN DERNIER, après le justificatif.
+  const cab = code('src', 'cabinet', 'renderer', 'app.js');
+  const ae = tranche(cab, 'function actionsEcriture(');
+  const iJust = ae.indexOf('Joindre un justificatif'), iFin = ae.indexOf('if (detruire) a.push({ sep: true }, detruire);');
+  assert.ok(iJust > 0 && iFin > iJust && ae.indexOf('return a;') > iFin, 'la suppression d\'un brouillard n\'est plus le dernier geste de son menu');
+});
+
+t('Une fenêtre qui porte un FORMULAIRE garde sa saisie, dans les DEUX applications (vu au test humain)', () => {
+  // Le Cabinet : cinq fenêtres posaient leur garde-fou à la main, sept formulaires du livre n'en
+  // avaient aucun. La règle vit dans modal(), prise APRÈS le montage, et n'écrase pas celle d'une
+  // fenêtre qui pose la sienne.
+  const cab = code('src', 'cabinet', 'renderer', 'app.js');
+  const mc = tranche(cab, 'function modal(');
+  assert.ok(mc.length > 1500 && mc.length < 9000, 'tranche modal() suspecte : ' + mc.length);
+  assert.ok(/const garde = \(opts && opts\.garde\) \|\| gardeAuto;/.test(mc), 'la question ne lit pas le garde-fou d\'office');
+  const iMount = mc.indexOf('if (onMount) onMount(layer, close);'), iAuto = mc.indexOf("gardeAuto = suivreSaisie(layer)");
+  assert.ok(iMount > 0 && iAuto > iMount, 'l\'instantané se prend avant le montage : ce que la fenêtre préremplit passerait pour une saisie');
+  assert.ok(/!\(opts && 'garde' in opts\) && layer\.querySelector\('form'\)/.test(mc), 'le garde-fou d\'office ne vise pas les fenêtres à formulaire, ou écrase celui d\'une fenêtre');
+  // Les sept formulaires du livre sont bien des <form> — sinon la règle ne les atteindrait pas.
+  ['repriseForm', 'immoForm', 'salarieForm', 'bulletinForm', 'inventaireForm', 'ecrireDepuisBanque', 'releveForm'].forEach(f =>
+    assert.ok(/<form id="/.test(tranche(cab, `function ${f}(`)), `${f} n'est plus un formulaire : le garde-fou d'office ne le voit pas`));
+  // L'app entreprise : AUCUNE fenêtre n'avait de garde-fou. Le jumeau, et le même instantané, au caractère près.
+  const ent = code('src', 'renderer', 'app.js');
+  const me = tranche(ent, 'function modal(');
+  assert.ok(/modalClose = dismiss;/.test(me) && /if \(e\.target === layer\) dismiss\(\)/.test(me) && /\$\$\('\[data-close\]', layer\)\.forEach\(b => b\.addEventListener\('click', dismiss\)\)/.test(me),
+    'Échap, le clic à côté ou « Annuler » ferment encore sans demander');
+  assert.ok(/!\(opts && opts\.garde === false\) && layer\.querySelector\('form'\)\) garde = suivreSaisie\(layer\)/.test(me), 'le garde-fou d\'office manque à l\'app entreprise');
+  const corps = src => (/function suivreSaisie\(layer\) \{[\s\S]*?\n  \}/.exec(src) || [''])[0];
+  assert.ok(corps(cab) && corps(cab) === corps(ent), 'les deux instantanés ne sont plus identiques : les deux applications ne répondraient pas la même chose');
+  // Un mot de CONFIRMATION n'est pas un travail à protéger : renoncer à « Tout effacer » après avoir
+  // tapé EFFACER ne demande pas « Abandonner cette saisie ? » (trouvé en relançant les parcours). Le
+  // jumeau du Cabinet (`confirmTyped`) n'a pas de formulaire, donc pas de garde-fou d'office.
+  const i = ent.indexOf('<form id="wf">');
+  const efface = ent.slice(i, ent.indexOf('\n  };', i));
+  assert.ok(i > 0 && efface.length > 400 && efface.length < 4000 && /Pour confirmer, écris <b>EFFACER<\/b>/.test(efface), 'la fenêtre « Tout effacer » est introuvable : ' + efface.length);
+  assert.ok(/null, \{ garde: false \}\);/.test(efface), '« Tout effacer » demande d\'abandonner un simple mot de confirmation');
+  assert.ok(!/<form/.test(tranche(cab, 'function confirmTyped(')), 'la confirmation recopiée du Cabinet est devenue un formulaire : elle demanderait d\'abandonner un mot');
+});
+
+t('Les deux instruments de rendu mesurent aussi la FENÊTRE ouverte (la sonde s\'arrêtait à #view)', () => {
+  const harnais = code('test', 'e2e', 'harnais.js');
+  assert.ok(/const FENETRE = '#modal-root/.test(harnais), 'la racine d\'une fenêtre doit être nommée dans le harnais');
+  ['cabinet-rendu.js', 'contraste.js'].forEach(f => {
+    const src = code('test', 'e2e', f);
+    assert.ok(/SONDE_ESPACEMENT, \{ min: ECART_MIN, exceptions: SEGMENTS, racine: FENETRE \}/.test(src), f + ' ne mesure pas la fenêtre ouverte');
+  });
+  // Et l'app entreprise en OUVRE : une branche que rien ne déclenche ne mesure rien.
+  assert.ok(/waitForSelector\(FENETRE/.test(code('test', 'e2e', 'contraste.js')), 'contraste.js n\'ouvre aucune fenêtre');
 });
 
 };

@@ -126,8 +126,11 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
   if (!(await win.evaluate(() => document.activeElement === document.querySelector('#hf-lines input[data-f=amount]'))))
     throw new Error('le curseur a quitté le champ montant');
   j.ok(`« ${etat.valeur} » tapé lettre par lettre sans perdre le curseur, total à jour (${total.trim()})`);
+  // 10.12.0 — on vient de taper dans ce formulaire : « Annuler » DEMANDE avant de jeter la saisie.
   await win.click('#modal-root [data-close]');
-  await win.waitForTimeout(200);
+  await win.waitForFunction(() => /Abandonner cette saisie/.test((document.querySelector('#modal-root .modal-bg:last-child') || {}).textContent || ''));
+  await win.click('#modal-root .modal-bg:last-child #ok');
+  await win.waitForFunction(() => !document.querySelector('#modal-root .modal-bg'));
 
   // ---------------------------------------------------------------- 3. le sélecteur d'année
   j.etape('Le sélecteur d\'année disparaît des onglets qui ne le lisent pas');

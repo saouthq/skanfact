@@ -27,6 +27,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Une **exception qui échappe à un handler** : rien à l'écran qu'on ait écrit, rien au journal | 9.4.10 — `err.code` **ne traverse pas** le pont IPC |
 | Une **version publiée que les applications ne voient pas** (« tu as la dernière version ») | 10.11.0 — la liste de l'API rend la release SANS ses fichiers ; une version téléchargée cachait la suivante |
 | Un bouton **hors de l'écran**, une barre empilée sur trois rangées | 7.13.0, 7.23.0 — `e2e:contraste` et `e2e:entetes` mesurent le bouton, jamais la page |
+| Un **refus qui promet une sortie qui n'existe pas** (« contre-passe d'abord », puis la même phrase) | 10.12.0 — une écriture contre-passée libère ce qu'elle portait |
 
 **Les chiffres**
 
@@ -61,6 +62,8 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Les **à-nouveaux** se calculent sur les écritures réelles, jamais sur les à-nouveaux précédents | 9.0.0, 9.8.0 |
 | Un **numéro** naît à la validation, et le contrôle passe AVANT l'attribution ; l'écran l'AFFICHE, il ne le recompte pas | 9.2.0 ; 6.0.0 — `nextNumber` ; 9.8.8 — T-52, le livre-journal qui renumérotait par date |
 | On pointe une **occurrence**, jamais une règle ; et le pense-bête dit qu'il n'est qu'un pense-bête | 7.21.0, 5.2.0, 9.4.6 |
+| Un **rôle** désigne le compte ; un préfixe écrit à part se trompe de compte | 10.12.0 — la déclaration d'employeur lisait le 65, la paie écrit au 645 |
+| Une **dotation** se réclame à l'inventaire, au dernier mois ; une sortie d'actif, tout de suite | 10.12.0 |
 
 **Les tests**
 
@@ -96,6 +99,8 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Un **compte de fichiers** n'est pas un compte de livres : l'index et la génération précédente font « 2 » | 9.8.8 |
 | Une assertion « **rien n'a changé** » passe toujours quand le geste n'a pas eu lieu : l'ancrer sur sa réussite | 10.9.1 ; 9.4.7 |
 | Un **contrat entre deux moitiés** se relit champ par champ contre le FORMULAIRE, jamais contre le commentaire qui le décrit | 10.9.1 — six champs annoncés, huit envoyés |
+| Un **exemple complet** est un test : il porte ce qu'aucun jeu minimal ne porte | 10.12.0 — quatre défauts du moteur trouvés en remplissant l'exemple |
+| Un **garde-fou neuf change le geste des parcours** : l'e2e répond à la question, comme un humain | 10.12.0 |
 
 **Les deux applications**
 
@@ -116,6 +121,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Le Cabinet **n'écrit jamais** chez un client et ne lui renvoie rien | Cabinet 1.0.0 |
 | Une classe du Cabinet ne peut pas porter un nom déjà pris dans la feuille partagée | 6.8.0 — `.setup-card` |
 | Un drapeau qui vit **en double** diverge, toujours | 7.26.0 — `src/depot.js` |
+| Une **fenêtre de formulaire** demande avant de jeter la saisie, avec le MÊME instantané des deux côtés | 10.12.0 |
 
 **L'interface**
 
@@ -155,6 +161,11 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Deux objets qui portent le **même mot** finissent confondus, y compris par leur auteur | 10.9.2 — l'empreinte d'un cabinet et celle d'une licence |
 | `navigate()` vers la page courante ne redessine **rien** : `vers()` | 7.15.0, 7.29.0 |
 | Un état lu une fois au démarrage **se périme** | 7.1.x, 8.0.0 |
+| **Un seul bouton principal** par écran, et c'est l'étape suivante — calculée, jamais posée à la main | 10.12.0 (U-11) |
+| Une **colonne collante** réserve sa largeur : elle ne recouvre jamais une donnée | 10.12.0 (U-02) |
+| Un écran de travail s'ouvre sur le **dernier mois qui a des données**, jamais un mois futur | 10.12.0 (U-12) |
+| Une **recherche** garde des pièces entières ; un champ qui redessine son écran garde la frappe | 10.12.0 |
+| Un dossier **tenu au cabinet** prend ses mois dans son livre : jamais « hors mission » ni « pas reçu » | 10.12.0 |
 
 **Ce qu'on ne fait jamais**
 
@@ -5881,6 +5892,128 @@ dernière version » ; une 10.9.3 téléchargée empêchait de voir la 10.10.0 ;
 - Écran de verrouillage du Cabinet : deux boutons pleine largeur l'un sous l'autre se lisent comme
   un seul bloc à deux étages — `.lock-card .btn + .btn` dans la feuille partagée, pour les deux
   applications, jamais sur un identifiant.
+
+### 10.12.0 — Le Cabinet parcouru comme un comptable le vivrait
+
+Skander : « parcourir l'app cabinet en ui ux designer senior », puis « corriger tout », puis
+« utilise tes 3 outils afin de vérifier et prouver que ton lot est bien corrigé, comme ça tu vois ce
+qu'un comptable voit réellement ». Trente constats (U-01 → U-30, `A-FAIRE.md` avant cette version),
+corrigés en quatre lots — les chiffres, la saisie et le livre, la hiérarchie, trouver —, et chaque
+lot revérifié à la souris et au clavier. Publiée en **bêta** : elle touche au moteur comptable.
+
+**La méthode, qui est la leçon principale.** Le test « comme un humain » (`scripts/humain/`) a trouvé,
+APRÈS chaque lot corrigé et vert, des défauts qu'aucun test ni aucun parcours ne voyait : neuf après
+le lot B (H-1 à H-9 — un montant « 250.000 » lu deux cent cinquante mille, une case refusée qui ne
+restait pas rouge au survol, des noms tombés à quatre lettres), et en lot D une recherche qui perdait
+les lettres tapées, une contre-passation qui menait à une impasse, un dossier tenu au cabinet
+« hors mission » sur toute sa ligne, une palette qui ignorait l'Aide. **Les `e2e` cliquent des
+sélecteurs ; ce test clique des pixels et lit l'écran — les deux sont nécessaires**, et c'est le
+second qui dit si le premier vérifie la bonne chose.
+
+Règles apprises, à ne pas recasser :
+
+- **Un rôle désigne le compte, jamais un préfixe écrit à part** (U-03). La déclaration d'employeur
+  lisait `masse('65')` pendant que la paie écrit ses charges patronales au **645** : « aucun
+  mouvement » sur un dossier qui en portait 627 890 DT. C'est la faute de la 10.10.0 (« un modèle se
+  confronte aux comptes que le MOTEUR écrit ») un écran plus loin. Et une copie du modèle livrée par
+  la 10.11.0 se renomme à la lecture — jamais une rubrique que le cabinet a écrite.
+- **Deux écrans qui parlent de la même mission lisent le même début de mission** (U-05,
+  `debutDeMission`) : la Comptabilité criait « il manque 6 mois » sur des mois que le Suivi disait
+  hors mission.
+- **Un agrégat de plusieurs clients nomme SON mois** (U-04) : la carte additionnait le mars d'un
+  client et l'août d'un autre. `caDuPortefeuille` sert la carte ET le pied du tableau (6.8.1).
+- **La ligne de flottaison se mesure sur le portable** (U-01) : à 1280×800 la grille de saisie
+  montrait UNE ligne sous 480 px d'en-têtes et de bandeaux ; elle en montre dix. Un écran de travail
+  qui commence sous le bas de l'écran n'est pas un écran de travail.
+- **Une colonne collante réserve sa largeur** (U-02) : elle recouvrait Débit et Crédit du journal,
+  « Signalés » des Dossiers, juillet et août de la Production — une donnée cachée par un bouton.
+- **Treize onglets ne se lisent plus : trois groupes, dans l'ordre du mois** (U-06) — Saisir,
+  Consulter, Déclarer et clôturer ; l'écran vit dans l'adresse, et chaque dossier rouvre sur l'écran
+  où on l'a laissé (H-5).
+- **Une saisie qui vit en mémoire se protège à la fermeture** (U-09), et **une fenêtre de formulaire
+  demande avant de jeter ce qu'on vient de taper — dans les DEUX applications**. La règle vit dans
+  `modal()` : l'instantané se prend APRÈS le montage (ce que la fenêtre préremplit n'est pas une
+  saisie), `garde: false` dit qu'une fenêtre n'en veut pas, et `suivreSaisie` a le MÊME corps des deux
+  côtés, comparé par un test. L'app entreprise n'avait AUCUN garde-fou de fenêtre (7.3.0).
+- **Un montant s'écrit et se relit en français dans un champ** (H-3), et une case refusée reste
+  rouge au repos, au survol et sous le curseur (H-3 bis : la règle du survol battait celle de l'erreur).
+- **Un seul bouton principal par écran, et c'est l'étape suivante** (U-11) — calculée par une
+  fonction (`const suivante = …`) que le test ÉVALUE, jamais un vert posé à la main. Un bouton
+  principal éteint perd sa couleur ; les Réglages n'en ont aucun au repos (« Enregistrer » s'allume à
+  la première modification). Mesuré : aucun des écrans de l'exemple n'en a deux.
+- **L'orange est gardé pour un geste ; l'état normal se dit en gris** (U-13). « 1 bulletin non réglé »
+  est l'état de départ d'un bulletin, pas une alarme (8.0.1).
+- **Un écran de travail s'ouvre sur le dernier mois qui a des données, sinon le mois courant — jamais
+  un mois futur** (U-12) : la Paie s'ouvrait sur décembre.
+- **Ne pas savoir n'est pas « non », aussi pour une échéance** (U-21) : la CNSS ne vise que les
+  employeurs que les livres connaissent. Et un index écrit avant la version se RELIT une fois — sinon
+  la CNSS aurait été réclamée à tout le portefeuille le matin de la mise à jour.
+- **La palette de chaque application propose l'Aide** (jumeau manquant, 7.3.0) : Cmd+K du Cabinet ne
+  connaissait ni les treize écrans de comptabilité ni les articles ; « béji balance » ouvre la balance
+  de Béji, et une question propose l'article qui l'explique — cherché dans son corps, classé, borné.
+- **Un article d'Aide par écran, qui finit par son geste** (U-08), et la bulle du titre de l'écran y
+  mène : sept écrans de comptabilité n'avaient aucune explication.
+- **Un exemple COMPLET est un test que les jeux minimaux ne sont pas** (U-10). Remplir la banque, la
+  paie, les biens et la révision de l'exemple — par les VRAIES portes (`exemple-vitrine.js`,
+  `ecrireLeLivre`), jamais par des écritures posées à la main — a fait tomber quatre défauts du moteur
+  qu'aucun test n'avait les données pour voir : l'IRPP de juillet diminué du reversement de juin, la
+  balance d'ouverture comptée deux fois, l'à-nouveau pris pour un suspens de banque et pour un mois à
+  déclarer, et l'à-nouveau proposé en face d'un versement du même montant.
+- **Un refus qui promet une sortie doit l'avoir** : « contre-passe d'abord » menait, une fois la
+  contre-passation faite, à la MÊME phrase. Une écriture contre-passée LIBÈRE ce qu'elle portait
+  (paie, dotation, déclaration, inventaire), `ceQuePorte` le dit dans la question AVANT le geste, et
+  un refus sur un brouillard dit « supprime-la » — pas une contre-passation impossible.
+- **Un dossier tenu au cabinet prend ses mois dans son LIVRE**, pas dans ses paquets : jamais
+  « hors mission », jamais « pas reçu » (`recu: null`, 9.6.0), dans les échéances comme « à saisir »
+  et jamais relancé (6.8.0). La Production, le Suivi et les Échéances lisent `productionDuDossier`.
+- **Une recherche garde des PIÈCES, jamais des lignes** : une pièce dont une ligne correspondait
+  sortait coupée, et l'écran annonçait « 24 pièces déséquilibrées » sur un livre juste. Et un champ
+  qui redessine son écran à la frappe passe par `sansPerdreLaFrappe` — une seule fonction pour les
+  trois champs, dont le troisième avait oublié la parade (« P » au lieu de « PAIE-2026-08 »).
+- **Un badge ne vit pas dans une cellule `nowrap` à côté d'une référence**, et **une action seule dans
+  un tableau dense porte son mot court** (`court` dans `rowmenu.js`, la phrase entière restant lue et
+  survolée) : une pièce contre-passée élargissait le journal jusqu'à cacher le Crédit.
+- **Une dotation est une écriture d'inventaire : elle se RÉCLAME au dernier mois de l'exercice** ;
+  une sortie d'actif, tout de suite. La pastille et le bouton vert lisent la même fonction
+  (`aReclamerImmobilisations`) ; le bouton reste utilisable plus tôt, et dit pourquoi il n'est pas vert.
+- **Un écart se montre avec ses deux termes** (9.8.8, porté aux suspens) : total côté banque, total
+  côté livre, et une phrase qui dit si leur différence refait tout l'écart — ou ce qui vient d'avant
+  les relevés importés.
+- **Un autre écran commence en haut** (le jumeau de la 7.27.0) et **le geste qui détruit vit en bas de
+  son menu, après un trait, dans les deux applications** (7.29.0 — la règle n'était tenue par aucun
+  test, et « Supprimer ce brouillard » était la ligne au-dessus de « Joindre un justificatif »).
+- **Un message écrit ses dates comme l'écran et s'accorde à ce qu'il compte** : « du 2026-08-31 » et
+  « elles restent en brouillard » pour une seule pièce, dans le compte rendu d'un lot et de la fusion ;
+  « 1 paquet n'est pas définitif… Leur mois… Ils sont quand même exportés » sur la page Écritures de
+  l'exemple, qui en a UN. Le verbe du compte s'accordait, pas la phrase suivante.
+- **Un contrôle qui porte son geste le pose dans une rangée flex, pas dans la phrase** (T-56, re-trouvée) :
+  à 1280 px « Renseigner le n° de … » passait à la ligne collé sous sa phrase, à 3 px (`.ctrl-geste`).
+
+**Les instruments ont grandi avec le lot**, et chacun a trouvé quelque chose dans l'heure : la sonde
+d'espacement entre dans la FENÊTRE ouverte (elle s'arrêtait à `#view`) dans les deux applications ;
+`SONDE_TRONQUE` mesure le texte coupé à côté d'une colonne vide ; `e2e:cabinet-rendu` ouvre les deux
+dossiers pleins de l'exemple (les vitrines, lues dans le scénario, jamais nommées à la main), les
+sections repliées rouvertes, la fenêtre du modèle de liasse, et le livre-journal d'une pièce
+contre-passée — et tombe s'il en mesure moins que prévu (T-55, un écran de plus).
+
+Pièges de test, tous déjà écrits ici et re-rencontrés :
+- **Un garde-fou neuf change le geste des parcours** : `e2e:immobilisations`, `entreprise`, `fiches`,
+  `repondre`, `reglages` et `licence` fermaient une fenêtre remplie par « Annuler » ou Échap, et
+  restaient bloqués sous la question que la fenêtre pose désormais. Chaque parcours répond à la question — c'est ce
+  qu'un humain fait.
+- **Et relire ces parcours pour les adapter a trouvé la règle qui manquait au garde-fou** : un mot de CONFIRMATION
+  n'est pas un travail à protéger. Renoncer à « Tout effacer » après avoir tapé EFFACER demandait
+  « Abandonner cette saisie ? » — `garde: false`, et son jumeau du Cabinet (`confirmTyped`) n'a pas de
+  formulaire. Une règle générale se relit sur ses cas particuliers avant d'être déclarée finie.
+- **`e2e:retenue` était tombé depuis la 10.2.0**, qui a rangé « Modifier la fiche » du client dans le
+  menu « Actions » : le parcours cherchait encore `#edit`. Un parcours qu'on ne relance pas se périme
+  sans rien dire (7.28.0) — et c'est le relancement de TOUS les parcours qui l'a montré.
+- **Des données qui ne discriminent pas ne prouvent rien** (10.0.0) : la preuve du classement des
+  articles d'Aide restait verte, parce que l'article attendu était déjà premier dans l'ordre du
+  fichier. Le test vérifie que l'ordre naturel NE donne PAS la réponse avant de juger le classement.
+- **Trois assertions recopiaient une forme** et sont tombées sur du code juste — la branche « action
+  seule » de `rowmenu.js` (une fenêtre de 400 caractères), T-34 et T-10 : retournées vers la règle
+  qu'elles portaient, comme deux autres au lot A qui décrivaient l'état du jour.
 
 ## Pistes pour la suite (non demandées)
 

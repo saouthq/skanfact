@@ -145,7 +145,14 @@ t('9.7.0 : une dotation déjà écrite ne se recalcule pas en silence', () => {
   K.noterEcritureImmo(l, f.id, 2026, e.id);
   const r = K.modifierImmobilisation(l, f.id, { valeur: 9600 }, 'test', 3);
   assert.ok(!r.ok, 'changer la valeur d\'un bien dont la dotation est écrite doit être refusé');
-  assert.ok(/[Cc]ontre-passe/.test(r.motif), 'le refus doit nommer le geste qui débloque');
+  // Le geste NOMMÉ est celui qui débloque VRAIMENT (10.12.0) : l'écriture est encore au brouillard,
+  // elle se SUPPRIME. « Contre-passe » était un conseil impossible — un brouillard ne se contre-passe
+  // pas — et l'assertion d'avant l'exigeait.
+  assert.ok(/supprime-la/.test(r.motif) && !/[Cc]ontre-passe/.test(r.motif), 'le refus doit nommer le geste qui débloque : ' + r.motif);
+  // Validée, elle se contre-passe.
+  assert.ok(K.validerEcriture(l, e.id, 'test', 3).ok);
+  const r2 = K.modifierImmobilisation(l, f.id, { valeur: 9600 }, 'test', 3);
+  assert.ok(!r2.ok && /contre-passe/.test(r2.motif), 'le refus d\'une dotation validée doit nommer la contre-passation : ' + r2.motif);
   // Mais ce qui ne touche PAS aux chiffres passe : renommer un bien n'a jamais rendu une écriture fausse.
   assert.ok(K.modifierImmobilisation(l, f.id, { libelle: 'Serveur de sauvegarde' }, 'test', 4).ok);
   assert.ok(!K.supprimerImmobilisation(l, f.id, 'test', 5).ok, 'supprimer laisserait une dotation sans bien');

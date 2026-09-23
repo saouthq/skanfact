@@ -97,53 +97,13 @@ Constats de l'audit du 22/09/2026 restés hors de la 10.6.0.
 
 ## 4. Les applications
 
-- **6.9.0 — B10** : la page Écritures démontrable pendant le jeu d'exemple du Cabinet.
-- **L'audit UI/UX du Cabinet est fait** (23/09/2026) : ses constats sont au § 4 bis, proposés et
-  pas encore corrigés.
+- **L'audit UI/UX du Cabinet est fait et corrigé** (23/09/2026) : ses trente constats (U-01 à
+  U-30) et ce que leur vérification à la souris a trouvé en plus sont livrés en **10.12.0 (bêta)** —
+  détail dans `CHANGELOG.md` et `CLAUDE.md` § 10.12.0. Reste à le faire relire par le cabinet pilote.
 - Les trois pistes jamais demandées, gardées pour mémoire : séparer les installateurs arm64 / x64
   (les 222 Mo du dmg universel), la signature Apple et Windows (certificats payants — mais elle
   passe **avant la première vente**, cf. `QUESTIONS.md` : un expert-comptable ne clique pas sur
   « Exécuter quand même »), et l'export TEIF si l'e-facture devient obligatoire.
-
-## 4 bis. L'audit UI/UX du Cabinet (23/09/2026) — proposé, pas encore corrigé
-
-Parcouru en designer senior avec les outils « comme un humain » (xdotool, captures d'écran, Playwright
-branché sur l'application), sur la 10.11.0 et le jeu d'exemple, à 1440×900 puis à 1280×800, en
-clair et en sombre. Captures : `/tmp/skanfact-humain/audit/` (effacées avec la session). Trois lignes
-(U-03, U-15, U-23) ont été vérifiées dans le code avant d'être écrites ici.
-
-| Id | Gravité | Écran | Constat | Correction proposée |
-|---|---|---|---|---|
-| U-01 | critique | Saisie | La grille commence à 764 px sur un écran de 800 (1280×800) : **une seule ligne** visible. En tout, 480 px d'en-tête, de période, de bandeaux et d'onglets passent devant | En-tête de dossier compact et collant (nom, période, état : une ligne) ; les deux bandeaux fondus en une ligne ; l'aide des touches repliable ; objectif : 8 lignes visibles à 1280×800 |
-| U-02 | critique | Livre-journal, Dossiers, Production | La colonne collante (Actions, À saisir) **recouvre des données** : Débit et Crédit coupés dans le journal, « Signalés » caché dans Dossiers, juillet et août cachés dans Production | La colonne collante réserve sa largeur ; en-têtes de mois compacts ; une sonde « aucune cellule de données sous une colonne collante » dans `e2e:cabinet-rendu` |
-| U-03 | critique | Liasse → Déclaration annuelle d'employeur | « Charges sociales patronales — aucun mouvement sur 65 » pendant que la paie écrit 627 890 DT au **645** (`compta.js` : la déclaration lit `masse('65')`, le rôle `chargesPatronales` vaut `'645'`). La rubrique RE6 lit aussi le 65 | Lire le compte du rôle, jamais un préfixe écrit à part ; faire confirmer RE5 et RE6 par le comptable (À VÉRIFIER) |
-| U-04 | majeur | Dossiers | La carte « 18 647,900 DT de CA suivi — somme des derniers mois reçus » additionne le mois de mars d'un client et le mois d'août d'un autre : le chiffre ne veut rien dire | Nommer la période : « CA d'août 2026 : … sur 3 clients », ou le cumul 2026 |
-| U-05 | majeur | Comptabilité (tous les sous-onglets) | « Il manque 6 mois sur cette période : ces livres sont incomplets » pendant que Suivi dit que janvier à juin sont hors mission ; l'alerte reste une fois le livre créé | Même fonction que Suivi : ne compter que les mois de la mission |
-| U-06 | majeur | Comptabilité | 13 sous-onglets sur deux rangées (« Liasse » et « Recherche » seuls sur la seconde) | Trois groupes : Saisir / Consulter / Déclarer et clôturer, avec un second niveau ; l'adresse garde l'onglet |
-| U-07 | majeur | Cmd+K | « balance » rend « Rien ne correspond. » ; « tva » ne propose que trois panneaux de Réglages (étiquetés « Action ») | Indexer les 13 vues du dossier ouvert, et les couples « client + vue » (« béji balance ») |
-| U-08 | majeur | Aide | 10 articles : aucun ne couvre Banque, Déclaration, Immobilisations, Paie, Révision, Exercice ou Liasse. « rapprochement » ne trouve rien | Un article par onglet, qui finit par son geste ; la bulle du titre de chaque onglet y mène |
-| U-09 | majeur | Saisie | Une pièce commencée vit en mémoire (`saisieState.piece`) : elle survit à la navigation mais disparaît à la fermeture de l'application, sans question — le Cabinet n'a aucun garde-fou de fermeture | Un point « non enregistrée » sur l'onglet Saisie, et le garde-fou de fermeture de l'app entreprise (2.4.0) |
-| U-10 | majeur | Démo | Banque, Immobilisations, Inventaire, Paie et Révision sont vides dans l'exemple : ce qui impressionne un comptable ne se montre pas | Un relevé (dont une ambiguïté), deux biens, deux salariés avec leurs bulletins, une révision entamée |
-| U-11 | moyen | Révision, Relances, Déclaration, assistant | Le bouton principal n'est pas le geste suivant : « Arrêter la révision » à 0 compte signé sur 19 ; quatre boutons verts sur Relances ; « Préparer la déclaration » deux fois | Un seul bouton principal par écran, et c'est l'étape suivante |
-| U-12 | moyen | Paie | S'ouvre sur décembre 2026 et le 4e trimestre, deux périodes futures ; la Déclaration s'ouvre sur août | Même règle partout : le dernier mois qui a des données, sinon le mois courant |
-| U-13 | moyen | Déclaration, Réglages, Révision, Relances | Bandeaux empilés : quatre avant le premier chiffre de la Déclaration, la clé de secours dite trois fois sur Données et sécurité, de l'orange sur des états normaux (« 19 comptes ne sont pas signés » au départ d'une révision) | Une seule ligne d'état par écran ; l'orange seulement quand il y a un geste à faire |
-| U-14 | moyen | Déclaration | La raison d'une case « — » (TFP, FOPROLOS, TCL) et la note de l'IRPP (« Non compris dans le total à dé… ») sont coupées par une ellipse | La raison passe à la ligne, sous le libellé de la case |
-| U-15 | moyen | Exercice → À-nouveaux | La colonne « Intitulé » est vide sauf pour le 13 : elle lit le libellé de la ligne, pas le nom du compte (`app.js`, règle 9.8.7) | `nomDeCompte`, comme le grand livre |
-| U-16 | moyen | Liasse | 17 rubriques vides sur 26, chacune avec sa phrase grise, noient les 9 qui portent un montant ; une colonne de « Voir les comptes » | « Masquer les rubriques vides (17) », coché par défaut ; le montant devient le lien |
-| U-17 | moyen | Production | « reçu, rien de saisi » et « à saisir » ne se distinguent pas pour un comptable ; carrés de 16 px ; « saisi » et « révisé » ne diffèrent que par la couleur ; « hors mission » ressemble à « reçu » | Quatre états, quatre formes, le texte au survol |
-| U-18 | moyen | Assistant, Réglages | Les textes d'exemple dans les champs (« +216 … », « SKAN1…. ») sont en gras foncé : on les prend pour des valeurs déjà saisies | Texte d'exemple gris et en graisse normale, dans la feuille partagée |
-| U-19 | moyen | Exercice, Liasse, Réglages → Comptabilité | 3 192 px, 3 657 px et 4 193 px ; le modèle de liasse est une grille éditable de 26 × 6 champs aux libellés coupés | Sections repliables avec sommaire ; le modèle en lecture, modifiable dans une fenêtre |
-| U-20 | moyen | Immobilisations | Un panneau permanent de quatre paragraphes de réserves (« Ce que cet écran ne décide pas ») | Dans la bulle du titre (règle 9.4.9) |
-| U-21 | moyen | Échéances | « Un pense-bête : SkanFact ne dépose rien à ta place » répété sous chaque carte ; la CNSS dit « SkanFact ne sait pas lesquels » alors que la Paie (10.3.0) connaît les salariés des dossiers tenus | Une fois en tête de page ; filtrer la CNSS sur les salariés connus |
-| U-22 | mineur | Fiche → Suivi | « Le bouton « Relancer », en haut » s'affiche sur un client à jour, où ce bouton n'existe pas | La phrase suit la condition du bouton |
-| U-23 | mineur | Immobilisations, Inventaire, Paie | Les boutons éteints disent pourquoi, mais seulement au survol (`title`) | La raison en gris, visible à côté, comme dans la Saisie |
-| U-24 | mineur | Paie | « Les salariés — c'est par là qu'une paie commence » sans bouton ; la masse salariale est un tableau de zéros | Le bouton dans le panneau ; un état vide au lieu des zéros |
-| U-25 | mineur | Dossiers, fiche | Seules deux cartes sur quatre sont cliquables (chevrons) ; « 2 à jour sur 5 » ; deux bulles « i » côte à côte sur « Paquets reçus » ; le chiffre d'affaires de la liste (le mois) et celui de la fiche (l'année) sans période nommée | Toutes les cartes ouvrent quelque chose ; nommer la période du CA partout |
-| U-26 | mineur | Saisie | Les colonnes se décalent quand l'intitulé apparaît pendant la frappe | Largeurs fixes (`colgroup`) |
-| U-27 | mineur | Création du livre | « Créer le livre… » agit sans fenêtre malgré ses points de suspension ; le compte rendu ne propose pas la suite | « Ouvrir la saisie » / « Voir le livre-journal » dans le compte rendu |
-| U-28 | mineur | Exercice | « 2 mois sans déclaration préparée (2026-07, 2026-08) » : format machine dans une phrase | `fmtJour` / nom du mois |
-| U-29 | mineur | Production | L'étiquette « exemple » tronquée donne « Garage Ben Salem … », comme un nom coupé | L'étiquette hors de la cellule tronquée |
-| U-30 | mineur | Aide | La loupe est sous la ligne du texte ; « Essaie un seul mot » après un seul mot tapé | Aligner l'icône ; la phrase suit le nombre de mots |
 
 ## 5. Les dettes d'outillage
 

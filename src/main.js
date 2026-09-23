@@ -1558,7 +1558,7 @@ ipcMain.handle('ocr:read', async (_e, { path: file } = {}) => {
 
 // ---------- PDF ----------
 
-const { fitToPage, paginate, canalDe } = require('./renderer/core.js');
+const { fitToPage, paginate, canalDe, jourDeLInstant } = require('./renderer/core.js');
 
 // Rend un document HTML en PDF A4. Le HTML passe par un fichier temporaire : une URL data:
 // est limitée en taille (logo en base64).
@@ -1834,7 +1834,8 @@ ipcMain.handle('pont:requete', (_e, chemin, corps) => pontRequete(chemin, corps)
 ipcMain.handle('pont:exporterBase', async () => {
   const doc = await pontRequete('export');
   if (!doc || !doc.tables || !doc.comptes) { throw erreur('ERR-ENT-077', 'La console n\'a pas rendu un export lisible.'); }
-  const jour = new Date().toISOString().slice(0, 10);
+  // Le jour LOCAL (règle 5.2.3) : exporté à 0 h 30 à Tunis, le fichier ne porte pas la veille.
+  const jour = jourDeLInstant(Date.now());
   const nom = 'console-' + jour + '.json';
   const dest = path.join(CLES_DIR(), nom);
   fs.mkdirSync(CLES_DIR(), { recursive: true });

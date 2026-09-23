@@ -16,7 +16,7 @@
 // l'esthétique, il attrape ce qu'on ne peut pas lire du tout.
 //
 //   xvfb-run -a node test/e2e/contraste.js
-const { playwright, RACINE, ELECTRON, journal, surveiller, SONDE_CONTRASTE, SONDE_ESPACEMENT, SONDE_COLLANT } = require('./harnais');
+const { playwright, RACINE, ELECTRON, journal, surveiller, SONDE_CONTRASTE, SONDE_ESPACEMENT, SONDE_COLLANT, FENETRE } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
 
@@ -53,6 +53,13 @@ const SEGMENTS = ['.tabs', '.row-menu', '.pager'];
     ecarts += e.mesures;
     e.colles.forEach(x => fautes.push(`${ou} — « ${x.bouton} » touche « ${x.voisin} » (${x.cote},`
       + ` ${x.sens}) : ${x.ecart} px, minimum ${ECART_MIN}`));
+    // Une fenêtre ouverte vit hors de `#view` (voir `FENETRE` dans le harnais) : on la mesure à part.
+    if (await win.$(FENETRE)) {
+      const f = await win.evaluate(SONDE_ESPACEMENT, { min: ECART_MIN, exceptions: SEGMENTS, racine: FENETRE });
+      ecarts += f.mesures;
+      f.colles.forEach(x => fautes.push(`${ou} (fenêtre) — « ${x.bouton} » touche « ${x.voisin} » (${x.cote},`
+        + ` ${x.sens}) : ${x.ecart} px, minimum ${ECART_MIN}`));
+    }
     mesuresChamps += champs.length;
     // U-02 (10.12.0) : la règle de la colonne collante vit dans la feuille PARTAGÉE — elle se mesure
     // donc dans les DEUX applications (9.4.3 : un instrument qui ne couvre qu'une application ne
@@ -101,6 +108,26 @@ const SEGMENTS = ['.tabs', '.row-menu', '.pager'];
     n += await sonder('#/' + p);
   }
   j.ok(`${n} boutons mesurés`);
+
+  // 10.12.0 — les FENÊTRES. La sonde d'espacement ne regardait que `#view`, et une fenêtre vit dans
+  // `#modal-root` : aucun bouton d'une fenêtre n'avait jamais été mesuré dans cette application.
+  // Trois des plus ouvertes, par leur vrai bouton ; chacune doit s'ouvrir, sinon le parcours tombe —
+  // une fenêtre qu'on croit mesurée et qui ne s'est pas ouverte est le défaut de `#stk-tabs` (7.23.0).
+  j.etape('Trois fenêtres parmi les plus ouvertes');
+  for (const [page, bouton, nom] of [['clients', '#new', 'nouveau client'], ['catalogue', '#new', 'nouvelle prestation'],
+    ['fournisseurs', '#new', 'nouveau fournisseur']]) {
+    await win.evaluate(x => { location.hash = '#/' + x; }, page);
+    await win.waitForSelector('#view ' + bouton, { timeout: 5000 });
+    await win.click('#view ' + bouton);
+    await win.waitForSelector(FENETRE, { timeout: 5000 })
+      .catch(() => { throw new Error(`la fenêtre « ${nom} » ne s'ouvre pas : elle ne serait jamais mesurée`); });
+    await win.waitForTimeout(200);
+    await sonder('fenêtre ' + nom);
+    await win.keyboard.press('Escape');
+    await win.waitForFunction(() => !document.querySelector('#modal-root .modal-bg'), null, { timeout: 5000 })
+      .catch(() => { throw new Error(`la fenêtre « ${nom} » ne se referme pas à Échap`); });
+  }
+  j.ok('mesurées');
 
   // Le cas exact de la capture : une facture émise, dont le bandeau porte le seul bouton de sortie.
   j.etape('Le bandeau d\'une pièce émise');

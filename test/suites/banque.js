@@ -123,8 +123,9 @@ t('9.5.0 : seul un candidat UNIQUE se rapproche d\'office', () => {
   assert.strictEqual(L[0].rapprochement.par, 'auto');
   // DEUX candidats à 250 : jamais certain, jamais posé — c'est LA règle de cette version. Un
   // rapprochement faux est pire qu'un rapprochement absent, parce qu'il ferme la question.
-  assert.strictEqual(L[1].rapprochement.niveau, 'aucun');
-  assert.strictEqual(L[1].rapprochement.ecritureId, '');
+  // (10.12.0) Le niveau se GARDE pour que l'écran dise « à trancher » ; l'écriture, jamais.
+  assert.strictEqual(L[1].rapprochement.niveau, 'a-confirmer');
+  assert.strictEqual(L[1].rapprochement.ecritureId, '', 'une ambiguïté n\'est jamais posée');
   const d = r.detail.find(x => x.ligneId === L[1].id);
   assert.strictEqual(d.niveau, 'a-confirmer');
   assert.strictEqual(d.candidats.length, 2, 'et l\'écran reçoit TOUS les candidats');
@@ -144,7 +145,10 @@ t('9.5.0 : le libellé départage deux candidats — en « probable », jamais e
   }, 'moi', 1);
   const r = K.rapprocherAuto(livre, livre.releves[0].id, {});
   assert.strictEqual(r.detail[0].niveau, 'probable');
-  assert.strictEqual(livre.releves[0].lignes[0].rapprochement.niveau, 'aucun',
+  // (10.12.0) La règle est qu'il ne se POSE pas — rien en face —, pas qu'il se taise : la ligne dit
+  // « probable », l'écriture reste à choisir.
+  assert.strictEqual(livre.releves[0].lignes[0].rapprochement.niveau, 'probable');
+  assert.strictEqual(livre.releves[0].lignes[0].rapprochement.ecritureId, '',
     'un « probable » ne se pose pas tout seul : il se propose');
 });
 

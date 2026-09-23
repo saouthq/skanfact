@@ -271,6 +271,13 @@ const SONDE_ENTETES = ({ maxL, maxR, maxH, barres }) => {
 //    `racine` borne la sonde au corps de la page, parce qu'une barre de fenêtre ou un pied n'ont
 //    pas les mêmes règles d'espacement que le contenu. Les deux applications passent `#view`, la
 //    console `body` : elle n'a pas de cadre fixe, tout son écran EST le contenu.
+//
+//    10.12.0 — et une FENÊTRE ouverte vit HORS de `#view`, dans `#modal-root`. Bornée au corps, la
+//    sonde ne l'a jamais regardée : deux boutons collés dans la fenêtre du modèle de liasse (U-19)
+//    passaient sans un mot. C'est T-55 une surface plus loin — un instrument qui n'atteint pas
+//    l'écran annonce « tout va bien ». Les deux applications mesurent donc AUSSI la fenêtre du
+//    dessus quand il y en a une (`FENETRE`), avec la même sonde et les mêmes exceptions.
+const FENETRE = '#modal-root > .modal-bg:last-child .modal';
 const SONDE_ESPACEMENT = ({ min, exceptions, racine }) => {
   const visible = el => {
     const r = el.getBoundingClientRect();
@@ -519,6 +526,81 @@ const SONDE_COLLANT = () => {
   return { tables, couverts: out };
 };
 
+// ---------------------------------------------------------------- 7. le texte coupé à côté du vide
+// 10.12.0 (vu au test humain de la Banque) — une cellule `tronq` coupe son texte pour que le tableau
+// TIENNE (U-02) : c'est juste quand la place manque. Dans les deux tableaux de suspens, elle coupait
+// « COMMISSION SUR VIREMENT EMIS » à « COMMISSI… » pendant que la colonne de la date, juste à côté,
+// gardait 94 px de blanc et celle du montant 108 — la part en % avait été pensée pour un livre à huit
+// colonnes. Aucune des six sondes ne pouvait le voir : le texte ne déborde pas (il est coupé EXPRÈS),
+// rien n'est hors de l'écran, rien n'est illisible au sens du contraste. C'est une relation entre
+// deux colonnes, et elle se mesure comme telle : dans un tableau où une cellule coupe son texte,
+// aucune AUTRE colonne ne doit garder plus de `vide` px au-delà de ce que son contenu demande (le
+// plus large de ses cellules, en-tête compris, marges intérieures comprises). La colonne qui coupe
+// est souple par définition : son vide à elle ne se juge pas. `racines` borne la sonde comme celle
+// de l'espacement — le corps de la page, et la fenêtre du dessus s'il y en a une.
+const SONDE_TRONQUE = ({ vide, racines }) => {
+  const out = []; let tables = 0, coupees = 0;
+  const besoin = el => {
+    const cs = getComputedStyle(el);
+    const bord = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight)
+      + parseFloat(cs.borderLeftWidth) + parseFloat(cs.borderRightWidth);
+    if (!el.childNodes.length) return bord;
+    const r = document.createRange(); r.selectNodeContents(el);
+    return r.getBoundingClientRect().width + bord;
+  };
+  // Coupé : la cellule elle-même, ou un élément qu'elle porte (la console coupe dans un `.cut`, le
+  // Cabinet coupe la pièce « en face » à côté de son montant) — c'est la COLONNE qui est souple.
+  const coupeEl = el => getComputedStyle(el).textOverflow === 'ellipsis' && el.scrollWidth > el.clientWidth + 1;
+  const coupe = c => (coupeEl(c) ? c : [...c.querySelectorAll('*')].find(coupeEl)) || null;
+  const nom = c => (c.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 32);
+  (racines || ['#view']).forEach(sel => document.querySelectorAll(sel + ' table').forEach(t => {
+    if (t.offsetParent === null) return;
+    tables++;
+    // Une ligne à cellule fusionnée n'a pas de colonnes : elle ne dit rien de leur largeur.
+    const lignes = [...t.rows].filter(tr => tr.offsetParent !== null && ![...tr.cells].some(c => c.colSpan > 1));
+    const cc = [];
+    lignes.forEach(tr => [...tr.cells].forEach(c => { const el = coupe(c); if (el) cc.push({ c, el }); }));
+    if (!cc.length) return;
+    coupees += cc.length;
+    const souples = new Set(cc.map(x => x.c.cellIndex));
+    const n = Math.max(...lignes.map(tr => tr.cells.length));
+    for (let i = 0; i < n; i++) {
+      if (souples.has(i)) continue;
+      const cells = lignes.map(tr => tr.cells[i]).filter(Boolean);
+      if (!cells.length) continue;
+      const libre = Math.max(...cells.map(c => c.getBoundingClientRect().width)) - Math.max(...cells.map(besoin));
+      if (libre > vide) {
+        const h = t.tHead && t.tHead.rows[0] && t.tHead.rows[0].cells[i];
+        out.push({ colonne: h && nom(h) ? nom(h) : 'n° ' + (i + 1), libre: Math.round(libre),
+          coupee: nom(cc[0].el), visible: Math.round(cc[0].el.clientWidth) });
+      }
+    }
+  }));
+  return { tables, coupees, gaspillages: out };
+};
+
+// ---------------------------------------------------------------- 8. la fenêtre qui défile de côté
+// 10.12.0 (vu au test humain de la Banque) — dans la fenêtre « Choisir l'écriture en face », chaque
+// ligne portait son bouton « Rapprocher »… derrière un défilement horizontal : on voyait « R », pas le
+// geste. La sonde de contraste n'en dit rien, et c'est voulu — un bouton dans un conteneur qui défile
+// est « à une molette » (7.13.0, 9.4.4) : un livre de dix colonnes a le droit de défiler, et sa
+// colonne d'actions reste collée au bord. Une FENÊTRE, non : c'est une tâche qu'on fait d'un regard,
+// et ce qui vit hors de sa largeur n'existe pas. On rend chaque conteneur qui défile de côté DANS la
+// fenêtre, avec ce qu'il cache.
+const SONDE_DEFILEMENT = ({ racine }) => {
+  const out = [];
+  document.querySelectorAll(racine + ', ' + racine + ' *').forEach(n => {
+    if (n.offsetParent === null && n.tagName !== 'BODY') return;
+    const o = getComputedStyle(n).overflowX;
+    if ((o === 'auto' || o === 'scroll') && n.scrollWidth > n.clientWidth + 1) {
+      const t = n.querySelector('th, td, button');
+      out.push({ quoi: String(n.className || n.tagName).slice(0, 30), cache: n.scrollWidth - n.clientWidth,
+        contenu: t ? (t.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 30) : '' });
+    }
+  });
+  return out;
+};
+
 // ---------------------------------------------------------------- la comptabilité d'un dossier
 // 10.12.0 (U-06) — les quatorze écrans de la comptabilité d'un dossier du Cabinet sont rangés en
 // trois groupes (Saisir, Consulter, Déclarer et clôturer) : un écran ne se clique qu'une fois son
@@ -572,5 +654,5 @@ async function ongletsCompta(win) {
 module.exports = {
   playwright, RACINE, ELECTRON, VERSION, journal, surveiller, dossierCaptures, ouvrirChromium,
   capturePleine, RELACHE_CONSOLE, SONDE_CONTRASTE, SONDE_COLONNES, SONDE_ENTETES, SONDE_ESPACEMENT, SONDE_LARGEUR, montant,
-  ongletCompta, ongletComptaPresent, ongletsCompta, SONDE_COLLANT
+  ongletCompta, ongletComptaPresent, ongletsCompta, SONDE_COLLANT, SONDE_TRONQUE, SONDE_DEFILEMENT, FENETRE
 };

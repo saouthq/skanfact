@@ -100,6 +100,9 @@
   background: var(--warning-soft); border-inline-start: 3px solid var(--warning); border-radius: 8px;
   padding: 11px 14px; font-size: 13px; line-height: 1.55;
 }
+/* Un contrôle qui porte son geste : la phrase, puis le bouton, dans une rangée dont le `gap` décide
+   des deux écarts — posé dans la phrase, le bouton passait à la ligne collé sous elle (10.12.0). */
+.ctrl-geste { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; }
 /* Les deux soeurs de `.warn-box`, posées en 9.1.0 — elles étaient UTILISÉES sans être définies,
    et une classe qui n'existe pas dans la feuille ne se voit nulle part : le verdict de la balance
    s'affichait en texte nu au milieu de la page (même défaut que `.mono` en 8.1.0).
@@ -382,6 +385,11 @@ tr.cp-ligne td { text-decoration: line-through; color: var(--muted); }
 /* Le MIROIR d'une contre-passation ou d'une extourne (T-34) : reconnaissable au repos, sans être
    barré — c'est une validée à part entière, qui annule l'autre. */
 tr.cp-miroir td { background: var(--info-soft); }
+/* 10.12.0 (vu au test humain) — la colonne d'actions collante porte la TEINTE de sa ligne. Son fond
+   opaque, qui cache ce qui défile dessous (U-02), coupait la bande d'un miroir ou d'un brouillard
+   juste avant le bouton : la ligne paraissait finir avant son propre geste. */
+.scroll-x table.list tr.br-ligne td.row-actions,
+.scroll-x table.list tr.cp-miroir td.row-actions { background: var(--info-soft); }
 /* « + Ajouter une ligne » sous la grille de saisie (T-32) : un geste discret, aligné sur le début
    de la grille, pour la souris. */
 .sa-ajout { margin-top: 6px; }
@@ -620,6 +628,20 @@ body.dark .theme-op:hover { border-color: #3c4654; }
    il défile quand même, on garde le texte lisible. Mesuré : à 1440 et à 1280, rien ne change. */
 #c-livres table.list:not(.sa-grille) td.tronq { max-width: 0; width: 22%; min-width: 90px; }
 #c-livres table.list:not(.sa-grille) td.tronq.lg { width: 34%; min-width: 120px; }
+/* 10.12.0 (vu au test humain de la Banque) — une ligne qui n'a QU'UNE colonne de texte lui donne
+   tout ce que les colonnes serrées laissent. Les parts de 22 et 34 % sont pensées pour le
+   livre-journal, qui partage sa place entre le tiers ET le libellé ; dans un tableau à une seule
+   colonne de texte — les suspens de la Banque, le grand livre, les états de l'Exercice — ce qui
+   restait partait en VIDE dans les colonnes de dates et de montants : « COMMISSION SUR VIREMENT
+   EMIS » tombait à « COMMISSI… » à côté de 108 px de blanc. Le sélecteur se DÉDUIT de la ligne
+   (`:has`), il ne se pose pas tableau par tableau : un tableau neuf à une seule colonne de texte en
+   profite le jour où il est écrit. Mesuré par `SONDE_TRONQUE` : plus aucun texte coupé à côté d'une
+   colonne vide, et aucune cellule qui passe à la ligne de plus. */
+#c-livres table.list:not(.sa-grille) tr:not(:has(> td.tronq ~ td.tronq)) > td.tronq { width: 100%; }
+/* « En face » garde son montant : la pièce se coupe, le montant jamais (T-12). */
+#c-livres td.tronq .face { display: flex; min-width: 0; }
+#c-livres td.tronq .face-p { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+#c-livres td.tronq .face-m { flex: none; margin-inline-start: 4px; }
 /* « 2 / 5 » : l'univers du compte, plus discret que le compte. */
 .stat .val-sur { font-weight: 600; color: var(--muted); font-size: .8em; }
 /* La liste des dossiers : la colonne Client est SOUPLE — elle prend ce que les chiffres laissent,
@@ -697,6 +719,12 @@ details.pli[open] > summary { margin-block-end: 12px; }
    suivent ce que chaque colonne CONTIENT : « AC1 » tenait dans une case de 140 px pendant que le
    libellé de la rubrique — la seule colonne qu'on lit — était coupé au milieu d'un mot. */
 .modal.cab-large { width: 1240px; }
+/* 10.12.0 (vu au test humain de la Banque) — une fenêtre qui porte un tableau de pièces : dans les
+   580 px ordinaires, le bouton « Rapprocher » de chaque ligne vivait derrière un défilement de côté.
+   Et dans une fenêtre comme dans le livre, une ligne qui n'a qu'UNE colonne de texte lui donne ce
+   que les colonnes serrées laissent — sans plancher, un libellé tomberait à zéro. */
+.modal.cab-moyen { width: 880px; }
+.modal table.list:not(.sa-liasse) tr:not(:has(> td.tronq ~ td.tronq)) > td.tronq { max-width: 0; width: 100%; min-width: 140px; }
 .sa-liasse { table-layout: fixed; width: 100%; }
 .sa-liasse th:nth-child(1) { width: 86px; }
 .sa-liasse th:nth-child(2) { width: 190px; }
@@ -704,3 +732,17 @@ details.pli[open] > summary { margin-block-end: 12px; }
 .sa-liasse th:nth-child(5) { width: 180px; }
 .sa-liasse th:nth-child(6) { width: 104px; }
 .sa-liasse th:nth-child(7) { width: 52px; }
+
+/* 10.12.0 (U-08) — le chemin d'un écran vide vers l'article qui l'explique. Un lien au milieu d'une
+   phrase garde la couleur de l'accent ET son soulignement, au repos : sans eux, c'est du texte
+   (Cabinet 1.0.0 — un bouton, ou un lien, se reconnaît au repos, jamais au survol). */
+a.lien-aide { color: var(--primary); font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
+a.lien-aide:hover, a.lien-aide:focus-visible { text-decoration-thickness: 2px; }
+
+/* 10.12.0 (vu au test humain) — une ligne de palette : le NOM de ce qu'on ouvre passe avant sa
+   précision. Le Cabinet pose `.sub` À CÔTÉ de `.main` (l'app entreprise l'imbrique dedans) : sous-
+   titre en largeur de contenu, le titre d'un article d'Aide tombait à « La banque et l… » pendant
+   que sa description s'étalait entière. Le titre prend sa largeur, la précision prend le reste et
+   se coupe, alignée à droite comme un chemin. */
+.palette .res .main:has(+ .sub) { flex: 0 1 auto; }
+.palette .res .main + .sub { flex: 1 1 0; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: end; }

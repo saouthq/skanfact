@@ -120,7 +120,11 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
   if (!(await win.isChecked('#modal-root input[name=tracked]'))) {
     throw new Error('cocher le suivi par numéro doit cocher le suivi en stock : sinon l\'enregistrement l\'annule sans un mot');
   }
+  // 10.12.0 — deux cases cochées dans la fiche : « Annuler » DEMANDE avant de jeter, et l'on abandonne.
   await win.click('#modal-root [data-close]');
+  await win.waitForFunction(() => /Abandonner cette saisie/.test((document.querySelector('#modal-root .modal-bg:last-child') || {}).textContent || ''));
+  await win.click('#modal-root .modal-bg:last-child #ok');
+  await win.waitForFunction(() => !document.querySelector('#modal-root .modal-bg'));
   j.ok('la case des numéros de série est visible, et elle entraîne le suivi en stock');
 
   // Le panneau « Pièces jointes » existe même sur une pièce neuve — et on y joint AVANT

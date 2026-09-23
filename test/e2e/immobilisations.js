@@ -232,11 +232,20 @@ const étape = m => { pas++; console.log('\n' + pas + '. ' + m); };
   await win.click('.modal-bg #ok');
   await win.waitForFunction(() => /Contre-passe|déjà passée/.test((document.querySelector('#toast') || {}).textContent || ''), { timeout: 10000 });
   const refus = await win.evaluate(() => document.querySelector('#toast').textContent);
-  if (!/Contre-passe/.test(refus)) throw new Error('le refus doit nommer le geste qui débloque : ' + refus);
+  // Le geste qui débloque VRAIMENT (10.12.0) : les dotations viennent d'arriver au BROUILLARD, où
+  // elles se SUPPRIMENT — « contre-passe » y était un conseil impossible, et ce parcours l'exigeait.
+  if (!/supprime-la/.test(refus) || /[Cc]ontre-passe/.test(refus)) throw new Error('le refus doit nommer le geste qui débloque : ' + refus);
   await shot('06-refus-recalcul');
-  await win.evaluate(() => { const b = document.querySelector('.modal-bg [data-close]'); if (b) b.click(); });
+  // 10.12.0 — la fenêtre GARDE ce qu'on y a tapé (le garde-fou des formulaires) : la fermer après un
+  // refus demande d'abord « Abandonner cette saisie ? ». Ce parcours fermait en silence et laissait la
+  // question ouverte par-dessus l'écran — le clic suivant tombait sur elle. On répond comme un
+  // comptable : on abandonne la valeur refusée, et on vérifie qu'il ne reste AUCUNE fenêtre.
   await win.keyboard.press('Escape');
-  await attendre(500);
+  await win.waitForFunction(() => /Abandonner cette saisie/.test((document.querySelector('#modal-root') || {}).textContent || ''), null, { timeout: 5000 })
+    .catch(() => { throw new Error('fermer un formulaire modifié doit demander avant de jeter la saisie'); });
+  await win.click('#modal-root .modal-bg:last-child #ok');
+  await win.waitForFunction(() => !document.querySelector('#modal-root .modal-bg'), null, { timeout: 5000 })
+    .catch(() => { throw new Error('une fenêtre reste ouverte après l\'abandon : le clic suivant tomberait sur elle'); });
   ok('refus nommé : ' + refus.slice(0, 90));
 
   // ---------------------------------------------------------------- 7. l'inventaire de stock

@@ -520,7 +520,7 @@
   // `onDismiss` est appelé chaque fois que la fenêtre se ferme — y compris par Échap ou par un clic
   // à côté. Sans lui, une question posée sous forme de promesse ne recevait jamais de réponse : elle
   // restait en suspens pour toujours et bloquait ce qui l'attendait (voir le routeur plus bas).
-  function modal(html, onMount, onDismiss) {
+  function modal(html, onMount, onDismiss, opts) {
     const root = $('#modal-root');
     const layer = document.createElement('div');
     layer.className = 'modal-bg';
@@ -538,15 +538,34 @@
     const under = modalClose;
     const close = () => {
       const curseurDedans = layer.contains(document.activeElement);
-      layer.remove(); if (modalClose === close) modalClose = under;
+      layer.remove(); if (modalClose === dismiss) modalClose = under;
       if (curseurDedans && avant && avant !== document.body && avant.isConnected && !avant.disabled) {
         try { avant.focus(); } catch (_) { /* un élément qui ne prend pas le curseur : on n'insiste pas */ }
       }
       if (onDismiss) onDismiss();
     };
-    modalClose = close;
-    layer.addEventListener('click', e => { if (e.target === layer) close(); });
-    $$('[data-close]', layer).forEach(b => b.addEventListener('click', close));
+    // 10.12.0 — une fenêtre qui porte un FORMULAIRE garde sa saisie : Échap, « Annuler » ou un clic
+    // à côté ne jettent plus en silence ce qu'on vient de taper. Le jumeau de l'app du comptable, où
+    // sept formulaires du livre perdaient dix champs d'un geste (vu au test humain) — une règle
+    // apprise d'un côté se vérifie de l'autre (7.3.0), et ici aucune fenêtre n'avait de garde-fou.
+    // La question ne se pose que si quelque chose a CHANGÉ depuis l'ouverture. `close` reste le
+    // geste du code (après un enregistrement) ; `dismiss` est celui de la personne.
+    let garde = null, question = false;
+    const dismiss = async () => {
+      if (question || !layer.isConnected) return;
+      if (garde && garde()) {
+        question = true;
+        // La QUESTION d'abord, comme dans l'app du comptable : la boîte de l'app entreprise s'intitule
+        // toujours « Confirmation », qui ne dit pas ce qu'on confirme (vu au test humain).
+        const jeter = await confirmDialog('Abandonner cette saisie ?\nCe que tu viens de taper dans cette fenêtre ne sera pas enregistré.', 'Abandonner la saisie', true);
+        question = false;
+        if (!jeter) return;
+      }
+      close();
+    };
+    modalClose = dismiss;
+    layer.addEventListener('click', e => { if (e.target === layer) dismiss(); });
+    $$('[data-close]', layer).forEach(b => b.addEventListener('click', dismiss));
     bindDateFields(layer);
     bindWithholdingFields(layer);
     // « * obligatoire » se pose TOUT SEUL dès qu'un champ de la fenêtre porte la classe. Une légende
@@ -566,8 +585,21 @@
       if (main && !main.disabled) { e.preventDefault(); main.click(); }
     });
     if (onMount) onMount(layer, close);
+    // L'instantané se prend APRÈS le montage : ce que la fenêtre préremplit n'est pas une saisie.
+    // `garde: false` dit, en le nommant, qu'une fenêtre n'en veut pas.
+    if (!(opts && opts.garde === false) && layer.querySelector('form')) garde = suivreSaisie(layer);
     const first = $('input:not([type=hidden]), select, textarea', layer); if (first) first.focus();
     return close;
+  }
+
+  // Un instantané des champs au moment où la fenêtre s'ouvre — le JUMEAU de celui de l'app du
+  // comptable, corps comparé par un test : deux façons de dire « il a tapé quelque chose »
+  // finiraient par ne pas répondre la même chose.
+  function suivreSaisie(layer) {
+    const lire = () => JSON.stringify([...layer.querySelectorAll('input:not([type=hidden]), textarea, select')]
+      .map(c => (c.type === 'checkbox' || c.type === 'radio' ? String(c.checked) : c.value)));
+    const depart = lire();
+    return () => lire() !== depart;
   }
 
   // Une question finit TOUJOURS par répondre : fermée par Échap ou par un clic à côté, elle vaut
@@ -4061,7 +4093,9 @@
   function promptDialog(title, label, value, done, type) {
     modal(`<h2>${h(title)}</h2><form id="pr" class="grid-2"><label class="field span-2">${h(label)}<input type="${type || 'text'}" name="v" value="${h(value || '')}"></label></form>
       <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">OK</button></div>`,
-      (root, close) => { const go = () => { const v = $('input[name=v]', root).value.trim(); if (!v) return toast('Valeur obligatoire.', true); close(); done(v); }; $('#ok', root).onclick = go; $('#pr', root).onsubmit = e => { e.preventDefault(); go(); }; });
+      (root, close) => { const go = () => { const v = $('input[name=v]', root).value.trim(); if (!v) return toast('Valeur obligatoire.', true); close(); done(v); }; $('#ok', root).onclick = go; $('#pr', root).onsubmit = e => { e.preventDefault(); go(); }; },
+      // Une question d'UN mot : Échap y veut dire « non », pas « j'ai perdu mon travail ».
+      null, { garde: false });
   }
 
   // ---------- modèles de documents ----------
@@ -10187,7 +10221,7 @@
           ${history.length
             ? `<div class="scroll-x"><table class="list compact"><thead><tr><th>Mois</th><th>Fabriqué le</th><th>État</th><th class="r">Fichiers</th><th class="r">Taille</th><th>Empreinte</th><th></th></tr></thead><tbody>
                 ${history.map(x => `<tr><td class="nw"><strong>${h(C.monthLabel(x.month + '-01'))}</strong></td>
-                  <td class="nw small">${x.at ? C.fmtDate(new Date(x.at).toISOString().slice(0, 10)) : ''}</td>
+                  <td class="nw small">${x.at ? C.fmtDate(C.jourDeLInstant(x.at)) : ''}</td>
                   <td><span class="badge ${x.definitive ? 'b-paid' : 'b-due'}">${x.definitive ? 'définitif' : 'provisoire'}</span>${x.cabinet ? ' <span class="small muted">pour le cabinet</span>' : x.sealed ? ' <span class="small muted">chiffré</span>' : ''}</td>
                   <td class="r">${x.files || ''}</td><td class="r nw">${x.bytes ? (x.bytes / 1048576).toFixed(1).replace('.', ',') + ' Mo' : ''}</td>
                   <td class="small muted mono">${h(String(x.digest || '').slice(0, 12))}</td>
@@ -10930,6 +10964,9 @@
       // moins qu'on ne pouvait pas partager un dossier existant. Le silence est le vrai danger d'un
       // dossier partagé (règle 3.2.0) : il vaut pour l'application autant que pour les données.
       const liste = await bridge.listDossiers();
+      // La page a pu changer pendant l'attente (règle 7.6.0) : on n'écrit que dans un panneau encore
+      // affiché — sinon `$('#ext-remove')` vaut null et l'exception échappe.
+      if (!el.isConnected) return;
       const ouvert = (liste.dossiers || []).find(d => d.id === liste.current);
       if (ouvert && ouvert.shared) {
         el.innerHTML = `<span class="muted">Ce dossier est <b>partagé</b> : il vit déjà hors de cet ordinateur (<code>${h(ouvert.dir)}</code>), et c'est cette copie-là que les deux postes ouvrent. La copie externe ne s'applique qu'aux dossiers rangés sur cet ordinateur.</span>`;
@@ -10942,7 +10979,10 @@
     async function drawDossiers() {
       const el = $('#dossiers-list'); if (!el) return;
       const r = await bridge.listDossiers();
-      $('#dev-name').value = r.device.name || '';
+      // Même règle (7.6.0), trouvée par e2e:aide qui quitte les Paramètres avant la réponse :
+      // `#dev-name` n'existait plus, et « Cannot set properties of null » échappait à tout le monde.
+      if (!el.isConnected) return;
+      const nomPoste = $('#dev-name'); if (nomPoste) nomPoste.value = r.device.name || '';
       el.innerHTML = `<table class="list compact"><thead><tr><th>Dossier</th><th>Emplacement</th><th></th></tr></thead><tbody>
         ${r.dossiers.map(d => `<tr class="${d.id === r.current ? 'row-ok' : ''}">
           <td><strong>${h(d.name)}</strong>${d.id === r.current ? ' <span class="badge b-paid">ouvert</span>' : ''}${d.shared ? ' <span class="badge b-due">partagé</span>' : ''}</td>
@@ -11039,7 +11079,11 @@
             if (identiteEmpruntee) allerParametres('societe', 'p-identite'); else render();
             $('#brand-company').textContent = data.company.name;
           };
-        });
+        },
+        // Un mot de CONFIRMATION n'est pas un travail à protéger (10.12.0) : renoncer à tout effacer
+        // ne demande pas « Abandonner cette saisie ? ». Le jumeau du Cabinet (`confirmTyped`) n'a pas
+        // de formulaire, donc pas de garde-fou d'office : les deux répondent pareil.
+        null, { garde: false });
     };
   };
 

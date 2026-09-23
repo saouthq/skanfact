@@ -163,12 +163,17 @@ module.exports = ({ t, assert, lireSource }) => {
     const encore = K.ecritureDePaie(L, 2026, 6, {});
     assert.strictEqual(encore.ok, false);
     assert.ok(/Aucun bulletin à passer/.test(encore.motif), encore.motif);
-    // Et le bulletin lui-même est figé tant que l'écriture n'est pas contre-passée.
+    // Et le bulletin lui-même est figé tant que son écriture vaut. Le refus nomme le geste qui
+    // débloque VRAIMENT (10.12.0) : au brouillard, l'écriture se SUPPRIME — « contre-passe » était un
+    // conseil impossible, et l'assertion d'avant l'exigeait.
     const id = K.bulletinsDuMois(L, 2026, 6)[0].id;
     const maj = K.ajouterBulletin(L, { id, salarieId: 's1', annee: 2026, mois: 6, brut: 1500 }, {}, 'Amine', 42);
     assert.strictEqual(maj.ok, false);
-    assert.ok(/contre-passe/.test(maj.motif), maj.motif);
+    assert.ok(/supprime-la/.test(maj.motif) && !/contre-passe/.test(maj.motif), maj.motif);
     assert.strictEqual(K.supprimerBulletin(L, id, 'Amine', 43).ok, false, 'et il ne se supprime pas non plus');
+    // Validée, elle se contre-passe — et le refus le dit.
+    K.validerEcriture(L, e.id, 'Amine', 44);
+    assert.ok(/contre-passe/.test(K.ajouterBulletin(L, { id, salarieId: 's1', annee: 2026, mois: 6, brut: 1500 }, {}, 'Amine', 45).motif));
   });
 
   t('10.3.0 : la déclaration CNSS additionne le trimestre, et dit son échéance', () => {
@@ -203,10 +208,27 @@ module.exports = ({ t, assert, lireSource }) => {
     assert.ok(ctrl.find(c => c.id === 'bulletins-manquants').detail.includes('Sonia Khelifi'),
       'le contrôle NOMME le salarié : un compte sans les noms ne se traduit en aucun geste');
     assert.ok(ids.includes('cnss-manquant'), 'Sonia n\'a pas de numéro CNSS');
-    assert.ok(ids.includes('non-payes'), 'le bulletin de Mohamed n\'est pas réglé');
+    // Tant que l'écriture n'est pas passée, le livre ne doit rien au personnel : c'est l'étape
+    // suivante, pas un impayé (10.12.0 — la ligne « non réglé » promettait un geste que le Cabinet
+    // n'offre pas, et ne s'éteignait jamais).
+    assert.ok(!ids.includes('non-payes'), 'un bulletin sans écriture se dit « non réglé »');
     // Et l'écriture passe QUAND MÊME : un mois traité avec deux manques signalés vaut mieux qu'un
     // mois jamais traité (règle 6.0.0).
-    assert.strictEqual(K.ecritureDePaie(L, 2026, 7, {}).ok, true);
+    const prop = K.ecritureDePaie(L, 2026, 7, {});
+    assert.strictEqual(prop.ok, true);
+    const e = K.ajouterEcriture(L, prop.ecriture, 'Amine', 71);
+    K.noterEcriturePaie(L, prop.lot, e.id, 'Amine', 72);
+    K.validerEcriture(L, e.id, 'Amine', 73);
+    // Le net dû se LIT sur le compte du personnel, au montant près, à la fin du mois.
+    const net = K.round3(prop.ecriture.lignes.filter(x => x.compte === '425').reduce((s, x) => s + x.credit, 0));
+    const du = K.controlesPaie(L, 2026, 7).find(c => c.id === 'non-payes');
+    assert.ok(du && du.quoi.includes(K.fmtMontant(net, 'DT')) && /425/.test(du.detail) && /31\/07\/2026/.test(du.detail),
+      'le net dû ne se lit pas sur le compte du personnel : ' + (du && du.quoi + ' — ' + du.detail));
+    // Le règlement ÉCRIT le solde : la ligne se tait.
+    const reg = K.ajouterEcriture(L, { date: '2026-07-31', journal: 'BQ', piece: 'VIR-SAL', libelle: 'Virement des salaires',
+      lignes: [{ compte: '425', debit: net, credit: 0 }, { compte: '532', debit: 0, credit: net }] }, 'Amine', 74);
+    K.validerEcriture(L, reg.id, 'Amine', 75);
+    assert.ok(!K.controlesPaie(L, 2026, 7).some(c => c.id === 'non-payes'), 'un compte du personnel soldé se dit encore « dû »');
   });
 
   t('10.3.0 : le livre porte ses salariés et ses bulletins, et un livre ancien ne tombe pas', () => {

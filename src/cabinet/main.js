@@ -648,7 +648,46 @@ ipcMain.handle('cab:noteRelance', (_e, { id, months, via, note } = {}) => {
 // reçu par mail. `demoDossiers()` ne porte plus que le SCÉNARIO (qui, quels mois, définitif ou
 // provisoire, ce qui manque) ; les chiffres viennent des écritures.
 const GABARITS_EXEMPLE = require('./exemple-paquets.json');
-const moisEntre = (a, b) => { const [ya, ma] = a.split('-').map(Number), [yb, mb] = b.split('-').map(Number); return (ya - yb) * 12 + (ma - mb); };
+const VITRINE = require('./exemple-vitrine');
+const moisEntre =(a, b) => { const [ya, ma] = a.split('-').map(Number), [yb, mb] = b.split('-').map(Number); return (ya - yb) * 12 + (ma - mb); };
+
+// 10.12.0 (U-10) — les deux vitrines de l'exemple. Banque, Immobilisations, Paie et Révision
+// étaient vides : l'exemple ne montrait que ce qu'un tableur fait déjà. Le client SUR SkanFact reçoit
+// un livre bâti depuis SES paquets (la même relecture que « Créer le livre de ce client »), une
+// ouverture, un relevé rapproché et une révision entamée ; le client HORS SkanFact, le livre que le
+// cabinet tient pour lui (ouverture, biens, salariés, bulletins). Tout passe par les moteurs de
+// `compta.js` et par `ecrireLeLivre`, la porte unique (9.2.0) — donc par la piste d'audit aussi.
+//
+// Une vitrine qui échoue ne fait pas échouer l'exemple : les paquets et les dossiers sont déjà là,
+// et un écran vide vaut mieux qu'un exemple qui ne se charge plus. L'échec va au journal.
+function garnirVitrines(scenario) {
+  const qui = quiSuisJe(), quand = Date.now(), aujourdhui = K.today();
+  (scenario || []).filter(x => x.vitrine).forEach(x => {
+    const d = state.dossiers.find(y => y.id === x.id);
+    if (!d) return;
+    try {
+      let livre;
+      if (x.vitrine === 'skanfact') {
+        const dernier = (d.packs || []).map(p => p.month).sort().pop();
+        if (!dernier) return;
+        const annee = Number(dernier.slice(0, 4));
+        livre = KC.livreVide(d.id, annee);
+        VITRINE.ouvrirClientSkanfact(livre, { qui, quand });
+        importerPaquetsDans(d, livre, annee);
+        const banque = VITRINE.garnirBanque(livre, { qui, quand, aujourdhui });
+        if (!banque.ok) logToFile('exemple', `vitrine banque de ${d.name} : ${banque.motif}`);
+        VITRINE.garnirRevision(livre, { qui, quand, periode: String(annee), banque: banque.ok ? banque : null });
+      } else {
+        const r = VITRINE.livreHorsSkanfact(d.id, { qui, quand, aujourdhui });
+        if (r.motifs.length) logToFile('exemple', `vitrine de ${d.name} : ${r.motifs.join(' ; ')}`);
+        livre = r.livre;
+      }
+      ecrireLeLivre(d.id, livre, 'exemple', 'livre de démonstration');
+    } catch (e) {
+      logToFile('exemple', `vitrine de ${d.name} : ${(e && e.stack) || e}`);
+    }
+  });
+}
 
 function retirerExemple() {
   const demos = state.dossiers.filter(d => d.demo);
@@ -713,6 +752,7 @@ function chargerExemple() {
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
+  garnirVitrines(scenario);
   // Ce que l'exemple sait de lui-même : de quelle version il sort, et sur quel mois il a été recalé.
   // Sans ces deux repères, impossible de savoir qu'il est périmé sans le refaire pour voir.
   state.exemple = { version: VERSION, mois: aujourdhui, le: K.today() };
@@ -1550,7 +1590,7 @@ ipcMain.handle('cab:rapprocherAuto', (_e, { dossierId, annee, releveId, jours } 
   droitBlock(dossierId, 'saisie');
   const o = ouvrirLivre(dossierId, annee);
   if (!o.livre) throw erreur('ERR-CAB-026', 'Ce dossier n\'a pas de livre pour cet exercice.');
-  const r = KC.rapprocherAuto(o.livre, releveId, { jours, date: new Date().toISOString().slice(0, 10) });
+  const r = KC.rapprocherAuto(o.livre, releveId, { jours, date: K.today() });
   if (!r.ok) throw erreur('ERR-CAB-009', r.motif);
   ecrireLeLivre(dossierId, o.livre, 'rapprochement automatique',
     `${r.compte.certain} certain(s), ${r.compte.probable} probable(s), ${r.compte['a-confirmer']} à confirmer, ${r.compte.aucun} sans réponse`);
@@ -1584,7 +1624,7 @@ ipcMain.handle('cab:lettrageAuto', (_e, { dossierId, annee, compte, jours } = {}
   droitBlock(dossierId, 'validation');
   const o = ouvrirLivre(dossierId, annee);
   if (!o.livre) throw erreur('ERR-CAB-026', 'Ce dossier n\'a pas de livre pour cet exercice.');
-  const r = KC.lettrageAuto(o.livre, compte, { jours, par: 'auto', date: new Date().toISOString().slice(0, 10) });
+  const r = KC.lettrageAuto(o.livre, compte, { jours, par: 'auto', date: K.today() });
   ecrireLeLivre(dossierId, o.livre, 'lettrage automatique', `${compte} — ${r.poses.length} lettre(s) posée(s), ${r.restent} ligne(s) ouverte(s)`);
   return { ...r, livre: ouvrirLivre(dossierId, annee).livre };
 });
@@ -1927,7 +1967,7 @@ function htmlDeCloture(dossier, dos, etats) {
 du système comptable des entreprises est à VÉRIFIER : elle n'est validée par personne dans l'application.
 Document produit par SkanFact Cabinet ; les chiffres engagent le cabinet qui l'a émis, pas l'application.</p>
 <p class="sig">Établi par ${e((dos.cabinet || '').trim() || 'le cabinet')}${dos.closPar ? ' — ' + e(dos.closPar) : ''}${
-  dos.closLe ? ', le ' + e(new Date(dos.closLe).toISOString().slice(0, 10).split('-').reverse().join('/')) : ''}.<br>
+  dos.closLe ? ', le ' + e(KC.fmtJour(KC.jourDeLInstant(dos.closLe))) : ''}.<br>
 Signature et cachet :</p><div class="sigbox"></div>
 </body></html>`;
 }
@@ -2722,8 +2762,11 @@ ipcMain.handle('cab:questionsEnAttente', async () => {
     // 10.12.0 (U-21) — et ce que chaque livre sait des salariés, mois par mois, fusionné sur les
     // exercices : le calendrier en tire la CNSS des seuls employeurs (`cabcore.echeances`).
     const employeur = Object.assign({}, ...(i.exercices || []).map(e => (e.employeur && typeof e.employeur === 'object') ? e.employeur : {}));
-    return { dossierId: d.id, name: d.name, ...q, employeur };
-  }).filter(r => r.ouvertes || r.repondues || Object.keys(r.employeur).length);
+    // 10.12.0 — un dossier TENU AU CABINET porte aussi ses exercices et leur production : c'est ce
+    // qui le fait entrer dans le calendrier des échéances, avec la même fonction que la Production.
+    const tenu = d.manual ? { exercices: (i.exercices || []).map(e => ({ annee: e.annee, du: e.du, au: e.au, production: e.production || {} })) } : null;
+    return { dossierId: d.id, name: d.name, ...q, employeur, tenu };
+  }).filter(r => r.ouvertes || r.repondues || Object.keys(r.employeur).length || (r.tenu && r.tenu.exercices.length));
 });
 
 // ---------------------------------------------------------------- réunir deux postes (9.9.0)
@@ -2854,6 +2897,15 @@ ipcMain.handle('cab:relireLesPaquets', (_e, { dossierId, annee } = {}) => {
   const d = dossierDe(dossierId);
   const o = ouvrirLivre(dossierId, annee);
   const livre = o.livre || KC.livreVide(dossierId, annee);
+  const bilan = importerPaquetsDans(d, livre, annee);
+  ecrireLeLivre(dossierId, livre, 'relecture-paquets', `${bilan.mois} mois, ${bilan.ajoutees} ajoutée(s), ${bilan.ecarts.length} écart(s)`);
+  return { ...bilan, livre: ouvrirLivre(dossierId, annee).livre };
+});
+
+// La relecture elle-même, SANS écrire : le geste « Créer le livre de ce client » et l'exemple
+// (10.12.0, U-10) passent par la même porte — un exemple qui importerait ses paquets autrement
+// montrerait un livre que le produit ne sait pas produire.
+function importerPaquetsDans(d, livre, annee) {
   const bilan = { mois: 0, ajoutees: 0, remplacees: 0, validees: 0, ecarts: [], illisibles: [], nonValidees: [] };
   (d.packs || []).filter(p => p.path && String(p.month).slice(0, 4) === String(annee))
     .sort((a, b) => (a.month < b.month ? -1 : 1))
@@ -2873,9 +2925,8 @@ ipcMain.handle('cab:relireLesPaquets', (_e, { dossierId, annee } = {}) => {
       res.ecarts.forEach(x => bilan.ecarts.push({ mois: p.month, ...x }));
       (res.nonValidees || []).forEach(x => bilan.nonValidees.push({ mois: p.month, ...x }));
     });
-  ecrireLeLivre(dossierId, livre, 'relecture-paquets', `${bilan.mois} mois, ${bilan.ajoutees} ajoutée(s), ${bilan.ecarts.length} écart(s)`);
-  return { ...bilan, livre: ouvrirLivre(dossierId, annee).livre };
-});
+  return bilan;
+}
 
 ipcMain.handle('cab:exportEcritures', async (_e, opts) => {
   requireOpen();

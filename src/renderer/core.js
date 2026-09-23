@@ -2121,6 +2121,8 @@
   // pour tenir la paie des dossiers qui ne sont PAS sur SkanFact, et il ne charge pas core.js.
   // La seule alternative au déménagement était la recopie, et une copie diverge, toujours.
   const CONTRACT_TYPES = Compta.CONTRACT_TYPES;
+  // Le jour LOCAL d'un instant (10.12.0) : la même fonction que le Cabinet, jamais une copie.
+  const jourDeLInstant = Compta.jourDeLInstant;
   const contractLabel = Compta.contractLabel;
   const DEFAULT_PAYROLL = Compta.DEFAULT_PAYROLL;
 
@@ -6729,7 +6731,7 @@
     REGIMES, regimeOf, regimeSuggere, tfpSuggere, assujettiTVA, mentionTVA, estLiberal, docLabel, ribAttendu,
     DOC_FILTRES, docFiltre,
     pageInfo, compareValues, LINE_UNITS, usedUnits, usedWithholdingRates, parseDateInput, fmtDateInput, monthMatrix,
-    uid, round3, money, fmtDate, addDays, daysInMonth, today, escapeHtml, nl2br, statusLabel,
+    uid, round3, money, fmtDate, addDays, daysInMonth, today, jourDeLInstant, escapeHtml, nl2br, statusLabel,
     CLOSURE_ACTIONS, closedUntil, isClosedDate, closedPeriodLabel, closableMonths, closureChecks, closePeriod, reopenPeriod, closureLog,
     PACK_FORMAT, packPeriod, packPlan, packChecklist, packFileName, packCoverHtml,
     DEFAULT_ACCOUNTS, ACCOUNT_LABELS, ENTRY_JOURNALS, journalLabel, chartAccounts, journalEntries,
