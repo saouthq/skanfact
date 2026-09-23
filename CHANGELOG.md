@@ -7,6 +7,53 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 10.10.0 — 23/09/2026
+
+**Un expert-comptable a tenu le Cabinet comme s'il l'utilisait depuis des mois.** Onze dossiers, un
+livre de cent quatre écritures, la paie, la clôture, la liasse. Seize constats, tous corrigés ici.
+
+**Les plus graves**
+- **La liasse ne tombait jamais juste** sur un dossier alimenté par SkanFact : deux comptes en
+  sortaient, et faisaient l'écart au millime. Les amortissements (compte 28, celui qu'écrivent les
+  deux applications) n'entraient dans aucune rubrique, et une perte reportée (13 débiteur) non plus.
+  Le modèle de rubriques les range désormais — une rubrique peut prendre les deux sens de solde — et
+  un modèle déjà enregistré par un cabinet est repris à la lecture, sans toucher aux rubriques qu'il a
+  réécrites. Un nouveau contrôle compare aussi la liasse aux états financiers de l'onglet Exercice.
+- **« Voir les comptes » d'une rubrique affichait du code HTML** au lieu du tableau. Même défaut, jamais
+  signalé, sur la fenêtre « Les deux livres sont réunis ».
+- **Un bulletin à salaire négatif devenait une écriture validée** (quarante jours d'absence sur
+  vingt-six). Il est refusé pendant la frappe, bouton éteint, les deux chiffres nommés — dans le
+  Cabinet ET dans l'app entreprise, qui partagent le moteur de paie. Un bulletin négatif enregistré
+  avant cette version ne devient jamais une écriture, et le contrôle de paie le nomme.
+- **« Ouvrir 2027 » créait un exercice qu'aucun écran ne permettait d'ouvrir** : le sélecteur ne
+  connaissait que les années des paquets reçus. Il lit maintenant aussi les livres du cabinet, et le
+  geste propose d'aller sur le nouvel exercice.
+- **Un dossier hors SkanFact ne pouvait tenir aucune comptabilité** — c'est pourtant celui qu'on
+  facture. L'onglet Comptabilité propose « Commencer le livre » (exercice et balance d'ouverture,
+  vide pour un client qui démarre), et tous les onglets du livre s'ouvrent.
+- **Les états remis au client sortaient au format anglo-saxon, sans devise.** Ils s'écrivent comme
+  l'écran : « 76 493,448 DT », dates JJ/MM/AAAA.
+
+**Les autres**
+- Les montants et les dates des messages du moteur (refus d'une pièce, compte d'attente, relevé,
+  extourne) s'écrivent à la française : « Débit 100.000 » se lisait cent mille.
+- Reprendre un parc déjà amorti : la fiche du bien affiche ce qui est déjà amorti au 1er janvier,
+  prévient quand la ligne est un à-nouveau, accepte les dates en JJ/MM/AAAA ; et la clôture rapproche
+  le tableau d'amortissement du compte 28.
+- Une quantité d'inventaire illisible (« douze ») est refusée en nommant la ligne, au lieu de compter zéro.
+- L'extourne d'une écriture de décembre se prévoit : elle est posée au 1er janvier par « Ouvrir N+1 ».
+- « Rouvrir » sans motif et « Continuer » sans nom de cabinet montrent le champ refusé.
+- Sept boutons « Annuler » (retraitement, questions, bulletin…) n'étaient reliés à rien : ils ferment.
+- L'écran d'accueil décrit le Cabinet tel qu'il est ; le nombre d'onglets et de dossiers d'exemple
+  se déduit au lieu d'être écrit à la main ; un accord (« 1 question envoyée, signées ») et une
+  mention de numéro de version dans une fenêtre corrigés.
+
+**Publiée en stable à la demande de Skander**, après la 10.10.0-beta.1 du même jour (construite et
+publiée sur le canal d'essai, seize fichiers). Elle touche au moteur comptable (liasse) et à
+l'argent (paie) : la règle veut la bêta pour ces cas, et la bêta a eu lieu ; la décision de
+confirmer revient au propriétaire, elle est notée ici. La liasse reste « À VÉRIFIER » tant qu'elle
+n'a pas été confrontée à une liasse réellement déposée.
+
 ## 10.10.0-beta.1 — 23/09/2026
 
 **Un expert-comptable a tenu le Cabinet comme s'il l'utilisait depuis des mois.** Onze dossiers, un
