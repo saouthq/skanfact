@@ -13,7 +13,7 @@
 // statut qui n'existe pas — il rendait les AVOIRS. Une liste vide se remarque, une liste fausse non.
 //
 //   xvfb-run -a node test/e2e/cliquable.js
-const { playwright, RACINE, ELECTRON, journal, surveiller } = require('./harnais');
+const { fermer, playwright, RACINE, ELECTRON, journal, surveiller } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
 
@@ -120,7 +120,7 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
     j.ok(`« ${m.texte} » → ${ou}`);
   }
 
-  await app.close();
+  await fermer(app);
   if (bac.length) { console.error('\nErreurs du renderer :\n' + bac.join('\n')); process.exit(2); }
   console.log(`\n${j.total()} étapes — ce qui se lit se clique.`);
 })().catch(e => { console.error(e); process.exit(1); });

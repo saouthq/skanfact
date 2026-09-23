@@ -7,7 +7,7 @@
 // Il joue trois banques différentes avec trois formats de colonnes : c'est la réponse au « quelles
 // banques, et quel format chacune exporte ? » qui bloquait cette version — on ne connaît aucun
 // format, donc on n'en code aucun, et on prouve que l'association par NOM les absorbe.
-const { playwright, RACINE, ELECTRON, montant, ongletCompta, ongletComptaPresent } = require('./harnais');
+const { fermer, playwright, RACINE, ELECTRON, montant, ongletCompta, ongletComptaPresent } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
 const OUT = process.argv[2] || path.join(RACINE, 'dist-e2e', 'banque');
@@ -344,7 +344,7 @@ const CSV_INCONNU = 'Jour;Ce que c\'est;Combien\n'
   if (errors.length) { console.log('erreurs JS :'); errors.forEach(e => console.log('  ' + e)); }
   console.log('erreurs JS : ' + errors.length);
   console.log('captures : ' + OUT);
-  await app.close();
+  await fermer(app);
   if (errors.length) process.exit(1);
   console.log('\n' + pas + ' étapes — la banque tient.');
 })().catch(async e => { console.error(e); process.exit(1); });

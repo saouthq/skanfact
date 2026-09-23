@@ -13,7 +13,7 @@
 //   6. On répond à un devis depuis la liste, et on peut revenir en arrière.
 //
 //   xvfb-run -a node test/e2e/accueil.js
-const { playwright, RACINE, ELECTRON, journal, surveiller } = require('./harnais');
+const { fermer, playwright, RACINE, ELECTRON, journal, surveiller } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
 
@@ -228,7 +228,7 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
   if (rendu !== 'envoyé') throw new Error(`« Annuler » n'a pas remis le statut (« ${rendu} »)`);
   j.ok('envoyé → accepté → envoyé, sans jamais ouvrir la pièce');
 
-  await app.close();
+  await fermer(app);
   if (bac.length) { console.error('\nErreurs du renderer :\n' + bac.join('\n')); process.exit(2); }
   console.log(`\n${j.total()} étapes — l'accueil tient ses promesses.`);
 })().catch(e => { console.error(e); process.exit(1); });

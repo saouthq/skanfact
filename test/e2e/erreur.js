@@ -15,7 +15,7 @@
 // voit : il faut faire les gestes dans l'application réelle.
 //
 //   xvfb-run -a node test/e2e/erreur.js
-const { playwright, RACINE, ELECTRON, journal, surveiller } = require('./harnais');
+const { fermer, playwright, RACINE, ELECTRON, journal, surveiller } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
 
@@ -67,8 +67,8 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
   j.etape('Un module qui CONTIENT quelque chose : la question, puis le retrait — et la case reste');
   // On remplit « Achats » par le vrai formulaire, puis on le masque.
   await win.evaluate(() => { location.hash = '#/fournisseurs'; });
-  await win.waitForSelector('#view .page-head');
-  await win.click('#view .page-head .btn-primary');
+  await win.waitForSelector('#view .page-head #new');
+  await win.click('#view .page-head #new');   // par ce qu'il FAIT : sur une liste vide, le vert est celui de l'état vide (U-11)
   await win.waitForSelector('#modal-root input[name=name]');
   await win.fill('#modal-root input[name=name]', 'Quincaillerie du Centre');
   await win.click('#modal-root .modal-actions .btn-primary');
@@ -101,8 +101,8 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
 
   j.etape('Le filet : enregistrer dans un module masqué le ramène, et l\'application le DIT');
   await win.evaluate(() => { location.hash = '#/fournisseurs'; });
-  await win.waitForSelector('#view .page-head');
-  await win.click('#view .page-head .btn-primary');
+  await win.waitForSelector('#view .page-head #new');
+  await win.click('#view .page-head #new');   // par ce qu'il FAIT : sur une liste vide, le vert est celui de l'état vide (U-11)
   await win.waitForSelector('#modal-root input[name=name]');
   await win.fill('#modal-root input[name=name]', 'Câbles & Co');
   await win.click('#modal-root .modal-actions .btn-primary');
@@ -152,7 +152,7 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
   if ((await win.$eval('#cn-file', b => b.textContent.trim())) !== 'Marquer déposée') throw new Error('l\'écran n\'est pas revenu à son état d\'avant');
   j.ok('noté, puis défait — et l\'écran est revenu comme avant');
 
-  await app.close();
+  await fermer(app);
   if (bac.length) { console.error('\nErreurs du renderer :\n' + bac.join('\n')); process.exit(2); }
   console.log(`\n${j.total()} étapes — le droit à l'erreur est tenu.`);
 })().catch(e => { console.error(e); process.exit(1); });

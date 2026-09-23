@@ -5,7 +5,7 @@
 // plan d'amortissement se voit avant d'être enregistré, que les écritures d'inventaire arrivent en
 // brouillard et ne se repassent pas deux fois, et que l'inventaire de stock se colle depuis un
 // tableur et produit sa variation dans le bon sens.
-const { playwright, RACINE, ELECTRON, ongletCompta, ongletComptaPresent } = require('./harnais');
+const { fermer, playwright, RACINE, ELECTRON, ongletCompta, ongletComptaPresent } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
 const OUT = process.argv[2] || path.join(RACINE, 'dist-e2e', 'immobilisations');
@@ -315,7 +315,7 @@ const étape = m => { pas++; console.log('\n' + pas + '. ' + m); };
   if (errors.length) { console.log('erreurs JS :'); errors.forEach(e => console.log('  ' + e)); }
   console.log('erreurs JS : ' + errors.length);
   console.log('captures : ' + OUT);
-  await app.close();
+  await fermer(app);
   if (errors.length) process.exit(1);
   console.log('\n' + pas + ' étapes — les biens s\'amortissent, et le stock se compte.');
 })().catch(async e => { console.error(e); process.exit(1); });

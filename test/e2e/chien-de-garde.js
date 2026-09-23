@@ -1,7 +1,7 @@
 // Le chien de garde, pour de vrai : on GÈLE l'interface avec une boucle infinie et on vérifie que
 // le processus principal s'en aperçoit, écrit où ça bloque, interrompt la boucle et repart.
 // C'est le test du bug de la 5.1.0 — celui qu'aucune console ne montrait.
-const { playwright, RACINE, ELECTRON } = require('./harnais');
+const { fermer, playwright, RACINE, ELECTRON } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
 const root = RACINE;
@@ -60,6 +60,6 @@ const log = path.join(dir, 'main.log');
 
   const ok = vu.length > 0 && aGel && aPile && repond;
   console.log(ok ? '>>> CHIEN DE GARDE OK' : '>>> ÉCHEC');
-  await Promise.race([app.close().catch(() => {}), new Promise(r => setTimeout(r, 5000))]);
+  await fermer(app);
   process.exit(ok ? 0 : 1);
 })().catch(e => { console.error('ÉCHEC : ' + (e.stack || e.message)); process.exit(2); });

@@ -12,7 +12,7 @@
 //      d'une société qui n'existe pas, avec un compte bancaire où l'argent n'arrive jamais.
 //
 //   xvfb-run -a node test/e2e/exemple.js
-const { playwright, RACINE, ELECTRON, journal, surveiller } = require('./harnais');
+const { fermer, playwright, RACINE, ELECTRON, journal, surveiller } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path');
 const fs = require('fs');
@@ -243,7 +243,10 @@ const os = require('os');
   const avantCount = await win.evaluate(() => window.__data.clients.length);
   await win.evaluate(() => { location.hash = '#/clients'; });
   await win.waitForSelector('#view .page-head');
-  await win.click('#view .page-head .btn-primary');
+  // Par ce que le bouton FAIT, jamais par sa couleur : « Tout effacer » vient de passer, la liste est
+  // vide, et le vert d'une liste vide est celui de son état vide (U-11, 10.12.0) — le parcours
+  // attendait trente secondes un bouton d'en-tête qui n'était plus vert.
+  await win.click('#view .page-head #new');
   await win.waitForSelector('#modal-root input[name=name]');
   await win.fill('#modal-root input[name=name]', 'Client de trop');
   await win.click('#modal-root .modal-actions .btn-primary');
@@ -280,7 +283,7 @@ const os = require('os');
   j.ok(`l'effacement est défait : ${restes.length} client(s) sont revenus`);
 
   if (bac.length) { console.error('\nERREURS JS :\n' + bac.join('\n')); process.exit(1); }
-  await app.close();
+  await fermer(app);
   console.log('\n>>> JEU D\'EXEMPLE OK');
   process.exit(0);
 })().catch(e => { console.error('\n✗ ' + e.message); process.exit(1); });

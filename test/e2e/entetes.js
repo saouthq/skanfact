@@ -11,15 +11,14 @@
 // Comme pour les colonnes, ça ne se voit pas en relisant le code : **on mesure**.
 //
 //   xvfb-run -a node test/e2e/entetes.js
-const { playwright, RACINE, ELECTRON, journal, surveiller, SONDE_ENTETES } = require('./harnais');
+const { fermer, playwright, RACINE, ELECTRON, journal, surveiller, SONDE_ENTETES } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
 
 // Toutes les pages, y compris celles qui n'ont pas de contrôle dans leur en-tête : une page qui en
 // gagne un demain sera mesurée sans que personne ait à y penser.
-const PAGES = ['#/dashboard', '#/devis', '#/factures', '#/relances', '#/clients', '#/catalogue',
-  '#/autres', '#/contrats', '#/achats', '#/fournisseurs', '#/stock', '#/garanties', '#/immos',
-  '#/tresorerie', '#/marges', '#/stats', '#/paie', '#/compta', '#/modules', '#/parametres', '#/aide'];
+// 10.12.0 — lues dans le CODE, comme dans `e2e:contraste` : une liste recopiée se périme.
+const PAGES = require('./ecrans-entreprise').pagesDuCode().map(r => '#/' + r);
 
 // Un sélecteur de période, c'est ~200 px. À 280 on laisse de la marge pour un libellé long
 // (« 1ᵉʳ trimestre · janv.–mars ») ; au-delà, le contrôle est étiré, pas large.
@@ -86,7 +85,7 @@ const LARGEUR_MAX_RECHERCHE_FILTRE = 460;
   j.ok(`${controles} contrôle(s) dans les barres d'actions et de filtres, dont ${filtres} dans les filtres`);
   if (!filtres) { console.error('\nAucune barre de filtres mesurée : la seconde moitié du test ne prouve rien.'); process.exit(2); }
 
-  await app.close();
+  await fermer(app);
   if (bac.length) { console.error('\nErreurs du renderer :\n' + bac.join('\n')); process.exit(2); }
   if (!controles) { console.error('\nAucun contrôle mesuré : le test ne prouve rien.'); process.exit(2); }
   if (fautes.length) {

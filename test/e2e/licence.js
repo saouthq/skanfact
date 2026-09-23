@@ -26,7 +26,7 @@
 // qui n'existe pas), honoré en développement seulement — l'étape 8 tourne sans lui.
 //
 //   xvfb-run -a node test/e2e/licence.js
-const { playwright, RACINE, ELECTRON, journal, surveiller } = require('./harnais');
+const { fermer, playwright, RACINE, ELECTRON, journal, surveiller } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
 const L = require('../../src/licence.js');
@@ -420,7 +420,7 @@ const L = require('../../src/licence.js');
   if (actions2.some(a => /^Renouveler$/.test(a)) || !actions2.some(a => /^Renouveler la suivante/.test(a))) throw new Error('une licence renouvelée ne doit offrir que « Renouveler la suivante » : ' + actions2.join(' | '));
   await win.keyboard.press('Escape');
   j.ok('deux licences, deux factures, « à vie » sur la seconde, la première marquée renouvelée et sortie du compte');
-  await Promise.race([app.close(), new Promise((_, rej) => setTimeout(() => rej(new Error('l\'application ne se ferme pas : un garde-fou de sortie attend une réponse')), 20000))]);
+  await fermer(app);
 
   // ---------------------------------------------------- 8. l'application telle qu'un client l'installe
   j.etape('La vraie clé embarquée (8.0.0) : un client est en essai, ne voit rien de l\'éditeur, et la clé d\'essai de ce test est refusée');
@@ -466,7 +466,7 @@ const L = require('../../src/licence.js');
   await win2.waitForSelector('#new'); await win2.click('#new');
   await win2.waitForFunction(() => /^#\/doc\//.test(location.hash), null, { timeout: 8000 });
   j.ok('essai de 30 jours · ni page, ni panneau, ni porte de l\'éditeur · clé d\'essai refusée (« pas reconnue ») · un devis se crée');
-  await Promise.race([app2.close(), new Promise((_, rej) => setTimeout(() => rej(new Error('l\'application ne se ferme pas : un garde-fou de sortie attend une réponse')), 20000))]);
+  await fermer(app2);
 
   // ---------------------------------------------------- 9. le contournement qui ne marche pas
   j.etape('Une AUTRE clé privée, avec la clé publique de SkanFact recopiée à côté : aucun passe-droit');
@@ -490,7 +490,7 @@ const L = require('../../src/licence.js');
 
   console.log('\nerreurs JS : ' + bac.length);
   bac.slice(0, 6).forEach(e => console.log('  - ' + e));
-  await Promise.race([app3.close(), new Promise((_, rej) => setTimeout(() => rej(new Error('l\'application ne se ferme pas : un garde-fou de sortie attend une réponse')), 20000))]);
+  await fermer(app3);
   if (bac.length) { console.error('>>> ÉCHEC'); process.exit(2); }
   console.log(`\n${j.total()} étapes — L'ÉDITEUR ET LES OFFRES : OK`);
 })().catch(e => { console.error('\n✕ ÉCHEC : ' + (e.stack || e.message)); process.exit(1); });

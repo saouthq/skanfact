@@ -10,7 +10,7 @@
 // livres — deux cabinets créés séparément ont deux sels, donc deux clés.
 //
 //   xvfb-run -a node test/e2e/cabinet-equipe.js
-const { playwright, RACINE, ELECTRON, ongletComptaPresent } = require('./harnais');
+const { fermer, playwright, RACINE, ELECTRON, ongletComptaPresent } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
 
@@ -222,7 +222,7 @@ const dernierBrouillard = (win, d) => win.evaluate(async o => {
   await attendre(win, 2500);
   if (!fs.existsSync(path.join(CLE_USB, 'SkanFact Cabinet'))) throw new Error('la copie externe n\'a rien écrit');
   ok('base, sauvegardes, paquets et livres sur la clé');
-  await app.close();
+  await fermer(app);
 
   // =============================================================== LE POSTE D'AMINE
   étape('Le poste d\'Amine reprend le cabinet, et se déclare');
@@ -301,7 +301,7 @@ const dernierBrouillard = (win, d) => win.evaluate(async o => {
   const v2 = await valider(win, d, bAmine);
   if (!v2.ok) throw new Error('la supervision ne peut toujours pas valider : ' + v2.message);
   ok('validée n° ' + v2.numero + ' sur le second poste');
-  await app.close();
+  await fermer(app);
 
   // =============================================================== RÉUNIR LES DEUX
   étape('Réunir les deux livres : rien de validé ne se perd');
@@ -342,7 +342,7 @@ const dernierBrouillard = (win, d) => win.evaluate(async o => {
   if (fs.statSync(copie).size !== tailleAvant) throw new Error('la fusion a réécrit le fichier de l\'autre poste');
   ok('le livre de l\'autre poste n\'a pas été touché');
   await win.screenshot({ path: path.join(OUT, '04-fusion.png') });
-  await app.close();
+  await fermer(app);
 
   if (errors.length) { console.error('\nErreurs du renderer :\n' + errors.join('\n')); process.exit(2); }
   console.log(`\n${pas} étapes, deux postes, deux collaborateurs — et rien de perdu.`);

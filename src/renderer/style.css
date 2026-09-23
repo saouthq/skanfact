@@ -241,6 +241,10 @@ body.dark .lock-banner .btn:not(.btn-primary):not(.btn-danger) { background: rgb
   box-shadow: 0 0 0 3px var(--danger-soft);
 }
 .champ-faute > .fl, .champ-faute > span:first-child { color: var(--danger); }
+/* Une valeur DOUTEUSE sans être refusée (un RIB dont la clé ne tombe pas, 10.12.0) : orange, pas
+   rouge — on prévient, on ne bloque pas. `!important` pour la raison de `.champ-faute` : la règle
+   générale des champs porte quatre `:not()` et gagnerait contre une simple classe. */
+input.champ-doute { border-color: var(--warning) !important; }
 
 /* Ce qui est obligatoire se voit AVANT d'appuyer sur « Enregistrer ». L'attribut `required` posé sur
    un <input> d'une fenêtre modale est inerte : rien ne soumet le formulaire, c'est un bouton qui
@@ -322,6 +326,10 @@ main { --main-haut: 32px; flex: 1; overflow-y: auto; padding: var(--main-haut) 3
 /* .field (et non label.field) : les champs date et les listes déroulantes sont des <div>,
    un <label> y renverrait le clic du bouton calendrier vers le champ texte. */
 .field { display: flex; flex-direction: column; gap: 5px; font-size: 12px; color: var(--muted); font-weight: 600; }
+/* La remarque d'un RIB douteux (10.12.0) : dans la ligne du libellé, jamais dessous — ce qui apparaît
+   selon une valeur vit dans une place qui existe déjà. Vide, elle ne prend aucune place. */
+.rib-note { color: var(--warning); margin-inline-start: 6px; }
+.rib-note:empty { display: none; }
 /* Énuméré type par type, ce sélecteur oubliait `search` : cinq listes affichaient donc une petite
    boîte native, non dimensionnée, dont le texte était coupé au milieu d'un mot — à côté de six
    listes correctement stylées. On exclut ce qui doit garder son apparence native plutôt que
@@ -820,6 +828,7 @@ table.mini input, table.mini select { padding: 6px 8px; font-size: 13px; }
 .delta.up { color: var(--success); }
 .delta.down { color: var(--danger); }
 .warn-text { color: var(--warning); }
+.danger-text { color: var(--danger); }
 .ok-text { color: var(--success); }
 .err-text { color: var(--danger); }
 /* `class="mono"` était posé sur l'empreinte du cabinet depuis la 6.2.0 et n'a JAMAIS été défini :
@@ -1164,8 +1173,12 @@ body.dark .cal-d.out { color: #5b6572; }
 }
 /* Une fenêtre qui porte des LIGNES de facture s'élargit (10.12.0) : dans les 580 px d'une fenêtre
    ordinaire, la désignation — la colonne qu'on lit — n'avait que 135 px à côté de quatre colonnes
-   de chiffres. La leçon de la grille des lignes de l'éditeur, portée aux formulaires. */
-.modal:has(table.mini, table.lines-edit) { width: 860px; }
+   de chiffres. La leçon de la grille des lignes de l'éditeur, portée aux formulaires.
+   Et une fenêtre qui porte une LISTE aussi : le relevé de compte d'un client — six colonnes, toutes
+   sans retour à la ligne — cachait « Reste dû » et le total derrière un défilement de côté, dans
+   les 580 px d'une fenêtre ordinaire (250 à 290 px cachés, trouvé par `e2e:entreprise-rendu`).
+   Le total est la raison d'être d'un relevé. */
+.modal:has(table.mini, table.lines-edit, table.list) { width: 860px; }
 .warn-link { color: var(--warning); font-weight: 600; text-decoration: none; }
 .warn-link:hover { text-decoration: underline; }
 

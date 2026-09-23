@@ -4,7 +4,7 @@
 // pas connue s'affiche « — » avec sa raison et non « 0,000 » — c'est-à-dire qu'on ne recopie pas un
 // zéro inventé sur un formulaire fiscal —, que chaque chiffre s'ouvre sur les pièces qui le font, et
 // que les deux pense-bêtes se pointent ET se dé-pointent.
-const { playwright, RACINE, ELECTRON, montant, ongletCompta, ongletComptaPresent } = require('./harnais');
+const { fermer, playwright, RACINE, ELECTRON, montant, ongletCompta, ongletComptaPresent } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
 const OUT = process.argv[2] || path.join(RACINE, 'dist-e2e', 'declaration');
@@ -253,7 +253,7 @@ const étape = m => { pas++; console.log('\n' + pas + '. ' + m); };
   if (errors.length) { console.log('erreurs JS :'); errors.forEach(e => console.log('  ' + e)); }
   console.log('erreurs JS : ' + errors.length);
   console.log('captures : ' + OUT);
-  await app.close();
+  await fermer(app);
   if (errors.length) process.exit(1);
   console.log('\n' + pas + ' étapes — la déclaration prépare, et ne dépose rien.');
 })().catch(async e => { console.error(e); process.exit(1); });

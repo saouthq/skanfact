@@ -19,7 +19,7 @@
 // serveur et l'application : c'est là qu'un attaquant se place, pas dans le code du serveur.
 //
 //   xvfb-run -a node test/e2e/plateforme.js
-const { playwright, RACINE, ELECTRON, journal, surveiller } = require('./harnais');
+const { fermer, playwright, RACINE, ELECTRON, journal, surveiller } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os'); const http = require('http');
 const L = require('../../src/licence.js');
@@ -358,7 +358,7 @@ const { baseD1 } = require('../d1-sqlite');
     const r6 = await tenterUnDevis();
     if (r6.refus) throw new Error('la création a été fermée parce que le serveur ne répond pas');
     j.ok('licence active, création ouverte, aucun message : la panne du serveur n\'est pas la nôtre');
-    await app.close();
+    await fermer(app);
 
     // ------------------------------------------------ 7. une installation neuve, sans réseau
     j.etape('Une installation neuve sans réseau : l\'assistant, la clé, et l\'application démarre');
@@ -382,7 +382,7 @@ const { baseD1 } = require('../d1-sqlite');
     if (bac.length) throw new Error('erreurs dans le renderer :\n' + bac.join('\n'));
     console.log(`\n${j.total()} étapes — le plan de contrôle tient : il n'accorde rien, il ne bloque que sur preuve, et son absence ne coûte rien.`);
   } finally {
-    try { await app.close(); } catch {}
+    try { await fermer(app); } catch {}
     try { serveur.close(); } catch {}
   }
 })().catch(e => { console.error('\nÉCHEC :', e && e.message || e); process.exit(1); });

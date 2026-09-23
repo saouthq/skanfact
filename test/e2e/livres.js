@@ -6,7 +6,7 @@
 // chaque tiers son sous-compte — figé sur la fiche.
 //
 //   xvfb-run -a node test/e2e/livres.js
-const { playwright, RACINE, ELECTRON, journal, surveiller, montant } = require('./harnais');
+const { fermer, playwright, RACINE, ELECTRON, journal, surveiller, montant } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
 
@@ -294,7 +294,7 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
   if (!(coutMille > 1190)) throw new Error(`le coût employeur d'un brut de 1 000 devrait dépasser 1 190 avec TFP et FOPROLOS, il vaut ${taux.demo[0]}`);
   j.ok(`TFP ${taux.tfp} %, FOPROLOS ${taux.fop} % — 1 000 brut coûte ${taux.demo[0]}`);
 
-  await Promise.race([app.close(), new Promise((_, rej) => setTimeout(() => rej(new Error('l\'application ne se ferme pas : un garde-fou est resté armé')), 8000))]);
+  await fermer(app);
   if (bac.length) { console.error('\nErreurs du renderer :\n' + bac.join('\n')); process.exit(2); }
   console.log(`\n${j.total()} étapes — le grand livre et la balance tiennent debout.`);
 })().catch(e => { console.error(e); process.exit(1); });

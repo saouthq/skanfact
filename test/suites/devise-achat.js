@@ -232,4 +232,30 @@ module.exports = ({ t, assert }) => {
     // L'équilibre du paquet ne dépend pas de la devise.
     assert.ok(Math.abs(plan.balance.debit - plan.balance.credit) < 0.005, 'le paquet reste équilibré');
   });
+  // Rapport QA du 23/09/2026 (E-08) — les deux agrégateurs que la 10.1.0 n'avait pas interrogés.
+  // Une facture Adobe de 1 190 € TTC sortait de la prévision pour 1 190 DT au lieu de 4 046 : le trou
+  // annoncé était sous-estimé de 2 856 dinars, sur la page qui répond à « aurai-je de quoi payer ? ».
+  t('Rapport QA E-08 : la prévision de trésorerie sort un achat en devise CONVERTI', () => {
+    const f = core.cashForecast(jeu(), société, 90, '2026-03-15');
+    const ev = f.events.find(e => e.kind === 'fournisseur');
+    assert.ok(ev, 'l\'achat ouvert doit être dans la prévision');
+    assert.strictEqual(ev.amount, -4046, `la sortie doit valoir 1 190 € × 3,4 = −4 046 DT, pas ${ev.amount}`);
+    assert.strictEqual(f.outflow, -4046, 'le total à décaisser porte le montant converti');
+  });
+
+  // Le même oubli, un écran plus loin : le lettrage se confronte au solde du 401 — en dinars depuis
+  // la 10.1.0 — et additionnait le reste en euros.
+  t('Rapport QA E-08 : le lettrage fournisseurs compte un achat en devise dans la monnaie du 401', () => {
+    const l = core.lettrage(jeu(), société, 'fournisseurs', '2026-03-15');
+    const r = (l.rows || l).find(x => x.tiersId === 's1');
+    assert.ok(r, 'le fournisseur doit avoir sa ligne de lettrage');
+    assert.strictEqual(r.reste, 4046, `le reste ouvert doit valoir 4 046 DT, pas ${r.reste}`);
+    assert.strictEqual(r.ouverts[0].montant, 4046);
+    assert.strictEqual(r.ouverts[0].regle, 0, 'rien n\'a été payé');
+    // Réglé : ce qui a été PAYÉ, converti — pas « montant − reste », qui compterait un avoir deux fois.
+    const payé = core.lettrage(jeu(achatEuro({ payments: [{ id: 'y1', date: '2026-03-20', amount: 500, method: 'virement' }] })), société, 'fournisseurs', '2026-03-25');
+    const rp = (payé.rows || payé).find(x => x.tiersId === 's1');
+    assert.strictEqual(rp.ouverts[0].regle, 1700, '500 € réglés à 3,4 = 1 700 DT');
+    assert.strictEqual(rp.reste, 2346, '4 046 − 1 700');
+  });
 };

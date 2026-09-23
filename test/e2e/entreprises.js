@@ -11,7 +11,7 @@
 // L'endroit qui AFFICHE un état est l'endroit où on s'attend à le changer.
 //
 //   xvfb-run -a node test/e2e/entreprises.js
-const { playwright, RACINE, ELECTRON, journal, surveiller } = require('./harnais');
+const { fermer, playwright, RACINE, ELECTRON, journal, surveiller } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
 
@@ -111,7 +111,7 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
   if (!(couches < 400)) throw new Error(`le menu des dossiers est à la couche ${couches} : il passerait devant une fenêtre modale`);
   j.ok('couche ' + couches + ', sous les fenêtres (400)');
 
-  await app.close();
+  await fermer(app);
   if (bac.length) { console.error('\nErreurs du renderer :\n' + bac.join('\n')); process.exit(2); }
   console.log(`\n${j.total()} étapes — on change d'entreprise depuis le haut du menu.`);
 })().catch(e => { console.error(e); process.exit(1); });

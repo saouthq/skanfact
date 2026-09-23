@@ -11,7 +11,7 @@
 // blanc, sans une ligne en console, et `node --check` ne voyait rien.
 //
 //   xvfb-run -a node test/e2e/metier.js
-const { playwright, RACINE, ELECTRON, journal, surveiller } = require('./harnais');
+const { fermer, playwright, RACINE, ELECTRON, journal, surveiller } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
 
@@ -111,7 +111,7 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
   if (!pourUnConseil.includes('le RIB')) throw new Error('le RIB n\'est plus réclamé à personne : la règle est morte');
   j.ok(`aucun RIB réclamé au restaurant — et toujours réclamé à un prestataire (${pourUnConseil.join(', ')})`);
 
-  await app.close();
+  await fermer(app);
   if (bac.length) { console.error('\nErreurs du renderer :\n' + bac.join('\n')); process.exit(2); }
   console.log(`\n${j.total()} étapes — le métier décide de ce qu'on montre, le régime de ce qu'on facture.`);
 })().catch(e => { console.error(e); process.exit(1); });

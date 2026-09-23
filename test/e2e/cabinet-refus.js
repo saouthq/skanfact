@@ -2,7 +2,7 @@
 // deux fois, un paquet adressé à quelqu'un d'autre, un paquet protégé par mot de passe, et un
 // paquet qui contient un fichier que son manifeste n'annonce pas. Ce sont les situations qu'un
 // comptable rencontrera pour de vrai, et dans lesquelles un mauvais message coûte un appel.
-const { playwright, RACINE, ELECTRON } = require('./harnais');
+const { fermer, playwright, RACINE, ELECTRON } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
 const root = RACINE;
@@ -181,6 +181,6 @@ const ecrire = (nom, buf) => { const p = path.join(dir, nom); fs.writeFileSync(p
   console.log('\nerreurs JS : ' + errors.length);
   errors.slice(0, 5).forEach(e => console.log('  - ' + e));
   console.log(ok ? '>>> CAS TORDUS OK' : '>>> À REGARDER');
-  await Promise.race([app.close().catch(() => {}), new Promise(r => setTimeout(r, 5000))]);
+  await fermer(app);
   process.exit(ok ? 0 : 1);
 })().catch(e => { console.error('ÉCHEC : ' + (e.stack || e.message)); process.exit(2); });

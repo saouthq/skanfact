@@ -9,7 +9,7 @@
 // une image fausse du produit dans l'autre sens.
 //
 //   xvfb-run -a node test/e2e/sequence-site.js [dossier de sortie]
-const { playwright, RACINE, ELECTRON, journal, surveiller, dossierCaptures } = require('./harnais');
+const { fermer, playwright, RACINE, ELECTRON, journal, surveiller, dossierCaptures } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path');
 const fs = require('fs');
@@ -177,7 +177,7 @@ const SANS_MARQUEURS = `
   await win.waitForSelector('#pv-full-frame', { timeout: 5000 });
   await image('le document tel que le client le recevra', 1200);
 
-  await app.close();
+  await fermer(app);
   fs.writeFileSync(path.join(sortie, 'sequence.txt'), noms.join('\n') + '\n');
   if (bac.length) { console.error('\nERREURS JS :\n' + bac.join('\n')); process.exit(1); }
   console.log(`\n>>> SÉQUENCE OK — ${n} images dans ${sortie}\n` + noms.join('\n'));

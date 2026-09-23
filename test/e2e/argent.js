@@ -13,7 +13,7 @@
 // faux tous les jours. Ce test fait le geste en entier dans l'application réelle.
 //
 //   xvfb-run -a node test/e2e/argent.js
-const { playwright, RACINE, ELECTRON, journal, surveiller } = require('./harnais');
+const { fermer, playwright, RACINE, ELECTRON, journal, surveiller } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
 
@@ -155,5 +155,5 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
   j.ok('le mois vide est nommé, et l\'envoi refusé');
 
   if (bac.length) { console.error('ERREURS JS :\n' + bac.join('\n')); process.exit(1); }
-  await app.close(); console.log('\n>>> OÙ TOMBE L\'ARGENT : OK'); process.exit(0);
+  await fermer(app); console.log('\n>>> OÙ TOMBE L\'ARGENT : OK'); process.exit(0);
 })().catch(e => { console.error('\n✗ ' + e.message); process.exit(1); });

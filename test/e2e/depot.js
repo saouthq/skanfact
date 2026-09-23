@@ -13,7 +13,7 @@
 // démarrer s'il n'est pas propre au départ.
 //
 //   xvfb-run -a node test/e2e/depot.js
-const { playwright, RACINE, ELECTRON, journal, surveiller } = require('./harnais');
+const { fermer, playwright, RACINE, ELECTRON, journal, surveiller } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
 
@@ -51,7 +51,7 @@ async function regarder(j, etiquette) {
       prive: !!(window.__updApp && window.__updApp.private),
     };
   });
-  await app.close();
+  await fermer(app);
   if (bac.length) throw new Error(`Erreurs du renderer (${etiquette}) :\n` + bac.join('\n'));
   return vu;
 }

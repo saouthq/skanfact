@@ -13,7 +13,7 @@
 //   6. Les deux compteurs rouges du Stock ouvrent la liste des articles concernés.
 //
 //   xvfb-run -a node test/e2e/repondre.js
-const { playwright, RACINE, ELECTRON, journal, surveiller, montant } = require('./harnais');
+const { fermer, playwright, RACINE, ELECTRON, journal, surveiller, montant } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
 
@@ -239,7 +239,7 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
   if (new Set(vals).size !== vals.length) throw new Error(`deux onglets annoncent le même export : ${vals.join(' | ')}`);
   j.ok(vals.join(' · '));
 
-  await app.close();
+  await fermer(app);
   if (bac.length) { console.error('\nErreurs du renderer :\n' + bac.join('\n')); process.exit(2); }
   console.log(`\n${j.total()} étapes — les écrans répondent.`);
 })().catch(e => { console.error(e); process.exit(1); });

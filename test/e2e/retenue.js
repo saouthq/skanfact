@@ -16,7 +16,7 @@
 //   5. Le taux libre suit le client sur une nouvelle facture, et se retrouve dans la liste ailleurs.
 //
 //   xvfb-run -a node test/e2e/retenue.js
-const { playwright, RACINE, ELECTRON, journal, surveiller } = require('./harnais');
+const { fermer, playwright, RACINE, ELECTRON, journal, surveiller } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
 
@@ -221,7 +221,7 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
   await win.click('#modal-root [data-close]'); await win.waitForTimeout(150);
   j.ok('le taux saisi une fois reste proposé partout');
 
-  await app.close();
+  await fermer(app);
   if (bac.length) { console.error('\nErreurs du renderer :\n' + bac.join('\n')); process.exit(2); }
   console.log(`\n${j.total()} étapes — la liste propose, elle n'enferme personne.`);
 })().catch(e => { console.error(e); process.exit(1); });

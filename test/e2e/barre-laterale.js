@@ -10,7 +10,7 @@
 // dans l'application réelle (CLAUDE.md, leçon 6.8.0).
 //
 //   xvfb-run -a node test/e2e/barre-laterale.js
-const { playwright, RACINE, ELECTRON, journal, surveiller } = require('./harnais');
+const { fermer, playwright, RACINE, ELECTRON, journal, surveiller } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path');
 const fs = require('fs');
@@ -174,8 +174,10 @@ const ECRANS = [[1680, 1050], [1440, 900], [1366, 768], [1280, 800]];
   // Depuis la 7.7.0, le bouton vert de l'en-tête suit l'onglet ouvert — SAUF quand la page est
   // vide : les onglets sont alors masqués, et un écran qui dit « commence par créer la fiche d'un
   // salarié » doit offrir de quoi le faire. Ce test l'a attrapé le jour même.
-  await win.waitForSelector('#view .page-head .btn-primary');
-  await win.click('#view .page-head .btn-primary');           // + Salarié
+  // Par ce que le bouton FAIT (`#new-emp`), jamais par sa couleur : sans salarié, le vert est celui
+  // du panneau « Aucun salarié », et l'en-tête cède le sien (U-11, 10.12.0).
+  await win.waitForSelector('#view .page-head #new-emp');
+  await win.click('#view .page-head #new-emp');               // + Salarié
   await win.waitForSelector('#modal-root input[name=name]');
   await win.fill('#modal-root input[name=name]', 'Fatma Trabelsi');
   await win.fill('#modal-root input[name=grossSalary]', '1200');
@@ -266,7 +268,7 @@ const ECRANS = [[1680, 1050], [1440, 900], [1366, 768], [1280, 800]];
   }
 
   if (bac.length) { console.error('\nERREURS JS :\n' + bac.join('\n')); process.exit(1); }
-  await app.close();
+  await fermer(app);
   console.log('\n>>> BARRE LATÉRALE OK');
   process.exit(0);
 })().catch(e => { console.error('\n✗ ' + e.message); process.exit(1); });

@@ -1,5 +1,5 @@
 // Test de bout en bout : lance l'app Electron réelle et parcourt les écrans.
-const { playwright, RACINE, ELECTRON, VERSION } = require('./harnais');
+const { fermer, playwright, RACINE, ELECTRON, VERSION } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path');
 const fs = require('fs');
@@ -57,7 +57,7 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
     await win.click('#sf-next');                                          // → paiement
     await win.waitForSelector('#sf-form input[name=rib]');
     await win.fill('#sf-form input[name=bank]', 'BIAT');
-    await win.fill('#sf-form input[name=rib]', '08 006 0000123456789 12');
+    await win.fill('#sf-form input[name=rib]', '00 006 0000123456789 01');
     await win.click('#sf-next');                                          // → sauvegarde
     await win.waitForSelector('#sf-ext');
     await win.click('#sf-next');                                          // terminer
@@ -80,7 +80,10 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
     // est VISIBLE et allumé, sur chaque liste encore vide juste après l'assistant.
     const fautes = [];
     for (const [hash, etatVide] of [['#/devis', 1], ['#/factures', 1], ['#/clients', 1], ['#/fournisseurs', 1], ['#/achats', 1],
-      ['#/autres/proforma', 1], ['#/contrats', 1], ['#/relances', 1], ['#/immos', 0]]) {
+      ['#/autres/proforma', 1], ['#/contrats', 1], ['#/relances', 1], ['#/immos', 0],
+      // La Paie et la Trésorerie posent un panneau écrit à la main plutôt qu'un `.vide-utile` : la
+      // Paie y gardait deux verts (« + Salarié » en tête, « + Créer mon premier salarié » dessous).
+      ['#/paie', 0], ['#/tresorerie', 0]]) {
       await win.evaluate(x => { location.hash = x; }, hash);
       await win.waitForTimeout(300);
       const r = await win.evaluate(() => ({
@@ -91,6 +94,12 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
       if (r.verts.length > 1) fautes.push(`${hash} : ${r.verts.length} boutons principaux (${r.verts.join(', ')})`);
     }
     if (fautes.length) throw new Error(fautes.join(' · '));
+    // 10.12.0 — un bouton ne se propose que s'il a de quoi agir : sur une entreprise sans facture,
+    // « Partir d'une facture existante » acceptait le clic pour répondre qu'il n'y en avait pas
+    // (le jumeau « Partir d'un devis existant » ne se montre qu'avec un devis, H-E30).
+    await win.evaluate(() => { location.hash = '#/contrats'; });
+    await win.waitForSelector('#rec-first');
+    if (await win.$('#rec-depuis')) throw new Error('« Partir d\'une facture existante » est proposé à une entreprise qui n\'a aucune facture');
     await win.evaluate(() => { location.hash = '#/dashboard'; });
   });
   await step('menu : nouveau devis', async () => {
@@ -295,6 +304,20 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
     await win.waitForSelector('#modal-root input[name=tracked]');
     if (!await win.evaluate(() => document.querySelector('#modal-root input[name=tracked]').checked)) throw new Error('« + Nouvel article suivi » ouvre une fiche qui n\'est pas suivie en stock');
     await win.keyboard.press('Escape');
+    await win.waitForFunction(() => !document.querySelector('#modal-root .modal-bg'));
+  });
+  // 10.12.0 (trouvé par `e2e:entreprise-rendu`) — le bouton de l'état vide passait `null` au
+  // formulaire, qui plantait sur `null.lines` : « + Créer mon premier contrat » acceptait le clic et
+  // ne faisait RIEN, depuis la 7.8.0. Aucun parcours ne l'avait jamais cliqué.
+  await step('facturation récurrente vide : « + Créer mon premier contrat » ouvre le formulaire', async () => {
+    await win.evaluate(() => { location.hash = '#/contrats'; });
+    await win.waitForSelector('#rec-first', { timeout: 4000 }).catch(() => { throw new Error('la page vide ne propose pas de créer le premier contrat'); });
+    await win.click('#rec-first');
+    await win.waitForFunction(() => /Nouveau contrat récurrent/.test((document.querySelector('#modal-root .modal-bg:last-child') || {}).textContent || ''), null, { timeout: 3000 })
+      .catch(() => { throw new Error('« + Créer mon premier contrat » accepte le clic et n\'ouvre rien'); });
+    await win.keyboard.press('Escape');
+    const question = await win.waitForSelector('#modal-root .modal-bg:nth-child(2) #ok', { timeout: 1200 }).catch(() => null);
+    if (question) await question.click();
     await win.waitForFunction(() => !document.querySelector('#modal-root .modal-bg'));
   });
   // 10.12.0 (H-E29, vu au test humain) — « Partir d'une facture existante » emmenait à la liste des
@@ -2095,7 +2118,7 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
   });
 
   await new Promise(r => setTimeout(r, 6000)); // laisse passer la vérification silencieuse des mises à jour (5 s)
-  await app.close();
+  await fermer(app);
   if (fs.existsSync(path.join(userData, 'main.log'))) errors.push('main.log présent :\n' + fs.readFileSync(path.join(userData, 'main.log'), 'utf8'));
   if (errors.length) { console.error('\nERREURS JS :\n' + errors.join('\n')); process.exit(1); }
   console.log('\nE2E OK');

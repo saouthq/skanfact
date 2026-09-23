@@ -13,7 +13,7 @@
 // Cloudflare, posé derrière un `http.createServer` avec une vraie base SQLite sur le vrai schéma.
 //
 //   xvfb-run -a node test/e2e/pont.js
-const { playwright, RACINE, ELECTRON, journal, surveiller } = require('./harnais');
+const { fermer, playwright, RACINE, ELECTRON, journal, surveiller } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os'); const http = require('http');
 const L = require('../../src/licence.js');
@@ -290,7 +290,7 @@ const { baseD1 } = require('../d1-sqlite');
   if (fautes.length) throw new Error('erreurs JavaScript pendant le parcours :\n' + fautes.join('\n'));
   j.ok('« La console ne répond pas : … », l\'historique reste');
 
-  await Promise.race([app.close(), new Promise((_, rej) => setTimeout(() => rej(new Error('l\'application ne se ferme pas : un garde-fou de sortie attend une réponse')), 20000))]);
+  await fermer(app);
   serveur.close(); db.fermer();
   console.log(`\n✓ pont comptable : ${j.total()} étapes`);
   process.exit(0);

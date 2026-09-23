@@ -4,7 +4,7 @@
 // Ce qu'il déroule : création du cabinet (mot de passe), réglages, dossier créé à la main, exemple,
 // tri, pagination, recherche, Cmd+K, fiche complète, relance enregistrée, relance groupée,
 // sauvegardes, restauration, changement de mot de passe, clé de secours, bulles « i ».
-const { playwright, RACINE, ELECTRON, ongletCompta, ongletComptaPresent, ongletsCompta } = require('./harnais');
+const { fermer, playwright, RACINE, ELECTRON, ongletCompta, ongletComptaPresent, ongletsCompta } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
 const root = RACINE;
@@ -737,7 +737,7 @@ const étape = m => { pas++; console.log('\n' + pas + '. ' + m); };
   console.log('\n' + '─'.repeat(60));
   console.log('erreurs JS : ' + errors.length);
   errors.slice(0, 10).forEach(e => console.log('  ✕ ' + e));
-  await Promise.race([app.close().catch(() => {}), new Promise(r => setTimeout(r, 5000))]);
+  await fermer(app);
   console.log('captures : ' + OUT);
   process.exit(errors.length ? 3 : 0);
 })().catch(e => { console.error('\n✕ ÉCHEC : ' + (e.stack || e.message)); console.error('erreurs JS : ' + errors.length); errors.slice(0, 6).forEach(x => console.error('  ' + x)); process.exit(2); });

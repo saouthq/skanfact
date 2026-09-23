@@ -14,7 +14,7 @@
 // Ce test mesure les deux dans l'application réelle, à 1440 et à 1280.
 //
 //   xvfb-run -a node test/e2e/apercu.js
-const { playwright, RACINE, ELECTRON, journal, surveiller } = require('./harnais');
+const { fermer, playwright, RACINE, ELECTRON, journal, surveiller } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
 
@@ -122,7 +122,7 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
   await win.waitForSelector('#preview');
   j.ok(`« ${etat.texte} » reste à ${etat.haut} px du haut, et ramène l'aperçu`);
 
-  await app.close();
+  await fermer(app);
   if (bac.length) { console.error('\nErreurs du renderer :\n' + bac.join('\n')); process.exit(2); }
   console.log(`\n${j.total()} étapes — on voit ce qu'on fabrique.`);
 })().catch(e => { console.error(e); process.exit(1); });

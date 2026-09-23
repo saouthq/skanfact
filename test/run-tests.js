@@ -607,7 +607,7 @@ t('à faire : ce qui demande une action, par ordre d\'urgence', () => {
     ],
     recurring: [{ id: 'r1', clientId: 'c1', subject: 'Maintenance — {mois}', lines: [], nextDate: '2026-09-01', active: true }]
   };
-  const FULL = { ...CO, name: 'ACME', matricule: '1234567A', rib: '12 345' };
+  const FULL = { ...CO, name: 'ACME', matricule: '1234567A', rib: '00 006 0000123456789 01' };
   const todo = core.todoList(data, FULL, T);
   const ids = todo.map(x => x.id);
   // Les mêmes neuf lignes, quel que soit l'ordre : c'est le CONTENU qu'on vérifie ici.
@@ -2967,7 +2967,7 @@ t('clôture : les contrôles montrent ce qui manque, sans jamais bloquer', () =>
 });
 
 t('clôture : « À faire » réclame les mois terminés depuis dix jours', () => {
-  const co = { name: 'T', matricule: 'M', rib: 'R', currency: 'TND', paymentTermsDays: 30 };
+  const co = { name: 'T', matricule: 'M', rib: '00 006 0000123456789 01', currency: 'TND', paymentTermsDays: 30 };
   const d = core.migrateData({ documents: [{ id: 'a', type: 'facture', clientId: 'c', number: 'F1', status: 'payée', date: '2026-07-10', lines: [] }] });
   const item = () => core.todoList(d, co, '2026-09-12').find(x => x.id === 'cloture');
   assert.ok(item(), 'juillet et août sont à clôturer');
@@ -8153,7 +8153,7 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
 
     // Et « À faire » le remonte en rouge : les pièces déjà enregistrées faussent déjà la déclaration.
     const ligne = core.todoList({ ...core.DEFAULT_DATA, documents: [sansTaux], clients: [] },
-      { ...co, name: 'ACME', matricule: '1234567A', rib: '12 345' }, '2026-09-12')
+      { ...co, name: 'ACME', matricule: '1234567A', rib: '00 006 0000123456789 01' }, '2026-09-12')
       .find(x => x.id === 'taux-change');
     assert.ok(ligne, '« À faire » doit signaler une pièce en devise sans taux de change');
     assert.strictEqual(ligne.level, 'danger', 'des chiffres faux dans une déclaration, c\'est rouge');
@@ -9336,7 +9336,12 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     const bloc = app.slice(app.indexOf('function drawAnalysis'), app.indexOf('function drawContracts'));
     assert.ok(/C\.marginBy\(data, company\(\), p\.from, p\.to, s\.dim, 0\)/.test(bloc),
       'la page Marges calcule encore ses cartes sur un tableau tronqué');
-    assert.ok(/const pg = paginate\(rows, s\)/.test(bloc) && /pagerBar\(pg,/.test(bloc) && /bindPager\(/.test(bloc),
+    // Cette assertion recopiait la FORME du jour (`const pg = paginate(…)` puis `pagerBar(pg,`) — et
+    // cette forme était le défaut E-09 : la barre recevait l'emballage `{ rows, pg }` et écrivait
+    // « undefined–undefined ». Elle exige désormais la règle : la page vient de la sélection entière,
+    // et c'est la PAGE (`.pg`) qui va à la barre.
+    const pag = bloc.match(/const (\w+) = paginate\(rows, s\)/);
+    assert.ok(pag && new RegExp('pagerBar\\(' + pag[1] + '\\.pg,').test(bloc) && /bindPager\(/.test(bloc),
       'la table des marges n\'est pas paginée comme toutes les autres listes');
   });
 
@@ -9409,8 +9414,13 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     // 7.29.0 cette question vit DANS `facturerDevis` : posée chez l'appelant, elle ne protégeait que
     // cet appelant-là, et le menu de ligne de la 7.28.0 est reparti sans elle.
     assert.ok(/Refacturer la totalité/.test(app), 'refacturer la totalité a disparu');
-    assert.ok(/async function facturerDevis\(q\) \{[\s\S]{0,600}?await confirmDialog\([\s\S]{0,400}?'Refacturer la totalité', true\)/.test(app),
-      'refacturer la totalité ne demande rien');
+    // La RÈGLE, pas la longueur de la question (10.12.0) : la question « Refacturer la totalité » est
+    // posée AVANT que la facture soit fabriquée. La fenêtre de 400 caractères tombait dès que la
+    // question nommait mieux ce qui existe (un acompte en brouillon, rapport QA E-03).
+    const fd = app.slice(app.indexOf('async function facturerDevis(q) {'));
+    const corpsFd = fd.slice(0, fd.indexOf('\n  }\n'));
+    const question = corpsFd.search(/await confirmDialog\([\s\S]*?'Refacturer la totalité', true\)/);
+    assert.ok(question > 0 && question < corpsFd.indexOf('invoiceFromQuote('), 'refacturer la totalité ne demande rien');
   });
 
   // ---------- 7.17.0 : les écrans qui ne répondent pas ----------
@@ -9806,8 +9816,17 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     assert.ok(/const lirePct = \(\) => \{[\s\S]{0,300}?if \(v\.mode === 'dt'\) \{ const m = Number\(v\.montant\); return ttcDevis > 0 \? \(m \/ ttcDevis\) \* 100 : 0; \}/.test(app),
       'le montant n\'est pas converti en pourcentage (c\'est ce que depositLines attend)');
     // Le TTC réellement obtenu s'affiche AVANT : l'écart d'arrondi ne se découvre pas après coup.
-    assert.ok(/L'acompte fera <b>\$\{h\(C\.money\(t\.netToPay, cur\)\)\}<\/b> à payer/.test(app),
+    // 10.12.0 (rapport QA E-02) — la RÈGLE plutôt que la ligne recopiée : les DEUX montants annoncés
+    // (l'acompte et le solde) sortent du constructeur qui fabriquera les deux factures. Le solde se
+    // calculait à la main (« total du devis − acompte ») et se trompait de deux timbres.
+    const ap = app.slice(app.indexOf('const apercu = () => {'), app.indexOf('const apercu = () => {') + 2500);
+    assert.ok(/const acompte = invoiceFromQuote\(doc, C\.depositLines\(doc, p2, company\(\)\), 0\)/.test(ap)
+      && /L'acompte fera <b id="dp-acompte">\$\{h\(C\.money\(ta\.netToPay, cur\)\)\}<\/b> à payer/.test(ap),
       'le montant réellement obtenu n\'est pas annoncé avant de créer le brouillon');
+    assert.ok(/const solde = invoiceFromQuote\(doc, C\.settlementLines\(doc, \[acompte\]\), doc\.discountRate\)/.test(ap)
+      && /id="dp-solde">\$\{h\(C\.money\(ts\.netToPay, cur\)\)\}/.test(ap),
+      'le solde annoncé ne vient pas de la facture de solde telle qu\'elle sera fabriquée');
+    assert.ok(!/ttcDevis - /.test(ap), 'le solde se calcule encore à la main : il oublie le timbre du solde');
     assert.ok(/ttcDevis > 0 \? \(m \/ ttcDevis\) \* 100 : 0/.test(app), 'une division par zéro reste possible sur un devis à 0');
     // `depositLines` ne change pas : c'est tout l'intérêt de convertir en amont.
     const co = { currency: 'DT', stampFee: 1 };
@@ -10640,8 +10659,11 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     assert.deepStrictEqual(core.companyGaps(sansRib('restauration')), [], 'un restaurant encaisse sur place');
     assert.deepStrictEqual(core.companyGaps(sansRib('beaute')), []);
     assert.deepStrictEqual(core.companyGaps(sansRib('')), ['le RIB'], 'métier inconnu : on le réclame, comme avant');
-    // Le RIB renseigné ne manque évidemment jamais.
-    assert.deepStrictEqual(core.companyGaps({ name: 'A', matricule: '1', activity: 'conseil', rib: 'TN59' }), []);
+    // Un RIB renseigné ET valide ne manque jamais. Cette assertion posait « TN59 » — quatre
+    // caractères — et jugeait sur la seule PRÉSENCE : c'est très exactement ce qui laissait passer
+    // un RIB de dix chiffres (rapport QA, 10.12.0). Un RIB faux manque autant qu'un RIB absent.
+    assert.deepStrictEqual(core.companyGaps({ name: 'A', matricule: '1', activity: 'conseil', rib: 'TN59 0704 0005 8101 1112 9653' }), []);
+    assert.deepStrictEqual(core.companyGaps({ name: 'A', matricule: '1', activity: 'conseil', rib: '0801234567' }), ['un RIB valide (10 chiffres sur 20)']);
     // Les deux autres manques ne bougent pas.
     assert.ok(core.companyGaps({ activity: 'restauration' }).includes('la raison sociale'));
     assert.ok(core.companyGaps({ activity: 'restauration' }).includes('le matricule fiscal'));
@@ -14376,6 +14398,7 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
   require('./suites/avoir-fournisseur.js')({ t, assert, lireSource });
   require('./suites/paie-cabinet.js')({ t, assert, lireSource });
   require('./suites/qa-cabinet.js')({ t, assert, lireSource });
+  require('./suites/qa-entreprise.js')({ t, assert, lireSource });
   require('./suites/audit-ux-cabinet.js')({ t, assert, lireSource });
   // Celle-ci reçoit `ta` en plus : elle interroge le vrai worker sur une vraie base SQLite.
   await require('./suites/plateforme-gestion.js')({ t, ta, assert, lireSource });

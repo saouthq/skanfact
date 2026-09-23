@@ -7,7 +7,7 @@
 //
 // Le geste qui compte : un dossier HORS SkanFact. C'est lui qui paie le cabinet, et c'est très
 // exactement celui pour lequel rien n'existait avant cette version.
-const { playwright, RACINE, ELECTRON, ongletCompta, ongletComptaPresent } = require('./harnais');
+const { fermer, playwright, RACINE, ELECTRON, ongletCompta, ongletComptaPresent } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
 const OUT = process.argv[2] || path.join(RACINE, 'dist-e2e', 'paie');
@@ -243,7 +243,7 @@ const étape = m => { pas++; console.log('\n' + pas + '. ' + m); };
   if (errors.length) { console.log('erreurs JS :'); errors.forEach(e => console.log('  ' + e)); }
   console.log('erreurs JS : ' + errors.length);
   console.log('captures : ' + OUT);
-  await app.close();
+  await fermer(app);
   if (errors.length) process.exit(1);
   console.log('\n' + pas + ' étapes — le Cabinet tient la paie d\'un client qui n\'a pas SkanFact.');
 })().catch(async e => { console.error(e); process.exit(1); });

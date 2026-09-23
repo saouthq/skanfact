@@ -15,7 +15,7 @@
 //   5. « Facturer ce devis » restait proposé sur un devis déjà facturé.
 //
 //   xvfb-run -a node test/e2e/chiffres.js
-const { playwright, RACINE, ELECTRON, journal, surveiller, montant } = require('./harnais');
+const { fermer, playwright, RACINE, ELECTRON, journal, surveiller, montant } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
 
@@ -176,8 +176,7 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
   // Et la fermeture est BORNÉE. Un test qui reste bloqué pour toujours est pire qu'un test qui
   // échoue : il ne dit rien, on finit par ne plus le lancer, et il ne sert plus à rien. Même
   // principe que les commandes du chien de garde, chacune sous `Promise.race` (règle 6.5.0).
-  await Promise.race([app.close(), new Promise((_, rej) => setTimeout(
-    () => rej(new Error('l\'application ne se ferme pas : une boîte SYSTÈME attend une réponse que personne ne peut donner — il reste un éditeur avec des modifications non enregistrées')), 20000))]);
+  await fermer(app);
   if (bac.length) { console.error('\nErreurs du renderer :\n' + bac.join('\n')); process.exit(2); }
   console.log(`\n${j.total()} étapes — les chiffres disent la vérité.`);
 })().catch(e => { console.error(e); process.exit(1); });

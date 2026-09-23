@@ -18,7 +18,7 @@
 //   4. Ce que B enregistre, A le voit.
 //
 //   xvfb-run -a node test/e2e/partage.js
-const { playwright, RACINE, ELECTRON, journal, surveiller } = require('./harnais');
+const { fermer, playwright, RACINE, ELECTRON, journal, surveiller } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
 
@@ -139,7 +139,7 @@ const MF = '1234567X/A/M/000';
   await winB.fill('.modal input[name=name]', 'Client du fils');
   await winB.click('.modal .modal-actions .btn-primary');
   await winB.waitForTimeout(800);
-  await appB.close();
+  await fermer(appB);
 
   // D'abord le FICHIER : s'il ne contient rien, c'est l'enregistrement de B qui est en cause, pas
   // la relecture de A. Séparer les deux moitiés avant de chercher (règle 6.7.2).
@@ -155,7 +155,7 @@ const MF = '1234567X/A/M/000';
   if (!vuParA) throw new Error('le poste A ne voit pas ce que le poste B a enregistré : le dossier n\'est pas vraiment partagé');
   j.ok('les deux postes travaillent sur le même dossier');
 
-  await appA.close();
+  await fermer(appA);
   if (bac.length) { console.error('\nErreurs du renderer :\n' + bac.join('\n')); process.exit(2); }
   console.log(`\n${j.total()} étapes — une entreprise déjà saisie se partage, et le second poste la rejoint.`);
 })().catch(e => { console.error(e); process.exit(1); });

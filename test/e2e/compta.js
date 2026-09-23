@@ -13,7 +13,7 @@
 //   6. La carte « Reste à encaisser » n'ouvrait rien, alors que sa jumelle de l'accueil le fait.
 //
 //   xvfb-run -a node test/e2e/compta.js
-const { playwright, RACINE, ELECTRON, journal, surveiller } = require('./harnais');
+const { fermer, playwright, RACINE, ELECTRON, journal, surveiller } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
 
@@ -150,7 +150,7 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
   if (!filtre.lignes) throw new Error('la liste filtrée est vide : le filtre ne rend pas ce que la carte annonçait');
   j.ok(`liste des factures filtrée sur « ${filtre.st} » — ${filtre.note.trim() || filtre.lignes + ' ligne(s)'}`);
 
-  await app.close();
+  await fermer(app);
   if (bac.length) { console.error('\nErreurs du renderer :\n' + bac.join('\n')); process.exit(2); }
   console.log(`\n${j.total()} étapes — la comptabilité mène aux pièces.`);
 })().catch(e => { console.error(e); process.exit(1); });

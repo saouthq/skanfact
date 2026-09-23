@@ -12,7 +12,7 @@
 //
 // Ce n'est pas qu'un instrument : les assertions à la fin sont des règles du projet, et elles
 // doivent tomber si quelqu'un les recasse.
-const { playwright, RACINE, ELECTRON, capturePleine, ongletCompta, ongletsCompta } = require('./harnais');
+const { fermer, playwright, RACINE, ELECTRON, capturePleine, ongletCompta, ongletsCompta } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
 const OUT = process.argv[2] || path.join(RACINE, 'dist-e2e', 'cabinet-premier-jour');
@@ -515,7 +515,7 @@ const LARGE = 1440, HAUT = 900;
   console.log(`  erreurs JS                   : ${errors.length}`);
   console.log(`  → ${path.join(OUT, 'mesures.json')}`);
 
-  await app.close();
+  await fermer(app);
 
   // ---------------------------------------------------------------- les règles, elles, tombent
   const casse = [];

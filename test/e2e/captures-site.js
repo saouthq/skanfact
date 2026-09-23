@@ -7,7 +7,7 @@
 // donnerait une image FAUSSE du produit, dans l'autre sens.
 //
 //   xvfb-run -a node test/e2e/captures-site.js [dossier de sortie]
-const { playwright, RACINE, ELECTRON, journal, surveiller, dossierCaptures } = require('./harnais');
+const { fermer, playwright, RACINE, ELECTRON, journal, surveiller, dossierCaptures } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path');
 const fs = require('fs');
@@ -225,7 +225,7 @@ const SANS_MARQUEURS = `
   }
   j.ok(`${DETAILS.length} recadrages`);
 
-  await app.close();
+  await fermer(app);
   if (bac.length) { console.error('\nERREURS JS :\n' + bac.join('\n')); process.exit(1); }
   console.log(`\n>>> CAPTURES SITE OK — ${sortie}`);
   process.exit(0);

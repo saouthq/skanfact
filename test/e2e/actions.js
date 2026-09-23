@@ -15,7 +15,7 @@
 //   5. Une fois accepté, le menu de la ligne propose « Facturer ce devis ».
 //
 //   xvfb-run -a node test/e2e/actions.js
-const { playwright, RACINE, ELECTRON, journal, surveiller } = require('./harnais');
+const { fermer, playwright, RACINE, ELECTRON, journal, surveiller } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
 
@@ -205,7 +205,7 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
   await win.waitForTimeout(400);
   j.ok(actionsAccepte.join(', '));
 
-  await app.close();
+  await fermer(app);
   if (bac.length) { console.error('\nErreurs du renderer :\n' + bac.join('\n')); process.exit(2); }
   console.log(`\n${j.total()} étapes — une seule porte par ligne, et rien ne change sans qu'on l'ait dit.`);
 })().catch(e => { console.error(e); process.exit(1); });

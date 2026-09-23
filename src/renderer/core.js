@@ -922,6 +922,18 @@
 
   function nl2br(s) { return escapeHtml(s).replace(/\n/g, '<br>'); }
 
+  // Le capital social s'écrit comme les autres montants de la pièce (rapport QA, 10.12.0) : « 10000 »
+  // tapé nu sortait « Capital 10000 » en pied de chaque document, là où tout le reste s'écrit
+  // « 2 262,000 DT ». Seul un nombre NU (chiffres et espaces) se met en forme : un texte déjà écrit
+  // (« 1 000 DT », « 10.000 dinars ») est celui de l'utilisateur et reste tel quel — et « 10.000 »
+  // se lit dix mille ou dix selon qui l'écrit, donc on ne le devine pas.
+  function capitalAffiche(capital, currency, lang) {
+    const s = String(capital == null ? '' : capital).trim();
+    if (!/^\d[\d\s]*$/.test(s)) return s;
+    const n = Number(s.replace(/\s/g, ''));
+    return n > 0 ? money(n, normCurrency(currency), 0, lang) : s;
+  }
+
   // Le pluriel. Il vivait dans les DEUX renderers et manquait ici, alors que core.js écrit lui aussi
   // des phrases qu'on lit à l'écran : les lignes de « À faire », la liste de ce qui manque au
   // paquet du comptable, les bulletins. « 1 facture(s) en brouillon » paraît bâclé où qu'il soit
@@ -1390,7 +1402,7 @@
     invoices.forEach(d => {
       if (effectiveStatus(d, data, company, '9999-12-31') !== 'payée' || !(d.payments || []).length) return;
       const last = d.payments.map(p => p.date).sort().pop();
-      if (last && d.date) delays.push(daysBetween(d.date, last));
+      if (last && d.date) delays.push(delaiConstate(d.date, last));
     });
     return {
       docs, ht, paid, due, count: docs.length, invoiceCount: invoices.length, quoteCount: quotes.length,
@@ -1400,13 +1412,19 @@
     };
   }
 
+  // Un délai CONSTATÉ ne descend pas sous zéro : une facture réglée avant sa date (un acompte encaissé
+  // sur place, une facture datée d'après coup) ou un devis dont la facture précède la date (un devis
+  // antidaté) ont été payés ou acceptés « tout de suite ». Rendre −3 faisait écrire « délai moyen :
+  // −3 jours » à l'écran (rapport QA, 10.12.0) — un chiffre qu'aucune entreprise ne sait lire.
+  function delaiConstate(de, a) { return Math.max(0, daysBetween(de, a)); }
+
   // Délai moyen (jours) entre la date de facture et le dernier paiement, sur les factures soldées de la période
   function avgPaymentDelay(data, company, fromIso, toIso) {
     const delays = [];
     (data.documents || []).filter(d => d.type === 'facture' && d.status !== 'brouillon' && d.status !== 'annulée' && inPeriod(d.date, fromIso, toIso)).forEach(d => {
       if (effectiveStatus(d, data, company, '9999-12-31') !== 'payée' || !(d.payments || []).length) return;
       const last = d.payments.map(p => p.date).sort().pop();
-      if (last && d.date) delays.push(daysBetween(d.date, last));
+      if (last && d.date) delays.push(delaiConstate(d.date, last));
     });
     return delays.length ? Math.round(delays.reduce((s, x) => s + x, 0) / delays.length) : null;
   }
@@ -1417,9 +1435,11 @@
   // 10.2.0 : l'avoir fournisseur et l'acompte versé. Les deux manquaient, et les deux se ressaisissaient
   // à la main — un avoir en tapant des montants négatifs (ce qu'aucune comptabilité n'accepte, règle
   // 6.3.0), un acompte en ne le saisissant pas du tout jusqu'à la facture finale.
+  // Le troisième élément est le pluriel, écrit en entier : le filtre des Achats ajoutait un « s » au
+  // bout et affichait « Facture d'achats », « Acompte versés » (rapport QA, 10.12.0).
   const PURCHASE_KINDS = [
-    ['facture', 'Facture d\'achat'], ['depense', 'Dépense'],
-    ['avoir', 'Avoir fournisseur'], ['acompte', 'Acompte versé']
+    ['facture', 'Facture d\'achat', 'Factures d\'achat'], ['depense', 'Dépense', 'Dépenses'],
+    ['avoir', 'Avoir fournisseur', 'Avoirs fournisseurs'], ['acompte', 'Acompte versé', 'Acomptes versés']
   ];
   // Les pièces qui se RATTACHENT à une facture d'achat. Un avoir la diminue, un acompte l'a déjà
   // payée en partie : dans les deux cas le montant se saisit POSITIF et c'est le sens de la pièce
@@ -1955,7 +1975,7 @@
       const date = c.initialDate || '1970-01-01';
       if (limit && date > limit) return;
       out.push({ id: `init-${c.id}`, date, itemId: c.id, label: c.label, qty, unitCost: Number(c.initialCost) || 0,
-        source: 'depart', ref: '', docId: '', note: '' });
+        source: 'depart', ref: '', docId: '', note: '', rang: 0, ts: 0 });
     });
 
     (data.purchases || []).forEach(p => {
@@ -1976,7 +1996,7 @@
         // étaient faux ensemble et dans le même sens.
         out.push({ id: `buy-${p.id}-${i}`, date: p.date, itemId: c.id, label: c.label, qty,
           unitCost: toBase(p, Number(l.unitPrice) || 0, data.company || {}),
-          source: 'achat', ref: p.number || '', docId: p.id, note: '' });
+          source: 'achat', ref: p.number || '', docId: p.id, note: '', rang: 1, ts: Number(p.createdAt) || 0 });
       });
     });
 
@@ -2000,7 +2020,9 @@
         out.push({ id: `doc-${d.id}-${i}`, date: d.date, itemId: c.id, label: c.label,
           qty: isReturn ? qty : -qty, unitCost: null,
           source: isReturn ? 'avoir' : (isDelivery ? 'livraison' : 'vente'),
-          ref: d.number || '', docId: d.id, note: '' });
+          ref: d.number || '', docId: d.id, note: '', rang: 1,
+          // La marchandise sort à l'ÉMISSION : c'est l'instant qui compte, pas celui du brouillon.
+          ts: Number(d.issuedTs || d.createdAt) || 0 });
       });
     });
 
@@ -2010,10 +2032,20 @@
       if (limit && a.date > limit) return;
       out.push({ id: a.id, date: a.date, itemId: a.itemId, label: c.label, qty: Number(a.qty) || 0,
         unitCost: a.unitCost === '' || a.unitCost == null ? null : Number(a.unitCost),
-        source: a.source || 'ajustement', ref: a.reference || '', docId: '', note: a.note || '', manual: true });
+        source: a.source || 'ajustement', ref: a.reference || '', docId: '', note: a.note || '', manual: true,
+        rang: a.source === 'depart' ? 0 : 1, ts: Number(a.createdAt) || 0 });
     });
 
-    return out.sort((a, b) => (a.date || '').localeCompare(b.date || '') || String(a.id).localeCompare(String(b.id)));
+    // L'ORDRE d'une même journée (rapport QA E-10). Les mouvements du même jour se triaient par
+    // IDENTIFIANT — « buy- » < « doc- » < « init- » — donc Achat → Vente → Stock de départ : un stock de
+    // départ de 5 à 700, une vente de 2 puis un achat de 3 à 800, saisis dans cet ordre, sortaient la
+    // vente au coût de l'achat qui la SUIT (800) et valorisaient le stock à 4 300 au lieu de 4 500.
+    // Le coût moyen pondéré dépend de l'ordre des gestes : le stock de départ passe toujours en tête
+    // de son jour, puis chaque mouvement à l'instant où il a eu lieu (création d'un achat ou d'un
+    // mouvement, émission d'une facture). Sans instant connu (données anciennes), les entrées passent
+    // avant les sorties : une sortie ne se valorise pas sur une marchandise qui n'est pas encore là.
+    return out.sort((a, b) => (a.date || '').localeCompare(b.date || '')
+      || (a.rang - b.rang) || (a.ts - b.ts) || ((b.qty > 0) - (a.qty > 0)) || String(a.id).localeCompare(String(b.id)));
   }
 
   // Déroule les mouvements d'un article et tient le coût moyen pondéré à jour.
@@ -2224,6 +2256,19 @@
   }
 
   // Les bulletins du mois qui manquent : un salarié actif sans bulletin, c'est un oubli, pas un choix.
+  // Les bulletins IMPOSSIBLES (rapport QA E-04). La 10.10.0 a fermé la porte — une absence plus
+  // longue que le mois, une retenue plus grosse que le salaire, et le bulletin est refusé — mais elle
+  // ne nettoie pas ce qui est passé AVANT : un bulletin à net négatif reste enregistré, son écriture
+  // est inversée, et la déclaration CNSS du trimestre l'additionne (« − 168,970 DT », prête à être
+  // marquée déposée). On le lit sur la COPIE figée du calcul (`computed`, règle 5.0.0) : c'est elle
+  // qui a été remise et déclarée. Un bulletin sans copie (antérieur à la 5.0.0) n'est pas jugé ici.
+  function bulletinsImpossibles(data) {
+    return (data.payslips || []).filter(p => p && p.computed
+      && (Number(p.computed.net) < 0 || !(Number(p.computed.gross) > 0)))
+      .map(p => ({ id: p.id, employeeId: p.employeeId, year: p.year, month: p.month,
+        net: round3(Number(p.computed.net) || 0), gross: round3(Number(p.computed.gross) || 0) }));
+  }
+
   function missingPayslips(data, year, month) {
     const done = new Set((data.payslips || []).filter(p => Number(p.year) === Number(year) && Number(p.month) === Number(month)).map(p => p.employeeId));
     const last = addDays(`${year}-${String(month).padStart(2, '0')}-01`, daysInMonth(year, month) - 1);
@@ -3104,13 +3149,17 @@
       events.push({ date: due, amount: round3(toBase(d, rest, company)), kind: 'client', late: !!(d.dueDate && d.dueDate < t),
         label: `${d.number || 'Facture'} — ${((data.clients || []).find(c => c.id === d.clientId) || {}).name || ''}`.trim(), id: d.id });
     });
-    // Ce qui doit sortir : le reste dû de chaque achat.
+    // Ce qui doit sortir : le reste dû de chaque achat — CONVERTI, comme la branche des clients juste
+    // au-dessus. `purchaseBalance` rend le reste dans la devise de la pièce : une facture Adobe de
+    // 1 190 € sortait de la prévision pour 1 190 DT au lieu de 4 046 — le trou annoncé était
+    // sous-estimé de 2 856 dinars, sur la page faite pour savoir si l'on tiendra (rapport QA E-08,
+    // le jumeau que la 10.1.0 n'avait pas vu parmi ses treize agrégateurs).
     (data.purchases || []).forEach(p => {
       const rest = purchaseBalance(p, company, data).remaining;
       if (rest <= 0.0005) return;
       const due = p.dueDate && p.dueDate > t ? p.dueDate : t;
       if (due > horizon) return;
-      events.push({ date: due, amount: -rest, kind: 'fournisseur', late: !!(p.dueDate && p.dueDate < t),
+      events.push({ date: due, amount: -round3(toBase(p, rest, company)), kind: 'fournisseur', late: !!(p.dueDate && p.dueDate < t),
         label: `${p.number || 'Achat'} — ${((data.suppliers || []).find(s => s.id === p.supplierId) || {}).name || ''}`.trim(), id: p.id });
     });
     // Ce qui revient tout seul : les contrats récurrents déjà programmés.
@@ -3187,6 +3236,16 @@
     templates: 'modèle', snippets: 'texte', suppliers: 'fournisseur', purchases: 'achat',
     accounts: 'compte', movements: 'mouvement', projects: 'affaire', assets: 'immobilisation', stockAdjustments: 'mouvement de stock', serials: 'numéro de série', employees: 'salarié', payslips: 'bulletin de paie', leaves: 'congé', advances: 'avance sur salaire', socialFilings: 'déclaration sociale', fiscalFilings: 'échéance fiscale déposée', packs: 'envoi au cabinet', licences: 'licence émise', ecrituresOD: 'opération diverse'
   };
+  // Le pluriel de chaque étiquette, écrit EN ENTIER (E-13) : « 2 bulletins de paie », pas « 2 bulletin
+  // de paie » ni « 2 bulletin de paies ». Ajouter un « s » au bout n'accorde que le dernier mot, et
+  // ne rien ajouter n'en accorde aucun. Les deux tables portent les MÊMES clés : un test les confronte.
+  const LIST_PLURIELS = {
+    clients: 'clients', catalog: 'prestations', documents: 'documents', recurring: 'contrats récurrents',
+    templates: 'modèles', snippets: 'textes', suppliers: 'fournisseurs', purchases: 'achats',
+    accounts: 'comptes', movements: 'mouvements', projects: 'affaires', assets: 'immobilisations', stockAdjustments: 'mouvements de stock', serials: 'numéros de série', employees: 'salariés', payslips: 'bulletins de paie', leaves: 'congés', advances: 'avances sur salaire', socialFilings: 'déclarations sociales', fiscalFilings: 'échéances fiscales déposées', packs: 'envois au cabinet', licences: 'licences émises', ecrituresOD: 'opérations diverses'
+  };
+  // « 5 prestations », « 1 bulletin de paie » : le compte d'une liste, accordé.
+  const compteListe = (k, n) => plFr(n, LIST_LABELS[k] || k, LIST_PLURIELS[k]);
 
   function sameJson(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
 
@@ -3447,6 +3506,17 @@
     return monthLabel(String(iso).slice(0, 10));
   }
 
+  // Les dates des pièces qui entrent dans une clôture, triées. UNE liste pour les deux lecteurs :
+  // le premier mois proposé à la clôture, et la phrase qui dit pourquoi il n'y en a pas.
+  function datesDesPieces(data) {
+    return [
+      ...(data.documents || []).map(d => d.date),
+      ...(data.purchases || []).map(p => p.date),
+      ...(data.movements || []).map(m => m.date),
+      ...(data.ecrituresOD || []).map(o => o.date)
+    ].filter(Boolean).sort();
+  }
+
   // Les mois qu'on peut clôturer aujourd'hui : ceux qui suivent le dernier clôturé et qui sont
   // terminés. On ne propose jamais de clôturer un mois en cours — il lui reste des pièces à recevoir.
   function closableMonths(data, todayIso) {
@@ -3458,12 +3528,7 @@
       first = addDays(c, 1).slice(0, 7);
     } else {
       // Rien n'a jamais été clôturé : on part du mois de la plus ancienne pièce datée.
-      const dates = [
-        ...(data.documents || []).map(d => d.date),
-        ...(data.purchases || []).map(p => p.date),
-        ...(data.movements || []).map(m => m.date),
-        ...(data.ecrituresOD || []).map(o => o.date)
-      ].filter(Boolean).sort();
+      const dates = datesDesPieces(data);
       if (!dates.length) return [];
       first = dates[0].slice(0, 7);
     }
@@ -3476,6 +3541,22 @@
       m = addMonths(m + '-01', 1, 1).slice(0, 7);
     }
     return out;
+  }
+
+  // Pourquoi il n'y a RIEN à clôturer, quand `closableMonths` rend une liste vide. Trois cas, et le
+  // plus trompeur est celui de l'entreprise qui vient de commencer : elle a des pièces, toutes dans
+  // le mois en cours. Lui répondre « aucune pièce datée » (le défaut d'avant la 10.12.0) la faisait
+  // douter de ce qu'elle venait de saisir. `des` est le jour où le premier mois deviendra clôturable.
+  function rienACloturer(data, todayIso) {
+    const cur = (todayIso || today()).slice(0, 7);
+    const lendemain = mois => addMonths(mois + '-01', 1, 1);
+    if (closedUntil(data)) return { cas: 'a-jour', mois: monthLabel(cur + '-01'), des: lendemain(cur) };
+    const dates = datesDesPieces(data);
+    if (!dates.length) return { cas: 'aucune' };
+    // Sans clôture, une liste vide veut dire que la plus ancienne pièce est dans le mois en cours
+    // — ou après : un devis daté du mois prochain ne rend clôturable aucun mois avant la fin du sien.
+    const premier = dates[0].slice(0, 7) > cur ? dates[0].slice(0, 7) : cur;
+    return { cas: 'pas-termine', n: dates.length, mois: monthLabel(premier + '-01'), enCours: premier === cur, des: lendemain(premier) };
   }
 
   // Ce qu'il vaut mieux régler AVANT de clôturer. On n'interdit rien : on montre, et l'utilisateur
@@ -3677,7 +3758,10 @@
     // 1 bis. Les écritures en partie double. C'est le fichier qui fait gagner des heures au cabinet :
     // il l'importe au lieu de retaper les pièces une à une. Les numéros de compte sont ceux réglés
     // par l'entreprise — À VÉRIFIER, et c'est écrit dans le fichier comme sur la page de garde.
-    const ecritures = journalEntries(data, company, period, {});
+    // Par `livreJournal`, comme l'écran (rapport QA E-07) : `journalEntries` ne numérote pas, et la
+    // colonne « N° » du fichier — celle qui regroupe les lignes en pièces à l'import — partait VIDE,
+    // pendant que l'écran promettait des numéros qui ne bougent plus.
+    const ecritures = livreJournal(data, company, period, {});
     const balance = entriesBalance(ecritures);
     add({ path: 'journaux/ecritures.csv', kind: 'text', label: 'Écritures comptables (partie double)', text: toCsv(ecritures, entryCsvColumns()), rows: ecritures.length });
     // 1 ter. La balance du mois (8.8.0) : ouverture, mouvements, soldes — le premier document que le
@@ -4508,8 +4592,13 @@
         // tout aussi ouvert qu'une facture impayée (10.2.0). Ne regarder que les restes positifs
         // faisait dire au lettrage un chiffre différent du solde du 401, sur la même donnée.
         if (Math.abs(b.remaining) <= 0.0005) { if ((p.payments || []).length) r.lettrees++; return; }
-        r.ouverts.push({ id: p.id, piece: p.number || '(sans numéro)', date: p.date, echeance: p.dueDate || '', montant: b.totals.netToPay, regle: b.paid, reste: b.remaining, retard: !!(p.dueDate && p.dueDate < t) });
-        r.reste = round3(r.reste + b.remaining);
+        // En dinars, comme la branche des clients : le lettrage se confronte au solde du 401, qui est
+        // en monnaie de la société depuis la 10.1.0. Une facture de 1 190 € restait 1 190 ici.
+        const montant = round3(toBase(p, b.totals.netToPay, company)), reste = round3(toBase(p, b.remaining, company));
+        // « Réglé » reste ce qui a été PAYÉ : pour un avoir non imputé, `montant − reste` compterait
+        // l'avoir deux fois (son reste est négatif).
+        r.ouverts.push({ id: p.id, piece: p.number || '(sans numéro)', date: p.date, echeance: p.dueDate || '', montant, regle: round3(toBase(p, b.paid, company)), reste, retard: !!(p.dueDate && p.dueDate < t) });
+        r.reste = round3(r.reste + reste);
       });
     }
     const rows = Object.keys(by).map(k => by[k]).filter(r => r.lettrees || r.ouverts.length)
@@ -4773,7 +4862,9 @@
   };
   // Champs qui n'ont de sens que sur la pièce d'origine et ne doivent jamais suivre la conversion.
   const NOT_COPIED = ['payments', 'emails', 'reminders', 'remindAfter', 'withholdingCertificate', 'deposit',
-    'settles', 'recurringId', 'creditOf', 'creditOfNumber', 'creditReason', 'attachments', 'clauses'];
+    'settles', 'recurringId', 'creditOf', 'creditOfNumber', 'creditReason', 'attachments', 'clauses',
+    // L'instant d'émission appartient à la pièce émise : une pièce tirée d'elle naît brouillon.
+    'issuedTs'];
 
   function convertDoc(doc, targetType, company, todayIso) {
     const date = todayIso || today();
@@ -5093,7 +5184,7 @@
       (data.documents || []).filter(d => d.type === 'facture' && d.clientId === c.id && d.status !== 'brouillon' && d.status !== 'annulée').forEach(d => {
         if (effectiveStatus(d, data, company, '9999-12-31') !== 'payée' || !(d.payments || []).length) return;
         const last = d.payments.map(p => p.date).sort().pop();
-        if (last && d.date) delays.push(daysBetween(d.date, last));
+        if (last && d.date) delays.push(delaiConstate(d.date, last));
       });
       if (delays.length) out.push({ clientId: c.id, name: c.name, delay: Math.round(delays.reduce((s, x) => s + x, 0) / delays.length), count: delays.length });
     });
@@ -5115,7 +5206,7 @@
     const delays = [];
     accepted.forEach(q => {
       const inv = (data.documents || []).filter(d => d.type === 'facture' && d.fromQuoteId === q.id).map(d => d.date).filter(Boolean).sort()[0];
-      if (inv && q.date) delays.push(daysBetween(q.date, inv));
+      if (inv && q.date) delays.push(delaiConstate(q.date, inv));
     });
     const decided = accepted.length + refused.length;
     return {
@@ -5490,6 +5581,18 @@
         detail: `${miss.map(e => e.name).slice(0, 4).join(', ')}${miss.length > 4 ? '…' : ''}. Un salarié actif sans bulletin, c'est un oubli.`,
         count: miss.length, route: '#/paie', docs: []
       });
+      // E-04 : un bulletin impossible enregistré avant la garde. Rouge, parce qu'il fausse une
+      // déclaration qu'on s'apprête à déposer ; et il NOMME qui, et quand.
+      const imp = bulletinsImpossibles(data);
+      if (imp.length) {
+        const qui = x => `${((data.employees || []).find(e => e.id === x.employeeId) || {}).name || 'un salarié'} (${monthLabel(`${x.year}-${String(x.month).padStart(2, '0')}-01`)})`;
+        out.push({
+          id: 'bulletins-impossibles', level: 'danger',
+          label: `${plFr(imp.length, 'bulletin')} au net négatif, à corriger avant de déclarer`,
+          detail: `${imp.slice(0, 3).map(qui).join(', ')}${imp.length > 3 ? '…' : ''}. ${imp.length > 1 ? 'Ils ont été enregistrés' : 'Il a été enregistré'} avant que SkanFact ne refuse ce cas : l'écriture de paie est inversée, et la déclaration CNSS du trimestre ${imp.length > 1 ? 'les' : 'le'} compte. Corrige les absences ou les retenues.`,
+          count: imp.length, route: '#/paie', docs: []
+        });
+      }
       // Le bulletin réglé produit déjà sa sortie d'argent : un mouvement « Salaires » du même mois ferait double.
       const paidMonths = new Set((data.payslips || []).filter(p => p.paidDate).map(p => (p.paidDate || '').slice(0, 7)));
       const dbl = (data.movements || []).filter(m => m.kind === 'salaire' && paidMonths.has((m.date || '').slice(0, 7)));
@@ -5714,7 +5817,36 @@
     // Le RIB ne manque que si on attend un virement (7.22.0). Voir `ribAttendu` : un commerce, un
     // restaurant ou un salon encaissent sur place.
     if (ribAttendu(c) && !(c.rib || '').trim()) out.push('le RIB');
+    // Un RIB PRÉSENT et faux manque autant qu'un RIB absent (rapport QA, 10.12.0) : juger sur la
+    // seule présence faisait écrire « tes documents sont en règle » sur un RIB de dix chiffres —
+    // la faute du matricule inventé de la 7.6.0, un champ plus loin.
+    else if (ribAttendu(c) && !verifRib(c.rib).ok) out.push(`un RIB valide (${verifRib(c.rib).court})`);
     return out;
+  }
+
+  // Un RIB tunisien : 20 chiffres (banque 2, agence 3, compte 13, clé 2), et la clé fait des vingt
+  // chiffres, pris comme un nombre, un multiple de 97 — c'est ce qui donne « TN59 » à TOUS les IBAN
+  // tunisiens (règle vérifiée sur un RIB publié, 07040005810111129653). Un IBAN, tunisien ou non, se
+  // vérifie par la règle ISO 13616 : reste 1 modulo 97. Rend une raison COURTE (pour une étiquette)
+  // et une phrase. On AVERTIT, on ne refuse jamais : un compte à l'étranger peut avoir une forme
+  // qu'on ne connaît pas, et « l'assistant prévient lui-même qu'une erreur ici, c'est un paiement qui
+  // n'arrive jamais » — encore fallait-il le vérifier quelque part.
+  function verifRib(valeur) {
+    const v = String(valeur || '').replace(/[\s.\-]/g, '').toUpperCase();
+    if (!v) return { ok: true, vide: true };
+    const reste97 = chiffres => { let r = 0; for (const ch of chiffres) r = (r * 10 + Number(ch)) % 97; return r; };
+    if (/^\d+$/.test(v)) {
+      if (v.length !== 20) return { ok: false, court: `${v.length} chiffres sur 20`, raison: `Un RIB tunisien compte 20 chiffres ; celui-ci en a ${v.length}.` };
+      if (reste97(v) !== 0) return { ok: false, court: 'clé incorrecte', raison: 'Les deux derniers chiffres du RIB (sa clé) ne correspondent pas aux dix-huit premiers : une faute de frappe, probablement.' };
+      return { ok: true };
+    }
+    if (/^[A-Z]{2}\d{2}[A-Z0-9]{8,30}$/.test(v)) {
+      if (v.startsWith('TN') && v.length !== 24) return { ok: false, court: `${v.length} caractères sur 24`, raison: `Un IBAN tunisien compte 24 caractères (TN59 puis les 20 chiffres du RIB) ; celui-ci en a ${v.length}.` };
+      const deplace = (v.slice(4) + v.slice(0, 4)).replace(/[A-Z]/g, ch => String(ch.charCodeAt(0) - 55));
+      if (reste97(deplace) !== 1) return { ok: false, court: 'IBAN incorrect', raison: 'La clé de cet IBAN ne correspond pas à ses chiffres : une faute de frappe, probablement.' };
+      return { ok: true, iban: true };
+    }
+    return { ok: false, court: 'ni RIB ni IBAN', raison: 'Un RIB tunisien s\'écrit en 20 chiffres, un IBAN commence par le code de son pays (TN59…).' };
   }
 
   // ---------- les premiers pas (7.0.0) ----------
@@ -6154,7 +6286,7 @@
     const clientContact = [cl.contact ? escapeHtml(cl.contact) : '', cl.matricule ? L.mfCin + ' ' + escapeHtml(cl.matricule) : '', cl.phone ? escapeHtml(cl.phone) : '', cl.email ? escapeHtml(cl.email) : ''].filter(Boolean).join('<br>');
     // Pied de page légal : le texte libre s'il est rempli, sinon composé du nom et du matricule
     const footerBase = company.footer || [company.name, company.matricule ? (lang === 'en' ? 'Tax ID ' : 'Matricule fiscal ') + company.matricule : ''].filter(Boolean).join(' — ');
-    const legal = [footerBase, company.rc ? 'RC ' + company.rc : '', company.capital ? (lang === 'en' ? 'Share capital ' : 'Capital ') + company.capital : ''].filter(Boolean).join(' — ');
+    const legal = [footerBase, company.rc ? 'RC ' + company.rc : '', company.capital ? (lang === 'en' ? 'Share capital ' : 'Capital ') + capitalAffiche(company.capital, company.currency, lang) : ''].filter(Boolean).join(' — ');
     const grandLabel = isInvoice || isProforma ? L.netToPay : isCredit ? L.creditAmount : L.totalTTC;
     const grandValue = isQuote || isOrder || isContract ? t.totalTTC : t.netToPay;
     const wordsIntro = isInvoice ? L.wordsInvoice : isCredit ? L.wordsCredit : isQuote ? L.wordsQuote : L.wordsDoc;
@@ -6770,8 +6902,8 @@
     REGIMES, regimeOf, regimeSuggere, tfpSuggere, assujettiTVA, mentionTVA, estLiberal, docLabel, ribAttendu,
     DOC_FILTRES, docFiltre,
     pageInfo, compareValues, LINE_UNITS, usedUnits, usedWithholdingRates, parseDateInput, fmtDateInput, monthMatrix,
-    uid, round3, money, fmtDate, addDays, daysInMonth, today, jourDeLInstant, escapeHtml, nl2br, statusLabel,
-    CLOSURE_ACTIONS, closedUntil, isClosedDate, closedPeriodLabel, closableMonths, closureChecks, closePeriod, reopenPeriod, closureLog,
+    uid, round3, money, fmtDate, addDays, daysInMonth, today, jourDeLInstant, escapeHtml, nl2br, capitalAffiche, statusLabel,
+    CLOSURE_ACTIONS, closedUntil, isClosedDate, closedPeriodLabel, closableMonths, rienACloturer, closureChecks, closePeriod, reopenPeriod, closureLog,
     PACK_FORMAT, packPeriod, packPlan, packChecklist, packFileName, packCoverHtml,
     DEFAULT_ACCOUNTS, ACCOUNT_LABELS, ENTRY_JOURNALS, journalLabel, chartAccounts, journalEntries,
     entriesBalance, entriesByAccount, entryCsvColumns, MOVE_ACCOUNTS, COMPTES_CONTREPARTIE, journalDeCompte, clotureValide,
@@ -6788,7 +6920,7 @@
     nextNumber, isLocked, isIssued, computeTotals, creditsFor, invoiceBalance, motifVerrou, delaisContradictoires, effectiveStatus,
     depositLines, settlementLines, salesJournal, vatSummary, paymentsJournal, toCsv, migrateData,
     PERIODS, MONTHS_FR, MONTHS_SHORT, monthLabel, addMonths, nextRecurrenceDate, dueRecurrences, catchUpRecurrence, fillTemplate, buildRecurringInvoice,
-    reminderLevel, REMINDER_LABELS, daysBetween, overdueInvoices, todoList, companyGaps, documentHistory, DEFAULT_EMAIL_TEMPLATES, DEFAULT_EMAIL_TEMPLATES_EN, emailFor,
+    reminderLevel, REMINDER_LABELS, daysBetween, overdueInvoices, todoList, companyGaps, verifRib, documentHistory, DEFAULT_EMAIL_TEMPLATES, DEFAULT_EMAIL_TEMPLATES_EN, emailFor,
     CURRENCIES, normCurrency, decimalsFor, toBase, rateOf, missingRate, monthKeys, monthlySeries, topClients, quoteStats, avgPaymentDelay, clientSummary, I18N,
     EXTRA_TYPES, SALES_TYPES, CONVERSIONS, CONVERSION_LABELS, convertDoc, derivedDocs, DEFAULT_CLAUSES, CLAUSE_LABELS,
     PURCHASE_KINDS, PURCHASE_LIES, piecesLieesAchat, LINE_DESTINATIONS, DEFAULT_EXPENSE_CATEGORIES, PURCHASE_STATUSES, expenseCategories,
@@ -6803,14 +6935,14 @@
     stockList, stockTotals, stockJournal, inventoryDiff, stockAlerts, stockImpact, costOfGoodsSold,
     ocrNumber, ocrToPurchase,
     CONTRACT_TYPES, contractLabel, DEFAULT_PAYROLL, payrollSettings, irppAnnual, computePayslip, saisiePaieValide,
-    activeEmployees, payslipView, payslipsOf, payslipDate, payrollCost, payrollSummary, missingPayslips,
+    activeEmployees, payslipView, payslipsOf, payslipDate, payrollCost, payrollSummary, missingPayslips, bulletinsImpossibles,
     payslipHtml,
     QUARTERS, quarterMonths, quarterLabel, cnssDeclaration, employerAnnual, socialDue,
     LEAVE_KINDS, leaveKindLabel, leaveIsPaid, workingDays, leaveDaysInMonth, leavesOf, leaveBalance,
     advancesOf, advanceBalance, payslipInputFor, HR_DOCS, hrDocLabel, hrDocumentHtml, staffRegister,
     SERIAL_STATUSES, serialStatusLabel, WARRANTY_CHOICES, serializedItems, warrantyEnd, serialView,
     serialList, availableSerials, clientFleet, warrantiesEnding, serialGap, serialGaps,
-    mergeData, trackDeletion, MERGE_LISTS, LIST_LABELS, piecesLiees,
+    mergeData, trackDeletion, MERGE_LISTS, LIST_LABELS, LIST_PLURIELS, compteListe, piecesLiees,
     purchaseTotals, purchaseBalance, purchaseStatus, achatDoublon, facturesDuDevis, payablesList, purchaseJournal, purchaseSummary, supplierSummary, withholdingsToIssue, supplierPayments,
     periodBounds, issuedIn, salesTotals, revenueByMonth, topItems, clientMovement, AGING_BUCKETS, agedReceivables, releveClient, releveHtml, payerRanking, quoteFunnel, objectiveProgress,
     amountToWords, intToWords, intToWordsEn, documentHtml, fitToPage, paginate, pageCount,

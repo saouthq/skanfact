@@ -8,7 +8,7 @@
 // L'application est ARMÉE pour de vrai : une clé publique d'essai est embarquée par
 // `SKANFACT_CLE_EMBARQUEE` (honoré en développement seulement, règle 8.0.0), et les licences du
 // parcours sont signées par sa moitié privée, qui ne quitte jamais le dossier temporaire du test.
-const { playwright, RACINE, ELECTRON, ongletComptaPresent } = require('./harnais');
+const { fermer, playwright, RACINE, ELECTRON, ongletComptaPresent } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
 const L = require(path.join(RACINE, 'src', 'licence.js'));
@@ -270,8 +270,7 @@ const signer = (o) => L.signLicence({
   ok('zéro erreur');
 
   console.log('\nTOUT EST VERT — captures dans ' + OUT);
-  await Promise.race([app.close(), new Promise(r => setTimeout(r, 15000))
-    .then(() => { throw new Error('l\'application ne se ferme pas : une fenêtre attend une réponse'); })]);
+  await fermer(app);
   fs.rmSync(dir, { recursive: true, force: true });
 })().catch(err => {
   console.error('\n✗ ' + err.message);

@@ -10,7 +10,7 @@
 // instrument qu'on doit réécrire pour s'en servir n'en est pas un (leçon des e2e perdus).
 //
 //   xvfb-run -a npm run e2e:parametres
-const { playwright, RACINE, ELECTRON, dossierCaptures } = require('./harnais');
+const { fermer, playwright, RACINE, ELECTRON, dossierCaptures } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
 
@@ -115,7 +115,7 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
   mesures.entreprise.debordement1280 = await win.evaluate(() =>
     [...document.querySelectorAll('#view button, #view input, #view select')]
       .filter(e => e.getBoundingClientRect().right > document.documentElement.clientWidth + 1).length);
-  await app.close();
+  await fermer(app);
 
   // ---------------------------------------------------------------- app cabinet
   const udc = fs.mkdtempSync(path.join(os.tmpdir(), 'skanfact-paramcab-'));
@@ -181,7 +181,7 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
     const i = t.indexOf('ise à jour');
     return i < 0 ? '(aucune mention des mises à jour)' : t.slice(Math.max(0, i - 80), i + 600).replace(/\s+/g, ' ').trim();
   });
-  await cab.close();
+  await fermer(cab);
 
   fs.writeFileSync(path.join(dossier, 'mesures.json'), JSON.stringify(mesures, null, 2));
   console.log(JSON.stringify(mesures, null, 2));

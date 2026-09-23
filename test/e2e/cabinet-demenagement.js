@@ -10,7 +10,7 @@
 // d'origine, qui travaille et fait sa copie externe ; puis le poste neuf, qui ne connaît rien et
 // reprend tout par les vrais boutons. Ce qu'il vérifie à la fin est la seule chose qui compte :
 // l'empreinte du cabinet est la MÊME.
-const { playwright, RACINE, ELECTRON } = require('./harnais');
+const { fermer, playwright, RACINE, ELECTRON } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
 const Z = require(path.join(RACINE, 'src', 'zip.js'));
@@ -116,7 +116,7 @@ const dessus = sel => `#modal-root .modal-bg:last-child ${sel}`;
   if (paquetsSurLaCle.length !== 2) throw new Error('la clé ne porte pas les paquets : ' + paquetsSurLaCle.length);
   ok('copie sur la clé USB : la base, les sauvegardes et ' + paquetsSurLaCle.length + ' paquets');
   await win.screenshot({ path: path.join(OUT, '01-ancien-poste.png') });
-  await app.close();
+  await fermer(app);
 
   // =================== LE POSTE NEUF ===================
   // Il ne connaît rien : ni fichier, ni clé. C'est exactement l'écran du Mac qu'on vient d'acheter.
@@ -197,7 +197,7 @@ const dessus = sel => `#modal-root .modal-bg:last-child ${sel}`;
   console.log('erreurs JS : ' + errors.length);
   errors.forEach(e => console.log('  ' + e));
   console.log('captures : ' + OUT);
-  await Promise.race([app.close().catch(() => {}), new Promise(r => setTimeout(r, 5000))]);
+  await fermer(app);
   if (errors.length) process.exit(1);
   console.log('\n>>> DÉMÉNAGEMENT : OK');
   process.exit(0);

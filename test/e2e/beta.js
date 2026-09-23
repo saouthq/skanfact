@@ -12,7 +12,7 @@
 //      sur une stable juste après avoir coché.
 //
 //   xvfb-run -a node test/e2e/beta.js
-const { playwright, RACINE, ELECTRON, journal, surveiller } = require('./harnais');
+const { fermer, playwright, RACINE, ELECTRON, journal, surveiller } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
 
@@ -118,7 +118,7 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
   if ('beta' in cfg2) throw new Error('le réglage reste écrit après décochage');
   j.ok('retour au canal normal');
 
-  await app.close();
+  await fermer(app);
   if (bac.length) { console.error('\nErreurs du renderer :\n' + bac.join('\n')); process.exit(2); }
   console.log('\nLe canal bêta : décoché par défaut, prévenu, sauvegardé, et réversible.');
 })().catch(e => { console.error(e); process.exit(1); });

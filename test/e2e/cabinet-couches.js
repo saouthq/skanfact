@@ -15,7 +15,7 @@
 //   2. Entrée ne validait rien, et le focus se posait sur « Annuler ».
 //   3. Cmd+K ouvrait la palette DERRIÈRE la fenêtre (z-index 60 contre 400) et lui volait le
 //      clavier : la frappe suivante partait dans un champ invisible.
-const { playwright, RACINE, ELECTRON } = require('./harnais');
+const { fermer, playwright, RACINE, ELECTRON } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
 
@@ -217,7 +217,7 @@ const étape = m => { pas++; console.log('\n' + pas + '. ' + m); };
   console.log('erreurs JS : ' + errors.length);
   errors.forEach(e => console.log('  ' + e));
   console.log('captures : ' + OUT);
-  await app.close();
+  await fermer(app);
   if (errors.length) process.exit(1);
   console.log('\n>>> COUCHES ET CLAVIER : OK');
 })().catch(e => {

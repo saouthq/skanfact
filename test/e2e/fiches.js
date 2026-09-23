@@ -7,7 +7,7 @@
 // qui s'arrêtait aux documents.
 //
 //   xvfb-run -a node test/e2e/fiches.js
-const { playwright, RACINE, ELECTRON, journal, surveiller } = require('./harnais');
+const { fermer, playwright, RACINE, ELECTRON, journal, surveiller } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
 
@@ -420,7 +420,7 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
   if (!relu.pdf || !relu.mail) throw new Error('le relevé n\'offre pas les deux sorties (PDF, email)');
   j.ok(`${relu.lignes} pièce(s) ouverte(s), le pied porte le total, PDF et email offerts`);
 
-  await app.close();
+  await fermer(app);
   if (bac.length) { console.error('\nErreurs du renderer :\n' + bac.join('\n')); process.exit(2); }
   console.log(`\n${j.total()} étapes — les fiches montrent ce que l'application sait.`);
 })().catch(e => { console.error(e); process.exit(1); });

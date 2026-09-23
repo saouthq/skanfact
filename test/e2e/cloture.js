@@ -8,7 +8,7 @@
 // Ce qu'aucun test pur ne peut prouver : que le fichier écrit sur le DISQUE par une application est
 // relu par l'autre, signature comprise ; que l'exercice se verrouille vraiment chez le client ; et
 // qu'un dossier non signé le DIT au lieu de passer en silence.
-const { playwright, RACINE, ELECTRON, ongletCompta, ongletComptaPresent } = require('./harnais');
+const { fermer, playwright, RACINE, ELECTRON, ongletCompta, ongletComptaPresent } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
 const OUT = process.argv[2] || path.join(RACINE, 'dist-e2e', 'cloture');
@@ -257,7 +257,7 @@ const CIBLE = path.join(dir, 'cloture.skanclose');
   await wc.screenshot({ path: path.join(OUT, '03-fichier.png') });
   const resultatCabinet = JSON.parse(Z.zipRead(fs.readFileSync(CIBLE)).find(f => f.name === 'cloture.json').data().toString('utf8')).resultat;
   ok(`${contenu.length} fichiers, ${Math.round(taille / 1024)} Ko${contenu.includes('etats.pdf') ? ', PDF compris' : ' (sans PDF)'} — résultat ${resultatCabinet}`);
-  await cab.close();
+  await fermer(cab);
 
   // ============================================================ le client
   étape('Le client : importer le dossier, et voir son exercice se VERROUILLER');
@@ -343,7 +343,7 @@ const CIBLE = path.join(dir, 'cloture.skanclose');
   }
   ok(`résultat ${resultatCabinet} des deux côtés, au millime`);
 
-  await ent.close();
+  await fermer(ent);
   console.log('\n' + '─'.repeat(60));
   if (errors.length) { console.log('erreurs JS :'); errors.forEach(e => console.log('  ' + e)); }
   console.log('erreurs JS : ' + errors.length);

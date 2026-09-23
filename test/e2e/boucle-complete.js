@@ -3,7 +3,7 @@
 //   entreprise : importer l'appairage → clôturer un mois → fabriquer le paquet
 //   cabinet : importer le paquet → le dossier apparaît, les mois se lisent, une pièce s'ouvre
 // C'est le seul test qui prouve que le plan tient debout de bout en bout.
-const { playwright, RACINE, ELECTRON, ongletCompta } = require('./harnais');
+const { fermer, playwright, RACINE, ELECTRON, ongletCompta } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
 const root = RACINE;
@@ -93,7 +93,7 @@ async function launchCabinet() {
   const pair = JSON.parse(fs.readFileSync(pairFile, 'utf8'));
   const pairOk = pair.fingerprint === fp && !!pair.publicKey && !pair.privateKey && pair.name === 'Cabinet Ben Salah';
   console.log(`3. appairage exporté : clé publique seule = ${pairOk}`);
-  await app.close();
+  await fermer(app);
 
   // ---------- 2. l'entreprise appaire, clôture et fabrique ----------
   const ent = await electron.launch({
@@ -186,7 +186,7 @@ async function launchCabinet() {
   await ew.waitForFunction(() => (window.__data.packs || []).length > 0, null, { timeout: 180000 });
   const taille = fs.statSync(packFile).size;
   console.log(`7. paquet fabriqué : ${(taille / 1024).toFixed(0)} Ko`);
-  await ent.close();
+  await fermer(ent);
 
   // ---------- 3. le cabinet reçoit ----------
   ({ app, win } = await launchCabinet());
@@ -576,6 +576,6 @@ async function launchCabinet() {
   console.log('\nerreurs JS : ' + errors.length);
   errors.slice(0, 6).forEach(e => console.log('  - ' + e));
   console.log(okAll ? '>>> BOUCLE COMPLÈTE OK' : '>>> ÉCHEC');
-  await app.close().catch(() => {});
+  await fermer(app);
   process.exit(okAll ? 0 : 1);
 })().catch(e => { console.error('ÉCHEC :', e.stack || e.message); process.exit(2); });

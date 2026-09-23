@@ -24,7 +24,7 @@
 //      vitrines de l'exemple, les seuls dont les écrans de comptabilité sont pleins
 //
 //   xvfb-run -a node test/e2e/cabinet-rendu.js
-const { playwright, RACINE, ELECTRON, journal, surveiller, dossierCaptures, capturePleine,
+const { fermer, playwright, RACINE, ELECTRON, journal, surveiller, dossierCaptures, capturePleine,
   SONDE_CONTRASTE, SONDE_COLONNES, SONDE_ENTETES, SONDE_ESPACEMENT, SONDE_COLLANT, SONDE_TRONQUE, SONDE_DEFILEMENT,
   FENETRE, ongletCompta, ongletsCompta } = require('./harnais');
 const { _electron: electron } = playwright();
@@ -379,7 +379,7 @@ const PAGES = ['#/dossiers', '#/relances', '#/echeances', '#/ecritures', '#/prod
   await parcourir('clair 1280');
   j.ok('mesuré aux deux largeurs');
 
-  await app.close();
+  await fermer(app);
 
   if (bac.length) { console.error('\nErreurs du renderer :\n' + bac.join('\n')); process.exit(2); }
   // Un instrument qui ne mesure rien annonce « tout va bien » : il doit échouer, pas se taire.

@@ -202,6 +202,74 @@ même façon, ce qui en a fait trouver une trentaine d'autres. Tout est ici.
   de son client, de ses lignes et de sa devise. Même chose sur « Proforma, bons et contrats » : un
   onglet vide propose « Partir d'un devis existant » au lieu de renvoyer au menu « Transformer ».
 
+**Une entreprise a tenu SkanFact, et son rapport** — une session a joué une vraie entreprise
+tunisienne (régime réel, assujettie à la TVA), du premier écran au paquet du comptable, par de vrais
+clics et de vraies frappes. Ce qu'elle a trouvé, corrigé :
+- **La trésorerie comptait un achat en devise à sa valeur faciale** : une facture de 1 190 €
+  (1 € = 3,4 DT) sortait de la prévision pour 1 190 DT au lieu de 4 046. Le trou annoncé à trente
+  jours était sous-estimé de 2 856 dinars, jusque sur l'accueil — sur la page faite pour savoir si
+  l'on pourra payer le mois prochain. Le lettrage des fournisseurs avait le même défaut. Les deux
+  convertissent, comme la page Achats.
+- **Le stock se valorisait dans le désordre** : trois gestes le même jour (stock de départ de 5 à
+  700, vente de 2, achat de 3 à 800) donnaient 4 300 DT au lieu de 4 500 — la vente sortait au coût
+  de l'achat qui la SUIT, et « Stock après » affichait 6, 1, 3 au lieu de 5, 3, 6. Dans une journée,
+  le stock de départ passe en tête, puis chaque mouvement à l'instant où il a eu lieu : une facture à
+  son émission, pas à la création de son brouillon.
+- **« + Créer mon premier contrat » ne faisait rien** — une erreur invisible à l'écran, sur le
+  bouton de la page vide, celui qu'on trouve à son premier contrat. Il ouvre le formulaire. Et
+  « Partir d'une facture existante » ne se propose plus à une entreprise qui n'en a aucune.
+- **Un bulletin au net négatif enregistré avant la 10.10.0 restait sans alerte**, et la déclaration
+  CNSS de son trimestre l'additionnait sous « Marquer déposée ». « À faire » le signale en rouge en
+  nommant le salarié et le mois (le bouton mène à ce mois-là), et la déclaration ne se marque plus
+  déposée tant qu'il n'est pas corrigé — le bouton dit pourquoi.
+- **La fenêtre d'acompte annonçait un solde faux de deux dinars** : elle retranchait le timbre de
+  l'acompte du total du devis et oubliait celui du solde. C'est le chiffre qu'on donne au client au
+  téléphone. Elle annonce maintenant les deux factures telles qu'elles seront fabriquées. Au passage :
+  une facture tirée d'un devis reprend l'exonération de timbre du client — elle portait un timbre à
+  un client qui en est exonéré.
+- **Un devis dont l'acompte attendait en brouillon se laissait facturer en entier**, sans une
+  question : deux brouillons qui se recouvrent, 150 % du devis. Le bouton vert devient « Ouvrir
+  l'acompte en brouillon », « Facturer ce devis » demande en nommant l'acompte, et l'émission d'une
+  facture qui reprend tout un devis prévient quand ce devis a déjà donné une autre pièce.
+- **La colonne « N° » du fichier d'écritures envoyé au comptable était vide** — celle qui regroupe
+  les lignes en pièces à l'import. Elle porte le numéro que l'écran affiche.
+- **« Aucune pièce datée pour l'instant »** s'affichait sur un dossier qui en portait cinq, toutes du
+  mois en cours. La page Clôtures dit la vraie raison, et le jour où ça changera : « Tes 5 pièces
+  sont toutes datées de septembre 2026, le mois en cours : un mois se clôture une fois terminé, donc
+  à partir du 1er octobre 2026. »
+- **SkanFact parlait du « Finder » sous Windows**, la plateforme sur laquelle il est distribué. Après
+  un envoi, il dit « l'Explorateur » ; les raccourcis de l'Aide et des bulles s'écrivent avec Ctrl ;
+  le choix « Mail (Apple) » n'est plus proposé hors d'un Mac ; et les envois au comptable (CNSS,
+  écritures, journal des ventes, paquet) suivent la messagerie choisie et disent où trouver le
+  fichier à glisser.
+- **La page Marges affichait « undefined » cinq fois** sous son tableau : sa pagination est réparée.
+- **Le RIB est vérifié** : vingt chiffres et leur clé, ou un IBAN. Une faute de frappe se voit
+  pendant qu'on tape (en orange, jamais un refus), l'émission d'une facture prévient, et la fiche
+  société ne se dit plus complète sur un RIB de dix chiffres — l'assistant prévient lui-même qu'une
+  erreur ici, c'est un paiement qui n'arrive jamais.
+- Le capital s'écrit comme les autres montants des documents : « Capital 10 000 DT », plus
+  « Capital 10000 ».
+- La fenêtre de partage d'un dossier nomme la clé qui signe les paquets pour le comptable : c'est le
+  seul secret qui part avec le dossier, et elle ne le disait pas.
+- Les petites fautes : « Établir les 1 bulletin manquant » ; « le traitement fiscal de cette
+  plus-value » sous une moins-value ; « 5 prestation, 12 document, 2 bulletin de paie » dans la
+  confirmation de l'exemple et de « Tout effacer » ; « Acompte versés » dans le filtre des achats ;
+  un numéro de version interne, « (9.0.0) », dans une phrase des Barèmes ; « Tous les bulletins du
+  mois sont établis » au-dessus de « Aucun bulletin » d'un mois sans salarié en poste ; et un délai
+  moyen de « −3 jours » dans les Statistiques.
+- Trouvé en corrigeant : la page Paie d'une entreprise sans salarié montrait deux boutons verts pour
+  le même geste (« + Salarié » en haut, « + Créer mon premier salarié » dessous). Seul le second
+  reste vert.
+
+**L'application entreprise mesurée en entier.** Ses instruments ne regardaient qu'une partie de
+l'application : aucun n'ouvrait une fiche ni une pièce par statut, et l'un visitait une adresse qui
+n'existe pas. `npm run e2e:entreprise-rendu` ouvre toutes les pages, tous leurs onglets, chaque
+fiche, chaque pièce par type et par statut, et chaque fenêtre qu'un bouton ouvre, en clair et en
+sombre, à deux largeurs — 296 écrans par passe. Il a trouvé « + Créer mon premier contrat » (plus
+haut), le relevé de compte d'un client qui cachait « Reste dû » et son total derrière un défilement
+de côté (la fenêtre s'élargit), et les titres « Qté » et « P.U. HT » des grilles de lignes, alignés à
+gauche au-dessus de chiffres alignés à droite, dans les cinq éditeurs qui en ont.
+
 **La console de l'éditeur**
 - **Le Journal écrivait « commande.creee »** en chasse fixe : les cinq événements de la vente en ligne
   n'avaient pas de nom. L'écran des commandes disait « 1 ligne » au lieu de « 1 commande », et

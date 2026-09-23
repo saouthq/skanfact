@@ -14,7 +14,7 @@
 // l'alignement calculé de l'en-tête à celui de ses cellules.
 //
 //   xvfb-run -a node test/e2e/colonnes.js
-const { playwright, RACINE, ELECTRON, journal, surveiller, SONDE_COLONNES } = require('./harnais');
+const { fermer, playwright, RACINE, ELECTRON, journal, surveiller, SONDE_COLONNES } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
 
@@ -92,7 +92,7 @@ const PAGES = [
     j.ok(`${hash} parcourue`);
   }
 
-  await app.close();
+  await fermer(app);
   if (bac.length) { console.error('\nErreurs du renderer :\n' + bac.join('\n')); process.exit(2); }
   if (!colonnes) { console.error('\nAucune colonne mesurée : le test ne prouve rien.'); process.exit(2); }
   if (fautes.length) {

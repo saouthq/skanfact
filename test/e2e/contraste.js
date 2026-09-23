@@ -16,7 +16,8 @@
 // l'esthétique, il attrape ce qu'on ne peut pas lire du tout.
 //
 //   xvfb-run -a node test/e2e/contraste.js
-const { playwright, RACINE, ELECTRON, journal, surveiller, SONDE_CONTRASTE, SONDE_ESPACEMENT, SONDE_COLLANT, FENETRE } = require('./harnais');
+const { fermer, playwright, RACINE, ELECTRON, journal, surveiller, SONDE_CONTRASTE, SONDE_ESPACEMENT, SONDE_COLLANT, FENETRE } = require('./harnais');
+const { pagesDuCode } = require('./ecrans-entreprise');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
 
@@ -96,9 +97,10 @@ const SEGMENTS = ['.tabs', '.row-menu', '.pager'];
   await win.waitForSelector('.demo-banner');
   j.ok('chargé');
 
-  const PAGES = ['accueil', 'devis', 'factures', 'relances', 'clients', 'catalogue', 'autres', 'recurrentes',
-    'achats', 'fournisseurs', 'stock', 'immos', 'tresorerie', 'marges', 'stats', 'compta', 'paie',
-    'garanties', 'modules', 'parametres', 'aide'];
+  // Les pages se lisent dans le CODE (10.12.0) : la liste écrite à la main portait `recurrentes`, une
+  // adresse qui n'existe pas — le routeur retombait sur l'accueil, et la Facturation récurrente
+  // n'avait jamais été mesurée pendant que l'accueil l'était deux fois.
+  const PAGES = pagesDuCode();
 
   j.etape(`Les ${PAGES.length} pages, en clair`);
   let n = 0;
@@ -184,7 +186,7 @@ const SEGMENTS = ['.tabs', '.row-menu', '.pager'];
   }
   j.ok(`${m} boutons mesurés`);
 
-  await app.close();
+  await fermer(app);
 
   if (bac.length) { console.error('\nErreurs du renderer :\n' + bac.join('\n')); process.exit(2); }
   // Un instrument qui ne mesure rien annonce « tout va bien » : il doit échouer, pas se taire.

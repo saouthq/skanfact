@@ -20,7 +20,7 @@
     name: 'DÉMO — Société de services SUARL', matricule: '1234567X/A/M/000', rc: 'B01234562024', capital: '1 000 DT',
     address: '08 Rue de l\'Université, Manar 1\n2092 Tunis', tagline: 'Cybersécurité · Infrastructure · Services informatiques',
     phone: '+216 55 123 456', email: 'contact@exemple.tn', website: 'www.exemple.tn',
-    bank: 'BIAT — Agence El Manar', rib: '08 006 0000123456789 12'
+    bank: 'BIAT — Agence El Manar', rib: '00 006 0000123456789 01'
   };
 
   function buildDemoData(currentCompany, todayIso) {
@@ -274,7 +274,7 @@
     // une dépense sans facture et un justificatif manquant.
     const sup = (name, matricule, o) => ({ id: C.uid(), name, matricule, contact: '', address: '', phone: '', email: '', rib: '', bank: '', notes: '', paymentTermsDays: 30, withholdingRate: '', ...(o || {}) });
     d.suppliers = [
-      sup('Tunisie Matériel Informatique', '7890123G/A/000', { contact: 'M. Anis Khelifi', phone: '+216 71 800 900', email: 'commercial@tunisiemateriel.tn', paymentTermsDays: 30, bank: 'Amen Bank', rib: '07 012 0000987654321 45' }),
+      sup('Tunisie Matériel Informatique', '7890123G/A/000', { contact: 'M. Anis Khelifi', phone: '+216 71 800 900', email: 'commercial@tunisiemateriel.tn', paymentTermsDays: 30, bank: 'Amen Bank', rib: '00 012 0000987654321 49' }),
       sup('Cabinet Comptable Ben Youssef', '8901234H/P/000', { contact: 'M. Nabil Ben Youssef', email: 'contact@bycompta.tn', paymentTermsDays: 15, withholdingRate: 3,
         notes: 'Prestataire : retenue à la source de 3 % à opérer, et attestation à lui remettre. À VÉRIFIER avec lui chaque année.' }),
       sup('STEG', '', { paymentTermsDays: 0, notes: 'Facture bimestrielle. Prélèvement automatique.' }),
@@ -476,7 +476,7 @@
     // ---------- trésorerie (3.3.0) ----------
     // Un compte bancaire et une caisse, avec un solde de départ il y a un an et quelques
     // mouvements qui n'ont ni facture ni achat : salaires, impôts, frais bancaires.
-    const accBank = { id: C.uid(), name: 'BIAT — compte courant', kind: 'banque', bank: 'BIAT', rib: '08 006 0000123456789 12',
+    const accBank = { id: C.uid(), name: 'BIAT — compte courant', kind: 'banque', bank: 'BIAT', rib: '00 006 0000123456789 01',
       opening: 12000, openingDate: mo(13, 1), isDefault: true, statementBalance: '', notes: '' };
     const accCash = { id: C.uid(), name: 'Caisse espèces', kind: 'caisse', bank: '', rib: '',
       opening: 400, openingDate: mo(13, 1), isDefault: false, statementBalance: '', notes: 'Petites dépenses du bureau.' };

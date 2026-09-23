@@ -10,6 +10,15 @@
   // faire le tri lui-même. On décide une fois pour toutes, ici.
   const SUR_MAC = /Mac|iP(hone|ad|od)/.test(navigator.platform || navigator.userAgent || '');
   const MOD = SUR_MAC ? 'Cmd' : 'Ctrl';
+  // Le gestionnaire de fichiers, nommé comme l'utilisateur le connaît (E-14, jumeau d'`EXPLORATEUR()`
+  // dans le Cabinet). SkanFact est distribué sous Windows : « glisse le PDF affiché dans le Finder »
+  // ne voulait rien dire à qui ne l'a jamais vu. Aucun autre endroit n'écrit le nom en clair.
+  const EXPLORATEUR = SUR_MAC ? 'le Finder' : 'l\'Explorateur';
+  // L'aide est écrite avec la touche du Mac (⌘) : ailleurs, elle se lit avec celle de l'ordinateur.
+  // Un utilisateur Windows devait faire la conversion lui-même, sur la foi d'une note au bas du
+  // tableau des raccourcis. Les bulles et les articles passent par ici, et nulle part ailleurs.
+  const clavierLocal = html => (SUR_MAC ? String(html) : String(html).replace(/<kbd>⌘<\/kbd>/g, '<kbd>Ctrl</kbd>'));
+  const TOUCHES_APERCU = SUR_MAC ? '⌘⇧A' : 'Ctrl+Maj+A';
 
   // ---------- pont Electron (avec repli navigateur pour les tests) ----------
   const bridge = window.skanfact || {
@@ -110,9 +119,11 @@
 
   // Le message est prêt, mais sans adresse il faudra la taper à la main à chaque envoi. Un bandeau
   // qui nomme « Paramètres » sans y mener laisse chercher dans sept onglets.
-  async function emailComptablePret(adresse) {
-    if (adresse) return toast('Message préparé pour le comptable');
-    const c = await choiceDialog('Message préparé', 'L\'adresse de ton comptable n\'est pas enregistrée : le message s\'ouvre sans destinataire. Si tu la renseignes une fois, tous les envois suivants la reprendront.',
+  // Après un envoi au comptable : ce qui s'est passé (`messageOuvert` — le fichier à glisser est
+  // nommé quand la messagerie ne le joint pas), et l'adresse qui manque quand elle manque.
+  async function emailComptablePret(adresse, r, joint) {
+    if (adresse) return toast(messageOuvert(r, joint));
+    const c = await choiceDialog('Message préparé', `${messageOuvert(r, joint)}. Il s'ouvre sans destinataire : l'adresse de ton comptable n'est pas enregistrée. Si tu la renseignes une fois, tous les envois suivants la reprendront.`,
       'Renseigner son email…', 'Plus tard');
     if (c === 'a') allerParametres('envois', 'p-comptable');
   }
@@ -449,6 +460,18 @@
   // Un libellé de champ suivi de sa bulle. Le <span> garde les deux sur la même ligne dans un label en colonne.
   const lbl = (text, key) => key ? `<span class="fl">${text} ${info(key)}</span>` : text;
 
+  // Un envoi part par Mail (fichier joint) seulement sur Mac, quand la société n'a pas choisi une
+  // autre messagerie ; partout ailleurs le processus principal ouvre `mailto:` et MONTRE le fichier
+  // à glisser (`mail:compose`). L'écran le dit avant, et `messageOuvert` le dit après, d'après ce
+  // qui s'est VRAIMENT passé (`r.state` : Mail peut refuser l'automatisation et retomber sur mailto).
+  const modeEnvoi = () => (company().mailClient === 'mailto' ? 'mailto' : 'auto');
+  const envoiParMail = () => SUR_MAC && modeEnvoi() !== 'mailto';
+  function messageOuvert(r, joint) {
+    const f = /^la /.test(joint || '') ? 'e' : '';
+    if (r && r.state === 'mail') return 'Message ouvert dans Mail' + (joint ? ` avec ${joint} joint${f}` : '');
+    return 'Message ouvert dans ta messagerie' + (joint ? ` — glisse ${joint} affiché${f} dans ${EXPLORATEUR}` : '');
+  }
+
   // L'aperçu est rendu à une échelle calculée sur la largeur disponible : il faut le refaire au redimensionnement.
   let previewRedraw = null;
   // L'éditeur ouvert publie ici sa fonction « aperçu en grand », pour que le raccourci clavier et le
@@ -467,7 +490,7 @@
     // une question plus précise et aucun endroit où aller. `a` désigne l'article qui développe.
     const art = x.a ? (G.ARTICLES.find(y => y.id === x.a) || null) : null;
     pop.innerHTML = `<div class="ip-head">${h(x.t)}<button type="button" class="ip-close" aria-label="Fermer">✕</button></div>`
-      + `<div class="ip-body">${x.d}`
+      + `<div class="ip-body">${clavierLocal(x.d)}`
       + (art ? `<p class="ip-more"><a href="#/aide/${h(art.id)}">Lire « ${h(art.title)} » →</a></p>` : '')
       + '</div>';
     document.body.appendChild(pop);
@@ -575,6 +598,7 @@
     $$('[data-close]', layer).forEach(b => b.addEventListener('click', dismiss));
     bindDateFields(layer);
     bindWithholdingFields(layer);
+    bindRibFields(layer);
     // « * obligatoire » se pose TOUT SEUL dès qu'un champ de la fenêtre porte la classe. Une légende
     // recopiée fenêtre par fenêtre se périme à la première qui gagne un champ obligatoire ; déduite,
     // elle ne peut pas manquer. (Même principe que `wipeData` déduit de `DEFAULT_DATA`, 7.0.0.)
@@ -680,6 +704,31 @@
         <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn" id="b">${h(labelB)}</button><button class="btn btn-primary" id="a">${h(labelA)}</button></div>`,
         (root, close) => { $('#a', root).onclick = () => finish(close, 'a'); $('#b', root).onclick = () => finish(close, 'b'); $('[data-close]', root).onclick = () => finish(close, null); },
         () => { if (!settled) resolve(null); });
+    });
+  }
+
+  // Un champ RIB (rapport QA, 10.12.0) : un RIB de dix chiffres traversait l'assistant, les
+  // Paramètres et l'émission sans un mot, puis s'imprimait dans le bloc « Règlement ». La remarque
+  // vit DANS la ligne du libellé — une place qui existe déjà : posée sous le champ, elle ferait
+  // descendre tout ce qui suit sous le curseur (H-E1). `bindRibFields` la remplit pendant la frappe,
+  // d'après `C.verifRib` ; on prévient, on ne bloque pas.
+  function ribField(label, value, extra) {
+    return `<label class="field"><span class="fl">${label} ${info('pay.rib')}<span class="rib-note" aria-live="polite"></span></span><input type="text" name="rib" value="${h(value || '')}" autocomplete="off" spellcheck="false" ${extra || ''}></label>`;
+  }
+  function bindRibFields(root) {
+    $$('input[name=rib]', root || document).forEach(input => {
+      const note = input.closest('.field') && $('.rib-note', input.closest('.field'));
+      if (!note || input.dataset.ribBound) return;
+      input.dataset.ribBound = '1';
+      const maj = () => {
+        const r = C.verifRib(input.value);
+        note.textContent = r.ok ? '' : r.court;
+        note.title = r.ok ? '' : r.raison;
+        input.classList.toggle('champ-doute', !r.ok);
+        input.title = r.ok ? '' : r.raison;
+      };
+      input.addEventListener('input', maj);
+      maj();
     });
   }
 
@@ -1356,7 +1405,11 @@
     if (!licence.locked && licenceBlock('Créer un dossier partagé', 'partage')) return;
     const ouvert = ((data.company && data.company.name) || '').trim() || 'ce dossier';
     if (!await confirmDialog(
-      `SkanFact va poser « ${ouvert} » — avec ses documents, ses clients, ses achats, ses sauvegardes et ses pièces jointes — dans un emplacement que vous voyez tous les deux : iCloud Drive, OneDrive, un disque réseau ou une clé USB.\n\n` +
+      `SkanFact va poser « ${ouvert} » — avec ses documents, ses clients, ses achats, ses sauvegardes, ses pièces jointes, ta clé de licence et la clé qui signe tes paquets pour le comptable — dans un emplacement que vous voyez tous les deux : iCloud Drive, OneDrive, un disque réseau ou une clé USB.\n\n` +
+      // La clé de signature est le seul SECRET de la liste (rapport QA, 10.12.0) : elle part parce
+      // que l'autre poste doit pouvoir signer les paquets à son tour, mais la taire laissait croire
+      // que l'emplacement choisi n'a rien à protéger.
+      'La clé de signature prouve à ton comptable que les paquets viennent bien de toi : quiconque peut ouvrir cet emplacement pourrait signer en ton nom. Choisis un emplacement que vous êtes seuls à voir.\n\n' +
       'Rien n\'est effacé : la copie qui est sur cet ordinateur reste en place, au cas où.\n\n' +
       'Ensuite, sur l\'autre ordinateur, il faudra « Rejoindre un dossier déjà partagé » et désigner le même emplacement.\n\n' +
       'À savoir : vous l\'ouvrez TOUR À TOUR. SkanFact fusionne si vous avez travaillé tous les deux et te dit ce qui a changé. La seule chose qui ne se répare pas toute seule : émettre des factures en même temps, chacun de son côté, peut sortir deux fois le même numéro. Mettez-vous d\'accord sur qui émet.',
@@ -1552,7 +1605,7 @@
     // dérive à chaque module ajouté, c'est la leçon de la 7.0.0.
     const remplies = Object.keys(C.LIST_LABELS)
       .filter(k => Array.isArray(data[k]) && data[k].length)
-      .map(k => `${data[k].length} ${C.LIST_LABELS[k]}`);
+      .map(k => C.compteListe(k, data[k].length));
     if (remplies.length && !await confirmDialog(
       `Remplacer tes données par le jeu d'exemple ?\n\nCe qui sera remplacé : ${C.liste(remplies)}.\n\n`
       + 'Une sauvegarde est prise juste avant, et le bandeau orange te les rendra d\'un clic. '
@@ -1674,12 +1727,13 @@
     bandeauOffre(active);            // « ce module fait partie de l'offre Entreprise » — lecture libre, création fermée
     bindDateFields(view);            // champs date posés par la page qui vient d'être dessinée
     bindWithholdingFields(view);     // « Autre taux… » des retenues à la source, même principe
+    bindRibFields(view);             // la clé d'un RIB, vérifiée pendant la frappe (10.12.0)
     // Une route ASYNCHRONE pose son écran après ce bloc : les Paramètres attendent `dataPath()`
     // avant d'écrire leur HTML, donc les deux branchements ci-dessus travaillaient sur la page
     // qu'on venait de quitter — un champ date ou un taux libre y restait inerte, sans une erreur
     // nulle part. On rebranche quand elle a fini ; les deux fonctions sont idempotentes.
     if (dessine && typeof dessine.then === 'function') {
-      dessine.then(() => { bindDateFields(view); bindWithholdingFields(view); }, () => {});
+      dessine.then(() => { bindDateFields(view); bindWithholdingFields(view); bindRibFields(view); }, () => {});
     }
     view.scrollTop = scroll;
     currentHash = location.hash;
@@ -2253,11 +2307,12 @@
       // commande annulée puis reprise, ça arrive — mais en rouge et derrière la question que
       // `facturerDevis` pose désormais lui-même.
       if (d.type === 'devis' && d.status === 'accepté') {
-        const { totales, acomptes } = piecesDuDevis(d.id);
-        if (totales.length || acomptes.length) {
-          const faite = totales[0] || acomptes[0];
+        const { totales, acomptes, brouillons } = piecesDuDevis(d.id);
+        if (totales.length || acomptes.length || brouillons.length) {
+          const faite = totales[0] || acomptes[0] || brouillons[0];
           a.push({ sep: true },
-            { icon: 'facture', label: `Voir ${faite.number || 'la facture'}`, hint: `Ce devis a déjà donné ${totales.concat(acomptes).map(x => x.number || 'un brouillon').join(', ')}`, run: () => navigate('#/doc/' + faite.id) },
+            { icon: 'facture', label: faite.number ? `Voir ${faite.number}` : (faite.deposit ? 'Voir l\'acompte en brouillon' : 'Voir la facture en brouillon'), hint: `Ce devis a déjà donné ${totales.concat(acomptes, brouillons).map(nomDePiece).join(', ')}`, run: () => navigate('#/doc/' + faite.id) },
+            { sep: true },
             { icon: 'copier', label: 'Refacturer la totalité…', hint: 'Une facture de plus, pour le montant entier du devis', danger: true, run: () => facturerDevis(d) });
         } else {
           a.push({ sep: true }, { icon: 'facture', label: 'Facturer ce devis', hint: 'Crée le brouillon de facture correspondant', run: () => facturerDevis(d) });
@@ -2278,7 +2333,7 @@
   function duplicateDoc(doc) {
     const isQ = doc.type === 'devis';
     const numbered = isQ || C.EXTRA_TYPES.includes(doc.type);   // ces pièces portent un numéro dès l'enregistrement
-    const copy = { ...deepCopy(doc), id: C.uid(), number: '', status: 'brouillon', date: C.today(), createdAt: Date.now(), payments: [], emails: [], reminders: [], attachments: [], withholdingCertificate: false, fromQuoteId: undefined, fromQuoteNumber: undefined, fromDocId: undefined, fromDocType: undefined, fromDocNumber: undefined, deposit: undefined, settles: undefined, recurringId: undefined };
+    const copy = { ...deepCopy(doc), id: C.uid(), number: '', status: 'brouillon', date: C.today(), createdAt: Date.now(), issuedTs: undefined, payments: [], emails: [], reminders: [], attachments: [], withholdingCertificate: false, fromQuoteId: undefined, fromQuoteNumber: undefined, fromDocId: undefined, fromDocType: undefined, fromDocNumber: undefined, deposit: undefined, settles: undefined, recurringId: undefined };
     if (copy.dueDate) copy.dueDate = C.addDays(copy.date, isQ ? company().quoteValidityDays : company().paymentTermsDays);
     if (numbered) copy.number = C.nextNumber(data, doc.type, copy.date);
     data.documents.push(copy); save(true);
@@ -2490,7 +2545,10 @@
     // coloré fabriquait une seconde facture complète. Avec un acompte émis c'était pire : le bouton
     // principal proposait 100 % du devis pendant que « Facture de solde » dormait dans le ▾.
     const dejaFacture = isNew || !isQ ? [] : piecesDuDevis(doc.id).totales;
-    const devisFacturable = !isNew && isQ && !dejaFacture.length && !issuedDeposits.length
+    // Un acompte en BROUILLON (rapport QA E-03) : l'étape suivante est de l'émettre, pas de facturer
+    // la totalité à côté de lui.
+    const brouillonsAcompte = isNew || !isQ ? [] : piecesDuDevis(doc.id).brouillons;
+    const devisFacturable = !isNew && isQ && !dejaFacture.length && !issuedDeposits.length && !brouillonsAcompte.length
       && (doc.status === 'accepté' || doc.status === 'envoyé');
     // Une entrée de menu et sa bulle vivent côte à côte dans une LIGNE (10.12.0) : la bulle posée
     // À L'INTÉRIEUR du bouton faisait un bouton dans un bouton, que le navigateur ferme d'office —
@@ -2498,7 +2556,7 @@
     const ligneMenu = (bouton, cle) => `<div class="ml-ligne">${bouton}${info(cle)}</div>`;
     const autresChemins = `${ligneMenu('<button id="deposit">Facture d\'acompte…</button>', 'ed.deposit')}
         ${issuedDeposits.length ? ligneMenu(`<button id="settle">Facture de solde (${issuedDeposits.length} acompte${issuedDeposits.length > 1 ? 's' : ''} déduit${issuedDeposits.length > 1 ? 's' : ''})</button>`, 'ed.settle') : ''}
-        ${dejaFacture.length || issuedDeposits.length ? `<button id="convert" class="danger">Refacturer la totalité…</button>` : ''}`;
+        ${dejaFacture.length || issuedDeposits.length || brouillonsAcompte.length ? `<button id="convert" class="danger">Refacturer la totalité…</button>` : ''}`;
     // UN seul bouton principal, et c'est l'étape suivante (10.12.0, la règle U-11 du Cabinet portée
     // ici). Un devis enregistré et inchangé gardait « Enregistrer » en vert : il disait qu'il restait
     // quelque chose à enregistrer, quand l'étape suivante est de l'ENVOYER. « Enregistrer » redevient
@@ -2513,6 +2571,11 @@
         // Un acompte est émis : le geste suivant est le SOLDE, pas une facture de plus.
         : issuedDeposits.length
         ? `<button class="btn btn-primary" id="settle2">Facture de solde</button>${info('ed.settle')}
+           <div class="more"><button class="btn" id="bill-btn" aria-label="Autres façons de facturer">▾</button>
+             <div class="more-list" id="bill-list" hidden>${autresChemins}</div></div>`
+        // Un acompte attend en brouillon : le geste suivant est de l'ÉMETTRE.
+        : brouillonsAcompte.length
+        ? `<button class="btn btn-primary" id="voir-acompte">Ouvrir l'acompte en brouillon</button>
            <div class="more"><button class="btn" id="bill-btn" aria-label="Autres façons de facturer">▾</button>
              <div class="more-list" id="bill-list" hidden>${autresChemins}</div></div>`
         // Déjà facturé : on mène à la facture au lieu d'en proposer une seconde.
@@ -2548,7 +2611,7 @@
                écran de portable, la colonne de droite montre un A4 à 45 %, illisible. -->
           <div class="pv-cmd">
             <button class="btn btn-sm" id="pv-toggle" aria-pressed="false">Aperçu</button>
-            <button class="btn btn-sm" id="pv-big" title="Voir le document en grand (⌘⇧A)">Agrandir</button>
+            <button class="btn btn-sm" id="pv-big" title="Voir le document en grand (${TOUCHES_APERCU})">Agrandir</button>
           </div>
           ${!isNew ? `<button class="btn ${envoiSuivant ? 'btn-primary' : ''}" id="email">Email</button>` : ''}
           <button class="btn" id="pdf">PDF</button>
@@ -2629,7 +2692,7 @@
                  la désignation prend toute la largeur et les chiffres passent dessous ; sans
                  l'aperçu, tout tient sur une rangée. Elle n'avait que 84 à 98 px pour la colonne la
                  plus importante de la pièce, et 45 px pour le prix sur un portable. -->
-            <div class="lignes-cadre"><table class="lines-edit lignes-doc"><thead><tr><th>Désignation</th><th>Qté</th><th>Unité ${info('ed.unit')}</th><th>P.U. HT</th><th>TVA ${info('ed.vat')}</th><th class="r">Total HT</th><th></th></tr></thead>
+            <div class="lignes-cadre"><table class="lines-edit lignes-doc"><thead><tr><th>Désignation</th><th class="r">Qté</th><th>Unité ${info('ed.unit')}</th><th class="r">P.U. HT</th><th>TVA ${info('ed.vat')}</th><th class="r">Total HT</th><th></th></tr></thead>
               <tbody id="lines"></tbody></table></div>
             <div class="totals-box" id="totals"></div>
           </div>
@@ -3137,9 +3200,21 @@
       // un RIB, c'est un avertissement qu'ils ne peuvent pas satisfaire — et on cesse de lire les
       // avertissements qu'on ne peut pas satisfaire.
       if (isInv && C.ribAttendu(co) && !(co.rib || '').trim()) w.push('Aucun RIB n\'est renseigné : le client ne saura pas où virer le paiement.');
+      // Un RIB présent mais faux (rapport QA, 10.12.0) : il s'imprime dans le bloc « Règlement », et
+      // un virement vers un compte qui n'existe pas revient des jours plus tard, ou ne revient pas.
+      if (isInv && (co.rib || '').trim() && !C.verifRib(co.rib).ok) w.push(`Le RIB de ta fiche société semble faux — ${C.verifRib(co.rib).raison} Il s'imprime sur la facture : un virement vers un compte qui n'existe pas n'arrive jamais (Paramètres → Mon entreprise).`);
       // Deux délais sur la même pièce (10.12.0, H-E23) : on MONTRE la phrase, on ne la réécrit pas.
       const deuxDelais = C.delaisContradictoires(co, doc);
       if (deuxDelais) w.push(`Tes conditions de paiement disent « ${deuxDelais} », mais cette facture est à régler avant le ${C.fmtDate(doc.dueDate)} : les deux s'impriment sur la pièce, et se contredisent. Le délai s'imprime déjà tout seul — la phrase peut se contenter du moyen de paiement (Paramètres → Mon entreprise).`);
+      // Une facture de la TOTALITÉ d'un devis qui a déjà donné un acompte ou une autre facture
+      // (rapport QA E-03) : émise telle quelle, le client est facturé plus que le devis. On le dit
+      // AVANT le geste irréversible — la question de « Facturer ce devis » ne suffit pas, puisqu'on
+      // peut aussi arriver ici par « Transformer » ou en recopiant.
+      if (isInv && doc.fromQuoteId && !doc.deposit && !doc.settles) {
+        const autres = data.documents.filter(d => d.type === 'facture' && d.id !== doc.id && d.status !== 'annulée'
+          && (d.fromQuoteId === doc.fromQuoteId || (d.deposit && d.deposit.quoteId === doc.fromQuoteId)));
+        if (autres.length) w.push(`Le devis ${doc.fromQuoteNumber || ''} a déjà donné ${autres.map(nomDePiece).join(', ')} : cette facture en reprend la TOTALITÉ, et le client serait facturé plus que le devis. Pour ne facturer que le reste, supprime ce brouillon et utilise « Facture de solde » sur le devis.`.replace('devis  a', 'devis a'));
+      }
       const last = data.documents.filter(d => d.type === doc.type && d.id !== doc.id && d.number && d.status !== 'brouillon' && (d.date || '').slice(0, 4) === (doc.date || '').slice(0, 4)).sort(byNumberDesc)[0];
       if (last && last.date > doc.date) w.push(`La date (${C.fmtDate(doc.date)}) est antérieure à la dernière ${isInv ? 'facture' : 'pièce'} émise, ${last.number} du ${C.fmtDate(last.date)} : la numérotation ne serait plus chronologique.`);
       // Vendre ce qu'on n'a pas : la pièce reste émissible (une commande peut partir avant la livraison
@@ -3238,6 +3313,9 @@
       // Sans ça, changer le réglage du timbre réécrivait le total des factures déjà envoyées.
       if (doc.stampFee === undefined || doc.stampFee === null || doc.stampFee === '') doc.stampFee = Number(company().stampFee) || 0;
       doc.status = isInv ? 'envoyée' : 'émis';
+      // L'INSTANT de l'émission : c'est lui qui ordonne la sortie de stock dans sa journée (rapport QA
+      // E-10) — un brouillon créé le matin et émis le soir, après un achat, sort après cet achat.
+      doc.issuedTs = Date.now();
       unlockedIds.delete(doc.id);
       persist();
       toast(`${C.TITLES[doc.type]} ${doc.number} émis${isInv ? 'e' : ''}`);
@@ -3326,6 +3404,7 @@
     // elle ne protégeait que ce bouton-ci, et le menu de la liste passait à côté.
     if ($('#convert')) $('#convert').onclick = () => facturerDevis(doc);
     if ($('#voir-facture')) $('#voir-facture').onclick = () => navigate('#/doc/' + dejaFacture[0].id);
+    if ($('#voir-acompte')) $('#voir-acompte').onclick = () => navigate('#/doc/' + brouillonsAcompte[0].id);
     if ($('#deposit')) $('#deposit').onclick = () => {
       // Un acompte se négocie au téléphone en DINARS (« tu me mets 5 000 à la commande »), jamais en
       // pourcentage : il fallait diviser de tête, tomber sur 33,33 %, et découvrir le montant réel
@@ -3351,8 +3430,17 @@
           const p2 = lirePct();
           const el = $('#dp-apercu', root);
           if (!(p2 > 0 && p2 < 100)) { el.textContent = 'Un acompte est une PART du devis : entre 0 et 100 % de son total TTC.'; return; }
-          const t = C.computeTotals({ ...doc, type: 'facture', lines: C.depositLines(doc, p2, company()), discountRate: 0, applyStamp: true }, company());
-          el.innerHTML = `L'acompte fera <b>${h(C.money(t.netToPay, cur))}</b> à payer (${pct(p2)} % du devis, timbre compris). Le solde restera de ${h(C.money(C.round3(ttcDevis - t.totalTTC), cur))}.`;
+          // Les DEUX factures telles qu'elles naîtront, par le MÊME constructeur que « Créer le
+          // brouillon » et que « Facture de solde » (rapport QA E-02). Le solde se calculait à la main,
+          // « total du devis − acompte » : il retranchait le timbre de l'acompte et oubliait celui du
+          // solde, deux dinars de moins que la vraie facture — le chiffre qu'on annonce au client au
+          // téléphone. Et un client exonéré de timbre n'en a sur aucune des deux.
+          const acompte = invoiceFromQuote(doc, C.depositLines(doc, p2, company()), 0);
+          const solde = invoiceFromQuote(doc, C.settlementLines(doc, [acompte]), doc.discountRate);
+          const ta = C.computeTotals(acompte, company()), ts = C.computeTotals(solde, company());
+          const timbre = Number(ta.stamp) > 0 ? ', timbre compris' : '';
+          el.innerHTML = `L'acompte fera <b id="dp-acompte">${h(C.money(ta.netToPay, cur))}</b> à payer (${pct(p2)} % du devis${timbre}). `
+            + `La facture de solde fera <b id="dp-solde">${h(C.money(ts.netToPay, cur))}</b>${Number(ts.stamp) > 0 ? ', avec son propre timbre' : ''}.`;
         };
         $('#df', root).oninput = $('#df', root).onchange = () => {
           const v = formValues($('#df', root));
@@ -3513,8 +3601,16 @@
     const totales = C.facturesDuDevis(data, quoteId).filter(d => !d.deposit);
     const acomptes = (data.documents || []).filter(d => d.type === 'facture' && d.deposit
       && d.deposit.quoteId === quoteId && d.status !== 'brouillon');
-    return { totales, acomptes };
+    // Un acompte encore en BROUILLON compte aussi (rapport QA E-03) : il n'était vu nulle part, et
+    // « Facturer ce devis » fabriquait une facture complète à côté de lui, sans une question — deux
+    // brouillons qui se recouvrent, 150 % du devis.
+    const brouillons = (data.documents || []).filter(d => d.type === 'facture' && d.deposit
+      && d.deposit.quoteId === quoteId && d.status === 'brouillon');
+    return { totales, acomptes, brouillons };
   }
+  // Le nom d'une pièce tirée d'un devis, dans une question : un brouillon n'a pas de numéro, et
+  // « brouillon » seul ne dit ni ce que c'est ni combien.
+  const nomDePiece = d => d.number || `un brouillon ${d.deposit ? 'd\'acompte' : 'de facture'} de ${C.money(C.computeTotals(d, company()).netToPay, docCur(d))}`;
 
   // Le devis devient une facture. Une seule fonction pour les deux chemins — le bouton de l'éditeur
   // et celui de la liste — sinon ils divergeraient : c'est le geste qui rapporte de l'argent.
@@ -3527,12 +3623,15 @@
   // mot. Un garde-fou chez l'appelant ne protège que cet appelant.
   async function facturerDevis(q) {
     if (!q) return;
-    const { totales, acomptes } = piecesDuDevis(q.id);
-    if (totales.length || acomptes.length) {
-      const pieces = totales.concat(acomptes).map(d => d.number || 'brouillon').join(', ');
+    const { totales, acomptes, brouillons } = piecesDuDevis(q.id);
+    const deja = totales.concat(acomptes, brouillons);
+    if (deja.length) {
+      const avecAcompte = acomptes.length || brouillons.length;
       if (!await confirmDialog(
-        `Ce devis a déjà donné ${pieces}.\n\nFacturer la totalité créerait une facture de plus, `
-        + 'pour le montant entier du devis. Si tu veux seulement le reste à payer, ouvre le devis et utilise « Facture de solde ».',
+        `Ce devis a déjà donné ${deja.map(nomDePiece).join(', ')}.\n\nFacturer la totalité créerait une facture de plus, `
+        + `pour le montant entier du devis${avecAcompte ? ' — acompte compris, le client serait facturé plus que le devis' : ''}. `
+        + (brouillons.length ? 'Pour ne facturer que le reste : émets d\'abord l\'acompte, puis utilise « Facture de solde » sur le devis.'
+          : 'Si tu veux seulement le reste à payer, ouvre le devis et utilise « Facture de solde ».'),
         'Refacturer la totalité', true)) return;
     }
     const inv = invoiceFromQuote(q, deepCopy(q.lines), q.discountRate);
@@ -3552,6 +3651,12 @@
     // l'affaire paraissait perdre de l'argent. Et `core.convertDoc` (« Transformer ▾ ») recopie le
     // document en entier, donc il la gardait — deux conversions, deux comportements.
     Object.assign(inv, { clientId: quote.clientId, subject: quote.subject, reference: quote.reference || '', lines, discountRate: discountRate || 0, notes: quote.notes || '', projectId: quote.projectId || '', withholdingRate: clientWithholding(quote.clientId), lang: quote.lang || 'fr', currency: quote.currency || company().currency, exchangeRate: quote.exchangeRate || '' });
+    // L'exonération de timbre du client (9.1.1) se copie ICI aussi : elle ne se posait qu'en
+    // choisissant le client dans l'éditeur, et les trois factures tirées d'un devis — la totale,
+    // l'acompte, le solde — portaient un timbre à un client qui en est exonéré (trouvé en corrigeant
+    // l'annonce du solde, rapport QA E-02).
+    const cl = clientById(quote.clientId);
+    if (cl) inv.applyStamp = !cl.stampExempt;
     return inv;
   }
   function acceptQuote(id) { const orig = docById(id); if (orig && orig.status !== 'accepté') orig.status = 'accepté'; }
@@ -3679,14 +3784,14 @@
           try {
             const att = await bridge.exportPdfSilent(html(), nom());
             const r = C.releveClient(data, c.id, company(), { date: au });
-            await bridge.composeMail({
-              to: c.email || '', mode: company().mailClient === 'mailto' ? 'mailto' : 'auto', attachment: att,
+            const rm = await bridge.composeMail({
+              to: c.email || '', mode: modeEnvoi(), attachment: att,
               subject: `Relevé de compte au ${C.fmtDate(au)} — ${company().name}`,
               body: `Bonjour,\n\nVous trouverez ci-joint le relevé de votre compte au ${C.fmtDate(au)}.\n\n`
                 + (r.total > 0.0005 ? `Solde restant dû : ${C.money(r.total, cur)}${r.echu > 0.0005 ? `, dont ${C.money(r.echu, cur)} échu` : ''}.\n\n` : 'Votre compte est soldé. Merci de votre confiance.\n\n')
                 + `Si un règlement s'est croisé avec cet envoi, merci de ne pas en tenir compte.\n\nCordialement,\n${company().name}`
             });
-            close(); toast('Message ouvert dans ta messagerie');
+            close(); toast(messageOuvert(rm, 'le relevé'));
           } catch (e) { b.disabled = false; b.textContent = 'Envoyer au client…'; toast(plainError(e), true); }
         };
       });
@@ -4080,7 +4185,7 @@
       <div class="panel"><h2>Lignes</h2>
         <div class="catalog-pick"><div id="tf-cat">${combo({ items: [], placeholder: 'Ajouter depuis le catalogue…', search: 'Rechercher une prestation…' })}</div>
           <button type="button" class="btn btn-sm" id="tf-add">+ Ligne vide</button></div>
-        <table class="lines-edit"><thead><tr><th>Désignation</th><th style="width:62px">Qté</th><th style="width:96px">P.U. HT</th><th style="width:76px">TVA</th><th class="r">Total HT</th><th></th></tr></thead>
+        <table class="lines-edit"><thead><tr><th>Désignation</th><th class="r" style="width:62px">Qté</th><th class="r" style="width:96px">P.U. HT</th><th style="width:76px">TVA</th><th class="r">Total HT</th><th></th></tr></thead>
           <tbody id="tf-lines"></tbody></table>
         <div class="inline mt"><span class="small muted" id="tf-sum"></span></div>
       </div>
@@ -4413,7 +4518,7 @@
         <label class="field span-2">Objet<input type="text" name="subject" value="${h(m.subject)}"></label>
         <label class="field span-2">Message<textarea name="body" rows="9">${h(m.body)}</textarea></label>
       </form>
-      <p class="small muted">${company().mailClient === 'mailto' ? 'Le message s\'ouvre dans ta messagerie ; le PDF est affiché dans le Finder pour le glisser dans le message.' : 'Sur Mac, le message s\'ouvre dans Mail avec le PDF joint. Tu le relis et tu cliques sur Envoyer.'} Modèles d'email : Paramètres → Envois.</p>
+      <p class="small muted" id="mf-envoi">${envoiParMail() ? 'Le message s\'ouvre dans Mail avec le PDF joint : tu le relis et tu cliques sur Envoyer.' : `Le message s'ouvre dans ta messagerie ; le PDF s'affiche dans ${EXPLORATEUR}, pour que tu le glisses dans le message.`} Modèles d'email : Paramètres → Envois.</p>
       <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Ouvrir dans la messagerie</button></div>`,
       (root, close) => { $('#ok', root).onclick = async () => {
         const v = formValues($('#mf', root));
@@ -4422,14 +4527,14 @@
         try {
           let attachment = null;
           if (v.attach) attachment = await bridge.exportPdfSilent(C.documentHtml(doc, client, company(), { stampText: stampFor(doc) }), docFileName(doc));
-          const r = await bridge.composeMail({ to: v.to, subject: v.subject, body: v.body, attachment, mode: company().mailClient === 'mailto' ? 'mailto' : 'auto' });
+          const r = await bridge.composeMail({ to: v.to, subject: v.subject, body: v.body, attachment, mode: modeEnvoi() });
           if (!client.email) { client.email = v.to; }
           const stored = docById(doc.id) || doc;
           stored.emails = stored.emails || []; stored.emails.push({ date: C.today(), to: v.to, subject: v.subject, kind });
           if (stored.type === 'devis' && stored.status === 'brouillon') stored.status = 'envoyé';
           if (afterSend) afterSend(stored);
           save(true); close();
-          toast(r && r.state === 'mail' ? 'Message ouvert dans Mail avec le PDF joint' : 'Message ouvert dans ta messagerie' + (attachment ? ' — glisse le PDF affiché dans le Finder' : ''));
+          toast(messageOuvert(r, attachment ? 'le PDF' : null));
           render();
         } catch (e) { b.disabled = false; b.textContent = 'Ouvrir dans la messagerie'; toast(plainError(e), true); }
       }; });
@@ -4446,7 +4551,15 @@
       discountRate: doc.discountRate || 0, withholdingRate: doc.withholdingRate || 0, notes: doc.notes || '', every: 'month', day, nextDate: C.addMonths(doc.date, 1, day), active: true, createdAt: Date.now(),
       lang: doc.lang || 'fr', currency: doc.currency || company().currency, exchangeRate: doc.exchangeRate || '' };
   }
+  // Un contrat NEUF, en un seul endroit. L'en-tête le fabriquait à la main pendant que l'état vide
+  // passait `null` : le formulaire plantait sur `null.lines`, et « + Créer mon premier contrat » — le
+  // premier geste de la page, sur la seule page où il n'y a rien d'autre à faire — acceptait le clic
+  // et ne faisait RIEN, depuis la 7.8.0. C'est l'instrument de rendu qui l'a trouvé (10.12.0), en
+  // cliquant chaque « + … » d'une entreprise neuve.
+  const contratNeuf = () => ({ id: C.uid(), clientId: '', subject: '', lines: [], every: 'month', day: 1,
+    nextDate: C.addMonths(C.today(), 1, 1), active: true, withholdingRate: 0, discountRate: 0, notes: '' });
   function recurrenceForm(rec, done) {
+    rec = rec || contratNeuf();
     const isNew = !data.recurring.find(r => r.id === rec.id);
     const r = deepCopy(rec);
     if (!r.lines || !r.lines.length) r.lines = [C.newLine(company())];
@@ -4463,7 +4576,7 @@
         <label class="field span-3">Notes sur la facture<textarea name="notes" rows="2">${h(r.notes || '')}</textarea></label>
         <label class="check span-3"><input type="checkbox" name="active" ${r.active !== false ? 'checked' : ''}> Contrat actif (les factures sont proposées à la date prévue)</label>
       </form>
-      <table class="mini"><thead><tr><th>Désignation</th><th style="width:58px">Qté</th><th style="width:104px">Unité ${info('ed.unit')}</th><th style="width:96px">P.U. HT</th><th style="width:88px">TVA</th><th></th></tr></thead><tbody id="rl"></tbody></table>
+      <table class="mini"><thead><tr><th>Désignation</th><th class="r" style="width:58px">Qté</th><th style="width:104px">Unité ${info('ed.unit')}</th><th class="r" style="width:96px">P.U. HT</th><th style="width:88px">TVA</th><th></th></tr></thead><tbody id="rl"></tbody></table>
       <div class="inline mt"><button type="button" class="btn btn-sm" id="rl-add">+ Ligne</button><span class="small muted" id="rl-total"></span></div>
       <div class="modal-actions">
         ${isNew ? '' : '<button class="btn btn-danger" id="del-rec" style="margin-right:auto">Supprimer</button>'}
@@ -4739,9 +4852,13 @@
               ['Un abonnement, une maintenance, un forfait mensuel : tu le décris une fois — client, lignes, périodicité — et SkanFact prépare le <b>brouillon de facture</b> à chaque échéance. Tu n\'as plus qu\'à le relire et l\'émettre.',
                'Rien n\'est envoyé à ta place : un brouillon t\'attend, c\'est tout.',
                'À ne pas confondre avec le <b>contrat que ton client signe</b>, qui est dans « Proforma, bons et contrats ».'],
+              // « Partir d'une facture existante » ne se propose que s'il EXISTE une facture : sur
+              // une entreprise neuve, le bouton acceptait le clic pour répondre par un message
+              // passager qu'il n'y avait rien — le jumeau de « Partir d'un devis existant », qui ne
+              // se montre qu'avec un devis (H-E30), ne l'avait jamais fait.
               [['rec-first', '+ Créer mon premier contrat', true],
-               ['rec-depuis', 'Partir d\'une facture existante']])}`;
-      if ($('#rec-first')) $('#rec-first').onclick = () => recurrenceForm(null, draw);
+               ...(data.documents.some(d => d.type === 'facture') ? [['rec-depuis', 'Partir d\'une facture existante']] : [])])}`;
+      if ($('#rec-first')) $('#rec-first').onclick = () => recurrenceForm(contratNeuf(), draw);
       // 10.12.0 (H-E29, vu au test humain) — « Partir d'une facture existante » emmenait à la liste des
       // factures, et rien n'y disait quoi faire : le geste (« Rendre récurrente », dans l'éditeur de
       // la facture) était deux écrans plus loin. Un bouton qui change de page doit y mener au geste,
@@ -4823,7 +4940,7 @@
       });
     };
     $('#view').innerHTML = `<div class="page-head"><h1>Facturation récurrente ${info('contrat.form')}</h1><div class="actions"><button class="btn btn-primary" id="new">+ Nouveau contrat</button></div></div><div id="c-wrap"></div>`;
-    $('#new').onclick = () => recurrenceForm({ id: C.uid(), clientId: '', subject: '', lines: [], every: 'month', day: 1, nextDate: C.addMonths(C.today(), 1, 1), active: true, withholdingRate: 0, discountRate: 0, notes: '' }, draw);
+    $('#new').onclick = () => recurrenceForm(contratNeuf(), draw);
     draw();
   };
 
@@ -5038,6 +5155,13 @@
   }
 
   const TODO_ACTIONS = {
+    // E-04 : la ligne mène au MOIS du premier bulletin impossible, pas à la liste du mois courant —
+    // un bulletin qu'on doit chercher mois par mois ne se corrige pas.
+    'bulletins-impossibles': { label: 'Voir le bulletin', run: vers('#/paie', () => {
+      const b = C.bulletinsImpossibles(data)[0];
+      paieState.tab = 'bulletins';
+      if (b) { paieState.year = String(b.year); paieState.month = String(Number(b.month)); }
+    }) },
     contrats: { label: 'Générer les brouillons', run: () => { const res = generateRecurring(); toast(`${pl(res.n, 'brouillon créé', 'brouillons créés')} — à relire puis émettre`); render(); } },
     retards: { label: 'Voir les relances', run: vers('#/relances') },
     societe: { label: 'Compléter', run: vers('#/parametres', () => { settingsTab = 'societe'; settingsFocus = 'p-identite'; }) },
@@ -5498,7 +5622,7 @@
         ${field(lbl('Délai de paiement accordé (jours)', 'sup.terms'), 'paymentTermsDays', s.paymentTermsDays || '', 'number', 'min="0" class="num" placeholder="30"')}
         <label class="field">${lbl('Retenue à la source à opérer', 'sup.withholding')}${withholdingSelect('withholdingRate', s.withholdingRate, { vide: 'Aucune', sansZero: true })}</label>
         ${field(lbl('Banque', 'pay.bank'), 'bank', s.bank || '')}
-        ${field('RIB du fournisseur', 'rib', s.rib || '')}
+        ${ribField('RIB du fournisseur', s.rib)}
         <label class="field span-2">Adresse<textarea name="address">${h(s.address || '')}</textarea></label>
         <label class="field span-2">Notes internes<textarea name="notes">${h(s.notes || '')}</textarea></label>
       </form>
@@ -5749,7 +5873,7 @@
       ${payablesPanel()}
       ${filtersBar(`
         <input type="text" id="q" placeholder="Rechercher : n°, fournisseur, objet, catégorie…" value="${h(s.q)}">
-        <select id="kind"><option value="">Tout</option>${C.PURCHASE_KINDS.map(([v, l]) => `<option value="${v}" ${s.kind === v ? 'selected' : ''}>${l}s</option>`).join('')}</select>
+        <select id="kind"><option value="">Tout</option>${C.PURCHASE_KINDS.map(([v, , pluriel]) => `<option value="${v}" ${s.kind === v ? 'selected' : ''}>${pluriel}</option>`).join('')}</select>
         <select id="st"><option value="">Tous les statuts</option>${C.PURCHASE_STATUSES.map(x => `<option value="${x}" ${s.st === x ? 'selected' : ''}>${h(optionStatut(x))}</option>`).join('')}<option value="${A_RATTACHER}" ${s.st === A_RATTACHER ? 'selected' : ''}>à rattacher (avoir ou acompte)</option></select>
         ${cats.length > 1 ? `<select id="cat"><option value="">Toutes les catégories</option>${cats.map(c => `<option value="${h(c)}" ${s.cat === c ? 'selected' : ''}>${h(c)}</option>`).join('')}</select>` : ''}
         ${years.length > 1 ? `<select id="yr"><option value="">Toutes les années</option>${years.map(y => `<option value="${y}" ${s.year === y ? 'selected' : ''}>${y}</option>`).join('')}</select>` : ''}
@@ -5996,7 +6120,7 @@
             <div class="catalog-pick"><div id="b-cat">${combo({ items: [], placeholder: 'Ajouter depuis le catalogue…', search: 'Rechercher une prestation…' })}</div>
               <button class="btn btn-sm" id="add-line">+ Ligne</button>
               <span class="small muted">Saisis au moins le total hors taxes et son taux de TVA : c'est ce qui permet de récupérer la TVA.</span></div>
-            <table class="lines-edit buy-lines"><thead><tr><th>Désignation</th><th style="width:62px">Qté</th><th style="width:92px">P.U. HT</th><th style="width:76px">TVA</th>
+            <table class="lines-edit buy-lines"><thead><tr><th>Désignation</th><th class="r" style="width:62px">Qté</th><th class="r" style="width:92px">P.U. HT</th><th style="width:76px">TVA</th>
               <th style="width:150px">Destination ${info('buy.destination')}</th><th style="width:74px">Déduct. ${info('buy.deductible')}</th><th class="r">Total HT</th><th></th></tr></thead>
               <tbody id="b-lines"></tbody></table>
             <div class="totals-box" id="b-totals"></div>
@@ -6658,7 +6782,7 @@
       const totalRev = C.round3(rows.reduce((a, r) => a + r.revenue, 0));
       const totalMar = C.round3(rows.reduce((a, r) => a + r.margin, 0));
       const incomplete = rows.filter(r => !r.complete).length;
-      const pg = paginate(rows, s);
+      const vue = paginate(rows, s);
       $('#mg-body').innerHTML = `
         <div class="filters">
           <select id="mg-dim"><option value="client" ${s.dim === 'client' ? 'selected' : ''}>Par client</option><option value="item" ${s.dim === 'item' ? 'selected' : ''}>Par prestation</option></select>
@@ -6672,12 +6796,12 @@
         </div>
         <div class="panel"><h2>${s.dim === 'client' ? 'Marge par client' : 'Marge par prestation'} — ${s.year}</h2>
           ${rows.length ? `<div class="scroll-x"><table class="list compact"><thead><tr><th>${s.dim === 'client' ? 'Client' : 'Prestation'}</th><th class="r">Vendu HT</th><th class="r">Coût</th><th class="r">Marge</th><th class="r">Taux</th><th style="width:24%"></th></tr></thead><tbody>
-            ${pg.rows.map(r => `<tr class="${r.margin < 0 ? 'row-warn' : ''}">
+            ${vue.rows.map(r => `<tr class="${r.margin < 0 ? 'row-warn' : ''}">
               <td>${h(r.label)}</td><td class="r nw">${C.money(r.revenue, cur)}</td><td class="r nw">${C.money(r.cost, cur)}</td>
               <td class="r nw ${r.margin < 0 ? 'warn-text' : ''}"><strong>${C.money(r.margin, cur)}</strong></td>
               <td class="r nw">${rateCell(r.rate, r.complete)}</td>
               <td><span class="bar"><i class="${r.margin < 0 ? 'f-bad' : 'f-ok'}" style="width:${Math.max(3, Math.round(Math.abs(r.margin) / max * 100))}%"></i></span></td></tr>`).join('')}
-          </tbody></table></div>${pagerBar(pg, { noun: s.dim === 'client' ? 'client' : 'prestation', grandTotal: rows.length })}
+          </tbody></table></div>${pagerBar(vue.pg, { noun: s.dim === 'client' ? 'client' : 'prestation' })}
           <p class="small muted mt">Le repère « ≈ » signale les lignes dont toutes les prestations n'ont pas de coût de revient : leur marge est optimiste. Renseigne le coût dans le catalogue pour la rendre juste.</p>`
             : '<div class="empty">Aucune vente sur cette année.</div>'}
         </div>`;
@@ -7210,11 +7334,14 @@
       // Sans aucun salarié, les onglets sont masqués : le bouton doit alors être là quoi qu'il
       // arrive, sinon l'écran dit « commence par créer la fiche d'un salarié » sans offrir de quoi
       // le faire. (Défaut introduit par cette même version, attrapé par `npm run e2e:barre`.)
+      // Mais pas en VERT (U-11, 10.12.0) : le panneau « Aucun salarié » porte déjà « + Créer mon
+      // premier salarié » en vert — deux verts pour le même geste, sur la page qu'on ouvre la
+      // première fois. La règle des listes vides, que ce panneau (pas un `.empty`) avait esquivée.
       const a = data.employees.length ? P_ACTION[s.tab] : P_ACTION.salaries;
       return `<h1>Paie</h1>
         <div class="actions">
           <select id="p-year" ${P_SANS_ANNEE.includes(s.tab) ? 'hidden' : ''}>${years.map(y => `<option ${y === s.year ? 'selected' : ''}>${y}</option>`).join('')}</select>
-          ${a ? `<button class="btn btn-primary" id="${a[0]}">${a[1]}</button>` : ''}
+          ${a ? `<button class="btn ${data.employees.length ? 'btn-primary' : ''}" id="${a[0]}">${a[1]}</button>` : ''}
         </div>`;
     };
     $('#view').innerHTML = `
@@ -7242,7 +7369,7 @@
         <div class="panel"><h2>Bulletins du mois</h2>
           <div class="filters">
             <select id="p-month">${MONTHS_LONG.map((l, i) => `<option value="${i + 1}" ${m === i + 1 ? 'selected' : ''}>${l}</option>`).join('')}</select>
-            ${missing.length ? `<button class="btn btn-sm btn-primary" id="p-gen">${missing.length > 1 ? `Établir les ${pl(missing.length, 'bulletin')} manquants` : 'Établir le bulletin manquant'}</button>` : '<span class="small ok-text">Tous les bulletins du mois sont établis.</span>'}
+            ${missing.length ? `<button class="btn btn-sm btn-primary" id="p-gen">${missing.length > 1 ? `Établir les ${pl(missing.length, 'bulletin')} manquants` : 'Établir le bulletin manquant'}</button>` : month.length ? '<span class="small ok-text">Tous les bulletins du mois sont établis.</span>' : ''}
           </div>
           ${month.length ? `<div class="scroll-x"><table class="list compact"><thead><tr>
             <th>Salarié</th><th class="r">Brut</th><th class="r">CNSS</th><th class="r">IRPP</th><th class="r">Net à payer</th><th class="r">Coût employeur</th><th>Payé le</th><th></th></tr></thead><tbody>
@@ -7265,7 +7392,12 @@
               <td colspan="2"></td></tr>
           </tbody></table></div>
           <p class="small muted mt">Un bulletin marqué payé sort l'argent tout seul dans la <a href="#/tresorerie">trésorerie</a> : ne saisis pas en plus un mouvement « Salaires », il compterait deux fois.</p>`
-            : `<div class="empty">Aucun bulletin pour ${h(MONTHS_LONG[m - 1])} ${h(s.year)}.${missing.length ? ' Le bouton ci-dessus les établit d\'un coup, au brut de chaque fiche.' : ''}</div>`}
+            // « Tous les bulletins du mois sont établis » au-dessus de « Aucun bulletin pour août »
+            // (rapport QA) : sans salarié en poste ce mois-là, il n'y a rien à établir — et c'est CE
+            // qu'il faut dire, pas deux phrases vraies qui se contredisent à l'œil.
+            : `<div class="empty" id="p-vide">${missing.length
+              ? `Aucun bulletin pour ${h(MONTHS_LONG[m - 1])} ${h(s.year)}. Le bouton ci-dessus les établit d'un coup, au brut de chaque fiche.`
+              : `Aucun salarié en poste en ${h(MONTHS_LONG[m - 1])} ${h(s.year)} : il n'y a pas de bulletin à établir ce mois-là.`}</div>`}
         </div>`;
       $('#p-month').onchange = e => { s.month = e.target.value; drawSlips(); };
       $$('#p-body [data-pdf]').forEach(b => b.onclick = () => exportPayslip(payslipById(b.dataset.pdf)));
@@ -7429,6 +7561,18 @@
       const an = C.employerAnnual(data, y, company());
       const due = C.socialDue(data);
       const filed = id => (data.socialFilings || []).find(f => f.id === id);
+      // E-04 (rapport QA) — un trimestre qui compte un bulletin IMPOSSIBLE (net négatif, enregistré
+      // avant la garde de la 10.10.0) additionnait ses cotisations négatives et proposait « Marquer
+      // déposée » à côté de « − 168,970 DT ». Le bouton s'éteint en disant pourquoi, et le motif se lit
+      // au-dessus des boutons (9.4.5), avec le nom du salarié et le mois à rouvrir.
+      const impossibles = C.bulletinsImpossibles(data);
+      const raisonCnss = (yy, qq) => {
+        const l = impossibles.filter(b => Number(b.year) === yy && Math.ceil(Number(b.month) / 3) === qq);
+        if (!l.length) return '';
+        const qui = l.map(b => `${(employeeById(b.employeeId) || {}).name || 'un salarié'} (${C.monthLabel(`${b.year}-${String(b.month).padStart(2, '0')}-01`)})`).join(', ');
+        return `Ce trimestre compte ${pl(l.length, 'bulletin')} au net négatif — ${qui} : ${l.length > 1 ? 'corrige-les' : 'corrige-le'} avant de déposer, sinon la déclaration porte des cotisations fausses.`;
+      };
+      const raisonDe = id => { const m = /^cnss-(\d{4})-T(\d)$/.exec(id || ''); return m ? raisonCnss(Number(m[1]), Number(m[2])) : ''; };
       // Noter une déclaration déposée est un clic sans question — et c'est bien ainsi, on le fait
       // douze fois par an. Mais la ligne quitte aussitôt le panneau « À déposer », donc le bouton
       // qui retire la mention n'est plus là où on vient de cliquer : il faut descendre au bon
@@ -7455,7 +7599,7 @@
             ${due.map(x => `<tr class="${x.late ? 'row-warn' : ''}"><td><strong>${h(x.label)}</strong></td>
               <td class="nw">échéance ${C.fmtDate(x.dueDate)}${x.late ? ' <span class="warn-text">— dépassée</span>' : ''}</td>
               <td class="r nw">${x.amount ? C.money(x.amount, cur) : ''}</td>
-              <td class="r"><button class="btn btn-sm" data-file="${h(x.id)}" data-lab="${h(x.label)}">Marquer déposée</button></td></tr>`).join('')}
+              <td class="r"><button class="btn btn-sm" data-file="${h(x.id)}" data-lab="${h(x.label)}"${raisonDe(x.id) ? ` disabled title="${h(raisonDe(x.id))}"` : ''}>Marquer déposée</button></td></tr>`).join('')}
           </tbody></table>
           <p class="small muted mt">SkanFact ne dépose rien et ne se connecte à aucune administration : il prépare le tableau et te rappelle la date. <em>À VÉRIFIER avec ton comptable : les dates et les modalités de dépôt.</em></p>
         </div>` : ''}
@@ -7480,10 +7624,11 @@
               <td class="r"><strong>${C.money(cn.accident, cur)}</strong></td>
               <td class="r"><strong>${C.money(cn.total, cur)}</strong></td></tr>
           </tbody></table></div>
+          ${raisonCnss(y, q) && !filed(`cnss-${y}-T${q}`) ? `<p class="small danger-text mt" id="cn-impossible">${h(raisonCnss(y, q))}</p>` : ''}
           <div class="inline mt">
             <button class="btn" id="cn-csv">Exporter en CSV</button>
             <button class="btn" id="cn-mail">Envoyer au comptable</button>
-            <button class="btn ${filed(`cnss-${y}-T${q}`) ? '' : 'btn-primary'}" id="cn-file">${filed(`cnss-${y}-T${q}`) ? 'Retirer « déposée »' : 'Marquer déposée'}</button>
+            <button class="btn ${filed(`cnss-${y}-T${q}`) || raisonCnss(y, q) ? '' : 'btn-primary'}" id="cn-file"${raisonCnss(y, q) && !filed(`cnss-${y}-T${q}`) ? ` disabled title="${h(raisonCnss(y, q))}"` : ''}>${filed(`cnss-${y}-T${q}`) ? 'Retirer « déposée »' : 'Marquer déposée'}</button>
           </div>
           ${cn.rows.some(r => !r.cnss) ? '<p class="small warn-text mt">Un matricule CNSS manque sur une fiche : la déclaration ne peut pas être déposée sans lui.</p>' : ''}`
             : `<div class="empty">Aucun bulletin sur ce trimestre.</div>`}
@@ -7546,15 +7691,15 @@
         const acc = (company().accountantEmail || '').trim();
         const name = `cnss-${y}-T${q}.csv`;
         const att = await bridge.saveTextSilent(name, C.toCsv(cn.rows, cnCols));
-        await bridge.composeMail({
+        const r = await bridge.composeMail({
           to: acc, subject: `Déclaration CNSS ${C.quarterLabel(q)} ${y} — ${company().name}`,
           body: `Bonjour,\n\nCi-joint le détail de la déclaration CNSS du ${C.quarterLabel(q).toLowerCase()} ${y} :\n`
             + `${pl(cn.employees, 'salarié')}, assiette ${C.money(cn.base, cur)}, part salarié ${C.money(cn.employee, cur)}, `
             + `part employeur ${C.money(cn.employer, cur)}, accident du travail ${C.money(cn.accident, cur)}.\n`
             + `Total dû : ${C.money(cn.total, cur)}. Échéance : ${C.fmtDate(cn.dueDate)}.\n\nMerci de vérifier avant dépôt.\n`,
-          attachments: att ? [att] : [], mode: 'auto'
+          attachments: att ? [att] : [], mode: modeEnvoi()
         });
-        emailComptablePret(acc);
+        emailComptablePret(acc, r, att ? 'le fichier CNSS' : null);
       };
       if ($('#an-csv')) $('#an-csv').onclick = async () => {
         const cols = [
@@ -7589,7 +7734,7 @@
               ${num('tfpRate', 'Taxe de formation professionnelle — TFP (%)', 'pay.tfp')}${tfpPropose !== null ? `<div class="small muted" style="grid-column:auto;margin-top:-8px">Proposé pour ton métier : ${pct(tfpPropose)} % <em>(À VÉRIFIER)</em></div>` : ''}
               ${num('foprolosRate', 'FOPROLOS (%)', 'pay.foprolos')}
             </div>
-            <p class="small muted mt">La TFP et le FOPROLOS sont des taxes patronales sur la masse salariale, déclarées chaque mois avec la TVA (9.0.0). <em>À VÉRIFIER avec ton comptable : 1 % de TFP pour les industries manufacturières, 2 % ailleurs.</em></p>
+            <p class="small muted mt">La TFP et le FOPROLOS sont des taxes patronales sur la masse salariale, déclarées chaque mois avec la TVA. <em>À VÉRIFIER avec ton comptable : 1 % de TFP pour les industries manufacturières, 2 % ailleurs.</em></p>
           </div>
           <div class="panel"><h2>Impôt sur le revenu</h2>
             <div class="grid-3">
@@ -7809,7 +7954,7 @@
   function adjustForm(itemId, done) {
     const items = C.trackedItems(data);
     if (!items.length) return toast('Aucun article n\'est suivi en stock. Coche « Suivi en stock » sur une prestation du catalogue.', true);
-    const a = { id: C.uid(), date: C.today(), itemId: itemId || items[0].id, qty: 0, unitCost: '', source: 'casse', reference: '', note: '' };
+    const a = { id: C.uid(), date: C.today(), itemId: itemId || items[0].id, qty: 0, unitCost: '', source: 'casse', reference: '', note: '', createdAt: Date.now() };
     const cur = company().currency;
     modal(`<h2>Mouvement de stock</h2>
       <p class="small muted">Ce qui n'a ni facture ni achat : casse, perte, vol, cadeau, correction d'inventaire. Les entrées d'achat et les sorties de vente remontent toutes seules — ne les saisis pas ici.</p>
@@ -8030,7 +8175,7 @@
         if (licenceBlock('Créer les mouvements de cet inventaire', 'stock')) return;
         if (!await confirmDialog(`Enregistrer ${pl(gaps.length, 'mouvement')} d'inventaire au ${C.fmtDate(s.countDate)} ? Le stock théorique sera aligné sur ce que tu as compté. Cette opération est tracée dans les mouvements et se corrige comme n'importe quel ajustement.`, 'Enregistrer')) return;
         if (closedBlock(s.countDate, 'Cet inventaire')) return;
-        gaps.forEach(r => data.stockAdjustments.push({ id: C.uid(), date: s.countDate, itemId: r.itemId, qty: r.gap,
+        gaps.forEach(r => data.stockAdjustments.push({ id: C.uid(), createdAt: Date.now(), date: s.countDate, itemId: r.itemId, qty: r.gap,
           unitCost: '', source: 'inventaire', reference: '', note: `Inventaire du ${C.fmtDate(s.countDate)}` }));
         s.counts = {}; save(true); toast(`${pl(gaps.length, 'écart')} enregistré${sPl(gaps.length)}`); draw();
       };
@@ -8258,7 +8403,7 @@
         </div>
       </form>
       <div class="panel"><h2>Lignes lues</h2>
-        <table class="lines-edit buy-lines"><thead><tr><th>Désignation</th><th style="width:70px">Qté</th><th style="width:100px">P.U. HT</th><th style="width:80px">TVA</th><th class="r">Total HT</th><th></th></tr></thead>
+        <table class="lines-edit buy-lines"><thead><tr><th>Désignation</th><th class="r" style="width:70px">Qté</th><th class="r" style="width:100px">P.U. HT</th><th style="width:80px">TVA</th><th class="r">Total HT</th><th></th></tr></thead>
           <tbody id="orf-lines"></tbody></table>
         <div class="inline mt"><button type="button" class="btn btn-sm" id="orf-add">+ Ligne</button>
           <span class="small muted" id="orf-sum"></span></div>
@@ -8626,7 +8771,9 @@
             + (r.result >= 0
               ? `<span class="ok-text">plus-value de ${C.money(r.result, cur)}</span>`
               : `<span class="warn-text">moins-value de ${C.money(-r.result, cur)}</span>`)
-            + `. <em>À VÉRIFIER avec ton comptable : le traitement fiscal de cette plus-value.</em></span>`
+            // E-11 : la seconde moitié de la phrase suit la première — « cette plus-value » écrit
+            // sous une moins-value se lisait comme une faute sur un chiffre qu'on vient d'annoncer.
+            + `. <em>À VÉRIFIER avec ton comptable : le traitement fiscal de cette ${r.result >= 0 ? 'plus-value' : 'moins-value'}.</em></span>`
             + (vatWarning(asset, v.date) ? `<div class="small warn-text mt">${vatWarning(asset, v.date)}</div>` : '');
         };
         $('#dsf', root).oninput = hint; hint();
@@ -8849,7 +8996,7 @@
         <label class="field span-2 obligatoire"><span>Nom du compte</span><input type="text" name="name" value="${h(a.name)}" placeholder="BIAT — compte courant" required></label>
         <label class="field">${lbl('Type', 'tre.kind')}<select name="kind">${C.ACCOUNT_KINDS.map(([v, l]) => `<option value="${v}" ${a.kind === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
         ${field('Banque', 'bank', a.bank || '')}
-        ${field('RIB', 'rib', a.rib || '')}
+        ${ribField('RIB', a.rib)}
         ${field(lbl('Solde de départ', 'tre.opening'), 'opening', a.opening || 0, 'number', 'step="0.001" class="num"')}
         ${dateFieldHtml(lbl('À la date du', 'tre.openingDate'), 'openingDate', a.openingDate || C.today(), {})}
         <label class="check span-2"><input type="checkbox" name="isDefault" ${a.isDefault ? 'checked' : ''}> Compte par défaut ${info('tre.default')}</label>
@@ -9612,10 +9759,10 @@
             const b = $('#ok', root); b.disabled = true; b.textContent = 'Préparation…';
             try {
               const att = await bridge.saveTextSilent(`journal-ventes-${tag}.csv`, C.toCsv(rows, journalColumns()));
-              const r = await bridge.composeMail({ to: v.to, subject: v.subject, body: v.body, attachment: att, mode: company().mailClient === 'mailto' ? 'mailto' : 'auto' });
+              const r = await bridge.composeMail({ to: v.to, subject: v.subject, body: v.body, attachment: att, mode: modeEnvoi() });
               if (v.remember) { data.company.accountantEmail = v.to; save(true); }
               close();
-              toast(r && r.state === 'mail' ? 'Message ouvert dans Mail avec le journal joint' : 'Message ouvert — glisse le fichier affiché dans le Finder');
+              toast(messageOuvert(r, 'le journal'));
             } catch (e) { b.disabled = false; b.textContent = 'Ouvrir dans la messagerie'; toast(plainError(e), true); }
           }; });
       };
@@ -9937,9 +10084,9 @@
         const r = await bridge.composeMail({
           to: company().accountantEmail || '', subject: `Écritures ${periodLabel()} — ${company().name || ''}`,
           body: `Bonjour,\n\nVoici les écritures comptables de ${periodLabel()} : ${bal.lines} lignes, ${bal.pieces} pièces, débit = crédit = ${C.money(bal.debit, cur)}.\n\nLes numéros de compte sont ceux réglés dans SkanFact ; dis-moi s'ils ne correspondent pas aux tiens, je les change.\n\nBien à toi,\n${company().name || ''}`,
-          attachments: att ? [att] : []
+          attachments: att ? [att] : [], mode: modeEnvoi()
         });
-        toast(r && r.state === 'mail' ? 'Message préparé dans Mail' : 'Message préparé');
+        toast(messageOuvert(r, att ? 'le fichier des écritures' : null));
       };
       $('#ecr-plan').onclick = () => chartForm(drawEntries);
       $('#ecr-od').onclick = () => odForm(null, drawEntries);
@@ -10271,6 +10418,19 @@
         });
     }
 
+    // Pourquoi le panneau n'a rien à clôturer, dit à partir de `C.rienACloturer` (E-06) : une
+    // entreprise qui vient de commencer a des pièces, toutes dans le mois en cours, et « aucune pièce
+    // datée » la faisait douter de ce qu'elle venait de saisir. Chaque phrase donne le jour où le
+    // premier mois deviendra clôturable — c'est la seule chose qu'on peut faire de cette information.
+    function phraseRienACloturer(r) {
+      const des = `à partir du 1er ${C.monthLabel(r.des)}`;
+      if (r.cas === 'aucune') return 'Aucune pièce datée pour l\'instant : il n\'y a encore rien à clôturer.';
+      if (r.cas === 'a-jour') return `Tout est clôturé jusqu'au mois en cours : ${h(r.mois)} se clôturera une fois terminé, ${des}.`;
+      const qui = r.n === 1 ? 'Ta seule pièce est datée' : `Tes ${r.n} pièces sont toutes datées`;
+      const quand = r.enCours ? `${h(r.mois)}, le mois en cours` : r.n === 1 ? h(r.mois) : `${h(r.mois)} ou après`;
+      return `${qui} de ${quand} : un mois se clôture une fois terminé, donc ${des}.`;
+    }
+
     function drawClosures() {
       const closed = C.closedUntil(data);
       const months = C.closableMonths(data, C.today());
@@ -10289,7 +10449,7 @@
 
         <div class="panel"><h2>Clôturer ${info('clot.cloturer')}</h2>
           ${!next
-            ? `<div class="empty">${months.length === 0 && !closed ? 'Aucune pièce datée pour l\'instant.' : 'Tout est clôturé jusqu\'au mois en cours. Le mois en cours ne se clôture qu\'une fois terminé.'}</div>`
+            ? `<div class="empty" id="clot-rien">${phraseRienACloturer(C.rienACloturer(data, C.today()))}</div>`
             : `<p>Prochain mois à clôturer : <strong>${h(next.label)}</strong> <span class="muted small">(du ${C.fmtDate(next.from)} au ${C.fmtDate(next.to)})</span></p>
                ${checks.length
                  ? `<div class="panel sub" style="margin:12px 0">
@@ -10723,8 +10883,8 @@
             + (last.cabinet ? 'Il est chiffré pour ta clé (empreinte ' + last.cabinet + ') : toi seul peux l\'ouvrir.\n'
                : last.sealed ? 'Il est protégé par le mot de passe convenu — je te le donne par téléphone.\n' : '')
             + `\nEmpreinte du manifeste : ${String(last.digest || '').slice(0, 16)}\n\nBien à toi,\n${co.name || ''}`,
-          attachments: [last.path]
-        }).then(() => emailComptablePret(to));
+          attachments: [last.path], mode: modeEnvoi()
+        }).then(r => emailComptablePret(to, r, 'le paquet'));
       };
     }
 
@@ -10898,7 +11058,7 @@
           <p class="small muted mb">Le RIB s'affiche sur les factures, dans le bloc « Règlement ». C'est ce que ton client copie pour te payer : relis-le deux fois.</p>
           <div class="grid-2">
           ${field(lbl('Banque', 'pay.bank'), 'bank', c.bank)}
-          ${field('RIB', 'rib', c.rib)}
+          ${ribField('RIB', c.rib)}
           <label class="field span-2">${lbl('Conditions de paiement (sur les factures)', 'pay.terms')}<textarea name="paymentTerms">${h(c.paymentTerms || '')}</textarea></label>
         </div></div>
         </section>
@@ -10953,7 +11113,9 @@
         <section data-pane="envois" hidden>
         ${panneau('p-envoi')}
           <div class="grid-2">
-            <label class="field">${lbl('Envoi des emails', 'mail.client')}<select name="mailClient"><option value="auto" ${c.mailClient !== 'mailto' ? 'selected' : ''}>Mail (Apple) avec le PDF joint — Mac</option><option value="mailto" ${c.mailClient === 'mailto' ? 'selected' : ''}>Autre messagerie (mailto, PDF à glisser)</option></select></label>
+            ${SUR_MAC
+              ? `<label class="field">${lbl('Envoi des emails', 'mail.client')}<select name="mailClient"><option value="auto" ${c.mailClient !== 'mailto' ? 'selected' : ''}>Mail (Apple) avec le PDF joint</option><option value="mailto" ${c.mailClient === 'mailto' ? 'selected' : ''}>Autre messagerie (mailto, PDF à glisser)</option></select></label>`
+              : `<div class="field" id="mail-fixe">${lbl('Envoi des emails', 'mail.client')}<p class="small muted">Le message s'ouvre dans ta messagerie par défaut, et le PDF s'affiche dans ${EXPLORATEUR} pour que tu le glisses dedans. Sur cet ordinateur, il n'y a rien à régler.</p></div>`}
           </div>
         </div>
         ${panneau('p-comptable')}<div class="grid-2">
@@ -11062,7 +11224,7 @@
         <div class="inline mt"><button class="btn btn-primary" id="ext-choose">Choisir un dossier…</button><button class="btn btn-ghost" id="ext-remove" hidden>Retirer</button></div>
       </div>
       ${panneau('p-motdepasse', info('sec.password'))}
-        <p id="sec-status">${security.encrypted ? '🔒 Mot de passe activé : le fichier de données et ses sauvegardes sont chiffrés (AES-256). Verrouiller : menu Fichier ou Cmd/Ctrl+L.' : 'Le fichier de données est en clair sur ce disque. Tu peux le protéger par un mot de passe demandé à chaque ouverture.'}</p>
+        <p id="sec-status">${security.encrypted ? `🔒 Mot de passe activé : le fichier de données et ses sauvegardes sont chiffrés (AES-256). Verrouiller : menu Fichier ou ${MOD}+L.` : 'Le fichier de données est en clair sur ce disque. Tu peux le protéger par un mot de passe demandé à chaque ouverture.'}</p>
         <div class="inline mt">${security.encrypted ? '<button class="btn" id="sec-change">Changer le mot de passe…</button><button class="btn" id="sec-lock">Verrouiller maintenant</button><button class="btn btn-danger" id="sec-remove">Retirer le mot de passe…</button>' : '<button class="btn btn-primary" id="sec-set">Activer un mot de passe…</button>'}</div>
         <p class="small muted mt">Le mot de passe protège les fichiers sur le disque (ordinateur perdu ou volé). Il n'existe aucune récupération : sans lui, les données sont définitivement illisibles, <b>y compris pour toi</b>.</p>
       </div>
@@ -11400,7 +11562,7 @@
       // archive de fusion, journal des clôtures) partent aussi, mais les annoncer n'apprendrait rien.
       const compte = Object.keys(C.LIST_LABELS)
         .filter(k => Array.isArray(data[k]) && data[k].length)
-        .map(k => `${data[k].length} ${C.LIST_LABELS[k]}${data[k].length > 1 ? 's' : ''}`);
+        .map(k => C.compteListe(k, data[k].length));
       const empruntee = !!(data.company && data.company.demo);
       modal(`<h2>Tout effacer</h2>
         <p>Cette action supprime <b>tout ce que contient ce dossier</b> : ${h(compte.join(', ') || 'aucune donnée pour l\'instant')}. Les factures émises partent aussi.</p>
@@ -11670,7 +11832,7 @@
   function aideCorps(a) {
     const titres = [...a.body.matchAll(/<h3>([\s\S]*?)<\/h3>/g)].map(m => sansBalises(m[1]).trim());
     let i = 0;
-    const corps = a.body.replace(/<h3>/g, () => `<h3 id="art-h-${i++}">`);
+    const corps = clavierLocal(a.body).replace(/<h3>/g, () => `<h3 id="art-h-${i++}">`);
     const sommaire = titres.length >= AIDE_SOMMAIRE_MIN
       ? `<aside class="help-toc"><div class="tt">Dans cet article</div><ol>${titres
         .map((t, k) => `<li><button data-h="art-h-${k}">${h(t)}</button></li>`).join('')}</ol></aside>`
@@ -11840,7 +12002,7 @@
             + `Ce qui s'est passé :\n${what || '(à compléter)'}\n\n`
             + `--- informations techniques ---\n${tech}\nDossier : ${info.logPath || ''}\n\n`
             + (info.log ? `--- journal (${info.lines} lignes) ---\n${String(info.log).slice(-6000)}\n` : '(journal vide)\n');
-          await bridge.composeMail({ to: LICENCE_CONTACT, subject: `Problème SkanFact ${info.version || ''}`, body });
+          await bridge.composeMail({ to: LICENCE_CONTACT, subject: `Problème SkanFact ${info.version || ''}`, body, mode: modeEnvoi() });
           close(); toast('Message préparé — relis-le avant de l\'envoyer');
         };
       });
@@ -11890,7 +12052,7 @@
             + `Ce que j'aimerais faire :\n${quoi}\n\n`
             + `Comment je fais aujourd'hui :\n${auj || '(non précisé)'}\n\n`
             + `--- version ---\n${tech}\n`;
-          await bridge.composeMail({ to: LICENCE_CONTACT, subject: `Idée pour SkanFact ${info.version || ''}`, body });
+          await bridge.composeMail({ to: LICENCE_CONTACT, subject: `Idée pour SkanFact ${info.version || ''}`, body, mode: modeEnvoi() });
           close(); toast('Message préparé — relis-le avant de l\'envoyer');
         };
       });
@@ -12077,7 +12239,7 @@
     };
     if ($('#lic-ask')) $('#lic-ask').onclick = async () => {
       const m = await bridge.licenceMail(company(), deviceLabel());
-      await bridge.composeMail({ to: LICENCE_CONTACT, subject: m.subject, body: m.body });
+      await bridge.composeMail({ to: LICENCE_CONTACT, subject: m.subject, body: m.body, mode: modeEnvoi() });
       toast('Message préparé');
     };
   }
@@ -12779,14 +12941,14 @@
         try {
           let attachment = null;
           if (v.attach && inv) attachment = await bridge.exportPdfSilent(C.documentHtml(inv, client, company(), { stampText: stampFor(inv) }), docFileName(inv));
-          const r = await bridge.composeMail({ to: v.to, subject: v.subject, body: v.body, attachment, mode: company().mailClient === 'mailto' ? 'mailto' : 'auto' });
+          const r = await bridge.composeMail({ to: v.to, subject: v.subject, body: v.body, attachment, mode: modeEnvoi() });
           if (client && !client.email) client.email = v.to;
           const stored = data.licences.find(x => x.id === lic.id) || lic;
           stored.emails = stored.emails || []; stored.emails.push({ date: C.today(), to: v.to, facture: !!attachment });
           // L'historique de la FACTURE ne note l'envoi que si elle est vraiment partie avec la clé.
           if (attachment && inv) { inv.emails = inv.emails || []; inv.emails.push({ date: C.today(), to: v.to, subject: v.subject, kind: 'licence' }); }
           save(true); close();
-          toast(r && r.state === 'mail' ? 'Message ouvert dans Mail' + (attachment ? ' avec la facture jointe' : '') : 'Message ouvert dans ta messagerie');
+          toast(messageOuvert(r, attachment ? 'la facture' : null));
         } catch (e) { b.disabled = false; b.textContent = 'Ouvrir dans la messagerie'; toast(plainError(e), true); }
       }; });
   }
@@ -13432,7 +13594,7 @@
         <p class="small muted">Les valeurs proposées sont les usages tunisiens : timbre fiscal de 1 dinar, trente jours de validité et trente jours de paiement, pas de retenue à la source par défaut. <em>À VÉRIFIER avec ton comptable selon ton activité et ton régime.</em></p>`;
         if (s.id === 'paiement') return `<form id="sf-form" class="grid-2">
           ${field(lbl('Banque', 'pay.bank'), 'bank', a.bank || '', 'text', 'placeholder="Nom de la banque et agence"')}
-          ${field('RIB', 'rib', a.rib || '', 'text', 'placeholder="20 chiffres"')}
+          ${ribField('RIB', a.rib, 'placeholder="20 chiffres"')}
         </form>
         <p class="small muted">Ton RIB apparaîtra sur chaque facture, dans le bloc « Règlement ». <b>Relis-le caractère par caractère</b> : une erreur ici, c'est un paiement qui n'arrive jamais. Tu peux laisser vide et le remplir plus tard.</p>`;
         if (s.id === 'sauvegarde') return `<p>Tes données vivent dans un seul fichier, sur cet ordinateur. S'il tombe en panne, est volé ou perdu, ta comptabilité disparaît avec lui.</p>
@@ -13465,6 +13627,7 @@
         // l'application sans « Autre taux… » — « un champ de l'assistant doit être au moins aussi
         // guidé que son jumeau dans les Paramètres, jamais moins » (7.3.0).
         bindWithholdingFields(root);
+        bindRibFields(root);
         // Choisir un métier redessine l'écran : on relit d'abord TOUT ce que l'écran porte, sinon le
         // régime et la case « préremplir » repartent à leur valeur d'avant le clic — on ne jette
         // jamais ce que quelqu'un vient de saisir (règle 7.1.x, « Passer » ne jette rien).

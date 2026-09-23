@@ -54,6 +54,28 @@ Le site dit maintenant la vérité sur les deux ; reste à décider si la vérit
 - **La liasse n'a toujours pas été confrontée à une liasse réelle.** Elle tombe juste sur l'exemple ;
   le modèle de rubriques reste « À VÉRIFIER » tant que le pilote ne l'a pas comparée à la sienne.
 
+## 1 quater. Ce que le rapport QA de l'application entreprise (23/09/2026) laisse à décider
+
+Les douze défauts et les mineurs sont corrigés en 10.12.0 (CHANGELOG, « Une entreprise a tenu
+SkanFact »). Restent trois questions qui ne sont pas du code :
+
+- **Un bulletin au net négatif enregistré avant la 10.10.0 est SIGNALÉ, pas corrigé.** « À faire » le
+  nomme en rouge et la déclaration CNSS de son trimestre ne se marque plus déposée ; c'est
+  l'utilisateur qui corrige les absences ou les retenues. Le recalculer d'office réécrirait un
+  bulletin déjà remis à un salarié (règle 5.0.0). Si une CNSS avait DÉJÀ été déposée avec ce
+  bulletin, la rectification se fait auprès de la caisse : l'application ne peut pas la faire.
+- **Le RIB est vérifié, jamais refusé.** Vingt chiffres et leur clé, ou un IBAN : une forme de compte
+  étranger que la règle ne connaît pas s'affiche en orange sans bloquer. Si un utilisateur signale
+  un RIB juste marqué douteux, la règle se relit — elle a été vérifiée sur un RIB publié, pas sur les
+  RIB de chaque banque tunisienne.
+- **L'ordre des mouvements de stock d'une journée suit l'instant du geste** (création d'un achat,
+  émission d'une facture). Les pièces d'avant la 10.12.0 n'ont pas d'instant d'émission : pour elles,
+  les entrées passent avant les sorties. La valeur d'une journée ancienne où une vente et un achat
+  se croisent change donc à la mise à jour (sur le cas du rapport : 4 300 → 4 425 DT), y compris dans
+  un mois déjà clôturé — dans le sens juste, mais sans un mot à l'écran. Faut-il le dire (une ligne
+  « À faire » qui nomme les mois clôturés dont le coût des ventes a bougé) ? À décider avec le
+  comptable pilote : c'est lui qui aurait déclaré l'ancien chiffre.
+
 ## 2. Le site
 
 Mesuré par la session qui l'a écrit, le 22/09/2026. Aucun de ces points n'est faux — ils sont

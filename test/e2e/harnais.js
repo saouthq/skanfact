@@ -200,8 +200,17 @@ const SONDE_COLONNES = () => {
       corps.forEach(tr => {
         const td = tr.children[i];
         if (!td || td.colSpan > 1) return;
-        if (!(td.textContent || '').trim()) return;
-        const a = getComputedStyle(td).textAlign;
+        let a;
+        if ((td.textContent || '').trim()) a = getComputedStyle(td).textAlign;
+        else {
+          // Une cellule qui porte un CHAMP (10.12.0) : c'est le champ qui aligne ce qu'on lit — des
+          // chiffres à droite dans « Qté » et « P.U. HT » —, pas la cellule, restée à gauche. La sonde
+          // sautait ces cellules (leur `textContent` est vide) : les en-têtes des cinq éditeurs de
+          // lignes n'étaient jugés par personne, et ils étaient à gauche au-dessus de chiffres à droite.
+          const champs = [...td.querySelectorAll('input:not([type=hidden]):not([type=checkbox]):not([type=radio]), select, textarea')].filter(visible);
+          if (champs.length !== 1 || !String(champs[0].value || '').trim()) return;
+          a = getComputedStyle(champs[0]).textAlign;
+        }
         comptes[a] = (comptes[a] || 0) + 1;
       });
       const paires = Object.entries(comptes).sort((x, y) => y[1] - x[1]);
@@ -654,7 +663,30 @@ async function ongletsCompta(win) {
   return tous;
 }
 
+// Fermer une application SANS jamais rester bloqué (E-01, rapport QA du 23/09/2026). `app.close()`
+// attend qu'Electron quitte ; un garde-fou de sortie resté armé (« modifications non enregistrées »,
+// 2.4.0) pose alors sa question dans une boîte que personne ne verra, et l'attente devient éternelle :
+// `e2e:entreprise` passait ses 83 étapes puis ne rendait AUCUN code de sortie, deux processus
+// Electron vivants un quart d'heure plus tard. Un parcours bloqué est pire qu'un parcours qui échoue
+// (7.28.0) : on attend, puis on tue le processus et on DIT pourquoi. La règle existait depuis la
+// 7.28.0 et n'était appliquée que sur 11 parcours sur 49 — elle vit désormais ici, en un seul
+// exemplaire, et un test interdit tout `close()` d'application écrit à la main dans un parcours.
+async function fermer(app, { delai = 15000, quoi = 'l\'application' } = {}) {
+  if (!app) return;
+  let bloque = false;
+  let minuteur;
+  await Promise.race([
+    app.close().catch(() => {}),
+    new Promise(r => { minuteur = setTimeout(() => { bloque = true; r(); }, delai); })
+  ]);
+  clearTimeout(minuteur);
+  if (!bloque) return;
+  try { app.process().kill('SIGKILL'); } catch (_) { /* déjà parti */ }
+  throw new Error(`${quoi} ne se ferme pas en ${delai / 1000} s : un garde-fou de sortie attend sans doute une réponse (« modifications non enregistrées » ?). Le processus a été tué — quitte l'éditeur ou enregistre avant de fermer.`);
+}
+
 module.exports = {
+  fermer,
   playwright, RACINE, ELECTRON, VERSION, journal, surveiller, dossierCaptures, ouvrirChromium,
   capturePleine, RELACHE_CONSOLE, SONDE_CONTRASTE, SONDE_COLONNES, SONDE_ENTETES, SONDE_ESPACEMENT, SONDE_LARGEUR, montant,
   ongletCompta, ongletComptaPresent, ongletsCompta, SONDE_COLLANT, SONDE_TRONQUE, SONDE_DEFILEMENT, FENETRE

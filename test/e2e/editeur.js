@@ -7,7 +7,7 @@
 // peut demander qu'en pourcentage.
 //
 //   xvfb-run -a node test/e2e/editeur.js
-const { playwright, RACINE, ELECTRON, journal, surveiller, montant } = require('./harnais');
+const { fermer, playwright, RACINE, ELECTRON, journal, surveiller, montant } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
 
@@ -408,7 +408,7 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
   if (!r12.bulle.includes('Revenir à Devis ' + aFacturer.number)) throw new Error(`la bulle du bouton retour dit « ${r12.bulle} »`);
   j.ok(`« ${r12.texte} »`);
 
-  await app.close();
+  await fermer(app);
   if (bac.length) { console.error('\nErreurs du renderer :\n' + bac.join('\n')); process.exit(2); }
   console.log(`\n${j.total()} étapes — l'éditeur ne laisse plus passer.`);
 })().catch(e => { console.error(e); process.exit(1); });

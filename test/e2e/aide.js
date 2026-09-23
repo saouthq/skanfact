@@ -13,7 +13,7 @@
 //   6. Un article long porte son sommaire, et le sommaire mène à son intertitre.
 //
 //   xvfb-run -a node test/e2e/aide.js
-const { playwright, RACINE, ELECTRON, journal, surveiller } = require('./harnais');
+const { fermer, playwright, RACINE, ELECTRON, journal, surveiller } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
 
@@ -218,7 +218,7 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
   if (await win.$('.help-toc')) throw new Error('un article court porte un sommaire');
   j.ok(`${som.entrees.length} entrées, la dernière atterrit à ${arrivee}px — et l'article court n'en a pas`);
 
-  await app.close();
+  await fermer(app);
   if (bac.length) { console.error('\nErreurs du renderer :\n' + bac.join('\n')); process.exit(2); }
   console.log(`\n${j.total()} étapes — l'Aide se parcourt par territoire, et chaque article mène quelque part.`);
 })().catch(e => { console.error(e); process.exit(1); });

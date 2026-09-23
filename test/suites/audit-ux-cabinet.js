@@ -2976,13 +2976,27 @@ t('Une liste vide n\'a qu\'un bouton principal : l\'en-tête cède le sien à l\
   let vus = 0; const fautes = [];
   routes.forEach((r, k) => {
     const corps = ent.slice(r.i, k + 1 < routes.length ? routes[k + 1].i : ent.length);
-    if (!/etatVide\([\s\S]*?, true\]/.test(corps)) return;
+    // L'état vide à bouton principal : celui d'`etatVide`, ou un panneau écrit à la main dont le
+    // bouton vert est le « premier » (la Paie — « + Créer mon premier salarié » — a esquivé ce test
+    // parce qu'elle n'est pas un `etatVide`, et gardait deux verts ; trouvé par `e2e:barre`).
+    if (!/etatVide\([\s\S]*?, true\]/.test(corps) && !/class="btn btn-primary[^"]*" id="[\w-]*first[\w-]*"/.test(corps)) return;
     // Une page peut poser PLUSIEURS en-têtes (Licences : sans clé, puis avec) : on les lit tous,
-    // chacun jusqu'à la fin de son bloc — borné, pour ne jamais déborder sur l'en-tête suivant.
-    const tetes = [...corps.matchAll(/<div class="page-head">/g)].map(m => {
-      const s = corps.slice(m.index, m.index + 700); const fin = s.indexOf('</div></div>');
-      return fin > 0 ? s.slice(0, fin) : s;
-    });
+    // chacun jusqu'à la fin de son bloc — borné, pour ne jamais déborder sur l'en-tête suivant. Et
+    // un en-tête peut être FABRIQUÉ par une fonction qui ne pose pas `page-head` elle-même (la Paie,
+    // dont l'en-tête suit l'onglet) : on le lit aussi depuis son titre jusqu'à sa barre d'actions.
+    // L'en-tête se borne en COMPTANT ses <div> : un en-tête sans barre d'actions (la Trésorerie
+    // vide) se ferme au premier `</div>`, et une tranche de longueur fixe débordait alors sur le
+    // panneau d'en dessous — elle accusait le bouton vert de l'état vide d'être celui de l'en-tête.
+    const bloc = debut => {
+      let prof = 0; const re = /<div\b|<\/div>/g; re.lastIndex = debut; let m;
+      while ((m = re.exec(corps)) && m.index < debut + 1500) {
+        prof += m[0] === '</div>' ? -1 : 1;
+        if (!prof) return corps.slice(debut, m.index);
+      }
+      return corps.slice(debut, debut + 700);
+    };
+    const tetes = [...corps.matchAll(/<div class="page-head">/g)].map(m => bloc(m.index))
+      .concat([...corps.matchAll(/<h1>[\s\S]{0,700}?<\/div>/g)].map(m => m[0]));
     if (!tetes.length) return;
     vus++;
     const fixe = tetes.some(t2 => /class="btn btn-primary"/.test(t2));
@@ -3087,6 +3101,72 @@ t('Les statuts d\'une liste déroulante commencent par une majuscule, sans chang
   selects.forEach(([tout, v, attrs, lib]) => {
     assert.ok(new RegExp(`value="\\$\\{(?:h\\()?${v}\\)?\\}"`).test(attrs), 'une option de statut sans valeur explicite : le libellé partirait dans les données — ' + tout.slice(0, 80));
     assert.ok(new RegExp(`optionStatut\\(${v}\\)`).test(lib), 'une liste de statuts affiche encore la valeur brute : ' + tout.slice(0, 80));
+  });
+});
+
+// ============================================================================================
+// 10.12.0 — la couverture complète de l'application entreprise (`e2e:entreprise-rendu`). Ce que
+// l'instrument a trouvé en cliquant CHAQUE « + … », chaque menu et chaque fenêtre de 394 écrans,
+// là où aucun parcours n'était jamais allé.
+
+// « + Créer mon premier contrat » passait `null` au formulaire, qui plantait sur `null.lines` : le
+// premier geste de la page acceptait le clic et ne faisait RIEN, depuis la 7.8.0. La règle est
+// générale : un formulaire qu'un bouton ouvre avec `null` doit savoir le recevoir.
+t('Un formulaire qu\'on ouvre avec « null » sait le recevoir : aucun bouton de création ne plante', () => {
+  const ent = code('src', 'renderer', 'app.js');
+  const defs = [...ent.matchAll(/function (\w+Form)\((\w+)/g)].map(m => ({ nom: m[1], param: m[2] }));
+  assert.ok(defs.length > 25, `les formulaires ne sont plus trouvés (${defs.length})`);
+  let jugés = 0;
+  defs.forEach(({ nom, param }) => {
+    const appels = (ent.match(new RegExp(`\\b${nom}\\(null\\b`, 'g')) || []).length;
+    if (!appels) return;
+    jugés++;
+    const f = tranche(ent, `function ${nom}(`);
+    const lignes = f.slice(f.indexOf('{')).split('\n');
+    // Une garde, c'est le paramètre LUI-MÊME mis en question — `x ||`, `x ?`, `x &&`, `!x`, `x ??` —
+    // et elle doit venir AVANT le premier usage qui plante sur `null` : `x.id`, `deepCopy(x)`.
+    // C'était exactement l'ordre de `recurrenceForm` : `rec.id` à la première ligne, aucune garde.
+    // Un usage derrière un court-circuit (`employee || byId(slip.employeeId)`) n'en est pas un, et
+    // toute la fonction est lue, pas son début : un formulaire qui s'ouvre sur un refus place sa
+    // garde plus bas. Un test trop étroit accuse du code juste (9.4.7).
+    const reGarde = new RegExp(`(\\b${param}\\s*(\\|\\||\\?\\?|\\?|&&)|!${param}\\b)`);
+    const reUsage = new RegExp(`(\\b${param}\\.|deepCopy\\(${param}\\))`);
+    const garde = lignes.findIndex(l => reGarde.test(l));
+    const usage = lignes.findIndex(l => {
+      const m = l.search(reUsage);
+      return m >= 0 && !/\|\||\?|&&/.test(l.slice(0, m));
+    });
+    assert.ok(garde >= 0 && (usage < 0 || garde <= usage),
+      `${nom} est ouvert avec null (${appels} fois) et se sert de « ${param} » avant d'avoir prévu qu'il manque : le bouton planterait`);
+  });
+  assert.ok(jugés >= 5, `trop peu de formulaires ouverts avec null (${jugés}) : le test ne voit plus ses cas`);
+});
+
+// Le relevé de compte d'un client cachait « Reste dû » et son total derrière un défilement de côté :
+// six colonnes sans retour à la ligne dans les 580 px d'une fenêtre ordinaire.
+t('Une fenêtre qui porte un tableau de liste a la place de ses colonnes (le relevé de compte)', () => {
+  const css = lireSource('src', 'renderer', 'style.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  const regle = css.match(/\.modal:has\(([^)]*)\)\s*\{\s*width:\s*(\d+)px/);
+  assert.ok(regle, 'la règle qui élargit une fenêtre selon son contenu a disparu');
+  assert.ok(/\btable\.list\b/.test(regle[1]), 'une fenêtre qui porte un tableau de liste garde 580 px : le relevé cache son total');
+  assert.ok(Number(regle[2]) >= 820, `${regle[2]} px ne suffisent pas à six colonnes de montants`);
+  const ent = code('src', 'renderer', 'app.js');
+  const releve = tranche(ent, 'function releveForm(');
+  assert.ok(/<table class="list">/.test(releve), 'le relevé ne porte plus un tableau de liste : la règle ne le toucherait plus');
+});
+
+// « Partir d'une facture existante » se proposait à une entreprise sans facture, pour répondre par
+// un message passager qu'il n'y en avait pas ; son jumeau « Partir d'un devis existant » ne se
+// montre qu'avec un devis (H-E30). Un bouton qui part d'une pièce existante ne se propose que si
+// elle existe.
+t('Un état vide ne propose de partir d\'une pièce existante que s\'il en existe une', () => {
+  const ent = code('src', 'renderer', 'app.js');
+  ['rec-depuis', 'vide-depuis'].forEach(id => {
+    const i = ent.indexOf(`['${id}'`);
+    assert.ok(i > 0, `le bouton ${id} n'est plus dans un état vide`);
+    const avant = ent.slice(Math.max(0, i - 160), i);
+    assert.ok(/\?\s*\[\s*$/.test(avant) && /\.\.\.\(/.test(avant), `le bouton ${id} est proposé sans condition : il répondrait « rien à faire » à qui n'a aucune pièce`);
+    assert.ok(/\.some\(|\.length/.test(avant), `la condition du bouton ${id} ne regarde pas si une pièce existe`);
   });
 });
 

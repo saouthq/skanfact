@@ -11,7 +11,7 @@
 //   — « Passer » conserve ce qui vient d'être tapé, au lieu de le jeter en silence.
 //
 //   xvfb-run -a node test/e2e/reglages.js
-const { playwright, RACINE, ELECTRON, journal, surveiller } = require('./harnais');
+const { fermer, playwright, RACINE, ELECTRON, journal, surveiller } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
 (async () => {
@@ -109,8 +109,8 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
   // La case « numéro de série » vivait DANS le bloc masqué par « Suivi en stock » : le message qui
   // envoyait la chercher décrivait une case qui n'existait pas à l'écran.
   await win.evaluate(() => { location.hash = '#/catalogue'; });
-  await win.waitForSelector('#view .page-head');
-  await win.click('#view .page-head .btn-primary');
+  await win.waitForSelector('#view .page-head #new');
+  await win.click('#view .page-head #new');   // « + Nouvelle prestation », par ce qu'il FAIT (U-11)
   await win.waitForSelector('#modal-root input[name=serialized]');
   if (!(await win.isVisible('#modal-root input[name=serialized]'))) {
     throw new Error('la case « numéro de série » doit être visible sans avoir coché autre chose d\'abord');
@@ -173,5 +173,5 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
   j.ok('le lien des mises à jour désigne son panneau');
 
   if (bac.length) { console.error('ERREURS JS :\n' + bac.join('\n')); process.exit(1); }
-  await app.close(); console.log('\n>>> RÉGLAGES ET GESTES BLOQUÉS : OK'); process.exit(0);
+  await fermer(app); console.log('\n>>> RÉGLAGES ET GESTES BLOQUÉS : OK'); process.exit(0);
 })().catch(e => { console.error('\n✗ ' + e.message); process.exit(1); });

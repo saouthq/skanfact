@@ -11,7 +11,7 @@
 // qui s'exécute.
 //
 //   xvfb-run -a node test/e2e/justificatif.js
-const { playwright, RACINE, ELECTRON, journal, surveiller } = require('./harnais');
+const { fermer, playwright, RACINE, ELECTRON, journal, surveiller } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
 
@@ -227,6 +227,6 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
     // Une pièce restée « modifiée » fait poser la question à la fermeture, dans une fenêtre native
     // que personne ne peut cliquer ici : on répond « Fermer sans enregistrer » d'avance.
     try { await app.evaluate(({ dialog }) => { dialog.showMessageBoxSync = () => 1; }); } catch (_) {}
-    try { await Promise.race([app.close(), new Promise((_, r) => setTimeout(() => r(new Error('fermeture bloquée')), 15000))]); } catch (e) { console.error(e.message); }
+    try { await fermer(app); } catch (e) { console.error(e.message); }
   }
 })().catch(e => { console.error('\nÉCHEC :', e && e.message || e); process.exit(1); });

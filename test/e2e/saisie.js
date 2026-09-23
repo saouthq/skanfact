@@ -7,7 +7,7 @@
 //
 // Il vérifie aussi les trois refus qui font une comptabilité : une validée ne se modifie pas, ne se
 // supprime pas, et un lot qui contient une pièce fausse ne troue pas la numérotation.
-const { playwright, RACINE, ELECTRON, ongletCompta, ongletComptaPresent } = require('./harnais');
+const { fermer, playwright, RACINE, ELECTRON, ongletCompta, ongletComptaPresent } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
 const OUT = process.argv[2] || path.join(RACINE, 'dist-e2e', 'saisie');
@@ -667,8 +667,7 @@ const étape = m => { pas++; console.log('\n' + pas + '. ' + m); };
   ok('zéro erreur');
 
   console.log('\nTOUT EST VERT — captures dans ' + OUT);
-  await Promise.race([app.close(), new Promise(r => setTimeout(r, 15000))
-    .then(() => { throw new Error('l\'application ne se ferme pas : une fenêtre attend une réponse'); })]);
+  await fermer(app);
   // Aucune pièce en cours : la fermeture n'a rien eu à demander (sinon la boîte remplacée aurait
   // répondu « Annuler », et la fermeture aurait échoué au-dessus).
   fs.rmSync(dir, { recursive: true, force: true });

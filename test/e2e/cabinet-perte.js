@@ -6,7 +6,7 @@
 // Ce test vérifie les deux moitiés :
 //   1. l'application le DIT au lieu d'afficher « Bienvenue » comme au premier jour ;
 //   2. les données reviennent vraiment, la clé du cabinet comprise.
-const { playwright, RACINE, ELECTRON } = require('./harnais');
+const { fermer, playwright, RACINE, ELECTRON } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
 
@@ -66,7 +66,7 @@ async function lancer() {
   const sauvegardes = fs.readdirSync(path.join(userData, 'sauvegardes')).filter(f => f.endsWith('.json'));
   if (!sauvegardes.length) throw new Error('aucune sauvegarde sur le disque');
   ok(`${sauvegardes.length} sauvegarde(s) sur le disque`);
-  await app.close();
+  await fermer(app);
 
   // ---------- 2. la catastrophe ----------
   etape('Le fichier principal disparaît');
@@ -129,7 +129,7 @@ async function lancer() {
 
   console.log('\nerreurs JS : ' + errors.length);
   errors.slice(0, 6).forEach(e => console.log('  - ' + e));
-  await app.close().catch(() => {});
+  await fermer(app);
   console.log(errors.length ? '>>> ÉCHEC' : '>>> RÉCUPÉRATION APRÈS PERTE : OK');
   process.exit(errors.length ? 1 : 0);
 })().catch(e => { console.error('\n✕ ÉCHEC : ' + (e.stack || e.message)); process.exit(2); });
