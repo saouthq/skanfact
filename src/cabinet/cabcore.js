@@ -807,6 +807,31 @@
     return dossier;
   }
 
+  // Le premier mois qu'on attend de ce client, et s'il a fallu le borner. 10.12.0 (U-05) — UNE
+  // fonction pour les deux onglets de la fiche : le calendrier du Suivi en déduisait ses mois
+  // « hors mission », pendant que la Comptabilité comptait les manques depuis le 1er janvier, et
+  // annonçait « Il manque 6 mois » sur six mois que l'onglet voisin disait hors mission — encore
+  // après la création du livre. Un compteur et la liste qu'il annonce se calculent avec la même
+  // fonction (6.8.1). '' quand on n'attend rien de lui.
+  function premierMoisAttendu(dossier, todayIso) {
+    // Un client hors SkanFact n'a rien à envoyer — SAUF si le comptable a posé une date de début
+    // de mission (voir `dossierMonths`).
+    if (!dossier || (dossier.manual && !dossier.from)) return { mois: '', tronque: false };
+    // `from` est la date de début de mission, saisie par le comptable. C'est le seul moyen de dire
+    // « je reprends ce client à partir de janvier » : sans elle, l'attente démarre au premier paquet
+    // reçu et les mois d'avant ne sont jamais réclamés — un client repris en cours d'année passait
+    // à travers sans que rien ne l'annonce.
+    const recus = (dossier.packs || []).map(p => String(p.month || '')).filter(m => /^\d{4}-\d{2}$/.test(m)).sort();
+    const brut = dossier.from || recus[0] || '';
+    if (!brut) return { mois: '', tronque: false };
+    // Une date de début de mission sans plancher fait réclamer vingt ans périmés — et le rabot de
+    // `monthsBetween` coupe par la FIN, donc les mois réellement en retard disparaissent de la liste
+    // pendant que des mois de 2006 s'affichent. On borne à cinq ans, et on le dit.
+    const plancher = addMonth(String(todayIso || today()).slice(0, 7), -MAX_MOIS_ATTENDUS);
+    return brut < plancher ? { mois: plancher, tronque: true } : { mois: brut, tronque: false };
+  }
+  function debutDeMission(dossier, todayIso) { return premierMoisAttendu(dossier, todayIso).mois; }
+
   // L'état d'un dossier, mois par mois. `from` = le premier mois qu'on attend de ce client ;
   // par défaut le premier reçu, parce qu'avant ça on ne sait rien et qu'on ne réclame pas le néant.
   // `graceDay` : le jour du mois avant lequel on ne réclame pas encore le mois qui vient de finir.
@@ -824,21 +849,9 @@
     // Un client hors SkanFact n'a rien à envoyer — SAUF si le comptable a posé une date de début de
     // mission : c'est précisément ce que la fiche lui propose de faire. Sans cette exception, l'écran
     // réclamait un geste qui ne faisait rien.
-    if (dossier.manual && !dossier.from) return [];
-    const got = (dossier.packs || []).slice().sort((a, b) => a.month < b.month ? -1 : 1);
-    // `from` est la date de début de mission, saisie par le comptable. C'est le seul moyen de dire
-    // « je reprends ce client à partir de janvier » : sans elle, l'attente démarre au premier paquet
-    // reçu et les mois d'avant ne sont jamais réclamés — un client repris en cours d'année passait
-    // à travers sans que rien ne l'annonce.
-    if (!got.length && !dossier.from) return [];
+    const { mois: first, tronque } = premierMoisAttendu(dossier, t);
+    if (!first) return [];
     const last = addMonth(curMonth, -1);                    // le mois en cours n'est jamais attendu
-    // Une date de début de mission sans plancher fait réclamer vingt ans périmés — et le rabot de
-    // `monthsBetween` coupe par la FIN, donc les mois réellement en retard disparaissent de la liste
-    // pendant que des mois de 2006 s'affichent. On borne à cinq ans, et on le dit.
-    const plancher = addMonth(curMonth, -MAX_MOIS_ATTENDUS);
-    let first = dossier.from || got[0].month;
-    let tronque = false;
-    if (first < plancher) { first = plancher; tronque = true; }
     if (first > last) return [];
     const out = monthsBetween(first, last).map(m => {
       const p = (dossier.packs || []).find(x => x.month === m);
@@ -924,10 +937,51 @@
 
   // Le portefeuille d'un coup d'œil. C'est ce qui manquait pour qu'un comptable voie autre chose
   // qu'une liste : combien de clients, combien sont à jour, combien de chiffre d'affaires suivi.
+  // 10.12.0 (U-04) — le chiffre d'affaires d'un portefeuille, sur UN mois NOMMÉ. La carte « de CA
+  // suivi » additionnait le DERNIER mois reçu de chaque client : le mars d'un retardataire et
+  // l'août d'un client à jour, dans un seul chiffre qui ne voulait rien dire. Un agrégat porte une
+  // devise ET une période nommée (3.1.0, 7.16.0) : on prend le mois le plus récent qu'au moins un
+  // client a envoyé — jamais le mois en cours s'il en existe un clos —, on dit combien de clients
+  // il couvre, et on refuse d'additionner deux devises. `montant` vaut null quand ce n'est pas
+  // additionnable, jamais 0 (9.6.0). La carte et le pied du tableau lisent CETTE fonction (6.8.1).
+  function caDuPortefeuille(dossiers, todayIso) {
+    const dernierClos = addMonth(String(todayIso || today()).slice(0, 7), -1);
+    const parMois = new Map();
+    let sur = 0;
+    (dossiers || []).forEach(d => {
+      if (!d || d.manual) return;
+      sur++;
+      (d.packs || []).forEach(p => {
+        const brut = p && p.figures ? p.figures.ca : null;
+        const ca = Number(brut);
+        const m = String((p && p.month) || '');
+        // Un champ venu d'un paquet peut être une chaîne : additionnée telle quelle, elle se
+        // CONCATÈNE, et 42 500 DT devenaient « 0,000 DT » (défaut du pied de liste, 6.8.1).
+        if (brut == null || brut === '' || !isFinite(ca) || !/^\d{4}-\d{2}$/.test(m)) return;
+        const x = parMois.get(m) || { montant: 0, clients: new Set(), devises: new Set() };
+        x.montant += ca; x.clients.add(d.id); x.devises.add(p.figures.devise || 'DT');
+        parMois.set(m, x);
+      });
+    });
+    const mois = [...parMois.keys()].sort();
+    const clos = mois.filter(m => m <= dernierClos);
+    const choisi = (clos.length ? clos : mois).pop() || '';
+    if (!choisi) return { mois: '', montant: null, devise: '', clients: 0, sur, devises: 0 };
+    const x = parMois.get(choisi);
+    const devises = [...x.devises];
+    return {
+      mois: choisi,
+      montant: devises.length > 1 ? null : round3(x.montant),
+      devise: devises.length > 1 ? '' : devises[0],
+      clients: x.clients.size, sur, devises: devises.length
+    };
+  }
+
   function portfolio(state, todayIso) {
     const rows = dossierList(state, todayIso, { withArchived: false });
     const suivis = rows.filter(r => !r.manual);
-    const ca = suivis.reduce((s, r) => s + ((r.lastFigures && r.lastFigures.ca) || 0), 0);
+    const ids = new Set(rows.map(r => r.id));
+    const ca = caDuPortefeuille((state.dossiers || []).filter(d => ids.has(d.id)), todayIso);
     const fees = rows.reduce((s, r) => s + (r.fees || 0), 0);
     return {
       total: rows.length,
@@ -937,7 +991,7 @@
       enRetard: suivis.filter(r => r.missingCount > 0).length,
       provisoires: suivis.filter(r => r.provisionalCount > 0 && !r.missingCount).length,
       moisManquants: suivis.reduce((s, r) => s + r.missingCount, 0),
-      dernierCA: round3(ca),
+      ca,
       honoraires: round3(fees),
       paquets: rows.reduce((s, r) => s + r.packCount, 0)
     };
@@ -1715,11 +1769,11 @@
     cleEcheance, echeanceDeposee,
     migrate, migrateDossier, dossierKey, packSummary, filePack, demoDossiers, rebaserPaquet, checkIntegrity,
     exemplePerime,
-    newDossier, parseDossierLines, noteRelance, portfolio, relanceDue, relanceRows, accuseMail,
+    newDossier, parseDossierLines, noteRelance, portfolio, caDuPortefeuille, relanceDue, relanceRows, accuseMail,
     parseCsv, verdictOrigine, csvDangereux, toCsvLine, mergeEcritures, ecrituresPlan,
     DEFAULT_DEADLINES, deadlineSettings, echeances, dayOf,
     TVA_PERIODES, migrateRegime, regimes, regimeDe, periodeTva, deposeCnss,
-    dossierMonths, dossierRow, dossierList, cabinetTodo, relanceMail, pairingFile,
+    dossierMonths, debutDeMission, dossierRow, dossierList, cabinetTodo, relanceMail, pairingFile,
     INDEX_STABLES, nomIndex, releasePourIndex, releasePourIndexRelue, moisManquants,
     // Le cabinet à plusieurs (9.9.0)
     ROLES_COLLAB, RANG_ROLE, LIBELLE_ROLE, DETAIL_ROLE, ETAPES_PRODUCTION,

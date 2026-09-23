@@ -710,8 +710,19 @@ t('9.4.9 : une explication vit dans la bulle du titre, pas en prose sous le tabl
   assert.ok(!/Le bouton « Actions » de chaque ligne ouvre ce qu'on peut faire du mois/.test(app),
     'la prose sous le tableau des paquets doit avoir disparu');
   assert.ok(g.includes("'p.actions'"), 'son contenu doit vivre dans une bulle');
-  assert.ok(/<h2>Paquets reçus \$\{info\('p\.integrity'\)\}\$\{info\('p\.actions'\)\}<\/h2>/.test(app),
+  assert.ok(/<h2>Paquets reçus \$\{info\('p\.actions'\)\}<\/h2>/.test(app),
     'et cette bulle doit être posée sur le TITRE du panneau');
+  // 10.12.0 (U-25) — l'assertion d'avant exigeait DEUX bulles collées sur ce titre : elle décrivait
+  // l'état du jour. Deux « i » côte à côte se lisent comme un seul, et le second ne s'ouvre qu'en
+  // visant au pixel. Celle des pièces vérifiées vit sur SA colonne (7.0.0), et aucun titre de
+  // l'une ou l'autre application ne porte deux bulles d'affilée.
+  assert.ok(/<th[^>]*>Vérifiées \$\{info\('p\.integrity'\)\}<\/th>/.test(app),
+    'la bulle des pièces vérifiées doit vivre sur la colonne « Vérifiées »');
+  const ent = lireSource('src', 'renderer', 'app.js');
+  [['Cabinet', app], ['entreprise', ent]].forEach(([nom, src]) => {
+    const colle = /\$\{info\('[^']+'\)\}\s*\$\{info\(/.exec(src);
+    assert.ok(!colle, `${nom} : deux bulles « i » collées : ${colle && colle[0]}`);
+  });
   // Et les deux bulles qu'elle absorbe ne doivent pas rester orphelines : une entrée de guide
   // qu'aucun écran ne pose est une entrée morte, et c'est le test des bulles qui le dit.
   assert.ok(!g.includes("'p.extract'") && !g.includes("'p.delete'"),

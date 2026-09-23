@@ -43,6 +43,14 @@
     const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || ''));
     return m ? `${m[3]}/${m[2]}/${m[1]}` : String(iso || '');
   }
+  // 10.12.0 (U-28) — un mois dans une phrase se dit « juillet 2026 », jamais « 2026-07 » : c'est la
+  // même règle que fmtJour (C-04), sur la dernière forme machine qui sortait encore du moteur.
+  const MOIS_FR = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin',
+    'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+  function fmtMois(ym) {
+    const m = /^(\d{4})-(\d{2})$/.exec(String(ym || ''));
+    return m && MOIS_FR[Number(m[2]) - 1] ? `${MOIS_FR[Number(m[2]) - 1]} ${m[1]}` : String(ym || '');
+  }
 
   // La clé d'une pièce comptable. Trois champs, toujours les mêmes, partout : c'est ce qui fait
   // qu'une pièce est UNE pièce, et que ses lignes s'équilibrent entre elles.
@@ -2259,7 +2267,7 @@
     if (aPayer) lignes.push({ compte: decl.comptes.aPayer, libelle: 'À décaisser', debit: 0, credit: aPayer });
     return {
       journal: 'OD', date: decl.au, piece: 'DECL-' + decl.periode,
-      libelle: `Déclaration de ${decl.periode}`, source: 'declaration', lignes
+      libelle: `Déclaration de ${fmtMois(decl.periode)}`, source: 'declaration', lignes
     };
   }
 
@@ -2271,7 +2279,7 @@
     livre.declarations = Array.isArray(livre.declarations) ? livre.declarations : [];
     const avant = livre.declarations.find(d => d.periode === decl.periode && d.type === decl.type);
     if (avant && avant.deposee && avant.deposee.le) {
-      return { ok: false, motif: `La déclaration de ${decl.periode} est marquée déposée le ${avant.deposee.le}. Dé-pointe-la d'abord si tu veux la refaire — sinon deux chiffres différents auraient porté le même dépôt.` };
+      return { ok: false, motif: `La déclaration de ${fmtMois(decl.periode)} est marquée déposée le ${fmtJour(avant.deposee.le)}. Dé-pointe-la d'abord si tu veux la refaire — sinon deux chiffres différents auraient porté le même dépôt.` };
     }
     const obj = {
       id: avant ? avant.id : 'DECL-' + decl.periode + '-' + String(quand || 0),
@@ -2908,7 +2916,7 @@
     out.push({
       id: 'tva', ok: !sansDecl.length,
       detail: sansDecl.length
-        ? `${sansDecl.length} mois sans déclaration préparée (${sansDecl.slice(0, 4).join(', ')}${sansDecl.length > 4 ? '…' : ''}). Prépare-les dans l'onglet Déclaration.`
+        ? `${sansDecl.length} mois sans déclaration préparée (${sansDecl.slice(0, 4).map(fmtMois).join(', ')}${sansDecl.length > 4 ? '…' : ''}). Prépare-les dans l'onglet Déclaration.`
         : ''
     });
 
@@ -3258,14 +3266,29 @@
     { id: 'RE2', etat: 'resultat', label: 'Autres produits d\'exploitation', comptes: ['73', '74', '75'], signe: -1, deuxSens: true },
     { id: 'RE3', etat: 'resultat', label: 'Achats consommés', comptes: ['60'], signe: 1, charge: true, deuxSens: true },
     { id: 'RE4', etat: 'resultat', label: 'Charges externes', comptes: ['61', '62'], signe: 1, charge: true, deuxSens: true },
+    // 10.12.0 (U-03) — les charges sociales patronales (645, 647) font partie des charges de
+    // PERSONNEL : c'est le 64 entier, et la paie du cabinet les y écrit. RE6 et RE11 portaient des
+    // NOMS que le plan de cette même application dément : RE6 « Charges sociales » lisait le 65,
+    // que le plan appelle « Charges financières » (un intérêt d'emprunt y devenait une charge
+    // sociale) ; RE11 « Charges financières » lisait le 69, que le plan appelle « Impôt sur les
+    // bénéfices ». Les comptes ne bougent pas, les noms suivent le plan, et l'ordre suit la lecture
+    // d'un état de résultat : le financier après l'exploitation, l'impôt en dernier.
     { id: 'RE5', etat: 'resultat', label: 'Charges de personnel', comptes: ['64'], signe: 1, charge: true, deuxSens: true },
-    { id: 'RE6', etat: 'resultat', label: 'Charges sociales', comptes: ['65'], signe: 1, charge: true, deuxSens: true },
     { id: 'RE7', etat: 'resultat', label: 'Impôts et taxes', comptes: ['66'], signe: 1, charge: true, deuxSens: true },
     { id: 'RE8', etat: 'resultat', label: 'Dotations aux amortissements et provisions', comptes: ['68'], signe: 1, charge: true, deuxSens: true },
     { id: 'RE9', etat: 'resultat', label: 'Autres charges', comptes: ['63', '67'], signe: 1, charge: true, deuxSens: true },
     { id: 'RE10', etat: 'resultat', label: 'Produits financiers', comptes: ['76', '77', '78', '79'], signe: -1, deuxSens: true },
-    { id: 'RE11', etat: 'resultat', label: 'Charges financières', comptes: ['69'], signe: 1, charge: true, deuxSens: true }
+    { id: 'RE6', etat: 'resultat', label: 'Charges financières', comptes: ['65'], signe: 1, charge: true, deuxSens: true },
+    { id: 'RE11', etat: 'resultat', label: 'Impôt sur les bénéfices', comptes: ['69'], signe: 1, charge: true, deuxSens: true }
   ];
+
+  // Les deux NOMS livrés jusqu'à la 10.11.0, que le plan de l'application dément (voir RE6).
+  // Une copie du cabinet qui porte encore l'un d'eux sur les MÊMES comptes est renommée ; une
+  // rubrique que le cabinet a renommée lui-même est la sienne, et reste telle quelle.
+  const NOMS_10_11_0 = {
+    RE6: { label: 'Charges sociales', comptes: ['65'] },
+    RE11: { label: 'Charges financières', comptes: ['69'] }
+  };
 
   // 10.10.0 (C-08) — les trois rubriques de la 10.0.0 qui laissaient des comptes DEHORS, telles
   // qu'elles étaient livrées. Un cabinet qui a ouvert le modèle et cliqué « Enregistrer » sans rien
@@ -3284,7 +3307,13 @@
     if (!Array.isArray(table) || !table.length) return table;
     const livre = new Map(MODELE_LIASSE.map(r => [r.id, r]));
     const meme = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-    return table.map(r => {
+    const renommer = r => {
+      const v = r && NOMS_10_11_0[r.id];
+      return v && r.label === v.label && meme(r.comptes || [], v.comptes)
+        ? { ...r, label: livre.get(r.id).label } : r;
+    };
+    return table.map(r0 => {
+      const r = renommer(r0);
       const neuf = livre.get(r && r.id);
       if (!neuf) return r;
       const vieux = LIASSE_10_0_0[r.id]
@@ -3435,9 +3464,17 @@
       .reduce((s, r) => s + r.debit - r.credit, 0));
     const credit = pref => round3(bal.rows.filter(r => String(r.account).startsWith(pref))
       .reduce((s, r) => s + r.credit - r.debit, 0));
+    // 10.12.0 (U-03) — les charges patronales se lisent là où la paie les ÉCRIT (645, et 647 que le
+    // plan nomme « charges sociales légales »), jamais dans le 65 que le plan appelle « charges
+    // financières ». Et les salaires sont le 64 MOINS ces charges : lire le 64 entier comptait les
+    // charges sociales deux fois, une fois dans chaque case.
+    const comptesCharges = (Array.isArray(o.comptesCharges) && o.comptesCharges.length
+      ? o.comptesCharges : [COMPTES_PAIE.chargesPatronales, '647']).map(txt);
+    const charges = round3(comptesCharges.reduce((s, c) => s + masse(c), 0));
     const cases = [
-      { id: 'salaires', label: 'Salaires et traitements versés', montant: masse('64'), comptes: ['64'] },
-      { id: 'charges', label: 'Charges sociales patronales', montant: masse('65'), comptes: ['65'] },
+      { id: 'salaires', label: 'Salaires et traitements versés', montant: round3(masse('64') - charges),
+        comptes: [`64 hors ${comptesCharges.join(', ')}`] },
+      { id: 'charges', label: 'Charges sociales patronales', montant: charges, comptes: comptesCharges },
       { id: 'irpp', label: 'Retenues à la source sur salaires', montant: credit(txt(o.compteIrpp) || '4321'), comptes: [txt(o.compteIrpp) || '4321'] },
       { id: 'rsFournisseurs', label: 'Retenues à la source sur fournisseurs', montant: credit(txt(o.compteRs) || '4322'), comptes: [txt(o.compteRs) || '4322'] }
     ].map(c => c.montant ? c : { ...c, montant: null, raison: `Aucun mouvement sur ${c.comptes.join(', ')} dans cet exercice.` });
@@ -4700,7 +4737,7 @@
     return out;
   }
   return {
-    round3, fmtMontant, fmtJour, cleDePiece, csvDangereux, nombreDepuisCsv, dateDepuisCsv,
+    round3, fmtMontant, fmtJour, fmtMois, cleDePiece, csvDangereux, nombreDepuisCsv, dateDepuisCsv,
     ecritureValide, entreesDepuisCsv,
     entriesBalance, entriesByAccount,
     balanceDepuisLignes, grandLivreDepuisLignes, balanceAuxiliaireDepuisLignes, collectifsDeTiers, COMPTES_TIERS,

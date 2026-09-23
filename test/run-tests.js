@@ -5600,7 +5600,11 @@ t('cabinet : le portefeuille se compte, hors SkanFact compris', () => {
   assert.strictEqual(p.horsSkanfact, 1);
   assert.strictEqual(p.aJour, 1);
   assert.strictEqual(p.enRetard, 1);
-  assert.strictEqual(p.dernierCA, 14000);
+  // 10.12.0 (U-04) — l'assertion d'avant exigeait 14 000 : août du client à jour PLUS mai du
+  // retardataire, dans un seul chiffre sans période. Elle décrivait le défaut. La règle : le CA
+  // d'UN mois nommé, et combien de clients il couvre.
+  assert.strictEqual(p.dernierCA, undefined, 'plus aucune somme de mois différents ne sort du portefeuille');
+  assert.deepStrictEqual(p.ca, { mois: '2026-08', montant: 10000, devise: 'DT', clients: 1, sur: 2, devises: 1 });
   assert.strictEqual(p.honoraires, 730);
   // « tout est à jour » ne doit jamais s'afficher à un cabinet dont personne n'envoie rien.
   const vide = cab.migrate({ dossiers: [{ id: 'x', name: 'Pas encore', manual: true, packs: [] }] });
@@ -14276,6 +14280,7 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
   require('./suites/avoir-fournisseur.js')({ t, assert, lireSource });
   require('./suites/paie-cabinet.js')({ t, assert, lireSource });
   require('./suites/qa-cabinet.js')({ t, assert, lireSource });
+  require('./suites/audit-ux-cabinet.js')({ t, assert, lireSource });
   // Celle-ci reçoit `ta` en plus : elle interroge le vrai worker sur une vraie base SQLite.
   await require('./suites/plateforme-gestion.js')({ t, ta, assert, lireSource });
   await require('./suites/paiement.js')({ ta, assert });

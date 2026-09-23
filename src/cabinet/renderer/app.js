@@ -1338,44 +1338,67 @@
     // Le portefeuille EST le produit ; il ne se mérite pas au défilement. Les mêmes quatre chiffres
     // tiennent sur une rangée de 72 px — et deux d'entre eux NOMMENT un ensemble, donc ils
     // l'ouvrent (règle 7.15.0) : « à jour » et « mois manquants » mènent là où on agit.
-    const item = (cle, lbl, val, sub, ton) => `<${cle ? 'button type="button"' : 'div'} class="stat${cle ? ' ouvre' : ''}"${cle ? ` data-pf="${cle}"` : ''}>
+    // 10.12.0 (U-25) — les QUATRE chiffres ouvrent quelque chose : deux cartes sur quatre portaient
+    // un chevron, et les deux autres ressemblaient aux premières sans rien faire. Une carte qui a
+    // l'air d'un bouton et n'en est pas un fait douter de celles qui le sont (7.15.0).
+    const item = (cle, lbl, val, sub, ton, titre) => `<button type="button" class="stat ouvre" data-pf="${cle}" title="${esc(titre)}">
       <span class="pf-l"><b class="val${ton ? ' ' + ton : ''}">${val}</b> <span class="lbl">${lbl}</span></span>
-      <span class="sub">${sub}</span></${cle ? 'button' : 'div'}>`;
+      <span class="sub">${sub}</span></button>`;
+    // 10.12.0 (U-04) — un mois NOMMÉ, et le nombre de clients qu'il couvre (`caDuPortefeuille`).
+    const ca = p.ca || {};
+    const caVal = !ca.mois ? '—' : ca.montant == null ? esc(pl(ca.devises, 'devise')) : esc(money(ca.montant, ca.devise));
+    const caSub = !ca.mois ? 'aucun paquet ne porte de chiffres'
+      : [ca.montant == null ? 'pas de total entre deux devises' : '',
+        `${pl(ca.clients, 'client')} sur ${ca.sur}`,
+        p.honoraires ? 'honoraires ' + esc(money(p.honoraires)) + ' / mois' : ''].filter(Boolean).join(' · ');
     return `<div class="stats rangee">
-      ${item('', 'clients suivis', p.total,
-    `${p.surSkanfact} sur SkanFact${p.horsSkanfact ? ` · ${p.horsSkanfact} pas encore` : ''}`)}
-      ${item('ajour', `à jour sur ${p.surSkanfact || 0}`, p.aJour,
-    `${p.enRetard ? `${p.enRetard} en retard` : 'aucun retard'}${p.provisoires ? ` · ${p.provisoires} en provisoire` : ''}`,
-    p.enRetard ? '' : 'ok')}
+      ${item('tous', 'clients suivis', p.total,
+    `${p.surSkanfact} sur SkanFact${p.horsSkanfact ? ` · ${p.horsSkanfact} pas encore` : ''}`, '',
+    'Voir tous tes clients, par ordre alphabétique')}
+      ${item('ajour', 'à jour', p.aJour,
+    `${p.surSkanfact > 1 ? `sur ${p.surSkanfact} clients SkanFact` : `sur ${p.surSkanfact || 0} client SkanFact`}${p.enRetard ? ` · ${p.enRetard} en retard` : ''}${p.provisoires ? ` · ${p.provisoires} en provisoire` : ''}`,
+    p.enRetard ? '' : 'ok', 'Voir tes clients SkanFact, les plus urgents d\'abord')}
       ${item('manquants', 'mois manquants', p.moisManquants,
     p.paquets ? pl(p.paquets, 'paquet') + ' reçu' + (p.paquets > 1 ? 's' : '') : 'aucun paquet reçu',
-    p.moisManquants ? 'due' : 'ok')}
-      ${item('', 'de CA suivi', esc(money(p.dernierCA)),
-    p.honoraires ? 'Honoraires : ' + esc(money(p.honoraires)) + ' / mois' : 'somme des derniers mois reçus')}
+    p.moisManquants ? 'due' : 'ok', 'Voir qui doit envoyer, et le relancer')}
+      ${item('ca', ca.mois ? `de CA en ${esc(K.monthLabel(ca.mois))}` : 'de CA', caVal, caSub, '',
+    'Classer tes clients par chiffre d\'affaires')}
     </div>`;
   }
-  // Les deux chiffres qui nomment un ensemble l'ouvrent. « À jour » n'a pas de page à lui : il pose
-  // le filtre qui montre les clients concernés, sur la liste qu'on a déjà sous les yeux.
+  // Chaque chiffre ouvre l'ensemble qu'il nomme. « À jour », « clients suivis » et le chiffre
+  // d'affaires n'ont pas de page à eux : ils posent le filtre ou le tri qui les montre, sur la liste
+  // qu'on a déjà sous les yeux. Une TABLE, comme `TODO_ACTIONS` : une carte ajoutée sans sa ligne
+  // ici tombe au test de couverture au lieu de devenir un bouton qui avale le clic (7.0.0).
+  const CARTES_PORTEFEUILLE = {
+    tous: { onlySkanfact: false, sort: 'nom' },
+    ajour: { onlySkanfact: true, sort: 'urgence' },
+    ca: { onlySkanfact: true, sort: 'ca' }
+  };
   function bindPortfolio(root) {
     $$('[data-pf]', root || document).forEach(b => {
       b.onclick = () => {
-        if (b.dataset.pf === 'manquants') { location.hash = '#/relances'; return; }
-        listState.q = ''; listState.withArchived = false; listState.onlySkanfact = true;
-        listState.sort = 'urgence'; listState.desc = false; listState.page = 1;
+        const cle = b.dataset.pf;
+        if (cle === 'manquants') { location.hash = '#/relances'; return; }
+        const v = CARTES_PORTEFEUILLE[cle];
+        if (!v) { toast('Ce chiffre n\'a pas encore d\'écran à ouvrir.', 'error'); return; }
+        listState.q = ''; listState.withArchived = false; listState.page = 1;
+        listState.onlySkanfact = v.onlySkanfact; listState.sort = v.sort; listState.desc = false;
         render();
       };
     });
   }
 
-  // Le total du pied de liste additionnait un champ venu du paquet SANS le convertir : une chaîne le
-  // faisait se concaténer, et 42 500 DT s'affichaient « 0,000 DT ». Il additionnait aussi des devises
-  // différentes sans le dire. On additionne ce qui est comparable, et on refuse le reste.
+  // Le pied de la colonne « CA du dernier mois ». Il additionnait le dernier mois de CHAQUE client —
+  // mars de l'un, août de l'autre — et le pied d'une colonne est lu comme sa somme (9.8.8) : il
+  // porte donc le total d'UN mois nommé, le même que la carte du dessus (`caDuPortefeuille`, 6.8.1),
+  // et dit combien de clients l'ont envoyé. Il rend du HTML : chaque morceau est échappé ici.
   function totalCA(rows) {
-    const avec = rows.filter(r => r.lastFigures && isFinite(Number(r.lastFigures.ca)));
-    if (!avec.length) return '—';
-    const devises = [...new Set(avec.map(r => r.lastFigures.devise || 'DT'))];
-    if (devises.length > 1) return devises.length + ' devises';
-    return money(avec.reduce((s, r) => s + Number(r.lastFigures.ca), 0), devises[0]);
+    const ids = new Set(rows.map(r => r.id));
+    const ca = K.caDuPortefeuille((S.dossiers || []).filter(d => ids.has(d.id)));
+    if (!ca.mois) return '—';
+    const quand = `en ${esc(K.monthLabel(ca.mois))}${ca.clients < ca.sur ? ` · ${esc(`${ca.clients} sur ${ca.sur}`)}` : ''}`;
+    if (ca.montant == null) return `<strong>${esc(pl(ca.devises, 'devise'))}</strong><div class="small muted nw">pas de total ${quand}</div>`;
+    return `<strong>${esc(money(ca.montant, ca.devise))}</strong><div class="small muted nw">${quand}</div>`;
   }
 
   const CSV_COLS = [
@@ -1387,7 +1410,7 @@
     { label: 'Sur SkanFact', get: r => r.manual ? 'non' : 'oui' },
     { label: 'Dernier mois reçu', get: r => r.lastLabel },
     { label: 'Définitif', get: r => r.lastMonth ? (r.lastDefinitive ? 'oui' : 'non') : '' },
-    { label: 'Chiffre d\'affaires', get: r => r.lastFigures ? String(r.lastFigures.ca).replace('.', ',') : '' },
+    { label: 'CA du dernier mois reçu', get: r => r.lastFigures ? String(r.lastFigures.ca).replace('.', ',') : '' },
     { label: 'Mois manquants', get: r => r.missingCount },
     { label: 'Provisoires', get: r => r.provisionalCount },
     { label: 'Points signalés', get: r => r.issues },
@@ -1475,7 +1498,7 @@
       </div>
       ${rows.length ? `<div class="scroll-x"><table class="list sortable">
         <thead><tr>${sortHead('Client', 'nom')}${sortHead('Dernier mois reçu', 'dernier')}
-        <th class="r nw">Chiffre d'affaires</th>${sortHead('Mois manquants', 'manquants', null, true)}
+        ${sortHead('CA du dernier mois', 'ca', null, true)}${sortHead('Mois manquants', 'manquants', null, true)}
         ${col.provisoires ? '<th class="r nw">Provisoires</th>' : ''}${col.signale ? '<th class="r nw">Signalé</th>' : ''}
         ${col.relance ? sortHead('Relancé le', 'relance', 'r.history') : ''}${sortHead('Reçu le', 'recu')}<th></th></tr></thead>
         <tbody>${shown.map(r => `<tr class="clickable" data-id="${esc(r.id)}">
@@ -1489,7 +1512,7 @@
           <td class="muted nw">${esc(fmtWhen(r.lastAt))}</td>
           ${RowMenu.cellule('D:' + r.id, '')}</tr>`).join('')}</tbody>
         <tfoot><tr><td class="nw"><strong>${pl(rows.length, 'dossier')}</strong></td><td></td>
-          <td class="r nw"><strong>${esc(totalCA(rows))}</strong></td>
+          <td class="r nw">${totalCA(rows)}</td>
           <td class="r"><strong>${rows.reduce((s, r) => s + r.missingCount, 0) || '—'}</strong></td>
           ${col.provisoires ? `<td class="r"><strong>${rows.reduce((s, r) => s + r.provisionalCount, 0) || '—'}</strong></td>` : ''}
           ${col.signale ? `<td class="r"><strong>${rows.reduce((s, r) => s + r.issues, 0) || '—'}</strong></td>` : ''}
@@ -1652,7 +1675,11 @@
     // L'exercice choisi ne suit pas d'un client à l'autre : sans ce garde-fou, passer d'un dossier
     // qui a 2025 à un dossier qui n'a que 2026 afficherait un graphique vide sans raison visible.
     const anneeVue = years.includes(ficheYear) ? ficheYear : years[0];
-    const totalCA = packs.reduce((s, p) => s + ((p.figures && p.figures.ca) || 0), 0);
+    // Un chiffre venu d'un paquet peut être une chaîne : additionné tel quel, il se CONCATÈNE (6.8.1).
+    // Et ce total ne s'appelle plus `totalCA` : une constante locale qui porte le nom d'une fonction
+    // du module la MASQUE dans tout le corps (10.8.0).
+    const caDe = p => { const n = Number(p.figures && p.figures.ca); return isFinite(n) ? n : 0; };
+    const caTousMois = packs.reduce((s, p) => s + caDe(p), 0);
     // L'onglet : celui de l'adresse s'il en porte un ; sinon celui où l'on était sur CE dossier ;
     // sinon Suivi, l'écran du quotidien.
     const onglet = ONGLETS_DOSSIER.includes(ongletDemande) ? ongletDemande : (ficheDossierId === dossier.id ? ficheOnglet : 'suivi');
@@ -1660,13 +1687,23 @@
     const versOnglet = o => { location.hash = '#/dossier/' + encodeURIComponent(dossier.id) + '/' + o; };
     // L'état du dossier en une phrase : ce qu'un comptable veut savoir avant tout le reste.
     const dernierRecu = packs.reduce((m, p) => Math.max(m, p.receivedAt || 0), 0);
-    const caAnnee = packs.filter(p => p.month.slice(0, 4) === anneeVue).reduce((s, p) => s + ((p.figures && p.figures.ca) || 0), 0);
+    const packsAnnee = packs.filter(p => p.month.slice(0, 4) === anneeVue);
+    const caAnnee = packsAnnee.reduce((s, p) => s + caDe(p), 0);
+    // 10.12.0 (U-25) — « CA 2026 » sur huit mois reçus se lisait comme le CA de l'année entière.
+    // La période se NOMME : les mois qu'il additionne vraiment, du premier au dernier reçu.
+    const moisAnnee = packsAnnee.map(p => p.month).sort();
+    const periodeCA = moisAnnee.length > 1
+      ? `${MOIS_COURTS[Number(moisAnnee[0].slice(5, 7)) - 1]}–${MOIS_COURTS[Number(moisAnnee[moisAnnee.length - 1].slice(5, 7)) - 1]} ${anneeVue}`
+      : moisAnnee.length ? K.monthLabel(moisAnnee[0]) : anneeVue;
     const etat = [
       packs.length ? pl(packs.length, 'mois reçu', 'mois reçus') : (dossier.manual ? 'pas encore sur SkanFact' : 'aucun paquet reçu pour l\'instant'),
       row.missingCount ? `<span class="warn-text">${pl(row.missingCount, 'manquant')}</span>` : '',
       row.provisionalCount ? `<span class="warn-text">${pl(row.provisionalCount, 'provisoire')}</span>` : '',
       dernierRecu ? 'dernier paquet le ' + esc(fmtDay(dernierRecu)) : '',
-      packs.length && anneeVue ? `CA ${esc(anneeVue)} : <strong>${esc(money(caAnnee))}</strong>` : ''
+      packs.length && anneeVue ? `CA ${esc(periodeCA)} : <strong>${esc(money(caAnnee))}</strong>` : '',
+      // Les points signalés dans ses paquets (achats sans justificatif, brouillons…) : la colonne
+      // « Signalé » de la liste les comptait, la fiche ne les nommait nulle part avant l'onglet Paquets.
+      row.issues ? `<button type="button" class="lien-manque" data-vers="paquets">${esc(pl(row.issues, 'point signalé', 'points signalés'))}</button>` : ''
     ].filter(Boolean).join(' · ');
     // L'identité, compacte, sans tiret : ce qui n'est pas renseigné ne prend pas de place — sauf
     // l'email et le téléphone, qui servent à relancer.
@@ -1772,7 +1809,10 @@
           <td>${esc((r.months || []).map(K.monthLabel).join(', ') || '—')}</td>
           <td class="muted">${esc(r.note || '')}</td></tr>`).join('')}</tbody></table>`
         : `<div class="empty mini">Aucune relance enregistrée pour ce client.<br>
-          <span class="small">Le bouton « Relancer », en haut, écrit le message et l'enregistre ici. Un appel ou un message
+          <span class="small">${/* 10.12.0 (U-22) — la phrase suit la condition du bouton : sur un client à
+                jour, « Relancer » n'existe pas, et l'écran renvoyait vers un bouton absent (7.3.0). */''}${row.missingCount || row.provisionalCount
+    ? 'Le bouton « Relancer », en haut, écrit le message et l\'enregistre ici. '
+    : 'Ce client est à jour : il n\'y a rien à lui réclamer. '}Un appel ou un message
           passé ailleurs se note à la main.</span></div>`}
         ${/* Un état vide qui explique le geste en prose n'est pas une interface (7.0.0) : le bouton
               vit DANS le panneau, et il en a l'air. */''}
@@ -1820,10 +1860,13 @@
         ${caChart(packs, anneeVue) || '<div class="empty mini">Les paquets de cette année ne portent pas de chiffres (fabriqués avant la 6.2.1).</div>'}
       </div>` : ''}
 
-      <div class="panel"><h2>Paquets reçus ${info('p.integrity')}${info('p.actions')}</h2>
+      ${/* 10.12.0 (U-25) — deux bulles côte à côte sur le même titre se lisaient comme une seule, et
+            la seconde ne s'ouvrait qu'en visant au pixel. Celle qui explique « Vérifiées » vit sur
+            SA colonne : un en-tête de colonne peut porter une bulle (7.0.0). */''}
+      <div class="panel"><h2>Paquets reçus ${info('p.actions')}</h2>
       ${packs.length ? `<div class="scroll-x"><table class="list compact">
         <thead><tr><th class="nw">Mois</th><th>État</th><th class="r nw">Chiffre d'affaires</th><th class="r nw">TVA à décaisser</th>
-        <th class="r">Vérifiées</th><th class="r">Signalé</th><th class="nw">Reçu le</th><th class="nw">Fabriqué le</th><th></th></tr></thead>
+        <th class="r nw">Vérifiées ${info('p.integrity')}</th><th class="r">Signalé</th><th class="nw">Reçu le</th><th class="nw">Fabriqué le</th><th></th></tr></thead>
         <tbody>${packs.map(p => `<tr>
           <td class="nw">${esc(p.label)}</td>
           <td>${p.definitive ? '<span class="badge accepté">définitif</span>' : '<span class="badge partielle">provisoire</span>'}</td>
@@ -1840,7 +1883,7 @@
           <td class="muted nw" title="${esc('Poids du fichier : ' + fmtBytes(p.bytes))}">${esc(p.generatedAt ? fmtWhen(Date.parse(p.generatedAt)) : '—')}</td>
           ${p.path ? rowMenuCell(p.month) : '<td class="row-actions"><span class="muted small">exemple</span></td>'}</tr>`).join('')}</tbody>
         <tfoot><tr><td class="nw"><strong>${pl(packs.length, 'mois', 'mois')}</strong></td><td></td>
-          <td class="r nw"><strong>${esc(money(totalCA))}</strong></td><td colspan="6"></td></tr></tfoot></table></div>
+          <td class="r nw"><strong>${esc(money(caTousMois))}</strong></td><td colspan="6"></td></tr></tfoot></table></div>
         `
         : '<div class="empty mini">Aucun paquet reçu.</div>'}
       </div>
@@ -2082,9 +2125,14 @@
 
   // Les lignes de la période, analysées par compta.js. On garde la provenance (le mois et le
   // chemin du paquet) sur chaque ligne : c'est elle qui permet d'ouvrir la pièce dans son paquet.
-  function lignesDeLaPeriode() {
+  function lignesDeLaPeriode(dossier) {
     const s = livresState;
     if (!s.data || s.data.erreur) return { lignes: [], illisibles: [], anciens: [], manquants: [], pris: [] };
+    // 10.12.0 (U-05) — un mois AVANT le début de mission n'est pas un manque : la fiche le dit
+    // « hors mission » un onglet plus loin, et c'est la même fonction qui décide des deux côtés.
+    // Sans elle, un client repris en juillet voyait « Il manque 6 mois » sur toute sa comptabilité.
+    const mission = K.debutDeMission(dossier);
+    const plusTard = (a, b) => (a && b ? (a > b ? a : b) : a || b);
     // Le LIVRE fait foi dès qu'il existe : c'est lui que le comptable tient, avec ses validations,
     // ses saisies et ses lettrages. Les paquets ne sont plus que la matière première.
     if (s.livre) {
@@ -2110,7 +2158,7 @@
       let manquants = [];
       if (toutes.length && jour(du) && jour(au)) {
         const debutEx = String((s.livre.exercice || {}).du || '').slice(0, 7);
-        manquants = K.moisManquants(toutes.map(l => l.date), debutEx && debutEx > du ? debutEx : du, au);
+        manquants = K.moisManquants(toutes.map(l => l.date), plusTard(plusTard(du, debutEx), mission), au);
       }
       return { source: 'livre', lignes, avant, ouverture, du: duJ, au: auJ, illisibles: [], anciens: [], manquants, pris: [] };
     }
@@ -2131,7 +2179,7 @@
     // est un livre faux (règle « avant d'écrire une phrase rassurante, vérifier l'univers »).
     // Jamais le mois en cours ni l'avenir : sans cette borne, un exercice lu en septembre annonçait
     // neuf mois manquants sur douze, dont quatre qui n'étaient pas encore arrivés (T-47).
-    const manquants = K.moisManquants(pris.map(p => p.month), du, au);
+    const manquants = K.moisManquants(pris.map(p => p.month), plusTard(du, mission), au);
     return { source: 'paquets', lignes, avant: [], ouverture: null, du: '', au: '', illisibles, anciens, manquants, pris };
   }
 
@@ -2368,7 +2416,7 @@
            Les tableaux ci-dessous sont lus dans les paquets reçus. Tes sauvegardes sont dans les Réglages.</div>`
         : '';
 
-    const periode = lignesDeLaPeriode();
+    const periode = lignesDeLaPeriode(dossier);
     const { lignes, illisibles, anciens, manquants, source } = periode;
     // Les vues et l'export lisent la MÊME période (lignes, ouverture, bornes) : recalculée dans
     // chacune, elle finirait par diverger (7.29.0).
@@ -2940,6 +2988,7 @@
     const echecs = (d.controles || []).filter(c => !c.ok);
     const e = d.etats;
     const money0 = n => esc(money(n));
+    const nomAN = nomDeCompte();
     // Un livre SANS à-nouveaux (T-23) : aucune balance d'ouverture reprise ET des capitaux propres
     // à zéro. Une pièce d'à-nouveau venue du client ou de « Ouvrir N+1 » porte ses capitaux dans
     // les lignes : elle suffit, et le vert reste légitime.
@@ -3046,8 +3095,10 @@
       un exercice qui bouge encore change son report.</p>
       <div class="scroll-x"><table class="list compact"><thead><tr><th class="nw">Compte</th><th>Intitulé</th>
         <th class="r nw">Débit</th><th class="r nw">Crédit</th></tr></thead>
-      <tbody>${d.anouveaux.lignes.map(l => `<tr><td class="nw">${esc(l.compte)}</td>
-        <td class="tronq" title="${esc(l.libelle)}">${esc(l.libelle)}</td>
+      <tbody>${/* 10.12.0 (U-15) — la colonne « Intitulé » lisait le libellé de la LIGNE, vide sur tous
+            les comptes sauf le 13 : c'est le tableau qu'on relit avant de reporter un bilan, et il ne
+            disait pas ce qu'était le 4531. Le nom du compte, par le résolveur unique (9.8.7). */''}${d.anouveaux.lignes.map(l => `<tr><td class="nw">${esc(l.compte)}</td>
+        <td class="tronq" title="${esc(nomAN(l.compte, l.libelle))}">${esc(nomAN(l.compte, l.libelle))}</td>
         <td class="r nw">${l.debit ? money0(l.debit) : ''}</td><td class="r nw">${l.credit ? money0(l.credit) : ''}</td></tr>`).join('')}</tbody>
       <tfoot><tr><th colspan="2">${esc(pl(d.anouveaux.lignes.length, 'ligne'))}</th>
         <th class="r nw">${money0(d.anouveaux.debit)}</th><th class="r nw">${money0(d.anouveaux.credit)}</th></tr></tfoot></table></div>
