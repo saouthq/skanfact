@@ -117,6 +117,71 @@ même façon, ce qui en a fait trouver une trentaine d'autres. Tout est ici.
   une rangée, et la liste remonte d'autant.
 - La fenêtre porte le titre de la page : « Nouveau devis », « Nouvelle facture d'achat », la fiche
   d'un fournisseur — plus « Nouveau document » ni « SkanFact » tout court.
+- **Émettre une facture passait par une question générique** (« Émettre FAC-2026-001 ? ») dans une
+  fenêtre qui cachait le document : on confirmait le geste le plus définitif de l'application sans
+  pouvoir relire à qui, ni combien. La fenêtre récapitule le client, la date, l'échéance et le net à
+  payer ; pour un avoir, la facture qu'il corrige — et, si elle est déjà payée, **ce que l'avoir laisse
+  à rendre au client**, avant de l'émettre plutôt qu'après. Si personne ne l'a payée, un avoir plus
+  gros que ce qu'il reste à corriger ne se dit pas « à rendre » : la fenêtre dit de combien il la
+  dépasse, parce que c'est presque toujours une faute de montant.
+- **Une facture que ses avoirs annulent en entier proposait encore « Corriger par un avoir… »** en
+  bouton principal — c'est-à-dire un avoir de trop. Le bandeau dit qu'il n'y a plus rien à corriger.
+- **Un trop-perçu s'affichait « Reste à payer 0,000 DT » en vert** : un avoir émis après le paiement
+  laisse de l'argent au client, et c'était écrit en petit gris sous un zéro rassurant. La carte dit
+  « Trop-perçu », en couleur d'alerte, et ce qu'on en fait : le rendre, ou le déduire de sa prochaine
+  facture.
+- **Une facture payée en entier se disait « déjà payée en partie »**, et une facture payée à moitié
+  « soldée » dans la bulle du même bandeau. Trois raisons, trois phrases : payée en partie, payée en
+  entier, corrigée par un avoir.
+- **Un paiement se corrige et se supprime par un menu nommé**, plus par « ✎ » et « ✕ » : la suppression
+  nomme le montant et la date. Sur un mois clôturé, le refus arrive avant la question — et il se lisait
+  « Ce paiement ne peut pas être supprimé porte la date du… ».
+- **Un règlement fournisseur se corrige** (il n'avait que « ✕ » : un compte mal choisi se rattrapait en
+  supprimant pour ressaisir), et sa fenêtre annonçait en dinars le reste d'un achat en euros.
+- **Sur une facture émise, les champs de texte gardaient l'air modifiables** — fond blanc, texte foncé —
+  pendant que les listes voisines se grisaient. Tous les champs fermés se grisent.
+- La question du comptable et la clé d'une licence s'affichaient sans leur encadré, les notes d'un
+  contrat récurrent tenaient dans un tiers de la fenêtre, et l'option « Grand livre, balance, états
+  financiers » se lisait comme un module de plus : cinq présentations que l'application demandait et
+  que sa feuille de style ne connaissait pas. La fenêtre d'un contrat s'élargit pour ses lignes (la
+  désignation avait 135 px).
+- « Timbre fiscal (1,000 DT) » s'écrivait en quatre morceaux sur deux lignes, la parenthèse seule sous
+  le mot ; les statuts d'une liste déroulante commencent par une majuscule ; et le bouton retour d'une
+  facture tirée d'un devis dit « ← Devis DEV-2026-006 », plus « ← le document ».
+- **Une liste vide montrait deux boutons verts pour le même geste** — « + Nouveau client » en haut,
+  « + Ajouter mon premier client » juste en dessous — sur huit pages, dont les Licences de l'éditeur.
+  Tant que la liste est vide, seul le bouton de l'état vide est vert.
+- **Cliquer « Facturation récurrente » faisait sauter la barre latérale** : l'entrée active passait en
+  gras, donc à la ligne, et tout le menu en dessous descendait de 14 px sous le curseur. L'entrée
+  active se reconnaît à son fond et à sa couleur, et ne change plus de place — dans les deux
+  applications.
+- **Choisir le client d'une facture neuve faisait descendre tout le formulaire de 40 px** : le repère
+  « non enregistré » apparaissait à côté du titre, l'en-tête s'élargissait et passait sur deux
+  rangées — le clic suivant, visé sur « Objet », tombait à côté. Et « Enregistrer le brouillon »
+  passait au vert à côté d'« Émettre la facture ». Le repère se lit désormais sous l'en-tête, sans
+  rien pousser (« Modifications non enregistrées »), et « Émettre » reste le seul vert : émettre
+  enregistre aussi.
+- **Taper une désignation que le catalogue ne connaît pas posait « + Créer … au catalogue » exactement
+  sur la quantité et le prix** : le clic suivant ouvrait une fiche de prestation au lieu du prix. La
+  proposition de créer n'apparaît plus seule que si on la demande — flèche du bas, ou « Choisir
+  l'article… » d'un avertissement ; elle reste en bout de liste quand des articles correspondent.
+- **Un achat qu'on venait d'enregistrer gardait « Enregistrer » en vert**, et son panneau des règlements
+  en posait un second : deux verts, dont aucun n'était l'étape suivante. Le règlement l'est ;
+  « Enregistrer » redevient le seul vert dès qu'on modifie la pièce — la règle des devis et des
+  factures, qui n'avait jamais été portée aux achats.
+- La liste des fournisseurs (ou des clients) d'une entreprise neuve disait « Aucun résultat » sous un
+  champ où l'on n'avait rien tapé : elle dit « Aucun fournisseur pour l'instant ».
+- **Une facture neuve imprimait deux délais qui se contredisent** : « À régler avant le 23/10/2026 »
+  en tête, et « Paiement par virement bancaire à réception de la facture » dans son bloc de
+  règlement. C'était la phrase par défaut de SkanFact, sur une facture à trente jours. Le défaut ne
+  dit plus que le moyen de paiement ; une phrase restée ainsi n'est jamais réécrite — elle se règle
+  dans Paramètres → Mon entreprise — mais l'émission la montre dans son récapitulatif, avant de
+  signer.
+- **Sur la fiche d'un client, le pied du tableau des documents additionnait le devis avec sa
+  facture** : « 1 520,440 DT » en net à payer, le devis déjà facturé compté deux fois. Quand la liste
+  mêle des devis aux factures, le pied ne totalise que les factures et les avoirs, et le dit.
+- « Paramètres » et « Aide », allumés dans le pied de la barre latérale, passaient encore en gras :
+  ils suivent la règle du menu.
 
 **La console de l'éditeur**
 - **Le Journal écrivait « commande.creee »** en chasse fixe : les cinq événements de la vente en ligne

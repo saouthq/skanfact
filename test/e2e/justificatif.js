@@ -119,6 +119,23 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
     doit(/facture-fournisseur\.jpg/.test(await win.textContent('#attachments')), 'et la fiche l\'affiche après enregistrement');
     j.ok('la pièce enregistrée porte le justificatif, sur le disque et à l\'écran');
 
+    // 10.12.0 (H-E21) — un achat qu'on vient d'enregistrer a UN bouton principal, le règlement.
+    // « Enregistrer » y restait vert sur une pièce inchangée, et le panneau des règlements posait un
+    // second vert : deux principaux, dont aucun n'était l'étape suivante (vu au test humain).
+    j.etape('Un achat enregistré : un seul vert, le règlement ; modifié, « Enregistrer » le reprend');
+    const vertsAchat = () => win.evaluate(() => [...document.querySelectorAll('#view .btn-primary')].filter(b => b.offsetParent).map(b => b.id || b.textContent.trim()));
+    const v1 = await vertsAchat();
+    doit(v1.join() === 'pay', 'achat enregistré, boutons principaux : ' + JSON.stringify(v1) + ' — le règlement doit être le seul');
+    await win.fill('#b-head input[name=subject]', 'Disques de sauvegarde');
+    await win.waitForFunction(() => !document.querySelector('#dirty-dot').hidden);
+    const v2 = await vertsAchat();
+    doit(v2.join() === 'save', 'achat modifié, boutons principaux : ' + JSON.stringify(v2) + ' — « Enregistrer » doit redevenir le seul');
+    await win.click('#save');
+    await win.waitForFunction(() => { const d = document.querySelector('#dirty-dot'); return d && d.hidden; });
+    const v3 = await vertsAchat();
+    doit(v3.join() === 'pay', 'réenregistré, boutons principaux : ' + JSON.stringify(v3));
+    j.ok('enregistré : le règlement seul en vert ; modifié : « Enregistrer » seul ; réenregistré : le règlement');
+
     // ------------------------------------------------ 4. la liste le dit
     j.etape('La liste des achats montre le trombone');
     await aller('#/achats');

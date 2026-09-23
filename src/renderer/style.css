@@ -105,7 +105,10 @@ nav a {
 }
 nav a svg { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; opacity: .8; }
 nav a:hover { background: var(--ink-soft); color: var(--text); }
-nav a.active { background: var(--primary-soft); color: var(--primary); font-weight: 600; }
+/* L'état actif ne change pas la GÉOMÉTRIE d'une entrée : le fond teinté et la couleur le disent. En
+   gras, « Facturation récurrente » passait à la ligne — 34 px au repos, 48 une fois cliquée — et
+   tout ce qui la suit descendait de 14 px sous le curseur au moment du clic (10.12.0). */
+nav a.active { background: var(--primary-soft); color: var(--primary); }
 nav a.active svg { opacity: 1; }
 .sidebar-foot { margin-top: auto; display: flex; flex-direction: column; gap: 2px; padding-top: 12px; border-top: 1px solid var(--border); }
 .sidebar-foot .btn-ghost { color: var(--muted); text-align: start; justify-content: flex-start; }
@@ -117,7 +120,7 @@ nav a.active svg { opacity: 1; }
 }
 .sidebar-foot .foot-link svg { width: 17px; height: 17px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; opacity: .8; }
 .sidebar-foot .foot-link:hover { background: var(--ink-soft); color: var(--text); }
-.sidebar-foot .foot-link.active { background: var(--primary-soft); color: var(--primary); font-weight: 600; }
+.sidebar-foot .foot-link.active { background: var(--primary-soft); color: var(--primary); }
 /* La recherche générale, dessinée comme un champ au-dessus de <nav> : elle ne défile jamais, elle
    dit sa touche, et elle est cliquable — trois choses qui manquaient à un raccourci clavier. */
 .nav-search {
@@ -145,6 +148,10 @@ nav a.active svg { opacity: 1; }
   padding: 14px 2px; border-top: 1px solid var(--border); }
 .mod-row:first-child { border-top: none; }
 .mod-row .mod-t { font-weight: 700; }
+/* Une OPTION d'un module se lit sous son module, en retrait : la classe était posée depuis la 9.1.0
+   et n'avait aucune règle — « Grand livre, balance, états financiers » se lisait comme un module de
+   plus, au même rang que Comptabilité (10.12.0). */
+.mod-row.mod-sub { margin-inline-start: 42px; }
 .mod-row:not(.on) { opacity: .62; }
 .mod-row:not(.on):hover { opacity: 1; }
 .mod-check { display: flex; align-items: center; justify-content: center; padding-top: 2px; }
@@ -306,6 +313,10 @@ main { --main-haut: 32px; flex: 1; overflow-y: auto; padding: var(--main-haut) 3
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 20px; }
 .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px 20px; }
 .span-2 { grid-column: span 2; }
+/* Toute la ligne d'une grille, quel que soit son nombre de colonnes. La classe était posée par le
+   formulaire d'un contrat récurrent et n'existait nulle part : « Notes sur la facture » tenait dans
+   un tiers de la fenêtre, et « Contrat actif… » sur quatre lignes à côté (10.12.0). */
+.span-3 { grid-column: 1 / -1; }
 
 /* ---------- forms ---------- */
 /* .field (et non label.field) : les champs date et les listes déroulantes sont des <div>,
@@ -332,6 +343,10 @@ input[type=color]:not([type=checkbox]):not([type=radio]):not([type=file]):not([t
   height: 40px; width: 72px; padding: 4px; cursor: pointer;
 }
 .inline { display: flex; gap: 8px; align-items: center; }
+/* `.check` est un conteneur FLEX : chaque morceau de texte y devient un élément séparé de 8 px, et
+   se replie tout seul quand la place manque. Le libellé d'une case tient donc dans UN élément
+   (10.12.0) — « Timbre fiscal (1,000 DT) » s'écrivait en quatre morceaux sur deux lignes, la
+   parenthèse ouvrante seule sous le mot « Timbre ». Un test le tient dans les deux applications. */
 .check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text); font-weight: 500; }
 .check input { accent-color: var(--primary); width: 16px; height: 16px; }
 
@@ -449,7 +464,13 @@ table.list.compact td { padding: 9px 12px; font-size: 13px; }
 table.list tr.total-row td { background: var(--bg); }
 .scroll-x { overflow-x: auto; }
 .mb { margin-bottom: 12px; }
-input:disabled, select:disabled, textarea:disabled { background: #f3f5f7; color: #5b6673; cursor: not-allowed; }
+/* La chaîne de :not() est celle de la règle générale des champs, et elle est NÉCESSAIRE : sans elle,
+   `input:disabled` (0,1,1) perd contre la règle générale (0,4,1). Sur une facture émise, les champs
+   texte gardaient donc le fond et l'encre d'un champ qu'on peut modifier, pendant que les listes
+   voisines, elles, se grisaient — la même pièce disait « modifiable » et « fermé » (10.12.0, la
+   septième fois que la règle générale des champs gagne ; le thème sombre portait déjà la chaîne). */
+input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=range]):disabled,
+select:disabled, textarea:disabled { background: #f3f5f7; color: #5b6673; cursor: not-allowed; }
 
 /* ---------- dashboard ---------- */
 .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 20px; }
@@ -1121,6 +1142,30 @@ body.dark .cal-d.out { color: #5b6572; }
 .kv > div { display: flex; gap: 12px; align-items: baseline; }
 .kv > div > span:first-child { color: var(--muted); min-width: 110px; flex-shrink: 0; font-size: 12px; }
 .kv > div > span:last-child { line-height: 1.5; }
+/* Le récapitulatif avant un geste irréversible (émettre une facture) : à qui, quand, combien — posé
+   sur un fond qui le détache de la phrase qui suit (10.12.0). */
+.kv.recap-emission { background: var(--bg); border-radius: 10px; padding: 12px 14px; margin: 6px 0 12px; }
+
+/* Ce qui doit être lu avant d'agir : jamais une ligne grise de plus. Ces règles vivaient dans la
+   feuille du Cabinet — et l'app entreprise posait `.warn-box` (la question du comptable, les
+   questions restées sans réponse) et `.code-box` (la clé d'une licence) sur un texte NU : une classe
+   que la feuille ne connaît pas ne se voit nulle part (10.12.0 ; `.mono` en 8.1.0, `th.r` en 7.23.0).
+   Elles vivent ici, pour les deux applications. */
+.warn-box {
+  background: var(--warning-soft); border-inline-start: 3px solid var(--warning); border-radius: 8px;
+  padding: 11px 14px; font-size: 13px; line-height: 1.55;
+}
+.warn-box.grave { background: var(--danger-soft); border-inline-start-color: var(--danger); }
+/* Une clé se copie d'un bloc et n'a pas d'espace : sans `overflow-wrap`, elle sortait du cadre. */
+.code-box {
+  background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; line-height: 1.7;
+  white-space: pre-wrap; overflow-wrap: anywhere; margin: 0;
+}
+/* Une fenêtre qui porte des LIGNES de facture s'élargit (10.12.0) : dans les 580 px d'une fenêtre
+   ordinaire, la désignation — la colonne qu'on lit — n'avait que 135 px à côté de quatre colonnes
+   de chiffres. La leçon de la grille des lignes de l'éditeur, portée aux formulaires. */
+.modal:has(table.mini, table.lines-edit) { width: 860px; }
 .warn-link { color: var(--warning); font-weight: 600; text-decoration: none; }
 .warn-link:hover { text-decoration: underline; }
 
@@ -1197,7 +1242,16 @@ button.i + button.i { margin-inline-start: 6px; }
 body.dark .danger-zone { border-color: #4a2a2a; }
 
 /* ---------- éditeur : marqueur, aperçu, outils de ligne ---------- */
-.dirty-dot { font-size: 11px; font-weight: 700; color: var(--warning); background: var(--warning-soft); border-radius: 999px; padding: 3px 9px; vertical-align: 4px; }
+/* Le marqueur « modifications non enregistrées » vit HORS du flux, dans la marge sous l'en-tête
+   (10.12.0, H-E19). Posé à côté du titre, il élargissait l'en-tête au premier geste : à 1440 px la
+   barre d'actions passait sur une seconde rangée, et tout le formulaire descendait de 40 px sous le
+   curseur — le clic suivant tombait à côté. C'est le point de la grille de saisie du Cabinet (H-2),
+   jamais porté ici : ce qui APPARAÎT ne pousse rien. Ancré sur l'en-tête entier et non sur le
+   titre : quand l'en-tête passe sur deux rangées, sous le titre, c'est la rangée des actions. */
+.page-head { position: relative; }
+.dirty-dot { position: absolute; inset-block-start: 100%; inset-inline-start: 0; margin-block-start: 2px;
+  font-size: 11px; line-height: 14px; font-weight: 700; letter-spacing: 0; white-space: nowrap;
+  color: var(--warning); background: var(--warning-soft); border-radius: 999px; padding: 2px 9px; }
 .editor .preview { display: flex; flex-direction: column; gap: 8px; height: calc(100vh - 96px); }
 .pv-head { display: flex; align-items: center; gap: 10px; }
 .pv-pages { margin-inline-start: auto; font-size: 11px; color: var(--muted); background: var(--ink-soft); border-radius: 999px; padding: 2px 9px; font-weight: 600; }

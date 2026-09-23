@@ -2647,9 +2647,136 @@ t('Une pièce enregistrée a UN bouton principal, l\'étape suivante ; « Enregi
   assert.ok(/const envoiSuivant = !isNew && !locked && !devisFacturable && doc\.status === 'brouillon'/.test(ent),
     'l\'envoi ne peut être principal ni sur une pièce neuve, ni sur un devis déjà facturable');
   const touch = ent.slice(ent.indexOf('function touch() {'), ent.indexOf('function untouch('));
-  assert.ok(touch.length > 50 && touch.length < 600, 'tranche de touch : ' + touch.length);
-  assert.ok(/\$\('#save'\);[^\n]*classList\.add\('btn-primary'\)/.test(touch) && /\$\('#email'\);[^\n]*classList\.remove\('btn-primary'\)/.test(touch),
-    'modifier la pièce doit rendre « Enregistrer » principal ET retirer l\'envoi — deux principaux n\'en font aucun');
+  assert.ok(touch.length > 50 && touch.length < 900, 'tranche de touch : ' + touch.length);
+  // Retourné vers la RÈGLE (10.12.0, H-E19) : l'assertion recopiait les deux lignes de touch() et
+  // serait tombée sur le correctif. On JOUE touch() sur des en-têtes réels et on compte les verts.
+  const verts = entete => {
+    const btns = entete.map(([id, vert]) => { const cls = new Set(vert ? ['btn-primary'] : []);
+      return { id, cls, classList: { add: c => cls.add(c), remove: c => cls.delete(c), contains: c => cls.has(c) } }; });
+    const ctx = { dirty: false, locked: false, reportDirty: () => {},
+      $: sel => sel === '#dirty-dot' ? { hidden: true } : (btns.find(b => '#' + b.id === sel) || null),
+      $$: () => btns.filter(b => b.cls.has('btn-primary')) };
+    require('vm').runInNewContext(aide + '\n' + touch + '\ntouch();', ctx);
+    return btns.filter(b => b.cls.has('btn-primary')).map(b => b.id);
+  };
+  // La règle vit dans UNE fonction que les deux éditeurs appellent (H-E21) : on la joue avec touch().
+  const aide = (/\n  (function enregistrerDevientPrincipal\(\) \{[\s\S]*?\n  \})\n/.exec(ent) || [])[1];
+  assert.ok(aide, 'la règle « Enregistrer devient principal » n\'est plus une fonction partagée');
+  assert.deepStrictEqual(verts([['email', true], ['pdf', false], ['save', false]]), ['save'],
+    'modifier un devis enregistré doit rendre « Enregistrer » principal ET éteindre l\'envoi — deux principaux n\'en font aucun');
+  assert.deepStrictEqual(verts([['convert', true], ['save', false]]), ['save'],
+    'un devis modifié garde « Facturer ce devis » en vert à côté d\'« Enregistrer »');
+  assert.deepStrictEqual(verts([['pdf', false], ['save', false], ['issue', true]]), ['issue'],
+    'le premier geste sur une facture allume « Enregistrer le brouillon » à côté d\'« Émettre » : deux verts (H-E19)');
+  assert.deepStrictEqual(verts([['save', true]]), ['save'], 'une pièce neuve perd son seul vert');
+});
+
+// On tape « Location salle de réunion », un libellé libre que le catalogue ignore : une liste d'une
+// seule ligne, « + Créer … au catalogue », se posait EXACTEMENT sur la rangée quantité / prix, et le
+// clic suivant, visé sur le prix, ouvrait une fiche de prestation (vu au test humain). « Créer » ne
+// s'offre seul que si la liste est DEMANDÉE ; il reste en bout de liste quand elle a de quoi s'ouvrir.
+t('H-E20 : « Créer … au catalogue » ne se pose seul sous une désignation que si la liste est DEMANDÉE', () => {
+  const ent = code('src', 'renderer', 'app.js');
+  const sa = /const sansAccents = (s => [^\n]+);/.exec(ent);
+  const f = /\n  (function propositionsCatalogue\([\s\S]*?\n  \})\n/.exec(ent);
+  assert.ok(sa && f, 'la décision de la liste n\'est plus trouvée');
+  const prop = require('vm').runInNewContext('(' + f[1] + ')', { sansAccents: evaluer(sa[1]) });
+  const cat = [{ label: 'Mémoire 16 Go' }, { label: 'Location vidéoprojecteur' }];
+  let p = prop(cat, 'Location salle de réunion', true, false);
+  assert.strictEqual(p.shown.length, 0);
+  assert.strictEqual(p.creer, false, 'pendant la frappe, une ligne « Créer … » seule se pose sous la rangée quantité / prix');
+  assert.strictEqual(prop(cat, 'Location salle de réunion', true, true).creer, true, 'la liste DEMANDÉE ne propose plus de créer l\'article');
+  p = prop(cat, 'location', true, false);
+  assert.strictEqual(p.shown.length, 1, 'la recherche ne trouve plus l\'article qui correspond');
+  assert.strictEqual(p.creer, true, 'avec des correspondances, « Créer » ne reste plus en bout de liste');
+  assert.strictEqual(prop(cat, 'memoire 16go', true, false).shown.length, 1, 'accents ou espaces : la recherche ne trouve plus (9.2.1)');
+  assert.strictEqual(prop(cat, 'mémoire 16 go', true, true).creer, false, 'un libellé déjà au catalogue propose de se recréer');
+  assert.strictEqual(prop(cat, 'Location salle', false, true).creer, false, 'une liste sans création en propose une');
+  assert.ok(/addEventListener\('input', \(\) => \{[^}]*demandee = false;/.test(ent), 'la frappe ne remet plus la demande à zéro : « Créer » resterait posé sous le prix');
+});
+
+// Un achat qu'on venait d'enregistrer gardait « Enregistrer » en vert, et son panneau portait un
+// second vert, « + Enregistrer un règlement » : deux principaux dont aucun n'était l'étape suivante
+// — la règle H-E5 des documents n'avait jamais été portée à l'éditeur d'achat (vu au test humain).
+t('H-E21 : un achat enregistré a UN bouton principal, le règlement ; « Enregistrer » le redevient dès qu\'on modifie', () => {
+  const ent = code('src', 'renderer', 'app.js');
+  const i = ent.indexOf("id=\"attach-top\">Joindre un justificatif…</button>");
+  assert.ok(i > 0, 'l\'en-tête de l\'éditeur d\'achat n\'est plus trouvé');
+  const tete = ent.slice(i - 400, i + 500);
+  assert.ok(/<button class="btn \$\{isNew \? 'btn-primary' : ''\}" id="save">Enregistrer<\/button>/.test(tete),
+    '« Enregistrer » reste vert sur un achat déjà enregistré et inchangé');
+  assert.ok(/<button class="btn btn-primary" id="pay">Enregistrer un règlement<\/button>/.test(tete), 'le règlement n\'est plus l\'étape suivante d\'un achat dû');
+  assert.ok(/<button class="btn \$\{\$\('#pay'\) \? '' : 'btn-primary'\}" id="pay2">\+ Enregistrer un règlement<\/button>/.test(ent),
+    'le panneau des règlements pose un second vert à côté de celui de l\'en-tête');
+  // Et modifier la pièce rend « Enregistrer » principal : on JOUE le touch() de l'éditeur d'achat.
+  const aide = (/\n  (function enregistrerDevientPrincipal\(\) \{[\s\S]*?\n  \})\n/.exec(ent) || [])[1];
+  const touch = (/const touch = (\(\) => \{ if \(dirty\) return;[^\n]*\});/.exec(ent) || [])[1];
+  assert.ok(aide && touch, 'le touch() de l\'éditeur d\'achat n\'est plus trouvé');
+  const btns = [['pay', true], ['attach-top', false], ['save', false]].map(([id, vert]) => { const cls = new Set(vert ? ['btn-primary'] : []);
+    return { id, cls, classList: { add: c => cls.add(c), remove: c => cls.delete(c), contains: c => cls.has(c) } }; });
+  const ctx = { dirty: false, reportDirty: () => {},
+    $: sel => sel === '#dirty-dot' ? { hidden: true } : (btns.find(b => '#' + b.id === sel) || null),
+    $$: () => btns.filter(b => b.cls.has('btn-primary')) };
+  require('vm').runInNewContext(aide + '\nvar touch = ' + touch + ';\ntouch();', ctx);
+  assert.deepStrictEqual(btns.filter(b => b.cls.has('btn-primary')).map(b => b.id), ['save'],
+    'modifier un achat enregistré ne rend pas « Enregistrer » principal, ou laisse le règlement vert à côté');
+});
+
+// La liste des fournisseurs d'une entreprise neuve disait « Aucun résultat » sous un champ où l'on
+// n'avait rien tapé : on cherche alors ce qu'on a mal écrit. Une liste VIDE le dit (vu au test humain).
+t('H-E22 : une liste déroulante vide dit qu\'elle est vide, pas qu\'une recherche a échoué', () => {
+  const ent = code('src', 'renderer', 'app.js');
+  assert.ok(/<div class="combo-empty">\$\{el\._items\.length \? 'Aucun résultat' : h\(o\.vide \|\| /.test(ent),
+    'la liste vide et la recherche sans réponse disent la même chose');
+  assert.ok(/placeholder: '— Choisir un client —', vide: 'Aucun client pour l\\'instant'/.test(ent), 'l\'éditeur de document ne nomme plus sa liste vide');
+  assert.ok(/placeholder: '— Choisir un fournisseur —', vide: 'Aucun fournisseur pour l\\'instant'/.test(ent), 'l\'éditeur d\'achat ne nomme plus sa liste vide');
+});
+
+// Une facture neuve imprimait « À régler avant le 23/10/2026 » ET « Paiement par virement bancaire à
+// réception de la facture » : deux délais sur une pièce légale, et c'était NOTRE défaut (vu au test
+// humain, dans l'aperçu). La phrase de l'utilisateur ne se réécrit jamais — elle se MONTRE à l'émission.
+t('H-E23 : une facture ne porte pas deux délais qui se contredisent', () => {
+  const Core = require('../../src/renderer/core.js');
+  assert.ok(!/r[ée]ception/i.test(Core.DEFAULT_COMPANY.paymentTerms), 'le défaut des conditions de paiement dit encore « à réception »');
+  assert.ok(!/receipt/i.test(Core.DEFAULT_COMPANY.paymentTermsEn), 'le défaut anglais dit encore « upon receipt »');
+  const doc = { type: 'facture', date: '2026-09-23', dueDate: '2026-10-23', lang: 'fr' };
+  const ancien = 'Paiement par virement bancaire à réception de la facture.';
+  assert.strictEqual(Core.delaisContradictoires({ paymentTerms: ancien }, doc), ancien, 'la contradiction n\'est plus vue');
+  assert.strictEqual(Core.delaisContradictoires({ paymentTerms: 'Paiement par virement bancaire.' }, doc), '', 'une phrase sans délai est accusée');
+  assert.strictEqual(Core.delaisContradictoires({ paymentTerms: ancien }, Object.assign({}, doc, { dueDate: doc.date })), '',
+    'une facture payable le jour même contredit « à réception »');
+  assert.ok(Core.delaisContradictoires({ paymentTermsEn: 'Payment upon receipt of invoice.' }, Object.assign({}, doc, { lang: 'en' })), 'la phrase anglaise n\'est pas lue');
+  assert.strictEqual(Core.delaisContradictoires({ paymentTerms: ancien }, Object.assign({}, doc, { type: 'devis' })), '', 'un devis n\'a pas d\'échéance de paiement');
+  const ent = code('src', 'renderer', 'app.js');
+  const iw = ent.slice(ent.indexOf('function issueWarnings()'), ent.indexOf('return w;', ent.indexOf('function issueWarnings()')));
+  assert.ok(iw.length > 200 && iw.length < 6000, 'tranche de issueWarnings : ' + iw.length);
+  assert.ok(/C\.delaisContradictoires\(co, doc\)/.test(iw), 'l\'émission ne montre plus les deux délais qui se contredisent');
+});
+
+// Sur la fiche d'un client, le pied du tableau des documents additionnait le devis DÉJÀ facturé avec
+// sa facture et son avoir : « 1 520,440 DT » sous « Net à payer », le devis compté deux fois (vu au
+// test humain). La règle 7.18.0 — un total n'additionne que des pièces de même nature — portée ici.
+t('H-E24 : le pied d\'une liste mêlée ne totalise que les factures et les avoirs, et le dit', () => {
+  const ent = code('src', 'renderer', 'app.js');
+  const f = tranche(ent, 'function docTable(list, opts) {');
+  assert.ok(/const comptent = sorted\.filter\(d => d\.type === 'facture' \|\| d\.type === 'avoir'\);/.test(f), 'le pied ne distingue plus les pièces qui comptent');
+  assert.ok(/const base = melange \? comptent : sorted;/.test(f), 'un devis compte de nouveau dans les totaux d\'une liste mêlée');
+  ['totalHT', 'totalAmount', 'totalRest'].forEach(k =>
+    assert.ok(new RegExp('const ' + k + ' = base\\.reduce').test(f), k + ' additionne encore toute la liste'));
+  assert.ok(/\$\{melange \? 'factures et avoirs : ' : ''\}/.test(f), 'le pied ne dit plus sur quoi porte son total');
+});
+
+// Le marqueur « non enregistré » vivait À CÔTÉ du titre : au premier geste il élargissait l'en-tête,
+// qui passait sur deux rangées à 1440 px, et tout le formulaire descendait de 40 px sous le curseur
+// (le clic suivant tombait à côté). Le point de la grille du Cabinet avait appris la leçon en H-2 :
+// ce qui APPARAÎT ne pousse rien. `e2e:entreprise` mesure l'en-tête et le champ Objet avant/après.
+t('Le marqueur « modifications non enregistrées » ne pousse rien : il vit hors du flux, sous l\'en-tête', () => {
+  const css = lireSource('src', 'renderer', 'style.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  const regle = /\n\.dirty-dot \{([^}]*)\}/.exec(css);
+  assert.ok(regle, 'la règle du marqueur a disparu');
+  assert.ok(/position: absolute/.test(regle[1]), 'le marqueur vit dans le flux : il élargit l\'en-tête au premier geste');
+  assert.ok(/inset-block-start: 100%/.test(regle[1]), 'le marqueur n\'est plus SOUS l\'en-tête : posé à côté du titre, il recouvrirait les actions');
+  assert.ok(/\n\.page-head \{ position: relative; \}/.test(css), 'le marqueur n\'a plus d\'ancre : il partirait dans le coin de la page');
 });
 
 // La fenêtre s'appelait « Nouveau document » au-dessus d'une page qui dit « Nouveau devis », et
@@ -2678,6 +2805,259 @@ t('La recherche d\'une barre de filtres ne prend pas toute la ligne : sa règle 
     'la règle des filtres porte moins de :not() que la règle générale : elle perd, et la recherche reprend toute la ligne');
   assert.ok(/max-width: \d+px/.test(m[2]), 'la recherche n\'a plus de borne : elle reprend toute la ligne');
   assert.ok(!/background/.test(m[2]), 'un fond posé par cette règle, plus spécifique que celle du thème sombre, mettrait du blanc sous un texte clair');
+});
+
+// ================================================================ l'app entreprise, lot 2 (10.12.0)
+// Le parcours devis → facture → émission → paiement → avoir, joué à la souris comme un artisan.
+
+// `.check` est un conteneur FLEX : chaque morceau de texte y devient un élément séparé de 8 px.
+// « Timbre fiscal (1,000 DT) » s'écrivait en quatre morceaux sur deux lignes, la parenthèse
+// ouvrante seule sous le mot « Timbre ». Le libellé d'une case tient donc dans UN élément.
+t('Le libellé d\'une case à cocher tient en UN élément, dans les deux applications', () => {
+  for (const [nom, chemin] of [['app entreprise', ['src', 'renderer', 'app.js']], ['Cabinet', ['src', 'cabinet', 'renderer', 'app.js']]]) {
+    const src = code(...chemin);
+    let n = 0; const fautes = [];
+    for (const m of src.matchAll(/<label class="(?:[^"]*\s)?check(?:\s[^"]*)?"[^>]*>([\s\S]*?)<\/label>/g)) {
+      n++;
+      const apres = m[1].replace(/<input[^>]*>/, '').replace(/\$\{info\([^)]*\)\}/g, '').trim();
+      if (!/<(span|b|strong|em|a|code|small)\b/.test(apres)) continue;
+      if (!/^<span\b[^>]*>[\s\S]*<\/span>$/.test(apres)) fautes.push(apres.slice(0, 90));
+    }
+    assert.ok(n >= 10, `${nom} : les cases à cocher ne sont plus trouvées (${n})`);
+    assert.deepStrictEqual(fautes, [], `${nom} : un libellé en plusieurs morceaux se casse dans un conteneur flex — ${fautes.join(' | ')}`);
+  }
+});
+
+// « ← le document » sur la facture tirée d'un devis : lequel, quand on est soi-même sur un document ?
+t('Le bouton retour nomme la pièce, le client ou le fournisseur où il mène', () => {
+  const ent = code('src', 'renderer', 'app.js');
+  const f = ent.slice(ent.indexOf('const pageLabel = '), ent.indexOf('function remplacerPage('));
+  assert.ok(f.length > 200 && f.length < 2000, 'tranche de pageLabel : ' + f.length);
+  assert.ok(/route === 'doc'\) \{ const d = docById\(id\); if \(d\) return docLabel\(d\); \}/.test(f), 'le retour vers une pièce ne la nomme plus');
+  assert.ok(/route === 'client'\)[^\n]*c\.name/.test(f), 'le retour vers une fiche client ne nomme plus le client');
+  assert.ok(/route === 'fournisseur'\)[^\n]*f\.name/.test(f), 'le retour vers une fiche fournisseur ne nomme plus le fournisseur');
+  const b = tranche(ent, 'function backButton(');
+  assert.ok(/title="Revenir à \$\{h\(pageLabel\(cible, true\)\)\}"/.test(b), 'la bulle du bouton doit garder le nom ENTIER');
+  assert.ok(/← \$\{h\(pageLabel\(cible\)\)\}/.test(b), 'le bouton doit porter le nom (abrégé)');
+});
+
+// L'émission était une « Confirmation » générique qui floutait le document : on confirmait sans
+// pouvoir relire à qui, ni combien — sur le geste le plus irréversible de l'application.
+t('Émettre une facture ou un avoir passe par un récapitulatif : client, dates, montant, et ce qu\'un avoir laisse à rendre', () => {
+  const ent = code('src', 'renderer', 'app.js');
+  const issue = ent.slice(ent.indexOf("if ($('#issue')) $('#issue').onclick"), ent.indexOf("if ($('#serials'))"));
+  assert.ok(issue.length > 200 && issue.length < 2500, 'tranche du bouton « Émettre » : ' + issue.length);
+  assert.ok(/await confirmerEmission\(doc, n, warn\)/.test(issue), 'l\'émission ne passe plus par son récapitulatif');
+  assert.ok(!/confirmDialog\(/.test(issue), 'une question générique est revenue sur l\'émission');
+  const r = tranche(ent, 'function confirmerEmission(');
+  // Un libellé peut passer par un ternaire (`ligne(isAv ? 'Montant…' : 'Net à payer', …)`) : on
+  // exige qu'il soit l'argument d'une ligne du récapitulatif, pas qu'il suive `ligne('` au caractère près.
+  ['Client', 'Date', 'Échéance', 'Facture corrigée', 'Montant de l\\\'avoir', 'Net à payer'].forEach(k =>
+    assert.ok(new RegExp(`ligne\\([^)]*'${k.replace(/[\\']/g, m => '\\' + m)}'`).test(r), 'le récapitulatif ne dit plus : ' + k));
+  assert.ok(/const bInv = inv \? balance\(inv\) : null;/.test(r), 'le récapitulatif ne lit plus la situation de la facture corrigée');
+  assert.ok(/à rendre à/.test(r), 'un avoir sur une facture payée ne dit plus ce qu\'il laisse à rendre au client');
+  // « Déjà payée » d'une facture qu'un autre avoir a couverte, c'était écrire le contraire du vrai :
+  // la phrase dépend de ce que le client a PAYÉ, et un avoir de trop sans paiement se dit autrement.
+  assert.ok(/bInv\.paid > 0\s*\?/.test(r) && /la dépasse de/.test(r), 'un avoir plus gros que la facture, sans paiement, ne se dit plus « à rendre »');
+  // Les avertissements se lisent AVANT le bouton (9.4.2) : la boîte précède `modal-actions`.
+  assert.ok(r.indexOf('avertissements.map') < r.indexOf('modal-actions'), 'les avertissements doivent précéder les boutons');
+  assert.ok(/id="ok"/.test(r) && /data-close/.test(r), 'les parcours cliquent #ok et [data-close] : ils doivent exister');
+});
+
+// Le bandeau disait « déjà payée en partie » sur une facture payée en ENTIER, et sa bulle
+// « soldée » sur une facture payée à moitié : il confondait « un paiement existe » et « soldée ».
+t('Pourquoi une facture émise ne se déverrouille plus : trois causes, trois phrases, une seule fonction', () => {
+  const Core = require('../../src/renderer/core.js');
+  const co = { ...Core.DEFAULT_COMPANY, name: 'Test SARL', matricule: '1234567A/A/M/000', currency: 'DT', stampFee: 1 };
+  const inv = { id: 'F1', type: 'facture', number: 'FAC-2026-001', status: 'envoyée', date: '2026-09-01', clientId: 'C1',
+    applyStamp: true, stampFee: 1, lines: [{ label: 'Pose', qty: 1, unitPrice: 100, vatRate: 19 }], payments: [] };
+  const data = Core.migrateData({ version: 6, company: co, clients: [{ id: 'C1', name: 'Client' }], documents: [inv] });
+  const doc = data.documents[0];
+  const net = Core.computeTotals(doc, co).netToPay;
+  assert.strictEqual(net, 120, 'jeu de données : 100 HT + 19 % + 1 DT de timbre');
+  assert.strictEqual(Core.motifVerrou(Core.invoiceBalance(doc, data, co)).court, '', 'sans paiement ni avoir, aucune raison de verrouiller');
+  doc.payments = [{ id: 'P1', date: '2026-09-02', amount: 50 }];
+  const partiel = Core.motifVerrou(Core.invoiceBalance(doc, data, co));
+  assert.strictEqual(partiel.court, 'déjà payée en partie');
+  assert.ok(!/soldée|entièrement/.test(partiel.long), 'une facture payée à moitié n\'est pas « soldée » : ' + partiel.long);
+  doc.payments.push({ id: 'P2', date: '2026-09-03', amount: 70 });
+  assert.strictEqual(Core.motifVerrou(Core.invoiceBalance(doc, data, co)).court, 'entièrement payée', 'une facture payée en entier ne se dit pas « payée en partie »');
+  data.documents.push({ id: 'A1', type: 'avoir', number: 'AVO-2026-001', status: 'émis', creditOf: 'F1', date: '2026-09-04', clientId: 'C1', lines: [{ label: 'Remise', qty: 1, unitPrice: 10, vatRate: 19 }] });
+  assert.strictEqual(Core.motifVerrou(Core.invoiceBalance(doc, data, co)).court, 'un avoir existe', 'l\'avoir prime : c\'est lui qui corrige la pièce');
+  const ent = code('src', 'renderer', 'app.js');
+  assert.ok(/const verrou = C\.motifVerrou\(bal\);/.test(ent), 'le bandeau ne lit plus sa raison dans motifVerrou');
+  assert.ok(!/déjà payée en partie/.test(ent), 'la phrase est revenue écrite en dur dans le bandeau');
+  // Une facture que ses avoirs couvrent EN ENTIER n'a plus rien à corriger : le bandeau proposait
+  // encore « Corriger par un avoir… » en vert — un avoir de trop. Un avoir qui porte le timbre
+  // couvre les 120 DT au millime ; celui qui ne le porte pas (119) laisse la facture due d'un dinar.
+  const co2 = { ...co };
+  const inv2 = { ...inv, id: 'F2', number: 'FAC-2026-002', payments: [] };
+  const data2 = Core.migrateData({ version: 6, company: co2, clients: [{ id: 'C1', name: 'Client' }], documents: [inv2,
+    { id: 'A2', type: 'avoir', number: 'AVO-2026-002', status: 'émis', creditOf: 'F2', date: '2026-09-05', clientId: 'C1', applyStamp: true, stampFee: 1, lines: [{ label: 'Annulation', qty: 1, unitPrice: 100, vatRate: 19 }] }] });
+  const b2 = Core.invoiceBalance(data2.documents[0], data2, co2);
+  assert.strictEqual(b2.credited, 120, 'jeu de données : l\'avoir porte le timbre, 119 + 1');
+  const tout = Core.motifVerrou(b2);
+  assert.ok(tout.annulee && tout.court === 'annulée par un avoir', 'une facture annulée en entier par ses avoirs doit le dire : ' + JSON.stringify(tout));
+  data2.documents[1].applyStamp = false;
+  assert.ok(!Core.motifVerrou(Core.invoiceBalance(data2.documents[0], data2, co2)).annulee, 'un avoir de 119 sur 120 n\'annule pas toute la facture');
+  assert.ok(/!verrou\.annulee[\s\S]{0,500}?id="lock-credit"/.test(ent), 'le bandeau d\'une facture entièrement annulée propose encore un avoir');
+  // Et « Corriger par un avoir… » n'est vert que si rien n'est dû et qu'aucun avoir n'existe : une
+  // facture émise et impayée montrait TROIS boutons principaux (U-11). `e2e:entreprise` les compte.
+  assert.ok(/bal && bal\.remaining <= 0\.0005 && !bal\.credits\.length \? 'btn-primary' : ''\}" id="lock-credit"/.test(ent), 'le bandeau garde son vert à côté du paiement à enregistrer');
+  assert.ok(/class="btn \$\{\$\('#pay'\) \? '' : 'btn-primary'\}" id="pay2"/.test(ent), 'le paiement du panneau est vert en même temps que celui de l\'en-tête');
+});
+
+// « FAC-2026- / 001 » : le navigateur coupe après un trait d'union, et un numéro de pièce coupé en
+// fin de ligne se lit comme deux choses (vu au test humain, dans la question qui supprime un paiement).
+t('Un numéro de pièce ne se coupe pas en fin de ligne dans une question', () => {
+  const ent = code('src', 'renderer', 'app.js');
+  const m = ent.match(/const numerosInsecables = (html => [^\n]+);/);
+  assert.ok(m, 'le garde des numéros de pièce n\'est plus trouvé');
+  const garde = require('vm').runInNewContext(m[1]);
+  assert.strictEqual(garde('FAC-2026-001 redeviendra due'), '<span class="nw">FAC-2026-001</span> redeviendra due');
+  assert.strictEqual(garde('AVO-2026-012 et DEV-2025-104'), '<span class="nw">AVO-2026-012</span> et <span class="nw">DEV-2025-104</span>');
+  assert.strictEqual(garde('<strong>1 191,000 DT</strong> du 23/09/2026'), '<strong>1 191,000 DT</strong> du 23/09/2026', 'une date ou un montant ne sont pas des numéros de pièce');
+  for (const d of ['function confirmDialog(', 'function choiceDialog(']) {
+    assert.ok(/<p>\$\{numerosInsecables\(/.test(tranche(ent, d)), d + ' ne protège plus les numéros de pièce');
+  }
+});
+
+// En gras, l'entrée active « Facturation récurrente » passait à la ligne : tout le menu sous elle
+// descendait de 14 px au moment du clic. L'état actif se dit par le fond et la couleur, jamais par
+// ce qui change la place d'une entrée. `e2e:barre` allume chaque entrée et compare sa hauteur.
+t('Une entrée de la barre latérale ne change pas de géométrie en s\'allumant', () => {
+  const css = lireSource('src', 'renderer', 'style.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  // Le pied de la barre (Paramètres, Aide) est une entrée comme les autres : il passait encore en gras.
+  const regles = [...css.matchAll(/^(?:nav a|\.sidebar-foot \.foot-link)\.active \{([^}]*)\}/gm)].map(m => m[1]);
+  assert.ok(regles.length >= 2, 'les règles de l\'entrée active (menu ET pied de la barre) ne sont plus trouvées');
+  regles.forEach(r => assert.ok(!/font-weight|font-size|padding|letter-spacing|border(?!-radius)/.test(r),
+    'l\'entrée active change de géométrie : ' + r.trim()));
+});
+
+// « + Nouveau client » en vert dans l'en-tête, et « + Ajouter mon premier client » en vert dans
+// l'état vide juste en dessous : deux boutons principaux pour le même geste (U-11). Tant que la
+// liste est vide, l'en-tête cède le sien. On lit chaque route qui pose un état vide à bouton
+// principal ; `e2e:entreprise` compte ce qui s'AFFICHE.
+t('Une liste vide n\'a qu\'un bouton principal : l\'en-tête cède le sien à l\'état vide', () => {
+  const ent = code('src', 'renderer', 'app.js');
+  // Une page vit dans une route OU dans une fonction de premier niveau qu'une route appelle
+  // (`listView` sert les Devis et les Factures) : on découpe sur les deux.
+  const routes = [...ent.matchAll(/\n  (?:routes\.(\w+) = |(?:async )?function (\w+)\()/g)].map(m => ({ nom: m[1] || m[2], i: m.index }));
+  let vus = 0; const fautes = [];
+  routes.forEach((r, k) => {
+    const corps = ent.slice(r.i, k + 1 < routes.length ? routes[k + 1].i : ent.length);
+    if (!/etatVide\([\s\S]*?, true\]/.test(corps)) return;
+    // Une page peut poser PLUSIEURS en-têtes (Licences : sans clé, puis avec) : on les lit tous,
+    // chacun jusqu'à la fin de son bloc — borné, pour ne jamais déborder sur l'en-tête suivant.
+    const tetes = [...corps.matchAll(/<div class="page-head">/g)].map(m => {
+      const s = corps.slice(m.index, m.index + 700); const fin = s.indexOf('</div></div>');
+      return fin > 0 ? s.slice(0, fin) : s;
+    });
+    if (!tetes.length) return;
+    vus++;
+    const fixe = tetes.some(t2 => /class="btn btn-primary"/.test(t2));
+    const bascule = /classList\.toggle\('btn-primary'/.test(corps);
+    if (fixe && !bascule) fautes.push(r.nom);
+  });
+  assert.ok(vus >= 6, 'les routes à état vide ne sont plus trouvées : ' + vus);
+  assert.deepStrictEqual(fautes, [], 'l\'en-tête garde son bouton vert au-dessus d\'un état vide qui porte le sien : ' + fautes.join(', '));
+});
+
+// Sur une facture émise, les champs texte gardaient le fond et l'encre d'un champ modifiable
+// (#fbfcfd, texte foncé) pendant que les listes voisines se grisaient : `input:disabled` (0,1,1)
+// perdait contre la règle générale des champs (0,4,1) — la septième fois.
+t('Un champ texte désactivé se grise comme une liste : sa règle porte la chaîne de :not() de la règle générale', () => {
+  const css = lireSource('src', 'renderer', 'style.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  const general = (css.match(/^input((?::not\(\[type=\w+\]\))+), select, textarea \{/m) || [])[1] || '';
+  assert.ok((general.match(/:not\(/g) || []).length >= 4, 'la règle générale des champs n\'est plus trouvée');
+  const m = css.match(/^input((?::not\(\[type=\w+\]\))+):disabled,\s*select:disabled, textarea:disabled \{([^}]*)\}/m);
+  assert.ok(m, 'la règle des champs désactivés ne porte plus la chaîne de :not() : `input:disabled` perd, et le champ a l\'air modifiable');
+  assert.ok(/background: #f3f5f7/.test(m[2]) && /color: #5b6673/.test(m[2]), 'le champ désactivé n\'a plus le fond et l\'encre d\'un champ fermé');
+});
+
+// Une classe que la feuille ne connaît pas ne se voit nulle part (6.8.0, 7.23.0, 7.27.0, 8.1.0,
+// 9.4.3) — et l'app entreprise en posait encore cinq : `.warn-box` et `.grave` (la question du
+// comptable), `.code-box` (la clé d'une licence) vivaient dans la feuille du CABINET ; `.span-3`
+// (le formulaire d'un contrat récurrent) et `.mod-sub` (une option de module) n'existaient nulle
+// part. Chaque classe écrite dans un gabarit a donc une règle, ou elle est un CROCHET déclaré ici :
+// une classe qui existe pour être TROUVÉE (par le code ou par un parcours), pas pour être stylée.
+t('Chaque classe posée par l\'app entreprise a une règle dans sa feuille, ou c\'est un crochet déclaré', () => {
+  const src = code('src', 'renderer', 'app.js');
+  const css = lireSource('src', 'renderer', 'style.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  const definies = new Set([...css.matchAll(/\.([a-zA-Z][\w-]*)/g)].map(m => m[1]));
+  const CROCHETS = {
+    q: 'la recherche d\'une liste générique (drawList)', rows: 'le conteneur de ses lignes', sortable: 'une table triable (bindSort)',
+    solo: 'un lien de la barre latérale sans famille', 'att-mark': 'le trombone d\'un achat', 'inv-in': 'une case de l\'inventaire',
+    'gl-compte': 'le grand livre (e2e:livres)', 'gl-ouv': 'le grand livre', 'gl-solde': 'le grand livre', 'gl-t': 'le grand livre',
+    'od-compte': 'la saisie d\'une OD', 'od-lib': 'la saisie d\'une OD', 'od-label': 'la saisie d\'une OD', 'od-debit': 'la saisie d\'une OD',
+    'od-credit': 'la saisie d\'une OD', 'od-del': 'la saisie d\'une OD', 'mod-go': 'une colonne de .mod-row', 'mod-txt': 'une colonne de .mod-row',
+    'pp-go': 'une cellule des premiers pas', 'rate-lbl': 'le libellé du taux, réécrit par le code', 'b-rate-lbl': 'le même, sur un achat',
+    'set-res': 'les résultats de recherche des Paramètres, stylés par leur identifiant'
+  };
+  // Une classe COLLÉE à une expression (`l${niveau}`, `bal-c${classe}`) est un préfixe dynamique : on
+  // remplace chaque `${…}` par une marque, et un mot qui la touche n'est pas jugé ici.
+  const sansExpr = v => { let out = '', i = 0; while (i < v.length) { if (v.startsWith('${', i)) { let p = 1; i += 2; while (i < v.length && p) { if (v[i] === '{') p++; else if (v[i] === '}') p--; i++; } out += '§'; continue; } out += v[i++]; } return out; };
+  const utilisees = new Set();
+  for (const m of src.matchAll(/class="([^"]*)"/g)) sansExpr(m[1]).split(/\s+/).forEach(k => { if (/^[a-z][\w-]*$/.test(k)) utilisees.add(k); });
+  assert.ok(utilisees.size > 200, 'les classes des gabarits ne sont plus lues : ' + utilisees.size);
+  const orphelines = [...utilisees].filter(k => !definies.has(k) && !CROCHETS[k]).sort();
+  assert.deepStrictEqual(orphelines, [], 'classes posées par l\'app entreprise sans aucune règle dans sa feuille (ni crochet déclaré) : ' + orphelines.join(', '));
+  // Un crochet qui a GAGNÉ une règle n'est plus un crochet : la liste ne doit pas mentir non plus.
+  const perimes = Object.keys(CROCHETS).filter(k => definies.has(k));
+  assert.deepStrictEqual(perimes, [], 'crochets déclarés qui ont désormais une règle : ' + perimes.join(', '));
+  // Et la feuille du Cabinet ne redéfinit pas ce que la feuille partagée porte désormais (6.8.0).
+  const cab = lireSource('src', 'cabinet', 'renderer', 'cabinet.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  ['warn-box', 'code-box'].forEach(k => assert.ok(!new RegExp('\\.' + k + '\\b').test(cab), `.${k} est redéfinie dans la feuille du Cabinet`));
+});
+
+// La fenêtre « Régler » d'un achat en euros annonçait son reste en DINARS (le jumeau de la 10.1.0),
+// et un règlement fournisseur ne se modifiait pas — un paiement client, si, depuis la 7.3.0.
+t('Un règlement fournisseur se corrige, dans la devise de l\'achat', () => {
+  const ent = code('src', 'renderer', 'app.js');
+  const f = tranche(ent, 'function supplierPaymentForm(');
+  assert.ok(/function supplierPaymentForm\(p, done, pay\)/.test(f), 'le formulaire ne sait plus modifier un règlement');
+  assert.ok(/const cur = p\.currency \|\| company\(\)\.currency;/.test(f), 'le formulaire compte de nouveau un achat en euros en dinars');
+  assert.ok(/closedBlock\(r0 \? \[r0\.date, v\.date\] : v\.date, 'Ce règlement'\)/.test(f), 'corriger la date d\'un règlement doit tester l\'ancienne ET la nouvelle');
+  assert.ok(/if \(cible\) Object\.assign\(cible, champs\);/.test(f), 'modifier doit corriger le règlement, pas en ajouter un second');
+});
+
+// « Ce paiement ne peut pas être supprimé porte la date du… » : closedBlock reçoit un NOM, pas une
+// phrase ; et la clôture se juge AVANT la question (7.6.0), sinon on répond « oui » pour rien.
+t('Supprimer un paiement ou un règlement : la clôture d\'abord, puis une question qui nomme le montant', () => {
+  const ent = code('src', 'renderer', 'app.js');
+  assert.ok(!/closedToast|ne peut pas être supprimé'\)/.test(ent), 'une phrase entière est de nouveau passée à la porte de clôture');
+  for (const lab of ['Supprimer ce paiement', 'Supprimer ce règlement']) {
+    const i = ent.indexOf(`label: '${lab}'`);
+    assert.ok(i > 0, `l'action « ${lab} » a disparu`);
+    const bloc = ent.slice(i, i + 700);
+    assert.ok(bloc.indexOf('closedBlock(') > 0 && bloc.indexOf('closedBlock(') < bloc.indexOf('confirmDialog('), `« ${lab} » : la clôture doit passer avant la question`);
+    assert.ok(/danger: true/.test(bloc), `« ${lab} » doit s'annoncer comme un geste qui détruit`);
+    assert.ok(/C\.money\([a-z]\.amount, cur\)[^\n]*C\.fmtDate\([a-z]\.date\)/.test(bloc), `la question de « ${lab} » doit nommer le montant et la date`);
+  }
+});
+
+// Un trop-perçu — un avoir émis après le paiement — s'affichait « Reste à payer 0,000 DT » en VERT,
+// avec la somme due au client en petit gris dessous : la situation la plus inconfortable de la
+// facture avait l'air de la plus tranquille.
+t('Un trop-perçu se lit comme de l\'argent à rendre, pas comme un reste à payer à zéro', () => {
+  const ent = code('src', 'renderer', 'app.js');
+  const i = ent.indexOf('function drawPayments()');
+  const bloc = ent.slice(i, i + 4000);
+  assert.ok(/b\.remaining < -0\.0005\s*\?\s*`<div><div class="k-label">Trop-perçu \$\{info\('ed\.tropPercu'\)\}<\/div><div class="v due">/.test(bloc),
+    'le trop-perçu ne prend plus sa carte, dans la couleur d\'alerte');
+  assert.ok(/à rendre au client/.test(bloc), 'la carte ne dit plus quoi faire de cet argent');
+});
+
+// Une liste déroulante de statuts : « brouillon » entre « Tous les statuts » et « Français » se
+// lisait comme une valeur oubliée. Le badge garde sa minuscule d'étiquette ; la liste, non.
+t('Les statuts d\'une liste déroulante commencent par une majuscule, sans changer leur valeur', () => {
+  const ent = code('src', 'renderer', 'app.js');
+  const selects = [...ent.matchAll(/(?:STATUSES(?:\[[^\]]+\])?|statuses)\.map\((\w+) => `<option([^>]*)>([^<]*)<\/option>`\)/g)];
+  assert.ok(selects.length >= 5, 'les listes de statuts ne sont plus trouvées : ' + selects.length);
+  selects.forEach(([tout, v, attrs, lib]) => {
+    assert.ok(new RegExp(`value="\\$\\{(?:h\\()?${v}\\)?\\}"`).test(attrs), 'une option de statut sans valeur explicite : le libellé partirait dans les données — ' + tout.slice(0, 80));
+    assert.ok(new RegExp(`optionStatut\\(${v}\\)`).test(lib), 'une liste de statuts affiche encore la valeur brute : ' + tout.slice(0, 80));
+  });
 });
 
 };

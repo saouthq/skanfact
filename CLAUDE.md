@@ -28,7 +28,8 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Une **version publiée que les applications ne voient pas** (« tu as la dernière version ») | 10.11.0 — la liste de l'API rend la release SANS ses fichiers ; une version téléchargée cachait la suivante |
 | Un bouton **hors de l'écran**, une barre empilée sur trois rangées | 7.13.0, 7.23.0 — `e2e:contraste` et `e2e:entetes` mesurent le bouton, jamais la page |
 | Un **refus qui promet une sortie qui n'existe pas** (« contre-passe d'abord », puis la même phrase) | 10.12.0 — une écriture contre-passée libère ce qu'elle portait |
-| Un **clic qui tombe à côté** : ce qui vient d'apparaître a poussé le formulaire, la frappe part sur la page | 10.12.0 — « Fiche du client » né sous le champ, 45 px |
+| Un **clic qui tombe à côté** : ce qui vient d'apparaître a poussé le formulaire, la frappe part sur la page | 10.12.0 — « Fiche du client » né sous le champ, 45 px ; le repère « non enregistré » qui fait passer l'en-tête sur deux rangées, 40 px (H-E19) |
+| Un **clic qui ouvre autre chose que ce qu'il visait** : une proposition que personne n'a demandée s'est posée sous le curseur | 10.12.0 (H-E20) — « + Créer … au catalogue » sur la quantité et le prix |
 | Une **bulle « i » seule sur sa ligne**, ou visible à côté d'un bouton caché : un bouton DANS un bouton | 10.12.0 — neuf cas, le parseur ferme le premier |
 
 **Les chiffres**
@@ -44,6 +45,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Un **agrégat** porte une devise, une unité, et une période nommée | 7.0.1, 7.16.0, 3.1.0 ; 9.4.9 — une courbe d'une barre cède la place au chiffre |
 | Une donnée qui n'a pas de **case** se réinvente — et ce qu'on réinvente est faux | 9.8.5 — le tiers déduit du libellé, le compte nommé par la première écriture ; 10.9.1 — ou elle se perd en silence |
 | Une facture se libelle à la **SOCIÉTÉ** ; deux champs d'un formulaire ne disent jamais la même chose | 10.9.1 — la pièce légale au nom d'un salarié |
+| Une **pièce légale ne se contredit pas** (deux délais, deux montants) : un défaut qui la fait se contredire se corrige, la phrase de l'utilisateur se MONTRE — elle ne se réécrit jamais | 10.12.0 (H-E23) — « à réception » sur une facture à trente jours |
 | Un compte porte un **nom de compte** ; un compte nommé par le cabinet ne se réécrit jamais | 9.8.5, 6.3.0 |
 | Un **rapprochement faux** ferme la question : une ambiguïté n'est JAMAIS « certain » | 9.5.0 |
 | Un **prix ne vient jamais du navigateur** ; ce qui prouve un paiement est la question qu'on REPOSE au prestataire | 10.9.0 |
@@ -83,7 +85,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Un test dont les **DONNÉES ne discriminent pas** ne prouve rien : le modèle livré n'avait aucun préfixe imbriqué | 10.0.0 ; 9.6.1 |
 | **Élargir** une sonde se prouve dans les DEUX sens : qu'elle voie le défaut, et qu'elle ne voie rien ailleurs | 9.8.8 — T-49 bis, 28 accusations sur du code juste ; 10.8.0 — le garde-fou qui ne lisait qu'une famille de déclarations sur deux |
 | Un **refus qu'on avale** en silence est pire que le refus : l'écran affirme alors le contraire du vrai | 9.8.0 |
-| Un parcours qui compare du texte **aplatit les espaces** : `textContent` garde les retours de la source | 9.8.0 |
+| Un parcours qui compare du texte **aplatit les espaces** : `textContent` garde les retours de la source — et COLLE deux cellules voisines | 9.8.0 ; 10.12.0 — « Facture corrigéeFAC- » |
 | Un **adaptateur** vaut mieux qu'une seconde implémentation ; deux moteurs divergent | 9.7.0 |
 | Une assertion sur un montant se **calcule à la main**, jamais en recopiant la sortie | 7.0.1 — l'assertion qui gravait le bug depuis la 1.6.0 |
 | Un test écrit contre l'état du jour **décrit cet état**, pas la règle | 7.12.0, 7.26.0, 8.0.1, 8.2.0, 9.1.0, 9.2.2, 9.4.3, 9.4.5 — neuf assertions retournées |
@@ -162,14 +164,14 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Un **moteur sans écran n'existe pas** ; une fonction jamais appelée est invisible | 7.2.0, 7.3.0, 7.19.0 |
 | Un **extrait sans son cadre** fait douter de l'outil : montrer l'ensemble, griser ce qui ne compte pas | 9.4.7 |
 | Un **état vide secondaire** s'annonce ; celui qui EST le corps d'un écran garde sa présence | 9.4.7 ; 10.6.0 — cent pixels pour dire « — » |
-| Une **phrase affichée** que rien ne tient est un bug, pas une imprécision | 7.3.0, 7.6.0, 8.0.0 ; 9.4.5 — un COMMENTAIRE aussi ; 9.8.1 et 9.8.4 — dans un fichier de CI aussi ; 10.9.2 — dire OÙ trouver une valeur qu'aucun écran n'affiche |
+| Une **phrase affichée** que rien ne tient est un bug, pas une imprécision | 7.3.0, 7.6.0, 8.0.0 ; 9.4.5 — un COMMENTAIRE aussi ; 9.8.1 et 9.8.4 — dans un fichier de CI aussi ; 10.9.2 — dire OÙ trouver une valeur qu'aucun écran n'affiche ; 10.12.0 — `closedToast`, « supprimé » en 7.17.0, encore appelé |
 | Quand quelqu'un **n'arrive pas à fournir** ce qu'on lui demande, chercher d'abord si on le lui a rendu possible | 10.9.2 |
 | Deux objets qui portent le **même mot** finissent confondus, y compris par leur auteur | 10.9.2 — l'empreinte d'un cabinet et celle d'une licence |
 | `navigate()` vers la page courante ne redessine **rien** : `vers()` | 7.15.0, 7.29.0 |
 | Une mise en page qui dépend de sa **propre barre de défilement** a deux états stables : décider SANS elle | 10.12.0 — la barre latérale, un pixel, une ligne de plus |
 | Un **prix posé par le logiciel** n'est pas un prix décidé : l'étape se coche sur un geste de l'utilisateur | 10.12.0 ; 7.18.0 |
 | Un état lu une fois au démarrage **se périme** | 7.1.x, 8.0.0 |
-| **Un seul bouton principal** par écran, et c'est l'étape suivante — calculée, jamais posée à la main | 10.12.0 (U-11) |
+| **Un seul bouton principal** par écran, et c'est l'étape suivante — calculée, jamais posée à la main ; UNE fonction pour les deux éditeurs | 10.12.0 (U-11, H-E5, H-E19, H-E21 — l'éditeur d'achat ne l'avait jamais reçue) |
 | Une **colonne collante** réserve sa largeur : elle ne recouvre jamais une donnée | 10.12.0 (U-02) |
 | Une **page de création** n'entre pas dans la pile : après l'enregistrement, « ← » ne mène jamais à une pièce VIERGE | 10.12.0 — `remplacerPage` ; 2.4.0 |
 | Ce qui **apparaît selon une valeur** vit dans une place qui existe déjà : sinon tout ce qui suit descend sous le curseur | 10.12.0 |
@@ -178,6 +180,15 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Un écran de travail s'ouvre sur le **dernier mois qui a des données**, jamais un mois futur | 10.12.0 (U-12) |
 | Une **recherche** garde des pièces entières ; un champ qui redessine son écran garde la frappe | 10.12.0 |
 | Un dossier **tenu au cabinet** prend ses mois dans son livre : jamais « hors mission » ni « pas reçu » | 10.12.0 |
+| Le **dernier écran avant un geste irréversible** récapitule à qui, quand, combien — et ce que le geste laisse à rendre | 10.6.0 ; 10.12.0 — l'émission d'une facture, et l'avoir sur une facture payée |
+| Un **chiffre juste dans la mauvaise couleur** dit le contraire du vrai : un trop-perçu n'est pas un reste à payer à zéro | 10.12.0 |
+| Un **écran à moitié gris** dit que certains champs sont encore modifiables : la règle des champs fermés porte la chaîne de `:not()` | 10.12.0 — la septième fois que la règle générale gagne |
+| L'**étiquette d'une case à cocher** est UN élément : dans un conteneur flex, chaque morceau de texte en devient un | 10.12.0 — « Timbre fiscal ( » seul sur sa ligne |
+| Une **porte de refus reçoit un NOM**, pas une phrase : `closedBlock(dates, 'Ce paiement')` | 10.12.0 — « … ne peut pas être supprimé porte la date du… » |
+| Le **bouton retour nomme** la pièce, le client, le fournisseur où il mène — jamais « le document » | 2.4.0 ; 10.12.0 |
+| Un **état vide qui porte son bouton principal** éteint celui de l'en-tête — y compris quand seule la liste se redessine | 10.12.0 (U-11) — huit pages, dont les Licences |
+| Un **état actif ne change pas la géométrie** : le gras qui fait passer à la ligne décale tout ce qui suit, au moment du clic | 10.12.0 — la barre latérale, 14 px |
+| Un **instrument qui compare deux états** se place là où ils peuvent différer, et EXIGE cette condition — sinon il mesure l'égalité de deux défauts | 10.12.0 — la barre qui défilait : l'entrée était déjà sur deux lignes au repos |
 
 **Ce qu'on ne fait jamais**
 
@@ -6105,6 +6116,134 @@ six lignes, à la souris et au clavier, à côté de l'aperçu puis sans) :
 - Piège de test : mon assertion e2e « le retour ne mène plus au devis vierge » lisait les trois
   dernières entrées de la pile — elle restait verte avec le défaut remis, parce que le devis vierge
   n'était jamais la dernière. **Une assertion sur une pile lit son SOMMET** : c'est là que « ← » va.
+
+**Puis la facture, de l'émission à l'avoir** (H-E9 → H-E18 : une facture émise, payée en deux fois,
+puis corrigée par un avoir alors qu'elle était déjà payée) :
+
+- **Le geste le plus irréversible passait par la question la plus générique** (H-E11). « Émettre
+  FAC-2026-001 ? » dans une boîte qui floutait le document : on confirmait sans pouvoir relire à qui ni
+  combien. `confirmerEmission` pose un récapitulatif (client, date, échéance, net à payer ; la facture
+  corrigée pour un avoir) et **dit AVANT d'émettre ce qu'un avoir laisse à rendre** quand la facture
+  est déjà payée — une somme due au client, qui ne se découvrait qu'après, sur une carte. C'est le
+  « dernier écran avant un geste irréversible » de la console (10.6.0), porté à l'app entreprise.
+  Et la phrase dépend de ce que le client a PAYÉ : ma première version écrivait « est déjà payée »
+  d'une facture qu'un autre avoir couvrait — sans paiement, un avoir de trop n'est pas une somme à
+  rendre, c'est un montant qui dépasse la facture, donc presque toujours une faute de saisie.
+- **Une facture que ses avoirs annulent en entier n'a plus rien à corriger** : le bandeau proposait
+  encore « Corriger par un avoir… » en vert, c'est-à-dire un avoir de trop. `motifVerrou` rend
+  `annulee`, et le bandeau, sa bulle et son bouton lisent la même réponse. Piège de données : un avoir
+  tiré de la facture ne porte pas le timbre (« avoir sans timbre par défaut — À VÉRIFIER »), donc il
+  laisse la facture due d'un dinar et ne l'annule PAS — le test le dit dans les deux sens.
+- **Un état vide qui porte son bouton principal éteint celui de l'en-tête** (U-11, huit pages) :
+  « + Nouveau client » en vert au-dessus de « + Ajouter mon premier client » en vert, deux verts pour
+  le même geste. Quand seule une partie de la page se redessine (Contrats, Licences), l'en-tête bascule
+  DANS le dessin de la liste — pas au dessin de la page, qui n'a lieu qu'une fois. Le test lit chaque
+  route à état vide et chacun de ses en-têtes (Licences en a deux) ; `e2e:entreprise` compte les verts
+  à l'écran juste après l'assistant.
+- **Un état actif ne change pas la géométrie** : l'entrée allumée de la barre latérale passait en
+  gras, « Facturation récurrente » passait à la ligne (34 → 48 px), et tout le menu descendait de
+  14 px sous le curseur au moment du clic. Le fond teinté et la couleur disent l'état ; le gras disait
+  en plus « bouge ». `e2e:barre` allume chaque entrée à son tour et compare sa hauteur au repos — une
+  mesure qu'aucune capture ne donne, puisqu'une capture ne montre jamais les deux états. Je l'avais
+  d'abord rangé dans `A-FAIRE.md` sans l'avoir mesuré : **une note qu'on n'a pas mesurée se vérifie
+  avant d'être écrite**, dans un sens comme dans l'autre.
+  Et la preuve par réintroduction est restée VERTE deux fois : la mesure tournait d'abord sur une
+  entreprise vide, donc sans les compteurs qui font passer l'entrée à la ligne ; puis, avec l'exemple,
+  sur seize entrées qui débordent d'un écran de 900 px — la barre de défilement rétrécit la barre, et
+  l'entrée était déjà sur deux lignes AU REPOS, donc le gras ne changeait plus rien. **Un instrument
+  qui compare deux états se place là où ils peuvent différer, et il EXIGE cette condition** (ici : une
+  fenêtre haute, « rien ne défile », et l'entrée qui sautait SANS son compteur — avec l'exemple, son
+  « 1 » la replie déjà au repos) ; sinon il mesure l'égalité de deux défauts. Troisième fois verte,
+  la preuve n'a parlé qu'une fois l'instrument instrumenté : `console.log` des hauteurs, dans
+  l'environnement du test, plutôt qu'une hypothèse de plus. Et le pied de la barre (Paramètres,
+  Aide) passait encore en gras : la règle ne visait que le menu, le test lit maintenant les deux.
+- **Un trop-perçu n'est pas un reste à payer à zéro** (H-E18) : « 0,000 DT » en VERT sur la
+  situation la plus inconfortable d'une facture, la dette envers le client en petit gris dessous. Le
+  chiffre juste, dans la mauvaise couleur, dit le contraire du vrai. La bulle dit la limite :
+  SkanFact n'enregistre pas encore un remboursement rattaché à la facture (`A-FAIRE.md`).
+- **« Un paiement existe » n'est pas « soldée »** (H-E13) : le bandeau d'une facture payée en ENTIER
+  disait « déjà payée en partie », sa bulle disait « soldée » d'une facture payée à moitié.
+  `core.motifVerrou` rend la phrase ET sa bulle, et le test lit une facture de 120 DT (100 HT + 19 % +
+  timbre) payée en 50 puis 70 — un montant rond ne prouverait rien du « payée en entier » (9.6.1).
+- **`closedBlock` reçoit un NOM, pas une phrase** : son gabarit est « X porte la date du… », et
+  « Ce paiement ne peut pas être supprimé » y donnait « Ce paiement ne peut pas être supprimé porte la
+  date du… ». Au même endroit, `closedToast` — que la 7.17.0 disait supprimé — vivait encore, appelé
+  une fois : **un mécanisme déclaré retiré se cherche dans le code**, pas dans le CHANGELOG. La clôture
+  passe avant la question (7.6.0), et le test l'exige par l'ORDRE des deux appels.
+- **Les pictogrammes muets d'une ligne de paiement** (H-E14, la 7.29.0 jamais portée ici) : « ✎ » et
+  « ✕ », le second supprimait un paiement sans dire lequel. Et le règlement fournisseur n'avait QUE le
+  « ✕ » (H-E15, le jumeau manquant de la 7.3.0 : un paiement client se corrige depuis la 7.3.0) — sa
+  fenêtre annonçait en plus en DINARS le reste d'un achat en euros, la 10.1.0 un écran plus loin.
+- **La règle générale des champs gagne encore, septième fois** (H-E17) : sur une facture émise,
+  `input:disabled` (0,1,1) perdait contre `input:not(…)×4` (0,4,1) — les champs texte gardaient fond
+  blanc et encre foncée pendant que les listes voisines se grisaient. **Un écran à moitié gris est pire
+  qu'un écran tout blanc** : il dit que certains champs sont encore modifiables. La règle porte la
+  chaîne de `:not()`, comme la règle sombre le faisait déjà.
+- **Une classe posée par le code et inconnue de la feuille, cinq d'un coup** (H-E16 ; 6.8.0, 7.23.0,
+  7.27.0, 8.1.0, 9.4.3) : `.warn-box` et `.code-box` vivaient dans la feuille du CABINET — l'app
+  entreprise les posait sur la question du comptable et la clé d'une licence, sans encadré ; `.span-3`
+  et `.mod-sub` n'existaient nulle part. Le test lit TOUTES les classes des gabarits contre la feuille,
+  avec une liste NOMMÉE de crochets — une classe qui existe pour être TROUVÉE, pas stylée — et **un
+  crochet qui gagne une règle doit sortir de la liste**, sinon la liste ment à son tour.
+- **L'étiquette d'une case à cocher est UN élément** (H-E9) : `.check` est un conteneur flex, et
+  « Timbre fiscal (», le montant et « ) » devenaient trois éléments à 8 px d'écart, repliés sur deux
+  lignes. Même famille que « deux boutons voisins ne dépendent pas d'une espace du gabarit » (7.29.0) :
+  le HTML est juste, c'est la mise en page qui décide. Le test lit les deux applications.
+- **Le bouton retour nomme la pièce** (H-E10) : « ← le document », sur une facture tirée d'un devis —
+  lequel, quand on est soi-même sur un document ? `pageLabel` nomme la pièce, le client, le
+  fournisseur ; le nom ENTIER dans la bulle, abrégé à 26 caractères sur le bouton, pour qu'une raison
+  sociale longue ne change pas la taille de la barre d'actions.
+- **Une liste déroulante n'est pas un badge** (H-E12) : « brouillon » en minuscule entre « Tous les
+  statuts » et « Français » se lit comme une valeur oubliée. `optionStatut` met la majuscule au
+  LIBELLÉ ; le test exige une `value` explicite, sinon c'est le libellé qui partirait dans les données.
+- Piège de test e2e : le récapitulatif est une grille à deux cellules, et `textContent` colle le
+  libellé à la valeur (« Facture corrigéeFAC- ») — mon assertion accusait du code juste. **Un parcours
+  qui compare le texte d'une grille ne suppose pas l'espace que l'écran dessine** (le cousin de 9.8.0,
+  où `textContent` GARDAIT les retours de la source).
+
+**Et en finissant la facture et l'achat à la souris** (H-E19 → H-E24) :
+
+- **Ce qui apparaît ne pousse rien, deuxième fois sur la même page** (H-E19 ; H-E1) : le repère « non
+  enregistré » naissait À CÔTÉ du titre. À 1440 px l'en-tête, élargi, passait sur deux rangées au
+  premier geste, et tout le formulaire descendait de 40 px — le clic suivant, visé sur l'Objet, tombait
+  à côté, la frappe partait sur la page. Le point de la grille du Cabinet avait appris la leçon en
+  H-2 : le jumeau manquant, encore (7.3.0). Le repère vit hors du flux, dans la marge SOUS l'en-tête,
+  ancré sur l'en-tête entier : sous le TITRE, quand l'en-tête passe sur deux rangées, c'est la rangée
+  des actions. Et le défaut n'existe qu'entre deux largeurs — l'en-tête tient juste sans le repère,
+  pas avec ; à 1280 px il est déjà sur deux rangées —, d'où `e2e:entreprise` qui mesure à 1440.
+- **« Émettre » enregistre aussi** : la règle H-E5 (« Enregistrer redevient principal dès qu'on
+  modifie ») allumait « Enregistrer le brouillon » à côté d'« Émettre la facture ». Elle vit dans UNE
+  fonction, `enregistrerDevientPrincipal`, qui éteint les autres verts de l'en-tête, et que les deux
+  éditeurs appellent — sauf la facture et l'avoir, dont l'étape suivante reste d'émettre.
+- **Le jumeau manquant dans la même application** (H-E21) : un achat qu'on venait d'enregistrer
+  gardait « Enregistrer » en vert, et son panneau des règlements posait un second vert. La règle H-E5
+  n'avait jamais été portée à l'éditeur d'achat ; le règlement est l'étape suivante, et
+  `e2e:justificatif` compte les verts enregistré, modifié, puis réenregistré.
+- **Une proposition que personne n'a demandée ne se pose pas sous le prochain clic** (H-E20) : la liste
+  du catalogue (9.2.1) s'ouvrait sur un libellé libre avec une seule ligne, « + Créer … au catalogue »,
+  posée EXACTEMENT sur la quantité et le prix — le clic visé sur le prix ouvrait une fiche de
+  prestation. « Créer » seul n'apparaît que si la liste est DEMANDÉE (flèche du bas, « Choisir
+  l'article… ») ; la décision est une fonction pure, `propositionsCatalogue`, que le test joue.
+  **Aucun parcours ne l'aurait trouvé** : ils cliquent des SÉLECTEURS, et un sélecteur n'est jamais
+  recouvert. C'est le test à la souris, qui clique des PIXELS, qui l'a vu — et le parcours qui le
+  tient maintenant clique le prix APRÈS avoir tapé, puis vérifie que le curseur y est.
+- **Une liste vide n'est pas une recherche qui échoue** (H-E22) : « Aucun résultat » sous un champ où
+  rien n'est tapé fait chercher ce qu'on a mal écrit. Même règle que « un état vide dit sa cause »
+  (9.8.8), un composant plus bas.
+- **Deux délais sur une pièce légale, et c'était NOTRE défaut** (H-E23) : la phrase des conditions de
+  paiement disait « à réception de la facture » pendant que la même facture imprime « À régler avant
+  le … » à trente jours. En cas de retard, c'est le client qui choisit lequel il lit. Le défaut ne dit
+  plus que le moyen. Et une phrase restée ainsi n'est **jamais réécrite** : elle est lue sur la
+  société à chaque impression, donc la migrer changerait le texte d'une facture DÉJÀ ENVOYÉE qu'on
+  réexporte (la règle 7.1.x, pour un texte cette fois). Elle se MONTRE dans le récapitulatif
+  d'émission (`delaisContradictoires`, pure) ; une échéance le jour même ne contredit rien. Vu dans
+  l'aperçu, jamais dans un test : un parcours vérifie qu'une phrase est LÀ, pas qu'elle dit le
+  contraire d'une autre.
+- **Un total n'additionne que des pièces de même nature** (H-E24 ; règle 7.18.0, jamais portée à la
+  fiche client) : son tableau de documents additionnait le devis DÉJÀ facturé avec sa facture et
+  l'avoir — 1 520,440 DT « net à payer », le devis compté deux fois. Quand une liste mêle les factures
+  à d'autres pièces, `docTable` ne totalise que les factures et les avoirs, et le pied le DIT
+  (« factures et avoirs : … »). `e2e:entreprise` le vérifie sur des montants calculés à la main.
 
 **Et la console, par le parcours qui la mesure** : garnir l'onglet Commandes (10.9.0) a fait parler
 la sonde du texte coupé et les captures. Trois tables de mots de la page (`NOM_LIGNE`, `ARTICLE`,

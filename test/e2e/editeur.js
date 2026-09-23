@@ -387,6 +387,27 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
   if (seules.length) throw new Error('bulles tombées sous leur entrée : ' + seules.map(x => `${x.entree} (${x.ecart} px)`).join(', '));
   j.ok(lignes.map(x => x.entree).join(' · '));
 
+  // ------------------------------------------------------------- 12. le retour nomme la pièce (10.12.0)
+  // Test humain : sur la facture tirée d'un devis, le bouton disait « ← le document ». Lequel, quand
+  // on est soi-même sur un document ? Il nomme maintenant la pièce, le client ou le fournisseur.
+  j.etape('Sur la facture tirée d\'un devis, le bouton retour nomme le devis');
+  const aFacturer = await win.evaluate(() => {
+    const d = window.__data;
+    const tires = new Set(d.documents.flatMap(x => [x.fromQuoteId, x.deposit && x.deposit.quoteId]).filter(Boolean));
+    const q = d.documents.find(x => x.type === 'devis' && x.number && x.clientId && (x.status === 'envoyé' || x.status === 'accepté') && !tires.has(x.id));
+    return q ? { id: q.id, number: q.number } : null;
+  });
+  if (!aFacturer) throw new Error('aucun devis envoyé ou accepté sans facture : le test ne prouve rien');
+  await aller('#/doc/' + aFacturer.id);
+  await win.waitForSelector('#convert');
+  await win.click('#convert');
+  await win.waitForFunction(id => /^#\/doc\//.test(location.hash) && !location.hash.endsWith(id), aFacturer.id, { timeout: 5000 });
+  await win.waitForSelector('#back');
+  const r12 = await win.evaluate(() => ({ texte: document.querySelector('#back').textContent.trim(), bulle: document.querySelector('#back').title }));
+  if (!r12.texte.includes('Devis ' + aFacturer.number)) throw new Error(`le bouton retour dit « ${r12.texte} » au lieu de nommer ${aFacturer.number}`);
+  if (!r12.bulle.includes('Revenir à Devis ' + aFacturer.number)) throw new Error(`la bulle du bouton retour dit « ${r12.bulle} »`);
+  j.ok(`« ${r12.texte} »`);
+
   await app.close();
   if (bac.length) { console.error('\nErreurs du renderer :\n' + bac.join('\n')); process.exit(2); }
   console.log(`\n${j.total()} étapes — l'éditeur ne laisse plus passer.`);

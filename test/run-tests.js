@@ -3863,7 +3863,10 @@ t('offre Indépendant : chaque module réservé est fermé à la création, part
   const porte = tranche('function licenceBlock(', 'function pageReservee(');
   assert.ok(/licence\.reserves \|\| \[\]\)\.includes\(module\)/.test(porte), 'la porte de l\'offre doit lire licence.reserves');
   assert.ok(!/moduleOn\(/.test(porte), 'l\'offre ne passe pas par moduleOn : elle ne masque rien');
-  const res = tranche('function pageReservee(', 'const closedToast');
+  // La tranche finit sur la fin de SA fonction (10.12.0) : elle s'arrêtait sur son voisin
+  // `closedToast`, qui a disparu — un voisin déménage (règle 10.4.0).
+  const res = tranche('function pageReservee(', '\n  }\n');
+  assert.ok(res.length < 400, 'tranche de pageReservee suspecte : ' + res.length);
   assert.ok(/p\.id !== 'stats'/.test(res), 'les Statistiques doivent rester ouvertes (elles ne créent rien)');
   // Le bandeau se pose dans render(), après la route, comme celui des modules.
   const rendu = tranche('function render(keepScroll)', 'function setWindowTitle');
@@ -6553,9 +6556,12 @@ t('cabinet : ses classes à lui ne doivent pas exister dans la feuille partagée
   // boutons sortaient de la fenêtre. Aucune erreur, rien dans la console, juste une mise en page
   // fausse qu'il faut voir pour la croire.
   const partagee = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'style.css'), 'utf8');
-  const propre = fs.readFileSync(path.join(__dirname, '..', 'src', 'cabinet', 'renderer', 'cabinet.css'), 'utf8');
+  // Sans ses commentaires : un commentaire qui NOMME une classe n'en définit aucune (6.8.0).
+  const propre = fs.readFileSync(path.join(__dirname, '..', 'src', 'cabinet', 'renderer', 'cabinet.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
   // Les classes que le cabinet DÉFINIT pour lui-même (préfixes et noms qui n'ont de sens qu'ici).
-  const siennes = [...propre.matchAll(/\.(wiz-[a-z-]+|reprise-[a-z-]+|drop-[a-z-]+|lock-warn|pw-[a-z-]+|warn-box|err-inline|ok-inline|year-[a-z-]+|b-hors|brand-tag|code-box|saved)\b/g)]
+  // `.warn-box` et `.code-box` n'en sont plus depuis la 10.12.0 : l'app entreprise les posait aussi,
+  // sans que sa feuille les connaisse — elles vivent désormais dans la feuille PARTAGÉE, exprès.
+  const siennes = [...propre.matchAll(/\.(wiz-[a-z-]+|reprise-[a-z-]+|drop-[a-z-]+|lock-warn|pw-[a-z-]+|err-inline|ok-inline|year-[a-z-]+|b-hors|brand-tag|saved)\b/g)]
     .map(m => m[1]);
   assert.ok(siennes.length >= 10, 'le fichier propre au cabinet doit bien définir ses classes');
   [...new Set(siennes)].forEach(c => {
@@ -8393,8 +8399,17 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     // Deux moitiés, toutes deux nécessaires : l'attribut sur la ligne ET le gestionnaire. Un premier
     // jet cherchait juste la chaîne « data-edpay » quelque part — il restait vert quand on cassait
     // le bouton, parce que le mot survivait dans le gestionnaire. Vérifié en cassant chacun des deux.
-    assert.ok(/data-edpay="\$\{p\.id\}"/.test(code), 'la ligne d\'un paiement doit porter un bouton Modifier');
-    assert.ok(/\$\$\('\[data-edpay\]'/.test(code), 'et ce bouton doit être branché');
+    // 10.12.0 — le bouton « ✎ » est devenu une entrée du menu de la ligne (« Modifier ce paiement »),
+    // et le règlement fournisseur a enfin la sienne. La RÈGLE ne change pas : la ligne porte un menu
+    // (`rowMenuCell`), et ce menu appelle le formulaire AVEC le paiement — sans ce troisième argument,
+    // il en créerait un second au lieu de corriger celui-là.
+    const tablePay = code.slice(code.indexOf('function drawPayments()'), code.indexOf('function drawPayments()') + 6000);
+    assert.ok(/<td class="r">\$\{C\.money\(p\.amount, cur\)\}<\/td>\$\{rowMenuCell\(p\.id\)\}/.test(tablePay), 'la ligne d\'un paiement doit porter son menu');
+    assert.ok(/label: 'Modifier ce paiement'[^\n]*paymentForm\(s, [^\n]*, p\)/.test(tablePay), 'et ce menu doit ouvrir le paiement lui-même');
+    const i2 = code.indexOf('function drawPayments()', code.indexOf('function drawPayments()') + 10);
+    const tableReg = code.slice(i2, i2 + 6000);
+    assert.ok(/\$\{rowMenuCell\(x\.id\)\}/.test(tableReg), 'la ligne d\'un règlement doit porter son menu');
+    assert.ok(/label: 'Modifier ce règlement'[^\n]*supplierPaymentForm\(s2, [^\n]*, x\)/.test(tableReg), 'un règlement fournisseur doit se corriger comme un paiement client');
   });
 
   t('le paquet du comptable ne félicite pas un mois vide', () => {
@@ -13122,7 +13137,10 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     // Choisir est un `mousedown` + preventDefault, comme les combos : le champ garde le focus et le
     // choix part AVANT que le garde-fou global ne referme la liste.
     assert.ok(/d\.onmousedown = e => \{ e\.preventDefault\(\); pick\(shown\[Number\(d\.dataset\.i\)\]\); \}/.test(app), 'le choix ne se fait plus au mousedown : le garde-fou global fermera la liste avant');
-    assert.ok(/input\._ouvrirSuggestions = \(\) => \{ input\.focus\(\); sel = 0; draw\(\); \}/.test(app), 'l\'avertissement n\'a plus de porte pour rouvrir la liste');
+    // Retourné vers la règle (10.12.0, H-E20) : l'avertissement ouvre la liste en la DEMANDANT —
+    // c'est ce qui y fait paraître « Créer… » quand rien ne correspond à la désignation.
+    assert.ok(/input\._ouvrirSuggestions = \(\) => \{ input\.focus\(\);[^}]*demandee = true;[^}]*draw\(\); \}/.test(app),
+      'l\'avertissement n\'a plus de porte pour rouvrir la liste, ou l\'ouvre sans la demander : « Créer » n\'y paraîtrait plus');
     // Les DEUX éditeurs branchent le composant sur la désignation : le stock ENTRE par l'achat et
     // SORT par la vente, par la même règle (`itemOfLine`). Un seul des deux serait la faute 7.3.0.
     const achat = zone("const body = $('#b-lines');", 'function refresh() {');

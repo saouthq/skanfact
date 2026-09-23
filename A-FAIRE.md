@@ -100,6 +100,34 @@ Constats de l'audit du 22/09/2026 restés hors de la 10.6.0.
 - **L'audit UI/UX du Cabinet est fait et corrigé** (23/09/2026) : ses trente constats (U-01 à
   U-30) et ce que leur vérification à la souris a trouvé en plus sont livrés en **10.12.0 (bêta)** —
   détail dans `CHANGELOG.md` et `CLAUDE.md` § 10.12.0. Reste à le faire relire par le cabinet pilote.
+- **Le test humain de l'app entreprise** (23/09/2026, en chef d'entreprise qui fait son premier
+  devis, sa première facture, puis son premier achat) a livré ses corrections en 10.12.0 (H-E1 →
+  H-E22). Ce qu'il a vu
+  et qui reste à décider ou à faire :
+  - **Un trop-perçu ne se rembourse pas dans SkanFact.** Un avoir émis sur une facture déjà payée
+    laisse une somme due au client : la carte « Trop-perçu » le dit, mais aucun geste n'enregistre
+    le remboursement rattaché à la facture — on note la sortie à la main dans Trésorerie, et la
+    carte reste. C'est de l'argent : à spécifier avant d'écrire (compte, pièce, effet sur le
+    lettrage), et à faire en bêta. Au même endroit : la liste des clients, la fiche du client et l'accueil
+    annoncent un « reste à payer » qui ne déduit pas ce qu'on doit à ce même client (1 012,500 DT
+    affichés quand il nous doit 505,560 net) — c'est le même chantier, le relevé de compte, lui, est
+    juste.
+  - **Les champs de montant suivent la langue du SYSTÈME**, pas celle de l'application : sur un
+    poste réglé en anglais, un prix s'affiche « 507.94 » et le navigateur décide des décimales. Le
+    Cabinet a résolu la même chose en 10.12.0 (H-3 : un montant s'écrit et se relit en français) ;
+    l'app entreprise a une trentaine de champs `type=number` que `formValues` lit par `Number()` —
+    un portage à faire écran par écran, avec son test.
+  - **Toutes les questions s'intitulent « Confirmation »** : le titre devrait dire le geste
+    (« Supprimer ce paiement ? »), la phrase en dessous dit déjà le reste. 78 appels ; dériver le
+    titre du libellé du bouton donnerait « Passer ? » ou « Le client a refusé ? » — c'est à écrire
+    appel par appel, pas à fabriquer.
+  - **Une facture qu'on vient d'émettre se dit « envoyée »**, avant tout envoi : c'est le nom du
+    statut déduit depuis la 1.4.0 (la bulle le dit), mais un créateur d'entreprise qui n'a rien
+    envoyé le lit comme une erreur. Changer le mot touche les données (la valeur `envoyée`), les
+    filtres, les relances et l'aide : à décider (« émise » ?), pas à glisser dans un correctif.
+  - **Un avoir tiré d'une facture ne porte pas le timbre** (réglage « avoir sans timbre par défaut —
+    À VÉRIFIER ») : un avoir « total » laisse donc la facture due d'un dinar, et elle ne passe jamais
+    « annulée ». Question au comptable : le timbre d'une facture annulée par avoir se rend-il ?
 - Les trois pistes jamais demandées, gardées pour mémoire : séparer les installateurs arm64 / x64
   (les 222 Mo du dmg universel), la signature Apple et Windows (certificats payants — mais elle
   passe **avant la première vente**, cf. `QUESTIONS.md` : un expert-comptable ne clique pas sur

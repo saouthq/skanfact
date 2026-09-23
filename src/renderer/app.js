@@ -363,7 +363,9 @@
   // fenêtre avec un bouton « Aller aux clôtures » ; depuis une ligne de liste, un bandeau noir de
   // deux secondes et demie en bas de l'écran, qui nommait l'endroit sans y mener et disparaissait
   // avant qu'on ait fini de le lire. Un refus se dit d'une seule façon, et il porte sa sortie.
-  const closedToast = (dates, what) => closedBlock(dates, what);
+  // Ses deux derniers appelants (supprimer un paiement, un règlement) lui passaient une PHRASE
+  // entière — « Ce paiement ne peut pas être supprimé porte la date du… » —, et posaient la question
+  // AVANT le refus. Ils appellent `closedBlock` avec un nom, avant de demander (10.12.0).
 
   // Refuser une saisie en MONTRANT ce qui ne va pas. Trois gestes, toujours les mêmes : on amène le
   // champ à l'écran, on y met le curseur, on le marque en rouge le temps qu'il soit corrigé. Sans ça,
@@ -421,6 +423,11 @@
   const effStatus = doc => C.effectiveStatus(doc, data, data.company);
   const balance = doc => C.invoiceBalance(doc, data, data.company);
   const docLabel = doc => `${C.TITLES[doc.type]} ${doc.number || '(brouillon)'}`;
+  // Un statut dans une LISTE DÉROULANTE commence par une majuscule, comme ses voisines (« Tous les
+  // statuts », « Français », « Factures et avoirs ») : « brouillon » entre les deux se lisait comme
+  // une valeur oubliée (10.12.0). Le badge, lui, garde sa minuscule d'étiquette ; la VALEUR ne change
+  // pas — elle part dans les données telle quelle.
+  const optionStatut = st => { const t = String(C.statusLabel(st) || ''); return t.charAt(0).toUpperCase() + t.slice(1); };
   const deepCopy = o => JSON.parse(JSON.stringify(o));
   const pct = n => String(n).replace('.', ',');
   const docCur = doc => doc.currency || company().currency;
@@ -605,12 +612,60 @@
   // Une question finit TOUJOURS par répondre : fermée par Échap ou par un clic à côté, elle vaut
   // « Annuler ». Une promesse laissée en suspens bloquait tout ce qui l'attendait, sans aucune erreur
   // visible — c'est ce qui figeait l'application entière après le garde-fou de navigation.
+  // Un numéro de pièce ne se coupe jamais en fin de ligne : le navigateur coupe après un trait
+  // d'union, et « FAC-2026- / 001 » se lisait comme deux choses (vu au test humain, 10.12.0). Les
+  // numéros passent dans un `nw` une fois le texte ÉCHAPPÉ — avant, la balise serait échappée.
+  const numerosInsecables = html => String(html).replace(/\b[A-Z]{2,4}-\d{4}-\d{2,}\b/g, m => `<span class="nw">${m}</span>`);
   function confirmDialog(msg, okLabel, danger) {
     return new Promise(resolve => {
       let settled = false;
       const finish = (close, v) => { settled = true; close(); resolve(v); };
-      modal(`<h2>Confirmation</h2><p>${C.nl2br(msg)}</p>
+      modal(`<h2>Confirmation</h2><p>${numerosInsecables(C.nl2br(msg))}</p>
         <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn ${danger === false ? 'btn-primary' : 'btn-danger'}" id="ok">${h(okLabel || 'Confirmer')}</button></div>`,
+        (root, close) => { $('#ok', root).onclick = () => finish(close, true); $('[data-close]', root).onclick = () => finish(close, false); },
+        () => { if (!settled) resolve(false); });
+    });
+  }
+
+  // Émettre une facture ou un avoir est le geste le plus irréversible de l'application : le numéro
+  // devient définitif, et seule une autre pièce corrige. La question était « Confirmation » et
+  // floutait le document — on confirmait sans pouvoir relire à qui, ni combien (10.12.0, la règle
+  // 10.6.0 du récapitulatif portée à l'app entreprise). Elle nomme maintenant le client, les dates
+  // et le montant ; et pour un avoir, la facture qu'il corrige et ce que cela laisse à rendre quand
+  // elle est déjà payée. Les avertissements se lisent AVANT le bouton (9.4.2), jamais dessous.
+  function confirmerEmission(doc, numero, avertissements) {
+    const isAv = doc.type === 'avoir';
+    const cur = docCur(doc);
+    const t = C.computeTotals(doc, company());
+    const cl = clientById(doc.clientId);
+    const inv = isAv && doc.creditOf ? docById(doc.creditOf) : null;
+    // Ce que l'avoir laisse de TROP sur la facture qu'il corrige. Deux situations qui ne se disent
+    // pas pareil : si le client a PAYÉ, c'est une somme à lui rendre — ou à déduire de sa prochaine
+    // facture ; s'il n'a rien payé, c'est un avoir plus gros que ce qu'il reste à corriger, donc
+    // presque toujours une faute de saisie. Dire « déjà payée » d'une facture qu'un autre avoir a
+    // couverte serait écrire le contraire du vrai.
+    const bInv = inv ? balance(inv) : null;
+    const reste = bInv ? bInv.remaining : null;
+    const aRendre = bInv ? C.round3(Math.max(0, t.netToPay - Math.max(0, reste))) : 0;
+    const surplus = aRendre > 0.0005 ? (bInv.paid > 0
+      ? `${reste > 0.0005 ? `Il ne reste que ${C.money(reste, cur)} à payer sur ${h(inv.number)}` : `${h(inv.number)} est déjà payée`} : cet avoir laisse <strong>${C.money(aRendre, cur)}</strong> à rendre à ${h(cl ? cl.name : 'ton client')} — par un remboursement, ou en déduction de sa prochaine facture.`
+      : `${reste > 0.0005 ? `Il ne reste que ${C.money(reste, cur)} à corriger sur ${h(inv.number)}` : `${h(inv.number)} est déjà entièrement couverte par un avoir`} : cet avoir la dépasse de <strong>${C.money(aRendre, cur)}</strong>. Vérifie son montant avant de l'émettre.`) : '';
+    const ligne = (k, v) => `<div><span>${h(k)}</span><span>${v}</span></div>`;
+    return new Promise(resolve => {
+      let settled = false;
+      const finish = (close, v) => { settled = true; close(); resolve(v); };
+      modal(`<h2>Émettre ${isAv ? 'l\'avoir' : 'la facture'} ${h(numero)} ?</h2>
+        <div class="kv recap-emission">
+          ${ligne('Client', `<strong>${h(cl ? cl.name : '—')}</strong>`)}
+          ${inv ? ligne('Facture corrigée', `${h(inv.number || '—')} · ${C.money(bInv.totals.netToPay, cur)}`) : ''}
+          ${ligne('Date', C.fmtDate(doc.date))}
+          ${!isAv && doc.dueDate ? ligne('Échéance', C.fmtDate(doc.dueDate)) : ''}
+          ${ligne(isAv ? 'Montant de l\'avoir' : 'Net à payer', `<strong>${C.money(t.netToPay, cur)}</strong>`)}
+        </div>
+        <p class="small">Le numéro devient définitif et ${isAv ? 'l\'avoir' : 'la facture'} ne se modifie plus.${isAv ? '' : ' Pour corriger après coup, on fait un avoir.'}</p>
+        ${surplus ? `<div class="warn-box mb">${numerosInsecables(surplus)}</div>` : ''}
+        ${avertissements.length ? `<div class="warn-box mb">${avertissements.map(w => `<div>⚠ ${h(w)}</div>`).join('')}</div>` : ''}
+        <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">${avertissements.length ? 'Émettre quand même' : 'Émettre'}</button></div>`,
         (root, close) => { $('#ok', root).onclick = () => finish(close, true); $('[data-close]', root).onclick = () => finish(close, false); },
         () => { if (!settled) resolve(false); });
     });
@@ -621,7 +676,7 @@
     return new Promise(resolve => {
       let settled = false;
       const finish = (close, v) => { settled = true; close(); resolve(v); };
-      modal(`<h2>${h(title)}</h2><p>${h(msg)}</p>
+      modal(`<h2>${h(title)}</h2><p>${numerosInsecables(h(msg))}</p>
         <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn" id="b">${h(labelB)}</button><button class="btn btn-primary" id="a">${h(labelA)}</button></div>`,
         (root, close) => { $('#a', root).onclick = () => finish(close, 'a'); $('#b', root).onclick = () => finish(close, 'b'); $('[data-close]', root).onclick = () => finish(close, null); },
         () => { if (!settled) resolve(null); });
@@ -693,7 +748,9 @@
       list.innerHTML = shown.length ? shown.map((x, i) => `<div class="combo-it${i === sel ? ' sel' : ''}${x.v === el._value ? ' cur' : ''}" data-i="${i}" role="option" aria-selected="${i === sel}">
           <span class="ci-main">${h(x.label)}${x.sub ? `<span class="ci-sub">${h(x.sub)}</span>` : ''}</span>
           ${x.right ? `<span class="ci-right">${h(x.right)}</span>` : ''}</div>`).join('')
-        : '<div class="combo-empty">Aucun résultat</div>';
+        // Une liste VIDE n'est pas une recherche qui échoue : « Aucun résultat » sous un champ où
+        // l'on n'a rien tapé faisait chercher ce qu'on avait mal écrit (10.12.0, H-E22).
+        : `<div class="combo-empty">${el._items.length ? 'Aucun résultat' : h(o.vide || 'Rien à choisir pour l\'instant')}</div>`;
       $$('.combo-it', list).forEach(d => d.onmousedown = e => { e.preventDefault(); pick(shown[Number(d.dataset.i)]); });
       const cur = $('.combo-it.sel', list); if (cur) cur.scrollIntoView({ block: 'nearest' });
     };
@@ -746,6 +803,25 @@
   // La recherche ignore les accents et les espaces : « memoire 16go » doit trouver « Mémoire 16 Go »,
   // sinon la liste ne sert à rien dans le cas exact qui l'a fait écrire.
   const sansAccents = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  // Ce que la liste propose sous une désignation : les articles qui correspondent, et « Créer… ».
+  // « Créer » ne s'offre SEUL que si la liste a été DEMANDÉE — la flèche du bas, ou « Choisir
+  // l'article… » d'un avertissement (10.12.0, H-E20). Vu au test humain : on tape « Location salle
+  // de réunion », un libellé libre que le catalogue ignore, et une liste d'une seule ligne, « + Créer
+  // … au catalogue », se pose EXACTEMENT sur la rangée quantité / prix. Le clic suivant, visé sur le
+  // prix, ouvrait une fiche de prestation. Une proposition que personne n'a demandée ne se met pas
+  // sous le prochain clic ; elle reste en bout de liste quand la liste a de quoi s'ouvrir.
+  function propositionsCatalogue(items, query, peutCreer, demandee) {
+    const q = String(query || '').trim();
+    const words = sansAccents(q).split(/\s+/).filter(Boolean);
+    const correspond = c => {
+      const hay = sansAccents(`${c.label || ''} ${c.description || ''}`), serre = hay.replace(/\s+/g, '');
+      return words.every(w => hay.includes(w) || serre.includes(w.replace(/\s+/g, '')));
+    };
+    const shown = words.length ? (items || []).filter(correspond).slice(0, 8) : [];
+    const exact = shown.some(c => sansAccents(c.label).trim() === sansAccents(q));
+    const creer = !!peutCreer && q.length >= 2 && !exact && (shown.length > 0 || !!demandee);
+    return { shown, creer, query: q };
+  }
   function suggererCatalogue(input, o) {
     if (!input || input._sugg) return;
     input._sugg = true;
@@ -754,18 +830,12 @@
     const pop = document.createElement('div');
     pop.className = 'sugg-pop'; pop.hidden = true;
     host.appendChild(pop);
-    let sel = 0, shown = [], query = '';
+    let sel = 0, shown = [], query = '', demandee = false;
     const close = () => { pop.hidden = true; if (closeOverlay === close) closeOverlay = null; };
-    const correspond = (c, words) => {
-      const hay = sansAccents(`${c.label || ''} ${c.description || ''}`), serre = hay.replace(/\s+/g, '');
-      return words.every(w => hay.includes(w) || serre.includes(w.replace(/\s+/g, '')));
-    };
     const draw = () => {
-      query = input.value.trim();
-      const words = sansAccents(query).split(/\s+/).filter(Boolean);
-      shown = words.length ? (o.items() || []).filter(c => correspond(c, words)).slice(0, 8) : [];
-      const exact = shown.some(c => sansAccents(c.label).trim() === sansAccents(query));
-      const creer = !!o.onCreate && query.length >= 2 && !exact;
+      const p = propositionsCatalogue(o.items(), input.value, !!o.onCreate, demandee);
+      shown = p.shown; query = p.query;
+      const creer = p.creer;
       if (!shown.length && !creer) { close(); return; }
       sel = Math.max(0, Math.min(sel, shown.length - 1));
       pop.innerHTML = shown.map((c, i) => `<div class="sugg-it${i === sel ? ' sel' : ''}" data-i="${i}" role="option" aria-selected="${i === sel}">
@@ -780,9 +850,9 @@
       if (pop.hidden) { if (closeOverlay) closeOverlay(); pop.hidden = false; closeOverlay = close; }
     };
     const pick = c => { if (!c) return; close(); o.onPick(c); };
-    input.addEventListener('input', () => { sel = 0; draw(); });
+    input.addEventListener('input', () => { sel = 0; demandee = false; draw(); });
     input.addEventListener('keydown', e => {
-      if (e.key === 'ArrowDown') { e.preventDefault(); if (pop.hidden) sel = 0; else sel = Math.min(sel + 1, shown.length - 1); draw(); }
+      if (e.key === 'ArrowDown') { e.preventDefault(); if (pop.hidden) { sel = 0; demandee = true; } else sel = Math.min(sel + 1, shown.length - 1); draw(); }
       else if (pop.hidden) return;
       else if (e.key === 'ArrowUp') { e.preventDefault(); sel = Math.max(sel - 1, 0); draw(); }
       // stopPropagation : dans une fenêtre modale, Entrée validerait aussi le bouton principal.
@@ -792,7 +862,7 @@
     });
     // L'avertissement « ne correspond à aucun article » ramène ICI et ouvre la liste : on choisit,
     // on ne retape pas.
-    input._ouvrirSuggestions = () => { input.focus(); sel = 0; draw(); };
+    input._ouvrirSuggestions = () => { input.focus(); sel = 0; demandee = true; draw(); };
   }
 
   // ---------- champ date avec calendrier ----------
@@ -1009,6 +1079,17 @@
     });
   }
 
+  // Modifier une pièce rend « Enregistrer » principal, et les autres verts de l'en-tête lui cèdent la
+  // place : on n'envoie pas, on ne facture pas, on ne règle pas une pièce qui n'est pas enregistrée
+  // (règle U-11 — un seul bouton principal, l'étape suivante). UNE fonction pour les DEUX éditeurs,
+  // documents (H-E5) et achats (H-E21) : l'éditeur d'achat n'avait jamais reçu la règle, et
+  // « Enregistrer » y restait vert sur une pièce qu'on venait d'enregistrer.
+  function enregistrerDevientPrincipal() {
+    const s = $('#save'); if (!s) return;
+    $$('#view .page-head .actions .btn-primary').forEach(b => { if (b !== s) b.classList.remove('btn-primary'); });
+    s.classList.add('btn-primary');
+  }
+
   // ---------- garde-fou « modifications non enregistrées » ----------
   // Une page qui a des modifications en cours s'enregistre ici ; toute navigation demande alors quoi faire.
   let guard = null;                       // { dirty: () => bool, save: () => bool|Promise, what: 'ce devis' }
@@ -1081,7 +1162,21 @@
     stock: 'Stock', article: 'l\'article', garanties: 'Garanties', paie: 'Paie', salarie: 'la fiche du salarié',
     modules: 'Tous les modules'
   };
-  const pageLabel = hash => PAGE_LABELS[(hash || '').replace(/^#\/?/, '').split('/')[0]] || 'Accueil';
+  // Le retour NOMME la pièce ou la fiche où il mène (10.12.0). Sur la facture tirée d'un devis, il
+  // disait « ← le document » : lequel, quand on est soi-même sur un document ? Il dit maintenant
+  // « ← Devis DEV-2026-001 », « ← Hôtel Les Oliviers SARL ». Un nom trop long s'abrège — la barre
+  // d'actions porte déjà dix commandes — et la bulle du bouton le garde entier.
+  const nomCourt = s => { const t = String(s || '').trim(); return t.length > 26 ? t.slice(0, 25).trimEnd() + '…' : t; };
+  const pageLabel = (hash, entier) => {
+    const [route, id] = (hash || '').replace(/^#\/?/, '').split('/');
+    const nom = t => entier ? t : nomCourt(t);
+    if (id && id !== 'new') {
+      if (route === 'doc') { const d = docById(id); if (d) return docLabel(d); }
+      if (route === 'client') { const c = clientById(id); if (c && c.name) return nom(c.name); }
+      if (route === 'fournisseur') { const f = supplierById(id); if (f && f.name) return nom(f.name); }
+    }
+    return PAGE_LABELS[route] || 'Accueil';
+  };
   // Une page de CRÉATION qu'on vient d'enregistrer n'est pas un endroit où revenir : son adresse
   // (« #/doc/new/devis », « #/achat/new ») rouvre une pièce VIERGE. Après « Enregistrer », le
   // bouton retour disait « ← le document » et fabriquait un second devis vide au lieu de ramener
@@ -1119,8 +1214,8 @@
   }
   // Bouton retour d'une sous-page. `fallback` sert quand on y est arrivé directement (lien, démarrage).
   function backButton(fallback, skip) {
-    const label = pageLabel(backTarget(fallback, skip));
-    return `<button class="btn btn-back" id="back" title="Revenir à ${h(label)}">← ${h(label)}</button>`;
+    const cible = backTarget(fallback, skip);
+    return `<button class="btn btn-back" id="back" title="Revenir à ${h(pageLabel(cible, true))}">← ${h(pageLabel(cible))}</button>`;
   }
   function bindBack(fallback, skip) {
     const b = $('#back');
@@ -2063,10 +2158,17 @@
     const sorted = applySort(list, cols, opts.sort);
     // Le pied de tableau totalise toute la sélection, pas seulement la page affichée :
     // un total qui changerait en tournant les pages ne voudrait rien dire.
-    const mixed = sorted.some(d => docCur(d) !== cur);
-    const totalHT = sorted.reduce((s, d) => s + (d.type === 'avoir' ? -1 : 1) * C.toBase(d, C.computeTotals(d, company()).netHT, company()), 0);
-    const totalAmount = sorted.reduce((s, d) => s + C.toBase(d, amountOf(d), company()), 0);
-    const totalRest = sorted.reduce((s, d) => s + Math.max(0, C.toBase(d, restOf(d) || 0, company())), 0);
+    // Un total n'additionne que des pièces de même nature (règle 7.18.0). Sur la fiche d'un client, le
+    // pied additionnait un devis DÉJÀ facturé avec sa facture — compté deux fois, sous « Net à payer »
+    // (10.12.0, H-E24). Quand la liste mêle les factures à d'autres pièces, les totaux ne portent que
+    // sur les factures et les avoirs, et le pied le DIT.
+    const comptent = sorted.filter(d => d.type === 'facture' || d.type === 'avoir');
+    const melange = comptent.length > 0 && comptent.length < sorted.length;
+    const base = melange ? comptent : sorted;
+    const mixed = base.some(d => docCur(d) !== cur);
+    const totalHT = base.reduce((s, d) => s + (d.type === 'avoir' ? -1 : 1) * C.toBase(d, C.computeTotals(d, company()).netHT, company()), 0);
+    const totalAmount = base.reduce((s, d) => s + C.toBase(d, amountOf(d), company()), 0);
+    const totalRest = base.reduce((s, d) => s + Math.max(0, C.toBase(d, restOf(d) || 0, company())), 0);
     const paged = opts.page ? paginate(sorted, opts.page) : { rows: sorted, pg: null };
     return `<table class="list sortable"><thead>
         ${sortHead(opts.onSort ? cols : cols.map(c => ({ ...c, val: null })), opts.sort, '<th class="row-actions-h"></th>')}
@@ -2075,7 +2177,7 @@
         ${cols.map(c => `<td class="${c.r ? 'r nw' : ''}${c.cls ? ' ' + c.cls : ''}">${c.get(d)}</td>`).join('')}
         ${rowMenuCell(d.id)}</tr>`).join('')}
     </tbody>${opts.noFoot ? '' : `<tfoot><tr>
-      <td colspan="${Math.max(1, cols.length - (opts.quotes ? 1 : 2))}">${pl(sorted.length, 'document')} · ${C.money(totalHT, cur)} HT${mixed ? ` <span class="muted">(devises étrangères converties en ${h(cur)})</span>` : ''}</td>
+      <td colspan="${Math.max(1, cols.length - (opts.quotes ? 1 : 2))}">${pl(sorted.length, 'document')} · ${melange ? 'factures et avoirs : ' : ''}${C.money(totalHT, cur)} HT${mixed ? ` <span class="muted">(devises étrangères converties en ${h(cur)})</span>` : ''}</td>
       <td class="r">${C.money(totalAmount, cur)}</td>
       ${opts.quotes ? '' : `<td class="r">${totalRest > 0.0005 ? C.money(totalRest, cur) : '<span class="muted">—</span>'}</td>`}
       <td></td></tr></tfoot>`}</table>
@@ -2226,11 +2328,11 @@
     const statuses = isQ ? C.DISPLAY_STATUSES.devis : [...C.DISPLAY_STATUSES.facture, 'émis', 'à encaisser'];
     $('#view').innerHTML = `
       <div class="page-head"><h1>${isQ ? 'Devis' : 'Factures'}</h1>
-        <div class="actions">${isQ || !data.documents.some(d => d.type === 'facture' && d.status !== 'brouillon' && d.number) ? '' : '<button class="btn" id="new-avoir">+ Avoir</button>'}<button class="btn btn-primary" id="new">+ ${isQ ? 'Nouveau devis' : 'Nouvelle facture'}</button></div></div>
+        <div class="actions">${isQ || !data.documents.some(d => d.type === 'facture' && d.status !== 'brouillon' && d.number) ? '' : '<button class="btn" id="new-avoir">+ Avoir</button>'}<button class="btn ${mine.length ? 'btn-primary' : ''}" id="new">+ ${isQ ? 'Nouveau devis' : 'Nouvelle facture'}</button></div></div>
       ${filtersBar(`
         <input type="text" id="q" placeholder="Rechercher : n°, client, objet…" value="${h(s.q)}">
         ${isQ ? '' : `<select id="kind"><option value="">Factures et avoirs</option><option value="facture" ${s.kind === 'facture' ? 'selected' : ''}>Factures</option><option value="avoir" ${s.kind === 'avoir' ? 'selected' : ''}>Avoirs</option></select>`}
-        <select id="st"><option value="">Tous les statuts</option>${statuses.map(x => `<option value="${x}" ${s.st === x ? 'selected' : ''}>${h(C.statusLabel(x))}</option>`).join('')}</select>
+        <select id="st"><option value="">Tous les statuts</option>${statuses.map(x => `<option value="${x}" ${s.st === x ? 'selected' : ''}>${h(optionStatut(x))}</option>`).join('')}</select>
         ${years.length > 1 ? `<select id="yr"><option value="">Toutes les années</option>${years.map(y => `<option value="${y}" ${s.year === y ? 'selected' : ''}>${y}</option>`).join('')}</select>` : ''}
         ${info('list.filters')}
         <span class="f-note" id="f-note" hidden></span>
@@ -2328,6 +2430,9 @@
     const stored = isNew ? null : docById(doc.id);
     const bal = isInv && !isNew && doc.status !== 'brouillon' ? balance(stored) : null;
     const canUnlock = locked && isInv && bal && !bal.paid && !bal.credits.length;
+    // Pourquoi elle ne se rouvre plus, et si ses avoirs l'annulent EN ENTIER (10.12.0) : le bandeau,
+    // sa bulle et son bouton principal lisent la même réponse.
+    const verrou = C.motifVerrou(bal);
     // Le timbre fiscal est fixé EN DINARS (7.0.1) : sur une facture en euros il vaut 1 DT converti,
     // soit 0,29 € au taux 3,4. L'étiquette à côté de la case annonçait le réglage brut — donc
     // « 1,00 € » sur une pièce où le total, lui, comptait 0,29 €. Et une pièce émise garde son
@@ -2359,7 +2464,7 @@
     const NEW_TITLES = { proforma: 'Nouvelle proforma', commande: 'Nouveau bon de commande', livraison: 'Nouveau bon de livraison', contrat: 'Nouveau contrat' };
     const title = isNew ? (isQ ? 'Nouveau devis' : isInv ? 'Nouvelle facture' : isAv ? 'Nouvel avoir' : NEW_TITLES[doc.type]) : docLabel(doc);
     const statusCell = isQ || isExtra
-      ? `<label class="field">${lbl('Statut', isQ ? 'ed.statusQuote' : 'ed.statusExtra')}<select name="status">${C.STATUSES[doc.type].map(s => `<option ${s === doc.status ? 'selected' : ''}>${s}</option>`).join('')}</select></label>`
+      ? `<label class="field">${lbl('Statut', isQ ? 'ed.statusQuote' : 'ed.statusExtra')}<select name="status">${C.STATUSES[doc.type].map(st => `<option value="${h(st)}" ${st === doc.status ? 'selected' : ''}>${h(optionStatut(st))}</option>`).join('')}</select></label>`
       : `<div class="field">${lbl('Statut', isInv ? 'ed.statusInvoice' : '')}<div class="status-cell">${isNew || doc.status === 'brouillon' ? `${badge('brouillon')}<span class="small muted">numéro attribué à l'émission</span> ${info('ed.draftNumber')}` : (isInv ? statusBadge(stored) : badge(doc.status))}</div></div>`;
 
     // Facturer un devis, c'est le geste qui rapporte de l'argent — et c'était la seule porte de
@@ -2420,7 +2525,7 @@
 
     $('#view').innerHTML = `
       <div class="page-head">
-        <div><h1>${h(title)} <span class="dirty-dot" id="dirty-dot" hidden title="Modifications non enregistrées">non enregistré</span></h1>${doc.recurringId ? `<div class="small muted">Générée par un contrat récurrent — <a href="#/contrat/${h(doc.recurringId)}">voir le contrat</a></div>` : ''}</div>
+        <div><h1>${h(title)} <span class="dirty-dot" id="dirty-dot" hidden>Modifications non enregistrées</span></h1>${doc.recurringId ? `<div class="small muted">Générée par un contrat récurrent — <a href="#/contrat/${h(doc.recurringId)}">voir le contrat</a></div>` : ''}</div>
         <div class="actions">
           ${backButton(backTo)}
           <!-- Le bouton existe sur TOUTE pièce enregistrée (7.1.2). Sur un brouillon de facture il
@@ -2456,13 +2561,24 @@
         <span><b>Cette pièce est émise : elle ne se modifie plus.</b> C'est la règle qui rend une
         numérotation crédible — un numéro attribué ne doit jamais désigner deux contenus différents.
         ${isInv && doc.status !== 'annulée'
-          ? 'Pour corriger, on fabrique un avoir : il annule tout ou partie de celle-ci, et les deux pièces restent.'
+          ? (verrou.annulee
+            // Une facture que ses avoirs couvrent en entier n'a plus rien à corriger : proposer
+            // « Corriger par un avoir… » en vert, c'était inviter à un avoir de trop (10.12.0).
+            ? 'Ses avoirs l\'annulent en entier : il n\'y a plus rien à corriger, et toutes les pièces restent dans la numérotation.'
+            : 'Pour corriger, on fabrique un avoir : il annule tout ou partie de celle-ci, et les deux pièces restent.')
           : 'Tu peux la lire, l\'imprimer, l\'envoyer et l\'exporter : seule la modification est fermée.'}
         ${info('ed.locked')}</span>
         <span class="lock-go">
-          ${isInv && doc.status !== 'annulée' ? '<button class="btn btn-sm btn-primary" id="lock-credit">Corriger par un avoir…</button>' : ''}
+          ${isInv && doc.status !== 'annulée' && !verrou.annulee
+            // Principal seulement quand rien n'est dû et qu'aucun avoir n'existe : sinon l'étape
+            // suivante est le paiement (l'en-tête le porte), ou la correction est déjà faite. Une
+            // facture émise et impayée montrait TROIS verts (U-11, vu au test humain, 10.12.0).
+            ? `<button class="btn btn-sm ${bal && bal.remaining <= 0.0005 && !bal.credits.length ? 'btn-primary' : ''}" id="lock-credit">Corriger par un avoir…</button>` : ''}
           ${canUnlock ? '<button class="btn btn-sm" id="lock-unlock">Modifier quand même…</button>'
-            : (isInv && doc.status !== 'annulée' ? `<span class="small" title="${h(bal && bal.paid ? 'Cette facture est soldée.' : 'Cette facture a déjà reçu un paiement ou un avoir.')}">Plus déverrouillable${bal && bal.credits.length ? ' (un avoir existe)' : (bal && (bal.paid || bal.remaining < C.computeTotals(doc, company()).netToPay) ? ' (déjà payée en partie)' : '')}</span>` : '')}
+            // La raison vient de `motifVerrou` (10.12.0) : le bandeau et sa bulle la lisent au même
+            // endroit. Avant, une facture payée en ENTIER se disait « déjà payée en partie ».
+            : (isInv && doc.status !== 'annulée'
+              ? `<span class="small" title="${h(verrou.long)}">Plus déverrouillable${verrou.court ? ` (${h(verrou.court)})` : ''}</span>` : '')}
         </span></div>`}
       ${bandeauQuestions(doc.number)}
       <div class="editor">
@@ -2491,7 +2607,7 @@
               ${statusCell}
               ${field(lbl('Remise globale (%)', 'ed.discount'), 'discountRate', doc.discountRate || 0, 'number', 'min="0" max="100" step="0.5" class="num" ' + ro)}
               ${isInv || isAv || isProforma ? `<label class="field">${lbl('Retenue à la source', 'ed.withholding')}${withholdingSelect('withholdingRate', doc.withholdingRate, null, ro)}</label>` : ''}
-              ${isInv || isAv || isProforma ? `<label class="check" style="align-self:end"><input type="checkbox" name="applyStamp" ${doc.applyStamp === true || (isInv && doc.applyStamp !== false) ? 'checked' : ''} ${ro}> Timbre fiscal (<span id="stamp-lbl">${C.money(timbreAffiche(), cur)}</span>) ${info(isProforma ? 'ed.stampProforma' : 'ed.applyStamp')}</label>` : ''}
+              ${isInv || isAv || isProforma ? `<label class="check" style="align-self:end"><input type="checkbox" name="applyStamp" ${doc.applyStamp === true || (isInv && doc.applyStamp !== false) ? 'checked' : ''} ${ro}> <span>Timbre fiscal (<span id="stamp-lbl">${C.money(timbreAffiche(), cur)}</span>)</span> ${info(isProforma ? 'ed.stampProforma' : 'ed.applyStamp')}</label>` : ''}
               ${isDelivery ? `<label class="check" style="align-self:end"><input type="checkbox" name="hidePrices" ${doc.hidePrices !== false ? 'checked' : ''}> Masquer les prix sur le bon ${info('ed.hidePrices')}</label>` : ''}
             </form>
           </div>
@@ -2560,8 +2676,12 @@
       if (dirty || locked) return;
       dirty = true;
       const el = $('#dirty-dot'); if (el) el.hidden = false;
-      const s = $('#save'); if (s) s.classList.add('btn-primary');
-      const e = $('#email'); if (e) e.classList.remove('btn-primary');
+      // Enregistrer devient LE geste suivant, et les autres verts de l'en-tête lui cèdent la place
+      // (« Facturer ce devis », « Envoyer ») : on n'envoie pas une pièce qui n'est pas enregistrée.
+      // SAUF sur une facture ou un avoir : « Émettre » enregistre aussi, il reste l'étape suivante.
+      // Avant (10.12.0, H-E19), choisir le client d'une facture neuve allumait « Enregistrer le
+      // brouillon » à côté d'« Émettre la facture » — deux verts, et plus rien ne disait lequel.
+      if (!$('#issue')) enregistrerDevientPrincipal();
       reportDirty();
     }
     function untouch() { dirty = false; const el = $('#dirty-dot'); if (el) el.hidden = true; reportDirty(); }
@@ -2756,7 +2876,7 @@
     // Le client se choisit dans une liste avec recherche : au-delà d'une poignée de clients, un <select> devient
     // une corvée. « + Nouveau client » crée la fiche et la sélectionne dans la foulée.
     const clientCombo = bindCombo($('[data-combo=clientId]', head), {
-      items: clientItems(), placeholder: '— Choisir un client —',
+      items: clientItems(), placeholder: '— Choisir un client —', vide: 'Aucun client pour l\'instant',
       onAdd: () => clientForm(null, c => { clientCombo.setItems(clientItems()); clientCombo.setValue(c.id); })
     });
     // Une adresse fausse ou un matricule oublié se découvrent EN REGARDANT l'aperçu : il fallait
@@ -2929,25 +3049,43 @@
           <div><div class="k-label">Net à payer</div><div class="v">${C.money(t.netToPay, cur)}</div>${t.withholding ? `<div class="small muted">TTC ${C.money(t.totalTTC, cur)} − RS ${C.money(t.withholding, cur)} ${info('ed.withholding')}</div>` : ''}</div>
           <div><div class="k-label">Avoirs ${info('ed.credit')}</div><div class="v">${C.money(b.credited, cur)}</div>${b.credits.length ? `<div class="small">${b.credits.map(a => `<a href="#/doc/${a.id}">${h(a.number)}</a>`).join(', ')}</div>` : ''}</div>
           <div><div class="k-label">Payé</div><div class="v">${C.money(b.paid, cur)}</div></div>
-          <div><div class="k-label">Reste à payer</div><div class="v ${b.remaining > 0.0005 ? 'due' : 'ok'}">${C.money(Math.max(0, b.remaining), cur)}</div>${b.remaining < -0.0005 ? `<div class="small muted">trop-perçu ${C.money(-b.remaining, cur)}</div>` : ''}</div>
+          ${b.remaining < -0.0005
+            // Un trop-perçu n'est pas « 0,000 DT » en vert (10.12.0) : c'est de l'argent qui appartient
+            // au CLIENT — un avoir émis après le paiement, ou un paiement plus fort que la facture. La
+            // carte le dit en couleur d'alerte, et dit quoi en faire (la bulle dit la limite).
+            ? `<div><div class="k-label">Trop-perçu ${info('ed.tropPercu')}</div><div class="v due">${C.money(-b.remaining, cur)}</div><div class="small">à rendre au client, ou à déduire de sa prochaine facture</div></div>`
+            : `<div><div class="k-label">Reste à payer</div><div class="v ${b.remaining > 0.0005 ? 'due' : 'ok'}">${C.money(Math.max(0, b.remaining), cur)}</div></div>`}
         </div>
         ${rows.length ? `<table class="list compact"><thead><tr><th>Date</th><th>Mode</th>${plusieursComptes ? '<th>Compte</th>' : ''}<th>Référence</th><th class="r">Montant</th><th></th></tr></thead><tbody>
-          ${rows.map(p => `<tr><td>${C.fmtDate(p.date)}</td><td>${h(methodLabel(p.method))}</td>${plusieursComptes ? `<td>${h(accountLabel(p.accountId))}</td>` : ''}<td>${h(p.reference || '')}${p.note ? `<div class="small muted">${h(p.note)}</div>` : ''}</td><td class="r">${C.money(p.amount, cur)}</td><td class="actions"><button class="btn btn-ghost btn-sm" data-edpay="${p.id}" title="Modifier">✎</button><button class="btn btn-ghost btn-sm" data-rmpay="${p.id}" title="Supprimer">✕</button></td></tr>`).join('')}
+          ${rows.map(p => `<tr><td>${C.fmtDate(p.date)}</td><td>${h(methodLabel(p.method))}</td>${plusieursComptes ? `<td>${h(accountLabel(p.accountId))}</td>` : ''}<td>${h(p.reference || '')}${p.note ? `<div class="small muted">${h(p.note)}</div>` : ''}</td><td class="r">${C.money(p.amount, cur)}</td>${rowMenuCell(p.id)}</tr>`).join('')}
         </tbody></table>` : `<p class="small muted">Aucun paiement enregistré.</p>`}
         <div class="inline mt">
-          ${s.status !== 'annulée' && b.remaining > 0.0005 ? `<button class="btn btn-primary" id="pay2">+ Enregistrer un paiement</button>` : ''}
+          ${s.status !== 'annulée' && b.remaining > 0.0005
+            // Le même geste que « Enregistrer un paiement » de l'en-tête : vert seulement quand
+            // l'en-tête ne le porte pas (pièce rouverte par « Modifier quand même »).
+            ? `<button class="btn ${$('#pay') ? '' : 'btn-primary'}" id="pay2">+ Enregistrer un paiement</button>` : ''}
           ${t.withholding ? `<label class="check"><input type="checkbox" id="rs-cert" ${s.withholdingCertificate ? 'checked' : ''}> Attestation de retenue à la source reçue (${C.money(t.withholding, cur)}) ${info('compta.rs')}</label>` : ''}
           ${s.status === 'annulée' ? `<span class="muted small">Facture annulée.</span><button class="btn btn-ghost btn-sm" id="uncancel">Rétablir</button>` : (!b.paid && !b.credits.length ? `<button class="btn btn-ghost btn-sm" id="cancel-inv">Marquer annulée…</button>` : '')}
         </div>`;
-      $$('[data-rmpay]', el).forEach(btn => btn.onclick = async () => {
-        if (!await confirmDialog('Supprimer ce paiement ?')) return;
-        const gone = (s.payments || []).find(p => p.id === btn.dataset.rmpay);
-        if (gone && closedToast(gone.date, 'Ce paiement ne peut pas être supprimé')) return;
-        s.payments = s.payments.filter(p => p.id !== btn.dataset.rmpay); save(true); render();
-      });
-      $$('[data-edpay]', el).forEach(btn => btn.onclick = () => {
-        const p = (s.payments || []).find(x => x.id === btn.dataset.edpay);
-        if (p) paymentForm(s, () => render(), p);
+      // « ✎ » et « ✕ », deux pictogrammes muets en bout de ligne — le second supprimait un paiement
+      // sans dire lequel (10.12.0, la règle 7.29.0 : une ligne, un menu, des phrases).
+      bindRowMenus(el, id => {
+        const p = (s.payments || []).find(x => x.id === id); if (!p) return [];
+        return [
+          { icon: 'modifier', label: 'Modifier ce paiement', hint: 'Date, montant, mode, compte', run: () => paymentForm(s, () => render(), p) },
+          { sep: true },
+          { icon: 'supprimer', label: 'Supprimer ce paiement', hint: 'Il ne comptera plus dans ce que le client a réglé', danger: true, run: async () => {
+            // La clôture passe AVANT la question (7.6.0) : répondre « oui » pour s'entendre dire non.
+            if (closedBlock(p.date, 'Ce paiement')) return;
+            // Ce que la facture redevient VRAIMENT : « due de ce montant » était faux dès qu'un avoir
+            // couvre une partie de la facture — vu au test humain, un paiement de 507,940 dont le
+            // retrait ne laissait qu'1,000 DT à payer (10.12.0).
+            const apres = C.round3(b.remaining + (Number(p.amount) || 0));
+            const suite = apres > 0.0005 ? `${s.number} redeviendra due de ${C.money(apres, cur)}.` : `${s.number} restera réglée.`;
+            if (!await confirmDialog(`Supprimer le paiement de ${C.money(p.amount, cur)} du ${C.fmtDate(p.date)}${p.reference ? ` (${p.reference})` : ''} ? ${suite}`, 'Supprimer le paiement')) return;
+            s.payments = s.payments.filter(x => x.id !== p.id); save(true); render();
+          } }
+        ];
       });
       if ($('#pay2')) $('#pay2').onclick = () => paymentForm(s, () => render());
       if ($('#rs-cert')) $('#rs-cert').onchange = e => { s.withholdingCertificate = e.target.checked; save(true); };
@@ -2991,6 +3129,9 @@
       // un RIB, c'est un avertissement qu'ils ne peuvent pas satisfaire — et on cesse de lire les
       // avertissements qu'on ne peut pas satisfaire.
       if (isInv && C.ribAttendu(co) && !(co.rib || '').trim()) w.push('Aucun RIB n\'est renseigné : le client ne saura pas où virer le paiement.');
+      // Deux délais sur la même pièce (10.12.0, H-E23) : on MONTRE la phrase, on ne la réécrit pas.
+      const deuxDelais = C.delaisContradictoires(co, doc);
+      if (deuxDelais) w.push(`Tes conditions de paiement disent « ${deuxDelais} », mais cette facture est à régler avant le ${C.fmtDate(doc.dueDate)} : les deux s'impriment sur la pièce, et se contredisent. Le délai s'imprime déjà tout seul — la phrase peut se contenter du moyen de paiement (Paramètres → Mon entreprise).`);
       const last = data.documents.filter(d => d.type === doc.type && d.id !== doc.id && d.number && d.status !== 'brouillon' && (d.date || '').slice(0, 4) === (doc.date || '').slice(0, 4)).sort(byNumberDesc)[0];
       if (last && last.date > doc.date) w.push(`La date (${C.fmtDate(doc.date)}) est antérieure à la dernière ${isInv ? 'facture' : 'pièce'} émise, ${last.number} du ${C.fmtDate(last.date)} : la numérotation ne serait plus chronologique.`);
       // Vendre ce qu'on n'a pas : la pièce reste émissible (une commande peut partir avant la livraison
@@ -3109,7 +3250,7 @@
         if (!validate()) return;
         const n = doc.number || peekNumber(doc.type, doc.date);
         const warn = issueWarnings();
-        if (!await confirmDialog(`Émettre ${isInv ? 'la facture' : 'l\'avoir'} ${n} ? Le numéro devient définitif et le document ne sera plus modifiable. Pour corriger après coup, il faudra faire un avoir.${warn.length ? '\n\n⚠ ' + warn.join('\n⚠ ') : ''}`, warn.length ? 'Émettre quand même' : 'Émettre', false)) return;
+        if (!await confirmerEmission(doc, n, warn)) return;
         if (issue()) { if (isNew) remplacerPage('#/doc/' + doc.id); else render(); }
       } finally {
         // On relit le bouton : la page a pu se redessiner pendant l'attente, et la poignée d'avant
@@ -3641,7 +3782,9 @@
     // Relances avaient ce traitement ; Clients, Fournisseurs, Achats et les autres pièces y
     // échappaient encore — trouvé par le test humain (10.12.0).
     const vide = !data.clients.length && !(s.q || s.f);
-    $('#view').innerHTML = `<div class="page-head"><h1>Clients</h1><div class="actions"><button class="btn btn-primary" id="new">+ Nouveau client</button></div></div>
+    // Tant que la liste est vide, le bouton principal est celui de l'état vide : deux verts côte à
+    // côte pour le même geste, c'est dire deux fois la même chose (U-11, 10.12.0).
+    $('#view').innerHTML = `<div class="page-head"><h1>Clients</h1><div class="actions"><button class="btn ${vide ? '' : 'btn-primary'}" id="new">+ Nouveau client</button></div></div>
       ${filtersBar(`
         <input type="text" id="q" placeholder="Rechercher : nom, contact, MF, email…" value="${h(s.q)}">
         <select id="f">${FILTERS.map(([v, l]) => `<option value="${v}" ${s.f === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
@@ -4305,7 +4448,7 @@
         <label class="field span-3">Notes sur la facture<textarea name="notes" rows="2">${h(r.notes || '')}</textarea></label>
         <label class="check span-3"><input type="checkbox" name="active" ${r.active !== false ? 'checked' : ''}> Contrat actif (les factures sont proposées à la date prévue)</label>
       </form>
-      <table class="mini"><thead><tr><th>Désignation</th><th style="width:58px">Qté</th><th style="width:104px">Unité ${info('ed.unit')}</th><th style="width:96px">P.U. HT</th><th style="width:74px">TVA</th><th></th></tr></thead><tbody id="rl"></tbody></table>
+      <table class="mini"><thead><tr><th>Désignation</th><th style="width:58px">Qté</th><th style="width:104px">Unité ${info('ed.unit')}</th><th style="width:96px">P.U. HT</th><th style="width:88px">TVA</th><th></th></tr></thead><tbody id="rl"></tbody></table>
       <div class="inline mt"><button type="button" class="btn btn-sm" id="rl-add">+ Ligne</button><span class="small muted" id="rl-total"></span></div>
       <div class="modal-actions">
         ${isNew ? '' : '<button class="btn btn-danger" id="del-rec" style="margin-right:auto">Supprimer</button>'}
@@ -4585,6 +4728,10 @@
                ['rec-depuis', 'Partir d\'une facture existante']])}`;
       if ($('#rec-first')) $('#rec-first').onclick = () => recurrenceForm(null, draw);
       if ($('#rec-depuis')) $('#rec-depuis').onclick = () => navigate('#/factures');
+      // Seul `#c-wrap` se redessine : l'en-tête suit l'état vide ICI, pas au dessin de la page. Tant
+      // que l'état vide porte son bouton principal, celui de l'en-tête est secondaire (U-11).
+      const nouveau = $('#new');
+      if (nouveau) nouveau.classList.toggle('btn-primary', !!(kept.length || filtered));
       const q = $('#q');
       if (q) q.oninput = e => {
         const pos = e.target.selectionStart;                 // on redessine la page : il faut rendre le curseur où il était
@@ -5386,7 +5533,7 @@
       bindPager($('#list-wrap'), s, () => draw(), '#list-wrap');
     };
     const vide = !data.suppliers.length && !(s.q || s.f);
-    $('#view').innerHTML = `<div class="page-head"><h1>Fournisseurs</h1><div class="actions"><button class="btn btn-primary" id="new">+ Nouveau fournisseur</button></div></div>
+    $('#view').innerHTML = `<div class="page-head"><h1>Fournisseurs</h1><div class="actions"><button class="btn ${vide ? '' : 'btn-primary'}" id="new">+ Nouveau fournisseur</button></div></div>
       ${filtersBar(`
         <input type="text" id="q" placeholder="Rechercher : nom, contact, matricule…" value="${h(s.q)}">
         <select id="f">${FILTERS.map(([v, l]) => `<option value="${v}" ${s.f === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
@@ -5550,12 +5697,12 @@
     const videAchats = !data.purchases.length && !(s.q || s.st || s.kind || s.cat || s.year);
     $('#view').innerHTML = `
       <div class="page-head"><h1>Achats et dépenses</h1>
-        <div class="actions"><button class="btn" id="new-dep">+ Dépense</button><button class="btn btn-primary" id="new">+ Facture d'achat</button></div></div>
+        <div class="actions"><button class="btn" id="new-dep">+ Dépense</button><button class="btn ${videAchats ? '' : 'btn-primary'}" id="new">+ Facture d'achat</button></div></div>
       ${payablesPanel()}
       ${filtersBar(`
         <input type="text" id="q" placeholder="Rechercher : n°, fournisseur, objet, catégorie…" value="${h(s.q)}">
         <select id="kind"><option value="">Tout</option>${C.PURCHASE_KINDS.map(([v, l]) => `<option value="${v}" ${s.kind === v ? 'selected' : ''}>${l}s</option>`).join('')}</select>
-        <select id="st"><option value="">Tous les statuts</option>${C.PURCHASE_STATUSES.map(x => `<option value="${x}" ${s.st === x ? 'selected' : ''}>${h(x)}</option>`).join('')}<option value="${A_RATTACHER}" ${s.st === A_RATTACHER ? 'selected' : ''}>à rattacher (avoir ou acompte)</option></select>
+        <select id="st"><option value="">Tous les statuts</option>${C.PURCHASE_STATUSES.map(x => `<option value="${x}" ${s.st === x ? 'selected' : ''}>${h(optionStatut(x))}</option>`).join('')}<option value="${A_RATTACHER}" ${s.st === A_RATTACHER ? 'selected' : ''}>à rattacher (avoir ou acompte)</option></select>
         ${cats.length > 1 ? `<select id="cat"><option value="">Toutes les catégories</option>${cats.map(c => `<option value="${h(c)}" ${s.cat === c ? 'selected' : ''}>${h(c)}</option>`).join('')}</select>` : ''}
         ${years.length > 1 ? `<select id="yr"><option value="">Toutes les années</option>${years.map(y => `<option value="${y}" ${s.year === y ? 'selected' : ''}>${y}</option>`).join('')}</select>` : ''}
         ${info('list.filters')}
@@ -5660,20 +5807,28 @@
     navigate('#/achat/' + copy.id);
   }
 
-  // Règlement d'un achat : le symétrique exact d'un encaissement client.
-  function supplierPaymentForm(p, done) {
+  // Règlement d'un achat : le symétrique exact d'un encaissement client — y compris, depuis la
+  // 10.12.0, la MODIFICATION. Un paiement client se corrige depuis la 7.3.0 (« ce qui se saisit doit
+  // pouvoir se corriger ») ; un règlement fournisseur n'avait que « ✕ » : un compte mal choisi, une
+  // date fausse ne se rattrapaient qu'en supprimant pour ressaisir. Le jumeau manquant (7.3.0).
+  // Et la DEVISE de l'achat (10.1.0) : la fenêtre annonçait en dinars le reste d'un achat en euros.
+  function supplierPaymentForm(p, done, pay) {
     if (!p) return;
-    const cur = company().currency;
+    const cur = p.currency || company().currency;
     const b = C.purchaseBalance(p, company());
-    modal(`<h2>Régler ${h(p.number || 'cet achat')}</h2>
+    const r0 = pay || null;
+    // Ce qui reste à régler SANS le règlement qu'on corrige : sinon le dépassement se compterait
+    // sur lui-même.
+    const reste = Math.max(0, b.remaining + (r0 ? Number(r0.amount) || 0 : 0));
+    modal(`<h2>${r0 ? 'Modifier le règlement' : `Régler ${h(p.number || 'cet achat')}`}</h2>
       <p class="small muted">${h(supplierName(p.supplierId))} · net à payer ${C.money(b.totals.netToPay, cur)} · déjà réglé ${C.money(b.paid, cur)} · reste ${C.money(Math.max(0, b.remaining), cur)}</p>
       <form id="spf" class="grid-2">
-        ${dateFieldHtml('Date du règlement', 'date', C.today(), {})}
-        ${field('Montant', 'amount', C.round3(Math.max(0, b.remaining)), 'number', 'step="0.001" min="0" class="num"')}
-        <label class="field">Mode<select name="method">${C.PAYMENT_METHODS.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select></label>
-        ${accountFieldHtml('')}
-        ${field('Référence', 'reference', '', 'text', 'placeholder="N° de chèque, référence du virement…"')}
-        <label class="field span-2">Note<input type="text" name="note" value=""></label>
+        ${dateFieldHtml('Date du règlement', 'date', r0 ? r0.date : C.today(), {})}
+        ${field('Montant', 'amount', r0 ? r0.amount : C.round3(reste), 'number', 'step="0.001" min="0" class="num"')}
+        <label class="field">Mode<select name="method">${C.PAYMENT_METHODS.map(([v, l]) => `<option value="${v}" ${r0 && r0.method === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+        ${accountFieldHtml(r0 ? r0.accountId || '' : '')}
+        ${field('Référence', 'reference', r0 ? r0.reference || '' : '', 'text', 'placeholder="N° de chèque, référence du virement…"')}
+        <label class="field span-2">Note<input type="text" name="note" value="${h(r0 ? r0.note || '' : '')}"></label>
       </form>
       <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
       (root, close) => { $('#ok', root).onclick = async () => {
@@ -5681,11 +5836,16 @@
         if (!(Number(v.amount) > 0)) return toast('Montant invalide.', true);
         if (!v.date) return toast('Date invalide.', true);
         if (v.date > C.today() && !await confirmDialog(`La date (${C.fmtDate(v.date)}) est dans le futur. Enregistrer quand même ?`, 'Enregistrer')) return;
-        if (Number(v.amount) > b.remaining + 0.0005 && !await confirmDialog(`Le montant (${C.money(v.amount, cur)}) dépasse le reste dû (${C.money(Math.max(0, b.remaining), cur)}). Enregistrer quand même ?`, 'Enregistrer quand même')) return;
-        if (closedBlock(v.date, 'Ce règlement')) return;
+        if (Number(v.amount) > reste + 0.0005 && !await confirmDialog(`Le montant (${C.money(v.amount, cur)}) dépasse le reste dû (${C.money(reste, cur)}). Enregistrer quand même ?`, 'Enregistrer quand même')) return;
+        // Corriger la date d'un règlement le sort peut-être d'un mois déclaré : l'ancienne date
+        // compte autant que la nouvelle (règle 6.0.0).
+        if (closedBlock(r0 ? [r0.date, v.date] : v.date, 'Ce règlement')) return;
         const stored = purchaseById(p.id) || p;
-        stored.payments = (stored.payments || []).concat([{ id: C.uid(), date: v.date, amount: C.round3(v.amount), method: v.method, accountId: v.accountId || '', reference: v.reference || '', note: v.note || '' }]);
-        save(true); close(); toast('Règlement enregistré'); if (done) done();
+        const champs = { date: v.date, amount: C.round3(v.amount), method: v.method, accountId: v.accountId || (r0 ? r0.accountId || '' : ''), reference: v.reference || '', note: v.note || '' };
+        const cible = r0 ? (stored.payments || []).find(x => x.id === r0.id) : null;
+        if (cible) Object.assign(cible, champs);
+        else stored.payments = (stored.payments || []).concat([{ id: C.uid(), ...champs }]);
+        save(true); close(); toast(r0 ? 'Règlement modifié' : 'Règlement enregistré'); if (done) done();
       }; });
   }
 
@@ -5743,14 +5903,14 @@
     $('#view').innerHTML = `
       <div class="page-head">
         <div><h1>${isNew ? (isDep ? 'Nouvelle dépense' : p.kind === 'avoir' ? 'Nouvel avoir fournisseur' : p.kind === 'acompte' ? 'Nouvel acompte versé' : 'Nouvelle facture d\'achat') : `${natureLabel(p.kind)} ${h(p.number || 'sans numéro')}`}
-          <span class="dirty-dot" id="dirty-dot" hidden title="Modifications non enregistrées">non enregistré</span></h1>
+          <span class="dirty-dot" id="dirty-dot" hidden>Modifications non enregistrées</span></h1>
           ${isNew ? '' : `<div class="small muted">${h(supplierName(p.supplierId))} · ${C.fmtDate(p.date)}</div>`}</div>
         <div class="actions">
           ${backButton('#/achats')}
-          ${!isNew && C.purchaseBalance(stored, company()).remaining > 0.0005 ? '<button class="btn" id="pay">Enregistrer un règlement</button>' : ''}
+          ${!isNew && C.purchaseBalance(stored, company()).remaining > 0.0005 ? '<button class="btn btn-primary" id="pay">Enregistrer un règlement</button>' : ''}
           <button class="btn" id="attach-top">Joindre un justificatif…</button>${info('ed.attachments')}
           <button class="btn" id="photo" hidden>Lire une photo…</button>${info('ocr.photo')}
-          <button class="btn btn-primary" id="save">Enregistrer</button>
+          <button class="btn ${isNew ? 'btn-primary' : ''}" id="save">Enregistrer</button>
           ${isNew ? '' : `<div class="more"><button class="btn" id="more-btn">Plus ▾</button><div class="more-list" id="more-list" hidden>
             <button id="dup">Dupliquer</button>
             <button id="del" class="danger">Supprimer</button>
@@ -5808,7 +5968,7 @@
 
     // --- garde-fou
     let dirty = false;
-    const touch = () => { if (dirty) return; dirty = true; const el = $('#dirty-dot'); if (el) el.hidden = false; reportDirty(); };
+    const touch = () => { if (dirty) return; dirty = true; const el = $('#dirty-dot'); if (el) el.hidden = false; enregistrerDevientPrincipal(); reportDirty(); };
     const untouch = () => { dirty = false; const el = $('#dirty-dot'); if (el) el.hidden = true; reportDirty(); };
     setGuard({ dirty: () => dirty, what: isDep ? 'cette dépense' : 'cette facture d\'achat',
       save: async () => { if (!validate() || !await doublonOk()) return false; const ok = persist(); if (ok) untouch(); return ok; },
@@ -5997,7 +6157,7 @@
     };
     const lieCombo = bindCombo($('[data-combo=achatLie]', head), { items: lieItems(p.supplierId), placeholder: '— À rattacher plus tard —' });
     const supCombo = bindCombo($('[data-combo=supplierId]', head), {
-      items: supplierItems(), placeholder: '— Choisir un fournisseur —',
+      items: supplierItems(), placeholder: '— Choisir un fournisseur —', vide: 'Aucun fournisseur pour l\'instant',
       onAdd: () => supplierForm(null, sup => { supCombo.setItems(supplierItems()); supCombo.setValue(sup.id); })
     });
     const buyProjectCombo = bindCombo($('[data-combo=projectId]', head), {
@@ -6104,17 +6264,29 @@
           <div><div class="k-label">Statut</div><div class="v">${buyBadge(buyStatus(s2))}</div></div>
         </div>
         ${rows.length ? `<table class="list compact"><thead><tr><th>Date</th><th>Mode</th><th>Référence</th><th class="r">Montant</th><th></th></tr></thead><tbody>
-          ${rows.map(x => `<tr><td>${C.fmtDate(x.date)}</td><td>${h(methodLabel(x.method))}</td><td>${h(x.reference || '')}${x.note ? `<div class="small muted">${h(x.note)}</div>` : ''}</td><td class="r">${C.money(x.amount, cur)}</td><td class="actions"><button class="btn btn-ghost btn-sm" data-rmpay="${x.id}" title="Supprimer">✕</button></td></tr>`).join('')}
+          ${rows.map(x => `<tr><td>${C.fmtDate(x.date)}</td><td>${h(methodLabel(x.method))}</td><td>${h(x.reference || '')}${x.note ? `<div class="small muted">${h(x.note)}</div>` : ''}</td><td class="r">${C.money(x.amount, cur)}</td>${rowMenuCell(x.id)}</tr>`).join('')}
         </tbody></table>` : '<p class="small muted">Aucun règlement enregistré.</p>'}
         <div class="inline mt">
-          ${b.remaining > 0.0005 ? '<button class="btn btn-primary" id="pay2">+ Enregistrer un règlement</button>' : ''}
+          ${b.remaining > 0.0005 ? `<button class="btn ${$('#pay') ? '' : 'btn-primary'}" id="pay2">+ Enregistrer un règlement</button>` : ''}
           ${t.withholding ? `<label class="check"><input type="checkbox" id="rs-cert2" ${s2.withholdingCertificate ? 'checked' : ''}> Attestation de retenue remise au fournisseur (${C.money(t.withholding, cur)}) ${info('buy.certificate')}</label>` : ''}
         </div>`;
-      $$('[data-rmpay]', el).forEach(btn => btn.onclick = async () => {
-        if (!await confirmDialog('Supprimer ce règlement ?')) return;
-        const gone2 = (s2.payments || []).find(x => x.id === btn.dataset.rmpay);
-        if (gone2 && closedToast(gone2.date, 'Ce règlement ne peut pas être supprimé')) return;
-        s2.payments = s2.payments.filter(x => x.id !== btn.dataset.rmpay); save(true); render();
+      // Un « ✕ » muet supprimait le règlement : le geste le plus destructif de la ligne était le seul
+      // sans nom (7.29.0). Un menu, avec la modification que la ligne n'avait pas (10.12.0).
+      bindRowMenus(el, id => {
+        const x = (s2.payments || []).find(y => y.id === id); if (!x) return [];
+        return [
+          { icon: 'modifier', label: 'Modifier ce règlement', hint: 'Date, montant, mode, compte', run: () => supplierPaymentForm(s2, () => render(), x) },
+          { sep: true },
+          { icon: 'supprimer', label: 'Supprimer ce règlement', hint: 'Il ne comptera plus dans ce que tu as réglé', danger: true, run: async () => {
+            // La clôture passe AVANT la question (7.6.0) : répondre « oui » pour s'entendre dire non.
+            if (closedBlock(x.date, 'Ce règlement')) return;
+            // Ce que l'achat redevient vraiment, avoirs et acomptes compris (jumeau du paiement client).
+            const apres = C.round3(b.remaining + (Number(x.amount) || 0));
+            const suite = apres > 0.0005 ? `${s2.number || 'L\'achat'} redeviendra dû de ${C.money(apres, cur)}.` : `${s2.number || 'L\'achat'} restera réglé.`;
+            if (!await confirmDialog(`Supprimer le règlement de ${C.money(x.amount, cur)} du ${C.fmtDate(x.date)}${x.reference ? ` (${x.reference})` : ''} ? ${suite}`, 'Supprimer le règlement')) return;
+            s2.payments = s2.payments.filter(y => y.id !== x.id); save(true); render();
+          } }
+        ];
       });
       if ($('#pay2')) $('#pay2').onclick = () => supplierPaymentForm(s2, () => render());
       if ($('#rs-cert2')) $('#rs-cert2').onchange = e => { s2.withholdingCertificate = e.target.checked; save(true); };
@@ -6253,13 +6425,13 @@
 
     $('#view').innerHTML = `
       <div class="page-head"><h1>Proforma, bons et contrats</h1>
-        <div class="actions"><button class="btn btn-primary" id="new">+ ${h(NEW_LABELS[type])}</button></div></div>
+        <div class="actions"><button class="btn ${vide ? '' : 'btn-primary'}" id="new">+ ${h(NEW_LABELS[type])}</button></div></div>
       <div class="tabs" id="a-tabs" role="tablist" aria-label="Les autres pièces">${AUTRES_TABS.map(([t, label]) =>
         `<button role="tab" data-tab="${t}" class="${t === type ? 'active' : ''}">${h(label)}${data.documents.some(d => d.type === t) ? ` <span class="tab-n">${data.documents.filter(d => d.type === t).length}</span>` : ''}</button>`).join('')}</div>
       ${vide ? '' : `<p class="small muted mb">${h(tab[2])} ${info('autres.' + type)}</p>`}
       ${filtersBar(`
         <input type="text" id="q" placeholder="Rechercher : n°, client, objet…" value="${h(s.q)}">
-        <select id="st"><option value="">Tous les statuts</option>${C.STATUSES[type].map(x => `<option value="${x}" ${s.st === x ? 'selected' : ''}>${h(C.statusLabel(x))}</option>`).join('')}</select>
+        <select id="st"><option value="">Tous les statuts</option>${C.STATUSES[type].map(x => `<option value="${x}" ${s.st === x ? 'selected' : ''}>${h(optionStatut(x))}</option>`).join('')}</select>
         ${years.length > 1 ? `<select id="yr"><option value="">Toutes les années</option>${years.map(y => `<option value="${y}" ${s.year === y ? 'selected' : ''}>${y}</option>`).join('')}</select>` : ''}
         ${info('list.filters')}
         <span class="f-note" id="f-note" hidden></span>
@@ -6320,7 +6492,7 @@
         <div class="field">Client
           ${combo({ name: 'clientId', value: p.clientId, items: data.clients.slice().sort((a, b) => a.name.localeCompare(b.name, 'fr')).map(c => ({ v: c.id, label: c.name, text: c.name })), placeholder: '— Aucun client précis —', search: 'Rechercher un client…' })}
         </div>
-        <label class="field">Statut<select name="status">${C.PROJECT_STATUSES.map(x => `<option value="${x}" ${p.status === x ? 'selected' : ''}>${x}</option>`).join('')}</select></label>
+        <label class="field">Statut<select name="status">${C.PROJECT_STATUSES.map(x => `<option value="${x}" ${p.status === x ? 'selected' : ''}>${h(optionStatut(x))}</option>`).join('')}</select></label>
         ${dateFieldHtml('Début', 'startDate', p.startDate, {})}
         ${dateFieldHtml('Fin (optionnel)', 'endDate', p.endDate || '', { clearable: true })}
         <label class="field span-2">Notes<textarea name="notes">${h(p.notes || '')}</textarea></label>
@@ -7158,7 +7330,7 @@
         </div>
         <div class="panel"><h2>Documents à remettre ${info('hr.doc')}</h2>
           <p class="small muted mb">Attestation de travail, certificat de travail, solde de tout compte : générés au même format que tes autres documents, et prêts à signer.</p>
-          ${data.employees.length ? `<div class="chips-list">${data.employees.slice().sort((a, b) => a.name.localeCompare(b.name, 'fr')).map(e => `
+          ${data.employees.length ? `<div>${data.employees.slice().sort((a, b) => a.name.localeCompare(b.name, 'fr')).map(e => `
             <div class="inline mb"><strong style="min-width:200px;display:inline-block">${h(e.name)}</strong>
               <button class="btn btn-sm" data-hr="${h(e.id)}">Établir un document…</button></div>`).join('')}</div>`
             : '<div class="empty">Aucun salarié.</div>'}
@@ -8467,7 +8639,9 @@
               : etatVide('Rien à immobiliser pour l\'instant',
                   ['Une ligne apparaît ici dès que tu saisis un achat dont la destination est <b>« immobilisation »</b> : un ordinateur, un véhicule, du mobilier — tout ce que tu gardes plus d\'un an.',
                    'Tant qu\'une ligne reste en attente, son amortissement n\'est déduit nulle part.'],
-                  [['immo-vers-achats', '+ Saisir une facture d\'achat', true]])}
+                  // Secondaire : le bouton principal de la page est « + Nouveau bien », dans l'en-tête —
+                  // deux verts pour deux gestes différents, c'est ne plus dire lequel vient (U-11).
+                  [['immo-vers-achats', '+ Saisir une facture d\'achat']])}
         </div>`;
       if ($('#immo-vers-achats')) $('#immo-vers-achats').onclick = () => navigate('#/achat/new');
       $$('#im-body [data-mk]').forEach(b => b.onclick = () => {
@@ -12828,6 +13002,9 @@
       if (note) { note.hidden = !filtered; note.innerHTML = filtered ? `<span class="small muted">${kept.length} sur ${all.length}</span>${filterReset(true)}` : ''; }
       if ($('#reset-f')) $('#reset-f').onclick = () => { s.q = ''; s.st = ''; s.tri = ''; s.page = 1; routes.licences(); };
       if ($('#lic-first')) $('#lic-first').onclick = () => licenceForm(null, draw);
+      // Seul `#lic-wrap` se redessine : l'en-tête suit l'état vide ici (U-11, comme les contrats).
+      const nouvelle = $('#lic-new');
+      if (nouvelle) nouvelle.classList.toggle('btn-primary', !!(kept.length || filtered));
       bindRowMenus($('#lic-wrap'), id => {
         const r = data.licences.find(x => x.id === id); if (!r) return [];
         const inv = r.invoiceId ? docById(r.invoiceId) : null;

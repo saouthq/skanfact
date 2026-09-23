@@ -46,9 +46,12 @@
     quoteValidityDays: 30,
     paymentTermsDays: 30,
     defaultWithholdingRate: 0,
-    paymentTerms: 'Paiement par virement bancaire à réception de la facture.',
+    // Le MOYEN de paiement, pas son délai (10.12.0, H-E23) : la phrase disait « à réception de la
+    // facture » pendant que la même facture imprime « À régler avant le … » à `paymentTermsDays`
+    // jours. Deux délais sur une pièce légale, et c'était NOTRE défaut. Le délai s'imprime tout seul.
+    paymentTerms: 'Paiement par virement bancaire.',
     quoteTerms: 'Pour accepter ce devis, retournez-le daté et signé avec la mention « Bon pour accord ».',
-    paymentTermsEn: 'Payment by bank transfer upon receipt of invoice.',
+    paymentTermsEn: 'Payment by bank transfer.',
     quoteTermsEn: 'To accept this quote, please return it dated and signed with the mention "Approved".',
     currency: 'DT',
     defaultLang: 'fr',
@@ -1019,6 +1022,32 @@
     const paid = round3((doc.payments || []).reduce((s, p) => s + (Number(p.amount) || 0), 0));
     const remaining = round3(totals.netToPay - credited - paid);
     return { totals, credits, credited, paid, remaining };
+  }
+
+  // Deux délais sur la même facture (10.12.0, H-E23) : les conditions de paiement disent « à
+  // réception » pendant que la pièce imprime « À régler avant le … ». En cas de retard, c'est le
+  // client qui choisit lequel lire. Rend la phrase qui contredit l'échéance, ou ''. Une échéance le
+  // jour même ne contredit rien. On ne réécrit JAMAIS la phrase de l'utilisateur : on la montre.
+  function delaisContradictoires(company, doc) {
+    if (!doc || doc.type !== 'facture' || !doc.date || !doc.dueDate || doc.dueDate <= doc.date) return '';
+    const phrase = String(((doc.lang === 'en' ? (company || {}).paymentTermsEn : (company || {}).paymentTerms) || '')).trim();
+    return /r[ée]ception|receipt/i.test(phrase) ? phrase : '';
+  }
+
+  // Pourquoi une facture émise ne se déverrouille plus (10.12.0). Le bandeau disait « déjà payée en
+  // partie » sur une facture entièrement payée — la règle confondait « un paiement existe » et
+  // « elle est soldée » —, et sa bulle disait « soldée » sur une facture payée à moitié. Trois
+  // causes, trois phrases, et c'est la MÊME fonction qui les écrit toutes les deux. Une quatrième :
+  // une facture que ses avoirs couvrent EN ENTIER n'a plus rien à corriger (`annulee`) — le bandeau
+  // proposait encore « Corriger par un avoir… » en bouton principal, c'est-à-dire un avoir de trop.
+  function motifVerrou(bal) {
+    if (!bal) return { court: '', long: '', annulee: false };
+    const net = bal.totals ? bal.totals.netToPay : 0;
+    if ((bal.credits || []).length && net > 0 && bal.credited >= net - 0.0005) return { court: 'annulée par un avoir', long: 'Ses avoirs l\'annulent en entier : les pièces restent toutes dans la numérotation, et il n\'y a plus rien à corriger.', annulee: true };
+    if ((bal.credits || []).length) return { court: 'un avoir existe', long: 'Un avoir corrige déjà cette facture : on ne rouvre pas une pièce qu\'une autre pièce corrige.' };
+    if (bal.paid > 0 && bal.remaining <= 0.0005) return { court: 'entièrement payée', long: 'Cette facture est entièrement payée : rouvrir une pièce réglée changerait ce que le client a payé.' };
+    if (bal.paid > 0) return { court: 'déjà payée en partie', long: 'Un paiement y est déjà enregistré : rouvrir la pièce changerait ce qu\'il règle.' };
+    return { court: '', long: '' };
   }
 
   // Statut affiché. Facture : déduit des paiements et des avoirs. Devis : « expiré » quand la date de
@@ -6756,7 +6785,7 @@
     debutExercice, soldesOuverture, balanceGenerale, grandLivre, grandLivreRows, balanceAuxiliaire,
     balanceCsvColumns, balanceAuxCsvColumns, grandLivreCsvColumns,
     salesCsvColumns, buyCsvColumns, payCsvColumns, supplierPayCsvColumns, cashCsvColumns, cashCsvRows,
-    nextNumber, isLocked, isIssued, computeTotals, creditsFor, invoiceBalance, effectiveStatus,
+    nextNumber, isLocked, isIssued, computeTotals, creditsFor, invoiceBalance, motifVerrou, delaisContradictoires, effectiveStatus,
     depositLines, settlementLines, salesJournal, vatSummary, paymentsJournal, toCsv, migrateData,
     PERIODS, MONTHS_FR, MONTHS_SHORT, monthLabel, addMonths, nextRecurrenceDate, dueRecurrences, catchUpRecurrence, fillTemplate, buildRecurringInvoice,
     reminderLevel, REMINDER_LABELS, daysBetween, overdueInvoices, todoList, companyGaps, documentHistory, DEFAULT_EMAIL_TEMPLATES, DEFAULT_EMAIL_TEMPLATES_EN, emailFor,

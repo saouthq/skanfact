@@ -201,6 +201,70 @@ const ECRANS = [[1680, 1050], [1440, 900], [1366, 768], [1280, 800]];
   if (!/revient tout seul/.test(ecran)) throw new Error('l\'écran doit DIRE ce qui ramène un module masqué');
   j.ok('la case est là, cochée, et l\'écran dit ce qui ramène un module');
 
+  j.etape('Allumer une entrée ne change pas sa hauteur — sans compteur, puis avec');
+  // 10.12.0 — l'entrée active passait en gras, et « Facturation récurrente » passait à la ligne :
+  // 34 px au repos, 48 une fois cliquée. Tout ce qui la suit descendait de 14 px sous le curseur, au
+  // moment précis du clic. On allume chaque entrée à son tour et on compare sa hauteur au repos.
+  // La preuve par réintroduction est restée VERTE trois fois, et chaque fois pour la même raison :
+  // l'entrée était DÉJÀ sur deux lignes au repos, donc le gras ne changeait rien. Seize entrées
+  // débordaient d'un écran de 900 px (la barre de défilement rétrécit la barre), puis, avec
+  // l'exemple, son compteur « 1 » la faisait passer à la ligne. Le saut n'existe que SANS compteur et
+  // SANS défilement — l'état de l'app de quelqu'un qui n'a encore aucun contrat. On mesure donc là, sur
+  // une fenêtre haute, puis avec l'exemple pour les entrées qui portent un compteur.
+  await win.evaluate(() => { location.hash = '#/modules'; });
+  await win.waitForSelector('#mod-list');
+  for (let garde = 0; garde < 20; garde++) {
+    const c = await win.$('#mod-list input[type=checkbox]:not(:checked):not(:disabled)');
+    if (!c) break;
+    await c.click();
+    await win.waitForTimeout(80);
+    const oui = await win.$('#modal-root #ok');
+    if (oui) { await oui.click(); await win.waitForTimeout(80); }
+  }
+  const allumerTour = async (quand, L, H) => {
+    await win.setViewportSize({ width: L, height: H });
+    await win.evaluate(() => { location.hash = '#/dashboard'; });
+    await win.waitForSelector('#view h1');
+    await win.waitForTimeout(300);
+    const defile = await win.evaluate(() => { const n = document.querySelector('nav'); return n.scrollHeight > n.clientHeight + 1; });
+    if (defile) throw new Error(`${quand}, ${L}×${H} : la barre défile — une entrée peut y être sur deux lignes au repos, et la mesure ne verrait plus le gras`);
+    const auRepos = await win.evaluate(() => [...document.querySelectorAll('nav a[href^="#/"]')].filter(a => a.offsetParent && !a.classList.contains('active'))
+      .map(a => ({ href: a.getAttribute('href'), texte: (a.innerText || a.textContent).trim().replace(/\s+/g, ' '), h: Math.round(a.getBoundingClientRect().height),
+        compteur: !!a.querySelector('.nav-count:not([hidden])') })));
+    if (auRepos.length < 10) throw new Error(`${quand}, ${L}×${H} : trop peu d'entrées mesurées : ${auRepos.length}`);
+    const sautent = [];
+    for (const e of auRepos) {
+      await win.evaluate(x => { location.hash = x; }, e.href);
+      await win.waitForTimeout(150);
+      const hAct = await win.evaluate(x => { const a = [...document.querySelectorAll('nav a')].find(y => y.getAttribute('href') === x); return a ? Math.round(a.getBoundingClientRect().height) : null; }, e.href);
+      if (hAct !== null && Math.abs(hAct - e.h) > 1) sautent.push(`« ${e.texte} » ${e.h} → ${hAct} px`);
+    }
+    if (sautent.length) throw new Error(`${quand}, ${L}×${H} : une entrée change de hauteur quand elle s'allume : ` + sautent.join(' · '));
+    return auRepos;
+  };
+  for (const [L, H] of [[1440, 1300], [1280, 1300]]) {
+    const vus = await allumerTour('sans données', L, H);
+    // Sans compteur, et c'est la condition du test : sinon on retomberait sur l'entrée déjà repliée.
+    const recurrente = vus.find(e => /récurrente/.test(e.texte));
+    if (!recurrente) throw new Error('« Facturation récurrente » n\'est pas au menu : la mesure ne voit pas l\'entrée qui sautait');
+    if (recurrente.compteur) throw new Error('« Facturation récurrente » porte déjà un compteur : elle est repliée au repos, et le gras ne se verrait pas');
+    j.ok(`sans données, ${L}×${H} : ${vus.length} entrées allumées tour à tour, aucune ne change de hauteur`);
+  }
+  await win.evaluate(() => { location.hash = '#/parametres'; });
+  await win.waitForSelector('#set-tabs');
+  await win.click('#set-tabs button[data-tab="donnees"]');
+  await win.waitForFunction(() => { const p = document.querySelector('[data-pane="donnees"]'); return p && !p.hidden; });
+  await win.click('#load-demo');
+  const okDemo = await win.waitForSelector('#modal-root #ok', { timeout: 3000 }).catch(() => null);
+  if (okDemo) await okDemo.click();
+  await win.waitForSelector('.demo-banner');
+  for (const [L, H] of [[1440, 1300], [1280, 1300]]) {
+    const vus = await allumerTour('avec l\'exemple', L, H);
+    const avecCompteur = vus.filter(e => e.compteur).length;
+    if (!avecCompteur) throw new Error(`avec l'exemple, ${L}×${H} : aucune entrée ne porte de compteur`);
+    j.ok(`avec l'exemple, ${L}×${H} : ${vus.length} entrées (${avecCompteur} avec leur compteur), aucune ne change de hauteur`);
+  }
+
   if (bac.length) { console.error('\nERREURS JS :\n' + bac.join('\n')); process.exit(1); }
   await app.close();
   console.log('\n>>> BARRE LATÉRALE OK');

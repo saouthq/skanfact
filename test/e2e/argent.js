@@ -117,8 +117,12 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
 
   j.etape('Et on peut se corriger : un paiement se modifie');
   await win.evaluate(n => { location.hash = '#/doc/' + window.__data.documents[0].id; }, 0);
-  await win.waitForSelector('[data-edpay]');
-  await win.click('[data-edpay]');
+  // Depuis la 10.12.0, la ligne d'un paiement porte un menu (« Modifier ce paiement »), plus un
+  // pictogramme « ✎ » muet : on l'ouvre comme un humain, par son bouton.
+  await win.waitForSelector('#pay-body [data-rowmenu]');
+  await win.click('#pay-body [data-rowmenu]');
+  await win.waitForSelector('.row-menu button');
+  await win.click('.row-menu button:has-text("Modifier ce paiement")');
   await win.waitForSelector('#modal-root #pf2');
   const idBanque = comptes.find(c => /BIAT/i.test(c.name)).id;
   await win.selectOption('#modal-root select[name=accountId]', idBanque);

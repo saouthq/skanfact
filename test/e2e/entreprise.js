@@ -74,6 +74,25 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
 
   await step('dashboard affiché', async () => { if ((await win.textContent('#view h1')) !== 'Accueil') throw new Error('titre'); });
   await step('version affichée', async () => { const v = await win.textContent('#app-version'); if (v !== 'v' + VERSION) throw new Error(`version affichée ${v}, attendue v${VERSION}`); });
+  await step('une liste vide n\'a qu\'un bouton principal : celui de son état vide', async () => {
+    // 10.12.0 — « + Nouveau client » restait vert dans l'en-tête au-dessus de « + Ajouter mon premier
+    // client », vert lui aussi : deux boutons principaux pour le même geste (U-11). On compte ce qui
+    // est VISIBLE et allumé, sur chaque liste encore vide juste après l'assistant.
+    const fautes = [];
+    for (const [hash, etatVide] of [['#/devis', 1], ['#/factures', 1], ['#/clients', 1], ['#/fournisseurs', 1], ['#/achats', 1],
+      ['#/autres/proforma', 1], ['#/contrats', 1], ['#/relances', 1], ['#/immos', 0]]) {
+      await win.evaluate(x => { location.hash = x; }, hash);
+      await win.waitForTimeout(300);
+      const r = await win.evaluate(() => ({
+        verts: [...document.querySelectorAll('#view .btn-primary')].filter(b => b.offsetParent && !b.disabled).map(b => b.id || b.textContent.trim()),
+        vide: !!document.querySelector('#view .vide-utile')
+      }));
+      if (etatVide && !r.vide) fautes.push(`${hash} : l'état vide n'est pas affiché`);
+      if (r.verts.length > 1) fautes.push(`${hash} : ${r.verts.length} boutons principaux (${r.verts.join(', ')})`);
+    }
+    if (fautes.length) throw new Error(fautes.join(' · '));
+    await win.evaluate(() => { location.hash = '#/dashboard'; });
+  });
   await step('menu : nouveau devis', async () => {
     await app.evaluate(({ Menu }) => {
       const find = (items, label) => { for (const i of items) { if (i.label === label) return i; if (i.submenu) { const r = find(i.submenu.items, label); if (r) return r; } } };
@@ -86,6 +105,9 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
   await step('client rapide + ligne + enregistrer', async () => {
     await win.click('#f-head [data-combo=clientId] .combo-btn');
     await win.waitForSelector('#f-head [data-combo=clientId] .combo-add');
+    // 10.12.0 (H-E22) — la liste vide disait « Aucun résultat » sous un champ où rien n'était tapé.
+    const vide = await win.textContent('#f-head [data-combo=clientId] .combo-empty');
+    if (vide.trim() !== 'Aucun client pour l\'instant') throw new Error('la liste des clients, vide, dit : « ' + vide.trim() + ' »');
     await win.click('#f-head [data-combo=clientId] .combo-add');
     await win.fill('#cf input[name=name]', 'Client Test');
     await win.click('#modal-root #ok');
@@ -122,13 +144,37 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
     if (!(await win.textContent('#f-head')).includes('numéro attribué')) throw new Error('statut brouillon');
   });
   await step('émettre la facture → FAC-…-001, verrouillée', async () => {
+    // 10.12.0 (H-E23) — la phrase par défaut des conditions de paiement disait « à réception de la
+    // facture » pendant que la pièce imprime « À régler avant le … » : deux délais sur une pièce
+    // légale. Le défaut ne le dit plus ; une phrase restée ainsi se MONTRE à l'émission.
+    const phraseDefaut = await win.evaluate(() => window.__data.company.paymentTerms);
+    if (/r[ée]ception/i.test(phraseDefaut || '')) throw new Error('les conditions de paiement par défaut disent encore : ' + phraseDefaut);
+    await win.evaluate(() => { window.__data.company.paymentTerms = 'Paiement par virement bancaire à réception de la facture.'; });
     await win.click('#issue');
     await win.waitForSelector('#modal-root #ok');
+    const deuxDelais = await win.textContent('#modal-root');
+    if (!/se contredisent/.test(deuxDelais)) throw new Error('l\'émission ne montre pas les deux délais qui se contredisent : ' + deuxDelais.replace(/\s+/g, ' ').slice(0, 300));
+    await win.evaluate(p => { window.__data.company.paymentTerms = p; }, phraseDefaut);
     if (!(await win.textContent('#modal-root')).includes('FAC-')) throw new Error('aperçu du numéro');
+    // 10.12.0 — le geste le plus irréversible passait par une « Confirmation » générique : on
+    // confirmait sans pouvoir relire à qui, ni combien. Le récapitulatif nomme les deux.
+    const recap = await win.evaluate(() => { const r = document.querySelector('#modal-root .recap-emission'); return r ? r.textContent.replace(/\s+/g, ' ') : ''; });
+    if (!recap) throw new Error('l\'émission ne montre plus son récapitulatif');
+    for (const attendu of ['Client Test', 'Net à payer', '1 191,000', 'Échéance']) {
+      if (!recap.includes(attendu)) throw new Error(`le récapitulatif ne dit pas « ${attendu} » : ${recap}`);
+    }
     await win.click('#modal-root #ok');
     await win.waitForFunction(() => /Facture FAC-\d{4}-001/.test((document.querySelector('#view h1') || {}).textContent || ''));
     if (await win.$('#save')) throw new Error('bouton enregistrer présent sur une facture émise');
     if (!(await win.isDisabled('#f-head input[name=subject]'))) throw new Error('champ non verrouillé');
+    // 10.12.0 — un champ texte fermé gardait le fond et l'encre d'un champ modifiable pendant que
+    // les listes voisines se grisaient : `input:disabled` perdait contre la règle générale.
+    const gris = await win.evaluate(() => {
+      const i = document.querySelector('#f-head input[name=subject]'), s = document.querySelector('#f-head select:disabled');
+      return s ? { i: getComputedStyle(i).backgroundColor, s: getComputedStyle(s).backgroundColor } : null;
+    });
+    if (!gris) throw new Error('aucune liste fermée sur la facture émise : le contrôle ne prouve rien');
+    if (gris.i !== gris.s) throw new Error(`un champ texte fermé n'a pas le fond d'une liste fermée (${gris.i} contre ${gris.s})`);
     // 7.0.0 : vingt champs gris et une ligne d'explication de 12 px sous le titre, c'était une
     // application qui a l'air cassée. Le verrouillage s'annonce maintenant en toutes lettres, et la
     // sortie est SUR l'écran — pas dans un menu « Plus ▾ » qu'on n'a pas encore ouvert.
@@ -139,6 +185,11 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
     if (!(await win.$('#lock-credit'))) throw new Error('le bandeau doit porter le bouton « Corriger par un avoir »');
     if (!(await win.$('#lock-unlock'))) throw new Error('une facture sans paiement ni avoir doit encore proposer « Modifier quand même »');
     if (!(await win.textContent('#pay-body')).includes('1 191,000')) throw new Error('situation');
+    // 10.12.0 — émise et impayée, elle portait TROIS verts : « Enregistrer un paiement » en haut,
+    // « Corriger par un avoir… » dans le bandeau, « + Enregistrer un paiement » dans le panneau.
+    // L'étape suivante est le paiement, et seul le bouton de l'en-tête le dit en vert.
+    const verts = await win.evaluate(() => [...document.querySelectorAll('#view .btn-primary')].filter(b => b.offsetParent && !b.disabled).map(b => b.id || b.textContent.trim()));
+    if (verts.length !== 1 || verts[0] !== 'pay') throw new Error(`facture émise et impayée : boutons principaux ${JSON.stringify(verts)} au lieu du paiement seul`);
   });
   await step('paiement partiel puis solde → payée', async () => {
     await win.click('#pay');
@@ -146,10 +197,21 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
     await win.click('#modal-root #ok');
     await win.waitForFunction(() => (document.querySelector('#pay-body') || {}).textContent.includes('1 000,000'));
     if (!(await win.textContent('#f-head')).includes('partiellement payée')) throw new Error(await win.textContent('#f-head'));
+    // 10.12.0 — le bandeau disait « déjà payée en partie » sur une facture payée en ENTIER : il
+    // confondait « un paiement existe » et « soldée ». Une seule fonction décide des deux phrases.
+    const bandeau = () => win.evaluate(() => (document.querySelector('.lock-banner') || {}).textContent.replace(/\s+/g, ' '));
+    if (!/Plus déverrouillable \(déjà payée en partie\)/.test(await bandeau())) throw new Error('payée à moitié : ' + (await bandeau()).slice(-120));
+    // Et la ligne du paiement porte un menu nommé, plus deux pictogrammes muets.
+    const ligne = await win.evaluate(() => [...document.querySelectorAll('#pay-body td.row-actions button')].map(b => b.textContent.trim()));
+    if (ligne.length !== 1 || ligne[0].length < 6) throw new Error(`la ligne du paiement porte ${JSON.stringify(ligne)} au lieu d'un menu nommé`);
     await win.click('#pay2');
     await win.click('#modal-root #ok');
     await win.waitForFunction(() => (document.querySelector('#f-head') || {}).textContent.includes('payée') && !(document.querySelector('#f-head') || {}).textContent.includes('partiellement'));
     if (await win.$('#pay2')) throw new Error('bouton paiement encore présent');
+    if (!/Plus déverrouillable \(entièrement payée\)/.test(await bandeau())) throw new Error('payée en entier : ' + (await bandeau()).slice(-120));
+    // Payée : il n'y a plus de paiement à enregistrer, le seul geste qui reste est la correction.
+    const verts2 = await win.evaluate(() => [...document.querySelectorAll('#view .btn-primary')].filter(b => b.offsetParent && !b.disabled).map(b => b.id || b.textContent.trim()));
+    if (verts2.length !== 1 || verts2[0] !== 'lock-credit') throw new Error(`facture payée : boutons principaux ${JSON.stringify(verts2)} au lieu de la correction seule`);
   });
   await step('créer un avoir partiel et l\'émettre', async () => {
     await win.click('#more-btn'); await win.click('#credit');
@@ -157,8 +219,27 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
     const sel = await win.inputValue('#f-head [data-combo=creditOf] input[type=hidden]'); if (!sel) throw new Error('facture non préremplie');
     if (!(await win.textContent('#f-head [data-combo=creditOf] .combo-val')).startsWith('FAC-')) throw new Error('libellé de la facture concernée');
     await win.fill('#lines input[data-k=unitPrice]', '100');
-    await win.click('#issue'); await win.waitForSelector('#modal-root #ok'); await win.click('#modal-root #ok');
+    await win.click('#issue'); await win.waitForSelector('#modal-root #ok');
+    // 10.12.0 — un avoir sur une facture DÉJÀ PAYÉE ne se déduit plus de rien : il devient de
+    // l'argent à rendre au client, et c'est avant d'émettre qu'il faut le savoir. 100 HT + 19 % = 119.
+    const avRecap = await win.evaluate(() => (document.querySelector('#modal-root') || {}).textContent.replace(/\s+/g, ' '));
+    // Le libellé et la valeur sont deux cellules : `textContent` les colle (« corrigéeFAC- »).
+    if (!/Montant de l'avoir/.test(avRecap) || !/Facture corrigée\s*FAC-/.test(avRecap)) throw new Error('récapitulatif de l\'avoir : ' + avRecap.slice(0, 240));
+    if (!/laisse 119,000 DT à rendre à Client Test/.test(avRecap)) throw new Error('l\'avoir ne dit pas ce qu\'il laisse à rendre : ' + avRecap.slice(0, 400));
+    await win.click('#modal-root #ok');
     await win.waitForFunction(() => /Avoir AVO-\d{4}-001/.test((document.querySelector('#view h1') || {}).textContent || ''));
+  });
+  await step('fiche du client : le pied n\'additionne pas un devis avec sa facture', async () => {
+    // 10.12.0 (H-E24) — le pied du tableau des documents additionnait DEV-001 (1 190) avec FAC-001
+    // (1 191) et l'avoir (− 119) : 2 262 DT « net à payer », le devis compté deux fois. Calculé à la
+    // main : factures et avoirs seuls, 1 191 − 119 = 1 072 DT ; en HT, 1 000 − 100 = 900 DT.
+    const idClient = await win.evaluate(() => (window.__data.clients.find(c => c.name === 'Client Test') || {}).id);
+    if (!idClient) throw new Error('Client Test introuvable');
+    await win.evaluate(i => { location.hash = '#/client/' + i; }, idClient);
+    await win.waitForSelector('#view tfoot');
+    const pied = await win.evaluate(() => [...document.querySelectorAll('#view tfoot')].map(t => t.textContent.replace(/\s+/g, ' ')).join(' | '));
+    if (!/factures et avoirs : 900,000 DT HT/.test(pied)) throw new Error('le pied de la fiche client additionne encore le devis (HT attendu 900) : ' + pied);
+    if (!/1 072,000 DT/.test(pied)) throw new Error('le net à payer du pied compte le devis (attendu 1 072) : ' + pied);
   });
   await step('comptabilité : journal, TVA, attestations', async () => {
     await win.evaluate(() => { location.hash = '#/compta'; });
@@ -382,6 +463,68 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
     await win.waitForSelector('.cal-grid');
     await win.keyboard.press('Escape');
     await win.waitForFunction(() => !document.querySelector('.cal-pop:not([hidden])'));
+  });
+  await step('facture neuve : choisir le client ne déplace rien, et « Émettre » reste le seul vert', async () => {
+    // 10.12.0 (H-E19) — vu au test humain, à 1440 px : choisir le client (le tout premier geste)
+    // allumait le marqueur « non enregistré » À CÔTÉ du titre ; l'en-tête, élargi, passait sur deux
+    // rangées, et tout le formulaire descendait de 40 px sous le curseur — le clic suivant, visé sur
+    // l'Objet, tombait à côté. Et « Enregistrer le brouillon » passait au vert à côté d'« Émettre ».
+    // À 1280 px l'en-tête est déjà sur deux rangées : le défaut ne se voit qu'à 1440, d'où la taille.
+    const taille0 = await win.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight }));
+    await win.setViewportSize({ width: 1440, height: 900 });
+    await win.evaluate(() => { location.hash = '#/doc/new/facture'; });
+    if (await win.$('#modal-root #b')) { await win.click('#modal-root #b'); }
+    await win.waitForFunction(() => !document.querySelector('#modal-root .modal'));
+    await win.waitForSelector('#f-head [data-combo=clientId]');
+    await win.waitForTimeout(150);
+    const mesure = () => win.evaluate(() => {
+      const boite = e => { const b = e.getBoundingClientRect(); return { top: b.top, bottom: b.bottom, left: b.left, right: b.right, h: b.height }; };
+      const dot = document.querySelector('#dirty-dot');
+      return {
+        tete: boite(document.querySelector('#view .page-head')),
+        objet: boite(document.querySelector('#f-head input[name=subject]')),
+        editeur: boite(document.querySelector('#view .editor')),
+        verts: [...document.querySelectorAll('#view .page-head .btn-primary')].filter(b => b.offsetParent).map(b => b.id || b.textContent.trim()),
+        dot: dot && !dot.hidden ? boite(dot) : null,
+        actions: [...document.querySelectorAll('#view .page-head .actions > *, #view .page-head h1')].filter(e => e.offsetParent).map(e => ({ nom: e.id || e.tagName, ...(({ top, bottom, left, right }) => ({ top, bottom, left, right }))(e.getBoundingClientRect()) }))
+      };
+    });
+    const avant = await mesure();
+    if (avant.verts.join() !== 'issue') throw new Error('facture neuve, avant tout geste : ' + JSON.stringify(avant.verts));
+    await win.click('#f-head [data-combo=clientId] .combo-btn');
+    await win.waitForSelector('#f-head [data-combo=clientId] .combo-it');
+    await win.click('#f-head [data-combo=clientId] .combo-it');
+    await win.waitForFunction(() => !document.querySelector('#dirty-dot').hidden);
+    await win.waitForTimeout(150);
+    const apres = await mesure();
+    if (apres.verts.join() !== 'issue') throw new Error('après le choix du client, boutons principaux : ' + JSON.stringify(apres.verts) + ' — « Émettre » doit rester le seul');
+    if (Math.abs(apres.tete.h - avant.tete.h) > 1) throw new Error(`l'en-tête passe de ${Math.round(avant.tete.h)} à ${Math.round(apres.tete.h)} px au premier geste`);
+    if (Math.abs(apres.objet.top - avant.objet.top) > 1) throw new Error(`le champ Objet se déplace de ${Math.round(apres.objet.top - avant.objet.top)} px au premier geste : le clic suivant tombe à côté`);
+    if (!apres.dot) throw new Error('le marqueur « modifications non enregistrées » ne s\'affiche pas');
+    if (apres.dot.bottom > apres.editeur.top + 0.5) throw new Error(`le marqueur déborde sur le formulaire (${Math.round(apres.dot.bottom)} > ${Math.round(apres.editeur.top)})`);
+    const touche = apres.actions.filter(a => a.nom !== 'H1' && a.left < apres.dot.right && a.right > apres.dot.left && a.top < apres.dot.bottom && a.bottom > apres.dot.top);
+    if (touche.length) throw new Error('le marqueur recouvre ' + touche.map(a => a.nom).join(', '));
+    await win.setViewportSize(taille0);
+  });
+  await step('désignation libre : aucune liste ne se pose sous la rangée quantité / prix', async () => {
+    // 10.12.0 (H-E20) — vu au test humain : « Location salle de réunion », un libellé que le
+    // catalogue ignore, ouvrait une liste d'une seule ligne, « + Créer … au catalogue », posée
+    // EXACTEMENT sur la quantité et le prix. Le clic suivant ouvrait une fiche de prestation.
+    const champ = '#lines tr[data-i="0"] input[data-k=label]';
+    await win.click(champ);
+    await win.type(champ, 'Location salle de réunion zq', { delay: 10 });
+    await win.waitForTimeout(250);
+    if (await win.$('.sugg-pop:not([hidden])')) throw new Error('une liste s\'ouvre sous une désignation que le catalogue ignore : elle recouvre la quantité et le prix');
+    // Le prix, juste en dessous, reçoit bien le clic — c'est ce que le défaut volait.
+    await win.click('#lines tr[data-i="0"] input[data-k=unitPrice]');
+    const auPrix = await win.evaluate(() => document.activeElement && document.activeElement.dataset.k === 'unitPrice' && !document.querySelector('#modal-root .modal'));
+    if (!auPrix) throw new Error('le clic sur le prix n\'arrive pas au prix');
+    // Demandée (flèche du bas), la liste propose de créer l'article : rien n'est perdu.
+    await win.click(champ);
+    await win.keyboard.press('ArrowDown');
+    await win.waitForSelector('.sugg-pop:not([hidden]) .sugg-add', { timeout: 3000 });
+    await win.keyboard.press('Escape');
+    await win.waitForFunction(() => !document.querySelector('.sugg-pop:not([hidden])'));
   });
   await step('client : liste déroulante avec recherche au clavier', async () => {
     // le document précédent a été modifié : on quitte sans enregistrer
