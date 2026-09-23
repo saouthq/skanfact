@@ -325,6 +325,12 @@ du premier écran à son catalogue, pour voir ce qu'un chef d'entreprise subit :
 - **Les invites ne supposent plus le métier de l'auteur** : l'Objet d'un achat proposait « disques
   durs pour la Clinique », celui d'un contrat « Maintenance et supervision » — à une menuiserie.
 - La colonne « Déduct. » d'une facture d'achat garde sa bulle sur la même ligne.
+- **Une ligne de stock sans article propose de le créer** quand rien du catalogue ne lui ressemble :
+  le bouton disait « Choisir l'article… » et la liste n'offrait que la création, sous un trait qui
+  séparait du vide.
+- **Un prix de vente à 0 n'est plus « une vente à perte »** : l'article créé depuis un achat arrive
+  avec son coût et sans prix, et la fiche criait « Marge : − 38,500 DT — tu vends à perte » en orange
+  sur une planche qu'on ne revend pas telle quelle. Elle dit que la marge viendra avec le prix.
 
 **L'application entreprise mesurée en entier.** Ses instruments ne regardaient qu'une partie de
 l'application : aucun n'ouvrait une fiche ni une pièce par statut, et l'un visitait une adresse qui

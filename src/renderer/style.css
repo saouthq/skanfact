@@ -1089,6 +1089,9 @@ body.dark th.sortable-h:hover { background: #1f2731; }
   border-top: 1px solid var(--border); width: 100%; text-align: start; padding: 9px 10px; margin-top: 5px; cursor: pointer;
 }
 .sugg-add:hover { background: var(--primary-soft); border-radius: 0 0 8px 8px; }
+/* Seule dans la liste (rien du catalogue ne correspond), la création n'a rien à séparer : le trait
+   au-dessus d'elle séparait du vide (10.12.0). */
+.sugg-add:first-child { border-top: 0; margin-top: 0; }
 body.dark .combo-btn { background: var(--panel); }
 body.dark .combo-btn[aria-expanded="true"] { background: #1b222c; }
 body.dark .combo.ro .combo-btn { background: #1f2731; }

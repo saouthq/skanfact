@@ -13193,7 +13193,9 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     // « Choisir l'article… » qui ramène au champ et ouvre la liste.
     const alerte = zone('function refresh() {', "const head = $('#b-head');");
     assert.ok(alerte.includes('C.itemOfLine(p.lines[i] || {}, data)'), 'l\'avertissement juge la ligne calculée, pas la ligne saisie : une ligne rattachée puis retouchée serait accusée');
-    assert.ok(alerte.includes('data-orph="${i}">Choisir l\'article…</button>'), 'l\'avertissement reproche sans offrir le bouton qui débloque');
+    // (Retourné en 10.12.0 : l'assertion recopiait le libellé « Choisir l'article… » — il devient
+    // « Créer l'article… » quand rien ne ressemble à la ligne. La règle est le BOUTON, qui débloque.)
+    assert.ok(/data-orph="\$\{i\}">[^<]*(Choisir|Créer) l\\'article…/.test(alerte), 'l\'avertissement reproche sans offrir le bouton qui débloque');
     assert.ok(/\$\$\('\[data-orph\]', box\)\.forEach\(b => b\.onclick[\s\S]{0,400}inp\._ouvrirSuggestions\(\);/.test(alerte), 'le bouton de l\'avertissement n\'ouvre pas la liste');
     // La feuille de style : une classe utilisée et jamais définie ne se voit nulle part (8.1.0).
     assert.ok(/\.sugg-host \{ position: relative; \}/.test(css) && /\.sugg-pop \{/.test(css) && /\.sugg-it\.sel/.test(css) && /\.sugg-add \{/.test(css), 'les classes de la liste ne sont pas toutes définies');

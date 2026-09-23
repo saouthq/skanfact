@@ -4196,6 +4196,11 @@
           const pv = Number(v.unitPrice) || 0, pa = Number(v.unitCost) || 0;
           const el = $('#marge-hint', root);
           if (!pa) { el.innerHTML = '<span class="small muted">Sans coût de revient, la marge de cette prestation ne sera pas calculable.</span>'; return; }
+          // Un prix de vente à 0 n'est pas une vente à perte : c'est un prix pas encore fixé. Une
+          // planche achetée pour fabriquer une porte ne se revend pas telle quelle, et l'article créé
+          // depuis un achat arrive avec son coût et sans prix — il criait « tu vends à perte » en orange
+          // (10.12.0, une menuiserie). Du rouge sur une situation normale apprend à ignorer le rouge.
+          if (!pv) { el.innerHTML = '<span class="small muted">Pas encore de prix de vente : la marge se calculera quand tu l\'auras fixé. Un article que tu ne revends pas tel quel peut rester à 0.</span>'; return; }
           const m = C.round3(pv - pa), r = pv ? Math.round(m / pv * 1000) / 10 : 0;
           el.innerHTML = `<span class="small ${m <= 0 ? 'warn-text' : 'ok-text'}">Marge : <strong>${C.money(m, company().currency)}</strong> par unité, soit ${pct(r)} %${m <= 0 ? ' — tu vends à perte.' : ''}</span>`;
         };
@@ -6358,8 +6363,11 @@
       if (box) {
         const morceaux = [];
         // Le refus dit ce qui est refusé, pourquoi, ET le bouton qui débloque (7.0.0) : chaque ligne
-        // fautive porte « Choisir l'article… », qui ramène au champ et ouvre les propositions.
-        if (orphelines.length) morceaux.push(`<span class="small warn-text">${pl(orphelines.length, 'ligne')} en destination « stock » ${orphelines.length > 1 ? 'ne correspondent' : 'ne correspond'} à aucun article suivi du catalogue : ${orphelines.map(({ l, i }) => `« ${h(l.label || 'sans désignation')} » <button type="button" class="btn btn-sm" data-orph="${i}">Choisir l'article…</button>`).join(', ')}. ${orphelines.length > 1 ? 'Elles n\'entreront' : 'Elle n\'entrera'} dans aucun stock. ${info('stk.orphan')}</span>`);
+        // fautive porte « Choisir l'article… », qui ramène au champ et ouvre les propositions — ou
+        // « Créer l'article… » quand rien du catalogue ne lui ressemble : la liste n'offrira alors que la
+        // création, et « Choisir » promettait un choix qui n'existe pas (10.12.0, une menuiserie).
+        // La MÊME fonction décide du libellé et de ce que la liste montre.
+        if (orphelines.length) morceaux.push(`<span class="small warn-text">${pl(orphelines.length, 'ligne')} en destination « stock » ${orphelines.length > 1 ? 'ne correspondent' : 'ne correspond'} à aucun article suivi du catalogue : ${orphelines.map(({ l, i }) => `« ${h(l.label || 'sans désignation')} » <button type="button" class="btn btn-sm" data-orph="${i}">${propositionsCatalogue(data.catalog, l.label || '', true, true).shown.length ? 'Choisir l\'article…' : 'Créer l\'article…'}</button>`).join(', ')}. ${orphelines.length > 1 ? 'Elles n\'entreront' : 'Elle n\'entrera'} dans aucun stock. ${info('stk.orphan')}</span>`);
         // Quand l'offre ferme le module Immobilisations, l'avertissement change de sens : on ne
         // reproche pas ce qu'on n'a pas offert (7.20.0), et « ce montant n'est déduit nulle part »
         // serait faux — la ligne part au cabinet dans les écritures, au compte 22, et c'est lui qui

@@ -6399,6 +6399,11 @@ fixe (9.4.3) et sa table d'onglets nommait sept onglets disparus, sautés sans u
 - **Une invite écrite par l'auteur porte son métier** (le jumeau de l'Objet du devis, deux fois de
   plus) : « disques durs pour la Clinique » sur un achat, « Maintenance et supervision » sur un
   contrat. Le test lit maintenant TOUS les champs Objet, pas celui qu'on venait de corriger.
+- **Un bouton qui promet un choix se décide par la fonction qui fait la liste** : « Choisir
+  l'article… » ouvrait une liste où `propositionsCatalogue` ne rendait que « Créer ». Le libellé
+  appelle la même fonction. Et **un zéro saisi par défaut n'est pas un chiffre décidé** (le jumeau de
+  « un prix posé par le logiciel n'est pas un prix décidé ») : un prix de vente à 0 faisait calculer
+  une marge négative et crier « à perte » en orange — du rouge sur une situation normale (8.0.1).
 
 **Puis le rapport d'une entreprise qui a tenu SkanFact** (E-01 → E-14, une session QA qui a joué une
 vraie SUARL au régime réel, du premier écran au paquet du comptable). Ce qu'il a appris :

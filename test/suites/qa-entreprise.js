@@ -654,4 +654,24 @@ module.exports = ({ t, assert, lireSource }) => {
     assert.ok(/for \(const ev of \['input', 'change'\]\) q\.addEventListener\(ev, e => e\.stopPropagation\(\)\)/.test(app),
       'la frappe dans la recherche d\'une liste remonte encore au formulaire');
   });
+  // Une menuiserie achète des planches qu'elle n'a pas encore au catalogue : l'avertissement disait
+  // « Choisir l'article… », et la liste ouverte n'offrait que « + Créer … » sous un trait qui séparait
+  // du vide (10.12.0).
+  t('Une ligne de stock sans article propose de le CRÉER quand il n\'y a rien à choisir', () => {
+    const app = code('src', 'renderer', 'app.js');
+    assert.ok(/data-orph="\$\{i\}">\$\{propositionsCatalogue\(data\.catalog, l\.label \|\| '', true, true\)\.shown\.length \? 'Choisir l\\'article…' : 'Créer l\\'article…'\}/.test(app),
+      'le bouton de la ligne orpheline ne dépend pas de ce que la liste montrera');
+    const css = lireSource('src', 'renderer', 'style.css').replace(/\/\*[\s\S]*?\*\//g, '');
+    assert.ok(/\.sugg-add:first-child \{ border-top: 0;/.test(css), 'la création seule dans la liste garde un trait au-dessus du vide');
+  });
+  // L'article créé depuis un achat arrive avec son coût et sans prix : la fiche criait « Marge :
+  // − 38,500 DT, soit 0 % — tu vends à perte » en orange sur une planche qu'on ne revend pas (10.12.0).
+  t('Un prix de vente à 0 est un prix pas encore fixé, pas une vente à perte', () => {
+    const app = code('src', 'renderer', 'app.js');
+    const i = app.indexOf("const el = $('#marge-hint', root);");
+    const f = app.slice(i, i + 1200);
+    const avant = f.indexOf('if (!pv)'), perte = f.indexOf('tu vends à perte');
+    assert.ok(avant > 0 && perte > avant, 'la marge d\'un article sans prix de vente se calcule encore — et crie « à perte »');
+    assert.ok(/if \(!pv\) \{ el\.innerHTML = '<span class="small muted">/.test(f), 'l\'absence de prix se dit en couleur d\'alerte');
+  });
 };
