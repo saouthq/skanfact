@@ -184,7 +184,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 `npm test` (les tests purs) · `npm run lint` (ESLint, **zéro erreur ET zéro avertissement** depuis la
 10.0.1) · `npm run charge` (le livre du Cabinet) · `npm run charge:entreprise` (le fichier de l'app
 entreprise, dix ans d'activité — 10.0.1) · `npm run e2e:<nom>` (53 parcours, tableau au § « Les tests
-qui ouvrent vraiment l'application ») · CI GitHub sur Linux et Windows à chaque poussée ·
+qui ouvrent vraiment l'application ») · `scripts/humain/` (tester comme un humain : écran virtuel, souris, clavier, Browser Use — depuis le 23/09/2026) · CI GitHub sur Linux et Windows à chaque poussée ·
 « Construire un essai » pour faire tester une version sans la publier.
 
 **Les documents du dépôt**, et lequel fait foi :
@@ -203,6 +203,20 @@ chantier précis ; `ROADMAP.md` est une **archive**.
 
 - **Chaque amélioration livrée = une nouvelle version** (semver) : correctif 1.0.x, fonctionnalité 1.x.0, gros changement x.0.0. Mettre à jour `package.json` (`version`) **et** ajouter une entrée datée dans `CHANGELOG.md` (c'est elle qui devient les notes de version dans l'app et sur GitHub). Toujours annoncer le numéro de version dans la réponse.
 - Lancer `npm test` avant tout commit (calculs, numérotation, montant en lettres, échappement HTML, stockage/sauvegardes). Pour un changement d'interface, lancer aussi l'app réelle (`xvfb-run` + Playwright `_electron`, voir README « Tests ») : elle attrape les erreurs JS du renderer.
+- **À la fin de chaque changement, le tester COMME UN HUMAIN** (décidé par Skander le 23/09/2026 :
+  « afin d'éviter les bugs et problèmes »). `scripts/humain/lancer.sh cabinet|entreprise` ouvre
+  l'application sur un écran virtuel de 1440×900 ; `scripts/humain/ecran.sh capture` puis lire
+  l'image, `clic X Y`, `taper "…"`, `touche ctrl+k`, `defiler X Y bas 3` — de VRAIS événements souris
+  et clavier du système (xdotool), c'est-à-dire les actions de Computer Use jouées par Claude
+  lui-même. Ils subissent ce qu'un humain subit : un bouton recouvert par une couche ne reçoit pas le
+  clic, un bouton collé se voit collé, un texte blanc sur blanc ne se lit pas. **Browser Use**
+  (`BU_CDP_URL=http://127.0.0.1:9223 browser-use <<'PY' … PY`) et **Playwright**
+  (`chromium.connectOverCDP('http://127.0.0.1:9223')`) se branchent sur la MÊME fenêtre, pour lire
+  l'arbre d'accessibilité ou vérifier une valeur après un geste. Ports : 9222 l'entreprise, 9223 le
+  Cabinet. Les parcours `npm run e2e:*` restent les garde-fous (ils cliquent des SÉLECTEURS) ; ce
+  test-là est le regard (il clique des PIXELS). Le hook `.claude/hooks/session-start.sh` installe tout
+  au démarrage d'une session web ; `scripts/humain/fermer.sh` ferme l'application. Aucun de ces
+  outils ne demande de clé d'API : c'est Claude qui regarde et qui décide du clic suivant.
 - Ne jamais commiter de token. Le jeton GitHub que l'utilisateur colle (quand le dépôt est privé) est stocké dans `userData/update-config.json`, jamais dans le code.
 - **La licence est ARMÉE depuis la 8.0.0** : la clé publique de Skander (créée dans SkanFact le 14/09/2026) vit dans `build/licences-publiques.json` sous le `kid` **`master`**, et `build/licence-public.json` la porte encore à l'identique (repli des versions d'avant la 8.4.0). Ne jamais la supprimer, la régénérer ni la remplacer — une autre clé invaliderait toutes les licences déjà vendues, et son absence désarmerait tous les clients. **Une licence sans `kid` se vérifie avec `master`** : toutes celles vendues depuis la 8.0.0 sont dans ce cas. La clé privée vit dans `~/.skanfact/` sur son Mac, jamais dans le dépôt. Des tests exigent la présence du fichier, que ce soit une vraie clé Ed25519, que `master` soit identique au caractère près à celle de la 8.0.0, et que le glob d'electron-builder embarque bien les deux fichiers. **Depuis la 8.6.0 le même fichier porte `srv-1`** (créée dans SkanFact le 15/09/2026), la clé de second rang avec laquelle la console signe les ventes : sa privée vit dans le réglage Cloudflare `SRV_PRIVATE_KEY`, jamais dans le dépôt. La retirer un jour (compromission) est une décision qui exige de réémettre les licences qu'elle a signées ; la « retirer » se fait par `retiree: true`, pas en effaçant l'entrée. **Depuis la 9.4.1 le champ `reponse` porte la clé publique de RÉPONSE** (créée dans SkanFact le 17/09/2026 — celle du 15/09 était brûlée, sa privée ayant transité par une conversation) : sa privée vit dans le réglage Cloudflare `REPONSE_PRIVATE_KEY`, jamais dans le dépôt, et c'est elle qui fait qu'une révocation prononcée depuis la console s'applique chez un client à jour. Un test exige qu'elle soit une Ed25519 distincte de `master` et de `srv-1`. Ne jamais la remplacer par une clé dont la privée a été vue (`plateforme/README.md` § 4).
 - **Partager un dossier à deux se fait en DEUX gestes**, et ils vivent dans `src/main.js` :
