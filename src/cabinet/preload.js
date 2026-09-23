@@ -64,6 +64,7 @@ contextBridge.exposeInMainWorld('cabinet', {
   modifierEcriture: (dossierId, annee, id, patch) => ipcRenderer.invoke('cab:modifierEcriture', { dossierId, annee, id, patch }),
   supprimerEcriture: (dossierId, annee, id) => ipcRenderer.invoke('cab:supprimerEcriture', { dossierId, annee, id }),
   extourner: (dossierId, annee, id) => ipcRenderer.invoke('cab:extourner', { dossierId, annee, id }),
+  prevoirExtourne: (o) => ipcRenderer.invoke('cab:prevoirExtourne', o || {}),
   validerLot: (o) => ipcRenderer.invoke('cab:validerLot', o || {}),
   joindreEcriture: (o) => ipcRenderer.invoke('cab:joindreEcriture', o || {}),
   ouvrirJustificatif: (dossierId, relatif) => ipcRenderer.invoke('cab:ouvrirJustificatif', { dossierId, relatif }),

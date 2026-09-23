@@ -303,13 +303,20 @@ t('T-17 : les trois gestes d\'une déclaration disent pourquoi ils attendent, et
 
 t('T-03 / T-05 / T-36 : ce qu\'un bouton fait apparaître, ce qu\'il ne touche pas, ce qui est parti', () => {
   const app = cabApp();
-  assert.ok(app.includes('Créer le livre ouvre sept onglets de plus'), 'le bandeau ne dit pas ce que le bouton vert fait apparaître (T-03)');
-  const onglets = ['Saisie', 'Déclaration', 'Banque', 'Immobilisations', 'Inventaire', 'Exercice', 'Recherche'];
-  const z = tranche(app, 'Créer le livre ouvre sept onglets', '</div>', 40, 400);
-  onglets.forEach(o => assert.ok(z.includes(o), 'un onglet n\'est pas nommé : ' + o));
-  // Les sept sont bien ceux qui n'existent qu'avec un livre : on les relit dans la barre d'onglets.
+  // 10.10.0 (C-02) — retourné. Ce test exigeait « sept onglets » écrits à la main : il gravait la
+  // phrase au lieu de la règle, et il est resté vert quand trois onglets de plus sont arrivés (Paie,
+  // Révision, Liasse). La phrase se DÉDUIT de `ONGLETS_DU_LIVRE`, et la liste se confronte à la
+  // barre d'onglets dans les DEUX sens : chaque nom annoncé est un onglet qui n'existe qu'avec un
+  // livre, et chaque onglet qui n'existe qu'avec un livre est annoncé.
+  const m = /const ONGLETS_DU_LIVRE = \[([^\]]+)\];/.exec(app);
+  assert.ok(m, 'la liste des onglets du livre a disparu');
+  const onglets = m[1].split(',').map(x => x.trim().replace(/^'|'$/g, ''));
+  assert.ok(app.includes('Créer le livre ouvre ${ONGLETS_DU_LIVRE.length} onglets de plus'), 'le bandeau ne se déduit plus de la liste (T-03, C-02)');
   const tabs = tranche(app, '<div class="tabs" id="c-tabs">', '</div>${corps}', 500, 4000);
   onglets.forEach(o => assert.ok(new RegExp(`\\$\\{s\\.livre \\? \`<button data-tab="[a-z-]+"[^>]*>${o}`).test(tabs), `${o} n'est pas conditionné au livre, ou le bandeau ment`));
+  const conditionnes = [...tabs.matchAll(/\$\{s\.livre \? `<button data-tab="[a-z-]+"[^>]*>([^<$]+)/g)].map(x => x[1].trim());
+  assert.ok(conditionnes.length >= 10, 'la barre d\'onglets n\'a pas été lue : ' + conditionnes.length);
+  conditionnes.forEach(o => assert.ok(onglets.includes(o), `l'onglet « ${o} » n'existe qu'avec un livre et le bandeau ne l'annonce pas`));
   // T-05 : la réassurance se lit AVANT le geste — une bulle à côté du bouton, avec sa clé d'aide.
   assert.ok(/id="lv-relire2"[^`]*Relire les paquets reçus<\/button>\$\{info\('lv\.relire'\)\}/.test(app), '« Relire les paquets reçus » n\'a pas sa bulle');
   const guide = lireSource('src', 'cabinet', 'renderer', 'cabguide.js');

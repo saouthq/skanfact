@@ -157,7 +157,9 @@
     try { el.focus({ preventScroll: true }); } catch (_) { }
     const marque = el.closest('.field') || el;
     marque.classList.add('champ-faute');
-    const nettoyer = () => marque.classList.remove('champ-faute');
+    // Et un lecteur d'écran le sait aussi : la classe ne se voit qu'à l'œil (C-14).
+    el.setAttribute('aria-invalid', 'true');
+    const nettoyer = () => { marque.classList.remove('champ-faute'); el.removeAttribute('aria-invalid'); };
     marque.addEventListener('input', nettoyer, { once: true });
     marque.addEventListener('change', nettoyer, { once: true });
     setTimeout(nettoyer, 6000);
@@ -359,9 +361,22 @@
   // Un compte rendu qu'on ferme, sans question. Il porte souvent plusieurs lignes et des chiffres
   // qu'on relit : `pre-wrap` garde les retours et l'alignement, là où un `<p>` collerait tout.
   function infoDialog(title, body, okLabel) {
+    return fenetreInfo(title, `<div style="white-space:pre-wrap">${esc(body)}</div>`, okLabel);
+  }
+
+  // 10.10.0 (C-09) — la même fenêtre, pour un corps DÉJÀ écrit en HTML. `infoDialog` échappe son
+  // texte, et c'est juste pour une phrase ; deux appelants lui passaient pourtant un tableau et une
+  // liste, et le comptable lisait « <table class="list compact"> » à l'écran à la place des comptes
+  // d'une rubrique de liasse. Deux portes, deux noms : l'appelant DIT ce qu'il donne, et le corps
+  // se construit avec `esc()` sur chaque morceau venu des données.
+  function infoHtml(title, html, okLabel) {
+    return fenetreInfo(title, `<div>${html}</div>`, okLabel);
+  }
+
+  function fenetreInfo(title, corps, okLabel) {
     return new Promise(resolve => {
       modal(
-        `<h2>${esc(title)}</h2><div style="white-space:pre-wrap">${esc(body)}</div>
+        `<h2>${esc(title)}</h2>${corps}
          <div class="modal-actions"><button class="btn btn-primary" id="ok">${esc(okLabel || 'Fermer')}</button></div>`,
         (layer, close) => { $('#ok', layer).onclick = () => { close(); resolve(true); }; },
         () => resolve(true)
@@ -438,6 +453,13 @@
   const dinar = cur => !cur || cur === 'DT' || cur === 'TND';
   // Recopié de core.js en 1.0.0 — en perdant le signe. Un mois d'avoirs (chiffre d'affaires négatif)
   // s'affichait donc comme un bon mois, et les lignes ne faisaient plus le total.
+  // Le nombre de dossiers du jeu d'exemple : ceux qui sont chargés, sinon ceux que `demoDossiers`
+  // chargerait. Écrit à la main, il a menti dès que l'exemple a gagné un dossier (C-15).
+  // (« Cinq dossiers » était écrit à la main avant que l'exemple gagne son client hors SkanFact en
+  // 10.0.0 : deux écrans comptaient six, le troisième en annonçait cinq.)
+  const nbExemple = () => (S && (S.dossiers || []).filter(d => d.demo).length)
+    || K.demoDossiers(new Date().toISOString().slice(0, 10)).length;
+
   const money = (n, cur) => {
     if (n == null || n === '') return '—';
     const v = Number(n);
@@ -1395,7 +1417,7 @@
           <div class="inline mt">
             <button class="btn btn-primary" id="new-d">Ajouter mes clients…</button>
             <button class="btn" id="imp">Importer un paquet…</button>
-            <button class="btn" id="demo-on">Voir un exemple (5 clients fictifs)</button>
+            <button class="btn" id="demo-on">Voir un exemple (${nbExemple()} clients fictifs)</button>
           </div>
           <p class="small muted mt"><strong>Commence par tes clients.</strong> Ajoute-les même s'ils n'utilisent pas encore SkanFact :
           l'application devient le tableau de bord de ton portefeuille, et rien ne leur est réclamé tant qu'ils n'ont pas commencé.</p>
@@ -1761,7 +1783,11 @@
       </section>
 
       <section data-onglet="comptabilite" ${onglet === 'comptabilite' ? '' : 'hidden'}>
-      ${packs.length ? `<div class="panel" id="c-compta"><h2>Comptabilité ${info('lv.compta')}</h2>
+      ${/* 10.10.0 (C-07) — le panneau existe pour TOUT dossier. Il n'existait qu'avec des paquets :
+            un client hors SkanFact — le seul qu'on FACTURE — se voyait promettre sa comptabilité pour
+            le jour de son premier envoi, un envoi qui ne viendra jamais, pendant que l'Aide lui disait
+            de saisir « Comptabilité → Saisie ». Le moteur savait créer son livre ; l'écran, non. */''}
+      <div class="panel" id="c-compta"><h2>Comptabilité ${info('lv.compta')}</h2>
         ${/* Deux listes déroulantes nues au-dessus d'un livre-journal ne disent pas ce qu'elles
               choisissent : « L'exercice / 2026 » pouvait tout aussi bien être un filtre de journal.
               Le mot « Période » devant, et chaque contrôle porte son `aria-label` — un lecteur
@@ -1778,12 +1804,8 @@
           <input type="month" id="lv-du" aria-label="Du mois" ${livresState.mode === 'intervalle' ? '' : 'hidden'} value="${esc(livresState.du)}">
           <input type="month" id="lv-au" aria-label="Au mois" ${livresState.mode === 'intervalle' ? '' : 'hidden'} value="${esc(livresState.au)}">
         </div>
-        <div id="c-livres"><div class="empty">Lecture des paquets…</div></div>
-      </div>` : `<div class="panel"><h2>Comptabilité ${info('lv.compta')}</h2>
-        <div class="empty">${dossier.manual
-          ? 'Ce client n\'est pas encore sur SkanFact : sa comptabilité apparaîtra ici dès son premier paquet.'
-          : 'Aucun paquet reçu pour l\'instant : le livre-journal, le grand livre, la balance et le lettrage de ce client apparaîtront ici dès son premier envoi.'}</div>
-      </div>`}
+        <div id="c-livres"><div class="empty">Lecture de la comptabilité…</div></div>
+      </div>
       </section>
 
       <section data-onglet="paquets" ${onglet === 'paquets' ? '' : 'hidden'}>
@@ -1972,6 +1994,49 @@
     return { du: y + '-01', au: y + '-12' };
   }
 
+  // Les exercices qu'on peut ouvrir : ceux des paquets reçus, ceux que le cabinet TIENT (lus dans
+  // l'index des livres), et celui qu'on regarde. 10.10.0 (C-12) : la liste ne connaissait que les
+  // paquets — « Ouvrir 2027 » créait un livre qu'aucun écran ne permettait d'ouvrir, même après un
+  // redémarrage. Le geste qui crée un exercice l'ajoute ici lui-même (`exerciceConnu`).
+  function anneesDuDossier() {
+    const s = livresState;
+    const d = s.data || {};
+    const set = new Set((d.tousLesMois || []).map(m => m.slice(0, 4)));
+    (d.exercices || []).forEach(x => set.add(String(x.annee)));
+    if (s.annee) set.add(String(s.annee));
+    return [...set].filter(y => /^\d{4}$/.test(y)).sort().reverse();
+  }
+  function exerciceConnu(annee) {
+    const d = livresState.data;
+    if (!d || d.erreur) return;
+    d.exercices = d.exercices || [];
+    if (!d.exercices.some(x => String(x.annee) === String(annee))) d.exercices.push({ annee: String(annee), clos: false, ecritures: 0 });
+  }
+  function majSelecteurExercice(root) {
+    const sel = $('#lv-annee', root) || $('#lv-annee');
+    if (!sel) return;
+    const ans = anneesDuDossier();
+    const cle = ans.join(',');
+    if (!(sel.dataset.ans === cle && sel.value === String(livresState.annee))) {
+      sel.dataset.ans = cle;
+      sel.innerHTML = ans.map(y => `<option value="${esc(y)}" ${String(livresState.annee) === y ? 'selected' : ''}>${esc(y)}</option>`).join('');
+    }
+    // Et les MOIS : un dossier tenu à la main n'a aucun paquet, donc « Un mois » ne proposait rien.
+    // Avec un livre, les douze mois de son exercice s'ajoutent à ceux des paquets.
+    const mo = $('#lv-mois', root) || $('#lv-mois');
+    if (mo && livresState.livre) {
+      const y = String(livresState.annee);
+      const mois = new Set(((livresState.data || {}).tousLesMois || []));
+      for (let i = 1; i <= 12; i++) mois.add(`${y}-${String(i).padStart(2, '0')}`);
+      const liste = [...mois].sort().reverse();
+      const cleM = liste.join(',');
+      if (mo.dataset.mois !== cleM) {
+        mo.dataset.mois = cleM;
+        mo.innerHTML = liste.map(m => `<option value="${esc(m)}" ${livresState.mois === m ? 'selected' : ''}>${esc(K.monthLabel(m))}</option>`).join('');
+      }
+    }
+  }
+
   async function chargerLivres(dossier) {
     const s = livresState;
     try {
@@ -1979,8 +2044,11 @@
       s.dossierId = dossier.id;
       s.data = brut;
       if (!s.annee) {
+        // L'exercice du dernier paquet reçu ; sans paquet, le dernier exercice que le cabinet tient ;
+        // sinon l'année en cours — celle qu'on commence.
         const m = brut.tousLesMois;
-        s.annee = m.length ? m[m.length - 1].slice(0, 4) : String(new Date().getFullYear());
+        const ex = (brut.exercices || []).map(x => x.annee).sort();
+        s.annee = m.length ? m[m.length - 1].slice(0, 4) : ex.length ? ex[ex.length - 1] : String(new Date().getFullYear());
       }
       await chargerLeLivre(dossier);
     } catch (e) { s.data = { erreur: plainError(e) }; }
@@ -2187,7 +2255,8 @@
           if (!/^\d{4}$/.test(v.annee)) return infoDialog('Exercice', 'Une année s\'écrit sur quatre chiffres.');
           try {
             const r = await api.reprendre({ dossierId: dossier.id, annee: Number(v.annee), du: v.du, au: v.au, ouverture: lire(), source: 'balance' });
-            s.annee = v.annee; s.livre = r.livre; s.livreEtat = 'ouvert';
+            s.annee = v.annee; s.livre = r.livre; s.livreEtat = 'ouvert'; s.livreCle = dossier.id + '|' + v.annee;
+            exerciceConnu(v.annee);
             close();
             drawLivres(root, dossier);
             toast(`Livre de ${v.annee} créé`);
@@ -2235,17 +2304,42 @@
     } catch (err) { await infoDialog('Contre-passation impossible', plainError(err)); }
   }
 
+  // Les onglets qui n'existent QU'AVEC un livre. 10.10.0 (C-02) : la phrase qui les annonce en
+  // nommait SEPT, écrits à la main en 9.8.8 ; il en arrivait DIX — Paie, Révision et Liasse, les
+  // trois plus récents, et ceux qui font du Cabinet autre chose qu'un récepteur de paquets. La
+  // phrase se DÉDUIT de cette liste, et un test confronte la liste aux boutons que la barre pose.
+  const ONGLETS_DU_LIVRE = ['Saisie', 'Déclaration', 'Banque', 'Immobilisations', 'Inventaire', 'Paie', 'Révision', 'Exercice', 'Liasse', 'Recherche'];
+
   function drawLivres(root, dossier) {
     const s = livresState;
     const el = $('#c-livres', root);
     if (!el) return;
     if (!s.data) { el.innerHTML = '<div class="empty">Lecture des paquets…</div>'; return; }
     if (s.data.erreur) { el.innerHTML = `<div class="warn-box">${esc(s.data.erreur)}</div>`; return; }
-    if (s.data.aucunPaquet) {
-      el.innerHTML = `<div class="empty"><p>Aucun paquet reçu ne contient d'écritures.</p>
-        <p class="muted small">Les paquets d'avant la 6.3.0 n'en ont pas : demande à ton client de renvoyer le mois.</p>
-        <div class="modal-actions"><button class="btn btn-primary" id="lv-ecrire">Écrire au client</button></div></div>`;
+    majSelecteurExercice(root);
+    // Aucun paquet, et pas encore de livre : le dossier se TIENT ici, à la main (C-07). Un client
+    // hors SkanFact n'enverra jamais rien ; un client sur SkanFact qui n'a encore rien envoyé peut
+    // aussi être repris. Le geste est le même : poser l'exercice et, s'il y en a une, sa balance
+    // d'ouverture — vide pour un client qui commence.
+    if (s.data.aucunPaquet && s.livreEtat === 'absent') {
+      el.innerHTML = `<div class="info-box mb"><b>${dossier.manual
+        ? 'Ce client n\'utilise pas SkanFact : sa comptabilité se tient ici, à la main.'
+        : 'Aucun paquet reçu pour l\'instant.'}</b>
+          Commence son livre de ${esc(s.annee)} : tu poses son exercice et, s'il en a une, sa balance d'ouverture
+          (laisse-la vide pour un client qui démarre). S'ouvrent alors la <b>Saisie</b> et tous les onglets du livre.
+          ${dossier.manual ? '' : 'Ses paquets, quand il en enverra, s\'y ajouteront d\'eux-mêmes.'}</div>
+        <div class="modal-actions mb">
+          <button class="btn btn-primary" id="lv-reprendre">Commencer le livre de ${esc(s.annee)}…</button>
+          ${dossier.manual ? '' : '<button class="btn" id="lv-ecrire">Écrire au client</button>'}
+        </div>`;
       const b = $('#lv-ecrire', el); if (b) b.onclick = () => writeRelance(K.dossierRow(dossier));
+      const rp = $('#lv-reprendre', el); if (rp) rp.onclick = () => repriseForm(root, dossier);
+      return;
+    }
+    if (s.data.aucunPaquet && !s.livre) {
+      el.innerHTML = s.livreEtat === 'illisible' || s.livreEtat === 'version-inconnue' || s.livreEtat === 'erreur'
+        ? `<div class="warn-box mb"><b>Le livre de ${esc(s.annee)} n'a pas pu être ouvert.</b> ${esc(s.livreMotif || '')} Tes sauvegardes sont dans les Réglages.</div>`
+        : '<div class="empty">Lecture du livre…</div>';
       return;
     }
 
@@ -2259,7 +2353,7 @@
           ${/* Ce que le bouton vert fait APPARAÎTRE (T-03) : sans cette phrase, les sept onglets
                 absents se lisaient comme un manque du logiciel — le testeur a cherché « Banque »
                 plusieurs minutes et conclu qu'il fallait publier une version. */''}
-          Créer le livre ouvre sept onglets de plus : <b>Saisie, Déclaration, Banque, Immobilisations, Inventaire, Exercice</b> et <b>Recherche</b>.</div>
+          Créer le livre ouvre ${ONGLETS_DU_LIVRE.length} onglets de plus : <b>${ONGLETS_DU_LIVRE.slice(0, -1).map(esc).join(', ')}</b> et <b>${esc(ONGLETS_DU_LIVRE[ONGLETS_DU_LIVRE.length - 1])}</b>.</div>
         <div class="modal-actions mb">
           <button class="btn btn-primary" id="lv-relire">Créer le livre à partir des paquets reçus…</button>
           <button class="btn" id="lv-reprendre">Reprendre ce dossier (balance d'ouverture)…</button>
@@ -2829,7 +2923,8 @@
   const LIBELLE_CONTROLE = {
     brouillard: 'Les pièces encore en brouillard', attente: 'Le compte d\'attente',
     tva: 'Les déclarations de TVA', tiers: 'La balance des tiers',
-    dotations: 'Les dotations aux amortissements', equilibre: 'L\'équilibre de la balance'
+    dotations: 'Les dotations aux amortissements', amortissements: 'Le tableau d\'amortissement et le compte 28',
+    equilibre: 'L\'équilibre de la balance'
   };
 
   function vueCloture(dossier) {
@@ -2851,9 +2946,11 @@
       ${info('cl.etat')}
       <span class="small muted">Exercice ${esc(ex.annee)}</span>
       <span class="badge ${ex.clos ? 'b-paid' : 'b-due'}">${ex.clos ? 'clos' : 'ouvert'}</span>
-      <button class="btn btn-sm ${ex.clos ? '' : 'btn-primary'}" id="cl-cloturer" ${ex.clos ? 'disabled' : ''}
-        title="${ex.clos ? 'Cet exercice est déjà clos.' : ''}">Clôturer l'exercice…</button>
-      ${ex.clos ? '<button class="btn btn-sm" id="cl-rouvrir">Rouvrir (motif exigé)…</button>' : ''}
+      ${/* Un exercice clos ne propose plus « Clôturer » : un bouton éteint dont le motif ne vit que
+            dans une infobulle ne se comprend qu'en survolant. Le badge « clos » le dit, et le geste
+            qui reste est celui qu'on peut faire — rouvrir. */''}
+      ${ex.clos ? '<button class="btn btn-sm" id="cl-rouvrir">Rouvrir (motif exigé)…</button>'
+    : '<button class="btn btn-sm btn-primary" id="cl-cloturer">Clôturer l\'exercice…</button>'}
       <button class="btn btn-sm" id="cl-suivant">Ouvrir ${esc(Number(ex.annee) + 1)} (à-nouveaux)…</button>
       <button class="btn btn-sm" id="cl-fichier">Le dossier pour le client…</button>
       ${/* Réunir deux postes (9.9.0). Ici, et pas dans la Saisie : c'est un geste d'exercice, rare,
@@ -2967,7 +3064,7 @@
         ? `<p><b>${esc(titre)}</b></p><ul>${liste.slice(0, 12).map(x => `<li>${esc(quoi(x))}</li>`).join('')}</ul>`
           + (liste.length > 12 ? `<p class="muted small">… et ${liste.length - 12} de plus.</p>` : '')
         : '';
-      await infoDialog(`Les deux livres sont réunis`,
+      await infoHtml(`Les deux livres sont réunis`,
         `<p>${pl(q.valideesAjoutees.length, 'écriture validée', 'écritures validées')} et ${pl(q.brouillardsAjoutes.length, 'brouillard')} `
         + `${q.valideesAjoutees.length + q.brouillardsAjoutes.length > 1 ? 'sont arrivés' : 'est arrivé'} de l'autre poste.</p>`
         + bloc('À regarder — même numéro que chez toi, sur une autre écriture :', q.numerosEnDoublon,
@@ -3021,13 +3118,35 @@
       su.disabled = true;
       try {
         const r = await api.ouvrirSuivant({ dossierId: dossier.id, annee: s.annee });
-        toast(`${r.refaits ? 'À-nouveaux refaits' : 'À-nouveaux posés'} en brouillard sur ${r.annee}.`);
+        exerciceConnu(r.annee);
+        majSelecteurExercice(root);
+        // 10.10.0 (C-12) — le geste finit là où il se termine vraiment (7.19.0) : l'exercice qu'on
+        // vient d'ouvrir. Un message passager annonçait « à-nouveaux refaits sur 2027 » et laissait
+        // le comptable sur 2026, devant un sélecteur qui ne proposait même pas 2027.
+        const aller = await confirmDialog(`${r.refaits ? 'À-nouveaux refaits' : 'À-nouveaux posés'} sur ${r.annee}`,
+          `<p>Ils sont en <b>brouillard</b> dans le livre de ${esc(String(r.annee))} : relis-les, puis valide-les.
+           ${r.refaits ? 'Les précédents ont été remplacés — les validées, elles, n\'ont pas été touchées.' : ''}</p>`,
+          `Ouvrir ${r.annee}`, false, `Rester sur ${s.annee}`);
+        if (aller) await ouvrirExercice(root, dossier, String(r.annee), 'saisie');
       } catch (err) { toast(plainError(err), 'error'); }
       su.disabled = false;
     };
     const fi = $('#cl-fichier', el);
     if (fi) fi.onclick = () => clotureFichierForm(root, dossier);
     $$('[data-reveal]', el).forEach(b => { b.onclick = () => api.reveal(b.dataset.reveal); });
+  }
+
+  // Aller à un autre exercice du même dossier, comme le sélecteur le fait — et sur l'onglet voulu.
+  async function ouvrirExercice(root, dossier, annee, onglet) {
+    const s = livresState;
+    s.mode = 'exercice'; s.annee = String(annee); s.page = 1;
+    if (onglet) s.onglet = onglet;
+    s.livreCle = dossier.id + '|' + s.annee;
+    await chargerLeLivre(dossier);
+    const mode = $('#lv-mode'); if (mode) mode.value = 'exercice';
+    const an = $('#lv-annee'); if (an) an.hidden = false;
+    majSelecteurExercice(document);
+    if ($('#c-livres')) drawLivres(document, dossier);
   }
 
   async function chargerCloture(root, dossier) {
@@ -3141,7 +3260,7 @@
     $$('[data-rub]', el).forEach(b => { b.onclick = () => {
       const x = s.liasse.liasse.etats.flatMap(e => e.lignes).find(y => y.id === b.dataset.rub);
       if (!x) return;
-      infoDialog(`${x.id} — ${x.label}`,
+      infoHtml(`${x.id} — ${x.label}`,
         `<table class="list compact"><tbody>${x.detail.map(d => `<tr><td class="nw">${esc(d.compte)}</td>
           <td>${esc(d.libelle)}</td><td class="r nw">${esc(money(d.montant))}</td></tr>`).join('')}</tbody>
         <tfoot><tr><th colspan="2">Total</th><th class="r nw">${esc(money(x.montant))}</th></tr></tfoot></table>`);
@@ -3194,7 +3313,7 @@
         <label class="field obligatoire span-2"><span>Libellé</span><input type="text" id="rt-libelle" placeholder="Amende fiscale non déductible"></label>
       </div>
       <p class="small muted" id="rt-aide">${esc(nats[0].aide)}</p>
-      <div class="modal-actions"><button class="btn" dismiss>Annuler</button><button class="btn btn-primary" id="rt-ok">Ajouter</button></div>`,
+      <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="rt-ok">Ajouter</button></div>`,
     (couche, close) => {
       const sel = $('#rt-nature', couche);
       sel.onchange = () => { $('#rt-aide', couche).textContent = (nats.find(n => n.id === sel.value) || {}).aide || ''; };
@@ -3397,7 +3516,7 @@
       const q = (s.revision.dossier.questionnaire || []).find(x => x.id === b.dataset.qq);
       modal(`<h2>Répondre</h2><p class="small">${esc((q && q.question) || '')}</p>
         <label class="field"><span>La réponse</span><textarea id="qq-rep" rows="3">${esc((q && q.reponse) || '')}</textarea></label>
-        <div class="modal-actions"><button class="btn" dismiss>Annuler</button><button class="btn btn-primary" id="qq-ok">Enregistrer</button></div>`,
+        <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="qq-ok">Enregistrer</button></div>`,
       (couche, close) => { $('#qq-ok', couche).onclick = async () => {
         try {
           const r = await api.questionnaire({ dossierId: dossier.id, annee: s.annee, periode: s.revision.dossier.periode, id: b.dataset.qq, reponse: $('#qq-rep', couche).value });
@@ -3445,7 +3564,7 @@
       <p class="small muted">Ce qu'il reste à vérifier${base.compte ? ` sur le compte ${esc(base.compte)}` : ''}. Elle reste dans le
       dossier de révision et ne part jamais chez le client — c'est une note pour toi et ton équipe.</p>
       <label class="field obligatoire"><span>La note</span><textarea id="nv-texte" rows="3" placeholder="Rapprocher le 471 avec le relevé de décembre"></textarea></label>
-      <div class="modal-actions"><button class="btn" dismiss>Annuler</button><button class="btn btn-primary" id="nv-ok">Écrire la note</button></div>`,
+      <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="nv-ok">Écrire la note</button></div>`,
     (couche, close) => { $('#nv-ok', couche).onclick = async () => {
       const t = $('#nv-texte', couche).value.trim();
       if (!t) return toast('Une note de revue sans texte n\'apprend rien.', 'error');
@@ -3475,7 +3594,7 @@
         <label class="field obligatoire span-2"><span>La question</span>
           <textarea id="qf-texte" rows="3" placeholder="Peux-tu m'envoyer la facture correspondant à ce virement de 1 200 DT ?">${esc((q && q.texte) || '')}</textarea></label>
       </div>
-      <div class="modal-actions"><button class="btn" dismiss>Annuler</button><button class="btn btn-primary" id="qf-ok">${id ? 'Enregistrer' : 'Poser la question'}</button></div>`,
+      <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="qf-ok">${id ? 'Enregistrer' : 'Poser la question'}</button></div>`,
     (couche, close) => { $('#qf-ok', couche).onclick = async () => {
       const champs = {
         piece: $('#qf-piece', couche).value.trim(), compte: $('#qf-compte', couche).value.trim(),
@@ -3504,7 +3623,7 @@
       Chez le client, chacune s'affiche en face de la pièce qu'elle vise, et ses réponses reviennent dans son prochain paquet.</p>
       <label class="check"><input type="checkbox" id="qe-seal"> Protéger le fichier par un mot de passe</label>
       <label class="field" id="qe-pwf" hidden><span>Le mot de passe</span><input type="password" id="qe-pw" placeholder="Dis-le-lui au téléphone, jamais dans le même mail"></label>
-      <div class="modal-actions"><button class="btn" dismiss>Annuler</button><button class="btn btn-primary" id="qe-ok">Écrire le fichier…</button></div>`,
+      <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="qe-ok">Écrire le fichier…</button></div>`,
     (couche, close) => {
       const c = $('#qe-seal', couche);
       c.onchange = () => { $('#qe-pwf', couche).hidden = !c.checked; };
@@ -3516,7 +3635,9 @@
           close();
           if (r.annule) return;
           s.livre = r.livre; s.revisionRev = '';
-          toast(`${pl(r.envoyees, 'question envoyée', 'questions envoyées')}${r.signe ? ', signées' : ''}${r.scelle ? ' et scellées' : ''}.`);
+          // L'accord suit le NOMBRE : « 1 question envoyée, signées » se lisait sur le premier envoi.
+          const pluriel = r.envoyees > 1 ? 's' : '';
+          toast(`${pl(r.envoyees, 'question envoyée', 'questions envoyées')}${r.signe ? `, signée${pluriel}` : ''}${r.scelle ? ` et scellée${pluriel}` : ''}.`);
           chargerRevision(root, dossier);
         } catch (e) { toast(plainError(e), 'error'); }
       };
@@ -3534,8 +3655,13 @@
         <button class="btn btn-primary" id="ok">Rouvrir</button></div>`,
     (rootModal, close) => {
       $('#ok', rootModal).onclick = async () => {
+        // 10.10.0 (C-14) — le refus se MONTRE (7.0.0). Le bouton acceptait le clic, l'exercice
+        // restait clos, et rien ne le disait : la phrase « il est obligatoire » était déjà là avant
+        // le clic, c'était une consigne, pas une réponse. On amène le champ, on y met le curseur.
+        const motif = $('#cl-motif', rootModal).value.trim();
+        if (!motif) return refus($('#cl-motif', rootModal), 'Écris pourquoi tu rouvres cet exercice : sans motif, personne ne saura dans six mois pourquoi un chiffre a changé.');
         try {
-          const r = await api.rouvrir({ dossierId: dossier.id, annee: s.annee, motif: $('#cl-motif', rootModal).value });
+          const r = await api.rouvrir({ dossierId: dossier.id, annee: s.annee, motif });
           s.livre = r.livre; close(); toast('Exercice rouvert.');
           await chargerCloture(root, dossier);
         } catch (err) { toast(plainError(err), 'error'); }
@@ -3677,7 +3803,12 @@
     $$('[data-creer]', el).forEach(b => {
       b.onclick = () => {
         const l = (s.immo.aCreer || []).find(x => x.docId === b.dataset.creer);
-        if (l) immoForm(root, dossier, { libelle: l.libelle, compte: l.compte, valeur: l.montant, dateAcquisition: l.date, dateMiseEnService: l.date, origine: { source: 'paquet', docId: l.docId, mois: String(l.date).slice(0, 7) } });
+        // 10.10.0 (C-10) — une ligne datée du PREMIER JOUR de l'exercice est un à-nouveau : elle
+        // porte un bien (ou tout un parc) DÉJÀ amorti. La date proposée n'est donc pas sa date de
+        // mise en service, et le formulaire le dit avant qu'on l'enregistre.
+        if (l) immoForm(root, dossier, { libelle: l.libelle, compte: l.compte, valeur: l.montant, dateAcquisition: l.date, dateMiseEnService: l.date,
+          reprise: l.date === (s.livre.exercice || {}).du || /nouveau/i.test(l.libelle || ''),
+          origine: { source: 'paquet', docId: l.docId, mois: String(l.date).slice(0, 7) } });
       };
     });
     bindRowMenus(el, cle => {
@@ -3742,6 +3873,12 @@
     const comptes = (s.livre.plan || []).map(c => c.compte);
     const dl = (pref) => comptes.filter(c => String(c).startsWith(pref)).sort();
     const familles = KC.DEFAULT_ASSET_CLASSES;
+    // Ce que le compte 28 reprend au premier jour de l'exercice : le chiffre à reconstituer quand on
+    // crée la fiche d'un bien repris.
+    const du = (s.livre.exercice || {}).du || '';
+    const deja28 = f.reprise ? KC.round3(KC.lignesDuLivre(s.livre, { du, au: du })
+      .filter(x => String(x.account).startsWith('28')).reduce((t, x) => t + (Number(x.credit) || 0) - (Number(x.debit) || 0), 0)
+      + Object.entries(KC.soldesDepuisOuverture(s.livre)).filter(([c]) => c.startsWith('28')).reduce((t, [, v]) => t - v, 0)) : 0;
     modal(`<h2>${neuf ? 'Ajouter un bien' : 'Modifier ' + esc(f.libelle)}</h2>
       <form id="im" class="grid-2">
         <label class="field obligatoire span-2"><span>Désignation</span>
@@ -3752,9 +3889,9 @@
         <label class="field obligatoire"><span>Durée (années)</span>
           <input name="duree" class="num" inputmode="numeric" value="${esc(String(f.duree || ''))}"></label>
         <label class="field obligatoire"><span>Date de mise en service</span>
-          <input name="dateMiseEnService" placeholder="AAAA-MM-JJ" value="${esc(f.dateMiseEnService || '')}"></label>
+          <input name="dateMiseEnService" placeholder="JJ/MM/AAAA" value="${esc(fmtJour(f.dateMiseEnService || ''))}"></label>
         <label class="field"><span>Date d'acquisition</span>
-          <input name="dateAcquisition" placeholder="AAAA-MM-JJ" value="${esc(f.dateAcquisition || '')}"></label>
+          <input name="dateAcquisition" placeholder="JJ/MM/AAAA" value="${esc(fmtJour(f.dateAcquisition || ''))}"></label>
         <label class="field obligatoire"><span>Valeur d'acquisition (HT)</span>
           <input name="valeur" class="num" inputmode="decimal" value="${esc(String(f.valeur || ''))}"></label>
         <label class="field"><span>Valeur résiduelle</span>
@@ -3775,23 +3912,30 @@
         <label class="field"><span>Subvention reçue (À VÉRIFIER)</span>
           <input name="subvention" class="num" inputmode="decimal" value="${esc(String((f.subvention && f.subvention.montant) || ''))}"></label>
         <label class="field"><span>Date de cession ou de rebut</span>
-          <input name="cessionDate" placeholder="AAAA-MM-JJ" value="${esc((f.cession && f.cession.date) || '')}"></label>
+          <input name="cessionDate" placeholder="JJ/MM/AAAA" value="${esc(fmtJour((f.cession && f.cession.date) || ''))}"></label>
         <label class="field"><span>Prix de cession (0 = rebut)</span>
           <input name="cessionPrix" class="num" inputmode="decimal" value="${esc(String((f.cession && f.cession.prix) || ''))}"></label>
       </form>
+      ${f.reprise ? `<div class="warn-box mt"><b>Cette ligne est un à-nouveau.</b> Elle porte un bien — ou tout un parc —
+        <b>déjà amorti</b>${deja28 ? ` : le compte 28 en reprend ${esc(money(deja28))} au même jour` : ''}. Indique sa <b>vraie</b> date de
+        mise en service, pas le 1<sup>er</sup> janvier : c'est elle qui reconstitue ce qui a déjà été amorti. Un parc
+        entier se reprend mieux bien par bien — une fiche par bien, chacune à sa date.</div>` : ''}
       <div id="im-apercu" class="small muted"></div>
       <div class="modal-actions"><button class="btn" data-close>Annuler</button>
         <button class="btn btn-primary" id="ok">${neuf ? 'Ajouter' : 'Enregistrer'}</button></div>`,
     (rootModal, close) => {
       const v = n => (($(`[name=${n}]`, rootModal) || {}).value || '').trim();
+      // Une date se TAPE comme partout ailleurs (« 01/03/2021 ») et se range en ISO (C-04) : le champ
+      // montrait « 2026-01-01 » et n'acceptait que ça, à côté d'écrans qui écrivent 01/01/2026.
+      const jour = n => { const t = v(n); return t ? (K.dateTapee(t, s.annee, `${s.annee}-01`) || t) : ''; };
       const lire = () => {
-        const cd = v('cessionDate');
+        const cd = jour('cessionDate');
         return {
           ...(f.id ? { id: f.id } : {}),
           libelle: v('libelle'),
           duree: Number(v('duree')) || 0,
-          dateMiseEnService: v('dateMiseEnService'),
-          dateAcquisition: v('dateAcquisition') || v('dateMiseEnService'),
+          dateMiseEnService: jour('dateMiseEnService'),
+          dateAcquisition: jour('dateAcquisition') || jour('dateMiseEnService'),
           valeur: Number(String(v('valeur')).replace(',', '.')) || 0,
           residuelle: Number(String(v('residuelle')).replace(',', '.')) || 0,
           methode: v('methode'),
@@ -3817,10 +3961,15 @@
         const val = KC.immoValide(p);
         if (!val.ok) { apercu.innerHTML = `<div class="warn-box mt">${esc(val.motifs[0])}</div>`; return; }
         const plan = KC.planDuBien(p);
+        // Le cumul déjà pratiqué au premier jour de l'exercice : c'est ce qu'on vérifie quand on
+        // reprend un bien, et la fiche l'annonce avant qu'on l'enregistre (C-10).
+        const avant = KC.cumulDuBien(p, `${Number(s.annee) - 1}-12-31`);
         apercu.innerHTML = `<div class="ok-box mt">${esc(pl(plan.length, 'exercice'))} —
           première dotation ${esc(money(plan.length ? plan[0].dotation : 0))},
           dernière ${esc(money(plan.length ? plan[plan.length - 1].dotation : 0))},
-          VNC finale ${esc(money(plan.length ? plan[plan.length - 1].vnc : 0))}.</div>`;
+          VNC finale ${esc(money(plan.length ? plan[plan.length - 1].vnc : 0))}.
+          <br><b>Déjà amorti au 01/01/${esc(s.annee)} : ${esc(money(avant))}</b>${f.reprise && deja28 && Math.abs(KC.round3(avant - deja28)) >= 0.001
+    ? ` <span class="err-inline">— le compte 28 en reprend ${esc(money(deja28))}</span>` : ''}.</div>`;
       };
       $$('input,select', rootModal).forEach(x => { x.oninput = maj; x.onchange = maj; });
       // La famille PROPOSE sa durée, elle ne l'impose pas : dès que la durée a été touchée, on n'y
@@ -4066,7 +4215,7 @@
       </form>
       <p class="small muted">Le chef de famille et les enfants à charge entrent dans le calcul de l'IRPP.
       <b>À VÉRIFIER</b> — les conditions et les montants dépendent de la loi de finances.</p>
-      <div class="modal-actions"><button class="btn" dismiss>Annuler</button>
+      <div class="modal-actions"><button class="btn" data-close>Annuler</button>
         <button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
     (rootModal, close) => {
       $('#ok', rootModal).onclick = async () => {
@@ -4111,7 +4260,8 @@
         <label class="field"><span>Montant de la retenue</span><input name="retAmount" type="number" step="0.001" min="0" class="num" value="${esc(String(((e.retenues || [])[0] || {}).amount || ''))}"></label>
       </form>
       <div id="bf-apercu" class="ok-box mt"></div>
-      <div class="modal-actions"><button class="btn" dismiss>Annuler</button>
+      <p class="small warn-text" id="bf-refus" role="status" aria-live="polite" hidden></p>
+      <div class="modal-actions"><button class="btn" data-close>Annuler</button>
         <button class="btn btn-primary" id="ok">Enregistrer le bulletin</button></div>`,
     (rootModal, close) => {
       const f = $('#bf', rootModal);
@@ -4129,7 +4279,13 @@
         };
       };
       // L'aperçu se recalcule pendant la frappe : c'est le seul moyen de vérifier un net AVANT de
-      // l'enregistrer, et le moteur est exactement celui qui enregistrera (9.4.5).
+      // l'enregistrer, et le moteur est exactement celui qui enregistrera (9.4.5) — barèmes DU
+      // DOSSIER compris : l'aperçu les ignorait et annonçait un net que l'enregistrement démentait.
+      //
+      // 10.10.0 (C-11) — et le bouton s'éteint par la MÊME fonction que celle qui refusera
+      // (`bulletinValide`), avec son motif AU-DESSUS du bouton (9.4.2). Quarante jours d'absence sur
+      // vingt-six affichaient un net de −586 DT sans un mot, et le bulletin s'enregistrait.
+      const baremes = dossier.paie || {};
       const maj = () => {
         const v = lire();
         const sal = (L.salaries || []).find(x => x.id === v.salarieId) || {};
@@ -4137,16 +4293,25 @@
           { gross: v.brut, workedDays: v.joursTravailles, absentDays: v.joursAbsence,
             bonuses: v.primes.map(p => ({ label: p.label, amount: p.amount, taxable: p.taxable })),
             deductions: v.retenues.map(d => ({ label: d.label, amount: d.amount })) },
-          KC.baremesPaie({}));
-        $('#bf-apercu', rootModal).innerHTML = `<b>Net à payer ${esc(money(c.net))}</b>
+          KC.baremesPaie(baremes));
+        const verdict = KC.bulletinValide(v, L, baremes);
+        const apercu = $('#bf-apercu', rootModal);
+        apercu.className = verdict.ok ? 'ok-box mt' : 'warn-box mt';
+        apercu.innerHTML = `<b>Net à payer ${esc(money(c.net))}</b>
           <span class="small muted">— brut ${esc(money(c.gross))}, retenues ${esc(money(KC.round3(c.cnssEmployee + c.irpp + c.css + c.otherDeductions)))},
           coût employeur ${esc(money(c.employerCost))}</span>`;
+        const refus = $('#bf-refus', rootModal);
+        refus.hidden = verdict.ok;
+        refus.textContent = verdict.ok ? '' : verdict.motif;
+        const bouton = $('#ok', rootModal);
+        bouton.disabled = !verdict.ok;
+        bouton.title = verdict.ok ? '' : verdict.motif;
       };
       f.oninput = f.onchange = maj;
       maj();
       $('#ok', rootModal).onclick = async () => {
         const v = lire();
-        const ok = KC.bulletinValide(v, L);
+        const ok = KC.bulletinValide(v, L, baremes);
         if (!ok.ok) return toast(ok.motif, 'error');
         try {
           const r = await api.saveBulletin({ dossierId: dossier.id, annee: s.annee, bulletin: v });
@@ -4236,7 +4401,7 @@
       séparées par une tabulation ou un point-virgule. Colle-les depuis ton tableur.</p>
       <form id="iv" class="grid-2">
         <label class="field obligatoire"><span>Date de l'inventaire</span>
-          <input name="date" placeholder="AAAA-MM-JJ" value="${esc((dejaLa && dejaLa.date) || (s.livre.exercice.au || ''))}"></label>
+          <input name="date" placeholder="31/12/${esc(s.annee)}" value="${esc(fmtJour((dejaLa && dejaLa.date) || (s.livre.exercice.au || '')))}"></label>
         <label class="field"><span>Compte de stock</span>
           <input name="compte" value="${esc((dejaLa && dejaLa.compte) || KC.COMPTES_IMMO.stocks)}"></label>
       </form>
@@ -4247,20 +4412,16 @@
         <button class="btn btn-primary" id="ok">Enregistrer l'inventaire</button></div>`,
     (rootModal, close) => {
       const apercu = $('#iv-apercu', rootModal);
+      // Les lignes sont lues par le MOTEUR (`lignesInventaireDepuisTexte`) : c'est lui qui refuse
+      // une quantité illisible (C-16), et l'écran dit ce qu'il refuse — jamais un zéro en silence.
+      // La date se tape comme partout ailleurs, « 31/12/2026 », et se range en ISO.
       const lire = () => {
-        const lignes = ($('#iv-lignes', rootModal).value || '').split('\n')
-          .map(l => l.trim()).filter(Boolean)
-          .map(l => {
-            const p = l.split(/\t|;/).map(x => x.trim());
-            // Quatre colonnes attendues ; avec trois, la référence manque et c'est le cas le plus
-            // courant d'un tableur qui n'en tient pas.
-            const [a, b, c, d] = p.length >= 4 ? p : ['', p[0], p[1], p[2]];
-            return { ref: a || '', libelle: b || '', quantite: Number(String(c || '').replace(',', '.')) || 0, cout: Number(String(d || '').replace(',', '.')) || 0 };
-          });
+        const r = KC.lignesInventaireDepuisTexte($('#iv-lignes', rootModal).value || '');
+        const dateTape = (($('[name=date]', rootModal) || {}).value || '').trim();
         return {
-          date: (($('[name=date]', rootModal) || {}).value || '').trim(),
+          date: K.dateTapee(dateTape, s.annee, `${s.annee}-12`) || dateTape,
           compte: (($('[name=compte]', rootModal) || {}).value || '').trim(),
-          lignes
+          lignes: r.lignes, refus: r.refus
         };
       };
       const maj = () => {
@@ -4268,13 +4429,19 @@
         const v = KC.inventaireValide(inv);
         apercu.innerHTML = v.ok
           ? `<div class="ok-box mt">${esc(pl(inv.lignes.length, 'ligne'))} — total ${esc(money(KC.totalInventaire(inv)))}.</div>`
-          : `<div class="warn-box mt">${esc(v.motifs[0])}</div>`;
+          : `<div class="warn-box mt">${v.motifs.slice(0, 5).map(m => `<div>${esc(m)}</div>`).join('')}${v.motifs.length > 5 ? `<div>… et ${v.motifs.length - 5} de plus.</div>` : ''}</div>`;
+        const b = $('#ok', rootModal);
+        b.disabled = !v.ok; b.title = v.ok ? '' : v.motifs[0];
       };
       $$('input,textarea', rootModal).forEach(x => { x.oninput = maj; });
       maj();
       $('#ok', rootModal).onclick = async () => {
         try {
-          const r = await api.saveInventaire({ dossierId: dossier.id, annee: s.annee, inventaire: lire() });
+          const inv = lire();
+          const v = KC.inventaireValide(inv);
+          if (!v.ok) return toast(v.motifs[0], 'error');
+          delete inv.refus;
+          const r = await api.saveInventaire({ dossierId: dossier.id, annee: s.annee, inventaire: inv });
           s.livre = r.livre; close(); toast('Inventaire enregistré.');
           await chargerInventaire(root, dossier);
         } catch (err) { toast(plainError(err), 'error'); }
@@ -5548,8 +5715,20 @@
     if (e.statut === 'validee') {
       a.push({ icon: 'contrat', label: 'Contre-passer cette écriture', hint: 'Une écriture miroir, à la date du jour',
         run: () => contrepasserEcriture(root, dossier, e) });
-      a.push({ icon: 'horloge', label: 'Extourner au 1er du mois suivant', hint: 'Pour une charge à payer ou un produit à recevoir',
-        run: () => extournerEcriture(root, dossier, e) });
+      // Une écriture de DÉCEMBRE ne s'extourne pas dans ce livre : son extourne tombe au 1er janvier,
+      // dans l'exercice suivant. On ne PROPOSE pas le geste qui sera refusé (C-06) : on propose
+      // celui qui marche — la prévoir, pour qu'« Ouvrir N+1 » la pose.
+      const dejaExt = (livresState.livre.ecritures || []).some(x => x.extourneDe === e.id);
+      const dateExt = KC.premierDuMoisSuivant(e.date);
+      const auSuivant = dateExt && dateExt > String((livresState.livre.exercice || {}).au || '');
+      const suivante = Number((livresState.livre.exercice || {}).annee) + 1;
+      if (!dejaExt && !auSuivant) {
+        a.push({ icon: 'horloge', label: 'Extourner au 1er du mois suivant', hint: 'Pour une charge à payer ou un produit à recevoir',
+          run: () => extournerEcriture(root, dossier, e) });
+      } else if (!dejaExt && !e.extourne) {
+        a.push({ icon: 'horloge', label: `Extourner à l'ouverture de ${suivante}`, hint: `Elle sera posée au ${fmtJour(dateExt)}, dans le livre de ${suivante}`,
+          run: () => prevoirExtourneEcriture(root, dossier, e, dateExt, suivante) });
+      }
     }
     a.push({ icon: 'texte', label: e.pieceJointe ? 'Remplacer le justificatif…' : 'Joindre un justificatif…',
       hint: 'Le fichier est copié dans le dossier du client', run: () => joindreJustificatif(root, dossier, e.id) });
@@ -5569,8 +5748,35 @@
     try {
       const r = await api.extourner(dossier.id, livresState.annee, e.id);
       livresState.livre = r.livre;
-      toast(`Extourne créée au ${r.date}, sous le n° ${r.numero}.`);
+      toast(`Extourne créée au ${fmtJour(r.date)}, sous le n° ${r.numero}.`);
       drawLivres(root, dossier);
+    } catch (err) { await infoDialog('Extourne impossible', plainError(err)); }
+  }
+
+  async function prevoirExtourneEcriture(root, dossier, e, date, suivante) {
+    const ok = await confirmDialog(`Extourner à l'ouverture de ${suivante} ?`,
+      `<p>${esc(e.journal)} ${esc(e.piece || '(sans pièce)')} n° ${esc(String(e.numero))} du ${esc(fmtJour(e.date))}.</p>
+       <p>Son extourne tombe le <b>${esc(fmtJour(date))}</b> : elle vit dans le livre de ${esc(String(suivante))}, pas dans celui-ci.
+       Elle y sera posée par <b>Exercice → Ouvrir ${esc(String(suivante))}</b>, avec les à-nouveaux. L'écriture d'origine ne bouge pas.</p>`,
+      'Prévoir l\'extourne');
+    if (!ok) return;
+    try {
+      const r = await api.prevoirExtourne({ dossierId: dossier.id, annee: livresState.annee, id: e.id });
+      livresState.livre = r.livre;
+      drawLivres(root, dossier);
+      if (r.suivantOuvert) {
+        // L'exercice suivant existe déjà : ses à-nouveaux ont été posés SANS elle. On propose de les
+        // refaire tout de suite — c'est le même geste, et il ne touche pas à ce qui est validé.
+        const refaire = await confirmDialog(`${r.annee} est déjà ouvert`,
+          `<p>Ses à-nouveaux ont été posés avant cette extourne. Les refaire maintenant la fait entrer au ${esc(fmtJour(r.date))}.</p>`,
+          'Refaire les à-nouveaux', false, 'Plus tard');
+        if (refaire) {
+          const o = await api.ouvrirSuivant({ dossierId: dossier.id, annee: livresState.annee });
+          toast(`Extourne posée au ${fmtJour(r.date)} dans le livre de ${o.annee}.`);
+        }
+      } else {
+        toast(`Extourne prévue : elle sera posée au ${fmtJour(r.date)} à l'ouverture de ${r.annee}.`);
+      }
     } catch (err) { await infoDialog('Extourne impossible', plainError(err)); }
   }
 
@@ -6355,6 +6561,10 @@
       <div class="page-head"><h1>Écritures</h1></div>
       <p class="muted small mb">Un seul fichier CSV, toutes les écritures de la période, avec le client et le mois devant chaque ligne —
       à importer dans ton logiciel au lieu de ressaisir. ${info('e.import')}</p>
+      ${/* 10.10.0 (C-07) — ce regroupement lit les PAQUETS reçus. Un client hors SkanFact n'en
+            envoie aucun : il n'y entrera jamais, et le taire ferait croire à un export complet. */''}
+      ${(S.dossiers || []).some(d => d.manual && !d.archived && !d.demo)
+    ? '<p class="muted small mb">Les clients <b>hors SkanFact</b> n\'y entrent pas : ils n\'envoient pas de paquet. Leur livre-journal s\'exporte depuis leur fiche, onglet Comptabilité → Livre-journal.</p>' : ''}
 
       <div class="panel"><h2>La période ${info('e.periode')}</h2>
         <div class="filters">
@@ -6891,7 +7101,9 @@
     etat: ($('[data-k=etat]', tr) || {}).value || 'bilan-actif',
     label: ($('[data-k=label]', tr) || {}).value || '',
     comptes: String((($('[data-k=comptes]', tr) || {}).value) || '').split(/[,\s]+/).map(x => x.trim()).filter(Boolean),
-    signe: ($('[data-k=signe]', tr) || {}).value === '-1' ? -1 : 1,
+    // « d-1 » / « d1 » : les deux sens (10.10.0, C-08), le signe disant lequel s'imprime en plus.
+    signe: /-1$/.test(($('[data-k=signe]', tr) || {}).value || '') ? -1 : 1,
+    deuxSens: /^d/.test(($('[data-k=signe]', tr) || {}).value || ''),
     deduit: !!($('[data-k=deduit]', tr) || {}).checked,
     charge: !!($('[data-k=charge]', tr) || {}).checked,
     resultat: ($('[data-k=res]', tr) || {}).value === '1'
@@ -6912,7 +7124,10 @@
         <td><select data-k="etat" ${d} aria-label="L'état où cette rubrique s'imprime">${KC.LIASSE_ETATS.map(e => `<option value="${esc(e.id)}" ${r.etat === e.id ? 'selected' : ''}>${esc(e.label)}</option>`).join('')}</select></td>
         <td><input data-k="label" value="${esc(r.label)}" ${d} placeholder="Clients et comptes rattachés"></td>
         <td><input data-k="comptes" value="${esc((r.comptes || []).join(' '))}" ${d} placeholder="41"></td>
-        <td><select data-k="signe" ${d} aria-label="Le sens du solde que cette rubrique capte"><option value="1" ${r.signe === 1 ? 'selected' : ''}>débiteur</option><option value="-1" ${r.signe === -1 ? 'selected' : ''}>créditeur</option></select></td>
+        <td><select data-k="signe" ${d} aria-label="Le sens du solde que cette rubrique capte">${[
+          ['1', 'débiteur', !r.deuxSens && r.signe === 1], ['-1', 'créditeur', !r.deuxSens && r.signe === -1],
+          ['d1', 'les deux (débiteur en plus)', r.deuxSens && r.signe === 1], ['d-1', 'les deux (créditeur en plus)', r.deuxSens && r.signe === -1]
+        ].map(([v, l, on]) => `<option value="${v}" ${on ? 'selected' : ''}>${l}</option>`).join('')}</select></td>
         <td><label class="check"><input type="checkbox" data-k="${r.charge ? 'charge' : 'deduit'}" ${(r.deduit || r.charge) ? 'checked' : ''} ${d}> ${r.charge ? 'charge' : 'déduit'}</label>
           <input type="hidden" data-k="res" value="${r.resultat ? '1' : '0'}"></td>
         <td class="sa-sup">${propose ? '' : `<button type="button" class="btn btn-sm" data-lrx="${i}" aria-label="Retirer cette rubrique">✕</button>`}</td>
@@ -7381,11 +7596,11 @@
 
       ${panneauReg('pan-exemple')}
         ${(S.dossiers || []).some(d => d.demo)
-          ? `<p>Cinq dossiers <strong>fictifs</strong> sont chargés : ils montrent les quatre situations que tu rencontreras.
+          ? `<p>${nbExemple()} dossiers <strong>fictifs</strong> sont chargés : ils montrent les situations que tu rencontreras, dont un client hors SkanFact.
              Ils disparaîtront d'eux-mêmes au premier vrai paquet importé.</p>
              <div class="modal-actions"><button class="btn btn-danger" id="r-demo-off">Effacer l'exemple</button></div>`
-          : `<p>Tu peux charger cinq clients fictifs pour voir à quoi ressemble l'application pleine : un client à jour,
-             un en retard, un qui n'a envoyé que du provisoire, un dont les pièces sont incomplètes.</p>
+          : `<p>Tu peux charger ${nbExemple()} clients fictifs pour voir à quoi ressemble l'application pleine : un client à jour,
+             un en retard, un qui n'a envoyé que du provisoire, un dont les pièces sont incomplètes, et un client hors SkanFact.</p>
              <p class="small muted">C'est aussi ce qu'il faut montrer à un confrère à qui tu parles de SkanFact.
              L'exemple s'efface tout seul dès qu'un vrai paquet arrive : aucun risque de mélange.</p>
              <div class="modal-actions"><button class="btn btn-primary" id="r-demo-on">Charger l'exemple</button></div>`}
@@ -7715,7 +7930,7 @@
              sauvegarde d'avant la 9.8.8, ne porte pas les livres. Ils resteront tels qu'ils sont —
              ni rendus, ni détruits — et c'est écrit avant le clic. */''}
        ${peek.livres == null && peek.actuels.livres
-         ? `<p class="warn-box mt">Cette sauvegarde <strong>ne porte pas les livres</strong> (${pl(peek.actuels.livres, 'livre')} aujourd'hui) : ils resteront tels qu'ils sont. Seules les sauvegardes nommées prises depuis la 9.8.8 les emportent.</p>`
+         ? `<p class="warn-box mt">Cette sauvegarde <strong>ne porte pas les livres</strong> (${pl(peek.actuels.livres, 'livre')} aujourd'hui) : ils resteront tels qu'ils sont. Seules les sauvegardes prises à la main (« Sauvegarder maintenant ») et celles d'avant un geste important les emportent — pas la sauvegarde quotidienne.</p>`
          : peek.livres != null ? `<p class="small">Les ${pl(peek.livres, 'livre')} de la sauvegarde remplaceront ceux d'aujourd'hui qui portent le même nom.</p>` : ''}
        <p class="muted small">Une sauvegarde de l'état actuel, livres compris, est prise juste avant : tu pourras revenir en arrière.</p>`,
       'Restaurer', dd > 0 || dp > 0);
@@ -7907,11 +8122,16 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
         {
           t: 'Bienvenue dans SkanFact Cabinet',
           html: () => `
-            <p class="lead">L'application répond à une seule question : <strong>lequel de mes clients ne m'a pas envoyé son mois ?</strong></p>
+            ${/* 10.10.0 (C-03) — cet écran décrivait le Cabinet de la 6.8.0 : un récepteur de paquets,
+                  gratuit sans condition. Il tient aujourd'hui la comptabilité de chaque dossier, avec
+                  ou sans SkanFact chez le client (DIRECTION.md), et sa licence compte les dossiers hors
+                  SkanFact au-delà de trois (9.4.0). Le premier écran d'un logiciel ne peut pas mentir
+                  sur ce qu'il est — c'est la première phrase qu'un comptable lit. */''}
+            <p class="lead">Le logiciel de comptabilité de ton cabinet — et <strong>le trait d'union avec ceux de tes clients qui utilisent SkanFact</strong>.</p>
             <div class="kv mt">
-              <div><span>Ce qu'elle fait</span><span>Elle reçoit les paquets mensuels de tes clients, vérifie qu'ils sont intacts, te dit ce qui manque et prépare tes relances.</span></div>
-              <div><span>Ce qu'elle ne fait pas</span><span>Elle ne modifie <strong>jamais</strong> la comptabilité d'un client et ne lui renvoie rien. Elle ne dépose aucune déclaration.</span></div>
-              <div><span>Ce qu'elle coûte</span><span>Rien. C'est ton client qui paie SkanFact, pas toi.</span></div>
+              <div><span>Ce qu'elle fait</span><span>Elle tient le livre de chaque dossier : saisie, banque, déclaration, paie, immobilisations, clôture et liasse. Pour un client sur SkanFact, ses écritures arrivent déjà écrites, dans un paquet vérifié ; pour les autres, tu saisis ici.</span></div>
+              <div><span>Ce qu'elle ne fait pas</span><span>Elle ne modifie <strong>jamais</strong> la comptabilité d'un client chez lui. Elle ne dépose aucune déclaration à ta place.</span></div>
+              <div><span>Ce qu'elle coûte</span><span>Rien pour les dossiers dont le client est sur SkanFact, ni pour trois dossiers hors SkanFact. Au-delà, une licence — le détail est dans Réglages → Mon cabinet → Licence.</span></div>
             </div>
             ${/* Le compte se DÉDUIT : la phrase annonçait « Quatre écrans » et l'assistant en comptait
                   cinq, juste au-dessus de cinq pastilles qui les montraient. Une phrase affichée que
@@ -7925,7 +8145,7 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
           html: () => `
             <p class="small">Ce nom apparaît en bas des relances que tu envoies et dans le fichier que tes clients importeront.</p>
             <div class="grid-2 mt">
-              <label class="field span-2">${lbl('Nom du cabinet', 'cab.name')}<input type="text" id="w-name" value="${esc(S.cabinet.name || '')}" placeholder="Cabinet Ben Salah"></label>
+              <label class="field obligatoire span-2">${lbl('Nom du cabinet', 'cab.name')}<input type="text" id="w-name" value="${esc(S.cabinet.name || '')}" placeholder="Cabinet Ben Salah"></label>
               <label class="field">${lbl('Email', 'cab.email')}<input type="email" id="w-email" value="${esc(S.cabinet.email || '')}" placeholder="contact@cabinet.tn"></label>
               <label class="field">${lbl('Téléphone', 'cab.phone')}<input type="tel" id="w-phone" value="${esc(S.cabinet.phone || '')}" placeholder="+216 …"></label>
               <label class="field narrow">${lbl('Jour de relance', 'cab.relanceDay')}
@@ -7933,7 +8153,11 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
             </div>`,
           next: async () => {
             const nom = $('#w-name', el).value.trim();
-            if (!nom) { toast('Donne un nom à ton cabinet.', 'error'); return false; }
+            // 10.10.0 (C-01) — le refus se MONTRE (7.0.0) : un message passager de deux secondes et
+            // un bouton qui ne bouge pas se lisaient comme « le bouton ne marche pas ». On amène le
+            // champ, on y met le curseur, on le marque — et l'étoile dit, avant le clic, qu'il est
+            // obligatoire.
+            if (!nom) return refus($('#w-name', el), 'Donne un nom à ton cabinet : il signe tes relances et le fichier que tes clients importent.');
             S = await api.saveCabinet({
               name: nom, email: $('#w-email', el).value.trim(), phone: $('#w-phone', el).value.trim(),
               settings: { relanceDay: Number($('#w-day', el).value) }

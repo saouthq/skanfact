@@ -155,6 +155,10 @@ function safeState() {
   // champ absent de `safeState` vaut `undefined` côté renderer et désarme tout ce qui s'y fie.
   s.moi = moiId();
   s.moiNom = quiSuisJe();
+  // 10.10.0 (C-08) — le modèle de liasse du cabinet, relu À LA LECTURE comme un livre ancien
+  // (9.8.5) : une copie des rubriques de la 10.0.0 enregistrée telle quelle retrouve les comptes
+  // qu'elles laissaient dehors, sans que rien soit réécrit sur le disque avant un geste du cabinet.
+  s.liasse = KC.migrerModeleLiasse(s.liasse);
   return s;
 }
 
@@ -1209,9 +1213,21 @@ ipcMain.handle('cab:livres', (_e, { dossierId, du, au } = {}) => {
     paquets: pris.map(p => ({ month: p.month, definitive: p.definitive, path: p.path, motif: p.motif, csv: p.csv })),
     // Tous les mois connus du dossier, pour le sélecteur de période — y compris hors bornes.
     tousLesMois: cache.paquets.map(p => p.month),
-    aucunPaquet: !cache.paquets.length
+    aucunPaquet: !cache.paquets.length,
+    // 10.10.0 (C-07, C-12) — les exercices que le CABINET tient, lus dans l'index (jamais en
+    // déchiffrant les livres). Le sélecteur d'exercice se construisait sur les seuls paquets reçus :
+    // « Ouvrir 2027 » écrivait un livre qu'aucun écran ne permettait d'ouvrir, et un dossier hors
+    // SkanFact — qui ne reçoit AUCUN paquet — n'avait pas d'exercice du tout.
+    exercices: exercicesDuDossier(d)
   };
 });
+
+function exercicesDuDossier(d) {
+  try {
+    return (getStore().lireIndexLivres(d, indexDossiers()).exercices || [])
+      .map(x => ({ annee: String(x.annee), clos: !!x.clos, ecritures: Number(x.ecritures) || 0 }));
+  } catch { return []; }
+}
 
 // ================================================================ LE LIVRE (9.2.0)
 //
@@ -1827,7 +1843,12 @@ function cleSignatureCabinet() {
 // produit en plus quand Electron peut le faire ; son échec ne fait JAMAIS échouer la clôture
 // (règle 6.1.0 : mieux vaut 99 % avec le trou signalé qu'un envoi qui échoue).
 function htmlDeCloture(dossier, dos, etats) {
-  const m = n => (Number(n) || 0).toFixed(3).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  // 10.10.0 (C-13) — le document qui part chez le client, sous la signature du cabinet, s'écrit
+  // comme l'écran : « 76 493,448 DT » et « 31/12/2026 ». Il sortait en « 76 493.448 », sans devise,
+  // avec des dates ISO, deux clics après un écran qui écrivait le même chiffre à la française — et
+  // le PDF sort de ce même HTML. Le formateur est celui du moteur (`fmtMontant`), pas une copie.
+  const m = n => KC.fmtMontant(n, 'DT');
+  const j = iso => KC.fmtJour(iso);
   const e = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   const groupe = g => `<tr class="g"><th colspan="2">${e(g.titre)}</th><th class="r">${m(g.total)}</th></tr>`
     + g.lignes.map(l => `<tr><td>${e(l.compte)}</td><td>${e(l.libelle)}</td><td class="r">${m(l.montant)}</td></tr>`).join('');
@@ -1852,7 +1873,8 @@ function htmlDeCloture(dossier, dos, etats) {
 </style></head><body>
 <h1>Clôture de l'exercice ${e(dos.exercice.annee)}</h1>
 <p class="sub">${e(dossier.name || '')}${dossier.matricule ? ' · ' + e(dossier.matricule) : ''}
-  · du ${e(dos.exercice.du)} au ${e(dos.exercice.au)}${dos.closLe ? ' · close le ' + new Date(dos.closLe).toLocaleDateString('fr-FR') : ''}</p>
+  · du ${e(j(dos.exercice.du))} au ${e(j(dos.exercice.au))}${dos.closLe ? ' · close le ' + new Date(dos.closLe).toLocaleDateString('fr-FR') : ''}
+  · montants en dinars tunisiens</p>
 <h2>Bilan — actif</h2><table>${etats.actif.map(groupe).join('')}
   <tr class="t"><td colspan="2">Total actif</td><td class="r">${m(etats.totalActif)}</td></tr></table>
 <h2>Bilan — passif</h2><table>${etats.passif.map(groupe).join('')}
@@ -1861,8 +1883,8 @@ function htmlDeCloture(dossier, dos, etats) {
 <h2>État de résultat</h2><table>${groupe(etats.produits)}${groupe(etats.charges)}
   <tr class="t"><td colspan="2">Résultat de l'exercice</td><td class="r">${m(etats.resultat)}</td></tr></table>
 <h2>À-nouveaux de l'exercice suivant</h2><table>
-  <tr class="g"><th>Compte</th><th>Intitulé</th><th class="r">Débit / Crédit</th></tr>
-  ${dos.anouveaux.map(l => `<tr><td>${e(l.compte)}</td><td>${e(l.libelle)}</td><td class="r">${l.debit ? m(l.debit) + ' D' : m(l.credit) + ' C'}</td></tr>`).join('')}</table>
+  <tr class="g"><th>Compte</th><th>Intitulé</th><th class="r">Débit</th><th class="r">Crédit</th></tr>
+  ${dos.anouveaux.map(l => `<tr><td>${e(l.compte)}</td><td>${e(l.libelle)}</td><td class="r">${l.debit ? m(l.debit) : ''}</td><td class="r">${l.debit ? '' : m(l.credit)}</td></tr>`).join('')}</table>
 <p class="note">Ces états sont <b>déduits de la balance</b>, rubrique par rubrique. La présentation exacte
 du système comptable des entreprises est à VÉRIFIER : elle n'est validée par personne dans l'application.
 Document produit par SkanFact Cabinet ; les chiffres engagent le cabinet qui l'a émis, pas l'application.</p>
@@ -2005,7 +2027,7 @@ ipcMain.handle('cab:ecrireCloture', async (_e, { dossierId, annee, motDePasse } 
 // DÉDUITE de la balance par une table de rubriques entièrement modifiable, le taux d'impôt se
 // saisit, et ce qu'aucune rubrique ne capte est MONTRÉ plutôt que perdu en silence.
 
-const modeleLiasseDuCabinet = () => (Array.isArray(state.liasse) && state.liasse.length ? state.liasse : KC.MODELE_LIASSE);
+const modeleLiasseDuCabinet = () => (Array.isArray(state.liasse) && state.liasse.length ? KC.migrerModeleLiasse(state.liasse) : KC.MODELE_LIASSE);
 
 ipcMain.handle('cab:liasse', (_e, { dossierId, annee } = {}) => {
   requireOpen();
@@ -2067,7 +2089,7 @@ ipcMain.handle('cab:saveLiasse', (_e, { modele } = {}) => {
       label: String(r.label || '').trim(),
       comptes: (Array.isArray(r.comptes) ? r.comptes : []).map(c => String(c).trim()).filter(Boolean),
       signe: Number(r.signe) === -1 ? -1 : 1,
-      deduit: !!r.deduit, charge: !!r.charge, resultat: !!r.resultat
+      deduit: !!r.deduit, charge: !!r.charge, resultat: !!r.resultat, deuxSens: !!r.deuxSens
     })).filter(r => r.id && r.label && KC.LIASSE_ETATS.some(e => e.id === r.etat));
   }
   save();
@@ -2450,6 +2472,21 @@ ipcMain.handle('cab:extourner', (_e, { dossierId, annee, id } = {}) => {
   ecrireLeLivre(dossierId, o.livre, null);
   noterValidation(dossierId);
   return { ok: true, numero: r.ecriture.numero, date: r.ecriture.date, livre: ouvrirLivre(dossierId, annee).livre };
+});
+
+// 10.10.0 (C-06) — prévoir l'extourne d'une écriture de décembre : elle se posera à l'ouverture
+// de l'exercice suivant. Un drapeau, aucun chiffre — mais un geste sur une validée : il demande le
+// droit de valider, et il se trace.
+ipcMain.handle('cab:prevoirExtourne', (_e, { dossierId, annee, id } = {}) => {
+  requireOpen();
+  droitBlock(dossierId, 'validation');
+  const o = ouvrirLivre(dossierId, annee);
+  if (!o.livre) throw erreur('ERR-CAB-026', 'Ce dossier n\'a pas de livre pour cet exercice.');
+  const r = KC.prevoirExtourne(o.livre, id, quiSuisJe(), Date.now());
+  if (!r.ok) throw erreur('ERR-CAB-025', r.motif);
+  ecrireLeLivre(dossierId, o.livre, null);
+  const suivant = ouvrirLivre(dossierId, r.annee);
+  return { ok: true, date: r.date, annee: r.annee, suivantOuvert: !!suivant.livre, livre: ouvrirLivre(dossierId, annee).livre };
 });
 
 // Valider un lot. Il n'échoue JAMAIS en bloc : ce qui passe est validé, ce qui ne passe pas est

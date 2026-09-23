@@ -2140,6 +2140,7 @@
 
   const irppAnnual = Compta.irppAnnual;
   const computePayslip = Compta.computePayslip;
+  const saisiePaieValide = Compta.saisiePaieValide;
   const employerChargesOf = Compta.employerChargesOf;
 
   const activeEmployees = (data, dateIso) => {
@@ -6760,7 +6761,7 @@
     MOVE_SOURCES, moveSourceLabel, trackedItems, itemOfLine, stockMovements, runningStock, stockOf,
     stockList, stockTotals, stockJournal, inventoryDiff, stockAlerts, stockImpact, costOfGoodsSold,
     ocrNumber, ocrToPurchase,
-    CONTRACT_TYPES, contractLabel, DEFAULT_PAYROLL, payrollSettings, irppAnnual, computePayslip,
+    CONTRACT_TYPES, contractLabel, DEFAULT_PAYROLL, payrollSettings, irppAnnual, computePayslip, saisiePaieValide,
     activeEmployees, payslipView, payslipsOf, payslipDate, payrollCost, payrollSummary, missingPayslips,
     payslipHtml,
     QUARTERS, quarterMonths, quarterLabel, cnssDeclaration, employerAnnual, socialDue,

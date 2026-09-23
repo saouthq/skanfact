@@ -450,7 +450,10 @@
       label: String((r && r.label) || '').trim(),
       comptes: (Array.isArray(r && r.comptes) ? r.comptes : []).map(c => String(c).trim()).filter(Boolean),
       signe: Number(r && r.signe) === -1 ? -1 : 1,
-      deduit: !!(r && r.deduit), charge: !!(r && r.charge), resultat: !!(r && r.resultat)
+      deduit: !!(r && r.deduit), charge: !!(r && r.charge), resultat: !!(r && r.resultat),
+      // 10.10.0 (C-08) : une rubrique qui prend les DEUX sens de solde (un résultat reporté peut
+      // être une perte). Absent d'ici, le drapeau serait jeté au chargement et la perte ressortirait.
+      deuxSens: !!(r && r.deuxSens)
     })).filter(r => r.id && r.label && r.etat);
     s.questionnaire = (Array.isArray(s.questionnaire) ? s.questionnaire : [])
       .map(q => ({ question: String((q && q.question != null ? q.question : q) || '').trim() }))

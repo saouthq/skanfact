@@ -130,9 +130,11 @@ const CIBLE = path.join(dir, 'cloture.skanclose');
   });
   if (!clos.clos) throw new Error('l\'exercice n\'est pas clos');
   if (!clos.audit) throw new Error('la clôture ne laisse pas de trace d\'audit');
-  const boutonEteint = await wc.evaluate(() => !!(document.querySelector('#cl-cloturer') || {}).disabled);
-  if (!boutonEteint) throw new Error('le bouton doit s\'éteindre : clôturer deux fois n\'a pas de sens');
-  ok('exercice clos, tracé, et le bouton s\'éteint');
+  // 10.10.0 — un exercice clos ne propose plus « Clôturer » (un bouton éteint dont le motif ne
+  // vivait que dans une infobulle) : c'est « Rouvrir » qui prend sa place.
+  const boutons = await wc.evaluate(() => ({ clore: !!document.querySelector('#cl-cloturer'), rouvrir: !!document.querySelector('#cl-rouvrir') }));
+  if (boutons.clore || !boutons.rouvrir) throw new Error('un exercice clos doit proposer « Rouvrir » et plus « Clôturer » : ' + JSON.stringify(boutons));
+  ok('exercice clos, tracé, et « Rouvrir » remplace « Clôturer »');
 
   // ------------------------------------------------ rouvrir exige un motif
   étape('Rouvrir sans motif est refusé ; avec un motif, c\'est écrit');
@@ -142,6 +144,12 @@ const CIBLE = path.join(dir, 'cloture.skanclose');
   await wc.waitForFunction(() => /motif/i.test((document.querySelector('#toast') || {}).textContent || ''), { timeout: 10000 });
   const refus = await wc.evaluate(() => document.querySelector('#toast').textContent);
   if (!/motif/i.test(refus)) throw new Error('le refus doit nommer le motif : ' + refus);
+  // C-14 : le refus se MONTRE — le champ a le curseur et se dit invalide, pas seulement un message.
+  const champ = await wc.evaluate(() => {
+    const t = document.querySelector('.modal-bg #cl-motif');
+    return { focus: document.activeElement === t, aria: t.getAttribute('aria-invalid'), faute: !!t.closest('.champ-faute') };
+  });
+  if (!champ.focus || champ.aria !== 'true' || !champ.faute) throw new Error('le refus sans motif ne montre pas le champ : ' + JSON.stringify(champ));
   await wc.fill('.modal-bg #cl-motif', 'Facture d\'électricité de décembre reçue après la clôture');
   await wc.click('.modal-bg #ok');
   await wc.waitForFunction(() => !document.querySelector('.modal-bg'), { timeout: 10000 });
@@ -156,9 +164,16 @@ const CIBLE = path.join(dir, 'cloture.skanclose');
 
   // ------------------------------------------------ l'exercice suivant s'ouvre
   étape('L\'exercice suivant s\'ouvre pendant que celui-ci se termine');
+  // 10.10.0 (C-12) — le geste finit sur une question : aller à l'exercice qu'on vient d'ouvrir. On
+  // reste ici pour la suite du parcours, et on vérifie que le sélecteur propose désormais N+1.
+  const anneeAvant = await wc.evaluate(() => (document.querySelector('#lv-annee') || {}).value);
   await wc.click('#cl-suivant');
-  await wc.waitForFunction(() => /nouveaux/i.test((document.querySelector('#toast') || {}).textContent || ''), { timeout: 15000 });
-  await attendreC(900);
+  await wc.waitForFunction(() => /nouveaux/i.test((document.querySelector('.modal-bg h2') || {}).textContent || ''), { timeout: 15000 });
+  await wc.click('.modal-bg #no');
+  await wc.waitForFunction(() => !document.querySelector('.modal-bg'), { timeout: 10000 });
+  await attendreC(600);
+  const options = await wc.evaluate(() => [...document.querySelectorAll('#lv-annee option')].map(o => o.value));
+  if (!options.includes(String(Number(anneeAvant) + 1))) throw new Error(`le sélecteur ne propose pas ${Number(anneeAvant) + 1} après l'avoir ouvert : ${options.join(', ')}`);
   const suivant = await wc.evaluate(async () => {
     const id = decodeURIComponent((location.hash.split('/')[2] || ''));
     const y = Number((document.querySelector('#lv-annee') || {}).value || new Date().getFullYear()) + 1;
@@ -171,16 +186,24 @@ const CIBLE = path.join(dir, 'cloture.skanclose');
   if (!/-01-01$/.test(suivant.date)) throw new Error('les à-nouveaux tombent au 1er janvier, vu ' + suivant.date);
   // Les REFAIRE ne doit pas les doubler : un exercice qui bouge encore change son report.
   await wc.click('#cl-suivant');
-  await wc.waitForFunction(() => /refaits|posés/i.test((document.querySelector('#toast') || {}).textContent || ''), { timeout: 15000 });
+  await wc.waitForFunction(() => /refaits|posés/i.test((document.querySelector('.modal-bg h2') || {}).textContent || ''), { timeout: 15000 });
+  // Cette fois on y VA : le geste doit mener au livre de N+1, sur son brouillard.
+  await wc.click('.modal-bg #ok');
+  await wc.waitForFunction(y => (document.querySelector('#lv-annee') || {}).value === y, String(Number(anneeAvant) + 1), { timeout: 15000 });
   await attendreC(900);
-  const apres = await wc.evaluate(async () => {
+  const apres = await wc.evaluate(async y => {
     const id = decodeURIComponent((location.hash.split('/')[2] || ''));
-    const y = Number((document.querySelector('#lv-annee') || {}).value || new Date().getFullYear()) + 1;
     const r = await window.cabinet.livre(id, String(y));
     return ((r.livre || {}).ecritures || []).filter(e => e.source === 'an').length;
-  });
+  }, Number(anneeAvant) + 1);
   if (apres !== 1) throw new Error('refaire les à-nouveaux les a doublés : ' + apres);
-  ok(`${suivant.lignes} lignes d'à-nouveaux en brouillard au ${suivant.date}, et les refaire ne double rien`);
+  // Et on revient sur l'exercice clos pour la suite (le fichier de clôture).
+  await wc.selectOption('#lv-annee', String(anneeAvant));
+  await wc.waitForFunction(y => (document.querySelector('#lv-annee') || {}).value === y, String(anneeAvant), { timeout: 10000 });
+  await attendreC(1200);
+  await wc.click('#c-tabs button[data-tab="exercice"]');
+  await wc.waitForSelector('#cl-fichier', { timeout: 15000 });
+  ok(`${suivant.lignes} lignes d'à-nouveaux en brouillard au ${suivant.date}, ${Number(anneeAvant) + 1} atteignable depuis le sélecteur, et les refaire ne double rien`);
 
   // ------------------------------------------------ le fichier de clôture
   étape('Produire le dossier de clôture pour le client');
@@ -196,6 +219,14 @@ const CIBLE = path.join(dir, 'cloture.skanclose');
   ['cloture.json', 'etats.html', 'manifeste.json', 'signature.json'].forEach(n => {
     if (!contenu.includes(n)) throw new Error('le dossier de clôture ne contient pas ' + n);
   });
+  // C-13 : le document qui part chez le client s'écrit comme l'écran — virgule décimale, devise,
+  // dates JJ/MM/AAAA. Il sortait en « 76 493.448 », sans « DT », avec des dates ISO.
+  const etatsHtml = Z.zipRead(fs.readFileSync(CIBLE)).find(f => f.name === 'etats.html').data().toString('utf8');
+  const points = (etatsHtml.match(/\d[\d\u202f\u00a0 ]*\.\d{3}\b/g) || []).length;
+  const virgules = (etatsHtml.match(/\d[\d\u202f\u00a0 ]*,\d{3}\b/g) || []).length;
+  if (points || !virgules || !/ DT</.test(etatsHtml) || /du \d{4}-\d{2}-\d{2}/.test(etatsHtml)) {
+    throw new Error(`les états du client ne sont pas à la française : ${points} montants à point, ${virgules} à virgule`);
+  }
   await wc.screenshot({ path: path.join(OUT, '03-fichier.png') });
   const resultatCabinet = JSON.parse(Z.zipRead(fs.readFileSync(CIBLE)).find(f => f.name === 'cloture.json').data().toString('utf8')).resultat;
   ok(`${contenu.length} fichiers, ${Math.round(taille / 1024)} Ko${contenu.includes('etats.pdf') ? ', PDF compris' : ' (sans PDF)'} — résultat ${resultatCabinet}`);

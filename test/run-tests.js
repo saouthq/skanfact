@@ -5400,15 +5400,16 @@ t('cabinet : la clé privée ne traverse jamais le pont vers l\'interface', () =
     cabinet: { name: 'Cabinet Essai', email: 'c@example.tn', publicKey: 'PUB', privateKey: 'SECRET-A-NE-JAMAIS-SORTIR' },
     dossiers: [{ id: 'MF:1', name: 'Client', packs: [] }], settings: { relanceDay: 10 }
   };
-  // Le corps référence `state` et `Z.keyFingerprint` : on les fournit, et rien d'autre.
+  // Le corps référence `state`, `Z.keyFingerprint` et — depuis la 10.10.0, pour relire le modèle de
+  // liasse — `KC.migrerModeleLiasse` : on les fournit, et rien d'autre.
   // `new Function` est délibéré ici, et c'est la seule façon d'y arriver : on veut EXÉCUTER le
   // vrai corps de `safeState()` tel qu'il est écrit dans main.js, pour prouver que la clé privée
   // n'en sort pas. Le réécrire dans le test ne prouverait rien (« un e2e ne doit jamais rejouer
   // le code qu'il teste », 6.8.1).
   // eslint-disable-next-line no-new-func
-  const faireSafeState = new Function('state', 'Z', 'moiId', 'quiSuisJe', corps + '; return safeState();');
+  const faireSafeState = new Function('state', 'Z', 'moiId', 'quiSuisJe', 'KC', corps + '; return safeState();');
   const sorti = faireSafeState(faux, { keyFingerprint: k => 'EMPREINTE-DE-' + k },
-    () => 'c_essai', () => 'Amine');
+    () => 'c_essai', () => 'Amine', require('../src/renderer/compta.js'));
   const texte = JSON.stringify(sorti);
   assert.ok(!/SECRET-A-NE-JAMAIS-SORTIR/.test(texte), 'safeState laisse passer la clé privée');
   assert.ok(!('privateKey' in (sorti.cabinet || {})), 'la clé privée est encore là, même vide');
@@ -13183,7 +13184,13 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     const paquets = fiche.slice(fiche.indexOf('<section data-onglet="paquets"'), fiche.indexOf('</section>`;'));
     assert.ok(suivi.includes('Les mois de ce client') && suivi.includes('id="note-rel"') && suivi.includes('Note interne'), 'Suivi ne porte plus les mois, les relances et la note');
     assert.ok(compta.includes('id="c-compta"') && compta.includes('id="c-livres"'), 'la comptabilité n\'est plus dans son onglet');
-    assert.ok(compta.includes('dès son premier envoi'), 'un dossier sans paquet ne dit pas ce que l\'onglet Comptabilité montrera');
+    // 10.10.0 (C-07) — retourné, pas retiré. Il exigeait « dès son premier envoi » : un dossier sans
+    // paquet ATTENDAIT, et un client hors SkanFact attendait pour toujours. La règle est qu'un
+    // dossier sans paquet se TIENT ici : le panneau ne dépend plus des paquets, et le livre propose
+    // de commencer.
+    assert.ok(!/\$\{packs\.length \? `<div class="panel" id="c-compta">/.test(compta), 'la comptabilité dépend encore des paquets reçus');
+    assert.ok(!compta.includes('dès son premier paquet'), 'un dossier hors SkanFact attend encore un paquet qui ne viendra jamais');
+    assert.ok(/Commencer le livre de \$\{esc\(s\.annee\)\}…/.test(app), 'un dossier sans paquet ne propose pas de commencer son livre');
     assert.ok(paquets.includes('Paquets reçus') && paquets.includes('caChart(packs, anneeVue)'), 'les paquets et le graphique de CA ne sont plus ensemble');
     // Imprimer imprime la fiche ENTIÈRE : les onglets ne sont qu'un rangement d'écran.
     const print = css.slice(css.indexOf('@media print'));
@@ -14254,6 +14261,7 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
   require('./suites/devise-achat.js')({ t, assert, lireSource });
   require('./suites/avoir-fournisseur.js')({ t, assert, lireSource });
   require('./suites/paie-cabinet.js')({ t, assert, lireSource });
+  require('./suites/qa-cabinet.js')({ t, assert, lireSource });
   // Celle-ci reçoit `ta` en plus : elle interroge le vrai worker sur une vraie base SQLite.
   await require('./suites/plateforme-gestion.js')({ t, ta, assert, lireSource });
   await require('./suites/paiement.js')({ ta, assert });

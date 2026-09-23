@@ -29,6 +29,21 @@
   // balance sur la première facture venue. Corps IDENTIQUE à celui de core.js — un test l'exige.
   function round3(n) { return Math.round((Number(n) || 0) * 1000) / 1000; }
 
+  // 10.10.0 (C-04) — un montant ou une date qui sort du moteur DANS UNE PHRASE s'écrit comme
+  // l'écran les écrit : « 120,000 » et « 01/01/2027 », jamais « 120.000 » ni « 2027-01-01 ». Onze
+  // phrases le faisaient à la machine, à une ligne d'un chiffre écrit en français : un comptable
+  // tunisien lit « 100.000 » comme cent mille — un facteur mille, sur un refus d'écriture. Les
+  // milliers sont séparés par une espace fine INSÉCABLE : un montant ne se coupe pas en fin de ligne.
+  function fmtMontant(n, devise) {
+    const v = round3(n);
+    const corps = Math.abs(v).toFixed(3).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '\u202f');
+    return (v < 0 ? '−' : '') + corps + (devise ? ' ' + devise : '');
+  }
+  function fmtJour(iso) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || ''));
+    return m ? `${m[3]}/${m[2]}/${m[1]}` : String(iso || '');
+  }
+
   // La clé d'une pièce comptable. Trois champs, toujours les mêmes, partout : c'est ce qui fait
   // qu'une pièce est UNE pièce, et que ses lignes s'équilibrent entre elles.
   const cleDePiece = e => `${e.journal || ''}|${e.piece || ''}|${e.date || ''}`;
@@ -102,7 +117,7 @@
     const debit = round3(lignes.reduce((s, l) => s + num(l.debit), 0));
     const credit = round3(lignes.reduce((s, l) => s + num(l.credit), 0));
     if (lignes.length >= 2 && round3(debit - credit) !== 0) {
-      motifs.push(`Débit ${debit.toFixed(3)} ≠ crédit ${credit.toFixed(3)} : l'écriture ne tombe pas juste.`);
+      motifs.push(`Débit ${fmtMontant(debit)} ≠ crédit ${fmtMontant(credit)} : l'écriture ne tombe pas juste.`);
     }
 
     // Ce que la VALIDATION exige en plus (T-51). Le brouillard, lui, accepte tout : c'est sa raison
@@ -1000,7 +1015,7 @@
     const solde = round3(lignes.reduce((s, x) => s + x.l.debit - x.l.credit, 0));
     // La somme nulle n'est pas une formalité : un lettrage qui ne solde pas affirme qu'une facture
     // est payée alors qu'il reste quelque chose. C'est un mensonge que le grand livre propagerait.
-    if (solde !== 0) return { ok: false, motif: `Ces écritures ne se soldent pas : il reste ${solde.toFixed(3)}.`, ecart: solde };
+    if (solde !== 0) return { ok: false, motif: `Ces écritures ne se soldent pas : il reste ${fmtMontant(solde)}.`, ecart: solde };
     const L = String(lettre || '').trim().toUpperCase() || prochaineLettre(livre);
     lignes.forEach(x => { x.l.lettre = L; });
     livre.lettrages.push({ lettre: L, compte: n, ecritures: ecr.map(e => e.id), le: String(dateIso || ''), par: String(qui || '') });
@@ -1031,7 +1046,7 @@
     if (!L.length) return { ok: false, motif: 'La balance d\'ouverture est vide.' };
     const d = round3(L.reduce((s, l) => s + l.debit, 0));
     const c = round3(L.reduce((s, l) => s + l.credit, 0));
-    if (round3(d - c) !== 0) return { ok: false, motif: `La balance ne s'équilibre pas : ${d.toFixed(3)} au débit contre ${c.toFixed(3)} au crédit.`, ecart: round3(d - c) };
+    if (round3(d - c) !== 0) return { ok: false, motif: `La balance ne s'équilibre pas : ${fmtMontant(d)} au débit contre ${fmtMontant(c)} au crédit.`, ecart: round3(d - c) };
     // Une seule ouverture par livre : la refaire remplace la précédente, elle ne s'y ajoute pas.
     const ancienne = livre.ecritures.filter(e => e.journal === 'AN' && e.piece === 'OUVERTURE');
     if (ancienne.some(e => e.statut === 'validee' && livre.ecritures.length > ancienne.length)) {
@@ -1047,7 +1062,7 @@
     const v = validerEcriture(livre, e.id, qui, quand);
     if (!v.ok) { livre.ecritures = livre.ecritures.filter(x => x.id !== e.id); return v; }
     livre.ouverture = { date: String(dateIso || ''), source: source || 'balance', lignes: L.map(l => ({ compte: l.compte, debit: l.debit, credit: l.credit })) };
-    trace(livre, qui, 'reprise', `${plFr(L.length, 'compte')}, ${d.toFixed(3)}`, quand);
+    trace(livre, qui, 'reprise', `${plFr(L.length, 'compte')}, ${fmtMontant(d)}`, quand);
     return { ok: true, ecriture: e, total: d };
   }
 
@@ -1297,7 +1312,7 @@
     // livre porte un seul exercice. On le dit au lieu de la poser silencieusement au mauvais
     // endroit : une écriture de janvier rangée dans le livre de décembre fausserait les deux.
     if (date > String(livre.exercice.au)) {
-      return { ok: false, motif: `L'extourne tomberait le ${date}, après la fin de cet exercice (${livre.exercice.au}). Elle se saisit dans le livre de l'exercice suivant — c'est là qu'elle doit vivre.` };
+      return { ok: false, motif: `L'extourne tomberait le ${fmtJour(date)}, après la fin de cet exercice (${fmtJour(livre.exercice.au)}). Elle se saisit dans le livre de l'exercice suivant — c'est là qu'elle doit vivre.` };
     }
     const miroir = ajouterEcriture(livre, {
       date, journal: e.journal, piece: e.piece,
@@ -1309,6 +1324,27 @@
     if (!r.ok) { livre.ecritures = livre.ecritures.filter(x => x.id !== miroir.id); return r; }
     trace(livre, qui, 'extourne', `${e.journal} ${e.piece} n° ${e.numero} → n° ${miroir.numero} au ${date}`, quand);
     return { ok: true, ecriture: miroir };
+  }
+
+  // 10.10.0 (C-06) — l'extourne d'une écriture de DÉCEMBRE. Elle tombe au 1er janvier, dans le
+  // livre de l'exercice suivant : `extourner` la refuse à juste titre, mais le geste était PROPOSÉ,
+  // puis refusé sans porte. La porte existe depuis la 9.8.0 : « Ouvrir N+1 » pose les extournes des
+  // écritures qui portent le drapeau `extourne`. Ce geste-ci pose le drapeau, et rien d'autre — il
+  // ne touche à aucun chiffre ni à aucun compte d'une validée (même règle que le justificatif joint
+  // à une validée, 9.3.0), et la piste d'audit le nomme.
+  function prevoirExtourne(livre, id, qui, quand) {
+    const e = (livre.ecritures || []).find(x => x.id === id);
+    if (!e) return { ok: false, motif: 'Cette écriture n\'existe pas.' };
+    if (e.statut !== 'validee') return { ok: false, motif: 'On extourne une écriture validée. Un brouillard se modifie ou se supprime.' };
+    if (livre.ecritures.some(x => x.extourneDe === id) || e.extourneeLe) return { ok: false, motif: 'Cette écriture a déjà été extournée.' };
+    if (e.extourne) return { ok: false, motif: `Son extourne est déjà prévue à l'ouverture de ${Number(livre.exercice.annee) + 1}.` };
+    const date = premierDuMoisSuivant(e.date);
+    if (!date || date <= String(livre.exercice.au)) {
+      return { ok: false, motif: `Son extourne tombe le ${fmtJour(date)}, dans cet exercice : extourne-la directement.` };
+    }
+    e.extourne = true;
+    trace(livre, qui, 'extourne prévue', `${e.journal} ${e.piece || ''} n° ${e.numero} → ${fmtJour(date)}, à l'ouverture de ${Number(livre.exercice.annee) + 1}`, quand);
+    return { ok: true, date, annee: Number(livre.exercice.annee) + 1 };
   }
 
   // Chercher dans tout le journal de l'exercice : pièce, tiers, libellé, compte, numéro, montant.
@@ -1642,7 +1678,7 @@
     if (ecart !== 0) {
       return {
         ok: false, ecart,
-        motif: `Ce relevé ne se boucle pas : ${num(R.soldeDebut).toFixed(3)} au départ, ${somme.toFixed(3)} de mouvements, cela fait ${attendu.toFixed(3)} — et le relevé annonce ${num(R.soldeFin).toFixed(3)}. Il manque ${Math.abs(ecart).toFixed(3)} : il manque des lignes, ou le solde de fin n'est pas le bon.`
+        motif: `Ce relevé ne se boucle pas : ${fmtMontant(num(R.soldeDebut))} au départ, ${fmtMontant(somme)} de mouvements, cela fait ${fmtMontant(attendu)} — et le relevé annonce ${fmtMontant(num(R.soldeFin))}. Il manque ${fmtMontant(Math.abs(ecart))} : il manque des lignes, ou le solde de fin n'est pas le bon.`
       };
     }
     return { ok: true, motif: '', somme };
@@ -1794,7 +1830,7 @@
     const c = choix || {};
     if (!c.ecritureId) {
       l.rapprochement = { niveau: 'aucun', ecritureId: '', ligne: -1, le: '', par: '' };
-      trace(livre, qui, 'rapprochement défait', `${R.compte} ${l.date} ${num(l.montant).toFixed(3)}`, quand);
+      trace(livre, qui, 'rapprochement défait', `${R.compte} ${fmtJour(l.date)} ${fmtMontant(num(l.montant))}`, quand);
       return { ok: true, niveau: 'aucun' };
     }
     const e = (livre.ecritures || []).find(x => x.id === c.ecritureId);
@@ -1806,7 +1842,7 @@
     const niveau = RELEVE_NIVEAUX.includes(c.niveau) ? c.niveau : 'certain';
     if (niveau === 'aucun') return { ok: false, motif: 'Un rapprochement posé ne peut pas être « aucun » : c\'est ce que veut dire le défaire.' };
     l.rapprochement = { niveau, ecritureId: e.id, ligne: i, le: txt(c.date), par: txt(qui) };
-    trace(livre, qui, 'rapprochement', `${R.compte} ${l.date} ${num(l.montant).toFixed(3)} → ${e.journal} ${e.piece || ''}`, quand);
+    trace(livre, qui, 'rapprochement', `${R.compte} ${fmtJour(l.date)} ${fmtMontant(num(l.montant))} → ${e.journal} ${e.piece || ''}`, quand);
     return { ok: true, niveau };
   }
 
@@ -2175,7 +2211,7 @@
     const solde471 = round3(attente.debit - attente.credit);
     out.push({
       id: 'attente', ok: solde471 === 0,
-      detail: solde471 ? `Le compte d'attente porte encore ${solde471.toFixed(3)} : tant qu'il n'est pas soldé, une pièce est rangée nulle part.` : ''
+      detail: solde471 ? `Le compte d'attente porte encore ${fmtMontant(solde471, 'DT')} : tant qu'il n'est pas soldé, une pièce est rangée nulle part.` : ''
     });
     // Le 4367 doit être SOLDÉ à la fin du mois : c'est l'écriture de déclaration qui le solde, et
     // tant qu'elle n'est pas passée, la TVA du mois n'est écrite nulle part. Ce contrôle-là dit
@@ -2187,7 +2223,7 @@
     out.push({
       id: 'tva-soldee', ok: soldeColl === 0,
       detail: soldeColl === 0 ? ''
-        : `Le compte ${cColl} porte encore ${soldeColl.toFixed(3)} à la fin du mois : l'écriture de déclaration n'a pas été passée.`
+        : `Le compte ${cColl} porte encore ${fmtMontant(soldeColl, 'DT')} à la fin du mois : l'écriture de déclaration n'a pas été passée.`
     });
     // Et le 4366 ne peut pas être CRÉDITEUR : une TVA déductible négative n'existe pas. Quand elle
     // apparaît, c'est qu'une déclaration a imputé plus de crédit qu'il n'y en avait.
@@ -2195,7 +2231,7 @@
     out.push({
       id: 'tva-credit', ok: soldeDed >= 0,
       detail: soldeDed >= 0 ? ''
-        : `Le compte ${cDed} est créditeur de ${Math.abs(soldeDed).toFixed(3)} : une déclaration a imputé plus de crédit de TVA qu'il n'y en avait.`
+        : `Le compte ${cDed} est créditeur de ${fmtMontant(Math.abs(soldeDed), 'DT')} : une déclaration a imputé plus de crédit de TVA qu'il n'y en avait.`
     });
     return out;
   }
@@ -2704,7 +2740,7 @@
 
   function inventaireValide(inv) {
     const i = inv || {};
-    const motifs = [];
+    const motifs = (Array.isArray(i.refus) ? i.refus : []).map(r => r.motif);
     if (!estUnJour(txt(i.date))) motifs.push('La date de l\'inventaire manque : c\'est le dernier jour de l\'exercice.');
     const lignes = Array.isArray(i.lignes) ? i.lignes : [];
     if (!lignes.length) motifs.push('Un inventaire sans une seule ligne ne dit pas « le stock est vide », il dit « rien n\'a été compté ».');
@@ -2714,6 +2750,38 @@
       if (num(l.cout) < 0) motifs.push(`Ligne ${k + 1} : un coût unitaire négatif n\'existe pas.`);
     });
     return { ok: !motifs.length, motifs };
+  }
+
+  // 10.10.0 (C-16) — les lignes COLLÉES depuis un tableur, lues ici et pas dans l'écran. Une
+  // quantité restée en texte (« douze ») devenait 0 en silence : la ligne comptait dans « 3 lignes
+  // comptées », n'apportait rien à la valeur, et la variation de stock qui entre au résultat était
+  // fausse de cette ligne — c'est très exactement « rien n'a été compté » dit sous la forme « le stock
+  // est vide », la phrase que l'écran interdit deux lignes plus haut. Une cellule illisible est
+  // REFUSÉE en nommant la ligne et ce qui y est écrit ; une cellule vide aussi, sauf un coût vide
+  // (un article reçu gratuitement se compte à zéro, et ça se voit sur la ligne).
+  function nombreStrict(v) {
+    const t = String(v == null ? '' : v).trim();
+    if (!t) return null;
+    if (!/^[+-]?[\d\s\u00a0\u202f.,]+$/.test(t) || !/\d/.test(t)) return NaN;
+    return nombreDepuisCsv(t);
+  }
+  function lignesInventaireDepuisTexte(texte) {
+    const lignes = [], refus = [];
+    String(texte || '').split(/\r?\n/).forEach((brut, k) => {
+      const l = brut.trim();
+      if (!l) return;
+      const p = l.split(/\t|;/).map(x => x.trim());
+      // Quatre colonnes attendues ; avec trois, la référence manque — le cas le plus courant d'un
+      // tableur qui n'en tient pas.
+      const [ref, libelle, q, c] = p.length >= 4 ? p : ['', p[0], p[1], p[2]];
+      const quantite = nombreStrict(q), cout = nombreStrict(c);
+      const n = k + 1;
+      if (quantite === null) refus.push({ ligne: n, motif: `Ligne ${n} (${libelle || ref || '?'}) : la quantité manque.` });
+      else if (Number.isNaN(quantite)) refus.push({ ligne: n, motif: `Ligne ${n} (${libelle || ref || '?'}) : « ${q} » n'est pas une quantité. Écris-la en chiffres.` });
+      if (Number.isNaN(cout)) refus.push({ ligne: n, motif: `Ligne ${n} (${libelle || ref || '?'}) : « ${c} » n'est pas un coût unitaire. Écris-le en chiffres.` });
+      lignes.push({ ref: ref || '', libelle: libelle || '', quantite: Number.isNaN(quantite) || quantite === null ? 0 : quantite, cout: Number.isNaN(cout) || cout === null ? 0 : cout });
+    });
+    return { lignes, refus };
   }
 
   const totalInventaire = inv => round3(((inv && inv.lignes) || [])
@@ -2829,7 +2897,7 @@
     const solde471 = round3(attente.debit - attente.credit);
     out.push({
       id: 'attente', ok: solde471 === 0,
-      detail: solde471 ? `Le compte d'attente porte encore ${solde471.toFixed(3)} : une pièce est rangée nulle part. Ventile-la avant la clôture.` : ''
+      detail: solde471 ? `Le compte d'attente porte encore ${fmtMontant(solde471, 'DT')} : une pièce est rangée nulle part. Ventile-la avant la clôture.` : ''
     });
 
     // La TVA de chaque mois de l'exercice a-t-elle sa déclaration préparée ? On ne réclame pas le
@@ -2867,6 +2935,25 @@
         ? `${plFr(etatImmo.aEcrire, 'bien')} dont la dotation n'est pas passée : le résultat est faux de ce montant. Onglet Immobilisations.`
         : ''
     });
+
+    // 10.10.0 (C-10) — le tableau d'amortissement et le compte 28 se RAPPROCHENT, comme la balance
+    // auxiliaire se confronte à son collectif (9.8.8). Reprendre un parc déjà amorti en posant la
+    // date de reprise au lieu de la vraie date de mise en service le faisait repartir de zéro :
+    // « cumul au 01/01 : 0,000 DT » en face d'un 28 qui portait 12 945 DT, et rien ne le disait. Le
+    // contrôle ne vaut que si le cabinet TIENT le parc (au moins une fiche) : les biens d'un client
+    // sur SkanFact vivent dans son application, pas ici, et un 28 sans fiche n'est pas une faute.
+    // Ce qu'on attend : le cumul de fin pour un bien dont la dotation est passée, le cumul
+    // d'ouverture sinon — et rien pour un bien sorti par une cession écrite.
+    if ((livre.immobilisations || []).length) {
+      const attendu = round3(etatImmo.rows.reduce((t, r) => t + (r.cession && r.ecrite ? 0 : r.ecrite ? r.cumul : r.ouverture), 0));
+      const pref = compteImmo(livre, 'amortissements') || '28';
+      const porte = round3(-bal.rows.filter(r => String(r.account).startsWith(pref)).reduce((t, r) => t + r.solde, 0));
+      const ecart = round3(porte - attendu);
+      out.push({
+        id: 'amortissements', ok: Math.abs(ecart) < 0.001, attendu, porte, ecart,
+        detail: Math.abs(ecart) < 0.001 ? '' : `Le compte ${pref} porte ${fmtMontant(porte, 'DT')} d'amortissements, le tableau des biens en justifie ${fmtMontant(attendu, 'DT')} (écart ${fmtMontant(ecart, 'DT')}). Un bien repris doit porter sa VRAIE date de mise en service : c'est elle qui reconstitue ce qui a déjà été amorti.`
+      });
+    }
 
     out.push({
       id: 'equilibre', ok: bal.ok,
@@ -3099,7 +3186,7 @@
     if (!an.length) motifs.push('Ce dossier de clôture ne porte aucun à-nouveau : il n\'y aurait rien à reprendre.');
     const d = round3(an.reduce((s, l) => s + num(l.debit), 0));
     const c = round3(an.reduce((s, l) => s + num(l.credit), 0));
-    if (round3(d - c) !== 0) motifs.push(`Les à-nouveaux ne s'équilibrent pas : ${d.toFixed(3)} au débit contre ${c.toFixed(3)} au crédit.`);
+    if (round3(d - c) !== 0) motifs.push(`Les à-nouveaux ne s'équilibrent pas : ${fmtMontant(d)} au débit contre ${fmtMontant(c)} au crédit.`);
     if (attendu && txt(attendu.matricule) && txt(obj.matricule) && txt(attendu.matricule) !== txt(obj.matricule)) {
       motifs.push('Ce dossier de clôture porte le matricule d\'une autre entreprise.');
     }
@@ -3136,34 +3223,77 @@
     { id: 'AC1', etat: 'bilan-actif', label: 'Immobilisations incorporelles', comptes: ['20'], signe: 1 },
     { id: 'AC2', etat: 'bilan-actif', label: 'Amortissements des immobilisations incorporelles', comptes: ['280'], signe: -1, deduit: true },
     { id: 'AC3', etat: 'bilan-actif', label: 'Immobilisations corporelles', comptes: ['21', '22', '23'], signe: 1 },
-    { id: 'AC4', etat: 'bilan-actif', label: 'Amortissements des immobilisations corporelles', comptes: ['281', '282', '283'], signe: -1, deduit: true },
+    // 10.10.0 (C-08) — « 28 » et pas seulement 281/282/283 : le moteur des deux applications écrit
+    // ses dotations sur le compte 28 NU (`DEFAULT_ACCOUNTS.amortissements`), et un dossier alimenté
+    // par SkanFact n'avait donc AUCUN amortissement dans sa liasse — le bilan ne tombait jamais
+    // juste. 280 reste aux incorporelles : le préfixe le plus long gagne.
+    { id: 'AC4', etat: 'bilan-actif', label: 'Amortissements des immobilisations corporelles', comptes: ['28'], signe: -1, deduit: true },
     { id: 'AC5', etat: 'bilan-actif', label: 'Immobilisations financières', comptes: ['25', '26', '27'], signe: 1 },
     { id: 'AC6', etat: 'bilan-actif', label: 'Stocks', comptes: ['3'], signe: 1 },
     { id: 'AC7', etat: 'bilan-actif', label: 'Provisions sur stocks', comptes: ['39'], signe: -1, deduit: true },
     { id: 'AC8', etat: 'bilan-actif', label: 'Clients et comptes rattachés', comptes: ['41'], signe: 1 },
-    { id: 'AC9', etat: 'bilan-actif', label: 'Autres actifs courants', comptes: ['42', '43', '44', '45', '46', '47'], signe: 1 },
+    // Un fournisseur DÉBITEUR (avoir non imputé, acompte versé — 10.2.0) est une créance : sans
+    // « 40 » ici, il sortait de la liasse. Le sens du solde le départage de PA3.
+    { id: 'AC9', etat: 'bilan-actif', label: 'Autres actifs courants', comptes: ['40', '42', '43', '44', '45', '46', '47'], signe: 1 },
     { id: 'AC10', etat: 'bilan-actif', label: 'Liquidités et équivalents', comptes: ['5'], signe: 1 },
     { id: 'CP1', etat: 'bilan-passif', label: 'Capital social', comptes: ['10'], signe: -1 },
-    { id: 'CP2', etat: 'bilan-passif', label: 'Réserves et primes', comptes: ['11', '12'], signe: -1 },
-    { id: 'CP3', etat: 'bilan-passif', label: 'Résultats reportés', comptes: ['13'], signe: -1 },
+    { id: 'CP2', etat: 'bilan-passif', label: 'Réserves et primes', comptes: ['11'], signe: -1 },
+    // Le 12 s'appelle « Résultats reportés » dans le plan, et le 13 porte les exercices passés
+    // (à-nouveau, 8.8.0) : les deux sont des résultats reportés. Et un résultat reporté peut être
+    // une PERTE — un solde débiteur, que la rubrique n'acceptait pas : il sortait de la liasse, et
+    // la phrase « aucun compte 13 n'est mouvementé » contredisait le bandeau du dessus. `deuxSens`
+    // : la rubrique prend les deux, et une perte s'y lit en négatif, comme sur un bilan.
+    { id: 'CP3', etat: 'bilan-passif', label: 'Résultats reportés', comptes: ['12', '13'], signe: -1, deuxSens: true },
     { id: 'CP4', etat: 'bilan-passif', label: 'Résultat de l\'exercice', comptes: [], signe: -1, resultat: true },
     { id: 'PA1', etat: 'bilan-passif', label: 'Emprunts et dettes financières', comptes: ['16', '17'], signe: -1 },
     { id: 'PA2', etat: 'bilan-passif', label: 'Provisions', comptes: ['14', '15'], signe: -1 },
     { id: 'PA3', etat: 'bilan-passif', label: 'Fournisseurs et comptes rattachés', comptes: ['40'], signe: -1 },
-    { id: 'PA4', etat: 'bilan-passif', label: 'Autres passifs courants', comptes: ['42', '43', '44', '45', '46', '47'], signe: -1 },
+    // Un client CRÉDITEUR (avance reçue, avoir non remboursé) est une dette.
+    { id: 'PA4', etat: 'bilan-passif', label: 'Autres passifs courants', comptes: ['41', '42', '43', '44', '45', '46', '47'], signe: -1 },
     { id: 'PA5', etat: 'bilan-passif', label: 'Concours bancaires', comptes: ['5'], signe: -1 },
-    { id: 'RE1', etat: 'resultat', label: 'Revenus', comptes: ['70', '71'], signe: -1 },
-    { id: 'RE2', etat: 'resultat', label: 'Autres produits d\'exploitation', comptes: ['73', '74', '75'], signe: -1 },
-    { id: 'RE3', etat: 'resultat', label: 'Achats consommés', comptes: ['60'], signe: 1, charge: true },
-    { id: 'RE4', etat: 'resultat', label: 'Charges externes', comptes: ['61', '62'], signe: 1, charge: true },
-    { id: 'RE5', etat: 'resultat', label: 'Charges de personnel', comptes: ['64'], signe: 1, charge: true },
-    { id: 'RE6', etat: 'resultat', label: 'Charges sociales', comptes: ['65'], signe: 1, charge: true },
-    { id: 'RE7', etat: 'resultat', label: 'Impôts et taxes', comptes: ['66'], signe: 1, charge: true },
-    { id: 'RE8', etat: 'resultat', label: 'Dotations aux amortissements et provisions', comptes: ['68'], signe: 1, charge: true },
-    { id: 'RE9', etat: 'resultat', label: 'Autres charges', comptes: ['63', '67'], signe: 1, charge: true },
-    { id: 'RE10', etat: 'resultat', label: 'Produits financiers', comptes: ['76'], signe: -1 },
-    { id: 'RE11', etat: 'resultat', label: 'Charges financières', comptes: ['69'], signe: 1, charge: true }
+    // Un compte de gestion peut changer de sens sans changer de nature : des avoirs de vente qui
+    // dépassent les ventes d'un compte, un stock qui baisse (603), un rabais obtenu sur un achat.
+    // Ils restent dans leur rubrique, en moins — les sortir de la liasse la faussait.
+    { id: 'RE1', etat: 'resultat', label: 'Revenus', comptes: ['70', '71'], signe: -1, deuxSens: true },
+    { id: 'RE2', etat: 'resultat', label: 'Autres produits d\'exploitation', comptes: ['73', '74', '75'], signe: -1, deuxSens: true },
+    { id: 'RE3', etat: 'resultat', label: 'Achats consommés', comptes: ['60'], signe: 1, charge: true, deuxSens: true },
+    { id: 'RE4', etat: 'resultat', label: 'Charges externes', comptes: ['61', '62'], signe: 1, charge: true, deuxSens: true },
+    { id: 'RE5', etat: 'resultat', label: 'Charges de personnel', comptes: ['64'], signe: 1, charge: true, deuxSens: true },
+    { id: 'RE6', etat: 'resultat', label: 'Charges sociales', comptes: ['65'], signe: 1, charge: true, deuxSens: true },
+    { id: 'RE7', etat: 'resultat', label: 'Impôts et taxes', comptes: ['66'], signe: 1, charge: true, deuxSens: true },
+    { id: 'RE8', etat: 'resultat', label: 'Dotations aux amortissements et provisions', comptes: ['68'], signe: 1, charge: true, deuxSens: true },
+    { id: 'RE9', etat: 'resultat', label: 'Autres charges', comptes: ['63', '67'], signe: 1, charge: true, deuxSens: true },
+    { id: 'RE10', etat: 'resultat', label: 'Produits financiers', comptes: ['76', '77', '78', '79'], signe: -1, deuxSens: true },
+    { id: 'RE11', etat: 'resultat', label: 'Charges financières', comptes: ['69'], signe: 1, charge: true, deuxSens: true }
   ];
+
+  // 10.10.0 (C-08) — les trois rubriques de la 10.0.0 qui laissaient des comptes DEHORS, telles
+  // qu'elles étaient livrées. Un cabinet qui a ouvert le modèle et cliqué « Enregistrer » sans rien
+  // changer en porte une COPIE — et une copie ne suit pas un correctif. On ne remplace qu'une ligne
+  // restée IDENTIQUE à celle d'alors : une rubrique que le cabinet a réécrite est la sienne.
+  const LIASSE_10_0_0 = {
+    AC4: { comptes: ['281', '282', '283'], signe: -1 },
+    AC9: { comptes: ['42', '43', '44', '45', '46', '47'], signe: 1 },
+    CP2: { comptes: ['11', '12'], signe: -1 },
+    CP3: { comptes: ['13'], signe: -1 },
+    PA4: { comptes: ['42', '43', '44', '45', '46', '47'], signe: -1 },
+    RE10: { comptes: ['76'], signe: -1 }
+  };
+  const RE_10_0_0 = ['RE1', 'RE2', 'RE3', 'RE4', 'RE5', 'RE6', 'RE7', 'RE8', 'RE9', 'RE11'];
+  function migrerModeleLiasse(table) {
+    if (!Array.isArray(table) || !table.length) return table;
+    const livre = new Map(MODELE_LIASSE.map(r => [r.id, r]));
+    const meme = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+    return table.map(r => {
+      const neuf = livre.get(r && r.id);
+      if (!neuf) return r;
+      const vieux = LIASSE_10_0_0[r.id]
+        || (RE_10_0_0.includes(r.id) ? { comptes: neuf.comptes, signe: neuf.signe } : null);
+      if (!vieux || r.deuxSens) return r;
+      if (!meme(r.comptes || [], vieux.comptes) || Number(r.signe) !== vieux.signe) return r;
+      return { ...r, comptes: neuf.comptes.slice(), deuxSens: !!neuf.deuxSens };
+    });
+  }
 
   const modeleLiasse = table => (Array.isArray(table) && table.length ? table : MODELE_LIASSE);
 
@@ -3177,8 +3307,8 @@
     let best = null;
     modeleLiasse(table).forEach(r => {
       if (r.resultat) return;
-      if (solde > 0 && r.signe !== 1) return;
-      if (solde < 0 && r.signe !== -1) return;
+      if (!r.deuxSens && solde > 0 && r.signe !== 1) return;
+      if (!r.deuxSens && solde < 0 && r.signe !== -1) return;
       (r.comptes || []).forEach(p => {
         if (n.startsWith(p) && (!best || p.length > best.p.length)) best = { p, r };
       });
@@ -3222,7 +3352,11 @@
           // un formulaire, un « — » se demande au comptable (règle 9.6.0).
           montant: x.comptesVus.length || r.resultat ? x.montant : null,
           detail: x.comptesVus,
-          raison: x.comptesVus.length || r.resultat ? '' : `Aucun compte ${(r.comptes || []).join(', ') || 'rattaché'} n'est mouvementé.`
+          // Et la raison dit le SENS quand la rubrique n'en prend qu'un : « aucun compte 13 n'est
+          // mouvementé » s'affichait sous un bandeau qui annonçait ce même 13, débiteur (C-08).
+          raison: x.comptesVus.length || r.resultat ? '' : (r.comptes || []).length
+            ? `Aucun compte ${r.comptes.join(', ')} ${r.deuxSens ? 'n\'est mouvementé' : `n'a de solde ${r.signe === 1 ? 'débiteur' : 'créditeur'}`}.`
+            : 'Aucun compte n\'est rattaché à cette rubrique.'
         };
       });
       // UNE règle pour les trois états : ce qui est marqué `deduit` ou `charge` se retranche, le
@@ -4328,7 +4462,16 @@
   const bulletinsDuMois = (livre, annee, mois) => (livre.bulletins || [])
     .filter(b => Number(b.annee) === Number(annee) && Number(b.mois) === Number(mois));
 
-  function bulletinValide(b, livre) {
+  // Le SEUL juge d'un bulletin, et l'écran l'appelle pendant la frappe pour éteindre son bouton :
+  // un contrôle recopié dans l'écran finirait par diverger de celui qui refuse (9.4.5).
+  //
+  // 10.10.0 (C-11) — un bulletin à salaire NÉGATIF devenait une écriture validée. Quarante jours
+  // d'absence sur vingt-six ouvrables — la confusion la plus banale du formulaire — donnaient un
+  // brut de −646 DT, et le moteur comptable, irréprochable, inversait les colonnes : 640 Salaires
+  // au CRÉDIT, 425 Personnel DÉBITEUR, une pièce équilibrée au millime et parfaitement plausible
+  // dans un journal de cent pièces. Ce qui manquait n'était pas un calcul, c'était une saisie
+  // refusée. Et le refus dit les DEUX chiffres, parce que c'est leur rapport qui est faux.
+  function bulletinValide(b, livre, baremes) {
     const x = b || {};
     const s = (livre.salaries || []).find(y => y.id === x.salarieId);
     if (!s) return { ok: false, motif: 'Choisis un salarié.' };
@@ -4337,17 +4480,49 @@
     if (Number(x.annee) !== Number(livre.exercice.annee)) {
       return { ok: false, motif: `Ce bulletin est daté de ${x.annee} et ce livre porte l'exercice ${livre.exercice.annee}.` };
     }
-    if (!(Number(x.brut) > 0)) return { ok: false, motif: 'Le brut du mois doit être supérieur à zéro.' };
     const jumeau = (livre.bulletins || []).find(y => y.id !== x.id && y.salarieId === x.salarieId
       && Number(y.annee) === Number(x.annee) && Number(y.mois) === Number(m));
     if (jumeau) return { ok: false, motif: `${s.nom} a déjà un bulletin pour ${moisPaie(m)} ${x.annee}.` };
+    return saisiePaieValide({
+      gross: x.brut, workedDays: x.joursTravailles, absentDays: x.joursAbsence,
+      bonuses: (x.primes || []).map(p => ({ label: p.label, amount: p.amount, taxable: p.taxable !== false })),
+      deductions: (x.retenues || []).map(d => ({ label: d.label, amount: d.amount }))
+    }, { grossSalary: s.brut, headOfFamily: s.chefDeFamille, children: s.enfants }, baremesPaie(baremes));
+  }
+
+  // La saisie d'un mois de paie, dans les termes du MOTEUR (`computePayslip`) : c'est ce qui permet
+  // aux DEUX applications de l'appeler — le Cabinet par `bulletinValide`, l'app entreprise depuis
+  // son formulaire de bulletin. Le moteur de paie est partagé depuis la 10.3.0 ; son garde-fou
+  // l'est donc aussi, sinon l'une des deux laisserait passer ce que l'autre refuse (7.3.0).
+  function saisiePaieValide(saisie, salarie, baremes) {
+    const i = saisie || {};
+    if (!(Number(i.gross) > 0)) return { ok: false, motif: 'Le brut du mois doit être supérieur à zéro.' };
+    const ouvrables = i.workedDays == null || i.workedDays === '' ? 26 : Number(i.workedDays);
+    if (!(ouvrables >= 1 && ouvrables <= 31)) {
+      return { ok: false, motif: 'Les jours ouvrables du mois se comptent entre 1 et 31.' };
+    }
+    const absence = i.absentDays == null || i.absentDays === '' ? 0 : Number(i.absentDays);
+    if (!(absence >= 0)) return { ok: false, motif: 'Les jours d\'absence ne peuvent pas être négatifs.' };
+    if (absence > ouvrables) {
+      return { ok: false, motif: `${plFr(absence, 'jour')} d'absence pour ${plFr(ouvrables, 'jour ouvrable', 'jours ouvrables')} dans le mois : une absence ne retient pas plus que le mois entier.` };
+    }
+    if ((i.bonuses || []).concat(i.deductions || []).some(p => !(Number(p && p.amount) >= 0))) {
+      return { ok: false, motif: 'Une prime ou une retenue se saisit en positif : c\'est sa ligne qui dit dans quel sens elle joue.' };
+    }
+    // Et le calcul lui-même : une retenue plus grosse que le salaire rend un net négatif, que rien
+    // d'autre ci-dessus ne peut voir. On calcule avec le MÊME moteur que l'enregistrement.
+    const c = computePayslip(salarie || {}, { ...i, gross: Number(i.gross), workedDays: ouvrables, absentDays: absence }, baremes);
+    if (!(c.gross > 0)) return { ok: false, motif: 'Le brut du mois, absences déduites, doit rester supérieur à zéro.' };
+    if (c.net < 0) {
+      return { ok: false, motif: `Les retenues (${fmtMontant(round3(c.gross - c.net))}) dépassent le brut du mois (${fmtMontant(c.gross)}) : le net serait négatif. Une avance se rembourse sur plusieurs mois.` };
+    }
     return { ok: true, motif: '' };
   }
 
   // Le bulletin garde une COPIE de son calcul (règle 5.0.0) : changer un barème ne doit jamais
   // réécrire un bulletin déjà remis à un salarié.
   function ajouterBulletin(livre, bulletin, baremes, qui, quand) {
-    const v = bulletinValide(bulletin, livre);
+    const v = bulletinValide(bulletin, livre, baremes);
     if (!v.ok) return { ok: false, motif: v.motif };
     const s = livre.salaries.find(y => y.id === bulletin.salarieId);
     const saisie = {
@@ -4425,6 +4600,13 @@
     const comptes = { ...COMPTES_PAIE, ...(o.comptes || {}) };
     const lot = bulletinsDuMois(livre, annee, mois).filter(b => !b.ecritureId);
     if (!lot.length) return { ok: false, motif: 'Aucun bulletin à passer pour ce mois.' };
+    // Un bulletin enregistré AVANT la 10.10.0 a pu passer avec un brut ou un net négatif (C-11).
+    // Il ne devient jamais une écriture : elle inverserait les colonnes et resterait plausible.
+    const faux = lot.filter(b => !((b.calcul || {}).gross > 0) || (b.calcul || {}).net < 0);
+    if (faux.length) {
+      const noms = faux.map(b => ((livre.salaries || []).find(s => s.id === b.salarieId) || {}).nom || 'un salarié');
+      return { ok: false, motif: `Le bulletin de ${noms.join(', ')} porte un salaire négatif : corrige-le avant de passer l'écriture de paie.` };
+    }
     const dernier = new Date(Date.UTC(Number(annee), Number(mois), 0)).getUTCDate();
     const date = o.date || `${annee}-${String(mois).padStart(2, '0')}-${String(dernier).padStart(2, '0')}`;
     const nomDe = id => ((livre.salaries || []).find(s => s.id === id) || {}).nom || '';
@@ -4508,13 +4690,17 @@
     const sansCnss = attendus.filter(s => !s.cnss);
     if (sansCnss.length) add('cnss-manquant', 'warn', `${plFr(sansCnss.length, 'salarié')} sans numéro CNSS`,
       'La déclaration trimestrielle le demande pour chaque salarié.', sansCnss.length);
+    const negatifs = faits.filter(b => !((b.calcul || {}).gross > 0) || (b.calcul || {}).net < 0);
+    if (negatifs.length) add('bulletin-negatif', 'err', `${plFr(negatifs.length, 'bulletin')} à salaire négatif`,
+      negatifs.map(b => ((livre.salaries || []).find(s => s.id === b.salarieId) || {}).nom || '').filter(Boolean).join(', ')
+        + ' — l\'absence ou une retenue dépasse le mois : à corriger avant l\'écriture.', negatifs.length);
     const nonPayes = faits.filter(b => !b.payeLe);
     if (nonPayes.length) add('non-payes', 'info', `${plFr(nonPayes.length, 'bulletin')} non réglé${nonPayes.length > 1 ? 's' : ''}`,
       'Le net reste dû au personnel tant que le règlement n\'est pas noté.', nonPayes.length);
     return out;
   }
   return {
-    round3, cleDePiece, csvDangereux, nombreDepuisCsv, dateDepuisCsv,
+    round3, fmtMontant, fmtJour, cleDePiece, csvDangereux, nombreDepuisCsv, dateDepuisCsv,
     ecritureValide, entreesDepuisCsv,
     entriesBalance, entriesByAccount,
     balanceDepuisLignes, grandLivreDepuisLignes, balanceAuxiliaireDepuisLignes, collectifsDeTiers, COMPTES_TIERS,
@@ -4529,7 +4715,7 @@
     planDepuisCsv, balanceDepuisCsv,
     // La saisie (9.3.0)
     premierDuMoisSuivant, ajouterMoisIso, sansAccents, soldeDeLignes, comptesQuiCorrespondent,
-    modifierEcriture, supprimerEcriture, validerLot, extourner, chercherEcritures,
+    modifierEcriture, supprimerEcriture, validerLot, extourner, prevoirExtourne, chercherEcritures,
     guideValide, ecritureDepuisGuide, occurrencesAGenerer,
     correspondanceValide, compteCorrespondant, appliquerCorrespondance,
     // La banque (9.5.0)
@@ -4547,14 +4733,14 @@
     resultatCession, repriseSubvention, immoValide,
     ajouterImmobilisation, modifierImmobilisation, supprimerImmobilisation,
     etatImmobilisations, immobilisationsACreer, ecrituresImmobilisations, noterEcritureImmo,
-    inventaireValide, totalInventaire, poserInventaire, variationDeStock,
+    inventaireValide, lignesInventaireDepuisTexte, totalInventaire, poserInventaire, variationDeStock,
     // La clôture d'exercice (9.8.0)
     GUIDES_INVENTAIRE, controlesCloture, soldesDepuisOuverture,
     cloturerExercice, rouvrirExercice, noterDossierCloture, anouveauxDe, ecritureAnouveaux, extournesDe,
     etatsDepuisLignes, sigDepuisLignes, dossierDeCloture, clotureValide,
     // La liasse et l'annuel (10.0.0)
     LIASSE_ETATS, MODELE_LIASSE, RETRAITEMENTS,
-    modeleLiasse, rubriqueDuCompte, liasseDepuisLignes,
+    modeleLiasse, migrerModeleLiasse, rubriqueDuCompte, liasseDepuisLignes,
     retraitementValide, resultatFiscal, employeurAnnuel,
     // La révision et les questions (9.10.0)
     CYCLES_REVISION, QUESTION_STATUTS, QUESTION_ATTENDUS, QUESTION_RELANCE,
@@ -4573,7 +4759,7 @@
     irppAnnual, computePayslip, employerChargesOf,
     COMPTES_PAIE, MOIS_PAIE, moisPaie, TRIMESTRES_PAIE,
     salarieValide, normaliserSalarie, ajouterSalarie, retirerSalarie, salariesActifs,
-    bulletinsDuMois, bulletinValide, ajouterBulletin, supprimerBulletin, masseSalariale,
+    bulletinsDuMois, bulletinValide, saisiePaieValide, ajouterBulletin, supprimerBulletin, masseSalariale,
     ecritureDePaie, noterEcriturePaie, cnssDuTrimestre, controlesPaie,
     // La pièce équilibrée et l'amortissement (9.6.1)
     ajouterJoursIso, entrySet,

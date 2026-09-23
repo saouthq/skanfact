@@ -6517,6 +6517,7 @@
           <button type="button" class="btn btn-sm mt" id="add-ded">+ Retenue</button></div>
       </div>
       <div class="panel"><h2>Ce que ça donne</h2><div id="bf-calc"></div></div>
+      <p class="small warn-text" id="bf-refus" role="status" aria-live="polite" hidden></p>
       <div class="modal-actions">
         ${slip ? '<button class="btn btn-danger" id="del-slip" style="margin-right:auto">Supprimer</button>' : ''}
         <button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
@@ -6541,7 +6542,17 @@
           });
           $$('[data-x]', $(sel, root)).forEach(b => b.onclick = () => { list.splice(Number(b.dataset.x), 1); drawSmall(sel, list, kind); calc(); });
         };
+        // 10.10.0 (C-11) — le moteur de paie est partagé avec le Cabinet, son garde-fou aussi : une
+        // absence plus longue que le mois, ou une retenue plus grosse que le salaire, rendait un net
+        // NÉGATIF que rien ne refusait. Le bouton s'éteint par la même fonction que le Cabinet, et
+        // le motif se lit au-dessus de lui, pendant la frappe (9.4.2, 9.4.5).
+        const verdict = () => C.saisiePaieValide(input(), emp, s);
         const calc = () => {
+          const v = verdict();
+          const refus = $('#bf-refus', root);
+          if (refus) { refus.hidden = v.ok; refus.textContent = v.ok ? '' : v.motif; }
+          const okBtn = $('#ok', root);
+          if (okBtn) { okBtn.disabled = !v.ok; okBtn.title = v.ok ? '' : v.motif; }
           const c = C.computePayslip(emp, input(), s);
           $('#bf-calc', root).innerHTML = `
             <div class="vat-box" style="max-width:640px">
@@ -6565,6 +6576,8 @@
         $('#ok', root).onclick = () => {
           const v = formValues($('#bf', root));
           const i = input();
+          const juge = verdict();
+          if (!juge.ok) return toast(juge.motif, true);
           if (closedBlock(C.payslipDate(p), 'Ce bulletin')) return;
           if (!slip && licenceBlock('Établir un nouveau bulletin', 'paie')) return;
           Object.assign(p, v, i, { gross: i.gross, computed: C.computePayslip(emp, i, s), issuedAt: p.issuedAt || C.today() });
