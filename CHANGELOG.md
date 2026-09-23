@@ -287,6 +287,18 @@ du premier écran à son catalogue, pour voir ce qu'un chef d'entreprise subit :
   ordinateur meurt ».
 - La fiche d'une prestation range la phrase de marge sous les deux prix qu'elle compare (elle
   tombait sous la TVA), met TVA et Unité sur la même rangée, et dit la devise des deux prix.
+- **Un montant ne se coupe plus en fin de ligne** : « 4 530,188 DT » s'affichait « 4 » d'un côté,
+  « 530,188 DT » de l'autre, dans la fenêtre qui annonce le solde d'un acompte. Les espaces d'un
+  montant sont désormais insécables, partout — à l'écran, dans les PDF et dans les mails. Les
+  fichiers CSV envoyés au comptable ne changent pas.
+- **Un paiement sans compte de trésorerie propose de le créer, par-dessus** : l'assistant avait
+  demandé la banque et le RIB, et le paiement répondait « aucun compte » avec un lien vers la
+  Trésorerie qui quittait la fenêtre et jetait la saisie. Le compte s'ouvre prérempli avec la
+  banque et le RIB de la société.
+- **La marge estimée se pose sous les totaux** : en apparaissant au premier coût connu, elle faisait
+  sauter la carte des totaux de 250 px vers la gauche pendant la frappe.
+- L'Objet d'un devis ne propose plus « Ex : Audit de sécurité du réseau » à tous les métiers ; le
+  relevé de compte d'un client ne défile plus de côté quand une pièce porte un long libellé.
 
 **L'application entreprise mesurée en entier.** Ses instruments ne regardaient qu'une partie de
 l'application : aucun n'ouvrait une fiche ni une pièce par statut, et l'un visitait une adresse qui

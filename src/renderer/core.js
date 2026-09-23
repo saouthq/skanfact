@@ -856,9 +856,12 @@
     const neg = v < 0;
     const dec = decimals != null ? decimals : decimalsFor(currency);
     const en = lang === 'en';
-    const s = Math.abs(v).toFixed(dec).replace('.', en ? '.' : ',').replace(/\B(?=(\d{3})+(?!\d))/g, en ? ',' : ' ');
-    const out = (neg ? '− ' : '') + s;
-    return currency ? `${out} ${currency}` : out;
+    // Espaces INSÉCABLES (10.12.0) : entre les milliers, avant la devise, après le signe. Une espace
+    // ordinaire laissait le navigateur couper un montant en fin de ligne — « 4 » d'un côté, « 530,188
+    // DT » de l'autre, dans la phrase qui annonce le solde d'un acompte. Un montant se lit d'un bloc.
+    const s = Math.abs(v).toFixed(dec).replace('.', en ? '.' : ',').replace(/\B(?=(\d{3})+(?!\d))/g, en ? ',' : '\u00a0');
+    const out = (neg ? '−\u00a0' : '') + s;
+    return currency ? `${out}\u00a0${currency}` : out;
   }
   // Montant d'un document ramené à la devise de la société (taux saisi sur le document : 1 devise = x DT)
   // Le taux d'un document : « 1 devise = x DT ». Vaut 1 quand le document est dans la devise de

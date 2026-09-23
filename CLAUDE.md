@@ -6348,6 +6348,18 @@ fixe (9.4.3) et sa table d'onglets nommait sept onglets disparus, sautés sans u
 - **Le jumeau du Finder** (E-14) vivait encore dans la phrase qui décide de la sécurité des données :
   « iCloud Drive » proposé sous Windows. `NUAGE` suit la plateforme comme `EXPLORATEUR`, et un test
   refuse « iCloud » sans OneDrive dans les quatre fichiers qui parlent à l'utilisateur.
+- **Un montant se lit d'un bloc : ses espaces sont insécables.** `money()` séparait les milliers et
+  la devise par une espace ordinaire : le navigateur coupait « 4 530,188 DT » en fin de ligne,
+  « 4 » d'un côté. Le correctif est UNE ligne ; ses effets, une vingtaine d'assertions de tests et
+  onze comparaisons de `e2e:entreprise` qui recopiaient l'ancienne espace. Deux pièges en les
+  réécrivant : une assertion sur du texte APLATI (`\s+` → espace, qui couvre l'insécable) garde
+  l'espace ordinaire, et « 1 EUR = 3,400 DT » n'est pas un montant de `money()`. Les CSV ont leur
+  propre format et n'en reçoivent aucune — un test le tient.
+- **Une information donnée une fois se réutilise là où elle sert** : l'assistant demande la banque et
+  le RIB, le paiement répondait « aucun compte » avec un lien qui QUITTAIT la fenêtre. Le compte se
+  crée par-dessus (`accountForm(null, done, modele)`), prérempli. Et un test qui découpait
+  `paymentForm` sur 2 600 caractères fixes est tombé sur le code juste : une tranche se borne sur la
+  fonction suivante (10.4.0).
 - **Une promesse sur ce qui part se vérifie contre le CODE** (8.0.0, re-trouvée quatre fois) :
   l'assistant, l'article « Démarrer », le panneau et l'article de la licence écrivaient « rien n'est
   envoyé sur Internet » ou « présentée qu'au service de mise à jour », alors que la licence se

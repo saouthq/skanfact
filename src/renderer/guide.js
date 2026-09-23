@@ -56,7 +56,7 @@
     'ed.date': { t: 'Date du document', d: 'La date qui s\'imprime et qui compte pour ta comptabilité : une facture datée du 31 janvier appartient à janvier, même émise le 2 février. C\'est aussi elle qui détermine l\'année du numéro (FAC-2026-001).<br>Écris-la comme tu veux (12/03/2026, 12-3-26, ou même 12032026), ou clique sur l\'icône calendrier. Les flèches <b>↑</b> et <b>↓</b> avancent ou reculent d\'un jour. Une date qui n\'existe pas, comme le 31 février, est refusée.' },
     'ed.due': { t: 'Échéance', d: 'La date limite de paiement, calculée à partir de ton délai par défaut. Passé ce jour et si la facture n\'est pas soldée, elle bascule automatiquement « en retard » et apparaît dans les Relances. Dans le calendrier, les boutons <b>+7 j</b>, <b>+15 j</b> et <b>+30 j</b> repoussent l\'échéance en un clic.' },
     'ed.validUntil': { t: 'Valable jusqu\'au', d: 'La date après laquelle ton prix n\'est plus garanti. Elle s\'imprime sur le devis. C\'est un argument utile : un client hésitant se décide plus vite quand une date est écrite. Dans le calendrier, <b>+7 j</b>, <b>+15 j</b> et <b>+30 j</b> allongent la validité en un clic.' },
-    'ed.subject': { t: 'Objet', d: 'Une phrase qui résume la prestation, par exemple « Audit de sécurité du réseau ». Elle s\'affiche en grand sur le document et sert à retrouver le document plus tard dans la recherche.' },
+    'ed.subject': { t: 'Objet', d: 'Une phrase qui résume la prestation, par exemple « Fourniture et pose de six portes intérieures ». Elle s\'affiche en grand sur le document et sert à retrouver le document plus tard dans la recherche.' },
     'ed.reference': { t: 'Référence', d: 'Le numéro de commande ou de marché que ton client t\'a donné (« BC 118 »). Beaucoup de sociétés et d\'administrations refusent de payer une facture qui ne rappelle pas leur référence.' },
     'ed.lang': { t: 'Langue du document', d: 'Français ou anglais. Tout le document change : titres, colonnes, conditions, et même le montant écrit en toutes lettres.' },
     'ed.docCurrency': { t: 'Devise du document', d: 'La monnaie dans laquelle tu factures ce client. Pour une devise étrangère, indique le taux de change : ta comptabilité reste tenue en dinars, convertie à ce taux.' },
@@ -391,7 +391,7 @@
 <p>Un devis est une <b>proposition de prix</b>. Il n'engage rien tant que le client ne l'a pas accepté, mais une fois accepté, il t'engage sur le prix et le contenu. Écris-le avec soin.</p>
 <h3>Ce qui fait un bon devis</h3>
 <ul>
-  <li><b>Un objet clair</b> : « Audit de sécurité du réseau », pas « Prestation ».</li>
+  <li><b>Un objet clair</b> : « Fourniture et pose de six portes intérieures », pas « Prestation ».</li>
   <li><b>Des descriptions</b> sous chaque ligne. Le client compare des offres : celui qui explique ce qu'il fait gagne souvent, même un peu plus cher.</li>
   <li><b>Une date de validité</b>. Elle protège ton prix et pousse à la décision.</li>
   <li><b>Des conditions</b> : ce qui est inclus, ce qui ne l'est pas, le délai d'intervention. Toute ambiguïté se paiera plus tard.</li>

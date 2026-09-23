@@ -382,12 +382,12 @@ module.exports = ({ t, assert, lireSource }) => {
   });
 
   t('Rapport QA : le capital nu s\'écrit comme les autres montants de la pièce', () => {
-    assert.strictEqual(core.capitalAffiche('10000', 'DT', 'fr'), '10 000 DT');
+    assert.strictEqual(core.capitalAffiche('10000', 'DT', 'fr'), '10\u00a0000\u00a0DT');
     assert.strictEqual(core.capitalAffiche('1 000 DT', 'DT', 'fr'), '1 000 DT', 'ce que l\'utilisateur a écrit reste tel quel');
     assert.strictEqual(core.capitalAffiche('10.000', 'DT', 'fr'), '10.000', '« 10.000 » ne se devine pas');
     const doc = { id: 'x', type: 'devis', number: 'DEV-1', date: '2026-09-01', lines: [{ label: 'x', qty: 1, unitPrice: 10, vatRate: 19 }] };
     const html = core.documentHtml(doc, { name: 'C' }, { ...société, capital: '10000' }, {});
-    assert.ok(/Capital 10 000 DT/.test(html), 'le pied de page écrit encore « Capital 10000 »');
+    assert.ok(/Capital 10\u00a0000\u00a0DT/.test(html), 'le pied de page écrit encore « Capital 10000 »');
   });
 
   t('Rapport QA : un mois sans salarié en poste ne dit pas « tous les bulletins sont établis »', () => {
@@ -527,5 +527,48 @@ module.exports = ({ t, assert, lireSource }) => {
     const corps = app.slice(d0, app.indexOf('return redraw;', d0));
     assert.ok(/data-ouvrir=/.test(corps) && /tr\[data-ouvrir\]/.test(corps) && /opts\.ouvrir\(r, redraw\)/.test(corps),
       'drawList ne rend pas la ligne cliquable, ou ne branche pas le clic');
+  });
+  // « Ex : Audit de sécurité du réseau » dans l'Objet du devis d'une menuiserie : un exemple écrit
+  // pour le métier de l'auteur, resté dans l'éditeur et dans deux bulles (10.12.0).
+  t('L\'invite de l\'Objet d\'un devis ne suppose aucun métier — surtout pas celui de l\'auteur', () => {
+    const app = code('src', 'renderer', 'app.js'), guide = code('src', 'renderer', 'guide.js');
+    assert.ok(!/Audit de sécurité/.test(app) && !/Audit de sécurité/.test(guide), 'un exemple de cybersécurité est proposé à tous les métiers');
+    assert.ok(/name="subject"[^>]*placeholder="\$\{h\(exempleObjet\(\)\)\}"/.test(app), 'l\'Objet ne passe pas par son invite neutre');
+    const f0 = app.indexOf('const exempleObjet = () =>');
+    assert.ok(f0 > 0 && !/Ex :/.test(app.slice(f0, f0 + 120)), 'l\'invite de l\'Objet propose encore un exemple de métier');
+  });
+  // La « Marge estimée » apparaît au premier coût connu : posée à CÔTÉ de la carte des totaux, elle
+  // la faisait sauter de 250 px vers la gauche pendant la frappe (10.12.0, parcours d'une menuiserie).
+  t('La marge estimée se pose SOUS les totaux : la carte ne quitte pas la colonne des montants', () => {
+    const css = lireSource('src', 'renderer', 'style.css').replace(/\/\*[\s\S]*?\*\//g, '');
+    const r = (css.match(/^\.totals-box \{[^}]*\}/m) || [''])[0];
+    assert.ok(/flex-direction:\s*column/.test(r) && /align-items:\s*flex-end/.test(r), '.totals-box range la marge à côté de la carte : ' + r);
+    const app = code('src', 'renderer', 'app.js');
+    assert.ok(/\$\('#totals'\)\.appendChild\(el\)/.test(app), 'la marge ne vit plus dans #totals : le test ne vise plus le bon endroit');
+  });
+  // « 4 530,188 DT » coupé en fin de ligne dans la fenêtre d'acompte — « 4 » d'un côté, « 530,188 DT »
+  // de l'autre (10.12.0, parcours d'une menuiserie). Un montant se lit d'un bloc : ses espaces sont
+  // insécables — entre les milliers, avant la devise, après le signe. Les CSV gardent leur format.
+  t('Un montant ne se coupe jamais à la ligne : ses espaces sont insécables', () => {
+    for (const m of [core.money(4530.188, 'DT'), core.money(-1234567.5, 'DT'), core.money(1234.5, 'EUR')]) {
+      assert.ok(!/ /.test(m), `« ${m} » contient une espace ordinaire : le navigateur peut le couper`);
+      assert.ok(/ /.test(m), `« ${m} » n'a plus d'espace insécable`);
+    }
+    // L'export pour le comptable n'est pas touché : un tableur relit « 4530,188 », pas une chaîne.
+    const csv = core.toCsv([{ m: 4530.188 }], [{ key: 'm', label: 'Montant', type: 'money' }]);
+    assert.ok(/4530,188/.test(csv) && !/ /.test(csv), 'le CSV a changé de format : ' + csv);
+  });
+  // Un paiement sans compte de trésorerie n'offrait qu'un lien vers la Trésorerie, qui QUITTAIT la
+  // fenêtre et jetait la saisie — alors que l'assistant avait demandé la banque et le RIB (10.12.0).
+  t('Un paiement sans compte propose de le créer par-dessus, avec la banque et le RIB déjà donnés', () => {
+    const app = code('src', 'renderer', 'app.js');
+    const i = app.indexOf('function paymentForm(');
+    const f = app.slice(i, app.indexOf('\n  function ', i + 10));
+    assert.ok(f.length > 500, 'tranche de paymentForm : ' + f.length);
+    assert.ok(!/href="#\/tresorerie"/.test(f), 'le paiement renvoie encore vers la Trésorerie, hors de la fenêtre');
+    assert.ok(/id="pf-compte"/.test(f) && /accountForm\(null,[\s\S]{0,300}bank: company\(\)\.bank[\s\S]{0,80}rib: company\(\)\.rib/.test(f),
+      'le paiement ne propose pas de créer le compte prérempli avec la banque et le RIB de la société');
+    const a0 = app.indexOf('function accountForm(');
+    assert.ok(/\.\.\.\(modele \|\| \{\}\)/.test(app.slice(a0, a0 + 400)), 'accountForm ne reprend pas le modèle qu\'on lui passe');
   });
 };

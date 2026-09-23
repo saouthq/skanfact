@@ -104,7 +104,7 @@ t('numérotation continue par année', () => {
 });
 
 t('format monétaire', () => {
-  assert.strictEqual(core.money(1234567.5, 'DT'), '1 234 567,500 DT');
+  assert.strictEqual(core.money(1234567.5, 'DT'), '1\u00a0234\u00a0567,500\u00a0DT');
   assert.strictEqual(core.money(0), '0,000');
 });
 
@@ -224,7 +224,7 @@ t('migration 1.x → 4 : « payée » devient un paiement, les listes manquantes
 t('template : avoir, brouillon et retenue à la source', () => {
   const html = core.documentHtml(inv({ number: '', status: 'brouillon', withholdingRate: 1.5 }), { name: 'C' }, CO);
   assert.ok(html.includes('>Brouillon<') && html.includes('stamp draft'));
-  assert.ok(html.includes('Retenue à la source 1,5%') && html.includes('1 173,150'));
+  assert.ok(html.includes('Retenue à la source 1,5%') && html.includes('1\u00a0173,150'));
   const av = core.documentHtml({ type: 'avoir', number: 'AVO-2026-001', status: 'émis', date: '2026-09-11', creditOfNumber: 'FAC-2026-001', lines: [{ label: 'X', qty: 1, unitPrice: 100, vatRate: 19 }] }, { name: 'C' }, CO);
   assert.ok(av.includes('<div class="kind">Avoir</div>') && av.includes('Annule / rectifie') && av.includes("Montant de l'avoir"));
   assert.ok(!av.includes('Timbre fiscal'));
@@ -263,7 +263,7 @@ t('relances : factures échues, niveaux, gabarits d\'email', () => {
   const m = core.emailFor('relance2', od[0].doc, data.clients[0], CO, { jours: od[0].daysLate });
   assert.strictEqual(m.to, 'compta@acme.tn');
   assert.strictEqual(m.subject, 'Relance — facture FAC-2026-001 en retard de 41 jours');
-  assert.ok(m.body.includes('1 191,000 DT') && m.body.includes('01/08/2026') && m.body.endsWith(CO.name));
+  assert.ok(m.body.includes('1\u00a0191,000\u00a0DT') && m.body.includes('01/08/2026') && m.body.endsWith(CO.name));
   const custom = core.emailFor('facture', od[0].doc, data.clients[0], { ...CO, emailTemplates: { facture: { subject: 'Hello {client}', body: 'x' } } });
   assert.strictEqual(custom.subject, 'Hello ACME');
   assert.strictEqual(core.fillTemplate('{a}-{b}-{c}', { a: 1, b: 'deux' }), '1-deux-{c}');
@@ -276,8 +276,8 @@ t('anglais : montant en lettres, format des nombres, template', () => {
   assert.strictEqual(core.amountToWords(1191.15, 'EUR', 'en'), 'One thousand one hundred and ninety-one euros and fifteen cents');
   assert.strictEqual(core.amountToWords(2.5, 'EUR', 'fr'), 'Deux euros et cinquante centimes');
   assert.strictEqual(core.amountToWords(1.001, 'DT', 'en'), 'One dinar and one millime');
-  assert.strictEqual(core.money(1234.5, 'EUR'), '1 234,50 EUR');
-  assert.strictEqual(core.money(1234.5, 'DT'), '1 234,500 DT');
+  assert.strictEqual(core.money(1234.5, 'EUR'), '1\u00a0234,50\u00a0EUR');
+  assert.strictEqual(core.money(1234.5, 'DT'), '1\u00a0234,500\u00a0DT');
   assert.strictEqual(core.money(1234567.891, null, 2, 'en'), '1,234,567.89');
   const html = core.documentHtml({ ...inv(), lang: 'en', currency: 'EUR', exchangeRate: 3.4, withholdingRate: 0 }, { name: 'ACME Ltd', matricule: 'GB123' }, CO);
   assert.ok(html.includes('<div class="kind">Invoice</div>') && html.includes('Billed to') && html.includes('Amount due') && html.includes('Stamp duty'));
@@ -286,7 +286,7 @@ t('anglais : montant en lettres, format des nombres, template', () => {
   // cette assertion affirmait donc le défaut : elle attendait 1 191,00 €, c'est-à-dire un timbre de
   // 3,40 DT sur une facture qui en doit 1,00.
   assert.ok(html.includes('1,190.29'), 'le timbre doit être converti dans la devise du document');
-  assert.ok(html.includes('<small>EUR</small>') && html.includes('1 EUR = 3,400 DT'));
+  assert.ok(html.includes('<small>EUR</small>') && html.includes('1 EUR = 3,400\u00a0DT'));
   assert.ok(html.includes('Total amount in words:') && html.includes('one thousand one hundred and ninety euros'));
   assert.ok(html.includes('Tax ID GB123') && html.includes('Payment by bank transfer'));
   const draft = core.documentHtml({ ...inv(), lang: 'en', number: '', status: 'brouillon' }, { name: 'X' }, CO);
@@ -294,7 +294,7 @@ t('anglais : montant en lettres, format des nombres, template', () => {
   const paid = core.documentHtml({ ...inv(), lang: 'en' }, { name: 'X' }, { ...CO, stampImage: 'data:image/png;base64,AAAA' }, { stampText: 'Payée' });
   assert.ok(paid.includes('>Paid<') && paid.includes('src="data:image/png;base64,AAAA"'));
   const fr = core.documentHtml(inv(), { name: 'X' }, CO);
-  assert.ok(fr.includes('<div class="kind">Facture</div>') && fr.includes('1 191,000'));
+  assert.ok(fr.includes('<div class="kind">Facture</div>') && fr.includes('1\u00a0191,000'));
 });
 
 t('devises : conversion dans le journal et le tableau de bord', () => {
@@ -541,7 +541,7 @@ t('démo : acompte + solde, avoir total, client étranger en euros', () => {
   const nova = d.documents.find(x => x.type === 'facture' && x.currency === 'EUR');
   assert.strictEqual(nova.lang, 'en'); assert.strictEqual(nova.applyStamp, false); assert.strictEqual(core.computeTotals(nova, d.company).totalVAT, 0);
   const html = core.documentHtml(nova, d.clients.find(c => c.id === nova.clientId), d.company);
-  assert.ok(html.includes('<div class="kind">Invoice</div>') && html.includes('<small>EUR</small>') && !html.includes('Stamp duty') && html.includes('1 EUR = 3,350 DT'));
+  assert.ok(html.includes('<div class="kind">Invoice</div>') && html.includes('<small>EUR</small>') && !html.includes('Stamp duty') && html.includes('1 EUR = 3,350\u00a0DT'));
   const row = core.salesJournal(d, d.company, { from: nova.date, to: nova.date, today: T }).find(r => r.id === nova.id);
   assert.strictEqual(row.ht, core.round3(1100 * 3.35));
   const pending = d.documents.filter(x => x.type === 'facture' && x.status !== 'brouillon' && core.computeTotals(x, d.company).withholding > 0 && !x.withholdingCertificate);
@@ -632,11 +632,11 @@ t('à faire : ce qui demande une action, par ordre d\'urgence', () => {
   assert.strictEqual(todo[0].level, 'danger');
   assert.strictEqual(todo[0].count, 1);
   assert.ok(todo[0].detail.includes('72 jours'));
-  assert.ok(todo[0].detail.includes('1 191,000 DT'), 'montant non formaté : ' + todo[0].detail);
-  assert.ok(todo.find(x => x.id === 'attestations').detail.includes(' DT'));
+  assert.ok(todo[0].detail.includes('1\u00a0191,000\u00a0DT'), 'montant non formaté : ' + todo[0].detail);
+  assert.ok(todo.find(x => x.id === 'attestations').detail.includes('\u00a0DT'));
   assert.ok(todo.find(x => x.id === 'contrats').detail.includes('septembre 2026'));
   const acc = todo.find(x => x.id === 'devis-acceptes');
-  assert.strictEqual(acc.count, 1); assert.strictEqual(acc.docs[0].id, 'q3'); assert.ok(acc.detail.includes('1 190,000 DT'));
+  assert.strictEqual(acc.count, 1); assert.strictEqual(acc.docs[0].id, 'q3'); assert.ok(acc.detail.includes('1\u00a0190,000\u00a0DT'));
   // fiche société incomplète : signalée juste après les retards, avec ce qui manque
   const todoCo = core.todoList(data, { ...FULL, matricule: '', rib: '' }, T);
   const gapItem = todoCo.find(x => x.id === 'societe');
@@ -697,7 +697,7 @@ t('modèles d\'email : relance de devis et envoi au comptable', () => {
   const q = { id: 'q', type: 'devis', number: 'DEV-2026-004', status: 'envoyé', date: '2026-08-01', dueDate: '2026-09-01', subject: 'Audit', lines: [{ label: 'x', qty: 1, unitPrice: 1000, vatRate: 19 }] };
   const m = core.emailFor('relanceDevis', q, { name: 'ACME', email: 'a@b.tn' }, CO);
   assert.strictEqual(m.subject, 'Notre devis DEV-2026-004 — Audit');
-  assert.ok(m.body.includes('1 190,000 DT') && m.body.includes('Audit'));
+  assert.ok(m.body.includes('1\u00a0190,000\u00a0DT') && m.body.includes('Audit'));
   const en = core.emailFor('relanceDevis', { ...q, lang: 'en' }, { name: 'ACME' }, CO);
   assert.ok(en.subject.startsWith('Our quote'));
   assert.ok(core.DEFAULT_EMAIL_TEMPLATES.comptable.body.includes('{montant}'));
@@ -2645,8 +2645,8 @@ t('documents du personnel : attestation, certificat, registre', () => {
   const att = core.hrDocumentHtml('attestation', emp, d, co, { date: '2026-09-11' });
   assert.ok(att.includes('Ahmed Ben Ali') && att.includes('Technicien'));
   assert.ok(att.includes('ATTESTATION DE TRAVAIL') || att.includes('Attestation de travail'));
-  assert.ok(!att.includes('1 800'), 'le salaire ne sort que si on le demande');
-  assert.ok(core.hrDocumentHtml('attestation', emp, d, co, { date: '2026-09-11', withSalary: true }).includes('1 800'));
+  assert.ok(!att.includes('1\u00a0800'), 'le salaire ne sort que si on le demande');
+  assert.ok(core.hrDocumentHtml('attestation', emp, d, co, { date: '2026-09-11', withSalary: true }).includes('1\u00a0800'));
   const cert = core.hrDocumentHtml('certificat', { ...emp, endDate: '2026-08-31' }, d, co, { date: '2026-09-11' });
   assert.ok(cert.includes('31/08/2026') && cert.includes('libre de tout engagement'));
   // le registre liste tout le monde, actifs et partis, dans l'ordre d'embauche
@@ -8394,7 +8394,9 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     const app = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'app.js'), 'utf8');
     const code = app.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
     assert.ok(code.includes('function accountFieldHtml'), 'le nettoyage des commentaires a mangé le code');
-    const bloc = f => { const i = code.indexOf('function ' + f); return code.slice(i, i + 2600); };
+    // La tranche va jusqu'à la fonction SUIVANTE, pas sur une longueur fixe : un ajout légitime dans le
+    // formulaire repoussait la ligne cherchée au-delà des 2 600 caractères (10.12.0, règle 10.4.0).
+    const bloc = f => { const i = code.indexOf('function ' + f); const j = code.indexOf('\n  function ', i + 10); return code.slice(i, j > i ? j : i + 6000); };
     ['paymentForm', 'supplierPaymentForm'].forEach(f =>
       assert.ok(bloc(f).includes('accountFieldHtml'), `${f} doit proposer le compte de trésorerie`));
     assert.ok(/accountId: v\.accountId/.test(bloc('paymentForm')), 'paymentForm doit ÉCRIRE le compte, pas seulement le proposer');

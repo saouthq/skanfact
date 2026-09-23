@@ -125,12 +125,12 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
     await win.fill('#lines input[data-k=unitPrice]', '1000');
     await win.click('#save');
     await win.waitForFunction(() => /DEV-\d{4}-001/.test((document.querySelector('#view h1') || {}).textContent || ''), null, { timeout: 5000 });
-    const tot = await win.textContent('#totals'); if (!tot.includes('1 190,000')) throw new Error(tot);
+    const tot = await win.textContent('#totals'); if (!tot.includes('1\u00a0190,000')) throw new Error(tot);
   });
   await step('aperçu rendu', async () => {
     const f = win.frameLocator('#preview');
     await f.locator('.grand .gv').waitFor();
-    const s = await f.locator('.grand .gv').textContent(); if (!s.includes('1 190,000')) throw new Error(s);
+    const s = await f.locator('.grand .gv').textContent(); if (!s.includes('1\u00a0190,000')) throw new Error(s);
   });
   await step('document en anglais + devise EUR dans l\'aperçu', async () => {
     await win.selectOption('#f-head select[name=lang]', 'en');
@@ -140,7 +140,7 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
     const f = win.frameLocator('#preview');
     await f.locator('.kind:has-text("Quote")').waitFor({ timeout: 8000 });
     const s = await f.locator('.grand .gv').textContent(); if (!s.includes('1,190.00') || !s.includes('EUR')) throw new Error(s);
-    if (!(await win.textContent('#totals')).includes('1 190,00 EUR')) throw new Error(await win.textContent('#totals'));
+    if (!(await win.textContent('#totals')).includes('1\u00a0190,00\u00a0EUR')) throw new Error(await win.textContent('#totals'));
     await win.selectOption('#f-head select[name=currency]', 'DT');
     await win.selectOption('#f-head select[name=lang]', 'fr');
     await f.locator('.kind:has-text("Devis")').waitFor({ timeout: 8000 });
@@ -149,7 +149,7 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
   await step('convertir en facture → brouillon sans numéro', async () => {
     await win.click('#bill-btn'); await win.click('#convert');
     await win.waitForFunction(() => document.querySelector('#view h1') && document.querySelector('#view h1').textContent.includes('Facture (brouillon)'));
-    const tot = await win.textContent('#totals'); if (!tot.includes('Timbre') || !tot.includes('1 191,000')) throw new Error(tot);
+    const tot = await win.textContent('#totals'); if (!tot.includes('Timbre') || !tot.includes('1\u00a0191,000')) throw new Error(tot);
     if (!(await win.textContent('#f-head')).includes('numéro attribué')) throw new Error('statut brouillon');
   });
   await step('émettre la facture → FAC-…-001, verrouillée', async () => {
@@ -193,7 +193,7 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
     if (!/avoir/.test(txt)) throw new Error('le bandeau doit nommer l\'avoir comme chemin de correction');
     if (!(await win.$('#lock-credit'))) throw new Error('le bandeau doit porter le bouton « Corriger par un avoir »');
     if (!(await win.$('#lock-unlock'))) throw new Error('une facture sans paiement ni avoir doit encore proposer « Modifier quand même »');
-    if (!(await win.textContent('#pay-body')).includes('1 191,000')) throw new Error('situation');
+    if (!(await win.textContent('#pay-body')).includes('1\u00a0191,000')) throw new Error('situation');
     // 10.12.0 — émise et impayée, elle portait TROIS verts : « Enregistrer un paiement » en haut,
     // « Corriger par un avoir… » dans le bandeau, « + Enregistrer un paiement » dans le panneau.
     // L'étape suivante est le paiement, et seul le bouton de l'en-tête le dit en vert.
@@ -204,7 +204,7 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
     await win.click('#pay');
     await win.fill('#pf2 input[name=amount]', '191');
     await win.click('#modal-root #ok');
-    await win.waitForFunction(() => (document.querySelector('#pay-body') || {}).textContent.includes('1 000,000'));
+    await win.waitForFunction(() => (document.querySelector('#pay-body') || {}).textContent.includes('1\u00a0000,000'));
     if (!(await win.textContent('#f-head')).includes('partiellement payée')) throw new Error(await win.textContent('#f-head'));
     // 10.12.0 — le bandeau disait « déjà payée en partie » sur une facture payée en ENTIER : il
     // confondait « un paiement existe » et « soldée ». Une seule fonction décide des deux phrases.
@@ -1092,7 +1092,7 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
     await win.fill('#b-lines input[data-k=unitPrice]', '1000');
     await win.waitForFunction(() => (document.querySelector('#b-totals') || {}).textContent.includes('Retenue'));
     // net à payer = 1190 − 3 % = 1154,300
-    if (!(await win.textContent('#b-totals')).includes('1 154,300')) throw new Error('net à payer : ' + await win.textContent('#b-totals'));
+    if (!(await win.textContent('#b-totals')).includes('1\u00a0154,300')) throw new Error('net à payer : ' + await win.textContent('#b-totals'));
     // TVA non déductible : le total le dit
     await win.uncheck('#b-lines input[data-k=deductible]');
     await win.waitForFunction(() => (document.querySelector('#b-totals') || {}).textContent.includes('déductible'));

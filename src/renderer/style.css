@@ -557,7 +557,11 @@ table.lignes-doc th { padding-bottom: 4px; }
   }
   table.lignes-doc th { padding-bottom: 8px; }
 }
-.totals-box { margin-top: 14px; display: flex; justify-content: flex-end; }
+/* En COLONNE, calée à droite : la « Marge estimée » qui apparaît au premier coût connu se pose SOUS
+   la carte des totaux. En rangée, elle devenait sa voisine et la carte sautait de 250 px vers la
+   gauche au moment où l'on tape — le total quittait la colonne des montants (10.12.0, H-E1 : ce qui
+   apparaît selon une valeur ne pousse pas ce qu'on regarde). */
+.totals-box { margin-top: 14px; display: flex; flex-direction: column; align-items: flex-end; }
 .totals-box table { background: var(--primary-soft); border-radius: 12px; padding: 8px 6px; }
 .totals-box table td { padding: 4px 14px; text-align: end; font-variant-numeric: tabular-nums; color: #3d4a57; }
 .totals-box table tr.grand td { font-weight: 700; font-size: 18px; color: var(--primary); padding-top: 8px; letter-spacing: -.3px; }

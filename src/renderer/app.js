@@ -18,6 +18,10 @@
   // Windows. Proposer « iCloud Drive » à un utilisateur Windows, c'est le même défaut que le Finder
   // (E-14) — la seule phrase de l'assistant qui décide de la sécurité de ses données.
   const NUAGE = SUR_MAC ? 'iCloud Drive' : 'OneDrive';
+  // L'invite de l'Objet ne suppose aucun métier : « Ex : Audit de sécurité du réseau » s'affichait
+  // dans le devis d'une menuiserie (10.12.0), et le premier article du catalogue du métier
+  // (« Main-d'œuvre ») n'est pas un objet de devis. Une consigne vaut mieux qu'un exemple faux.
+  const exempleObjet = () => 'Ce que couvre cette pièce, en une phrase';
   // L'aide est écrite avec la touche du Mac (⌘) : ailleurs, elle se lit avec celle de l'ordinateur.
   // Un utilisateur Windows devait faire la conversion lui-même, sur la foi d'une note au bas du
   // tableau des raccourcis. Les bulles et les articles passent par ici, et nulle part ailleurs.
@@ -2677,7 +2681,7 @@
               ${dateFieldHtml(lbl('Date', 'ed.date'), 'date', doc.date, { ro: locked })}
               ${hasDue ? dateFieldHtml(isQ ? lbl('Valable jusqu\'au', 'ed.validUntil') : lbl('Échéance', 'ed.due'), 'dueDate', doc.dueDate, { ro: locked, quick: true }) : ''}
               ${hasDue ? '<div class="small muted" id="due-auto" hidden></div>' : ''}
-              <label class="field span-2">${lbl('Objet', 'ed.subject')}<input type="text" name="subject" value="${h(doc.subject)}" placeholder="Ex : Audit de sécurité du réseau" ${ro}></label>
+              <label class="field span-2">${lbl('Objet', 'ed.subject')}<input type="text" name="subject" value="${h(doc.subject)}" placeholder="${h(exempleObjet())}" ${ro}></label>
               ${field(lbl('Référence (optionnel)', 'ed.reference'), 'reference', doc.reference || '', 'text', ro)}
               <div class="field">${lbl('Affaire (optionnel)', 'ed.project')}
                 ${combo({ name: 'projectId', value: doc.projectId || '', items: projectItems(doc.clientId), placeholder: '— Aucune affaire —', search: 'Rechercher une affaire…', add: locked ? null : '+ Nouvelle affaire', ro: locked })}
@@ -3713,9 +3717,17 @@
         ${field('Référence (n° chèque, virement…)', 'reference', p0 ? p0.reference || '' : '')}
         <label class="field span-2">Note<input type="text" name="note" value="${h(p0 ? p0.note || '' : '')}"></label>
       </form>
-      ${!(data.accounts || []).length ? '<p class="small muted">Aucun compte de trésorerie n\'est créé : ce paiement ne sera rattaché à aucun compte. Tu peux en créer dans <a href="#/tresorerie">Trésorerie</a>.</p>' : ''}
+      ${/* 10.12.0 — l'assistant a demandé la banque et le RIB ; le paiement disait « aucun compte » et
+         n'offrait qu'un lien vers la Trésorerie, qui QUITTAIT la fenêtre et jetait la saisie. Le compte
+         se crée par-dessus, prérempli avec ce que l'entreprise a déjà donné. */''}${!(data.accounts || []).length ? `<div class="inline small muted mt" id="pf-sans-compte">Aucun compte de trésorerie : ce paiement ne sera rattaché à aucun compte.
+        <button type="button" class="btn btn-sm" id="pf-compte">${company().bank ? `Créer le compte « ${h(company().bank)} »…` : 'Créer un compte…'}</button></div>` : ''}
       <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
-      (root, close) => { $('#ok', root).onclick = async () => {
+      (root, close) => {
+        if ($('#pf-compte', root)) $('#pf-compte', root).onclick = () => accountForm(null, a => {
+          const z = $('#pf-sans-compte', root);
+          if (a && z) z.textContent = `Ce paiement sera rattaché au compte « ${a.name} ».`;
+        }, { name: company().bank ? `${company().bank} — compte courant` : '', bank: company().bank || '', rib: company().rib || '' });
+        $('#ok', root).onclick = async () => {
         const v = formValues($('#pf2', root));
         if (!(Number(v.amount) > 0)) return toast('Montant invalide.', true);
         if (!v.date) return toast('Date obligatoire.', true);
@@ -3765,7 +3777,7 @@
       $('#rv-body', root).innerHTML = r.lignes.length ? `
         <table class="list"><thead><tr><th>Date</th><th>Pièce</th><th>Échéance</th><th class="r">Montant</th><th class="r">Réglé</th><th class="r">Reste dû</th></tr></thead>
         <tbody>${r.lignes.map(l => `<tr class="clickable" data-go="${h(l.id)}"><td class="nw">${C.fmtDate(l.date)}</td>
-          <td class="nw">${h(l.number || '—')}${l.libelle ? `<div class="small muted">${h(l.libelle)}</div>` : ''}</td>
+          <td><span class="nw">${h(l.number || '—')}</span>${l.libelle ? `<div class="small muted">${h(l.libelle)}</div>` : ''}</td>
           <td class="nw">${l.dueDate ? C.fmtDate(l.dueDate) : '<span class="muted">—</span>'}${l.retard > 0 ? `<div class="small warn-text">${pl(l.retard, 'jour')} de retard</div>` : ''}</td>
           <td class="r nw">${C.money(l.montant, cur)}</td><td class="r nw">${l.regle ? C.money(l.regle, cur) : '<span class="muted">—</span>'}</td>
           <td class="r nw"><strong>${C.money(l.reste, cur)}</strong></td></tr>`).join('')}</tbody>
@@ -9031,8 +9043,8 @@
     moves: { sort: null, page: 1 } };
   const TRESO_TABS = [['position', 'Où j\'en suis'], ['prevision', 'Ce qui arrive'], ['mouvements', 'Mouvements'], ['rapprochement', 'Rapprochement']];
 
-  function accountForm(acc, done) {
-    const a = acc || { id: C.uid(), name: '', kind: 'banque', bank: '', rib: '', opening: 0, openingDate: C.today(), isDefault: !data.accounts.length, statementBalance: '', notes: '' };
+  function accountForm(acc, done, modele) {
+    const a = acc || { id: C.uid(), name: '', kind: 'banque', bank: '', rib: '', opening: 0, openingDate: C.today(), isDefault: !data.accounts.length, statementBalance: '', notes: '', ...(modele || {}) };
     modal(`<h2>${acc ? 'Modifier le compte' : 'Nouveau compte'}</h2>
       <p class="small muted">Le <b>solde de départ</b> est celui de ton relevé au jour où tu commences à suivre ce compte dans SkanFact. Tout ce qui est saisi après s'y ajoute.</p>
       <form id="af" class="grid-2">
