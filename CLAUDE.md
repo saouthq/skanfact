@@ -6329,7 +6329,15 @@ fixe (9.4.3) et sa table d'onglets nommait sept onglets disparus, sautés sans u
 - **Une cellule qui porte un CHAMP s'aligne par son champ.** La sonde des colonnes ne lisait que le
   texte des cellules : toutes les grilles de saisie lui échappaient, et « Qté » et « P.U. HT » étaient
   alignés à gauche au-dessus de chiffres alignés à droite, dans les cinq éditeurs de lignes. Elle lit
-  maintenant l'alignement du champ unique et visible d'une cellule sans texte.
+  maintenant l'alignement du champ unique et visible d'une cellule sans texte — et a trouvé aussitôt
+  deux colonnes de plus (« Jusqu'à » des Barèmes, « Jour limite » du calendrier fiscal).
+- **Une promesse sur ce qui part se vérifie contre le CODE** (8.0.0, re-trouvée quatre fois) :
+  l'assistant, l'article « Démarrer », le panneau et l'article de la licence écrivaient « rien n'est
+  envoyé sur Internet » ou « présentée qu'au service de mise à jour », alors que la licence se
+  vérifie aussi (8.4.0). Une phrase rassurante sur la confidentialité est la plus grave à laisser
+  fausse : c'est celle qu'on répète à un client. Le test lit les trois fichiers sans leurs
+  commentaires, interdit les formes absolues, et exige que l'accueil nomme les mises à jour ET la
+  licence.
 
 **Puis le rapport d'une entreprise qui a tenu SkanFact** (E-01 → E-14, une session QA qui a joué une
 vraie SUARL au régime réel, du premier écran au paquet du comptable). Ce qu'il a appris :

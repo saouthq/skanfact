@@ -3308,7 +3308,12 @@ t('8.0.0 : la clé embarquée est une vraie clé publique, l\'éditeur ne s\'ach
   // valeurs plutôt que sur la forme d'une ligne d'app.js. La règle, elle, ne bouge pas.)
   assert.strictEqual(core.pastilleLicence({ state: 'active', daysLeft: 14, label: 'Licence active' }).show, true, 'une licence active qui se termine doit s\'annoncer dans la barre');
   assert.ok(/setInterval\(relireLicence, 60 \* 60 \* 1000\)/.test(appSrc) && /addEventListener\('focus', relireLicence\)/.test(appSrc), 'la licence doit se relire toutes les heures et au retour au premier plan');
-  assert.ok(!/n'envoie jamais ta clé nulle part/.test(appSrc) && /présentée qu'au service de mise à jour/.test(appSrc), 'le panneau doit dire où la clé est présentée');
+  // Retournée en 10.12.0 : cette assertion gravait « présentée qu'au service de mise à jour », juste
+  // en 8.0.0 et incomplet depuis la 8.4.0 — la clé est AUSSI présentée à la vérification de licence
+  // (annonce à la plateforme, révocation). La règle : la phrase nomme LES DEUX, et jamais « nulle part ».
+  const phraseCle = (appSrc.match(/Ta clé n'est présentée [^<]{0,220}/) || [''])[0];
+  assert.ok(!/n'envoie jamais ta clé nulle part/.test(appSrc) && /mises à jour/.test(phraseCle) && /révoqu/.test(phraseCle),
+    'le panneau doit dire où la clé est présentée — les mises à jour ET la vérification de licence : ' + phraseCle);
   assert.ok(/\(key \? 'Licence enregistrée : ' : 'Clé retirée — '\)/.test(appSrc), 'retirer la clé ne doit pas annoncer « Licence enregistrée »');
   // L'e2e ouvre l'application DÉSARMÉE (override) pour créer ses clés, PUIS la vraie, armée, où sa
   // propre clé d'essai est refusée : les deux moitiés, sinon l'armement n'est prouvé nulle part.

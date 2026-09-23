@@ -87,7 +87,7 @@
     {
       id: 'bienvenue', title: 'Bienvenue dans SkanFact', sub: 'Deux minutes pour préparer ton entreprise',
       intro: `<p>SkanFact fabrique tes devis et tes factures, suit ce qu'on te doit et prépare ce que ton comptable te demandera.</p>
-        <p>Tout reste <b>sur cet ordinateur</b> : rien n'est envoyé sur Internet, personne d'autre n'y a accès. En contrepartie, c'est toi qui es responsable de tes sauvegardes — on s'en occupe à la dernière étape.</p>
+        <p>Tes documents, tes clients et tes chiffres restent <b>sur cet ordinateur</b> : aucun ne part sur Internet, et personne d'autre n'y a accès. SkanFact ne s'y connecte que pour chercher ses mises à jour et vérifier ta licence. En contrepartie, c'est toi qui es responsable de tes sauvegardes — on s'en occupe à la dernière étape.</p>
         <p class="small muted">Tu peux passer cet assistant et tout régler plus tard dans Paramètres. Rien n'est définitif : chaque réponse se modifie ensuite.</p>`
     },
     { id: 'entreprise', title: 'Ton entreprise', sub: 'Ce qui s\'imprimera en haut de chaque document' },

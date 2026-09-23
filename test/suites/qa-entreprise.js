@@ -450,4 +450,30 @@ module.exports = ({ t, assert, lireSource }) => {
       'fermer ne borne pas l\'attente, ne tue pas le processus ou avale le blocage');
     assert.ok(/module\.exports = \{\s*fermer,/.test(h), 'fermer n\'est pas exporté par le harnais');
   });
+
+  // Trouvé en rejouant le premier écran d'une vraie entreprise (10.12.0) : « Tout reste sur cet
+  // ordinateur : rien n'est envoyé sur Internet » — faux depuis la 8.4.0, où l'application annonce sa
+  // licence (la clé, l'identifiant et le NOM de l'ordinateur, le système, la version), et depuis la
+  // 6.7.0, où elle présente sa clé au relais de mise à jour. La 8.0.0 avait déjà corrigé « ta clé n'est
+  // envoyée nulle part » dans un panneau ; la même phrase vivait encore dans une bulle, et l'Aide de la
+  // lecture de photo se disait « la seule fonction qui envoie quelque chose ». Une promesse sur ce qui
+  // part se vérifie contre le code, et la phrase dit ce qui part — jamais « rien ».
+  t('Aucune phrase ne promet que rien ne part sur Internet : l\'accueil nomme les mises à jour et la licence', () => {
+    const sansCommentaires = (...c) => lireSource(...c).replace(/\/\*[\s\S]*?\*\//g, '')
+      .split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
+    const textes = ['app.js', 'guide.js', 'onboarding.js'].map(f => [f, sansCommentaires('src', 'renderer', f)]);
+    const FAUX = [
+      [/[Rr]ien n.{1,2}est envoyé sur [Ii]nternet/, '« rien n\'est envoyé sur Internet »'],
+      [/n.{1,2}est envoyée nulle part/, '« elle n\'est envoyée nulle part »'],
+      [/seule[^.<]{0,60}qui envoie quelque chose/, '« la seule fonction qui envoie quelque chose »'],
+      [/Rien ne transite par Internet/, '« rien ne transite par Internet »'],
+      [/présentée qu.{1,2}au service de mise à jour/, '« présentée qu\'au service de mise à jour »']
+    ];
+    const fautes = [];
+    textes.forEach(([f, s]) => FAUX.forEach(([re, nom]) => { if (re.test(s)) fautes.push(`${f} : ${nom}`); }));
+    assert.deepStrictEqual(fautes, [], 'une phrase promet que rien ne part, alors que la licence et les mises à jour se connectent');
+    const accueil = textes.find(([f]) => f === 'onboarding.js')[1];
+    const p = accueil.slice(accueil.indexOf('sur cet ordinateur</b>') - 200, accueil.indexOf('sur cet ordinateur</b>') + 400);
+    assert.ok(/mises à jour/.test(p) && /licence/.test(p), 'l\'écran d\'accueil ne dit pas ce qui se connecte : ' + p.slice(0, 200));
+  });
 };

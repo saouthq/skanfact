@@ -7754,7 +7754,7 @@
             <p class="small muted mt">Ces deux chiffres servent au calcul des congés acquis et à la réduction d'une absence non payée. <em>À VÉRIFIER avec ton comptable : la convention collective de ton secteur peut prévoir davantage de congés.</em></p>
           </div>
           <div class="panel"><h2>Barème progressif annuel ${info('pay.brackets')}</h2>
-            <table class="list compact"><thead><tr><th>De</th><th>Jusqu'à</th><th class="r" style="width:140px">Taux</th><th></th></tr></thead>
+            <table class="list compact"><thead><tr><th class="r">De</th><th class="r">Jusqu'à</th><th class="r" style="width:140px">Taux</th><th></th></tr></thead>
               <tbody id="rf-br"></tbody></table>
             <button type="button" class="btn btn-sm mt" id="add-br">+ Tranche</button>
             <p class="small muted mt">La dernière tranche doit rester ouverte (« au-delà ») : c'est elle qui s'applique aux revenus les plus élevés.</p>
@@ -7769,8 +7769,8 @@
       const drawBrackets = () => {
         let from = 0;
         $('#rf-br').innerHTML = brackets.map((b, i) => {
-          const row = `<tr data-i="${i}"><td class="nw">${C.money(from, cur)}</td>
-            <td>${b.upTo == null ? '<span class="muted">au-delà</span>' : `<input type="number" class="num" data-b="upTo" value="${b.upTo}" step="100" style="width:130px">`}</td>
+          const row = `<tr data-i="${i}"><td class="nw r">${C.money(from, cur)}</td>
+            <td class="r">${b.upTo == null ? '<span class="muted">au-delà</span>' : `<input type="number" class="num" data-b="upTo" value="${b.upTo}" step="100" style="width:130px">`}</td>
             <td class="r"><input type="number" class="num" data-b="rate" value="${b.rate}" step="0.5" min="0" max="100" style="width:90px"> %</td>
             <td class="r">${brackets.length > 1 ? `<button type="button" class="btn btn-ghost btn-sm" data-brm="${i}">✕</button>` : ''}</td></tr>`;
           from = b.upTo == null ? from : b.upTo;
@@ -10927,10 +10927,10 @@
               <td class="r"><button class="btn btn-sm" data-fundo="${h(f.id)}" data-flab="${h(f.label)}">Retirer « déposée »</button></td></tr>`).join('')}
           </tbody></table></div>` : ''}
         <div class="panel"><h2>Les échéances et leur réglage</h2>
-          <table class="list compact"><thead><tr><th>Déclaration</th><th>Périodicité</th><th style="width:110px">Jour limite</th><th style="width:90px">Active</th></tr></thead><tbody>
+          <table class="list compact"><thead><tr><th>Déclaration</th><th>Périodicité</th><th class="r" style="width:110px">Jour limite</th><th style="width:90px">Active</th></tr></thead><tbody>
             ${rules.map(r => `<tr><td><strong>${h(r.label)}</strong>${r.note ? `<div class="small muted">${h(r.note)}</div>` : ''}</td>
               <td class="small">${r.every === 'month' ? 'chaque mois' : r.every === 'year' ? `une fois par an (${MONTHS[(Number(r.month) || 1) - 1]})` : `${(r.months || []).map(m => MONTHS[m - 1]).join(', ')}`}</td>
-              <td><input type="number" class="num" data-day="${h(r.id)}" value="${Number(r.day) || 28}" min="1" max="31"></td>
+              <td class="r"><input type="number" class="num" data-day="${h(r.id)}" value="${Number(r.day) || 28}" min="1" max="31"></td>
               <td><label class="check"><input type="checkbox" data-active="${h(r.id)}" ${r.active !== false ? 'checked' : ''}></label></td></tr>`).join('')}
           </tbody></table>
         </div>`;
@@ -12082,7 +12082,7 @@
     // disparaît sans un mot fait chercher — mais il n'offre plus rien à activer.
     if (OCR_EN_PAUSE) {
       $('#ocr-panel').innerHTML = `<p class="small mb"><span class="badge émis">En pause</span> La lecture automatique d'une photo de facture est mise en pause : tant qu'il n'existe pas d'application SkanFact sur téléphone, photographier une facture pour la faire lire n'a pas de vrai usage. Le code reste prêt pour le jour où elle existera.</p>
-        <p class="small muted">Ce qui marche, hors ligne et sans rien envoyer : <b>« Joindre un justificatif… »</b> sur un achat, avant même de le saisir. <b>Aucune donnée ne quitte cet ordinateur.</b></p>`;
+        <p class="small muted">Ce qui marche, hors ligne et sans rien envoyer : <b>« Joindre un justificatif… »</b> sur un achat, avant même de le saisir. <b>Aucune pièce ne quitte cet ordinateur.</b></p>`;
       return;
     }
     let st = { hasKey: false, model: '' };
@@ -12102,7 +12102,7 @@
       </div>
       <p class="small muted mt">${st.hasKey
         ? 'La clé est stockée sur cet ordinateur seulement (<code>lecture-config.json</code>), jamais dans tes données ni dans tes sauvegardes. Chaque lecture coûte quelques centimes, facturés par le fournisseur de la clé.'
-        : 'Tant qu\'aucune clé n\'est saisie, <b>aucune donnée ne quitte cet ordinateur</b> : une photo de facture peut quand même être jointe à un achat comme justificatif, ce qui marche hors ligne.'}</p>
+        : 'Tant qu\'aucune clé n\'est saisie, <b>aucune pièce ne quitte cet ordinateur</b> : une photo de facture peut quand même être jointe à un achat comme justificatif, ce qui marche hors ligne.'}</p>
       <div class="inline mt">
         <button class="btn ${st.hasKey ? '' : 'btn-primary'}" id="ocr-key">${st.hasKey ? 'Changer la clé' : 'Activer la lecture de factures…'}</button>
         ${st.hasKey ? '<button class="btn btn-danger" id="ocr-off">Désactiver et effacer la clé</button>' : ''}
@@ -12209,7 +12209,7 @@
            ${st.key ? '<button type="button" class="btn btn-ghost" id="lic-clear">Retirer la clé</button>' : ''}
          </div>
          <p class="small muted mt"><strong>Tes données t'appartiennent, licence ou pas.</strong> Même expirée, tu peux tout lire, imprimer, exporter et envoyer à ton comptable. Seule la création de nouvelles pièces attend le renouvellement.</p>
-         <p class="small muted">La vérification se fait <strong>sur cet ordinateur</strong>, sans aucune connexion. Ta clé n'est présentée qu'au service de mise à jour de SkanFact, jamais à un tiers.</p>`;
+         <p class="small muted">La vérification se fait <strong>sur cet ordinateur</strong>, sans aucune connexion. Ta clé n'est présentée qu'aux services de SkanFact — les mises à jour, et la vérification qu'elle n'a pas été révoquée —, jamais à un tiers.</p>`;
     // La porte de l'éditeur — discrète exprès : elle ne concerne qu'une personne, et elle n'existe
     // que tant que l'application n'est PAS armée (`libre`). Une fois la clé publique embarquée, plus
     // aucun client ne la voit ; sur le poste de l'éditeur, le panneau « Éditeur » a pris le relais.

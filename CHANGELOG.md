@@ -260,6 +260,12 @@ clics et de vraies frappes. Ce qu'elle a trouvé, corrigé :
 - Trouvé en corrigeant : la page Paie d'une entreprise sans salarié montrait deux boutons verts pour
   le même geste (« + Salarié » en haut, « + Créer mon premier salarié » dessous). Seul le second
   reste vert.
+- **Quatre phrases promettaient que rien ne part sur Internet** — le premier écran de l'assistant,
+  l'article « Démarrer », le panneau de la licence (« n'est présentée qu'au service de mise à jour »)
+  et l'article de la licence. SkanFact se connecte pour chercher ses mises à jour et pour vérifier que
+  la licence n'a pas été révoquée ; il envoie alors la clé, le nom et le système de l'ordinateur et
+  sa version. Les phrases le disent, et redisent ce qui ne part jamais : tes documents, tes clients,
+  tes chiffres.
 
 **L'application entreprise mesurée en entier.** Ses instruments ne regardaient qu'une partie de
 l'application : aucun n'ouvrait une fiche ni une pièce par statut, et l'un visitait une adresse qui
@@ -268,7 +274,8 @@ fiche, chaque pièce par type et par statut, et chaque fenêtre qu'un bouton ouv
 sombre, à deux largeurs — 296 écrans par passe. Il a trouvé « + Créer mon premier contrat » (plus
 haut), le relevé de compte d'un client qui cachait « Reste dû » et son total derrière un défilement
 de côté (la fenêtre s'élargit), et les titres « Qté » et « P.U. HT » des grilles de lignes, alignés à
-gauche au-dessus de chiffres alignés à droite, dans les cinq éditeurs qui en ont.
+gauche au-dessus de chiffres alignés à droite, dans les cinq éditeurs qui en ont — et, dans les
+Barèmes et le calendrier fiscal, « De », « Jusqu'à » et « Jour limite ».
 
 **La console de l'éditeur**
 - **Le Journal écrivait « commande.creee »** en chasse fixe : les cinq événements de la vente en ligne
