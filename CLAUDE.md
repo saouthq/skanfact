@@ -101,6 +101,8 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Un **contrat entre deux moitiés** se relit champ par champ contre le FORMULAIRE, jamais contre le commentaire qui le décrit | 10.9.1 — six champs annoncés, huit envoyés |
 | Un **exemple complet** est un test : il porte ce qu'aucun jeu minimal ne porte | 10.12.0 — quatre défauts du moteur trouvés en remplissant l'exemple |
 | Un **garde-fou neuf change le geste des parcours** : l'e2e répond à la question, comme un humain | 10.12.0 |
+| Un **instrument de test humain** doit ouvrir le produit qu'ont les clients — sinon on juge un autre objet | 10.12.0 — « v44.4.1 » : Electron lancé par `src/main.js` |
+| Un **rappel qui sert à deux choses** reçoit les arguments des deux : seule une chaîne est une colonne | 10.12.0 — onze listes perdaient leur tri à chaque fiche enregistrée ; 7.17.0 |
 
 **Les deux applications**
 
@@ -160,6 +162,8 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Quand quelqu'un **n'arrive pas à fournir** ce qu'on lui demande, chercher d'abord si on le lui a rendu possible | 10.9.2 |
 | Deux objets qui portent le **même mot** finissent confondus, y compris par leur auteur | 10.9.2 — l'empreinte d'un cabinet et celle d'une licence |
 | `navigate()` vers la page courante ne redessine **rien** : `vers()` | 7.15.0, 7.29.0 |
+| Une mise en page qui dépend de sa **propre barre de défilement** a deux états stables : décider SANS elle | 10.12.0 — la barre latérale, un pixel, une ligne de plus |
+| Un **prix posé par le logiciel** n'est pas un prix décidé : l'étape se coche sur un geste de l'utilisateur | 10.12.0 ; 7.18.0 |
 | Un état lu une fois au démarrage **se périme** | 7.1.x, 8.0.0 |
 | **Un seul bouton principal** par écran, et c'est l'étape suivante — calculée, jamais posée à la main | 10.12.0 (U-11) |
 | Une **colonne collante** réserve sa largeur : elle ne recouvre jamais une donnée | 10.12.0 (U-02) |
@@ -6008,12 +6012,59 @@ Pièges de test, tous déjà écrits ici et re-rencontrés :
 - **`e2e:retenue` était tombé depuis la 10.2.0**, qui a rangé « Modifier la fiche » du client dans le
   menu « Actions » : le parcours cherchait encore `#edit`. Un parcours qu'on ne relance pas se périme
   sans rien dire (7.28.0) — et c'est le relancement de TOUS les parcours qui l'a montré.
+- **`e2e:console-rendu` aussi, depuis la 10.9.0** — mais là, c'est son garde-fou qui a parlé : « la
+  console offre 11 onglets et le parcours en connaît 10 ». L'onglet « Commandes » entre dans la
+  mesure avec une vraie commande, créée par la route d'achat PUBLIQUE ; le prestataire de paiement
+  est remplacé dans le serveur de test comme Resend l'est — pour ce seul parcours (`servir({ konnect:
+  true })`) : `e2e:console` garde le décor qu'il a toujours eu, achat en ligne fermé.
 - **Des données qui ne discriminent pas ne prouvent rien** (10.0.0) : la preuve du classement des
   articles d'Aide restait verte, parce que l'article attendu était déjà premier dans l'ordre du
   fichier. Le test vérifie que l'ordre naturel NE donne PAS la réponse avant de juger le classement.
 - **Trois assertions recopiaient une forme** et sont tombées sur du code juste — la branche « action
   seule » de `rowmenu.js` (une fenêtre de 400 caractères), T-34 et T-10 : retournées vers la règle
   qu'elles portaient, comme deux autres au lot A qui décrivaient l'état du jour.
+
+**Puis l'app entreprise, parcourue de la même façon** (demandé par Skander : « continue tes tests
+directement sur l'app entreprise comme tu as fait avec l'app cabinet »). Ce que ça a appris :
+
+- **Le lanceur du test humain ouvrait une application qu'aucun client n'a.** `lancer.sh` démarrait
+  `src/main.js` : Electron ne trouvait pas le package.json, `app.getVersion()` rendait SA version
+  (« v44.4.1 » en bas de la barre latérale), et les mises à jour comparaient une version inexistante.
+  Il lance la RACINE, comme `npm start` et les e2e. **Avant de juger ce qu'on voit, vérifier que c'est
+  bien le produit qu'on regarde** — un instrument de test qui déforme l'objet est pire qu'aucun. Au
+  passage, les deux `app.getVersion()` du Cabinet (demande de licence, annonce à la plateforme)
+  contredisaient son propre en-tête : `VERSION`, partout.
+- **Un prix posé par le logiciel n'est pas un prix décidé.** « Remplir ton catalogue » se cochait
+  tout seul pour TOUS les métiers : la règle de la 7.18.0 (« un prix non nul suffit ») supposait des
+  exemples à 0, or les quinze métiers en portent. Le test de la 7.18.0 prenait `fromSetup` à 120 DT
+  pour « un prix ajusté » — les deux étaient indiscernables dans ses données (10.0.0). La DÉCISION est
+  l'enregistrement de la fiche (`catalogForm` retire `fromSetup`), le test tourne sur les vrais
+  catalogues des métiers, et la liste montre « exemple » tant que rien n'est décidé.
+- **Un rappel qui sert à deux choses reçoit les arguments des deux.** Onze listes redessinent par
+  `draw(sortKey)`, et ce même `draw` est le `done` des fenêtres : `catalogForm(c, draw)` le rappelait
+  avec la prestation enregistrée, prise pour une colonne — le tri disparaissait, la liste revenait
+  page 1. C'est le jumeau inverse de la 7.17.0 (`bindSort(…, () => draw())` qui JETAIT la colonne) :
+  seule une chaîne est une colonne, et le test compte les onze gardes.
+- **Une mise en page qui dépend de sa propre barre de défilement a deux états stables.** La barre
+  latérale débordait d'un pixel ; la barre de défilement (10 px sous Linux, 17 sous Windows) faisait
+  passer « Facturation récurrente » à la ligne, ce qui entretenait le débordement. On décide sur la
+  mise en page SANS barre (`ajusterNav` retire la classe avant de mesurer), et on remesure au
+  redimensionnement — sans quoi une fenêtre rétrécie cacherait le bas de la liste.
+- **Une légende qui renvoie à une marque absente est une phrase que rien ne tient** (7.3.0). La
+  légende « * obligatoire » se DÉDUIT de la classe (7.20.0) ; l'étoile, elle, exige un libellé qui
+  soit un ÉLÉMENT (`span:first-child::after`) — le piège noté en 8.1.0, jamais tenu par un test.
+  Quinze libellés nus dans les deux applications, dont la fiche client, la plus ouverte de toutes ;
+  `lbl(texte)` sans clé de bulle rend lui aussi un texte nu, et le test le refuse.
+
+**Et la console, par le parcours qui la mesure** : garnir l'onglet Commandes (10.9.0) a fait parler
+la sonde du texte coupé et les captures. Trois tables de mots de la page (`NOM_LIGNE`, `ARTICLE`,
+`ACTIONS`) avaient oublié l'écran neuf — « 1 ligne », « Ouvrir commandes » —, `NOM_EVT` ne nommait
+aucun des cinq événements de la vente en ligne (« commande.creee » en chasse fixe), et les phrases
+des alertes et du journal écrivaient « 2026-10-14 » et « 1822.1 TND » (`fmtJour`, `fmtMontant` côté
+module). **Un écran ajouté se confronte à TOUTES les tables qui le nomment** — le test de la 10.9.0
+en tenait deux sur cinq. Et le plafond fixe de 260 px d'une colonne de texte est remplacé par des
+PARTS proportionnelles à son plus long texte : des parts qui font 100 % laissent aux dates et aux
+montants exactement leur contenu, et un texte n'est coupé que si tous le sont.
 
 ## Pistes pour la suite (non demandées)
 

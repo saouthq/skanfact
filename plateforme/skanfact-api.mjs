@@ -1015,6 +1015,15 @@ export async function cleServeur(env) {
 // qui reçoit sa clé depuis la console ou depuis SkanFact lit les mêmes phrases. Un test compare
 // la phrase d'activation aux deux endroits.
 const fmtJour = iso => (dateValide(iso) ? iso.slice(8, 10) + '/' + iso.slice(5, 7) + '/' + iso.slice(0, 4) : '');
+// 10.12.0 — un montant de PHRASE s'écrit comme la page l'écrit : « 822,100 TND ». Le journal et
+// « Pourquoi ça compte » recevaient « 822.1 TND », qui se lit huit cent vingt-deux MILLE chez un
+// lecteur français (10.10.0, la même faute côté Cabinet) — et ces phrases-là s'affichent telles
+// quelles. Un montant absent ne devient pas « 0,000 » : il disparaît de la phrase.
+const fmtMontant = (n, devise) => {
+  const x = Number(n);
+  if (n == null || n === '' || !isFinite(x)) return '';
+  return x.toFixed(3).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + (devise ? ' ' + devise : '');
+};
 export function mailLicence(o) {
   const x = o || {};
   const fin = x.exp ? ', valable jusqu\'au ' + fmtJour(x.exp) : ', sans limite de durée';
@@ -1338,13 +1347,15 @@ export function alertesPlateforme(d, aujourdhui, seuils) {
     if (l.revoquee_le || l.remplacee_par || !l.fin) return;
     const reste = dateValide(jour) && dateValide(l.fin) ? joursEntre(jour, l.fin) : null;
     if (reste === null) return;
-    if (reste < 0) add('attention', 'Licence expirée', nom, 'Finie le ' + l.fin + '. Un renouvellement se propose, il ne se devine pas.', 'licences', 'exp:' + l.id, cli);
-    else if (reste <= s.alerte_fin) add('attention', 'Licence qui se termine', nom, 'Fin le ' + l.fin + ' (' + reste + ' jour' + (reste === 1 ? '' : 's') + ').', 'licences', 'fin:' + l.id, cli);
+    // 10.12.0 — toutes les dates de ces phrases passent par `fmtJour` : « Fin le 2026-10-14 » est le
+    // format d'un fichier, pas d'un écran (10.6.0), et la colonne où il s'affiche est celle qu'on lit.
+    if (reste < 0) add('attention', 'Licence expirée', nom, 'Finie le ' + fmtJour(l.fin) + '. Un renouvellement se propose, il ne se devine pas.', 'licences', 'exp:' + l.id, cli);
+    else if (reste <= s.alerte_fin) add('attention', 'Licence qui se termine', nom, 'Fin le ' + fmtJour(l.fin) + ' (' + reste + ' jour' + (reste === 1 ? '' : 's') + ').', 'licences', 'fin:' + l.id, cli);
     // Le jalon : une licence annuelle se NÉGOCIE en amont. À trente jours on presse, à soixante on
     // prépare — et le ton d'un appel n'est pas le même. Calme exprès : ce n'est pas une urgence,
     // c'est une occasion, et une occasion criée en rouge apprend à ignorer le rouge (8.0.1).
     else if (s.jalon_renouvellement > 0 && reste <= s.jalon_renouvellement) {
-      add('calme', 'Renouvellement à préparer', nom, 'Fin le ' + l.fin + ' (' + reste + ' jours) : le temps d\'en parler sans presser.', 'licences', 'jal:' + l.id, cli);
+      add('calme', 'Renouvellement à préparer', nom, 'Fin le ' + fmtJour(l.fin) + ' (' + reste + ' jours) : le temps d\'en parler sans presser.', 'licences', 'jal:' + l.id, cli);
     }
   });
 
@@ -1366,8 +1377,8 @@ export function alertesPlateforme(d, aujourdhui, seuils) {
   (o.commandes || []).forEach(c => {
     if (c.etat !== 'ouverte' || !c.paiement_le) return;
     add('alerte', 'Paiement encaissé, clé non partie', c.nom || c.id,
-      c.montant_ttc + ' ' + (c.devise || '') + ' payés le ' + String(c.paiement_le).slice(0, 10)
-      + (c.echec ? ' — ' + String(c.echec).slice(0, 160) : '') + ' Le client attend.',
+      fmtMontant(c.montant_ttc, c.devise) + ' payés le ' + fmtJour(String(c.paiement_le).slice(0, 10))
+      + (c.echec ? ' — ' + String(c.echec).slice(0, 160).replace(/[\s.]+$/, '') : '') + '. Le client attend.',
       'commandes', 'cmd:' + c.id);
   });
 
@@ -1384,7 +1395,7 @@ export function alertesPlateforme(d, aujourdhui, seuils) {
       if (mut <= s.silence_client) return;
       const quoi = APPS[appDe(p.app)] || APPS.entreprise;
       add('attention', 'Client sous licence devenu muet', p.client || p.device_nom || p.device_id,
-        quoi + ' — plus un signe depuis le ' + vu + ' (' + mut + ' jours). Désinstallation, réinstallation ratée ou réseau coupé : dans les trois cas, on appelle.',
+        quoi + ' — plus un signe depuis le ' + fmtJour(vu) + ' (' + mut + ' jours). Désinstallation, réinstallation ratée ou réseau coupé : dans les trois cas, on appelle.',
         'parc', 'muet:' + String(p.device_id || '') + ':' + appDe(p.app), p.client_id ? 'client:' + p.client_id : '');
     });
   }
@@ -1428,10 +1439,10 @@ export function alertesPlateforme(d, aujourdhui, seuils) {
     const id = 'essai:' + String(a.device_id || '') + ':' + appDe(a.app);
     if (reste < 0) {
       add('attention', 'Essai terminé', qui,
-        quoi + ' — essai commencé vers le ' + debut + ', fini vers le ' + fin + '. Personne n’a acheté.', 'parc', id, id);
+        quoi + ' — essai commencé vers le ' + fmtJour(debut) + ', fini vers le ' + fmtJour(fin) + '. Personne n’a acheté.', 'parc', id, id);
     } else {
       add('alerte', 'Essai qui se termine', qui,
-        quoi + ' — il reste ' + reste + ' jour' + (reste === 1 ? '' : 's') + ' (vers le ' + fin + '). C’est maintenant qu’on appelle.', 'parc', id, id);
+        quoi + ' — il reste ' + reste + ' jour' + (reste === 1 ? '' : 's') + ' (vers le ' + fmtJour(fin) + '). C’est maintenant qu’on appelle.', 'parc', id, id);
     }
   });
 
@@ -1443,7 +1454,7 @@ export function alertesPlateforme(d, aujourdhui, seuils) {
     const r = String(su.rappel || '').slice(0, 10);
     if (!r || !dateValide(r) || !dateValide(jour) || r > jour) return;
     add('alerte', 'Rappel prévu aujourd\'hui', su.nom || sujet,
-      'Tu avais noté de rappeler le ' + r + (su.note ? ' — ' + String(su.note).slice(0, 120) : '') + '.',
+      'Tu avais noté de rappeler le ' + fmtJour(r) + (su.note ? ' — ' + String(su.note).slice(0, 120) : '') + '.',
       sujet.indexOf('essai:') === 0 ? 'essais' : 'clients', 'rap:' + sujet);
   });
 
@@ -1457,7 +1468,7 @@ export function alertesPlateforme(d, aujourdhui, seuils) {
   const exp = String(o.dernierExport || '').slice(0, 10);
   if (aPerdre && !exp) add('alerte', 'La base n\'a jamais été exportée', 'Plateforme', 'Un export range la base entière dans ~/.skanfact/. Sans lui, une base perdue emporte toutes les ventes.', 'reglages', 'exp:base');
   else if (aPerdre && dateValide(jour) && dateValide(exp) && joursEntre(exp, jour) > s.alerte_export) {
-    add('attention', 'Export de la base ancien', 'Plateforme', 'Dernier export le ' + exp + '.', 'reglages', 'exp:base');
+    add('attention', 'Export de la base ancien', 'Plateforme', 'Dernier export le ' + fmtJour(exp) + '.', 'reglages', 'exp:base');
   }
 
   return out.sort((a, b) => (NIVEAUX[a.niveau] - NIVEAUX[b.niveau]) || (a.quoi < b.quoi ? -1 : a.quoi > b.quoi ? 1 : 0));
@@ -1861,7 +1872,7 @@ export function atelierLicences(env, valeurs) {
       venteId, o.client.id, id, o.e.montant, null, o.e.devise, o.e.payeeLe || null, o.e.payeeLe ? o.e.moyen : null);
     await journaliser(env, o.motif ? 'licence.' + o.motif : 'licence.emise', {
       client_id: o.client.id, licence_id: id,
-      detail: libelleLicence(o.e) + (o.e.exp ? ' jusqu\'au ' + fmtJour(o.e.exp) : ' à vie') + ' — ' + o.e.montant + ' ' + o.e.devise + ' HT'
+      detail: libelleLicence(o.e) + (o.e.exp ? ' jusqu\'au ' + fmtJour(o.e.exp) : ' à vie') + ' — ' + fmtMontant(o.e.montant, o.e.devise) + ' HT'
         + (o.remplace ? ' (remplace ' + o.remplace.id + ')' : '')
     });
     const mail = o.e.payeeLe ? await envoyerSiPossible(id, o.maintenant) : { envoye: false, raison: 'la vente n\'est pas encore payée' };
@@ -2376,7 +2387,7 @@ async function repondreAdmin(r, request, env) {
     if (!ok) return json({ erreur: 'La base a refusé l\'écriture du suivi.' }, 500);
     await journaliser(env, 'suivi.note', {
       client_id: r.action === 'clients' ? r.id : null,
-      detail: nom + (issue ? ' — ' + (issue === 'gagne' ? 'gagné' : 'perdu : ' + motif) : '') + (rappel ? ' — rappeler le ' + rappel : '')
+      detail: nom + (issue ? ' — ' + (issue === 'gagne' ? 'gagné' : 'perdu : ' + motif) : '') + (rappel ? ' — rappeler le ' + fmtJour(String(rappel).slice(0, 10)) : '')
     });
     return json({ ok: true, id, sujet }, 201);
   }
@@ -2528,7 +2539,7 @@ async function repondreAdmin(r, request, env) {
       if (cmd.paiement_le) return json({ erreur: 'Cette commande est PAYÉE : elle se livre (« Redemander au prestataire »), ou elle se rembourse — elle ne s\'abandonne pas.' }, 409);
       if (cmd.etat !== 'ouverte') return json({ erreur: 'Cette commande n\'est plus ouverte.' }, 409);
       await executer('UPDATE commandes SET etat = ? WHERE id = ?', 'abandonnee', cmd.id);
-      await journaliser(env, 'commande.abandonnee', { detail: cmd.nom + ' — ' + cmd.montant_ttc + ' ' + cmd.devise + ' TTC (' + cmd.id + ')' });
+      await journaliser(env, 'commande.abandonnee', { detail: cmd.nom + ' — ' + fmtMontant(cmd.montant_ttc, cmd.devise) + ' TTC (' + cmd.id + ')' });
       return json({ ok: true });
     }
     return json({ erreur: 'Introuvable.' }, 404);
@@ -2543,7 +2554,7 @@ async function repondreAdmin(r, request, env) {
       if (!dateValide(date)) return json({ erreur: 'La date de paiement n\'est pas une date (AAAA-MM-JJ).' }, 400);
       if (v.payee_le) return json({ erreur: 'Cette vente est déjà marquée payée le ' + v.payee_le + '.' }, 409);
       await executer('UPDATE ventes SET payee_le = ?, moyen = ? WHERE id = ?', date, texteNet(corps.moyen, 40), v.id);
-      await journaliser(env, 'vente.payee', { client_id: v.client_id, licence_id: v.licence_id, detail: String(v.montant_ht) + ' ' + v.devise + (corps.moyen ? ' (' + texteNet(corps.moyen, 40) + ')' : '') });
+      await journaliser(env, 'vente.payee', { client_id: v.client_id, licence_id: v.licence_id, detail: fmtMontant(v.montant_ht, v.devise) + (corps.moyen ? ' (' + texteNet(corps.moyen, 40) + ')' : '') });
       const mail = await envoyerSiPossible(v.licence_id, maintenant);
       return json({ ok: true, payee_le: date, mail });
     }
@@ -2861,7 +2872,7 @@ async function finaliserCommande(env, valeurs, cmd, maintenant) {
 
   if (!cmd.paiement_le) {
     await executer('UPDATE commandes SET paiement_le = ? WHERE id = ?', maintenant, cmd.id);
-    await journaliser(env, 'commande.payee', { detail: cmd.nom + ' — ' + cmd.montant_ttc + ' ' + cmd.devise + ' TTC (' + cmd.id + ')' });
+    await journaliser(env, 'commande.payee', { detail: cmd.nom + ' — ' + fmtMontant(cmd.montant_ttc, cmd.devise) + ' TTC (' + cmd.id + ')' });
   }
 
   // Le client n'existe qu'à partir d'ici : une commande abandonnée ne laisse aucune fiche derrière
@@ -2905,7 +2916,7 @@ async function finaliserCommande(env, valeurs, cmd, maintenant) {
     'payee', res.corps.licenceId, client.id, cmd.id);
   await journaliser(env, 'commande.livree', {
     client_id: client.id, licence_id: res.corps.licenceId,
-    detail: libelleLicence(n.e) + ' — ' + cmd.montant_ttc + ' ' + cmd.devise + ' TTC, payée en ligne'
+    detail: libelleLicence(n.e) + ' — ' + fmtMontant(cmd.montant_ttc, cmd.devise) + ' TTC, payée en ligne'
       + (res.corps.mail && res.corps.mail.envoye ? ' — clé envoyée à ' + cmd.email : ' — clé NON envoyée : ' + ((res.corps.mail || {}).raison || 'raison inconnue'))
   });
   // Le mail peut échouer alors que la licence existe : le client a payé et sa clé est là, mais elle
@@ -3005,7 +3016,7 @@ async function repondreAchat(r, request, env) {
     }
     await executer('UPDATE commandes SET paiement_ref = ? WHERE id = ?', init.ref, id);
     await journaliser(env, 'commande.creee', {
-      detail: n.c.nom + ' — ' + (OFFRES[n.c.offre] || {}).label + ', ' + m.ttc + ' ' + devise + ' TTC'
+      detail: n.c.nom + ' — ' + (OFFRES[n.c.offre] || {}).label + ', ' + fmtMontant(m.ttc, devise) + ' TTC'
         + (parrain ? ' (parrainé, −' + remise + ' %)' : '') + ' — ' + id
     });
     return rep({ commande: id, payUrl: init.payUrl, montant: m.ttc, devise, detail: m, parraine: !!parrain }, 201);
@@ -3371,8 +3382,14 @@ const CONSOLE_HTML = `<!doctype html>
      société tunisien fait soixante caractères, et il portait à lui seul les 524 px de débordement
      de l'écran Licences. Le texte entier reste au survol — ce qu'on cache à l'œil doit rester
      lisible, sinon on a remplacé un débordement par une perte (9.4.5, « td.tronq » du Cabinet). */
-  td.tronq{max-width:270px}
-  td.tronq .cut{display:block;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  /* 10.12.0 — plus de plafond FIXE. À 260 px, le détail d'un événement était coupé pendant que
+     Quand et Quoi, juste à côté, gardaient 55 px de blanc chacune (mesuré par la sonde du texte
+     coupé, le premier jour où le Journal a porté une commande en ligne). Les colonnes de texte se
+     PARTAGENT ce que les colonnes serrées laissent : leur part vient du tableau (dessinerTable),
+     « max-width:0 » est ce qui permet à une cellule de descendre sous la largeur de son texte, et
+     le plancher garde un nom lisible quand le tableau défile de toute façon (H-9 du Cabinet). */
+  td.tronq{max-width:0;min-width:120px}
+  td.tronq .cut{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   /* Ce que le tableau ne montre pas, il le dit. */
   .colmsg{padding:8px 14px;border-top:1px solid var(--line);font-size:12.5px;color:var(--ink2);
           display:flex;gap:10px;align-items:center;flex-wrap:wrap}
@@ -4416,15 +4433,23 @@ const CONSOLE_HTML = `<!doctype html>
     'base.exportee': 'Base exportée',
     'base.export.echec': 'Export de la base en échec',
     'reglages.changes': 'Réglages modifiés',
-    'suivi.note': 'Contact noté'
+    'suivi.note': 'Contact noté',
+    // 10.12.0 — les cinq événements de la commande en ligne (10.9.0) n'avaient pas de nom : le
+    // Journal écrivait « commande.creee » en chasse fixe, sans accent, le jour même où la vente en
+    // ligne est arrivée. Un écran ajouté sans ses mots, c'est un écran qui parle au développeur.
+    'commande.creee': 'Commande en ligne créée',
+    'commande.refusee': 'Paiement en ligne refusé',
+    'commande.payee': 'Commande payée en ligne',
+    'commande.livree': 'Commande livrée',
+    'commande.abandonnee': 'Commande abandonnée'
   };
   var nomEvt = function (v) {
     return NOM_EVT[v] ? '<span title="' + h(v) + '">' + h(NOM_EVT[v]) + '</span>' : '<span class="mono">' + h(v) + '</span>';
   };
   // L'article d'un titre d'onglet. « Ouvrir licences » se lit comme une commande de terminal ;
   // un libellé décrit l'écran d'ARRIVÉE, dans la langue où on le nommerait à voix haute (7.29.0).
-  var ARTICLE = { activations: 'les ', alertes: 'les ', cabinets: 'les ', clients: 'les ', essais: 'les ',
-    evenements: 'le ', licences: 'les ', parc: 'le ', reglages: 'les ', ventes: 'les ' };
+  var ARTICLE = { activations: 'les ', alertes: 'les ', cabinets: 'les ', clients: 'les ', commandes: 'les ',
+    essais: 'les ', evenements: 'le ', licences: 'les ', parc: 'le ', reglages: 'les ', ventes: 'les ' };
   var article = function (vue) {
     return (ARTICLE[vue] || '') + String(TITRES[vue] || vue).toLowerCase();
   };
@@ -4834,7 +4859,8 @@ const CONSOLE_HTML = `<!doctype html>
     alertes: ['décision', 'décisions'], parc: ['version installée', 'versions installées'],
     essais: ['essai en cours', 'essais en cours'], licences: ['licence', 'licences'],
     ventes: ['vente', 'ventes'], cabinets: ['cabinet', 'cabinets'], clients: ['client', 'clients'],
-    activations: ['activation', 'activations'], evenements: ['événement', 'événements']
+    activations: ['activation', 'activations'], evenements: ['événement', 'événements'],
+    commandes: ['commande', 'commandes']
   };
   // Les gestes de CHAQUE écran. « Émettre » vit sur le tableau de bord et sur Licences (c'est de
   // là qu'on vend), « Nouveau client » partout où l'on peut avoir besoin d'en créer un avant
@@ -4845,7 +4871,7 @@ const CONSOLE_HTML = `<!doctype html>
   var ACTIONS = {
     alertes: ['emettre', 'client'], licences: ['emettre', 'client'],
     clients: ['emettre', 'client'], cabinets: ['emettre'],
-    ventes: [], parc: [], activations: [], evenements: [],
+    ventes: [], commandes: [], parc: [], activations: [], evenements: [],
     // Un essai qui devient client passe par « Nouveau client… » : c'est le geste SUIVANT de cet
     // écran, et il n'y en a pas d'autre (7.27.0).
     essais: ['client'], reglages: []
@@ -5470,11 +5496,34 @@ const CONSOLE_HTML = `<!doctype html>
         });
       }
 
+      // LES COLONNES DE TEXTE se partagent ce que les colonnes serrées laissent, chacune à
+      // proportion de son plus long texte (10.12.0). Des parts qui font 100 % laissent aux dates, aux
+      // montants et aux états EXACTEMENT leur contenu : plus un pixel de blanc à côté d'un texte
+      // coupé. Et des parts PROPORTIONNELLES font qu'un texte n'est coupé que si tous le sont — une
+      // part égale laisserait un nom court entouré de vide à côté d'un détail coupé, soit le défaut
+      // qu'on corrige, déplacé d'une colonne. Le compte se fait sur les lignes AFFICHÉES : c'est
+      // elles que la largeur doit servir.
+      var parts = {};
+      var souples = cols.filter(function (c) { return c.tr; });
+      if (souples.length) {
+        var besoins = souples.map(function (c) {
+          var n = String(c.t).length;
+          visibles.forEach(function (r) {
+            var t = rendu(c, r);
+            n = Math.max(n, String(t == null ? '' : t).replace(/<[^>]*>/g, '').length);
+          });
+          return Math.max(n, 1);
+        });
+        var somme = besoins.reduce(function (a, b) { return a + b; }, 0);
+        souples.forEach(function (c, i) { parts[c.k] = Math.round(1000 * besoins[i] / somme) / 10; });
+      }
+
       var html = '<div class="wrap"><table><thead><tr>' +
         cols.map(function (c) {
           var cl = (c.n ? 'num' : '') + (c.a ? ' acts' : '') + (c.a ? '' : ' tri');
           var actif = tri && tri.k === c.k;
-          return '<th' + (cl.trim() ? ' class="' + cl.trim() + '"' : '') + (c.a ? '' : ' data-tri="' + h(c.k) + '" tabindex="0" role="button"')
+          return '<th' + (cl.trim() ? ' class="' + cl.trim() + '"' : '') + (parts[c.k] ? ' style="width:' + parts[c.k] + '%"' : '')
+            + (c.a ? '' : ' data-tri="' + h(c.k) + '" tabindex="0" role="button"')
             + (actif ? ' aria-sort="' + (tri.sens > 0 ? 'ascending' : 'descending') + '"' : '') + '>' + c.t
             + (c.a ? '' : '<span class="fl" aria-hidden="true">' + (actif ? (tri.sens > 0 ? '\\u2191' : '\\u2193') : '\\u21c5') + '</span>')
             + (c.i ? bulle(c.i) : '') + '</th>';

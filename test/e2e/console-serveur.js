@@ -14,22 +14,33 @@ const { baseD1 } = require('../d1-sqlite');
 const MODULE = path.join(__dirname, '..', '..', 'plateforme', 'skanfact-api.mjs');
 const SECRET = 'un-secret-d-administration-bien-assez-long';
 
-async function servir() {
+// `opts.konnect` (10.12.0) : le prestataire de paiement, pour le seul parcours qui le demande. La
+// console a un onglet « Commandes » depuis la 10.9.0, et l'instrument de rendu ne le connaissait
+// pas — son garde-fou (« un onglet neuf ne serait mesuré par personne ») l'a dit. Une commande ne
+// naît que par la VRAIE route d'achat, qui appelle le prestataire : c'est lui qu'on remplace ici,
+// comme Resend, et rien d'autre. `e2e:console` ne le demande pas : son achat en ligne reste fermé.
+async function servir(opts = {}) {
   const P = await import('file://' + MODULE);
   const master = L.generateKeys();
   const srv = L.generateKeys();
-  const mails = [];
+  const mails = [], paiements = [];
   // Resend, et lui seul, est intercepté. Tout autre appel sortant du worker serait une faute — et
   // il passerait par le vrai réseau, donc échouerait bruyamment.
   const vraiFetch = globalThis.fetch;
   globalThis.fetch = async (url, o) => {
     if (String(url) === P.MAIL_API) { mails.push(JSON.parse(o.body)); return new Response(JSON.stringify({ id: 'm_' + mails.length }), { status: 200 }); }
+    if (opts.konnect && String(url).startsWith(P.KONNECT_API + '/')) {
+      paiements.push(JSON.parse(o.body));
+      const n = paiements.length;
+      return new Response(JSON.stringify({ payUrl: 'https://paiement.exemple.tn/p/' + n, paymentRef: 'ref-test-' + n }), { status: 200 });
+    }
     return vraiFetch(url, o);
   };
   const env = {
     DB: baseD1(), ADMIN_SECRET: SECRET, APP_SECRET: 'secret-de-test-' + 'x'.repeat(20),
     SRV_PRIVATE_KEY: srv.privateKey, RESEND_API_KEY: 're_test',
-    LICENCE_PUBLIC_KEYS: JSON.stringify([{ kid: 'master', publicKey: master.publicKey }, { kid: 'srv-1', publicKey: srv.publicKey }])
+    LICENCE_PUBLIC_KEYS: JSON.stringify([{ kid: 'master', publicKey: master.publicKey }, { kid: 'srv-1', publicKey: srv.publicKey }]),
+    ...(opts.konnect ? { KONNECT_API_KEY: 'kn_test', KONNECT_WALLET: 'portefeuille-de-test' } : {})
   };
   const cles = [{ kid: 'master', publicKey: master.publicKey }, { kid: 'srv-1', publicKey: srv.publicKey }];
 
@@ -49,7 +60,7 @@ async function servir() {
     });
   });
   await new Promise(r => srvHttp.listen(0, '127.0.0.1', r));
-  return { srv: srvHttp, base: 'http://127.0.0.1:' + srvHttp.address().port, mails, cles, db: env.DB, restaurer: () => { globalThis.fetch = vraiFetch; } };
+  return { srv: srvHttp, base: 'http://127.0.0.1:' + srvHttp.address().port, mails, paiements, cles, db: env.DB, restaurer: () => { globalThis.fetch = vraiFetch; } };
 }
 
 

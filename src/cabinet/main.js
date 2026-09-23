@@ -2399,7 +2399,9 @@ ipcMain.handle('licence:set', (_e, key) => {
 
 ipcMain.handle('licence:requestMail', () => {
   requireOpen();
-  return L.requestMailCabinet(state.cabinet || {}, licenceCabinetStatus(), app.getVersion());
+  // VERSION, jamais app.getVersion() : en développement, celle-ci rend la version d'ELECTRON
+  // (« 44.4.1 »), que la demande de licence porterait à l'éditeur (10.12.0).
+  return L.requestMailCabinet(state.cabinet || {}, licenceCabinetStatus(), VERSION);
 });
 
 // La porte UNIQUE. Elle est appelée par les quatre gestes qui valident une écriture, et par eux
@@ -2471,7 +2473,7 @@ async function annoncerPlateforme() {
   if (url.protocol !== 'https:' && app.isPackaged) return { fait: false, raison: 'le plan de contrôle exige https' };
   const donnees = Buffer.from(JSON.stringify({
     cle, deviceId: poste.id, deviceNom: poste.name,
-    plateforme: process.platform, version: app.getVersion(), app: 'cabinet'
+    plateforme: process.platform, version: VERSION, app: 'cabinet'
   }), 'utf8');
   try {
     await new Promise((resolve, reject) => {

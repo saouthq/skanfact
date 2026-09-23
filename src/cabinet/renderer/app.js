@@ -6494,12 +6494,12 @@
     modal(
       `<h2>${abo ? 'Modifier l\'abonnement' : 'Nouvel abonnement'}</h2>
        <div class="grid-2">
-         <label class="field obligatoire">Nom<input type="text" id="ab-nom" value="${esc(a.nom)}" placeholder="Loyer du local"></label>
-         <label class="field obligatoire">Guide<select id="ab-guide">${guides.map(g => `<option value="${esc(g.id)}" ${a.guideId === g.id ? 'selected' : ''}>${esc(g.nom)}</option>`).join('')}</select></label>
-         <label class="field narrow obligatoire">Depuis<input type="date" id="ab-depuis" value="${esc(a.depuis)}"></label>
+         <label class="field obligatoire"><span>Nom</span><input type="text" id="ab-nom" value="${esc(a.nom)}" placeholder="Loyer du local"></label>
+         <label class="field obligatoire"><span>Guide</span><select id="ab-guide">${guides.map(g => `<option value="${esc(g.id)}" ${a.guideId === g.id ? 'selected' : ''}>${esc(g.nom)}</option>`).join('')}</select></label>
+         <label class="field narrow obligatoire"><span>Depuis</span><input type="date" id="ab-depuis" value="${esc(a.depuis)}"></label>
          <label class="field narrow">Jusqu'à<input type="date" id="ab-jusqua" value="${esc(a.jusqua || '')}"></label>
          <label class="field narrow">Tous les (mois)<input type="number" id="ab-pas" min="1" max="12" value="${Number(a.tousLesMois) || 1}"></label>
-         <label class="field narrow obligatoire">Montant<input type="text" id="ab-montant" class="r" value="${esc(a.montant || '')}"></label>
+         <label class="field narrow obligatoire"><span>Montant</span><input type="text" id="ab-montant" class="r" value="${esc(a.montant || '')}"></label>
          <label class="field">Préfixe de pièce<input type="text" id="ab-piece" value="${esc(a.piece || '')}" placeholder="LOYER"></label>
          <label class="field">Libellé<input type="text" id="ab-libelle" value="${esc(a.libelle || '')}" placeholder="Loyer du local"></label>
        </div>
@@ -8275,8 +8275,8 @@
     modal(
       `<h2>${existe ? 'Modifier le guide' : 'Nouveau guide'}</h2>
        <div class="grid-2">
-         <label class="field obligatoire">Nom<input type="text" id="g-nom" value="${esc(g.nom || '')}" placeholder="Achat avec TVA 19 %"></label>
-         <label class="field narrow obligatoire">Journal<input type="text" id="g-journal" maxlength="5" value="${esc(g.journal || '')}" placeholder="AC"></label>
+         <label class="field obligatoire"><span>Nom</span><input type="text" id="g-nom" value="${esc(g.nom || '')}" placeholder="Achat avec TVA 19 %"></label>
+         <label class="field narrow obligatoire"><span>Journal</span><input type="text" id="g-journal" maxlength="5" value="${esc(g.journal || '')}" placeholder="AC"></label>
        </div>
        <h3 class="mt">Les lignes ${info('sa.guideLigne')}</h3>
        <div class="scroll-x"><table class="list compact sa-table"><thead><tr>

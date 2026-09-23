@@ -793,6 +793,45 @@ module.exports = async ({ t, ta, assert, lireSource }) => {
     assert.ok(g.every(x => x.onglet && x.detail && x.quoi), 'un groupe garde de quoi s\'afficher ET s\'ouvrir');
   });
 
+  // 10.12.0 — « Fin le 2026-10-14 », « 822.1 TND payés le 2026-09-22 » : les phrases de « Pourquoi ça
+  // compte » partaient au format d'un fichier, dans la colonne qu'on lit. « 822.1 » se lit huit cent
+  // vingt-deux MILLE chez un lecteur français (10.10.0) ; une date ISO se relit deux fois. Les
+  // données du test déclenchent CHAQUE alerte qui porte une date ou un montant — un test dont les
+  // données n'atteignent pas la phrase ne prouve rien d'elle (10.0.0).
+  await ta('console : une alerte écrit ses dates et ses montants comme l\'écran', async () => {
+    const P = await API();
+    const jour = '2026-09-23';
+    const d = {
+      licences: [
+        { id: 'l1', client: 'Trabelsi', client_id: 'c1', fin: '2026-09-01', envoyee_le: '2026-01-01' },
+        { id: 'l2', client: 'El Amen', client_id: 'c2', fin: '2026-10-05', envoyee_le: '2026-01-01' },
+        { id: 'l3', client: 'Ben Youssef', client_id: 'c3', fin: '2026-11-15', envoyee_le: '2026-01-01' }
+      ],
+      commandes: [{ id: 'cmd_1', nom: 'Boulangerie Essaïdi SARL', etat: 'ouverte', paiement_le: '2026-09-22T10:00:00Z',
+        montant_ttc: 1822.1, devise: 'TND', echec: 'Resend a refusé l\'expéditeur.' }],
+      postes: [{ device_id: 'd1', device_nom: 'PC-1', client: 'Trabelsi', client_id: 'c1', empreinte: 'abc',
+        derniere_fois: '2026-06-01T09:00:00Z', app: 'entreprise', version: '10.0.0' }],
+      essais: [
+        { device_id: 'd2', device_nom: 'Mac de Sonia', premiere_fois: '2026-08-01T09:00:00Z', app: 'entreprise' },
+        { device_id: 'd3', device_nom: 'PC de Karim', premiere_fois: '2026-08-28T09:00:00Z', app: 'cabinet' }
+      ],
+      suivis: { 'client:c9': { nom: 'Mourad', rappel: '2026-09-20', note: 'rappeler pour le devis' } },
+      dernierExport: '2026-06-01'
+    };
+    const a = P.alertesPlateforme(d, jour, {});
+    const quoi = a.map(x => x.quoi);
+    ['Licence expirée', 'Licence qui se termine', 'Renouvellement à préparer', 'Paiement encaissé, clé non partie',
+      'Client sous licence devenu muet', 'Essai terminé', 'Essai qui se termine', 'Rappel prévu aujourd\'hui',
+      'Export de la base ancien'].forEach(q => assert.ok(quoi.includes(q), 'les données doivent déclencher « ' + q + ' » : ' + quoi.join(' | ')));
+    const iso = a.filter(x => /\b\d{4}-\d{2}-\d{2}\b/.test(x.detail));
+    assert.deepStrictEqual(iso.map(x => x.quoi + ' : ' + x.detail), [], 'une date au format d\'un fichier dans une phrase de l\'écran');
+    const cmd = a.find(x => x.quoi === 'Paiement encaissé, clé non partie').detail;
+    assert.ok(cmd.includes('1 822,100 TND payés le 22/09/2026'), 'le montant et la date s\'écrivent comme l\'écran : ' + cmd);
+    assert.ok(/\. Le client attend\.$/.test(cmd) && !/\.\./.test(cmd), 'la raison du refus ne mange pas la ponctuation : ' + cmd);
+    assert.ok(a.find(x => x.quoi === 'Licence expirée').detail.includes('01/09/2026'));
+    assert.ok(a.find(x => x.quoi === 'Essai qui se termine').detail.includes('vers le 27/09/2026'));
+  });
+
   await ta('console : au-delà de trois sujets on COMPTE le reste, on ne l\'énumère pas', async () => {
     const P = await API();
     const cinq = ['A', 'B', 'C', 'D', 'E'].map(s => ({

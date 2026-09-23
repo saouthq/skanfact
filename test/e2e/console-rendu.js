@@ -64,7 +64,9 @@ const SEGMENTS = ['.tabs', 'td.acts'];
 // que tout va bien. C'est la leçon T-55, appliquée d'avance.
 // Les onglets qui portent une LISTE. `essais` entre ici en 10.5.0 : un écran neuf qu'aucune sonde
 // ne regarde est un écran qui dérive — c'est T-55, et il a coûté six versions au Cabinet.
-const ONGLETS = ['alertes', 'licences', 'ventes', 'parc', 'cabinets', 'activations', 'clients', 'evenements', 'essais'];
+// `commandes` entre en 10.12.0 : l'écran existait depuis la 10.9.0, et le garde-fou du compte des
+// onglets a fait tomber le parcours le premier jour où on l'a relancé — c'est son travail.
+const ONGLETS = ['alertes', 'licences', 'ventes', 'commandes', 'parc', 'cabinets', 'activations', 'clients', 'evenements', 'essais'];
 // Les écrans qui ne sont PAS des listes : ils n'ont ni tableau, ni tri, ni pagination, et les
 // attendre comme une liste expire sur un écran parfaitement dessiné. On les mesure quand même —
 // c'est là que vivent quinze champs de saisie.
@@ -81,7 +83,7 @@ const APP_SECRET = 'secret-de-test-' + 'x'.repeat(20);
   const densite = [];
   const flottaison = [];
   const repetitions = {};
-  const { srv, base, restaurer } = await servir();
+  const { srv, base, paiements, restaurer } = await servir({ konnect: true });
   const nav = await ouvrirChromium(playwright());
   const ctx = await nav.newContext({ viewport: { width: 1440, height: 900 } });
   const page = await ctx.newPage();
@@ -530,7 +532,18 @@ const APP_SECRET = 'secret-de-test-' + 'x'.repeat(20);
     await annonce('entreprise', '10.4.0', 'poste-entreprise-A', 'MacBook de Skander');
     await annonce('cabinet', '10.4.0', 'poste-cabinet-B', 'PC du cabinet');
     await annonce('entreprise', '10.0.1', 'poste-entreprise-C', 'iMac du bureau');
-    j.ok('3 clients, 3 licences (dont une révoquée et un cabinet), 3 postes');
+    // Une commande en ligne, par la route PUBLIQUE que le site appelle — raison sociale et contact
+    // distincts, adresse (10.9.1) — et un prestataire qui répond : sans elle, l'onglet « Commandes »
+    // serait vide, et un onglet vide n'est mesuré par personne.
+    const cmd = await fetch(base + '/v1/achat/commander', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ offre: 'entreprise', raison: 'Boulangerie Essaïdi SARL', nom: 'Mounir Essaïdi',
+        adresse: '12 rue de Marseille, 1000 Tunis', email: 'contact@essaidi.tn', matricule: '1239876D', tel: '+216 71 222 333' })
+    });
+    const cmdRep = await cmd.json().catch(() => ({}));
+    if (cmd.status !== 201 || !cmdRep.commande) throw new Error('la commande en ligne n\'a pas été créée : ' + cmd.status + ' ' + (cmdRep.erreur || ''));
+    if (paiements.length !== 1) throw new Error('le prestataire de paiement n\'a pas été appelé une fois : ' + paiements.length);
+    j.ok('3 clients, 3 licences (dont une révoquée et un cabinet), 3 postes, 1 commande en ligne');
 
     // ---------------------------------------------------------------- ouvrir
     j.etape('Ouvrir la console');
@@ -552,7 +565,7 @@ const APP_SECRET = 'secret-de-test-' + 'x'.repeat(20);
     j.ok(`la console s'ouvre sur ses ${n} onglets`);
 
     // ---------------------------------------------------------------- les quatre passes
-    j.etape('Les dix écrans, leurs formulaires et les huit surfaces sans adresse, en clair, à 1440');
+    j.etape('Les onze écrans, leurs formulaires et les huit surfaces sans adresse, en clair, à 1440');
     await parcourir('clair 1440');
     j.ok(`${boutons} boutons, ${champs} champs, ${colonnes} colonnes, ${controles} contrôles, ${ecarts} écarts`);
 
@@ -624,7 +637,7 @@ const APP_SECRET = 'secret-de-test-' + 'x'.repeat(20);
   console.log(`\n${fiches.length} écrans photographiés dans ${OUT} (+ mesures.json) :`
     + ' chaque écran mesuré est un écran qu\'on peut regarder.');
   console.log(`\n${j.total()} étapes — ${boutons} boutons, ${champs} champs, ${colonnes} colonnes, ${ecarts} écarts, ${largeurs} largeurs, ${tableaux} tableaux jugés pour le texte coupé`
-    + ` mesurés sur les dix écrans du rail, leurs formulaires et les huit surfaces qu'aucune adresse ne mène,`
+    + ` mesurés sur les ${ONGLETS.length + SANS_TABLE.length} écrans du rail, leurs formulaires et les huit surfaces qu'aucune adresse ne mène,`
     + ' en clair et en sombre,'
     + ' à 1440 et à 1280 : rien d\'illisible, rien de désaligné, rien de collé.'
     + `\n${controles} champ(s) dans une barre d'actions`

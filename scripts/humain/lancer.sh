@@ -14,8 +14,14 @@
 set -euo pipefail
 RACINE=$(cd "$(dirname "$0")/../.." && pwd)
 APP=${1:-cabinet}
+# L'app entreprise se lance par la RACINE du dépôt, comme `npm start` (« electron . ») et comme les
+# parcours e2e : lancée par `src/main.js`, Electron ne trouve pas le package.json, `app.getVersion()`
+# rend SA version (« v44.4.1 » en bas de la barre latérale) et l'écran des mises à jour compare
+# une version qui n'existe pas — le test humain aurait regardé une application qu'aucun client
+# n'a. Le Cabinet se lance par son `main.js`, comme `npm run start:cabinet` : il lit sa version
+# dans package.json.
 case "$APP" in
-  entreprise) MAIN=src/main.js;         PORT=9222 ;;
+  entreprise) MAIN=.;                   PORT=9222 ;;
   cabinet)    MAIN=src/cabinet/main.js; PORT=9223 ;;
   *) echo "Usage : $0 entreprise|cabinet [--garder]" >&2; exit 2 ;;
 esac

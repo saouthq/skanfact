@@ -77,6 +77,31 @@ même façon, ce qui en a fait trouver une trentaine d'autres. Tout est ici.
   vide, les deux dossiers pleins de l'exemple, et le livre-journal d'une pièce contre-passée — et ils
   ont trouvé tout de suite, dans la Paie d'un portable, « Renseigner le n° de … » collé sous sa phrase.
 
+**L'app entreprise, parcourue à son tour comme un chef d'entreprise la vivrait**
+- **« Remplir ton catalogue » se cochait tout seul**, pour tout le monde, à la seconde où l'assistant
+  se refermait : les quinze métiers proposent des prix d'exemple, et un prix posé par le logiciel
+  passait pour un prix décidé. L'étape se coche quand TU as enregistré une prestation ; celles que
+  l'assistant a posées portent un repère « exemple » dans le Catalogue jusqu'à ce que tu les
+  enregistres.
+- **Modifier une prestation faisait perdre le tri de la liste** et la ramenait page 1 : la fenêtre
+  rappelait la liste avec la prestation enregistrée, prise pour une colonne. Vrai sur les onze listes
+  qui trient de cette façon — seule une colonne trie désormais.
+- **La barre latérale défilait pour un pixel** sur Windows et Linux : la barre de défilement faisait
+  passer « Facturation récurrente » sur deux lignes, ce qui entretenait le débordement. Elle ne défile
+  plus que quand elle déborde vraiment, et se remesure quand la fenêtre change de taille.
+- **« * obligatoire » s'affichait sous neuf fenêtres sans aucune étoile au-dessus** — client,
+  fournisseur, salarié, affaire, modèle, texte, compte, opération ; et six de plus dans le Cabinet. Le
+  champ obligatoire porte son étoile.
+
+**La console de l'éditeur**
+- **Le Journal écrivait « commande.creee »** en chasse fixe : les cinq événements de la vente en ligne
+  n'avaient pas de nom. L'écran des commandes disait « 1 ligne » au lieu de « 1 commande », et
+  l'alerte la plus grave de la console proposait « Ouvrir commandes ».
+- Les alertes et le journal écrivent leurs dates et leurs montants comme l'écran : « Fin le
+  14/10/2026 », « 1 822,100 TND » — plus « 2026-10-14 » ni « 1822.1 ».
+- Les colonnes de texte se partagent la place que les autres laissent : le détail d'un événement
+  n'est plus coupé à 260 px à côté de deux colonnes à moitié vides.
+
 **Publiée en bêta** : elle touche au moteur comptable (déclaration d'employeur, IRPP du mois,
 contre-passation, rapprochement).
 

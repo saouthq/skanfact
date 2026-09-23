@@ -1312,11 +1312,25 @@
     // maintenant dans le pied de la barre (index.html), qui ne défile jamais.
     const nav = $('#nav');
     nav.innerHTML = html;
-    // Une barre qui défile doit AVOIR L'AIR de défiler. Sur macOS, la barre de défilement est cachée
-    // tant qu'on ne fait pas défiler : Skander a donc regardé pendant des semaines une liste qui
-    // paraissait finie à « Immobilisations ». La classe force une barre visible (CSS).
+    ajusterNav();
+  }
+
+  // Une barre qui défile doit AVOIR L'AIR de défiler. Sur macOS, la barre de défilement est cachée
+  // tant qu'on ne fait pas défiler : Skander a donc regardé pendant des semaines une liste qui
+  // paraissait finie à « Immobilisations ». La classe force une barre visible (CSS).
+  // 10.12.0 — et elle se décide sur la mise en page SANS barre : on retire la classe (la barre
+  // disparaît, les libellés reprennent toute leur largeur) AVANT de mesurer. Mesurée avec la barre,
+  // la liste perdait 10 px de large, un libellé passait sur deux lignes, et ce seul libellé
+  // suffisait à la faire déborder : une barre de défilement pour UN pixel, trouvée au test humain à
+  // 1440×900. Elle se remesure quand la fenêtre change de taille — sans quoi une fenêtre qu'on
+  // rétrécit cacherait le bas de la liste sans rien pour la faire défiler.
+  function ajusterNav() {
+    const nav = $('#nav'); if (!nav) return;
+    nav.classList.remove('deborde');
     nav.classList.toggle('deborde', nav.scrollHeight > nav.clientHeight + 1);
   }
+  let navTimer = null;
+  window.addEventListener('resize', () => { clearTimeout(navTimer); navTimer = setTimeout(ajusterNav, 150); });
 
   // On arrive sur la page d'un module retiré du menu (par la recherche, par une adresse, par un lien
   // d'une autre page). Elle marche exactement comme les autres — mais si on ne dit rien, l'utilisateur
@@ -1845,6 +1859,11 @@
 
   // Bascule de tri : recliquer la même colonne inverse le sens, une autre colonne repart de son sens naturel
   // (croissant pour un texte, décroissant pour une date ou un montant — on veut voir le plus récent d'abord).
+  // 10.12.0 — chaque liste redessine par `draw(sortKey)`, et ce même `draw` sert de rappel aux
+  // fenêtres : `catalogForm(c, draw)` le rappelle avec la prestation qu'il vient d'enregistrer. Un
+  // OBJET passait donc pour une clé de tri — le tri choisi disparaissait et la liste revenait page 1
+  // à chaque fiche modifiée (vu au test humain : « Désignation ↑ » perdu en corrigeant un prix).
+  // Seule une CHAÎNE est une colonne : les onze `draw` le vérifient (`typeof sortKey === 'string'`).
   function toggleSort(sort, key, cols) {
     if (sort && sort.key === key) return { key, dir: sort.dir === 'asc' ? 'desc' : 'asc' };
     const col = (cols || []).find(c => c.key === key);
@@ -2162,7 +2181,7 @@
 
     const draw = (sortKey) => {
       if (!$('#list-wrap')) return;                 // liste vide : l'écran explique au lieu de lister
-      if (sortKey) { s.sort = toggleSort(s.sort, sortKey, cols); s.page = 1; }
+      if (typeof sortKey === 'string' && sortKey) { s.sort = toggleSort(s.sort, sortKey, cols); s.page = 1; }
       const list = mine
         .filter(d => !s.kind || d.type === s.kind)
         .filter(d => !s.year || (d.date || '').startsWith(s.year))
@@ -3494,7 +3513,7 @@
     const c = client || { id: C.uid(), name: '', contact: '', matricule: '', address: '', phone: '', email: '', notes: '', withholdingRate: '' };
     modal(`<h2>${client ? 'Modifier le client' : 'Nouveau client'}</h2>
       <form id="cf" class="grid-2">
-        <label class="field span-2 obligatoire">Nom / Raison sociale<input type="text" name="name" value="${h(c.name)}" required></label>
+        <label class="field span-2 obligatoire"><span>Nom / Raison sociale</span><input type="text" name="name" value="${h(c.name)}" required></label>
         ${field(lbl('Personne à contacter', 'cl.contact'), 'contact', c.contact || '', 'text', 'placeholder="Mme Leïla Mansour, directrice"')}
         ${field(lbl('Matricule fiscal / CIN', 'co.matricule'), 'matricule', c.matricule)}
         <label class="field">${lbl('Retenue à la source appliquée par ce client', 'ed.withholding')}${withholdingSelect('withholdingRate', c.withholdingRate, { vide: `Par défaut (${pct(company().defaultWithholdingRate || 0)} %)` })}</label>
@@ -3546,7 +3565,7 @@
     ];
     const FILTERS = [['', 'Tous les clients'], ['due', 'Avec un impayé'], ['none', 'Sans aucun document']];
     const draw = (sortKey) => {
-      if (sortKey) { s.sort = toggleSort(s.sort, sortKey, cols); s.page = 1; }
+      if (typeof sortKey === 'string' && sortKey) { s.sort = toggleSort(s.sort, sortKey, cols); s.page = 1; }
       const all = data.clients.map(c => ({ c, sum: C.clientSummary(data, company(), c.id) }));
       const rows = applySort(all
         .filter(r => !s.q || [r.c.name, r.c.contact, r.c.matricule, r.c.email, r.c.phone].join(' ').toLowerCase().includes(s.q))
@@ -3696,7 +3715,7 @@
     $$('#view tr[data-rid]').forEach(tr => tr.onclick = () => navigate('#/contrat/' + tr.dataset.rid));
     const dcols = docColumns({ hideClient: true }).cols;
     const drawDocs = (sortKey) => {
-      if (sortKey) { clientDocState.sort = toggleSort(clientDocState.sort, sortKey, dcols); clientDocState.page = 1; }
+      if (typeof sortKey === 'string' && sortKey) { clientDocState.sort = toggleSort(clientDocState.sort, sortKey, dcols); clientDocState.page = 1; }
       $('#cl-docs').innerHTML = docTable(docs, {
         hideClient: true, sort: clientDocState.sort, onSort: true, page: clientDocState,
         empty: 'Aucun document pour ce client. Commence par un devis.'
@@ -3834,6 +3853,11 @@
             serialized: !!v.tracked && !!v.serialized, warrantyMonths: Number(v.warrantyMonths) || 0,
             initialQty: Number(v.initialQty) || 0, initialCost: Number(v.initialCost) || 0,
             initialDate: it.initialDate || C.today() });
+          // Enregistrer une prestation, c'est la DÉCIDER (10.12.0) : elle cesse d'être un exemple de
+          // l'assistant, même à prix nul (« sur devis » est une décision). C'est ce geste — et lui
+          // seul — qui coche « Remplir ton catalogue » : un prix d'exemple posé par le logiciel ne
+          // prouve rien de ce que l'utilisateur facture.
+          delete it.fromSetup;
           if (neuf) data.catalog.push(it);
           save(true); close(); if (done) done(it);
         };
@@ -3849,7 +3873,7 @@
     const cur = company().currency;
     modal(`<h2>Modifier le modèle</h2>
       <form id="tf2" class="grid-2">
-        <label class="field span-2 obligatoire">Nom du modèle<input type="text" name="name" value="${h(t.name || '')}"></label>
+        <label class="field span-2 obligatoire"><span>Nom du modèle</span><input type="text" name="name" value="${h(t.name || '')}"></label>
         <label class="field">Type<select name="type">${['devis', 'facture'].map(x => `<option value="${x}" ${t.type === x ? 'selected' : ''}>${C.TITLES[x]}</option>`).join('')}</select></label>
         ${field('Remise globale (%)', 'discountRate', t.discountRate || 0, 'number', 'min="0" max="100" step="0.5" class="num"')}
         <label class="field span-2">Objet<input type="text" name="subject" value="${h(t.subject || '')}" placeholder="Ce qui sera proposé comme objet du document"></label>
@@ -3935,7 +3959,7 @@
       const redraw = (sortKey) => {
         const wrap = $(wrapSel);
         if (!wrap) return;
-        if (sortKey) { state.sort = toggleSort(state.sort, sortKey, cols); state.page = 1; }
+        if (typeof sortKey === 'string' && sortKey) { state.sort = toggleSort(state.sort, sortKey, cols); state.page = 1; }
         if (!built) {
           // La barre de recherche est construite une seule fois : la redessiner à chaque frappe ferait perdre le curseur.
           wrap.innerHTML = `<div class="filters">
@@ -3969,7 +3993,10 @@
     };
 
     const prestaCols = [
-      { key: 'label', label: 'Désignation', asc: true, val: c => c.label.toLowerCase(), get: c => `<strong>${h(c.label)}</strong><div class="small muted">${h(c.description || '')}</div>` },
+      // 10.12.0 — une prestation que l'assistant a posée le DIT : « Ajuster les prix de ton
+      // catalogue » envoyait ici, et rien ne distinguait les exemples des tarifs décidés. Le repère
+      // part à l'enregistrement de la fiche (`catalogForm`).
+      { key: 'label', label: 'Désignation', asc: true, val: c => c.label.toLowerCase(), get: c => `<strong>${h(c.label)}</strong>${c.fromSetup ? ' <span class="badge" title="Proposée par l’assistant : mets ton prix et enregistre-la pour qu’elle devienne la tienne.">exemple</span>' : ''}<div class="small muted">${h(c.description || '')}</div>` },
       { key: 'price', label: 'P.U. HT', r: true, val: c => Number(c.unitPrice) || 0, get: c => C.money(c.unitPrice, cur) },
       { key: 'cost', label: 'Coût', r: true, val: c => Number(c.unitCost) || 0, get: c => Number(c.unitCost) ? C.money(c.unitCost, cur) : '<span class="muted">—</span>' },
       { key: 'margin', label: 'Marge', r: true, val: c => Number(c.unitCost) ? (Number(c.unitPrice) || 0) - Number(c.unitCost) : -Infinity, get: c => {
@@ -4068,7 +4095,7 @@
   function snippetForm(sn, done) {
     const x = sn || { id: C.uid(), name: '', text: '' };
     modal(`<h2>${sn ? 'Modifier le texte' : 'Nouveau texte prédéfini'}</h2>
-      <form id="sf" class="grid-2"><label class="field obligatoire">Nom<input type="text" name="name" value="${h(x.name)}" placeholder="Garantie, Conditions de paiement…"></label><label class="field span-2 obligatoire">Texte<textarea name="text" rows="5">${h(x.text)}</textarea></label></form>
+      <form id="sf" class="grid-2"><label class="field obligatoire"><span>Nom</span><input type="text" name="name" value="${h(x.name)}" placeholder="Garantie, Conditions de paiement…"></label><label class="field span-2 obligatoire"><span>Texte</span><textarea name="text" rows="5">${h(x.text)}</textarea></label></form>
       <div class="modal-actions">
         ${sn ? '<button class="btn btn-danger" id="del-snip" style="margin-right:auto">Supprimer</button>' : ''}
         <button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
@@ -4418,7 +4445,7 @@
 
     const drawDocs = (sortKey) => {
       const cols = docColumns({ hideClient: true }).cols;
-      if (sortKey) { contratDocState.sort = toggleSort(contratDocState.sort, sortKey, cols); contratDocState.page = 1; }
+      if (typeof sortKey === 'string' && sortKey) { contratDocState.sort = toggleSort(contratDocState.sort, sortKey, cols); contratDocState.page = 1; }
       $('#c-docs').innerHTML = docTable(invoices, {
         hideClient: true, sort: contratDocState.sort, onSort: true, page: contratDocState,
         empty: 'Aucune facture générée pour l\'instant. La première le sera le ' + C.fmtDate(r.nextDate) + '.'
@@ -4476,7 +4503,7 @@
     ];
     const STATES = [['', 'Tous les contrats'], ['actif', 'Actifs'], ['suspendu', 'Suspendus'], ['due', 'À générer']];
     const draw = (sortKey) => {
-      if (sortKey) { s.sort = toggleSort(s.sort, sortKey, cols); s.page = 1; }
+      if (typeof sortKey === 'string' && sortKey) { s.sort = toggleSort(s.sort, sortKey, cols); s.page = 1; }
       const due = C.dueRecurrences(data);
       const all = data.recurring.slice();
       const kept = applySort(all
@@ -5221,7 +5248,7 @@
     const s = supplier || Object.assign({ id: C.uid(), name: '', contact: '', matricule: '', address: '', phone: '', email: '', rib: '', bank: '', notes: '', paymentTermsDays: '', withholdingRate: '' }, preset || {});
     modal(`<h2>${supplier ? 'Modifier le fournisseur' : 'Nouveau fournisseur'}</h2>
       <form id="sf" class="grid-2">
-        <label class="field span-2 obligatoire">Nom / Raison sociale<input type="text" name="name" value="${h(s.name)}" required></label>
+        <label class="field span-2 obligatoire"><span>Nom / Raison sociale</span><input type="text" name="name" value="${h(s.name)}" required></label>
         ${field(lbl('Personne à contacter', 'cl.contact'), 'contact', s.contact || '', 'text', 'placeholder="M. Sami Gharbi, commercial"')}
         ${field(lbl('Matricule fiscal', 'co.matricule'), 'matricule', s.matricule || '')}
         ${field('Téléphone', 'phone', s.phone || '')}
@@ -5276,7 +5303,7 @@
     ];
     const FILTERS = [['', 'Tous les fournisseurs'], ['due', 'Avec un impayé'], ['late', 'En retard de paiement'], ['none', 'Sans aucun achat']];
     const draw = (sortKey) => {
-      if (sortKey) { s.sort = toggleSort(s.sort, sortKey, cols); s.page = 1; }
+      if (typeof sortKey === 'string' && sortKey) { s.sort = toggleSort(s.sort, sortKey, cols); s.page = 1; }
       const all = data.suppliers.map(x => ({ s: x, sum: C.supplierSummary(data, company(), x.id, C.today()) }));
       const rows = applySort(all
         .filter(r => !s.q || [r.s.name, r.s.contact, r.s.matricule, r.s.email, r.s.phone].join(' ').toLowerCase().includes(s.q))
@@ -5423,7 +5450,7 @@
     const years = Array.from(new Set(all.map(p => (p.date || '').slice(0, 4)).filter(Boolean))).sort().reverse();
     const cats = Array.from(new Set(all.map(p => p.category).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'fr'));
     const draw = (sortKey) => {
-      if (sortKey) { s.sort = toggleSort(s.sort, sortKey, cols); s.page = 1; }
+      if (typeof sortKey === 'string' && sortKey) { s.sort = toggleSort(s.sort, sortKey, cols); s.page = 1; }
       const rows = applySort(all
         .filter(p => !s.kind || p.kind === s.kind)
         .filter(p => !s.year || (p.date || '').startsWith(s.year))
@@ -6179,7 +6206,7 @@
       <div id="list-wrap"></div>`;
 
     const draw = (sortKey) => {
-      if (sortKey) { s.sort = toggleSort(s.sort, sortKey, cols); s.page = 1; }
+      if (typeof sortKey === 'string' && sortKey) { s.sort = toggleSort(s.sort, sortKey, cols); s.page = 1; }
       const list = mine
         .filter(d => !s.year || (d.date || '').startsWith(s.year))
         .filter(d => !s.st || d.status === s.st)
@@ -6224,7 +6251,7 @@
     modal(`<h2>${proj ? 'Modifier l\'affaire' : 'Nouvelle affaire'}</h2>
       <p class="small muted">Une affaire relie des ventes et des achats. C'est le seul endroit où la marge est <b>exacte</b> : on ne devine plus le coût, on l'a payé.</p>
       <form id="pf3" class="grid-2">
-        <label class="field span-2 obligatoire">Nom de l'affaire<input type="text" name="name" value="${h(p.name)}" placeholder="Salle serveur — École Les Lauriers"></label>
+        <label class="field span-2 obligatoire"><span>Nom de l'affaire</span><input type="text" name="name" value="${h(p.name)}" placeholder="Salle serveur — École Les Lauriers"></label>
         <div class="field">Client
           ${combo({ name: 'clientId', value: p.clientId, items: data.clients.slice().sort((a, b) => a.name.localeCompare(b.name, 'fr')).map(c => ({ v: c.id, label: c.name, text: c.name })), placeholder: '— Aucun client précis —', search: 'Rechercher un client…' })}
         </div>
@@ -6462,7 +6489,7 @@
     // la page — et ne triaient rien. Un tri qui ne trie pas ne se remarque pas : on croit que la
     // liste était déjà dans cet ordre (défaut de la 7.17.0, resté ici).
     const drawVentes = sortKey => {
-      if (sortKey) { affaireDocState.sort = toggleSort(affaireDocState.sort, sortKey, scols); affaireDocState.page = 1; }
+      if (typeof sortKey === 'string' && sortKey) { affaireDocState.sort = toggleSort(affaireDocState.sort, sortKey, scols); affaireDocState.page = 1; }
       // Huit colonnes dans un panneau : sans `scroll-x`, la table déborde et recouvre le panneau suivant.
       $('#p-sales').innerHTML = sales.length ? `<div class="scroll-x">${docTable(sales, { quotes: false, sort: affaireDocState.sort, onSort: true, page: affaireDocState })}</div>`
         : '<div class="empty">Aucune vente rattachée. Ouvre un devis ou une facture et choisis cette affaire.</div>';
@@ -6489,7 +6516,7 @@
     const cur = company().currency;
     modal(`<h2>${employee ? 'Modifier le salarié' : 'Nouveau salarié'}</h2>
       <form id="ef" class="grid-2">
-        <label class="field span-2 obligatoire">Nom et prénom<input type="text" name="name" value="${h(e.name)}" placeholder="Ahmed Ben Ali"></label>
+        <label class="field span-2 obligatoire"><span>Nom et prénom</span><input type="text" name="name" value="${h(e.name)}" placeholder="Ahmed Ben Ali"></label>
         ${field('CIN', 'cin', e.cin || '', 'text', '')}
         ${field(lbl('Matricule CNSS', 'pay.cnss'), 'cnss', e.cnss || '', 'text', '')}
         ${field('Poste', 'position', e.position || '', 'text', 'placeholder="Technicien"')}
@@ -8494,7 +8521,7 @@
     modal(`<h2>${acc ? 'Modifier le compte' : 'Nouveau compte'}</h2>
       <p class="small muted">Le <b>solde de départ</b> est celui de ton relevé au jour où tu commences à suivre ce compte dans SkanFact. Tout ce qui est saisi après s'y ajoute.</p>
       <form id="af" class="grid-2">
-        <label class="field span-2 obligatoire">Nom du compte<input type="text" name="name" value="${h(a.name)}" placeholder="BIAT — compte courant" required></label>
+        <label class="field span-2 obligatoire"><span>Nom du compte</span><input type="text" name="name" value="${h(a.name)}" placeholder="BIAT — compte courant" required></label>
         <label class="field">${lbl('Type', 'tre.kind')}<select name="kind">${C.ACCOUNT_KINDS.map(([v, l]) => `<option value="${v}" ${a.kind === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
         ${field('Banque', 'bank', a.bank || '')}
         ${field('RIB', 'rib', a.rib || '')}
@@ -9625,7 +9652,7 @@
         <form id="odf" class="grid-2">
           ${dateFieldHtml('Date', 'date', o.date, {})}
           <label class="field">Pièce<input type="text" name="piece" value="${h(o.piece || '')}" placeholder="${od ? '' : 'attribuée à l\'enregistrement'}" ${od ? '' : 'disabled'}></label>
-          <label class="field span-2 obligatoire">Libellé<input type="text" name="label" value="${h(o.label || '')}" placeholder="Assurance annuelle du local, avancée par le gérant"></label>
+          <label class="field span-2 obligatoire"><span>Libellé</span><input type="text" name="label" value="${h(o.label || '')}" placeholder="Assurance annuelle du local, avancée par le gérant"></label>
         </form>
         <datalist id="od-comptes">${proposes.map(c => `<option value="${h(c.compte)}">${h(c.compte)} — ${h(c.label)}</option>`).join('')}</datalist>
         <div class="scroll-x mt"><table class="list compact" id="od-lignes"><thead><tr><th>Compte</th><th>Intitulé</th><th>Libellé</th><th class="r">Débit</th><th class="r">Crédit</th><th></th></tr></thead>
@@ -12716,7 +12743,7 @@
     ];
     const FILTRES = [['', 'Toutes'], ['bientot', 'À renouveler'], ['active', 'Actives'], ['vie', 'À vie'], ['expiree', 'Expirées'], ['revoquee', 'Révoquées']];
     const draw = (sortKey) => {
-      if (sortKey) { s.sort = toggleSort(s.sort, sortKey, cols); s.page = 1; }
+      if (typeof sortKey === 'string' && sortKey) { s.sort = toggleSort(s.sort, sortKey, cols); s.page = 1; }
       const all = C.licenceRows(data, C.today(), company());
       const kept = applySort(all
         .filter(r => !s.q || [r.nom, r.matricule, r.id, offreLabelDe(r.offre), r.note].join(' ').toLowerCase().includes(s.q))

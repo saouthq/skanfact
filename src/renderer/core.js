@@ -5705,13 +5705,23 @@
   // `opts.copieExterne` : la copie de sauvegarde vers un dossier externe ne vit pas dans les données
   // (elle est dans app-config.json, propre au poste), donc l'appelant la fournit. Elle est ici parce
   // que c'est l'étape que tout le monde saute et la seule dont l'absence coûte tout.
+  // 10.12.0 — une prestation ne compte que si l'utilisateur l'a DÉCIDÉE : créée par lui, ou
+  // enregistrée par lui (`catalogForm` retire alors `fromSetup`). La règle d'avant — « un prix
+  // non nul suffit » — supposait que l'assistant pose des prix à 0 ; or les quinze métiers
+  // proposent tous des prix d'exemple (« Main-d'œuvre » à 20 DT pour l'artisanat) : l'étape se
+  // cochait donc toute seule, pour TOUT le monde, à la seconde où l'assistant se refermait. C'est
+  // le défaut que la 7.18.0 croyait avoir corrigé — le test prenait « un prix posé » pour « un prix
+  // ajusté », deux choses que les données ne distinguaient pas.
   function catalogueStep(d) {
     const cat = d.catalog || [];
-    const aRegler = cat.filter(c => c.fromSetup && !(Number(c.unitPrice) > 0));
-    const propre = cat.some(c => !c.fromSetup || Number(c.unitPrice) > 0);
-    if (cat.length && aRegler.length && !propre) {
+    const exemples = cat.filter(c => c.fromSetup);
+    const propre = cat.some(c => !c.fromSetup);
+    if (cat.length && !propre) {
+      const sansPrix = exemples.filter(c => !(Number(c.unitPrice) > 0)).length;
       return { id: 'catalogue', titre: 'Ajuster les prix de ton catalogue', fait: false,
-        quoi: `L'assistant t'a proposé ${cat.length} prestation${cat.length > 1 ? 's' : ''}, dont ${aRegler.length} sans prix : ce sont des exemples, pas tes tarifs.`,
+        quoi: `L'assistant t'a proposé ${cat.length} prestation${cat.length > 1 ? 's' : ''}`
+          + (sansPrix ? `, dont ${sansPrix} sans prix` : '')
+          + ` : ce sont des exemples, pas tes tarifs. Ouvre-en une, mets ton prix et enregistre : elle devient la tienne.`,
         action: 'catalogue' };
     }
     return { id: 'catalogue', titre: 'Remplir ton catalogue', fait: propre,

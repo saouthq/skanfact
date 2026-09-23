@@ -81,6 +81,13 @@ body {
 .dos-menu hr { border: none; border-top: 1px solid var(--border); margin: 6px 4px; }
 .dos-menu .dm-titre { font-size: 10px; text-transform: uppercase; letter-spacing: .8px; color: var(--muted); font-weight: 700; padding: 6px 10px 2px; }
 nav { display: flex; flex-direction: column; gap: 2px; overflow-y: auto; }
+/* 10.12.0 — la barre de l'app entreprise ne défile QUE quand `ajusterNav` (app.js) l'a décidé, sur
+   sa mise en page SANS barre de défilement. En `auto` permanent, un débordement d'UN pixel faisait
+   paraître une barre de 10 px (Linux, Windows) ; les libellés perdaient autant de large,
+   « Facturation récurrente » passait sur deux lignes, et ces 14 px de plus entretenaient le
+   débordement — deux mises en page stables, et l'on tombait sur l'une ou l'autre selon l'ordre du
+   dessin. Le Cabinet (sept entrées, un `nav` sans identifiant) n'est pas concerné. */
+#nav:not(.deborde) { overflow-y: hidden; }
 /* Une barre qui défile doit avoir l'air de défiler. Sur macOS la barre de défilement est masquée tant
    qu'on ne fait pas défiler : la liste paraissait donc finie là où elle était coupée. On la force,
    fine et discrète, mais visible — et seulement quand il y a vraiment de quoi défiler (7.0.0). */

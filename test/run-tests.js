@@ -9442,8 +9442,16 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     // « Ventes rattachées » ont donc accepté le clic sans trier pendant quatre versions.
     const mauvais2 = (app.match(/bindDocTable\(\s*\(\)\s*=>/g) || []);
     assert.deepStrictEqual(mauvais2, [], `un bindDocTable jette la colonne cliquée : ${mauvais2.join(' · ')}`);
-    assert.ok(/const drawVentes = sortKey => \{\s*if \(sortKey\) \{ affaireDocState\.sort = toggleSort/.test(app),
+    assert.ok(/const drawVentes = sortKey => \{\s*if \(typeof sortKey === 'string' && sortKey\) \{ affaireDocState\.sort = toggleSort/.test(app),
       'la fiche d\'affaire ne trie pas ses ventes rattachées');
+    // 10.12.0 — et l'inverse : le même `draw` sert de rappel aux fenêtres, qui le rappellent avec ce
+    // qu'elles viennent d'enregistrer (`catalogForm(c, draw)` → `done(it)`). Un OBJET passait pour une
+    // clé de tri : le tri choisi disparaissait et la liste revenait page 1 à chaque fiche modifiée
+    // (vu au test humain, « Désignation ↑ » perdu en corrigeant un prix). Seule une chaîne trie.
+    const nus = (app.match(/if \(sortKey\) \{[^}]*toggleSort/g) || []);
+    assert.deepStrictEqual(nus, [], `un draw prend n'importe quel argument pour une colonne : ${nus.length}`);
+    const gardes = (app.match(/if \(typeof sortKey === 'string' && sortKey\) \{[^}]*toggleSort/g) || []).length;
+    assert.ok(gardes >= 11, 'les listes à tri par draw(sortKey) : ' + gardes);
     // Et les deux qui étaient fautifs portent bien leur toggleSort.
     assert.ok(/bindSort\(wrap\.closest\('\.panel'\), key => \{ s\.moves\.sort = toggleSort/.test(app), 'Trésorerie → Mouvements ne trie pas');
     assert.ok(/bindSort\(\$\('#sup-docs'\), key => \{ supplierBuyState\.sort = toggleSort/.test(app), 'la fiche fournisseur ne trie pas');
@@ -9530,9 +9538,30 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     assert.strictEqual(e1.fait, false, 'un catalogue d\'exemples sans prix ne vaut pas un catalogue');
     assert.ok(/Ajuster les prix/.test(e1.titre), 'le titre ne dit pas ce qu\'il reste à faire');
     assert.ok(/exemples, pas tes tarifs/.test(e1.quoi), 'l\'explication ne dit pas que ce sont des exemples');
-    // Un prix ajusté suffit : on ne réclame pas les douze.
-    const ajuste = { catalog: [{ id: 'a', label: 'X', unitPrice: 0, fromSetup: true }, { id: 'b', label: 'Y', unitPrice: 120, fromSetup: true }] };
+    // Une prestation DÉCIDÉE suffit : on ne réclame pas les douze. « Décidée » = enregistrée par
+    // l'utilisateur, ce qui retire `fromSetup` (10.12.0). Cette assertion prenait jusque-là un
+    // `fromSetup` à 120 DT pour « un prix ajusté » — or c'est exactement ce que l'assistant POSE :
+    // les deux étaient indiscernables dans les données, et l'étape se cochait toute seule.
+    const ajuste = { catalog: [{ id: 'a', label: 'X', unitPrice: 0, fromSetup: true }, { id: 'b', label: 'Y', unitPrice: 120 }] };
     assert.strictEqual(core.firstSteps(ajuste, {}, {}).etapes.find(x => x.id === 'catalogue').fait, true);
+    // Les DONNÉES qui discriminent : le vrai catalogue que chaque métier propose, prix d'exemple
+    // compris (« Main-d'œuvre » à 20 DT pour l'artisanat). Aucun ne doit cocher l'étape tout seul.
+    const avecPrix = (core.ACTIVITIES || []).filter(act => (act.catalog || []).some(r => Number(r[2]) > 0));
+    assert.ok(avecPrix.length >= 10, 'les métiers proposent des prix d\'exemple : ' + avecPrix.length);
+    avecPrix.forEach(act => {
+      const cat = act.catalog.map(([label, description, unitPrice]) => ({ id: label, label, description, unitPrice, fromSetup: true }));
+      const e = core.firstSteps({ catalog: cat }, {}, {}).etapes.find(x => x.id === 'catalogue');
+      assert.strictEqual(e.fait, false, `« ${act.label || act.id} » : l'étape se coche sur les exemples de l'assistant`);
+      assert.ok(/exemples, pas tes tarifs/.test(e.quoi), e.quoi);
+    });
+    // Et c'est l'ENREGISTREMENT de la fiche qui décide : `catalogForm` retire le repère, et la liste
+    // du Catalogue montre ce qui est encore un exemple.
+    const appCat = lireApp();
+    const form = appCat.slice(appCat.indexOf('function catalogForm('), appCat.indexOf('function templateForm('));
+    assert.ok(form.length > 2000 && form.length < 12000, 'tranche de catalogForm : ' + form.length);
+    const ok = form.slice(form.indexOf("$('#ok', root).onclick"));
+    assert.ok(/delete it\.fromSetup;[\s\S]*save\(true\)/.test(ok), 'enregistrer une prestation ne la retire pas des exemples de l\'assistant');
+    assert.ok(/c\.fromSetup \? ' <span class="badge"[^>]*>exemple<\/span>'/.test(appCat), 'la liste du Catalogue ne distingue pas les exemples de l\'assistant');
     // Une prestation saisie à la main aussi, même à 0 (c'est une décision, pas un reste d'assistant).
     const main = { catalog: [{ id: 'a', label: 'X', unitPrice: 0 }] };
     assert.strictEqual(core.firstSteps(main, {}, {}).etapes.find(x => x.id === 'catalogue').fait, true);

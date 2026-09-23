@@ -2493,4 +2493,58 @@ t('Les deux instruments de rendu mesurent aussi la FENÊTRE ouverte (la sonde s\
   assert.ok(/waitForSelector\(FENETRE/.test(code('test', 'e2e', 'contraste.js')), 'contraste.js n\'ouvre aucune fenêtre');
 });
 
+// Trouvé au test humain de l'app entreprise : le lanceur l'ouvrait par `src/main.js`, Electron ne
+// trouvait pas le package.json, et `app.getVersion()` rendait SA version — « v44.4.1 » en bas de la
+// barre latérale, et un écran des mises à jour qui comparait une version inexistante. Le test
+// humain regardait une application qu'aucun client n'a. Le Cabinet, lui, lit sa version dans
+// package.json (son en-tête le dit depuis la 6.6.0) — sauf à deux endroits : la demande de licence
+// et l'annonce à la plateforme, qui portaient donc « 44.4.1 » en développement.
+// Trouvé au même test humain, à 1440×900 : la barre latérale de l'app entreprise débordait d'UN
+// pixel. En `overflow-y: auto`, ce pixel faisait paraître une barre de défilement de 10 px (Linux,
+// Windows) ; « Facturation récurrente » perdait autant de large, passait sur deux lignes, et ces
+// 14 px de plus entretenaient le débordement. Deux mises en page stables : on tombait sur l'une ou
+// l'autre selon l'ordre du dessin. La décision se prend donc sur la mise en page SANS barre, et se
+// reprend quand la fenêtre change de taille.
+t('La barre latérale décide de défiler sur sa mise en page SANS barre de défilement', () => {
+  const css = lireSource('src', 'renderer', 'style.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.ok(/#nav:not\(\.deborde\) \{ overflow-y: hidden; \}/.test(css), 'la barre latérale défile encore pour un pixel');
+  const ent = code('src', 'renderer', 'app.js');
+  const ajuste = tranche(ent, 'function ajusterNav(');
+  assert.ok(ajuste.length > 60 && ajuste.length < 600, 'tranche de ajusterNav : ' + ajuste.length);
+  assert.ok(/classList\.remove\('deborde'\);\s*nav\.classList\.toggle\('deborde', nav\.scrollHeight > nav\.clientHeight \+ 1\)/.test(ajuste),
+    'la mesure se fait avec la barre de défilement encore là : elle compte les libellés qu\'elle a elle-même fait passer à la ligne');
+  assert.ok(/addEventListener\('resize', \(\) => \{ clearTimeout\(navTimer\); navTimer = setTimeout\(ajusterNav, \d+\); \}\)/.test(ent),
+    'une fenêtre qu\'on rétrécit cacherait le bas de la liste sans rien pour la faire défiler');
+  assert.ok(/nav\.innerHTML = html;\s*ajusterNav\(\);/.test(ent), 'le dessin de la barre ne la mesure plus');
+});
+
+// Trouvé au test humain de l'app entreprise, sur la fiche « Nouveau client » : la légende
+// « * obligatoire » s'affichait en pied, et AUCUNE étoile dans la fenêtre. L'étoile est posée par
+// `.field.obligatoire > span:first-child::after` : un libellé écrit en nœud texte nu ne la reçoit
+// pas (piège déjà noté en 8.1.0). Neuf fenêtres étaient dans ce cas — client, fournisseur, salarié,
+// affaire, modèle, texte, compte, opération —, c'est-à-dire la moitié de celles qui déclarent un champ
+// obligatoire : une légende qui renvoie à une marque absente.
+t('Un champ obligatoire MONTRE son étoile : son libellé est un élément, jamais un texte nu', () => {
+  ['src/renderer/app.js', 'src/cabinet/renderer/app.js'].forEach(f => {
+    const src = code(...f.split('/'));
+    const champs = [...src.matchAll(/class="field[^"]*\bobligatoire\b[^"]*">\s*([\s\S]{0,12})/g)];
+    assert.ok(champs.length >= 5, f + ' : les champs obligatoires ne sont plus trouvés (' + champs.length + ')');
+    const nus = champs.filter(m => !/^(<span|\$\{lbl\()/.test(m[1])).map(m => m[0].slice(0, 70));
+    assert.deepStrictEqual(nus, [], f + ' : un libellé nu ne porte pas l\'étoile que la légende annonce');
+  });
+  // Et `lbl(texte)` sans clé de bulle rend le texte NU : il ne compte pas comme un élément.
+  const ent = code('src', 'renderer', 'app.js');
+  const sansCle = [...ent.matchAll(/obligatoire[^"]*">\$\{lbl\('[^']*'\)\}/g)].map(m => m[0]);
+  assert.deepStrictEqual(sansCle, [], 'lbl() sans clé rend un texte nu : ' + sansCle.join(' · '));
+});
+
+t('Le test humain ouvre l\'application que les clients ont : sa VRAIE version', () => {
+  const lanceur = lireSource('scripts', 'humain', 'lancer.sh');
+  assert.ok(/entreprise\) MAIN=\.;/.test(lanceur), 'l\'app entreprise doit se lancer par la racine du dépôt, comme `npm start`');
+  assert.ok(/"\$RACINE\/\$MAIN"/.test(lanceur), 'le lanceur ne lance plus ce que MAIN désigne');
+  const cab = code('src', 'cabinet', 'main.js');
+  assert.ok(!/app\.getVersion\(\)/.test(cab), 'le Cabinet rend encore la version d\'Electron en développement');
+  assert.ok(/const VERSION = PKG\.version;/.test(cab), 'le Cabinet ne lit plus sa version dans package.json');
+});
+
 };

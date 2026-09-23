@@ -158,6 +158,60 @@ module.exports = async ({ ta, assert }) => {
     assert.deepStrictEqual(cles('VIDES'), ecrans, 'chaque écran doit dire quoi faire quand il est vide');
   });
 
+  // 10.12.0 — trouvé par `e2e:console-rendu` le jour où l'onglet Commandes a enfin été garni (il ne
+  // l'était pas depuis la 10.9.0) : le pied disait « 1 ligne » — le mot qu'on emploie quand on n'a
+  // pas regardé l'écran (9.4.5) — et l'alerte la plus grave de la console proposait « Ouvrir
+  // commandes », comme une commande de terminal. Les TROIS tables de mots de la page avaient été
+  // oubliées par l'écran neuf, alors que le test ci-dessus en tenait deux autres : une table qu'aucun
+  // test ne confronte est une table qui diverge.
+  await ta('10.12.0 : un écran neuf porte ses MOTS — ce qu\'il compte, son article, ses gestes', async () => {
+    const fs = require('fs'); const path = require('path');
+    const src = fs.readFileSync(path.join(__dirname, '..', '..', 'plateforme', 'skanfact-api.mjs'), 'utf8');
+    // Un objet littéral de la page, de son accolade à la PREMIÈRE « }; » — ces trois tables tiennent
+    // sur une ligne ou en portent plusieurs par ligne. Les commentaires se retirent avant de juger :
+    // un commentaire qui cite une clé ne la déclare pas (6.8.0).
+    const objet = (nom) => {
+      const debut = 'var ' + nom + ' = {';
+      const i = src.indexOf(debut);
+      assert.ok(i > 0, nom + ' introuvable dans la page');
+      return src.slice(i + debut.length, src.indexOf('};', i)).split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
+    };
+    const clesDe = (nom) => [...objet(nom).matchAll(/(?:^|[\s,{])([a-z]+)\s*:/g)].map(m => m[1]).sort();
+    const ecrans = [...src.slice(src.indexOf('var ECRANS = {'), src.indexOf('\n  };', src.indexOf('var ECRANS = {')))
+      .matchAll(/^\s{4}([a-z]+):/gm)].map(m => m[1]).sort();
+    assert.ok(ecrans.length >= 11 && ecrans.includes('commandes'), 'les écrans de la console : ' + ecrans.join(', '));
+    // Les Réglages ne sont pas une liste : ils ne comptent rien.
+    assert.deepStrictEqual(clesDe('NOM_LIGNE'), ecrans.filter(e => e !== 'reglages'),
+      'chaque liste nomme ce qu\'elle compte — sinon son pied dit « 1 ligne »');
+    assert.deepStrictEqual(clesDe('ARTICLE'), ecrans, 'chaque écran a son article — sinon « Ouvrir commandes »');
+    assert.deepStrictEqual(clesDe('ACTIONS'), ecrans, 'chaque écran déclare ses gestes, même quand il n\'en a aucun');
+  });
+
+  await ta('10.12.0 : chaque événement que la plateforme écrit a un NOM dans le Journal', async () => {
+    const fs = require('fs'); const path = require('path');
+    const src = fs.readFileSync(path.join(__dirname, '..', '..', 'plateforme', 'skanfact-api.mjs'), 'utf8');
+    const code = src.split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
+    // La déclaration de la fonction n'est pas un appel : elle porte le paramètre, pas un événement.
+    const appels = [...code.matchAll(/(?<!function )journaliser\(env,\s*([^,]+),/g)].map(m => m[1].trim());
+    const ecrits = new Set(appels.filter(a => /^'[a-z.]+'$/.test(a)).map(a => a.slice(1, -1)));
+    // Le seul nom CALCULÉ : « licence. » suivi du motif d'un remplacement, et les motifs forment une
+    // liste fermée. Un second nom calculé ferait échapper ses événements à ce test : il tombe.
+    const calcules = appels.filter(a => !/^'[a-z.]+'$/.test(a));
+    assert.deepStrictEqual(calcules, ['o.motif ? \'licence.\' + o.motif : \'licence.emise\''],
+      'un nom d\'événement calculé autrement échappe à ce contrôle : ' + calcules.join(' | '));
+    const motifs = /\[([^\]]*)\]\.includes\(c\.motif\)/.exec(code);
+    assert.ok(motifs, 'la liste fermée des motifs de remplacement est introuvable');
+    [...motifs[1].matchAll(/'([a-z]+)'/g)].forEach(m => ecrits.add('licence.' + m[1]));
+    ecrits.add('licence.emise');
+    assert.ok(ecrits.size >= 20, 'le relevé des événements écrits ne voit presque rien : ' + [...ecrits].join(', '));
+    const debut = 'var NOM_EVT = {';
+    const bloc = src.slice(src.indexOf(debut), src.indexOf('};', src.indexOf(debut)));
+    const noms = new Set([...bloc.split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n').matchAll(/'([a-z.]+)'\s*:/g)].map(m => m[1]));
+    const muets = [...ecrits].filter(e => !noms.has(e)).sort();
+    assert.deepStrictEqual(muets, [],
+      'ces événements s\'afficheraient en chasse fixe, sans accent, lus comme des fautes de frappe : ' + muets.join(', '));
+  });
+
   // ------------------------------------------------- la vente entière, vrai worker et vraie base
 
   // Konnect n'est pas joignable d'ici, et ce n'est pas ce qu'on veut tester : ce qui compte est ce
