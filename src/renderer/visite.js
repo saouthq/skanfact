@@ -122,6 +122,22 @@
     return pref === 'dessus' ? MARGE + bh + ECART + JEU : Math.min(MARGE + 48, H - MARGE - bh - ECART - hauteur - JEU);
   }
 
+  // Une zone LARGE qu'aucun défilement ne sépare de sa bulle (PUR : les tests le jouent) : plus haute
+  // que ce que l'écran laisse une fois la bulle posée, mais pas assez pour la règle des blocs géants.
+  // `hautPourBulle` renonçait (« ne tiendra jamais ») et la bulle se rabattait dans un coin, SUR le
+  // titre du panneau qu'elle présentait — « Les sauvegardes » du Cabinet (vu à la souris, 10.14.0).
+  // On amène alors son haut sous l'en-tête de la page, et on n'en éclaire que ce qui laisse la place
+  // de la bulle dessous (`decouperHaut` avec la hauteur de la bulle). Rend le haut visé, ou null.
+  function hautPourCouper(r, bulle, ecran) {
+    const W = ecran.w, H = ecran.h, bw = bulle.w, bh = bulle.h;
+    if (!r || !bh || r.r - r.l <= W * 0.45) return null;
+    const aCote = r.r + ECART + bw <= W - MARGE || r.l - ECART - bw >= MARGE;
+    const dessus = r.t - ECART - bh >= MARGE, dessous = r.b + ECART + bh <= H - MARGE;
+    if (aCote || dessus || dessous) return null;
+    if (hautPourBulle(r, bulle, ecran) != null) return null;
+    return MARGE + 48;
+  }
+
   // La ponctuation double porte une espace FINE INSÉCABLE (PUR : les tests le jouent). Sans elle, le
   // navigateur coupe juste avant « ? », ou laisse un « seul en fin de ligne et son mot sur la
   // suivante (vu à l'écran, 10.14.0 : « Dossier » séparé de son guillemet, dans une bulle). C'est la
@@ -141,9 +157,11 @@
   // Le HAUT d'un bloc trop grand pour laisser un côté libre (PUR : les tests le jouent). On garde
   // entre 240 px et 44 % de l'écran à partir de son bord visible — assez pour lire un en-tête de
   // tableau et trois lignes, et il reste la place d'une bulle dessous.
-  function decouperHaut(r, H) {
+  function decouperHaut(r, H, bh) {
     const haut = Math.max(r.t, 0);
-    return { l: r.l, r: r.r, t: r.t, b: Math.min(r.b, haut + Math.max(240, Math.round(H * 0.44))) };
+    // Avec la hauteur de la bulle : on s'arrête là où elle tient encore dessous (`hautPourCouper`).
+    const place = bh ? H - MARGE - ECART - bh - JEU : Infinity;
+    return { l: r.l, r: r.r, t: r.t, b: Math.min(r.b, haut + Math.max(240, Math.round(H * 0.44)), Math.max(haut + 120, place)) };
   }
 
   // Une étape est-elle « faire » ? Une seule définition, pour le dessin ET pour les tests.
@@ -183,6 +201,7 @@
     fete: () => false                           // une visite finie → la fêter (confettis) ?
   };
   let cur = null;
+  let clavierPose = false;
   let boucle = 0, logique = 0, glisseT = 0, feteT = 0;
   const els = {};
   // Les dessins de la bulle. Ils vivent ICI, avec le moteur : une visite n'a pas à les connaître.
@@ -273,6 +292,27 @@
       } else if (e.key === 'ArrowRight' && !estFaire(etape())) { e.preventDefault(); suivant(); }
       else if (e.key === 'ArrowLeft') { e.preventDefault(); precedent(); }
     });
+    // Les flèches que la bulle annonce (« ← → pour avancer ») marchent aussi quand le curseur est
+    // ailleurs : un humain clique à côté de la bulle, sur la page éclairée, puis appuie sur → — et
+    // l'écoute posée sur la seule bulle ne recevait plus rien (10.14.0, trouvé à la souris). Jamais
+    // dans un champ (la flèche y déplace le curseur), ni sous une fenêtre ouverte, qui a son clavier.
+    if (!clavierPose) {
+      clavierPose = true;
+      document.addEventListener('keydown', e => {
+        // `defaultPrevented` : la bulle a déjà traité la touche. Tester `contains(e.target)` ne suffit
+        // pas — la bulle se redessine en avançant, le bouton qui avait le curseur est détaché, et la
+        // même flèche avançait de DEUX étapes (trouvé à la souris, sur ce correctif même).
+        if (e.defaultPrevented || !cur || !els.bulle || els.bulle.contains(e.target)) return;
+        if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+        if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+        const t = e.target;
+        if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+        if (document.querySelector('.modal-bg')) return;
+        if (e.key === 'ArrowRight' && estFaire(etape())) return;
+        e.preventDefault();
+        if (e.key === 'ArrowRight') suivant(); else precedent();
+      });
+    }
     els.bulle.addEventListener('click', e => {
       const b = e.target.closest('[data-v]'); if (!b) return;
       const v = b.dataset.v;
@@ -370,7 +410,7 @@
     }
     if (i < 0) i = 0;
     if (i >= cur.p.etapes.length) { finir(); return; }
-    cur.i = i; cur.t0 = Date.now(); cur.defile = false; cur.clic = 0; cur.pret = false; cur.perdu = false; cur.pointe = -1; cur.sens = sens;
+    cur.i = i; cur.t0 = Date.now(); cur.defile = false; cur.couper = false; cur.clic = 0; cur.pret = false; cur.perdu = false; cur.pointe = -1; cur.sens = sens;
     // La première étape apparaît ; les suivantes glissent depuis la précédente.
     if (cur.vues++ > 0) glisser();
     const e = etape();
@@ -397,7 +437,7 @@
         .then(() => delai(deplier ? 350 : 0))
         .then(() => {
           if (cur !== moi || cur.i !== iMoi) return;
-          cur.attente = false; cur.t0 = Date.now(); cur.defile = false;
+          cur.attente = false; cur.t0 = Date.now(); cur.defile = false; cur.couper = false;
           if (deplier) {
             let neuves = [];
             try { neuves = (e.deplier() || []).filter(Boolean); } catch (_) { neuves = []; }
@@ -442,7 +482,7 @@
     const dest = typeof e.retour === 'string' ? e.retour : pageDe(e);
     if (dest && typeof dest === 'string') { try { hote.aller(dest); } catch (_) { /* rien */ } }
     if (typeof e.avant === 'function') { try { e.avant(); } catch (_) { /* rien */ } }
-    cur.t0 = Date.now(); cur.perdu = false; cur.defile = false;
+    cur.t0 = Date.now(); cur.perdu = false; cur.defile = false; cur.couper = false;
     dessinerBulle();
   }
   function lancerSuite(id) {
@@ -576,8 +616,13 @@
         // Puis on libère le côté de la bulle, s'il n'en reste aucun (`hautPourBulle`). Pas pendant un
         // geste : sa cible est un bouton, et il a toujours un côté libre.
         const r0 = rect(zoneEl, 6);
-        const haut = faire ? null : hautPourBulle(r0, { w: els.bulle.offsetWidth, h: els.bulle.offsetHeight }, { w: W, h: H }, e.cote);
+        const taille = { w: els.bulle.offsetWidth, h: els.bulle.offsetHeight };
+        const haut = faire ? null : hautPourBulle(r0, taille, { w: W, h: H }, e.cote);
         if (haut != null) defilerDe(zoneEl, Math.round(r0.t - haut));
+        else if (!faire) {
+          const hc = hautPourCouper(r0, taille, { w: W, h: H });
+          if (hc != null) { cur.couper = true; defilerDe(zoneEl, Math.round(r0.t - hc)); }
+        }
       }
       r = rect(zoneEl, 6);
       // Un bloc plus haut que l'écran (un tableau entier) ne laisse aucun côté libre : la bulle se
@@ -585,7 +630,7 @@
       // On éclaire alors le HAUT du bloc (son en-tête et ses premières lignes, ce qui dit ce qu'il
       // est) et la bulle se pose juste dessous, sur des lignes qui restent dans l'ombre. Pas pendant
       // un geste : la cible d'un geste est un bouton, jamais un bloc.
-      if (!faire && r.b - r.t > H * 0.62 && r.r - r.l > W * 0.45) r = decouperHaut(r, H);
+      if (!faire && (cur.couper || (r.b - r.t > H * 0.62 && r.r - r.l > W * 0.45))) r = decouperHaut(r, H, cur.couper ? els.bulle.offsetHeight : 0);
     }
     const trou = els.trou, anneau = els.anneau, point = els.point;
     // L'ombre : seulement quand on REGARDE. Pendant un geste, rien ne s'assombrit — une liste qui
@@ -1053,7 +1098,7 @@
       chapitre: (cur.chaps && cur.chaps.length > 1) ? k : null, items: (cur.items || []).length };
   }
 
-  const api = { installer, lancer, quitter, enCours, suivant, precedent, chapitreSuivant, placerBulle, placerPres, typo, chevauche, decouperHaut, hautPourBulle, estFaire, lieuDe, ouvrirOnglet,
+  const api = { installer, lancer, quitter, enCours, suivant, precedent, chapitreSuivant, placerBulle, placerPres, typo, chevauche, decouperHaut, hautPourBulle, hautPourCouper, estFaire, lieuDe, ouvrirOnglet,
     chapitres, resoudre, visible, listerControles, etapesDeLaVue, blocsDe, cheminDe, PATIENCE, PATIENCE_FACULTATIVE, CONTROLES,
     nettoie, libelleDe, resumeBulle, routeDe, expliqueur, zoneur };
   global.Visite = api;

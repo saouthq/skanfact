@@ -332,7 +332,35 @@ t('10.14.0 : une zone plus haute que l\'écran ne relègue pas la bulle dans un 
   // Et la découpe ne sert qu'à MONTRER : pendant un geste, la bulle garde toute la zone.
   const vj = lireSource('src', 'renderer', 'visite.js');
   const pos = vj.slice(vj.indexOf('function positionner('), vj.indexOf('function positionner(') + 3000);
-  assert.ok(/if \(!faire[^\n]*\) r = decouperHaut\(r, H\)/.test(pos), 'positionner découpe les zones hautes, sauf pendant un geste');
+  assert.ok(/if \(!faire[^\n]*\) r = decouperHaut\(r, H[,)]/.test(pos), 'positionner découpe les zones hautes, sauf pendant un geste');
+});
+
+// Vu à la souris dans le Cabinet (Réglages → « Les sauvegardes ») : un panneau large, plus haut que ce
+// que l'écran laisse une fois la bulle posée, mais sous le seuil des blocs géants. `hautPourBulle`
+// renonçait, et la bulle se rabattait dans un coin, SUR le titre du panneau qu'elle présentait.
+t('10.14.0 : un panneau large que la bulle ne peut pas longer se découpe au lieu d\'être couvert', () => {
+  // Les mesures relevées à l'écran (1440 × 853) : le panneau et la bulle.
+  const ecran = { w: 1440, h: 853 }, bulle = { w: 388, h: 310 };
+  const r = { l: 257, t: 240, r: 1395, b: 760 };
+  assert.strictEqual(V.placerBulle(r, bulle, ecran, {}).cote, 'coin', 'les données doivent discriminer : sans rien faire, c\'est le coin');
+  assert.strictEqual(V.hautPourBulle(r, bulle, ecran), null, 'les données doivent discriminer : défiler seul ne suffit pas');
+  assert.ok(r.b - r.t <= ecran.h * 0.62, 'les données doivent discriminer : ce n\'est pas un bloc géant');
+  const hc = V.hautPourCouper(r, bulle, ecran);
+  assert.ok(hc != null, 'le panneau n\'est ni amené ni découpé');
+  const dy = Math.round(r.t - hc);
+  const r2 = { ...r, t: r.t - dy, b: r.b - dy };
+  const d = V.decouperHaut(r2, ecran.h, bulle.h);
+  assert.ok(d.b - d.t >= 120, 'on montre au moins le haut du panneau : ' + JSON.stringify(d));
+  const pos = V.placerBulle(d, bulle, ecran, {});
+  assert.notStrictEqual(pos.cote, 'coin', 'la bulle retourne dans un coin');
+  assert.ok(!V.chevauche({ l: pos.x, t: pos.y, r: pos.x + bulle.w, b: pos.y + bulle.h }, d), 'la bulle couvre le haut qu\'elle montre');
+  // Ce qui laisse un côté libre, ou que le défilement suffit à séparer, ne se découpe pas.
+  assert.strictEqual(V.hautPourCouper({ l: 262, t: 100, r: 700, b: 700 }, bulle, ecran), null, 'une zone étroite se découpe pour rien');
+  assert.strictEqual(V.hautPourCouper({ l: 254, t: 319, r: 1395, b: 646 }, { w: 388, h: 322 }, { w: 1440, h: 873 }), null, 'une zone que le défilement suffit à séparer se découpe pour rien');
+  const vj = lireSource('src', 'renderer', 'visite.js');
+  const i = vj.indexOf('if (!cur.defile) {');
+  const zone = vj.slice(i, vj.indexOf('\n      }\n', i) + 400);
+  assert.ok(/hautPourCouper\(/.test(zone) && /cur\.couper = true/.test(zone), 'le moteur ne découpe pas les panneaux larges');
 });
 
 // Vu à l'écran : « Enregistrer ta réponse », posée AU-DESSUS du bouton de la fenêtre, couvrait la

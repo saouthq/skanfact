@@ -225,9 +225,14 @@ t('9.4.4 : le rouge de la clé de secours arrive quand il y a quelque chose à p
   // avertissement juste au mauvais moment apprend à ignorer la couleur. Le rouge est CONDITIONNÉ
   // à ce qu'il y ait quelque chose sur le disque ; il ne disparaît pas pour autant — la ligne
   // calme reste, parce que la clé s'enregistre mieux avant le premier paquet qu'après.
-  assert.ok(/d\.packs \|\| \[\]\)\.length/.test(zone), 'le bandeau ne regarde pas s\'il y a des paquets reçus');
-  assert.ok(/if \(!recus\)/.test(zone), 'le rouge doit être conditionné à un paquet déjà reçu');
-  const calme = zone.slice(zone.indexOf('if (!recus)'), zone.indexOf('return `<div class="banner danger"'));
+  // 10.14.0 — un paquet RÉEL : ceux de l'exemple sont fictifs, et la découverte criait la clé en rouge
+  // dès son premier écran. La même fonction décide du bandeau et de la ligne rouge de « À faire ».
+  const j = app.indexOf('function paquetsReelsRecus()');
+  const reels = app.slice(j, app.indexOf('\n  }', j));
+  assert.ok(j > 0 && /!d\.demo/.test(reels) && /d\.packs \|\| \[\]\)\.length/.test(reels), 'un paquet de l\'exemple compte comme un paquet reçu');
+  assert.ok(/if \(!paquetsReelsRecus\(\)\)/.test(zone), 'le rouge doit être conditionné à un paquet réel déjà reçu');
+  assert.ok(/paquetsReelsRecus\(\) \? false : null/.test(app), 'la ligne rouge de « À faire » ne regarde pas s\'il y a quelque chose à perdre');
+  const calme = zone.slice(zone.indexOf('if (!paquetsReelsRecus())'), zone.indexOf('return `<div class="banner danger"'));
   assert.ok(!calme.includes('banner danger'), 'le jour 0 ne s\'ouvre pas sur un bandeau rouge');
   assert.ok(calme.includes('rec-go'), 'et il garde le bouton : prévenir sans offrir le geste ne sert à rien');
 });

@@ -1642,7 +1642,11 @@
     const demoCount = (S.dossiers || []).filter(d => d.demo).length;
     // `recoveryAt` vaut `undefined` tant que la réponse n'est pas revenue : on ne réclame que sur un
     // non franc. La date ne vit pas dans l'état chiffré, elle ne peut donc pas venir de `S`.
-    const todo = K.cabinetTodo(S, null, { cleSecours: recoveryAt === undefined ? null : recoveryAt !== null, licence: licCab, questions: questionsAttente, employeurs: employeursConnus(), tenus: tenusConnus() });
+    // 10.14.0 — la ligne rouge ne se pose que le jour où un VRAI paquet est sur le disque (9.4.4) :
+    // les paquets de l'exemple sont fictifs, les perdre ne coûte rien, et un rouge au premier écran de
+    // la découverte apprend à ignorer le rouge. Avant, « Tes premiers pas » la propose calmement.
+    const cleReclamee = recoveryAt === undefined ? null : recoveryAt !== null ? true : paquetsReelsRecus() ? false : null;
+    const todo = K.cabinetTodo(S, null, { cleSecours: cleReclamee, licence: licCab, questions: questionsAttente, employeurs: employeursConnus(), tenus: tenusConnus() });
     // Tes premiers pas (10.14.0), quand le portefeuille a déjà des dossiers : UNE ligne de « À faire »,
     // juste après ce qui presse — jamais un panneau qui repousserait la liste des clients sous la ligne
     // de flottaison (9.4.4). La clé de secours déjà réclamée en rouge ne se réclame pas deux fois.
@@ -3034,6 +3038,17 @@
         <div class="tabs" id="c-tabs" role="tablist" aria-label="${esc(gOuvert.label)}">${gOuvert.onglets.filter(ongletDispo).map(boutonOnglet).join('')}</div>
       </div>${alerteHtml}${corps}`;
 
+    // La barre des groupes COLLE en haut quand on descend (U-06). Tout ce qu'on amène à l'écran — un
+    // raccourci vers un panneau, la zone d'une visite guidée — doit donc s'arrêter SOUS elle : amené
+    // au bord du haut, l'en-tête d'un tableau finissait caché derrière (10.14.0, trouvé à la souris
+    // pendant la visite, sur le livre-journal). La hauteur se mesure : la barre passe sur deux
+    // rangées à 1280 px.
+    const navCompta = $('.c-nav', el), vue = document.getElementById('view');
+    if (navCompta && vue) {
+      const poserHauteur = () => { if (navCompta.isConnected) vue.style.setProperty('--c-nav-h', navCompta.offsetHeight + 'px'); };
+      poserHauteur();
+      if (window.ResizeObserver) new ResizeObserver(poserHauteur).observe(navCompta);
+    }
     $$('#c-tabs button', el).forEach(b => { b.onclick = () => allerSousOnglet(root, dossier, b.dataset.tab); });
     // Un groupe ouvre l'écran qu'on y avait laissé, sinon son premier : on revient là où on était.
     $$('#c-groupes button', el).forEach(b => {
@@ -3611,7 +3626,7 @@
             dans une infobulle ne se comprend qu'en survolant. Le badge « clos » le dit, et le geste
             qui reste est celui qu'on peut faire — rouvrir. */''}
       ${ex.clos ? '<button class="btn btn-sm" id="cl-rouvrir">Rouvrir (motif exigé)…</button>'
-    : '<button class="btn btn-sm btn-primary" id="cl-cloturer">Clôturer l\'exercice…</button>'}
+    : `<button class="btn btn-sm${exerciceTermine(ex.annee) ? ' btn-primary' : ''}" id="cl-cloturer">Clôturer l'exercice…</button>`}
       <button class="btn btn-sm" id="cl-suivant">Ouvrir ${esc(Number(ex.annee) + 1)} (à-nouveaux)…</button>
       <button class="btn btn-sm" id="cl-fichier">Le dossier pour le client…</button>
       ${/* Réunir deux postes (9.9.0). Ici, et pas dans la Saisie : c'est un geste d'exercice, rare,
@@ -3779,8 +3794,13 @@
       // Le corps d'un `confirmDialog` du Cabinet est du HTML (T-25) : les `\n` et les puces d'une
       // chaîne brute s'y aplatissaient en un pavé de six lignes, et deux avertissements collés ne
       // se lisent pas — on cherche le bouton vert. Une vraie liste, et la phrase dans son `<p>`.
+      // 10.14.0 — un exercice qui court encore se clôt quand même (les contrôles nomment, ils ne
+      // bloquent pas, 6.0.0), mais la question le DIT avant le geste : tout ce qui reste à passer
+      // jusqu'au 31 décembre sera refusé. Trouvé à la souris : le bouton était vert en septembre.
+      const enCours = !exerciceTermine(s.annee)
+        ? `<p class="warn-box"><b>L'exercice ${esc(String(s.annee))} n'est pas terminé</b> : il court jusqu'au 31/12/${esc(String(s.annee))}. Le clôturer maintenant refusera toute écriture datée d'ici là, jusqu'à une réouverture motivée.</p>` : '';
       const ok = await confirmDialog(`Clôturer l'exercice ${s.annee} ?`,
-        `<p>Après la clôture, plus aucune écriture de cet exercice ne bouge. La rouvrir reste possible, mais elle exigera un motif — c'est la seule trace qui expliquera pourquoi un chiffre a changé après coup.</p>`
+        enCours + `<p>Après la clôture, plus aucune écriture de cet exercice ne bouge. La rouvrir reste possible, mais elle exigera un motif — c'est la seule trace qui expliquera pourquoi un chiffre a changé après coup.</p>`
         + (echecs.length ? `<p><b>${pl(echecs.length, 'contrôle signale', 'contrôles signalent')} encore quelque chose :</b></p><ul>${echecs.map(c => `<li>${esc(c.detail)}</li>`).join('')}</ul>` : ''),
         'Clôturer', false);
       if (!ok) return;
@@ -8990,6 +9010,16 @@
   // AUSSI ce qu'il ne faut jamais ranger : cet avertissement-ci ne vivait que dans le panneau
   // Sécurité, à un écran et demi de défilement. Il est maintenant au-dessus de la barre d'onglets,
   // et dans « À faire » sur la page d'accueil. Il disparaît le jour où la clé est enregistrée.
+  // Un paquet VRAI, c'est-à-dire reçu d'un client : ceux du jeu d'exemple sont fictifs, et leur perte ne
+  // coûterait rien (10.14.0 — la découverte criait la clé de secours en rouge dès son premier écran).
+  function paquetsReelsRecus() {
+    return (S.dossiers || []).some(d => !d.demo && (d.packs || []).length);
+  }
+  // Un exercice est TERMINÉ le lendemain de son 31 décembre (jour local, 5.2.3). Avant, clôturer
+  // reste possible mais n'est jamais l'étape suivante : le bouton ne se colore pas (U-11).
+  function exerciceTermine(annee) {
+    return K.today() > `${annee}-12-31`;
+  }
   function recoveryBanner() {
     if (recoveryAt !== null) return '';
     // 9.4.4 — l'avertissement est juste, le MOMENT ne l'était pas. Le tout premier écran d'un
@@ -8998,8 +9028,7 @@
     // n'est arrivé, il n'y a rien à perdre — c'est la règle « un filet se réclame au moment où il
     // protège encore » (QUESTIONS.md), prise par l'autre bout. Le rouge apparaît au premier paquet,
     // c'est-à-dire le jour où quelque chose d'irremplaçable est sur ce disque.
-    const recus = (S.dossiers || []).reduce((n, d) => n + ((d.packs || []).length), 0);
-    if (!recus) {
+    if (!paquetsReelsRecus()) {
       return `<div class="banner"><span><strong>Pense à enregistrer ta clé de secours.</strong>
         C'est elle qui te rendra tes paquets si tu changes d'ordinateur ou si celui-ci est perdu.
         Trois minutes, une fois pour toutes.</span>

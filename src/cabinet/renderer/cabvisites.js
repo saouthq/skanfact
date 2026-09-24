@@ -84,7 +84,7 @@
   // dossier de l'exemple qui le montre rempli (`livre` : un dossier qui a son livre).
   const PAGES = {
     dossiers: { titre: 'Les dossiers', resume: 'Ton portefeuille : chaque client, son dernier mois, ce qui manque.',
-      texte: '<p>La page où le Cabinet s\'ouvre. Chaque client sur une ligne : le dernier mois reçu ou saisi, son chiffre d\'affaires, ce qui manque, la dernière relance.</p><p>Au-dessus, les chiffres du portefeuille et <b>« À faire »</b> : ce qui attend un geste de ta part, du plus urgent au moins urgent.</p>' },
+      texte: '<p>La page où le Cabinet s\'ouvre. Chaque client sur une ligne : le dernier mois reçu ou saisi, son chiffre d\'affaires, ce qui manque — et la dernière relance quand il y en a eu une (une colonne vide se masque).</p><p>Au-dessus, les chiffres du portefeuille et <b>« À faire »</b> : ce qui attend un geste de ta part, du plus urgent au moins urgent.</p>' },
     relances: { titre: 'Les relances', resume: 'Les clients qui te doivent un mois, et le mail tout prêt.',
       texte: '<p>Les clients sur SkanFact qui ne t\'ont pas envoyé un mois terminé, ou seulement du provisoire. Pour chacun, <b>le mail est prêt</b> : tu relis, tu envoies.</p><p>Une relance faite ailleurs (un appel) se note aussi : l\'historique dit qui a été relancé, et quand.</p>' },
     echeances: { titre: 'Les échéances', resume: 'Les dates fiscales du mois, et qui n\'a pas ses pièces avant.',
@@ -438,7 +438,7 @@
         { page: '#/dossiers', cible: '.panel.todo', cote: 'dessous', titre: 'À faire',
           texte: 'Ce qui attend un geste de ta part, <b>du plus urgent au moins urgent</b> : un mois qui manque, une échéance proche, une question sans réponse. Chaque ligne a son bouton, qui dit où il mène.' },
         { page: '#/dossiers', cible: ['#view table.list', '#view .scroll-x'], zone: ['#view table.list', '#view .scroll-x'], cote: 'dessus', titre: 'Un client par ligne',
-          texte: 'Le dernier mois reçu, son chiffre d\'affaires, ce qui manque, la dernière relance. La pastille de couleur dit l\'état — sa légende est sous le tableau. <b>Une ligne ouvre la fiche</b> du client.' },
+          texte: 'Le dernier mois reçu, son chiffre d\'affaires, ce qui manque — et la dernière relance quand il y en a eu une (une colonne vide se masque). La pastille de couleur dit l\'état — sa légende est sous le tableau. <b>Une ligne ouvre la fiche</b> du client.' },
         { page: '#/dossiers', cible: '#imp', cote: 'dessous', titre: 'Recevoir un paquet',
           texte: 'Chaque mois, un client sur SkanFact t\'envoie son paquet. <b>« Importer un paquet… »</b>, ou tu le glisses simplement sur la fenêtre : il est vérifié pièce par pièce, et rangé dans son dossier.' },
         // — Un client sur SkanFact
