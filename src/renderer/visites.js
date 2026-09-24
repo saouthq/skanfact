@@ -780,7 +780,7 @@
         // — Vendre
         { chapitre: 'Vendre', couleur: 'vendre', page: '#/devis', cible: ['#list-wrap table.list', '#view table.list'], zone: ['#list-wrap table.list', '#view table.list'], cote: 'dessus', titre: 'Les devis',
           texte: 'Tes propositions de prix. Le statut dit où en est chacun : brouillon, envoyé, accepté, refusé, expiré. <b>Une ligne s\'ouvre d\'un clic</b>.' },
-        { page: '#/devis', cible: '#view [data-rowmenu]', cote: 'gauche', titre: 'Le bouton « Actions »',
+        { page: '#/devis', cible: '#view table.list [data-rowmenu]', cote: 'gauche', titre: 'Le bouton « Actions »',
           texte: 'Au bout de chaque ligne : tous les autres gestes, <b>chacun avec sa phrase</b> — envoyer, dupliquer, noter que le client a dit oui, facturer.' },
         { page: fiche('devis'), cible: ['table:has(> #lines)', '#lines'], cote: 'dessus', titre: 'Dans un devis : les lignes',
           texte: 'Ce que tu vends, ligne par ligne : la désignation, la quantité, le prix hors taxe, la TVA. <b>Le total se calcule tout seul</b>, et chaque ligne se reprend du catalogue d\'un clic.' },
@@ -1065,7 +1065,7 @@
       conclusion: 'La relance est notée sur la facture : la prochaine passera au niveau suivant, avec un ton un peu plus ferme.',
       etapes: [
         { page: '#/relances', titre: 'Les relances', texte: 'Les factures en retard, classées par ancienneté. À chaque niveau son ton — rappel, relance, dernière relance.' },
-        { page: '#/relances', cible: '#view [data-rowmenu]', cote: 'gauche', faire: 'clic', facultatif: true,
+        { page: '#/relances', cible: '#view table.list [data-rowmenu]', cote: 'gauche', faire: 'clic', facultatif: true,
           titre: 'Le menu de la ligne', texte: '« Relancer par email » prépare le mail au bon ton ; « Noter un appel » garde la trace d\'un coup de fil.',
           action: 'Clique sur <b>« Actions »</b> au bout d\'une ligne.', fait: () => !!$('.row-menu'), essai: { clic: true } },
         { cible: '.row-menu', cote: 'gauche', titre: 'Choisis', texte: 'Chaque geste a sa phrase. « Ne pas relancer avant… » met une facture en pause si le client a promis de payer.' }

@@ -384,4 +384,22 @@ t('10.14.0 Cabinet : le fichier d\'appairage enregistré se retient — c\'est l
   assert.ok(/state:/.test(h), 'le handler ne rend plus l\'état');
   assert.ok(/pairingExportedAt/.test(fonction(lireSource('src', 'cabinet', 'cabcore.js'), 'function premiersPas(')), 'l\'étape ne lit plus l\'export');
 });
+t('10.14.0 : une étape vise le menu d\'une LIGNE, jamais « le premier [data-rowmenu] venu » (les deux applications)', () => {
+  // e2e:cabinet-visites : « Ouvre le menu d'une pièce » visait `#view [data-rowmenu]`. Le premier de
+  // la page est celui de l'en-tête de la fiche (9.4.8), qui n'a qu'une action — « Imprimer » —, donc
+  // un bouton nommé (7.29.0) : le clic ouvrait la boîte d'impression du système. Une cible réduite à
+  // `[data-rowmenu]` nu change de sens dès qu'un menu s'ajoute plus haut dans la page.
+  const fautes = [];
+  [['src', 'renderer', 'visites.js'], ['src', 'cabinet', 'renderer', 'cabvisites.js']].forEach(ch => {
+    const src = lireSource(...ch);
+    const re = /cible:\s*(\[[^\]]*\]|'[^']*')/g; let m;
+    while ((m = re.exec(src))) {
+      const cibles = m[1].startsWith('[') ? (m[1].match(/'[^']*'/g) || []) : [m[1]];
+      cibles.map(c => c.slice(1, -1)).forEach(c => {
+        if (/^(#view\s+)?\[data-rowmenu\]$/.test(c.trim())) fautes.push(`${ch[ch.length - 1]} : ${c}`);
+      });
+    }
+  });
+  assert.deepStrictEqual(fautes, [], 'une étape vise le premier menu venu : ' + fautes.join(' ; '));
+});
 };

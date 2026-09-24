@@ -1115,7 +1115,11 @@
       chapitre: (cur.chaps && cur.chaps.length > 1) ? k : null, items: (cur.items || []).length };
   }
 
-  const api = { installer, lancer, quitter, enCours, suivant, precedent, chapitreSuivant, placerBulle, placerPres, typo, chevauche, decouperHaut, hautPourBulle, hautPourCouper, viseLaCible, estFaire, lieuDe, ouvrirOnglet,
+  // L'étape courante, telle qu'elle est écrite : l'instrument `e2e:cabinet-visites` en a besoin pour
+  // JOUER le geste qu'elle demande (sa cible, son essai) — une copie, jamais l'objet du parcours.
+  const etapeCourante = () => { const e = etape(); return e ? Object.assign({}, e) : null; };
+
+  const api = { installer, lancer, quitter, enCours, etapeCourante, suivant, precedent, chapitreSuivant, placerBulle, placerPres, typo, chevauche, decouperHaut, hautPourBulle, hautPourCouper, viseLaCible, estFaire, lieuDe, ouvrirOnglet,
     chapitres, resoudre, visible, listerControles, etapesDeLaVue, blocsDe, cheminDe, PATIENCE, PATIENCE_FACULTATIVE, CONTROLES,
     nettoie, libelleDe, resumeBulle, routeDe, expliqueur, zoneur };
   global.Visite = api;

@@ -932,7 +932,7 @@
       etapes: [
         { page: dans('livre', 'comptabilite/journal'), cible: ['#view table.list', '#c-livres .panel'], cote: 'dessus', titre: 'Le livre-journal',
           texte: 'Chaque pièce validée porte son numéro. Au bout de sa ligne, le menu <b>« Actions »</b>.' },
-        { page: dans('livre', 'comptabilite/journal'), cible: '#view [data-rowmenu]', cote: 'gauche', faire: 'clic', titre: 'Contre-passer ou extourner',
+        { page: dans('livre', 'comptabilite/journal'), cible: '#view table.list [data-rowmenu]', cote: 'gauche', faire: 'clic', titre: 'Contre-passer ou extourner',
           action: 'Ouvre le menu d\'une pièce : rien ne change tant que tu n\'y choisis rien.', essai: { clic: true },
           texte: '<b>Contre-passer</b> écrit la pièce miroir aujourd\'hui : l\'originale et son miroir s\'annulent. <b>Extourner</b> la reprend au 1er du mois suivant : c\'est le geste d\'une charge à payer. Dans les deux cas, l\'originale reste, avec son numéro.' },
         { page: dans('livre', 'comptabilite/journal'), cible: '.row-menu', cote: 'gauche', titre: 'Choisir, ou refermer',

@@ -68,6 +68,8 @@
     "e2e:cabinet-jour1": "node test/e2e/cabinet-premier-jour.js",
     "e2e:cabinet-rendu": "xvfb-run -a node test/e2e/cabinet-rendu.js",
     "e2e:cabinet-couverture": "xvfb-run -a node test/e2e/cabinet-rendu.js --couverture",
+    "e2e:cabinet-visites": "node test/e2e/cabinet-visites.js",
+    "e2e:visites": "node test/e2e/visites.js",
     "e2e:entreprise-rendu": "node test/e2e/entreprise-rendu.js",
     "e2e:couverture": "node test/e2e/couverture.js",
     "e2e:banque": "node test/e2e/banque.js",

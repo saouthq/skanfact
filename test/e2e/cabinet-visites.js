@@ -18,12 +18,10 @@
 // Une visite qui ne se lance pas sur l'exemple (« D'abord : … ») est COMPTÉE, jamais ignorée : sur
 // l'exemple, toutes doivent pouvoir se lancer.
 const { fermer, playwright, RACINE, ELECTRON, journal, surveiller } = require('./harnais');
+const { jouer } = require('./jouer-visites');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
 
-// Les gestes qui ouvrent un sélecteur de fichier ou de dossier du système : dans ce parcours, le
-// sélecteur répond « annulé », et l'étape se passe par son bouton — c'est ce qu'un humain ferait.
-const PAS_DE_TOUR_MAX = 60;
 
 (async () => {
   const j = journal(); const bac = []; const fautes = [];
@@ -74,94 +72,43 @@ const PAS_DE_TOUR_MAX = 60;
     await win.waitForSelector('#view [data-visite]', { timeout: 8000 });
     await attendre(250);
   };
+  // Après un rechargement, l'application redemande son mot de passe.
+  const deverrouiller = async () => {
+    await attendre(800);
+    if (await win.$('#lock-screen:not([hidden]) #lock-pw')) {
+      await win.fill('#lock-pw', 'visites-2026');
+      await win.click('#lock-go');
+      await win.waitForSelector('#app', { state: 'visible', timeout: 15000 }).catch(() => {});
+      await attendre(600);
+    }
+  };
   await ouvrirGuide();
   const ids = await win.evaluate(() => [...new Set([...document.querySelectorAll('#view [data-visite]')].map(b => b.dataset.visite))]);
   if (ids.length < 60) throw new Error(`« Me guider » n'offre que ${ids.length} visites : le parcours n'a pas atteint la liste`);
   j.ok(`${ids.length} visites à jouer`);
 
-  // L'état de la visite, vu par le moteur ET par l'écran.
-  const etat = () => win.evaluate(() => {
-    const V = window.Visite; const st = V && V.enCours();
-    const b = document.querySelector('#visite-bulle');
-    const r = b && !b.hidden ? b.getBoundingClientRect() : null;
-    const e = V && V.etapeCourante ? V.etapeCourante() : null;
-    const faire = e && V.estFaire(e);
-    return {
-      st, titre: ((b && b.querySelector('#visite-titre')) || {}).textContent || '',
-      bulle: r ? { l: r.left, t: r.top, r: r.right, b: r.bottom } : null, W: innerWidth, H: innerHeight,
-      faire: faire ? { mode: e.faire || 'fait', essai: e.essai || null, aFait: typeof e.fait === 'function' } : null,
-      cible: e && e.cible ? !!V.resoudre(e.cible) : null
-    };
-  });
-
-  let jouees = 0, etapes = 0, passees = 0;
+  // Chaque visite est jouée par le harnais commun (`jouer-visites.js`, partagé avec l'app entreprise).
+  // Un geste qui RECHARGE la fenêtre (verrouiller, restaurer) arrête la visite : on le dit, on attend
+  // que l'application revienne, et on reprend à la suivante — sans perdre les autres.
+  const compte = { etapes: 0, passees: 0 };
+  let jouees = 0;
   const bloquees = [];
   for (const id of ids) {
-    await ouvrirGuide();
-    const b = await win.$(`#view [data-visite="${id}"]:not([disabled])`);
-    const texte = b ? (await b.textContent()).trim() : '';
-    if (!b || /^D.abord/.test(texte)) { bloquees.push(id); continue; }
-    await b.scrollIntoViewIfNeeded().catch(() => {});
-    await b.click();
-    await attendre(900);
-    let dernier = -1, surPlace = 0, tours = 0;
-    for (; tours < PAS_DE_TOUR_MAX; tours++) {
-      const s = await etat();
-      if (!s.st) break;                                   // la visite s'est terminée d'elle-même
-      if (s.st.id !== id) { fautes.push(`${id} : une autre visite (${s.st.id}) a pris la place`); break; }
-      if (s.st.fin) { etapes++; break; }
-      if (s.st.perdu) { fautes.push(`${id}, étape ${s.st.index + 1}/${s.st.total} : « On s'est perdus de vue » (${s.titre})`); break; }
-      if (!s.bulle) { fautes.push(`${id}, étape ${s.st.index + 1} : aucune bulle à l'écran`); break; }
-      if (s.bulle.l < -1 || s.bulle.t < -1 || s.bulle.r > s.W + 1 || s.bulle.b > s.H + 1) {
-        fautes.push(`${id}, étape ${s.st.index + 1} « ${s.titre} » : la bulle sort de l'écran (${Math.round(s.bulle.l)},${Math.round(s.bulle.t)} → ${Math.round(s.bulle.r)},${Math.round(s.bulle.b)})`);
-      }
-      if (s.st.index === dernier) { if (++surPlace >= 3) { fautes.push(`${id}, étape ${s.st.index + 1} « ${s.titre} » : la visite n'avance plus`); break; } }
-      else { dernier = s.st.index; surPlace = 0; etapes++; }
-      // Le geste : on le JOUE.
-      if (s.faire) {
-        const essai = s.faire.essai || {};
-        const passer = async () => { const p = await win.$('#visite-bulle [data-v="passer"]'); if (p) { await p.click(); passees++; } };
-        if (s.cible === false) { await attendre(700); continue; }     // la cible arrive (une fenêtre s'ouvre)
-        if (s.faire.mode === 'valeur' || essai.taper) {
-          const el = await win.evaluateHandle(() => window.Visite.resoudre(window.Visite.etapeCourante().cible));
-          const e = el.asElement();
-          if (e && essai.taper) { await e.click({ clickCount: 3 }).catch(() => {}); await win.keyboard.type(String(essai.taper)); }
-          await attendre(300);
-          const ok = await win.$('#visite-bulle [data-v="suiv"]:not([disabled])');
-          if (ok) await ok.click(); else await passer();
-        } else {
-          const el = await win.evaluateHandle(() => window.Visite.resoudre(window.Visite.etapeCourante().cible));
-          const e = el.asElement();
-          if (e) {
-            await e.scrollIntoViewIfNeeded().catch(() => {});
-            await e.click({ timeout: 3000 }).catch(async () => { await passer(); });
-            await attendre(700);
-            // Un geste qui attend sa PREUVE (un fichier choisi, une fenêtre enregistrée) et que le
-            // sélecteur « annulé » ne donnera jamais : on le passe, comme un humain qui renonce.
-            const apres = await etat();
-            if (apres.st && !apres.st.fin && apres.st.index === s.st.index && s.faire.aFait) await passer();
-          } else await passer();
-        }
-        await attendre(600);
-      } else {
-        const suiv = await win.$('#visite-bulle [data-v="suiv"]');
-        if (suiv) await suiv.click();
-        else await win.keyboard.press('ArrowRight');
-        await attendre(500);
-      }
+    process.stdout.write(`  · ${id}\n`);
+    try {
+      const r = await jouer(win, id, { ouvrirGuide, fautes, compte });
+      if (r.bloquee) bloquees.push(id); else jouees++;
+    } catch (e) {
+      const m = String(e && e.message || e);
+      if (!/context was destroyed|navigation|Target closed/.test(m)) throw e;
+      fautes.push(`${id} : un geste a rechargé la fenêtre au milieu de la visite`);
+      await win.waitForLoadState('domcontentloaded').catch(() => {});
+      await deverrouiller();
     }
-    if (tours >= PAS_DE_TOUR_MAX) fautes.push(`${id} : plus de ${PAS_DE_TOUR_MAX} tours sans finir`);
-    jouees++;
-    // Une fenêtre ouverte par un geste ne doit pas rester sous la visite suivante.
-    for (let k = 0; k < 3 && await win.$('#modal-root > .modal-bg'); k++) {
-      await win.keyboard.press('Escape'); await attendre(250);
-      const aband = await win.$('#modal-root button[data-v="abandonner"], #modal-root #a');
-      if (aband) { await aband.click().catch(() => {}); await attendre(200); }
-    }
-    await win.keyboard.press('Escape').catch(() => {});
   }
 
   await fermer(app);
+  const passees = compte.passees, etapes = compte.etapes;
   if (bac.length) { console.error('\nErreurs du renderer :\n' + bac.join('\n')); process.exit(2); }
   if (bloquees.length) fautes.push(`${bloquees.length} visite(s) ne se lancent pas sur l'exemple : ${bloquees.join(', ')}`);
   if (fautes.length) { console.error(`\n${fautes.length} faute(s) :\n  ` + fautes.join('\n  ')); process.exit(1); }
