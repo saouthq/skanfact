@@ -32,6 +32,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Un **clic qui tombe à côté** : ce qui vient d'apparaître a poussé le formulaire, la frappe part sur la page | 10.12.0 — « Fiche du client » né sous le champ, 45 px ; le repère « non enregistré » qui fait passer l'en-tête sur deux rangées, 40 px (H-E19) |
 | Un **clic qui ouvre autre chose que ce qu'il visait** : une proposition que personne n'a demandée s'est posée sous le curseur | 10.12.0 (H-E20) — « + Créer … au catalogue » sur la quantité et le prix |
 | Une **bulle « i » seule sur sa ligne**, ou visible à côté d'un bouton caché : un bouton DANS un bouton | 10.12.0 — neuf cas, le parseur ferme le premier |
+| Un **nombre tapé qui change sous les doigts** (« 28 » devient 82, ou 8) : un champ de nombre recréé rend son curseur au DÉBUT, et une sélection automatique prend le focus rendu par le code pour une entrée | 10.12.0 — l'inventaire ; un parcours qui `fill()` ne le voit jamais |
 
 **Les chiffres**
 
@@ -200,6 +201,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Le **bouton retour nomme** la pièce, le client, le fournisseur où il mène — jamais « le document » | 2.4.0 ; 10.12.0 |
 | Un **état vide qui porte son bouton principal** éteint celui de l'en-tête — y compris quand seule la liste se redessine | 10.12.0 (U-11) — huit pages, dont les Licences |
 | Un **état actif ne change pas la géométrie** : le gras qui fait passer à la ligne décale tout ce qui suit, au moment du clic | 10.12.0 — la barre latérale, 14 px |
+| Une **couleur de texte foncée écrite en dur a sa jumelle sombre**, dans les deux feuilles | 10.12.0 — le pied de la barre à 2,1 de contraste |
 | Un **instrument qui compare deux états** se place là où ils peuvent différer, et EXIGE cette condition — sinon il mesure l'égalité de deux défauts | 10.12.0 — la barre qui défilait : l'entrée était déjà sur deux lignes au repos |
 
 **Ce qu'on ne fait jamais**
@@ -6630,6 +6632,62 @@ déclarations sociales, registre, barèmes — à la souris et au clavier) :
   `vm.runInNewContext`.
 - Piège d'e2e : un parcours qui prend « le premier trimestre qui porte des bulletins » tombe le jour
   où ce trimestre est en cours ; il prend un trimestre TERMINÉ, et remonte d'une année en janvier.
+
+**Et la fin du tour** (clôture, paquet, Paramètres, statistiques, séries, devise, avoir fournisseur,
+inventaire, rapprochement, thème sombre — à la souris et au clavier) :
+
+- **Une règle GLOBALE neuve se relit contre tous les champs qu'elle touche** — y compris ceux qu'un
+  redessin re-crée. La sélection au focus d'un champ de nombre (plus haut, la menuiserie) prenait le
+  focus rendu PAR LE CODE pour une entrée : l'inventaire se redessinait à chaque chiffre, re-posait le
+  curseur, la règle sélectionnait le « 2 » de « 28 », et le « 8 » le remplaçait. Et sous elle, un
+  défaut plus ancien : un champ de nombre recréé rend son curseur au DÉBUT (`setSelectionRange`
+  échoue sur `type=number`), donc « 28 » donnait 82 depuis la 4.0.0. Deux remèdes, chacun à son
+  niveau : la règle ne sélectionne que si la PERSONNE entre (pointeur ou Tab, `entreeVoulue`), et
+  l'inventaire met sa ligne à jour sur place (`majInventaire`) — la règle 7.17.0, jamais appliquée à
+  ce tableau. Le parcours `e2e:entreprise` posait le comptage par `fill('1')` : il TAPE maintenant un
+  nombre à deux chiffres, touche par touche. Un chiffre juste chez `fill` et faux au clavier, c'est
+  H-E28 une fois de plus.
+- **Deux pense-bêtes pour une même déclaration, c'est deux vérités** (6.8.1) : la CNSS du trimestre
+  avait celui de la Paie (`cnss-2026-T3`) et celui du calendrier fiscal (`cnss@2026-10-15`). Une
+  occurrence du calendrier DÉSIGNE maintenant la déclaration sociale qu'elle rappelle
+  (`echeanceSociale`), la Paie fait foi, et une mention posée dans le calendrier avant la version
+  compte encore (`socialesDeposees` la relit) — une garde neuve ne jette pas ce qui existe (E-04).
+- **Un renvoi vers un réglage peut viser un CHAMP** (`panneau:champ`) : « Le renseigner » ouvre la
+  fiche société le curseur dans la case du matricule CNSS. Un test lit chaque renvoi et exige que le
+  champ visé existe dans les Paramètres — un renvoi vers un nom inventé ne fait rien, sans erreur.
+- **Un zéro qui veut dire « aucun » s'affiche vide, avec son invite** (« aucun seuil », « aucun
+  objectif ») : « 0 » dans la case se lit « un seuil de zéro dinar », c'est-à-dire le contraire.
+- **Un seul vert par onglet de Paramètres, et c'est l'étape suivante** (U-11) : « Activer un mot de
+  passe » ne s'allume qu'une fois la copie externe posée, « Enregistrer la clé » quand une clé NEUVE
+  est collée, « Signaler un problème » jamais au repos.
+- **Une phrase désigne un bouton par son NOM, jamais par son rang** : « le premier… le second »
+  décrivait deux boutons dans une rangée qui en porte trois.
+- **Ce qui dépend d'une valeur la suit, titre compris** : un avoir fournisseur gardait « Nouvelle
+  facture d'achat » en titre et « récupérer la TVA » dans ses lignes (`motsDePiece`, une table pour le
+  dessin ET le changement de nature).
+- **Un verdict qui répond à une saisie répond pendant la frappe** : le rapprochement ne disait « Ça
+  tombe juste » qu'en quittant la case. Seul le verdict se met à jour (`verdictReleve`, UNE phrase
+  pour le dessin et la frappe) ; le panneau suit au `change`, sinon la case serait détruite.
+- **Une couleur foncée écrite en dur a sa jumelle sombre** : le pied de la barre recopiait `#4b5563`
+  des liens du menu sans leur règle `body.dark` — 2,1 de contraste. La sonde `e2e:contraste` ne
+  pouvait pas le voir (elle mesure les boutons, et son seuil de 2,0 n'attrape que l'illisible) ; un
+  test lit maintenant les deux feuilles et exige la jumelle pour chaque couleur foncée
+  (`.print-only`, l'exception nommée : une page imprimée reste claire).
+- **Une règle écrite dans CLAUDE.md et contredite par un bouton de l'application est un bug** (7.3.0) :
+  la 4.0.0 dit « un stock négatif n'est jamais à ajuster », et l'alerte d'un stock négatif proposait…
+  « Ajuster », à côté d'un « Voir » (deux boutons, 7.29.0). Le geste d'une alerte est l'ACHAT, qui naît
+  avec la ligne de l'article (`#/achat/new/…/article/<id>/<qté>`) ; la ligne ouvre la fiche.
+- **Une quantité signée prend le même signe moins que les montants** (`qteSignee`) : « -1 » en tiret
+  à côté de « − 38,500 DT ».
+- **Le jumeau manquant, dans le sens inverse** (7.3.0) : le Cabinet avait `sansPerdreLaFrappe` (rendre
+  le champ ET la place du curseur après un redessin) ; l'app entreprise replaçait le curseur au bout
+  du texte dans six recherches. Même corps des deux côtés, comparé par un test — et la règle interdit
+  `setSelectionRange(x.value.length, x.value.length)`, la forme exacte du défaut.
+- Pièges de preuve : deux preuves sont d'abord tombées sur l'ANCIEN test de la même règle
+  (`run-tests.js`, qui passe avant la suite) — elles ne prouvaient pas le nouveau. Elles le
+  neutralisent maintenant le temps de la preuve (9.8.8, « une preuve qui tombe sur un AUTRE test »).
+  Et une ancre de preuve recopiée de mémoire (dix espaces au lieu de huit) ne trouve rien : on la lit
+  dans le fichier.
 
 ## Pistes pour la suite (non demandées)
 

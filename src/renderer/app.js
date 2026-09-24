@@ -467,6 +467,20 @@
   const optionStatut = st => { const t = String(C.statusLabel(st) || ''); return t.charAt(0).toUpperCase() + t.slice(1); };
   const deepCopy = o => JSON.parse(JSON.stringify(o));
   const pct = n => String(n).replace('.', ',');
+  // Une quantité SIGNÉE s'écrit avec le même signe moins que les montants (« − 38,500 DT ») : un « -1 »
+  // en tiret à côté d'un « − 38,500 » se lit comme deux conventions, donc deux sortes de chiffres.
+  const qteSignee = n => (n > 0 ? '+' : n < 0 ? '−' : '') + pct(Math.abs(n));
+  // Une recherche qui redessine son écran rend le champ ET la place du curseur — le jumeau de celle du
+  // Cabinet (10.12.0). Quatre recherches renvoyaient le curseur au bout du texte à chaque frappe :
+  // corriger une lettre au milieu de « Trabelsi » faisait taper la suivante à la fin.
+  function sansPerdreLaFrappe(champ, redessin) {
+    const id = champ.id, debut = champ.selectionStart, fin = champ.selectionEnd;
+    redessin();
+    const n = document.getElementById(id);
+    if (!n) return;
+    if (document.activeElement !== n) n.focus();
+    try { n.setSelectionRange(debut, fin); } catch (_) { /* un champ sans sélection : rien à rendre */ }
+  }
   const docCur = doc => doc.currency || company().currency;
   const short = n => Math.abs(n) >= 1000 ? (n / 1000).toFixed(Math.abs(n) >= 10000 ? 0 : 1).replace('.', ',') + ' k' : String(Math.round(n));
   const mq = window.matchMedia('(prefers-color-scheme: dark)');
@@ -1211,7 +1225,8 @@
           sel.innerHTML = withholdingOptions(taux, o);   // le taux rejoint la liste, sélectionné
           sel.value = avant = String(taux);
           sel.dispatchEvent(new Event('change', { bubbles: true }));   // (2)
-        }, 'text');
+        }, 'text', { champ: 'Taux', unite: '%', ok: 'Utiliser ce taux',
+          valider: v => { const n = Number(String(v).replace(',', '.')); return !isFinite(n) || n < 0 || n > 100 ? 'Le taux doit être un nombre entre 0 et 100.' : ''; } });
     });
   }
 
@@ -1313,6 +1328,10 @@
   // (29 caractères) faisait passer « Plus ▾ » sur une troisième rangée dans la facture tirée d'une
   // proforma (10.12.0). La bulle du bouton garde le nom entier.
   const docCourt = (d, entier) => { const l = docLabel(d); return entier || l.length <= 20 || !d.number ? l : d.number; };
+  // L'objet d'un contrat, hors de toute facture : « Entretien des portes — {mois} » sans son mois
+  // se lisait « Entretien des portes — », un tiret qui pend (10.12.0). Une seule fonction pour la
+  // fiche du client, les marges, le titre de page et le compte rendu d'une suppression.
+  const objetDeContrat = r => C.fillTemplate((r && r.subject) || '', { mois: '', annee: '' }).replace(/\s+[—–-]\s*$/, '').trim();
   const pageLabel = (hash, entier) => {
     const [route, id] = (hash || '').replace(/^#\/?/, '').split('/');
     const nom = t => entier ? t : nomCourt(t);
@@ -1324,7 +1343,7 @@
       // qu'on venait d'ouvrir depuis la fiche d'une affaire ne disait pas laquelle (10.12.0).
       const fiche = { affaire: [data.projects, 'name'], salarie: [data.employees, 'name'], immo: [data.assets, 'label'], article: [data.catalog, 'label'] }[route];
       if (fiche) { const o = (fiche[0] || []).find(x => x.id === id); if (o && o[fiche[1]]) return nom(o[fiche[1]]); }
-      if (route === 'contrat') { const r = (data.recurring || []).find(x => x.id === id); const t = r && C.fillTemplate(r.subject || '', { mois: '', annee: '' }).replace(/\s+[—–-]\s*$/, '').trim(); if (t) return nom(t); }
+      if (route === 'contrat') { const r = (data.recurring || []).find(x => x.id === id); const t = r && objetDeContrat(r); if (t) return nom(t); }
       if (route === 'achat') { const a = (data.purchases || []).find(x => x.id === id); if (a && a.number) return nom('Achat ' + a.number); }
     }
     return PAGE_LABELS[route] || 'Accueil';
@@ -2853,12 +2872,16 @@
               ${isAv ? field('Motif de l\'avoir', 'creditReason', doc.creditReason || '', 'text', ro + ' placeholder="Erreur de facturation, remise commerciale…"') : ''}
               <label class="field">${lbl('Langue du document', 'ed.lang')}<select name="lang" ${ro}><option value="fr" ${doc.lang !== 'en' ? 'selected' : ''}>Français</option><option value="en" ${doc.lang === 'en' ? 'selected' : ''}>English</option></select></label>
               <label class="field">${lbl('Devise', 'ed.docCurrency')}<select name="currency" ${ro}>${C.CURRENCIES.map(c => `<option value="${c}" ${c === cur ? 'selected' : ''}>${c}</option>`).join('')}</select></label>
-              <label class="field" id="rate-field" ${cur === company().currency ? 'hidden' : ''}><span class="fl"><span class="rate-lbl">Taux : 1 ${h(cur)} = ? ${h(company().currency)}</span> <span class="req">obligatoire</span> ${info('ed.rate')}</span><input type="number" name="exchangeRate" value="${h(doc.exchangeRate || '')}" step="0.0001" min="0" class="num" placeholder="ex. 3.4" ${ro}></label>
               ${statusCell}
               ${field(lbl('Remise globale (%)', 'ed.discount'), 'discountRate', doc.discountRate || 0, 'number', 'min="0" max="100" step="0.5" class="num" ' + ro)}
               ${isInv || isAv || isProforma ? `<label class="field">${lbl('Retenue à la source', 'ed.withholding')}${withholdingSelect('withholdingRate', doc.withholdingRate, null, ro)}</label>` : ''}
               ${isInv || isAv || isProforma ? `<label class="check" style="align-self:end"><input type="checkbox" name="applyStamp" ${doc.applyStamp === true || (isInv && doc.applyStamp !== false) ? 'checked' : ''} ${ro}> <span>Timbre fiscal (<span id="stamp-lbl">${C.money(timbreAffiche(), cur)}</span>)</span> ${info(isProforma ? 'ed.stampProforma' : 'ed.applyStamp')}</label>` : ''}
               ${isDelivery ? `<label class="check" style="align-self:end"><input type="checkbox" name="hidePrices" ${doc.hidePrices !== false ? 'checked' : ''}> Masquer les prix sur le bon ${info('ed.hidePrices')}</label>` : ''}
+              ${/* 10.12.0 — le taux apparaissait juste après la devise : choisir « EUR » faisait sauter
+                   Statut et Remise d'une colonne, sous le curseur. Ce qui apparaît selon une valeur ne
+                   pousse rien (H-E1) : il vit en fin de formulaire — sur un devis, pile sous la devise.
+                   Le libellé tient sur une ligne, sinon sa case descend sous ses voisines. */''}
+              <label class="field" id="rate-field" ${cur === company().currency ? 'hidden' : ''}><span class="fl"><span class="rate-lbl">1 ${h(cur)} = ? ${h(company().currency)}</span> <span class="req">obligatoire</span> ${info('ed.rate')}</span><input type="number" name="exchangeRate" value="${h(doc.exchangeRate || '')}" step="0.0001" min="0" class="num" placeholder="ex. 3,4" ${ro}></label>
             </form>
           </div>
           <div class="panel"><h2>Lignes ${info('ed.lines')}</h2>
@@ -3084,7 +3107,7 @@
     head.oninput = head.onchange = (e) => {
       Object.assign(doc, formValues(head));
       touch();
-      const setRateLabel = () => { const rf = $('#rate-field', head); rf.hidden = cur === company().currency; $('.rate-lbl', rf).textContent = `Taux : 1 ${cur} = ? ${company().currency}`; };
+      const setRateLabel = () => { const rf = $('#rate-field', head); rf.hidden = cur === company().currency; $('.rate-lbl', rf).textContent = `1 ${cur} = ? ${company().currency}`; };
       if (e && e.target && e.target.name === 'currency') {
         cur = docCur(doc);
         setRateLabel();
@@ -3978,7 +4001,9 @@
           <td class="nw">${l.dueDate ? C.fmtDate(l.dueDate) : '<span class="muted">—</span>'}${l.retard > 0 ? `<div class="small warn-text">${pl(l.retard, 'jour')} de retard</div>` : ''}</td>
           <td class="r nw">${C.money(l.montant, cur)}</td><td class="r nw">${l.regle ? C.money(l.regle, cur) : '<span class="muted">—</span>'}</td>
           <td class="r nw"><strong>${C.money(l.reste, cur)}</strong></td></tr>`).join('')}</tbody>
-        <tfoot><tr><td colspan="5">Total dû au ${C.fmtDate(r.date)} — dont ${C.money(r.echu, cur)} échu</td>
+        ${/* « dont 0,000 DT échu » (10.12.0) : un zéro qui ne dit rien, sous un compte que rien ne
+             presse. Le mail du même relevé taisait déjà cette moitié quand elle est nulle. */''}
+        <tfoot><tr><td colspan="5">Total dû au ${C.fmtDate(r.date)}${r.echu > 0.0005 ? ` — dont ${C.money(r.echu, cur)} échu` : ' — rien n\'est encore échu'}</td>
           <td class="r"><strong>${C.money(r.total, cur)}</strong></td></tr></tfoot></table>`
         : '<div class="empty mini">Rien d\'ouvert à cette date : le compte de ce client est soldé. Le relevé le dira, et c\'est une bonne nouvelle à envoyer.</div>';
       $$('#rv-body tr[data-go]', root).forEach(tr => tr.onclick = () => navigate('#/doc/' + tr.dataset.go));
@@ -4225,7 +4250,7 @@
             ${contrats.map(r => {
               const ht = C.computeTotals({ type: 'facture', lines: r.lines, discountRate: r.discountRate, currency: r.currency, exchangeRate: r.exchangeRate }, company()).netHT;
               return `<tr class="clickable" data-rid="${h(r.id)}">
-                <td><strong>${h(C.fillTemplate(r.subject, { mois: '', annee: '' }).trim() || 'Contrat')}</strong></td>
+                <td><strong>${h(objetDeContrat(r) || 'Contrat')}</strong></td>
                 <td>${h((C.PERIODS.find(x => x[0] === r.every) || [])[1] || '')}</td>
                 <td class="nw">${r.active === false ? '<span class="muted">suspendu</span>' : C.fmtDate(r.nextDate)}</td>
                 <td class="r nw">${C.money(ht, r.currency || cur)}</td>
@@ -4286,11 +4311,36 @@
       tracked: false, minStock: 0, location: '', initialQty: 0, initialCost: 0, initialDate: C.today(),
       serialized: false, warrantyMonths: 0 }, extra || {});
   }
+  // « Choisir une prestation à suivre… » menait au Catalogue, et rien n'y disait quelle case cocher,
+  // dans quelle fiche (10.12.0 — un bouton qui change de page mène au GESTE, H-E29). On choisit
+  // l'article ICI ; sa fiche s'ouvre suivie par numéro, à enregistrer. Stock et Garanties l'appellent.
+  function choisirArticleASuivre(done) {
+    const items = data.catalog.filter(c => !c.serialized)
+      .sort((a, b) => (a.label || '').localeCompare(b.label || '', 'fr'))
+      .map(c => ({ v: c.id, label: c.label || '(sans désignation)', sub: c.unit || '' }));
+    if (!items.length) return catalogForm(articleNeuf({ tracked: true, serialized: true }), it => { if (it && done) done(it); }, { creation: true, titre: 'Nouvel article suivi par numéro' });
+    modal(`<h2>Quelle prestation suivre par numéro ?</h2>
+      <p class="small muted">Sa fiche s'ouvre avec le suivi par numéro de série coché : tu choisis la garantie, puis tu enregistres. Les ventes passées ne reçoivent pas de numéro après coup.</p>
+      <div class="field"><span>Prestation du catalogue</span>${combo({ name: 'asuivre', items, value: items[0].v, placeholder: '— Choisis une prestation —', search: 'Rechercher une prestation…' })}</div>
+      <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="asuivre-ok">Ouvrir sa fiche</button></div>`,
+    (layer, close) => {
+      bindCombo($('[data-combo=asuivre]', layer), { items, placeholder: '— Choisis une prestation —' });
+      $('#asuivre-ok', layer).onclick = () => {
+        const it = data.catalog.find(c => c.id === $('input[name=asuivre]', layer).value);
+        if (!it) return toast('Choisis la prestation à suivre par numéro.');
+        close();
+        catalogForm(it, x => { if (x && done) done(x); }, { suivre: true, titre: 'Suivre « ' + (it.label || 'la prestation') + ' » par numéro' });
+      };
+    });
+  }
   function catalogForm(item, done, opts) {
     opts = opts || {};
     const neuf = !item || !!opts.creation;
     const it = item || articleNeuf();
     const already = neuf ? null : C.stockOf(data, it.id);   // stock déjà constitué : on ne rejoue pas le départ
+    // `suivre` (10.12.0) : la fiche d'un article EXISTANT s'ouvre cases cochées, depuis « choisir une
+    // prestation à suivre ». Rien n'est écrit sur l'article tant qu'on n'a pas enregistré.
+    const suit = { tracked: it.tracked || !!opts.suivre, serialized: it.serialized || !!opts.suivre };
     modal(`<h2>${opts.titre || (neuf ? 'Nouvelle prestation' : 'Modifier la prestation')}</h2>
       <form id="kf" class="grid-2">
         <label class="field span-2 obligatoire">${lbl('Désignation', 'cat.catalog')}<input type="text" name="label" value="${h(it.label)}"></label>
@@ -4303,16 +4353,16 @@
         <div class="span-2 annonce-stable" id="marge-hint"></div>
         <label class="field">TVA<select name="vatRate">${C.VAT_RATES.map(r => `<option value="${r}" ${Number(it.vatRate) === r ? 'selected' : ''}>${r}%</option>`).join('')}</select></label>
         <div class="field">${lbl('Unité', 'ed.unit')}<select name="unit" id="cat-unit">${unitOptions(it.unit || '', C.usedUnits(data))}</select></div>
-        <label class="check span-2"><input type="checkbox" name="tracked" ${it.tracked ? 'checked' : ''}> Suivi en stock ${info('stk.tracked')}</label>
+        <label class="check span-2"><input type="checkbox" name="tracked" ${suit.tracked ? 'checked' : ''}> Suivi en stock ${info('stk.tracked')}</label>
         <!-- Cette case vivait À L'INTÉRIEUR du bloc masqué par « Suivi en stock » : quelqu'un qui
              venait de lire « coche l'option sur une prestation du catalogue » ouvrait la fiche et ne
              la trouvait pas — elle n'existait pas à l'écran. Elle est ici, toujours visible, et elle
              coche « Suivi en stock » elle-même : suivre des numéros implique de suivre le stock. -->
-        <label class="check span-2"><input type="checkbox" name="serialized" ${it.serialized ? 'checked' : ''}> Suivre chaque unité par son numéro de série ${info('ser.serialized')}</label>
-        <div class="field span-2" id="serial-block" ${it.serialized ? '' : 'hidden'}>
+        <label class="check span-2"><input type="checkbox" name="serialized" ${suit.serialized ? 'checked' : ''}> Suivre chaque unité par son numéro de série ${info('ser.serialized')}</label>
+        <div class="field span-2" id="serial-block" ${suit.serialized ? '' : 'hidden'}>
           <label class="field">${lbl('Garantie proposée', 'ser.warranty')}<select name="warrantyMonths">${C.WARRANTY_CHOICES.map(m => `<option value="${m}" ${Number(it.warrantyMonths) === m ? 'selected' : ''}>${m ? m + ' mois' : 'Aucune'}</option>`).join('')}</select></label>
         </div>
-        <div class="field span-2" id="stock-block" ${it.tracked ? '' : 'hidden'}>
+        <div class="field span-2" id="stock-block" ${suit.tracked ? '' : 'hidden'}>
           <div class="grid-2">
             ${field(lbl('Seuil d\'alerte', 'stk.min'), 'minStock', it.minStock || 0, 'number', 'step="0.01" min="0" class="num"')}
             ${field('Emplacement', 'location', it.location || '', 'text', 'placeholder="Étagère A, réserve…"')}
@@ -4666,10 +4716,28 @@
       });
   }
 
-  function promptDialog(title, label, value, done, type) {
-    modal(`<h2>${h(title)}</h2><form id="pr" class="grid-2"><label class="field span-2">${h(label)}<input type="${type || 'text'}" name="v" value="${h(value || '')}"></label></form>
-      <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">OK</button></div>`,
-      (root, close) => { const go = () => { const v = $('input[name=v]', root).value.trim(); if (!v) return toast('Valeur obligatoire.', true); close(); done(v); }; $('#ok', root).onclick = go; $('#pr', root).onsubmit = e => { e.preventDefault(); go(); }; },
+  // 10.12.0 — l'explication d'une question s'affichait en GRAS, comme un libellé (« Crédit de TVA
+  // restant à la fin de 2025, tel qu'il figure… ») ; le bouton disait « OK » ; une valeur vide partait
+  // en bandeau, et une valeur refusée FERMAIT la fenêtre avant de le dire — le taux tapé était perdu.
+  // Une explication longue se lit au-dessus du champ, le champ porte son nom court et son unité, le
+  // bouton dit le geste, et un refus montre le champ sans fermer (7.20.0).
+  function promptDialog(title, label, value, done, type, o = {}) {
+    const long = String(label).length > 48;
+    const nom = long ? (o.champ || title) : label;
+    modal(`<h2>${h(title)}</h2>${long ? `<p class="small muted">${h(label)}</p>` : ''}
+      <form id="pr" class="grid-2"><label class="field span-2"><span>${h(nom)}${o.unite ? ` (${h(o.unite)})` : ''}</span><input type="${type || 'text'}" name="v" value="${h(value || '')}"></label></form>
+      <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">${h(o.ok || 'Valider')}</button></div>`,
+      (root, close) => {
+        const champ = $('input[name=v]', root);
+        const go = () => {
+          const v = champ.value.trim();
+          if (!v) return refus(champ, 'Écris une valeur, ou choisis « Annuler ».');
+          const erreur = o.valider ? o.valider(v) : '';
+          if (erreur) return refus(champ, erreur);
+          close(); done(v);
+        };
+        $('#ok', root).onclick = go; $('#pr', root).onsubmit = e => { e.preventDefault(); go(); };
+      },
       // Une question d'UN mot : Échap y veut dire « non », pas « j'ai perdu mon travail ».
       null, { garde: false });
   }
@@ -4848,7 +4916,7 @@
         if ($('#del-rec', root)) $('#del-rec', root).onclick = async () => {
           const n = data.documents.filter(d => d.recurringId === r.id).length;
           if (!await confirmDialog(`Supprimer ce contrat ?${n ? ` ${pl(n, 'facture')} en ${n > 1 ? 'sont issues : elles sont conservées' : 'est issue : elle est conservée'}.` : ''}`)) return;
-          forget('recurring', r.id, C.fillTemplate(r.subject || '', { mois: '', annee: '' }).trim());
+          forget('recurring', r.id, objetDeContrat(r));
           data.recurring = data.recurring.filter(x => x.id !== r.id);
           save(true); close(); if (done) done();
         };
@@ -5159,11 +5227,7 @@
       const nouveau = $('#new');
       if (nouveau) nouveau.classList.toggle('btn-primary', !!(kept.length || filtered));
       const q = $('#q');
-      if (q) q.oninput = e => {
-        const pos = e.target.selectionStart;                 // on redessine la page : il faut rendre le curseur où il était
-        s.q = e.target.value.toLowerCase(); s.page = 1; draw();
-        const el = $('#q'); if (el) { el.focus(); el.setSelectionRange(pos, pos); }
-      };
+      if (q) q.oninput = e => { s.q = e.target.value.toLowerCase(); s.page = 1; sansPerdreLaFrappe(e.target, draw); };
       if ($('#st')) $('#st').onchange = e => { s.st = e.target.value; s.page = 1; draw(); };
       if ($('#reset-f')) $('#reset-f').onclick = () => { s.q = ''; s.st = ''; s.page = 1; draw(); };
       $$('tr.clickable[data-rid]').forEach(tr => tr.onclick = e => { if (e.target.closest('button')) return; navigate('#/contrat/' + tr.dataset.rid); });
@@ -5325,7 +5389,7 @@
       const find = id => all.find(x => x.doc.id === id);
       if ($('#rel-vers-fac')) $('#rel-vers-fac').onclick = () => navigate('#/factures');
       if ($('#rel-vers-new')) $('#rel-vers-new').onclick = () => navigate('#/doc/new/facture');
-      if ($('#rel-q')) $('#rel-q').oninput = e => { relState.q = e.target.value; relState.page = 1; draw(); const el = $('#rel-q'); el.focus(); el.setSelectionRange(el.value.length, el.value.length); };
+      if ($('#rel-q')) $('#rel-q').oninput = e => { relState.q = e.target.value; relState.page = 1; sansPerdreLaFrappe(e.target, draw); };
       if ($('#reset-f')) $('#reset-f').onclick = () => { relState.q = ''; relState.page = 1; draw(); };
       bindSort($('#r-wrap'), key => { relState.sort = toggleSort(relState.sort, key, relCols); relState.page = 1; draw(); });
       bindPager($('#r-wrap'), relState, () => draw(), '#r-wrap');
@@ -5865,10 +5929,16 @@
   // aligné à droite ; un clic à gauche posait le curseur DEVANT le 0, et « 850 » tapé donnait
   // 8 500 DT — dix fois le prix, sans rien qui le signale. Le `mouseup` qui suit un clic désélectionne :
   // on l'annule une fois, pour ce clic-là seulement ; un second clic place le curseur normalement.
-  let nombreJusteEntre = null;
+  // Et seulement quand c'est la PERSONNE qui entre dans le champ (un clic, Tab) : l'inventaire se
+  // redessine à chaque chiffre et y remet le curseur ; sélectionner à ce moment-là faisait remplacer
+  // le « 2 » de « 28 » par le « 8 » — 8 planches comptées au lieu de 28, et un écart de −22 prêt à
+  // être enregistré en mouvements (10.12.0). Un focus rendu par le code n'est pas une entrée.
+  let nombreJusteEntre = null, entreeVoulue = false;
   const estNombre = el => el && el.tagName === 'INPUT' && el.type === 'number' && !el.readOnly && !el.disabled;
+  document.addEventListener('pointerdown', () => { entreeVoulue = true; }, true);
+  document.addEventListener('keydown', e => { entreeVoulue = e.key === 'Tab'; }, true);
   document.addEventListener('focusin', e => {
-    if (!estNombre(e.target) || e.target.value === '') return;
+    if (!estNombre(e.target) || e.target.value === '' || !entreeVoulue) return;
     nombreJusteEntre = e.target;
     try { e.target.select(); } catch (_) { /* un champ sans sélection possible reste tel quel */ }
   });
@@ -6361,6 +6431,13 @@
       // « + Achat » y ouvrait un achat sans affaire (10.12.0).
       const iAff = parts.indexOf('affaire');
       if (iAff > 0 && projectById(parts[iAff + 1])) p.projectId = parts[iAff + 1];
+      // Depuis une alerte de stock, l'achat naît avec la ligne de l'article : quantité à commander,
+      // coût d'achat, destination « stock » (10.12.0). « Ajuster » était le seul geste proposé — et un
+      // stock négatif ne s'ajuste jamais : c'est un achat oublié (règle 4.0.0).
+      const iArt = parts.indexOf('article');
+      const art = iArt > 0 ? data.catalog.find(c => c.id === parts[iArt + 1]) : null;
+      if (art) p.lines = [{ label: art.label, itemId: art.id, qty: Number(parts[iArt + 2]) > 0 ? Number(parts[iArt + 2]) : 1, unit: art.unit || '',
+        unitPrice: Number(art.unitCost) || 0, vatRate: Number(art.vatRate) || 0, destination: 'stock', deductible: true }];
       isNew = true;
     } else {
       const stored = purchaseById(parts[0]);
@@ -6368,6 +6445,16 @@
       p = deepCopy(stored);
     }
     const isDep = p.kind === 'depense';
+    // 10.12.0 — un avoir fournisseur demandait « Numéro de la facture », « celui écrit sur la facture
+    // du fournisseur », et promettait de « récupérer la TVA » — un avoir en RETIRE. Ce que la pièce
+    // est se dit dans ses libellés — le titre compris — ; ils suivent la nature quand on la change.
+    const motsDePiece = kind => kind === 'avoir'
+      ? { titre: 'Nouvel avoir fournisseur', numero: 'Numéro de l\'avoir', invite: 'Celui écrit sur l\'avoir du fournisseur', lignes: 'Saisis au moins le total hors taxes et son taux de TVA : l\'avoir retire cette TVA de celle que tu récupères.' }
+      : kind === 'acompte'
+        ? { titre: 'Nouvel acompte versé', numero: 'Référence de l\'acompte', invite: 'Facture d\'acompte, reçu, virement…', lignes: 'Saisis au moins le total hors taxes et son taux de TVA : c\'est ce qui permet de récupérer la TVA de l\'acompte.' }
+        : kind === 'depense'
+          ? { titre: 'Nouvelle dépense', numero: 'Référence du justificatif', invite: 'Ticket, reçu…', lignes: 'Saisis au moins le total hors taxes et son taux de TVA : c\'est ce qui permet de récupérer la TVA.' }
+          : { titre: 'Nouvelle facture d\'achat', numero: 'Numéro de la facture', invite: 'Celui écrit sur la facture du fournisseur', lignes: 'Saisis au moins le total hors taxes et son taux de TVA : c\'est ce qui permet de récupérer la TVA.' };
     // 10.2.0 : un avoir ou un acompte se RATTACHE à la facture qu'il diminue. Le rattachement est
     // facultatif — un avoir peut arriver avant la facture suivante, un acompte avant la commande —
     // et tant qu'il manque, « À faire » le rappelle.
@@ -6392,7 +6479,7 @@
 
     $('#view').innerHTML = `
       <div class="page-head">
-        <div><h1>${isNew ? (isDep ? 'Nouvelle dépense' : p.kind === 'avoir' ? 'Nouvel avoir fournisseur' : p.kind === 'acompte' ? 'Nouvel acompte versé' : 'Nouvelle facture d\'achat') : `${natureLabel(p.kind)} ${h(p.number || 'sans numéro')}`}
+        <div><h1>${isNew ? `<span id="b-titre">${h(motsDePiece(p.kind).titre)}</span>` : `${natureLabel(p.kind)} ${h(p.number || 'sans numéro')}`}
           <span class="dirty-dot" id="dirty-dot" hidden>Modifications non enregistrées</span></h1>
           ${isNew ? '' : `<div class="small muted">${h(supplierName(p.supplierId))} · ${C.fmtDate(p.date)}</div>`}</div>
         <div class="actions">
@@ -6414,7 +6501,7 @@
               <div class="field">${lbl('Fournisseur', 'buy.supplier')}
                 ${combo({ name: 'supplierId', value: p.supplierId, items: supplierItems(), placeholder: '— Choisir un fournisseur —', search: 'Rechercher : nom, contact, MF…', add: '+ Nouveau fournisseur' })}
               </div>
-              ${field(lbl(isDep ? 'Référence du justificatif' : 'Numéro de la facture', 'buy.number'), 'number', p.number || '', 'text', isDep ? 'placeholder="Ticket, reçu…"' : 'placeholder="Celui écrit sur la facture du fournisseur"')}
+              ${field(lbl(`<span id="b-num-lbl">${h(motsDePiece(p.kind).numero)}</span>`, 'buy.number'), 'number', p.number || '', 'text', `placeholder="${h(motsDePiece(p.kind).invite)}"`)}
               <label class="field">${lbl('Nature', 'buy.kind')}<select name="kind">${C.PURCHASE_KINDS.map(([v, l]) => `<option value="${v}" ${p.kind === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
               <div class="field" id="b-lie-field" ${C.PURCHASE_LIES.includes(p.kind) ? '' : 'hidden'}>${lbl('Facture concernée', 'buy.lie')}
                 ${combo({ name: 'achatLie', value: p.achatLie || '', items: lieItems(p.supplierId), placeholder: '— À rattacher plus tard —', search: 'Rechercher : n°, objet…' })}
@@ -6431,13 +6518,13 @@
               <label class="field">${lbl('Retenue à la source opérée', 'buy.withholding')}${withholdingSelect('withholdingRate', p.withholdingRate)}</label>
               ${field(lbl('Timbre et frais', 'buy.fees'), 'fees', p.fees || 0, 'number', 'step="0.001" min="0" class="num"')}
               <label class="field">${lbl('Devise de la facture', 'buy.currency')}<select name="currency">${C.CURRENCIES.map(c => `<option value="${c}" ${c === cur ? 'selected' : ''}>${c}</option>`).join('')}</select></label>
-              <label class="field" id="b-rate-field" ${cur === company().currency ? 'hidden' : ''}><span class="fl"><span class="b-rate-lbl">Taux : 1 ${h(cur)} = ? ${h(company().currency)}</span> <span class="req">obligatoire</span> ${info('buy.rate')}</span><input type="number" name="exchangeRate" value="${h(p.exchangeRate || '')}" step="0.0001" min="0" class="num" placeholder="ex. 3.4"></label>
+              <label class="field" id="b-rate-field" ${cur === company().currency ? 'hidden' : ''}><span class="fl"><span class="b-rate-lbl">1 ${h(cur)} = ? ${h(company().currency)}</span> <span class="req">obligatoire</span> ${info('buy.rate')}</span><input type="number" name="exchangeRate" value="${h(p.exchangeRate || '')}" step="0.0001" min="0" class="num" placeholder="ex. 3,4"></label>
             </form>
           </div>
           <div class="panel"><h2>Lignes ${info('buy.lines')}</h2>
             <div class="catalog-pick"><div id="b-cat">${combo({ items: [], placeholder: 'Ajouter depuis le catalogue…', search: 'Rechercher une prestation…' })}</div>
               <button class="btn btn-sm" id="add-line">+ Ligne</button>
-              <span class="small muted">Saisis au moins le total hors taxes et son taux de TVA : c'est ce qui permet de récupérer la TVA.</span></div>
+              <span class="small muted" id="b-lignes-hint">${h(motsDePiece(p.kind).lignes)}</span></div>
             <table class="lines-edit buy-lines"><thead><tr><th>Désignation</th><th class="r" style="width:62px">Qté</th><th class="r" style="width:92px">P.U. HT</th><th style="width:76px">TVA</th>
               <th style="width:150px">Destination ${info('buy.destination')}</th><th class="nw" style="width:96px">Déduct. ${info('buy.deductible')}</th><th class="r" style="width:118px">Total HT</th><th></th></tr></thead>
               <tbody id="b-lines"></tbody></table>
@@ -6642,12 +6729,16 @@
       if (e && e.target && e.target.name === 'currency') {
         cur = p.currency || company().currency;
         const rf = $('#b-rate-field', head);
-        if (rf) { rf.hidden = cur === company().currency; $('.b-rate-lbl', rf).textContent = `Taux : 1 ${cur} = ? ${company().currency}`; }
+        if (rf) { rf.hidden = cur === company().currency; $('.b-rate-lbl', rf).textContent = `1 ${cur} = ? ${company().currency}`; }
         drawLines();
       }
       // La nature décide du rattachement (10.2.0) : seuls un avoir et un acompte en ont un, et
       // repasser en facture efface le lien plutôt que de le laisser dormir dans les données.
       if (e && e.target && e.target.name === 'kind') {
+        const mots = motsDePiece(p.kind);
+        if ($('#b-num-lbl', head)) { $('#b-num-lbl', head).textContent = mots.numero; $('[name=number]', head).placeholder = mots.invite; }
+        if ($('#b-lignes-hint')) $('#b-lignes-hint').textContent = mots.lignes;
+        if ($('#b-titre')) { $('#b-titre').textContent = mots.titre; setWindowTitle('achat', []); }
         const lf = $('#b-lie-field', head);
         const lie = C.PURCHASE_LIES.includes(p.kind);
         if (lf) lf.hidden = !lie;
@@ -7182,7 +7273,7 @@
         <div class="panel"><h2>Rentabilité des contrats récurrents ${info('mg.contracts')}</h2>
           ${rows.length ? `<div class="scroll-x"><table class="list compact"><thead><tr><th>Contrat</th><th>Client</th><th class="r">Factures</th><th class="r">Facturé HT</th><th class="r">Coût</th><th class="r">Marge</th><th class="r">Par mois</th><th class="r">Taux</th></tr></thead><tbody>
             ${rows.map(({ r, p }) => `<tr class="clickable" data-rid="${h(r.id)}">
-              <td><strong>${h(C.fillTemplate(r.subject, { mois: '', annee: '' }).trim() || 'Contrat')}</strong><div class="small muted">depuis ${C.fmtDate(p.first)}</div></td>
+              <td><strong>${h(objetDeContrat(r) || 'Contrat')}</strong><div class="small muted">depuis ${C.fmtDate(p.first)}</div></td>
               <td>${h(clientName(r.clientId))}</td><td class="r nw">${p.count}</td>
               <td class="r nw">${C.money(p.revenue, cur)}</td><td class="r nw">${C.money(p.cost, cur)}</td>
               <td class="r nw"><strong>${C.money(p.margin, cur)}</strong></td>
@@ -8197,12 +8288,16 @@
           </tbody></table></div>
           ${raisonCnss(y, q) && !filed(`cnss-${y}-T${q}`) ? `<p class="small danger-text mt" id="cn-impossible">${h(raisonCnss(y, q))}</p>` : ''}
           ${enCoursCnss && !raisonCnss(y, q) && !filed(`cnss-${y}-T${q}`) ? `<p class="small muted mt" id="cn-en-cours">${h(enCoursCnss)}</p>` : ''}
+          ${/* 10.12.0 — le matricule CNSS de l'ENTREPRISE manquait sans un mot : la déclaration le
+               demande autant que celui de chaque salarié, et le bulletin l'imprime. Les deux manques
+               se lisent AVANT les boutons (9.4.2), et nomment qui. */''}
+          ${cn.rows.some(r => !r.cnss) ? `<p class="small warn-text mt" id="cn-sans-numero">Le matricule CNSS manque sur ${cn.rows.filter(r => !r.cnss).length > 1 ? 'les fiches de' : 'la fiche de'} ${h(cn.rows.filter(r => !r.cnss).map(r => r.name).join(', '))} : la déclaration ne peut pas être déposée sans lui.</p>` : ''}
+          ${(company().cnss || '').trim() ? '' : `<p class="small warn-text mt" id="cn-employeur">Le matricule CNSS de l'entreprise n'est pas renseigné : la déclaration et les bulletins le portent. <a href="#" id="cn-mat" class="warn-link">Le renseigner</a></p>`}
           <div class="inline mt">
             <button class="btn" id="cn-csv">Exporter en CSV</button>
             <button class="btn" id="cn-mail">Envoyer au comptable</button>
             <button class="btn ${filed(`cnss-${y}-T${q}`) || raisonCnss(y, q) || enCoursCnss ? '' : 'btn-primary'}" id="cn-file"${(raisonCnss(y, q) || enCoursCnss) && !filed(`cnss-${y}-T${q}`) ? ` disabled title="${h(raisonCnss(y, q) || enCoursCnss)}"` : ''}>${filed(`cnss-${y}-T${q}`) ? 'Retirer « déposée »' : 'Marquer déposée'}</button>
-          </div>
-          ${cn.rows.some(r => !r.cnss) ? '<p class="small warn-text mt">Un matricule CNSS manque sur une fiche : la déclaration ne peut pas être déposée sans lui.</p>' : ''}`
+          </div>`
             : `<div class="empty">Aucun bulletin sur ce trimestre.</div>`}
         </div>
 
@@ -8255,6 +8350,7 @@
         { key: 'employee', label: 'Part salarié', type: 'money' }, { key: 'employer', label: 'Part employeur', type: 'money' },
         { key: 'accident', label: 'Accident du travail', type: 'money' }, { key: 'total', label: 'Total', type: 'money' }
       ];
+      if ($('#cn-mat')) $('#cn-mat').onclick = e => { e.preventDefault(); allerParametres('societe', 'p-identite:cnss'); };
       if ($('#cn-csv')) $('#cn-csv').onclick = async () => {
         const f = await bridge.saveText(`cnss-${y}-T${q}.csv`, C.toCsv(cn.rows, cnCols));
         if (f) toast('Exporté : ' + f.split(/[\\/]/).pop());
@@ -8721,7 +8817,7 @@
           <p class="small muted mt">Valorisation au <b>coût moyen pondéré</b> : à chaque entrée, le coût unitaire moyen est recalculé sur tout le stock. <em>À VÉRIFIER avec ton comptable : la méthode retenue pour tes comptes annuels.</em></p>`
             : '<div class="empty">Aucun article ne correspond.</div>'}
         </div>`;
-      $('#st-q').oninput = e => { s.q = e.target.value; drawState(); const el = $('#st-q'); el.focus(); el.setSelectionRange(el.value.length, el.value.length); };
+      $('#st-q').oninput = e => { s.q = e.target.value; sansPerdreLaFrappe(e.target, drawState); };
       $('#st-only').onchange = e => { s.only = e.target.value; drawState(); };
       // Un compteur rouge qui nomme un ensemble doit l'ouvrir (7.15.0) : ces deux-là annonçaient un
       // problème et laissaient chercher les articles concernés à la main dans toute la liste.
@@ -8754,7 +8850,7 @@
               <td class="nw">${C.fmtDate(m.date)}</td><td>${h(m.label)}</td>
               <td>${h(C.moveSourceLabel(m.source))}${m.note ? `<div class="small muted">${h(m.note)}</div>` : ''}</td>
               <td class="nw">${h(m.ref) || '<span class="muted">—</span>'}</td>
-              <td class="r nw ${m.qty < 0 ? 'warn-text' : 'ok-text'}"><strong>${m.qty > 0 ? '+' : ''}${pct(m.qty)}</strong></td>
+              <td class="r nw ${m.qty < 0 ? 'warn-text' : 'ok-text'}"><strong>${qteSignee(m.qty)}</strong></td>
               <td class="r nw">${C.money(m.unitApplied, cur)}</td>
               <td class="r nw ${m.qtyAfter < 0 ? 'warn-text' : ''}">${pct(m.qtyAfter)}</td></tr>`).join('')}
           </tbody></table></div>
@@ -8767,46 +8863,69 @@
       bindPager($('#st-body'), s.moves, () => drawMoves(), '#st-body');
     }
 
-    function drawInventory() {
+    // Le comptage se TAPE, ligne après ligne : le tableau ne se redessine jamais pendant la frappe
+    // (règle 7.17.0). Il se redessinait à chaque chiffre, et un champ de nombre recréé rend son curseur
+    // au DÉBUT : « 28 » tapé devenait 82 — un écart de +52 planches prêt à être enregistré. On met à
+    // jour la ligne, le compte et le bouton ; le champ, lui, reste celui dans lequel on écrit.
+    const etatInventaire = () => {
       const rows = C.inventoryDiff(data, s.counts, s.countDate);
       const counted = rows.filter(r => r.counted != null);
       const gaps = counted.filter(r => r.gap !== 0);
-      const value = C.round3(gaps.reduce((a, r) => a + r.value, 0));
+      return { rows, counted, gaps, value: C.round3(gaps.reduce((a, r) => a + r.value, 0)) };
+    };
+    function majInventaire() {
+      const { rows, counted, gaps, value } = etatInventaire();
+      const lignes = {}; $$('#st-body tr[data-ligne]').forEach(tr => { lignes[tr.dataset.ligne] = tr; });
+      rows.forEach(r => {
+        const tr = lignes[r.itemId]; if (!tr) return;
+        tr.classList.toggle('row-warn', r.gap != null && r.gap !== 0);
+        const ec = $('[data-ecart]', tr);
+        ec.className = `r nw ${r.gap ? (r.gap < 0 ? 'warn-text' : 'ok-text') : ''}`;
+        ec.innerHTML = r.gap == null ? '<span class="muted">—</span>' : `<strong>${qteSignee(r.gap)}</strong>`;
+        $('[data-valeur]', tr).innerHTML = r.gap == null || r.gap === 0 ? '<span class="muted">—</span>' : C.money(r.value, cur);
+      });
+      $('#inv-compte').textContent = `${pl(counted.length, 'article')} compté${sPl(counted.length)} sur ${rows.length}`;
+      $('#inv-apply').disabled = !gaps.length;
+      $('#inv-apply').textContent = gaps.length ? `Enregistrer ${pl(gaps.length, 'écart')}` : 'Enregistrer les écarts';
+      $('#inv-clear').disabled = !counted.length;
+      const imp = $('#inv-impact');
+      imp.className = `small ${value < 0 ? 'warn-text' : 'muted'}`;
+      imp.textContent = gaps.length ? `Impact sur la valeur du stock : ${C.money(value, cur)}` : counted.length ? 'Aucun écart : ce que tu as compté est ce que dit l\'application.' : 'Aucun écart pour l\'instant.';
+    }
+
+    function drawInventory() {
+      const { rows } = etatInventaire();
       $('#st-body').innerHTML = `
         <div class="panel"><h2>Inventaire physique ${info('stk.inventory')}</h2>
           <p class="small muted mb">Une fois par an au minimum, on compte ce qu'il y a vraiment en rayon et on le compare à ce que dit l'application. Un écart n'est pas une faute : c'est de la casse non déclarée, une sortie oubliée ou une erreur de saisie. L'important est de le voir.</p>
           <div class="filters">
             <label class="small">Date du comptage ${dateFieldHtml('', 'countDate', s.countDate, {})}</label>
-            <span class="small muted">${pl(counted.length, 'article')} compté${sPl(counted.length)} sur ${rows.length}</span>
+            <span class="small muted" id="inv-compte"></span>
           </div>
           <div class="scroll-x"><table class="list compact"><thead><tr>
             <th>Article</th><th class="r">Stock théorique</th><th class="r">Compté</th><th class="r">Écart</th><th class="r">Valeur de l'écart</th></tr></thead><tbody>
-            ${rows.map(r => `<tr class="${r.gap != null && r.gap !== 0 ? 'row-warn' : ''}">
+            ${rows.map(r => `<tr data-ligne="${h(r.itemId)}">
               <td><strong>${h(r.label)}</strong>${r.unit ? ` <span class="muted">(${h(r.unit)})</span>` : ''}</td>
               <td class="r nw">${pct(r.book)}</td>
-              <td class="r"><input type="number" step="0.01" class="num inv-in" data-iid="${h(r.itemId)}" value="${r.counted == null ? '' : r.counted}" placeholder="—" style="width:90px"></td>
-              <td class="r nw ${r.gap ? (r.gap < 0 ? 'warn-text' : 'ok-text') : ''}">${r.gap == null ? '<span class="muted">—</span>' : `<strong>${r.gap > 0 ? '+' : ''}${pct(r.gap)}</strong>`}</td>
-              <td class="r nw">${r.gap == null || r.gap === 0 ? '<span class="muted">—</span>' : C.money(r.value, cur)}</td></tr>`).join('')}
+              <td class="r"><input type="number" step="0.01" class="num inv-in" data-iid="${h(r.itemId)}" value="${r.counted == null ? '' : r.counted}" placeholder="—" style="width:90px" aria-label="Compté : ${h(r.label)}"></td>
+              <td class="r nw" data-ecart></td><td class="r nw" data-valeur></td></tr>`).join('')}
           </tbody></table></div>
           <div class="inline mt">
-            <button class="btn btn-primary" id="inv-apply" ${gaps.length ? '' : 'disabled'}>Enregistrer ${pl(gaps.length, 'écart')}</button>
-            <button class="btn" id="inv-clear" ${counted.length ? '' : 'disabled'}>Effacer le comptage</button>
-            <span class="small ${value < 0 ? 'warn-text' : 'muted'}">${gaps.length ? `Impact sur la valeur du stock : ${C.money(value, cur)}` : 'Aucun écart pour l\'instant.'}</span>
+            <button class="btn btn-primary" id="inv-apply" disabled></button>
+            <button class="btn" id="inv-clear" disabled>Effacer le comptage</button>
+            <span class="small" id="inv-impact"></span>
           </div>
           <p class="small muted mt">Rien n'est modifié tant que tu ne cliques pas : le comptage reste à l'écran, et c'est toi qui décides de le passer en mouvements d'inventaire.</p>
         </div>`;
       bindDateFields($('#st-body'));
       const hid = $('#st-body input[name=countDate]');
       if (hid) hid.onchange = () => { s.countDate = hid.value || C.today(); drawInventory(); };
-      $$('#st-body .inv-in').forEach(el => el.oninput = () => {
-        s.counts[el.dataset.iid] = el.value;
-        const keep = el.dataset.iid, pos = el.selectionStart;
-        drawInventory();
-        const again = $(`#st-body .inv-in[data-iid="${keep}"]`);
-        if (again) { again.focus(); try { again.setSelectionRange(pos, pos); } catch (_) {} }
-      });
+      majInventaire();
+      $$('#st-body .inv-in').forEach(el => el.oninput = () => { s.counts[el.dataset.iid] = el.value; majInventaire(); });
       $('#inv-clear').onclick = () => { s.counts = {}; drawInventory(); };
       $('#inv-apply').onclick = async () => {
+        const { gaps } = etatInventaire();
+        if (!gaps.length) return;
         if (licenceBlock('Créer les mouvements de cet inventaire', 'stock')) return;
         if (!await confirmDialog(`Enregistrer ${pl(gaps.length, 'mouvement')} d'inventaire au ${C.fmtDate(s.countDate)} ? Le stock théorique sera aligné sur ce que tu as compté. Cette opération est tracée dans les mouvements et se corrige comme n'importe quel ajustement.`, 'Enregistrer')) return;
         if (closedBlock(s.countDate, 'Cet inventaire')) return;
@@ -8821,7 +8940,7 @@
         <div class="panel"><h2>Ce qui demande ton attention ${info('stk.alerts')}</h2>
           ${alerts.length ? `<div class="scroll-x"><table class="list compact"><thead><tr>
             <th>Article</th><th>Problème</th><th class="r">En stock</th><th class="r">Seuil</th><th class="r">À commander</th><th></th></tr></thead><tbody>
-            ${alerts.map(r => `<tr class="${r.kind === 'negatif' ? 'row-warn' : ''}">
+            ${alerts.map(r => `<tr class="clickable ${r.kind === 'negatif' ? 'row-warn' : ''}" data-see="${h(r.itemId)}">
               <td><strong>${h(r.label)}</strong>${r.location ? `<div class="small muted">${h(r.location)}</div>` : ''}</td>
               <td>${r.kind === 'negatif' ? '<span class="warn-text">Stock négatif — tu as vendu plus que tu n\'as acheté. Un achat manque, ou une quantité a été saisie de travers.</span>'
                 : r.kind === 'rupture' ? '<span class="warn-text">Rupture : il n\'en reste plus.</span>'
@@ -8829,13 +8948,14 @@
               <td class="r nw">${qtyCell(r)}</td>
               <td class="r nw">${r.minStock ? pct(r.minStock) : '<span class="muted">—</span>'}</td>
               <td class="r nw">${r.kind === 'negatif' ? '<span class="muted">—</span>' : `<strong>${pct(C.round3(Math.max(r.minStock, 1) - r.qty))}</strong>`}</td>
-              <td class="r"><button class="btn btn-sm" data-fix="${h(r.itemId)}">Ajuster</button>
-                <button class="btn btn-sm btn-ghost" data-see="${h(r.itemId)}">Voir</button></td></tr>`).join('')}
+              <td class="r">${/* 10.12.0 — deux boutons par ligne (règle 7.29.0 : au plus UN), et « Ajuster » pour
+                   un stock négatif, que la règle 4.0.0 interdit d'ajuster. Le geste est l'ACHAT : oublié
+                   (négatif) ou à passer (seuil). La ligne ouvre la fiche de l'article. */''}<button class="btn btn-sm" data-achat="${h(r.itemId)}" data-qte="${r.kind === 'negatif' ? '' : C.round3(Math.max(r.minStock, 1) - r.qty)}">${r.kind === 'negatif' ? 'Saisir l\'achat oublié…' : 'Commander…'}</button></td></tr>`).join('')}
           </tbody></table></div>`
             : '<div class="empty">Rien à signaler : aucun stock négatif, aucun article sous son seuil.</div>'}
         </div>`;
-      $$('#st-body [data-fix]').forEach(b => b.onclick = () => adjustForm(b.dataset.fix, () => draw()));
-      $$('#st-body [data-see]').forEach(b => b.onclick = () => navigate('#/article/' + b.dataset.see));
+      $$('#st-body [data-achat]').forEach(b => b.onclick = e => { e.stopPropagation(); navigate(`#/achat/new/-/facture/-/article/${b.dataset.achat}${b.dataset.qte ? '/' + b.dataset.qte : ''}`); });
+      $$('#st-body tr[data-see]').forEach(tr => tr.onclick = () => navigate('#/article/' + tr.dataset.see));
     }
 
     function drawSerials() {
@@ -8877,10 +8997,10 @@
                   <button class="btn${data.catalog.length ? ' btn-ghost' : ' btn-primary'}" id="ser-new">+ Nouvelle prestation suivie</button>
                 </div></div>`}
         </div>`;
-      if ($('#se-q')) $('#se-q').oninput = e => { s.ser.q = e.target.value; s.ser.page = 1; drawSerials(); const el = $('#se-q'); el.focus(); el.setSelectionRange(el.value.length, el.value.length); };
+      if ($('#se-q')) $('#se-q').oninput = e => { s.ser.q = e.target.value; s.ser.page = 1; sansPerdreLaFrappe(e.target, drawSerials); };
       if ($('#se-st')) $('#se-st').onchange = e => { s.ser.status = e.target.value; s.ser.page = 1; drawSerials(); };
       // L'état vide expliquait le geste en prose et laissait retraverser l'application de mémoire.
-      if ($('#ser-pick')) $('#ser-pick').onclick = () => navigate('#/catalogue');
+      if ($('#ser-pick')) $('#ser-pick').onclick = () => choisirArticleASuivre(() => render());
       // « + Nouvelle prestation suivie » ouvrait une fiche VIERGE, cases décochées : le bouton promettait
       // un suivi que le formulaire ne posait pas (10.12.0, H-E27). La fiche arrive suivie, par numéro.
       if ($('#ser-new')) $('#ser-new').onclick = () => catalogForm(articleNeuf({ tracked: true, serialized: true }), it => { if (it) render(); }, { creation: true, titre: 'Nouvel article suivi par numéro' });
@@ -8986,7 +9106,7 @@
             <td class="nw">${C.fmtDate(m.date)}</td>
             <td>${h(C.moveSourceLabel(m.source))}${m.note ? `<div class="small muted">${h(m.note)}</div>` : ''}</td>
             <td class="nw">${m.docId ? `<a href="${m.source === 'achat' ? '#/achat/' : '#/doc/'}${h(m.docId)}">${h(m.ref) || 'voir'}</a>` : (h(m.ref) || '<span class="muted">—</span>')}</td>
-            <td class="r nw ${m.qty < 0 ? 'warn-text' : 'ok-text'}"><strong>${m.qty > 0 ? '+' : ''}${pct(m.qty)}</strong></td>
+            <td class="r nw ${m.qty < 0 ? 'warn-text' : 'ok-text'}"><strong>${qteSignee(m.qty)}</strong></td>
             <td class="r nw">${C.money(m.unitApplied, cur)}</td>
             <td class="r nw ${m.qtyAfter < 0 ? 'warn-text' : ''}">${pct(m.qtyAfter)}</td>
             <td class="r nw">${C.money(m.cmpAfter, cur)}</td>
@@ -9271,6 +9391,27 @@
 
   const garState = { days: 90, page: 1 };
   routes.garanties = () => {
+    // 10.12.0 — une entreprise qui ne suit AUCUN article par numéro de série lisait « aucune
+    // garantie ne se termine dans les 90 prochains jours », sous un sélecteur de durée : une
+    // phrase rassurante sur un univers vide (7.0.0). La page dit à quoi elle sert et donne le geste
+    // qui la remplit — la fiche d'un article, arrivée déjà suivie par numéro.
+    if (!C.serializedItems(data).length) {
+      $('#view').innerHTML = `
+        <div class="page-head"><h1>Garanties</h1><div class="actions">${backButton('#/stock')}</div></div>
+        ${etatVide('Aucun article suivi par numéro de série', [
+          'Cette page annonce les garanties qui se terminent chez tes clients : c\'est le moment naturel de proposer un contrat de maintenance. Elle se remplit à partir des numéros de série enregistrés à la vente.',
+          'Un article se suit par numéro quand on veut savoir <b>quel appareil</b> est chez <b>quel client</b> : un ordinateur, une machine, un climatiseur. Les fournitures vendues au mètre ou au kilo ne se suivent pas ainsi.'
+        ], data.catalog.length
+          ? [['g-choisir', 'Choisir une prestation à suivre…', true], ['g-suivre', '+ Nouvelle prestation suivie']]
+          : [['g-suivre', '+ Nouvelle prestation suivie', true]])}`;
+      bindBack('#/stock');
+      // Les mêmes gestes que « Numéros de série » dans le Stock : une prestation du catalogue qu'on
+      // se met à suivre, ou une fiche neuve suivie en stock ET par numéro (un numéro de série suppose
+      // une quantité), avec le garde-fou de création du formulaire.
+      if ($('#g-choisir')) $('#g-choisir').onclick = () => choisirArticleASuivre(() => render());
+      $('#g-suivre').onclick = () => catalogForm(articleNeuf({ tracked: true, serialized: true }), it => { if (it) render(); }, { creation: true, titre: 'Nouvel article suivi par numéro' });
+      return;
+    }
     const rows = C.warrantiesEnding(data, garState.days);
     const expired = C.serialList(data, { status: 'vendu' }).filter(x => x.expired);
     $('#view').innerHTML = `
@@ -9904,7 +10045,7 @@
       const sorties = C.round3(all.filter(m => m.amount < 0).reduce((x, m) => x + m.amount, 0));
       $('#t-body').innerHTML = `
         <div class="filters">
-          <select id="t-acc"><option value="">Tous les comptes</option>${data.accounts.map(a => `<option value="${a.id}" ${s.account === a.id ? 'selected' : ''}>${h(a.name)}</option>`).join('')}</select>
+          <select id="t-acc" aria-label="Compte"><option value="">Tous les comptes</option>${data.accounts.map(a => `<option value="${a.id}" ${s.account === a.id ? 'selected' : ''}>${h(a.name)}</option>`).join('')}</select>
           <select id="t-year">${annees.map(y => `<option ${y === s.year ? 'selected' : ''}>${y}</option>`).join('')}</select>
           ${info('tre.moves')}
           <span class="small muted">${pl(all.length, 'mouvement')}</span>
@@ -9951,6 +10092,11 @@
     }
 
     // --- Rapprochement
+    // Ce que le solde recopié dit face à SkanFact : UNE phrase, pour le premier dessin et pour la frappe.
+    const verdictReleve = gap => gap == null ? '<span class="small muted">Saisis le solde de ton relevé pour voir l\'écart.</span>'
+      : Math.abs(gap) < 0.0005 ? '<span class="ok-text"><strong>Ça tombe juste.</strong> Ton relevé et SkanFact disent la même chose.</span>'
+      : `<span class="warn-text"><strong>Écart de ${C.money(Math.abs(gap), cur)}.</strong> ${gap > 0 ? 'SkanFact compte plus que ta banque' : 'ta banque compte plus que SkanFact'} : il manque une pièce quelque part.</span>`;
+
     function drawReco() {
       const accId = s.account || (data.accounts.find(a => a.isDefault) || data.accounts[0]).id;
       const r = C.reconciliation(data, company(), accId, C.today());
@@ -9966,7 +10112,7 @@
               <td class="r nw ${m.amount > 0 ? 'ok-text' : ''}">${m.amount > 0 ? '+' : ''}${C.money(m.amount, cur)}</td></tr>`;
       $('#t-body').innerHTML = `
         <div class="filters">
-          <select id="t-acc2">${data.accounts.map(a => `<option value="${a.id}" ${accId === a.id ? 'selected' : ''}>${h(a.name)}</option>`).join('')}</select>
+          <select id="t-acc2" aria-label="Compte bancaire à rapprocher">${data.accounts.map(a => `<option value="${a.id}" ${accId === a.id ? 'selected' : ''}>${h(a.name)}</option>`).join('')}</select>
           ${info('tre.reco')}
         </div>
         <div class="panel"><h2>Ton relevé face à SkanFact ${info('tre.gap')}</h2>
@@ -9977,9 +10123,7 @@
           </div>
           <div class="inline mt" style="flex-wrap:wrap">
             <label class="field" style="max-width:220px">Solde réel de ton relevé<input type="number" id="stmt" step="0.001" value="${r.statement == null ? '' : r.statement}" class="num" placeholder="Recopie-le ici"></label>
-            ${r.gap == null ? '<span class="small muted">Saisis le solde de ton relevé pour voir l\'écart.</span>'
-              : Math.abs(r.gap) < 0.0005 ? '<span class="ok-text"><strong>Ça tombe juste.</strong> Ton relevé et SkanFact disent la même chose.</span>'
-              : `<span class="warn-text"><strong>Écart de ${C.money(Math.abs(r.gap), cur)}.</strong> ${r.gap > 0 ? 'SkanFact compte plus que ta banque' : 'ta banque compte plus que SkanFact'} : il manque une pièce quelque part.</span>`}
+            <span id="stmt-verdict">${verdictReleve(r.gap)}</span>
           </div>
         </div>
         <div class="panel"><h2>État de rapprochement ${info('tre.etat')}</h2>
@@ -10019,6 +10163,13 @@
           .concat([{ poste: 'Solde que SkanFact devrait porter', montant: et.theorique }, { poste: 'Solde de SkanFact', montant: et.balance }, { poste: 'Écart', montant: et.ecart }]);
         const f = await bridge.saveText(`rapprochement-${C.today()}.csv`, C.toCsv(rows, [{ key: 'poste', label: 'Poste' }, { key: 'montant', label: 'Montant', type: 'money' }]));
         if (f) toast('Exporté : ' + f.split(/[\\/]/).pop());
+      };
+      // Le verdict se lit PENDANT la frappe : on recopie un solde et on attend qu'il réponde. Il ne
+      // répondait qu'en quittant la case — « Saisis le solde… » restait affiché sous un solde saisi.
+      // Seul le verdict se met à jour ; l'état de rapprochement suit à la sortie de la case.
+      $('#stmt').oninput = e => {
+        const v = e.target.value;
+        $('#stmt-verdict').innerHTML = verdictReleve(v === '' ? null : C.round3(r.pointed - Number(v)));
       };
       $('#stmt').onchange = e => {
         const acc = data.accounts.find(a => a.id === accId);
@@ -10129,6 +10280,7 @@
       // seul ne fait qu'une barre, et une barre isolée n'apprend rien. Vu dans les douze mois, si.
       const series = C.revenueByMonth(data, company(), `${p.year}-01-01`, `${p.year}-12-31`);
       const seriesPrev = C.revenueByMonth(data, company(), `${p.year - 1}-01-01`, `${p.year - 1}-12-31`);
+      const anPrecedentVide = !seriesPrev.some(x => Number(x.ht));
       series.forEach(x => { x.off = x.month < p.from.slice(0, 7) || x.month > p.to.slice(0, 7); });
       const funnel = C.quoteFunnel(data, company(), p.from, p.to, now);
       const items = C.topItems(data, company(), p.from, p.to, 8);
@@ -10160,8 +10312,10 @@
           <p class="small muted">Aucun objectif défini. Donne-toi un chiffre d'affaires à atteindre : la page te dira chaque mois si tu tiens le rythme.</p>
           <button class="btn btn-sm" id="s-goal">Définir un objectif…</button></div>`}
         <div class="panel"><h2>Chiffre d'affaires mois par mois — ${p.year} ${info('stat.chart')}</h2>
-          ${compareChart(series, seriesPrev)}
-          <div class="legend"><span><i style="background:var(--primary)"></i>${h(p.label)}</span>${p.kind === 'annee' ? '' : `<span><i style="background:var(--primary);opacity:.28"></i>reste de ${p.year}</span>`}<span><i style="background:#9aa7b4;opacity:.6"></i>${p.year - 1}</span></div>
+          ${/* 10.12.0 — une entreprise créée cette année voyait « 2025 » en légende, au-dessus de douze
+               paires de barres dont une moitié à zéro : une légende annonce une série qui EXISTE. */''}
+          ${compareChart(series, anPrecedentVide ? [] : seriesPrev)}
+          <div class="legend"><span><i style="background:var(--primary)"></i>${h(p.label)}</span>${p.kind === 'annee' ? '' : `<span><i style="background:var(--primary);opacity:.28"></i>reste de ${p.year}</span>`}${anPrecedentVide ? '' : `<span><i style="background:#9aa7b4;opacity:.6"></i>${p.year - 1}</span>`}</div>
         </div>
         <div class="split">
           <div class="panel"><h2>Issue des devis ${info('stat.funnel')}</h2>
@@ -10212,7 +10366,8 @@
             <p class="small muted mt">Un appel suffit parfois : ce sont des clients qui te connaissent déjà.</p>` : '<p class="small muted">Aucun client endormi. Tu les fais tous travailler.</p>'}
           </div>
           <div class="panel"><h2>Qui paie vite, qui paie tard ${info('stat.payeurs')}</h2>
-            ${payers.tous.length ? `<div class="two-col">
+            ${payers.tous.length === 1 ? `<p>Un seul client a soldé une facture : <a href="#/client/${h(payers.tous[0].clientId)}">${h(payers.tous[0].name)}</a>, en ${pl(payers.tous[0].delay, 'jour')} en moyenne. Le classement viendra avec le deuxième.</p>`
+            : payers.tous.length ? `<div class="two-col">
               <div><h3 class="sub-h">Les plus rapides</h3><ul class="rank plain">${payers.rapides.map(x => `<li><a class="name" href="#/client/${h(x.clientId)}">${h(x.name)}</a><span class="amt">${x.delay} j</span></li>`).join('')}</ul></div>
               <div><h3 class="sub-h">Les plus lents</h3><ul class="rank plain">${payers.lents.map(x => `<li><a class="name" href="#/client/${h(x.clientId)}">${h(x.name)}</a><span class="amt">${x.delay} j</span></li>`).join('')}</ul></div>
             </div>
@@ -10278,7 +10433,7 @@
   function askGoal(after) {
     modal(`<h2>Objectif de chiffre d'affaires</h2>
       <p class="small muted">Le montant HT que tu veux facturer sur une année entière. Tu peux le changer quand tu veux dans Paramètres → Documents.</p>
-      <form id="gf"><label class="field">Objectif annuel HT<input type="number" name="target" min="0" step="1" value="${Number(company().revenueTarget) || ''}" placeholder="60000"></label></form>
+      <form id="gf"><label class="field">${lbl(`Objectif annuel HT (${C.normCurrency(company().currency)})`, 'stat.target')}<input type="number" name="target" min="0" step="1" class="num" value="${Number(company().revenueTarget) || ''}" placeholder="aucun objectif"></label></form>
       <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
       (root, close) => { $('#ok', root).onclick = () => {
         const v = formValues($('#gf', root));
@@ -10491,7 +10646,7 @@
         el.onclick = go;
         el.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(e); } };
       });
-      $('#cpt-q').oninput = e => { comptaState.q = e.target.value; comptaState.journal.page = 1; comptaState.pays.page = 1; draw(); const el = $('#cpt-q'); el.focus(); el.setSelectionRange(el.value.length, el.value.length); };
+      $('#cpt-q').oninput = e => { comptaState.q = e.target.value; comptaState.journal.page = 1; comptaState.pays.page = 1; sansPerdreLaFrappe(e.target, draw); };
       if ($('#reset-f')) $('#reset-f').onclick = () => { comptaState.q = ''; draw(); };
       $('#exp-journal').onclick = async () => {
         const p2 = await bridge.saveText(`journal-ventes-${tag}.csv`, C.toCsv(rows, journalColumns())); if (p2) toast('Exporté : ' + p2.split(/[\\/]/).pop());
@@ -10574,7 +10729,7 @@
             : '<div class="empty">Aucun règlement fournisseur sur cette période.</div>'}
         </div>`;
       $$('#c-body tr[data-bid]').forEach(tr => tr.onclick = () => navigate('#/achat/' + tr.dataset.bid));
-      $('#cpt-q').oninput = e => { comptaState.q = e.target.value; comptaState.buys.page = 1; comptaState.decs.page = 1; draw(); const el = $('#cpt-q'); el.focus(); el.setSelectionRange(el.value.length, el.value.length); };
+      $('#cpt-q').oninput = e => { comptaState.q = e.target.value; comptaState.buys.page = 1; comptaState.decs.page = 1; sansPerdreLaFrappe(e.target, draw); };
       if ($('#reset-f')) $('#reset-f').onclick = () => { comptaState.q = ''; draw(); };
       const panel = $('#b-wrap') && $('#b-wrap').closest('.panel');
       if (panel) {
@@ -10637,7 +10792,7 @@
             <button class="btn btn-sm" id="vat-ventes">Voir les ventes de ${h(MONTHS[upTo - 1])}</button>
             <button class="btn btn-sm" id="vat-achats">Voir les achats de ${h(MONTHS[upTo - 1])}</button>
           </div>` : ''}
-          <div class="inline mt"><button class="btn btn-sm" id="set-carry">Crédit de TVA venu de ${Number(year) - 1} : ${C.money(carryIn, cur)}</button>${info('compta.carryIn')}</div>
+          <div class="inline mt"><button class="btn btn-sm" id="set-carry">${carryIn ? `Crédit de TVA venu de ${Number(year) - 1} : ${C.money(carryIn, cur)} — corriger…` : `Reporter un crédit de TVA de ${Number(year) - 1}…`}</button>${info('compta.carryIn')}</div>
         </div>
         ${chain.some(m => m.collected || m.deductible || m.carryIn) ? `
         <div class="panel"><h2>Mois par mois — ${year} ${info('compta.vatMonths')}</h2>
@@ -10677,7 +10832,7 @@
         String(carryIn || ''), v => {
           data.vatCarryIn = { ...(data.vatCarryIn || {}), [year]: Math.max(0, Number(String(v).replace(',', '.')) || 0) };
           save(true); draw(); toast('Crédit de TVA enregistré');
-        }, 'number');
+        }, 'number', { champ: `Crédit de TVA de ${Number(year) - 1}`, unite: cur, ok: 'Enregistrer le crédit' });
     }
 
     // ---------- onglet Calendrier fiscal ----------
@@ -10742,7 +10897,7 @@
               <td class="small muted">${h((o.lignes || []).map(l => l.compte).join(', '))}</td>
               ${rowMenuCell(o.id)}</tr>`; }).join('')}
           </tbody></table></div>`
-            : `<div class="empty">Aucune opération diverse sur cette période. Ce qui n'a ni facture, ni achat, ni règlement — un loyer sans facture, une régularisation, une charge avancée par le gérant — se saisit ici, en partie double.</div>`}
+            : `<div class="empty mini">Aucune opération diverse sur cette période. Ce qui n'a ni facture, ni achat, ni règlement — un loyer sans facture, une régularisation, une charge avancée par le gérant — se saisit ici, en partie double.</div>`}
         </div>
 
         <div class="panel"><h2>Journal centralisateur — exercice ${h(exo)} ${info('ecr.central')}</h2>
@@ -11186,12 +11341,12 @@
                </div>`}
         </div>
 
-        <div class="panel"><h2>Rouvrir ${info('clot.rouvrir')}</h2>
-          ${closed
-            ? `<p class="small">Rouvrir sert quand une pièce a été oubliée dans une période déjà clôturée. <strong>Préviens ton comptable</strong> : les chiffres qu'il a reçus vont changer. Le motif que tu écris ici est ce qu'il lira.</p>
-               <button class="btn btn-danger" id="do-reopen">Rouvrir une période…</button>`
-            : '<div class="empty">Rien n\'est clôturé, donc rien à rouvrir.</div>'}
-        </div>
+        ${/* 10.12.0 — « Rien n'est clôturé, donc rien à rouvrir » dans un cadre de 110 px, sous un État
+             qui venait de le dire : un panneau qui n'a rien à proposer ne s'affiche pas. */''}
+        ${closed ? `<div class="panel"><h2>Rouvrir ${info('clot.rouvrir')}</h2>
+          <p class="small">Rouvrir sert quand une pièce a été oubliée dans une période déjà clôturée. <strong>Préviens ton comptable</strong> : les chiffres qu'il a reçus vont changer. Le motif que tu écris ici est ce qu'il lira.</p>
+          <button class="btn btn-danger" id="do-reopen">Rouvrir une période…</button>
+        </div>` : ''}
 
         <div class="panel"><h2>La clôture de ton comptable ${info('clot.cabinet')}</h2>
           ${(data.clotures || []).length
@@ -11224,7 +11379,7 @@
                   <td class="nw">${e.until ? C.fmtDate(e.until) : '<span class="muted">tout rouvert</span>'}</td>
                   <td class="small">${h(e.reason || '')}${e.previous ? `<div class="muted">auparavant : ${C.fmtDate(e.previous)}</div>` : ''}</td></tr>`).join('')}
               </tbody></table>`
-            : '<div class="empty">Aucune clôture pour l\'instant.</div>'}
+            : '<div class="empty mini">Aucune clôture pour l\'instant : chaque clôture et chaque réouverture s\'inscriront ici, avec leur motif.</div>'}
         </div>`;
 
       // Les contrôles avant clôture étaient du TEXTE : « 3 achats sans justificatif » sans rien pour
@@ -11252,7 +11407,7 @@
           if (codeErreur(e) === 'ERR-ENT-081' && !motDePasse) {
             promptDialog('Le mot de passe du dossier de clôture',
               'Ton comptable te le dit au téléphone, jamais dans le même mail que le fichier.', '',
-              v => { if (v) importerCloture(v); });
+              v => { if (v) importerCloture(v); }, 'password', { champ: 'Mot de passe', ok: 'Ouvrir le fichier' });
             return;
           }
           return toast(plainError(e), true);
@@ -11388,7 +11543,9 @@
                  Ce mois n'est <b>pas clôturé</b> : le paquet partira marqué « provisoire ». Tu peux l'envoyer quand même — mais l'envoi qui compte est celui qui suit la clôture.
                  <a href="#" id="cab-goclose" class="warn-link">Clôturer ${h(per.label)}</a></p>`}
 
-          <div class="dash-grid mt">
+          ${/* 10.12.0 — un mois sans pièce montrait un tableau de sept zéros et trois cartes à 0,000 DT,
+               au-dessus d'un panneau qui dit « aucune pièce » : on ne compte pas au-dessus du vide (7.0.0). */''}
+          ${moisVide ? '' : `<div class="dash-grid mt">
             <div>
               <table class="list compact"><thead><tr><th>Ce que contient le paquet</th><th class="r">Nombre</th></tr></thead><tbody>
                 <tr><td>Pièces de vente émises (PDF joints)</td><td class="r">${plan.totaux.pieces}</td></tr>
@@ -11397,7 +11554,7 @@
                 <tr><td>Justificatifs d'achat joints</td><td class="r">${plan.totaux.justificatifs}</td></tr>
                 <tr><td>Encaissements clients</td><td class="r">${plan.totaux.encaissements}</td></tr>
                 <tr><td>Bulletins de paie</td><td class="r">${plan.totaux.bulletins}</td></tr>
-                <tr class="total-row"><td><b>Fichiers en tout</b></td><td class="r"><b>${moisVide ? 0 : plan.entries.length + 2}</b></td></tr>
+                <tr class="total-row"><td><b>Fichiers en tout</b></td><td class="r"><b>${plan.entries.length + 2}</b></td></tr>
               </tbody></table>
             </div>
             <div>
@@ -11405,7 +11562,7 @@
               <div class="stat"><div class="lbl">TVA collectée</div><div class="val">${C.money(plan.tvaCollectee, cur)}</div></div>
               <div class="stat"><div class="lbl">TVA déductible</div><div class="val">${C.money(plan.tvaDeductible, cur)}</div></div>
             </div>
-          </div>
+          </div>`}
         </div>
 
         <div class="panel"><h2>Ce qui manque ${info('cab.manques')}</h2>
@@ -11470,7 +11627,7 @@
                   <td class="actions"><button class="btn btn-sm" data-reveal="${h(x.path || '')}" ${x.path ? '' : 'disabled title="Paquet fabriqué avant cette version : son chemin n\'a pas été gardé."'}>Montrer le fichier</button></td></tr>`).join('')}
               </tbody></table></div>
                <p class="small muted mt">L'empreinte est la carte d'identité du paquet : si ton comptable obtient la même, le fichier qu'il a reçu est bien celui que tu as envoyé, à l'octet près.</p>`
-            : '<div class="empty">Aucun paquet fabriqué pour l\'instant.</div>'}
+            : '<div class="empty mini">Aucun paquet fabriqué pour l\'instant : chaque paquet s\'inscrira ici, avec son empreinte.</div>'}
         </div>`;
 
       // ---------------------------------------------- les questions du comptable (9.10.0)
@@ -11517,7 +11674,7 @@
           if (codeErreur(e) === 'ERR-ENT-084' && !motDePasse) {
             promptDialog('Le mot de passe de l\'envoi de questions',
               'Ton comptable te le dit au téléphone, jamais dans le même mail que le fichier.', '',
-              v => { if (v) importerQuestions(v); });
+              v => { if (v) importerQuestions(v); }, 'password', { champ: 'Mot de passe', ok: 'Ouvrir le fichier' });
             return;
           }
           return toast(plainError(e), true);
@@ -11638,14 +11795,19 @@
       const deposees = (data.fiscalFilings || []).slice().sort((a2, b2) => (b2.at || 0) - (a2.at || 0)).map(f => {
         const [ruleId, date] = String(f.id).split('@');
         const r = rules.find(x => x.id === ruleId);
-        return { id: f.id, at: f.at, date, label: r ? r.label : ruleId };
-      });
+        return { id: f.id, at: f.at, date, label: r ? r.label : ruleId, sociale: false };
+      }).concat((data.socialFilings || []).slice().sort((a2, b2) => String(b2.filedAt || '').localeCompare(String(a2.filedAt || ''))).map(f => ({
+        // La CNSS et la déclaration d'employeur se pointent dans la Paie OU ici : c'est la même
+        // mention (10.12.0), donc elle se relit et se retire des deux endroits.
+        id: f.id, at: f.filedAt ? Date.parse(f.filedAt + 'T12:00:00Z') : 0, date: '', label: f.label || f.id, sociale: true
+      })));
+      const attente = x => `${x.label} porte sur une période qui se termine le ${C.fmtDate(x.fin)} : on la marque déposée une fois la période terminée, sinon il manquerait ses derniers bulletins.`;
       $('#c-body').innerHTML = `
         <div class="panel"><h2>Ce qui arrive ${info('compta.fiscal')}</h2>
           ${up.length ? `<table class="list compact"><thead><tr><th>Échéance</th><th>Date</th><th class="r">Dans</th><th></th></tr></thead><tbody>
-            ${up.map(x => `<tr class="${x.days <= 7 ? 'row-warn' : ''}"><td><strong>${h(x.label)}</strong>${x.note ? `<div class="small muted">${h(x.note)}</div>` : ''}</td>
+            ${up.map(x => `<tr class="${x.days <= 7 && !x.enCours ? 'row-warn' : ''}"><td><strong>${h(x.label)}</strong>${x.note ? `<div class="small muted">${h(x.note)}</div>` : ''}${x.enCours ? `<div class="small muted">Déposable après le ${C.fmtDate(x.fin)}, une fois la période terminée.</div>` : ''}</td>
               <td class="nw">${C.fmtDate(x.date)}</td><td class="r nw">${x.days === 0 ? "aujourd'hui" : x.days + ' j'}</td>
-              <td class="actions">${FISCAL_VERS[x.id] ? `<button class="btn btn-sm btn-ghost" data-fvers="${h(x.id)}">Préparer</button>` : ''}<button class="btn btn-sm" data-fdone="${h(x.filingId)}" data-flab="${h(x.label)}">Marquer déposée</button></td></tr>`).join('')}
+              <td class="actions">${FISCAL_VERS[x.id] ? `<button class="btn btn-sm btn-ghost" data-fvers="${h(x.id)}">Préparer</button>` : ''}<button class="btn btn-sm" data-fdone="${h(x.filingId)}" data-fsoc="${h(x.socialId || '')}" data-flab="${h(x.label)}"${x.enCours ? ` disabled title="${h(attente(x))}"` : ''}>Marquer déposée</button></td></tr>`).join('')}
           </tbody></table>` : '<div class="empty">Aucune échéance activée. Active celles qui te concernent ci-dessous.</div>'}
           <p class="small muted mt"><em>À VÉRIFIER avec ton comptable :</em> les dates limites, la périodicité et les déclarations qui te concernent dépendent de ta forme juridique, de ton régime fiscal et de la présence de salariés. Ce calendrier est un pense-bête que tu règles toi-même, pas une source officielle.</p>
         </div>
@@ -11655,7 +11817,7 @@
           <table class="list compact"><thead><tr><th>Déclaration</th><th>Échéance</th><th>Marquée le</th><th></th></tr></thead><tbody>
             ${deposees.map(f => `<tr><td><strong>${h(f.label)}</strong></td><td class="nw">${h(f.date ? C.fmtDate(f.date) : '—')}</td>
               <td class="nw small muted">${f.at ? h(new Date(f.at).toLocaleDateString('fr-FR')) : '—'}</td>
-              <td class="r"><button class="btn btn-sm" data-fundo="${h(f.id)}" data-flab="${h(f.label)}">Retirer « déposée »</button></td></tr>`).join('')}
+              <td class="r"><button class="btn btn-sm" data-fundo="${h(f.id)}" data-fsoc="${f.sociale ? '1' : ''}" data-flab="${h(f.label)}">Retirer « déposée »</button></td></tr>`).join('')}
           </tbody></table></div>` : ''}
         <div class="panel"><h2>Les échéances et leur réglage</h2>
           <table class="list compact"><thead><tr><th>Déclaration</th><th>Périodicité</th><th class="r" style="width:110px">Jour limite</th><th style="width:90px">Active</th></tr></thead><tbody>
@@ -11674,18 +11836,23 @@
       // Une échéance restait rouge après le dépôt : le calendrier ne savait pas ce qu'on avait fait,
       // et le seul recours était de désactiver la règle — donc de perdre l'échéance suivante.
       // « Marquer déposée » pointe une OCCURRENCE, et laisse un « Annuler » (règle de la 7.12.0).
+      // La CNSS et la déclaration d'employeur se pointent sur la déclaration de la Paie (une seule
+      // mention pour les deux écrans, 10.12.0) ; les autres échéances, sur leur occurrence.
       $$('[data-fdone]').forEach(b => b.onclick = () => {
-        const id = b.dataset.fdone;
-        data.fiscalFilings = (data.fiscalFilings || []).concat([{ id, at: Date.now() }]);
+        const id = b.dataset.fdone, soc = b.dataset.fsoc;
+        if (soc) data.socialFilings = (data.socialFilings || []).concat([{ id: soc, filedAt: C.today(), label: b.dataset.flab }]);
+        else data.fiscalFilings = (data.fiscalFilings || []).concat([{ id, at: Date.now() }]);
         save(true); draw();
         toastUndo(`${b.dataset.flab} marquée déposée`, () => {
-          data.fiscalFilings = (data.fiscalFilings || []).filter(f => f.id !== id);
+          if (soc) data.socialFilings = (data.socialFilings || []).filter(f => f.id !== soc);
+          else data.fiscalFilings = (data.fiscalFilings || []).filter(f => f.id !== id);
           save(true); draw();
         });
       });
       $$('[data-fundo]').forEach(b => b.onclick = () => {
         const id = b.dataset.fundo;
-        data.fiscalFilings = (data.fiscalFilings || []).filter(f => f.id !== id);
+        if (b.dataset.fsoc) data.socialFilings = (data.socialFilings || []).filter(f => f.id !== id);
+        else data.fiscalFilings = (data.fiscalFilings || []).filter(f => f.id !== id);
         save(true); draw();
         toast(`${b.dataset.flab} n'est plus marquée déposée`);
       });
@@ -11800,7 +11967,10 @@
           ${field(lbl('Validité des devis (jours)', 'doc.quoteValidity'), 'quoteValidityDays', c.quoteValidityDays, 'number', 'min="0" class="num"')}
           ${field(lbl('Délai de paiement (jours)', 'doc.paymentDays'), 'paymentTermsDays', c.paymentTermsDays, 'number', 'min="0" class="num"')}
           <label class="field">${lbl('Retenue à la source par défaut', 'doc.withholdingDefault')}${withholdingSelect('defaultWithholdingRate', c.defaultWithholdingRate)}</label>
-          ${field(lbl('Seuil de retenue à la source', 'doc.withholdingThreshold'), 'withholdingThreshold', c.withholdingThreshold, 'number', 'step="0.001" min="0" class="num" placeholder="0 = aucun seuil"')}
+          ${/* 10.12.0 — « 0 » affiché dans le champ se lisait « un seuil de zéro dinar », c'est-à-dire
+               toutes les factures : c'est l'inverse de ce qu'il veut dire (aucun seuil, 9.1.1). Le champ
+               reste vide et le dit ; il porte son unité, comme le timbre juste à côté (9.4.8). */''}
+          ${field(lbl(`Seuil de retenue à la source (${C.normCurrency(c.currency)})`, 'doc.withholdingThreshold'), 'withholdingThreshold', Number(c.withholdingThreshold) > 0 ? c.withholdingThreshold : '', 'number', 'step="0.001" min="0" class="num" placeholder="aucun seuil"')}
           <!-- La devise était le SEUL champ libre d'un réglage à liste fermée : l'éditeur de
                document et la fiche client offrent les sept codes dans une liste depuis la 2.4.0,
                et ici on tapait ce qu'on voulait. « Dinar », « TND », « dt » : decimalsFor ne
@@ -11816,7 +11986,7 @@
              portait plus que deux listes déroulantes, ne pesait qu'un demi-écran. -->
         ${panneau('p-marque')}<div class="grid-2">
           <label class="field">${lbl('Couleur principale', 'co.colors')}<input type="color" name="primaryColor" value="${h(c.primaryColor || '#1b2430')}"></label>
-          <label class="field">Couleur d'accent<input type="color" name="accentColor" value="${h(c.accentColor || '#0f9d8f')}"></label>
+          <label class="field">${lbl('Couleur d\'accent', 'co.colors')}<input type="color" name="accentColor" value="${h(c.accentColor || '#0f9d8f')}"></label>
           <label class="field">${lbl('Logo', 'co.logo')}
             <div>${c.logo ? `<img class="logo-preview" src="${c.logo}">` : ''}
             <div class="inline"><button type="button" class="btn btn-sm" id="pick-logo">Choisir une image…</button>${c.logo ? '<button type="button" class="btn btn-sm btn-ghost" id="rm-logo">Retirer</button>' : ''}</div></div>
@@ -11831,24 +12001,30 @@
           <label class="field span-2">${lbl('Conditions des devis', 'doc.quoteTerms')}<textarea name="quoteTerms">${h(c.quoteTerms || '')}</textarea></label>
           <label class="field span-2">${lbl('Pied de page des documents', 'doc.footer')}<textarea name="footer">${h(c.footer)}</textarea></label>
           <label class="field span-2">${lbl('Conditions de paiement — documents en anglais', 'doc.en')}<textarea name="paymentTermsEn">${h(c.paymentTermsEn || '')}</textarea></label>
-          <label class="field span-2">Conditions des devis — documents en anglais<textarea name="quoteTermsEn">${h(c.quoteTermsEn || '')}</textarea></label>
-        </div></div>
+          <label class="field span-2">${lbl('Conditions des devis — documents en anglais', 'doc.en')}<textarea name="quoteTermsEn">${h(c.quoteTermsEn || '')}</textarea></label>
+        </div>
+        ${/* 10.12.0 — les conditions de paiement ANGLAISES sont ici, les françaises avec le RIB : qui
+             cherche la phrase de ses factures parmi les « textes imprimés » ne trouvait que sa
+             traduction. Le panneau le dit, et le bouton y mène, curseur dans la case. */''}
+        <p class="small muted mt">Les conditions de paiement en français s'impriment avec le RIB : elles se règlent dans <button type="button" class="btn btn-sm btn-ghost" data-vers-champ="p-banque:paymentTerms">Coordonnées bancaires</button></p></div>
         ${panneau('p-objectifs')}
           <p class="small muted mb">Ces deux réglages ne servent qu'à la page Statistiques : ils ne s'impriment nulle part et ne changent aucun calcul de facture.</p>
           <div class="grid-3">
-          ${field(lbl('Objectif de chiffre d\'affaires HT (par an)', 'stat.target'), 'revenueTarget', c.revenueTarget || 0, 'number', 'step="1" min="0" class="num"')}
+          ${/* 10.12.0 — « 0 » dans la case se lisait « un objectif de zéro » : vide, il dit « aucun ». */''}
+          ${field(lbl(`Objectif de chiffre d'affaires HT par an (${C.normCurrency(c.currency)})`, 'stat.target'), 'revenueTarget', Number(c.revenueTarget) > 0 ? c.revenueTarget : '', 'number', 'step="1" min="0" class="num" placeholder="aucun objectif"')}
           ${field(lbl('Un client est « endormi » après (jours)', 'stat.dormant'), 'dormantDays', c.dormantDays || 180, 'number', 'min="1" class="num"')}
         </div></div>
         </section>
 
         <section data-pane="envois" hidden>
-        ${panneau('p-envoi')}
-          <div class="grid-2">
-            ${SUR_MAC
-              ? `<label class="field">${lbl('Envoi des emails', 'mail.client')}<select name="mailClient"><option value="auto" ${c.mailClient !== 'mailto' ? 'selected' : ''}>Mail (Apple) avec le PDF joint</option><option value="mailto" ${c.mailClient === 'mailto' ? 'selected' : ''}>Autre messagerie (mailto, PDF à glisser)</option></select></label>`
-              : `<div class="field" id="mail-fixe">${lbl('Envoi des emails', 'mail.client')}<p class="small muted">Le message s'ouvre dans ta messagerie par défaut, et le PDF s'affiche dans ${EXPLORATEUR} pour que tu le glisses dedans. Sur cet ordinateur, il n'y a rien à régler.</p></div>`}
-          </div>
-        </div>
+        ${/* 10.12.0 — hors Mac il n'y a rien à choisir : la phrase était posée dans un « champ » qui
+             répétait le titre du panneau en étiquette, et elle héritait du gras des étiquettes. La
+             bulle passe sur le titre, la phrase redevient une phrase. */''}
+        ${panneau('p-envoi', SUR_MAC ? '' : info('mail.client'))}${SUR_MAC
+          ? `<div class="grid-2">
+              <label class="field">${lbl('Messagerie', 'mail.client')}<select name="mailClient"><option value="auto" ${c.mailClient !== 'mailto' ? 'selected' : ''}>Mail (Apple) avec le PDF joint</option><option value="mailto" ${c.mailClient === 'mailto' ? 'selected' : ''}>Autre messagerie (mailto, PDF à glisser)</option></select></label>
+            </div>`
+          : `<p class="small muted" id="mail-fixe">Le message s'ouvre dans ta messagerie par défaut, et le PDF s'affiche dans ${EXPLORATEUR} pour que tu le glisses dedans. Sur cet ordinateur, il n'y a rien à régler.</p>`}</div>
         ${panneau('p-comptable')}<div class="grid-2">
           ${field(lbl('Email du comptable', 'compta.comptable'), 'accountantEmail', c.accountantEmail || '', 'email', 'placeholder="comptable@cabinet.tn"')}
         </div><p class="small muted mt">Utilisé par « Envoyer au comptable » sur la page Comptabilité.</p></div>
@@ -11908,7 +12084,8 @@
         l'application s'est arrêtée, et il ne contient ni nom de client, ni montant. Et quand quelque chose manque,
         dis-le : SkanFact est écrit par une seule personne, et c'est ce qui décide de la suite.</p>
         <div class="inline">
-          <button type="button" class="btn btn-primary" id="set-support">Signaler un problème…</button>
+          ${/* 10.12.0 — vert au repos, « Signaler un problème » disait qu'il y en avait un. */''}
+          <button type="button" class="btn" id="set-support">Signaler un problème…</button>
           <button type="button" class="btn" id="set-idee">Proposer une amélioration…</button>
           <button type="button" class="btn" id="set-log">Ouvrir le journal technique</button>
           <button type="button" class="btn" id="set-aide">Ouvrir l'aide</button>
@@ -11923,7 +12100,9 @@
         <div class="inline mt"><button type="button" class="btn" id="dos-add">+ Nouveau dossier sur cet ordinateur</button>
           <button type="button" class="btn" id="dos-share">↔ Partager ce dossier à deux…</button>
           <button type="button" class="btn" id="dos-join">↓ Rejoindre un dossier déjà partagé…</button>${info('data.shared')}</div>
-        <p class="small muted mt">Le premier bouton partage <b>le dossier ouvert, avec tout ce qu'il contient</b> : il le pose dans iCloud, OneDrive ou sur une clé. Le second sert sur le <b>deuxième ordinateur</b>, pour ouvrir le dossier que le premier vient d'y poser.</p>
+        ${/* 10.12.0 — « le premier bouton… le second » décrivait deux boutons quand la rangée en
+             porte trois : le « premier » était « + Nouveau dossier ». Un bouton se désigne par son nom. */''}
+        <p class="small muted mt"><b>Partager ce dossier à deux</b> pose le dossier ouvert, avec tout ce qu'il contient, dans ${NUAGE}, sur une clé ou un disque réseau. <b>Rejoindre un dossier déjà partagé</b> sert sur le <b>deuxième ordinateur</b>, pour ouvrir ce que le premier vient d'y poser.</p>
         <!-- « Ce poste » avait son propre panneau pour UN champ, qui ne sert qu'à une chose : dire
              qui a enregistré en dernier sur un dossier partagé. Il vit donc sous les dossiers, là
              où cette question se pose, au lieu de faire un titre pour une ligne. -->
@@ -11956,8 +12135,11 @@
       </div>
       ${panneau('p-motdepasse', info('sec.password'))}
         <p id="sec-status">${security.encrypted ? `🔒 Mot de passe activé : le fichier de données et ses sauvegardes sont chiffrés (AES-256). Verrouiller : menu Fichier ou ${MOD}+L.` : 'Le fichier de données est en clair sur ce disque. Tu peux le protéger par un mot de passe demandé à chaque ouverture.'}</p>
-        <div class="inline mt">${security.encrypted ? '<button class="btn" id="sec-change">Changer le mot de passe…</button><button class="btn" id="sec-lock">Verrouiller maintenant</button><button class="btn btn-danger" id="sec-remove">Retirer le mot de passe…</button>' : '<button class="btn btn-primary" id="sec-set">Activer un mot de passe…</button>'}</div>
+        ${/* 10.12.0 — « il n'existe aucune récupération » se lisait SOUS le bouton qui l'engage :
+             un avertissement se lit avant le geste (9.4.2). Et le bouton n'est plus vert d'office :
+             la copie externe est l'étape d'avant, c'est elle qui l'allume (drawExternal). */''}
         <p class="small muted mt">Le mot de passe protège les fichiers sur le disque (ordinateur perdu ou volé). Il n'existe aucune récupération : sans lui, les données sont définitivement illisibles, <b>y compris pour toi</b>.</p>
+        <div class="inline mt">${security.encrypted ? '<button class="btn" id="sec-change">Changer le mot de passe…</button><button class="btn" id="sec-lock">Verrouiller maintenant</button><button class="btn btn-danger" id="sec-remove">Retirer le mot de passe…</button>' : '<button class="btn" id="sec-set">Activer un mot de passe…</button>'}</div>
       </div>
       <!-- La lecture de photo était rangée sous « Mises à jour », par accident d'histoire : c'est
            là qu'était le seul autre panneau qui parle à internet. Mais ce n'est pas un réglage du
@@ -12023,11 +12205,17 @@
     // Un lien qui promet « le mot de passe » ou « la copie externe » atterrissait en haut d'une pile
     // de six panneaux : on redescendait à la main en cherchant le titre. On amène le panneau visé —
     // et par la même porte que le sommaire, donc l'onglet suit même si l'appelant s'est trompé.
-    if (settingsFocus) {
-      const vise = settingsFocus;
-      settingsFocus = '';
+    // `panneau:champ` amène le panneau ET met le curseur dans le champ (10.12.0) : « Le renseigner »
+    // qui ouvrait la fiche société en haut laissait chercher la case parmi douze. La même porte sert
+    // aux renvois d'un panneau à l'autre (`data-vers-champ`) : `allerParametres` depuis la page
+    // elle-même viserait l'adresse courante, et ne redessinerait rien (7.15.0).
+    const amenerChamp = spec => {
+      const [vise, champ] = String(spec).split(':');
       reg.montrer(vise);
-    }
+      if (champ) setTimeout(() => { const el = $(`#pf [name="${champ}"]`); if (el) el.focus(); }, 80);
+    };
+    $$('#pf [data-vers-champ]').forEach(b => b.onclick = () => amenerChamp(b.dataset.versChamp));
+    if (settingsFocus) { const spec = settingsFocus; settingsFocus = ''; amenerChamp(spec); }
 
     // --- barre « Enregistrer » : elle n'apparaît que s'il y a quelque chose à enregistrer
     let setDirty = false;
@@ -12204,6 +12392,14 @@
       const el = $('#ext-status'); if (!el) return;
       el.innerHTML = i.dir ? `Dossier : <code>${h(i.dir)}</code><br>${i.lastError ? `<span style="color:var(--danger)">Dernière copie impossible : ${h(i.lastError)}</span>` : (i.lastCopy ? `Dernière copie : ${h(new Date(i.lastCopy).toLocaleString('fr-FR'))}` : 'Copie à la prochaine sauvegarde.')}` : '<span class="muted">Aucun dossier de copie externe.</span>';
       $('#ext-remove').hidden = !i.dir;
+      // Un seul vert sur l'onglet, et c'est l'étape suivante (U-11) : tant qu'aucune copie n'existe,
+      // c'est elle ; une fois posée, « Choisir » devient « Changer » et le vert passe au mot de passe.
+      const etapeMotDePasse = ok => {
+        $('#ext-choose').classList.toggle('btn-primary', !ok);
+        if ($('#sec-set')) $('#sec-set').classList.toggle('btn-primary', ok);
+      };
+      $('#ext-choose').textContent = i.dir ? 'Changer de dossier…' : 'Choisir un dossier…';
+      etapeMotDePasse(!!i.dir);
       // Un dossier PARTAGÉ ne reçoit pas de copie externe : il vit déjà hors de cet ordinateur, et
       // la recopier reviendrait à dupliquer ce que les deux postes s'échangent. C'est le
       // comportement depuis la 3.2.0, mais il n'était écrit nulle part — on le disait d'autant
@@ -12217,6 +12413,9 @@
       if (ouvert && ouvert.shared) {
         el.innerHTML = `<span class="muted">Ce dossier est <b>partagé</b> : il vit déjà hors de cet ordinateur (<code>${h(ouvert.dir)}</code>), et c'est cette copie-là que les deux postes ouvrent. La copie externe ne s'applique qu'aux dossiers rangés sur cet ordinateur.</span>`;
         $('#ext-remove').hidden = true;
+        // Proposer de choisir un dossier qui ne servirait pas serait un bouton qui ne fait rien.
+        $('#ext-choose').hidden = true;
+        etapeMotDePasse(true);
       }
     };
     drawExternal();
@@ -12599,7 +12798,10 @@
     $('#view').innerHTML = `
       <div class="page-head"><h1>Aide</h1>
         <div class="actions">${backButton('#/dashboard', 'aide')}<button class="btn" id="aide-support">Signaler un problème</button><button class="btn" id="aide-idee">Proposer une amélioration</button><button class="btn" id="aide-changelog">Nouveautés de la version</button></div></div>
-      ${a ? '' : `<p class="lead">Comment marche SkanFact, et comment tenir la gestion d'une petite entreprise sans rien oublier. Cherche un mot, ou choisis un domaine. Partout ailleurs dans l'application, les petits <span class="i-demo">i</span> expliquent le champ juste à côté, et le <b>?</b> en haut de chaque page ouvre l'article de cette page.</p>`}
+      ${/* 10.12.0 — la phrase promettait « le ? en haut de chaque page » : aucune page n'en porte. Le
+           lien s'appelle « Comprendre cette page » (poserLienAide) ; une phrase affichée que rien ne
+           tient est un bug (7.3.0). */''}
+      ${a ? '' : `<p class="lead">Comment marche SkanFact, et comment tenir la gestion d'une petite entreprise sans rien oublier. Cherche un mot, ou choisis un domaine. Partout ailleurs dans l'application, les petits <span class="i-demo">i</span> expliquent le champ juste à côté, et «&nbsp;Comprendre cette page&nbsp;» en haut de chaque page ouvre l'article de cette page.</p>`}
       <div class="help-search">
         ${/* 10.12.0 (U-30, trouvé dans l'app du comptable) — la loupe vit AVEC le champ : centrée
               sur le bloc entier, elle descendait sous la ligne du texte dès que le compte des
@@ -12937,10 +13139,12 @@
             ${st.empreinte ? `<tr><td>Empreinte ${info('lic.empreinteCle')}</td><td><span class="mono">${h(st.empreinte)}</span>
               <button type="button" class="btn btn-ghost btn-sm" id="lic-copier-emp">Copier</button></td></tr>` : ''}
           </tbody></table>` : ''}
-         <label class="field mt">Clé de licence
+         <label class="field mt">${lbl('Clé de licence', 'lic.cle')}
            <textarea id="lic-key" rows="3" placeholder="SKAN1.…">${h(st.key || '')}</textarea></label>
          <div class="inline mt">
-           <button type="button" class="btn btn-primary" id="lic-save">Enregistrer la clé</button>
+           ${/* 10.12.0 — vert sur une case vide, « Enregistrer la clé » était l'étape suivante de
+                personne. Il s'allume quand une clé NOUVELLE est collée (U-11). */''}
+           <button type="button" class="btn" id="lic-save">Enregistrer la clé</button>
            <button type="button" class="btn" id="lic-ask">Demander une licence</button>
            ${st.key ? '<button type="button" class="btn btn-ghost" id="lic-clear">Retirer la clé</button>' : ''}
          </div>
@@ -12953,6 +13157,12 @@
     // Une clé collée mais pas encore enregistrée survit à un redessin du panneau (« Enregistrer » des
     // Paramètres le redessine) : on ne jette pas ce qui vient d'être tapé.
     if (saisie && saisie !== (st.key || '') && $('#lic-key')) $('#lic-key').value = saisie;
+    const cleNouvelle = () => { const v = $('#lic-key').value.trim(); return !!v && v !== (st.key || ''); };
+    if ($('#lic-key') && $('#lic-save')) {
+      const allumer = () => $('#lic-save').classList.toggle('btn-primary', cleNouvelle());
+      $('#lic-key').addEventListener('input', allumer);
+      allumer();
+    }
 
     const setKey = async (key) => {
       try {

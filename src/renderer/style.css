@@ -349,6 +349,10 @@ main { --main-haut: 32px; flex: 1; overflow-y: auto; padding: var(--main-haut) 3
 /* .field (et non label.field) : les champs date et les listes déroulantes sont des <div>,
    un <label> y renverrait le clic du bouton calendrier vers le champ texte. */
 .field { display: flex; flex-direction: column; gap: 5px; font-size: 12px; color: var(--muted); font-weight: 600; }
+/* Le gras de `.field` est celui de l'ÉTIQUETTE. Une phrase posée dans un champ (« Ce que tu as en
+   rayon aujourd'hui… », la remarque sous un bloc) en héritait, et se lisait comme un second libellé
+   (10.12.0, parcours d'une entreprise). Une phrase reste une phrase. */
+.field p { font-weight: 400; }
 /* La remarque d'un RIB douteux (10.12.0) : dans la ligne du libellé, jamais dessous — ce qui apparaît
    selon une valeur vit dans une place qui existe déjà. Vide, elle ne prend aucune place. */
 .rib-note { color: var(--warning); margin-inline-start: 6px; }
@@ -374,6 +378,10 @@ input[type=color]:not([type=checkbox]):not([type=radio]):not([type=file]):not([t
   height: 40px; width: 72px; padding: 4px; cursor: pointer;
 }
 .inline { display: flex; gap: 8px; align-items: center; }
+/* Un sélecteur dans une rangée de contrôles prend sa largeur, pas toute la ligne : la règle générale
+   des champs (width:100 %) étirait le mois du paquet sur 1 078 px (10.12.0 — même faute que les
+   barres d'en-tête en 7.23.0). */
+.inline > select { width: auto; }
 /* `.check` est un conteneur FLEX : chaque morceau de texte y devient un élément séparé de 8 px, et
    se replie tout seul quand la place manque. Le libellé d'une case tient donc dans UN élément
    (10.12.0) — « Timbre fiscal (1,000 DT) » s'écrivait en quatre morceaux sur deux lignes, la
@@ -481,6 +489,9 @@ td:not(.row-actions):not(.line-tools) .btn + .btn { margin-inline-start: 6px; }
    enregistrée » et repoussait tout le reste : un état vide secondaire s'annonce, il ne se
    contemple pas. */
 .empty.mini { padding: 14px 16px; text-align: start; border: none; background: transparent; }
+/* Dans un panneau, l'annonce s'aligne sur le titre qu'elle suit : décalée de 16 px, elle paraissait
+   appartenir à autre chose (10.12.0). */
+.panel > .empty.mini { padding-inline: 0; }
 
 /* ---------- badges ---------- */
 /* Une pastille est UN mot, elle ne se coupe jamais (10.12.0, vu au test humain) : « en attente » passait
@@ -985,7 +996,9 @@ body.dark table.list th { background: #171d25; }
 body.dark table.list tr.clickable:hover td { background: #1f2731; }
 body.dark table.list tr.total-row td { background: #171d25; }
 body.dark .empty { border-color: var(--border); }
-body.dark nav a { color: #b6c0cc; }
+/* Le pied de la barre recopie la couleur des liens du menu (7.0.0) mais n'avait pas reçu sa jumelle
+   sombre : « Tous les modules » et « Aide » restaient gris foncé sur fond foncé, contraste 2,1. */
+body.dark nav a, body.dark .sidebar-foot .foot-link { color: #b6c0cc; }
 body.dark nav a.active .nav-count { background: var(--panel); }
 body.dark .filters input:not([type=checkbox]):not([type=radio]), body.dark .filters select { background: var(--panel); }
 body.dark .preview iframe { background: #0e1217; }

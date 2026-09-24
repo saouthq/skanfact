@@ -286,7 +286,9 @@ t('anglais : montant en lettres, format des nombres, template', () => {
   // cette assertion affirmait donc le défaut : elle attendait 1 191,00 €, c'est-à-dire un timbre de
   // 3,40 DT sur une facture qui en doit 1,00.
   assert.ok(html.includes('1,190.29'), 'le timbre doit être converti dans la devise du document');
-  assert.ok(html.includes('<small>EUR</small>') && html.includes('1 EUR = 3,400\u00a0DT'));
+  // 10.12.0 — cette assertion exigeait « 3,400 » à la française au milieu d'une facture anglaise qui
+  // écrit « 1,190.29 » deux lignes plus haut : elle gravait le défaut. Le taux suit la langue de la pièce.
+  assert.ok(html.includes('<small>EUR</small>') && html.includes('1 EUR = 3.400\u00a0DT'), 'le taux d\'une facture anglaise ne suit pas sa langue');
   assert.ok(html.includes('Total amount in words:') && html.includes('one thousand one hundred and ninety euros'));
   assert.ok(html.includes('Tax ID GB123') && html.includes('Payment by bank transfer'));
   const draft = core.documentHtml({ ...inv(), lang: 'en', number: '', status: 'brouillon' }, { name: 'X' }, CO);
@@ -541,7 +543,8 @@ t('démo : acompte + solde, avoir total, client étranger en euros', () => {
   const nova = d.documents.find(x => x.type === 'facture' && x.currency === 'EUR');
   assert.strictEqual(nova.lang, 'en'); assert.strictEqual(nova.applyStamp, false); assert.strictEqual(core.computeTotals(nova, d.company).totalVAT, 0);
   const html = core.documentHtml(nova, d.clients.find(c => c.id === nova.clientId), d.company);
-  assert.ok(html.includes('<div class="kind">Invoice</div>') && html.includes('<small>EUR</small>') && !html.includes('Stamp duty') && html.includes('1 EUR = 3,350\u00a0DT'));
+  // Le taux d'une facture anglaise suit sa langue (10.12.0) : « 3,350 » à la française gravait le défaut.
+  assert.ok(html.includes('<div class="kind">Invoice</div>') && html.includes('<small>EUR</small>') && !html.includes('Stamp duty') && html.includes('1 EUR = 3.350\u00a0DT'));
   const row = core.salesJournal(d, d.company, { from: nova.date, to: nova.date, today: T }).find(r => r.id === nova.id);
   assert.strictEqual(row.ht, core.round3(1100 * 3.35));
   const pending = d.documents.filter(x => x.type === 'facture' && x.status !== 'brouillon' && core.computeTotals(x, d.company).withholding > 0 && !x.withholdingCertificate);
@@ -1113,7 +1116,9 @@ t('statistiques : classement des payeurs', () => {
   assert.deepStrictEqual(r.tous.map(x => x.name), ['Alpha']); // seul client avec une facture soldée
   assert.strictEqual(r.tous[0].delay, 10);                    // 05/02 → 15/02
   assert.strictEqual(r.rapides[0].name, 'Alpha');
-  assert.strictEqual(r.lents[0].name, 'Alpha');
+  // 10.12.0 — cette assertion exigeait qu'Alpha, seul payeur, soit AUSSI le plus lent : elle décrivait
+  // le défaut (le même client dans les deux colonnes). Un client n'est jamais dans les deux.
+  assert.deepStrictEqual(r.lents, [], 'un seul payeur est aussi rangé parmi les plus lents');
   assert.deepStrictEqual(core.payerRanking({ documents: [], clients: [] }, CO, 5).tous, []);
 });
 
@@ -9026,7 +9031,10 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
       'viser un panneau n\'ouvre pas l\'onglet qui le contient');
     ['data-somm', 'data-go'].forEach(chemin =>
       assert.ok(new RegExp(chemin).test(mod), `le chemin « ${chemin} » ne mène nulle part`));
-    assert.ok(/if \(settingsFocus\) \{[\s\S]{0,200}?reg\.montrer\(/.test(page),
+    // 10.12.0 : le lien passe par `amenerChamp`, qui amène le panneau par la MÊME porte puis pose le
+    // curseur dans la case visée. On exige la porte au bout du chemin, pas la forme du chemin.
+    assert.ok(/if \(settingsFocus\) \{[\s\S]{0,200}?(reg\.montrer\(|amenerChamp\()/.test(page)
+      && /const amenerChamp = spec => \{[\s\S]{0,200}?reg\.montrer\(/.test(page),
       'un lien venu d\'ailleurs n\'utilise pas la porte commune');
     // La porte est UNE : le sommaire, la recherche et les liens l'appellent tous. Si l'app entreprise
     // se remettait à faire son propre `scrollIntoView`, on aurait deux comportements pour un geste.

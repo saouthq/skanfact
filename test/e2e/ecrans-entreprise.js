@@ -67,7 +67,7 @@ const MENU_SUR = /^(Modifier|Noter un appel|Ne pas relancer|Changer la date de r
 // ne commencent pas par « + ». Chacun n'est tenté que s'il est À L'ÉCRAN.
 const OUVREURS = ['#pay', '#dispose', '#hr-doc', '#edit-emp', '#edit-imm', '#ecr-od', '#ecr-plan', '#gl-plan',
   '#bal-plan', '#et-plan', '#rec-depuis', '#vide-depuis', '#aide-support', '#aide-idee', '#set-support',
-  '#set-idee', '[data-ee]', '[data-lv]', '[data-av]', '[data-ed]', '[data-hr]', '[data-fix]', '[data-ser]',
+  '#set-idee', '[data-ee]', '[data-lv]', '[data-av]', '[data-ed]', '[data-hr]', '[data-ser]',
   '[data-eacc]', 'tr[data-mv]', '[data-payx]'];
 
 // Les menus déroulants d'en-tête : on les ouvre, on les mesure, on les referme.

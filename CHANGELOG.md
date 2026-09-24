@@ -501,6 +501,67 @@ jamais au bleu du navigateur).
 - Les colonnes de texte se partagent la place que les autres laissent : le détail d'un événement
   n'est plus coupé à 260 px à côté de deux colonnes à moitié vides.
 
+**La menuiserie, fin du tour : stock, trésorerie, déclarations, réglages** — la clôture, le paquet,
+les Paramètres, les statistiques, les séries, la devise, l'avoir fournisseur, l'inventaire, le
+rapprochement et le thème sombre, tenus à la souris et au clavier :
+- **Un comptage d'inventaire se tape enfin.** Le tableau se redessinait à chaque chiffre et le champ
+  recréé rendait son curseur au début : « 28 » planches comptées devenaient **82**, un écart de +52
+  prêt à être enregistré en mouvements. Pire, la sélection automatique des champs de nombre (plus
+  haut) prenait ce focus rendu par le code pour une entrée, sélectionnait le « 2 », et le « 8 » le
+  remplaçait. La ligne se met à jour sur place, et un champ ne sélectionne son contenu que quand on y
+  entre soi-même (clic ou Tab). Le bouton dit « Enregistrer les écarts » tant qu'il n'y en a pas, et
+  un écart s'écrit « −2 » avec le même signe moins que les montants.
+- **Une alerte de stock mène à l'achat.** Chaque alerte portait deux boutons, « Ajuster » et « Voir » —
+  et « Ajuster » pour un stock négatif, qui ne s'ajuste jamais : c'est un achat oublié, et l'ajuster
+  perdrait sa TVA déductible. Un seul bouton, « Commander… » ou « Saisir l'achat oublié… », ouvre une
+  facture d'achat qui porte déjà l'article, la quantité à commander et son coût, en stock ; la ligne
+  ouvre la fiche de l'article.
+- **Une CNSS déposée n'est plus réclamée deux fois.** La déclaration trimestrielle avait deux
+  pense-bêtes — celui de la Paie et celui du calendrier fiscal — qui ne se voyaient pas : la marquer
+  déposée dans la Paie laissait le calendrier la réclamer, « À faire » la nommait deux fois, et le
+  calendrier acceptait « déposée » sur un trimestre pas terminé. Une échéance du calendrier désigne
+  maintenant la déclaration qu'elle rappelle, et c'est la Paie qui fait foi ; une mention posée avant
+  cette version compte encore.
+- **Le matricule CNSS de l'entreprise manquait sans un mot** sur la déclaration trimestrielle : elle le
+  dit, AVANT les boutons, avec « Le renseigner » qui ouvre la fiche société le curseur dans la case.
+  Un renvoi vers les Paramètres peut maintenant désigner un champ, et un test vérifie que chaque champ
+  visé existe.
+- **Le rapprochement répond pendant qu'on recopie son relevé** : « Ça tombe juste » ou « Écart de … »
+  s'affiche à la frappe, plus seulement en quittant la case.
+- **Une recherche de liste garde la place du curseur** : corriger une lettre au milieu de « Trabelsi »
+  envoyait la suivante au bout du texte, dans six recherches (Clients, Relances, Stock, séries,
+  journaux). La fonction du Cabinet sert maintenant les deux applications. Le choix du compte, dans
+  la Trésorerie, porte son nom pour le clavier et les lecteurs d'écran.
+- **Un avoir fournisseur se présente comme un avoir** : titre, « Numéro de l'avoir », invite et phrase
+  des lignes (« l'avoir retire cette TVA ») suivent la nature quand on la change — il s'ouvrait sous
+  « Nouvelle facture d'achat » et promettait de « récupérer la TVA ».
+- **Le taux de change naît en fin de formulaire** : choisir « EUR » faisait sauter Statut et Remise
+  d'une colonne. Son libellé est le même dans les deux éditeurs (« 1 EUR = ? DT »), son invite écrit
+  « 3,4 », et une pièce anglaise l'écrit à l'anglaise (« 3.350 ») comme ses autres montants.
+- **Un seul vert par onglet de Paramètres** : « Activer un mot de passe », « Enregistrer la clé » (sur
+  une case vide) et « Signaler un problème » étaient verts au repos. Les deux premiers s'allument
+  quand ils sont l'étape suivante (la copie externe posée, une clé neuve collée), le troisième plus
+  jamais. « Il n'existe aucune récupération » se lit avant le bouton qui l'engage.
+- Un seuil de retenue ou un objectif à zéro s'affiche vide (« aucun seuil », « aucun objectif ») avec
+  son unité ; une phrase ne désigne plus les boutons « le premier… le second » mais par leur nom ; une
+  phrase posée dans un champ n'a plus le gras de l'étiquette ; hors Mac, le choix « Mail (Apple) »
+  n'est plus proposé.
+- **Garanties et numéros de série** : une entreprise qui ne suit rien par numéro lisait « aucune
+  garantie ne se termine » sous un sélecteur de durée. La page dit à quoi elle sert, et « Choisir une
+  prestation à suivre… » ouvre sa fiche déjà cochée au lieu de renvoyer au Catalogue.
+- **Clôtures et paquet** : le panneau « Rouvrir » ne s'affiche plus quand rien n'est clôturé ; un mois
+  sans pièce ne montre plus un tableau de sept zéros ; un sélecteur ne s'étire plus sur toute la ligne.
+- **Statistiques** : une entreprise créée cette année ne voit plus « 2025 » en légende au-dessus de
+  barres à zéro, et un client n'est jamais à la fois parmi les plus rapides et les plus lents payeurs.
+- Une question à un mot (« Autre taux… ») dit son geste au lieu de « OK », et une valeur refusée ne
+  ferme plus la fenêtre avant de le dire — le taux tapé était perdu.
+- L'objet d'un contrat ne finit plus sur un tiret (« Entretien des portes — »), le pied d'un relevé ne
+  dit plus « dont 0,000 DT échu », l'Aide ne promet plus un « ? » qui n'existe pas (« Comprendre cette
+  page »), et l'absence d'opération diverse ne prend plus un cadre d'écran.
+- **Thème sombre** : « Tous les modules » et « Aide », au pied de la barre, restaient gris foncé sur
+  fond foncé (contraste 2,1). Un test vérifie maintenant, dans les deux applications, que toute couleur
+  de texte foncée écrite en dur a sa jumelle sombre.
+
 **Publiée en bêta** : elle touche au moteur comptable (déclaration d'employeur, IRPP du mois,
 contre-passation, rapprochement).
 

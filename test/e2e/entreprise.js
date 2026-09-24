@@ -1603,7 +1603,14 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
     await win.click('#st-tabs button[data-tab=inventaire]');
     await win.waitForSelector('#st-body .inv-in');
     const cible = await win.evaluate(a => a.id, avant);
-    await win.fill(`#st-body .inv-in[data-iid="${cible}"]`, '1');
+    // 10.12.0 — le comptage se TAPE, chiffre après chiffre, dans un champ où l'on a cliqué : le tableau
+    // se redessinait à chaque touche et le champ recréé rendait son curseur au début — « 28 » devenait
+    // 82. `fill` pose la valeur d'un coup et ne passe jamais par ce chemin : il laissait passer le défaut.
+    const compte = String(avant.qty - 2 + 11);
+    await win.click(`#st-body .inv-in[data-iid="${cible}"]`);
+    await win.keyboard.type(compte, { delay: 40 });
+    const vu = await win.evaluate(id => document.querySelector(`#st-body .inv-in[data-iid="${id}"]`).value, cible);
+    if (vu !== compte) throw new Error(`« ${compte} » tapé dans le comptage donne « ${vu} » : le champ perd ou retourne la frappe`);
     await win.waitForFunction(() => !document.querySelector('#inv-apply').disabled);
     const nAvant = await win.evaluate(() => window.__data.stockAdjustments.length);
     await win.click('#inv-apply');
@@ -1611,7 +1618,7 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
     await win.click('#modal-root #ok');
     await win.waitForFunction(n => window.__data.stockAdjustments.length > n, nAvant);
     const apres = await win.evaluate(id => window.SkanCore.stockOf(window.__data, id).qty, cible);
-    if (apres !== 1) throw new Error('le stock n\'a pas été aligné sur le comptage : ' + apres);
+    if (apres !== Number(compte)) throw new Error('le stock n\'a pas été aligné sur le comptage : ' + apres + ' au lieu de ' + compte);
   });
   await step('stock : on prévient avant d\'émettre une pièce qui vide le stock', async () => {
     // On part d'un brouillon de la démo : il a déjà toutes les propriétés que la validation attend.

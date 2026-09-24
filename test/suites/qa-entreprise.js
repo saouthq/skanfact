@@ -268,7 +268,8 @@ module.exports = ({ t, assert, lireSource }) => {
     assert.ok(/const envoiParMail = \(\) => SUR_MAC && /.test(ent), 'la promesse de Mail ne dépend plus de la plateforme');
     const fen = ent.slice(ent.indexOf('id="mf-envoi"'), ent.indexOf('id="mf-envoi"') + 400);
     assert.ok(/envoiParMail\(\) \?/.test(fen) && /\$\{EXPLORATEUR\}/.test(fen), 'la fenêtre d\'email ne dit pas ce qui se passera sur CET ordinateur');
-    assert.ok(/\$\{SUR_MAC\s*\?\s*`<label class="field">\$\{lbl\('Envoi des emails'/.test(ent), 'le choix « Mail (Apple) » est proposé hors d\'un Mac');
+    // La RÈGLE (le choix n'existe que sous SUR_MAC), pas la forme du champ — elle a changé en 10.12.0.
+    assert.ok(/SUR_MAC\s*\?\s*`[^`]*name="mailClient"/.test(ent) && (ent.match(/name="mailClient"/g) || []).length === 1, 'le choix « Mail (Apple) » est proposé hors d\'un Mac');
     // Les touches de l'aide : ⌘ sur un Mac, Ctrl ailleurs — bulles et articles.
     const cl = ent.match(/const clavierLocal = [^\n]+/)[0];
     const loc = mac => require('vm').runInNewContext(cl + '\nclavierLocal;', { SUR_MAC: mac });
@@ -1829,5 +1830,402 @@ module.exports = ({ t, assert, lireSource }) => {
     assert.ok(/'Revenir aux valeurs livrées', true\)/.test(f), 'revenir aux valeurs livrées se confirme par « Confirmer »');
     const onglets = app.slice(app.indexOf("$$('#p-tabs button').forEach(b => b.onclick"), app.indexOf("$$('#p-tabs button').forEach(b => b.onclick") + 400);
     assert.ok(/if \(!await leaveOk\(\)\) return;[\s\S]{0,40}clearGuard\(\)/.test(onglets), 'changer d\'onglet jette les barèmes modifiés sans rien demander');
+  });
+  // ------------------------------------------------------------ La menuiserie, lot 4 (compta)
+  // La clôture, le paquet, la TVA, le calendrier fiscal, parcourus à la souris.
+
+  // Deux pense-bêtes pour la même déclaration CNSS : l'occurrence du calendrier et la déclaration
+  // de la Paie. Pointer l'un laissait l'autre crier, et le calendrier acceptait un trimestre en cours.
+  t('Une échéance du calendrier désigne la déclaration sociale qu\'elle rappelle, et une seule mention vaut pour les deux écrans', () => {
+    assert.deepStrictEqual(core.echeanceSociale('cnss', '2026-10-15'), { id: 'cnss-2026-T3', fin: '2026-09-30' });
+    assert.deepStrictEqual(core.echeanceSociale('cnss', '2027-01-15'), { id: 'cnss-2026-T4', fin: '2026-12-31' });
+    assert.deepStrictEqual(core.echeanceSociale('cnss', '2026-04-15'), { id: 'cnss-2026-T1', fin: '2026-03-31' });
+    assert.deepStrictEqual(core.echeanceSociale('employeur', '2027-04-30'), { id: 'employeur-2026', fin: '2026-12-31' });
+    assert.strictEqual(core.echeanceSociale('tva', '2026-10-28'), null, 'une échéance fiscale sans déclaration sociale en désigne une');
+    const d = vierge();
+    d.employees = [{ id: 'e1', name: 'Hichem', grossSalary: 1200, hireDate: '2026-07-01' }];
+    const cnss = up => up.find(x => x.id === 'cnss');
+    // Le 24 septembre : la CNSS du 3e trimestre tombe le 15 octobre, et le trimestre n'est pas fini.
+    const avant = cnss(core.upcomingFiscal(d, '2026-09-24', 60));
+    assert.ok(avant && avant.date === '2026-10-15' && avant.socialId === 'cnss-2026-T3', 'l\'échéance CNSS ne désigne pas le 3e trimestre');
+    assert.strictEqual(avant.enCours, true, 'le calendrier propose de déposer un trimestre en cours');
+    assert.strictEqual(cnss(core.upcomingFiscal(d, '2026-10-02', 60)).enCours, false, 'un trimestre terminé reste « en cours »');
+    // Pointée dans la PAIE, l'échéance quitte aussi le calendrier.
+    d.socialFilings = [{ id: 'cnss-2026-T3', filedAt: '2026-10-05', label: 'CNSS' }];
+    const apres = cnss(core.upcomingFiscal(d, '2026-10-02', 120));
+    assert.ok(!apres || apres.date !== '2026-10-15', 'une CNSS déposée dans la Paie crie encore dans le calendrier');
+    // Une mention d'avant la 10.12.0, posée dans le calendrier, vaut encore pour la Paie.
+    d.socialFilings = []; d.fiscalFilings = [{ id: 'cnss@2026-10-15', at: 1 }];
+    assert.ok(core.socialesDeposees(d).has('cnss-2026-T3'), 'une mention posée dans le calendrier est oubliée par la Paie');
+  });
+
+  t('« À faire » ne nomme pas deux fois la même déclaration sociale', () => {
+    const app = code('src', 'renderer', 'core.js');
+    const i = app.indexOf('const annoncees = new Set(soc.map(x => x.id));');
+    assert.ok(i > 0, '« À faire » ne retient plus les déclarations déjà annoncées');
+    assert.ok(/upcomingFiscal\(data, t, 14\)\.filter\(x => !\(x\.socialId && annoncees\.has\(x\.socialId\)\)\)/.test(app.slice(i, i + 300)), 'l\'échéance fiscale d\'une déclaration déjà annoncée est comptée une seconde fois');
+  });
+
+  t('Le calendrier fiscal : pas de « Marquer déposée » sur une période en cours, et la CNSS se pointe sur la déclaration de la Paie', () => {
+    const app = code('src', 'renderer', 'app.js');
+    const f = corpsDe(app, 'function drawFiscal(');
+    assert.ok(/data-fsoc="\$\{h\(x\.socialId \|\| ''\)\}"/.test(f), 'le bouton ne sait pas quelle déclaration sociale il pointe');
+    assert.ok(/\$\{x\.enCours \? ` disabled title="\$\{h\(attente\(x\)\)\}"` : ''\}/.test(f), 'une période en cours se marque déposée depuis le calendrier');
+    assert.ok(/if \(soc\) data\.socialFilings = \(data\.socialFilings \|\| \[\]\)\.concat\(/.test(f), 'une CNSS pointée dans le calendrier écrit un second pense-bête');
+    assert.ok(/if \(soc\) data\.socialFilings = \(data\.socialFilings \|\| \[\]\)\.filter\(/.test(f), '« Annuler » ne défait pas la mention de la Paie');
+    assert.ok(/\.concat\(\(data\.socialFilings \|\| \[\]\)/.test(f), '« Déjà déposées » oublie ce qui a été pointé dans la Paie');
+  });
+
+  // « Rien n'est clôturé, donc rien à rouvrir » dans un cadre de 110 px, sous un État qui le disait.
+  t('Les clôtures : pas de panneau « Rouvrir » sans rien à rouvrir, et un journal vide s\'annonce', () => {
+    const app = code('src', 'renderer', 'app.js');
+    const f = corpsDe(app, 'function drawClosures(');
+    assert.ok(/\$\{closed \? `<div class="panel"><h2>Rouvrir/.test(f), 'le panneau « Rouvrir » s\'affiche sans rien à rouvrir');
+    assert.ok(!/rien à rouvrir/.test(f), 'le panneau « Rouvrir » répète l\'État');
+    assert.ok(/<div class="empty mini">Aucune clôture pour l\\?'instant/.test(f), 'le journal vide occupe un cadre de 110 px');
+  });
+
+  // Un mois sans pièce : un tableau de sept zéros et trois cartes à 0,000 DT au-dessus de « aucune pièce ».
+  t('Le paquet d\'un mois vide ne compte rien au-dessus du vide, et le mois se choisit sans s\'étirer', () => {
+    const app = code('src', 'renderer', 'app.js');
+    const f = corpsDe(app, 'function drawCabinet(');
+    assert.ok(/\$\{moisVide \? '' : `<div class="dash-grid mt">/.test(f), 'un mois vide montre encore son tableau de zéros');
+    assert.ok(/<div class="empty mini">Aucun paquet fabriqué/.test(f), 'l\'historique vide occupe un cadre de 110 px');
+    const css = lireSource('src', 'renderer', 'style.css').replace(/\/\*[\s\S]*?\*\//g, '');
+    assert.ok(/\n\.inline > select \{ width: auto; \}/.test(css), 'un sélecteur dans une rangée s\'étire sur toute la ligne');
+    assert.ok(/\n\.panel > \.empty\.mini \{ padding-inline: 0; \}/.test(css), 'une annonce dans un panneau est décalée de son titre');
+  });
+
+  // « OK », une explication en gras, un refus en bandeau qui fermait la fenêtre et perdait le taux tapé.
+  t('La petite fenêtre de saisie : l\'explication se lit, le bouton dit le geste, un refus garde la fenêtre', () => {
+    const app = code('src', 'renderer', 'app.js');
+    // `corpsDe` s'arrêterait à l'accolade du paramètre par défaut (`o = {}`) : on borne sur la fonction
+    // suivante — pas sur un commentaire, que `code()` retire (8.2.0).
+    const i0 = app.indexOf('function promptDialog(');
+    const f = app.slice(i0, app.indexOf('const templatesFor = type =>', i0));
+    assert.ok(f.length > 400 && f.length < 3000, 'tranche promptDialog (' + f.length + ')');
+    assert.ok(/const long = String\(label\)\.length > 48;/.test(f) && /\$\{long \? `<p class="small muted">\$\{h\(label\)\}<\/p>` : ''\}/.test(f), 'une explication longue s\'affiche encore comme un libellé en gras');
+    assert.ok(/\$\{h\(o\.ok \|\| 'Valider'\)\}/.test(f) && !/>OK</.test(f), 'le bouton dit encore « OK »');
+    assert.ok(/if \(!v\) return refus\(champ,/.test(f) && !/toast\('Valeur obligatoire/.test(f), 'une valeur vide part en bandeau sans montrer le champ');
+    const go = f.slice(f.indexOf('const go = () =>'));
+    assert.ok(go.indexOf('if (erreur) return refus(champ, erreur)') > 0 && go.indexOf('if (erreur) return refus(champ, erreur)') < go.indexOf('close(); done(v);'), 'une valeur refusée ferme la fenêtre avant de le dire');
+    assert.ok(/'Autre taux de retenue'[\s\S]{0,700}valider: v =>/.test(app), '« Autre taux… » refuse après avoir fermé la fenêtre');
+    assert.strictEqual((app.match(/v => \{ if \(v\) importer(?:Cloture|Questions)\(v\); \}, 'password'/g) || []).length, 2, 'un mot de passe de fichier se tape en clair');
+    assert.ok(/Reporter un crédit de TVA de \$\{Number\(year\) - 1\}…/.test(app), 'le bouton du crédit reporté se lit comme une information, pas comme un geste');
+  });
+  // Le seul client qui avait payé figurait à la fois parmi les plus rapides et les plus lents.
+  t('Qui paie vite, qui paie tard : un client n\'est jamais dans les deux colonnes', () => {
+    const d = vierge();
+    d.clients = ['A', 'B', 'C'].map(n => ({ id: n, name: n }));
+    const fac = (id, cl, date, paye) => ({ id, type: 'facture', number: id, status: 'envoyée', clientId: cl, date,
+      lines: [{ label: 'x', qty: 1, unitPrice: 100, vatRate: 0 }], stampApplied: false, payments: [{ date: paye, amount: 100 }] });
+    d.documents = [fac('F1', 'A', '2026-09-01', '2026-09-03'), fac('F2', 'B', '2026-09-01', '2026-09-11'), fac('F3', 'C', '2026-09-01', '2026-09-21')];
+    const soc = { ...société, stampFee: 0 };
+    const r = core.payerRanking(d, soc, 5);
+    assert.deepStrictEqual(r.tous.map(x => x.name), ['A', 'B', 'C']);
+    const rap = r.rapides.map(x => x.name), lents = r.lents.map(x => x.name);
+    assert.ok(!rap.some(n => lents.includes(n)), `un client dans les deux colonnes : ${rap} / ${lents}`);
+    assert.deepStrictEqual(rap, ['A', 'B']);
+    assert.deepStrictEqual(lents, ['C']);
+    const app = code('src', 'renderer', 'app.js');
+    assert.ok(/payers\.tous\.length === 1 \? `<p>Un seul client a soldé une facture/.test(app), 'un seul payeur est encore classé en deux colonnes');
+  });
+
+  t('Le graphique des statistiques n\'annonce pas une année précédente vide', () => {
+    const app = code('src', 'renderer', 'app.js');
+    assert.ok(/const anPrecedentVide = !seriesPrev\.some\(x => Number\(x\.ht\)\);/.test(app), 'l\'année précédente vide n\'est pas reconnue');
+    assert.ok(/compareChart\(series, anPrecedentVide \? \[\] : seriesPrev\)/.test(app), 'une année précédente vide dessine encore ses barres à zéro');
+    assert.ok(/\$\{anPrecedentVide \? '' : `<span><i style="background:#9aa7b4;opacity:\.6"><\/i>\$\{p\.year - 1\}<\/span>`\}/.test(app), 'la légende annonce une année précédente qui n\'a rien');
+  });
+
+  // « Le renseigner » ouvrait la fiche société EN HAUT : on cherchait la case parmi douze. Un renvoi
+  // `panneau:champ` amène le panneau ET le curseur — et il ne peut viser qu'une case qui existe.
+  t('Un renvoi vers un réglage vise une case qui existe, et y met le curseur', () => {
+    const app = code('src', 'renderer', 'app.js');
+    const reglages = app.slice(app.indexOf('routes.parametres = '), app.indexOf('routes.aide = '));
+    assert.ok(reglages.length > 20000, 'tranche des Paramètres (' + reglages.length + ')');
+    const cibles = [...app.matchAll(/['"](p-[a-z-]+):([a-zA-Z]+)['"]/g)].map(m => [m[1], m[2]]);
+    assert.ok(cibles.length >= 2, 'aucun renvoi « panneau:champ » : ' + cibles.length);
+    cibles.forEach(([pan, champ]) => {
+      assert.ok(new RegExp(`'${pan}': \\{ onglet:`).test(app), `le renvoi vise un panneau qui n'existe pas : ${pan}`);
+      assert.ok(new RegExp(`name="${champ}"|, '${champ}', `).test(reglages), `le renvoi vise une case qui n'existe pas : ${pan}:${champ}`);
+    });
+    assert.ok(/const amenerChamp = spec => \{[\s\S]{0,200}reg\.montrer\(vise\);[\s\S]{0,120}el\.focus\(\)/.test(reglages), 'le renvoi amène le panneau sans y mettre le curseur');
+    assert.ok(/if \(settingsFocus\) \{ const spec = settingsFocus; settingsFocus = ''; amenerChamp\(spec\); \}/.test(reglages), 'un renvoi venu d\'une autre page ne passe pas par la même porte');
+    assert.ok(/\$\$\('#pf \[data-vers-champ\]'\)\.forEach\(b => b\.onclick = \(\) => amenerChamp\(b\.dataset\.versChamp\)\)/.test(reglages), 'un renvoi d\'un panneau à l\'autre n\'est branché sur rien');
+    assert.ok(/\$\('#cn-mat'\)\.onclick = e => \{ e\.preventDefault\(\); allerParametres\('societe', 'p-identite:cnss'\); \}/.test(app), '« Le renseigner » n\'est branché sur rien');
+  });
+
+  // Le matricule CNSS de l'entreprise manquait sans un mot sur la déclaration qui le demande.
+  t('La déclaration CNSS dit ce qui lui manque AVANT ses boutons, et nomme qui', () => {
+    const app = code('src', 'renderer', 'app.js');
+    const i = app.indexOf('id="cn-csv"');
+    const zone = app.slice(i - 3000, i);
+    assert.ok(/\(company\(\)\.cnss \|\| ''\)\.trim\(\) \? '' : `<p class="small warn-text mt" id="cn-employeur">/.test(zone), 'le matricule CNSS de l\'entreprise manque sans un mot, ou se lit sous les boutons');
+    assert.ok(/id="cn-sans-numero">[\s\S]{0,200}cn\.rows\.filter\(r => !r\.cnss\)\.map\(r => r\.name\)/.test(zone), 'le salarié sans numéro CNSS n\'est pas nommé, ou se lit sous les boutons');
+    assert.ok(!/Un matricule CNSS manque sur une fiche/.test(app), '« une fiche » ne dit pas laquelle');
+  });
+
+  // « 0 » dans la case se lisait « un seuil de zéro dinar » : toutes les factures.
+  t('Un réglage à zéro qui veut dire « aucun » s\'affiche vide, et porte son unité', () => {
+    const app = code('src', 'renderer', 'app.js');
+    assert.ok(/lbl\(`Seuil de retenue à la source \(\$\{C\.normCurrency\(c\.currency\)\}\)`, 'doc\.withholdingThreshold'\), 'withholdingThreshold', Number\(c\.withholdingThreshold\) > 0 \? c\.withholdingThreshold : '', 'number', '[^']*placeholder="aucun seuil"'\)/.test(app), 'le seuil de retenue affiche « 0 » ou ne dit pas son unité');
+    assert.ok(/'revenueTarget', Number\(c\.revenueTarget\) > 0 \? c\.revenueTarget : '', 'number', '[^']*placeholder="aucun objectif"'\)/.test(app), 'l\'objectif de chiffre d\'affaires affiche « 0 »');
+    assert.ok(/data\.company\.withholdingThreshold = Math\.max\(0, Number\(data\.company\.withholdingThreshold\) \|\| 0\)/.test(app), 'une case vidée n\'est plus ramenée à « aucun seuil »');
+    assert.ok(/data\.company\.revenueTarget = Math\.max\(0, Number\(data\.company\.revenueTarget\) \|\| 0\)/.test(app), 'une case vidée n\'est plus ramenée à « aucun objectif »');
+    assert.ok(!/placeholder="60000"/.test(app), 'la fenêtre de l\'objectif propose un chiffre que personne n\'a décidé');
+    const guide = lireSource('src', 'renderer', 'guide.js');
+    assert.ok(!/Laisse 0 si tu n\\'en veux pas/.test(guide), 'la bulle dit encore « laisse 0 »');
+  });
+
+  // Données et sécurité : deux verts (copie externe, mot de passe) ; L'application : deux verts
+  // (une clé vide à enregistrer, un problème à signaler alors que rien ne va mal).
+  t('Un onglet des Paramètres n\'a qu\'un vert, et c\'est l\'étape suivante', () => {
+    const app = code('src', 'renderer', 'app.js');
+    assert.ok(/'<button class="btn" id="sec-set">Activer un mot de passe…<\/button>'/.test(app), '« Activer un mot de passe » est vert d\'office, à côté de la copie externe');
+    assert.ok(/const etapeMotDePasse = ok => \{[\s\S]{0,120}\$\('#ext-choose'\)\.classList\.toggle\('btn-primary', !ok\);[\s\S]{0,120}\$\('#sec-set'\)\.classList\.toggle\('btn-primary', ok\);/.test(app), 'le vert ne passe pas de la copie externe au mot de passe');
+    assert.ok(/etapeMotDePasse\(!!i\.dir\)/.test(app), 'le vert ne suit pas la copie externe posée');
+    const mdp = app.slice(app.indexOf("panneau('p-motdepasse'"), app.indexOf("panneau('p-motdepasse'") + 1800);
+    assert.ok(mdp.indexOf('aucune récupération') > 0 && mdp.indexOf('aucune récupération') < mdp.indexOf('id="sec-set"'), '« aucune récupération » se lit sous le bouton qui l\'engage');
+    assert.ok(/<button type="button" class="btn" id="lic-save">Enregistrer la clé<\/button>/.test(app), '« Enregistrer la clé » est vert sur une case vide');
+    assert.ok(/const cleNouvelle = \(\) => \{ const v = \$\('#lic-key'\)\.value\.trim\(\); return !!v && v !== \(st\.key \|\| ''\); \};/.test(app), 'le vert ne dépend pas d\'une clé nouvelle');
+    assert.ok(/\$\('#lic-save'\)\.classList\.toggle\('btn-primary', cleNouvelle\(\)\)/.test(app), '« Enregistrer la clé » ne s\'allume pas quand une clé est collée');
+    assert.ok(/<button type="button" class="btn" id="set-support">Signaler un problème…<\/button>/.test(app), '« Signaler un problème » est vert au repos');
+    const guide = lireSource('src', 'renderer', 'guide.js');
+    assert.ok(/'lic\.cle': \{ t:/.test(guide) && /lbl\('Clé de licence', 'lic\.cle'\)/.test(app), 'la case de la clé n\'a pas de bulle');
+  });
+
+  // « Le premier bouton partage… le second » : la rangée en porte trois, et le premier crée un dossier.
+  t('Une phrase qui désigne un bouton le nomme, et ce nom existe', () => {
+    const app = code('src', 'renderer', 'app.js');
+    assert.ok(!/Le premier bouton|Le second sert/.test(app), 'une phrase désigne encore les boutons par leur rang');
+    const i = app.indexOf('id="dos-join"');
+    const zone = app.slice(i - 400, i + 700);
+    ['Partager ce dossier à deux', 'Rejoindre un dossier déjà partagé'].forEach(nom => {
+      assert.ok(zone.includes('>↔ ' + nom + '…<') || zone.includes('>↓ ' + nom + '…<'), 'le bouton « ' + nom + ' » a changé de nom');
+      assert.ok(zone.includes('<b>' + nom + '</b>'), 'la phrase ne nomme pas « ' + nom + ' »');
+    });
+  });
+
+  // Le gras de l'étiquette passait à la phrase posée dans le champ : deux libellés à la suite.
+  t('Une phrase posée dans un champ ne prend pas le gras de l\'étiquette', () => {
+    const css = lireSource('src', 'renderer', 'style.css').replace(/\/\*[\s\S]*?\*\//g, '');
+    assert.ok(/\n\.field \{[^}]*font-weight: 600;/.test(css), 'l\'étiquette d\'un champ n\'est plus en gras');
+    assert.ok(/\n\.field p \{ font-weight: 400; \}/.test(css), 'une phrase dans un champ se lit comme un second libellé');
+    const app = code('src', 'renderer', 'app.js');
+    assert.ok(!/<div class="field" id="mail-fixe">/.test(app), 'la phrase de l\'envoi des emails vit dans un champ qui répète le titre du panneau');
+    assert.ok(/<p class="small muted" id="mail-fixe">/.test(app), 'la phrase de l\'envoi des emails a disparu');
+  });
+
+  // Une entreprise sans aucun article suivi par numéro lisait « aucune garantie ne se termine » — sous
+  // un sélecteur de durée — et « Choisir une prestation à suivre » menait au Catalogue sans rien cocher.
+  t('Les garanties et les numéros de série : dire à quoi ça sert, et le geste mène à la case cochée', () => {
+    const app = code('src', 'renderer', 'app.js');
+    const g = app.slice(app.indexOf('routes.garanties = '), app.indexOf('routes.garanties = ') + 4000);
+    const vide = g.indexOf('if (!C.serializedItems(data).length) {');
+    assert.ok(vide > 0 && vide < g.indexOf('Aucune garantie ne se termine'), 'une entreprise qui ne suit rien lit « aucune garantie ne se termine »');
+    assert.ok(g.slice(vide, g.indexOf('return;', vide)).includes("etatVide('Aucun article suivi par numéro de série'"), 'la page vide ne dit pas à quoi elle sert');
+    assert.ok(!g.slice(vide, g.indexOf('return;', vide)).includes('g-days'), 'un sélecteur de durée au-dessus du vide');
+    assert.ok(!/\$\('#ser-pick'\)\.onclick = \(\) => navigate\('#\/catalogue'\)/.test(app), '« Choisir une prestation à suivre » mène encore au Catalogue');
+    assert.strictEqual((app.match(/choisirArticleASuivre\(\(\) => render\(\)\)/g) || []).length, 2, 'Stock et Garanties ne partagent pas le même geste');
+    const f = corpsDe(app, 'function catalogForm(');
+    assert.ok(/const suit = \{ tracked: it\.tracked \|\| !!opts\.suivre, serialized: it\.serialized \|\| !!opts\.suivre \};/.test(f), 'la fiche ouverte pour suivre un article n\'arrive pas cochée');
+    ['name="tracked" ${suit.tracked', 'name="serialized" ${suit.serialized', 'id="serial-block" ${suit.serialized', 'id="stock-block" ${suit.tracked']
+      .forEach(x => assert.ok(f.includes(x), 'la fiche ne lit pas la proposition : ' + x));
+    assert.ok(/catalogForm\(it, x => \{ if \(x && done\) done\(x\); \}, \{ suivre: true,/.test(app), 'le choix d\'un article n\'ouvre pas sa fiche cochée');
+  });
+
+  // Un cadre de 110 px pour dire « aucune opération diverse », sous un tableau d'écritures plein.
+  t('L\'onglet Écritures annonce l\'absence d\'opération diverse sans la contempler', () => {
+    const app = code('src', 'renderer', 'app.js');
+    assert.ok(/`<div class="empty mini">Aucune opération diverse sur cette période\./.test(app), 'l\'absence d\'opération diverse occupe un cadre d\'écran vide (9.4.7)');
+  });
+
+  // Un devis en euros, en anglais : « 1,200.00 » partout, et « 1 EUR = 3,350 DT » dans le cartouche.
+  t('Une pièce en anglais écrit son taux de change comme le reste de ses montants', () => {
+    const doc = { id: 'x', type: 'devis', number: 'DEV-2026-001', status: 'brouillon', date: '2026-09-24', dueDate: '2026-10-24',
+      lang: 'en', currency: 'EUR', exchangeRate: 3.35, clientId: '', lines: [{ label: 'Kitchen cabinets', qty: 1, unitPrice: 1200, vatRate: 19 }] };
+    const en = core.documentHtml(doc, null, société, {});
+    assert.ok(/1 EUR = 3\.350 DT/.test(en), 'le taux d\'une pièce anglaise s\'écrit à la française : ' + (en.match(/1 EUR = [^<]*/) || [''])[0]);
+    assert.ok(/1,200\.00/.test(en), 'le montant d\'une pièce anglaise n\'est plus au format anglais');
+    const fr = core.documentHtml({ ...doc, lang: 'fr' }, null, société, {});
+    assert.ok(/1 EUR = 3,350 DT/.test(fr), 'le taux d\'une pièce française ne s\'écrit plus à la française');
+  });
+
+  // Choisir « EUR » faisait naître le taux AVANT Statut et Remise : les deux sautaient d'une colonne.
+  t('Le champ du taux naît en fin de formulaire : il ne pousse rien', () => {
+    const app = code('src', 'renderer', 'app.js');
+    const f = app.slice(app.indexOf('<label class="field">${lbl(\'Devise\', \'ed.docCurrency\')}'), app.indexOf('<div class="panel"><h2>Lignes ${info(\'ed.lines\')}'));
+    assert.ok(f.length > 500 && f.length < 6000, 'tranche du formulaire (' + f.length + ')');
+    const taux = f.indexOf('id="rate-field"');
+    assert.ok(taux > 0, 'le champ du taux a disparu');
+    assert.ok(taux > f.indexOf('${statusCell}') && taux > f.indexOf("'discountRate'") && taux > f.indexOf('name="hidePrices"'), 'le taux naît avant des champs qu\'il repousse');
+    assert.ok(taux > f.lastIndexOf('name="applyStamp"'), 'le taux naît avant le timbre, qu\'il repousse');
+    assert.strictEqual(f.slice(taux).indexOf('</form>') > 0 && !/<label|<div class="field/.test(f.slice(f.indexOf('</label>', taux), f.indexOf('</form>', taux))), true, 'un champ vit encore après le taux');
+    assert.ok(!/placeholder="ex\. 3\.4"/.test(app), 'l\'invite du taux écrit un point là où la saisie attend une virgule (H-E28)');
+  });
+  // Un avoir fournisseur s'ouvrait sous « Nouvelle facture d'achat », demandait « Numéro de la facture »
+  // et promettait de « récupérer la TVA » — un avoir en RETIRE. Ce que la pièce est se dit dans son
+  // titre et ses libellés, à l'ouverture comme quand on change la nature.
+  t('Un avoir fournisseur se dit avoir : titre, numéro, invite et phrase des lignes suivent la nature', () => {
+    const brut = lireSource('src', 'renderer', 'app.js');
+    const i = brut.indexOf('const motsDePiece = kind =>');
+    const fin = brut.indexOf('};\n', i);
+    assert.ok(i > 0 && fin > i && fin - i < 2500, 'tranche de motsDePiece (' + (fin - i) + ')');
+    const mots = require('vm').runInNewContext('(' + brut.slice(i + 'const motsDePiece = '.length, fin + 1) + ')');
+    const av = mots('avoir'), fa = mots('facture'), ac = mots('acompte'), de = mots('depense');
+    assert.ok(/avoir/i.test(av.titre) && /avoir/i.test(av.numero) && /avoir/i.test(av.invite), 'un avoir se présente comme une facture : ' + JSON.stringify(av));
+    assert.ok(/retire/.test(av.lignes) && !/permet de récupérer/.test(av.lignes), 'un avoir promet de récupérer la TVA');
+    assert.ok(/facture d'achat/i.test(fa.titre) && /récupérer la TVA/.test(fa.lignes), 'la facture a perdu ses mots');
+    assert.ok(/acompte/i.test(ac.titre) && /dépense/i.test(de.titre) && /justificatif/.test(de.numero), 'l\'acompte ou la dépense ont perdu leurs mots');
+    const app = code('src', 'renderer', 'app.js');
+    assert.ok(app.includes('<span id="b-titre">${h(motsDePiece(p.kind).titre)}</span>'), 'le titre d\'une pièce neuve ne vient pas de la nature');
+    assert.ok(app.includes('<span id="b-num-lbl">${h(motsDePiece(p.kind).numero)}</span>') && app.includes('placeholder="${h(motsDePiece(p.kind).invite)}"'), 'le numéro ne vient pas de la nature');
+    const k = app.indexOf("e.target.name === 'kind'");
+    const change = app.slice(k, k + 900);
+    ["$('#b-titre').textContent = mots.titre", "$('#b-num-lbl', head).textContent = mots.numero", "$('[name=number]', head).placeholder = mots.invite", "$('#b-lignes-hint').textContent = mots.lignes", "setWindowTitle('achat'"]
+      .forEach(x => assert.ok(change.includes(x), 'changer la nature ne met pas à jour : ' + x));
+    assert.ok(!/p\.kind !== 'depense'\) \{ \$\('#b-num-lbl'/.test(app), 'passer en dépense laisse « Numéro de la facture »');
+  });
+
+  // « Maintenance mensuelle — » sur la fiche client, dans la liste des marges et dans la question de
+  // suppression : le tiret du gabarit « — {mois} {annee} » restait seul au bout, trois fois sur quatre.
+  t('L\'objet d\'un contrat se dit sans le tiret de son gabarit, partout, par une seule fonction', () => {
+    const brut = lireSource('src', 'renderer', 'app.js');
+    const i = brut.indexOf('const objetDeContrat = r =>');
+    const fin = brut.indexOf(';\n', i);
+    const objet = require('vm').runInNewContext('(' + brut.slice(i + 'const objetDeContrat = '.length, fin) + ')', { C: core });
+    assert.strictEqual(objet({ subject: 'Maintenance mensuelle — {mois} {annee}' }), 'Maintenance mensuelle', 'le tiret du gabarit reste au bout de l\'objet');
+    assert.strictEqual(objet({ subject: 'Location — machine' }), 'Location — machine', 'un tiret au milieu de l\'objet est mangé');
+    assert.strictEqual(objet({}), '', 'un contrat sans objet ne rend pas une chaîne vide');
+    const app = code('src', 'renderer', 'app.js');
+    const autres = (app.match(/fillTemplate\([^\n]*?\{ mois: '', annee: '' \}/g) || []).length;
+    assert.strictEqual(autres, 1, 'l\'objet d\'un contrat se calcule encore à la main ailleurs (' + autres + ' fois)');
+    assert.ok((app.match(/objetDeContrat\(r\)/g) || []).length >= 4, 'un écran ne passe plus par objetDeContrat');
+  });
+
+  // « dont 0,000 DT échu » au pied d'un relevé où rien n'est en retard : un zéro qui se lit comme une dette.
+  t('Le pied d\'un relevé ne dit pas « dont 0,000 échu »', () => {
+    const app = code('src', 'renderer', 'app.js');
+    assert.ok(!/Total dû au \$\{C\.fmtDate\(r\.date\)\} — dont \$\{C\.money\(r\.echu, cur\)\} échu</.test(app), 'le pied du relevé annonce une part échue nulle');
+    assert.ok(/r\.echu > 0\.0005 \? ` — dont \$\{C\.money\(r\.echu, cur\)\} échu` : ' — rien n\\'est encore échu'/.test(app), 'le pied du relevé ne dit plus ce qui est échu');
+  });
+
+  // L'introduction de l'Aide promettait « le ? en haut de chaque page » : ce bouton n'existe nulle part,
+  // le lien s'appelle « Comprendre cette page ». Une phrase affichée que rien ne tient (7.3.0).
+  t('L\'Aide nomme le lien d\'aide des pages par son vrai nom', () => {
+    const app = code('src', 'renderer', 'app.js');
+    assert.ok(!/le <b>\?<\/b> en haut de chaque page/.test(app), 'l\'Aide promet un « ? » qui n\'existe pas');
+    assert.ok(/a\.textContent = 'Comprendre cette page →'/.test(app), 'le lien des pages a changé de nom');
+    assert.ok(/«&nbsp;Comprendre cette page&nbsp;» en haut de chaque page/.test(app), 'l\'Aide ne nomme plus le lien des pages');
+  });
+
+  // « Taux : 1 EUR = ? DT » à l'ouverture et « 1 EUR = ? DT » après un changement de devise, dans un
+  // éditeur ; l'autre écrivait l'inverse. Un libellé qui change en changeant de devise se lit comme un
+  // autre champ : la même formule, dans les deux éditeurs, au dessin comme au changement.
+  t('Le libellé du taux de change est le même au dessin et au changement, dans les deux éditeurs', () => {
+    const app = code('src', 'renderer', 'app.js');
+    assert.ok(app.includes('<span class="rate-lbl">1 ${h(cur)} = ? ${h(company().currency)}</span>'), 'le libellé du taux de la pièce a changé au dessin');
+    assert.ok(app.includes("$('.rate-lbl', rf).textContent = `1 ${cur} = ? ${company().currency}`"), 'le libellé du taux de la pièce change au changement de devise');
+    assert.ok(app.includes('<span class="b-rate-lbl">1 ${h(cur)} = ? ${h(company().currency)}</span>'), 'le libellé du taux de l\'achat a changé au dessin');
+    assert.ok(app.includes("$('.b-rate-lbl', rf).textContent = `1 ${cur} = ? ${company().currency}`"), 'le libellé du taux de l\'achat change au changement de devise');
+    assert.ok(!/Taux : 1 \$\{/.test(app), 'un des deux libellés porte encore « Taux : »');
+  });
+  // L'inventaire se redessinait à chaque chiffre : le champ recréé rendait son curseur au DÉBUT, et
+  // « 28 » tapé devenait 82 — un écart de +52 planches prêt à être enregistré en mouvements. Puis la
+  // règle de 10.12.0 (un champ de nombre sélectionne ce qu'il contient quand on y entre) a fait pire :
+  // le focus rendu par le code sélectionnait le « 2 », et le « 8 » le remplaçait.
+  t('Un comptage d\'inventaire se tape sans que le tableau se redessine sous les doigts', () => {
+    const app = code('src', 'renderer', 'app.js');
+    const i = app.indexOf("$$('#st-body .inv-in').forEach(el => el.oninput = ");
+    assert.ok(i > 0, 'le champ du comptage n\'a plus de gestionnaire de frappe');
+    const gest = app.slice(i, app.indexOf('\n', i));
+    assert.ok(!/drawInventory\(\)|draw\(\)/.test(gest), 'le comptage redessine le tableau à chaque chiffre : ' + gest.trim());
+    assert.ok(/majInventaire\(\)/.test(gest), 'le comptage ne met plus à jour son écart');
+    const maj = corpsDe(app, 'function majInventaire(');
+    ['[data-ecart]', '[data-valeur]', '#inv-compte', '#inv-apply', '#inv-clear', '#inv-impact'].forEach(x =>
+      assert.ok(maj.includes(x), 'la mise à jour du comptage oublie : ' + x));
+    assert.ok(!maj.includes('innerHTML = `') || !/\$\('#st-body'\)\.innerHTML/.test(maj), 'la mise à jour du comptage redessine tout le panneau');
+  });
+
+  t('Un champ de nombre ne sélectionne son contenu que quand la PERSONNE y entre, jamais sur un focus rendu par le code', () => {
+    const app = code('src', 'renderer', 'app.js');
+    assert.ok(/document\.addEventListener\('keydown', e => \{ entreeVoulue = e\.key === 'Tab'; \}, true\);/.test(app), 'une frappe ordinaire ne désarme pas la sélection');
+    assert.ok(/document\.addEventListener\('pointerdown', \(\) => \{ entreeVoulue = true; \}, true\);/.test(app), 'un clic n\'arme plus la sélection');
+    const f = app.indexOf("document.addEventListener('focusin', e => {");
+    assert.ok(/!entreeVoulue\) return;/.test(app.slice(f, f + 200)), 'un focus rendu par le code sélectionne ce qui vient d\'être tapé');
+  });
+
+  // « -1 » en tiret dans la colonne Écart, à côté de « − 38,500 DT » avec le signe moins.
+  t('Une quantité signée s\'écrit avec le même signe moins que les montants', () => {
+    const app = code('src', 'renderer', 'app.js');
+    assert.ok(/const qteSignee = n => \(n > 0 \? '\+' : n < 0 \? '−' : ''\) \+ pct\(Math\.abs\(n\)\);/.test(app), 'le signe des quantités a changé');
+    assert.ok(!/\$\{(m\.qty|r\.gap) > 0 \? '\+' : ''\}\$\{pct\(/.test(app), 'une quantité signée s\'écrit encore avec un tiret');
+  });
+  // On recopie le solde de son relevé et on attend : l'écran répétait « Saisis le solde de ton relevé
+  // pour voir l'écart » sous un solde saisi, tant qu'on n'avait pas quitté la case.
+  t('Le rapprochement répond pendant qu\'on recopie le solde du relevé, par la même phrase qu\'au dessin', () => {
+    const app = code('src', 'renderer', 'app.js');
+    assert.ok(/\$\('#stmt'\)\.oninput = e => \{/.test(app), 'le verdict du rapprochement attend qu\'on quitte la case');
+    const i = app.indexOf("$('#stmt').oninput = e => {");
+    assert.ok(/verdictReleve\(/.test(app.slice(i, i + 300)), 'la frappe écrit son propre verdict');
+    assert.ok(app.includes('<span id="stmt-verdict">${verdictReleve(r.gap)}</span>'), 'le premier dessin écrit son propre verdict');
+    assert.strictEqual((app.match(/Ça tombe juste\./g) || []).length, 1, 'le verdict du rapprochement s\'écrit à deux endroits');
+    assert.ok(!/\$\('#stmt'\)\.oninput[^\n]*draw\(\)/.test(app), 'la frappe redessine le panneau et perd la case');
+    // Le compte à rapprocher se choisissait dans une liste sans nom : claire à l'œil (le nom de la
+    // banque), muette au clavier et pour un lecteur d'écran.
+    assert.ok(/<select id="t-acc2" aria-label="[^"]+"/.test(app) && /<select id="t-acc" aria-label="[^"]+"/.test(app), 'le choix du compte n\'a pas de nom');
+  });
+  // « Tous les modules » et « Aide », au pied de la barre, en gris #4b5563 sur le fond sombre : 2,1 de
+  // contraste. La couleur était recopiée des liens du menu, qui ont leur règle sombre depuis la 1.6.0 —
+  // le pied, jamais. Une couleur de texte FONCÉE écrite en dur a sa jumelle sombre, pour chaque sélecteur.
+  t('Toute couleur de texte foncée écrite en dur a sa jumelle en thème sombre (les deux applications)', () => {
+    // `.print-only` est l'exception NOMMÉE : une page imprimée est toujours claire.
+    const css = (lireSource('src', 'renderer', 'style.css') + '\n' + lireSource('src', 'cabinet', 'renderer', 'cabinet.css'))
+      .replace(/\/\*[\s\S]*?\*\//g, '');
+    const regles = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map(m => ({ sel: m[1].trim(), corps: m[2] }));
+    const sombre = regles.filter(r => r.sel.includes('body.dark')).map(r => r.sel).join(' , ');
+    const lum = hx => {
+      let x = hx.slice(1); if (x.length === 3) x = x.split('').map(c => c + c).join('');
+      const f = c => { c /= 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; };
+      return 0.2126 * f(parseInt(x.slice(0, 2), 16)) + 0.7152 * f(parseInt(x.slice(2, 4), 16)) + 0.0722 * f(parseInt(x.slice(4, 6), 16));
+    };
+    const vues = [], orphelins = [];
+    regles.filter(r => !r.sel.includes('body.dark') && !r.sel.startsWith('@') && r.sel !== '.print-only').forEach(r => {
+      const m = r.corps.match(/(?:^|[;\s])color:\s*(#[0-9a-fA-F]{3,6})\b/);
+      if (!m || lum(m[1]) >= 0.25) return;
+      vues.push(r.sel);
+      if (!r.sel.split(',').map(x => x.trim()).some(x => sombre.includes(x))) orphelins.push(r.sel + ' (' + m[1] + ')');
+    });
+    assert.ok(vues.length >= 5, 'la sonde ne lit plus les couleurs de la feuille (' + vues.length + ')');
+    assert.deepStrictEqual(orphelins, [], 'une couleur foncée sans jumelle sombre : ' + orphelins.join(' ; '));
+  });
+  // Corriger une lettre au milieu d'une recherche envoyait la suivante au bout du texte : quatre
+  // recherches replaçaient le curseur à la fin après avoir redessiné leur liste. Le Cabinet avait la
+  // parade depuis la 10.12.0 (`sansPerdreLaFrappe`) : le jumeau, corps identique.
+  t('Une recherche qui redessine sa liste garde la place du curseur, par la même fonction dans les deux applications', () => {
+    const app = code('src', 'renderer', 'app.js');
+    assert.ok(!/setSelectionRange\([a-z]+\.value\.length, [a-z]+\.value\.length\)/.test(app), 'une recherche renvoie encore le curseur au bout du texte');
+    const corps = (src) => { const i = src.indexOf('function sansPerdreLaFrappe('); return src.slice(i, src.indexOf('\n  }\n', i)); };
+    const ent = corps(lireSource('src', 'renderer', 'app.js')), cab = corps(lireSource('src', 'cabinet', 'renderer', 'app.js'));
+    assert.ok(ent.length > 150, 'l\'app entreprise n\'a plus sa fonction (' + ent.length + ')');
+    assert.strictEqual(ent, cab, 'les deux applications ne gardent plus le curseur de la même façon');
+    assert.ok((app.match(/sansPerdreLaFrappe\(e\.target, /g) || []).length >= 6, 'une recherche redessine sans rendre le curseur');
+  });
+  // Une alerte de stock portait DEUX boutons (« Ajuster », « Voir » — règle 7.29.0 : au plus un), et
+  // « Ajuster » pour un stock négatif, que la règle 4.0.0 interdit d'ajuster : c'est un achat oublié.
+  // Le geste est l'achat, et il naît avec la ligne de l'article (quantité à commander, coût, stock).
+  t('Une alerte de stock mène à l\'achat, jamais à l\'ajustement d\'un stock négatif', () => {
+    const app = code('src', 'renderer', 'app.js');
+    const i = app.indexOf('function drawAlerts()');
+    const f = app.slice(i, app.indexOf('function drawSerials()', i));
+    assert.ok(f.length > 400 && f.length < 5000, 'tranche des alertes (' + f.length + ')');
+    assert.ok(!/data-fix=/.test(f) && !/>Ajuster</.test(f), 'une alerte propose encore « Ajuster »');
+    assert.ok(!/<button[^>]*data-see=/.test(f), 'une alerte porte un second bouton « Voir »');
+    assert.ok(/tr class="clickable[^"]*" data-see=/.test(f), 'la ligne d\'une alerte n\'ouvre plus la fiche de l\'article');
+    assert.ok(/r\.kind === 'negatif' \? 'Saisir l\\'achat oublié…' : 'Commander…'/.test(f), 'le bouton ne dit pas le geste selon l\'alerte');
+    assert.ok(/navigate\(`#\/achat\/new\/-\/facture\/-\/article\//.test(f), 'le bouton ne mène pas à un achat de cet article');
+    const r = app.slice(app.indexOf('routes.achat = '), app.indexOf('routes.achat = ') + 4000);
+    assert.ok(/const iArt = parts\.indexOf\('article'\);/.test(r) && /destination: 'stock'/.test(r), 'l\'achat ne naît pas avec la ligne de l\'article');
   });
 };

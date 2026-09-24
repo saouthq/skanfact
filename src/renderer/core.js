@@ -2877,7 +2877,7 @@
   function socialDue(data, todayIso) {
     const t = todayIso || today();
     if (!(data.employees || []).length) return [];
-    const done = new Set((data.socialFilings || []).map(f => f.id));
+    const done = socialesDeposees(data);
     const out = [];
     const y = Number(t.slice(0, 4));
     [y - 1, y].forEach(yy => {
@@ -3569,20 +3569,57 @@
   const fiscalFilingId = (ruleId, dateIso) => `${ruleId}@${dateIso}`;
   function fiscalDone(data) { return new Set((data.fiscalFilings || []).map(f => f.id)); }
 
+  // 10.12.0 — la CNSS et la déclaration annuelle d'employeur avaient DEUX pense-bêtes : l'occurrence
+  // du calendrier fiscal (`cnss@2026-10-15`) et la déclaration de la Paie (`cnss-2026-T3`). Pointer
+  // l'un laissait l'autre crier, « À faire » nommait la même déclaration deux fois, et le calendrier
+  // acceptait « déposée » sur un trimestre pas encore terminé. Une occurrence du calendrier DÉSIGNE
+  // la déclaration sociale qu'elle rappelle ; c'est celle de la Paie qui fait foi (une seule source).
+  // L'échéance d'un trimestre tombe le mois qui le suit : janvier rappelle le 4e trimestre de l'année
+  // d'avant. Celle de l'employeur rappelle l'année d'avant.
+  function echeanceSociale(ruleId, dateIso) {
+    const y = Number(String(dateIso || '').slice(0, 4)), m = Number(String(dateIso || '').slice(5, 7));
+    if (!y || !m) return null;
+    if (ruleId === 'cnss') {
+      const q = m <= 3 ? 4 : Math.floor((m - 1) / 3);
+      const yy = m <= 3 ? y - 1 : y;
+      return { id: `cnss-${yy}-T${q}`, fin: addDays(`${yy}-${pad2(q * 3)}-01`, daysInMonth(yy, q * 3) - 1) };
+    }
+    if (ruleId === 'employeur') return { id: `employeur-${y - 1}`, fin: `${y - 1}-12-31` };
+    return null;
+  }
+  // Les déclarations sociales pointées depuis le calendrier AVANT la 10.12.0 vivent dans
+  // `fiscalFilings` : elles comptent encore, par leur équivalent.
+  function socialesDeposees(data) {
+    const s = new Set((data.socialFilings || []).map(f => f.id));
+    (data.fiscalFilings || []).forEach(f => {
+      const [r, d] = String(f.id).split('@');
+      const soc = echeanceSociale(r, d);
+      if (soc) s.add(soc.id);
+    });
+    return s;
+  }
+
   function upcomingFiscal(data, todayIso, withinDays) {
     const t = todayIso || today();
     const within = Number(withinDays) || 30;
     const done = fiscalDone(data);
+    const sociales = socialesDeposees(data);
+    const fait = (r, date) => {
+      const soc = echeanceSociale(r.id, date);
+      return done.has(fiscalFilingId(r.id, date)) || !!(soc && sociales.has(soc.id));
+    };
     return fiscalDeadlines(data).filter(r => r.active !== false).map(r => {
       let date = nextDeadline(r, t);
       // Déjà déposée : on saute à l'occurrence suivante plutôt que de faire disparaître la règle —
       // sinon pointer la TVA d'octobre effacerait aussi celle de novembre.
       let garde = 0;
-      while (date && done.has(fiscalFilingId(r.id, date)) && garde++ < 24) {
+      while (date && fait(r, date) && garde++ < 24) {
         date = nextDeadline(r, addDays(date, 1));
       }
+      const soc = date ? echeanceSociale(r.id, date) : null;
       return date ? { id: r.id, label: r.label, note: r.note || '', date, days: daysBetween(t, date),
-        filingId: fiscalFilingId(r.id, date) } : null;
+        filingId: fiscalFilingId(r.id, date), socialId: soc ? soc.id : '', fin: soc ? soc.fin : '',
+        enCours: !!(soc && t <= soc.fin) } : null;
     }).filter(x => x && x.days <= within).sort((a, b) => a.date.localeCompare(b.date));
   }
 
@@ -5341,7 +5378,12 @@
       if (delays.length) out.push({ clientId: c.id, name: c.name, delay: Math.round(delays.reduce((s, x) => s + x, 0) / delays.length), count: delays.length });
     });
     out.sort((a, b) => a.delay - b.delay);
-    return { rapides: out.slice(0, limit || 5), lents: out.slice().reverse().slice(0, limit || 5), tous: out };
+    // 10.12.0 — un client ne peut pas être à la fois parmi les plus rapides et les plus lents : avec
+    // un seul payeur, la page le rangeait dans les deux colonnes, « 0 j » des deux côtés. Les rapides
+    // prennent la première moitié, les lents ce qui reste.
+    const k = limit || 5;
+    const rapides = out.slice(0, Math.min(k, Math.ceil(out.length / 2)));
+    return { rapides, lents: out.slice(rapides.length).reverse().slice(0, k), tous: out };
   }
 
   // Devis de la période : issue de chacun, montants gagnés et perdus, délai moyen de réponse.
@@ -5847,7 +5889,10 @@
 
     // Échéances fiscales des deux prochaines semaines. C'est un pense-bête réglé par l'utilisateur :
     // les dates et la périodicité relèvent du « À VÉRIFIER avec ton comptable ».
-    const fisc = upcomingFiscal(data, t, 14);
+    // Une échéance du calendrier qui rappelle une déclaration déjà annoncée plus haut (« déclarations
+    // sociales à déposer ») ne se compte pas deux fois (10.12.0).
+    const annoncees = new Set(soc.map(x => x.id));
+    const fisc = upcomingFiscal(data, t, 14).filter(x => !(x.socialId && annoncees.has(x.socialId)));
     if (fisc.length) out.push({
       id: 'fiscal', level: fisc[0].days <= 5 ? 'warn' : 'info',
       label: `${fisc.length} échéance${fisc.length > 1 ? 's' : ''} fiscale${fisc.length > 1 ? 's' : ''} sous 15 jours`,
@@ -6452,7 +6497,9 @@
       [L.validUntil, fmtDate(doc.dueDate)],
       doc.reference ? [L.reference, doc.reference] : null
     ];
-    if (foreign) metaItems.push([L.rate, `1 ${cur} = ${money(doc.exchangeRate, company.currency)}`]);
+    // 10.12.0 — le taux s'écrivait à la française (« 3,350 DT ») au milieu d'un document anglais qui
+    // écrit « 1,200.00 » : c'était le seul montant du modèle à oublier la langue de la pièce.
+    if (foreign) metaItems.push([L.rate, `1 ${cur} = ${money(doc.exchangeRate, company.currency, null, lang)}`]);
     const meta = metaItems.filter(Boolean).map(([k, v]) => `<div class="chip"><span class="ck">${escapeHtml(k)}</span><span class="cv">${escapeHtml(v)}</span></div>`).join('');
 
     // Sans TVA, la mention légale prend la PLACE de la ligne de TVA, là où le lecteur la cherche.
@@ -7107,7 +7154,7 @@
     CURRENCIES, normCurrency, decimalsFor, toBase, rateOf, missingRate, monthKeys, monthlySeries, topClients, quoteStats, avgPaymentDelay, clientSummary, I18N,
     EXTRA_TYPES, SALES_TYPES, CONVERSIONS, CONVERSION_LABELS, convertDoc, derivedDocs, chaineDePieces, DEFAULT_CLAUSES, CLAUSE_LABELS,
     PURCHASE_KINDS, PURCHASE_LIES, piecesLieesAchat, LINE_DESTINATIONS, DEFAULT_EXPENSE_CATEGORIES, PURCHASE_STATUSES, expenseCategories,
-    vatReturn, vatChain, DEFAULT_FISCAL_DEADLINES, fiscalDeadlines, nextDeadline, upcomingFiscal, fiscalFilingId, fiscalDone, simpleResult,
+    vatReturn, vatChain, DEFAULT_FISCAL_DEADLINES, fiscalDeadlines, nextDeadline, upcomingFiscal, fiscalFilingId, fiscalDone, echeanceSociale, socialesDeposees, simpleResult,
     ACCOUNT_KINDS, MOVE_KINDS, cashMovements, accountBalance, cashPosition, cashForecast, reconciliation,
     lineCost, documentMargin, marginBy, PROJECT_STATUSES, projectMargin, projectList, recurringProfitability,
     DEFAULT_FIXED_CATEGORIES, isFixedCategory, breakEven,

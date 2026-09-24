@@ -107,6 +107,12 @@ SkanFact »). Restent trois questions qui ne sont pas du code :
 - **Le panneau « Documents à remettre » du Registre** répète la liste des salariés avec un bouton
   chacun. Tenable à trois salariés ; à vingt, le geste devrait vivre sur la ligne du registre (un
   menu d'actions) ou sur la seule fiche du salarié. À revoir si une entreprise en a beaucoup.
+- **Le centralisateur du livre-journal défile de côté à 1440 px** (douze mois × journaux). C'est un
+  tableau large dans son `.scroll-x`, donc rien n'est perdu ; mais une vue par trimestre, ou les
+  journaux en lignes et les mois en colonnes, le ferait tenir. À décider sur l'usage réel.
+- **L'échéance d'un avoir fournisseur s'appelle encore « Échéance de paiement »** : pour un avoir,
+  c'est la date à laquelle le fournisseur rembourse ou déduit. Le libellé suit la nature pour le
+  numéro et les lignes (10.12.0) ; celui-ci attend de savoir comment un comptable le nomme.
 
 ## 2. Le site
 
