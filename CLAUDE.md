@@ -36,6 +36,10 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Un **nombre tapé qui change sous les doigts** (« 28 » devient 82, ou 8) : un champ de nombre recréé rend son curseur au DÉBUT, et une sélection automatique prend le focus rendu par le code pour une entrée | 10.12.0 — l'inventaire ; un parcours qui `fill()` ne le voit jamais |
 | Une **origine dite « vérifiée »** sur un fichier que n'importe qui peut signer : la signature ne se comparait à RIEN | 10.13.0 — la clôture d'un faux cabinet, qui verrouille un exercice |
 | Un **bouton vert qui envoie un fichier périmé** : le paquet fabriqué AVANT la réponse | 10.13.0 — la réponse au comptable qui ne partait jamais |
+| Une **liste coupée AVANT d'être classée** : la bonne réponse existe, et n'apparaît jamais | 10.14.0 — « audit » ne trouvait plus la prestation du même nom, derrière deux cents factures |
+| Une **saisie perdue au premier « Enregistrer »** : la pièce était close, et rien ne le disait avant | 10.14.0 — un devis de 2022 sur l'exemple de cinq ans |
+| Une **visite qui avance sur un geste annulé ou refusé**, et décrit ce qui n'existe pas | 10.14.0 — un clic n'est pas un geste fait : « Où il est rangé » sur « Aucun justificatif » |
+| Une **ligne cachée sous l'en-tête collant** d'un tableau qu'on vient d'amener à l'écran | 10.14.0 — le 📎 de « Le trombone » ; un défilement s'arrête à la marge du haut |
 
 **Les chiffres**
 
@@ -100,9 +104,11 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Un test écrit contre l'état du jour **décrit cet état**, pas la règle | 7.12.0, 7.26.0, 8.0.1, 8.2.0, 9.1.0, 9.2.2, 9.4.3, 9.4.5 — neuf assertions retournées |
 | Une **tranche** de source se prouve par sa taille et par ce qu'elle ne contient PAS | 7.20.0, 7.21.0, 8.2.0 ; 9.4.6 — jamais sur un décalage en dur ; 10.4.0 — ni sur un VOISIN, qui déménage |
 | Un e2e **se périme** : reconnaître un écran à ce qu'il CONTIENT, jamais à son rang | 7.3.0, 7.28.0, 7.29.0, 7.30.0, 9.2.2, 9.4.5 — six parcours pourris sans un mot |
+| Un parcours qui prend **« le premier venu »** change de cible quand les données grandissent : il choisit par ce qui DISCRIMINE | 10.14.0 — le devis de 2022, le contrat déjà signé, le 30 mars clôturé |
+| Jamais une **preuve qui modifie la source** pendant qu'un e2e tourne | 10.14.0 |
 | Un parcours reconnaît un bouton à ce qu'il **FAIT**, jamais à sa couleur | 10.12.0 — cinq parcours cassés par U-11 |
 | Une règle appliquée **à la main** parcours par parcours l'est sur 11 sur 49 : elle vit dans le harnais | 10.12.0 — E-01, `fermer()` ; 7.28.0 |
-| Une preuve qui tombe sur un **AUTRE** test que le sien ne prouve pas le sien | 10.12.0 — E-09 (l'ancien neutralisé), E-07 (le gabarit régénéré) |
+| Une preuve qui tombe sur un **AUTRE** test que le sien ne prouve pas le sien | 10.12.0 — E-09 (l'ancien neutralisé), E-07 (le gabarit régénéré) ; 10.14.0 — les jumeaux de la porte |
 | Un test qui reconnaît un défaut par **UNE forme** manque son jumeau écrit à la main | 10.12.0 — U-11 et le panneau « Aucun salarié » |
 | Un e2e qui reste **bloqué** est pire qu'un e2e qui échoue | 7.28.0 — `Promise.race` sur toute fermeture |
 | `ta()` sans `await`, `t()` avec une fonction asynchrone : « ok » sans rien vérifier | 6.7.0, 8.4.0 |
@@ -164,7 +170,13 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Un **réglage qu'on ne peut pas changer à l'écran** est une constante ; ce qui n'est PAS réglable se dit | 10.5.0 — les prix, la signature, les seuils |
 | Le **plafond de largeur** suit le RÔLE, pas le conteneur ; on **pagine ce qu'on NOMME** | 10.5.0 — 700 px vides à droite d'un tableau serré ; 9.4.5 |
 | Une **réponse en retard** ne repeint pas l'écran qu'on a quitté | 10.5.0 — le Parc remplacé par les alertes, sous le titre du Parc |
-| Un **avertissement** se lit AVANT le geste, jamais sous le bouton ; un geste IRRÉVERSIBLE a son récapitulatif, désarmé à la moindre frappe | 9.4.2 ; 10.6.0 — « Émettre » signait au premier clic |
+| Un **avertissement** se lit AVANT le geste, jamais sous le bouton ; un geste IRRÉVERSIBLE a son récapitulatif, désarmé à la moindre frappe | 9.4.2 ; 10.6.0 — « Émettre » signait au premier clic ; 10.14.0 — la pièce d'un mois clôturé |
+| Un **formulaire au premier écran** se saute : une porte d'abord, les questions au moment où elles servent | 10.14.0 — la porte, trois questions, le reste dans « Tes premiers pas » |
+| Une **explication fausse** est pire qu'une explication absente : un même attribut s'explique par SA page | 10.14.0 — `data-open`, « Ouvre cette entreprise » sur un fichier joint |
+| Une étape **facultative** ne passe jamais devant une étape du métier, et ne retient pas le panneau | 10.14.0 — la découverte et le comptable |
+| Une **bulle d'aide** ne couvre ni ce qu'elle montre, ni la fenêtre où l'on relit ce qu'on vient de taper | 10.14.0 — `placerPres`, `hautPourBulle` et son jeu d'un demi-pixel |
+| Ce qu'une **visite cite « entre guillemets »** existe dans l'application — et un « bouton vert » ne se promet pas | 10.14.0 — « Chapitre suivant », « Faire mon premier devis » |
+| Une **catégorie** tient en un mot, sur une ligne, dans sa colonne | 10.14.0 — « Contrat de prestation » sur trois lignes dans la palette |
 | Une ligne garde **au plus UN** bouton visible ; le reste passe par `rowmenu.js` | 7.29.0 ; 9.4.8 — un en-tête de fiche aussi |
 | **UNE seule table d'actions par racine** : `bindRowMenus` écrase la précédente, en silence | 9.4.8 |
 | Un **champ qui compte dans une unité** le dit à côté de lui, pas en légende dessous | 9.4.8 |
@@ -236,7 +248,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 
 `npm test` (les tests purs) · `npm run lint` (ESLint, **zéro erreur ET zéro avertissement** depuis la
 10.0.1) · `npm run charge` (le livre du Cabinet) · `npm run charge:entreprise` (le fichier de l'app
-entreprise, dix ans d'activité — 10.0.1) · `npm run e2e:<nom>` (55 parcours, tableau au § « Les tests
+entreprise, dix ans d'activité — 10.0.1) · `npm run e2e:<nom>` (56 parcours, tableau au § « Les tests
 qui ouvrent vraiment l'application ») · `scripts/humain/` (tester comme un humain : écran virtuel, souris, clavier, Browser Use — depuis le 23/09/2026) · CI GitHub sur Linux et Windows à chaque poussée ·
 « Construire un essai » pour faire tester une version sans la publier.
 
@@ -699,6 +711,7 @@ Ils vivent dans **`test/e2e/`** et se lancent par `npm run e2e:<nom>` (sous `xvf
 | `npm run e2e:cabinet-jour1` | **le premier jour d'un comptable** : l'instrument qui MESURE ce qu'il voit, dans l'ordre où il le voit — 35 écrans photographiés du mot de passe à l'Aide, et six règles qui tombent (un bouton hors de l'écran, un bouton qui ressemble à du texte, un état vide sans geste, un champ de saisie sans bulle « i », une boîte sans étiquette, un débordement horizontal). `dist-e2e/cabinet-premier-jour/mesures.json` |
 | `npm run e2e:cabinet-rendu` | **le rendu du Cabinet, mesuré** : les trois sondes de l'app entreprise (contraste et débordement des boutons, alignement des colonnes, barres d'en-tête) et la quatrième (l'écart d'ENCRE entre un bouton et ce qui le touche, 9.8.3) braquées sur TOUS ses écrans et TOUS leurs onglets, en clair et en sombre, à 1440 et à 1280 — **2 107 boutons, 883 colonnes, 1 087 écarts** (mesuré le 21/09/2026). Elles vivent en un seul exemplaire dans `harnais.js` : c'est leur absence côté Cabinet qui l'avait laissé dériver |
 | `npm run e2e:entreprise-rendu` | **l'app entreprise ENTIÈRE, mesurée** : les pages lues dans `routes.x = ` (jamais une liste écrite à la main), tous leurs onglets, chaque fiche et chaque pièce par type × statut, chaque fenêtre qu'un bouton ouvre (le parcours clique les gestes et constate qu'ils produisent quelque chose — un bouton qui accepte le clic et ne fait rien tombe), en vierge puis sur l'exemple, en clair et en sombre, à 1440 et à 1280 — toutes les sondes du harnais, et des captures PLEINES (`dist-e2e/entreprise-rendu/`). **296 écrans par passe, 34 954 boutons, 9 859 champs, 10 938 colonnes, 16 436 écarts** (mesuré le 23/09/2026). `--rapide` : vierge et clair à 1440, sans captures |
+| `npm run e2e:couverture` | **chaque contrôle de chaque écran dit ce qu'il fait** (10.14.0) : le parcours de `e2e:entreprise-rendu`, vierge puis sur l'exemple, et pour chaque bouton, champ ou entrée de menu visible — dans la page, la fenêtre du dessus et le menu ouvert — l'explication que la visite guidée lira (`SkanVisites.expliquer`). Un contrôle sans explication disparaîtrait de la bulle sans un mot ; il fait TOMBER le parcours, et un plancher de contrôles lus prouve que l'instrument a atteint ses écrans (`dist-e2e/couverture/manquants.json`) |
 | `npm run e2e:console-rendu` | **le rendu de la CONSOLE, mesuré** : les mêmes quatre sondes braquées sur la troisième surface du produit, que pas un des quatre instruments ne regardait — les huit onglets, les deux formulaires et le panneau de la clé émise, en clair et en sombre, à 1440 et à 1280 (**735 boutons, 256 colonnes, 333 écarts**, mesuré le 22/09/2026). Le vrai worker sur une vraie base (`console-serveur.js`, partagé avec `e2e:console`), une base garnie par les VRAIES routes d'administration, et un onglet vide qui fait TOMBER le parcours. Il rend en plus deux constats que les sondes ne portent pas : la ligne de flottaison à 1280 (9.4.4) et la phrase d'explication redite (9.4.6) |
 | `npm run e2e:paie` | **la paie d'un client du cabinet** : un dossier sans salarié qui DIT par où commencer et dont les deux boutons éteints disent pourquoi, un salarié déclaré sans numéro CNSS (signalé, jamais bloquant), un bulletin dont le net se recalcule pendant la frappe, l'écriture de paie en brouillard au dernier jour du mois — équilibrée, sans numéro —, le bouton qui s'éteint en nommant le « deux fois », un bulletin écrit qui ne propose plus ni « Modifier » ni « Supprimer » mais dont le calcul s'ouvre ligne par ligne, et la CNSS du trimestre qui dit ce qu'elle ne fera jamais |
 | `npm run e2e:declaration` | **la déclaration du mois** : quatre cases « — » avec leur raison (jamais un zéro), un chiffre ouvert sur ses pièces, un mois DÉJÀ déclaré par le client qui montre quand même sa collectée et dont le bouton s'éteint en disant pourquoi, l'écriture passée en brouillard au dernier jour d'un mois libre, les deux pointages dans l'ordre puis défaits, et le refus de refaire une déposée |
@@ -6841,6 +6854,166 @@ Règles apprises, à ne pas recasser :
   numéro 10.13.0-beta.1 a effacé les paquets et les questions posés à la main dans l'exemple. Ce
   n'est pas un défaut — c'est la règle —, mais un test humain sur l'exemple se prépare APRÈS le
   changement de version, pas avant.
+
+### 10.14.0 — La visite guidée, et un premier jour qui commence par découvrir
+
+Skander : « quelqu'un qui découvre l'application n'a pas envie de lire la page Aide : il faut
+pouvoir toujours le guider, pour chaque étape, et couvrir toute l'app », puis « si on tombe sur un
+formulaire au début, on a tendance à passer et revenir plus tard ». Deux modules neufs, chargés par
+l'app entreprise : **`src/renderer/visite.js`** (le MOTEUR : projecteur, bulle, étapes « regarder »,
+« faire » et « liste », chapitres, attente d'un geste, clavier, couches, fin célébrée — global
+`Visite`) et **`src/renderer/visites.js`** (le CONTENU : trente-deux visites de page, la découverte
+en douze chapitres, les parcours « faire », les visites techniques, et le dictionnaire qui explique
+chaque bouton — `SkanVisites.expliquer`). Le Cabinet n'a pas encore les siennes (`A-FAIRE.md` § 4 bis).
+Publiée en **bêta** : l'exemple de cinq ans a fait tomber une règle du moteur comptable.
+
+Règles apprises, à ne pas recasser :
+
+- **Un formulaire au premier écran se saute ; une porte s'ouvre.** Six écrans de questions avant
+  d'avoir vu le produit, c'était six écrans qu'on passait pour « revenir plus tard » — et on ne
+  revenait pas. Le premier écran est une PORTE à deux battants (« Découvrir avec un exemple », le
+  seul vert ; « Commencer avec mon entreprise »), vue une fois (`porteVue`, que « Passer » pose
+  aussi, et qu'une reprise ne rouvre jamais) ; l'assistant garde trois questions ; le RIB et la
+  copie de sécurité se demandent dans « Tes premiers pas », au moment où ils protègent quelque
+  chose — la copie juste APRÈS le premier devis : avant, elle protégeait un fichier vide.
+- **Après la découverte, l'assistant reprend là où la porte l'a laissé** (`reprendreAssistant`, au
+  démarrage ET à la sortie de l'exemple), posé à quelqu'un qui sait maintenant à quoi servent les
+  questions. Et une entreprise encore vide ne se voit plus promettre « tes données sont revenues »
+  (`demoSortie` lit la sauvegarde `vide`) — une phrase rassurante se vérifie sur un univers non
+  vide (7.0.0).
+- **Une étape FACULTATIVE ne passe jamais devant une étape du métier.** La découverte et « Relier ton
+  comptable » sont marquées `facultatif` : elles comptent (« 1 sur n » dès la découverte faite),
+  mais `suivante` les saute et elles ne retiennent pas le panneau — un panneau qui ne disparaîtrait
+  jamais parce qu'on n'a pas de comptable est celui qu'on apprend à ne plus lire.
+- **Entrée ne choisit pas sur une porte** : c'est un choix, pas un formulaire, et Entrée cliquait
+  « Continuer ».
+- **La découverte se fait sur l'EXEMPLE, « Démarrer » dans la VRAIE entreprise**, et UNE porte
+  décide qu'une visite ne peut pas se lancer (`manque`). Une visite qui attend un préalable propose
+  la PREMIÈRE qu'on peut vraiment faire (« D'abord : faire un devis »), jamais un bouton éteint qui
+  renvoie à un autre bouton éteint.
+- **Une explication FAUSSE est pire qu'une explication absente.** `data-open` porte trois gestes (une
+  entreprise, un module, un fichier joint) : sans la page, la bulle d'un fichier joint disait
+  « Ouvre cette entreprise ». `expliquer` reçoit la route, et un attribut ambigu ne s'explique que
+  sur une page connue. L'instrument de couverture compte les explications ABSENTES ; aucun ne voit
+  les fausses — c'est un test qui les tient.
+- **Le compte des chapitres n'est écrit nulle part** : il se lit sur les étapes. Écrit à la main, il
+  mentirait au premier chapitre ajouté (le « quatre écrans » au-dessus de cinq pastilles, 9.4.2).
+- **La bulle ne couvre jamais sa cible quand un côté a la place, et ne sort jamais de l'écran**
+  (`placerBulle`, pure, jouée sur deux cents cibles) ; une zone plus haute que l'écran montre son
+  HAUT au lieu de reléguer la bulle dans un coin ; et le curseur va au bouton qui AVANCE — un
+  sélecteur de focus désigne UN élément : « Terminer » et la croix portaient le même geste, et le
+  premier trouvé était la croix.
+- **Chaque classe que pose le moteur existe dans la feuille** (6.8.0, appliquée à un moteur entier :
+  la bulle en est faite), et **chaque visite porte une couleur que la feuille connaît en clair ET en
+  sombre**. Le bandeau de l'exemple, lilas, était repeint en orange par `.banner` — une classe
+  contre une classe, écrite 650 lignes plus bas : la règle générale qui avale l'exception (7.23.0)
+  sous sa forme la plus simple, à spécificité égale la plus BASSE gagne ; seule une capture l'a
+  montré, et la règle du bandeau porte désormais deux classes.
+- **« Tes réussites » et la carte de l'essai se lisent sur les DONNÉES**, jamais sur l'exemple, ne
+  comptent que ce qui existe, et ne promettent que ce que le code tient : licence ou pas, tes données
+  restent à toi (6.4.0). Une page qui veut faire acheter une licence est celle où un chiffre inventé
+  coûte le plus cher.
+- **Un exemple plein trouve ce qu'un exemple d'un an ne peut pas voir.** Cinq ans d'activité ont fait
+  tomber trois défauts : une facture de décembre réglée en janvier gardait son règlement sans sa
+  facture dans les à-nouveaux (les deux applications) ; la balance auxiliaire comptait chaque client
+  une fois par exercice traversé ; et la palette coupait ses douze résultats AVANT de les classer.
+- **On classe AVANT de couper** (`C.classerRecherche`) : « audit » rendait deux cents factures et
+  jamais la prestation du même nom. Le rang se juge sur le NOM de ce qu'on ouvre (commence par, mots
+  qui commencent, contient — accents et écritures compris, `\p{L}\p{N}`), le tri est stable, les
+  pièces sont plafonnées à six en tête (les autres passent derrière, jamais retirées), et la palette
+  DIT quand elle ne montre qu'un extrait (« 12 résultats sur 214 », 9.4.7).
+- **Un avertissement se lit AVANT le geste, y compris celui de la clôture** (9.4.2). Sur cinq ans,
+  la plupart des pièces sont dans un mois clôturé : on modifiait un devis de 2022, « Enregistrer »
+  répondait par la fenêtre de clôture, et la saisie était perdue. `const figee = locked || clos` :
+  une pièce d'un mois clôturé s'ouvre fermée comme une émise, avec son bandeau (`#clos-banner`) et
+  ses deux sorties — « Refaire à la date d'aujourd'hui » (`duplicateDoc`) et « Voir les clôtures ».
+  La règle de clôture ne change PAS (6.0.0 : un devis daté d'un mois clos y est aussi) : c'est
+  l'écran qui la disait trop tard. L'affaire se pose toujours (10.12.0) : elle ne change aucun
+  chiffre.
+- **Un parcours qui prend « le premier venu » change de cible quand les données grandissent.** Sur
+  l'exemple de cinq ans, `e2e:entreprise` ouvrait un devis de 2022 (clôturé), un contrat déjà signé
+  (l'étape passait sur n'importe quel message, sans rien vérifier), comptait les lignes d'une liste
+  paginée (7.15.0 : c'est le bandeau « n sur N » qui porte la sélection), et posait une absence au
+  30 mars, clôturé. Il choisit désormais par ce qui DISCRIMINE (un mois ouvert, un contrat en
+  attente), lit le bandeau, vérifie ce que le geste a ENREGISTRÉ — et dit, quand il tombe, l'écran
+  et la fenêtre ouverts, avec une capture (`dist-e2e/entreprise/echec.png`) : Node n'imprimait que
+  `e.stack`.
+- **Jamais une preuve qui modifie la source pendant qu'un e2e tourne** : le parcours relit les
+  fichiers à chaque lancement de l'application, et une preuve qui restaure un fichier au milieu lui
+  fait juger un défaut qui n'existe pas — ou pas celui qu'on croit.
+- **Une preuve qui tombe sur le JUMEAU de son test ne prouve pas le sien** (10.12.0, re-rencontrée
+  deux fois) : la règle de la porte est tenue dans `qa-entreprise.js` ET dans `visites.js`, celle de
+  l'étape suivante deux fois dans `visites.js` — chaque preuve neutralise l'autre le temps de voir
+  tomber la sienne.
+- **Sept assertions de plus retournées vers la règle** : elles recopiaient `plie(x).includes(w)`,
+  `...aidesPour(words)` et `!locked` ; la règle élargie (`figee`, le classement) les a fait tomber
+  sur du code juste.
+
+L'instrument neuf est `npm run e2e:couverture` : il refait le parcours de `e2e:entreprise-rendu` et,
+pour chaque contrôle visible, demande l'explication que la bulle lira. Un contrôle sans explication
+disparaîtrait de la visite sans un mot ; il fait TOMBER le parcours.
+
+**Puis les visites jouées à la souris** (le comptable, le justificatif, la découverte), et ce qu'aucun
+test de contenu ne pouvait voir :
+
+- **Une visite de la vraie entreprise ne se lance pas sur l'exemple** (`reel: true`) : elle rend
+  d'abord les données (`demoSortie`), et son bouton le DIT (`libelleVisite` : « Quitter l'exemple et
+  commencer », « Charger l'exemple et commencer ») — un bouton qui cache un changement de données
+  surprend, et une surprise dans une visite fait arrêter la visite.
+- **Un clic n'est pas un geste fait.** Le moteur passait à l'étape suivante dès le clic ; un choix de
+  fichier annulé, un « Enregistrer » refusé (un champ manque, la fenêtre reste ouverte) avançaient
+  quand même, et l'étape d'après décrivait une liste vide. Quand l'étape dit ce qui prouve le geste
+  (`fait`), CETTE preuve décide ; le clic ne suffit que là où rien d'autre ne prouve. Un geste qui
+  peut s'annuler porte sa preuve (un test le compte) — et la preuve d'un geste qui AJOUTE se mesure
+  contre l'état d'entrée (`paquetsAvant`), sinon un paquet d'hier la rend vraie d'avance.
+- **Une fenêtre est l'endroit où l'on relit** : la bulle d'une cible dans une fenêtre se pose À CÔTÉ
+  de la fenêtre, à la hauteur de la cible (`placerPres`) ; « Enregistrer ta réponse », posée au-dessus
+  du bouton, couvrait la réponse qu'on venait de taper. Sans place à côté, la règle ordinaire.
+- **Une zone large et haute se fait défiler pour laisser sa place à la bulle** (`hautPourBulle`)
+  plutôt que de la rabattre dans un coin — sur le bouton même dont elle parlait. Et **avec du JEU** :
+  la page défile au pixel entier, les rectangles tombent au quart de pixel ; viser la limite exacte
+  laissait la bulle à 0,28 px de sa place, et elle retournait dans le coin. Le test prend des mesures
+  RÉELLES et rejoue l'arrondi du défilement : un nombre rond ne l'aurait jamais montré (9.6.1).
+- **Un onglet ne se clique pas avant que sa page existe** : `vers()` dessine au `hashchange`,
+  asynchrone ; `ouvrirOnglet` attend la barre d'onglets au lieu de cliquer dans le vide.
+- **Un défilement s'arrête sous la marge où collent les en-têtes** : `table.list thead th` colle à
+  `top: 0`, c'est-à-dire sous la marge haute de `main` (32 px) ; un tableau posé au ras du bord avait
+  sa première ligne sous l'en-tête. `scroll-padding-block-start: var(--main-haut)` — et c'est la
+  règle de TOUS les défilements des deux applications, raccourcis vers un panneau compris.
+- **Une étape qui parle de LA liste éclaire la liste** : sur la page des achats, `#view table.list`
+  désignait le tableau « À payer », le premier de la page ; « Le trombone » parlait du 📎 au-dessus
+  d'un tableau qui n'en a aucun. On vise `#list-wrap`.
+- **Ce qu'une visite cite « entre guillemets » existe dans l'application** — un test le lit dans
+  tous les textes des visites et des tables d'explications : « Chapitre suivant » quand le moteur
+  écrit « Passer au chapitre suivant », « Faire mon premier devis », une visite qui n'existe pas, et
+  « le bouton vert te dit lequel » là où le vert était ailleurs (U-11 : le vert suit l'étape
+  suivante, une phrase ne peut pas le promettre). Les libellés FABRIQUÉS (« Refaire le paquet avec ta
+  réponse ») figurent dans une liste d'exceptions avec la ligne de code qui les fabrique — une liste
+  d'exceptions qui ne se vérifie pas finit par mentir à son tour.
+- **La typographie vaut dans la bulle** : `typographier` pose l'espace fine insécable des
+  guillemets et de la ponctuation double sur les nœuds de texte (règle `typographie()` du Cabinet,
+  9.4.2) ; « « » restait seul en fin de ligne, « Dossier » sur la suivante.
+- **Une catégorie de la palette tient en un mot** : « Me guider » passait sur deux lignes et
+  « Contrat de prestation » sur trois dans une colonne de 64 px — que « Prestation » dépassait déjà
+  de 9 px sans que rien ne le dise. `KIND_PIECE` nomme les pièces d'un mot, la colonne fait 78 px
+  (mesuré), sans retour à la ligne.
+- **Le piège de l'environnement, à ne pas prendre pour un défaut** : dans le sélecteur de fichier GTK
+  sous Xvfb, taper un chemin puis Entrée ANNULE ; il faut cliquer « Open ». Constaté avant d'accuser
+  l'application : la copie n'existait pas sur le disque, et la même manœuvre avec « Open » joint le
+  fichier.
+
+- **Un texte tapé AILLEURS se typographie à l'AFFICHAGE, jamais dans la donnée.** La question du
+  comptable, tapée dans le Cabinet avec une espace ordinaire, laissait son « ? » seul en début de
+  ligne dans le bandeau d'une pièce. `C.typoFr` (jumeau de `typo` dans `visite.js`, corps comparés
+  par un test) s'applique aux quatre endroits qui la MONTRENT, pas à la zone de texte où l'on répond —
+  sinon elle réécrirait ce qu'on tape. Le portage complet de `typographie()` à la prose de l'app
+  entreprise reste à faire (`A-FAIRE.md` § 4) : il change ce que les parcours comparent.
+- Piège d'outil, **deuxième fois** (9.2.1) : l'outil d'édition écrit `\u202f` en caractère RÉEL. Le
+  fichier reste juste, mais une ancre de preuve écrite avec l'échappement ne trouve plus rien. On
+  vérifie les octets après chaque édition, et on garde l'échappement.
+- Piège de méthode : un redémarrage du poste de travail a tué une preuve en cours et laissé le
+  DÉFAUT dans `app.js`, avec sa copie `.preuve-bak` à côté. Après toute interruption, chercher les
+  `.preuve-bak` et comparer avant de conclure quoi que ce soit.
 
 ## Pistes pour la suite (non demandées)
 

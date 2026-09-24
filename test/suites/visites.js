@@ -12,8 +12,9 @@
 // sa visite, chaque geste attendu porte l'essai qui le rejoue, chaque visite indisponible dit
 // pourquoi), et le branchement dans l'application (une seule fonction décide qu'une visite ne peut
 // pas se lancer, l'exemple se charge AVANT la découverte, la vraie entreprise se retrouve AVANT
-// « Démarrer dans ma vraie entreprise »). Le parcours réel qui rejoue chaque visite est
-// `npm run e2e:visite`.
+// « Démarrer dans ma vraie entreprise »). Dans l'application réelle, `npm run e2e:couverture` vérifie
+// que chaque contrôle a son explication ; le parcours qui rejouera chaque ÉTAPE de chaque visite
+// (`e2e:visite`) reste à écrire — `A-FAIRE.md` § 4 bis.
 module.exports = ({ t, assert, lireSource }) => {
 const V = require('../../src/renderer/visite.js');
 const S = require('../../src/renderer/visites.js');
@@ -178,6 +179,79 @@ t('10.14.0 : le branchement — une seule porte décide qu\'une visite ne peut p
   });
 });
 
+// Vu à l'écran (10.14.0) : « Répondre aux questions de mon comptable », lancée depuis « Me guider »,
+// restait sur l'onglet Ventes, la bulle au milieu de l'écran. `aller()` change l'adresse, la page se
+// dessine au `hashchange` qui suit, et l'onglet était cliqué AVANT : sur l'écran d'avant, où il
+// n'existe pas. Trente-six étapes ouvrent un onglet de cette façon.
+t('10.14.0 : un onglet se clique quand sa page est DESSINÉE — jamais sur l\'écran d\'avant', () => {
+  const vieuxDoc = global.document, vieuxTimer = global.setTimeout;
+  const file = [];
+  let dessinee = false, actif = false, clics = 0;
+  global.document = { querySelector: sel => dessinee && sel === '#c-tabs button[data-tab="cabinet"]'
+    ? { classList: { contains: c => c === 'active' && actif }, click: () => { clics++; } } : null };
+  global.setTimeout = fn => { file.push(fn); return file.length; };
+  try {
+    V.ouvrirOnglet('#c-tabs', 'cabinet');
+    assert.strictEqual(clics, 0);
+    assert.strictEqual(file.length, 1, 'l\'onglet absent n\'est pas attendu : il visait l\'écran d\'avant, et rien ne se passait');
+    file.shift()();                                   // la page n'est toujours pas dessinée
+    assert.strictEqual(clics, 0);
+    dessinee = true; file.shift()();                  // elle l'est
+    assert.strictEqual(clics, 1, 'l\'onglet n\'est pas cliqué une fois sa page dessinée');
+    assert.strictEqual(file.length, 0, 'l\'attente continue après le clic');
+    actif = true; V.ouvrirOnglet('#c-tabs', 'cabinet');
+    assert.strictEqual(clics, 1, 'un onglet déjà ouvert se reclique — et sa page repart en haut');
+    dessinee = false; V.ouvrirOnglet('#c-tabs', 'cabinet', 0);
+    assert.strictEqual(file.length, 0, 'une barre qui n\'arrive jamais s\'attend sans fin');
+  } finally { global.document = vieuxDoc; global.setTimeout = vieuxTimer; }
+  // Et les deux usages passent par lui : les visites écrites à la main, et les onglets d'une page lus
+  // sur l'écran par le moteur.
+  const vs = lireSource('src', 'renderer', 'visites.js'), vj = lireSource('src', 'renderer', 'visite.js');
+  assert.ok(/const onglet = \(barre, cle\) => \(\) => ctx\.Visite\.ouvrirOnglet\(barre, cle\);/.test(vs), 'les visites cliquent encore l\'onglet sans attendre sa page');
+  assert.ok(/avant: \(\) => ouvrirOnglet\(barre, cle\),/.test(vj), 'les onglets lus sur l\'écran cliquent encore sans attendre');
+  assert.ok(!/button\[data-tab="\$\{cle\}"\]`\); if \(bt/.test(vs + vj), 'un clic d\'onglet sans attente subsiste');
+});
+
+// Vu à l'écran (10.14.0) : sur l'EXEMPLE, « Compléter ma fiche société » démarrait et disait « Vérifie
+// ou tape ta raison sociale » dans la fiche de la société fictive — ce qu'on y tapait repartait avec
+// l'exemple. Les Paramètres portent ce qui est à TOI (ta fiche, ta copie de sécurité, ton mot de
+// passe, ton comptable) : une visite qui y fait écrire sort d'abord de l'exemple.
+t('10.14.0 : une visite qui fait écrire dans les Paramètres se fait dans la VRAIE entreprise', () => {
+  const fautives = [];
+  let lues = 0;
+  visites.forEach(v => {
+    let page = typeof v.page === 'string' ? v.page : '';
+    v.etapes.forEach(e => {
+      if (typeof e.page === 'string') page = e.page;
+      else if (e.page) page = '';                 // une page calculée : on ne sait pas, on ne juge pas
+      if (e.faire && page === '#/parametres') { lues++; if (!v.reel) fautives.push(v.id + ' — « ' + e.titre + ' »'); }
+    });
+  });
+  assert.ok(lues >= 6, 'les données doivent discriminer : ' + lues + ' gestes lus dans les Paramètres');
+  assert.deepStrictEqual(fautives, [], 'une visite fait écrire dans les Paramètres sur l\'exemple');
+  // Et l'inverse : une visite qui se fait SUR l'exemple n'en sort jamais.
+  assert.deepStrictEqual(visites.filter(v => v.exemple && v.reel).map(v => v.id), [], 'une visite à la fois sur l\'exemple et hors de lui');
+  // La page « Me guider » le dit sur le bouton, depuis l'exemple : on sait où l'on va avant de cliquer
+  // — y compris sur une visite déjà faite ou mise en pause (elle disait « Recommencer », et le clic
+  // quittait l'exemple). On JOUE le calcul du libellé sur les six cas.
+  const app = lireSource('src', 'renderer', 'app.js');
+  const f = app.match(/\n {2}(function libelleVisite\(v, verbe\) \{[\s\S]*?\n {2}\})\n/);
+  assert.ok(f, 'le libellé d\'un bouton de visite n\'est plus calculé par UNE fonction');
+  const lib = (v, exemple, verbe) => require('vm').runInNewContext('(' + f[1] + ')', { C: { estDemo: () => exemple }, data: {} })(v, verbe);
+  const reel = { id: 'societe', reel: true }, decouvrir = { id: 'decouvrir', exemple: true };
+  assert.strictEqual(lib(reel, true, 'commencer'), 'Quitter l\'exemple et commencer');
+  assert.strictEqual(lib(reel, true, 'recommencer'), 'Quitter l\'exemple et recommencer', 'une visite en pause sur l\'exemple cache qu\'on va le quitter');
+  assert.strictEqual(lib(reel, true, 'reprendre'), 'Quitter l\'exemple et reprendre');
+  assert.strictEqual(lib(reel, true, 'refaire'), 'Quitter l\'exemple et refaire', 'une visite faite cache qu\'on va quitter l\'exemple');
+  assert.strictEqual(lib(reel, false, 'commencer'), 'Commencer');
+  assert.strictEqual(lib(decouvrir, false, 'refaire'), 'Charger l\'exemple et refaire', 'refaire la découverte cache qu\'on charge l\'exemple');
+  assert.strictEqual(lib(decouvrir, true, 'reprendre'), 'Reprendre');
+  // Et les deux boutons de la page l'appellent : la carte ET le héros « Reprendre ».
+  const guide = app.slice(app.indexOf('routes.guide = '), app.indexOf('routes.aide = '));
+  assert.ok(/label: libelleVisite\(reprise, 'reprendre'\)/.test(guide), 'le héros « Reprendre » ne dit pas qu\'il quitte ou charge l\'exemple');
+  assert.ok(/const lib = libelleVisite\(v, /.test(guide), 'les cartes ne passent plus par libelleVisite');
+});
+
 t('10.14.0 : l\'accueil de la toute première fois — un seul vert, et une seule invitation', () => {
   const app = lireSource('src', 'renderer', 'app.js');
   const pp = app.slice(app.indexOf('function premiersPas('), app.indexOf('function bindPremiersPas('));
@@ -259,6 +333,70 @@ t('10.14.0 : une zone plus haute que l\'écran ne relègue pas la bulle dans un 
   const vj = lireSource('src', 'renderer', 'visite.js');
   const pos = vj.slice(vj.indexOf('function positionner('), vj.indexOf('function positionner(') + 3000);
   assert.ok(/if \(!faire[^\n]*\) r = decouperHaut\(r, H\)/.test(pos), 'positionner découpe les zones hautes, sauf pendant un geste');
+});
+
+// Vu à l'écran : « Enregistrer ta réponse », posée AU-DESSUS du bouton de la fenêtre, couvrait la
+// réponse qu'on venait de taper et la question qu'on demandait d'enregistrer. Une fenêtre est l'endroit
+// où l'on relit : la bulle se pose à côté d'elle, à la hauteur de la cible.
+t('10.14.0 : la bulle d\'une cible DANS une fenêtre se pose à côté de la fenêtre, jamais dessus', () => {
+  // Les mesures relevées à l'écran (1440 × 873) : la fenêtre « Répondre à ton comptable » et son bouton.
+  const ecran = { w: 1440, h: 873 }, bulle = { w: 388, h: 312 };
+  const fen = { l: 431, t: 240, r: 1011, b: 630 };
+  const ok = { l: 799, t: 563, r: 989, b: 609 };
+  // Les données discriminent : l'ancienne règle, avec le côté que demande l'étape, couvre la fenêtre.
+  const avant = V.placerBulle(ok, bulle, ecran, { pref: 'dessus' });
+  assert.ok(V.chevauche({ l: avant.x, t: avant.y, r: avant.x + bulle.w, b: avant.y + bulle.h }, fen), 'les données doivent discriminer : autour du seul bouton, la bulle couvre la fenêtre');
+  const pos = V.placerPres(ok, fen, bulle, ecran, { pref: 'dessus' });
+  const b = { l: pos.x, t: pos.y, r: pos.x + bulle.w, b: pos.y + bulle.h };
+  assert.ok(!V.chevauche(b, fen), 'la bulle couvre la fenêtre : ' + JSON.stringify(pos));
+  assert.strictEqual(pos.cote, 'droite', 'à côté de la fenêtre, à droite d\'abord');
+  assert.ok(pos.y <= ok.b && pos.y + bulle.h >= ok.t, 'la bulle n\'est pas à la hauteur de sa cible : ' + JSON.stringify(pos));
+  // Pas de place à droite (un petit écran) : à gauche de la fenêtre ; ni l'un ni l'autre : la règle
+  // ordinaire autour de la cible — jamais un coin quand la cible laisse un côté libre.
+  const petit = { w: 1280, h: 800 };
+  assert.strictEqual(V.placerPres(ok, fen, bulle, petit, { pref: 'dessus' }).cote, 'gauche', 'sans place à droite, à gauche de la fenêtre');
+  const large = { l: 150, t: 240, r: 1130, b: 630 };
+  const repli = V.placerPres(ok, large, bulle, petit, { pref: 'dessus' });
+  assert.deepStrictEqual(repli, V.placerBulle(ok, bulle, petit, { pref: 'dessus' }), 'une fenêtre trop large rend la règle ordinaire');
+  // Sans fenêtre, rien ne change.
+  assert.deepStrictEqual(V.placerPres(ok, null, bulle, ecran, { pref: 'dessus' }), avant, 'sans fenêtre, la règle ordinaire');
+  // Et le moteur s'en sert : la fenêtre se cherche autour de la cible.
+  const vj = lireSource('src', 'renderer', 'visite.js');
+  const p = vj.slice(vj.indexOf('function positionner('), vj.indexOf('// ---------- le dessin de la bulle'));
+  assert.ok(/closest\('\.modal'\)/.test(p) && /placerPres\(/.test(p) && !/= placerBulle\(/.test(p), 'positionner ne cherche plus la fenêtre de sa cible');
+});
+
+// Vu à l'écran : le tableau des questions du comptable, centré, ne laissait assez de place ni dessus
+// ni dessous — la bulle se rabattait dans un coin, sur « Importer les questions de ton comptable »,
+// le bouton même dont elle parlait. On fait défiler pour libérer le côté demandé.
+t('10.14.0 : une zone large et haute laisse la place de sa bulle — on fait défiler au lieu de se rabattre dans un coin', () => {
+  // Des mesures RÉELLES, pas des nombres ronds : un rectangle tombe au quart de pixel, et la page
+  // défile au pixel entier. Viser la limite exacte laissait la bulle à 0,28 px de sa place — elle
+  // retournait dans le coin (vu à l'écran : bulle de 322,875 px, cible à 354,59 px).
+  const ecran = { w: 1440, h: 873 }, bulle = { w: 388, h: 322.875 };
+  const r = { l: 254, t: 319.4, r: 1395, b: 646.4 };
+  assert.strictEqual(V.placerBulle(r, bulle, ecran, { pref: 'dessus' }).cote, 'coin', 'les données doivent discriminer : centrée, la zone renvoie la bulle dans un coin');
+  ['dessus', 'dessous', undefined].forEach(pref => {
+    const haut = V.hautPourBulle(r, bulle, ecran, pref);
+    assert.ok(haut != null, 'rien ne libère la place de la bulle (' + pref + ')');
+    // Ce que fait le moteur : défiler d'un nombre ENTIER de pixels (`defilerDe`, `Math.round`).
+    const dy = Math.round(r.t - haut);
+    const r2 = { ...r, t: r.t - dy, b: r.b - dy };
+    const pos = V.placerBulle(r2, bulle, ecran, { pref });
+    assert.notStrictEqual(pos.cote, 'coin', 'après défilement, la bulle se rabat encore dans un coin (' + pref + ')');
+    assert.ok(!V.chevauche({ l: pos.x, t: pos.y, r: pos.x + bulle.w, b: pos.y + bulle.h }, r2), 'la bulle couvre encore sa zone (' + pref + ')');
+    if (pref) assert.strictEqual(pos.cote, pref, 'le côté libéré n\'est pas celui que l\'étape demande');
+  });
+  // Ce qui tient déjà ne bouge pas ; ce qui ne tiendra jamais non plus.
+  assert.strictEqual(V.hautPourBulle({ l: 262, t: 60, r: 1396, b: 380 }, bulle, ecran, 'dessous'), null, 'une zone qui laisse déjà sa place fait défiler la page');
+  assert.strictEqual(V.hautPourBulle({ l: 262, t: 100, r: 700, b: 700 }, bulle, ecran), null, 'une zone qui laisse un côté libre fait défiler la page');
+  assert.strictEqual(V.hautPourBulle({ l: 262, t: 60, r: 1396, b: 700 }, bulle, ecran), null, 'une zone trop haute pour sa bulle fait défiler pour rien');
+  // Et le moteur s'en sert, APRÈS avoir amené la zone à l'écran (sinon il mesure l'écran d'avant).
+  const vj = lireSource('src', 'renderer', 'visite.js');
+  const i = vj.indexOf('if (!cur.defile) {');
+  const zone = vj.slice(i, vj.indexOf('\n      }', i));
+  assert.ok(i > 0 && zone.indexOf('scrollIntoView') > 0 && zone.indexOf('scrollIntoView') < zone.indexOf('hautPourBulle(') && /defilerDe\(zoneEl, /.test(zone),
+    'le défilement ne libère plus la place de la bulle, ou mesure avant d\'avoir amené la zone à l\'écran');
 });
 
 t('10.14.0 : « Tes réussites » se lisent sur les DONNÉES — rien sur une entreprise vide, et chaque vrai geste débloque la sienne', () => {
@@ -379,18 +517,188 @@ t('10.14.0 : « Tes premiers pas » — chaque étape a sa visite, et la jauge d
   // La jauge de fin : le vrai code de l'hôte, évalué.
   const pm = app.match(/progres: (p => \{[\s\S]*?\n {4}\}),\n/);
   assert.ok(pm, 'le crochet « progres » est introuvable');
+  // `lesPas` : la lecture UNIQUE des premiers pas (10.14.0), celle de l'accueil et de « Me guider ».
+  const lp = app.match(/const lesPas = \(\) => (C\.firstSteps\(data, company\(\), \{[^}]*\}\));/);
+  assert.ok(lp, 'lesPas introuvable');
   const ctx = {
     data: { documents: [], clients: [] }, copieExterne: null, company: () => Core.DEFAULT_COMPANY,
     C: { estDemo: x => !!x.demo, firstSteps: Core.firstSteps },
+    visitesEtat: () => ({ faites: {} }),
     VISITES_DES_PAS: new Set(['premiers-pas', ...Object.values(PAS_VISITES)]),
     minuscule: t => String(t || '').charAt(0).toLowerCase() + String(t || '').slice(1)
   };
+  ctx.lesPas = vm.runInNewContext('(() => ' + lp[1] + ')', ctx);
   const progres = vm.runInNewContext('(' + pm[1] + ')', ctx);
   const r = progres({ id: 'premier-client' });
+  // La découverte est en tête de liste, pas faite — et pourtant la prochaine étape est la fiche :
+  // une étape FACULTATIVE ne passe jamais devant une étape du métier (10.14.0).
   assert.ok(r && r.total >= 6 && r.fait === 0 && /^Prochaine étape : compléter ta fiche société\.$/.test(r.texte), JSON.stringify(r));
+  // La découverte faite COMPTE (la liste démarre à « 1 sur n »), et ne change pas la suite.
+  ctx.visitesEtat = () => ({ faites: { decouvrir: '2026-09-24' } });
+  const r2 = progres({ id: 'premier-client' });
+  assert.ok(r2 && r2.fait === 1 && /compléter ta fiche société/.test(r2.texte), JSON.stringify(r2));
+  ctx.visitesEtat = () => ({ faites: {} });
   assert.strictEqual(progres({ id: 'page-factures' }), null, 'la visite d\'une page ne montre pas les premiers pas');
   ctx.data = { documents: [], clients: [], demo: true };
   assert.strictEqual(progres({ id: 'premier-client' }), null, 'jamais sur l\'exemple');
+});
+
+// ------------------------------------------------------------------ le démarrage (10.14.0, suite)
+// Skander : « es-ce que tu me conseilles de mettre le parcours de démarrage après la visite guidée et
+// la découverte de l'app ? Si on tombe sur un formulaire au début, on a tendance à passer et revenir
+// plus tard. » La porte d'abord (découvrir ou commencer), trois questions ensuite, et tout le reste
+// dans « Tes premiers pas », au moment où la question devient concrète.
+
+t('10.14.0 : « Tes premiers pas » — l\'ordre, les deux étapes facultatives, et l\'étape suivante qui ne les propose jamais', () => {
+  const Core = require('../../src/renderer/core.js');
+  const complete = { ...Core.DEFAULT_COMPANY, name: 'Atelier Nour SUARL', matricule: '1234567A/A/M/000', rib: '07040005810111129653' };
+  assert.deepStrictEqual(Core.companyGaps(complete), [], 'les données doivent discriminer : une fiche complète');
+  const vide = Core.firstSteps({ documents: [], clients: [], catalog: [] }, Core.DEFAULT_COMPANY, {});
+  const ids = vide.etapes.map(e => e.id);
+  assert.deepStrictEqual(ids, ['decouverte', 'societe', 'client', 'catalogue', 'devis', 'sauvegarde', 'envoi', 'facture', 'comptable']);
+  // La copie de sécurité vient JUSTE APRÈS le premier devis : avant, elle protégeait un fichier vide.
+  assert.strictEqual(ids.indexOf('sauvegarde'), ids.indexOf('devis') + 1);
+  assert.deepStrictEqual(vide.etapes.filter(e => e.facultatif).map(e => e.id), ['decouverte', 'comptable'], 'seules la découverte et le comptable sont facultatifs');
+  // La découverte est en tête et pas faite — l'étape suivante est pourtant la fiche société.
+  assert.strictEqual(vide.suivante.id, 'societe', 'une étape facultative passe devant une étape du métier');
+  // Faite, la découverte COMPTE : la liste démarre à « 1 sur n ».
+  const apres = Core.firstSteps({ documents: [], clients: [], catalog: [] }, Core.DEFAULT_COMPANY, { decouverte: true });
+  assert.strictEqual(apres.faits, 1);
+  assert.strictEqual(apres.suivante.id, 'societe');
+  // Tout le métier fait, ni découverte ni comptable : le panneau se retire — un panneau qui ne
+  // disparaîtrait jamais parce qu'on n'a pas de comptable serait celui qu'on apprend à ne plus lire.
+  const metier = {
+    clients: [{ id: 'c1', name: 'Hôtel' }], catalog: [{ id: 'k', label: 'Pose', unitPrice: 50 }],
+    documents: [{ id: 'q', type: 'devis', status: 'envoyé', clientId: 'c1' }, { id: 'f', type: 'facture', number: 'FAC-2026-001', status: 'envoyée', clientId: 'c1' }]
+  };
+  const fin = Core.firstSteps(metier, complete, { copieExterne: true });
+  assert.strictEqual(fin.demarrage, false, 'les étapes facultatives retiennent le panneau');
+  assert.strictEqual(fin.suivante, null, 'une étape facultative devient « la suivante »');
+  assert.ok(fin.etapes.find(e => e.id === 'decouverte').fait === false && fin.etapes.find(e => e.id === 'comptable').fait === false);
+  // Le comptable est relié par son adresse OU par son fichier d'appairage — une adresse vide ne compte pas.
+  const cpt = co => Core.firstSteps(metier, co, {}).etapes.find(e => e.id === 'comptable').fait;
+  assert.strictEqual(cpt({ ...complete, accountantEmail: '   ' }), false);
+  assert.strictEqual(cpt({ ...complete, accountantEmail: 'cabinet@exemple.tn' }), true);
+  assert.strictEqual(cpt({ ...complete, cabinet: { name: 'Cabinet Ben Salah', publicKey: 'MCow' } }), true);
+  // Et chaque étape a son geste dans l'accueil : une étape sans bouton serait une consigne de lecture.
+  const app = lireSource('src', 'renderer', 'app.js');
+  const pa = app.slice(app.indexOf('const PAS_ACTIONS = {'), app.indexOf('};', app.indexOf('const PAS_ACTIONS = {')));
+  assert.ok(pa.length > 200, 'PAS_ACTIONS introuvable');
+  const actions = new Set(vide.etapes.concat(Core.firstSteps({ documents: [{ type: 'devis' }] }, Core.DEFAULT_COMPANY, {}).etapes).map(e => e.action).filter(Boolean));
+  actions.forEach(a => assert.ok(new RegExp('\\b' + a + ': \\[').test(pa), 'l\'étape « ' + a + ' » n\'a pas de bouton dans l\'accueil'));
+});
+
+t('10.14.0 : la porte — deux battants, un seul vert, vue une fois ; et l\'assistant ne garde que trois questions', () => {
+  const OB = require('../../src/renderer/onboarding.js');
+  const Core = require('../../src/renderer/core.js');
+  const portes = OB.STEPS.filter(s => s.porte);
+  assert.strictEqual(portes.length, 1);
+  assert.strictEqual(OB.STEPS[0], portes[0], 'la porte est le premier écran');
+  const questions = OB.STEPS.filter(s => !s.porte);
+  assert.ok(questions.length >= 1 && questions.length <= 3, 'trois questions au plus : ' + questions.map(q => q.id));
+  const app = lireSource('src', 'renderer', 'app.js');
+  const rs = app.slice(app.indexOf('function runSetup(rejoue) {'), app.indexOf('async function decouvrirDepuisLaPorte('));
+  assert.ok(rs.length > 6000 && rs.length < 30000, 'tranche de runSetup inattendue : ' + rs.length);
+  // Elle ne s'ouvre ni au rejeu, ni sur l'exemple, ni pour qui l'a déjà vue ou a fait la découverte.
+  assert.ok(/const porte = !rejoue && !et\.faites\.decouvrir && !et\.accueilVu && !C\.estDemo\(data\);/.test(rs), 'la condition de la porte a changé');
+  assert.ok(/if \(i < premier\) i = premier;/.test(rs), 'une reprise peut rouvrir la porte à quelqu\'un qui l\'a passée');
+  // Vue quel que soit le battant : découvrir, commencer, ou passer.
+  const zone = (debut, fin) => rs.slice(rs.indexOf(debut), rs.indexOf(fin, rs.indexOf(debut)));
+  const dec = zone("$('#sf-decouvrir', root).onclick", "if ($('#sf-prev'");
+  const suite = zone("$('#sf-next', root).onclick", 'root.onkeydown');
+  const passer = zone("$('#sf-skip', root).onclick", 'const collect = ');
+  [['découvrir', dec], ['commencer', suite], ['passer', passer]].forEach(([nom, z]) => {
+    assert.ok(z.length > 60 && /porteVue\(\);/.test(z), `« ${nom} » ne marque pas la porte comme vue`);
+  });
+  // Découvrir laisse l'assistant EN ATTENTE à la première question — la sauvegarde de l'exemple le
+  // garde, et en sortir le rouvre là.
+  assert.ok(/etape\(i \+ 1\);\s*root\.remove\(\);\s*resolve\('decouvrir'\);/.test(dec), 'découvrir ne laisse plus l\'assistant en attente');
+  // Un seul vert sur la porte, et Entrée ne clique pas « Continuer » sur un bouton.
+  const corps = rs.slice(rs.indexOf('if (s.porte) {'), rs.indexOf("if (s.id === 'entreprise')"));
+  assert.strictEqual((corps.match(/btn-primary/g) || []).length, 1, 'la porte doit porter UN bouton vert');
+  assert.ok(/class="btn btn-primary" id="sf-decouvrir"/.test(corps) && /class="btn" id="sf-next"/.test(corps), 'le vert est « Découvrir », « Commencer » est un bouton ordinaire');
+  assert.ok(/\$\{s\.porte \? '' : `<button class="btn btn-primary" id="sf-next">/.test(rs), 'le pied de la porte porte un second « Continuer » vert');
+  assert.ok(/\['TEXTAREA', 'BUTTON', 'A', 'SELECT'\]\.includes\(e\.target\.tagName\) \|\| steps\[i\]\.porte\) return;/.test(rs), 'Entrée sur un bouton de la porte clique « Continuer » à sa place');
+  // Le compte des questions se lit sur OB.STEPS, jamais écrit à la main (règle 7.3.0).
+  assert.ok(/LETTRES\[questions\.length\]/.test(corps), 'le nombre de questions est écrit à la main sur la porte');
+  // Les règles de facturation que l'assistant ne demande plus ont leurs usages par défaut.
+  const def = (/const defauts = (\{[^}]*\});/.exec(rs) || [])[1];
+  const defauts = require('vm').runInNewContext('(' + def + ')');
+  assert.deepStrictEqual([defauts.currency, defauts.stampFee, defauts.quoteValidityDays, defauts.paymentTermsDays, defauts.defaultWithholdingRate], ['DT', 1, 30, 30, 0]);
+  // Une écriture intermédiaire garde l'assistant « à reprendre » : sans elle, revenir de l'exemple
+  // atterrissait sur une fiche société vide, au milieu des Paramètres.
+  const data = JSON.parse(JSON.stringify(Core.DEFAULT_DATA));
+  OB.applySetup(data, {}, { done: false, step: 1 });
+  assert.strictEqual(OB.needsSetup(data), true);
+  assert.strictEqual(data.company.setupStep, 1);
+});
+
+t('10.14.0 : après la découverte, l\'assistant reprend — au démarrage comme à la sortie de l\'exemple', () => {
+  const app = lireSource('src', 'renderer', 'app.js');
+  // Le démarrage : « Découvrir » choisi sur la porte lance l'exemple APRÈS le premier dessin.
+  const boot = app.slice(app.indexOf('let decouvrirDabord = false;'), app.indexOf('let decouvrirDabord = false;') + 4000);
+  assert.ok(/decouvrirDabord = done === 'decouvrir';/.test(boot) && /if \(decouvrirDabord\) decouvrirDepuisLaPorte\(\);/.test(boot), 'le battant « Découvrir » n\'est plus suivi au démarrage');
+  // L'exemple qui ne se charge pas rend la main à l'assistant : personne ne reste devant un accueil vide.
+  const ddp = app.slice(app.indexOf('async function decouvrirDepuisLaPorte() {'), app.indexOf('async function reprendreAssistant() {'));
+  assert.ok(/if \(await loadDemo\(\)\) \{ lancerVisite\(visiteParId\('decouvrir'\)\); return; \}/.test(ddp) && /reprendreAssistant\(\)/.test(ddp));
+  const ra = app.slice(app.indexOf('async function reprendreAssistant() {'), app.indexOf('async function rejouerAssistant('));
+  assert.ok(/if \(!OB\.needsSetup\(data\)\) return false;/.test(ra), 'reprendre l\'assistant sans vérifier qu\'il attend quelque chose');
+  // La sortie de l'exemple reprend l'assistant AVANT de naviguer, et une sauvegarde VIDE se dit comme
+  // un départ, pas comme un retour de « 0 document, 0 client ».
+  const ds = app.slice(app.indexOf('async function demoSortie() {'), app.indexOf('function render(keepScroll)'));
+  const iRep = ds.indexOf('await reprendreAssistant();'), iNav = ds.indexOf("navigate(data.company.name ? '#/dashboard' : '#/parametres')");
+  assert.ok(iRep > 0 && iRep < iNav, 'la sortie de l\'exemple ne reprend pas l\'assistant avant de naviguer');
+  assert.ok(/const vide = ok && !vu\.societe && !Object\.values\(vu\.compte \|\| \{\}\)\.some\(n => n > 0\);/.test(ds), 'une sauvegarde vide ne se reconnaît plus');
+  assert.ok(/vide \? 'Passer à ma vraie entreprise'/.test(ds), 'le bouton annonce un retour de données qui n\'existent pas');
+  assert.ok(/if \(!vide\) toast\('Tes données sont revenues'\);/.test(ds), '« Tes données sont revenues » sur une entreprise vide');
+});
+
+// ------------------------------------------------------ les visites « techniques » (10.14.0, suite)
+// Skander : « as-tu couvert les parties techniques — répondre à son comptable, faire le paquet, trouver
+// un fichier joint, faire la mise à jour ? » Elles l'étaient à moitié : l'exemple n'avait aucune
+// question de comptable à montrer, et le même bouton se disait de la même façon sur trois pages.
+
+t('10.14.0 : un même attribut porte le geste de SA page — « Ouvrir » n\'ouvre pas une entreprise depuis un fichier joint', () => {
+  // `data-open` porte trois gestes : une entreprise (Paramètres), un module (Tous les modules), un
+  // fichier joint (une pièce, un achat). Sans la page, la bulle d'un fichier joint disait « Ouvre
+  // cette entreprise » : une explication FAUSSE est pire qu'une explication absente — l'instrument de
+  // couverture compte les absentes, aucun ne voit les fausses.
+  const faux = {
+    id: '', dataset: { open: 'x' }, textContent: 'devis-signe.pdf',
+    matches: s => s === '[data-open]', getAttribute: () => null,
+    classList: { contains: () => false }, closest: () => null, querySelector: () => null,
+    cloneNode: () => ({ querySelectorAll: () => [], textContent: 'devis-signe.pdf' })
+  };
+  const sur = page => S.expliquer(faux, { route: () => page, G: { INFO: {} } });
+  ['doc', 'achat'].forEach(p => {
+    const x = sur(p);
+    assert.ok(x && /fichier joint/.test(x.texte) && !/entreprise/.test(x.texte), 'sur « ' + p + ' » : ' + JSON.stringify(x));
+  });
+  assert.ok(/entreprise/.test(sur('parametres').texte), 'dans les Paramètres, c\'est une entreprise qu\'on ouvre');
+  assert.ok(/module/.test(sur('modules').texte), 'dans « Tous les modules », c\'est un module');
+  // Ailleurs, on ne devine pas : l'instrument de couverture le signalera.
+  assert.strictEqual(sur('stats'), null, 'une page inconnue reçoit l\'explication d\'une autre');
+});
+
+t('10.14.0 : l\'exemple porte les questions de son comptable — sans réponse, et sur des pièces qui existent', () => {
+  // Sans elles, « Répondre à mon comptable » et le chapitre du comptable montraient un panneau vide :
+  // on ne montre pas un geste sur une page qui n'a rien à faire.
+  const Core = require('../../src/renderer/core.js');
+  const demo = require('../../src/renderer/demo.js');
+  const data = Core.migrateData(demo.buildDemoData({ ...Core.DEFAULT_COMPANY, name: 'Test SUARL' }, '2026-09-24'));
+  const qs = data.questionsCabinet || [];
+  assert.strictEqual(qs.length, 2, 'deux questions attendues : ' + qs.map(q => q.piece));
+  qs.forEach(q => {
+    assert.ok(!q.reponse, 'une réponse posée d\'avance partirait dans le paquet de l\'exemple : ' + q.piece);
+    assert.ok((data.purchases || []).some(p => p.number === q.piece), 'la pièce « ' + q.piece + ' » n\'existe pas dans l\'exemple');
+    assert.ok(q.texte && q.texte.length > 40 && q.compte && q.periode, 'question incomplète : ' + q.piece);
+    assert.ok(q.periode <= '2026-09', 'une question datée d\'un mois futur');
+  });
+  // Deux attentes différentes, pour montrer les deux gestes : confirmer, et joindre la pièce.
+  assert.deepStrictEqual(qs.map(q => q.attendu).sort(), ['confirmation', 'piece']);
+  // Et le paquet de l'exemple n'emporte aucune réponse : il est aussi la source des journaux
+  // pré-calculés du Cabinet, qui ne doivent pas changer pour autant.
+  assert.deepStrictEqual(require('../../src/renderer/compta.js').reponsesAEnvoyer(qs), [], 'le paquet de l\'exemple emporterait des réponses');
 });
 
 t('10.14.0 : la bulle donne le curseur au bouton qui AVANCE — jamais à la croix qui porte le même geste', () => {
@@ -430,5 +738,186 @@ t('10.14.0 : chaque classe que pose le moteur de visite existe dans la feuille d
     assert.ok(new RegExp('\\.visite-bulle\\.' + e + '(?![\\w-])').test(css), 'état sans règle : .visite-bulle.' + e));
   const code = vj.replace(/\/\/[^\n]*/g, '');
   assert.ok(!/className = [^;\n]*regarder/.test(code) && !/visite-active/.test(code), 'un marqueur posé et lu par personne');
+});
+
+// Une visite qui NOMME un bouton doit nommer celui que l'écran porte (7.3.0 : une phrase affichée
+// que rien ne tient est un bug). Vu à l'écran, 10.14.0 : « Le bouton vert te dit lequel » — le vert
+// était ailleurs ; « Chapitre suivant » quand le moteur écrit « Passer au chapitre suivant » ;
+// « Faire mon premier devis », une visite qui n'existe pas. Chaque citation « … » des textes des
+// visites existe dans l'application, ou nomme une visite, ou figure ci-dessous AVEC la ligne de code
+// qui la fabrique — une liste d'exceptions qui ne se vérifie pas finit par mentir à son tour.
+t('10.14.0 : chaque libellé qu\'une visite cite « entre guillemets » existe dans l\'application', () => {
+  const fs = require('fs'), path = require('path');
+  const dossier = path.join(__dirname, '..', '..', 'src', 'renderer');
+  const source = fs.readdirSync(dossier).filter(f => /\.(js|html)$/.test(f) && f !== 'visites.js')
+    .map(f => fs.readFileSync(path.join(dossier, f), 'utf8')).join('\n').replace(/\\'/g, "'");
+  const app = lireSource('src', 'renderer', 'app.js');
+  // Les libellés FABRIQUÉS (un nombre, un accord) : la ligne qui les fabrique doit exister.
+  const FABRIQUES = {
+    'Refaire le paquet avec ta réponse': 'Refaire le paquet avec ${',
+    'Établir les … bulletins manquants': "`Établir les ${pl(missing.length, 'bulletin')} manquants`"
+  };
+  // Des exemples de ce qu'on TAPE, pas des libellés.
+  const EXEMPLES = new Set(['Villa Carthage', 'Cantine de l\'école']);
+  Object.entries(FABRIQUES).forEach(([l, frag]) => assert.ok(app.includes(frag), `« ${l} » n'est plus fabriqué par app.js : l'exception ment`));
+  const titres = new Set(visites.map(v => v.titre));
+  const textes = [];
+  const cles = new Set(['titre', 'texte', 'action', 'conclusion', 'resume', 'bravo']);
+  // Les visites, et les tables d'explications (une table clé → phrase compte chacune de ses phrases).
+  const ramasser = (o, ou, vus, table) => {
+    if (!o || typeof o !== 'object' || vus.has(o)) return;
+    vus.add(o);
+    for (const [k, v] of Object.entries(o)) {
+      if (typeof v === 'string') { if (table || cles.has(k)) textes.push([v, ou + '.' + k]); }
+      else if (v && typeof v === 'object') ramasser(v, ou + '/' + k, vus, false);
+    }
+  };
+  visites.forEach(v => ramasser(v, v.id, new Set(), false));
+  ['BOUTONS', 'ZONES', 'CHAMPS', 'MENUS', 'ONGLETS', 'PAGES'].forEach(nom => ramasser(S[nom], nom, new Set(), true));
+  assert.ok(textes.length > 800, 'textes lus : ' + textes.length);
+  const propre = s => s.replace(/<[^>]+>/g, '').replace(/[…\s.]+$/, '').trim();
+  const fautes = [];
+  let citations = 0;
+  textes.forEach(([t, ou]) => {
+    for (const m of t.matchAll(/«\s*([^»]{2,90}?)\s*»/g)) {
+      const q = propre(m[1]);
+      citations++;
+      if (source.includes(q) || titres.has(q) || FABRIQUES[q] || EXEMPLES.has(q)) continue;
+      fautes.push(`« ${q} » (${ou})`);
+    }
+  });
+  assert.ok(citations > 60, 'citations lues : ' + citations);
+  assert.deepStrictEqual(fautes, [], 'une visite cite un libellé que l\'application n\'a pas');
+});
+
+// Vu à l'écran : « Joindre un justificatif » passait à « Où il est rangé » dès le clic — le choix de
+// fichier annulé, la bulle décrivait « le nom ouvre le fichier, Dossier le montre » au-dessus de
+// « Aucun justificatif ». Et un « Enregistrer » refusé (un champ manque) faisait avancer la visite,
+// fenêtre encore ouverte. Un clic n'est pas un geste fait : quand l'étape dit ce qui le prouve, c'est
+// cette preuve qui décide.
+t('10.14.0 : une étape « clique » qui dit ce qui prouve le geste attend cette preuve, pas le clic', () => {
+  const vj = lireSource('src', 'renderer', 'visite.js').replace(/\/\/[^\n]*/g, '');
+  const regle = vj.split('\n').filter(l => /cur\.clic/.test(l) && /fait = true/.test(l));
+  assert.strictEqual(regle.length, 1, 'la règle du clic : ' + regle.length + ' ligne(s)');
+  assert.ok(/typeof e\.fait !== 'function'/.test(regle[0]), 'le clic suffit encore quand l\'étape a sa preuve : ' + regle[0].trim());
+  // Ce qui peut s'annuler ou se refuser porte sa preuve : un choix de fichier ou de dossier, le bouton
+  // principal d'une fenêtre (un refus la garde ouverte), la fabrication d'un paquet.
+  const annulables = [];
+  visites.forEach(v => (v.etapes || []).forEach((e, i) => {
+    if (e.faire !== 'clic') return;
+    const cibles = [].concat(e.cible || []).join(' ');
+    const texte = String(e.action || '') + ' ' + String(e.texte || '');
+    const fenetre = /\.modal[^,]*(\.btn-primary|#ok)/.test(cibles);
+    const fichier = /choisis le fichier|Choisir un dossier/.test(texte) || /#ext-choose|#cab-build|#attach-top|#cab-import/.test(cibles);
+    if ((fenetre || fichier) && typeof e.fait !== 'function') annulables.push(v.id + '#' + i + ' (' + cibles + ')');
+  }));
+  assert.deepStrictEqual(annulables, [], 'des gestes annulables avancent sur le seul clic');
+  // Les trois qu'on a vus à l'écran, nommément.
+  const etape = (id, sel) => (parId(id).etapes || []).find(e => [].concat(e.cible || []).some(c => c === sel || c.includes(sel)));
+  ['justificatif:#attach-top', 'sauvegarde:#ext-choose', 'paquet:#cab-build'].forEach(k => {
+    const [id, sel] = k.split(':');
+    const e = etape(id, sel);
+    assert.ok(e && typeof e.fait === 'function', k + ' : pas de preuve');
+  });
+});
+
+// Vu à l'écran : « Dossier » coupé de son guillemet — « en fin de ligne, le mot sur la suivante. La
+// ponctuation double porte une espace fine insécable, dans la bulle comme dans le Cabinet (9.4.2).
+t('10.14.0 : la bulle de la visite garde ses guillemets et sa ponctuation double avec leur mot', () => {
+  const F = '\u202f';
+  assert.strictEqual(V.typo('« Dossier » le montre ?'), '«' + F + 'Dossier' + F + '» le montre' + F + '?');
+  assert.strictEqual(V.typo('Ensuite : le paquet ; puis !'), 'Ensuite' + F + ': le paquet' + F + '; puis' + F + '!');
+  assert.strictEqual(V.typo('rien à changer'), 'rien à changer', 'un texte sans ponctuation double ne bouge pas');
+  // Les trois dessins de la bulle (l'attente, l'étape, la fin) passent par la règle, APRÈS avoir
+  // posé leur HTML — sinon le texte redessiné la perd.
+  const vj = lireSource('src', 'renderer', 'visite.js');
+  const poses = [...vj.matchAll(/els\.bulle\.innerHTML = `/g)].map(m => m.index);
+  assert.ok(poses.length >= 3, 'dessins de la bulle : ' + poses.length);
+  poses.forEach(i => {
+    const fin = vj.indexOf('`;', i);
+    const suite = vj.slice(fin, fin + 80);
+    assert.ok(/typographier\(els\.bulle\)/.test(suite), 'un dessin de la bulle sans la règle typographique : ' + vj.slice(i, i + 60));
+  });
+});
+
+// Vu à l'écran pendant la visite « Joindre un justificatif » : le bandeau de la question du comptable,
+// sur l'achat STEG de l'exemple, finissait sa ligne sur « … n'est pas dans le paquet » et commençait
+// la suivante par « ? », tout seul. Le texte est tapé DANS LE CABINET, avec des espaces ordinaires :
+// l'app entreprise le met en typographie française à l'AFFICHAGE, jamais dans la donnée — elle repart
+// telle quelle dans le paquet, et la case où l'on tape sa réponse ne réécrit pas ce qu'on vient d'y mettre.
+t('10.14.0 : le texte d\'une question du comptable garde sa ponctuation double avec son mot', () => {
+  const Core = require('../../src/renderer/core.js');
+  const F = '\u202f';
+  assert.strictEqual(Core.typoFr('peux-tu joindre sa photo ?'), 'peux-tu joindre sa photo' + F + '?');
+  assert.strictEqual(Core.typoFr('« Oui » : merci ; vite !'), '«' + F + 'Oui' + F + '»' + F + ': merci' + F + '; vite' + F + '!');
+  assert.strictEqual(Core.typoFr('https://skanfact.tn'), 'https://skanfact.tn', 'un « : » collé à son mot ne bouge pas');
+  assert.strictEqual(Core.typoFr(null), '', 'une question sans texte ne s\'écrit pas « null »');
+  // Jumelle de la règle de la bulle : les deux disent la même chose du même texte.
+  ['« Dossier » le montre ?', 'Ensuite : le paquet ; puis !', 'rien', 'a  ?', '«  x »'].forEach(x =>
+    assert.strictEqual(Core.typoFr(x), V.typo(x), 'les deux règles divergent sur « ' + x + ' »'));
+  const app = lireSource('src', 'renderer', 'app.js').replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
+  const lignes = app.split('\n').filter(l => /\bh\([^\n]*\bq\.(?:texte|reponse)/.test(l));
+  assert.ok(lignes.length >= 4, 'affichages du texte d\'une question retrouvés : ' + lignes.length);
+  let cases = 0;
+  lignes.forEach(l => {
+    if (/<textarea/.test(l)) { cases++; assert.ok(!/typoFr/.test(l), 'la case de réponse réécrit ce qu\'on tape : ' + l.trim().slice(0, 120)); return; }
+    for (const m of l.matchAll(/\bq\.(?:texte|reponse\.texte)\b/g)) {
+      assert.strictEqual(l.slice(Math.max(0, m.index - 9), m.index), 'C.typoFr(', 'texte du comptable affiché sans la règle : ' + l.trim().slice(0, 120));
+    }
+  });
+  assert.strictEqual(cases, 1, 'la case de réponse n\'a pas été retrouvée : le test ne juge plus ce qu\'il annonce');
+});
+
+// Vu à l'écran : « ME GUIDER » sur deux lignes dans la palette, et « Contrat de prestation » sur
+// trois — la colonne des catégories fait une largeur fixe, et « Prestation » la dépassait déjà de
+// 9 px. Une catégorie tient en UN mot court, sur une ligne. Mesuré dans l'application : 10 caractères
+// en capitales de 10 px font 73 px (« Prestation »), la colonne en fait 78.
+t('10.14.0 : chaque catégorie de la palette tient sur une ligne, dans sa colonne', () => {
+  const app = lireSource('src', 'renderer', 'app.js');
+  const cab = lireSource('src', 'cabinet', 'renderer', 'app.js');
+  const css = lireSource('src', 'renderer', 'style.css');
+  const regle = (css.match(/\.palette \.res \.kind \{[^}]*\}/) || [''])[0];
+  assert.ok(/white-space: nowrap/.test(regle), 'la catégorie peut passer à la ligne : ' + regle);
+  const largeur = Number((regle.match(/width: (\d+)px/) || [])[1]);
+  assert.ok(largeur >= 76, 'colonne trop étroite pour « Prestation » (73 px mesurés) : ' + largeur);
+  const kinds = new Set();
+  for (const src of [app, cab]) for (const m of src.matchAll(/kind: '([^']+)'/g)) kinds.add(m[1]);
+  // Les catégories des pièces passent par la table courte, jamais par le titre entier.
+  const table = (app.match(/const KIND_PIECE = \{([^}]*)\}/) || [])[1] || '';
+  assert.ok(table, 'la table des catégories courtes a disparu');
+  for (const m of table.matchAll(/:\s*'([^']+)'/g)) kinds.add(m[1]);
+  assert.ok(/kind: KIND_PIECE\[d\.type\]/.test(app), 'les pièces reprennent leur titre entier dans la palette');
+  // Les « kind » qui ne sont pas des catégories de palette (des états de listes, des natures).
+  const HORS = new Set(['conges', 'banque', 'autre-sortie', 'annee', 'licence', 'facture']);
+  const trop = [...kinds].filter(k => !HORS.has(k) && k.length > 10);
+  assert.deepStrictEqual(trop, [], 'des catégories trop longues pour leur colonne');
+});
+
+// Vu à l'écran : « Le trombone — dans la liste des achats, 📎 marque ceux qui ont leur justificatif »
+// éclairait le tableau « À payer », le PREMIER tableau de la page — sans un seul trombone. Une page
+// d'achats en porte deux : une étape qui parle de LA liste vise la liste (`#list-wrap`).
+t('10.14.0 : sur la page des achats, une étape qui parle de la liste éclaire la liste, pas « À payer »', () => {
+  const app = lireSource('src', 'renderer', 'app.js');
+  const achats = app.slice(app.indexOf('routes.achats = '), app.indexOf('function payablesPanel('));
+  assert.ok(/payablesPanel\(\)/.test(achats) && /#list-wrap/.test(achats), 'la page des achats n\'a plus ses deux tableaux : le test ne discrimine plus');
+  const fautes = [];
+  visites.forEach(v => (v.etapes || []).forEach((e, i) => {
+    if (e.page !== '#/achats') return;
+    const premiere = [].concat(e.cible || [])[0] || '';
+    if (/table/.test(premiere) && !/#list-wrap/.test(premiere)) fautes.push(v.id + '#' + i + ' → ' + premiere);
+  }));
+  assert.deepStrictEqual(fautes, [], 'une étape vise le premier tableau venu de la page des achats');
+});
+
+// Vu à l'écran : « Le trombone » amenait la liste des achats au bord de l'écran ; son en-tête collant
+// colle sous la marge haute du conteneur (32 px) et recouvrait la première ligne — celle qui portait
+// le 📎. Les défilements s'arrêtent à la même marge que le contenu.
+t('10.14.0 : un défilement s\'arrête sous la marge où collent les en-têtes de tableau', () => {
+  const css = lireSource('src', 'renderer', 'style.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  const main = (css.match(/(^|\n)main \{[^}]*\}/) || [''])[0];
+  const haut = (main.match(/--main-haut: (\d+px)/) || [])[1];
+  assert.ok(haut && new RegExp('padding: var\\(--main-haut\\)').test(main), 'la marge haute de la page n\'est plus une variable : le test ne discrimine plus');
+  assert.ok(/scroll-padding-block-start: var\(--main-haut\)/.test(main), 'un défilement pose encore le contenu au ras du bord, sous l\'en-tête collant : ' + main);
+  assert.ok(/table\.list thead th \{[^}]*position: sticky; top: 0/.test(css), 'les en-têtes de tableau ne collent plus : la règle ne sert plus');
 });
 };

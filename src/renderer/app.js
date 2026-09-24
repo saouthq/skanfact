@@ -1966,9 +1966,16 @@
     let vu = null;
     if (avant) { try { vu = await bridge.peekBackup(avant.name); } catch (_) {} }
     const ok = vu && vu.ok;
+    // Une sauvegarde lisible mais VIDE — la porte « Découvrir » a chargé l'exemple avant que la
+    // moindre donnée existe (10.14.0). « 0 document, 0 client, 0 prestation… on les remet en place »
+    // annonçait un retour de rien : c'est un départ, et la phrase le dit.
+    const vide = ok && !vu.societe && !Object.values(vu.compte || {}).some(n => n > 0);
     // Texte BRUT : confirmDialog passe par nl2br, qui échappe. Une balise écrite ici s'afficherait
     // telle quelle à l'écran.
-    const msg = ok
+    const msg = vide
+      ? 'Ta vraie entreprise s\'ouvre : elle est encore vide, et l\'exemple disparaît.\n\n'
+        + 'Je te guide ensuite pour chaque premier geste — ta fiche, ton premier client, ton premier devis. Tu pourras rouvrir l\'exemple quand tu veux, depuis « Me guider ».'
+      : ok
       ? `Tes données d'avant l'exemple ont été mises de côté au moment du chargement :\n`
         + `${pl(vu.compte.documents, 'document')}, ${pl(vu.compte.clients, 'client')}, ${pl(vu.compte.catalog, 'prestation')}`
         + `${vu.societe ? ` au nom de « ${vu.societe} »` : ''}.\n\nOn les remet en place, et l'exemple disparaît.`
@@ -1976,20 +1983,23 @@
         ? `La sauvegarde d'avant l'exemple est illisible (${(vu && vu.error) || 'raison inconnue'}).\n\n`
           + 'On peut effacer l\'exemple, mais tes données d\'avant ne reviendront pas d\'ici : elles sont dans le dossier des sauvegardes, et « Importer » sait les relire.'
         : 'Il n\'y avait aucune donnée avant l\'exemple : l\'application repart vide, avec ta fiche société à remplir.';
-    if (!await confirmDialog(msg, ok ? 'Remettre mes données' : 'Effacer l\'exemple', !ok)) return false;
+    if (!await confirmDialog(msg, vide ? 'Passer à ma vraie entreprise' : ok ? 'Remettre mes données' : 'Effacer l\'exemple', !ok)) return false;
     clearGuard();
     if (ok) {
       const r = await bridge.restoreBackup(avant.name);
       if (!r || !r.ok) { toast('Restauration impossible : ' + ((r && r.error) || 'sauvegarde illisible'), true); return false; }
       data = migrate(r.data);
-      toast('Tes données sont revenues');
+      if (!vide) toast('Tes données sont revenues');
     } else {
       C.wipeData(data, { garderSociete: !(data.company && data.company.demo) });
       save(true);
       toast('L\'exemple est effacé');
     }
     applyTheme();
-    $('#brand-company').textContent = data.company.name;
+    $('#brand-company').textContent = data.company.name || 'Ton entreprise';
+    // La porte a laissé l'assistant en attente (10.14.0) : il reprend ICI, à « Ton entreprise ». Sans
+    // ça, on atterrissait sur une fiche société vide dans les Paramètres, au milieu de cinq onglets.
+    await reprendreAssistant();
     settingsTab = 'societe';
     navigate(data.company.name ? '#/dashboard' : '#/parametres');
     render();
@@ -2150,17 +2160,25 @@
     // marqués « + Créer un devis » pour deux gestes différents.
     envoiDevis: ['Ouvrir mes devis', () => navigate('#/devis')],
     factures: ['Voir mes factures', () => navigate('#/factures')],
-    sauvegarde: ['Choisir un dossier', () => allerParametres('donnees', 'p-externe')]
+    sauvegarde: ['Choisir un dossier', () => allerParametres('donnees', 'p-externe')],
+    // Les deux étapes facultatives (10.14.0). La découverte REPREND là où elle s'était arrêtée : la
+    // recommencer au début ferait relire dix bulles déjà lues.
+    decouverte: ['Faire la découverte', () => { const r = decouverteEnPause(); lancerVisite(visiteParId('decouvrir'), r ? r.i : 0); }],
+    comptable: ['Relier mon comptable', () => allerParametres('envois', 'p-comptable')]
   };
+  // Les premiers pas, lus de la MÊME façon partout (accueil, jauge de fin de visite, « Me guider ») :
+  // la copie externe vit sur le poste et la découverte sur la personne — ni l'une ni l'autre dans les
+  // données —, et `firstSteps` reste une fonction pure qu'on teste sans Electron.
+  const lesPas = () => C.firstSteps(data, company(), { copieExterne, decouverte: !!visitesEtat().faites.decouvrir });
   // Le panneau est-il à l'écran ? `todoPanel` a besoin de le savoir pour ne pas répéter l'étape 1.
   // Le panneau ne s'affiche que pendant le démarrage : une fois une facture partie, il proposerait
   // « crée ton premier client » à quelqu'un qui a deux ans d'activité — et reprendrait tout l'écran,
   // exactement le défaut qu'il corrige.
-  const premiersPasVisibles = () => C.firstSteps(data, company(), { copieExterne }).demarrage;
+  const premiersPasVisibles = () => lesPas().demarrage;
   // La visite guidée de chaque étape (10.14.0) : le bouton de l'étape mène au bon endroit, « Me
   // guider » y mène EN MONTRANT où cliquer, clic par clic.
   const PAS_VISITES = { societe: 'societe', client: 'premier-client', catalogue: 'article', devis: 'premier-devis',
-    envoiDevis: 'envoyer', factures: 'devis-facture', sauvegarde: 'sauvegarde' };
+    envoiDevis: 'envoyer', factures: 'devis-facture', sauvegarde: 'sauvegarde', decouverte: 'decouvrir', comptable: 'relier-comptable' };
   // L'accueil de la toute première fois (10.14.0). Skander : « appliquer la visite guidée au début,
   // sur un exemple de données ; et quand il passe à sa vraie entreprise, la visite pour le guider
   // dans chaque étape ». Il vit DANS le panneau des premiers pas, pas dans une fenêtre : une fenêtre
@@ -2168,9 +2186,9 @@
   // qu'elle présente. Il se tait quand la découverte est faite, ou quand on a dit « Non merci ».
   const accueilVisible = () => { const et = visitesEtat(); return !et.faites.decouvrir && !et.accueilVu; };
   function premiersPas() {
-    const p = C.firstSteps(data, company(), { copieExterne });
+    const p = lesPas();
     if (!p.demarrage) return '';
-    const suivante = p.etapes.find(e => !e.fait);
+    const suivante = p.suivante;
     const accueil = accueilVisible();
     // L'accueil se présente comme une PORTE, pas comme une alerte : deux grands choix côte à côte,
     // chacun avec ce qu'il coûte (sa durée) et ce qu'il donne. La durée et le nombre de chapitres se
@@ -2201,14 +2219,19 @@
       <p class="small muted mb">SkanFact fait beaucoup de choses, mais elles s'enchaînent toujours dans le même ordre.
         Voilà celui-là. Ce panneau disparaît tout seul quand tu l'as parcouru, et se retrouve ensuite dans l'Aide.</p>
       <ol class="pp-list">${p.etapes.map(e => {
-        const a = PAS_ACTIONS[e.action];
+        // La découverte a déjà sa grande porte juste au-dessus tant que l'accueil est là : un second
+        // bouton pour le même geste, dix lignes plus bas, ferait douter que ce soit le même.
+        const a = e.action === 'decouverte' && accueil ? null : PAS_ACTIONS[e.action];
+        const libelle = a && e.action === 'decouverte' && decouverteEnPause() ? 'Reprendre la découverte' : a && a[0];
         const encours = e === suivante;
         const guide = encours && PAS_VISITES[e.action];
         // UN seul vert (U-11) : tant que l'accueil propose la découverte, c'est lui l'étape suivante.
+        // Une étape FACULTATIVE le dit à côté de son titre : elle attend sans presser, et ne passe
+        // jamais devant une étape du métier.
         return `<li class="${e.fait ? 'fait' : ''}${encours ? ' encours' : ''}">
           <span class="pp-marque">${e.fait ? '✓' : ''}</span>
-          <span class="pp-txt"><strong>${h(e.titre)}</strong><span class="small muted">${h(e.quoi)}</span></span>
-          <span class="pp-go">${!e.fait && guide ? `<button type="button" class="pp-guide" data-pas-guide="${h(guide)}" title="Je te montre où cliquer, étape par étape">${ICONE_GUIDE}Me guider</button>` : ''}${!e.fait && a ? `<button class="btn btn-sm ${encours && !accueil ? 'btn-primary' : ''}" data-pas="${h(e.action)}">${h(a[0])}</button>` : ''}</span>
+          <span class="pp-txt"><strong>${h(e.titre)}${e.facultatif && !e.fait ? ' <span class="pp-facult">facultatif</span>' : ''}</strong><span class="small muted">${h(e.quoi)}</span></span>
+          <span class="pp-go">${!e.fait && guide ? `<button type="button" class="pp-guide" data-pas-guide="${h(guide)}" title="Je te montre où cliquer, étape par étape">${ICONE_GUIDE}Me guider</button>` : ''}${!e.fait && a ? `<button class="btn btn-sm ${encours && !accueil ? 'btn-primary' : ''}" data-pas="${h(e.action)}">${h(libelle)}</button>` : ''}</span>
         </li>`;
       }).join('')}</ol>
       <p class="small muted mt">${helpLink('demarrer', 'Ces étapes, expliquées en détail')}</p>
@@ -2670,7 +2693,7 @@
     bindRowMenus(anchor ? $(anchor) : document, id => {
       const d = docById(id); if (!d) return [];
       const a = [{ icon: 'ouvrir', label: 'Ouvrir', hint: 'Voir la pièce et la modifier', run: () => navigate('#/doc/' + id) },
-                 { icon: 'pdf', label: 'Exporter en PDF', run: () => exportPdf(d) }];
+                 { icon: 'pdf', label: 'Exporter en PDF', hint: 'Le document tel que ton client le recevra', run: () => exportPdf(d) }];
       if (d.number) a.push({ icon: 'email', label: 'Envoyer par email', hint: 'Le PDF est joint au message', run: () => sendByEmail(d) });
       // `restOf` vit dans `docColumns` : ici on repasse par `balance`, la même source.
       const reste = d.type === 'facture' && d.status !== 'brouillon' ? balance(d).remaining : 0;
@@ -2719,7 +2742,7 @@
       if (d.type === 'devis' && ['envoyé', 'expiré'].includes(effStatus(d)))
         a.push({ sep: true },
           { icon: 'oui', label: 'Le client a accepté', hint: 'Et facturer dans la foulée, si tu veux', run: () => repondreAccepte(id) },
-          { icon: 'non', label: 'Le client a refusé', run: () => repondreRefuse(id) });
+          { icon: 'non', label: 'Le client a refusé', hint: 'Le devis ne compte plus parmi ceux qui attendent', run: () => repondreRefuse(id) });
       return a;
     });
     if (redraw) bindSort(document, redraw);
@@ -2890,8 +2913,16 @@
     const backTo = isQ ? '#/devis' : isExtra ? '#/autres/' + doc.type : '#/factures';
     let cur = docCur(doc);
     const locked = C.isLocked(doc) && !unlockedIds.has(doc.id);
-    const ro = locked ? 'disabled' : '';
     const stored = isNew ? null : docById(doc.id);
+    // Une pièce datée d'une période CLÔTURÉE (6.0.0) ne se modifie plus — et elle le dit AVANT qu'on
+    // tape (10.14.0, règle 9.4.2 : un avertissement se lit avant le geste). Sur l'exemple de cinq ans,
+    // la plupart des pièces sont dans un mois clôturé : on corrigeait un devis de 2022 pendant dix
+    // minutes, « Enregistrer » ouvrait la fenêtre de clôture, et tout le travail était perdu — sous
+    // un bandeau d'exemple qui invite justement à « ouvrir, modifier ». `figee` ferme ce que `locked`
+    // ferme ; le bandeau dit laquelle des deux règles s'applique (émise, ou clôturée).
+    const clos = !locked && !!stored && !!stored.date && C.isClosedDate(data, stored.date);
+    const figee = locked || clos;
+    const ro = figee ? 'disabled' : '';
     const bal = isInv && !isNew && doc.status !== 'brouillon' ? balance(stored) : null;
     const canUnlock = locked && isInv && bal && !bal.paid && !bal.credits.length;
     // Pourquoi elle ne se rouvre plus, et si ses avoirs l'annulent EN ENTIER (10.12.0) : le bandeau,
@@ -2966,7 +2997,7 @@
     // ici). Un devis enregistré et inchangé gardait « Enregistrer » en vert : il disait qu'il restait
     // quelque chose à enregistrer, quand l'étape suivante est de l'ENVOYER. « Enregistrer » redevient
     // principal dès qu'on modifie (`touch`), et l'envoi cède alors la place.
-    const envoiSuivant = !isNew && !locked && !devisFacturable && doc.status === 'brouillon' && !!doc.number
+    const envoiSuivant = !isNew && !figee && !devisFacturable && doc.status === 'brouillon' && !!doc.number
       && (isQ || doc.type === 'proforma' || doc.type === 'contrat');
     const facturerMenu = !isNew && isQ
       ? (devisFacturable
@@ -3001,7 +3032,7 @@
     // numéro, c'est « Enregistrer » qui le lui donne ; une proforma ou un contrat numérotés
     // s'envoient (`envoiSuivant`) ; un bon de livraison s'imprime pour être signé ; et une pièce qui
     // n'a encore rien donné se transforme — jamais une seconde fois (le geste suivant, 7.16.0).
-    const suiteExtra = !isExtra || isNew || locked ? ''
+    const suiteExtra = !isExtra || isNew || figee ? ''
       : !doc.number ? 'save'
       : envoiSuivant ? ''
       : doc.type === 'livraison' && doc.status === 'brouillon' ? 'pdf'
@@ -3033,15 +3064,15 @@
           <button class="btn${suiteExtra === 'pdf' ? ' btn-primary' : ''}" id="pdf">PDF</button>
           ${locked && isInv && doc.status !== 'annulée' && bal && bal.remaining > 0.0005 ? `<button class="btn btn-primary" id="pay">Enregistrer un paiement</button>` : ''}
           ${facturerMenu}${transformMenu}
-          ${!locked ? `<button class="btn ${(isNew && (isQ || isExtra)) || suiteExtra === 'save' ? 'btn-primary' : ''}" id="save">Enregistrer${isQ || isExtra ? '' : ' le brouillon'}</button>` : ''}
-          ${!locked && (isInv || isAv) ? `<button class="btn btn-primary" id="issue">${isInv ? 'Émettre la facture' : 'Émettre l\'avoir'}</button> ${info('ed.issue')}` : ''}
-          ${!isNew && (!isAv || !locked) ? `<div class="more"><button class="btn" id="more-btn" aria-label="Autres actions">Plus ▾</button><div class="more-list" id="more-list" hidden>
+          ${!figee ? `<button class="btn ${(isNew && (isQ || isExtra)) || suiteExtra === 'save' ? 'btn-primary' : ''}" id="save">Enregistrer${isQ || isExtra ? '' : ' le brouillon'}</button>` : ''}
+          ${!figee && (isInv || isAv) ? `<button class="btn btn-primary" id="issue">${isInv ? 'Émettre la facture' : 'Émettre l\'avoir'}</button> ${info('ed.issue')}` : ''}
+          ${!isNew && (!isAv || !figee) ? `<div class="more"><button class="btn" id="more-btn" aria-label="Autres actions">Plus ▾</button><div class="more-list" id="more-list" hidden>
             ${!isAv ? `<button id="dup">Dupliquer</button><button id="as-template">Enregistrer comme modèle…</button>` : ''}
             ${hasSerials ? `<button id="serials">Numéros de série livrés…</button>` : ''}
             ${isInv ? `<div class="ml-ligne"><button id="make-recurring">Rendre récurrent (contrat)…</button>${info('ed.recurring')}</div>` : ''}
             ${locked && isInv && doc.status !== 'annulée' ? `<button id="credit">Créer un avoir…</button>` : ''}
             ${canUnlock ? `<button id="unlock">Modifier malgré l'émission…</button>` : ''}
-            ${!locked ? `<button id="del" class="danger">Supprimer</button>` : ''}
+            ${!figee ? `<button id="del" class="danger">Supprimer</button>` : ''}
           </div></div>` : ''}
         </div></div>
       ${!locked ? '' : `<div class="banner info lock-banner">
@@ -3067,6 +3098,15 @@
             : (isInv && doc.status !== 'annulée'
               ? `<span class="small" title="${h(verrou.long)}">Plus déverrouillable${verrou.court ? ` (${h(verrou.court)})` : ''}</span>` : '')}
         </span></div>`}
+      ${!clos ? '' : `<div class="banner info lock-banner" id="clos-banner">
+        <span><b>Cette pièce est datée de ${h(C.closedPeriodLabel(data, stored.date))}, un mois clôturé : elle ne se modifie plus.</b>
+        Ce qu'un mois clôturé contient ne bouge plus. Tu peux la lire, l'imprimer, l'envoyer et l'exporter ;
+        pour en changer le contenu, refais-la à la date d'aujourd'hui.
+        ${info('ed.clos')}</span>
+        <span class="lock-go">
+          ${isAv ? '' : '<button class="btn btn-sm" id="clos-dup">Refaire à la date d\'aujourd\'hui</button>'}
+          <button class="btn btn-sm" id="clos-go">Voir les clôtures</button>
+        </span></div>`}
       ${bandeauQuestions(doc.number)}
       <div class="editor">
         <div>
@@ -3076,11 +3116,11 @@
                    il apparaissait au choix du client et poussait tout le formulaire de 45 px : le
                    clic visé sur « Objet » tombait dans le vide, et la frappe avec. -->
               <div class="field"><span class="fl-ligne">${lbl('Client', 'ed.client')}<button type="button" class="lien-fl" id="cl-edit" ${doc.clientId ? '' : 'hidden'} title="Corriger l'adresse, le matricule, l'email de ce client">✎ Modifier la fiche</button></span>
-                ${combo({ name: 'clientId', value: doc.clientId, items: clientItems(), placeholder: '— Choisir un client —', search: 'Rechercher : nom, contact, MF…', add: locked ? null : '+ Nouveau client', ro: locked })}
+                ${combo({ name: 'clientId', value: doc.clientId, items: clientItems(), placeholder: '— Choisir un client —', search: 'Rechercher : nom, contact, MF…', add: figee ? null : '+ Nouveau client', ro: figee })}
               </div>
-              ${isAv ? `<div class="field span-2">Facture concernée${combo({ name: 'creditOf', value: doc.creditOf, items: invoiceItems(), placeholder: '— Facture concernée —', search: 'Rechercher : n°, client, objet…', ro: locked })}</div>` : ''}
-              ${dateFieldHtml(lbl('Date', 'ed.date'), 'date', doc.date, { ro: locked })}
-              ${hasDue ? dateFieldHtml(isQ ? lbl('Valable jusqu\'au', 'ed.validUntil') : lbl('Échéance', 'ed.due'), 'dueDate', doc.dueDate, { ro: locked, quick: true }) : ''}
+              ${isAv ? `<div class="field span-2">Facture concernée${combo({ name: 'creditOf', value: doc.creditOf, items: invoiceItems(), placeholder: '— Facture concernée —', search: 'Rechercher : n°, client, objet…', ro: figee })}</div>` : ''}
+              ${dateFieldHtml(lbl('Date', 'ed.date'), 'date', doc.date, { ro: figee })}
+              ${hasDue ? dateFieldHtml(isQ ? lbl('Valable jusqu\'au', 'ed.validUntil') : lbl('Échéance', 'ed.due'), 'dueDate', doc.dueDate, { ro: figee, quick: true }) : ''}
               ${hasDue ? '<div class="small muted" id="due-auto" hidden></div>' : ''}
               <label class="field span-2">${lbl('Objet', 'ed.subject')}<input type="text" name="subject" value="${h(doc.subject)}" placeholder="${h(exempleObjet())}" ${ro}></label>
               ${field(lbl('Référence (optionnel)', 'ed.reference'), 'reference', doc.reference || '', 'text', ro)}
@@ -3105,7 +3145,7 @@
             </form>
           </div>
           <div class="panel"><h2>Lignes ${info('ed.lines')}</h2>
-            ${locked ? '' : `<div class="catalog-pick">
+            ${figee ? '' : `<div class="catalog-pick">
               ${templatesFor(doc.type).length ? `<div id="tpl-pick">${combo({ items: [], placeholder: 'Depuis un modèle…', search: 'Rechercher un modèle…' })}</div>` : ''}
               <div id="cat-pick">${combo({ items: [], placeholder: 'Ajouter depuis le catalogue…', search: 'Rechercher une prestation…' })}</div>
               <button class="btn btn-sm" id="add-line">+ Ligne vide</button>
@@ -3130,7 +3170,7 @@
           <div class="panel"><h2>Pièces jointes ${info('ed.attachments')}</h2><div id="attachments"></div></div>
           ${isNew ? '' : `<div class="panel"><h2>Historique ${info('ed.history')}</h2><div id="doc-history"></div></div>`}
           <div class="panel"><h2>Notes (affichées sur le document) ${info('ed.notes')}</h2>
-            ${!locked && data.snippets.length ? `<div class="catalog-pick"><div id="snip-pick">${combo({ items: [], placeholder: 'Insérer un texte prédéfini…', search: 'Rechercher un texte…' })}</div></div>` : ''}
+            ${!figee && data.snippets.length ? `<div class="catalog-pick"><div id="snip-pick">${combo({ items: [], placeholder: 'Insérer un texte prédéfini…', search: 'Rechercher un texte…' })}</div></div>` : ''}
             <textarea id="notes" placeholder="Conditions particulières, mentions…" ${ro}>${h(doc.notes || '')}</textarea>
           </div>
         </div>
@@ -3169,7 +3209,7 @@
     // --- modifications non enregistrées : marqueur visible + garde-fou à la navigation
     let dirty = false;
     function touch() {
-      if (dirty || locked) return;
+      if (dirty || figee) return;
       dirty = true;
       const el = $('#dirty-dot'); if (el) el.hidden = false;
       // Enregistrer devient LE geste suivant, et les autres verts de l'en-tête lui cèdent la place
@@ -3181,7 +3221,7 @@
       reportDirty();
     }
     function untouch() { dirty = false; const el = $('#dirty-dot'); if (el) el.hidden = true; reportDirty(); }
-    if (!locked) setGuard({
+    if (!figee) setGuard({
       dirty: () => dirty,
       what: isQ ? 'ce devis' : isInv ? 'cette facture' : isAv ? 'cet avoir' : 'ce ' + (C.TITLES[doc.type] || 'document').toLowerCase(),
       save: () => { const ok = persist(); if (ok) untouch(); return ok; },
@@ -3213,13 +3253,13 @@
         <td><input type="text" data-k="label" value="${h(l.label)}" placeholder="Désignation" ${ro}>
             ${openDesc.has(i)
               ? `<textarea data-k="description" placeholder="Description : ce que comprend la prestation" ${ro}>${h(l.description || '')}</textarea>`
-              : (locked ? '' : `<button type="button" class="link-add" data-desc="${i}">+ description</button>`)}</td>
+              : (figee ? '' : `<button type="button" class="link-add" data-desc="${i}">+ description</button>`)}</td>
         <td><input type="number" class="num" data-k="qty" value="${l.qty}" step="0.01" ${ro}></td>
         <td><select data-k="unit" ${ro}>${unitOptions(l.unit, extraUnits)}</select></td>
         <td><input type="number" class="num" data-k="unitPrice" value="${l.unitPrice}" step="0.001" ${ro}></td>
         <td><select data-k="vatRate" ${ro}>${C.VAT_RATES.map(r => `<option value="${r}" ${Number(l.vatRate) === r ? 'selected' : ''}>${r}%</option>`).join('')}</select></td>
         <td class="total" data-total="${i}"></td>
-        <td class="line-tools">${locked ? '' : `
+        <td class="line-tools">${figee ? '' : `
           <button class="btn btn-ghost btn-sm" data-up="${i}" title="Monter" ${i === 0 ? 'disabled' : ''}>↑</button>
           <button class="btn btn-ghost btn-sm" data-down="${i}" title="Descendre" ${i === n - 1 ? 'disabled' : ''}>↓</button>
           <button class="btn btn-ghost btn-sm" data-dup="${i}" title="Dupliquer la ligne">⧉</button>
@@ -3247,7 +3287,7 @@
       // dans l'achat : le stock SORT par la même règle qu'il entre (`itemOfLine`), et le coût qui
       // fait la marge se lit sur l'article. Une ligne tapée à la main à un caractère près ne sortait
       // rien du stock et n'avait pas de coût — sans un mot.
-      if (!locked) $$('input[data-k=label]', linesBody).forEach(el => suggererCatalogue(el, {
+      if (!figee) $$('input[data-k=label]', linesBody).forEach(el => suggererCatalogue(el, {
         items: () => data.catalog,
         right: c => C.money(c.unitPrice, cur) + ' HT',
         onPick: c => poserArticle(Number(el.closest('tr').dataset.i), c),
@@ -3402,7 +3442,7 @@
     // factures déjà émises de son chantier : sa marge restait fausse pour toujours (10.12.0).
     const poserAffaire = v => {
       doc.projectId = v || '';
-      if (!locked) return;          // pièce modifiable : `head.onchange` et « Enregistrer » s'en chargent
+      if (!figee) return;          // pièce modifiable : `head.onchange` et « Enregistrer » s'en chargent
       const st = docById(doc.id); if (!st) return;
       if (v) st.projectId = v; else delete st.projectId;
       save(true);
@@ -3796,7 +3836,7 @@
     if ($('#bill-btn')) $('#bill-btn').onclick = e => { e.stopPropagation(); const l = $('#bill-list'); const open = l.hidden; closeMenus(); l.hidden = !open; };
     $$('#bill-list button:not(.i)').forEach(b => b.addEventListener('click', () => { $('#bill-list').hidden = true; }));
     $('#pdf').onclick = async () => {
-      if (locked) return exportPdf(docById(doc.id) || doc);
+      if (figee) return exportPdf(docById(doc.id) || doc);
       if (!validate()) return;
       if (!await premierEnvoiOk()) return;
       if (!isQ && !isExtra && doc.status === 'brouillon') {
@@ -3914,6 +3954,12 @@
     // quelqu'un qui vient de comprendre pourquoi il ne peut rien taper doit trouver la suite là où il
     // l'a lu, pas dans un menu qu'il n'a pas encore ouvert.
     if ($('#lock-credit')) $('#lock-credit').onclick = () => navigate('#/doc/new/avoir/' + doc.id);
+    // Les deux sorties d'une pièce d'un mois clôturé (10.14.0), celles que la fenêtre de clôture
+    // donne APRÈS le refus : refaire la pièce aujourd'hui (la copie prend la date du jour, donc un
+    // mois ouvert), ou aller voir la clôture — et la rouvrir avec un motif si c'est vraiment le passé
+    // qu'il faut changer.
+    if ($('#clos-dup')) $('#clos-dup').onclick = () => duplicateDoc(stored);
+    if ($('#clos-go')) $('#clos-go').onclick = () => { comptaState.tab = 'clotures'; navigate('#/compta'); };
     brancherQuestions();
     if ($('#lock-unlock')) $('#lock-unlock').onclick = () => { const u = $('#unlock'); if (u) u.onclick(); };
     if ($('#email')) $('#email').onclick = async () => {
@@ -4157,7 +4203,7 @@
         ${field('Référence (n° chèque, virement…)', 'reference', p0 ? p0.reference || '' : '')}
         <label class="field span-2">Note<input type="text" name="note" value="${h(p0 ? p0.note || '' : '')}"></label>
       </form>
-      ${/* 10.12.0 — l'assistant a demandé la banque et le RIB ; le paiement disait « aucun compte » et
+      ${/* 10.12.0 — la fiche société porte déjà la banque et le RIB ; le paiement disait « aucun compte » et
          n'offrait qu'un lien vers la Trésorerie, qui QUITTAIT la fenêtre et jetait la saisie. Le compte
          se crée par-dessus, prérempli avec ce que l'entreprise a déjà donné. */''}${!(data.accounts || []).length ? `<div class="inline small muted mt" id="pf-sans-compte">Aucun compte de trésorerie : ce paiement ne sera rattaché à aucun compte.
         <button type="button" class="btn btn-sm" id="pf-compte">${company().bank ? `Créer le compte « ${h(company().bank)} »…` : 'Créer un compte…'}</button></div>` : ''}
@@ -4279,7 +4325,7 @@
         <label class="field span-2">Notes internes<textarea name="notes">${h(c.notes || '')}</textarea></label>
       </form>
       <div class="modal-actions">
-        ${client ? '<button class="btn btn-danger" id="del-client" style="margin-right:auto">Supprimer ce client</button>' : ''}
+        ${client ? '<button class="btn btn-danger" id="del-client" style="margin-inline-end:auto">Supprimer ce client</button>' : ''}
         <button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
       (root, close) => {
         $('#ok', root).onclick = () => {
@@ -4595,7 +4641,7 @@
         </div>
       </form>
       <div class="modal-actions">
-        ${neuf ? '' : '<button class="btn btn-danger" id="del-cat" style="margin-right:auto">Supprimer</button>'}
+        ${neuf ? '' : '<button class="btn btn-danger" id="del-cat" style="margin-inline-end:auto">Supprimer</button>'}
         <button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
       (root, close) => {
         let unit = it.unit || '';
@@ -4688,7 +4734,7 @@
         <div class="inline mt"><span class="small muted" id="tf-sum"></span></div>
       </div>
       <div class="modal-actions">
-        <button class="btn btn-danger" id="tf-del" style="margin-right:auto">Supprimer</button>
+        <button class="btn btn-danger" id="tf-del" style="margin-inline-end:auto">Supprimer</button>
         <button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
       (root, close) => {
         const drawLines = () => {
@@ -4916,7 +4962,7 @@
     modal(`<h2>${sn ? 'Modifier le texte' : 'Nouveau texte prédéfini'}</h2>
       <form id="sf" class="grid-2"><label class="field obligatoire"><span>Nom</span><input type="text" name="name" value="${h(x.name)}" placeholder="Garantie, Conditions de paiement…"></label><label class="field span-2 obligatoire"><span>Texte</span><textarea name="text" rows="5">${h(x.text)}</textarea></label></form>
       <div class="modal-actions">
-        ${sn ? '<button class="btn btn-danger" id="del-snip" style="margin-right:auto">Supprimer</button>' : ''}
+        ${sn ? '<button class="btn btn-danger" id="del-snip" style="margin-inline-end:auto">Supprimer</button>' : ''}
         <button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
       (root, close) => {
         $('#ok', root).onclick = () => {
@@ -5124,7 +5170,7 @@
       <table class="mini"><thead><tr><th>Désignation</th><th class="r" style="width:58px">Qté</th><th style="width:104px">Unité ${info('ed.unit')}</th><th class="r" style="width:96px">P.U. HT</th><th style="width:88px">TVA</th><th></th></tr></thead><tbody id="rl"></tbody></table>
       <div class="inline mt"><button type="button" class="btn btn-sm" id="rl-add">+ Ligne</button><span class="small muted" id="rl-total"></span></div>
       <div class="modal-actions">
-        ${isNew ? '' : '<button class="btn btn-danger" id="del-rec" style="margin-right:auto">Supprimer</button>'}
+        ${isNew ? '' : '<button class="btn btn-danger" id="del-rec" style="margin-inline-end:auto">Supprimer</button>'}
         <button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
       (root, close) => {
         const cliCombo = bindCombo($('[data-combo=clientId]', root), {
@@ -5528,7 +5574,7 @@
     modal(`<h2>Reporter la relance — ${h(d.number)}</h2>
       <p class="small muted">La facture reste en retard et continue de compter dans ton « reste à encaisser ». Elle passe simplement en bas de la liste des relances jusqu'à cette date.</p>
       <form id="sf2" class="grid-2">${dateFieldHtml('Ne pas relancer avant le', 'remindAfter', C.addDays(C.today(), 15), { quick: true, clearable: true })}</form>
-      <div class="modal-actions">${d.remindAfter ? '<button class="btn" id="clear" style="margin-right:auto">Retirer le report</button>' : ''}<button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Reporter</button></div>`,
+      <div class="modal-actions">${d.remindAfter ? '<button class="btn" id="clear" style="margin-inline-end:auto">Retirer le report</button>' : ''}<button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Reporter</button></div>`,
       (root, close) => {
         $('#ok', root).onclick = () => {
           const v = formValues($('#sf2', root)); if (!v.remindAfter) return refus($('[name=remindAfter]', root), 'Choisis une date.');
@@ -5616,7 +5662,7 @@
       bindRowMenus(document, id => {
         const x = find(id); if (!x) return [];
         return [
-          { icon: 'ouvrir', label: 'Ouvrir la facture', run: () => navigate('#/doc/' + id) },
+          { icon: 'ouvrir', label: 'Ouvrir la facture', hint: 'Ses lignes, ses paiements, ses relances', run: () => navigate('#/doc/' + id) },
           { sep: true },
           { icon: 'cloche', label: 'Relancer par email', hint: `Ton de niveau ${x.level} — ${C.REMINDER_LABELS[x.level]}`, run: () => sendReminder(x) },
           { icon: 'telephone', label: 'Noter un appel téléphonique', hint: 'Ce que le client a répondu, et quand rappeler', run: () => phoneReminderForm(x, draw) },
@@ -5709,7 +5755,7 @@
     const qs = C.questionsDeLaPiece(data.questionsCabinet || [], numero);
     if (!qs.length) return '';
     return `<div class="banner" id="q-piece"><span><b>${h(pl(qs.length, 'question de ton comptable', 'questions de ton comptable'))} sur cette pièce.</b>
-      ${qs.map(q => h(q.texte)).join(' · ')}</span>
+      ${qs.map(q => h(C.typoFr(q.texte))).join(' · ')}</span>
       <span class="lock-go">${qs.map(q => `<button class="btn btn-sm" data-qrep="${h(q.id)}">Répondre</button>`).join('')}</span></div>`;
   }
   const brancherQuestions = racine => $$('[data-qrep]', racine).forEach(b => b.onclick = () => repondreA(b.dataset.qrep));
@@ -5720,7 +5766,7 @@
     const att = (C.QUESTION_ATTENDUS.find(x => x.id === q.attendu) || {}).label || 'Une explication';
     modal(`<h2>Répondre à ton comptable</h2>
       <p class="small">${q.piece ? `Sur la pièce <strong>${h(q.piece)}</strong>. ` : ''}Il attend : <strong>${h(att)}</strong>.</p>
-      <div class="warn-box mb">${h(q.objet ? q.objet + ' — ' : '')}${h(q.texte)}</div>
+      <div class="warn-box mb">${h(q.objet ? q.objet + ' — ' : '')}${h(C.typoFr(q.texte))}</div>
       <form id="qf"><label class="field obligatoire">${lbl('Ta réponse', 'cab.reponse')}
         <textarea name="texte" rows="4" placeholder="Réponds en une phrase : c'est ce que ton comptable lira.">${h((q.reponse && q.reponse.texte) || '')}</textarea></label>
         <p class="small muted">Une pièce justificative se joint sur la pièce elle-même : elle part déjà dans le paquet,
@@ -6099,6 +6145,10 @@
     // « Aucun résultat » ici et trois articles là-bas (10.12.0, H-E25). Deux recherches sur le même
     // corpus qui ne disent pas la même chose, et on conclut que la chose n'est expliquée nulle part.
     // Quatre au plus, APRÈS ce qu'on ouvre — le jumeau exact de la palette du Cabinet.
+    // La catégorie d'un résultat tient en UN mot : la colonne a la largeur du plus long (« Prestation »).
+    // « Contrat de prestation » y passait sur trois lignes, « Bon de livraison » sur deux (vu à l'écran,
+    // 10.14.0) ; le titre entier reste celui de la pièce, une fois ouverte.
+    const KIND_PIECE = { devis: 'Devis', facture: 'Facture', avoir: 'Avoir', proforma: 'Proforma', commande: 'Commande', livraison: 'Livraison', contrat: 'Contrat' };
     const aidePalette = x => ({ kind: 'Aide', main: x.title, sub: x.sub, text: `aide ${x.title} ${x.sub}`.toLowerCase(), run: () => navigate('#/aide/' + x.id) });
     const aidesPour = words => {
       const mots = words.filter(w => w !== 'aide');
@@ -6119,10 +6169,14 @@
       if (!utiles.length) return words.some(w => /^(guid|visit)/.test(w)) ? visitesPal.slice(0, 3) : [];
       return visitesPal.filter(x => utiles.every(w => x.text.includes(w))).slice(0, 3);
     };
-    const docs = data.documents.map(d => { const cn = clientName(d.clientId); return { kind: C.TITLES[d.type], main: d.number || 'Brouillon', sub: `${cn}${d.subject ? ' — ' + d.subject : ''}`, amt: C.money(montantDeListe(d), docCur(d)), text: `${d.number} ${cn} ${d.subject || ''} ${d.type}`.toLowerCase(), run: () => navigate('#/doc/' + d.id), ts: d.createdAt || 0 }; });
+    const docs = data.documents.map(d => { const cn = clientName(d.clientId); return { kind: KIND_PIECE[d.type] || C.TITLES[d.type], main: d.number || 'Brouillon', sub: `${cn}${d.subject ? ' — ' + d.subject : ''}`, amt: C.money(montantDeListe(d), docCur(d)), text: `${d.number} ${cn} ${d.subject || ''} ${d.type}`.toLowerCase(), run: () => navigate('#/doc/' + d.id), ts: d.createdAt || 0, piece: true }; });
     const clients = data.clients.map(c => ({ kind: 'Client', main: c.name, sub: [c.contact, c.email, c.phone].filter(Boolean).join(' · '), text: `${c.name} ${c.contact || ''} ${c.email || ''} ${c.phone || ''} ${c.matricule || ''}`.toLowerCase(), run: () => navigate('#/client/' + c.id) }));
     const items = data.catalog.map(c => ({ kind: 'Prestation', main: c.label, sub: C.money(c.unitPrice, cur) + ' HT', text: `${c.label} ${c.description || ''}`.toLowerCase(), run: () => navigate('#/catalogue') }));
-    const all = [...actions, ...reglagesDePalette(), ...docs, ...clients, ...items];
+    // Les pièces les plus RÉCENTES d'abord : sur cinq ans, le nom d'un client rendait ses factures
+    // de la première année avant celles du mois.
+    const recentes = docs.slice().sort((a, b) => b.ts - a.ts);
+    const all = [...actions, ...reglagesDePalette(), ...recentes, ...clients, ...items];
+    const HINT = $('#palette-root .hint').textContent;
     let sel = 0, shown = [];
     const input = $('#pal-q'), res = $('#pal-res');
     const draw = () => {
@@ -6130,13 +6184,23 @@
       const q = C.plier(input.value.trim());
       const words = q.split(/\s+/).filter(Boolean);
       const plie = x => x.plie || (x.plie = C.plier(x.text));
-      // Les visites passent AVANT la troncature à douze : sans ça, « facture » (des centaines de
-      // pièces sur cinq ans) ne laisserait jamais la place à « Émettre une facture ».
-      const trouves = q ? all.filter(x => words.every(w => plie(x).includes(w))) : [];
+      // On CLASSE avant de couper à douze, jamais l'inverse (10.14.0, `C.classerRecherche`) : ce
+      // dont le NOM répond à la recherche passe devant ce qu'on n'a trouvé que dans un objet ou un
+      // nom de client, et six pièces au plus devancent le reste. À rang égal, l'ordre d'arrivée — ce
+      // qu'on ouvre, les réglages, les pièces récentes, les clients, les prestations. Les visites
+      // passent aussi AVANT la coupe : sans ça, « facture » (des centaines de pièces sur cinq ans)
+      // ne laisserait jamais la place à « Émettre une facture ».
+      const trouves = q ? C.classerRecherche(all, q, { texte: plie }) : [];
       const guides = q ? visitesPour(words) : [];
-      shown = q ? [...trouves.slice(0, 12 - guides.length), ...guides, ...aidesPour(words)].slice(0, 12)
-        : [...docs.slice().sort((a, b) => b.ts - a.ts).slice(0, 6), ...actions.slice(0, 4)];
-      if (q) shown.sort((a, b) => (plie(b).startsWith(q) ? 1 : 0) - (plie(a).startsWith(q) ? 1 : 0));
+      const aides = q ? aidesPour(words) : [];
+      shown = q ? [...trouves.slice(0, 12 - guides.length), ...guides, ...aides].slice(0, 12)
+        : [...recentes.slice(0, 6), ...actions.slice(0, 4)];
+      // Un extrait se DIT (9.4.7) : douze lignes sur deux cents, sans un mot, se lisent comme tout
+      // ce que l'application connaît.
+      const total = q ? trouves.length + guides.length + aides.length : 0;
+      $('#palette-root .hint').textContent = total > shown.length
+        ? `${shown.length} résultats sur ${total} — ajoute un mot pour préciser · Entrée pour ouvrir · Échap pour fermer`
+        : HINT;
       sel = Math.min(sel, Math.max(0, shown.length - 1));
       res.innerHTML = shown.length ? shown.map((x, i) => `<div class="res ${i === sel ? 'sel' : ''}" data-i="${i}"><span class="kind">${h(x.kind)}</span><span class="main">${h(x.main)}${x.sub ? `<span class="sub">${h(x.sub)}</span>` : ''}</span>${x.amt ? `<span class="amt">${h(x.amt)}</span>` : ''}</div>`).join('') : `<div class="res"><span class="main muted">Aucun résultat</span></div>`;
       $$('.res[data-i]', res).forEach(el => el.onclick = () => { closePalette(); shown[Number(el.dataset.i)].run(); });
@@ -6277,7 +6341,7 @@
         <label class="field span-2">Notes internes<textarea name="notes">${h(s.notes || '')}</textarea></label>
       </form>
       <div class="modal-actions">
-        ${supplier ? '<button class="btn btn-danger" id="del-sup" style="margin-right:auto">Supprimer ce fournisseur</button>' : ''}
+        ${supplier ? '<button class="btn btn-danger" id="del-sup" style="margin-inline-end:auto">Supprimer ce fournisseur</button>' : ''}
         <button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
       (root, close) => {
         $('#ok', root).onclick = () => {
@@ -7410,7 +7474,7 @@
         <label class="field span-2">Notes<textarea name="notes">${h(p.notes || '')}</textarea></label>
       </form>
       <div class="modal-actions">
-        ${proj ? '<button class="btn btn-danger" id="del-proj" style="margin-right:auto">Supprimer</button>' : ''}
+        ${proj ? '<button class="btn btn-danger" id="del-proj" style="margin-inline-end:auto">Supprimer</button>' : ''}
         <button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
       (root, close) => {
         bindCombo($('[data-combo=clientId]', root), { items: data.clients.map(c => ({ v: c.id, label: c.name, text: c.name })), placeholder: '— Aucun client précis —' });
@@ -7579,7 +7643,7 @@
           <h3 class="sub-h">Le chiffre d'affaires minimum</h3>
           <p>Pour couvrir tes charges fixes, il te faut <strong>${C.money(b.breakEven, cur)}</strong> de chiffre d'affaires sur l'année.
           ${b.reached ? `<span class="ok-text">Tu l'as dépassé de ${C.money(b.gap, cur)}.</span>` : `<span class="warn-text">Il t'en manque ${C.money(-b.gap, cur)}.</span>`}</p>
-          <div class="gauge"><div class="g-bar"><i style="width:${pctOf(b.revenue)}%"></i><span class="g-mark" style="left:${pctOf(b.breakEven)}%" title="Seuil de rentabilité"></span></div>
+          <div class="gauge"><div class="g-bar"><i style="width:${pctOf(b.revenue)}%"></i><span class="g-mark" style="inset-inline-start:${pctOf(b.breakEven)}%" title="Seuil de rentabilité"></span></div>
             <div class="g-legend"><span><strong>${C.money(b.revenue, cur)}</strong> réalisés</span><span class="muted">seuil ${C.money(b.breakEven, cur)}</span></div></div>
           <p class="small muted mt">Autrement dit : il te faut <strong>${C.money(C.round3(b.breakEven / 12), cur)}</strong> par mois, soit <strong>${C.money(C.round3(b.breakEven / 220), cur)}</strong> par jour ouvré, rien que pour rentrer dans tes frais.</p>`}
         </div>
@@ -7747,7 +7811,7 @@
         <div class="stat"><div class="lbl">Marge ${info('mg.projectMargin')}</div><div class="val ${m.margin < 0 ? 'due' : m.margin > 0 && !margeSansAchat(m) ? 'ok' : ''}">${C.money(m.margin, cur)}</div><div class="sub">${m.rate == null ? '' : margeSansAchat(m) ? 'aucun achat rattaché : le coût n\'est pas encore compté' : pct(m.rate) + ' % du prix de vente'}</div></div>
         <div class="stat"><div class="lbl">En caisse ${info('mg.projectCash')}</div><div class="val ${m.cash < 0 ? 'due' : ''}">${C.money(m.cash, cur)}</div><div class="sub">${C.money(m.collected, cur)} encaissés − ${C.money(m.paid, cur)} payés</div></div>
       </div>
-      ${m.margin < 0 ? `<div class="panel" style="border-left:3px solid var(--danger)"><h2 style="color:var(--danger)">Cette affaire perd de l'argent</h2>
+      ${m.margin < 0 ? `<div class="panel" style="border-inline-start:3px solid var(--danger)"><h2 style="color:var(--danger)">Cette affaire perd de l'argent</h2>
         <p class="small">Tu as acheté ${C.money(m.cost, cur)} et facturé ${C.money(m.revenue, cur)}. Vérifie qu'il ne reste pas quelque chose à facturer, ou qu'un achat n'a pas été rattaché par erreur.</p></div>` : ''}
       <div class="panel"><h2>Ventes rattachées</h2><div id="p-sales"></div></div>
       <div class="panel"><h2>Achats rattachés</h2><div id="p-buys"></div></div>
@@ -7890,7 +7954,7 @@
       <div class="panel"><h2>Ce que ça donne</h2><div id="bf-calc"></div></div>
       <p class="small warn-text" id="bf-refus" role="status" aria-live="polite" hidden></p>
       <div class="modal-actions">
-        ${slip ? '<button class="btn btn-danger" id="del-slip" style="margin-right:auto">Supprimer</button>' : ''}
+        ${slip ? '<button class="btn btn-danger" id="del-slip" style="margin-inline-end:auto">Supprimer</button>' : ''}
         <button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
       (root, close) => {
         const input = () => {
@@ -8014,7 +8078,7 @@
         <div class="span-2 annonce-stable" id="lf-hint"></div>
       </form>
       <div class="modal-actions">
-        ${leave ? '<button class="btn btn-danger" id="del-lv" style="margin-right:auto">Supprimer</button>' : ''}
+        ${leave ? '<button class="btn btn-danger" id="del-lv" style="margin-inline-end:auto">Supprimer</button>' : ''}
         <button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
       (root, close) => {
         bindCombo($('[data-combo=employeeId]', root), { items: emps.map(e => ({ v: e.id, label: e.name, text: e.name })), placeholder: '— Choisir —' });
@@ -8075,7 +8139,7 @@
         <div class="span-2 annonce-stable" id="af2-hint"></div>
       </form>
       <div class="modal-actions">
-        ${advance ? '<button class="btn btn-danger" id="del-av" style="margin-right:auto">Supprimer</button>' : ''}
+        ${advance ? '<button class="btn btn-danger" id="del-av" style="margin-inline-end:auto">Supprimer</button>' : ''}
         <button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
       (root, close) => {
         bindCombo($('[data-combo=employeeId]', root), { items: emps.map(e => ({ v: e.id, label: e.name, text: e.name })), placeholder: '— Choisir —' });
@@ -8528,7 +8592,7 @@
         });
       };
       $('#p-body').innerHTML = `
-        ${due.length ? `<div class="panel" style="border-left:3px solid var(--${due.some(x => x.late) ? 'danger' : 'warning'})">
+        ${due.length ? `<div class="panel" style="border-inline-start:3px solid var(--${due.some(x => x.late) ? 'danger' : 'warning'})">
           <h2>À déposer ${info('soc.due')}</h2>
           <table class="list compact"><tbody>
             ${due.map(x => `<tr class="${x.late ? 'row-warn' : ''}"><td><strong>${h(x.label)}</strong></td>
@@ -9239,7 +9303,7 @@
       const paged = paginate(all, s.ser);
       const gaps = C.serialGaps(data);
       $('#st-body').innerHTML = `
-        ${gaps.length ? `<div class="panel" style="border-left:3px solid var(--warning)"><h2>Les deux comptes ne disent pas la même chose ${info('ser.gap')}</h2>
+        ${gaps.length ? `<div class="panel" style="border-inline-start:3px solid var(--warning)"><h2>Les deux comptes ne disent pas la même chose ${info('ser.gap')}</h2>
           <p class="small">${gaps.map(g => `<b>${h(g.label)}</b> : ${pct(g.qty)} en stock, ${pl(g.serials, 'numéro')} disponible${sPl(g.serials)}`).join(' · ')}. Un numéro n'a pas été saisi à l'entrée, ou pas attribué à la sortie.</p></div>` : ''}
         <div class="panel"><h2>Numéros de série ${info('ser.list')}</h2>
           ${serialized.length ? `<div class="filters">
@@ -9364,7 +9428,7 @@
         <div class="small muted">${[item.location, item.unit ? 'unité : ' + item.unit : '', item.tracked ? 'suivi en stock' : 'non suivi'].filter(Boolean).join(' · ')}</div></div>
         <div class="actions">${backButton('#/stock')}<button class="btn" id="edit-item">Modifier l'article</button>
           <button class="btn btn-primary" id="adj-item">+ Mouvement</button></div></div>
-      ${st.negative ? `<div class="panel" style="border-left:3px solid var(--danger)"><h2 style="color:var(--danger)">Stock négatif</h2>
+      ${st.negative ? `<div class="panel" style="border-inline-start:3px solid var(--danger)"><h2 style="color:var(--danger)">Stock négatif</h2>
         <p class="small">D'après les pièces saisies, il en reste <b>${pct(st.qty)}</b> — ce qui est impossible. Il manque une entrée : un achat non saisi, une quantité mal recopiée, ou un stock de départ oublié. Corrige la pièce en cause plutôt que d'ajuster, sinon l'erreur restera dans les chiffres.</p></div>` : ''}
       <div class="stats">
         <div class="stat"><div class="lbl">En stock</div><div class="val ${st.negative || st.low ? 'due' : ''}">${pct(st.qty)}${st.unit ? ' ' + h(st.unit) : ''}</div><div class="sub">${st.minStock ? 'seuil d\'alerte : ' + pct(st.minStock) : 'aucun seuil défini'}</div></div>
@@ -9634,7 +9698,7 @@
         <div class="span-2 annonce-stable" id="sef-hint"></div>
       </form>
       <div class="modal-actions">
-        <button class="btn btn-danger" id="del-ser" style="margin-right:auto">Supprimer</button>
+        <button class="btn btn-danger" id="del-ser" style="margin-inline-end:auto">Supprimer</button>
         <button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
       (root, close) => {
         bindCombo($('[data-combo=clientId]', root), { items: clientItems(), placeholder: '— Aucun —' });
@@ -9746,7 +9810,7 @@
         <label class="field span-2">Notes<input type="text" name="notes" value="${h(a.notes || '')}"></label>
       </form>
       <div class="modal-actions">
-        ${asset ? '<button class="btn btn-danger" id="del-imm" style="margin-right:auto">Supprimer</button>' : ''}
+        ${asset ? '<button class="btn btn-danger" id="del-imm" style="margin-inline-end:auto">Supprimer</button>' : ''}
         <button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
       (root, close) => {
         bindCombo($('[data-combo=supplierId]', root), { items: supItems(), placeholder: '— Aucun —' });
@@ -10135,7 +10199,7 @@
         <label class="field span-2">Notes<input type="text" name="notes" value="${h(a.notes || '')}"></label>
       </form>
       <div class="modal-actions">
-        ${acc ? '<button class="btn btn-danger" id="del-acc" style="margin-right:auto">Supprimer</button>' : ''}
+        ${acc ? '<button class="btn btn-danger" id="del-acc" style="margin-inline-end:auto">Supprimer</button>' : ''}
         <button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
       (root, close) => {
         $('#ok', root).onclick = () => {
@@ -10178,7 +10242,7 @@
         <label class="field span-2">${lbl('Contrepartie comptable', 'tre.compte')}<select name="compte">${C.COMPTES_CONTREPARTIE.map(([v, l]) => `<option value="${v}" ${String(m.compte || '') === v ? 'selected' : ''}>${v ? v + ' — ' : ''}${l}</option>`).join('')}${m.compte && !C.COMPTES_CONTREPARTIE.some(([v]) => v === String(m.compte)) ? `<option value="${h(m.compte)}" selected>${h(m.compte)} — ${h(C.accountLabel(data, m.compte))}</option>` : ''}</select></label>
       </form>
       <div class="modal-actions">
-        ${mv ? '<button class="btn btn-danger" id="del-mv" style="margin-right:auto">Supprimer</button>' : ''}
+        ${mv ? '<button class="btn btn-danger" id="del-mv" style="margin-inline-end:auto">Supprimer</button>' : ''}
         <button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
       (root, close) => {
         $('#ok', root).onclick = async () => {
@@ -10239,7 +10303,7 @@
           <div class="stat"><div class="lbl">À décaisser ${info('buy.payables')}</div><div class="val">${C.money(-f.outflow, cur)}</div><div class="sub">sous 30 jours</div></div>
           <div class="stat"><div class="lbl">Solde projeté à 30 jours ${info('tre.projected')}</div><div class="val ${f.end < 0 ? 'due' : 'ok'}">${C.money(f.end, cur)}</div><div class="sub">${f.shortfall ? `<span class="warn-text">passage en négatif le ${C.fmtDate(f.shortfall.date)}</span>` : 'aucun trou prévu'}</div></div>
         </div>
-        ${f.shortfall ? `<div class="panel" style="border-left:3px solid var(--danger)">
+        ${f.shortfall ? `<div class="panel" style="border-inline-start:3px solid var(--danger)">
           <h2 style="color:var(--danger)">Trou de trésorerie prévu le ${C.fmtDate(f.shortfall.date)} ${info('tre.shortfall')}</h2>
           <p class="small">Si tout se passe comme prévu, ton solde descendra à <strong>${C.money(f.shortfall.balance, cur)}</strong> après « ${h(f.shortfall.label)} ».</p>
           <p class="small muted">Ce qui peut le combler : relancer ${pl(f.late.clients.length, 'facture')} client déjà échue${sPl(f.late.clients.length)}, décaler un règlement fournisseur, ou prévenir ta banque. Un trou anticipé se négocie ; un trou constaté se subit.</p>
@@ -10575,7 +10639,7 @@
           ${statCard('TVA collectée', C.money(cur1.vat, cur), cur1.vat, prev.vat, 'à reverser, avoirs déduits', 'stat.vat')}
         </div>
         ${obj ? `<div class="panel"><h2>Objectif ${p.year} ${info('stat.objectif')}</h2>
-          <div class="gauge"><div class="g-bar"><i style="width:${Math.min(100, Math.max(0, obj.pct))}%"></i><span class="g-mark" style="left:${Math.min(100, obj.expectedPct)}%" title="Où tu devrais en être aujourd'hui"></span></div>
+          <div class="gauge"><div class="g-bar"><i style="width:${Math.min(100, Math.max(0, obj.pct))}%"></i><span class="g-mark" style="inset-inline-start:${Math.min(100, obj.expectedPct)}%" title="Où tu devrais en être aujourd'hui"></span></div>
             <div class="g-legend"><span><strong>${C.money(obj.ht, cur)}</strong> réalisés · ${obj.pct} % de l'objectif</span><span class="muted">objectif ${C.money(obj.goal, cur)}</span></div></div>
           <p class="small ${obj.ahead >= 0 ? 'ok-text' : 'warn-text'}">${obj.ahead >= 0
             ? `En avance de ${C.money(obj.ahead, cur)} sur le rythme de l'année.`
@@ -11533,7 +11597,7 @@
         </form>
         <details class="mt"><summary class="small">Le plan comptable tunisien, pour nommer les comptes (${C.PLAN_COMPTABLE.length} intitulés)</summary>
           <div style="max-height:260px;overflow:auto"><table class="list compact"><tbody>
-            ${C.PLAN_COMPTABLE.map(([n, l]) => `<tr><td class="nw ${n.length === 1 ? '' : 'muted'}" style="padding-left:${4 + (n.length - 1) * 10}px"><strong>${h(n)}</strong></td><td>${h(l)}</td></tr>`).join('')}
+            ${C.PLAN_COMPTABLE.map(([n, l]) => `<tr><td class="nw ${n.length === 1 ? '' : 'muted'}" style="padding-inline-start:${4 + (n.length - 1) * 10}px"><strong>${h(n)}</strong></td><td>${h(l)}</td></tr>`).join('')}
           </tbody></table></div>
           <p class="small muted">Nomenclature du Système comptable des entreprises (1996). Elle sert à écrire l'intitulé d'un compte à l'écran et dans les exports ; elle n'impose rien. <em>À VÉRIFIER.</em></p>
         </details>
@@ -11621,7 +11685,7 @@
           <button class="btn btn-danger" id="do-reopen">Rouvrir une période…</button>
         </div>` : ''}
 
-        <div class="panel"><h2>La clôture de ton comptable ${info('clot.cabinet')}</h2>
+        <div class="panel" id="p-cloture-cabinet"><h2>La clôture de ton comptable ${info('clot.cabinet')}</h2>
           ${(data.clotures || []).length
             ? `<table class="list compact"><thead><tr><th>Exercice</th><th>Reçu le</th><th>Origine</th><th class="r nw">Résultat</th><th>Verrou</th><th></th></tr></thead><tbody>
                 ${(data.clotures || []).slice().sort((a, b) => String(b.exercice).localeCompare(String(a.exercice))).map(c => `<tr>
@@ -11852,7 +11916,7 @@
           </div>`}
         </div>
 
-        <div class="panel"><h2>Ce qui manque ${info('cab.manques')}</h2>
+        <div class="panel" id="p-manques"><h2>Ce qui manque ${info('cab.manques')}</h2>
           ${moisVide
             // « Rien à signaler : le dossier du mois est complet » était la SEULE alternative à une
             // liste de manques. Sur un mois sans une seule pièce, tous les compteurs valent zéro,
@@ -11886,7 +11950,7 @@
         ${/* Les réponses partent DANS le paquet : quand il y a des questions, elles viennent avant lui. */''}
         ${questions.length ? panneauQuestions() : ''}
 
-        <div class="panel"><h2>Fabriquer et envoyer ${info('cab.envoyer')}</h2>
+        <div class="panel" id="p-envoyer"><h2>Fabriquer et envoyer ${info('cab.envoyer')}</h2>
           ${paired
             ? `<p class="small" style="background:var(--primary-soft);padding:10px 12px;border-radius:8px">
                  Le paquet sera <b>chiffré pour ${h(paired.name || 'ton cabinet')}</b> (empreinte ${h(paired.fingerprint || '')}).
@@ -11913,7 +11977,7 @@
 
         ${questions.length ? '' : panneauQuestions()}
 
-        <div class="panel"><h2>Ce qui a déjà été envoyé ${info('cab.historique')}</h2>
+        <div class="panel" id="p-paquets"><h2>Ce qui a déjà été envoyé ${info('cab.historique')}</h2>
           ${history.length
             ? `<div class="scroll-x"><table class="list compact"><thead><tr><th>Mois</th><th>Fabriqué le</th><th>État</th><th class="r">Fichiers</th><th class="r">Taille</th><th>Empreinte</th><th></th></tr></thead><tbody>
                 ${history.map(x => `<tr><td class="nw"><strong>${h(C.monthLabel(x.month + '-01'))}</strong></td>
@@ -11945,11 +12009,11 @@
                 ${qs.map((q, i) => `<tr class="${!repondue(q) && (Number(q.recues) || 0) >= C.QUESTION_RELANCE ? 'row-warn' : ''}">
                   <td class="nw">${q.piece ? `<strong>${lienPiece(q.piece)}</strong>` : '<span class="muted">—</span>'}
                     ${q.compte ? `<div class="small muted">${h(q.compte)} ${h(q.libelleCompte || '')}</div>` : ''}</td>
-                  <td>${h(q.objet || '')}<div class="small">${h(q.texte)}</div></td>
+                  <td>${h(q.objet || '')}<div class="small">${h(C.typoFr(q.texte))}</div></td>
                   <td class="nw small">${h(attendu(q.attendu))}</td>
                   <td class="nw small">${(Number(q.recues) || 0) > 1 ? `<span class="badge b-late">${h(pl(Number(q.recues), 'fois', 'fois'))}</span>` : '<span class="muted">1 fois</span>'}</td>
                   <td>${repondue(q)
-                    ? `<span class="badge b-paid">répondue</span><div class="small">${h(q.reponse.texte || '')}</div>`
+                    ? `<span class="badge b-paid">répondue</span><div class="small">${h(C.typoFr(q.reponse.texte || ''))}</div>`
                     : '<span class="badge b-due">sans réponse</span>'}</td>
                   <td class="actions r nw"><button class="btn btn-sm${suivante === 'repondre' && i === 0 ? ' btn-primary' : ''}" data-rep="${h(q.id)}">${repondue(q) ? 'Corriger ma réponse' : 'Répondre'}</button></td></tr>`).join('')}
               </tbody></table></div>
@@ -12265,7 +12329,7 @@
 
         <section data-pane="documents" hidden>
         ${panneau('p-facturation')}<div class="grid-3">
-          ${field(lbl(`Timbre fiscal par facture (${C.normCurrency(c.currency)})`, 'doc.stampFee'), 'stampFee', c.stampFee, 'number', 'step="0.001" min="0" class="num"')}
+          ${field(lbl(`Timbre fiscal par facture (<span data-unite-timbre>${C.normCurrency(c.currency)}</span>)`, 'doc.stampFee'), 'stampFee', c.stampFee, 'number', 'step="0.001" min="0" class="num"')}
           ${field(lbl('Validité des devis (jours)', 'doc.quoteValidity'), 'quoteValidityDays', c.quoteValidityDays, 'number', 'min="0" class="num"')}
           ${field(lbl('Délai de paiement (jours)', 'doc.paymentDays'), 'paymentTermsDays', c.paymentTermsDays, 'number', 'min="0" class="num"')}
           <label class="field">${lbl('Retenue à la source par défaut', 'doc.withholdingDefault')}${withholdingSelect('defaultWithholdingRate', c.defaultWithholdingRate)}</label>
@@ -12524,6 +12588,13 @@
     const markSet = () => { if (setDirty) return; setDirty = true; $('#save-bar').hidden = false; };
     $('#pf').addEventListener('input', markSet);
     $('#pf').addEventListener('change', markSet);
+    // Le timbre se règle dans la devise de l'entreprise : son unité suit la liste pendant qu'on la
+    // change (règle 9.4.8). Elle ne le faisait que dans l'écran « facturation » de l'assistant, parti
+    // en 10.14.0 — la règle déménage avec le seul champ qui reste, sinon l'unité mentirait jusqu'à
+    // l'enregistrement.
+    $('#pf').addEventListener('change', e => {
+      if (e.target && e.target.name === 'currency') { const u = $('#pf [data-unite-timbre]'); if (u) u.textContent = C.normCurrency(e.target.value); }
+    });
     const applySettings = () => {
       const v = formValues($('#pf'));
       const et = {}, eten = {};
@@ -12711,7 +12782,11 @@
       const i = await bridge.externalBackupInfo();
       // « Tes premiers pas » lit cet état ; sans cette ligne, choisir enfin un dossier de copie
       // laissait l'étape « Mettre tes données à l'abri » décochée jusqu'au prochain démarrage.
-      copieExterne = !!(i && i.dir);
+      // Une copie qui ÉCHOUE ne coche pas l'étape : un dossier iCloud pas encore synchronisé ou une
+      // clé en lecture seule ne protègent rien. La règle vivait dans l'écran de sauvegarde de
+      // l'assistant ; depuis que la copie est une étape des premiers pas (10.14.0), elle vit ici.
+      const copieOk = !!(i && i.dir && !i.lastError);
+      copieExterne = copieOk;
       const el = $('#ext-status'); if (!el) return;
       el.innerHTML = i.dir ? `Dossier : <code>${h(i.dir)}</code>, sous-dossier <b>${h(i.sub || 'SkanFact')}</b> pour cette entreprise<br>${i.lastError ? `<span style="color:var(--danger)">Dernière copie impossible : ${h(i.lastError)}</span>` : (i.lastCopy ? `Dernière copie : ${h(new Date(i.lastCopy).toLocaleString('fr-FR'))}` : 'Copie à la prochaine sauvegarde.')}` : '<span class="muted">Aucun dossier de copie externe.</span>';
       $('#ext-remove').hidden = !i.dir;
@@ -12722,7 +12797,9 @@
         if ($('#sec-set')) $('#sec-set').classList.toggle('btn-primary', ok);
       };
       $('#ext-choose').textContent = i.dir ? 'Changer de dossier…' : 'Choisir un dossier…';
-      etapeMotDePasse(!!i.dir);
+      // Tant que la copie échoue, l'étape suivante reste de la réparer : le vert ne passe pas au mot
+      // de passe au-dessus d'une ligne rouge « Dernière copie impossible ».
+      etapeMotDePasse(copieOk);
       // Un dossier PARTAGÉ ne reçoit pas de copie externe : il vit déjà hors de cet ordinateur, et
       // la recopier reviendrait à dupliquer ce que les deux postes s'échangent. C'est le
       // comportement depuis la 3.2.0, mais il n'était écrit nulle part — on le disait d'autant
@@ -13174,6 +13251,24 @@
       case 'salarie': return lien('#/salarie/', C.activeEmployees(data)[0] || (data.employees || [])[0]);
       case 'article': return lien('#/article/', (data.catalog || []).find(c => c.tracked));
       case 'immo': return lien('#/immo/', (data.assets || []).find(a => !a.disposal) || (data.assets || [])[0]);
+      // La pièce que vise la première question du comptable encore sans réponse : c'est là que la
+      // question s'affiche aussi, et qu'on y répond sans chercher.
+      case 'pieceQuestion': {
+        const q = (data.questionsCabinet || []).find(x => x.piece && !(x.reponse && String(x.reponse.texte || '').trim()));
+        if (!q) return null;
+        const doc = docs.find(d => d.number === q.piece);
+        if (doc) return '#/doc/' + doc.id;
+        const achat = (data.purchases || []).find(p => p.number === q.piece);
+        return achat ? '#/achat/' + achat.id : null;
+      }
+      // Un achat à qui il manque son justificatif — celui que le comptable réclame d'abord, sinon le
+      // plus récent. Sans achat du tout, rien : la visite dit alors ce qui manque.
+      case 'achatSansJustif': {
+        const sans = (data.purchases || []).filter(p => p.kind !== 'acompte' && !(p.attachments || []).length);
+        const reclame = (data.questionsCabinet || []).find(x => x.attendu === 'piece' && !(x.reponse && String(x.reponse.texte || '').trim()));
+        const vise = reclame && sans.find(p => p.number === reclame.piece);
+        return lien('#/achat/', vise || recent(sans) || recent(data.purchases || []));
+      }
       default: return null;
     }
   }
@@ -13248,10 +13343,12 @@
   // l'exemple a déjà tout, et y proposer « ton premier client » mentirait.
   function pasSuivant() {
     if (!data || C.estDemo(data)) return null;
-    const pp = C.firstSteps(data, company(), { copieExterne });
+    const pp = lesPas();
     if (!pp.demarrage) return null;
-    const e = pp.etapes.find(x => !x.fait && PAS_VISITES[x.action]);
-    const v = e && visiteParId(PAS_VISITES[e.action]);
+    // L'étape SUIVANTE du moteur — jamais une facultative : la fin d'une visite ne propose pas
+    // « découvrir l'exemple » à quelqu'un qui est en train de faire son premier devis.
+    const e = pp.suivante;
+    const v = e && PAS_VISITES[e.action] && visiteParId(PAS_VISITES[e.action]);
     return v && !visiteManque(v) ? { etape: e, visite: v } : null;
   }
   const minuscule = t => String(t || '').charAt(0).toLowerCase() + String(t || '').slice(1);
@@ -13271,8 +13368,8 @@
     // se montrent qu'à la fin d'une visite des premiers pas, et jamais sur l'exemple.
     progres: p => {
       if (!data || C.estDemo(data) || !VISITES_DES_PAS.has(p.id)) return null;
-      const pp = C.firstSteps(data, company(), { copieExterne });
-      const suivante = pp.etapes.find(e => !e.fait);
+      const pp = lesPas();
+      const suivante = pp.suivante;
       return { titre: 'Tes premiers pas', fait: pp.faits, total: pp.total,
         texte: suivante ? 'Prochaine étape : ' + minuscule(suivante.titre) + '.' : 'Tout est en place : tu sais faire l\'essentiel.' };
     },
@@ -13385,6 +13482,16 @@
       <button type="button" class="btn" id="g-licence">${fin ? 'Activer ma licence' : 'Voir ma licence'}</button>
     </section>`;
   }
+  // Ce que fait vraiment un bouton de visite, dit sur le bouton : la découverte CHARGE l'exemple, une
+  // visite qui fait écrire tes données (`reel`) en SORT — et le changement de données passe AVANT le
+  // verbe (10.14.0) : une visite mise en pause sur l'exemple disait « Recommencer » ou « Reprendre »,
+  // et le clic quittait l'exemple sans que rien l'annonce. UNE fonction pour la carte et le héros.
+  function libelleVisite(v, verbe) {
+    const ex = C.estDemo(data);
+    if (v.exemple && !ex) return 'Charger l\'exemple et ' + verbe;
+    if (v.reel && ex) return 'Quitter l\'exemple et ' + verbe;
+    return verbe.charAt(0).toUpperCase() + verbe.slice(1);
+  }
   routes.guide = () => {
     const et = visitesEtat();
     const toutes = visitesVisibles();
@@ -13396,14 +13503,14 @@
     const reprise = et.reprise && visiteParId(et.reprise.id);
     const repriseI = reprise ? Math.min(Math.max(0, et.reprise.i || 0), reprise.etapes.length - 1) : 0;
     const exemple = C.estDemo(data);
-    const pp = C.firstSteps(data, company(), { copieExterne });
+    const pp = lesPas();
     const pas = pasSuivant();
     const dec = visiteParId('decouvrir');
     // LE prochain geste, et UN seul vert (U-11) : reprendre ce qui est commencé ; sinon la
     // découverte, tant qu'elle n'est pas faite ; sinon le premier pas qui manque ; sinon rien — tout
     // se vaut, c'est la personne qui choisit.
     const prochain = reprise
-      ? { etiq: 'En pause', label: 'Reprendre', titre: reprise.titre, sous: `Étape ${repriseI + 1} sur ${reprise.etapes.length}`, run: () => lancerVisite(reprise, repriseI) }
+      ? { etiq: 'En pause', label: libelleVisite(reprise, 'reprendre'), titre: reprise.titre, sous: `Étape ${repriseI + 1} sur ${reprise.etapes.length}`, run: () => lancerVisite(reprise, repriseI) }
       : dec && !et.faites.decouvrir
         ? { etiq: 'Pour commencer', label: exemple ? 'Commencer la découverte' : 'Charger l\'exemple et découvrir', titre: dec.titre, sous: `${dec.duree} · ${pl(Visite.chapitres(dec.etapes).length, 'chapitre')}`, run: () => lancerVisite(dec) }
         : pas
@@ -13485,12 +13592,7 @@
           <span class="g-reu-t"><b>${h(r.titre)}</b><span>${h(r.quoi)}</span></span></li>`).join('')}</ul></section>` : ''}
       <div class="g-cartes" id="g-demarrer" data-g-theme>
         ${gestes.filter(v => v.theme === 'demarrer').map(v => {
-          // Ce que fait vraiment le bouton, dit sur le bouton : la découverte CHARGE l'exemple, et
-          // « Démarrer dans ma vraie entreprise » en SORT — un « Commencer » nu cacherait les deux.
-          const lib = et.faites[v.id] ? 'Refaire'
-            : reprise && reprise.id === v.id ? 'Recommencer'
-            : v.exemple && !exemple ? 'Charger l\'exemple et commencer'
-            : v.reel && exemple ? 'Quitter l\'exemple et commencer' : 'Commencer';
+          const lib = libelleVisite(v, et.faites[v.id] ? 'refaire' : reprise && reprise.id === v.id ? 'recommencer' : 'commencer');
           const coul = SkanVisites.couleurDe(v);
           return `
           <div class="g-carte${coul ? ' th-' + coul : ''}${et.faites[v.id] ? ' faite' : ''}" data-cherche="${cherche(v)}">
@@ -15239,12 +15341,46 @@
       // Un forfaitaire qui re-cliquait son propre métier repartait donc au réel et se remettait à
       // facturer 19 % de TVA — exactement la faute que la 7.22.0 avait été écrite pour empêcher.
       a.regimeTouche = !!String(co.taxRegime || '').trim();
+      // La PORTE (10.14.0) : découvrir sur l'exemple, ou commencer tout de suite. Elle ne s'ouvre
+      // qu'une fois par personne sur ce poste (`accueilVu`, comme la progression des visites) : une
+      // seconde entreprise créée demain n'a pas à reproposer la découverte à quelqu'un qui connaît
+      // SkanFact. Jamais au rejeu (on vient corriger une réponse), jamais depuis l'exemple.
+      const et = visitesEtat();
+      const porte = !rejoue && !et.faites.decouvrir && !et.accueilVu && !C.estDemo(data);
+      const premier = porte ? 0 : 1;                        // la porte est l'écran 0, jamais une question
+      const questions = steps.filter(s => !s.porte);
       let i = reprise ? Math.min(Math.max(Number(co.setupStep) || 0, 0), steps.length - 1) : 0;
+      if (i < premier) i = premier;
       const root = document.createElement('div'); root.id = 'setup';
       document.body.appendChild(root);
 
+      const LETTRES = ['Aucune', 'Une', 'Deux', 'Trois', 'Quatre', 'Cinq', 'Six'];
       const bodyFor = s => {
-        if (s.id === 'bienvenue') return s.intro;
+        // Deux battants, le recommandé en avant — et UN seul vert (U-11). Le compte des questions et
+        // ce qu'elles demandent se lisent sur `OB.STEPS` ; la durée et les chapitres de la découverte,
+        // sur la visite elle-même : un compte recopié à la main mentirait au premier écran ajouté.
+        if (s.porte) {
+          const dec = visiteParId('decouvrir');
+          const nChap = dec ? Visite.chapitres(dec.etapes).length : 0;
+          const quoi = C.liste(questions.map(x => x.quoi));
+          return `<div class="setup-porte">
+            <p class="sp-lead">Deux façons de commencer — et tu peux faire l'une puis l'autre.</p>
+            <div class="sp-choix">
+              <article class="pp-choix reco"><span class="pp-choix-badge">Recommandé</span>
+                <span class="pp-choix-ico">${ICONE_DECOUVRIR}</span>
+                <h3>Découvrir avec un exemple</h3>
+                <p>Une entreprise de cinq ans, toute remplie : je te fais faire le tour, sans rien risquer. Tu prépares la tienne ensuite, en sachant à quoi sert chaque case.</p>
+                <ul class="pp-choix-meta">${dec ? `<li>${h(dec.duree)}</li>` : ''}${nChap ? `<li>${pl(nChap, 'chapitre')}</li>` : ''}</ul>
+                <button type="button" class="btn btn-primary" id="sf-decouvrir">Commencer la découverte</button></article>
+              <article class="pp-choix"><span class="pp-choix-ico">${ICONE_DEMARRER}</span>
+                <h3>Commencer avec mon entreprise</h3>
+                <p>${h(quoi.charAt(0).toUpperCase() + quoi.slice(1))} — puis je te guide pour chaque premier geste, un clic après l'autre.</p>
+                <ul class="pp-choix-meta"><li>${LETTRES[questions.length] || questions.length} ${questions.length > 1 ? 'questions' : 'question'}</li></ul>
+                <button type="button" class="btn" id="sf-next">Commencer avec mon entreprise</button></article>
+            </div>
+            <div class="sp-note">${s.intro}</div>
+          </div>`;
+        }
         if (s.id === 'entreprise') return `<form id="sf-form" class="grid-2">
           <label class="field span-2">${lbl('Raison sociale', 'co.name')} <span class="req">obligatoire</span><input type="text" name="name" value="${h(a.name || '')}" placeholder="Nom exact de l'entreprise, forme juridique comprise" autofocus></label>
           ${field(lbl('Matricule fiscal', 'co.matricule'), 'matricule', a.matricule || '', 'text', 'placeholder="1234567X/A/M/000"')}
@@ -15300,54 +15436,31 @@
           <p class="small muted"><b>Rien n'est supprimé ni désactivé.</b> Une page retirée du menu reste atteignable par la recherche
           (${MOD}+K), et un module qui contient quelque chose revient tout seul.</p>`;
         }
-        if (s.id === 'facturation') return `<form id="sf-form" class="grid-3">
-          <label class="field">${lbl('Devise', 'doc.currency')}<select name="currency">${C.CURRENCIES.map(x => `<option value="${x}" ${C.normCurrency(a.currency) === x ? 'selected' : ''}>${x}</option>`).join('')}</select></label>
-          ${field(lbl(`Timbre fiscal par facture (<span data-unite-timbre>${C.normCurrency(a.currency)}</span>)`, 'doc.stampFee'), 'stampFee', a.stampFee, 'number', 'step="0.001" min="0" class="num"')}
-          <label class="field">${lbl('Retenue à la source par défaut', 'doc.withholdingDefault')}${withholdingSelect('defaultWithholdingRate', a.defaultWithholdingRate)}</label>
-          ${field(lbl('Validité des devis (jours)', 'doc.quoteValidity'), 'quoteValidityDays', a.quoteValidityDays, 'number', 'min="0" class="num"')}
-          ${field(lbl('Délai de paiement (jours)', 'doc.paymentDays'), 'paymentTermsDays', a.paymentTermsDays, 'number', 'min="0" class="num"')}
-        </form>
-        <p class="small muted">Les valeurs proposées sont les usages tunisiens : timbre fiscal de 1 dinar, trente jours de validité et trente jours de paiement, pas de retenue à la source par défaut. <em>À VÉRIFIER avec ton comptable selon ton activité et ton régime.</em></p>`;
-        if (s.id === 'paiement') return `<form id="sf-form" class="grid-2">
-          ${field(lbl('Banque', 'pay.bank'), 'bank', a.bank || '', 'text', 'placeholder="Nom de la banque et agence"')}
-          ${ribField('RIB', a.rib, 'placeholder="20 chiffres"')}
-        </form>
-        <p class="small muted">Ton RIB apparaîtra sur chaque facture, dans le bloc « Règlement ». <b>Relis-le caractère par caractère</b> : une erreur ici, c'est un paiement qui n'arrive jamais. Tu peux laisser vide et le remplir plus tard.</p>`;
-        if (s.id === 'sauvegarde') return `<p>Tes données vivent dans un seul fichier, sur cet ordinateur. S'il tombe en panne, est volé ou perdu, ta comptabilité disparaît avec lui.</p>
-          <p>Choisis un dossier dans <b>${NUAGE}</b>, sur une <b>clé USB</b> ou un disque réseau : à chaque enregistrement, SkanFact y recopiera tout, sans que tu aies à y penser.</p>
-          <div class="inline mt"><button type="button" class="btn btn-primary" id="sf-ext">Choisir un dossier…</button><span id="sf-ext-st" class="small muted">Aucun dossier choisi.</span></div>
-          <p class="small muted mt" id="sf-ext-note" hidden></p>
-          <p class="small muted mt">Tu peux le faire plus tard dans Paramètres → Données et sécurité, mais l'expérience montre que « plus tard » n'arrive jamais.</p>`;
         return '';
       };
 
       const draw = () => {
         const s = steps[i];
-        root.innerHTML = `<div class="setup-card">
+        // Le compteur et la barre comptent les QUESTIONS : la porte n'en est pas une, elle n'en porte
+        // aucun — « 1 / 4 » sur un écran de bienvenue ferait croire à un formulaire de quatre pages.
+        root.innerHTML = `<div class="setup-card${s.porte ? ' porte' : ''}">
           <div class="setup-head">
             <div class="brand-mark">SF</div>
             <div><div class="setup-t">${h(s.title)}</div><div class="setup-s">${h(s.sub)}</div></div>
-            <div class="setup-step">${i + 1} / ${steps.length}</div>
+            ${s.porte ? '' : `<div class="setup-step">${i} / ${questions.length}</div>`}
           </div>
-          <div class="setup-bar"><i style="width:${Math.round((i + 1) / steps.length * 100)}%"></i></div>
+          ${s.porte ? '' : `<div class="setup-bar"><i style="width:${Math.round(i / questions.length * 100)}%"></i></div>`}
           <div class="setup-body">${bodyFor(s)}</div>
           <div class="setup-foot">
             <button class="btn btn-ghost" id="sf-skip">Passer et tout régler plus tard</button>
-            ${i > 0 ? '<button class="btn" id="sf-prev">Retour</button>' : ''}
-            <button class="btn ${s.id === 'sauvegarde' ? '' : 'btn-primary'}" id="sf-next">${i === steps.length - 1 ? 'Terminer' : 'Continuer'}</button>
+            ${i > premier ? '<button class="btn" id="sf-prev">Retour</button>' : ''}
+            ${s.porte ? '' : `<button class="btn btn-primary" id="sf-next">${i === steps.length - 1 ? 'Terminer' : 'Continuer'}</button>`}
           </div>
         </div>`;
         const form = $('#sf-form', root);
         if (form) { const f = $('input, textarea', form); if (f) f.focus(); }
-        // L'assistant vit hors de `#view` : sans ça, son taux de retenue serait le seul de
-        // l'application sans « Autre taux… » — « un champ de l'assistant doit être au moins aussi
-        // guidé que son jumeau dans les Paramètres, jamais moins » (7.3.0).
-        bindWithholdingFields(root);
-        bindRibFields(root);
-        // Le timbre se règle dans la devise choisie JUSTE au-dessus : l'unité suit la liste, sinon le
-        // champ annonce des dinars pendant qu'on vient de choisir l'euro (règle 9.4.8).
-        const devise = $('select[name=currency]', root), unite = $('[data-unite-timbre]', root);
-        if (devise && unite) devise.addEventListener('change', () => { unite.textContent = C.normCurrency(devise.value); });
+        // Sur la porte, le curseur est sur le chemin recommandé : Entrée le prend, Tab passe à l'autre.
+        if (s.porte && $('#sf-decouvrir', root)) $('#sf-decouvrir', root).focus();
         // Choisir un métier redessine l'écran : on relit d'abord TOUT ce que l'écran porte, sinon le
         // régime et la case « préremplir » repartent à leur valeur d'avant le clic — on ne jette
         // jamais ce que quelqu'un vient de saisir (règle 7.1.x, « Passer » ne jette rien).
@@ -15383,36 +15496,18 @@
           a.modulesTouche = true;            // un choix fait à la main ne se fait plus écraser
           cb.closest('.mod-row').classList.toggle('on', cb.checked);
         });
-        // L'écran de sauvegarde montre l'état RÉEL, à l'ouverture comme après le choix. Il écrivait
-        // « Copie activée vers : … » sans jamais lire `lastError` : un dossier iCloud pas encore
-        // synchronisé ou une clé en lecture seule donnaient le même message rassurant que le
-        // succès. Et il repartait sur « Aucun dossier choisi » dès qu'on revenait dessus.
-        const direExt = x => {
-          const st = $('#sf-ext-st', root), note = $('#sf-ext-note', root);
-          if (!st) return;
-          // UN seul vert (U-11) : tant qu'aucun dossier ne reçoit la copie, l'étape suivante est de
-          // le choisir ; une fois la copie en place, c'est « Terminer ». Deux verts côte à côte
-          // laissaient cliquer « Terminer » en croyant avoir fini l'étape qu'on venait de sauter.
-          const faite = !!(x && x.dir && !x.lastError);
-          const bExt = $('#sf-ext', root), bNext = $('#sf-next', root);
-          if (bExt) bExt.classList.toggle('btn-primary', !faite);
-          if (bNext) bNext.classList.toggle('btn-primary', faite);
-          if (!x || !x.dir) { st.textContent = 'Aucun dossier choisi.'; st.className = 'small muted'; if (note) note.hidden = true; return; }
-          if (x.lastError) {
-            st.innerHTML = `<span style="color:var(--danger)">La copie a échoué : ${h(x.lastError)}</span>`;
-            st.className = 'small';
-            if (note) { note.hidden = false; note.textContent = 'Dossier choisi : ' + x.dir + ' — choisis-en un autre, ou vérifie que le disque est branché et accessible en écriture.'; }
-            copieExterne = false;
-            return;
-          }
-          st.textContent = 'Copie activée vers : ' + x.dir; st.className = 'small';
-          if (note) note.hidden = true;
-          copieExterne = true;
+        // La porte a été vue, quel que soit le battant choisi : elle ne se rouvre plus, ni ici ni sur
+        // l'accueil (où elle vivait avant la 10.14.0, et vit encore pour qui ne l'a jamais vue).
+        const porteVue = () => { if (steps[i].porte) visitesPoser(e => { e.accueilVu = true; }); };
+        if ($('#sf-decouvrir', root)) $('#sf-decouvrir', root).onclick = () => {
+          porteVue();
+          // L'assistant reste EN ATTENTE à « Ton entreprise » : la sauvegarde que prend l'exemple
+          // le garde, et sortir de l'exemple le rouvre là — trois questions, posées à quelqu'un qui
+          // sait maintenant à quoi elles servent.
+          etape(i + 1);
+          root.remove();
+          resolve('decouvrir');
         };
-        if ($('#sf-ext', root)) {
-          $('#sf-ext', root).onclick = async () => direExt(await bridge.chooseExternalBackup());
-          Promise.resolve(bridge.externalBackupInfo()).then(direExt).catch(() => {});
-        }
         if ($('#sf-prev', root)) $('#sf-prev', root).onclick = () => { collect(); etape(i - 1); i--; draw(); };
         $('#sf-next', root).onclick = () => {
           collect();
@@ -15420,6 +15515,7 @@
           // voit pas. On les relit ici, sinon un choix fait au clavier juste avant « Continuer »
           // serait perdu — l'assistant doit écrire à chaque étape (règle 7.3.0).
           lireActivite();
+          porteVue();
           if (steps[i].id === 'entreprise' && !String(a.name || '').trim()) return refus($('#sf-form [name=name]', root), 'La raison sociale est nécessaire : c\'est le nom qui apparaît sur tes documents.');
           // L'écran « Ton activité » se traversait sans rien cliquer, et la case « Préremplir mon
           // catalogue » était cochée d'office : on promettait un catalogue qui n'arrivait jamais,
@@ -15430,7 +15526,14 @@
           etape(i + 1);
           i++; draw();
         };
-        root.onkeydown = e => { if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA') { e.preventDefault(); $('#sf-next', root).click(); } };
+        // Entrée continue depuis un CHAMP ; sur un bouton, elle fait ce que fait ce bouton. Elle
+        // cliquait « Continuer » quel que soit l'élément sous le curseur : sur la porte, Entrée sur
+        // « Commencer la découverte » aurait ouvert le formulaire à la place.
+        root.onkeydown = e => {
+          if (e.key !== 'Enter' || ['TEXTAREA', 'BUTTON', 'A', 'SELECT'].includes(e.target.tagName) || steps[i].porte) return;
+          const suite = $('#sf-next', root);
+          if (suite) { e.preventDefault(); suite.click(); }
+        };
         $('#sf-skip', root).onclick = async () => {
           // On ramasse d'abord : « Passer » jetait tout ce qui venait d'être tapé, même au dernier
           // écran, sans le dire. Quelqu'un qui avait rempli quatre écrans et cliquait « Passer » au
@@ -15441,13 +15544,19 @@
           // L'avertissement ne nomme que ce qui MANQUE : il reprochait l'absence de raison sociale à
           // quelqu'un qui venait de la taper (une nouvelle entreprise arrive avec son nom).
           const manque = [!String(a.name || '').trim() && 'raison sociale', !String(a.matricule || '').trim() && 'matricule fiscal'].filter(Boolean);
+          const surLaPorte = !!steps[i].porte;
           if (!await confirmDialog(
             (saisi ? `Ce que tu as déjà rempli (${saisi} champ${saisi > 1 ? 's' : ''}) est conservé. ` : '')
-            + 'Passer la suite de l\'assistant ? Tu pourras tout régler dans Paramètres'
+            + (surLaPorte ? 'Passer l\'assistant et découvrir SkanFact seul ?' : 'Passer la suite de l\'assistant ?')
+            + ' Tu pourras tout régler dans Paramètres'
             + (manque.length ? `, mais une facture sans ${manque.join(' ni ')} n'est pas conforme.` : '.'),
             'Passer', false)) return;
+          porteVue();
           OB.applySetup(data, a);            // on garde ce qui a été saisi, on n'invente rien
           save(true); drawNav(); root.remove(); resolve(false);
+          // Refuser la porte n'est pas refuser d'être aidé : on dit où la retrouver (règle 7.18.0 —
+          // la même phrase que « Non merci » de l'accueil).
+          if (surLaPorte) toast('D\'accord. La découverte et chaque visite guidée restent dans « Me guider », en bas du menu.');
         };
       };
       const collect = () => { const f = $('#sf-form', root); if (f) Object.assign(a, formValues(f)); };
@@ -15481,6 +15590,26 @@
         draw();
       })();
     });
+  }
+
+  // Le battant « Découvrir avec un exemple » de la porte (10.14.0) : l'exemple se charge — avec sa
+  // sauvegarde, prise juste avant — et la découverte démarre sur lui. S'il n'a pas pu se charger,
+  // l'assistant reprend là où la porte l'a laissé : personne ne reste devant un accueil vide sans
+  // savoir par quoi commencer.
+  async function decouvrirDepuisLaPorte() {
+    if (await loadDemo()) { lancerVisite(visiteParId('decouvrir')); return; }
+    if (await reprendreAssistant()) render();
+  }
+  // L'assistant que la porte a laissé EN ATTENTE, repris là où il s'était arrêté (« Ton entreprise ») :
+  // au retour de l'exemple, ou quand l'exemple n'a pas pu se charger. Rend `true` quand l'assistant
+  // s'est montré (terminé ou passé), `false` s'il n'y avait rien à reprendre.
+  async function reprendreAssistant() {
+    if (!OB.needsSetup(data)) return false;
+    const fait = await runSetup();
+    applyTheme();
+    $('#brand-company').textContent = data.company.name || 'Ton entreprise';
+    if (fait === true) toast('C\'est prêt.');
+    return true;
   }
 
   // L'assistant, rejouable (7.1.1). Il ne réécrit que ce qu'on lui redonne : les champs arrivent
@@ -15594,7 +15723,9 @@
     // périmé raconte des retards qui n'existent pas. Ne touche rien d'autre que l'exemple.
     await rafraichirExemple();
     applyTheme();
-    // Toute première ouverture : l'assistant remplit l'entreprise avant d'entrer dans l'application
+    // Toute première ouverture : la porte, puis l'assistant qui remplit l'entreprise avant d'entrer
+    // dans l'application — ou la découverte d'abord, si c'est le battant choisi (10.14.0).
+    let decouvrirDabord = false;
     if (OB.needsSetup(data)) {
       const done = await runSetup();
       applyTheme();
@@ -15602,7 +15733,8 @@
       // un onglet de Paramètres — une entrée de menu que l'utilisateur ne voyait même pas dans sa
       // barre latérale. Ce qu'il faut dire au premier lancement est maintenant dans le panneau
       // « Tes premiers pas », qui reste à l'écran et dont chaque ligne est cliquable.
-      if (done) toast('C\'est prêt.');
+      if (done === true) toast('C\'est prêt.');
+      decouvrirDabord = done === 'decouvrir';
     }
     // La licence se lit AVANT le premier dessin — hors ligne, instantané, jamais renvoyé nulle part —
     // et avec le matricule de la société, parce qu'une clé est émise pour UNE entreprise. Elle dit
@@ -15619,7 +15751,7 @@
     // simplement comme à faire.
     bridge.externalBackupInfo().then(i => {
       const avant = copieExterne;
-      copieExterne = !!(i && i.dir);
+      copieExterne = !!(i && i.dir && !i.lastError);   // une copie en échec ne coche pas l'étape
       if (copieExterne !== avant && location.hash === '#/dashboard') render(true);
     }).catch(() => {});
     $('#brand-company').textContent = data.company.name || 'Ton entreprise';
@@ -15645,6 +15777,7 @@
     $('#lic-banner').onclick = () => allerParametres('app', 'p-licence');
     if (!location.hash) location.hash = '#/dashboard';
     render();
+    if (decouvrirDabord) decouvrirDepuisLaPorte();
     if (loaded && loaded.corruptFile) {
       modal(`<h2>Fichier de données illisible</h2>
         <p>Le fichier de données n'a pas pu être lu. Il n'a pas été effacé : il a été renommé en<br><code>${h(loaded.corruptFile.split(/[\\/]/).pop())}</code>.</p>

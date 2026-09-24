@@ -2670,7 +2670,9 @@ t('Une pièce enregistrée a UN bouton principal, l\'étape suivante ; « Enregi
     '« Enregistrer » reste principal sur une pièce déjà enregistrée et inchangée');
   assert.ok(vert({ isExtra: true, suiteExtra: 'save' }), 'une pièce tirée d\'une autre, sans numéro, n\'a pas « Enregistrer » en vert');
   assert.ok(/<button class="btn \$\{envoiSuivant \? 'btn-primary' : ''\}" id="email">/.test(ent), 'l\'envoi n\'est plus l\'étape suivante d\'un devis enregistré');
-  assert.ok(/const envoiSuivant = !isNew && !locked && !devisFacturable && doc\.status === 'brouillon'/.test(ent),
+  // `figee` (10.14.0) réunit la pièce émise et celle d'un mois clôturé : ni l'une ni l'autre ne
+  // porte l'envoi en vert. L'assertion recopiait `!locked` et tombait sur la règle élargie.
+  assert.ok(/const envoiSuivant = !isNew && !(locked|figee) && !devisFacturable && doc\.status === 'brouillon'/.test(ent),
     'l\'envoi ne peut être principal ni sur une pièce neuve, ni sur un devis déjà facturable');
   const touch = ent.slice(ent.indexOf('function touch() {'), ent.indexOf('function untouch('));
   assert.ok(touch.length > 50 && touch.length < 900, 'tranche de touch : ' + touch.length);
@@ -2679,7 +2681,8 @@ t('Une pièce enregistrée a UN bouton principal, l\'étape suivante ; « Enregi
   const verts = entete => {
     const btns = entete.map(([id, vert]) => { const cls = new Set(vert ? ['btn-primary'] : []);
       return { id, cls, classList: { add: c => cls.add(c), remove: c => cls.delete(c), contains: c => cls.has(c) } }; });
-    const ctx = { dirty: false, locked: false, reportDirty: () => {},
+    // `figee` (10.14.0) : touch() ne marque rien sur une pièce émise OU d'un mois clôturé.
+    const ctx = { dirty: false, locked: false, figee: false, reportDirty: () => {},
       $: sel => sel === '#dirty-dot' ? { hidden: true } : (btns.find(b => '#' + b.id === sel) || null),
       $$: () => btns.filter(b => b.cls.has('btn-primary')) };
     require('vm').runInNewContext(aide + '\n' + touch + '\ntouch();', ctx);
@@ -2808,7 +2811,9 @@ t('H-E25 : la palette montre le montant de la liste, dans la devise de la pièce
   assert.ok(/amt: C\.money\(montantDeListe\(d\), docCur\(d\)\)/.test(docs), 'la palette ne montre plus le montant de la liste, dans la devise de la pièce');
   assert.ok(!/computeTotals/.test(docs), 'la palette recalcule le montant d\'une pièce à sa façon');
   assert.ok(/aideFiltre\(G\.ARTICLES,/.test(pal), 'la palette ne cherche plus l\'Aide avec le moteur de la page Aide');
-  assert.ok(/\.\.\.aidesPour\(words\)/.test(pal), 'les articles d\'Aide ne sont plus proposés par la palette');
+  // Les articles entrent dans ce qui s'affiche, directement ou par la variable qui les compte aussi
+  // dans « n résultats sur N » (10.14.0) : c'est la règle, pas la forme de l'appel.
+  assert.ok(/\.\.\.aidesPour\(words\)/.test(pal) || (/const aides = q \? aidesPour\(words\) : \[\];/.test(pal) && /\.\.\.guides, \.\.\.aides\]/.test(pal)), 'les articles d\'Aide ne sont plus proposés par la palette');
 });
 
 // Un champ `type=number` se lit dans la langue du SYSTÈME : sur un poste en anglais, « 2,5 » tapé

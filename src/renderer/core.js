@@ -966,6 +966,14 @@
   const plFr = (n, un, plur) => `${n} ${Math.abs(n) > 1 ? (plur || un + 's') : un}`;
   const sAccord = n => (Number(n) > 1 ? 's' : '');
 
+  // La ponctuation double à la française (10.14.0) : « ? », « ! », « ; », « : » et l'intérieur des
+  // guillemets prennent une espace FINE INSÉCABLE. Avec une espace ordinaire, le navigateur coupe
+  // juste avant : dans le bandeau d'une question du comptable, le « ? » commençait la ligne, tout
+  // seul. Le texte d'une question est tapé DANS LE CABINET, avec des espaces ordinaires : c'est donc
+  // ici, à l'affichage, qu'il se corrige — jamais dans la donnée, qui repart telle quelle. Jumelle
+  // de `typo` (visite.js) et de `typographie()` du Cabinet (9.4.2) ; un test compare les corps.
+  const typoFr = t => String(t == null ? '' : t).replace(/ ([?!;:»])/g, '\u202f$1').replace(/« /g, '«\u202f');
+
   // Un délai en jours réglé par l'utilisateur (10.12.0). ZÉRO est un délai — « à réception » —, et
   // `Number(x) || 30` le changeait en trente jours : une entreprise réglée « paiement à réception »
   // recevait des factures « À régler avant le » un mois plus tard. C'est le piège de la 7.16.0
@@ -988,6 +996,53 @@
     if (!mots.length) return true;
     const t = plier(texte);
     return mots.every(m => t.includes(m));
+  }
+
+  // Le RANG d'un résultat de recherche (10.14.0), jugé sur le NOM de ce qu'on ouvre — jamais sur le
+  // texte où l'on a cherché (l'objet d'une pièce, le client d'une facture, le corps d'un article).
+  // La palette Ctrl K coupait à douze AVANT de classer : sur l'exemple de cinq ans, « audit » ne
+  // rendait que douze factures dont l'objet parle d'audit, et jamais la prestation « Audit de
+  // sécurité réseau », rangée après elles. Un extrait coupé avant d'être classé montre ce qui est
+  // arrivé en premier, pas ce qu'on cherchait. 3 : le nom commence par la recherche ; 2 : chaque mot
+  // commence un mot du nom ; 1 : le nom contient chaque mot ; 0 : trouvé ailleurs que dans le nom.
+  // Les mots se découpent sur `\p{L}\p{N}` et pas sur `[a-z]` : une raison sociale en arabe a des
+  // mots elle aussi (règle 6.8.1).
+  function rangRecherche(nom, q) {
+    const n = plier(nom), requete = plier(q).trim();
+    if (!requete) return 0;
+    if (n.startsWith(requete)) return 3;
+    const mots = requete.split(/\s+/).filter(Boolean);
+    const debuts = n.split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+    if (mots.every(m => debuts.some(d => d.startsWith(m)))) return 2;
+    if (mots.every(m => n.includes(m))) return 1;
+    return 0;
+  }
+
+  // La liste d'une recherche, dans l'ordre où elle s'affiche (10.14.0) : on garde ce qui contient
+  // chaque mot, on CLASSE par `rangRecherche`, à rang égal l'ordre d'arrivée. Chaque élément porte
+  // `main` (le nom qu'on lit), `text` (où l'on cherche) et `piece` pour une pièce. Les pièces se
+  // comptent par centaines sur cinq ans, et leur numéro commence comme la page qu'on cherche
+  // (« fac » → FAC-2026-…) : au-delà des `plafondPieces` premières, elles passent APRÈS tout le reste.
+  // Elles ne poussent plus une page, un client ou une prestation hors des premières lignes, et elles
+  // remplissent encore la liste quand rien d'autre ne répond (« 2026 »). `texte` permet à l'appelant
+  // de garder son texte déjà plié d'une frappe à l'autre.
+  function classerRecherche(elements, q, opts = {}) {
+    const requete = plier(q).trim();
+    if (!requete) return [];
+    const mots = requete.split(/\s+/).filter(Boolean);
+    const texte = opts.texte || (x => plier(x.text));
+    const plafond = opts.plafondPieces == null ? 6 : opts.plafondPieces;
+    const classes = (elements || []).map((x, i) => ({ x, i }))
+      .filter(o => { const t = texte(o.x); return mots.every(m => t.includes(m)); })
+      .map(o => ({ ...o, r: rangRecherche(o.x.main, requete) }))
+      .sort((a, b) => b.r - a.r || a.i - b.i);
+    const tete = [], reste = [];
+    let pieces = 0;
+    classes.forEach(({ x }) => {
+      if (x.piece && pieces >= plafond) reste.push(x);
+      else { if (x.piece) pieces++; tete.push(x); }
+    });
+    return tete.concat(reste);
   }
 
   function statusLabel(s) { return STATUS_LABELS[s] || s; }
@@ -6226,7 +6281,18 @@
     const facturesEmises = docs.filter(x => x.type === 'facture' && x.status !== 'brouillon');
     const unPaiement = docs.some(x => (x.payments || []).length);
 
+    const cab = (company && company.cabinet) || {};
+    const comptableRelie = !!(cab.publicKey || String((company && company.accountantEmail) || '').trim());
     const etapes = [
+      // La découverte (10.14.0). Faite, elle compte : la liste démarre à « 1 sur n », et une liste
+      // déjà commencée se termine bien plus souvent qu'une liste à zéro. Pas faite, elle reste
+      // proposée sans jamais passer devant une étape du métier (`facultatif`) : elle n'est pas un
+      // devoir, et quelqu'un qui connaît déjà la facturation ne doit pas la voir en tête de liste.
+      { id: 'decouverte', titre: 'Découvrir SkanFact avec l\'exemple', fait: !!o.decouverte, facultatif: true,
+        quoi: o.decouverte
+          ? 'Tu as fait le tour, sur une entreprise d\'exemple de cinq ans : tu sais où est chaque chose.'
+          : 'Le grand tour sur une entreprise d\'exemple de cinq ans : chaque page remplie, sans rien risquer. Tes données sont mises de côté pendant ce temps.',
+        action: 'decouverte' },
       { id: 'societe', titre: 'Compléter ta fiche société', fait: !gaps.length,
         quoi: gaps.length
           ? `Il manque ${liste(gaps)}. Ces informations s'impriment en haut de chaque document, et une facture sans matricule fiscal n'est pas conforme.`
@@ -6242,15 +6308,27 @@
       { id: 'devis', titre: 'Faire ton premier devis', fait: devis.length > 0,
         quoi: 'Un devis annonce un prix avant de travailler. C\'est la pièce par laquelle presque tout commence.',
         action: 'devis' },
+      // La copie de sécurité vient JUSTE APRÈS le premier devis (10.14.0). Elle était le dernier écran
+      // de l'assistant, avant qu'il existe quoi que ce soit à copier : une question abstraite, qu'on
+      // passait. Après le premier devis, elle protège quelque chose de réel — c'est le moment où l'on
+      // accepte de prendre deux minutes pour elle.
+      { id: 'sauvegarde', titre: 'Mettre tes données à l\'abri', fait: !!o.copieExterne,
+        quoi: 'Une copie automatique vers iCloud ou OneDrive, un disque ou une clé USB. C\'est l\'étape que tout le monde saute, et la seule dont l\'absence coûte tout.',
+        action: 'sauvegarde' },
       { id: 'envoi', titre: 'L\'envoyer à ton client', fait: devis.some(x => x.status && x.status !== 'brouillon'),
         quoi: 'Ouvre le devis, puis « Envoyer » : le PDF part en pièce jointe. Tant qu\'un devis reste en brouillon, SkanFact ne le compte nulle part.',
         action: devis.length ? 'envoiDevis' : null },
       { id: 'facture', titre: 'Transformer un devis accepté en facture', fait: facturesEmises.length > 0,
         quoi: 'En un clic, sans rien ressaisir. C\'est à ce moment-là que le numéro est attribué et que la pièce se verrouille.',
         action: 'factures' },
-      { id: 'sauvegarde', titre: 'Mettre tes données à l\'abri', fait: !!o.copieExterne,
-        quoi: 'Une copie automatique vers iCloud ou OneDrive, un disque ou une clé USB. C\'est l\'étape que tout le monde saute, et la seule dont l\'absence coûte tout.',
-        action: 'sauvegarde' }
+      // Le comptable (10.14.0) : son adresse suffit pour lui envoyer le paquet du mois ; son fichier
+      // d'appairage, s'il a SkanFact Cabinet, chiffre ce paquet pour lui seul. Facultatif : certains
+      // n'en ont pas encore, et ce n'est pas à nous de décider qu'ils en ont besoin.
+      { id: 'comptable', titre: 'Relier ton comptable', fait: comptableRelie, facultatif: true,
+        quoi: comptableRelie
+          ? (cab.publicKey ? `Tes paquets partent chiffrés pour ${cab.name || 'ton cabinet'}.` : 'Son adresse est enregistrée : « Envoyer au comptable » s\'en sert.')
+          : 'Son adresse, et son fichier d\'appairage s\'il utilise SkanFact Cabinet : chaque mois, le paquet de tes pièces part en deux clics, sans rien ressaisir de son côté.',
+        action: 'comptable' }
     ];
     if (unPaiement) {
       etapes.push({ id: 'encaissement', titre: 'Encaisser', fait: true,
@@ -6262,9 +6340,17 @@
     // client » — et le panneau reprendrait tout l'écran, exactement le défaut qu'il corrige.
     // La copie de sauvegarde, elle, reste importante : quand c'est la seule étape qui manque, elle
     // devient une ligne de « À faire », pas un panneau.
-    const metier = etapes.filter(x => x.id !== 'sauvegarde');
+    // Les étapes FACULTATIVES (la découverte, le comptable) ne retiennent pas le panneau : un panneau
+    // qui ne disparaîtrait jamais parce qu'on n'a pas de comptable serait le panneau qu'on apprend à
+    // ne plus lire.
+    const metier = etapes.filter(x => x.id !== 'sauvegarde' && !x.facultatif);
     const demarrage = metier.some(x => !x.fait);
-    return { etapes, faits, total: etapes.length, fini: faits === etapes.length, demarrage,
+    // L'étape SUIVANTE, calculée ici une fois pour l'accueil, la jauge de fin de visite et « Me
+    // guider » : la première qui n'est ni faite ni facultative. Trois endroits qui la recalculaient
+    // chacun avec `find(e => !e.fait)` auraient proposé « découvrir l'exemple » à quelqu'un qui vient
+    // de refuser la découverte, en tête et en vert, devant sa fiche société.
+    const suivante = etapes.find(x => !x.fait && !x.facultatif) || null;
+    return { etapes, faits, total: etapes.length, fini: faits === etapes.length, demarrage, suivante,
       sauvegardeSeule: !demarrage && !etapes.find(x => x.id === 'sauvegarde').fait };
   }
 
@@ -7259,7 +7345,7 @@
     DOC_FILTRES, docFiltre,
     pageInfo, compareValues, LINE_UNITS, usedUnits, usedWithholdingRates, parseDateInput, fmtDateInput, monthMatrix,
     uid, round3, money, fmtDate, addDays, daysInMonth, today, jourDeLInstant, escapeHtml, nl2br, capitalAffiche, statusLabel,
-    plier, correspondRecherche, delaiJours,
+    plier, correspondRecherche, rangRecherche, classerRecherche, delaiJours, typoFr,
     CLOSURE_ACTIONS, closedUntil, isClosedDate, closedPeriodLabel, closableMonths, rienACloturer, closureChecks, closePeriod, reopenPeriod, closureLog,
     PACK_FORMAT, packPeriod, packPlan, packChecklist, packFileName, packCoverHtml,
     DEFAULT_ACCOUNTS, ACCOUNT_LABELS, ENTRY_JOURNALS, journalLabel, chartAccounts, journalEntries,

@@ -375,9 +375,12 @@ module.exports = ({ t, assert, lireSource }) => {
     (d.accounts || []).filter(x => x.rib).forEach(x => assert.ok(core.verifRib(x.rib).ok, 'RIB de compte de l\'exemple : ' + x.rib));
     // Les quatre champs RIB passent par le même composant, branché partout où un écran se dessine.
     const ent = code('src', 'renderer', 'app.js');
-    assert.strictEqual((ent.match(/\$\{ribField\(/g) || []).length, 4, 'fiche société, assistant, fournisseur, compte bancaire');
+    // 10.14.0 : l'assistant ne demande plus le RIB — il vient avec la fiche société, première étape
+    // des premiers pas. Restent trois champs : fiche société, fournisseur, compte bancaire.
+    assert.strictEqual((ent.match(/\$\{ribField\(/g) || []).length, 3, 'fiche société, fournisseur, compte bancaire');
     assert.ok(!/field\([^)]*'rib'/.test(ent), 'un champ RIB échappe encore à la vérification');
-    assert.ok((ent.match(/bindRibFields\((layer|view|root)\)/g) || []).length >= 4, 'la vérification n\'est pas branchée sur les fenêtres, les pages et l\'assistant');
+    // Les APPELS seulement : `function bindRibFields(root)` satisfaisait le motif à lui seul.
+    assert.ok((ent.match(/(?<!function )bindRibFields\((layer|view)\)/g) || []).length >= 3, 'la vérification n\'est pas branchée sur les fenêtres et les pages');
     assert.ok(/isInv && \(co\.rib \|\| ''\)\.trim\(\) && !C\.verifRib\(co\.rib\)\.ok/.test(ent), 'l\'émission ne prévient pas d\'un RIB faux');
     assert.ok(/\.rib-note \{/.test(lireSource('src', 'renderer', 'style.css')), 'la remarque du RIB n\'a pas de style');
   });
@@ -481,16 +484,29 @@ module.exports = ({ t, assert, lireSource }) => {
   // « Choisir un dossier… » et « Terminer » en vert côte à côte — on cliquait « Terminer » en croyant
   // avoir fini l'étape qu'on venait de sauter (U-11) ; et « iCloud Drive » proposé à un utilisateur
   // Windows, la plateforme où SkanFact est distribué (le jumeau du « Finder », E-14).
+  // 10.14.0 — la copie de sécurité n'est plus un écran de l'assistant : elle suit le premier devis,
+  // dans les premiers pas, et se règle dans Paramètres → Données. Retourné vers la RÈGLE (U-11), qui
+  // vaut là où la copie vit maintenant, et sur chaque écran de l'assistant, porte comprise.
   t('L\'étape « Protéger tes données » : un seul vert, et le dossier en ligne de l\'ordinateur', () => {
     const app = code('src', 'renderer', 'app.js');
+    // La porte : UN vert, « Commencer la découverte » ; « Commencer avec mon entreprise » est un
+    // battant ordinaire. Et « Continuer / Terminer » du pied n'existe pas sur la porte — sinon deux verts.
+    const i0 = app.indexOf('if (s.porte) {');
+    const porte = app.slice(i0, app.indexOf("if (s.id === 'entreprise')", i0));
+    assert.ok(i0 > 0 && porte.length > 500 && porte.length < 4000, 'tranche de la porte : ' + porte.length);
+    assert.strictEqual((porte.match(/btn-primary/g) || []).length, 1, 'la porte porte deux verts');
+    assert.ok(/class="btn btn-primary" id="sf-decouvrir"/.test(porte) && /class="btn" id="sf-next"/.test(porte),
+      'le vert de la porte n\'est pas « Commencer la découverte »');
     const pied = app.slice(app.indexOf('id="sf-skip"'), app.indexOf('id="sf-skip"') + 400);
-    assert.ok(/class="btn \$\{s\.id === 'sauvegarde' \? '' : 'btn-primary'\}" id="sf-next"/.test(pied),
-      '« Continuer / Terminer » est vert à l\'étape de la sauvegarde, à côté de « Choisir un dossier… » : ' + pied.slice(0, 200));
-    const f0 = app.indexOf('const direExt = x =>');
-    const direExt = app.slice(f0, app.indexOf('\n        };', f0));
-    assert.ok(direExt.length > 200 && direExt.length < 2500, 'tranche de direExt : ' + direExt.length);
-    assert.ok(/classList\.toggle\('btn-primary', !faite\)/.test(direExt) && /classList\.toggle\('btn-primary', faite\)/.test(direExt),
-      'le vert ne passe pas de « Choisir un dossier… » à « Terminer » une fois la copie en place');
+    assert.ok(/\$\{s\.porte \? '' : `<button class="btn btn-primary" id="sf-next">/.test(pied),
+      '« Continuer / Terminer » s\'affiche sur la porte, à côté de « Commencer la découverte » : ' + pied.slice(0, 200));
+    // Et la copie, dans Paramètres → Données : tant qu'aucune copie n'est en place — ou qu'elle
+    // échoue —, le vert est « Choisir un dossier… » ; une fois en place, il passe au mot de passe.
+    const f0 = app.indexOf('const etapeMotDePasse = ok =>');
+    const vert = app.slice(f0, app.indexOf('\n      };', f0));
+    assert.ok(f0 > 0 && vert.length > 60 && vert.length < 600, 'tranche du vert de la copie : ' + vert.length);
+    assert.ok(/\$\('#ext-choose'\)\.classList\.toggle\('btn-primary', !ok\)/.test(vert) && /\$\('#sec-set'\)\.classList\.toggle\('btn-primary', ok\)/.test(vert),
+      'le vert ne passe pas de « Choisir un dossier… » au mot de passe une fois la copie en place');
     const nus = ['app.js', 'guide.js', 'onboarding.js', 'core.js'].map(f => [f, code('src', 'renderer', f)])
       .filter(([f, c]) => (f === 'app.js' ? c.replace(/const NUAGE = [^\n]+/, '') : c).split(/iCloud(?: Drive)?/).slice(1)
         .some(apres => !/^\s*(\(Mac\)|, OneDrive|,? ?(ou|et) OneDrive)/.test(apres)))
@@ -587,14 +603,17 @@ module.exports = ({ t, assert, lireSource }) => {
     assert.ok(/\.\.\.\(modele \|\| \{\}\)/.test(app.slice(a0, a0 + 400)), 'accountForm ne reprend pas le modèle qu\'on lui passe');
   });
   // « Timbre fiscal par facture : 1 » — un dinar, un millime ? La règle 9.4.8 veut l'unité à côté du
-  // champ ; dans l'assistant elle suit la devise choisie juste au-dessus (10.12.0).
-  t('Le timbre fiscal dit son unité, dans les Paramètres et dans l\'assistant', () => {
+  // champ ; elle suit la devise choisie (10.12.0). 10.14.0 : l'assistant ne demande plus le timbre
+  // (usage par défaut : 1 dinar) — la règle vaut pour chaque champ qui reste, et l'unité suit la
+  // devise dans les Paramètres, là où les deux se règlent désormais.
+  t('Le timbre fiscal dit son unité, et elle suit la devise choisie', () => {
     const app = code('src', 'renderer', 'app.js');
     const champs = app.match(/lbl\(`Timbre fiscal par facture[^`]*`/g) || [];
-    assert.strictEqual(champs.length, 2, 'deux champs du timbre attendus, trouvé : ' + champs.length);
-    for (const c of champs) assert.ok(/normCurrency\(/.test(c), 'le champ du timbre ne dit pas sa devise : ' + c);
+    assert.ok(champs.length >= 1, 'aucun champ du timbre trouvé');
+    for (const c of champs) assert.ok(/normCurrency\(/.test(c) && /data-unite-timbre/.test(c), 'le champ du timbre ne dit pas sa devise, ou elle ne suit pas : ' + c);
     assert.ok(!/lbl\('Timbre fiscal par facture'/.test(app), 'un champ du timbre reste sans unité');
-    assert.ok(/unite\.textContent = C\.normCurrency\(devise\.value\)/.test(app), 'l\'unité du timbre ne suit pas la devise choisie dans l\'assistant');
+    assert.ok(/e\.target\.name === 'currency'\) \{ const u = \$\('#pf \[data-unite-timbre\]'\); if \(u\) u\.textContent = C\.normCurrency\(e\.target\.value\)/.test(app),
+      'l\'unité du timbre ne suit pas la devise choisie dans les Paramètres');
   });
   // Une menuiserie facture l'acompte de 30 % d'un devis accepté : le devis quittait « À faire », parce
   // que l'acompte porte `fromQuoteId` comme une facture totale — les 70 % restants n'étaient réclamés
@@ -1042,7 +1061,12 @@ module.exports = ({ t, assert, lireSource }) => {
     const restes = (app.match(/\.toLowerCase\(\)\.includes\(/g) || []).length;
     assert.strictEqual(restes, 0, 'une recherche compare encore le texte sans plier ses accents (' + restes + ')');
     assert.ok(/C\.correspondRecherche\(x\.text \|\| x\.label \|\| '', q\.value\)/.test(app), 'le choix d\'un client dans l\'éditeur est sensible aux accents');
-    assert.ok(/const q = C\.plier\(input\.value\.trim\(\)\);/.test(app) && /plie\(x\)\.includes\(w\)/.test(app), 'la palette Ctrl K ne plie pas les accents');
+    // La palette plie sa recherche, et son texte passe par `C.classerRecherche` (10.14.0), qui plie
+    // aussi : la RÈGLE se prouve par le comportement du classement, pas par la forme d'un filtre —
+    // l'assertion d'avant recopiait `plie(x).includes(w)` et tombait sur un code juste.
+    assert.ok(/const q = C\.plier\(input\.value\.trim\(\)\);/.test(app), 'la palette Ctrl K ne plie pas sa recherche');
+    assert.ok(/const plie = x => x\.plie \|\| \(x\.plie = C\.plier\(x\.text\)\);/.test(app) && /C\.classerRecherche\(all, q, \{ texte: plie \}\)/.test(app), 'la palette Ctrl K ne plie pas le texte où elle cherche');
+    assert.strictEqual(core.classerRecherche([{ main: 'Hôtel Dar El Marsa SARL', text: 'Hôtel Dar El Marsa SARL' }], 'hotel').length, 1, 'le classement de la palette est sensible aux accents');
     assert.ok(/const aideMots = q => C\.plier\(/.test(app) && /const titre = C\.plier\(a\.title\)/.test(app), 'la recherche de l\'Aide ne plie pas les accents');
     // Le surlignage découpe le texte d'origine aux positions trouvées dans le texte plié : les deux
     // doivent avoir la même longueur.
@@ -1271,8 +1295,12 @@ module.exports = ({ t, assert, lireSource }) => {
     assert.ok(ligne && !/ro: locked/.test(ligne) && !/add: locked \? null/.test(ligne), 'le champ Affaire d\'une pièce émise est encore en lecture seule : ' + ligne.trim());
     const pa = app.slice(app.indexOf('const poserAffaire = v =>'), app.indexOf('const projectCombo = bindCombo('));
     assert.ok(pa.length > 100 && pa.length < 1200, 'tranche poserAffaire introuvable (' + pa.length + ')');
-    assert.ok(/if \(!locked\) return;/.test(pa) && /st\.projectId = v/.test(pa) && /delete st\.projectId/.test(pa) && /save\(true\)/.test(pa),
+    // Sur une pièce qu'on ne peut plus modifier — émise, ou (10.14.0) d'un mois clôturé : `figee`
+    // réunit les deux —, l'affaire s'enregistre tout de suite. L'assertion d'avant recopiait
+    // `if (!locked)` et tombait sur la règle élargie.
+    assert.ok(/if \(!(locked|figee)\) return;/.test(pa) && /st\.projectId = v/.test(pa) && /delete st\.projectId/.test(pa) && /save\(true\)/.test(pa),
       'sur une pièce émise, l\'affaire choisie n\'est pas enregistrée sur la pièce rangée');
+    assert.ok(!/ro: figee/.test(ligne), 'le champ Affaire d\'une pièce clôturée est en lecture seule : ' + ligne.trim());
     const pc = app.slice(app.indexOf('const projectCombo = bindCombo('), app.indexOf('const projectCombo = bindCombo(') + 500);
     assert.ok(/onPick: poserAffaire/.test(pc), 'le choix d\'une affaire ne passe pas par poserAffaire');
     // Retirer : la liste commence par « — Aucune affaire — », grisée comme l'invite qu'elle remplace.
@@ -1445,7 +1473,7 @@ module.exports = ({ t, assert, lireSource }) => {
     const m = brut.match(/const suiteExtra = ([\s\S]*?: '');\n/);
     assert.ok(m, 'l\'étape suivante des autres pièces ne se calcule plus');
     const suite = (doc, o = {}) => require('vm').runInNewContext('(' + m[1] + ')', {
-      isExtra: true, isNew: false, locked: false, envoiSuivant: false, doc,
+      isExtra: true, isNew: false, locked: false, figee: false, envoiSuivant: false, doc,
       convertibles: o.conv || ['facture'], data: {}, C: { chaineDePieces: () => o.derivees || [] }, ...o.ctx });
     assert.strictEqual(suite({ type: 'livraison', status: 'brouillon', number: '' }), 'save', 'une pièce tirée d\'une autre, sans numéro : c\'est « Enregistrer » qui le lui donne');
     assert.strictEqual(suite({ type: 'livraison', status: 'brouillon', number: 'BL-1' }), 'pdf', 'un bon de livraison s\'imprime pour être signé');
@@ -1455,6 +1483,8 @@ module.exports = ({ t, assert, lireSource }) => {
     assert.strictEqual(suite({ type: 'commande', status: 'annulée', number: 'BC-1' }), '', 'une pièce annulée propose une suite');
     assert.strictEqual(suite({ type: 'proforma', status: 'brouillon', number: 'PRO-1' }, { ctx: { envoiSuivant: true } }), '', 'deux verts : l\'envoi ET la suite');
     assert.strictEqual(suite({ type: 'devis', status: 'brouillon', number: 'DEV-1' }, { ctx: { isExtra: false } }), '', 'la règle déborde sur le devis');
+    // Une pièce qu'on ne peut plus modifier (émise, ou d'un mois clôturé — 10.14.0) ne propose aucune suite en vert.
+    assert.strictEqual(suite({ type: 'proforma', status: 'envoyée', number: 'PRO-1' }, { ctx: { figee: true } }), '', 'une pièce d\'un mois clôturé propose une suite qu\'elle ne peut pas porter');
     assert.ok(/suiteExtra === 'transform' \? ' btn-primary'/.test(brut) && /suiteExtra === 'pdf' \? ' btn-primary'/.test(brut) && /\|\| suiteExtra === 'save' \? 'btn-primary'/.test(brut), 'l\'étape calculée ne colore aucun bouton');
     assert.ok(/doc\.status === 'brouillon' && !!doc\.number/.test(brut), 'une pièce sans numéro propose de l\'envoyer');
   });
@@ -1995,7 +2025,10 @@ module.exports = ({ t, assert, lireSource }) => {
     const app = code('src', 'renderer', 'app.js');
     assert.ok(/'<button class="btn" id="sec-set">Activer un mot de passe…<\/button>'/.test(app), '« Activer un mot de passe » est vert d\'office, à côté de la copie externe');
     assert.ok(/const etapeMotDePasse = ok => \{[\s\S]{0,120}\$\('#ext-choose'\)\.classList\.toggle\('btn-primary', !ok\);[\s\S]{0,120}\$\('#sec-set'\)\.classList\.toggle\('btn-primary', ok\);/.test(app), 'le vert ne passe pas de la copie externe au mot de passe');
-    assert.ok(/etapeMotDePasse\(!!i\.dir\)/.test(app), 'le vert ne suit pas la copie externe posée');
+    // 10.14.0 : une copie POSÉE mais qui échoue n'est pas une copie en place — le vert reste sur
+    // « Changer de dossier… » tant que la ligne rouge « Dernière copie impossible » est là.
+    assert.ok(/etapeMotDePasse\(copieOk\)/.test(app) && /const copieOk = !!\(i && i\.dir && !i\.lastError\);/.test(app),
+      'le vert ne suit pas la copie externe posée — ni son échec');
     const mdp = app.slice(app.indexOf("panneau('p-motdepasse'"), app.indexOf("panneau('p-motdepasse'") + 1800);
     assert.ok(mdp.indexOf('aucune récupération') > 0 && mdp.indexOf('aucune récupération') < mdp.indexOf('id="sec-set"'), '« aucune récupération » se lit sous le bouton qui l\'engage');
     assert.ok(/<button type="button" class="btn" id="lic-save">Enregistrer la clé<\/button>/.test(app), '« Enregistrer la clé » est vert sur une case vide');

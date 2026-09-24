@@ -26,12 +26,44 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
   win.on('pageerror', e => errors.push('pageerror: ' + e.message));
   win.on('console', m => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
 
-  const step = async (name, fn) => { await fn(); console.log('ok -', name); };
+  // Un échec DIT ce qu'il voyait (10.14.0) : « Timeout 30000ms exceeded » sur une attente de fenêtre
+  // fermée ne nomme ni la fenêtre restée ouverte, ni la page. On relève l'adresse, le texte de la
+  // fenêtre du dessus et une capture — c'est la moitié du diagnostic, prise au moment où elle existe.
+  const step = async (name, fn) => {
+    try { await fn(); } catch (e) {
+      try {
+        const vu = await win.evaluate(() => {
+          const m = [...document.querySelectorAll('#modal-root .modal')].pop();
+          return { hash: location.hash, fenetre: m ? m.innerText.replace(/\s+/g, ' ').slice(0, 300) : '', visite: !!document.querySelector('.visite-bulle') };
+        });
+        const dossier = path.join(root, 'dist-e2e', 'entreprise');
+        fs.mkdirSync(dossier, { recursive: true });
+        await win.screenshot({ path: path.join(dossier, 'echec.png') });
+        // Écrit à part : Node imprime la PILE de l'erreur, figée à sa création — un message
+        // complété après coup ne s'afficherait jamais.
+        console.log(`not ok - ${name}\n  à l'écran : ${vu.hash}${vu.fenetre ? ` — fenêtre « ${vu.fenetre} »` : ''}${vu.visite ? ' — une bulle de visite est ouverte' : ''} (capture : dist-e2e/entreprise/echec.png)`);
+      } catch (_) { /* l'application ne répond plus : l'erreur d'origine suffit */ }
+      throw e;
+    }
+    console.log('ok -', name);
+  };
 
-  await step('première utilisation : l\'assistant se déroule et remplit la société', async () => {
+  await step('première utilisation : la porte, puis les questions qui remplissent la société', async () => {
     await win.waitForSelector('#setup');
     if (!(await win.textContent('.setup-t')).includes('Bienvenue')) throw new Error('premier écran');
-    await win.click('#sf-next');                                          // → entreprise
+    // 10.14.0 — la PORTE : deux battants, UN vert (« Commencer la découverte »), aucun compteur de
+    // questions, et le curseur sur le chemin recommandé.
+    const porte = await win.evaluate(() => ({
+      decouvrir: !!document.querySelector('#setup #sf-decouvrir.btn-primary'),
+      commencer: !!document.querySelector('#setup #sf-next') && !document.querySelector('#setup #sf-next.btn-primary'),
+      verts: [...document.querySelectorAll('#setup .btn-primary')].filter(b => b.offsetParent).length,
+      compteur: !!document.querySelector('#setup .setup-step'),
+      focus: document.activeElement && document.activeElement.id
+    }));
+    if (!porte.decouvrir || !porte.commencer || porte.verts !== 1 || porte.compteur || porte.focus !== 'sf-decouvrir') throw new Error('la porte : ' + JSON.stringify(porte));
+    await win.click('#sf-next');                                          // « Commencer avec mon entreprise » → entreprise
+    await win.waitForSelector('#setup .setup-step');
+    if ((await win.textContent('#setup .setup-step')).trim() !== '1 / 3') throw new Error('le compteur ne compte pas les questions : ' + await win.textContent('#setup .setup-step'));
     await win.waitForSelector('#sf-form input[name=name]');
     await win.click('#sf-next');                                          // refusé : pas de raison sociale
     await win.waitForSelector('#toast.show.error');
@@ -51,22 +83,35 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
     if (await win.$('#sf-mods input[data-sfmod="paie"]:checked')) {
       throw new Error('la Paie ne devrait pas être cochée d\'office pour un artisan sans salarié');
     }
-    await win.click('#sf-next');                                          // → facturation
-    await win.waitForSelector('#sf-form input[name=paymentTermsDays]');
-    await win.fill('#sf-form input[name=paymentTermsDays]', '45');
-    await win.click('#sf-next');                                          // → paiement
-    await win.waitForSelector('#sf-form input[name=rib]');
-    await win.fill('#sf-form input[name=bank]', 'BIAT');
-    await win.fill('#sf-form input[name=rib]', '00 006 0000123456789 01');
-    await win.click('#sf-next');                                          // → sauvegarde
-    await win.waitForSelector('#sf-ext');
+    // Le dernier écran : plus de facturation, de RIB ni de sauvegarde (10.14.0) — ils ont leurs
+    // usages par défaut, ou viennent avec les premiers pas.
+    if ((await win.textContent('#sf-next')).trim() !== 'Terminer') throw new Error('« De quoi as-tu besoin ? » n\'est plus le dernier écran');
     await win.click('#sf-next');                                          // terminer
     await win.waitForFunction(() => !document.querySelector('#setup'));
     const brand = await win.textContent('#brand-company'); if (!brand.includes('Menuiserie')) throw new Error('marque : ' + brand);
     const d = JSON.parse(fs.readFileSync(dataFileOf(), 'utf8'));
-    if (d.company.name !== 'Menuiserie Test SUARL' || d.company.paymentTermsDays !== 45) throw new Error(JSON.stringify(d.company).slice(0, 200));
+    // Les usages tunisiens, posés sans question (À VÉRIFIER avec le comptable) : timbre de 1 dinar,
+    // trente jours de validité et de paiement, aucune retenue.
+    const co = d.company;
+    if (co.name !== 'Menuiserie Test SUARL' || co.paymentTermsDays !== 30 || co.quoteValidityDays !== 30 || co.stampFee !== 1 || co.defaultWithholdingRate !== 0 || co.currency !== 'DT') {
+      throw new Error(JSON.stringify(co).slice(0, 300));
+    }
     if (!d.catalog.length) throw new Error('catalogue du secteur non prérempli');
-    if (!d.company.setupDone) throw new Error('setupDone');
+    if (!co.setupDone) throw new Error('setupDone');
+  });
+  await step('la copie de sécurité est une étape des premiers pas, juste après le premier devis', async () => {
+    await win.waitForSelector('.premiers-pas .pp-list li');
+    const pas = await win.evaluate(() => [...document.querySelectorAll('.premiers-pas .pp-list li')].map(li => ({
+      t: li.querySelector('.pp-txt strong').textContent.trim(), facult: !!li.querySelector('.pp-facult'), encours: li.classList.contains('encours')
+    })));
+    const titres = pas.map(p => p.t.replace(/facultatif$/, '').trim());
+    const i = n => titres.findIndex(t => t.startsWith(n));
+    if (i('Faire ton premier devis') < 0 || i('Mettre tes données à l\'abri') !== i('Faire ton premier devis') + 1) throw new Error('ordre des premiers pas : ' + titres.join(' | '));
+    // La découverte (pas faite, facultative) est en tête — et l'étape en cours est une étape du métier.
+    const dec = pas[i('Découvrir SkanFact avec l\'exemple')];
+    if (i('Découvrir SkanFact avec l\'exemple') !== 0 || !dec.facult || dec.encours) throw new Error('la découverte : ' + JSON.stringify(dec));
+    const enCours = pas.filter(p => p.encours);
+    if (enCours.length !== 1 || enCours[0].facult) throw new Error('l\'étape en cours : ' + JSON.stringify(enCours));
   });
   await win.waitForSelector('#view h1');
   // Paramètres : ouvrir un onglet (1.8.0)
@@ -1073,7 +1118,13 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
   await step('contrat à signer : clauses modifiables et imprimées', async () => {
     await win.evaluate(() => { location.hash = '#/autres/contrat'; });
     await win.waitForSelector('#list-wrap tr.clickable');
-    await win.click('#list-wrap tr.clickable');
+    // Le contrat qui ATTEND sa signature, reconnu à ce qu'il est — jamais « la première ligne » :
+    // depuis l'exemple de cinq ans, le premier contrat de la liste est signé depuis un an, dans une
+    // période clôturée, donc figé (règle 6.0.0). L'étape le modifiait, se faisait refuser, et passait
+    // quand même sur le premier message venu (10.14.0).
+    const iEnAttente = await win.evaluate(() => [...document.querySelectorAll('#list-wrap tr.clickable')].findIndex(r => /envoy/i.test(r.textContent)));
+    if (iEnAttente < 0) throw new Error('l\'exemple n\'a aucun contrat en attente de signature');
+    await win.click(`#list-wrap tr.clickable >> nth=${iEnAttente}`);
     await win.waitForSelector('#f-clauses textarea[name=objet]');
     await win.fill('#f-clauses textarea[name=preavis]', 'Préavis de soixante (60) jours.');
     await win.waitForFunction(() => { const f = document.querySelector('#preview'); return f && f.contentDocument && f.contentDocument.body
@@ -1082,8 +1133,19 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
     await win.fill('#f-clauses textarea[name=confidentialite]', '');
     await win.waitForFunction(() => { const f = document.querySelector('#preview'); return f && f.contentDocument && f.contentDocument.body
       && f.contentDocument.body.textContent && !/Confidentialité/.test(f.contentDocument.body.textContent); });
+    const idContrat = await win.evaluate(() => decodeURIComponent(location.hash.split('/')[2] || ''));
+    if (!idContrat) throw new Error('l\'adresse du contrat ouvert ne porte pas son identifiant : ' + await win.evaluate(() => location.hash));
     await win.click('#save');
-    await win.waitForSelector('#toast.show');
+    // « Rien n'a changé » passe toujours quand le geste n'a pas eu lieu (10.9.1) : on exige la
+    // clause ENREGISTRÉE, pas un message quelconque — et aucune fenêtre de refus restée ouverte.
+    await win.waitForFunction(id => {
+      const d = (window.__data.documents || []).find(x => x.id === id);
+      return d && /soixante \(60\) jours/.test((d.clauses || {}).preavis || '') && !(d.clauses || {}).confidentialite;
+    }, idContrat, { timeout: 10000 }).catch(async () => {
+      const fen = await win.evaluate(() => { const m = document.querySelector('#modal-root .modal'); return m ? m.innerText.replace(/\s+/g, ' ').slice(0, 160) : ''; });
+      throw new Error('les clauses du contrat ne sont pas enregistrées' + (fen ? ` — fenêtre « ${fen} »` : ''));
+    });
+    if (await win.$('#modal-root .modal')) throw new Error('une fenêtre reste ouverte après l\'enregistrement du contrat');
   });
   await step('nouvelle proforma : numérotée PRO à l\'enregistrement', async () => {
     await win.evaluate(() => { location.hash = '#/doc/new/proforma'; });
@@ -1156,12 +1218,23 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
   await step('achats : destination des lignes et filtres de la liste', async () => {
     await win.evaluate(() => { location.hash = '#/achats'; });
     await win.waitForSelector('#list-wrap table.list');
-    const before = await win.evaluate(() => document.querySelectorAll('#list-wrap tbody tr').length);
+    // La SÉLECTION se lit dans le bandeau « n sur N », jamais en comptant les lignes affichées : la
+    // liste est paginée (7.15.0), et depuis l'exemple de cinq ans (181 achats) la page est pleine avant
+    // comme après le filtre — l'étape attendait un nombre de lignes qui ne pouvait plus baisser.
+    const selection = () => win.evaluate(() => {
+      const n = document.querySelector('#f-note');
+      const m = n && !n.hidden && /(\d+) sur (\d+)/.exec(n.textContent);
+      return m ? { vus: Number(m[1]), total: Number(m[2]) } : null;
+    });
+    // Un filtre posé par une étape d'avant survit (l'état de la liste est gardé) : on part de tout.
+    if (await selection()) { await win.click('#reset-f'); await win.waitForFunction(() => { const n = document.querySelector('#f-note'); return !n || n.hidden; }); }
     await win.selectOption('#kind', 'depense');
-    await win.waitForFunction(n => document.querySelectorAll('#list-wrap tbody tr').length < n, before);
+    await win.waitForFunction(() => { const n = document.querySelector('#f-note'); return n && !n.hidden && /\d+ sur \d+/.test(n.textContent); });
+    const s = await selection();
+    if (!(s.vus > 0 && s.vus < s.total)) throw new Error('le filtre « dépense » ne réduit pas la sélection : ' + JSON.stringify(s));
     if (!(await win.textContent('#list-wrap')).includes('dépense')) throw new Error('filtre dépense');
     await win.click('#reset-f');
-    await win.waitForFunction(n => document.querySelectorAll('#list-wrap tbody tr').length === n, before);
+    await win.waitForFunction(() => { const n = document.querySelector('#f-note'); return !n || n.hidden; });
     // une ligne en immobilisation existe bien dans la démo : elle prépare le module 3.4.0
     const dest = await win.evaluate(() => window.SkanCore.LINE_DESTINATIONS.map(d => d[0]));
     if (dest.join() !== 'charge,stock,immobilisation') throw new Error('destinations : ' + dest.join());
@@ -1260,14 +1333,14 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
     await win.click('#modal-root #ok');
     // le nouveau dossier est vide : l'assistant de première utilisation reprend la main
     await win.waitForSelector('#setup', { timeout: 20000 });
-    await win.click('#sf-next'); await win.waitForSelector('#sf-form input[name=name]');
+    // La porte ne se rouvre pas : elle a été vue sur ce poste (10.14.0) — une seconde entreprise
+    // n'a pas à reproposer la découverte à quelqu'un qui connaît SkanFact. On arrive sur la 1re question.
+    await win.waitForSelector('#sf-form input[name=name]');
+    if (await win.$('#setup #sf-decouvrir')) throw new Error('la porte se rouvre pour une seconde entreprise');
     await win.fill('#sf-form input[name=name]', 'Darium SARL');
     await win.fill('#sf-form input[name=matricule]', '1111111A/A/000');
     await win.click('#sf-next'); await win.waitForSelector('[data-act="commerce"]'); await win.click('[data-act="commerce"]');
     await win.click('#sf-next'); await win.waitForSelector('#sf-mods');
-    await win.click('#sf-next'); await win.waitForSelector('#sf-form input[name=paymentTermsDays]');
-    await win.click('#sf-next'); await win.waitForSelector('#sf-form input[name=rib]');
-    await win.click('#sf-next'); await win.waitForSelector('#sf-ext');
     await win.click('#sf-next'); await win.waitForFunction(() => !document.querySelector('#setup'));
     if (!(await win.textContent('#brand-company')).includes('Darium')) throw new Error('mauvais dossier ouvert');
     // les données de l'autre dossier ne sont PAS là : c'est tout l'intérêt
@@ -1425,13 +1498,17 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
     }, seuil0);
   });
   await step('affaire : rattacher un document depuis l\'éditeur', async () => {
-    await win.evaluate(() => {
-      const d = window.__data;
-      // un devis d'un client qui a déjà une affaire : sinon la liste des affaires serait vide
+    const ouvert = await win.evaluate(() => {
+      const d = window.__data, C = window.SkanCore;
+      // un devis d'un client qui a déjà une affaire : sinon la liste des affaires serait vide.
+      // 10.14.0 — et d'un mois OUVERT : sur cinq ans d'exemple, le premier devis venu est de 2022,
+      // clôturé, donc sans « Enregistrer » (l'étape suivante le prouve à part).
       const ids = new Set(d.projects.map(p => p.clientId));
-      const q = d.documents.find(x => x.type === 'devis' && !x.projectId && ids.has(x.clientId));
-      location.hash = '#/doc/' + q.id;
+      const q = d.documents.find(x => x.type === 'devis' && !x.projectId && ids.has(x.clientId) && !(x.date && C.isClosedDate(d, x.date)));
+      if (q) location.hash = '#/doc/' + q.id;
+      return !!q;
     });
+    if (!ouvert) throw new Error('l\'exemple ne porte aucun devis d\'un mois ouvert à rattacher : l\'étape ne prouverait rien');
     await win.waitForSelector('#f-head [data-combo=projectId]');
     const before = await win.evaluate(() => document.querySelector('#f-head input[name=projectId]').value);
     await win.click('#f-head [data-combo=projectId] .combo-btn');
@@ -1449,6 +1526,47 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
       return !!(doc && doc.projectId && d.projects.some(p => p.id === doc.projectId));
     });
     if (!lie) throw new Error('affaire non enregistrée sur le document');
+  });
+  // 10.14.0 — sur cinq ans d'exemple, la plupart des pièces sont dans un mois clôturé. On modifiait
+  // un devis de 2022, « Enregistrer » ouvrait la fenêtre de clôture, et le travail était perdu : un
+  // avertissement se lit AVANT le geste (9.4.2). La pièce le dit en s'ouvrant, ses champs sont fermés,
+  // l'affaire se pose quand même (une étiquette de gestion, 10.12.0), et la sortie est là.
+  await step('pièce d\'un mois clôturé : le bandeau le dit avant qu\'on tape, et la copie du jour se modifie', async () => {
+    const id = await win.evaluate(() => {
+      const d = window.__data, C = window.SkanCore;
+      const ids = new Set(d.projects.map(p => p.clientId));
+      const q = d.documents.find(x => x.type === 'devis' && x.date && C.isClosedDate(d, x.date) && !x.projectId && ids.has(x.clientId));
+      return q ? q.id : null;
+    });
+    if (!id) throw new Error('l\'exemple ne porte aucun devis d\'un mois clôturé : l\'étape ne prouverait rien');
+    await win.evaluate(i => { location.hash = '#/doc/' + i; }, id);
+    await win.waitForSelector('#clos-banner');
+    const etat = await win.evaluate(() => ({
+      banniere: document.querySelector('#clos-banner').textContent.replace(/\s+/g, ' '),
+      save: !!document.querySelector('#save'), del: !!document.querySelector('#del'),
+      objet: document.querySelector('#f-head input[name=subject]').disabled,
+      ligne: [...document.querySelectorAll('#lines input, #lines select')].filter(x => x.offsetParent).every(x => x.disabled),
+      sortie: !!document.querySelector('#clos-dup') && !!document.querySelector('#clos-go')
+    }));
+    if (!/un mois clôturé : elle ne se modifie plus/.test(etat.banniere)) throw new Error('le bandeau ne dit pas que la pièce est close : ' + etat.banniere.slice(0, 160));
+    if (etat.save || etat.del) throw new Error('« Enregistrer » ou « Supprimer » reste proposé sur une pièce d\'un mois clôturé');
+    if (!etat.objet || !etat.ligne) throw new Error('les champs d\'une pièce d\'un mois clôturé restent ouverts');
+    if (!etat.sortie) throw new Error('la pièce close ne propose ni « Refaire à la date d\'aujourd\'hui » ni « Voir les clôtures »');
+    // L'affaire, étiquette de gestion, se pose quand même — et s'enregistre tout de suite.
+    await win.click('#f-head [data-combo=projectId] .combo-btn');
+    await win.waitForSelector('#f-head [data-combo=projectId] .combo-it:not(.cur)');
+    await win.click('#f-head [data-combo=projectId] .combo-it:not(.cur)');
+    await win.waitForFunction(i => { const x = window.__data.documents.find(y => y.id === i); return !!(x && x.projectId); }, id);
+    // La sortie : une copie datée d'aujourd'hui, qu'on peut modifier et enregistrer.
+    await win.click('#clos-dup');
+    await win.waitForFunction(i => /^#\/doc\//.test(location.hash) && location.hash.split('/')[2] !== i && document.querySelector('#save'), id);
+    const copie = await win.evaluate(() => {
+      const d = window.__data, C = window.SkanCore, x = d.documents.find(y => y.id === location.hash.split('/')[2]);
+      return x && { date: x.date, today: C.today(), clos: C.isClosedDate(d, x.date), banniere: !!document.querySelector('#clos-banner'),
+        objet: document.querySelector('#f-head input[name=subject]').disabled };
+    });
+    if (!copie || copie.date !== copie.today || copie.clos) throw new Error('la copie ne part pas d\'aujourd\'hui : ' + JSON.stringify(copie));
+    if (copie.banniere || copie.objet) throw new Error('la copie du jour reste fermée comme l\'original');
   });
   await step('catalogue : coût de revient et marge en direct', async () => {
     await win.evaluate(() => { location.hash = '#/catalogue'; });
@@ -1918,32 +2036,40 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
       el.value = id; el.dispatchEvent(new Event('change', { bubbles: true }));
     }, emp);
     await win.selectOption('#lf select[name=kind]', 'sans-solde');
-    await win.evaluate(() => {
-      const y = window.SkanCore.today().slice(0, 4);
+    // 10.14.0 — l'exemple de cinq ans clôture ses mois jusqu'à il y a quatre mois : le 30 mars écrit
+    // en dur tombait dans un mois clôturé, et c'est la fenêtre de clôture qui répondait. L'absence se
+    // pose à cheval sur le premier mois OUVERT et le suivant, trois jours de chaque côté (un samedi
+    // chômé ne peut pas vider un côté).
+    const mois = await win.evaluate(() => {
+      const C = window.SkanCore, d = window.__data;
+      const base = d.closedUntil ? C.addDays(d.closedUntil, 1) : C.today();
+      const y = Number(base.slice(0, 4)), m = Number(base.slice(5, 7));
+      const fin = new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
       const set = (name, v) => {
         const hid = document.querySelector(`#lf input[name=${name}]`);
         hid.value = v;
         const txt = hid.closest('.datefield').querySelector('.d-txt');
-        if (txt) txt.value = window.SkanCore.fmtDateInput(v);
+        if (txt) txt.value = C.fmtDateInput(v);
         hid.dispatchEvent(new Event('change', { bubbles: true }));
       };
-      set('from', y + '-03-30');
-      set('to', y + '-04-02');
+      set('from', C.addDays(fin, -3));
+      set('to', C.addDays(fin, 3));
+      return { y, m, y2: m === 12 ? y + 1 : y, m2: m === 12 ? 1 : m + 1 };
     });
     await win.waitForFunction(() => /jours? ouvrable/.test(document.querySelector('#lf-hint').textContent));
     const n0 = await win.evaluate(() => window.__data.leaves.length);
     await win.click('#modal-root #ok');
     await win.waitForFunction(n => window.__data.leaves.length === n + 1, n0);
-    const split = await win.evaluate(a => {
-      const C = window.SkanCore, d = window.__data, y = Number(C.today().slice(0, 4));
+    const split = await win.evaluate(([a, p]) => {
+      const C = window.SkanCore, d = window.__data;
       const l = d.leaves[d.leaves.length - 1];
-      const mars = C.leaveDaysInMonth(l, y, 3), avril = C.leaveDaysInMonth(l, y, 4);
+      const avant = C.leaveDaysInMonth(l, p.y, p.m), apres = C.leaveDaysInMonth(l, p.y2, p.m2);
       const tot = C.workingDays(l.from, l.to, C.payrollSettings(d).offDays);
-      // et le bulletin de mars reprend bien ces jours
+      // et le bulletin du premier mois reprend bien ces jours
       const e = d.employees.find(x => x.id === a);
-      return mars > 0 && avril > 0 && mars + avril === tot
-        && C.payslipInputFor(d, e, y, 3).absentDays >= mars;
-    }, emp);
+      return avant > 0 && apres > 0 && avant + apres === tot
+        && C.payslipInputFor(d, e, p.y, p.m).absentDays >= avant;
+    }, [emp, mois]);
     if (!split) throw new Error('une absence à cheval ne se répartit pas sur les deux mois');
   });
   await step('avance : retenue automatique, dernière échéance ajustée', async () => {
@@ -2070,13 +2196,17 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
     if (!/^\d{4}-\d{2}$/.test(plan.mois)) throw new Error('mois : ' + plan.mois);
   });
 
+  // 10.14.0 — l'exemple de cinq ans arrive avec ses mois clôturés jusqu'à il y a quatre mois : on
+  // part de SA clôture (l'étape exigeait « rien de clôturé au départ », l'état de l'ancien exemple),
+  // on clôture le mois suivant, et la réouverture le rend tel qu'il était.
+  let clotureAvant = '', journalAvant = 0;
   await step('clôture : on ferme un mois, et il refuse ensuite toute écriture', async () => {
     await win.evaluate(() => { location.hash = '#/compta'; });
     await win.waitForSelector('#c-tabs');
     await win.evaluate(() => { const b = [...document.querySelectorAll('#c-tabs button')].find(x => /clôtures/i.test(x.textContent)); if (b) b.click(); });
     await win.waitForSelector('#do-close');
-    const before = await win.evaluate(() => window.__data.closedUntil || '');
-    if (before) throw new Error('rien ne devrait être clôturé au départ : ' + before);
+    clotureAvant = await win.evaluate(() => window.__data.closedUntil || '');
+    journalAvant = await win.evaluate(() => (window.__data.closureLog || []).length);
 
     // on clôture le premier mois proposé
     // Le bouton NOMME le mois qu'il va clôturer — « Clôturer » tout court demanderait lequel, sur
@@ -2086,11 +2216,11 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
     await win.click('#do-close');
     await win.waitForSelector('#modal-root #ok');
     await win.click('#modal-root #ok');
-    await win.waitForFunction(() => !!window.__data.closedUntil);
+    await win.waitForFunction(b => !!window.__data.closedUntil && window.__data.closedUntil > b, clotureAvant);
     const until = await win.evaluate(() => window.__data.closedUntil);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(until)) throw new Error('closedUntil : ' + until);
     const logged = await win.evaluate(() => (window.__data.closureLog || []).length);
-    if (logged !== 1) throw new Error('journal des clôtures : ' + logged);
+    if (logged !== journalAvant + 1) throw new Error(`journal des clôtures : ${logged} lignes, ${journalAvant + 1} attendues`);
 
     // une pièce datée dans le mois clos doit être refusée à l'enregistrement
     const target = until.slice(0, 8) + '15';
@@ -2134,12 +2264,14 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
     await win.click('#modal-root #ok');                       // sans motif → refus
     await win.waitForSelector('#toast.show.error');
     await win.fill('#modal-root input[name=reason]', 'facture d\'achat retrouvée');
-    await win.check('#modal-root input[name=all]');
+    // La fenêtre propose de rouvrir le mois qu'on vient de clôturer : la clôture revient à celle
+    // de l'exemple (ou à rien, sur une entreprise qui n'avait rien clôturé).
     await win.click('#modal-root #ok');
-    await win.waitForFunction(() => !window.__data.closedUntil);
+    await win.waitForFunction(b => (window.__data.closedUntil || '') === b, clotureAvant);
     const log = await win.evaluate(() => window.__data.closureLog);
-    if (log.length !== 2 || log[1].action !== 'reouverture') throw new Error('journal : ' + JSON.stringify(log));
-    if (log[1].reason !== 'facture d\'achat retrouvée') throw new Error('motif non gardé');
+    const der = log[log.length - 1];
+    if (log.length !== journalAvant + 2 || der.action !== 'reouverture') throw new Error('journal : ' + JSON.stringify(log.slice(-2)));
+    if (der.reason !== 'facture d\'achat retrouvée') throw new Error('motif non gardé');
   });
 
   await step('barre latérale groupée', async () => {

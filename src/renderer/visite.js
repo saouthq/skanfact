@@ -71,17 +71,69 @@
       dessous: () => ({ x: midX, y: zone.b + ECART, ok: zone.b + ECART + bh <= H - MARGE }),
       dessus: () => ({ x: midX, y: zone.t - ECART - bh, ok: zone.t - ECART - bh >= MARGE })
     };
-    const ordre = [opts.pref, 'droite', 'gauche', 'dessous', 'dessus'].filter((c, i, a) => c && essais[c] && a.indexOf(c) === i);
+    const ordre = (opts.cotes || [opts.pref, 'droite', 'gauche', 'dessous', 'dessus']).filter((c, i, a) => c && essais[c] && a.indexOf(c) === i);
     for (const c of ordre) {
       const p = essais[c]();
       if (p.ok) return { x: Math.round(p.x), y: Math.round(p.y), cote: c };
     }
+    // Des côtés IMPOSÉS qui ne tiennent pas : l'appelant a un autre plan (`placerPres`).
+    if (opts.cotes) return null;
     // Rien ne tient à côté (une cible qui occupe presque tout l'écran, une grande fenêtre) : dans le
     // coin le plus éloigné du centre de la cible, sans jamais sortir de l'écran.
     const cx = (cible.l + cible.r) / 2, cy = (cible.t + cible.b) / 2;
     const x = cx > W / 2 ? MARGE : W - MARGE - bw;
     const y = cy > H / 2 ? MARGE : H - MARGE - bh;
     return { x: Math.round(Math.max(MARGE, x)), y: Math.round(Math.max(MARGE, y)), cote: 'coin' };
+  }
+
+  // Une cible DANS une fenêtre (PUR : les tests le jouent) : la bulle se pose à côté de la FENÊTRE, à
+  // la hauteur de la cible — jamais sur la fenêtre, où l'on relit ce qu'on vient de taper. Vu à
+  // l'écran (10.14.0) : « Enregistrer ta réponse », posée au-dessus du bouton, couvrait la réponse et
+  // la question qu'elle demandait d'enregistrer. Sans place ni à droite ni à gauche de la fenêtre (une
+  // grande fenêtre sur un petit écran), la règle ordinaire autour de la cible.
+  function placerPres(r, fen, bulle, ecran, opts) {
+    opts = opts || {};
+    if (r && fen) {
+      const cotes = opts.pref === 'gauche' ? ['gauche', 'droite'] : ['droite', 'gauche'];
+      const p = placerBulle({ l: fen.l, r: fen.r, t: r.t, b: r.b }, bulle, ecran, { cotes });
+      if (p) return p;
+    }
+    return placerBulle(r, bulle, ecran, opts);
+  }
+
+  // Où poser le HAUT d'une cible pour que la bulle tienne à côté d'elle (PUR : les tests le jouent) —
+  // ou null quand elle tient déjà, ou ne tiendra jamais. Centrée à l'écran, une zone large et haute
+  // (le tableau des questions du comptable, un panneau) ne laissait assez de place ni dessus ni
+  // dessous : la bulle se rabattait dans un coin, sur le bouton même dont elle parlait — « Importer
+  // les questions de ton comptable » (vu à l'écran, 10.14.0). S'ils tiennent ensemble dans la
+  // hauteur, on fait défiler pour libérer le côté demandé ; dessous sinon, sous l'en-tête de la page.
+  // Avec du JEU : la page défile au pixel entier, les rectangles ne tombent pas juste — viser la
+  // limite exacte laissait la bulle à 0,28 px de sa place, et elle retournait dans le coin (vu à
+  // l'écran, la première version).
+  const JEU = 8;
+  function hautPourBulle(r, bulle, ecran, pref) {
+    const W = ecran.w, H = ecran.h, bw = bulle.w, bh = bulle.h;
+    if (!r || !bh) return null;
+    const aCote = r.r + ECART + bw <= W - MARGE || r.l - ECART - bw >= MARGE;
+    const dessus = r.t - ECART - bh >= MARGE, dessous = r.b + ECART + bh <= H - MARGE;
+    if (aCote || dessus || dessous) return null;
+    const hauteur = r.b - r.t;
+    if (hauteur + ECART + bh + 2 * MARGE + JEU > H) return null;
+    return pref === 'dessus' ? MARGE + bh + ECART + JEU : Math.min(MARGE + 48, H - MARGE - bh - ECART - hauteur - JEU);
+  }
+
+  // La ponctuation double porte une espace FINE INSÉCABLE (PUR : les tests le jouent). Sans elle, le
+  // navigateur coupe juste avant « ? », ou laisse un « seul en fin de ligne et son mot sur la
+  // suivante (vu à l'écran, 10.14.0 : « Dossier » séparé de son guillemet, dans une bulle). C'est la
+  // règle `typographie()` du Cabinet (9.4.2) ; `typographier` ne touche que les NŒUDS DE TEXTE de la
+  // bulle — aucune balise, aucun attribut.
+  const FINE = '\u202f';
+  const typo = t => String(t).replace(/ ([?!;:»])/g, FINE + '$1').replace(/« /g, '«' + FINE);
+  function typographier(racine) {
+    if (!racine || typeof document === 'undefined' || !document.createTreeWalker) return;
+    const it = document.createTreeWalker(racine, 4 /* NodeFilter.SHOW_TEXT */);
+    let n;
+    while ((n = it.nextNode())) { const v = n.nodeValue; if (/ [?!;:»]|« /.test(v)) n.nodeValue = typo(v); }
   }
 
   // Deux rectangles se chevauchent-ils ? (pour les tests : la bulle ne couvre jamais sa cible)
@@ -462,7 +514,11 @@
     // Le geste est fait ?
     let fait = false;
     if (typeof e.fait === 'function') { try { fait = !!e.fait(); } catch (_) { fait = false; } }
-    if (e.faire === 'clic' && cur.clic && Date.now() - cur.clic > 80) fait = true;
+    // Le clic ne suffit que quand rien d'autre ne prouve le geste. Une étape qui dit ce qui le
+    // prouve (`fait`) attend CETTE preuve : un « Enregistrer » refusé (un champ manque) garde sa
+    // fenêtre ouverte, un choix de fichier peut être annulé — et la visite passait à la suite en
+    // décrivant ce qui n'existait pas (vu à l'écran, 10.14.0 : « Où il est rangé » sur une liste vide).
+    if (e.faire === 'clic' && typeof e.fait !== 'function' && cur.clic && Date.now() - cur.clic > 80) fait = true;
     if (e.faire === 'valeur') {
       const pret = typeof e.fait === 'function' ? fait : !!(el && String(el.value || '').trim());
       if (pret !== cur.pret) { cur.pret = pret; dessinerBulle(); }
@@ -490,6 +546,15 @@
   }, true);
 
   const rect = (el, pad) => { const b = el.getBoundingClientRect(); return { l: b.left - pad, t: b.top - pad, r: b.right + pad, b: b.bottom + pad }; };
+  // Fait défiler de `dy` pixels le premier ancêtre de `el` qui défile (la page, sinon la fenêtre).
+  function defilerDe(el, dy) {
+    if (!dy) return;
+    for (let p = el.parentElement; p; p = p.parentElement) {
+      const st = getComputedStyle(p);
+      if (/(auto|scroll)/.test(st.overflowY) && p.scrollHeight > p.clientHeight) { p.scrollTop += dy; return; }
+    }
+    window.scrollBy(0, dy);
+  }
   const poser = (node, r) => Object.assign(node.style, { left: r.l + 'px', top: r.t + 'px', width: Math.max(0, r.r - r.l) + 'px', height: Math.max(0, r.b - r.t) + 'px' });
 
   function positionner() {
@@ -508,6 +573,11 @@
         cur.defile = true;
         const rr = zoneEl.getBoundingClientRect();
         if (rr.top < 60 || rr.bottom > H - 40) { try { zoneEl.scrollIntoView({ block: rr.height > H * 0.7 ? 'start' : 'center', inline: 'nearest' }); } catch (_) { /* rien */ } }
+        // Puis on libère le côté de la bulle, s'il n'en reste aucun (`hautPourBulle`). Pas pendant un
+        // geste : sa cible est un bouton, et il a toujours un côté libre.
+        const r0 = rect(zoneEl, 6);
+        const haut = faire ? null : hautPourBulle(r0, { w: els.bulle.offsetWidth, h: els.bulle.offsetHeight }, { w: W, h: H }, e.cote);
+        if (haut != null) defilerDe(zoneEl, Math.round(r0.t - haut));
       }
       r = rect(zoneEl, 6);
       // Un bloc plus haut que l'écran (un tableau entier) ne laisse aucun côté libre : la bulle se
@@ -536,7 +606,8 @@
     if (vu) poser(point, rect(it.el, 3));
     const bw = els.bulle.offsetWidth, bh = els.bulle.offsetHeight;
     const champ = el && /^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName) || (el && el.classList && el.classList.contains('combo-btn'));
-    const pos = placerBulle(cur.perdu ? null : r, { w: bw, h: bh }, { w: W, h: H }, { pref: e.cote, reserveDessous: faire && champ });
+    const fen = r && !cur.perdu && zoneEl && zoneEl.closest ? zoneEl.closest('.modal') : null;
+    const pos = placerPres(cur.perdu ? null : r, fen ? rect(fen, 0) : null, { w: bw, h: bh }, { w: W, h: H }, { pref: e.cote, reserveDessous: faire && champ });
     els.bulle.style.left = pos.x + 'px';
     els.bulle.style.top = pos.y + 'px';
     els.bulle.dataset.cote = pos.cote;
@@ -627,6 +698,7 @@
         <div class="vb-corps"><h3 id="visite-titre">${h(e.titre || e.chapitre || 'Un instant…')}</h3>
           <div class="vb-texte vb-prepare">Je regarde ce qu'il y a sur cet écran…</div>
           <div class="vb-squelette" aria-hidden="true"><i></i><i></i><i></i></div></div>`;
+      typographier(els.bulle);
       return;
     }
     cur.items = e.liste && !cur.perdu && !cur.attente ? listerControles(e) : [];
@@ -668,6 +740,7 @@
            ${t.prochain && !faire ? `<div class="vb-prochain">Ensuite : <b>${h(t.prochain)}</b></div>` : ''}`}
       </div>
       <div class="vb-pied">${pied}</div>${chapSuiv}${astuce}`;
+    typographier(els.bulle);
     // Pendant un geste, le curseur reste dans l'application : lui voler le focus empêcherait de
     // taper dans le champ que la bulle désigne. Quand on regarde, il va sur « Suivant » — sauf si
     // l'on regarde un CHAMP : on a peut-être envie d'y écrire tout de suite.
@@ -710,6 +783,7 @@
         ${suites.length ? `<div class="vb-suites"><div class="vb-label">Et maintenant ?</div>${suites.map(carte).join('')}</div>` : ''}
       </div>
       <div class="vb-pied"><span class="vb-vide"></span><button type="button" class="${actions.some(a => a.principal) ? 'vb-prec' : 'vb-suiv'}" data-v="fin">Terminer</button></div>`;
+    typographier(els.bulle);
     // « Terminer », pas la croix de l'en-tête : les deux portent `data-v="fin"`, et le premier trouvé
     // était la croix — un cadre de focus sur un ✕, et Entrée qui « ferme » au lieu de terminer.
     focaliser(actions.some(a => a.principal) ? '[data-v="action"].vb-suiv' : '.vb-pied [data-v="fin"]');
@@ -834,7 +908,7 @@
           const cle = t.dataset.tab, nom = t.textContent.replace(/\s+/g, ' ').trim();
           out.push({
             chapitre: nom, titre: nom,
-            avant: () => { const bt = document.querySelector(`${barre} button[data-tab="${cle}"]`); if (bt && !bt.classList.contains('active')) bt.click(); },
+            avant: () => ouvrirOnglet(barre, cle),
             deplier: () => etapesDeLaVue({ racine: o.racine, exclure: [o.exclure, '.page-head', barre].filter(Boolean).join(', '), onglets: false })
           });
         });
@@ -843,6 +917,25 @@
     }
     return out;
   }
+  // Un onglet se clique quand sa barre EXISTE. `hote.aller()` change l'adresse, et la page se dessine
+  // au `hashchange` qui suit — asynchrone, et plus tard encore pour une page qui attend le disque (les
+  // Paramètres). Cliqué tout de suite, l'onglet visait l'écran d'AVANT et ne trouvait rien : la visite
+  // « Répondre aux questions de mon comptable », lancée depuis « Me guider », restait sur l'onglet
+  // Ventes, la bulle au milieu de l'écran (vu à l'écran, 10.14.0). `entrer` attend la promesse
+  // (2,5 s au plus) avant de désigner quoi que ce soit.
+  function ouvrirOnglet(barre, cle, patience) {
+    const limite = Date.now() + (patience == null ? 2000 : patience);
+    return new Promise(res => {
+      const essayer = () => {
+        const bt = document.querySelector(`${barre} button[data-tab="${cle}"]`);
+        if (bt) { if (!bt.classList.contains('active')) bt.click(); res(true); return; }
+        if (Date.now() >= limite) { res(false); return; }
+        setTimeout(essayer, 50);
+      };
+      essayer();
+    });
+  }
+
   // Ce que l'hôte peut demander : où en est-on ? (pour la palette, la barre, les tests)
   function enCours() {
     if (!cur) return null;
@@ -851,7 +944,7 @@
       chapitre: (cur.chaps && cur.chaps.length > 1) ? k : null, items: (cur.items || []).length };
   }
 
-  const api = { installer, lancer, quitter, enCours, suivant, precedent, chapitreSuivant, placerBulle, chevauche, decouperHaut, estFaire, lieuDe,
+  const api = { installer, lancer, quitter, enCours, suivant, precedent, chapitreSuivant, placerBulle, placerPres, typo, chevauche, decouperHaut, hautPourBulle, estFaire, lieuDe, ouvrirOnglet,
     chapitres, resoudre, visible, listerControles, etapesDeLaVue, blocsDe, cheminDe, PATIENCE, PATIENCE_FACULTATIVE, CONTROLES };
   global.Visite = api;
   if (typeof module === 'object' && module.exports) module.exports = api;

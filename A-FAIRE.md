@@ -223,6 +223,10 @@ Constats de l'audit du 22/09/2026 restés hors de la 10.6.0.
     TOUT PREMIER envoi d'un cabinet serait retenu à sa place. Même limite, assumée, que côté Cabinet
     (9.2.0). La lever demanderait que le fichier d'appairage porte aussi la clé de signature ET que
     l'empreinte lue au téléphone la couvre — donc un changement du format d'appairage.
+- **Porter `typographie()` du Cabinet à la prose de l'app entreprise** (10.14.0) : l'espace fine
+  insécable devant `? ! ; : »` n'y est posée que dans les visites et sur les questions du comptable
+  (`C.typoFr`). Le portage général change le texte que les parcours comparent (bandeaux, `p`) :
+  à faire avec les parcours, pas en passant.
 - Les trois pistes jamais demandées, gardées pour mémoire : séparer les installateurs arm64 / x64
   (les 222 Mo du dmg universel), la signature Apple et Windows (certificats payants — mais elle
   passe **avant la première vente**, cf. `QUESTIONS.md` : un expert-comptable ne clique pas sur
@@ -234,21 +238,34 @@ Skander a validé l'inventaire du 24/09 et choisi l'ordre : **d'abord la visite 
 (10.14.0), avec l'exemple sur cinq ans et le mode exemple rassurant. Le reste attend ici, dans
 l'ordre proposé.
 
-- **L'assistant de démarrage (entreprise)** : le logo, le cachet et la couleur avec un aperçu du vrai
+- **L'assistant de démarrage (entreprise)** — *la 10.14.0 l'a retourné* : une porte d'abord
+  (« Découvrir avec un exemple » ou « Commencer avec mon entreprise »), trois questions ensuite, et
+  le RIB, la copie de sécurité et le comptable dans « Tes premiers pas », au moment où ils servent ;
+  l'écran des règles de facturation a disparu (usages tunisiens par défaut, réglables dans
+  Paramètres), donc A1 aussi. Reste : le logo, le cachet et la couleur avec un aperçu du vrai
   document pendant qu'on les choisit ; « où en est ta numérotation » (continuer à FAC-2026-048 et non
   repartir à 001) ; importer ses clients et son catalogue depuis un tableur ; « j'ai déjà une clé de
-  licence » et « je rejoins un dossier partagé » dès le départ ; le comptable (nom, adresse,
-  appairage) ; le compte bancaire créé depuis le RIB saisi, avec son solde de départ ; le mot de passe
-  proposé à l'étape Sauvegarde ; la façon d'envoyer ses mails ; un dernier écran « que veux-tu faire
-  en premier ? ». Et les quatre défauts vus au test humain :
-  - A1 — « Timbre fiscal par facture ( DT ) » : des espaces autour de la devise.
+  licence » et « je rejoins un dossier partagé » dès la porte ; le compte bancaire créé depuis le RIB
+  saisi, avec son solde de départ ; le mot de passe proposé avec la copie de sécurité ; la façon
+  d'envoyer ses mails. Et trois des quatre défauts vus au test humain :
+  - ~~A1 — « Timbre fiscal par facture ( DT ) » : des espaces autour de la devise~~ (l'écran n'existe
+    plus dans l'assistant ; celui des Paramètres n'a pas le défaut).
   - A2 — les devises proposées par leur code nu (MAD, DZD) sans leur nom.
-  - A3 — « OBLIGATOIRE » en orange dans l'assistant, l'étoile « * » partout ailleurs.
-  - A4 — « 1 / 7 » contre « Écran 2 sur 5 » dans le Cabinet.
+  - A3 — « obligatoire » en orange dans l'assistant (la raison sociale), l'étoile « * » partout ailleurs.
+  - A4 — « 1 / 7 » contre « Écran 2 sur 5 » dans le Cabinet (l'assistant de l'entreprise écrit
+    désormais « 1 / 3 », la porte ne se compte pas).
 - **L'assistant du Cabinet** : coller sa liste de clients dès le départ, régler la saisie, déclarer
   les collaborateurs, et dire comment le fichier d'appairage part chez les clients.
-- **La visite guidée du Cabinet** : la 10.14.0 couvre l'app entreprise ; le moteur est partagé, le
-  contenu du Cabinet reste à écrire.
+- **La visite guidée du Cabinet** : la 10.14.0 couvre l'app entreprise ; le moteur (`visite.js`) ne
+  connaît aucune des deux applications, le contenu du Cabinet (`visites.js` a son jumeau à écrire,
+  avec son dictionnaire de boutons) et son branchement restent à faire — et `e2e:couverture` à
+  braquer sur lui.
+- **L'instrument `e2e:visite`** : jouer chaque étape de chaque visite dans l'application réelle —
+  cible visible et cliquable, bulle dans l'écran, geste « faire » qui aboutit. `e2e:couverture`
+  vérifie que chaque contrôle a son explication ; rien ne vérifie encore que chaque étape tombe sur
+  sa cible, et une étape qui vise un sélecteur disparu se tait sans rien casser.
+- **Le test humain des visites** (souris, clavier, 1440 et 1280, clair et sombre) : toutes les
+  visites de page, une par une — à faire avant la stable.
 - **Le paiement dans l'application** (bêta obligatoire : argent et clés) : « Acheter » et
   « Renouveler » qui ouvrent la page de paiement préremplie (offre, matricule) et une clé récupérée
   toute seule après le paiement, par une référence que l'application a elle-même créée — jamais par

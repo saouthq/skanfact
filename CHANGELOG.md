@@ -7,6 +7,95 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 10.14.0-beta.1 — 24/09/2026
+
+**La visite guidée, et un premier jour qui commence par découvrir.** Skander : « quelqu'un qui
+découvre l'application n'a pas envie de lire la page Aide : il faut pouvoir toujours le guider, pour
+chaque étape, et couvrir toute l'app » — puis : « si on tombe sur un formulaire au début, on a
+tendance à passer et revenir plus tard ». Publiée en **bêta** : l'exemple de cinq ans a fait tomber
+une règle du moteur comptable (les à-nouveaux des clients et des fournisseurs), et c'est la règle
+pour ce qui touche au moteur.
+
+**Le premier lancement : la porte d'abord**
+- **Deux façons de commencer, et on peut faire l'une puis l'autre.** « Découvrir avec un exemple »
+  (recommandé) ouvre une entreprise de cinq ans toute remplie et en fait faire le tour ; « Commencer
+  avec mon entreprise » pose les questions tout de suite. On ne voit cette porte qu'une fois.
+- **Trois questions au lieu de six** : ton entreprise, ton métier, ce dont tu as besoin. Les règles de
+  facturation prennent les usages tunisiens (timbre de 1 dinar, trente jours de validité et de
+  paiement, pas de retenue — à vérifier avec ton comptable, et tout se change dans Paramètres).
+- **Le RIB et la copie de sécurité se demandent au bon moment**, dans « Tes premiers pas » : la copie
+  juste après ton premier devis, quand elle protège enfin quelque chose.
+- **Après la découverte, l'assistant reprend là où la porte l'a laissé** : « Passer à ma vraie
+  entreprise » rouvre les trois questions, posées à quelqu'un qui sait maintenant à quoi elles
+  servent — au lieu d'une fiche société vide au milieu des Paramètres. Et une entreprise encore vide
+  ne se voit plus promettre « tes données reviennent ».
+- **« Tes premiers pas » comptent la découverte** (la liste démarre à « 1 sur n ») ; la découverte et
+  « Relier ton comptable » sont marqués facultatifs et ne passent jamais devant une étape du métier.
+
+**La visite guidée**
+- **La découverte sur l'exemple**, en douze chapitres : l'accueil, vendre, les clients et le
+  catalogue, acheter, l'argent, le personnel, le stock et les biens, piloter, ton comptable, les
+  réglages et la sécurité — sur l'exemple, donc sans rien risquer.
+- **Chaque page a sa visite** (trente-deux), qui explique chaque bouton de chaque zone, et **les gestes
+  se font avec toi** : ajouter un client, faire un devis, l'envoyer, émettre, encaisser, relancer,
+  corriger par un avoir, saisir un achat, régler un fournisseur, établir les bulletins…
+- **Les gestes techniques ont leur visite** : relier ton comptable, répondre à ses questions, recevoir
+  sa clôture, envoyer le paquet du mois, joindre un justificatif et le retrouver, revenir à une
+  sauvegarde, travailler à deux, régler l'envoi des mails, retrouver un fichier, installer une mise à
+  jour, activer ta licence, signaler un problème. L'exemple porte désormais deux questions de son
+  comptable, sans réponse : c'est ce que la visite apprend à faire.
+- **« Me guider »**, en bas du menu : le prochain geste en tête, ta progression, tes réussites (tirées
+  de tes vraies données, jamais de l'exemple), et pendant l'essai ce qu'il a déjà construit — avec la
+  promesse tenue depuis la 6.4.0 : licence ou pas, tes données restent à toi.
+- Une visite qui attend un préalable propose la première qu'on peut vraiment faire (« D'abord : faire
+  un devis »), et la recherche Ctrl K trouve les visites (« comment on émet une facture »).
+
+**L'exemple : une entreprise de cinq ans**
+- Vingt-sept clients de plus, l'historique de quatre années, les loyers, la STEG, le carburant, les
+  honoraires du comptable, un salarié parti, des biens amortis, les déclarations déposées et les mois
+  clôturés jusqu'à il y a quatre mois — de quoi voir chaque écran plein, et un contrat récent en
+  attente de signature.
+- **Ce qu'il a fait tomber, et qui est corrigé** : une facture de décembre réglée en janvier gardait
+  son règlement sans sa facture dans les à-nouveaux (les deux applications) ; la balance auxiliaire
+  comptait chaque client une fois par exercice traversé ; et la recherche Ctrl K coupait ses douze
+  résultats **avant** de les classer — « audit » ne montrait plus que des factures, jamais la
+  prestation du même nom. Elle classe maintenant par le nom de ce qu'on ouvre, les pièces les plus
+  récentes d'abord, et dit quand elle ne montre qu'un extrait (« 12 résultats sur 214 »).
+- **Une pièce d'un mois clôturé le dit en s'ouvrant.** Sur cinq ans, la plupart des pièces tombent
+  dans un mois clôturé : on modifiait un devis de 2022, « Enregistrer » répondait « mois clôturé », et
+  ce qu'on venait de taper était perdu. La pièce s'ouvre désormais avec un bandeau qui le dit **avant**
+  qu'on tape, ses champs fermés comme ceux d'une facture émise, et deux sorties : **« Refaire à la date
+  d'aujourd'hui »** (une copie modifiable) et **« Voir les clôtures »**. Elle se lit, s'imprime,
+  s'envoie et s'exporte comme avant, et l'affaire s'y pose toujours — elle ne change aucun chiffre.
+
+**Ce que le tour des visites à la souris a corrigé**
+- **Une visite de ta vraie entreprise ne se lance plus sur l'exemple** (« Compléter ma fiche
+  société », « Mettre mes données à l'abri »…) : elle te rend d'abord tes données, et son bouton le
+  dit — « Quitter l'exemple et commencer ». Une visite qui a besoin de l'exemple dit de même « Charger
+  l'exemple et commencer ».
+- **Un clic n'est plus un geste fait.** Quand une étape sait ce qui prouve le geste, c'est cette
+  preuve qu'elle attend : un choix de fichier annulé, un « Enregistrer » refusé (un champ manque) ou un
+  paquet pas encore fabriqué ne font plus avancer la visite — elle décrivait sinon une liste encore
+  vide.
+- **La bulle ne cache plus ce qu'elle montre** : elle se pose à côté d'une fenêtre, jamais dessus (on
+  y relit ce qu'on vient de taper) ; devant un grand tableau, la page défile pour lui laisser sa place
+  au lieu de la rabattre dans un coin, sur le bouton même dont elle parle.
+- **Les onglets attendent leur page** : une visite qui ouvre un onglet ne clique plus avant que la page
+  soit dessinée.
+- **Ce qu'une visite nomme existe** : « Passer au chapitre suivant » (et pas « Chapitre suivant »),
+  « Faire un devis », « Fabriquer le paquet », et plus de « bouton vert » là où le vert était ailleurs.
+  Les guillemets et la ponctuation restent collés à leur mot, jusque dans la bulle.
+- **Sur la page des achats**, la visite éclaire la liste des achats et non le tableau « À payer », et
+  la première ligne n'est plus cachée sous l'en-tête du tableau : un défilement s'arrête désormais à la
+  marge du haut, partout dans les deux applications.
+- **La recherche Ctrl K range chaque résultat sur une ligne** : « Me guider » tenait sur deux lignes et
+  « Contrat de prestation » sur trois — les pièces s'y nomment d'un mot (Livraison, Contrat…).
+- Les cartes du centre « Me guider » remplissent leur rangée, sans colonne vide au bout.
+- **La question de ton comptable garde son « ? » avec son mot** : tapée dans le Cabinet avec une espace
+  ordinaire, elle affichait le point d'interrogation seul en début de ligne dans le bandeau d'une
+  pièce. L'espace fine se pose à l'affichage — jamais dans ce qui est enregistré, ni dans la case où
+  tu écris ta réponse.
+
 ## 10.13.0-beta.1 — 24/09/2026
 
 **Avant la mise en production : les deux applications et le pont entre elles, testés en entier.**

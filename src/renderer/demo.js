@@ -285,6 +285,16 @@
       clauses: { duree: 'Le présent contrat est conclu pour une durée de douze (12) mois à compter du premier jour du mois suivant sa signature.',
         paiement: 'Les prestations sont facturées mensuellement, le 1er de chaque mois, et payables à trente (30) jours date de facture.' },
       notes: 'Contrat signé par les deux parties. Il est facturé par le contrat récurrent « Maintenance mensuelle ».' });
+    // Un contrat EN ATTENTE de signature (10.14.0) : la suite de la salle informatique livrée aux
+    // Lauriers. Une entreprise de cinq ans a toujours un contrat qui attend son retour — et c'est le
+    // seul qui se modifie encore : celui de la clinique, signé il y a un an, tombe dans une période
+    // clôturée, donc figée (règle 6.0.0). Sans lui, « Contrats à signer » ne montrait qu'une pièce
+    // qu'on ne peut plus toucher, et le parcours qui en modifie les clauses se faisait refuser.
+    add('ctr-lauriers', { type: 'contrat', client: 7, date: daysAgo(6), status: 'envoyé', subject: 'Maintenance de la salle informatique',
+      lines: [line(k[4], 1), line(k[7], 1)],
+      clauses: { duree: 'Le présent contrat est conclu pour une durée de douze (12) mois à compter de sa signature, renouvelable par accord écrit des deux parties.',
+        paiement: 'Les prestations sont facturées mensuellement et payables à trente (30) jours date de facture.' },
+      notes: 'Proposé après l\'installation de la salle informatique. Envoyé pour signature à l\'intendance.', emails: [E(daysAgo(6), 'contrat')] });
 
     // ---------- les quatre années d'avant (10.14.0) ----------
     // Engendrées, mois par mois, avec des volumes qui grandissent : trois pièces par mois la première
@@ -761,6 +771,29 @@
       if (fin > clotureJusquA) break;
       C.closePeriod(d, fin, { todayIso: T, at: ts(C.addDays(fin, 12)), by: '', reason: '' });
     }
+    // Ses questions de comptable (10.14.0). Une entreprise de cinq ans a un cabinet qui pose des
+    // questions : sans elles, la visite « Répondre à mon comptable » et le chapitre du comptable
+    // montraient un panneau vide. Deux questions reçues avec le dernier paquet, SANS réponse : c'est
+    // ce que la personne apprend à faire. Aucune réponse posée d'avance — une réponse part dans le
+    // paquet (`reponsesAEnvoyer`), et le paquet de l'exemple est aussi la source des journaux
+    // pré-calculés du Cabinet (`scripts/exemple-cabinet.js`) : il ne doit pas changer pour autant.
+    const questionSur = (numero, q) => {
+      const p = achatParNumero(numero);
+      if (!p) return null;
+      return { id: 'demo-q-' + numero, periode: p.date.slice(0, 7), piece: numero, compte: q.compte, libelleCompte: q.libelleCompte,
+        montant: C.purchaseTotals(p, co).netToPay, objet: q.objet, texte: q.texte, attendu: q.attendu,
+        cabinet: 'Cabinet d\'exemple', exercice: Number(p.date.slice(0, 4)), recueLe: ts(daysAgo(3)), recues: 1, reponse: null };
+    };
+    d.questionsCabinet = [
+      // Les comptes sont ceux que SkanFact écrit dans le paquet (`DEFAULT_ACCOUNTS`) : c'est sur ces
+      // lignes-là que le cabinet pose sa question.
+      questionSur('FA-2026-1402', { compte: '22', libelleCompte: 'Immobilisations corporelles', objet: 'Imprimante multifonction',
+        texte: 'Tu l\'as saisie en immobilisation : peux-tu me confirmer qu\'elle reste au bureau plusieurs années ? Je prévois de l\'amortir sur cinq ans.',
+        attendu: 'confirmation' }),
+      questionSur('STEG-884512', { compte: '606', libelleCompte: 'Achats consommés', objet: 'Justificatif manquant',
+        texte: 'Le justificatif de cette facture d\'électricité n\'est pas dans le paquet : peux-tu joindre sa photo sur la pièce ?',
+        attendu: 'piece' })
+    ].filter(Boolean);
     d.demo = true;
     d.company.demo = !avaitUneSociete;   // l'identité vient-elle de l'exemple, ou est-elle la sienne ?
     return C.migrateData(d);

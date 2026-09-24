@@ -760,7 +760,26 @@ t('première utilisation : assistant proposé, réponses appliquées, secteurs c
   // ne se voient pas réclamer un RIB. Au moins un de chaque, sinon les deux règles sont mortes.
   assert.ok(metiers.some(a => a.honoraires), 'aucune profession libérale : « note d\'honoraires » ne servirait jamais');
   assert.ok(metiers.some(a => a.comptant), 'aucun métier encaissé sur place : le RIB conditionnel ne servirait jamais');
-  assert.ok(onboarding.STEPS.length >= 5 && onboarding.STEPS.every(s => s.id && s.title && s.sub));
+  assert.ok(onboarding.STEPS.every(s => s.id && s.title && s.sub), 'un écran de l\'assistant sans titre ou sous-titre');
+  // 10.14.0 — la PORTE d'abord, le formulaire après la découverte. Retourné : ce test exigeait « au
+  // moins cinq écrans », c'est-à-dire l'état d'avant (règle 7.12.0 — quand une règle change, c'est
+  // le test qui se relit en premier). La règle : le premier écran est la porte, qui n'est pas une
+  // question ; chaque question dit ce qu'elle demande (la porte l'annonce) ; et l'assistant ne
+  // demande rien qui ait un usage par défaut ou qui appartienne à plus tard — trois questions au plus.
+  assert.ok(onboarding.STEPS[0].porte, 'le premier écran n\'est plus la porte « découvrir / commencer »');
+  const questions = onboarding.STEPS.filter(s => !s.porte);
+  assert.strictEqual(onboarding.STEPS.filter(s => s.porte).length, 1, 'une seule porte');
+  assert.ok(questions.every(s => String(s.quoi || '').trim()), 'une question que la porte ne sait pas annoncer');
+  assert.ok(questions.length >= 1 && questions.length <= 3, `${questions.length} questions : le formulaire du premier jour ne doit pas redevenir long`);
+  ['facturation', 'paiement', 'sauvegarde'].forEach(id => assert.ok(!onboarding.STEPS.some(s => s.id === id),
+    `l'écran « ${id} » revient dans l'assistant : il a un usage par défaut, ou il appartient aux premiers pas`));
+  // Ce qui ne se demande plus a sa valeur d'usage tunisienne, posée par l'assistant lui-même : les
+  // valeurs que l'application prend quand personne ne les tape (À VÉRIFIER avec le comptable).
+  const app = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'app.js'), 'utf8');
+  const defauts = require('vm').runInNewContext('(' + (app.match(/const defauts = (\{[^}]*\});/) || [])[1] + ')');
+  const parDefaut = onboarding.applySetup(core.migrateData(null), { ...defauts, name: 'Atelier Neuf SUARL' });
+  assert.deepStrictEqual([parDefaut.company.currency, parDefaut.company.stampFee, parDefaut.company.quoteValidityDays, parDefaut.company.paymentTermsDays, parDefaut.company.defaultWithholdingRate],
+    ['DT', 1, 30, 30, 0], 'l\'assistant ne pose plus les usages tunisiens par défaut');
 });
 
 t('pied de page légal composé quand il n\'est pas saisi', () => {
@@ -8133,16 +8152,18 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     assert.ok(/function withholdingSelect\(name, value, opts, attrs\)[\s\S]{0,200}<select name="\$\{name\}" data-rs=/.test(app),
       'withholdingSelect doit être le seul à poser le select, avec ses réglages sur l\'élément');
 
-    // Les six écrans qui proposent un taux, nommés un par un : un écran ajouté demain qui oublierait
-    // la porte ne serait pas vu par ce compte-là, mais le serait par celui des `<select>` ci-dessus.
+    // Les écrans qui proposent un taux, nommés un par un : un écran ajouté demain qui oublierait la
+    // porte ne serait pas vu par ce compte-là, mais le serait par celui des `<select>` ci-dessus.
+    // 10.14.0 — l'assistant n'en fait plus partie : il ne demande plus la retenue (usage par défaut :
+    // aucune), et s'il la redemandait un jour, le test de l'assistant exige la même porte.
     ['doc.withholdingRate', 'c.withholdingRate', 'r.withholdingRate', 's.withholdingRate',
-      'p.withholdingRate', 'a.defaultWithholdingRate', 'c.defaultWithholdingRate'].forEach(v =>
+      'p.withholdingRate', 'c.defaultWithholdingRate'].forEach(v =>
       assert.ok(app.includes("withholdingSelect('" + (v.includes('default') ? 'defaultWithholdingRate' : 'withholdingRate') + "', " + v),
         v + ' doit passer par withholdingSelect'));
 
     // « Autre taux… » se branche comme les champs date : par `modal()` et par `render()`, donc
-    // valable pour tout écran présent et à venir. L'assistant vit hors de `#view` et se branche seul.
-    ['bindWithholdingFields(layer)', 'bindWithholdingFields(view)', 'bindWithholdingFields(root)'].forEach(c =>
+    // valable pour tout écran présent et à venir.
+    ['bindWithholdingFields(layer)', 'bindWithholdingFields(view)'].forEach(c =>
       assert.ok(app.includes(c), c + ' manque'));
 
     // L'ancienne valeur est remise AVANT que l'événement ne remonte au gestionnaire de la page :
@@ -8332,7 +8353,8 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
 
     // Un écran ajouté à STEPS sans corps dans `bodyFor` s'affiche VIDE : le titre, la barre de
     // progression, les boutons — et rien entre les deux. Aucune erreur, aucune trace.
-    OB.STEPS.forEach(s => assert.ok(app.includes(`s.id === '${s.id}'`),
+    // La porte (10.14.0) se reconnaît à sa nature, pas à son identifiant.
+    OB.STEPS.forEach(s => assert.ok(s.porte ? /if \(s\.porte\) \{\s*const dec = visiteParId\('decouvrir'\)/.test(app) : app.includes(`s.id === '${s.id}'`),
       `l'écran « ${s.id} » de l'assistant n'a pas de contenu dans app.js`));
 
     // Rien n'était écrit entre deux étapes : fermer la fenêtre au cinquième écran effaçait les
@@ -8371,25 +8393,35 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     // ailleurs c'est une liste fermée. Et c'est le premier endroit où on la rencontre.
     // 8.3.0 : la liste passe par `withholdingSelect`, la porte unique — et l'assistant la branche
     // lui-même, parce qu'il vit hors de `#view` et que `render()` ne le voit pas.
+    // 10.14.0 : l'assistant ne la demande plus (usage par défaut : aucune retenue). La règle reste
+    // pour le jour où elle y reviendrait — jamais un champ libre, toujours la porte et « Autre taux… ».
     const bloc = code.slice(code.indexOf('function runSetup'), code.indexOf('async function rejouerAssistant'));
-    assert.ok(bloc.includes("withholdingSelect('defaultWithholdingRate', a.defaultWithholdingRate)"),
-      'la retenue à la source doit être une liste dans l\'assistant, comme dans Paramètres');
-    assert.ok(bloc.includes('bindWithholdingFields(root)'),
-      '« Autre taux… » doit être branché dans l\'assistant aussi');
+    assert.ok(bloc.length > 3000, 'tranche de runSetup inattendue : ' + bloc.length);
+    // Un CHAMP de retenue, pas le mot : la valeur par défaut (`defauts`) porte le même nom.
+    if (/'defaultWithholdingRate', a\.|name="defaultWithholdingRate"/.test(bloc)) {
+      assert.ok(bloc.includes("withholdingSelect('defaultWithholdingRate', a.defaultWithholdingRate)"),
+        'la retenue à la source doit être une liste dans l\'assistant, comme dans Paramètres');
+      assert.ok(bloc.includes('bindWithholdingFields(root)'), '« Autre taux… » doit être branché dans l\'assistant aussi');
+    }
     assert.ok(!/name="defaultWithholdingRate", a\.defaultWithholdingRate, 'number'/.test(bloc));
 
     // L'écran de sauvegarde écrivait « Copie activée vers : … » sans jamais lire `lastError` :
     // un dossier iCloud pas encore synchronisé ou une clé en lecture seule donnaient le même
-    // message rassurant que le succès — sur le seul écran dont le sous-titre dit qu'il ne faut
-    // pas le sauter.
-    // On exige la BRANCHE, pas une mention : un premier jet de ce test se contentait de trouver la
-    // chaîne « x.lastError » quelque part dans le bloc, et restait vert quand on débranchait le
-    // `if` — parce que le mot survivait dans le message d'erreur juste en dessous. Vérifié en
-    // remettant le défaut : il ne tombait pas.
-    assert.ok(/if \(x\.lastError\)/.test(bloc), 'l\'écran de sauvegarde doit REFUSER d\'annoncer une copie qui a échoué');
-    assert.ok(/copieExterne = false/.test(bloc), 'une copie en échec ne doit pas cocher l\'étape des premiers pas');
-    assert.ok(bloc.includes('bridge.externalBackupInfo()'),
-      'l\'écran de sauvegarde doit montrer l\'état réel, pas un texte par défaut');
+    // message rassurant que le succès. Depuis la 10.14.0, la copie n'est plus un écran de
+    // l'assistant mais une étape des premiers pas, réglée dans Paramètres → Données : la règle y
+    // déménage. On exige la RÈGLE sur CHAQUE affectation de l'état que lisent les premiers pas —
+    // un premier jet de l'ancien test se contentait d'une mention, et restait vert quand on
+    // débranchait la branche (vérifié en remettant le défaut).
+    const affectations = [...code.matchAll(/\bcopieExterne = ([^;\n]+)/g)].map(m => m[1].trim());
+    assert.ok(affectations.length >= 3, 'affectations de copieExterne lues : ' + affectations.length);
+    const sansVerif = affectations.filter(x => x !== 'null' && x !== 'copieOk' && !/lastError/.test(x));
+    assert.deepStrictEqual(sansVerif, [], 'une affectation coche la copie sans regarder si elle a échoué');
+    assert.ok(/const copieOk = !!\(i && i\.dir && !i\.lastError\);/.test(code), 'Paramètres → Données ne distingue plus une copie en échec');
+    // Et le vert suit la même réponse (U-11) : tant que la copie échoue, l'étape suivante est de la
+    // réparer, pas de poser un mot de passe au-dessus d'une ligne rouge.
+    assert.ok(/etapeMotDePasse\(copieOk\)/.test(code), 'le vert passe au mot de passe au-dessus d\'une copie en échec');
+    assert.ok(/i\.lastError \? `<span style="color:var\(--danger\)">Dernière copie impossible/.test(code),
+      'Paramètres → Données doit DIRE qu\'une copie a échoué');
   });
 
   t('trésorerie : un encaissement tombe sur le compte qu\'on a désigné', () => {
@@ -13222,8 +13254,10 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     });
     // Créé depuis une ligne « stock », l'article part coché « suivi » : c'est pour ça qu'on le créait.
     assert.ok(achat.includes("tracked: l.destination === 'stock'"), 'l\'article créé depuis une ligne stock n\'est plus suivi en stock');
-    // Un document verrouillé ne propose rien : on ne retouche pas une pièce émise.
-    assert.ok(/if \(!locked\) \$\$\('input\[data-k=label\]', linesBody\)\.forEach\(el => suggererCatalogue\(/.test(doc), 'l\'éditeur de document propose le catalogue même sur une pièce verrouillée');
+    // Un document qu'on ne peut pas modifier ne propose rien : ni une pièce émise, ni (10.14.0) une pièce
+    // d'un mois clôturé — `figee` réunit les deux, et le test de l'exemple de cinq ans exige qu'elle
+    // porte `locked`. L'assertion d'avant recopiait `if (!locked)` et tombait sur la règle élargie.
+    assert.ok(/if \(!(locked|figee)\) \$\$\('input\[data-k=label\]', linesBody\)\.forEach\(el => suggererCatalogue\(/.test(doc), 'l\'éditeur de document propose le catalogue même sur une pièce verrouillée');
     // L'avertissement : jugé sur la ligne SAISIE (qui porte itemId), et chaque ligne fautive porte
     // « Choisir l'article… » qui ramène au champ et ouvre la liste.
     const alerte = zone('function refresh() {', "const head = $('#b-head');");
@@ -14505,6 +14539,26 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
       // Et la preuve que la feuille est bien passée en logique, plutôt que vidée de ses règles.
       assert.ok(/(margin|padding|border)-inline-(start|end)/.test(net), nom + ' : aucune propriété logique');
     }
+  });
+
+  t('10.14.0 : aucune déclaration physique non plus dans les styles que les ÉCRANS écrivent', () => {
+    // La règle de la 9.4.10 ne lisait que les deux feuilles : dix-sept `style="margin-right:auto"`
+    // et `padding-left` vivaient dans les gabarits des deux applications. On lit chaque attribut
+    // `style="…"` des écrans. Exception NOMMÉE : core.js, dont les gabarits sont ceux du document
+    // IMPRIMÉ (une facture en français ou en anglais, lue de gauche à droite), et les positions
+    // calculées depuis getBoundingClientRect (des coordonnées physiques par nature, jamais un
+    // attribut de gabarit).
+    const PHYS = /(?:^|[;\s"])(?:(?:margin|padding|border)-(?:left|right)(?:-[a-z]+)?|left|right)\s*:|text-align\s*:\s*(?:left|right)\b|float\s*:\s*(?:left|right)\b/;
+    const fichiers = [['src', 'renderer', 'app.js'], ['src', 'cabinet', 'renderer', 'app.js'], ['src', 'renderer', 'visite.js'],
+      ['src', 'renderer', 'rowmenu.js'], ['src', 'renderer', 'reglages.js'], ['src', 'renderer', 'majui.js'], ['src', 'renderer', 'onboarding.js']];
+    let lus = 0;
+    const fautes = [];
+    fichiers.forEach(ch => {
+      const src = lireSource(...ch);
+      for (const m of src.matchAll(/style="([^"]*)"/g)) { lus++; if (PHYS.test(' ' + m[1])) fautes.push(ch[ch.length - 1] + ' : style="' + m[1].slice(0, 70) + '"'); }
+    });
+    assert.ok(lus > 100, 'attributs style lus : ' + lus);
+    assert.deepStrictEqual(fautes, [], 'des styles physiques dans les gabarits des écrans');
   });
 
   // ---------- 9.4.10 : un montant affiché se relit AVEC son signe ----------

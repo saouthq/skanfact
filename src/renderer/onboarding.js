@@ -1,9 +1,10 @@
-// Assistant de première utilisation : les cinq écrans qui suivent la toute première ouverture.
-// Il ne s'affiche que si aucune entreprise n'est encore renseignée (company.setupDone à false et
-// pas de documents). Il n'impose rien : tout se remodifie ensuite dans Paramètres.
+// Assistant de première utilisation : la porte (découvrir sur l'exemple, ou commencer), puis les
+// trois questions qui préparent l'entreprise. Il ne s'affiche que si aucune entreprise n'est encore
+// renseignée (company.setupDone à false et pas de documents). Il n'impose rien : tout se remodifie
+// ensuite dans Paramètres.
 //
-// Rendu à part de app.js pour que les textes d'accueil se relisent facilement. L'assistant
-// travaille sur une copie et ne touche aux données qu'à la dernière étape.
+// Rendu à part de app.js pour que les textes d'accueil se relisent facilement. L'assistant écrit à
+// chaque étape (7.2.0) : fermer la fenêtre en route reprend là où l'on s'était arrêté.
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory(require('./core.js'));
   else root.SkanOnboarding = factory(root.SkanCore);
@@ -83,19 +84,28 @@
   }
 
   // ---------- contenu des écrans ----------
+  //
+  // 10.14.0 — la PORTE d'abord, le formulaire après la découverte. Skander : « si on tombe sur un
+  // formulaire au début, on a tendance à passer et revenir plus tard ». Le premier écran propose deux
+  // chemins — découvrir sur l'exemple (recommandé), ou commencer tout de suite — et le formulaire ne
+  // garde que les TROIS questions que personne d'autre ne peut répondre à ta place : qui tu es, ton
+  // métier, ce dont tu as besoin. Le reste ne se demande plus ici :
+  //   — les règles de facturation ont leurs usages tunisiens par défaut (timbre de 1 dinar, trente
+  //     jours de validité et de paiement, pas de retenue) et se règlent dans Paramètres → Documents ;
+  //   — le RIB se demande avec la fiche société, la première étape des premiers pas, et chaque
+  //     émission le réclame tant qu'il manque à qui encaisse par virement ;
+  //   — la copie de sécurité est devenue l'étape qui suit le premier devis : posée au premier écran,
+  //     elle protégeait un fichier vide, et tout le monde la sautait.
+  // `quoi` : ce que la porte annonce de chaque question (« ton entreprise, ton métier… »). Une
+  // question ajoutée ici se compte et se nomme toute seule sur la porte.
   const STEPS = [
     {
-      id: 'bienvenue', title: 'Bienvenue dans SkanFact', sub: 'Deux minutes pour préparer ton entreprise',
-      intro: `<p>SkanFact fabrique tes devis et tes factures, suit ce qu'on te doit et prépare ce que ton comptable te demandera.</p>
-        <p>Tes documents, tes clients et tes chiffres restent <b>sur cet ordinateur</b> : aucun ne part sur Internet, et personne d'autre n'y a accès. SkanFact ne s'y connecte que pour chercher ses mises à jour et vérifier ta licence. En contrepartie, c'est toi qui es responsable de tes sauvegardes — on s'en occupe à la dernière étape.</p>
-        <p class="small muted">Tu peux passer cet assistant et tout régler plus tard dans Paramètres. Rien n'est définitif : chaque réponse se modifie ensuite.</p>`
+      id: 'bienvenue', porte: true, title: 'Bienvenue dans SkanFact', sub: 'Tes devis, tes factures et ta gestion, en main dès aujourd\'hui',
+      intro: `<p>Tes documents, tes clients et tes chiffres restent <b>sur cet ordinateur</b> : aucun ne part sur Internet, et personne d'autre n'y a accès. SkanFact ne s'y connecte que pour chercher ses mises à jour et vérifier ta licence. C'est toi qui gardes tes sauvegardes : je te proposerai une copie automatique juste après ton premier devis.</p>`
     },
-    { id: 'entreprise', title: 'Ton entreprise', sub: 'Ce qui s\'imprimera en haut de chaque document' },
-    { id: 'activite', title: 'Ton activité', sub: 'Pour te proposer un catalogue de départ' },
-    { id: 'modules', title: 'De quoi as-tu besoin ?', sub: 'On range le menu — on ne retire aucune fonction' },
-    { id: 'facturation', title: 'Tes règles de facturation', sub: 'Délais, taxes, devise' },
-    { id: 'paiement', title: 'Comment tes clients te paient', sub: 'Ce bloc s\'affiche sur tes factures' },
-    { id: 'sauvegarde', title: 'Protéger tes données', sub: 'L\'étape que tout le monde saute, et qu\'il ne faut pas sauter' }
+    { id: 'entreprise', title: 'Ton entreprise', sub: 'Ce qui s\'imprimera en haut de chaque document', quoi: 'ton entreprise' },
+    { id: 'activite', title: 'Ton activité', sub: 'Pour te proposer un catalogue de départ', quoi: 'ton métier' },
+    { id: 'modules', title: 'De quoi as-tu besoin ?', sub: 'On range le menu — on ne retire aucune fonction', quoi: 'ce dont tu as besoin' }
   ];
 
   return { needsSetup, applySetup, STEPS };

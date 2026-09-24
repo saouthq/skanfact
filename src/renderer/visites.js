@@ -46,8 +46,12 @@
     { id: 'stock', titre: 'Stock et biens', sous: 'Marchandises, numéros de série, immobilisations', aide: 'stock', couleur: 'acheter' },
     { id: 'pilotage', titre: 'Piloter', sous: 'Marges, affaires, statistiques', aide: 'pilotage', couleur: 'piloter' },
     { id: 'compta', titre: 'La comptabilité et le comptable', sous: 'TVA, clôture, paquet du mois', aide: 'compta', couleur: 'declarer' },
-    { id: 'reglages', titre: 'Réglages et données', sous: 'Ta fiche, tes sauvegardes, ta sécurité', aide: 'donnees', couleur: 'piloter',
+    { id: 'reglages', titre: 'Réglages et données', sous: 'Ta fiche, tes sauvegardes, ta sécurité, le travail à deux', aide: 'donnees', couleur: 'piloter',
       icone: '<path d="M12 3l7.5 3v5.5c0 4.6-3.2 8.3-7.5 9.5-4.3-1.2-7.5-4.9-7.5-9.5V6z"/><path d="M9.2 12.2l2 2 3.6-3.8"/>' },
+    // Les gestes « techniques » (10.14.0) : ceux qu'on fait rarement, donc qu'on ne sait jamais
+    // refaire — installer une version, activer sa licence, retrouver un fichier, signaler un souci.
+    { id: 'appli', titre: 'L\'application et tes fichiers', sous: 'Mises à jour, licence, fichiers, dépannage', aide: 'support', couleur: 'piloter',
+      icone: '<rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M3 9h18"/><path d="M12 11.5v5.5"/><path d="M9.5 14.5l2.5 2.5 2.5-2.5"/>' },
     { id: 'pages', titre: 'Chaque page, bouton par bouton', sous: 'À quoi elle sert, et ce que fait chacun de ses boutons', aide: null, couleur: 'commencer' }
   ];
   // La couleur de la visite d'une PAGE : celle du domaine où vit la page (une facture est bleue
@@ -149,7 +153,7 @@
     { sel: '#guide-band', titre: "La visite de cette page", texte: "Proposée les trois premières fois que tu ouvres une page. Tu la retrouves ensuite dans « Me guider »." },
     { sel: '.page-head', titre: "Le haut de la page", texte: "Le titre dit où tu es. À droite, les gestes de la page : <b>un seul est vert</b>, c'est l'étape suivante. « Comprendre cette page » ouvre son article d'Aide." },
     { sel: '#bal-vues', titre: "Les quatre vues de la balance", texte: "La même balance, lue de quatre façons." },
-    { sel: '.tabs', titre: "Les onglets", texte: "La page se range en onglets. Je vais te les ouvrir un par un ; « Chapitre suivant » en saute un." },
+    { sel: '.tabs', titre: "Les onglets", texte: "La page se range en onglets. Je vais te les ouvrir un par un ; « Passer au chapitre suivant » en saute un." },
     { sel: '.filters', titre: "Retrouver une ligne", texte: "La recherche lit le numéro, le nom et l'objet pendant que tu tapes ; les listes filtrent par statut et par année. « n sur N » dit combien de lignes tu gardes." },
     { sel: '.pager', titre: "Les pages de la liste", texte: "La liste se découpe en pages. Les totaux du bas portent toujours sur <b>toute</b> la sélection, pas seulement sur la page affichée." },
     { sel: '.vide-utile', titre: "Une liste encore vide", texte: "Elle dit à quoi elle sert, et te donne le bouton qui la remplit." },
@@ -297,6 +301,8 @@
   b('#lock-credit', "Une facture émise ne se modifie pas : elle se corrige par un avoir. Ce bouton le prépare.");
   b('#unlock', "Rouvre cette pièce pour la modifier. Réservé à ce qui n'engage pas ta comptabilité : une facture émise, elle, se corrige par un avoir.");
   b('#lock-unlock', "Rouvre cette pièce pour la modifier malgré son envoi.");
+  b('#clos-dup', "Cette pièce est dans un mois clôturé : elle ne bouge plus. Ce bouton en fait une copie datée d'aujourd'hui, que tu peux modifier.");
+  b('#clos-go', "Ouvre les clôtures : c'est là qu'un mois clôturé se rouvre, avec un motif que lira ton comptable.");
   b('#cancel-inv', "Marque la pièce annulée, avec son motif. Une facture émise, elle, se corrige par un avoir.");
   b('#uncancel', "Annule le marquage « annulée ».");
   b('#del', "Supprime la pièce (seulement si elle n'est pas émise). SkanFact dit d'abord ce qui y est rattaché.", { route: 'doc' });
@@ -546,13 +552,19 @@
   b('#mod-all', "Remet tous les modules dans le menu.");
   b('[data-mod]', "Affiche ou masque ce module dans le menu. Ses données restent.", { nom: 'Un module', cle: 'mod' });
   b('[data-sousmod]', "Affiche ou masque cette partie du module.", { nom: 'Une option', cle: 'sousmod' });
-  b('[data-open]', "Ouvre cette entreprise.", { nom: 'Ouvrir' });
+  // `data-open` porte QUATRE gestes selon la page : une entreprise, un module, un fichier joint, une
+  // ligne d'achat. Sans la route, la bulle d'un fichier joint disait « Ouvre cette entreprise » : une
+  // explication fausse est pire qu'une explication absente, parce qu'aucun instrument ne la voit.
+  b('[data-open]', "Ouvre cette entreprise : l'application se recharge sur ses données.", { route: 'parametres', nom: 'Ouvrir' });
+  b('[data-open]', "Ouvre la première page de ce module.", { route: 'modules', nom: 'Ouvrir', cle: 'mod-open' });
+  b('[data-open]', "Ouvre le fichier joint avec le programme de ton ordinateur : lecteur PDF, visionneuse de photos.", { route: ['doc', 'achat'], nom: 'Le fichier joint', cle: 'att-open' });
   b('#aide-q', "Tape un mot ou une question : la recherche lit le contenu des articles, pas seulement les titres.", { nom: 'Recherche' });
   b('[data-art]', "Ouvre cet article.", { nom: 'Un article', cle: 'art' });
   b('[data-theme]', "Descend au domaine nommé.", { nom: 'Un domaine', cle: 'theme' });
   b('#aide-support', "Prépare un mail pour signaler un problème.");
   b('#aide-idee', "Propose une amélioration.");
   b('#aide-changelog', "Ce qui a changé dans cette version.");
+  b('#aide-guide', "Ouvre « Me guider » : au lieu de lire, on te montre où cliquer, sur ton vrai écran.");
   b('#guide-q', "Écris ce que tu veux faire : les visites qui correspondent restent.", { nom: 'Recherche' });
   b('[data-visite]', "Lance cette visite.", { nom: 'Une visite', cle: 'visite' });
   // Le bouton du prochain geste porte deux noms selon ce qu'il fait : reprendre une visite en pause,
@@ -565,6 +577,64 @@
   b('#pp-guider', "Te guide clic par clic dans ta vraie entreprise : ta fiche, ton premier client, ton premier devis.");
   b('#pp-plus-tard', "Range cet accueil. La découverte et chaque visite restent dans « Me guider », en bas du menu.");
   b('#guide-proposer', "Propose (ou non) la visite d'une page la première fois que tu l'ouvres.", { nom: 'Proposer les visites' });
+
+  // ---------- ce que la couverture a trouvé sans explication (24/09/2026) ----------
+  b('#cl-edit', "Ouvre la fiche de ce client par-dessus la pièce : tu corriges son adresse, son matricule ou son mail sans perdre ce que tu écris.", { nom: 'Modifier la fiche' });
+  b('#rv-mail', "Ouvre ta messagerie avec le relevé en pièce jointe, prêt à partir chez le client.");
+  b('#rl-add', "Ajoute une ligne au contrat : une prestation de plus, facturée à chaque échéance.");
+  b('[data-rdesc]', "Ajoute une description sous la ligne ; elle est reprise sur chaque facture du contrat.", { nom: '+ description', cle: 'rdesc' });
+  b('#tf-add', "Ajoute une ligne vide au modèle, à remplir.");
+  b('[data-qrem]', "Prépare le mail qui relance le client sur ce devis resté sans réponse, prêt à partir.", { nom: 'Relancer le devis', cle: 'qrem' });
+  b('#clear', "Retire le report : la facture revient tout de suite dans la liste des relances.", { route: 'relances' });
+  b('#sup-what', "Ce que tu faisais quand le problème est arrivé, et ce que tu as vu. Plus c'est précis, plus vite c'est corrigé.", { nom: 'Ce qui s\'est passé' });
+  b('#sup-log', "Ouvre le journal de l'application : c'est lui qui accompagne le signalement, et tu peux le lire avant.");
+  b('#idee-quoi', "Ce que tu aimerais pouvoir faire dans SkanFact.", { nom: 'Ce que tu aimerais faire' });
+  b('#idee-auj', "Comment tu t'en sors aujourd'hui : c'est ce qui apprend le plus sur ce qu'il faut construire.", { nom: 'Comment tu fais aujourd\'hui' });
+  b('#redo-setup', "Rejoue l'assistant du premier jour, prérempli avec tes réponses : il ne réécrit que ce que tu lui redonnes.");
+  b('#redo-setup-2', "Rejoue l'assistant du premier jour, prérempli avec tes réponses : il ne réécrit que ce que tu lui redonnes.");
+  b('#c-del', "Supprime le contrat, après confirmation. Les factures qu'il a déjà générées restent.");
+  b('#add-bon', "Ajoute une prime ou une indemnité au bulletin : elle entre dans le brut, et le net se recalcule.");
+  b('#add-ded', "Ajoute une retenue au bulletin — une avance remboursée, par exemple : le net se recalcule.");
+  b('#undo-dis', "Annule la sortie du bien : il revient à l'actif, et son amortissement reprend.");
+  b('#gl-csv', "Enregistre le grand livre affiché dans un fichier que ton tableur et ton comptable ouvrent.");
+  b('#bal-csv', "Enregistre la balance affichée dans un fichier que ton tableur et ton comptable ouvrent.");
+  b('#et-csv', "Enregistre les états financiers dans un fichier que ton tableur et ton comptable ouvrent.");
+  ['#gl-plan', '#bal-plan', '#et-plan'].forEach(id => b(id, "Ouvre ton plan de comptes : le numéro où SkanFact écrit chaque sorte d'opération, que ton comptable peut changer."));
+  b('#ch-reset', "Remet les numéros de compte proposés au départ, à la place de ceux que tu as changés — SkanFact demande d'abord.");
+  // L'opération diverse : la seule écriture qu'on écrit soi-même, ligne par ligne.
+  b('.od-compte', "Le numéro du compte : tape les premiers chiffres, SkanFact propose ceux de ton plan et écrit leur intitulé à côté.", { nom: 'Compte' });
+  b('.od-label', "Le libellé de cette ligne, s'il diffère de celui de l'opération (facultatif).", { nom: 'Libellé de la ligne' });
+  b('.od-debit', "Le montant au débit de ce compte. Une ligne porte un débit OU un crédit.", { nom: 'Débit' });
+  b('.od-credit', "Le montant au crédit de ce compte. L'opération n'entre que si le total des débits égale celui des crédits.", { nom: 'Crédit' });
+  b('.od-del', "Retire cette ligne de l'opération.", { nom: 'Retirer la ligne' });
+  b('#od-add', "Ajoute une ligne à l'opération : un compte de plus à débiter ou à créditer.");
+  // Les états vides : le premier geste d'une page qui n'a encore rien (le second passage de
+  // `e2e:couverture`, sur une entreprise vierge, en a trouvé seize sans explication).
+  b('#vide-new', "Ouvre la première pièce de cette liste, vierge : tu choisis le client, tu ajoutes tes lignes, le total se calcule.");
+  b('#vide-demo', "Charge l'entreprise d'exemple de cinq ans pour voir cette page remplie. Tes données sont mises de côté, et « Quitter l'exemple » te les rend.");
+  b('#vide-client', "Ouvre la fiche de ton premier client : son nom, son matricule, son adresse. Ils se reporteront tout seuls sur chaque pièce.");
+  b('#vide-fournisseur', "Ouvre la fiche de ton premier fournisseur : ses factures d'achat s'y rattacheront, avec ce que tu lui dois.");
+  b('#vide-achat', "Saisis ta première facture d'achat : ses lignes, et sa TVA — celle que tu récupères. Joins la photo de la facture avant de saisir.");
+  b('#vide-dep', "Note une dépense du quotidien (carburant, fournitures) : plus courte qu'une facture d'achat.");
+  b('#rec-first', "Crée ton premier contrat : le client, les lignes, la fréquence. À chaque échéance, SkanFact prépare la facture ; tu n'as qu'à l'émettre.");
+  b('#rel-vers-new', "Ouvre une facture vierge. Les relances ne concernent que des factures émises dont l'échéance est passée.");
+  b('#proj-first', "Crée ta première affaire (un chantier, un projet) : ses ventes et ses achats s'y rattachent, et sa fiche dit ce qu'elle rapporte vraiment.");
+  b('#immo-premier', "Crée la fiche de ton premier bien (ordinateur, véhicule, mobilier) : son prix, sa date, sa durée. Le plan d'amortissement s'affiche pendant que tu tapes.");
+  b('#immo-vers-achats', "Saisis la facture d'achat du bien : sa ligne en destination « immobilisation » viendra attendre ici que tu crées sa fiche.");
+  b('#mg-vers-contrats', "Ouvre la facturation récurrente : c'est là que se créent les contrats dont cet onglet mesure ce qu'ils rapportent.");
+  b('#g-choisir', "Choisis dans ton catalogue la prestation à suivre par numéro de série : sa fiche s'ouvre avec le suivi coché, et tu choisis la garantie.");
+  b('#g-suivre', "Crée un article suivi par numéro de série : chaque unité vendue aura sa garantie, et cette page annoncera celles qui se terminent.");
+  b('#mod-add', "Remet cette page dans ton menu, à gauche. Elle marchait déjà : elle n'y était simplement pas affichée.");
+  b('[data-pas-guide]', "Te guide pour cette étape sur ton vrai écran : je te montre où cliquer, et j'attends que tu l'aies fait.", { nom: 'Me guider', cle: 'pas-guide' });
+  // Les fichiers : joints à une pièce, ou fabriqués pour le comptable. « Où est mon fichier ? » est la
+  // question qu'on pose le jour où on en a besoin — chaque bouton dit où il mène.
+  b('[data-reveal]', "Montre ce fichier dans son dossier, sur ton ordinateur : pour le glisser dans un mail ou le copier ailleurs.", { route: ['doc', 'achat'], nom: 'Dossier', cle: 'att-reveal' });
+  b('[data-rmatt]', "Retire ce fichier joint : la copie gardée par SkanFact est supprimée, ton fichier d'origine ne bouge pas.", { nom: '✕', cle: 'att-rm' });
+  b('[data-reveal]', "Montre le fichier du paquet dans son dossier, sur ton ordinateur : c'est lui que tu envoies, ou que ton comptable te redemande.", { route: 'compta', nom: 'Montrer le fichier', cle: 'pack-reveal' });
+  // Ce qui revient du comptable : ses questions, sa clôture.
+  b('[data-rep]', "Réponds à cette question de ton comptable. Ta réponse part dans le paquet du mois, dès que tu le fabriques ou le refais.", { nom: 'Répondre', cle: 'rep' });
+  b('[data-qrep]', "Réponds à la question de ton comptable sur cette pièce. Ta réponse part dans le paquet du mois, dès que tu le fabriques ou le refais.", { nom: 'Répondre', cle: 'qrep' });
+  b('[data-etats]', "Ouvre les états financiers que ton comptable a joints à sa clôture : son bilan et son compte de résultat.", { nom: 'Voir les états', cle: 'etats' });
 
   // ---------- fenêtres : les boutons communs ----------
   b('[data-close]', "Ferme la fenêtre sans rien garder. Si tu as tapé quelque chose, SkanFact demande d'abord.", { nom: 'Annuler', cle: 'fermer' });
@@ -666,6 +736,14 @@
     const r = (ctx && ctx.route) ? ctx.route() : route();
     const G = (ctx && ctx.G) || (typeof window !== 'undefined' && window.SkanGuide) || { INFO: {} };
     const lab = libelleDe(el);
+    // 0. une action d'un menu « Actions » porte sa propre phrase (7.28.0) : la visite dit la MÊME que
+    // celle que la personne lit dans le menu, jamais une seconde qui divergerait.
+    if (el.matches('.row-menu button')) {
+      const l = el.querySelector('.rm-l'), ph = el.querySelector('.rm-h');
+      const nom = l ? nettoie(l.textContent) : lab;
+      const phrase = ph ? nettoie(ph.textContent) : '';
+      if (phrase) return { cle: 'rm:' + nom, nom, texte: phrase };
+    }
     // 1. le dictionnaire
     for (let i = 0; i < B.length; i++) {
       const x = B[i];
@@ -730,7 +808,11 @@
     const combo = nom => `[data-combo="${nom}"] .combo-btn`;
     const valeur = sel => { const el = $(sel); return el ? String(el.value || '').trim() : ''; };
     const nb = liste => (data()[liste] || []).length;
-    const onglet = (barre, cle) => () => { const bt = document.querySelector(`${barre} button[data-tab="${cle}"]`); if (bt && !bt.classList.contains('active')) bt.click(); };
+    // Le nombre de paquets à l'entrée de l'étape « Fabriquer » : sa preuve est un paquet DE PLUS.
+    let paquetsAvant = 0;
+    // L'onglet se clique quand la page qui le porte est DESSINÉE (`Visite.ouvrirOnglet`, 10.14.0) :
+    // cliqué aussitôt après `aller()`, il visait l'écran d'avant et ne trouvait rien.
+    const onglet = (barre, cle) => () => ctx.Visite.ouvrirOnglet(barre, cle);
 
     const L = [];
     const visite = v => { L.push(v); return v; };
@@ -738,7 +820,7 @@
     // ======================================================================= LA DÉCOUVERTE
     // Le grand tour, sur l'exemple : on voit chaque page REMPLIE, sans risque. Douze chapitres (le
     // compte n'est écrit dans aucune bulle : il se lit dans l'en-tête, calculé) ;
-    // « Chapitre suivant » saute ce qui ne concerne pas. Chaque chapitre montre l'essentiel — le
+    // « Passer au chapitre suivant » saute ce qui ne concerne pas. Chaque chapitre montre l'essentiel — le
     // détail de chaque bouton vit dans la visite de la page.
     const fiche = cle => () => ctx.premier(cle);
     visite({
@@ -756,7 +838,7 @@
       etapes: [
         // — Bienvenue
         { chapitre: 'Bienvenue', couleur: 'commencer', page: '#/dashboard', titre: 'Bienvenue dans l\'exemple',
-          texte: '<p>Voici <b>une entreprise fictive qui a cinq ans</b> : des centaines de factures, des clients, des achats, deux salariés. Tout est inventé, rien ne part : tu peux cliquer partout.</p><p>Je te fais faire le tour, chapitre par chapitre — le compte est écrit en haut de cette bulle. <b>« Chapitre suivant »</b> saute ce qui ne te concerne pas, et la croix met en pause : tu reprendras plus tard depuis « Me guider ».</p>' },
+          texte: '<p>Voici <b>une entreprise fictive qui a cinq ans</b> : des centaines de factures, des clients, des achats, deux salariés. Tout est inventé, rien ne part : tu peux cliquer partout.</p><p>Je te fais faire le tour, chapitre par chapitre — le compte est écrit en haut de cette bulle. <b>« Passer au chapitre suivant »</b> saute ce qui ne te concerne pas, et la croix met en pause : tu reprendras plus tard depuis « Me guider ».</p>' },
         { page: '#/dashboard', cible: '.demo-banner', cote: 'dessous', titre: 'Tu es dans un bac à sable',
           texte: 'Ce bandeau reste en haut de chaque page tant que l\'exemple est chargé. <b>« Quitter l\'exemple »</b> te rend tes vraies données — elles ont été mises de côté.' },
         { page: '#/dashboard', cible: 'nav#nav', cote: 'droite', titre: 'Le menu',
@@ -773,7 +855,7 @@
         { page: '#/dashboard', cible: '.page-head .actions', cote: 'dessous', titre: 'Le bouton vert',
           texte: 'Sur chaque écran, <b>un seul bouton est vert</b> : c\'est l\'étape suivante. Dans le doute, c\'est lui.' },
         // — Vendre
-        { chapitre: 'Vendre', couleur: 'vendre', page: '#/devis', cible: '#view table.list', zone: '#view table.list', cote: 'dessus', titre: 'Les devis',
+        { chapitre: 'Vendre', couleur: 'vendre', page: '#/devis', cible: ['#list-wrap table.list', '#view table.list'], zone: ['#list-wrap table.list', '#view table.list'], cote: 'dessus', titre: 'Les devis',
           texte: 'Tes propositions de prix. Le statut dit où en est chacun : brouillon, envoyé, accepté, refusé, expiré. <b>Une ligne s\'ouvre d\'un clic</b>.' },
         { page: '#/devis', cible: '#view [data-rowmenu]', cote: 'gauche', titre: 'Le bouton « Actions »',
           texte: 'Au bout de chaque ligne : tous les autres gestes, <b>chacun avec sa phrase</b> — envoyer, dupliquer, noter que le client a dit oui, facturer.' },
@@ -783,7 +865,7 @@
           texte: 'À droite, le document <b>tel que ton client le recevra</b>. « Agrandir » l\'ouvre en grand.' },
         { page: fiche('devis'), cible: ['#convert', '#bill-btn', '#email'], cote: 'dessous', titre: 'Du devis à la facture',
           texte: 'Quand le client dit oui, <b>« Facturer ce devis »</b> fabrique la facture sans rien ressaisir. Tu peux aussi facturer un acompte, puis le solde.' },
-        { page: '#/factures', cible: '#view table.list', zone: '#view table.list', cote: 'dessus', titre: 'Les factures',
+        { page: '#/factures', cible: ['#list-wrap table.list', '#view table.list'], zone: ['#list-wrap table.list', '#view table.list'], cote: 'dessus', titre: 'Les factures',
           texte: 'Le statut — payée, partielle, en retard — <b>se déduit tout seul</b> des paiements que tu notes. Tu ne le changes jamais à la main.' },
         { page: '#/factures', cible: '.filters', cote: 'dessous', titre: 'Retrouver une facture',
           texte: 'Cherche par numéro ou par client, filtre par statut (« À encaisser » montre d\'un coup tout ce qu\'on te doit) ou par année.' },
@@ -796,14 +878,14 @@
         { page: '#/contrats', cible: '#view table.list, #view .panel', cote: 'dessous', titre: 'La facturation récurrente',
           texte: 'Un client que tu factures chaque mois du même montant ? Un contrat prépare la facture à la date prévue ; tu n\'as qu\'à l\'émettre.' },
         // — Clients et catalogue
-        { chapitre: 'Clients et catalogue', couleur: 'vendre', page: '#/clients', cible: '#view table.list', zone: '#view table.list', cote: 'dessus', titre: 'Les clients',
+        { chapitre: 'Clients et catalogue', couleur: 'vendre', page: '#/clients', cible: ['#list-wrap table.list', '#view table.list'], zone: ['#list-wrap table.list', '#view table.list'], cote: 'dessus', titre: 'Les clients',
           texte: 'Tes clients, et <b>ce que chacun te doit</b>. Une ligne ouvre sa fiche.' },
         { page: fiche('client'), cible: '#view .page-head', cote: 'dessous', titre: 'La fiche d\'un client',
           texte: 'Tout ce qui le concerne : ses pièces, ce qu\'il te doit, ses contrats. Le menu <b>« Actions »</b> en haut prépare son <b>relevé de compte</b> à lui envoyer.' },
         { page: '#/catalogue', cible: '#view table.list, #view .panel', cote: 'dessous', titre: 'Le catalogue',
           texte: 'Ce que tu vends, décrit une fois pour toutes avec son prix. <b>Chaque devis le reprend d\'un clic</b>, et les onglets gardent tes modèles et tes textes prédéfinis.' },
         // — Acheter
-        { chapitre: 'Acheter', couleur: 'acheter', page: '#/achats', cible: '#view table.list', zone: '#view table.list', cote: 'dessus', titre: 'Achats et dépenses',
+        { chapitre: 'Acheter', couleur: 'acheter', page: '#/achats', cible: ['#list-wrap table.list', '#view table.list'], zone: ['#list-wrap table.list', '#view table.list'], cote: 'dessus', titre: 'Achats et dépenses',
           texte: 'Tout ce que tu paies. C\'est d\'ici que vient <b>la TVA que tu récupères</b> : un achat oublié, c\'est de la TVA payée deux fois.' },
         { page: '#/achats', cible: '#view .page-head .actions', cote: 'dessous', titre: 'Deux façons de saisir',
           texte: '<b>« + Facture d\'achat »</b> pour une facture en bonne et due forme ; <b>« + Dépense »</b> pour le quotidien (carburant, fournitures). Dans les deux, tu joins la photo du justificatif <b>avant</b> de saisir.' },
@@ -839,14 +921,20 @@
         { page: '#/compta', avant: onglet('#c-tabs', 'clotures'), cible: '#view .panel', cote: 'dessus', titre: 'Clôturer un mois',
           texte: 'Une fois le mois déclaré, tu le <b>clôtures</b> : plus aucune pièce de ce mois ne peut changer. C\'est ce qui rend tes déclarations définitives.' },
         { page: '#/compta', avant: onglet('#c-tabs', 'cabinet'), cible: '#view .panel', cote: 'dessus', titre: 'Le paquet du comptable',
-          texte: 'Chaque mois, un fichier : tes journaux, tes pièces et tes justificatifs, chiffré pour ton cabinet. <b>Zéro ressaisie</b> de son côté, et ses questions reviennent sur la bonne pièce.' },
+          texte: 'Chaque mois, un fichier : tes journaux, tes pièces et tes justificatifs, chiffré pour ton cabinet. <b>Zéro ressaisie</b> de son côté.' },
+        { page: '#/compta', avant: onglet('#c-tabs', 'cabinet'), cible: '#p-questions', cote: 'dessus', titre: 'Ses questions',
+          texte: 'Quand ton comptable a une question, elle arrive ici <b>et sur la pièce qu\'elle vise</b>. Tu réponds en une phrase ; ta réponse repart dans le paquet du mois.' },
+        { page: '#/compta', avant: onglet('#c-tabs', 'clotures'), cible: '#p-cloture-cabinet', cote: 'dessus', titre: 'Sa clôture',
+          texte: 'En fin d\'exercice, il t\'envoie sa clôture : ses à-nouveaux officiels et tes états financiers. Ton bilan et le sien disent alors la même chose.' },
         // — Réglages
         { chapitre: 'Réglages et sécurité', couleur: 'piloter', page: '#/parametres', avant: onglet('#set-tabs', 'societe'), cible: '#view .panel', cote: 'dessus', titre: 'Ta fiche société',
           texte: 'Raison sociale, matricule fiscal, adresse, RIB, logo : <b>tout ce qui s\'imprime</b> en haut de tes documents.' },
         { page: '#/parametres', avant: onglet('#set-tabs', 'donnees'), cible: ['#ext-choose', '#view .panel'], cote: 'dessous', titre: 'Tes données à l\'abri',
           texte: 'SkanFact sauvegarde chaque jour. Mais la <b>copie automatique</b> vers une clé USB, iCloud ou OneDrive est l\'étape que tout le monde saute — et la seule dont l\'absence coûte tout.' },
+        { page: '#/parametres', avant: onglet('#set-tabs', 'app'), cible: '#p-maj', cote: 'dessus', titre: 'Les mises à jour',
+          texte: 'SkanFact se met à jour tout seul, en arrière-plan, et <b>n\'installe rien sans ton accord</b> : une fenêtre te propose de redémarrer quand une version est prête. Tes données ne bougent pas.' },
         { chapitre: 'Pour la suite', couleur: 'commencer', page: '#/dashboard', cible: '.sidebar-foot a[data-route="guide"]', cote: 'droite', titre: 'Me guider, toujours là',
-          texte: 'Chaque page a sa visite, <b>bouton par bouton</b>, et chaque geste du métier se fait guidé, clic par clic. Quand tu te demandes « comment on fait ? », c\'est ici.' },
+          texte: 'Chaque page a sa visite, <b>bouton par bouton</b>, et chaque geste se fait guidé, clic par clic — les gestes du métier comme les gestes techniques : répondre à ton comptable, retrouver un fichier, installer une mise à jour, revenir à une sauvegarde.' },
         { page: '#/dashboard', cible: '.sidebar-foot a[data-route="aide"]', cote: 'droite', titre: 'L\'Aide',
           texte: 'Pour comprendre plus en détail : la facturation, la TVA, la routine du mois. Sur chaque page, <b>« Comprendre cette page »</b> ouvre le bon article, et chaque petit <b>i</b> explique le mot à côté.' }
       ]
@@ -867,16 +955,20 @@
       etapes: [
         { page: '#/dashboard', titre: 'Ta vraie entreprise', texte: '<p>Ici, c\'est <b>ta</b> entreprise : tout ce que tu fais compte, et s\'imprime à ton nom.</p><p>Je te montre l\'ordre des choses. Pour chaque étape, une visite te guidera <b>clic par clic</b>.</p>' },
         { page: '#/dashboard', cible: '.premiers-pas', cote: 'gauche', titre: 'Tes premiers pas',
-          texte: 'L\'ordre à suivre : ta fiche société, ton premier client, ton catalogue, ton premier devis, l\'envoi, la facture, et ta copie de sécurité. <b>Chaque étape se coche toute seule</b> quand c\'est fait.' },
+          texte: 'L\'ordre à suivre : ta fiche société, ton premier client, ton catalogue, ton premier devis — puis ta copie de sécurité, l\'envoi et la facture. <b>Chaque étape se coche toute seule</b> quand c\'est fait ; celles marquées « facultatif » t\'attendent sans te presser.' },
         { page: '#/dashboard', cible: '.premiers-pas .encours .pp-go', cote: 'gauche', titre: 'Le bouton de chaque étape', facultatif: true,
           texte: 'Il t\'emmène au bon endroit. <b>« Me guider »</b>, juste à côté, t\'y emmène en te montrant où cliquer, clic par clic.' },
         { page: '#/dashboard', cible: '.sidebar-foot a[data-route="guide"]', cote: 'droite', titre: 'Me guider',
-          texte: 'Toutes les visites guidées : « Compléter ma fiche société », « Ajouter un client », « Faire mon premier devis »… Chacune t\'accompagne jusqu\'au bout.' }
+          texte: 'Toutes les visites guidées : « Compléter ma fiche société », « Ajouter un client », « Faire un devis »… Chacune t\'accompagne jusqu\'au bout.' }
       ]
     });
 
+    // `reel` (10.14.0) : cette visite fait TAPER ta raison sociale, ton matricule, ton adresse. Lancée
+    // depuis l'exemple, elle les écrivait dans la fiche de la société fictive — et tout repartait avec
+    // elle en quittant l'exemple. Toute visite qui fait écrire dans les Paramètres (ta fiche, ta copie
+    // de sécurité, ton mot de passe, ton comptable) sort d'abord de l'exemple ; un test le tient.
     visite({
-      id: 'societe', theme: 'demarrer', type: 'faire', duree: '2 min', page: '#/parametres',
+      id: 'societe', theme: 'demarrer', type: 'faire', reel: true, duree: '2 min', page: '#/parametres',
       titre: 'Compléter ma fiche société',
       resume: 'Raison sociale, matricule fiscal, adresse, RIB : ce qui s\'imprime sur chaque document.',
       mots: ['societe', 'entreprise', 'matricule', 'rib', 'adresse', 'fiche', 'logo'],
@@ -1155,7 +1247,28 @@
     });
 
     visite({
-      id: 'sauvegarde', theme: 'reglages', type: 'faire', duree: '1 min', page: '#/parametres',
+      id: 'justificatif', theme: 'achats', type: 'faire', duree: '1 min', page: () => ctx.premier('achatSansJustif'),
+      titre: 'Joindre un justificatif, et le retrouver',
+      resume: 'La photo ou le PDF d\'une facture d\'achat : sans lui, ni la charge ni la TVA ne se récupèrent.',
+      mots: ['justificatif', 'piece jointe', 'photo', 'scan', 'pdf', 'fichier', 'joindre', 'trombone', 'retrouver'],
+      si: () => !!ctx.premier('achatSansJustif'),
+      manque: { texte: 'Il te faut d\'abord une facture d\'achat.', visite: 'achat' },
+      suite: ['fichiers', 'repondre-comptable'],
+      bravo: 'Tu sais joindre un justificatif',
+      conclusion: 'Il part dans le paquet du mois avec son achat, et ta copie de sécurité l\'emporte. Les sauvegardes quotidiennes, elles, ne gardent que tes données — pas les fichiers joints.',
+      etapes: [
+        { page: () => ctx.premier('achatSansJustif'), cible: '#attach-top', cote: 'dessous', faire: 'clic',
+          titre: 'Joindre le justificatif', texte: 'La photo ou le PDF de la facture du fournisseur. Sans lui, ni la charge ni la TVA ne se récupèrent — et c\'est la première chose que ton comptable réclame.',
+          action: 'Clique sur {bouton}, puis choisis le fichier.', fait: () => !!$('#attachments [data-open]'), essai: { clic: true } },
+        { si: () => !!$('#attachments [data-open]'), cible: '.panel:has(> #attachments)', cote: 'dessus', titre: 'Où il est rangé',
+          texte: 'SkanFact en garde une <b>copie</b> à côté de tes données : ton original ne bouge pas. Le nom ouvre le fichier, <b>« Dossier »</b> le montre sur ton ordinateur, ✕ retire la copie.' },
+        { page: '#/achats', cible: '#list-wrap table.list', cote: 'dessus', titre: 'Le trombone',
+          texte: 'Dans la liste des achats, 📎 marque ceux qui ont leur justificatif. Ceux qui n\'en ont pas sont ceux que ton comptable te réclamera.' }
+      ]
+    });
+
+    visite({
+      id: 'sauvegarde', theme: 'reglages', type: 'faire', reel: true, duree: '1 min', page: '#/parametres',
       titre: 'Mettre mes données à l\'abri',
       resume: 'Une copie automatique vers une clé USB, iCloud ou OneDrive.',
       mots: ['sauvegarde', 'copie', 'usb', 'icloud', 'onedrive', 'securite', 'perte'],
@@ -1165,13 +1278,13 @@
       etapes: [
         { page: '#/parametres', avant: onglet('#set-tabs', 'donnees'), cible: '#ext-choose', cote: 'dessous', faire: 'clic',
           titre: 'Choisir un dossier', texte: 'SkanFact sauvegarde chaque jour sur cet ordinateur. Mais si l\'ordinateur tombe en panne ? Une copie ailleurs — clé USB, iCloud, OneDrive — c\'est la seule protection contre ça.',
-          action: 'Clique sur <b>« Choisir un dossier… »</b>.', essai: { clic: true } },
+          action: 'Clique sur <b>« Choisir un dossier… »</b>.', fait: () => { const r = $('#ext-remove'); return !!(r && !r.hidden); }, essai: { clic: true } },
         { page: '#/parametres', cible: '#view .panel', titre: 'C\'est tout', texte: 'Dès maintenant, chaque enregistrement est recopié là. Rien d\'autre à faire.' }
       ]
     });
 
     visite({
-      id: 'motdepasse', theme: 'reglages', type: 'faire', duree: '1 min', page: '#/parametres',
+      id: 'motdepasse', theme: 'reglages', type: 'faire', reel: true, duree: '1 min', page: '#/parametres',
       titre: 'Protéger mes données par un mot de passe',
       resume: 'Sans lui, personne ne peut ouvrir tes données — pas même depuis une copie.',
       mots: ['mot de passe', 'securite', 'chiffrer', 'proteger', 'verrouiller'],
@@ -1182,6 +1295,64 @@
           titre: 'Activer un mot de passe', texte: 'Tes données et tes sauvegardes sont chiffrées : sans le mot de passe, personne ne peut les lire.',
           action: 'Clique sur {bouton}.', essai: { clic: true } },
         { cible: '#modal-root .modal', cote: 'gauche', titre: 'Choisis-le bien', texte: 'Il n\'y a <b>aucun moyen</b> de le retrouver si tu l\'oublies : note-le dans un endroit sûr.' }
+      ]
+    });
+
+    visite({
+      id: 'restaurer', theme: 'reglages', type: 'faire', duree: '1 min', page: '#/parametres',
+      titre: 'Revenir à une sauvegarde',
+      resume: 'Une erreur, une pièce effacée : tes données d\'un jour précédent reviennent — et le retour se défait.',
+      mots: ['restaurer', 'sauvegarde', 'revenir', 'perdu', 'erreur', 'efface', 'recuperer', 'backup', 'ordinateur'],
+      suite: ['sauvegarde', 'fichiers'],
+      bravo: 'Tu sais revenir en arrière',
+      conclusion: 'Rien ne se perd en silence : chaque remplacement — import, exemple, effacement, restauration — prend d\'abord une sauvegarde de ce qu\'il remplace.',
+      etapes: [
+        { page: '#/parametres', avant: onglet('#set-tabs', 'donnees'), cible: '#p-sauvegardes', cote: 'dessus', titre: 'Tes sauvegardes',
+          texte: 'Chaque jour, avant la première modification, SkanFact garde l\'état de tes données — trente jours durant. Une copie est prise aussi avant un import, avant l\'exemple et avant un effacement.' },
+        { page: '#/parametres', cible: ['#backup-list [data-restore]', '#backup-list'], cote: 'gauche', facultatif: true, titre: 'Revenir en arrière',
+          texte: '<b>« Restaurer… »</b> te dit d\'abord ce que la sauvegarde contient, et ce que tu as aujourd\'hui. Ton état actuel est mis de côté juste avant : le retour se défait.' },
+        { page: '#/parametres', cible: '#backup-now', cote: 'dessous', titre: 'Sauvegarder maintenant',
+          texte: 'Avant un geste important, prends-en une toi-même : elle arrive en tête de la liste.' },
+        { page: '#/parametres', cible: '#export-data', cote: 'dessous', facultatif: true, titre: 'Changer d\'ordinateur',
+          texte: '<b>« Exporter les données… »</b> fait un seul fichier de tout ; sur le nouvel ordinateur, <b>« Importer… »</b> le reprend — avec les fichiers joints, s\'ils sont dans ta copie de sécurité.' }
+      ]
+    });
+
+    visite({
+      id: 'partager', theme: 'reglages', type: 'faire', duree: '2 min', page: '#/parametres',
+      titre: 'Travailler à deux, ou gérer plusieurs entreprises',
+      resume: 'Une entreprise par dossier ; un dossier partagé pour travailler à deux, chacun sur son ordinateur.',
+      mots: ['partager', 'deux', 'plusieurs', 'entreprise', 'dossier', 'poste', 'ordinateur', 'rejoindre', 'associe', 'famille'],
+      suite: ['sauvegarde', 'restaurer'],
+      bravo: 'Tu sais partager',
+      conclusion: 'Deux postes travaillent sur le même dossier à tour de rôle : SkanFact fusionne, et te dit ce qu\'il a fait. Une seule règle : une seule personne émet les factures, pour que deux numéros ne se croisent jamais.',
+      etapes: [
+        { page: '#/parametres', avant: onglet('#set-tabs', 'donnees'), cible: '#p-dossiers', cote: 'dessus', titre: 'Tes entreprises',
+          texte: 'Chaque dossier est une entreprise, avec ses propres données : elles ne se mélangent jamais. Tu passes de l\'une à l\'autre depuis son nom, en haut du menu.' },
+        { page: '#/parametres', cible: '#dos-share', cote: 'dessous', titre: 'Partager ce dossier',
+          texte: 'Il pose ton entreprise, avec tout ce qu\'elle contient, dans un dossier commun — OneDrive, iCloud Drive, une clé ou un disque réseau. Ton dossier d\'origine reste intact : SkanFact ne bascule sur la copie qu\'une fois celle-ci complète.' },
+        { page: '#/parametres', cible: '#dos-join', cote: 'dessous', titre: 'Sur le deuxième ordinateur',
+          texte: '<b>« Rejoindre un dossier déjà partagé »</b> ouvre ce que le premier y a posé — sans assistant, sans rien retaper.' },
+        { page: '#/parametres', cible: '#dev-name', cote: 'droite', facultatif: true, titre: 'Le nom de cet ordinateur',
+          texte: 'Il dit qui a enregistré en dernier quand vous êtes deux.' }
+      ]
+    });
+
+    visite({
+      id: 'envois', theme: 'reglages', type: 'faire', duree: '1 min', page: '#/parametres',
+      titre: 'Régler l\'envoi de mes mails',
+      resume: 'Ta messagerie, tes modèles de messages, l\'adresse de ton comptable.',
+      mots: ['mail', 'email', 'messagerie', 'modele', 'envoi', 'message', 'outlook', 'gmail'],
+      suite: ['relier-comptable', 'envoyer'],
+      bravo: 'Tes envois sont réglés',
+      conclusion: 'Chaque envoi se prépare dans ta messagerie, pièce jointe comprise : tu relis, et tu envoies. Rien ne part sans toi.',
+      etapes: [
+        { page: '#/parametres', avant: onglet('#set-tabs', 'envois'), cible: '#p-envoi', cote: 'dessus', titre: 'Comment partent tes mails',
+          texte: 'SkanFact prépare le message dans ta messagerie, avec le PDF : tu relis, et tu envoies. Rien ne part sans toi.' },
+        { page: '#/parametres', cible: '#p-modeles', cote: 'dessus', titre: 'Tes modèles de messages',
+          texte: 'L\'objet et le texte proposés pour chaque envoi — devis, facture, relances. <b>{numero}</b>, <b>{client}</b>, <b>{montant}</b>… se remplacent tout seuls.' },
+        { page: '#/parametres', cible: '#p-comptable', cote: 'dessus', titre: 'L\'adresse de ton comptable',
+          texte: '« Envoyer au comptable » s\'en sert pour tes journaux et pour le paquet du mois.' }
       ]
     });
 
@@ -1202,18 +1373,101 @@
       ]
     });
 
+    // Les questions du comptable restées sans réponse : ce qu'elles attendent passe avant le paquet.
+    const questionsOuvertes = () => (data().questionsCabinet || []).filter(q => !(q.reponse && String(q.reponse.texte || '').trim()));
+    const cabinetRelie = () => { const c = (data().company || {}).cabinet; return !!(c && c.publicKey); };
     visite({
-      id: 'paquet', theme: 'compta', type: 'faire', duree: '2 min', page: '#/compta',
+      id: 'paquet', theme: 'compta', type: 'faire', duree: '3 min', page: '#/compta',
       titre: 'Envoyer le mois à mon comptable',
       resume: 'Un fichier : journaux, pièces et justificatifs — zéro ressaisie de son côté.',
-      mots: ['paquet', 'comptable', 'cabinet', 'envoyer', 'mois'],
+      mots: ['paquet', 'comptable', 'cabinet', 'envoyer', 'mois', 'skanpack', 'fichier'],
+      suite: ['repondre-comptable', 'relier-comptable'],
       bravo: 'Le paquet est prêt',
-      conclusion: 'Ton comptable reçoit tout, déjà écrit. Ses questions reviendront sur la bonne pièce.',
+      conclusion: 'Ton comptable reçoit tout, déjà écrit. Ses questions reviendront sur la bonne pièce — « Répondre aux questions de mon comptable » te montre comment y répondre.',
       etapes: [
-        { page: '#/compta', avant: onglet('#c-tabs', 'cabinet'), cible: '#cab-month', cote: 'dessous', titre: 'Le mois', texte: 'Choisis le mois à envoyer. Un mois clôturé part « définitif ».', facultatif: true },
-        { page: '#/compta', cible: '#view .panel', cote: 'dessus', titre: 'Ce qui partira', texte: 'La liste exacte de ce que contient le paquet, et ce qui manque (un justificatif, une pièce), <b>avant</b> de le fabriquer.' },
-        { page: '#/compta', cible: ['#cab-build', '#cab-mail'], cote: 'dessous', faire: 'clic', facultatif: true,
-          titre: 'Fabriquer le paquet', texte: 'Un seul fichier, chiffré pour ton cabinet s\'il est appairé.', action: 'Clique sur {bouton}.', essai: { clic: true } }
+        { page: '#/compta', avant: onglet('#c-tabs', 'cabinet'), cible: '#cab-month', cote: 'dessous', titre: 'Le mois', texte: 'Choisis le mois à envoyer. Un mois clôturé part « définitif » : ton comptable sait que rien ne bougera.', facultatif: true },
+        { page: '#/compta', cible: '#view .panel', cote: 'dessus', titre: 'Ce qui partira', texte: 'La liste exacte de ce que contient le paquet — pièces en PDF, journaux, justificatifs, bulletins — <b>avant</b> de le fabriquer.' },
+        { page: '#/compta', cible: '#p-manques', cote: 'dessus', facultatif: true, titre: 'Ce qui manque',
+          texte: 'Un justificatif absent, une pièce restée en brouillon : chaque manque a son bouton. Tu peux envoyer quand même — la page de garde le dira à ton comptable, c\'est mieux qu\'un dossier qu\'il croit complet.' },
+        { page: '#/compta', si: () => questionsOuvertes().length > 0, cible: '#p-questions', cote: 'dessus', facultatif: true, titre: 'Ses questions d\'abord',
+          texte: 'Réponds avant de fabriquer : tes réponses partent <b>dans ce paquet</b>.' },
+        { page: '#/compta', cible: ['#cab-build'], cote: 'dessous', faire: 'clic', facultatif: true,
+          avant: () => { paquetsAvant = nb('packs'); },
+          titre: 'Fabriquer le paquet', texte: 'Un seul fichier, chiffré pour ton cabinet s\'il est relié — sinon protégé par un mot de passe, si tu en choisis un.', action: 'Clique sur {bouton}.',
+          fait: () => nb('packs') > paquetsAvant, essai: { clic: true } },
+        { page: '#/compta', cible: '#cab-mail', cote: 'dessous', facultatif: true, titre: 'L\'envoyer',
+          texte: 'Ta messagerie s\'ouvre avec le paquet déjà joint et le message écrit : tu relis, et tu envoies.' },
+        { page: '#/compta', cible: ['#p-paquets [data-reveal]', '#p-paquets'], cote: 'dessus', facultatif: true, titre: 'Où est le fichier',
+          texte: 'Chaque paquet fabriqué reste listé ici. <b>« Montrer le fichier »</b> le retrouve dans son dossier — même six mois après, quand ton comptable te le redemande.' }
+      ]
+    });
+
+    // ======================================================================= LE LIEN AVEC LE COMPTABLE
+    // Skander : « as-tu couvert les parties techniques, genre répondre à son comptable, faire le
+    // paquet, trouver un fichier joint, faire la mise à jour ? » Ce sont les gestes qu'on fait
+    // rarement — donc ceux qu'on ne sait jamais refaire, et ceux pour lesquels on appelle.
+    visite({
+      id: 'relier-comptable', theme: 'compta', type: 'faire', reel: true, duree: '2 min', page: '#/parametres',
+      titre: 'Relier mon comptable',
+      resume: 'Son adresse, et s\'il utilise SkanFact Cabinet, son fichier d\'appairage : tes paquets partent chiffrés pour lui seul.',
+      mots: ['comptable', 'cabinet', 'appairage', 'relier', 'skanpair', 'empreinte', 'adresse'],
+      suite: ['paquet', 'repondre-comptable'],
+      bravo: 'Ton comptable est relié',
+      conclusion: 'Chaque mois, Comptabilité → Cabinet → « Fabriquer le paquet » lui prépare son envoi — la visite « Envoyer le mois à mon comptable » te le montre. Ses questions et sa clôture te reviendront, signées.',
+      etapes: [
+        { page: '#/parametres', avant: onglet('#set-tabs', 'envois'), cible: '#view input[name="accountantEmail"]', cote: 'droite', faire: 'valeur', bouton: 'Suivant',
+          titre: 'Son adresse', texte: 'C\'est là que partiront tes journaux et le paquet du mois.', action: 'Tape l\'adresse de ton comptable.', essai: { taper: 'comptable@cabinet-exemple.tn' } },
+        { page: '#/parametres', cible: '.save-bar .btn-primary', cote: 'dessus', faire: 'clic', facultatif: true,
+          titre: 'Enregistrer', texte: 'Une modification ne compte qu\'une fois enregistrée.', action: 'Clique sur <b>« Enregistrer »</b>.', essai: { clic: true } },
+        { page: '#/parametres', cible: '#p-cabinet', cote: 'dessus', titre: 'S\'il utilise SkanFact Cabinet',
+          texte: 'SkanFact Cabinet est l\'application de ton comptable, gratuite pour les dossiers de ses clients sur SkanFact. Demande-lui son <b>fichier d\'appairage</b> : il l\'exporte depuis son application.' },
+        { page: '#/parametres', si: () => !cabinetRelie(), cible: '#cab-import', cote: 'dessous', faire: 'clic', facultatif: true,
+          titre: 'Importer son fichier', texte: 'Rien de secret dedans : c\'est sa clé publique. Tes paquets seront chiffrés pour lui seul, sans mot de passe à échanger.',
+          action: 'Clique sur {bouton} et choisis le fichier qu\'il t\'a envoyé.', fait: cabinetRelie, essai: { clic: true } },
+        { page: '#/parametres', si: cabinetRelie, cible: '#p-cabinet', cote: 'dessus',
+          titre: 'Vérifie l\'empreinte de vive voix', texte: 'Lis-lui ses vingt caractères au téléphone : s\'il lit les mêmes, c\'est bien sa clé, et pas celle de quelqu\'un d\'autre.' }
+      ]
+    });
+
+    visite({
+      id: 'repondre-comptable', theme: 'compta', type: 'faire', duree: '2 min', page: '#/compta',
+      titre: 'Répondre aux questions de mon comptable',
+      resume: 'Sa question arrive sur la pièce qu\'elle vise ; ta réponse repart dans le paquet du mois.',
+      mots: ['question', 'repondre', 'reponse', 'comptable', 'cabinet', 'skanask', 'demande'],
+      suite: ['paquet', 'justificatif'],
+      bravo: 'Tu sais lui répondre',
+      conclusion: 'Ta réponse part dans le paquet du mois, dès que tu le fabriques — ou que tu le refais s\'il était déjà fait. Il n\'y a rien d\'autre à envoyer.',
+      etapes: [
+        { page: '#/compta', avant: onglet('#c-tabs', 'cabinet'), cible: '#p-questions', cote: 'dessus', titre: 'Ses questions',
+          texte: 'Ton comptable t\'envoie un fichier <b>.skanask</b> : « Importer les questions de ton comptable » le lit. Chaque question vise une pièce, et dit ce qu\'il attend — une pièce, une explication ou une confirmation.' },
+        { page: () => ctx.premier('pieceQuestion'), si: () => !!ctx.premier('pieceQuestion'), cible: '#q-piece', cote: 'dessous',
+          titre: 'Sur la pièce elle-même', texte: 'La question s\'affiche aussi en haut de la pièce qu\'elle vise : tu la vois en travaillant, et tu réponds sans chercher.' },
+        { si: () => !!$('#q-piece'), cible: '#q-piece [data-qrep]', cote: 'dessous', faire: 'clic',
+          titre: 'Répondre', texte: 'Une phrase suffit : c\'est ce qu\'il lira.', action: 'Clique sur {bouton}.', fait: () => fenetre('Répondre'), essai: { clic: true } },
+        { si: () => fenetre('Répondre'), cible: '#modal-root .modal textarea[name="texte"]', cote: 'droite', faire: 'valeur',
+          titre: 'Ta réponse', texte: 'S\'il attend une pièce, joins-la sur la pièce elle-même : elle part déjà dans le paquet.', action: 'Tape ta réponse.', essai: { taper: 'Oui : elle reste au bureau plusieurs années.' } },
+        { si: () => fenetre('Répondre'), cible: '#modal-root .modal #ok', cote: 'dessus', faire: 'clic',
+          titre: 'Enregistrer ta réponse', texte: 'Tu pourras la reprendre : « Corriger ma réponse », dans la liste de ses questions.', action: 'Clique sur <b>« Enregistrer ma réponse »</b>.', fait: () => aucuneFenetre(), essai: { clic: true } },
+        { page: '#/compta', avant: onglet('#c-tabs', 'cabinet'), cible: ['#cab-build', '#p-envoyer'], cote: 'dessous', titre: 'Elle part dans le paquet',
+          texte: 'Ta réponse part dans le <b>paquet du mois</b>, dès que tu le fabriques. S\'il était déjà fait, ce bouton devient « Refaire le paquet avec ta réponse » : il n\'y a rien d\'autre à envoyer.' }
+      ]
+    });
+
+    visite({
+      id: 'recevoir-cloture', theme: 'compta', type: 'faire', duree: '1 min', page: '#/compta',
+      titre: 'Recevoir la clôture de mon comptable',
+      resume: 'Le fichier de fin d\'exercice : ses à-nouveaux officiels et tes états financiers.',
+      mots: ['cloture', 'exercice', 'bilan', 'skanclose', 'a-nouveaux', 'etats financiers', 'annee'],
+      suite: ['cloturer', 'paquet'],
+      bravo: 'Tu sais recevoir sa clôture',
+      conclusion: 'Quand l\'exercice est verrouillé, plus aucune pièce datée dedans ne bouge : ton bilan et le sien disent la même chose.',
+      etapes: [
+        { page: '#/compta', avant: onglet('#c-tabs', 'clotures'), cible: '#p-cloture-cabinet', cote: 'dessus', titre: 'La clôture de ton comptable',
+          texte: 'Quand il a fini ton exercice, ton comptable t\'envoie un fichier <b>.skanclose</b> : ses à-nouveaux officiels, et tes états financiers.' },
+        { page: '#/compta', cible: '#cl-import', cote: 'dessous', titre: 'L\'importer',
+          texte: 'SkanFact lit sa signature — la première fois il la retient, ensuite il la compare — et te montre <b>ce qui va changer</b> avant d\'écrire quoi que ce soit.' },
+        { page: '#/compta', cible: '#p-cloture-cabinet [data-etats]', cote: 'gauche', facultatif: true, titre: 'Ses états',
+          texte: 'Le bilan et le compte de résultat qu\'il a arrêtés, tels qu\'il te les a envoyés.' }
       ]
     });
 
@@ -1245,7 +1499,7 @@
       conclusion: 'Quand le salaire est versé, « Marquer payé » le fait sortir de ta trésorerie.',
       etapes: [
         { page: '#/paie', avant: onglet('#p-tabs', 'bulletins'), cible: ['#p-gen', '#view .panel'], cote: 'dessous', titre: 'Ce qui manque',
-          texte: 'SkanFact sait quels bulletins manquent pour le mois : <b>« Établir les bulletins manquants »</b> les fait d\'un coup, à partir des fiches et des congés.' },
+          texte: 'SkanFact sait quels bulletins manquent pour le mois : <b>« Établir les … bulletins manquants »</b> (le bouton dit combien) les fait d\'un coup, à partir des fiches et des congés.' },
         { page: '#/paie', cible: '#view table.list', cote: 'dessus', facultatif: true, titre: 'Les bulletins du mois', texte: 'Chacun s\'ouvre pour être relu, et s\'exporte en PDF.' }
       ]
     });
@@ -1345,6 +1599,88 @@
       conclusion: 'Un module masqué garde ses données, et revient d\'un clic.',
       etapes: [
         { page: '#/modules', cible: '#view', zone: '#view', titre: 'Tous les modules', texte: 'Coche ce que tu veux voir dans le menu. La paie, le stock, les immobilisations… n\'apparaissent que si tu en as besoin.' }
+      ]
+    });
+
+    // ======================================================================= L'APPLICATION ET TES FICHIERS
+    visite({
+      id: 'fichiers', theme: 'appli', type: 'faire', duree: '2 min', page: '#/factures',
+      titre: 'Retrouver un document ou un fichier',
+      resume: 'Le PDF d\'une pièce, un fichier joint, un paquet envoyé, tes sauvegardes : où se trouve chacun.',
+      mots: ['fichier', 'document', 'pdf', 'retrouver', 'ou est', 'dossier', 'piece jointe', 'sauvegarde', 'exporter', 'imprimer'],
+      suite: ['justificatif', 'restaurer'],
+      bravo: 'Tu sais où sont tes fichiers',
+      conclusion: 'Ce que SkanFact fabrique — un PDF, un paquet — se range là où tu le choisis. Ce que tu joins, il en garde une copie à côté de tes données. Et ta copie de sécurité emporte tout.',
+      etapes: [
+        { page: () => ctx.premier('factureEmise') || ctx.premier('devis'), si: () => !!(ctx.premier('factureEmise') || ctx.premier('devis')), cible: '#pdf', cote: 'dessous',
+          titre: 'Le PDF d\'une pièce', texte: '<b>« PDF »</b> l\'enregistre là où tu le choisis sur ton ordinateur, puis l\'ouvre. Pour l\'envoyer, <b>« Email »</b> prépare le message avec le PDF déjà joint.' },
+        { si: () => !!$('#attachments'), cible: '.panel:has(> #attachments)', cote: 'dessus', facultatif: true,
+          titre: 'Les fichiers joints à une pièce', texte: 'Le bon signé, une photo du chantier : le nom ouvre le fichier, <b>« Dossier »</b> le montre sur ton ordinateur.' },
+        { page: '#/compta', avant: onglet('#c-tabs', 'ventes'), cible: '#exp-pdfs', cote: 'dessous', facultatif: true,
+          titre: 'Tous les PDF d\'un coup', texte: 'Les PDF de toutes les pièces d\'une période, enregistrés en une fois dans le dossier que tu choisis.' },
+        { page: '#/compta', avant: onglet('#c-tabs', 'cabinet'), cible: '#p-paquets', cote: 'dessus', facultatif: true,
+          titre: 'Les paquets envoyés', texte: 'Chaque paquet du mois reste listé, avec <b>« Montrer le fichier »</b> : il le retrouve dans son dossier, même six mois après.' },
+        { page: '#/parametres', avant: onglet('#set-tabs', 'donnees'), cible: '#open-backups', cote: 'dessous',
+          titre: 'Tes sauvegardes', texte: 'Une par jour, gardées trente jours. <b>« Ouvrir le dossier des sauvegardes »</b> te montre où elles sont ; la liste juste en dessous sait revenir en arrière.' },
+        { page: '#/parametres', cible: '#p-externe', cote: 'dessus', titre: 'Ta copie de sécurité',
+          texte: 'Le dossier que tu as choisi — une clé USB, OneDrive, iCloud Drive — reçoit tout à chaque enregistrement : tes données, tes sauvegardes, et les fichiers joints.' }
+      ]
+    });
+
+    visite({
+      id: 'mise-a-jour', theme: 'appli', type: 'faire', duree: '1 min', page: '#/parametres',
+      titre: 'Installer une mise à jour',
+      resume: 'SkanFact cherche et télécharge tout seul ; rien ne s\'installe sans ton accord.',
+      mots: ['mise a jour', 'version', 'installer', 'nouveautes', 'redemarrer', 'beta', 'essai', 'maj', 'nouvelle version'],
+      suite: ['licence', 'signaler'],
+      bravo: 'Tu sais te mettre à jour',
+      conclusion: 'Tu n\'as rien à surveiller : quand une version est prête, une fenêtre te propose « Redémarrer maintenant » ou « Plus tard ». Ce que tu as enregistré ne bouge pas.',
+      etapes: [
+        { page: '#/parametres', avant: onglet('#set-tabs', 'app'), cible: '#p-maj', cote: 'dessus', titre: 'Tes mises à jour',
+          texte: 'SkanFact cherche une nouvelle version <b>toutes les quatre heures</b> et au retour sur l\'application, et la télécharge en arrière-plan. <b>Rien ne s\'installe sans ton accord.</b>' },
+        { page: '#/parametres', cible: '#upd-check', cote: 'dessous', facultatif: true, titre: 'Chercher tout de suite',
+          texte: '« Rechercher les mises à jour » cherche sans attendre. Quand une version est prête, le bouton devient <b>« Redémarrer maintenant »</b> : l\'application se ferme, s\'installe et se relance.' },
+        { page: '#/parametres', cible: '#upd-changelog', cote: 'gauche', facultatif: true, titre: 'Les nouveautés', texte: 'Ce qui a changé dans chaque version, en français.' },
+        { page: '#/parametres', cible: '#upd-beta', cote: 'gauche', facultatif: true, titre: 'Les versions d\'essai',
+          texte: 'Laisse-les <b>désactivées</b> sur l\'ordinateur qui tient ta vraie comptabilité : une version d\'essai sert à tester une nouveauté avant les autres. Une sauvegarde est prise avant.' }
+      ]
+    });
+
+    visite({
+      id: 'licence', theme: 'appli', type: 'faire', duree: '1 min', page: '#/parametres',
+      titre: 'Activer ma licence',
+      resume: 'Où en est ton essai, et où coller ta clé quand tu l\'as reçue.',
+      mots: ['licence', 'cle', 'activer', 'essai', 'acheter', 'abonnement', 'offre', 'payer'],
+      suite: ['mise-a-jour'],
+      bravo: 'Tu sais activer ta licence',
+      conclusion: 'Licence ou pas, tes données restent à toi : tu gardes toujours la lecture, l\'impression, l\'export et l\'envoi à ton comptable. Seule la création de nouvelles pièces attend ta licence.',
+      etapes: [
+        { page: '#/parametres', avant: onglet('#set-tabs', 'app'), cible: '#p-licence', cote: 'dessus', titre: 'Ta licence',
+          texte: 'Où en est ton essai ou ta licence, jusqu\'à quand, et ce qu\'elle ouvre.' },
+        { page: '#/parametres', cible: '#lic-key', cote: 'droite', facultatif: true, titre: 'Ta clé',
+          texte: 'Quand tu la reçois — elle commence par <b>SKAN1.</b> —, colle-la ici, puis <b>« Enregistrer la clé »</b> : SkanFact la vérifie tout de suite, sans connexion.' },
+        { page: '#/parametres', cible: '#lic-ask', cote: 'dessous', facultatif: true, titre: 'Pas encore de clé ?',
+          texte: '<b>« Demander une licence »</b> prépare le mail qui la demande, avec ce qu\'il faut pour l\'établir à ton nom : ta raison sociale et ton matricule fiscal.' }
+      ]
+    });
+
+    visite({
+      id: 'signaler', theme: 'appli', type: 'faire', duree: '1 min', page: '#/parametres',
+      titre: 'Signaler un problème ou proposer une idée',
+      resume: 'Le journal technique part avec ton message : il dit où l\'application s\'est arrêtée, sans rien de ta gestion.',
+      mots: ['probleme', 'bug', 'signaler', 'support', 'idee', 'amelioration', 'journal', 'depannage', 'contact'],
+      suite: ['mise-a-jour'],
+      bravo: 'Tu sais à qui parler',
+      conclusion: 'SkanFact est écrit par une seule personne : ce que tu signales, et ce que tu proposes, décide de la suite.',
+      etapes: [
+        { page: '#/parametres', avant: onglet('#set-tabs', 'app'), cible: '#p-depannage', cote: 'dessus', titre: 'Aide et dépannage',
+          texte: 'Quand quelque chose ne va pas, ou quand quelque chose te manque.' },
+        { page: '#/parametres', cible: '#set-support', cote: 'dessous', titre: 'Signaler un problème',
+          texte: 'Prépare un mail avec le <b>journal technique</b> joint : il dit où l\'application s\'est arrêtée, et ne contient ni nom de client, ni montant.' },
+        { page: '#/parametres', cible: '#set-idee', cote: 'dessous', titre: 'Proposer une amélioration',
+          texte: 'Ce que tu aimerais faire, puis comment tu t\'en sors aujourd\'hui : c\'est la seconde réponse qui apprend le plus.' },
+        { page: '#/parametres', cible: '#set-log', cote: 'dessous', facultatif: true, titre: 'Le journal',
+          texte: 'Tu peux le lire avant de l\'envoyer.' }
       ]
     });
 

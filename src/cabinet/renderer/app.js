@@ -1655,7 +1655,7 @@
         </div>
         ${inboxBanner()}
         <div class="panel"><h2>Comment un paquet arrive jusqu'ici</h2>
-          <ol class="small" style="line-height:1.9;margin:0;padding-left:20px">
+          <ol class="small" style="line-height:1.9;margin:0;padding-inline-start:20px">
             <li>Tu remets à ton client le <strong>fichier d'appairage</strong> (Réglages → Mon cabinet → Le fichier à remettre à tes clients).</li>
             <li>Il l'importe une fois dans son SkanFact, puis t'envoie son <strong>.skanpack</strong> chaque mois.</li>
             <li>Tu le <strong>glisses sur cette fenêtre</strong>, ou tu le double-cliques dans ${EXPLORATEUR()}.</li>
@@ -7681,7 +7681,7 @@
          <div><span>Fichier</span><span class="path">${esc(r.path)}</span></div>
        </div>
        ${r.illisibles && r.illisibles.length ? `<div class="warn-box mt"><strong>${pl(r.illisibles.length, 'paquet')} n'${r.illisibles.length > 1 ? 'ont' : 'a'} pas pu être lu${r.illisibles.length > 1 ? 's' : ''}</strong> :
-         <ul class="small" style="margin:6px 0 0;padding-left:18px">${r.illisibles.map(x => `<li>${esc(x)}</li>`).join('')}</ul>
+         <ul class="small" style="margin:6px 0 0;padding-inline-start:18px">${r.illisibles.map(x => `<li>${esc(x)}</li>`).join('')}</ul>
          <div class="small mt">Le fichier a quand même été écrit avec le reste : mieux vaut 95 % avec le trou signalé qu'un export qui échoue.</div></div>` : ''}
        ${r.vides && r.vides.length ? `<p class="small muted mt">${pl(r.vides.length, 'paquet')} sans aucune écriture (mois sans activité) : ${esc(r.vides.slice(0, 5).join(', '))}.</p>` : ''}
        <p class="muted small mt">Les colonnes sont celles de tes clients, avec <strong>Client</strong>, <strong>Matricule</strong> et <strong>Mois</strong> ajoutées devant.

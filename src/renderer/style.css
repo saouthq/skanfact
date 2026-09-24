@@ -243,6 +243,10 @@ body.dark .beta-tag { background: #35255a; color: #cdb0f5; border-color: #4c3878
 .pp-list li.encours .pp-marque { border-color: var(--primary); }
 .pp-list li.encours { background: var(--primary-soft); border-radius: 10px; margin: 0 -8px; padding-inline-start: 10px; padding-inline-end: 10px; }
 .pp-list li.encours + li { border-top-color: transparent; }
+/* Une étape FACULTATIVE (la découverte, le comptable) le dit à côté de son titre, en gris : elle
+   attend sans presser (10.14.0). */
+.pp-facult { display: inline-block; margin-inline-start: 6px; vertical-align: 1px; font-size: 10.5px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .5px; color: var(--muted); background: var(--ink-soft); border-radius: 999px; padding: 1px 7px; }
 
 /* Un lien DANS une phrase ou dans une cellule (10.12.0) : aucune règle ne les stylait, et « la
    trésorerie » d'une phrase de la Paie, « Voir les relances » des Statistiques, le numéro de facture
@@ -312,7 +316,11 @@ input.champ-doute { border-color: var(--warning) !important; }
 /* `--main-haut` : ce qu'une barre COLLANTE doit remonter pour coller au bord de la fenêtre. Un
    `top: 0` colle sous le padding du conteneur qui défile, et les lignes du tableau passaient
    au-dessus de la barre, dans ces 32 px (10.12.0, U-06). */
-main { --main-haut: 32px; flex: 1; overflow-y: auto; padding: var(--main-haut) 36px 48px; }
+/* 10.14.0 — un en-tête de tableau collant (`top: 0`) colle sous la marge haute du conteneur, à 32 px :
+   un défilement qui posait le tableau AU BORD (une visite, un raccourci vers un panneau) le faisait
+   recouvrir la première ligne — celle qu'on voulait montrer (vu à l'écran : le 📎 de « Le trombone »).
+   Les défilements s'arrêtent donc à la même marge que le contenu. */
+main { --main-haut: 32px; flex: 1; overflow-y: auto; padding: var(--main-haut) 36px 48px; scroll-padding-block-start: var(--main-haut); }
 /* La hauteur d'un CHAMP (38 px), pas celle d'un bouton (35) : la liste d'années n'existe que sur
    certains onglets (Marges, Paie…), et l'en-tête grandissait de 3 px quand elle paraissait — les
    onglets descendaient sous le curseur au moment du clic (10.12.0, un état actif ne change pas la
@@ -876,7 +884,7 @@ table.mini input, table.mini select { padding: 6px 8px; font-size: 13px; }
 .palette .results { max-height: 52vh; overflow-y: auto; padding: 6px; }
 .palette .res { display: flex; align-items: center; gap: 12px; padding: 9px 12px; border-radius: 10px; cursor: pointer; }
 .palette .res.sel, .palette .res:hover { background: var(--primary-soft); }
-.palette .res .kind { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); width: 64px; flex-shrink: 0; font-weight: 700; }
+.palette .res .kind { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); width: 78px; flex-shrink: 0; font-weight: 700; white-space: nowrap; }
 .palette .res .main { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .palette .res .sub { color: var(--muted); font-size: 12px; margin-inline-start: 6px; }
 .palette .res .amt { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 13px; }
@@ -1713,6 +1721,15 @@ kbd { font: inherit; font-size: 12px; font-family: -apple-system, system-ui, san
 .setup-body em { color: var(--warning); font-style: normal; font-weight: 600; }
 .setup-foot { display: flex; gap: 8px; justify-content: flex-end; padding: 16px 28px 22px; border-top: 1px solid var(--border); }
 .setup-foot .btn-ghost { margin-inline-end: auto; color: var(--muted); }
+/* La porte du premier lancement (10.14.0) : deux battants côte à côte, le recommandé en avant — les
+   cartes sont celles de l'accueil (`.pp-choix`), pour que les deux portes se reconnaissent. Pas de
+   défilement interne : sur un portable, c'est la fenêtre entière qui défile, jamais une boîte dans la boîte. */
+.setup-card.porte .setup-body { max-height: none; }
+.setup-porte { display: flex; flex-direction: column; gap: 16px; }
+.setup-porte .sp-lead { margin: 0; font-size: 14.5px; color: color-mix(in srgb, var(--text) 82%, var(--muted)); }
+.setup-porte .sp-choix { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.setup-porte .sp-note p { margin: 0; font-size: 12.5px; line-height: 1.55; color: var(--muted); }
+@media (max-width: 640px) { .setup-porte .sp-choix { grid-template-columns: minmax(0, 1fr); } }
 .req { font-size: 10px; text-transform: uppercase; letter-spacing: .8px; color: var(--warning); font-weight: 700; }
 .act-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .act { font: inherit; text-align: start; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; cursor: pointer; display: flex; flex-direction: column; gap: 3px; transition: border-color .12s, background .12s; }
@@ -2185,7 +2202,9 @@ body.dark .guide-band .gb-ico { color: #0d1418; }
 body.dark .g-reu.obtenue .g-reu-ico { color: #0d1418; }
 
 /* Les grands départs : des cartes aux couleurs de leur domaine. */
-.g-cartes { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 14px; margin-block-end: 20px; }
+/* auto-FIT : trois cartes sur une rangée de quatre pistes laissaient une colonne vide à droite (vu à
+   l'écran, 10.14.0) — les pistes vides se replient, et les cartes remplissent la rangée. */
+.g-cartes { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 14px; margin-block-end: 20px; }
 .g-carte { display: flex; flex-direction: column; gap: 7px; align-items: flex-start; background: var(--panel); border: 1px solid var(--border);
   border-radius: 15px; padding: 16px; box-shadow: var(--shadow); position: relative; overflow: hidden; transition: transform .14s, box-shadow .14s, border-color .14s; }
 .g-carte::before { content: ''; position: absolute; inset: 0 0 auto 0; height: 4px; background: var(--th); }
