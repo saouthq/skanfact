@@ -7595,6 +7595,13 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     // `git checkout v9.8.0` ne rend pas la source publiée.
     assert.ok(/gh release create "v\$V" --target "\$GITHUB_SHA"/.test(prep),
       'le tag de la release ne suit pas le commit qu\'on construit');
+    // 3 bis (10.13.0). Une page restée VIDE par un run annulé porte le tag de CE run-là : la
+    // reprendre par `edit` publierait les installateurs du commit construit sous un tag qui en
+    // désigne un autre. Elle se supprime AVEC son tag — et seulement si elle ne porte aucun fichier,
+    // sinon la reprise après échec détruirait ce qui a été déposé (règle 2 ci-dessus).
+    const iCompte = prep.indexOf("--json assets --jq '.assets | length'"), iSuppr = prep.indexOf('gh release delete "v$V" --yes --cleanup-tag');
+    assert.ok(iCompte > 0 && iSuppr > iCompte, 'une page vide laissée par un run annulé garde le tag d\'un autre commit');
+    assert.ok(/if \[ "\$N" = "0" \]; then[\s\S]{0,200}gh release delete/.test(prep), 'une release qui porte des fichiers peut être supprimée : la reprise détruirait le déposé');
 
     // 4. Un échec sur un poste n'annule pas l'autre — et savoir si une panne touche un seul poste
     // ou les deux est l'information qui désigne la cause (règle 5.2.3).

@@ -80,6 +80,10 @@ jobs:
       # `gh release create` est refusé si la release existe déjà : on regarde AVANT, et on se
       # contente alors de remettre le titre et les notes. C'est ce qui rend une reprise possible
       # après un échec, sans rien détruire de ce qui a déjà été déposé.
+      # 10.13.0 — SAUF une page restée VIDE (un run annulé avant la moindre construction) : elle n'a
+      # rien à perdre, et son tag désigne le commit de CE run-là. La reprendre telle quelle aurait
+      # publié les installateurs du commit construit sous un tag qui en désigne un autre — le défaut
+      # que `--target` corrige depuis la 9.8.1. On la supprime avec son tag, et on la recrée ici.
       - name: La page de la release
         shell: bash
         run: |
@@ -89,7 +93,17 @@ jobs:
           else
             TITRE="SkanFact $V"; PRE=
           fi
+          EXISTE=
           if gh release view "v$V" > /dev/null 2>&1; then
+            N=$(gh release view "v$V" --json assets --jq '.assets | length')
+            if [ "$N" = "0" ]; then
+              echo "La release v$V existe mais ne porte AUCUN fichier (run interrompu) : recréée sur $GITHUB_SHA, tag compris."
+              gh release delete "v$V" --yes --cleanup-tag
+            else
+              EXISTE=1
+            fi
+          fi
+          if [ -n "$EXISTE" ]; then
             echo "La release v$V existe déjà — on remet le titre et les notes, on ne touche à rien d'autre."
             gh release edit "v$V" --title "$TITRE" --notes-file build/release-notes.md
           else

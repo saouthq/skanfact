@@ -76,6 +76,10 @@ paquet est parti de l'une vers l'autre pour de vrai, aller et retour.
   par-dessus la question d'import). Le curseur entre maintenant dans la fenêtre — le premier champ,
   sinon le bouton principal —, comme dans SkanFact Cabinet.
 
+**La publication elle-même** : une page de release laissée VIDE par un run annulé est maintenant
+recréée sur le commit construit, tag compris — la reprendre telle quelle aurait publié les
+installateurs d'un commit sous le tag d'un autre.
+
 **Publiée en bêta** : elle touche à la signature des envois entre les deux applications.
 
 ## 10.12.0 — 24/09/2026

@@ -6826,6 +6826,12 @@ Règles apprises, à ne pas recasser :
   suit) et qu'un Entrée qui rouvre l'import ne change rien non plus. C'est la règle 10.9.1, re-trouvée :
   le parcours exige maintenant qu'aucune fenêtre ne reste ouverte. Et c'est en cherchant POURQUOI la
   preuve restait verte qu'on a trouvé le vrai défaut, plus large que celui qu'on corrigeait.
+- **Une page de release restée VIDE porte le tag du run qui l'a créée.** Le premier run de cette
+  bêta a été annulé pour y ajouter le correctif du curseur ; il avait déjà créé la page, tag posé
+  sur son commit. Le suivant la reprenait par `gh release edit` (la règle 9.8.1 : une reprise ne
+  détruit rien) — donc les installateurs du nouveau commit sous le tag de l'ancien. Une page sans
+  AUCUN fichier n'a rien à perdre : le job `preparer` la supprime avec son tag (`--cleanup-tag`) et
+  la recrée sur `$GITHUB_SHA`. Une page qui porte des fichiers reste reprise telle quelle.
 - **Un raccourci vise un PANNEAU (7.18.0), et une cible asynchrone se pose après le chargement.**
   « Lire la réponse » ouvrait la Révision en haut, la réponse trois panneaux plus bas. Poser
   `pageFocus` avant la navigation ne suffisait pas : `focaliser` le consomme au premier dessin, qui
