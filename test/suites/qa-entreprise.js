@@ -872,4 +872,16 @@ module.exports = ({ t, assert, lireSource }) => {
     assert.ok(/\$\{moisVide \? '' : plan\.definitive/.test(zone), 'un mois vide propose encore de se clôturer');
     assert.ok(/C\.premierePieceApres\(data, per\.month/.test(zone) && /le sera à partir du/.test(zone), 'un paquet vide ne dit pas quand viendra le premier');
   });
+  // Le 24 septembre, « 1 déclaration sociale à déposer : CNSS 3e trimestre » — un trimestre qui n'est
+  // pas fini, et qu'on aurait pu « Marquer déposée » sans les bulletins de la fin du mois.
+  t('Un trimestre CNSS ne se réclame qu\'une fois terminé', () => {
+    const d = vierge();
+    d.employees = [{ id: 'e1', name: 'Hichem Trabelsi', grossSalary: 1200, hireDate: '2026-09-24' }];
+    const e = d.employees[0];
+    const i = core.payslipInputFor(d, e, 2026, 9);
+    d.payslips = [{ id: 'p9', employeeId: 'e1', year: 2026, month: 9, ...i, computed: core.computePayslip(e, i, core.payrollSettings(d)) }];
+    assert.ok(!core.socialDue(d, '2026-09-24').some(x => x.id === 'cnss-2026-T3'), 'le 3e trimestre est réclamé avant d\'être terminé');
+    assert.ok(!core.socialDue(d, '2026-09-30').some(x => x.id === 'cnss-2026-T3'), 'le dernier jour du trimestre n\'est pas encore un trimestre terminé');
+    assert.ok(core.socialDue(d, '2026-10-01').some(x => x.id === 'cnss-2026-T3'), 'le trimestre terminé n\'est pas réclamé');
+  });
 };

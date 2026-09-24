@@ -369,6 +369,9 @@ du premier écran à son catalogue, pour voir ce qu'un chef d'entreprise subit :
   toujours au bon onglet.
 - **« Comprendre cette page → » ne disparaît plus** de la Paie, du Stock et du Catalogue au premier
   clic ; le type de contrat se lit en entier (« CDI », la définition en infobulle).
+- **Un trimestre CNSS ne se réclame qu'une fois terminé.** Le 24 septembre, « À faire » annonçait
+  « 1 déclaration sociale à déposer : CNSS 3e trimestre » — et on pouvait la marquer déposée sans
+  les bulletins de la fin du mois. Le rappel arrive le 1er octobre, quinze jours avant l'échéance.
 - **Le paquet d'un mois vide dit quand viendra le premier.** Une menuiserie qui a commencé en
   septembre ouvrait l'envoi au comptable sur août, lisait « commence par émettre une facture »
   (elle en avait émis deux) et se voyait proposer « Clôturer août 2026 » sur un mois sans rien.

@@ -2841,6 +2841,11 @@
       QUARTERS.forEach(([q]) => {
         const d = cnssDeclaration(data, yy, q);
         if (!d.slips || d.dueDate > addDays(t, 45)) return;       // pas encore d'actualité
+        // 10.12.0 — un trimestre ne se déclare qu'une fois TERMINÉ. Le 24 septembre, « 1 déclaration
+        // sociale à déposer : CNSS 3e trimestre » invitait à déposer — et à « Marquer déposée » — une
+        // déclaration à laquelle manqueraient les bulletins de la fin du mois.
+        const finTrimestre = addDays(`${yy}-${String(q * 3).padStart(2, '0')}-01`, daysInMonth(yy, q * 3) - 1);
+        if (t <= finTrimestre) return;
         const id = `cnss-${yy}-T${q}`;
         if (done.has(id)) return;
         out.push({ id, kind: 'cnss', year: yy, quarter: q, label: `Déclaration CNSS ${quarterLabel(q)} ${yy}`,

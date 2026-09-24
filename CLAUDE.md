@@ -6444,6 +6444,9 @@ fixe (9.4.3) et sa table d'onglets nommait sept onglets disparus, sautés sans u
   « commence par émettre une facture » à une entreprise qui en a émis en septembre, sur le paquet
   d'août. `premierePieceApres` donne la date, et l'écran ne propose plus de clôturer ni ne marque
   « provisoire » un mois sans une pièce (vérifier que l'univers n'est pas vide, 7.0.0).
+- **Une période se déclare une fois TERMINÉE** (`socialDue`) : le rappel CNSS partait 45 jours avant
+  l'échéance, donc au milieu du trimestre, et « Marquer déposée » figeait une déclaration à laquelle
+  manqueraient les derniers bulletins. Le dernier jour du trimestre n'est pas un trimestre terminé.
 - **`refus()` reçoit un sélecteur OU un élément** : un champ de fenêtre se désigne par lui-même, et
   `document.querySelector(element)` LÈVE — la réponse vide au comptable plantait au lieu d'être
   refusée, depuis qu'elle existe.
