@@ -282,4 +282,33 @@ module.exports = ({ t, assert, lireSource }) => {
     // « À faire » crie une déclaration sociale en retard : l'entrée Paie la compte aussi.
     assert.ok(/C\.socialDue\(data, t\)\.filter\(x => x\.late\)/.test(maj), 'le compteur de Paie ignore les déclarations sociales en retard');
   });
+
+  t('10.13.0 : une liste « libellé : valeur » décide sa colonne de libellés une fois, pour toutes ses rangées', () => {
+    // « Ce qu'elle ne fait pas » dépassait le minimum de 110 px et poussait SA valeur de 2 px :
+    // chaque rangée était sa propre ligne flex (règle 10.12.0 : aucune colonne ligne par ligne).
+    const css = code(lireSource('src', 'renderer', 'style.css'));
+    const grille = css.match(/^\.kv:not\(\.two\) \{([^}]*)\}/m), rangee = css.match(/^\.kv:not\(\.two\) > div \{([^}]*)\}/m);
+    assert.ok(grille && /display:\s*grid/.test(grille[1]) && /grid-template-columns:\s*max-content/.test(grille[1]), 'la liste n\'est plus une grille dont la colonne des libellés suit le plus long');
+    assert.ok(rangee && /grid-template-columns:\s*subgrid/.test(rangee[1]) && /grid-column:\s*1 \/ -1/.test(rangee[1]), 'chaque rangée décide encore sa propre colonne');
+    // Et chaque rangée de toutes les listes porte bien DEUX éléments : une troisième cellule
+    // passerait à la ligne dans la sous-grille, sans un mot.
+    for (const f of [['src', 'renderer', 'app.js'], ['src', 'cabinet', 'renderer', 'app.js']]) {
+      const src = lireSource(...f);
+      for (const m of src.matchAll(/<div class="kv(?! two)[^"]*">([\s\S]*?)<\/div>\s*(?:`|\$\{|<\/div>|<p|<div class="(?!kv))/g)) {
+        for (const r of m[1].matchAll(/<div>([\s\S]*?)<\/div>/g)) {
+          // Les interpolations `${…}` remplacées par un jeton (accolades équilibrées), puis seules les
+          // cellules de PREMIER niveau comptent : un libellé porte sa bulle, une valeur son `<span>`.
+          let plat = '', prof = 0;
+          for (let k = 0; k < r[1].length; k++) {
+            if (!prof && r[1][k] === '$' && r[1][k + 1] === '{') { prof = 1; k++; plat += 'X'; continue; }
+            if (prof) { if (r[1][k] === '{') prof++; else if (r[1][k] === '}') prof--; continue; }
+            plat += r[1][k];
+          }
+          let niveau = 0, n = 0;
+          for (const tag of plat.matchAll(/<(\/?)span\b/g)) { if (tag[1]) niveau--; else { if (!niveau) n++; niveau++; } }
+          assert.ok(n <= 2, f.join('/') + ' : une rangée de liste porte ' + n + ' cellules : ' + r[1].slice(0, 80));
+        }
+      }
+    }
+  });
 };

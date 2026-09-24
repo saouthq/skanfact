@@ -276,7 +276,9 @@ const L = require('../../src/licence.js');
   // modules enregistré = tout), sinon « pas de cadenas sur Statistiques » serait vrai faute de lien.
   await win.evaluate(async () => { delete window.__data.company.modules; await window.skanfact.saveData(window.__data); });
   await aller('#/dashboard');
-  await win.waitForSelector('nav a[data-route="stats"]', { timeout: 8000 });
+  // La PRÉSENCE du lien : depuis la 10.13.0 il peut être rangé dans la famille « Piloter »,
+  // repliée au premier jour — ce parcours juge les cadenas, pas l'ouverture des familles.
+  await win.waitForSelector('nav a[data-route="stats"]', { timeout: 8000, state: 'attached' });
   const cadenas = await win.evaluate(() => ({
     achats: !!document.querySelector('nav a[data-route="achats"] svg.nav-lock'),
     tresorerie: !!document.querySelector('nav a[data-route="tresorerie"] svg.nav-lock'),

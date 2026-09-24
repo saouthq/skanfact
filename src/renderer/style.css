@@ -1310,6 +1310,13 @@ body.dark .cal-d.out { color: #5b6572; }
 .kv > div { display: flex; gap: 12px; align-items: baseline; }
 .kv > div > span:first-child { color: var(--muted); min-width: 110px; flex-shrink: 0; font-size: 12px; }
 .kv > div > span:last-child { line-height: 1.5; }
+/* 10.13.0 — la colonne des libellés s'aligne sur le PLUS LONG d'entre eux. Chaque rangée était sa
+   propre ligne flex : « Ce qu'elle ne fait pas » (112 px, au-delà du minimum de 110) poussait SA
+   valeur de 2 px, et la colonne des valeurs se voyait décalée (vu à la souris sur l'assistant du
+   Cabinet). Une grille dont chaque rangée est une sous-grille décide la colonne une fois, pour toutes
+   (règle 10.12.0 : aucune colonne décidée ligne par ligne). `.kv.two` garde sa propre grille. */
+.kv:not(.two) { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 9px 12px; }
+.kv:not(.two) > div { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; align-items: baseline; }
 /* Le récapitulatif avant un geste irréversible (émettre une facture) : à qui, quand, combien — posé
    sur un fond qui le détache de la phrase qui suit (10.12.0). */
 .kv.recap-emission { background: var(--bg); border-radius: 10px; padding: 12px 14px; margin: 6px 0 12px; }
