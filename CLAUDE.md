@@ -6,6 +6,18 @@ Application desktop Electron (JS pur, sans bundler) de devis et factures pour un
 
 L'utilisateur est débutant en gestion (première entreprise) : chaque champ porte une bulle « i » (`src/renderer/guide.js`) et la rubrique Aide explique la facturation, la fiscalité et la routine comptable. Toute nouveauté doit venir avec sa bulle et, si elle change une habitude, un paragraphe dans l'article concerné. Un test vérifie que chaque clé posée dans l'interface existe dans `guide.js`.
 
+> **⚠ RÈGLE IMPORTANTE — décidée par Skander le 24/09/2026, sans exception.** À la fin de CHAQUE
+> lot, de CHAQUE correction et de CHAQUE développement, **tester comme un humain avec les outils**
+> AVANT de commiter ou d'annoncer quoi que ce soit : `scripts/humain/lancer.sh entreprise|cabinet`,
+> puis `scripts/humain/ecran.sh capture` (et LIRE l'image), `clic`, `taper`, `touche`, `defiler` ;
+> Browser Use et Playwright branché par CDP pour vérifier une valeur après le geste. Le lot testé
+> est celui qu'on vient d'écrire, pas un autre : on refait à la souris et au clavier le parcours
+> exact qu'il change (l'écran neuf, le bouton neuf, la question neuve). Des tests unitaires verts et
+> des e2e verts ne remplacent pas ce regard — les e2e cliquent des SÉLECTEURS, ce test clique des
+> PIXELS. Motif : la 10.14.0 a livré la porte et la visite du Cabinet, tests verts, sans les avoir
+> ouvertes une seule fois à la souris (« tu n'as pas testé ce que tu viens de faire »). Et **les lots
+> restants se finissent sans s'arrêter** : on ne rend pas la main au milieu d'une liste.
+
 ## Index thématique
 
 *Ce fichier est rangé par VERSION, dans l'ordre où les choses sont arrivées : c'est ce qui permet de
@@ -268,8 +280,9 @@ chantier précis ; `ROADMAP.md` est une **archive**.
 
 - **Chaque amélioration livrée = une nouvelle version** (semver) : correctif 1.0.x, fonctionnalité 1.x.0, gros changement x.0.0. Mettre à jour `package.json` (`version`) **et** ajouter une entrée datée dans `CHANGELOG.md` (c'est elle qui devient les notes de version dans l'app et sur GitHub). Toujours annoncer le numéro de version dans la réponse.
 - Lancer `npm test` avant tout commit (calculs, numérotation, montant en lettres, échappement HTML, stockage/sauvegardes). Pour un changement d'interface, lancer aussi l'app réelle (`xvfb-run` + Playwright `_electron`, voir README « Tests ») : elle attrape les erreurs JS du renderer.
-- **À la fin de chaque changement, le tester COMME UN HUMAIN** (décidé par Skander le 23/09/2026 :
-  « afin d'éviter les bugs et problèmes »). `scripts/humain/lancer.sh cabinet|entreprise` ouvre
+- **À la fin de chaque changement, le tester COMME UN HUMAIN — OBLIGATOIRE, AVANT le commit**
+  (décidé par Skander le 23/09/2026 : « afin d'éviter les bugs et problèmes » ; rendu IMPORTANT le
+  24/09/2026, voir l'encadré en tête de ce fichier : un lot non testé à la souris n'est pas fini). `scripts/humain/lancer.sh cabinet|entreprise` ouvre
   l'application sur un écran virtuel de 1440×900 ; `scripts/humain/ecran.sh capture` puis lire
   l'image, `clic X Y`, `taper "…"`, `touche ctrl+k`, `defiler X Y bas 3` — de VRAIS événements souris
   et clavier du système (xdotool), c'est-à-dire les actions de Computer Use jouées par Claude
