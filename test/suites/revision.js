@@ -35,6 +35,22 @@ function livre(annee) {
   return l;
 }
 
+t('10.13.0 : une question pas encore partie ne « attend » pas de réponse — elle attend d\'être envoyée', () => {
+  // Test humain du pont : la question qu'on venait de poser s'annonçait « attend sa réponse » alors
+  // qu'aucun paquet ne l'avait emportée — le comptable aurait attendu un client qui ne l'a jamais vue.
+  const l = livre(2026);
+  const e = l.ecritures[0];
+  const r = K.ajouterQuestion(l, { texte: 'Où est la facture ?', ecritureId: e.id, compte: '411', attendu: 'piece' }, 'Sonia', 1);
+  let c = K.controlesRevision(l, '2026');
+  const avant = c.find(x => /question/.test(x.id));
+  assert.ok(avant && avant.envoyer && /pas encore partie/.test(avant.texte) && /Envoyer les questions au client/.test(avant.texte), 'une question pas encore partie doit le dire, et nommer le geste qui l\'envoie : ' + JSON.stringify(avant));
+  assert.ok(!c.some(x => /attend sa réponse/.test(x.texte)), 'une question jamais envoyée n\'attend pas encore de réponse');
+  K.noterEnvoiQuestions(l, [r.question.id], 50);
+  c = K.controlesRevision(l, '2026');
+  assert.ok(c.some(x => x.id === 'questions-attente' && /attend sa réponse/.test(x.texte)), 'une fois partie, elle attend sa réponse');
+  assert.ok(!c.some(x => x.envoyer), 'une question partie ne réclame plus d\'être envoyée');
+});
+
 // ---------------------------------------------------------------- les cycles
 
 t('9.10.0 : le cycle d\'un compte se décide par le préfixe le PLUS LONG, jamais par l\'ordre', () => {

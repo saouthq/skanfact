@@ -837,7 +837,9 @@
           // `start()` réclame le fichier aussitôt après. Le dire maintenant évite de croire qu'on
           // s'est trompé de bouton.
           repriseParCle = true;
-          confirmDialog('Avec la clé de secours',
+          // Une EXPLICATION, pas une question : « Annuler » à côté de « J'ai compris » faisait la même
+          // chose et laissait croire qu'on pouvait renoncer à ce qu'on vient de choisir (10.13.0).
+          infoHtml('Avec la clé de secours',
             `<p>Une clé de secours ne contient <strong>que la clé</strong> du cabinet : ni tes dossiers, ni tes paquets.</p>
              <p class="small">Choisis un mot de passe pour ce poste, puis l'application te demandera tout de suite ton fichier
              <code>.skanrecover</code>. Ton empreinte redeviendra la même : tes clients n'auront rien à refaire.</p>`,
@@ -899,7 +901,7 @@
              <p class="small mt">Vérifie cette empreinte : c'est celle que tes clients connaissent. Si elle a changé, tu as repris le mauvais fichier.</p>
              <div class="warn-box mt">Ce poste-ci n'a encore <strong>aucune copie de sauvegarde</strong> : celle de l'autre ordinateur
              désignait un support branché là-bas. Choisis-en une maintenant — « plus tard » est exactement le moment où l'on oublie.</div>`,
-            'Choisir un dossier de copie…');
+            'Choisir un dossier de copie…', false, 'Plus tard');
           if (ok) {
             try { await api.pickExternal(); refreshBackupInfo(); }
             catch (e) { toast(plainError(e), 'error'); }
@@ -1173,6 +1175,12 @@
         } catch (e) { toast(plainError(e), 'error'); }
       }
     }
+    // 10.13.0 — un paquet peut ÉCRIRE dans le livre de son dossier (les réponses du client) : le
+    // livre gardé en mémoire est alors périmé, et la Révision annonçait « 1 question attend sa
+    // réponse » sur une question répondue. On oublie ce qu'on avait lu du dossier ouvert.
+    if (r.results.some(x => !x.error && x.dossier && x.dossier.id === livresState.dossierId)) {
+      livresState.livreCle = ''; livresState.revision = null;
+    }
     const rapportLu = showImportReport(r.results, r.demoRemoved, r.restants || 0);
     render();
     // La clé de secours, réclamée AU PREMIER IMPORT (9.1.0). Elle était criée en rouge sur la page
@@ -1186,8 +1194,16 @@
     if (recoveryAt === null && r.results.some(x => !x.error) && !cleReclameeCetteSession) {
       cleReclameeCetteSession = true;
       await rapportLu;                 // on ne parle pas par-dessus le rapport qu'il est en train de lire
+      // 10.13.0 — « ton premier paquet » se disait à chaque première importation de la SESSION : au
+      // second paquet d'un mois déjà reçu, la phrase était fausse. Le premier se reconnaît à ce que le
+      // portefeuille ne portait rien avant cet import.
+      const rangesAvant = (S.dossiers || []).filter(d => !d.demo).reduce((n, d) => n + (d.packs || []).length, 0)
+        - r.results.filter(x => !x.error && !x.replaced).length;
+      const premier = rangesAvant <= 0 && !r.results.some(x => x.replaced);
       const ok = await confirmDialog('Mets ta clé de secours à l\'abri',
-        '<p>Tu viens de ranger ton premier paquet. À partir de maintenant, <strong>tu as quelque chose à perdre</strong>.</p>' +
+        (premier
+          ? '<p>Tu viens de ranger ton premier paquet. À partir de maintenant, <strong>tu as quelque chose à perdre</strong>.</p>'
+          : '<p>Les paquets de tes clients sont rangés sur ce poste : <strong>tu as quelque chose à perdre</strong>, et ta clé n\'est encore nulle part ailleurs.</p>') +
         '<p class="small">Les paquets de tes clients sont chiffrés avec la clé de ce cabinet. Si cet ordinateur tombe en panne ou est volé et que tu n\'as pas sa clé ailleurs, <strong>tout ce que tu as reçu devient illisible pour toujours</strong> — les sauvegardes comprises.</p>' +
         '<p class="small">La clé de secours est un petit fichier. Mets-le sur une clé USB ou dans un coffre, pas à côté de l\'ordinateur.</p>',
         'Exporter ma clé de secours', false, 'Plus tard');
@@ -1217,16 +1233,21 @@
       : `${pl(integ.checked || 0, 'pièce')} ${(integ.checked || 0) > 1 ? 'vérifiées, intactes' : 'vérifiée, intacte'}`);
     // Un fichier que le manifeste n'annonce pas n'a été comparé à rien : il ne compte pas parmi les
     // pièces vérifiées, et il se dit à part — sinon le paquet aurait l'air entièrement contrôlé.
+    // La même alerte était dite deux fois, sous deux tournures (10.13.0) : deux phrases font croire
+    // à deux problèmes.
     const trop = (integ.intrus || []).length;
     if (trop) bits.push(`⚠ ${pl(trop, 'fichier')} ${trop > 1 ? 'présents' : 'présent'} mais non ${trop > 1 ? 'annoncés' : 'annoncé'} par ton client`);
-    // Un fichier présent dans le paquet sans être annoncé au manifeste : il ne se compare à rien,
-    // mais sa présence se dit — c'est la seule chose honnête à en faire.
-    const nonDits = (integ.intrus || []).length;
-    if (nonDits) bits.push(`⚠ ${pl(nonDits, 'fichier')} ${nonDits > 1 ? 'non annoncés' : 'non annoncé'} au manifeste`);
     const miss = (x.summary && x.summary.missing || []).reduce((s, m) => s + (m.count || 0), 0);
-    if (miss) bits.push(`${pl(miss, 'point')} ${miss > 1 ? 'signalés' : 'signalé'} par le client`);
+    if (miss) bits.push(`${pl(miss, 'point signalé', 'points signalés')} par le client`);
+    // 10.13.0 (test humain du pont) — les RÉPONSES du client étaient rangées sur leurs questions
+    // (`posterReponses`) et le rapport n'en disait rien : c'est pourtant ce que le comptable qui a
+    // posé une question cherche en ouvrant le paquet. Elles se disent, et mènent à la Révision.
+    const rep = x.reponses || {};
+    if (rep.posees) bits.push(`${pl(rep.posees, 'réponse', 'réponses')} du client à tes questions`);
+    if (rep.inconnues) bits.push(`${pl(rep.inconnues, 'réponse', 'réponses')} à une question que ce dossier ne porte plus`);
     return `<li><strong>✓ ${esc(d.name || '')}</strong> — ${esc((x.summary && x.summary.label) || x.month || '')}
-            <div class="imp-sub">${bits.map(esc).join(' · ')}</div></li>`;
+            <div class="imp-sub">${bits.map(esc).join(' · ')}</div>
+            ${rep.posees && d.id ? `<div class="imp-sub mt-s"><button class="btn btn-sm" data-imp-rev="${esc(d.id)}">${rep.posees > 1 ? 'Lire les réponses' : 'Lire la réponse'}</button></div>` : ''}</li>`;
   }
 
   // Rend une promesse résolue à la FERMETURE du rapport. Sans elle, une question posée juste après
@@ -1256,6 +1277,10 @@
          <span class="grow"></span><button class="btn btn-primary" id="ok">Fermer</button></div>`,
       (layer, close) => {
         $('#ok', layer).onclick = () => { close(); fini(); };
+        $$('[data-imp-rev]', layer).forEach(b => b.onclick = () => {
+          close(); fini();
+          vers('#/dossier/' + encodeURIComponent(b.dataset.impRev) + '/comptabilite/revision');
+        });
         const a = $('#acc-all', layer);
         if (a) a.onclick = () => {
           close(); fini();
@@ -4016,11 +4041,14 @@
     const iOuvert = d.feuilles.findIndex(f => f.cycle === cycle);
     const prochain = d.feuilles.slice(iOuvert + 1).concat(d.feuilles.slice(0, iOuvert + 1)).find(f => f.revus < f.total && f.cycle !== cycle) || null;
     const horsARevoir = d.hors.filter(c => !c.revu).length;
-    const suivante = d.faite ? '' : ouvertIncomplet ? 'signer' : prochain ? 'cycle' : horsARevoir ? 'hors' : 'arreter';
     // U-13 — l'orange pour ce qui demande un geste (un brouillard à valider, une note à lever, une
     // question qui attend). « 19 comptes ne sont pas signés » est l'état de DÉPART d'une révision,
     // et l'avancement le dit déjà en tête des feuilles : il ne se répète pas en alerte.
     const controles = r.controles || [];
+    // 10.13.0 (U-11, test humain du pont) — une question posée et pas encore partie passe AVANT la
+    // suite de la révision : le client a besoin de temps pour répondre, chaque jour compte.
+    const aEnvoyer = controles.some(c => c.envoyer);
+    const suivante = d.faite ? '' : aEnvoyer ? 'envoyer' : ouvertIncomplet ? 'signer' : prochain ? 'cycle' : horsARevoir ? 'hors' : 'arreter';
     const aFaire = controles.filter(c => c.gravite !== 'info');
     const etatsNormaux = controles.filter(c => c.gravite === 'info' && c.id !== 'comptes');
     return `<div class="filters">
@@ -4034,7 +4062,7 @@
       <button class="btn btn-sm${suivante === 'arreter' ? ' btn-primary' : ''}" id="rv-arreter">${d.faite ? 'Rouvrir la révision' : 'Arrêter la révision…'}</button>
       <button class="btn btn-sm" id="rv-note">Note de revue…</button>
       <button class="btn btn-sm" id="rv-question">Poser une question…</button>
-      <span class="nw"><button class="btn btn-sm" id="rv-envoyer">Envoyer les questions au client…</button>${info('rv.envoi')}</span>
+      <span class="nw"><button class="btn btn-sm${suivante === 'envoyer' ? ' btn-primary' : ''}" id="rv-envoyer">Envoyer les questions au client…</button>${info('rv.envoi')}</span>
     </div>
     ${aFaire.length ? `<div class="warn-box mb">${aFaire.map(c => `<div>${esc(c.texte)}</div>`).join('')}
       <div class="small">Ils ne bloquent pas : une révision arrêtée avec des manques signalés vaut mieux qu'une révision jamais arrêtée.</div></div>` : ''}
@@ -4296,16 +4324,22 @@
       c.onchange = () => { $('#qe-pwf', couche).hidden = !c.checked; };
       $('#qe-ok', couche).onclick = async () => {
         const pw = c.checked ? $('#qe-pw', couche).value.trim() : '';
-        if (c.checked && pw.length < 6) return toast('Choisis un mot de passe d\'au moins six caractères.', 'error');
+        if (c.checked && pw.length < 6) return refus($('#qe-pw', couche), 'Choisis un mot de passe d\'au moins six caractères.');
         try {
           const r = await api.ecrireQuestions({ dossierId: dossier.id, annee: s.annee, motDePasse: pw });
           close();
           if (r.annule) return;
           s.livre = r.livre; s.revisionRev = '';
-          // L'accord suit le NOMBRE : « 1 question envoyée, signées » se lisait sur le premier envoi.
-          const pluriel = r.envoyees > 1 ? 's' : '';
-          toast(`${pl(r.envoyees, 'question envoyée', 'questions envoyées')}${r.signe ? `, signée${pluriel}` : ''}${r.scelle ? ` et scellée${pluriel}` : ''}.`);
           chargerRevision(root, dossier);
+          // 10.13.0 (test humain du pont) — « 1 question envoyée » disait faux : un FICHIER vient
+          // d'être écrit, et il reste à le transmettre. Même compte rendu que le fichier
+          // d'appairage : ce qu'il faut en faire, où il est, et le bouton qui le montre.
+          const pluriel = r.envoyees > 1 ? 's' : '';
+          const quoi = `${pl(r.envoyees, 'question', 'questions')}${r.signe ? ` signée${pluriel}` : ''}${r.scelle ? ` et scellée${pluriel}` : ''}`;
+          const voir = await confirmDialog('Fichier de questions écrit',
+            `<p>${esc(quoi)} dans ce fichier. Envoie-le à ${esc(dossier.name)} (par mail, par exemple) : il l'ouvre dans SkanFact, et ses réponses te reviendront dans son prochain paquet.${r.scelle ? ' Dis-lui le mot de passe au téléphone, jamais dans le même mail.' : ''}</p>
+             <p class="muted small">${esc(r.path || '')}</p>`, 'Le montrer dans le dossier', false, 'Fermer');
+          if (voir && r.path) api.reveal(r.path);
         } catch (e) { toast(plainError(e), 'error'); }
       };
     });
@@ -8761,7 +8795,7 @@
         if (r) {
           const ok = await confirmDialog('Fichier d\'appairage créé',
             `<p>Envoie ce fichier à tes clients (par mail, il ne contient rien de secret).</p>
-             <p class="muted small">${esc(r.path)}</p>`, 'Le montrer dans le dossier');
+             <p class="muted small">${esc(r.path)}</p>`, 'Le montrer dans le dossier', false, 'Fermer');
           if (ok) api.reveal(r.path);
         }
       } catch (e) { toast(plainError(e), 'error'); }
@@ -9043,7 +9077,7 @@
             if (onDone) onDone();
             const show = await confirmDialog('Clé de secours enregistrée',
               `<p class="muted small">${esc(r.path)}</p><p>Copie-la maintenant sur une clé USB ou un disque que tu ranges ailleurs, et <strong>efface-la de ${CE_POSTE()}</strong>.</p>`,
-              'La montrer dans le dossier');
+              'La montrer dans le dossier', false, 'Fermer');
             if (show) api.reveal(r.path);
           } catch (e) { toast(plainError(e), 'error'); }
         };

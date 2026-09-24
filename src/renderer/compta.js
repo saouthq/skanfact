@@ -3943,8 +3943,14 @@
     if (ouvertes) c.push({ id: 'notes', gravite: 'attention', texte: `${plFr(ouvertes, 'note de revue n\'est pas levée', 'notes de revue ne sont pas levées')}.` });
     const sansReponse = (d.questionnaire || []).filter(q => !txt(q.reponse)).length;
     if (sansReponse) c.push({ id: 'questionnaire', gravite: 'info', texte: `${plFr(sansReponse, 'question du questionnaire est sans réponse', 'questions du questionnaire sont sans réponse')}.` });
+    // 10.13.0 (test humain du pont) — une question qu'on vient de poser « attendait sa réponse »
+    // alors qu'elle n'était pas encore partie : le comptable pouvait attendre un client qui ne l'a
+    // jamais reçue. Les deux états se disent séparément, et le premier nomme le geste qui l'envoie.
     const qs = questionsOuvertes(livre, { periode });
-    if (qs.length) c.push({ id: 'questions', gravite: 'attention', texte: `${plFr(qs.length, 'question au client attend sa réponse', 'questions au client attendent leur réponse')}.` });
+    const aEnvoyer = qs.filter(q => !(q.envois || []).length).length;
+    const enAttente = qs.length - aEnvoyer;
+    if (aEnvoyer) c.push({ id: 'questions', gravite: 'attention', envoyer: true, texte: `${plFr(aEnvoyer, 'question au client n\'est pas encore partie', 'questions au client ne sont pas encore parties')} : « Envoyer les questions au client… » ${aEnvoyer > 1 ? 'les emporte' : 'l\'emporte'}.` });
+    if (enAttente) c.push({ id: 'questions-attente', gravite: 'attention', texte: `${plFr(enAttente, 'question au client attend sa réponse', 'questions au client attendent leur réponse')}.` });
     return c;
   }
 
@@ -4122,6 +4128,33 @@
     return r;
   }
 
+  // 10.13.0 (test humain du pont) — ranger les réponses d'un paquet dans les livres d'un dossier.
+  // Le client renvoie TOUTES ses réponses dans CHAQUE paquet (`reponsesAEnvoyer`) : une réponse déjà
+  // rangée revient donc au paquet suivant. La version d'avant ne la retirait des « restantes » que
+  // si une réponse NOUVELLE avait été posée dans le même livre — sinon elle finissait comptée comme
+  // « réponse à une question que ce dossier ne porte plus », à chaque paquet, pour toujours. Une
+  // réponse est CONNUE dès que sa question est dans le livre, qu'elle y change quelque chose ou non.
+  //   annees  : les exercices à parcourir, dans l'ordre
+  //   ouvrir  : annee → livre (ou null) — on n'ouvre que ce qu'il faut, un livre coûte à déchiffrer
+  // Rend { posees, inconnues, modifies: [{ annee, livre, posees }] } : l'appelant écrit les livres.
+  function posterReponsesDansLivres(annees, ouvrir, reponses, quand) {
+    const restantes = new Map((Array.isArray(reponses) ? reponses : []).filter(r => r && txt(r.id)).map(r => [txt(r.id), r]));
+    const out = { posees: 0, inconnues: 0, modifies: [] };
+    (Array.isArray(annees) ? annees : []).forEach(annee => {
+      if (!restantes.size) return;
+      const livre = ouvrir(annee);
+      if (!livre) return;
+      const connues = new Set((livre.questions || []).map(q => txt(q.id)));
+      const ici = Array.from(restantes.values()).filter(r => connues.has(txt(r.id)));
+      ici.forEach(r => restantes.delete(txt(r.id)));
+      if (!ici.length) return;
+      const r = noterReponsesQuestions(livre, ici, quand);
+      if (r.posees) { out.posees += r.posees; out.modifies.push({ annee, livre, posees: r.posees }); }
+    });
+    out.inconnues = restantes.size;
+    return out;
+  }
+
   // La règle des deux paquets (F-9.10.0-10), et elle vaut des DEUX côtés — le cabinet la lit sur
   // ses questions, le client sur celles qu'il a reçues. Une question partie deux fois et toujours
   // sans réponse n'est plus une question en attente : c'est un point bloquant.
@@ -4212,6 +4245,14 @@
   const reponsesAEnvoyer = liste => (Array.isArray(liste) ? liste : [])
     .filter(q => q.reponse && (txt(q.reponse.texte) || q.reponse.piece))
     .map(q => ({ id: txt(q.id), texte: txt(q.reponse.texte), le: Number(q.reponse.le) || 0, piece: q.reponse.piece || null }));
+
+  // 10.13.0 (test humain du pont) — les réponses données APRÈS le dernier paquet fabriqué. Toutes les
+  // réponses repartent dans chaque paquet (`reponsesAEnvoyer`), mais un paquet déjà FABRIQUÉ ne se
+  // réécrit pas : répondre puis cliquer « Envoyer au comptable » joignait le fichier d'avant la
+  // réponse, et la réponse n'arrivait jamais. Une réponse est dans un paquet si elle est plus
+  // ancienne que lui ; sinon, l'étape suivante est de le refaire.
+  const reponsesApres = (liste, instant) => (Array.isArray(liste) ? liste : [])
+    .filter(q => q.reponse && (txt(q.reponse.texte) || q.reponse.piece) && (Number(q.reponse.le) || 0) > (Number(instant) || 0));
 
   const questionsSansReponse = (liste, seuil) => (Array.isArray(liste) ? liste : [])
     .filter(q => !(q.reponse && (txt(q.reponse.texte) || q.reponse.piece))
@@ -5074,8 +5115,8 @@
     poserQuestionnaire, repondreQuestionnaire, controlesRevision, arreterRevision,
     questionValide, ajouterQuestion, modifierQuestion, supprimerQuestion, fermerQuestion,
     questionsAEnvoyer, questionsOuvertes, questionsARelancer, dossierDeQuestions,
-    noterEnvoiQuestions, noterReponsesQuestions, questionsValides,
-    fusionnerQuestionsRecues, questionsDeLaPiece, repondreQuestion, reponsesAEnvoyer, questionsSansReponse,
+    noterEnvoiQuestions, noterReponsesQuestions, posterReponsesDansLivres, questionsValides,
+    fusionnerQuestionsRecues, questionsDeLaPiece, repondreQuestion, reponsesAEnvoyer, reponsesApres, questionsSansReponse,
     // Le cabinet à plusieurs (9.9.0)
     fusionnerLivres, empreinteEcriture,
     // La paie (10.3.0)

@@ -1041,21 +1041,15 @@ function ingest(file, password) {
 function posterReponses(dossierId, reponses) {
   const d = dossierDe(dossierId);
   if (!d) return null;
-  const out = { posees: 0, inconnues: 0 };
   const annees = (getStore().lireIndexLivres(d, indexDossiers()).exercices || []).map(x => x.annee);
-  const restantes = new Map(reponses.map(r => [String(r && r.id), r]));
-  annees.forEach(annee => {
-    if (!restantes.size) return;
+  // La règle vit dans le moteur (10.13.0), où elle se prouve sans Electron : une réponse déjà
+  // rangée qui revient dans le paquet suivant est CONNUE, pas « sans question ».
+  const out = KC.posterReponsesDansLivres(annees, annee => {
     const o = ouvrirLivre(dossierId, annee);
-    if (!o || !o.livre) return;
-    const r = KC.noterReponsesQuestions(o.livre, Array.from(restantes.values()), Date.now());
-    if (!r.posees) return;
-    (o.livre.questions || []).forEach(q => { if (q.reponse) restantes.delete(String(q.id)); });
-    out.posees += r.posees;
-    ecrireLeLivre(dossierId, o.livre, 'reponses', `${r.posees} réponse${r.posees > 1 ? 's' : ''} du client`);
-  });
-  out.inconnues = restantes.size;
-  return out.posees || out.inconnues ? out : null;
+    return o && o.livre;
+  }, reponses, Date.now());
+  out.modifies.forEach(m => ecrireLeLivre(dossierId, m.livre, 'reponses', `${m.posees} réponse${m.posees > 1 ? 's' : ''} du client`));
+  return out.posees || out.inconnues ? { posees: out.posees, inconnues: out.inconnues } : null;
 }
 
 // Ouvrir un fichier contenu dans un paquet : on l'extrait dans un dossier temporaire, en lecture.
@@ -1117,7 +1111,7 @@ ipcMain.handle('cab:listPack', (_e, { packPath, password } = {}) => {
   }
   return entries.map(e => ({
     name: e.name, size: e.size,
-    annonce: !annonces || e.name === 'manifeste.json' || annonces.has(e.name)
+    annonce: !annonces || K.HORS_MANIFESTE.includes(e.name) || annonces.has(e.name)
   }));
 });
 

@@ -185,8 +185,18 @@
       // pas le droit de valider ici l'aurait à nouveau, sans un mot.
       droits: (d.droits && typeof d.droits === 'object' && !Array.isArray(d.droits)) ? d.droits : {},
       audit: Array.isArray(d.audit) ? d.audit : [],
-      packs: Array.isArray(d.packs) ? d.packs : []
+      packs: Array.isArray(d.packs) ? d.packs.map(sansSignatureIntruse) : []
     };
+  }
+  // 10.13.0 — le verdict d'intégrité est RANGÉ avec le paquet (6.8.1) : ceux reçus entre la 9.2.0 et
+  // la 10.13.0 portent `signature.json` parmi leurs « intrus », et le tableau des paquets continuerait
+  // d'afficher « ⚠ +1 » sur des paquets honnêtes. La signature a été vérifiée à part, à l'import
+  // (`verdictOrigine`) : la retirer du verdict ne blanchit rien d'autre, un vrai intrus reste.
+  function sansSignatureIntruse(p) {
+    const ig = p && p.integrity;
+    if (!ig || !Array.isArray(ig.intrus) || !ig.intrus.some(c => HORS_MANIFESTE.includes(c))) return p;
+    const intrus = ig.intrus.filter(c => !HORS_MANIFESTE.includes(c));
+    return Object.assign({}, p, { integrity: Object.assign({}, ig, { intrus, ok: !(ig.bad || []).length && !intrus.length }) });
   }
 
   // ================================================================ L'EXEMPLE PÉRIMÉ (9.4.2)
@@ -703,6 +713,14 @@
   // fichiers qu'il n'annonce pas : un paquet de trente pièces dont douze annoncées affichait
   // « 12 pièces vérifiées, intactes », et les dix-huit autres, comparées à rien, se listaient et
   // s'ouvraient d'un clic. Un intrus n'est pas une pièce vérifiée : il a son propre compteur.
+  // Les deux fichiers du paquet que le manifeste ne PEUT pas annoncer : lui-même (il ne porte pas sa
+  // propre empreinte), et la signature du client (9.2.0), qui signe les octets du manifeste et vient
+  // donc après lui. `signature.json` est vérifiée à part (`verdictOrigine`) : la compter ici comme un
+  // « fichier glissé après coup » levait une fausse alerte sur CHAQUE paquet signé — c'est-à-dire sur
+  // tous, depuis la 9.2.0 — au cœur de la seule affirmation rigoureuse de cette application
+  // (10.13.0, trouvé en envoyant un vrai paquet d'une application à l'autre).
+  const HORS_MANIFESTE = ['manifeste.json', 'signature.json'];
+
   function checkIntegrity(manifest, hashes) {
     const bad = [];
     const intrus = [];
@@ -718,7 +736,7 @@
     });
     // Le manifeste ne peut pas porter sa propre empreinte : il est attendu, jamais intrus.
     Object.keys(hashes || {}).forEach(chemin => {
-      if (chemin === 'manifeste.json' || annonces.has(chemin)) return;
+      if (HORS_MANIFESTE.includes(chemin) || annonces.has(chemin)) return;
       intrus.push(chemin);
     });
     intrus.sort();
@@ -1901,7 +1919,7 @@
     GRACE_MOIS, DORMANT_MOIS, dossierFacturable, comptageDossiers, licenceDuPaquet,
     monthLabel, monthListLabel, missingLabel, addMonth, monthsBetween, moisDeTravail, today, de, libelleLot,
     cleEcheance, echeanceDeposee,
-    migrate, migrateDossier, dossierKey, packSummary, filePack, demoDossiers, rebaserPaquet, checkIntegrity,
+    migrate, migrateDossier, dossierKey, packSummary, filePack, demoDossiers, rebaserPaquet, checkIntegrity, HORS_MANIFESTE,
     exemplePerime,
     newDossier, parseDossierLines, noteRelance, portfolio, caDuPortefeuille, relanceDue, relanceRows, accuseMail,
     parseCsv, verdictOrigine, csvDangereux, toCsvLine, mergeEcritures, ecrituresPlan,

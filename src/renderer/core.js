@@ -3111,6 +3111,7 @@
   const repondreQuestion = Compta.repondreQuestion;
   const reponsesAEnvoyer = Compta.reponsesAEnvoyer;
   const questionsSansReponse = Compta.questionsSansReponse;
+  const reponsesApres = Compta.reponsesApres;
   const questionsValides = Compta.questionsValides;
 
   // L'état des immobilisations pour un exercice : une ligne par bien, avec la dotation de l'année.
@@ -7159,7 +7160,7 @@
     entriesBalance, entriesByAccount, entryCsvColumns, MOVE_ACCOUNTS, COMPTES_CONTREPARTIE, journalDeCompte, clotureValide,
     // Les questions du cabinet (9.10.0)
     QUESTION_ATTENDUS, QUESTION_RELANCE, questionsValides, fusionnerQuestionsRecues,
-    questionsDeLaPiece, repondreQuestion, reponsesAEnvoyer, questionsSansReponse,
+    questionsDeLaPiece, repondreQuestion, reponsesAEnvoyer, reponsesApres, questionsSansReponse,
     numerosDuJournal, livreJournal, journalCentralisateur, centralisateurCsvColumns, centralisateurRows, inPeriod,
     odValide, odPiece, comptesProposes, lettrage, SECTIONS_ECRITURES,
     etatRapprochement, etatsFinanciers, etatsCsvRows, etatsCsvColumns, employerChargesOf,

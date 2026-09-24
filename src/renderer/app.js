@@ -736,14 +736,31 @@
   // d'union, et « FAC-2026- / 001 » se lisait comme deux choses (vu au test humain, 10.12.0). Les
   // numéros passent dans un `nw` une fois le texte ÉCHAPPÉ — avant, la balise serait échappée.
   const numerosInsecables = html => String(html).replace(/\b[A-Z]{2,4}-\d{4}-\d{2,}\b/g, m => `<span class="nw">${m}</span>`);
+  // Une question commence par une majuscule, même quand elle s'ouvre sur un libellé qui n'en porte
+  // pas : « août 2026 n'est pas clôturé » (test humain du pont, 10.13.0). Un mois s'écrit en
+  // minuscule au milieu d'une phrase, jamais en tête.
+  const enTete = s => { s = String(s || ''); return s.charAt(0).toLocaleUpperCase('fr') + s.slice(1); };
   function confirmDialog(msg, okLabel, danger) {
     return new Promise(resolve => {
       let settled = false;
       const finish = (close, v) => { settled = true; close(); resolve(v); };
-      modal(`<h2>Confirmation</h2><p>${numerosInsecables(C.nl2br(msg))}</p>
+      modal(`<h2>Confirmation</h2><p>${numerosInsecables(C.nl2br(enTete(msg)))}</p>
         <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn ${danger === false ? 'btn-primary' : 'btn-danger'}" id="ok">${h(okLabel || 'Confirmer')}</button></div>`,
         (root, close) => { $('#ok', root).onclick = () => finish(close, true); $('[data-close]', root).onclick = () => finish(close, false); },
         () => { if (!settled) resolve(false); });
+    });
+  }
+
+  // Un compte rendu qu'on ferme, sans question (10.13.0, le jumeau de celui du Cabinet). L'export de
+  // la base passait par `confirmDialog(…, 'Fermer')` : « Annuler » à côté de « Fermer », deux boutons
+  // au même effet, et « Annuler » après coup laisse croire qu'on peut défaire ce qui est déjà écrit
+  // sur le disque. Une chose FAITE se ferme ; seule une chose à faire s'annule.
+  function infoDialog(title, msg, okLabel) {
+    return new Promise(resolve => {
+      modal(`<h2>${h(title)}</h2><p>${numerosInsecables(C.nl2br(enTete(msg)))}</p>
+        <div class="modal-actions"><button class="btn btn-primary" data-close>${h(okLabel || 'Fermer')}</button></div>`,
+        (root, close) => { $('[data-close]', root).onclick = () => { close(); resolve(true); }; },
+        () => resolve(true));
     });
   }
 
@@ -807,7 +824,7 @@
     return new Promise(resolve => {
       let settled = false;
       const finish = (close, v) => { settled = true; close(); resolve(v); };
-      modal(`<h2>${h(title)}</h2><p>${numerosInsecables(h(msg))}</p>
+      modal(`<h2>${h(enTete(title))}</h2><p>${numerosInsecables(h(enTete(msg)))}</p>
         <div class="modal-actions"><button class="btn" data-close>${h(fermer || 'Annuler')}</button>${labelB == null ? '' : `<button class="btn" id="b">${h(labelB)}</button>`}<button class="btn btn-primary" id="a">${h(labelA)}</button></div>`,
         (root, close) => { $('#a', root).onclick = () => finish(close, 'a'); if ($('#b', root)) $('#b', root).onclick = () => finish(close, 'b'); $('[data-close]', root).onclick = () => finish(close, null); },
         () => { if (!settled) resolve(null); });
@@ -1688,6 +1705,10 @@
     b.title = b.title.replace(/^(Replier|Ouvrir) : /, etat[famille] ? 'Replier : ' : 'Ouvrir : ');
     resumerFamilles();
     ajusterNav();
+    // Une famille qu'on OUVRE se montre entière (test humain du pont, 10.13.0) : « Piloter » ouverte
+    // en bas de la barre laissait Comptabilité sous le bord, et rien ne disait qu'il fallait défiler
+    // la barre pour la trouver. `nearest` ne bouge rien quand la famille tient déjà à l'écran.
+    if (etat[famille]) bloc.scrollIntoView({ block: 'nearest' });
   }
   // L'intertitre d'une famille repliée porte le compte de ce qui attend dedans : sans lui, trois
   // factures fournisseurs en retard disparaîtraient avec la famille « Acheter ». Une alerte l'emporte
@@ -5569,6 +5590,17 @@
   // l'onglet Cabinet, et le bandeau posé en face de la pièce que la question vise. Recopiée dans
   // les deux, elle divergerait au premier ajustement (7.29.0).
   const repondue = q => !!(q && q.reponse && (String(q.reponse.texte || '').trim() || q.reponse.piece));
+  // 10.13.0 — la pièce qu'une question NOMME s'ouvre (7.15.0) : « FAC-2026-022 » en gras, sans lien,
+  // obligeait à la chercher dans la liste des factures pour lire ce que le comptable demande. Une
+  // vente d'abord (les deux applications nomment ses pièces pareil), puis un achat par son numéro.
+  function lienPiece(numero) {
+    const n = String(numero || '').trim();
+    const d = n && (data.documents || []).find(x => x.number === n);
+    if (d) return `<a href="#/doc/${h(d.id)}">${h(n)}</a>`;
+    const a = n && (data.purchases || []).find(x => x.number === n);
+    if (a) return `<a href="#/achat/${h(a.id)}">${h(n)}</a>`;
+    return h(n);
+  }
 
   // Le bandeau posé EN FACE de la pièce que la question vise (F-9.10.0-08). C'est tout l'intérêt du
   // mécanisme : une question rangée dans une liste que personne n'ouvre est une question perdue,
@@ -5580,7 +5612,7 @@
     if (!qs.length) return '';
     return `<div class="banner" id="q-piece"><span><b>${h(pl(qs.length, 'question de ton comptable', 'questions de ton comptable'))} sur cette pièce.</b>
       ${qs.map(q => h(q.texte)).join(' · ')}</span>
-      <span class="lock-go">${qs.map(q => `<button class="btn btn-sm btn-primary" data-qrep="${h(q.id)}">Répondre</button>`).join('')}</span></div>`;
+      <span class="lock-go">${qs.map(q => `<button class="btn btn-sm" data-qrep="${h(q.id)}">Répondre</button>`).join('')}</span></div>`;
   }
   const brancherQuestions = racine => $$('[data-qrep]', racine).forEach(b => b.onclick = () => repondreA(b.dataset.qrep));
 
@@ -5595,7 +5627,7 @@
         <textarea name="texte" rows="4" placeholder="Réponds en une phrase : c'est ce que ton comptable lira.">${h((q.reponse && q.reponse.texte) || '')}</textarea></label>
         <p class="small muted">Une pièce justificative se joint sur la pièce elle-même : elle part déjà dans le paquet,
         et la joindre ici en ferait une seconde copie.</p></form>
-      <div class="modal-actions"><span class="small muted">* obligatoire</span><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Enregistrer ma réponse</button></div>`,
+      <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Enregistrer ma réponse</button></div>`,
       (root, close) => {
         $('#ok', root).onclick = () => {
           const t = $('textarea[name=texte]', root).value.trim();
@@ -5604,7 +5636,7 @@
           if (!r.ok) return toast(r.motif, true);
           data.questionsCabinet = r.liste;
           save(true); close();
-          toast('Réponse enregistrée — elle repart dans ton prochain paquet');
+          toast('Réponse enregistrée — elle partira dans le prochain paquet que tu fabriques');
           render(true); updateNavCounts();
         };
       });
@@ -11651,6 +11683,16 @@
       const cur = co.currency;
       const tt = plan.totaux;
       const moisVide = !(tt.pieces + tt.ventes + tt.achats + tt.encaissements + tt.bulletins);
+      // 10.13.0 (test humain du pont) — l'étape suivante du mois, CALCULÉE (U-11). Répondre puis
+      // cliquer le vert « Envoyer au comptable » joignait le paquet fabriqué AVANT la réponse : elle
+      // n'arrivait jamais au cabinet, sous une phrase qui promettait « il n'y a rien d'autre à
+      // envoyer ». Une question qui attend passe d'abord (la réponse partira dans CE paquet), une
+      // réponse plus récente que le paquet le fait refaire, et seulement ensuite on l'envoie.
+      const questions = data.questionsCabinet || [];
+      const enAttente = questions.filter(q => !repondue(q));
+      const nonParties = sent.length ? C.reponsesApres(questions, sent[0].at) : [];
+      const suivante = moisVide ? '' : enAttente.length ? 'repondre'
+        : !sent.length ? 'fabriquer' : nonParties.length ? 'refaire' : 'envoyer';
 
       $('#c-body').innerHTML = `
         <div class="panel"><h2>Le paquet du mois ${info('cab.paquet')}</h2>
@@ -11675,8 +11717,11 @@
                 <tr><td>Justificatifs d'achat joints</td><td class="r">${plan.totaux.justificatifs}</td></tr>
                 <tr><td>Encaissements clients</td><td class="r">${plan.totaux.encaissements}</td></tr>
                 <tr><td>Bulletins de paie</td><td class="r">${plan.totaux.bulletins}</td></tr>
-                <tr class="total-row"><td><b>Fichiers en tout</b></td><td class="r"><b>${plan.entries.length + 2}</b></td></tr>
               </tbody></table>
+              ${/* 10.13.0 — « Fichiers en tout : 15 » était posé en pied, sous une colonne qui additionne
+                   14 et qui ne compte pas des fichiers (des lignes de journal, des encaissements) : un
+                   total sous une colonne est lu comme sa somme (9.8.8). Le poids du paquet se DIT. */''}
+              <p class="small muted mt">Le paquet fera ${pl(plan.entries.length + 2, 'fichier')} : les pièces en PDF, les journaux en CSV, la page de garde et le manifeste.</p>
             </div>
             <div>
               <div class="stat"><div class="lbl">CA HT du mois</div><div class="val">${C.money(plan.ca, cur)}</div></div>
@@ -11717,6 +11762,9 @@
             : '<p class="small" style="color:var(--primary)">Rien à signaler : le dossier du mois est complet.</p>'}
         </div>
 
+        ${/* Les réponses partent DANS le paquet : quand il y a des questions, elles viennent avant lui. */''}
+        ${questions.length ? panneauQuestions() : ''}
+
         <div class="panel"><h2>Fabriquer et envoyer ${info('cab.envoyer')}</h2>
           ${paired
             ? `<p class="small" style="background:var(--primary-soft);padding:10px 12px;border-radius:8px">
@@ -11728,14 +11776,21 @@
                  <div class="small muted">Transmets-le-lui par un autre canal que le fichier : par téléphone, pas dans le même mail.
                    Mieux : demande-lui son fichier d'appairage et importe-le dans <a href="#" id="cab-gopair" class="warn-link">Paramètres → Envois → Ton cabinet comptable</a>.</div>
                </div>`}
+          ${/* 10.13.0 (U-11, test humain du pont) — le vert suit `suivante` : fabriquer, puis envoyer ; mais
+               refaire d'abord quand une réponse est plus récente que le paquet, et répondre avant tout. */''}
+          ${suivante === 'repondre' ? `<p class="small muted mb">${h(pl(enAttente.length, 'question de ton comptable attend', 'questions de ton comptable attendent'))} ta réponse, plus haut :
+            réponds d'abord, ${enAttente.length > 1 ? 'tes réponses partiront' : 'ta réponse partira'} dans ce paquet.</p>` : ''}
+          ${suivante === 'refaire' ? `<div class="warn-box mb">Tu as répondu à ton comptable après avoir fabriqué ce paquet :
+            ${nonParties.length > 1 ? 'tes réponses n\'y sont pas' : 'ta réponse n\'y est pas'}. Un paquet fabriqué ne se réécrit pas — refais-le avant de l'envoyer.</div>` : ''}
           <div class="inline">
-            <button class="btn btn-primary" id="cab-build" ${moisVide ? 'disabled title="Ce mois ne contient aucune pièce."' : ''}>Fabriquer le paquet…</button>
-            ${sent.length ? `<button class="btn" id="cab-mail">Envoyer au comptable…</button>` : ''}
+            <button class="btn ${suivante === 'fabriquer' || suivante === 'refaire' ? 'btn-primary' : ''}" id="cab-build" ${moisVide ? 'disabled title="Ce mois ne contient aucune pièce."' : ''}>${!sent.length ? 'Fabriquer le paquet…'
+              : nonParties.length ? `Refaire le paquet avec ${nonParties.length > 1 ? 'tes réponses' : 'ta réponse'}…` : 'Refaire le paquet…'}</button>
+            ${sent.length ? `<button class="btn ${suivante === 'envoyer' ? 'btn-primary' : ''}" id="cab-mail">Envoyer au comptable…</button>` : ''}
           </div>
           <div id="cab-prog" class="small muted mt" hidden></div>
         </div>
 
-        ${panneauQuestions()}
+        ${questions.length ? '' : panneauQuestions()}
 
         <div class="panel"><h2>Ce qui a déjà été envoyé ${info('cab.historique')}</h2>
           ${history.length
@@ -11766,8 +11821,8 @@
             Tant qu'${bloquees.length > 1 ? 'elles restent' : 'elle reste'} en l'air, ton comptable ne peut pas arrêter ton mois.</div>` : ''}
           ${qs.length
             ? `<div class="scroll-x"><table class="list compact"><thead><tr><th>Pièce</th><th>La question</th><th>Attendu</th><th>Reçue</th><th>Réponse</th><th></th></tr></thead><tbody>
-                ${qs.map(q => `<tr class="${!repondue(q) && (Number(q.recues) || 0) >= C.QUESTION_RELANCE ? 'row-warn' : ''}">
-                  <td class="nw">${q.piece ? `<strong>${h(q.piece)}</strong>` : '<span class="muted">—</span>'}
+                ${qs.map((q, i) => `<tr class="${!repondue(q) && (Number(q.recues) || 0) >= C.QUESTION_RELANCE ? 'row-warn' : ''}">
+                  <td class="nw">${q.piece ? `<strong>${lienPiece(q.piece)}</strong>` : '<span class="muted">—</span>'}
                     ${q.compte ? `<div class="small muted">${h(q.compte)} ${h(q.libelleCompte || '')}</div>` : ''}</td>
                   <td>${h(q.objet || '')}<div class="small">${h(q.texte)}</div></td>
                   <td class="nw small">${h(attendu(q.attendu))}</td>
@@ -11775,9 +11830,9 @@
                   <td>${repondue(q)
                     ? `<span class="badge b-paid">répondue</span><div class="small">${h(q.reponse.texte || '')}</div>`
                     : '<span class="badge b-due">sans réponse</span>'}</td>
-                  <td class="actions r nw"><button class="btn btn-sm" data-rep="${h(q.id)}">${repondue(q) ? 'Corriger ma réponse' : 'Répondre'}</button></td></tr>`).join('')}
+                  <td class="actions r nw"><button class="btn btn-sm${suivante === 'repondre' && i === 0 ? ' btn-primary' : ''}" data-rep="${h(q.id)}">${repondue(q) ? 'Corriger ma réponse' : 'Répondre'}</button></td></tr>`).join('')}
               </tbody></table></div>
-              <p class="small muted mt">Tes réponses repartent <strong>dans le prochain paquet</strong> : il n'y a rien d'autre à envoyer.</p>`
+              <p class="small muted mt">Tes réponses partent <strong>dans le paquet du mois</strong>, dès que tu le fabriques (ou le refais) : il n'y a rien d'autre à envoyer.</p>`
             : `<div class="empty mini">Aucune question reçue. Quand ton comptable a besoin d'une pièce ou d'une explication,
                il t'envoie un fichier <code>.skanask</code> : chaque question s'affiche ensuite en face de la pièce qu'elle vise.</div>`}
           <div class="inline mt"><button class="btn" id="q-import">Importer les questions de ton comptable…</button></div>
@@ -11805,7 +11860,7 @@
         if (!v.ok) return toast(v.motifs[0], true);
         const ok = await confirmDialog(
           `Reprendre ${pl(v.questions, 'question')} de ton comptable ?\n\n`
-          + '• Elles s\'afficheront en face des pièces qu\'elles visent.\n'
+          + (v.questions > 1 ? '• Elles s\'afficheront en face des pièces qu\'elles visent.\n' : '• Elle s\'affichera en face de la pièce qu\'elle vise.\n')
           + '• Aucun de tes chiffres ne change : une question est une demande, pas une écriture.\n'
           + (lu.origine.niveau === 'prouvee'
             ? `• Origine vérifiée : signature ${lu.origine.empreinte}.`
@@ -11868,7 +11923,10 @@
           data.packs = (data.packs || []).concat([{
             id: C.uid(), month: per.month, at: Date.now(), definitive: plan.definitive,
             sealed: !!r.chiffre, cabinet: r.pourCabinet || '', files: r.fichiers, bytes: r.octets, digest: r.empreinte,
-            path: r.path, missing: (r.absents || []).length
+            path: r.path, missing: (r.absents || []).length,
+            // Combien de réponses le paquet emporte : le mail d'envoi le dit, et c'est ce que le
+            // comptable cherche en l'ouvrant quand il a posé une question.
+            reponses: C.reponsesAEnvoyer(data.questionsCabinet || []).length
           }]);
           save(true);
           const warn = (r.absents || []).length ? ` ${pl(r.absents.length, 'fichier')} n'${r.absents.length > 1 ? 'ont' : 'a'} pas pu être joint${sPl(r.absents.length)} (voir le manifeste).` : '';
@@ -11889,6 +11947,7 @@
           body: `Bonjour,\n\nVoici le dossier de ${per.label}.\n\n`
             + `${last.definitive ? 'Le mois est clôturé : ces chiffres ne bougeront plus.' : 'Le mois n\'est pas encore clôturé : ce dossier est provisoire.'}\n`
             + `Le paquet contient les journaux, les pièces en PDF, les justificatifs d'achat et la page de garde.\n`
+            + (last.reponses ? `Il porte aussi ${last.reponses > 1 ? 'mes réponses à tes questions' : 'ma réponse à ta question'}.\n` : '')
             + (last.cabinet ? 'Il est chiffré pour ta clé (empreinte ' + last.cabinet + ') : toi seul peux l\'ouvrir.\n'
                : last.sealed ? 'Il est protégé par le mot de passe convenu — je te le donne par téléphone.\n' : '')
             + `\nEmpreinte du manifeste : ${String(last.digest || '').slice(0, 16)}\n\nBien à toi,\n${co.name || ''}`,
@@ -12409,22 +12468,26 @@
            <p class="small muted">Ton comptable n'a pas encore l'application ? <b>SkanFact Cabinet</b> est gratuite pour lui : elle est jointe à chaque version de SkanFact, sous le même lien de téléchargement. Elle lit tes paquets, ne modifie jamais tes données et ne t'envoie rien.</p>
            <button class="btn btn-primary mt" id="cab-import">Importer le fichier du cabinet…</button>`;
 
+      // 10.13.0 (test humain du pont) — le geste redessinait TOUTE la page : elle remontait en haut,
+      // et le panneau qui porte la réponse (l'empreinte à vérifier de vive voix) repartait sous le
+      // bas de l'écran, à côté d'un bandeau qui la recouvrait. Seul ce panneau dépend du cabinet :
+      // on redessine CE panneau, là où l'on est, et ce qui est en cours de saisie ailleurs reste en
+      // cours — rien ne l'enregistre à la place de l'utilisateur. Un fichier refusé dit sa phrase,
+      // jamais « Error invoking remote method… » (règle 6.4.0).
       const doImport = async () => {
         try {
           const r = await bridge.importCabinet();
           if (!r) return;
-          applySettings();                 // ne jamais perdre ce qui est en cours de saisie (règle 5.2.1)
           data.company.cabinet = r;
-          save(true); render();
-          toast(`Cabinet appairé : ${r.name || ''} — empreinte ${r.fingerprint}`);
-        } catch (e) { toast(e.message || 'Fichier illisible', true); }
+          save(true); drawCabinetPair();
+          toast(`Cabinet appairé : ${r.name || ''}`);
+        } catch (e) { toast(plainError(e) || 'Fichier illisible', true); }
       };
       if ($('#cab-import')) $('#cab-import').onclick = doImport;
       if ($('#cab-repair')) $('#cab-repair').onclick = doImport;
       if ($('#cab-unpair')) $('#cab-unpair').onclick = async () => {
-        if (!await confirmDialog('Retirer ce cabinet ? Tes prochains paquets ne seront plus chiffrés pour lui — il faudra revenir au mot de passe.')) return;
-        applySettings();
-        delete data.company.cabinet; save(true); render();
+        if (!await confirmDialog('Retirer ce cabinet ? Tes prochains paquets ne seront plus chiffrés pour lui — il faudra revenir au mot de passe.', 'Retirer')) return;
+        delete data.company.cabinet; save(true); drawCabinetPair();
         toast('Cabinet retiré');
       };
     }
@@ -13531,7 +13594,7 @@
         // jour où l'on en a besoin qu'on s'en aperçoit (règle du manifeste, 6.1.0).
         const lignes = Object.keys(r.comptes || {}).map(t => `${t} : ${r.comptes[t]}`).join('\n');
         data.exportConsole = r.jour; save(true);
-        await confirmDialog(`Base exportée.\n\n${r.chemin}\n\n${lignes}\n\nEmpreinte : ${String(r.sha256 || '').slice(0, 16)}…\n\nCe fichier n'est pas chiffré et porte tes clients : garde-le où tu gardes tes clés.`, 'Fermer', false);
+        await infoDialog('Base exportée', `${r.chemin}\n\n${lignes}\n\nEmpreinte : ${String(r.sha256 || '').slice(0, 16)}…\n\nCe fichier n'est pas chiffré et porte tes clients : garde-le où tu gardes tes clés.`);
         drawEditeurPanel();
       } catch (e) { b.disabled = false; toast(plainError(e), true); }
     };
@@ -13550,7 +13613,7 @@
       const r = await bridge.pontRequete('importer', { licences: charge });
       data.pontImporte = C.today(); save(true);
       const refus = (r.ignorees || []).length ? `\n\nRefusées (${r.ignorees.length}) : ${r.ignorees.slice(0, 5).map(x => `${x.id} — ${x.raison}`).join(' ; ')}${r.ignorees.length > 5 ? '…' : ''}` : '';
-      await confirmDialog(`Historique envoyé.\n\n${pl(r.importees || 0, 'licence importée', 'licences importées')}, ${r.dejaLa || 0} déjà connue${(r.dejaLa || 0) > 1 ? 's' : ''}.${refus}`, 'Fermer', false);
+      await infoDialog('Historique envoyé', `${pl(r.importees || 0, 'licence importée', 'licences importées')}, ${pl(r.dejaLa || 0, 'déjà connue', 'déjà connues')}.${refus}`);
       drawEditeurPanel();
     } catch (e) { toast(plainError(e), true); }
   }

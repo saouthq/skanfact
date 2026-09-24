@@ -206,6 +206,11 @@ async function launchCabinet() {
   await shot(win, 'import-rapport');
   const rapportImport = (await win.textContent('#modal-root .imp-list')).replace(/\s+/g, ' ').trim();
   console.log(`9. rapport d'import : ${rapportImport.slice(0, 190)}`);
+  // 10.13.0 — un paquet HONNÊTE, fabriqué à l'instant et signé par le client, ne porte aucun fichier
+  // « non annoncé » : `signature.json` était compté comme intrus sur chaque paquet signé depuis la
+  // 9.2.0, au cœur de la seule affirmation rigoureuse du Cabinet. Et l'intégrité se dit en clair.
+  if (/non annoncé/.test(rapportImport)) throw new Error('un paquet honnête est annoncé avec un fichier glissé : ' + rapportImport);
+  if (!/vérifiées?, intactes?/.test(rapportImport)) throw new Error('le rapport ne dit plus que les pièces sont intactes : ' + rapportImport);
   await win.click('#modal-root #ok');
 
   // La clé de secours est réclamée au PREMIER import (9.1.0) : c'est la seconde où le cabinet a

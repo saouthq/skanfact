@@ -311,4 +311,257 @@ module.exports = ({ t, assert, lireSource }) => {
       }
     }
   });
+
+  t('10.13.0 : une chose FAITE se ferme, elle ne s\'annule pas — dans les deux applications', () => {
+    // « Fichier d'appairage créé » proposait « Annuler » à côté de « Le montrer dans le dossier » : le
+    // fichier est déjà sur le disque, il n'y a rien à annuler, et le mot laisse croire le contraire.
+    // L'export de la base (app entreprise) posait « Annuler » à côté de « Fermer » : deux boutons au
+    // même effet. Le test lit chaque appel, son titre et ses arguments, accolades équilibrées.
+    const appels = (src, nom) => {
+      const out = [];
+      for (const m of src.matchAll(new RegExp('\\b' + nom + '\\(', 'g'))) {
+        if (/function\s+$/.test(src.slice(Math.max(0, m.index - 9), m.index))) continue;
+        const args = [];
+        let d = 0, j = m.index + nom.length, cur = '', q = null;
+        for (; j < src.length; j++) {
+          const c = src[j];
+          if (q) { cur += c; if (c === '\\') { cur += src[++j]; continue; } if (c === q) q = null; continue; }
+          if (c === '\'' || c === '"' || c === '`') { q = c; cur += c; continue; }
+          if ('([{'.includes(c)) { d++; if (d === 1 && c === '(') continue; }
+          else if (')]}'.includes(c)) { d--; if (d === 0) break; }
+          if (d === 1 && c === ',') { args.push(cur.trim()); cur = ''; continue; }
+          cur += c;
+        }
+        args.push(cur.trim());
+        out.push({ ligne: src.slice(0, m.index).split('\n').length, args });
+      }
+      return out;
+    };
+    const INFO = /^['`](Fermer|OK|J\\'ai compris|Compris)['`]$/;
+    // Cabinet : confirmDialog(titre, corps, ok, danger, annuler).
+    const cab = code(lireSource('src', 'cabinet', 'renderer', 'app.js'));
+    const cabAppels = appels(cab, 'confirmDialog');
+    assert.ok(cabAppels.length > 30, 'la lecture des appels du Cabinet ne voit plus rien (' + cabAppels.length + ')');
+    // Sans le drapeau `u`, `\b` ne voit pas la fin de « créé » : un « é » n'est pas un caractère de mot.
+    const FAIT = /(?<!\p{L})(créée?s?|enregistrée?s?|exportée?s?|reprise?|repris|posée?s?|refaite?s?|importée?s?|terminée?s?|envoyée?s?)(?!\p{L})/iu;
+    assert.ok(FAIT.test('\'Fichier d\\\'appairage créé\'') && !FAIT.test('Recréer'), 'la lecture des titres ne reconnaît plus un geste FAIT');
+    for (const a of cabAppels) {
+      const titre = a.args[0] || '';
+      assert.ok(!INFO.test(a.args[2] || ''), 'Cabinet l.' + a.ligne + ' : une explication posée comme une question (« Annuler » à côté de ' + a.args[2] + ') — infoDialog');
+      if (!titre.includes('?') && FAIT.test(titre)) {
+        assert.ok(a.args[4] && !/Annuler/.test(a.args[4]), 'Cabinet l.' + a.ligne + ' : ' + titre + ' dit une chose FAITE et propose « Annuler » — nomme la sortie (Fermer, Plus tard)');
+      }
+    }
+    // App entreprise : confirmDialog(message, ok, danger) — son bouton de sortie est toujours
+    // « Annuler », donc un « Fermer » ou un « OK » y est un compte rendu déguisé.
+    const ent = code(lireSource('src', 'renderer', 'app.js'));
+    const entAppels = appels(ent, 'confirmDialog');
+    assert.ok(entAppels.length > 30, 'la lecture des appels de l\'app entreprise ne voit plus rien (' + entAppels.length + ')');
+    for (const a of entAppels) {
+      assert.ok(!INFO.test(a.args[1] || ''), 'app entreprise l.' + a.ligne + ' : un compte rendu posé comme une question (« Annuler » à côté de ' + a.args[1] + ') — infoDialog');
+    }
+    // Et le compte rendu n'a qu'UN bouton.
+    const info = ent.slice(ent.indexOf('function infoDialog('), ent.indexOf('function confirmerEmission('));
+    assert.ok(info.length > 100 && info.length < 1200 && (info.match(/<button/g) || []).length === 1, 'le compte rendu de l\'app entreprise porte plus d\'un bouton');
+  });
+
+  t('10.13.0 : appairer ou retirer un cabinet redessine SON panneau, là où l\'on est, et un refus parle français', () => {
+    // Le geste redessinait la page entière : elle remontait en haut, et l'empreinte à vérifier de
+    // vive voix — la réponse au geste — repartait sous le bas de l'écran.
+    const src = code(lireSource('src', 'renderer', 'app.js'));
+    const i = src.indexOf('const doImport = async () =>');
+    const zone = src.slice(i, src.indexOf('drawCabinetPair();\n    drawLicencePanel();', i));
+    assert.ok(i > 0 && zone.length > 300 && zone.length < 2500 && zone.includes('#cab-unpair'), 'la tranche de l\'appairage ne se trouve plus (' + zone.length + ')');
+    assert.ok(!/\brender\(/.test(zone), 'appairer ou retirer un cabinet redessine encore toute la page (elle remonte en haut)');
+    assert.ok((zone.match(/drawCabinetPair\(\)/g) || []).length >= 2, 'le panneau du cabinet ne se redessine plus après le geste');
+    // Rien n'enregistre à la place de l'utilisateur ce qu'il tape ailleurs dans les Paramètres.
+    assert.ok(!/applySettings\(\)/.test(zone), 'le geste enregistre en silence les autres réglages en cours de saisie');
+    assert.ok(/plainError\(e\)/.test(zone) && !/e\.message/.test(zone), 'un fichier refusé montre le message brut du pont');
+  });
+
+  t('10.13.0 : une famille qu\'on OUVRE se montre entière dans la barre', () => {
+    // « Piloter » ouverte en bas de la barre laissait Comptabilité sous le bord, sans rien pour dire
+    // qu'il fallait faire défiler la barre (test humain du pont).
+    const src = code(lireSource('src', 'renderer', 'app.js'));
+    const f = src.slice(src.indexOf('function basculerFamille('), src.indexOf('function resumerFamilles('));
+    assert.ok(f.length > 200 && f.length < 3000, 'la tranche de basculerFamille ne se trouve plus');
+    assert.ok(/if \(etat\[famille\]\) bloc\.scrollIntoView\(\{ block: 'nearest' \}\)/.test(f), 'une famille ouverte peut rester à moitié sous le bord de la barre');
+  });
+
+  t('10.13.0 : le contenu du paquet n\'a pas de faux total sous sa colonne', () => {
+    // « Fichiers en tout : 15 » sous une colonne « Nombre » qui additionne 14 lignes de journal,
+    // encaissements et pièces : un total sous une colonne est lu comme sa somme (9.8.8).
+    const src = code(lireSource('src', 'renderer', 'app.js'));
+    const i = src.indexOf('<th>Ce que contient le paquet</th>');
+    const table = src.slice(i, src.indexOf('</table>', i));
+    assert.ok(i > 0 && table.length > 200 && table.length < 2000, 'le tableau du contenu du paquet ne se trouve plus');
+    assert.ok(!/total-row/.test(table), 'le contenu du paquet porte encore un « total » qui n\'est pas la somme de sa colonne');
+    const apres = src.slice(src.indexOf('</table>', i), src.indexOf('</table>', i) + 700);
+    assert.ok(/pl\(plan\.entries\.length \+ 2, 'fichier'\)/.test(apres), 'le poids du paquet ne se dit plus');
+  });
+
+  t('10.13.0 : une question commence par une majuscule, même ouverte sur un nom de mois', () => {
+    const src = code(lireSource('src', 'renderer', 'app.js'));
+    const f = require('vm').runInNewContext(src.match(/const enTete = (s => \{[^\n]*\});/)[1]);
+    assert.strictEqual(f('août 2026 n\'est pas clôturé'), 'Août 2026 n\'est pas clôturé');
+    assert.strictEqual(f('Émettre ?'), 'Émettre ?');
+    assert.strictEqual(f(''), '');
+    for (const nom of ['confirmDialog', 'infoDialog', 'choiceDialog']) {
+      const i = src.indexOf('function ' + nom + '(');
+      const corps = src.slice(i, src.indexOf('\n  }\n', i));
+      assert.ok(/enTete\(msg\)/.test(corps), nom + ' laisse une phrase commencer par une minuscule');
+    }
+  });
+
+  t('10.13.0 : le vert du paquet suit l\'étape suivante — répondre, fabriquer, refaire, envoyer (U-11)', () => {
+    // Trouvé au test humain du pont : répondre à la question du comptable, puis cliquer le vert
+    // « Envoyer au comptable » joignait le paquet fabriqué AVANT la réponse. Elle n'arrivait jamais.
+    const src = code(lireSource('src', 'renderer', 'app.js'));
+    const vm = require('vm');
+    const m = src.match(/const suivante = (moisVide \? ''[\s\S]*?);\n/);
+    assert.ok(m, 'l\'étape suivante du paquet n\'est plus calculée par une seule expression');
+    const i = src.indexOf('id="cab-build"');
+    const zone = src.slice(src.lastIndexOf('<div class="inline">', i), src.indexOf('</div>', i));
+    const etat = (sent, enAttente, nonParties) => {
+      const ctx = { sent, enAttente, nonParties, moisVide: false, h: x => x };
+      ctx.suivante = vm.runInNewContext(m[1], ctx);
+      const html = vm.runInNewContext('`' + zone.replace(/\$\{moisVide[^}]*\}/, '') + '`', ctx);
+      return { suivante: ctx.suivante, verts: [...html.matchAll(/class="btn ([^"]*)" id="([^"]+)"/g)].filter(x => /btn-primary/.test(x[1])).map(x => x[2]), html };
+    };
+    assert.deepStrictEqual(etat([], [], []).verts, ['cab-build'], 'avant la fabrication, le seul vert est « Fabriquer le paquet… »');
+    assert.deepStrictEqual(etat([{ at: 1 }], [], []).verts, ['cab-mail'], 'le paquet fabriqué, le seul vert doit être « Envoyer au comptable… »');
+    const refaire = etat([{ at: 1 }], [], [{ id: 'q' }]);
+    assert.deepStrictEqual(refaire.verts, ['cab-build'], 'une réponse plus récente que le paquet : le vert doit être de le REFAIRE, pas d\'envoyer l\'ancien');
+    assert.ok(/Refaire le paquet avec ta réponse/.test(refaire.html), 'le bouton ne dit pas qu\'il emporte la réponse');
+    const repondre = etat([{ at: 1 }], [{ id: 'q' }], []);
+    assert.strictEqual(repondre.suivante, 'repondre', 'une question qui attend passe avant l\'envoi');
+    assert.deepStrictEqual(repondre.verts, [], 'une question attend : ni fabriquer ni envoyer n\'est l\'étape suivante');
+    // Le vert de « Répondre » vit dans le panneau des questions, sur la PREMIÈRE question en attente.
+    assert.ok(/data-rep="\$\{h\(q\.id\)\}"/.test(src) && /suivante === 'repondre' && i === 0 \? ' btn-primary'/.test(src),
+      'le panneau des questions ne pose pas le vert sur la première question en attente');
+    // Le panneau des questions vient AVANT « Fabriquer et envoyer » quand il y a des questions.
+    const q = src.indexOf('${questions.length ? panneauQuestions() : \'\'}'), f = src.indexOf('<h2>Fabriquer et envoyer');
+    assert.ok(q > 0 && f > q, 'les questions ne passent pas avant le paquet qui emporte leurs réponses');
+  });
+
+  t('10.13.0 : une réponse plus récente que le paquet n\'y est pas', () => {
+    const C = require(path.join(RACINE, 'src', 'renderer', 'core.js'));
+    const Compta = require(path.join(RACINE, 'src', 'renderer', 'compta.js'));
+    assert.strictEqual(C.reponsesApres, Compta.reponsesApres, 'core.js doit réexporter la fonction de compta.js, pas une copie');
+    const qs = [
+      { id: 'a', reponse: { texte: 'avant', le: 100 } },
+      { id: 'b', reponse: { texte: 'après', le: 300 } },
+      { id: 'c', reponse: null },
+      { id: 'd', reponse: { texte: '   ', le: 400 } }
+    ];
+    assert.deepStrictEqual(C.reponsesApres(qs, 200).map(q => q.id), ['b'], 'seule la réponse donnée après le paquet manque au paquet');
+    assert.deepStrictEqual(C.reponsesApres(qs, 500), []);
+    assert.deepStrictEqual(C.reponsesApres(null, 0), []);
+  });
+
+  t('10.13.0 : une réponse déjà rangée qui revient dans le paquet suivant n\'est pas « sans question »', () => {
+    // Le client renvoie TOUTES ses réponses dans CHAQUE paquet : la même réponse revient donc tous
+    // les mois. Elle doit être reconnue, sans être recomptée ni prise pour une réponse orpheline.
+    const Compta = require(path.join(RACINE, 'src', 'renderer', 'compta.js'));
+    const livre = { questions: [{ id: 'q1', statut: 'envoyee', reponse: null }, { id: 'q2', statut: 'envoyee', reponse: null }] };
+    const ouvert = [];
+    const ouvrir = a => { ouvert.push(a); return a === 2026 ? livre : { questions: [] }; };
+    const r1 = Compta.posterReponsesDansLivres([2026], ouvrir, [{ id: 'q1', texte: 'Oui', le: 10 }], 99);
+    assert.strictEqual(r1.posees, 1);
+    assert.strictEqual(r1.inconnues, 0);
+    assert.strictEqual(r1.modifies.length, 1);
+    assert.strictEqual(livre.questions[0].statut, 'repondue');
+    // Le paquet suivant renvoie la même réponse, plus une nouvelle.
+    const r2 = Compta.posterReponsesDansLivres([2026], ouvrir, [{ id: 'q1', texte: 'Oui', le: 10 }, { id: 'q2', texte: 'Non', le: 20 }], 99);
+    assert.strictEqual(r2.posees, 1, 'la réponse déjà rangée est recomptée');
+    assert.strictEqual(r2.inconnues, 0, 'une réponse déjà rangée est prise pour une réponse sans question');
+    // Le troisième ne porte que des réponses déjà rangées : rien à écrire, rien d'orphelin.
+    const r3 = Compta.posterReponsesDansLivres([2026], ouvrir, [{ id: 'q1', texte: 'Oui', le: 10 }, { id: 'q2', texte: 'Non', le: 20 }], 99);
+    assert.deepStrictEqual([r3.posees, r3.inconnues, r3.modifies.length], [0, 0, 0], 'un paquet sans rien de neuf ne doit rien écrire ni rien signaler');
+    // Une réponse à une question qu'aucun livre ne porte reste orpheline — et on cherche dans tous les exercices.
+    const r4 = Compta.posterReponsesDansLivres([2025, 2026], ouvrir, [{ id: 'zz', texte: '?', le: 5 }], 99);
+    assert.strictEqual(r4.inconnues, 1);
+    // Et on n'ouvre pas un livre de plus quand tout a trouvé sa question.
+    ouvert.length = 0;
+    Compta.posterReponsesDansLivres([2026, 2025], ouvrir, [{ id: 'q1', texte: 'Oui', le: 10 }], 99);
+    assert.deepStrictEqual(ouvert, [2026], 'un livre de plus a été ouvert alors que toutes les réponses avaient leur question');
+    const cm = code(lireSource('src', 'cabinet', 'main.js'));
+    assert.ok(/KC\.posterReponsesDansLivres\(annees,/.test(cm), 'le Cabinet ne range plus les réponses par la règle du moteur');
+  });
+
+  t('10.13.0 : le compte rendu d\'import dit les réponses du client et y mène ; le livre ouvert se relit', () => {
+    const src = code(lireSource('src', 'cabinet', 'renderer', 'app.js'));
+    const f = src.slice(src.indexOf('function importLine('), src.indexOf('function showImportReport('));
+    assert.ok(f.length > 500 && f.length < 5000, 'la tranche d\'une ligne du compte rendu ne se trouve plus');
+    assert.ok(/rep\.posees\) bits\.push/.test(f), 'le compte rendu ne dit pas les réponses reçues');
+    assert.ok(/data-imp-rev=/.test(f), 'le compte rendu ne mène pas aux réponses');
+    const g = src.slice(src.indexOf('function showImportReport('), src.indexOf('function showImportReport(') + 3000);
+    assert.ok(/\[data-imp-rev\][\s\S]{0,200}comptabilite\/revision/.test(g), '« Lire la réponse » n\'ouvre pas la Révision du dossier');
+    assert.ok(/livresState\.livreCle = ''; livresState\.revision = null;/.test(src), 'un import qui écrit dans le livre du dossier ouvert laisse l\'écran sur l\'ancien livre');
+  });
+
+  t('10.13.0 : la pièce qu\'une question nomme s\'ouvre, et le bandeau de la pièce ne pose pas un second vert', () => {
+    const src = code(lireSource('src', 'renderer', 'app.js'));
+    const f = src.slice(src.indexOf('function lienPiece('), src.indexOf('\n  }\n', src.indexOf('function lienPiece(')));
+    assert.ok(/#\/doc\//.test(f) && /#\/achat\//.test(f), 'la pièce d\'une question ne mène ni à la vente ni à l\'achat');
+    assert.ok(/lienPiece\(q\.piece\)/.test(src), 'la liste des questions ne rend pas la pièce cliquable');
+    const b = src.slice(src.indexOf('function bandeauQuestions('), src.indexOf('const brancherQuestions'));
+    assert.ok(b.length > 200 && !/btn-primary/.test(b), '« Répondre » du bandeau est un second vert à côté du geste de la pièce (U-11)');
+  });
+
+  t('10.13.0 : aucune fenêtre de l\'app entreprise n\'écrit « * obligatoire » à la main — modal() la pose', () => {
+    // Deux légendes dans la fenêtre de réponse au comptable : la recopiée ET la déduite (7.20.0).
+    const src = code(lireSource('src', 'renderer', 'app.js'));
+    assert.ok(/note\.innerHTML = '<b>\*<\/b> obligatoire'/.test(src), 'modal() ne pose plus la légende');
+    assert.strictEqual((src.match(/\* obligatoire/g) || []).length, 0, 'une fenêtre écrit « * obligatoire » à la main : elle l\'affichera deux fois');
+  });
+
+  t('10.13.0 : la confirmation d\'import des questions s\'accorde au nombre', () => {
+    const src = code(lireSource('src', 'renderer', 'app.js'));
+    const f = src.slice(src.indexOf('async function importerQuestions('), src.indexOf('async function importerQuestions(') + 2600);
+    assert.ok(/v\.questions > 1 \? '• Elles s\\'afficheront/.test(f) && /'• Elle s\\'affichera en face de la pièce/.test(f),
+      '« Elles s\'afficheront… » pour une seule question');
+  });
+
+  t('10.13.0 : la signature du client n\'est pas un fichier glissé dans le paquet', () => {
+    // Trouvé en envoyant un vrai paquet d'une application à l'autre : « ⚠ 1 fichier présent mais non
+    // annoncé par ton client » sur un paquet honnête, fabriqué à l'instant. `signature.json` signe les
+    // octets du manifeste, il ne peut donc pas y figurer — et il était compté comme intrus.
+    const K = require(path.join(RACINE, 'src', 'cabinet', 'cabcore.js'));
+    const man = { fichiers: [{ chemin: 'journaux/ventes.csv', empreinte: 'aaa' }] };
+    const signe = K.checkIntegrity(man, { 'journaux/ventes.csv': 'aaa', 'signature.json': 'zzz' });
+    assert.deepStrictEqual(signe.intrus, [], 'la signature du client passe pour un fichier glissé après coup');
+    assert.ok(signe.ok);
+    // Et un vrai intrus reste un intrus : l'exception est NOMMÉE, elle n'ouvre rien d'autre.
+    const glisse = K.checkIntegrity(man, { 'journaux/ventes.csv': 'aaa', 'signature.json': 'zzz', 'facture.pdf.command': 'x' });
+    assert.deepStrictEqual(glisse.intrus, ['facture.pdf.command']);
+    // Un verdict déjà RANGÉ (paquet reçu entre la 9.2.0 et la 10.13.0) se relit sans la signature,
+    // et un vrai intrus rangé avec elle reste un intrus.
+    const ancien = K.migrateDossier({ packs: [
+      { month: '2026-07', integrity: { checked: 12, bad: [], intrus: ['signature.json'], ok: false } },
+      { month: '2026-08', integrity: { checked: 12, bad: [], intrus: ['signature.json', 'x.command'], ok: false } }
+    ] });
+    assert.deepStrictEqual(ancien.packs[0].integrity, { checked: 12, bad: [], intrus: [], ok: true });
+    assert.deepStrictEqual(ancien.packs[1].integrity.intrus, ['x.command']);
+    assert.strictEqual(ancien.packs[1].integrity.ok, false);
+    // Le nom que l'app entreprise ÉCRIT est celui que le Cabinet exempte : deux moitiés, un seul nom.
+    const ent = code(lireSource('src', 'main.js'));
+    const ecrit = [...ent.matchAll(/files\.push\(\{ name: '([^']+)'/g)].map(m => m[1]).filter(n => n.endsWith('.json'));
+    assert.ok(ecrit.includes('signature.json'), 'l\'app entreprise n\'écrit plus signature.json sous ce nom (' + ecrit.join(', ') + ')');
+    assert.ok(K.HORS_MANIFESTE.includes('signature.json') && K.HORS_MANIFESTE.includes('manifeste.json'));
+    // La vue d'un paquet lit la même liste, et le compte rendu ne dit l'alerte qu'une fois.
+    const cm = code(lireSource('src', 'cabinet', 'main.js'));
+    assert.ok(/annonce: !annonces \|\| K\.HORS_MANIFESTE\.includes\(e\.name\)/.test(cm), 'la vue d\'un paquet marque encore la signature d\'un « ? »');
+    const cr = code(lireSource('src', 'cabinet', 'renderer', 'app.js'));
+    assert.strictEqual((cr.match(/integ\.intrus \|\| \[\]\)\.length/g) || []).length, 1, 'le compte rendu d\'import dit deux fois la même alerte');
+  });
+
+  t('10.13.0 : écrire le fichier de questions ne se dit pas « envoyé » — il reste à le transmettre', () => {
+    const src = code(lireSource('src', 'cabinet', 'renderer', 'app.js'));
+    const f = src.slice(src.indexOf('function envoyerQuestions('), src.indexOf('\n  }\n', src.indexOf('function envoyerQuestions(')));
+    assert.ok(f.length > 800 && f.length < 5000, 'la tranche d\'envoi des questions ne se trouve plus (' + f.length + ')');
+    assert.ok(!/toast\(`\$\{pl\(r\.envoyees, 'question envoyée'/.test(f), '« 1 question envoyée » : un fichier écrit n\'est pas un envoi');
+    assert.ok(/'Le montrer dans le dossier', false, 'Fermer'\)/.test(f) && /api\.reveal\(r\.path\)/.test(f), 'le compte rendu ne dit plus où est le fichier ni ne le montre');
+    assert.ok(/refus\(\$\('#qe-pw', couche\)/.test(f), 'un mot de passe trop court ne montre pas sa case');
+  });
 };

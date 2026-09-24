@@ -1294,7 +1294,7 @@ t('U-11 / U-13 : la Révision — le vert ouvre le cycle suivant, puis l\'arrêt
   const bloc = /(const ouvertIncomplet = [\s\S]+?const suivante = [^;]+;)/.exec(vue);
   assert.ok(bloc, 'l\'étape suivante de la révision n\'est plus calculée');
   // Un objet né dans un autre contexte n'a pas le même prototype : on compare ce qu'il PORTE.
-  const etape = (d, cycle) => JSON.parse(JSON.stringify(evaluer(`(() => { ${bloc[1]} return { suivante, prochain: prochain && prochain.cycle }; })()`, { d, cycle })));
+  const etape = (d, cycle, controles) => JSON.parse(JSON.stringify(evaluer(`(() => { ${bloc[1]} return { suivante, prochain: prochain && prochain.cycle }; })()`, { d, cycle, r: { controles: controles || [] } })));
   const f = (c, revus, total) => ({ cycle: c, label: c, revus, total });
   const d0 = { faite: false, hors: [], feuilles: [f('ventes', 0, 5), f('achats', 0, 4), f('tresorerie', 2, 2)] };
   assert.deepStrictEqual(etape(d0, ''), { suivante: 'cycle', prochain: 'ventes' }, 'au départ, le vert doit ouvrir le premier cycle qui a des comptes à revoir');
@@ -1306,12 +1306,17 @@ t('U-11 / U-13 : la Révision — le vert ouvre le cycle suivant, puis l\'arrêt
   const d3 = { ...d2, hors: [{ revu: true }] };
   assert.strictEqual(etape(d3, '').suivante, 'arreter', 'tout est signé : l\'étape suivante est l\'arrêt');
   assert.strictEqual(etape({ ...d3, faite: true }, '').suivante, '', 'une révision arrêtée n\'a plus d\'étape suivante');
+  // 10.13.0 — une question posée et pas encore partie passe avant la suite : le client a besoin de
+  // temps pour répondre (test humain du pont : elle « attendait sa réponse » sans être partie).
+  assert.strictEqual(etape(d0, '', [{ id: 'questions', envoyer: true }]).suivante, 'envoyer', 'une question pas encore partie doit être l\'étape suivante');
+  assert.strictEqual(etape(d0, '', [{ id: 'questions-attente' }]).suivante, 'cycle', 'une question déjà partie ne retient rien');
+  assert.ok(/class="btn btn-sm\$\{suivante === 'envoyer' \? ' btn-primary' : ''\}" id="rv-envoyer"/.test(vue), '« Envoyer les questions au client… » ne suit plus l\'étape suivante');
   // Aucun vert écrit en dur : chacun ne naît que de SON étape.
   assert.ok(/class="btn btn-sm\$\{suivante === 'arreter' \? ' btn-primary' : ''\}" id="rv-arreter"/.test(vue), '« Arrêter la révision… » ne suit plus l\'étape suivante');
   assert.ok(/suivante === 'cycle' \? `<button class="btn btn-sm btn-primary" id="rv-suivant"/.test(vue), 'le cycle suivant n\'est plus proposé en couleur');
   assert.ok(/suivante === 'hors' \? `<button class="btn btn-sm btn-primary" id="rv-voir-hors"/.test(vue), 'les comptes hors cycle ne sont plus proposés en couleur');
   const verts = (vue.match(/btn-primary/g) || []).length;
-  assert.strictEqual(verts, 3, `un vert de trop est écrit en dur dans la révision (${verts})`);
+  assert.strictEqual(verts, 4, `un vert de trop est écrit en dur dans la révision (${verts})`);
   assert.ok(/id="rv-poser">/.test(vue) && !/btn-primary" id="rv-poser"/.test(vue), '« Poser les questions de ton cabinet » est redevenu un second vert');
   // U-13 — l'orange pour ce qui demande un geste ; l'état de départ (« 19 comptes ne sont pas
   // signés ») ne s'y répète pas, l'avancement le dit déjà.

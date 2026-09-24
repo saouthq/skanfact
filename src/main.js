@@ -1947,7 +1947,7 @@ ipcMain.handle('cabinet:import', async () => {
   let j;
   try { j = JSON.parse(fs.readFileSync(filePaths[0], 'utf8')); }
   catch { throw erreur('ERR-ENT-030', 'Ce fichier n\'est pas lisible.'); }
-  if (!j || j.kind !== 'cabinet' || !j.publicKey) throw erreur('ERR-ENT-030', 'Ce fichier n\'est pas un appairage de cabinet.');
+  if (!j || j.kind !== 'cabinet' || !j.publicKey) throw erreur('ERR-ENT-030', 'Ce fichier n\'est pas un appairage de cabinet : demande à ton comptable le fichier « .skanpair » qu\'il enregistre depuis SkanFact Cabinet (Réglages → Mon cabinet).');
   let fingerprint;
   try { fingerprint = keyFingerprint(j.publicKey); }
   catch { throw erreur('ERR-ENT-030', 'La clé de ce cabinet est illisible.'); }
