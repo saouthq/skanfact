@@ -482,9 +482,7 @@
   b('#ecr-csv', "Exporte les écritures en CSV, pour le logiciel de ton comptable.");
   b('#ecr-mail', "Envoie les écritures à ton comptable.");
   b('#ecr-plan', "Les numéros de comptes que SkanFact emploie : ton comptable peut les changer.");
-  b('#gl-plan, #bal-plan, #et-plan', "Les numéros de comptes que SkanFact emploie : ton comptable peut les changer.", { nom: 'Plan de comptes…', cle: 'plan' });
   b('#ecr-central-csv', "Exporte le journal centralisateur.");
-  b('#gl-csv, #bal-csv, #et-csv', "Exporte ce tableau en CSV.", { nom: 'Exporter en CSV', cle: 'csv-compta' });
   b('[data-vue]', null, { onglet: true });
   b('#do-close', "Clôture ce mois : plus aucune pièce datée de ce mois ne pourra changer. SkanFact fait ses contrôles avant, sans jamais bloquer.");
   b('#close-to', "Clôture d'un coup jusqu'à un mois plus récent.");
@@ -503,7 +501,6 @@
   b('#set-q', "Cherche un réglage par son nom (« timbre », « sauvegarde »…) : il te dit dans quel onglet il vit.", { nom: 'Chercher un réglage' });
   b('[data-somm]', "Descend au panneau nommé.", { nom: 'Le sommaire', cle: 'somm' });
   b('[data-vers-champ]', "T'emmène au champ cité.", { nom: 'Lien' });
-  b('#redo-setup, #redo-setup-2', "Relance l'assistant du premier jour, prérempli : il ne réécrit que ce que tu lui redonnes.", { nom: 'Revoir l\'assistant', cle: 'setup' });
   b('#pick-logo', "Choisis ton logo (PNG, JPG ou SVG) : il s'imprime en haut de tes documents.");
   b('#rm-logo', "Retire le logo.");
   b('#pick-stamp', "Choisis l'image de ton cachet ou de ta signature : elle se pose dans la case « Cachet et signature ».");
@@ -638,8 +635,8 @@
 
   // ---------- fenêtres : les boutons communs ----------
   b('[data-close]', "Ferme la fenêtre sans rien garder. Si tu as tapé quelque chose, SkanFact demande d'abord.", { nom: 'Annuler', cle: 'fermer' });
-  b('.modal-actions .btn-danger', "Supprime, après confirmation. SkanFact dit d'abord ce qui y est rattaché.", { nom: 'Supprimer', cle: 'supprimer' });
-  b('.modal-actions .btn-primary', "Valide ce que tu viens de saisir dans la fenêtre.", { nom: 'Valider', cle: 'valider' });
+  b('.modal .modal-actions .btn-danger', "Supprime, après confirmation. SkanFact dit d'abord ce qui y est rattaché.", { nom: 'Supprimer', cle: 'supprimer' });
+  b('.modal .modal-actions .btn-primary', "Valide ce que tu viens de saisir dans la fenêtre.", { nom: 'Valider', cle: 'valider' });
 
   // Les champs sans bulle « i » : par leur nom. Les autres prennent le texte de leur bulle.
   const CHAMPS = {

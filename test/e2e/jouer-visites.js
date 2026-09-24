@@ -108,4 +108,48 @@ async function jouer(win, id, { ouvrirGuide, apresLancement, fautes, compte }) {
   return { bloquee: false };
 }
 
-module.exports = { jouer, ETAT, PAS_DE_TOUR_MAX };
+// Ramener « Me guider » à l'écran, quoi qu'ait laissé la visite précédente : une fenêtre ouverte, une
+// question « modifications non enregistrées », l'écran de verrouillage. Trois essais ; au troisième
+// échec, l'état de l'écran part dans l'erreur ET dans une capture — un parcours qui tombe sur « délai
+// dépassé » sans dire où il était ne se répare pas.
+async function amenerGuide(win, { deverrouiller, dossier = 'dist-e2e/visites', precedente = '' } = {}) {
+  const attendre = (ms = 300) => win.waitForTimeout(ms);
+  let dernier = null;
+  for (let essai = 0; essai < 3; essai++) {
+    await win.evaluate(() => { if (window.Visite && window.Visite.enCours()) window.Visite.quitter(); }).catch(() => {});
+    for (let k = 0; k < 4 && await win.$('#modal-root > .modal-bg'); k++) {
+      const quitter = await win.evaluateHandle(() => {
+        const top = document.querySelector('#modal-root > .modal-bg:last-child');
+        if (!top) return null;
+        // Une question de sortie se répond par « quitter sans enregistrer » ; toute autre se referme.
+        if (/Abandonner cette saisie|non enregistr/i.test(top.textContent)) {
+          return [...top.querySelectorAll('button')].find(b => /abandonner|quitter|sans enregistrer|ne pas enregistrer/i.test(b.textContent)) || null;
+        }
+        return null;
+      });
+      const q = quitter.asElement();
+      if (q) await q.click().catch(() => {}); else await win.keyboard.press('Escape');
+      await attendre(250);
+    }
+    if (deverrouiller) await deverrouiller();
+    await win.evaluate(() => { location.hash = '#/guide'; }).catch(() => {});
+    try {
+      await win.waitForSelector('#view [data-visite]', { timeout: 5000 });
+      await attendre(250);
+      return;
+    } catch (e) { dernier = e; }
+  }
+  const etat = await win.evaluate(() => ({
+    hash: location.hash,
+    fenetre: ((document.querySelector('#modal-root > .modal-bg:last-child') || {}).textContent || '').replace(/\s+/g, ' ').slice(0, 200),
+    verrou: !!document.querySelector('#lock-screen:not([hidden])'),
+    setup: !!document.querySelector('#setup'),
+    vue: ((document.querySelector('#view') || {}).textContent || '').replace(/\s+/g, ' ').slice(0, 200)
+  })).catch(() => ({}));
+  const fs = require('fs'); const path = require('path');
+  fs.mkdirSync(dossier, { recursive: true });
+  await win.screenshot({ path: path.join(dossier, 'guide-introuvable.png') }).catch(() => {});
+  throw new Error(`« Me guider » ne revient pas après la visite ${precedente || '?'} : ${JSON.stringify(etat)} (${dernier && dernier.message.split('\n')[0]})`);
+}
+
+module.exports = { jouer, amenerGuide, ETAT, PAS_DE_TOUR_MAX };

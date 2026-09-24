@@ -196,8 +196,8 @@
   b('[data-dismiss], [data-close]', 'Ferme la fenêtre sans rien garder. Si tu as tapé quelque chose, le Cabinet demande d\'abord.', { nom: 'Annuler', cle: 'fermer' });
   b('#no', 'Ferme sans rien faire.', { nom: 'Annuler', cle: 'non' });
   b('#ok', 'Valide ce que la fenêtre propose.', { nom: 'Valider', cle: 'ok' });
-  b('.modal-actions .btn-danger', 'Supprime, après confirmation. Le Cabinet dit d\'abord ce qui y est rattaché.', { nom: 'Supprimer', cle: 'supprimer' });
-  b('.modal-actions .btn-primary', 'Valide ce que tu viens de saisir dans la fenêtre.', { nom: 'Valider', cle: 'valider' });
+  b('.modal .modal-actions .btn-danger', 'Supprime, après confirmation. Le Cabinet dit d\'abord ce qui y est rattaché.', { nom: 'Supprimer', cle: 'supprimer' });
+  b('.modal .modal-actions .btn-primary', 'Valide ce que tu viens de saisir dans la fenêtre.', { nom: 'Valider', cle: 'valider' });
   b('.collapse-h', 'Replie ou déplie cette section ; le choix est retenu.', { nom: 'Replier', cle: 'replier' });
   b('.sidebar nav a', 'Ouvre cette page du Cabinet. Le chiffre à côté dit ce qui y attend.', { nom: 'Le menu', cle: 'menu' });
   b('#upd-pill', 'Une mise à jour est prête ou en cours : ouvre le panneau des mises à jour.');
@@ -205,6 +205,17 @@
 
   // ---------- les dossiers ----------
   b('#new-d', 'Ajoute un client, même s\'il n\'utilise pas encore SkanFact : il entre dans ton portefeuille, et rien ne lui est réclamé tant qu\'il n\'a pas commencé.');
+  // Les boutons des états vides d'une PAGE : ils vivent dans une barre `.modal-actions` sans être dans
+  // une fenêtre, et la famille « Valide ce que tu viens de saisir dans la fenêtre » leur répondait
+  // (10.14.0). Chacun dit son propre geste.
+  b('#nd', 'Ajoute tes clients : un par un, ou toute la liste collée depuis ton tableur. Leurs échéances apparaissent ici dès qu\'ils envoient un paquet ou que tu tiens leur livre.');
+  b('#rl-nd', 'Ajoute tes clients : un par un, ou toute la liste collée depuis ton tableur. Ceux à qui il manque un mois arrivent ensuite ici, la relance déjà écrite.');
+  b('#rl-imp', 'Importe un paquet reçu par mail (.skanpack) : le client entre dans ton portefeuille avec ses mois.');
+  b('#ech-livre', 'Ouvre la comptabilité d\'un client que tu tiens toi-même : dès que son livre existe, ses déclarations entrent dans le calendrier.');
+  b('#ech-pair', 'Ouvre le fichier à remettre à tes clients : quand ils l\'importent dans SkanFact, leurs paquets arrivent chez toi, et leurs échéances ici.');
+  b('#lv-ecrire', 'Écrit au client qu\'aucun paquet n\'est arrivé : le mail est prêt, tu le relis avant qu\'il parte.');
+  b('#rv-relire', 'Relit le fichier avec les colonnes que tu viens d\'associer : les lignes lues s\'affichent avant que rien n\'entre.');
+  b('#s-rec-in', 'Restaure une clé de secours enregistrée ailleurs : les paquets qu\'elle ouvre redeviennent lisibles sur ce poste.');
   b('#imp', 'Importe un paquet reçu par mail (.skanpack). Tu peux aussi le glisser sur la fenêtre, ou le double-cliquer.');
   b('#demo-on', 'Charge six dossiers fictifs, pour voir chaque situation remplie. Ils disparaissent au premier vrai paquet.');
   b('#demo-off', 'Quitte l\'exemple : ses dossiers partent, tes vrais dossiers ne bougent pas.');
@@ -250,6 +261,7 @@
   b('[data-sup]', 'Retire cette ligne de la pièce en cours.', { nom: 'Retirer la ligne', cle: 'sup-ligne' });
   b('#ab-new', 'Crée un abonnement : une pièce qui revient chaque mois (un loyer), générée en brouillard.');
   b('#ab-gen', 'Génère en brouillard les pièces des abonnements arrivés à échéance.');
+  b('#ab-guides', 'Ouvre les guides d\'écritures dans les Réglages : un abonnement s\'appuie sur un guide, écrit une fois pour tous tes dossiers.');
 
   // ---------- la banque ----------
   b('#bq-import', 'Importe le relevé de la banque (CSV). Tu vérifies les colonnes et les soldes avant qu\'il entre.');

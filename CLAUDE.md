@@ -7124,6 +7124,55 @@ doit devenir comme celle de l'app entreprise ») :
   survit pas d'un appel à l'autre, donc un `export` fait une fois envoyait les clics sur un AUTRE
   écran (capture noire). Un petit enveloppant qui pose la variable à chaque appel l'évite.
 
+**Puis chaque étape de chaque visite, jouée par un robot** (`e2e:cabinet-visites`, `e2e:visites`, le
+harnais commun `test/e2e/jouer-visites.js`) — et ce qu'il a trouvé que la souris n'avait pas vu :
+
+- **Une cible réduite à `[data-rowmenu]` désigne le premier menu de la page, pas celui de la ligne.**
+  « Ouvre le menu d'une pièce » tombait sur le menu de l'en-tête de la fiche (9.4.8), qui n'a qu'une
+  action — « Imprimer » —, donc un bouton nommé (7.29.0) : la visite de la contre-passation ouvrait la
+  boîte d'impression du système, et le parcours restait bloqué pour toujours sous elle. La même
+  faute vivait dans deux visites de l'app entreprise. Une étape vise `#view table.list [data-rowmenu]`,
+  et un test interdit la forme nue dans les deux fichiers de visites.
+- **Un instrument qui joue des gestes remplace ce qui bloque, puis le NOMME** : `window.print` devient
+  un compteur, et un geste qui imprime sans que son étape parle d'imprimer est une faute — c'est ainsi
+  que le défaut ci-dessus s'est dit, au lieu d'un parcours figé sans un mot.
+- **Un handler dont l'écran fait `S = await api.x()` rend l'ÉTAT, jamais `{ ok, state }`.** Après
+  « Enregistrer ma méthode » (révision), plus aucune page du Cabinet ne s'ouvrait : l'écran faisait de
+  `{ ok, state }` tout son état, sans `cabinet`, et le rendu suivant tombait sur `S.cabinet.name` —
+  la barre latérale s'allumait sur la page demandée pendant que la vue restait sur les Réglages. Le
+  modèle de liasse avait le même défaut depuis la 10.0.0. Deux conventions de retour dans le même
+  fichier finissent par se croiser ; un test lit chaque `S = await api.x(` de l'écran, retrouve son
+  handler par le préchargement, et exige `save()` ou `safeState()`.
+- **Un parcours qui tombe sur « délai dépassé » sans dire où il était ne se répare pas.**
+  `amenerGuide` ramène « Me guider » quoi que la visite précédente ait laissé (une fenêtre, une
+  question de sortie, l'écran de verrouillage), trois essais, puis part en erreur avec l'adresse, la
+  fenêtre du dessus, la vue et une capture — et le nom de la visite qui a précédé. C'est ce message
+  (« hash #/guide, h1 Réglages ») qui a désigné le défaut du handler en une minute, là où « Timeout
+  8000ms » ne disait rien. Et `VISITES_DEPUIS=<id>` reprend à une visite, pour réparer sans rejouer
+  les soixante autres.
+- **Les deux instruments sont REPORTÉS** (Skander, 24/09 : « on laissera le E2E des deux app pour plus
+  tard ») : ce qui reste à faire tourner est écrit dans `A-FAIRE.md` § 4 bis.
+
+**Et ce que le test à la souris du correctif a trouvé, dans un cabinet tout neuf** (la règle du
+24/09 : le lot qu'on vient d'écrire se refait à la main — et il trouve toujours autre chose) :
+
+- **Dans un dictionnaire d'explications, l'entrée écrite pour CE bouton passe avant une famille.** Le
+  moteur prenait la première entrée qui répond, dans l'ordre du fichier : `.modal-actions .btn-primary`
+  (« Valide ce que tu viens de saisir dans la fenêtre »), écrit plus haut, masquait `#imp` — et
+  « Importer un paquet… », posé dans l'état vide d'une PAGE, se disait « valide la fenêtre ». Dans
+  l'app entreprise, trois entrées précises de la comptabilité étaient masquées par leurs anciennes
+  sœurs groupées. `expliqueur` essaie désormais les identifiants d'abord ; et une famille qui parle
+  de « la fenêtre » ne vise que `.modal` — une barre `.modal-actions` sert aussi aux états vides des
+  pages. **L'ordre d'un fichier n'est pas une priorité** : une règle de préséance se pose dans le
+  moteur, pas dans l'ordre où l'on a écrit les lignes.
+- **Un libellé séparé de son nombre ne passe pas par `pl()`, et s'oublie** : la carte « 1 clients
+  suivis » — le chiffre dans un `<b>`, le mot à côté. Le test ÉVALUE la carte (vm) avec un, zéro et
+  plusieurs.
+- **« Aucun client » n'est pas « aucune échéance »** : un client hors SkanFact sans livre n'a rien à
+  déclarer ici, et la page le disait inexistant. Un état vide dit SA raison (E-06), au singulier comme
+  au pluriel, avec le geste qui le remplit. Et l'état vide vit dans sa propre fonction : le test 9.4.6
+  borne la taille de `drawEcheances`, et c'est la fonction qu'on sort, pas la borne qu'on relève.
+
 ## Pistes pour la suite (non demandées)
 
 - Séparation des installateurs arm64 / x64 pour diviser par deux les 222 Mo du dmg universel.

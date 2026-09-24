@@ -1620,7 +1620,9 @@
       : [esc(K.monthLabel(ca.mois)), ca.montant == null ? 'pas de total entre deux devises' : '',
         `${pl(ca.clients, 'client')} sur ${ca.sur}`].filter(Boolean).join(' · ');
     return `<div class="stats rangee">
-      ${item('tous', 'clients suivis', p.total,
+      ${/* Le libellé s'accorde au chiffre qu'il suit : « 1 clients suivis » se lisait sur le tout
+            premier écran d'un cabinet qui vient d'ajouter son premier client (10.14.0). */''}
+      ${item('tous', p.total > 1 ? 'clients suivis' : 'client suivi', p.total,
     `${p.surSkanfact} sur SkanFact${p.horsSkanfact ? ` · ${p.horsSkanfact} hors SkanFact` : ''}`, '',
     'Voir tous tes clients, par ordre alphabétique')}
       ${/* « 2 / 5 » : le compte et son univers, dans le même chiffre. « 2 à jour sur 5 » à côté de
@@ -1629,7 +1631,7 @@
       ${item('ajour', 'à jour', `${p.aJour}<span class="val-sur"> / ${p.surSkanfact || 0}</span>`,
     `${p.enRetard ? `${p.enRetard} en retard` : 'aucun retard'}${p.provisoires ? ` · ${p.provisoires} en provisoire` : ''}`,
     p.enRetard ? '' : 'ok', 'Voir tes clients sur SkanFact, les plus urgents d\'abord')}
-      ${item('manquants', 'mois manquants', p.moisManquants,
+      ${item('manquants', p.moisManquants > 1 ? 'mois manquants' : 'mois manquant', p.moisManquants,
     p.paquets ? pl(p.paquets, 'paquet') + ' reçu' + (p.paquets > 1 ? 's' : '') : 'aucun paquet reçu',
     p.moisManquants ? 'due' : 'ok', 'Voir qui doit envoyer, et le relancer')}
       ${item('ca', 'de CA', caVal, caSub, '', 'Classer tes clients par chiffre d\'affaires')}
@@ -7557,12 +7559,14 @@
     typographie(view);
   }
 
-  function drawEcheances(view) {
-    const liste = K.echeances(S, null, { employeurs: employeursConnus(), tenus: tenusConnus() });
-    const prochaines = liste.filter(e => !e.passee);
-    const passees = liste.filter(e => e.passee).reverse();
-
-    if (!liste.length) {
+  // Les Échéances sans aucune échéance : la raison, et le geste qui les remplit.
+  function drawEcheancesVides(view) {
+    // « Aucun client pour l'instant » s'affichait aussi à un cabinet qui en a — un client hors
+    // SkanFact dont personne ne tient encore le livre n'a aucune échéance à suivre, et la page
+    // disait qu'il n'existait pas (10.14.0, vu au test humain). Un état vide dit SA raison (E-06)
+    // et le geste qui le remplit : ouvrir la comptabilité d'un client, ou lui remettre le fichier.
+    const clients = K.dossierList(S);
+    if (!clients.length) {
       view.innerHTML = `<div class="page-head"><h1>Échéances</h1></div>
         <div class="panel"><h2>Aucun client pour l'instant</h2>
           <p>Le calendrier se remplit tout seul à partir de tes dossiers et de la périodicité de TVA que tu leur donnes.</p>
@@ -7570,6 +7574,26 @@
       $('#nd').onclick = () => newDossierForm();
       return;
     }
+    const seul = clients.length === 1 ? clients[0] : null;
+    view.innerHTML = `<div class="page-head"><h1>Échéances</h1></div>
+      <div class="panel"><h2>Aucune échéance à suivre pour l'instant</h2>
+        <p>Le calendrier suit les clients qui t'envoient leurs paquets depuis SkanFact, et ceux dont tu tiens
+        la comptabilité ici. ${seul ? `<b>${esc(seul.name)}</b> n'est encore dans aucun de ces deux cas`
+    : `Tes ${clients.length} clients ne sont encore dans aucun de ces deux cas`} : dès qu'un client t'envoie
+        un paquet ou que tu ouvres son livre, ses déclarations apparaissent ici.</p>
+        <div class="modal-actions"><button class="btn btn-primary" id="ech-livre">${seul ? `Ouvrir la comptabilité ${esc(K.de(seul.name))}` : 'Choisir un client à tenir…'}</button>
+        <button class="btn" id="ech-pair">Remettre le fichier d'appairage…</button></div></div>`;
+    $('#ech-livre').onclick = () => { location.hash = seul ? `#/dossier/${seul.id}/comptabilite` : '#/dossiers'; };
+    $('#ech-pair').onclick = () => versReglages('pan-appairage');
+    typographie(view);
+  }
+
+  function drawEcheances(view) {
+    const liste = K.echeances(S, null, { employeurs: employeursConnus(), tenus: tenusConnus() });
+    const prochaines = liste.filter(e => !e.passee);
+    const passees = liste.filter(e => e.passee).reverse();
+
+    if (!liste.length) { drawEcheancesVides(view); return; }
 
     // Deux répétitions que la capture montre et qu'aucun test ne voit. (1) Le `detail` explique la
     // RÈGLE, pas l'occurrence : la même phrase de 90 caractères s'affichait sous les quatre mois de

@@ -1051,8 +1051,14 @@
         const phrase = ph ? nettoie(ph.textContent) : '';
         if (phrase) return { cle: 'rm:' + nom, nom, texte: phrase };
       }
-      // 1. le dictionnaire
-      for (let i = 0; i < B.length; i++) {
+      // 1. le dictionnaire. Une entrée écrite pour CE bouton (son identifiant) passe avant une FAMILLE
+      // (un sélecteur), quel que soit l'ordre du fichier : « .modal-actions .btn-primary » — « Valide ce
+      // que tu viens de saisir dans la fenêtre » —, écrit plus haut, répondait pour « Importer un
+      // paquet… » posé dans l'état vide d'une PAGE, et masquait l'entrée `#imp` écrite exprès pour lui
+      // (10.14.0, vu au test humain du Cabinet). Une explication fausse est pire qu'une absente.
+      const r1 = [], r2 = [];
+      B.forEach((x, i) => (x.id ? r1 : r2).push(i));
+      for (const i of r1.concat(r2)) {
         const x = B[i];
         if (x.route && !(Array.isArray(x.route) ? x.route : [x.route]).includes(r)) continue;
         if (x.id && el.id !== x.id) continue;

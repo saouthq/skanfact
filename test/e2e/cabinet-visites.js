@@ -18,7 +18,7 @@
 // Une visite qui ne se lance pas sur l'exemple (« D'abord : … ») est COMPTÉE, jamais ignorée : sur
 // l'exemple, toutes doivent pouvoir se lancer.
 const { fermer, playwright, RACINE, ELECTRON, journal, surveiller } = require('./harnais');
-const { jouer } = require('./jouer-visites');
+const { jouer, amenerGuide } = require('./jouer-visites');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
 
@@ -67,11 +67,8 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
   j.ok('exemple chargé');
 
   // ------------------------------------------------------------------ la liste, lue dans « Me guider »
-  const ouvrirGuide = async () => {
-    await win.evaluate(() => { if (window.Visite && window.Visite.enCours()) window.Visite.quitter(); location.hash = '#/guide'; });
-    await win.waitForSelector('#view [data-visite]', { timeout: 8000 });
-    await attendre(250);
-  };
+  let precedente = '';
+  const ouvrirGuide = () => amenerGuide(win, { deverrouiller, dossier: 'dist-e2e/cabinet-visites', precedente });
   // Après un rechargement, l'application redemande son mot de passe.
   const deverrouiller = async () => {
     await attendre(800);
@@ -93,8 +90,11 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
   const compte = { etapes: 0, passees: 0 };
   let jouees = 0;
   const bloquees = [];
-  for (const id of ids) {
+  // `VISITES_DEPUIS=<id>` reprend à une visite donnée (pour réparer sans rejouer les soixante autres).
+  const depuis = process.env.VISITES_DEPUIS ? Math.max(0, ids.indexOf(process.env.VISITES_DEPUIS)) : 0;
+  for (const id of ids.slice(depuis)) {
     process.stdout.write(`  · ${id}\n`);
+      precedente = id;
     try {
       const r = await jouer(win, id, { ouvrirGuide, fautes, compte });
       if (r.bloquee) bloquees.push(id); else jouees++;
@@ -107,6 +107,9 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
     }
   }
 
+  // Une visite de saisie laisse une pièce commencée « pour voir » : la fermeture pose sa question
+  // (U-09), et on y répond comme la personne qui a fini sa démonstration — « Fermer sans enregistrer ».
+  await app.evaluate(({ dialog }) => { dialog.showMessageBoxSync = () => 1; }).catch(() => {});
   await fermer(app);
   const passees = compte.passees, etapes = compte.etapes;
   if (bac.length) { console.error('\nErreurs du renderer :\n' + bac.join('\n')); process.exit(2); }

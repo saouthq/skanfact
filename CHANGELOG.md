@@ -157,6 +157,29 @@ Skander : « commence par faire ce qu'on vient de faire dans le dernier lot sur 
     CE dossier ;
   - la balance « aux six totaux » n'en montre que quatre quand l'exercice n'a pas d'ouverture : la
     bulle le dit.
+- **Chaque étape de chaque visite, jouée par un robot** (`e2e:cabinet-visites` et son jumeau
+  `e2e:visites` pour SkanFact) : les soixante-quatorze visites du Cabinet lancées par leur vrai bouton,
+  étape par étape, la bulle dans l'écran, jamais « perdue de vue », le geste joué. Ce qu'ils ont
+  trouvé, et qui est corrigé :
+  - **après « Enregistrer ma méthode » (cycles et questionnaire de révision), plus aucune page ne
+    s'ouvrait** : l'écran restait sur les Réglages, sans un mot. Le modèle de liasse avait le même
+    défaut depuis la 10.0.0. Un test tient désormais la règle pour tous les enregistrements ;
+  - « Ouvre le menu d'une pièce » visait le premier menu de la page — celui de la fiche, qui imprime :
+    la visite de la contre-passation ouvrait la boîte d'impression. La même faute vivait dans deux
+    visites de SkanFact.
+  Les deux instruments sont écrits et branchés ; les faire tourner jusqu'au bout est reporté (voir
+  `A-FAIRE.md`).
+- **Vu en vérifiant ce correctif à la souris, dans un cabinet tout neuf** :
+  - la première carte disait « 1 clients suivis » (et « 0 mois manquants ») : les libellés
+    s'accordent au chiffre ;
+  - la page Échéances disait « Aucun client pour l'instant » à un cabinet qui venait d'en ajouter un.
+    Un client hors SkanFact dont personne ne tient encore le livre n'a aucune échéance : la page le
+    dit, et propose d'ouvrir sa comptabilité ou de lui remettre le fichier d'appairage ;
+  - la visite expliquait « Valide ce que tu viens de saisir dans la fenêtre » pour des boutons qui ne
+    sont dans aucune fenêtre (« Ajouter mes clients… », « Importer un paquet… » d'un écran vide), et
+    une explication écrite exprès pour un bouton pouvait être masquée par une explication générale
+    écrite plus haut. L'explication propre à un bouton passe désormais toujours en premier — dans
+    SkanFact aussi, où trois boutons de la comptabilité retrouvent leur phrase précise.
 
 ## 10.13.0-beta.1 — 24/09/2026
 

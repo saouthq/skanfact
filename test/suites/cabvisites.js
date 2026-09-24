@@ -402,4 +402,119 @@ t('10.14.0 : une étape vise le menu d\'une LIGNE, jamais « le premier [data-ro
   });
   assert.deepStrictEqual(fautes, [], 'une étape vise le premier menu venu : ' + fautes.join(' ; '));
 });
+t('10.14.0 Cabinet : un handler dont l\'écran fait `S = await api.x()` rend l\'ÉTAT, jamais `{ ok, state }`', () => {
+  // e2e:cabinet-visites : après « Enregistrer ma méthode », plus aucune page ne s'ouvrait. Le handler
+  // rendait `{ ok: true, state }`, l'écran en faisait tout son état — sans `cabinet` —, et le rendu
+  // suivant tombait sur `S.cabinet.name`. Le modèle de liasse avait le même, depuis la 10.0.0.
+  const app = lireSource('src', 'cabinet', 'renderer', 'app.js');
+  const pre = lireSource('src', 'cabinet', 'preload.js');
+  const main = lireSource('src', 'cabinet', 'main.js');
+  const fns = [...new Set([...app.matchAll(/\bS = await api\.(\w+)\(/g)].map(m => m[1]))];
+  assert.ok(fns.length >= 10, `seulement ${fns.length} appels lus : l'analyse ne voit plus l'écran`);
+  const fautes = [];
+  fns.forEach(f => {
+    const m = pre.match(new RegExp('\\b' + f + ":[^\\n]*?invoke\\('([^']+)'"));
+    assert.ok(m, `${f} : introuvable dans le préchargement`);
+    const i = main.indexOf(`ipcMain.handle('${m[1]}'`);
+    assert.ok(i >= 0, `${m[1]} : handler introuvable`);
+    const ligne = main.slice(i, main.indexOf('\n', i));
+    // Un handler d'une ligne (`=> save()`) s'arrête à sa ligne ; les autres à leur `});` en colonne 0.
+    const corps = /=>\s*\{\s*$/.test(ligne) ? main.slice(i, main.indexOf('\n});', i)) : ligne;
+    // Le corps entier du handler, jusqu'à son `});` en colonne 0 : les `return` d'une fonction
+    // imbriquée (un `.map(r => { … return … })`) sont écartés par leur indentation profonde.
+    const rets = [...corps.matchAll(/^ {2}(?: {2})?return ([^;\n]+)/gm)].map(r => r[1].trim());
+    // Une expression fléchée (`=> save()`) n'a pas de `return` : elle est jugée sur sa flèche.
+    const fleche = /^ipcMain\.handle\('[^']+',\s*\([^)]*\)\s*=>\s*(?!\{)(\S[^\n]*)/.exec(corps);
+    if (fleche) rets.push(fleche[1].replace(/\)?;?\s*$/, '').trim());
+    if (!rets.length) fautes.push(`${m[1]} : aucun retour`);
+    rets.forEach(r => { if (!/^(save|safeState)\(\)$|^\(state \? safeState\(\) : null\)$/.test(r)) fautes.push(`${m[1]} rend « ${r} »`); });
+  });
+  assert.deepStrictEqual(fautes, [], 'un handler rend autre chose que l\'état : ' + fautes.join(' ; '));
+});
+
+t('10.14.0 : une explication écrite pour CE bouton passe avant une famille, et la famille « fenêtre » ne répond que dans une fenêtre (les deux applications)', () => {
+  // « .modal-actions .btn-primary » — « Valide ce que tu viens de saisir dans la fenêtre » — était écrit
+  // plus haut dans le dictionnaire que `#imp`, et le moteur prenait la PREMIÈRE entrée qui répond :
+  // « Importer un paquet… », posé dans l'état vide d'une page, se disait « valide la fenêtre ».
+  // L'instrument de couverture compte les explications ABSENTES ; aucun ne voit les fausses.
+  const faux = (id, sels, txt) => ({
+    id, dataset: {}, textContent: txt, getAttribute: () => null,
+    matches: s => String(s).split(',').map(x => x.trim()).some(x => sels.includes(x)),
+    classList: { contains: () => false }, closest: () => null, querySelector: () => null,
+    cloneNode: () => ({ querySelectorAll: () => [], textContent: txt })
+  });
+  // 1. le MOTEUR, sur un dictionnaire fabriqué : la famille est écrite AVANT l'entrée propre.
+  const ex = V.expliqueur({ B: [{ sel: '.famille', texte: 'le texte de la famille' }, { id: 'x', texte: 'le texte de ce bouton' }], route: () => 'p' });
+  assert.strictEqual(ex(faux('x', ['.famille'], 'X'), { route: () => 'p', G: { INFO: {} } }).texte, 'le texte de ce bouton',
+    'une famille écrite plus haut masque l\'explication écrite pour ce bouton');
+  assert.strictEqual(ex(faux('y', ['.famille'], 'Y'), { route: () => 'p', G: { INFO: {} } }).texte, 'le texte de la famille',
+    'sans entrée propre, la famille répond');
+  // 2. les deux DICTIONNAIRES : un bouton vert dans la barre d'actions d'une PAGE n'est pas « la
+  // fenêtre » ; dans une vraie fenêtre, si.
+  const page = ['.modal-actions .btn-primary', '.btn-primary', '.btn'];
+  const fenetre = page.concat(['.modal .modal-actions .btn-primary', '#modal-root .modal .modal-actions .btn-primary']);
+  const S = require('../../src/renderer/visites.js');
+  // La phrase de la famille, pas le mot « fenêtre » : « glisse-le sur la fenêtre » est juste (T-49 bis :
+  // une sonde trop large accuse du code juste).
+  const FAMILLE = /^Valide ce que tu viens de saisir dans la fenêtre/;
+  [['Cabinet', CV.expliquer, 'dossiers'], ['entreprise', S.expliquer, 'clients']].forEach(([nom, expl, route]) => {
+    const dansPage = expl(faux('', page, 'Faire quelque chose'), { route: () => route, G: { INFO: {} } });
+    assert.ok(!dansPage || !FAMILLE.test(dansPage.texte), nom + ' : un bouton de PAGE se dit « la fenêtre » : ' + JSON.stringify(dansPage));
+    const dansFenetre = expl(faux('', fenetre, 'Enregistrer'), { route: () => route, G: { INFO: {} } });
+    assert.ok(dansFenetre && FAMILLE.test(dansFenetre.texte), nom + ' : dans une fenêtre, le bouton vert valide la fenêtre');
+  });
+  // 3. et les boutons des états vides du Cabinet ont leur propre phrase.
+  ['imp', 'nd', 'rl-nd', 'rl-imp', 'ech-livre', 'ech-pair', 'lv-ecrire', 'ab-guides'].forEach(id => {
+    const x = CV.expliquer(faux(id, page, id), { route: () => 'dossiers', G: { INFO: {} } });
+    assert.ok(x && x.cle === '#' + id && !FAMILLE.test(x.texte), '#' + id + ' : ' + JSON.stringify(x));
+  });
+});
+
+t('10.14.0 Cabinet : les cartes du portefeuille s\'accordent au chiffre qu\'elles portent — « 1 client suivi », « 0 mois manquant »', () => {
+  // « 1 clients suivis » sur le tout premier écran d'un cabinet qui vient d'ajouter son premier client
+  // (vu au test humain) : le libellé vit à côté du nombre, séparé de lui, et `pl()` n'y passait pas.
+  const src = fonction(app, 'function portfolioPanel(p) {');
+  const vm = require('vm');
+  const pl = (n, un, plur) => `${n} ${Math.abs(n) > 1 ? (plur || un + 's') : un}`;
+  // Le `\n` avant la parenthèse : la tranche finit sur les commentaires qui suivent la fonction.
+  const panneau = vm.runInNewContext('(' + src.replace(/^function portfolioPanel/, 'function') + '\n)',
+    { esc: x => String(x), pl, money: x => String(x), K: { monthLabel: m => m } });
+  const base = { surSkanfact: 0, horsSkanfact: 1, aJour: 0, enRetard: 0, provisoires: 0, paquets: 0, ca: {} };
+  const texte = h => h.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+  const un = texte(panneau({ ...base, total: 1, moisManquants: 0 }));
+  assert.ok(/\b1 client suivi\b/.test(un) && !/clients suivis/.test(un), 'un client : ' + un);
+  assert.ok(/\b0 mois manquant\b/.test(un) && !/mois manquants/.test(un), 'aucun mois : ' + un);
+  const trois = texte(panneau({ ...base, total: 3, moisManquants: 4 }));
+  assert.ok(/\b3 clients suivis\b/.test(trois) && /\b4 mois manquants\b/.test(trois), 'plusieurs : ' + trois);
+});
+
+t('10.14.0 Cabinet : les Échéances d\'un cabinet qui A des clients ne disent pas « Aucun client »', () => {
+  // Un client hors SkanFact dont personne ne tient encore le livre n'a aucune échéance : la page disait
+  // « Aucun client pour l'instant » à un cabinet qui venait d'en ajouter un (vu au test humain). Un état
+  // vide dit SA raison (E-06), et le geste qui le remplit.
+  const src = fonction(app, 'function drawEcheancesVides(view) {');
+  // Et la page y passe bien quand la liste est vide.
+  assert.ok(/if \(!liste\.length\) \{ drawEcheancesVides\(view\); return; \}/.test(fonction(app, 'function drawEcheances(view) {')),
+    'la page des Échéances ne passe plus par son état vide');
+  const vm = require('vm');
+  const boutons = {};
+  const dessiner = clients => {
+    const view = { innerHTML: '' };
+    const ctx = {
+      K: { echeances: () => [], dossierList: () => clients, de: n => 'de ' + n },
+      S: {}, esc: x => String(x), pl: (n, un) => `${n} ${n > 1 ? un + 's' : un}`,
+      employeursConnus: () => ({}), tenusConnus: () => ({}), typographie: () => {},
+      $: sel => (boutons[sel] = boutons[sel] || {}), newDossierForm: () => {}, versReglages: () => {}, location: {}
+    };
+    vm.runInNewContext('(' + src.replace(/^function drawEcheancesVides/, 'function') + '\n)(view)', { ...ctx, view });
+    return view.innerHTML.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+  };
+  assert.ok(/Aucun client pour l'instant/.test(dessiner([])), 'un cabinet vide garde son état vide');
+  const un = dessiner([{ id: 'd1', name: 'Garage Test' }]);
+  assert.ok(!/Aucun client/.test(un), 'un cabinet qui a un client s\'entend dire qu\'il n\'en a aucun : ' + un);
+  assert.ok(/Aucune échéance/.test(un) && /Garage Test n'est encore dans aucun/.test(un) && /Ouvrir la comptabilité de Garage Test/.test(un),
+    'la raison et le geste : ' + un);
+  const trois = dessiner([{ id: 'a', name: 'A' }, { id: 'b', name: 'B' }, { id: 'c', name: 'C' }]);
+  assert.ok(/Tes 3 clients ne sont encore dans aucun/.test(trois) && /Choisir un client à tenir/.test(trois), 'plusieurs : ' + trois);
+});
 };

@@ -16,7 +16,7 @@
 // entreprise, qui est neuve, c'est normal et c'est seulement compté.
 const { fermer, playwright, RACINE, ELECTRON, journal, surveiller } = require('./harnais');
 const { neutraliserSysteme, traverserAssistant, chargerExemple, toutAfficher } = require('./ecrans-entreprise');
-const { jouer } = require('./jouer-visites');
+const { jouer, amenerGuide } = require('./jouer-visites');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
 
@@ -35,11 +35,8 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
   await toutAfficher(win);
   j.ok('exemple chargé');
 
-  const ouvrirGuide = async () => {
-    await win.evaluate(() => { if (window.Visite && window.Visite.enCours()) window.Visite.quitter(); location.hash = '#/guide'; });
-    await win.waitForSelector('#view [data-visite]', { timeout: 8000 });
-    await attendre(250);
-  };
+  let precedente = '';
+  const ouvrirGuide = () => amenerGuide(win, { dossier: 'dist-e2e/visites', precedente });
   // Au lancement, une visite de la vraie entreprise demande de quitter l'exemple : on accepte.
   const apresLancement = async () => {
     const ok = await win.$('#modal-root > .modal-bg:last-child #ok');
@@ -63,6 +60,7 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
   const passe = async (ids, bloquees, lancer) => {
     for (const id of ids) {
       process.stdout.write(`  · ${id}\n`);
+      precedente = id;
       try {
         const r = await jouer(win, id, { ouvrirGuide, apresLancement: lancer, fautes, compte });
         if (r.bloquee) bloquees.push(id); else jouees++;
@@ -85,6 +83,9 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
   await passe(reels, attendent, apresLancement);
   j.ok(`${jouees - avant} visites jouées${attendent.length ? `, ${attendent.length} attendent un préalable (entreprise neuve) : ${attendent.join(', ')}` : ''}`);
 
+  // Une visite de saisie laisse une pièce commencée « pour voir » : la fermeture pose sa question
+  // (U-09), et on y répond comme la personne qui a fini sa démonstration — « Fermer sans enregistrer ».
+  await app.evaluate(({ dialog }) => { dialog.showMessageBoxSync = () => 1; }).catch(() => {});
   await fermer(app);
   if (bac.length) { console.error('\nErreurs du renderer :\n' + bac.join('\n')); process.exit(2); }
   if (bloqueesExemple.length) fautes.push(`${bloqueesExemple.length} visite(s) ne se lancent pas sur l'exemple : ${bloqueesExemple.join(', ')}`);

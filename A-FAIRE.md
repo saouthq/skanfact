@@ -263,14 +263,22 @@ l'ordre proposé.
   `e2e:cabinet-couverture`. Puis la parité (même jour, demandée par Skander) : 49 gestes guidés, un
   par écran de travail au moins, le bandeau de l'exemple de SkanFact sur chaque page, et quatre
   constats du test à la souris corrigés. Joués à la souris : grand livre, balance, production,
-  paquets, et la découverte. Reste, comme côté entreprise : `e2e:visite` (jouer chaque étape — les
-  ~30 parcours neufs n'ont été joués qu'à l'essai, pas un par un), et
-  **le jeu d'exemple du Cabinet sur plusieurs exercices** — il porte une année, et la découverte ne
-  peut montrer ni une réouverture, ni des à-nouveaux reçus d'un exercice clôturé au cabinet.
-- **L'instrument `e2e:visite`** : jouer chaque étape de chaque visite dans l'application réelle —
-  cible visible et cliquable, bulle dans l'écran, geste « faire » qui aboutit. `e2e:couverture`
-  vérifie que chaque contrôle a son explication ; rien ne vérifie encore que chaque étape tombe sur
-  sa cible, et une étape qui vise un sélecteur disparu se tait sans rien casser.
+  paquets, et la découverte. Reste **le jeu d'exemple du Cabinet sur plusieurs exercices** — il porte
+  une année, et la découverte ne peut montrer ni une réouverture, ni des à-nouveaux reçus d'un
+  exercice clôturé au cabinet.
+- **Les deux instruments `e2e:visites` et `e2e:cabinet-visites` — reportés le 24/09 par Skander**
+  (« on laissera le E2E des deux app pour plus tard », pour passer à l'assistant de démarrage). Ils
+  sont ÉCRITS (harnais partagé `test/e2e/jouer-visites.js`, `amenerGuide` qui dit où il s'est perdu,
+  `VISITES_DEPUIS=<id>` pour reprendre au milieu) et ils ont déjà trouvé trois défauts, corrigés : la
+  méthode de révision et le modèle de liasse qui figeaient le Cabinet (`{ ok, state }` au lieu de
+  l'état), et trois visites qui ouvraient l'impression sans l'annoncer. Ce qui reste :
+  - `e2e:cabinet-visites` joue les **74 visites** jusqu'au bout ; le **bilan des fautes n'a pas encore
+    été lu** — le dernier passage s'arrêtait à la fermeture (la question « saisie non enregistrée »,
+    U-09), désormais répondue par le parcours, et il a été interrompu avant de conclure.
+  - `e2e:visites` (l'app entreprise) n'a **jamais été joué en entier** : ses deux passes (exemple, puis
+    vraie entreprise) restent à faire tourner et leurs fautes à corriger une par une.
+  - Puis relancer **tous** les parcours (règle 7.28.0 : après une refonte, tous) et publier la
+    **10.14.0-beta.1** — elle attend ces deux instruments verts.
 - **Le test humain des visites** (souris, clavier, 1440 et 1280, clair et sombre) : toutes les
   visites de page, une par une — à faire avant la stable.
 - **Le paiement dans l'application** (bêta obligatoire : argent et clés) : « Acheter » et
@@ -283,7 +291,8 @@ l'ordre proposé.
   de « envoyée », H-E30, les barres qui passent sur deux rangées, et les restes de la console (§ 3).
 - **Les tests humains mis en pause** le 24/09 pour la visite : l'app entreprise (achats, stock, biens,
   trésorerie, paie, comptabilité, paramètres, données) et le Cabinet en entier. Les 55 parcours de la
-  10.13.0-beta.1 tournaient au même moment.
+  10.13.0-beta.1 tournaient au même moment. Et le relancement de tous les parcours de la 10.14.0
+  (plus haut, avec les deux instruments de visites).
 
 ## 5. Les dettes d'outillage
 

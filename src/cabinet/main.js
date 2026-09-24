@@ -2172,8 +2172,10 @@ ipcMain.handle('cab:saveLiasse', (_e, { modele } = {}) => {
       deduit: !!r.deduit, charge: !!r.charge, resultat: !!r.resultat, deuxSens: !!r.deuxSens
     })).filter(r => r.id && r.label && KC.LIASSE_ETATS.some(e => e.id === r.etat));
   }
-  save();
-  return { ok: true, state: safeState() };
+  // L'écran fait `S = await api.…` : le handler rend l'ÉTAT, comme tous ceux qui enregistrent
+  // (`save()`). Un `{ ok, state }` y devenait l'état entier — sans `cabinet` —, et le rendu suivant
+  // tombait sur `S.cabinet.name` : plus aucune page ne s'ouvrait (10.14.0, trouvé par e2e:cabinet-visites).
+  return save();
 });
 
 // ============================================ LA RÉVISION ET LES QUESTIONS (9.10.0)
@@ -2319,8 +2321,10 @@ ipcMain.handle('cab:saveQuestionnaire', (_e, { modeles, cycles } = {}) => {
       prefixes: (Array.isArray(c.prefixes) ? c.prefixes : []).map(p => String(p).trim()).filter(Boolean)
     })).filter(c => c.id && c.label);
   }
-  save();
-  return { ok: true, state: safeState() };
+  // L'écran fait `S = await api.…` : le handler rend l'ÉTAT, comme tous ceux qui enregistrent
+  // (`save()`). Un `{ ok, state }` y devenait l'état entier — sans `cabinet` —, et le rendu suivant
+  // tombait sur `S.cabinet.name` : plus aucune page ne s'ouvrait (10.14.0, trouvé par e2e:cabinet-visites).
+  return save();
 });
 
 // ================================================================ LA LICENCE DU CABINET (9.4.0)
