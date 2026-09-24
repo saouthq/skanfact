@@ -7,6 +7,67 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 10.12.0 — 24/09/2026
+
+**Les deux applications, parcourues comme on les vit.** La dernière stable en ligne était la
+**10.10.0** ; la 10.11.0 et la 10.12.0-beta.1 n'ont été publiées nulle part, et cette version
+les rattrape toutes les deux. Chaque écran du Cabinet puis de l'app entreprise a été tenu à la
+souris et au clavier, comme un comptable et comme un chef d'entreprise le feraient. Chaque défaut
+trouvé a été corrigé, puis revérifié de la même façon.
+
+Publiée en stable directe **à la demande de Skander**. La règle du projet voulait la bêta, parce
+que cette version touche au moteur comptable : déclaration d'employeur, IRPP du mois,
+contre-passation, rapprochement, valorisation du stock. C'est sa décision, notée ici.
+
+**Ce qui était faux dans les chiffres**
+- **Un prix tapé « 2,5 » devenait 25** sur un ordinateur réglé en anglais : la virgule était lue
+  comme un séparateur de milliers. Désormais, les champs de nombre suivent le français sur tous les
+  postes.
+- **Un prix tapé dans un champ à 0 devenait dix fois trop cher** : « 850 » donnait 8 500. Un champ
+  de nombre sélectionne maintenant sa valeur quand on y entre.
+- **Un comptage d'inventaire se retournait** : « 28 » devenait 82.
+- **La trésorerie comptait un achat en euros comme des dinars** : le trou à trente jours était
+  sous-estimé de 2 856 DT.
+- **Le stock se valorisait dans le désordre**, et une vente sortait au coût de l'achat qui la suit.
+  **Une matière utilisée sur un chantier** n'entrait jamais dans le résultat.
+- **Un devis déjà acompté ne réclamait plus ses 70 % restants.** Une facture complète pouvait même
+  s'ajouter à côté de l'acompte.
+- Dans le Cabinet :
+  - **la déclaration d'employeur ne voyait aucune charge patronale** ;
+  - **l'IRPP du mois tombait presque à zéro** ;
+  - **« il manque 6 mois »** s'affichait sur des mois hors mission ;
+  - **le chiffre d'affaires du portefeuille** additionnait des mois différents.
+- **Deux entreprises sur la même clé USB gardent chacune leur copie.** Avant, la seconde effaçait
+  celle de la première.
+
+**Ce qui empêchait de recevoir les mises à jour** (10.11.0)
+- **« Tu as la dernière version » s'affichait alors qu'une version plus récente était en ligne.**
+  Le service de mise à jour relit maintenant une version qui paraît vide avant de passer à la
+  précédente.
+- **Une version téléchargée cachait la suivante.**
+- **L'écran des mises à jour est refait « comme sur un Mac », dans les deux applications.** Il
+  affiche un seul état, « Redémarrer maintenant », une fenêtre qui dit ce que la version apporte, et
+  la vraie dernière bêta avec sa date.
+
+**Ce qui se voit tous les jours**
+- **Un seul bouton vert par écran, et c'est l'étape suivante**, dans les deux applications.
+- **Émettre une facture passe par un récapitulatif** qui rappelle le client, l'échéance et le net à
+  payer. Pour un avoir, il dit aussi ce qu'il laisse à rendre au client.
+- **Les formulaires ne sautent plus sous le curseur** : « Fiche du client », le repère « non
+  enregistré », les propositions du catalogue ou un retour au nom long n'y poussent plus rien.
+- **Une fenêtre remplie demande avant de jeter ce qu'on a tapé.** Un refus montre sa case, dans
+  toutes les fenêtres.
+- **La grille de saisie du Cabinet montre dix lignes au lieu d'une** sur un portable. Les treize
+  écrans de comptabilité sont rangés en trois groupes.
+- **Cmd+K connaît la comptabilité et l'Aide.** Sept articles d'Aide ont été ajoutés.
+- **Le jeu d'exemple du Cabinet montre une année tenue entièrement.**
+- **Les sauvegardes se nomment.** Un dossier retiré se remet dans la liste. Changer d'ordinateur
+  ramène aussi les pièces jointes. OneDrive est nommé à côté d'iCloud Drive.
+- La console de l'éditeur nomme les événements de la vente en ligne, et écrit ses dates et ses
+  montants comme l'écran.
+
+Le détail est dans les deux entrées qui suivent : 10.12.0-beta.1 et 10.11.0.
+
 ## 10.12.0-beta.1 — 23/09/2026
 
 **Le Cabinet, parcouru comme un comptable le vivrait.** Un audit d'interface en trente constats,
