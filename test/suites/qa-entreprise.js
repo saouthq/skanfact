@@ -746,4 +746,113 @@ module.exports = ({ t, assert, lireSource }) => {
     const corps = app.slice(i, i + 400);
     assert.ok(/typeof selecteur === 'string' \? \$\(selecteur\) : selecteur/.test(corps), 'refus() passe un élément à querySelector, qui lève');
   });
+  // La palette engendre ses onglets depuis les tableaux qui les dessinent (7.30.0). Neuf entrées
+  // écrites à la main les doublaient (« Bulletins de paie » sous « Paie → Bulletins »), passaient par
+  // `navigate()` — inertes depuis la page visée (7.15.0) — et « Seuil de rentabilité » ouvrait
+  // l'onglet Affaires. Une entrée à la main ne pose plus d'onglet : elle nomme une PAGE ou un GESTE.
+  t('La palette ne double aucun onglet par une entrée écrite à la main', () => {
+    const app = code('src', 'renderer', 'app.js');
+    const i = app.indexOf('const actions = [');
+    const bloc = app.slice(i, app.indexOf('.concat(ongletsDePalette()', i));
+    assert.ok(bloc.length > 2000 && bloc.length < 12000, 'liste des actions de la palette introuvable (' + bloc.length + ')');
+    const poses = bloc.match(/\w+(?:State\.tab|Tab)\s*=\s*'[^']+'/g) || [];
+    assert.deepStrictEqual(poses, [], 'une entrée de palette écrite à la main pose un onglet : ' + poses.join(', '));
+    // Et ce que ces entrées faisaient trouver reste trouvable : leurs mots vivent sur l'onglet.
+    const alias = app.slice(app.indexOf('const ALIAS'), app.indexOf('function closePalette'));
+    [['Paie → Bulletins', 'bulletins de paie'], ['Paie → Registre', 'registre du personnel'], ['Paie → Déclarations', 'déclaration cnss'],
+      ['Immobilisations → À immobiliser', 'lignes à immobiliser']].forEach(([cle, mots]) => {
+      const m = alias.match(new RegExp("'" + cle + "': '([^']*)'"));
+      assert.ok(m && m[1].includes(mots), `« ${mots} » ne mène plus à « ${cle} »`);
+    });
+  });
+  // Une annonce qui se récrit pendant la frappe (le net d'un brut, le plan d'un bien, le stock obtenu)
+  // passait d'une ligne à deux : la fenêtre se recentrait et « Enregistrer » bougeait sous le curseur.
+  // Toute annonce vivante d'une fenêtre réserve sa hauteur — pas seulement celle qu'on a vue bouger.
+  t('Chaque annonce vivante d\'une fenêtre réserve sa hauteur : rien ne bouge pendant la frappe', () => {
+    const app = code('src', 'renderer', 'app.js');
+    const annonces = app.match(/<div [^>]*id="[a-z]+-hint"[^>]*>/g) || [];
+    assert.ok(annonces.length >= 8, 'annonces introuvables (' + annonces.length + ')');
+    const nues = annonces.filter(a => !/annonce-stable/.test(a) && !/\bhidden\b/.test(a));
+    assert.deepStrictEqual(nues, [], 'une annonce de fenêtre ne réserve pas sa hauteur');
+    // Le contrat se lit entier dans sa demi-colonne : le sigle, la définition en infobulle.
+    assert.ok(/C\.CONTRACT_TYPES\.map\(\(\[v, l\]\) => `<option[^`]*\$\{h\(l\.split\(' —'\)\[0\]\)\}/.test(app), 'le contrat affiche sa définition entière et se coupe (« CDI — contrat à durée indéterm »)');
+  });
+  // Une menuiserie embauche son premier ouvrier le 24 septembre et ouvre la Paie : l'onglet Bulletins
+  // s'ouvrait sur AOÛT, « aucun salarié en poste », et rien ne menait à septembre.
+  t('La Paie s\'ouvre sur le mois où il y a un bulletin à établir, et un mois vide y mène', () => {
+    const jour = '2026-09-24';
+    const d = vierge();
+    d.employees = [{ id: 'e1', name: 'Hichem Trabelsi', grossSalary: 1200, hireDate: '2026-09-24' }];
+    assert.deepStrictEqual(core.moisDePaie(d, jour), { year: 2026, month: 9 }, 'un salarié embauché ce mois-ci : la Paie doit s\'ouvrir sur ce mois');
+    // Un salarié déjà là en août sans bulletin : c'est août qu'il faut établir d'abord.
+    d.employees[0].hireDate = '2026-01-05';
+    assert.deepStrictEqual(core.moisDePaie(d, jour), { year: 2026, month: 8 });
+    // Août établi, septembre à faire : septembre.
+    d.payslips = [{ id: 'p8', employeeId: 'e1', year: 2026, month: 8, computed: { net: 900, gross: 1200 } }];
+    assert.deepStrictEqual(core.moisDePaie(d, jour), { year: 2026, month: 9 });
+    // Personne : le mois précédent, comme avant.
+    assert.deepStrictEqual(core.moisDePaie(vierge(), jour), { year: 2026, month: 8 });
+    // Janvier : le mois précédent est décembre de l'année d'avant.
+    assert.deepStrictEqual(core.moisDePaie(vierge(), '2027-01-10'), { year: 2026, month: 12 });
+    const app = code('src', 'renderer', 'app.js');
+    const i = app.indexOf('routes.paie = ');
+    const zone = app.slice(i, i + 6000);
+    assert.ok(/if \(!s\.moisTouche\) \{ const mp = C\.moisDePaie\(data\)/.test(zone), 'la Paie ne s\'ouvre pas sur le mois à faire');
+    assert.ok(/id="p-vers-mois"/.test(app) && /\$\('#p-vers-mois'\)\.onclick/.test(app), 'un mois sans salarié ne mène pas au mois qui en a');
+  });
+  // Un ouvrier embauché le 24 septembre recevait un mois plein pour six jours de travail ; celui qui
+  // part le 5 aussi. Calculé à la main sur septembre 2026 (le dimanche chômé, 26 jours ouvrables) :
+  // du 1er au 23, 23 jours dont 3 dimanches → 20 hors contrat, 6 jours payés → 1 200 × 6 / 26.
+  t('Une entrée ou une sortie en cours de mois proratise le brut proposé, et le dit', () => {
+    const d = vierge();
+    const e = { id: 'e1', name: 'Hichem Trabelsi', grossSalary: 1200, hireDate: '2026-09-24' };
+    d.employees = [e];
+    const i = core.payslipInputFor(d, e, 2026, 9);
+    assert.strictEqual(i.gross, 276.923);
+    assert.deepStrictEqual({ jours: i.prorata.jours, sur: i.prorata.sur }, { jours: 6, sur: 26 });
+    assert.ok(/entrée le 24\/09\/2026/.test(i.prorata.motif));
+    assert.strictEqual(core.computePayslip(e, i, core.payrollSettings(d)).baseGross, 276.923, 'le bulletin ne reprend pas le brut proratisé');
+    // Le mois suivant, un mois entier.
+    const o = core.payslipInputFor(d, e, 2026, 10);
+    assert.strictEqual(Number(o.gross), 1200); assert.strictEqual(o.prorata, null);
+    // Une sortie le samedi 5 : du 6 au 30, 25 jours dont 4 dimanches → 21 hors contrat, 5 payés.
+    const s2 = { id: 'e2', name: 'Ines Jaziri', grossSalary: 1200, hireDate: '2025-01-06', endDate: '2026-09-05' };
+    const j = core.payslipInputFor(d, s2, 2026, 9);
+    assert.strictEqual(j.gross, 230.769);
+    assert.ok(/sortie le 05\/09\/2026/.test(j.prorata.motif));
+    // L'écran le dit, et un brut retouché à la main cesse de se dire proratisé.
+    const app = code('src', 'renderer', 'app.js');
+    assert.ok(/id="bf-prorata"/.test(app), 'le bulletin ne dit pas que son brut est proratisé');
+    assert.ok(/if \(p\.prorata && C\.round3\(i\.gross\) !== C\.round3\(p\.prorata\.brut\)\) p\.prorata = null/.test(app), 'un brut retouché se dit encore proratisé');
+  });
+  // « Net versé : 249,237 DT » au-dessus d'un bulletin « pas encore » payé, et une ligne qui offrait
+  // PDF et Modifier mais pas le geste suivant : marquer le salaire payé.
+  t('La Paie ne dit « versé » que ce qui l\'est, et la ligne d\'un bulletin propose de le marquer payé', () => {
+    const d = vierge();
+    d.employees = [{ id: 'e1', name: 'Hichem Trabelsi', grossSalary: 1200, hireDate: '2026-01-05' }];
+    d.payslips = [
+      { id: 'p8', employeeId: 'e1', year: 2026, month: 8, paidDate: '2026-08-31', computed: { net: 900, gross: 1200 } },
+      { id: 'p9', employeeId: 'e1', year: 2026, month: 9, paidDate: '', computed: { net: 900, gross: 1200 } }];
+    const sum = core.payrollSummary(d, 2026);
+    assert.strictEqual(sum.net, 1800);
+    assert.strictEqual(sum.netPaid, 900, 'le net « versé » compte un bulletin qui n\'est pas payé');
+    const app = code('src', 'renderer', 'app.js');
+    assert.ok(/<div class="lbl">Net versé<\/div><div class="val">\$\{C\.money\(sum\.netPaid, cur\)\}/.test(app), 'la carte « Net versé » affiche le net de tous les bulletins');
+    const i = app.indexOf('function drawSlips()');
+    const zone = app.slice(i, app.indexOf('function drawEmployees()', i));
+    assert.ok(zone.length > 2000 && zone.length < 12000, 'tranche drawSlips introuvable (' + zone.length + ')');
+    assert.ok(/rowMenuCell\(x\.id, x\.paidDate \? '' : `<button[^`]*data-payer=/.test(zone), 'un bulletin non payé ne propose pas « Marquer payé » sur sa ligne');
+    assert.ok(!/data-ed=/.test(zone) && !/data-pdf=/.test(zone), 'la ligne d\'un bulletin porte encore deux boutons');
+    assert.ok(/toastUndo\([^;]*marqué payé/.test(zone), 'marquer un salaire payé ne se défait pas');
+  });
+  // « Comprendre cette page → » est posé une fois par le routeur. La Paie, le Stock et le Catalogue
+  // redessinent leur en-tête à chaque onglet et à chaque geste : le lien disparaissait après le
+  // premier clic (marquer un salaire payé), et l'article qui explique l'écran avec lui.
+  t('Une page qui redessine son en-tête y repose « Comprendre cette page »', () => {
+    const app = code('src', 'renderer', 'app.js');
+    const redessins = app.split('\n').filter(l => /\$\('#[\w-]*head'\)\.innerHTML = /.test(l));
+    assert.ok(redessins.length >= 3, 'redessins d\'en-tête introuvables (' + redessins.length + ')');
+    const sans = redessins.filter(l => !/poserLienAide\('/.test(l));
+    assert.deepStrictEqual(sans, [], 'un en-tête redessiné perd son lien d\'aide');
+  });
 };

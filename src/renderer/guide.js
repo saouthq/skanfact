@@ -1228,7 +1228,7 @@ rencontres. Si un mot affiché dans l'application manque ici, c'est un défaut :
 <h3>Stock</h3>
 <dl class="gloss">
   <dt>Coût moyen pondéré</dt><dd>Le prix de revient moyen d'un article, recalculé à chaque entrée. Cinq disques à 200 DT plus dix à 230 donnent un coût moyen de 220 DT. Les sorties partent à ce coût-là.</dd>
-  <dt>Coût des marchandises vendues</dt><dd>Ce que les articles sortis t'ont coûté. C'est <b>ça</b>, la charge — pas l'achat lui-même : acheter de la marchandise, c'est transformer de l'argent en stock, pas le dépenser.</dd>
+  <dt>Coût des sorties de stock</dt><dd>Ce que les articles sortis t'ont coûté, à leur coût moyen : ceux que tu as vendus (le « coût des marchandises vendues »), mais aussi la matière utilisée sur un chantier et la casse. C'est <b>ça</b>, la charge — pas l'achat lui-même : acheter de la marchandise, c'est transformer de l'argent en stock, pas le dépenser.</dd>
   <dt>Inventaire</dt><dd>Le comptage réel, rayon par rayon, comparé à ce que l'application croit avoir. L'écart se saisit, il ne se devine pas.</dd>
   <dt>Numéro de série</dt><dd>L'identifiant unique d'une unité précise. Il permet de savoir qui a quoi, depuis quand, et jusqu'à quand c'est garanti.</dd>
 </dl>

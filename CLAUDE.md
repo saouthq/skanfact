@@ -6423,6 +6423,23 @@ fixe (9.4.3) et sa table d'onglets nommait sept onglets disparus, sautés sans u
   ligne à trois, elle recentrait la fenêtre et « Enregistrer » bougeait de 7 px sous le curseur à
   chaque chiffre — le jumeau de H-E1, dans une fenêtre. Et **une option se lit entière dans sa
   liste** : « Utilisé sur un chantier ou en fal… » ; le libellé est court, la bulle dit le reste.
+- **Une entrée ou une sortie en cours de mois se proratise** (`payslipInputFor`) : le brut de la
+  fiche était repris en entier, donc un ouvrier embauché le 24 recevait un mois plein pour six jours.
+  Le moteur partagé avec le Cabinet ne bouge pas — c'est le brut PROPOSÉ qui change, il reste
+  modifiable, `prorata` dit d'où il vient, et un brut retouché à la main cesse de se dire proratisé.
+  Montants du test calculés à la main sur le calendrier (20 jours hors contrat, 6 payés).
+- **Un écran de travail s'ouvre sur le mois où il y a quelque chose à faire** (U-12, portée à la
+  Paie de l'app entreprise) : `moisDePaie`. Et **« versé » ne se dit que de ce qui l'est** — un
+  agrégat porte sa période ET son état (7.16.0) : « Net versé » additionnait les bulletins impayés.
+- **La ligne garde le geste suivant** (7.29.0, portée à la Paie) : « Marquer payé » à la place de
+  « PDF » et « Modifier ». Le parcours `e2e:entreprise` cliquait `[data-ed]` : retourné vers le menu.
+- **Une règle posée sur UNE fenêtre se vérifie sur toutes** : l'annonce du mouvement de stock avait
+  reçu sa hauteur réservée le matin ; six autres fenêtres avaient la même annonce vivante (net d'un
+  salarié, plan d'un bien, marge, séries, cession, congé). Le test lit chaque `id="…-hint"`.
+- **Une entrée de palette écrite à la main double l'onglet engendré** (7.30.0) : neuf entrées, dont
+  « Seuil de rentabilité » qui ouvrait l'onglet Affaires. Leurs mots vivent dans `ALIAS`.
+- **Un lien posé une fois par le routeur disparaît au premier redessin de l'en-tête** : Paie, Stock
+  et Catalogue perdaient « Comprendre cette page ». Chaque redessin le repose, et le test lit chacun.
 - **`refus()` reçoit un sélecteur OU un élément** : un champ de fenêtre se désigne par lui-même, et
   `document.querySelector(element)` LÈVE — la réponse vide au comptable plantait au lieu d'être
   refusée, depuis qu'elle existe.

@@ -1622,7 +1622,9 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
     await win.waitForSelector('#c-tabs');
     await win.click('#c-tabs button[data-tab=tva]');
     await win.waitForFunction(() => document.querySelector('#c-body').textContent.includes('Résultat simplifié'));
-    if (!(await win.textContent('#c-body')).includes('Coût des marchandises vendues')) throw new Error('CMV absent du résultat');
+    // Le libellé est devenu « Coût des sorties de stock » en 10.12.0 : la matière utilisée et la casse
+    // y entrent aussi. Ce qui compte est que la carte soit là ; son montant se vérifie juste après.
+    if (!(await win.textContent('#c-body')).includes('Coût des sorties de stock')) throw new Error('le coût du stock est absent du résultat');
     const coherent = await win.evaluate(() => {
       const C = window.SkanCore, d = window.__data, y = C.today().slice(0, 4);
       const p = { from: y + '-01-01', to: y + '-12-31' };
@@ -1746,7 +1748,9 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
     await win.waitForSelector('#p-tabs');
     const tabs = await win.evaluate(() => Array.from(document.querySelectorAll('#p-tabs button')).map(b => b.textContent.trim()));
     if (tabs.length !== 7) throw new Error("onglets : " + tabs.join(","));
-    await win.waitForSelector('#p-body table.list');
+    // Depuis la 10.12.0 la Paie s'ouvre sur le mois où il y a quelque chose à faire : un tableau de
+    // bulletins, ou le bouton qui établit ceux qui manquent — jamais un mois vide sans geste.
+    await win.waitForSelector('#p-body table.list, #p-body #p-gen');
     // le calcul affiché est bien celui du coeur
     const ok = await win.evaluate(() => {
       const C = window.SkanCore, d = window.__data;
@@ -1777,10 +1781,12 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
     await win.click('#modal-root #ok');
     await win.waitForFunction(n => window.__data.payslips.length > n, avant);
     // modifier un bulletin : une prime augmente le net
-    await win.waitForSelector('#p-body [data-ed]');
-    const id = await win.evaluate(() => document.querySelector('#p-body [data-ed]').dataset.ed);
+    // Depuis la 10.12.0, « Modifier » vit dans le menu de la ligne ; le bouton visible est le geste
+    // suivant, « Marquer payé ».
+    await win.waitForSelector('#p-body [data-rowmenu]');
+    const id = await win.evaluate(() => document.querySelector('#p-body [data-rowmenu]').dataset.rowmenu);
     const net0 = await win.evaluate(i => window.__data.payslips.find(p => p.id === i).computed.net, id);
-    await win.click('#p-body [data-ed]');
+    await actionLigne(`#p-body tr:has([data-rowmenu="${id}"])`, 'Modifier le bulletin');
     await win.waitForSelector('#bf input[name=gross]');
     await win.click('#add-bon');
     await win.waitForSelector('#bf-bon input[data-f=amount]');
@@ -1791,6 +1797,11 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
       const p = window.__data.payslips.find(x => x.id === a.id);
       return p && p.computed.net > a.net;
     }, { id, net: net0 });
+    // le geste suivant d'un bulletin établi : le marquer payé, depuis sa ligne
+    const aPayer = await win.evaluate(() => { const b = document.querySelector('#p-body [data-payer]'); return b ? b.dataset.payer : ''; });
+    if (!aPayer) throw new Error('un bulletin non payé ne propose pas « Marquer payé » sur sa ligne');
+    await win.click(`#p-body [data-payer="${aPayer}"]`);
+    await win.waitForFunction(i => !!(window.__data.payslips.find(p => p.id === i) || {}).paidDate, aPayer);
     // barèmes : changer un taux change les bulletins SUIVANTS, pas ceux déjà établis
     await win.click('#p-tabs button[data-tab=baremes]');
     await win.waitForSelector('#rf input[name=cnssEmployee]');

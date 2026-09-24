@@ -4152,7 +4152,7 @@
            sur la TVA (10.12.0, parcours d'une menuiserie). Les prix disent leur unité (9.4.8). */''}
         ${field(`Prix unitaire HT (${h(company().currency || 'DT')})`, 'unitPrice', it.unitPrice, 'number', 'step="0.001" min="0" class="num"')}
         ${field(lbl(`Coût de revient HT (${h(company().currency || 'DT')})`, 'cat.cost'), 'unitCost', it.unitCost || 0, 'number', 'step="0.001" min="0" class="num"')}
-        <div class="field span-2" id="marge-hint"></div>
+        <div class="span-2 annonce-stable" id="marge-hint"></div>
         <label class="field">TVA<select name="vatRate">${C.VAT_RATES.map(r => `<option value="${r}" ${Number(it.vatRate) === r ? 'selected' : ''}>${r}%</option>`).join('')}</select></label>
         <div class="field">${lbl('Unité', 'ed.unit')}<select name="unit" id="cat-unit">${unitOptions(it.unit || '', C.usedUnits(data))}</select></div>
         <label class="check span-2"><input type="checkbox" name="tracked" ${it.tracked ? 'checked' : ''}> Suivi en stock ${info('stk.tracked')}</label>
@@ -4486,7 +4486,7 @@
       catalogTab = id;
       $$('#cat-tabs button').forEach(b => b.classList.toggle('active', b.dataset.tab === id));
       $$('[data-pane]').forEach(p => p.hidden = p.dataset.pane !== id);
-      $('#cat-head').innerHTML = head(); bindHead();
+      $('#cat-head').innerHTML = head(); bindHead(); poserLienAide('catalogue');
     };
     $$('#cat-tabs button').forEach(b => b.onclick = () => showTab(b.dataset.tab));
     showTab(catalogTab);
@@ -5251,7 +5251,7 @@
     'bulletins-impossibles': { label: 'Voir le bulletin', run: vers('#/paie', () => {
       const b = C.bulletinsImpossibles(data)[0];
       paieState.tab = 'bulletins';
-      if (b) { paieState.year = String(b.year); paieState.month = String(Number(b.month)); }
+      if (b) { paieState.year = String(b.year); paieState.month = String(Number(b.month)); paieState.moisTouche = true; }
     }) },
     contrats: { label: 'Générer les brouillons', run: () => { const res = generateRecurring(); toast(`${pl(res.n, 'brouillon créé', 'brouillons créés')} — à relire puis émettre`); render(); } },
     retards: { label: 'Voir les relances', run: vers('#/relances') },
@@ -5531,7 +5531,18 @@
     'Comptabilité → Clôtures': 'clôturer fermer mois verrouiller période',
     'Trésorerie → Rapprochement': 'pointer relevé bancaire',
     'Paie → Congés et absences': 'vacances maladie absence',
-    'Paie → Déclarations': 'cnss trimestre employeur annuelle',
+    'Paie → Déclarations': 'cnss trimestre employeur annuelle déclarations sociales déclaration cnss',
+    // 10.12.0 — neuf entrées écrites à la main doublaient ces onglets (« Bulletins de paie » à côté de
+    // « Paie → Bulletins ») et passaient par `navigate()`, donc restaient inertes depuis la page visée ;
+    // « Seuil de rentabilité » ouvrait même l'onglet Affaires. Leurs mots vivent ici, sur l'onglet.
+    'Paie → Bulletins': 'bulletins de paie fiche de paie salaire',
+    'Paie → Salariés': 'employés personnel',
+    'Paie → Registre': 'registre du personnel',
+    'Paie → Barèmes': 'barèmes de paie taux cnss irpp',
+    'Stock → Numéros de série': 'série',
+    'Stock → Inventaire': 'comptage',
+    'Immobilisations → À immobiliser': 'lignes à immobiliser',
+    'Marges → Seuil de rentabilité': 'point mort',
     'Tous les modules': 'menu cacher afficher page manquante',
     'Revoir l\'assistant de démarrage': 'assistant onboarding recommencer premier démarrage bienvenue'
   };
@@ -5553,7 +5564,7 @@
     const actions = [
       ['Nouveau devis', () => navigate('#/doc/new/devis')], ['Nouvelle facture', () => navigate('#/doc/new/facture')], ['Nouvel avoir', () => navigate('#/doc/new/avoir')],
       ['Accueil', () => navigate('#/dashboard')], ['Devis', () => navigate('#/devis')], ['Factures', () => navigate('#/factures')], ['Relances', () => navigate('#/relances')],
-      ['Facturation récurrente (contrats qui refacturent)', () => navigate('#/contrats')], ['Achats et dépenses', () => navigate('#/achats')], ['Nouvelle facture d\'achat', () => navigate('#/achat/new')], ['Nouvelle dépense', () => navigate('#/achat/new/-/depense')], ['Fournisseurs', () => navigate('#/fournisseurs')], ['Trésorerie', () => navigate('#/tresorerie')], ['Marges et rentabilité', () => navigate('#/marges')], ['Paie', () => navigate('#/paie')], ['Bulletins de paie', () => { paieState.tab = 'bulletins'; navigate('#/paie'); }], ['Salariés', () => { paieState.tab = 'salaries'; navigate('#/paie'); }], ['Barèmes de paie', () => { paieState.tab = 'baremes'; navigate('#/paie'); }], ['Déclarations sociales', () => { paieState.tab = 'declarations'; navigate('#/paie'); }], ['Déclaration CNSS', () => { paieState.tab = 'declarations'; navigate('#/paie'); }], ['Registre du personnel', () => { paieState.tab = 'registre'; navigate('#/paie'); }], ['Nouveau salarié', () => employeeForm(null, () => render())], ['Stock', () => navigate('#/stock')], ['Garanties', () => navigate('#/garanties')], ['Numéros de série', () => { stockState.tab = 'series'; navigate('#/stock'); }], ['Entrée de numéros de série', () => serialIntakeForm(null, () => render())], ['Inventaire', () => { stockState.tab = 'inventaire'; navigate('#/stock'); }], ['Mouvement de stock', () => adjustForm(null, () => render())], ['Immobilisations', () => navigate('#/immos')], ['Nouvelle immobilisation', () => assetForm(null, a => navigate('#/immo/' + a.id))], ['Lignes à immobiliser', () => { immoState.tab = 'attente'; navigate('#/immos'); }], ['Seuil de rentabilité', () => navigate('#/marges')], ['Nouvelle affaire', () => projectForm(null, p => navigate('#/affaire/' + p.id))], ['Nouveau fournisseur', () => supplierForm(null, () => render())], ['Proformas', () => navigate('#/autres/proforma')], ['Bons de commande', () => navigate('#/autres/commande')], ['Bons de livraison', () => navigate('#/autres/livraison')], ['Contrats à signer', () => navigate('#/autres/contrat')], ['Clients', () => navigate('#/clients')], ['Catalogue', () => navigate('#/catalogue')], ['Statistiques', () => navigate('#/stats')], ['Comptabilité', () => navigate('#/compta')], ['Paramètres', () => navigate('#/parametres')],
+      ['Facturation récurrente (contrats qui refacturent)', () => navigate('#/contrats')], ['Achats et dépenses', () => navigate('#/achats')], ['Nouvelle facture d\'achat', () => navigate('#/achat/new')], ['Nouvelle dépense', () => navigate('#/achat/new/-/depense')], ['Fournisseurs', () => navigate('#/fournisseurs')], ['Trésorerie', () => navigate('#/tresorerie')], ['Marges et rentabilité', () => navigate('#/marges')], ['Paie', () => navigate('#/paie')], ['Nouveau salarié', () => employeeForm(null, () => render())], ['Stock', () => navigate('#/stock')], ['Garanties', () => navigate('#/garanties')], ['Entrée de numéros de série', () => serialIntakeForm(null, () => render())], ['Mouvement de stock', () => adjustForm(null, () => render())], ['Immobilisations', () => navigate('#/immos')], ['Nouvelle immobilisation', () => assetForm(null, a => navigate('#/immo/' + a.id))], ['Nouvelle affaire', () => projectForm(null, p => navigate('#/affaire/' + p.id))], ['Nouveau fournisseur', () => supplierForm(null, () => render())], ['Proformas', () => navigate('#/autres/proforma')], ['Bons de commande', () => navigate('#/autres/commande')], ['Bons de livraison', () => navigate('#/autres/livraison')], ['Contrats à signer', () => navigate('#/autres/contrat')], ['Clients', () => navigate('#/clients')], ['Catalogue', () => navigate('#/catalogue')], ['Statistiques', () => navigate('#/stats')], ['Comptabilité', () => navigate('#/compta')], ['Paramètres', () => navigate('#/parametres')],
       ['Aide et guide', () => navigate('#/aide')], ['Nouveau client', () => clientForm(null, () => render())],
       // La palette liste TOUTES les pages, y compris celles des modules retirés du menu : c'est ce
       // qui rend le filtrage de la barre latérale inoffensif.
@@ -7068,7 +7079,7 @@
         ${field('CIN', 'cin', e.cin || '', 'text', '')}
         ${field(lbl('Matricule CNSS', 'pay.cnss'), 'cnss', e.cnss || '', 'text', '')}
         ${field('Poste', 'position', e.position || '', 'text', 'placeholder="Technicien"')}
-        <label class="field">${lbl('Contrat', 'pay.contract')}<select name="contract">${C.CONTRACT_TYPES.map(([v, l]) => `<option value="${v}" ${e.contract === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+        <label class="field">${lbl('Contrat', 'pay.contract')}<select name="contract">${C.CONTRACT_TYPES.map(([v, l]) => `<option value="${v}" ${e.contract === v ? 'selected' : ''} title="${h(l)}">${h(l.split(' —')[0])}</option>`).join('')}</select></label>
         ${dateFieldHtml('Date d\'embauche', 'hireDate', e.hireDate || '', { clearable: true })}
         ${dateFieldHtml(lbl('Date de sortie', 'pay.endDate'), 'endDate', e.endDate || '', { clearable: true })}
         ${field(lbl('Salaire brut mensuel', 'pay.gross'), 'grossSalary', e.grossSalary || 0, 'number', 'step="0.001" min="0" class="num"')}
@@ -7077,10 +7088,10 @@
         ${field(lbl('Enfants à charge', 'pay.children'), 'children', e.children || 0, 'number', 'step="1" min="0" max="10" class="num"')}
         ${field('RIB / IBAN', 'iban', e.iban || '', 'text', '')}
         <label class="field span-2">Notes<input type="text" name="notes" value="${h(e.notes || '')}"></label>
-        <div class="field span-2" id="ef-hint"></div>
+        <div class="span-2 annonce-stable" id="ef-hint"></div>
       </form>
       <div class="modal-actions">
-        ${employee ? '<button class="btn btn-danger" id="del-emp" style="margin-right:auto">Supprimer</button>' : ''}
+        ${employee ? '<button class="btn btn-danger" id="del-emp" style="margin-inline-end:auto">Supprimer</button>' : ''}
         <button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
       (root, close) => {
         const hint = () => {
@@ -7094,8 +7105,8 @@
         $('#ok', root).onclick = () => {
           const v = formValues($('#ef', root));
           if (!v.name.trim()) return refus('#ef input[name=name]', 'Le nom du salarié est obligatoire : il figure sur chaque bulletin.');
-          if (!(Number(v.grossSalary) > 0)) return toast('Le salaire brut doit être supérieur à zéro.', true);
-          if (v.endDate && v.hireDate && v.endDate < v.hireDate) return toast('La sortie ne peut pas précéder l\'embauche.', true);
+          if (!(Number(v.grossSalary) > 0)) return refus($('[name=grossSalary]', root), 'Le salaire brut doit être supérieur à zéro.');
+          if (v.endDate && v.hireDate && v.endDate < v.hireDate) return refus($('[name=endDate]', root), 'La sortie ne peut pas précéder l\'embauche.');
           if (!employee && licenceBlock('Créer une fiche de salarié', 'paie')) return;
           Object.assign(e, v, { grossSalary: Number(v.grossSalary) || 0, children: Number(v.children) || 0, headOfFamily: !!v.headOfFamily });
           if (!employee) data.employees.push(e);
@@ -7127,6 +7138,7 @@
     modal(`<h2>Bulletin de ${h(emp.name)} — ${h(MONTHS_LONG[Number(p.month) - 1])} ${h(String(p.year))}</h2>
       <form id="bf" class="grid-2">
         ${field(lbl('Salaire brut du mois', 'pay.gross'), 'gross', p.gross != null ? p.gross : emp.grossSalary, 'number', 'step="0.001" min="0" class="num"')}
+        ${p.prorata ? `<p class="small muted span-2" id="bf-prorata">Brut proratisé — ${h(p.prorata.motif)} : ${pct(p.prorata.jours)} jours sur ${pct(p.prorata.sur)}, pour un brut de ${C.money(p.prorata.brutFiche, cur)} sur la fiche. <em>À VÉRIFIER avec ton comptable.</em></p>` : ''}
         ${field(lbl('Jours ouvrables', 'pay.workedDays'), 'workedDays', p.workedDays || 26, 'number', 'step="0.5" min="1" max="31" class="num"')}
         ${field(lbl('Jours d\'absence non payés', 'pay.absent'), 'absentDays', p.absentDays || 0, 'number', 'step="0.5" min="0" class="num"')}
         ${dateFieldHtml(lbl('Payé le', 'pay.paid'), 'paidDate', p.paidDate || '', { clearable: true })}
@@ -7204,6 +7216,8 @@
           if (closedBlock(C.payslipDate(p), 'Ce bulletin')) return;
           if (!slip && licenceBlock('Établir un nouveau bulletin', 'paie')) return;
           Object.assign(p, v, i, { gross: i.gross, computed: C.computePayslip(emp, i, s), issuedAt: p.issuedAt || C.today() });
+          // Un brut retouché à la main n'est plus « proratisé » : le bulletin ne doit pas le prétendre.
+          if (p.prorata && C.round3(i.gross) !== C.round3(p.prorata.brut)) p.prorata = null;
           if (!slip) data.payslips.push(p);
           save(true); close(); if (done) done(p);
         };
@@ -7248,7 +7262,7 @@
         ${dateFieldHtml('Du', 'from', l.from, {})}
         ${dateFieldHtml('Au', 'to', l.to, {})}
         <label class="field span-2">Motif<input type="text" name="note" value="${h(l.note || '')}" placeholder="Certificat médical, congé annuel…"></label>
-        <div class="field span-2" id="lf-hint"></div>
+        <div class="span-2 annonce-stable" id="lf-hint"></div>
       </form>
       <div class="modal-actions">
         ${leave ? '<button class="btn btn-danger" id="del-lv" style="margin-right:auto">Supprimer</button>' : ''}
@@ -7429,6 +7443,10 @@
   routes.paie = () => {
     const cur = company().currency;
     const s = paieState;
+    // Le mois s'ouvre là où il y a quelque chose à faire (`C.moisDePaie`) tant qu'on ne l'a pas
+    // choisi : figé sur le mois précédent, un premier salarié embauché ce mois-ci n'avait nulle part
+    // où recevoir son bulletin (10.12.0).
+    if (!s.moisTouche) { const mp = C.moisDePaie(data); s.year = String(mp.year); s.month = String(mp.month); }
     const years = Array.from(new Set(data.payslips.map(p => String(p.year)).concat([C.today().slice(0, 4)]))).sort().reverse();
     if (!years.includes(s.year)) s.year = years[0];
 
@@ -7471,10 +7489,14 @@
       const month = C.payslipsOf(data, y, m);
       const missing = C.missingPayslips(data, y, m);
       const sum = C.payrollSummary(data, y);
+      // Un mois vide dit où se trouve le travail, et y mène (« une liste vide donne le geste »).
+      const mp = C.moisDePaie(data);
+      const ailleurs = !month.length && !missing.length && (mp.year !== y || mp.month !== m)
+        && (C.missingPayslips(data, mp.year, mp.month).length || C.payslipsOf(data, mp.year, mp.month).length) ? mp : null;
       $('#p-body').innerHTML = `
         <div class="stats">
           <div class="stat"><div class="lbl">Coût de la paie ${s.year} ${info('pay.employerCost')}</div><div class="val">${C.money(sum.cost, cur)}</div><div class="sub">${pl(sum.count, 'bulletin')}, ${pl(sum.employees, 'salarié')}</div></div>
-          <div class="stat"><div class="lbl">Net versé</div><div class="val">${C.money(sum.net, cur)}</div><div class="sub">ce que touchent les salariés</div></div>
+          <div class="stat"><div class="lbl">Net versé</div><div class="val">${C.money(sum.netPaid, cur)}</div><div class="sub">${sum.net - sum.netPaid > 0.0005 ? `${C.money(C.round3(sum.net - sum.netPaid), cur)} restent à verser` : 'ce que touchent les salariés'}</div></div>
           <div class="stat"><div class="lbl">CNSS à reverser ${info('pay.cnssTotal')}</div><div class="val">${C.money(C.round3(sum.cnssEmployee + sum.cnssEmployer + sum.accident), cur)}</div><div class="sub">parts salarié et employeur</div></div>
           <div class="stat"><div class="lbl">Impôt retenu ${info('pay.irpp')}</div><div class="val">${C.money(C.round3(sum.irpp + sum.css), cur)}</div><div class="sub">à reverser au Trésor</div></div>
         </div>
@@ -7484,7 +7506,7 @@
             ${missing.length ? `<button class="btn btn-sm btn-primary" id="p-gen">${missing.length > 1 ? `Établir les ${pl(missing.length, 'bulletin')} manquants` : 'Établir le bulletin manquant'}</button>` : month.length ? '<span class="small ok-text">Tous les bulletins du mois sont établis.</span>' : ''}
           </div>
           ${month.length ? `<div class="scroll-x"><table class="list compact"><thead><tr>
-            <th>Salarié</th><th class="r">Brut</th><th class="r">CNSS</th><th class="r">IRPP</th><th class="r">Net à payer</th><th class="r">Coût employeur</th><th>Payé le</th><th></th></tr></thead><tbody>
+            <th>Salarié</th><th class="r">Brut</th><th class="r">CNSS</th><th class="r">IRPP</th><th class="r">Net à payer</th><th class="r">Coût employeur</th><th>Payé le</th><th class="row-actions-h"></th></tr></thead><tbody>
             ${month.map(x => `<tr class="${x.paidDate ? '' : 'row-warn'}">
               <td><strong>${h(x.employeeName)}</strong>${x.employee.position ? `<div class="small muted">${h(x.employee.position)}</div>` : ''}</td>
               <td class="r nw">${C.money(x.c.gross, cur)}</td>
@@ -7493,8 +7515,7 @@
               <td class="r nw"><strong>${C.money(x.c.net, cur)}</strong></td>
               <td class="r nw">${C.money(x.c.employerCost, cur)}</td>
               <td class="nw">${x.paidDate ? C.fmtDate(x.paidDate) : '<span class="warn-text">pas encore</span>'}</td>
-              <td class="r nw"><button class="btn btn-sm" data-pdf="${h(x.id)}">PDF</button>
-                <button class="btn btn-sm" data-ed="${h(x.id)}">Modifier</button></td></tr>`).join('')}
+              ${rowMenuCell(x.id, x.paidDate ? '' : `<button class="btn btn-sm" data-payer="${h(x.id)}">Marquer payé</button>`)}</tr>`).join('')}
             <tr class="total-row"><td><strong>Total du mois</strong></td>
               <td class="r"><strong>${C.money(C.round3(month.reduce((a, x) => a + x.c.gross, 0)), cur)}</strong></td>
               <td class="r">${C.money(C.round3(month.reduce((a, x) => a + x.c.cnssEmployee, 0)), cur)}</td>
@@ -7509,16 +7530,38 @@
             // qu'il faut dire, pas deux phrases vraies qui se contredisent à l'œil.
             : `<div class="empty" id="p-vide">${missing.length
               ? `Aucun bulletin pour ${h(MONTHS_LONG[m - 1])} ${h(s.year)}. Le bouton ci-dessus les établit d'un coup, au brut de chaque fiche.`
-              : `Aucun salarié en poste en ${h(MONTHS_LONG[m - 1])} ${h(s.year)} : il n'y a pas de bulletin à établir ce mois-là.`}</div>`}
+              : `Aucun salarié en poste en ${h(MONTHS_LONG[m - 1])} ${h(s.year)} : il n'y a pas de bulletin à établir ce mois-là.${ailleurs
+                ? `<div class="mt"><button class="btn btn-primary" id="p-vers-mois">Voir ${h(MONTHS_LONG[ailleurs.month - 1])} ${ailleurs.year}</button></div>` : ''}`}</div>`}
         </div>`;
-      $('#p-month').onchange = e => { s.month = e.target.value; drawSlips(); };
-      $$('#p-body [data-pdf]').forEach(b => b.onclick = () => exportPayslip(payslipById(b.dataset.pdf)));
-      $$('#p-body [data-ed]').forEach(b => b.onclick = () => { const x = payslipById(b.dataset.ed); payslipForm(x, employeeById(x.employeeId), x.year, x.month, () => draw()); });
+      $('#p-month').onchange = e => { s.month = e.target.value; s.moisTouche = true; drawSlips(); };
+      if ($('#p-vers-mois')) $('#p-vers-mois').onclick = () => { const mp = C.moisDePaie(data); s.year = String(mp.year); s.month = String(mp.month); s.moisTouche = true; draw(); };
+      // 10.12.0 — une ligne garde UN bouton, celui du geste suivant (7.29.0). Elle en portait deux,
+      // « PDF » et « Modifier », et pas celui qu'on vient chercher après avoir établi un bulletin : le
+      // marquer payé demandait d'ouvrir « Modifier » et de trouver « Payé le ». Le paiement part
+      // aujourd'hui, sur le compte par défaut ; « Annuler » le défait (7.12.0), « Modifier » règle
+      // une autre date ou un autre compte.
+      $$('#p-body [data-payer]').forEach(b => b.onclick = () => {
+        const x = payslipById(b.dataset.payer); if (!x) return;
+        const jour = C.today();
+        if (closedBlock(jour, 'Ce paiement de salaire')) return;
+        x.paidDate = jour;
+        save(true); draw();
+        const emp = employeeById(x.employeeId) || {};
+        toastUndo(`Salaire de ${emp.name || 'ce salarié'} marqué payé aujourd'hui`, () => { const y2 = payslipById(x.id); if (y2) { y2.paidDate = ''; save(true); draw(); } });
+      });
+      bindRowMenus($('#p-body'), id => {
+        const x = payslipById(id); if (!x) return [];
+        const emp = employeeById(x.employeeId);
+        return [
+          { icon: 'pdf', label: 'Exporter le bulletin en PDF', hint: 'À remettre au salarié', run: () => exportPayslip(x) },
+          { icon: 'modifier', label: 'Modifier le bulletin', hint: 'Primes, retenues, date et compte du paiement', run: () => payslipForm(x, emp, x.year, x.month, () => draw()) }
+        ];
+      });
       if ($('#p-gen')) $('#p-gen').onclick = async () => {
         // Les contrôles AVANT la grande question (règle 7.6.0) — et ce bouton créait des bulletins
         // sans passer par le garde-fou de la licence depuis la 6.4.0.
         if (licenceBlock('Créer les bulletins du mois', 'paie')) return;
-        if (!await confirmDialog(`Établir ${pl(missing.length, 'bulletin')} pour ${MONTHS_LONG[m - 1]} ${s.year} ?\n\nLe brut vient de chaque fiche, les absences non payées et les échéances d'avance sont reprises automatiquement. Tu pourras encore ajouter les primes, bulletin par bulletin. Rien n'est payé : c'est toi qui marques chaque bulletin comme réglé.`, 'Établir', false)) return;
+        if (!await confirmDialog(`Établir ${pl(missing.length, 'bulletin')} pour ${MONTHS_LONG[m - 1]} ${s.year} ?\n\nLe brut vient de chaque fiche (proratisé pour une entrée ou une sortie en cours de mois), les absences non payées et les échéances d'avance sont reprises automatiquement. Tu pourras encore ajouter les primes, bulletin par bulletin. Rien n'est payé : c'est toi qui marques chaque bulletin comme réglé.`, 'Établir', false)) return;
         const st = C.payrollSettings(data);
         if (closedBlock(C.payslipDate({ year: y, month: m }), 'Ces bulletins')) return;
         missing.forEach(e => {
@@ -7937,7 +7980,7 @@
     // vert contredisait l'onglet. `bindHead` rearme le bouton du moment — sans quoi il serait
     // visible et inerte, ce qui est pire qu'absent.
     const bindHead = () => {
-      $('#p-year').onchange = e => { s.year = e.target.value; draw(); };
+      $('#p-year').onchange = e => { s.year = e.target.value; s.moisTouche = true; draw(); };
       const ouvrirSalarie = () => employeeForm(null, () => { paieState.tab = 'salaries'; render(); });
       if ($('#new-emp')) $('#new-emp').onclick = ouvrirSalarie;
       if ($('#emp-first')) $('#emp-first').onclick = ouvrirSalarie;
@@ -7945,7 +7988,7 @@
       if ($('#new-av')) $('#new-av').onclick = () => advanceForm(null, null, () => draw());
     };
     const draw = () => {
-      $('#p-head').innerHTML = pHead(); bindHead();
+      $('#p-head').innerHTML = pHead(); bindHead(); poserLienAide('paie');
       if (!data.employees.length) { $('#p-body').innerHTML = ''; return; }
       if (s.tab === 'salaries') return drawEmployees();
       if (s.tab === 'conges') return drawLeaves();
@@ -8391,7 +8434,7 @@
       if ($('#st-pick')) $('#st-pick').onclick = () => navigate('#/catalogue');
     };
     const draw = () => {
-      $('#st-head').innerHTML = stHead(); bindStHead();
+      $('#st-head').innerHTML = stHead(); bindStHead(); poserLienAide('stock');
       if (!items.length) { $('#st-body').innerHTML = ''; return; }
       if (s.tab === 'series') return drawSerials();
       if (s.tab === 'mouvements') return drawMoves();
@@ -8618,7 +8661,7 @@
           ${combo({ name: 'inPurchaseId', value: '', items: data.purchases.slice().sort((a, b) => (b.date || '').localeCompare(a.date || '')).slice(0, 200).map(p => ({ v: p.id, label: p.number || 'sans numéro', sub: `${C.fmtDate(p.date)} · ${supplierName(p.supplierId)}`, text: `${p.number || ''} ${supplierName(p.supplierId)}` })), placeholder: '— Aucune —', search: 'Rechercher une facture d\'achat…' })}
         </div>
         <label class="field span-2">Numéros de série<textarea name="list" rows="8" placeholder="SN-2026-0001&#10;SN-2026-0002&#10;SN-2026-0003"></textarea></label>
-        <div class="field span-2" id="sif-hint"></div>
+        <div class="span-2 annonce-stable" id="sif-hint"></div>
       </form>
       <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
       (root, close) => {
@@ -8732,7 +8775,7 @@
           ${combo({ name: 'clientId', value: x.clientId || '', items: clientItems(), placeholder: '— Aucun —', search: 'Rechercher un client…' })}
         </div>
         <label class="field span-2">Notes<input type="text" name="notes" value="${h(x.notes || '')}"></label>
-        <div class="field span-2" id="sef-hint"></div>
+        <div class="span-2 annonce-stable" id="sef-hint"></div>
       </form>
       <div class="modal-actions">
         <button class="btn btn-danger" id="del-ser" style="margin-right:auto">Supprimer</button>
@@ -8818,7 +8861,7 @@
         <div class="field">Fournisseur
           ${combo({ name: 'supplierId', value: a.supplierId || '', items: supItems(), placeholder: '— Aucun —', search: 'Rechercher un fournisseur…' })}
         </div>
-        <div class="field span-2" id="amort-hint"></div>
+        <div class="span-2 annonce-stable" id="amort-hint"></div>
         <label class="field span-2">Notes<input type="text" name="notes" value="${h(a.notes || '')}"></label>
       </form>
       <div class="modal-actions">
@@ -8885,7 +8928,7 @@
         ${dateFieldHtml('Date de sortie', 'date', d.date, {})}
         ${field(lbl('Prix de cession HT', 'immo.disposalPrice'), 'amount', d.amount || 0, 'number', 'step="0.001" min="0" class="num"')}
         <label class="field span-2">Motif<input type="text" name="reason" value="${h(d.reason || '')}" placeholder="Revendu, mis au rebut, volé…"></label>
-        <div class="field span-2" id="dsf-hint"></div>
+        <div class="span-2 annonce-stable" id="dsf-hint"></div>
       </form>
       <div class="modal-actions">
         ${asset.disposal ? '<button class="btn btn-danger" id="undo-dis" style="margin-right:auto">Annuler la sortie</button>' : ''}

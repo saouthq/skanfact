@@ -348,6 +348,27 @@ du premier écran à son catalogue, pour voir ce qu'un chef d'entreprise subit :
   plus remonter toute la fenêtre à chaque chiffre tapé (sa hauteur est réservée), la nature ne se
   coupe plus dans sa liste, et un refus posé sur un champ d'une fenêtre (la réponse vide au
   comptable) ne plante plus.
+- **Le premier bulletin d'un ouvrier embauché le 24 lui comptait un mois entier.** Le brut de la
+  fiche était repris tel quel, quel que soit le jour d'entrée ou de sortie : 1 200 DT pour six jours
+  de travail. Une entrée ou une sortie en cours de mois proratise maintenant le brut proposé, en
+  jours ouvrables (276,923 DT pour six jours sur vingt-six), et le bulletin le dit — la méthode est
+  à faire valider par ton comptable, et le brut reste modifiable.
+- **La Paie s'ouvre sur le mois où il y a un bulletin à établir.** Elle s'ouvrait toujours sur le
+  mois précédent : « aucun salarié en poste en août » pour une entreprise qui venait d'embaucher en
+  septembre, et rien ne menait à septembre. Un mois vide propose désormais d'aller au bon.
+- **« Net versé » ne compte plus que ce qui est payé**, et dit ce qui reste à verser. Il annonçait
+  249 DT « versés » au-dessus d'un bulletin « pas encore » payé.
+- **« Marquer payé » sur la ligne d'un bulletin**, avec « Annuler ». La ligne portait « PDF » et
+  « Modifier », et il fallait ouvrir le bulletin pour trouver « Payé le » ; les deux autres gestes
+  vivent dans le menu Actions.
+- **Les annonces qui se récrivent pendant la frappe ne font plus bouger les fenêtres** : le net
+  d'un salarié, le plan d'un bien, la marge d'un article, le stock obtenu. Passant d'une ligne à
+  deux, elles faisaient remonter la fenêtre et « Enregistrer » glissait sous le curseur.
+- **La palette ne propose plus deux fois la même destination** (« Paie → Bulletins » et « Bulletins
+  de paie ») ; « Seuil de rentabilité » y ouvrait l'onglet Affaires. Les mots qu'on tape mènent
+  toujours au bon onglet.
+- **« Comprendre cette page → » ne disparaît plus** de la Paie, du Stock et du Catalogue au premier
+  clic ; le type de contrat se lit en entier (« CDI », la définition en infobulle).
 - **Le stock sans prix de vente dit « — »**, plus « 0,000 DT, ce qu'il rapporterait vendu » sur
   1 540 DT de planches ; la note d'un mouvement de stock n'invite plus « Deux disques tombés à la
   livraison ».

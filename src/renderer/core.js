@@ -2276,6 +2276,8 @@
       irpp: sum(r => r.c.irpp), css: sum(r => r.c.css), accident: sum(r => r.c.accident),
       tfp: sum(r => r.c.tfp), foprolos: sum(r => r.c.foprolos),
       cost: sum(r => r.c.employerCost),
+      // Ce qui est VRAIMENT versé : un bulletin établi et pas encore payé n'a rien versé (10.12.0).
+      netPaid: round3(rows.filter(r => r.paidDate).reduce((s, r) => s + (Number(r.c.net) || 0), 0)),
       unpaid: rows.filter(r => !r.paidDate).length,
       rows
     };
@@ -2299,6 +2301,25 @@
     const done = new Set((data.payslips || []).filter(p => Number(p.year) === Number(year) && Number(p.month) === Number(month)).map(p => p.employeeId));
     const last = addDays(`${year}-${String(month).padStart(2, '0')}-01`, daysInMonth(year, month) - 1);
     return activeEmployees(data, last).filter(e => !done.has(e.id));
+  }
+
+  // 10.12.0 — le mois sur lequel s'ouvre l'onglet Bulletins. C'était toujours le mois PRÉCÉDENT : une
+  // menuiserie qui embauche son premier ouvrier le 24 septembre ouvrait la Paie sur août, lisait
+  // « Aucun salarié en poste en août 2026 : il n'y a pas de bulletin à établir », et rien ne menait à
+  // septembre. On ouvre là où il y a quelque chose à faire (U-12 : jamais un mois futur) : le mois
+  // précédent s'il lui manque un bulletin, sinon le mois en cours s'il a quelqu'un en poste, sinon
+  // le précédent.
+  function moisDePaie(data, todayIso) {
+    const t = todayIso || today();
+    const courant = t.slice(0, 7) + '-01';
+    const avant = addMonths(courant, -1, 1);
+    const ym = iso => ({ year: Number(iso.slice(0, 4)), month: Number(iso.slice(5, 7)) });
+    const a = ym(avant), c = ym(courant);
+    if (missingPayslips(data, a.year, a.month).length) return a;
+    if (missingPayslips(data, c.year, c.month).length || payslipsOf(data, c.year, c.month).length) {
+      if (!payslipsOf(data, a.year, a.month).length || missingPayslips(data, c.year, c.month).length) return c;
+    }
+    return a;
   }
 
   // Le bulletin imprimé. Même langage visuel que les factures (accent de la société, cases claires),
@@ -2399,6 +2420,7 @@
       <div class="kv"><span>Jours ouvrables</span><span>${pct(c.workedDays)}</span></div>
       ${c.absentDays ? `<div class="kv"><span>Jours d'absence</span><span>${pct(c.absentDays)}</span></div>` : ''}
       <div class="kv"><span>Salaire de base</span><span>${fmt(c.baseGross)}</span></div>
+      ${slip.prorata ? `<div class="kv"><span>Proratisé</span><span>${escapeHtml(slip.prorata.motif)} · ${pct(slip.prorata.jours)} j sur ${pct(slip.prorata.sur)}</span></div>` : ''}
       <div class="kv"><span>Payé le</span><span>${slip.paidDate ? fmtDate(slip.paidDate) : '—'}</span></div>
       ${slip.method ? `<div class="kv"><span>Mode</span><span>${escapeHtml((PAYMENT_METHODS.find(m => m[0] === slip.method) || [, slip.method])[1])}</span></div>` : ''}
     </div>
@@ -2559,7 +2581,30 @@
     const deductions = advancesOf(data, employee.id).filter(a => !a.done && a.date <= `${year}-${String(month).padStart(2, '0')}-31`)
       .map(a => ({ label: `Remboursement d'avance du ${fmtDate(a.date)}`, amount: round3(Math.min(a.monthly || a.remaining, a.remaining)), advanceId: a.id }))
       .filter(d => d.amount > 0);
-    return { gross: employee.grossSalary, workedDays: Number(s.workedDays) || 26, absentDays, bonuses: [], deductions };
+    // 10.12.0 — une entrée ou une sortie en cours de mois se PRORATISE. Le brut de la fiche était
+    // repris en entier : un ouvrier embauché le 24 septembre recevait un mois plein pour six jours, et
+    // celui qui part le 5 aussi. Les jours hors contrat se comptent en jours ouvrables (le repos
+    // hebdomadaire des barèmes), sur la base des jours ouvrables du mois réglée dans les barèmes.
+    // Le brut proposé reste MODIFIABLE, et `prorata` dit d'où il vient. À VÉRIFIER avec le comptable :
+    // la méthode de proratisation retenue (jours ouvrables, calendaires ou 30e).
+    const total = Number(s.workedDays) || 26;
+    const first = `${year}-${String(month).padStart(2, '0')}-01`;
+    const last = addDays(first, daysInMonth(year, month) - 1);
+    let hors = 0;
+    const motifs = [];
+    if (employee.hireDate && employee.hireDate > first && employee.hireDate <= last) {
+      hors += workingDays(first, addDays(employee.hireDate, -1), off);
+      motifs.push(`entrée le ${fmtDate(employee.hireDate)}`);
+    }
+    if (employee.endDate && employee.endDate >= first && employee.endDate < last) {
+      hors += workingDays(addDays(employee.endDate, 1), last, off);
+      motifs.push(`sortie le ${fmtDate(employee.endDate)}`);
+    }
+    hors = Math.min(hors, total);
+    const brutFiche = round3(Number(employee.grossSalary) || 0);
+    const gross = hors ? round3(brutFiche * (total - hors) / total) : employee.grossSalary;
+    const prorata = hors ? { jours: round3(total - hors), sur: total, motif: motifs.join(', '), brutFiche, brut: gross } : null;
+    return { gross, workedDays: total, absentDays, bonuses: [], deductions, prorata };
   }
 
   // ---------- documents du personnel (5.1.0) ----------
@@ -6969,7 +7014,7 @@
     DEFAULT_ASSET_CLASSES, assetClassLabel, assetClassYears, days360, assetSchedule, assetYear,
     assetCumulated, assetNBV, disposalResult, assetsList, assetTotals, assetsToCreate, depreciationFor,
     cappedCumulated,
-    MOVE_SOURCES, SOURCES_SORTIE, qteMouvement, moveSourceLabel, trackedItems, itemOfLine, stockMovements, runningStock, stockOf,
+    moisDePaie, MOVE_SOURCES, SOURCES_SORTIE, qteMouvement, moveSourceLabel, trackedItems, itemOfLine, stockMovements, runningStock, stockOf,
     stockList, stockTotals, stockJournal, inventoryDiff, stockAlerts, stockImpact, costOfGoodsSold,
     ocrNumber, ocrToPurchase,
     CONTRACT_TYPES, contractLabel, DEFAULT_PAYROLL, payrollSettings, irppAnnual, computePayslip, saisiePaieValide,
