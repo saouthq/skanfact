@@ -6268,6 +6268,30 @@
       sauvegardeSeule: !demarrage && !etapes.find(x => x.id === 'sauvegarde').fait };
   }
 
+  // Les RÉUSSITES (10.14.0) : les premières fois qui comptent dans la vie d'une entreprise sur
+  // SkanFact — le premier devis envoyé, la première facture émise, le premier paiement, le premier
+  // paquet parti chez le comptable. Toutes DÉDUITES des données : une réussite qu'on cocherait soi-même
+  // mentirait le jour où on l'a cochée par erreur (7.0.0). L'hôte ne les montre jamais sur l'exemple :
+  // celles d'une entreprise inventée ne sont pas les tiennes.
+  function reussites(data, company, opts) {
+    const d = data || {};
+    const o = opts || {};
+    const docs = d.documents || [];
+    const emise = x => x.number && x.status !== 'brouillon';
+    const liste = [
+      { id: 'fiche', titre: 'Fiche société complète', quoi: 'Tes pièces portent tout ce qu\'une pièce officielle doit porter.', fait: !companyGaps(company).length },
+      { id: 'client', titre: 'Premier client', quoi: 'Ses coordonnées se reportent toutes seules sur chaque pièce.', fait: (d.clients || []).length > 0 },
+      { id: 'devis', titre: 'Premier devis envoyé', quoi: 'Un prix annoncé avant de travailler : c\'est ainsi que presque tout commence.', fait: docs.some(x => x.type === 'devis' && x.status && x.status !== 'brouillon') },
+      { id: 'facture', titre: 'Première facture émise', quoi: 'Numérotée, verrouillée, comptée dans ton chiffre d\'affaires et ta TVA.', fait: docs.some(x => x.type === 'facture' && emise(x)) },
+      { id: 'paiement', titre: 'Premier paiement encaissé', quoi: 'La facture s\'est soldée toute seule, et l\'argent est arrivé dans ta trésorerie.', fait: docs.some(x => (x.payments || []).length > 0) },
+      { id: 'achat', titre: 'Premier achat saisi', quoi: 'La TVA que tu récupères commence à compter.', fait: (d.purchases || []).length > 0 },
+      { id: 'abri', titre: 'Données à l\'abri', quoi: 'Une copie automatique vit hors de cet ordinateur.', fait: !!o.copieExterne },
+      { id: 'comptable', titre: 'Premier paquet au comptable', quoi: 'Ton comptable a reçu ton mois, déjà écrit : zéro ressaisie.', fait: (d.packs || []).length > 0 },
+      { id: 'cloture', titre: 'Premier mois clôturé', quoi: 'Un mois déclaré, et qui ne bougera plus.', fait: !!d.closedUntil }
+    ];
+    return { liste, faites: liste.filter(x => x.fait).length, total: liste.length };
+  }
+
   // « a », « a et b », « a, b et c » — parce qu'« il manque le matricule fiscal, le RIB » se voit.
   function liste(mots) {
     const m = (mots || []).filter(Boolean);
@@ -7281,7 +7305,7 @@
     amountToWords, intToWords, intToWordsEn, documentHtml, fitToPage, paginate, pageCount,
     MODULES, PAGES, moduleById, pageById, pageTitle, moduleCount, moduleCounts, modulesRevenus, moduleOn, moduleWhy, navPages, familleNavOuverte, FAMILLES_OUVERTES_AU_DEBUT,
     sousModuleOn, sousModuleById, sousModules, OPTION_LABELS,
-    MODULES_PAR_ACTIVITE, modulesSuggeres, wipeData, rendreLesEmprunts, estDemo, exemplePerime, firstSteps, liste, defaultVat, seuilRetenue, newLine,
+    MODULES_PAR_ACTIVITE, modulesSuggeres, wipeData, rendreLesEmprunts, estDemo, exemplePerime, firstSteps, reussites, liste, defaultVat, seuilRetenue, newLine,
     canalDe, estBeta, pastilleLicence, empreinteCabinet, licencesDuCabinet,
     LICENCE_MOTIFS, prorataOffre, licenceSuivi, licencesAFaire,
     EXPORT_CONSOLE_DELAI, exportConsoleAFaire,

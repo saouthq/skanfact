@@ -76,6 +76,9 @@
              filtrage du menu inoffensif. Le pied est en margin-top:auto : il ne défile jamais. -->
         <a href="#/modules" data-route="modules" class="foot-link"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M17.5 14v7M14 17.5h7"/></svg>Tous les modules</a>
         <a href="#/parametres" data-route="parametres" class="foot-link"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>Paramètres</a>
+        <!-- 10.14.0 — « Me guider » : la visite guidée, là où l'on cherche de l'aide, et au même
+             endroit sur toutes les pages. L'Aide explique ; « Me guider » MONTRE où cliquer. -->
+        <a href="#/guide" data-route="guide" class="foot-link"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z"/></svg>Me guider</a>
         <a href="#/aide" data-route="aide" class="foot-link"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.2 9.2a2.9 2.9 0 0 1 5.6 1c0 1.9-2.8 2.4-2.8 4"/><path d="M12 17.5v.01"/></svg>Aide</a>
         <div class="app-version" id="app-version"></div>
       </div>
@@ -103,6 +106,9 @@
   <script src="reglages.js"></script>
   <!-- L'écran des mises à jour, le même dans les deux applications (voir majui.js). -->
   <script src="majui.js"></script>
+  <!-- La visite guidée (10.14.0) : le moteur, sans métier, puis le contenu de cette application. -->
+  <script src="visite.js"></script>
+  <script src="visites.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

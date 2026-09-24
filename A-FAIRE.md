@@ -228,6 +228,39 @@ Constats de l'audit du 22/09/2026 restés hors de la 10.6.0.
   passe **avant la première vente**, cf. `QUESTIONS.md` : un expert-comptable ne clique pas sur
   « Exécuter quand même »), et l'export TEIF si l'e-facture devient obligatoire.
 
+## 4 bis. Reporté le 24/09/2026 : ce qui vient après la visite guidée
+
+Skander a validé l'inventaire du 24/09 et choisi l'ordre : **d'abord la visite guidée complète**
+(10.14.0), avec l'exemple sur cinq ans et le mode exemple rassurant. Le reste attend ici, dans
+l'ordre proposé.
+
+- **L'assistant de démarrage (entreprise)** : le logo, le cachet et la couleur avec un aperçu du vrai
+  document pendant qu'on les choisit ; « où en est ta numérotation » (continuer à FAC-2026-048 et non
+  repartir à 001) ; importer ses clients et son catalogue depuis un tableur ; « j'ai déjà une clé de
+  licence » et « je rejoins un dossier partagé » dès le départ ; le comptable (nom, adresse,
+  appairage) ; le compte bancaire créé depuis le RIB saisi, avec son solde de départ ; le mot de passe
+  proposé à l'étape Sauvegarde ; la façon d'envoyer ses mails ; un dernier écran « que veux-tu faire
+  en premier ? ». Et les quatre défauts vus au test humain :
+  - A1 — « Timbre fiscal par facture ( DT ) » : des espaces autour de la devise.
+  - A2 — les devises proposées par leur code nu (MAD, DZD) sans leur nom.
+  - A3 — « OBLIGATOIRE » en orange dans l'assistant, l'étoile « * » partout ailleurs.
+  - A4 — « 1 / 7 » contre « Écran 2 sur 5 » dans le Cabinet.
+- **L'assistant du Cabinet** : coller sa liste de clients dès le départ, régler la saisie, déclarer
+  les collaborateurs, et dire comment le fichier d'appairage part chez les clients.
+- **La visite guidée du Cabinet** : la 10.14.0 couvre l'app entreprise ; le moteur est partagé, le
+  contenu du Cabinet reste à écrire.
+- **Le paiement dans l'application** (bêta obligatoire : argent et clés) : « Acheter » et
+  « Renouveler » qui ouvrent la page de paiement préremplie (offre, matricule) et une clé récupérée
+  toute seule après le paiement, par une référence que l'application a elle-même créée — jamais par
+  le matricule, qui est public ; sans réseau, le mail reste. Une licence achetée pendant l'essai
+  démarre-t-elle au paiement ou à la fin de l'essai (décision de Skander). Et le remboursement d'un
+  trop-perçu, avec le « reste à payer » net (§ 4 ci-dessus).
+- **Ne jamais se perdre** : les 78 titres « Confirmation » à écrire geste par geste, « émise » au lieu
+  de « envoyée », H-E30, les barres qui passent sur deux rangées, et les restes de la console (§ 3).
+- **Les tests humains mis en pause** le 24/09 pour la visite : l'app entreprise (achats, stock, biens,
+  trésorerie, paie, comptabilité, paramètres, données) et le Cabinet en entier. Les 55 parcours de la
+  10.13.0-beta.1 tournaient au même moment.
+
 ## 5. Les dettes d'outillage
 
 - **`skanfact.tn` est injoignable depuis une session Claude** (le proxy le bloque, `api.skanfact.tn`

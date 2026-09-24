@@ -14415,8 +14415,14 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
 
     // Un jeu de données qui change tout seul sans un mot ferait douter de tout le reste : les deux
     // bandeaux d'exemple le disent, et chacun rassure sur ce qui n'a PAS bougé.
-    assert.ok(/exempleRefait[\s\S]{0,400}Tes données d'avant l'exemple sont intactes/.test(app),
-      'le bandeau de l\'app entreprise doit annoncer le rattrapage');
+    // 10.14.0 — le bandeau est devenu un bac à sable : la phrase qui rassure (« tes vraies données
+    // sont à l'abri ») y est PERMANENTE, donc aussi quand il annonce le rattrapage. La règle se lit
+    // dans le corps de `bandeauDemo` — l'annonce ET la phrase qui rassure —, plus à 400 caractères
+    // d'un mot : la phrase a changé de place, pas de sens.
+    const bd = app.slice(app.indexOf('function bandeauDemo('), app.indexOf('async function loadDemo('));
+    assert.ok(bd.length > 300 && bd.length < 4000, 'tranche du bandeau inattendue : ' + bd.length);
+    assert.ok(/exempleRefait[\s\S]{0,300}Il vient d'être refait/.test(bd), 'le bandeau de l\'app entreprise doit annoncer le rattrapage');
+    assert.ok(/tes vraies données sont à l'abri/.test(bd.replace(/\s+/g, ' ')), 'et dire que les vraies données n\'ont pas bougé');
     const cabr = lireSource('src', 'cabinet', 'renderer', 'app.js');
     assert.ok(/exempleRefait[\s\S]{0,400}Tes vrais dossiers n'ont pas bougé/.test(cabr),
       'le bandeau de l\'app cabinet doit annoncer le rattrapage');
@@ -14450,6 +14456,7 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
   require('./suites/audit-ux-cabinet.js')({ t, assert, lireSource });
   require('./suites/production.js')({ t, assert, lireSource });
   require('./suites/exemple-cinq-ans.js')({ t, assert, lireSource });
+  require('./suites/visites.js')({ t, assert, lireSource });
   // Celle-ci reçoit `ta` en plus : elle interroge le vrai worker sur une vraie base SQLite.
   await require('./suites/plateforme-gestion.js')({ t, ta, assert, lireSource });
   await require('./suites/paiement.js')({ ta, assert });

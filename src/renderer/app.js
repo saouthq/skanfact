@@ -1832,7 +1832,7 @@
   }
 
   // Tant que le jeu d'exemple est chargé, l'application le DIT — sur chaque page, en permanence.
-  // Sans ça, rien à l'écran ne distingue treize mois d'activité fictive de vraies données : on peut
+  // Sans ça, rien à l'écran ne distingue cinq ans d'activité fictive de vraies données : on peut
   // relancer un client qui n'existe pas, ou pire, envoyer une facture au nom d'une société inventée.
   // Le bandeau porte la sortie, parce que « revenir à mes données » passait par Paramètres →
   // Sécurité et données → Importer → choisir le bon fichier dans le dossier des sauvegardes.
@@ -1879,22 +1879,35 @@
   function bandeauDemo() {
     if (!data || !C.estDemo(data)) return;
     const el = document.createElement('div');
+    // 10.14.0 — un BAC À SABLE, pas une alerte. Skander : « il faut que l'utilisateur n'ait pas peur
+    // ni ne se sente perdu quand il joue avec le jeu de données ». L'orange disait « attention » à
+    // chaque page, et « N'envoie rien à personne » se lisait comme une menace. Le bandeau dit
+    // maintenant ce qu'on PEUT faire (tout), ce qui est à l'abri (tes données), et les deux portes :
+    // se faire guider, et revenir chez soi.
     el.className = 'banner demo-banner';
-    el.innerHTML = `<span><b>Jeu d'exemple</b> — ce ne sont pas tes données : treize mois d'activité fictive,
-      pour regarder comment l'application fonctionne. N'envoie rien à personne depuis ici.${exempleRefait
+    const enVisite = typeof Visite !== 'undefined' && Visite.enCours();
+    el.innerHTML = `<span class="db-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 3h6M10 3v6.2L4.8 18a2 2 0 0 0 1.7 3h11a2 2 0 0 0 1.7-3L14 9.2V3"/><path d="M7.5 15h9"/></svg></span>
+      <span class="db-txt"><b>Tu explores une entreprise d'exemple</b> — cinq ans d'activité inventée. Clique, ouvre, modifie :
+      rien de ce que tu fais ici ne compte, et tes vraies données sont à l'abri.${exempleRefait
         ? ` <b>Il vient d'être refait</b> ${exempleRefait.raison === 'version' ? `pour la version ${h(exempleRefait.version)}` : 'sur le mois en cours'} :
-          un exemple qui date montre des retards qui n'existent pas. Tes données d'avant l'exemple sont intactes.`
+          un exemple qui date montre des retards qui n'existent pas.`
         : ''}</span>
-      <button class="btn btn-sm" id="demo-out">Repartir de mes données</button>`;
+      <span class="db-actions">${enVisite ? '' : `<button class="btn btn-sm" id="demo-visite">${decouverteEnPause() ? 'Reprendre la visite' : 'Visite guidée'}</button>`}
+      <button class="btn btn-sm" id="demo-out" title="Tes données d'avant l'exemple reviennent ; s'il n'y en avait pas, tu repars d'une entreprise vide">Quitter l'exemple</button></span>`;
     const view = $('#view');
     view.insertBefore(el, view.firstChild);
     $('#demo-out').onclick = demoSortie;
+    // Une découverte laissée en route REPREND là où elle s'était arrêtée : la recommencer au début
+    // ferait relire dix bulles déjà lues.
+    if ($('#demo-visite')) $('#demo-visite').onclick = () => { const r = decouverteEnPause(); lancerVisite(visiteParId('decouvrir'), r ? r.i : 0); };
   }
 
   // Charger l'exemple. Sorti des Paramètres pour que l'accueil puisse le proposer vraiment : le
   // bouton « Voir un exemple rempli » du tableau de bord n'ouvrait pas l'exemple, il déposait
   // l'utilisateur dans une page à huit onglets, devant un encadré rouge « Zone sensible », avec un
   // toast qui nommait l'onglet où chercher. C'est le contraire d'un exemple.
+  // Rend `true` quand l'exemple est chargé, `false` quand on a renoncé : la visite guidée de
+  // découverte (10.14.0) ne se lance que sur un exemple réellement là.
   async function loadDemo() {
     // `hasData` ne regardait que les documents et les clients : DEUX listes sur vingt. L'assistant
     // en remplit une troisième — le catalogue du métier déclaré — et quelqu'un qui venait de finir
@@ -1903,19 +1916,23 @@
     // côté avant ». Mêmes victimes : fournisseurs, achats, salariés, immobilisations, comptes.
     // On DÉDUIT de `LIST_LABELS`, comme « Tout effacer » le fait déjà — une liste écrite à la main
     // dérive à chaque module ajouté, c'est la leçon de la 7.0.0.
-    const remplies = Object.keys(C.LIST_LABELS)
-      .filter(k => Array.isArray(data[k]) && data[k].length)
-      .map(k => C.compteListe(k, data[k].length));
-    if (remplies.length && !await confirmDialog(
+    const listes = Object.keys(C.LIST_LABELS).filter(k => Array.isArray(data[k]) && data[k].length);
+    const remplies = listes.map(k => C.compteListe(k, data[k].length));
+    // Ce que l'ASSISTANT a posé (le catalogue d'exemple du métier, marqué `fromSetup`) n'est pas une
+    // donnée de la personne (7.18.0, 10.12.0) : lui demander s'il faut « remplacer tes données »
+    // juste après l'assistant, pour quatre prestations qu'elle n'a pas écrites, fait peur pour rien.
+    // La sauvegarde est prise quand même, et « Quitter l'exemple » les rend.
+    const seulementAssistant = listes.length === 1 && listes[0] === 'catalog' && data.catalog.every(c => c.fromSetup);
+    if (remplies.length && !seulementAssistant && !await confirmDialog(
       `Remplacer tes données par le jeu d'exemple ?\n\nCe qui sera remplacé : ${C.liste(remplies)}.\n\n`
-      + 'Une sauvegarde est prise juste avant, et le bandeau orange te les rendra d\'un clic. '
+      + 'Une sauvegarde est prise juste avant, et le bandeau de l\'exemple te les rendra d\'un clic (« Quitter l\'exemple »). '
       + 'Tes paramètres société (nom, logo, cachet, thème…) sont conservés.',
-      'Charger l\'exemple', false)) return;
+      'Charger l\'exemple', false)) return false;
     // Toutes les données sont remplacées : le garde-fou de la page en cours n'a plus d'objet, et
     // laisser sa question surgir ensuite revenait à demander s'il faut enregistrer ce qu'on vient
     // d'effacer sciemment. Posé AVANT la sauvegarde : dans l'autre ordre, refuser cette seconde
     // question laissait une sauvegarde orpheline. C'est l'ordre de « Tout effacer ».
-    if (!await closedWipeOk('Charger l\'exemple remplace tout.')) return;
+    if (!await closedWipeOk('Charger l\'exemple remplace tout.')) return false;
     // La fenêtre promet que « tes paramètres société sont conservés » : encore faut-il qu'ils
     // soient enregistrés. Fait AVANT la sauvegarde, sinon le filet de retour ne les contiendrait pas.
     enregistrerEnCours();
@@ -1932,6 +1949,7 @@
     toast('Jeu de démonstration chargé');
     navigate('#/dashboard');
     render();
+    return true;
   }
 
   // La sortie de l'exemple. Deux chemins, et l'app dit lequel elle propose :
@@ -1958,11 +1976,11 @@
         ? `La sauvegarde d'avant l'exemple est illisible (${(vu && vu.error) || 'raison inconnue'}).\n\n`
           + 'On peut effacer l\'exemple, mais tes données d\'avant ne reviendront pas d\'ici : elles sont dans le dossier des sauvegardes, et « Importer » sait les relire.'
         : 'Il n\'y avait aucune donnée avant l\'exemple : l\'application repart vide, avec ta fiche société à remplir.';
-    if (!await confirmDialog(msg, ok ? 'Remettre mes données' : 'Effacer l\'exemple', !ok)) return;
+    if (!await confirmDialog(msg, ok ? 'Remettre mes données' : 'Effacer l\'exemple', !ok)) return false;
     clearGuard();
     if (ok) {
       const r = await bridge.restoreBackup(avant.name);
-      if (!r || !r.ok) return toast('Restauration impossible : ' + ((r && r.error) || 'sauvegarde illisible'), true);
+      if (!r || !r.ok) { toast('Restauration impossible : ' + ((r && r.error) || 'sauvegarde illisible'), true); return false; }
       data = migrate(r.data);
       toast('Tes données sont revenues');
     } else {
@@ -1975,6 +1993,8 @@
     settingsTab = 'societe';
     navigate(data.company.name ? '#/dashboard' : '#/parametres');
     render();
+    // `true` : on est sorti. La visite « Démarrer dans ma vraie entreprise » ne se lance que là.
+    return true;
   }
 
   function render(keepScroll) {
@@ -2025,6 +2045,7 @@
     bandeauDemo();                   // « ce ne sont pas tes données » — sur chaque page, en permanence
     bandeauModule(active);           // « cette page n'est pas dans ton menu » — et le bouton pour l'y mettre
     bandeauOffre(active);            // « ce module fait partie de l'offre Entreprise » — lecture libre, création fermée
+    bandeauVisite(name);             // « première fois sur cette page ? » — sa visite, en une minute (10.14.0)
     bindDateFields(view);            // champs date posés par la page qui vient d'être dessinée
     bindWithholdingFields(view);     // « Autre taux… » des retenues à la source, même principe
     bindRibFields(view);             // la clé d'un RIB, vérifiée pendant la frappe (10.12.0)
@@ -2136,24 +2157,61 @@
   // « crée ton premier client » à quelqu'un qui a deux ans d'activité — et reprendrait tout l'écran,
   // exactement le défaut qu'il corrige.
   const premiersPasVisibles = () => C.firstSteps(data, company(), { copieExterne }).demarrage;
+  // La visite guidée de chaque étape (10.14.0) : le bouton de l'étape mène au bon endroit, « Me
+  // guider » y mène EN MONTRANT où cliquer, clic par clic.
+  const PAS_VISITES = { societe: 'societe', client: 'premier-client', catalogue: 'article', devis: 'premier-devis',
+    envoiDevis: 'envoyer', factures: 'devis-facture', sauvegarde: 'sauvegarde' };
+  // L'accueil de la toute première fois (10.14.0). Skander : « appliquer la visite guidée au début,
+  // sur un exemple de données ; et quand il passe à sa vraie entreprise, la visite pour le guider
+  // dans chaque étape ». Il vit DANS le panneau des premiers pas, pas dans une fenêtre : une fenêtre
+  // posée à la fin de l'assistant se fermerait d'un Échap sans avoir été lue, et bloquerait l'écran
+  // qu'elle présente. Il se tait quand la découverte est faite, ou quand on a dit « Non merci ».
+  const accueilVisible = () => { const et = visitesEtat(); return !et.faites.decouvrir && !et.accueilVu; };
   function premiersPas() {
     const p = C.firstSteps(data, company(), { copieExterne });
     if (!p.demarrage) return '';
     const suivante = p.etapes.find(e => !e.fait);
-    return `<div class="panel premiers-pas">
+    const accueil = accueilVisible();
+    // L'accueil se présente comme une PORTE, pas comme une alerte : deux grands choix côte à côte,
+    // chacun avec ce qu'il coûte (sa durée) et ce qu'il donne. La durée et le nombre de chapitres se
+    // LISENT sur les visites — un compte recopié à la main mentirait au premier chapitre ajouté.
+    const dec = accueil ? visiteParId('decouvrir') : null, pre = accueil ? visiteParId('premiers-pas') : null;
+    const nChap = dec ? Visite.chapitres(dec.etapes).length : 0;
+    return `${accueil ? `<section class="pp-accueil" aria-labelledby="pp-acc-t">
+        ${ILLUS_ACCUEIL}
+        <div class="pp-acc-intro"><span class="pp-acc-sur">Bienvenue dans SkanFact</span>
+          <h2 id="pp-acc-t">Prends ta gestion en main, en quelques minutes</h2>
+          <p>Deux façons de commencer — et tu peux faire l'une puis l'autre. Je te montre où cliquer, sur ton vrai écran, et j'attends que tu l'aies fait.</p></div>
+        <div class="pp-acc-choix">
+          <article class="pp-choix reco"><span class="pp-choix-badge">Recommandé</span>
+            <span class="pp-choix-ico">${ICONE_DECOUVRIR}</span>
+            <h3>Découvrir avec un exemple</h3>
+            <p>Une entreprise de cinq ans, toute remplie : chaque écran en action, sans rien risquer. Tes données restent à l'abri.</p>
+            <ul class="pp-choix-meta">${dec ? `<li>${h(dec.duree)}</li>` : ''}${nChap ? `<li>${pl(nChap, 'chapitre')}</li>` : ''}</ul>
+            <button type="button" class="btn btn-primary" id="pp-decouvrir">Commencer la découverte</button></article>
+          <article class="pp-choix"><span class="pp-choix-ico">${ICONE_DEMARRER}</span>
+            <h3>Démarrer dans mon entreprise</h3>
+            <p>Je te guide pour chaque premier geste, un clic après l'autre : ta fiche, ton premier client, ton premier devis.</p>
+            <ul class="pp-choix-meta">${pre ? `<li>${h(pre.duree)} pour commencer</li>` : ''}<li>${pl(p.total, 'étape')}</li></ul>
+            <button type="button" class="btn" id="pp-guider">Me guider pas à pas</button></article>
+        </div>
+        <button type="button" class="btn btn-ghost btn-sm" id="pp-plus-tard" title="Les deux restent dans « Me guider », en bas du menu">Non merci, je découvre seul</button>
+      </section>` : ''}<div class="panel premiers-pas">
       <h2>Tes premiers pas <span class="pp-compte">${p.faits} / ${p.total}</span></h2>
       <p class="small muted mb">SkanFact fait beaucoup de choses, mais elles s'enchaînent toujours dans le même ordre.
         Voilà celui-là. Ce panneau disparaît tout seul quand tu l'as parcouru, et se retrouve ensuite dans l'Aide.</p>
       <ol class="pp-list">${p.etapes.map(e => {
         const a = PAS_ACTIONS[e.action];
         const encours = e === suivante;
+        const guide = encours && PAS_VISITES[e.action];
+        // UN seul vert (U-11) : tant que l'accueil propose la découverte, c'est lui l'étape suivante.
         return `<li class="${e.fait ? 'fait' : ''}${encours ? ' encours' : ''}">
           <span class="pp-marque">${e.fait ? '✓' : ''}</span>
           <span class="pp-txt"><strong>${h(e.titre)}</strong><span class="small muted">${h(e.quoi)}</span></span>
-          <span class="pp-go">${!e.fait && a ? `<button class="btn btn-sm ${encours ? 'btn-primary' : ''}" data-pas="${h(e.action)}">${h(a[0])}</button>` : ''}</span>
+          <span class="pp-go">${!e.fait && guide ? `<button type="button" class="pp-guide" data-pas-guide="${h(guide)}" title="Je te montre où cliquer, étape par étape">${ICONE_GUIDE}Me guider</button>` : ''}${!e.fait && a ? `<button class="btn btn-sm ${encours && !accueil ? 'btn-primary' : ''}" data-pas="${h(e.action)}">${h(a[0])}</button>` : ''}</span>
         </li>`;
       }).join('')}</ol>
-      <p class="small muted mt">${helpLink('demarrer', 'Ces sept étapes, expliquées en détail')}</p>
+      <p class="small muted mt">${helpLink('demarrer', 'Ces étapes, expliquées en détail')}</p>
     </div>`;
   }
   function bindPremiersPas() {
@@ -2161,6 +2219,14 @@
       const a = PAS_ACTIONS[b.dataset.pas];
       if (a) a[1]();
     });
+    $$('[data-pas-guide]').forEach(b => b.onclick = () => lancerVisite(visiteParId(b.dataset.pasGuide)));
+    if ($('#pp-decouvrir')) $('#pp-decouvrir').onclick = () => lancerVisite(visiteParId('decouvrir'));
+    if ($('#pp-guider')) $('#pp-guider').onclick = () => { visitesPoser(e => { e.accueilVu = true; }); lancerVisite(visiteParId('premiers-pas')); };
+    if ($('#pp-plus-tard')) $('#pp-plus-tard').onclick = () => {
+      visitesPoser(e => { e.accueilVu = true; });
+      toast('D\'accord. La découverte et chaque visite guidée restent dans « Me guider », en bas du menu.');
+      render(true);
+    };
   }
 
   // Le lien vers l'article d'aide qui explique l'écran où l'on est. Trente-deux articles existaient,
@@ -4970,7 +5036,7 @@
     const c = await choiceDialog('Ce sont des données d\'exemple',
       `${quoi} depuis le jeu d'exemple : ces clients, ces adresses et ces montants sont inventés — `
       + 'et les adresses ressemblent à de vraies adresses. Tes vraies données sont mises de côté, tu peux y revenir maintenant.',
-      'Repartir de mes données', 'Continuer quand même');
+      'Quitter l\'exemple', 'Continuer quand même');
     if (c === 'a') { demoSortie(); return true; }
     return c !== 'b';                          // fermer la fenêtre vaut « ne rien faire »
   }
@@ -5999,7 +6065,7 @@
       ['Nouveau devis', () => navigate('#/doc/new/devis')], ['Nouvelle facture', () => navigate('#/doc/new/facture')], ['Nouvel avoir', () => navigate('#/doc/new/avoir')],
       ['Accueil', () => navigate('#/dashboard')], ['Devis', () => navigate('#/devis')], ['Factures', () => navigate('#/factures')], ['Relances', () => navigate('#/relances')],
       ['Facturation récurrente (contrats qui refacturent)', () => navigate('#/contrats')], ['Achats et dépenses', () => navigate('#/achats')], ['Nouvelle facture d\'achat', () => navigate('#/achat/new')], ['Nouvelle dépense', () => navigate('#/achat/new/-/depense')], ['Fournisseurs', () => navigate('#/fournisseurs')], ['Trésorerie', () => navigate('#/tresorerie')], ['Marges et rentabilité', () => navigate('#/marges')], ['Paie', () => navigate('#/paie')], ['Nouveau salarié', () => employeeForm(null, () => render())], ['Stock', () => navigate('#/stock')], ['Garanties', () => navigate('#/garanties')], ['Entrée de numéros de série', () => serialIntakeForm(null, () => render())], ['Mouvement de stock', () => adjustForm(null, () => render())], ['Immobilisations', () => navigate('#/immos')], ['Nouvelle immobilisation', () => assetForm(null, a => navigate('#/immo/' + a.id))], ['Nouvelle affaire', () => projectForm(null, p => navigate('#/affaire/' + p.id))], ['Nouveau fournisseur', () => supplierForm(null, () => render())], ['Proformas', () => navigate('#/autres/proforma')], ['Bons de commande', () => navigate('#/autres/commande')], ['Bons de livraison', () => navigate('#/autres/livraison')], ['Contrats à signer', () => navigate('#/autres/contrat')], ['Clients', () => navigate('#/clients')], ['Catalogue', () => navigate('#/catalogue')], ['Statistiques', () => navigate('#/stats')], ['Comptabilité', () => navigate('#/compta')], ['Paramètres', () => navigate('#/parametres')],
-      ['Aide et guide', () => navigate('#/aide')], ['Nouveau client', () => clientForm(null, () => render())],
+      ['Aide et guide', () => navigate('#/aide')], ['Me guider (visites guidées)', () => navigate('#/guide')], ['Nouveau client', () => clientForm(null, () => render())],
       // La palette liste TOUTES les pages, y compris celles des modules retirés du menu : c'est ce
       // qui rend le filtrage de la barre latérale inoffensif.
       ['Tous les modules', () => navigate('#/modules')],
@@ -6038,6 +6104,21 @@
       const mots = words.filter(w => w !== 'aide');
       return (mots.length ? aideFiltre(G.ARTICLES, mots.join(' ')).slice(0, 4) : G.ARTICLES).map(aidePalette);
     };
+    // Les visites guidées (10.14.0) : « comment on émet une facture » trouve la visite qui la fait
+    // FAIRE, clic par clic — pas seulement l'article qui l'explique. Trois au plus, après ce qu'on
+    // ouvre et avant l'Aide. Les mots d'une question (« comment », « je veux ») ne comptent pas : ils
+    // ne sont dans aucun titre, et exiger chacun d'eux ne rendrait jamais rien.
+    const MOTS_VIDES = new Set(['comment', 'je', 'j', 'veux', 'voudrais', 'on', 'fait', 'fais', 'un', 'une', 'le', 'la', 'les', 'l', 'de', 'des', 'du', 'd', 'mon', 'ma', 'mes', 'ton', 'ta', 'tes', 'a', 'au', 'aux', 'et', 'pour', 'en', 'est', 'ce', 'que', 'qu', 'faut', 'il', 'guide', 'guider', 'visite', 'me', 'moi']);
+    const visitesPal = visitesVisibles().filter(v => !visiteManque(v)).map(v => ({
+      kind: 'Me guider', main: v.titre, sub: v.resume,
+      text: C.plier(`me guider visite guidée ${v.titre} ${v.resume || ''} ${(v.mots || []).join(' ')}`),
+      run: () => lancerVisite(v)
+    }));
+    const visitesPour = words => {
+      const utiles = words.map(w => w.replace(/[?!.,;:'’]/g, '')).filter(w => w && !MOTS_VIDES.has(w));
+      if (!utiles.length) return words.some(w => /^(guid|visit)/.test(w)) ? visitesPal.slice(0, 3) : [];
+      return visitesPal.filter(x => utiles.every(w => x.text.includes(w))).slice(0, 3);
+    };
     const docs = data.documents.map(d => { const cn = clientName(d.clientId); return { kind: C.TITLES[d.type], main: d.number || 'Brouillon', sub: `${cn}${d.subject ? ' — ' + d.subject : ''}`, amt: C.money(montantDeListe(d), docCur(d)), text: `${d.number} ${cn} ${d.subject || ''} ${d.type}`.toLowerCase(), run: () => navigate('#/doc/' + d.id), ts: d.createdAt || 0 }; });
     const clients = data.clients.map(c => ({ kind: 'Client', main: c.name, sub: [c.contact, c.email, c.phone].filter(Boolean).join(' · '), text: `${c.name} ${c.contact || ''} ${c.email || ''} ${c.phone || ''} ${c.matricule || ''}`.toLowerCase(), run: () => navigate('#/client/' + c.id) }));
     const items = data.catalog.map(c => ({ kind: 'Prestation', main: c.label, sub: C.money(c.unitPrice, cur) + ' HT', text: `${c.label} ${c.description || ''}`.toLowerCase(), run: () => navigate('#/catalogue') }));
@@ -6049,7 +6130,12 @@
       const q = C.plier(input.value.trim());
       const words = q.split(/\s+/).filter(Boolean);
       const plie = x => x.plie || (x.plie = C.plier(x.text));
-      shown = (q ? [...all.filter(x => words.every(w => plie(x).includes(w))), ...aidesPour(words)] : [...docs.slice().sort((a, b) => b.ts - a.ts).slice(0, 6), ...actions.slice(0, 4)]).slice(0, 12);
+      // Les visites passent AVANT la troncature à douze : sans ça, « facture » (des centaines de
+      // pièces sur cinq ans) ne laisserait jamais la place à « Émettre une facture ».
+      const trouves = q ? all.filter(x => words.every(w => plie(x).includes(w))) : [];
+      const guides = q ? visitesPour(words) : [];
+      shown = q ? [...trouves.slice(0, 12 - guides.length), ...guides, ...aidesPour(words)].slice(0, 12)
+        : [...docs.slice().sort((a, b) => b.ts - a.ts).slice(0, 6), ...actions.slice(0, 4)];
       if (q) shown.sort((a, b) => (plie(b).startsWith(q) ? 1 : 0) - (plie(a).startsWith(q) ? 1 : 0));
       sel = Math.min(sel, Math.max(0, shown.length - 1));
       res.innerHTML = shown.length ? shown.map((x, i) => `<div class="res ${i === sel ? 'sel' : ''}" data-i="${i}"><span class="kind">${h(x.kind)}</span><span class="main">${h(x.main)}${x.sub ? `<span class="sub">${h(x.sub)}</span>` : ''}</span>${x.amt ? `<span class="amt">${h(x.amt)}</span>` : ''}</div>`).join('') : `<div class="res"><span class="main muted">Aucun résultat</span></div>`;
@@ -6081,7 +6167,9 @@
       if (closeOverlay) { closeOverlay(); return; }   // calendrier ou liste déroulante ouverte
       if ($$('.more-list').some(l => !l.hidden)) { closeMenus(); return; }
       if (!$('#palette-root').hidden) { closePalette(); return; }
-      if (modalClose) modalClose();
+      if (modalClose) { modalClose(); return; }
+      // Rien d'autre à fermer : Échap met la visite guidée en pause (on la reprend dans « Me guider »).
+      if (Visite.enCours()) Visite.quitter();
     }
   });
   document.addEventListener('click', e => { if (!e.target.closest('.more')) closeMenus(); });
@@ -12368,8 +12456,8 @@
       ${panneau('p-exemple', info('data.demo'))}
         <div class="dz-row">
           <div><b>Charger le jeu d'exemple</b>
-            <div class="small muted">Remplace tes données par treize mois d'activité fictive, pour cliquer partout sans rien casser.
-            Une sauvegarde est prise avant, ta fiche société est conservée, et un bandeau orange te rendra tes données d'un clic.</div></div>
+            <div class="small muted">Remplace tes données par cinq ans d'activité fictive, pour cliquer partout sans rien casser.
+            Une sauvegarde est prise avant, ta fiche société est conservée, et le bandeau de l'exemple te rendra tes données d'un clic.</div></div>
           <button class="btn" id="load-demo">Charger l'exemple</button>
         </div>
       </div>
@@ -13029,6 +13117,429 @@
     return { corps, sommaire };
   }
 
+  // ---------- La visite guidée (10.14.0) ----------
+  // Skander : « quelqu'un qui découvre l'application n'a pas envie de lire la page Aide ; il faut
+  // pouvoir toujours le guider pour chaque étape afin de faire quelque chose, et couvrir toute
+  // l'app ». Le moteur vit dans `visite.js` (sans métier), le contenu dans `visites.js` ; ici, ce
+  // qui les relie à l'application : la navigation, la progression, et la page « Me guider ».
+  //
+  // La progression décrit la PERSONNE, pas l'entreprise : elle vit sur ce poste (`prefs`), comme la
+  // taille des pages, et ne part ni dans les données ni dans les sauvegardes — changer d'entreprise
+  // ne fait pas redécouvrir SkanFact.
+  const VISITES_PREF = 'visites';
+  const visitesEtat = () => Object.assign({ faites: {}, reprise: null, vues: {}, proposer: true }, prefs.get(VISITES_PREF, {}) || {});
+  const visitesPoser = modif => { const e = visitesEtat(); modif(e); prefs.set(VISITES_PREF, e); };
+  let VISITES = null;
+  const visites = () => VISITES || (VISITES = SkanVisites.parcours({
+    data: () => data, premier: premierObjet, estDemo: () => C.estDemo(data), editeur: () => !!licence.editeur, Visite, G
+  }));
+  const visiteParId = id => visites().find(v => v.id === id) || null;
+  // Les visites qui concernent CE poste : celle des licences n'existe que chez l'éditeur.
+  const visitesVisibles = () => visites().filter(v => typeof v.visible !== 'function' || v.visible());
+  const visitePage = route => visiteParId('page-' + route);
+  // La découverte laissée en route, et l'étape où elle reprend — ou null.
+  const decouverteEnPause = () => { const r = visitesEtat().reprise; return r && r.id === 'decouvrir' ? r : null; };
+
+  // Le premier objet d'une sorte, pour qu'une visite s'ouvre sur quelque chose de VRAI — la fiche
+  // d'un client qui a des pièces, une facture qui attend son paiement — plutôt que sur une page
+  // vide. Choisi dans les données du moment : l'exemple a tout, une entreprise neuve n'a rien, et la
+  // visite dit alors ce qui manque (`manque`) au lieu de s'ouvrir sur le néant.
+  function premierObjet(cle) {
+    if (!data) return null;
+    const docs = data.documents || [];
+    const co = company();
+    const recent = liste => liste.slice().sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')))[0];
+    const lien = (prefixe, x) => (x ? prefixe + x.id : null);
+    const devis = docs.filter(d => d.type === 'devis' && (d.lines || []).length);
+    const factures = docs.filter(d => d.type === 'facture');
+    const st = d => C.effectiveStatus(d, data, co);
+    const plusRempli = (liste, compte) => liste.slice().sort((a, b) => compte(b) - compte(a))[0];
+    switch (cle) {
+      case 'doc':
+      case 'devis': {
+        // Celui qui montre le plus : un devis accepté pas encore facturé porte « Facturer ce devis ».
+        const acceptes = devis.filter(d => d.status === 'accepté' && !piecesDuDevis(d.id).totales.length);
+        return lien('#/doc/', recent(acceptes) || recent(devis.filter(d => d.status === 'envoyé')) || recent(devis));
+      }
+      case 'devisBrouillon': return lien('#/doc/', recent(devis.filter(d => d.status === 'brouillon')));
+      case 'devisAccepte': return lien('#/doc/', recent(devis.filter(d => d.status === 'accepté' && !piecesDuDevis(d.id).totales.length)));
+      case 'factureBrouillon': return lien('#/doc/', recent(factures.filter(d => d.status === 'brouillon')));
+      case 'factureOuverte': return lien('#/doc/', recent(factures.filter(d => ['retard', 'partielle', 'envoyée'].includes(st(d)))));
+      case 'factureEmise': return lien('#/doc/', recent(factures.filter(d => d.status !== 'brouillon' && st(d) !== 'annulée')));
+      case 'client': return lien('#/client/', plusRempli(data.clients || [], c => docs.filter(d => d.clientId === c.id).length));
+      case 'contrat': return lien('#/contrat/', (data.recurring || []).find(r => r.active !== false) || (data.recurring || [])[0]);
+      case 'fournisseur': return lien('#/fournisseur/', plusRempli(data.suppliers || [], s => (data.purchases || []).filter(p => p.supplierId === s.id).length));
+      case 'achat': return lien('#/achat/', recent((data.purchases || []).filter(p => (p.lines || []).length > 1)) || recent(data.purchases || []));
+      case 'affaire': return lien('#/affaire/', plusRempli(data.projects || [], p => docs.filter(d => d.projectId === p.id).length));
+      case 'salarie': return lien('#/salarie/', C.activeEmployees(data)[0] || (data.employees || [])[0]);
+      case 'article': return lien('#/article/', (data.catalog || []).find(c => c.tracked));
+      case 'immo': return lien('#/immo/', (data.assets || []).find(a => !a.disposal) || (data.assets || [])[0]);
+      default: return null;
+    }
+  }
+
+  async function lancerVisite(p, depart) {
+    if (!p) return;
+    // Rien ne reste ouvert par-dessus l'écran qu'on va montrer : la palette, une bulle « i », une
+    // liste déroulante, le sélecteur d'entreprise, un menu.
+    closePalette(); closeInfoPop(); if (closeOverlay) closeOverlay(); fermerDossiers(); closeMenus();
+    // Une visite qui a besoin de ce que les données n'ont pas (une facture à encaisser, un devis à
+    // envoyer) le DIT, et propose celle qui le fabrique : un bouton qui accepte le clic et ne fait
+    // rien est pire qu'un bouton absent (7.0.0). La page « Me guider » éteint déjà ces boutons ;
+    // ce chemin-ci sert à la palette, aux suites et aux bandeaux.
+    const manque = visiteManque(p);
+    if (manque) { expliquerManque(p, manque); return; }
+    // La découverte se fait sur l'EXEMPLE : elle le charge d'abord (avec sa question et sa
+    // sauvegarde), et « Démarrer dans ma vraie entreprise » en sort d'abord. Une visite qui dirait
+    // « tu es dans l'exemple » sur de vraies données, ou l'inverse, mentirait dès sa première bulle.
+    if (p.exemple && !C.estDemo(data) && !await loadDemo()) return;
+    if (p.reel && C.estDemo(data) && !await demoSortie()) return;
+    // La proposition « Première fois sur cette page ? » n'a plus d'objet pendant une visite.
+    const bande = $('#guide-band'); if (bande) bande.remove();
+    Visite.lancer(p, depart || 0);
+    // Le bouton « Visite guidée » du bandeau de l'exemple disparaît pendant la visite.
+    const bv = $('#demo-visite'); if (bv) bv.remove();
+  }
+  // Ce qui manque à une visite pour pouvoir se dérouler, ou null. UNE fonction pour le bouton éteint
+  // de « Me guider » et pour le refus de `lancerVisite` : les deux ne peuvent pas diverger (9.4.5).
+  function visiteManque(p) {
+    if (!p || typeof p.si !== 'function') return null;
+    let ok = true;
+    try { ok = !!p.si(); } catch (_) { ok = false; }
+    return ok ? null : (p.manque || { texte: 'Il faut d\'abord quelque chose à montrer ici.' });
+  }
+  // La première visite qu'on peut FAIRE en remontant ce qui manque : le paiement attend une facture
+  // émise, qui attend un brouillon, qui attend un devis — on propose le devis, pas un bouton éteint
+  // qui renvoie à un autre bouton éteint. Bornée : une chaîne qui boucle ne gèle rien.
+  function visitePossibleAvant(p) {
+    let x = p;
+    for (let n = 0; n < 8; n++) {
+      const m = visiteManque(x);
+      if (!m) return x === p ? null : x;
+      const avant = m.visite && visiteParId(m.visite);
+      if (!avant || avant === x) return null;
+      x = avant;
+    }
+    return null;
+  }
+  function expliquerManque(p, m) {
+    const avant = visitePossibleAvant(p);
+    modal(`<h2>${h(p.titre)}</h2><p>${h(m.texte)}</p>
+      ${avant ? `<p class="small muted">La visite « ${h(avant.titre)} » t'y amène pas à pas.</p>` : ''}
+      <div class="modal-actions"><button class="btn" data-close>Fermer</button>
+        ${avant ? `<button class="btn btn-primary" id="vm-go">${h(avant.titre)}</button>` : ''}</div>`,
+    (root, close) => { const b = $('#vm-go', root); if (b) b.onclick = () => { close(); lancerVisite(avant); }; }, null, { garde: false });
+  }
+  // Les gestes de la dernière bulle d'une visite : « Passer à ma vraie entreprise » à la fin de la
+  // découverte — le moment où l'on a vu, et où l'on veut faire pour de vrai.
+  async function actionDeVisite(id) {
+    if (id === 'passer-au-reel') {
+      if (await demoSortie()) lancerVisite(visiteParId('premiers-pas'));
+    } else if (id === 'rester') {
+      toast('Bonne exploration ! « Quitter l\'exemple », en haut de chaque page, te rend tes données.');
+    }
+  }
+  // L'habillage que le moteur demande (10.14.0, « wow, beau, attirant ») : la couleur d'une visite
+  // (son domaine), son dessin, où en est la personne, la suite à lui proposer, et si la fin se fête.
+  const iconeDomaine = id => { const t = G.THEMES.find(x => x.id === id); return t ? aideIcone(t) : ''; };
+  // Le dessin d'une visite : celui de sa famille quand elle en a un à elle, sinon celui de son domaine.
+  const iconeVisite = (coul, p) => { const propre = p && SkanVisites.iconeDe(p); return propre ? aideIcone({ icon: propre }) : iconeDomaine(coul); };
+  // Le premier pas qui manque, et la visite qui le fait — dans la VRAIE entreprise seulement :
+  // l'exemple a déjà tout, et y proposer « ton premier client » mentirait.
+  function pasSuivant() {
+    if (!data || C.estDemo(data)) return null;
+    const pp = C.firstSteps(data, company(), { copieExterne });
+    if (!pp.demarrage) return null;
+    const e = pp.etapes.find(x => !x.fait && PAS_VISITES[x.action]);
+    const v = e && visiteParId(PAS_VISITES[e.action]);
+    return v && !visiteManque(v) ? { etape: e, visite: v } : null;
+  }
+  const minuscule = t => String(t || '').charAt(0).toLowerCase() + String(t || '').slice(1);
+  const VISITES_DES_PAS = new Set(['premiers-pas', ...Object.values(PAS_VISITES)]);
+  Visite.installer({
+    aller: hash => vers(hash)(),
+    hash: () => location.hash || '#/dashboard',
+    parcours: visiteParId,
+    lancerSuite: p => lancerVisite(p),
+    expliquer: el => SkanVisites.expliquer(el, { G }),
+    zone: el => SkanVisites.zone(el),
+    action: id => actionDeVisite(id),
+    couleur: p => SkanVisites.couleurDe(p),
+    icone: iconeVisite,
+    // « Tes premiers pas » se lisent sur les DONNÉES, comme sur l'accueil : une étape faite sans la
+    // visite compte aussi, et celle qu'on vient de finir compte déjà (ce qu'elle a créé est là). Ils ne
+    // se montrent qu'à la fin d'une visite des premiers pas, et jamais sur l'exemple.
+    progres: p => {
+      if (!data || C.estDemo(data) || !VISITES_DES_PAS.has(p.id)) return null;
+      const pp = C.firstSteps(data, company(), { copieExterne });
+      const suivante = pp.etapes.find(e => !e.fait);
+      return { titre: 'Tes premiers pas', fait: pp.faits, total: pp.total,
+        texte: suivante ? 'Prochaine étape : ' + minuscule(suivante.titre) + '.' : 'Tout est en place : tu sais faire l\'essentiel.' };
+    },
+    // La suite proposée : d'abord le premier pas qui manque (dans la vraie entreprise), puis celles que
+    // la visite propose — sans celles déjà faites, tant qu'il en reste d'autres.
+    suites: p => {
+      const et = visitesEtat();
+      const s = pasSuivant();
+      const ids = [s ? s.visite.id : null, ...(p.suite || [])].filter((id, i, a) => id && id !== p.id && a.indexOf(id) === i && !visiteManque(visiteParId(id) || {}));
+      const neuves = ids.filter(id => !et.faites[id]);
+      return (neuves.length ? neuves : ids).slice(0, 3);
+    },
+    // La fête : la PREMIÈRE fois qu'on réussit un geste (ou la découverte). La visite d'une page n'en
+    // est pas un — des confettis toutes les deux minutes ne veulent plus rien dire.
+    fete: p => p.type !== 'page' && !visitesEtat().faites[p.id],
+    etape: (p, i) => visitesPoser(e => { e.reprise = { id: p.id, i }; }),
+    fini: p => {
+      visitesPoser(e => { e.faites[p.id] = C.today(); if (e.reprise && e.reprise.id === p.id) e.reprise = null; });
+      if (location.hash === '#/guide') render(true);
+    },
+    interrompu: (p, i) => {
+      visitesPoser(e => { e.reprise = { id: p.id, i: Math.max(0, i) }; });
+      toast('Visite mise en pause. Tu la reprends quand tu veux depuis « Me guider », en bas du menu.');
+      if (location.hash === '#/guide') render(true);
+    }
+  });
+
+  // La première fois qu'on ouvre une page, une ligne calme propose sa visite — trois fois au plus,
+  // puis elle se tait : un débutant la voit, quelqu'un qui connaît la page n'en est pas encombré.
+  // Elle se pose SOUS l'en-tête (le titre reste en haut) et avec la page : elle ne surgit pas
+  // après coup sous le curseur (H-E1). Pas de vert : le bouton principal de la page reste le seul.
+  // Elle porte la couleur du domaine de la page, comme la visite qu'elle propose.
+  const VISITE_PROPOSEE_MAX = 3;
+  function bandeauVisite(route) {
+    // Sur « Me guider » et sur l'Aide, la page EST déjà l'invitation : la proposer encore serait du bruit.
+    if (!data || Visite.enCours() || route === 'guide' || route === 'aide') return;
+    const p = visitePage(route);
+    const et = visitesEtat();
+    if (!p || !et.proposer || et.faites[p.id] || (et.vues[route] || 0) >= VISITE_PROPOSEE_MAX) return;
+    const head = $('#view .page-head');
+    if (!head || $('#guide-band')) return;
+    // Deux invitations l'une sous l'autre se contredisent (7.18.0) : quand l'accueil propose déjà
+    // « Nouveau sur SkanFact ? », la visite de la page se tait — et ne compte pas cette ouverture.
+    if ($('#view .pp-accueil')) return;
+    visitesPoser(e => { e.vues[route] = (e.vues[route] || 0) + 1; });
+    const coul = SkanVisites.couleurDe(p);
+    const el = document.createElement('div');
+    el.className = 'guide-band' + (coul ? ' th-' + coul : '');
+    el.id = 'guide-band';
+    el.innerHTML = `<span class="gb-ico" aria-hidden="true">${iconeDomaine(coul) || ICONE_GUIDE}</span>
+      <span class="gb-txt"><b>Première fois sur cette page ?</b> Je te montre à quoi elle sert et ce que fait chaque bouton, en une minute.</span>
+      <button type="button" class="btn btn-sm gb-go" id="gb-go">${ICONE_LECTURE}Visite de la page</button>
+      <button type="button" class="btn btn-ghost btn-sm" id="gb-non" title="Ne plus me proposer la visite de cette page">Plus tard</button>`;
+    head.insertAdjacentElement('afterend', el);
+    $('#gb-go').onclick = () => { el.remove(); lancerVisite(p); };
+    $('#gb-non').onclick = () => { visitesPoser(e => { e.vues[route] = VISITE_PROPOSEE_MAX; }); el.remove(); };
+  }
+  const ICONE_GUIDE = '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z"/></svg>';
+  const ICONE_LECTURE = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M10.2 8.6l5 3.4-5 3.4z"/></svg>';
+  const ICONE_DECOUVRIR = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7l6-3 6 3 6-3v13l-6 3-6-3-6 3z"/><path d="M9 4v13M15 7v13"/></svg>';
+  const ICONE_DEMARRER = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 21V4"/><path d="M5 4h11l-2 4 2 4H5"/></svg>';
+  // L'illustration de l'accueil : une facture, un graphique, une coche. Ses couleurs viennent des
+  // jetons de la feuille de style — elle se retourne toute seule en sombre.
+  const ILLUS_ACCUEIL = `<svg class="pp-acc-deco" viewBox="0 0 250 176" aria-hidden="true" focusable="false">
+    <g transform="translate(128 14) rotate(7 56 42)"><rect class="d-carte" width="112" height="84" rx="13"/>
+      <path class="d-barre" d="M22 64v-12M40 64v-22M58 64v-16M76 64v-30M94 64v-24"/><path class="d-ligne" d="M20 30l20-9 18 6 18-12 18 5"/></g>
+    <g transform="translate(34 28) rotate(-5 62 72)"><rect class="d-carte" width="124" height="144" rx="15"/>
+      <rect class="d-titre" x="16" y="18" width="48" height="9" rx="4.5"/><rect class="d-pale" x="84" y="18" width="24" height="9" rx="4.5"/>
+      <rect class="d-txt" x="16" y="42" width="92" height="6" rx="3"/><rect class="d-txt" x="16" y="56" width="74" height="6" rx="3"/>
+      <rect class="d-txt" x="16" y="70" width="84" height="6" rx="3"/><rect class="d-txt" x="16" y="84" width="58" height="6" rx="3"/>
+      <rect class="d-total" x="16" y="106" width="92" height="22" rx="7"/><rect class="d-titre" x="62" y="114" width="38" height="6" rx="3"/></g>
+    <g transform="translate(150 104)"><circle class="d-ok" cx="24" cy="24" r="23"/><path class="d-coche" d="M13 25l7.5 7.5L35 17"/></g>
+    <path class="d-eclat" d="M24 22l3 7 7 3-7 3-3 7-3-7-7-3 7-3z"/><path class="d-eclat petit" d="M226 118l2 4.5 4.5 2-4.5 2-2 4.5-2-4.5-4.5-2 4.5-2z"/>
+  </svg>`;
+
+  // La page « Me guider » : un centre d'apprentissage, pas une liste de liens. En tête, OÙ J'EN SUIS
+  // (un anneau) et LE prochain geste (un seul vert, U-11) ; puis ce que j'ai déjà réussi, ce que mon
+  // essai a déjà construit, les grands départs, et chaque domaine avec ses visites et sa progression.
+  let guideQ = '';
+  const ICONE_COCHE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+  const ICONE_PAUSE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6v12M15 6v12"/></svg>';
+  const ICONE_CADENAS = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>';
+  // Ce que l'essai a déjà construit — des FAITS tirés des données, jamais une estimation (« 7 pièces
+  // vérifiées, intactes » est la seule affirmation que ce projet s'autorise). Et la promesse qui fait
+  // acheter sans peur, parce qu'elle est tenue par un test depuis la 6.4.0 : licence ou pas, tes
+  // données restent à toi. Aucun compte à rebours criard (8.0.1) : le ton suit la pastille.
+  function carteEssai() {
+    if (!data || C.estDemo(data) || !licence || (licence.state !== 'essai' && licence.state !== 'finessai')) return '';
+    const docs = data.documents || [];
+    const co = company();
+    const emises = docs.filter(d => (d.type === 'facture' || d.type === 'avoir') && d.number && d.status !== 'brouillon' && effStatus(d) !== 'annulée');
+    const ca = emises.reduce((s, d) => s + (d.type === 'avoir' ? -1 : 1) * C.toBase(d, C.computeTotals(d, co).netHT, co), 0);
+    const faits = [
+      [(data.clients || []).length, 'client', 'clients'],
+      [docs.filter(d => d.number).length, 'pièce numérotée', 'pièces numérotées'],
+      [docs.reduce((n, d) => n + (d.payments || []).length, 0), 'paiement noté', 'paiements notés'],
+      [(data.purchases || []).length, 'achat saisi', 'achats saisis']
+    ].filter(x => x[0] > 0).map(x => pl(x[0], x[1], x[2]));
+    if (ca > 0.0005) faits.push(`${C.money(ca, co.currency)} facturés HT`);
+    const fin = licence.state === 'finessai';
+    const j = Number(licence.daysLeft);
+    const ton = C.pastilleLicence(licence).ton;
+    const titre = fin ? 'Ton essai est terminé' : j <= 0 ? 'C\'est le dernier jour de ton essai' : `Ton essai : encore ${pl(j, 'jour')}`;
+    return `<section class="panel g-essai${fin || ton === 'attire' || ton === 'alerte' ? ' proche' : ''}" aria-labelledby="g-essai-t">
+      <span class="g-essai-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3l7.5 3v5.5c0 4.6-3.2 8.3-7.5 9.5-4.3-1.2-7.5-4.9-7.5-9.5V6z"/><path d="M8.8 12.2l2.2 2.2 4.4-4.6"/></svg></span>
+      <div class="g-essai-txt"><h2 id="g-essai-t">${h(titre)}</h2>
+        ${faits.length ? `<p class="g-essai-sur">Déjà dans ton SkanFact :</p><ul class="g-essai-faits">${faits.map(f => `<li>${h(f)}</li>`).join('')}</ul>`
+          : '<p class="g-essai-sur">Tout fonctionne pendant l\'essai, et ce que tu y crées reste quand tu actives ta licence : rien à ressaisir.</p>'}
+        <p class="small">${fin ? 'Tes données sont intactes : tu gardes' : 'Licence ou pas, tes données restent à toi : tu gardes toujours'} la lecture, l'impression, l'export et l'envoi à ton comptable. Seule la création de nouvelles pièces attend ta licence.</p></div>
+      <button type="button" class="btn" id="g-licence">${fin ? 'Activer ma licence' : 'Voir ma licence'}</button>
+    </section>`;
+  }
+  routes.guide = () => {
+    const et = visitesEtat();
+    const toutes = visitesVisibles();
+    const gestes = toutes.filter(v => v.type !== 'page');
+    const pages = toutes.filter(v => v.type === 'page');
+    const nbFaites = toutes.filter(v => et.faites[v.id]).length;
+    const pagesFaites = pages.filter(v => et.faites[v.id]).length;
+    const gestesFaits = gestes.filter(v => et.faites[v.id]).length;
+    const reprise = et.reprise && visiteParId(et.reprise.id);
+    const repriseI = reprise ? Math.min(Math.max(0, et.reprise.i || 0), reprise.etapes.length - 1) : 0;
+    const exemple = C.estDemo(data);
+    const pp = C.firstSteps(data, company(), { copieExterne });
+    const pas = pasSuivant();
+    const dec = visiteParId('decouvrir');
+    // LE prochain geste, et UN seul vert (U-11) : reprendre ce qui est commencé ; sinon la
+    // découverte, tant qu'elle n'est pas faite ; sinon le premier pas qui manque ; sinon rien — tout
+    // se vaut, c'est la personne qui choisit.
+    const prochain = reprise
+      ? { etiq: 'En pause', label: 'Reprendre', titre: reprise.titre, sous: `Étape ${repriseI + 1} sur ${reprise.etapes.length}`, run: () => lancerVisite(reprise, repriseI) }
+      : dec && !et.faites.decouvrir
+        ? { etiq: 'Pour commencer', label: exemple ? 'Commencer la découverte' : 'Charger l\'exemple et découvrir', titre: dec.titre, sous: `${dec.duree} · ${pl(Visite.chapitres(dec.etapes).length, 'chapitre')}`, run: () => lancerVisite(dec) }
+        : pas
+          // Le sous-titre dit OÙ l'on en est — le titre dit déjà quoi : « Compléter ma fiche société »
+          // suivi de « compléter ta fiche société » ne s'écrit qu'une fois.
+          ? { etiq: 'Prochaine étape', label: 'Me guider', titre: pas.visite.titre, sous: `Premier pas ${pp.etapes.findIndex(x => x.action === pas.etape.action) + 1} sur ${pp.total} · ${pas.visite.duree}`, run: () => lancerVisite(pas.visite) }
+          : null;
+    const titreHero = reprise ? 'Reprends ta visite là où tu l\'as laissée' : !et.faites.decouvrir ? 'Apprends SkanFact en le faisant'
+      : pas ? 'Continue tes premiers pas' : 'Tu as les bases — explore à ton rythme';
+    // L'anneau : tes premiers pas tant qu'ils ne sont pas faits (dans ta vraie entreprise), sinon les
+    // visites faites. Ce qu'il compte est écrit dessous.
+    const anneauPas = !exemple && pp.demarrage;
+    // Une découverte en pause se mesure en ÉTAPES : « 10 sur 42 » dit où l'on en est, « 0 visite
+    // faite sur 58 » décourage quelqu'un qui a fait le quart du tour.
+    const anneauDec = !anneauPas && reprise && reprise.id === 'decouvrir';
+    const aFait = anneauPas ? pp.faits : anneauDec ? repriseI : nbFaites;
+    const aTotal = anneauPas ? pp.total : anneauDec ? reprise.etapes.length : toutes.length;
+    const aQuoi = anneauPas ? 'premiers pas' : anneauDec ? 'étapes parcourues' : 'visites faites';
+    const pct = aTotal ? aFait / aTotal : 0;
+    const R = 52, CIRC = 2 * Math.PI * R;
+    const anneau = `<div class="g-anneau" role="img" aria-label="${h(`${aFait} sur ${aTotal} : ${aQuoi}`)}">
+        <svg viewBox="0 0 120 120" aria-hidden="true"><circle class="g-an-fond" cx="60" cy="60" r="${R}"/><circle class="g-an-plein" cx="60" cy="60" r="${R}" style="--circ:${CIRC.toFixed(1)};--off:${(CIRC * (1 - pct)).toFixed(1)}"/></svg>
+        <span class="g-an-t"><b>${aFait}<small> / ${aTotal}</small></b><span>${aQuoi}</span></span></div>`;
+    const statut = v => et.faites[v.id] ? '<span class="g-etat fait">Fait</span>'
+      : reprise && reprise.id === v.id ? `<span class="g-etat encours">En pause · ${repriseI + 1}/${v.etapes.length}</span>` : '';
+    // Une visite qui n'a encore rien à montrer (aucune facture à encaisser) garde sa ligne, bouton
+    // éteint, et DIT pourquoi — par la même fonction que celle qui refuserait au lancement (9.4.5).
+    // La visite qui fabrique ce qui manque est proposée à côté.
+    const libelle = v => et.faites[v.id] ? 'Refaire' : reprise && reprise.id === v.id ? 'Recommencer' : 'Commencer';
+    const bouton = v => {
+      const m = visiteManque(v);
+      if (!m) return `<button type="button" class="btn btn-sm" data-visite="${h(v.id)}">${libelle(v)}</button>`;
+      const avant = visitePossibleAvant(v);
+      return avant
+        ? `<button type="button" class="btn btn-sm" data-visite="${h(avant.id)}" title="${h(m.texte)}">D'abord : ${h(minuscule(avant.titre))}</button>`
+        : `<button type="button" class="btn btn-sm" disabled title="${h(m.texte)}">${libelle(v)}</button>`;
+    };
+    const cherche = v => h(C.plier([v.titre, v.resume, (v.mots || []).join(' ')].join(' ')));
+    // « Pas encore : il te faut… » — après deux-points, la phrase reprend en minuscule.
+    const manqueDe = v => { const m = visiteManque(v); return m ? `<span class="small g-manque">Pas encore : ${h(minuscule(m.texte))}</span>` : ''; };
+    const ligne = v => `<li class="g-ligne${et.faites[v.id] ? ' faite' : ''}" data-cherche="${cherche(v)}">
+        <span class="g-l-ico" aria-hidden="true">${et.faites[v.id] ? ICONE_COCHE : reprise && reprise.id === v.id ? ICONE_PAUSE : ICONE_LECTURE}</span>
+        <span class="g-txt"><b>${h(v.titre)}</b><span class="small muted">${h(v.resume || '')}</span>${manqueDe(v)}</span>
+        <span class="g-duree">${h(v.duree || '')}</span>${statut(v)}${bouton(v)}</li>`;
+    const themes = SkanVisites.THEMES.filter(t => t.id !== 'pages' && t.id !== 'demarrer').map(t => {
+      const liste = gestes.filter(v => v.theme === t.id);
+      if (!liste.length) return '';
+      const faites = liste.filter(v => et.faites[v.id]).length;
+      return `<section class="g-theme th-${h(t.couleur)}" id="g-${h(t.id)}" data-g-theme>
+        <header class="g-th-tete"><span class="g-th-ico">${t.icone ? aideIcone({ icon: t.icone }) : iconeDomaine(t.couleur)}</span>
+          <span class="g-th-t"><h2>${h(t.titre)}</h2><span>${h(t.sous)}</span></span>
+          <span class="g-th-n" title="${h(`${faites} visite${faites > 1 ? 's' : ''} faite${faites > 1 ? 's' : ''} sur ${liste.length}`)}">${faites}<small> / ${liste.length}</small></span></header>
+        <span class="g-th-barre" aria-hidden="true"><i style="width:${Math.round(faites / liste.length * 100)}%"></i></span>
+        <ul class="g-liste">${liste.map(ligne).join('')}</ul></section>`;
+    }).join('');
+    // Tes réussites : jamais sur l'exemple — celles d'une entreprise inventée ne sont pas les tiennes.
+    const rr = exemple ? null : C.reussites(data, company(), { copieExterne });
+    $('#view').innerHTML = `
+      <div class="page-head"><h1>Me guider</h1>
+        <div class="actions"><button type="button" class="btn" id="g-aide">Ouvrir l'Aide</button></div></div>
+      <section class="g-hero">
+        <div class="g-hero-txt"><span class="g-sur">Ton guide</span>
+          <h2>${h(titreHero)}</h2>
+          <p>Chaque visite te montre où cliquer, sur ton vrai écran, et attend que tu l'aies fait. Pendant une visite, tu peux cliquer partout, faire une pause avec la croix, et reprendre ici.</p>
+          ${prochain ? `<div class="g-prochain"><span class="g-pr-t"><span class="g-pr-etiq">${h(prochain.etiq)}</span><b>${h(prochain.titre)}</b><span class="small muted">${h(prochain.sous)}</span></span>
+            ${reprise ? `<button type="button" class="btn btn-primary" id="g-reprendre">${ICONE_LECTURE}${h(prochain.label)}</button>`
+              : `<button type="button" class="btn btn-primary" id="g-prochain">${ICONE_LECTURE}${h(prochain.label)}</button>`}</div>` : ''}</div>
+        <div class="g-hero-mesure">${anneau}
+          <ul class="g-chiffres">
+            <li><b>${gestesFaits}<small> / ${gestes.length}</small></b><span>${gestesFaits > 1 ? 'gestes guidés réussis' : 'geste guidé réussi'}</span></li>
+            <li><b>${pagesFaites}<small> / ${pages.length}</small></b><span>${pagesFaites > 1 ? 'pages découvertes' : 'page découverte'}</span></li>
+            <li><b>${et.faites.decouvrir ? 'Faite' : 'À faire'}</b><span>la découverte de l'exemple</span></li>
+          </ul></div>
+      </section>
+      ${carteEssai()}
+      ${rr ? `<section class="panel g-reussites" aria-labelledby="g-reu-t">
+        <div class="g-reu-tete"><h2 id="g-reu-t">Tes réussites</h2><span class="g-reu-n">${rr.faites} sur ${rr.total}</span></div>
+        <ul class="g-reu-liste">${rr.liste.map(r => `<li class="g-reu${r.fait ? ' obtenue' : ''}"><span class="g-reu-ico" aria-hidden="true">${r.fait ? ICONE_COCHE : ICONE_CADENAS}</span>
+          <span class="g-reu-t"><b>${h(r.titre)}</b><span>${h(r.quoi)}</span></span></li>`).join('')}</ul></section>` : ''}
+      <div class="g-cartes" id="g-demarrer" data-g-theme>
+        ${gestes.filter(v => v.theme === 'demarrer').map(v => {
+          // Ce que fait vraiment le bouton, dit sur le bouton : la découverte CHARGE l'exemple, et
+          // « Démarrer dans ma vraie entreprise » en SORT — un « Commencer » nu cacherait les deux.
+          const lib = et.faites[v.id] ? 'Refaire'
+            : reprise && reprise.id === v.id ? 'Recommencer'
+            : v.exemple && !exemple ? 'Charger l\'exemple et commencer'
+            : v.reel && exemple ? 'Quitter l\'exemple et commencer' : 'Commencer';
+          const coul = SkanVisites.couleurDe(v);
+          return `
+          <div class="g-carte${coul ? ' th-' + coul : ''}${et.faites[v.id] ? ' faite' : ''}" data-cherche="${cherche(v)}">
+            <div class="g-carte-t"><span class="g-carte-ico">${v.exemple ? ICONE_DECOUVRIR : v.reel ? ICONE_DEMARRER : iconeDomaine(coul)}</span>
+              <span class="g-duree">${h(v.duree)}</span></div>
+            <b class="g-carte-titre">${h(v.titre)}</b>
+            <p class="small">${h(v.resume)}</p>${statut(v)}
+            <button type="button" class="btn btn-sm" data-visite="${h(v.id)}">${lib}</button></div>`;
+        }).join('')}
+      </div>
+      <div class="help-search g-cherche"><span class="hs-champ"><svg class="hs-loupe" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20.5 20.5l-4.2-4.2"/></svg>
+        <input type="search" id="guide-q" placeholder="Je veux… (faire une facture, relancer un client, déclarer ma TVA)" autocomplete="off" spellcheck="false" value="${h(guideQ)}"></span>
+        <div class="help-count small muted" id="guide-n" hidden></div></div>
+      <div class="g-themes">${themes}</div>
+      <section class="panel g-pages-sec" id="g-pages" data-g-theme>
+        <div class="g-reu-tete"><h2>Chaque page, en une minute</h2><span class="g-reu-n">${pagesFaites} sur ${pages.length}</span></div>
+        <p class="small muted">À quoi elle sert, et ce que fait chacun de ses boutons.</p>
+        <ul class="g-pages">${pages.map(v => { const m = visiteManque(v); const c = SkanVisites.couleurDe(v); return `<li data-cherche="${cherche(v)}">
+          <button type="button" class="g-page${c ? ' th-' + c : ''}${et.faites[v.id] ? ' fait' : ''}" data-visite="${h(v.id)}"${m ? ` disabled title="${h(m.texte)}"` : ` title="${h(v.resume || '')}"`}>${et.faites[v.id] ? ICONE_COCHE : ''}${h(v.titre)}</button></li>`; }).join('')}</ul>
+      </section>
+      <label class="check g-proposer"><input type="checkbox" id="guide-proposer" ${et.proposer ? 'checked' : ''}>
+        <span>Me proposer la visite d'une page quand je l'ouvre pour la première fois</span></label>`;
+    // Le vert du héros porte LE prochain geste ; les cartes et les lignes n'en portent aucun (U-11).
+    if (prochain) ($('#g-reprendre') || $('#g-prochain')).onclick = prochain.run;
+    $$('[data-visite]').forEach(b => b.onclick = () => lancerVisite(visiteParId(b.dataset.visite)));
+    $('#g-aide').onclick = () => navigate('#/aide');
+    if ($('#g-licence')) $('#g-licence').onclick = () => allerParametres('app', 'p-licence');
+    $('#guide-proposer').onchange = e => visitesPoser(x => { x.proposer = e.target.checked; if (e.target.checked) x.vues = {}; });
+    // Chercher ne redessine rien : on montre ou on cache des lignes déjà là. Le champ garde donc
+    // sa frappe et son curseur (10.12.0 : un champ qui redessine son écran perd ce qu'on tape).
+    const q = $('#guide-q'), n = $('#guide-n');
+    const filtrer = () => {
+      guideQ = q.value;
+      const mots = C.plier(q.value.trim()).split(/\s+/).filter(Boolean);
+      let vus = 0;
+      $$('[data-cherche]').forEach(li => { const ok = mots.every(m => li.dataset.cherche.includes(m)); li.hidden = !ok; if (ok) vus++; });
+      $$('[data-g-theme]').forEach(sec => { sec.hidden = mots.length > 0 && !$$('[data-cherche]', sec).some(li => !li.hidden); });
+      n.hidden = !mots.length;
+      // Une recherche qui ne trouve rien ne laisse pas la personne devant le vide : l'Aide, qui lit
+      // le corps de ses trente-deux articles, en parle peut-être.
+      n.innerHTML = vus ? h(`${pl(vus, 'visite')} pour « ${q.value.trim()} »`)
+        : `Aucune visite pour « ${h(q.value.trim())} ». <a href="#/aide" id="guide-aide">Chercher dans l'Aide →</a>`;
+      const a = $('#guide-aide');
+      if (a) a.onclick = ev => { ev.preventDefault(); aideQ = q.value.trim(); navigate('#/aide'); };
+    };
+    q.oninput = filtrer;
+    if (guideQ) filtrer();
+  };
+
   routes.aide = (parts) => {
     const arts = G.ARTICLES;
     const vise = parts && parts[0] ? parts[0] : '';
@@ -13055,7 +13566,10 @@
       ${/* 10.12.0 — la phrase promettait « le ? en haut de chaque page » : aucune page n'en porte. Le
            lien s'appelle « Comprendre cette page » (poserLienAide) ; une phrase affichée que rien ne
            tient est un bug (7.3.0). */''}
-      ${a ? '' : `<p class="lead">Comment marche SkanFact, et comment tenir la gestion d'une petite entreprise sans rien oublier. Cherche un mot, ou choisis un domaine. Partout ailleurs dans l'application, les petits <span class="i-demo">i</span> expliquent le champ juste à côté, et «&nbsp;Comprendre cette page&nbsp;» en haut de chaque page ouvre l'article de cette page.</p>`}
+      ${a ? '' : `<p class="lead">Comment marche SkanFact, et comment tenir la gestion d'une petite entreprise sans rien oublier. Cherche un mot, ou choisis un domaine. Partout ailleurs dans l'application, les petits <span class="i-demo">i</span> expliquent le champ juste à côté, et «&nbsp;Comprendre cette page&nbsp;» en haut de chaque page ouvre l'article de cette page.</p>
+      <div class="guide-band aide-guide"><span class="gb-ico" aria-hidden="true">${ICONE_GUIDE}</span>
+        <span class="gb-txt"><b>Tu préfères qu'on te montre ?</b> La visite guidée te fait faire chaque geste sur ton vrai écran, et explique chaque bouton de chaque page.</span>
+        <button type="button" class="btn btn-sm" id="aide-guide">Me guider</button></div>`}
       <div class="help-search">
         ${/* 10.12.0 (U-30, trouvé dans l'app du comptable) — la loupe vit AVEC le champ : centrée
               sur le bloc entier, elle descendait sous la ligne du texte dès que le compte des
@@ -13162,6 +13676,7 @@
     if (aideQ) chercher();
     bindBack('#/dashboard', 'aide');
     $('#aide-changelog').onclick = showChangelog;
+    if ($('#aide-guide')) $('#aide-guide').onclick = () => navigate('#/guide');
     $('#aide-support').onclick = supportForm;
     $('#aide-idee').onclick = ideeForm;
   };

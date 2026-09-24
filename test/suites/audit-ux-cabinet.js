@@ -1715,6 +1715,10 @@ t('Aucune variable CSS utilisée sans être définie : une variable inconnue ren
   ['src/renderer', 'src/cabinet/renderer'].forEach(d => fs.readdirSync(path.join(racine, d))
     .filter(f => /\.(js|html)$/.test(f)).forEach(f => sources.push(fs.readFileSync(path.join(racine, d, f), 'utf8'))));
   const utilisees = new Set(sources.flatMap(src => [...src.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/var\((--[a-z0-9-]+)/g)].map(m => m[1])));
+  // Une variable que le CODE pose en style en ligne (`style="--p:40%"` : la progression d'une visite,
+  // la trajectoire d'un confetti) est définie sur l'élément même qui la lit (10.14.0).
+  sources.slice(feuilles.length).forEach(src => [...src.matchAll(/style="[^"]*"/g)]
+    .forEach(m => [...m[0].matchAll(/(--[a-z0-9-]+)\s*:/g)].forEach(x => definies.add(x[1]))));
   assert.ok(definies.size > 15 && utilisees.size > 15, `lecture suspecte : ${definies.size} définies, ${utilisees.size} utilisées`);
   const inconnues = [...utilisees].filter(v => !definies.has(v));
   assert.deepStrictEqual(inconnues, [], 'variable CSS utilisée et définie nulle part : ' + inconnues.join(', '));
@@ -3061,7 +3065,7 @@ t('Chaque classe posée par l\'app entreprise a une règle dans sa feuille, ou c
     'gl-compte': 'le grand livre (e2e:livres)', 'gl-ouv': 'le grand livre', 'gl-solde': 'le grand livre', 'gl-t': 'le grand livre',
     'od-compte': 'la saisie d\'une OD', 'od-lib': 'la saisie d\'une OD', 'od-label': 'la saisie d\'une OD', 'od-debit': 'la saisie d\'une OD',
     'od-credit': 'la saisie d\'une OD', 'od-del': 'la saisie d\'une OD', 'mod-go': 'une colonne de .mod-row', 'mod-txt': 'une colonne de .mod-row',
-    'pp-go': 'une cellule des premiers pas', 'rate-lbl': 'le libellé du taux, réécrit par le code', 'b-rate-lbl': 'le même, sur un achat',
+    'rate-lbl': 'le libellé du taux, réécrit par le code', 'b-rate-lbl': 'le même, sur un achat',
     'set-res': 'les résultats de recherche des Paramètres, stylés par leur identifiant'
   };
   // Une classe COLLÉE à une expression (`l${niveau}`, `bal-c${classe}`) est un préfixe dynamique : on
