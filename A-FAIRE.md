@@ -76,6 +76,19 @@ SkanFact »). Restent trois questions qui ne sont pas du code :
   « À faire » qui nomme les mois clôturés dont le coût des ventes a bougé) ? À décider avec le
   comptable pilote : c'est lui qui aurait déclaré l'ancien chiffre.
 
+**Vu en tenant une menuiserie (Menuiserie Kmar SARL, 24/09/2026), laissé à décider :**
+
+- **La méthode de proratisation d'une entrée ou d'une sortie en cours de mois** est celle des jours
+  ouvrables des barèmes (26 par défaut). Les jours calendaires ou le trentième donnent un autre
+  brut : à faire trancher par le comptable pilote — la règle vit dans `payslipInputFor`.
+- **L'acompte provisionnel du 28 septembre est rappelé à une entreprise créée cette année**, qui n'en
+  doit en principe pas (il se calcule sur l'impôt de l'année précédente). L'échéance est un
+  pense-bête réglable ; la désactiver d'office pour une première année demande une date de création
+  de la société, que la fiche ne porte pas. À VÉRIFIER avec le comptable.
+- Petits constats non corrigés : la carte « Coût de la paie » dit « 0 bulletin, 0 salarié » quand un
+  salarié existe mais n'a pas encore de bulletin ; la colonne « Net estimé » des Salariés n'a pas de
+  total ; « Top clients » coupe le nom du client à 130 px alors que la ligne a de la place.
+
 ## 2. Le site
 
 Mesuré par la session qui l'a écrit, le 22/09/2026. Aucun de ces points n'est faux — ils sont
