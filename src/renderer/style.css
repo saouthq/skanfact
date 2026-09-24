@@ -1,4 +1,10 @@
 :root {
+  /* 10.13.0 — la HAUTEUR où se pose tout ce qui flotte par-dessus l'application : une question, la
+     palette Cmd+K, l'assistant, l'écran de verrouillage. Il y en avait trois (7 %, 12 %, centré) :
+     la confirmation « Passer la suite ? » s'ouvrait au-dessus de l'assistant qu'elle concernait, et
+     on voyait les questions « une fois au centre, une fois en haut ». Une seule hauteur, un seul
+     endroit où le regard les cherche. */
+  --haut-fenetre: 10vh;
   --bg: #f5f7fa;
   --panel: #ffffff;
   --border: #e6eaf0;
@@ -640,11 +646,11 @@ table.lignes-doc th { padding-bottom: 4px; }
    venait de manipuler, et le clic suivant tombait à côté (règle H-E1 : ce qui apparaît ne pousse
    rien). Ancrée en haut, une fenêtre ne s'étend que vers le bas. Feuille PARTAGÉE : les deux
    applications ont la même règle. */
-.modal-bg { position: fixed; inset: 0; background: rgba(27,36,48,.38); backdrop-filter: blur(3px); display: flex; align-items: flex-start; justify-content: center; padding-block: 7vh 3vh; z-index: 400; }
+.modal-bg { position: fixed; inset: 0; background: rgba(27,36,48,.38); backdrop-filter: blur(3px); display: flex; align-items: flex-start; justify-content: center; padding-block: var(--haut-fenetre) 3vh; z-index: 400; }
 /* Fenêtres empilées : un seul voile, celui du dessus. Sinon deux voiles se cumulent et la fenêtre
    du dessous devient illisible alors qu'on a justement besoin de la voir. */
 .modal-bg:not(:last-child) { background: none; backdrop-filter: none; }
-.modal { background: var(--panel); border-radius: 18px; padding: 26px 28px; width: 580px; max-width: 94vw; max-height: 90vh; overflow-y: auto; box-shadow: 0 24px 70px rgba(20,40,60,.25); }
+.modal { background: var(--panel); border-radius: 18px; padding: 26px 28px; width: 580px; max-width: 94vw; max-height: calc(97vh - var(--haut-fenetre)); overflow-y: auto; box-shadow: 0 24px 70px rgba(20,40,60,.25); }
 .modal h2 { margin: 0 0 18px; font-size: 18px; font-weight: 700; letter-spacing: -.2px; }
 .modal .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
 
@@ -839,7 +845,7 @@ table.mini input, table.mini select { padding: 6px 8px; font-size: 13px; }
 .section-head h2 { margin: 0; font-size: 16px; font-weight: 700; }
 
 /* ---------- palette de recherche (Cmd+K) ---------- */
-#palette-root { position: fixed; inset: 0; background: rgba(27,36,48,.35); backdrop-filter: blur(3px); z-index: 60; display: flex; justify-content: center; align-items: flex-start; padding-top: 12vh; }
+#palette-root { position: fixed; inset: 0; background: rgba(27,36,48,.35); backdrop-filter: blur(3px); z-index: 60; display: flex; justify-content: center; align-items: flex-start; padding-top: var(--haut-fenetre); }
 .palette { width: 640px; max-width: 94vw; background: var(--panel); border-radius: 16px; box-shadow: 0 24px 70px rgba(20,40,60,.3); overflow: hidden; }
 .palette input { border: none; border-bottom: 1px solid var(--border); border-radius: 0; padding: 16px 18px; font-size: 16px; background: #fff; }
 .palette input:focus { box-shadow: none; border-color: var(--border); }
@@ -1644,7 +1650,9 @@ kbd { font: inherit; font-size: 12px; font-family: -apple-system, system-ui, san
 }
 
 /* ---------- assistant de première utilisation ---------- */
-#setup { position: fixed; inset: 0; z-index: 250; background: var(--bg); display: flex; align-items: center; justify-content: center; padding: 24px; overflow-y: auto; }
+/* Ancré à la même hauteur que ses questions (voir `--haut-fenetre`) : centré, l'assistant se
+   recentrait à chaque écran de hauteur différente, et « Continuer » changeait de place sous le doigt. */
+#setup { position: fixed; inset: 0; z-index: 250; background: var(--bg); display: flex; align-items: flex-start; justify-content: center; padding: var(--haut-fenetre) 24px 24px; overflow-y: auto; }
 .setup-card { width: 720px; max-width: 100%; background: var(--panel); border: 1px solid var(--border); border-radius: 20px; box-shadow: 0 24px 70px rgba(20,40,60,.16); overflow: hidden; }
 .setup-head { display: flex; align-items: center; gap: 14px; padding: 24px 28px 18px; }
 .setup-head .brand-mark { width: 40px; height: 40px; border-radius: 12px; font-size: 16px; flex-shrink: 0; }
@@ -1669,7 +1677,7 @@ kbd { font: inherit; font-size: 12px; font-family: -apple-system, system-ui, san
 .act.sel .act-l { color: var(--primary); }
 
 /* ---------- écran de verrouillage ---------- */
-#lock-screen { position: fixed; inset: 0; background: var(--bg); z-index: 200; display: flex; align-items: center; justify-content: center; }
+#lock-screen { position: fixed; inset: 0; background: var(--bg); z-index: 200; display: flex; align-items: flex-start; justify-content: center; padding-top: var(--haut-fenetre); overflow-y: auto; }
 .lock-card { width: 400px; max-width: 92vw; background: var(--panel); border: 1px solid var(--border); border-radius: 20px; padding: 32px 30px; box-shadow: 0 24px 70px rgba(20,40,60,.18); text-align: center; }
 .lock-card .brand-mark { margin: 0 auto 14px; width: 44px; height: 44px; font-size: 18px; border-radius: 13px; }
 .lock-card h2 { margin: 0 0 6px; font-size: 18px; }

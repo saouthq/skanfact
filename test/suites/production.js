@@ -119,6 +119,20 @@ module.exports = ({ t, assert, lireSource }) => {
     }
   });
 
+  // ---------------------------------------------------------------- une seule hauteur
+  t('10.13.0 : tout ce qui flotte par-dessus l\'application se pose à la MÊME hauteur', () => {
+    // Trois hauteurs coexistaient — questions à 7 %, palette à 12 %, assistant et verrou centrés —,
+    // et « Passer la suite ? » s'ouvrait au-dessus de l'assistant qu'elle concernait.
+    const css = code(lireSource('src', 'renderer', 'style.css'));
+    assert.ok(/--haut-fenetre:\s*\d+vh;/.test(css), 'la hauteur commune n\'est plus déclarée');
+    for (const sel of ['.modal-bg', '#palette-root', '#setup', '#lock-screen']) {
+      const m = css.match(new RegExp('^' + sel.replace(/[.#-]/g, c => '\\' + c) + ' \\{([^}]*)\\}', 'm'));
+      assert.ok(m, sel + ' : règle introuvable');
+      assert.ok(/var\(--haut-fenetre\)/.test(m[1]), sel + ' : ne se pose pas à la hauteur commune');
+      assert.ok(/align-items:\s*flex-start/.test(m[1]), sel + ' : centré verticalement — il ne tombe plus à la hauteur de ses questions');
+    }
+  });
+
   // ---------------------------------------------------------------- le libellé et son champ
   t('10.13.0 : un libellé désigne son CHAMP, jamais la bulle qui le précède', () => {
     // `lbl()` pose la bulle AVANT le champ ; un <label> désigne le premier élément étiquetable

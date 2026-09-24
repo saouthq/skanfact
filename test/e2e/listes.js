@@ -70,6 +70,16 @@ const SONDE_CHEVRON = () => [...document.querySelectorAll('select:not([multiple]
   await win.setViewportSize({ width: 1440, height: 900 });
   const attendre = (ms = 300) => win.waitForTimeout(ms);
 
+  j.etape('Une question se pose à la hauteur de ce qu\'elle concerne');
+  await win.waitForSelector('#setup .setup-card');
+  await win.click('#sf-skip');
+  await win.waitForSelector('#modal-root .modal');
+  const hauteurs = await win.evaluate(() => ({ carte: Math.round(document.querySelector('#setup .setup-card').getBoundingClientRect().top), question: Math.round(document.querySelector('#modal-root .modal').getBoundingClientRect().top) }));
+  if (Math.abs(hauteurs.carte - hauteurs.question) > 2) throw new Error(`la question « Passer ? » s'ouvre à ${hauteurs.question} px, l'assistant qu'elle concerne à ${hauteurs.carte} px`);
+  await win.click('#modal-root .modal-actions .btn:not(.btn-primary)');
+  await win.waitForFunction(() => !document.querySelector('#modal-root .modal'));
+  j.ok(`assistant et question à ${hauteurs.carte} px`);
+
   j.etape('Une entreprise, et l\'exemple chargé');
   await win.waitForSelector('#setup');
   for (let g = 0; g < 15 && await win.$('#setup'); g++) {

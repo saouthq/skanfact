@@ -164,7 +164,7 @@
    il doit ressembler à un produit fini, pas à un formulaire de réglages avec un message passager. */
 #setup .wiz-card {
   background: var(--panel); border-radius: 18px; box-shadow: var(--shadow);
-  width: 720px; max-width: 100%; padding: 32px 36px 26px; max-height: 88vh; display: flex; flex-direction: column;
+  width: 720px; max-width: 100%; padding: 32px 36px 26px; max-height: calc(100vh - var(--haut-fenetre) - 24px); display: flex; flex-direction: column;
 }
 #setup h1 { font-size: 23px; margin: 4px 0 16px; letter-spacing: -.4px; }
 #setup .wiz-body { overflow-y: auto; flex: 1; }
