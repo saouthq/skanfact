@@ -134,6 +134,51 @@ t('9.8.0 : les à-nouveaux se calculent sur les écritures RÉELLES, jamais sur 
   assert.ok(an.equilibre);
 });
 
+t('10.14.0 : les tiers rouvrent pièce par pièce — la facture de décembre se lettre avec son règlement de janvier', () => {
+  // Le jumeau de l'application entreprise : un seul solde global du 411 perdait le client et la
+  // lettre. L'exercice suivant voyait un règlement de janvier sans sa facture, et sa balance
+  // auxiliaire rangeait toute l'ouverture sous « (sans tiers) ».
+  const l = livreRempli();
+  const pose = e => { const n = K.ajouterEcriture(l, e, 'test', 1); K.validerEcriture(l, n.id, 'test', 1); };
+  // Une facture de décembre, jamais réglée dans l'exercice, lettrée à son numéro.
+  pose({ journal: 'VT', date: '2026-12-18', piece: 'FAC-9', libelle: 'Vente', source: 'saisie',
+    lignes: [{ compte: '411', tiers: 'Hôtel du Lac', libelle: 'Facture FAC-9', debit: 238, credit: 0, lettre: 'FAC-9' },
+      { compte: '706', libelle: 'Vente', debit: 0, credit: 238 }] });
+  // Une autre, réglée dans l'exercice : lettrée à zéro, elle ne se rouvre pas.
+  pose({ journal: 'VT', date: '2026-11-02', piece: 'FAC-7', libelle: 'Vente', source: 'saisie',
+    lignes: [{ compte: '411', tiers: 'Café de Sfax', libelle: 'Facture FAC-7', debit: 119, credit: 0, lettre: 'FAC-7' },
+      { compte: '706', libelle: 'Vente', debit: 0, credit: 119 }] });
+  pose({ journal: 'BQ', date: '2026-11-20', piece: 'ENC-7', libelle: 'Encaissement', source: 'saisie',
+    lignes: [{ compte: '532', libelle: 'Banque', debit: 119, credit: 0 },
+      { compte: '411', tiers: 'Café de Sfax', libelle: 'Règlement FAC-7', debit: 0, credit: 119, lettre: 'FAC-7' }] });
+  const an = K.anouveauxDe(l);
+  assert.ok(an.equilibre);
+  const clients = an.lignes.filter(x => x.compte === '411');
+  assert.strictEqual(clients.length, 1, 'une ligne par pièce ouverte, et rien pour ce qui est lettré à zéro');
+  assert.strictEqual(clients[0].tiers, 'Hôtel du Lac', 'la ligne rouvre avec son client');
+  assert.strictEqual(clients[0].lettre, 'FAC-9', 'et avec sa lettre : c\'est elle qui retrouve le règlement');
+  assert.strictEqual(clients[0].debit, 238);
+  // Le total du compte ne bouge pas d'un millime.
+  const bal = K.balanceDepuisLignes(K.lignesDuLivre(l, { du: l.exercice.du, au: l.exercice.au }), K.soldesDepuisOuverture(l));
+  const solde411 = bal.rows.find(r => r.account === '411').solde;
+  assert.strictEqual(K.round3(clients.reduce((s, x) => s + x.debit - x.credit, 0)), solde411);
+
+  // L'exercice suivant : l'à-nouveau posé, puis le règlement de janvier lettré à la même facture.
+  const suivant = K.livreVide('D1', 2027, { plan: l.plan });
+  const ae = K.ajouterEcriture(suivant, K.ecritureAnouveaux(l, 2027), 'test', 1);
+  K.validerEcriture(suivant, ae.id, 'test', 1);
+  const reg = K.ajouterEcriture(suivant, { journal: 'BQ', date: '2027-01-12', piece: 'ENC-9', libelle: 'Encaissement', source: 'saisie',
+    lignes: [{ compte: '532', libelle: 'Banque', debit: 238, credit: 0 },
+      { compte: '411', tiers: 'Hôtel du Lac', libelle: 'Règlement FAC-9', debit: 0, credit: 238, lettre: 'FAC-9' }] }, 'test', 1);
+  K.validerEcriture(suivant, reg.id, 'test', 1);
+  const lignes27 = K.lignesDuLivre(suivant, { du: suivant.exercice.du, au: suivant.exercice.au });
+  const aux = K.balanceAuxiliaireDepuisLignes(lignes27, K.collectifsDeTiers(suivant, 'clients'));
+  assert.ok(!aux.rows.some(r => r.tiers === '(sans tiers)'), 'l\'ouverture du 411 ne doit plus tomber « sans tiers »');
+  const hotel = aux.rows.find(r => r.tiers === 'Hôtel du Lac');
+  assert.ok(hotel, 'le client de décembre est dans l\'auxiliaire de janvier');
+  assert.strictEqual(hotel.solde, 0, 'et son règlement le solde');
+});
+
 t('9.8.0 : l\'écriture d\'à-nouveaux tombe au 1er janvier de l\'exercice SUIVANT', () => {
   const l = livreRempli();
   const e = K.ecritureAnouveaux(l, 2027);

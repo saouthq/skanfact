@@ -4657,17 +4657,39 @@
           if (!inPeriod(d, period && period.from, period && period.to)) continue;
           const reelles = journalEntries(data, company, { from: '', to: `${y - 1}-12-31` }, { ...opts, sections: sansAN });
           const soldes = {};
+          // 10.14.0 — les comptes de TIERS rouvrent pièce par pièce (« à-nouveaux détaillés »). Un
+          // seul solde global du 411 perdait le fil : une facture de décembre réglée en janvier
+          // arrivait dans l'exercice suivant par son seul règlement, lettré à une facture que
+          // l'exercice ne voyait plus. Le lettrage le comptait réglé pendant que le compte le
+          // comptait dû — « le reste ouvert n'est pas le solde du compte », et un « lettrage faux »
+          // accusé sur une saisie juste. C'est l'exemple sur cinq ans qui l'a montré : sur treize
+          // mois, aucune facture ne traversait un 31 décembre. Chaque ligne rouvre avec son tiers,
+          // son rôle et sa LETTRE ; le total par compte ne change pas d'un millime.
+          const tiersSoldes = {};
           let net = 0;
           reelles.forEach(e => {
             const v = round3(e.debit - e.credit);
             if (compteDeGestion(e.account)) net = round3(net + v);
-            else soldes[e.account] = round3((soldes[e.account] || 0) + v);
+            else if (e.role === 'clients' || e.role === 'fournisseurs') {
+              // Une pièce lettrée rouvre seule, avec sa lettre ; le non-lettré se résume par tiers
+              // (la même règle que le Cabinet, `Compta.anouveauxDe`).
+              const k = `${e.account}|${e.role}|${e.tiersId || e.tiers || ''}|${e.lettre ? 'L:' + e.lettre : 'N'}`;
+              const t = tiersSoldes[k] = tiersSoldes[k] || { account: e.account, role: e.role, tiersId: e.tiersId || '', tiers: e.tiers || '', lettre: e.lettre || '', piece: e.lettre ? (e.piece || '') : '', v: 0 };
+              t.v = round3(t.v + v);
+            } else soldes[e.account] = round3((soldes[e.account] || 0) + v);
           });
           const e = entrySet({ date: d, journal: 'AN', piece: `AN-${y}`, tiers: '', tiersId: '', source: 'anouveau', docId: 'an-' + y, currency: cur });
           Object.keys(soldes).sort().forEach(k => {
             if (!soldes[k]) return;
             const label = `À-nouveau ${y} — ${accountLabel(data, k)}`;
             if (soldes[k] > 0) e.debit(k, label, soldes[k]); else e.credit(k, label, -soldes[k]);
+          });
+          Object.keys(tiersSoldes).sort().forEach(k => {
+            const t = tiersSoldes[k];
+            if (!t.v) return;
+            const label = `À-nouveau ${y} — ${t.tiers || accountLabel(data, t.account)} — ${t.lettre ? (t.piece || t.lettre) : 'non lettré'}`;
+            const extra = { role: t.role, tiersId: t.tiersId, tiers: t.tiers, lettre: t.lettre };
+            if (t.v > 0) e.debit(t.account, label, t.v, extra); else e.credit(t.account, label, -t.v, extra);
           });
           // Un net positif = les charges dépassent les produits : une perte, au débit du résultat.
           if (net > 0) e.debit(acc.resultat, `Résultat des exercices antérieurs (perte)`, net);
@@ -5035,10 +5057,17 @@
       const k = cle(e);
       return by[k] = by[k] || { tiersId: e.tiersId || '', tiers: e.tiers || nom(e.tiersId) || '(sans tiers)', account: e.tiersId && codes[e.tiersId] ? base + codes[e.tiersId] : base, ouverture: 0, debit: 0, credit: 0, lignes: 0 };
     };
-    journalEntries(data, company, { from: '', to: addDays(period.from, -1) }, opts).forEach(e => {
-      if (e.role !== role) return;
-      const r = row(e); r.ouverture = round3(r.ouverture + e.debit - e.credit);
-    });
+    // L'ouverture se lit depuis le début de l'EXERCICE, à-nouveau compris — jamais depuis le début
+    // du temps. Depuis la 10.14.0 la pièce AN rouvre chaque tiers avec son rôle : lue avec les
+    // écritures réelles des années passées, elle compterait chaque client une fois par exercice
+    // traversé (la règle de `soldesOuverture`, 9.0.0, que cette fonction n'appliquait pas).
+    const exo = debutExercice(period.from);
+    if (period.from && period.from > exo) {
+      journalEntries(data, company, { from: exo, to: addDays(period.from, -1) }, opts).forEach(e => {
+        if (e.role !== role) return;
+        const r = row(e); r.ouverture = round3(r.ouverture + e.debit - e.credit);
+      });
+    }
     journalEntries(data, company, period, opts).forEach(e => {
       if (e.role !== role) return;
       const r = row(e); r.debit = round3(r.debit + e.debit); r.credit = round3(r.credit + e.credit); r.lignes++;

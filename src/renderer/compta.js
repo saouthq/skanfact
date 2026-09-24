@@ -3269,18 +3269,50 @@
   // ouverture. Les classes 1 à 5 se reportent ; le net des classes 6 et 7 va au compte de résultat.
   // C'est l'écriture qu'on posera dans le livre suivant — explicite, jamais déduite deux fois
   // (règle 9.0.0 : l'implicite disparaît au profit de l'explicite, il ne s'y ajoute pas).
+  //
+  // 10.14.0 — les comptes de TIERS rouvrent pièce par pièce (« à-nouveaux détaillés »), comme
+  // dans l'application entreprise. Un seul solde global du 411 perdait le fil : la facture de
+  // décembre réglée en janvier arrivait dans l'exercice suivant par son seul règlement, et la
+  // balance auxiliaire de l'exercice rangeait toute l'ouverture sous « (sans tiers) ». Chaque ligne
+  // rouvre avec son tiers et sa LETTRE ; le total par compte ne change pas d'un millime. Une reprise
+  // d'ouverture saisie par compte collectif ne se répartit pas : elle rouvre telle quelle.
   function anouveauxDe(livre, opts) {
     const o = opts || {};
     const compteResultat = txt(o.compteResultat) || '13';
     const lignes = lignesDuLivre(livre, { du: livre.exercice.du, au: livre.exercice.au });
-    const bal = balanceDepuisLignes(lignes, soldesDepuisOuverture(livre));
+    const collectifs = collectifsDeTiers(livre, 'clients').concat(collectifsDeTiers(livre, 'fournisseurs'));
+    const deTiers = compte => collectifs.some(c => txt(compte).startsWith(c));
+    const bal = balanceDepuisLignes(lignes.filter(l => !deTiers(l.account)), soldesDepuisOuverture(livre));
     const out = [];
     let gestion = 0;
     bal.rows.forEach(r => {
       if (!r.solde) return;
       const c = String(r.account).slice(0, 1);
       if (c === '6' || c === '7') { gestion = round3(gestion + r.solde); return; }
+      // Une reprise d'ouverture sur un collectif est rangée ici (ses lignes ne sont pas dans
+      // `lignes`) : elle rouvre sans détail, parce qu'elle n'en a jamais eu.
       out.push({ compte: r.account, libelle: r.label || '', debit: r.soldeD, credit: r.soldeC });
+    });
+    // Une pièce LETTRÉE rouvre seule, avec sa lettre ; ce qui n'est pas lettré se résume en une
+    // ligne par tiers. Rouvrir chaque ligne non lettrée ferait une pièce d'à-nouveau de plusieurs
+    // centaines de lignes chez un cabinet qui ne lettre pas — et ce qui compte pour lui, c'est ce
+    // que chaque client doit à l'ouverture.
+    const parTiers = new Map();
+    lignes.filter(l => deTiers(l.account)).forEach(l => {
+      const k = [txt(l.account), l.tiersId || txt(l.tiers), l.lettre ? 'L:' + l.lettre : 'N'].join('|');
+      const t = parTiers.get(k) || { compte: txt(l.account), tiers: txt(l.tiers), tiersId: l.tiersId || '', lettre: l.lettre || '', piece: l.lettre ? txt(l.piece) : '', v: 0 };
+      t.v = round3(t.v + num(l.debit) - num(l.credit));
+      parTiers.set(k, t);
+    });
+    [...parTiers.keys()].sort().forEach(k => {
+      const t = parTiers.get(k);
+      if (!t.v) return;
+      const quoi = t.lettre ? (t.piece || t.lettre) : 'non lettré';
+      const ligne = { compte: t.compte, libelle: [t.tiers, quoi].filter(Boolean).join(' — '), debit: t.v > 0 ? t.v : 0, credit: t.v < 0 ? round3(-t.v) : 0 };
+      if (t.tiers) ligne.tiers = t.tiers;
+      if (t.tiersId) ligne.tiersId = t.tiersId;
+      if (t.lettre) ligne.lettre = t.lettre;
+      out.push(ligne);
     });
     // `gestion` est le solde net des comptes de gestion, signe débiteur : positif = charges >
     // produits = PERTE. Une perte est un débit au compte de résultat, un bénéfice un crédit.

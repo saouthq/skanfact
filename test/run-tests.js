@@ -508,7 +508,11 @@ t('démo : cohérente quelle que soit la date du jour, société conservée', ()
     ['brouillon', 'envoyée', 'partielle', 'retard', 'payée', 'annulée'].forEach(s => assert.ok(st.has(s), `${s} manquant (${T})`));
     const qs = new Set(d.documents.filter(x => x.type === 'devis').map(x => x.status));
     ['brouillon', 'envoyé', 'accepté', 'refusé'].forEach(s => assert.ok(qs.has(s), s));
-    assert.strictEqual(d.documents.filter(x => x.type === 'avoir' && x.status === 'émis').length, 2);
+    // 10.14.0 — cinq ans d'histoire portent quelques avoirs de plus ; la fenêtre des treize derniers
+    // mois, écrite à la main, garde exactement ses deux cas (l'avoir total et l'avoir partiel).
+    const avoirs = d.documents.filter(x => x.type === 'avoir' && x.status === 'émis');
+    assert.strictEqual(avoirs.filter(x => x.date >= core.addMonths(T, -13, 1)).length, 2);
+    assert.ok(avoirs.length > 2, 'l\'histoire de cinq ans doit porter quelques avoirs');
     assert.ok(d.documents.some(x => x.type === 'devis' && x.status === 'envoyé' && x.dueDate < T), 'devis expiré');
     // relances aux trois niveaux (la plus ancienne a déjà reçu deux relances), un contrat dû, onze mois pleins
     const od = core.overdueInvoices(d, d.company, T);
@@ -4821,8 +4825,11 @@ t('8.9.0 : le lettrage se lit — une facture soldée porte sa lettre, ce qui re
   const data = core.migrateData(demo.buildDemoData(company, '2026-09-12'));
   const acc = core.chartAccounts(data);
   const e = core.journalEntries(data, data.company, { from: '2025-01-01', to: '2026-12-31' }, {});
-  const soldee = data.documents.find(d => d.type === 'facture' && d.status !== 'brouillon' && d.status !== 'annulée' && core.invoiceBalance(d, data, data.company).remaining <= 0.0005 && (d.payments || []).length);
-  const ouverte = data.documents.find(d => d.type === 'facture' && d.status !== 'brouillon' && d.status !== 'annulée' && core.invoiceBalance(d, data, data.company).remaining > 0.0005);
+  // Les pièces se choisissent DANS la période lue (10.14.0) : l'exemple a cinq ans, et la première
+  // facture soldée du fichier date de 2021 — ses lignes ne sont pas dans les écritures de 2025-2026.
+  const dansLaPeriode = d => d.date >= '2025-01-01';
+  const soldee = data.documents.find(d => d.type === 'facture' && dansLaPeriode(d) && d.status !== 'brouillon' && d.status !== 'annulée' && core.invoiceBalance(d, data, data.company).remaining <= 0.0005 && (d.payments || []).length);
+  const ouverte = data.documents.find(d => d.type === 'facture' && dansLaPeriode(d) && d.status !== 'brouillon' && d.status !== 'annulée' && core.invoiceBalance(d, data, data.company).remaining > 0.0005);
   assert.ok(soldee && ouverte, 'l\'exemple a une facture soldée et une ouverte');
   const lignesSoldee = e.filter(x => x.docId === soldee.id && x.account.startsWith(acc.clients));
   assert.ok(lignesSoldee.length >= 2 && lignesSoldee.every(x => x.lettre === soldee.number), 'la facture ET ses règlements portent la lettre');
@@ -14442,6 +14449,7 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
   require('./suites/qa-entreprise.js')({ t, assert, lireSource });
   require('./suites/audit-ux-cabinet.js')({ t, assert, lireSource });
   require('./suites/production.js')({ t, assert, lireSource });
+  require('./suites/exemple-cinq-ans.js')({ t, assert, lireSource });
   // Celle-ci reçoit `ta` en plus : elle interroge le vrai worker sur une vraie base SQLite.
   await require('./suites/plateforme-gestion.js')({ t, ta, assert, lireSource });
   await require('./suites/paiement.js')({ ta, assert });

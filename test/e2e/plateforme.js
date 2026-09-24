@@ -24,6 +24,8 @@ const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os'); const http = require('http');
 const L = require('../../src/licence.js');
 const { baseD1 } = require('../d1-sqlite');
+// L'état « révoquée » tel que l'écran l'affiche (`label` de `licenceState`), jamais le mot seul.
+const ETAT_REVOQUEE = /Licence révoquée/;
 
 (async () => {
   const j = journal(); const bac = [];
@@ -274,7 +276,10 @@ const { baseD1 } = require('../d1-sqlite');
     await revoquer(true);
     await collerLaCle(cleValide);
     txt = await relireEtat();
-    if (!/révoquée/i.test(txt)) throw new Error('la révocation n\'a pas été appliquée : ' + txt.slice(0, 200));
+    // On lit l'ÉTAT, pas un mot : depuis la 10.12.0 le panneau dit en toutes lettres que la clé est
+    // présentée « pour savoir si elle a été révoquée » — un `/révoquée/` nu était vrai sur une
+    // licence active, et ne pouvait donc plus échouer dans un sens ni réussir dans l'autre.
+    if (!ETAT_REVOQUEE.test(txt)) throw new Error('la révocation n\'a pas été appliquée : ' + txt.slice(0, 200));
     if (!/rétractation/.test(txt)) throw new Error('le motif de la révocation n\'est pas affiché');
     j.ok('l\'écran dit « révoquée », avec le motif');
     const r3 = await tenterUnDevis();
@@ -317,7 +322,7 @@ const { baseD1 } = require('../d1-sqlite');
     await revoquer(true);
     await collerLaCle(emis.cle);
     txt = await relireEtat();
-    if (!/révoquée/i.test(txt)) throw new Error('la révocation n\'atteint pas une clé vendue par la console : ' + txt.slice(0, 200));
+    if (!ETAT_REVOQUEE.test(txt)) throw new Error('la révocation n\'atteint pas une clé vendue par la console : ' + txt.slice(0, 200));
     j.ok('et une révocation la ferme comme n\'importe quelle autre');
     await revoquer(false);
     // Les étapes suivantes reprennent la clé maître : on rebascule l'empreinte suivie, sinon on
@@ -329,7 +334,7 @@ const { baseD1 } = require('../d1-sqlite');
     await revoquer(true); etatServeur.alteration = 'signature';
     await collerLaCle(cleValide);
     txt = await relireEtat();
-    if (/révoquée/i.test(txt)) throw new Error('une réponse mal signée a restreint l\'application');
+    if (ETAT_REVOQUEE.test(txt)) throw new Error('une réponse mal signée a restreint l\'application');
     j.ok('un seul octet retouché, et la réponse ne restreint plus rien');
     const r4 = await tenterUnDevis();
     if (r4.refus) throw new Error('la création est restée fermée sur une réponse mal signée');
@@ -340,7 +345,7 @@ const { baseD1 } = require('../d1-sqlite');
     etatServeur.alteration = 'rejeu';
     await collerLaCle(cleValide);
     txt = await relireEtat();
-    if (/révoquée/i.test(txt)) throw new Error('une réponse rejouée a restreint l\'application');
+    if (ETAT_REVOQUEE.test(txt)) throw new Error('une réponse rejouée a restreint l\'application');
     j.ok('une réponse authentique mais périmée ne vaut rien : sans ça, on ressusciterait une révocation annulée');
 
     // ------------------------------------------------ 6. serveur éteint

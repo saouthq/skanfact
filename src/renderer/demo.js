@@ -1,4 +1,13 @@
-// Jeu de données de démonstration : une petite société de cybersécurité sur treize mois d'activité.
+// Jeu de données de démonstration : une petite société de cybersécurité, créée il y a CINQ ans.
+//
+// 10.14.0 — Skander : « simuler une entreprise qui est là depuis cinq ans, afin de charger les écrans
+// et les tableaux partout, et voir ce qui casse quand c'est trop rempli ». Treize mois ne montraient
+// jamais une liste de trois cents factures, un exercice clôturé, un salarié parti, un client qui ne
+// commande plus depuis deux ans, ni la pagination de quoi que ce soit. L'histoire est en deux étages :
+// les treize derniers mois restent écrits à la main, pièce par pièce, parce que c'est là que vivent
+// tous les cas de figure qu'on veut montrer (retards aux trois niveaux, acompte et solde, avoirs,
+// devise étrangère, contrats) ; les quatre années d'avant sont ENGENDRÉES, par un tirage fixe (le
+// même jeu à chaque chargement), avec des volumes qui grandissent comme une entreprise qui démarre.
 // Toutes les dates sont relatives à aujourd'hui pour que l'accueil, les relances, les contrats et la
 // comptabilité soient toujours « vivants ». Fonctionne dans le navigateur (window.SkanDemo) et dans
 // Node (npm test), comme core.js.
@@ -44,6 +53,15 @@
     const daysAgo = n => C.addDays(T, -n);
     const mo = (n, day) => C.addMonths(T, -n, day);   // n mois en arrière, au jour demandé
     const ts = iso => new Date(iso + 'T09:00:00').getTime();
+    // Un tirage FIXE (mulberry32) : le même exemple à chaque chargement, donc les mêmes écrans, les
+    // mêmes numéros et les mêmes totaux — un exemple qui change à chaque fois ne se décrit pas, et
+    // un test qui le lit ne peut rien affirmer.
+    let graine = 20210924;
+    const alea = () => { graine |= 0; graine = graine + 0x6D2B79F5 | 0; let x = Math.imul(graine ^ graine >>> 15, 1 | graine); x = x + Math.imul(x ^ x >>> 7, 61 | x) ^ x; return ((x ^ x >>> 14) >>> 0) / 4294967296; };
+    const entre = (a, b) => a + Math.floor(alea() * (b - a + 1));
+    const parmi = liste => liste[Math.floor(alea() * liste.length)];
+    // L'histoire commence il y a soixante mois ; les treize derniers sont écrits à la main plus bas.
+    const HIST_DEBUT = 59, HIST_FIN = 14;
 
     // ---------- clients ----------
     const mk = (name, matricule, address, phone, email, withholdingRate, extra) =>
@@ -62,7 +80,48 @@
         { contact: 'James Whitfield, CTO', lang: 'en', currency: 'EUR', notes: 'Client étranger : documents en anglais, facturation en euros. Export de services facturé sans TVA — À VÉRIFIER avec le comptable.' }),
       mk('École Internationale Les Lauriers', '6789012F/A/000', 'Rue du Lac Léman, Les Berges du Lac\n1053 Tunis', '+216 71 861 400', 'admin@leslauriers.tn', 1.5, { contact: 'M. Karim Hached, intendant' })
     ];
+    // Cinq ans de clients : ceux d'aujourd'hui, et tous ceux d'avant — dont certains ne commandent
+    // plus depuis longtemps (c'est ce qui remplit la liste, et c'est ce qui la rend vraie).
+    const MF = () => `${String(entre(1000000, 1999999))}${'ABCDEFGHJKLMNPQRSTVWXYZ'[entre(0, 22)]}/A/M/000`;
+    const plus = [
+      ['Société Tunisienne de Distribution SA', 'Zone industrielle Charguia 2\n2035 Tunis', 1.5, 'M. Hatem Chebbi, DSI'],
+      ['Clinique El Amen Nabeul', 'Avenue Habib Thameur\n8000 Nabeul', 1.5, 'Mme Sarra Jaziri, direction'],
+      ['Pharmacie Ennasr', '14 avenue Hédi Nouira, Ennasr 2\n2037 Ariana', '', ''],
+      ['Cabinet d\'architecture Ben Ammar', '3 rue du Lac Turkana, Les Berges du Lac\n1053 Tunis', '', 'M. Walid Ben Ammar'],
+      ['Sfax Ingénierie SARL', 'Route de Tunis km 3\n3027 Sfax', '', 'M. Anis Frikha'],
+      ['Transports Chaabane SARL', 'Zone logistique Radès\n2040 Radès', '', ''],
+      ['Laboratoire d\'analyses Dr Kallel', '22 rue d\'Alger\n1000 Tunis', 1.5, 'Dr Imen Kallel'],
+      ['Assurances Maghreb — Agence Menzah', 'Centre Zenith, El Menzah 6\n2091 Ariana', 1.5, 'M. Riadh Sassi'],
+      ['Groupe scolaire Ibn Rochd', 'Rue Ibn Rochd\n2080 Ariana', 1.5, 'Mme Nadia Ferchichi, économe'],
+      ['Hôtel Royal Sousse', 'Boulevard du 14 Janvier\n4051 Sousse', 1.5, 'M. Karim Ayari, directeur technique'],
+      ['Carthage Tours', '45 avenue Habib Bourguiba\n2016 Carthage', '', ''],
+      ['Imprimerie Nouvelle El Mourouj', 'Zone artisanale El Mourouj 5\n2074 Ben Arous', '', ''],
+      ['Boulangerie Moderne Ariana', '6 rue de la République\n2080 Ariana', '', ''],
+      ['Auto-école El Kheir', '18 avenue de la Liberté\n1002 Tunis', '', ''],
+      ['Centre médical Les Oliviers', 'Résidence Les Oliviers\n2092 El Manar', 1.5, 'Dr Hichem Baccar'],
+      ['Amen Plast SARL', 'Zone industrielle\n5020 Monastir', '', 'M. Mounir Gharsallah'],
+      ['Menuiserie Aluminium Béja', 'Route de Tunis\n9000 Béja', '', ''],
+      ['Cabinet d\'expertise comptable Jlassi', 'Immeuble Carthage, Montplaisir\n1073 Tunis', '', 'M. Fathi Jlassi'],
+      ['Restaurant La Marina Gammarth', 'Port de Gammarth\n2078 La Marsa', '', ''],
+      ['Garage Ben Youssef Automobiles', 'Route de la Marsa km 8\n2046 Sidi Daoud', '', ''],
+      ['Parapharmacie Lac 2', 'Rue du Lac Biwa, Lac 2\n1053 Tunis', '', ''],
+      ['Wino Digital SUARL', 'Technopôle El Ghazala\n2088 Ariana', '', 'Mme Yosra Ben Salem'],
+      ['Association Enfance et Avenir', '9 rue de Palestine\n1002 Tunis', '', ''],
+      ['Clinique dentaire Dr Mzoughi', '31 avenue de Carthage\n1000 Tunis', '', 'Dr Amel Mzoughi'],
+      ['Société Oléicole du Sahel', 'Route de Monastir\n4011 Sousse', 1.5, 'M. Slim Ben Hmida'],
+      ['Sami Ben Youssef', 'Cité Ennasr 1\n2037 Ariana', 0, ''],
+      ['Rania Chaouch', 'Rue des Jasmins, La Soukra\n2036 Ariana', 0, '']
+    ].map(([nom, adresse, rs, contact], i) => {
+      const particulier = rs === 0;
+      const slug = nom.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '').slice(0, 18);
+      return mk(nom, particulier ? `CIN ${entre(10000000, 19999999)}` : MF(), adresse, `+216 ${entre(20, 99)} ${entre(100, 999)} ${entre(100, 999)}`,
+        particulier ? `${slug}@gmail.com` : `contact@${slug}.tn`, rs === '' ? '' : rs, contact ? { contact } : {});
+    });
+    d.clients.push(...plus);
     const cl = d.clients;
+    // Les clients de l'histoire : ceux d'avant la fenêtre écrite à la main, et quelques anciens
+    // d'aujourd'hui (la pharmacie, le cabinet d'avocats et l'hôtel sont clients depuis longtemps).
+    const anciens = [1, 2, 3, 5].concat(plus.map((_, i) => 8 + i));
 
     // ---------- catalogue ----------
     // `unitCost` : ce que la prestation coûte réellement. Zéro quand on ne vend que du temps —
@@ -72,7 +131,7 @@
     const cat = (label, description, unitPrice, vatRate, unit, unitCost, stock, warranty) => ({
       id: C.uid(), label, description, unitPrice, vatRate, unit, unitCost: unitCost || 0,
       tracked: !!stock, initialQty: stock ? stock[0] : 0, initialCost: stock ? stock[1] : 0,
-      minStock: stock ? stock[2] : 0, location: stock ? stock[3] : '', initialDate: stock ? mo(13, 1) : '',
+      minStock: stock ? stock[2] : 0, location: stock ? stock[3] : '', initialDate: stock ? (stock[4] || mo(13, 1)) : '',
       serialized: !!warranty, warrantyMonths: warranty || 0
     });
     d.catalog = [
@@ -84,7 +143,9 @@
       cat('Formation sensibilisation cybersécurité', 'Session pour les équipes : hameçonnage, mots de passe, bonnes pratiques', 150, 7, 'h'),
       cat('Installation poste de travail', 'Préparation, sécurisation et mise en réseau d\'un poste', 120, 19, 'u'),
       cat('Déplacement hors Grand Tunis', 'Frais de déplacement', 60, 19, 'u', 25),
-      cat('Antivirus / EDR (licence 1 an)', 'Déploiement et licence annuelle par poste', 95, 19, 'poste', 52, [40, 52, 10, 'Armoire licences']),
+      // Suivi en stock depuis la création de l'entreprise : quinze licences en réserve au départ,
+      // réapprovisionnées au fil des ventes (l'histoire engendrée plus bas tient le compte).
+      cat('Antivirus / EDR (licence 1 an)', 'Déploiement et licence annuelle par poste', 95, 19, 'poste', 52, [15, 48, 10, 'Armoire licences', mo(60, 1)]),
       cat('Hébergement et supervision serveur', 'Serveur virtuel supervisé, mises à jour et sauvegardes incluses', 180, 19, 'mois', 65),
       cat('Mise en conformité protection des données', 'Registre des traitements, procédures, déclaration à l\'INPDP', 1800, 19, 'forfait'),
       // Ajoutés en fin de liste : les indices k[0]…k[10] sont utilisés partout ci-dessous, les décaler
@@ -224,6 +285,66 @@
       clauses: { duree: 'Le présent contrat est conclu pour une durée de douze (12) mois à compter du premier jour du mois suivant sa signature.',
         paiement: 'Les prestations sont facturées mensuellement, le 1er de chaque mois, et payables à trente (30) jours date de facture.' },
       notes: 'Contrat signé par les deux parties. Il est facturé par le contrat récurrent « Maintenance mensuelle ».' });
+
+    // ---------- les quatre années d'avant (10.14.0) ----------
+    // Engendrées, mois par mois, avec des volumes qui grandissent : trois pièces par mois la première
+    // année, huit la quatrième. Tout ce qui est ancien est RÉGLÉ (une entreprise de cinq ans a
+    // encaissé ses factures de 2022) : les retards et les relances vivent dans la fenêtre écrite à la
+    // main. Les licences antivirus sortent du stock ; leurs achats sont posés plus bas, au rythme
+    // des ventes (`ventesLicences`).
+    const ventesLicences = [];      // [{ age, date, qty }] — pour réapprovisionner le stock en face
+    const prestations = [
+      () => ({ sujet: 'Audit de sécurité réseau', lignes: [line(k[0], 1), line(k[5], entre(1, 3))], devis: true }),
+      () => ({ sujet: 'Test d\'intrusion applicatif', lignes: [line(k[1], 1)], devis: true }),
+      () => ({ sujet: 'Installation d\'un pare-feu', lignes: [line(k[2], 1), line(k[7], entre(0, 2) || 1)], devis: true }),
+      () => ({ sujet: 'Maintenance et supervision', lignes: [line(k[4], entre(1, 3))], devis: false }),
+      () => ({ sujet: 'Sauvegarde externalisée', lignes: [line(k[3], entre(3, 12))], devis: false }),
+      () => ({ sujet: 'Formation sensibilisation', lignes: [line(k[5], entre(2, 6))], devis: true }),
+      () => ({ sujet: 'Installation de postes de travail', lignes: [line(k[6], entre(2, 8))], devis: false }),
+      () => ({ sujet: 'Hébergement et supervision serveur', lignes: [line(k[9], entre(3, 6))], devis: false }),
+      () => ({ sujet: 'Mise en conformité protection des données', lignes: [line(k[10], 1), line(k[5], 2)], devis: true })
+    ];
+    const modes = ['virement', 'virement', 'virement', 'virement', 'cheque', 'cheque', 'especes'];
+    let avoirsFaits = 0;
+    for (let m = HIST_DEBUT; m >= HIST_FIN; m--) {
+      const age = HIST_DEBUT - m;                      // 0 le premier mois, 45 le dernier
+      const n = age < 12 ? entre(2, 4) : age < 24 ? entre(4, 6) : age < 36 ? entre(5, 7) : entre(7, 9);
+      // Les clients d'un mois : les premiers mois n'en ont que quelques-uns, puis le cercle s'élargit.
+      const cercle = anciens.slice(0, Math.min(anciens.length, 5 + Math.floor(age * 0.7)));
+      for (let i = 0; i < n; i++) {
+        const client = parmi(cercle);
+        const jour = entre(2, 24);
+        const date = mo(m, jour);
+        const tirage = alea();
+        let p;
+        if (tirage < 0.14) {
+          const qty = entre(2, 5);
+          p = { sujet: 'Licences antivirus et déploiement', lignes: [line(k[8], qty), line(k[6], Math.min(qty, 3))], devis: false };
+          ventesLicences.push({ age, date, qty });
+        } else p = parmi(prestations)();
+        const cle = `h-${m}-${i}`;
+        const rs = Number(cl[client].withholdingRate) > 0;
+        const regle = [pay(entre(8, 48), 'all', client === 5 || cl[client].matricule.startsWith('CIN') ? 'especes' : parmi(modes))];
+        if (p.devis) {
+          const jq = Math.max(1, jour - entre(4, 12));
+          add(cle + '-q', { type: 'devis', client, date: mo(m, jq), status: 'accepté', subject: p.sujet, lines: p.lignes, emails: [E(mo(m, jq), 'devis')] });
+          add(cle, { type: 'facture', client, date, status: 'envoyée', subject: p.sujet, fromQuote: cle + '-q', lines: p.lignes, payments: regle, certificate: rs, emails: [E(date, 'facture')] });
+        } else {
+          add(cle, { type: 'facture', client, date, status: 'envoyée', subject: p.sujet, lines: p.lignes, payments: regle, certificate: rs, emails: [E(date, 'facture')] });
+        }
+        // Quelques avoirs au fil des ans : un geste commercial, une ligne facturée en trop.
+        if (i === 0 && [9, 21, 30, 40].includes(age) && avoirsFaits < 4) {
+          avoirsFaits++;
+          add(cle + '-a', { type: 'avoir', client, date: mo(m, Math.min(28, jour + 3)), status: 'émis', creditOf: cle,
+            creditReason: age % 2 ? 'Geste commercial' : 'Ligne facturée en trop', lines: [JSON.parse(JSON.stringify(p.lignes[0]))].map(l => ({ ...l, qty: 1 })) });
+        }
+      }
+      // Un devis refusé de temps en temps : un devis sur trois ne se signe pas.
+      if (age >= 4 && age % 2 === 0) {
+        const client = parmi(cercle), p = parmi(prestations)(), jq = entre(3, 25);
+        add(`h-${m}-r`, { type: 'devis', client, date: mo(m, jq), status: 'refusé', subject: p.sujet, lines: p.lignes, emails: [E(mo(m, jq), 'devis')] });
+      }
+    }
 
     // Création dans l'ordre chronologique : numéros continus par type et par année, dépendances (acompte → solde, facture → avoir) résolues
     specs.sort((a, b) => a.date.localeCompare(b.date) || (a.seq || 0) - (b.seq || 0));
@@ -368,30 +489,87 @@
     // Le rattachement se pose APRÈS : une pièce se retrouve par son numéro, jamais par son indice.
     achatParNumero('ACPT-2026-11').achatLie = achatParNumero('FA-2026-1402').id;
     achatParNumero('AV-2026-0233').achatLie = achatParNumero('LOC-2026-08').id;
+    // ---------- les achats des quatre années d'avant (10.14.0) ----------
+    // Le loyer chaque mois, l'électricité tous les deux mois, l'internet, le carburant, le comptable
+    // chaque trimestre (avec sa retenue, attestation remise), et le stock de licences qu'on
+    // réapprovisionne quand il baisse. Tout est réglé : ce qui reste à payer vit dans la fenêtre.
+    const supTT = sup('Tunisie Telecom', '0001234T/A/M/000', { paymentTermsDays: 15, notes: 'Fibre du bureau, prélevée chaque mois.' });
+    const supAgil = sup('Station Agil El Manar', '', { paymentTermsDays: 0, notes: 'Carburant de la camionnette.' });
+    d.suppliers.push(supTT, supAgil);
+    const aa = (y, m) => `${y}-${String(m).padStart(2, '0')}`;
+    let stockLicences = 15;                           // le stock de départ, posé au catalogue
+    let numTMI = 100;
+    const acheterLicences = (date, qty, cout) => {
+      numTMI++;
+      d.purchases.push(buy({ supplierId: sp[0].id, number: `TMI-${date.slice(0, 4)}-${numTMI}`, date, dueDate: C.addDays(date, 30),
+        category: 'Achats de marchandises', subject: 'Licences antivirus pour la revente', fees: 1,
+        lines: [bline('Antivirus / EDR (licence 1 an)', qty, cout, 19, 'stock')],
+        payments: [{ date: C.addDays(date, entre(10, 28)), amount: 'all' }] }));
+      stockLicences += qty;
+    };
+    for (let m = HIST_DEBUT; m >= HIST_FIN; m--) {
+      const age = HIST_DEBUT - m;
+      const ref = mo(m, 1), y = ref.slice(0, 4), mm = ref.slice(5, 7);
+      const loyer = age < 24 ? 950 : 1100;
+      d.purchases.push(buy({ supplierId: sp[3].id, number: `QL-${aa(y, mm)}`, date: mo(m, 5), dueDate: mo(m, 10), category: 'Loyer et charges locatives',
+        subject: 'Loyer du bureau', lines: [bline('Loyer mensuel du bureau', 1, loyer, 19)], payments: [{ date: mo(m, entre(6, 9)), amount: 'all' }] }));
+      d.purchases.push(buy({ supplierId: supTT.id, number: `TT-${aa(y, mm)}`, date: mo(m, 12), dueDate: mo(m, 27), category: 'Téléphone et internet',
+        subject: 'Fibre et téléphone du bureau', lines: [bline('Abonnement fibre professionnelle', 1, age < 30 ? 79 : 99, 19)], payments: [{ date: mo(m, 27), amount: 'all' }] }));
+      if (age % 2 === 1) d.purchases.push(buy({ supplierId: sp[2].id, number: `STEG-${700000 + age * 373}`, date: mo(m, 20), dueDate: mo(m, 28), category: 'Électricité, eau, gaz',
+        subject: 'Électricité du bimestre', lines: [bline('Consommation bimestrielle', 1, entre(210, 360), 19)], payments: [{ date: mo(m, 26), amount: 'all', method: 'especes' }] }));
+      if (age >= 14) d.purchases.push(buy({ kind: 'depense', supplierId: supAgil.id, number: '', date: mo(m, entre(8, 26)), category: 'Carburant et déplacements',
+        subject: 'Carburant du mois', lines: [bline('Carburant', 1, entre(130, 210), 19, 'charge', false)], payments: [{ date: mo(m, 27), amount: 'all', method: 'especes' }],
+        notes: 'TVA non déductible sur les véhicules de tourisme — À VÉRIFIER avec le comptable.' }));
+      if (age % 3 === 2) {
+        const q = Math.floor((Number(mm) - 1) / 3) + 1;
+        d.purchases.push(buy({ supplierId: sp[1].id, number: `H-${y}-${String(10 + q)}`, date: mo(m, 15), dueDate: mo(m, 30), category: 'Honoraires (comptable, avocat)',
+          subject: 'Honoraires comptables du trimestre', withholdingRate: 3, fees: 1, withholdingCertificate: true,
+          lines: [bline('Tenue de comptabilité et déclarations', 1, age < 24 ? 750 : 900, 19)], payments: [{ date: mo(m, 25), amount: 'all' }] }));
+      }
+      // Le stock suit les ventes : on rachète AVANT la vente qui le ferait passer sous le seuil.
+      ventesLicences.filter(v => v.age === age).sort((a, b) => a.date.localeCompare(b.date)).forEach(v => {
+        if (stockLicences - v.qty < 10) acheterLicences(C.addDays(v.date, -3) < mo(m, 1) ? mo(m, 1) : C.addDays(v.date, -3), 25, age < 24 ? 48 : 52);
+        stockLicences -= v.qty;
+      });
+    }
+    // Au seuil de la fenêtre écrite à la main, la réserve compte ce qu'elle comptait avant : une
+    // quarantaine de licences (les ventes des treize derniers mois en sortent une dizaine).
+    if (stockLicences < 40) acheterLicences(mo(HIST_FIN, 22), 40 - stockLicences, 52);
+
     d.expenseCategories = [];
 
     // ---------- paie (5.0.0) ----------
     // Deux salariés : un technicien à temps plein depuis deux ans, et une assistante embauchée en
     // cours d'année. Les bulletins remontent jusqu'au mois dernier, le dernier n'étant pas encore payé.
+    // Le technicien est là depuis plus de quatre ans ; un second technicien est parti il y a dix
+    // mois (sa fiche reste : son nom vit sur ses bulletins, qui ne se réécrivent pas) ; l'assistante
+    // est arrivée au printemps.
     const empTech = { id: C.uid(), name: 'Ahmed Ben Salah', cin: '09123456', cnss: '112233-44',
-      position: 'Technicien systèmes et réseaux', contract: 'cdi', hireDate: mo(5, 1), endDate: '',
+      position: 'Technicien systèmes et réseaux', contract: 'cdi', hireDate: mo(50, 1), endDate: '',
       grossSalary: 1850, headOfFamily: true, children: 2, method: 'virement', iban: '', notes: '' };
     const empAssist = { id: C.uid(), name: 'Ines Gharbi', cin: '11223344', cnss: '556677-88',
       position: 'Assistante administrative', contract: 'cdd', hireDate: mo(3, 1), endDate: '',
       grossSalary: 900, headOfFamily: false, children: 0, method: 'virement', iban: '', notes: 'CDD d\'un an, renouvelable.' };
-    d.employees = [empTech, empAssist];
+    const empYassine = { id: C.uid(), name: 'Yassine Trabelsi', cin: '08765432', cnss: '223344-55',
+      position: 'Technicien helpdesk', contract: 'cdi', hireDate: mo(34, 1), endDate: C.addDays(mo(9, 1), -1),
+      grossSalary: 1250, headOfFamily: false, children: 0, method: 'virement', iban: '', notes: 'Parti de lui-même, rejoint une banque. Solde de tout compte remis.' };
+    d.employees = [empTech, empAssist, empYassine];
+    // Le salaire d'un mois passé est celui de CE mois-là : une augmentation ne réécrit pas un bulletin.
+    const brutDuMois = (e, back) => e === empTech ? (back > 36 ? 1400 : back > 24 ? 1600 : back > 12 ? 1750 : e.grossSalary)
+      : e === empYassine ? (back > 22 ? 1100 : e.grossSalary) : e.grossSalary;
     const payCfg = C.payrollSettings(d);
     d.payslips = [];
     // Du mois d'embauche jusqu'au mois dernier inclus.
-    for (let back = 12; back >= 1; back--) {
+    for (let back = HIST_DEBUT; back >= 1; back--) {
       const ref = mo(back, 1);
       const y = Number(ref.slice(0, 4)), m = Number(ref.slice(5, 7));
-      [empTech, empAssist].forEach(e => {
+      [empTech, empAssist, empYassine].forEach(e => {
         if (e.hireDate > C.addDays(ref, 27)) return;                  // pas encore embauché ce mois-là
+        if (e.endDate && e.endDate < ref) return;                     // déjà parti
         // Une prime de rendement en fin d'année, une absence isolée : de quoi montrer les deux cas.
-        const bonuses = (back === 2 && e === empTech) ? [{ label: 'Prime de rendement', amount: 400, taxable: true }] : [];
+        const bonuses = ((back === 2 || (m === 12 && back > 12)) && e === empTech) ? [{ label: 'Prime de rendement', amount: 400, taxable: true }] : [];
         const absentDays = (back === 2 && e === empAssist) ? 2 : 0;
-        const input = { gross: e.grossSalary, workedDays: 26, absentDays, bonuses, deductions: [] };
+        const input = { gross: brutDuMois(e, back), workedDays: 26, absentDays, bonuses, deductions: [] };
         d.payslips.push({
           id: C.uid(), employeeId: e.id, year: y, month: m, ...input,
           computed: C.computePayslip(e, input, payCfg),
@@ -414,6 +592,12 @@
       { id: C.uid(), employeeId: empAssist.id, kind: 'sans-solde', from: C.addDays(mo(2, 1), -2), to: mo(2, 2),
         paid: null, note: 'Absence sans solde' }
     ];
+    // Les congés d'été du technicien, chaque année : un registre de cinq ans n'est pas vide.
+    for (let an = 1; an <= 4; an++) {
+      const ete = C.addMonths(T, -12 * an, 1).slice(0, 4) + '-08-04';
+      if (ete < empTech.hireDate || ete >= mo(13, 1)) continue;
+      d.leaves.push({ id: C.uid(), employeeId: empTech.id, kind: 'conges', from: ete, to: C.addDays(ete, 9), paid: null, note: 'Congé d\'été' });
+    }
     d.advances = [
       { id: C.uid(), employeeId: empAssist.id, date: mo(3, 12), amount: 600, monthly: 200,
         note: 'Avance remboursée en trois mois' }
@@ -422,8 +606,9 @@
     d.payslips.forEach(sl => {
       const e = d.employees.find(x => x.id === sl.employeeId);
       const input = C.payslipInputFor(d, e, sl.year, sl.month);
-      // On garde les primes saisies plus haut, on reprend absences et avances.
-      const merged = { ...input, bonuses: sl.bonuses || [] };
+      // On garde les primes saisies plus haut et le brut DU MOIS (une augmentation ne réécrit pas un
+      // bulletin passé), on reprend absences et avances.
+      const merged = { ...input, gross: input.prorata ? input.gross : sl.gross, bonuses: sl.bonuses || [] };
       Object.assign(sl, merged, { computed: C.computePayslip(e, merged, payCfg) });
     });
 
@@ -470,16 +655,24 @@
         disposal: { date: mo(3, 20), amount: 2400, reason: 'Revendu à un confrère' },
         notes: 'Remplacé par l\'hébergement externalisé.' },
       { id: C.uid(), label: 'Mobilier du bureau', category: 'mobilier', date: mo(22, 3),
-        amount: 6400, residual: 0, years: 10, supplierId: '', purchaseId: '', lineIndex: null, notes: '' }
+        amount: 6400, residual: 0, years: 10, supplierId: '', purchaseId: '', lineIndex: null, notes: '' },
+      // Les biens de la création : un premier portable entièrement amorti, et la climatisation.
+      { id: C.uid(), label: 'Premier ordinateur portable', category: 'informatique', date: mo(58, 10),
+        amount: 2300, residual: 0, years: 3, supplierId: sp[0].id, purchaseId: '', lineIndex: null,
+        notes: 'Amorti en entier : il sert encore de poste de secours.' },
+      { id: C.uid(), label: 'Climatisation du bureau', category: 'agencement', date: mo(57, 20),
+        amount: 3200, residual: 0, years: 8, supplierId: '', purchaseId: '', lineIndex: null, notes: '' }
     ];
 
     // ---------- trésorerie (3.3.0) ----------
     // Un compte bancaire et une caisse, avec un solde de départ il y a un an et quelques
     // mouvements qui n'ont ni facture ni achat : salaires, impôts, frais bancaires.
+    // Les comptes s'ouvrent avec l'entreprise, il y a cinq ans : le capital déposé à la banque, un
+    // fonds de caisse.
     const accBank = { id: C.uid(), name: 'BIAT — compte courant', kind: 'banque', bank: 'BIAT', rib: '00 006 0000123456789 01',
-      opening: 12000, openingDate: mo(13, 1), isDefault: true, statementBalance: '', notes: '' };
+      opening: 6000, openingDate: mo(60, 1), isDefault: true, statementBalance: '', notes: '' };
     const accCash = { id: C.uid(), name: 'Caisse espèces', kind: 'caisse', bank: '', rib: '',
-      opening: 400, openingDate: mo(13, 1), isDefault: false, statementBalance: '', notes: 'Petites dépenses du bureau.' };
+      opening: 300, openingDate: mo(60, 1), isDefault: false, statementBalance: '', notes: 'Petites dépenses du bureau.' };
     d.accounts = [accBank, accCash];
     const mv = (kind, monthsAgo, day, amount, label, acc) => ({
       id: C.uid(), date: mo(monthsAgo, day), kind, amount, label,
@@ -489,11 +682,20 @@
     // Depuis la 5.0.0, les salaires sortent tout seuls des bulletins réglés : en saisir aussi ici les
     // compterait deux fois, et SkanFact le signalerait dans « À faire ». On ne garde que ce qui n'a
     // ni facture, ni achat, ni bulletin.
-    for (let i = 12; i >= 1; i--) {
-      d.movements.push(mv('banque', i, 5, 18, 'Frais de tenue de compte'));
+    for (let i = HIST_DEBUT; i >= 1; i--) {
+      d.movements.push(mv('banque', i, 5, i > 30 ? 12 : 18, 'Frais de tenue de compte'));
     }
     d.movements.push(mv('impot', 4, 25, 2400, 'Acompte provisionnel'));
     d.movements.push(mv('apport', 13, 3, 5000, 'Apport en compte courant'));
+    // Les impôts des années passées : trois acomptes provisionnels par an, qui grandissent avec l'activité.
+    for (let an = 1; an <= 4; an++) {
+      [[6, 25], [9, 25], [12, 25]].forEach(([mois, jour], k) => {
+        const date = `${C.addMonths(T, -12 * an, 1).slice(0, 4)}-${String(mois).padStart(2, '0')}-${jour}`;
+        if (date < mo(HIST_DEBUT - 12, 1) || date >= mo(13, 1)) return;
+        d.movements.push({ id: C.uid(), date, kind: 'impot', amount: 500 + 350 * (5 - an) + 100 * k, label: 'Acompte provisionnel',
+          accountId: accBank.id, method: 'virement', reference: '' });
+      });
+    }
     d.movements.push(mv('autre-sortie', 2, 14, 120, 'Fournitures diverses', accCash));
     // 8.9.0 : la déclaration mensuelle se PAIE. Chaque mois écoulé, le net de TVA (timbres et retenues
     // opérées compris) sort de la banque le 28 du mois suivant, sur le compte « TVA à payer » — c'est
@@ -518,7 +720,14 @@
       lignes: [{ compte: '616', label: 'Prime d\'assurance multirisque', debit: 840, credit: 0 },
                { compte: '4421', label: 'Avance du gérant en compte courant', debit: 0, credit: 840 }] });
     // Quelques encaissements déjà pointés sur le relevé, pour que le rapprochement ait du sens
-    d.documents.forEach((doc, i) => (doc.payments || []).forEach(p => { if (i % 3 === 0) p.reconciled = true; }));
+    // 10.14.0 — sur cinq ans, tout ce qui a plus de deux mois est pointé : une entreprise qui a
+    // cinq ans rapproche sa banque chaque mois, et c'est ce qui laisse à l'onglet Rapprochement le
+    // seul travail récent à faire.
+    const pointeAvant = mo(2, 1);
+    d.documents.forEach((doc, i) => (doc.payments || []).forEach(p => { if (i % 3 === 0 || p.date < pointeAvant) p.reconciled = true; }));
+    d.purchases.forEach(pu => (pu.payments || []).forEach(p => { if (p.date < pointeAvant) p.reconciled = true; }));
+    d.movements.forEach(m => { if (m.date < pointeAvant) m.reconciled = true; });
+    d.payslips.forEach(sl => { if (sl.paidDate && sl.paidDate < pointeAvant) sl.reconciled = true; });
 
     // ---------- modèles et textes prédéfinis ----------
     d.templates = [
@@ -537,6 +746,21 @@
     // rempli sa fiche société (c'est ce que fait un débutant), puis se mettre à travailler pour de
     // vrai — le nom « DÉMO — Société de services SUARL », un matricule inventé et un RIB qui n'existe
     // pas s'impriment alors sur chaque facture, et le client vire l'argent dans le vide.
+    // ---------- ce qu'une entreprise de cinq ans a déjà fait (10.14.0) ----------
+    // Ses déclarations CNSS sont déposées, sauf la dernière (elle attend dans « À faire ») ; sa
+    // déclaration d'employeur de l'an dernier aussi.
+    const soc = C.socialDue(d, T);
+    const aGarder = soc.filter(x => x.kind === 'cnss').slice(-1).map(x => x.id);
+    soc.filter(x => !aGarder.includes(x.id)).forEach(x => d.socialFilings.push({ id: x.id, filedAt: C.addDays(x.dueDate, -3), label: x.label }));
+    // Et ses mois sont CLÔTURÉS, au fil de l'eau, jusqu'à il y a quatre mois : un mois déclaré ne
+    // bouge plus. Les trois derniers restent ouverts — c'est là que se fait le travail en cours, et
+    // « À faire » en réclame la clôture le moment venu.
+    const clotureJusquA = C.addDays(mo(3, 1), -1);
+    for (let back = HIST_DEBUT; back >= 4; back--) {
+      const fin = C.addDays(mo(back - 1, 1), -1);
+      if (fin > clotureJusquA) break;
+      C.closePeriod(d, fin, { todayIso: T, at: ts(C.addDays(fin, 12)), by: '', reason: '' });
+    }
     d.demo = true;
     d.company.demo = !avaitUneSociete;   // l'identité vient-elle de l'exemple, ou est-elle la sienne ?
     return C.migrateData(d);
