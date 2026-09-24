@@ -260,7 +260,11 @@ l'ordre proposé.
   le départ, et dire comment le fichier d'appairage part chez les clients (un mail préparé ?).
 - ~~**La visite guidée du Cabinet**~~ — *faite en 10.14.0* : `cabvisites.js` (découverte, une visite par
   page et par écran de comptabilité, gestes guidés et techniques), « Me guider », et
-  `e2e:cabinet-couverture`. Reste, comme côté entreprise : `e2e:visite` (jouer chaque étape), et
+  `e2e:cabinet-couverture`. Puis la parité (même jour, demandée par Skander) : 49 gestes guidés, un
+  par écran de travail au moins, le bandeau de l'exemple de SkanFact sur chaque page, et quatre
+  constats du test à la souris corrigés. Joués à la souris : grand livre, balance, production,
+  paquets, et la découverte. Reste, comme côté entreprise : `e2e:visite` (jouer chaque étape — les
+  ~30 parcours neufs n'ont été joués qu'à l'essai, pas un par un), et
   **le jeu d'exemple du Cabinet sur plusieurs exercices** — il porte une année, et la découverte ne
   peut montrer ni une réouverture, ni des à-nouveaux reçus d'un exercice clôturé au cabinet.
 - **L'instrument `e2e:visite`** : jouer chaque étape de chaque visite dans l'application réelle —

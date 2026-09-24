@@ -122,6 +122,41 @@ Skander : « commence par faire ce qu'on vient de faire dans le dernier lot sur 
   trois premières fois qu'on l'ouvre ; la recherche Ctrl K trouve les visites.
 - Le moteur est celui de l'application entreprise, chargé tel quel : l'algorithme qui dit ce que fait
   un bouton vit désormais dans le moteur, et les deux applications n'ont plus que leur dictionnaire.
+- **Quarante-neuf gestes guidés au lieu de vingt et un** (Skander : « il manque encore beaucoup de
+  parcours ») : lire un compte au grand livre, vérifier la balance et sa balance auxiliaire, suivre la
+  production, relire un paquet reçu, valider par lot, contre-passer, programmer un abonnement, joindre
+  un justificatif, lettrer, chercher, la paie, la CNSS, les biens, l'inventaire, la révision, la
+  liasse, l'exercice suivant, le dossier de clôture, une échéance déposée, la fiche d'un client, et
+  dans les Réglages les guides de saisie, les touches, les régimes, la méthode de révision, la
+  correspondance de comptes, le mot de passe et l'apparence. **Chaque écran de travail en a au moins
+  un** ; un parcours qui ne te fait rien faire le dit, et dit pourquoi (clôturer, valider ou composer
+  un mail ne se font pas « pour voir »).
+- **Le bandeau de l'exemple est celui de SkanFact**, lilas, sur **chaque** page — une fiche, un livre,
+  une déclaration — et plus seulement en orange sur la liste des dossiers : il dit ce que tu peux
+  faire, que tes vrais dossiers sont à l'abri, et porte « Visite guidée » et « Quitter l'exemple ».
+- Vu en jouant la découverte à la souris, et corrigé :
+  - la clé de secours était réclamée en rouge dès le chargement de l'exemple, pour des paquets
+    **fictifs** : elle ne se réclame qu'au premier vrai paquet reçu ;
+  - les flèches ← → de la bulle ne marchaient plus après un clic ailleurs dans la page — et, une fois
+    réparées, avançaient de deux étapes d'un coup ;
+  - une bulle citait une colonne que l'écran masquait ;
+  - ce que la visite amenait à l'écran se glissait sous la barre collée des onglets de la
+    comptabilité (sa hauteur est désormais mesurée) ;
+  - « Clôturer l'exercice » était vert au milieu de l'année : il ne l'est qu'une fois l'exercice
+    fini, et la question prévient quand il ne l'est pas ;
+  - un grand panneau que la bulle ne pouvait pas longer était couvert par elle : il se découpe.
+- Vu en jouant ces parcours à la souris, et corrigé :
+  - un geste « clique sur la ligne d'un client » ne comptait que sur la **première** ligne ; cliquer
+    la sixième ouvrait bien le dossier, mais la bulle se disait « perdue de vue » (les deux
+    applications partagent ce moteur) ;
+  - quand le dernier geste ouvre un menu, la carte de fin se posait par-dessus : une étape montre
+    maintenant le menu ouvert ;
+  - l'écran du mot de passe du Cabinet ne mettait pas le curseur dans le champ (SkanFact, si) ;
+  - le menu d'un paquet disait « Créer le livre de ce client » après un redémarrage, sur un livre qui
+    existe — ou « Voir ses écritures » chez un client qui n'en a pas : il lit maintenant l'index de
+    CE dossier ;
+  - la balance « aux six totaux » n'en montre que quatre quand l'exercice n'a pas d'ouverture : la
+    bulle le dit.
 
 ## 10.13.0-beta.1 — 24/09/2026
 

@@ -7064,6 +7064,64 @@ instrument `npm run e2e:cabinet-couverture` (le parcours de `e2e:cabinet-rendu` 
   traversaient l'assistant par « Passer sinon Suivant » ont tenu seuls — un parcours reconnaît un
   écran à ce qu'il CONTIENT (7.28.0).
 
+**Puis la découverte du Cabinet jouée à la souris** — sept constats qu'aucun test ne voyait :
+
+- **Un filet se réclame quand il protège quelque chose de RÉEL** : la clé de secours criait en rouge
+  dès le chargement de l'exemple, pour des paquets fictifs (`paquetsReelsRecus`). Une alerte fausse le
+  premier jour apprend à ignorer la seule qui compte.
+- **Un raccourci clavier se lit au niveau du DOCUMENT, et une seule fois** : les flèches de la bulle
+  mouraient dès qu'on cliquait dans la page ; écoutées aussi sur le document, elles avançaient de deux
+  étapes (la bulle ET le document). `defaultPrevented` départage — c'est le motif du Cmd+K qui
+  traversait deux couches (6.8.1).
+- **Ce qu'on amène à l'écran s'arrête sous ce qui colle** (le jumeau de la marge de `main`) : la
+  barre des onglets de la comptabilité est collante ; sa hauteur est MESURÉE (`--c-nav-h`, un
+  `ResizeObserver`) et devient le `scroll-padding` — une valeur écrite à la main aurait menti dès que
+  la barre passe sur deux rangées.
+- **Un bouton vert se décide sur le calendrier** (U-11) : « Clôturer l'exercice » était l'étape
+  suivante au milieu de l'année. `exerciceTermine` ; et la question avertit quand on clôture un
+  exercice en cours.
+- **Une bulle qui ne peut pas longer un grand panneau le découpe** (`hautPourCouper`,
+  `decouperHaut`) au lieu de le couvrir : on éclaire le haut de la zone, et la bulle se pose dessous.
+- Une bulle citait une colonne que l'écran masquait (colonnes vides masquées, 9.4.4) : un texte de
+  visite parle de ce que l'écran MONTRE.
+
+**Puis la parité des parcours** (Skander : « il manque encore beaucoup de parcours, et beaucoup de guides
+— ce que j'ai dit pour l'app entreprise, fais pareil pour le Cabinet ; même l'alerte du jeu d'exemple
+doit devenir comme celle de l'app entreprise ») :
+
+- **Une couverture se prend par ÉCRAN, pas par nombre de visites.** 21 → 49 gestes guidés ; le test
+  qui compte n'est pas le total mais « chaque écran de travail a au moins un parcours où l'on FAIT »
+  (l'Aide, « Me guider » et l'aiguillage de la comptabilité nommés en exception). C'est lui qui a dit
+  qu'il manquait le grand livre, la balance, la production et les paquets d'un client — un compte
+  « au moins N » les aurait laissés passer (7.33.0, 10.12.0).
+- **Un parcours « faire » qui ne fait rien jouer est une page qui se déguise.** Dix-sept parcours de
+  ce type n'avaient AUCUN geste. Ceux dont le geste est sûr sur l'exemple en ont reçu un (ouvrir un
+  menu, une fenêtre qu'on referme, une carte de thème) ; les autres portent `sansGeste` avec leur
+  raison (clôturer, valider, composer un mail ne se jouent pas « pour voir ») — une exception
+  anonyme est un trou, et une exception sur un parcours qui a son geste est un mensonge : le test
+  refuse les deux.
+- **Le clic d'un geste vise la cible, pas son premier exemplaire** (`viseLaCible`, moteur partagé) :
+  « Clique sur la ligne d'un client » éclaire la première ligne, et un clic sur la sixième était
+  ignoré ; la page changeait, la cible disparaissait, et la bulle annonçait « On s'est perdus de vue »
+  sur un geste parfaitement fait. Et un clic qui vient d'avoir lieu n'est jamais « perdu » : la page
+  qu'il ouvre fait disparaître la cible. Aucun test ne pouvait le voir — un parcours clique la
+  première ligne ; un humain clique celle qui l'intéresse.
+- **Le dernier geste qui OUVRE quelque chose a son étape** : un menu ouvert en dernier était recouvert
+  par la carte de fin. On montre ce qu'on vient d'ouvrir, puis on termine. Et une bulle ne promet pas
+  « Échap referme le menu » — Échap met la VISITE en pause.
+- **Un libellé qui dit l'état d'un AUTRE objet se trompe de sujet** : le menu d'un paquet choisissait
+  « Voir ses écritures » / « Créer le livre » sur le livre gardé en mémoire — absent après un
+  redémarrage, ou celui d'un autre client. Il lit l'index de CE dossier (`aUnLivre`), sans déchiffrer.
+- **Le jumeau manquant, encore** (7.3.0) : l'écran du mot de passe du Cabinet ne posait pas le
+  curseur dans le champ ; l'app entreprise le faisait depuis toujours. La frappe partait dans le vide.
+- **Le bandeau de l'exemple est UN composant** (`.demo-banner` de la feuille partagée), posé par le
+  routeur après CHAQUE page et reposé par un `MutationObserver` quand une page asynchrone réécrit
+  `#view` — sinon une fiche qui lit son livre le perdait. Un test confronte sa forme à celle de l'app
+  entreprise : deux bandeaux pour un même exemple divergeraient.
+- **Piège de l'outil humain** : `ecran.sh` lit `SKANFACT_ECRAN`, pas `DISPLAY` ; l'état du shell ne
+  survit pas d'un appel à l'autre, donc un `export` fait une fois envoyait les clics sur un AUTRE
+  écran (capture noire). Un petit enveloppant qui pose la variable à chaque appel l'évite.
+
 ## Pistes pour la suite (non demandées)
 
 - Séparation des installateurs arm64 / x64 pour diviser par deux les 222 Mo du dmg universel.
