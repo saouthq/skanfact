@@ -63,7 +63,8 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
     if (!porte.decouvrir || !porte.commencer || porte.verts !== 1 || porte.compteur || porte.focus !== 'sf-decouvrir') throw new Error('la porte : ' + JSON.stringify(porte));
     await win.click('#sf-next');                                          // « Commencer avec mon entreprise » → entreprise
     await win.waitForSelector('#setup .setup-step');
-    if ((await win.textContent('#setup .setup-step')).trim() !== '1 / 3') throw new Error('le compteur ne compte pas les questions : ' + await win.textContent('#setup .setup-step'));
+    // « Question 1 sur 3 » (A4, 10.14.0) : le compteur compte les QUESTIONS, pas la porte, et le dit en toutes lettres.
+    if ((await win.textContent('#setup .setup-step')).trim() !== 'Question 1 sur 3') throw new Error('le compteur ne compte pas les questions : ' + await win.textContent('#setup .setup-step'));
     await win.waitForSelector('#sf-form input[name=name]');
     await win.click('#sf-next');                                          // refusé : pas de raison sociale
     await win.waitForSelector('#toast.show.error');

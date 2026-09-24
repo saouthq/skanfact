@@ -14501,6 +14501,7 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
   require('./suites/exemple-cinq-ans.js')({ t, assert, lireSource });
   require('./suites/visites.js')({ t, assert, lireSource });
   require('./suites/cabvisites.js')({ t, assert, lireSource });
+  require('./suites/assistant.js')({ t, assert, lireSource });
   // Celle-ci reçoit `ta` en plus : elle interroge le vrai worker sur une vraie base SQLite.
   await require('./suites/plateforme-gestion.js')({ t, ta, assert, lireSource });
   await require('./suites/paiement.js')({ ta, assert });

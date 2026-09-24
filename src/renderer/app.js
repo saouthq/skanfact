@@ -786,7 +786,14 @@
   // 10.6.0 du récapitulatif portée à l'app entreprise). Elle nomme maintenant le client, les dates
   // et le montant ; et pour un avoir, la facture qu'il corrige et ce que cela laisse à rendre quand
   // elle est déjà payée. Les avertissements se lisent AVANT le bouton (9.4.2), jamais dessous.
-  function confirmerEmission(doc, numero, avertissements) {
+  //
+  // `opts.exporter` (10.14.0) : « Exporter en PDF » d'un brouillon passe par CETTE fenêtre, pas par
+  // une boîte à deux choix qui émettait sans récapitulatif ni avertissements (société incomplète,
+  // RIB, date antérieure). Elle garde son troisième geste, « Exporter le brouillon », et rend alors
+  // 'emettre', 'brouillon' ou false — une seule fenêtre : deux boîtes à la file se cliquent sans
+  // être lues (7.28.0).
+  function confirmerEmission(doc, numero, avertissements, opts) {
+    const exporter = !!(opts && opts.exporter);
     const isAv = doc.type === 'avoir';
     const cur = docCur(doc);
     const t = C.computeTotals(doc, company());
@@ -811,25 +818,79 @@
     const origine = doc.settles
       ? ligne('Solde du devis', `${h(doc.settles.quoteNumber || '—')}${deduits.length ? ` · acompte${sPl(deduits.length)} ${h(deduits.join(', '))} déduit${sPl(deduits.length)}` : ''}`)
       : doc.deposit ? ligne('Acompte du devis', `${h(doc.deposit.quoteNumber || '—')} · ${h(String(doc.deposit.percent).replace('.', ','))} %`) : '';
+    // La TOUTE première pièce de ce type (10.14.0) : c'est le moment de demander si l'on facturait déjà
+    // ailleurs — avant, la question serait abstraite ; après, la suite ne se touche plus.
+    const annee = String(doc.date || C.today()).slice(0, 4);
+    const premiere = !doc.number && C.premiereNumerotation(data, doc.type, annee);
     return new Promise(resolve => {
       let settled = false;
       const finish = (close, v) => { settled = true; close(); resolve(v); };
-      modal(`<h2>Émettre ${isAv ? 'l\'avoir' : 'la facture'} ${h(numero)} ?</h2>
+      modal(`<h2 id="em-titre">Émettre ${isAv ? 'l\'avoir' : 'la facture'} ${h(numero)} ?</h2>
         <div class="kv recap-emission">
           ${ligne('Client', `<strong>${h(cl ? cl.name : '—')}</strong>`)}
           ${origine}
           ${inv ? ligne('Facture corrigée', `${h(inv.number || '—')} · ${C.money(bInv.totals.netToPay, cur)}`) : ''}
+          ${premiere ? `<div id="em-num-ligne"><span>Numéro</span><span><span class="mono" id="em-num">${h(numero)}</span> — ${isAv ? 'ton tout premier avoir' : 'ta toute première facture'} ici
+            <button type="button" class="btn btn-sm" id="num-suite">${isAv ? 'J\'émettais déjà des avoirs' : 'Je facturais déjà'} : continuer ma numérotation…</button></span></div>` : ''}
           ${ligne('Date', C.fmtDate(doc.date))}
           ${!isAv && doc.dueDate ? ligne('Échéance', C.fmtDate(doc.dueDate)) : ''}
           ${ligne(isAv ? 'Montant de l\'avoir' : 'Net à payer', `<strong>${C.money(t.netToPay, cur)}</strong>`)}
         </div>
-        <p class="small">Le numéro devient définitif et ${isAv ? 'l\'avoir' : 'la facture'} ne se modifie plus.${isAv ? '' : ' Pour corriger après coup, on fait un avoir.'}</p>
+        <p class="small">Le numéro devient définitif et ${isAv ? 'l\'avoir' : 'la facture'} ne se modifie plus.${isAv ? '' : ' Pour corriger après coup, on fait un avoir.'}${exporter ? ` « Exporter le brouillon » donne un PDF marqué « Brouillon », sans numéro : ${isAv ? 'l\'avoir' : 'la facture'} reste modifiable.` : ''}</p>
         ${surplus ? `<div class="warn-box mb">${numerosInsecables(surplus)}</div>` : ''}
         ${avertissements.length ? `<div class="warn-box mb">${avertissements.map(w => `<div>⚠ ${h(w)}</div>`).join('')}</div>` : ''}
-        <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">${avertissements.length ? 'Émettre quand même' : 'Émettre'}</button></div>`,
-        (root, close) => { $('#ok', root).onclick = () => finish(close, true); $('[data-close]', root).onclick = () => finish(close, false); },
+        <div class="modal-actions"><button class="btn" data-close>Annuler</button>${exporter ? '<button class="btn" id="em-brouillon">Exporter le brouillon</button>' : ''}<button class="btn btn-primary" id="ok">${avertissements.length ? 'Émettre quand même' : 'Émettre'}${exporter ? ' et exporter' : ''}</button></div>`,
+        (root, close) => {
+          $('#ok', root).onclick = () => finish(close, exporter ? 'emettre' : true); $('[data-close]', root).onclick = () => finish(close, false);
+          if (exporter) $('#em-brouillon', root).onclick = () => finish(close, 'brouillon');
+          // Le numéro annoncé se RECALCULE après le réglage, par la même fonction que l'émission
+          // (`peekNumber`) : le titre et la ligne ne peuvent pas annoncer un autre numéro que celui
+          // que la pièce portera.
+          const suite = $('#num-suite', root);
+          if (suite) suite.onclick = () => numerotationForm(doc.type, annee, () => {
+            const n = peekNumber(doc.type, doc.date);
+            $('#em-titre', root).textContent = `Émettre ${isAv ? 'l\'avoir' : 'la facture'} ${n} ?`;
+            $('#em-num-ligne', root).innerHTML = `<span>Numéro</span><span><span class="mono" id="em-num">${h(n)}</span> — à la suite de ta numérotation</span>`;
+          });
+        },
         () => { if (!settled) resolve(false); });
     });
+  }
+
+  // Continuer une numérotation commencée ailleurs (10.14.0) : on demande le numéro qu'on a sous les
+  // yeux — celui de sa DERNIÈRE pièce — et la fenêtre annonce la suivante pendant la frappe, par la
+  // même fonction qui l'enregistrera. Utilisée à la toute première émission ; le même réglage vit
+  // dans Paramètres → Documents → Numérotation.
+  function numerotationForm(type, annee, done) {
+    const e = C.etatNumerotation(data, type, annee);
+    const quoi = type === 'avoir' ? 'avoir' : type === 'devis' ? 'devis' : 'facture';
+    const tonDernier = type === 'facture' ? `ta dernière facture de ${annee}` : `ton dernier ${quoi} de ${annee}`;
+    modal(`<h2>Continuer ta numérotation</h2>
+      <p>Tu ${type === 'devis' ? 'faisais des devis' : 'facturais'} déjà avant SkanFact — dans un autre logiciel, sur un carnet ? Ta série de ${h(annee)} ne repart pas à 001 : la prochaine suivra ta dernière. <em>À VÉRIFIER avec ton comptable.</em></p>
+      <form id="nf" class="grid-2">
+        <label class="field obligatoire">${lbl(`Numéro de ${tonDernier}`, 'doc.numDerniere')}<span class="inline"><span class="mono muted num-prefixe">${h(e.prefix)}-${h(annee)}-</span><input type="number" name="derniere" class="num num-derniere" min="0" step="1" value="${e.derniere || ''}" placeholder="ex. 47" autofocus></span></label>
+        <div class="field"><span>La prochaine portera</span><strong class="mono" id="nf-prochaine">${h(e.prochaine)}</strong></div>
+      </form>
+      <p class="small num-motif" id="nf-motif" aria-live="polite"></p>
+      <div class="modal-actions"><button type="button" class="btn" data-close>Annuler</button><button type="button" class="btn btn-primary" id="nf-ok">Continuer à ${h(e.prochaine)}</button></div>`,
+      (root, close) => {
+        const champ = $('[name=derniere]', root);
+        const essai = () => C.poserNumerotation({ documents: data.documents, counters: { ...data.counters } }, type, annee, champ.value);
+        champ.oninput = () => {
+          const r = essai();
+          $('#nf-motif', root).textContent = r.ok ? '' : r.motif;
+          champ.classList.toggle('champ-doute', !r.ok);
+          if (r.ok) { $('#nf-prochaine', root).textContent = r.etat.prochaine; $('#nf-ok', root).textContent = 'Continuer à ' + r.etat.prochaine; }
+        };
+        $('#nf-ok', root).onclick = () => {
+          const r = C.poserNumerotation(data, type, annee, champ.value);
+          if (!r.ok) return refus(champ, r.motif);
+          save(true);
+          close();
+          toast(r.change ? `C'est noté : ta prochaine pièce portera le n° ${r.etat.prochaine}.` : 'La numérotation ne change pas.');
+          if (done) done(r.etat);
+        };
+      });
   }
 
   // Boîte à trois choix : résout avec 'a', 'b' ou null (annulé, Échap compris).
@@ -3131,7 +3192,7 @@
               </div>
               ${isAv ? field('Motif de l\'avoir', 'creditReason', doc.creditReason || '', 'text', ro + ' placeholder="Erreur de facturation, remise commerciale…"') : ''}
               <label class="field">${lbl('Langue du document', 'ed.lang')}<select name="lang" ${ro}><option value="fr" ${doc.lang !== 'en' ? 'selected' : ''}>Français</option><option value="en" ${doc.lang === 'en' ? 'selected' : ''}>English</option></select></label>
-              <label class="field">${lbl('Devise', 'ed.docCurrency')}<select name="currency" ${ro}>${C.CURRENCIES.map(c => `<option value="${c}" ${c === cur ? 'selected' : ''}>${c}</option>`).join('')}</select></label>
+              <label class="field">${lbl('Devise', 'ed.docCurrency')}<select name="currency" ${ro}>${C.CURRENCIES.map(c => `<option value="${c}" ${c === cur ? 'selected' : ''}>${h(C.libelleDevise(c))}</option>`).join('')}</select></label>
               ${statusCell}
               ${field(lbl('Remise globale (%)', 'ed.discount'), 'discountRate', doc.discountRate || 0, 'number', 'min="0" max="100" step="0.5" class="num" ' + ro)}
               ${isInv || isAv || isProforma ? `<label class="field">${lbl('Retenue à la source', 'ed.withholding')}${withholdingSelect('withholdingRate', doc.withholdingRate, null, ro)}</label>` : ''}
@@ -3141,7 +3202,7 @@
                    Statut et Remise d'une colonne, sous le curseur. Ce qui apparaît selon une valeur ne
                    pousse rien (H-E1) : il vit en fin de formulaire — sur un devis, pile sous la devise.
                    Le libellé tient sur une ligne, sinon sa case descend sous ses voisines. */''}
-              <label class="field" id="rate-field" ${cur === company().currency ? 'hidden' : ''}><span class="fl"><span class="rate-lbl">1 ${h(cur)} = ? ${h(company().currency)}</span> <span class="req">obligatoire</span> ${info('ed.rate')}</span><input type="number" name="exchangeRate" value="${h(doc.exchangeRate || '')}" step="0.0001" min="0" class="num" placeholder="ex. 3,4" ${ro}></label>
+              <label class="field obligatoire" id="rate-field" ${cur === company().currency ? 'hidden' : ''}><span class="fl"><span class="rate-lbl">1 ${h(cur)} = ? ${h(company().currency)}</span> ${info('ed.rate')}</span><input type="number" name="exchangeRate" value="${h(doc.exchangeRate || '')}" step="0.0001" min="0" class="num" placeholder="ex. 3,4" ${ro}></label>
             </form>
           </div>
           <div class="panel"><h2>Lignes ${info('ed.lines')}</h2>
@@ -3841,9 +3902,12 @@
       if (!await premierEnvoiOk()) return;
       if (!isQ && !isExtra && doc.status === 'brouillon') {
         const n = doc.number || peekNumber(doc.type, doc.date);
-        const c = await choiceDialog('Exporter en PDF', `Ce document est un brouillon. Tu peux l'émettre maintenant (numéro ${n}, définitif) ou exporter un brouillon marqué « Brouillon », sans numéro.`, `Émettre ${n} et exporter`, 'Exporter le brouillon');
+        // Émettre en exportant passe par le MÊME récapitulatif que « Émettre » (10.14.0) : cette boîte-ci
+        // émettait sans lui, donc sans les avertissements d'émission et sans l'offre de continuer une
+        // numérotation commencée ailleurs. Une porte d'émission, pas deux.
+        const c = await confirmerEmission(doc, n, issueWarnings(), { exporter: true });
         if (!c) return;
-        if (c === 'a') { if (!issue()) return; }
+        if (c === 'emettre') { if (!issue()) return; }
         else if (!persist()) return;   // sans ce refus, on exportait un document qui n'a pas été écrit
         exportPdf(docById(doc.id));
         if (isNew) remplacerPage('#/doc/' + doc.id); else render();
@@ -4320,7 +4384,7 @@
         ${field('Téléphone', 'phone', c.phone)}
         ${field('Email', 'email', c.email, 'email')}
         <label class="field">Langue des documents<select name="lang"><option value="" ${!c.lang ? 'selected' : ''}>Par défaut</option><option value="fr" ${c.lang === 'fr' ? 'selected' : ''}>Français</option><option value="en" ${c.lang === 'en' ? 'selected' : ''}>English</option></select></label>
-        <label class="field">Devise<select name="currency"><option value="" ${!c.currency ? 'selected' : ''}>Par défaut (${h(company().currency)})</option>${C.CURRENCIES.map(x => `<option value="${x}" ${c.currency === x ? 'selected' : ''}>${x}</option>`).join('')}</select></label>
+        <label class="field">Devise<select name="currency"><option value="" ${!c.currency ? 'selected' : ''}>Par défaut (${h(company().currency)})</option>${C.CURRENCIES.map(x => `<option value="${x}" ${c.currency === x ? 'selected' : ''}>${h(C.libelleDevise(x))}</option>`).join('')}</select></label>
         <label class="field span-2">Adresse<textarea name="address">${h(c.address)}</textarea></label>
         <label class="field span-2">Notes internes<textarea name="notes">${h(c.notes || '')}</textarea></label>
       </form>
@@ -5998,6 +6062,7 @@
     'p-regime': { onglet: 'societe', titre: 'Régime fiscal et TVA', mots: 'tva assujetti forfaitaire reel exonere regime fiscal taux mention' },
     'p-banque': { onglet: 'societe', titre: 'Coordonnées bancaires', mots: 'rib banque iban virement reglement paiement conditions' },
     'p-facturation': { onglet: 'documents', titre: 'Règles de facturation', mots: 'timbre fiscal validite devis delai paiement echeance retenue source devise pdf export' },
+    'p-numerotation': { onglet: 'documents', titre: 'Numérotation de tes pièces', mots: 'numero numerotation suite continuer ancien logiciel carnet facture devis avoir compteur 001 derniere prochaine' },
     'p-marque': { onglet: 'documents', titre: 'Image de marque (sur tes documents)', mots: 'logo cachet signature couleur accent marque entete image' },
     'p-textes': { onglet: 'documents', titre: 'Textes imprimés sur les documents', mots: 'pied de page footer conditions mentions anglais english' },
     'p-objectifs': { onglet: 'documents', titre: 'Objectifs et statistiques', mots: 'objectif chiffre affaires client endormi dormant statistiques' },
@@ -6854,8 +6919,8 @@
               </div>
               <label class="field">${lbl('Retenue à la source opérée', 'buy.withholding')}${withholdingSelect('withholdingRate', p.withholdingRate)}</label>
               ${field(lbl('Timbre et frais', 'buy.fees'), 'fees', p.fees || 0, 'number', 'step="0.001" min="0" class="num"')}
-              <label class="field">${lbl('Devise de la facture', 'buy.currency')}<select name="currency">${C.CURRENCIES.map(c => `<option value="${c}" ${c === cur ? 'selected' : ''}>${c}</option>`).join('')}</select></label>
-              <label class="field" id="b-rate-field" ${cur === company().currency ? 'hidden' : ''}><span class="fl"><span class="b-rate-lbl">1 ${h(cur)} = ? ${h(company().currency)}</span> <span class="req">obligatoire</span> ${info('buy.rate')}</span><input type="number" name="exchangeRate" value="${h(p.exchangeRate || '')}" step="0.0001" min="0" class="num" placeholder="ex. 3,4"></label>
+              <label class="field">${lbl('Devise de la facture', 'buy.currency')}<select name="currency">${C.CURRENCIES.map(c => `<option value="${c}" ${c === cur ? 'selected' : ''}>${h(C.libelleDevise(c))}</option>`).join('')}</select></label>
+              <label class="field obligatoire" id="b-rate-field" ${cur === company().currency ? 'hidden' : ''}><span class="fl"><span class="b-rate-lbl">1 ${h(cur)} = ? ${h(company().currency)}</span> ${info('buy.rate')}</span><input type="number" name="exchangeRate" value="${h(p.exchangeRate || '')}" step="0.0001" min="0" class="num" placeholder="ex. 3,4"></label>
             </form>
           </div>
           <div class="panel"><h2>Lignes ${info('buy.lines')}</h2>
@@ -12295,9 +12360,9 @@
           <div class="grid-2">
           ${field(lbl('Raison sociale', 'co.name'), 'name', c.name)}
           ${field(lbl('Matricule fiscal', 'co.matricule'), 'matricule', c.matricule, 'text', 'placeholder="1234567X/A/M/000"')}
-          ${field(lbl('Registre de commerce (RC)', 'co.rc'), 'rc', c.rc || '', 'text', 'placeholder="B123456789"')}
+          ${field(lbl('Registre de commerce (RC)', 'co.rc'), 'rc', c.rc || '', 'text', 'placeholder="facultatif, ex. B123456789"')}
           ${field(lbl('Matricule CNSS employeur', 'pay.cnssEmployerId'), 'cnss', c.cnss || '', 'text', 'placeholder="s\'il y a des salariés"')}
-          ${field(lbl('Capital social', 'co.capital'), 'capital', c.capital || '', 'text', 'placeholder="1 000 DT"')}
+          ${field(lbl('Capital social', 'co.capital'), 'capital', c.capital || '', 'text', 'placeholder="facultatif, ex. 1 000 DT"')}
           <label class="field span-2">${lbl('Adresse', 'co.address')}<textarea name="address">${h(c.address)}</textarea></label>
           ${field('Téléphone', 'phone', c.phone)}
           ${field('Email', 'email', c.email, 'email')}
@@ -12342,10 +12407,30 @@
                et ici on tapait ce qu'on voulait. « Dinar », « TND », « dt » : decimalsFor ne
                reconnaît que 'DT' et 'TND', donc tout le reste passait à deux décimales au lieu de
                trois — sur des montants en dinars, et sur toutes les pièces à venir. -->
-          <label class="field">${lbl('Devise', 'doc.currency')}<select name="currency">${C.CURRENCIES.map(x => `<option value="${x}" ${C.normCurrency(c.currency) === x ? 'selected' : ''}>${x}</option>`).join('')}</select></label>
+          <label class="field">${lbl('Devise', 'doc.currency')}<select name="currency">${C.CURRENCIES.map(x => `<option value="${x}" ${C.normCurrency(c.currency) === x ? 'selected' : ''}>${h(C.libelleDevise(x))}</option>`).join('')}</select></label>
           <label class="check" style="align-self:end"><input type="checkbox" name="openAfterExport" ${c.openAfterExport !== false ? 'checked' : ''}> Ouvrir le PDF après export ${info('doc.openAfterExport')}</label>
         </div>
         <p class="small muted mt">Retenue à la source : calculée sur le TTC hors timbre, modifiable sur chaque facture et par client. Les taux et l'assiette sont <em>À VÉRIFIER avec ton comptable</em>. La TVA et le régime se règlent dans <b>Mon entreprise</b>.</p></div>
+        ${/* 10.14.0 — la numérotation continue : quelqu'un qui facturait ailleurs continue à FAC-2026-048 au
+             lieu de repartir à 001. On règle la DERNIÈRE pièce émise ailleurs : c'est le numéro qu'on a
+             sous les yeux ; `nextNumber` fait la suivante. */''}
+        ${panneau('p-numerotation', info('doc.numerotation'))}
+          <p class="small muted">Tu facturais déjà avant SkanFact — dans un autre logiciel, sur un carnet ? Indique le numéro de ta dernière pièce de ${C.today().slice(0, 4)} : la suivante le suivra, au lieu de repartir à 001.</p>
+          ${/* Le motif d'un refus vit dans une place RÉSERVÉE au-dessus du tableau. Posé dans la ligne, il
+               élargissait la dernière colonne et le tableau redistribuait les autres : le champ où l'on
+               tapait partait de 220 px sous le curseur (règle H-E1). Sous le tableau, la barre
+               « Modifications non enregistrées » le recouvrait. */''}
+          <p class="small num-motif" id="num-motif" aria-live="polite"></p>
+          <table class="list compact" id="num-table"><thead><tr><th>Pièces de ${C.today().slice(0, 4)}</th><th class="r">Dernière émise ${info('doc.numDerniere')}</th><th>La prochaine portera</th></tr></thead>
+          <tbody>${C.TYPES_NUMEROTES.map(type => {
+            const e = C.etatNumerotation(data, type, C.today().slice(0, 4));
+            const nom = { facture: 'Factures', avoir: 'Avoirs', devis: 'Devis' }[type];
+            return `<tr><td>${nom}</td><td class="r">${e.verrouillee
+              ? `<span class="mono">${h(e.derniereNumero)}</span>`
+              : `<input type="number" class="num num-derniere" data-num="${type}" data-nom="${nom}" data-avant="${e.derniere || ''}" value="${e.derniere || ''}" min="0" step="1" placeholder="aucune" aria-label="Dernière ${nom.toLowerCase().replace(/s$/, '')} émise en ${e.annee}">`}</td>
+              <td><span class="mono" data-num-prochaine="${type}">${h(e.prochaine)}</span>${e.verrouillee ? ' <span class="small muted">— la suite est tenue par SkanFact</span>' : ''}</td></tr>`;
+          }).join('')}</tbody></table>
+          <p class="small muted mt">Une facture et un avoir reçoivent leur numéro à l'émission ; leur série d'une année doit rester continue — <em>À VÉRIFIER avec ton comptable</em>. Une fois une facture de l'année numérotée ici, sa suite ne se change plus.</p></div>
         <!-- « Image de marque » a fait deux voyages : de l'onglet Société (où on la cherchait entre
              le matricule fiscal et le RIB) vers Apparence en 7.11.0, puis ici. Le titre disait
              depuis toujours ce qu'elle est — « sur tes documents » — et l'onglet Apparence, qui ne
@@ -12595,7 +12680,29 @@
     $('#pf').addEventListener('change', e => {
       if (e.target && e.target.name === 'currency') { const u = $('#pf [data-unite-timbre]'); if (u) u.textContent = C.normCurrency(e.target.value); }
     });
+    // La numérotation (10.14.0). La prochaine pièce se lit PENDANT la frappe, par la même fonction que
+    // l'enregistrement : un aperçu calculé à part finirait par annoncer un autre numéro que celui que
+    // la facture portera. Un refus se dit sur la ligne, en orange, sans bloquer la frappe.
+    const anneeNum = C.today().slice(0, 4);
+    const numEssai = el => C.poserNumerotation({ documents: data.documents, counters: { ...data.counters } }, el.dataset.num, anneeNum, el.value);
+    // Toutes les lignes se relisent à chaque frappe : le motif affiché est celui de la PREMIÈRE ligne
+    // refusée, nommée, et il s'efface quand elle est corrigée — pas quand on tape dans une autre.
+    const majNumerotation = () => {
+      let motif = '';
+      $$('#pf [data-num]').forEach(el => {
+        const r = numEssai(el);
+        if (r.ok) { $(`#pf [data-num-prochaine="${el.dataset.num}"]`).textContent = r.etat.prochaine; el.classList.remove('champ-doute'); }
+        else { el.classList.add('champ-doute'); if (!motif) motif = `${el.dataset.nom} : ${/^[A-ZÀ-Ý][a-zà-ÿ]/.test(r.motif) ? r.motif[0].toLowerCase() + r.motif.slice(1) : r.motif}`; }
+      });
+      $('#num-motif').textContent = motif;
+    };
+    $$('#pf [data-num]').forEach(el => el.addEventListener('input', () => { majNumerotation(); markSet(); }));
     const applySettings = () => {
+      // La numérotation d'abord : un refus n'écrit RIEN du reste — le contrôle passe avant
+      // l'écriture (6.0.0), et une page à moitié enregistrée ne se relit plus.
+      const nums = $$('#pf [data-num]').filter(el => el.value.trim() !== (el.dataset.avant || ''));
+      for (const el of nums) { const r = numEssai(el); if (!r.ok) { refus(el, r.motif); return false; } }
+      nums.forEach(el => { C.poserNumerotation(data, el.dataset.num, anneeNum, el.value); el.dataset.avant = el.value.trim(); });
       const v = formValues($('#pf'));
       const et = {}, eten = {};
       Object.keys(v).forEach(k => { const m = k.match(/^(et|eten)_(\w+)_(subject|body)$/); if (m) { const bag = m[1] === 'et' ? et : eten; bag[m[2]] = bag[m[2]] || {}; bag[m[2]][m[3]] = v[k]; delete v[k]; } });
@@ -12624,7 +12731,7 @@
       return true;
     };
     setGuard({ dirty: () => setDirty, what: 'les paramètres', save: applySettings, discard: applyTheme });
-    $('#save').onclick = () => { applySettings(); toast('Paramètres enregistrés'); };
+    $('#save').onclick = () => { if (applySettings()) toast('Paramètres enregistrés'); };
     // « Annuler », collé à « Enregistrer », jetait sans un mot tout ce qui venait d'être tapé —
     // y compris dix minutes de modèles d'email. Le mot dit maintenant ce qu'il fait, et il demande.
     $('#cancel-set').onclick = async () => {
@@ -12886,7 +12993,7 @@
     $('#import-data').onclick = importAll;
     // Choisir une image redessine toute la page : sans ce `applySettings()` préalable, tout ce qui était
     // saisi et pas encore enregistré dans le formulaire disparaissait en silence (défaut de l'audit).
-    const setImage = (field, value) => { applySettings(); data.company[field] = value; save(true); render(); };
+    const setImage = (field, value) => { if (applySettings() === false) return; data.company[field] = value; save(true); render(); };
     $('#pick-logo').onclick = async () => { try { const l = await bridge.pickLogo(); if (l) setImage('logo', l); } catch (e) { toast(e.message.replace(/^.*Error: /, ''), true); } };
     if ($('#rm-logo')) $('#rm-logo').onclick = () => setImage('logo', '');
     $('#pick-stamp').onclick = async () => { try { const l = await bridge.pickLogo('Choisir l\'image du cachet / de la signature'); if (l) setImage('stampImage', l); } catch (e) { toast(e.message.replace(/^.*Error: /, ''), true); } };
@@ -15382,7 +15489,7 @@
           </div>`;
         }
         if (s.id === 'entreprise') return `<form id="sf-form" class="grid-2">
-          <label class="field span-2">${lbl('Raison sociale', 'co.name')} <span class="req">obligatoire</span><input type="text" name="name" value="${h(a.name || '')}" placeholder="Nom exact de l'entreprise, forme juridique comprise" autofocus></label>
+          <label class="field span-2 obligatoire">${lbl('Raison sociale', 'co.name')}<input type="text" name="name" value="${h(a.name || '')}" placeholder="Nom exact de l'entreprise, forme juridique comprise" autofocus></label>
           ${field(lbl('Matricule fiscal', 'co.matricule'), 'matricule', a.matricule || '', 'text', 'placeholder="1234567X/A/M/000"')}
           ${field(lbl('Registre de commerce (RC)', 'co.rc'), 'rc', a.rc || '', 'text', 'placeholder="facultatif"')}
           <label class="field span-2">${lbl('Adresse', 'co.address')}<textarea name="address" placeholder="Rue et numéro&#10;Code postal et ville">${h(a.address || '')}</textarea></label>
@@ -15447,7 +15554,8 @@
           <div class="setup-head">
             <div class="brand-mark">SF</div>
             <div><div class="setup-t">${h(s.title)}</div><div class="setup-s">${h(s.sub)}</div></div>
-            ${s.porte ? '' : `<div class="setup-step">${i} / ${questions.length}</div>`}
+            ${/* « Question 2 sur 3 », comme le Cabinet (A4) : « 2 / 3 » se lit comme une date ou une fraction. */''}
+            ${s.porte ? '' : `<div class="setup-step">Question ${i} sur ${questions.length}</div>`}
           </div>
           ${s.porte ? '' : `<div class="setup-bar"><i style="width:${Math.round(i / questions.length * 100)}%"></i></div>`}
           <div class="setup-body">${bodyFor(s)}</div>
@@ -15457,6 +15565,15 @@
             ${s.porte ? '' : `<button class="btn btn-primary" id="sf-next">${i === steps.length - 1 ? 'Terminer' : 'Continuer'}</button>`}
           </div>
         </div>`;
+        // L'étoile d'un champ obligatoire et sa légende, comme dans toute fenêtre (7.20.0) : l'assistant
+        // écrivait « OBLIGATOIRE » en orange, seul écran de l'application à le dire autrement (A3). La
+        // légende se DÉDUIT de l'étoile, elle ne se recopie pas écran par écran.
+        if ($('.field.obligatoire', root) && !$('.oblig-note', root)) {
+          const note = document.createElement('p');
+          note.className = 'oblig-note';
+          note.innerHTML = '<b>*</b> obligatoire';
+          $('.setup-body', root).appendChild(note);
+        }
         const form = $('#sf-form', root);
         if (form) { const f = $('input, textarea', form); if (f) f.focus(); }
         // Sur la porte, le curseur est sur le chemin recommandé : Entrée le prend, Tab passe à l'autre.

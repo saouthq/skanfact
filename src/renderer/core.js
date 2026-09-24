@@ -858,6 +858,12 @@
   function round3(n) { return Math.round((Number(n) || 0) * 1000) / 1000; }
 
   const CURRENCIES = ['DT', 'EUR', 'USD', 'GBP', 'CHF', 'MAD', 'DZD'];
+  // Le NOM de chaque devise, à côté de son code (10.14.0, A2) : « MAD » et « DZD » ne disent rien à
+  // qui n'a jamais facturé au Maroc ou en Algérie, et une devise choisie par erreur fausse toute la
+  // pièce (7.0.1). Le code reste en tête : c'est lui que la pièce imprime.
+  const DEVISES_NOMS = { DT: 'dinar tunisien', EUR: 'euro', USD: 'dollar américain', GBP: 'livre sterling',
+    CHF: 'franc suisse', MAD: 'dirham marocain', DZD: 'dinar algérien' };
+  function libelleDevise(c) { const n = DEVISES_NOMS[c]; return n ? `${c} — ${n}` : String(c || ''); }
   // La devise de l'entreprise se réglait dans un champ de TEXTE LIBRE, alors que l'éditeur de
   // document et la fiche client n'offrent que ces sept codes depuis la 2.4.0. On pouvait donc y
   // écrire « Dinar », « TND », « dt » ou n'importe quoi — et le nombre de décimales, lui, ne
@@ -1065,6 +1071,68 @@
     const seq = Math.max(fromDocs, fromCounter) + 1;
     data.counters[key] = seq;
     return `${prefix}-${year}-${String(seq).padStart(3, '0')}`;
+  }
+
+  // ---------- la numérotation continue (10.14.0) ----------
+  //
+  // Quelqu'un qui facturait déjà — dans un autre logiciel, sur un carnet — arrive dans SkanFact en
+  // cours d'année : sa première facture ici doit porter le numéro qui SUIT sa dernière, pas FAC-…-001.
+  // Une numérotation d'une année est continue (À VÉRIFIER avec le comptable) : repartir à 001 en
+  // septembre donne deux factures « 001 » la même année, l'une chez l'ancien logiciel, l'autre ici.
+  //
+  // On règle la DERNIÈRE pièce émise ailleurs (c'est le numéro qu'on a sous les yeux, sur son dernier
+  // papier) ; `nextNumber` en fait la suivante, puisqu'il repart de max(pièces, compteur).
+  const TYPES_NUMEROTES = ['facture', 'avoir', 'devis'];
+  function etatNumerotation(data, type, annee) {
+    const d = data || {};
+    const year = String(annee || today().slice(0, 4));
+    const prefix = PREFIX[type] || 'DOC';
+    const numeros = (d.documents || [])
+      .filter(x => x.type === type && x.number && x.number.startsWith(`${prefix}-${year}-`))
+      .map(x => parseInt(x.number.split('-')[2], 10) || 0);
+    const derniereIci = numeros.length ? Math.max(...numeros) : 0;
+    const compteur = Number((d.counters || {})[`${type}-${year}`]) || 0;
+    const derniere = Math.max(derniereIci, compteur);
+    const numero = n => `${prefix}-${year}-${String(n).padStart(3, '0')}`;
+    return {
+      type, annee: year, prefix,
+      piecesIci: numeros.length,          // pièces de ce type et de cette année déjà numérotées DANS SkanFact
+      derniereIci,                        // la plus haute d'entre elles (0 : aucune)
+      derniere,                           // la dernière prise, ici ou ailleurs (celle que suit la prochaine)
+      prochaine: numero(derniere + 1),
+      derniereNumero: derniere ? numero(derniere) : '',
+      // Une facture et un avoir ont une valeur légale : leur suite ne se touche plus une fois qu'une
+      // pièce de l'année est numérotée ici — la changer laisserait un trou dans une série continue.
+      verrouillee: SALES_TYPES.includes(type) && numeros.length > 0
+    };
+  }
+  // Poser la dernière pièce émise AILLEURS. Rend { ok, motif } ; n'écrit rien quand il refuse.
+  function poserNumerotation(data, type, annee, derniere) {
+    const e = etatNumerotation(data, type, annee);
+    const brut = String(derniere == null ? '' : derniere).trim();
+    const n = brut === '' ? 0 : Number(brut);
+    if (!Number.isInteger(n) || n < 0 || n > 99999) {
+      return { ok: false, motif: 'Le numéro de ta dernière pièce est un nombre entier : 47 pour ' + `${e.prefix}-${e.annee}-047. Laisse vide si tu n'en as émis aucune.` };
+    }
+    if (n === e.derniere) return { ok: true, change: false, etat: e };
+    if (e.verrouillee) {
+      const quoi = type === 'avoir' ? `Tes avoirs de ${e.annee} sont déjà numérotés` : `Tes factures de ${e.annee} sont déjà numérotées`;
+      return { ok: false, motif: `${quoi} dans SkanFact (jusqu'à ${e.prefix}-${e.annee}-${String(e.derniereIci).padStart(3, '0')}) : changer la suite laisserait un trou dans une série qui doit être continue.` };
+    }
+    if (n < e.derniereIci) {
+      return { ok: false, motif: `${e.prefix}-${e.annee}-${String(e.derniereIci).padStart(3, '0')} existe déjà dans SkanFact : la dernière pièce ne peut pas être plus ancienne.` };
+    }
+    if (!data.counters || typeof data.counters !== 'object') data.counters = {};
+    data.counters[`${type}-${e.annee}`] = n;
+    return { ok: true, change: true, etat: etatNumerotation(data, type, annee) };
+  }
+  // La TOUTE première pièce d'un type légal : aucune n'a encore de numéro, et aucune suite n'a été
+  // posée pour l'année. C'est le moment où l'on demande « tu facturais déjà ? » — pas avant, où la
+  // question serait abstraite, ni après, où la suite ne se touche plus.
+  function premiereNumerotation(data, type, annee) {
+    if (!SALES_TYPES.includes(type)) return false;
+    const e = etatNumerotation(data, type, annee);
+    return !(data.documents || []).some(x => x.type === type && x.number) && !e.derniere;
   }
 
   function isLocked(doc) { return (doc.type === 'facture' || doc.type === 'avoir') && doc.status !== 'brouillon'; }
@@ -7364,7 +7432,7 @@
     depositLines, settlementLines, salesJournal, vatSummary, paymentsJournal, toCsv, migrateData,
     PERIODS, MONTHS_FR, MONTHS_SHORT, monthLabel, addMonths, nextRecurrenceDate, dueRecurrences, catchUpRecurrence, fillTemplate, buildRecurringInvoice,
     reminderLevel, REMINDER_LABELS, daysBetween, overdueInvoices, facturesAVenir, todoList, companyGaps, verifRib, documentHistory, DEFAULT_EMAIL_TEMPLATES, DEFAULT_EMAIL_TEMPLATES_EN, emailFor,
-    CURRENCIES, normCurrency, decimalsFor, toBase, rateOf, missingRate, monthKeys, monthlySeries, topClients, quoteStats, avgPaymentDelay, clientSummary, I18N,
+    CURRENCIES, DEVISES_NOMS, libelleDevise, TYPES_NUMEROTES, etatNumerotation, poserNumerotation, premiereNumerotation, normCurrency, decimalsFor, toBase, rateOf, missingRate, monthKeys, monthlySeries, topClients, quoteStats, avgPaymentDelay, clientSummary, I18N,
     EXTRA_TYPES, SALES_TYPES, CONVERSIONS, CONVERSION_LABELS, convertDoc, derivedDocs, chaineDePieces, DEFAULT_CLAUSES, CLAUSE_LABELS,
     PURCHASE_KINDS, PURCHASE_LIES, piecesLieesAchat, LINE_DESTINATIONS, DEFAULT_EXPENSE_CATEGORIES, PURCHASE_STATUSES, expenseCategories,
     vatReturn, vatChain, DEFAULT_FISCAL_DEADLINES, fiscalDeadlines, nextDeadline, upcomingFiscal, fiscalFilingId, fiscalDone, echeanceSociale, socialesDeposees, simpleResult,

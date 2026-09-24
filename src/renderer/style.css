@@ -305,6 +305,20 @@ input.champ-doute { border-color: var(--warning) !important; }
   content: ' *'; color: var(--danger); font-weight: 700;
 }
 .oblig-note { font-size: 12px; color: var(--muted); margin-inline-end: auto; align-self: center; }
+/* La numérotation continue (10.14.0) : la dernière pièce émise ailleurs, et la raison d'un refus
+   sur la ligne, en orange — on prévient pendant la frappe, on refuse à l'enregistrement. */
+#num-table .num-derniere, #nf .num-derniere { width: 110px; }
+/* Les colonnes se décident sur l'en-tête, jamais sur ce qu'on tape : un numéro plus long ne doit pas
+   déplacer le champ voisin sous le curseur. */
+#num-table { table-layout: fixed; }
+#num-table th:first-child { width: 28%; }
+#num-table th:nth-child(2) { width: 190px; }
+/* Le préfixe d'un numéro se lit d'un bloc : « FAC-2026- » passait sur deux lignes à côté du champ,
+   qui prenait toute la largeur du flex. */
+.num-prefixe { white-space: nowrap; flex: none; }
+.num-motif { color: var(--warning); }
+/* La place du motif est réservée : il apparaît sans rien pousser. */
+#num-motif, #nf-motif { min-height: 1.5em; margin-block: 4px 6px; }
 .oblig-note b { color: var(--danger); }
 
 /* Le lien d'une bulle vers l'article qui développe. */
@@ -1730,7 +1744,6 @@ kbd { font: inherit; font-size: 12px; font-family: -apple-system, system-ui, san
 .setup-porte .sp-choix { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .setup-porte .sp-note p { margin: 0; font-size: 12.5px; line-height: 1.55; color: var(--muted); }
 @media (max-width: 640px) { .setup-porte .sp-choix { grid-template-columns: minmax(0, 1fr); } }
-.req { font-size: 10px; text-transform: uppercase; letter-spacing: .8px; color: var(--warning); font-weight: 700; }
 .act-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .act { font: inherit; text-align: start; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; cursor: pointer; display: flex; flex-direction: column; gap: 3px; transition: border-color .12s, background .12s; }
 .act:hover { border-color: var(--primary); }
