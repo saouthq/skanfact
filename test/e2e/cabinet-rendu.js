@@ -25,7 +25,7 @@
 //
 //   xvfb-run -a node test/e2e/cabinet-rendu.js
 const { fermer, playwright, RACINE, ELECTRON, journal, surveiller, dossierCaptures, capturePleine,
-  SONDE_CONTRASTE, SONDE_COLONNES, SONDE_ENTETES, SONDE_ESPACEMENT, SONDE_COLLANT, SONDE_TRONQUE, SONDE_DEFILEMENT,
+  SONDE_CONTRASTE, SONDE_COLONNES, SONDE_ENTETES, SONDE_ESPACEMENT, SONDE_COLLANT, SONDE_TRONQUE, SONDE_DEFILEMENT, SONDE_RANGEE, SONDE_BULLE,
   FENETRE, ongletCompta, ongletsCompta } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
@@ -75,14 +75,18 @@ const PAGES = ['#/dossiers', '#/relances', '#/echeances', '#/ecritures', '#/prod
   const attendre = (ms = 280) => win.waitForTimeout(ms);
   const aller = async hash => { await win.evaluate(x => { location.hash = x; }, hash); await attendre(350); };
 
-  let boutons = 0, champs = 0, colonnes = 0, controles = 0, ecarts = 0, collants = 0, tableaux = 0, fenetres = 0;
+  let boutons = 0, champs = 0, liensMesures = 0, colonnes = 0, controles = 0, ecarts = 0, collants = 0, tableaux = 0, fenetres = 0, rangees = 0, bulles = 0;
 
   // Les trois sondes sur l'écran courant. `ou` nomme l'endroit ET le contexte (largeur, thème) :
   // une faute qui n'existe qu'en sombre à 1280 doit se lire comme telle, sinon on la cherche à
   // l'endroit où elle ne se produit pas.
   const mesurer = async ou => {
-    const { boutons: bs, champs: chs } = await win.evaluate(SONDE_CONTRASTE);
+    const { boutons: bs, champs: chs, liens: lks } = await win.evaluate(SONDE_CONTRASTE);
     boutons += bs.length; champs += chs.length;
+    // 10.12.0 — les liens : lisibles, et stylés par l'application (jamais le bleu brut du navigateur).
+    liensMesures += lks.length;
+    lks.filter(l => l.ratio < SEUIL || l.brut).forEach(l => fautes.push(`${ou} → lien « ${l.texte} » : `
+      + (l.brut ? `couleur brute du navigateur (${l.color}), stylé par personne` : `contraste ${l.ratio} — ${l.color} sur ${l.bg}`)));
     [...bs, ...chs].filter(b => b.ratio < SEUIL).forEach(b =>
       fautes.push(`${ou} → « ${b.texte} » (${b.id || b.cls}) : contraste ${b.ratio} — ${b.color} sur ${b.bg}`));
     bs.filter(b => b.hors > 2).forEach(b =>
@@ -105,6 +109,15 @@ const PAGES = ['#/dossiers', '#/relances', '#/echeances', '#/ecritures', '#/prod
     }
 
     // U-02 : aucune donnée sous une colonne collante.
+    // 10.12.0 — les chiffres d'une rangée de cartes à la même hauteur.
+    const rg = await win.evaluate(SONDE_RANGEE, { ecart: 1.5 });
+    rangees += rg.rangees;
+    // 10.12.0 — une bulle « i » ne passe jamais seule à la ligne : elle suit le mot qu'elle explique.
+    const bl = await win.evaluate(SONDE_BULLE, { racines: ['#view', FENETRE] });
+    bulles += bl.bulles;
+    bl.orphelines.forEach(x => fautes.push(`${ou} — la bulle « i » (${x.cle}) passe seule à la ligne après « ${x.texte} »`));
+    rg.escaliers.forEach(x => fautes.push(`${ou} — le chiffre de « ${x.bas} » est ${x.px} px plus bas que celui de « ${x.haut} », sur la même rangée`));
+
     const k = await win.evaluate(SONDE_COLLANT);
     collants += k.tables;
     k.couverts.forEach(x => fautes.push(`${ou} — la colonne collante recouvre « ${x.cellule} » (${x.px} px, tableau ${x.table || 'sans classe'})`));
@@ -383,7 +396,7 @@ const PAGES = ['#/dossiers', '#/relances', '#/echeances', '#/ecritures', '#/prod
 
   if (bac.length) { console.error('\nErreurs du renderer :\n' + bac.join('\n')); process.exit(2); }
   // Un instrument qui ne mesure rien annonce « tout va bien » : il doit échouer, pas se taire.
-  if (!boutons || !champs || !colonnes || !ecarts || !collants || !tableaux || !fenetres) { console.error('\nRien n\'a été mesuré : le parcours ne prouve rien.'); process.exit(2); }
+  if (!boutons || !champs || !liensMesures || !colonnes || !ecarts || !collants || !tableaux || !fenetres || !rangees || !bulles) { console.error('\nRien n\'a été mesuré : le parcours ne prouve rien.'); process.exit(2); }
   // L'état fabriqué par un geste doit avoir été ATTEINT à chaque passe : sinon l'instrument dirait
   // « rien de recouvert » d'un journal qu'il n'a jamais regardé avec une pièce contre-passée.
   if (cpMesures < 4) { console.error(`\nLe journal d'une pièce contre-passée n'a été mesuré que ${cpMesures} fois sur 4 passes : le parcours ne prouve rien de cet état.`); process.exit(2); }
@@ -392,8 +405,8 @@ const PAGES = ['#/dossiers', '#/relances', '#/echeances', '#/ecritures', '#/prod
     console.error(`\n${u.length} défaut(s) de rendu dans l'app Cabinet :\n  ` + u.join('\n  '));
     process.exit(1);
   }
-  console.log(`\n${j.total()} étapes — ${boutons} boutons, ${champs} champs, ${colonnes} colonnes, ${controles} contrôles,`
+  console.log(`\n${j.total()} étapes — ${boutons} boutons, ${champs} champs, ${liensMesures} liens, ${colonnes} colonnes, ${controles} contrôles,`
     + ` ${ecarts} écarts, ${collants} tableaux sous colonne collante, ${tableaux} tableaux jugés pour le texte coupé,`
-    + ` ${fenetres} fenêtres ouvertes, mesurés en clair et en sombre, à 1440 et à 1280 :`
-    + ' rien d\'illisible, rien de désaligné, rien d\'étiré, rien de collé, rien de recouvert, rien de coupé à côté du vide.');
+    + ` ${fenetres} fenêtres ouvertes, ${rangees} rangées de cartes, ${bulles} bulles « i », mesurés en clair et en sombre, à 1440 et à 1280 :`
+    + ' rien d\'illisible, rien de désaligné, rien d\'étiré, rien de collé, rien de recouvert, rien de coupé à côté du vide, aucun chiffre en escalier, aucune bulle orpheline.');
 })().catch(e => { console.error(e); process.exit(1); });

@@ -18,11 +18,12 @@
 //   5. aucune donnée sous une colonne collante
 //   6. aucun texte coupé à côté d'une colonne qui garde du vide, aucune fenêtre qui défile de côté
 //   7. aucun geste qui accepte le clic sans rien produire
+//   8. aucun chiffre plus bas que ses voisins dans une rangée de cartes
 //
 //   xvfb-run -a node test/e2e/entreprise-rendu.js             → mesure + captures pleines
 //   xvfb-run -a node test/e2e/entreprise-rendu.js --rapide    → une passe claire à 1440, sans captures
 const { fermer, playwright, RACINE, ELECTRON, journal, dossierCaptures, capturePleine,
-  SONDE_CONTRASTE, SONDE_COLONNES, SONDE_ENTETES, SONDE_ESPACEMENT, SONDE_COLLANT, SONDE_TRONQUE, SONDE_DEFILEMENT,
+  SONDE_CONTRASTE, SONDE_COLONNES, SONDE_ENTETES, SONDE_ESPACEMENT, SONDE_COLLANT, SONDE_TRONQUE, SONDE_DEFILEMENT, SONDE_RANGEE, SONDE_BULLE,
   FENETRE } = require('./harnais');
 const { creerParcours, neutraliserSysteme, traverserAssistant, chargerExemple, toutAfficher, poserTheme, pagesDuCode, slug } = require('./ecrans-entreprise');
 const { _electron: electron } = playwright();
@@ -57,11 +58,15 @@ const PLANCHER_DEMO = 200;
   const OUT = dossierCaptures('entreprise-rendu');
   const noms = new Map();                   // nom de fichier → écran, pour refuser deux écrans sous le même nom
 
-  let boutons = 0, champs = 0, colonnes = 0, controles = 0, filtres = 0, ecarts = 0, collants = 0, tableaux = 0, fenetres = 0;
+  let boutons = 0, champs = 0, liensMesures = 0, colonnes = 0, controles = 0, filtres = 0, ecarts = 0, collants = 0, tableaux = 0, fenetres = 0, rangees = 0, bulles = 0;
 
   const mesurer = async ou => {
-    const { boutons: bs, champs: chs } = await win.evaluate(SONDE_CONTRASTE);
+    const { boutons: bs, champs: chs, liens: lks } = await win.evaluate(SONDE_CONTRASTE);
     boutons += bs.length; champs += chs.length;
+    // 10.12.0 — les liens : lisibles, et stylés par l'application (jamais le bleu brut du navigateur).
+    liensMesures += lks.length;
+    lks.filter(l => l.ratio < SEUIL || l.brut).forEach(l => fautes.push(`${ou} → lien « ${l.texte} » : `
+      + (l.brut ? `couleur brute du navigateur (${l.color}), stylé par personne` : `contraste ${l.ratio} — ${l.color} sur ${l.bg}`)));
     [...bs, ...chs].filter(b => b.ratio < SEUIL).forEach(b =>
       fautes.push(`${ou} → « ${b.texte} » (${b.id || b.cls}) : contraste ${b.ratio} — ${b.color} sur ${b.bg}`));
     // Un bouton dans un conteneur qui défile vraiment de côté est à une molette, pas hors de l'écran
@@ -85,6 +90,15 @@ const PLANCHER_DEMO = 200;
       (await win.evaluate(SONDE_DEFILEMENT, { racine: FENETRE })).forEach(x => fautes.push(`${ou} (fenêtre) — `
         + `le contenu défile de côté : ${x.cache} px cachés à droite${x.contenu ? `, à partir de « ${x.contenu} »` : ''}`));
     }
+
+    // 10.12.0 — les chiffres d'une rangée de cartes à la même hauteur.
+    const rg = await win.evaluate(SONDE_RANGEE, { ecart: 1.5 });
+    rangees += rg.rangees;
+    // 10.12.0 — une bulle « i » ne passe jamais seule à la ligne : elle suit le mot qu'elle explique.
+    const bl = await win.evaluate(SONDE_BULLE, { racines: ['#view', FENETRE] });
+    bulles += bl.bulles;
+    bl.orphelines.forEach(x => fautes.push(`${ou} — la bulle « i » (${x.cle}) passe seule à la ligne après « ${x.texte} »`));
+    rg.escaliers.forEach(x => fautes.push(`${ou} — le chiffre de « ${x.bas} » est ${x.px} px plus bas que celui de « ${x.haut} », sur la même rangée`));
 
     const k = await win.evaluate(SONDE_COLLANT);
     collants += k.tables;
@@ -184,12 +198,12 @@ const PLANCHER_DEMO = 200;
       + u.slice(0, 200).join('\n  '));
   }
   if (bac.length) { console.error('\nErreurs du renderer :\n' + [...new Set(bac)].join('\n')); process.exit(2); }
-  if (!boutons || !champs || !colonnes || !ecarts || !tableaux || !fenetres || !filtres) {
+  if (!boutons || !champs || !liensMesures || !colonnes || !ecarts || !tableaux || !fenetres || !filtres || !rangees || !bulles) {
     console.error('\nRien n\'a été mesuré d\'une des familles : le parcours ne prouve rien.'); process.exit(2);
   }
   if (u.length) process.exit(1);
-  console.log(`\n${j.total()} étapes — ${boutons} boutons, ${champs} champs, ${colonnes} colonnes, ${controles} contrôles`
+  console.log(`\n${j.total()} étapes — ${boutons} boutons, ${champs} champs, ${liensMesures} liens, ${colonnes} colonnes, ${controles} contrôles`
     + ` (dont ${filtres} de filtres), ${ecarts} écarts, ${collants} tableaux sous colonne collante, ${tableaux} tableaux`
-    + ` jugés pour le texte coupé, ${fenetres} fenêtres ouvertes : rien d'illisible, rien de désaligné, rien d'étiré,`
-    + ' rien de collé, rien de recouvert, rien de coupé à côté du vide, aucun geste inerte.');
+    + ` jugés pour le texte coupé, ${fenetres} fenêtres ouvertes, ${rangees} rangées de cartes, ${bulles} bulles « i » : rien d'illisible, rien de désaligné, rien d'étiré,`
+    + ' rien de collé, rien de recouvert, rien de coupé à côté du vide, aucun chiffre en escalier, aucune bulle orpheline, aucun geste inerte.');
 })().catch(e => { console.error(e); process.exit(1); });

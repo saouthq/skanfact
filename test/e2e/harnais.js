@@ -177,7 +177,29 @@ const SONDE_CONTRASTE = () => {
     });
   });
 
-  return { boutons, champs };
+  // Les LIENS (10.12.0), par la même méthode. Aucune règle ne stylait un lien écrit dans une phrase :
+  // ils gardaient le bleu brut du navigateur, lisible en clair par chance et illisible en sombre, et
+  // aucune des deux listes ne pouvait le voir. `brut` le dit à part : un lien à la couleur par défaut
+  // du navigateur (rgb(0, 0, 238), ou le violet d'un lien visité) n'a été stylé par personne, même
+  // quand son contraste passe. Un lien qui est un bouton (`.btn`) est déjà jugé comme tel.
+  const liens = [];
+  document.querySelectorAll('a[href]').forEach(a => {
+    if (a.matches('.btn')) return;
+    const r = a.getBoundingClientRect();
+    const s = getComputedStyle(a);
+    if (!visible(a, s, r) || !a.textContent.trim()) return;
+    const t = rgb(s.color); if (t.length < 3) return;
+    const f = fondDe(a);
+    liens.push({
+      texte: a.textContent.trim().replace(/\s+/g, ' ').slice(0, 40),
+      id: a.id || '', cls: String(a.className || '').split(' ')[0],
+      color: s.color, bg: `rgb(${f.join(',')})`,
+      ratio: contraste(t.slice(0, 3), f),
+      brut: s.color === 'rgb(0, 0, 238)' || s.color === 'rgb(85, 26, 139)'
+    });
+  });
+
+  return { boutons, champs, liens };
 };
 
 // 2. Les colonnes : l'en-tête aligné comme ses valeurs. `table.list th` (une classe, deux éléments)
@@ -613,6 +635,75 @@ const SONDE_DEFILEMENT = ({ racine }) => {
   return out;
 };
 
+// ---------------------------------------------------------------- 9. les chiffres d'une rangée
+// 10.12.0 (vu au test humain de Marges) — trois cartes côte à côte, et le chiffre de la troisième
+// montait de 3 px : son étiquette n'avait pas de bulle « i », donc une ligne de 12 px contre 15 à ses
+// voisines. Aucune sonde ne pouvait le voir — rien ne déborde, rien n'est illisible, rien n'est
+// collé ; c'est encore une RELATION, entre des objets qui se lisent comme une ligne. On regroupe les
+// cartes d'un même conteneur par rangée (même bord haut) et on compare le bord haut de leur chiffre :
+// plus de `ecart` px entre deux chiffres d'une même rangée, et l'œil voit un escalier.
+const SONDE_RANGEE = ({ ecart }) => {
+  const out = []; let rangees = 0;
+  document.querySelectorAll('.stats, .kpis').forEach(box => {
+    if (box.offsetParent === null) return;
+    const cartes = [...box.children].filter(c => c.offsetParent !== null);
+    const parRang = new Map();
+    cartes.forEach(c => {
+      const v = c.querySelector(':scope > .val, :scope > .v');
+      if (!v) return;
+      const haut = Math.round(c.getBoundingClientRect().top);
+      const cle = [...parRang.keys()].find(k => Math.abs(k - haut) <= 2);
+      const rang = cle === undefined ? haut : cle;
+      if (!parRang.has(rang)) parRang.set(rang, []);
+      parRang.get(rang).push({ c, v });
+    });
+    parRang.forEach(liste => {
+      if (liste.length < 2) return;
+      rangees++;
+      const hauts = liste.map(x => x.v.getBoundingClientRect().top);
+      const min = Math.min(...hauts), max = Math.max(...hauts);
+      if (max - min > ecart) {
+        // Le texte de l'étiquette SANS sa bulle « i » : c'est le nom que l'œil lit.
+        const nom = x => [...(x.c.querySelector('.lbl, .k-label') || x.c).childNodes].filter(n => n.nodeType === 3)
+          .map(n => n.textContent).join(' ').replace(/\s+/g, ' ').trim().slice(0, 28);
+        const bas = liste[hauts.indexOf(max)], haut = liste[hauts.indexOf(min)];
+        out.push({ haut: nom(haut), bas: nom(bas), px: Math.round((max - min) * 10) / 10 });
+      }
+    });
+  });
+  return { rangees, escaliers: out };
+};
+
+// 10.12.0 — une bulle « i » qui termine une phrase passait SEULE sur la ligne suivante dès que la
+// phrase remplissait sa ligne (l'état vide des Proformas). Rien ne déborde, rien n'est illisible,
+// rien n'est collé : c'est la position de la bulle par rapport au MOT qu'elle explique. On prend le
+// dernier caractère de texte qui la précède dans son bloc, et on compare : une bulle dont le haut
+// est sous le bas de ce caractère est passée à la ligne sans lui — elle est orpheline.
+const SONDE_BULLE = ({ racines }) => {
+  const out = []; let bulles = 0;
+  for (const sel of racines) {
+    const r = document.querySelector(sel); if (!r) continue;
+    r.querySelectorAll('button.i').forEach(b => {
+      if (b.offsetParent === null || !b.parentElement) return;
+      const w = document.createTreeWalker(b.parentElement, NodeFilter.SHOW_TEXT);
+      let dernier = null;
+      while (w.nextNode()) {
+        const n = w.currentNode;
+        if (b.contains(n)) break;
+        if (!(n.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING)) break;
+        if (/\S/.test(n.data) && n.parentElement && n.parentElement.offsetParent !== null) dernier = n;
+      }
+      if (!dernier) return;
+      bulles++;
+      const i = dernier.data.replace(/\s+$/, '').length;
+      const rg = document.createRange(); rg.setStart(dernier, i - 1); rg.setEnd(dernier, i);
+      const c = rg.getBoundingClientRect(), bb = b.getBoundingClientRect();
+      if (c.height && bb.top >= c.bottom - 1) out.push({ texte: dernier.data.replace(/\s+/g, ' ').trim().slice(-48), cle: b.dataset.info || '', px: Math.round(bb.top - c.top) });
+    });
+  }
+  return { bulles, orphelines: out };
+};
+
 // ---------------------------------------------------------------- la comptabilité d'un dossier
 // 10.12.0 (U-06) — les quatorze écrans de la comptabilité d'un dossier du Cabinet sont rangés en
 // trois groupes (Saisir, Consulter, Déclarer et clôturer) : un écran ne se clique qu'une fois son
@@ -689,5 +780,5 @@ module.exports = {
   fermer,
   playwright, RACINE, ELECTRON, VERSION, journal, surveiller, dossierCaptures, ouvrirChromium,
   capturePleine, RELACHE_CONSOLE, SONDE_CONTRASTE, SONDE_COLONNES, SONDE_ENTETES, SONDE_ESPACEMENT, SONDE_LARGEUR, montant,
-  ongletCompta, ongletComptaPresent, ongletsCompta, SONDE_COLLANT, SONDE_TRONQUE, SONDE_DEFILEMENT, FENETRE
+  ongletCompta, ongletComptaPresent, ongletsCompta, SONDE_COLLANT, SONDE_TRONQUE, SONDE_DEFILEMENT, SONDE_RANGEE, SONDE_BULLE, FENETRE
 };

@@ -381,6 +381,65 @@ du premier écran à son catalogue, pour voir ce qu'un chef d'entreprise subit :
   1 540 DT de planches ; la note d'un mouvement de stock n'invite plus « Deux disques tombés à la
   livraison ».
 
+**La menuiserie, suite : relances, contrats, autres pièces, affaires et marges** — le même chantier,
+continué page par page :
+- **Une affaire se crée après coup, et ses factures déjà émises y entrent.** On découvre la page
+  Marges quand le chantier a déjà ses factures ; le champ Affaire d'une facture émise était grisé,
+  donc la marge du chantier restait fausse pour toujours. L'affaire n'est qu'une étiquette de gestion
+  (elle ne s'imprime pas et ne change aucun chiffre) : elle se pose ou se retire sur une pièce émise,
+  enregistrée tout de suite. Et la fiche d'une affaire gagne **« Rattacher des ventes… / des
+  achats… »** : une fenêtre coche ce qui appartient au chantier — l'avoir suit sa facture, la
+  recherche lit le contenu d'un achat (« chene » trouve les planches), décocher détache, et
+  « Annuler » remet tout.
+- **« + Devis » et « + Achat » depuis une affaire créent des pièces RATTACHÉES** ; ils ouvraient des
+  pièces vierges qu'on croyait comptées dans la marge du chantier. La fiche montre aussi les
+  brouillons (le devis qu'on venait d'y créer disparaissait), et son bouton vert est l'étape suivante :
+  rattacher les ventes du client, sinon créer le devis, puis les achats.
+- **Un devis facturé ne compte plus « en devis ».** La fiche d'une affaire annonçait 5 520 DT
+  facturés PLUS 5 520 DT en devis pour un seul chantier ; seule la part pas encore facturée compte
+  (un acompte émis se retranche).
+- **Une marge sans aucun achat rattaché n'est plus « 100 % » en vert** : la fiche, la liste des
+  affaires et la fiche du client disent « aucun achat rattaché : le coût n'est pas encore compté ».
+- **« — Aucune affaire — » en tête de chaque liste d'affaires** : une affaire choisie par erreur ne se
+  retirait plus jamais d'une pièce. Et changer le client d'une pièce retire l'affaire de l'ancien
+  client — elle y restait, invisible, et comptait le devis du client B dans le chantier du client A.
+- **La page Marges vide propose « + Créer ma première affaire »** (elle expliquait en prose sous un
+  vert qui doublait) ; « + Nouvelle affaire » n'est vert que sur l'onglet Affaires ; l'onglet Contrats
+  vide dit si un contrat existe et n'a produit que des brouillons, et mène à la facturation
+  récurrente ; la légende du « ≈ » ne s'affiche que si une ligne le porte.
+- **« Fixe ou variable ? » ne déplace plus une charge sous le curseur.** Cocher « Assurances »
+  l'envoyait dans l'autre colonne et « Honoraires » montait à sa place : un second clic reclassait
+  une charge qu'on n'avait pas visée. Chaque catégorie garde sa ligne et porte son choix Fixe /
+  Variable.
+- **Une proforma, un bon de commande ou de livraison propose sa suite dans son menu de ligne** :
+  « Facturer », « Établir le bon de livraison »… — ou « Voir » la pièce quand elle existe déjà **pour
+  cette vente**, même tirée d'une autre pièce de la chaîne (un bon de livraison tiré d'une proforma
+  déjà facturée proposait de facturer une seconde fois). L'éditeur de ces pièces a enfin un bouton
+  vert : « Enregistrer » tant qu'une pièce tirée d'une autre n'a pas de numéro, « PDF » pour un bon
+  de livraison à faire signer, « Transformer ▾ » pour ce qui n'a encore rien donné.
+- **Une proforma envoyée par email passe à « envoyée »** et part sans le tampon « BROUILLON » : seul
+  le devis le faisait. Même chose pour un bon de livraison, un bon de commande et un contrat.
+- **Un délai de 0 jour est « à réception »** : réglé à 0, le délai de paiement repassait à trente
+  jours. Et une facture due le jour même dit « À réception » plutôt que « À régler avant le » sa propre
+  date.
+- **Une recherche tapée ignore les accents et les majuscules, mot par mot**, dans les quinze
+  recherches de l'application, la palette Ctrl K et l'Aide comprises : « hotel » trouve l'Hôtel Dar
+  El Marsa, « delai » le délai de paiement.
+- **Un contrat récurrent ne pose plus de timbre sur les factures d'un client exonéré** ; son total
+  dit ce qui manque au lieu d'annoncer un dinar sur un contrat vide ; chaque champ a sa bulle.
+- **La page Relances vide dit quand elle se remplira** : la facture qui arrive à échéance, et quand.
+- **Le retour nomme la fiche d'où l'on vient** — affaire, salarié, bien, article, contrat, achat — et
+  une page de création quittée sans l'enregistrer n'entre plus dans la pile (le retour rouvrait un
+  achat vierge).
+- **L'entrée allumée de la barre latérale reste visible** : après un rechargement, la pastille de
+  l'essai rétrécissait la liste et « Marges » finissait 12 px sous le bord.
+- **Une bulle « i » ne passe plus seule à la ligne** : le dernier mot part avec elle. Une espace
+  insécable ne suffisait pas — la sonde des bulles l'a vu à 1280 px.
+- Dans une rangée de cartes, les chiffres sont à la même hauteur ; un classement (Top clients) se lit
+  en colonnes ; les liens au fil du texte ont une couleur ; l'aperçu d'un document de deux pages ne
+  fait plus naître de barre de défilement horizontale ; l'en-tête d'une page ne grandit plus quand
+  une liste d'années paraît sur un onglet.
+
 **L'application entreprise mesurée en entier.** Ses instruments ne regardaient qu'une partie de
 l'application : aucun n'ouvrait une fiche ni une pièce par statut, et l'un visitait une adresse qui
 n'existe pas. `npm run e2e:entreprise-rendu` ouvre toutes les pages, tous leurs onglets, chaque
@@ -389,7 +448,10 @@ sombre, à deux largeurs — 296 écrans par passe. Il a trouvé « + Créer mon
 haut), le relevé de compte d'un client qui cachait « Reste dû » et son total derrière un défilement
 de côté (la fenêtre s'élargit), et les titres « Qté » et « P.U. HT » des grilles de lignes, alignés à
 gauche au-dessus de chiffres alignés à droite, dans les cinq éditeurs qui en ont — et, dans les
-Barèmes et le calendrier fiscal, « De », « Jusqu'à » et « Jour limite ».
+Barèmes et le calendrier fiscal, « De », « Jusqu'à » et « Jour limite ». Il mesure depuis deux choses
+de plus, dans les deux applications : aucun chiffre plus bas que ses voisins dans une rangée de
+cartes, et aucune bulle « i » seule sur sa ligne ; les liens y sont jugés comme les boutons (lisibles,
+jamais au bleu du navigateur).
 
 **La console de l'éditeur**
 - **Le Journal écrivait « commande.creee »** en chasse fixe : les cinq événements de la vente en ligne

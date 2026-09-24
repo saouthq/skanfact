@@ -6312,6 +6312,7 @@ const GLOBAUX = new Set([
   'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'requestAnimationFrame',
   'alert', 'confirm', 'prompt', 'fetch', 'structuredClone', 'queueMicrotask', 'require', 'async',
   'matchMedia',   // window.matchMedia — le thème « auto » suit le réglage du système
+  'getComputedStyle',   // window.getComputedStyle — une bulle « i » ne se colle pas dans un conteneur flex (10.12.0)
   // Côté processus principal (Node). Seuls les noms qui commencent par une minuscule peuvent être
   // signalés par le détecteur — les constructeurs (Buffer, URL, TextEncoder…) ne le sont jamais.
   'setImmediate', 'clearImmediate', 'process', 'globalThis'

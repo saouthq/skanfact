@@ -802,6 +802,11 @@
     livraison: ['brouillon', 'émis', 'signé', 'annulé'],
     contrat: ['brouillon', 'envoyé', 'signé', 'terminé', 'annulé']
   };
+  // 10.12.0 — le statut que prend une pièce quand on l'ENVOIE. Seul le devis passait à « envoyé » :
+  // une proforma envoyée par email partait avec un PDF tamponné « BROUILLON », et restait brouillon —
+  // la pièce qu'une banque ou une administration demande pour un dossier. La facture et l'avoir n'y
+  // sont pas : ils s'ÉMETTENT, et l'émission a son propre geste et son numéro.
+  const STATUT_ENVOI = { devis: 'envoyé', proforma: 'envoyée', commande: 'reçue', livraison: 'émis', contrat: 'envoyé' };
   const DISPLAY_STATUSES = {
     devis: ['brouillon', 'envoyé', 'expiré', 'accepté', 'refusé'],
     facture: ['brouillon', 'envoyée', 'partielle', 'retard', 'payée', 'annulée'],
@@ -943,6 +948,30 @@
   // écrit. `plur` sert aux pluriels irréguliers ; `sAccord` accorde ce qui SUIT le nom.
   const plFr = (n, un, plur) => `${n} ${n > 1 ? (plur || un + 's') : un}`;
   const sAccord = n => (Number(n) > 1 ? 's' : '');
+
+  // Un délai en jours réglé par l'utilisateur (10.12.0). ZÉRO est un délai — « à réception » —, et
+  // `Number(x) || 30` le changeait en trente jours : une entreprise réglée « paiement à réception »
+  // recevait des factures « À régler avant le » un mois plus tard. C'est le piège de la 7.16.0
+  // (`limit || 20` rend le « tout » impossible à demander). Seule une valeur ABSENTE ou illisible
+  // prend le défaut.
+  function delaiJours(v, defaut) {
+    if (v === '' || v == null) return defaut;
+    const n = Number(v);
+    return Number.isFinite(n) && n >= 0 ? Math.round(n) : defaut;
+  }
+
+  // Une recherche TAPÉE (10.12.0) : insensible aux accents et aux majuscules, et mot par mot.
+  // « hotel » ne trouvait pas « Hôtel Dar El Marsa SARL », ni « cafe » le « Café des Arts », ni
+  // « delai » le réglage « Délai de paiement » — dans les quinze recherches de l'application, la
+  // palette Ctrl K et l'Aide comprises. Le Cabinet plie les accents depuis la 6.8.0 : le jumeau
+  // manquant (7.3.0), sur le geste qu'on fait le plus. Mot par mot : « marsa hotel » trouve aussi.
+  const plier = s => String(s == null ? '' : s).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  function correspondRecherche(texte, q) {
+    const mots = plier(q).split(/\s+/).filter(Boolean);
+    if (!mots.length) return true;
+    const t = plier(texte);
+    return mots.every(m => t.includes(m));
+  }
 
   function statusLabel(s) { return STATUS_LABELS[s] || s; }
 
@@ -1335,13 +1364,18 @@
   }
 
   // Brouillon de facture généré par un contrat pour une date donnée (l'app ajoute id/numéro/dates de création).
-  function buildRecurringInvoice(rec, dateIso, company) {
+  // `client` (10.12.0) : l'exonération de timbre du client (9.1.1) se reprend ICI aussi. Les deux
+  // autres chemins de création la copiaient (le choix du client dans l'éditeur, la facture tirée
+  // d'un devis — E-02) ; un contrat posait `applyStamp: true` en dur, et chaque facture mensuelle
+  // d'un client exonéré portait un timbre — le troisième jumeau, trouvé en écrivant la bulle du
+  // formulaire de contrat qui promettait le contraire.
+  function buildRecurringInvoice(rec, dateIso, company, client) {
     const vars = { mois: monthLabel(dateIso), annee: dateIso.slice(0, 4) };
     return {
-      type: 'facture', number: '', status: 'brouillon', date: dateIso, dueDate: addDays(dateIso, company.paymentTermsDays || 30),
+      type: 'facture', number: '', status: 'brouillon', date: dateIso, dueDate: addDays(dateIso, delaiJours(company.paymentTermsDays, 30)),
       clientId: rec.clientId, subject: fillTemplate(rec.subject, vars), reference: rec.reference || '',
       lines: (rec.lines || []).map(l => ({ ...l, label: fillTemplate(l.label, vars), description: fillTemplate(l.description || '', vars) })),
-      discountRate: rec.discountRate || 0, applyStamp: true, notes: fillTemplate(rec.notes || '', vars), payments: [],
+      discountRate: rec.discountRate || 0, applyStamp: !(client && client.stampExempt), notes: fillTemplate(rec.notes || '', vars), payments: [],
       withholdingRate: Number(rec.withholdingRate) || 0, recurringId: rec.id, lang: rec.lang || company.defaultLang || 'fr', currency: rec.currency || company.currency, exchangeRate: rec.exchangeRate || ''
     };
   }
@@ -1834,9 +1868,18 @@
       cost = round3(cost + t.base.totalHT + t.base.fees);
       paid = round3(paid + toBase(p, purchaseBalance(p, company, data).paid, company));
     });
-    // Devis en cours : ce qui est proposé mais pas encore vendu, pour voir l'affaire en entier.
+    // Devis en cours : ce qui est proposé mais pas encore FACTURÉ, pour voir l'affaire en entier. Un
+    // devis entièrement facturé comptait encore « en devis » à côté de ses propres factures : la fiche
+    // annonçait 5 520 DT facturés PLUS 5 520 DT en devis pour un seul chantier (10.12.0, une
+    // menuiserie). La règle est celle de `todoList` : une facture totale ou de solde, ÉMISE, ferme le
+    // devis ; un acompte émis se retranche (en HT, comme le reste de la carte).
     const quotes = (data.documents || []).filter(d => d.projectId === projectId && d.type === 'devis' && d.status !== 'brouillon');
-    const pending = round3(quotes.filter(q => q.status !== 'refusé').reduce((s, q) => s + toBase(q, computeTotals(q, company).netHT, company), 0));
+    const tirees = (data.documents || []).filter(d => d.type === 'facture' && d.fromQuoteId && d.status !== 'brouillon' && d.status !== 'annulée');
+    const fermes = new Set(tirees.filter(d => !d.deposit).map(d => d.fromQuoteId));
+    const pending = round3(quotes.filter(q => q.status !== 'refusé' && !fermes.has(q.id)).reduce((s, q) => {
+      const acomptes = tirees.filter(d => d.deposit && d.fromQuoteId === q.id).reduce((a, d) => a + toBase(d, computeTotals(d, company).netHT, company), 0);
+      return s + Math.max(0, toBase(q, computeTotals(q, company).netHT, company) - acomptes);
+    }, 0));
     const margin = round3(revenue - cost);
     return {
       revenue, cost, margin, invoiced, collected, paid, pending,
@@ -3256,8 +3299,8 @@
       let d = r.nextDate;
       for (let i = 0; i < 24 && d && d <= horizon; i++) {
         if (d >= t) {
-          const inv = buildRecurringInvoice(r, d, company);
-          const due = addDays(d, Number(company.paymentTermsDays) || 30);
+          const inv = buildRecurringInvoice(r, d, company, (data.clients || []).find(c => c.id === r.clientId));
+          const due = addDays(d, delaiJours(company.paymentTermsDays, 30));
           // `toBase`, comme la branche des factures clients dix-neuf lignes plus haut : un contrat
           // porte sa devise et `buildRecurringInvoice` la reporte sur chaque facture. Sans la
           // conversion, un abonnement de 800 € entrait dans la prévision pour 800 DT — la courbe
@@ -4960,7 +5003,7 @@
     const copy = JSON.parse(JSON.stringify(doc));
     NOT_COPIED.forEach(k => { delete copy[k]; });
     delete copy.fromQuoteId; delete copy.fromQuoteNumber;
-    const days = Number(targetType === 'devis' ? company.quoteValidityDays : company.paymentTermsDays) || 30;
+    const days = delaiJours(targetType === 'devis' ? company.quoteValidityDays : company.paymentTermsDays, 30);
     const out = {
       ...copy, id: uid(), type: targetType, number: '', status: 'brouillon', date,
       dueDate: ['facture', 'proforma', 'devis'].includes(targetType) ? addDays(date, Number(days) || 30) : '',
@@ -5002,6 +5045,26 @@
     if (!doc || !doc.id) return [];   // sans identifiant, `undefined === undefined` renverrait toute la base
     return (data.documents || []).filter(d => d.fromDocId === doc.id)
       .sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.createdAt || 0) - (b.createdAt || 0));
+  }
+  // Toutes les pièces d'une même vente, sauf celle-ci (10.12.0). `derivedDocs` ne voit que les
+  // ENFANTS directs : un bon de livraison tiré d'une proforma déjà facturée proposait « Facturer »,
+  // et le chantier l'était deux fois. On remonte à l'origine (une pièce transformée porte
+  // `fromDocId`, une facture tirée d'un devis `fromQuoteId`, un acompte `deposit.quoteId`), puis on
+  // redescend. Bornée : une chaîne corrompue (une boucle) ne doit jamais geler l'écran (5.2.3).
+  function chaineDePieces(data, doc) {
+    if (!doc || !doc.id) return [];
+    const docs = data.documents || [];
+    const parent = x => x.fromDocId || x.fromQuoteId || (x.deposit && x.deposit.quoteId) || '';
+    const enfantDe = (x, id) => x.fromDocId === id || x.fromQuoteId === id || !!(x.deposit && x.deposit.quoteId === id);
+    let racine = doc;
+    for (let i = 0; i < 50; i++) { const p = parent(racine) && docs.find(x => x.id === parent(racine)); if (!p || p.id === doc.id) break; racine = p; }
+    const vus = new Set([racine.id]); const file = [racine];
+    while (file.length && vus.size < 1000) {
+      const x = file.shift();
+      docs.forEach(d => { if (d.id && !vus.has(d.id) && enfantDe(d, x.id)) { vus.add(d.id); file.push(d); } });
+    }
+    vus.add(doc.id);
+    return docs.filter(d => vus.has(d.id) && d.id !== doc.id);
   }
 
   // Clauses d'un contrat de prestation. Textes de départ, tous modifiables sur le document.
@@ -5350,6 +5413,21 @@
       .sort((a, b) => (a.snoozed ? 1 : 0) - (b.snoozed ? 1 : 0) || b.daysLate - a.daysLate);
   }
 
+  // Les factures qui restent dues mais ne sont PAS encore en retard, de la plus proche échéance à la
+  // plus lointaine (10.12.0). La page Relances vide disait comment elle se remplit, jamais POURQUOI
+  // elle était vide ni QUAND elle cesserait de l'être — à une menuiserie qui attendait 4 530 DT. Une
+  // phrase d'état vide dit sa raison et le jour où ça changera (E-06) : ce jour-là est ici. Même
+  // filtre que `overdueInvoices`, de l'autre côté de l'échéance ; une facture sans échéance n'est
+  // jamais « à venir » : elle ne sera jamais en retard non plus.
+  function facturesAVenir(data, company, todayIso) {
+    const t = todayIso || today();
+    return (data.documents || [])
+      .filter(d => d.type === 'facture' && d.status !== 'brouillon' && d.status !== 'annulée' && d.dueDate && d.dueDate >= t)
+      .map(d => ({ doc: d, remaining: invoiceBalance(d, data, company).remaining, dueDate: d.dueDate }))
+      .filter(x => x.remaining > 0.0005)
+      .sort((a, b) => a.dueDate.localeCompare(b.dueDate) || (a.doc.number || '').localeCompare(b.doc.number || ''));
+  }
+
   // ---------- les licences émises par l'éditeur (7.33.0) ----------
   //
   // L'éditeur de SkanFact vend des licences depuis SA propre application : la vente est une facture
@@ -5534,7 +5612,7 @@
     const overdueAmount = round3(overdue.reduce((s, x) => s + toBase(x.doc, x.remaining, company), 0));
     if (overdue.length) out.push({
       id: 'retards', level: 'danger', label: `${overdue.length} facture${overdue.length > 1 ? 's' : ''} en retard`,
-      detail: `${fmt(overdueAmount)} à récupérer · plus ancienne : ${overdue[0].daysLate} jours`,
+      detail: `${fmt(overdueAmount)} à récupérer · plus ancienne : ${plFr(overdue[0].daysLate, 'jour')} de retard`,
       count: overdue.length, amount: overdueAmount, route: '#/relances', docs: overdue.map(x => x.doc)
     });
 
@@ -5638,7 +5716,7 @@
     if (owedLate.length) out.push({
       id: 'fournisseurs-retard', level: 'danger',
       label: `${owedLate.length} facture${owedLate.length > 1 ? 's' : ''} fournisseur en retard`,
-      detail: `${fmt(round3(owedLate.reduce((s, x) => s + x.remaining, 0)))} à régler · la plus ancienne : ${owedLate[0].late} jours`,
+      detail: `${fmt(round3(owedLate.reduce((s, x) => s + x.remaining, 0)))} à régler · la plus ancienne : ${plFr(owedLate[0].late, 'jour')} de retard`,
       count: owedLate.length, amount: round3(owedLate.reduce((s, x) => s + x.remaining, 0)), route: '#/achats', docs: []
     });
     const owedSoon = owed.filter(x => !x.late && x.dueDate && daysBetween(t, x.dueDate) <= 7);
@@ -6250,7 +6328,7 @@
 
   const I18N = {
     fr: {
-      devis: 'Devis', facture: 'Facture', avoir: 'Avoir', issuedF: 'Émise le', issued: 'Émis le', dueBy: 'À régler avant le', validUntil: 'Valable jusqu\'au',
+      devis: 'Devis', facture: 'Facture', avoir: 'Avoir', issuedF: 'Émise le', issued: 'Émis le', dueBy: 'À régler avant le', dueLabel: 'À régler', onReceipt: 'À réception', validUntil: 'Valable jusqu\'au',
       deposit: 'Acompte', depositOf: '% du devis', balance: 'Solde', balanceOf: 'du devis', afterQuote: 'Suite au devis', reference: 'Référence', cancels: 'Annule / rectifie',
       billedTo: 'Facturé à', preparedFor: 'Préparé pour', client: 'Client', subject: 'Objet', designation: 'Désignation', qty: 'Qté', unitPrice: 'Prix unit. HT', vat: 'TVA', lineTotal: 'Total HT',
       payment: 'Règlement', bank: 'Banque', rib: 'RIB', motif: 'Motif', creditText: n => `Cet avoir vient en déduction de la facture ${n}`, conditions: 'Conditions', validText: d => `Devis valable jusqu'au ${d}.`,
@@ -6267,7 +6345,7 @@
       contractSub: 'Lu et approuvé, date et signature', contractIntro: 'Entre les soussignés', totalNoTax: 'Total HT'
     },
     en: {
-      devis: 'Quote', facture: 'Invoice', avoir: 'Credit note', issuedF: 'Issued on', issued: 'Issued on', dueBy: 'Due by', validUntil: 'Valid until',
+      devis: 'Quote', facture: 'Invoice', avoir: 'Credit note', issuedF: 'Issued on', issued: 'Issued on', dueBy: 'Due by', dueLabel: 'Due', onReceipt: 'On receipt', validUntil: 'Valid until',
       deposit: 'Deposit', depositOf: '% of quote', balance: 'Balance', balanceOf: 'of quote', afterQuote: 'Following quote', reference: 'Reference', cancels: 'Cancels / corrects',
       billedTo: 'Billed to', preparedFor: 'Prepared for', client: 'Client', subject: 'Subject', designation: 'Description', qty: 'Qty', unitPrice: 'Unit price', vat: 'VAT', lineTotal: 'Total excl. VAT',
       payment: 'Payment', bank: 'Bank', rib: 'Account (RIB)', motif: 'Reference', creditText: n => `This credit note is deducted from invoice ${n}`, conditions: 'Terms', validText: d => `This quote is valid until ${d}.`,
@@ -6340,9 +6418,12 @@
         <td class="r num strong">${fmt(l.ht)}</td>`}
       </tr>`).join('');
 
+    const dueCard = d => d.dueDate && d.dueDate === d.date ? [L.dueLabel, L.onReceipt] : [L.dueBy, fmtDate(d.dueDate)];
     const metaItems = isInvoice ? [
       [L.issuedF, fmtDate(doc.date)],
-      [L.dueBy, fmtDate(doc.dueDate)],
+      // 10.12.0 — un délai de 0 jour : « À régler avant le 24/09 » sous « Émise le 24/09 » se lit
+      // comme un délai impossible. La mention d'usage est « à réception », et c'est la même date.
+      dueCard(doc),
       doc.deposit ? [L.deposit, `${pct(doc.deposit.percent)} ${L.depositOf} ${doc.deposit.quoteNumber}`] : (doc.settles ? [L.balance, `${L.balanceOf} ${doc.settles.quoteNumber}`] : (doc.fromQuoteNumber ? [L.afterQuote, doc.fromQuoteNumber] : null)),
       doc.reference ? [L.reference, doc.reference] : null
     ] : isCredit ? [
@@ -6351,7 +6432,7 @@
       doc.reference ? [L.reference, doc.reference] : null
     ] : isProforma ? [
       [L.established, fmtDate(doc.date)],
-      doc.dueDate ? [L.dueBy, fmtDate(doc.dueDate)] : null,
+      doc.dueDate ? dueCard(doc) : null,
       doc.fromDocNumber ? [L.from, doc.fromDocNumber] : null,
       doc.reference ? [L.reference, doc.reference] : null
     ] : isOrder ? [
@@ -6999,11 +7080,12 @@
   }
 
   return {
-    VAT_RATES, WITHHOLDING_RATES, PAYMENT_METHODS, PREFIX, TITLES, DEFAULT_DATA, DEFAULT_COMPANY, ACTIVITIES, STATUSES, DISPLAY_STATUSES, STATUS_LABELS,
+    VAT_RATES, WITHHOLDING_RATES, PAYMENT_METHODS, PREFIX, TITLES, DEFAULT_DATA, DEFAULT_COMPANY, ACTIVITIES, STATUSES, STATUT_ENVOI, DISPLAY_STATUSES, STATUS_LABELS,
     REGIMES, regimeOf, regimeSuggere, tfpSuggere, assujettiTVA, mentionTVA, estLiberal, docLabel, ribAttendu,
     DOC_FILTRES, docFiltre,
     pageInfo, compareValues, LINE_UNITS, usedUnits, usedWithholdingRates, parseDateInput, fmtDateInput, monthMatrix,
     uid, round3, money, fmtDate, addDays, daysInMonth, today, jourDeLInstant, escapeHtml, nl2br, capitalAffiche, statusLabel,
+    plier, correspondRecherche, delaiJours,
     CLOSURE_ACTIONS, closedUntil, isClosedDate, closedPeriodLabel, closableMonths, rienACloturer, closureChecks, closePeriod, reopenPeriod, closureLog,
     PACK_FORMAT, packPeriod, packPlan, packChecklist, packFileName, packCoverHtml,
     DEFAULT_ACCOUNTS, ACCOUNT_LABELS, ENTRY_JOURNALS, journalLabel, chartAccounts, journalEntries,
@@ -7021,9 +7103,9 @@
     nextNumber, isLocked, isIssued, computeTotals, creditsFor, invoiceBalance, motifVerrou, delaisContradictoires, effectiveStatus,
     depositLines, settlementLines, salesJournal, vatSummary, paymentsJournal, toCsv, migrateData,
     PERIODS, MONTHS_FR, MONTHS_SHORT, monthLabel, addMonths, nextRecurrenceDate, dueRecurrences, catchUpRecurrence, fillTemplate, buildRecurringInvoice,
-    reminderLevel, REMINDER_LABELS, daysBetween, overdueInvoices, todoList, companyGaps, verifRib, documentHistory, DEFAULT_EMAIL_TEMPLATES, DEFAULT_EMAIL_TEMPLATES_EN, emailFor,
+    reminderLevel, REMINDER_LABELS, daysBetween, overdueInvoices, facturesAVenir, todoList, companyGaps, verifRib, documentHistory, DEFAULT_EMAIL_TEMPLATES, DEFAULT_EMAIL_TEMPLATES_EN, emailFor,
     CURRENCIES, normCurrency, decimalsFor, toBase, rateOf, missingRate, monthKeys, monthlySeries, topClients, quoteStats, avgPaymentDelay, clientSummary, I18N,
-    EXTRA_TYPES, SALES_TYPES, CONVERSIONS, CONVERSION_LABELS, convertDoc, derivedDocs, DEFAULT_CLAUSES, CLAUSE_LABELS,
+    EXTRA_TYPES, SALES_TYPES, CONVERSIONS, CONVERSION_LABELS, convertDoc, derivedDocs, chaineDePieces, DEFAULT_CLAUSES, CLAUSE_LABELS,
     PURCHASE_KINDS, PURCHASE_LIES, piecesLieesAchat, LINE_DESTINATIONS, DEFAULT_EXPENSE_CATEGORIES, PURCHASE_STATUSES, expenseCategories,
     vatReturn, vatChain, DEFAULT_FISCAL_DEADLINES, fiscalDeadlines, nextDeadline, upcomingFiscal, fiscalFilingId, fiscalDone, simpleResult,
     ACCOUNT_KINDS, MOVE_KINDS, cashMovements, accountBalance, cashPosition, cashForecast, reconciliation,

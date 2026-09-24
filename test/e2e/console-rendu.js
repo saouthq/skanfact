@@ -109,7 +109,7 @@ const APP_SECRET = 'secret-de-test-' + 'x'.repeat(20);
     body: JSON.stringify({ deviceId: poste, deviceNom: nom, plateforme: 'darwin', version, app })
   });
 
-  let boutons = 0, champs = 0, colonnes = 0, controles = 0, ecarts = 0, largeurs = 0, tableaux = 0;
+  let liensMesures = 0, boutons = 0, champs = 0, colonnes = 0, controles = 0, ecarts = 0, largeurs = 0, tableaux = 0;
   // L'empreinte d'une licence RÉELLE, écrite par la route d'émission et relue par la page
   // publique. Une empreinte inventée ferait afficher « inconnue » : on mesurerait alors l'écran
   // du refus, jamais celui de la réponse — et c'est la réponse que des inconnus viennent lire.
@@ -132,8 +132,12 @@ const APP_SECRET = 'secret-de-test-' + 'x'.repeat(20);
   // une faute qui n'existe qu'en sombre à 1280 doit se lire comme telle, sinon on la cherche à
   // l'endroit où elle ne se produit pas.
   const mesurer = async ou => {
-    const { boutons: bs, champs: chs } = await page.evaluate(SONDE_CONTRASTE);
+    const { boutons: bs, champs: chs, liens: lks } = await page.evaluate(SONDE_CONTRASTE);
     boutons += bs.length; champs += chs.length;
+    // 10.12.0 — les liens : lisibles, et stylés par l'application (jamais le bleu brut du navigateur).
+    liensMesures += lks.length;
+    lks.filter(l => l.ratio < SEUIL || l.brut).forEach(l => fautes.push(`${ou} → lien « ${l.texte} » : `
+      + (l.brut ? `couleur brute du navigateur (${l.color}), stylé par personne` : `contraste ${l.ratio} — ${l.color} sur ${l.bg}`)));
     [...bs, ...chs].filter(b => b.ratio < SEUIL).forEach(b =>
       fautes.push(`${ou} → « ${b.texte} » (${b.id || b.cls}) : contraste ${b.ratio} — ${b.color} sur ${b.bg}`));
     // Un bouton qui dépasse DANS un conteneur qui défile n'est pas hors de l'écran, il est à une
@@ -606,6 +610,8 @@ const APP_SECRET = 'secret-de-test-' + 'x'.repeat(20);
 
   if (bac.length) { console.error('\nErreurs de la page :\n' + bac.join('\n')); process.exit(2); }
   // Un instrument qui ne mesure rien annonce « tout va bien » : il doit échouer, pas se taire.
+  // Les liens sont jugés s'il y en a, mais la console n'en porte aucun hors des boutons (`a.btn` se
+  // mesure comme un bouton) : zéro lien n'est pas un instrument muet ici, contrairement aux applications.
   if (!boutons || !champs || !colonnes || !ecarts || !largeurs || !tableaux) { console.error('\nRien n\'a été mesuré : le parcours ne prouve rien.'); process.exit(2); }
   const f1280 = flottaison.filter(x => / 1280 /.test(x.ou));
   if (f1280.length) {
@@ -636,7 +642,7 @@ const APP_SECRET = 'secret-de-test-' + 'x'.repeat(20);
   // laisser un zéro passer pour une mesure.
   console.log(`\n${fiches.length} écrans photographiés dans ${OUT} (+ mesures.json) :`
     + ' chaque écran mesuré est un écran qu\'on peut regarder.');
-  console.log(`\n${j.total()} étapes — ${boutons} boutons, ${champs} champs, ${colonnes} colonnes, ${ecarts} écarts, ${largeurs} largeurs, ${tableaux} tableaux jugés pour le texte coupé`
+  console.log(`\n${j.total()} étapes — ${boutons} boutons, ${champs} champs, ${liensMesures} liens, ${colonnes} colonnes, ${ecarts} écarts, ${largeurs} largeurs, ${tableaux} tableaux jugés pour le texte coupé`
     + ` mesurés sur les ${ONGLETS.length + SANS_TABLE.length} écrans du rail, leurs formulaires et les huit surfaces qu'aucune adresse ne mène,`
     + ' en clair et en sombre,'
     + ' à 1440 et à 1280 : rien d\'illisible, rien de désaligné, rien de collé.'

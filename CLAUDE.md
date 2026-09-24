@@ -6527,6 +6527,75 @@ vraie SUARL au régime réel, du premier écran au paquet du comptable). Ce qu'i
   fonction — et il borne un en-tête en COMPTANT ses `<div>`, parce qu'une tranche de longueur fixe
   débordait sur le panneau d'en dessous et accusait la Trésorerie (prouvé dans les deux sens).
 
+**Puis la menuiserie, continuée page par page** (relances, contrats, autres pièces, affaires,
+marges). Ce que ça a appris :
+
+- **Une étiquette de GESTION se pose sur une pièce émise.** L'affaire ne s'imprime pas, n'entre dans
+  aucune écriture et ne change aucun montant : la griser sur une facture émise, c'était condamner la
+  marge d'un chantier créé après coup à rester fausse pour toujours. Le verrou d'une pièce émise
+  protège ce qui fait foi (le numéro, les montants) — pas ce qui ne sert qu'à se retrouver. Elle
+  s'enregistre tout de suite (`poserAffaire`), sans marquer la pièce modifiée.
+- **Ce qui se crée depuis une fiche naît rattaché à cette fiche** : « + Devis » et « + Achat » de
+  l'affaire ouvraient des pièces vierges, qu'on croyait comptées. Le rattachement voyage dans
+  l'adresse (`…/affaire/<id>`), et le retour la nomme.
+- **Un lien retiré en amont se retire en aval** : changer le client d'une pièce laissait l'affaire de
+  l'ancien client, invisible dans la liste filtrée — le devis du client B comptait dans le chantier
+  du client A. Et ce qui se choisit doit pouvoir se DÉCHOISIR : « — Aucune affaire — » en tête de la
+  liste (7.3.0 : ce qui se saisit doit pouvoir se corriger).
+- **Une chaîne de pièces se lit en entier** (`core.chaineDePieces`) : `derivedDocs` ne voit que les
+  enfants directs, donc un bon de livraison tiré d'une proforma DÉJÀ facturée proposait « Facturer ».
+  On remonte à l'origine par les TROIS liens qu'une pièce peut porter (`fromDocId`, `fromQuoteId`,
+  `deposit.quoteId`), on redescend, et c'est borné. C'est E-03 (les trois sortes de pièces filles
+  d'un devis) un étage plus haut : chaque lecteur d'une vente doit voir toute la vente.
+- **U-11 sur TOUTES les pièces, pas seulement celles qu'on a regardées** : la règle connaissait le
+  devis (« Email ») et la facture (« Émettre »), et un bon de livraison tiré d'une proforma s'ouvrait
+  sans aucun vert. `suiteExtra` la calcule — et une pièce tirée d'une autre n'a pas encore de
+  NUMÉRO, donc son étape suivante est « Enregistrer », pas « Envoyer ». Un geste qui n'existait que
+  dans l'éditeur (« Transformer ▾ ») vit aussi dans le menu de la ligne, par UNE fonction
+  (`transformerPiece`), qui porte le garde-fou de licence que l'éditeur n'avait pas.
+- **Un compteur à côté d'un total ne compte que ce que le total n'a pas encore compté** : « en devis »
+  additionnait un devis entièrement facturé à ses propres factures. Et une marge sans aucun achat
+  n'est pas « 100 % » en vert — c'est une marge qui n'a pas encore son coût, et elle le dit sur les
+  trois écrans qui la montrent, par la même règle (`margeSansAchat`).
+- **Ce qui répond à un clic ne se déplace pas sous le curseur** — trois fois : « Fixe ou variable ? »
+  rangeait les charges en deux colonnes selon leur état (cocher faisait monter la suivante à sa
+  place : un second clic reclassait une autre charge) ; la liste d'années qui paraît sur un onglet
+  faisait grandir l'en-tête de 3 px (les onglets descendaient au moment du clic — l'en-tête a
+  désormais la hauteur d'un champ) ; le bouton qui passe de « Enregistrer » à « Rattacher 1 pièce »
+  poussait « Annuler » de 39 px (sa largeur est réservée).
+- **Une porte qui disparaît avec la dernière pièce libre ferme aussi la sortie** : « Rattacher
+  d'autres achats… » n'existait que s'il en restait à rattacher — donc plus aucune façon de DÉTACHER
+  depuis la fiche. Sous une liste pleine, le geste reste, et son libellé dit ce qu'il fera.
+- **Une ligne de liste dit ce qu'elle contient, pas seulement qui l'a émise** : un achat sans objet
+  s'affichait « BS-2026-0412, Bois du Sahel » — ce qu'on décide en le rattachant, c'est s'il a servi
+  au chantier. Ses lignes le disent (`contenuAchat`), et la recherche les lit.
+- **Zéro est une valeur** (7.1.0, 7.16.0, re-trouvée) : un délai de paiement réglé à 0 — « à
+  réception » — repassait à trente jours par `Number(x) || 30`. `core.delaiJours` ; et une facture
+  due le jour même dit « À réception ».
+- **Une recherche tapée plie les accents, dans TOUTES les recherches** (`core.correspondRecherche`) :
+  le Cabinet le faisait depuis la 6.8.0, l'app entreprise nulle part — « hotel » ne trouvait pas
+  l'Hôtel, sur le geste qu'on fait le plus (le jumeau manquant, 7.3.0).
+- **Une espace insécable ne colle pas un élément en ligne atomique** : la bulle « i » (inline-grid)
+  passait seule à la ligne derrière une insécable. Le dernier mot et la bulle vont dans un `<span>`
+  qui ne se coupe pas — la première version tenait sur les écrans vérifiés, et c'est la sonde des
+  bulles, braquée sur tous les écrans à 1280, qui l'a démentie.
+- **Un état observé sur la mise en page doit observer la mise en page**, pas les gestes qui la
+  changent : l'entrée allumée de la barre latérale revenait 12 px sous le bord après un rechargement
+  (la pastille de l'essai arrive dans le pied APRÈS le rendu). Un `ResizeObserver` sur la liste couvre
+  ce geste-là et le prochain qu'on ajoutera.
+- **Une règle de largeur générale ne bat pas une largeur demandée** : `.modal:has(table…)` (0,2,1)
+  écrasait `.modal.cab-large` du Cabinet et coupait 25 px de la fenêtre du modèle de liasse. Posée
+  sous `:where()`, elle ne pèse plus rien (le motif de la règle générale qui avale l'exception, 7.23.0,
+  cette fois dans la feuille partagée entre les deux applications).
+- **Le garde-fou des pluriels a arrêté un défaut que j'écrivais** : `pl(n, 'autre ligne')` aurait
+  donné « 2 autre lignes ». Un mot composé passe son pluriel entier.
+- Piège de parcours : une liste qui gagne une entrée en tête (« — Aucune affaire — ») change ce que
+  « la première ligne » désigne ; `e2e:entreprise` choisit maintenant une ligne qui n'est pas la
+  valeur ACTUELLE (`.combo-it:not(.cur)`) — il reconnaît l'entrée à ce qu'elle fait, pas à son rang.
+- Piège de test, **vingt-sixième fois** : l'assertion H-E5 recopiait la condition du vert de
+  « Enregistrer » et est tombée sur du code juste. Retournée : la condition s'ÉVALUE sur chaque cas
+  (neuve, enregistrée, sans numéro).
+
 ## Pistes pour la suite (non demandées)
 
 - Séparation des installateurs arm64 / x64 pour diviser par deux les 222 Mo du dmg universel.

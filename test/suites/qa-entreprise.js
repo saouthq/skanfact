@@ -837,7 +837,7 @@ module.exports = ({ t, assert, lireSource }) => {
     assert.strictEqual(sum.net, 1800);
     assert.strictEqual(sum.netPaid, 900, 'le net « versé » compte un bulletin qui n\'est pas payé');
     const app = code('src', 'renderer', 'app.js');
-    assert.ok(/<div class="lbl">Net versé<\/div><div class="val">\$\{C\.money\(sum\.netPaid, cur\)\}/.test(app), 'la carte « Net versé » affiche le net de tous les bulletins');
+    assert.ok(/<div class="lbl">Net versé \$\{info\('pay\.netVerse'\)\}<\/div><div class="val">\$\{C\.money\(sum\.netPaid, cur\)\}/.test(app), 'la carte « Net versé » affiche le net de tous les bulletins');
     const i = app.indexOf('function drawSlips()');
     const zone = app.slice(i, app.indexOf('function drawEmployees()', i));
     assert.ok(zone.length > 2000 && zone.length < 12000, 'tranche drawSlips introuvable (' + zone.length + ')');
@@ -883,5 +883,634 @@ module.exports = ({ t, assert, lireSource }) => {
     assert.ok(!core.socialDue(d, '2026-09-24').some(x => x.id === 'cnss-2026-T3'), 'le 3e trimestre est réclamé avant d\'être terminé');
     assert.ok(!core.socialDue(d, '2026-09-30').some(x => x.id === 'cnss-2026-T3'), 'le dernier jour du trimestre n\'est pas encore un trimestre terminé');
     assert.ok(core.socialDue(d, '2026-10-01').some(x => x.id === 'cnss-2026-T3'), 'le trimestre terminé n\'est pas réclamé');
+  });
+  // ------------------------------------------------------------------ parcours humain, lot 1
+  // La carte « Coût de la paie 2026 » disait « 0 bulletin, 0 salarié » à une menuiserie qui avait un
+  // ouvrier en poste : le « 0 salarié » comptait les salariés PAYÉS dans l'année, et contredisait
+  // l'onglet d'à côté. Sans bulletin, la carte dit qu'il n'y en a pas encore.
+  t('La carte « Coût de la paie » ne dit pas « 0 salarié » à une entreprise qui en a un', () => {
+    const app = code('src', 'renderer', 'app.js');
+    const i = app.indexOf('<div class="lbl">Coût de la paie ${s.year}');
+    assert.ok(i > 0, 'carte « Coût de la paie » introuvable');
+    const carte = app.slice(i, app.indexOf('</div></div>', i) + 12);
+    assert.ok(carte.length < 600, 'tranche de la carte trop large (' + carte.length + ')');
+    assert.ok(/<div class="sub">\$\{sum\.count \? `\$\{pl\(sum\.count, 'bulletin'\)\} pour \$\{pl\(sum\.employees, 'salarié'\)\}` : `aucun bulletin établi/.test(carte),
+      'la carte compte encore « 0 salarié » quand aucun bulletin n\'est établi');
+  });
+  // Brut, Net estimé, Coût employeur : le pied totalisait deux colonnes sur trois. Un total sous une
+  // colonne est lu comme sa somme (9.8.8) — une case vide sous « Net estimé » se lit « rien ».
+  t('Le pied des Salariés totalise chaque colonne de montants', () => {
+    const app = code('src', 'renderer', 'app.js');
+    const i = app.indexOf('function drawEmployees()');
+    const zone = app.slice(i, app.indexOf('\n    function ', i + 30));
+    assert.ok(zone.length > 1500 && zone.length < 8000, 'tranche drawEmployees introuvable (' + zone.length + ')');
+    const entetes = (zone.match(/<th class="r">[^<]+<\/th>/g) || []).length;
+    const pied = zone.slice(zone.indexOf('class="total-row"'));
+    const totaux = (pied.match(/<td class="r"><strong>\$\{C\.money\(/g) || []).length;
+    assert.strictEqual(entetes, 3, 'colonnes de montants attendues : Brut, Net estimé, Coût employeur');
+    assert.strictEqual(totaux, entetes, 'une colonne de montants n\'a pas de total dans le pied');
+  });
+  // « Hôtel Dar El Marsa … » à côté d'une barre de 55 px et de 60 px vides : le nom plafonné à 42 %
+  // de la ligne, et une piste de barre qui changeait avec la longueur du nom.
+  t('Un classement se lit en colonnes : le nom avant la barre, une seule piste pour toutes les barres', () => {
+    const css = lireSource('src', 'renderer', 'style.css').replace(/\/\*[\s\S]*?\*\//g, '');
+    const regle = sel => (new RegExp('^' + sel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ' \\{([^}]*)\\}', 'm').exec(css) || [])[1] || '';
+    assert.ok(/display: grid/.test(regle('.rank')) && /grid-template-columns: fit-content\(60%\) minmax\(56px, 1fr\) max-content/.test(regle('.rank')),
+      'le classement ne réserve pas au nom la place dont il a besoin');
+    assert.ok(/grid-template-columns: subgrid/.test(regle('.rank li')), 'chaque ligne a sa propre piste : deux barres ne se comparent plus');
+    assert.ok(!/max-width: 42%/.test(regle('.rank .name')), 'le nom est encore plafonné à 42 % de la ligne');
+    assert.ok(!/min-width: 110px/.test(regle('.rank .amt')), 'le montant réserve encore 110 px, pris au nom');
+  });
+  // « 0 jours », « 1 jours de retard », « plus ancienne : 1 jours » : les nombres de jours s'écrivaient
+  // à la main. Un nombre de jours calculé passe par l'accord ; seules les listes de CONSTANTES
+  // (« 30 jours », « 60 jours » d'un sélecteur) l'écrivent en toutes lettres.
+  t('Un nombre de jours calculé s\'accorde : jamais « 1 jours » ni « 0 jours »', () => {
+    const app = code('src', 'renderer', 'app.js');
+    assert.ok(!/\+ ' jours/.test(app), 'un nombre de jours est encore concaténé à « jours »');
+    const restes = [...app.matchAll(/\$\{([^{}]+)\} jours/g)]
+      .filter(m => !(m[1] === 'd' && /\.map\(d => `<option value="\$\{d\}"/.test(app.slice(Math.max(0, m.index - 160), m.index))));
+    assert.deepStrictEqual(restes.map(m => m[0]), [], 'un nombre de jours calculé est écrit sans accord');
+    const cor = code('src', 'renderer', 'core.js');
+    const dansCore = [...cor.matchAll(/\$\{([^{}]+)\} jours/g)].filter(m => m[1] !== 'LICENCE_PREAVIS');
+    assert.deepStrictEqual(dansCore.map(m => m[0]), [], 'core.js écrit un nombre de jours sans accord');
+  });
+  // Trois cartes sur une rangée, et le chiffre de « Coût des ventes » montait de 3 px : son étiquette
+  // n'avait pas de bulle « i », donc une ligne de 12 px contre 15 à ses voisines. La hauteur de ligne
+  // des étiquettes est celle d'une bulle — et elle se DÉDUIT de la bulle : un changement de taille de
+  // la bulle doit faire tomber ce test, pas remettre l'escalier en silence.
+  t('Une étiquette de carte a la hauteur d\'une bulle « i », avec ou sans bulle', () => {
+    const css = lireSource('src', 'renderer', 'style.css').replace(/\/\*[\s\S]*?\*\//g, '');
+    const regle = sel => (new RegExp('^' + sel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ' \\{([^}]*)\\}', 'm').exec(css) || [])[1] || '';
+    const lbl = regle('.eyebrow, .k-label, .stat .lbl');
+    const bulle = regle('button.i');
+    const px = (r, p) => Number((new RegExp('(?:^|[;\\s])' + p + ': (-?[\\d.]+)px').exec(r) || [])[1]);
+    const hauteurLigne = px(lbl, 'line-height'), hauteurBulle = px(bulle, 'height'), releve = px(bulle, 'vertical-align') || 0;
+    assert.ok(hauteurBulle > 0, 'hauteur de la bulle introuvable');
+    assert.ok(hauteurLigne >= hauteurBulle + releve, `l'étiquette (${hauteurLigne || 'hauteur normale'}) est plus basse qu'une bulle (${hauteurBulle} + ${releve}) : une carte sans bulle décale son chiffre`);
+  });
+  // La hauteur de ligne réglait l'étiquette SANS bulle ; elle ne pouvait rien contre une étiquette
+  // qui passe sur deux lignes à 1280 px (« Délai moyen de paiement ») : son chiffre descendait de
+  // 16 px sous ceux de sa rangée, sur onze écrans (sonde de rangée, e2e:entreprise-rendu). Les cartes
+  // d'une rangée partagent leurs pistes : l'étiquette, le chiffre et le commentaire en trois rangées
+  // communes (subgrid). La variante `.rangee` du Cabinet pose tout sur une ligne et en est exclue.
+  t('Les cartes d\'une rangée partagent leurs pistes : une étiquette sur deux lignes ne descend pas son chiffre', () => {
+    const css = lireSource('src', 'renderer', 'style.css').replace(/\/\*[\s\S]*?\*\//g, '');
+    const m = /^\.stats:not\(\.rangee\) > \.stat \{([^}]*)\}/m.exec(css);
+    assert.ok(m, 'aucune règle ne fait partager aux cartes d\'une rangée les pistes de leurs voisines');
+    assert.ok(/grid-template-rows: subgrid/.test(m[1]) && /grid-row: span 3/.test(m[1]), 'la carte ne reprend pas les trois pistes de sa rangée : ' + m[1].trim());
+    assert.ok(/display: grid/.test(m[1]), 'une carte en subgrid doit être elle-même une grille');
+    // Une carte à quatre éléments déborderait de ses trois pistes : chaque carte des deux
+    // applications compte au plus une étiquette, un chiffre et un commentaire.
+    for (const f of [['src', 'renderer', 'app.js'], ['src', 'cabinet', 'renderer', 'app.js']]) {
+      const src = lireSource(...f);
+      for (const c of src.matchAll(/<div class="stat"(?: [^>]*)?>([\s\S]*?)<\/div>\s*(?:<\/div>\s*){0,1}(?=\s*(?:<div class="stat"|\$\{|<\/div>|`))/g)) {
+        const enfants = (c[1].match(/<div class="(?:lbl|val|sub)\b/g) || []).length;
+        assert.ok(enfants <= 3, f.join('/') + ' : une carte porte ' + enfants + ' éléments — ' + c[0].slice(0, 90));
+      }
+    }
+  });
+  // La page Relances d'une menuiserie qui attendait 4 530 DT expliquait comment elle se remplit,
+  // jamais POURQUOI elle était vide ni QUAND elle cesserait de l'être (E-06 : un état vide dit sa
+  // raison et le jour où ça changera).
+  t('Relances vide : la prochaine facture qui arrive à échéance, et le jour', () => {
+    const d = vierge();
+    d.clients = [{ id: 'c1', name: 'Hôtel Dar El Marsa SARL' }];
+    const f = (id, n, date, due, statut) => ({ id, type: 'facture', number: n, status: statut || 'envoyée', clientId: 'c1', date, dueDate: due,
+      applyStamp: false, withholdingRate: 0, discountRate: 0, lines: [{ label: 'Porte', qty: 1, unitPrice: 1000, vatRate: 19 }], payments: [] });
+    d.documents = [f('a', 'FAC-2026-001', '2026-09-01', '2026-10-31'), f('b', 'FAC-2026-002', '2026-09-12', '2026-10-12'),
+      f('c', 'FAC-2026-003', '2026-08-01', '2026-08-31'), f('x', '', '2026-09-20', '2026-10-20', 'brouillon')];
+    // Une facture payée n'est plus « à venir ».
+    d.documents.push({ ...f('p', 'FAC-2026-004', '2026-09-15', '2026-10-15'), payments: [{ id: 'r', date: '2026-09-16', amount: 1190 }] });
+    const av = core.facturesAVenir(d, société, '2026-09-24');
+    assert.deepStrictEqual(av.map(x => x.doc.number), ['FAC-2026-002', 'FAC-2026-001'], 'les factures à venir ne sont pas triées par échéance, ou un brouillon, une facture en retard ou payée s\'y glisse');
+    assert.strictEqual(av[0].remaining, 1190);
+    assert.strictEqual(core.overdueInvoices(d, société, '2026-09-24').length, 1, 'la facture échue n\'est plus en retard');
+    const app = code('src', 'renderer', 'app.js');
+    const i = app.indexOf('routes.relances = ');
+    const zone = app.slice(i, app.indexOf("<h1>Relances ${info('rel.levels')}", i));
+    assert.ok(zone.length > 3000 && zone.length < 14000, 'tranche des Relances introuvable (' + zone.length + ')');
+    assert.ok(/C\.facturesAVenir\(data, company\(\)\)/.test(zone) && /La prochaine échéance est celle de/.test(zone), 'la page Relances vide ne nomme pas la prochaine échéance');
+  });
+  // « trésorerie » dans une phrase de la Paie, « Voir les relances » des Statistiques, le numéro de
+  // facture des Relances : le bleu brut du navigateur, lisible en clair par chance, illisible en sombre.
+  t('Un lien dans une phrase est stylé par l\'application, jamais par le navigateur', () => {
+    const css = lireSource('src', 'renderer', 'style.css').replace(/\/\*[\s\S]*?\*\//g, '');
+    const r = /^#view a\[href\]:not\(\[class\]\), #modal-root a\[href\]:not\(\[class\]\) \{([^}]*)\}/m.exec(css);
+    assert.ok(r && /color: var\(--primary\)/.test(r[1]) && /text-decoration: underline/.test(r[1]), 'aucune règle ne style un lien écrit dans une phrase');
+  });
+  // Un instrument ne protège que ce qu'il mesure : la sonde de contraste ne regardait que boutons et
+  // champs ; celle des rangées de cartes n'existait pas. Branchées, et un parcours qui n'en mesure
+  // aucune TOMBE — sinon il annoncerait « tout va bien » sans avoir regardé (T-55).
+  t('Les liens et les rangées de cartes sont mesurés par les parcours de rendu', () => {
+    const h = lireSource('test', 'e2e', 'harnais.js');
+    assert.ok(/const liens = \[\];/.test(h) && /brut: s\.color === 'rgb\(0, 0, 238\)'/.test(h) && /return \{ boutons, champs, liens \};/.test(h), 'la sonde de contraste ne mesure pas les liens');
+    // L'EXPORT, pas le voisin de la ligne d'export : `SONDE_RANGEE, FENETRE` tombait dès qu'une sonde
+    // s'ajoutait entre les deux — une forme, pas la règle (7.16.0).
+    const exports = (/module\.exports = \{([\s\S]*?)\};/.exec(h) || [])[1] || '';
+    assert.ok(/const SONDE_RANGEE = /.test(h) && /\bSONDE_RANGEE\b/.test(exports), 'la sonde des rangées de cartes n\'est pas exportée');
+    for (const f of ['entreprise-rendu', 'cabinet-rendu', 'console-rendu', 'contraste']) {
+      const src = lireSource('test', 'e2e', f + '.js');
+      // Le FILTRE qui juge, pas le mot « brut » : il vit aussi dans le message de la faute, et un
+      // test qui le cherche n'importe où restait vert avec le jugement retiré.
+      assert.ok(/liens(: lks)? \} = await \w+\.evaluate\(SONDE(_CONTRASTE)?\)/.test(src) && /\.filter\(l => l\.ratio < SEUIL \|\| l\.brut\)/.test(src), f + ' ne juge pas les liens');
+    }
+    for (const f of ['entreprise-rendu', 'cabinet-rendu']) {
+      const src = lireSource('test', 'e2e', f + '.js');
+      assert.ok(/evaluate\(SONDE_RANGEE/.test(src) && /!rangees/.test(src) && /!liensMesures/.test(src), f + ' ne mesure pas les rangées, ou passe sans en avoir mesuré');
+    }
+  });
+  // « hotel » ne trouvait pas « Hôtel Dar El Marsa SARL » — dans les listes, le choix du client d'une
+  // facture, la palette Ctrl K et l'Aide. Le Cabinet plie les accents depuis la 6.8.0 (jumeau manquant).
+  t('Toute recherche tapée ignore accents et majuscules, mot par mot', () => {
+    assert.strictEqual(core.correspondRecherche('Hôtel Dar El Marsa SARL', 'hotel'), true);
+    assert.strictEqual(core.correspondRecherche('Hôtel Dar El Marsa SARL', 'MARSA hôtel'), true, 'les mots se cherchent chacun, dans n\'importe quel ordre');
+    assert.strictEqual(core.correspondRecherche('Règles de facturation — délai paiement', 'delai'), true);
+    assert.strictEqual(core.correspondRecherche('Café des Arts', 'thé'), false);
+    assert.strictEqual(core.correspondRecherche('n\'importe quoi', '  '), true, 'une recherche vide garde tout');
+    const app = code('src', 'renderer', 'app.js');
+    // CHAQUE recherche, pas « au moins une » : un filtre écrit à la main et laissé sensible aux
+    // accents passerait sous un test qui compte (10.12.0, 7.33.0).
+    const restes = (app.match(/\.toLowerCase\(\)\.includes\(/g) || []).length;
+    assert.strictEqual(restes, 0, 'une recherche compare encore le texte sans plier ses accents (' + restes + ')');
+    assert.ok(/C\.correspondRecherche\(x\.text \|\| x\.label \|\| '', q\.value\)/.test(app), 'le choix d\'un client dans l\'éditeur est sensible aux accents');
+    assert.ok(/const q = C\.plier\(input\.value\.trim\(\)\);/.test(app) && /plie\(x\)\.includes\(w\)/.test(app), 'la palette Ctrl K ne plie pas les accents');
+    assert.ok(/const aideMots = q => C\.plier\(/.test(app) && /const titre = C\.plier\(a\.title\)/.test(app), 'la recherche de l\'Aide ne plie pas les accents');
+    // Le surlignage découpe le texte d'origine aux positions trouvées dans le texte plié : les deux
+    // doivent avoir la même longueur.
+    const plierPareil = s2 => Array.from(String(s2 || ''), ch => { const f = core.plier(ch); return f.length === ch.length ? f : ch; }).join('');
+    const phrase = 'L\'échéance de la déclaration arrive';
+    assert.strictEqual(plierPareil(phrase).length, phrase.length);
+    assert.ok(/const bas = plierPareil\(texte\);[\s\S]{0,400}const bas = plierPareil\(texte\);/.test(app) || (app.match(/const bas = plierPareil\(texte\);/g) || []).length === 2, 'le surlignage de l\'Aide ne plie pas le texte à longueur égale');
+  });
+  // Un contrat mensuel pour un client exonéré de timbre : chaque brouillon portait un timbre. Les deux
+  // autres chemins de création reprenaient l'exonération (le choix du client, E-02) ; pas celui-ci.
+  t('Une facture préparée par un contrat reprend l\'exonération de timbre du client', () => {
+    const rec = { id: 'r1', clientId: 'c1', subject: 'Entretien — {mois}', every: 'month', day: 1, nextDate: '2026-10-01',
+      lines: [{ label: 'Réglage des portes', qty: 1, unitPrice: 150, vatRate: 19 }] };
+    const exo = core.buildRecurringInvoice(rec, '2026-10-01', société, { id: 'c1', stampExempt: true });
+    const ord = core.buildRecurringInvoice(rec, '2026-10-01', société, { id: 'c1' });
+    assert.strictEqual(exo.applyStamp, false, 'le brouillon d\'un client exonéré porte un timbre');
+    assert.strictEqual(ord.applyStamp, true);
+    // 150 HT + 28,5 de TVA, sans timbre : 178,5 — calculé à la main.
+    assert.strictEqual(core.computeTotals(exo, société).netToPay, 178.5);
+    // La prévision de trésorerie compte ce que le contrat facturera VRAIMENT.
+    const d = vierge();
+    d.clients = [{ id: 'c1', name: 'Hôtel', stampExempt: true }];
+    d.recurring = [{ ...rec, active: true }];
+    const f = core.cashForecast(d, société, 90, '2026-09-24');
+    const ev = (f.events || []).find(e => e.kind === 'contrat');
+    assert.ok(ev, 'le contrat n\'entre pas dans la prévision');
+    assert.strictEqual(ev.amount, 178.5, 'la prévision compte un timbre que la facture ne portera pas');
+    const app = code('src', 'renderer', 'app.js');
+    assert.ok(/C\.buildRecurringInvoice\(rec, rec\.nextDate, company\(\), clientById\(rec\.clientId\)\)/.test(app), 'la génération des brouillons ne passe pas le client');
+    assert.ok(/C\.buildRecurringInvoice\(r, r\.nextDate, co, clientById\(r\.clientId\)\)/.test(app), 'la fiche du contrat annonce une facture avec un timbre');
+  });
+  // « Paiement à réception » : délai 0. `Number(x) || 30` le changeait en trente jours, sur chaque
+  // facture — et le formulaire des Paramètres l'écrivait 30 à l'enregistrement (7.16.0).
+  t('Un délai de paiement de 0 jour reste 0 : seule une case vide prend les 30 jours', () => {
+    assert.strictEqual(core.delaiJours(0, 30), 0);
+    assert.strictEqual(core.delaiJours('0', 30), 0);
+    assert.strictEqual(core.delaiJours('', 30), 30);
+    assert.strictEqual(core.delaiJours(null, 30), 30);
+    assert.strictEqual(core.delaiJours(45, 30), 45);
+    assert.strictEqual(core.delaiJours(-3, 30), 30, 'un délai négatif n\'existe pas');
+    const rec = { id: 'r1', clientId: 'c1', subject: 'x', lines: [] };
+    assert.strictEqual(core.buildRecurringInvoice(rec, '2026-10-01', { ...société, paymentTermsDays: 0 }).dueDate, '2026-10-01', 'un contrat « à réception » donne une échéance à trente jours');
+    for (const f of [['src', 'renderer', 'app.js'], ['src', 'renderer', 'core.js']]) {
+      const src = code(...f);
+      assert.ok(!/(paymentTermsDays|quoteValidityDays)\)? \|\| 30/.test(src), f[2] + ' transforme encore un délai de 0 jour en 30');
+    }
+  });
+  // Le formulaire d'un contrat : une bulle pour UNE unité sur neuf champs, et des refus en bandeau
+  // de 2,6 secondes qui ne montraient pas le champ.
+  t('Le formulaire de contrat explique chaque champ et montre celui qu\'il refuse', () => {
+    const app = code('src', 'renderer', 'app.js');
+    const i = app.indexOf('function recurrenceForm(');
+    const zone = app.slice(i, app.indexOf('\n  function ', i + 30));
+    assert.ok(zone.length > 3000 && zone.length < 12000, 'tranche recurrenceForm introuvable (' + zone.length + ')');
+    for (const cle of ['contrat.client', 'contrat.periode', 'contrat.objet', 'contrat.jour', 'contrat.next', 'ed.withholding', 'ed.discount', 'ed.notes', 'contrat.actif']) {
+      assert.ok(zone.includes(`'${cle}'`), 'le champ de la bulle ' + cle + ' n\'en porte pas');
+    }
+    const ok = zone.slice(zone.indexOf("$('#ok', root).onclick"));
+    assert.ok(!/return toast\(/.test(ok.slice(0, 1500)), 'un refus du contrat reste un bandeau qui ne montre pas le champ');
+    assert.strictEqual((ok.slice(0, 1500).match(/return refus\(/g) || []).length, 4, 'les quatre refus du contrat ne passent pas tous par refus()');
+    assert.ok(/t\.netHT > 0\.0005 \?/.test(zone), 'un contrat vide annonce un montant fait du seul timbre');
+  });
+  // 10.12.0 — un délai de 0 jour imprimait « À régler avant le 24/09/2026 » sous « Émise le
+  // 24/09/2026 » : un délai qui se lit impossible. La mention d'usage est « à réception ».
+  t('Une facture payable le jour de son émission porte « à réception », pas « avant le » ce jour-là', () => {
+    const client = { id: 'c1', name: 'Client' };
+    const base = { type: 'facture', number: 'FAC-2026-001', date: '2026-09-24', status: 'envoyée', clientId: 'c1', applyStamp: true,
+      lines: [{ label: 'Pose', qty: 1, unitPrice: 100, vatRate: 19 }] };
+    const html = d => core.documentHtml(d, client, société, {});
+    const jour = html({ ...base, dueDate: '2026-09-24', lang: 'fr' });
+    assert.ok(/À réception/.test(jour), 'une facture à 0 jour n\'imprime pas « à réception »');
+    assert.ok(!/À régler avant le/.test(jour), 'une facture à 0 jour imprime encore « À régler avant le » le jour de son émission');
+    const trente = html({ ...base, dueDate: '2026-10-24', lang: 'fr' });
+    assert.ok(/À régler avant le/.test(trente) && /24\/10\/2026/.test(trente), 'une facture à trente jours ne dit plus sa date limite');
+    assert.ok(!/À réception/.test(trente), 'une facture à trente jours se dit « à réception »');
+    assert.ok(/On receipt/.test(html({ ...base, dueDate: '2026-09-24', lang: 'en' })), 'la facture anglaise à 0 jour n\'a pas sa mention');
+    const pro = html({ ...base, type: 'proforma', dueDate: '2026-09-24', lang: 'fr' });
+    assert.ok(/À réception/.test(pro) && !/À régler avant le/.test(pro), 'la proforma à 0 jour garde « avant le » le jour même');
+  });
+  // 10.12.0 — la fiche d'un contrat, à la souris : l'aperçu de la prochaine facture barré d'une
+  // barre de défilement horizontale (et le bord droit de la page coupé), un « Générer maintenant »
+  // vert une semaine avant l'échéance, un cadre pointillé de 110 px pour « aucune facture générée »,
+  // et le pied de la liste des contrats sur trois lignes (« par mois · 1 800,000 DT par / an »).
+  t('Contrats : l\'aperçu tient dans son cadre, le vert attend l\'échéance, le vide s\'annonce, le total tient sur sa ligne', () => {
+    const app = code('src', 'renderer', 'app.js');
+    // L'aperçu en colonne : le zoom se recale sur la largeur qui reste APRÈS la mise en page — celle
+    // qui décide de la barre de défilement. Le grand aperçu garde le zoom de l'utilisateur.
+    const fn = app.slice(app.indexOf('function ajusterAuCadre('), app.indexOf('function ajusterAuCadre(') + 400);
+    assert.ok(/scrollWidth <= el\.clientWidth/.test(fn) && /el\.clientWidth - 2\) \/ 794/.test(fn), 'le zoom de l\'aperçu ne se recalcule pas sur la largeur qui reste : ' + fn.slice(0, 160));
+    const editeur = app.slice(app.indexOf('function drawPreview()'), app.indexOf('function dessinerPleinEcran()'));
+    const contrat = app.slice(app.indexOf('routes.contrat = '), app.indexOf('routes.contrat = ') + 9000);
+    for (const [nom, zone] of [['l\'éditeur', editeur], ['la fiche d\'un contrat', contrat]]) {
+      const i = zone.indexOf('mettreEnPage('), j = zone.indexOf('ajusterAuCadre(');
+      assert.ok(i > 0 && j > i, 'l\'aperçu de ' + nom + ' ne recale pas son zoom après la mise en page');
+    }
+    const plein = app.slice(app.indexOf('function dessinerPleinEcran()'), app.indexOf('function fermerPleinEcran()'));
+    assert.ok(plein.length > 200 && !plein.includes('ajusterAuCadre('), 'le grand aperçu écrase le zoom choisi par l\'utilisateur');
+    // Le bouton principal de la fiche : vert seulement quand une facture est due.
+    const gen = /<button class="([^"]*)" id="c-gen">/.exec(contrat) || /<button class="btn\$\{([^}]*)\}" id="c-gen">/.exec(contrat);
+    assert.ok(gen, 'bouton « Générer maintenant » introuvable');
+    assert.ok(!/^btn btn-primary$/.test(gen[1]) && /isDue \? ' btn-primary'/.test(gen[1]), '« Générer maintenant » est vert même quand rien n\'est dû : ' + gen[1]);
+    // Les listes d'une fiche : un état vide secondaire.
+    const fiches = [...app.matchAll(/docTable\([^,]+, \{\s*hideClient: true[^}]*\}/g)].map(m => m[0]);
+    assert.ok(fiches.length >= 2, 'les listes des fiches client et contrat sont introuvables (' + fiches.length + ')');
+    for (const f of fiches) assert.ok(/mini: true/.test(f), 'la liste d\'une fiche garde le grand cadre vide d\'une page : ' + f.slice(0, 80));
+    // Le pied de la liste des contrats : la phrase du total sur UNE ligne, dans deux colonnes.
+    const liste = app.slice(app.indexOf('routes.contrats = '), app.indexOf('routes.contrats = ') + 7000);
+    const pied = liste.slice(liste.indexOf('<tfoot>'), liste.indexOf('</tfoot>'));
+    assert.ok(/<td class="r nw" colspan="2"><strong>\$\{C\.money\(parMois/.test(pied), 'le total des contrats ne tient pas sur sa ligne : ' + pied.slice(0, 200));
+    assert.ok(/key: 'every'[^\n]*nw: true/.test(liste), 'la période d\'un contrat passe à la ligne (« Chaque / mois »)');
+  });
+  // 10.12.0 — une bulle « i » qui termine une phrase passait seule sur la ligne suivante (l'état vide
+  // des Proformas : « … pour un dossier. » puis un « i » orphelin). En prose, l'espace qui la précède
+  // devient insécable, sur chaque nœud ajouté au document — dans les DEUX applications, par le même
+  // corps. Et une sonde le mesure sur tous les écrans des deux parcours de rendu.
+  t('Une bulle « i » ne passe jamais seule à la ligne : l\'espace qui la précède est insécable, dans les deux applications', () => {
+    const corps = f => {
+      const src = lireSource(...f);
+      const i = src.indexOf('function collerBulles(');
+      assert.ok(i > 0, f.join('/') + ' ne colle pas ses bulles à leur dernier mot');
+      const fin = src.indexOf('\n  }\n', i);
+      return src.slice(i, fin);
+    };
+    const e = corps(['src', 'renderer', 'app.js']), c = corps(['src', 'cabinet', 'renderer', 'app.js']);
+    assert.strictEqual(e, c, 'les deux applications ne collent pas leurs bulles de la même façon');
+    assert.ok(/\\u00a0/.test(e) && /flex\|grid/.test(e), 'la bulle n\'est pas collée par une espace insécable, ou l\'est aussi dans un conteneur flex');
+    // Une espace insécable NE SUFFIT PAS : la bulle est un élément en ligne atomique, et Chrome coupe
+    // avant lui même derrière une insécable — la sonde l'a vu à 1280 px sur des étiquettes « collées ».
+    // Le dernier mot et la bulle vont dans un <span> qui ne se coupe pas.
+    assert.ok(/colle\.className = 'colle-bulle'/.test(e) && /colle\.append\(b\)/.test(e), 'la bulle n\'est plus rangée avec son dernier mot dans un <span> insécable');
+    const css = lireSource('src', 'renderer', 'style.css').replace(/\/\*[\s\S]*?\*\//g, '');
+    assert.ok(/^\.colle-bulle \{ white-space: nowrap; \}/m.test(css), 'le <span> du dernier mot et de sa bulle peut se couper');
+    for (const f of [['src', 'renderer', 'app.js'], ['src', 'cabinet', 'renderer', 'app.js']]) {
+      assert.ok(/new MutationObserver\([\s\S]{0,200}collerBulles\(n\)/.test(code(...f)), f.join('/') + ' ne colle pas les bulles des listes redessinées');
+    }
+    for (const f of ['entreprise-rendu.js', 'cabinet-rendu.js']) {
+      const src = lireSource('test', 'e2e', f);
+      assert.ok(/evaluate\(SONDE_BULLE/.test(src) && /\|\| !bulles\)/.test(src), f + ' ne mesure pas les bulles orphelines, ou ne tombe pas quand il n\'en voit aucune');
+    }
+  });
+  // 10.12.0 — la retenue et la remise des totaux de l'éditeur s'écrivaient « - 133,875 DT » : un
+  // trait d'union et une espace ordinaire, là où le document imprimé et toutes les listes écrivent
+  // « − 133,875 DT » (vrai signe moins, espace insécable). Un montant négatif s'écrit par money().
+  t('Un montant retranché s\'écrit par money(), pas avec un trait d\'union posé devant', () => {
+    for (const f of [['src', 'renderer', 'app.js'], ['src', 'cabinet', 'renderer', 'app.js']]) {
+      const src = lireSource(...f);
+      const restes = src.match(/<td[^>]*>\s*[-−]\s*\$\{C\.money\(/g) || [];
+      assert.deepStrictEqual(restes, [], f.join('/') + ' écrit un signe à la main devant un montant');
+    }
+    assert.strictEqual(core.money(-133.875, 'DT'), '− 133,875 DT', 'money() n\'écrit plus le vrai signe moins');
+  });
+  // 10.12.0 — une proforma envoyée par email partait avec un PDF tamponné « BROUILLON » et restait
+  // brouillon : seul le devis passait à « envoyé ». La pièce qu'une banque demande pour un dossier.
+  t('Envoyer une pièce la fait passer de brouillon à envoyée, et le PDF joint n\'est pas tamponné « BROUILLON »', () => {
+    for (const [type, st] of Object.entries(core.STATUT_ENVOI)) {
+      assert.ok((core.STATUSES[type] || []).includes(st), type + ' passe à un statut qu\'il ne connaît pas : ' + st);
+    }
+    assert.ok(!core.STATUT_ENVOI.facture && !core.STATUT_ENVOI.avoir, 'une facture ou un avoir s\'ÉMET, il ne « s\'envoie » pas hors de son émission');
+    // Toute autre pièce qui connaît le brouillon a son statut d'envoi : sans lui, l'envoyer la
+    // laisserait brouillon — et une entrée qui manque ne se voit pas dans la boucle du dessus.
+    for (const type of Object.keys(core.STATUSES).filter(t => t !== 'facture' && t !== 'avoir')) {
+      assert.ok(core.STATUT_ENVOI[type], type + ' n\'a pas de statut d\'envoi : l\'envoyer la laisserait brouillon');
+    }
+    const client = { id: 'c1', name: 'Hôtel' };
+    const pro = { id: 'p1', type: 'proforma', number: 'PRO-2026-001', date: '2026-09-24', dueDate: '2026-10-24', clientId: 'c1',
+      lines: [{ label: 'Porte coupe-feu', qty: 6, unitPrice: 1250, vatRate: 19 }] };
+    const tampon = d => /class="stamp[^"]*draft|>Brouillon</.test(core.documentHtml(d, client, société, {}));
+    assert.ok(tampon({ ...pro, status: 'brouillon' }), 'le jeu ne discrimine pas : la proforma brouillon devrait porter son tampon');
+    for (const type of ['proforma', 'livraison', 'commande']) {
+      assert.ok(!tampon({ ...pro, type, status: core.STATUT_ENVOI[type] }), 'une ' + type + ' envoyée garde le tampon « BROUILLON »');
+    }
+    const app = code('src', 'renderer', 'app.js');
+    const envoi = app.slice(app.indexOf('async function sendByEmail('), app.indexOf('function sendReminder('));
+    assert.ok(envoi.length > 1500 && envoi.length < 8000, 'tranche sendByEmail introuvable (' + envoi.length + ')');
+    assert.ok(/C\.STATUT_ENVOI\[doc\.type\]/.test(envoi), 'l\'envoi ne lit pas le statut d\'envoi de la pièce');
+    assert.ok(/exportPdfSilent\(C\.documentHtml\(telle,/.test(envoi), 'le PDF joint est celui de la pièce encore brouillon');
+    assert.ok(!/stored\.type === 'devis' && stored\.status === 'brouillon'/.test(envoi), 'seul le devis passe encore à « envoyé »');
+  });
+  // 10.12.0 — « Facture créé en brouillon à partir de PRO-2026-001 » : le participe ne s'accordait
+  // pas avec la pièce. Et le retour de la facture tirée d'une proforma disait « ← Facture proforma
+  // PRO-2026-001 » : 29 caractères, « Plus ▾ » sur une troisième rangée.
+  t('Une pièce créée s\'accorde avec son type, et son nom trop long cède la place à son numéro sur le retour', () => {
+    const app = code('src', 'renderer', 'app.js');
+    assert.ok(!/\$\{C\.TITLES\[\w+\]\} créé /.test(lireSource('src', 'renderer', 'app.js')), 'un message écrit encore « <type> créé » sans accorder');
+    const pc = app.slice(app.indexOf('const pieceCreee = '), app.indexOf('const pieceCreee = ') + 200);
+    assert.ok(/t === 'facture' \|\| t === 'proforma'/.test(pc), 'le participe ne s\'accorde plus au féminin de la facture et de la proforma');
+    for (const [t, attendu] of [['facture', 'Facture'], ['proforma', 'Facture proforma']]) assert.strictEqual(core.TITLES[t], attendu, 'le titre de ' + t + ' a changé : l\'accord se relit');
+    // Le retour : les types longs (proforma, bons, contrat) dépassent vingt caractères avec leur
+    // numéro — c'est ce qui DOIT les faire passer au numéro seul (règle lue dans pageLabel, audit-ux).
+    const longs = Object.entries(core.TITLES).filter(([k, v]) => (v + ' ' + core.PREFIX[k] + '-2026-001').length > 20).map(([k]) => k);
+    assert.ok(longs.includes('proforma') && !longs.includes('devis'), 'le jeu ne discrimine plus : ' + longs.join(', '));
+  });
+  // 10.12.0 — l'affaire d'un chantier, parcourue par une menuiserie qui la crée APRÈS avoir facturé.
+  // Le « reste en devis » comptait un devis déjà facturé en entier, en plus de ses propres factures :
+  // la fiche annonçait 5 520 DT facturés PLUS 5 520 DT en devis pour un seul chantier.
+  t('Le « reste en devis » d\'une affaire ne compte que ce qui n\'est pas encore facturé', () => {
+    const d = vierge();
+    const L = (ht, extra) => [{ label: 'Porte', qty: 1, unitPrice: ht, vatRate: 19, ...(extra || {}) }];
+    d.projects = [{ id: 'P', name: 'Réception', status: 'en cours' }];
+    d.documents = [
+      { id: 'D1', type: 'devis', number: 'DEV-2026-001', status: 'accepté', date: '2026-03-01', projectId: 'P', lines: [{ label: 'Porte', qty: 10, unitPrice: 100, vatRate: 19 }] },
+      { id: 'A1', type: 'facture', number: 'FAC-2026-001', status: 'envoyée', date: '2026-03-02', projectId: 'P', fromQuoteId: 'D1', deposit: { percent: 30, quoteId: 'D1' }, lines: L(300, { noDiscount: true }) },
+      { id: 'D2', type: 'devis', number: 'DEV-2026-002', status: 'refusé', date: '2026-03-03', projectId: 'P', lines: L(500) },
+      { id: 'D3', type: 'devis', number: 'DEV-2026-003', status: 'envoyé', date: '2026-03-04', projectId: 'P', lines: L(400) },
+      { id: 'F3', type: 'facture', status: 'brouillon', date: '2026-03-05', projectId: 'P', fromQuoteId: 'D3', lines: L(400) },
+      { id: 'D4', type: 'devis', number: 'DEV-2026-004', status: 'envoyé', date: '2026-03-06', projectId: 'P', lines: L(250) }
+    ];
+    // À la main : D1 1 000 − acompte émis 300 = 700 ; D2 refusé : rien ; D3 400 (sa facture n'est
+    // qu'un BROUILLON, elle ne ferme rien) ; D4 250. Total 1 350 — l'ancien code disait 1 650.
+    let m = core.projectMargin(d, société, 'P');
+    assert.strictEqual(m.pending, 1350, 'reste en devis avec un acompte émis : ' + m.pending);
+    assert.strictEqual(m.revenue, 300, 'vendu : seul l\'acompte émis compte');
+    // La facture de solde émise FERME le devis : il ne compte plus du tout, et le vendu porte 1 000.
+    d.documents.push({ id: 'S1', type: 'facture', number: 'FAC-2026-002', status: 'envoyée', date: '2026-03-07', projectId: 'P', fromQuoteId: 'D1', settles: true,
+      lines: [{ label: 'Porte', qty: 10, unitPrice: 100, vatRate: 19 }, { label: 'Acompte déjà facturé', qty: 1, unitPrice: -300, vatRate: 19, noDiscount: true }] });
+    m = core.projectMargin(d, société, 'P');
+    assert.strictEqual(m.revenue, 1000, 'vendu après le solde : ' + m.revenue);
+    assert.strictEqual(m.pending, 650, 'le devis facturé en entier compte encore « en devis » : ' + m.pending);
+    const guide = code('src', 'renderer', 'guide.js');
+    assert.ok(/'mg\.projectRevenue'[^\n]*pas encore facturée/.test(lireSource('src', 'renderer', 'guide.js')) && guide.length, 'la bulle ne dit plus que le devis ne compte que pour sa part non facturée');
+  });
+  t('Une affaire se crée après coup : une pièce émise la reçoit, et on peut la retirer', () => {
+    const app = code('src', 'renderer', 'app.js'), brut = lireSource('src', 'renderer', 'app.js');
+    // Le champ Affaire d'une pièce émise n'est plus grisé, et le choix s'enregistre tout de suite.
+    const ligne = brut.split('\n').find(l => /combo\(\{ name: 'projectId', value: doc\.projectId/.test(l)) || '';
+    assert.ok(ligne && !/ro: locked/.test(ligne) && !/add: locked \? null/.test(ligne), 'le champ Affaire d\'une pièce émise est encore en lecture seule : ' + ligne.trim());
+    const pa = app.slice(app.indexOf('const poserAffaire = v =>'), app.indexOf('const projectCombo = bindCombo('));
+    assert.ok(pa.length > 100 && pa.length < 1200, 'tranche poserAffaire introuvable (' + pa.length + ')');
+    assert.ok(/if \(!locked\) return;/.test(pa) && /st\.projectId = v/.test(pa) && /delete st\.projectId/.test(pa) && /save\(true\)/.test(pa),
+      'sur une pièce émise, l\'affaire choisie n\'est pas enregistrée sur la pièce rangée');
+    const pc = app.slice(app.indexOf('const projectCombo = bindCombo('), app.indexOf('const projectCombo = bindCombo(') + 500);
+    assert.ok(/onPick: poserAffaire/.test(pc), 'le choix d\'une affaire ne passe pas par poserAffaire');
+    // Retirer : la liste commence par « — Aucune affaire — », grisée comme l'invite qu'elle remplace.
+    const pi = app.slice(app.indexOf('const projectItems = '), app.indexOf('function projectForm('));
+    assert.ok(/\[\{ v: '', label: '— Aucune affaire —'[^\]]*vide: true \}\]\.concat\(/.test(pi.replace(/\n\s*/g, ' ')) || /v: '', label: '— Aucune affaire —'/.test(brut.slice(brut.indexOf('const projectItems = '), brut.indexOf('const projectItems = ') + 400)),
+      'la liste des affaires n\'offre plus de quoi retirer une affaire choisie');
+    assert.ok(/span\.classList\.toggle\('ph', !it \|\| !!it\.vide\)/.test(app), 'l\'entrée « — Aucune affaire — » ne se lit plus comme une invite grisée');
+    // Changer de client emporte l'affaire de l'ancien : absente de la liste, elle restait en silence.
+    assert.ok(/!items\.some\(x => x\.v === doc\.projectId\)\) \{ doc\.projectId = ''; projectCombo\.setValue\('', true\)/.test(app),
+      'changer le client d\'un brouillon garde en silence l\'affaire d\'un autre client');
+  });
+  t('« + Devis » et « + Achat » depuis une affaire créent des pièces RATTACHÉES à cette affaire', () => {
+    const app = code('src', 'renderer', 'app.js');
+    const doc = app.slice(app.indexOf('routes.doc = (parts) =>'), app.indexOf('routes.doc = (parts) =>') + 2500);
+    assert.ok(/const iAff = parts\.indexOf\('affaire'\);\s*if \(iAff > 1 && projectById\(parts\[iAff \+ 1\]\)\) doc\.projectId = parts\[iAff \+ 1\];/.test(doc), 'un devis ouvert depuis une affaire ne lui est pas rattaché');
+    const achat = app.slice(app.indexOf('routes.achat = (parts) =>'), app.indexOf('routes.achat = (parts) =>') + 2500);
+    assert.ok(/const iAff = parts\.indexOf\('affaire'\);\s*if \(iAff > 0 && projectById\(parts\[iAff \+ 1\]\)\) p\.projectId = parts\[iAff \+ 1\];/.test(achat), 'un achat ouvert depuis une affaire ne lui est pas rattaché');
+    const fiche = app.slice(app.indexOf('routes.affaire = (parts) =>'), app.indexOf('const employeeById = id =>'));
+    assert.ok(fiche.length > 2000 && fiche.length < 12000, 'tranche de la fiche d\'affaire introuvable (' + fiche.length + ')');
+    assert.ok(/#p-devis'\)\.onclick = \(\) => navigate\('#\/doc\/new\/devis'[^;]*'\/affaire\/' \+ p\.id\)/.test(fiche), '« + Devis » ne passe pas l\'affaire');
+    assert.ok(/#p-achat'\)\.onclick = \(\) => navigate\('#\/achat\/new\/-\/facture\/-\/affaire\/' \+ p\.id\)/.test(fiche), '« + Achat » ne passe pas l\'affaire');
+    // La fiche montre TOUT ce qui est rattaché, brouillons compris (le devis créé depuis elle disparaissait).
+    assert.ok(/const sales = data\.documents\.filter\(d => d\.projectId === p\.id\)/.test(fiche), 'la fiche ne montre que les pièces émises : le devis qu\'on vient de créer y est invisible');
+    // Un seul vert, et c'est l'étape suivante — calculée (U-11).
+    assert.ok(/const suivante = sansVente \? \(ventesLibres \? 'rattacher-ventes' : 'devis'\) : 'achat';/.test(fiche), 'l\'étape suivante de la fiche n\'est plus calculée');
+    assert.ok(!/class="btn btn-primary" id="p-(achat|devis)"/.test(fiche), 'un bouton de l\'en-tête est vert en dur');
+    // Une marge sans aucun achat rattaché n'est pas une bonne nouvelle : elle n'est pas encore comptée.
+    assert.ok(/m\.margin > 0 && !margeSansAchat\(m\) \? 'ok' : ''/.test(fiche), 'la marge d\'une affaire sans achat s\'affiche en vert');
+    // Et les deux autres écrans qui la montrent le disent par la MÊME règle.
+    const liste = app.slice(app.indexOf('function drawProjects()'), app.indexOf('function drawAnalysis()'));
+    assert.ok(/margeSansAchat\(p\) \? NOTE_SANS_ACHAT/.test(liste) && /margeSansAchat\(p\) \? '<span class="muted"/.test(lireSource('src', 'renderer', 'app.js')), 'la liste des affaires montre « 100 % » pour une affaire sans achat');
+    const cl = app.slice(app.indexOf('routes.client = (parts) =>'), app.indexOf('routes.client = (parts) =>') + 12000);
+    assert.ok(/margeSansAchat\(x\) \? NOTE_SANS_ACHAT/.test(cl), 'la fiche client montre la marge d\'une affaire sans achat sans le dire');
+  });
+  t('Rattacher des pièces existantes : l\'avoir suit sa facture, décocher détache, et le geste s\'annule', () => {
+    const app = code('src', 'renderer', 'app.js');
+    const f = app.slice(app.indexOf('function rattacherPieces('), app.indexOf('routes.affaire = (parts) =>'));
+    assert.ok(f.length > 1500 && f.length < 9000, 'tranche rattacherPieces introuvable (' + f.length + ')');
+    assert.ok(/x\.type === 'avoir' && x\.creditOf \? x\.creditOf/.test(f) && /tr\.dataset\.suit === id/.test(f), 'l\'avoir ne suit plus la facture qu\'il corrige');
+    assert.ok(/if \(oui\) x\.projectId = p\.id; else delete x\.projectId;/.test(f), 'décocher ne détache pas la pièce');
+    assert.ok(/toastUndo\(/.test(f), 'le rattachement ne laisse pas d\'« Annuler »');
+    assert.ok(/visibles\(\)\.forEach\(tr => poser\(/.test(f), 'la case d\'en-tête coche autre chose que les pièces affichées');
+    // Les pièces proposées : ventes du client de l'affaire, jamais une pièce annulée.
+    const d = vierge();
+    const pieces = app.slice(app.indexOf('const piecesPourAffaire = '), app.indexOf('function rattacherPieces('));
+    assert.ok(/d\.status !== 'annulée' && \(!p\.clientId \|\| d\.clientId === p\.clientId\)/.test(pieces), 'la fenêtre propose des pièces annulées ou d\'un autre client');
+    assert.ok(d, 'jeu');
+  });
+  t('La page Marges vide propose de créer la première affaire, et la fiche d\'une affaire nomme son retour', () => {
+    const app = code('src', 'renderer', 'app.js');
+    const mg = app.slice(app.indexOf('routes.marges = () =>'), app.indexOf('const affaireDocState = '));
+    assert.ok(/etatVide\('Ce que te rapporte chaque chantier'[\s\S]{0,700}\['proj-first', '\+ Créer ma première affaire', true\]/.test(mg), 'l\'onglet Affaires vide ne porte plus son geste');
+    assert.ok(/#proj-first'\)\.onclick = \(\) => projectForm\(null, p => navigate\('#\/affaire\/' \+ p\.id\)\)/.test(mg), 'la première affaire ne mène pas à sa fiche');
+    // Le retour : « ← l'affaire » ne disait pas laquelle.
+    const pl0 = app.indexOf('const pageLabel = ');
+    const pg = app.slice(pl0, app.indexOf('return PAGE_LABELS[route]', pl0));
+    for (const route of ['affaire', 'salarie', 'immo', 'article']) assert.ok(new RegExp(route + ': \\[data\\.').test(pg), 'le retour ne nomme pas la fiche : ' + route);
+    assert.ok(/route === 'contrat'/.test(pg) && /route === 'achat'/.test(pg), 'le retour ne nomme pas le contrat ou l\'achat');
+    // L'invite du nom d'affaire ne suppose pas le métier de l'auteur (le jumeau de l'Objet).
+    const brut = lireSource('src', 'renderer', 'app.js');
+    const invites = brut.match(/placeholder="[^"$]*"/g) || [];
+    assert.ok(invites.length > 40, 'invites lues : ' + invites.length);
+    for (const i of invites) assert.ok(!/serveur|réseau|cyber|Lauriers|Clinique|disques|supervision/i.test(i), 'une invite suppose le métier de l\'auteur : ' + i);
+  });
+  // 10.12.0 — quitter un achat neuf sans l'enregistrer laissait « ← l'achat » sur la page suivante,
+  // et le retour rouvrait un achat VIERGE. Une page de création n'entre jamais dans la pile.
+  t('Une page de création abandonnée n\'entre pas dans la pile du retour', () => {
+    const app = code('src', 'renderer', 'app.js');
+    const ph = app.slice(app.indexOf('function pushHistory(previous)'), app.indexOf('function pushHistory(previous)') + 600);
+    const m = ph.match(/if \(\/([^\n]*?)\/([a-z]*)\.test\(previous \|\| ''\)\) return;/);
+    assert.ok(m, 'pushHistory empile encore les pages de création');
+    const re = new RegExp(m[1], m[2]);
+    for (const h of ['#/doc/new/devis', '#/doc/new/devis/client/c1/affaire/p1', '#/achat/new', '#/achat/new/-/facture/-/affaire/p1']) assert.ok(re.test(h), 'page de création empilée : ' + h);
+    for (const h of ['#/doc/abc', '#/achats', '#/client/x', '#/affaire/newton']) assert.ok(!re.test(h), 'une vraie page ne s\'empile plus : ' + h);
+  });
+  // 10.12.0 — la fenêtre du modèle de liasse du Cabinet retombait à 860 px et cachait 25 px de
+  // colonnes : la règle partagée qui élargit les fenêtres à tableau pesait (0,2,1) et écrasait sa
+  // largeur voulue (`.modal.cab-large`, 1 240 px). La règle générale ne bat jamais une exception.
+  t('La largeur des fenêtres à tableau ne bat pas la largeur qu\'une fenêtre demande', () => {
+    const css = lireSource('src', 'renderer', 'style.css').replace(/\/\*[\s\S]*?\*\//g, '');
+    assert.ok(!/^\.modal:has\(/m.test(css), 'une règle `.modal:has(…)` pèse plus lourd qu\'une classe de largeur');
+    assert.ok(/^\.modal:where\(:has\(table\.mini, table\.lines-edit, table\.list\)\) \{ width: 860px; \}/m.test(css), 'les fenêtres à tableau ne s\'élargissent plus');
+    const cab = lireSource('src', 'cabinet', 'renderer', 'cabinet.css').replace(/\/\*[\s\S]*?\*\//g, '');
+    assert.ok(/^\.modal\.cab-large \{ width: 1240px; \}/m.test(cab) && /^\.modal\.cab-moyen \{ width: 880px; \}/m.test(cab), 'les largeurs voulues du Cabinet ne sont plus trouvées');
+  });
+  // 10.12.0 — l'onglet Contrats de Marges disait « aucun contrat n'a produit de facture » à une
+  // menuiserie qui avait un contrat ET son premier brouillon : on croyait que le contrat n'avait pas
+  // tourné. Un état vide dit SA raison (E-06), et mène là où le geste se fait.
+  t('Marges → Contrats vide dit pourquoi, selon qu\'il existe un contrat ou un brouillon', () => {
+    const brut = lireSource('src', 'renderer', 'app.js');
+    const m = brut.match(/const videContrats = (\(\) => \{[\s\S]*?\n {4}\});/);
+    assert.ok(m, 'videContrats introuvable');
+    const pl = (n, mot) => n + ' ' + mot + (n > 1 ? 's' : '');
+    const dire = data => require('vm').runInNewContext('(' + m[1] + ')()', { data, pl });
+    const rien = dire({ recurring: [], documents: [] });
+    assert.ok(/Aucun contrat récurrent/.test(rien), 'sans contrat : ' + rien);
+    const sansBrouillon = dire({ recurring: [{ id: 'r1' }], documents: [] });
+    assert.ok(/n'ont encore produit aucune facture émise/.test(sansBrouillon) && !/brouillon/.test(sansBrouillon), 'un contrat sans pièce : ' + sansBrouillon);
+    const avecBrouillon = dire({ recurring: [{ id: 'r1' }], documents: [{ recurringId: 'r1', status: 'brouillon' }, { recurringId: 'r1', status: 'brouillon' }, { status: 'brouillon' }] });
+    assert.ok(/seulement 2 brouillons/.test(avecBrouillon), 'un contrat qui a produit des brouillons ne le dit pas : ' + avecBrouillon);
+    const app = code('src', 'renderer', 'app.js');
+    const dc = app.slice(app.indexOf('function drawContracts()'), app.indexOf('function drawBreakEven()'));
+    assert.ok(dc.length > 500 && dc.length < 4000, 'tranche drawContracts (' + dc.length + ')');
+    assert.ok(/<div class="empty">\$\{videContrats\(\)\}/.test(dc), 'l\'état vide des contrats ne dit plus sa raison');
+    assert.ok(/#mg-vers-contrats'\)\.onclick = \(\) => navigate\('#\/contrats'\)/.test(dc) && /id="mg-vers-contrats"/.test(dc), 'l\'état vide ne mène plus à la facturation récurrente');
+  });
+  // 10.12.0 — la note « ≈ » s'affichait sous un tableau où AUCUNE ligne ne portait le repère : une
+  // légende qui renvoie à une marque absente est une phrase que rien ne tient (7.3.0).
+  t('Marges → Analyse : la légende du « ≈ » ne s\'affiche que si une ligne le porte', () => {
+    const app = code('src', 'renderer', 'app.js');
+    const an = app.slice(app.indexOf('function drawAnalysis()'), app.indexOf('const videContrats = '));
+    assert.ok(an.length > 1000 && an.length < 6000, 'tranche drawAnalysis (' + an.length + ')');
+    const at = an.indexOf('Le repère « ≈ »');
+    assert.ok(at > 0, 'la légende du repère a disparu');
+    assert.ok(/\$\{incomplete \? '<p [^']*>$/.test(an.slice(Math.max(0, at - 60), at)), 'la légende du « ≈ » s\'affiche même quand aucune ligne ne le porte');
+  });
+  // 10.12.0 (U-11) — « + Nouvelle affaire » restait vert sur Analyse, Contrats et Seuil, où il n'est
+  // l'étape suivante de rien, et doublait le vert de l'état vide sur un onglet Affaires vide.
+  t('Marges : « + Nouvelle affaire » n\'est vert que sur l\'onglet Affaires, et seulement s\'il en existe', () => {
+    const app = code('src', 'renderer', 'app.js');
+    const m = app.match(/\$\('#new-proj'\)\.classList\.toggle\('btn-primary', ([^;]+)\);/);
+    assert.ok(m, 'le vert de « + Nouvelle affaire » ne se calcule plus');
+    const vert = (tab, n) => require('vm').runInNewContext('(' + m[1] + ')', { s: { tab }, C: { projectList: () => new Array(n).fill({}) }, data: {}, company: () => ({}) });
+    assert.strictEqual(vert('affaires', 2), true, 'Affaires avec des affaires : le geste suivant est d\'en créer une');
+    assert.strictEqual(vert('affaires', 0), false, 'Affaires vide : deux verts pour le même geste');
+    for (const tab of ['analyse', 'contrats', 'seuil']) assert.strictEqual(vert(tab, 3), false, 'vert sur l\'onglet ' + tab);
+    const mg = app.slice(app.indexOf('routes.marges = () =>'), app.indexOf('const affaireDocState = '));
+    const dr = mg.slice(mg.indexOf('const draw = () => {'), mg.indexOf('const draw = () => {') + 900);
+    assert.ok(dr.indexOf("$('#new-proj').classList.toggle") > 0 && dr.indexOf("$('#new-proj').classList.toggle") < dr.indexOf('drawProjects()'), 'le vert se décide ailleurs qu\'au dessin de chaque onglet');
+  });
+  // 10.12.0 — la fenêtre qui rattache des achats montrait date, numéro, fournisseur : « BS-2026-0412,
+  // Bois du Sahel » ne dit pas si ce sont les planches du chantier. Et une fois la dernière pièce
+  // rattachée, le bouton disparaissait — plus aucune porte pour en DÉTACHER une depuis la fiche.
+  t('Rattacher un achat se décide sur ce qu\'il contient, et la fiche garde la porte pour détacher', () => {
+    const brut = lireSource('src', 'renderer', 'app.js');
+    const m = brut.match(/const contenuAchat = (x => \{[\s\S]*?\n {2}\});/);
+    assert.ok(m, 'contenuAchat introuvable');
+    const pl = (n, mot) => n + ' ' + (n > 1 ? mot.split(' ').map(w => w + 's').join(' ') : mot);
+    const contenu = require('vm').runInNewContext('(' + m[1] + ')', { pl });
+    assert.strictEqual(contenu({ subject: 'Bois de la réception', lines: [{ label: 'Planche' }] }), 'Bois de la réception', 'l\'objet saisi ne passe plus en premier');
+    assert.strictEqual(contenu({ lines: [{ label: 'Planche chêne' }] }), 'Planche chêne');
+    assert.strictEqual(contenu({ lines: [{ label: 'A' }, { label: ' ' }, { label: 'B' }, { label: 'C' }, { label: 'D' }] }), 'A, B + 2 autres lignes', 'les lignes ne se résument plus');
+    assert.strictEqual(contenu({ lines: [] }), '', 'un achat vide invente un contenu');
+    const app = code('src', 'renderer', 'app.js');
+    const f = app.slice(app.indexOf('function rattacherPieces('), app.indexOf('routes.affaire = (parts) =>'));
+    assert.ok(/label: 'Ce qui a été acheté', get: x => h\(contenuAchat\(x\)\)/.test(f), 'la fenêtre ne dit pas ce qui a été acheté');
+    assert.ok(/supplierName\(x\.supplierId\)\} \$\{contenuAchat\(x\)\}`/.test(f), 'la recherche ne lit pas les lignes de l\'achat');
+    const pc = app.slice(app.indexOf('function purchaseColumns('), app.indexOf('function purchaseColumns(') + 3000);
+    assert.ok(/contenuAchat\(p\) \? `<div class="small muted">\$\{h\(contenuAchat\(p\)\)\}/.test(pc), 'la liste des achats ne dit ce qui a été acheté que si un objet a été saisi');
+    const fiche = app.slice(app.indexOf('routes.affaire = (parts) =>'), app.indexOf('const employeeById = id =>'));
+    assert.ok(/<div class="inline mt">\$\{geste\('p-att-v', ventesLibres \? /.test(fiche) && /<div class="inline mt">\$\{geste\('p-att-a', achatsLibres \? /.test(fiche), 'sous une liste pleine, la porte pour détacher disparaît avec la dernière pièce libre');
+  });
+  // 10.12.0 — une proforma envoyée ne proposait, dans son menu de ligne, que « Ouvrir », « PDF » et
+  // « Email » : la facturer demandait d'ouvrir la pièce pour chercher « Transformer ▾ ». Et le bon
+  // de livraison qu'on en tirait s'ouvrait sans AUCUN bouton en vert.
+  t('Les autres pièces : leur suite est dans le menu de ligne, par UN chemin, et l\'éditeur la met en vert', () => {
+    const app = code('src', 'renderer', 'app.js');
+    // Un seul chemin de conversion, qui pose le garde-fou de licence AVANT de créer.
+    assert.strictEqual((app.match(/C\.convertDoc\(/g) || []).length, 1, 'une conversion vit ailleurs que dans transformerPiece');
+    const tp = app.slice(app.indexOf('function transformerPiece('), app.indexOf('function transformerPiece(') + 500);
+    assert.ok(tp.indexOf("licenceBlock('Créer une pièce')") > 0 && tp.indexOf("licenceBlock('Créer une pièce')") < tp.indexOf('C.convertDoc('), 'une conversion crée une pièce sans le garde-fou de licence');
+    assert.ok(/transformerPiece\(docById\(doc\.id\) \|\| doc, b\.dataset\.conv\)/.test(app), '« Transformer ▾ » de l\'éditeur ne passe plus par le chemin unique');
+    // Le menu de ligne propose chaque suite de CONVERSIONS, ou la pièce déjà tirée.
+    const bd = app.slice(app.indexOf('bindRowMenus(anchor ? $(anchor) : document'), app.indexOf('if (redraw) bindSort(document, redraw);'));
+    assert.ok(bd.length > 1000 && bd.length < 9000, 'tranche du menu de ligne (' + bd.length + ')');
+    assert.ok(/C\.EXTRA_TYPES\.includes\(d\.type\) && d\.number/.test(bd) && /C\.CONVERSIONS\[d\.type\]/.test(bd), 'le menu d\'une proforma ou d\'un bon ne propose pas sa suite');
+    assert.ok(/C\.chaineDePieces\(data, d\)\.find\(x => x\.type === t/.test(bd) && /run: \(\) => transformerPiece\(d, t\)/.test(bd), 'le menu refabrique une pièce déjà établie pour cette vente, ou ne passe pas par le chemin unique');
+    // L'étape suivante de l'éditeur, évaluée sur chaque cas.
+    const brut = lireSource('src', 'renderer', 'app.js');
+    const m = brut.match(/const suiteExtra = ([\s\S]*?: '');\n/);
+    assert.ok(m, 'l\'étape suivante des autres pièces ne se calcule plus');
+    const suite = (doc, o = {}) => require('vm').runInNewContext('(' + m[1] + ')', {
+      isExtra: true, isNew: false, locked: false, envoiSuivant: false, doc,
+      convertibles: o.conv || ['facture'], data: {}, C: { chaineDePieces: () => o.derivees || [] }, ...o.ctx });
+    assert.strictEqual(suite({ type: 'livraison', status: 'brouillon', number: '' }), 'save', 'une pièce tirée d\'une autre, sans numéro : c\'est « Enregistrer » qui le lui donne');
+    assert.strictEqual(suite({ type: 'livraison', status: 'brouillon', number: 'BL-1' }), 'pdf', 'un bon de livraison s\'imprime pour être signé');
+    assert.strictEqual(suite({ type: 'proforma', status: 'envoyée', number: 'PRO-1' }), 'transform', 'une proforma envoyée se facture');
+    assert.strictEqual(suite({ type: 'proforma', status: 'envoyée', number: 'PRO-1' }, { derivees: [{ type: 'facture', status: 'brouillon' }] }), '', 'une pièce déjà transformée se propose une seconde fois');
+    assert.strictEqual(suite({ type: 'proforma', status: 'envoyée', number: 'PRO-1' }, { derivees: [{ type: 'facture', status: 'annulée' }, { type: 'devis', status: 'accepté' }] }), 'transform', 'une pièce annulée, ou le devis d\'origine, bloque la suite');
+    assert.strictEqual(suite({ type: 'commande', status: 'annulée', number: 'BC-1' }), '', 'une pièce annulée propose une suite');
+    assert.strictEqual(suite({ type: 'proforma', status: 'brouillon', number: 'PRO-1' }, { ctx: { envoiSuivant: true } }), '', 'deux verts : l\'envoi ET la suite');
+    assert.strictEqual(suite({ type: 'devis', status: 'brouillon', number: 'DEV-1' }, { ctx: { isExtra: false } }), '', 'la règle déborde sur le devis');
+    assert.ok(/suiteExtra === 'transform' \? ' btn-primary'/.test(brut) && /suiteExtra === 'pdf' \? ' btn-primary'/.test(brut) && /\|\| suiteExtra === 'save' \? 'btn-primary'/.test(brut), 'l\'étape calculée ne colore aucun bouton');
+    assert.ok(/doc\.status === 'brouillon' && !!doc\.number/.test(brut), 'une pièce sans numéro propose de l\'envoyer');
+  });
+  // 10.12.0 — un bon de livraison tiré d'une proforma DÉJÀ facturée proposait « Facturer » : le menu
+  // ne voyait que les enfants directs de la pièce, et le chantier se facturait deux fois.
+  t('Une vente se lit en entier : la facture tirée de la proforma se voit depuis son bon de livraison', () => {
+    const d = vierge();
+    const doc = (id, type, extra) => ({ id, type, status: 'brouillon', number: id.toUpperCase(), clientId: 'c1', lines: [], ...extra });
+    d.documents = [
+      doc('dev1', 'devis', { status: 'accepté' }),
+      doc('pro1', 'proforma', { fromDocId: 'dev1', status: 'envoyée' }),
+      doc('fac1', 'facture', { fromDocId: 'pro1', number: '' }),
+      doc('bl1', 'livraison', { fromDocId: 'pro1' }),
+      doc('aco1', 'facture', { fromQuoteId: 'dev1', deposit: { quoteId: 'dev1', percent: 30 } }),
+      doc('autre', 'facture', { fromDocId: 'ailleurs' })
+    ];
+    const ids = x => core.chaineDePieces(d, d.documents.find(y => y.id === x)).map(y => y.id).sort();
+    assert.deepStrictEqual(ids('bl1'), ['aco1', 'dev1', 'fac1', 'pro1'], 'la chaîne du bon de livraison ne voit pas la facture de sa proforma');
+    assert.deepStrictEqual(ids('fac1'), ['aco1', 'bl1', 'dev1', 'pro1']);
+    assert.ok(!ids('dev1').includes('autre') && !ids('dev1').includes('dev1'), 'la chaîne déborde sur une autre vente, ou se contient elle-même');
+    assert.deepStrictEqual(core.chaineDePieces(d, { type: 'devis' }), [], 'une pièce sans identifiant rend toute la base');
+    // Une boucle (données corrompues) ne gèle pas l'écran.
+    d.documents[0].fromDocId = 'bl1';
+    assert.ok(ids('pro1').length >= 3, 'une chaîne en boucle ne rend plus rien');
+  });
+  // 10.12.0 — « Fixe ou variable ? » rangeait les catégories en deux colonnes selon leur état :
+  // cocher « Assurances » l'envoyait dans l'autre colonne, « Honoraires » montait sous le curseur, et
+  // le clic suivant au même endroit reclassait une charge qu'on n'avait pas visée.
+  t('Seuil de rentabilité : reclasser une charge ne déplace aucune ligne', () => {
+    const app = code('src', 'renderer', 'app.js');
+    const be = app.slice(app.indexOf('function drawBreakEven()'), app.indexOf('const draw = () => {', app.indexOf('function drawBreakEven()')));
+    assert.ok(be.length > 1500 && be.length < 9000, 'tranche drawBreakEven (' + be.length + ')');
+    assert.ok(!/cats\.filter\(c => C\.isFixedCategory\(data, c\) === /.test(be), 'les catégories se rangent encore par état : elles changent de place au clic');
+    assert.ok(/cats\.map\(\(c, i\) =>/.test(be) && /type="radio" name="fv-\$\{i\}" data-fix=/.test(be), 'chaque catégorie ne porte plus son choix sur sa ligne');
+    assert.ok(/r\.value === 'fixe' \?/.test(be), 'le choix ne se lit plus sur le bouton choisi');
+    assert.ok(/meme\.focus\(\)/.test(be), 'au clavier, le redessin perd le bouton qu\'on vient de choisir');
+    // Et la page ne grandit pas quand la liste d'années paraît sur cet onglet.
+    const css = lireSource('src', 'renderer', 'style.css').replace(/\/\*[\s\S]*?\*\//g, '');
+    const ph = css.match(/^\.page-head \{[^}]*\}/m);
+    assert.ok(ph && /min-height: 38px/.test(ph[0]), 'l\'en-tête prend la hauteur de son plus grand enfant : il grandit quand un champ paraît');
+    assert.ok(/^\.choix2 input:checked \+ span \{[^}]*\}/m.test(css) && !/^\.choix2 input:checked \+ span \{[^}]*font-weight/m.test(css), 'le choix actif change la géométrie (gras) ou ne se voit pas');
+  });
+  // 10.12.0 — « Marges » finissait 12 px sous le bord de la barre : le rendu ramenait l'entrée dans
+  // le champ, puis la barre était REDESSINÉE (licence relue), des compteurs paraissaient, une barre de
+  // défilement naissait — et plus rien ne la ramenait. Chacun de ces gestes la ramène.
+  t('L\'entrée allumée de la barre latérale reste visible après chaque geste qui déplace la barre', () => {
+    const app = code('src', 'renderer', 'app.js');
+    const corps = nom => {
+      const i = app.indexOf('function ' + nom + '(');
+      assert.ok(i > 0, nom + ' introuvable');
+      const p = app.indexOf('{', i); let n = 0;
+      for (let j = p; j < app.length; j++) { if (app[j] === '{') n++; else if (app[j] === '}' && --n === 0) return app.slice(p, j + 1); }
+      return '';
+    };
+    const f = corps('montrerEntreeActive');
+    assert.ok(/\$\('nav a\.active'\)/.test(f) && /scrollIntoView\(\{ block: 'nearest' \}\)/.test(f), 'montrerEntreeActive ne ramène plus l\'entrée allumée');
+    for (const nom of ['ajusterNav', 'updateNavCounts', 'redessinerBarre', 'render']) {
+      assert.ok(/\bmontrerEntreeActive\(\)/.test(corps(nom)), nom + ' déplace la barre sans ramener l\'entrée allumée');
+    }
+    // ajusterNav la ramène APRÈS avoir décidé de la barre de défilement (c'est elle qui décale).
+    const an = corps('ajusterNav');
+    assert.ok(an.indexOf('montrerEntreeActive()') > an.indexOf("toggle('deborde'"), 'l\'entrée est ramenée avant que la barre ne change de largeur');
+    // Et quand la liste rétrécit sans que la fenêtre change (la pastille de l'essai qui arrive dans
+    // le pied après le rendu) : c'est la BOÎTE de la liste qu'on observe.
+    const ro = app.match(/new ResizeObserver\(([\s\S]{0,300}?)\)\.observe\(document\.getElementById\('nav'\)\)/);
+    assert.ok(ro && /ajusterNav\(\)/.test(ro[1]), 'la barre qui rétrécit sous l\'effet du pied ne ramène plus l\'entrée allumée');
   });
 };

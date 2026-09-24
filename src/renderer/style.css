@@ -210,6 +210,16 @@ body.dark .beta-tag { background: #35255a; color: #cdb0f5; border-color: #4c3878
 .pp-list li.encours { background: var(--primary-soft); border-radius: 10px; margin: 0 -8px; padding-inline-start: 10px; padding-inline-end: 10px; }
 .pp-list li.encours + li { border-top-color: transparent; }
 
+/* Un lien DANS une phrase ou dans une cellule (10.12.0) : aucune règle ne les stylait, et « la
+   trésorerie » d'une phrase de la Paie, « Voir les relances » des Statistiques, le numéro de facture
+   de la page Relances gardaient le bleu brut du navigateur (rgb(0, 0, 238)) — lisible en clair par
+   chance, illisible en sombre, et étranger à tout le reste de l'écran. La sonde de contraste ne
+   regardait que les boutons et les champs : elle regarde maintenant les liens, et le bleu brut est
+   une faute à lui seul. Un lien qui porte une classe a déjà la sienne. Le Cabinet en profite : c'est
+   la règle de son `a.lien-aide`, pour tous. */
+#view a[href]:not([class]), #modal-root a[href]:not([class]) { color: var(--primary); font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
+#view a[href]:not([class]):hover, #modal-root a[href]:not([class]):hover { text-decoration-thickness: 2px; }
+
 /* Le lien vers l'article d'aide de la page où l'on est. */
 .help-link { color: var(--primary); text-decoration: none; font-weight: 600; }
 .help-link:hover { text-decoration: underline; }
@@ -265,7 +275,11 @@ input.champ-doute { border-color: var(--warning) !important; }
    `top: 0` colle sous le padding du conteneur qui défile, et les lignes du tableau passaient
    au-dessus de la barre, dans ces 32 px (10.12.0, U-06). */
 main { --main-haut: 32px; flex: 1; overflow-y: auto; padding: var(--main-haut) 36px 48px; }
-.page-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 22px; gap: 12px; flex-wrap: wrap; }
+/* La hauteur d'un CHAMP (38 px), pas celle d'un bouton (35) : la liste d'années n'existe que sur
+   certains onglets (Marges, Paie…), et l'en-tête grandissait de 3 px quand elle paraissait — les
+   onglets descendaient sous le curseur au moment du clic (10.12.0, un état actif ne change pas la
+   géométrie). */
+.page-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 22px; gap: 12px; flex-wrap: wrap; min-height: 38px; }
 .page-head h1 { margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -.4px; }
 /* La barre d'actions revient à la ligne plutôt que de sortir de la fenêtre (7.13.0). Sur l'éditeur
    d'un devis facturable elle porte jusqu'à neuf commandes : à 1280 px, « Émettre la facture » —
@@ -310,8 +324,13 @@ main { --main-haut: 32px; flex: 1; overflow-y: auto; padding: var(--main-haut) 3
    titre de la section sans redevenir un titre de page. */
 .panel h3 { margin: 22px 0 10px; font-size: 13.5px; font-weight: 650; letter-spacing: -.1px; color: var(--text); }
 .panel h3:first-child { margin-top: 0; }
+/* 10.12.0 — une hauteur de ligne FIXE, celle d'une bulle « i » (15 px, relevée d'un pixel). Sans
+   elle, la carte qui n'a pas de bulle avait une étiquette de 12 px contre 15 à ses voisines, et son
+   chiffre montait de 3 px : « Coût des ventes » plus haut que « Chiffre d'affaires » et « Marge
+   totale », sur la même rangée. Une rangée de cartes se lit comme une ligne. */
 .eyebrow, .k-label, .stat .lbl {
   font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; font-weight: 700;
+  line-height: 16px;
 }
 
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 20px; }
@@ -361,6 +380,19 @@ input[type=color]:not([type=checkbox]):not([type=radio]):not([type=file]):not([t
    parenthèse ouvrante seule sous le mot « Timbre ». Un test le tient dans les deux applications. */
 .check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text); font-weight: 500; }
 .check input { accent-color: var(--primary); width: 16px; height: 16px; }
+/* Un choix à deux valeurs posé sur une ligne qui ne bouge pas (10.12.0, Seuil de rentabilité) : la
+   ligne garde sa place quoi qu'on choisisse. Les boutons radio restent de vrais champs (clavier,
+   flèches, étiquette) : ils sont seulement redessinés, jamais retirés. Le choix actif se dit par le
+   fond ET la couleur, sans gras — un état actif ne change pas la géométrie. */
+.fv-liste { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 32px; }
+.fv-ligne { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-block: 6px; border-bottom: 1px solid var(--border); font-size: 13px; }
+.choix2 { display: inline-flex; flex: none; border: 1px solid var(--border); border-radius: 8px; padding: 2px; gap: 2px; }
+.choix2 label { position: relative; cursor: pointer; }
+.choix2 input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; }
+.choix2 label span { display: block; padding: 3px 10px; border-radius: 6px; font-size: 12px; color: var(--muted); }
+.choix2 input:checked + span { background: var(--primary-soft); color: var(--primary); }
+.choix2 input:focus-visible + span { outline: 2px solid var(--primary); outline-offset: 1px; }
+@media (max-width: 1100px) { .fv-liste { grid-template-columns: minmax(0, 1fr); } }
 
 /* ---------- buttons ---------- */
 .btn {
@@ -495,6 +527,14 @@ select:disabled, textarea:disabled { background: #f3f5f7; color: #5b6673; cursor
 /* L'écart passe sous le montant quand la carte est étroite, mais jamais coupé en deux. */
 .stat .val { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
 .stat .sub { font-size: 12px; color: var(--muted); margin-top: 3px; }
+/* 10.12.0 — une rangée de cartes se lit comme UNE ligne : l'étiquette, le chiffre et le
+   commentaire de chaque carte partagent les pistes de leurs voisines (subgrid). La hauteur de
+   ligne fixe de l'étiquette réglait le cas d'une carte sans bulle « i » (3 px) ; elle ne pouvait
+   rien contre une étiquette qui passe sur DEUX lignes à 1280 px : « Délai moyen de paiement »
+   descendait son chiffre de 16 px sous celui de « Facturé HT », sur onze écrans que la sonde de
+   rangée a mesurés. Une carte compte trois éléments au plus (étiquette, chiffre, commentaire) ; la
+   variante `.rangee` du Cabinet pose les siens sur une seule ligne et garde son `display: block`. */
+.stats:not(.rangee) > .stat { display: grid; grid-template-rows: subgrid; grid-row: span 3; row-gap: 0; }
 /* Une carte qui mène à la liste qu'elle résume le DIT : curseur, chevron, et un relief au survol.
    Sans ces trois signes, personne n'essaie de cliquer un chiffre (7.15.0). */
 .stat[data-stat], .stat[data-cstat] { cursor: pointer; transition: border-color .12s, box-shadow .12s, transform .12s; }
@@ -816,19 +856,24 @@ table.mini input, table.mini select { padding: 6px 8px; font-size: 13px; }
 .kpi { background: var(--bg); border-radius: 12px; padding: 12px 14px; }
 .kpi .v { font-size: 20px; font-weight: 700; margin-top: 4px; font-variant-numeric: tabular-nums; }
 .kpi .sub { font-size: 12px; color: var(--muted); }
-.rank { list-style: none; margin: 0; padding: 0; }
-.rank li { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+/* Un classement se lit en COLONNES (10.12.0) : les noms alignés, les barres sur la même piste, les
+   montants au bout. Le nom était plafonné à 42 % de la ligne pendant que le montant en réservait
+   110 px : « Hôtel Dar El Marsa … » à côté d'une barre de 55 px et de 60 px vides — le nom est
+   l'information, la barre n'est que son ordre de grandeur. La colonne du nom prend ce dont elle a
+   besoin, jusqu'à 60 % ; la barre garde 56 px au moins. Et chaque ligne REPREND les colonnes de la
+   liste (subgrid) : deux barres ne se comparent que si elles partagent la même piste, ce qu'une
+   rangée flex par ligne ne garantissait pas (la piste changeait avec la longueur du nom). */
+.rank { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: fit-content(60%) minmax(56px, 1fr) max-content; column-gap: 10px; }
+.rank li { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
 .rank li:last-child { border-bottom: none; }
-.rank .bar { flex: 1; height: 8px; background: var(--ink-soft); border-radius: 999px; overflow: hidden; }
+.rank .bar { height: 8px; background: var(--ink-soft); border-radius: 999px; overflow: hidden; }
 .rank .bar i { display: block; height: 100%; background: var(--primary); border-radius: 999px; }
-.rank .amt { font-variant-numeric: tabular-nums; color: var(--muted); min-width: 110px; text-align: end; }
+.rank .amt { font-variant-numeric: tabular-nums; color: var(--muted); text-align: end; }
 .rank a.name { color: inherit; text-decoration: none; font-weight: 500; }
 .rank a.name:hover { color: var(--primary); text-decoration: underline; }
 /* Un libellé de prestation n'est pas cliquable : il occupe la même place qu'un nom de client. */
-.rank .name { flex: 0 0 auto; max-width: 42%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
-.rank.plain li { justify-content: space-between; }
-.rank.plain .amt { min-width: 46px; }
-.rank.plain .name { flex: 1; max-width: none; }   /* pas de barre à côté : le nom peut prendre la place */
+.rank .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.rank.plain { grid-template-columns: minmax(0, 1fr) max-content; }   /* pas de barre : le nom prend la place */
 
 /* ---------- Statistiques ---------- */
 /* Écart avec la même période de l'an dernier, accolé au chiffre : vert si ça monte, rouge si ça baisse. */
@@ -1188,8 +1233,12 @@ body.dark .cal-d.out { color: #5b6572; }
    Et une fenêtre qui porte une LISTE aussi : le relevé de compte d'un client — six colonnes, toutes
    sans retour à la ligne — cachait « Reste dû » et le total derrière un défilement de côté, dans
    les 580 px d'une fenêtre ordinaire (250 à 290 px cachés, trouvé par `e2e:entreprise-rendu`).
-   Le total est la raison d'être d'un relevé. */
-.modal:has(table.mini, table.lines-edit, table.list) { width: 860px; }
+   Le total est la raison d'être d'un relevé.
+   `:where()` garde à la règle la spécificité d'un simple `.modal` : sans lui, `:has(table.list)`
+   pesait (0,2,1) et ÉCRASAIT les largeurs voulues du Cabinet (`.modal.cab-large`, 1 240 px, pour
+   la grille du modèle de liasse) — la fenêtre retombait à 860 px et cachait 25 px de colonnes
+   derrière un défilement de côté. La règle générale qui avale l'exception, une fois de plus. */
+.modal:where(:has(table.mini, table.lines-edit, table.list)) { width: 860px; }
 .warn-link { color: var(--warning); font-weight: 600; text-decoration: none; }
 .warn-link:hover { text-decoration: underline; }
 
@@ -1215,6 +1264,12 @@ button.i + button.i { margin-inline-start: 6px; }
    bouton n'existe pas en HTML —, celle de « Lire une photo… » restait seule à l'écran pendant que
    la lecture est en pause : deux « i » orphelins à côté de « Joindre un justificatif… ». */
 .btn[hidden] + button.i { display: none; }
+/* Le dernier mot et sa bulle ne se séparent pas (10.12.0, `collerBulles`). Une espace insécable ne
+   les retenait pas : la bulle est un élément en ligne ATOMIQUE, et Chrome coupe avant lui même
+   derrière une insécable. Et deux bulles voisines gardent leur écart : la première vit maintenant
+   dans ce <span>, donc `button.i + button.i` ne la voit plus. */
+.colle-bulle { white-space: nowrap; }
+.colle-bulle + button.i { margin-inline-start: 6px; }
 /* libellé + bulle sur une seule ligne dans un champ (.field est une colonne flex) */
 .fl { display: flex; align-items: center; gap: 4px; }
 /* Un lien qui dépend de la valeur du champ vit dans la LIGNE DU LIBELLÉ (10.12.0) : il apparaît et
@@ -1645,12 +1700,19 @@ kbd { font: inherit; font-size: 12px; font-family: -apple-system, system-ui, san
    « la dernière cellule d'en-tête » de TOUT tableau : sur un tableau dont la dernière colonne est une
    donnée (« À saisir » de la Production), l'en-tête collait seul au bord pendant que ses cellules
    défilaient, et il couvrait juillet et août. */
+/* 10.12.0 — et SEULEMENT quand la colonne EST une colonne d'actions. « En-tête vide » ne le disait
+   pas : la barre de marge de Marges › Analyse et le « Modifier » des Salariés ont un en-tête vide et
+   des cellules ordinaires — leur en-tête restait collé seul, avec son ombre, sur un fond BLANC au
+   milieu d'une rangée d'en-têtes gris. `:has()` lit la colonne elle-même ; et l'en-tête garde le
+   fond de sa rangée — seule la cellule du corps a besoin d'un fond opaque pour cacher ce qui
+   défile dessous, l'en-tête en a déjà un. */
 .scroll-x table.list td.row-actions,
-.scroll-x table.list th:last-child:empty {
-  position: sticky; inset-inline-end: 0; background: var(--panel);
+.scroll-x table.list:has(td.row-actions) thead th:last-child {
+  position: sticky; inset-inline-end: 0;
   box-shadow: -8px 0 8px -8px rgba(20, 40, 60, .16);
 }
+.scroll-x table.list td.row-actions { background: var(--panel); }
 .scroll-x table.list tr.clickable:hover td.row-actions { background: #f7fbfa; }
 body.dark .scroll-x table.list tr.clickable:hover td.row-actions { background: #1f2731; }
 body.dark .scroll-x table.list td.row-actions,
-body.dark .scroll-x table.list th:last-child:empty { box-shadow: -8px 0 8px -8px rgba(0, 0, 0, .5); }
+body.dark .scroll-x table.list:has(td.row-actions) thead th:last-child { box-shadow: -8px 0 8px -8px rgba(0, 0, 0, .5); }

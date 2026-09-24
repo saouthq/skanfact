@@ -445,6 +445,21 @@
   const effStatus = doc => C.effectiveStatus(doc, data, data.company);
   const balance = doc => C.invoiceBalance(doc, data, data.company);
   const docLabel = doc => `${C.TITLES[doc.type]} ${doc.number || '(brouillon)'}`;
+  // « Facture créé en brouillon » : le participe s'accorde avec la pièce (10.12.0). Seules la facture
+  // et la proforma sont féminines parmi les sept.
+  const pieceCreee = t => `${C.TITLES[t]} ${t === 'facture' || t === 'proforma' ? 'créée' : 'créé'}`;
+  // Transformer une pièce en une autre (« Transformer ▾ » de l'éditeur ET menu d'une ligne) : UNE
+  // fonction, pour que les deux chemins fassent la même chose — la leçon de `facturerDevis` (7.29.0),
+  // dont le menu de ligne était reparti sans le garde-fou de l'éditeur. On part de la pièce telle
+  // qu'ENREGISTRÉE ; la nouvelle naît en brouillon, et c'est une création comme une autre.
+  function transformerPiece(src, t) {
+    if (licenceBlock('Créer une pièce')) return;
+    const out = C.convertDoc(src, t, company(), C.today());
+    data.documents.push(out); save(true);
+    toast(`${pieceCreee(t)} en brouillon à partir de ${src.number || 'ce brouillon'}`);
+    navigate('#/doc/' + out.id);
+  }
+  const ICONE_CONVERSION = { facture: 'facture', livraison: 'stock', proforma: 'texte', commande: 'panier', contrat: 'contrat' };
   // Un statut dans une LISTE DÉROULANTE commence par une majuscule, comme ses voisines (« Tous les
   // statuts », « Français », « Factures et avoirs ») : « brouillon » entre les deux se lisait comme
   // une valeur oubliée (10.12.0). Le badge, lui, garde sa minuscule d'étiquette ; la VALEUR ne change
@@ -470,6 +485,47 @@
   }
   // Un libellé de champ suivi de sa bulle. Le <span> garde les deux sur la même ligne dans un label en colonne.
   const lbl = (text, key) => key ? `<span class="fl">${text} ${info(key)}</span>` : text;
+
+  // 10.12.0 — une bulle « i » qui termine une phrase passait SEULE sur la ligne suivante dès que la
+  // phrase remplissait sa ligne : « … pour un dossier. » puis, dessous, un « i » orphelin qu'on
+  // prend pour un reste de mise en page. Le dernier mot et la bulle vont dans un <span> qui ne se
+  // coupe pas (`.colle-bulle`) : la bulle part avec son dernier mot. Une espace insécable NE SUFFIT
+  // PAS — c'était la première version : la bulle est un élément « en ligne atomique » (inline-grid),
+  // et Chrome coupe avant lui même derrière une espace insécable. Elle tenait sur les écrans où on
+  // l'avait vérifiée, et la sonde des bulles a trouvé à 1280 px « Délai moyen de paiement » puis un
+  // « i » seul dessous, sur des étiquettes déjà « collées ». Jamais dans un conteneur flex ou
+  // grille, où chaque morceau de texte est un élément à lui seul (H-E9). Posée sur chaque nœud
+  // ajouté au document : une liste redessinée à la frappe reçoit la même règle qu'une page. Le
+  // corps est le MÊME dans les deux applications (un test le compare).
+  function collerBulles(racine) {
+    const liste = racine.matches && racine.matches('button.i') ? [racine] : racine.querySelectorAll('button.i');
+    for (const b of liste) {
+      const parent = b.parentElement;
+      if (!parent || parent.classList.contains('colle-bulle') || /flex|grid/.test(getComputedStyle(parent).display)) continue;
+      const t = b.previousSibling;
+      if (!t || t.nodeType !== 3) continue;
+      const colle = document.createElement('span');
+      colle.className = 'colle-bulle';
+      const m = t.data.match(/(\S+)[ \t\n\u00a0]*$/);
+      if (m) {
+        // Le dernier mot part avec la bulle, séparé d'elle par une espace insécable.
+        t.data = t.data.slice(0, m.index);
+        colle.append(m[1] + '\u00a0');
+      } else {
+        // Que des blancs : la bulle suit un élément en ligne (« <strong>…</strong> i »), qui l'emmène.
+        const el = t.previousSibling;
+        if (!/\s/.test(t.data) || !el || el.nodeType !== 1 || !/^inline/.test(getComputedStyle(el).display)) continue;
+        parent.insertBefore(colle, el);
+        colle.append(el, '\u00a0');
+        t.remove();
+      }
+      if (!colle.parentNode) parent.insertBefore(colle, b);
+      colle.append(b);
+    }
+  }
+  new MutationObserver(recs => {
+    for (const r of recs) for (const n of r.addedNodes) if (n.nodeType === 1 && n.isConnected) collerBulles(n);
+  }).observe(document.body, { childList: true, subtree: true });
 
   // Un envoi part par Mail (fichier joint) seulement sur Mac, quand la société n'a pas choisi une
   // autre messagerie ; partout ailleurs le processus principal ouvre `mailto:` et MONTRE le fichier
@@ -806,12 +862,13 @@
       const it = el._items.find(x => x.v === el._value);
       const span = $('.combo-val', el);
       span.textContent = it ? it.label : (o.placeholder || 'Choisir…');
-      span.classList.toggle('ph', !it);
+      // Une entrée `vide` (« — Aucune affaire — ») se lit comme l'invite qu'elle remplace : grisée.
+      span.classList.toggle('ph', !it || !!it.vide);
       if (hidden) hidden.value = el._value || '';
     };
     const draw = () => {
-      const words = q.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
-      shown = el._items.filter(x => !words.length || words.every(w => (x.text || x.label || '').toLowerCase().includes(w)));
+      // Accents et majuscules ignorés (10.12.0) : « hotel » trouve « Hôtel Dar El Marsa SARL ».
+      shown = el._items.filter(x => C.correspondRecherche(x.text || x.label || '', q.value));
       sel = Math.max(0, Math.min(sel, shown.length - 1));
       list.innerHTML = shown.length ? shown.map((x, i) => `<div class="combo-it${i === sel ? ' sel' : ''}${x.v === el._value ? ' cur' : ''}" data-i="${i}" role="option" aria-selected="${i === sel}">
           <span class="ci-main">${h(x.label)}${x.sub ? `<span class="ci-sub">${h(x.sub)}</span>` : ''}</span>
@@ -1248,13 +1305,24 @@
   // faisait passer sur deux rangées — tout le formulaire descendait de 43 px, et le clic visé sur
   // « Émettre » tombait sur « Enregistrer le brouillon » (10.12.0, une menuiserie).
   const nomCourt = s => { const t = String(s || '').trim(); return t.length > 18 ? t.slice(0, 17).trimEnd() + '…' : t; };
+  // Une pièce se nomme par son type et son numéro tant que ça tient (« Devis DEV-2026-001 ») ; au-delà,
+  // par son seul NUMÉRO, dont le préfixe dit déjà le type : « ← Facture proforma PRO-2026-001 »
+  // (29 caractères) faisait passer « Plus ▾ » sur une troisième rangée dans la facture tirée d'une
+  // proforma (10.12.0). La bulle du bouton garde le nom entier.
+  const docCourt = (d, entier) => { const l = docLabel(d); return entier || l.length <= 20 || !d.number ? l : d.number; };
   const pageLabel = (hash, entier) => {
     const [route, id] = (hash || '').replace(/^#\/?/, '').split('/');
     const nom = t => entier ? t : nomCourt(t);
     if (id && id !== 'new') {
-      if (route === 'doc') { const d = docById(id); if (d) return docLabel(d); }
+      if (route === 'doc') { const d = docById(id); if (d) return docCourt(d, entier); }
       if (route === 'client') { const c = clientById(id); if (c && c.name) return nom(c.name); }
       if (route === 'fournisseur') { const f = supplierById(id); if (f && f.name) return nom(f.name); }
+      // Toutes les fiches, pas seulement les pièces et les tiers : « ← l'affaire » sur la facture
+      // qu'on venait d'ouvrir depuis la fiche d'une affaire ne disait pas laquelle (10.12.0).
+      const fiche = { affaire: [data.projects, 'name'], salarie: [data.employees, 'name'], immo: [data.assets, 'label'], article: [data.catalog, 'label'] }[route];
+      if (fiche) { const o = (fiche[0] || []).find(x => x.id === id); if (o && o[fiche[1]]) return nom(o[fiche[1]]); }
+      if (route === 'contrat') { const r = (data.recurring || []).find(x => x.id === id); const t = r && C.fillTemplate(r.subject || '', { mois: '', annee: '' }).replace(/\s+[—–-]\s*$/, '').trim(); if (t) return nom(t); }
+      if (route === 'achat') { const a = (data.purchases || []).find(x => x.id === id); if (a && a.number) return nom('Achat ' + a.number); }
     }
     return PAGE_LABELS[route] || 'Accueil';
   };
@@ -1269,6 +1337,10 @@
     if (goingBack) { goingBack = false; return; }
     const remplacee = pageRemplacee; pageRemplacee = null;
     if (remplacee && previous === remplacee) return;
+    // Une page de création qu'on QUITTE sans l'enregistrer n'est pas un endroit où revenir non
+    // plus : le retour disait « ← l'achat » et rouvrait un achat VIERGE (10.12.0, une menuiserie
+    // passée de l'achat d'une affaire à une facture). Enregistrée, elle est déjà remplacée (H-E3).
+    if (/^#\/[a-z]+\/new(\/|$)/.test(previous || '')) return;
     if (!previous || previous === location.hash) return;
     navStack.push(previous);
     if (navStack.length > 60) navStack.shift();
@@ -1517,9 +1589,30 @@
     const nav = $('#nav'); if (!nav) return;
     nav.classList.remove('deborde');
     nav.classList.toggle('deborde', nav.scrollHeight > nav.clientHeight + 1);
+    montrerEntreeActive();
+  }
+  // L'entrée allumée se voit TOUJOURS (10.12.0). Le rendu la ramenait dans le champ, puis la barre
+  // bougeait encore — licence relue et barre REDESSINÉE (le défilement repart de zéro), compteurs
+  // remplis, barre de défilement qui apparaît — et « Marges » finissait 12 px sous le bord : on
+  // arrivait sur la page sans voir où elle vit dans le menu. Chacun de ces gestes l'appelle.
+  function montrerEntreeActive() {
+    const courante = $('nav a.active');
+    if (courante) { try { courante.scrollIntoView({ block: 'nearest' }); } catch (_) {} }
   }
   let navTimer = null;
   window.addEventListener('resize', () => { clearTimeout(navTimer); navTimer = setTimeout(ajusterNav, 150); });
+  // La barre rétrécit aussi sans que la fenêtre change : la pastille de l'essai arrive dans le pied
+  // APRÈS le rendu (licence relue), et « Marges » repartait 12 px sous le bord au rechargement. On
+  // observe la BOÎTE de la liste plutôt que d'ajouter un appel à chaque geste qui touche au pied :
+  // le prochain qui le fera sera couvert d'office. Retirer ou poser la barre de défilement ne change
+  // pas la boîte (elle vit dedans) : aucune boucle.
+  if (typeof ResizeObserver === 'function') {
+    let hauteurNav = 0;
+    new ResizeObserver(entrees => {
+      const h = Math.round(entrees[0].contentRect.height);
+      if (h !== hauteurNav) { hauteurNav = h; ajusterNav(); }
+    }).observe(document.getElementById('nav'));
+  }
 
   // On arrive sur la page d'un module retiré du menu (par la recherche, par une adresse, par un lien
   // d'une autre page). Elle marche exactement comme les autres — mais si on ne dit rien, l'utilisateur
@@ -1745,8 +1838,7 @@
     // pixels sous le bord et AUCUNE entrée en vert n'était visible. On arrivait au bon écran sans
     // apprendre où il vit dans le menu — donc en dépendant à chaque fois du bouton qui nous y a
     // menés. `block: 'nearest'` ne bouge rien quand l'entrée est déjà dans le champ.
-    const courante = $('nav a.active');
-    if (courante) { try { courante.scrollIntoView({ block: 'nearest' }); } catch (_) {} }
+    montrerEntreeActive();
     clearGuard(); previewRedraw = null; pleinEcranCourant = null;
     // Le grand aperçu appartient au document qu'on quitte : le laisser ouvert par-dessus la page
     // suivante montrerait une pièce qui n'est plus celle qu'on regarde.
@@ -1990,7 +2082,7 @@
           : '<p class="small muted">Ce graphique se remplira tout seul : une barre verte par mois facturé, une barre bleue par mois encaissé. L\'écart entre les deux, c\'est ce qu\'on te doit.</p>'}
           <div class="kpis">
             <div class="kpi"><div class="k-label">Devis → facture ${info('dash.conversion')}</div><div class="v">${qs.rate == null ? '—' : qs.rate + ' %'}</div><div class="sub">${qs.accepted} ${qs.accepted > 1 ? 'acceptés' : 'accepté'}, ${qs.refused} ${qs.refused > 1 ? 'refusés' : 'refusé'}, ${qs.pending} en attente</div></div>
-            <div class="kpi"><div class="k-label">Délai moyen de paiement ${info('dash.delay')}</div><div class="v">${delay == null ? '—' : delay + ' jours'}</div><div class="sub">factures soldées, 12 derniers mois</div></div>
+            <div class="kpi"><div class="k-label">Délai moyen de paiement ${info('dash.delay')}</div><div class="v">${delay == null ? '—' : pl(delay, 'jour')}</div><div class="sub">factures soldées, 12 derniers mois</div></div>
           </div>
         </div>
         <div class="panel"><h2>Top clients ${year} (HT) ${info('dash.top')}</h2>
@@ -2254,7 +2346,9 @@
   function docTable(list, opts) {
     opts = opts || {};
     const { cols, amountOf, restOf } = docColumns(opts);
-    if (!list.length) return `<div class="empty">${h(opts.empty || 'Aucun document.')}</div>`;
+    // Un état vide SECONDAIRE (la liste d'une fiche) s'annonce, il ne se contemple pas (9.4.7) :
+    // 110 px de cadre pointillé pour « aucune facture générée » repoussaient la fiche d'un contrat.
+    if (!list.length) return `<div class="empty${opts.mini ? ' mini' : ''}">${h(opts.empty || 'Aucun document.')}</div>`;
     const cur = company().currency;
     const sorted = applySort(list, cols, opts.sort);
     // Le pied de tableau totalise toute la sélection, pas seulement la page affichée :
@@ -2362,6 +2456,21 @@
           a.push({ sep: true }, { icon: 'facture', label: 'Facturer ce devis', hint: 'Crée le brouillon de facture correspondant', run: () => facturerDevis(d) });
         }
       }
+      // La suite d'une proforma, d'un bon de commande ou de livraison (10.12.0) : le menu n'en
+      // proposait AUCUNE — « Transformer ▾ » vivait dans l'éditeur, donc une proforma payée par le
+      // client se facturait en ouvrant la pièce pour y chercher un menu. Chaque suite prévue par
+      // `CONVERSIONS` ; et quand la pièce suivante existe déjà, c'est elle qu'on propose d'ouvrir,
+      // pas une seconde (le geste suivant, jamais le geste passé — 7.16.0).
+      if (C.EXTRA_TYPES.includes(d.type) && d.number && !/^annul/.test(d.status || '')) {
+        const cibles = C.CONVERSIONS[d.type] || [];
+        if (cibles.length) a.push({ sep: true });
+        cibles.forEach(t => {
+          const deja = C.chaineDePieces(data, d).find(x => x.type === t && !/^annul/.test(x.status || ''));
+          a.push(deja
+            ? { icon: ICONE_CONVERSION[t], label: `Voir ${deja.number || `${t === 'facture' || t === 'proforma' ? 'la' : 'le'} ${C.TITLES[t].toLowerCase()} en brouillon`}`, hint: deja.fromDocId === d.id ? `Déjà tiré${t === 'facture' || t === 'proforma' ? 'e' : ''} de ${d.number}` : 'Déjà établi' + (t === 'facture' || t === 'proforma' ? 'e' : '') + ' pour cette vente', run: () => navigate('#/doc/' + deja.id) }
+            : { icon: ICONE_CONVERSION[t], label: C.CONVERSION_LABELS[t], hint: 'En brouillon, avec ses lignes et son client', run: () => transformerPiece(d, t) });
+        });
+      }
       // Le statut d'un devis se saisit à la main (celui d'une facture se déduit des paiements).
       if (d.type === 'devis' && ['envoyé', 'expiré'].includes(effStatus(d)))
         a.push({ sep: true },
@@ -2378,7 +2487,7 @@
     const isQ = doc.type === 'devis';
     const numbered = isQ || C.EXTRA_TYPES.includes(doc.type);   // ces pièces portent un numéro dès l'enregistrement
     const copy = { ...deepCopy(doc), id: C.uid(), number: '', status: 'brouillon', date: C.today(), createdAt: Date.now(), issuedTs: undefined, payments: [], emails: [], reminders: [], attachments: [], withholdingCertificate: false, fromQuoteId: undefined, fromQuoteNumber: undefined, fromDocId: undefined, fromDocType: undefined, fromDocNumber: undefined, deposit: undefined, settles: undefined, recurringId: undefined };
-    if (copy.dueDate) copy.dueDate = C.addDays(copy.date, isQ ? company().quoteValidityDays : company().paymentTermsDays);
+    if (copy.dueDate) copy.dueDate = C.addDays(copy.date, C.delaiJours(isQ ? company().quoteValidityDays : company().paymentTermsDays, 30));
     if (numbered) copy.number = C.nextNumber(data, doc.type, copy.date);
     data.documents.push(copy); save(true);
     toast(numbered ? 'Copie créée : ' + copy.number : 'Brouillon créé à partir de ' + (doc.number || 'ce brouillon'));
@@ -2412,7 +2521,7 @@
         .filter(d => !s.kind || d.type === s.kind)
         .filter(d => !s.year || (d.date || '').startsWith(s.year))
         .filter(d => C.docFiltre(s.st, effStatus(d)))
-        .filter(d => !s.q || [d.number, clientName(d.clientId), d.subject, d.reference].join(' ').toLowerCase().includes(s.q))
+        .filter(d => !s.q || C.correspondRecherche([d.number, clientName(d.clientId), d.subject, d.reference].join(' '), s.q))
         .sort(byNumberDesc);
       const filtered = !!(s.q || s.st || s.kind || s.year);
       $('#list-wrap').innerHTML = docTable(list, {
@@ -2469,7 +2578,7 @@
   // ---------- éditeur de document ----------
   function newDocument(type) {
     const date = C.today();
-    const days = Number(type === 'devis' ? company().quoteValidityDays : company().paymentTermsDays) || 30;
+    const days = C.delaiJours(type === 'devis' ? company().quoteValidityDays : company().paymentTermsDays, 30);
     // Une échéance n'a de sens que sur ce qui se paie ou se périme : un bon de livraison n'en a pas.
     const dated = ['devis', 'facture', 'proforma'].includes(type);
     const d = {
@@ -2513,7 +2622,7 @@
     if (parts[0] === 'new') {
       const type = ['devis', 'facture', 'avoir'].concat(C.EXTRA_TYPES).includes(parts[1]) ? parts[1] : 'devis';
       doc = newDocument(type); isNew = true;
-      if (type === 'avoir' && parts[2] && parts[2] !== 'tpl' && parts[2] !== 'client') { const inv = docById(parts[2]); if (inv) Object.assign(doc, creditDraftFrom(inv)); }
+      if (type === 'avoir' && parts[2] && !['tpl', 'client', 'affaire'].includes(parts[2])) { const inv = docById(parts[2]); if (inv) Object.assign(doc, creditDraftFrom(inv)); }
       if (parts[2] === 'tpl' && parts[3]) applyTemplate(doc, parts[3]);
       // Depuis la fiche client : le client est déjà choisi, avec sa langue, sa devise et sa retenue
       if (parts[2] === 'client' && parts[3] && clientById(parts[3])) {
@@ -2521,6 +2630,10 @@
         applyClientDefaults(doc, doc.clientId);
         if (type !== 'devis') doc.withholdingRate = clientWithholding(doc.clientId);
       }
+      // Depuis la fiche d'une affaire : la pièce naît RATTACHÉE (10.12.0). « + Devis » y ouvrait un
+      // devis sans affaire — on le croyait compté dans la marge du chantier, il ne l'était pas.
+      const iAff = parts.indexOf('affaire');
+      if (iAff > 1 && projectById(parts[iAff + 1])) doc.projectId = parts[iAff + 1];
     } else {
       doc = docById(parts[0]); if (!doc) return navigate('#/dashboard'); doc = deepCopy(doc);
     }
@@ -2546,7 +2659,7 @@
     // propre `stampFee` figé (7.1.0) : c'est celui-là qu'il faut montrer, pas le réglage du jour.
     // L'échéance posée par l'application (30 j par défaut) : tant que `doc.dueDate` lui est égale,
     // c'est qu'elle n'a pas été touchée à la main et elle suit la date du document.
-    const joursEcheance = Number(isQ ? company().quoteValidityDays : company().paymentTermsDays) || 30;
+    const joursEcheance = C.delaiJours(isQ ? company().quoteValidityDays : company().paymentTermsDays, 30);
     let dueAuto = doc.dueDate;
     const poserDate = (name, iso) => poserDateField(head, name, iso);
     const timbreAffiche = () => {
@@ -2609,7 +2722,7 @@
     // ici). Un devis enregistré et inchangé gardait « Enregistrer » en vert : il disait qu'il restait
     // quelque chose à enregistrer, quand l'étape suivante est de l'ENVOYER. « Enregistrer » redevient
     // principal dès qu'on modifie (`touch`), et l'envoi cède alors la place.
-    const envoiSuivant = !isNew && !locked && !devisFacturable && doc.status === 'brouillon'
+    const envoiSuivant = !isNew && !locked && !devisFacturable && doc.status === 'brouillon' && !!doc.number
       && (isQ || doc.type === 'proforma' || doc.type === 'contrat');
     const facturerMenu = !isNew && isQ
       ? (devisFacturable
@@ -2638,7 +2751,18 @@
 
     // « Transformer ▾ » : les pièces qu'on peut tirer de celle-ci. Chacune arrive en brouillon.
     const convertibles = isNew ? [] : (C.CONVERSIONS[doc.type] || []).filter(t => t !== 'facture' || !isQ);
-    const transformMenu = convertibles.length ? `<div class="more"><button class="btn" id="conv-btn">Transformer ▾</button><div class="more-list" id="conv-list" hidden>
+    // U-11 pour les autres pièces (10.12.0) : un bon de livraison tiré d'une proforma s'ouvrait sans
+    // AUCUN bouton en vert — la règle ne connaissait que le devis (« Email ») et la facture
+    // (« Émettre »). L'étape suivante, calculée : une pièce tirée d'une autre n'a pas encore de
+    // numéro, c'est « Enregistrer » qui le lui donne ; une proforma ou un contrat numérotés
+    // s'envoient (`envoiSuivant`) ; un bon de livraison s'imprime pour être signé ; et une pièce qui
+    // n'a encore rien donné se transforme — jamais une seconde fois (le geste suivant, 7.16.0).
+    const suiteExtra = !isExtra || isNew || locked ? ''
+      : !doc.number ? 'save'
+      : envoiSuivant ? ''
+      : doc.type === 'livraison' && doc.status === 'brouillon' ? 'pdf'
+      : !/^annul/.test(doc.status || '') && convertibles.length && !C.chaineDePieces(data, doc).some(x => convertibles.includes(x.type) && !/^annul/.test(x.status || '')) ? 'transform' : '';
+    const transformMenu = convertibles.length ? `<div class="more"><button class="btn${suiteExtra === 'transform' ? ' btn-primary' : ''}" id="conv-btn">Transformer ▾</button><div class="more-list" id="conv-list" hidden>
         ${convertibles.map(t => `<button data-conv="${t}">${h(C.CONVERSION_LABELS[t] || C.TITLES[t])}</button>`).join('')}
       </div></div>` : '';
 
@@ -2662,10 +2786,10 @@
             <button class="btn btn-sm" id="pv-big" title="Voir le document en grand (${TOUCHES_APERCU})">Agrandir</button>
           </div>
           ${!isNew ? `<button class="btn ${envoiSuivant ? 'btn-primary' : ''}" id="email">Email</button>` : ''}
-          <button class="btn" id="pdf">PDF</button>
+          <button class="btn${suiteExtra === 'pdf' ? ' btn-primary' : ''}" id="pdf">PDF</button>
           ${locked && isInv && doc.status !== 'annulée' && bal && bal.remaining > 0.0005 ? `<button class="btn btn-primary" id="pay">Enregistrer un paiement</button>` : ''}
           ${facturerMenu}${transformMenu}
-          ${!locked ? `<button class="btn ${isNew && (isQ || isExtra) ? 'btn-primary' : ''}" id="save">Enregistrer${isQ || isExtra ? '' : ' le brouillon'}</button>` : ''}
+          ${!locked ? `<button class="btn ${(isNew && (isQ || isExtra)) || suiteExtra === 'save' ? 'btn-primary' : ''}" id="save">Enregistrer${isQ || isExtra ? '' : ' le brouillon'}</button>` : ''}
           ${!locked && (isInv || isAv) ? `<button class="btn btn-primary" id="issue">${isInv ? 'Émettre la facture' : 'Émettre l\'avoir'}</button> ${info('ed.issue')}` : ''}
           ${!isNew && (!isAv || !locked) ? `<div class="more"><button class="btn" id="more-btn" aria-label="Autres actions">Plus ▾</button><div class="more-list" id="more-list" hidden>
             ${!isAv ? `<button id="dup">Dupliquer</button><button id="as-template">Enregistrer comme modèle…</button>` : ''}
@@ -2717,7 +2841,9 @@
               <label class="field span-2">${lbl('Objet', 'ed.subject')}<input type="text" name="subject" value="${h(doc.subject)}" placeholder="${h(exempleObjet())}" ${ro}></label>
               ${field(lbl('Référence (optionnel)', 'ed.reference'), 'reference', doc.reference || '', 'text', ro)}
               <div class="field">${lbl('Affaire (optionnel)', 'ed.project')}
-                ${combo({ name: 'projectId', value: doc.projectId || '', items: projectItems(doc.clientId), placeholder: '— Aucune affaire —', search: 'Rechercher une affaire…', add: locked ? null : '+ Nouvelle affaire', ro: locked })}
+                ${/* Jamais en lecture seule, même émise : l'affaire ne s'imprime pas et ne change aucun
+                    montant (voir `poserAffaire`). */''}
+                ${combo({ name: 'projectId', value: doc.projectId || '', items: projectItems(doc.clientId), placeholder: '— Aucune affaire —', search: 'Rechercher une affaire…', add: '+ Nouvelle affaire' })}
               </div>
               ${isAv ? field('Motif de l\'avoir', 'creditReason', doc.creditReason || '', 'text', ro + ' placeholder="Erreur de facturation, remise commerciale…"') : ''}
               <label class="field">${lbl('Langue du document', 'ed.lang')}<select name="lang" ${ro}><option value="fr" ${doc.lang !== 'en' ? 'selected' : ''}>Français</option><option value="en" ${doc.lang === 'en' ? 'selected' : ''}>English</option></select></label>
@@ -2972,8 +3098,15 @@
         if (caseTimbre) caseTimbre.checked = doc.applyStamp !== false;
         $('select[name=lang]', head).value = doc.lang || 'fr'; $('select[name=currency]', head).value = docCur(doc);
         cur = docCur(doc); setRateLabel();
-        // les affaires proposées suivent le client : celles d'un autre client n'ont rien à faire ici
-        if (projectCombo) projectCombo.setItems(projectItems(doc.clientId));
+        // les affaires proposées suivent le client : celles d'un autre client n'ont rien à faire ici.
+        // Et celle qui était choisie PART avec l'ancien client (10.12.0) : absente de la liste, elle
+        // restait dans la pièce sans plus s'afficher — le devis du client B comptait en silence dans
+        // le chantier du client A.
+        if (projectCombo) {
+          const items = projectItems(doc.clientId);
+          projectCombo.setItems(items);
+          if (doc.projectId && !items.some(x => x.v === doc.projectId)) { doc.projectId = ''; projectCombo.setValue('', true); }
+        }
         majFicheClient();
         drawLines();
       }
@@ -3015,10 +3148,24 @@
     };
     majFicheClient();
     bindCombo($('[data-combo=creditOf]', head), { items: invoiceItems(), placeholder: '— Facture concernée —' });
+    // L'affaire est une étiquette de GESTION : elle ne s'imprime pas, n'entre dans aucune écriture et
+    // ne change aucun montant. Sur une pièce émise, elle reste donc modifiable et s'enregistre tout
+    // de suite — le champ était grisé, et une affaire créée après coup ne pouvait JAMAIS compter les
+    // factures déjà émises de son chantier : sa marge restait fausse pour toujours (10.12.0).
+    const poserAffaire = v => {
+      doc.projectId = v || '';
+      if (!locked) return;          // pièce modifiable : `head.onchange` et « Enregistrer » s'en chargent
+      const st = docById(doc.id); if (!st) return;
+      if (v) st.projectId = v; else delete st.projectId;
+      save(true);
+      const pr = v && projectById(v);
+      toast(pr ? `Affaire enregistrée : ${docLabel(st)} compte désormais dans « ${pr.name} ».` : `Affaire retirée : ${docLabel(st)} ne compte plus dans aucune affaire.`);
+    };
     const projectCombo = bindCombo($('[data-combo=projectId]', head), {
       items: projectItems(doc.clientId), placeholder: '— Aucune affaire —',
+      onPick: poserAffaire,
       onAdd: saisi => projectForm(null, p => {
-        projectCombo.setItems(projectItems(doc.clientId)); projectCombo.setValue(p.id); doc.projectId = p.id; touch();
+        projectCombo.setItems(projectItems(doc.clientId)); projectCombo.setValue(p.id); doc.projectId = p.id; touch(); poserAffaire(p.id);
       }, { name: saisi, clientId: doc.clientId || '', startDate: doc.date || C.today() })
     });
 
@@ -3032,6 +3179,7 @@
       pv.onload = () => {
         try {
           const { pages, compact } = mettreEnPage(pv.contentDocument);   // même mise en page que le PDF
+          ajusterAuCadre(pv.contentDocument);
           const el = $('#pv-pages');
           if (el) {
             el.textContent = pages <= 1 ? (compact ? '1 page (resserrée)' : '1 page') : pages + ' pages';
@@ -3137,10 +3285,10 @@
       t.lines.forEach((l, i) => { const c = $(`[data-total="${i}"]`); if (c) c.textContent = C.money(l.ht, null, C.decimalsFor(cur)); });
       $('#totals').innerHTML = `<table>
         <tr><td>Total HT</td><td>${C.money(t.totalHT, cur)}</td></tr>
-        ${t.discount ? `<tr><td>Remise ${pct(t.discountRate)}%</td><td>- ${C.money(t.discount, cur)}</td></tr><tr><td>Net HT</td><td>${C.money(t.netHT, cur)}</td></tr>` : ''}
+        ${t.discount ? `<tr><td>Remise ${pct(t.discountRate)}%</td><td>${C.money(-t.discount, cur)}</td></tr><tr><td>Net HT</td><td>${C.money(t.netHT, cur)}</td></tr>` : ''}
         <tr><td>TVA</td><td>${C.money(t.totalVAT, cur)}</td></tr>
         ${t.stamp ? `<tr><td>Timbre fiscal</td><td>${C.money(t.stamp, cur)}</td></tr>` : ''}
-        ${t.withholding ? `<tr><td>Total TTC</td><td>${C.money(t.totalTTC, cur)}</td></tr><tr><td>Retenue à la source ${pct(t.withholdingRate)}%</td><td>- ${C.money(t.withholding, cur)}</td></tr>` : ''}
+        ${t.withholding ? `<tr><td>Total TTC</td><td>${C.money(t.totalTTC, cur)}</td></tr><tr><td>Retenue à la source ${pct(t.withholdingRate)}%</td><td>${C.money(-t.withholding, cur)}</td></tr>` : ''}
         <tr class="grand"><td>${isInv || isProforma ? 'Net à payer' : isAv ? 'Montant de l\'avoir' : 'Total TTC'}</td><td>${C.money(isInv || isAv || isProforma ? t.netToPay : t.totalTTC, cur)}</td></tr></table>`;
       // Marge estimée : affichée seulement quand au moins une ligne a un coût connu, et jamais sur un avoir
       // (un avoir n'a pas de marge : c'est une vente qu'on annule).
@@ -3556,12 +3704,7 @@
       $('#conv-list').hidden = true;
       // On part de ce qui est enregistré : convertir une saisie non sauvegardée donnerait une pièce fantôme.
       if (dirty && !persist()) return;
-      const src = docById(doc.id) || doc;
-      const t = b.dataset.conv;
-      const out = C.convertDoc(src, t, company(), C.today());
-      data.documents.push(out); save(true);
-      toast(`${C.TITLES[t]} créé en brouillon à partir de ${src.number || 'ce brouillon'}`);
-      navigate('#/doc/' + out.id);
+      transformerPiece(docById(doc.id) || doc, b.dataset.conv);
     }));
 
     // --- clauses du contrat
@@ -3928,7 +4071,7 @@
       if (typeof sortKey === 'string' && sortKey) { s.sort = toggleSort(s.sort, sortKey, cols); s.page = 1; }
       const all = data.clients.map(c => ({ c, sum: C.clientSummary(data, company(), c.id) }));
       const rows = applySort(all
-        .filter(r => !s.q || [r.c.name, r.c.contact, r.c.matricule, r.c.email, r.c.phone].join(' ').toLowerCase().includes(s.q))
+        .filter(r => !s.q || C.correspondRecherche([r.c.name, r.c.contact, r.c.matricule, r.c.email, r.c.phone].join(' '), s.q))
         .filter(r => !s.f || (s.f === 'due' ? r.sum.due > 0.0005 : r.sum.count === 0)), cols, s.sort);
       const filtered = !!(s.q || s.f);
       const { rows: page, pg } = paginate(rows, s);
@@ -4020,7 +4163,7 @@
       <div class="stats">
         <div class="stat"><div class="lbl">Facturé HT ${info('dash.caYear')}</div><div class="val">${C.money(sum.ht, cur)}</div><div class="sub">${pl(sum.invoiceCount, 'facture')}${sum.first ? ' depuis ' + C.fmtDate(sum.first) : ''}</div></div>
         <div class="stat"><div class="lbl">Reste à payer ${info('cl.due')}</div><div class="val">${C.money(sum.due, cur)}</div><div class="sub">${sum.due > 0.0005 ? 'à encaisser' : 'tout est réglé'}</div></div>
-        <div class="stat"><div class="lbl">Délai moyen de paiement ${info('dash.delay')}</div><div class="val">${sum.delay == null ? '—' : sum.delay + ' j'}</div><div class="sub">annoncé : ${company().paymentTermsDays} jours</div></div>
+        <div class="stat"><div class="lbl">Délai moyen de paiement ${info('dash.delay')}</div><div class="val">${sum.delay == null ? '—' : sum.delay + ' j'}</div><div class="sub">annoncé : ${pl(Number(company().paymentTermsDays) || 0, 'jour')}</div></div>
         <div class="stat"><div class="lbl">Devis acceptés ${info('dash.conversion')}</div><div class="val">${sum.conversion == null ? '—' : sum.conversion + ' %'}</div><div class="sub">${sum.quoteCount} devis, ${openQuotes.length} sans réponse</div></div>
       </div>
       <div class="grid-2">
@@ -4069,7 +4212,7 @@
               <td><strong>${h(x.name)}</strong></td>
               <td><span class="badge ${x.status === 'en cours' ? 'b-due' : x.status === 'terminée' ? 'b-paid' : ''}">${h(x.status)}</span></td>
               <td class="r nw">${C.money(x.revenue, cur)}</td><td class="r nw">${C.money(x.cost, cur)}</td>
-              <td class="r nw"><strong class="${x.margin < 0 ? 'warn-text' : ''}">${C.money(x.margin, cur)}</strong></td>
+              <td class="r nw"><strong class="${x.margin < 0 ? 'warn-text' : ''}">${C.money(x.margin, cur)}</strong>${margeSansAchat(x) ? NOTE_SANS_ACHAT : ''}</td>
               <td class="r nw">${C.money(x.cash, cur)}</td></tr>`).join('')}
           </tbody></table></div></div>` : ''}
         ${contrats.length ? `<div class="panel"><h2>Contrats récurrents ${info('rec.what')}</h2>
@@ -4092,7 +4235,7 @@
     const drawDocs = (sortKey) => {
       if (typeof sortKey === 'string' && sortKey) { clientDocState.sort = toggleSort(clientDocState.sort, sortKey, dcols); clientDocState.page = 1; }
       $('#cl-docs').innerHTML = docTable(docs, {
-        hideClient: true, sort: clientDocState.sort, onSort: true, page: clientDocState,
+        hideClient: true, sort: clientDocState.sort, onSort: true, page: clientDocState, mini: true,
         empty: 'Aucun document pour ce client. Commence par un devis.'
       });
       bindDocTable(drawDocs, clientDocState, '#cl-docs');
@@ -4352,7 +4495,7 @@
           built = true;
         }
         const all = rows();
-        const kept = applySort(all.filter(r => !state.q || opts.text(r).toLowerCase().includes(state.q)), cols, state.sort);
+        const kept = applySort(all.filter(r => !state.q || C.correspondRecherche(opts.text(r), state.q)), cols, state.sort);
         const { rows: page, pg } = paginate(kept, state);
         // Pied totalisé, comme sur les listes de documents : il porte sur toute la sélection, jamais
         // sur la page affichée (audit — Clients et Catalogue en étaient les seules listes dépourvues).
@@ -4573,6 +4716,17 @@
     const p1 = docu.querySelector('.page');
     return { pages, compact: !!(p1 && p1.classList.contains('compact')) };
   }
+  // 10.12.0 — un document de plus d'une page fait naître la barre de défilement verticale de
+  // l'aperçu. La page, calculée pour TOUTE la largeur du cadre, dépassait alors de la largeur de
+  // cette barre : une seconde barre, horizontale, naissait sous la facture, et son bord droit était
+  // coupé de 8 px. Le zoom se recalcule sur la largeur qui RESTE, une fois la page mise en page —
+  // c'est elle qui décide s'il y a une barre. Seulement pour les aperçus en colonne : dans le grand
+  // aperçu, le zoom est celui que l'utilisateur a choisi, et y défiler de côté est voulu.
+  function ajusterAuCadre(docu) {
+    const el = docu && docu.documentElement;
+    if (!el || el.scrollWidth <= el.clientWidth) return;
+    el.style.zoom = String(Math.max(0.3, Math.floor((el.clientWidth - 2) / 794 * 100) / 100));
+  }
 
   // La porte de l'exemple. Elle ne s'applique qu'aux gestes qui SORTENT de l'ordinateur : envoyer un
   // email, écrire au comptable, fabriquer le paquet mensuel. Lire, imprimer, exporter restent libres
@@ -4616,13 +4770,18 @@
         if (!v.to || !/^[^@\s]+@[^@\s]+$/.test(v.to)) return toast('Adresse email invalide.', true);
         const b = $('#ok', root); b.disabled = true; b.textContent = 'Préparation…';
         try {
+          // Envoyer, c'est le geste qui fait passer la pièce de brouillon à envoyée — et le PDF joint
+          // est celui de la pièce ENVOYÉE, sans le tampon « BROUILLON » (10.12.0).
+          const envoi = C.STATUT_ENVOI[doc.type];
+          const passe = !!envoi && doc.status === 'brouillon';
+          const telle = passe ? { ...doc, status: envoi } : doc;
           let attachment = null;
-          if (v.attach) attachment = await bridge.exportPdfSilent(C.documentHtml(doc, client, company(), { stampText: stampFor(doc) }), docFileName(doc));
+          if (v.attach) attachment = await bridge.exportPdfSilent(C.documentHtml(telle, client, company(), { stampText: stampFor(telle) }), docFileName(telle));
           const r = await bridge.composeMail({ to: v.to, subject: v.subject, body: v.body, attachment, mode: modeEnvoi() });
           if (!client.email) { client.email = v.to; }
           const stored = docById(doc.id) || doc;
           stored.emails = stored.emails || []; stored.emails.push({ date: C.today(), to: v.to, subject: v.subject, kind });
-          if (stored.type === 'devis' && stored.status === 'brouillon') stored.status = 'envoyé';
+          if (passe && stored.status === 'brouillon') { stored.status = envoi; if (doc !== stored) doc.status = envoi; }
           if (afterSend) afterSend(stored);
           save(true); close();
           toast(messageOuvert(r, attachment ? 'le PDF' : null));
@@ -4655,17 +4814,19 @@
     const r = deepCopy(rec);
     if (!r.lines || !r.lines.length) r.lines = [C.newLine(company())];
     const cur = company().currency;
-    modal(`<h2>${isNew ? 'Nouveau contrat récurrent' : 'Modifier le contrat'}</h2>
+    // 10.12.0 — une bulle par champ (la règle du projet) : le formulaire n'en avait qu'une, sur
+    // l'unité, et « ({mois} = mois facturé) » faisait passer l'étiquette de l'objet sur deux lignes.
+    modal(`<h2>${isNew ? 'Nouveau contrat récurrent' : 'Modifier le contrat'} ${info('contrat.form')}</h2>
       <form id="rf" class="grid-3">
-        <div class="field span-2">Client${combo({ name: 'clientId', value: r.clientId, items: clientItems(), placeholder: '— Choisir un client —', search: 'Rechercher : nom, contact, MF…', add: '+ Nouveau client' })}</div>
-        <label class="field">Période<select name="every">${C.PERIODS.map(p => `<option value="${p[0]}" ${p[0] === r.every ? 'selected' : ''}>${p[1]}</option>`).join('')}</select></label>
-        <label class="field span-2">Objet des factures <span class="muted">({mois} = mois facturé)</span><input type="text" name="subject" value="${h(r.subject)}" placeholder="Contrat d'entretien — {mois}"></label>
-        ${field('Jour du mois', 'day', r.day || 1, 'number', 'min="1" max="31" class="num"')}
-        ${dateFieldHtml('Prochaine facture', 'nextDate', r.nextDate || C.today(), { quick: true })}
-        <label class="field">Retenue à la source${withholdingSelect('withholdingRate', r.withholdingRate)}</label>
-        ${field('Remise (%)', 'discountRate', r.discountRate || 0, 'number', 'min="0" max="100" step="0.5" class="num"')}
-        <label class="field span-3">Notes sur la facture<textarea name="notes" rows="2">${h(r.notes || '')}</textarea></label>
-        <label class="check span-3"><input type="checkbox" name="active" ${r.active !== false ? 'checked' : ''}> Contrat actif (les factures sont proposées à la date prévue)</label>
+        <div class="field span-2 obligatoire">${lbl('Client', 'contrat.client')}${combo({ name: 'clientId', value: r.clientId, items: clientItems(), placeholder: '— Choisir un client —', search: 'Rechercher : nom, contact, MF…', add: '+ Nouveau client' })}</div>
+        <label class="field">${lbl('Période', 'contrat.periode')}<select name="every">${C.PERIODS.map(p => `<option value="${p[0]}" ${p[0] === r.every ? 'selected' : ''}>${p[1]}</option>`).join('')}</select></label>
+        <label class="field span-2 obligatoire">${lbl('Objet des factures', 'contrat.objet')}<input type="text" name="subject" value="${h(r.subject)}" placeholder="Entretien des portes — {mois}"></label>
+        ${field(lbl('Jour du mois', 'contrat.jour'), 'day', r.day || 1, 'number', 'min="1" max="31" class="num"')}
+        ${dateFieldHtml(lbl('Prochaine facture', 'contrat.next'), 'nextDate', r.nextDate || C.today(), { quick: true })}
+        <label class="field">${lbl('Retenue à la source', 'ed.withholding')}${withholdingSelect('withholdingRate', r.withholdingRate)}</label>
+        ${field(lbl('Remise (%)', 'ed.discount'), 'discountRate', r.discountRate || 0, 'number', 'min="0" max="100" step="0.5" class="num"')}
+        <label class="field span-3">${lbl('Notes sur la facture', 'ed.notes')}<textarea name="notes" rows="2">${h(r.notes || '')}</textarea></label>
+        <label class="check span-3"><input type="checkbox" name="active" ${r.active !== false ? 'checked' : ''}> <span>Contrat actif (les factures sont proposées à la date prévue) ${info('contrat.actif')}</span></label>
       </form>
       <table class="mini"><thead><tr><th>Désignation</th><th class="r" style="width:58px">Qté</th><th style="width:104px">Unité ${info('ed.unit')}</th><th class="r" style="width:96px">P.U. HT</th><th style="width:88px">TVA</th><th></th></tr></thead><tbody id="rl"></tbody></table>
       <div class="inline mt"><button type="button" class="btn btn-sm" id="rl-add">+ Ligne</button><span class="small muted" id="rl-total"></span></div>
@@ -4712,16 +4873,23 @@
           });
           tot();
         };
-        const tot = () => { const t = C.computeTotals({ type: 'facture', lines: r.lines, discountRate: Number($('input[name=discountRate]', root).value) || 0 }, company()); $('#rl-total', root).textContent = `${C.money(t.netHT, cur)} HT · ${C.money(t.totalTTC, cur)} TTC par facture`; };
+        // Sans ligne chiffrée, le total n'était que le timbre : « 0,000 DT HT · 1,000 DT TTC par
+        // facture » sur un contrat vide. On dit ce qui manque au lieu d'annoncer un dinar.
+        const tot = () => {
+          const t = C.computeTotals({ type: 'facture', lines: r.lines, discountRate: Number($('input[name=discountRate]', root).value) || 0 }, company());
+          $('#rl-total', root).textContent = t.netHT > 0.0005 ? `${C.money(t.netHT, cur)} HT · ${C.money(t.totalTTC, cur)} TTC par facture` : 'Le montant par facture s\'affichera ici dès qu\'une ligne aura un prix.';
+        };
         $('#rl-add', root).onclick = () => { r.lines.push(C.newLine(company())); drawL(); };
         $('input[name=discountRate]', root).oninput = tot;
         drawL();
         $('#ok', root).onclick = () => {
           const v = formValues($('#rf', root));
-          if (!v.clientId) return toast('Choisis un client.', true);
-          if (!v.subject.trim()) return toast('Indique l\'objet des factures.', true);
-          if (!r.lines.some(l => l.label && l.label.trim())) return toast('Ajoute au moins une ligne.', true);
-          if (!v.nextDate) return toast('Date de la prochaine facture obligatoire.', true);
+          // Un refus MONTRE le champ (7.20.0) : un bandeau de 2,6 secondes au-dessus d'une fenêtre de
+          // neuf champs obligeait à chercher lequel.
+          if (!v.clientId) return refus($('[data-combo=clientId] .combo-btn', root), 'Choisis le client que ce contrat facture.');
+          if (!v.subject.trim()) return refus($('input[name=subject]', root), 'Indique l\'objet des factures — il apparaît sur chacune.');
+          if (!r.lines.some(l => l.label && l.label.trim())) return refus($('#rl [data-k=label]', root), 'Ajoute au moins une ligne : ce que le contrat facture.');
+          if (!v.nextDate) return refus($('[name=nextDate]', root), 'Indique la date de la prochaine facture.');
           Object.assign(r, v, { day: Math.min(31, Math.max(1, Number(v.day) || 1)), withholdingRate: Number(v.withholdingRate) || 0, discountRate: Number(v.discountRate) || 0 });
           const idx = data.recurring.findIndex(x => x.id === r.id);
           if (idx >= 0) data.recurring[idx] = r; else data.recurring.push(r);
@@ -4745,7 +4913,7 @@
           rec.lastIssued = rec.nextDate; rec.nextDate = C.nextRecurrenceDate(rec.nextDate, rec.every, rec.day);
           continue;
         }
-        const inv = { ...C.buildRecurringInvoice(rec, rec.nextDate, company()), id: C.uid(), createdAt: Date.now() };
+        const inv = { ...C.buildRecurringInvoice(rec, rec.nextDate, company(), clientById(rec.clientId)), id: C.uid(), createdAt: Date.now() };
         data.documents.push(inv); n++; ids.push(inv.id);
         rec.lastIssued = rec.nextDate; rec.nextDate = C.nextRecurrenceDate(rec.nextDate, rec.every, rec.day);
       } while (!force && rec.active !== false && rec.nextDate <= C.today() && ++guard < 12);
@@ -4791,7 +4959,7 @@
     const drafts = invoices.filter(d => d.status === 'brouillon');
     const facture = C.round3(issued.reduce((s, d) => s + C.toBase(d, C.computeTotals(d, co).netHT, co), 0));
     const encaisse = C.round3(issued.reduce((s, d) => s + C.toBase(d, C.computeTotals(d, co).netToPay - balance(d).remaining, co), 0));
-    const next = C.buildRecurringInvoice(r, r.nextDate, co);          // la facture que le contrat produira
+    const next = C.buildRecurringInvoice(r, r.nextDate, co, clientById(r.clientId));   // la facture que le contrat produira
     const t = C.computeTotals(next, co);
     const active = r.active !== false;
     const isDue = active && r.nextDate <= C.today();
@@ -4807,7 +4975,10 @@
           <button class="btn" id="c-client">Fiche client</button>
           <button class="btn" id="c-edit">Modifier</button>
           <button class="btn" id="c-toggle">${active ? 'Suspendre' : 'Reprendre'}</button>
-          <button class="btn btn-primary" id="c-gen">Générer maintenant</button>
+          ${/* 10.12.0 — le bouton principal est l'étape SUIVANTE (U-11) : un contrat dont la
+                prochaine facture est au 1er octobre n'a rien à générer le 24 septembre, et un vert
+                l'invitait à facturer une semaine trop tôt. Il se rallume à l'échéance. */''}
+          <button class="btn${isDue ? ' btn-primary' : ''}" id="c-gen">Générer maintenant</button>
           <div class="more"><button class="btn" id="c-more-btn" aria-label="Autres actions">Plus ▾</button><div class="more-list" id="c-more" hidden>
             <button id="c-del" class="danger">Supprimer le contrat</button>
           </div></div>
@@ -4843,6 +5014,7 @@
       pv.onload = () => {
         try {
           const { pages, compact } = mettreEnPage(pv.contentDocument);
+          ajusterAuCadre(pv.contentDocument);
           const el = $('#pv-pages');
           if (el) { el.textContent = pages <= 1 ? (compact ? '1 page (resserrée)' : '1 page') : pages + ' pages'; el.className = 'pv-pages' + (pages > 1 ? ' warn' : ''); }
         } catch (_) { /* aperçu indisponible */ }
@@ -4856,7 +5028,7 @@
       const cols = docColumns({ hideClient: true }).cols;
       if (typeof sortKey === 'string' && sortKey) { contratDocState.sort = toggleSort(contratDocState.sort, sortKey, cols); contratDocState.page = 1; }
       $('#c-docs').innerHTML = docTable(invoices, {
-        hideClient: true, sort: contratDocState.sort, onSort: true, page: contratDocState,
+        hideClient: true, sort: contratDocState.sort, onSort: true, page: contratDocState, mini: true,
         empty: 'Aucune facture générée pour l\'instant. La première le sera le ' + C.fmtDate(r.nextDate) + '.'
       });
       bindDocTable(drawDocs, contratDocState, '#c-docs');
@@ -4905,7 +5077,7 @@
     const cols = [
       { key: 'client', label: 'Client', asc: true, val: r => clientName(r.clientId).toLowerCase(), get: r => `<strong>${h(clientName(r.clientId))}</strong>` },
       { key: 'subject', label: 'Objet', asc: true, val: r => (r.subject || '').toLowerCase(), get: r => { const subj = C.fillTemplate(r.subject, { mois: C.monthLabel(r.nextDate) }); return `${h(subj)}${subj !== r.subject ? `<div class="small muted">${h(r.subject)}</div>` : ''}`; } },
-      { key: 'every', label: 'Période', asc: true, val: r => r.every || '', get: r => (C.PERIODS.find(p => p[0] === r.every) || [])[1] || '' },
+      { key: 'every', label: 'Période', asc: true, nw: true, val: r => r.every || '', get: r => (C.PERIODS.find(p => p[0] === r.every) || [])[1] || '' },
       { key: 'next', label: 'Prochaine facture', asc: true, val: r => r.nextDate || '', get: r => { const isDue = r.active !== false && r.nextDate <= C.today(); return `${C.fmtDate(r.nextDate)}${isDue ? ' <span class="level l2">à générer</span>' : ''}${r.lastIssued ? `<div class="small muted">dernière : ${C.fmtDate(r.lastIssued)}</div>` : ''}`; } },
       { key: 'ht', label: 'HT / facture', r: true, val: htBase, get: r => C.money(htOf(r), curOf(r)) },
       { key: 'state', label: 'État', asc: true, val: r => r.active !== false ? 'actif' : 'suspendu', get: r => r.active !== false ? '<span class="badge envoyée">actif</span>' : '<span class="badge">suspendu</span>' }
@@ -4917,7 +5089,7 @@
       const all = data.recurring.slice();
       const kept = applySort(all
         .filter(r => !s.st || (s.st === 'due' ? (r.active !== false && r.nextDate <= C.today()) : (s.st === 'actif') === (r.active !== false)))
-        .filter(r => !s.q || `${clientName(r.clientId)} ${r.subject || ''}`.toLowerCase().includes(s.q)), cols, s.sort);
+        .filter(r => !s.q || C.correspondRecherche(`${clientName(r.clientId)} ${r.subject || ''}`, s.q)), cols, s.sort);
       const { rows: page, pg } = paginate(kept, s);
       const filtered = !!(s.q || s.st);
       // Le pied porte sur la sélection ENTIÈRE (règle des listes depuis la 2.2.0), et ne compte que
@@ -4932,11 +5104,14 @@
           ${info('list.filters')}
           ${filtered ? `<span class="f-note"><span class="small muted">${kept.length} sur ${all.length}</span>${filterReset(true)}</span>` : ''}`, all.length, filtered)}
         ${kept.length ? `<table class="list sortable"><thead>${sortHead(cols, s.sort, '<th class="row-actions-h"></th>')}</thead><tbody>
-        ${page.map(r => `<tr class="clickable" data-rid="${r.id}">${cols.map(c => `<td class="${c.r ? 'r nw' : ''}">${c.get(r)}</td>`).join('')}
+        ${page.map(r => `<tr class="clickable" data-rid="${r.id}">${cols.map(c => `<td class="${c.r ? 'r nw' : c.nw ? 'nw' : ''}">${c.get(r)}</td>`).join('')}
           ${rowMenuCell(r.id)}</tr>`).join('')}
         </tbody><tfoot><tr>
-          <td colspan="4"><strong>${pl(actifs.length, 'contrat actif', 'contrats actifs')}</strong>${filtered ? '<span class="muted"> dans cette sélection</span>' : ''}</td>
-          <td class="r"><strong>${C.money(parMois, cur)}</strong><div class="small muted">par mois · ${C.money(parAn, cur)} par an</div></td>
+          <td colspan="3"><strong>${pl(actifs.length, 'contrat actif', 'contrats actifs')}</strong>${filtered ? '<span class="muted"> dans cette sélection</span>' : ''}</td>
+          ${/* 10.12.0 — le total vit sous SA colonne (9.4.5), mais sa phrase n'y tenait pas : « par
+                mois · 1 800,000 DT par / an » sur trois lignes dans une colonne de 150 px. La cellule
+                prend la colonne voisine, vide au pied, et le chiffre reste aligné sur la sienne. */''}
+          <td class="r nw" colspan="2"><strong>${C.money(parMois, cur)}</strong><div class="small muted">par mois · ${C.money(parAn, cur)} par an</div></td>
           <td colspan="2"></td></tr></tfoot></table>${pagerBar(pg, { noun: 'contrat', grandTotal: all.length })}`
           : filtered ? '<div class="empty">Aucun contrat ne correspond à ces filtres.</div>'
           : etatVide('Les factures qui se répètent toutes seules',
@@ -5040,7 +5215,7 @@
   function phoneReminderForm(item, done) {
     const d = item.doc;
     modal(`<h2>Relance par téléphone — ${h(d.number)}</h2>
-      <p class="small muted">${h(clientName(d.clientId))} · ${C.money(item.remaining, docCur(d))} · ${item.daysLate} jours de retard</p>
+      <p class="small muted">${h(clientName(d.clientId))} · ${C.money(item.remaining, docCur(d))} · ${pl(item.daysLate, 'jour')} de retard</p>
       <form id="tf" class="grid-2">
         ${dateFieldHtml('Date de l\'appel', 'date', C.today())}
         <label class="field">Niveau<select name="level">${[1, 2, 3].map(l => `<option value="${l}" ${l === item.level ? 'selected' : ''}>${h(C.REMINDER_LABELS[l])}</option>`).join('')}</select></label>
@@ -5084,7 +5259,7 @@
       // La recherche ne filtrait qu'un tableau sur quatre : on tapait le nom d'un client, le premier
       // tableau se réduisait, et les trois autres continuaient d'afficher tout le monde — pendant que
       // le bandeau annonçait « n sur N ». Un filtre qui ne s'applique qu'à une partie de l'écran ment.
-      const matchDoc = d => !q || `${d.number || ''} ${clientName(d.clientId)} ${d.subject || ''}`.toLowerCase().includes(q);
+      const matchDoc = d => !q || C.correspondRecherche(`${d.number || ''} ${clientName(d.clientId)} ${d.subject || ''}`, q);
       const match = x => matchDoc(x.doc);
       const od = all.filter(x => !x.snoozed && match(x)), later = all.filter(x => x.snoozed && match(x));
       const soon = data.documents.filter(d => d.type === 'facture' && ['envoyée', 'partielle'].includes(effStatus(d)) && d.dueDate >= C.today() && C.daysBetween(C.today(), d.dueDate) <= 7 && matchDoc(d));
@@ -5119,8 +5294,12 @@
       // dont aucun exemple n'était visible.
       const rienDuTout = !all.length && !soon.length && !quotes.length && !q;
       const aDesFactures = data.documents.some(d => d.type === 'facture' && d.number);
+      // Vide, mais pas faute de factures : on dit laquelle arrive à échéance, et quand (10.12.0).
+      const aVenir = rienDuTout ? C.facturesAVenir(data, company()) : [];
+      const prochaine = aVenir[0];
       $('#r-wrap').innerHTML = rienDuTout ? etatVide('Relancer tes impayés',
-        ['Dès qu\'une facture dépasse son échéance, elle apparaît ici toute seule : le nombre de jours de retard, ce qui reste à récupérer, et un email prêt à partir. <b>Tu n\'as rien à saisir sur cette page.</b>',
+        [...(prochaine ? [`<b>Aucune facture n'est en retard aujourd'hui.</b> La prochaine échéance est celle de <a href="#/doc/${h(prochaine.doc.id)}">${h(prochaine.doc.number)}</a> (${h(clientName(prochaine.doc.clientId))}, ${C.money(prochaine.remaining, docCur(prochaine.doc))}) le <b>${C.fmtDate(prochaine.dueDate)}</b>${aVenir.length > 1 ? `, puis ${pl(aVenir.length - 1, 'autre facture', 'autres factures')} non échue${sPl(aVenir.length - 1)}` : ''} : si elle n'est pas réglée ce jour-là, elle apparaîtra ici.`] : []),
+         'Dès qu\'une facture dépasse son échéance, elle apparaît ici toute seule : le nombre de jours de retard, ce qui reste à récupérer, et un email prêt à partir. <b>Tu n\'as rien à saisir sur cette page.</b>',
          'Trois tons, choisis pour toi selon le retard : rappel amical jusqu\'à 15 jours, relance jusqu\'à 45 jours, dernière relance au-delà. Les textes se modifient dans Paramètres → Envois.'],
         aDesFactures ? [['rel-vers-fac', 'Voir mes factures', true]] : [['rel-vers-new', '+ Créer ma première facture', true]])
         : `
@@ -5134,7 +5313,7 @@
           ${soon.map(d => `<tr class="clickable" data-id="${d.id}"><td><strong>${h(d.number)}</strong></td><td>${h(clientName(d.clientId))}</td><td>${C.fmtDate(d.dueDate)}</td><td class="r">${C.money(balance(d).remaining, docCur(d))}</td></tr>`).join('')}
         </tbody></table>` : ''}
         ${quotes.length ? `<div class="section-head"><h2>Devis sans réponse ${info('rel.quotes')}</h2></div><table class="list compact"><thead><tr><th>Devis</th><th>Client</th><th>Envoyé il y a</th><th>Validité</th><th class="r">Montant</th><th></th></tr></thead><tbody>
-          ${quotes.map(d => `<tr><td><strong><a href="#/doc/${d.id}">${h(d.number)}</a></strong><div class="small muted">${h(d.subject || '')}</div></td><td>${h(clientName(d.clientId))}</td><td>${C.daysBetween(d.date, C.today())} jours</td><td>${effStatus(d) === 'expiré' ? '<span class="badge expiré">expiré</span>' : C.fmtDate(d.dueDate)}</td><td class="r">${C.money(C.computeTotals(d, company()).totalTTC, docCur(d))}</td>
+          ${quotes.map(d => `<tr><td><strong><a href="#/doc/${d.id}">${h(d.number)}</a></strong><div class="small muted">${h(d.subject || '')}</div></td><td>${h(clientName(d.clientId))}</td><td>${pl(C.daysBetween(d.date, C.today()), 'jour')}</td><td>${effStatus(d) === 'expiré' ? '<span class="badge expiré">expiré</span>' : C.fmtDate(d.dueDate)}</td><td class="r">${C.money(C.computeTotals(d, company()).totalTTC, docCur(d))}</td>
             <td class="actions"><button class="btn btn-sm" data-qrem="${d.id}">Relancer par email</button></td></tr>`).join('')}
         </tbody></table>` : ''}
         <p class="small muted mt">Niveaux : rappel amical jusqu'à 15 jours, relance jusqu'à 45 jours, dernière relance au-delà. Textes modifiables dans Paramètres → Envois.</p>`;
@@ -5423,6 +5602,7 @@
     }
     const stk = $('#nav-stock');
     if (stk) { const n = C.stockAlerts(data).length + C.serialGaps(data).length; stk.hidden = !n; stk.textContent = n; }
+    montrerEntreeActive();          // un compteur qui paraît peut faire passer une entrée sur deux lignes
   }
 
   // Les onglets du Catalogue et des Paramètres vivaient dans leur fonction de route, donc hors de
@@ -5611,10 +5791,12 @@
     let sel = 0, shown = [];
     const input = $('#pal-q'), res = $('#pal-res');
     const draw = () => {
-      const q = input.value.trim().toLowerCase();
+      // Plié comme le texte (10.12.0) : « delai » trouve « Délai de paiement », « hotel » l'Hôtel.
+      const q = C.plier(input.value.trim());
       const words = q.split(/\s+/).filter(Boolean);
-      shown = (q ? [...all.filter(x => words.every(w => x.text.includes(w))), ...aidesPour(words)] : [...docs.slice().sort((a, b) => b.ts - a.ts).slice(0, 6), ...actions.slice(0, 4)]).slice(0, 12);
-      if (q) shown.sort((a, b) => (b.text.startsWith(q) ? 1 : 0) - (a.text.startsWith(q) ? 1 : 0));
+      const plie = x => x.plie || (x.plie = C.plier(x.text));
+      shown = (q ? [...all.filter(x => words.every(w => plie(x).includes(w))), ...aidesPour(words)] : [...docs.slice().sort((a, b) => b.ts - a.ts).slice(0, 6), ...actions.slice(0, 4)]).slice(0, 12);
+      if (q) shown.sort((a, b) => (plie(b).startsWith(q) ? 1 : 0) - (plie(a).startsWith(q) ? 1 : 0));
       sel = Math.min(sel, Math.max(0, shown.length - 1));
       res.innerHTML = shown.length ? shown.map((x, i) => `<div class="res ${i === sel ? 'sel' : ''}" data-i="${i}"><span class="kind">${h(x.kind)}</span><span class="main">${h(x.main)}${x.sub ? `<span class="sub">${h(x.sub)}</span>` : ''}</span>${x.amt ? `<span class="amt">${h(x.amt)}</span>` : ''}</div>`).join('') : `<div class="res"><span class="main muted">Aucun résultat</span></div>`;
       $$('.res[data-i]', res).forEach(el => el.onclick = () => { closePalette(); shown[Number(el.dataset.i)].run(); });
@@ -5739,7 +5921,7 @@
         ${field(lbl('Matricule fiscal', 'co.matricule'), 'matricule', s.matricule || '')}
         ${field('Téléphone', 'phone', s.phone || '')}
         ${field('Email', 'email', s.email || '', 'email')}
-        ${field(lbl('Délai de paiement accordé (jours)', 'sup.terms'), 'paymentTermsDays', s.paymentTermsDays || '', 'number', 'min="0" class="num" placeholder="30"')}
+        ${field(lbl('Délai de paiement accordé (jours)', 'sup.terms'), 'paymentTermsDays', s.paymentTermsDays == null ? '' : s.paymentTermsDays, 'number', 'min="0" class="num" placeholder="30"')}
         <label class="field">${lbl('Retenue à la source à opérer', 'sup.withholding')}${withholdingSelect('withholdingRate', s.withholdingRate, { vide: 'Aucune', sansZero: true })}</label>
         ${field(lbl('Banque', 'pay.bank'), 'bank', s.bank || '')}
         ${ribField('RIB du fournisseur', s.rib)}
@@ -5792,7 +5974,7 @@
       if (typeof sortKey === 'string' && sortKey) { s.sort = toggleSort(s.sort, sortKey, cols); s.page = 1; }
       const all = data.suppliers.map(x => ({ s: x, sum: C.supplierSummary(data, company(), x.id, C.today()) }));
       const rows = applySort(all
-        .filter(r => !s.q || [r.s.name, r.s.contact, r.s.matricule, r.s.email, r.s.phone].join(' ').toLowerCase().includes(s.q))
+        .filter(r => !s.q || C.correspondRecherche([r.s.name, r.s.contact, r.s.matricule, r.s.email, r.s.phone].join(' '), s.q))
         .filter(r => !s.f || (s.f === 'due' ? r.sum.remaining > 0.0005 : s.f === 'late' ? r.sum.late > 0.0005 : r.sum.count === 0)), cols, s.sort);
       const filtered = !!(s.q || s.f);
       const { rows: page, pg } = paginate(rows, s);
@@ -5902,6 +6084,13 @@
   const buyStatus = p => C.purchaseStatus(p, company(), C.today(), data);
   const A_RATTACHER = 'à rattacher';
 
+  // Ce qu'un achat a acheté, en quelques mots : son objet s'il en a un, sinon les libellés de ses
+  // lignes (les deux premiers, et le compte des autres).
+  const contenuAchat = x => {
+    if (x.subject) return x.subject;
+    const l = (x.lines || []).map(y => (y.label || '').trim()).filter(Boolean);
+    return l.slice(0, 2).join(', ') + (l.length > 2 ? ` + ${pl(l.length - 2, 'autre ligne', 'autres lignes')}` : '');
+  };
   function purchaseColumns(opts) {
     opts = opts || {};
     const cur = company().currency;
@@ -5920,7 +6109,7 @@
         get: p => (p.number ? `<strong>${h(p.number)}</strong>` : '<span class="muted">sans numéro</span>')
           + ((p.attachments || []).length ? ` <span class="att-mark" title="${pl((p.attachments || []).length, 'justificatif')} joint${(p.attachments || []).length > 1 ? 's' : ''}">📎</span>` : '') }
     ];
-    if (!opts.hideSupplier) cols.push({ key: 'supplier', label: 'Fournisseur', asc: true, val: p => supplierName(p.supplierId).toLowerCase(), get: p => `${h(supplierName(p.supplierId))}${p.subject ? `<div class="small muted">${h(p.subject)}</div>` : ''}` });
+    if (!opts.hideSupplier) cols.push({ key: 'supplier', label: 'Fournisseur', asc: true, val: p => supplierName(p.supplierId).toLowerCase(), get: p => `${h(supplierName(p.supplierId))}${contenuAchat(p) ? `<div class="small muted">${h(contenuAchat(p))}</div>` : ''}` });
     else cols.push({ key: 'subject', label: 'Objet', asc: true, val: p => (p.subject || '').toLowerCase(), get: p => h(p.subject || '') || '<span class="muted">—</span>' });
     cols.push(
       { key: 'category', label: 'Catégorie', asc: true, val: p => (p.category || '').toLowerCase(), get: p => `${h(p.category || '')}${p.kind === 'depense' ? '<div class="small muted">dépense</div>' : ''}` || '<span class="muted">—</span>' },
@@ -5951,7 +6140,7 @@
         // déduction de rien ? Elle vit dans le même sélecteur parce que c'est là qu'on la cherche,
         // et elle se réinitialise comme les autres — un filtre qu'on ne voit pas est un piège.
         .filter(p => !s.st || (s.st === A_RATTACHER ? (C.PURCHASE_LIES.includes(p.kind) && !p.achatLie) : buyStatus(p) === s.st))
-        .filter(p => !s.q || [p.number, supplierName(p.supplierId), p.subject, p.category].join(' ').toLowerCase().includes(s.q)), cols, s.sort);
+        .filter(p => !s.q || C.correspondRecherche([p.number, supplierName(p.supplierId), p.subject, p.category].join(' '), s.q)), cols, s.sort);
       const filtered = !!(s.q || s.st || s.kind || s.cat || s.year);
       const { rows: page, pg } = paginate(rows, s);
       // Les totaux portent sur toute la sélection, jamais sur la page affichée.
@@ -6163,6 +6352,10 @@
         p.category = vise.category || '';
         p.subject = (p.kind === 'avoir' ? 'Avoir sur ' : 'Acompte sur ') + (vise.number || vise.subject || 'la facture');
       }
+      // Depuis la fiche d'une affaire, l'achat naît rattaché : c'est lui qui rend la marge exacte, et
+      // « + Achat » y ouvrait un achat sans affaire (10.12.0).
+      const iAff = parts.indexOf('affaire');
+      if (iAff > 0 && projectById(parts[iAff + 1])) p.projectId = parts[iAff + 1];
       isNew = true;
     } else {
       const stored = purchaseById(parts[0]);
@@ -6355,7 +6548,7 @@
         <tr><td>TVA</td><td>${C.money(t.totalVAT, cur)}</td></tr>
         ${t.deductibleVAT !== t.totalVAT ? `<tr><td>dont TVA déductible</td><td>${C.money(t.deductibleVAT, cur)}</td></tr>` : ''}
         ${t.fees ? `<tr><td>Timbre et frais</td><td>${C.money(t.fees, cur)}</td></tr>` : ''}
-        ${t.withholding ? `<tr><td>Total TTC</td><td>${C.money(t.totalTTC, cur)}</td></tr><tr><td>Retenue opérée ${pct(t.withholdingRate)}%</td><td>- ${C.money(t.withholding, cur)}</td></tr>` : ''}
+        ${t.withholding ? `<tr><td>Total TTC</td><td>${C.money(t.totalTTC, cur)}</td></tr><tr><td>Retenue opérée ${pct(t.withholdingRate)}%</td><td>${C.money(-t.withholding, cur)}</td></tr>` : ''}
         <tr class="grand"><td>${p.kind === 'avoir' ? 'Montant de l\'avoir' : p.kind === 'acompte' ? 'Montant de l\'acompte' : 'Net à payer'}</td><td>${C.money(t.netToPay, cur)}</td></tr>
         ${p.kind === 'avoir' ? `<tr><td colspan="2" class="small muted">Ce montant vient EN MOINS${p.achatLie ? ' de la facture ' + h((purchaseById(p.achatLie) || {}).number || 'rattachée') : ' — rattache-le à une facture pour qu\'il la diminue'}.</td></tr>` : ''}
         ${p.kind === 'acompte' ? `<tr><td colspan="2" class="small muted">Une avance, pas une charge : elle se soldera${p.achatLie ? ' sur la facture ' + h((purchaseById(p.achatLie) || {}).number || 'rattachée') : ' le jour où tu la rattacheras à sa facture'}.</td></tr>` : ''}
@@ -6739,7 +6932,7 @@
       const list = mine
         .filter(d => !s.year || (d.date || '').startsWith(s.year))
         .filter(d => !s.st || d.status === s.st)
-        .filter(d => !s.q || [d.number, clientName(d.clientId), d.subject, d.reference].join(' ').toLowerCase().includes(s.q))
+        .filter(d => !s.q || C.correspondRecherche([d.number, clientName(d.clientId), d.subject, d.reference].join(' '), s.q))
         .sort(byNumberDesc);
       const filtered = !!(s.q || s.st || s.year);
       $('#list-wrap').innerHTML = docTable(list, {
@@ -6770,12 +6963,8 @@
         $('#vide-depuis-ok', layer).onclick = () => {
           const src = docById($('input[name=depuis]', layer).value);
           if (!src) return toast('Choisis la pièce dont la nouvelle reprend les lignes.');
-          if (licenceBlock('Créer une pièce')) return;
           close();
-          const out = C.convertDoc(src, type, company(), C.today());
-          data.documents.push(out); save(true);
-          toast(`${C.TITLES[type]} créé en brouillon à partir de ${src.number || 'ce brouillon'}`);
-          navigate('#/doc/' + out.id);
+          transformerPiece(src, type);
         };
       });
     };
@@ -6799,23 +6988,32 @@
 
   // ---------- Affaires et marges ----------
   const projectById = id => data.projects.find(p => p.id === id);
-  // Liste utilisée par tous les sélecteurs d'affaire : les affaires en cours d'abord.
-  const projectItems = (clientId) => data.projects
+  // Une marge sans AUCUN achat rattaché n'est pas encore une marge : tout le vendu y paraît gagné,
+  // « 100 % » en vert. Les trois écrans qui la montrent (fiche de l'affaire, liste des affaires,
+  // fiche du client) le disent de la même façon, par cette seule règle (10.12.0).
+  const margeSansAchat = x => !x.buysCount && x.revenue > 0;
+  const NOTE_SANS_ACHAT = '<div class="small muted">aucun achat rattaché</div>';
+  // Liste utilisée par tous les sélecteurs d'affaire : les affaires en cours d'abord. Elle commence
+  // par « — Aucune affaire — » : sans cette entrée, une affaire choisie par erreur ne se retirait
+  // plus jamais d'une pièce (10.12.0) — ce qui se saisit doit pouvoir se corriger (7.3.0).
+  const projectItems = (clientId) => [{ v: '', label: '— Aucune affaire —', sub: 'Ne compte dans aucun chantier', text: 'aucune affaire', vide: true }].concat(data.projects
     .filter(p => !clientId || !p.clientId || p.clientId === clientId)
     .sort((a, b) => (a.status === 'en cours' ? 0 : 1) - (b.status === 'en cours' ? 0 : 1) || (b.startDate || '').localeCompare(a.startDate || ''))
-    .map(p => ({ v: p.id, label: p.name, sub: [clientName(p.clientId), p.status].filter(Boolean).join(' · '), text: `${p.name} ${clientName(p.clientId)}` }));
+    .map(p => ({ v: p.id, label: p.name, sub: [clientName(p.clientId), p.status].filter(Boolean).join(' · '), text: `${p.name} ${clientName(p.clientId)}` })));
 
   function projectForm(proj, done, preset) {
     const p = proj || Object.assign({ id: C.uid(), name: '', clientId: '', status: 'en cours', startDate: C.today(), endDate: '', notes: '' }, preset || {});
     modal(`<h2>${proj ? 'Modifier l\'affaire' : 'Nouvelle affaire'}</h2>
       <p class="small muted">Une affaire relie des ventes et des achats. C'est le seul endroit où la marge est <b>exacte</b> : on ne devine plus le coût, on l'a payé.</p>
       <form id="pf3" class="grid-2">
-        <label class="field span-2 obligatoire"><span>Nom de l'affaire</span><input type="text" name="name" value="${h(p.name)}" placeholder="Salle serveur — École Les Lauriers"></label>
-        <div class="field">Client
+        ${/* L'invite ne suppose aucun métier : « Salle serveur — École Les Lauriers » s'affichait à une
+            menuiserie (10.12.0) — le jumeau de l'Objet du devis. Une consigne vaut mieux qu'un exemple faux. */''}
+        <label class="field span-2 obligatoire">${lbl('Nom de l\'affaire', 'mg.projects')}<input type="text" name="name" value="${h(p.name)}" placeholder="Le chantier et son client, en quelques mots"></label>
+        <div class="field">${lbl('Client', 'mg.projectClient')}
           ${combo({ name: 'clientId', value: p.clientId, items: data.clients.slice().sort((a, b) => a.name.localeCompare(b.name, 'fr')).map(c => ({ v: c.id, label: c.name, text: c.name })), placeholder: '— Aucun client précis —', search: 'Rechercher un client…' })}
         </div>
-        <label class="field">Statut<select name="status">${C.PROJECT_STATUSES.map(x => `<option value="${x}" ${p.status === x ? 'selected' : ''}>${h(optionStatut(x))}</option>`).join('')}</select></label>
-        ${dateFieldHtml('Début', 'startDate', p.startDate, {})}
+        <label class="field">${lbl('Statut', 'mg.projectStatus')}<select name="status">${C.PROJECT_STATUSES.map(x => `<option value="${x}" ${p.status === x ? 'selected' : ''}>${h(optionStatut(x))}</option>`).join('')}</select></label>
+        ${dateFieldHtml(lbl('Début', 'mg.projectDates'), 'startDate', p.startDate, {})}
         ${dateFieldHtml('Fin (optionnel)', 'endDate', p.endDate || '', { clearable: true })}
         <label class="field span-2">Notes<textarea name="notes">${h(p.notes || '')}</textarea></label>
       </form>
@@ -6871,6 +7069,10 @@
 
     function drawProjects() {
       const list = C.projectList(data, company());
+      // Une liste vide dit à quoi elle sert et donne le geste qui la remplit (7.0.0, 10.12.0) : la
+      // boîte expliquait l'affaire en prose, sans un bouton, sous un « + Nouvelle affaire » vert.
+      // Seul `#mg-body` se redessine : l'en-tête suit l'état vide dans `draw()`, jamais au dessin de
+      // la page (U-11, comme les contrats et les licences).
       $('#mg-body').innerHTML = list.length ? `
         <div class="panel"><h2>Affaires ${info('mg.projects')}</h2>
           <div class="scroll-x"><table class="list compact"><thead><tr><th>Affaire</th><th>Client</th><th>Statut</th><th class="r">Vendu HT</th><th class="r">Acheté HT</th><th class="r">Marge</th><th class="r">Taux</th><th class="r">En caisse</th></tr></thead><tbody>
@@ -6880,8 +7082,8 @@
               <td><span class="badge ${p.status === 'en cours' ? 'b-due' : p.status === 'terminée' ? 'b-paid' : ''}">${h(p.status)}</span></td>
               <td class="r nw">${C.money(p.revenue, cur)}</td>
               <td class="r nw">${C.money(p.cost, cur)}</td>
-              <td class="r nw ${p.margin < 0 ? 'warn-text' : ''}"><strong>${C.money(p.margin, cur)}</strong></td>
-              <td class="r nw">${rateCell(p.rate)}</td>
+              <td class="r nw ${p.margin < 0 ? 'warn-text' : ''}"><strong>${C.money(p.margin, cur)}</strong>${margeSansAchat(p) ? NOTE_SANS_ACHAT : ''}</td>
+              <td class="r nw">${margeSansAchat(p) ? '<span class="muted" title="Aucun achat rattaché : le coût n\'est pas encore compté">—</span>' : rateCell(p.rate)}</td>
               <td class="r nw ${p.cash < 0 ? 'warn-text' : ''}">${C.money(p.cash, cur)}</td></tr>`).join('')}
             <tr class="total-row"><td colspan="3"><strong>Total</strong></td>
               <td class="r"><strong>${C.money(C.round3(list.reduce((a, p) => a + p.revenue, 0)), cur)}</strong></td>
@@ -6890,8 +7092,13 @@
               <td class="r"><strong>${C.money(C.round3(list.reduce((a, p) => a + p.cash, 0)), cur)}</strong></td></tr>
           </tbody></table></div>
           <p class="small muted mt">« En caisse » : ce que l'affaire a réellement rapporté — encaissé moins payé. Une affaire peut être rentable et n'avoir encore rien rapporté.</p>
-        </div>` : `<div class="empty">Aucune affaire. Crée-en une pour rattacher les ventes et les achats d'un même chantier : c'est le seul endroit où la marge est exacte, parce qu'elle compare des factures réelles à des achats réels.</div>`;
+        </div>` : etatVide('Ce que te rapporte chaque chantier',
+        ['Une affaire regroupe les devis, les factures et les achats d\'un même chantier : c\'est le seul endroit où la marge est <b>exacte</b>, parce qu\'elle compare des factures réelles à des achats réels.',
+         'Crée-la au début du chantier, puis choisis-la dans le champ « Affaire » de chaque devis, facture ou achat qui la concerne.'],
+        [['proj-first', '+ Créer ma première affaire', true]]);
       $$('#mg-body tr[data-pid]').forEach(tr => tr.onclick = () => navigate('#/affaire/' + tr.dataset.pid));
+      // La première affaire mène à sa fiche : c'est là qu'on lui rattache un devis ou un achat.
+      if ($('#proj-first')) $('#proj-first').onclick = () => projectForm(null, p => navigate('#/affaire/' + p.id));
     }
 
     function drawAnalysis() {
@@ -6925,13 +7132,21 @@
               <td class="r nw">${rateCell(r.rate, r.complete)}</td>
               <td><span class="bar"><i class="${r.margin < 0 ? 'f-bad' : 'f-ok'}" style="width:${Math.max(3, Math.round(Math.abs(r.margin) / max * 100))}%"></i></span></td></tr>`).join('')}
           </tbody></table></div>${pagerBar(vue.pg, { noun: s.dim === 'client' ? 'client' : 'prestation' })}
-          <p class="small muted mt">Le repère « ≈ » signale les lignes dont toutes les prestations n'ont pas de coût de revient : leur marge est optimiste. Renseigne le coût dans le catalogue pour la rendre juste.</p>`
+          ${incomplete ? '<p class="small muted mt">Le repère « ≈ » signale les lignes dont toutes les prestations n\'ont pas de coût de revient : leur marge est optimiste. Renseigne le coût dans le catalogue pour la rendre juste.</p>' : ''}`
             : '<div class="empty">Aucune vente sur cette année.</div>'}
         </div>`;
       $('#mg-dim').onchange = e => { s.dim = e.target.value; s.page = 1; draw(); };
       bindPager($('#mg-body'), s, () => draw(), '#mg-body');
     }
 
+    // L'état vide dit SA raison et le jour où ça changera (E-06) : « aucun contrat n'a produit de
+    // facture » s'affichait sur un dossier qui a un contrat et son premier BROUILLON — on croyait
+    // que le contrat n'avait pas tourné (10.12.0, une menuiserie).
+    const videContrats = () => {
+      if (!(data.recurring || []).length) return 'Aucun contrat récurrent pour l\'instant : sa rentabilité se lira ici dès sa première facture émise.';
+      const brouillons = data.documents.filter(d => d.recurringId && d.status === 'brouillon').length;
+      return `Tes contrats n'ont encore produit aucune facture émise${brouillons ? ` — seulement ${pl(brouillons, 'brouillon')}` : ''} : leur rentabilité se lira ici dès la première.`;
+    };
     function drawContracts() {
       const rows = data.recurring.map(r => ({ r, p: C.recurringProfitability(data, company(), r.id) }))
         .filter(x => x.p.count > 0).sort((a, b) => b.p.margin - a.p.margin);
@@ -6946,9 +7161,10 @@
               <td class="r nw">${C.money(p.perMonth, cur)}</td><td class="r nw">${rateCell(p.rate)}</td></tr>`).join('')}
           </tbody></table></div>
           <p class="small muted mt">Un contrat de maintenance qui rapporte peu par mois mais qui tourne depuis deux ans vaut souvent mieux qu'une grosse affaire ponctuelle : il est prévisible, et il ne demande pas de vendre à nouveau.</p>`
-            : '<div class="empty">Aucun contrat récurrent n\'a encore produit de facture.</div>'}
+            : `<div class="empty">${videContrats()}<div class="inline mt" style="justify-content:center"><button class="btn" id="mg-vers-contrats">Voir la facturation récurrente</button></div></div>`}
         </div>`;
       $$('#mg-body tr[data-rid]').forEach(tr => tr.onclick = () => navigate('#/contrat/' + tr.dataset.rid));
+      if ($('#mg-vers-contrats')) $('#mg-vers-contrats').onclick = () => navigate('#/contrats');
     }
 
     function drawBreakEven() {
@@ -6977,20 +7193,27 @@
         </div>
         <div class="panel"><h2>Fixe ou variable ? ${info('mg.classify')}</h2>
           <p class="small muted mb">Une charge <b>fixe</b> tombe que tu vendes ou non : loyer, assurance, abonnement, salaires. Une charge <b>variable</b> suit les ventes : marchandises, sous-traitance. Ce classement dépend de ton activité — <em>À VÉRIFIER avec ton comptable.</em></p>
-          <div class="two-col">
-            ${[['Fixes', true], ['Variables', false]].map(([title, fixed]) => `<div>
-              <h3 class="sub-h">${title}</h3>
-              <div style="display:grid;gap:4px">
-                ${cats.filter(c => C.isFixedCategory(data, c) === fixed).map(c => `<label class="check"><input type="checkbox" data-fix="${h(c)}" ${fixed ? 'checked' : ''}> ${h(c)}</label>`).join('') || '<span class="small muted">Aucune</span>'}
-              </div></div>`).join('')}
+          ${/* 10.12.0 — deux colonnes « Fixes » et « Variables » : cocher une catégorie l'envoyait dans
+               l'autre colonne, la suivante montait sous le curseur, et un second clic au même endroit
+               reclassait une AUTRE charge sans qu'on l'ait visée. Chaque catégorie garde sa ligne et
+               porte son choix : rien ne bouge sous le curseur (règle H-E1). */''}
+          <div class="fv-liste">
+            ${cats.map((c, i) => { const fixe = C.isFixedCategory(data, c); return `<div class="fv-ligne"><span>${h(c)}</span>
+              <span class="choix2" role="radiogroup" aria-label="${h(c)}">
+                <label><input type="radio" name="fv-${i}" data-fix="${h(c)}" value="fixe" ${fixe ? 'checked' : ''}><span>Fixe</span></label>
+                <label><input type="radio" name="fv-${i}" data-fix="${h(c)}" value="variable" ${fixe ? '' : 'checked'}><span>Variable</span></label>
+              </span></div>`; }).join('') || '<span class="small muted">Aucune catégorie de dépense.</span>'}
           </div>
         </div>`;
-      $$('[data-fix]').forEach(cb => cb.onchange = () => {
+      $$('[data-fix]').forEach(r => r.onchange = () => {
         const cur2 = C.expenseCategories(data).filter(c => C.isFixedCategory(data, c));
-        const next = cb.checked ? cur2.concat([cb.dataset.fix]) : cur2.filter(c => c !== cb.dataset.fix);
+        const next = r.value === 'fixe' ? cur2.concat([r.dataset.fix]) : cur2.filter(c => c !== r.dataset.fix);
         // Une liste vide voudrait dire « reprendre les valeurs par défaut » : on y met un marqueur inoffensif.
         data.fixedCategories = next.length ? Array.from(new Set(next)) : ['—'];
         save(true); draw();
+        // Le redessin détruit le bouton qu'on vient de choisir : au clavier, on le retrouve là où il était.
+        const meme = $$('#mg-body [data-fix]').find(x => x.dataset.fix === r.dataset.fix && x.value === r.value);
+        if (meme) meme.focus();
       });
     }
 
@@ -6999,6 +7222,10 @@
       // on croit que l'application est cassée. « Affaires » et « Contrats » portent sur toute la vie
       // de l'affaire ou du contrat, pas sur un exercice.
       $('#mg-year').hidden = MG_SANS_ANNEE.includes(s.tab);
+      // U-11 : « + Nouvelle affaire » n'est l'étape suivante que sur l'onglet des affaires, et seulement
+      // quand il y en a déjà — vide, le vert est celui de l'état vide. Sur les onglets d'analyse, il
+      // n'y a pas de geste suivant à pousser : aucun vert.
+      $('#new-proj').classList.toggle('btn-primary', s.tab === 'affaires' && C.projectList(data, company()).length > 0);
       if (s.tab === 'analyse') return drawAnalysis();
       if (s.tab === 'contrats') return drawContracts();
       if (s.tab === 'seuil') return drawBreakEven();
@@ -7016,20 +7243,116 @@
 
   const affaireDocState = { sort: null, page: 1 };
 
+  // Les pièces qu'une affaire PEUT recevoir. Les ventes : les devis, factures et avoirs de son client
+  // (de tous les clients si elle n'en a pas), jamais une pièce annulée. Les achats : tous — un achat
+  // n'a pas de client.
+  const piecesPourAffaire = (p, quoi) => (quoi === 'ventes'
+    ? data.documents.filter(d => ['facture', 'avoir', 'devis'].includes(d.type) && d.status !== 'annulée' && (!p.clientId || d.clientId === p.clientId))
+    : data.purchases.slice()).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+
+  // Rattacher à une affaire des pièces DÉJÀ saisies (10.12.0). Une affaire se crée souvent après coup
+  // — on découvre la page Marges quand le chantier a déjà ses factures — et une facture émise n'offrait
+  // aucun moyen d'y entrer : son champ Affaire était grisé, et la marge du chantier restait fausse pour
+  // toujours. La fenêtre coche ce qui appartient au chantier ; décocher DÉTACHE, sans rien supprimer.
+  // Rien de ce qu'elle change ne s'imprime ni n'entre en comptabilité : l'affaire est une étiquette de
+  // gestion, c'est ce qui permet de la poser sur une pièce émise.
+  function rattacherPieces(p, quoi, done) {
+    const ventes = quoi === 'ventes';
+    const pieces = piecesPourAffaire(p, quoi);
+    const choisies = new Set(pieces.filter(x => x.projectId === p.id).map(x => x.id));
+    const avant = new Set(choisies);
+    const cols = ventes
+      // Le client se répétait sur chaque ligne quand l'affaire n'en a qu'un : on montre l'objet.
+      ? docColumns({ quotes: false, hideClient: !!p.clientId }).cols.filter(c => ['number', 'type', 'client', 'subject', 'date', 'amount'].includes(c.key))
+      // 10.12.0 — ce qu'on décide en cochant un achat, c'est s'il a servi à CE chantier : la fenêtre
+      // montrait la date, le numéro et le fournisseur, et « BS-2026-0412, Bois du Sahel » ne dit pas
+      // si ce sont les planches de la réception. L'objet, sinon les lignes.
+      : (() => { const pc = purchaseColumns({ hideSupplier: true }).cols;
+        return pc.filter(c => ['date', 'number'].includes(c.key)).concat(
+          { key: 'supplier', label: 'Fournisseur', get: x => h(supplierName(x.supplierId)) },
+          { key: 'contenu', label: 'Ce qui a été acheté', get: x => h(contenuAchat(x)) || '<span class="muted">—</span>' },
+          pc.find(c => c.key === 'net')); })();
+    // Un avoir SUIT la facture qu'il corrige : rattacher la facture sans lui compterait le chantier
+    // comme s'il n'avait jamais été remboursé.
+    const suit = x => (ventes && x.type === 'avoir' && x.creditOf ? x.creditOf : '');
+    const ailleurs = x => (x.projectId && x.projectId !== p.id ? projectById(x.projectId) : null);
+    const texte = x => (ventes ? `${x.number || ''} ${C.TITLES[x.type] || ''} ${clientName(x.clientId)} ${x.subject || ''}` : `${x.number || ''} ${supplierName(x.supplierId)} ${contenuAchat(x)}`);
+    modal(`<h2>${ventes ? 'Rattacher des ventes' : 'Rattacher des achats'} à « ${h(p.name)} »</h2>
+      <p class="small muted">Coche ce qui appartient à ce chantier${ventes && p.clientId ? ` — les pièces de ${h(clientName(p.clientId))}` : ''}. Décocher une pièce la détache de l'affaire sans la supprimer ni la modifier : l'affaire ne s'imprime pas et ne change aucun montant, c'est pourquoi une pièce émise peut la recevoir.</p>
+      ${pieces.length ? `<div class="filters"><input type="text" id="rp-q" placeholder="Rechercher : numéro, ${ventes ? (p.clientId ? '' : 'client, ') : 'fournisseur, '}objet…" autocomplete="off"><span class="f-note" id="rp-compte"></span></div>
+      <div class="scroll-x"><table class="list compact"><thead><tr><th><input type="checkbox" id="rp-tout" aria-label="Cocher toutes les pièces affichées"></th>${cols.map(c => `<th class="${c.r ? 'r' : ''}">${h(c.label)}</th>`).join('')}</tr></thead><tbody>
+        ${pieces.map(x => { const ai = ailleurs(x); return `<tr data-rp="${h(x.id)}"${suit(x) ? ` data-suit="${h(suit(x))}"` : ''}>
+          <td><input type="checkbox" data-rp-case="${h(x.id)}" aria-label="Rattacher ${h(ventes ? docLabel(x) : (x.number || 'cet achat'))}" ${choisies.has(x.id) ? 'checked' : ''}></td>
+          ${cols.map((c, i) => `<td class="${c.r ? 'r nw' : c.cls || ''}">${c.get(x)}${i === 0 && ai ? `<div class="small warn-text">dans « ${h(ai.name)} »</div>` : ''}</td>`).join('')}</tr>`; }).join('')}
+      </tbody></table></div>` : `<div class="empty mini">${ventes ? `Aucun devis ni aucune facture${p.clientId ? ` pour ${h(clientName(p.clientId))}` : ''} pour l'instant : crée le devis depuis la fiche de l'affaire, il y naîtra rattaché.` : 'Aucun achat saisi pour l\'instant : crée-le depuis la fiche de l\'affaire, il y naîtra rattaché.'}</div>`}
+      <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="rp-ok" style="min-width: 11rem; justify-content: center">Enregistrer</button></div>`,
+      (root, close) => {
+        const lignes = () => $$('tr[data-rp]', root);
+        const visibles = () => lignes().filter(tr => !tr.hidden);
+        const maj = () => {
+          const ajouts = [...choisies].filter(id => !avant.has(id)).length, retraits = [...avant].filter(id => !choisies.has(id)).length;
+          const ok = $('#rp-ok', root);
+          ok.disabled = !ajouts && !retraits;
+          ok.textContent = ajouts && retraits ? `Enregistrer (${ajouts} + ${retraits} −)` : ajouts ? `Rattacher ${pl(ajouts, 'pièce')}` : retraits ? `Détacher ${pl(retraits, 'pièce')}` : 'Enregistrer';
+          const tout = $('#rp-tout', root);
+          if (tout) { const v = visibles(); tout.checked = v.length > 0 && v.every(tr => choisies.has(tr.dataset.rp)); }
+        };
+        const poser = (id, oui) => {
+          if (oui) choisies.add(id); else choisies.delete(id);
+          const c = $(`[data-rp-case="${id}"]`, root); if (c) c.checked = oui;
+          // L'avoir suit sa facture, dans les deux sens.
+          lignes().filter(tr => tr.dataset.suit === id).forEach(tr => poser(tr.dataset.rp, oui));
+        };
+        $$('[data-rp-case]', root).forEach(cb => cb.onchange = () => { poser(cb.dataset.rpCase, cb.checked); maj(); });
+        if ($('#rp-tout', root)) $('#rp-tout', root).onchange = e => { visibles().forEach(tr => poser(tr.dataset.rp, e.target.checked)); maj(); };
+        const q = $('#rp-q', root);
+        if (q) q.oninput = () => {
+          lignes().forEach(tr => { const x = pieces.find(y => y.id === tr.dataset.rp); tr.hidden = !C.correspondRecherche(texte(x), q.value); });
+          const n = visibles().length;
+          $('#rp-compte', root).textContent = q.value.trim() ? `${n} sur ${pieces.length}` : '';
+          maj();
+        };
+        maj();
+        $('#rp-ok', root).onclick = () => {
+          const avantTout = {};
+          for (const x of pieces) {
+            const oui = choisies.has(x.id);
+            if (oui === (x.projectId === p.id)) continue;
+            avantTout[x.id] = x.projectId || '';
+            if (oui) x.projectId = p.id; else delete x.projectId;
+          }
+          const n = Object.keys(avantTout).length;
+          save(true); close();
+          if (done) done();
+          // Ce qui se répare laisse un « Annuler » (7.12.0) : on remet chaque pièce où elle était.
+          toastUndo(`${pl(n, 'pièce')} ${n > 1 ? 'mises' : 'mise'} à jour dans « ${p.name} ».`, () => {
+            for (const x of pieces) if (x.id in avantTout) { if (avantTout[x.id]) x.projectId = avantTout[x.id]; else delete x.projectId; }
+            save(true); if (done) done();
+          });
+        };
+      });
+  }
+
   routes.affaire = (parts) => {
     const p = projectById(parts[0]);
     if (!p) return navigate('#/marges');
     const cur = company().currency;
     const m = C.projectMargin(data, company(), p.id);
+    // L'étape suivante d'une affaire, CALCULÉE (U-11) : sans vente, rattacher celles qui existent déjà
+    // pour ce client — sinon créer le devis ; puis les achats, qui rendent la marge exacte.
+    const sansVente = !m.salesCount && !m.quotesCount;
+    const ventesLibres = piecesPourAffaire(p, 'ventes').filter(d => d.projectId !== p.id).length;
+    const suivante = sansVente ? (ventesLibres ? 'rattacher-ventes' : 'devis') : 'achat';
+    const vert = k => (suivante === k ? ' btn-primary' : '');
     $('#view').innerHTML = `
       <div class="page-head"><div><h1>${h(p.name)}</h1>
         <div class="small muted">${[clientName(p.clientId), p.status, p.startDate ? 'depuis le ' + C.fmtDate(p.startDate) : ''].filter(Boolean).join(' · ')}</div></div>
         <div class="actions">${backButton('#/marges')}<button class="btn" id="edit-p">Modifier</button>
-          <button class="btn" id="p-devis">+ Devis</button><button class="btn btn-primary" id="p-achat">+ Achat</button></div></div>
+          <button class="btn${vert('devis')}" id="p-devis">+ Devis</button><button class="btn${vert('achat')}" id="p-achat">+ Achat</button></div></div>
       <div class="stats">
         <div class="stat"><div class="lbl">Vendu HT ${info('mg.projectRevenue')}</div><div class="val">${C.money(m.revenue, cur)}</div><div class="sub">${pl(m.salesCount, 'facture')}${m.pending ? ` · ${C.money(m.pending, cur)} en devis` : ''}</div></div>
         <div class="stat"><div class="lbl">Acheté HT</div><div class="val">${C.money(m.cost, cur)}</div><div class="sub">${pl(m.buysCount, 'achat')} rattaché${sPl(m.buysCount)}</div></div>
-        <div class="stat"><div class="lbl">Marge ${info('mg.projectMargin')}</div><div class="val ${m.margin < 0 ? 'due' : 'ok'}">${C.money(m.margin, cur)}</div><div class="sub">${m.rate == null ? '' : pct(m.rate) + ' % du prix de vente'}</div></div>
+        <div class="stat"><div class="lbl">Marge ${info('mg.projectMargin')}</div><div class="val ${m.margin < 0 ? 'due' : m.margin > 0 && !margeSansAchat(m) ? 'ok' : ''}">${C.money(m.margin, cur)}</div><div class="sub">${m.rate == null ? '' : margeSansAchat(m) ? 'aucun achat rattaché : le coût n\'est pas encore compté' : pct(m.rate) + ' % du prix de vente'}</div></div>
         <div class="stat"><div class="lbl">En caisse ${info('mg.projectCash')}</div><div class="val ${m.cash < 0 ? 'due' : ''}">${C.money(m.cash, cur)}</div><div class="sub">${C.money(m.collected, cur)} encaissés − ${C.money(m.paid, cur)} payés</div></div>
       </div>
       ${m.margin < 0 ? `<div class="panel" style="border-left:3px solid var(--danger)"><h2 style="color:var(--danger)">Cette affaire perd de l'argent</h2>
@@ -7039,10 +7362,19 @@
       ${p.notes ? `<div class="panel"><h2>Notes</h2><p class="small">${C.nl2br(p.notes)}</p></div>` : ''}`;
     bindBack('#/marges');
     $('#edit-p').onclick = () => projectForm(p, () => render());
-    $('#p-devis').onclick = () => navigate('#/doc/new/devis' + (p.clientId ? '/client/' + p.clientId : ''));
-    $('#p-achat').onclick = () => navigate('#/achat/new');
-    const sales = m.sales.concat(m.quotes).sort(byNumberDesc);
-    const scols = docColumns({ quotes: false }).cols;
+    // Les deux créations naissent RATTACHÉES à l'affaire (10.12.0) : elles ouvraient un devis et un
+    // achat vierges, qu'on croyait comptés dans la marge du chantier.
+    $('#p-devis').onclick = () => navigate('#/doc/new/devis' + (p.clientId ? '/client/' + p.clientId : '') + '/affaire/' + p.id);
+    $('#p-achat').onclick = () => navigate('#/achat/new/-/facture/-/affaire/' + p.id);
+    // TOUTES les pièces rattachées, brouillons compris : le devis qu'on vient de créer depuis cette
+    // fiche disparaissait tant qu'il n'était pas envoyé, et la fiche disait « aucune vente ». Les
+    // cartes, elles, ne comptent que ce qui est émis — c'est ce que disent leurs bulles.
+    const sales = data.documents.filter(d => d.projectId === p.id).sort(byNumberDesc);
+    const buys = data.purchases.filter(x => x.projectId === p.id).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    const achatsLibres = piecesPourAffaire(p, 'achats').filter(x => x.projectId !== p.id).length;
+    // Une affaire à UN client ne répète pas son nom sur chaque ligne : la colonne montre l'objet.
+    const scols = docColumns({ quotes: false, hideClient: !!p.clientId }).cols;
+    const geste = (id, label, principal) => `<button class="btn${principal ? ' btn-primary' : ''}" id="${id}">${h(label)}</button>`;
     // `bindSort` passe la colonne cliquée à son rappel, et `() => render()` la JETAIT : les huit
     // en-têtes de « Ventes rattachées » affichaient leur « ⇅ », acceptaient le clic, redessinaient
     // la page — et ne triaient rien. Un tri qui ne trie pas ne se remarque pas : on croit que la
@@ -7050,17 +7382,29 @@
     const drawVentes = sortKey => {
       if (typeof sortKey === 'string' && sortKey) { affaireDocState.sort = toggleSort(affaireDocState.sort, sortKey, scols); affaireDocState.page = 1; }
       // Huit colonnes dans un panneau : sans `scroll-x`, la table déborde et recouvre le panneau suivant.
-      $('#p-sales').innerHTML = sales.length ? `<div class="scroll-x">${docTable(sales, { quotes: false, sort: affaireDocState.sort, onSort: true, page: affaireDocState })}</div>`
-        : '<div class="empty">Aucune vente rattachée. Ouvre un devis ou une facture et choisis cette affaire.</div>';
+      // Un état vide dit à quoi il sert et porte le geste qui le remplit (7.0.0) — ici, souvent,
+      // rattacher les factures déjà émises du chantier.
+      // Sous une liste pleine, le geste reste là même quand il n'y a plus rien à rattacher : c'est la
+      // seule porte pour DÉTACHER une pièce depuis la fiche, et elle disparaissait avec la dernière
+      // pièce libre (10.12.0).
+      $('#p-sales').innerHTML = sales.length
+        ? `<div class="scroll-x">${docTable(sales, { quotes: false, hideClient: !!p.clientId, sort: affaireDocState.sort, onSort: true, page: affaireDocState })}</div><div class="inline mt">${geste('p-att-v', ventesLibres ? 'Rattacher d\'autres ventes…' : 'Détacher une vente…')}</div>`
+        : `<div class="empty mini">Aucune vente rattachée. ${ventesLibres
+          ? `${p.clientId ? `${h(clientName(p.clientId))} a` : 'Tes clients ont'} déjà ${pl(ventesLibres, 'pièce')} de vente : coche ce qui appartient à ce chantier.<div class="inline mt">${geste('p-att-v', 'Rattacher des ventes existantes…', suivante === 'rattacher-ventes')}</div>`
+          : 'Crée le devis de ce chantier avec « + Devis » : il y naîtra rattaché.'}</div>`;
       bindDocTable(drawVentes, affaireDocState, '#p-sales');
+      if ($('#p-att-v')) $('#p-att-v').onclick = () => rattacherPieces(p, 'ventes', () => render());
     };
     drawVentes();
     const { cols } = purchaseColumns({ hideSupplier: false });
-    $('#p-buys').innerHTML = m.buys.length ? `<div class="scroll-x"><table class="list compact"><thead>${sortHead(cols.map(c => ({ ...c, val: null })), null)}</thead><tbody>
-        ${m.buys.map(b => `<tr class="clickable" data-bid="${h(b.id)}">${cols.map(c => `<td class="${c.r ? 'r nw' : ''}">${c.get(b)}</td>`).join('')}</tr>`).join('')}
-      </tbody></table></div>`
-      : '<div class="empty">Aucun achat rattaché. Ouvre un achat et choisis cette affaire : c\'est ce qui rend la marge exacte.</div>';
+    $('#p-buys').innerHTML = buys.length ? `<div class="scroll-x"><table class="list compact"><thead>${sortHead(cols.map(c => ({ ...c, val: null })), null)}</thead><tbody>
+        ${buys.map(b => `<tr class="clickable" data-bid="${h(b.id)}">${cols.map(c => `<td class="${c.r ? 'r nw' : ''}">${c.get(b)}</td>`).join('')}</tr>`).join('')}
+      </tbody></table></div><div class="inline mt">${geste('p-att-a', achatsLibres ? 'Rattacher d\'autres achats…' : 'Détacher un achat…')}</div>`
+      : `<div class="empty mini">Aucun achat rattaché : ce sont eux qui rendent la marge exacte. ${achatsLibres
+        ? `<div class="inline mt">${geste('p-att-a', 'Rattacher des achats déjà saisis…')}</div>`
+        : 'Saisis-les avec « + Achat » : ils y naîtront rattachés.'}</div>`;
     $$('#p-buys tr[data-bid]').forEach(tr => tr.onclick = () => navigate('#/achat/' + tr.dataset.bid));
+    if ($('#p-att-a')) $('#p-att-a').onclick = () => rattacherPieces(p, 'achats', () => render());
   };
 
   // ---------- Paie (5.0.0) ----------
@@ -7138,7 +7482,7 @@
     modal(`<h2>Bulletin de ${h(emp.name)} — ${h(MONTHS_LONG[Number(p.month) - 1])} ${h(String(p.year))}</h2>
       <form id="bf" class="grid-2">
         ${field(lbl('Salaire brut du mois', 'pay.gross'), 'gross', p.gross != null ? p.gross : emp.grossSalary, 'number', 'step="0.001" min="0" class="num"')}
-        ${p.prorata ? `<p class="small muted span-2" id="bf-prorata">Brut proratisé — ${h(p.prorata.motif)} : ${pct(p.prorata.jours)} jours sur ${pct(p.prorata.sur)}, pour un brut de ${C.money(p.prorata.brutFiche, cur)} sur la fiche. <em>À VÉRIFIER avec ton comptable.</em></p>` : ''}
+        ${p.prorata ? `<p class="small muted span-2" id="bf-prorata">Brut proratisé — ${h(p.prorata.motif)} : ${pl(p.prorata.jours, 'jour')} sur ${pct(p.prorata.sur)}, pour un brut de ${C.money(p.prorata.brutFiche, cur)} sur la fiche. <em>À VÉRIFIER avec ton comptable.</em></p>` : ''}
         ${field(lbl('Jours ouvrables', 'pay.workedDays'), 'workedDays', p.workedDays || 26, 'number', 'step="0.5" min="1" max="31" class="num"')}
         ${field(lbl('Jours d\'absence non payés', 'pay.absent'), 'absentDays', p.absentDays || 0, 'number', 'step="0.5" min="0" class="num"')}
         ${dateFieldHtml(lbl('Payé le', 'pay.paid'), 'paidDate', p.paidDate || '', { clearable: true })}
@@ -7495,8 +7839,8 @@
         && (C.missingPayslips(data, mp.year, mp.month).length || C.payslipsOf(data, mp.year, mp.month).length) ? mp : null;
       $('#p-body').innerHTML = `
         <div class="stats">
-          <div class="stat"><div class="lbl">Coût de la paie ${s.year} ${info('pay.employerCost')}</div><div class="val">${C.money(sum.cost, cur)}</div><div class="sub">${pl(sum.count, 'bulletin')}, ${pl(sum.employees, 'salarié')}</div></div>
-          <div class="stat"><div class="lbl">Net versé</div><div class="val">${C.money(sum.netPaid, cur)}</div><div class="sub">${sum.net - sum.netPaid > 0.0005 ? `${C.money(C.round3(sum.net - sum.netPaid), cur)} restent à verser` : 'ce que touchent les salariés'}</div></div>
+          <div class="stat"><div class="lbl">Coût de la paie ${s.year} ${info('pay.employerCost')}</div><div class="val">${C.money(sum.cost, cur)}</div><div class="sub">${sum.count ? `${pl(sum.count, 'bulletin')} pour ${pl(sum.employees, 'salarié')}` : `aucun bulletin établi en ${h(s.year)}`}</div></div>
+          <div class="stat"><div class="lbl">Net versé ${info('pay.netVerse')}</div><div class="val">${C.money(sum.netPaid, cur)}</div><div class="sub">${sum.net - sum.netPaid > 0.0005 ? `${C.money(C.round3(sum.net - sum.netPaid), cur)} restent à verser` : 'ce que touchent les salariés'}</div></div>
           <div class="stat"><div class="lbl">CNSS à reverser ${info('pay.cnssTotal')}</div><div class="val">${C.money(C.round3(sum.cnssEmployee + sum.cnssEmployer + sum.accident), cur)}</div><div class="sub">parts salarié et employeur</div></div>
           <div class="stat"><div class="lbl">Impôt retenu ${info('pay.irpp')}</div><div class="val">${C.money(C.round3(sum.irpp + sum.css), cur)}</div><div class="sub">à reverser au Trésor</div></div>
         </div>
@@ -7597,7 +7941,7 @@
             }).join('')}
             <tr class="total-row"><td colspan="4"><strong>${pl(active, 'salarié')} en poste</strong></td>
               <td class="r"><strong>${C.money(C.round3(C.activeEmployees(data).reduce((a, e) => a + (Number(e.grossSalary) || 0), 0)), cur)}</strong></td>
-              <td></td>
+              <td class="r"><strong>${C.money(C.round3(C.activeEmployees(data).reduce((a, e) => a + C.computePayslip(e, {}, st).net, 0)), cur)}</strong></td>
               <td class="r"><strong>${C.money(C.round3(C.activeEmployees(data).reduce((a, e) => a + C.computePayslip(e, {}, st).employerCost, 0)), cur)}</strong></td>
               <td></td></tr>
           </tbody></table></div>
@@ -7614,7 +7958,7 @@
       const emps = C.activeEmployees(data);
       $('#p-body').innerHTML = `
         <div class="panel"><h2>Compteurs de congés ${info('hr.balance')}</h2>
-          <p class="small muted mb">Le droit annuel (<b>${pct(C.payrollSettings(data).leaveDaysPerYear)} jours ouvrables</b>) se règle dans l'onglet Barèmes. Il s'acquiert au prorata des mois travaillés. <em>À VÉRIFIER avec ton comptable : la convention collective de ton secteur peut prévoir davantage.</em></p>
+          <p class="small muted mb">Le droit annuel (<b>${pct(C.payrollSettings(data).leaveDaysPerYear)} ${Number(C.payrollSettings(data).leaveDaysPerYear) > 1 ? 'jours ouvrables' : 'jour ouvrable'}</b>) se règle dans l'onglet Barèmes. Il s'acquiert au prorata des mois travaillés. <em>À VÉRIFIER avec ton comptable : la convention collective de ton secteur peut prévoir davantage.</em></p>
           ${emps.length ? `<div class="scroll-x"><table class="list compact"><thead><tr>
             <th>Salarié</th><th class="r">Acquis ${y}</th><th class="r">Reporté</th><th class="r">Pris</th><th class="r">Solde</th><th class="r">Maladie</th><th class="r">Sans solde</th></tr></thead><tbody>
             ${emps.map(e => { const b = C.leaveBalance(data, e.id, y);
@@ -8219,7 +8563,7 @@
     function drawState() {
       const t = C.stockTotals(data);
       const q = s.q.trim().toLowerCase();
-      const rows = t.rows.filter(r => (!q || (r.label || '').toLowerCase().includes(q) || (r.location || '').toLowerCase().includes(q))
+      const rows = t.rows.filter(r => (!q || C.correspondRecherche(`${r.label || ''} ${r.location || ''}`, q))
         && (!s.only || (s.only === 'alerte' ? (r.low || r.negative) : r.qty > 0)));
       $('#st-body').innerHTML = `
         <div class="stats">
@@ -8379,7 +8723,7 @@
       const serialized = C.serializedItems(data);
       const q = s.ser.q.trim().toLowerCase();
       const all = C.serialList(data, { status: s.ser.status })
-        .filter(x => !q || (x.serial || '').toLowerCase().includes(q) || (x.itemLabel || '').toLowerCase().includes(q) || (x.clientName || '').toLowerCase().includes(q));
+        .filter(x => !q || C.correspondRecherche(`${x.serial || ''} ${x.itemLabel || ''} ${x.clientName || ''}`, q));
       const paged = paginate(all, s.ser);
       const gaps = C.serialGaps(data);
       $('#st-body').innerHTML = `
@@ -9625,7 +9969,7 @@
                 .map(([l, n2, amt, cls]) => `<tr><td>${l}</td><td class="r nw">${n2}</td><td class="r nw">${C.money(amt, cur)}</td><td style="width:34%"><span class="bar"><i class="f-${cls}" style="width:${Math.round(n2 / funMax * 100)}%"></i></span></td></tr>`).join('')}
             </tbody></table>
             <p class="small muted mt">Taux d'acceptation : <strong>${funnel.rate == null ? '—' : funnel.rate + ' %'}</strong> (sur les devis tranchés).
-            Délai moyen entre le devis et la première facture : <strong>${funnel.replyDelay == null ? '—' : funnel.replyDelay + ' jours'}</strong>.</p>`
+            Délai moyen entre le devis et la première facture : <strong>${funnel.replyDelay == null ? '—' : pl(funnel.replyDelay, 'jour')}</strong>.</p>`
             : '<div class="empty">Aucun devis émis sur cette période.</div>'}
           </div>
           <div class="panel"><h2>Âge des impayés ${info('stat.aging')}</h2>
@@ -9659,7 +10003,7 @@
             ${mvt.nouveaux.length ? `<table class="list compact"><thead><tr><th>Client</th><th>Première facture</th><th class="r">HT sur la période</th></tr></thead><tbody>
               ${mvt.nouveaux.slice(0, 8).map(x => `<tr class="clickable" data-client="${h(x.clientId)}"><td>${h(x.name)}</td><td class="nw">${C.fmtDate(x.since)}</td><td class="r nw">${C.money(x.ht, cur)}</td></tr>`).join('')}
             </tbody></table>` : '<p class="small muted">Aucun nouveau client sur cette période.</p>'}
-            <h3 class="sub-h">Endormis depuis plus de ${company().dormantDays || 180} jours (${mvt.dormants.length})</h3>
+            <h3 class="sub-h">Endormis depuis plus de ${pl(company().dormantDays || 180, 'jour')} (${mvt.dormants.length})</h3>
             ${mvt.dormants.length ? `<table class="list compact"><thead><tr><th>Client</th><th>Dernière pièce</th><th class="r">Silence</th></tr></thead><tbody>
               ${mvt.dormants.slice(0, 8).map(x => `<tr class="clickable" data-client="${h(x.clientId)}"><td>${h(x.name)}</td><td class="nw">${C.fmtDate(x.last)}</td><td class="r nw">${x.days} j</td></tr>`).join('')}
             </tbody></table>
@@ -9670,7 +10014,7 @@
               <div><h3 class="sub-h">Les plus rapides</h3><ul class="rank plain">${payers.rapides.map(x => `<li><a class="name" href="#/client/${h(x.clientId)}">${h(x.name)}</a><span class="amt">${x.delay} j</span></li>`).join('')}</ul></div>
               <div><h3 class="sub-h">Les plus lents</h3><ul class="rank plain">${payers.lents.map(x => `<li><a class="name" href="#/client/${h(x.clientId)}">${h(x.name)}</a><span class="amt">${x.delay} j</span></li>`).join('')}</ul></div>
             </div>
-            <p class="small muted mt">Délai moyen entre la date de facture et le dernier paiement, sur les factures soldées. Ton délai annoncé est de ${company().paymentTermsDays} jours.</p>`
+            <p class="small muted mt">Délai moyen entre la date de facture et le dernier paiement, sur les factures soldées. Ton délai annoncé est de ${pl(Number(company().paymentTermsDays) || 0, 'jour')}.</p>`
             : '<div class="empty">Aucune facture soldée pour l\'instant : le classement apparaîtra au premier paiement.</div>'}
           </div>
         </div>`;
@@ -9768,8 +10112,8 @@
     items.forEach((x, i) => rows.push({ section: 'Prestations', label: `${i + 1}. ${x.label}`, value: m(x.ht) }));
     clients.forEach((x, i) => rows.push({ section: 'Clients', label: `${i + 1}. ${x.name}`, value: m(x.ht) }));
     mvt.nouveaux.forEach(x => rows.push({ section: 'Nouveaux clients', label: x.name, value: `${C.fmtDate(x.since)} — ${m(x.ht)}` }));
-    mvt.dormants.forEach(x => rows.push({ section: 'Clients endormis', label: x.name, value: `${C.fmtDate(x.last)} — ${x.days} jours` }));
-    payers.tous.forEach(x => rows.push({ section: 'Délai de paiement', label: x.name, value: `${x.delay} jours sur ${pl(x.count, 'facture')}` }));
+    mvt.dormants.forEach(x => rows.push({ section: 'Clients endormis', label: x.name, value: `${C.fmtDate(x.last)} — ${pl(x.days, 'jour')}` }));
+    payers.tous.forEach(x => rows.push({ section: 'Délai de paiement', label: x.name, value: `${pl(x.delay, 'jour')} sur ${pl(x.count, 'facture')}` }));
     if (obj) {
       rows.push({ section: 'Objectif', label: 'Objectif annuel HT', value: m(obj.goal) });
       rows.push({ section: 'Objectif', label: 'Réalisé', value: `${m(obj.ht)} (${obj.pct} %)` });
@@ -9814,7 +10158,7 @@
       const p = period();
       // Recherche : la Comptabilité était l'autre page de liste sans champ de recherche (audit).
       const q = comptaState.q.trim().toLowerCase();
-      const hit = (...parts) => !q || parts.filter(Boolean).join(' ').toLowerCase().includes(q);
+      const hit = (...parts) => !q || C.correspondRecherche(parts.filter(Boolean).join(' '), q);
       const allRows = C.salesJournal(data, company(), p);
       const rows = allRows.filter(r => hit(r.number, r.client, r.subject, r.creditOfNumber));
       const sum = C.vatSummary(rows);
@@ -9965,7 +10309,7 @@
     function drawBuyJournal(p, label) {
       const q = comptaState.q.trim().toLowerCase();
       const allRows = C.purchaseJournal(data, company(), p);
-      const rows = allRows.filter(r => !q || `${r.number || ''} ${r.supplier || ''} ${r.subject || ''} ${r.category || ''}`.toLowerCase().includes(q));
+      const rows = allRows.filter(r => !q || C.correspondRecherche(`${r.number || ''} ${r.supplier || ''} ${r.subject || ''} ${r.category || ''}`, q));
       const sum = C.purchaseSummary(rows);
       const cols = [
         { key: 'date', label: 'Date', asc: true, cls: 'nw', val: r => r.date || '', get: r => C.fmtDate(r.date) },
@@ -9985,7 +10329,7 @@
       // Le panneau est le jumeau exact des « Encaissements » de l'onglet Ventes : même place, même
       // export, même ligne cliquable — l'argent qui sort se lit comme l'argent qui entre.
       const allDecs = C.supplierPayments(data, company(), p);
-      const decs = allDecs.filter(r => !q || `${r.number || ''} ${r.supplier || ''} ${r.reference || ''} ${r.method || ''}`.toLowerCase().includes(q));
+      const decs = allDecs.filter(r => !q || C.correspondRecherche(`${r.number || ''} ${r.supplier || ''} ${r.reference || ''} ${r.method || ''}`, q));
       const decTotal = decs.reduce((s, r) => s + r.amount, 0);
       const decCols = [
         { key: 'date', label: 'Date', asc: true, cls: 'nw', val: r => r.date || '', get: r => C.fmtDate(r.date) },
@@ -11503,8 +11847,9 @@
       data.company.dormantDays = Math.max(1, Number(data.company.dormantDays) || 180);
       data.company.stampFee = Math.max(0, Number(data.company.stampFee) || 0);
       data.company.currency = C.normCurrency(data.company.currency);
-      data.company.quoteValidityDays = Math.max(0, Number(data.company.quoteValidityDays) || 30);
-      data.company.paymentTermsDays = Math.max(0, Number(data.company.paymentTermsDays) || 30);
+      // 0 est un délai (« à réception ») : seule une case VIDE reprend les 30 jours (10.12.0).
+      data.company.quoteValidityDays = C.delaiJours(data.company.quoteValidityDays, 30);
+      data.company.paymentTermsDays = C.delaiJours(data.company.paymentTermsDays, 30);
       // Le seuil de retenue (9.1.1). Un seuil négatif n'a pas de sens et un seuil vidé veut dire
       // « aucun » : les deux retombent sur 0, la valeur qui ne fait rien.
       data.company.withholdingThreshold = Math.max(0, Number(data.company.withholdingThreshold) || 0);
@@ -11917,7 +12262,11 @@
   // n'apparaît dans aucun titre.
   let aideQ = '';
   const sansBalises = s => String(s || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
-  const aideMots = q => (q || '').toLowerCase().trim().split(/\s+/).filter(Boolean);
+  const aideMots = q => C.plier(q || '').trim().split(/\s+/).filter(Boolean);
+  // Plier sans changer la LONGUEUR (10.12.0) : le surlignage et l'extrait retrouvent le mot par sa
+  // position dans le texte plié, puis découpent le texte d'origine aux mêmes positions. Une lettre
+  // dont le pliage changerait la longueur (un accent déjà décomposé) est gardée telle quelle.
+  const plierPareil = s => Array.from(String(s || ''), ch => { const f = C.plier(ch); return f.length === ch.length ? f : ch; }).join('');
 
   // La recherche CLASSE ses résultats (7.27.0). Taper « tva » rendait dix-sept articles sur
   // trente-deux, dans l'ordre où ils sont écrits dans guide.js : « Démarrer : tes premiers pas »
@@ -11929,8 +12278,8 @@
     if (!mots.length) return arts;
     const notes = [];
     arts.forEach((a, i) => {
-      const titre = a.title.toLowerCase(), sous = a.sub.toLowerCase();
-      const corps = sansBalises(a.body).toLowerCase();
+      const titre = C.plier(a.title), sous = C.plier(a.sub);
+      const corps = C.plier(sansBalises(a.body));
       if (!mots.every(m => titre.includes(m) || sous.includes(m) || corps.includes(m))) return;
       const rang = mots.every(m => titre.includes(m)) ? 0
         : mots.every(m => `${titre} ${sous}`.includes(m)) ? 1 : 2;
@@ -11944,7 +12293,7 @@
   // poser ; échapper AVANT décalerait toutes les positions (« l'» devient « &#39; »).
   function aideSurligne(texte, mots) {
     if (!mots.length) return h(texte);
-    const bas = texte.toLowerCase();
+    const bas = plierPareil(texte);
     const coupes = [];
     mots.forEach(m => { let k = bas.indexOf(m); while (k >= 0) { coupes.push([k, k + m.length]); k = bas.indexOf(m, k + m.length); } });
     coupes.sort((x, y) => x[0] - y[0]);
@@ -11964,7 +12313,7 @@
     // `sansBalises` remplace chaque balise par une espace : un titre collé à la phrase suivante
     // donnerait « comptable . La TVA ». On recolle la ponctuation, sinon l'extrait a l'air cassé.
     const texte = sansBalises(a.body).replace(/\s+([.,)])/g, '$1').trim();
-    const bas = texte.toLowerCase();
+    const bas = plierPareil(texte);
     let i = -1;
     mots.forEach(m => { const k = bas.indexOf(m); if (k >= 0 && (i < 0 || k < i)) i = k; });
     if (i < 0) return '';
@@ -12472,6 +12821,7 @@
     drawNav();
     $$('nav a, .sidebar-foot a').forEach(a => a.classList.toggle('active', a.dataset.route === route));
     updateNavCounts();
+    montrerEntreeActive();
   }
   // « cabinet » (9.4.1) n'est pas une offre de `editeur.offres` : c'est le TYPE d'une licence de
   // SkanFact Cabinet, rangé dans `offre` pour que la colonne reste renseignée.
@@ -13418,7 +13768,7 @@
       if (typeof sortKey === 'string' && sortKey) { s.sort = toggleSort(s.sort, sortKey, cols); s.page = 1; }
       const all = C.licenceRows(data, C.today(), company());
       const kept = applySort(all
-        .filter(r => !s.q || [r.nom, r.matricule, r.id, offreLabelDe(r.offre), r.note].join(' ').toLowerCase().includes(s.q))
+        .filter(r => !s.q || C.correspondRecherche([r.nom, r.matricule, r.id, offreLabelDe(r.offre), r.note].join(' '), s.q))
         .filter(r => !s.st || r.etat === s.st)
         .filter(r => !s.tri || (s.tri === 'envoi' ? (!r.envoyee && !r.revoqueeLe && !r.remplaceePar)
           : s.tri === 'facture' ? (!r.facturee && !r.revoqueeLe && !r.remplaceePar)

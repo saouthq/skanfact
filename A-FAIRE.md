@@ -85,9 +85,21 @@ SkanFact »). Restent trois questions qui ne sont pas du code :
   doit en principe pas (il se calcule sur l'impôt de l'année précédente). L'échéance est un
   pense-bête réglable ; la désactiver d'office pour une première année demande une date de création
   de la société, que la fiche ne porte pas. À VÉRIFIER avec le comptable.
-- Petits constats non corrigés : la carte « Coût de la paie » dit « 0 bulletin, 0 salarié » quand un
-  salarié existe mais n'a pas encore de bulletin ; la colonne « Net estimé » des Salariés n'a pas de
-  total ; « Top clients » coupe le nom du client à 130 px alors que la ligne a de la place.
+- ~~Petits constats (carte « Coût de la paie », total « Net estimé », « Top clients » coupé)~~ —
+  corrigés dans 10.12.0-beta.1.
+- **La marge d'une affaire compte ses achats rattachés en ENTIER.** Des planches achetées pour le
+  stock et rattachées à un chantier y comptent pour tout le lot, même si la moitié sert ailleurs. La
+  marge exacte demanderait de rattacher les SORTIES de stock (« Matière utilisée ») à l'affaire, au
+  coût moyen. À décider avec Skander : c'est un changement de modèle, pas un correctif.
+- **Un achat dont toutes les lignes vont en stock n'a pas de catégorie de charge** : la colonne
+  affiche « — ». C'est juste (ce n'est pas une charge), mais rien ne le dit ; une mention « stock »
+  à la place du tiret serait plus claire.
+- **L'éditeur d'une proforma ou d'un bon de livraison tient sa barre sur deux rangées à 1440 px**
+  avec l'aperçu (huit commandes, 1 216 px pour 1 129). C'est stable — rien ne saute au clic — mais
+  45 px de moins pour le formulaire ; « Email » et « Transformer ▾ » pourraient entrer dans « Plus ▾ »
+  quand ils ne sont pas l'étape suivante.
+- Lot 3 à venir : la famille proposée par défaut pour un bien neuf (« informatique ») suppose le
+  métier de l'auteur — à revoir avec les immobilisations.
 
 ## 2. Le site
 

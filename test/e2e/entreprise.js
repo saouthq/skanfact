@@ -1401,8 +1401,15 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
     await win.click('#mg-tabs button[data-tab=contrats]');
     await win.waitForSelector('#mg-body tr[data-rid]');
     // seuil de rentabilité : reclasser une catégorie change le seuil
+    // 10.12.0 — la liste d'années paraît sur cet onglet : l'en-tête ne doit pas grandir, sinon les
+    // onglets descendent sous le curseur au moment du clic.
+    const hautOnglets = () => win.evaluate(() => Math.round(document.querySelector('#mg-tabs').getBoundingClientRect().top));
+    const avantSeuil = await hautOnglets();
     await win.click('#mg-tabs button[data-tab=seuil]');
     await win.waitForSelector('#mg-body .gauge');
+    if (!(await win.evaluate(() => !document.querySelector('#mg-year').hidden))) throw new Error('la liste d\'années n\'apparaît pas sur le seuil : la mesure ne prouve rien');
+    const apresSeuil = await hautOnglets();
+    if (apresSeuil !== avantSeuil) throw new Error(`les onglets de Marges bougent de ${apresSeuil - avantSeuil} px quand la liste d'années apparaît`);
     const seuil0 = await win.evaluate(() => {
       const C = window.SkanCore, d = window.__data, y = C.today().slice(0, 4);
       return C.breakEven(d, d.company, { from: y + '-01-01', to: y + '-12-31' }).breakEven;
@@ -1410,7 +1417,8 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
     if (!(seuil0 > 0)) throw new Error('seuil non calculé');
     const box = await win.textContent('#mg-body');
     if (!box.includes('Charges fixes') || !box.includes('Charges variables')) throw new Error('bloc du seuil incomplet');
-    await win.click('#mg-body [data-fix]');          // une catégorie fixe passe en variable
+    // une catégorie fixe passe en variable (10.12.0 : chaque catégorie porte son choix sur sa ligne)
+    await win.click('#mg-body input[data-fix][value=variable]:not(:checked)');
     await win.waitForFunction(s0 => {
       const C = window.SkanCore, d = window.__data, y = C.today().slice(0, 4);
       return C.breakEven(d, d.company, { from: y + '-01-01', to: y + '-12-31' }).breakEven !== s0;
@@ -1427,8 +1435,10 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
     await win.waitForSelector('#f-head [data-combo=projectId]');
     const before = await win.evaluate(() => document.querySelector('#f-head input[name=projectId]').value);
     await win.click('#f-head [data-combo=projectId] .combo-btn');
-    await win.waitForSelector('#f-head [data-combo=projectId] .combo-it');
-    await win.click('#f-head [data-combo=projectId] .combo-it');
+    // 10.12.0 : la liste commence par « — Aucune affaire — », qui est la valeur ACTUELLE (`.cur`) :
+    // on choisit une autre ligne, c'est-à-dire une vraie affaire.
+    await win.waitForSelector('#f-head [data-combo=projectId] .combo-it:not(.cur)');
+    await win.click('#f-head [data-combo=projectId] .combo-it:not(.cur)');
     await win.waitForFunction(b => document.querySelector('#f-head input[name=projectId]').value !== b, before);
     // enregistrer : le rattachement doit tenir dans les données, et l'éditeur ne doit plus être « sale »
     await win.click('#save');

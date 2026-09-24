@@ -253,6 +253,47 @@
   }
   const lbl = (text, key) => key ? `<span class="fl">${text} ${info(key)}</span>` : text;
 
+  // 10.12.0 — une bulle « i » qui termine une phrase passait SEULE sur la ligne suivante dès que la
+  // phrase remplissait sa ligne : « … pour un dossier. » puis, dessous, un « i » orphelin qu'on
+  // prend pour un reste de mise en page. Le dernier mot et la bulle vont dans un <span> qui ne se
+  // coupe pas (`.colle-bulle`) : la bulle part avec son dernier mot. Une espace insécable NE SUFFIT
+  // PAS — c'était la première version : la bulle est un élément « en ligne atomique » (inline-grid),
+  // et Chrome coupe avant lui même derrière une espace insécable. Elle tenait sur les écrans où on
+  // l'avait vérifiée, et la sonde des bulles a trouvé à 1280 px « Délai moyen de paiement » puis un
+  // « i » seul dessous, sur des étiquettes déjà « collées ». Jamais dans un conteneur flex ou
+  // grille, où chaque morceau de texte est un élément à lui seul (H-E9). Posée sur chaque nœud
+  // ajouté au document : une liste redessinée à la frappe reçoit la même règle qu'une page. Le
+  // corps est le MÊME dans les deux applications (un test le compare).
+  function collerBulles(racine) {
+    const liste = racine.matches && racine.matches('button.i') ? [racine] : racine.querySelectorAll('button.i');
+    for (const b of liste) {
+      const parent = b.parentElement;
+      if (!parent || parent.classList.contains('colle-bulle') || /flex|grid/.test(getComputedStyle(parent).display)) continue;
+      const t = b.previousSibling;
+      if (!t || t.nodeType !== 3) continue;
+      const colle = document.createElement('span');
+      colle.className = 'colle-bulle';
+      const m = t.data.match(/(\S+)[ \t\n\u00a0]*$/);
+      if (m) {
+        // Le dernier mot part avec la bulle, séparé d'elle par une espace insécable.
+        t.data = t.data.slice(0, m.index);
+        colle.append(m[1] + '\u00a0');
+      } else {
+        // Que des blancs : la bulle suit un élément en ligne (« <strong>…</strong> i »), qui l'emmène.
+        const el = t.previousSibling;
+        if (!/\s/.test(t.data) || !el || el.nodeType !== 1 || !/^inline/.test(getComputedStyle(el).display)) continue;
+        parent.insertBefore(colle, el);
+        colle.append(el, '\u00a0');
+        t.remove();
+      }
+      if (!colle.parentNode) parent.insertBefore(colle, b);
+      colle.append(b);
+    }
+  }
+  new MutationObserver(recs => {
+    for (const r of recs) for (const n of r.addedNodes) if (n.nodeType === 1 && n.isConnected) collerBulles(n);
+  }).observe(document.body, { childList: true, subtree: true });
+
   function closeInfoPop() { const p = $('#info-pop'); if (p) p.remove(); }
   function openInfoPop(btn) {
     const x = G.INFO[btn.dataset.info]; if (!x) return;

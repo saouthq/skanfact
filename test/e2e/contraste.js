@@ -41,8 +41,11 @@ const SEGMENTS = ['.tabs', '.row-menu', '.pager'];
   const win = await app.firstWindow(); surveiller(win, '', bac);
 
   const sonder = async (ou) => {
-    const { boutons, champs } = await win.evaluate(SONDE);
+    const { boutons, champs, liens } = await win.evaluate(SONDE);
     [...boutons, ...champs].filter(b => b.ratio < SEUIL).forEach(b => fautes.push(`${ou} → « ${b.texte} » (${b.id || b.cls}) : contraste ${b.ratio} — ${b.color} sur ${b.bg}`));
+    // 10.12.0 — les liens aussi : lisibles, et jamais au bleu brut du navigateur.
+    liens.filter(l => l.ratio < SEUIL || l.brut).forEach(l => fautes.push(`${ou} → lien « ${l.texte} » : `
+      + (l.brut ? `couleur brute du navigateur (${l.color})` : `contraste ${l.ratio} — ${l.color} sur ${l.bg}`)));
     // Même famille : un bouton parfaitement lisible peut être COUPÉ par le bord de la fenêtre. À
     // 1280 px, la barre d'actions de l'éditeur poussait « Émettre la facture » 105 px hors champ
     // (corrigé en 7.13.0). Le document, lui, ne débordait pas — un ancêtre le rognait — donc

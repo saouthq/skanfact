@@ -628,11 +628,15 @@ t('U-02 / U-26 : aucune colonne collante sur une donnée, et des largeurs fixes 
   const style = lireSource('src', 'renderer', 'style.css');
   const css = lireSource('src', 'cabinet', 'renderer', 'cabinet.css');
   const app = code('src', 'cabinet', 'renderer', 'app.js');
-  // SEULE la colonne d'actions colle : son en-tête est vide. La règle visait la dernière cellule
-  // d'en-tête de TOUT tableau, et « À saisir » (une donnée) collait par-dessus juillet et août.
+  // SEULE la colonne d'actions colle. La règle visait la dernière cellule d'en-tête de TOUT tableau,
+  // et « À saisir » (une donnée) collait par-dessus juillet et août. 10.12.0 : « en-tête vide » ne
+  // suffisait pas à dire « colonne d'actions » (la barre de Marges › Analyse, le « Modifier » des
+  // Salariés) — la règle lit la colonne elle-même, et l'en-tête garde le fond de sa rangée.
   const regles = style.replace(/\/\*[\s\S]*?\*\//g, '');
-  assert.ok(/\.scroll-x table\.list th:last-child:empty \{/.test(regles), 'la colonne collante n\'est plus limitée à l\'en-tête vide');
-  assert.ok(!/\.scroll-x table\.list th:last-child[,\s{]/.test(regles), 'une colonne de données peut encore coller');
+  assert.ok(/\.scroll-x table\.list:has\(td\.row-actions\) thead th:last-child[,\s{]/.test(regles), 'l\'en-tête collant n\'est pas conditionné à une colonne d\'actions');
+  assert.ok(!/\.scroll-x table\.list th:last-child[,\s{:]/.test(regles), 'une colonne de données peut encore coller');
+  const collante = (/\.scroll-x table\.list td\.row-actions,\s*\.scroll-x table\.list:has\(td\.row-actions\) thead th:last-child \{([^}]*)\}/.exec(regles) || [])[1];
+  assert.ok(collante && /position: sticky/.test(collante) && !/background/.test(collante), 'l\'en-tête collant repeint son fond en blanc au milieu d\'une rangée grise');
   // Les colonnes de texte cèdent la place aux montants au lieu de pousser Débit et Crédit sous la
   // colonne collante.
   assert.ok(/#c-livres table\.list:not\(\.sa-grille\) td\.tronq \{ max-width: 0;/.test(css), 'les libellés du journal repoussent encore les montants');
@@ -2641,8 +2645,17 @@ t('La grille des lignes d\'un document : la désignation a sa place, et aucune c
 // chose à enregistrer, quand l'étape suivante est de l'ENVOYER (la règle U-11 du Cabinet).
 t('Une pièce enregistrée a UN bouton principal, l\'étape suivante ; « Enregistrer » le redevient dès qu\'on modifie', () => {
   const ent = code('src', 'renderer', 'app.js');
-  assert.ok(/<button class="btn \$\{isNew && \(isQ \|\| isExtra\) \? 'btn-primary' : ''\}" id="save">/.test(ent),
+  // Retourné vers la RÈGLE (10.12.0) : l'assertion recopiait la condition, et est tombée le jour où
+  // une pièce tirée d'une autre — enregistrée mais pas encore NUMÉROTÉE — a dû pouvoir la remplir.
+  // On évalue la condition : verte sur une pièce neuve ou sans numéro, jamais sur une pièce
+  // enregistrée et inchangée.
+  const cond = ent.match(/<button class="btn \$\{([^}]*?) \? 'btn-primary' : ''\}" id="save">/);
+  assert.ok(cond, 'la couleur de « Enregistrer » ne se calcule plus');
+  const vert = ctx => require('vm').runInNewContext('(' + cond[1] + ')', { isNew: false, isQ: false, isExtra: false, suiteExtra: '', ...ctx });
+  assert.ok(vert({ isNew: true, isQ: true }) && vert({ isNew: true, isExtra: true }), '« Enregistrer » n\'est plus principal sur une pièce neuve');
+  assert.ok(!vert({ isQ: true }) && !vert({ isExtra: true, suiteExtra: 'pdf' }) && !vert({ isExtra: true, suiteExtra: 'transform' }),
     '« Enregistrer » reste principal sur une pièce déjà enregistrée et inchangée');
+  assert.ok(vert({ isExtra: true, suiteExtra: 'save' }), 'une pièce tirée d\'une autre, sans numéro, n\'a pas « Enregistrer » en vert');
   assert.ok(/<button class="btn \$\{envoiSuivant \? 'btn-primary' : ''\}" id="email">/.test(ent), 'l\'envoi n\'est plus l\'étape suivante d\'un devis enregistré');
   assert.ok(/const envoiSuivant = !isNew && !locked && !devisFacturable && doc\.status === 'brouillon'/.test(ent),
     'l\'envoi ne peut être principal ni sur une pièce neuve, ni sur un devis déjà facturable');
@@ -2863,7 +2876,11 @@ t('Le bouton retour nomme la pièce, le client ou le fournisseur où il mène', 
   const ent = code('src', 'renderer', 'app.js');
   const f = ent.slice(ent.indexOf('const pageLabel = '), ent.indexOf('function remplacerPage('));
   assert.ok(f.length > 200 && f.length < 2000, 'tranche de pageLabel : ' + f.length);
-  assert.ok(/route === 'doc'\) \{ const d = docById\(id\); if \(d\) return docLabel\(d\); \}/.test(f), 'le retour vers une pièce ne la nomme plus');
+  // Une pièce se nomme par son type et son numéro, ou par son seul numéro quand le nom ne tient pas
+  // (10.12.0, « Facture proforma PRO-2026-001 ») — jamais par « le document ».
+  assert.ok(/route === 'doc'\) \{ const d = docById\(id\); if \(d\) return docCourt\(d, entier\); \}/.test(f), 'le retour vers une pièce ne la nomme plus');
+  const dc = ent.slice(ent.indexOf('const docCourt = '), ent.indexOf('const pageLabel = '));
+  assert.ok(/entier \|\| l\.length <= 20 \|\| !d\.number \? l : d\.number/.test(dc), 'un nom de pièce trop long ne se remplace plus par son numéro : ' + dc.slice(0, 160));
   assert.ok(/route === 'client'\)[^\n]*c\.name/.test(f), 'le retour vers une fiche client ne nomme plus le client');
   assert.ok(/route === 'fournisseur'\)[^\n]*f\.name/.test(f), 'le retour vers une fiche fournisseur ne nomme plus le fournisseur');
   const b = tranche(ent, 'function backButton(');
@@ -3146,7 +3163,9 @@ t('Un formulaire qu\'on ouvre avec « null » sait le recevoir : aucun bouton de
 // six colonnes sans retour à la ligne dans les 580 px d'une fenêtre ordinaire.
 t('Une fenêtre qui porte un tableau de liste a la place de ses colonnes (le relevé de compte)', () => {
   const css = lireSource('src', 'renderer', 'style.css').replace(/\/\*[\s\S]*?\*\//g, '');
-  const regle = css.match(/\.modal:has\(([^)]*)\)\s*\{\s*width:\s*(\d+)px/);
+  // `:where()` autour du `:has()` (10.12.0) : la même règle, sans le poids qui écrasait les largeurs
+  // voulues du Cabinet — ce test juge la règle, pas l'écriture du sélecteur.
+  const regle = css.match(/\.modal(?::where\()?:has\(([^)]*)\)\)?\s*\{\s*width:\s*(\d+)px/);
   assert.ok(regle, 'la règle qui élargit une fenêtre selon son contenu a disparu');
   assert.ok(/\btable\.list\b/.test(regle[1]), 'une fenêtre qui porte un tableau de liste garde 580 px : le relevé cache son total');
   assert.ok(Number(regle[2]) >= 820, `${regle[2]} px ne suffisent pas à six colonnes de montants`);
