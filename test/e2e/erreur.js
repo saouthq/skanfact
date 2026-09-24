@@ -127,12 +127,22 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
   await win.waitForSelector('#p-tabs');
   await win.click('#p-tabs button[data-tab="declarations"]');
   await win.waitForSelector('#cn-file', { timeout: 5000 });
-  // On cherche un trimestre qui porte des bulletins, sinon « Marquer déposée » ne veut rien dire.
-  for (const q of ['1', '2', '3', '4']) {
-    await win.selectOption('#d-quarter', q);
-    await win.waitForTimeout(200);
-    if (await win.$('#cn-file')) break;
+  // On cherche un trimestre qui porte des bulletins ET qui est TERMINÉ : depuis la 10.12.0, le
+  // trimestre en cours ne se marque pas déposé (il manquerait ses derniers bulletins), et son bouton
+  // est éteint. En janvier, aucun trimestre de l'année n'est fini : on remonte d'une année.
+  let trouve = false;
+  const annees = await win.$$eval('#p-year option', os => os.map(o => o.value));
+  for (const an of annees) {
+    await win.selectOption('#p-year', an);
+    await win.waitForSelector('#d-quarter');
+    for (const q of ['1', '2', '3', '4']) {
+      await win.selectOption('#d-quarter', q);
+      await win.waitForTimeout(200);
+      if (await win.$('#cn-file:not([disabled])')) { trouve = true; break; }
+    }
+    if (trouve) break;
   }
+  if (!trouve) throw new Error('aucun trimestre terminé ne porte de bulletin dans l\'exemple');
   const libelle = await win.$eval('#cn-file', b => b.textContent.trim());
   if (libelle !== 'Marquer déposée') throw new Error('le trimestre est déjà noté déposé : ' + libelle);
   await win.click('#cn-file');

@@ -538,7 +538,8 @@
 
   // « 1 dossier(s) » : personne n'écrit ça non plus. Un logiciel qui parle mal donne l'impression
   // d'être bâclé, et c'est le premier contact d'un comptable avec SkanFact.
-  const pl = (n, un, plur) => `${n} ${n > 1 ? (plur || un + 's') : un}`;
+  // Le pluriel regarde la valeur absolue (10.12.0, jumeau de l'app entreprise : « −3 jour »).
+  const pl = (n, un, plur) => `${n} ${Math.abs(n) > 1 ? (plur || un + 's') : un}`;
   // Les douze mois, dans l'ordre du calendrier. Ils servent à dessiner l'année ENTIÈRE sur la fiche
   // d'un client : n'afficher que les mois attendus laissait croire que l'application en avait perdu.
   // Les codes de journal proposés. Ce réglage vaut pour TOUS les dossiers, donc la liste est celle

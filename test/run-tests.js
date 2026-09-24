@@ -9909,11 +9909,14 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     const app = lireApp();
     // Le rappel ne regardait que « stock » : « immobilisation » ne disait rien, alors que la ligne
     // n'est déduite ni en charge, ni en amortissement tant que la fiche du bien n'existe pas.
-    assert.ok(/const immos = t\.lines\.filter\(l => l\.destination === 'immobilisation'/.test(app),
+    // Retourné vers la règle en 10.12.0 (la forme exacte du gestionnaire a changé : le bouton mène
+    // désormais à la fiche du bien elle-même, l'achat enregistré d'abord).
+    assert.ok(/const lignesImmo = t\.lines[\s\S]{0,120}l\.destination === 'immobilisation'/.test(app),
       'les lignes en immobilisation ne sont pas comptées dans l\'éditeur d\'achat');
     assert.ok(/l'amortissement ne commencera qu'une fois la fiche du bien créée/.test(app),
       'rien ne dit ce qui manque pour qu\'une immobilisation soit déduite');
-    assert.ok(/\$\('#b-immo'\)\.onclick = \(\) => \{ immoState\.tab = 'attente'; navigate\('#\/immos'\); \}/.test(app),
+    const gest = app.slice(app.indexOf("$('#b-immo').onclick"), app.indexOf("$$('[data-orph]', box)"));
+    assert.ok(/assetForm\(/.test(gest) && /navigate\('#\/immos'\)/.test(gest),
       'le rappel des immobilisations ne mène pas aux biens à créer');
   });
 

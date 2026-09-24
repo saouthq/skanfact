@@ -946,7 +946,7 @@
   // des phrases qu'on lit à l'écran : les lignes de « À faire », la liste de ce qui manque au
   // paquet du comptable, les bulletins. « 1 facture(s) en brouillon » paraît bâclé où qu'il soit
   // écrit. `plur` sert aux pluriels irréguliers ; `sAccord` accorde ce qui SUIT le nom.
-  const plFr = (n, un, plur) => `${n} ${n > 1 ? (plur || un + 's') : un}`;
+  const plFr = (n, un, plur) => `${n} ${Math.abs(n) > 1 ? (plur || un + 's') : un}`;
   const sAccord = n => (Number(n) > 1 ? 's' : '');
 
   // Un délai en jours réglé par l'utilisateur (10.12.0). ZÉRO est un délai — « à réception » —, et

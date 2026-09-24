@@ -98,8 +98,15 @@ SkanFact »). Restent trois questions qui ne sont pas du code :
   avec l'aperçu (huit commandes, 1 216 px pour 1 129). C'est stable — rien ne saute au clic — mais
   45 px de moins pour le formulaire ; « Email » et « Transformer ▾ » pourraient entrer dans « Plus ▾ »
   quand ils ne sont pas l'étape suivante.
-- Lot 3 à venir : la famille proposée par défaut pour un bien neuf (« informatique ») suppose le
-  métier de l'auteur — à revoir avec les immobilisations.
+- ~~La famille proposée par défaut pour un bien neuf (« informatique ») suppose le métier de
+  l'auteur~~ — corrigé dans 10.12.0-beta.1 : la famille se choisit, et propose la durée.
+- **La TFP d'une menuiserie.** La note des barèmes dit « 1 % pour les industries manufacturières,
+  2 % ailleurs », et le taux livré est 2 %. Une menuiserie fabrique : elle est peut-être à 1 %.
+  Aucun métier ne porte de TFP tant que le comptable n'a pas tranché (règle 9.1.1) — la question
+  est à lui poser, métier par métier.
+- **Le panneau « Documents à remettre » du Registre** répète la liste des salariés avec un bouton
+  chacun. Tenable à trois salariés ; à vingt, le geste devrait vivre sur la ligne du registre (un
+  menu d'actions) ou sur la seule fiche du salarié. À revoir si une entreprise en a beaucoup.
 
 ## 2. Le site
 

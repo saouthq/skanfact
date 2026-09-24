@@ -877,6 +877,9 @@
         // l'on n'a rien tapé faisait chercher ce qu'on avait mal écrit (10.12.0, H-E22).
         : `<div class="combo-empty">${el._items.length ? 'Aucun résultat' : h(o.vide || 'Rien à choisir pour l\'instant')}</div>`;
       $$('.combo-it', list).forEach(d => d.onmousedown = e => { e.preventDefault(); pick(shown[Number(d.dataset.i)]); });
+      // Le bouton de création NOMME ce qu'il va créer : « + Nouveau fournisseur » sous « Felder
+      // Tunisie » introuvable ne disait pas que la fiche arriverait déjà nommée (10.12.0).
+      if (add) { const saisi = q.value.trim(); add.textContent = saisi ? `${o.add} «\u00a0${saisi}\u00a0»` : o.add; }
       const cur = $('.combo-it.sel', list); if (cur) cur.scrollIntoView({ block: 'nearest' });
     };
     const close = () => { pop.hidden = true; btn.setAttribute('aria-expanded', 'false'); el.classList.remove('up'); if (closeOverlay === close) closeOverlay = null; };
@@ -2302,12 +2305,14 @@
   // « 1 facture(s), 0 en retard ». La règle du pluriel existait dans l'app cabinet depuis sa 1.0.0
   // et n'avait jamais été portée ici : un logiciel qui écrit « (s) » paraît bâclé, et c'est l'écran
   // que l'utilisateur regarde le plus souvent.
-  const pl = (n, un, plur) => `${n} ${n > 1 ? (plur || un + 's') : un}`;
+  // Le pluriel regarde la VALEUR ABSOLUE : « −3 jour » s'affichait sous un solde de congés
+  // négatif (10.12.0). « −1 jour », « −3 jours ».
+  const pl = (n, un, plur) => `${n} ${Math.abs(n) > 1 ? (plur || un + 's') : un}`;
   // L'accord de ce qui SUIT le nom — un adjectif, un participe. « 3 écarts enregistrés », mais
   // « 1 écart enregistré ». Sans lui, la moitié du travail de `pl` se perdait un mot plus loin.
   // Il sert aussi là où le nombre est déjà mis en forme (« 2,5 jours » : `pct` rend une chaîne, et
   // comparer une chaîne à 1 aurait rendu « 2,5 jour »).
-  const sPl = n => (Number(n) > 1 ? 's' : '');
+  const sPl = n => (Math.abs(Number(n)) > 1 ? 's' : '');
 
   // La liste des clients pour un `combo()`. Elle vivait en DOUBLE, déclarée localement dans deux
   // formulaires — et `serialForm` l'appelait sans en avoir : « Modifier » sur un numéro de série
@@ -4408,7 +4413,7 @@
       <div class="panel"><h2>Lignes</h2>
         <div class="catalog-pick"><div id="tf-cat">${combo({ items: [], placeholder: 'Ajouter depuis le catalogue…', search: 'Rechercher une prestation…' })}</div>
           <button type="button" class="btn btn-sm" id="tf-add">+ Ligne vide</button></div>
-        <table class="lines-edit"><thead><tr><th>Désignation</th><th class="r" style="width:62px">Qté</th><th class="r" style="width:96px">P.U. HT</th><th style="width:76px">TVA</th><th class="r">Total HT</th><th></th></tr></thead>
+        <table class="lines-edit"><thead><tr><th>Désignation</th><th class="r" style="width:62px">Qté</th><th class="r" style="width:96px">P.U. HT</th><th style="width:76px">TVA</th><th class="r" style="width:118px">Total HT</th><th></th></tr></thead>
           <tbody id="tf-lines"></tbody></table>
         <div class="inline mt"><span class="small muted" id="tf-sum"></span></div>
       </div>
@@ -6434,7 +6439,7 @@
               <button class="btn btn-sm" id="add-line">+ Ligne</button>
               <span class="small muted">Saisis au moins le total hors taxes et son taux de TVA : c'est ce qui permet de récupérer la TVA.</span></div>
             <table class="lines-edit buy-lines"><thead><tr><th>Désignation</th><th class="r" style="width:62px">Qté</th><th class="r" style="width:92px">P.U. HT</th><th style="width:76px">TVA</th>
-              <th style="width:150px">Destination ${info('buy.destination')}</th><th class="nw" style="width:96px">Déduct. ${info('buy.deductible')}</th><th class="r">Total HT</th><th></th></tr></thead>
+              <th style="width:150px">Destination ${info('buy.destination')}</th><th class="nw" style="width:96px">Déduct. ${info('buy.deductible')}</th><th class="r" style="width:118px">Total HT</th><th></th></tr></thead>
               <tbody id="b-lines"></tbody></table>
             <div class="totals-box" id="b-totals"></div>
             <div id="b-stock-hint" hidden></div>
@@ -6565,7 +6570,14 @@
       // fiche du bien n'existe pas : ni en charge (ce n'en est pas une), ni en amortissement (il n'y
       // a pas encore de durée). Elle dormait dans un compteur de barre latérale que personne ne
       // regarde au moment où on saisit l'achat.
-      const immos = t.lines.filter(l => l.destination === 'immobilisation' && C.round3((Number(l.qty) || 0) * (Number(l.unitPrice) || 0)) > 0);
+      // 10.12.0 — l'avertissement comptait TOUTES les lignes en immobilisation, fiche créée ou non :
+      // la fiche enregistrée, l'achat répétait encore « ce montant n'est déduit nulle part » sous un
+      // bien qui s'amortissait déjà. Une ligne qui a sa fiche le dit et y mène ; seules les autres
+      // attendent (la même règle que `assetsToCreate` : l'achat et le rang de la ligne).
+      const fichesDeLAchat = new Map((data.assets || []).filter(a => a.purchaseId && a.purchaseId === p.id).map(a => [Number(a.lineIndex), a]));
+      const lignesImmo = t.lines.map((l, i) => ({ l, i })).filter(({ l }) => l.destination === 'immobilisation' && C.round3((Number(l.qty) || 0) * (Number(l.unitPrice) || 0)) > 0);
+      const immos = lignesImmo.filter(({ i }) => !fichesDeLAchat.has(i));
+      const immosFaites = lignesImmo.filter(({ i }) => fichesDeLAchat.has(i)).map(({ i }) => fichesDeLAchat.get(i));
       const box = $('#b-stock-hint');
       if (box) {
         const morceaux = [];
@@ -6583,10 +6595,26 @@
         if (immos.length) morceaux.push(immoFerme
           ? `<div class="small muted mt">${pl(immos.length, 'ligne')} en immobilisation : ${immos.length > 1 ? 'ces achats partent' : 'cet achat part'} à ton comptable dans les écritures du paquet, et c'est lui qui établit le plan d'amortissement. ${info('immo.attente')}</div>`
           : `<div class="small warn-text mt">${pl(immos.length, 'ligne')} en immobilisation : l'amortissement ne commencera qu'une fois la fiche du bien créée (famille, durée, date de mise en service). En attendant, ${immos.length > 1 ? 'ces montants ne sont déduits' : 'ce montant n\'est déduit'} nulle part. ${info('immo.attente')}
-          <button class="btn btn-sm mt" id="b-immo" type="button">Voir les biens à créer</button></div>`);
+          <button class="btn btn-sm mt" id="b-immo" type="button" title="L'achat est enregistré d'abord : la ligne n'attend sa fiche qu'une fois la pièce rangée">${immos.length > 1 ? 'Créer les fiches des biens…' : 'Créer la fiche du bien…'}</button></div>`);
+        if (immosFaites.length) morceaux.push(`<div class="small muted mt">${immosFaites.length > 1
+          ? `${pl(immosFaites.length, 'ligne')} en immobilisation ont leur fiche : elles s'amortissent. <a href="#/immos">Voir les immobilisations</a>`
+          : `« ${h(immosFaites[0].label)} » a sa fiche : il s'amortit sur ${pl(Number(immosFaites[0].years) || 0, 'an')} depuis le ${C.fmtDate(immosFaites[0].date)}. <a href="#/immo/${h(immosFaites[0].id)}">Ouvrir la fiche du bien</a>`}</div>`);
         box.hidden = !morceaux.length;
         box.innerHTML = morceaux.join('');
-        if ($('#b-immo')) $('#b-immo').onclick = () => { immoState.tab = 'attente'; navigate('#/immos'); };
+        // 10.12.0 — « Voir les biens à créer » quittait un achat PAS ENCORE enregistré pour une liste
+        // où sa ligne n'était donc pas (le garde-fou demandait d'abord s'il fallait l'enregistrer),
+        // puis il fallait l'y retrouver. Le bouton mène au geste : il range l'achat, puis ouvre la
+        // fiche du bien préremplie depuis la ligne — ou la liste, quand il y en a plusieurs.
+        if ($('#b-immo')) $('#b-immo').onclick = async () => {
+          if (!validate()) return;
+          if (!await doublonOk()) return;
+          if (!persist()) return;
+          const lignes = C.assetsToCreate(data).filter(w => w.purchaseId === p.id);
+          if (lignes.length !== 1) { immoState.tab = 'attente'; navigate('#/immos'); return; }
+          if (isNew) remplacerPage('#/achat/' + p.id);
+          const w = lignes[0];
+          assetForm(null, () => render(true), { label: w.label, amount: w.amount, date: w.date, supplierId: w.supplierId, purchaseId: w.purchaseId, lineIndex: w.lineIndex });
+        };
         $$('[data-orph]', box).forEach(b => b.onclick = () => {
           const inp = $(`tr[data-i="${b.dataset.orph}"] input[data-k=label]`, body);
           if (!inp || !inp._ouvrirSuggestions) return;
@@ -7590,6 +7618,19 @@
   // établir, et c'est lui que le panneau « À faire » réclame.
   const lastMonth = C.addMonths(C.today().slice(0, 7) + '-01', -1, 1);
   // ---------- congés, absences, avances et documents (5.1.0) ----------
+  // 10.12.0 — la fenêtre annonçait le solde AVANT la demande (« 0 jour »), jamais celui d'après :
+  // on découvrait « −3 » en rouge dans les compteurs, une fois l'absence enregistrée. Un
+  // avertissement se lit avant le geste (9.4.2). Et quand on modifie une absence déjà comptée, le
+  // solde du moteur l'inclut déjà : « avant » la lui rend, sinon elle serait retranchée deux fois.
+  function soldeApresConge(restant, jours, deja, v) {
+    const dejaCompte = deja && deja.kind === 'conges' && (deja.from || '').slice(0, 4) === (v.from || '').slice(0, 4)
+      ? C.workingDays(deja.from, deja.to, C.payrollSettings(data).offDays) : 0;
+    const avant = restant + dejaCompte, apres = avant - jours;
+    const j = n => `${pct(n)} jour${sPl(n)}`;
+    return ` Solde de congés : <b>${j(avant)}</b> avant, <b>${j(apres)}</b> après.`
+      + (apres < 0 ? ` <span class="warn-text">Il prendrait ${j(-apres)} de plus qu'il n'en a acquis : ce n'est pas interdit, mais il faut le savoir.</span>` : '');
+  }
+
   function leaveForm(leave, employeeId, done) {
     const emps = data.employees.slice().sort((a, b) => a.name.localeCompare(b.name, 'fr'));
     if (!emps.length) return toast('Crée d\'abord la fiche d\'un salarié.', true);
@@ -7621,15 +7662,17 @@
           $('#lf-hint', root).innerHTML = `<span class="small ${days ? 'muted' : 'warn-text'}">`
             + (days ? `<b>${pct(days)} jour${sPl(days)} ouvrable${sPl(days)}</b>, dimanches exclus. ` : 'Aucun jour ouvrable dans cette période — vérifie les dates. ')
             + (paid ? 'Payée : le salaire du mois n\'est pas réduit.' : 'Non payée : le brut sera réduit au prorata sur le bulletin du mois.')
-            + (bal && v.kind === 'conges' ? ` Solde de congés avant cette demande : <b>${pct(bal.remaining)} jour${sPl(bal.remaining)}</b>.` : '')
+            + (bal && v.kind === 'conges' ? soldeApresConge(bal.remaining, days, leave, v) : '')
             + '</span>';
         };
         $('#lf', root).oninput = $('#lf', root).onchange = hint; hint();
         $('#ok', root).onclick = () => {
           const v = formValues($('#lf', root));
-          if (!v.employeeId) return toast('Choisis le salarié.', true);
-          if (!v.from || !v.to) return toast('Dates invalides.', true);
-          if (v.to < v.from) return toast('La fin ne peut pas précéder le début.', true);
+          const champ = n => $(`#lf [name=${n}]`, root);
+          if (!v.employeeId) return refus($('[data-combo=employeeId] .combo-btn', root), 'Choisis le salarié.');
+          if (!v.from) return refus(champ('from'), 'Indique le premier jour de l\'absence.');
+          if (!v.to) return refus(champ('to'), 'Indique le dernier jour de l\'absence.');
+          if (v.to < v.from) return refus(champ('to'), `La fin ne peut pas précéder le début (${C.fmtDate(v.from)}).`);
           if (closedBlock([l.from, l.to, v.from, v.to], 'Cette absence')) return;
           if (!leave && licenceBlock('Créer une absence', 'paie')) return;
           Object.assign(l, v, { paid: v.paid === '' ? null : v.paid === '1' });
@@ -7657,11 +7700,15 @@
         <div class="field span-2">Salarié
           ${combo({ name: 'employeeId', value: a.employeeId, items: emps.map(e => ({ v: e.id, label: e.name, sub: e.position || '', text: e.name })), placeholder: '— Choisir —', search: 'Rechercher un salarié…' })}
         </div>
+        ${/* 10.12.0 — deux « 0 » proposés d'office (un zéro posé par le logiciel n'est pas un chiffre
+             décidé), la phrase d'aide en gras parce qu'elle portait la classe d'un LIBELLÉ (« field »),
+             et une demi-ligne vide à côté de la retenue. Les deux montants sont obligatoires : ils
+             le disent avant qu'on appuie sur Enregistrer (7.20.0). */''}
         ${dateFieldHtml('Date de l\'avance', 'date', a.date, {})}
-        ${field('Montant avancé', 'amount', a.amount || 0, 'number', 'step="0.001" min="0" class="num"')}
-        ${field(lbl('Retenue mensuelle', 'hr.monthly'), 'monthly', a.monthly || 0, 'number', 'step="0.001" min="0" class="num"')}
-        <label class="field span-2">Note<input type="text" name="note" value="${h(a.note || '')}"></label>
-        <div class="field span-2" id="af2-hint"></div>
+        ${field('<span>Montant avancé</span>', 'amount', a.amount || '', 'number', 'step="0.001" min="0" class="num" placeholder="Ce que tu lui prêtes"').replace('class="field"', 'class="field obligatoire"')}
+        ${field(lbl('Retenue mensuelle', 'hr.monthly'), 'monthly', a.monthly || '', 'number', 'step="0.001" min="0" class="num" placeholder="Retenue sur chaque bulletin"').replace('class="field"', 'class="field obligatoire"')}
+        <label class="field">Note<input type="text" name="note" value="${h(a.note || '')}" placeholder="Pourquoi, et ce qui a été convenu"></label>
+        <div class="span-2 annonce-stable" id="af2-hint"></div>
       </form>
       <div class="modal-actions">
         ${advance ? '<button class="btn btn-danger" id="del-av" style="margin-right:auto">Supprimer</button>' : ''}
@@ -7682,9 +7729,10 @@
         $('#af2', root).oninput = $('#af2', root).onchange = hint; hint();
         $('#ok', root).onclick = () => {
           const v = formValues($('#af2', root));
-          if (!v.employeeId) return toast('Choisis le salarié.', true);
-          if (!(Number(v.amount) > 0)) return toast('Le montant doit être supérieur à zéro.', true);
-          if (!(Number(v.monthly) > 0)) return toast('Indique la retenue mensuelle.', true);
+          const champ = n => $(`#af2 [name=${n}]`, root);
+          if (!v.employeeId) return refus($('[data-combo=employeeId] .combo-btn', root), 'Choisis le salarié.');
+          if (!(Number(v.amount) > 0)) return refus(champ('amount'), 'Indique le montant avancé.');
+          if (!(Number(v.monthly) > 0)) return refus(champ('monthly'), 'Indique la retenue mensuelle : c\'est elle qui rembourse l\'avance, bulletin après bulletin.');
           if (closedBlock([a.date, v.date], 'Cette avance')) return;
           if (!advance && licenceBlock('Créer une avance sur salaire', 'paie')) return;
           Object.assign(a, v, { amount: Number(v.amount), monthly: Number(v.monthly) });
@@ -7726,6 +7774,10 @@
       <div class="panel" id="hf-solde" hidden><h2>Solde de tout compte</h2>
         <p class="small muted mb">Ce que tu dois encore au salarié à son départ. Les montants sont à toi : SkanFact propose seulement l'indemnité de congés non pris, calculée sur son dernier salaire. <em>À VÉRIFIER : les indemnités dépendent du motif de la rupture et de la convention collective.</em></p>
         <div id="hf-lines"></div>
+        ${/* 10.12.0 — un salarié qui a pris ses congés d'avance voyait « congés non pris (0 jour) » :
+             le solde négatif disparaissait du seul document où il compte. On le dit ; la retenue
+             éventuelle est une question de droit, elle se décide avec le comptable. */''}
+        ${bal.remaining < 0 ? `<p class="small warn-text mt">Il a pris ${pct(-bal.remaining)} jour${sPl(-bal.remaining)} de congé de plus qu'il n'en a acquis : l'indemnité ci-dessus vaut donc zéro. <em>À VÉRIFIER avec ton comptable : ces jours peuvent se retenir sur le solde.</em></p>` : ''}
       </div>
       <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Exporter en PDF</button></div>`,
       (root, close) => {
@@ -7771,7 +7823,7 @@
           try {
             const f = await bridge.exportPdf(html, `${safe(C.hrDocLabel(v.kind))}_${safe(e.name)}.pdf`);
             if (f) { toast('PDF enregistré : ' + f.split(/[\\/]/).pop()); close(); if (done) done(); }
-          } catch (err) { toast(err.message || 'Export impossible', true); }
+          } catch (err) { toast(plainError(err), true); }
         };
       });
   }
@@ -7842,7 +7894,10 @@
           <div class="stat"><div class="lbl">Coût de la paie ${s.year} ${info('pay.employerCost')}</div><div class="val">${C.money(sum.cost, cur)}</div><div class="sub">${sum.count ? `${pl(sum.count, 'bulletin')} pour ${pl(sum.employees, 'salarié')}` : `aucun bulletin établi en ${h(s.year)}`}</div></div>
           <div class="stat"><div class="lbl">Net versé ${info('pay.netVerse')}</div><div class="val">${C.money(sum.netPaid, cur)}</div><div class="sub">${sum.net - sum.netPaid > 0.0005 ? `${C.money(C.round3(sum.net - sum.netPaid), cur)} restent à verser` : 'ce que touchent les salariés'}</div></div>
           <div class="stat"><div class="lbl">CNSS à reverser ${info('pay.cnssTotal')}</div><div class="val">${C.money(C.round3(sum.cnssEmployee + sum.cnssEmployer + sum.accident), cur)}</div><div class="sub">parts salarié et employeur</div></div>
-          <div class="stat"><div class="lbl">Impôt retenu ${info('pay.irpp')}</div><div class="val">${C.money(C.round3(sum.irpp + sum.css), cur)}</div><div class="sub">à reverser au Trésor</div></div>
+          ${/* 10.12.0 — la colonne s'appelait « IRPP » et additionnait l'IRPP ET la contribution de
+               solidarité : 2,264 DT d'« IRPP » ici, 0,000 DT d'IRPP et 2,264 DT de solidarité dans la
+               déclaration annuelle, pour le même bulletin. Deux écrans, un montant, deux noms (H-E25). */''}
+          <div class="stat"><div class="lbl">Impôt retenu ${info('pay.impot')}</div><div class="val">${C.money(C.round3(sum.irpp + sum.css), cur)}</div><div class="sub">IRPP et solidarité, à reverser au Trésor</div></div>
         </div>
         <div class="panel"><h2>Bulletins du mois</h2>
           <div class="filters">
@@ -7850,7 +7905,7 @@
             ${missing.length ? `<button class="btn btn-sm btn-primary" id="p-gen">${missing.length > 1 ? `Établir les ${pl(missing.length, 'bulletin')} manquants` : 'Établir le bulletin manquant'}</button>` : month.length ? '<span class="small ok-text">Tous les bulletins du mois sont établis.</span>' : ''}
           </div>
           ${month.length ? `<div class="scroll-x"><table class="list compact"><thead><tr>
-            <th>Salarié</th><th class="r">Brut</th><th class="r">CNSS</th><th class="r">IRPP</th><th class="r">Net à payer</th><th class="r">Coût employeur</th><th>Payé le</th><th class="row-actions-h"></th></tr></thead><tbody>
+            <th>Salarié</th><th class="r">Brut</th><th class="r">CNSS</th><th class="r">Impôt retenu ${info('pay.impot')}</th><th class="r">Net à payer</th><th class="r">Coût employeur</th><th>Payé le</th><th class="row-actions-h"></th></tr></thead><tbody>
             ${month.map(x => `<tr class="${x.paidDate ? '' : 'row-warn'}">
               <td><strong>${h(x.employeeName)}</strong>${x.employee.position ? `<div class="small muted">${h(x.employee.position)}</div>` : ''}</td>
               <td class="r nw">${C.money(x.c.gross, cur)}</td>
@@ -7975,16 +8030,19 @@
             : '<div class="empty">Aucun salarié en poste.</div>'}
         </div>
         <div class="panel"><h2>Congés et absences de ${h(s.year)}</h2>
-          <div class="filters"><span class="small muted">${pl(all.length, 'enregistrement')}</span></div>
+          ${/* 10.12.0 — « 0 enregistrement » au-dessus d'un état vide qui dit déjà qu'il n'y a rien : un
+               compte n'a rien à faire au-dessus du vide (7.0.0). */''}
+          ${all.length ? `<div class="filters"><span class="small muted">${pl(all.length, 'enregistrement')}</span></div>` : ''}
           ${all.length ? `<div class="scroll-x"><table class="list compact"><thead><tr>
-            <th>Salarié</th><th>Nature</th><th>Du</th><th>Au</th><th class="r">Jours</th><th>Effet</th><th>Motif</th><th></th></tr></thead><tbody>
+            <th>Salarié</th><th>Nature</th><th>Du</th><th>Au</th><th class="r">Jours</th><th>Effet</th><th>Motif</th></tr></thead><tbody>
+            ${/* 10.12.0 — la seule liste de la Paie dont la ligne ne s'ouvrait pas au clic : il fallait
+                 viser un « Modifier » au bout de la ligne. Une absence s'ouvre comme une facture. */''}
             ${all.map(l => { const e = employeeById(l.employeeId) || {};
-              return `<tr><td><strong>${h(e.name || '')}</strong></td><td>${h(l.kindLabel)}</td>
+              return `<tr class="clickable" data-lv="${h(l.id)}" title="Modifier cette absence"><td><strong>${h(e.name || '')}</strong></td><td>${h(l.kindLabel)}</td>
                 <td class="nw">${C.fmtDate(l.from)}</td><td class="nw">${C.fmtDate(l.to)}</td>
                 <td class="r nw">${pct(l.days)}</td>
                 <td>${l.paid ? '<span class="ok-text">payée</span>' : '<span class="warn-text">retirée du salaire</span>'}</td>
-                <td>${h(l.note || '')}</td>
-                <td class="r"><button class="btn btn-sm" data-lv="${h(l.id)}">Modifier</button></td></tr>`;
+                <td>${h(l.note || '')}</td></tr>`;
             }).join('')}
           </tbody></table></div>`
             : '<div class="empty">Aucun congé ni absence enregistré cette année. Une absence non payée se retire toute seule du bulletin du mois concerné.</div>'}
@@ -7998,20 +8056,23 @@
       const open = all.filter(a => !a.done);
       $('#p-body').innerHTML = `
         <div class="panel"><h2>Avances sur salaire ${info('hr.advance')}</h2>
-          <div class="filters"><span class="small muted">${open.length} en cours sur ${all.length}${open.length ? ` · ${C.money(C.round3(open.reduce((a, x) => a + x.remaining, 0)), cur)} restant à récupérer` : ''}</span></div>
+          ${/* 10.12.0 — « 0 en cours sur 0 » au-dessus d'un état vide (même faute que les absences). */''}
+          ${all.length ? `<div class="filters"><span class="small muted">${open.length} en cours sur ${all.length}${open.length ? ` · ${C.money(C.round3(open.reduce((a, x) => a + x.remaining, 0)), cur)} restant à récupérer` : ''}</span></div>` : ''}
           ${all.length ? `<div class="scroll-x"><table class="list compact"><thead><tr>
-            <th>Salarié</th><th>Date</th><th class="r">Avancé</th><th class="r">Par mois</th><th class="r">Remboursé</th><th class="r">Reste</th><th>Note</th><th></th></tr></thead><tbody>
+            <th>Salarié</th><th>Date</th><th class="r">Avancé</th><th class="r">Par mois</th><th class="r">Remboursé</th><th class="r">Reste</th><th>Note</th></tr></thead><tbody>
+            ${/* 10.12.0 — une avance EN COURS se peignait en orange : c'est son état normal, jusqu'à la
+                 dernière retenue (8.0.1 : du rouge sur une situation normale apprend à ignorer le
+                 rouge). La ligne s'ouvre au clic, comme toute liste ; l'explication vit dans la bulle
+                 du titre — la phrase sous le tableau la recopiait mot pour mot (9.4.9). */''}
             ${all.map(a => { const e = employeeById(a.employeeId) || {};
-              return `<tr class="${a.done ? '' : 'row-warn'}">
+              return `<tr class="clickable" data-av="${h(a.id)}" title="Modifier cette avance">
                 <td><strong>${h(e.name || '')}</strong></td><td class="nw">${C.fmtDate(a.date)}</td>
                 <td class="r nw">${C.money(a.amount, cur)}</td><td class="r nw">${C.money(a.monthly, cur)}</td>
                 <td class="r nw">${C.money(a.repaid, cur)}</td>
                 <td class="r nw">${a.done ? '<span class="ok-text">soldée</span>' : `<strong>${C.money(a.remaining, cur)}</strong>`}</td>
-                <td>${h(a.note || '')}</td>
-                <td class="r"><button class="btn btn-sm" data-av="${h(a.id)}">Modifier</button></td></tr>`;
+                <td>${h(a.note || '')}</td></tr>`;
             }).join('')}
-          </tbody></table></div>
-          <p class="small muted mt">La retenue se pose toute seule sur chaque bulletin établi, jusqu'à extinction — la dernière échéance ne prend que ce qui reste. Ce qui est remboursé se lit sur les bulletins, pas sur un compteur à part : supprimer une avance ne défait donc pas les retenues déjà passées.</p>`
+          </tbody></table></div>`
             : '<div class="empty">Aucune avance. Une avance sur salaire se rembourse par retenues mensuelles sur les bulletins suivants.</div>'}
         </div>`;
       $$('#p-body [data-av]').forEach(b => b.onclick = () => advanceForm(data.advances.find(x => x.id === b.dataset.av), null, () => draw()));
@@ -8024,7 +8085,7 @@
           <p class="small muted mb">La liste que l'inspection du travail peut demander : qui a travaillé chez toi, à quel poste, sous quel contrat, et entre quelles dates. <em>À VÉRIFIER : la forme exacte du registre et son mode de tenue relèvent du code du travail.</em></p>
           ${reg.length ? `<div class="scroll-x"><table class="list compact"><thead><tr>
             <th>N°</th><th>Nom</th><th>CIN</th><th>CNSS</th><th>Emploi</th><th>Contrat</th><th>Entrée</th><th>Sortie</th><th class="r">Brut</th></tr></thead><tbody>
-            ${reg.map(r => `<tr class="${r.active ? '' : 'muted'}">
+            ${reg.map(r => `<tr class="clickable${r.active ? '' : ' muted'}" data-eid="${h(r.id)}" title="Ouvrir la fiche de ${h(r.name)}">
               <td>${r.n}</td><td><strong>${h(r.name)}</strong></td><td class="nw">${h(r.cin) || '—'}</td><td class="nw">${h(r.cnss) || '—'}</td>
               <td>${h(r.position)}</td><td>${h(r.contract)}</td>
               <td class="nw">${r.hireDate ? C.fmtDate(r.hireDate) : '—'}</td>
@@ -8042,6 +8103,9 @@
             : '<div class="empty">Aucun salarié.</div>'}
         </div>`;
       $$('#p-body [data-hr]').forEach(b => b.onclick = () => hrDocForm(employeeById(b.dataset.hr), () => draw()));
+      // Le registre NOMME des personnes : chaque ligne ouvre sa fiche, comme la liste des Salariés
+      // (7.15.0 — un écran qui nomme un ensemble doit pouvoir l'ouvrir).
+      $$('#p-body tr[data-eid]').forEach(tr => tr.onclick = () => navigate('#/salarie/' + tr.dataset.eid));
       if ($('#reg-csv')) $('#reg-csv').onclick = async () => {
         const cols = [{ key: 'n', label: 'N°' }, { key: 'name', label: 'Nom' }, { key: 'cin', label: 'CIN' },
           { key: 'cnss', label: 'N° CNSS' }, { key: 'position', label: 'Emploi' }, { key: 'contract', label: 'Contrat' },
@@ -8072,6 +8136,14 @@
         return `Ce trimestre compte ${pl(l.length, 'bulletin')} au net négatif — ${qui} : ${l.length > 1 ? 'corrige-les' : 'corrige-le'} avant de déposer, sinon la déclaration porte des cotisations fausses.`;
       };
       const raisonDe = id => { const m = /^cnss-(\d{4})-T(\d)$/.exec(id || ''); return m ? raisonCnss(Number(m[1]), Number(m[2])) : ''; };
+      // 10.12.0 — « Marquer déposée » en VERT sur le trimestre en cours et sur l'année en cours : on
+      // déclare une période TERMINÉE (règle de la même version pour le rappel), sinon il manquerait ses
+      // derniers bulletins — et la mention « déposée » figerait une déclaration incomplète. Le bouton
+      // s'éteint en disant jusqu'à quand, et le motif se lit au-dessus des boutons (9.4.5).
+      const finTrimestre = (yy, qq) => qq >= 4 ? `${yy}-12-31` : C.addDays(`${yy}-${String(qq * 3 + 1).padStart(2, '0')}-01`, -1);
+      const pasFini = (fin, quoi, fem) => C.today() <= fin ? `${quoi} se termine le ${C.fmtDate(fin)} : on ${fem ? 'la' : 'le'} déclare une fois ${fem ? 'terminée' : 'terminé'}, sinon il manquerait ses derniers bulletins.` : '';
+      const enCoursCnss = pasFini(finTrimestre(y, q), `Le ${C.quarterLabel(q)} ${y}`, false);
+      const enCoursAnnee = pasFini(`${y}-12-31`, `L'année ${y}`, true);
       // Noter une déclaration déposée est un clic sans question — et c'est bien ainsi, on le fait
       // douze fois par an. Mais la ligne quitte aussitôt le panneau « À déposer », donc le bouton
       // qui retire la mention n'est plus là où on vient de cliquer : il faut descendre au bon
@@ -8124,10 +8196,11 @@
               <td class="r"><strong>${C.money(cn.total, cur)}</strong></td></tr>
           </tbody></table></div>
           ${raisonCnss(y, q) && !filed(`cnss-${y}-T${q}`) ? `<p class="small danger-text mt" id="cn-impossible">${h(raisonCnss(y, q))}</p>` : ''}
+          ${enCoursCnss && !raisonCnss(y, q) && !filed(`cnss-${y}-T${q}`) ? `<p class="small muted mt" id="cn-en-cours">${h(enCoursCnss)}</p>` : ''}
           <div class="inline mt">
             <button class="btn" id="cn-csv">Exporter en CSV</button>
             <button class="btn" id="cn-mail">Envoyer au comptable</button>
-            <button class="btn ${filed(`cnss-${y}-T${q}`) || raisonCnss(y, q) ? '' : 'btn-primary'}" id="cn-file"${raisonCnss(y, q) && !filed(`cnss-${y}-T${q}`) ? ` disabled title="${h(raisonCnss(y, q))}"` : ''}>${filed(`cnss-${y}-T${q}`) ? 'Retirer « déposée »' : 'Marquer déposée'}</button>
+            <button class="btn ${filed(`cnss-${y}-T${q}`) || raisonCnss(y, q) || enCoursCnss ? '' : 'btn-primary'}" id="cn-file"${(raisonCnss(y, q) || enCoursCnss) && !filed(`cnss-${y}-T${q}`) ? ` disabled title="${h(raisonCnss(y, q) || enCoursCnss)}"` : ''}>${filed(`cnss-${y}-T${q}`) ? 'Retirer « déposée »' : 'Marquer déposée'}</button>
           </div>
           ${cn.rows.some(r => !r.cnss) ? '<p class="small warn-text mt">Un matricule CNSS manque sur une fiche : la déclaration ne peut pas être déposée sans lui.</p>' : ''}`
             : `<div class="empty">Aucun bulletin sur ce trimestre.</div>`}
@@ -8165,9 +8238,10 @@
           </tbody></table></div>
           ${an.heldMissing ? `<p class="small warn-text mt">${pl(an.heldMissing, 'attestation')} de retenue ${an.heldMissing > 1 ? 'ne sont pas encore remises' : "n'est pas encore remise"} à tes fournisseurs. Sans elles, ils ne peuvent pas déduire ce que tu leur as retenu.</p>` : ''}`
             : '<p class="small muted">Aucune retenue à la source opérée sur un fournisseur cette année.</p>'}
+          ${enCoursAnnee && !filed('employeur-' + y) ? `<p class="small muted mt" id="an-en-cours">${h(enCoursAnnee)}</p>` : ''}
           <div class="inline mt">
             <button class="btn" id="an-csv">Exporter en CSV</button>
-            <button class="btn ${filed('employeur-' + y) ? '' : 'btn-primary'}" id="an-file">${filed('employeur-' + y) ? 'Retirer « déposée »' : 'Marquer déposée'}</button>
+            <button class="btn ${filed('employeur-' + y) || enCoursAnnee ? '' : 'btn-primary'}" id="an-file"${enCoursAnnee && !filed('employeur-' + y) ? ` disabled title="${h(enCoursAnnee)}"` : ''}>${filed('employeur-' + y) ? 'Retirer « déposée »' : 'Marquer déposée'}</button>
           </div>
           <p class="small muted mt"><em>À VÉRIFIER avec ton comptable : la forme exacte du formulaire, les dates et les modalités de dépôt. SkanFact prépare les chiffres, il ne dépose rien.</em></p>
         </div>`;
@@ -8218,9 +8292,11 @@
       // écrire « Proposé : — » à côté d'un champ serait un bruit permanent pour quatorze métiers
       // sur quinze. Aujourd'hui aucun n'en porte, tant que le comptable n'a pas tranché.
       const tfpPropose = C.tfpSuggere(company().activity);
-      const num = (k, lab, key, suffix) => `<label class="field">${lbl(lab, key)}<input type="number" name="${k}" value="${st[k]}" step="0.01" min="0" class="num">${suffix ? `<span class="small muted">${suffix}</span>` : ''}</label>`;
+      const num = (k, lab, key) => `<label class="field">${lbl(lab, key)}<input type="number" name="${k}" value="${st[k]}" step="0.01" min="0" class="num"></label>`;
+      // Un montant porte son unité à côté de son libellé (9.4.8) : « Plafond annuel des frais : 2000 »
+      // ne disait ni dinars ni par an, et « Déduction chef de famille (par an) » pas davantage.
       $('#p-body').innerHTML = `
-        <div class="panel" style="border-left:3px solid var(--warning)"><h2>Ces chiffres sont à toi ${info('pay.rates')}</h2>
+        <div class="panel" style="border-inline-start:3px solid var(--warning)"><h2>Ces chiffres sont à toi ${info('pay.rates')}</h2>
           <p class="small">Aucun taux n'est écrit en dur dans SkanFact : tout ce que tu vois ici sert au calcul, et rien d'autre. Les valeurs livrées sont celles couramment appliquées en Tunisie <b>au moment où cette version a été écrite</b> — elles changent à chaque loi de finances.
           <em>À VÉRIFIER avec ton comptable, et à corriger ici dès qu'un taux bouge.</em></p>
         </div>
@@ -8239,9 +8315,9 @@
             <div class="grid-3">
               ${num('solidarity', 'Contribution de solidarité (%)', 'pay.solidarity')}
               ${num('proRate', 'Frais professionnels (%)', 'pay.pro')}
-              ${num('proCap', 'Plafond annuel des frais', 'pay.proCap')}
-              ${num('headOfFamily', 'Déduction chef de famille (par an)', 'pay.family')}
-              ${num('perChild', 'Déduction par enfant (par an)', 'pay.children')}
+              ${num('proCap', `Plafond annuel des frais (${h(cur)})`, 'pay.proCap')}
+              ${num('headOfFamily', `Déduction chef de famille (${h(cur)} par an)`, 'pay.family')}
+              ${num('perChild', `Déduction par enfant (${h(cur)} par an)`, 'pay.children')}
               ${num('maxChildren', 'Nombre maximum d\'enfants comptés', 'pay.children')}
             </div>
           </div>
@@ -8253,35 +8329,42 @@
             <p class="small muted mt">Ces deux chiffres servent au calcul des congés acquis et à la réduction d'une absence non payée. <em>À VÉRIFIER avec ton comptable : la convention collective de ton secteur peut prévoir davantage de congés.</em></p>
           </div>
           <div class="panel"><h2>Barème progressif annuel ${info('pay.brackets')}</h2>
-            <table class="list compact"><thead><tr><th class="r">De</th><th class="r">Jusqu'à</th><th class="r" style="width:140px">Taux</th><th></th></tr></thead>
+            <table class="list compact"><thead><tr><th class="r">De</th><th class="r">Jusqu'à (${h(cur)})</th><th class="r" style="width:140px">Taux</th><th></th></tr></thead>
               <tbody id="rf-br"></tbody></table>
             <button type="button" class="btn btn-sm mt" id="add-br">+ Tranche</button>
             <p class="small muted mt">La dernière tranche doit rester ouverte (« au-delà ») : c'est elle qui s'applique aux revenus les plus élevés.</p>
             <div class="mt" id="rf-demo"></div>
           </div>
           <div class="inline">
-            <button type="button" class="btn btn-primary" id="rf-save">Enregistrer les barèmes</button>
             <button type="button" class="btn" id="rf-reset">Revenir aux valeurs livrées</button>
+          </div>
+          <div class="save-bar" id="rf-bar" hidden>
+            <span>Modifications non enregistrées</span>
+            <button type="button" class="btn" id="rf-cancel">Abandonner les modifications</button>
+            <button type="button" class="btn btn-primary" id="rf-save">Enregistrer les barèmes</button>
           </div>
         </form>`;
       const brackets = deepCopy(st.brackets);
-      const drawBrackets = () => {
+      // 10.12.0 — une tranche ne se modifiait PAS. Le formulaire entier redessinait les lignes du
+      // barème à chaque frappe (`#rf.oninput`), alors que la valeur tapée n'était lue qu'au `change` :
+      // le premier chiffre détruisait le champ, le curseur tombait dans la page, et la ligne revenait
+      // à son ancienne valeur. Les lignes ne se redessinent plus qu'à l'ajout ou au retrait d'une
+      // tranche ; pendant la frappe, on met à jour la DONNÉE, la cellule « De » qui en dépend et
+      // l'exemple — le remède de la 7.17.0 (le solde de tout compte), un écran plus loin.
+      const drawRows = () => {
+        $('#rf-br').innerHTML = brackets.map((b, i) => `<tr data-i="${i}"><td class="nw r" data-de="${i}"></td>
+            <td class="r">${b.upTo == null ? '<span class="muted">au-delà</span>' : `<input type="number" class="num" data-b="upTo" value="${b.upTo}" step="100" style="width:130px" aria-label="Tranche ${i + 1} : jusqu'à">`}</td>
+            <td class="r"><input type="number" class="num" data-b="rate" value="${b.rate}" step="0.5" min="0" max="100" style="width:90px" aria-label="Tranche ${i + 1} : taux"> %</td>
+            <td class="r">${brackets.length > 1 ? `<button type="button" class="btn btn-ghost btn-sm" data-brm="${i}" title="Retirer cette tranche" aria-label="Retirer la tranche ${i + 1}">✕</button>` : ''}</td></tr>`).join('');
+        $$('[data-brm]', $('#rf-br')).forEach(b => b.onclick = () => { brackets.splice(Number(b.dataset.brm), 1); marquer(); drawRows(); });
+        majDe(); drawDemo();
+      };
+      const majDe = () => {
         let from = 0;
-        $('#rf-br').innerHTML = brackets.map((b, i) => {
-          const row = `<tr data-i="${i}"><td class="nw r">${C.money(from, cur)}</td>
-            <td class="r">${b.upTo == null ? '<span class="muted">au-delà</span>' : `<input type="number" class="num" data-b="upTo" value="${b.upTo}" step="100" style="width:130px">`}</td>
-            <td class="r"><input type="number" class="num" data-b="rate" value="${b.rate}" step="0.5" min="0" max="100" style="width:90px"> %</td>
-            <td class="r">${brackets.length > 1 ? `<button type="button" class="btn btn-ghost btn-sm" data-brm="${i}">✕</button>` : ''}</td></tr>`;
-          from = b.upTo == null ? from : b.upTo;
-          return row;
-        }).join('');
-        $$('[data-b]', $('#rf-br')).forEach(el => el.onchange = () => {
-          const i = Number(el.closest('tr').dataset.i);
-          brackets[i][el.dataset.b] = Number(el.value);
-          drawBrackets();
-        });
-        $$('[data-brm]', $('#rf-br')).forEach(b => b.onclick = () => { brackets.splice(Number(b.dataset.brm), 1); drawBrackets(); });
-        // Un exemple vaut mieux qu'un barème : on montre ce que ça donne sur un salaire courant.
+        brackets.forEach((b, i) => { const c = $(`#rf-br [data-de="${i}"]`); if (c) c.textContent = C.money(from, cur); from = b.upTo == null ? from : b.upTo; });
+      };
+      // Un exemple vaut mieux qu'un barème : on montre ce que ça donne sur un salaire courant.
+      const drawDemo = () => {
         const demo = [1000, 1500, 2500, 4000].map(g => {
           const c = C.computePayslip({ grossSalary: g, children: 0, headOfFamily: false }, {}, { ...readRates(), brackets });
           return `<tr><td>${C.money(g, cur)}</td><td class="r">${C.money(c.cnssEmployee, cur)}</td><td class="r">${C.money(C.round3(c.irpp + c.css), cur)}</td><td class="r"><strong>${C.money(c.net, cur)}</strong></td><td class="r">${C.money(c.employerCost, cur)}</td></tr>`;
@@ -8296,15 +8379,13 @@
           .forEach(k => { out[k] = Number(v[k]) || 0; });
         return out;
       };
-      drawBrackets();
-      $('#rf').oninput = $('#rf').onchange = () => drawBrackets();
-      $('#add-br').onclick = () => {
-        const last = brackets[brackets.length - 1];
-        const prev = brackets.length > 1 ? brackets[brackets.length - 2].upTo : 0;
-        brackets.splice(brackets.length - 1, 0, { upTo: (Number(prev) || 0) + 10000, rate: last.rate });
-        drawBrackets();
-      };
-      $('#rf-save').onclick = () => {
+      // Le garde-fou des Paramètres (7.30.0), porté ici : le bouton « Enregistrer » vivait trois
+      // écrans sous le premier taux, vert au repos (U-11), et changer d'onglet jetait en silence ce
+      // qu'on venait de régler. La barre n'apparaît qu'après une modification, reste collée au bas
+      // de l'écran, et quitter la page ou l'onglet pose la question.
+      let modifie = false;
+      const marquer = () => { if (modifie) return; modifie = true; $('#rf-bar').hidden = false; reportDirty(); };
+      const enregistrer = () => {
         const b = brackets.filter(x => x.upTo == null || Number(x.upTo) > 0);
         if (!b.some(x => x.upTo == null)) b.push({ upTo: null, rate: b.length ? b[b.length - 1].rate : 0 });
         // `tfpTouche` (9.1.1) : enregistrer ces barèmes, c'est avoir décidé. Sans ce drapeau, la
@@ -8312,10 +8393,37 @@
         // dans l'assistant — le défaut exact de `regimeTouche` en 7.30.0, qui n'était pas enregistré
         // et repartait à `undefined` au rejeu.
         data.payrollSettings = { ...readRates(), brackets: b, tfpTouche: true };
-        save(true); toast('Barèmes enregistrés — les bulletins déjà établis ne changent pas'); draw();
+        save(true); modifie = false; clearGuard(garde);
+        return true;
+      };
+      const garde = { dirty: () => modifie, what: 'les barèmes de paie', save: enregistrer };
+      setGuard(garde);
+      drawRows();
+      $('#rf').oninput = $('#rf').onchange = e => {
+        const el = e.target;
+        if (el && el.dataset && el.dataset.b) {
+          const i = Number(el.closest('tr').dataset.i);
+          // Un champ vidé pour retaper n'est pas un zéro (7.19.0) : on n'écrit rien tant qu'il est vide.
+          if (el.value.trim() !== '' && !el.validity.badInput) brackets[i][el.dataset.b] = Number(el.value);
+          majDe();
+        }
+        marquer(); drawDemo();
+      };
+      $('#add-br').onclick = () => {
+        const last = brackets[brackets.length - 1];
+        const prev = brackets.length > 1 ? brackets[brackets.length - 2].upTo : 0;
+        brackets.splice(brackets.length - 1, 0, { upTo: (Number(prev) || 0) + 10000, rate: last.rate });
+        marquer(); drawRows();
+      };
+      $('#rf-save').onclick = () => { enregistrer(); toast('Barèmes enregistrés — les bulletins déjà établis ne changent pas'); draw(); };
+      $('#rf-cancel').onclick = async () => {
+        if (!await confirmDialog('Abandonner les modifications des barèmes ?\n\nCe qui vient d\'être saisi et pas encore enregistré sera perdu.', 'Abandonner', true)) return;
+        modifie = false; clearGuard(garde); draw();
       };
       $('#rf-reset').onclick = async () => {
-        if (!await confirmDialog('Revenir aux valeurs livrées avec SkanFact ? Les bulletins déjà établis gardent leur propre calcul et ne changeront pas.')) return;
+        // Le bouton dit le geste, pas « Confirmer » : on REMPLACE des taux qu'on avait décidés.
+        if (!await confirmDialog('Revenir aux valeurs livrées avec SkanFact ?\n\nLes taux et le barème réglés ici seront remplacés. Les bulletins déjà établis gardent leur propre calcul et ne changeront pas.', 'Revenir aux valeurs livrées', true)) return;
+        modifie = false; clearGuard(garde);
         data.payrollSettings = {}; save(true); toast('Barèmes réinitialisés'); draw();
       };
     }
@@ -8342,7 +8450,13 @@
       if (s.tab === 'baremes') return drawRates();
       drawSlips();
     };
-    $$('#p-tabs button').forEach(b => b.onclick = () => {
+    // Changer d'onglet quitte les Barèmes : la question « modifications non enregistrées » se pose
+    // ici comme à la sortie de la page (10.12.0), et le garde-fou des Barèmes ne survit pas à
+    // l'onglet qu'il protégeait.
+    $$('#p-tabs button').forEach(b => b.onclick = async () => {
+      if (b.dataset.tab === s.tab) return;
+      if (!await leaveOk()) return;
+      clearGuard();
       s.tab = b.dataset.tab;
       $$('#p-tabs button').forEach(x => x.classList.toggle('active', x === b));
       draw();
@@ -8379,6 +8493,10 @@
           ${e.iban ? `<div><span>RIB / IBAN</span><span>${h(e.iban)}</span></div>` : ''}
           ${e.notes ? `<div><span>Notes</span><span>${h(e.notes)}</span></div>` : ''}
         </div>
+        ${/* 10.12.0 — « Établir un document… » vivait dans le panneau des AVANCES : une attestation de
+             travail n'est pas une avance, et on la cherchait là où l'on voit l'emploi du salarié. */''}
+        <div class="inline mt"><button class="btn btn-sm" id="hr-doc">Établir un document…</button>
+          <span class="small muted">attestation de travail, certificat de travail, solde de tout compte</span></div>
       </div>
       ${(() => {
         const b = C.leaveBalance(data, e.id, Number(year));
@@ -8398,36 +8516,35 @@
           </div>
           <div class="panel"><h2>Avances ${info('hr.advance')}</h2>
             ${av.length ? `<table class="list compact"><thead><tr><th>Date</th><th class="r">Avancé</th><th class="r">Reste</th></tr></thead><tbody>
-              ${av.map(x => `<tr><td class="nw">${C.fmtDate(x.date)}</td><td class="r nw">${C.money(x.amount, cur)}</td>
+              ${av.map(x => `<tr class="clickable" data-av="${h(x.id)}" title="Modifier cette avance"><td class="nw">${C.fmtDate(x.date)}</td><td class="r nw">${C.money(x.amount, cur)}</td>
                 <td class="r nw">${x.done ? '<span class="ok-text">soldée</span>' : `<strong>${C.money(x.remaining, cur)}</strong>`}</td></tr>`).join('')}
             </tbody></table>${open.length ? `<p class="small muted mt">${C.money(C.round3(open.reduce((a2, x) => a2 + x.remaining, 0)), cur)} encore à retenir sur les prochains bulletins.</p>` : ''}`
               : '<p class="small muted">Aucune avance.</p>'}
-            <div class="inline mt"><button class="btn btn-sm" id="add-av">+ Avance</button>
-              <button class="btn btn-sm" id="hr-doc">Établir un document…</button></div>
+            <div class="inline mt"><button class="btn btn-sm" id="add-av">+ Avance</button></div>
           </div>
         </div>`;
       })()}
       <div class="panel"><h2>Congés et absences</h2>
-        ${C.leavesOf(data, e.id, Number(year)).length ? `<table class="list compact"><thead><tr><th>Nature</th><th>Du</th><th>Au</th><th class="r">Jours</th><th>Effet</th><th>Motif</th><th></th></tr></thead><tbody>
-          ${C.leavesOf(data, e.id, Number(year)).map(l => `<tr><td>${h(l.kindLabel)}</td>
+        ${C.leavesOf(data, e.id, Number(year)).length ? `<table class="list compact"><thead><tr><th>Nature</th><th>Du</th><th>Au</th><th class="r">Jours</th><th>Effet</th><th>Motif</th></tr></thead><tbody>
+          ${C.leavesOf(data, e.id, Number(year)).map(l => `<tr class="clickable" data-lv="${h(l.id)}" title="Modifier cette absence"><td>${h(l.kindLabel)}</td>
             <td class="nw">${C.fmtDate(l.from)}</td><td class="nw">${C.fmtDate(l.to)}</td><td class="r nw">${pct(l.days)}</td>
             <td>${l.paid ? '<span class="ok-text">payée</span>' : '<span class="warn-text">retirée du salaire</span>'}</td>
-            <td>${h(l.note || '')}</td>
-            <td class="r"><button class="btn btn-sm" data-lv="${h(l.id)}">Modifier</button></td></tr>`).join('')}
+            <td>${h(l.note || '')}</td></tr>`).join('')}
         </tbody></table>` : `<div class="empty">Aucun congé ni absence en ${h(year)}.</div>`}
       </div>
       <div class="panel"><h2>Bulletins</h2>
         ${slips.length ? `<div class="scroll-x"><table class="list compact"><thead><tr>
           <th>Mois</th><th class="r">Brut</th><th class="r">Retenues</th><th class="r">Net</th><th class="r">Coût</th><th>Payé le</th><th></th></tr></thead><tbody>
-          ${slips.map(x => `<tr class="${x.paidDate ? '' : 'row-warn'}">
+          ${/* 10.12.0 — « PDF » et « Modifier » au bout de chaque bulletin : deux boutons par ligne
+               (7.29.0). La ligne ouvre le bulletin ; le PDF, geste pour lequel on vient, reste seul. */''}
+          ${slips.map(x => `<tr class="clickable ${x.paidDate ? '' : 'row-warn'}" data-ed="${h(x.id)}" title="Ouvrir le bulletin">
             <td><strong>${h(MONTHS_LONG[x.month - 1])} ${x.year}</strong></td>
             <td class="r nw">${C.money(x.c.gross, cur)}</td>
             <td class="r nw">${C.money(C.round3(x.c.cnssEmployee + x.c.irpp + x.c.css + x.c.otherDeductions), cur)}</td>
             <td class="r nw"><strong>${C.money(x.c.net, cur)}</strong></td>
             <td class="r nw">${C.money(x.c.employerCost, cur)}</td>
             <td class="nw">${x.paidDate ? C.fmtDate(x.paidDate) : '<span class="warn-text">pas encore</span>'}</td>
-            <td class="r nw"><button class="btn btn-sm" data-pdf="${h(x.id)}">PDF</button>
-              <button class="btn btn-sm" data-ed="${h(x.id)}">Modifier</button></td></tr>`).join('')}
+            <td class="r nw"><button class="btn btn-sm" data-pdf="${h(x.id)}">PDF</button></td></tr>`).join('')}
         </tbody></table></div>`
           : '<div class="empty">Aucun bulletin pour ce salarié.</div>'}
       </div>`;
@@ -8437,12 +8554,14 @@
       const t = C.addMonths(C.today().slice(0, 7) + '-01', -1, 1);
       payslipForm(null, e, Number(t.slice(0, 4)), Number(t.slice(5, 7)), () => render());
     };
-    $$('[data-pdf]').forEach(b => b.onclick = () => exportPayslip(payslipById(b.dataset.pdf)));
+    $$('[data-pdf]').forEach(b => b.onclick = ev => { ev.stopPropagation(); exportPayslip(payslipById(b.dataset.pdf)); });
     $$('[data-ed]').forEach(b => b.onclick = () => { const x = payslipById(b.dataset.ed); payslipForm(x, e, x.year, x.month, () => render()); });
     $('#add-lv').onclick = () => leaveForm(null, e.id, () => render());
     $('#add-av').onclick = () => advanceForm(null, e.id, () => render());
     $('#hr-doc').onclick = () => hrDocForm(e, () => render());
     $$('[data-lv]').forEach(b => b.onclick = () => leaveForm(data.leaves.find(x => x.id === b.dataset.lv), null, () => render()));
+    // Les avances de la fiche s'ouvrent comme celles de l'onglet Avances : la même ligne, le même geste.
+    $$('tr[data-av]').forEach(b => b.onclick = () => advanceForm(data.advances.find(x => x.id === b.dataset.av), null, () => render()));
   };
 
   // ---------- Stock (4.0.0) ----------
@@ -8919,7 +9038,7 @@
         </div>
       </form>
       <div class="panel"><h2>Lignes lues</h2>
-        <table class="lines-edit buy-lines"><thead><tr><th>Désignation</th><th class="r" style="width:70px">Qté</th><th class="r" style="width:100px">P.U. HT</th><th style="width:80px">TVA</th><th class="r">Total HT</th><th></th></tr></thead>
+        <table class="lines-edit buy-lines"><thead><tr><th>Désignation</th><th class="r" style="width:70px">Qté</th><th class="r" style="width:100px">P.U. HT</th><th style="width:80px">TVA</th><th class="r" style="width:118px">Total HT</th><th></th></tr></thead>
           <tbody id="orf-lines"></tbody></table>
         <div class="inline mt"><button type="button" class="btn btn-sm" id="orf-add">+ Ligne</button>
           <span class="small muted" id="orf-sum"></span></div>
@@ -9191,16 +9310,20 @@
     .map(x => ({ v: x.id, label: x.name, sub: x.contact || '', text: `${x.name} ${x.contact || ''}` }));
 
   function assetForm(asset, done, preset) {
-    const a = asset || Object.assign({ id: C.uid(), label: '', category: 'informatique', date: C.today(), amount: 0,
-      residual: 0, years: C.assetClassYears('informatique'), supplierId: '', purchaseId: '', lineIndex: null, notes: '' }, preset || {});
+    // 10.12.0 — la famille partait sur « Matériel informatique » (et 3 ans) avec « Ordinateur
+    // portable du bureau » en invite : le métier de l'auteur, proposé à une menuiserie qui
+    // enregistrait sa scie à format — et une durée de trois ans que personne n'avait décidée. La
+    // famille se CHOISIT ; c'est elle qui propose la durée (la durée est une décision, 3.5.0).
+    const a = asset || Object.assign({ id: C.uid(), label: '', category: '', date: C.today(), amount: 0,
+      residual: 0, years: '', supplierId: '', purchaseId: '', lineIndex: null, notes: '' }, preset || {});
     modal(`<h2>${asset ? 'Modifier l\'immobilisation' : 'Nouvelle immobilisation'}</h2>
       <p class="small muted">Un bien qui reste dans l'entreprise ne se déduit pas d'un coup : il se déduit un peu chaque année, pendant sa durée d'usage. <em>À VÉRIFIER avec ton comptable : la durée dépend de la nature du bien.</em></p>
       <form id="imf" class="grid-2">
-        <label class="field span-2">Désignation<input type="text" name="label" value="${h(a.label)}" placeholder="Ordinateur portable du bureau"></label>
-        <label class="field">${lbl('Famille', 'immo.class')}<select name="category">${C.DEFAULT_ASSET_CLASSES.map(([v, l]) => `<option value="${v}" ${a.category === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+        <label class="field span-2 obligatoire"><span>Désignation</span><input type="text" name="label" value="${h(a.label)}" placeholder="Le bien, tel que tu l'appelles"></label>
+        <label class="field obligatoire">${lbl('Famille', 'immo.class')}<select name="category"><option value="" ${a.category ? '' : 'selected'}>— Choisis la famille —</option>${C.DEFAULT_ASSET_CLASSES.map(([v, l]) => `<option value="${v}" ${a.category === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
         ${dateFieldHtml(lbl('Mise en service', 'immo.date'), 'date', a.date, {})}
-        ${field(lbl('Valeur d\'acquisition HT', 'immo.amount'), 'amount', a.amount || 0, 'number', 'step="0.001" min="0" class="num"')}
-        ${field(lbl('Durée (années)', 'immo.years'), 'years', a.years || 0, 'number', 'step="1" min="1" max="50" class="num"')}
+        ${field(lbl('Valeur d\'acquisition HT', 'immo.amount'), 'amount', a.amount || 0, 'number', 'step="0.001" min="0" class="num"').replace('class="field"', 'class="field obligatoire"')}
+        ${field(lbl('Durée (années)', 'immo.years'), 'years', a.years || '', 'number', 'step="1" min="1" max="50" class="num"').replace('class="field"', 'class="field obligatoire"')}
         ${field(lbl('Valeur résiduelle', 'immo.residual'), 'residual', a.residual || 0, 'number', 'step="0.001" min="0" class="num"')}
         <div class="field">Fournisseur
           ${combo({ name: 'supplierId', value: a.supplierId || '', items: supItems(), placeholder: '— Aucun —', search: 'Rechercher un fournisseur…' })}
@@ -9222,22 +9345,25 @@
           const draft = { ...a, ...v, amount: Number(v.amount) || 0, residual: Number(v.residual) || 0, years: Number(v.years) || 0 };
           const rows = C.assetSchedule(draft);
           const el = $('#amort-hint', root);
-          if (!rows.length) { el.innerHTML = '<span class="small muted">Renseigne une valeur, une durée et une date de mise en service pour voir le plan d\'amortissement.</span>'; return; }
+          if (!rows.length) { el.innerHTML = `<span class="small muted">${v.category ? 'Renseigne une valeur, une durée et une date de mise en service pour voir le plan d\'amortissement.' : 'Choisis la famille du bien : elle propose sa durée d\'amortissement usuelle, que tu pourras changer.'}</span>`; return; }
           const cur = company().currency;
           el.innerHTML = `<span class="small muted">Plan sur ${pl(rows.length, 'exercice')} — ${rows.slice(0, 4).map(r => `<b>${r.year}</b> : ${C.money(r.annuity, cur)}`).join(' · ')}${rows.length > 4 ? ' · …' : ''}</span>`;
         };
         $('select[name=category]', root).onchange = e => {
-          if (!yearsTouched) $('input[name=years]', root).value = C.assetClassYears(e.target.value);
+          if (!yearsTouched && e.target.value) $('input[name=years]', root).value = C.assetClassYears(e.target.value);
           hint();
         };
         $('#imf', root).oninput = hint; hint();
         $('#ok', root).onclick = () => {
           const v = formValues($('#imf', root));
-          if (!v.label.trim()) return toast('Donne un nom à ce bien.', true);
-          if (!(Number(v.amount) > 0)) return toast('La valeur d\'acquisition doit être supérieure à zéro.', true);
-          if (!(Number(v.years) > 0)) return toast('La durée d\'amortissement doit être d\'au moins un an.', true);
-          if (Number(v.residual) >= Number(v.amount)) return toast('La valeur résiduelle doit rester inférieure à la valeur d\'acquisition.', true);
-          if (!v.date) return toast('Date de mise en service invalide.', true);
+          // Un refus MONTRE le champ (7.20.0) : sept champs, et un bandeau de 2,6 secondes.
+          const champ = n => $(`[name=${n}]`, root);
+          if (!v.label.trim()) return refus(champ('label'), 'Donne un nom à ce bien.');
+          if (!v.category) return refus(champ('category'), 'Choisis la famille du bien : elle propose sa durée d\'amortissement.');
+          if (!(Number(v.amount) > 0)) return refus(champ('amount'), 'La valeur d\'acquisition doit être supérieure à zéro.');
+          if (!(Number(v.years) > 0)) return refus(champ('years'), 'La durée d\'amortissement doit être d\'au moins un an.');
+          if (Number(v.residual) >= Number(v.amount)) return refus(champ('residual'), 'La valeur résiduelle doit rester inférieure à la valeur d\'acquisition.');
+          if (!v.date) return refus(champ('date'), 'Date de mise en service invalide.');
           if (closedBlock([a.date, v.date], 'Ce bien')) return;
           if (!asset && licenceBlock('Créer la fiche du bien', 'immos')) return;
           Object.assign(a, v, { amount: Number(v.amount), residual: Number(v.residual) || 0, years: Number(v.years) });
@@ -9256,12 +9382,42 @@
 
   // Céder un bien moins de cinq ans après son acquisition peut obliger à reverser une part de la TVA
   // récupérée à l'achat. SkanFact ne calcule rien : il rappelle la question au bon moment.
-  const vatWarning = (asset, dateIso) => {
+  // 10.12.0 — la phrase parlait toujours au futur d'une VENTE : « n'aura été détenu… avant de
+  // conclure la vente », y compris sur la fiche d'un bien déjà sorti, et d'un bien mis au rebut qui
+  // n'a été vendu à personne. Elle dit maintenant ce qui est : au passé une fois la sortie enregistrée,
+  // et « la vente » seulement quand un prix a été donné.
+  const vatWarning = (asset, dateIso, { vente = true, passe = false } = {}) => {
     if (!asset.date || !dateIso || dateIso < asset.date) return '';
     if (C.days360(asset.date, dateIso) >= 5 * 360) return '';
-    const held = Math.max(1, Math.round(C.days360(asset.date, dateIso) / 30));
-    return `Ce bien n'aura été détenu que ${held} mois. Une cession avant cinq ans peut imposer de reverser une partie de la TVA récupérée à l'achat — <em>À VÉRIFIER avec ton comptable avant de conclure la vente.</em>`;
+    return `Ce bien ${passe ? 'n\'a été détenu' : 'n\'aura été détenu'} que ${dureeDetenue(C.days360(asset.date, dateIso))}. Une sortie avant cinq ans peut imposer de reverser une partie de la TVA récupérée à l'achat — <em>À VÉRIFIER avec ton comptable${vente && !passe ? ' avant de conclure la vente' : ''}.</em>`;
   };
+  // 10.12.0 — « détenu que 1 mois » pour une sortie le jour même de la mise en service : le
+  // `Math.max(1, …)` arrondissait le néant à un mois, et « 40 mois » se relit mal quand on pense en
+  // années. La durée se dit comme on la dit.
+  function dureeDetenue(jours) {
+    const mois = Math.floor(Math.max(0, jours) / 30);
+    if (mois < 1) return 'moins d\'un mois';
+    if (mois < 12) return `${mois} mois`;
+    const ans = Math.floor(mois / 12), reste = mois % 12;
+    return pl(ans, 'an') + (reste ? ` et ${reste} mois` : '');
+  }
+
+  // 10.12.0 — la fenêtre de sortie s'ouvrait sur « moins-value de 18 489,722 DT » en orange, avec le
+  // prix à son zéro par défaut : une alarme sur un chiffre que personne n'avait encore donné. Tant
+  // qu'aucun prix n'est donné (vide ou zéro), on dit la valeur nette et ce qu'elle deviendrait sans
+  // prix, en gris — la même phrase que la fiche d'un bien sorti sans prix ; la couleur n'arrive
+  // qu'avec un prix, c'est lui qui fait une plus- ou une moins-value.
+  function annonceSortie(r, avecPrix, cur) {
+    const vnc = `Valeur nette comptable au ${C.fmtDate(r.date)} : <b>${C.money(r.nbv, cur)}</b>`;
+    if (!avecPrix) return `<span class="small muted">${vnc}. Sans prix (mis au rebut, volé), la sortie est une moins-value de ce montant ; si tu le vends, indique le prix obtenu.</span>`;
+    return `<span class="small">${vnc} — `
+      + (r.result >= 0
+        ? `<span class="ok-text">plus-value de ${C.money(r.result, cur)}</span>`
+        : `<span class="warn-text">moins-value de ${C.money(-r.result, cur)}</span>`)
+      // E-11 : la seconde moitié de la phrase suit la première — « cette plus-value » écrit
+      // sous une moins-value se lisait comme une faute sur un chiffre qu'on vient d'annoncer.
+      + `. <em>À VÉRIFIER avec ton comptable : le traitement fiscal de cette ${r.result >= 0 ? 'plus-value' : 'moins-value'}.</em></span>`;
+  }
 
   function disposalForm(asset, done) {
     const d = { ...(asset.disposal || { date: C.today(), amount: 0, reason: '' }) };
@@ -9270,12 +9426,14 @@
       <p class="small muted">Vendu, mis au rebut ou volé : le bien quitte l'actif. On amortit jusqu'au jour de la sortie, puis on compare le prix obtenu à ce qu'il valait encore dans les comptes.</p>
       <form id="dsf" class="grid-2">
         ${dateFieldHtml('Date de sortie', 'date', d.date, {})}
-        ${field(lbl('Prix de cession HT', 'immo.disposalPrice'), 'amount', d.amount || 0, 'number', 'step="0.001" min="0" class="num"')}
+        ${field(lbl('Prix de cession HT', 'immo.disposalPrice'), 'amount', asset.disposal ? (d.amount || 0) : '', 'number', 'step="0.001" min="0" class="num" placeholder="0 si mis au rebut ou volé"')}
         <label class="field span-2">Motif<input type="text" name="reason" value="${h(d.reason || '')}" placeholder="Revendu, mis au rebut, volé…"></label>
         <div class="span-2 annonce-stable" id="dsf-hint"></div>
       </form>
       <div class="modal-actions">
-        ${asset.disposal ? '<button class="btn btn-danger" id="undo-dis" style="margin-right:auto">Annuler la sortie</button>' : ''}
+        ${/* 10.12.0 — remettre un bien à l'actif se refait d'un clic (« Sortir du patrimoine ») : ce
+             n'est pas un geste destructeur, donc pas de rouge — ni ici, ni dans la question. */''}
+        ${asset.disposal ? '<button class="btn" id="undo-dis" style="margin-inline-end:auto">Annuler la sortie</button>' : ''}
         <button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Enregistrer la sortie</button></div>`,
       (root, close) => {
         const hint = () => {
@@ -9283,27 +9441,29 @@
           const r = C.disposalResult({ ...asset, disposal: { date: v.date, amount: Number(v.amount) || 0 } });
           const el = $('#dsf-hint', root);
           if (!r) { el.innerHTML = ''; return; }
-          el.innerHTML = `<span class="small">Valeur nette comptable au ${C.fmtDate(r.date)} : <b>${C.money(r.nbv, cur)}</b> — `
-            + (r.result >= 0
-              ? `<span class="ok-text">plus-value de ${C.money(r.result, cur)}</span>`
-              : `<span class="warn-text">moins-value de ${C.money(-r.result, cur)}</span>`)
-            // E-11 : la seconde moitié de la phrase suit la première — « cette plus-value » écrit
-            // sous une moins-value se lisait comme une faute sur un chiffre qu'on vient d'annoncer.
-            + `. <em>À VÉRIFIER avec ton comptable : le traitement fiscal de cette ${r.result >= 0 ? 'plus-value' : 'moins-value'}.</em></span>`
-            + (vatWarning(asset, v.date) ? `<div class="small warn-text mt">${vatWarning(asset, v.date)}</div>` : '');
+          const tva = vatWarning(asset, v.date, { vente: Number(v.amount) > 0 });
+          el.innerHTML = annonceSortie(r, Number(v.amount) > 0, cur)
+            + (tva ? `<div class="small warn-text mt">${tva}</div>` : '');
         };
         $('#dsf', root).oninput = hint; hint();
         $('#ok', root).onclick = async () => {
           const v = formValues($('#dsf', root));
-          if (!v.date) return toast('Date de sortie invalide.', true);
-          if (v.date < asset.date) return toast('La sortie ne peut pas précéder la mise en service.', true);
+          const champ = n => $(`#dsf [name=${n}]`, root);
+          if (!v.date) return refus(champ('date'), 'Indique la date de sortie.');
+          if (v.date < asset.date) return refus(champ('date'), `La sortie ne peut pas précéder la mise en service (${C.fmtDate(asset.date)}).`);
           if (v.date > C.today() && !await confirmDialog(`La date (${C.fmtDate(v.date)}) est dans le futur. Enregistrer quand même ?`, 'Enregistrer')) return;
           if (closedBlock([asset.disposal && asset.disposal.date, v.date], 'Cette sortie')) return;
+          // Un prix laissé VIDE n'est pas un prix décidé : on demande une fois si le bien sort vraiment
+          // sans être vendu. Un « 0 » tapé, lui, est une réponse.
+          if (String(v.amount).trim() === '') {
+            const r = C.disposalResult({ ...asset, disposal: { date: v.date, amount: 0 } });
+            if (!await confirmDialog(`Aucun prix de cession : « ${asset.label} » sort sans être vendu (mis au rebut, volé)${r && r.nbv > 0 ? `, avec une moins-value de ${C.money(r.nbv, cur)}` : ''}. C'est bien ça ?`, 'Oui, sans prix', false)) { champ('amount').focus(); return; }
+          }
           asset.disposal = { date: v.date, amount: Number(v.amount) || 0, reason: v.reason || '' };
           save(true); close(); if (done) done(asset);
         };
         if ($('#undo-dis', root)) $('#undo-dis', root).onclick = async () => {
-          if (!await confirmDialog('Remettre ce bien à l\'actif ? L\'amortissement reprendra comme s\'il n\'était jamais sorti.')) return;
+          if (!await confirmDialog('Remettre ce bien à l\'actif ? L\'amortissement reprendra comme s\'il n\'était jamais sorti.', 'Remettre à l\'actif', false)) return;
           if (closedBlock(asset.disposal && asset.disposal.date, 'Cette sortie')) return;
           delete asset.disposal; save(true); close(); if (done) done(asset);
         };
@@ -9332,15 +9492,39 @@
         `<button role="tab" data-tab="${id}" class="${id === s.tab ? 'active' : ''}">${label}${id === 'attente' && waiting.length ? ` <span class="nav-count">${waiting.length}</span>` : ''}</button>`).join('')}</div>
       <div id="im-body"></div>`;
 
+    // 10.12.0 — « 1 bien à l'actif » sous une carte dont le seul bien était sorti de l'actif : le
+    // compte portait sur les lignes du tableau de l'exercice, qui gardent un bien sorti en cours
+    // d'année (sa dotation court jusqu'au jour de la sortie). La phrase dit les deux.
+    function biensAuBilan(t, annee) {
+      const sortis = t.rows.filter(r => r.out).length, restent = t.rows.length - sortis;
+      return (restent ? `${pl(restent, 'bien')} à l'actif au 31/12/${annee}` : `aucun bien à l'actif au 31/12/${annee}`)
+        + (sortis ? ` · ${pl(sortis, 'sorti', 'sortis')} en ${annee}` : '');
+    }
+
     function drawTable() {
       const y = Number(s.year);
       const t = C.assetTotals(data, y);
+      // 10.12.0 — une entreprise sans AUCUN bien voyait quatre cartes à « 0,000 DT », un export sur
+      // rien et une phrase sans bouton (7.0.0 : une liste vide dit à quoi elle sert et donne le geste
+      // qui la remplit — ni filtres ni chiffres au-dessus du vide). Si des lignes d'achat attendent
+      // leur fiche, c'est ce geste-là, l'étape suivante (U-11).
+      if (!data.assets.length) {
+        $('#im-body').innerHTML = etatVide('Ce que tu gardes plusieurs années',
+          ['Un ordinateur, un véhicule, une machine, du mobilier : un bien qui sert plus d\'un an ne se passe pas en charge d\'un coup, il s\'<b>amortit</b> — une part de sa valeur chaque année, sur sa durée d\'utilisation.',
+           waiting.length ? `${pl(waiting.length, 'ligne d\'achat attend', 'lignes d\'achat attendent')} ${waiting.length > 1 ? 'leur fiche : tant qu\'elles n\'existent pas, leur amortissement n\'est' : 'sa fiche : tant qu\'elle n\'existe pas, son amortissement n\'est'} déduit nulle part.`
+             : 'Enregistre-le ici avec sa valeur et sa date de mise en service, ou saisis sa facture d\'achat avec la destination «\u00a0immobilisation\u00a0»\u00a0: SkanFact te proposera d\'en créer la fiche.'],
+          waiting.length ? [['immo-vers-attente', `Voir ${pl(waiting.length, 'ligne')} à immobiliser`, true], ['immo-premier', '+ Enregistrer un autre bien']]
+            : [['immo-premier', '+ Enregistrer mon premier bien', true]]);
+        $('#immo-premier').onclick = () => assetForm(null, () => render());
+        if ($('#immo-vers-attente')) $('#immo-vers-attente').onclick = () => $('#im-tabs button[data-tab=attente]').click();
+        return;
+      }
       $('#im-body').innerHTML = `
         <div class="stats">
-          <div class="stat"><div class="lbl">Valeur d'acquisition ${info('immo.gross')}</div><div class="val">${C.money(t.gross, cur)}</div><div class="sub">${pl(t.count, 'bien')} à l'actif</div></div>
+          <div class="stat"><div class="lbl">Valeur d'acquisition ${info('immo.gross')}</div><div class="val">${C.money(t.gross, cur)}</div><div class="sub">${biensAuBilan(t, s.year)}</div></div>
           <div class="stat"><div class="lbl">Dotation ${s.year} ${info('immo.annuity')}</div><div class="val">${C.money(t.annuity, cur)}</div><div class="sub">la charge de l'exercice</div></div>
-          <div class="stat"><div class="lbl">Amortissement cumulé</div><div class="val">${C.money(t.cumulated, cur)}</div><div class="sub">depuis l'origine</div></div>
-          <div class="stat"><div class="lbl">Valeur nette comptable ${info('immo.nbv')}</div><div class="val">${C.money(t.nbv, cur)}</div><div class="sub">ce qu'il reste à amortir</div></div>
+          <div class="stat"><div class="lbl">Amortissement cumulé</div><div class="val">${C.money(t.cumulated, cur)}</div><div class="sub">au 31/12/${s.year}, depuis l'origine</div></div>
+          <div class="stat"><div class="lbl">Valeur nette comptable ${info('immo.nbv')}</div><div class="val">${C.money(t.nbv, cur)}</div><div class="sub">au 31/12/${s.year} : ce qu'il reste à amortir</div></div>
         </div>
         <div class="panel"><h2>Tableau des amortissements — ${s.year} ${info('immo.table')}</h2>
           ${t.rows.length ? `<div class="scroll-x"><table class="list compact"><thead><tr>
@@ -9374,14 +9558,15 @@
         <div class="panel"><h2>Lignes d'achat à immobiliser ${info('immo.waiting')}</h2>
           <p class="small muted mb">Ces lignes ont été saisies avec la destination « immobilisation ». SkanFact ne crée pas leur fiche tout seul : la durée d'amortissement est une décision, pas une donnée.</p>
           ${waiting.length ? `<div class="scroll-x"><table class="list compact"><thead><tr><th>Date</th><th>Fournisseur</th><th>Désignation</th><th class="r">Valeur HT</th><th></th></tr></thead><tbody>
-            ${waiting.map((w, i) => `<tr><td class="nw">${C.fmtDate(w.date)}</td>
+            ${/* 10.12.0 — deux boutons par ligne, dont un VERT sur chaque ligne : autant de boutons
+                 principaux que de lignes (U-11), et une rangée de boutons que la 7.29.0 avait
+                 retirée partout ailleurs. La ligne garde UN bouton, celui pour lequel la page
+                 existe ; la pièce d'origine s'ouvre en cliquant la ligne, comme dans toute liste.
+                 Le vert est l'étape suivante : la ligne la plus récente, et elle seule. */''}
+            ${waiting.map((w, i) => `<tr class="clickable" data-open="${h(w.purchaseId)}" title="Ouvrir la facture d'achat (elle s'ouvre en modification)"><td class="nw">${C.fmtDate(w.date)}</td>
               <td>${h(supplierName(w.supplierId))}${w.number ? `<div class="small muted">${h(w.number)}</div>` : ''}</td>
               <td>${h(w.label)}</td><td class="r nw">${C.money(w.amount, cur)}</td>
-              <td class="r"><button class="btn btn-sm btn-primary" data-mk="${i}" title="Nom, durée d'amortissement, date de mise en service">Créer la fiche du bien</button>
-                <!-- « Voir l'achat » promettait une consultation et ouvrait l'éditeur : un achat n'a
-                     pas de fiche en lecture seule (contrairement à une facture émise, qui est
-                     verrouillée), donc le libellé doit dire ce qu'on va trouver. -->
-                <button class="btn btn-sm" data-open="${h(w.purchaseId)}" title="La pièce d'origine, ses lignes et ses justificatifs — elle s'ouvre en modification">Ouvrir la facture d'achat</button></td></tr>`).join('')}
+              <td class="r"><button class="btn btn-sm${i === 0 ? ' btn-primary' : ''}" data-mk="${i}" title="Nom, famille, durée d'amortissement, date de mise en service">Créer la fiche du bien…</button></td></tr>`).join('')}
           </tbody></table></div>`
             : (data.purchases || []).length
               ? '<div class="empty">Rien en attente. Toutes les lignes d\'achat marquées « immobilisation » ont leur fiche.</div>'
@@ -9393,9 +9578,12 @@
                   [['immo-vers-achats', '+ Saisir une facture d\'achat']])}
         </div>`;
       if ($('#immo-vers-achats')) $('#immo-vers-achats').onclick = () => navigate('#/achat/new');
-      $$('#im-body [data-mk]').forEach(b => b.onclick = () => {
+      $$('#im-body [data-mk]').forEach(b => b.onclick = e => {
+        e.stopPropagation();
         const w = waiting[Number(b.dataset.mk)];
-        assetForm(null, () => render(), { label: w.label, amount: w.amount, date: w.date, supplierId: w.supplierId, purchaseId: w.purchaseId, lineIndex: w.lineIndex });
+        // La dernière fiche créée, l'onglet n'a plus rien à montrer : on arrive au tableau, là où le
+        // bien vient d'entrer — pas sur « Rien en attente » (chaque écran finit par le geste suivant).
+        assetForm(null, () => { if (!C.assetsToCreate(data).length) s.tab = 'tableau'; render(); }, { label: w.label, amount: w.amount, date: w.date, supplierId: w.supplierId, purchaseId: w.purchaseId, lineIndex: w.lineIndex });
       });
       $$('#im-body [data-open]').forEach(b => b.onclick = () => navigate('#/achat/' + b.dataset.open));
     }
@@ -9412,10 +9600,12 @@
           ${rows.length ? `<div class="scroll-x"><table class="list compact"><thead><tr><th>Date</th><th>Bien</th><th>Motif</th><th class="r">Valeur HT</th><th class="r">VNC à la sortie</th><th class="r">Prix obtenu</th><th class="r">Résultat</th></tr></thead><tbody>
             ${rows.map(({ a, d }) => `<tr class="clickable" data-aid="${h(a.id)}">
               <td class="nw">${C.fmtDate(d.date)}</td><td><strong>${h(a.label)}</strong></td><td>${h(d.reason) || '<span class="muted">—</span>'}</td>
-              <td class="r nw">${C.money(a.amount, cur)}</td><td class="r nw">${C.money(d.nbv, cur)}</td><td class="r nw">${C.money(d.price, cur)}</td>
+              <td class="r nw">${C.money(a.amount, cur)}</td><td class="r nw">${C.money(d.nbv, cur)}</td><td class="r nw">${d.price > 0 ? C.money(d.price, cur) : '<span class="muted">sans prix</span>'}</td>
               <td class="r nw ${d.result < 0 ? 'warn-text' : 'ok-text'}"><strong>${C.money(d.result, cur)}</strong></td></tr>`).join('')}
           </tbody></table></div>
-          <p class="small mt">Plus-values : <b class="ok-text">${C.money(gain, cur)}</b> · Moins-values : <b class="warn-text">${C.money(loss, cur)}</b>.
+          ${/* 10.12.0 — « Plus-values : 0,000 DT » en VERT quand il n'y en a aucune : un zéro dans la
+               couleur d'une bonne nouvelle. Un total nul se dit « aucune », en gris. */''}
+          <p class="small mt">Plus-values : ${gain ? `<b class="ok-text">${C.money(gain, cur)}</b>` : '<span class="muted">aucune</span>'} · Moins-values : ${loss ? `<b class="warn-text">${C.money(loss, cur)}</b>` : '<span class="muted">aucune</span>'}.
           <em>À VÉRIFIER avec ton comptable : une plus-value de cession est en principe imposable, une moins-value déductible.</em></p>`
             : '<div class="empty">Aucune sortie sur cet exercice. Un bien vendu, mis au rebut ou volé se sort depuis sa fiche.</div>'}
         </div>`;
@@ -9423,7 +9613,11 @@
     }
 
     const draw = () => {
-      $('#im-year').hidden = s.tab === 'attente';
+      // Une liste d'une seule année ne choisit rien ; l'export est celui du TABLEAU (7.17.0 : un
+      // export suit ce qu'on regarde) ; et sans aucun bien, le vert est celui de l'état vide (U-11).
+      $('#im-year').hidden = s.tab === 'attente' || years.length < 2;
+      $('#im-csv').hidden = s.tab !== 'tableau' || !data.assets.length;
+      $('#new-imm').classList.toggle('btn-primary', !!data.assets.length && !(s.tab === 'attente' && waiting.length));
       if (s.tab === 'attente') return drawWaiting();
       if (s.tab === 'sorties') return drawDisposals();
       drawTable();
@@ -9468,13 +9662,21 @@
       <div class="page-head"><div><h1>${h(a.label)}</h1>
         <div class="small muted">${[C.assetClassLabel(a.category), 'mis en service le ' + C.fmtDate(a.date), a.supplierId ? supplierName(a.supplierId) : ''].filter(Boolean).join(' · ')}</div></div>
         <div class="actions">${backButton('#/immos')}<button class="btn" id="edit-imm">Modifier</button>
-          <button class="btn ${dis ? '' : 'btn-primary'}" id="dispose">${dis ? 'Modifier la sortie' : 'Sortir du patrimoine'}</button></div></div>
-      ${dis ? `<div class="panel" style="border-left:3px solid ${dis.result < 0 ? 'var(--danger)' : 'var(--success)'}">
+          ${/* 10.12.0 — « Sortir du patrimoine » en vert sur un bien qu'on vient d'acheter : le vert dit
+               l'étape SUIVANTE (U-11), et sortir un bien n'est la suite de rien — c'est un geste
+               exceptionnel (vente, rebut, vol). Un bien en service n'a pas d'étape suivante : son
+               plan court tout seul. Aucun vert. */''}
+          <button class="btn" id="dispose">${dis ? 'Modifier la sortie' : 'Sortir du patrimoine'}</button></div></div>
+      ${/* 10.12.0 — « Vendu 0,000 DT » sur un bien mis au rebut, sous un liseré ROUGE : un bien sorti
+           n'est pas une erreur, et un bien qu'on n'a vendu à personne n'a pas été vendu. Le liseré
+           est neutre ; la phrase suit le prix. */''}
+      ${dis ? `<div class="panel" style="border-inline-start:3px solid var(--line)">
         <h2>Sorti le ${C.fmtDate(dis.date)}${dis.reason ? ' — ' + h(dis.reason) : ''}</h2>
-        <p class="small">Vendu ${C.money(dis.price, cur)} alors qu'il valait encore ${C.money(dis.nbv, cur)} dans les comptes :
-        ${dis.result >= 0 ? `<b class="ok-text">plus-value de ${C.money(dis.result, cur)}</b>` : `<b class="warn-text">moins-value de ${C.money(-dis.result, cur)}</b>`}.
+        <p class="small">${dis.price > 0
+          ? `Vendu ${C.money(dis.price, cur)} alors qu'il valait encore ${C.money(dis.nbv, cur)} dans les comptes : ${dis.result >= 0 ? `<b class="ok-text">plus-value de ${C.money(dis.result, cur)}</b>` : `<b class="warn-text">moins-value de ${C.money(-dis.result, cur)}</b>`}.`
+          : `Sorti sans prix (mis au rebut, volé) alors qu'il valait encore ${C.money(dis.nbv, cur)} dans les comptes : <b>moins-value de ${C.money(dis.nbv, cur)}</b>.`}
         <em>À VÉRIFIER avec ton comptable.</em></p>
-        ${vatWarning(a, dis.date) ? `<p class="small warn-text">${vatWarning(a, dis.date)}</p>` : ''}</div>` : ''}
+        ${vatWarning(a, dis.date, { passe: true }) ? `<p class="small warn-text">${vatWarning(a, dis.date, { passe: true })}</p>` : ''}</div>` : ''}
       <div class="stats">
         <div class="stat"><div class="lbl">Valeur d'acquisition</div><div class="val">${C.money(a.amount, cur)}</div><div class="sub">${Number(a.residual) ? 'valeur résiduelle ' + C.money(a.residual, cur) : 'aucune valeur résiduelle'}</div></div>
         <div class="stat"><div class="lbl">Durée</div><div class="val">${a.years} an${a.years > 1 ? 's' : ''}</div><div class="sub">jusqu'au ${rows.length ? C.fmtDate(rows[rows.length - 1].to) : '—'}</div></div>

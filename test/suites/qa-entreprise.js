@@ -1513,4 +1513,321 @@ module.exports = ({ t, assert, lireSource }) => {
     const ro = app.match(/new ResizeObserver\(([\s\S]{0,300}?)\)\.observe\(document\.getElementById\('nav'\)\)/);
     assert.ok(ro && /ajusterNav\(\)/.test(ro[1]), 'la barre qui rétrécit sous l\'effet du pied ne ramène plus l\'entrée allumée');
   });
+
+  // ------------------------------------------------------------------ La menuiserie, lot 3
+  // Les immobilisations, parcourues à la souris : un bien enregistré, sorti sans prix, remis à
+  // l'actif, une machine achetée dont la fiche se crée depuis l'achat. Chaque test se prouve en
+  // réintroduisant son défaut (règle 7.2.0).
+  const corpsDe = (app, debut) => {
+    const i = app.indexOf(debut);
+    assert.ok(i >= 0, debut + ' introuvable');
+    const p = app.indexOf('{', i); let n = 0;
+    for (let j = p; j < app.length; j++) { if (app[j] === '{') n++; else if (app[j] === '}' && --n === 0) return app.slice(i, j + 1); }
+    return '';
+  };
+  const plT = (n, un, plur) => `${n} ${n > 1 ? (plur || un + 's') : un}`;
+
+  // « Matériel informatique » et 3 ans proposés d'office à une menuiserie qui enregistrait sa scie :
+  // la famille se CHOISIT, et c'est elle qui propose la durée (3.5.0 : la durée est une décision).
+  t('Une immobilisation neuve ne part sur aucune famille ni aucune durée, et le refus montre le champ', () => {
+    const app = code('src', 'renderer', 'app.js');
+    const f = corpsDe(app, 'function assetForm(');
+    assert.ok(f.length > 2000 && f.length < 16000, 'tranche assetForm (' + f.length + ')');
+    assert.ok(/category: '',/.test(f) && /years: '',/.test(f), 'la fiche neuve part encore sur une famille ou une durée que personne n\'a choisie');
+    assert.ok(/<option value="" \$\{a\.category \? '' : 'selected'\}>— Choisis la famille —<\/option>/.test(f), 'la liste des familles ne commence plus par « Choisis »');
+    assert.ok(!/Ordinateur portable/.test(f), 'l\'invite de la désignation porte encore le métier de l\'auteur');
+    assert.ok(/refus\(champ\('category'\), 'Choisis la famille du bien/.test(f), 'une fiche sans famille passe, ou se refuse sans montrer le champ');
+    assert.ok(!/toast\([^)]*true\)/.test(f.slice(f.indexOf("$('#ok', root).onclick"))), 'un refus de la fiche ne montre pas le champ (7.0.0)');
+    // Choisir « — Choisis — » ne vide pas une durée déjà proposée.
+    assert.ok(/if \(!yearsTouched && e\.target\.value\)/.test(f), 'revenir sur « Choisis la famille » efface la durée');
+  });
+
+  t('Immobilisations vides : un état qui dit à quoi sert la page, et rien au-dessus du vide', () => {
+    const app = code('src', 'renderer', 'app.js');
+    const r = corpsDe(app, 'routes.immos = ');
+    const dt = corpsDe(r, 'function drawTable(');
+    const vide = dt.indexOf('if (!data.assets.length)');
+    assert.ok(vide > 0 && vide < dt.indexOf('<div class="stats">'), 'des cartes à zéro s\'affichent encore sans aucun bien');
+    assert.ok(/etatVide\('Ce que tu gardes plusieurs années'/.test(dt), 'l\'état vide ne dit plus à quoi sert la page');
+    assert.ok(/immo-premier', '\+ Enregistrer mon premier bien', true/.test(dt), 'l\'état vide ne porte plus son geste principal');
+    const draw = r.slice(r.indexOf('const draw = () => {'));
+    assert.ok(/\$\('#im-csv'\)\.hidden = s\.tab !== 'tableau' \|\| !data\.assets\.length/.test(draw), 'l\'export se propose sur rien');
+    assert.ok(/years\.length < 2/.test(draw), 'une liste d\'une seule année s\'affiche encore');
+    assert.ok(/classList\.toggle\('btn-primary', !!data\.assets\.length/.test(draw), 'deux verts pour le même geste (en-tête et état vide)');
+  });
+
+  // « 1 bien à l'actif » sous une carte dont le seul bien était sorti de l'actif.
+  t('La carte « Valeur d\'acquisition » compte ce qui reste à l\'actif et ce qui en est sorti', () => {
+    const app = code('src', 'renderer', 'app.js');
+    const f = corpsDe(app, 'function biensAuBilan(');
+    const dire = rows => require('vm').runInNewContext('(' + f.replace(/^function biensAuBilan/, 'function') + ')', { pl: plT })({ rows }, '2026');
+    assert.strictEqual(dire([{ out: true }]), 'aucun bien à l\'actif au 31/12/2026 · 1 sorti en 2026');
+    assert.strictEqual(dire([{ out: false }, { out: false }, { out: true }]), '2 biens à l\'actif au 31/12/2026 · 1 sorti en 2026');
+    assert.strictEqual(dire([{ out: false }]), '1 bien à l\'actif au 31/12/2026');
+    assert.ok(/biensAuBilan\(t, s\.year\)/.test(app), 'la carte ne lit plus biensAuBilan');
+  });
+
+  // « moins-value de 18 489,722 DT » en orange à l'ouverture, prix à son zéro par défaut ; et
+  // « Vendu 0,000 DT » sur la fiche d'un bien mis au rebut.
+  t('Sortir un bien : pas d\'alarme avant un prix, et « sans prix » n\'est pas « vendu 0 »', () => {
+    const app = code('src', 'renderer', 'app.js');
+    const f = corpsDe(app, 'function annonceSortie(');
+    const C = { fmtDate: d => d, money: n => String(n) };
+    const annonce = require('vm').runInNewContext('(' + f.replace(/^function annonceSortie/, 'function') + ')', { C });
+    const r = { date: '2026-09-24', nbv: 18489.722, result: -18489.722 };
+    const sansPrix = annonce(r, false, 'DT');
+    assert.ok(/muted/.test(sansPrix) && !/warn-text|ok-text/.test(sansPrix), 'sans prix, la sortie crie déjà : ' + sansPrix);
+    assert.ok(/Sans prix \(mis au rebut, volé\)/.test(sansPrix), 'sans prix, la phrase ne dit pas ce que la sortie deviendrait');
+    const vente = annonce({ ...r, result: -3489.222 }, true, 'DT');
+    assert.ok(/warn-text">moins-value de 3489\.222/.test(vente), 'avec un prix, la moins-value ne se colore plus : ' + vente);
+    assert.ok(/ok-text">plus-value de 10/.test(annonce({ ...r, result: 10 }, true, 'DT')), 'la plus-value ne se lit plus');
+    const df = corpsDe(app, 'function disposalForm(');
+    assert.ok(/annonceSortie\(r, Number\(v\.amount\) > 0, cur\)/.test(df), 'un zéro tapé ou vide colore encore la sortie');
+    assert.ok(/asset\.disposal \? \(d\.amount \|\| 0\) : ''/.test(df), 'le prix d\'une sortie neuve s\'ouvre encore sur un zéro que personne n\'a décidé');
+    assert.ok(/String\(v\.amount\)\.trim\(\) === ''[\s\S]{0,400}'Oui, sans prix', false/.test(df), 'un prix laissé vide s\'enregistre sans question, ou la question est en rouge');
+    assert.ok(/refus\(champ\('date'\)/.test(df) && !/toast\('Date de sortie invalide/.test(df), 'un refus de la sortie ne montre pas le champ');
+    assert.ok(!/btn-danger" id="undo-dis"/.test(df) && /'Remettre à l\\'actif', false/.test(df), 'remettre un bien à l\'actif se présente comme un geste destructeur');
+    const fiche = corpsDe(app, 'routes.immo = ');
+    assert.ok(/dis\.price > 0\s*\?\s*`Vendu /.test(fiche) && /Sorti sans prix \(mis au rebut, volé\)/.test(fiche), 'la fiche écrit « Vendu 0,000 » d\'un bien mis au rebut');
+    assert.ok(!/border-left:3px solid \$\{dis\.result < 0 \? 'var\(--danger\)'/.test(fiche), 'une sortie se lit encore comme une erreur (liseré rouge)');
+  });
+
+  t('La durée de détention se dit comme on la dit, et la TVA à reverser parle au bon temps', () => {
+    const app = code('src', 'renderer', 'app.js');
+    const f = corpsDe(app, 'function dureeDetenue(');
+    const duree = require('vm').runInNewContext('(' + f.replace(/^function dureeDetenue/, 'function') + ')', { pl: plT });
+    assert.strictEqual(duree(0), 'moins d\'un mois', 'une sortie le jour même « a duré 1 mois »');
+    assert.strictEqual(duree(29), 'moins d\'un mois');
+    assert.strictEqual(duree(45), '1 mois');
+    assert.strictEqual(duree(400), '1 an et 1 mois');
+    assert.strictEqual(duree(720), '2 ans');
+    const i = app.indexOf('const vatWarning = ');
+    const vw = app.slice(i, app.indexOf('};', i) + 2);
+    const tva = require('vm').runInNewContext(vw.replace(/^const vatWarning = /, '(').replace(/;$/, ')'), { C: core, dureeDetenue: duree });
+    const bien = { date: '2026-01-10' };
+    assert.ok(/avant de conclure la vente/.test(tva(bien, '2026-06-10', { vente: true })), 'la question de la TVA ne se pose plus avant une vente');
+    assert.ok(!/conclure la vente/.test(tva(bien, '2026-06-10', { vente: false })), 'un bien mis au rebut « conclut une vente »');
+    const passe = tva(bien, '2026-06-10', { passe: true });
+    assert.ok(/n'a été détenu/.test(passe) && !/conclure/.test(passe), 'la fiche d\'un bien déjà sorti parle au futur : ' + passe);
+    assert.strictEqual(tva(bien, '2032-01-10'), '', 'au-delà de cinq ans, plus rien à reverser');
+  });
+
+  // Le moteur marquait « sorti » un bien amorti en 2022 et vendu en 2026, dès 2023.
+  t('Un bien entièrement amorti n\'est « sorti » que l\'année de sa sortie', () => {
+    const a = { id: 'x', date: '2020-01-01', amount: 1000, years: 3, category: 'informatique', disposal: { date: '2026-06-30', amount: 100 } };
+    for (const y of [2023, 2024, 2025]) assert.strictEqual(core.assetYear(a, y).out, false, 'en ' + y + ', le bien est encore à l\'actif (vendu en 2026)');
+    assert.strictEqual(core.assetYear(a, 2026).out, true);
+    assert.strictEqual(core.assetYear(a, 2027).out, true);
+  });
+
+  t('Les sorties de l\'exercice : « sans prix » pour un rebut, et un total nul n\'est pas vert', () => {
+    const app = code('src', 'renderer', 'app.js');
+    const f = corpsDe(app, 'function drawDisposals(');
+    assert.ok(/d\.price > 0 \? C\.money\(d\.price, cur\) : '<span class="muted">sans prix<\/span>'/.test(f), 'un bien mis au rebut affiche « 0,000 » comme prix obtenu');
+    assert.ok(/gain \? `<b class="ok-text">/.test(f) && /loss \? `<b class="warn-text">/.test(f), 'un total nul de plus-values s\'affiche encore en vert');
+  });
+
+  // Deux boutons par ligne, dont un VERT sur chaque ligne ; et « Voir les biens à créer » qui quittait
+  // un achat PAS ENCORE enregistré pour une liste où sa ligne n'était pas.
+  t('À immobiliser : un geste par ligne, un seul vert, et l\'achat mène à la fiche du bien', () => {
+    const app = code('src', 'renderer', 'app.js');
+    const w = corpsDe(app, 'function drawWaiting(');
+    const ligne = w.slice(w.indexOf('waiting.map('), w.indexOf(".join('')", w.indexOf('waiting.map(')));
+    assert.strictEqual((ligne.match(/<button /g) || []).length, 1, 'une ligne porte encore plusieurs boutons (7.29.0)');
+    assert.ok(/i === 0 \? ' btn-primary' : ''/.test(ligne), 'chaque ligne a son vert : autant de boutons principaux que de lignes (U-11)');
+    assert.ok(/<tr class="clickable" data-open=/.test(ligne), 'la pièce d\'origine ne s\'ouvre plus en cliquant la ligne');
+    assert.ok(/e\.stopPropagation\(\)/.test(w), 'le bouton de la ligne ouvre aussi la facture d\'achat');
+    assert.ok(/s\.tab = 'tableau'/.test(w), 'la dernière fiche créée laisse sur « Rien en attente »');
+    const b = app.slice(app.indexOf("if ($('#b-immo')) $('#b-immo').onclick"), app.indexOf("$$('[data-orph]', box)"));
+    assert.ok(b.length > 200 && b.length < 2500, 'tranche du bouton de l\'achat (' + b.length + ')');
+    assert.ok(b.indexOf('persist()') > 0 && b.indexOf('persist()') < b.indexOf('assetForm('), 'la fiche s\'ouvre sur un achat pas encore enregistré');
+    assert.ok(/C\.assetsToCreate\(data\)\.filter\(w => w\.purchaseId === p\.id\)/.test(b), 'la fiche ne se préremplit plus depuis la ligne de CET achat');
+    assert.ok(!/Voir les biens à créer/.test(app), 'le bouton de l\'achat renvoie encore vers une liste');
+  });
+
+  // La fiche enregistrée, l'achat répétait « ce montant n'est déduit nulle part » sous un bien qui
+  // s'amortissait déjà.
+  t('Une ligne d\'achat qui a sa fiche d\'immobilisation le dit, et n\'est plus réclamée', () => {
+    const app = code('src', 'renderer', 'app.js');
+    const i = app.indexOf('const fichesDeLAchat = ');
+    assert.ok(i > 0, 'l\'achat ne cherche plus quelles lignes ont leur fiche');
+    const z = app.slice(i, i + 3500);
+    assert.ok(/const immos = lignesImmo\.filter\(\(\{ i \}\) => !fichesDeLAchat\.has\(i\)\)/.test(z), 'une ligne qui a sa fiche est encore réclamée');
+    assert.ok(/a sa fiche : il s'amortit sur/.test(z) && /href="#\/immo\//.test(z), 'une ligne qui a sa fiche ne le dit pas, ou n\'y mène pas');
+    // La même règle que assetsToCreate : l'achat ET le rang de la ligne.
+    const d = vierge();
+    d.purchases = [{ id: 'p1', supplierId: 's', date: '2026-09-24', lines: [
+      { label: 'Scie', qty: 1, unitPrice: 100, destination: 'immobilisation' },
+      { label: 'Aspirateur', qty: 1, unitPrice: 50, destination: 'immobilisation' }] }];
+    d.assets = [{ id: 'a1', purchaseId: 'p1', lineIndex: 0 }];
+    assert.deepStrictEqual(core.assetsToCreate(d).map(w => w.lineIndex), [1]);
+  });
+
+  // « + Nouveau fournisseur » sous « Felder Tunisie » introuvable ne disait pas que la fiche
+  // arriverait déjà nommée.
+  t('Le bouton de création d\'une liste nomme ce qu\'il va créer', () => {
+    const app = code('src', 'renderer', 'app.js');
+    const f = corpsDe(app, 'function bindCombo(');
+    const dessin = f.slice(f.indexOf('const draw = () => {'), f.indexOf('const close = () =>'));
+    assert.ok(/add\.textContent = saisi \? `\$\{o\.add\} «\\u00a0\$\{saisi\}\\u00a0»` : o\.add/.test(dessin), 'le bouton de création ne reprend pas ce qu\'on vient de taper');
+  });
+
+  // Taper le prix élargissait la colonne Total HT : toutes les colonnes glissaient de 10 px sous le
+  // curseur, au moment où l'on vise la destination.
+  t('Les grilles de lignes à colonnes fixes réservent la place du total', () => {
+    const app = code('src', 'renderer', 'app.js');
+    const tables = app.match(/<table class="lines-edit(?! lignes-doc)[^>]*><thead>[\s\S]*?<\/thead>/g) || [];
+    const avecTotal = tables.filter(x => /Total HT/.test(x));
+    assert.ok(avecTotal.length >= 3, 'grilles avec un total : ' + avecTotal.length);
+    avecTotal.forEach(x => assert.ok(/<th class="r" style="width:\d+px">Total HT<\/th>/.test(x), 'la colonne du total suit son contenu : ' + x.slice(0, 80)));
+  });
+  // ------------------------------------------------------------ La menuiserie, lot 3 (la paie)
+  // Congés, avances, documents, déclarations, registre et barèmes, parcourus à la souris.
+  const sPlT = n => (Math.abs(Number(n)) > 1 ? 's' : '');
+
+  // La fenêtre d'une absence annonçait le solde AVANT la demande, jamais celui d'après : « −3 » ne se
+  // découvrait qu'une fois l'absence enregistrée.
+  t('Une absence annonce le solde de congés avant ET après, et prévient d\'un solde négatif', () => {
+    const app = code('src', 'renderer', 'app.js');
+    const f = corpsDe(app, 'function soldeApresConge(');
+    const C = { workingDays: () => 2, payrollSettings: () => ({ offDays: [0] }) };
+    const solde = require('vm').runInNewContext('(' + f.replace(/^function soldeApresConge/, 'function') + ')', { C, data: {}, pct: n => String(n), sPl: sPlT });
+    const neuf = solde(18, 3, null, { from: '2026-10-05' });
+    assert.ok(/<b>18 jours<\/b> avant, <b>15 jours<\/b> après/.test(neuf) && !/warn-text/.test(neuf), 'une demande couverte : ' + neuf);
+    const trop = solde(1, 4, null, { from: '2026-10-05' });
+    assert.ok(/<b>-3 jours<\/b> après/.test(trop) && /warn-text">Il prendrait 3 jours de plus/.test(trop), 'un solde qui passe sous zéro ne prévient pas : ' + trop);
+    // Modifier une absence déjà comptée : le moteur l'a déjà retranchée, « avant » la lui rend.
+    const modif = solde(10, 2, { kind: 'conges', from: '2026-08-03', to: '2026-08-04' }, { from: '2026-08-03' });
+    assert.ok(/<b>12 jours<\/b> avant, <b>10 jours<\/b> après/.test(modif), 'une absence modifiée est retranchée deux fois : ' + modif);
+    assert.ok(/<b>10 jours<\/b> avant/.test(solde(10, 2, { kind: 'maladie', from: '2026-08-03', to: '2026-08-04' }, { from: '2026-08-03' })), 'un arrêt maladie est rendu au solde de congés');
+    const lf = corpsDe(app, 'function leaveForm(');
+    assert.ok(/soldeApresConge\(bal\.remaining, days, leave, v\)/.test(lf), 'la fenêtre n\'annonce plus le solde d\'après');
+    assert.ok(/refus\(champ\('from'\)/.test(lf) && /refus\(champ\('to'\)/.test(lf), 'une absence sans date se refuse sans montrer le champ');
+    assert.ok(!/toast\([^)]*true\)/.test(lf.slice(lf.indexOf("$('#ok', root).onclick"), lf.indexOf("$('#del-lv', root)"))), 'un refus de l\'absence part encore en bandeau');
+  });
+
+  // Deux « 0 » proposés d'office, l'explication en gras (classe d'un libellé), et un refus en bandeau.
+  t('Une avance ne propose aucun montant, les dit obligatoires et refuse en montrant le champ', () => {
+    const app = code('src', 'renderer', 'app.js');
+    const f = corpsDe(app, 'function advanceForm(');
+    assert.ok(/field\('<span>Montant avancé<\/span>', 'amount', a\.amount \|\| ''/.test(f), 'le montant d\'une avance neuve s\'ouvre sur un zéro que personne n\'a décidé');
+    assert.ok(/'monthly', a\.monthly \|\| ''/.test(f), 'la retenue d\'une avance neuve s\'ouvre sur un zéro');
+    assert.strictEqual((f.match(/replace\('class="field"', 'class="field obligatoire"'\)/g) || []).length, 2, 'les deux montants ne se disent pas obligatoires');
+    assert.ok(/<div class="span-2 annonce-stable" id="af2-hint">/.test(f) && !/class="field span-2" id="af2-hint"/.test(f), 'l\'annonce de l\'avance est stylée comme un libellé, ou change de hauteur');
+    assert.ok(/refus\(champ\('amount'\)/.test(f) && /refus\(champ\('monthly'\)/.test(f), 'une avance sans montant se refuse sans montrer le champ');
+  });
+
+  t('Les listes de la paie : les lignes s\'ouvrent au clic, et rien ne se compte au-dessus du vide', () => {
+    const app = code('src', 'renderer', 'app.js');
+    const lv = corpsDe(app, 'function drawLeaves(');
+    assert.ok(/\$\{all\.length \? `<div class="filters"><span class="small muted">\$\{pl\(all\.length, 'enregistrement'\)\}/.test(lv), '« 0 enregistrement » au-dessus d\'une liste vide');
+    assert.ok(/<tr class="clickable" data-lv=/.test(lv), 'une absence ne s\'ouvre plus en cliquant sa ligne');
+    const lignesLv = lv.slice(lv.indexOf('all.map(l =>'), lv.indexOf(".join('')", lv.indexOf('all.map(l =>')));
+    assert.ok(!/<button/.test(lignesLv), 'une absence garde un bouton « Modifier » au bout de sa ligne');
+    const av = corpsDe(app, 'function drawAdvances(');
+    assert.ok(/\$\{all\.length \? `<div class="filters">/.test(av), '« 0 en cours sur 0 » au-dessus d\'une liste vide');
+    const lignesAv = av.slice(av.indexOf('all.map(a =>'), av.indexOf(".join('')", av.indexOf('all.map(a =>')));
+    assert.ok(/<tr class="clickable[^"]*" data-av=/.test(lignesAv) && !/<button/.test(lignesAv), 'une avance ne s\'ouvre pas en cliquant sa ligne');
+    assert.ok(!/row-warn/.test(lignesAv), 'une avance en cours se peint encore en orange, alors que c\'est son état normal');
+    const reg = corpsDe(app, 'function drawRegister(');
+    assert.ok(/<tr class="clickable\$\{r\.active \? '' : ' muted'\}" data-eid=/.test(reg), 'une ligne du registre ne mène pas à la fiche du salarié');
+    assert.ok(/tr\[data-eid\]'\)\.forEach\(tr => tr\.onclick = \(\) => navigate\('#\/salarie\/'/.test(reg), 'la ligne du registre porte l\'attribut sans que le clic mène nulle part');
+  });
+
+  t('La fiche d\'un salarié : le document dans l\'identité, les bulletins et les avances s\'ouvrent', () => {
+    const app = code('src', 'renderer', 'app.js');
+    const f = corpsDe(app, 'routes.salarie = ');
+    const identite = f.slice(f.indexOf('<h2>Identité</h2>'), f.indexOf('<div class="split">'));
+    assert.ok(/id="hr-doc">Établir un document…/.test(identite), '« Établir un document… » n\'est pas dans le panneau de l\'identité');
+    assert.strictEqual((f.match(/id="hr-doc"/g) || []).length, 1, '« Établir un document… » vit à deux endroits de la fiche');
+    const bulletins = f.slice(f.indexOf('slips.map(x =>'), f.indexOf(".join('')", f.indexOf('slips.map(x =>')));
+    assert.ok(/<tr class="clickable [^"]*" data-ed=/.test(bulletins), 'un bulletin ne s\'ouvre pas en cliquant sa ligne');
+    assert.strictEqual((bulletins.match(/<button /g) || []).length, 1, 'une ligne de bulletin garde plusieurs boutons (7.29.0)');
+    assert.ok(/data-pdf[\s\S]{0,80}ev\.stopPropagation\(\)/.test(f), 'le PDF d\'un bulletin ouvre aussi le bulletin');
+    assert.ok(/av\.map\(x => `<tr class="clickable" data-av=/.test(f) && /tr\[data-av\]'\)\.forEach\(b => b\.onclick = \(\) => advanceForm\(/.test(f), 'une avance de la fiche ne s\'ouvre pas');
+  });
+
+  // Un solde de congés négatif disparaissait du seul document où il compte ; et une panne de PDF
+  // montrait le message brut.
+  t('Le solde de tout compte dit un solde de congés négatif, et une panne se dit en français', () => {
+    const app = code('src', 'renderer', 'app.js');
+    const f = corpsDe(app, 'function hrDocForm(');
+    assert.ok(/bal\.remaining < 0 \? `<p class="small warn-text mt">Il a pris/.test(f), 'un solde de congés négatif ne se dit pas sur le solde de tout compte');
+    assert.ok(/catch \(err\) \{ toast\(plainError\(err\), true\)/.test(f), 'une panne du PDF montre le message brut (7.26.0)');
+  });
+
+  t('« −3 jours » : un nombre négatif s\'accorde comme son contraire, dans les quatre jumeaux', () => {
+    const corps = [];
+    for (const [fichier, motif] of [[['src', 'renderer', 'app.js'], /const pl = \(n, un, plur\) => (`[^`]*`);/],
+      [['src', 'cabinet', 'renderer', 'app.js'], /const pl = \(n, un, plur\) => (`[^`]*`);/],
+      [['src', 'renderer', 'core.js'], /const plFr = \(n, un, plur\) => (`[^`]*`);/],
+      [['src', 'renderer', 'compta.js'], /const plFr = \(n, un, plur\) => (`[^`]*`);/]]) {
+      const m = motif.exec(lireSource(...fichier));
+      assert.ok(m, 'accord introuvable dans ' + fichier.join('/'));
+      corps.push(m[1]);
+    }
+    assert.ok(corps.every(c => c === corps[0]), 'les quatre accords ont divergé');
+    const pl = require('vm').runInNewContext('(n, un, plur) => ' + corps[0]);
+    assert.strictEqual(pl(-3, 'jour'), '-3 jours', 'un nombre négatif s\'accorde au singulier');
+    assert.strictEqual(pl(-1, 'jour'), '-1 jour');
+    assert.strictEqual(pl(0, 'jour'), '0 jour');
+    const s2 = /const sPl = n => \(([^;]*)\);/.exec(lireSource('src', 'renderer', 'app.js'));
+    assert.ok(s2 && /Math\.abs/.test(s2[1]), 'sPl accorde encore « −3 jour »');
+  });
+
+  // « Solde de tout compte » faisait remonter la fenêtre de 196 px sous le curseur.
+  t('Une fenêtre s\'ancre en haut : elle ne grandit que vers le bas', () => {
+    const css = lireSource('src', 'renderer', 'style.css').replace(/\/\*[\s\S]*?\*\//g, '');
+    const r = /\n\.modal-bg \{([^}]*)\}/.exec(css);
+    assert.ok(r, '.modal-bg introuvable');
+    assert.ok(/align-items: flex-start/.test(r[1]) && !/align-items: center/.test(r[1]), 'une fenêtre se recentre encore quand elle grandit (H-E1)');
+  });
+
+  t('La colonne de l\'impôt dit ce qu\'elle additionne', () => {
+    const app = code('src', 'renderer', 'app.js');
+    const f = corpsDe(app, 'function drawSlips(');
+    assert.ok(/<th class="r">Impôt retenu \$\{info\('pay\.impot'\)\}<\/th>/.test(f), 'la colonne additionne IRPP et solidarité sous un nom qui n\'en dit qu\'un');
+    assert.ok(/C\.round3\(x\.c\.irpp \+ x\.c\.css\)/.test(f), 'la colonne de l\'impôt n\'additionne plus IRPP et solidarité');
+    assert.ok(/'pay\.impot': \{/.test(lireSource('src', 'renderer', 'guide.js')), 'la bulle de l\'impôt retenu n\'existe pas');
+  });
+
+  // « Marquer déposée » en vert sur le trimestre EN COURS : la déclaration serait figée sans ses
+  // derniers bulletins.
+  t('Une déclaration sociale se marque déposée une fois la période terminée', () => {
+    const app = code('src', 'renderer', 'app.js');
+    const f = corpsDe(app, 'function drawDeclarations(');
+    const src = f.slice(f.indexOf('const finTrimestre = '), f.indexOf('const enCoursCnss'));
+    const mk = today => require('vm').runInNewContext(`(() => { ${src}; return { finTrimestre, pasFini }; })()`,
+      { C: { addDays: core.addDays, today: () => today, fmtDate: core.fmtDate } });
+    const { finTrimestre, pasFini } = mk('2026-09-24');
+    assert.strictEqual(finTrimestre(2026, 1), '2026-03-31');
+    assert.strictEqual(finTrimestre(2026, 3), '2026-09-30');
+    assert.strictEqual(finTrimestre(2026, 4), '2026-12-31');
+    assert.ok(/se termine le 30\/09\/2026 : on le déclare une fois terminé/.test(pasFini('2026-09-30', 'Le 3e trimestre 2026', false)), 'le trimestre en cours se déclare comme un trimestre fini');
+    assert.ok(/on la déclare une fois terminée/.test(pasFini('2026-12-31', 'L\'année 2026', true)), 'l\'année ne s\'accorde pas');
+    assert.strictEqual(mk('2026-09-30').pasFini('2026-09-30', 'x', false), 'x se termine le 30/09/2026 : on le déclare une fois terminé, sinon il manquerait ses derniers bulletins.', 'le dernier jour du trimestre n\'est pas un trimestre terminé');
+    assert.strictEqual(mk('2026-10-01').pasFini('2026-09-30', 'x', false), '', 'un trimestre terminé ne se déclare toujours pas');
+    assert.ok(/enCoursCnss \? '' : 'btn-primary'/.test(f) && /\(raisonCnss\(y, q\) \|\| enCoursCnss\) && !filed/.test(f), 'le trimestre en cours se marque déposé en vert');
+    assert.ok(/filed\('employeur-' \+ y\) \|\| enCoursAnnee \? '' : 'btn-primary'/.test(f) && /enCoursAnnee && !filed\('employeur-' \+ y\) \? ` disabled/.test(f), 'l\'année en cours se marque déposée en vert');
+  });
+
+  // Une tranche du barème ne se tapait pas : le formulaire redessinait les lignes à chaque frappe.
+  t('Les barèmes : une tranche se tape, « Enregistrer » n\'apparaît qu\'après un changement, et on ne perd rien en changeant d\'onglet', () => {
+    const app = code('src', 'renderer', 'app.js');
+    const f = corpsDe(app, 'function drawRates(');
+    const saisie = f.slice(f.indexOf("$('#rf').oninput"), f.indexOf("$('#add-br').onclick"));
+    assert.ok(saisie.length > 50 && saisie.length < 900, 'tranche de la saisie (' + saisie.length + ')');
+    assert.ok(!/drawRows\(|drawBrackets\(/.test(saisie), 'chaque frappe redessine les lignes du barème : le champ tapé est détruit');
+    assert.ok(/brackets\[i\]\[el\.dataset\.b\] = Number\(el\.value\)/.test(saisie), 'la valeur tapée dans une tranche n\'est pas retenue pendant la frappe');
+    assert.ok(/el\.value\.trim\(\) !== '' && !el\.validity\.badInput/.test(saisie), 'une tranche vidée pour retaper devient zéro (7.19.0)');
+    assert.ok(/majDe\(\)/.test(saisie), 'la tranche suivante ne part pas de la nouvelle borne');
+    assert.ok(/<div class="save-bar" id="rf-bar" hidden>/.test(f), '« Enregistrer les barèmes » est vert au repos (U-11), ou loin du premier taux');
+    const horsBarre = f.replace(/<div class="save-bar" id="rf-bar" hidden>[\s\S]*?<\/div>/, '');
+    assert.ok(!/btn-primary/.test(horsBarre), 'un bouton vert au repos sur les barèmes');
+    assert.ok(/setGuard\(garde\)/.test(f) && /dirty: \(\) => modifie/.test(f), 'quitter les barèmes modifiés ne pose aucune question');
+    assert.ok(/Plafond annuel des frais \(\$\{h\(cur\)\}\)/.test(f) && /Déduction chef de famille \(\$\{h\(cur\)\} par an\)/.test(f), 'un montant ne dit pas son unité (9.4.8)');
+    assert.ok(/'Revenir aux valeurs livrées', true\)/.test(f), 'revenir aux valeurs livrées se confirme par « Confirmer »');
+    const onglets = app.slice(app.indexOf("$$('#p-tabs button').forEach(b => b.onclick"), app.indexOf("$$('#p-tabs button').forEach(b => b.onclick") + 400);
+    assert.ok(/if \(!await leaveOk\(\)\) return;[\s\S]{0,40}clearGuard\(\)/.test(onglets), 'changer d\'onglet jette les barèmes modifiés sans rien demander');
+  });
 };

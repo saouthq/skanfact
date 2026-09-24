@@ -327,6 +327,7 @@ const L = require('../../src/licence.js');
   // depuis plusieurs pages). Le refus arrive donc à l'enregistrement, pas à l'ouverture — c'est
   // ce qui permet de remplir, de voir le plan d'amortissement, et de comprendre ce qu'on perd.
   await win.fill('#modal-root input[name=label]', 'Ordinateur portable');
+  await win.selectOption('#modal-root select[name=category]', 'informatique');
   await win.fill('#modal-root input[name=amount]', '2400');
   await win.fill('#modal-root input[name=years]', '3');
   await win.evaluate(() => {

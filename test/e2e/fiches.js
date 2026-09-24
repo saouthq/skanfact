@@ -299,18 +299,31 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
   });
   if (!rappel.visible) throw new Error('choisir « Immobilisation » ne dit toujours rien');
   if (!/amortissement/.test(rappel.texte)) throw new Error(`le rappel ne dit pas ce qui manque : « ${rappel.texte.slice(0, 120)} »`);
-  if (!rappel.bouton) throw new Error('le rappel ne mène pas aux biens à créer');
+  if (!rappel.bouton) throw new Error('le rappel ne porte pas « Créer la fiche du bien… »');
+  // 10.12.0 — le bouton menait à la LISTE des biens à créer en quittant un achat pas encore
+  // enregistré, où la ligne n'était donc pas. Il enregistre l'achat (qui doit être valide : on lui
+  // donne un fournisseur, comme un humain) puis ouvre la fiche du bien préremplie depuis CETTE ligne.
+  await win.click('[data-combo=supplierId] .combo-btn');
+  await win.waitForSelector('[data-combo=supplierId] .combo-it', { timeout: 4000 });
+  await win.click('[data-combo=supplierId] .combo-it');
+  await win.waitForTimeout(250);
   await win.click('#b-immo');
-  const garde = await win.waitForSelector('#modal-root button', { timeout: 2000 }).catch(() => null);
-  if (garde) {
-    await win.evaluate(() => {
-      const b = [...document.querySelectorAll('#modal-root button')].find(x => /Ne pas enregistrer|Quitter|Abandonner/i.test(x.textContent));
-      if (b) b.click();
-    });
-    await win.waitForTimeout(400);
-  }
-  await win.waitForFunction(() => location.hash === '#/immos', { timeout: 5000 });
-  j.ok('le rappel nomme l\'amortissement manquant et mène aux biens à créer');
+  // Un doublon de numéro peut poser sa question : on continue, c'est la ligne qui compte ici.
+  const question = await win.waitForSelector('#modal-root .modal-bg:not(:has(#imf)) #ok', { timeout: 1500 }).catch(() => null);
+  if (question) await question.click();
+  await win.waitForSelector('#modal-root #imf', { timeout: 5000 });
+  const bien = await win.evaluate(() => ({
+    hash: location.hash,
+    montant: Number(document.querySelector('#imf input[name=amount]').value),
+    famille: document.querySelector('#imf select[name=category]').value,
+    enregistre: (window.__data.purchases || []).some(p => ('#/achat/' + p.id) === location.hash)
+  }));
+  if (!bien.enregistre) throw new Error(`la fiche du bien s'ouvre sur un achat qui n'est pas enregistré (${bien.hash})`);
+  if (bien.montant !== 4500) throw new Error(`la fiche du bien ne reprend pas le montant de la ligne : ${bien.montant}`);
+  if (bien.famille) throw new Error(`la fiche du bien part sur une famille que personne n'a choisie : ${bien.famille}`);
+  await win.click('#modal-root .modal-bg:last-child [data-close]');
+  await win.waitForFunction(() => !document.querySelector('#modal-root #imf'), null, { timeout: 4000 });
+  j.ok('le rappel nomme l\'amortissement manquant ; « Créer la fiche du bien… » enregistre l\'achat et ouvre la fiche préremplie');
 
   // ---------------------------------------------------- 5. la fiche client au complet
   j.etape('La fiche client montre ses affaires et ses contrats');

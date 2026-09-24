@@ -6596,6 +6596,41 @@ marges). Ce que ça a appris :
   « Enregistrer » et est tombée sur du code juste. Retournée : la condition s'ÉVALUE sur chaque cas
   (neuve, enregistrée, sans numéro).
 
+**Puis la menuiserie, ses biens et son personnel** (immobilisations, congés, avances, documents,
+déclarations sociales, registre, barèmes — à la souris et au clavier) :
+
+- **Un formulaire qui redessine ses lignes à chaque frappe est un formulaire où l'on ne tape pas**
+  (7.17.0, re-trouvée dans les Barèmes). `#rf.oninput` redessinait le barème ENTIER alors que la
+  valeur tapée n'était lue qu'au `change` : le premier chiffre détruisait le champ, le curseur tombait
+  dans la page, la tranche revenait à son ancienne valeur. Depuis des versions, aucune tranche ne se
+  modifiait au clavier, et le parcours e2e ne pouvait pas le voir — il `fill()` la valeur, jamais
+  touche par touche. La frappe met à jour la DONNÉE et les cellules qui en dépendent ; les lignes ne
+  se redessinent qu'à l'ajout ou au retrait. `e2e:entreprise` tape maintenant une tranche et son taux.
+- **Une page de réglages longue a la barre « Enregistrer » des Paramètres** (le jumeau dans la même
+  application, 7.3.0) : elle n'apparaît qu'après une modification, colle au bas de l'écran, et
+  quitter la page OU l'onglet pose la question — un onglet interne n'est pas un changement de page
+  pour le routeur, il appelle `leaveOk()` lui-même.
+- **Une période se déclare une fois TERMINÉE**, pour le bouton comme pour le rappel : « Marquer
+  déposée » était vert sur le trimestre en cours. Le dernier jour du trimestre n'est pas un trimestre
+  terminé (`<=`, et le test le fixe).
+- **Un avertissement se lit avant le geste** (9.4.2), y compris un solde : la fenêtre d'une absence
+  dit le solde de congés avant ET après, et le négatif AVANT d'enregistrer. Quand on MODIFIE une
+  absence déjà comptée, le moteur l'a déjà retranchée : l'annonce la lui rend, sinon elle compte
+  deux fois.
+- **Une fenêtre s'ancre en haut** : centrée, elle se recentre en grandissant, et ce qu'on venait de
+  manipuler remonte sous le curseur (H-E1, dans une fenêtre). Feuille partagée : les deux apps.
+- **`pl()` accorde un nombre négatif comme son contraire** (« −3 jours »), dans les quatre jumeaux —
+  `Math.abs`, corps comparés par un test.
+- **Une colonne nomme ce qu'elle additionne** : « IRPP » sur une somme IRPP + solidarité.
+- **Une ligne s'ouvre au clic, partout** — absences, avances (de la page ET de la fiche), bulletins de
+  la fiche, registre : un « Modifier » au bout d'une ligne est un second bouton (7.29.0), et une liste
+  qui NOMME des personnes mène à leur fiche (7.15.0).
+- **Un confirm REMPLACE-t-il une décision ? Son bouton dit le geste**, pas « Confirmer ».
+- Piège de lint : `new Function` est interdit (`no-new-func`) — un test évalue un corps extrait par
+  `vm.runInNewContext`.
+- Piège d'e2e : un parcours qui prend « le premier trimestre qui porte des bulletins » tombe le jour
+  où ce trimestre est en cours ; il prend un trimestre TERMINÉ, et remonte d'une année en janvier.
+
 ## Pistes pour la suite (non demandées)
 
 - Séparation des installateurs arm64 / x64 pour diviser par deux les 222 Mo du dmg universel.

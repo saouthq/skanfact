@@ -616,7 +616,12 @@ table.lignes-doc th { padding-bottom: 4px; }
    assistant (250), fenêtres modales (400+), bulles d'aide (900), messages (950).
    Une fenêtre modale DOIT couvrir l'assistant et le verrouillage : en dessous, ses boutons
    recevaient les clics de l'écran du dessus et la question semblait ne plus répondre. */
-.modal-bg { position: fixed; inset: 0; background: rgba(27,36,48,.38); backdrop-filter: blur(3px); display: flex; align-items: center; justify-content: center; z-index: 400; }
+/* 10.12.0 — une fenêtre part du HAUT, pas du centre. Centrée, elle se recentrait à chaque fois
+   qu'elle grandissait : choisir « Solde de tout compte » faisait remonter de 196 px la liste qu'on
+   venait de manipuler, et le clic suivant tombait à côté (règle H-E1 : ce qui apparaît ne pousse
+   rien). Ancrée en haut, une fenêtre ne s'étend que vers le bas. Feuille PARTAGÉE : les deux
+   applications ont la même règle. */
+.modal-bg { position: fixed; inset: 0; background: rgba(27,36,48,.38); backdrop-filter: blur(3px); display: flex; align-items: flex-start; justify-content: center; padding-block: 7vh 3vh; z-index: 400; }
 /* Fenêtres empilées : un seul voile, celui du dessus. Sinon deux voiles se cumulent et la fenêtre
    du dessous devient illisible alors qu'on a justement besoin de la voir. */
 .modal-bg:not(:last-child) { background: none; backdrop-filter: none; }

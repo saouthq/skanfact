@@ -104,7 +104,7 @@
   // Cabinet (« un logiciel qui écrit « 1 dossier(s) » paraît bâclé ») — et ce module, créé en
   // 9.1.0, n'avait jamais été couvert par le garde-fou de la 7.30.0. Même corps que `plFr` de
   // core.js, et un test compare les deux.
-  const plFr = (n, un, plur) => `${n} ${n > 1 ? (plur || un + 's') : un}`;
+  const plFr = (n, un, plur) => `${n} ${Math.abs(n) > 1 ? (plur || un + 's') : un}`;
 
   // ---------------------------------------------------------------- la validité d'une écriture
   //
@@ -4490,7 +4490,10 @@
     const disposal = asset.disposal && asset.disposal.date ? asset.disposal.date : '';
     // Sorti d'un exercice antérieur : plus rien ne bouge, le cumul reste figé au jour de la cession.
     if (disposal && Number(disposal.slice(0, 4)) < year) return { annuity: 0, cumulated: assetCumulated(asset, disposal), nbv: 0, out: true };
-    if (!row) return { annuity: 0, cumulated: assetCumulated(asset, `${year}-12-31`), nbv: round3((Number(asset.amount) || 0) - assetCumulated(asset, `${year}-12-31`)), out: !!disposal };
+    // Hors plan (bien entièrement amorti, toujours en service) : il n'est « sorti » que l'année de
+    // sa sortie. `!!disposal` seul marquait sorti, dès 2033, un bien amorti en 2031 et vendu en 2035
+    // (10.12.0).
+    if (!row) return { annuity: 0, cumulated: assetCumulated(asset, `${year}-12-31`), nbv: round3((Number(asset.amount) || 0) - assetCumulated(asset, `${year}-12-31`)), out: !!disposal && Number(disposal.slice(0, 4)) === year };
     if (disposal && Number(disposal.slice(0, 4)) === year) {
       const partial = assetCumulated(asset, disposal);
       const before = assetCumulated(asset, `${year - 1}-12-31`);

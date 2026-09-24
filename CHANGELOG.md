@@ -440,6 +440,45 @@ continué page par page :
   fait plus naître de barre de défilement horizontale ; l'en-tête d'une page ne grandit plus quand
   une liste d'années paraît sur un onglet.
 
+**La menuiserie, suite : ses biens et son personnel** — immobilisations, congés, avances, documents
+du personnel, déclarations sociales, registre et barèmes, tenus à la souris et au clavier :
+- **Une tranche du barème de l'impôt se tape enfin.** Le formulaire redessinait les lignes du barème
+  à chaque frappe : le premier chiffre détruisait le champ, le curseur tombait dans la page et la
+  tranche revenait à son ancienne valeur. On ne pouvait la changer qu'en passant par les flèches — ou
+  pas du tout. Et **« Enregistrer les barèmes » vit dans une barre qui n'apparaît qu'après une
+  modification**, collée au bas de l'écran, comme celle des Paramètres : il était vert au repos, trois
+  écrans sous le premier taux, et changer d'onglet jetait ce qu'on venait de régler sans rien
+  demander. Les montants disent leur unité (« Plafond annuel des frais (DT) »), et revenir aux valeurs
+  livrées se confirme par son nom, plus par « Confirmer ».
+- **Une déclaration sociale se marque déposée une fois la période terminée.** « Marquer déposée »
+  était vert sur le trimestre en cours et sur l'année en cours : la mention aurait figé une
+  déclaration sans ses derniers bulletins. Le bouton s'éteint en disant jusqu'à quand.
+- **Une absence annonce le solde de congés avant ET après** (« 1 jour avant, −3 jours après »), avec
+  l'avertissement AVANT d'enregistrer ; on découvrait le rouge dans les compteurs, une fois
+  l'absence posée. Modifier une absence ne la retranche plus deux fois de l'annonce.
+- **Une avance ne propose plus « 0 »** : le montant et la retenue sont vides, dits obligatoires, et
+  un refus montre le champ. L'annonce du remboursement ne s'affiche plus en gras.
+- **Les absences, les avances, les bulletins de la fiche d'un salarié et le registre du personnel
+  s'ouvrent en cliquant la ligne** ; les « Modifier » en bout de ligne sont partis, le PDF d'un
+  bulletin reste. Une avance en cours n'est plus peinte en orange : c'est son état normal.
+- **« Établir un document… » vit dans l'identité du salarié**, plus dans le panneau des avances — une
+  attestation de travail n'est pas une avance. Le solde de tout compte dit un solde de congés
+  négatif, et une panne du PDF se dit en français.
+- **« −3 jours », plus « −3 jour »** : un nombre négatif s'accordait au singulier, dans les deux
+  applications.
+- **Une fenêtre s'ancre en haut de l'écran** : elle se recentrait en grandissant, et choisir « Solde
+  de tout compte » faisait remonter de 196 px la liste qu'on venait de manipuler.
+- **« Impôt retenu »** remplace « IRPP » sur la colonne qui additionne l'IRPP et la solidarité, avec
+  sa bulle.
+- **Immobilisations** : une fiche neuve ne part plus sur « Matériel informatique, 3 ans » (la famille
+  se choisit, et propose la durée) ; un bien sorti sans prix n'est plus « vendu 0,000 DT » et sa
+  sortie ne crie pas avant qu'on ait tapé un prix ; la carte dit combien de biens restent à l'actif
+  et combien en sont sortis ; un bien entièrement amorti n'est « sorti » que l'année de sa sortie.
+  « Créer la fiche du bien… » depuis un achat l'enregistre d'abord puis ouvre la fiche préremplie,
+  et une ligne qui a sa fiche le dit et mène à elle ; l'onglet « À immobiliser » n'a plus qu'un vert.
+- Le bouton « + Nouveau fournisseur » d'une liste reprend ce qu'on vient d'y taper, et la colonne
+  « Total HT » d'une grille de lignes ne s'élargit plus pendant la frappe.
+
 **L'application entreprise mesurée en entier.** Ses instruments ne regardaient qu'une partie de
 l'application : aucun n'ouvrait une fiche ni une pièce par statut, et l'un visitait une adresse qui
 n'existe pas. `npm run e2e:entreprise-rendu` ouvre toutes les pages, tous leurs onglets, chaque

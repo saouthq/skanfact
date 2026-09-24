@@ -1513,6 +1513,10 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
     await win.waitForSelector('#imf input[name=label]');
     const pre = await win.evaluate(() => document.querySelector('#imf input[name=amount]').value);
     if (!(Number(pre) > 0)) throw new Error('valeur non reprise de la ligne d\'achat');
+    // 10.12.0 — la famille se CHOISIT (elle propose la durée) : une fiche neuve n'en porte aucune.
+    const famillePre = await win.evaluate(() => document.querySelector('#imf select[name=category]').value);
+    if (famillePre) throw new Error('la fiche d\'une ligne d\'achat part sur une famille que personne n\'a choisie : ' + famillePre);
+    await win.selectOption('#imf select[name=category]', 'informatique');
     await win.fill('#imf input[name=years]', '5');
     await win.click('#modal-root #ok');
     await win.waitForFunction(n => window.__data.assets.length === n + 1, avant);
@@ -1825,6 +1829,29 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
     await win.waitForSelector('#modal-root #ok');
     await win.click('#modal-root #ok');
     await win.waitForFunction(() => window.SkanCore.payrollSettings(window.__data).cnssEmployee === 9.18);
+    // 10.12.0 — une tranche se TAPE au clavier. Le formulaire redessinait les lignes à chaque frappe :
+    // le premier chiffre détruisait le champ, et la tranche revenait à son ancienne valeur. Un test
+    // qui POSE la valeur (`fill`) ne passe pas par ce chemin : on frappe les touches.
+    await win.waitForSelector('#rf-br input[data-b=upTo]');
+    if (!(await win.$eval('#rf-bar', b => b.hidden))) throw new Error('la barre « Enregistrer les barèmes » s\'affiche alors que rien n\'a changé (U-11)');
+    const tranche = '#rf-br tr[data-i="1"] input[data-b=upTo]';
+    await win.click(tranche);
+    await win.keyboard.press('Control+A');
+    await win.keyboard.type('12000');
+    await win.keyboard.press('Tab');
+    await win.keyboard.type('17');
+    const tape = await win.evaluate(() => ({ up: document.querySelector('#rf-br tr[data-i="1"] input[data-b=upTo]').value,
+      rate: document.querySelector('#rf-br tr[data-i="1"] input[data-b=rate]').value,
+      de: document.querySelector('#rf-br [data-de="2"]').textContent, bar: document.querySelector('#rf-bar').hidden }));
+    if (tape.up !== '12000' || tape.rate !== '17') throw new Error(`la tranche ne se tape pas au clavier : ${JSON.stringify(tape)}`);
+    if (!/12\s000/.test(tape.de)) throw new Error(`la tranche suivante ne part pas de la nouvelle borne : ${tape.de}`);
+    if (tape.bar) throw new Error('une tranche modifiée ne fait pas apparaître « Enregistrer les barèmes »');
+    await win.click('#rf-save');
+    await win.waitForFunction(() => { const b = window.SkanCore.payrollSettings(window.__data).brackets[1]; return b.upTo === 12000 && b.rate === 17; });
+    await win.click('#rf-reset');
+    await win.waitForSelector('#modal-root #ok');
+    await win.click('#modal-root #ok');
+    await win.waitForFunction(() => window.SkanCore.payrollSettings(window.__data).brackets[1].upTo === 10000);
     // le barème progressif ne taxe jamais une tranche entière à tort
     const bareme = await win.evaluate(() => {
       const C = window.SkanCore, b = C.payrollSettings(window.__data).brackets;
