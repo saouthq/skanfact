@@ -71,6 +71,10 @@ paquet est parti de l'une vers l'autre pour de vrai, aller et retour.
   question ; une question de fenêtre qui commençait par une minuscule ; « Tu viens de ranger ton
   premier paquet » au deuxième ; les fenêtres de fin (« Fermer », « Plus tard ») qui proposaient
   aussi « Annuler ».
+- **Dans SkanFact, une question sans champ laissait le curseur sur le bouton de la page** qui l'avait
+  ouverte, derrière elle : la touche Entrée re-cliquait ce bouton (le choix de fichier se rouvrait
+  par-dessus la question d'import). Le curseur entre maintenant dans la fenêtre — le premier champ,
+  sinon le bouton principal —, comme dans SkanFact Cabinet.
 
 **Publiée en bêta** : elle touche à la signature des envois entre les deux applications.
 

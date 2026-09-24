@@ -366,9 +366,14 @@ const CIBLE = path.join(dir, 'cloture.skanclose');
   // Le réflexe : Entrée. Sur cette question-là, il ANNULE (le curseur est sur « Annuler ») — un
   // « oui » par habitude est exactement ce qu'un imposteur espère. Rien ne change, la signature
   // retenue reste la bonne.
+  // « Rien n'a changé » ne suffit pas (10.9.1) : accepter la clé n'importe rien tout de suite — une
+  // seconde question suit —, et un Entrée qui re-clique le bouton de la page rouvre l'import. Les
+  // deux laissent une fenêtre ouverte : on exige qu'il n'en reste AUCUNE.
   await we.keyboard.press('Enter');
   await attendreE(600);
-  const apresFaux = await we.evaluate(() => ({ n: (window.__data.clotures || []).length, sig: ((window.__data || {}).cabinetSignature || {}).empreinte }));
+  const apresFaux = await we.evaluate(() => ({ n: (window.__data.clotures || []).length, sig: ((window.__data || {}).cabinetSignature || {}).empreinte,
+    fenetres: [...document.querySelectorAll('#modal-root .modal-bg')].map(x => x.textContent.replace(/\s+/g, ' ').trim().slice(0, 80)) }));
+  if (apresFaux.fenetres.length) throw new Error('Entrée n\'a pas annulé la question sur l\'autre clé : ' + JSON.stringify(apresFaux.fenetres));
   if (apresFaux.n !== 1 || apresFaux.sig !== retenue) throw new Error('refuser le faux a changé quelque chose : ' + JSON.stringify(apresFaux));
   ok(`faux cabinet refusé (attendue ${retenue}, reçue ${Z.keyFingerprint(intrus.publicKey)}) ; Entrée annule, rien n'a changé`);
 

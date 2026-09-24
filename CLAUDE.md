@@ -31,6 +31,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Un **refus qui promet une sortie qui n'existe pas** (« contre-passe d'abord », puis la même phrase) | 10.12.0 — une écriture contre-passée libère ce qu'elle portait |
 | Un **clic qui tombe à côté** : ce qui vient d'apparaître a poussé le formulaire, la frappe part sur la page | 10.12.0 — « Fiche du client » né sous le champ, 45 px ; le repère « non enregistré » qui fait passer l'en-tête sur deux rangées, 40 px (H-E19) |
 | Un **clic qui ouvre autre chose que ce qu'il visait** : une proposition que personne n'a demandée s'est posée sous le curseur | 10.12.0 (H-E20) — « + Créer … au catalogue » sur la quantité et le prix |
+| Une touche **Entrée qui agit DERRIÈRE la fenêtre** : une question sans champ laissait le curseur sur le bouton de la page, qu'Entrée re-cliquait | 10.13.0 — le choix de fichier rouvert par-dessus la question d'import ; le Cabinet faisait juste depuis la 10.12.0 |
 | Une **bulle « i » seule sur sa ligne**, ou visible à côté d'un bouton caché : un bouton DANS un bouton | 10.12.0 — neuf cas, le parseur ferme le premier |
 | Un **nombre tapé qui change sous les doigts** (« 28 » devient 82, ou 8) : un champ de nombre recréé rend son curseur au DÉBUT, et une sélection automatique prend le focus rendu par le code pour une entrée | 10.12.0 — l'inventaire ; un parcours qui `fill()` ne le voit jamais |
 | Une **origine dite « vérifiée »** sur un fichier que n'importe qui peut signer : la signature ne se comparait à RIEN | 10.13.0 — la clôture d'un faux cabinet, qui verrouille un exercice |
@@ -6810,12 +6811,21 @@ Règles apprises, à ne pas recasser :
   « Répondre » dans le bandeau d'une pièce qui avait déjà « Enregistrer un paiement » (U-11).
 - Piège de test : un marqueur nommé `danger: true` hors d'un menu a fait tomber le test « le geste qui
   détruit vit en bas de son menu » — il lit la forme. Le drapeau d'un verdict s'appelle `alerte`.
-- **Une question de sécurité ne s'accepte pas d'un Entrée.** La règle des fenêtres (1.8.0) fait
-  cliquer le bouton principal par Entrée — y compris « J'ai vérifié avec mon comptable : accepter »,
-  c'est-à-dire la nouvelle clé d'un imposteur, acceptée par réflexe. `confirmDialog(…, { prudent: true })`
-  donne le curseur à « Annuler » : Entrée sur un BOUTON qui a le curseur clique ce bouton (le
-  raccourci de `modal()` s'efface devant une cible bouton). Vu à la souris, en tapant Entrée sur le
-  faux fichier : aucun test ne pose ce geste-là.
+- **Le curseur entre dans la fenêtre, et une question de sécurité le met sur « Annuler ».** Mesuré à
+  la souris, pas déduit : `modal()` de l'app entreprise ne donnait le curseur qu'à un CHAMP, donc une
+  question sans champ le laissait sur le bouton de la PAGE qui l'avait ouverte, derrière la fenêtre —
+  et Entrée re-cliquait ce bouton (le sélecteur de fichier se rouvrait par-dessus la question
+  d'import). Le Cabinet faisait juste depuis la 10.12.0 (premier champ, sinon bouton principal) :
+  le jumeau manquant (7.3.0), porté. Mais donner le curseur au bouton principal fait qu'Entrée
+  ACCEPTE — y compris « J'ai vérifié avec mon comptable : accepter », la clé d'un imposteur acceptée
+  par réflexe. `confirmDialog(…, { prudent: true })` pose le curseur sur « Annuler » dans son
+  montage, et `modal()` ne reprend pas un curseur qu'un appelant a déjà posé dans la fenêtre.
+- **Une preuve qui reste verte dit que le TEST ne voit pas, pas que le code est juste.** Ma première
+  version du parcours `e2e:cloture` tapait Entrée puis vérifiait « rien n'a changé » : elle passait
+  avec le défaut remis, parce qu'accepter la clé n'importe rien tout de suite (une seconde question
+  suit) et qu'un Entrée qui rouvre l'import ne change rien non plus. C'est la règle 10.9.1, re-trouvée :
+  le parcours exige maintenant qu'aucune fenêtre ne reste ouverte. Et c'est en cherchant POURQUOI la
+  preuve restait verte qu'on a trouvé le vrai défaut, plus large que celui qu'on corrigeait.
 - **Un raccourci vise un PANNEAU (7.18.0), et une cible asynchrone se pose après le chargement.**
   « Lire la réponse » ouvrait la Révision en haut, la réponse trois panneaux plus bas. Poser
   `pageFocus` avant la navigation ne suffisait pas : `focaliser` le consomme au premier dessin, qui

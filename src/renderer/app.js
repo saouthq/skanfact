@@ -715,7 +715,16 @@
     // L'instantané se prend APRÈS le montage : ce que la fenêtre préremplit n'est pas une saisie.
     // `garde: false` dit, en le nommant, qu'une fenêtre n'en veut pas.
     if (!(opts && opts.garde === false) && layer.querySelector('form')) garde = suivreSaisie(layer);
-    const first = $('input:not([type=hidden]), select, textarea', layer); if (first) first.focus();
+    // 10.13.0 (vu au test humain) — le curseur ENTRE dans la fenêtre : le premier champ de saisie,
+    // sinon le bouton principal. Il n'allait qu'au premier champ ; une question sans champ laissait
+    // donc le curseur sur le bouton de la PAGE qui l'avait ouverte, derrière la fenêtre — et Entrée
+    // re-cliquait ce bouton : le sélecteur de fichier se rouvrait par-dessus la question d'import.
+    // Le jumeau de l'app du comptable, qui le fait depuis la 10.12.0 (7.3.0). Un appelant qui a déjà
+    // posé le curseur DANS la fenêtre garde sa décision (`prudent` le met sur « Annuler »).
+    const saisie = $('input:not([type=hidden]):not([disabled]), select, textarea', layer);
+    const principal = $('.modal-actions .btn-primary, .modal-actions .btn-danger', layer);
+    const cible = saisie || (principal && !principal.disabled ? principal : null);
+    if (cible && !layer.contains(document.activeElement)) cible.focus();
     return close;
   }
 

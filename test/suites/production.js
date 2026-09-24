@@ -584,6 +584,22 @@ module.exports = ({ t, assert, lireSource }) => {
     assert.ok(/e\.target\.tagName === 'BUTTON'\) return;/.test(m), 'Entrée sur un bouton qui a le curseur doit rester à ce bouton');
   });
 
+  t('10.13.0 : le curseur entre dans la fenêtre — dans les DEUX applications, par la même règle', () => {
+    // Sans champ, il restait sur le bouton de la PAGE qui avait ouvert la question : Entrée
+    // re-cliquait ce bouton derrière la fenêtre (le sélecteur de fichier se rouvrait par-dessus
+    // l'import). Le Cabinet le faisait depuis la 10.12.0 ; l'app entreprise, jamais (7.3.0).
+    for (const f of [['src', 'renderer', 'app.js'], ['src', 'cabinet', 'renderer', 'app.js']]) {
+      const src = code(lireSource(...f));
+      const i = src.indexOf('function modal(');
+      const corps = src.slice(i, src.indexOf('return close;', i));
+      assert.ok(i > 0 && corps.length > 1500 && corps.length < 9000, f.join('/') + ' : la tranche de modal() ne se trouve plus (' + corps.length + ')');
+      assert.ok(/const cible = saisie \|\| \(principal && !principal\.disabled \? principal : null\);/.test(corps), f.join('/') + ' : une question sans champ laisse le curseur sur la page');
+      assert.ok(/if \(cible && !layer\.contains\(document\.activeElement\)\) cible\.focus\(\);/.test(corps), f.join('/') + ' : une question sans champ ne prend pas le curseur, ou la fenêtre reprend celui que l\'appelant a posé dedans');
+      const iMount = corps.indexOf('if (onMount) onMount(layer, close);'), iCible = corps.indexOf('const cible = saisie');
+      assert.ok(iMount > 0 && iCible > iMount, f.join('/') + ' : le curseur se décide avant que l\'appelant ait pu poser le sien');
+    }
+  });
+
   t('10.13.0 : la clé de signature du cabinet suit sa clé — tous ses postes signent pareil', () => {
     const Z = require(path.join(RACINE, 'src', 'zip.js'));
     const k = Z.generateCabinetKeys();
