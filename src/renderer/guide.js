@@ -1427,5 +1427,60 @@ rencontres. Si un mot affiché dans l'application manque ici, c'est un défaut :
   // Le thème d'un article, et ses voisins : « article suivant » évite de repasser par la liste.
   const themeOf = id => THEMES.find(t => t.articles.includes(id)) || null;
 
-  return { INFO, ARTICLES, THEMES, GESTES, PAR_PAGE, themeOf };
+  // 10.13.0 — CHAQUE bulle mène à l'article qui la développe. Cinquante et une sur trois cent
+  // trente-huit le faisaient : les autres s'arrêtaient à leur dernière phrase, avec une question plus
+  // précise et nulle part où aller. Le champ `a` d'une bulle décide quand il existe ; sinon la
+  // famille de sa clé (`ed.` l'éditeur, `stk.` le stock…). La règle la plus précise vient en premier
+  // — `pay.` mêle le RIB (se faire payer) et la paie. Un test exige que chaque bulle trouve un
+  // article qui existe, et que chaque règle serve au moins une fois.
+  const ARTICLE_PAR_CLE = [
+    [/^pay\.(bank|terms|rib)$/, 'paiements'],
+    [/^pay\./, 'paie'],
+    [/^(co|ap)\./, 'demarrer'],
+    [/^doc\.(quoteValidity|quoteTerms)$/, 'devis'],
+    [/^doc\.(currency|en)$/, 'etranger'],
+    [/^doc\./, 'facture'],
+    [/^(mail|rel)\./, 'paiements'],
+    [/^upd\./, 'support'],
+    [/^sec\./, 'donnees'],
+    [/^data\.(dossiers|shared|device)$/, 'deux'],
+    [/^data\./, 'donnees'],
+    [/^ed\.(validUntil|statusQuote)$/, 'devis'],
+    [/^ed\.(docCurrency|rate|lang)$/, 'etranger'],
+    [/^ed\.(withholding|vat|applyStamp)$/, 'fiscal'],
+    [/^ed\.payments$/, 'paiements'],
+    [/^ed\./, 'facture'],
+    [/^(contrat|rec)\./, 'contrats'],
+    [/^list\./, 'raccourcis'],
+    [/^(dash|stat)\./, 'statistiques'],
+    [/^autres\./, 'pieces'],
+    [/^(tre|treso|rv)\./, 'tresorerie'],
+    [/^mg\./, 'marges'],
+    [/^(buy|sup)\./, 'achats'],
+    [/^cat\.cost$/, 'marges'],
+    [/^cat\./, 'devis'],
+    [/^soc\./, 'declarations'],
+    [/^hr\./, 'conges'],
+    [/^ocr\./, 'lecture'],
+    [/^ser\./, 'series'],
+    [/^stk\./, 'stock'],
+    [/^immo\./, 'immobilisations'],
+    [/^compta\.(buyJournal|deductible|buyNet|byCategory)$/, 'achats'],
+    [/^compta\.(vatReturn|carry|carryIn|vatMonths|vat|rs)$/, 'fiscal'],
+    [/^(compta|ecr|etats|bal|gl|plan)\./, 'compta'],
+    [/^cab\./, 'cabinet'],
+    [/^lic\./, 'licence'],
+    [/^clot\./, 'cloture'],
+    [/^cl\./, 'gestion'],
+    [/^client\./, 'fiscal']
+  ];
+  const articleDe = cle => {
+    const x = INFO[cle];
+    if (!x) return null;
+    if (x.a) return x.a;
+    const r = ARTICLE_PAR_CLE.find(([m]) => m.test(cle));
+    return r ? r[1] : null;
+  };
+
+  return { INFO, ARTICLES, THEMES, GESTES, PAR_PAGE, themeOf, ARTICLE_PAR_CLE, articleDe };
 });

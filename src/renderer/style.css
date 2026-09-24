@@ -1171,6 +1171,46 @@ body.dark .combo-btn { background: var(--panel); }
 body.dark .combo-btn[aria-expanded="true"] { background: #1b222c; }
 body.dark .combo.ro .combo-btn { background: #1f2731; }
 
+/* ---------- les listes du système, redessinées (10.13.0) ----------
+   Un `<select>` ouvrait la liste du SYSTÈME (grise sous Windows, une bulle sous macOS) pendant que
+   les clients ou le catalogue ouvraient celle de SkanFact. `listes.js` ouvre désormais la même liste
+   partout ; ici, le champ fermé cesse de porter la flèche du système et prend le chevron des combos.
+   Les trois `:not()` ne sont pas décoratifs : ils donnent au chevron (0,3,1), plus que toute règle
+   qui pose un fond par le raccourci `background` (`.filters select`, `body.dark .filters select` à
+   (0,2,2), `:focus`, `:disabled`) — un raccourci remet `background-image` à zéro, et un `select` seul
+   perdait le chevron sur la moitié des listes. `e2e:listes` le mesure, en clair et en sombre.
+   `background-position` n'a pas d'équivalent logique : `right` est l'exception nommée ici — le
+   chevron suit la fin du champ en français ; une interface arabe le retournerait par `[dir=rtl]`. */
+select:not([multiple]):not([size]):not([data-natif]) {
+  appearance: none; -webkit-appearance: none; cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%238a94a3' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 11px center; background-size: 10px 6px;
+  padding-inline-end: 30px; text-overflow: ellipsis;
+}
+select:not([multiple]):not([size]):not([data-natif]):disabled { cursor: not-allowed; }
+/* Dans une grille de saisie ou un pied de pagination, la place compte : le chevron se serre. */
+:is(table, .pg-size, .buy-lines) select:not([multiple]):not([size]):not([data-natif]) {
+  background-position: right 7px center; padding-inline-end: 22px;
+}
+/* La liste ouverte : le dessin de `.combo-pop`, posée sur la page entière (position fixe) parce
+   qu'un `<select>` vit souvent dans un tableau qui défile ou une fenêtre qui coupe ce qui déborde. */
+.lm-pop {
+  position: fixed; z-index: 880;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+  box-shadow: 0 16px 44px rgba(20,40,60,.18); padding: 6px;
+}
+.lm-pop .lm-list { margin-top: 0; max-height: 300px; }
+.lm-pop .lm-q + .lm-list { margin-top: 6px; }
+.lm-pop .combo-it { padding: 7px 10px; font-size: 13.5px; }
+.lm-pop .ci-main { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+.lm-pop .combo-it.cur .ci-main { font-weight: 600; }
+.lm-groupe { font-size: 12px; font-weight: 600; color: var(--muted); padding: 9px 10px 3px; }
+.lm-groupe:first-child { padding-top: 4px; }
+/* Une ligne éteinte se montre et ne se choisit pas, comme dans la liste native. */
+.combo-it.off { opacity: .45; cursor: default; }
+.combo-it.off.sel { background: none; }
+body.dark .lm-pop { box-shadow: 0 16px 44px rgba(0,0,0,.45); }
+
 /* ---------- champ date et calendrier ---------- */
 .datefield { position: relative; display: flex; align-items: center; }
 .datefield .d-txt { padding-inline-end: 38px; font-variant-numeric: tabular-nums; }

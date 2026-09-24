@@ -68,7 +68,8 @@
   // fermait le menu au `mousedown` et le `click` le rouvrait dans la foulée.
   // `.sugg-host` : la cellule dont la désignation propose le catalogue (app entreprise, 9.2.1) —
   // le champ ET sa liste, sinon replacer le curseur dans le champ fermerait la liste.
-  const SURFACES = '.combo, .datefield, .row-menu, .row-menu-btn, .sugg-host';
+  // `.lm-pop` : la liste déroulante de SkanFact posée sur un `<select>` (listes.js, 10.13.0).
+  const SURFACES = '.combo, .datefield, .row-menu, .row-menu-btn, .sugg-host, .lm-pop';
 
   // L'application hôte prête son registre d'overlay : c'est lui qui garantit qu'un calendrier, une
   // liste déroulante et un menu ne restent jamais ouverts en même temps. L'app du cabinet n'a pas

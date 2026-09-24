@@ -582,7 +582,9 @@
     pop.id = 'info-pop';
     // Une bulle qui explique bien, et s'arrête là, est un cul-de-sac : elle laisse quelqu'un avec
     // une question plus précise et aucun endroit où aller. `a` désigne l'article qui développe.
-    const art = x.a ? (G.ARTICLES.find(y => y.id === x.a) || null) : null;
+    // 10.13.0 — chaque bulle a son article : le sien (`a`), sinon celui de sa famille de clés.
+    const idArt = G.articleDe ? G.articleDe(btn.dataset.info) : x.a;
+    const art = idArt ? (G.ARTICLES.find(y => y.id === idArt) || null) : null;
     pop.innerHTML = `<div class="ip-head">${h(x.t)}<button type="button" class="ip-close" aria-label="Fermer">✕</button></div>`
       + `<div class="ip-body">${clavierLocal(x.d)}`
       + (art ? `<p class="ip-more"><a href="#/aide/${h(art.id)}">Lire « ${h(art.title)} » →</a></p>` : '')

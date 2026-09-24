@@ -303,7 +303,9 @@
     // 10.12.0 (U-08) — une bulle qui explique bien, et s'arrête là, est un cul-de-sac : `a` désigne
     // l'article qui développe. Le mécanisme existe dans l'app entreprise depuis la 7.0.0 ; la bulle
     // du titre de chaque écran de comptabilité y mène désormais aussi.
-    const art = x.a ? (G.ARTICLES.find(y => y.id === x.a) || null) : null;
+    // 10.13.0 — chaque bulle a son article : le sien (`a`), sinon celui de sa famille de clés.
+    const idArt = G.articleDe ? G.articleDe(btn.dataset.info) : x.a;
+    const art = idArt ? (G.ARTICLES.find(y => y.id === idArt) || null) : null;
     pop.innerHTML = `<div class="ip-head">${esc(x.t)}<button type="button" class="ip-close" aria-label="Fermer">✕</button></div>`
       + `<div class="ip-body">${x.d}`
       + (art ? `<p class="ip-more"><a href="#/aide/${esc(art.id)}">Lire « ${esc(art.t)} » →</a></p>` : '')

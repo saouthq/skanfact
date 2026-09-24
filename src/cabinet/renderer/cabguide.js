@@ -456,6 +456,26 @@
       <p class="small">Dans tous les cas, le mot de passe demandé est celui de <b>l'autre</b> ordinateur : c'est lui qui chiffre le fichier, il n'a pas changé. Et vérifie l'empreinte affichée à la fin : si elle n'est pas celle que tes clients connaissent, tu as repris le mauvais fichier.</p>
       <p class="small">Deux choses ne suivent pas : le <b>dossier de copie</b> (il désignait un support branché sur l'autre poste — rechoisis-en un tout de suite) et la <b>boîte de réception</b>. L'ancien ordinateur, lui, garde tout : rien n'y est effacé ni déplacé.</p>` },
     {
+      id: 'licence', t: 'La licence de ton cabinet',
+      s: 'Ce qui est compté, ce qui reste toujours ouvert', couleur: 'th-piloter', geste: { label: 'Ouvrir la licence', hash: '#/reglages', panneau: 'pan-licence' },
+      icon: '<rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>', d: `
+      <p class="small">On vend des <b>dossiers</b>, jamais des postes : installe l'application sur autant d'ordinateurs que ton cabinet en compte. Les dossiers de tes clients <b>sur SkanFact</b> sont gratuits, et <b>trois dossiers hors SkanFact</b> aussi. Au-delà, chaque dossier que tu tiens toi-même se compte.</p>
+      <p class="small">Le panneau <b>Réglages → Mon cabinet → Licence</b> nomme chaque dossier compté et dit pourquoi les autres ne le sont pas. Un chiffre qui décide d'une facture doit pouvoir s'expliquer.</p>
+      <h3>Ce qui ne se ferme jamais</h3>
+      <p class="small">Quand le quota est dépassé, seule la <b>validation</b> d'écritures s'arrête. Lire, importer un paquet, saisir en brouillard, exporter, relancer : tout reste ouvert. Archiver un dossier que tu ne suis plus rend la main tout de suite.</p>
+      <h3>Ce qui profite au cabinet</h3>
+      <p class="small">Un client dont la licence SkanFact a été <b>payée</b> ne compte pas pendant douze mois après sa fin : tu ne paies pas parce que ton client a oublié de renouveler. Un paquet trop ancien pour dire si son client a une licence ne compte pas non plus : le doute profite au cabinet.</p>
+      <p class="small">La clé de licence porte l'<b>empreinte de ton cabinet</b> : une clé émise pour un autre cabinet, ou celle d'un de tes clients, est refusée en nommant les deux empreintes.</p>` },
+    {
+      id: 'equipe', t: 'Travailler à plusieurs',
+      s: 'Les collaborateurs, leurs droits, et deux postes qui se rejoignent', couleur: 'th-equipe', geste: { label: 'Ouvrir l\'équipe', hash: '#/reglages', panneau: 'pan-equipe' },
+      icon: '<circle cx="9" cy="8" r="3"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><circle cx="17" cy="9" r="2.5"/><path d="M15.5 14.2A5 5 0 0 1 21 19"/>', d: `
+      <p class="small">Tant que personne n'est déclaré, <b>rien n'est restreint</b> : un cabinet d'une personne n'a rien à régler. Le premier collaborateur que tu déclares devient l'identité de ce poste, et la piste d'audit porte son nom sur chaque écriture validée.</p>
+      <p class="small">Un <b>saisisseur</b> saisit en brouillard et ne valide pas ; le refus nomme qui peut. Aucune lecture n'est jamais fermée. Retirer un collaborateur ne l'efface pas : son nom reste sur ce qu'il a validé.</p>
+      <h3>Deux postes, un cabinet</h3>
+      <p class="small">Un second poste reprend le cabinet par sa <b>copie externe</b>. Si les deux ont travaillé sur le même livre, la fusion garde <b>toutes</b> les écritures validées des deux côtés et signale un numéro pris deux fois, sans jamais le réattribuer.</p>
+      <p class="small">Il n'y a pas de mot de passe par personne : celui du cabinet ouvre déjà toute la base. Les rôles apportent l'<b>attribution</b> (qui a validé) et les <b>droits</b> (qui peut valider), pas un secret de plus.</p>` },
+    {
       id: 'limites', t: 'Ce que cette application ne fait pas',
       s: 'Ce qu\'elle ne fera pas — et pourquoi c\'est volontaire', couleur: 'th-equipe', geste: null,
       icon: '<circle cx="12" cy="12" r="9"/><path d="M12 8h.01"/><path d="M11 12h1v4h1"/>', d: `
@@ -470,5 +490,47 @@
       <p class="small">L'application et celle de tes clients portent le <b>même numéro de version</b> : si un client dit « je suis en 6.8.0 » et que tu es en 6.8.0, vous parlez bien de la même chose.</p>` }
   ];
 
-  return { INFO, ARTICLES };
+  // 10.13.0 — CHAQUE bulle mène à l'article qui la développe. Seize sur cent dix-huit le faisaient :
+  // les autres s'arrêtaient à leur dernière phrase, avec une question plus précise et nulle part où
+  // aller. Le champ `a` d'une bulle décide quand il existe ; sinon la famille de sa clé (`sa.` la
+  // saisie, `bq.` la banque…). La règle la plus précise vient en premier. Un test exige que chaque
+  // bulle trouve un article qui existe, et que chaque règle serve au moins une fois.
+  const ARTICLE_PAR_CLE = [
+    [/^u\./, 'maj'],
+    [/^cab\./, 'demarrer'],
+    [/^d\.(regime|tvaPeriod)$/, 'declaration'],
+    [/^d\.(manual|from)$/, 'tenue'],
+    [/^d\./, 'demarrer'],
+    [/^p\.definitif$/, 'definitif'],
+    [/^p\.moisTenus$/, 'tenue'],
+    [/^p\./, 'paquet'],
+    [/^lv\.ouverture$/, 'exercice'],
+    [/^lv\.relire$/, 'paquet'],
+    [/^lv\./, 'tenue'],
+    [/^rg\./, 'declaration'],
+    [/^li\./, 'liasse'],
+    [/^rv\./, 'revision'],
+    [/^cl\./, 'exercice'],
+    [/^ec\./, 'definitif'],
+    [/^e\./, 'travail'],
+    [/^r\./, 'demarrer'],
+    [/^b\.reprise$/, 'demenager'],
+    [/^b\./, 'filets'],
+    [/^eq\./, 'equipe'],
+    [/^lic\./, 'licence'],
+    [/^sa\./, 'saisir'],
+    [/^bq\./, 'banque'],
+    [/^dc\./, 'declaration'],
+    [/^(im|iv)\./, 'immobilisations'],
+    [/^pa\./, 'paie']
+  ];
+  const articleDe = cle => {
+    const x = INFO[cle];
+    if (!x) return null;
+    if (x.a) return x.a;
+    const r = ARTICLE_PAR_CLE.find(([m]) => m.test(cle));
+    return r ? r[1] : null;
+  };
+
+  return { INFO, ARTICLES, ARTICLE_PAR_CLE, articleDe };
 });

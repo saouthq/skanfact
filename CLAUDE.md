@@ -232,7 +232,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 
 `npm test` (les tests purs) · `npm run lint` (ESLint, **zéro erreur ET zéro avertissement** depuis la
 10.0.1) · `npm run charge` (le livre du Cabinet) · `npm run charge:entreprise` (le fichier de l'app
-entreprise, dix ans d'activité — 10.0.1) · `npm run e2e:<nom>` (54 parcours, tableau au § « Les tests
+entreprise, dix ans d'activité — 10.0.1) · `npm run e2e:<nom>` (55 parcours, tableau au § « Les tests
 qui ouvrent vraiment l'application ») · `scripts/humain/` (tester comme un humain : écran virtuel, souris, clavier, Browser Use — depuis le 23/09/2026) · CI GitHub sur Linux et Windows à chaque poussée ·
 « Construire un essai » pour faire tester une version sans la publier.
 
@@ -671,6 +671,7 @@ Ils vivent dans **`test/e2e/`** et se lancent par `npm run e2e:<nom>` (sous `xvf
 | `npm run e2e:apercu` | **voir ce qu'on fabrique** : le grand aperçu, son zoom, « Ajuster », Échap, et l'interrupteur qui reste en haut |
 | `npm run e2e:erreur` | **le droit à l'erreur** : une case de module se décoche ET se recoche, un module masqué revient quand on y écrit, et « Marquer déposée » se défait |
 | `npm run e2e:entreprises` | **changer d'entreprise depuis le haut du menu** : deux dossiers créés et ouverts tour à tour sans passer par les Paramètres |
+| `npm run e2e:listes` | **les listes déroulantes de SkanFact, dans les deux applications** (10.13.0) : un clic à la souris ouvre la liste de l'application et non celle du système, choisir filtre vraiment, Espace/↓/Entrée au clavier posent le thème sombre, chaque liste de sept pages porte le chevron en clair ET en sombre, une longue liste cherche, Entrée et Échap ne touchent que la liste dans une fenêtre, et le Cabinet ouvre la même |
 | `npm run e2e:chiffres` | **les chiffres qui mentent** : la conversion des devises sur l'accueil, les cartes de Marges, l'affaire qui suit le devis, le devis déjà facturé, le doublon de facture fournisseur |
 | `npm run e2e:cliquable` | **tout ce qui se lit se clique** : le filtre « Émis », la concordance carte/liste, les quatre chiffres de l'accueil et chaque ligne de « Ce qui manque » |
 | `npm run e2e:repondre` | **les écrans qui ne répondent pas** : le pointage qui se défait, le curseur qui ne saute plus, le sélecteur d'année inerte, le tri qui ne triait pas, l'année figée, l'export qui suit l'onglet |

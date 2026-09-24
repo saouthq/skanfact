@@ -36,6 +36,7 @@
     "e2e:erreur": "node test/e2e/erreur.js",
     "e2e:apercu": "node test/e2e/apercu.js",
     "e2e:entreprises": "node test/e2e/entreprises.js",
+    "e2e:listes": "node test/e2e/listes.js",
     "e2e:cliquable": "node test/e2e/cliquable.js",
     "e2e:chiffres": "node test/e2e/chiffres.js",
     "e2e:repondre": "node test/e2e/repondre.js",
