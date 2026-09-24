@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld('skanfact', {
   joinDossier: () => ipcRenderer.invoke('dossiers:join'),
   renameDossier: (o) => ipcRenderer.invoke('dossiers:rename', o),
   forgetDossier: (id) => ipcRenderer.invoke('dossiers:forget', id),
+  restoreDossier: (id) => ipcRenderer.invoke('dossiers:restore', id),
   renameDevice: (name) => ipcRenderer.invoke('device:rename', name),
   dataPath: () => ipcRenderer.invoke('data:path'),
   exportData: (data) => ipcRenderer.invoke('data:export', data),

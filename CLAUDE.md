@@ -6733,6 +6733,13 @@ effacer », seconde entreprise — à la souris) :
   `reprendrePiecesJointes` les ramène (celles que les données importées désignent, sans jamais
   écraser), et l'Aide dit le chemin. Et un état lu au démarrage se lit sur la chose elle-même
   (7.1.x) : « Copie à la prochaine sauvegarde » s'affichait devant une copie de la veille.
+- **Une promesse de retour se tient par un bouton** (6.8.1 : « toute donnée qu'on demande de
+  conserver doit avoir un bouton pour la reprendre ») : « Retirer » disait « tu pourras le rouvrir
+  plus tard », et le seul chemin passait par un geste fait pour autre chose — « Rejoindre un dossier
+  partagé » — qui marquait le dossier `shared` et lui retirait sa copie externe sans un mot. Un
+  dossier retiré vit dans `dossiersRetires`, « Remettre dans la liste » le rend tel qu'il était, et
+  `estDossierLocal` empêche qu'un dossier de `userData/dossiers/` passe pour partagé. Un geste
+  détourné de son rôle emporte ses effets de bord avec lui.
 - **Le jumeau du Finder vivait aussi dans le processus principal** (E-14) : le titre du sélecteur
   de copie externe, la phrase de panne ENOENT des deux applications, et six textes du Cabinet
   proposaient « iCloud » seul. Le test qui le tenait ne lisait que les fichiers du renderer ; il

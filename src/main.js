@@ -1026,6 +1026,8 @@ function demarrerPlateforme() {
 // userData/dossiers/<id>/. Un dossier peut aussi vivre dans un dossier partagé (iCloud, réseau) :
 // c'est ce qui permet à deux personnes de travailler sur la même entreprise.
 function dossiersDir() { return path.join(app.getPath('userData'), 'dossiers'); }
+// Un dossier rangé par l'application sur CET ordinateur, par opposition à un emplacement partagé.
+const estDossierLocal = dir => { const d = path.resolve(dir), racine = path.resolve(dossiersDir()); return d === racine || d.startsWith(racine + path.sep); };
 
 // Identité de ce poste : elle sert à dire QUI a enregistré en dernier, jamais à identifier une personne.
 function deviceIdentity() {
@@ -1075,7 +1077,8 @@ function openStorage() {
   // Chaque entreprise a SON sous-dossier dans la copie externe (10.12.0), retenu sur le dossier dès
   // la première ouverture. `currentDossier()` relit la configuration et rend un AUTRE objet (7.28.0) :
   // c'est l'entrée de `cfg` qu'on complète, puis `cfg` qu'on écrit.
-  const sub = nomCopieExterne(cfg.dossiers, d.id);
+  // Les dossiers retirés gardent leur nom de copie : un nouveau venu ne doit pas écrire dans le leur.
+  const sub = nomCopieExterne([...cfg.dossiers, ...(cfg.dossiersRetires || [])], d.id);
   const entree = cfg.dossiers.find(x => x.id === d.id);
   if (entree && !d.shared && entree.copieExterne !== sub) { entree.copieExterne = sub; writeAppCfg(cfg); }
   storage = createStorage(d.dir, {
@@ -1089,7 +1092,7 @@ function openStorage() {
 
 ipcMain.handle('dossiers:list', () => {
   const cfg = ensureDossiers();
-  return { dossiers: cfg.dossiers, current: cfg.currentDossier, device: deviceIdentity() };
+  return { dossiers: cfg.dossiers, current: cfg.currentDossier, device: deviceIdentity(), retires: cfg.dossiersRetires || [] };
 });
 ipcMain.handle('dossiers:switch', (_e, id) => {
   const cfg = ensureDossiers();
@@ -1210,15 +1213,31 @@ ipcMain.handle('dossiers:join', async () => {
   const deja = cfg.dossiers.find(x => path.resolve(x.dir) === path.resolve(dir));
   if (deja) return { ok: false, error: `Ce dossier est déjà dans ta liste, sous le nom « ${deja.name} ».` };
   const soc = societeDe(dir);
+  // Un dossier rangé SUR cet ordinateur (`userData/dossiers/…`) n'est pas partagé, même quand on le
+  // rouvre par ce geste : le marquer « partagé » coupait en silence sa copie externe (10.12.0).
+  const local = estDossierLocal(dir);
+  const retire = (cfg.dossiersRetires || []).find(x => path.resolve(x.dir) === path.resolve(dir));
   const entry = {
-    id: 'd' + Date.now().toString(36),
-    name: soc.name || path.basename(dir).replace(/^SkanFact-/, '').replace(/-/g, ' ') || 'Dossier partagé',
-    dir, shared: true
+    id: retire ? retire.id : 'd' + Date.now().toString(36),
+    name: (retire && retire.name) || soc.name || path.basename(dir).replace(/^SkanFact-/, '').replace(/-/g, ' ') || 'Dossier partagé',
+    dir, shared: !local
   };
+  if (retire && retire.copieExterne) entry.copieExterne = retire.copieExterne;
+  cfg.dossiersRetires = (cfg.dossiersRetires || []).filter(x => x !== retire);
   cfg.dossiers.push(entry); cfg.currentDossier = entry.id; writeAppCfg(cfg);
   openStorage();
   if (mainWindow) mainWindow.reload();
   return { ok: true, dossier: entry, chiffre: soc.chiffre };
+});
+ipcMain.handle('dossiers:restore', (_e, id) => {
+  const cfg = ensureDossiers();
+  const r = (cfg.dossiersRetires || []).find(x => x.id === id);
+  if (!r) return { ok: false, error: 'Ce dossier n\'est plus dans la liste des retirés.' };
+  if (!fs.existsSync(path.join(r.dir, 'skanfact-data.json'))) return { ok: false, error: `Le dossier n'est plus à son emplacement (${r.dir}) : s'il a été déplacé, « Rejoindre un dossier déjà partagé… » le retrouve où il est.` };
+  const { retireLe, ...entree } = r; void retireLe;
+  cfg.dossiersRetires = cfg.dossiersRetires.filter(x => x !== r);
+  cfg.dossiers.push(entree); writeAppCfg(cfg);
+  return { ok: true, dossier: entree };
 });
 ipcMain.handle('dossiers:rename', (_e, { id, name }) => {
   const cfg = ensureDossiers();
@@ -1226,10 +1245,15 @@ ipcMain.handle('dossiers:rename', (_e, { id, name }) => {
   d.name = String(name || '').trim() || d.name; writeAppCfg(cfg); return { ok: true };
 });
 // Retirer un dossier de la liste ne supprime JAMAIS ses fichiers : ils restent là où ils sont.
+// Et il reste NOMMÉ (10.12.0) : la question promettait « tu pourras le rouvrir plus tard », et le
+// seul chemin était de retrouver un dossier caché de l'application avec « Rejoindre un dossier
+// partagé » — qui le marquait partagé et coupait sa copie externe. Les dossiers retirés vivent dans
+// `dossiersRetires`, et « Remettre dans la liste » les rend tels qu'ils étaient.
 ipcMain.handle('dossiers:forget', (_e, id) => {
   const cfg = ensureDossiers();
   if (cfg.dossiers.length <= 1) return { ok: false, error: 'Impossible de retirer le dernier dossier.' };
   const gone = cfg.dossiers.find(d => d.id === id);
+  if (gone) cfg.dossiersRetires = [...(cfg.dossiersRetires || []).filter(x => path.resolve(x.dir) !== path.resolve(gone.dir)), { ...gone, retireLe: new Date().toISOString() }];
   cfg.dossiers = cfg.dossiers.filter(d => d.id !== id);
   if (cfg.currentDossier === id) cfg.currentDossier = cfg.dossiers[0].id;
   writeAppCfg(cfg);

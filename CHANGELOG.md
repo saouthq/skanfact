@@ -607,6 +607,16 @@ le verrouillage, « Tout effacer » et la création d'une seconde société, ref
   rendait les données et laissait sur la clé les photos et PDF joints, que la copie est pourtant le
   seul filet à emporter. Ils reviennent avec l'import, et l'article « Tes données » dit enfin comment
   reprendre sa copie sur un nouvel ordinateur.
+- **Un dossier retiré se remet dans la liste.** « Retirer » promettait « tu pourras le rouvrir plus
+  tard » sans dire comment, et le seul chemin — « Rejoindre un dossier déjà partagé » vers un dossier
+  caché de l'application — le marquait partagé, ce qui coupait sa copie externe. Les dossiers retirés
+  restent nommés sous « Retirés de la liste », avec un bouton « Remettre dans la liste » ; un dossier
+  rangé sur l'ordinateur n'est plus jamais pris pour un dossier partagé ; et chaque ligne n'a plus
+  qu'« Ouvrir » et un menu « Actions », au lieu de trois boutons côte à côte.
+- Le panneau Licence ne dit plus « sans aucune connexion » une ligne avant d'expliquer que la clé est
+  présentée pour savoir si elle a été révoquée ; « Tous les modules » compte les entrées du menu au
+  lieu d'écrire « dix-neuf » à la main, et dit « tu n'as encore rien retiré du menu » plutôt
+  qu'« aucun choix enregistré ».
 - La copie externe affiche sa vraie date dès l'ouverture, au lieu de « Copie à la prochaine
   sauvegarde » devant une copie faite la veille ; le sélecteur de dossier, la panne de disque et les
   textes du Cabinet nomment OneDrive à côté d'iCloud Drive ; et « Passer » l'assistant ne reproche plus

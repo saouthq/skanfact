@@ -2458,4 +2458,50 @@ module.exports = ({ t, assert, lireSource }) => {
       'le reproche ne se déduit pas de ce qui manque');
   });
 
+  // Parcours humain, lot 5 : « Retirer » promettait « tu pourras le rouvrir plus tard », et le seul
+  // chemin était « Rejoindre un dossier déjà partagé » vers un dossier caché de l'application — qui
+  // le marquait PARTAGÉ, donc sans copie externe, en silence. Et chaque ligne portait trois boutons.
+  t('Un dossier retiré se remet dans la liste, sans devenir « partagé », et la ligne n\'a qu\'un bouton', () => {
+    const main = code('src', 'main.js');
+    const f0 = main.indexOf("ipcMain.handle('dossiers:forget'");
+    const oublier = main.slice(f0, main.indexOf('\n});', f0));
+    assert.ok(/if \(gone\) cfg\.dossiersRetires = \[[^\n]*\{ \.\.\.gone,/.test(oublier), 'retirer un dossier ne le retient nulle part : rien ne permet de le remettre');
+    const l0 = main.indexOf("ipcMain.handle('dossiers:list'");
+    assert.ok(/retires: cfg\.dossiersRetires/.test(main.slice(l0, l0 + 300)), 'la liste des dossiers ne rend pas les dossiers retirés');
+    const r0 = main.indexOf("ipcMain.handle('dossiers:restore'");
+    assert.ok(r0 > 0 && /cfg\.dossiers\.push\(entree\)/.test(main.slice(r0, main.indexOf('\n});', r0))), 'aucun geste ne remet un dossier retiré dans la liste');
+    const j0 = main.indexOf("ipcMain.handle('dossiers:join'");
+    const rejoindre = main.slice(j0, main.indexOf('\n});', j0));
+    assert.ok(/shared: !local/.test(rejoindre) && /estDossierLocal\(dir\)/.test(rejoindre), 'rejoindre un dossier rangé sur cet ordinateur le marque encore « partagé » (sans copie externe)');
+    assert.ok(/nomCopieExterne\(\[\.\.\.cfg\.dossiers, \.\.\.\(cfg\.dossiersRetires \|\| \[\]\)\]/.test(main), 'un nouveau dossier peut prendre le sous-dossier de copie d\'un dossier retiré');
+    assert.ok(/restoreDossier: \(id\) => ipcRenderer\.invoke\('dossiers:restore', id\)/.test(lireSource('src', 'preload.js')), 'le pont n\'expose pas « Remettre dans la liste »');
+    const app = code('src', 'renderer', 'app.js');
+    const d0 = app.indexOf('async function drawDossiers()');
+    const dessin = app.slice(d0, app.indexOf("$('#dos-add').onclick", d0));
+    assert.ok(dessin.length > 500 && dessin.length < 6000, 'tranche de drawDossiers : ' + dessin.length);
+    assert.ok(!/data-forget=|data-ren=/.test(dessin), 'Renommer et Retirer sont encore des boutons visibles sur chaque ligne');
+    assert.ok(/rowMenuCell\(d\.id,/.test(dessin) && /bindRowMenus\(el,/.test(dessin), 'les lignes des dossiers ne passent pas par le menu d\'actions');
+    assert.ok(/Retirés de la liste/.test(dessin) && /data-remettre=/.test(dessin) && /bridge\.restoreDossier\(/.test(dessin), 'aucun endroit ne montre ni ne remet un dossier retiré');
+    assert.ok(!/Tu pourras le rouvrir plus tard/.test(dessin), 'la question promet de rouvrir sans dire comment');
+  });
+
+  // Parcours humain, lot 5 : le panneau Licence disait « la vérification se fait sans aucune
+  // connexion », puis, une ligne plus bas, que la clé part vérifier qu'elle n'a pas été révoquée.
+  // Une promesse sur ce qui part se vérifie contre le code (8.0.0, 10.12.0).
+  t('Le panneau Licence ne promet pas « aucune connexion » à côté de la vérification en ligne', () => {
+    const app = code('src', 'renderer', 'app.js');
+    assert.ok(!/sans aucune connexion/.test(app), '« sans aucune connexion » à côté de la vérification de révocation, qui passe par le réseau');
+    assert.ok(/La licence fonctionne <strong>sans connexion<\/strong>/.test(app) && /pour savoir si elle a été révoquée/.test(app), 'le panneau ne dit plus que la clé marche hors ligne ET qu\'elle est présentée pour la révocation');
+  });
+
+  // Parcours humain, lot 5 : « Tous les modules » écrivait « une liste de dix-neuf entrées » à la main
+  // — vrai ce jour-là, faux au premier écran ajouté (7.3.0) — et « aucun choix enregistré pour
+  // l'instant », qui décrit une variable plutôt que ce que l'utilisateur a fait.
+  t('« Tous les modules » compte ses entrées et parle de ce que l\'utilisateur a fait', () => {
+    const app = code('src', 'renderer', 'app.js');
+    assert.ok(!/dix-neuf entrées/.test(app), 'le nombre d\'entrées du menu est écrit à la main');
+    assert.ok(/une liste de \$\{C\.PAGES\.filter\(p => !p\.horsMenu\)\.length\} entrées/.test(app), 'le nombre d\'entrées ne se déduit pas des pages du menu');
+    assert.ok(!/aucun choix enregistré pour l'instant/.test(app), 'la ligne d\'un module décrit une variable (« aucun choix enregistré »)');
+  });
+
 };

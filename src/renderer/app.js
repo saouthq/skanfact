@@ -12457,26 +12457,37 @@
       // `#dev-name` n'existait plus, et « Cannot set properties of null » échappait à tout le monde.
       if (!el.isConnected) return;
       const nomPoste = $('#dev-name'); if (nomPoste) nomPoste.value = r.device.name || '';
-      el.innerHTML = `<table class="list compact"><thead><tr><th>Dossier</th><th>Emplacement</th><th></th></tr></thead><tbody>
+      // Une ligne garde au plus UN bouton visible (7.29.0) : « Ouvrir ». Renommer et retirer passent
+      // par le menu d'actions, où chacun dit ce qu'il fait — trois boutons côte à côte se lisaient
+      // comme trois gestes de même poids, et « Retirer » était à un pixel de « Renommer ».
+      el.innerHTML = `<table class="list compact"><thead><tr><th>Dossier</th><th>Emplacement</th><th class="row-actions-h"></th></tr></thead><tbody>
         ${r.dossiers.map(d => `<tr class="${d.id === r.current ? 'row-ok' : ''}">
           <td><strong>${h(d.name)}</strong>${d.id === r.current ? ' <span class="badge b-paid">ouvert</span>' : ''}${d.shared ? ' <span class="badge b-due">partagé</span>' : ''}</td>
           <td class="small muted">${h(d.dir)}</td>
-          <td class="actions">${d.id === r.current ? '' : `<button type="button" class="btn btn-sm" data-open="${h(d.id)}">Ouvrir</button>`}
-            <button type="button" class="btn btn-ghost btn-sm" data-ren="${h(d.id)}">Renommer</button>
-            ${r.dossiers.length > 1 && d.id !== r.current ? `<button type="button" class="btn btn-ghost btn-sm" data-forget="${h(d.id)}">Retirer</button>` : ''}</td></tr>`).join('')}
-      </tbody></table>`;
+          ${rowMenuCell(d.id, d.id === r.current ? '' : `<button type="button" class="btn btn-sm" data-open="${h(d.id)}">Ouvrir</button>`)}</tr>`).join('')}
+      </tbody></table>
+      ${(r.retires || []).length ? `<div class="small mt" id="dos-retires"><b>Retirés de la liste</b> <span class="muted">— leurs fichiers sont restés sur le disque</span>
+        ${r.retires.map(d => `<div class="inline mt-s"><span>${h(d.name)}</span> <span class="muted">${h(d.dir)}</span> <button type="button" class="btn btn-sm" data-remettre="${h(d.id)}">Remettre dans la liste</button></div>`).join('')}</div>` : ''}`;
       $$('[data-open]', el).forEach(b => b.onclick = async () => {
         if (setDirty && !await confirmDialog('Des paramètres ne sont pas enregistrés. Changer de dossier maintenant ?', 'Changer quand même')) return;
         await bridge.switchDossier(b.dataset.open);
       });
-      $$('[data-ren]', el).forEach(b => b.onclick = () => {
-        const d = r.dossiers.find(x => x.id === b.dataset.ren);
-        promptDialog('Renommer le dossier', 'Nom du dossier', d.name, async v => { await bridge.renameDossier({ id: d.id, name: v }); drawDossiers(); });
+      bindRowMenus(el, id => {
+        const d = r.dossiers.find(x => x.id === id); if (!d) return [];
+        return [
+          { icon: 'modifier', label: 'Renommer ce dossier', hint: 'Le nom affiché dans le menu du haut', run: () =>
+            promptDialog('Renommer le dossier', 'Nom du dossier', d.name, async v => { await bridge.renameDossier({ id: d.id, name: v }); drawDossiers(); }) },
+          ...(r.dossiers.length > 1 && d.id !== r.current ? [{ sep: true },
+            { icon: 'supprimer', label: 'Retirer de la liste', hint: 'Ses fichiers restent sur le disque', danger: true, run: async () => {
+              if (!await confirmDialog(`Retirer « ${d.name} » de la liste ? Ses fichiers ne sont PAS supprimés : ils restent dans ${d.dir}.\n\nIl apparaîtra sous « Retirés de la liste », dans ce panneau, avec un bouton pour l'y remettre.`, 'Retirer de la liste')) return;
+              await bridge.forgetDossier(d.id);
+            } }] : [])
+        ];
       });
-      $$('[data-forget]', el).forEach(b => b.onclick = async () => {
-        const d = r.dossiers.find(x => x.id === b.dataset.forget);
-        if (!await confirmDialog(`Retirer « ${d.name} » de la liste ? Ses fichiers ne sont PAS supprimés : ils restent dans ${d.dir}. Tu pourras le rouvrir plus tard.`, 'Retirer de la liste')) return;
-        await bridge.forgetDossier(d.id);
+      $$('[data-remettre]', el).forEach(b => b.onclick = async () => {
+        const res = await bridge.restoreDossier(b.dataset.remettre);
+        if (res && res.ok) { toast(`« ${res.dossier.name} » est de retour dans la liste`); drawDossiers(); }
+        else toast((res && res.error) || 'Ce dossier n\'a pas pu être remis dans la liste.', true);
       });
     }
     drawDossiers();
@@ -12591,7 +12602,7 @@
         const pages = C.PAGES.filter(p => p.module === m.id && !p.horsMenu).map(p => p.titre).join(' · ');
         const contenu = n ? `${n} élément${n > 1 ? 's' : ''} enregistré${n > 1 ? 's' : ''}.` : 'Rien d\'enregistré pour l\'instant.';
         const note = m.toujours ? 'Toujours affiché : c\'est le cœur du métier.'
-          : why === 'tout' ? `Affiché : aucun choix enregistré pour l'instant. ${contenu}`
+          : why === 'tout' ? `Affiché : tu n'as encore rien retiré du menu. ${contenu}`
           : why === 'masque' ? `Hors du menu. ${contenu}${n ? ' Rien n\'est supprimé.' : ''}`
           : contenu;
         return `<div class="mod-row${on ? ' on' : ''}">
@@ -12677,7 +12688,7 @@
     $('#view').innerHTML = `<div class="page-head"><h1>Tous les modules</h1>
       <div class="actions">${backButton('#/dashboard')}${choisis ? '<button class="btn" id="mod-all">Tout afficher</button>' : ''}</div></div>
       <p class="lead">SkanFact sait faire beaucoup de choses. Tu n'en as pas besoin le premier jour, et
-      une liste de dix-neuf entrées dans le menu ne t'aide pas à trouver la bonne.</p>
+      une liste de ${C.PAGES.filter(p => !p.horsMenu).length} entrées dans le menu ne t'aide pas à trouver la bonne.</p>
       <div class="panel">
         <p class="small muted mb"><b>Retirer un module du menu ne supprime rien</b> et ne désactive aucun calcul :
         ses pages restent atteignables par la recherche (${MOD}+K) et par leur adresse, et la case reste
@@ -13186,7 +13197,7 @@
            ${st.key ? '<button type="button" class="btn btn-ghost" id="lic-clear">Retirer la clé</button>' : ''}
          </div>
          <p class="small muted mt"><strong>Tes données t'appartiennent, licence ou pas.</strong> Même expirée, tu peux tout lire, imprimer, exporter et envoyer à ton comptable. Seule la création de nouvelles pièces attend le renouvellement.</p>
-         <p class="small muted">La vérification se fait <strong>sur cet ordinateur</strong>, sans aucune connexion. Ta clé n'est présentée qu'aux services de SkanFact — les mises à jour, et la vérification qu'elle n'a pas été révoquée —, jamais à un tiers.</p>`;
+         <p class="small muted">La licence fonctionne <strong>sans connexion</strong> : sa signature se vérifie sur cet ordinateur. Ta clé n'est présentée qu'aux services de SkanFact — pour les mises à jour, et pour savoir si elle a été révoquée —, jamais à un tiers.</p>`;
     // La porte de l'éditeur — discrète exprès : elle ne concerne qu'une personne, et elle n'existe
     // que tant que l'application n'est PAS armée (`libre`). Une fois la clé publique embarquée, plus
     // aucun client ne la voit ; sur le poste de l'éditeur, le panneau « Éditeur » a pris le relais.
