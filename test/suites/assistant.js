@@ -10,7 +10,10 @@
 //   la porte     « j'ai déjà une clé de licence », « je rejoins un dossier partagé » ;
 //   le reste     le compte bancaire depuis le RIB, le mot de passe avec la copie, la messagerie,
 //                l'import depuis un tableur, et la facture « à ton image » avec son aperçu.
-module.exports = ({ t, assert, lireSource }) => {
+// Asynchrone depuis 213d : `messagerie()` est une fonction asynchrone, et un `ta` qu'on n'attend pas
+// part détaché — son « ok » s'afficherait après le total, et une assertion qui tombe ne ferait plus
+// échouer la commande (8.4.0). Le lanceur attend donc cette suite.
+module.exports = async ({ t, ta, assert, lireSource }) => {
 const C = require('../../src/renderer/core.js');
 const app = lireSource('src', 'renderer', 'app.js');
 // Le code sans ses commentaires : un commentaire qui cite la forme interdite ne doit pas faire tomber
@@ -323,5 +326,279 @@ t('10.14.0 : le registre de commerce est aussi guidé dans l\'assistant que dans
   assert.strictEqual(champs.length, 2, 'les deux champs du registre de commerce n\'ont pas été trouvés');
   const invites = champs.map(x => x.match(/'placeholder="([^"]*)"'/)[1]);
   assert.strictEqual(invites[0], invites[1], 'l\'assistant et les Paramètres ne disent pas la même chose du même champ : ' + invites.join(' / '));
+});
+
+// ------------------------------------------------------------------ 213d : le compte depuis le RIB
+// La fiche société porte déjà la banque et le RIB ; la Trésorerie — la page faite pour ça — ouvrait
+// un compte VIDE pendant que le paiement, lui, le préremplissait. UNE fonction pour les trois portes.
+t('10.14.0 : le compte bancaire naît de la fiche société — une fois, et jamais en double', () => {
+  const rib = '08 006 0123456789012 34';
+  assert.strictEqual(C.compteDepuisFiche({}, []), null, 'une fiche vide ne propose rien');
+  assert.strictEqual(C.compteDepuisFiche(null, null), null);
+  assert.deepStrictEqual(C.compteDepuisFiche({ bank: ' BIAT ', rib }, []), { name: 'BIAT — compte courant', kind: 'banque', bank: 'BIAT', rib });
+  assert.deepStrictEqual(C.compteDepuisFiche({ rib }, []), { name: 'Compte courant', kind: 'banque', bank: '', rib }, 'un RIB sans banque nomme quand même le compte');
+  // Le même RIB, écrit autrement (sans espaces), ou dans un IBAN tunisien : c'est le même compte.
+  assert.strictEqual(C.compteDepuisFiche({ bank: 'BIAT', rib }, [{ rib: '08006012345678901234' }]), null, 'le même RIB sans ses espaces est proposé une seconde fois');
+  assert.strictEqual(C.compteDepuisFiche({ bank: 'BIAT', rib }, [{ rib: 'TN59 0800 6012 3456 7890 1234' }]), null, 'l\'IBAN du même compte n\'est pas reconnu');
+  // Un AUTRE compte (une caisse sans RIB, un autre RIB) ne l'empêche pas.
+  assert.ok(C.compteDepuisFiche({ bank: 'BIAT', rib }, [{ kind: 'caisse', name: 'Caisse', rib: '' }, { rib: '10 000 1111111111111 11' }]), 'une caisse ou un autre compte empêche de proposer la banque de la fiche');
+  // Sans RIB sur la fiche, la BANQUE décide — à la casse près.
+  assert.strictEqual(C.compteDepuisFiche({ bank: 'Attijari' }, [{ bank: 'attijari', rib: '' }]), null);
+  assert.ok(C.compteDepuisFiche({ bank: 'Attijari' }, [{ bank: 'BIAT' }]));
+});
+
+t('10.14.0 : les TROIS portes d\'un compte passent par la même fonction, et le compte né de la fiche n\'attend que son solde', () => {
+  assert.ok(/const modeleCompte = \(\) => C\.compteDepuisFiche\(company\(\), data\.accounts\);/.test(code), 'le modèle du compte ne vient plus de la fiche');
+  // Le paiement, l'état vide de la Trésorerie, « + Compte » : chacun appelle le modèle au moment du clic.
+  assert.ok(/\$\('#pf-compte', root\)\.onclick = \(\) => accountForm\(null, a => \{[\s\S]{0,200}\}, modeleCompte\(\)\);/.test(code), 'le paiement ne passe plus par le modèle');
+  assert.ok(/\$\('#first-acc'\)\.onclick = \(\) => accountForm\(null, \(\) => render\(\), modeleCompte\(\)\);/.test(code), 'l\'état vide de la Trésorerie ouvre encore un compte vide');
+  assert.ok(/\$\('#new-acc'\)\.onclick = \(\) => accountForm\(null, \(\) => render\(\), modeleCompte\(\)\);/.test(code), '« + Compte » ignore la fiche');
+  assert.strictEqual((code.match(/accountForm\(null,/g) || []).length, 3, 'une quatrième porte vers un compte neuf est apparue sans le modèle');
+  // Le bouton NOMME la banque, et l'état vide dit d'où vient ce qu'il propose.
+  assert.ok(/id="first-acc">\+ \$\{libelleCompteDepuisFiche\('Créer le compte', 'Créer mon premier compte'\)\}/.test(code));
+  assert.ok(/id="tre-depuis-fiche">Ta fiche société porte déjà/.test(code), 'l\'état vide ne dit pas que la fiche porte déjà la banque');
+  const lib = require('vm').runInNewContext('(' + code.match(/const libelleCompteDepuisFiche = (\(avecBanque, sans\) => \{[^\n]+\})/)[1] + ')',
+    { modeleCompte: () => ({ bank: 'BIAT & fils' }), h: s => String(s).replace(/&/g, '&amp;') });
+  assert.strictEqual(lib('Créer le compte', 'Créer un compte'), 'Créer le compte « BIAT &amp; fils »', 'le nom de la banque n\'est pas échappé');
+  // Le curseur va au SOLDE, la valeur proposée sélectionnée : la première frappe la remplace (9.4.5).
+  const i = code.indexOf('function accountForm(');
+  const f = code.slice(i, code.indexOf('\n  function ', i + 10));
+  assert.ok(/const depuisFiche = !acc && !!\(modele && \(modele\.bank \|\| modele\.rib\)\);/.test(f), 'le compte né de la fiche ne se reconnaît plus');
+  assert.ok(/if \(depuisFiche\) \{ const o = \$\('\[name=opening\]', root\); o\.focus\(\); o\.select\(\); \}/.test(f), 'le curseur ne va plus au solde de départ');
+  assert.ok(/Banque et RIB viennent de ta fiche société/.test(f), 'la fenêtre ne dit pas d\'où viennent la banque et le RIB');
+});
+
+// ------------------------------------------------------------------ 213d : le mot de passe avec la copie
+t('10.14.0 : le mot de passe se propose AVEC la copie externe — une fois la copie posée, et seulement si rien ne protège encore les données', () => {
+  const i = code.indexOf('$(\'#ext-choose\').onclick = async () => {');
+  const hnd = code.slice(i, code.indexOf('\n    };', i));
+  assert.ok(i > 0 && hnd.length > 200, 'le geste « Choisir un dossier » n\'a pas été trouvé');
+  // Une copie qui a échoué ne propose rien : elle ne protège encore rien.
+  assert.ok(/if \(i\.lastError\) \{[^}]*return; \}/.test(hnd), 'une copie en échec enchaîne sur le mot de passe');
+  // La question vient APRÈS le redessin (la page dit que la copie est là), et seulement sans mot de passe.
+  const dessin = hnd.indexOf('await drawExternal();'), question = hnd.indexOf('passwordDialog(\'set\', { copie: i.dir })');
+  assert.ok(dessin > 0 && question > dessin, 'la question du mot de passe ne suit plus la copie');
+  assert.ok(/if \(security\.encrypted\) toast\('Copie externe activée'\);\s*else passwordDialog\('set', \{ copie: i\.dir \}\);/.test(hnd), 'la question se pose à des données déjà chiffrées');
+  // Le bouton reste « occupé » jusqu'à la question : la visite l'attend.
+  assert.ok(/b\.setAttribute\('aria-busy', 'true'\);\s*try \{[\s\S]*\} finally \{ b\.removeAttribute\('aria-busy'\); \}/.test(hnd), 'le bouton n\'est plus tenu occupé pendant que la question se prépare');
+  // La porte du mot de passe dit pourquoi MAINTENANT, et « Pas maintenant » plutôt qu'« Annuler ».
+  const p = code.slice(code.indexOf('function passwordDialog('), code.indexOf('\n  function ', code.indexOf('function passwordDialog(') + 10));
+  assert.ok(/const copie = mode === 'set' && opts && opts\.copie \? String\(opts\.copie\) : '';/.test(p));
+  assert.ok(/<p id="pw-copie">Ta copie est en place dans <code>\$\{h\(copie\)\}<\/code>\. Elle est <b>en clair<\/b>/.test(p), 'la fenêtre ne dit pas que la copie part en clair');
+  assert.ok(/\$\{copie \? 'Pas maintenant' : 'Annuler'\}/.test(p), 'la copie est faite : « Annuler » laisserait croire qu\'on la défait');
+});
+
+t('10.14.0 : la visite « Mettre mes données à l\'abri » attend la question, en parle, puis conclut', () => {
+  const V = require('../../src/renderer/visite.js');
+  const S = require('../../src/renderer/visites.js');
+  const liste = S.parcours({ data: () => ({ clients: [], documents: [], catalog: [] }), premier: () => null, estDemo: () => false, editeur: () => false, Visite: V, G: { INFO: {} } });
+  const v = liste.find(x => x.id === 'sauvegarde');
+  const [choisir, mdp, fin] = v.etapes;
+  assert.strictEqual(choisir.cible, '#ext-choose');
+  assert.strictEqual(mdp.cible, '#pw-copie', 'la visite ne parle pas de la question du mot de passe');
+  assert.strictEqual(fin.titre, 'C\'est tout');
+  // Joué sur un faux document : le geste n'est fait que la copie posée ET la question posée.
+  const avant = global.document;
+  const dom = sel => { global.document = { querySelector: s => sel[s] || null }; };
+  try {
+    dom({ '#ext-remove': { hidden: false }, '#ext-choose': { getAttribute: a => (a === 'aria-busy' ? 'true' : null) } });
+    assert.strictEqual(choisir.fait(), false, 'la visite avance avant que la question du mot de passe soit posée');
+    dom({ '#ext-remove': { hidden: false }, '#ext-choose': { getAttribute: () => null } });
+    assert.strictEqual(choisir.fait(), true, 'la visite reste bloquée une fois la copie posée');
+    dom({ '#pw-copie': {} });
+    assert.ok(mdp.si() && !mdp.fait(), 'l\'étape du mot de passe ne s\'ouvre pas sur la question, ou se croit finie');
+    dom({});
+    assert.ok(!mdp.si() && mdp.fait(), 'des données déjà protégées voient quand même l\'étape du mot de passe');
+  } finally { global.document = avant; }
+});
+
+// ------------------------------------------------------------------ 213d : une copie impossible se dit en français
+t('10.14.0 : la cause d\'une copie externe impossible se dit en français, dans les DEUX applications', () => {
+  const st = lireSource('src', 'storage.js'), cab = lireSource('src', 'cabinet', 'cabstore.js');
+  const corps = s => { const i = s.indexOf('const CAUSES_COPIE = {'); return s.slice(i, s.indexOf('\n}\n', s.indexOf('function causeCopie(', i)) + 2); };
+  assert.ok(corps(st).length > 300, 'le traducteur de l\'app entreprise n\'a pas été trouvé');
+  assert.strictEqual(corps(st), corps(cab), 'les deux applications ne disent pas la même chose d\'une même panne de copie');
+  [st, cab].forEach(s => assert.ok(!/lastError = e\.message/.test(s), 'un message brut de Node repart vers l\'écran'));
+  const causeCopie = require('vm').runInNewContext(corps(st) + '\ncauseCopie;');
+  assert.strictEqual(causeCopie(Object.assign(new Error('x'), { code: 'EACCES' })), 'l\'accès à ce dossier est refusé');
+  assert.strictEqual(causeCopie(new Error('ENOSPC: no space left on device, write')), 'le support est plein', 'un code perdu en route n\'est plus relu dans le message');
+  assert.ok(/^une erreur inattendue/.test(causeCopie(new Error('boom'))), 'une panne inconnue n\'a pas sa phrase');
+  // En vrai : une copie vers un dossier qui n'existe pas.
+  const fs = require('fs'), os = require('os'), path = require('path');
+  const { createStorage } = require('../../src/storage.js');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sf-copie-'));
+  try {
+    const s = createStorage(dir, { externalDir: path.join(dir, 'cle-debranchee') });
+    s.write(C.DEFAULT_DATA);
+    assert.strictEqual(s.state.external.lastError, 'le dossier est introuvable (support débranché ?)');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// ------------------------------------------------------------------ 213d : une sauvegarde rechiffrée garde sa date
+// Trouvé au test à la souris de ce lot : poser le mot de passe que la copie propose faisait passer
+// « Début de journée, avant la première modification » de 23:17 à 23:22 — l'heure du mot de passe, sur
+// la liste où l'on choisit quoi restaurer. Le rechiffrement garde la date ; et comme « même taille, même
+// date » ne suffit plus alors à faire recopier la clé USB, ce qu'on vient de convertir y est recopié
+// d'office. Les données du test DISCRIMINENT : la copie sur la clé a la même taille et la même date que
+// la locale — c'est exactement le cas où, sans la recopie forcée, elle resterait sur l'ancien mot de passe.
+t('10.14.0 : une sauvegarde rechiffrée garde sa date, et la clé USB reçoit quand même la version convertie — dans les DEUX applications', () => {
+  const fs = require('fs'), os = require('os'), path = require('path');
+  const pres = (p, d) => Math.abs(fs.statSync(p).mtimeMs - d.getTime()) < 2000;
+  const matin = new Date('2026-09-24T09:12:00Z');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sf-date-'));
+  try {
+    // L'app entreprise.
+    const { createStorage, isEncrypted, decryptData } = require('../../src/storage.js');
+    const ext = path.join(dir, 'cle'); fs.mkdirSync(ext);
+    const s = createStorage(path.join(dir, 'app'), { now: () => new Date('2026-09-24T09:00:00Z') });
+    s.write({ ...C.DEFAULT_DATA, clients: [{ id: 'a', name: 'Premier' }] });
+    s.write({ ...C.DEFAULT_DATA, clients: [{ id: 'a', name: 'Second' }] });          // la sauvegarde du jour
+    const locale = s.listBackups()[0].path;
+    fs.utimesSync(locale, matin, matin);
+    s.setExternalDir(ext);
+    const surCle = path.join(ext, 'SkanFact', 'backups', path.basename(locale));
+    assert.ok(pres(surCle, matin), 'la copie sur la clé ne garde pas la date de l\'original : chaque enregistrement la recopie');
+    // Le premier mot de passe (clair → chiffré : la taille change, la clé suit de toute façon)…
+    s.setPassword(s.read(), 'premier-mot-de-passe');
+    assert.ok(isEncrypted(JSON.parse(fs.readFileSync(locale, 'utf8'))), 'la sauvegarde locale n\'est pas chiffrée');
+    assert.ok(pres(locale, matin), 'le rechiffrement a réécrit l\'heure de la sauvegarde du matin');
+    assert.strictEqual(decryptData(JSON.parse(fs.readFileSync(surCle, 'utf8')), 'premier-mot-de-passe').clients[0].name, 'Premier');
+    // … puis le CHANGEMENT : ancien chiffré → nouveau chiffré, même taille, même date. C'est le cas où,
+    // sans la recopie forcée, la clé garderait la sauvegarde de l'ancien mot de passe.
+    s.setPassword(s.read(), 'menuiserie2026');
+    assert.ok(pres(locale, matin), 'le changement de mot de passe a réécrit l\'heure de la sauvegarde du matin');
+    assert.strictEqual(decryptData(JSON.parse(fs.readFileSync(surCle, 'utf8')), 'menuiserie2026').clients[0].name, 'Premier',
+      'la clé garde une sauvegarde que le nouveau mot de passe n\'ouvre pas');
+    assert.throws(() => decryptData(JSON.parse(fs.readFileSync(surCle, 'utf8')), 'premier-mot-de-passe'));
+    // Le Cabinet : pas de conversion sur place, tout passe par la recopie.
+    const { createCabStore } = require('../../src/cabinet/cabstore.js');
+    const cle2 = path.join(dir, 'cle2'); fs.mkdirSync(cle2);
+    const cab = createCabStore(path.join(dir, 'cab'), { now: () => new Date('2026-09-24T09:00:00Z') });
+    const etat = cab.create('mot-de-passe-assez-long', { cabinet: { name: 'Cabinet' }, dossiers: [] });
+    const quotidienne = cab.snapshotDaily();
+    assert.ok(quotidienne && fs.existsSync(quotidienne), 'la sauvegarde du jour du Cabinet n\'a pas été prise');
+    fs.utimesSync(quotidienne, matin, matin);
+    cab.setExternalDir(cle2);
+    const cabCle = path.join(cle2, 'SkanFact Cabinet', 'sauvegardes', path.basename(quotidienne));
+    assert.ok(pres(cabCle, matin), 'la copie du Cabinet ne garde pas la date de l\'original');
+    cab.setPassword(etat, 'un-nouveau-mot-de-passe-long');
+    assert.ok(pres(quotidienne, matin), 'le rechiffrement du Cabinet a réécrit l\'heure de la sauvegarde du matin');
+    assert.ok(cab.peek(cabCle, 'un-nouveau-mot-de-passe-long'), 'la clé du Cabinet garde la version de l\'ancien mot de passe');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// Vu en jouant la visite à la souris : « C'est tout — chaque enregistrement est recopié là » éclairait le
+// panneau « Dossiers », le premier de l'onglet. Une étape qui dit « là » éclaire ce qu'elle désigne.
+t('10.14.0 : la visite « Mettre mes données à l\'abri » conclut sur le panneau de la COPIE — celui qui porte le bouton du geste', () => {
+  const V = lireSource('src', 'renderer', 'visites.js');
+  const i = V.indexOf("id: 'sauvegarde'");
+  const bloc = V.slice(i, V.indexOf('visite({', i));
+  const derniere = bloc.slice(bloc.lastIndexOf('{ page:'));
+  const cible = (derniere.match(/cible: '([^']+)'/) || [])[1];
+  assert.ok(cible && cible !== '#view .panel', `la dernière étape éclaire « ${cible} », le premier panneau venu de l'onglet`);
+  const deb = app.indexOf(`panneau('${cible.replace(/^#/, '')}'`);
+  assert.ok(deb > 0, `aucun panneau « ${cible} » dans les Paramètres`);
+  assert.ok(app.slice(deb, app.indexOf('panneau(', deb + 10)).includes('id="ext-choose"'), 'le panneau éclairé n\'est pas celui du bouton « Choisir un dossier… »');
+});
+
+// ------------------------------------------------------------------ 213d : un objet vide ne casse pas le message
+// Vu au premier envoi d'une entreprise neuve (test à la souris) : l'objet d'un devis est facultatif,
+// et le message partait avec « notre devis DEV-2026-001 (1 011,500 DT TTC) concernant : . ».
+t('10.14.0 : un objet vide retire sa proposition du message — dans chaque modèle qui le porte, en français et en anglais', () => {
+  const company = { name: 'Menuiserie El Bahri SARL', currency: 'DT', stampFee: 1 };
+  const client = { name: 'Hôtel Dar El Marsa SARL', email: 'contact@darmarsa.tn' };
+  const doc = (type, lang) => ({ type, lang, number: 'DEV-2026-001', date: '2026-09-24', dueDate: '2026-10-24', subject: '',
+    lines: [{ label: 'Porte en chêne massif', qty: 1, price: 850, vat: 19 }] });
+  const casse = /:\s*[.\n]|:\s*$|—\s*$|—\s*\n|for:\s*\./;
+  [['fr', ['devis', 'relanceDevis', 'proforma', 'commande', 'livraison', 'contrat']], ['en', ['devis', 'relanceDevis']]].forEach(([lang, kinds]) => {
+    kinds.forEach(k => {
+      const m = C.emailFor(k, doc(k === 'relanceDevis' ? 'devis' : k, lang), client, company);
+      assert.ok(!casse.test(m.body), `${lang}/${k} : le message garde une phrase coupée — ${JSON.stringify(m.body.split('\n')[2])}`);
+      assert.ok(!casse.test(m.subject), `${lang}/${k} : l'objet du mail finit en suspens — « ${m.subject} »`);
+      assert.ok(!/\{objet\}/.test(m.body + m.subject), `${lang}/${k} : la variable est restée écrite`);
+    });
+  });
+  // Avec un objet, rien ne change : la phrase le porte.
+  const plein = C.emailFor('devis', { ...doc('devis', 'fr'), subject: 'Porte d\'entrée du hall' }, client, company);
+  assert.ok(/concernant : Porte d'entrée du hall\./.test(plein.body), 'un objet renseigné n\'apparaît plus dans le message');
+  assert.strictEqual(C.emailFor('relanceDevis', doc('devis', 'fr'), client, company).subject, 'Notre devis DEV-2026-001');
+  // Un modèle PERSONNEL : ce que la personne a écrit hors de `{objet}` reste le sien.
+  const perso = { ...company, emailTemplates: { devis: { subject: 'Devis {numero}', body: 'Bonjour,\nConcernant : votre demande du mois, voici le devis {numero}.' } } };
+  assert.ok(/Concernant : votre demande du mois/.test(C.emailFor('devis', doc('devis', 'fr'), client, perso).body), 'un texte écrit par la personne a été réécrit');
+});
+
+// ------------------------------------------------------------------ 213d : la messagerie au premier envoi
+// Sur Mac, SkanFact ouvrait Mail d'office : quelqu'un qui écrit depuis Gmail voyait s'ouvrir, à son
+// tout premier envoi, une application jamais configurée. La question se pose une fois, là où elle sert.
+t('10.14.0 : chaque envoi passe par la porte de la messagerie AVANT de rien préparer', () => {
+  const envois = [...code.matchAll(/bridge\.composeMail\(/g)].map(m => m.index);
+  assert.ok(envois.length >= 10, 'les envois n\'ont pas été trouvés : ' + envois.length);
+  const portes = [];
+  envois.forEach(idx => {
+    let p = 1, j = idx + 'bridge.composeMail('.length;
+    while (p && j < code.length) { if (code[j] === '(') p++; else if (code[j] === ')') p--; j++; }
+    const args = code.slice(idx, j);
+    // « Écrire au client » ouvre la messagerie du système, sans fichier : rien à choisir.
+    if (/mode: 'mailto'/.test(args)) return;
+    assert.ok(/mode: modeEnvoi\(\)/.test(args), 'un envoi ne suit pas la messagerie choisie : ' + args.slice(0, 120));
+    const porte = code.lastIndexOf('if (!await messagerie()) return;', idx);
+    assert.ok(porte > 0, 'un envoi part sans avoir demandé la messagerie : ' + args.slice(0, 120));
+    // Pas de frontière de fonction entre la porte et l'envoi : la porte est celle de CET envoi.
+    assert.ok(!/\n  (async )?function |\n  routes\.\w+ = /.test(code.slice(porte, idx)), 'la porte trouvée appartient à une autre fonction : ' + args.slice(0, 120));
+    portes.push(porte);
+  });
+  // Deux envois qui partagent UNE porte : l'un des deux l'a oubliée, et emprunte celle du voisin.
+  assert.strictEqual(new Set(portes).size, portes.length, 'deux envois se partagent la même question — l\'un des deux ne la pose pas');
+  // La fenêtre d'envoi d'une pièce demande AVANT de s'ouvrir : sa phrase dit ce qui va se passer.
+  const s = code.slice(code.indexOf('async function sendByEmail('), code.indexOf('async function sendByEmail(') + 1200);
+  assert.ok(s.indexOf('if (!await messagerie()) return;') < s.indexOf('modal(`'), 'la fenêtre d\'envoi s\'ouvre avant la question, et promet Mail à qui ne l\'a pas choisi');
+});
+
+await ta('10.14.0 : sur Mac, la messagerie se demande au PREMIER envoi — pas à qui envoyait déjà, jamais hors d\'un Mac', async () => {
+  const src = code.match(/const dejaEnvoye = [^\n]+\n/)[0] + code.match(/async function messagerie\(\) \{[\s\S]*?\n  \}/)[0];
+  const essai = async ({ mac, choisi, documents, reponse }) => {
+    const ctx = { SUR_MAC: mac, data: { company: { mailClient: choisi }, documents: documents || [], licences: [] }, demandes: 0, sauvees: 0 };
+    ctx.company = () => ctx.data.company;
+    ctx.modeEnvoi = () => (ctx.data.company.mailClient === 'mailto' ? 'mailto' : 'auto');
+    ctx.save = () => { ctx.sauvees++; };
+    ctx.choisirMessagerie = async () => { ctx.demandes++; if (reponse) ctx.data.company.mailClient = reponse; return reponse || null; };
+    const messagerie = require('vm').runInNewContext(src + '\nmessagerie;', ctx);
+    const mode = await messagerie();
+    return { mode, demandes: ctx.demandes, choisi: ctx.data.company.mailClient, sauvees: ctx.sauvees };
+  };
+  assert.deepStrictEqual(await essai({ mac: false }), { mode: 'auto', demandes: 0, choisi: undefined, sauvees: 0 }, 'hors d\'un Mac, rien ne se demande ni ne s\'écrit');
+  assert.strictEqual((await essai({ mac: true, choisi: 'mailto' })).demandes, 0, 'un choix déjà fait se redemande');
+  const premier = await essai({ mac: true, reponse: 'mailto' });
+  assert.deepStrictEqual([premier.mode, premier.demandes], ['mailto', 1], 'le premier envoi ne pose pas la question, ou n\'écoute pas la réponse');
+  assert.strictEqual((await essai({ mac: true, reponse: null })).mode, null, 'fermer la question envoie quand même — avec Mail');
+  // Quelqu'un qui envoyait déjà depuis SkanFact ne se voit rien demander : Mail marchait pour lui.
+  const ancien = await essai({ mac: true, documents: [{ emails: [{ date: '2026-01-02' }] }] });
+  assert.deepStrictEqual(ancien, { mode: 'auto', demandes: 0, choisi: 'auto', sauvees: 1 }, 'la mise à jour fait douter d\'un geste qui marchait');
+});
+
+t('10.14.0 : la question de la messagerie a deux réponses de même poids, et les Paramètres disent quand rien n\'est choisi', () => {
+  const q = code.slice(code.indexOf('function choisirMessagerie('), code.indexOf('async function messagerie('));
+  assert.ok(/id="msg-mail"/.test(q) && /id="msg-autre"/.test(q), 'les deux réponses n\'ont pas été trouvées');
+  assert.ok(!/btn-primary/.test(q), 'une des deux réponses est poussée en vert : ce n\'est pas à SkanFact de choisir la messagerie');
+  // Sans bouton principal, le curseur doit entrer dans la question (10.13.0 : Entrée re-cliquait la page).
+  assert.ok(/\$\('#msg-mail', root\)\.focus\(\);/.test(q), 'le curseur reste sur le bouton de la page, derrière la question');
+  assert.ok(/\(\) => \{ if \(!fait\) resolve\(null\); \}/.test(q), 'fermer la question ne répond rien : l\'envoi resterait suspendu');
+  // Dans les Paramètres, tant que rien n'est choisi, la liste le dit — sinon « Mail » s'enregistrait
+  // d'office au premier « Enregistrer » de la fiche société, et la question n'arrivait jamais.
+  assert.ok(/\$\{c\.mailClient \? '' : '<option value="" selected>Je choisirai au premier envoi<\/option>'\}/.test(code), 'la liste des Paramètres choisit Mail à la place de l\'utilisateur');
+  assert.ok(/<option value="auto" \$\{c\.mailClient && c\.mailClient !== 'mailto' \? 'selected' : ''\}>/.test(code), '« Mail » reste coché quand rien n\'est choisi');
+});
+
+t('10.14.0 : la visite « Envoyer » connaît les deux questions qui peuvent précéder la fenêtre d\'envoi', () => {
+  const V = require('../../src/renderer/visite.js');
+  const S = require('../../src/renderer/visites.js');
+  const v = S.parcours({ data: () => ({ clients: [], documents: [], catalog: [] }), premier: () => null, estDemo: () => false, editeur: () => false, Visite: V, G: { INFO: {} } }).find(x => x.id === 'envoyer');
+  const cibles = v.etapes.map(e => e.cible);
+  const iEx = cibles.indexOf('#demo-q'), iMsg = cibles.indexOf('#msg-choix'), iRelis = v.etapes.findIndex(e => /Relis avant/.test(e.titre));
+  assert.ok(iEx > 0 && iMsg > iEx && iRelis > iMsg, 'l\'ordre des étapes ne suit plus celui des questions : ' + cibles.join(' → '));
+  [v.etapes[iEx], v.etapes[iMsg]].forEach(e => assert.ok(typeof e.si === 'function' && typeof e.fait === 'function', 'une question qui n\'est pas toujours posée doit être une étape conditionnelle : ' + e.cible));
+  // Le marqueur que l'étape attend est bien posé sur la question de l'exemple.
+  assert.ok(/'Continuer quand même', null, \{ id: 'demo-q' \}\);/.test(code), 'la question de l\'exemple ne porte plus le nom que la visite reconnaît');
+  assert.ok(/<h2\$\{opts && opts\.id \? ` id="\$\{h\(opts\.id\)\}"` : ''\}>/.test(code), '`choiceDialog` ne sait plus nommer sa question');
 });
 };

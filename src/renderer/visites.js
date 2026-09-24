@@ -279,6 +279,9 @@
   b('#save', "Garde la pièce. Un devis reçoit son numéro ; une facture reste un brouillon sans numéro tant que tu ne l'as pas émise.", { route: 'doc' });
   b('#issue', "Donne à la pièce son numéro définitif et la verrouille. Un récapitulatif s'affiche d'abord : à qui, quand, combien.");
   b('#email', "Prépare le mail dans ta messagerie, avec le PDF joint : tu relis, et tu envoies.");
+  // La question du premier envoi, sur Mac (10.14.0).
+  b('#msg-mail', "Tes messages s'ouvriront dans Mail, l'application d'Apple, le PDF déjà joint.");
+  b('#msg-autre', "Tes messages s'ouvriront dans ta messagerie par défaut ; le PDF s'affiche à côté, pour que tu le glisses dedans.");
   b('#pdf', "Enregistre le document en PDF sur ton ordinateur.");
   b('#pv-toggle', "Montre ou cache l'aperçu, à droite.");
   b('#pv-hide', "Ouvre le document en grand, pour le relire comme ton client le recevra.");
@@ -988,6 +991,17 @@
         { page: () => ctx.premier('devisBrouillon') || ctx.premier('devis'), cible: '#email', cote: 'dessous', faire: 'clic',
           titre: 'Envoyer par mail', texte: 'SkanFact prépare le mail dans ta messagerie, avec le PDF joint et un texte poli (que tu changes dans Paramètres → Envois).',
           action: 'Clique sur <b>« Email »</b>.', essai: { clic: true } },
+        // Deux questions peuvent précéder la fenêtre d'envoi (10.14.0) : l'exemple le rappelle avant
+        // tout envoi, et un Mac demande sa messagerie la toute première fois. Sans ces étapes, la
+        // bulle « Relis avant d'envoyer » décrivait un destinataire et un objet à côté d'une question
+        // qui n'en porte aucun.
+        { si: () => !!$('#demo-q'), cible: '#demo-q', zone: '#modal-root .modal', cote: 'gauche', faire: 'clic',
+          titre: 'Des données d\'exemple', texte: 'Avant tout envoi depuis l\'exemple, SkanFact te le rappelle : ces clients et leurs adresses sont inventés.',
+          action: 'Pour la visite, <b>« Continuer quand même »</b> : rien ne part tant que tu n\'as pas cliqué sur Envoyer dans ta messagerie.',
+          fait: () => !$('#demo-q'), essai: { clic: true } },
+        { si: () => !!$('#msg-choix'), cible: '#msg-choix', zone: '#modal-root .modal', cote: 'gauche', faire: 'clic',
+          titre: 'Ta messagerie', texte: 'La toute première fois seulement : Mail, qui joint le PDF tout seul, ou ta messagerie habituelle. Tu pourras changer d\'avis dans Paramètres → Envois.',
+          action: 'Choisis celle avec laquelle tu écris.', fait: () => !$('#msg-choix'), essai: { clic: true } },
         { cible: '#modal-root .modal', cote: 'gauche', titre: 'Relis avant d\'envoyer',
           texte: 'Le destinataire, l\'objet, le texte : tout se relit ici, puis s\'ouvre dans ta messagerie. Rien ne part sans toi.' }
       ]
@@ -1196,10 +1210,22 @@
       bravo: 'Tes données sont à l\'abri',
       conclusion: 'À chaque enregistrement, SkanFact recopie tes données dans ce dossier. Si ton ordinateur tombe en panne, tout est là.',
       etapes: [
+        // Le geste est fait quand la copie est posée ET que la question qui la suit est posée (10.14.0) :
+        // le bouton reste « occupé » (`aria-busy`) jusque-là, sinon l'étape d'après pouvait s'ouvrir
+        // une fraction de seconde avant la fenêtre qu'elle doit montrer.
         { page: '#/parametres', avant: onglet('#set-tabs', 'donnees'), cible: '#ext-choose', cote: 'dessous', faire: 'clic',
           titre: 'Choisir un dossier', texte: 'SkanFact sauvegarde chaque jour sur cet ordinateur. Mais si l\'ordinateur tombe en panne ? Une copie ailleurs — clé USB, iCloud, OneDrive — c\'est la seule protection contre ça.',
-          action: 'Clique sur <b>« Choisir un dossier… »</b>.', fait: () => { const r = $('#ext-remove'); return !!(r && !r.hidden); }, essai: { clic: true } },
-        { page: '#/parametres', cible: '#view .panel', titre: 'C\'est tout', texte: 'Dès maintenant, chaque enregistrement est recopié là. Rien d\'autre à faire.' }
+          action: 'Clique sur <b>« Choisir un dossier… »</b>.', fait: () => { const r = $('#ext-remove'), c = $('#ext-choose'); return !!(r && !r.hidden) && !(c && c.getAttribute('aria-busy')); }, essai: { clic: true } },
+        // La copie part en clair : la question du mot de passe arrive avec elle, quand les données ne
+        // sont pas encore protégées. Une donnée déjà chiffrée ne la pose pas, et l'étape se saute.
+        { si: () => !!$('#pw-copie'), cible: '#pw-copie', zone: '#modal-root .modal', cote: 'gauche', faire: 'clic',
+          titre: 'Et un mot de passe ?', texte: 'Ta copie est en clair : qui ouvre ce dossier lit toute ta comptabilité. Un mot de passe la chiffre — avec tes données et leurs sauvegardes.',
+          action: 'Choisis-en un, ou <b>« Pas maintenant »</b> : il t\'attendra juste en dessous, dans le panneau du mot de passe.',
+          fait: () => !$('#pw-copie'), essai: { clic: true } },
+        // « Recopié là » désigne le panneau de la COPIE, qui montre le dossier choisi. `#view .panel`
+        // éclairait le premier panneau de l'onglet — « Dossiers » —, c'est-à-dire autre chose que ce
+        // que la phrase montre (10.14.0, vu en jouant la visite à la souris).
+        { page: '#/parametres', cible: '#p-externe', cote: 'dessous', titre: 'C\'est tout', texte: 'Dès maintenant, chaque enregistrement est recopié dans ce dossier. Rien d\'autre à faire.' }
       ]
     });
 
@@ -1492,7 +1518,7 @@
       etapes: [
         { page: '#/tresorerie', cible: ['#first-acc', '#new-acc'], cote: 'dessous', faire: 'clic', titre: 'Nouveau compte', texte: '',
           action: 'Clique sur {bouton}.', fait: () => !!$('#modal-root .modal'), essai: { clic: true } },
-        { cible: '#modal-root .modal', cote: 'gauche', titre: 'Le compte', texte: 'Son nom, sa banque, et son solde de départ (celui de ton relevé à la date de départ).' }
+        { cible: '#modal-root .modal', cote: 'gauche', titre: 'Le compte', texte: 'Son nom, sa banque, son RIB — repris de ta fiche société quand elle les porte — et son solde de départ : celui de ton relevé à la date de départ.' }
       ]
     });
 

@@ -69,6 +69,20 @@ function slug(s) {
   return t || 'sans-nom';
 }
 
+// 10.14.0 — La cause d'une copie externe impossible s'affiche à l'écran (« ⚠ … » à côté du dossier,
+// et dans le compte rendu du choix) : jamais le message brut de Node (règle 7.26.0). Le texte
+// d'origine va au journal. Jumeau de src/storage.js, corps comparé par un test.
+const CAUSES_COPIE = {
+  ENOSPC: 'le support est plein', EDQUOT: 'le quota de ce support est atteint',
+  EACCES: 'l\'accès à ce dossier est refusé', EPERM: 'l\'accès à ce dossier est refusé',
+  EROFS: 'ce dossier est en lecture seule', ENOENT: 'le dossier est introuvable (support débranché ?)',
+  EIO: 'le support ne répond plus', EBUSY: 'un fichier y est ouvert par un autre programme'
+};
+function causeCopie(e) {
+  const code = (e && e.code) || (String((e && e.message) || '').match(/^([A-Z]{3,6}):/) || [])[1];
+  return CAUSES_COPIE[code] || 'une erreur inattendue — son détail est dans le journal de l\'application';
+}
+
 function isEnvelope(o) { return !!(o && typeof o === 'object' && o[MARK] === 1 && o.salt && o.iv && o.tag && o.data); }
 
 function deriveKey(password, salt) { return crypto.scryptSync(String(password), salt, 32, SCRYPT); }
@@ -218,14 +232,22 @@ function createCabStore(dir, opts) {
     write(state);
     let names = [];
     try { names = fs.readdirSync(backupDir).filter(f => f.endsWith('.json')); } catch { names = []; }
+    // Une sauvegarde rechiffrée garde sa DATE (10.14.0, jumeau de `convertirUne` dans storage.js) :
+    // celle du jour ne porte que le jour dans son nom, son heure est la date du fichier, et la
+    // réécrire faisait lire l'heure du mot de passe à la place. Ce qu'on a converti est RECOPIÉ sur
+    // la clé (`forcer`, plus bas) : « même taille, même date » ne suffit plus à le faire recopier.
+    const convertis = new Set();
     names.forEach(n => {
       const p = path.join(backupDir, n);
       try {
         const env = JSON.parse(fs.readFileSync(p, 'utf8'));
         if (!isEnvelope(env)) return;
         const plain = openWithKey(env, oldKey);
+        const avant = fs.statSync(p);
         fs.writeFileSync(p + '.tmp', JSON.stringify(sealWithKey(plain, st.salt, st.key)), 'utf8');
         fs.renameSync(p + '.tmp', p);
+        try { fs.utimesSync(p, avant.atime, avant.mtime); } catch {}
+        convertis.add(n);
       } catch (e) { log('conversion sauvegarde ' + n, e); }
     });
     // Les LIVRES aussi (T-43, trouvé en corrigeant T-35). Ils sont chiffrés avec la MÊME clé
@@ -235,11 +257,16 @@ function createCabStore(dir, opts) {
     // ceux que chaque sauvegarde nommée emporte : une sauvegarde qu'aucun mot de passe n'ouvre plus
     // n'est pas une sauvegarde.
     rechiffrerLivres(oldKey);
-    names.forEach(n => rechiffrerZipLivres(zipDe(path.join(backupDir, n)), oldKey));
-    // Les sauvegardes déjà copiées sur la clé USB restent chiffrées avec l'ANCIEN mot de passe.
-    // Comme on ne remplace que ce qui diffère par la taille et la date, et que le rechiffrement
-    // change les deux, elles seront bien réécrites — mais on vide d'abord ce qui ne correspond plus
-    // à aucune sauvegarde locale, sinon la clé garde des fichiers qu'aucun mot de passe n'ouvre.
+    names.forEach(n => {
+      const z = zipDe(path.join(backupDir, n));
+      if (rechiffrerZipLivres(z, oldKey)) convertis.add(path.basename(z));
+    });
+    // Les sauvegardes déjà copiées sur la clé USB restent chiffrées avec l'ANCIEN mot de passe. Le
+    // rechiffrement ne change plus leur date (plus haut), et une enveloppe rechiffrée a la même
+    // taille : « même taille, même date » les laisserait sur la clé telles quelles. Tout ce qu'on
+    // vient de convertir est donc recopié d'office (`forcer`) — et on vide d'abord ce qui ne
+    // correspond plus à aucune sauvegarde locale, sinon la clé garde des fichiers qu'aucun mot de
+    // passe n'ouvre.
     const ext = st.external.dir;
     if (ext) {
       const cible = path.join(ext, 'SkanFact Cabinet', 'sauvegardes');
@@ -248,7 +275,7 @@ function createCabStore(dir, opts) {
         fs.readdirSync(cible).forEach(n => { if (!locales.has(n)) fs.unlinkSync(path.join(cible, n)); });
       } catch {}
     }
-    mirrorExternal({ packs: false });
+    mirrorExternal({ packs: false, forcer: convertis });
     return true;
   }
 
@@ -361,16 +388,20 @@ function createCabStore(dir, opts) {
       } catch (e) { log('rechiffrement livre ' + x.name, e); }
     });
   }
+  // Rend `true` si le ZIP a été réécrit — qui garde alors sa date, comme le JSON qu'il accompagne.
   function rechiffrerZipLivres(z, oldKey) {
-    if (!fs.existsSync(z)) return;
+    if (!fs.existsSync(z)) return false;
     try {
+      const avant = fs.statSync(z);
       const entries = Z.zipRead(fs.readFileSync(z)).map(e => {
         const data = donneesDe(e);
         return { name: e.name, data: estChiffre(e.name) ? rechiffrerBuffer(data, oldKey) : data };
       });
       fs.writeFileSync(z + '.tmp', Z.zipBuffer(entries, { date: now() }));
       fs.renameSync(z + '.tmp', z);
-    } catch (e) { log('rechiffrement sauvegarde ' + path.basename(z), e); }
+      try { fs.utimesSync(z, avant.atime, avant.mtime); } catch {}
+      return true;
+    } catch (e) { log('rechiffrement sauvegarde ' + path.basename(z), e); return false; }
   }
 
   // On purge par DATE, jamais par nom. L'ordre alphabétique mettait « avant-changement-mot-de-passe »
@@ -1141,12 +1172,14 @@ function createCabStore(dir, opts) {
   // sauvegarde qui ment est pire que pas de sauvegarde : on compare taille et date, et on recopie
   // ce qui diffère. (On n'efface rien : une sauvegarde qui supprime ce qu'on supprime n'en est plus
   // une. L'interface le dit dans les fenêtres de suppression.)
-  function copierSiDifferent(src, dst) {
+  // `force` : recopier même si taille et date concordent — une sauvegarde rechiffrée garde sa date
+  // (`setPassword`), et la clé garderait sinon la version de l'ancien mot de passe.
+  function copierSiDifferent(src, dst, force) {
     try {
       const a = fs.statSync(src);
       let b = null;
       try { b = fs.statSync(dst); } catch {}
-      if (b && b.size === a.size && Math.abs(b.mtimeMs - a.mtimeMs) < 2000) return false;
+      if (!force && b && b.size === a.size && Math.abs(b.mtimeMs - a.mtimeMs) < 2000) return false;
       fs.mkdirSync(path.dirname(dst), { recursive: true });
       const tmp = dst + '.tmp';
       fs.copyFileSync(src, tmp);
@@ -1172,14 +1205,15 @@ function createCabStore(dir, opts) {
     const ext = st.external.dir;
     if (!ext) return false;
     try {
-      if (!fs.existsSync(ext)) throw new Error('dossier introuvable (support débranché ?)');
+      if (!fs.existsSync(ext)) throw Object.assign(new Error('dossier introuvable'), { code: 'ENOENT' });
       const target = path.join(ext, 'SkanFact Cabinet');
       fs.mkdirSync(path.join(target, 'sauvegardes'), { recursive: true });
       if (exists()) copierSiDifferent(file, path.join(target, 'cabinet-data.json'));
       let names = [];
       // Les ZIP des livres suivent leur JSON (T-35).
       try { names = fs.readdirSync(backupDir).filter(f => f.endsWith('.json') || f.endsWith('.livres.zip')); } catch {}
-      names.forEach(n => copierSiDifferent(path.join(backupDir, n), path.join(target, 'sauvegardes', n)));
+      const forcer = (opts && opts.forcer) || new Set();
+      names.forEach(n => copierSiDifferent(path.join(backupDir, n), path.join(target, 'sauvegardes', n), forcer.has(n)));
       if (avecPaquets && fs.existsSync(packRoot)) copierArbre(packRoot, path.join(target, 'paquets'));
       // Les LIVRES partent toujours, avec ou sans les paquets (9.2.0). Un paquet perdu se redemande
       // au client ; un livre perdu, non — il porte le travail du comptable, saisies, validations et
@@ -1190,7 +1224,7 @@ function createCabStore(dir, opts) {
       st.external.lastError = null;
       return true;
     } catch (e) {
-      st.external.lastError = e.message;
+      st.external.lastError = causeCopie(e);
       log('copie externe', e);
       return false;
     }

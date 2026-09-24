@@ -3373,6 +3373,31 @@
   ];
   const moveSign = kind => { const m = MOVE_KINDS.find(x => x[0] === kind); return m ? m[2] : -1; };
 
+  // 10.14.0 — Le compte bancaire naît de la FICHE SOCIÉTÉ. L'entreprise a déjà donné sa banque et
+  // son RIB (la fiche, « Tes premiers pas ») ; les retaper dans la Trésorerie, c'est la ressaisie
+  // que SkanFact promet d'éviter. UNE fonction pour les trois portes — le paiement sans compte,
+  // l'état vide de la Trésorerie, « + Compte » — parce que deux copies de ce préremplissage avaient
+  // déjà divergé : le paiement le posait depuis la 10.12.0, et la Trésorerie, la page faite pour
+  // ça, ouvrait un compte vide.
+  // Rend null quand la fiche ne dit rien, ou quand un compte porte déjà ce RIB : on ne propose pas
+  // deux fois le même compte. Un RIB se compare sans ses espaces, et un IBAN tunisien (TN59 suivi
+  // des vingt chiffres) désigne le même compte que son RIB.
+  function compteDepuisFiche(company, accounts) {
+    const co = company || {};
+    const banque = String(co.bank || '').trim();
+    const rib = String(co.rib || '').trim();
+    if (!banque && !rib) return null;
+    const norme = s => String(s || '').replace(/[^0-9A-Za-z]/g, '').toUpperCase();
+    const cle = norme(rib);
+    const meme = a => {
+      const k = norme(a.rib);
+      if (cle && k) return k === cle || (k.length >= 20 && cle.length >= 20 && (k.endsWith(cle) || cle.endsWith(k)));
+      return !cle && !!banque && String(a.bank || '').trim().toLowerCase() === banque.toLowerCase();
+    };
+    if ((accounts || []).some(meme)) return null;
+    return { name: banque ? `${banque} — compte courant` : 'Compte courant', kind: 'banque', bank: banque, rib };
+  }
+
   // Tous les mouvements réels d'une période, quelle que soit leur origine. Un mouvement porte
   // toujours un compte : sans compte affecté, il est rattaché au compte par défaut.
   function cashMovements(data, company, period, accountId) {
@@ -6570,7 +6595,23 @@
       montant: money(doc.type === 'devis' ? t.totalTTC : t.netToPay, cur), echeance: fmtDate(doc.dueDate), reference: doc.creditOfNumber || doc.reference || '',
       ...(extra || {})
     };
-    return { to: (client || {}).email || '', subject: fillTemplate(tpl.subject, vars), body: fillTemplate(tpl.body, vars) };
+    const modele = sansObjetVide(vars);
+    return { to: (client || {}).email || '', subject: fillTemplate(modele(tpl.subject), vars), body: fillTemplate(modele(tpl.body), vars) };
+  }
+
+  // L'objet d'une pièce est FACULTATIF, et le modèle l'écrivait quand même : « notre devis DEV-2026-001
+  // (1 011,500 DT TTC) concernant : . » partait chez le client, et « Notre devis DEV-2026-001 — » en
+  // objet d'une relance (10.14.0, vu en faisant le premier envoi d'une entreprise neuve). Quand l'objet
+  // est vide, on retire la proposition qui le porte — dans le MODÈLE, avant de le remplir : un texte que
+  // la personne a écrit elle-même ne se réécrit jamais, et un « concernant : » qu'elle aurait tapé en
+  // dehors de `{objet}` reste le sien. Un `{objet}` posé ailleurs dans un modèle personnel devient vide,
+  // comme avant.
+  function sansObjetVide(vars) {
+    const vide = !String((vars && vars.objet) || '').trim();
+    return s => !vide ? s : String(s || '')
+      .replace(/,?[ \t]*(?:reprenant votre demande[ \t]+)?concernant[ \t]*:[ \t]*\{objet\}/g, '')
+      .replace(/[ \t]*for:[ \t]*\{objet\}/g, '')
+      .replace(/[ \t]*—[ \t]*\{objet\}/g, '');
   }
 
   // ---------- montant en lettres (français) ----------
@@ -7441,7 +7482,7 @@
     EXTRA_TYPES, SALES_TYPES, CONVERSIONS, CONVERSION_LABELS, convertDoc, derivedDocs, chaineDePieces, DEFAULT_CLAUSES, CLAUSE_LABELS,
     PURCHASE_KINDS, PURCHASE_LIES, piecesLieesAchat, LINE_DESTINATIONS, DEFAULT_EXPENSE_CATEGORIES, PURCHASE_STATUSES, expenseCategories,
     vatReturn, vatChain, DEFAULT_FISCAL_DEADLINES, fiscalDeadlines, nextDeadline, upcomingFiscal, fiscalFilingId, fiscalDone, echeanceSociale, socialesDeposees, simpleResult,
-    ACCOUNT_KINDS, MOVE_KINDS, cashMovements, accountBalance, cashPosition, cashForecast, reconciliation,
+    ACCOUNT_KINDS, MOVE_KINDS, compteDepuisFiche, cashMovements, accountBalance, cashPosition, cashForecast, reconciliation,
     lineCost, documentMargin, marginBy, PROJECT_STATUSES, projectMargin, projectList, recurringProfitability,
     DEFAULT_FIXED_CATEGORIES, isFixedCategory, breakEven,
     DEFAULT_ASSET_CLASSES, assetClassLabel, assetClassYears, days360, assetSchedule, assetYear,

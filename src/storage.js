@@ -47,6 +47,23 @@ function plusAncienDabord(a, b) {
   return a.name < b.name ? -1 : a.name > b.name ? 1 : 0;       // dernier recours : stable
 }
 
+// 10.14.0 — La cause d'une copie externe impossible s'affiche À L'ÉCRAN (« Dernière copie
+// impossible : … », et dans la question qui suit le choix du dossier) : elle ne peut pas être le
+// message brut de Node, « EACCES: permission denied, open '/Volumes/CLE/SkanFact/…' » (règle 7.26.0).
+// Le texte d'origine va au journal ; l'écran reçoit la cause, dite pour une COPIE — pas « rien n'a
+// été enregistré » (la phrase des pannes du pont), qui serait faux : les données, elles, sont bien
+// enregistrées sur ce poste. Jumeau de src/cabinet/cabstore.js, corps comparé par un test.
+const CAUSES_COPIE = {
+  ENOSPC: 'le support est plein', EDQUOT: 'le quota de ce support est atteint',
+  EACCES: 'l\'accès à ce dossier est refusé', EPERM: 'l\'accès à ce dossier est refusé',
+  EROFS: 'ce dossier est en lecture seule', ENOENT: 'le dossier est introuvable (support débranché ?)',
+  EIO: 'le support ne répond plus', EBUSY: 'un fichier y est ouvert par un autre programme'
+};
+function causeCopie(e) {
+  const code = (e && e.code) || (String((e && e.message) || '').match(/^([A-Z]{3,6}):/) || [])[1];
+  return CAUSES_COPIE[code] || 'une erreur inattendue — son détail est dans le journal de l\'application';
+}
+
 function isValidData(d) {
   if (!d || typeof d !== 'object' || Array.isArray(d)) return false;
   for (const k of ['clients', 'catalog', 'documents']) {
@@ -213,12 +230,20 @@ function createStorage(dir, opts) {
   }
 
   // Rechiffrer (ou déchiffrer) une sauvegarde en place. Rend `true` si le fichier a changé.
+  //
+  // Sa DATE reste la sienne. La sauvegarde du jour ne porte que le jour dans son nom : son heure,
+  // c'est la date du fichier — « Début de journée, avant la première modification, 09:12 ». La
+  // réécrire au rechiffrement faisait lire l'heure du mot de passe à la place (« 23:22 », 10.14.0),
+  // sur la liste même où l'on choisit quoi restaurer. On ne peut rien contre une copie faite par le
+  // système (7.21.x) ; ce qu'on réécrit nous-mêmes garde sa date.
   function convertirUne(p, oldKey) {
     let d = JSON.parse(fs.readFileSync(p, 'utf8'));
     if (isEncrypted(d)) { if (!oldKey) return false; d = decryptWithKey(d, oldKey); }
     const payload = state.key ? encryptWithKey(d, state.salt, state.key) : d;
+    const avant = fs.statSync(p);
     fs.writeFileSync(p + '.tmp', JSON.stringify(payload, null, state.key ? 0 : 2), 'utf8');
     fs.renameSync(p + '.tmp', p);
+    try { fs.utimesSync(p, avant.atime, avant.mtime); } catch (_) { /* la date n'est qu'un repère */ }
     return true;
   }
 
@@ -239,22 +264,26 @@ function createStorage(dir, opts) {
     // active un mot de passe parce que son ordinateur voyage emporte donc trente jours de sa
     // comptabilité en clair sur la clé qui voyage avec lui.
     //
-    // On les convertit sur place, sans rien supprimer : une sauvegarde externe plus ancienne que la
-    // rotation locale de trente jours reste un filet, elle n'a pas à disparaître — elle a juste à
-    // ne pas rester lisible.
+    // Celles qui existent ICI sont recopiées depuis la version locale qu'on vient de convertir : la
+    // locale fait foi, et une externe qu'on ne sait pas convertir sur place (chiffrée par un mot de
+    // passe plus ancien, clé capricieuse) serait sinon gardée telle quelle — la date locale ne bouge
+    // plus (plus haut), donc « même taille, même date » ne suffit plus à la faire recopier. Celles
+    // qui n'existent plus ici (plus anciennes que la rotation locale de trente jours) se convertissent
+    // sur place, sans rien supprimer : c'est un filet, il a juste à ne plus rester lisible.
     const ext = state.external.dir;
+    const locales = new Set(names);
     if (ext) {
       try {
         const dossier = path.join(cibleExterne(), 'backups');
         if (fs.existsSync(dossier)) {
-          fs.readdirSync(dossier).filter(f => f.endsWith('.json')).forEach(n => {
+          fs.readdirSync(dossier).filter(f => f.endsWith('.json') && !locales.has(f)).forEach(n => {
             try { convertirUne(path.join(dossier, n), oldKey); }
             catch (e) { log('conversion sauvegarde externe ' + n, e); }
           });
         }
-      } catch (e) { state.external.lastError = e.message; log('copie externe (conversion)', e); }
+      } catch (e) { state.external.lastError = causeCopie(e); log('copie externe (conversion)', e); }
     }
-    mirrorExternal();
+    mirrorExternal({ forcer: locales });
   }
 
   // Écriture. Renvoie { ok: true } ou, si un autre poste a écrit entre-temps, { conflict: true, disk }
@@ -402,11 +431,14 @@ function createStorage(dir, opts) {
 
   // Copie le fichier de données et les sauvegardes manquantes vers <externe>/SkanFact. Synchrone mais rapide
   // (quelques centaines de Ko) ; en cas de dossier absent (clé débranchée), on note l'erreur sans bloquer.
-  function mirrorExternal() {
+  function mirrorExternal(opts) {
     const ext = state.external.dir;
     if (!ext) return false;
+    // `forcer` : les sauvegardes qu'un changement de mot de passe vient de convertir. Leur date ne
+    // bouge plus (`convertirUne`) : sans ce drapeau, la clé garderait l'ancienne version.
+    const forcer = (opts && opts.forcer) || new Set();
     try {
-      if (!fs.existsSync(ext)) throw new Error('dossier introuvable (support débranché ?)');
+      if (!fs.existsSync(ext)) throw Object.assign(new Error('dossier introuvable'), { code: 'ENOENT' });
       const target = cibleExterne();
       fs.mkdirSync(path.join(target, 'backups'), { recursive: true });
       if (fs.existsSync(file)) {
@@ -419,14 +451,20 @@ function createStorage(dir, opts) {
       // date, donc son contenu ne bouge normalement jamais — sauf après un changement de mot de
       // passe, qui rechiffre tout le dossier local. Avec le seul test « le fichier n'existe pas »,
       // la copie externe gardait la version d'avant, en clair.
+      //
+      // Et la copie garde la date de l'original, comme dans le Cabinet (`copierSiDifferent`) : sans
+      // elle, la copie portait la date de la copie, « même date » n'était jamais vrai, et chaque
+      // enregistrement recopiait les trente sauvegardes sur la clé.
       names.forEach(n => {
         const src = path.join(backupDir, n), dst = path.join(target, 'backups', n);
         try {
-          if (fs.existsSync(dst)) {
-            const a = fs.statSync(src), b = fs.statSync(dst);
+          const a = fs.statSync(src);
+          if (!forcer.has(n) && fs.existsSync(dst)) {
+            const b = fs.statSync(dst);
             if (a.size === b.size && Math.abs(a.mtimeMs - b.mtimeMs) < 2000) return;
           }
           fs.copyFileSync(src, dst);
+          try { fs.utimesSync(dst, a.atime, a.mtime); } catch (_) { /* la date n'est qu'un repère */ }
         } catch (e) { log('copie externe ' + n, e); }
       });
       // Les pièces jointes ne tiennent pas dans le JSON : la copie externe est le seul filet qui les emporte.
@@ -434,7 +472,7 @@ function createStorage(dir, opts) {
       state.external.lastCopy = now().toISOString(); state.external.lastError = null;
       return true;
     } catch (e) {
-      state.external.lastError = e.message; log('copie externe', e);
+      state.external.lastError = causeCopie(e); log('copie externe', e);
       return false;
     }
   }

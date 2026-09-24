@@ -150,9 +150,15 @@
     bridge.lock();
   }
 
-  function passwordDialog(mode) { // 'set' | 'change' | 'remove'
-    const title = mode === 'set' ? 'Activer le mot de passe' : mode === 'change' ? 'Changer le mot de passe' : 'Retirer le mot de passe';
+  // `opts.copie` (10.14.0) : la même porte, ouverte au moment où la copie externe vient d'être posée.
+  // Cette copie part sur une clé USB, un disque, un dossier iCloud ou OneDrive — EN CLAIR : qui ouvre
+  // ce dossier lit toute la comptabilité. C'est le seul moment où la question du mot de passe se
+  // comprend sans explication ; plus tard, elle redevient abstraite, et on la saute.
+  function passwordDialog(mode, opts) { // 'set' | 'change' | 'remove'
+    const copie = mode === 'set' && opts && opts.copie ? String(opts.copie) : '';
+    const title = copie ? 'Protéger aussi cette copie ?' : mode === 'set' ? 'Activer le mot de passe' : mode === 'change' ? 'Changer le mot de passe' : 'Retirer le mot de passe';
     modal(`<h2>${title}</h2>
+      ${copie ? `<p id="pw-copie">Ta copie est en place dans <code>${h(copie)}</code>. Elle est <b>en clair</b> : qui ouvre ce dossier — une clé USB oubliée, un compte partagé — lit toute ta comptabilité. Un mot de passe chiffre tes données, leurs sauvegardes <b>et</b> cette copie.</p>` : ''}
       ${mode === 'set' ? '<p class="small muted">Le fichier de données et ses sauvegardes seront chiffrés (AES-256). Sans ce mot de passe, personne ne peut les lire — toi non plus : garde-le en lieu sûr, il n\'y a pas de récupération possible.</p>' : ''}
       ${/* Un geste qui baisse la protection le dit AVANT (règle 9.4.2) : la fenêtre ne portait qu'un
            champ et un bouton rouge, sans dire ce qui change sur le disque. */''}
@@ -163,7 +169,9 @@
         ${mode !== 'set' ? '<label class="field span-2"><span>Mot de passe actuel</span><input type="password" name="current" value="" autocomplete="current-password"></label>' : ''}
         ${mode !== 'remove' ? field('Nouveau mot de passe', 'password', '', 'password', 'autocomplete="new-password"') + field('Confirmation', 'confirm', '', 'password', 'autocomplete="new-password"') : ''}
       </form>
-      <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn ${mode === 'remove' ? 'btn-danger' : 'btn-primary'}" id="ok">${mode === 'remove' ? 'Retirer' : 'Enregistrer'}</button></div>`,
+      ${/* « Pas maintenant » plutôt qu'« Annuler » : la copie, elle, est faite — il n'y a rien à
+           annuler, seulement une protection à remettre à plus tard (le panneau du dessous l'attend). */''}
+      <div class="modal-actions"><button class="btn" data-close>${copie ? 'Pas maintenant' : 'Annuler'}</button><button class="btn ${mode === 'remove' ? 'btn-danger' : 'btn-primary'}" id="ok">${mode === 'remove' ? 'Retirer' : copie ? 'Protéger par ce mot de passe' : 'Enregistrer'}</button></div>`,
       (root, close) => { $('#ok', root).onclick = async () => {
         const v = formValues($('#pwf', root));
         if (mode !== 'remove') {
@@ -560,6 +568,47 @@
   // qui s'est VRAIMENT passé (`r.state` : Mail peut refuser l'automatisation et retomber sur mailto).
   const modeEnvoi = () => (company().mailClient === 'mailto' ? 'mailto' : 'auto');
   const envoiParMail = () => SUR_MAC && modeEnvoi() !== 'mailto';
+
+  // 10.14.0 — Sur Mac, SkanFact écrit dans Mail (l'application d'Apple), le PDF déjà joint : c'était
+  // le choix par défaut, et rien ne le demandait avant les Paramètres. Quelqu'un qui écrit depuis Gmail
+  // ou Outlook voyait s'ouvrir, à son tout PREMIER envoi, une application jamais configurée — et
+  // concluait que l'envoi ne marche pas, au geste qui compte le plus du démarrage. La question se pose
+  // UNE fois, au premier envoi, là où elle sert ; la réponse se change dans Paramètres → Envois.
+  // Ailleurs que sur Mac, il n'y a rien à choisir : la messagerie du système reçoit le message.
+  //
+  // UNE porte pour tous les envois (`messagerie()`), appelée AVANT de préparer quoi que ce soit : un
+  // envoi qui l'oublierait ouvrirait Mail sans avoir demandé. Elle rend le mode, ou null quand la
+  // question est fermée sans réponse — fermer vaut « ne rien faire » (règle de `demoBlock`), jamais
+  // « Mail quand même ».
+  function choisirMessagerie() {
+    return new Promise(resolve => {
+      let fait = false;
+      modal(`<h2>Avec quelle messagerie écris-tu ?</h2>
+        <p class="small muted">SkanFact prépare le message ; c'est ta messagerie qui l'envoie, après que tu l'as relu. Une seule question, la première fois : tu pourras changer d'avis dans Paramètres → Envois.</p>
+        <div class="act-grid mt" id="msg-choix">
+          <button type="button" class="act" id="msg-mail"><span class="act-l">Mail, l'application d'Apple</span><span class="act-s">Le message s'ouvre dans Mail, le PDF déjà joint.</span></button>
+          <button type="button" class="act" id="msg-autre"><span class="act-l">Une autre messagerie</span><span class="act-s">Gmail, Outlook… : le message s'ouvre dans ta messagerie par défaut, et le PDF s'affiche dans ${EXPLORATEUR} pour que tu le glisses dedans.</span></button>
+        </div>
+        <div class="modal-actions"><button class="btn" data-close>Annuler</button></div>`,
+        (root, close) => {
+          const choisir = v => { fait = true; data.company.mailClient = v; save(true); close(); resolve(v); };
+          $('#msg-mail', root).onclick = () => choisir('auto');
+          $('#msg-autre', root).onclick = () => choisir('mailto');
+          // Aucun bouton principal ici (deux réponses de même poids) : sans ce geste, le curseur resterait
+          // sur le bouton de la PAGE qui a ouvert la question, et Entrée le re-cliquerait (10.13.0).
+          $('#msg-mail', root).focus();
+        },
+        () => { if (!fait) resolve(null); });
+    });
+  }
+  // Quelqu'un qui envoyait déjà depuis SkanFact a fait son choix sans qu'on le lui demande : Mail, qui
+  // marchait. Lui poser la question à la mise à jour, ce serait lui faire douter d'un geste qui marche.
+  const dejaEnvoye = () => (data.documents || []).some(d => (d.emails || []).length) || (data.licences || []).some(l => (l.emails || []).length);
+  async function messagerie() {
+    if (!SUR_MAC || company().mailClient) return modeEnvoi();
+    if (dejaEnvoye()) { data.company.mailClient = 'auto'; save(); return modeEnvoi(); }
+    return (await choisirMessagerie()) ? modeEnvoi() : null;
+  }
   function messageOuvert(r, joint) {
     const f = /^la /.test(joint || '') ? 'e' : '';
     if (r && r.state === 'mail') return 'Message ouvert dans Mail' + (joint ? ` avec ${joint} joint${f}` : '');
@@ -897,11 +946,12 @@
   // `labelB` à null : un choix et une SORTIE, que `fermer` nomme. Trois fenêtres portaient
   // « Annuler » à côté de « Plus tard » (ou de « Le garder en brouillon ») : deux boutons qui font
   // la même chose, et on relit la fenêtre pour chercher la nuance qui n'existe pas.
-  function choiceDialog(title, msg, labelA, labelB, fermer) {
+  // `opts.id` nomme la question : une visite guidée la reconnaît et en parle (10.14.0).
+  function choiceDialog(title, msg, labelA, labelB, fermer, opts) {
     return new Promise(resolve => {
       let settled = false;
       const finish = (close, v) => { settled = true; close(); resolve(v); };
-      modal(`<h2>${h(enTete(title))}</h2><p>${numerosInsecables(h(enTete(msg)))}</p>
+      modal(`<h2${opts && opts.id ? ` id="${h(opts.id)}"` : ''}>${h(enTete(title))}</h2><p>${numerosInsecables(h(enTete(msg)))}</p>
         <div class="modal-actions"><button class="btn" data-close>${h(fermer || 'Annuler')}</button>${labelB == null ? '' : `<button class="btn" id="b">${h(labelB)}</button>`}<button class="btn btn-primary" id="a">${h(labelA)}</button></div>`,
         (root, close) => { $('#a', root).onclick = () => finish(close, 'a'); if ($('#b', root)) $('#b', root).onclick = () => finish(close, 'b'); $('[data-close]', root).onclick = () => finish(close, null); },
         () => { if (!settled) resolve(null); });
@@ -4291,13 +4341,13 @@
       ${/* 10.12.0 — la fiche société porte déjà la banque et le RIB ; le paiement disait « aucun compte » et
          n'offrait qu'un lien vers la Trésorerie, qui QUITTAIT la fenêtre et jetait la saisie. Le compte
          se crée par-dessus, prérempli avec ce que l'entreprise a déjà donné. */''}${!(data.accounts || []).length ? `<div class="inline small muted mt" id="pf-sans-compte">Aucun compte de trésorerie : ce paiement ne sera rattaché à aucun compte.
-        <button type="button" class="btn btn-sm" id="pf-compte">${company().bank ? `Créer le compte « ${h(company().bank)} »…` : 'Créer un compte…'}</button></div>` : ''}
+        <button type="button" class="btn btn-sm" id="pf-compte">${libelleCompteDepuisFiche('Créer le compte', 'Créer un compte')}…</button></div>` : ''}
       <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
       (root, close) => {
         if ($('#pf-compte', root)) $('#pf-compte', root).onclick = () => accountForm(null, a => {
           const z = $('#pf-sans-compte', root);
           if (a && z) z.textContent = `Ce paiement sera rattaché au compte « ${a.name} ».`;
-        }, { name: company().bank ? `${company().bank} — compte courant` : '', bank: company().bank || '', rib: company().rib || '' });
+        }, modeleCompte());
         $('#ok', root).onclick = async () => {
         const v = formValues($('#pf2', root));
         if (!(Number(v.amount) > 0)) return refus($('[name=amount]', root), 'Montant invalide.');
@@ -4376,6 +4426,7 @@
           catch (e) { toast(plainError(e), true); }
         };
         $('#rv-mail', root).onclick = async () => {
+          if (!await messagerie()) return;
           const b = $('#rv-mail', root); b.disabled = true; b.textContent = 'Préparation…';
           try {
             const att = await bridge.exportPdfSilent(html(), nom());
@@ -5167,7 +5218,7 @@
     const c = await choiceDialog('Ce sont des données d\'exemple',
       `${quoi} depuis le jeu d'exemple : ces clients, ces adresses et ces montants sont inventés — `
       + 'et les adresses ressemblent à de vraies adresses. Tes vraies données sont mises de côté, tu peux y revenir maintenant.',
-      'Quitter l\'exemple', 'Continuer quand même');
+      'Quitter l\'exemple', 'Continuer quand même', null, { id: 'demo-q' });
     if (c === 'a') { demoSortie(); return true; }
     return c !== 'b';                          // fermer la fenêtre vaut « ne rien faire »
   }
@@ -5175,6 +5226,9 @@
     if (await demoBlock('Envoyer un email')) return;
     const client = clientById(doc.clientId);
     if (!client) return toast('Choisis un client.', true);
+    // La messagerie AVANT la fenêtre : sa dernière phrase dit ce qui va se passer (« s'ouvre dans
+    // Mail avec le PDF joint »), et elle doit dire vrai dès le premier envoi.
+    if (!await messagerie()) return;
     kind = kind || doc.type;
     const m = C.emailFor(kind, doc, client, company(), extra);
     const mtitle = kind === 'relanceDevis' ? 'Relancer le devis ' + h(doc.number)
@@ -8780,6 +8834,7 @@
       };
       if ($('#cn-mail')) $('#cn-mail').onclick = async () => {
         if (await demoBlock('Envoyer une déclaration au comptable')) return;
+        if (!await messagerie()) return;
         const acc = (company().accountantEmail || '').trim();
         const name = `cnss-${y}-T${q}.csv`;
         const att = await bridge.saveTextSilent(name, C.toCsv(cn.rows, cnCols));
@@ -10270,12 +10325,23 @@
     moves: { sort: null, page: 1 } };
   const TRESO_TABS = [['position', 'Où j\'en suis'], ['prevision', 'Ce qui arrive'], ['mouvements', 'Mouvements'], ['rapprochement', 'Rapprochement']];
 
+  // Le compte que la fiche société porte déjà, s'il n'existe pas encore (`C.compteDepuisFiche`).
+  const modeleCompte = () => C.compteDepuisFiche(company(), data.accounts);
+  // Le bouton NOMME la banque quand la fiche la porte : « Créer le compte « BIAT » » dit ce qui va
+  // naître, « Créer un compte » laisse deviner qu'il faudra tout retaper.
+  const libelleCompteDepuisFiche = (avecBanque, sans) => { const m = modeleCompte(); return m && m.bank ? `${avecBanque} « ${h(m.bank)} »` : sans; };
+
   function accountForm(acc, done, modele) {
     const a = acc || { id: C.uid(), name: '', kind: 'banque', bank: '', rib: '', opening: 0, openingDate: C.today(), isDefault: !data.accounts.length, statementBalance: '', notes: '', ...(modele || {}) };
+    // Un compte né de la fiche société n'attend plus qu'UNE chose : son solde. Le curseur y va, la
+    // valeur proposée (0) sélectionnée — la première frappe la remplace (9.4.5).
+    const depuisFiche = !acc && !!(modele && (modele.bank || modele.rib));
     modal(`<h2>${acc ? 'Modifier le compte' : 'Nouveau compte'}</h2>
-      <p class="small muted">Le <b>solde de départ</b> est celui de ton relevé au jour où tu commences à suivre ce compte dans SkanFact. Tout ce qui est saisi après s'y ajoute.</p>
+      <p class="small muted">${depuisFiche
+        ? '<b>Banque et RIB viennent de ta fiche société</b> : il ne te reste que le <b>solde de départ</b> — celui de ton relevé au jour où tu commences à suivre ce compte dans SkanFact. Tout ce qui est saisi après s\'y ajoute.'
+        : 'Le <b>solde de départ</b> est celui de ton relevé au jour où tu commences à suivre ce compte dans SkanFact. Tout ce qui est saisi après s\'y ajoute.'}</p>
       <form id="af" class="grid-2">
-        <label class="field span-2 obligatoire"><span>Nom du compte</span><input type="text" name="name" value="${h(a.name)}" placeholder="BIAT — compte courant" required></label>
+        <label class="field span-2 obligatoire"><span>Nom du compte</span><input type="text" name="name" value="${h(a.name)}" placeholder="ex. Attijari — compte courant" required></label>
         <label class="field">${lbl('Type', 'tre.kind')}<select name="kind">${C.ACCOUNT_KINDS.map(([v, l]) => `<option value="${v}" ${a.kind === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
         ${field('Banque', 'bank', a.bank || '')}
         ${ribField('RIB', a.rib)}
@@ -10288,6 +10354,7 @@
         ${acc ? '<button class="btn btn-danger" id="del-acc" style="margin-inline-end:auto">Supprimer</button>' : ''}
         <button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
       (root, close) => {
+        if (depuisFiche) { const o = $('[name=opening]', root); o.focus(); o.select(); }
         $('#ok', root).onclick = () => {
           const v = formValues($('#af', root));
           if (!v.name.trim()) return refus($('[name=name]', root), 'Donne un nom à ce compte.');
@@ -10355,13 +10422,18 @@
     const cur = company().currency;
     const s = tresoState;
     if (!data.accounts.length) {
+      // 10.14.0 — la fiche société porte déjà la banque et le RIB : l'état vide le DIT, et le compte
+      // naît avec. Il ouvrait un formulaire vide, où il fallait retaper ce qu'on venait de donner.
+      const m = modeleCompte();
+      const quoi = m ? [m.bank ? `ta banque (<b>${h(m.bank)}</b>)` : '', m.rib ? 'ton RIB' : ''].filter(Boolean).join(' et ') : '';
       $('#view').innerHTML = `<div class="page-head"><h1>Trésorerie</h1></div>
         <div class="panel"><h2>Commence par un compte ${info('tre.accounts')}</h2>
           <p class="small muted">La trésorerie répond à une seule question : <b>est-ce que j'aurai de quoi payer le mois prochain ?</b>
           Pour y répondre, SkanFact a besoin de savoir ce que tu as aujourd'hui. Crée ton compte bancaire et saisis son solde actuel — il reprendra ensuite tout seul tes encaissements et tes règlements.</p>
+          ${m ? `<p class="small" id="tre-depuis-fiche">Ta fiche société porte déjà ${quoi} : le compte naît avec. Il ne te reste que son solde d'aujourd'hui.</p>` : ''}
           <p class="small muted">Rien à ressaisir : les paiements clients et les règlements fournisseurs déjà enregistrés remontent automatiquement.</p>
-          <button class="btn btn-primary" id="first-acc">+ Créer mon premier compte</button></div>`;
-      $('#first-acc').onclick = () => accountForm(null, () => render());
+          <button class="btn btn-primary" id="first-acc">+ ${libelleCompteDepuisFiche('Créer le compte', 'Créer mon premier compte')}</button></div>`;
+      $('#first-acc').onclick = () => accountForm(null, () => render(), modeleCompte());
       return;
     }
     $('#view').innerHTML = `
@@ -10627,7 +10699,8 @@
       $$('#t-tabs button').forEach(x => x.classList.toggle('active', x === b));
       draw();
     });
-    $('#new-acc').onclick = () => accountForm(null, () => render());
+    // Le compte de la fiche, s'il n'existe pas encore (une caisse créée d'abord, la banque ensuite).
+    $('#new-acc').onclick = () => accountForm(null, () => render(), modeleCompte());
     $('#new-move').onclick = () => movementForm(null, () => draw());
     draw();
   };
@@ -11037,6 +11110,7 @@
       $('#exp-comptable').onclick = async () => {
         if (await demoBlock('Envoyer la comptabilité au comptable')) return;
         if (!rows.length) return toast('Rien à envoyer sur cette période.', true);
+        if (!await messagerie()) return;
         const tpl = { ...C.DEFAULT_EMAIL_TEMPLATES.comptable, ...((company().emailTemplates || {}).comptable || {}) };
         const vars = { objet: periodLabel(), numero: rows.length, montant: C.money(sum.ht, cur), societe: company().name, client: company().accountantName || '' };
         modal(`<h2>Envoyer la comptabilité au comptable</h2>
@@ -11376,6 +11450,7 @@
       };
       $('#ecr-mail').onclick = async () => {
         if (await demoBlock('Envoyer les écritures au comptable')) return;
+        if (!await messagerie()) return;
         const att = await bridge.saveTextSilent(`ecritures-${tag}.csv`, C.toCsv(sorted, C.entryCsvColumns()));
         const r = await bridge.composeMail({
           to: company().accountantEmail || '', subject: `Écritures ${periodLabel()} — ${company().name || ''}`,
@@ -12212,6 +12287,7 @@
 
       if ($('#cab-mail')) $('#cab-mail').onclick = async () => {
         if (await demoBlock('Envoyer le paquet au comptable')) return;
+        if (!await messagerie()) return;
         const last = sent[0];
         const to = co.accountantEmail || '';
         bridge.composeMail({
@@ -12494,7 +12570,11 @@
              bulle passe sur le titre, la phrase redevient une phrase. */''}
         ${panneau('p-envoi', SUR_MAC ? '' : info('mail.client'))}${SUR_MAC
           ? `<div class="grid-2">
-              <label class="field">${lbl('Messagerie', 'mail.client')}<select name="mailClient"><option value="auto" ${c.mailClient !== 'mailto' ? 'selected' : ''}>Mail (Apple) avec le PDF joint</option><option value="mailto" ${c.mailClient === 'mailto' ? 'selected' : ''}>Autre messagerie (mailto, PDF à glisser)</option></select></label>
+              ${/* 10.14.0 — tant que rien n'est choisi, la liste le DIT : sans cette entrée, « Mail
+                   (Apple) » s'affichait choisi d'office, et le premier enregistrement des Paramètres
+                   — la fiche société, n'importe quoi — l'écrivait pour de bon, en silence : la question
+                   du premier envoi n'arrivait jamais. */''}
+              <label class="field">${lbl('Messagerie', 'mail.client')}<select name="mailClient">${c.mailClient ? '' : '<option value="" selected>Je choisirai au premier envoi</option>'}<option value="auto" ${c.mailClient && c.mailClient !== 'mailto' ? 'selected' : ''}>Mail (Apple) avec le PDF joint</option><option value="mailto" ${c.mailClient === 'mailto' ? 'selected' : ''}>Autre messagerie (mailto, PDF à glisser)</option></select></label>
             </div>`
           : `<p class="small muted" id="mail-fixe">Le message s'ouvre dans ta messagerie par défaut, et le PDF s'affiche dans ${EXPLORATEUR} pour que tu le glisses dedans. Sur cet ordinateur, il n'y a rien à régler.</p>`}</div>
         ${panneau('p-comptable')}<div class="grid-2">
@@ -12999,7 +13079,23 @@
       if (r && r.ok) toast('Ce poste s\'appelle maintenant « ' + r.name + ' »');
     };
 
-    $('#ext-choose').onclick = async () => { const i = await bridge.chooseExternalBackup(); if (i) { toast(i.lastError ? 'Dossier choisi, mais copie impossible : ' + i.lastError : 'Copie externe activée'); drawExternal(); } };
+    // 10.14.0 — le mot de passe se propose AVEC la copie : elle part sur une clé USB ou un dossier
+    // synchronisé, en clair, et c'est le seul moment où la question se comprend sans explication.
+    // `aria-busy` tient le bouton « occupé » jusqu'à ce que la question soit posée : la visite guidée
+    // (« Mettre mes données à l'abri ») attend ce moment pour passer à l'étape qui en parle — sans
+    // lui, elle pouvait annoncer « C'est tout » une fraction de seconde avant que la fenêtre s'ouvre.
+    $('#ext-choose').onclick = async () => {
+      const b = $('#ext-choose');
+      const i = await bridge.chooseExternalBackup();
+      if (!i) return;
+      if (i.lastError) { toast('Dossier choisi, mais copie impossible : ' + i.lastError, true); drawExternal(); return; }
+      b.setAttribute('aria-busy', 'true');
+      try {
+        await drawExternal();
+        if (security.encrypted) toast('Copie externe activée');
+        else passwordDialog('set', { copie: i.dir });
+      } finally { b.removeAttribute('aria-busy'); }
+    };
     // Le panneau lui-même écrit « C'est le réglage le plus important de cette page » — et le bouton
     // qui l'éteint s'exécutait sans une question, à côté de celui qui l'allume.
     $('#ext-remove').onclick = async () => {
@@ -13935,6 +14031,7 @@
       (root, close) => {
         $('#sup-log', root).onclick = () => bridge.openLog();
         $('#sup-send', root).onclick = async () => {
+          if (!await messagerie()) return;
           const what = $('#sup-what', root).value.trim();
           const body = `Bonjour,\n\nJ'ai rencontré un problème avec SkanFact.\n\n`
             + `Ce qui s'est passé :\n${what || '(à compléter)'}\n\n`
@@ -13985,6 +14082,7 @@
           const quoi = $('#idee-quoi', root).value.trim();
           // Un refus MONTRE le champ (règle 7.20.0) : un message seul ferait relire toute la fenêtre.
           if (!quoi) return refus('#idee-quoi', 'Dis en une phrase ce que tu aimerais faire.');
+          if (!await messagerie()) return;
           const auj = $('#idee-auj', root).value.trim();
           const body = 'Bonjour,\n\nUne idée pour SkanFact.\n\n'
             + `Ce que j'aimerais faire :\n${quoi}\n\n`
@@ -14194,6 +14292,7 @@
       setKey('');
     };
     if ($('#lic-ask')) $('#lic-ask').onclick = async () => {
+      if (!await messagerie()) return;
       const m = await bridge.licenceMail(company(), deviceLabel());
       await bridge.composeMail({ to: LICENCE_CONTACT, subject: m.subject, body: m.body, mode: modeEnvoi() });
       toast('Message préparé');
@@ -14852,6 +14951,7 @@
   // Le mail au client : la clé, la marche à suivre, et la facture en PDF si elle est émise.
   async function envoyerLicence(lic) {
     if (await demoBlock('Envoyer un email')) return;
+    if (!await messagerie()) return;
     const client = clientById(lic.clientId);
     const inv = lic.invoiceId ? docById(lic.invoiceId) : null;
     const en = ((client && client.lang) || company().defaultLang) === 'en';

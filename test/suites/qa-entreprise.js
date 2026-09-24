@@ -597,8 +597,12 @@ module.exports = ({ t, assert, lireSource }) => {
     const f = app.slice(i, app.indexOf('\n  function ', i + 10));
     assert.ok(f.length > 500, 'tranche de paymentForm : ' + f.length);
     assert.ok(!/href="#\/tresorerie"/.test(f), 'le paiement renvoie encore vers la Trésorerie, hors de la fenêtre');
-    assert.ok(/id="pf-compte"/.test(f) && /accountForm\(null,[\s\S]{0,300}bank: company\(\)\.bank[\s\S]{0,80}rib: company\(\)\.rib/.test(f),
+    // 10.14.0 — la RÈGLE, pas la forme : le préremplissage vit dans UNE fonction (`C.compteDepuisFiche`,
+    // jouée dans test/suites/assistant.js), que le paiement appelle comme la Trésorerie.
+    assert.ok(/id="pf-compte"/.test(f) && /accountForm\(null,[\s\S]{0,300}modeleCompte\(\)\)/.test(f),
       'le paiement ne propose pas de créer le compte prérempli avec la banque et le RIB de la société');
+    assert.ok(/const modeleCompte = \(\) => C\.compteDepuisFiche\(company\(\), data\.accounts\);/.test(app),
+      'le modèle du compte ne vient plus de la fiche société');
     const a0 = app.indexOf('function accountForm(');
     assert.ok(/\.\.\.\(modele \|\| \{\}\)/.test(app.slice(a0, a0 + 400)), 'accountForm ne reprend pas le modèle qu\'on lui passe');
   });
@@ -2322,7 +2326,11 @@ module.exports = ({ t, assert, lireSource }) => {
     assert.ok((app.match(/return refus\(/g) || []).length >= 30, 'le test ne trouve plus les refus qui montrent leur champ');
     // L'ancien mot de passe faux vient du processus principal : il nomme sa case, et l'écran la montre.
     assert.ok(/error: 'Mot de passe actuel incorrect\.'/.test(lireSource('src', 'main.js')) && /champ: 'current', error: 'Mot de passe actuel incorrect\.'/.test(lireSource('src', 'main.js')), 'le refus de l\'ancien mot de passe ne nomme pas sa case');
-    const pw = app.slice(app.indexOf('function passwordDialog('), app.indexOf('function passwordDialog(') + 3600);
+    // Bornée sur la fonction SUIVANTE, jamais sur un nombre de caractères (10.4.0) : la 10.14.0 a
+    // allongé la fenêtre (la question posée avec la copie externe), et 3 600 caractères n'y suffisaient plus.
+    const iPw = app.indexOf('function passwordDialog(');
+    const pw = app.slice(iPw, app.indexOf('\n  function ', iPw + 10));
+    assert.ok(pw.length > 1500 && !/function rappelerModules/.test(pw), 'tranche de passwordDialog : ' + pw.length);
     assert.ok(/r\.champ && \$\(`\[name=\$\{r\.champ\}\]`, root\) \? refus\(/.test(pw), 'la fenêtre du mot de passe ne montre pas la case que le refus nomme');
     assert.ok(/settingsFocus = 'p-motdepasse'; render\(\);/.test(pw), 'après le mot de passe, l\'écran repart en haut de l\'onglet au lieu du panneau où l\'on a agi');
     assert.ok(/<label class="field span-2"><span>Mot de passe actuel<\/span><input type="password" name="current"/.test(pw), 'l\'ancien mot de passe partage sa rangée : « Confirmation » tombe sous lui, loin du nouveau qu\'elle confirme');
