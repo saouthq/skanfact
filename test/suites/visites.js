@@ -948,4 +948,32 @@ t('10.14.0 : un défilement s\'arrête sous la marge où collent les en-têtes d
   assert.ok(/scroll-padding-block-start: var\(--main-haut\)/.test(main), 'un défilement pose encore le contenu au ras du bord, sous l\'en-tête collant : ' + main);
   assert.ok(/table\.list thead th \{[^}]*position: sticky; top: 0/.test(css), 'les en-têtes de tableau ne collent plus : la règle ne sert plus');
 });
+
+t('10.14.0 : un geste « clique sur une ligne » se reconnaît sur n\'importe quelle ligne, pas seulement la première', () => {
+  // La bulle éclaire la PREMIÈRE ligne qui correspond ; « Clique sur la ligne d'un client » vise
+  // pourtant toutes les lignes. Le clic sur la troisième était ignoré, la page changeait, et la
+  // bulle annonçait « On s'est perdus de vue » (vu à la souris, Production du Cabinet).
+  const V = require('../../src/renderer/visite.js');
+  const avant = global.getComputedStyle;
+  global.getComputedStyle = () => ({ visibility: 'visible', display: 'block', opacity: '1' });
+  try {
+    const ligne = n => ({ n, isConnected: true, getBoundingClientRect: () => ({ width: 800, height: 38 }),
+      closest: sel => (sel === '[hidden]' ? null : sel === '#view tr[data-id]' ? ligne.cache[n] : null), contains: x => x === ligne.cache[n] || (x && x.parent === ligne.cache[n]) });
+    ligne.cache = {};
+    [1, 2, 3].forEach(n => { ligne.cache[n] = ligne(n); });
+    const cellule = { parent: ligne.cache[3], closest: sel => (sel === '#view tr[data-id]' ? ligne.cache[3] : null) };
+    assert.ok(V.viseLaCible('#view tr[data-id]', ligne.cache[1], ligne.cache[1]), 'la première ligne');
+    assert.ok(V.viseLaCible('#view tr[data-id]', ligne.cache[1], cellule), 'une cellule de la troisième ligne doit compter');
+    assert.ok(V.viseLaCible(['.x', '#view tr[data-id]'], ligne.cache[1], cellule), 'une liste de sélecteurs aussi');
+    const ailleurs = { closest: () => null };
+    assert.ok(!V.viseLaCible('#view tr[data-id]', ligne.cache[1], ailleurs), 'un clic ailleurs ne compte pas');
+  } finally { global.getComputedStyle = avant; }
+  // Et le clic écouté en capture passe par cette règle, pas par la seule première cible.
+  const vj = lireSource('src', 'renderer', 'visite.js');
+  assert.ok(/if \(viseLaCible\(e\.cible, resoudre\(e\.cible\), ev\.target\)\) cur\.clic = Date\.now\(\);/.test(vj), 'le clic ne passe plus par viseLaCible');
+  // Un clic qui vient d'avoir lieu n'est pas « se perdre » : la page qu'il ouvre fait disparaître la cible.
+  const v = vj.slice(vj.indexOf('function verifier('), vj.indexOf("document.addEventListener('click'"));
+  assert.ok(v.indexOf("if (e.faire === 'clic' && typeof e.fait !== 'function' && cur.clic) return;") > 0 &&
+    v.indexOf("if (e.faire === 'clic' && typeof e.fait !== 'function' && cur.clic) return;") < v.indexOf('const perdu ='), 'un clic qui change de page passe encore pour « perdus de vue »');
+});
 };

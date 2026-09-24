@@ -235,6 +235,21 @@
     }
     return null;
   }
+  // Le clic d'un geste vise la cible : le premier élément visible qui correspond, OU n'importe quel
+  // autre élément du même sélecteur. « Clique sur la ligne d'un client » éclaire la première ligne ;
+  // cliquer la troisième est le même geste (10.14.0 — sur la Production du Cabinet, le clic sur une
+  // autre ligne était ignoré, la page changeait, et la bulle annonçait « On s'est perdus de vue »).
+  function viseLaCible(cible, cibleEl, cliquee) {
+    if (!cliquee || !cible) return false;
+    if (cibleEl && (cibleEl === cliquee || cibleEl.contains(cliquee))) return true;
+    if (typeof cible === 'function') return false;
+    for (const sel of (Array.isArray(cible) ? cible : [cible])) {
+      let el = null;
+      try { el = cliquee.closest(sel); } catch (_) { el = null; }
+      if (el && visible(el)) return true;
+    }
+    return false;
+  }
   // L'adresse d'une étape : une chaîne, une expression régulière (on n'y mène pas, on vérifie), ou
   // une fonction — une fiche se désigne par un identifiant tiré des données au moment de l'étape.
   const pageDe = e => { if (!e || !e.page) return null; if (typeof e.page === 'function') { try { return e.page() || null; } catch (_) { return null; } } return e.page; };
@@ -565,6 +580,9 @@
       return;
     }
     if (fait && (estFaire(e) || e.fait)) { entrer(cur.i + 1, 1); return; }
+    // Le clic vient d'avoir lieu : la page qu'il ouvre fait disparaître la cible, ce n'est pas se
+    // perdre — le tour suivant le comptera comme fait.
+    if (e.faire === 'clic' && typeof e.fait !== 'function' && cur.clic) return;
     // La cible a-t-elle disparu ? Pas tout de suite : une fenêtre met un instant à s'ouvrir.
     const perdu = !!e.cible && !el && Date.now() - cur.t0 > PATIENCE;
     if (perdu !== cur.perdu) { cur.perdu = perdu; dessinerBulle(); return; }
@@ -581,8 +599,7 @@
     const e = etape();
     if (!e || e.faire !== 'clic') return;
     if (els.bulle && els.bulle.contains(ev.target)) return;
-    const el = resoudre(e.cible);
-    if (el && (el === ev.target || el.contains(ev.target))) cur.clic = Date.now();
+    if (viseLaCible(e.cible, resoudre(e.cible), ev.target)) cur.clic = Date.now();
   }, true);
 
   const rect = (el, pad) => { const b = el.getBoundingClientRect(); return { l: b.left - pad, t: b.top - pad, r: b.right + pad, b: b.bottom + pad }; };
@@ -1098,7 +1115,7 @@
       chapitre: (cur.chaps && cur.chaps.length > 1) ? k : null, items: (cur.items || []).length };
   }
 
-  const api = { installer, lancer, quitter, enCours, suivant, precedent, chapitreSuivant, placerBulle, placerPres, typo, chevauche, decouperHaut, hautPourBulle, hautPourCouper, estFaire, lieuDe, ouvrirOnglet,
+  const api = { installer, lancer, quitter, enCours, suivant, precedent, chapitreSuivant, placerBulle, placerPres, typo, chevauche, decouperHaut, hautPourBulle, hautPourCouper, viseLaCible, estFaire, lieuDe, ouvrirOnglet,
     chapitres, resoudre, visible, listerControles, etapesDeLaVue, blocsDe, cheminDe, PATIENCE, PATIENCE_FACULTATIVE, CONTROLES,
     nettoie, libelleDe, resumeBulle, routeDe, expliqueur, zoneur };
   global.Visite = api;

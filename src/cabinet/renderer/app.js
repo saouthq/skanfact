@@ -756,6 +756,10 @@
       pw.focus();
     };
     if (!st.exists) pw.oninput = () => { $('#lock-strength').textContent = strengthText(pw.value); };
+    // 10.14.0 — le curseur est dans le champ : on arrive ici pour taper un mot de passe, et rien
+    // d'autre. Sans lui, la frappe partait dans le vide (vu à la souris) ; l'app entreprise le
+    // posait depuis toujours — le jumeau manquant (7.3.0).
+    pw.focus();
     // Le seul chemin de sortie pour qui change d'ordinateur. Proposé dans les DEUX cas : on y arrive
     // aussi après avoir créé un cabinet neuf par erreur, et c'est même le cas le plus fréquent.
     $('#lock-move').onclick = repriseDialog;
@@ -1393,8 +1397,62 @@
     else if (route === 'guide') drawGuide(view);
     else drawDossiers(view);
     typographie(view);
+    surveillerBandeauDemo();
+    // « Ce ne sont pas tes dossiers » — sur CHAQUE page, en permanence, comme l'app entreprise (10.14.0).
+    bandeauDemo();
     // La première fois sur un écran, sa visite se propose (10.14.0) — une ligne calme, sous l'en-tête.
     bandeauVisite();
+  }
+
+  // ---------- le bandeau de l'exemple ----------
+  //
+  // 10.14.0 — le MÊME bandeau que l'app entreprise (classes `.demo-banner` de la feuille partagée) : un
+  // BAC À SABLE, pas une alerte. Il ne vivait que sur la page Dossiers, en orange, au milieu du
+  // portefeuille : sur une fiche, un livre ou une déclaration, rien ne rappelait que les chiffres
+  // étaient inventés (demandé par Skander : « l'alerte du jeu d'exemple doit devenir comme celle de
+  // l'app entreprise »). Il dit ce qu'on PEUT faire (tout), ce qui est à l'abri (tes vrais dossiers),
+  // et les deux portes : se faire guider, et quitter l'exemple. Une page dessinée plus tard (une
+  // fiche lit son livre) réécrit `#view` : un observateur le repose, une fois, en tête.
+  function htmlBandeauDemo() {
+    const demoCount = (S.dossiers || []).filter(d => d.demo).length;
+    if (!demoCount) return '';
+    const refait = exempleRefait ? ` <b>${demoCount > 1 ? 'Ils viennent' : 'Il vient'} d'être refait${demoCount > 1 ? 's' : ''}</b>
+      ${exempleRefait.raison === 'version' ? `pour la version ${esc(exempleRefait.version)}` : 'sur le mois en cours'} : un exemple qui date
+      montre des retards qui n'existent pas.${exempleRefait.livres
+        ? ` ${pl(exempleRefait.livres, 'livre de démonstration est parti', 'livres de démonstration sont partis')} avec l'ancien exemple.` : ''}` : '';
+    const enVisite = typeof Visite !== 'undefined' && Visite.enCours();
+    return `<div class="banner demo-banner" id="demo-banner"><span class="db-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 3h6M10 3v6.2L4.8 18a2 2 0 0 0 1.7 3h11a2 2 0 0 0 1.7-3L14 9.2V3"/><path d="M7.5 15h9"/></svg></span>
+      <span class="db-txt"><b>Tu explores un cabinet d'exemple</b> — ${demoCount > 1 ? `${pl(demoCount, 'dossier')} inventés` : 'un dossier inventé'},
+      du client en retard à celui dont tu tiens toute la comptabilité. Ouvre, saisis, déclare : rien de ce que tu fais ici ne compte, et
+      tes vrais dossiers sont à l'abri. L'exemple s'efface tout seul au premier vrai paquet.${refait}</span>
+      <span class="db-actions">${enVisite ? '' : `<button class="btn btn-sm" id="demo-visite">${decouverteEnPause() ? 'Reprendre la visite' : 'Visite guidée'}</button>`}
+      <button class="btn btn-sm" id="demo-off" title="Les dossiers de l'exemple partent ; tes vrais dossiers ne bougent pas">Quitter l'exemple</button></span></div>`;
+  }
+  function bandeauDemo() {
+    const view = $('#view');
+    if (!view || view.querySelector(':scope > #demo-banner')) return;
+    const html = htmlBandeauDemo();
+    if (!html) return;
+    const tmp = document.createElement('div'); tmp.innerHTML = html;
+    const el = tmp.firstElementChild;
+    view.insertBefore(el, view.firstChild);
+    const off = $('#demo-off', el);
+    off.onclick = async () => {
+      S = await chargerOuRetirerExemple(false); VISITES = null; render(); toast('Exemple effacé.');
+      // Après la découverte, l'assistant reprend là où la porte l'a laissé : posé à quelqu'un qui sait
+      // maintenant à quoi servent les questions (10.14.0).
+      if (!String((S.cabinet || {}).name || '').trim()) { await runSetup({ sansPorte: true }); render(); }
+    };
+    const vis = $('#demo-visite', el);
+    if (vis) vis.onclick = () => { const r = decouverteEnPause(); lancerVisite(visiteParId('decouvrir'), r ? r.i : 0); };
+  }
+  // Une page asynchrone réécrit `#view` après `render()` : le bandeau revient tout seul.
+  let observeDemo = null;
+  function surveillerBandeauDemo() {
+    const view = $('#view');
+    if (observeDemo || !view || !window.MutationObserver) return;
+    observeDemo = new MutationObserver(() => { if (!view.querySelector(':scope > #demo-banner')) bandeauDemo(); });
+    observeDemo.observe(view, { childList: true });
   }
 
   // ---------- la ponctuation double, à la française ----------
@@ -1639,7 +1697,6 @@
       q: listState.q, withArchived: listState.withArchived, onlySkanfact: listState.onlySkanfact,
       sort: listState.sort, desc: listState.desc
     });
-    const demoCount = (S.dossiers || []).filter(d => d.demo).length;
     // `recoveryAt` vaut `undefined` tant que la réponse n'est pas revenue : on ne réclame que sur un
     // non franc. La date ne vit pas dans l'état chiffré, elle ne peut donc pas venir de `S`.
     // 10.14.0 — la ligne rouge ne se pose que le jour où un VRAI paquet est sur le disque (9.4.4) :
@@ -1711,14 +1768,6 @@
       ${portfolioPanel(p)}
       ${inboxBanner()}
       ${todoPanel(todo)}
-      ${demoCount ? `<div class="banner" id="demo-banner"><span>${demoCount > 1 ? `Ces ${pl(demoCount, 'dossier')} sont <strong>fictifs</strong> : ils montrent les situations
-        que tu rencontreras, du client en retard à celui dont tu tiens toute la comptabilité. Ils disparaîtront` :'Ce dossier est <strong>fictif</strong> : c\'est ce qui reste de l\'exemple. Il disparaîtra'} au premier vrai paquet importé.${exempleRefait ? ` <strong>${demoCount > 1 ? 'Ils viennent' : 'Il vient'} d'être remis à jour</strong>
-        ${exempleRefait.raison === 'version' ? `avec la version ${esc(exempleRefait.version)}` : 'sur le mois en cours'} : un exemple qui date
-        montrerait des retards qui n'existent pas. Tes vrais dossiers n'ont pas bougé.${exempleRefait.livres
-          ? ` ${pl(exempleRefait.livres, 'livre de démonstration est parti', 'livres de démonstration sont partis')} avec l'ancien exemple : ce qui avait été saisi dessus n'existe plus.` : ''}` : ''}</span>
-        ${/* 10.14.0 — la découverte se lance d'ici, sur les dossiers qu'on a sous les yeux. */''}
-        ${Visite.enCours() ? '' : `<button class="btn btn-sm nw" id="demo-visite">${decouverteEnPause() ? 'Reprendre la visite guidée' : 'Visite guidée'}</button>`}
-        <button class="btn btn-ghost btn-sm nw" id="demo-off">Effacer l'exemple</button></div>` : ''}
       <div class="filters">
         <span class="champ-loupe"><input type="search" id="q" placeholder="Chercher un client, un matricule, un téléphone…" value="${esc(listState.q)}"></span>
         <label class="inline small muted"><input type="checkbox" id="arch" ${listState.withArchived ? 'checked' : ''}> Archivés</label>
@@ -1772,15 +1821,6 @@
 
     $('#imp').onclick = () => doImport();
     $('#new-d').onclick = () => newDossierForm();
-    const dOff = $('#demo-off');
-    if (dOff) dOff.onclick = async () => {
-      S = await chargerOuRetirerExemple(false); VISITES = null; render(); toast('Exemple effacé.');
-      // Après la découverte, l'assistant reprend là où la porte l'a laissé : posé à quelqu'un qui sait
-      // maintenant à quoi servent les questions (10.14.0).
-      if (!String((S.cabinet || {}).name || '').trim()) { await runSetup({ sansPorte: true }); render(); }
-    };
-    const dVis = $('#demo-visite');
-    if (dVis) dVis.onclick = () => { const r = decouverteEnPause(); lancerVisite(visiteParId('decouvrir'), r ? r.i : 0); };
     const q = $('#q');
     q.oninput = () => { listState.q = q.value; listState.page = 1; sansPerdreLaFrappe(q, render); };
     $('#arch').onchange = e => { listState.withArchived = e.target.checked; listState.page = 1; render(); };
@@ -2235,6 +2275,11 @@
       };
     });
     if (dossier.manual) dessinerMoisTenus(dossier);
+    // Le menu d'un paquet dit « Voir ses écritures » ou « Créer le livre » : il le demande à
+    // l'INDEX de CE dossier, lu sans déchiffrer (9.1.0). Il jugeait sur le livre gardé en mémoire —
+    // absent après un redémarrage (« Créer le livre » sur un livre qui existe), ou celui d'un AUTRE
+    // client (« Voir ses écritures » sur un dossier qui n'en a pas). Vu à la souris, 10.14.0.
+    api.livreIndex(dossier.id).then(ix => { livresConnus.set(dossier.id, ((ix || {}).exercices || []).length > 0); }, () => {});
 
     // Les livres du dossier (9.1.0). L'état de la période est propre au dossier : passer d'un
     // client à l'autre en gardant « mars 2026 » afficherait un livre vide sans raison visible
@@ -2317,7 +2362,7 @@
         { sep: true },
         // Le geste qui SUIT l'arrivée d'un mois : en faire des écritures. Rien n'y menait depuis un
         // paquet — il fallait savoir qu'un bouton existait, deux onglets plus loin.
-        livresState.livre
+        aUnLivre(dossier.id)
           ? { icon: 'contrat', label: 'Voir ses écritures', hint: 'Le livre-journal de ce client',
             run: () => { location.hash = '#/dossier/' + encodeURIComponent(dossier.id) + '/comptabilite'; } }
           : { icon: 'contrat', label: 'Créer le livre de ce client', hint: 'À partir des paquets reçus, écriture par écriture',
@@ -2341,6 +2386,10 @@
   // sur les 24 mois du jeu d'exemple. Deux calculs séparés auraient fini par diverger, et personne
   // n'aurait su lequel croire.
   const KC = window.SkanCompta;
+  // dossier → a-t-il au moins un livre ? (lu dans l'index à l'ouverture de sa fiche)
+  const livresConnus = new Map();
+  const aUnLivre = id => livresConnus.has(id) ? livresConnus.get(id)
+    : !!(livresState.livre && String(livresState.livreCle || '').startsWith(id + '|'));
   const livresState = {
     dossierId: '', mode: 'exercice', annee: '', mois: '', du: '', au: '',
     onglet: 'journal', compte: '', journal: '', q: '', aux: false, data: null,
@@ -2686,7 +2735,7 @@
           if (!/^\d{4}$/.test(v.annee)) return infoDialog('Exercice', 'Une année s\'écrit sur quatre chiffres.');
           try {
             const r = await api.reprendre({ dossierId: dossier.id, annee: Number(v.annee), du: v.du, au: v.au, ouverture: lire(), source: 'balance' });
-            s.annee = v.annee; s.livre = r.livre; s.livreEtat = 'ouvert'; s.livreCle = dossier.id + '|' + v.annee;
+            s.annee = v.annee; s.livre = r.livre; s.livreEtat = 'ouvert'; s.livreCle = dossier.id + '|' + v.annee; livresConnus.set(dossier.id, true);
             exerciceConnu(v.annee);
             close();
             drawLivres(root, dossier);

@@ -52,6 +52,37 @@ t('10.14.0 Cabinet : chaque page et chacun des quatorze écrans de comptabilité
   assert.deepStrictEqual(morts, [], 'des visites d\'écrans qui n\'existent pas : ' + morts.join(', '));
 });
 
+t('10.14.0 Cabinet : chaque écran de travail a au moins un parcours où l\'on FAIT — pas seulement une visite qui décrit', () => {
+  // Demandé par Skander : « il manque encore beaucoup de parcours… faire pareil pour cabinet ». Une
+  // visite de page DÉCRIT ; un parcours « faire » fait jouer le geste. Chaque écran où l'on travaille
+  // en a un — sauf l'Aide, « Me guider » et l'aiguillage de la comptabilité, qui ne portent aucun geste.
+  // Un contexte PLEIN (un dossier de chaque sorte), sinon les adresses des dossiers valent null.
+  const plein = { state: () => ({ cabinet: { name: 'X' }, dossiers: [{ id: 'A' }] }), dossier: () => 'A', estExemple: () => true,
+    cleSecours: () => null, copieExterne: () => false, Visite: V };
+  const cov = new Map();
+  CV.parcours(plein).filter(v => v.type === 'faire').forEach(v => v.etapes.forEach(e => {
+    const src = e.page || v.page;
+    const adr = typeof src === 'function' ? src() : src;
+    if (!adr) return;
+    const k = CV.cleDePage(adr);
+    if (!cov.has(k)) cov.set(k, new Set());
+    cov.get(k).add(v.id);
+  }));
+  const SANS_GESTE = ['aide', 'guide', 'compta'];
+  const sans = Object.keys(CV.PAGES).filter(k => !SANS_GESTE.includes(k) && !cov.has(k));
+  assert.deepStrictEqual(sans, [], 'des écrans sans aucun parcours « faire » : ' + sans.join(', '));
+  // Et un parcours « faire » fait jouer au moins un geste — sauf quand ce geste est irréversible ou sort
+  // du Cabinet (clôturer, valider, composer un mail) : alors il NOMME pourquoi (`sansGeste`). Une
+  // exception anonyme est un trou ; une exception sur un parcours qui a son geste est un mensonge.
+  const faire = CV.parcours(plein).filter(v => v.type === 'faire');
+  const muets = faire.filter(v => !v.etapes.some(e => V.estFaire(e)) && !(typeof v.sansGeste === 'string' && v.sansGeste.length > 30)).map(v => v.id);
+  assert.deepStrictEqual(muets, [], 'des parcours « faire » sans aucun geste, et sans dire pourquoi : ' + muets.join(', '));
+  const contradictoires = faire.filter(v => v.sansGeste && v.etapes.some(e => V.estFaire(e))).map(v => v.id);
+  assert.deepStrictEqual(contradictoires, [], 'des parcours disent n\'avoir aucun geste et en ont un : ' + contradictoires.join(', '));
+  // La moitié au moins fait vraiment jouer quelque chose : un « faire » qui ne fait rien est une page.
+  assert.ok(faire.filter(v => !v.sansGeste).length >= faire.length * 0.7, 'trop de parcours « faire » qui ne font rien jouer');
+});
+
 t('10.14.0 Cabinet : la clé d\'un écran se lit dans l\'adresse — un dossier, son onglet, son écran de comptabilité', () => {
   assert.strictEqual(CV.cleDePage('#/dossiers'), 'dossiers');
   assert.strictEqual(CV.cleDePage(''), 'dossiers');
@@ -303,6 +334,45 @@ t('10.14.0 Cabinet : le branchement — une seule porte décide qu\'une visite n
   const html = lireSource('src', 'cabinet', 'renderer', 'index.html');
   assert.ok(html.indexOf('data-route="guide"') > 0 && html.indexOf('data-route="guide"') < html.indexOf('data-route="aide"'), '« Me guider » avant l\'Aide dans le menu');
   assert.ok(/visites\(\)\.filter\(v => v\.type !== 'page' && !visiteManque\(v\)\)/.test(app), 'la palette propose des visites qui ne se lancent pas');
+});
+
+t('10.14.0 Cabinet : le bandeau de l\'exemple est celui de l\'entreprise, et il vit sur CHAQUE page', () => {
+  // Demandé par Skander : « l'alerte du jeu d'exemple doit devenir comme celle de l'app entreprise ».
+  // Il ne vivait que sur la page Dossiers, en orange : sur une fiche, un livre ou une déclaration, rien
+  // ne rappelait que les chiffres étaient inventés.
+  const html = fonction(app, 'function htmlBandeauDemo(');
+  assert.ok(html.length > 300 && html.length < 4000, 'tranche du bandeau inattendue : ' + html.length);
+  ['demo-banner', 'db-ico', 'db-txt', 'db-actions'].forEach(c => assert.ok(html.includes(c), 'le bandeau n\'a pas la forme de celui de l\'entreprise : ' + c));
+  const ent = lireSource('src', 'renderer', 'app.js');
+  ['demo-banner', 'db-ico', 'db-txt', 'db-actions'].forEach(c => assert.ok(ent.includes(c), 'l\'entreprise n\'a plus ' + c + ' : les deux bandeaux ont divergé'));
+  // Posé par le routeur, après la route — donc sur toutes les pages — et reposé quand une page
+  // asynchrone réécrit `#view`.
+  const render = fonction(app, 'function render(');
+  const iRoute = render.indexOf('drawDossiers(view)'), iBandeau = render.indexOf('bandeauDemo()');
+  assert.ok(iRoute > 0 && iBandeau > iRoute, 'le bandeau doit être posé par le routeur, après la page');
+  assert.ok(/surveillerBandeauDemo\(\)/.test(render), 'une page asynchrone perdrait le bandeau');
+  assert.ok(/MutationObserver/.test(fonction(app, 'function surveillerBandeauDemo(')), 'le bandeau ne revient pas après un redessin');
+  // Et la page Dossiers n'a plus le sien : deux bandeaux pour le même exemple se contrediraient.
+  assert.ok(!/id="demo-banner"/.test(fonction(app, 'function drawDossiers(')), 'la page Dossiers porte encore son propre bandeau');
+});
+
+t('10.14.0 Cabinet : l\'écran du mot de passe pose le curseur dans le champ, comme l\'app entreprise', () => {
+  const i = app.indexOf("const pw = $('#lock-pw'), pw2 = $('#lock-pw2');");
+  const j = app.indexOf("$('#lock-form').onsubmit", i);
+  assert.ok(i > 0 && j > i && j - i < 3000, 'tranche de l\'écran de verrouillage inattendue');
+  assert.ok(/\n\s*pw\.focus\(\);/.test(app.slice(i, j).replace(/\$\('#lock-eye'\)\.onclick = [\s\S]*?\n {4}\};/, '')), 'le champ du mot de passe ne reçoit pas le curseur à l\'ouverture');
+  assert.ok(/const input = \$\('#lock-pw', el\); input\.focus\(\);/.test(lireSource('src', 'renderer', 'app.js')), 'l\'app entreprise ne pose plus le curseur : le jumeau a divergé');
+});
+
+t('10.14.0 Cabinet : le menu d\'un paquet sait si CE dossier a un livre — pas le livre gardé en mémoire', () => {
+  const i = app.indexOf("label: 'Voir ses écritures'");
+  assert.ok(i > 0, 'libellé introuvable');
+  const avant = app.slice(i - 200, i);
+  assert.ok(/aUnLivre\(dossier\.id\)\s*\?\s*\{ icon: 'contrat', $/.test(avant), 'le menu juge encore sur le livre en mémoire (celui d\'un autre client, ou aucun après un redémarrage)');
+  // La réponse vient de l'index du dossier, lu à l'ouverture de sa fiche.
+  assert.ok(/api\.livreIndex\(dossier\.id\)\.then\(ix => \{ livresConnus\.set\(dossier\.id,/.test(app), 'l\'index du dossier n\'est plus lu à l\'ouverture de la fiche');
+  // Et le repli mémoire vérifie que le livre en mémoire est bien celui de CE dossier.
+  assert.ok(/startsWith\(id \+ '\|'\)/.test(app.slice(app.indexOf('const aUnLivre ='), app.indexOf('const aUnLivre =') + 300)), 'le repli prend le livre d\'un autre client');
 });
 
 t('10.14.0 Cabinet : le fichier d\'appairage enregistré se retient — c\'est lui qui coche l\'étape', () => {

@@ -14463,8 +14463,12 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     assert.ok(/exempleRefait[\s\S]{0,300}Il vient d'être refait/.test(bd), 'le bandeau de l\'app entreprise doit annoncer le rattrapage');
     assert.ok(/tes vraies données sont à l'abri/.test(bd.replace(/\s+/g, ' ')), 'et dire que les vraies données n\'ont pas bougé');
     const cabr = lireSource('src', 'cabinet', 'renderer', 'app.js');
-    assert.ok(/exempleRefait[\s\S]{0,400}Tes vrais dossiers n'ont pas bougé/.test(cabr),
-      'le bandeau de l\'app cabinet doit annoncer le rattrapage');
+    // 10.14.0 — le bandeau du Cabinet est devenu celui de l'entreprise : la règle se lit pareil, dans
+    // le corps de `htmlBandeauDemo`.
+    const cbd = cabr.slice(cabr.indexOf('function htmlBandeauDemo('), cabr.indexOf('function bandeauDemo('));
+    assert.ok(cbd.length > 300 && cbd.length < 4000, 'tranche du bandeau du Cabinet inattendue : ' + cbd.length);
+    assert.ok(/exempleRefait[\s\S]{0,300}d'être refait/.test(cbd), 'le bandeau de l\'app cabinet doit annoncer le rattrapage');
+    assert.ok(/tes vrais dossiers sont à l'abri/.test(cbd.replace(/\s+/g, ' ')), 'et dire que les vrais dossiers n\'ont pas bougé');
     // Et il ne doit pas survivre à un exemple rechargé À LA MAIN : ce serait annoncer un rattrapage
     // qui n'a pas eu lieu.
     assert.ok(!/await api\.demo\(/.test(cabr), 'les deux gestes manuels passent par la même porte');
