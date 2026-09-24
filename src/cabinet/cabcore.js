@@ -566,7 +566,7 @@
     // « avoir essayé » coûterait moins cher au cabinet que « n'avoir jamais essayé », et on
     // fabriquerait la catégorie qu'on veut éviter.
     if (lic.etat === 'expiree' && lic.payee && String(lic.exp || '') >= ilYA(GRACE_MOIS)) {
-      return { compte: false, raison: `licence du client expirée le ${lic.exp} — ${GRACE_MOIS} mois de grâce` };
+      return { compte: false, raison: `licence du client expirée le ${String(lic.exp).replace(/^(\d{4})-(\d{2})-(\d{2})$/, '$3/$2/$1')} — ${GRACE_MOIS} mois de grâce` };
     }
     if (lic.etat === 'expiree' && lic.payee) return { compte: true, raison: `licence du client expirée depuis plus de ${GRACE_MOIS} mois` };
     return { compte: true, raison: 'sur SkanFact, mais sans licence payée' };

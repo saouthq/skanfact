@@ -333,6 +333,15 @@ function optionsDe(payload) {
   return Array.isArray(o) ? o.filter(x => typeof x === 'string' && x) : [];
 }
 
+// Une date qu'on LIT s'écrit comme partout ailleurs dans l'application : « 24/09/2027 », jamais
+// « 2027-09-24 » (règle 10.12.0 : un message écrit ses dates comme l'écran). Le champ `exp` reste en
+// ISO — c'est une donnée, que l'on compare et que l'on range ; seules les PHRASES changent. Le toast
+// « Licence enregistrée — Licence active jusqu'au 2027-09-24 » s'est vu au premier test à la souris.
+function jourFr(iso) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || ''));
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : String(iso || '');
+}
+
 function licenceState(opts) {
   opts = opts || {};
   const t = opts.today || today();
@@ -410,13 +419,13 @@ function licenceState(opts) {
     if (!exp || left >= 0) {
       return {
         ...commun, state: 'active', locked: false,
-        label: (exp ? `Licence active jusqu'au ${exp}` : 'Licence sans limite de durée') + ` — offre ${OFFRES[offre].label}`,
+        label: (exp ? `Licence active jusqu'au ${jourFr(exp)}` : 'Licence sans limite de durée') + ` — offre ${OFFRES[offre].label}`,
         detail: left != null && left <= 30 ? `Elle se termine dans ${jours(left)} : pense à la renouveler.` : '',
         exp, daysLeft: left, reserves: OFFRES[offre].reserves.slice()
       };
     }
     return {
-      ...commun, state: 'expiree', locked: true, label: `Licence expirée le ${exp}`,
+      ...commun, state: 'expiree', locked: true, label: `Licence expirée le ${jourFr(exp)}`,
       detail: 'Tout reste lisible, imprimable et exportable. Seule la création de nouvelles pièces attend le renouvellement.',
       exp, daysLeft: left, reserves: [], options: []
     };
@@ -522,13 +531,13 @@ function licenceCabinet(opts) {
       // qui ne le porte pas vaut `false` : rien de ce qui a été vendu ne bouge.
       const illimite = payload.illimite === true;
       return fin({ state: 'active', quota, exp, daysLeft: left, autorisesInfini: illimite,
-        label: (exp ? `Licence active jusqu'au ${exp}` : 'Licence sans limite de durée')
+        label: (exp ? `Licence active jusqu'au ${jourFr(exp)}` : 'Licence sans limite de durée')
           + (illimite
             ? ' — dossiers hors SkanFact sans limite'
             : ` — ${quota} dossier${quota === 1 ? '' : 's'} hors SkanFact en plus des ${CABINET_GRATUITS} gratuits`),
         detail: left != null && left <= 30 ? `Elle se termine dans ${left} jour${left === 1 ? '' : 's'} : pense à la renouveler.` : '' });
     }
-    return fin({ state: 'expiree', quota: 0, exp, daysLeft: left, label: `Licence expirée le ${exp}`,
+    return fin({ state: 'expiree', quota: 0, exp, daysLeft: left, label: `Licence expirée le ${jourFr(exp)}`,
       detail: 'Tout reste lisible, importable et exportable. Seule la validation d\'une écriture attend le renouvellement.' });
   }
 

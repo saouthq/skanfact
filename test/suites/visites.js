@@ -549,7 +549,7 @@ t('10.14.0 : « Tes premiers pas » — chaque étape a sa visite, et la jauge d
   const lp = app.match(/const lesPas = \(\) => (C\.firstSteps\(data, company\(\), \{[^}]*\}\));/);
   assert.ok(lp, 'lesPas introuvable');
   const ctx = {
-    data: { documents: [], clients: [] }, copieExterne: null, company: () => Core.DEFAULT_COMPANY,
+    data: { documents: [], clients: [] }, copieExterne: null, dossierPartage: false, company: () => Core.DEFAULT_COMPANY,
     C: { estDemo: x => !!x.demo, firstSteps: Core.firstSteps },
     visitesEtat: () => ({ faites: {} }),
     VISITES_DES_PAS: new Set(['premiers-pas', ...Object.values(PAS_VISITES)]),

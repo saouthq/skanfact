@@ -1743,6 +1743,9 @@ kbd { font: inherit; font-size: 12px; font-family: -apple-system, system-ui, san
 .setup-porte .sp-lead { margin: 0; font-size: 14.5px; color: color-mix(in srgb, var(--text) 82%, var(--muted)); }
 .setup-porte .sp-choix { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .setup-porte .sp-note p { margin: 0; font-size: 12.5px; line-height: 1.55; color: var(--muted); }
+/* Les deux entrées de ceux qui ont déjà ce qu'il faut (10.14.0) : une rangée flex, jamais une phrase
+   avec des boutons dedans — au passage à la ligne, un `gap` décide des deux écarts (T-56). */
+.setup-porte .sp-autres { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
 @media (max-width: 640px) { .setup-porte .sp-choix { grid-template-columns: minmax(0, 1fr); } }
 .act-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .act { font: inherit; text-align: start; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; cursor: pointer; display: flex; flex-direction: column; gap: 3px; transition: border-color .12s, background .12s; }

@@ -1188,7 +1188,27 @@ ipcMain.handle('dossiers:share', async () => {
 });
 
 // Rejoindre un dossier qui existe DÉJÀ. On ne crée rien, on ne renomme rien : on l'ouvre.
-ipcMain.handle('dossiers:join', async () => {
+// Un dossier VIERGE : jamais servi — ni raison sociale, ni la moindre pièce, fiche ou prestation.
+// C'est celui que la première ouverture crée d'office (« Mon entreprise »), et il n'a rien à perdre.
+// Chiffré ou illisible, il n'est jamais vierge : dans le doute, on garde.
+function dossierVierge(dir) {
+  let brut;
+  try { brut = fs.readFileSync(path.join(dir, 'skanfact-data.json'), 'utf8'); }
+  catch (e) { return e && e.code === 'ENOENT'; }
+  try {
+    const j = JSON.parse(brut);
+    if (!j || j['skanfact-encrypted'] === 1) return false;
+    const vide = k => !Array.isArray(j[k]) || !j[k].length;
+    return !String((j.company && j.company.name) || '').trim() && !(j.company && j.company.setupStarted)
+      && ['documents', 'clients', 'purchases', 'suppliers', 'catalog', 'employees'].every(vide);
+  } catch { return false; }
+}
+// `remplacerVierge` (10.14.0) : rejoindre depuis la PORTE de l'assistant, sur un poste neuf. Le dossier
+// ouvert est alors celui que la première ouverture a créé tout seul — « Mon entreprise », vide. Le
+// garder dans la liste, c'était proposer à côté de la vraie entreprise un « Mon entreprise » que
+// personne n'a créé et qui rouvre l'assistant (vu à la souris). Il quitte la LISTE ; son dossier reste
+// sur le disque, intact : on ne supprime jamais rien, même vide.
+ipcMain.handle('dossiers:join', async (_e, opts) => {
   const cfg = ensureDossiers();
   const r = await dialog.showOpenDialog(mainWindow, {
     title: 'Choisir le dossier SkanFact partagé (celui créé par l\'autre ordinateur)',
@@ -1224,6 +1244,8 @@ ipcMain.handle('dossiers:join', async () => {
   };
   if (retire && retire.copieExterne) entry.copieExterne = retire.copieExterne;
   cfg.dossiersRetires = (cfg.dossiersRetires || []).filter(x => x !== retire);
+  const quitte = (opts || {}).remplacerVierge ? cfg.dossiers.find(x => x.id === cfg.currentDossier) : null;
+  if (quitte && !quitte.shared && dossierVierge(quitte.dir)) cfg.dossiers = cfg.dossiers.filter(x => x !== quitte);
   cfg.dossiers.push(entry); cfg.currentDossier = entry.id; writeAppCfg(cfg);
   openStorage();
   if (mainWindow) mainWindow.reload();
@@ -1310,7 +1332,12 @@ ipcMain.handle('data:setPassword', (_e, { data, password, current }) => {
 });
 
 // ---------- copie externe des sauvegardes ----------
-const externalInfo = () => ({ ...storage.state.external });
+// `partage` (10.14.0) : un dossier PARTAGÉ ne reçoit pas de copie externe — il vit déjà hors de cet
+// ordinateur, dans l'emplacement que les deux postes ouvrent (3.2.0). L'écran le savait (le bouton
+// « Choisir un dossier » s'y cache), « Tes premiers pas » non : l'étape « Mettre tes données à
+// l'abri » menait à un panneau sans bouton et ne pouvait JAMAIS se cocher (vu à la souris, en
+// rejoignant un dossier depuis la porte de l'assistant).
+const externalInfo = () => ({ ...storage.state.external, partage: !!(currentDossier() || {}).shared });
 ipcMain.handle('backups:externalInfo', () => externalInfo());
 ipcMain.handle('backups:setExternal', (_e, dir) => {
   const cfg = readAppCfg();
@@ -1645,15 +1672,11 @@ ipcMain.handle('licence:set', (_e, key, opts) => {
   }
   const cles = clePublique().cles;
   if (cles.length && !L.verifyKey(k, cles)) {
-    const err = new Error('Cette clé n\'est pas reconnue. Vérifie qu\'elle a été copiée en entier, de « SKAN1. » jusqu\'au dernier caractère.');
-    err.code = 'LICENCE_INVALIDE';
-    throw err;
+    throw erreur('ERR-ENT-060', 'Cette clé n\'est pas reconnue. Vérifie qu\'elle a été copiée en entier, de « SKAN1. » jusqu\'au dernier caractère.');
   }
   const essai = L.licenceState({ key: k, cles, matricule, today: L.today() });
   if (essai.state === 'autre') {
-    const err = new Error(essai.detail);
-    err.code = 'LICENCE_AUTRE_ENTREPRISE';
-    throw err;
+    throw erreur('ERR-ENT-061', essai.detail);
   }
   ecrireLicence(k);
   // La clé vient d'être collée : on l'annonce tout de suite plutôt que d'attendre vingt secondes.
@@ -1670,9 +1693,7 @@ ipcMain.handle('licence:requestMail', (_e, { company, device } = {}) => L.reques
 // et ce qui repasse le pont est une chaîne « SKAN1.… » — jamais le fichier .pem.
 ipcMain.handle('editeur:keygen', () => {
   if (editeurActif()) {
-    const err = new Error(`Il existe déjà une clé privée sur cet ordinateur (${CLE_PRIVEE()}). En créer une nouvelle rendrait INVALIDES toutes les licences déjà émises.`);
-    err.code = 'CLE_EXISTANTE';
-    throw err;
+    throw erreur('ERR-ENT-062', `Il existe déjà une clé privée sur cet ordinateur (${CLE_PRIVEE()}). En créer une nouvelle rendrait INVALIDES toutes les licences déjà émises.`);
   }
   const { publicKey: pubPem, privateKey } = L.generateKeys();
   fs.mkdirSync(CLES_DIR(), { recursive: true });
@@ -1692,11 +1713,9 @@ ipcMain.handle('editeur:importer', async () => {
   const pem = fs.readFileSync(r.filePaths[0], 'utf8');
   let pubPem;
   try { pubPem = crypto.createPublicKey(crypto.createPrivateKey(pem)).export({ type: 'spki', format: 'pem' }); }
-  catch { const err = new Error('Ce fichier n\'est pas une clé privée de signature SkanFact.'); err.code = 'CLE_ILLISIBLE'; throw err; }
+  catch { throw erreur('ERR-ENT-063', 'Ce fichier n\'est pas une clé privée de signature SkanFact.'); }
   if (editeurActif() && lirePrivee().trim() !== pem.trim()) {
-    const err = new Error(`Une AUTRE clé privée existe déjà sur cet ordinateur (${CLE_PRIVEE()}). Deux clés, ce sont deux jeux de licences incompatibles : mets l'ancienne de côté d'abord.`);
-    err.code = 'CLE_EXISTANTE';
-    throw err;
+    throw erreur('ERR-ENT-062', `Une AUTRE clé privée existe déjà sur cet ordinateur (${CLE_PRIVEE()}). Deux clés, ce sont deux jeux de licences incompatibles : mets l'ancienne de côté d'abord.`);
   }
   // La date d'armement voyage avec le fichier public posé à côté du .pem, quand il y en a un ;
   // sinon c'est aujourd'hui — elle ne compte que pour un poste éditeur, jamais pour les clients.
@@ -1751,9 +1770,7 @@ ipcMain.handle('editeur:copierPublique', () => {
 // la mise en place est donc sans danger, et l'ordre des deux gestes n'a pas d'importance.
 ipcMain.handle('editeur:cleReponseCreer', () => {
   if (fs.existsSync(REPONSE_PRIVEE())) {
-    const err = new Error(`Il existe déjà une clé de réponse sur cet ordinateur (${REPONSE_PRIVEE()}). En créer une nouvelle ferait ignorer toutes les réponses du serveur jusqu'à la prochaine version publiée.`);
-    err.code = 'CLE_EXISTANTE';
-    throw err;
+    throw erreur('ERR-ENT-062', `Il existe déjà une clé de réponse sur cet ordinateur (${REPONSE_PRIVEE()}). En créer une nouvelle ferait ignorer toutes les réponses du serveur jusqu'à la prochaine version publiée.`);
   }
   const { publicKey: pubPem, privateKey } = L.generateKeys();
   fs.mkdirSync(CLES_DIR(), { recursive: true });
@@ -1768,7 +1785,7 @@ ipcMain.handle('editeur:cleReponseCreer', () => {
 ipcMain.handle('editeur:cleReponseCopier', (_e, quoi) => {
   const privee = String(quoi || '') === 'privee';
   const chemin = privee ? REPONSE_PRIVEE() : REPONSE_PUBLIQUE();
-  if (!fs.existsSync(chemin)) { const err = new Error('Aucune clé de réponse sur cet ordinateur.'); err.code = 'PAS_DE_CLE'; throw err; }
+  if (!fs.existsSync(chemin)) { throw erreur('ERR-ENT-064', 'Aucune clé de réponse sur cet ordinateur.'); }
   require('electron').clipboard.writeText(fs.readFileSync(chemin, 'utf8'));
   return { ok: true, privee };
 });
@@ -1779,9 +1796,7 @@ ipcMain.handle('editeur:cleReponseCopier', (_e, quoi) => {
 // console est refusée par les clients — c'est le panneau qui le dit.
 ipcMain.handle('editeur:cleServeurCreer', () => {
   if (fs.existsSync(SRV_PRIVEE())) {
-    const err = new Error(`Il existe déjà une clé de serveur sur cet ordinateur (${SRV_PRIVEE()}). En créer une nouvelle ferait refuser toutes les clés émises par la console jusqu'à la prochaine version publiée.`);
-    err.code = 'CLE_EXISTANTE';
-    throw err;
+    throw erreur('ERR-ENT-062', `Il existe déjà une clé de serveur sur cet ordinateur (${SRV_PRIVEE()}). En créer une nouvelle ferait refuser toutes les clés émises par la console jusqu'à la prochaine version publiée.`);
   }
   const { publicKey: pubPem, privateKey } = L.generateKeys();
   fs.mkdirSync(CLES_DIR(), { recursive: true });
@@ -1795,7 +1810,7 @@ ipcMain.handle('editeur:cleServeurCreer', () => {
 ipcMain.handle('editeur:cleServeurCopier', (_e, quoi) => {
   const privee = String(quoi || '') === 'privee';
   const chemin = privee ? SRV_PRIVEE() : SRV_PUBLIQUE();
-  if (!fs.existsSync(chemin)) { const err = new Error('Aucune clé de serveur sur cet ordinateur.'); err.code = 'PAS_DE_CLE'; throw err; }
+  if (!fs.existsSync(chemin)) { throw erreur('ERR-ENT-064', 'Aucune clé de serveur sur cet ordinateur.'); }
   // « service » : la valeur COMPLÈTE de LICENCE_PUBLIC_KEYS, prête à coller — toutes les clés que
   // l'application embarque, plus celle-ci. Le 15/09/2026, Skander a collé la clé seule dans le
   // réglage, comme l'écran l'y invitait : le service ne trouvait plus AUCUNE clé, ni srv-1 pour
@@ -1893,10 +1908,10 @@ ipcMain.handle('pont:exporterBase', async () => {
 
 // Émettre une licence : l'écran envoie les champs, le processus principal vérifie et signe.
 ipcMain.handle('licence:emettre', (_e, p) => {
-  if (!editeurActif()) { const err = new Error('Aucune clé privée sur cet ordinateur : crée tes clés dans Paramètres → L\'application → Licence.'); err.code = 'PAS_EDITEUR'; throw err; }
+  if (!editeurActif()) { throw erreur('ERR-ENT-064', 'Aucune clé privée sur cet ordinateur : crée tes clés dans Paramètres → L\'application → Licence.'); }
   p = p || {};
   const nom = String(p.nom || '').trim();
-  if (!nom) { const err = new Error('La licence doit porter le nom de l\'entreprise.'); err.code = 'LICENCE_NOM'; throw err; }
+  if (!nom) { throw erreur('ERR-ENT-065', 'La licence doit porter le nom de l\'entreprise.'); }
   // Le TYPE (9.4.0) : une licence d'entreprise, ou une licence de CABINET. Une licence de cabinet
   // n'a pas d'offre ni de matricule — son sujet est l'empreinte du cabinet, et ce qu'elle porte est
   // un quota de dossiers hors SkanFact. Les deux ne se mélangent jamais : l'application entreprise
@@ -1905,24 +1920,22 @@ ipcMain.handle('licence:emettre', (_e, p) => {
   if (type === 'cabinet') {
     const emp = String(p.cabinet || '').trim().toUpperCase();
     if (!/^[0-9A-F]{4}(-[0-9A-F]{4}){4}$/.test(emp)) {
-      const err = new Error('Une licence de cabinet est attachée à son EMPREINTE : cinq groupes de quatre caractères hexadécimaux, comme 3F9A-2C1E-….');
-      err.code = 'LICENCE_EMPREINTE'; throw err;
+      throw erreur('ERR-ENT-065', 'Une licence de cabinet est attachée à son EMPREINTE : cinq groupes de quatre caractères hexadécimaux, comme 3F9A-2C1E-….');
     }
     const quota = Math.round(Number(p.dossiersHors));
     if (!Number.isFinite(quota) || quota < 1 || quota > 5000) {
-      const err = new Error('Combien de dossiers hors SkanFact cette licence couvre-t-elle, en plus des trois gratuits ? (entre 1 et 5000)');
-      err.code = 'LICENCE_QUOTA'; throw err;
+      throw erreur('ERR-ENT-065', 'Combien de dossiers hors SkanFact cette licence couvre-t-elle, en plus des trois gratuits ? (entre 1 et 5000)');
     }
   }
   const offre = type === 'cabinet' ? 'cabinet' : (L.OFFRES[p.offre] ? p.offre : '');
-  if (!offre) { const err = new Error('Choisis une offre : Indépendant ou Entreprise.'); err.code = 'LICENCE_OFFRE'; throw err; }
+  if (!offre) { throw erreur('ERR-ENT-065', 'Choisis une offre : Indépendant ou Entreprise.'); }
   // Soit une durée (« 1a », « vie », « date » + date libre), soit une date de fin toute faite ('' = à vie).
   // `depuis` : un renouvellement part de la fin de la licence précédente quand elle est encore
   // future — « À faire » réclame le renouvellement trente jours AVANT, et ces trente jours sont payés.
   const depart = L.dateValide(p.depuis) && p.depuis > L.today() ? p.depuis : L.today();
   const exp = p.duree ? L.expirationPour(depart, p.duree, p.dateLibre) : (p.exp == null ? null : String(p.exp));
   if (exp === null || (exp && !(L.dateValide(exp) && L.daysBetween(L.today(), exp) > 0))) {
-    const err = new Error('La date de fin doit être dans le futur (ou vide pour une licence à vie).'); err.code = 'LICENCE_DATE'; throw err;
+    throw erreur('ERR-ENT-065', 'La date de fin doit être dans le futur (ou vide pour une licence à vie).');
   }
   const payload = {
     id: L.licenceId(), nom, matricule: String(p.matricule || '').trim(), offre, exp,

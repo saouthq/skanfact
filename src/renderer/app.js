@@ -1619,7 +1619,14 @@
     });
     $('#dm-new', m).onclick = () => { fermerDossiers(); nouvelleEntreprise(); };
     if ($('#dm-share', m)) $('#dm-share', m).onclick = () => { fermerDossiers(); partagerDossier(); };
-    $('#dm-join', m).onclick = () => { fermerDossiers(); rejoindreDossier(); };
+    // Le geste inverse se nomme comme il s'appelle DANS CE MENU — et seulement s'il y est : un dossier
+    // déjà partagé n'y propose pas « Partager cette entreprise ». Lu AVANT de fermer : fermer vide le menu.
+    $('#dm-join', m).onclick = () => {
+      const partageable = !!$('#dm-share', m);
+      fermerDossiers();
+      rejoindreDossier({ autre: partageable
+        ? 'Si c\'est toi qui as le dossier et que tu veux le partager, c\'est l\'entrée juste au-dessus dans ce menu\u00a0: «\u00a0Partager cette entreprise\u00a0».' : '' });
+    };
     $('#dm-manage', m).onclick = () => { fermerDossiers(); allerParametres('donnees', 'p-dossiers'); };
   }
 
@@ -1673,13 +1680,25 @@
     // qui dure est dans le panneau Dossiers, qui montre désormais le nouveau chemin.
     toast('Partagé — le dossier vit maintenant dans ' + r.dir);
   }
-  async function rejoindreDossier() {
+  // `o.avant` (10.14.0) : ce que l'appelant fait une fois la décision prise et AVANT le sélecteur. La
+  // porte de l'assistant s'en sert pour se marquer vue : un dossier rejoint recharge la fenêtre avant
+  // que la réponse revienne, donc rien de ce qui suit l'appel n'aurait le temps de s'exécuter.
+  // `o.autre` : la phrase qui dit où est l'AUTRE geste, vu de l'endroit d'où l'on vient. « C'est
+  // l'autre bouton : Partager ce dossier à deux » n'était vrai que dans les Paramètres : dans le menu
+  // du haut l'entrée s'appelle « Partager cette entreprise », et sur la porte de l'assistant il n'y a
+  // encore rien à partager (vu à la souris, 10.14.0). Appelée par un clic, `o` est l'événement : la
+  // phrase des Paramètres, celle d'origine.
+  async function rejoindreDossier(opts) {
+    const o = opts && typeof opts === 'object' ? opts : {};
+    const autre = typeof o.autre === 'string' ? o.autre
+      : 'Si c\'est toi qui as le dossier et que tu veux le partager, c\'est l\'autre bouton\u00a0: «\u00a0Partager ce dossier à deux\u00a0».';
     if (!await confirmDialog(
       'Sur l\'autre ordinateur, quelqu\'un a déjà posé le dossier dans iCloud Drive, OneDrive ou sur une clé.\n\n' +
-      'Désigne ce dossier-là : SkanFact l\'ouvre tel quel, sans rien créer ni renommer. Si l\'entreprise est protégée par un mot de passe, il te sera demandé à l\'ouverture.\n\n' +
-      'Si c\'est toi qui as le dossier et que tu veux le partager, c\'est l\'autre bouton : « Partager ce dossier à deux ».',
+      'Désigne ce dossier-là : SkanFact l\'ouvre tel quel, sans rien créer ni renommer. Si l\'entreprise est protégée par un mot de passe, il te sera demandé à l\'ouverture.'
+      + (autre ? '\n\n' + autre : ''),
       'Choisir le dossier à rejoindre', false)) return;
-    const r = await bridge.joinDossier();
+    if (typeof o.avant === 'function') o.avant();
+    const r = await bridge.joinDossier({ remplacerVierge: !!o.remplacerVierge });
     if (!r || r.cancelled) return;
     if (!r.ok) return toast(r.error || 'Ce dossier n\'a pas pu être rejoint.', true);
     toast('Dossier rejoint : ' + (r.dossier && r.dossier.name));
@@ -2207,6 +2226,8 @@
   // L'état de la copie externe vit sur le poste, pas dans les données : on le lit une fois et on le
   // garde, pour que `firstSteps` reste une fonction pure qu'on peut tester sans Electron.
   let copieExterne = null;
+  // Un dossier PARTAGÉ ne reçoit pas de copie externe : il vit déjà hors de cet ordinateur (10.14.0).
+  let dossierPartage = false;
 
   // Les premiers pas. Sept étapes, dont l'état est DÉDUIT des données — jamais coché à la main.
   // Le panneau prend la place des quatre compteurs à zéro tant que rien n'a été fait, et disparaît
@@ -2230,7 +2251,7 @@
   // Les premiers pas, lus de la MÊME façon partout (accueil, jauge de fin de visite, « Me guider ») :
   // la copie externe vit sur le poste et la découverte sur la personne — ni l'une ni l'autre dans les
   // données —, et `firstSteps` reste une fonction pure qu'on teste sans Electron.
-  const lesPas = () => C.firstSteps(data, company(), { copieExterne, decouverte: !!visitesEtat().faites.decouvrir });
+  const lesPas = () => C.firstSteps(data, company(), { copieExterne, partage: dossierPartage, decouverte: !!visitesEtat().faites.decouvrir });
   // Le panneau est-il à l'écran ? `todoPanel` a besoin de le savoir pour ne pas répéter l'étape 1.
   // Le panneau ne s'affiche que pendant le démarrage : une fois une facture partie, il proposerait
   // « crée ton premier client » à quelqu'un qui a deux ans d'activité — et reprendrait tout l'écran,
@@ -12894,6 +12915,7 @@
       // l'assistant ; depuis que la copie est une étape des premiers pas (10.14.0), elle vit ici.
       const copieOk = !!(i && i.dir && !i.lastError);
       copieExterne = copieOk;
+      dossierPartage = !!(i && i.partage);
       const el = $('#ext-status'); if (!el) return;
       el.innerHTML = i.dir ? `Dossier : <code>${h(i.dir)}</code>, sous-dossier <b>${h(i.sub || 'SkanFact')}</b> pour cette entreprise<br>${i.lastError ? `<span style="color:var(--danger)">Dernière copie impossible : ${h(i.lastError)}</span>` : (i.lastCopy ? `Dernière copie : ${h(new Date(i.lastCopy).toLocaleString('fr-FR'))}` : 'Copie à la prochaine sauvegarde.')}` : '<span class="muted">Aucun dossier de copie externe.</span>';
       $('#ext-remove').hidden = !i.dir;
@@ -13674,7 +13696,7 @@
         <ul class="g-liste">${liste.map(ligne).join('')}</ul></section>`;
     }).join('');
     // Tes réussites : jamais sur l'exemple — celles d'une entreprise inventée ne sont pas les tiennes.
-    const rr = exemple ? null : C.reussites(data, company(), { copieExterne });
+    const rr = exemple ? null : C.reussites(data, company(), { copieExterne, partage: dossierPartage });
     $('#view').innerHTML = `
       <div class="page-head"><h1>Me guider</h1>
         <div class="actions"><button type="button" class="btn" id="g-aide">Ouvrir l'Aide</button></div></div>
@@ -14096,6 +14118,12 @@
     return `<div class="notes-md">${out}</div>`;
   }
 
+  // Ce qu'on dit juste après avoir enregistré une clé, au même mot près depuis la porte de l'assistant
+  // et depuis le panneau : « Licence enregistrée : active jusqu'au 24/09/2027 — offre Entreprise ».
+  // L'état se nomme lui-même « Licence active… » : le recoller derrière « Licence enregistrée »
+  // faisait dire deux fois « Licence » dans la même phrase.
+  const licenceEnregistree = st => 'Licence enregistrée : ' + String((st && st.label) || '').replace(/^Licence /, '');
+
   // Le panneau de licence. Il dit l'état, ce qui est bloqué et ce qui ne l'est pas, et prépare la
   // demande. Jamais d'appel réseau : la vérification se fait avec la clé publique embarquée.
   function drawLicencePanel() {
@@ -14149,8 +14177,12 @@
         enregistrerEnCours();
         licence = await bridge.licenceSet(key, company().matricule || '');
         drawLicencePanel(); licenceBanner(); redessinerBarre();
-        toast(licence.locked ? licence.label : (key ? 'Licence enregistrée : ' : 'Clé retirée — ') + licence.label);
-      } catch (e) { toast(plainError(e), true); }
+        toast(licence.locked ? licence.label : key ? licenceEnregistree(licence) : 'Clé retirée — ' + licence.label);
+      } catch (e) {
+        // Le refus se MONTRE sur la case, comme à la porte de l'assistant (règle 7.0.0) : la clé
+        // collée reste, marquée, avec la phrase qui dit pourquoi.
+        if (key && $('#lic-key')) refus($('#lic-key'), plainError(e)); else toast(plainError(e), true);
+      }
     };
     if ($('#lic-devenir')) $('#lic-devenir').onclick = devenirEditeur;
     // Une suite de 32 caractères qu'on affiche sans bouton pour la prendre est une suite de
@@ -15485,19 +15517,27 @@
                 <ul class="pp-choix-meta"><li>${LETTRES[questions.length] || questions.length} ${questions.length > 1 ? 'questions' : 'question'}</li></ul>
                 <button type="button" class="btn" id="sf-next">Commencer avec mon entreprise</button></article>
             </div>
+            ${/* 10.14.0 — deux personnes n'ont rien à faire de la découverte ni des trois questions : celle
+                 qui a DÉJÀ acheté (sa clé porte son nom et son matricule) et celle qui rejoint un dossier
+                 posé par un associé (il est déjà rempli). Sans ces deux portes, la première retapait ce
+                 que sa clé savait, la seconde fabriquait une entreprise vide à côté de la vraie. */''}
+            <div class="sp-autres"><span class="small muted">Tu as déjà ce qu'il faut ?</span>
+              <button type="button" class="btn btn-sm" id="sf-cle">J'ai déjà une clé de licence…</button>
+              <button type="button" class="btn btn-sm" id="sf-rejoindre">Je rejoins un dossier partagé…</button></div>
             <div class="sp-note">${s.intro}</div>
           </div>`;
         }
         if (s.id === 'entreprise') return `<form id="sf-form" class="grid-2">
           <label class="field span-2 obligatoire">${lbl('Raison sociale', 'co.name')}<input type="text" name="name" value="${h(a.name || '')}" placeholder="Nom exact de l'entreprise, forme juridique comprise" autofocus></label>
           ${field(lbl('Matricule fiscal', 'co.matricule'), 'matricule', a.matricule || '', 'text', 'placeholder="1234567X/A/M/000"')}
-          ${field(lbl('Registre de commerce (RC)', 'co.rc'), 'rc', a.rc || '', 'text', 'placeholder="facultatif"')}
+          ${field(lbl('Registre de commerce (RC)', 'co.rc'), 'rc', a.rc || '', 'text', 'placeholder="facultatif, ex. B123456789"')}
           <label class="field span-2">${lbl('Adresse', 'co.address')}<textarea name="address" placeholder="Rue et numéro&#10;Code postal et ville">${h(a.address || '')}</textarea></label>
           ${field('Téléphone', 'phone', a.phone || '')}
           ${field('Email', 'email', a.email || '', 'email')}
           ${field(lbl('Capital social', 'co.capital'), 'capital', a.capital || '', 'text', 'placeholder="facultatif, ex. 1 000 DT"')}
         </form>
-        ${a.nomDuDossier ? '<p class="small muted">C\'est le nom du dossier que tu viens de créer. Corrige-le ici pour qu\'il s\'imprime exactement comme sur tes papiers, forme juridique comprise.</p>' : ''}
+        ${a.depuisLicence ? '<p class="small muted">La raison sociale et le matricule viennent de ta clé de licence. Vérifie qu\'ils s\'écrivent exactement comme sur tes papiers : la clé reste valable tant que le matricule ne change pas.</p>'
+          : a.nomDuDossier ? '<p class="small muted">C\'est le nom du dossier que tu viens de créer. Corrige-le ici pour qu\'il s\'imprime exactement comme sur tes papiers, forme juridique comprise.</p>' : ''}
         <p class="small muted">Le matricule fiscal est obligatoire sur une facture en Tunisie. Si tu ne l'as pas encore, laisse vide et complète-le avant ta première facture.</p>`;
         if (s.id === 'activite') {
           // Le métier ne porte plus de taux de TVA (7.22.0) : il annonçait « TVA 19 % » pour tout le
@@ -15613,9 +15653,6 @@
           a.modulesTouche = true;            // un choix fait à la main ne se fait plus écraser
           cb.closest('.mod-row').classList.toggle('on', cb.checked);
         });
-        // La porte a été vue, quel que soit le battant choisi : elle ne se rouvre plus, ni ici ni sur
-        // l'accueil (où elle vivait avant la 10.14.0, et vit encore pour qui ne l'a jamais vue).
-        const porteVue = () => { if (steps[i].porte) visitesPoser(e => { e.accueilVu = true; }); };
         if ($('#sf-decouvrir', root)) $('#sf-decouvrir', root).onclick = () => {
           porteVue();
           // L'assistant reste EN ATTENTE à « Ton entreprise » : la sauvegarde que prend l'exemple
@@ -15625,6 +15662,9 @@
           root.remove();
           resolve('decouvrir');
         };
+        if ($('#sf-cle', root)) $('#sf-cle', root).onclick = cleALaPorte;
+        if ($('#sf-rejoindre', root)) $('#sf-rejoindre', root).onclick = () => rejoindreDossier({ avant: porteVue, remplacerVierge: true,
+          autre: 'Si c\'est toi qui commences, choisis plutôt «\u00a0Commencer avec mon entreprise\u00a0»\u00a0: tu pourras la partager ensuite, depuis le menu de ton entreprise, en haut à gauche.' });
         if ($('#sf-prev', root)) $('#sf-prev', root).onclick = () => { collect(); etape(i - 1); i--; draw(); };
         $('#sf-next', root).onclick = () => {
           collect();
@@ -15677,6 +15717,40 @@
         };
       };
       const collect = () => { const f = $('#sf-form', root); if (f) Object.assign(a, formValues(f)); };
+      // La porte a été vue, quel que soit le battant choisi : elle ne se rouvre plus, ni ici ni sur
+      // l'accueil (où elle vivait avant la 10.14.0, et vit encore pour qui ne l'a jamais vue). Au niveau
+      // de l'assistant, pas dans `draw()` : la fenêtre de la clé la rappelle APRÈS s'être fermée, et une
+      // fonction déclarée dans `draw()` n'y existe pas — la fenêtre se fermait sur une ReferenceError,
+      // la clé enregistrée, et l'assistant restait sur la porte sans un mot.
+      const porteVue = () => { if (steps[i].porte) visitesPoser(e => { e.accueilVu = true; }); };
+      // « J'ai déjà une clé de licence » (10.14.0). La clé porte le nom et le matricule de l'entreprise
+      // à qui elle a été vendue : on l'enregistre par la MÊME porte que le panneau Licence
+      // (`licence:set`, qui refuse une clé fausse ou celle d'une autre entreprise en disant pourquoi),
+      // puis l'assistant reprend à « Ton entreprise », ces deux champs déjà remplis. Un refus se MONTRE
+      // sur la case (7.0.0) : la fenêtre reste ouverte avec ce qui a été collé.
+      const cleALaPorte = () => modal(`<h2>J'ai déjà une clé de licence</h2>
+        <p>Colle la clé reçue par mail après ton achat : elle commence par « SKAN1. ». SkanFact y lit le nom et le matricule de ton entreprise, et l'assistant reprend avec eux, déjà remplis.</p>
+        <form id="sf-cle-form"><label class="field obligatoire">${lbl('Clé de licence', 'lic.cle')}<textarea name="cle" rows="4" placeholder="SKAN1.…" spellcheck="false" autocomplete="off"></textarea></label></form>
+        <div class="modal-actions"><button type="button" class="btn" data-close>Annuler</button><button type="button" class="btn btn-primary" id="sf-cle-ok">Enregistrer la clé et continuer</button></div>`,
+      (m, close) => {
+        const champ = $('[name=cle]', m);
+        $('#sf-cle-ok', m).onclick = async () => {
+          const k = champ.value.trim();
+          if (!k) return refus(champ, 'Colle ta clé de licence : elle commence par « SKAN1. ».');
+          let st;
+          try { st = await bridge.licenceSet(k, ''); } catch (e) { return refus(champ, plainError(e)); }
+          licence = st;
+          close();
+          porteVue();
+          // Le nom de la clé est celui qu'on a acheté, donc le nom légal : il remplace le nom d'un
+          // dossier tout juste créé (une étiquette), jamais une raison sociale tapée à la main.
+          if (st.name && (!String(a.name || '').trim() || a.nomDuDossier)) { a.name = st.name; a.nomDuDossier = false; }
+          if (st.matricule && !String(a.matricule || '').trim()) a.matricule = st.matricule;
+          a.depuisLicence = true;
+          toast(licenceEnregistree(st));
+          etape(i + 1); i++; draw();
+        };
+      });
       // Écrire à chaque changement d'étape, sans déclarer l'assistant terminé. Rien ne vivait sur
       // le disque avant `finish()` : une veille, un Cmd+Q ou un rechargement du chien de garde au
       // cinquième écran, et les cinq écrans étaient à retaper. En rejeu on ne touche à rien tant
@@ -15867,9 +15941,10 @@
     // « Tes premiers pas » sache si l'étape est faite. Un échec n'empêche rien : l'étape s'affiche
     // simplement comme à faire.
     bridge.externalBackupInfo().then(i => {
-      const avant = copieExterne;
+      const avant = copieExterne, avantPartage = dossierPartage;
       copieExterne = !!(i && i.dir && !i.lastError);   // une copie en échec ne coche pas l'étape
-      if (copieExterne !== avant && location.hash === '#/dashboard') render(true);
+      dossierPartage = !!(i && i.partage);
+      if ((copieExterne !== avant || dossierPartage !== avantPartage) && location.hash === '#/dashboard') render(true);
     }).catch(() => {});
     $('#brand-company').textContent = data.company.name || 'Ton entreprise';
     accorderNomDossier();

@@ -6380,8 +6380,12 @@
       // de l'assistant, avant qu'il existe quoi que ce soit à copier : une question abstraite, qu'on
       // passait. Après le premier devis, elle protège quelque chose de réel — c'est le moment où l'on
       // accepte de prendre deux minutes pour elle.
-      { id: 'sauvegarde', titre: 'Mettre tes données à l\'abri', fait: !!o.copieExterne,
-        quoi: 'Une copie automatique vers iCloud ou OneDrive, un disque ou une clé USB. C\'est l\'étape que tout le monde saute, et la seule dont l\'absence coûte tout.',
+      // Un dossier PARTAGÉ vit déjà hors de cet ordinateur : l'étape est faite, et elle le DIT — sans
+      // quoi elle menait à un panneau où le bouton « Choisir un dossier » est caché exprès.
+      { id: 'sauvegarde', titre: 'Mettre tes données à l\'abri', fait: !!o.copieExterne || !!o.partage,
+        quoi: o.partage && !o.copieExterne
+          ? 'Ce dossier est partagé : il vit déjà hors de cet ordinateur, et c\'est cette copie-là que les deux postes ouvrent.'
+          : 'Une copie automatique vers iCloud ou OneDrive, un disque ou une clé USB. C\'est l\'étape que tout le monde saute, et la seule dont l\'absence coûte tout.',
         action: 'sauvegarde' },
       { id: 'envoi', titre: 'L\'envoyer à ton client', fait: devis.some(x => x.status && x.status !== 'brouillon'),
         quoi: 'Ouvre le devis, puis « Envoyer » : le PDF part en pièce jointe. Tant qu\'un devis reste en brouillon, SkanFact ne le compte nulle part.',
@@ -6439,7 +6443,8 @@
       { id: 'facture', titre: 'Première facture émise', quoi: 'Numérotée, verrouillée, comptée dans ton chiffre d\'affaires et ta TVA.', fait: docs.some(x => x.type === 'facture' && emise(x)) },
       { id: 'paiement', titre: 'Premier paiement encaissé', quoi: 'La facture s\'est soldée toute seule, et l\'argent est arrivé dans ta trésorerie.', fait: docs.some(x => (x.payments || []).length > 0) },
       { id: 'achat', titre: 'Premier achat saisi', quoi: 'La TVA que tu récupères commence à compter.', fait: (d.purchases || []).length > 0 },
-      { id: 'abri', titre: 'Données à l\'abri', quoi: 'Une copie automatique vit hors de cet ordinateur.', fait: !!o.copieExterne },
+      { id: 'abri', titre: 'Données à l\'abri', fait: !!o.copieExterne || !!o.partage,
+        quoi: o.partage && !o.copieExterne ? 'Ton dossier partagé vit hors de cet ordinateur.' : 'Une copie automatique vit hors de cet ordinateur.' },
       { id: 'comptable', titre: 'Premier paquet au comptable', quoi: 'Ton comptable a reçu ton mois, déjà écrit : zéro ressaisie.', fait: (d.packs || []).length > 0 },
       { id: 'cloture', titre: 'Premier mois clôturé', quoi: 'Un mois déclaré, et qui ne bougera plus.', fait: !!d.closedUntil }
     ];

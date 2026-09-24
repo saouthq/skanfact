@@ -1897,6 +1897,12 @@ portent pas, et un test les nomme.
 | `ERR-ENT-022` | « « <fichier> » fait <n> Mo. Au-delà de 10 Mo… » | lecture de photo | réduire | Livré |
 | `ERR-ENT-023` | « Aucune clé n'est enregistrée : rien n'a été envoyé… » | lecture de photo | Paramètres | Livré |
 | `ERR-ENT-032` | « Plan de paquet invalide. » | paquet mensuel | — | Livré |
+| `ERR-ENT-060` | « Cette clé n'est pas reconnue. Vérifie qu'elle a été copiée en entier, de « SKAN1. » jusqu'au dernier caractère. » | `licence:set` — panneau Licence et porte de l'assistant (10.14.0) | recoller la clé entière | Livré |
+| `ERR-ENT-061` | (détail de `licenceState` : clé d'une autre entreprise, en nommant les deux matricules, ou clé de SkanFact Cabinet) | `licence:set` | demander une licence à son nom | Livré |
+| `ERR-ENT-062` | « Il existe déjà une clé privée / de réponse / de serveur sur cet ordinateur (<chemin>)… » / « Une AUTRE clé privée existe déjà… » | clés de l'éditeur | mettre l'ancienne de côté d'abord | Livré |
+| `ERR-ENT-063` | « Ce fichier n'est pas une clé privée de signature SkanFact. » | reprise de la clé de l'éditeur | choisir le bon fichier `.pem` | Livré |
+| `ERR-ENT-064` | « Aucune clé de réponse / de serveur / privée sur cet ordinateur… » | clés de l'éditeur | créer ou reprendre ses clés | Livré |
+| `ERR-ENT-065` | « La licence doit porter le nom de l'entreprise. » / « … attachée à son EMPREINTE… » / « Combien de dossiers hors SkanFact… » / « Choisis une offre… » / « La date de fin doit être dans le futur… » | émission d'une licence | corriger le champ nommé | Livré |
 | `ERR-ENT-070` | « Le pont comptable ne s'utilise que sur le poste de l'éditeur. » | pont | — | Livré |
 | `ERR-ENT-071` | « Aucune adresse de plan de contrôle dans cette version. » | pont | — | Livré |
 | `ERR-ENT-072` | « Colle d'abord le secret d'administration… » / « … fait au moins <n> caractères… » | pont | Paramètres → Éditeur | Livré |

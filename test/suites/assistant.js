@@ -176,4 +176,152 @@ t('10.14.0 : la première émission propose de continuer la numérotation, et «
   assert.ok(/if \(!r\.ok\) return refus\(champ, r\.motif\);/.test(f), 'un refus de la fenêtre ne montre pas la case');
   assert.ok(/C\.poserNumerotation\(data, type, annee, champ\.value\);\s*if \(!r\.ok\) return refus/.test(f) && /save\(true\)/.test(f), 'la fenêtre n\'enregistre pas la suite réglée');
 });
+// ------------------------------------------------------------------ la porte : une clé, un dossier partagé
+// Deux personnes n'ont rien à faire de la découverte ni des trois questions : celle qui a DÉJÀ acheté
+// (sa clé porte son nom et son matricule) et celle qui rejoint un dossier posé par un associé.
+const runSetupZone = () => {
+  const i = code.indexOf('function runSetup(');
+  return code.slice(i, code.indexOf('\n  }\n', i));
+};
+
+t('10.14.0 : la porte offre « j\'ai déjà une clé » et « je rejoins un dossier partagé », sans voler le vert', () => {
+  const z = runSetupZone();
+  const autres = z.slice(z.indexOf('<div class="sp-autres">'), z.indexOf('</div>', z.indexOf('<div class="sp-autres">')));
+  assert.ok(autres.length > 50, 'la rangée des deux autres entrées a disparu de la porte');
+  assert.ok(/<button type="button" class="btn btn-sm" id="sf-cle">J'ai déjà une clé de licence…<\/button>/.test(autres), '« J\'ai déjà une clé de licence… » n\'est plus sur la porte');
+  assert.ok(/<button type="button" class="btn btn-sm" id="sf-rejoindre">Je rejoins un dossier partagé…<\/button>/.test(autres), '« Je rejoins un dossier partagé… » n\'est plus sur la porte');
+  // Un seul vert sur la porte (U-11) : la découverte recommandée. Les deux autres entrées sont discrètes.
+  assert.ok(!/btn-primary/.test(autres), 'une des deux autres entrées de la porte a pris le vert de la découverte');
+  assert.ok(/\$\('#sf-cle', root\)\.onclick = cleALaPorte;/.test(z), 'la clé de la porte n\'est plus branchée');
+  assert.ok(/\$\('#sf-rejoindre', root\)\.onclick = \(\) => rejoindreDossier\(\{ avant: porteVue, remplacerVierge: true,/.test(z), 'rejoindre depuis la porte ne marque plus la porte vue, ou garde le dossier vide');
+  const css = lireSource('src', 'renderer', 'style.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.ok(/\.setup-porte \.sp-autres \{ display: flex; flex-wrap: wrap;[^}]*gap:/.test(css), 'la rangée des deux entrées n\'a plus d\'écart décidé : ses boutons se collent');
+});
+
+t('10.14.0 : la clé collée à la porte passe par la MÊME porte que le panneau Licence, et l\'assistant reprend avec son nom', () => {
+  const z = runSetupZone();
+  const i = z.indexOf('const cleALaPorte = () => modal(');
+  assert.ok(i > 0, 'la fenêtre de la clé a disparu de l\'assistant');
+  const f = z.slice(i, z.indexOf('\n      });', i));
+  assert.ok(/st = await bridge\.licenceSet\(k, ''\);/.test(f), 'la clé de la porte ne passe plus par `licence:set`, qui refuse une clé fausse ou celle d\'une autre entreprise');
+  assert.ok(/catch \(e\) \{ return refus\(champ, plainError\(e\)\); \}/.test(f), 'un refus de la clé ne se MONTRE plus sur la case (7.0.0)');
+  // Le nom de la clé est le nom légal : il remplace une étiquette de dossier, jamais un nom tapé.
+  assert.ok(/if \(st\.name && \(!String\(a\.name \|\| ''\)\.trim\(\) \|\| a\.nomDuDossier\)\) \{ a\.name = st\.name; a\.nomDuDossier = false; \}/.test(f), 'le nom de la clé écrase une raison sociale tapée à la main');
+  assert.ok(/if \(st\.matricule && !String\(a\.matricule \|\| ''\)\.trim\(\)\) a\.matricule = st\.matricule;/.test(f), 'le matricule de la clé écrase un matricule tapé');
+  assert.ok(/a\.depuisLicence = true;/.test(f) && /\$\{a\.depuisLicence \? '<p class="small muted">La raison sociale et le matricule viennent de ta clé de licence/.test(z), 'l\'écran « Ton entreprise » ne dit plus d\'où viennent le nom et le matricule');
+  assert.ok(/toast\(licenceEnregistree\(st\)\);\s*etape\(i \+ 1\); i\+\+; draw\(\);/.test(f), 'l\'assistant ne reprend pas à « Ton entreprise » après la clé');
+  // Trouvé à la souris : `porteVue` vivait DANS `draw()`, et la fenêtre de la clé l'appelle depuis
+  // l'assistant — ReferenceError, la fenêtre se fermait, la clé enregistrée, et l'écran restait sur la
+  // porte sans un mot. Elle vit à la portée de l'assistant (et le lint l'aurait dit : no-undef).
+  const decl = z.indexOf('const porteVue = ');
+  assert.ok(decl > 0 && z.indexOf('const porteVue = ', decl + 1) < 0, 'porteVue est déclarée deux fois (ou plus du tout)');
+  assert.ok(decl > z.indexOf('const collect = ') && decl < i, 'porteVue est retournée vivre dans `draw()` : la fenêtre de la clé ne la voit plus');
+});
+
+t('10.14.0 : « Licence enregistrée » se dit une fois, au même mot près depuis la porte et depuis le panneau', () => {
+  const vm = require('vm');
+  const m = code.match(/const licenceEnregistree = (st => [^\n]*);/);
+  assert.ok(m, 'la phrase de la licence enregistrée n\'a plus UNE fonction');
+  const f = vm.runInNewContext(m[1]);
+  assert.strictEqual(f({ label: 'Licence active jusqu\'au 24/09/2027 — offre Entreprise' }),
+    'Licence enregistrée : active jusqu\'au 24/09/2027 — offre Entreprise', '« Licence » se dit deux fois dans la même phrase');
+  assert.strictEqual(f({ label: 'Licence sans limite de durée — offre Indépendant' }), 'Licence enregistrée : sans limite de durée — offre Indépendant');
+  assert.ok((code.match(/licenceEnregistree\((st|licence)\)/g) || []).length >= 2, 'la porte ou le panneau recompose sa propre phrase');
+  assert.ok(!/'Licence enregistrée : ' \+ licence\.label/.test(code) && !/Licence enregistrée — \$\{st\.label\}/.test(code), 'une ancienne phrase « Licence enregistrée » est revenue');
+  // Et le panneau montre le refus sur la case, comme la porte : une clé mal collée reste là, marquée.
+  assert.ok(/if \(key && \$\('#lic-key'\)\) refus\(\$\('#lic-key'\), plainError\(e\)\); else toast\(plainError\(e\), true\);/.test(code), 'le panneau Licence n\'affiche le refus que dans un bandeau');
+});
+
+t('10.14.0 : une date de licence se lit « 24/09/2027 », jamais « 2027-09-24 », dans les deux applications', () => {
+  const L = require('../../src/licence.js');
+  const { publicKey, privateKey } = L.generateKeys();
+  const cles = JSON.stringify({ cles: [{ kid: 'master', publicKey }] });
+  const key = L.signLicence({ nom: 'Menuiserie Ben Ali SARL', matricule: '7654321B', offre: 'entreprise', exp: '2027-09-24' }, privateKey);
+  const active = L.licenceState({ cles, key, matricule: '7654321B', today: '2026-09-24' });
+  assert.strictEqual(active.label, 'Licence active jusqu\'au 24/09/2027 — offre Entreprise');
+  assert.strictEqual(active.exp, '2027-09-24', 'la DONNÉE reste en ISO : seules les phrases changent');
+  const expiree = L.licenceState({ cles, key, matricule: '7654321B', today: '2028-01-05' });
+  assert.strictEqual(expiree.label, 'Licence expirée le 24/09/2027');
+  // La pastille de la barre reprend le libellé : elle aussi parle français.
+  assert.ok(/24\/09\/2027/.test(L.pastille(expiree).texte) && !/2027-09-24/.test(L.pastille(expiree).texte), 'la pastille d\'une licence expirée écrit une date ISO');
+  const cab = L.signLicence({ nom: 'Cabinet Test', type: 'cabinet', cabinet: '3F9A-2C1E-0000-1111-2222', dossiersHors: 2, exp: '2027-09-24' }, privateKey);
+  const c = L.licenceCabinet({ cles, key: cab, empreinte: '3F9A-2C1E-0000-1111-2222', comptes: 1, today: '2026-09-24' });
+  assert.ok(/jusqu'au 24\/09\/2027/.test(c.label) && !/\d{4}-\d{2}-\d{2}/.test(c.label), 'le Cabinet écrit une date ISO dans l\'état de sa licence : ' + c.label);
+  // Et la raison d'un dossier compté dans le Cabinet, qui se lit dans le panneau Licence.
+  const K = require('../../src/cabinet/cabcore.js');
+  const r = K.dossierFacturable({ packs: [{ month: '2026-08' }], clientLicence: { etat: 'expiree', payee: true, exp: '2026-03-15' } }, '2026-09-24');
+  assert.ok(/expirée le 15\/03\/2026/.test(r.raison), 'la raison d\'un dossier en grâce écrit une date ISO : ' + r.raison);
+});
+
+t('10.14.0 : « Rejoindre un dossier partagé » nomme l\'AUTRE geste comme il s\'appelle là où l\'on est', () => {
+  // « C'est l'autre bouton : Partager ce dossier à deux » n'était vrai que dans les Paramètres. Chaque
+  // phrase doit nommer un bouton qui existe DANS SON écran.
+  const i = code.indexOf('async function rejoindreDossier(');
+  const f = code.slice(i, code.indexOf('\n  }\n', i));
+  assert.ok(/const autre = typeof o\.autre === 'string' \? o\.autre/.test(f), 'l\'appelant ne peut plus dire où est l\'autre geste');
+  assert.ok(/Partager ce dossier à deux/.test(f) && /id="dos-share">↔ Partager ce dossier à deux…</.test(code), 'la phrase des Paramètres nomme un bouton qui n\'y est plus');
+  // Le menu : le nom de SON entrée, lu avant de fermer (fermer vide le menu), et rien s'il n'y en a pas.
+  const m = code.slice(code.indexOf("$('#dm-join', m).onclick = () => {"), code.indexOf("$('#dm-manage', m).onclick"));
+  assert.ok(/const partageable = !!\$\('#dm-share', m\);\s*fermerDossiers\(\);/.test(m), 'le menu lit « Partager cette entreprise » APRÈS s\'être vidé : la phrase ne s\'affiche jamais');
+  assert.ok(/Partager cette entreprise/.test(m) && /<span class="dm-nom">Partager cette entreprise…<\/span>/.test(code), 'la phrase du menu nomme une entrée qui n\'y est plus');
+  // La porte : il n'y a rien à partager — on renvoie au battant qui existe.
+  const z = runSetupZone();
+  assert.ok(/Commencer avec mon entreprise/.test(z.slice(z.indexOf("$('#sf-rejoindre', root)"), z.indexOf("$('#sf-rejoindre', root)") + 400)), 'la porte renvoie à un bouton de partage qui n\'y est pas');
+  assert.ok(/<button type="button" class="btn" id="sf-next">Commencer avec mon entreprise<\/button>/.test(z), 'la phrase de la porte cite un battant qui a changé de nom');
+  // Le dossier vide que la première ouverture crée tout seul ne quitte la liste que depuis la porte.
+  assert.strictEqual((code.match(/remplacerVierge: true/g) || []).length, 1, 'un autre geste que la porte retire le dossier ouvert de la liste');
+});
+
+t('10.14.0 : rejoindre depuis la porte retire de la LISTE le « Mon entreprise » vierge — sans jamais rien effacer', () => {
+  const vm = require('vm'), fs = require('fs'), os = require('os'), path = require('path');
+  const main = lireSource('src', 'main.js');
+  const i = main.indexOf('function dossierVierge(dir) {');
+  assert.ok(i > 0, 'la reconnaissance d\'un dossier vierge a disparu');
+  const src = main.slice(i, main.indexOf('\n}\n', i) + 2);
+  const ctx = { fs, path };
+  vm.runInNewContext(src + '\nthis.dossierVierge = dossierVierge;', ctx);
+  const dossierVierge = ctx.dossierVierge;
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'skf-vierge-'));
+  const poser = (nom, contenu) => { const d = path.join(base, nom); fs.mkdirSync(d); if (contenu != null) fs.writeFileSync(path.join(d, 'skanfact-data.json'), contenu); return d; };
+  try {
+    assert.strictEqual(dossierVierge(poser('rien')), true, 'un dossier sans fichier de données est vierge (la porte n\'écrit rien)');
+    assert.strictEqual(dossierVierge(poser('vide', JSON.stringify({ company: { name: '' }, documents: [], clients: [] }))), true);
+    assert.strictEqual(dossierVierge(poser('nom', JSON.stringify({ company: { name: 'Ma SARL' } }))), false, 'une raison sociale n\'est pas du vide');
+    assert.strictEqual(dossierVierge(poser('assistant', JSON.stringify({ company: { name: '', setupStarted: true } }))), false, 'un assistant commencé n\'est pas du vide');
+    assert.strictEqual(dossierVierge(poser('client', JSON.stringify({ company: {}, clients: [{ id: 'c1' }] }))), false, 'un client n\'est pas du vide');
+    assert.strictEqual(dossierVierge(poser('piece', JSON.stringify({ company: {}, documents: [{ id: 'd1' }] }))), false, 'une pièce n\'est pas du vide');
+    assert.strictEqual(dossierVierge(poser('chiffre', JSON.stringify({ 'skanfact-encrypted': 1 }))), false, 'un dossier chiffré n\'est jamais « vierge » : on ne sait pas ce qu\'il contient');
+    assert.strictEqual(dossierVierge(poser('abime', '{ pas du json')), false, 'un fichier illisible n\'est jamais « vierge » : dans le doute, on garde');
+  } finally { fs.rmSync(base, { recursive: true, force: true }); }
+  // Il quitte la LISTE seulement : aucune suppression de fichier dans le geste.
+  const j = main.indexOf("ipcMain.handle('dossiers:join'");
+  const h = main.slice(j, main.indexOf("ipcMain.handle('dossiers:restore'", j));
+  assert.ok(/const quitte = \(opts \|\| \{\}\)\.remplacerVierge \? cfg\.dossiers\.find\(x => x\.id === cfg\.currentDossier\) : null;/.test(h), 'le dossier ouvert quitte la liste sans que l\'appelant l\'ait demandé');
+  assert.ok(/if \(quitte && !quitte\.shared && dossierVierge\(quitte\.dir\)\)/.test(h), 'un dossier qui a servi (ou partagé) peut quitter la liste');
+  assert.ok(!/rmSync|unlinkSync|rmdirSync/.test(h), 'rejoindre un dossier efface un fichier');
+  assert.ok(/joinDossier: \(opts\) => ipcRenderer\.invoke\('dossiers:join', opts \|\| \{\}\)/.test(lireSource('src', 'preload.js')), 'le pont ne transmet plus l\'option');
+});
+
+t('10.14.0 : un dossier PARTAGÉ a déjà mis ses données à l\'abri — l\'étape se coche, et dit pourquoi', () => {
+  const data = { documents: [], clients: [], catalog: [], company: {} };
+  const etape = o => C.firstSteps(data, { name: 'X' }, o).etapes.find(x => x.id === 'sauvegarde');
+  const sans = etape({ copieExterne: false });
+  assert.ok(sans && !sans.fait, 'sans copie ni partage, l\'étape doit rester à faire');
+  const part = etape({ copieExterne: false, partage: true });
+  assert.ok(part.fait, 'un dossier partagé ne peut pas recevoir de copie externe : l\'étape ne pourrait JAMAIS se cocher');
+  assert.ok(/partagé/.test(part.quoi), 'l\'étape cochée ne dit pas pourquoi : ' + part.quoi);
+  const r = C.reussites(data, { name: 'X' }, { partage: true });
+  assert.ok(r.liste.find(x => x.id === 'abri').fait, '« Tes réussites » ne voient pas le dossier partagé');
+  // La moitié qui le SAIT vit dans le processus principal, et l'écran la lit aux deux endroits.
+  assert.ok(/const externalInfo = \(\) => \(\{ \.\.\.storage\.state\.external, partage: !!\(currentDossier\(\) \|\| \{\}\)\.shared \}\);/.test(lireSource('src', 'main.js')), 'le processus principal ne dit plus qu\'un dossier est partagé');
+  assert.ok((code.match(/dossierPartage = !!\(i && i\.partage\);/g) || []).length === 2, 'l\'état du partage n\'est plus relu au démarrage ET après le panneau de copie');
+  assert.ok(/C\.firstSteps\(data, company\(\), \{ copieExterne, partage: dossierPartage,/.test(code) && /C\.reussites\(data, company\(\), \{ copieExterne, partage: dossierPartage \}\)/.test(code), 'les premiers pas ou les réussites ignorent le partage');
+});
+
+t('10.14.0 : le registre de commerce est aussi guidé dans l\'assistant que dans les Paramètres (7.3.0)', () => {
+  const champs = (code.match(/\$\{field\(lbl\('Registre de commerce \(RC\)', 'co\.rc'\), 'rc', \w+\.rc \|\| '', 'text', 'placeholder="[^"]*"'\)\}/g) || []);
+  assert.strictEqual(champs.length, 2, 'les deux champs du registre de commerce n\'ont pas été trouvés');
+  const invites = champs.map(x => x.match(/'placeholder="([^"]*)"'/)[1]);
+  assert.strictEqual(invites[0], invites[1], 'l\'assistant et les Paramètres ne disent pas la même chose du même champ : ' + invites.join(' / '));
+});
 };

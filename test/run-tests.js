@@ -3342,7 +3342,10 @@ t('8.0.0 : la clé embarquée est une vraie clé publique, l\'éditeur ne s\'ach
   const phraseCle = (appSrc.match(/Ta clé n'est présentée [^<]{0,220}/) || [''])[0];
   assert.ok(!/n'envoie jamais ta clé nulle part/.test(appSrc) && /mises à jour/.test(phraseCle) && /révoqu/.test(phraseCle),
     'le panneau doit dire où la clé est présentée — les mises à jour ET la vérification de licence : ' + phraseCle);
-  assert.ok(/\(key \? 'Licence enregistrée : ' : 'Clé retirée — '\)/.test(appSrc), 'retirer la clé ne doit pas annoncer « Licence enregistrée »');
+  // Retournée en 10.14.0 vers la RÈGLE : elle recopiait la forme `(key ? 'Licence enregistrée : ' : …)`,
+  // et elle est tombée quand la phrase est passée par `licenceEnregistree` (le même mot depuis la porte
+  // de l'assistant et depuis le panneau). Ce qui compte : une clé RETIRÉE ne s'annonce pas « enregistrée ».
+  assert.ok(/key \? licenceEnregistree\(licence\) : 'Clé retirée — ' \+ licence\.label/.test(appSrc), 'retirer la clé ne doit pas annoncer « Licence enregistrée »');
   // L'e2e ouvre l'application DÉSARMÉE (override) pour créer ses clés, PUIS la vraie, armée, où sa
   // propre clé d'essai est refusée : les deux moitiés, sinon l'armement n'est prouvé nulle part.
   const e2e = lireSource('test', 'e2e', 'licence.js');
@@ -3638,7 +3641,7 @@ t('8.5.0 : la clé du serveur se fabrique sur le poste de l\'éditeur, se dit à
   assert.ok(/const SRV_KID = 'srv-1';/.test(main), 'le kid de la clé du serveur est srv-1, celui que PLAN-PLATEFORME.md nomme');
   const creer = main.slice(main.indexOf("ipcMain.handle('editeur:cleServeurCreer'"), main.indexOf("ipcMain.handle('editeur:cleServeurCopier'"));
   assert.ok(creer.length > 300 && creer.length < 1500, 'tranche editeur:cleServeurCreer inattendue : ' + creer.length);
-  assert.ok(/fs\.existsSync\(SRV_PRIVEE\(\)\)[\s\S]{0,500}CLE_EXISTANTE/.test(creer), 'une clé existante n\'est jamais écrasée : la recréer ferait refuser toutes les clés de la console');
+  assert.ok(/fs\.existsSync\(SRV_PRIVEE\(\)\)[\s\S]{0,500}throw erreur\('ERR-ENT-062'/.test(creer), 'une clé existante n\'est jamais écrasée : la recréer ferait refuser toutes les clés de la console');
   assert.ok(/writeFileSync\(SRV_PRIVEE\(\), privateKey, \{ mode: 0o600 \}\)/.test(creer), 'la privée est écrite en 0600');
   assert.ok(/kid: SRV_KID/.test(creer), 'le fichier public porte son kid');
   assert.ok(/clePubliqueCache = null/.test(creer), 'le cache des clés se vide');
@@ -4238,7 +4241,7 @@ t('éditeur : la clé privée ne traverse jamais le pont, et l\'app livrée emba
   assert.ok(/L\.signLicence\(payload, lirePrivee\(\)\)/.test(section), 'la signature se fait dans main.js, avec le fichier de clé privée');
   assert.ok(!/return \{[^}]*privateKey/.test(section) && !/privateKey:/.test(section.replace(/publicKey/g, '')), 'un handler renvoie la clé privée');
   // Une clé émise pour une AUTRE entreprise est refusée à l'enregistrement, en nommant les deux.
-  assert.ok(/essai\.state === 'autre'/.test(main) && /LICENCE_AUTRE_ENTREPRISE/.test(main), 'licence:set doit refuser la clé d\'une autre entreprise');
+  assert.ok(/essai\.state === 'autre'\)\s*\{\s*throw erreur\('ERR-ENT-061', essai\.detail\)/.test(main), 'licence:set doit refuser la clé d\'une autre entreprise');
   // Le pont expose l'état et la signature, jamais un canal qui rendrait le fichier .pem.
   const preload = lireSource('src', 'preload.js');
   ['licenceEmettre', 'editeurStatus', 'editeurKeygen', 'editeurImporter', 'editeurExporter', 'editeurCopierPublique'].forEach(n =>
@@ -14297,8 +14300,8 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     const i = main.indexOf("ipcMain.handle('licence:emettre'");
     const zone = main.slice(i, main.indexOf('\n});', i));
     assert.ok(zone.length > 800 && zone.length < 4000, 'la tranche de l\'émission fait ' + zone.length + ' caractères');
-    assert.ok(/LICENCE_EMPREINTE/.test(zone), 'une licence de cabinet peut être émise sans empreinte');
-    assert.ok(/LICENCE_QUOTA/.test(zone), 'une licence de cabinet peut être émise sans quota');
+    assert.ok(/\.test\(emp\)\)\s*\{\s*throw erreur\('ERR-ENT-065'/.test(zone), 'une licence de cabinet peut être émise sans empreinte');
+    assert.ok(/quota > 5000\)\s*\{\s*throw erreur\('ERR-ENT-065'/.test(zone), 'une licence de cabinet peut être émise sans quota');
     assert.ok(/type,\s*dossiersHors/.test(zone), 'les deux champs de la 9.4.0 ne sont pas signés');
     // L'empreinte est normalisée en MAJUSCULES à l'émission : elle se recopie d'un message, et
     // deux casses différentes désigneraient deux cabinets.
@@ -14630,7 +14633,11 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
       assert.ok(/\{ code, refus: true \}/.test(net), nom + ' : un refus écrit n\'est plus reconnu comme tel');
       const nus = [];
       net.split('\n').forEach((l, i) => {
-        const m = l.match(/throw new Error\([^;]*/);
+        // Deux formes, et la seconde est le jumeau écrit à la main que la première ne voyait pas
+        // (10.14.0) : `const err = new Error(…); err.code = 'X'; throw err;` porte un code, mais pas
+        // `refus: true` — l'enveloppe l'inscrivait donc au journal comme une PANNE. Quinze refus des
+        // licences et des clés de l'éditeur remplissaient `main.log` à chaque clé mal collée.
+        const m = l.match(/throw new Error\([^;]*/) || l.match(/const \w+ = new Error\(/) || l.match(/\berr\.code = '/);
         if (!m) return;
         if (INTERNES.some(x => l.includes(x))) return;
         nus.push(nom + ':' + (i + 1) + ' ' + l.trim().slice(0, 80));
