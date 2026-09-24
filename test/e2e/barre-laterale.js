@@ -67,7 +67,9 @@ const ECRANS = [[1680, 1050], [1440, 900], [1366, 768], [1280, 800]];
   const mesurer = async () => win.evaluate(() => {
     const nav = document.querySelector('nav');
     const boite = nav.getBoundingClientRect();
-    const hors = [...nav.querySelectorAll('a')]
+    // Une entrée d'une famille REPLIÉE n'est pas « hors champ » : elle est rangée, et l'intertitre
+    // qui l'ouvre est, lui, mesuré (10.13.0). Seules comptent les entrées affichées.
+    const hors = [...nav.querySelectorAll('a')].filter(a => a.offsetParent)
       .filter(a => { const b = a.getBoundingClientRect(); return b.bottom > boite.bottom + 1 || b.top < boite.top - 1; })
       .map(a => a.textContent.trim());
     const visible = el => {
@@ -77,7 +79,8 @@ const ECRANS = [[1680, 1050], [1440, 900], [1366, 768], [1280, 800]];
     };
     return {
       besoin: nav.scrollHeight, place: nav.clientHeight, hors,
-      liens: nav.querySelectorAll('a').length,
+      liens: [...nav.querySelectorAll('a')].filter(a => a.offsetParent).length,
+      rangees: [...nav.querySelectorAll('a')].filter(a => !a.offsetParent).length,
       deborde: nav.classList.contains('deborde'),
       parametres: visible(document.querySelector('.sidebar-foot a[data-route="parametres"]')),
       aide: visible(document.querySelector('.sidebar-foot a[data-route="aide"]')),
@@ -102,6 +105,45 @@ const ECRANS = [[1680, 1050], [1440, 900], [1366, 768], [1280, 800]];
     j.ok(`${L}×${H} : Aide, Paramètres, « Tous les modules » et la recherche atteignables · nav ${m.besoin}px / ${m.place}px`
       + (m.hors.length ? ` · ${m.hors.length} entrée(s) à faire défiler` : ' · tout tient'));
   }
+
+  j.etape('Les familles se replient : la barre tient, et rien n\'est perdu');
+  // Skander : « il y a trop d'onglets ». Avec TOUS les modules cochés (le pire cas), la barre
+  // demandait 870 px pour 705. Chaque famille se replie sur son intertitre ; au premier jour,
+  // « Vendre » seule est ouverte. Tout se fait à la VRAIE souris, sur l'intertitre.
+  await win.setViewportSize({ width: 1440, height: 900 });
+  await win.evaluate(() => { localStorage.removeItem('skanfact.navFamilles'); location.hash = '#/devis'; });
+  await win.waitForSelector('#view h1'); await win.evaluate(() => { location.hash = '#/dashboard'; });
+  await win.waitForSelector('#view h1'); await win.waitForTimeout(200);
+  const etatFam = () => win.evaluate(() => Object.fromEntries([...document.querySelectorAll('#nav .nav-fam')].map(f => [f.dataset.famille, !f.classList.contains('repliee')])));
+  const auDebut = await etatFam();
+  if (!auDebut.Vendre || Object.entries(auDebut).some(([f, o]) => f !== 'Vendre' && o)) throw new Error('au premier jour, seule « Vendre » doit être ouverte : ' + JSON.stringify(auDebut));
+  const repos = await mesurer();
+  if (repos.deborde || repos.hors.length) throw new Error(`avec tous les modules, la barre repliée déborde encore (${repos.besoin}px pour ${repos.place}px)`);
+  if (!repos.rangees) throw new Error('aucune entrée n\'est rangée dans une famille repliée : la mesure ne voit pas le repli');
+  const cliquerFamille = async f => {
+    const b = await win.$eval(`#nav button.nav-group[data-famille="${f}"]`, e => { const r = e.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; });
+    await win.mouse.click(b.x, b.y); await win.waitForTimeout(150);
+  };
+  await cliquerFamille('Piloter');
+  const ouvert = await win.evaluate(() => ({ aria: document.querySelector('#nav button.nav-group[data-famille="Piloter"]').getAttribute('aria-expanded'),
+    paie: !!document.querySelector('#nav a[data-route="paie"]').offsetParent, pref: JSON.parse(localStorage.getItem('skanfact.navFamilles') || '{}') }));
+  if (ouvert.aria !== 'true' || !ouvert.paie) throw new Error('cliquer « Piloter » n\'ouvre pas la famille');
+  if (ouvert.pref.Piloter !== true) throw new Error('le choix n\'est pas retenu : la famille se refermerait à la page suivante');
+  await win.evaluate(() => { location.hash = '#/devis'; }); await win.waitForSelector('#view h1'); await win.waitForTimeout(150);
+  if (!(await etatFam()).Piloter) throw new Error('une famille ouverte par l\'utilisateur s\'est refermée en changeant de page');
+  await cliquerFamille('Piloter');
+  if ((await etatFam()).Piloter) throw new Error('recliquer « Piloter » ne la replie pas');
+  // Aller sur une page d'une famille repliée l'ouvre le temps d'y être, SANS en faire un choix.
+  await win.evaluate(() => { location.hash = '#/tresorerie'; }); await win.waitForSelector('#view h1'); await win.waitForTimeout(150);
+  const surTreso = await win.evaluate(() => ({ visible: !!(document.querySelector('nav a.active') || {}).offsetParent, pref: JSON.parse(localStorage.getItem('skanfact.navFamilles') || '{}') }));
+  if (!surTreso.visible) throw new Error('sur Trésorerie, l\'entrée allumée est rangée dans une famille repliée : on ne voit pas où vit la page');
+  if (surTreso.pref.Piloter !== false) throw new Error('visiter une page a changé le choix de l\'utilisateur');
+  await win.evaluate(() => { location.hash = '#/factures'; }); await win.waitForSelector('#view h1'); await win.waitForTimeout(150);
+  if ((await etatFam()).Piloter) throw new Error('quittée, la famille ouverte « le temps d\'y être » reste ouverte : la barre se remplirait au fil de la journée');
+  // Une famille d'UNE entrée n'a pas d'intertitre à cliquer : un clic pour une seule ligne ne sert à rien.
+  const seules = await win.evaluate(() => [...document.querySelectorAll('#nav .nav-fam')].filter(f => f.querySelectorAll('a').length < 2).map(f => f.dataset.famille));
+  if (seules.length) throw new Error('famille(s) repliable(s) d\'une seule entrée : ' + seules.join(', '));
+  j.ok(`${repos.liens} entrées affichées, ${repos.rangees} rangées, ${repos.besoin}px pour ${repos.place}px · « Piloter » s'ouvre, se retient, se replie ; Trésorerie l'ouvre le temps d'y être`);
 
   j.etape('L\'entrée allumée est toujours dans le champ');
   // `drawNav` réécrit nav.innerHTML à chaque navigation, ce qui remet le défilement à zéro : sur les
@@ -228,6 +270,12 @@ const ECRANS = [[1680, 1050], [1440, 900], [1366, 768], [1280, 800]];
     await win.evaluate(() => { location.hash = '#/dashboard'; });
     await win.waitForSelector('#view h1');
     await win.waitForTimeout(300);
+    // Toutes les familles ouvertes, à la souris : on mesure chaque entrée, pas seulement celles de
+    // « Vendre » (10.13.0 — les autres sont repliées au premier jour).
+    for (const f of await win.$$eval('#nav button.nav-group[aria-expanded="false"]', l => l.map(b => b.dataset.famille))) {
+      const b = await win.$eval(`#nav button.nav-group[data-famille="${f}"]`, e => { const r = e.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; });
+      await win.mouse.click(b.x, b.y); await win.waitForTimeout(100);
+    }
     const defile = await win.evaluate(() => { const n = document.querySelector('nav'); return n.scrollHeight > n.clientHeight + 1; });
     if (defile) throw new Error(`${quand}, ${L}×${H} : la barre défile — une entrée peut y être sur deux lignes au repos, et la mesure ne verrait plus le gras`);
     const auRepos = await win.evaluate(() => [...document.querySelectorAll('nav a[href^="#/"]')].filter(a => a.offsetParent && !a.classList.contains('active'))

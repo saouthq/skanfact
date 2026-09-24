@@ -713,6 +713,20 @@
     return PAGES.filter(p => !p.horsMenu && !p.pied && (!p.module || moduleOn(data, p.module)));
   }
 
+  // Une famille de la barre est-elle ouverte ? (10.13.0) — pure, pour que la règle se teste sans
+  // écran. `etat` est ce que l'utilisateur a choisi en cliquant les intertitres ; `active` la famille
+  // de la page ouverte ; `repliIci` la famille qu'il a repliée alors qu'il était DANS cette page.
+  //   - un choix de l'utilisateur fait foi ;
+  //   - sans choix, « Vendre » est ouverte (le geste de tous les jours), les autres repliées ;
+  //   - la famille de la page ouverte s'ouvre le temps d'y être, SANS toucher au choix — sauf si
+  //     l'utilisateur vient de la replier sur cette page même.
+  const FAMILLES_OUVERTES_AU_DEBUT = ['Vendre'];
+  function familleNavOuverte(famille, etat, active, repliIci) {
+    const choisi = etat && Object.prototype.hasOwnProperty.call(etat, famille) ? !!etat[famille] : FAMILLES_OUVERTES_AU_DEBUT.includes(famille);
+    if (choisi) return true;
+    return !!active && famille === active && repliIci !== famille;
+  }
+
   // Ce que l'assistant de première utilisation allume selon le métier déclaré. Rien n'est imposé :
   // l'écran « Qu'est-ce que tu fais ? » propose ces cases cochées, et l'utilisateur décoche.
   // Un métier absent de cette table n'allume que les trois modules `toujours` : l'application reste
@@ -7182,7 +7196,7 @@
     purchaseTotals, purchaseBalance, purchaseStatus, achatDoublon, facturesDuDevis, payablesList, purchaseJournal, purchaseSummary, supplierSummary, withholdingsToIssue, supplierPayments,
     periodBounds, issuedIn, salesTotals, revenueByMonth, topItems, clientMovement, AGING_BUCKETS, agedReceivables, releveClient, releveHtml, payerRanking, quoteFunnel, objectiveProgress,
     amountToWords, intToWords, intToWordsEn, documentHtml, fitToPage, paginate, pageCount,
-    MODULES, PAGES, moduleById, pageById, pageTitle, moduleCount, moduleCounts, modulesRevenus, moduleOn, moduleWhy, navPages,
+    MODULES, PAGES, moduleById, pageById, pageTitle, moduleCount, moduleCounts, modulesRevenus, moduleOn, moduleWhy, navPages, familleNavOuverte, FAMILLES_OUVERTES_AU_DEBUT,
     sousModuleOn, sousModuleById, sousModules, OPTION_LABELS,
     MODULES_PAR_ACTIVITE, modulesSuggeres, wipeData, rendreLesEmprunts, estDemo, exemplePerime, firstSteps, liste, defaultVat, seuilRetenue, newLine,
     canalDe, estBeta, pastilleLicence, empreinteCabinet, licencesDuCabinet,

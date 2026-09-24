@@ -2519,7 +2519,11 @@ t('La barre latérale décide de défiler sur sa mise en page SANS barre de déf
     'la mesure se fait avec la barre de défilement encore là : elle compte les libellés qu\'elle a elle-même fait passer à la ligne');
   assert.ok(/addEventListener\('resize', \(\) => \{ clearTimeout\(navTimer\); navTimer = setTimeout\(ajusterNav, \d+\); \}\)/.test(ent),
     'une fenêtre qu\'on rétrécit cacherait le bas de la liste sans rien pour la faire défiler');
-  assert.ok(/nav\.innerHTML = html;\s*ajusterNav\(\);/.test(ent), 'le dessin de la barre ne la mesure plus');
+  // La RÈGLE, pas la ligne : le dessin mesure APRÈS avoir posé la barre. La forme exacte recopiée
+  // est tombée le jour où le dessin a gagné le compte des familles repliées (10.13.0).
+  const dessin = tranche(ent, 'function drawNav(');
+  const pose = dessin.indexOf('nav.innerHTML = html;');
+  assert.ok(pose > 0 && dessin.indexOf('ajusterNav();', pose) > pose, 'le dessin de la barre ne la mesure plus');
 });
 
 // Trouvé au test humain de l'app entreprise, sur la fiche « Nouveau client » : la légende

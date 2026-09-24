@@ -240,4 +240,46 @@ module.exports = ({ t, assert, lireSource }) => {
     assert.ok(/box-sizing:\s*border-box/.test(regle('.lm-pop')), 'la liste ouverte dépasse son champ de sa bordure et de son rembourrage');
     assert.ok(/border:\s*1px solid/.test(regle('body.dark .modal')), 'en sombre, le bord d\'une fenêtre ne se voit pas');
   });
+
+  // ---------------------------------------------------------------- la barre latérale
+  t('10.13.0 : une famille de la barre s\'ouvre selon le CHOIX de l\'utilisateur, et celle de la page ouverte le temps d\'y être', () => {
+    // Skander : « trop d'onglets ». Dix-huit entrées pour 705 px ; chaque famille se replie sur son
+    // intertitre. Les cas qui discriminent : un choix, pas de choix, la page ouverte, et le repli
+    // demandé sur la page même.
+    const C = require(path.join(RACINE, 'src', 'renderer', 'core.js'));
+    const o = C.familleNavOuverte;
+    assert.deepStrictEqual(C.FAMILLES_OUVERTES_AU_DEBUT, ['Vendre'], 'au premier jour, seule « Vendre » (le geste quotidien) est ouverte');
+    assert.strictEqual(o('Vendre', {}, null, null), true);
+    assert.strictEqual(o('Piloter', {}, null, null), false, 'une famille jamais touchée est repliée');
+    assert.strictEqual(o('Vendre', { Vendre: false }, null, null), false, 'un choix de l\'utilisateur fait foi, même sur « Vendre »');
+    assert.strictEqual(o('Piloter', { Piloter: true }, null, null), true);
+    // La page ouverte ouvre sa famille — sans en faire un choix.
+    assert.strictEqual(o('Piloter', {}, 'Piloter', null), true, 'on voit toujours où vit la page ouverte');
+    assert.strictEqual(o('Piloter', { Piloter: false }, 'Piloter', null), true, 'même repliée par choix, la famille de la page ouverte se montre');
+    assert.strictEqual(o('Piloter', { Piloter: false }, 'Piloter', 'Piloter'), false, 'repliée à la main SUR cette page : on respecte le geste');
+    assert.strictEqual(o('Acheter', {}, 'Piloter', null), false, 'la page ouverte n\'ouvre que SA famille');
+  });
+
+  t('10.13.0 : seul un clic sur l\'intertitre change ce que la barre retient, et une famille repliée porte le compte de ce qui attend', () => {
+    const src = code(lireSource('src', 'renderer', 'app.js'));
+    const i = src.indexOf('function drawNav(');
+    const dessin = src.slice(i, src.indexOf('\n  }\n', i));
+    assert.ok(dessin.length > 1500 && dessin.length < 9000, 'tranche de drawNav suspecte (' + dessin.length + ')');
+    // Le dessin ne décide pas : il demande à la règle pure, et n'écrit RIEN — sinon chaque page
+    // visitée rouvrirait sa famille pour de bon, et la barre se remplirait de nouveau.
+    assert.ok(/C\.familleNavOuverte\(/.test(dessin), 'drawNav ne passe plus par la règle testée');
+    assert.ok(!/prefs\.set\(/.test(dessin), 'drawNav retient un état : visiter une page rouvrirait sa famille pour toujours');
+    // L'intertitre repliable est un BOUTON qui dit son état — et une famille d'une entrée n'en a pas.
+    assert.ok(/<button type="button" class="nav-group" data-famille="[^"]*" aria-expanded="\$\{ouverte\}"/.test(dessin), 'l\'intertitre d\'une famille n\'est pas un bouton qui dit s\'il est ouvert');
+    assert.ok(/g\.pages\.length < 2/.test(dessin), 'une famille d\'une seule entrée se replierait : un clic pour découvrir une ligne');
+    // Un seul endroit écrit le choix : le clic.
+    const toutes = [...src.matchAll(/prefs\.set\('navFamilles'/g)].length;
+    const bascule = src.slice(src.indexOf('function basculerFamille('), src.indexOf('function resumerFamilles('));
+    assert.ok(toutes === 1 && /prefs\.set\('navFamilles'/.test(bascule), 'le choix des familles s\'écrit ailleurs que sur le clic de l\'intertitre (' + toutes + ')');
+    // Le compte de la famille repliée suit les compteurs : il se refait à chaque mise à jour.
+    const maj = src.slice(src.indexOf('function updateNavCounts('), src.indexOf('function updateNavCounts(') + 4000);
+    assert.ok(/resumerFamilles\(\)/.test(maj), 'un compteur qui change ne se voit plus sur sa famille repliée');
+    // « À faire » crie une déclaration sociale en retard : l'entrée Paie la compte aussi.
+    assert.ok(/C\.socialDue\(data, t\)\.filter\(x => x\.late\)/.test(maj), 'le compteur de Paie ignore les déclarations sociales en retard');
+  });
 };

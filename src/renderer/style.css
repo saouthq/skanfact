@@ -109,6 +109,22 @@ body.dark nav.deborde::-webkit-scrollbar-thumb { background: #3c4654; }
 .nav-group { font-size: 10px; text-transform: uppercase; letter-spacing: 1.2px; color: #aab3be; font-weight: 700; padding: 12px 12px 3px; }
 .nav-group:first-child { padding-top: 4px; }
 body.dark .nav-group { color: #6c7785; }
+/* 10.13.0 — une famille se replie sur son intertitre. L'intertitre devient un BOUTON, et il le dit
+   au repos par trois signes (7.14.0) : le chevron, le curseur, et un fond au survol. Replié, il porte
+   le compte de ce qui attend dedans (`.ng-count`), à la place exacte des compteurs des entrées. */
+.nav-fam, .nav-fam-liens { display: flex; flex-direction: column; gap: 2px; }
+button.nav-group {
+  display: flex; align-items: center; gap: 6px; width: 100%; margin-top: 8px; padding: 5px 12px 4px 8px;
+  background: none; border: none; border-radius: 8px; cursor: pointer; text-align: start; font-family: inherit;
+}
+.nav-fam:first-child > button.nav-group { margin-top: 0; }
+button.nav-group:hover { background: var(--ink-soft); color: var(--muted); }
+button.nav-group:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+.nav-group .ng-chev { width: 12px; height: 12px; flex: none; stroke: currentColor; fill: none; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; transform: rotate(90deg); transition: transform .15s; }
+.nav-fam.repliee .ng-chev { transform: rotate(0deg); }
+.nav-group .ng-nom { flex: 1 1 auto; }
+.nav-group .ng-count { text-transform: none; letter-spacing: 0; font-size: 11px; }
+@media (prefers-reduced-motion: reduce) { .nav-group .ng-chev { transition: none; } }
 nav a {
   color: #4b5563; text-decoration: none; padding: 8px 12px; border-radius: 10px; font-weight: 500;
   display: flex; align-items: center; gap: 10px; transition: background .12s, color .12s;

@@ -1591,13 +1591,45 @@
     toast('Dossier rejoint : ' + (r.dossier && r.dossier.name));
   }
 
+  // ---------- la barre latérale : des familles qui se replient (10.13.0) ----------
+  //
+  // Skander : « il y a trop d'onglets, peut-être une refonte ». Mesuré avec l'exemple : dix-huit
+  // entrées sous trois intertitres, 870 px de barre pour 705 de place à 1440×900 — la liste défilait,
+  // et la moitié de ce qu'on regardait ne servait pas ce jour-là. On ne retire aucune page (on ne
+  // masque jamais ce qui existe, 7.0.0) : chaque FAMILLE se replie sur son intertitre, et c'est
+  // l'intertitre qui porte ce qui compte quand elle est repliée — le compte de ce qui attend dedans.
+  //
+  // Trois règles, et aucune ne fait bouger la barre toute seule :
+  //   - la famille de la page ouverte est ouverte le temps d'y être (on voit où l'on est, 10.12.0),
+  //     SANS changer le réglage : sinon chaque page visitée rouvrirait sa famille pour de bon, et la
+  //     barre se remplirait de nouveau au fil de la journée (vu à la souris, par la palette) ;
+  //   - seul un clic sur l'intertitre change ce qui est retenu — et replier la famille où l'on est
+  //     est respecté tant qu'on reste sur cette page ;
+  //   - au premier jour, « Vendre » est ouverte (le geste quotidien), les autres repliées.
+  // Une famille d'UNE entrée ne se replie pas : un clic pour découvrir une seule ligne ne sert à rien.
+  // La règle vit dans core.js (`familleNavOuverte`), pure et testée ; ici, seulement l'écran.
+  let navActif = null;
+  let repliIci = null;              // { famille, page } : la famille de la page ouverte, repliée à la main
+  const CHEVRON_FAMILLE = '<svg class="ng-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>';
+
   function drawNav() {
-    const pages = C.navPages(data);
+    const pages = C.navPages(data).slice();
+    // La page de l'ÉDITEUR de SkanFact : elle n'existe que sur le poste où vit la clé privée de
+    // signature. Elle n'est pas un module (elle ne se coche pas, elle ne dépend pas du dossier).
+    if (licence.editeur) pages.push({ ...C.pageById('licences'), famille: 'Éditeur' });
     // Groupé par FAMILLE, pas par module : huit intertitres coûteraient 250 px de barre, et on aurait
     // remplacé un débordement par un autre.
-    let html = '', famille = '§';
+    const familles = [];
     pages.forEach(p => {
-      if (p.famille && p.famille !== famille) { famille = p.famille; html += `<div class="nav-group">${h(famille)}</div>`; }
+      const f = p.famille || '';
+      const g = familles.find(x => x.nom === f && x === familles[familles.length - 1]);
+      if (g) g.pages.push(p); else familles.push({ nom: f, pages: [p] });
+    });
+    const etat = prefs.get('navFamilles', null) || {};
+    const famActive = (pages.find(p => p.id === navActif) || {}).famille;
+    if (repliIci && repliIci.page !== navActif) repliIci = null;
+    const ouvrir = f => C.familleNavOuverte(f, etat, famActive, repliIci && repliIci.famille);
+    const lien = p => {
       const cid = NAV_COMPTEURS[p.id];
       // « Immobilisations », « Marges », « Trésorerie » : trois mots de gestion qu'un créateur
       // d'entreprise n'a jamais employés, et rien ne disait ce qu'il y avait derrière. La phrase
@@ -1612,23 +1644,75 @@
       const texte = p.quoi || (m && m.quoi) || '';
       const bulle = (texte + (ferme ? ' — Offre Entreprise : tu peux lire, pas créer.' : '')).trim();
       const quoi = bulle ? ` title="${h(bulle)}"` : '';
-      html += `<a href="#/${p.id}" data-route="${p.id}"${quoi}${p.famille ? '' : ' class="solo"'}>${icone(p.id)}${h(p.titre)}${ferme ? CADENAS : ''}`
+      return `<a href="#/${p.id}" data-route="${p.id}"${quoi}${p.famille ? '' : ' class="solo"'}>${icone(p.id)}${h(p.titre)}${ferme ? CADENAS : ''}`
         + (cid ? `<span class="nav-count${NAV_INFO.includes(p.id) ? ' info' : ''}" id="${cid}" hidden></span>` : '')
         + '</a>';
+    };
+    let html = '';
+    familles.forEach(g => {
+      if (!g.nom) { html += g.pages.map(lien).join(''); return; }
+      // Une famille d'une seule entrée garde son intertitre, sans rien à replier.
+      if (g.pages.length < 2) { html += `<div class="nav-group" data-famille="${h(g.nom)}">${h(g.nom)}</div>${g.pages.map(lien).join('')}`; return; }
+      const ouverte = ouvrir(g.nom);
+      // L'infobulle d'une famille repliée nomme ce qu'elle contient : sans elle, « Piloter » ne dit
+      // pas qu'on y trouve la paie.
+      const contenu = g.pages.map(p => p.titre).join(', ');
+      html += `<div class="nav-fam${ouverte ? '' : ' repliee'}" data-famille="${h(g.nom)}">`
+        + `<button type="button" class="nav-group" data-famille="${h(g.nom)}" aria-expanded="${ouverte}" title="${h((ouverte ? 'Replier : ' : 'Ouvrir : ') + contenu)}">`
+        + `${CHEVRON_FAMILLE}<span class="ng-nom">${h(g.nom)}</span><span class="nav-count ng-count" hidden></span></button>`
+        + `<div class="nav-fam-liens"${ouverte ? '' : ' hidden'}>${g.pages.map(lien).join('')}</div></div>`;
     });
-    // La page de l'ÉDITEUR de SkanFact : elle n'existe que sur le poste où vit la clé privée de
-    // signature. Elle n'est pas un module (elle ne se coche pas, elle ne dépend pas du dossier).
-    if (licence.editeur) {
-      const p = C.pageById('licences');
-      html += `<div class="nav-group">Éditeur</div><a href="#/licences" data-route="licences" title="${h(p.quoi || '')}">${icone('licences')}${h(p.titre)}<span class="nav-count" id="nav-licences" hidden></span></a>`;
-    }
     // « Tous les modules » vivait ici, en dernier : donc la première entrée à passer sous la coupe,
     // et mesurée hors champ dès 1366×768. C'est la porte de ce qui n'est pas affiché — elle est
     // maintenant dans le pied de la barre (index.html), qui ne défile jamais.
     const nav = $('#nav');
     nav.innerHTML = html;
+    resumerFamilles();
     ajusterNav();
   }
+  // Ouvrir ou replier une famille : le geste de l'utilisateur, et le seul qui replie.
+  function basculerFamille(famille) {
+    const bloc = $$('#nav .nav-fam').find(x => x.dataset.famille === famille);
+    if (!bloc) return;
+    // On part de ce qui est AFFICHÉ : la famille de la page ouverte peut être ouverte sans l'être
+    // dans le réglage, et le clic doit la replier, pas la « rouvrir ».
+    const etat = prefs.get('navFamilles', null) || {};
+    etat[famille] = bloc.classList.contains('repliee');
+    prefs.set('navFamilles', etat);
+    const page = $$('#nav a.active').map(a => a.closest('.nav-fam')).find(Boolean);
+    repliIci = !etat[famille] && page === bloc ? { famille, page: navActif } : null;
+    bloc.classList.toggle('repliee', !etat[famille]);
+    $('.nav-fam-liens', bloc).hidden = !etat[famille];
+    const b = $('.nav-group', bloc);
+    b.setAttribute('aria-expanded', String(!!etat[famille]));
+    b.title = b.title.replace(/^(Replier|Ouvrir) : /, etat[famille] ? 'Replier : ' : 'Ouvrir : ');
+    resumerFamilles();
+    ajusterNav();
+  }
+  // L'intertitre d'une famille repliée porte le compte de ce qui attend dedans : sans lui, trois
+  // factures fournisseurs en retard disparaîtraient avec la famille « Acheter ». Une alerte l'emporte
+  // sur une information (orange avant bleu), et « ! » (un trou de trésorerie) se dit tel quel.
+  function resumerFamilles() {
+    $$('#nav .nav-fam').forEach(bloc => {
+      const pastille = $('.ng-count', bloc);
+      if (!pastille) return;
+      const repliee = bloc.classList.contains('repliee');
+      const alertes = $$('.nav-fam-liens .nav-count:not([hidden]):not(.info)', bloc);
+      const infos = $$('.nav-fam-liens .nav-count.info:not([hidden])', bloc);
+      const somme = l => l.reduce((n, c) => n + (Number(c.textContent) || 0), 0);
+      const liste = alertes.length ? alertes : infos;
+      const n = somme(liste);
+      const texte = n ? String(n) : (liste.length ? '!' : '');
+      pastille.hidden = !repliee || !texte;
+      pastille.textContent = texte;
+      pastille.classList.toggle('info', !alertes.length && !!infos.length);
+    });
+  }
+  // Délégation : la barre est redessinée à chaque page, les boutons avec elle.
+  document.getElementById('nav').addEventListener('click', e => {
+    const b = e.target.closest('button.nav-group[data-famille]');
+    if (b) { e.preventDefault(); basculerFamille(b.dataset.famille); }
+  });
 
   // Une barre qui défile doit AVOIR L'AIR de défiler. Sur macOS, la barre de défilement est cachée
   // tant qu'on ne fait pas défiler : Skander a donc regardé pendant des semaines une liste qui
@@ -1876,6 +1960,7 @@
     else if (name === 'salarie') active = 'paie';
     // La barre se redessine à chaque navigation : un module qui vient de recevoir sa première ligne
     // doit apparaître tout de suite, pas au prochain démarrage.
+    navActif = active;
     drawNav();
     // La licence est attachée au matricule : si celui-ci a changé par un chemin qui remplace les
     // données (import, restauration, exemple, effacement, assistant rejoué), on la relit — sans
@@ -5698,11 +5783,15 @@
     if (pay) {
       const t = C.today();
       const prev = C.addMonths(t.slice(0, 7) + '-01', -1, 1);
-      const n = data.employees.length ? C.missingPayslips(data, Number(prev.slice(0, 4)), Number(prev.slice(5, 7))).length : 0;
+      // Les bulletins du mois dernier ET les déclarations sociales en retard (10.13.0) : « À faire »
+      // criait en rouge « 1 déclaration sociale à déposer » pendant que l'entrée Paie ne portait rien.
+      const n = data.employees.length ? C.missingPayslips(data, Number(prev.slice(0, 4)), Number(prev.slice(5, 7))).length
+        + C.socialDue(data, t).filter(x => x.late).length : 0;
       pay.hidden = !n; pay.textContent = n;
     }
     const stk = $('#nav-stock');
     if (stk) { const n = C.stockAlerts(data).length + C.serialGaps(data).length; stk.hidden = !n; stk.textContent = n; }
+    resumerFamilles();              // une famille repliée porte le compte de ce qui attend dedans
     montrerEntreeActive();          // un compteur qui paraît peut faire passer une entrée sur deux lignes
   }
 

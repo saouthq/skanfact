@@ -2146,7 +2146,9 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
     // Depuis la 7.0.0, les intertitres sont des VERBES et viennent de core.PAGES : « Fichiers » a
     // disparu parce que personne ne cherche un client dans « Fichiers ». On les compare à la source
     // plutôt qu'à une liste écrite ici, qui se périmerait au prochain module ajouté.
-    const groups = await win.evaluate(() => Array.from(document.querySelectorAll('.nav-group')).map(g => g.textContent));
+    // Par leur NOM (`data-famille`), pas leur texte : depuis la 10.13.0 l'intertitre d'une famille
+    // repliable porte aussi le compte de ce qui attend dedans.
+    const groups = await win.evaluate(() => Array.from(document.querySelectorAll('.nav-group')).map(g => g.dataset.famille));
     const attendus = [...new Set(require('../../src/renderer/core.js').PAGES.filter(p => p.famille && !p.horsMenu).map(p => p.famille))];
     if (groups.join(',') !== attendus.join(',')) throw new Error(`intertitres « ${groups.join(',')} », attendus « ${attendus.join(',')} »`);
     // Paramètres et Aide ne doivent JAMAIS être dans nav : c'est ce qui les faisait sortir de l'écran.

@@ -4248,8 +4248,11 @@ t('éditeur : le renderer relit la licence avec le matricule, et la page Licence
   const p = core.PAGES.find(x => x.id === 'licences');
   assert.ok(p && p.horsMenu && p.titre === 'Licences', 'la page licences doit être déclarée hors menu');
   const nav = app.slice(app.indexOf('function drawNav()'), app.indexOf('function bandeauModule('));
-  const lien = nav.indexOf('href="#/licences"');
-  assert.ok(lien > 0 && nav.lastIndexOf('if (licence.editeur)', lien) > 0, 'le lien Licences doit être sous `if (licence.editeur)`');
+  // Depuis la 10.13.0 le lien est fabriqué par la même fonction que les autres (familles
+  // repliables) : c'est l'AJOUT de la page à la barre qui doit rester sous `if (licence.editeur)`.
+  const lien = nav.search(/pages\.push\(\{ \.\.\.C\.pageById\('licences'\)/);
+  assert.ok(lien > 0 && nav.lastIndexOf('if (licence.editeur)', lien) > nav.lastIndexOf('\n', lien) - 40, 'la page Licences ne doit entrer dans la barre que sous `if (licence.editeur)`');
+  assert.ok(!/href="#\/licences"/.test(nav), 'le lien Licences est de nouveau écrit à la main, hors de la règle des familles');
   assert.ok(/routes\.licences = \(\) => \{/.test(app) && /const peut = !!licence\.editeur;/.test(app.slice(app.indexOf('routes.licences = '))) && /if \(!peut && !\(data\.licences \|\| \[\]\)\.length\) \{/.test(app), 'la route existe, ne montre l\'état vide que sans clé ET sans historique, et n\'émet que chez l\'éditeur');
   // Le panneau Éditeur n'est posé que chez lui ; la palette et les modèles d'email aussi.
   assert.ok(/\$\{licence\.editeur \? `\$\{panneau\('p-editeur'/.test(app), 'le panneau p-editeur doit être conditionnel');
