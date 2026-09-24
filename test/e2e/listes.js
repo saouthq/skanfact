@@ -70,15 +70,26 @@ const SONDE_CHEVRON = () => [...document.querySelectorAll('select:not([multiple]
   await win.setViewportSize({ width: 1440, height: 900 });
   const attendre = (ms = 300) => win.waitForTimeout(ms);
 
-  j.etape('Une question se pose à la hauteur de ce qu\'elle concerne');
+  j.etape('Une question courte se pose au centre du regard, PAR-DESSUS ce qu\'elle concerne');
+  // 7 % pour les questions, centré pour l'assistant : « Passer la suite ? » s'ouvrait au-dessus de
+  // l'assistant qu'elle concernait. Puis, tout ancré à 10 % : Skander, « trop haut, ça devrait être
+  // au milieu ». La règle (placement.js) : centre optique à l'ouverture, puis immobile.
   await win.waitForSelector('#setup .setup-card');
   await win.click('#sf-skip');
   await win.waitForSelector('#modal-root .modal');
-  const hauteurs = await win.evaluate(() => ({ carte: Math.round(document.querySelector('#setup .setup-card').getBoundingClientRect().top), question: Math.round(document.querySelector('#modal-root .modal').getBoundingClientRect().top) }));
-  if (Math.abs(hauteurs.carte - hauteurs.question) > 2) throw new Error(`la question « Passer ? » s'ouvre à ${hauteurs.question} px, l'assistant qu'elle concerne à ${hauteurs.carte} px`);
+  await win.waitForTimeout(150);
+  const pos = await win.evaluate(() => {
+    const c = document.querySelector('#setup .setup-card').getBoundingClientRect();
+    const q = document.querySelector('#modal-root .modal').getBoundingClientRect();
+    return { carteHaut: Math.round(c.top), carteBas: Math.round(c.bottom), haut: Math.round(q.top), bas: Math.round(q.bottom), h: Math.round(q.height), H: window.innerHeight };
+  });
+  // Le centre de la question entre 38 et 46 % de l'écran : au-dessus du milieu géométrique, jamais collée en haut.
+  const centre = (pos.haut + pos.h / 2) / pos.H;
+  if (centre < 0.38 || centre > 0.46) throw new Error(`la question « Passer ? » a son centre à ${Math.round(centre * 100)} % de l'écran (haut ${pos.haut} px) : pas au centre optique`);
+  if (pos.haut < pos.carteHaut || pos.bas > pos.carteBas) throw new Error(`la question (${pos.haut}–${pos.bas}) déborde de l'assistant qu'elle concerne (${pos.carteHaut}–${pos.carteBas})`);
   await win.click('#modal-root .modal-actions .btn:not(.btn-primary)');
   await win.waitForFunction(() => !document.querySelector('#modal-root .modal'));
-  j.ok(`assistant et question à ${hauteurs.carte} px`);
+  j.ok(`question centrée à ${Math.round(centre * 100)} % de l'écran, par-dessus l'assistant (${pos.carteHaut}–${pos.carteBas} px)`);
 
   j.etape('Une entreprise, et l\'exemple chargé');
   await win.waitForSelector('#setup');
@@ -154,6 +165,43 @@ const SONDE_CHEVRON = () => [...document.querySelectorAll('select:not([multiple]
   await win.click('#info-pop .ip-more a');
   await win.waitForFunction(() => /^#\/aide\//.test(location.hash) && !document.querySelector('#info-pop'));
   j.ok('« Raison sociale » cliqué : curseur dans la case ; la bulle du RC mène à ' + await win.evaluate(() => location.hash));
+
+  j.etape('Un libellé qui n\'est pas un <label> pose aussi le curseur, et la liste des clients garde son « + Nouveau client »');
+  // Vu à la souris (10.13.0) : le libellé « Client » d'une facture vit dans une rangée à côté de
+  // « Modifier la fiche », hors de tout <label> — cliquer ses mots ne faisait rien, et Espace
+  // faisait défiler la page au lieu d'ouvrir la liste.
+  await win.evaluate(() => { location.hash = '#/doc/new/facture'; });
+  await win.waitForSelector('[data-combo=clientId] .combo-btn');
+  await win.evaluate(() => { const f = document.querySelector('[data-combo=clientId]').closest('.field'); f.id = 'lb-client-e2e'; });
+  await cliquerMots(win, '#lb-client-e2e');
+  await attendre(200);
+  const surClient = await win.evaluate(() => ({ focus: document.activeElement && document.activeElement.className, pop: !!document.querySelector('#info-pop') }));
+  if (surClient.pop) throw new Error('cliquer les mots « Client » ouvre l\'explication');
+  if (surClient.focus !== 'combo-btn') throw new Error('cliquer les mots « Client » ne pose pas le curseur sur la liste des clients (focus : ' + surClient.focus + ')');
+  await win.keyboard.press('Space');
+  await win.waitForSelector('[data-combo=clientId] .combo-pop:not([hidden])', { timeout: 2000 }).catch(() => { throw new Error('Espace sur la liste des clients ne l\'ouvre pas'); });
+  // Le bouton de création lit son libellé dans le GABARIT : `bindCombo` ne le reçoit pas toujours,
+  // et le relire dans ses options le vidait — une bande blanche à la place du seul geste utile.
+  const creer = await win.$eval('[data-combo=clientId] .combo-add', b => b.textContent.trim());
+  if (!/^\+ Nouveau client/.test(creer)) throw new Error('le bouton de création de la liste des clients est vide ou faux : « ' + creer + ' »');
+  await win.keyboard.type('Atelier Neuf');
+  const creerNomme = await win.$eval('[data-combo=clientId] .combo-add', b => b.textContent.trim());
+  if (!/Nouveau client «\s*Atelier Neuf\s*»/.test(creerNomme)) throw new Error('le bouton de création ne nomme pas ce qu\'on vient de chercher : « ' + creerNomme + ' »');
+  await win.keyboard.press('Escape');
+  // Le triangle d'un combo et le chevron d'une liste sont le MÊME dessin, et une case cochée prend
+  // la couleur de l'application — pas le bleu du système.
+  const dessins = await win.evaluate(() => {
+    const c = getComputedStyle(document.querySelector('[data-combo=clientId] .combo-caret'));
+    const s = getComputedStyle(document.querySelector('#view select:not([multiple]):not([size])'));
+    const k = document.querySelector('#view input[type=checkbox]');
+    const primaire = getComputedStyle(document.body).getPropertyValue('--primary').trim();
+    return { caret: c.backgroundImage, taille: c.fontSize, chevron: s.backgroundImage, accent: k && getComputedStyle(k).accentColor, primaire };
+  });
+  const svgDe = u => (u.match(/<svg[\s\S]*?<\/svg>|%3Csvg[\s\S]*?%3C\/svg%3E/i) || [''])[0];
+  if (!/svg/.test(dessins.caret) || dessins.taille !== '0px') throw new Error('le triangle du combo est encore un caractère « ▾ », pas le chevron des listes');
+  if (svgDe(dessins.caret) !== svgDe(dessins.chevron)) throw new Error('le combo et la liste ne portent pas le même chevron');
+  if (!dessins.accent || dessins.accent === 'auto') throw new Error('une case cochée garde la couleur du système (accent-color : ' + dessins.accent + ')');
+  j.ok(`« Client » cliqué : curseur sur la liste ; « ${creerNomme} » ; même chevron partout ; cases en ${dessins.accent}`);
 
   j.etape('Chaque liste porte le chevron de SkanFact, en sombre et en clair');
   const PAGES = ['#/factures', '#/devis', '#/achats', '#/tresorerie', '#/stats', '#/paie', '#/parametres'];

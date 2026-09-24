@@ -119,18 +119,57 @@ module.exports = ({ t, assert, lireSource }) => {
     }
   });
 
-  // ---------------------------------------------------------------- une seule hauteur
-  t('10.13.0 : tout ce qui flotte par-dessus l\'application se pose à la MÊME hauteur', () => {
+  // ---------------------------------------------------------------- une seule règle de hauteur
+  t('10.13.0 : tout ce qui flotte part de la MÊME marge haute, et jamais centré par la feuille', () => {
     // Trois hauteurs coexistaient — questions à 7 %, palette à 12 %, assistant et verrou centrés —,
-    // et « Passer la suite ? » s'ouvrait au-dessus de l'assistant qu'elle concernait.
+    // et « Passer la suite ? » s'ouvrait au-dessus de l'assistant qu'elle concernait. La marge haute
+    // est commune ; ce qui décide de la hauteur d'une fenêtre, c'est `placement.js` (test suivant).
     const css = code(lireSource('src', 'renderer', 'style.css'));
     assert.ok(/--haut-fenetre:\s*\d+vh;/.test(css), 'la hauteur commune n\'est plus déclarée');
     for (const sel of ['.modal-bg', '#palette-root', '#setup', '#lock-screen']) {
       const m = css.match(new RegExp('^' + sel.replace(/[.#-]/g, c => '\\' + c) + ' \\{([^}]*)\\}', 'm'));
       assert.ok(m, sel + ' : règle introuvable');
-      assert.ok(/var\(--haut-fenetre\)/.test(m[1]), sel + ' : ne se pose pas à la hauteur commune');
-      assert.ok(/align-items:\s*flex-start/.test(m[1]), sel + ' : centré verticalement — il ne tombe plus à la hauteur de ses questions');
+      assert.ok(/var\(--haut-fenetre\)/.test(m[1]), sel + ' : ne part pas de la marge commune');
+      // Centrée par la feuille, une fenêtre se RECENTRE en grandissant : le bouton visé remonte sous
+      // le curseur (10.12.0). La position se décide une fois, à l'ouverture, par le script.
+      assert.ok(/align-items:\s*flex-start/.test(m[1]), sel + ' : centré par la feuille de style — il se recentrerait en grandissant');
     }
+  });
+
+  t('10.13.0 : une question courte se pose au CENTRE OPTIQUE, une fenêtre longue en haut, et rien ne redescend', () => {
+    // Skander : « le toast de confirmation est trop haut, il devrait être au milieu ». Montants
+    // calculés à la main sur un écran de 873 px (900 moins la barre de titre), marge haute 87 px
+    // (10 vh), marge basse 26 px (3 vh).
+    const P = require(path.join(RACINE, 'src', 'renderer', 'placement.js'));
+    assert.strictEqual(P.PART_AU_DESSUS, 0.4, 'quatre dixièmes au-dessus : le milieu que voit l\'œil, pas le milieu géométrique');
+    // Une confirmation de 162 px : (873 − 162) × 0,4 = 284,4 → 284. Son centre tombe à 365, soit 42 %.
+    assert.strictEqual(P.hautOptique(162, 873, 87, 26), 284);
+    // La fiche d'un client, 694 px : (873 − 694) × 0,4 = 71,6 → sous la marge : elle reste à 87.
+    assert.strictEqual(P.hautOptique(694, 873, 87, 26), 87);
+    // Sur un grand écran de 1400 px, une fenêtre de 700 : (1400 − 700) × 0,4 = 280.
+    assert.strictEqual(P.hautOptique(700, 1400, 140, 42), 280);
+    // Après l'ouverture : une fenêtre à 284 qui grandit à 500 px tient encore (284 + 500 < 847) : elle
+    // ne BOUGE PAS. À 650 px elle déborderait (284 + 650 = 934) : elle remonte à 873 − 26 − 650 = 197.
+    assert.strictEqual(P.hautApresCroissance(284, 500, 873, 87, 26), 284, 'une fenêtre qui grandit ne se recentre pas');
+    assert.strictEqual(P.hautApresCroissance(284, 650, 873, 87, 26), 197, 'elle remonte juste assez pour rester dans l\'écran');
+    // Et elle ne redescend JAMAIS : rétrécie à 100 px, elle reste où elle est.
+    assert.strictEqual(P.hautApresCroissance(197, 100, 873, 87, 26), 197, 'une fenêtre qui rétrécit ne redescend pas');
+    assert.strictEqual(P.hautApresCroissance(284, 900, 873, 87, 26), 87, 'jamais au-dessus de la marge haute');
+    // Ce qui est placé : les fenêtres et le verrou des DEUX applications, et ni la palette (son champ
+    // de recherche doit rester immobile quand les résultats changent) ni l'assistant (son en-tête
+    // sauterait d'une étape à l'autre).
+    assert.ok(/\.modal-bg > \.modal/.test(P.CIBLES) && /#lock-screen > \.lock-card/.test(P.CIBLES), 'placement.js ne vise plus les fenêtres et le verrou');
+    assert.ok(!/palette|#setup/.test(P.CIBLES), 'la palette et l\'assistant n\'ont rien à faire au centre : ils grandissent ou changent d\'étape');
+    // Trois branchements, comme tout fichier partagé (7.26.0, 7.29.0).
+    const ent = lireSource('src', 'renderer', 'index.html'), cab = lireSource('src', 'cabinet', 'renderer', 'index.html');
+    assert.ok(/<script src="placement\.js"><\/script>/.test(ent), 'l\'app entreprise ne charge pas placement.js');
+    assert.ok(/<script src="\.\.\/\.\.\/renderer\/placement\.js"><\/script>/.test(cab), 'le Cabinet ne charge pas placement.js');
+    assert.ok(/'src\/renderer\/placement\.js'/.test(code(lireSource('build', 'cabinet.config.js'))), 'le Cabinet construit n\'emporterait pas placement.js');
+    // La position posée ne vient QUE de la règle pure : un calcul recopié dans `placer` divergerait.
+    const src = code(lireSource('src', 'renderer', 'placement.js'));
+    const placer = src.slice(src.indexOf('function placer('), src.indexOf('const suivies'));
+    assert.ok(/hautOptique\(/.test(placer) && /hautApresCroissance\(/.test(placer), 'placer() ne passe plus par les deux règles testées');
+    assert.ok(!/0\.4|\/ ?2/.test(placer), 'placer() recalcule le centre à la main');
   });
 
   // ---------------------------------------------------------------- le libellé et son champ
@@ -148,5 +187,57 @@ module.exports = ({ t, assert, lireSource }) => {
     for (const f of [['src', 'renderer', 'app.js'], ['src', 'cabinet', 'renderer', 'app.js']]) {
       assert.ok(/const lbl = \(text, key\) => key \? `<span class="fl">\$\{text\} \$\{info\(key\)\}<\/span>` : text;/.test(lireSource(...f)), f.join('/') + ' : lbl() a changé de forme');
     }
+  });
+
+  // ---------------------------------------------------------------- revu à la souris (10.13.0)
+  t('10.13.0 : le bouton de création d\'une liste garde le libellé de son gabarit', () => {
+    // `combo({ add: '+ Nouveau client' })` écrit le bouton ; `bindCombo` ne reçoit pas toujours `add`.
+    // Le relire dans ses options le vidait à chaque dessin : une bande blanche sous « Aucun client
+    // pour l'instant », à l'endroit exact du seul geste utile — dans la 10.12.0 publiée.
+    const src = code(lireSource('src', 'renderer', 'app.js'));
+    const i = src.indexOf('function bindCombo(');
+    const corps = src.slice(i, src.indexOf('\n  }\n', i));
+    assert.ok(corps.length > 1500 && corps.length < 9000, 'tranche de bindCombo suspecte (' + corps.length + ')');
+    const poses = corps.match(/add\.textContent\s*=[^;]*/g) || [];
+    assert.ok(poses.length >= 1, 'bindCombo ne pose plus le libellé du bouton de création');
+    poses.forEach(p => assert.ok(!/\bo\.add\b/.test(p), 'le libellé du bouton de création se relit dans les options, qui ne le portent pas toujours : ' + p));
+    assert.ok(/add\.textContent\.trim\(\)/.test(corps), 'le libellé du bouton ne se lit plus dans le gabarit');
+  });
+
+  t('10.13.0 : « Revoir l\'assistant » emporte ce qui vient d\'être réglé, jamais à la poubelle', () => {
+    // Vu à la souris : « Sombre » choisi, puis « Revoir l'assistant » — au retour, Clair, sans un mot.
+    const src = code(lireSource('src', 'renderer', 'app.js'));
+    const i = src.indexOf('async function rejouerAssistant(');
+    const corps = src.slice(i, src.indexOf('\n  }\n', i));
+    const jette = corps.indexOf('clearGuard()');
+    assert.ok(jette > 0, 'rejouerAssistant ne désarme plus le garde-fou');
+    const avant = corps.slice(0, jette);
+    assert.ok(/enregistrerEnCours\(\)/.test(avant), 'depuis les Paramètres, le réglage en cours n\'est pas enregistré avant l\'assistant (règle 7.30.0)');
+    assert.ok(/leaveOk\(\)/.test(avant), 'depuis une autre page, la question de toute sortie n\'est pas posée');
+  });
+
+  t('10.13.0 : cliquer les mots d\'un libellé qui n\'est pas un <label> pose aussi le curseur', () => {
+    // Le libellé « Client » d'une facture vit dans une RANGÉE (`.fl-ligne`, avec « Modifier la
+    // fiche ») : le chercher dans le parent immédiat ne trouvait jamais le `.field`.
+    const src = code(lireSource('src', 'renderer', 'listes.js'));
+    const i = src.indexOf("document.addEventListener('click'");
+    const corps = src.slice(i, src.indexOf('});', i));
+    assert.ok(/closest\('\.fl'\)/.test(corps), 'le clic sur les mots d\'un libellé n\'est plus écouté');
+    assert.ok(/closest\('\.field'\)/.test(corps), 'le champ se cherche dans le parent immédiat : une rangée intermédiaire le cache');
+    assert.ok(/tagName === 'LABEL'/.test(corps), 'un <label> fait déjà le geste lui-même : le doubler donnerait deux focus');
+  });
+
+  t('10.13.0 : un combo, une liste et une case parlent le même dessin', () => {
+    const css = code(lireSource('src', 'renderer', 'style.css'));
+    // Toutes les règles qui visent exactement ce sélecteur, sur une ou plusieurs lignes : deux règles
+    // pour un même élément finissent par se contredire, et le test lit ce que la feuille décide EN TOUT.
+    const regle = sel => [...css.matchAll(/(?<=^|\})\s*([^{}]+)\{([^}]*)\}/g)].filter(m => m[1].trim() === sel).map(m => m[2]).join(';');
+    const caret = regle('.combo-caret');
+    assert.ok(/font-size:\s*0/.test(caret) && /svg/.test(caret), 'le triangle d\'un combo est encore un caractère « ▾ » à côté des chevrons des listes');
+    const chevron = (css.match(/^select:not\(\[multiple\]\):not\(\[size\]\):not\(\[data-natif\]\) \{[^}]*url\("([^"]+)"\)/m) || [])[1];
+    assert.ok(chevron && caret.includes(chevron), 'le combo et la liste ne portent pas le même dessin');
+    assert.ok(/accent-color:\s*var\(--primary\)/.test(regle('input[type=checkbox], input[type=radio]')), 'une case cochée garde le bleu du système');
+    assert.ok(/box-sizing:\s*border-box/.test(regle('.lm-pop')), 'la liste ouverte dépasse son champ de sa bordure et de son rembourrage');
+    assert.ok(/border:\s*1px solid/.test(regle('body.dark .modal')), 'en sombre, le bord d\'une fenêtre ne se voit pas');
   });
 };

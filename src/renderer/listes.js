@@ -318,6 +318,21 @@
         el.setAttribute('autocomplete', 'off');
       }
     };
+    // Un libellé qui n'est PAS un <label> (un combo vit dans un `div.field`) : cliquer ses mots ne
+    // faisait rien, à côté de champs dont les mots posent le curseur. Même geste partout.
+    document.addEventListener('click', e => {
+      const t = e.target;
+      if (!t || !t.closest || e.defaultPrevented) return;
+      const mots = t.closest('.fl');
+      if (!mots || t.closest('button, a, input, select, textarea, label')) return;
+      // Le libellé peut vivre dans une rangée (`.fl-ligne`, avec « Modifier la fiche » à côté) :
+      // c'est le `.field` qu'on cherche, pas le parent immédiat.
+      const bloc = mots.closest('.field');
+      if (!bloc || bloc.tagName === 'LABEL') return;
+      const champ = bloc.querySelector(CHAMP);
+      if (champ && !champ.disabled) champ.focus();
+    });
+
     // Le focus seul n'ouvre RIEN : une liste que personne n'a demandée, posée sous le champ, recouvre
     // le champ suivant et vole le clic qui le visait (H-E20, 10.12.0). Elle s'ouvre à la frappe.
     document.addEventListener('focusin', e => neutraliser(e.target));

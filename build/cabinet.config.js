@@ -46,6 +46,7 @@ module.exports = {
     'src/renderer/style.css',          // la feuille partagée, chargée par son index.html
     'src/renderer/rowmenu.js',         // le menu d'actions d'une ligne, partagé lui aussi
     'src/renderer/listes.js',          // les listes déroulantes de SkanFact au lieu de celles du système
+    'src/renderer/placement.js',       // la hauteur d'une fenêtre : au centre optique, puis immobile
     'src/renderer/reglages.js',        // le sommaire et la recherche des réglages, partagés aussi
     'src/renderer/majui.js',           // l'écran des mises à jour, le même dans les deux applications
     'src/canaux.js',                   // la dernière version stable et d'essai publiées

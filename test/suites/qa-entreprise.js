@@ -1678,7 +1678,10 @@ module.exports = ({ t, assert, lireSource }) => {
     const app = code('src', 'renderer', 'app.js');
     const f = corpsDe(app, 'function bindCombo(');
     const dessin = f.slice(f.indexOf('const draw = () => {'), f.indexOf('const close = () =>'));
-    assert.ok(/add\.textContent = saisi \? `\$\{o\.add\} «\\u00a0\$\{saisi\}\\u00a0»` : o\.add/.test(dessin), 'le bouton de création ne reprend pas ce qu\'on vient de taper');
+    // La RÈGLE, pas la ligne : cette assertion recopiait `${o.add} « … »` mot pour mot, et gravait
+    // donc le défaut qu'elle a laissé passer — `o.add` vide quand `bindCombo` ne le reçoit pas, un
+    // bouton blanc sous « Aucun client pour l'instant » (10.13.0, vu à la souris).
+    assert.ok(/add\.textContent = saisi \?[^;]*«\\u00a0\$\{saisi\}\\u00a0»/.test(dessin), 'le bouton de création ne reprend pas ce qu\'on vient de taper');
   });
 
   // Taper le prix élargissait la colonne Total HT : toutes les colonnes glissaient de 10 px sous le

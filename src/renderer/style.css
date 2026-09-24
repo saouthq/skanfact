@@ -1017,7 +1017,9 @@ body.dark nav a.active .nav-count { background: var(--panel); }
 body.dark .filters input:not([type=checkbox]):not([type=radio]), body.dark .filters select { background: var(--panel); }
 body.dark .preview iframe { background: #0e1217; }
 body.dark .totals-box table td { color: #c9d2dd; }
-body.dark .modal { background: var(--panel); }
+/* En sombre, l'ombre d'une fenêtre ne se voit plus sur le fond assombri : son bord se devinait à
+   peine (vu à la souris, 10.13.0). Un liseré dit où elle commence. */
+body.dark .modal { background: var(--panel); border: 1px solid var(--line); }
 body.dark .palette input { background: var(--panel); color: var(--text); }
 body.dark .banner .btn:not(.btn-primary):not(.btn-danger),
 body.dark .banner.info .btn:not(.btn-primary):not(.btn-danger) { background: var(--panel); color: var(--text); }
@@ -1129,7 +1131,18 @@ body.dark th.sortable-h:hover { background: #1f2731; }
 .combo-btn[aria-expanded="true"], .combo-btn:focus-visible { outline: none; border-color: var(--primary); background: #fff; box-shadow: 0 0 0 3px rgba(15,157,143,.15); }
 .combo-val { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
 .combo-val.ph { color: var(--muted); font-weight: 400; }
-.combo-caret { color: var(--muted); font-size: 11px; flex-shrink: 0; }
+/* 10.13.0 — le MÊME chevron que les listes (`select`) : le combo portait un triangle plein « ▾ »,
+   et deux listes voisines dans un formulaire avaient chacune leur dessin (vu à la souris sur une
+   facture : « Affaire » à côté de « Langue du document »). Le caractère reste dans le HTML pour les
+   lecteurs d'écran qui le lisent ; seul son dessin change. */
+.combo-caret {
+  flex-shrink: 0; font-size: 0; width: 10px; height: 6px;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%238a94a3' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat center / 10px 6px;
+}
+/* Toutes les cases à cocher et boutons radio prennent la couleur de l'application : seules les
+   cases rangées dans `.check` l'avaient, et l'assistant montrait des cases BLEUES (le système) à
+   un écran d'une case verte (vu à la souris). */
+input[type=checkbox], input[type=radio] { accent-color: var(--primary); }
 .combo.ro .combo-btn { background: var(--ink-soft); cursor: default; opacity: .75; }
 .combo-pop {
   position: absolute; z-index: 60; inset-inline-start: 0; inset-inline-end: 0; top: calc(100% + 5px);
@@ -1200,8 +1213,10 @@ select:not([multiple]):not([size]):not([data-natif]):disabled { cursor: not-allo
 }
 /* La liste ouverte : le dessin de `.combo-pop`, posée sur la page entière (position fixe) parce
    qu'un `<select>` vit souvent dans un tableau qui défile ou une fenêtre qui coupe ce qui déborde. */
+/* `border-box` : la liste prend la largeur du champ bord à bord — sans lui, son cadre et ses
+   marges s'ajoutaient à la largeur mesurée et elle dépassait le champ de 14 px (vu à la souris). */
 .lm-pop {
-  position: fixed; z-index: 880;
+  position: fixed; z-index: 880; box-sizing: border-box;
   background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
   box-shadow: 0 16px 44px rgba(20,40,60,.18); padding: 6px;
 }

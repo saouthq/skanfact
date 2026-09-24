@@ -886,6 +886,10 @@
     o = o || {};
     const hidden = $('input[type=hidden]', el), btn = $('.combo-btn', el), pop = $('.combo-pop', el);
     const q = $('.combo-q', el), list = $('.combo-list', el), add = $('.combo-add', el);
+    // Le libellé du bouton de création vient du GABARIT (`combo({ add })`) : `bindCombo` ne le reçoit
+    // pas toujours, et le relire dans ses options vidait le bouton — une bande blanche sous
+    // « Aucun client pour l'instant », au moment exact où c'est le seul geste utile (10.13.0).
+    const addBase = add ? (o.add || add.textContent.trim()) : '';
     el._items = o.items || [];
     el._value = hidden ? hidden.value : '';
     let sel = 0, shown = [];
@@ -911,7 +915,7 @@
       $$('.combo-it', list).forEach(d => d.onmousedown = e => { e.preventDefault(); pick(shown[Number(d.dataset.i)]); });
       // Le bouton de création NOMME ce qu'il va créer : « + Nouveau fournisseur » sous « Felder
       // Tunisie » introuvable ne disait pas que la fiche arriverait déjà nommée (10.12.0).
-      if (add) { const saisi = q.value.trim(); add.textContent = saisi ? `${o.add} «\u00a0${saisi}\u00a0»` : o.add; }
+      if (add) { const saisi = q.value.trim(); add.textContent = saisi ? `${addBase} «\u00a0${saisi}\u00a0»` : addBase; }
       const cur = $('.combo-it.sel', list); if (cur) cur.scrollIntoView({ block: 'nearest' });
     };
     const close = () => { pop.hidden = true; btn.setAttribute('aria-expanded', 'false'); el.classList.remove('up'); if (closeOverlay === close) closeOverlay = null; };
@@ -14772,6 +14776,12 @@
   // peut pas revoir l'assistant — alors qu'il a été écrit pour ça.
   async function rejouerAssistant() {
     if (!await confirmDialog('Revoir l\'assistant de démarrage ? Tes réponses actuelles y sont déjà inscrites : tu peux les corriger ou simplement le parcourir. Aucune de tes pièces n\'est touchée.', 'Revoir l\'assistant', false)) return;
+    // Ce qui vient d'être réglé part AVEC l'assistant, pas à la poubelle : un thème choisi puis
+    // « Revoir l'assistant » revenait à Clair sans un mot (10.13.0, vu à la souris — règle 7.30.0).
+    // Depuis une autre page (la palette), c'est la question de toute sortie qui se pose : une pièce
+    // en cours ne s'enregistre pas dans le dos de celui qui la tape.
+    if (/^#\/parametres/.test(location.hash)) enregistrerEnCours();
+    else if (!await leaveOk()) return;
     clearGuard();
     await runSetup(true);
     applyTheme();
