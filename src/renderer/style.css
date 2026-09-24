@@ -317,6 +317,10 @@ main { --main-haut: 32px; flex: 1; overflow-y: auto; padding: var(--main-haut) 3
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 20px; }
 .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px 20px; }
 .span-2 { grid-column: span 2; }
+/* 10.12.0 — une annonce qui se récrit pendant la frappe (« Sortent 10 : il en restera 30 ») passe
+   d'une ligne à trois : sans hauteur réservée, la fenêtre se recentrait et « Enregistrer » bougeait
+   sous le curseur à chaque chiffre. Ce qui apparaît ne pousse rien. */
+.annonce-stable { min-height: 3lh; font-size: 12px; line-height: 1.4; }
 /* Toute la ligne d'une grille, quel que soit son nombre de colonnes. La classe était posée par le
    formulaire d'un contrat récurrent et n'existait nulle part : « Notes sur la facture » tenait dans
    un tiers de la fenêtre, et « Contrat actif… » sur quatre lignes à côté (10.12.0). */

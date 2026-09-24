@@ -392,7 +392,10 @@
   // Renvoie toujours `false` : les validateurs s'écrivent `return refus(...)`.
   function refus(selecteur, message) {
     toast(message, true);
-    const el = $(selecteur);
+    // Un sélecteur OU l'élément lui-même : dans une fenêtre, le champ se trouve dans SA couche, et
+    // `querySelector` sur un élément lève (« [object HTMLInputElement] » n'est pas un sélecteur) —
+    // la réponse vide au comptable plantait ainsi au lieu d'être refusée (10.12.0).
+    const el = typeof selecteur === 'string' ? $(selecteur) : selecteur;
     if (el) {
       try { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (_) { el.scrollIntoView(); }
       // Un `<input type=hidden>` (combo, date) ne se focalise pas : on marque son enveloppe visible.
@@ -8073,34 +8076,43 @@
           ${combo({ name: 'itemId', value: a.itemId, items: items.map(c => ({ v: c.id, label: c.label, sub: c.unit || '', text: c.label })), placeholder: '— Choisir un article —', search: 'Rechercher un article…' })}
         </div>
         <label class="field">${lbl('Nature', 'stk.moveKind')}<select name="source">${C.MOVE_SOURCES.filter(([k]) => ['casse', 'consommation', 'inventaire', 'ajustement'].includes(k)).map(([v, l]) => `<option value="${v}" ${a.source === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
-        ${field(lbl('Quantité', 'stk.adjustQty'), 'qty', 0, 'number', 'step="0.01" class="num" placeholder="-2 pour une sortie"')}
+        ${field(`<span class="fl"><span id="adj-qlbl">Quantité sortie</span> ${info('stk.adjustQty')}</span>`, 'qty', '', 'number', 'step="0.01" class="num" placeholder="ex. 10"')}
         ${field('Coût unitaire (optionnel)', 'unitCost', '', 'number', 'step="0.001" min="0" class="num" placeholder="laisse vide : coût moyen"')}
         ${field('Référence', 'reference', '', 'text', '')}
         <label class="field span-2">Note<input type="text" name="note" placeholder="Ce qui s'est passé, en une phrase"></label>
-        <div class="field span-2" id="adj-hint"></div>
+        <div class="span-2 annonce-stable" id="adj-hint"></div>
       </form>
       <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
       (root, close) => {
         bindCombo($('[data-combo=itemId]', root), { items: items.map(c => ({ v: c.id, label: c.label, text: c.label })), placeholder: '— Choisir un article —' });
+        // Le libellé et l'invite suivent la nature : une casse ou de la matière utilisée se saisit en
+        // quantité SORTIE, positive, et `C.qteMouvement` la signe ; seuls l'inventaire et l'ajustement
+        // restent signés. Le libellé change EN PLACE (même ligne, même largeur) : rien ne descend.
+        const avecUnite = (n, u) => pct(n) + (u ? ' ' + h(u) : '');
         const hint = () => {
           const v = formValues($('#adf', root));
+          const sortie = C.SOURCES_SORTIE.includes(v.source);
+          $('#adj-qlbl', root).textContent = sortie ? 'Quantité sortie' : 'Quantité (+ entre, − sort)';
+          $('[name=qty]', root).placeholder = sortie ? 'ex. 10' : 'ex. -2 ou 3';
           const s = C.stockOf(data, v.itemId);
-          const q = Number(v.qty) || 0;
+          const q = C.qteMouvement(v.source, v.qty);
           const after = C.round3(s.qty + q);
           $('#adj-hint', root).innerHTML = `<span class="small ${after < 0 ? 'warn-text' : 'muted'}">`
-            + `Stock actuel : <b>${pct(s.qty)} ${h(s.unit)}</b> au coût moyen de ${C.money(s.cmp, cur)}. `
-            + (q ? `Après ce mouvement : <b>${pct(after)} ${h(s.unit)}</b>.` : 'Une quantité négative sort de la marchandise, une positive en fait rentrer.')
+            + `Stock actuel : <b>${avecUnite(s.qty, s.unit)}</b> au coût moyen de ${C.money(s.cmp, cur)}. `
+            + (q ? `${q < 0 ? 'Sortent' : 'Entrent'} ${avecUnite(Math.abs(q), s.unit)} : il en restera <b>${avecUnite(after, s.unit)}</b>.`
+              : (sortie ? 'Tape la quantité qui quitte le stock : elle sera retirée.' : 'Une quantité négative sort de la marchandise, une positive en fait rentrer.'))
             + (after < 0 ? ' Un stock négatif veut dire qu\'une entrée manque quelque part.' : '') + '</span>';
         };
         $('#adf', root).oninput = $('#adf', root).onchange = hint; hint();
         $('#ok', root).onclick = () => {
           const v = formValues($('#adf', root));
           if (!v.itemId) return toast('Choisis un article.', true);
-          if (!Number(v.qty)) return toast('La quantité ne peut pas être zéro.', true);
+          const qte = C.qteMouvement(v.source, v.qty);
+          if (!qte) { refus($('[name=qty]', root), 'La quantité ne peut pas être zéro.'); return; }
           if (!v.date) return toast('Date invalide.', true);
           if (closedBlock(v.date, 'Ce mouvement de stock')) return;
           if (licenceBlock('Créer un mouvement de stock', 'stock')) return;
-          data.stockAdjustments.push({ ...a, ...v, qty: Number(v.qty), unitCost: v.unitCost === '' ? '' : Number(v.unitCost) });
+          data.stockAdjustments.push({ ...a, ...v, qty: qte, unitCost: v.unitCost === '' ? '' : Number(v.unitCost) });
           save(true); close(); if (done) done();
         };
       });
@@ -8241,7 +8253,7 @@
               <td class="r nw ${m.qtyAfter < 0 ? 'warn-text' : ''}">${pct(m.qtyAfter)}</td></tr>`).join('')}
           </tbody></table></div>
           ${paged.pg ? pagerBar(paged.pg, { noun: 'mouvement' }) : ''}
-          <p class="small muted mt">Tout vient des pièces déjà saisies : une ligne d'achat en destination « stock » fait une entrée, une facture ou un bon de livraison fait une sortie. Seuls les mouvements « casse », « inventaire » et « ajustement » se saisissent à la main.</p>`
+          <p class="small muted mt">Tout vient des pièces déjà saisies : une ligne d'achat en destination « stock » fait une entrée, une facture ou un bon de livraison fait une sortie. Seuls la matière utilisée, la casse, l'inventaire et l'ajustement se saisissent à la main.</p>`
             : `<div class="empty">Aucun mouvement en ${h(year)}.</div>`}
         </div>`;
       $('#st-year').onchange = e => { s.year = e.target.value; s.moves.page = 1; drawMoves(); };

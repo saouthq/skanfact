@@ -1944,8 +1944,19 @@
     ['achat', 'Achat'], ['vente', 'Vente'], ['livraison', 'Bon de livraison'],
     ['avoir', 'Retour sur avoir'], ['depart', 'Stock de départ'],
     ['inventaire', 'Inventaire'], ['casse', 'Casse ou perte'],
-    ['consommation', 'Utilisé sur un chantier ou en fabrication'], ['ajustement', 'Ajustement']
+    ['consommation', 'Matière utilisée'], ['ajustement', 'Ajustement']
   ];
+  // 10.12.0 — une casse ou de la matière utilisée ne peut que SORTIR du stock. Jusque-là la quantité
+  // se tapait signée (« -2 pour une sortie ») : un menuisier qui notait les 10 planches posées sur un
+  // chantier tapait « 10 », et son stock GAGNAIT 10 planches, valorisées, sans un mot. Pour ces deux
+  // natures on saisit la quantité sortie, toujours positive, et c'est cette fonction qui la signe ;
+  // l'inventaire et l'ajustement restent signés, parce qu'ils vont dans les deux sens.
+  const SOURCES_SORTIE = ['casse', 'consommation'];
+  function qteMouvement(source, saisie) {
+    const q = Number(saisie) || 0;
+    if (!q) return 0;
+    return SOURCES_SORTIE.includes(source) ? -Math.abs(q) : q;
+  }
   // Les seuls mouvements qui ne sont PAS une charge de la période : l'achat (c'est de l'argent devenu
   // stock) et le stock de départ (ce qu'on avait avant de commencer à compter).
   const SOURCES_HORS_CHARGE = ['achat', 'depart'];
@@ -6958,7 +6969,7 @@
     DEFAULT_ASSET_CLASSES, assetClassLabel, assetClassYears, days360, assetSchedule, assetYear,
     assetCumulated, assetNBV, disposalResult, assetsList, assetTotals, assetsToCreate, depreciationFor,
     cappedCumulated,
-    MOVE_SOURCES, moveSourceLabel, trackedItems, itemOfLine, stockMovements, runningStock, stockOf,
+    MOVE_SOURCES, SOURCES_SORTIE, qteMouvement, moveSourceLabel, trackedItems, itemOfLine, stockMovements, runningStock, stockOf,
     stockList, stockTotals, stockJournal, inventoryDiff, stockAlerts, stockImpact, costOfGoodsSold,
     ocrNumber, ocrToPurchase,
     CONTRACT_TYPES, contractLabel, DEFAULT_PAYROLL, payrollSettings, irppAnnual, computePayslip, saisiePaieValide,

@@ -710,4 +710,40 @@ module.exports = ({ t, assert, lireSource }) => {
     assert.strictEqual(core.stockOf(d, 'pl').qty, 26);
     assert.ok(core.MOVE_SOURCES.some(([k]) => k === 'consommation'), 'la nature « chantier ou fabrication » n\'existe pas');
   });
+  // Le menuisier note les 10 planches posées sur un chantier : il tape « 10 ». Jusqu'en 10.12.0 la
+  // quantité se tapait signée, et ce « 10 » faisait GAGNER dix planches au stock, valorisées, sans un
+  // mot — la fenêtre annonçait « Après ce mouvement : 50 . ». Une casse ou de la matière utilisée ne
+  // peut que sortir : on saisit la quantité sortie, et c'est `qteMouvement` qui la signe.
+  t('Une casse ou de la matière utilisée se tape en quantité SORTIE : « 10 » retire dix planches', () => {
+    assert.strictEqual(core.qteMouvement('consommation', '10'), -10);
+    assert.strictEqual(core.qteMouvement('casse', 2), -2);
+    assert.strictEqual(core.qteMouvement('casse', -2), -2, 'un signe tapé par habitude ne doit pas faire RENTRER la casse');
+    // L'inventaire et l'ajustement vont dans les deux sens : le signe reste celui qu'on tape.
+    assert.strictEqual(core.qteMouvement('inventaire', 1), 1);
+    assert.strictEqual(core.qteMouvement('ajustement', -3), -3);
+    assert.strictEqual(core.qteMouvement('casse', ''), 0);
+    // La fenêtre enregistre la quantité SIGNÉE, jamais le nombre tapé, et le libellé suit la nature.
+    const app = code('src', 'renderer', 'app.js');
+    const i = app.indexOf('function adjustForm(');
+    const zone = app.slice(i, app.indexOf('\n  routes.stock = ', i));
+    assert.ok(zone.length > 1500 && zone.length < 9000, 'tranche adjustForm introuvable (' + zone.length + ')');
+    assert.ok(/stockAdjustments\.push\(\{[^}]*qty: qte\b/.test(zone), 'le mouvement enregistre le nombre tapé au lieu de la quantité signée');
+    assert.ok(/const qte = C\.qteMouvement\(v\.source, v\.qty\)/.test(zone), 'l\'enregistrement ne passe pas par qteMouvement');
+    assert.ok(/C\.qteMouvement\(v\.source, v\.qty\)[\s\S]*Sortent/.test(zone.slice(zone.indexOf('const hint'))), 'l\'annonce ne calcule pas le stock obtenu par la même fonction');
+    assert.ok(/'Quantité sortie'/.test(zone), 'le libellé ne dit pas qu\'on tape la quantité qui sort');
+    // L'annonce se récrit à chaque chiffre : sa hauteur est réservée, sinon la fenêtre se recentre
+    // et « Enregistrer » bouge sous le curseur ; et une nature se lit entière dans sa demi-colonne.
+    assert.ok(/id="adj-hint"/.test(zone) && /class="[^"]*annonce-stable[^"]*" id="adj-hint"/.test(zone), 'l\'annonce du mouvement n\'a pas de hauteur réservée');
+    assert.ok(/\.annonce-stable \{[^}]*min-height/.test(lireSource('src', 'renderer', 'style.css')), '.annonce-stable ne réserve aucune hauteur');
+    const saisies = core.MOVE_SOURCES.filter(([k]) => ['casse', 'consommation', 'inventaire', 'ajustement'].includes(k));
+    assert.ok(saisies.every(([, l]) => l.length <= 24), 'une nature de mouvement est coupée dans sa liste : ' + saisies.map(([, l]) => l).join(' / '));
+    // « 50 . » : une unité vide ne laisse pas d'espace avant le point.
+    assert.ok(!/\$\{pct\([^)]*\)\} \$\{h\(s\.unit\)\}/.test(zone), 'une unité vide laisse une espace avant le point');
+  });
+  t('refus() accepte un champ comme un sélecteur : un champ dans SA fenêtre se désigne par lui-même', () => {
+    const app = code('src', 'renderer', 'app.js');
+    const i = app.indexOf('function refus(');
+    const corps = app.slice(i, i + 400);
+    assert.ok(/typeof selecteur === 'string' \? \$\(selecteur\) : selecteur/.test(corps), 'refus() passe un élément à querySelector, qui lève');
+  });
 };

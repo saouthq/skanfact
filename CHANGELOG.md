@@ -336,9 +336,18 @@ du premier écran à son catalogue, pour voir ce qu'un chef d'entreprise subit :
   planches et les transforme en portes ne voyait jamais son bois en charge, et une casse faisait
   disparaître de la valeur du stock sans rien coûter au résultat. Toute sortie de stock qui n'est pas
   un achat ni le stock de départ compte désormais, à son coût moyen — et un retour sur avoir rend son
-  coût. Nouvelle nature de mouvement : « Utilisé sur un chantier ou en fabrication ». La comptabilité
+  coût. Nouvelle nature de mouvement : « Matière utilisée ». La comptabilité
   ne change pas (les achats au 607, l'inventaire au 603). La carte s'appelle « Coût des sorties de
   stock ».
+- **Noter les 10 planches posées sur un chantier les RETIRAIT enfin du stock.** La quantité d'un
+  mouvement se tapait signée (« -2 pour une sortie ») : un menuisier qui tapait « 10 » faisait
+  GAGNER dix planches à son stock, valorisées, et la fenêtre annonçait « Après ce mouvement : 50 . »
+  sans rien dire. Pour la matière utilisée et la casse, le champ s'appelle « Quantité sortie » et
+  prend un nombre sans signe ; l'annonce dit « Sortent 10 : il en restera 30 ». L'inventaire et
+  l'ajustement restent signés, parce qu'ils vont dans les deux sens. Au passage : l'annonce ne fait
+  plus remonter toute la fenêtre à chaque chiffre tapé (sa hauteur est réservée), la nature ne se
+  coupe plus dans sa liste, et un refus posé sur un champ d'une fenêtre (la réponse vide au
+  comptable) ne plante plus.
 - **Le stock sans prix de vente dit « — »**, plus « 0,000 DT, ce qu'il rapporterait vendu » sur
   1 540 DT de planches ; la note d'un mouvement de stock n'invite plus « Deux disques tombés à la
   livraison ».

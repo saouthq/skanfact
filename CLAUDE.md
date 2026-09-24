@@ -6412,6 +6412,20 @@ fixe (9.4.3) et sa table d'onglets nommait sept onglets disparus, sautés sans u
   avoir, un surplus d'inventaire rendent leur coût). Le motif est celui de la 10.7.0 — une liste qui
   énumère ce qui compte se périme au premier ajout, une liste de ce qui ne compte pas tient.
   Le test pose les six mouvements d'un mois et attend 14 × 38,5, calculé à la main (7.0.1).
+- **Un geste qui ne peut aller que dans un sens ne demande pas de signe.** La quantité d'un
+  mouvement se tapait signée (« -2 pour une sortie ») : les 10 planches posées sur un chantier,
+  tapées « 10 », faisaient GAGNER dix planches au stock, valorisées, et la fenêtre annonçait
+  « Après ce mouvement : 50 . ». Une casse ou de la matière utilisée ne peut que sortir :
+  « Quantité sortie », sans signe, et `C.qteMouvement` signe — la même fonction pour l'annonce et
+  l'enregistrement. L'inventaire et l'ajustement, qui vont dans les deux sens, restent signés.
+  Trouvé en tapant ce que tape le menuisier ; aucun parcours ne le pouvait, ils posent `-2`.
+- **Une annonce qui se récrit à la frappe réserve sa hauteur** (`.annonce-stable`) : passant d'une
+  ligne à trois, elle recentrait la fenêtre et « Enregistrer » bougeait de 7 px sous le curseur à
+  chaque chiffre — le jumeau de H-E1, dans une fenêtre. Et **une option se lit entière dans sa
+  liste** : « Utilisé sur un chantier ou en fal… » ; le libellé est court, la bulle dit le reste.
+- **`refus()` reçoit un sélecteur OU un élément** : un champ de fenêtre se désigne par lui-même, et
+  `document.querySelector(element)` LÈVE — la réponse vide au comptable plantait au lieu d'être
+  refusée, depuis qu'elle existe.
 
 **Puis le rapport d'une entreprise qui a tenu SkanFact** (E-01 → E-14, une session QA qui a joué une
 vraie SUARL au régime réel, du premier écran au paquet du comptable). Ce qu'il a appris :
