@@ -10834,9 +10834,9 @@
         <div class="panel"><h2>Le paquet du mois ${info('cab.paquet')}</h2>
           <div class="inline mb">
             <select id="cab-month">${months.map(m => `<option value="${m}" ${m === cabinetState.month ? 'selected' : ''}>${h(C.monthLabel(m + '-01'))}</option>`).join('')}</select>
-            <span class="badge ${plan.definitive ? 'b-paid' : 'b-due'}">${plan.definitive ? 'définitif — mois clôturé' : 'provisoire — mois non clôturé'}</span>
+            ${moisVide ? '' : `<span class="badge ${plan.definitive ? 'b-paid' : 'b-due'}">${plan.definitive ? 'définitif — mois clôturé' : 'provisoire — mois non clôturé'}</span>`}
           </div>
-          ${plan.definitive
+          ${moisVide ? '' : plan.definitive
             ? '<p class="small muted">Ce mois est clôturé : le paquet est <b>définitif</b>. Ton comptable peut travailler dessus en sachant que rien ne bougera.</p>'
             : `<p class="small" style="background:var(--warning-soft);padding:10px 12px;border-radius:8px">
                  Ce mois n'est <b>pas clôturé</b> : le paquet partira marqué « provisoire ». Tu peux l'envoyer quand même — mais l'envoi qui compte est celui qui suit la clôture.
@@ -10870,9 +10870,21 @@
             // rien fait, en annonçant neuf fichiers (cinq journaux vides, les écritures et la TVA)
             // et en armant le bouton d'envoi. Avant d'écrire une phrase rassurante, vérifier que
             // l'univers dont elle parle n'est pas vide.
-            ? `<p>Ce mois ne contient <b>aucune pièce</b> : il n'y a rien à envoyer à ton comptable.</p>
-               <p class="small muted">Choisis un autre mois en haut de la page, ou commence par émettre une facture.</p>
-               <div class="inline mt"><button class="btn btn-primary" id="cab-vers-factures">Aller aux factures</button></div>`
+            ? (() => {
+                // La raison du vide, et le jour où ça changera : « émets une facture » à quelqu'un qui en
+                // a émis en septembre l'envoie chercher ce qu'il a déjà fait (10.12.0).
+                const suite = C.premierePieceApres(data, per.month + '-01');
+                if (!suite) return `<p>Ce mois ne contient <b>aucune pièce</b> : il n'y a rien à envoyer à ton comptable.</p>
+                  <p class="small muted">Choisis un autre mois en haut de la page, ou commence par émettre une facture.</p>
+                  <div class="inline mt"><button class="btn btn-primary" id="cab-vers-factures">Aller aux factures</button></div>`;
+                const moisSuite = suite.slice(0, 7);
+                const pret = months.includes(moisSuite);
+                return `<p>Ce mois ne contient <b>aucune pièce</b> : il n'y a rien à envoyer à ton comptable.</p>
+                  <p class="small muted">Tes pièces commencent en ${h(C.monthLabel(moisSuite + '-01'))}. ${pret
+                    ? 'Ce mois-là est terminé : son paquet est prêt à être préparé.'
+                    : `Un paquet se prépare une fois le mois terminé : celui de ${h(C.monthLabel(moisSuite + '-01'))} le sera à partir du ${h(C.fmtDate(C.addMonths(moisSuite + '-01', 1, 1)))}.`}</p>
+                  ${pret ? `<div class="inline mt"><button class="btn btn-primary" id="cab-vers-mois" data-mois="${h(moisSuite)}">Voir ${h(C.monthLabel(moisSuite + '-01'))}</button></div>` : ''}`;
+              })()
             : plan.checklist.length
             ? `<table class="list compact"><tbody>${plan.checklist.map(c => `<tr class="${c.level === 'danger' ? 'row-warn' : ''}">
                 <td><strong>${h(c.label)}</strong><div class="small muted">${h(c.detail)}</div></td><td class="r nw">${c.count}</td>
@@ -10983,6 +10995,7 @@
         draw(); updateNavCounts();
       }
       $('#cab-month').onchange = e => { cabinetState.month = e.target.value; draw(); };
+      if ($('#cab-vers-mois')) $('#cab-vers-mois').onclick = e => { cabinetState.month = e.currentTarget.dataset.mois; draw(); };
       if ($('#cab-goclose')) $('#cab-goclose').onclick = e => { e.preventDefault(); comptaState.tab = 'clotures'; draw(); $$('#c-tabs button').forEach(b => b.classList.toggle('active', b.dataset.tab === 'clotures')); };
       if ($('#cab-seal')) $('#cab-seal').onchange = e => { cabinetState.seal = e.target.checked; $('#cab-pw').hidden = !e.target.checked; };
       if ($('#cab-gopair')) $('#cab-gopair').onclick = e => { e.preventDefault(); allerParametres('envois', 'p-cabinet'); };

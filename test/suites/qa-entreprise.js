@@ -855,4 +855,21 @@ module.exports = ({ t, assert, lireSource }) => {
     const sans = redessins.filter(l => !/poserLienAide\('/.test(l));
     assert.deepStrictEqual(sans, [], 'un en-tête redessiné perd son lien d\'aide');
   });
+  // Le paquet d'août d'une menuiserie qui a commencé en septembre : « commence par émettre une
+  // facture » à quelqu'un qui en a émis deux, et « Clôturer août 2026 » en orange sur le néant.
+  t('Un paquet vide dit quand viendra le premier, et ne propose pas de clôturer le néant', () => {
+    const d = vierge();
+    d.documents = [{ id: 'f1', type: 'facture', status: 'envoyée', number: 'FAC-2026-001', date: '2026-09-12', lines: [] }];
+    d.purchases = [{ id: 'a1', kind: 'facture', date: '2026-09-02', lines: [] }];
+    assert.strictEqual(core.premierePieceApres(d, '2026-08-01'), '2026-09-02');
+    assert.strictEqual(core.premierePieceApres(d, '2026-09-01'), '');
+    // Un brouillon n'est pas une pièce : il ne partira dans aucun paquet.
+    d.purchases = []; d.documents.push({ id: 'b1', type: 'facture', status: 'brouillon', date: '2026-09-01', lines: [] });
+    assert.strictEqual(core.premierePieceApres(d, '2026-08-01'), '2026-09-12');
+    const app = code('src', 'renderer', 'app.js');
+    const i = app.indexOf('function drawCabinet()');
+    const zone = app.slice(i, i + 12000);
+    assert.ok(/\$\{moisVide \? '' : plan\.definitive/.test(zone), 'un mois vide propose encore de se clôturer');
+    assert.ok(/C\.premierePieceApres\(data, per\.month/.test(zone) && /le sera à partir du/.test(zone), 'un paquet vide ne dit pas quand viendra le premier');
+  });
 };

@@ -369,6 +369,11 @@ du premier écran à son catalogue, pour voir ce qu'un chef d'entreprise subit :
   toujours au bon onglet.
 - **« Comprendre cette page → » ne disparaît plus** de la Paie, du Stock et du Catalogue au premier
   clic ; le type de contrat se lit en entier (« CDI », la définition en infobulle).
+- **Le paquet d'un mois vide dit quand viendra le premier.** Une menuiserie qui a commencé en
+  septembre ouvrait l'envoi au comptable sur août, lisait « commence par émettre une facture »
+  (elle en avait émis deux) et se voyait proposer « Clôturer août 2026 » sur un mois sans rien.
+  L'écran dit maintenant que ses pièces commencent en septembre, et que le paquet de septembre se
+  prépare à partir du 1er octobre.
 - **Le stock sans prix de vente dit « — »**, plus « 0,000 DT, ce qu'il rapporterait vendu » sur
   1 540 DT de planches ; la note d'un mouvement de stock n'invite plus « Deux disques tombés à la
   livraison ».

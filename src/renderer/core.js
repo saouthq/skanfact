@@ -2322,6 +2322,19 @@
     return a;
   }
 
+  // 10.12.0 — la première pièce datée APRÈS un mois (vente émise, achat, bulletin). Un paquet vide
+  // disait « commence par émettre une facture » à une entreprise qui en avait émis en septembre :
+  // un état vide dit SA raison, et le jour où ça changera (E-06).
+  function premierePieceApres(data, moisIso) {
+    const fin = addDays(moisIso.slice(0, 7) + '-01', daysInMonth(Number(moisIso.slice(0, 4)), Number(moisIso.slice(5, 7))) - 1);
+    const dates = []
+      .concat((data.documents || []).filter(d => (d.type === 'facture' || d.type === 'avoir') && d.status !== 'brouillon').map(d => d.date))
+      .concat((data.purchases || []).map(p => p.date))
+      .concat((data.payslips || []).map(p => payslipDate(p)))
+      .filter(d => d && d > fin);
+    return dates.length ? dates.sort()[0] : '';
+  }
+
   // Le bulletin imprimé. Même langage visuel que les factures (accent de la société, cases claires),
   // mais un contenu réglementé : identité complète, période, détail des cotisations, cumuls de l'année.
   // La mention d'avertissement s'imprime tant que l'utilisateur ne l'a pas retirée (voir `payrollSettings`).
@@ -7014,7 +7027,7 @@
     DEFAULT_ASSET_CLASSES, assetClassLabel, assetClassYears, days360, assetSchedule, assetYear,
     assetCumulated, assetNBV, disposalResult, assetsList, assetTotals, assetsToCreate, depreciationFor,
     cappedCumulated,
-    moisDePaie, MOVE_SOURCES, SOURCES_SORTIE, qteMouvement, moveSourceLabel, trackedItems, itemOfLine, stockMovements, runningStock, stockOf,
+    moisDePaie, premierePieceApres, MOVE_SOURCES, SOURCES_SORTIE, qteMouvement, moveSourceLabel, trackedItems, itemOfLine, stockMovements, runningStock, stockOf,
     stockList, stockTotals, stockJournal, inventoryDiff, stockAlerts, stockImpact, costOfGoodsSold,
     ocrNumber, ocrToPurchase,
     CONTRACT_TYPES, contractLabel, DEFAULT_PAYROLL, payrollSettings, irppAnnual, computePayslip, saisiePaieValide,

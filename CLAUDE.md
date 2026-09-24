@@ -6440,6 +6440,10 @@ fixe (9.4.3) et sa table d'onglets nommait sept onglets disparus, sautés sans u
   « Seuil de rentabilité » qui ouvrait l'onglet Affaires. Leurs mots vivent dans `ALIAS`.
 - **Un lien posé une fois par le routeur disparaît au premier redessin de l'en-tête** : Paie, Stock
   et Catalogue perdaient « Comprendre cette page ». Chaque redessin le repose, et le test lit chacun.
+- **Un état vide dit sa raison ET le jour où ça changera** (E-06, porté au paquet du Cabinet) :
+  « commence par émettre une facture » à une entreprise qui en a émis en septembre, sur le paquet
+  d'août. `premierePieceApres` donne la date, et l'écran ne propose plus de clôturer ni ne marque
+  « provisoire » un mois sans une pièce (vérifier que l'univers n'est pas vide, 7.0.0).
 - **`refus()` reçoit un sélecteur OU un élément** : un champ de fenêtre se désigne par lui-même, et
   `document.querySelector(element)` LÈVE — la réponse vide au comptable plantait au lieu d'être
   refusée, depuis qu'elle existe.
