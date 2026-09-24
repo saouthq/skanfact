@@ -7,6 +7,72 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 10.13.0-beta.1 — 24/09/2026
+
+**Avant la mise en production : les deux applications et le pont entre elles, testés en entier.**
+Skander : « il faut tester toute l'application, entreprise, cabinet et le pont, tous les parcours,
+tous les boutons » — et quatre demandes précises : des listes déroulantes toutes modernes, des
+bulles d'aide qui mènent à leur article, une seule position pour les confirmations, une barre
+latérale moins chargée. Tout a été fait, puis refait à la souris, dans les deux applications, et un
+paquet est parti de l'une vers l'autre pour de vrai, aller et retour.
+
+**Le pont entre SkanFact et SkanFact Cabinet — ce qui était faux**
+- **« Origine vérifiée » ne prouvait rien.** Une clôture ou des questions reçues du cabinet se
+  disaient vérifiées dès que leur signature correspondait à la clé que le fichier présente — or
+  n'importe qui peut fabriquer une clé et signer, et le matricule d'un client est public. Une clôture
+  importée VERROUILLE un exercice. SkanFact retient désormais la signature de son cabinet la première
+  fois (et le dit), puis refuse un envoi signé par une autre clé — en nommant les deux empreintes —
+  ou qui n'est plus signé. Si le comptable change vraiment de clé, on l'accepte après lui avoir lu
+  l'empreinte au téléphone — d'un clic voulu : sur cette question-là, la touche Entrée annule au lieu
+  d'accepter, parce qu'un « oui » par réflexe est exactement ce qu'un imposteur espère. La signature
+  retenue se voit et s'oublie dans Paramètres → Envois.
+- **Tous les postes d'un cabinet signent pareil.** La clé de signature était tirée au hasard sur
+  chaque ordinateur : deux collaborateurs signaient différemment, et changer d'ordinateur changeait la
+  signature. Elle suit maintenant la clé du cabinet (clé de secours comprise), et son empreinte
+  s'affiche dans Réglages → Mon cabinet, pour être lue au client qui la vérifie.
+- **Chaque paquet signé arrivait avec une fausse alerte** : « ⚠ 1 fichier présent mais non annoncé
+  par ton client » — c'était la signature elle-même. Elle n'est plus comptée comme un intrus, et les
+  paquets déjà reçus sont relus sans l'alerte.
+- **Une réponse au comptable pouvait ne jamais partir.** Répondre à sa question puis cliquer le
+  bouton vert « Envoyer au comptable » joignait le paquet fabriqué AVANT la réponse. Le bouton vert
+  est maintenant « Refaire le paquet avec ta réponse », et l'écran dit pourquoi. Les questions passent
+  avant « Fabriquer et envoyer », la première question en attente porte le bouton principal, et la
+  pièce qu'une question nomme s'ouvre d'un clic.
+- **Le Cabinet recevait les réponses sans le dire.** Le compte rendu d'import annonce maintenant
+  « 1 réponse du client à tes questions » avec « Lire la réponse », qui amène directement au panneau
+  des questions de la Révision (il était trois panneaux plus bas) — et la Révision ne montre plus
+  « 1 question attend sa réponse » sur une question répondue. Le champ « Ta réponse » a sa bulle.
+- **Une réponse déjà reçue revenait comme « réponse à une question inconnue »** à chaque paquet
+  suivant (le client renvoie toutes ses réponses à chaque fois).
+- **Écrire le fichier de questions ne se dit plus « 1 question envoyée »** : il reste à le
+  transmettre, et la fenêtre dit où il est et le montre.
+- **Une question qui attend son envoi ne « attend » pas une réponse** : la révision dit ce qui reste à
+  faire (« Envoyer les questions au client… »), dans le bon ordre.
+- **L'appairage** redessine seulement son panneau (la page ne remonte plus), et un fichier refusé dit
+  quoi demander au comptable, plus « Error invoking remote method ».
+
+**Ce que Skander a demandé**
+- **Toutes les listes déroulantes sont modernes**, dans les deux applications : la même liste que
+  celle des clients, avec recherche au-delà de dix lignes, au clavier comme à la souris.
+- **Chaque bulle « i » mène à son article** (338 dans SkanFact, 118 dans le Cabinet), du même style
+  partout ; cliquer un libellé pose le curseur dans SON champ, au lieu d'ouvrir la bulle voisine.
+- **Les confirmations ont une seule position** : une question courte s'ouvre au centre du regard, par
+  dessus ce qu'elle concerne ; une fenêtre longue en haut ; aucune ne bouge une fois ouverte.
+- **La barre latérale se replie par famille** (Vendre, Acheter, Piloter) : dix-huit entrées ramenées à
+  ce qui sert, la famille de la page ouverte s'ouvre toute seule, et une famille repliée porte le
+  compte de ce qui attend dedans.
+
+**Et le reste, trouvé en testant**
+- « + Nouveau client » vide dans la liste des clients d'une pièce ; « Revoir l'assistant » qui
+  remettait le thème à Clair ; les listes « libellé : valeur » décalées d'une ligne à l'autre ; le
+  compteur de la Paie qui oubliait les déclarations en retard ; un faux « Fichiers en tout » sous le
+  contenu du paquet ; « * obligatoire » écrit deux fois ; « Elles s'afficheront » pour une seule
+  question ; une question de fenêtre qui commençait par une minuscule ; « Tu viens de ranger ton
+  premier paquet » au deuxième ; les fenêtres de fin (« Fermer », « Plus tard ») qui proposaient
+  aussi « Annuler ».
+
+**Publiée en bêta** : elle touche à la signature des envois entre les deux applications.
+
 ## 10.12.0 — 24/09/2026
 
 **Les deux applications, parcourues comme on les vit.** La dernière stable en ligne était la

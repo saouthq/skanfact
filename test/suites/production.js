@@ -498,6 +498,12 @@ module.exports = ({ t, assert, lireSource }) => {
     const g = src.slice(src.indexOf('function showImportReport('), src.indexOf('function showImportReport(') + 3000);
     assert.ok(/\[data-imp-rev\][\s\S]{0,200}comptabilite\/revision/.test(g), '« Lire la réponse » n\'ouvre pas la Révision du dossier');
     assert.ok(/livresState\.livreCle = ''; livresState\.revision = null;/.test(src), 'un import qui écrit dans le livre du dossier ouvert laisse l\'écran sur l\'ancien livre');
+    // Un raccourci vise un PANNEAU (7.18.0), et la cible ne se pose qu'une fois la révision LUE.
+    assert.ok(/\[data-imp-rev\][\s\S]{0,200}livresState\.revViser = 'rv-questions'/.test(g), '« Lire la réponse » ouvre la Révision en haut, la réponse trois panneaux plus bas');
+    assert.ok(/<div class="panel" id="rv-questions">/.test(src), 'le panneau des questions n\'a pas l\'identifiant que le raccourci vise');
+    const b = src.slice(src.indexOf('function brancherRevision('), src.indexOf('function brancherRevision(') + 1500);
+    const iCharge = b.indexOf('chargerRevision(root, dossier); return; }'), iViser = b.indexOf('if (s.revViser) { pageFocus = s.revViser;');
+    assert.ok(iCharge > 0 && iViser > iCharge, 'la cible se pose avant que la révision soit lue : focaliser la consomme sur l\'écran de chargement');
   });
 
   t('10.13.0 : la pièce qu\'une question nomme s\'ouvre, et le bandeau de la pièce ne pose pas un second vert', () => {
@@ -507,6 +513,90 @@ module.exports = ({ t, assert, lireSource }) => {
     assert.ok(/lienPiece\(q\.piece\)/.test(src), 'la liste des questions ne rend pas la pièce cliquable');
     const b = src.slice(src.indexOf('function bandeauQuestions('), src.indexOf('const brancherQuestions'));
     assert.ok(b.length > 200 && !/btn-primary/.test(b), '« Répondre » du bandeau est un second vert à côté du geste de la pièce (U-11)');
+  });
+
+  t('10.13.0 : l\'origine d\'un envoi du cabinet — « vérifiée » seulement contre une signature RETENUE', () => {
+    // Trouvé au test humain du pont : « Origine vérifiée » s'affichait pour n'importe quel fichier
+    // auto-signé. Le matricule d'un client est public ; une clôture importée VERROUILLE un exercice.
+    const C = require(path.join(RACINE, 'src', 'renderer', 'core.js'));
+    const V = C.verdictEnvoiCabinet;
+    const bonne = { niveau: 'prouvee', empreinte: 'AAAA-AAAA-AAAA-AAAA-AAAA' };
+    const autre = { niveau: 'prouvee', empreinte: 'BBBB-BBBB-BBBB-BBBB-BBBB' };
+    const nue = { niveau: 'non-prouvee', empreinte: '', motif: 'Ce dossier n\'est pas signé.' };
+    const fausse = { niveau: 'refusee', empreinte: 'CCCC-CCCC-CCCC-CCCC-CCCC', motif: 'La signature ne correspond pas.' };
+    const pin = { empreinte: bonne.empreinte, depuis: 1 };
+    // 1. signature fausse : refusé, avec ou sans signature retenue
+    assert.strictEqual(V(null, fausse).ok, false);
+    assert.strictEqual(V(pin, fausse).ok, false);
+    // 2. pas de signature, rien de retenu : accepté, mais en le DISANT en rouge
+    const a = V(null, nue);
+    assert.ok(a.ok && a.alerte && /ORIGINE NON PROUVÉE/.test(a.ligne) && !a.epingler);
+    // 3. pas de signature alors qu'une est retenue : refusé
+    const b = V(pin, nue);
+    assert.ok(!b.ok && b.etat === 'signature-manquante' && b.texte.includes(pin.empreinte));
+    // 4. première signature : acceptée, retenue, et PAS dite « vérifiée »
+    const c = V(null, bonne);
+    assert.ok(c.ok && c.epingler === bonne.empreinte && !/vérifiée/.test(c.ligne) && /retenue/.test(c.ligne));
+    // 5. la même : « origine vérifiée », sans rien retenir de plus
+    const d = V(pin, bonne);
+    assert.ok(d.ok && /Origine vérifiée/.test(d.ligne) && !d.epingler);
+    // 6. une autre : refusée en nommant les DEUX empreintes
+    const e = V(pin, autre);
+    assert.ok(!e.ok && e.etat === 'autre-cle' && e.attendue === pin.empreinte && e.recue === autre.empreinte
+      && e.texte.includes(pin.empreinte) && e.texte.includes(autre.empreinte));
+    // La donnée : une forme qu'on ne reconnaît pas n'est pas retenue, et « Tout effacer » l'efface.
+    assert.ok('cabinetSignature' in C.DEFAULT_DATA && C.DEFAULT_DATA.cabinetSignature === null);
+    const m1 = C.migrateData({ cabinetSignature: { empreinte: '  ' } });
+    assert.strictEqual(m1.cabinetSignature, null, 'une empreinte vide retenue ferait refuser tous les envois signés');
+    const m2 = C.migrateData({ cabinetSignature: { empreinte: pin.empreinte, depuis: 5 } });
+    assert.strictEqual(m2.cabinetSignature.empreinte, pin.empreinte);
+  });
+
+  t('10.13.0 : les deux imports du cabinet passent par le verdict, et ne retiennent qu\'une fois acceptés', () => {
+    const src = code(lireSource('src', 'renderer', 'app.js'));
+    for (const nom of ['importerCloture', 'importerQuestions']) {
+      const i = src.indexOf('async function ' + nom + '(');
+      const f = src.slice(i, src.indexOf('\n      }\n', i));
+      assert.ok(i > 0 && f.length > 800 && f.length < 6000, nom + ' : la tranche ne se trouve plus (' + f.length + ')');
+      const iV = f.indexOf('await origineAcceptee(lu,'), iQ = f.indexOf('await confirmDialog('), iR = f.indexOf('retenirSignature(orig)'), iOk = f.indexOf('if (!ok) return;');
+      assert.ok(iV > 0 && iV < iQ, nom + ' : l\'origine doit se juger AVANT la question');
+      assert.ok(iOk > 0 && iR > iOk, nom + ' : la signature se retient avant que l\'utilisateur ait accepté l\'import');
+      assert.ok(!/lu\.origine\.niveau === 'prouvee'/.test(f), nom + ' : « vérifiée » se décide encore sur la seule signature du fichier');
+    }
+    // Le cabinet change, ou on le retire : la signature de l'ancien ne vaut plus rien.
+    const p = src.slice(src.indexOf('function drawCabinetPair('), src.indexOf('drawCabinetPair();\n    drawLicencePanel();'));
+    assert.ok(/if \(avant && avant !== r\.fingerprint\) data\.cabinetSignature = null;/.test(p), 'un nouveau cabinet hérite de la signature de l\'ancien');
+    assert.ok(/delete data\.company\.cabinet; data\.cabinetSignature = null;/.test(p), 'retirer le cabinet garde sa signature');
+    assert.ok(/id="cab-oublier-sig"/.test(p), 'la signature retenue ne s\'oublie nulle part : un comptable qui change de clé bloquerait son client');
+  });
+
+  t('10.13.0 : accepter une autre clé de signature ne se fait jamais par réflexe — Entrée annule', () => {
+    const src = code(lireSource('src', 'renderer', 'app.js'));
+    // La question sur la clé passe l'option ; confirmDialog l'honore en donnant le curseur à « Annuler »
+    // (Entrée sur un bouton qui a le curseur clique CE bouton : le raccourci « bouton principal » de
+    // modal() ne s'applique pas quand la cible est un bouton).
+    const o = src.slice(src.indexOf('async function origineAcceptee('), src.indexOf('const retenirSignature'));
+    assert.ok(o.length > 200 && o.length < 1500, 'origineAcceptee introuvable (' + o.length + ')');
+    assert.ok(/confirmDialog\([^;]*accepter', true, \{ prudent: true \}\)/.test(o), 'la question sur une autre clé s\'accepte d\'un Entrée');
+    const d = src.slice(src.indexOf('function confirmDialog('), src.indexOf('function infoDialog('));
+    assert.ok(/if \(opts && opts\.prudent\) \$\('\[data-close\]', root\)\.focus\(\);/.test(d), 'confirmDialog ne donne pas le curseur à « Annuler » quand on le lui demande');
+    const m = src.slice(src.indexOf("layer.addEventListener('keydown'"), src.indexOf('if (onMount) onMount(layer, close);'));
+    assert.ok(/e\.target\.tagName === 'BUTTON'\) return;/.test(m), 'Entrée sur un bouton qui a le curseur doit rester à ce bouton');
+  });
+
+  t('10.13.0 : la clé de signature du cabinet suit sa clé — tous ses postes signent pareil', () => {
+    const Z = require(path.join(RACINE, 'src', 'zip.js'));
+    const k = Z.generateCabinetKeys();
+    const a = Z.cleSignatureDerivee(k.privateKey), b = Z.cleSignatureDerivee(k.privateKey);
+    assert.strictEqual(a.publicKey, b.publicKey, 'deux postes du même cabinet ne signeraient pas pareil');
+    assert.notStrictEqual(Z.cleSignatureDerivee(Z.generateCabinetKeys().privateKey).publicKey, a.publicKey, 'deux cabinets auraient la même signature');
+    const man = Buffer.from('{"format":1}', 'utf8');
+    assert.ok(Z.verifyManifest(man, Z.signManifest(man, a.privateKey, a.publicKey)).ok, 'la clé dérivée ne signe pas');
+    const cm = code(lireSource('src', 'cabinet', 'main.js'));
+    const f = cm.slice(cm.indexOf('function cleSignatureCabinet('), cm.indexOf('\n}\n', cm.indexOf('function cleSignatureCabinet(')));
+    assert.ok(/Z\.cleSignatureDerivee\(state\.cabinet\.privateKey\)/.test(f), 'le Cabinet ne signe plus avec la clé dérivée');
+    assert.ok(!/generateClientKeys|writeFileSync/.test(f), 'le Cabinet tire encore une clé de signature par poste');
+    assert.ok(/signatureFingerprint/.test(cm), 'l\'écran du Cabinet ne connaît pas l\'empreinte de sa signature');
   });
 
   t('10.13.0 : aucune fenêtre de l\'app entreprise n\'écrit « * obligatoire » à la main — modal() la pose', () => {

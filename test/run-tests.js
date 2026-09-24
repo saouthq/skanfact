@@ -5452,12 +5452,16 @@ t('cabinet : la clé privée ne traverse jamais le pont vers l\'interface', () =
   // vrai corps de `safeState()` tel qu'il est écrit dans main.js, pour prouver que la clé privée
   // n'en sort pas. Le réécrire dans le test ne prouverait rien (« un e2e ne doit jamais rejouer
   // le code qu'il teste », 6.8.1).
+  // 10.13.0 — et la clé de SIGNATURE, dérivée de la clé privée : seule son empreinte sort.
   // eslint-disable-next-line no-new-func
-  const faireSafeState = new Function('state', 'Z', 'moiId', 'quiSuisJe', 'KC', corps + '; return safeState();');
+  const faireSafeState = new Function('state', 'Z', 'moiId', 'quiSuisJe', 'KC', 'cleSignatureCabinet', corps + '; return safeState();');
   const sorti = faireSafeState(faux, { keyFingerprint: k => 'EMPREINTE-DE-' + k },
-    () => 'c_essai', () => 'Amine', require('../src/renderer/compta.js'));
+    () => 'c_essai', () => 'Amine', require('../src/renderer/compta.js'),
+    () => ({ publicKey: 'SIGPUB', privateKey: 'SIGNATURE-SECRETE' }));
   const texte = JSON.stringify(sorti);
   assert.ok(!/SECRET-A-NE-JAMAIS-SORTIR/.test(texte), 'safeState laisse passer la clé privée');
+  assert.ok(!/SIGNATURE-SECRETE/.test(texte), 'safeState laisse passer la clé privée de signature');
+  assert.strictEqual(sorti.cabinet.signatureFingerprint, 'EMPREINTE-DE-SIGPUB', 'l\'empreinte de signature doit être calculée depuis la clé publique');
   assert.ok(!('privateKey' in (sorti.cabinet || {})), 'la clé privée est encore là, même vide');
   assert.strictEqual(sorti.cabinet.fingerprint, 'EMPREINTE-DE-PUB', 'l\'empreinte doit être calculée, pas recopiée');
   assert.strictEqual(sorti.cabinet.name, 'Cabinet Essai', 'safeState ne doit pas vider le reste');

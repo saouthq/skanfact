@@ -300,8 +300,11 @@ const CIBLE = path.join(dir, 'cloture.skanclose');
   const annonce = plat(await we.evaluate(() => (document.querySelector('.modal-bg') || {}).textContent || ''));
   if (!/VERROUILL/i.test(annonce)) throw new Error('la question doit annoncer le verrouillage AVANT d\'écrire : ' + annonce.slice(0, 120));
   if (!/à-nouveaux? officiels?/i.test(annonce)) throw new Error('la question doit annoncer les à-nouveaux officiels');
-  // L'origine : le fichier EST signé, donc l'écran doit le dire — et pas l'inverse.
-  if (!/Origine vérifiée/.test(annonce)) throw new Error('la signature du cabinet n\'a pas été reconnue : ' + annonce.slice(0, 200));
+  // L'origine : le fichier EST signé, donc l'écran doit le dire — et pas l'inverse. Depuis la 10.13.0
+  // c'est la PREMIÈRE signature reçue de ce cabinet : l'écran dit qu'elle sera retenue, et « origine
+  // vérifiée » ne se dira qu'aux envois suivants, quand elle aura quelque chose à quoi se comparer.
+  if (!/Signé par ton cabinet/.test(annonce) || !/première signature/.test(annonce)) throw new Error('la première signature du cabinet ne se dit pas retenue : ' + annonce.slice(0, 260));
+  if (/Origine vérifiée/.test(annonce)) throw new Error('« Origine vérifiée » sur un premier fichier : il n\'y a encore rien à quoi le comparer');
   await we.screenshot({ path: path.join(OUT, '05-client-question.png') });
   await we.click('.modal-bg .btn-primary');
   await we.waitForFunction(() => /reprise/i.test((document.querySelector('#toast') || {}).textContent || ''), { timeout: 15000 });
@@ -317,6 +320,8 @@ const CIBLE = path.join(dir, 'cloture.skanclose');
   }));
   if (etat.clotures !== 1) throw new Error('la clôture n\'a pas été enregistrée');
   if (etat.origine !== 'prouvee') throw new Error('l\'origine devrait être prouvée, vue ' + etat.origine);
+  const retenue = await we.evaluate(() => ((window.__data || {}).cabinetSignature || {}).empreinte || '');
+  if (!/^[0-9A-F]{4}(-[0-9A-F]{4}){4}$/.test(retenue)) throw new Error('la signature du cabinet n\'a pas été retenue à l\'import : « ' + retenue + ' »');
   if (!/signée/.test(etat.ecran)) throw new Error('l\'écran doit montrer que le dossier est signé');
   // LE VERROU, et le défaut que ce parcours a trouvé : le jeu d'exemple porte l'exercice EN COURS,
   // donc sa fin est dans le futur — et on ne verrouille pas une période qui n'est pas terminée.
@@ -335,6 +340,35 @@ const CIBLE = path.join(dir, 'cloture.skanclose');
     ok(`clôture reprise et signée ; l'exercice finit le ${etat.au}, le verrou attend — et l'écran le dit`);
   }
   await we.screenshot({ path: path.join(OUT, '06-client-apres.png') });
+
+  // ------------------------------------------------ un faux cabinet (10.13.0)
+  // Le même dossier, re-signé par une AUTRE clé : exactement ce que fabriquerait quelqu'un qui
+  // connaît le matricule du client (il est public). Avant la 10.13.0, l'écran disait « Origine
+  // vérifiée » — la signature correspond à la clé que le fichier présente, et c'était tout.
+  étape('Un fichier signé par une AUTRE clé est refusé, en nommant les deux empreintes');
+  const brut = fs.readFileSync(CIBLE);
+  const fichiers = Z.zipRead(brut).map(f => ({ name: f.name, data: f.data() }));
+  const man = fichiers.find(f => f.name === 'manifeste.json');
+  if (!man) throw new Error('le dossier de clôture n\'a pas de manifeste : le faux ne peut pas se fabriquer');
+  const intrus = Z.generateClientKeys();
+  const faux = fichiers.map(f => f.name === 'signature.json'
+    ? { name: f.name, data: Buffer.from(JSON.stringify(Z.signManifest(man.data, intrus.privateKey, intrus.publicKey)), 'utf8') } : f);
+  const FAUX = path.join(dir, 'faux.skanclose');
+  fs.writeFileSync(FAUX, Z.zipBuffer(faux));
+  await ent.evaluate(({ dialog }, cible) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [cible] }); }, FAUX);
+  await we.click('#cl-import');
+  await we.waitForSelector('.modal-bg', { timeout: 20000 });
+  const refusFaux = plat(await we.evaluate(() => (document.querySelector('.modal-bg') || {}).textContent || ''));
+  if (!/autre clé/.test(refusFaux) || !refusFaux.includes(retenue) || !refusFaux.includes(Z.keyFingerprint(intrus.publicKey))) {
+    throw new Error('le faux cabinet n\'est pas refusé en nommant les deux empreintes : ' + refusFaux.slice(0, 300));
+  }
+  if (/Reprendre la clôture/.test(refusFaux)) throw new Error('le faux cabinet arrive jusqu\'à la question « Reprendre la clôture »');
+  // On refuse : rien ne change, la signature retenue reste la bonne.
+  await we.evaluate(() => { const b = [...document.querySelectorAll('.modal-bg button')].find(x => /Annuler/.test(x.textContent)); if (b) b.click(); });
+  await attendreE(600);
+  const apresFaux = await we.evaluate(() => ({ n: (window.__data.clotures || []).length, sig: ((window.__data || {}).cabinetSignature || {}).empreinte }));
+  if (apresFaux.n !== 1 || apresFaux.sig !== retenue) throw new Error('refuser le faux a changé quelque chose : ' + JSON.stringify(apresFaux));
+  ok(`faux cabinet refusé (attendue ${retenue}, reçue ${Z.keyFingerprint(intrus.publicKey)}) ; rien n'a changé`);
 
   // ------------------------------------------------ LA parité : le même résultat des deux côtés
   étape('Le jumeau du test de parité : le MÊME résultat des deux côtés');

@@ -282,6 +282,26 @@ function generateClientKeys() {
   };
 }
 
+// La clé de SIGNATURE du cabinet, DÉRIVÉE de sa clé de chiffrement (10.13.0). Elle vivait dans un
+// fichier propre à chaque poste (`cle-cabinet-signature.json`, tiré au hasard au premier fichier de
+// clôture) : deux postes du même cabinet (9.9.0) signaient donc avec deux clés, et un cabinet qui
+// change d'ordinateur en reprenant sa clé (clé de secours, copie externe) en changeait aussi. Tant que
+// le client ne retenait rien, ça ne se voyait pas ; dès qu'il retient la signature de son cabinet —
+// c'est ce qui rend « origine vérifiée » vrai — ce serait un refus à chaque changement de poste.
+// Dérivée, elle suit la clé du cabinet partout où elle va, et nulle part ailleurs : qui ne tient pas
+// la clé privée du cabinet ne peut pas la fabriquer. HKDF sépare les deux usages — la graine Ed25519
+// ne révèle rien de la clé X25519 dont elle vient.
+const ED25519_PKCS8_ENTETE = Buffer.from('302e020100300506032b657004220420', 'hex');
+function cleSignatureDerivee(cabinetPrivateKeyB64) {
+  const graine = Buffer.from(crypto.hkdfSync('sha256', Buffer.from(String(cabinetPrivateKeyB64 || ''), 'base64'),
+    Buffer.from('skanfact-cabinet', 'utf8'), Buffer.from('signature-ed25519-v1', 'utf8'), 32));
+  const priv = crypto.createPrivateKey({ key: Buffer.concat([ED25519_PKCS8_ENTETE, graine]), format: 'der', type: 'pkcs8' });
+  return {
+    privateKey: priv.export({ type: 'pkcs8', format: 'der' }).toString('base64'),
+    publicKey: crypto.createPublicKey(priv).export({ type: 'spki', format: 'der' }).toString('base64')
+  };
+}
+
 // Ce qui est signé : les OCTETS EXACTS de `manifeste.json` tels qu'ils partent dans le ZIP. Aucune
 // canonicalisation, aucun RFC 8785 : on ne re-sérialise jamais, on signe le fichier. Re-sérialiser
 // pour signer, c'est signer autre chose que ce qu'on envoie — et c'est l'écart entre les deux qui
@@ -381,5 +401,5 @@ module.exports = {
   sealBuffer, openBuffer, sealHeader, isSealed,
   generateCabinetKeys, keyFingerprint, sealForCabinet, openWithCabinetKey, cabinetHeader, isSealedForCabinet,
   // La signature du paquet par le client (9.2.0)
-  generateClientKeys, signManifest, verifyManifest
+  generateClientKeys, cleSignatureDerivee, signManifest, verifyManifest
 };

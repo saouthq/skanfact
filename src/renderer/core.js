@@ -795,6 +795,9 @@
     // Les questions reçues du cabinet (9.10.0). Elles ne touchent AUCUN chiffre : elles s'affichent
     // en face de la pièce qu'elles visent, on y répond, et la réponse repart dans le paquet suivant.
     questionsCabinet: [],
+    // La signature du cabinet, retenue au premier envoi signé (10.13.0) : { empreinte, depuis }.
+    // Les envois suivants lui sont comparés (`verdictEnvoiCabinet`). `null` tant qu'aucun n'est arrivé.
+    cabinetSignature: null,
     packs: [],               // paquets mensuels construits pour le cabinet (6.1.0)
     demo: false,             // ces données viennent du jeu d'exemple (7.0.0) — l'app le dit à l'écran
     // De quelle version sort l'exemple chargé, et sur quel mois il a été bâti — `{ version, mois }`.
@@ -1283,6 +1286,9 @@
     // 9.10.0 : les questions du cabinet. Absentes de cette liste, elles seraient jetées au prochain
     // chargement et le comptable n'aurait jamais de réponse — sans un mot (défaut `matricule`, 6.8.0).
     if (!Array.isArray(data.questionsCabinet)) data.questionsCabinet = [];
+    // 10.13.0 : la signature retenue du cabinet. Une forme qu'on ne reconnaît pas ne se garde pas —
+    // une empreinte vide retenue ferait refuser tous les envois signés, sans raison lisible.
+    if (!data.cabinetSignature || typeof data.cabinetSignature !== 'object' || !String(data.cabinetSignature.empreinte || '').trim()) data.cabinetSignature = null;
     if (!Array.isArray(data.packs)) data.packs = [];   // 6.1.0 : historique des envois au cabinet
     if (!Array.isArray(data.licences)) data.licences = [];   // 7.33.0 : licences émises par l'éditeur
     if (!Array.isArray(data.ecrituresOD)) data.ecrituresOD = [];   // 8.9.0 : opérations diverses
@@ -3113,6 +3119,53 @@
   const questionsSansReponse = Compta.questionsSansReponse;
   const reponsesApres = Compta.reponsesApres;
   const questionsValides = Compta.questionsValides;
+
+  // ---------------------------------------------------------- l'origine d'un envoi du cabinet (10.13.0)
+  //
+  // Le dossier de clôture (.skanclose) et les questions (.skanask) arrivent SIGNÉS. Jusqu'ici, « Origine
+  // vérifiée » voulait seulement dire « la signature correspond à la clé que le fichier présente » —
+  // or n'importe qui peut fabriquer une paire de clés et signer un fichier au nom du cabinet : le
+  // matricule du client est public. La clôture importée VERROUILLE un exercice ; la dire « vérifiée »
+  // sur un fichier auto-signé, c'était prétendre ce qu'on ne peut pas prouver (Cabinet 1.0.0).
+  //
+  // La règle est celle que le Cabinet applique aux paquets de ses clients depuis la 9.2.0 (confiance
+  // au premier usage, `cabcore.verdictOrigine`), vue de l'autre côté :
+  //   1. signature fausse ou manifeste modifié → REFUSÉ ;
+  //   2. pas de signature, rien de retenu → accepté, « origine non prouvée », en rouge ;
+  //   3. pas de signature, une signature retenue → REFUSÉ : ne plus signer est une régression, ou
+  //      quelqu'un d'autre ;
+  //   4. signature valable, rien de retenu → accepté ET retenu (`epingler`) : les suivants lui seront
+  //      comparés ;
+  //   5. signature valable, la même → « origine vérifiée », et cette fois c'est vrai ;
+  //   6. signature valable, une AUTRE → refusé en nommant les deux empreintes. La reprise passe par
+  //      un geste humain (l'empreinte lue au téléphone), jamais par une acceptation automatique.
+  //   epinglee : `data.cabinetSignature` ({ empreinte }) ou null
+  //   origine  : ce que main.js a vérifié ({ niveau: 'prouvee'|'non-prouvee'|'refusee', empreinte, motif })
+  function verdictEnvoiCabinet(epinglee, origine) {
+    const pin = (epinglee && String(epinglee.empreinte || '')) || '';
+    const o = origine || {};
+    const recue = String(o.empreinte || '');
+    if (o.niveau === 'refusee') {
+      return { ok: false, etat: 'refusee',
+        texte: `La signature de ce fichier n'est pas valable${o.motif ? ` (${String(o.motif).replace(/\.$/, '')})` : ''} : il a été modifié après son envoi, ou il ne vient pas de ton cabinet. Demande à ton comptable de te le renvoyer.` };
+    }
+    if (o.niveau !== 'prouvee') {
+      return pin
+        ? { ok: false, etat: 'signature-manquante',
+            texte: `Ce fichier n'est pas signé, alors que les envois précédents de ton cabinet l'étaient (signature ${pin}). Rien ne prouve qu'il vient de lui : demande-lui de te le renvoyer depuis SkanFact Cabinet.` }
+        : { ok: true, etat: 'non-prouvee', alerte: true,
+            ligne: `ORIGINE NON PROUVÉE : ${o.motif || 'ce fichier n\'est pas signé.'} Vérifie avec ton comptable avant d'accepter.` };
+    }
+    if (!pin) {
+      return { ok: true, etat: 'premiere', epingler: recue,
+        ligne: `Signé par ton cabinet (signature ${recue}). C'est la première signature que tu reçois de lui : elle sera retenue, et les envois suivants lui seront comparés.` };
+    }
+    if (pin !== recue) {
+      return { ok: false, etat: 'autre-cle', attendue: pin, recue,
+        texte: `Ce fichier est signé par une autre clé que celle de ton cabinet.\n\nAttendue : ${pin}\nReçue : ${recue}\n\nSi ton comptable a changé de clé, fais-lui lire la nouvelle empreinte au téléphone avant de l'accepter : c'est la seule façon de savoir que le fichier vient de lui.` };
+    }
+    return { ok: true, etat: 'signe', ligne: `Origine vérifiée : signé par ton cabinet (signature ${recue}), la même que ses envois précédents.` };
+  }
 
   // L'état des immobilisations pour un exercice : une ligne par bien, avec la dotation de l'année.
   function assetsList(data, year) {
@@ -7160,7 +7213,7 @@
     entriesBalance, entriesByAccount, entryCsvColumns, MOVE_ACCOUNTS, COMPTES_CONTREPARTIE, journalDeCompte, clotureValide,
     // Les questions du cabinet (9.10.0)
     QUESTION_ATTENDUS, QUESTION_RELANCE, questionsValides, fusionnerQuestionsRecues,
-    questionsDeLaPiece, repondreQuestion, reponsesAEnvoyer, reponsesApres, questionsSansReponse,
+    questionsDeLaPiece, repondreQuestion, reponsesAEnvoyer, reponsesApres, questionsSansReponse, verdictEnvoiCabinet,
     numerosDuJournal, livreJournal, journalCentralisateur, centralisateurCsvColumns, centralisateurRows, inPeriod,
     odValide, odPiece, comptesProposes, lettrage, SECTIONS_ECRITURES,
     etatRapprochement, etatsFinanciers, etatsCsvRows, etatsCsvColumns, employerChargesOf,

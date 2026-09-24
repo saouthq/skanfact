@@ -33,6 +33,8 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Un **clic qui ouvre autre chose que ce qu'il visait** : une proposition que personne n'a demandée s'est posée sous le curseur | 10.12.0 (H-E20) — « + Créer … au catalogue » sur la quantité et le prix |
 | Une **bulle « i » seule sur sa ligne**, ou visible à côté d'un bouton caché : un bouton DANS un bouton | 10.12.0 — neuf cas, le parseur ferme le premier |
 | Un **nombre tapé qui change sous les doigts** (« 28 » devient 82, ou 8) : un champ de nombre recréé rend son curseur au DÉBUT, et une sélection automatique prend le focus rendu par le code pour une entrée | 10.12.0 — l'inventaire ; un parcours qui `fill()` ne le voit jamais |
+| Une **origine dite « vérifiée »** sur un fichier que n'importe qui peut signer : la signature ne se comparait à RIEN | 10.13.0 — la clôture d'un faux cabinet, qui verrouille un exercice |
+| Un **bouton vert qui envoie un fichier périmé** : le paquet fabriqué AVANT la réponse | 10.13.0 — la réponse au comptable qui ne partait jamais |
 
 **Les chiffres**
 
@@ -140,6 +142,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Une classe du Cabinet ne peut pas porter un nom déjà pris dans la feuille partagée | 6.8.0 — `.setup-card` |
 | Un drapeau qui vit **en double** diverge, toujours | 7.26.0 — `src/depot.js` |
 | Une **fenêtre de formulaire** demande avant de jeter la saisie, avec le MÊME instantané des deux côtés | 10.12.0 |
+| Une **clé qu'on épingle** est la même sur tous les postes de son propriétaire, sinon l'épinglage fabrique des refus | 10.13.0 — la signature du cabinet, dérivée de sa clé |
 
 **L'interface**
 
@@ -6750,6 +6753,78 @@ effacer », seconde entreprise — à la souris) :
   savoir avant de chercher l'écran de verrouillage d'un mot de passe posé dans l'autre profil.
 - Piège de test, re-rencontré (8.1.0) : une assertion sur du texte source doit porter l'apostrophe
   ÉCHAPPÉE (`l\\'entreprise`), sinon elle accuse du code juste.
+
+### 10.13.0 — Avant la mise en production : le pont, envoyé pour de vrai
+
+Skander : « il faut tester toute l'application (entreprise et cabinet et le pont entre les deux) en
+entier, avec tous les parcours ». Les quatre demandes précises (listes modernes, bulles → article,
+une position pour les confirmations, barre latérale repliable) sont livrées ; puis un paquet est
+parti de l'app entreprise vers le Cabinet, des questions sont revenues, une réponse est repartie —
+aux trois outils, à la souris. Publiée en **bêta** : elle touche à la signature des envois.
+
+Règles apprises, à ne pas recasser :
+
+- **Une signature qui ne se compare à rien ne prouve rien.** « Origine vérifiée » s'affichait sur une
+  clôture ou des questions dès que la signature correspondait à la clé que le fichier PRÉSENTE — or
+  n'importe qui fabrique une paire de clés, et le matricule d'un client est public. Une clôture
+  importée VERROUILLE un exercice. Le commentaire du handler promettait même la confiance au premier
+  usage (« une fois une clé épinglée… REFUSÉ ») : rien ne l'implémentait. `core.verdictEnvoiCabinet`
+  porte les six cas (jumeau de `cabcore.verdictOrigine`, 9.2.0, vu de l'autre côté) ; la signature
+  se retient à la première clôture ou aux premières questions — et c'est dit, jamais « vérifiée » —,
+  un envoi d'une autre clé est refusé en nommant les deux empreintes, et ne plus signer après avoir
+  signé est refusé. La reprise d'une nouvelle clé est un geste humain (« J'ai vérifié avec mon
+  comptable »), et la signature retenue se voit et s'oublie dans les Paramètres. Un nouveau cabinet
+  (autre empreinte d'appairage) ou un cabinet retiré efface la signature retenue. `e2e:cloture`
+  fabrique un faux cabinet (même dossier, re-signé par une autre clé) et exige le refus.
+- **Épingler une clé tirée par POSTE fabrique des refus.** La clé de signature du Cabinet était tirée
+  au hasard sur chaque ordinateur (`cle-cabinet-signature.json`) : sans épinglage ça ne se voyait pas,
+  avec lui deux collaborateurs (9.9.0) ou un changement d'ordinateur (clé de secours) auraient été
+  refusés. Elle est DÉRIVÉE de la clé du cabinet (`Z.cleSignatureDerivee`, HKDF → graine Ed25519) :
+  elle suit la clé partout où elle va, et son empreinte s'affiche dans Réglages → Mon cabinet.
+  **Corriger la règle sans corriger ce qu'elle compare aurait remplacé un défaut silencieux par des
+  refus à tort** — c'est en cherchant d'où venait la clé qu'on l'a vu, pas en écrivant la règle.
+- **Chaque paquet signé arrivait avec « ⚠ 1 fichier présent mais non annoncé »** : la signature
+  elle-même, qui ne peut pas figurer dans le manifeste qu'elle signe (`cabcore.HORS_MANIFESTE`). Les
+  verdicts RANGÉS avec les paquets (6.8.1) se nettoient à la lecture (`migrateDossier`), sinon
+  l'alerte survivait sur tous les paquets déjà reçus.
+- **Un paquet fabriqué ne se réécrit pas, et le vert doit le savoir** (U-11). Répondre au comptable
+  puis cliquer le vert « Envoyer au comptable » joignait le fichier fabriqué AVANT la réponse ; la
+  phrase promettait « il n'y a rien d'autre à envoyer ». L'étape suivante se calcule (`suivante` :
+  répondre, fabriquer, refaire, envoyer, avec `C.reponsesApres`) et le bouton dit « Refaire le
+  paquet avec ta réponse ». Les questions passent AVANT « Fabriquer et envoyer » : les réponses
+  partent dedans.
+- **Une réponse déjà rangée qui revient n'est pas une réponse sans question.** Le client renvoie
+  toutes ses réponses dans chaque paquet ; le Cabinet ne les retirait des « restantes » que si une
+  NOUVELLE avait été posée dans le livre, et comptait les autres « à une question que ce dossier ne
+  porte plus », à chaque paquet, pour toujours. `compta.posterReponsesDansLivres` est pure et testée ;
+  une réponse est connue dès que sa question est dans le livre.
+- **Ce que l'import écrit dans un livre périme le livre gardé en mémoire.** La Révision annonçait
+  « 1 question attend sa réponse » sur une question répondue : le rapport ne le disait pas, et
+  l'écran relisait l'ancien livre. L'import dit les réponses (« Lire la réponse » ouvre la
+  Révision) et oublie le livre du dossier ouvert (`livreCle`). C'est la règle 9.2.0 (« les gestes
+  qui modifient le livre reposent l'état eux-mêmes ») — l'import en était un sans le savoir.
+- **Écrire un fichier n'est pas l'envoyer** : « 1 question envoyée, signée » sur un fichier qu'il
+  reste à transmettre. Le compte rendu dit où il est et le montre.
+- Et deux jumeaux de règles anciennes : « * obligatoire » écrit à la main dans une fenêtre dont
+  `modal()` pose déjà la légende (7.20.0 — un test interdit désormais la forme), et un second vert
+  « Répondre » dans le bandeau d'une pièce qui avait déjà « Enregistrer un paiement » (U-11).
+- Piège de test : un marqueur nommé `danger: true` hors d'un menu a fait tomber le test « le geste qui
+  détruit vit en bas de son menu » — il lit la forme. Le drapeau d'un verdict s'appelle `alerte`.
+- **Une question de sécurité ne s'accepte pas d'un Entrée.** La règle des fenêtres (1.8.0) fait
+  cliquer le bouton principal par Entrée — y compris « J'ai vérifié avec mon comptable : accepter »,
+  c'est-à-dire la nouvelle clé d'un imposteur, acceptée par réflexe. `confirmDialog(…, { prudent: true })`
+  donne le curseur à « Annuler » : Entrée sur un BOUTON qui a le curseur clique ce bouton (le
+  raccourci de `modal()` s'efface devant une cible bouton). Vu à la souris, en tapant Entrée sur le
+  faux fichier : aucun test ne pose ce geste-là.
+- **Un raccourci vise un PANNEAU (7.18.0), et une cible asynchrone se pose après le chargement.**
+  « Lire la réponse » ouvrait la Révision en haut, la réponse trois panneaux plus bas. Poser
+  `pageFocus` avant la navigation ne suffisait pas : `focaliser` le consomme au premier dessin, qui
+  est l'écran « Lecture du dossier de révision… » — la cible n'existe pas encore. Le raccourci pose
+  `livresState.revViser`, et `brancherRevision` le convertit en `pageFocus` une fois la révision LUE.
+- **Le jeu d'exemple se refait à la montée de version (9.4.2)** : relancer l'app entreprise après le
+  numéro 10.13.0-beta.1 a effacé les paquets et les questions posés à la main dans l'exemple. Ce
+  n'est pas un défaut — c'est la règle —, mais un test humain sur l'exemple se prépare APRÈS le
+  changement de version, pas avant.
 
 ## Pistes pour la suite (non demandées)
 

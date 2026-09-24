@@ -740,13 +740,20 @@
   // pas : « août 2026 n'est pas clôturé » (test humain du pont, 10.13.0). Un mois s'écrit en
   // minuscule au milieu d'une phrase, jamais en tête.
   const enTete = s => { s = String(s || ''); return s.charAt(0).toLocaleUpperCase('fr') + s.slice(1); };
-  function confirmDialog(msg, okLabel, danger) {
+  // `opts.prudent` (10.13.0) : une question dont le « oui » par réflexe est précisément ce qu'un
+  // imposteur espère — accepter la signature d'une autre clé. La règle des fenêtres veut qu'Entrée
+  // clique le bouton principal (1.8.0) ; ici le curseur part sur « Annuler », donc Entrée annule, et
+  // accepter demande un clic voulu sur le bouton qui le dit.
+  function confirmDialog(msg, okLabel, danger, opts) {
     return new Promise(resolve => {
       let settled = false;
       const finish = (close, v) => { settled = true; close(); resolve(v); };
       modal(`<h2>Confirmation</h2><p>${numerosInsecables(C.nl2br(enTete(msg)))}</p>
         <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn ${danger === false ? 'btn-primary' : 'btn-danger'}" id="ok">${h(okLabel || 'Confirmer')}</button></div>`,
-        (root, close) => { $('#ok', root).onclick = () => finish(close, true); $('[data-close]', root).onclick = () => finish(close, false); },
+        (root, close) => {
+          $('#ok', root).onclick = () => finish(close, true); $('[data-close]', root).onclick = () => finish(close, false);
+          if (opts && opts.prudent) $('[data-close]', root).focus();
+        },
         () => { if (!settled) resolve(false); });
     });
   }
@@ -5590,6 +5597,22 @@
   // l'onglet Cabinet, et le bandeau posé en face de la pièce que la question vise. Recopiée dans
   // les deux, elle divergerait au premier ajustement (7.29.0).
   const repondue = q => !!(q && q.reponse && (String(q.reponse.texte || '').trim() || q.reponse.piece));
+  // 10.13.0 — l'ORIGINE d'un envoi du cabinet (clôture, questions), jugée par la règle du cœur
+  // (`C.verdictEnvoiCabinet`). Rend null quand l'envoi est refusé — et le dit —, sinon le verdict :
+  // sa `ligne` s'écrit dans la confirmation, et la signature à retenir (`epingler`) ne se retient
+  // qu'une fois l'import ACCEPTÉ, jamais avant. Une autre clé n'est pas un cul-de-sac : on peut
+  // l'accepter, mais seulement en disant qu'on a lu l'empreinte au comptable (règle 9.2.0).
+  async function origineAcceptee(lu, quoi) {
+    const v = C.verdictEnvoiCabinet(data.cabinetSignature, lu.origine);
+    if (v.ok) return v;
+    if (v.etat !== 'autre-cle') { await infoDialog(quoi + ' refusé', v.texte); return null; }
+    const force = await confirmDialog(v.texte + '\n\nAccepter cette nouvelle signature ?', 'J\'ai vérifié avec mon comptable : accepter', true, { prudent: true });
+    if (!force) return null;
+    return { ok: true, etat: 'nouvelle', alerte: true, epingler: v.recue,
+      ligne: `Nouvelle signature de ton cabinet (${v.recue}) : elle remplacera celle qui était retenue.` };
+  }
+  const retenirSignature = v => { if (v && v.epingler) data.cabinetSignature = { empreinte: v.epingler, depuis: Date.now() }; };
+
   // 10.13.0 — la pièce qu'une question NOMME s'ouvre (7.15.0) : « FAC-2026-022 » en gras, sans lien,
   // obligeait à la chercher dans la liste des factures pour lire ce que le comptable demande. Une
   // vente d'abord (les deux applications nomment ses pièces pareil), puis un achat par son numéro.
@@ -5623,7 +5646,7 @@
     modal(`<h2>Répondre à ton comptable</h2>
       <p class="small">${q.piece ? `Sur la pièce <strong>${h(q.piece)}</strong>. ` : ''}Il attend : <strong>${h(att)}</strong>.</p>
       <div class="warn-box mb">${h(q.objet ? q.objet + ' — ' : '')}${h(q.texte)}</div>
-      <form id="qf"><label class="field obligatoire"><span>Ta réponse</span>
+      <form id="qf"><label class="field obligatoire">${lbl('Ta réponse', 'cab.reponse')}
         <textarea name="texte" rows="4" placeholder="Réponds en une phrase : c'est ce que ton comptable lira.">${h((q.reponse && q.reponse.texte) || '')}</textarea></label>
         <p class="small muted">Une pièce justificative se joint sur la pièce elle-même : elle part déjà dans le paquet,
         et la joindre ici en ferait une seconde copie.</p></form>
@@ -11568,6 +11591,8 @@
         if (!lu) return;
         const v = C.clotureValide(lu.cloture, { matricule: company().taxId });
         if (!v.ok) return toast(v.motifs[0], true);
+        const orig = await origineAcceptee(lu, 'Dossier de clôture');
+        if (!orig) return;
         const cl = lu.cloture;
         const fin = (cl.exercice && cl.exercice.au) || '';
         const deja = (data.clotures || []).find(x => String(x.exercice) === String(cl.exercice.annee));
@@ -11575,12 +11600,11 @@
           `Reprendre la clôture ${cl.exercice.annee} de ton comptable ?\n\n`
           + `• ${pl(cl.anouveaux.length, 'à-nouveau officiel', 'à-nouveaux officiels')} seront enregistrés.\n`
           + `• Ton exercice sera VERROUILLÉ jusqu'au ${C.fmtDate(fin)} : plus aucune pièce datée dedans ne pourra être créée, modifiée ou supprimée.\n`
-          + (lu.origine.niveau === 'prouvee'
-            ? `• Origine vérifiée : signature ${lu.origine.empreinte}.\n`
-            : `• ORIGINE NON PROUVÉE : ${lu.origine.motif} Vérifie avec ton comptable avant d'accepter.\n`)
+          + `• ${orig.ligne}\n`
           + (deja ? `\nUne clôture ${cl.exercice.annee} a déjà été reprise : celle-ci la remplacera.` : ''),
-          'Reprendre la clôture', lu.origine.niveau !== 'prouvee');
+          'Reprendre la clôture', !!orig.alerte);
         if (!ok) return;
+        retenirSignature(orig);
         data.clotures = (data.clotures || []).filter(x => String(x.exercice) !== String(cl.exercice.annee));
         data.clotures.push({
           exercice: String(cl.exercice.annee), du: cl.exercice.du, au: fin,
@@ -11858,15 +11882,16 @@
         if (!lu) return;
         const v = C.questionsValides(lu.envoi, { matricule: company().taxId });
         if (!v.ok) return toast(v.motifs[0], true);
+        const orig = await origineAcceptee(lu, 'Envoi de questions');
+        if (!orig) return;
         const ok = await confirmDialog(
           `Reprendre ${pl(v.questions, 'question')} de ton comptable ?\n\n`
           + (v.questions > 1 ? '• Elles s\'afficheront en face des pièces qu\'elles visent.\n' : '• Elle s\'affichera en face de la pièce qu\'elle vise.\n')
           + '• Aucun de tes chiffres ne change : une question est une demande, pas une écriture.\n'
-          + (lu.origine.niveau === 'prouvee'
-            ? `• Origine vérifiée : signature ${lu.origine.empreinte}.`
-            : `• ORIGINE NON PROUVÉE : ${lu.origine.motif} Vérifie avec ton comptable avant d'accepter.`),
-          'Reprendre les questions', lu.origine.niveau !== 'prouvee');
+          + `• ${orig.ligne}`,
+          'Reprendre les questions', !!orig.alerte);
         if (!ok) return;
+        retenirSignature(orig);
         const r = C.fusionnerQuestionsRecues(data.questionsCabinet || [], lu.envoi, Date.now());
         data.questionsCabinet = r.liste;
         save(true);
@@ -12455,15 +12480,20 @@
     function drawCabinetPair() {
       const el = $('#cab-pair'); if (!el) return;
       const cab = company().cabinet;
+      const sig = data.cabinetSignature;
       el.innerHTML = cab && cab.publicKey
         ? `<p>Tes paquets mensuels sont chiffrés pour <strong>${h(cab.name || 'ton cabinet')}</strong>${cab.email ? ` <span class="muted">(${h(cab.email)})</span>` : ''}.</p>
            <table class="list compact"><tbody>
              <tr><td>Empreinte de sa clé ${info('cab.empreinte')}</td><td class="mono"><strong>${h(cab.fingerprint || '')}</strong></td></tr>
              <tr><td>Appairé le</td><td>${cab.pairedAt ? C.fmtDate(String(cab.pairedAt).slice(0, 10)) : '—'}</td></tr>
+             ${sig ? `<tr><td>Signature de ses envois ${info('cab.signature')}</td><td><strong class="mono">${h(sig.empreinte)}</strong>
+               <span class="small muted">retenue le ${C.fmtDate(C.jourDeLInstant(sig.depuis))}</span></td></tr>` : ''}
            </tbody></table>
            <p class="small muted mt">Vérifie cette empreinte <b>de vive voix</b> avec ton comptable la première fois : c'est ce qui garantit que tu as bien sa clé et pas celle de quelqu'un d'autre.</p>
-           <div class="inline mt"><button class="btn" id="cab-repair">Remplacer par un autre cabinet…</button><button class="btn btn-danger" id="cab-unpair">Retirer</button></div>`
-        : `<p>Aucun cabinet appairé. Tes paquets mensuels peuvent être protégés par un mot de passe, mais c'est moins pratique et moins sûr : un mot de passe se transmet, donc il fuite.</p>
+           <div class="inline mt"><button class="btn" id="cab-repair">Remplacer par un autre cabinet…</button>${sig ? '<button class="btn" id="cab-oublier-sig">Oublier sa signature…</button>' : ''}<button class="btn btn-danger" id="cab-unpair">Retirer</button></div>`
+        : `${sig ? `<p class="small">Signature retenue de ton cabinet ${info('cab.signature')} : <span class="mono"><strong>${h(sig.empreinte)}</strong></span>
+             <span class="muted">(depuis le ${C.fmtDate(C.jourDeLInstant(sig.depuis))})</span> <button class="btn btn-sm" id="cab-oublier-sig">Oublier…</button></p>` : ''}
+           <p>Aucun cabinet appairé. Tes paquets mensuels peuvent être protégés par un mot de passe, mais c'est moins pratique et moins sûr : un mot de passe se transmet, donc il fuite.</p>
            <p class="small muted">Demande à ton comptable son <b>fichier d'appairage</b> (il l'exporte depuis SkanFact Cabinet). Une fois importé ici, chaque paquet sera chiffré pour lui seul, sans mot de passe à échanger.</p>
            <p class="small muted">Ton comptable n'a pas encore l'application ? <b>SkanFact Cabinet</b> est gratuite pour lui : elle est jointe à chaque version de SkanFact, sous le même lien de téléchargement. Elle lit tes paquets, ne modifie jamais tes données et ne t'envoie rien.</p>
            <button class="btn btn-primary mt" id="cab-import">Importer le fichier du cabinet…</button>`;
@@ -12478,6 +12508,10 @@
         try {
           const r = await bridge.importCabinet();
           if (!r) return;
+          // Un AUTRE cabinet signe avec sa propre clé : garder la signature de l'ancien ferait refuser
+          // sa première clôture. Réimporter le même fichier ne change rien.
+          const avant = data.company.cabinet && data.company.cabinet.fingerprint;
+          if (avant && avant !== r.fingerprint) data.cabinetSignature = null;
           data.company.cabinet = r;
           save(true); drawCabinetPair();
           toast(`Cabinet appairé : ${r.name || ''}`);
@@ -12487,8 +12521,13 @@
       if ($('#cab-repair')) $('#cab-repair').onclick = doImport;
       if ($('#cab-unpair')) $('#cab-unpair').onclick = async () => {
         if (!await confirmDialog('Retirer ce cabinet ? Tes prochains paquets ne seront plus chiffrés pour lui — il faudra revenir au mot de passe.', 'Retirer')) return;
-        delete data.company.cabinet; save(true); drawCabinetPair();
+        delete data.company.cabinet; data.cabinetSignature = null; save(true); drawCabinetPair();
         toast('Cabinet retiré');
+      };
+      if ($('#cab-oublier-sig')) $('#cab-oublier-sig').onclick = async () => {
+        if (!await confirmDialog('Oublier la signature retenue de ton cabinet ?\n\nLe prochain fichier signé qu\'il t\'enverra sera retenu à sa place. Ne le fais que si ton comptable t\'a dit avoir changé de clé.', 'Oublier la signature')) return;
+        data.cabinetSignature = null; save(true); drawCabinetPair();
+        toast('Signature oubliée : la prochaine sera retenue');
       };
     }
     drawCabinetPair();

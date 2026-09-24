@@ -1279,6 +1279,7 @@
         $('#ok', layer).onclick = () => { close(); fini(); };
         $$('[data-imp-rev]', layer).forEach(b => b.onclick = () => {
           close(); fini();
+          livresState.revViser = 'rv-questions';
           vers('#/dossier/' + encodeURIComponent(b.dataset.impRev) + '/comptabilite/revision');
         });
         const a = $('#acc-all', layer);
@@ -4112,7 +4113,7 @@
          <div class="inline mt"><button class="btn btn-sm" id="rv-modeles">Écrire le questionnaire…</button></div>`}
     </div>
 
-    <div class="panel"><h2>Les questions posées au client ${info('rv.questions')}</h2>
+    <div class="panel" id="rv-questions"><h2>Les questions posées au client ${info('rv.questions')}</h2>
       ${r.questions.length
     ? `<div class="scroll-x"><table class="list compact"><thead><tr><th>Pièce</th><th>Compte</th><th>La question</th><th>Attendu</th><th>Envois</th><th>Réponse</th><th></th></tr></thead>
         <tbody>${r.questions.slice().reverse().map(q => `<tr class="${(q.envois || []).length >= 2 && q.statut !== 'repondue' && q.statut !== 'close' ? 'row-warn' : ''}">
@@ -4138,6 +4139,11 @@
     // poser une question change ce que les feuilles maîtresses montrent (même parade qu'en T-24).
     const rev = `${(s.livre.audit || []).length}:${(s.livre.ecritures || []).length}:${s.revPeriode || s.annee}`;
     if (!s.revision || s.revisionRev !== rev) { s.revisionRev = rev; chargerRevision(root, dossier); return; }
+    // 10.13.0 — un raccourci vise un PANNEAU (7.18.0) : « Lire la réponse », depuis le compte rendu
+    // d'import, ouvrait la Révision en haut, et la réponse du client vivait trois panneaux plus bas.
+    // La cible n'existe qu'une fois le dossier de révision LU : posée plus tôt, `focaliser` la
+    // consommait sur l'écran « Lecture du dossier… » et ne trouvait rien.
+    if (s.revViser) { pageFocus = s.revViser; s.revViser = ''; }
     const relire = () => { s.revisionRev = ''; chargerRevision(root, dossier); };
 
     const per = $('#rv-periode', el);
@@ -8530,6 +8536,10 @@
             ? '<button type="button" class="btn btn-sm" id="c-copier-emp">Copier</button>' : ''}</div></div>
         <p class="muted small mt">Cette empreinte identifie ton cabinet. Ton client la voit après l'import : s'il te la lit au téléphone
         et qu'elle correspond, c'est bien à toi qu'il envoie.</p>
+        ${c.signatureFingerprint ? `<div class="mt"><div class="muted small">${lbl('Empreinte de ta signature', 'cab.signature')}</div>
+          <div class="empreinte-ligne"><span class="fingerprint">${esc(c.signatureFingerprint)}</span></div></div>
+        <p class="muted small mt">Tes clôtures et tes questions partent signées. Ton client retient cette signature la première fois,
+        puis refuse un envoi qui en porterait une autre : si l'un d'eux te la lit au téléphone, c'est celle-ci.</p>` : ''}
         <div class="modal-actions"><button class="btn" id="c-pair">Enregistrer le fichier d'appairage…</button></div>
       </div>
 

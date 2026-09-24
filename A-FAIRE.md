@@ -6,7 +6,7 @@ Il ne remplace pas `VERSIONS-A-VENIR.md`, qui inventorie les VERSIONS à écrire
 constats isolés, les dettes et les décisions en attente. Une ligne en sort quand elle est faite, ou
 quand elle devient une version.*
 
-Dernière relecture : 23/09/2026.
+Dernière relecture : 24/09/2026.
 
 ---
 
@@ -210,6 +210,19 @@ Constats de l'audit du 22/09/2026 restés hors de la 10.6.0.
     où l'on colle vingt chiffres ; à écrire avec la même fonction (`verifRib`).
   - La touche Tab passe par la bulle « i » de chaque libellé : c'est **voulu** (7.0.0 et 9.3.0 — une
     explication doit rester atteignable au clavier), gardé ici pour ne pas le « corriger » un jour.
+- **Le pont testé pour de vrai** (24/09/2026, 10.13.0-beta.1 : paquet → Cabinet → questions →
+  réponse → paquet refait → Cabinet) a corrigé ce qu'il a trouvé (signature retenue, paquet périmé,
+  réponses orphelines, compte rendu muet). Il laisse :
+  - **La pièce d'une question se tape à la main** dans le Cabinet (« FAC-2026-022 ») : une faute de
+    frappe et la question ne s'affiche en face d'aucune pièce chez le client. Proposer les numéros
+    lus dans les paquets reçus rendrait la faute impossible.
+  - **Deux questions de suite en ouvrant un paquet d'exemple** (« Ce sont des données d'exemple »
+    puis « Août n'est pas clôturé ») : les deux sont légitimes, mais deux fenêtres à la file se
+    cliquent sans être lues (7.28.0). À fondre en une seule le jour où l'on retouche la fabrication.
+  - **La signature du cabinet se retient au premier usage** : un attaquant qui intercepterait le
+    TOUT PREMIER envoi d'un cabinet serait retenu à sa place. Même limite, assumée, que côté Cabinet
+    (9.2.0). La lever demanderait que le fichier d'appairage porte aussi la clé de signature ET que
+    l'empreinte lue au téléphone la couvre — donc un changement du format d'appairage.
 - Les trois pistes jamais demandées, gardées pour mémoire : séparer les installateurs arm64 / x64
   (les 222 Mo du dmg universel), la signature Apple et Windows (certificats payants — mais elle
   passe **avant la première vente**, cf. `QUESTIONS.md` : un expert-comptable ne clique pas sur

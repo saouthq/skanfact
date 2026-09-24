@@ -148,6 +148,10 @@ function safeState() {
   if (s.cabinet) {
     delete s.cabinet.privateKey;
     s.cabinet.fingerprint = state.cabinet.publicKey ? Z.keyFingerprint(state.cabinet.publicKey) : '';
+    // L'empreinte de SIGNATURE (10.13.0) : c'est celle que le client voit à sa première clôture ou à
+    // ses premières questions, et celle qu'il te lira au téléphone si elle change.
+    const sig = cleSignatureCabinet();
+    s.cabinet.signatureFingerprint = sig ? Z.keyFingerprint(sig.publicKey) : '';
   }
   // QUI travaille sur ce poste (9.9.0). L'identité vit dans `app-config.json`, pas dans l'état :
   // elle est AJOUTÉE ici pour l'écran, exactement comme l'empreinte du cabinet — et pour la même
@@ -1895,18 +1899,16 @@ ipcMain.handle('cab:ecrireVariationStock', (_e, { dossierId, annee } = {}) => {
 // contrôle. Il porte les à-nouveaux officiels, les écritures d'inventaire, et un document lisible
 // par n'importe qui — y compris par un client qui ne met jamais son application à jour.
 
-// La clé de SIGNATURE du cabinet, créée au premier fichier de clôture. Symétrique de celle du
-// client (9.2.0) : chiffrer dit « seul lui peut lire », seule une signature dit « ça vient de lui ».
-// Elle vit hors des données, en 0600, et ne traverse jamais le pont.
-const CLE_SIGNATURE = () => path.join(app.getPath('userData'), 'cle-cabinet-signature.json');
+// La clé de SIGNATURE du cabinet. Symétrique de celle du client (9.2.0) : chiffrer dit « seul lui
+// peut lire », seule une signature dit « ça vient de lui ». Depuis la 10.13.0 elle est DÉRIVÉE de la
+// clé du cabinet (`Z.cleSignatureDerivee`) au lieu d'être tirée par poste : le client retient désormais
+// la signature de son cabinet, et deux postes du même cabinet — ou un cabinet qui a changé
+// d'ordinateur avec sa clé de secours — doivent signer pareil. Elle ne traverse jamais le pont ; seule
+// son empreinte part vers l'écran (`safeState`), pour être lue au client qui la vérifie.
 function cleSignatureCabinet() {
   try {
-    const p = CLE_SIGNATURE();
-    if (fs.existsSync(p)) return JSON.parse(fs.readFileSync(p, 'utf8'));
-    const k = Z.generateClientKeys();
-    const obj = { ...k, creeLe: Date.now() };
-    fs.writeFileSync(p, JSON.stringify(obj, null, 2), { mode: 0o600 });
-    return obj;
+    if (!state || !state.cabinet || !state.cabinet.privateKey) return null;
+    return Z.cleSignatureDerivee(state.cabinet.privateKey);
   } catch (e) { logToFile('cle-signature-cabinet', e); return null; }
 }
 
