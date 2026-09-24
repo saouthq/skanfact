@@ -363,12 +363,14 @@ const CIBLE = path.join(dir, 'cloture.skanclose');
     throw new Error('le faux cabinet n\'est pas refusé en nommant les deux empreintes : ' + refusFaux.slice(0, 300));
   }
   if (/Reprendre la clôture/.test(refusFaux)) throw new Error('le faux cabinet arrive jusqu\'à la question « Reprendre la clôture »');
-  // On refuse : rien ne change, la signature retenue reste la bonne.
-  await we.evaluate(() => { const b = [...document.querySelectorAll('.modal-bg button')].find(x => /Annuler/.test(x.textContent)); if (b) b.click(); });
+  // Le réflexe : Entrée. Sur cette question-là, il ANNULE (le curseur est sur « Annuler ») — un
+  // « oui » par habitude est exactement ce qu'un imposteur espère. Rien ne change, la signature
+  // retenue reste la bonne.
+  await we.keyboard.press('Enter');
   await attendreE(600);
   const apresFaux = await we.evaluate(() => ({ n: (window.__data.clotures || []).length, sig: ((window.__data || {}).cabinetSignature || {}).empreinte }));
   if (apresFaux.n !== 1 || apresFaux.sig !== retenue) throw new Error('refuser le faux a changé quelque chose : ' + JSON.stringify(apresFaux));
-  ok(`faux cabinet refusé (attendue ${retenue}, reçue ${Z.keyFingerprint(intrus.publicKey)}) ; rien n'a changé`);
+  ok(`faux cabinet refusé (attendue ${retenue}, reçue ${Z.keyFingerprint(intrus.publicKey)}) ; Entrée annule, rien n'a changé`);
 
   // ------------------------------------------------ LA parité : le même résultat des deux côtés
   étape('Le jumeau du test de parité : le MÊME résultat des deux côtés');

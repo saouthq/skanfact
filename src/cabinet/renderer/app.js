@@ -4288,11 +4288,11 @@
       <p class="small muted">Elle s'affichera chez lui <b>en face de la pièce</b> qu'elle vise, et sa réponse
       reviendra toute seule dans son prochain paquet. Rien de ce que tu écris ici ne touche à ses chiffres.</p>
       <div class="grid-2">
-        <label class="field"><span>La pièce</span><input type="text" id="qf-piece" value="${esc((q && q.piece) || b.piece || '')}" placeholder="FAC-2026-014"></label>
-        <label class="field"><span>Le compte</span><input type="text" id="qf-compte" value="${esc((q && q.compte) || b.compte || '')}" placeholder="471"></label>
-        <label class="field"><span>L'objet</span><input type="text" id="qf-objet" value="${esc((q && q.objet) || '')}" placeholder="Justificatif absent"></label>
-        <label class="field"><span>Ce que tu attends</span><select id="qf-attendu">${KC.QUESTION_ATTENDUS.map(a => `<option value="${esc(a.id)}" ${(q ? q.attendu : 'explication') === a.id ? 'selected' : ''}>${esc(a.label)}</option>`).join('')}</select></label>
-        <label class="field obligatoire span-2"><span>La question</span>
+        <label class="field">${lbl('La pièce', 'qf.piece')}<input type="text" id="qf-piece" value="${esc((q && q.piece) || b.piece || '')}" placeholder="FAC-2026-014"></label>
+        <label class="field">${lbl('Le compte', 'qf.compte')}<input type="text" id="qf-compte" value="${esc((q && q.compte) || b.compte || '')}" placeholder="471"></label>
+        <label class="field">${lbl('L\'objet', 'qf.objet')}<input type="text" id="qf-objet" value="${esc((q && q.objet) || '')}" placeholder="Justificatif absent"></label>
+        <label class="field">${lbl('Ce que tu attends', 'qf.attendu')}<select id="qf-attendu">${KC.QUESTION_ATTENDUS.map(a => `<option value="${esc(a.id)}" ${(q ? q.attendu : 'explication') === a.id ? 'selected' : ''}>${esc(a.label)}</option>`).join('')}</select></label>
+        <label class="field obligatoire span-2">${lbl('La question', 'qf.texte')}
           <textarea id="qf-texte" rows="3" placeholder="Peux-tu m'envoyer la facture correspondant à ce virement de 1 200 DT ?">${esc((q && q.texte) || '')}</textarea></label>
       </div>
       <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="qf-ok">${id ? 'Enregistrer' : 'Poser la question'}</button></div>`,
@@ -4302,7 +4302,7 @@
         objet: $('#qf-objet', couche).value.trim(), attendu: $('#qf-attendu', couche).value,
         texte: $('#qf-texte', couche).value.trim(), periode: (s.revision && s.revision.dossier.periode) || String(s.annee)
       };
-      if (!champs.texte) return toast('Une question sans texte n\'apprend rien au client.', 'error');
+      if (!champs.texte) return refus($('#qf-texte', couche), 'Une question sans texte n\'apprend rien au client.');
       try {
         const r = id
           ? await api.question({ dossierId: dossier.id, annee: s.annee, id, geste: 'modifier', champs })

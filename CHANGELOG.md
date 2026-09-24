@@ -41,7 +41,8 @@ paquet est parti de l'une vers l'autre pour de vrai, aller et retour.
 - **Le Cabinet recevait les réponses sans le dire.** Le compte rendu d'import annonce maintenant
   « 1 réponse du client à tes questions » avec « Lire la réponse », qui amène directement au panneau
   des questions de la Révision (il était trois panneaux plus bas) — et la Révision ne montre plus
-  « 1 question attend sa réponse » sur une question répondue. Le champ « Ta réponse » a sa bulle.
+  « 1 question attend sa réponse » sur une question répondue. Le champ « Ta réponse » a sa bulle, les
+  cinq champs de « Poser une question au client » ont les leurs, et une question vide montre sa case.
 - **Une réponse déjà reçue revenait comme « réponse à une question inconnue »** à chaque paquet
   suivant (le client renvoie toutes ses réponses à chaque fois).
 - **Écrire le fichier de questions ne se dit plus « 1 question envoyée »** : il reste à le
