@@ -5650,11 +5650,17 @@
     const cur = company.currency;
     const fmt = n => money(n, cur);
 
-    const overdue = overdueInvoices(data, company, t).filter(x => !x.snoozed);
+    // Une facture dont la relance est REPORTÉE reste en retard (la carte « Reste à encaisser » la
+    // compte) mais n'est plus à relancer aujourd'hui. Dire « 3 factures en retard » ici et « 4 en
+    // retard » sur la carte, à dix centimètres, c'est deux chiffres justes qui se contredisent :
+    // quand un report existe, la ligne dit « à relancer » et nomme les autres (règle 6.8.1).
+    const tousRetards = overdueInvoices(data, company, t);
+    const overdue = tousRetards.filter(x => !x.snoozed);
+    const reportes = tousRetards.length - overdue.length;
     const overdueAmount = round3(overdue.reduce((s, x) => s + toBase(x.doc, x.remaining, company), 0));
     if (overdue.length) out.push({
-      id: 'retards', level: 'danger', label: `${overdue.length} facture${overdue.length > 1 ? 's' : ''} en retard`,
-      detail: `${fmt(overdueAmount)} à récupérer · plus ancienne : ${plFr(overdue[0].daysLate, 'jour')} de retard`,
+      id: 'retards', level: 'danger', label: `${overdue.length} facture${overdue.length > 1 ? 's' : ''} en retard${reportes ? ' à relancer' : ''}`,
+      detail: `${fmt(overdueAmount)} à récupérer · plus ancienne : ${plFr(overdue[0].daysLate, 'jour')} de retard${reportes ? ` · ${reportes > 1 ? `${reportes} autres` : '1 autre'} en retard, relance reportée` : ''}`,
       count: overdue.length, amount: overdueAmount, route: '#/relances', docs: overdue.map(x => x.doc)
     });
 

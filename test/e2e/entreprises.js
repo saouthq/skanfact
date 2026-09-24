@@ -57,7 +57,11 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
   const menu1 = await win.$eval('#dos-menu', e => e.textContent);
   if (!/Atelier Un SUARL/.test(menu1)) throw new Error('le menu ne montre pas l\'entreprise ouverte');
   if (!/Nouvelle entreprise/.test(menu1)) throw new Error('le menu ne propose pas de créer une seconde entreprise');
-  j.ok('le menu s\'ouvre et nomme l\'entreprise ouverte');
+  // 10.12.0 — le menu prenait la largeur de l'en-tête et coupait ses propres gestes (« Partager
+  // cette entre… », « Rejoindre un dossie… ») : un geste qu'on ne lit pas entier ne se choisit pas.
+  const coupes = await win.$$eval('#dos-menu button:not([data-dos]) .dm-nom', els => els.filter(e => e.scrollWidth > e.clientWidth + 1).map(e => e.textContent));
+  if (coupes.length) throw new Error('le menu des entreprises coupe ses gestes : ' + coupes.join(', '));
+  j.ok('le menu s\'ouvre, nomme l\'entreprise ouverte, et ses gestes se lisent en entier');
 
   j.etape('Échap le referme, un clic ailleurs aussi');
   await win.keyboard.press('Escape');

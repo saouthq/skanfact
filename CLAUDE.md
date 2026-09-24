@@ -167,7 +167,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Un refus dit **trois** choses : ce qui est refusé, pourquoi, et le bouton qui débloque | 7.0.0, 9.2.1 |
 | Un refus qu'on a **écrit** est une réponse ; seule une **panne** va au journal | 9.4.10 |
 | Un **bouton éteint dit pourquoi**, et par la MÊME fonction que celle qui refusera | 9.4.5 |
-| Une saisie refusée se **MONTRE** : on amène le champ à l'écran (`refus()`) | 7.0.0, 7.20.0 |
+| Une saisie refusée se **MONTRE** : on amène le champ à l'écran (`refus()`) — dans TOUTES les fenêtres, la règle se lit sur la condition | 7.0.0, 7.20.0 ; 10.12.0 — vingt-cinq refus qui ne faisaient qu'un message |
 | Ce qui **détruit** demande ; ce qui **se répare** laisse un « Annuler » (`toastUndo`) | 7.12.0 ; 9.4.6 — porté au Cabinet |
 | Un écran qui **NOMME** un ensemble doit pouvoir l'ouvrir | 7.15.0, 7.17.0, 7.21.0, 10.4.0 |
 | Un **lecteur ne dépend jamais d'un filtre qu'il ne voit pas** : la colonne testée se SÉLECTIONNE | 10.9.0 — la ligne écartée en silence |
@@ -6688,6 +6688,60 @@ inventaire, rapprochement, thème sombre — à la souris et au clavier) :
   neutralisent maintenant le temps de la preuve (9.8.8, « une preuve qui tombe sur un AUTRE test »).
   Et une ancre de preuve recopiée de mémoire (dix espaces au lieu de huit) ne trouve rien : on la lit
   dans le fichier.
+
+**Puis les données et la sécurité** (sauvegardes, restauration, mot de passe, verrouillage, « Tout
+effacer », seconde entreprise — à la souris) :
+
+- **Une règle posée sur cinq fenêtres ne vaut pas pour les autres** (7.20.0) : `refus()` montrait la
+  case refusée dans les éditeurs et cinq fenêtres ; vingt-cinq refus (mot de passe, paiement,
+  relance, mouvement, compte, mail, assistant…) ne faisaient qu'un message rouge. La règle se lit
+  maintenant sur la CONDITION — un refus jugé sur `v.<champ>` passe par `refus`, jamais par `toast`
+  (`v.ok`/`v.motifs` sont des verdicts, pas des cases) — et un test la tient sur tout le fichier. Un
+  refus venu du processus principal nomme sa case (`champ: 'current'`) pour que l'écran la montre.
+- **Une règle qui attend un nom l'attend tel qu'on le FABRIQUE** : `NOM_SAUVEGARDE` attendait la date
+  en début de nom (`^\d{4}-…`), storage.js écrit `skanfact-AAAA-MM-JJ.json` — la sauvegarde la plus
+  fréquente n'a jamais eu son libellé. Le test lit le motif de storage.js et chaque étiquette passée à
+  `createBackup`/`backupNow`, et exige un libellé propre pour chacune ; `avant-beta` n'en avait pas.
+- **Un chemin remplacé se remplace dans TOUS ses textes** : la 7.3.0 a donné un « Restaurer… » à
+  chaque sauvegarde, et trois textes (la fenêtre « Tout effacer », la bulle, l'article) envoyaient
+  encore vers « Importer ».
+- **Un geste qui recharge la fenêtre passe par le garde-fou**, comme une navigation : créer une
+  entreprise jetait une saisie en cours, alors que basculer d'entreprise, dans le même menu, la
+  protégeait. Et deux copies du même geste (menu, Paramètres) avaient déjà divergé : UNE porte,
+  `nouvelleEntreprise`, et un test compte les `addDossier`.
+- **Deux chiffres justes qui se contredisent à l'écran sont un défaut** (6.8.1) : « 3 factures en
+  retard » (À faire, sans les relances reportées) sous « 4 en retard » (la carte). Le moteur ne
+  change pas ; la ligne dit ce qu'elle compte (« à relancer ») et nomme ce qu'elle laisse de côté.
+- **Un menu n'hérite pas de la largeur de son ancre** : le menu des entreprises tenait aux deux bords
+  de l'en-tête (195 px) et coupait ses gestes. `width: max-content`, au moins l'en-tête ;
+  `e2e:entreprises` mesure chaque libellé.
+- **Deux boutons au même effet font relire la fenêtre pour une nuance qui n'existe pas** :
+  `choiceDialog` posait toujours « Annuler » à côté de son second choix, même quand le code ne
+  distinguait pas l'un de l'autre (« Plus tard », « Le garder en brouillon »). `labelB` à null donne
+  un choix et une sortie nommée ; un test lit ce que chaque appel FAIT de la réponse.
+- **Un réglage de l'ORDINATEUR qui écrit des données d'ENTREPRISE doit savoir laquelle.** Le
+  dossier de copie externe vit dans `app-config.json`, pour tous les dossiers ; `mirrorExternal`
+  écrivait `<copie>/SkanFact/skanfact-data.json` pour chacun. Deux entreprises, une clé : la
+  seconde effaçait la copie de la première, et un changement de mot de passe rechiffrait les
+  sauvegardes de l'autre avec la mauvaise clé. `nomCopieExterne` donne à chaque dossier son
+  sous-dossier (le premier garde `SkanFact`, là où les copies existantes sont), retenu sur le
+  dossier (`copieExterne`) pour qu'un renommage ne le déplace pas. Le cas n'avait rien d'exotique :
+  c'est la famille de Skander (2.0.0, 3.2.0).
+- **Un filet dont on ne sait pas reprendre le contenu n'est qu'à moitié un filet** (6.8.1, côté
+  entreprise) : la copie externe emporte les pièces jointes « parce que c'est le seul filet qui
+  les emporte », et l'import — le seul chemin sur un nouvel ordinateur — les laissait sur la clé.
+  `reprendrePiecesJointes` les ramène (celles que les données importées désignent, sans jamais
+  écraser), et l'Aide dit le chemin. Et un état lu au démarrage se lit sur la chose elle-même
+  (7.1.x) : « Copie à la prochaine sauvegarde » s'affichait devant une copie de la veille.
+- **Le jumeau du Finder vivait aussi dans le processus principal** (E-14) : le titre du sélecteur
+  de copie externe, la phrase de panne ENOENT des deux applications, et six textes du Cabinet
+  proposaient « iCloud » seul. Le test qui le tenait ne lisait que les fichiers du renderer ; il
+  lit maintenant les deux `main.js` et le Cabinet.
+- Piège du lanceur humain : `lancer.sh` repart d'un profil NEUF sauf `--garder`. Relancer l'app
+  pour un changement du processus principal efface les données de test — c'est voulu, mais il faut le
+  savoir avant de chercher l'écran de verrouillage d'un mot de passe posé dans l'autre profil.
+- Piège de test, re-rencontré (8.1.0) : une assertion sur du texte source doit porter l'apostrophe
+  ÉCHAPPÉE (`l\\'entreprise`), sinon elle accuse du code juste.
 
 ## Pistes pour la suite (non demandées)
 

@@ -8728,7 +8728,9 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     const app = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'app.js'), 'utf8');
     const code = app.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
     assert.ok(/Ce devis part chez ton client \?/.test(code), 'exporter le PDF d\'un devis brouillon doit poser la question');
-    assert.ok(/'Le marquer envoyé', 'Le garder en brouillon'/.test(code), 'et laisser le choix');
+    // Les deux choix restent offerts ; « Le garder en brouillon » EST la sortie de la fenêtre (10.12.0 :
+    // un « Annuler » à côté faisait la même chose), d'où la forme libre entre les deux libellés.
+    assert.ok(/'Le marquer envoyé',[^\n]*'Le garder en brouillon'/.test(code), 'et laisser le choix');
   });
 
   t('le bouton vert de l\'en-tête suit l\'onglet ouvert', () => {

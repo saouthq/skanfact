@@ -3,7 +3,7 @@ const { app, BrowserWindow, ipcMain, dialog, shell, Menu, screen, powerMonitor }
 const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
-const { createStorage } = require('./storage');
+const { createStorage, nomCopieExterne } = require('./storage');
 const { zipBuffer, zipRead, sha256, sealBuffer, openBuffer, isSealed, sealForCabinet, keyFingerprint, generateClientKeys, signManifest, verifyManifest } = require('./zip');
 
 // Identifiants de l'app. Ne PAS les lire dans package.json au démarrage : electron-builder
@@ -106,7 +106,7 @@ const PANNES_DISQUE = {
   EPERM: 'L\'accès au fichier de données est refusé : rien n\'a été enregistré. Un antivirus ou un autre programme le tient peut-être ouvert — ferme-le, puis réessaie.',
   EROFS: 'Le dossier de données est en lecture seule : rien n\'a été enregistré. Choisis un autre emplacement dans les réglages, puis réessaie.',
   EBUSY: 'Le fichier de données est utilisé par un autre programme : rien n\'a été enregistré. Ferme-le, puis réessaie.',
-  ENOENT: 'Le dossier de données est introuvable : rien n\'a été enregistré. Un disque externe ou un dossier iCloud s\'est peut-être déconnecté — rebranche-le, puis réessaie.',
+  ENOENT: 'Le dossier de données est introuvable : rien n\'a été enregistré. Un disque externe ou un dossier synchronisé (iCloud Drive, OneDrive) s\'est peut-être déconnecté — rebranche-le, puis réessaie.',
   EIO: 'Le disque ne répond plus : rien n\'a été enregistré. Fais une copie de tes données dès qu\'il répond de nouveau.',
   EMFILE: 'Trop de fichiers sont ouverts sur cet ordinateur : rien n\'a été enregistré. Redémarre l\'application, puis réessaie.',
   ENFILE: 'Trop de fichiers sont ouverts sur cet ordinateur : rien n\'a été enregistré. Redémarre l\'application, puis réessaie.'
@@ -1072,9 +1072,16 @@ function openStorage() {
   const cfg = ensureDossiers();
   const d = currentDossier();
   const me = deviceIdentity();
+  // Chaque entreprise a SON sous-dossier dans la copie externe (10.12.0), retenu sur le dossier dès
+  // la première ouverture. `currentDossier()` relit la configuration et rend un AUTRE objet (7.28.0) :
+  // c'est l'entrée de `cfg` qu'on complète, puis `cfg` qu'on écrit.
+  const sub = nomCopieExterne(cfg.dossiers, d.id);
+  const entree = cfg.dossiers.find(x => x.id === d.id);
+  if (entree && !d.shared && entree.copieExterne !== sub) { entree.copieExterne = sub; writeAppCfg(cfg); }
   storage = createStorage(d.dir, {
     log: (w, e) => logToFile(w, e),
     externalDir: (d.shared ? null : cfg.externalBackupDir) || null,
+    externalSub: sub,
     deviceId: me.id, deviceName: me.name
   });
   return d;
@@ -1107,7 +1114,9 @@ ipcMain.handle('dossiers:add', async (_e, { name, shared }) => {
   } else {
     dir = path.join(dossiersDir(), 'd' + Date.now().toString(36));
   }
-  try { fs.mkdirSync(dir, { recursive: true }); } catch (e) { return { ok: false, error: e.message }; }
+  // Jamais le message brut du système (« EACCES: permission denied, mkdir '/…' ») : sa phrase
+  // française quand on la connaît, sinon une phrase qui dit ce qui n'a pas eu lieu.
+  try { fs.mkdirSync(dir, { recursive: true }); } catch (e) { logError('nouveau dossier', e); return { ok: false, error: panneDisque(e) || 'Le dossier de cette entreprise n\'a pas pu être créé : rien n\'a changé.' }; }
   const entry = { id: 'd' + Date.now().toString(36), name: clean, dir, shared: !!shared };
   cfg.dossiers.push(entry); cfg.currentDossier = entry.id; writeAppCfg(cfg);
   openStorage();
@@ -1253,7 +1262,7 @@ ipcMain.handle('data:security', () => ({ encrypted: storage.state.encrypted }));
 ipcMain.handle('data:setPassword', (_e, { data, password, current }) => {
   if (storage.state.encrypted && storage.state.key) {
     const r = storage.unlock(current || '');
-    if (!r.ok) return { ok: false, error: 'Mot de passe actuel incorrect.' };
+    if (!r.ok) return { ok: false, champ: 'current', error: 'Mot de passe actuel incorrect.' };
   }
   // On lit ce que `setPassword` répond, et on l'enveloppe : un refus d'écriture (un autre poste a
   // enregistré entre-temps sur un dossier partagé) laissait l'écran annoncer « Données chiffrées »
@@ -1288,7 +1297,7 @@ ipcMain.handle('backups:setExternal', (_e, dir) => {
 });
 ipcMain.handle('backups:chooseExternal', async () => {
   const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
-    title: 'Dossier de copie externe (iCloud Drive, clé USB, disque…)',
+    title: 'Dossier de copie externe (clé USB, disque externe, iCloud Drive, OneDrive…)',
     properties: ['openDirectory', 'createDirectory'],
     buttonLabel: 'Utiliser ce dossier'
   });
@@ -1328,7 +1337,8 @@ ipcMain.handle('data:import', async (_e, opts) => {
   catch (e) { if (e.code === 'ENCRYPTED') return { needPassword: true }; throw e; }
   storage.backupNow('avant-import');                   // on garde l'état précédent
   storage.write(parsed);
-  return { data: parsed };
+  // Importer depuis la copie externe, c'est changer d'ordinateur : les pièces jointes viennent avec.
+  return { data: parsed, piecesJointes: storage.reprendrePiecesJointes(file, parsed) };
 });
 
 function openBackups() {

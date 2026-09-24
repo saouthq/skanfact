@@ -113,6 +113,14 @@ SkanFact »). Restent trois questions qui ne sont pas du code :
 - **L'échéance d'un avoir fournisseur s'appelle encore « Échéance de paiement »** : pour un avoir,
   c'est la date à laquelle le fournisseur rembourse ou déduit. Le libellé suit la nature pour le
   numéro et les lignes (10.12.0) ; celui-ci attend de savoir comment un comptable le nomme.
+- **Verrouiller puis déverrouiller ramène sur le premier onglet des Paramètres** : le verrou recharge
+  la fenêtre, et l'onglet ouvert (« Données et sécurité ») est un état du renderer, perdu avec lui.
+  On revient sur la bonne page, pas sur le bon onglet. Le garder demanderait de le confier au
+  processus principal ou au stockage de session ; mineur tant qu'on verrouille rarement depuis là.
+- **Un mot de passe faux à l'import d'un fichier chiffré oblige à tout recommencer** : la question
+  se ferme, puis « Mot de passe incorrect » arrive seul, et il faut rechoisir le fichier. La
+  vérification demande le processus principal (asynchrone), ce que la fenêtre à une question ne sait
+  pas attendre aujourd'hui. À faire le jour où un client importe des fichiers chiffrés.
 
 ## 2. Le site
 

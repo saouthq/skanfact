@@ -64,8 +64,12 @@ body {
 
 /* Le menu des dossiers. Au-dessus de la barre latérale mais sous les fenêtres modales (400) : une
    question posée par-dessus doit rester devant. */
+/* 10.12.0 — le menu prenait la largeur de l'en-tête (195 px) et coupait ses propres gestes :
+   « Partager cette entre… », « Rejoindre un dossie… », et le nom de l'entreprise ouverte. Rien ne
+   le rogne au-dessus de lui : il prend la largeur de son texte, au moins celle de l'en-tête. */
 .dos-menu {
-  position: absolute; inset-inline-start: 0; inset-inline-end: 0; top: 100%; margin-top: -14px; z-index: 70;
+  position: absolute; inset-inline-start: 0; top: 100%; margin-top: -14px; z-index: 70;
+  min-width: 100%; width: max-content; max-width: min(340px, calc(100vw - 32px));
   background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 6px;
   box-shadow: 0 14px 40px rgba(20, 40, 60, .18); max-height: 60vh; overflow-y: auto;
 }
@@ -251,6 +255,10 @@ body.dark .lock-banner .btn:not(.btn-primary):not(.btn-danger) { background: rgb
   box-shadow: 0 0 0 3px var(--danger-soft);
 }
 .champ-faute > .fl, .champ-faute > span:first-child { color: var(--danger); }
+/* Un choix fait en cliquant une carte (le métier, dans l'assistant) n'a pas de champ à rougir :
+   c'est la grille entière qui est refusée. Elle se redessine au premier clic, donc la marque part
+   d'elle-même. */
+.act-grid.champ-faute { border-radius: 12px; box-shadow: 0 0 0 2px var(--danger), 0 0 0 5px var(--danger-soft); }
 /* Une valeur DOUTEUSE sans être refusée (un RIB dont la clé ne tombe pas, 10.12.0) : orange, pas
    rouge — on prévient, on ne bloque pas. `!important` pour la raison de `.champ-faute` : la règle
    générale des champs porte quatre `:not()` et gagnerait contre une simple classe. */

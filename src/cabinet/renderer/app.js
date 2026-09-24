@@ -812,7 +812,7 @@
        Il aurait une autre empreinte, et les paquets que tes clients t'enverraient ensuite seraient refusés : « adressé à un autre cabinet ».</p>
        <div class="reprise-list">
          <div class="reprise-row"><div><strong>J'ai mon dossier de copie</strong>
-           <div class="muted small">La clé USB, le disque externe ou le dossier iCloud choisi dans Réglages. Il s'appelle
+           <div class="muted small">La clé USB, le disque externe ou le dossier synchronisé (iCloud Drive, OneDrive) choisi dans Réglages. Il s'appelle
            <code>SkanFact Cabinet</code> et contient aussi <strong>tes paquets</strong> : c'est celui qu'il faut préférer.</div></div>
            <button class="btn btn-primary" id="rp-dir">Choisir le dossier…</button></div>
          <div class="reprise-row"><div><strong>J'ai le fichier de mon cabinet</strong>
@@ -8789,7 +8789,7 @@
 
       ${!ext.dir ? `<div class="warn-box mt"><strong>Aucune copie hors de cet ordinateur.</strong>
         Les sauvegardes quotidiennes sont sur le même disque que tes données : elles ne te sauveront pas d'une panne, d'un vol ou d'un vol d'ordinateur.
-        Choisis une clé USB, un disque externe ou un dossier iCloud Drive.</div>` : ''}
+        Choisis une clé USB, un disque externe ou un dossier synchronisé (iCloud Drive, OneDrive).</div>` : ''}
 
       <h3 class="mt">Sauvegardes et copies</h3>
       <div class="modal-actions wrap">
@@ -9270,7 +9270,7 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
             Ni par nous, ni par personne. Tes clients devraient tous réimporter un nouvel appairage.</div>
             <div class="wiz-steps mt">
               <div class="wiz-step"><div><strong>1. Une copie hors de cet ordinateur</strong>
-                <div class="muted small">Clé USB, disque externe, iCloud Drive. La base, les sauvegardes et les paquets y seront recopiés à chaque enregistrement.</div></div>
+                <div class="muted small">Clé USB, disque externe, iCloud Drive, OneDrive. La base, les sauvegardes et les paquets y seront recopiés à chaque enregistrement.</div></div>
                 <button class="btn" id="w-ext">Choisir un dossier…</button><span class="ok-inline" id="w-ext-ok" ${faits.has('w-ext') ? '' : 'hidden'}>✓ fait</span></div>
               <div class="wiz-step"><div><strong>2. La clé de secours</strong>
                 <div class="muted small">Un petit fichier protégé par son propre mot de passe, à ranger ailleurs que sur ${CE_POSTE()}.</div></div>

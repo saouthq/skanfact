@@ -496,6 +496,14 @@ module.exports = ({ t, assert, lireSource }) => {
         .some(apres => !/^\s*(\(Mac\)|, OneDrive|,? ?(ou|et) OneDrive)/.test(apres)))
       .map(([f]) => f);
     assert.deepStrictEqual(nus, [], '« iCloud Drive » proposé sans OneDrive : un utilisateur Windows n\'en a pas');
+    // Et les fenêtres NATIVES des deux applications (titres des sélecteurs, phrases de panne) :
+    // la copie externe s'ouvrait sous Windows sur « (iCloud Drive, clé USB, disque…) ».
+    // Et le Cabinet, qui avait la même phrase à six endroits (le jumeau, 7.3.0).
+    const natifs = [['main.js', code('src', 'main.js')], ['cabinet/main.js', code('src', 'cabinet', 'main.js')],
+      ['cabinet/renderer/app.js', code('src', 'cabinet', 'renderer', 'app.js')], ['cabinet/renderer/cabguide.js', code('src', 'cabinet', 'renderer', 'cabguide.js')]]
+      .filter(([, c]) => c.split(/iCloud(?: Drive)?/).slice(1).some(apres => !/^\s*(\(Mac\)|, OneDrive|,? ?(ou|et) OneDrive)/.test(apres)))
+      .map(([f]) => f);
+    assert.deepStrictEqual(natifs, [], 'une fenêtre du processus principal, ou le Cabinet, propose « iCloud » sans OneDrive');
     assert.ok(!/Si le Mac meurt/.test(app), 'une phrase suppose encore que l\'ordinateur est un Mac');
   });
   // Même famille, sur l'accueil d'une entreprise neuve : « + Nouvelle facture » en vert dans
@@ -2228,4 +2236,226 @@ module.exports = ({ t, assert, lireSource }) => {
     const r = app.slice(app.indexOf('routes.achat = '), app.indexOf('routes.achat = ') + 4000);
     assert.ok(/const iArt = parts\.indexOf\('article'\);/.test(r) && /destination: 'stock'/.test(r), 'l\'achat ne naît pas avec la ligne de l\'article');
   });
+  // La liste des sauvegardes traduit chaque nom de fichier. La quotidienne s'appelle
+  // « skanfact-AAAA-MM-JJ.json » et la règle l'attendait en début de nom : la sauvegarde la plus
+  // fréquente se disait « Sauvegarde », et celle prise avant la bêta aussi. On lit les noms que
+  // l'application FABRIQUE (le motif de storage.js et chaque étiquette passée à une sauvegarde
+  // nommée) et chacun doit recevoir sa phrase à lui, jamais le repli.
+  t('Chaque sauvegarde que l\'application fabrique se nomme dans la liste, sans retomber sur « Sauvegarde »', () => {
+    const src = lireSource('src', 'renderer', 'app.js');
+    const i = src.indexOf('const NOM_SAUVEGARDE = [');
+    const bloc = src.slice(i, src.indexOf('];', i) + 1);
+    assert.ok(bloc.length > 200 && bloc.length < 2000, 'tranche de la table des sauvegardes (' + bloc.length + ')');
+    const table = require('vm').runInNewContext(bloc.replace('const NOM_SAUVEGARDE =', '(') + ')');
+    const nommer = f => (table.find(([re]) => re.test(f)) || [null, null])[1];
+    const stockage = lireSource('src', 'storage.js');
+    const quotidienne = stockage.match(/`skanfact-\$\{today\(\)\}\.json`/);
+    assert.ok(quotidienne, 'storage.js ne nomme plus la quotidienne comme le test l\'attend');
+    assert.ok(nommer('skanfact-2026-09-24.json'), 'la sauvegarde quotidienne n\'a pas de nom à elle');
+    const etiquettes = new Set(['manuelle']);
+    [lireSource('src', 'renderer', 'app.js'), lireSource('src', 'main.js')].forEach(s => {
+      for (const m of s.matchAll(/(?:createBackup|backupNow)\('([a-z-]+)'\)/g)) etiquettes.add(m[1]);
+    });
+    assert.ok(etiquettes.size >= 6, 'le test ne trouve plus les sauvegardes nommées (' + [...etiquettes].join(', ') + ')');
+    const sansNom = [...etiquettes].filter(e => !nommer(e + '-2026-09-24_10h00m00s.json'));
+    assert.deepStrictEqual(sansNom, [], 'une sauvegarde prise par l\'application se dit « Sauvegarde » : ' + sansNom.join(', '));
+    assert.ok(!/l'état du matin/.test(src), 'la page parle encore de « l\'état du matin » alors que la copie se prend avant la première modification');
+    // La question de restauration dit AUSSI ce qu'était la sauvegarde : deux copies du même jour ne
+    // se distinguent pas à l'heure près, « juste avant un import » si.
+    const r = src.slice(src.indexOf('async function restaurer(nom)'), src.indexOf('async function restaurer(nom)') + 900);
+    assert.ok(/Revenir à la sauvegarde du [^`]*\$\{nommer\(nom\)\}/.test(r), 'la question de restauration ne dit pas ce qu\'était la sauvegarde');
+  });
+  // Règle 7.20.0 : une saisie refusée se MONTRE — le champ amené à l'écran, le curseur dedans, le
+  // rouge dessus. Elle n'avait été posée que sur les éditeurs et cinq fenêtres : vingt-cinq autres
+  // refus (mot de passe, paiement, relance, mouvement, compte, assistant…) se contentaient d'un
+  // message rouge de trois secondes, et il fallait relire la fenêtre pour trouver quoi corriger.
+  // La règle se lit sur la CONDITION : un refus jugé sur une valeur du formulaire (`v.<champ>`) ou
+  // de l'assistant passe par `refus`, jamais par `toast`. `v.ok` / `v.motifs` / `v.erreurs` sont des
+  // verdicts de validation, pas des champs — le refus nomme alors une règle, pas une case.
+  t('Un refus jugé sur un champ de formulaire montre ce champ (refus), jamais un message seul', () => {
+    const app = lireSource('src', 'renderer', 'app.js');
+    const fautes = [];
+    app.split('\n').forEach((ligne, i) => {
+      const m = ligne.match(/if \((.*)\) return toast\(/);
+      if (!m) return;
+      const cond = m[1];
+      const surUnChamp = /\bv\.(?!ok\b|motifs\b|erreurs\b|error\b)[a-zA-Z]+/.test(cond) || /\ba\.(name|activity)\b/.test(cond) || /\bpw\.length\b/.test(cond);
+      if (surUnChamp) fautes.push((i + 1) + ': ' + ligne.trim().slice(0, 110));
+    });
+    assert.deepStrictEqual(fautes, [], 'un refus sur un champ ne le montre pas :\n' + fautes.join('\n'));
+    assert.ok((app.match(/return refus\(/g) || []).length >= 30, 'le test ne trouve plus les refus qui montrent leur champ');
+    // L'ancien mot de passe faux vient du processus principal : il nomme sa case, et l'écran la montre.
+    assert.ok(/error: 'Mot de passe actuel incorrect\.'/.test(lireSource('src', 'main.js')) && /champ: 'current', error: 'Mot de passe actuel incorrect\.'/.test(lireSource('src', 'main.js')), 'le refus de l\'ancien mot de passe ne nomme pas sa case');
+    const pw = app.slice(app.indexOf('function passwordDialog('), app.indexOf('function passwordDialog(') + 3600);
+    assert.ok(/r\.champ && \$\(`\[name=\$\{r\.champ\}\]`, root\) \? refus\(/.test(pw), 'la fenêtre du mot de passe ne montre pas la case que le refus nomme');
+    assert.ok(/settingsFocus = 'p-motdepasse'; render\(\);/.test(pw), 'après le mot de passe, l\'écran repart en haut de l\'onglet au lieu du panneau où l\'on a agi');
+    assert.ok(/<label class="field span-2"><span>Mot de passe actuel<\/span><input type="password" name="current"/.test(pw), 'l\'ancien mot de passe partage sa rangée : « Confirmation » tombe sous lui, loin du nouveau qu\'elle confirme');
+    assert.ok(/mode === 'remove' \? '<p class="small muted">Le fichier de données et ses sauvegardes seront réécrits en clair/.test(pw), 'retirer le mot de passe ne dit pas, avant le geste, que tout repasse en clair');
+    assert.ok(/\.act-grid\.champ-faute \{/.test(lireSource('src', 'renderer', 'style.css')), 'la grille des métiers refusée ne se marque pas');
+  });
+  // Créer une entreprise ouvre le dossier neuf et RECHARGE la fenêtre. Le geste vivait en deux copies
+  // (menu du haut, Paramètres) déjà divergentes, sans garde-fou de saisie, sous un « Valider » qui ne
+  // disait pas qu'on changeait d'entreprise ; et un échec rendait le message brut du système.
+  t('Créer une entreprise passe par UNE porte : le garde-fou, ce qui va se passer, et un refus en français', () => {
+    const app = lireSource('src', 'renderer', 'app.js');
+    const i = app.indexOf('async function nouvelleEntreprise()');
+    assert.ok(i > 0, 'la porte unique de création d\'entreprise a disparu');
+    const f = app.slice(i, app.indexOf('\n  }\n', i));
+    assert.ok(f.indexOf('await leaveOk()') > 0 && f.indexOf('await leaveOk()') < f.indexOf('promptDialog('), 'créer une entreprise ne pose pas la question de la saisie en cours avant de recharger la fenêtre');
+    assert.ok(/ok: 'Créer et ouvrir'/.test(f) && /l\\'entreprise actuelle reste intacte/.test(f), 'la fenêtre ne dit pas qu\'elle ouvre un dossier neuf et que l\'actuel reste intact');
+    assert.strictEqual((app.match(/bridge\.addDossier\(/g) || []).length, 1, 'la création d\'une entreprise a de nouveau deux copies');
+    assert.ok(/\$\('#dm-new', m\)\.onclick = \(\) => \{ fermerDossiers\(\); nouvelleEntreprise\(\); \};/.test(app) && /\$\('#dos-add'\)\.onclick = nouvelleEntreprise;/.test(app), 'le menu du haut et les Paramètres ne passent pas par la même porte');
+    const m = lireSource('src', 'main.js');
+    const h = m.slice(m.indexOf("ipcMain.handle('dossiers:add'"), m.indexOf("ipcMain.handle('dossiers:add'") + 1800);
+    assert.ok(!/error: e\.message/.test(h), 'un échec de création de dossier rend le message brut du système');
+  });
+  // Sur le jeu d'exemple, l'accueil disait « 3 factures en retard » dans « À faire » et « 6 factures,
+  // 4 en retard » sur la carte « Reste à encaisser », dix centimètres plus bas. Les deux étaient
+  // justes : la quatrième a sa relance REPORTÉE. Mais les deux disaient « en retard ».
+  t('« À faire » et la carte « Reste à encaisser » ne se contredisent pas sur les retards : une relance reportée se nomme', () => {
+    const d = vierge();
+    d.clients = [{ id: 'c1', name: 'Hôtel Les Oliviers' }];
+    const facture = (id, n, date, due, report) => ({ id, type: 'facture', number: n, status: 'envoyée', date, dueDate: due, clientId: 'c1',
+      lines: [{ label: 'Pose', qty: 1, unitPrice: 100, vatRate: 19 }], payments: [], ...(report ? { remindAfter: report } : {}) });
+    d.documents = [facture('f1', 'FAC-2026-001', '2026-07-01', '2026-07-31'), facture('f2', 'FAC-2026-002', '2026-07-05', '2026-08-04', '2026-10-15')];
+    const todo = core.todoList(d, société, '2026-09-24', {});
+    const ligne = todo.find(x => x.id === 'retards');
+    assert.ok(ligne, 'la ligne des retards a disparu');
+    assert.strictEqual(ligne.count, 1, 'la facture reportée est encore à relancer');
+    assert.strictEqual(ligne.label, '1 facture en retard à relancer', 'la ligne dit « en retard » sans dire qu\'une autre l\'est aussi : ' + ligne.label);
+    assert.ok(/1 autre en retard, relance reportée/.test(ligne.detail), 'la ligne ne nomme pas la facture dont la relance est reportée : ' + ligne.detail);
+    // Sans report, rien ne change : la ligne garde sa forme d'avant.
+    d.documents[1].remindAfter = '';
+    const sans = core.todoList(d, société, '2026-09-24', {}).find(x => x.id === 'retards');
+    assert.strictEqual(sans.label, '2 factures en retard');
+    assert.ok(!/reportée/.test(sans.detail), 'une ligne sans report parle d\'un report');
+  });
+  // Revenir en arrière se fait par le bouton « Restaurer… » de la liste des sauvegardes (7.3.0). La
+  // fenêtre « Tout effacer », la bulle et l'article de l'Aide envoyaient encore vers « Importer »,
+  // c'est-à-dire chercher un fichier dans un dossier caché. Et sur un dossier vide, la fenêtre
+  // faisait taper EFFACER pour vider le néant, en annonçant « les factures émises partent aussi ».
+  t('« Tout effacer » et l\'Aide mènent au bouton Restaurer, et un dossier vide n\'a rien à effacer', () => {
+    const app = lireSource('src', 'renderer', 'app.js');
+    const i = app.indexOf("$('#wipe-data').onclick");
+    const w = app.slice(i, app.indexOf("ok.onclick = async () => {", i));
+    assert.ok(w.length > 500 && w.length < 5000, 'tranche de « Tout effacer » (' + w.length + ')');
+    assert.ok(!/<em>Importer<\/em>/.test(w) && /<em>Restaurer…<\/em>/.test(w), '« Tout effacer » envoie vers Importer au lieu du bouton Restaurer');
+    assert.ok(/if \(!compte\.length && !empruntee\) \{[\s\S]{0,400}Rien à effacer/.test(w), 'un dossier vide fait encore taper EFFACER pour ne rien effacer');
+    assert.ok(!/Les factures émises partent aussi\.<\/p>/.test(w) && /emises \?/.test(w), '« les factures émises partent aussi » est annoncé sans qu\'aucune ne soit émise');
+    const guide = lireSource('src', 'renderer', 'guide.js');
+    assert.ok(!/revenir en arrière[^.]*: Importer/.test(guide) && !/<p>Clique sur <b>Importer<\/b> et choisis un fichier du dossier backups/.test(guide), 'l\'Aide envoie encore vers Importer pour restaurer une sauvegarde');
+  });
+  // Trois fenêtres à choix portaient « Annuler » à côté de « Plus tard » (ou « Le garder en
+  // brouillon ») : deux boutons au même effet. On lit chaque appel et ce que le code fait de la
+  // réponse ; s'il ne distingue jamais « b » de la fermeture, le second bouton ne doit pas exister.
+  t('Une fenêtre à choix n\'a jamais deux boutons qui font la même chose', () => {
+    const app = code('src', 'renderer', 'app.js');
+    const fautes = [];
+    let vus = 0;
+    for (const m of app.matchAll(/const (\w+) = await choiceDialog\(/g)) {
+      vus++;
+      const v = m[1], debut = m.index, fin = app.indexOf(');\n', debut) + 2;
+      const appel = app.slice(debut, fin), suite = app.slice(fin, fin + 700);
+      const distingue = new RegExp(`${v} === 'b'|${v} !== 'b'|!${v}\\b|${v} === null`).test(suite);
+      if (!distingue && !/, null, '[^']*'\);$/.test(appel)) fautes.push(appel.slice(0, 90).replace(/\s+/g, ' '));
+    }
+    assert.ok(vus >= 8, 'le test ne trouve plus les fenêtres à choix (' + vus + ')');
+    assert.deepStrictEqual(fautes, [], 'une fenêtre porte deux boutons au même effet : ' + fautes.join(' | '));
+    assert.ok(/labelB == null \? ''/.test(app), 'la fenêtre à choix ne sait plus n\'avoir qu\'une sortie');
+  });
+  // Le menu des entreprises prenait la largeur de l'en-tête (195 px) : « Partager cette entre… ».
+  // Rien ne le rogne au-dessus de lui, donc il prend la largeur de son texte (e2e:entreprises mesure).
+  t('Le menu des entreprises ne coupe pas ses gestes : il prend la largeur de son texte', () => {
+    const css = lireSource('src', 'renderer', 'style.css');
+    const i = css.indexOf('\n.dos-menu {');
+    const bloc = css.slice(i, css.indexOf('}', i));
+    assert.ok(bloc.length > 50, 'la règle du menu des entreprises a disparu');
+    assert.ok(/width: max-content/.test(bloc) && /min-width: 100%/.test(bloc), 'le menu des entreprises reste à la largeur de l\'en-tête');
+    assert.ok(!/inset-inline-end: 0/.test(bloc), 'le menu des entreprises est encore tenu aux deux bords de l\'en-tête');
+  });
+  // Parcours humain, lot 5 : la copie externe se règle pour TOUT l'ordinateur, et chaque entreprise
+  // écrivait `<copie>/SkanFact/skanfact-data.json` — la seconde effaçait la copie de la première, et
+  // changer le mot de passe de l'une rechiffrait les sauvegardes de l'autre. Deux entreprises, une
+  // seule clé USB : c'est le cas de la famille qui partage l'application (CLAUDE.md, 2.0.0).
+  t('Deux entreprises copiées sur la même clé gardent chacune leur copie', () => {
+    const fs = require('fs'), os = require('os'), path = require('path');
+    const { createStorage, nomCopieExterne } = require('../../src/storage.js');
+    const racine = fs.mkdtempSync(path.join(os.tmpdir(), 'sf-copie-'));
+    const cle = path.join(racine, 'cle-usb'); fs.mkdirSync(cle);
+    const dossiers = [{ id: 'a', name: 'Mon entreprise' }, { id: 'b', name: 'Menuiserie Kmar' }];
+    const ouvrir = (id, nom) => {
+      const st = createStorage(path.join(racine, id), { externalDir: cle, externalSub: nomCopieExterne(dossiers, id) });
+      const d = vierge(); d.company = { ...société, name: nom }; st.write(d); st.mirrorExternal(); return st;
+    };
+    ouvrir('a', 'Darium SARL'); ouvrir('b', 'Menuiserie Kmar');
+    const lire = sous => JSON.parse(fs.readFileSync(path.join(cle, sous, 'skanfact-data.json'), 'utf8')).company.name;
+    assert.strictEqual(lire('SkanFact'), 'Darium SARL', 'la copie de la première entreprise a été écrasée par la seconde');
+    assert.strictEqual(lire('SkanFact — Menuiserie Kmar'), 'Menuiserie Kmar', 'la seconde entreprise n\'a pas son propre sous-dossier');
+    // Rouverte le lendemain, l'application lit la date de la copie sur la copie, au lieu d'annoncer
+    // « Copie à la prochaine sauvegarde » devant une copie qui existe.
+    const rouverte = createStorage(path.join(racine, 'a'), { externalDir: cle, externalSub: 'SkanFact' });
+    assert.ok(rouverte.state.external.lastCopy, 'au démarrage, la copie existante n\'a pas de date : l\'écran dit qu\'il n\'y en a pas');
+    // Le nom est retenu : renommer l'entreprise ne déplace pas sa copie ; deux homonymes ne se mêlent pas.
+    assert.strictEqual(nomCopieExterne([...dossiers, { id: 'c', name: 'Menuiserie Kmar' }], 'c'), 'SkanFact — Menuiserie Kmar (2)');
+    assert.strictEqual(nomCopieExterne([dossiers[0], { id: 'b', name: 'Kmar SARL', copieExterne: 'SkanFact — Menuiserie Kmar' }], 'b'), 'SkanFact — Menuiserie Kmar');
+    assert.ok(!/[<>:"/\\|?*]/.test(nomCopieExterne([dossiers[0], { id: 'd', name: 'A/B: C?' }], 'd').slice(11)), 'un nom d\'entreprise fabrique un nom de dossier interdit sous Windows');
+    // Et main.js passe le sous-dossier, et le retient sur l'entrée de `cfg` (pas sur la copie que rend currentDossier).
+    const main = code('src', 'main.js');
+    const o0 = main.indexOf('function openStorage()');
+    const ouvre = main.slice(o0, main.indexOf('\n}\n', o0));
+    assert.ok(/externalSub: sub/.test(ouvre) && /cfg\.dossiers\.find\(x => x\.id === d\.id\)/.test(ouvre) && /writeAppCfg\(cfg\)/.test(ouvre),
+      'openStorage ne donne pas son sous-dossier à la copie externe, ou ne le retient pas');
+  });
+  // Et le jour où la copie sert : sur un nouvel ordinateur, « Importer » le fichier de la copie rendait
+  // les données et laissait sur la clé les pièces jointes — que la copie externe est le SEUL filet à
+  // emporter. L'Aide promettait « ta comptabilité existe ailleurs » sans dire comment la reprendre.
+  t('Importer depuis la copie externe reprend aussi les pièces jointes, et l\'Aide dit comment', () => {
+    const fs = require('fs'), os = require('os'), path = require('path');
+    const { createStorage } = require('../../src/storage.js');
+    const racine = fs.mkdtempSync(path.join(os.tmpdir(), 'sf-reprise-'));
+    const cle = path.join(racine, 'cle-usb'); fs.mkdirSync(cle);
+    const ancien = createStorage(path.join(racine, 'ancien'), { externalDir: cle, externalSub: 'SkanFact' });
+    const d = vierge(); d.purchases = [{ id: 'p1', kind: 'facture', date: '2026-09-01', lines: [], payments: [] }];
+    ancien.write(d);
+    const photo = path.join(racine, 'facture.jpg'); fs.writeFileSync(photo, 'JPEG');
+    ancien.addAttachment('p1', photo);
+    fs.mkdirSync(path.join(ancien.attachDir, 'orpheline')); fs.writeFileSync(path.join(ancien.attachDir, 'orpheline', 'x.pdf'), 'x');
+    ancien.mirrorExternal();
+    const neuf = createStorage(path.join(racine, 'neuf'), {});
+    const importe = path.join(cle, 'SkanFact', 'skanfact-data.json');
+    const repris = neuf.reprendrePiecesJointes(importe, d);
+    assert.ok(fs.existsSync(path.join(neuf.attachDir, 'p1')), 'la pièce jointe de l\'achat n\'est pas reprise de la copie');
+    assert.ok(!fs.existsSync(path.join(neuf.attachDir, 'orpheline')), 'une pièce qu\'aucune donnée importée ne désigne a été reprise');
+    assert.strictEqual(repris, 1, 'le compte des pièces reprises est faux : ' + repris);
+    assert.strictEqual(neuf.reprendrePiecesJointes(importe, d), 0, 'une seconde reprise recopie (ou écrase) ce qui est déjà là');
+    // Depuis une sauvegarde de la copie (`backups/`), les pièces jointes sont un cran plus haut.
+    const sauvegarde = path.join(cle, 'SkanFact', 'backups', 'x.json');
+    const autre = createStorage(path.join(racine, 'autre'), {});
+    assert.strictEqual(autre.reprendrePiecesJointes(sauvegarde, d), 1, 'une sauvegarde de la copie ne ramène pas ses pièces jointes');
+    const main = code('src', 'main.js');
+    const i0 = main.indexOf("ipcMain.handle('data:import'");
+    const imp = main.slice(i0, main.indexOf('\n});', i0));
+    assert.ok(/piecesJointes: storage\.reprendrePiecesJointes\(file, parsed\)/.test(imp), 'l\'import ne reprend pas les pièces jointes de la copie');
+    const app = code('src', 'renderer', 'app.js');
+    assert.ok(/r\.piecesJointes \?/.test(app), 'l\'écran ne dit pas que des pièces jointes sont revenues');
+    const imp0 = app.indexOf('async function importAll()');
+    assert.ok(/confirmDialog\([^\n]*'Choisir le fichier à importer…'\)/.test(app.slice(imp0, imp0 + 900)), 'la question avant l\'import finit sur un « Confirmer » qui ne dit pas le geste suivant');
+    const guide = require('../../src/renderer/guide.js');
+    const art = (guide.ARTICLES || guide.articles || []).find(a => a.id === 'donnees');
+    assert.ok(art && /<h3>Changer d'ordinateur<\/h3>/.test(art.body) && /Importer…/.test(art.body) && /pièces jointes reviennent/.test(art.body),
+      'l\'article « Tes données » ne dit pas comment reprendre la copie sur un nouvel ordinateur');
+  });
+
+  // Parcours humain, lot 5 : une nouvelle entreprise arrive dans l'assistant avec son nom, et
+  // « Passer » répondait « une facture sans raison sociale ni matricule fiscal n'est pas conforme ».
+  t('« Passer » l\'assistant ne reproche que ce qui manque vraiment', () => {
+    const app = code('src', 'renderer', 'app.js');
+    const p0 = app.indexOf("$('#sf-skip', root).onclick");
+    const passer = app.slice(p0, app.indexOf('resolve(false);', p0));
+    assert.ok(passer.length > 200 && passer.length < 2500, 'tranche de « Passer » : ' + passer.length);
+    assert.ok(!/sans raison sociale ni matricule fiscal/.test(passer), 'le reproche est écrit en dur, quoi qu\'on ait rempli');
+    assert.ok(/!String\(a\.name \|\| ''\)\.trim\(\) && 'raison sociale'/.test(passer) && /!String\(a\.matricule \|\| ''\)\.trim\(\) && 'matricule fiscal'/.test(passer),
+      'le reproche ne se déduit pas de ce qui manque');
+  });
+
 };

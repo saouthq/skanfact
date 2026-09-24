@@ -132,7 +132,7 @@
   async function emailComptablePret(adresse, r, joint) {
     if (adresse) return toast(messageOuvert(r, joint));
     const c = await choiceDialog('Message préparé', `${messageOuvert(r, joint)}. Il s'ouvre sans destinataire : l'adresse de ton comptable n'est pas enregistrée. Si tu la renseignes une fois, tous les envois suivants la reprendront.`,
-      'Renseigner son email…', 'Plus tard');
+      'Renseigner son email…', null, 'Plus tard');
     if (c === 'a') allerParametres('envois', 'p-comptable');
   }
 
@@ -142,7 +142,7 @@
     if (!security.encrypted) {
       const c = await choiceDialog('Rien à verrouiller pour l\'instant',
         'Le verrouillage demande un mot de passe à l\'ouverture de l\'application. Tu n\'en as pas encore : le fichier de données est en clair sur ce disque.',
-        'Activer un mot de passe…', 'Plus tard');
+        'Activer un mot de passe…', null, 'Plus tard');
       if (c === 'a') allerParametres('donnees', 'p-motdepasse');
       return;
     }
@@ -154,16 +154,21 @@
     const title = mode === 'set' ? 'Activer le mot de passe' : mode === 'change' ? 'Changer le mot de passe' : 'Retirer le mot de passe';
     modal(`<h2>${title}</h2>
       ${mode === 'set' ? '<p class="small muted">Le fichier de données et ses sauvegardes seront chiffrés (AES-256). Sans ce mot de passe, personne ne peut les lire — toi non plus : garde-le en lieu sûr, il n\'y a pas de récupération possible.</p>' : ''}
+      ${/* Un geste qui baisse la protection le dit AVANT (règle 9.4.2) : la fenêtre ne portait qu'un
+           champ et un bouton rouge, sans dire ce qui change sur le disque. */''}
+      ${mode === 'remove' ? '<p class="small muted">Le fichier de données et ses sauvegardes seront réécrits en clair sur ce disque : quiconque ouvre cet ordinateur pourra les lire. Tu pourras remettre un mot de passe quand tu veux.</p>' : ''}
       <form id="pwf" class="grid-2">
-        ${mode !== 'set' ? field('Mot de passe actuel', 'current', '', 'password', 'autocomplete="current-password"') : ''}
+        ${/* L'ancien sur SA rangée : dans la grille à deux colonnes, « Confirmation » tombait sous
+             « Mot de passe actuel », loin du nouveau qu'elle confirme. */''}
+        ${mode !== 'set' ? '<label class="field span-2"><span>Mot de passe actuel</span><input type="password" name="current" value="" autocomplete="current-password"></label>' : ''}
         ${mode !== 'remove' ? field('Nouveau mot de passe', 'password', '', 'password', 'autocomplete="new-password"') + field('Confirmation', 'confirm', '', 'password', 'autocomplete="new-password"') : ''}
       </form>
       <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn ${mode === 'remove' ? 'btn-danger' : 'btn-primary'}" id="ok">${mode === 'remove' ? 'Retirer' : 'Enregistrer'}</button></div>`,
       (root, close) => { $('#ok', root).onclick = async () => {
         const v = formValues($('#pwf', root));
         if (mode !== 'remove') {
-          if (!v.password || v.password.length < 6) return toast('Mot de passe : 6 caractères minimum.', true);
-          if (v.password !== v.confirm) return toast('Les deux mots de passe ne correspondent pas.', true);
+          if (!v.password || v.password.length < 6) return refus($('[name=password]', root), 'Mot de passe : 6 caractères minimum.');
+          if (v.password !== v.confirm) return refus($('[name=confirm]', root), 'Les deux mots de passe ne correspondent pas.');
         }
         const b = $('#ok', root); b.disabled = true; b.textContent = 'Chiffrement…';
         // Ce geste finit par `render()` : sans ça, activer un mot de passe depuis les Paramètres
@@ -171,8 +176,16 @@
         // AVANT, parce que c'est `data` tel qu'il est ici qui part se faire chiffrer.
         enregistrerEnCours();
         const r = await bridge.setPassword({ data, password: mode === 'remove' ? '' : v.password, current: v.current || '' });
-        if (!r || !r.ok) { b.disabled = false; b.textContent = mode === 'remove' ? 'Retirer' : 'Enregistrer'; return toast((r && r.error) || 'Échec', true); }
-        security.encrypted = r.encrypted; close(); toast(r.encrypted ? 'Données chiffrées — mot de passe demandé à chaque ouverture' : 'Mot de passe retiré : données en clair'); render();
+        if (!r || !r.ok) {
+          b.disabled = false; b.textContent = mode === 'remove' ? 'Retirer' : 'Enregistrer';
+          const message = (r && r.error) || 'Le mot de passe n\'a pas pu être appliqué. Rien n\'a été changé.';
+          // L'ancien mot de passe faux est une faute de SAISIE : on montre la case (règle 7.20.0).
+          return r && r.champ && $(`[name=${r.champ}]`, root) ? refus($(`[name=${r.champ}]`, root), message) : toast(message, true);
+        }
+        security.encrypted = r.encrypted; close(); toast(r.encrypted ? 'Données chiffrées — mot de passe demandé à chaque ouverture' : 'Mot de passe retiré : données en clair');
+        // Le redessin ramenait en haut de l'onglet, sur les Dossiers : on revient au panneau où l'on
+        // vient d'agir, qui dit maintenant « Changer » et « Retirer ».
+        settingsFocus = 'p-motdepasse'; render();
       }; });
   }
 
@@ -784,14 +797,17 @@
     });
   }
 
-  // Boîte à trois choix : résout avec 'a', 'b' ou null (annulé, Échap compris)
-  function choiceDialog(title, msg, labelA, labelB) {
+  // Boîte à trois choix : résout avec 'a', 'b' ou null (annulé, Échap compris).
+  // `labelB` à null : un choix et une SORTIE, que `fermer` nomme. Trois fenêtres portaient
+  // « Annuler » à côté de « Plus tard » (ou de « Le garder en brouillon ») : deux boutons qui font
+  // la même chose, et on relit la fenêtre pour chercher la nuance qui n'existe pas.
+  function choiceDialog(title, msg, labelA, labelB, fermer) {
     return new Promise(resolve => {
       let settled = false;
       const finish = (close, v) => { settled = true; close(); resolve(v); };
       modal(`<h2>${h(title)}</h2><p>${numerosInsecables(h(msg))}</p>
-        <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn" id="b">${h(labelB)}</button><button class="btn btn-primary" id="a">${h(labelA)}</button></div>`,
-        (root, close) => { $('#a', root).onclick = () => finish(close, 'a'); $('#b', root).onclick = () => finish(close, 'b'); $('[data-close]', root).onclick = () => finish(close, null); },
+        <div class="modal-actions"><button class="btn" data-close>${h(fermer || 'Annuler')}</button>${labelB == null ? '' : `<button class="btn" id="b">${h(labelB)}</button>`}<button class="btn btn-primary" id="a">${h(labelA)}</button></div>`,
+        (root, close) => { $('#a', root).onclick = () => finish(close, 'a'); if ($('#b', root)) $('#b', root).onclick = () => finish(close, 'b'); $('[data-close]', root).onclick = () => finish(close, null); },
         () => { if (!settled) resolve(null); });
     });
   }
@@ -1479,7 +1495,7 @@
     // dossier, qui peut être restée générique sur une installation ancienne.
     const nomOuvert = d => ((data && data.company && data.company.name) || '').trim() || d.name;
     m.innerHTML = `<div class="dm-titre">Entreprise ouverte</div>
-      ${(r.dossiers || []).filter(d => d.id === r.current).map(d => `<button type="button" class="on" data-dos="${h(d.id)}">
+      ${(r.dossiers || []).filter(d => d.id === r.current).map(d => `<button type="button" class="on" data-dos="${h(d.id)}" title="${h(nomOuvert(d))}">
         <span class="dm-mark">✓</span><span class="dm-nom">${h(nomOuvert(d))}</span>${d.shared ? '<span class="dm-tag">partagé</span>' : ''}</button>`).join('')}
       ${autres.length ? `<div class="dm-titre">Basculer vers</div>
         ${autres.map(d => `<button type="button" data-dos="${h(d.id)}" title="${h(d.name)}">
@@ -1501,16 +1517,26 @@
       toast(`Ouverture de « ${d ? d.name : 'ce dossier'} »…`);
       try { await bridge.switchDossier(b.dataset.dos); } catch (e) { toast(plainError(e), true); }
     });
-    $('#dm-new', m).onclick = () => {
-      fermerDossiers();
-      promptDialog('Nouvelle entreprise', 'Nom de l\'entreprise', '', async v => {
-        const res = await bridge.addDossier({ name: v, shared: false });
-        if (res && !res.ok && res.error) toast(res.error, true);
-      });
-    };
+    $('#dm-new', m).onclick = () => { fermerDossiers(); nouvelleEntreprise(); };
     if ($('#dm-share', m)) $('#dm-share', m).onclick = () => { fermerDossiers(); partagerDossier(); };
     $('#dm-join', m).onclick = () => { fermerDossiers(); rejoindreDossier(); };
     $('#dm-manage', m).onclick = () => { fermerDossiers(); allerParametres('donnees', 'p-dossiers'); };
+  }
+
+  // UNE porte pour créer une entreprise. Le menu du haut et les Paramètres en portaient chacun une
+  // copie, qui avaient déjà divergé (« Nouvelle entreprise » / « Nouveau dossier »), et aucune ne
+  // passait par le garde-fou : créer ouvre le dossier neuf et RECHARGE la fenêtre, donc une saisie
+  // en cours était perdue sans question — alors que basculer d'entreprise, juste au-dessus, la pose.
+  // Et la fenêtre dit ce qui va se passer : un dossier séparé, l'actuel intact, le bouton qui nomme
+  // le geste.
+  async function nouvelleEntreprise() {
+    if (!await leaveOk()) return;
+    promptDialog('Nouvelle entreprise',
+      'Un dossier neuf et séparé : ses clients, ses documents, ses sauvegardes. L\'application s\'y ouvre tout de suite ; l\'entreprise actuelle reste intacte, et tu la retrouves dans le menu du haut.',
+      '', async v => {
+        const res = await bridge.addDossier({ name: v, shared: false });
+        if (res && !res.ok && res.error) toast(res.error, true);
+      }, 'text', { champ: 'Nom de l\'entreprise', ok: 'Créer et ouvrir' });
   }
 
   // ---------- partager le dossier ouvert, et rejoindre celui d'en face (7.28.0) ----------
@@ -3599,7 +3625,7 @@
       if (isQ && doc.status === 'brouillon') {
         const c = await choiceDialog('Ce devis part chez ton client ?',
           'Tant qu\'il est en brouillon, SkanFact ne le relance pas, ne le compte pas dans tes statistiques et ne le déclare jamais expiré.',
-          'Le marquer envoyé', 'Le garder en brouillon');
+          'Le marquer envoyé', null, 'Le garder en brouillon');
         if (c === 'a') {
           const st = docById(doc.id);
           if (st) { st.status = 'envoyé'; doc.status = 'envoyé'; save(true); toast(`${st.number} marqué envoyé`); }
@@ -3949,8 +3975,8 @@
         }, { name: company().bank ? `${company().bank} — compte courant` : '', bank: company().bank || '', rib: company().rib || '' });
         $('#ok', root).onclick = async () => {
         const v = formValues($('#pf2', root));
-        if (!(Number(v.amount) > 0)) return toast('Montant invalide.', true);
-        if (!v.date) return toast('Date obligatoire.', true);
+        if (!(Number(v.amount) > 0)) return refus($('[name=amount]', root), 'Montant invalide.');
+        if (!v.date) return refus($('[name=date]', root), 'Date obligatoire.');
         if (v.date > C.today() && !await confirmDialog(`La date du paiement (${C.fmtDate(v.date)}) est dans le futur. Un paiement s'enregistre quand l'argent est reçu, pas quand il est promis. Enregistrer quand même ?`, 'Enregistrer quand même')) return;
         if (Number(v.amount) > reste + 0.0005 && !await confirmDialog(`Le montant (${C.money(v.amount, cur)}) dépasse le reste à payer (${C.money(reste, cur)}). La facture apparaîtra avec un trop-perçu. Enregistrer quand même ?`, 'Enregistrer quand même')) return;
         // Modifier la date d'un paiement le sort d'un mois peut-être déjà déclaré : l'ancienne date
@@ -4504,7 +4530,7 @@
         $('#tf-add', root).onclick = () => { t.lines.push(C.newLine(company())); drawLines(); };
         $('#ok', root).onclick = () => {
           const v = formValues($('#tf2', root));
-          if (!(v.name || '').trim()) return toast('Donne un nom à ce modèle.', true);
+          if (!(v.name || '').trim()) return refus($('[name=name]', root), 'Donne un nom à ce modèle.');
           const idx = data.templates.findIndex(x => x.id === t.id);
           const next = { ...t, ...v, discountRate: Number(v.discountRate) || 0 };
           if (idx >= 0) data.templates[idx] = next; else data.templates.push(next);
@@ -4840,7 +4866,7 @@
       <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Ouvrir dans la messagerie</button></div>`,
       (root, close) => { $('#ok', root).onclick = async () => {
         const v = formValues($('#mf', root));
-        if (!v.to || !/^[^@\s]+@[^@\s]+$/.test(v.to)) return toast('Adresse email invalide.', true);
+        if (!v.to || !/^[^@\s]+@[^@\s]+$/.test(v.to)) return refus($('[name=to]', root), 'Adresse email invalide.');
         const b = $('#ok', root); b.disabled = true; b.textContent = 'Préparation…';
         try {
           // Envoyer, c'est le geste qui fait passer la pièce de brouillon à envoyée — et le PDF joint
@@ -5294,7 +5320,7 @@
       <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Noter la relance</button></div>`,
       (root, close) => { $('#ok', root).onclick = () => {
         const v = formValues($('#tf', root));
-        if (!v.date) return toast('Date obligatoire.', true);
+        if (!v.date) return refus($('[name=date]', root), 'Date obligatoire.');
         const s = docById(d.id);
         s.reminders = s.reminders || [];
         s.reminders.push({ date: v.date, level: Number(v.level) || item.level, channel: 'tel', note: v.note || '' });
@@ -5311,7 +5337,7 @@
       <div class="modal-actions">${d.remindAfter ? '<button class="btn" id="clear" style="margin-right:auto">Retirer le report</button>' : ''}<button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Reporter</button></div>`,
       (root, close) => {
         $('#ok', root).onclick = () => {
-          const v = formValues($('#sf2', root)); if (!v.remindAfter) return toast('Choisis une date.', true);
+          const v = formValues($('#sf2', root)); if (!v.remindAfter) return refus($('[name=remindAfter]', root), 'Choisis une date.');
           docById(d.id).remindAfter = v.remindAfter; save(true); close(); toast('Relance reportée au ' + C.fmtDate(v.remindAfter)); if (done) done();
         };
         if ($('#clear', root)) $('#clear', root).onclick = () => { delete docById(d.id).remindAfter; save(true); close(); toast('Report retiré'); if (done) done(); };
@@ -6389,8 +6415,8 @@
       <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
       (root, close) => { $('#ok', root).onclick = async () => {
         const v = formValues($('#spf', root));
-        if (!(Number(v.amount) > 0)) return toast('Montant invalide.', true);
-        if (!v.date) return toast('Date invalide.', true);
+        if (!(Number(v.amount) > 0)) return refus($('[name=amount]', root), 'Montant invalide.');
+        if (!v.date) return refus($('[name=date]', root), 'Date invalide.');
         if (v.date > C.today() && !await confirmDialog(`La date (${C.fmtDate(v.date)}) est dans le futur. Enregistrer quand même ?`, 'Enregistrer')) return;
         if (Number(v.amount) > reste + 0.0005 && !await confirmDialog(`Le montant (${C.money(v.amount, cur)}) dépasse le reste dû (${C.money(reste, cur)}). Enregistrer quand même ?`, 'Enregistrer quand même')) return;
         // Corriger la date d'un règlement le sort peut-être d'un mois déclaré : l'ancienne date
@@ -7143,7 +7169,7 @@
         bindCombo($('[data-combo=clientId]', root), { items: data.clients.map(c => ({ v: c.id, label: c.name, text: c.name })), placeholder: '— Aucun client précis —' });
         $('#ok', root).onclick = () => {
           const v = formValues($('#pf3', root));
-          if (!v.name.trim()) return toast('Donne un nom à cette affaire.', true);
+          if (!v.name.trim()) return refus($('[name=name]', root), 'Donne un nom à cette affaire.');
           if (!proj && licenceBlock('Créer une affaire', 'pilotage')) return;
           Object.assign(p, v);
           if (!proj) data.projects.push(p);
@@ -8708,10 +8734,10 @@
         $('#adf', root).oninput = $('#adf', root).onchange = hint; hint();
         $('#ok', root).onclick = () => {
           const v = formValues($('#adf', root));
-          if (!v.itemId) return toast('Choisis un article.', true);
+          if (!v.itemId) return refus($('[name=itemId]', root), 'Choisis un article.');
           const qte = C.qteMouvement(v.source, v.qty);
           if (!qte) { refus($('[name=qty]', root), 'La quantité ne peut pas être zéro.'); return; }
-          if (!v.date) return toast('Date invalide.', true);
+          if (!v.date) return refus($('[name=date]', root), 'Date invalide.');
           if (closedBlock(v.date, 'Ce mouvement de stock')) return;
           if (licenceBlock('Créer un mouvement de stock', 'stock')) return;
           data.stockAdjustments.push({ ...a, ...v, qty: qte, unitCost: v.unitCost === '' ? '' : Number(v.unitCost) });
@@ -9203,7 +9229,7 @@
         $('#orf', root).oninput = $('#orf', root).onchange = drawLines;
         $('#ok', root).onclick = () => {
           const v = formValues($('#orf', root));
-          if (!v.supplierId) return toast('Choisis le fournisseur : sans lui, l\'achat n\'est rattaché à personne.', true);
+          if (!v.supplierId) return refus($('[name=supplierId]', root), 'Choisis le fournisseur : sans lui, l\'achat n\'est rattaché à personne.');
           close();
           done({ head: { supplierId: v.supplierId, number: v.number || '', date: v.date || C.today(), dueDate: v.dueDate || '',
             subject: v.subject || '', category: v.category || '', fees: Number(v.fees) || 0 }, lines });
@@ -9265,8 +9291,8 @@
         $('#ok', root).onclick = () => {
           const v = formValues($('#sif', root));
           const nums = parse();
-          if (!v.itemId) return toast('Choisis un article.', true);
-          if (!nums.length) return toast('Saisis au moins un numéro de série.', true);
+          if (!v.itemId) return refus($('[name=itemId]', root), 'Choisis un article.');
+          if (!nums.length) return refus($('[name=list]', root), 'Saisis au moins un numéro de série.');
           if (licenceBlock('Créer des numéros de série', 'stock')) return;
           const item = data.catalog.find(c => c.id === v.itemId) || {};
           const known = new Set(data.serials.filter(x => x.itemId === v.itemId).map(x => (x.serial || '').toLowerCase()));
@@ -9375,7 +9401,7 @@
         $('#sef', root).oninput = $('#sef', root).onchange = hint; hint();
         $('#ok', root).onclick = () => {
           const v = formValues($('#sef', root));
-          if (!(v.serial || '').trim()) return toast('Le numéro ne peut pas être vide.', true);
+          if (!(v.serial || '').trim()) return refus($('[name=serial]', root), 'Le numéro ne peut pas être vide.');
           Object.assign(x, v, { warrantyMonths: Number(v.warrantyMonths) || 0 });
           if (x.status === 'stock') { x.outDate = ''; x.outDocId = ''; x.clientId = ''; }
           save(true); close(); if (done) done();
@@ -9867,7 +9893,7 @@
       (root, close) => {
         $('#ok', root).onclick = () => {
           const v = formValues($('#af', root));
-          if (!v.name.trim()) return toast('Donne un nom à ce compte.', true);
+          if (!v.name.trim()) return refus($('[name=name]', root), 'Donne un nom à ce compte.');
           if (!acc && licenceBlock('Créer un compte de trésorerie', 'pilotage')) return;
           // Le solde de départ et sa date sont le point zéro de toute la trésorerie : les changer
           // après coup déplace tous les soldes, y compris ceux des mois déjà clôturés.
@@ -9910,8 +9936,8 @@
       (root, close) => {
         $('#ok', root).onclick = async () => {
           const v = formValues($('#mf2', root));
-          if (!(Number(v.amount) > 0)) return toast('Montant invalide.', true);
-          if (!v.date) return toast('Date invalide.', true);
+          if (!(Number(v.amount) > 0)) return refus($('[name=amount]', root), 'Montant invalide.');
+          if (!v.date) return refus($('[name=date]', root), 'Date invalide.');
           if (!mv && licenceBlock('Créer un mouvement de trésorerie', 'pilotage')) return;
           if (v.date > C.today() && !await confirmDialog(`La date (${C.fmtDate(v.date)}) est dans le futur. Un mouvement de trésorerie se saisit quand il a eu lieu. Enregistrer quand même ?`, 'Enregistrer')) return;
           if (closedBlock([mv && mv.date, v.date], 'Ce mouvement')) return;
@@ -10628,7 +10654,7 @@
           <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Ouvrir dans la messagerie</button></div>`,
           (root, close) => { $('#ok', root).onclick = async () => {
             const v = formValues($('#cpf', root));
-            if (!v.to || !/^[^@\s]+@[^@\s]+$/.test(v.to)) return toast('Adresse email invalide.', true);
+            if (!v.to || !/^[^@\s]+@[^@\s]+$/.test(v.to)) return refus($('[name=to]', root), 'Adresse email invalide.');
             const b = $('#ok', root); b.disabled = true; b.textContent = 'Préparation…';
             try {
               const att = await bridge.saveTextSilent(`journal-ventes-${tag}.csv`, C.toCsv(rows, journalColumns()));
@@ -11715,7 +11741,7 @@
         // Les contrôles de saisie d'abord, la grande question ensuite : poser une question de fond
         // puis refuser sur un champ trop court, c'est faire répondre pour rien.
         const pw = (!paired && cabinetState.seal) ? ($('#cab-pwv').value || '').trim() : '';
-        if (!paired && cabinetState.seal && pw.length < 6) return toast('Choisis un mot de passe d\'au moins six caractères.', true);
+        if (!paired && cabinetState.seal && pw.length < 6) return refus('#cab-pwv', 'Choisis un mot de passe d\'au moins six caractères.');
         if (await demoBlock('Fabriquer le paquet du comptable')) return;
         if (!plan.definitive && !await confirmDialog(`${per.label} n'est pas clôturé : le paquet partira marqué « provisoire » et pourra encore changer.\n\nFabriquer quand même ?`, 'Fabriquer', false)) return;
 
@@ -12113,7 +12139,7 @@
       ${panneau('p-sauvegardes', info('data.backups'))}
         <p class="small muted">Fichier de données : <code>${h(path)}</code></p>
         <p class="small">${pl(data.documents.length, 'document')}, ${pl(data.clients.length, 'client')}, ${pl(data.catalog.length, 'prestation')}.</p>
-        <p class="small muted">Chaque jour, l'état du matin est copié dans le dossier <code>backups</code> (30 jours conservés) ; une copie est aussi prise avant tout import, avant l'exemple et avant un effacement.</p>
+        <p class="small muted">Chaque jour, avant la première modification, l'état est copié dans le dossier <code>backups</code> (30 jours conservés) ; une copie est aussi prise avant tout import, avant l'exemple et avant un effacement.</p>
         <div class="inline mt">
           <button class="btn" id="backup-now">Sauvegarder maintenant</button>
           <button class="btn" id="open-backups">Ouvrir le dossier des sauvegardes</button>
@@ -12324,17 +12350,20 @@
     $('#set-idee').onclick = ideeForm;
     $('#set-log').onclick = () => bridge.openLog();
     $('#set-aide').onclick = () => navigate('#/aide');
-    $('#backup-now').onclick = async () => { const p = await bridge.createBackup(); toast(p ? 'Sauvegarde créée : ' + p.split(/[\\/]/).pop() : 'Rien à sauvegarder pour l\'instant'); drawExternal(); drawBackups(); };
+    $('#backup-now').onclick = async () => { const p = await bridge.createBackup(); toast(p ? 'Sauvegarde créée : elle est en tête de la liste ci-dessous.' : 'Rien à sauvegarder pour l\'instant'); drawExternal(); drawBackups(); };
 
     // La liste des sauvegardes, avec le bouton qui les remet. Chaque nom est traduit : « avant-demo »
-    // ne veut rien dire pour quelqu'un qui n'a pas écrit le code.
+    // ne veut rien dire pour quelqu'un qui n'a pas écrit le code. La quotidienne s'appelle
+    // « skanfact-AAAA-MM-JJ.json » (storage.js) : la règle qui l'attendait en DÉBUT de nom ne l'a
+    // jamais reconnue, et la plus fréquente des sauvegardes se disait « Sauvegarde », sans rien dire.
     const NOM_SAUVEGARDE = [
       [/^avant-demo/, 'Juste avant de charger l\'exemple'],
       [/^avant-restauration/, 'Juste avant une restauration'],
       [/^avant-effacement/, 'Juste avant « Tout effacer »'],
       [/^avant-import/, 'Juste avant un import'],
+      [/^avant-beta/, 'Juste avant de recevoir les versions bêta'],
       [/^manuelle/, 'Sauvegarde que tu as demandée'],
-      [/^\d{4}-\d{2}-\d{2}/, 'État du matin']
+      [/^skanfact-\d{4}-\d{2}-\d{2}\.json$/, 'Début de journée, avant la première modification']
     ];
     const nommer = f => (NOM_SAUVEGARDE.find(([re]) => re.test(f)) || [null, 'Sauvegarde'])[1];
     async function drawBackups() {
@@ -12365,7 +12394,7 @@
       const ici = { documents: data.documents.length, clients: data.clients.length, catalog: data.catalog.length };
       const dit = c => `${pl(c.documents, 'document')}, ${pl(c.clients, 'client')}, ${pl(c.catalog, 'prestation')}`;
       const ok = await confirmDialog(
-        `Revenir à la sauvegarde du ${new Date(vu.mtime).toLocaleString('fr-FR')} ?\n\n`
+        `Revenir à la sauvegarde du ${new Date(vu.mtime).toLocaleString('fr-FR')} ?\n${nommer(nom)}.\n\n`
         + `Elle contient : ${dit(vu.compte)}${vu.societe ? ' — ' + vu.societe : ''}${vu.demo ? '\n⚠ C\'est le jeu d\'exemple, pas de vraies données.' : ''}\n`
         + `Aujourd'hui tu as : ${dit(ici)}\n\n`
         + 'Ton état actuel est sauvegardé juste avant, sous « avant-restauration » : ce geste se défait.',
@@ -12390,7 +12419,7 @@
       // laissait l'étape « Mettre tes données à l'abri » décochée jusqu'au prochain démarrage.
       copieExterne = !!(i && i.dir);
       const el = $('#ext-status'); if (!el) return;
-      el.innerHTML = i.dir ? `Dossier : <code>${h(i.dir)}</code><br>${i.lastError ? `<span style="color:var(--danger)">Dernière copie impossible : ${h(i.lastError)}</span>` : (i.lastCopy ? `Dernière copie : ${h(new Date(i.lastCopy).toLocaleString('fr-FR'))}` : 'Copie à la prochaine sauvegarde.')}` : '<span class="muted">Aucun dossier de copie externe.</span>';
+      el.innerHTML = i.dir ? `Dossier : <code>${h(i.dir)}</code>, sous-dossier <b>${h(i.sub || 'SkanFact')}</b> pour cette entreprise<br>${i.lastError ? `<span style="color:var(--danger)">Dernière copie impossible : ${h(i.lastError)}</span>` : (i.lastCopy ? `Dernière copie : ${h(new Date(i.lastCopy).toLocaleString('fr-FR'))}` : 'Copie à la prochaine sauvegarde.')}` : '<span class="muted">Aucun dossier de copie externe.</span>';
       $('#ext-remove').hidden = !i.dir;
       // Un seul vert sur l'onglet, et c'est l'étape suivante (U-11) : tant qu'aucune copie n'existe,
       // c'est elle ; une fois posée, « Choisir » devient « Changer » et le vert passe au mot de passe.
@@ -12451,10 +12480,7 @@
       });
     }
     drawDossiers();
-    $('#dos-add').onclick = () => promptDialog('Nouveau dossier', 'Nom de l\'entreprise', '', async v => {
-      const r = await bridge.addDossier({ name: v, shared: false });
-      if (!r.ok && r.error) toast(r.error, true);
-    });
+    $('#dos-add').onclick = nouvelleEntreprise;
     $('#dos-share').onclick = partagerDossier;
     $('#dos-join').onclick = rejoindreDossier;
     $('#dev-save').onclick = async () => {
@@ -12495,9 +12521,20 @@
         .filter(k => Array.isArray(data[k]) && data[k].length)
         .map(k => C.compteListe(k, data[k].length));
       const empruntee = !!(data.company && data.company.demo);
+      // Rien à effacer : on le dit au lieu de faire taper EFFACER pour vider le néant (vérifier que
+      // l'univers n'est pas vide, 7.0.0). La fiche société d'un exemple, elle, reste à rendre.
+      if (!compte.length && !empruntee) {
+        modal(`<h2>Rien à effacer</h2><p>Ce dossier ne contient encore aucune donnée : ni client, ni document, ni prestation. Tes paramètres société, eux, ne partent jamais avec « Tout effacer ».</p>
+          <div class="modal-actions"><button class="btn btn-primary" data-close>Compris</button></div>`, null, null, { garde: false });
+        return;
+      }
+      const emises = data.documents.filter(d => (d.type === 'facture' || d.type === 'avoir') && C.isIssued(d)).length;
+      // Revenir en arrière se fait par la liste des sauvegardes, juste au-dessus : la fenêtre
+      // envoyait vers « Importer », c'est-à-dire chercher un fichier dans un dossier caché — le chemin
+      // que la 7.3.0 a remplacé parce que le jour d'une restauration est le pire jour pour l'apprendre.
       modal(`<h2>Tout effacer</h2>
-        <p>Cette action supprime <b>tout ce que contient ce dossier</b> : ${h(compte.join(', ') || 'aucune donnée pour l\'instant')}. Les factures émises partent aussi.</p>
-        <p class="small muted">Une sauvegarde nommée est prise juste avant : tu pourras revenir en arrière par <em>Importer</em>. ${empruntee
+        <p>Cette action supprime <b>tout ce que contient ce dossier</b> : ${h(compte.join(', '))}.${emises ? ` ${emises > 1 ? `Les ${emises} factures et avoirs émis partent aussi` : 'La pièce émise part aussi'}.` : ''}</p>
+        <p class="small muted">Une sauvegarde est prise juste avant : pour revenir en arrière, le panneau <em>Sauvegardes</em> de cet onglet la montrera en tête de liste, avec son bouton <em>Restaurer…</em>. ${empruntee
           ? '<b>La fiche société part également</b>, parce qu\'elle vient du jeu d\'exemple : garder un matricule et un RIB inventés ferait partir ta première vraie facture dans le vide.'
           : 'Tes paramètres société sont conservés.'}</p>
         <form id="wf"><label class="field"><span class="fl">Pour confirmer, écris <b>EFFACER</b> ci-dessous</span><input type="text" name="w" autocomplete="off" spellcheck="false" placeholder="EFFACER"></label></form>
@@ -13070,7 +13107,7 @@
       (root, close) => {
         $('#ok', root).onclick = async () => {
           const v = formValues($('#okf', root));
-          if (!(v.key || '').trim()) return toast('Colle ta clé d\'API.', true);
+          if (!(v.key || '').trim()) return refus($('[name=key]', root), 'Colle ta clé d\'API.');
           try {
             await bridge.ocrSetKey(v.key.trim(), (v.model || '').trim() || undefined);
             close(); toast('Lecture de factures activée'); if (done) done();
@@ -14651,12 +14688,12 @@
           // voit pas. On les relit ici, sinon un choix fait au clavier juste avant « Continuer »
           // serait perdu — l'assistant doit écrire à chaque étape (règle 7.3.0).
           lireActivite();
-          if (steps[i].id === 'entreprise' && !String(a.name || '').trim()) return toast('La raison sociale est nécessaire : c\'est le nom qui apparaît sur tes documents.', true);
+          if (steps[i].id === 'entreprise' && !String(a.name || '').trim()) return refus($('#sf-form [name=name]', root), 'La raison sociale est nécessaire : c\'est le nom qui apparaît sur tes documents.');
           // L'écran « Ton activité » se traversait sans rien cliquer, et la case « Préremplir mon
           // catalogue » était cochée d'office : on promettait un catalogue qui n'arrivait jamais,
           // et `defaultVatRate` restait vide alors qu'une bulle affirme ailleurs que l'assistant
           // l'a réglé d'après le métier. « Autre activité » existe précisément pour ce cas.
-          if (steps[i].id === 'activite' && !a.activity) return toast('Choisis une activité — « Autre activité » convient si aucune ne correspond.', true);
+          if (steps[i].id === 'activite' && !a.activity) return refus($('.act-grid', root), 'Choisis une activité — « Autre activité » convient si aucune ne correspond.');
           if (i === steps.length - 1) return finish();
           etape(i + 1);
           i++; draw();
@@ -14669,9 +14706,13 @@
           collect();
           const saisi = ['name', 'matricule', 'rc', 'address', 'phone', 'email', 'bank', 'rib', 'capital']
             .filter(k => String(a[k] || '').trim()).length;
+          // L'avertissement ne nomme que ce qui MANQUE : il reprochait l'absence de raison sociale à
+          // quelqu'un qui venait de la taper (une nouvelle entreprise arrive avec son nom).
+          const manque = [!String(a.name || '').trim() && 'raison sociale', !String(a.matricule || '').trim() && 'matricule fiscal'].filter(Boolean);
           if (!await confirmDialog(
             (saisi ? `Ce que tu as déjà rempli (${saisi} champ${saisi > 1 ? 's' : ''}) est conservé. ` : '')
-            + 'Passer la suite de l\'assistant ? Tu pourras tout régler dans Paramètres, mais une facture sans raison sociale ni matricule fiscal n\'est pas conforme.',
+            + 'Passer la suite de l\'assistant ? Tu pourras tout régler dans Paramètres'
+            + (manque.length ? `, mais une facture sans ${manque.join(' ni ')} n'est pas conforme.` : '.'),
             'Passer', false)) return;
           OB.applySetup(data, a);            // on garde ce qui a été saisi, on n'invente rien
           save(true); drawNav(); root.remove(); resolve(false);
@@ -14731,7 +14772,9 @@
     const p = await bridge.exportData(data); if (p) toast('Exporté : ' + p.split(/[\\/]/).pop());
   }
   async function importAll() {
-    if (!await confirmDialog('Importer un fichier remplacera toutes les données actuelles (une sauvegarde de l\'état actuel est faite avant). Continuer ?')) return;
+    // La question nomme ce qui sera remplacé et le geste qui suit : « Confirmer » ne disait ni
+    // l'un ni l'autre, et le fichier ne se choisit qu'après.
+    if (!await confirmDialog(`Importer un fichier remplacera toutes les données de ${data.company.name || 'cette entreprise'}. Une sauvegarde de l'état actuel est prise juste avant, et le panneau Sauvegardes pourra la restaurer.`, 'Choisir le fichier à importer…')) return;
     if (!await closedWipeOk('Importer un fichier remplace tout.')) return;
     try {
       let r = await bridge.importData();
@@ -14743,7 +14786,7 @@
       // `save` autant que `clearGuard` comptent : sans l'enregistrement, quitter juste après un import
       // reperdait le fichier importé ; sans le désarmement, le garde-fou réclamait ensuite des
       // modifications qui n'existent plus.
-      if (d) { clearGuard(); data = migrate(d); save(true); applyTheme(); $('#brand-company').textContent = data.company.name; toast('Données importées'); render(); }
+      if (d) { clearGuard(); data = migrate(d); save(true); applyTheme(); $('#brand-company').textContent = data.company.name; toast(r.piecesJointes ? `Données importées, avec ${pl(r.piecesJointes, 'pièce jointe reprise', 'pièces jointes reprises')} de la copie` : 'Données importées'); render(); }
     } catch (e) { toast('Import impossible : ' + plainError(e), true); }
   }
   // « Exporter » et « Importer » vivaient dans le pied de la barre latérale, donc toujours visibles,

@@ -562,6 +562,56 @@ rapprochement et le thème sombre, tenus à la souris et au clavier :
   fond foncé (contraste 2,1). Un test vérifie maintenant, dans les deux applications, que toute couleur
   de texte foncée écrite en dur a sa jumelle sombre.
 
+**Données, sécurité et deuxième entreprise** — les sauvegardes, la restauration, le mot de passe,
+le verrouillage, « Tout effacer » et la création d'une seconde société, refaits à la souris :
+- **Un refus de saisie montre sa case, dans toutes les fenêtres.** Vingt-cinq refus (mot de passe,
+  paiement, relance, report, règlement, affaire, mouvement de stock, commande, numéros de série,
+  compte, mail, paquet, assistant…) se contentaient d'un message rouge de trois secondes : il fallait
+  relire la fenêtre pour trouver quoi corriger. La case refusée est maintenant amenée à l'écran, le
+  curseur dedans, bordée de rouge ; le métier refusé dans l'assistant marque sa grille. Un test
+  l'exige pour tout refus jugé sur un champ.
+- **Le mot de passe** : un ancien mot de passe faux marque sa case ; l'ancien est sur sa propre rangée
+  (« Confirmation » tombait sous lui, loin du nouveau qu'elle confirme) ; après le geste, l'écran revient
+  sur le panneau du mot de passe au lieu du haut de l'onglet ; et « Retirer le mot de passe » dit,
+  avant le geste, que le fichier et ses sauvegardes repassent en clair.
+- **Les sauvegardes se nomment.** La sauvegarde quotidienne s'appelait « Sauvegarde » dans la liste,
+  comme celle prise avant la bêta : la règle qui devait la reconnaître ne la reconnaissait pas. Elle
+  dit « Début de journée, avant la première modification », la question de restauration nomme aussi
+  ce qu'était la sauvegarde, et le message après « Sauvegarder maintenant » ne montre plus un nom de
+  fichier.
+- **« Tout effacer » mène au bon bouton.** La fenêtre, la bulle et l'article de l'Aide envoyaient vers
+  « Importer » pour revenir en arrière — chercher un fichier dans un dossier caché — alors que chaque
+  sauvegarde a son bouton « Restaurer… ». Sur un dossier vide, la fenêtre faisait taper EFFACER pour
+  ne rien effacer : elle dit maintenant « Rien à effacer ». Et « les factures émises partent aussi »
+  n'est plus annoncé quand il n'y en a aucune.
+- **Créer une deuxième entreprise passe par une seule porte.** Le menu du haut et les Paramètres en
+  avaient chacun une copie, déjà différentes, et aucune ne demandait avant de jeter une saisie en
+  cours — alors que créer recharge la fenêtre. La fenêtre dit qu'elle ouvre un dossier neuf, que
+  l'entreprise actuelle reste intacte, et son bouton dit « Créer et ouvrir ». Un échec de création
+  s'écrit en français, plus en message brut du système.
+- **Le menu des entreprises ne coupe plus ses gestes** : « Partager cette entre… », « Rejoindre un
+  dossie… » et le nom de l'entreprise ouverte se lisent en entier.
+- **L'accueil ne se contredit plus sur les retards** : « 3 factures en retard » dans « À faire » et
+  « 4 en retard » sur la carte « Reste à encaisser », dix centimètres plus bas — la quatrième avait sa
+  relance reportée. La ligne dit « à relancer » et nomme l'autre.
+- **Trois fenêtres avaient deux boutons qui font la même chose** : « Annuler » à côté de « Plus tard »
+  (verrouiller sans mot de passe, message au comptable sans adresse) ou de « Le garder en brouillon »
+  (PDF d'un devis). Il n'en reste qu'un, nommé.
+- **Deux entreprises sur la même clé USB gardent chacune leur copie.** Le dossier de copie externe se
+  règle pour tout l'ordinateur, et chaque entreprise y écrivait le même fichier : la copie de la
+  première était effacée dès que la seconde enregistrait, et changer le mot de passe de l'une
+  rechiffrait les sauvegardes de l'autre. Chaque entreprise a maintenant son sous-dossier (« SkanFact »
+  pour la première, comme avant, « SkanFact — nom de l'entreprise » pour les suivantes), et le panneau
+  dit lequel.
+- **Changer d'ordinateur ramène aussi les pièces jointes.** Importer le fichier de la copie externe
+  rendait les données et laissait sur la clé les photos et PDF joints, que la copie est pourtant le
+  seul filet à emporter. Ils reviennent avec l'import, et l'article « Tes données » dit enfin comment
+  reprendre sa copie sur un nouvel ordinateur.
+- La copie externe affiche sa vraie date dès l'ouverture, au lieu de « Copie à la prochaine
+  sauvegarde » devant une copie faite la veille ; le sélecteur de dossier, la panne de disque et les
+  textes du Cabinet nomment OneDrive à côté d'iCloud Drive ; et « Passer » l'assistant ne reproche plus
+  l'absence d'une raison sociale qu'on vient de taper.
+
 **Publiée en bêta** : elle touche au moteur comptable (déclaration d'employeur, IRPP du mois,
 contre-passation, rapprochement).
 

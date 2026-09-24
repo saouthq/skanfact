@@ -106,7 +106,16 @@ function createStorage(dir, opts) {
   // disque porte toujours ce numéro. S'il a changé, c'est qu'un autre poste a enregistré entre-temps :
   // on refuse d'écraser et on rend sa version à l'appelant, qui fusionne.
   const state = { corruptFile: null, key: null, salt: null, encrypted: false, revision: 0, deviceId: opts.deviceId || '', deviceName: opts.deviceName || '',
-    external: { dir: opts.externalDir || null, lastCopy: null, lastError: null } };
+    // `sub` : le sous-dossier de CETTE entreprise dans la copie externe (10.12.0). Le dossier de copie
+    // se règle pour tout l'ordinateur ; sans sous-dossier propre, deux entreprises écrivaient le même
+    // `SkanFact/skanfact-data.json`, et la seconde effaçait la copie de la première.
+    external: { dir: opts.externalDir || null, sub: opts.externalSub || 'SkanFact', lastCopy: null, lastError: null } };
+  const cibleExterne = () => path.join(state.external.dir, state.external.sub || 'SkanFact');
+  // Au démarrage, « Dernière copie » se lit sur la copie elle-même : sans ça, l'écran annonçait
+  // « Copie à la prochaine sauvegarde » devant une copie faite la veille, comme s'il n'y en avait pas.
+  if (state.external.dir) {
+    try { state.external.lastCopy = fs.statSync(path.join(cibleExterne(), 'skanfact-data.json')).mtime.toISOString(); } catch { /* pas encore de copie */ }
+  }
 
   function today() { return stamp(now()).slice(0, 10); }
 
@@ -236,7 +245,7 @@ function createStorage(dir, opts) {
     const ext = state.external.dir;
     if (ext) {
       try {
-        const dossier = path.join(ext, 'SkanFact', 'backups');
+        const dossier = path.join(cibleExterne(), 'backups');
         if (fs.existsSync(dossier)) {
           fs.readdirSync(dossier).filter(f => f.endsWith('.json')).forEach(n => {
             try { convertirUne(path.join(dossier, n), oldKey); }
@@ -398,7 +407,7 @@ function createStorage(dir, opts) {
     if (!ext) return false;
     try {
       if (!fs.existsSync(ext)) throw new Error('dossier introuvable (support débranché ?)');
-      const target = path.join(ext, 'SkanFact');
+      const target = cibleExterne();
       fs.mkdirSync(path.join(target, 'backups'), { recursive: true });
       if (fs.existsSync(file)) {
         const tmp = path.join(target, 'skanfact-data.json.tmp');
@@ -430,7 +439,61 @@ function createStorage(dir, opts) {
     }
   }
 
-  return { file, backupDir, attachDir, state, read, unlock, lock, setPassword, write, diskRevision, backupNow, listBackups, readExternal, snapshotDaily, setExternalDir, mirrorExternal, addAttachment, removeAttachment, attachmentPath };
+  // Reprendre les pièces jointes d'une copie externe (10.12.0). Sur un nouvel ordinateur, le seul
+  // chemin est « Importer » le `skanfact-data.json` de la copie : il rendait les données, et laissait
+  // sur la clé les pièces jointes que la copie externe est pourtant le SEUL filet à emporter (plus
+  // haut). On cherche `pieces-jointes` à côté du fichier importé (ou à côté de `backups/` quand on
+  // importe une sauvegarde de la copie), et on ne reprend que les pièces que les données importées
+  // désignent, sans jamais écraser un fichier déjà là.
+  function reprendrePiecesJointes(fichierImporte, donnees) {
+    try {
+      const depuis = path.dirname(fichierImporte);
+      const candidats = [path.join(depuis, 'pieces-jointes')];
+      if (path.basename(depuis) === 'backups') candidats.push(path.join(path.dirname(depuis), 'pieces-jointes'));
+      const src = candidats.find(c => fs.existsSync(c));
+      if (!src || path.resolve(src) === path.resolve(attachDir)) return 0;
+      const ids = new Set();
+      Object.values(donnees || {}).forEach(v => { if (Array.isArray(v)) v.forEach(x => { if (x && typeof x.id === 'string') ids.add(x.id.replace(/[^A-Za-z0-9_-]/g, '')); }); });
+      let n = 0;
+      fs.readdirSync(src).forEach(doc => {
+        const dossier = path.join(src, doc);
+        if (!ids.has(doc) || !fs.statSync(dossier).isDirectory()) return;
+        fs.readdirSync(dossier).forEach(f => {
+          const dst = path.join(attachDir, doc, f);
+          if (fs.existsSync(dst)) return;
+          fs.mkdirSync(path.dirname(dst), { recursive: true });
+          fs.copyFileSync(path.join(dossier, f), dst); n++;
+        });
+      });
+      return n;
+    } catch (e) { log('pièces jointes de la copie', e); return 0; }
+  }
+
+  return { file, backupDir, attachDir, state, read, unlock, lock, setPassword, write, diskRevision, backupNow, listBackups, readExternal, snapshotDaily, setExternalDir, mirrorExternal, addAttachment, removeAttachment, attachmentPath, reprendrePiecesJointes };
 }
 
-module.exports = { createStorage, isValidData, stamp, isEncrypted, encryptData, decryptData };
+// Le sous-dossier d'une entreprise dans la copie externe (10.12.0). Le PREMIER dossier garde
+// `SkanFact`, l'emplacement d'avant cette version : les copies déjà faites restent où on les attend.
+// Les suivants prennent « SkanFact — <nom> », lisible sur la clé le jour où on la rebranche ailleurs.
+// Le nom retenu s'écrit une fois sur le dossier (`copieExterne`) : renommer l'entreprise ne déplace
+// pas sa copie, sinon l'ancienne resterait sur la clé, périmée, sous le nom qu'on cherche.
+function nomCopieExterne(dossiers, id) {
+  const liste = (Array.isArray(dossiers) ? dossiers : []).filter(x => x && x.id);
+  if (!liste.some(x => x.id === id)) return 'SkanFact';
+  const noms = new Map(), pris = new Set();
+  // D'abord ce qui est déjà écrit, puis le premier dossier, puis les autres dans l'ordre : un nom
+  // ne se calcule jamais sans savoir ceux des voisins, même avant qu'aucun ne soit enregistré.
+  liste.forEach(x => { if (typeof x.copieExterne === 'string' && x.copieExterne) { noms.set(x.id, x.copieExterne); pris.add(x.copieExterne); } });
+  if (!noms.has(liste[0].id) && !pris.has('SkanFact')) { noms.set(liste[0].id, 'SkanFact'); pris.add('SkanFact'); }
+  liste.forEach(x => {
+    if (noms.has(x.id)) return;
+    const propre = String(x.name || '').replace(/[<>:"/\\|?*\u0000-\u001f]/g, ' ').replace(/\s+/g, ' ').trim().replace(/[. ]+$/, '').slice(0, 60);
+    const base = 'SkanFact — ' + (propre || 'entreprise');
+    let nom = base, k = 2;
+    while (pris.has(nom)) nom = `${base} (${k++})`;
+    noms.set(x.id, nom); pris.add(nom);
+  });
+  return noms.get(id);
+}
+
+module.exports = { createStorage, isValidData, stamp, isEncrypted, encryptData, decryptData, nomCopieExterne };

@@ -86,7 +86,7 @@
 
     // — filets —
     'b.daily': { t: 'Sauvegarde quotidienne', d: 'Chaque jour, avant la première modification, SkanFact met de côté le fichier tel qu\'il était. Tu peux donc revenir à « hier matin » après une fausse manœuvre. Trente jours sont conservés, plus les sauvegardes nommées (avant un import, avant une suppression).' },
-    'b.external': { t: 'Copie vers un autre support', d: 'Un dossier sur une clé USB, un disque externe ou iCloud Drive. À chaque enregistrement, SkanFact y recopie ta base, tes sauvegardes <b>et tes paquets</b>. C\'est ce qui te sauve quand l\'ordinateur lui-même disparaît — vol, panne de disque, dégât des eaux.' },
+    'b.external': { t: 'Copie vers un autre support', d: 'Un dossier sur une clé USB, un disque externe, iCloud Drive ou OneDrive. À chaque enregistrement, SkanFact y recopie ta base, tes sauvegardes <b>et tes paquets</b>. C\'est ce qui te sauve quand l\'ordinateur lui-même disparaît — vol, panne de disque, dégât des eaux.' },
     'b.recovery': { t: 'Clé de secours', d: 'Le fichier le plus important que tu produiras avec cette application. Il contient la clé qui <b>ouvre les paquets de tes clients</b>. Sans elle et sans ton ordinateur, aucun paquet déjà reçu ne pourra plus jamais être ouvert, et tes clients devront tous réimporter un nouvel appairage. Range-la ailleurs que sur cet ordinateur : clé USB dans un tiroir, coffre, chez ton associé.' },
     'b.password': { t: 'Mot de passe du cabinet', d: 'Il chiffre tout ce que tes clients t\'envoient. Personne ne peut le récupérer, pas même nous : c\'est ce qui garantit qu\'un portable volé n\'emporte pas soixante comptabilités. Change-le si tu penses qu\'il a été vu, ou quand un collaborateur s\'en va.' },
     'b.restore': { t: 'Restaurer une sauvegarde', d: 'Remplace l\'état actuel par celui de la sauvegarde choisie. L\'application te dit d\'abord ce que la sauvegarde contient et ce que tu as maintenant, pour que tu voies ce que tu perdrais. Une sauvegarde de l\'état actuel est prise juste avant : une restauration n\'est jamais un aller simple.' },
@@ -436,7 +436,7 @@
       <p class="small">Trois filets, et ils ne font pas la même chose :</p>
       <ul class="small" style="line-height:1.8">
         <li><b>La sauvegarde quotidienne</b> te protège de <i>toi</i> : une suppression de trop, un import raté. Elle est automatique, trente jours.</li>
-        <li><b>La copie vers un autre support</b> te protège de <i>l'ordinateur</i> : panne, vol, incendie. Elle emporte la base, les sauvegardes et les paquets. Choisis une clé USB ou un dossier iCloud dans Réglages.</li>
+        <li><b>La copie vers un autre support</b> te protège de <i>l'ordinateur</i> : panne, vol, incendie. Elle emporte la base, les sauvegardes et les paquets. Choisis une clé USB ou un dossier synchronisé (iCloud Drive, OneDrive) dans Réglages.</li>
         <li><b>La clé de secours</b> te protège de la <i>perte totale</i>. Elle contient la clé qui ouvre les paquets de tes clients. Sans elle et sans cet ordinateur, aucun paquet déjà reçu ne se rouvre — jamais. Range-la ailleurs.</li>
       </ul>
       <p class="small">Ton mot de passe, lui, ne se récupère pas. C'est voulu : c'est ce qui fait qu'un portable volé n'emporte pas soixante comptabilités. Note-le quelque part de sûr le jour où tu le choisis.</p>
@@ -449,7 +449,7 @@
       <p class="small"><b>Ce qu'il ne faut pas faire :</b> installer l'application sur le nouveau poste et créer un cabinet. Il aurait une clé neuve, donc une empreinte neuve — et tous les paquets que tes clients t'enverraient ensuite seraient refusés : « adressé à un autre cabinet ». Rien ne serait perdu, mais plus rien n'arriverait.</p>
       <p class="small"><b>Ce qu'il faut faire :</b> sur l'écran de mot de passe du nouveau poste, clique sur <b>« J'ai déjà un cabinet sur un autre ordinateur… »</b> avant tout le reste.</p>
       <ul class="small" style="line-height:1.8">
-        <li><b>Si tu as ton dossier de copie</b> (la clé USB, le disque externe ou le dossier iCloud choisi dans Réglages → Données et sécurité) : désigne-le. Il contient <code>cabinet-data.json</code>, tes sauvegardes <b>et tes paquets</b>. Tout revient d'un coup.</li>
+        <li><b>Si tu as ton dossier de copie</b> (la clé USB, le disque externe ou le dossier synchronisé — iCloud Drive, OneDrive — choisi dans Réglages → Données et sécurité) : désigne-le. Il contient <code>cabinet-data.json</code>, tes sauvegardes <b>et tes paquets</b>. Tout revient d'un coup.</li>
         <li><b>Si tu n'as que le fichier</b> <code>cabinet-data.json</code> (ou une sauvegarde) : désigne-le. Tes dossiers et ta clé reviennent. Pour les pièces déjà reçues, recopie ensuite le dossier <code>paquets</code> dans le dossier de l'application (Réglages → Données et sécurité → Sauvegardes, « Ouvrir le dossier ») : SkanFact les retrouve tout seul à l'ouverture suivante.</li>
         <li><b>Si tu n'as que ta clé de secours</b> (<code>.skanrecover</code>) : crée un cabinet ici, l'application te réclamera ce fichier aussitôt. Ton empreinte redevient la tienne et tes clients n'ont rien à refaire — mais tes dossiers et tes paquets, eux, ne reviennent pas.</li>
       </ul>

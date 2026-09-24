@@ -86,7 +86,7 @@ const PANNES_DISQUE = {
   EPERM: 'L\'accès au fichier de données est refusé : rien n\'a été enregistré. Un antivirus ou un autre programme le tient peut-être ouvert — ferme-le, puis réessaie.',
   EROFS: 'Le dossier de données est en lecture seule : rien n\'a été enregistré. Choisis un autre emplacement dans les réglages, puis réessaie.',
   EBUSY: 'Le fichier de données est utilisé par un autre programme : rien n\'a été enregistré. Ferme-le, puis réessaie.',
-  ENOENT: 'Le dossier de données est introuvable : rien n\'a été enregistré. Un disque externe ou un dossier iCloud s\'est peut-être déconnecté — rebranche-le, puis réessaie.',
+  ENOENT: 'Le dossier de données est introuvable : rien n\'a été enregistré. Un disque externe ou un dossier synchronisé (iCloud Drive, OneDrive) s\'est peut-être déconnecté — rebranche-le, puis réessaie.',
   EIO: 'Le disque ne répond plus : rien n\'a été enregistré. Fais une copie de tes données dès qu\'il répond de nouveau.',
   EMFILE: 'Trop de fichiers sont ouverts sur cet ordinateur : rien n\'a été enregistré. Redémarre l\'application, puis réessaie.',
   ENFILE: 'Trop de fichiers sont ouverts sur cet ordinateur : rien n\'a été enregistré. Redémarre l\'application, puis réessaie.'
@@ -3007,7 +3007,7 @@ ipcMain.handle('cab:restore', (_e, { path: p, password } = {}) => {
 
 ipcMain.handle('cab:pickExternal', async () => {
   const r = await dialog.showOpenDialog(mainWindow, {
-    title: 'Dossier de copie (clé USB, iCloud Drive, disque externe…)',
+    title: 'Dossier de copie (clé USB, disque externe, iCloud Drive, OneDrive…)',
     properties: ['openDirectory', 'createDirectory']
   });
   if (r.canceled || !r.filePaths.length) return null;
