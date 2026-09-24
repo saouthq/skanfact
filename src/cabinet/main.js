@@ -805,7 +805,13 @@ ipcMain.handle('cab:exportPairing', async () => {
   });
   if (canceled || !filePath) return null;
   fs.writeFileSync(filePath, JSON.stringify(K.pairingFile(state.cabinet, fp), null, 2), 'utf8');
-  return { path: filePath, fingerprint: fp };
+  // 10.14.0 — « Tes premiers pas » se lisent sur l'ÉTAT, jamais sur une case cochée à la main : le
+  // fichier remis se retient ici, au moment où il existe sur le disque. Un échec d'écriture de l'état
+  // ne défait pas le fichier (il est là, il sert) : l'étape resterait simplement à faire.
+  state.cabinet.pairingExportedAt = new Date().toISOString();
+  let etat = null;
+  try { etat = save(); } catch (_) { etat = null; }
+  return { path: filePath, fingerprint: fp, state: etat };
 });
 
 // ---------- IPC : import d'un paquet ----------

@@ -248,7 +248,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 
 `npm test` (les tests purs) · `npm run lint` (ESLint, **zéro erreur ET zéro avertissement** depuis la
 10.0.1) · `npm run charge` (le livre du Cabinet) · `npm run charge:entreprise` (le fichier de l'app
-entreprise, dix ans d'activité — 10.0.1) · `npm run e2e:<nom>` (56 parcours, tableau au § « Les tests
+entreprise, dix ans d'activité — 10.0.1) · `npm run e2e:<nom>` (57 parcours, tableau au § « Les tests
 qui ouvrent vraiment l'application ») · `scripts/humain/` (tester comme un humain : écran virtuel, souris, clavier, Browser Use — depuis le 23/09/2026) · CI GitHub sur Linux et Windows à chaque poussée ·
 « Construire un essai » pour faire tester une version sans la publier.
 
@@ -712,6 +712,7 @@ Ils vivent dans **`test/e2e/`** et se lancent par `npm run e2e:<nom>` (sous `xvf
 | `npm run e2e:cabinet-rendu` | **le rendu du Cabinet, mesuré** : les trois sondes de l'app entreprise (contraste et débordement des boutons, alignement des colonnes, barres d'en-tête) et la quatrième (l'écart d'ENCRE entre un bouton et ce qui le touche, 9.8.3) braquées sur TOUS ses écrans et TOUS leurs onglets, en clair et en sombre, à 1440 et à 1280 — **2 107 boutons, 883 colonnes, 1 087 écarts** (mesuré le 21/09/2026). Elles vivent en un seul exemplaire dans `harnais.js` : c'est leur absence côté Cabinet qui l'avait laissé dériver |
 | `npm run e2e:entreprise-rendu` | **l'app entreprise ENTIÈRE, mesurée** : les pages lues dans `routes.x = ` (jamais une liste écrite à la main), tous leurs onglets, chaque fiche et chaque pièce par type × statut, chaque fenêtre qu'un bouton ouvre (le parcours clique les gestes et constate qu'ils produisent quelque chose — un bouton qui accepte le clic et ne fait rien tombe), en vierge puis sur l'exemple, en clair et en sombre, à 1440 et à 1280 — toutes les sondes du harnais, et des captures PLEINES (`dist-e2e/entreprise-rendu/`). **296 écrans par passe, 34 954 boutons, 9 859 champs, 10 938 colonnes, 16 436 écarts** (mesuré le 23/09/2026). `--rapide` : vierge et clair à 1440, sans captures |
 | `npm run e2e:couverture` | **chaque contrôle de chaque écran dit ce qu'il fait** (10.14.0) : le parcours de `e2e:entreprise-rendu`, vierge puis sur l'exemple, et pour chaque bouton, champ ou entrée de menu visible — dans la page, la fenêtre du dessus et le menu ouvert — l'explication que la visite guidée lira (`SkanVisites.expliquer`). Un contrôle sans explication disparaîtrait de la bulle sans un mot ; il fait TOMBER le parcours, et un plancher de contrôles lus prouve que l'instrument a atteint ses écrans (`dist-e2e/couverture/manquants.json`) |
+| `npm run e2e:cabinet-couverture` | **chaque contrôle de chaque écran du CABINET dit ce qu'il fait** (10.14.0) : le parcours de `e2e:cabinet-rendu` — pages, « Me guider », fiche, les quatorze écrans de comptabilité des vitrines, les fenêtres ouvertes par leur vrai bouton, un menu de ligne de chaque sorte — une passe, et pour chaque contrôle visible l'explication que la visite lira (`CabVisites.expliquer`). Un contrôle sans explication fait TOMBER le parcours, et un plancher de contrôles lus prouve que l'instrument a atteint ses écrans (`dist-e2e/cabinet-couverture/manquants.json`) |
 | `npm run e2e:console-rendu` | **le rendu de la CONSOLE, mesuré** : les mêmes quatre sondes braquées sur la troisième surface du produit, que pas un des quatre instruments ne regardait — les huit onglets, les deux formulaires et le panneau de la clé émise, en clair et en sombre, à 1440 et à 1280 (**735 boutons, 256 colonnes, 333 écarts**, mesuré le 22/09/2026). Le vrai worker sur une vraie base (`console-serveur.js`, partagé avec `e2e:console`), une base garnie par les VRAIES routes d'administration, et un onglet vide qui fait TOMBER le parcours. Il rend en plus deux constats que les sondes ne portent pas : la ligne de flottaison à 1280 (9.4.4) et la phrase d'explication redite (9.4.6) |
 | `npm run e2e:paie` | **la paie d'un client du cabinet** : un dossier sans salarié qui DIT par où commencer et dont les deux boutons éteints disent pourquoi, un salarié déclaré sans numéro CNSS (signalé, jamais bloquant), un bulletin dont le net se recalcule pendant la frappe, l'écriture de paie en brouillard au dernier jour du mois — équilibrée, sans numéro —, le bouton qui s'éteint en nommant le « deux fois », un bulletin écrit qui ne propose plus ni « Modifier » ni « Supprimer » mais dont le calcul s'ouvre ligne par ligne, et la CNSS du trimestre qui dit ce qu'elle ne fera jamais |
 | `npm run e2e:declaration` | **la déclaration du mois** : quatre cases « — » avec leur raison (jamais un zéro), un chiffre ouvert sur ses pièces, un mois DÉJÀ déclaré par le client qui montre quand même sa collectée et dont le bouton s'éteint en disant pourquoi, l'écriture passée en brouillard au dernier jour d'un mois libre, les deux pointages dans l'ordre puis défaits, et le refus de refaire une déposée |
@@ -7014,6 +7015,41 @@ test de contenu ne pouvait voir :
 - Piège de méthode : un redémarrage du poste de travail a tué une preuve en cours et laissé le
   DÉFAUT dans `app.js`, avec sa copie `.preuve-bak` à côté. Après toute interruption, chercher les
   `.preuve-bak` et comparer avant de conclure quoi que ce soit.
+
+**Puis le Cabinet, sur le même moteur** (Skander : « fais ce qu'on vient de faire sur l'app cabinet, et
+le même système : la démo avant l'écran de démarrage »). Contenu : `src/cabinet/renderer/cabvisites.js`
+(global `CabVisites`), branché dans `app.js` (`installerVisites`, `lancerVisite`, `drawGuide`, la porte
+de `runSetup`) ; `K.premiersPas(state, ctx)` dans cabcore ; tests `test/suites/cabvisites.js` ;
+instrument `npm run e2e:cabinet-couverture` (le parcours de `e2e:cabinet-rendu` en mode `--couverture`).
+
+- **Un algorithme partagé vit dans le MOTEUR, les applications n'apportent que leurs tables.** Ce qui
+  dit ce que fait un bouton (phrase d'une ligne de menu, dictionnaire, onglets, bulle du champ,
+  familles de champs) était écrit dans `visites.js` : le Cabinet l'aurait recopié, et deux copies
+  divergent (7.29.0). Il est sorti dans `Visite.expliqueur(tables)` / `Visite.zoneur(ZONES)` ; un test
+  interdit un second `function expliquer(` dans l'un ou l'autre contenu.
+- **La porte se pose APRÈS le mot de passe, jamais avant** : l'état du Cabinet est chiffré, il n'existe
+  pas de cabinet sans lui. Elle remplace l'écran « Bienvenue », ne se voit qu'une fois (les DEUX
+  battants la marquent vue), et la reprise (`runSetup({ sansPorte: true })`) passe à la sortie de
+  l'exemple et au démarrage d'un cabinet encore sans nom.
+- **« Tes premiers pas » ne repoussent pas le portefeuille** (9.4.4) : le panneau complet n'occupe que
+  la page Dossiers VIDE, où il est le corps de l'écran ; dès qu'il y a des dossiers, il devient UNE
+  ligne de « À faire » dont le bouton lance la visite de l'étape suivante. L'exemple ne compte ni
+  comme un client ni comme un premier paquet ; « ne pas savoir » la clé de secours n'est pas « non ».
+- **Un geste qu'on veut cocher doit laisser une trace** : l'export du fichier d'appairage n'était
+  écrit nulle part — l'étape n'aurait jamais pu se cocher. `cab:exportPairing` retient
+  `pairingExportedAt` et rend l'état, que l'écran reprend (7.1.x).
+- **Un test neuf trouve d'abord ce que le contenu a laissé derrière lui** : le dictionnaire expliquait
+  `#pp-decouvrir` et `#pp-plus-tard`, deux boutons d'un premier jet abandonné — le test « chaque entrée
+  désigne un contrôle qui existe » les a nommés à sa première exécution.
+- **Un instrument de couverture ne recopie pas son parcours** : `e2e:cabinet-couverture` est
+  `cabinet-rendu.js --couverture` (une passe, la sonde des explications sur la page, la fenêtre du
+  dessus et un menu de ligne de chaque sorte, les fenêtres ouvertes par leurs vrais boutons) — un
+  second parcours des mêmes écrans aurait dérivé du premier. Et `cabinet-rendu` mesure désormais
+  « Me guider » comme les autres pages.
+- **Cinq parcours e2e nommaient l'ancien assistant écran par écran** (`#w-rec`, `#w-pair`) :
+  retournés vers la règle (la porte, le nom, les clients, puis « Tes premiers pas ») ; ceux qui
+  traversaient l'assistant par « Passer sinon Suivant » ont tenu seuls — un parcours reconnaît un
+  écran à ce qu'il CONTIENT (7.28.0).
 
 ## Pistes pour la suite (non demandées)
 

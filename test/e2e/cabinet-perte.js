@@ -46,8 +46,8 @@ async function lancer() {
   await win.fill('#w-clients', 'Menuiserie Trabelsi SUARL ; 1122334A/M/P/000\nPharmacie El Menzah\nCafé des Jasmins');
   await win.click('#w-next');
   await win.waitForTimeout(1200);
-  await win.waitForSelector('#w-rec'); await win.click('#w-skip');
-  await win.waitForSelector('#w-pair'); await win.click('#w-next');
+  // 10.14.0 : l'assistant s'arrête aux clients.
+  await win.waitForFunction(() => !document.querySelector('#setup'), null, { timeout: 10000 });
   await win.waitForTimeout(800);
 
   const empreinteAvant = await win.evaluate(async () => (await window.cabinet.state()).cabinet.fingerprint);

@@ -25,9 +25,9 @@
 //     personne, et qui prouve que la visite mène où elle dit ;
 //   - le texte tutoie, dit le POURQUOI en une phrase, et ne recopie pas l'Aide.
 (function (root, factory) {
-  if (typeof module === 'object' && module.exports) module.exports = factory();
-  else root.SkanVisites = factory();
-})(typeof self !== 'undefined' ? self : this, function () {
+  if (typeof module === 'object' && module.exports) module.exports = factory(require('./visite.js'));
+  else root.SkanVisites = factory(root.Visite);
+})(typeof self !== 'undefined' ? self : this, function (M) {
   'use strict';
 
   // `couleur` : l'un des sept domaines de l'Aide (`th-<nom>` dans style.css). La visite prend la
@@ -678,33 +678,10 @@
   };
 
   // ========================================================================== LES FONCTIONS
-  const nettoie = t => String(t == null ? '' : t).replace(/\s+/g, ' ').replace(/\s*[▾▸]\s*$/, '').trim();
-  function libelleDe(el) {
-    const aria = el.getAttribute('aria-label');
-    if (aria) return nettoie(aria);
-    if (el.matches('input, select, textarea') || el.classList.contains('combo-btn')) {
-      const l = el.closest('label, .field');
-      if (l) {
-        const c = l.cloneNode(true);
-        c.querySelectorAll('input, select, textarea, button, .combo-list, .small, .muted').forEach(x => x.remove());
-        const t = nettoie(c.textContent);
-        if (t) return t;
-      }
-      return nettoie(el.placeholder || el.getAttribute('title') || '');
-    }
-    const c = el.cloneNode(true);
-    c.querySelectorAll('button.i, .badge, .pp-compte').forEach(x => x.remove());
-    return nettoie(c.textContent || el.value || el.getAttribute('title'));
-  }
-  // Le résumé d'une bulle « i » : sa première ou ses deux premières phrases, sans balise.
-  function resume(html) {
-    const t = String(html || '').replace(/<br\s*\/?>/g, ' ').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
-    const phrases = t.match(/[^.!?]+[.!?]+(\s|$)/g) || [t];
-    let out = '';
-    for (const p of phrases) { if ((out + p).length > 190 && out) break; out += p; }
-    return out.trim();
-  }
-  const route = () => (String((typeof location !== 'undefined' && location.hash) || '').replace(/^#\/?/, '').split('/')[0] || 'dashboard');
+  // L'algorithme qui explique un contrôle vit dans le MOTEUR (`Visite.expliqueur`, 10.14.0) : le
+  // Cabinet a le même, avec ses tables à lui. Ici ne reste que ce qui est propre à cette application.
+  const libelleDe = M.libelleDe, resume = M.resumeBulle;
+  const route = M.routeDe('dashboard');
 
   // Les gestes du menu « Actions », page par page : le bouton ne dit rien de ce qu'il cache.
   const MENUS = {
@@ -729,73 +706,19 @@
     licences: "Voir la clé, la copier, renouveler, révoquer."
   };
 
+  // Les familles de champs propres à cette application, reconnues à leur forme : un numéro de compte
+  // (le plan comptable), un modèle de mail.
+  const familles = (el, lab, nom) => {
+    if (el.closest('#chart-form, .chart-form') || /^\d{2,6}$/.test(String(el.value || '').trim()) && el.closest('.modal')) return { cle: 'plan', nom: lab || 'Compte', texte: "Le numéro de compte où SkanFact écrit ce type d'opération. Proposé selon l'usage tunisien : ton comptable peut le changer." };
+    if (/^et(en)?_/.test(nom)) return { cle: 'modele-mail', nom: lab || 'Modèle de mail', texte: "Le texte proposé pour ce mail ; {numero}, {client}, {societe}… se remplacent tout seuls." };
+    return null;
+  };
   // Ce que fait un contrôle : { cle, nom, texte }, ou null — et c'est l'instrument de couverture qui
   // compte les null, écran par écran.
-  function expliquer(el, ctx) {
-    if (!el || !el.matches) return null;
-    const r = (ctx && ctx.route) ? ctx.route() : route();
-    const G = (ctx && ctx.G) || (typeof window !== 'undefined' && window.SkanGuide) || { INFO: {} };
-    const lab = libelleDe(el);
-    // 0. une action d'un menu « Actions » porte sa propre phrase (7.28.0) : la visite dit la MÊME que
-    // celle que la personne lit dans le menu, jamais une seconde qui divergerait.
-    if (el.matches('.row-menu button')) {
-      const l = el.querySelector('.rm-l'), ph = el.querySelector('.rm-h');
-      const nom = l ? nettoie(l.textContent) : lab;
-      const phrase = ph ? nettoie(ph.textContent) : '';
-      if (phrase) return { cle: 'rm:' + nom, nom, texte: phrase };
-    }
-    // 1. le dictionnaire
-    for (let i = 0; i < B.length; i++) {
-      const x = B[i];
-      if (x.route && !(Array.isArray(x.route) ? x.route : [x.route]).includes(r)) continue;
-      if (x.id && el.id !== x.id) continue;
-      if (x.sel) { let ok = false; try { ok = el.matches(x.sel); } catch (_) { ok = false; } if (!ok) continue; }
-      if (x.lib && !x.lib.test(lab)) continue;
-      if (x.rowmenu) return { cle: 'rowmenu', nom: x.nom, texte: `Tous les autres gestes de cette ligne, chacun avec sa phrase : ${MENUS[r] || 'ouvrir, modifier, supprimer…'}` };
-      if (x.onglet) break;
-      return { cle: x.cle || (x.id ? '#' + x.id : 'b' + i), nom: x.nom || lab || x.id, texte: x.texte };
-    }
-    // 2. les onglets
-    const onglet = el.dataset && (el.dataset.tab || el.dataset.vue);
-    if (onglet && el.closest('.tabs')) {
-      const t = ONGLETS[r + ':' + onglet] || ONGLETS[onglet];
-      if (t) return { cle: 'tab:' + onglet, nom: lab, texte: t };
-    }
-    // 3. un champ : la bulle « i » de son libellé, sinon son nom
-    const champ = el.matches('input, select, textarea') || el.classList.contains('combo-btn');
-    if (champ) {
-      const hote = el.closest('label, .field, .combo, .datefield');
-      const zone = hote && (hote.closest('label, .field') || hote);
-      const bulle = zone && zone.querySelector('button.i[data-info]');
-      const x = bulle && G.INFO[bulle.dataset.info];
-      if (x) return { cle: 'i:' + bulle.dataset.info, nom: x.t || lab, texte: resume(x.d) };
-      const nom = el.getAttribute('name') || (el.closest('[data-combo]') && el.closest('[data-combo]').dataset.combo) || '';
-      if (CHAMPS[nom]) return { cle: 'c:' + nom, nom: lab || nom, texte: CHAMPS[nom] };
-      // Les familles de champs qu'on reconnaît à leur forme.
-      if (el.closest('.datefield') || el.classList.contains('d-txt')) return { cle: 'date', nom: lab || 'Date', texte: "Tape la date (JJ/MM/AAAA, ou juste le jour) ou choisis-la dans le calendrier." };
-      if (el.closest('#chart-form, .chart-form') || /^\d{2,6}$/.test(String(el.value || '').trim()) && el.closest('.modal')) return { cle: 'plan', nom: lab || 'Compte', texte: "Le numéro de compte où SkanFact écrit ce type d'opération. Proposé selon l'usage tunisien : ton comptable peut le changer." };
-      if (/^et(en)?_/.test(nom)) return { cle: 'modele-mail', nom: lab || 'Modèle de mail', texte: "Le texte proposé pour ce mail ; {numero}, {client}, {societe}… se remplacent tout seuls." };
-      if (el.classList.contains('combo-btn')) return { cle: 'combo', nom: lab || 'Liste', texte: "Clique pour ouvrir la liste, tape quelques lettres pour chercher, et choisis." };
-      if (el.type === 'search' || /^Rechercher/i.test(el.placeholder || '')) return { cle: 'recherche', nom: 'Recherche', texte: "Tape quelques lettres : la liste se réduit pendant la frappe." };
-    }
-    // 4. un bouton de calendrier, un lien vers une pièce
-    if (el.matches('.d-btn, [aria-label="Ouvrir le calendrier"]')) return { cle: 'cal', nom: 'Calendrier', texte: "Ouvre le calendrier pour choisir la date." };
-    if (el.matches('a[href^="#/"]')) return { cle: 'lien:' + (el.getAttribute('href') || '').split('/')[1], nom: lab, texte: "Ouvre ce qui est nommé." };
-    return null;
-  }
-
+  const expliquer = M.expliqueur({ B, ONGLETS, CHAMPS, MENUS, route, familles,
+    guide: () => (typeof window !== 'undefined' && window.SkanGuide) || null });
   // Le titre et le mot d'un bloc de l'écran (pour les visites de page).
-  function zone(el) {
-    for (const z of ZONES) {
-      let ok = false;
-      try { ok = el.matches(z.sel); } catch (_) { ok = false; }
-      if (ok) {
-        const titre = z.sel === '.banner' ? nettoie((el.querySelector('b') || el).textContent).slice(0, 80) : z.titre;
-        return { titre: titre || z.titre, texte: z.texte };
-      }
-    }
-    return null;
-  }
+  const zone = M.zoneur(ZONES);
 
   // ========================================================================== LES VISITES
   // `ctx` : ce que l'application prête — ses données, le moteur, et de quoi ouvrir un objet.

@@ -8,6 +8,9 @@
 
   const K = window.CabCore;
   const G = window.CabGuide || { INFO: {}, ARTICLES: [] };
+  // Les visites guidées (10.14.0) : le moteur partagé et le contenu du Cabinet.
+  const Visite = window.Visite;
+  const CV = window.CabVisites;
   const api = window.cabinet;
 
   let S = null;                          // l'état du cabinet (sans la clé privée)
@@ -985,6 +988,8 @@
     // jour, pas depuis le dernier »).
     $('#lic-banner').onclick = () => versReglages('pan-licence');
     chargerLicence();
+    // La visite guidée (10.14.0) : le moteur apprend à naviguer et à expliquer dans le Cabinet.
+    installerVisites();
     if (!location.hash) location.hash = '#/dossiers';
     render();
     refreshBackupInfo();
@@ -1031,11 +1036,17 @@
     // demande tout de suite : c'est le seul moment où l'on est sûr qu'il l'a sous la main.
     if (created && repriseParCle) {
       repriseParCle = false;
-      importRecovery().then(() => { if (!(S.cabinet.name || '').trim()) runSetup(); });
+      importRecovery().then(() => { if (!(S.cabinet.name || '').trim()) runSetup({ sansPorte: true }); });
       return;
     }
-    // Premier lancement : l'assistant, pas un formulaire de réglages et un message passager.
-    if (created || !(S.cabinet.name || '').trim()) runSetup();
+    // Premier lancement : la porte, puis l'assistant — pas un formulaire de réglages et un message
+    // passager. Pendant qu'on explore l'exemple sans avoir nommé son cabinet, l'assistant attend : il
+    // reprend à la sortie de l'exemple (10.14.0).
+    const sansNom = !(S.cabinet.name || '').trim();
+    const dansLExemple = (S.dossiers || []).some(d => d.demo);
+    if (created || (sansNom && !dansLExemple)) {
+      runSetup().then(r => { if (r === 'decouvrir') lancerVisite(visiteParId('decouvrir')); });
+    }
   }
 
   async function refresh() { S = await api.state(); }
@@ -1379,8 +1390,11 @@
     else if (route === 'relances') drawRelances(view);
     else if (route === 'reglages') drawReglages(view);
     else if (route === 'aide') drawAide(view, arg);
+    else if (route === 'guide') drawGuide(view);
     else drawDossiers(view);
     typographie(view);
+    // La première fois sur un écran, sa visite se propose (10.14.0) — une ligne calme, sous l'en-tête.
+    bandeauVisite();
   }
 
   // ---------- la ponctuation double, à la française ----------
@@ -1428,7 +1442,9 @@
     'pieces': { texte: 'Voir les dossiers', run: () => { location.hash = '#/dossiers'; } },
     // Les questions restées sans réponse (9.10.0). On emmène sur le portefeuille : la ligne nomme
     // les clients, et c'est de là qu'on ouvre le dossier de révision de chacun.
-    'questions': { texte: 'Voir les clients qui n\'ont pas répondu', run: () => { location.hash = '#/dossiers'; } }
+    'questions': { texte: 'Voir les clients qui n\'ont pas répondu', run: () => { location.hash = '#/dossiers'; } },
+    // Tes premiers pas (10.14.0) : l'étape suivante, guidée clic par clic.
+    'premiers-pas': { texte: 'Me guider pas à pas', run: () => lancerPasSuivant() }
   };
   // Ouvrir les Réglages SUR un panneau : on pose l'onglet et la cible avant de naviguer, et on
   // redessine quand on y est déjà (sinon aucun `hashchange` n'a lieu et le clic paraît inerte —
@@ -1627,24 +1643,34 @@
     // `recoveryAt` vaut `undefined` tant que la réponse n'est pas revenue : on ne réclame que sur un
     // non franc. La date ne vit pas dans l'état chiffré, elle ne peut donc pas venir de `S`.
     const todo = K.cabinetTodo(S, null, { cleSecours: recoveryAt === undefined ? null : recoveryAt !== null, licence: licCab, questions: questionsAttente, employeurs: employeursConnus(), tenus: tenusConnus() });
+    // Tes premiers pas (10.14.0), quand le portefeuille a déjà des dossiers : UNE ligne de « À faire »,
+    // juste après ce qui presse — jamais un panneau qui repousserait la liste des clients sous la ligne
+    // de flottaison (9.4.4). La clé de secours déjà réclamée en rouge ne se réclame pas deux fois.
+    const lignePas = lignePremiersPas();
+    if (lignePas && !(lesPas().suivante.id === 'cle' && todo.some(t => t.id === 'cle-secours'))) {
+      const apresUrgent = todo.filter(t => t.level === 'danger').length;
+      todo.splice(apresUrgent, 0, lignePas);
+    }
     const p = K.portfolio(S);
 
     // Écran d'ouverture d'un cabinet qui vient d'installer l'application : il n'a rien reçu, et il
     // n'a rien à chercher ni à filtrer. Trois propositions, trois VRAIS boutons — la première version
     // cachait l'exemple dans une phrase en gras au milieu d'un cadre, et personne ne le voyait.
     if (!all.length) {
+      // 10.14.0 — « Tes premiers pas » : le corps de cet écran tant qu'il est vide. L'en-tête porte les
+      // trois gestes de départ, et le vert est celui de l'étape suivante (U-11) : ajouter ses clients
+      // tant qu'il n'y en a aucun.
       view.innerHTML = `
-        <div class="page-head"><h1>Dossiers</h1></div>
-        ${recoveryBanner()}
-        <div class="panel"><h2>Premiers pas</h2>
-          <p>Ici apparaîtront tes clients, un par ligne, avec le dernier mois reçu et ce qui manque.</p>
-          <div class="inline mt">
-            <button class="btn btn-primary" id="new-d">Ajouter mes clients…</button>
-            <button class="btn" id="imp">Importer un paquet…</button>
+        <div class="page-head"><h1>Dossiers</h1>
+          <div class="actions">
             <button class="btn" id="demo-on">Voir un exemple (${nbExemple()} clients fictifs)</button>
-          </div>
-          <p class="small muted mt"><strong>Commence par tes clients.</strong> Ajoute-les même s'ils n'utilisent pas encore SkanFact :
-          l'application devient le tableau de bord de ton portefeuille, et rien ne leur est réclamé tant qu'ils n'ont pas commencé.</p>
+            <button class="btn" id="imp">Importer un paquet…</button>
+            <button class="btn btn-primary" id="new-d">Ajouter mes clients…</button>
+          </div></div>
+        ${recoveryBanner()}
+        ${premiersPasPanel(true)}
+        <div class="panel"><h2>Ce que tu verras ici</h2>
+          <p>Tes clients, un par ligne, avec le dernier mois reçu et ce qui manque.</p>
           ${/* 10.12.0 — « les quatre situations » datait de l'exemple à quatre dossiers : il en a six, dont
                 les deux qu'un cabinet tient de bout en bout (U-10). Un compte écrit à la main se périme au
                 dossier suivant : la phrase énumère, elle ne compte pas. */''}
@@ -1663,9 +1689,10 @@
         </div>`;
       $('#imp').onclick = () => doImport();
       $('#new-d').onclick = () => newDossierForm();
-      $('#demo-on').onclick = async () => { S = await chargerOuRetirerExemple(true); render(); toast(phraseExemple()); };
+      $('#demo-on').onclick = async () => { S = await chargerOuRetirerExemple(true); VISITES = null; render(); toast(phraseExemple()); };
       bindInboxBanner(view);
       bindRecoveryBanner(view);
+      bindPremiersPas(view);
       return;
     }
 
@@ -1680,11 +1707,13 @@
       ${portfolioPanel(p)}
       ${inboxBanner()}
       ${todoPanel(todo)}
-      ${demoCount ? `<div class="banner"><span>${demoCount > 1 ? `Ces ${pl(demoCount, 'dossier')} sont <strong>fictifs</strong> : ils montrent les situations
+      ${demoCount ? `<div class="banner" id="demo-banner"><span>${demoCount > 1 ? `Ces ${pl(demoCount, 'dossier')} sont <strong>fictifs</strong> : ils montrent les situations
         que tu rencontreras, du client en retard à celui dont tu tiens toute la comptabilité. Ils disparaîtront` :'Ce dossier est <strong>fictif</strong> : c\'est ce qui reste de l\'exemple. Il disparaîtra'} au premier vrai paquet importé.${exempleRefait ? ` <strong>${demoCount > 1 ? 'Ils viennent' : 'Il vient'} d'être remis à jour</strong>
         ${exempleRefait.raison === 'version' ? `avec la version ${esc(exempleRefait.version)}` : 'sur le mois en cours'} : un exemple qui date
         montrerait des retards qui n'existent pas. Tes vrais dossiers n'ont pas bougé.${exempleRefait.livres
           ? ` ${pl(exempleRefait.livres, 'livre de démonstration est parti', 'livres de démonstration sont partis')} avec l'ancien exemple : ce qui avait été saisi dessus n'existe plus.` : ''}` : ''}</span>
+        ${/* 10.14.0 — la découverte se lance d'ici, sur les dossiers qu'on a sous les yeux. */''}
+        ${Visite.enCours() ? '' : `<button class="btn btn-sm nw" id="demo-visite">${decouverteEnPause() ? 'Reprendre la visite guidée' : 'Visite guidée'}</button>`}
         <button class="btn btn-ghost btn-sm nw" id="demo-off">Effacer l'exemple</button></div>` : ''}
       <div class="filters">
         <span class="champ-loupe"><input type="search" id="q" placeholder="Chercher un client, un matricule, un téléphone…" value="${esc(listState.q)}"></span>
@@ -1740,7 +1769,14 @@
     $('#imp').onclick = () => doImport();
     $('#new-d').onclick = () => newDossierForm();
     const dOff = $('#demo-off');
-    if (dOff) dOff.onclick = async () => { S = await chargerOuRetirerExemple(false); render(); toast('Exemple effacé.'); };
+    if (dOff) dOff.onclick = async () => {
+      S = await chargerOuRetirerExemple(false); VISITES = null; render(); toast('Exemple effacé.');
+      // Après la découverte, l'assistant reprend là où la porte l'a laissé : posé à quelqu'un qui sait
+      // maintenant à quoi servent les questions (10.14.0).
+      if (!String((S.cabinet || {}).name || '').trim()) { await runSetup({ sansPorte: true }); render(); }
+    };
+    const dVis = $('#demo-visite');
+    if (dVis) dVis.onclick = () => { const r = decouverteEnPause(); lancerVisite(visiteParId('decouvrir'), r ? r.i : 0); };
     const q = $('#q');
     q.oninput = () => { listState.q = q.value; listState.page = 1; sansPerdreLaFrappe(q, render); };
     $('#arch').onchange = e => { listState.withArchived = e.target.checked; listState.page = 1; render(); };
@@ -7065,7 +7101,8 @@
         $('#no', layer).onclick = close;
         $('#ok', layer).onclick = async () => {
           const f = readDossierFields(layer);
-          if (!f.name) return toast('Donne au moins un nom à ce client.', 'error');
+          // Un refus MONTRE la case (7.0.0, 10.12.0) : le curseur y va, elle se marque.
+          if (!f.name) return refus($('#f-name', layer), 'Donne au moins un nom à ce client.');
           try {
             const r = await api.newDossier(f);
             S = r.state; close(); render(); toast('Dossier créé.');
@@ -8802,6 +8839,8 @@
       if (!(S.cabinet.name || '').trim()) return toast('Renseigne d\'abord le nom de ton cabinet.', 'error');
       try {
         const r = await api.exportPairing();
+        // L'état porte la date de la remise (10.14.0) : « Tes premiers pas » la lisent.
+        if (r && r.state) S = r.state;
         if (r) {
           const ok = await confirmDialog('Fichier d\'appairage créé',
             `<p>Envoie ce fichier à tes clients (par mail, il ne contient rien de secret).</p>
@@ -9214,54 +9253,440 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
     );
   }
 
+  // ---------- La visite guidée (10.14.0) ----------
+  //
+  // Skander, après la visite guidée de l'application entreprise : « commence par faire ce qu'on vient
+  // de faire dans le dernier lot sur l'app cabinet ». Le MOTEUR est le même (`src/renderer/visite.js`,
+  // chargé tel quel) ; le contenu vit dans `cabvisites.js` ; ici, ce qui les relie au Cabinet : la
+  // navigation, la progression, « Tes premiers pas » et la page « Me guider ».
+  //
+  // La progression décrit la PERSONNE, pas le cabinet : elle vit sur ce poste (`prefs`), jamais dans la
+  // base chiffrée ni dans les sauvegardes.
+  const VISITES_PREF = 'visites';
+  const visitesEtat = () => Object.assign({ faites: {}, reprise: null, vues: {}, proposer: true, porteVue: false }, prefs.get(VISITES_PREF, {}) || {});
+  const visitesPoser = modif => { const e = visitesEtat(); modif(e); prefs.set(VISITES_PREF, e); };
+  // Les dossiers qui ont leur livre : ceux que l'index connaît, et celui qu'on regarde s'il est ouvert.
+  const avecLivre = () => {
+    const ids = new Set((questionsAttente || []).map(q => q.dossierId));
+    if (livresState.dossierId && livresState.livre) ids.add(livresState.dossierId);
+    return ids;
+  };
+  // Le dossier qu'une visite montre : celui qu'on regarde s'il convient, sinon la vitrine de l'exemple
+  // qui le montre rempli, sinon le premier qui convient. `sorte` : 'skanfact' (il envoie ses paquets),
+  // 'hors' (tenu au cabinet), 'livre' (il a son livre), 'client' (n'importe lequel).
+  function dossierPour(sorte) {
+    const tous = (S && S.dossiers) || [];
+    const livres = avecLivre();
+    const convient = d => !!d && !d.archived && (sorte === 'client'
+      || (sorte === 'livre' && livres.has(d.id))
+      || (sorte === 'skanfact' && livres.has(d.id) && (d.packs || []).length > 0)
+      || (sorte === 'hors' && livres.has(d.id) && !!d.manual));
+    const ouvert = (/^#\/dossier\/([^/]+)/.exec(location.hash) || [])[1];
+    const courant = ouvert ? tous.find(d => d.id === decodeURIComponent(ouvert)) : null;
+    if (convient(courant)) return courant.id;
+    const vitrines = K.demoDossiers(K.today()).filter(d => d.vitrine);
+    const vit = vitrines.find(v => v.vitrine === (sorte === 'hors' ? 'hors' : 'skanfact'));
+    const v = vit && tous.find(d => d.id === vit.id);
+    if (v && (sorte === 'client' || convient(v) || (v.demo && sorte !== 'client'))) return v.id;
+    const r = tous.find(convient);
+    return r ? r.id : null;
+  }
+  let VISITES = null;
+  const visites = () => VISITES || (VISITES = CV.parcours({
+    state: () => S, dossier: dossierPour, estExemple: () => (S.dossiers || []).some(d => d.demo),
+    cleSecours: () => (recoveryAt === undefined ? null : recoveryAt !== null),
+    copieExterne: () => !!(backupInfo && backupInfo.external && backupInfo.external.dir),
+    Visite
+  }));
+  const visiteParId = id => visites().find(v => v.id === id) || null;
+  const visitePage = cle => visiteParId('page-' + cle);
+  const decouverteEnPause = () => { const r = visitesEtat().reprise; return r && r.id === 'decouvrir' ? r : null; };
+
+  // Ce qui manque à une visite pour se dérouler, ou null — UNE fonction pour le bouton éteint de « Me
+  // guider » et pour le refus au lancement : les deux ne peuvent pas diverger (9.4.5).
+  function visiteManque(p) {
+    if (!p || typeof p.si !== 'function') return null;
+    let ok = true;
+    try { ok = !!p.si(); } catch (_) { ok = false; }
+    return ok ? null : (p.manque || { texte: 'Il faut d\'abord quelque chose à montrer ici.' });
+  }
+  // La première visite qu'on peut FAIRE en remontant ce qui manque — jamais un bouton éteint qui
+  // renvoie à un autre bouton éteint. Bornée.
+  function visitePossibleAvant(p) {
+    let x = p;
+    for (let n = 0; n < 8; n++) {
+      const m = visiteManque(x);
+      if (!m) return x === p ? null : x;
+      const avant = m.visite && visiteParId(m.visite);
+      if (!avant || avant === x) return null;
+      x = avant;
+    }
+    return null;
+  }
+  function expliquerManque(p, m) {
+    const avant = visitePossibleAvant(p);
+    modal(`<h2>${esc(p.titre)}</h2><p>${esc(m.texte)}</p>
+      ${avant ? `<p class="small muted">La visite « ${esc(avant.titre)} » t'y amène pas à pas.</p>` : ''}
+      <div class="modal-actions"><button class="btn" data-dismiss>Fermer</button>
+        ${avant ? `<button class="btn btn-primary" id="vm-go">${esc(avant.titre)}</button>` : ''}</div>`,
+    (root, close) => { const b = $('#vm-go', root); if (b) b.onclick = () => { close(); lancerVisite(avant); }; }, null, { garde: false });
+  }
+  async function lancerVisite(p, depart) {
+    if (!p) return;
+    // Rien ne reste ouvert par-dessus l'écran qu'on va montrer.
+    if (fermerPalette) fermerPalette();
+    const manque = visiteManque(p);
+    if (manque) { expliquerManque(p, manque); return; }
+    // La découverte se fait sur l'EXEMPLE : elle le charge d'abord. Les vrais dossiers ne bougent pas —
+    // l'exemple vit à côté d'eux, et s'efface au premier vrai paquet.
+    if (p.exemple && !(S.dossiers || []).some(d => d.demo)) {
+      try { S = await chargerOuRetirerExemple(true); } catch (e) { toast(plainError(e), 'error'); return; }
+      VISITES = null;
+      render();
+      toast(phraseExemple());
+    }
+    const bande = $('#guide-band'); if (bande) bande.remove();
+    Visite.lancer(p, depart || 0);
+  }
+  // L'étape suivante des premiers pas, guidée : la même que celle que « À faire » nomme.
+  function lancerPasSuivant() {
+    const pp = lesPas();
+    const e = pp.suivante;
+    const v = e && visiteParId(PAS_VISITES[e.action]);
+    if (v) lancerVisite(v); else navigate('#/guide');
+  }
+  async function actionDeVisite(id) {
+    if (id === 'poser-cabinet') {
+      if (!String((S.cabinet || {}).name || '').trim()) { await runSetup({ sansPorte: true }); render(); }
+      lancerVisite(visiteParId('premiers-pas'));
+    } else if (id === 'rester') {
+      toast('Bonne exploration ! « Effacer l\'exemple », sur la page Dossiers, retire les dossiers fictifs.');
+    }
+  }
+  const navigate = hash => vers(hash);
+
+  // Tes premiers pas (10.14.0) : lus sur l'état, jamais cochés à la main (`K.premiersPas`).
+  const lesPas = () => K.premiersPas(S, {
+    cleSecours: recoveryAt === undefined ? null : recoveryAt !== null,
+    copieExterne: !!(backupInfo && backupInfo.external && backupInfo.external.dir),
+    tenus: tenusConnus(), decouverte: !!visitesEtat().faites.decouvrir
+  });
+  const PAS_ACTIONS = {
+    decouverte: ['Faire la découverte', () => { const r = decouverteEnPause(); lancerVisite(visiteParId('decouvrir'), r ? r.i : 0); }],
+    cabinet: ['Nommer mon cabinet', () => versReglages('pan-cabinet')],
+    clients: ['Ajouter un client…', () => newDossierForm()],
+    appairage: ['Enregistrer le fichier…', () => versReglages('pan-appairage')],
+    cle: ['Enregistrer ma clé…', () => versReglages('pan-secu')],
+    copie: ['Choisir un dossier de copie…', () => versReglages('pan-backup')],
+    travail: ['Importer un paquet…', () => doImport()]
+  };
+  const PAS_VISITES = { decouverte: 'decouvrir', cabinet: 'nommer-cabinet', clients: 'ajouter-client', appairage: 'appairage',
+    cle: 'cle-secours', copie: 'copie-externe', travail: 'recevoir-paquet' };
+  const ICONE_GUIDE = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z"/></svg>';
+  const ICONE_LECTURE = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M10.2 8.6l5 3.4-5 3.4z"/></svg>';
+  const ICONE_COCHE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+  const ICONE_PAUSE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6v12M15 6v12"/></svg>';
+  const ICONE_DECOUVRIR = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7l6-3 6 3 6-3v13l-6 3-6-3-6 3z"/><path d="M9 4v13M15 7v13"/></svg>';
+  const ICONE_DEMARRER = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 21V4"/><path d="M5 4h11l-2 4 2 4H5"/></svg>';
+  // Le panneau complet des premiers pas : sur la page Dossiers VIDE, où il est le corps de l'écran.
+  // Quand des dossiers existent, il se réduit à UNE ligne de « À faire » (la liste des clients ne se
+  // mérite pas au défilement, 9.4.4) et la liste entière vit dans « Me guider ».
+  // `vertEnTete` : l'en-tête porte déjà le vert de l'étape (U-11) — l'étape en cours ne le double pas.
+  function premiersPasPanel(vertEnTete) {
+    const p = lesPas();
+    const suivante = p.suivante;
+    return `<div class="panel premiers-pas">
+      <h2>Tes premiers pas <span class="pp-compte">${p.faits} / ${p.total}</span></h2>
+      <p class="small muted mb">Le Cabinet fait beaucoup de choses, mais elles s'enchaînent toujours dans le même ordre.
+        Chaque étape se coche toute seule quand c'est fait ; celles marquées « facultatif » t'attendent sans te presser.</p>
+      <ol class="pp-list">${p.etapes.map(e => {
+        const a = PAS_ACTIONS[e.action];
+        const encours = e === suivante;
+        const guide = !e.fait && PAS_VISITES[e.action];
+        const libelle = a && e.action === 'decouverte' && decouverteEnPause() ? 'Reprendre la découverte' : a && a[0];
+        return `<li class="${e.fait ? 'fait' : ''}${encours ? ' encours' : ''}">
+          <span class="pp-marque">${e.fait ? '✓' : ''}</span>
+          <span class="pp-txt"><strong>${esc(e.titre)}${e.facultatif && !e.fait ? ' <span class="pp-facult">facultatif</span>' : ''}</strong><span class="small muted">${esc(e.quoi)}</span></span>
+          <span class="pp-go">${guide ? `<button type="button" class="pp-guide" data-pas-guide="${esc(guide)}" title="Je te montre où cliquer, étape par étape">${ICONE_GUIDE}Me guider</button>` : ''}${!e.fait && a
+            ? `<button class="btn btn-sm ${encours && !vertEnTete ? 'btn-primary' : ''}" data-pas="${esc(e.action)}">${esc(libelle)}</button>` : ''}</span>
+        </li>`;
+      }).join('')}</ol></div>`;
+  }
+  function bindPremiersPas(root) {
+    $$('[data-pas]', root).forEach(b => b.onclick = () => { const a = PAS_ACTIONS[b.dataset.pas]; if (a) a[1](); });
+    $$('[data-pas-guide]', root).forEach(b => b.onclick = () => lancerVisite(visiteParId(b.dataset.pasGuide)));
+  }
+  // La ligne « Tes premiers pas » de « À faire », quand le portefeuille a déjà des dossiers.
+  function lignePremiersPas() {
+    const p = lesPas();
+    if (!p.demarrage || !p.suivante) return null;
+    return { id: 'premiers-pas', level: 'info', label: `Tes premiers pas — ${p.faits} sur ${p.total} : ${p.suivante.titre.charAt(0).toLowerCase() + p.suivante.titre.slice(1)}`,
+      detail: p.suivante.quoi, count: 0, rows: [] };
+  }
+
+  // L'habillage que le moteur demande : la couleur et le dessin d'une visite, la suite, la fête.
+  const iconeVisite = (coul, p) => {
+    const propre = p && CV.iconeDe(p);
+    const t = propre ? propre : '<circle cx="12" cy="12" r="9"/><path d="M15.6 8.4l-2.1 5.1-5.1 2.1 2.1-5.1z"/>';
+    return `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">${t}</svg>`;
+  };
+  function installerVisites() {
+    Visite.installer({
+      aller: hash => vers(hash),
+      hash: () => location.hash || '#/dossiers',
+      parcours: visiteParId,
+      lancerSuite: p => lancerVisite(p),
+      expliquer: el => CV.expliquer(el, { G }),
+      zone: el => CV.zone(el),
+      action: id => actionDeVisite(id),
+      couleur: p => CV.couleurDe(p),
+      icone: iconeVisite,
+      progres: p => {
+        if (!['premiers-pas', ...Object.values(PAS_VISITES)].includes(p.id)) return null;
+        const pp = lesPas();
+        return { titre: 'Tes premiers pas', fait: pp.faits, total: pp.total,
+          texte: pp.suivante ? 'Prochaine étape : ' + pp.suivante.titre.charAt(0).toLowerCase() + pp.suivante.titre.slice(1) + '.' : 'Tout est en place : ton cabinet est prêt.' };
+      },
+      suites: p => {
+        const et = visitesEtat();
+        const pp = lesPas();
+        const pas = pp.suivante && PAS_VISITES[pp.suivante.action];
+        const ids = [pas, ...(p.suite || [])].filter((id, i, a) => id && id !== p.id && a.indexOf(id) === i && visiteParId(id) && !visiteManque(visiteParId(id)));
+        const neuves = ids.filter(id => !et.faites[id]);
+        return (neuves.length ? neuves : ids).slice(0, 3);
+      },
+      fete: p => p.type !== 'page' && !visitesEtat().faites[p.id],
+      etape: (p, i) => visitesPoser(e => { e.reprise = { id: p.id, i }; }),
+      fini: p => {
+        visitesPoser(e => { e.faites[p.id] = K.today(); if (e.reprise && e.reprise.id === p.id) e.reprise = null; });
+        if (location.hash === '#/guide') render();
+      },
+      interrompu: (p, i) => {
+        visitesPoser(e => { e.reprise = { id: p.id, i: Math.max(0, i) }; });
+        toast('Visite mise en pause. Tu la reprends quand tu veux depuis « Me guider », dans le menu.');
+        if (location.hash === '#/guide') render();
+      }
+    });
+  }
+
+  // La première fois qu'on ouvre un écran, une ligne calme propose sa visite — trois fois au plus.
+  // Posée SOUS l'en-tête, avec l'écran : elle ne surgit pas après coup sous le curseur (H-E1). Pas de
+  // vert : le bouton principal de l'écran reste le seul (U-11).
+  const VISITE_PROPOSEE_MAX = 3;
+  function bandeauVisite() {
+    const cle = CV.cleDePage(location.hash);
+    if (!S || Visite.enCours() || cle === 'guide' || cle === 'aide') return;
+    const p = visitePage(cle);
+    const et = visitesEtat();
+    if (!p || visiteManque(p) || !et.proposer || et.faites[p.id] || (et.vues[cle] || 0) >= VISITE_PROPOSEE_MAX) return;
+    const head = $('#view .page-head');
+    if (!head || $('#guide-band')) return;
+    // Une page vide qui porte « Tes premiers pas » est déjà une invitation.
+    if ($('#view .premiers-pas')) return;
+    visitesPoser(e => { e.vues[cle] = (e.vues[cle] || 0) + 1; });
+    const coul = CV.couleurDe(p);
+    const el = document.createElement('div');
+    el.className = 'guide-band' + (coul ? ' th-' + coul : '');
+    el.id = 'guide-band';
+    el.innerHTML = `<span class="gb-ico" aria-hidden="true">${ICONE_GUIDE}</span>
+      <span class="gb-txt"><b>Première fois sur cet écran ?</b> Je te montre à quoi il sert et ce que fait chaque bouton, en une minute.</span>
+      <button type="button" class="btn btn-sm gb-go" id="gb-go">${ICONE_LECTURE}Visite de l'écran</button>
+      <button type="button" class="btn btn-ghost btn-sm" id="gb-non" title="Ne plus me proposer la visite de cet écran">Plus tard</button>`;
+    head.insertAdjacentElement('afterend', el);
+    $('#gb-go').onclick = () => { el.remove(); lancerVisite(p); };
+    $('#gb-non').onclick = () => { visitesPoser(e => { e.vues[cle] = VISITE_PROPOSEE_MAX; }); el.remove(); };
+  }
+
+  // La page « Me guider » : où j'en suis, LE prochain geste (un seul vert), les grands départs, chaque
+  // famille avec ses visites, et chaque écran.
+  let guideQ = '';
+  function drawGuide(view) {
+    const et = visitesEtat();
+    const toutes = visites();
+    const gestes = toutes.filter(v => v.type !== 'page');
+    const pages = toutes.filter(v => v.type === 'page');
+    const nbFaites = toutes.filter(v => et.faites[v.id]).length;
+    const reprise = et.reprise && visiteParId(et.reprise.id);
+    const repriseI = reprise ? Math.min(Math.max(0, et.reprise.i || 0), reprise.etapes.length - 1) : 0;
+    const exemple = (S.dossiers || []).some(d => d.demo);
+    const pp = lesPas();
+    const dec = visiteParId('decouvrir');
+    const pas = pp.suivante && visiteParId(PAS_VISITES[pp.suivante.action]);
+    const prochain = reprise
+      ? { etiq: 'En pause', label: 'Reprendre', titre: reprise.titre, sous: `Étape ${repriseI + 1} sur ${reprise.etapes.length}`, run: () => lancerVisite(reprise, repriseI) }
+      : dec && !et.faites.decouvrir
+        ? { etiq: 'Pour commencer', label: exemple ? 'Commencer la découverte' : 'Charger l\'exemple et découvrir', titre: dec.titre, sous: `${dec.duree} · ${pl(Visite.chapitres(dec.etapes).length, 'chapitre')}`, run: () => lancerVisite(dec) }
+        : pas && !visiteManque(pas)
+          ? { etiq: 'Prochaine étape', label: 'Me guider', titre: pas.titre, sous: `Premier pas ${pp.etapes.indexOf(pp.suivante) + 1} sur ${pp.total} · ${pas.duree}`, run: () => lancerVisite(pas) }
+          : null;
+    const titreHero = reprise ? 'Reprends ta visite là où tu l\'as laissée' : !et.faites.decouvrir ? 'Apprends le Cabinet en le faisant'
+      : pp.demarrage ? 'Continue tes premiers pas' : 'Tu as les bases — explore à ton rythme';
+    const anneauPas = pp.demarrage;
+    const aFait = anneauPas ? pp.faits : nbFaites;
+    const aTotal = anneauPas ? pp.total : toutes.length;
+    const aQuoi = anneauPas ? 'premiers pas' : 'visites faites';
+    const pct = aTotal ? aFait / aTotal : 0;
+    const R = 52, CIRC = 2 * Math.PI * R;
+    const statut = v => et.faites[v.id] ? '<span class="g-etat fait">Fait</span>'
+      : reprise && reprise.id === v.id ? `<span class="g-etat encours">En pause · ${repriseI + 1}/${v.etapes.length}</span>` : '';
+    const libelle = v => et.faites[v.id] ? 'Refaire' : reprise && reprise.id === v.id ? 'Recommencer' : 'Commencer';
+    const bouton = v => {
+      const m = visiteManque(v);
+      if (!m) return `<button type="button" class="btn btn-sm" data-visite="${esc(v.id)}">${libelle(v)}</button>`;
+      const avant = visitePossibleAvant(v);
+      return avant
+        ? `<button type="button" class="btn btn-sm" data-visite="${esc(avant.id)}" title="${esc(m.texte)}">D'abord : ${esc(avant.titre.charAt(0).toLowerCase() + avant.titre.slice(1))}</button>`
+        : `<button type="button" class="btn btn-sm" disabled title="${esc(m.texte)}">${libelle(v)}</button>`;
+    };
+    const cherche = v => esc(K.sansAccents([v.titre, v.resume, (v.mots || []).join(' ')].join(' ')));
+    const manqueDe = v => { const m = visiteManque(v); return m ? `<span class="small g-manque">Pas encore : ${esc(m.texte.charAt(0).toLowerCase() + m.texte.slice(1))}</span>` : ''; };
+    const ligne = v => `<li class="g-ligne${et.faites[v.id] ? ' faite' : ''}" data-cherche="${cherche(v)}">
+        <span class="g-l-ico" aria-hidden="true">${et.faites[v.id] ? ICONE_COCHE : reprise && reprise.id === v.id ? ICONE_PAUSE : ICONE_LECTURE}</span>
+        <span class="g-txt"><b>${esc(v.titre)}</b><span class="small muted">${esc(v.resume || '')}</span>${manqueDe(v)}</span>
+        <span class="g-duree">${esc(v.duree || '')}</span>${statut(v)}${bouton(v)}</li>`;
+    const themes = CV.THEMES.filter(t => t.id !== 'pages' && t.id !== 'demarrer').map(t => {
+      const liste = gestes.filter(v => v.theme === t.id);
+      if (!liste.length) return '';
+      const faites = liste.filter(v => et.faites[v.id]).length;
+      return `<section class="g-theme th-${esc(t.couleur)}" id="g-${esc(t.id)}" data-g-theme>
+        <header class="g-th-tete"><span class="g-th-ico">${iconeVisite(t.couleur, t)}</span>
+          <span class="g-th-t"><h2>${esc(t.titre)}</h2><span>${esc(t.sous)}</span></span>
+          <span class="g-th-n" title="${esc(`${faites} ${faites > 1 ? 'visites faites' : 'visite faite'} sur ${liste.length}`)}">${faites}<small> / ${liste.length}</small></span></header>
+        <span class="g-th-barre" aria-hidden="true"><i style="width:${Math.round(faites / liste.length * 100)}%"></i></span>
+        <ul class="g-liste">${liste.map(ligne).join('')}</ul></section>`;
+    }).join('');
+    const pagesFaites = pages.filter(v => et.faites[v.id]).length;
+    const gestesFaits = gestes.filter(v => et.faites[v.id]).length;
+    view.innerHTML = `
+      <div class="page-head"><h1>Me guider</h1>
+        <div class="actions"><button type="button" class="btn" id="g-aide">Ouvrir l'Aide</button></div></div>
+      <section class="g-hero">
+        <div class="g-hero-txt"><span class="g-sur">Ton guide</span>
+          <h2>${esc(titreHero)}</h2>
+          <p>Chaque visite te montre où cliquer, sur ton vrai écran, et attend que tu l'aies fait. Pendant une visite, tu peux cliquer partout, faire une pause avec la croix, et reprendre ici.</p>
+          ${prochain ? `<div class="g-prochain"><span class="g-pr-t"><span class="g-pr-etiq">${esc(prochain.etiq)}</span><b>${esc(prochain.titre)}</b><span class="small muted">${esc(prochain.sous)}</span></span>
+            <button type="button" class="btn btn-primary" id="${reprise ? 'g-reprendre' : 'g-prochain'}">${ICONE_LECTURE}${esc(prochain.label)}</button></div>` : ''}</div>
+        <div class="g-hero-mesure"><div class="g-anneau" role="img" aria-label="${esc(`${aFait} sur ${aTotal} : ${aQuoi}`)}">
+          <svg viewBox="0 0 120 120" aria-hidden="true"><circle class="g-an-fond" cx="60" cy="60" r="${R}"/><circle class="g-an-plein" cx="60" cy="60" r="${R}" style="--circ:${CIRC.toFixed(1)};--off:${(CIRC * (1 - pct)).toFixed(1)}"/></svg>
+          <span class="g-an-t"><b>${aFait}<small> / ${aTotal}</small></b><span>${aQuoi}</span></span></div>
+          <ul class="g-chiffres">
+            <li><b>${gestesFaits}<small> / ${gestes.length}</small></b><span>${gestesFaits > 1 ? 'gestes guidés réussis' : 'geste guidé réussi'}</span></li>
+            <li><b>${pagesFaites}<small> / ${pages.length}</small></b><span>${pagesFaites > 1 ? 'écrans découverts' : 'écran découvert'}</span></li>
+            <li><b>${et.faites.decouvrir ? 'Faite' : 'À faire'}</b><span>la découverte de l'exemple</span></li>
+          </ul></div>
+      </section>
+      ${pp.demarrage ? premiersPasPanel(!!prochain) : ''}
+      <div class="g-cartes" id="g-demarrer" data-g-theme>
+        ${gestes.filter(v => v.theme === 'demarrer').map(v => {
+          const coul = CV.couleurDe(v);
+          const lib = v.exemple && !exemple ? 'Charger l\'exemple et ' + libelle(v).toLowerCase() : libelle(v);
+          return `<div class="g-carte${coul ? ' th-' + coul : ''}${et.faites[v.id] ? ' faite' : ''}" data-cherche="${cherche(v)}">
+            <div class="g-carte-t"><span class="g-carte-ico">${v.exemple ? ICONE_DECOUVRIR : ICONE_DEMARRER}</span>
+              <span class="g-duree">${esc(v.duree)}</span></div>
+            <b class="g-carte-titre">${esc(v.titre)}</b>
+            <p class="small">${esc(v.resume)}</p>${statut(v)}
+            ${visiteManque(v) ? bouton(v) : `<button type="button" class="btn btn-sm" data-visite="${esc(v.id)}">${esc(lib)}</button>`}</div>`;
+        }).join('')}
+      </div>
+      <div class="help-search g-cherche"><span class="hs-champ"><svg class="hs-loupe" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20.5 20.5l-4.2-4.2"/></svg>
+        <input type="search" id="guide-q" placeholder="Je veux… (saisir une pièce, relancer un client, déclarer la TVA)" autocomplete="off" spellcheck="false" value="${esc(guideQ)}"></span>
+        <div class="help-count small muted" id="guide-n" hidden></div></div>
+      <div class="g-themes">${themes}</div>
+      <section class="panel g-pages-sec" id="g-pages" data-g-theme>
+        <div class="g-reu-tete"><h2>Chaque écran, en une minute</h2><span class="g-reu-n">${pagesFaites} sur ${pages.length}</span></div>
+        <p class="small muted">À quoi il sert, et ce que fait chacun de ses boutons.</p>
+        <ul class="g-pages">${pages.map(v => { const m = visiteManque(v); const c = CV.couleurDe(v); return `<li data-cherche="${cherche(v)}">
+          <button type="button" class="g-page${c ? ' th-' + c : ''}${et.faites[v.id] ? ' fait' : ''}" data-visite="${esc(v.id)}"${m ? ` disabled title="${esc(m.texte)}"` : ` title="${esc(v.resume || '')}"`}>${et.faites[v.id] ? ICONE_COCHE : ''}${esc(v.titre)}</button></li>`; }).join('')}</ul>
+      </section>
+      <label class="check g-proposer"><input type="checkbox" id="guide-proposer" ${et.proposer ? 'checked' : ''}>
+        <span>Me proposer la visite d'un écran quand je l'ouvre pour la première fois</span></label>`;
+    // Le vert du héros porte LE prochain geste ; les cartes et les lignes n'en portent aucun (U-11).
+    if (prochain) ($('#g-reprendre', view) || $('#g-prochain', view)).onclick = prochain.run;
+    $$('[data-visite]', view).forEach(b => b.onclick = () => lancerVisite(visiteParId(b.dataset.visite)));
+    bindPremiersPas(view);
+    $('#g-aide', view).onclick = () => { location.hash = '#/aide'; };
+    $('#guide-proposer', view).onchange = e => visitesPoser(x => { x.proposer = e.target.checked; if (e.target.checked) x.vues = {}; });
+    // Chercher ne redessine rien : on montre ou on cache des lignes déjà là (la frappe reste).
+    const q = $('#guide-q', view), n = $('#guide-n', view);
+    const filtrer = () => {
+      guideQ = q.value;
+      const mots = K.sansAccents(q.value.trim()).split(/\s+/).filter(Boolean);
+      let vus = 0;
+      $$('[data-cherche]', view).forEach(li => { const ok = mots.every(m => li.dataset.cherche.includes(m)); li.hidden = !ok; if (ok) vus++; });
+      $$('[data-g-theme]', view).forEach(sec => { sec.hidden = mots.length > 0 && !$$('[data-cherche]', sec).some(li => !li.hidden); });
+      n.hidden = !mots.length;
+      n.innerHTML = vus ? esc(`${pl(vus, 'visite')} pour « ${q.value.trim()} »`)
+        : `Aucune visite pour « ${esc(q.value.trim())} ». <a href="#/aide" id="guide-aide">Chercher dans l'Aide →</a>`;
+      const a = $('#guide-aide', view);
+      if (a) a.onclick = ev => { ev.preventDefault(); aideQ = q.value.trim(); location.hash = '#/aide'; };
+    };
+    q.oninput = filtrer;
+    if (guideQ) filtrer();
+  }
+
   // ---------- assistant de première utilisation ----------
   //
-  // C'est le premier contact d'un comptable avec le produit. Avant, on le laissait sur un formulaire
-  // de réglages avec un message passager, et il repartait sans savoir quoi faire. L'assistant lui
-  // fait faire, dans l'ordre, les quatre gestes qui rendent l'application utile : se nommer, entrer
-  // ses clients, poser ses filets, produire le fichier à remettre.
-  function runSetup() {
+  // C'est le premier contact d'un comptable avec le produit. Jusqu'à la 10.13.0, cinq écrans avant de
+  // montrer quoi que ce soit : se nommer, entrer ses clients, poser ses filets, produire le fichier à
+  // remettre. Les trois derniers se passaient — ils protégeaient un portefeuille vide et remettaient un
+  // fichier à des clients qu'on n'avait pas encore.
+  //
+  // 10.14.0 (Skander : « oublie pas le onboarding aussi, et fais le même système : la démo avant l'écran
+  // de démarrage ») — la PORTE d'abord, comme dans l'application entreprise : « Découvrir avec
+  // l'exemple » ou « Commencer avec mon cabinet ». Puis deux questions seulement. Le reste vit dans
+  // « Tes premiers pas », au moment où il sert, chaque étape avec sa visite guidée.
+  //
+  // Le mot de passe reste AVANT la porte : l'état du cabinet est chiffré, exemple compris, et il n'y a
+  // pas de cabinet sans lui.
+  //
+  // Rend 'decouvrir' quand on a choisi la découverte (l'assistant reste EN ATTENTE : le nom manque, il
+  // reprendra à la sortie de l'exemple, sans la porte), sinon rien. `o.sansPorte` : la reprise.
+  function runSetup(o) {
+    const opts = o || {};
     return new Promise(resolve => {
       const el = document.createElement('div');
       el.id = 'setup';
       document.body.appendChild(el);
       let etape = 0;
-      const fin = () => { el.remove(); resolve(); };
-      // 10.12.0 (U-11) — un seul vert par écran, et c'est l'étape suivante. Sur « Ne rien perdre »
-      // et « Le fichier à remettre », le geste de l'écran ET « Continuer » étaient verts : deux
-      // flèches vers deux endroits. Le vert est au geste tant qu'il n'est pas fait, puis il passe
-      // à « Continuer ». `faits` le retient d'un écran à l'autre (← Retour ne le remet pas à zéro).
-      const faits = new Set();
-      const vert = id => faits.has(id) ? 'btn' : 'btn btn-primary';
-      const fait = id => {
-        faits.add(id);
-        const ok = $('#' + id + '-ok', el); if (ok) ok.hidden = false;
-        const g = $('#' + id, el); if (g) g.classList.remove('btn-primary');
-        const n = $('#w-next', el); if (n) n.classList.add('btn-primary');
-      };
+      const fin = r => { el.remove(); resolve(r); };
+      const et = visitesEtat();
+      const porte = !opts.sansPorte && !et.porteVue && !et.faites.decouvrir;
+      const porteVue = () => visitesPoser(e => { e.porteVue = true; });
 
       const etapes = [
-        {
+        ...(porte ? [{
           t: 'Bienvenue dans SkanFact Cabinet',
-          html: () => `
-            ${/* 10.10.0 (C-03) — cet écran décrivait le Cabinet de la 6.8.0 : un récepteur de paquets,
-                  gratuit sans condition. Il tient aujourd'hui la comptabilité de chaque dossier, avec
-                  ou sans SkanFact chez le client (DIRECTION.md), et sa licence compte les dossiers hors
-                  SkanFact au-delà de trois (9.4.0). Le premier écran d'un logiciel ne peut pas mentir
-                  sur ce qu'il est — c'est la première phrase qu'un comptable lit. */''}
+          porte: true,
+          html: () => {
+            const dec = visiteParId('decouvrir');
+            const nChap = dec ? Visite.chapitres(dec.etapes).length : 0;
+            return `
+            ${/* 10.10.0 (C-03) — cet écran ne peut pas mentir sur ce qu'est le Cabinet : il tient la
+                  comptabilité de chaque dossier, avec ou sans SkanFact chez le client. */''}
             <p class="lead">Le logiciel de comptabilité de ton cabinet — et <strong>le trait d'union avec ceux de tes clients qui utilisent SkanFact</strong>.</p>
-            <div class="kv mt">
-              <div><span>Ce qu'elle fait</span><span>Elle tient le livre de chaque dossier : saisie, banque, déclaration, paie, immobilisations, clôture et liasse. Pour un client sur SkanFact, ses écritures arrivent déjà écrites, dans un paquet vérifié ; pour les autres, tu saisis ici.</span></div>
-              <div><span>Ce qu'elle ne fait pas</span><span>Elle ne modifie <strong>jamais</strong> la comptabilité d'un client chez lui. Elle ne dépose aucune déclaration à ta place.</span></div>
-              <div><span>Ce qu'elle coûte</span><span>Rien pour les dossiers dont le client est sur SkanFact, ni pour trois dossiers hors SkanFact. Au-delà, une licence — le détail est dans Réglages → Mon cabinet → Licence.</span></div>
-            </div>
-            ${/* Le compte se DÉDUIT : la phrase annonçait « Quatre écrans » et l'assistant en comptait
-                  cinq, juste au-dessus de cinq pastilles qui les montraient. Une phrase affichée que
-                  rien ne tient est un bug (7.3.0), et celle-ci se démentait toute seule à l'écran. */''}
-            <p class="muted small mt">${esc(['', 'Un', 'Deux', 'Trois', 'Quatre', 'Cinq', 'Six'][etapes.length] || etapes.length)} écrans,
-            deux minutes. Tu pourras tout changer ensuite dans Réglages.</p>`,
-          next: () => true
-        },
+            <div class="setup-porte mt">
+              <p class="sp-lead">Deux façons de commencer — et tu peux faire l'une puis l'autre.</p>
+              <div class="sp-choix">
+                <article class="pp-choix reco"><span class="pp-choix-badge">Recommandé</span>
+                  <span class="pp-choix-ico">${ICONE_DECOUVRIR}</span>
+                  <h3>Découvrir avec l'exemple</h3>
+                  <p>Six dossiers fictifs, tout remplis : un client à jour, un en retard, un que tu tiens de bout en bout, paie et biens compris. Je te fais faire le tour, sans rien risquer.</p>
+                  <ul class="pp-choix-meta">${dec ? `<li>${esc(dec.duree)}</li>` : ''}${nChap ? `<li>${pl(nChap, 'chapitre')}</li>` : ''}</ul>
+                  <button type="button" class="btn btn-primary" id="w-decouvrir">Commencer la découverte</button></article>
+                <article class="pp-choix"><span class="pp-choix-ico">${ICONE_DEMARRER}</span>
+                  <h3>Commencer avec mon cabinet</h3>
+                  <p>Son nom, puis tes clients — et je te guide ensuite pour chaque premier geste : le fichier à remettre à tes clients, ta clé de secours, ta copie externe.</p>
+                  <ul class="pp-choix-meta"><li>${['', 'Une', 'Deux', 'Trois'][QUESTIONS] || QUESTIONS} ${QUESTIONS > 1 ? 'questions' : 'question'}</li></ul>
+                  <button type="button" class="btn" id="w-next">Commencer avec mon cabinet</button></article>
+              </div>
+              <div class="sp-note"><p>Ce qu'il fait : il tient le livre de chaque dossier — saisie, banque, déclaration, paie, immobilisations, clôture et liasse. Ce qu'il ne fait pas : il ne modifie <strong>jamais</strong> la comptabilité d'un client chez lui, et ne dépose aucune déclaration à ta place. Ce qu'il coûte : rien pour les dossiers dont le client est sur SkanFact, ni pour trois dossiers hors SkanFact ; au-delà, une licence.</p></div>
+            </div>`;
+          },
+          mount: () => {
+            $('#w-decouvrir', el).onclick = () => { porteVue(); fin('decouvrir'); };
+          },
+          next: () => { porteVue(); return true; }
+        }] : []),
         {
           t: 'Ton cabinet',
           html: () => `
@@ -9307,82 +9732,31 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
             return true;
           }
         },
-        {
-          t: 'Ne rien perdre',
-          html: () => `
-            <p class="small">Cette application va contenir la comptabilité de tes clients <strong>et la clé qui ouvre leurs paquets</strong>.
-            Deux gestes, une fois, et un incident ne te coûtera plus rien.</p>
-            <div class="warn-box mt"><strong>Sans clé de secours, si ${CE_POSTE()} disparaît, aucun paquet déjà reçu ne pourra plus être ouvert.</strong>
-            Ni par nous, ni par personne. Tes clients devraient tous réimporter un nouvel appairage.</div>
-            <div class="wiz-steps mt">
-              <div class="wiz-step"><div><strong>1. Une copie hors de cet ordinateur</strong>
-                <div class="muted small">Clé USB, disque externe, iCloud Drive, OneDrive. La base, les sauvegardes et les paquets y seront recopiés à chaque enregistrement.</div></div>
-                <button class="btn" id="w-ext">Choisir un dossier…</button><span class="ok-inline" id="w-ext-ok" ${faits.has('w-ext') ? '' : 'hidden'}>✓ fait</span></div>
-              <div class="wiz-step"><div><strong>2. La clé de secours</strong>
-                <div class="muted small">Un petit fichier protégé par son propre mot de passe, à ranger ailleurs que sur ${CE_POSTE()}.</div></div>
-                <button class="${vert('w-rec')}" id="w-rec">Enregistrer la clé…</button><span class="ok-inline" id="w-rec-ok" ${faits.has('w-rec') ? '' : 'hidden'}>✓ fait</span></div>
-            </div>
-            <p class="muted small mt">Tu peux les faire plus tard (Réglages → Données et sécurité → Sécurité), mais « plus tard » est exactement le moment où l'on oublie.</p>`,
-          mount: () => {
-            $('#w-ext', el).onclick = async () => {
-              try { const r = await api.pickExternal(); if (r && r.dir) { faits.add('w-ext'); $('#w-ext-ok', el).hidden = false; refreshBackupInfo(); } }
-              catch (e) { toast(plainError(e), 'error'); }
-            };
-            $('#w-rec', el).onclick = () => { exportRecovery(() => fait('w-rec')); };
-          },
-          // Le geste qui porte le vert tant qu'il n'est pas fait : la clé, pas le dossier externe
-          // — sans clé, perdre le poste rend les paquets reçus illisibles pour toujours.
-          geste: 'w-rec',
-          next: () => true
-        },
-        {
-          t: 'Le fichier à remettre à tes clients',
-          html: () => `
-            <p class="small">Dernière étape. Chaque client importe ce fichier <strong>une fois</strong> dans son SkanFact
-            (Paramètres → Envois → Ton cabinet comptable). À partir de là, les paquets qu'il fabrique sont chiffrés
-            <strong>pour toi seul</strong>, et il n'a plus aucun mot de passe à te communiquer.</p>
-            <div class="mt"><div class="muted small">${lbl('Empreinte de ton cabinet', 'cab.fingerprint')}</div>
-              <div class="empreinte-ligne"><span class="fingerprint">${esc(S.cabinet.fingerprint || '—')}</span>${S.cabinet.fingerprint
-                ? '<button type="button" class="btn btn-sm" id="w-copier-emp">Copier</button>' : ''}</div></div>
-            <p class="muted small mt">S'il te la lit au téléphone après l'import et qu'elle correspond, c'est bien à toi qu'il envoie.</p>
-            <div class="wiz-steps mt">
-              <div class="wiz-step"><div><strong>Le fichier d'appairage</strong>
-                <div class="muted small">Un envoi par mail suffit : il ne contient rien de secret.</div></div>
-                <button class="${vert('w-pair')}" id="w-pair">Enregistrer le fichier…</button><span class="ok-inline" id="w-pair-ok" ${faits.has('w-pair') ? '' : 'hidden'}>✓ fait</span></div>
-            </div>`,
-          mount: () => {
-            if ($('#w-copier-emp', el)) $('#w-copier-emp', el).onclick = () => copierEmpreinte(S.cabinet.fingerprint);
-            $('#w-pair', el).onclick = async () => {
-              try { const r = await api.exportPairing(); if (r) { fait('w-pair'); toast('Fichier enregistré.'); } }
-              catch (e) { toast(plainError(e), 'error'); }
-            };
-          },
-          geste: 'w-pair',
-          next: () => true
-        }
       ];
+      // Le nombre de questions se DÉDUIT des écrans (la porte n'en est pas une) : écrit à la main, il
+      // mentirait au premier écran ajouté (9.4.2).
+      const QUESTIONS = etapes.filter(e => !e.porte).length;
 
       function draw() {
         const e = etapes[etape];
-        el.innerHTML = `<div class="wiz-card">
-          ${/* Cinq pastilles muettes disent qu'il y a plusieurs écrans ; elles ne disent pas
-                combien il en reste. Le chiffre est à côté, et il se DÉDUIT du nombre d'écrans —
-                écrit à la main, il mentirait au premier écran ajouté (défaut corrigé en 9.4.2 sur
-                la phrase du même assistant). */''}
-          <div class="wiz-dots"><span class="wiz-compte">Écran ${etape + 1} sur ${etapes.length}</span>
-            ${etapes.map((_, i) => `<span class="${i === etape ? 'on' : i < etape ? 'done' : ''}"></span>`).join('')}</div>
+        const derniere = etape === etapes.length - 1;
+        el.innerHTML = `<div class="wiz-card${e.porte ? ' wiz-porte' : ''}">
+          ${/* Le compte se DÉDUIT du nombre d'écrans — écrit à la main, il mentirait au premier écran
+                ajouté (défaut corrigé en 9.4.2). La porte n'est pas un écran de questions. */''}
+          ${e.porte ? '' : `<div class="wiz-dots"><span class="wiz-compte">Question ${etapes.filter(x => !x.porte).indexOf(e) + 1} sur ${QUESTIONS}</span>
+            ${etapes.filter(x => !x.porte).map(x => `<span class="${x === e ? 'on' : etapes.indexOf(x) < etape ? 'done' : ''}"></span>`).join('')}</div>`}
           <h1>${esc(e.t)}</h1>
           <div class="wiz-body">${e.html()}</div>
-          <div class="wiz-actions">
-            ${etape > 0 ? '<button class="btn" id="w-back">← Retour</button>' : ''}
+          ${e.porte ? '' : `<div class="wiz-actions">
+            ${etape > 0 && !etapes[etape - 1].porte ? '<button class="btn" id="w-back">← Retour</button>' : ''}
             <span class="grow"></span>
-            ${etape < etapes.length - 1 ? '<button class="btn btn-ghost" id="w-skip">Passer</button>' : ''}
-            <button class="${e.geste && !faits.has(e.geste) ? 'btn' : 'btn btn-primary'}" id="w-next">${etape === etapes.length - 1 ? 'Commencer' : 'Continuer'}</button>
-          </div></div>`;
+            <button class="btn btn-ghost" id="w-skip">Passer</button>
+            <button class="btn btn-primary" id="w-next">${derniere ? 'Commencer' : 'Continuer'}</button>
+          </div>`}</div>`;
         if (e.mount) e.mount();
         typographie(el);
         const b = $('#w-back', el); if (b) b.onclick = () => { etape--; draw(); };
-        const s = $('#w-skip', el); if (s) s.onclick = () => { etape++; draw(); };
+        const s = $('#w-skip', el); if (s) s.onclick = () => { if (derniere) { fin(); render(); return; } etape++; draw(); };
         $('#w-next', el).onclick = async () => {
           const btn = $('#w-next', el);
           btn.disabled = true;
@@ -9390,11 +9764,12 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
           try { ok = await e.next(); } catch (ex) { toast(plainError(ex), 'error'); ok = false; }
           btn.disabled = false;
           if (!ok) return;
-          if (etape === etapes.length - 1) { fin(); render(); return; }
+          if (derniere) { fin(); render(); return; }
           etape++; draw();
         };
         const first = el.querySelector('input, textarea');
         if (first) first.focus();
+        else if (e.porte) $('#w-decouvrir', el).focus();
       }
       draw();
     });
@@ -9447,7 +9822,15 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
         text: K.sansAccents('reglages ' + REG_PANNEAUX[id].titre + ' ' + REG_PANNEAUX[id].mots),
         go: () => versReglages(id)
       })),
-      { kind: 'page', main: 'Aide', go: () => { location.hash = '#/aide'; } }
+      { kind: 'page', main: 'Aide', go: () => { location.hash = '#/aide'; } },
+      { kind: 'page', main: 'Me guider', text: 'visite guidee guide apprendre tutoriel decouvrir', go: () => { location.hash = '#/guide'; } },
+      // Les visites guidées (10.14.0) : chacune se lance d'ici, par ses mots — « relancer », « tva »,
+      // « clé de secours ». Celles qui n'ont encore rien à montrer ne se proposent pas.
+      ...visites().filter(v => v.type !== 'page' && !visiteManque(v)).map(v => ({
+        kind: 'visite', main: v.titre, sub: v.resume,
+        text: K.sansAccents([v.titre, v.resume, (v.mots || []).join(' ')].join(' ')),
+        go: () => lancerVisite(v)
+      }))
     ];
     // Le dossier OUVERT, lu dans l'adresse au moment où la palette s'ouvre : c'est de lui qu'on
     // parle quand on tape « balance » sur sa fiche.

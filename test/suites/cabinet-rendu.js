@@ -76,7 +76,9 @@ t('9.4.2 : l\'assistant du Cabinet compte ses écrans au lieu de les annoncer', 
   // affichée que rien ne tient est un bug (7.3.0) — celle-ci se démentait toute seule à l'écran.
   assert.ok(!/(Trois|Quatre|Cinq|Six) écrans/.test(zone),
     'le nombre d\'écrans de l\'assistant ne s\'écrit pas à la main');
-  assert.ok(/\[etapes\.length\]/.test(zone), 'il se déduit du tableau des étapes');
+  // 10.14.0 — la porte n'est pas une question : le compte annoncé est celui des QUESTIONS, déduit du
+  // tableau des étapes (assertion retournée vers la règle : elle recopiait `[etapes.length]`).
+  assert.ok(/const QUESTIONS = etapes\.filter\(/.test(zone) && /\[QUESTIONS\]/.test(zone), 'il se déduit du tableau des étapes');
 });
 
 t('9.4.2 : l\'avertissement du mot de passe se lit AVANT le bouton', () => {
@@ -592,7 +594,8 @@ t('9.4.8 : les finitions — la case, l\'unité, la liste fermée, le compteur d
 
   // Y8 — cinq pastilles muettes disent qu'il y a des écrans, pas combien il en reste. Et le
   // compte se DÉDUIT : écrit à la main il mentirait au premier écran ajouté.
-  assert.ok(/Écran \$\{etape \+ 1\} sur \$\{etapes\.length\}/.test(app), 'l\'assistant doit dire où l\'on en est');
+  // 10.14.0 — « Question 1 sur 2 » : la porte n'est pas une question, le compte se déduit toujours.
+  assert.ok(/Question \$\{[^}]+\+ 1\} sur \$\{QUESTIONS\}/.test(app), 'l\'assistant doit dire où l\'on en est');
   // La règle générale des pastilles vise TOUS les `span` : sans l'exception, le compteur devient
   // une barre de 26×4 px sans texte visible (famille du `th.r`, 7.23.0).
   assert.ok(/#setup \.wiz-dots span:not\(\.wiz-compte\)/.test(css),

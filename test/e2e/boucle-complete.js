@@ -62,19 +62,20 @@ async function launchCabinet() {
   await win.waitForSelector('#app:not([hidden])', { timeout: 15000 });
   console.log(`1. cabinet créé (mot de passe demandé deux fois : ${premiere})`);
 
-  // depuis la 6.8.0, un assistant s'ouvre au premier lancement : on le traverse
+  // depuis la 6.8.0, un assistant s'ouvre au premier lancement : on le traverse. Depuis la 10.14.0 il
+  // s'ouvre sur la PORTE — « Commencer avec mon cabinet » (`#w-next`) plutôt que la découverte.
   await win.waitForSelector('#setup', { timeout: 10000 });
+  await win.waitForSelector('#w-decouvrir');
   await win.click('#w-next');
   await win.waitForSelector('#w-name');
   await win.fill('#w-name', 'Cabinet Ben Salah');
   await win.fill('#w-email', 'contact@bensalah.tn');
   await win.click('#w-next');
   await win.waitForSelector('#w-clients');
+  // 10.14.0 : l'assistant s'arrête aux clients (« Passer » le ferme) — la clé de secours et le
+  // fichier d'appairage vivent dans « Tes premiers pas », au moment où ils servent.
   await win.click('#w-skip');
-  await win.waitForSelector('#w-rec');
-  await win.click('#w-skip');
-  await win.waitForSelector('#w-pair');
-  await win.click('#w-next');
+  await win.waitForFunction(() => !document.querySelector('#setup'), null, { timeout: 10000 });
   await win.waitForTimeout(600);
 
   // réglages : nom du cabinet, puis fichier d'appairage

@@ -49,6 +49,7 @@ module.exports = {
     'src/renderer/placement.js',       // la hauteur d'une fenêtre : au centre optique, puis immobile
     'src/renderer/reglages.js',        // le sommaire et la recherche des réglages, partagés aussi
     'src/renderer/majui.js',           // l'écran des mises à jour, le même dans les deux applications
+    'src/renderer/visite.js',          // le moteur de la visite guidée, le même dans les deux applications
     'src/canaux.js',                   // la dernière version stable et d'essai publiées
     'src/renderer/compta.js',          // le moteur comptable : la balance du cabinet est celle du client
     // La licence du cabinet (9.4.0) : elle se vérifie HORS LIGNE, comme celle de l'entreprise, donc

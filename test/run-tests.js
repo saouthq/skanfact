@@ -6568,7 +6568,12 @@ t('cabinet : la clé de secours se réclame là où on la lit, pas seulement dan
   const app = lireSource('src', 'cabinet', 'renderer', 'app.js');
   const tete = app.slice(app.indexOf('function drawReglages'), app.indexOf('id="set-corps"'));
   assert.ok(tete.includes('${recoveryBanner()}'), 'le bandeau de la clé doit être au-dessus des onglets');
-  assert.ok(app.includes('${recoveryBanner()}\n        <div class="panel"><h2>Premiers pas</h2>'),
+  // 10.14.0 — l'écran vide porte désormais « Tes premiers pas » ; la règle, elle, ne bouge pas : la
+  // branche de l'écran SANS dossier pose le bandeau (assertion retournée vers la règle, elle recopiait
+  // le panneau qui le suivait).
+  const vide = app.slice(app.indexOf('if (!all.length) {'), app.indexOf('const shown = paginate(rows);'));
+  assert.ok(vide.length > 500 && vide.length < 6000, 'tranche de l\'écran vide suspecte : ' + vide.length);
+  assert.ok(vide.includes('${recoveryBanner()}'),
     'un cabinet sans aucun dossier ne verrait jamais l\'alerte — or c\'est le moment où elle compte le plus');
 });
 
@@ -14491,6 +14496,7 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
   require('./suites/production.js')({ t, assert, lireSource });
   require('./suites/exemple-cinq-ans.js')({ t, assert, lireSource });
   require('./suites/visites.js')({ t, assert, lireSource });
+  require('./suites/cabvisites.js')({ t, assert, lireSource });
   // Celle-ci reçoit `ta` en plus : elle interroge le vrai worker sur une vraie base SQLite.
   await require('./suites/plateforme-gestion.js')({ t, ta, assert, lireSource });
   await require('./suites/paiement.js')({ ta, assert });

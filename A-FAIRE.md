@@ -254,12 +254,15 @@ l'ordre proposé.
   - A3 — « obligatoire » en orange dans l'assistant (la raison sociale), l'étoile « * » partout ailleurs.
   - A4 — « 1 / 7 » contre « Écran 2 sur 5 » dans le Cabinet (l'assistant de l'entreprise écrit
     désormais « 1 / 3 », la porte ne se compte pas).
-- **L'assistant du Cabinet** : coller sa liste de clients dès le départ, régler la saisie, déclarer
-  les collaborateurs, et dire comment le fichier d'appairage part chez les clients.
-- **La visite guidée du Cabinet** : la 10.14.0 couvre l'app entreprise ; le moteur (`visite.js`) ne
-  connaît aucune des deux applications, le contenu du Cabinet (`visites.js` a son jumeau à écrire,
-  avec son dictionnaire de boutons) et son branchement restent à faire — et `e2e:couverture` à
-  braquer sur lui.
+- **L'assistant du Cabinet** — *la 10.14.0 l'a retourné comme celui de l'entreprise* : la porte, deux
+  questions (le nom, la liste des clients collée), et la clé de secours, la copie externe et le fichier
+  d'appairage dans « Tes premiers pas ». Reste : régler la saisie et déclarer les collaborateurs dès
+  le départ, et dire comment le fichier d'appairage part chez les clients (un mail préparé ?).
+- ~~**La visite guidée du Cabinet**~~ — *faite en 10.14.0* : `cabvisites.js` (découverte, une visite par
+  page et par écran de comptabilité, gestes guidés et techniques), « Me guider », et
+  `e2e:cabinet-couverture`. Reste, comme côté entreprise : `e2e:visite` (jouer chaque étape), et
+  **le jeu d'exemple du Cabinet sur plusieurs exercices** — il porte une année, et la découverte ne
+  peut montrer ni une réouverture, ni des à-nouveaux reçus d'un exercice clôturé au cabinet.
 - **L'instrument `e2e:visite`** : jouer chaque étape de chaque visite dans l'application réelle —
   cible visible et cliquable, bulle dans l'écran, geste « faire » qui aboutit. `e2e:couverture`
   vérifie que chaque contrôle a son explication ; rien ne vérifie encore que chaque étape tombe sur

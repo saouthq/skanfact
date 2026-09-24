@@ -1358,31 +1358,32 @@ t('U-11 / U-13 : les Relances — un seul vert (le groupe, ou la ligne quand ell
     'la ligne du jour de relance affirme que c\'est aujourd\'hui alors que le jour est seulement atteint');
 });
 
-t('U-11 : l\'assistant — un seul vert par écran, sur le geste tant qu\'il n\'est pas fait, puis sur « Continuer »', () => {
+t('U-11 / 10.14.0 : l\'assistant — la porte d\'abord, un seul vert par écran, et les filets dans « Tes premiers pas »', () => {
+  // 10.12.0 posait le vert sur le geste de « Ne rien perdre » et du fichier à remettre, tant qu'il
+  // n'était pas fait. 10.14.0 (« la démo avant l'écran de démarrage ») retire ces deux écrans de
+  // l'assistant : ils vivent dans « Tes premiers pas », au moment où ils servent — assertion
+  // retournée vers la règle, qui ne bouge pas : UN vert par écran, et c'est l'étape suivante.
   const app = code('src', 'cabinet', 'renderer', 'app.js');
   const i = app.indexOf('function runSetup(');
   const fin = app.indexOf('function palettePossible(', i);
   assert.ok(i > 0 && fin > i, 'l\'assistant est introuvable');
   const asst = app.slice(i, fin);
-  assert.ok(asst.length > 4000 && asst.length < 30000, 'tranche suspecte : ' + asst.length);
-  // Le geste de l'écran et « Continuer » étaient verts ensemble : deux flèches vers deux endroits.
-  const vert = evaluer(/const vert = (id => [^;]+);/.exec(asst)[1], { faits: new Set() });
-  assert.strictEqual(vert('w-rec'), 'btn btn-primary', 'un geste pas encore fait doit porter le vert');
-  const vertFait = evaluer(/const vert = (id => [^;]+);/.exec(asst)[1], { faits: new Set(['w-rec']) });
-  assert.strictEqual(vertFait('w-rec'), 'btn', 'un geste fait garde son vert à côté de « Continuer »');
-  ['w-rec', 'w-pair'].forEach(id => {
-    assert.ok(new RegExp(`<button class="\\$\\{vert\\('${id}'\\)\\}" id="${id}"`).test(asst), `${id} ne suit plus la règle du vert`);
-    assert.ok(new RegExp(`geste: '${id}'`).test(asst), `l'écran de ${id} ne dit plus quel geste porte le vert`);
-  });
-  assert.ok(/<button class="\$\{e\.geste && !faits\.has\(e\.geste\) \? 'btn' : 'btn btn-primary'\}" id="w-next">/.test(asst),
-    '« Continuer » est vert pendant que le geste de l\'écran attend encore');
-  // Le geste fait fait PASSER le vert : il le retire au geste et le donne à « Continuer ».
-  const passe = /const fait = id => \{([\s\S]+?)\n      \};/.exec(asst);
-  assert.ok(passe && /classList\.remove\('btn-primary'\)/.test(passe[1]) && /#w-next[\s\S]*classList\.add\('btn-primary'\)/.test(passe[1]),
-    'le vert ne passe plus du geste fait à « Continuer »');
-  assert.ok(/exportRecovery\(\(\) => fait\('w-rec'\)\)/.test(asst) && /fait\('w-pair'\)/.test(asst), 'un geste fait ne le dit plus');
-  // Aucun autre vert écrit en dur dans l'assistant.
-  assert.ok(!/class="btn btn-primary" id="w-(rec|pair)"/.test(asst), 'un second vert est écrit en dur dans l\'assistant');
+  assert.ok(asst.length > 3000 && asst.length < 20000, 'tranche suspecte : ' + asst.length);
+  // La porte : « Découvrir » est le seul vert, « Commencer avec mon cabinet » ne l'est pas.
+  const porte = asst.slice(asst.indexOf('porte: true'), asst.indexOf('mount:', asst.indexOf('porte: true')));
+  assert.ok(/class="btn btn-primary" id="w-decouvrir"/.test(porte), 'la découverte doit porter le vert de la porte');
+  assert.ok(/class="btn" id="w-next">Commencer avec mon cabinet/.test(porte), '« Commencer avec mon cabinet » est un second vert');
+  assert.strictEqual((porte.match(/btn-primary/g) || []).length, 1, 'deux verts sur la porte');
+  // Sur une question, le vert est « Continuer » et lui seul.
+  assert.ok(/<button class="btn btn-primary" id="w-next">\$\{derniere \? 'Commencer' : 'Continuer'\}<\/button>/.test(asst), '« Continuer » n\'est plus le vert d\'une question');
+  // Les filets et le fichier à remettre ne sont plus des écrans de l'assistant…
+  ['w-rec', 'w-pair', 'w-ext'].forEach(id => assert.ok(!asst.includes(`id="${id}"`), `${id} est encore un écran de l'assistant`));
+  // … ils sont des étapes de « Tes premiers pas », chacune avec son geste et sa visite.
+  const K = require('../../src/cabinet/cabcore.js');
+  const ids = K.premiersPas({ cabinet: {}, dossiers: [] }, {}).etapes.map(e => e.id);
+  ['appairage', 'cle', 'copie'].forEach(id => assert.ok(ids.includes(id), `« ${id} » n'est plus un premier pas`));
+  const pas = app.slice(app.indexOf('const PAS_ACTIONS = {'), app.indexOf('const ICONE_GUIDE'));
+  ['appairage', 'cle', 'copie'].forEach(id => assert.ok(new RegExp(`\\b${id}: \\[`).test(pas), `« ${id} » n'a pas de geste`));
 });
 
 t('U-13 : la clé de secours se dit UNE fois sur « Données et sécurité », en orange seulement quand elle manque', () => {
@@ -1442,7 +1443,12 @@ t('L\'empreinte du cabinet se COPIE, là où elle s\'affiche — Réglages et as
   const reg = tranche(app, 'function drawReglages(');
   assert.ok(/<span class="fingerprint">\$\{esc\(c\.fingerprint \|\| '—'\)\}<\/span>\$\{c\.fingerprint\s*\? '<button type="button" class="btn btn-sm" id="c-copier-emp">Copier<\/button>'/.test(reg), 'Réglages : l\'empreinte n\'a plus son bouton « Copier »');
   assert.ok(/\$\('#c-copier-emp'\)\.onclick = \(\) => copierEmpreinte\(S\.cabinet\.fingerprint\)/.test(reg), 'Réglages : le bouton « Copier » ne copie plus l\'empreinte');
-  assert.ok(/id="w-copier-emp">Copier<\/button>/.test(app) && /\$\('#w-copier-emp', el\)\.onclick = \(\) => copierEmpreinte\(S\.cabinet\.fingerprint\)/.test(app), 'assistant : l\'empreinte n\'a plus son bouton « Copier »');
+  // 10.14.0 : l'assistant ne remet plus le fichier d'appairage (c'est une étape des premiers pas, qui
+  // mène aux Réglages) — la règle reste : s'il MONTRE l'empreinte à nouveau, il la fait copier.
+  const assistant = tranche(app, 'function runSetup(');
+  if (/class="fingerprint"/.test(assistant)) {
+    assert.ok(/id="w-copier-emp">Copier<\/button>/.test(assistant) && /copierEmpreinte\(S\.cabinet\.fingerprint\)/.test(assistant), 'assistant : l\'empreinte s\'affiche sans son bouton « Copier »');
+  }
   // Une seule porte pour copier une empreinte : trois copies du même bloc divergeraient.
   assert.strictEqual((app.match(/navigator\.clipboard\.writeText\(texte/g) || []).length, 1, 'la copie d\'empreinte n\'a plus une seule porte');
   assert.ok(/cp\.onclick = \(\) => copierEmpreinte\(licCab\.empreinte\)/.test(app), 'la licence a repris sa propre copie');
@@ -2214,8 +2220,12 @@ t('Le message de l\'exemple COMPTE ses dossiers : il en annonçait cinq, le scé
   const dossiers = C.demoDossiers('2026-09-23');
   const phrase = evaluer(`(function () { ${f[0]}; return phraseExemple; })()`, { S: { dossiers } })();
   assert.ok(phrase.includes(`ces ${dossiers.length} dossiers`), phrase);
-  // Les deux portes qui chargent l'exemple disent la même phrase — et aucune ne l'écrit en dur.
-  assert.strictEqual((app.match(/toast\(phraseExemple\(\)\)/g) || []).length, 2, 'une porte de l\'exemple a sa propre phrase');
+  // CHAQUE porte qui charge l'exemple (Dossiers vide, Réglages, la découverte guidée — 10.14.0) dit la
+  // même phrase — et aucune ne l'écrit en dur. Compter les portes plutôt que les écrire : une
+  // quatrième demain serait jugée comme les trois autres.
+  const portes = app.match(/chargerOuRetirerExemple\(true\)/g) || [];
+  assert.ok(portes.length >= 2, 'on ne trouve plus les portes de l\'exemple');
+  assert.strictEqual((app.match(/toast\(phraseExemple\(\)\)/g) || []).length, portes.length, 'une porte de l\'exemple a sa propre phrase');
   assert.ok(!/Exemple chargé : ces (cinq|six|\d+) dossiers/.test(app), 'un compte de dossiers est écrit en dur dans une phrase');
 });
 

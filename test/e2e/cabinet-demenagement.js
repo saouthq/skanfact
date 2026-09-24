@@ -73,9 +73,9 @@ const dessus = sel => `#modal-root .modal-bg:last-child ${sel}`;
   await win.waitForSelector('#w-name');
   await win.fill('#w-name', 'Cabinet Ben Salah');
   await win.click('#w-next');
+  // 10.14.0 : la porte, le nom, les clients — « Passer » ferme l'assistant.
   await win.waitForSelector('#w-clients'); await win.click('#w-skip');
-  await win.waitForSelector('#w-rec'); await win.click('#w-skip');
-  await win.waitForSelector('#w-pair'); await win.click('#w-next');
+  await win.waitForFunction(() => !document.querySelector('#setup'), null, { timeout: 10000 });
   await attendre(win, 700);
 
   const empreinteAvant = await win.evaluate(() => {

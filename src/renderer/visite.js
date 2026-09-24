@@ -936,6 +936,115 @@
     });
   }
 
+  // ---------- ce que fait un contrôle (10.14.0) ----------
+  // L'ALGORITHME qui explique un bouton, un champ ou un onglet vit ici, avec le moteur ; chaque
+  // application n'apporte que SES tables (le dictionnaire des boutons, les onglets, les champs, les
+  // menus de ligne). Écrit d'abord dans `visites.js` pour l'application entreprise, il aurait été
+  // recopié dans le Cabinet — et une copie diverge, toujours (7.29.0) : la première règle ajoutée d'un
+  // côté aurait manqué de l'autre, sans que rien le dise.
+  const nettoie = t => String(t == null ? '' : t).replace(/\s+/g, ' ').replace(/\s*[▾▸]\s*$/, '').trim();
+  function libelleDe(el) {
+    const aria = el.getAttribute('aria-label');
+    if (aria) return nettoie(aria);
+    if (el.matches('input, select, textarea') || el.classList.contains('combo-btn')) {
+      const l = el.closest('label, .field');
+      if (l) {
+        const c = l.cloneNode(true);
+        c.querySelectorAll('input, select, textarea, button, .combo-list, .small, .muted').forEach(x => x.remove());
+        const t = nettoie(c.textContent);
+        if (t) return t;
+      }
+      return nettoie(el.placeholder || el.getAttribute('title') || '');
+    }
+    const c = el.cloneNode(true);
+    c.querySelectorAll('button.i, .badge, .pp-compte').forEach(x => x.remove());
+    return nettoie(c.textContent || el.value || el.getAttribute('title'));
+  }
+  // Le résumé d'une bulle « i » : sa première ou ses deux premières phrases, sans balise.
+  function resumeBulle(html) {
+    const t = String(html || '').replace(/<br\s*\/?>/g, ' ').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
+    const phrases = t.match(/[^.!?]+[.!?]+(\s|$)/g) || [t];
+    let out = '';
+    for (const p of phrases) { if ((out + p).length > 190 && out) break; out += p; }
+    return out.trim();
+  }
+  // La page courante, lue dans l'adresse (`#/devis/…` → « devis »), ou `defaut`.
+  const routeDe = defaut => () => (String((typeof location !== 'undefined' && location.hash) || '').replace(/^#\/?/, '').split('/')[0] || defaut);
+  // `t` : { B (le dictionnaire), ONGLETS, CHAMPS, MENUS, route() (la page courante), guide() (les
+  // bulles « i » de l'application : { INFO }), familles(el, lab, nom) (des champs reconnus à leur
+  // forme, propres à l'application) }. Rend `expliquer(el, ctx)` : { cle, nom, texte } ou null — et
+  // c'est l'instrument de couverture qui compte les null, écran par écran.
+  function expliqueur(t) {
+    const B = t.B || [], ONGLETS = t.ONGLETS || {}, CHAMPS = t.CHAMPS || {}, MENUS = t.MENUS || {};
+    return function expliquer(el, ctx) {
+      if (!el || !el.matches) return null;
+      const r = (ctx && ctx.route) ? ctx.route() : t.route();
+      const G = (ctx && ctx.G) || (t.guide && t.guide()) || { INFO: {} };
+      const lab = libelleDe(el);
+      // 0. une action d'un menu « Actions » porte sa propre phrase (7.28.0) : la visite dit la MÊME que
+      // celle que la personne lit dans le menu, jamais une seconde qui divergerait.
+      if (el.matches('.row-menu button')) {
+        const l = el.querySelector('.rm-l'), ph = el.querySelector('.rm-h');
+        const nom = l ? nettoie(l.textContent) : lab;
+        const phrase = ph ? nettoie(ph.textContent) : '';
+        if (phrase) return { cle: 'rm:' + nom, nom, texte: phrase };
+      }
+      // 1. le dictionnaire
+      for (let i = 0; i < B.length; i++) {
+        const x = B[i];
+        if (x.route && !(Array.isArray(x.route) ? x.route : [x.route]).includes(r)) continue;
+        if (x.id && el.id !== x.id) continue;
+        if (x.sel) { let ok = false; try { ok = el.matches(x.sel); } catch (_) { ok = false; } if (!ok) continue; }
+        if (x.lib && !x.lib.test(lab)) continue;
+        if (x.rowmenu) return { cle: 'rowmenu', nom: x.nom, texte: `Tous les autres gestes de cette ligne, chacun avec sa phrase : ${MENUS[r] || 'ouvrir, modifier, supprimer…'}` };
+        if (x.onglet) break;
+        return { cle: x.cle || (x.id ? '#' + x.id : 'b' + i), nom: x.nom || lab || x.id, texte: x.texte };
+      }
+      // 2. les onglets
+      const onglet = el.dataset && (el.dataset.tab || el.dataset.vue);
+      if (onglet && el.closest('.tabs')) {
+        const o = ONGLETS[r + ':' + onglet] || ONGLETS[onglet];
+        if (o) return { cle: 'tab:' + onglet, nom: lab, texte: o };
+      }
+      // 3. un champ : la bulle « i » de son libellé, sinon son nom
+      const champ = el.matches('input, select, textarea') || el.classList.contains('combo-btn');
+      if (champ) {
+        const hote = el.closest('label, .field, .combo, .datefield');
+        const zone = hote && (hote.closest('label, .field') || hote);
+        const bulle = zone && zone.querySelector('button.i[data-info]');
+        const x = bulle && G.INFO[bulle.dataset.info];
+        if (x) return { cle: 'i:' + bulle.dataset.info, nom: x.t || lab, texte: resumeBulle(x.d) };
+        const nom = el.getAttribute('name') || (el.closest('[data-combo]') && el.closest('[data-combo]').dataset.combo) || '';
+        if (CHAMPS[nom]) return { cle: 'c:' + nom, nom: lab || nom, texte: CHAMPS[nom] };
+        if (CHAMPS['#' + el.id]) return { cle: 'c:#' + el.id, nom: lab || el.id, texte: CHAMPS['#' + el.id] };
+        // Les familles de champs qu'on reconnaît à leur forme.
+        if (el.closest('.datefield') || el.classList.contains('d-txt')) return { cle: 'date', nom: lab || 'Date', texte: "Tape la date (JJ/MM/AAAA, ou juste le jour) ou choisis-la dans le calendrier." };
+        const f = t.familles ? t.familles(el, lab, nom) : null;
+        if (f) return f;
+        if (el.classList.contains('combo-btn')) return { cle: 'combo', nom: lab || 'Liste', texte: "Clique pour ouvrir la liste, tape quelques lettres pour chercher, et choisis." };
+        if (el.type === 'search' || /^Rechercher/i.test(el.placeholder || '')) return { cle: 'recherche', nom: 'Recherche', texte: "Tape quelques lettres : la liste se réduit pendant la frappe." };
+      }
+      // 4. un bouton de calendrier, un lien vers une page
+      if (el.matches('.d-btn, [aria-label="Ouvrir le calendrier"]')) return { cle: 'cal', nom: 'Calendrier', texte: "Ouvre le calendrier pour choisir la date." };
+      if (el.matches('a[href^="#/"]')) return { cle: 'lien:' + (el.getAttribute('href') || '').split('/')[1], nom: lab, texte: "Ouvre ce qui est nommé." };
+      return null;
+    };
+  }
+  // Le titre et le mot d'un bloc de l'écran (pour les visites de page), lus dans la table `ZONES`.
+  function zoneur(ZONES) {
+    return function zone(el) {
+      for (const z of ZONES) {
+        let ok = false;
+        try { ok = el.matches(z.sel); } catch (_) { ok = false; }
+        if (ok) {
+          const titre = z.sel === '.banner' ? nettoie((el.querySelector('b') || el).textContent).slice(0, 80) : z.titre;
+          return { titre: titre || z.titre, texte: z.texte };
+        }
+      }
+      return null;
+    };
+  }
+
   // Ce que l'hôte peut demander : où en est-on ? (pour la palette, la barre, les tests)
   function enCours() {
     if (!cur) return null;
@@ -945,7 +1054,8 @@
   }
 
   const api = { installer, lancer, quitter, enCours, suivant, precedent, chapitreSuivant, placerBulle, placerPres, typo, chevauche, decouperHaut, hautPourBulle, estFaire, lieuDe, ouvrirOnglet,
-    chapitres, resoudre, visible, listerControles, etapesDeLaVue, blocsDe, cheminDe, PATIENCE, PATIENCE_FACULTATIVE, CONTROLES };
+    chapitres, resoudre, visible, listerControles, etapesDeLaVue, blocsDe, cheminDe, PATIENCE, PATIENCE_FACULTATIVE, CONTROLES,
+    nettoie, libelleDe, resumeBulle, routeDe, expliqueur, zoneur };
   global.Visite = api;
   if (typeof module === 'object' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);

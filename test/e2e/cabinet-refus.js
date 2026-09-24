@@ -68,9 +68,9 @@ const ecrire = (nom, buf) => { const p = path.join(dir, nom); fs.writeFileSync(p
   await win.waitForSelector('#w-name');
   await win.fill('#w-name', 'Cabinet Ben Salah');
   await win.click('#w-next');
+  // 10.14.0 : la porte, le nom, les clients — « Passer » ferme l'assistant.
   await win.waitForSelector('#w-clients'); await win.click('#w-skip');
-  await win.waitForSelector('#w-rec'); await win.click('#w-skip');
-  await win.waitForSelector('#w-pair'); await win.click('#w-next');
+  await win.waitForFunction(() => !document.querySelector('#setup'), null, { timeout: 10000 });
   await win.waitForTimeout(600);
 
   const importer = async (fichiers) => {

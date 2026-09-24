@@ -24,6 +24,12 @@
 //      vitrines de l'exemple, les seuls dont les écrans de comptabilité sont pleins
 //
 //   xvfb-run -a node test/e2e/cabinet-rendu.js
+//
+// Avec `--couverture` (10.14.0, `npm run e2e:cabinet-couverture`) : le MÊME parcours, une passe, et à
+// chaque écran — la page, la fenêtre du dessus, le menu d'une ligne de chaque sorte — l'explication
+// que la visite guidée lira pour chaque contrôle visible (`CabVisites.expliquer`). Un contrôle sans
+// explication disparaîtrait de la bulle SANS UN MOT ; il fait tomber le parcours. Le parcours n'est
+// pas recopié : un second parcours des mêmes écrans aurait dérivé du premier (7.29.0).
 const { fermer, playwright, RACINE, ELECTRON, journal, surveiller, dossierCaptures, capturePleine,
   SONDE_CONTRASTE, SONDE_COLONNES, SONDE_ENTETES, SONDE_ESPACEMENT, SONDE_COLLANT, SONDE_TRONQUE, SONDE_DEFILEMENT, SONDE_RANGEE, SONDE_BULLE,
   FENETRE, ongletCompta, ongletsCompta } = require('./harnais');
@@ -62,7 +68,40 @@ const SEGMENTS = ['.tabs', '.row-menu', '.pager', '.c-groupes'];
 // Les pages du Cabinet. Une page qui en gagnera une demain sera mesurée sans que personne y pense,
 // à condition de l'ajouter ici — et le parcours REFUSE une page qui ne s'ouvre pas, plutôt que de
 // l'ignorer en annonçant quand même son total (le défaut de `#stk-tabs` en 7.23.0).
-const PAGES = ['#/dossiers', '#/relances', '#/echeances', '#/ecritures', '#/production', '#/reglages', '#/aide'];
+// 10.14.0 : « Me guider » est une page du menu comme les autres.
+const PAGES = ['#/dossiers', '#/relances', '#/echeances', '#/ecritures', '#/production', '#/reglages', '#/guide', '#/aide'];
+const COUVERTURE = process.argv.includes('--couverture');
+// Le plancher de contrôles lus en mode couverture : un instrument qui n'atteint pas ses écrans
+// annonce « tout va bien » (T-55).
+const PLANCHER_COUVERTURE = 1500;
+// Les boutons qui ouvrent une FENÊTRE sans rien écrire ni ouvrir de sélecteur du système : aucune
+// adresse ne mène à une fenêtre (10.6.0), le parcours la fait naître par son vrai bouton.
+const OUVRE_FENETRE = ['#new-d', '#edit', '#note-rel', '#eq-add', '#ab-new', '#pa-salarie', '#pa-salarie2', '#pa-bulletin',
+  '#pa-bulletin2', '#im-neuf', '#im-neuf2', '#iv-saisir', '#iv-saisir2', '#s-pw', '#rv-question'];
+// La sonde des explications : le moteur désigne ce qui est un contrôle (`Visite.CONTROLES`, la liste que
+// l'étape « liste » parcourt) ; le dictionnaire du Cabinet dit ce qu'il fait. Une bulle « i » n'est pas
+// un geste : elle EST l'explication de son champ.
+const SONDE_EXPLIQUE = () => {
+  const V = window.Visite, CV = window.CabVisites;
+  if (!V || !CV) return { erreur: 'le moteur de visite n\'est pas chargé dans le Cabinet' };
+  const fen = document.querySelector('#modal-root > .modal-bg:last-child');
+  const racines = [fen || document.querySelector('#view')];
+  const menu = document.querySelector('.row-menu'); if (menu) racines.push(menu);
+  const manquants = []; let lus = 0;
+  racines.forEach(rac => {
+    if (!rac) return;
+    rac.querySelectorAll(V.CONTROLES).forEach(el => {
+      if (el.matches('button.i') || !V.visible(el)) return;
+      lus++;
+      let x = null; try { x = CV.expliquer(el, { G: window.CabGuide }); } catch (_) { x = null; }
+      if (x && x.texte) return;
+      const data = {}; [...el.attributes].forEach(a => { if (a.name.startsWith('data-')) data[a.name] = a.value.slice(0, 30); });
+      manquants.push({ tag: el.tagName.toLowerCase(), id: el.id || '', name: el.getAttribute('name') || '', cls: String(el.className || '').slice(0, 40), data,
+        lib: CV.libelleDe(el).slice(0, 60), fenetre: !!el.closest('#modal-root'), menu: !!el.closest('.row-menu') });
+    });
+  });
+  return { route: location.hash, lus, manquants };
+};
 
 (async () => {
   const j = journal(); const bac = []; const fautes = [];
@@ -75,12 +114,74 @@ const PAGES = ['#/dossiers', '#/relances', '#/echeances', '#/ecritures', '#/prod
   const attendre = (ms = 280) => win.waitForTimeout(ms);
   const aller = async hash => { await win.evaluate(x => { location.hash = x; }, hash); await attendre(350); };
 
+  let lusCouverture = 0; const couverture = [];
+  // Mode couverture : la sonde des explications sur l'écran, puis sur un menu de ligne de chaque sorte.
+  const expliquer = async ou => {
+    const r = await win.evaluate(SONDE_EXPLIQUE);
+    if (r.erreur) throw new Error(`${ou} : ${r.erreur}`);
+    lusCouverture += r.lus;
+    r.manquants.forEach(m => couverture.push({ ...m, ecran: ou }));
+    if (await win.$(FENETRE)) return;
+    const sortes = await win.evaluate(() => {
+      const vus = new Set(), sel = [];
+      document.querySelectorAll('#view [data-rowmenu]').forEach(b => {
+        const r = b.getBoundingClientRect();
+        const s = b.dataset.rowmenu.split(':')[0];
+        if (r.width && r.height && !vus.has(s)) { vus.add(s); sel.push(b.dataset.rowmenu); }
+      });
+      return sel;
+    });
+    for (const rm of sortes) {
+      const b = await win.$(`#view [data-rowmenu="${rm}"]`);
+      if (!b) continue;
+      await b.scrollIntoViewIfNeeded().catch(() => {});
+      await b.click().catch(() => {});
+      await attendre(220);
+      // Une action UNIQUE est un bouton nommé qui agit tout de suite (7.29.0) : s'il a ouvert une
+      // fenêtre, on la mesure et on la referme ; sinon le menu.
+      if (await win.$(FENETRE)) { await mesurerFenetre(`${ou} · ${rm.split(':')[0]}`); continue; }
+      if (await win.$('.row-menu')) {
+        const m = await win.evaluate(SONDE_EXPLIQUE);
+        lusCouverture += m.lus;
+        m.manquants.forEach(x => couverture.push({ ...x, ecran: `${ou} · menu ${rm.split(':')[0]}` }));
+        await win.keyboard.press('Escape');
+        await attendre(150);
+      }
+    }
+  };
+  const mesurerFenetre = async ou => {
+    const m = await win.evaluate(SONDE_EXPLIQUE);
+    lusCouverture += m.lus;
+    m.manquants.forEach(x => couverture.push({ ...x, ecran: ou + ' (fenêtre)' }));
+    await win.keyboard.press('Escape');
+    await attendre(200);
+    // Le garde-fou de saisie peut demander — on ne jette rien de ce qu'on a tapé : on n'a rien tapé.
+    const q = await win.$('#modal-root .modal #ok');
+    if (q && await win.$(FENETRE)) { await win.keyboard.press('Escape'); await attendre(200); }
+    await win.waitForFunction(() => !document.querySelector('#modal-root .modal'), null, { timeout: 4000 })
+      .catch(() => { throw new Error(`${ou} : la fenêtre ne se referme pas à Échap`); });
+  };
+  const fenetresDeLaPage = async ou => {
+    for (const sel of OUVRE_FENETRE) {
+      const b = await win.$(`#view ${sel}`);
+      if (!b || !await b.isVisible() || await b.isDisabled()) continue;
+      await b.click().catch(() => {});
+      await attendre(300);
+      if (await win.$(FENETRE)) await mesurerFenetre(`${ou} · fenêtre ${sel}`);
+    }
+  };
+
   let boutons = 0, champs = 0, liensMesures = 0, colonnes = 0, controles = 0, ecarts = 0, collants = 0, tableaux = 0, fenetres = 0, rangees = 0, bulles = 0;
 
   // Les trois sondes sur l'écran courant. `ou` nomme l'endroit ET le contexte (largeur, thème) :
   // une faute qui n'existe qu'en sombre à 1280 doit se lire comme telle, sinon on la cherche à
   // l'endroit où elle ne se produit pas.
   const mesurer = async ou => {
+    if (COUVERTURE) {
+      await expliquer(ou);
+      if (!await win.$(FENETRE)) await fenetresDeLaPage(ou);
+      return;
+    }
     const { boutons: bs, champs: chs, liens: lks } = await win.evaluate(SONDE_CONTRASTE);
     boutons += bs.length; champs += chs.length;
     // 10.12.0 — les liens : lisibles, et stylés par l'application (jamais le bleu brut du navigateur).
@@ -350,6 +451,25 @@ const PAGES = ['#/dossiers', '#/relances', '#/echeances', '#/ecritures', '#/prod
   // ------------------------------------------------------------------ les quatre passes
   j.etape('Toutes les pages et tous leurs onglets, en clair, à 1440');
   await parcourir('clair 1440');
+  if (COUVERTURE) {
+    await fermer(app);
+    if (bac.length) { console.error('\nErreurs du renderer :\n' + bac.join('\n')); process.exit(2); }
+    if (lusCouverture < PLANCHER_COUVERTURE) { console.error(`\n${lusCouverture} contrôles lus seulement (plancher : ${PLANCHER_COUVERTURE}) — le parcours n'a pas atteint ses écrans.`); process.exit(2); }
+    const OUTC = dossierCaptures('cabinet-couverture');
+    fs.writeFileSync(path.join(OUTC, 'manquants.json'), JSON.stringify(couverture, null, 1));
+    const cles = new Map();
+    couverture.forEach(m => {
+      const k = m.id ? '#' + m.id : m.name ? `[name=${m.name}]` : Object.keys(m.data)[0] ? `[${Object.entries(m.data)[0].join('=')}]` : `${m.tag}.${m.cls} « ${m.lib} »`;
+      if (!cles.has(k)) cles.set(k, { n: 0, ex: m }); cles.get(k).n++;
+    });
+    if (cles.size) {
+      console.error(`\n${couverture.length} contrôle(s) sans explication, ${cles.size} distinct(s) (liste : ${path.join(OUTC, 'manquants.json')}) :\n  `
+        + [...cles.entries()].sort((a, b) => b[1].n - a[1].n).map(([k, v]) => `${v.n} × ${k} — « ${v.ex.lib} » — ${v.ex.ecran}`).join('\n  '));
+      process.exit(1);
+    }
+    console.log(`\n${j.total()} étapes — ${lusCouverture} contrôles lus sur chaque écran du Cabinet : chacun dit ce qu'il fait.`);
+    process.exit(0);
+  }
   j.ok(`${boutons} boutons, ${champs} champs, ${colonnes} colonnes, ${controles} contrôles`);
 
   j.etape('Les mêmes, en thème SOMBRE');

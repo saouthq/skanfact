@@ -1087,6 +1087,62 @@
   // chiffré, et elle arrive par une promesse). On ne réclame QUE sur un false franc : afficher
   // l'alerte sur un « je ne sais pas encore » la ferait clignoter à chaque démarrage, et une alerte
   // qui clignote ne se lit plus.
+  // ---------- Tes premiers pas (10.14.0) ----------
+  //
+  // Skander : « quelqu'un qui découvre n'a pas envie de lire l'Aide » ; puis « si on tombe sur un
+  // formulaire au début, on a tendance à passer ». L'assistant du Cabinet posait CINQ écrans avant de
+  // montrer quoi que ce soit — nom, clients, copie externe, clé de secours, fichier d'appairage — et
+  // les trois derniers se passaient : ils protégeaient un portefeuille vide et remettaient un fichier
+  // à des clients qu'on n'avait pas encore. Ils vivent ici, au moment où ils servent, et chaque étape
+  // se DÉDUIT de l'état (jamais une case qu'on coche : elle mentirait le jour d'une fausse manœuvre).
+  //
+  // `ctx` : ce que l'état chiffré ne porte pas — la clé de secours (`true` enregistrée, `false` jamais,
+  // `null` on ne sait pas encore), la copie externe, les dossiers tenus au cabinet, la découverte.
+  // « Ne pas savoir » n'est pas « non » (9.9.0) : une clé dont la réponse n'est pas revenue ne se
+  // réclame pas, elle ne se coche pas non plus.
+  function premiersPas(state, ctx) {
+    const s = state || {};
+    const c = ctx || {};
+    const reels = (s.dossiers || []).filter(d => !d.demo);
+    const tenus = c.tenus || {};
+    const cab = s.cabinet || {};
+    const unPaquet = reels.some(d => (d.packs || []).length);
+    const unLivre = reels.some(d => tenus[d.id]);
+    const etapes = [
+      // La découverte : facultative, comme dans l'application entreprise. Faite, elle compte ; pas
+      // faite, elle attend sans jamais passer devant une étape du métier.
+      { id: 'decouverte', titre: 'Découvrir le Cabinet avec l\'exemple', fait: !!c.decouverte, facultatif: true,
+        quoi: c.decouverte ? 'Tu as fait le tour sur les six dossiers de l\'exemple : tu sais où est chaque chose.'
+          : 'Le grand tour sur six dossiers fictifs : un client à jour, un en retard, un que tu tiens de bout en bout. Rien de ce que tu y fais ne compte.',
+        action: 'decouverte' },
+      { id: 'cabinet', titre: 'Nommer ton cabinet', fait: !!String(cab.name || '').trim(),
+        quoi: 'Ce nom signe tes relances et le fichier que tes clients importent.', action: 'cabinet' },
+      { id: 'clients', titre: 'Ajouter tes clients', fait: reels.length > 0,
+        quoi: 'Tous, même ceux qui n\'utilisent pas SkanFact : l\'application devient le tableau de bord de ton portefeuille, et rien n\'est réclamé à ceux qui n\'ont pas commencé.',
+        action: 'clients' },
+      { id: 'appairage', titre: 'Remettre le fichier d\'appairage à tes clients', fait: !!cab.pairingExportedAt,
+        quoi: 'Un fichier sans rien de secret, à envoyer par mail. Chaque client l\'importe une fois : ses paquets sont ensuite chiffrés pour toi seul.',
+        action: 'appairage' },
+      { id: 'cle', titre: 'Enregistrer ta clé de secours', fait: c.cleSecours === true,
+        quoi: 'Sans elle, si cet ordinateur disparaît, aucun paquet déjà reçu ne pourra plus être ouvert — ni par nous, ni par personne.',
+        action: 'cle' },
+      { id: 'copie', titre: 'Mettre ton cabinet à l\'abri', fait: !!c.copieExterne,
+        quoi: 'Une copie automatique hors de cet ordinateur : clé USB, disque, iCloud ou OneDrive. La base, les livres et les paquets y sont recopiés à chaque enregistrement.',
+        action: 'copie' },
+      { id: 'travail', titre: 'Recevoir un premier paquet, ou tenir un premier livre', fait: unPaquet || unLivre,
+        quoi: unPaquet || unLivre ? 'Ton portefeuille vit : les mois reçus et saisis s\'y comptent tout seuls.'
+          : 'Un client sur SkanFact t\'envoie son paquet du mois (tu le glisses sur la fenêtre) ; pour un client hors SkanFact, tu crées son livre et tu saisis.',
+        action: 'travail' }
+    ];
+    const faits = etapes.filter(x => x.fait).length;
+    // Le panneau ne vaut que pendant le DÉMARRAGE : les facultatives ne le retiennent pas (un panneau
+    // qui ne disparaîtrait jamais parce qu'on n'a pas fait la découverte est celui qu'on apprend à ne
+    // plus lire), et il disparaît tout seul quand le métier est en place.
+    const demarrage = etapes.some(x => !x.fait && !x.facultatif);
+    const suivante = etapes.find(x => !x.fait && !x.facultatif) || null;
+    return { etapes, faits, total: etapes.length, demarrage, suivante };
+  }
+
   function cabinetTodo(state, todayIso, opts) {
     // « À faire » par collaborateur (9.9.0). On restreint le PORTEFEUILLE, pas la liste d'arrivée :
     // filtrer les lignes après coup laisserait chaque libellé annoncer le compte du cabinet entier
@@ -1925,7 +1981,7 @@
     parseCsv, verdictOrigine, csvDangereux, toCsvLine, mergeEcritures, ecrituresPlan,
     DEFAULT_DEADLINES, deadlineSettings, echeances, dayOf,
     TVA_PERIODES, migrateRegime, regimes, regimeDe, periodeTva, deposeCnss,
-    dossierMonths, debutDeMission, dossierRow, dossierList, cabinetTodo, relanceMail, pairingFile,
+    dossierMonths, debutDeMission, dossierRow, dossierList, cabinetTodo, premiersPas, relanceMail, pairingFile,
     INDEX_STABLES, nomIndex, releasePourIndex, releasePourIndexRelue, moisManquants,
     // Le cabinet à plusieurs (9.9.0)
     ROLES_COLLAB, RANG_ROLE, LIBELLE_ROLE, DETAIL_ROLE, ETAPES_PRODUCTION,

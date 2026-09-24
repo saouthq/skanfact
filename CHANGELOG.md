@@ -96,6 +96,33 @@ pour ce qui touche au moteur.
   pièce. L'espace fine se pose à l'affichage — jamais dans ce qui est enregistré, ni dans la case où
   tu écris ta réponse.
 
+**SkanFact Cabinet : la même visite, et la même porte**
+Skander : « commence par faire ce qu'on vient de faire dans le dernier lot sur l'app cabinet », puis
+« oublie pas le onboarding aussi, et fais le même système : la démo avant l'écran de démarrage ».
+- **La porte d'abord, juste après le mot de passe** (qui reste en premier : il chiffre le cabinet).
+  « Découvrir avec l'exemple » (recommandé) ou « Commencer avec mon cabinet » ; vue une seule fois.
+- **Deux questions au lieu de cinq** : le nom de ton cabinet, puis tes clients (une liste collée).
+  La clé de secours, la copie externe et le fichier d'appairage vivent dans **« Tes premiers pas »**,
+  au moment où ils protègent quelque chose : avant, ils protégeaient un portefeuille vide et
+  remettaient un fichier à des clients qu'on n'avait pas encore. Chaque étape se coche toute seule
+  (l'export du fichier d'appairage est désormais retenu), a son bouton et sa visite guidée ; le
+  panneau complet occupe la page Dossiers vide, et se réduit à UNE ligne de « À faire » dès qu'il y a
+  des dossiers — la liste des clients reste au-dessus de la ligne de flottaison.
+- **La découverte sur les six dossiers de l'exemple**, chapitre par chapitre : le portefeuille, un
+  client sur SkanFact (ses mois, ses paquets, son livre, sa banque, sa révision), un client que tu
+  tiens (la saisie, sa paie, ses biens), déclarer et clôturer, tout le portefeuille, ton cabinet.
+  Elle finit par « Poser mon cabinet », qui reprend l'assistant là où la porte l'avait laissé.
+- **Chaque page et chacun des quatorze écrans de comptabilité ont leur visite**, qui explique chaque
+  bouton ; **les gestes se font avec toi** (nommer ton cabinet, ajouter un client, remettre le
+  fichier d'appairage, enregistrer ta clé de secours, mettre ton cabinet à l'abri, recevoir un
+  paquet, saisir une pièce, relancer, déclarer la TVA, rapprocher la banque, poser une question,
+  clôturer) ; **les gestes techniques aussi** (revenir à une sauvegarde, changer d'ordinateur, les
+  mises à jour, la licence, l'équipe, la boîte de réception, l'export d'écritures, le dépannage).
+- **« Me guider »** dans le menu du Cabinet, avant l'Aide ; la visite de chaque écran se propose les
+  trois premières fois qu'on l'ouvre ; la recherche Ctrl K trouve les visites.
+- Le moteur est celui de l'application entreprise, chargé tel quel : l'algorithme qui dit ce que fait
+  un bouton vit désormais dans le moteur, et les deux applications n'ont plus que leur dictionnaire.
+
 ## 10.13.0-beta.1 — 24/09/2026
 
 **Avant la mise en production : les deux applications et le pont entre elles, testés en entier.**

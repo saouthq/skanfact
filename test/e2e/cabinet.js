@@ -86,7 +86,18 @@ const étape = m => { pas++; console.log('\n' + pas + '. ' + m); };
   await win.waitForSelector('#setup', { timeout: 10000 });
   ok('l\'assistant s\'ouvre au lieu d\'un formulaire de réglages');
   await shot('02a-assistant-1');
-  await win.click('#w-next');                                  // 1. bienvenue
+  // 10.14.0 — la PORTE d'abord : deux battants, un seul vert (la découverte), et aucune question.
+  const porte = await win.evaluate(() => ({
+    decouvrir: !!document.querySelector('#setup #w-decouvrir.btn-primary'),
+    commencer: !!document.querySelector('#setup #w-next'),
+    verts: document.querySelectorAll('#setup .btn-primary').length,
+    champs: document.querySelectorAll('#setup input, #setup textarea').length
+  }));
+  if (!porte.decouvrir || !porte.commencer) throw new Error('la porte n\'a pas ses deux battants : ' + JSON.stringify(porte));
+  if (porte.verts !== 1) throw new Error('la porte porte ' + porte.verts + ' verts');
+  if (porte.champs) throw new Error('la porte pose déjà une question');
+  ok('la porte d\'abord : « Découvrir avec l\'exemple » en vert, « Commencer avec mon cabinet » à côté, aucune question');
+  await win.click('#w-next');                                  // 1. la porte → mon cabinet
   await win.waitForSelector('#w-name');
   await win.fill('#w-name', 'Cabinet Elyes Gharbi');
   await win.fill('#w-email', 'contact@cabinet-gharbi.tn');
@@ -102,18 +113,17 @@ const étape = m => { pas++; console.log('\n' + pas + '. ' + m); };
     'Clinique Ennour ; 8899001W/A/M/000 ; ; +216 71 555 666'
   ].join('\n'));
   await shot('02c-assistant-clients');
-  await win.click('#w-next');                                  // 3. les clients
+  await win.click('#w-next');                                  // 3. les clients → fin
   await attendre(1200);
-  await win.waitForSelector('#w-rec');
-  ok('étape « ne rien perdre » proposée avant toute autre chose');
-  await shot('02d-assistant-filets');
-  await win.click('#w-skip');                                  // 4. filets (on les testera après)
-  await win.waitForSelector('#w-pair');
-  await shot('02e-assistant-appairage');
-  await win.click('#w-next');                                  // 5. appairage → fin
   await win.waitForSelector('#app:not([hidden])');
   await attendre(600);
-  if (await win.$('#setup')) throw new Error('l\'assistant ne se ferme pas');
+  if (await win.$('#setup')) throw new Error('l\'assistant ne se ferme pas après les clients');
+  // Les filets et le fichier d'appairage vivent dans « Tes premiers pas » : une ligne de « À faire »
+  // nomme l'étape suivante et porte son geste guidé.
+  const pp = await win.evaluate(() => (document.querySelector('#view') || {}).textContent || '');
+  if (!/Tes premiers pas/.test(pp)) throw new Error('« Tes premiers pas » n\'apparaît pas sur la page Dossiers après l\'assistant');
+  ok('après deux questions, « Tes premiers pas » nomme la suite : le fichier d\'appairage, la clé, la copie');
+  await shot('02d-premiers-pas');
   const apresSetup = await win.textContent('#view');
   if (!/Boulangerie Hamdi/.test(apresSetup)) throw new Error('les clients collés dans l\'assistant ne sont pas arrivés');
   if (!/Garage Zouari/.test(apresSetup) || !/Clinique Ennour/.test(apresSetup)) throw new Error('l\'import en masse a perdu des lignes');
