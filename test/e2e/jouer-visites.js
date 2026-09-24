@@ -27,7 +27,7 @@ const ETAT = () => {
   if (e && e.cible) { try { cible = !!V.resoudre(e.cible); } catch (_) { cible = false; } }
   return {
     st, titre: ((b && b.querySelector('#visite-titre')) || {}).textContent || '',
-    bulle: r ? { l: r.left, t: r.top, r: r.right, b: r.bottom } : null, W: innerWidth, H: innerHeight,
+    bulle: r ? { l: r.left, t: r.top, r: r.right, b: r.bottom } : null, W: window.innerWidth, H: window.innerHeight,
     faire: faire ? { mode: e.faire || 'fait', essai: e.essai || null, aFait: typeof e.fait === 'function' } : null,
     cible
   };
