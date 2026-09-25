@@ -12892,21 +12892,28 @@
         save(true); toast(`${next.label} clôturé`); draw(); updateNavCounts();
       };
 
-      if ($('#close-to')) $('#close-to').onclick = () => {
+      // `vise` : le dernier mois demandé par un autre écran (le paquet d'août propose « Clôturer
+      // jusqu'à août 2026… » quand juin et juillet ne le sont pas encore — 10.14.0).
+      const ouvrirJusqua = vise => {
         modal(`<h2>Clôturer jusqu'à…</h2>
           <p class="small">Tous les mois jusqu'à celui que tu choisis seront clôturés d'un coup.</p>
           <form id="ct" class="grid-2"><label class="field span-2">${lbl('Dernier mois à clôturer', 'clot.jusqua')}
-            <select name="m">${months.map(m => `<option value="${m.to}">${h(m.label)}</option>`).join('')}</select></label></form>
+            <select name="m">${months.map(m => `<option value="${m.to}"${m.to === vise ? ' selected' : ''}>${h(m.label)}</option>`).join('')}</select></label></form>
           <div id="ct-points" class="small annonce-stable encadre"></div>
           <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Clôturer</button></div>`,
           (root, close) => {
             // 10.14.0 — les points à régler se lisent AVANT le geste, sur TOUTE la période choisie (9.4.2) :
             // « Clôturer » d'un coup sautait les contrôles que le bouton du mois suivant montre.
+            // TOUS les points, pas seulement les bloquants : « Rien à signaler du 01/06 au 31/08 »
+            // s'affichait sur une période qui portait cinq achats sans justificatif et douze mouvements
+            // non pointés — ceux que le paquet du même mois liste (10.14.0). L'encadré orange est gardé
+            // pour ce qui bloque vraiment ; le reste se dit en clair, sans alarme.
             const points = () => {
               const to = $('select[name=m]', root).value;
-              const dangers = C.closureChecks(data, company(), next.from, to).filter(c => c.level === 'danger');
-              $('#ct-points', root).innerHTML = dangers.length
-                ? `<p class="warn-box">${pl(dangers.length, 'point')} à regarder du ${C.fmtDate(next.from)} au ${C.fmtDate(to)} : ${dangers.map(c => h(c.label)).join(', ')}. Tu peux clôturer quand même.</p>`
+              const tous = C.closureChecks(data, company(), next.from, to);
+              const dangers = tous.filter(c => c.level === 'danger');
+              $('#ct-points', root).innerHTML = tous.length
+                ? `<p class="${dangers.length ? 'warn-box' : ''}">${pl(tous.length, 'point')} à regarder du ${C.fmtDate(next.from)} au ${C.fmtDate(to)} : ${tous.map(c => h(c.label)).join(', ')}. Tu peux clôturer quand même.</p>`
                 : `<p class="muted">Rien à signaler du ${C.fmtDate(next.from)} au ${C.fmtDate(to)}.</p>`;
             };
             $('select[name=m]', root).onchange = points;
@@ -12920,6 +12927,12 @@
             };
           });
       };
+      if ($('#close-to')) $('#close-to').onclick = () => ouvrirJusqua('');
+      if (comptaState.clotJusqua) {
+        const vise = comptaState.clotJusqua;
+        comptaState.clotJusqua = '';
+        if (months.some(m => m.to === vise) && vise !== (next && next.to)) ouvrirJusqua(vise);
+      }
 
       if ($('#do-reopen')) $('#do-reopen').onclick = () => {
         const opts = C.closureLog(data).filter(e => e.action === 'cloture').map(e => e.previous).filter((v, i, a) => a.indexOf(v) === i);
@@ -12955,6 +12968,7 @@
       })();
       if (!cabinetState.month) cabinetState.month = months[0];
       const per = C.packPeriod(Number(cabinetState.month.slice(0, 4)), Number(cabinetState.month.slice(5, 7)));
+      const aClore = C.closableMonths(data, C.today());
       const plan = C.packPlan(data, co, per, { device: deviceLabel() });
       const paired = co.cabinet && co.cabinet.publicKey ? co.cabinet : null;
       const sent = (data.packs || []).filter(x => x.month === per.month).sort((a, b) => (b.at || 0) - (a.at || 0));
@@ -12988,7 +13002,7 @@
             ? '<p class="small muted">Ce mois est clôturé : le paquet est <b>définitif</b>. Ton comptable peut travailler dessus en sachant que rien ne bougera.</p>'
             : `<p class="small" style="background:var(--warning-soft);padding:10px 12px;border-radius:8px">
                  Ce mois n'est <b>pas clôturé</b> : le paquet partira marqué « provisoire ». Tu peux l'envoyer quand même — mais l'envoi qui compte est celui qui suit la clôture.
-                 <a href="#" id="cab-goclose" class="warn-link">Clôturer ${h(per.label)}</a></p>`}
+                 <a href="#" id="cab-goclose" class="warn-link">${aClore.length && aClore[0].to !== per.to && aClore.some(m => m.to === per.to) ? `Clôturer jusqu'à ${h(per.label)}…` : `Clôturer ${h(per.label)}`}</a></p>`}
 
           ${/* 10.12.0 — un mois sans pièce montrait un tableau de sept zéros et trois cartes à 0,000 DT,
                au-dessus d'un panneau qui dit « aucune pièce » : on ne compte pas au-dessus du vide (7.0.0). */''}
@@ -13167,7 +13181,10 @@
       }
       $('#cab-month').onchange = e => { cabinetState.month = e.target.value; draw(); };
       if ($('#cab-vers-mois')) $('#cab-vers-mois').onclick = e => { cabinetState.month = e.currentTarget.dataset.mois; draw(); };
-      if ($('#cab-goclose')) $('#cab-goclose').onclick = e => { e.preventDefault(); comptaState.tab = 'clotures'; draw(); $$('#c-tabs button').forEach(b => b.classList.toggle('active', b.dataset.tab === 'clotures')); };
+      // Le lien dit ce que le clic fera (7.29.0) : « Clôturer août 2026 » menait à une page qui
+      // proposait de clôturer juin. Quand des mois d'avant restent ouverts, il ouvre la fenêtre
+      // « Clôturer jusqu'à… » sur ce mois-ci, avec les points à régler de toute la période.
+      if ($('#cab-goclose')) $('#cab-goclose').onclick = e => { e.preventDefault(); comptaState.tab = 'clotures'; comptaState.clotJusqua = per.to; draw(); $$('#c-tabs button').forEach(b => b.classList.toggle('active', b.dataset.tab === 'clotures')); };
       if ($('#cab-seal')) $('#cab-seal').onchange = e => { cabinetState.seal = e.target.checked; $('#cab-pw').hidden = !e.target.checked; };
       if ($('#cab-gopair')) $('#cab-gopair').onclick = e => { e.preventDefault(); allerParametres('envois', 'p-cabinet'); };
 

@@ -8047,6 +8047,10 @@ aussi l'app cabinet ») — les invariants ont gagné le stock, le résultat, le
   `dateLimiteSociale` lit la règle du calendrier ; `cnssDeclaration`, `employerAnnual`, `socialDue`
   et le calendrier passent par elle. Et une valeur qu'on sait calculer ne s'affiche pas « — » : une
   déclaration déposée a son échéance (`dateLimiteDeclarationSociale`).
+- **« Rien à signaler » se dit d'une liste VIDE, pas d'une liste filtrée.** La fenêtre « Clôturer
+  jusqu'à… » ne gardait que les points bloquants, puis affirmait « Rien à signaler » sur une période qui
+  en portait vingt-neuf. Filtrer décide de la COULEUR (l'orange pour ce qui bloque), jamais de ce
+  qu'on tait. Et le test de la P4 recopiait le filtre — il gravait la phrase fausse (7.0.1).
 
 ## Pistes pour la suite (non demandées)
 

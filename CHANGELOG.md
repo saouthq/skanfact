@@ -930,6 +930,14 @@ douze mois et l'année. Voici ce qu'il a trouvé :
   Paie écrivait le 15 et le 30 avril en dur, pendant que le calendrier laisse régler le jour de chaque
   échéance : réglée au 20, la même CNSS était due le 15 dans la Paie et dans « À faire », le 20 au
   calendrier. Et les déclarations déjà déposées affichent enfin leur échéance, au lieu de « — ».
+- **« Clôturer jusqu'à… » ne dit plus « Rien à signaler » sur une période qui a des points à régler.**
+  La fenêtre ne comptait que les points bloquants : de juin à août, elle disait « Rien à signaler »
+  pendant que le paquet d'août listait 5 achats sans justificatif et 12 mouvements non pointés. Elle
+  nomme maintenant tous les points de la période (7 achats sans justificatif, 22 mouvements non
+  pointés sur l'exemple) ; l'encadré orange reste gardé pour ce qui bloque.
+- **Le lien du paquet dit ce qu'il fera.** « Clôturer août 2026 » menait à une page qui proposait de
+  clôturer juin. Quand des mois d'avant restent ouverts, il s'appelle « Clôturer jusqu'à août 2026… »
+  et ouvre la fenêtre de clôture sur août, avec les points de toute la période.
 - La carte « TVA déductible » disait « sur 441,940 DT **payés** » : c'était la TVA des factures du
   mois, payées ou non. Elle dit « de TVA facturée ». Et la colonne « Net payé » du journal des achats
   s'appelle « Net à payer » : elle portait aussi les pièces pas encore réglées.

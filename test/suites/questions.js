@@ -105,13 +105,21 @@ module.exports = ({ t, assert }) => {
   // le bouton du mois suivant les montre (6.0.0 : les contrôles nomment, ils ne bloquent pas). Un
   // avertissement se lit AVANT le geste (9.4.2) — et sur toute la période choisie.
   t('10.14.0 : « Clôturer jusqu\'à… » montre les points à régler de TOUTE la période choisie, avant le geste', () => {
-    const i = app.indexOf("if ($('#close-to')) $('#close-to').onclick");
+    const i = app.indexOf('const ouvrirJusqua = vise =>');
     const f = app.slice(i, app.indexOf("if ($('#do-reopen'))", i));
-    assert.ok(i > 0 && f.length > 600 && f.length < 4000, 'tranche close-to : ' + f.length);
-    assert.ok(/C\.closureChecks\(data, company\(\), next\.from, to\)\.filter\(c => c\.level === 'danger'\)/.test(f), 'les contrôles portent du premier mois ouvert au mois choisi');
+    assert.ok(i > 0 && f.length > 600 && f.length < 5000, 'tranche close-to : ' + f.length);
+    // TOUS les contrôles de la période, pas seulement les bloquants : la première version filtrait
+    // `level === 'danger'` et disait « Rien à signaler » sur des achats sans justificatif (10.14.0).
+    assert.ok(/const tous = C\.closureChecks\(data, company\(\), next\.from, to\);/.test(f), 'les contrôles portent du premier mois ouvert au mois choisi');
+    assert.ok(/innerHTML = tous\.length\s*\?/.test(f) && /tous\.map\(c => h\(c\.label\)\)/.test(f), '« Rien à signaler » sur une période qui porte des points');
     assert.ok(/\$\('select\[name=m\]', root\)\.onchange = points;\s*points\(\);/.test(f), 'l\'annonce suit le mois choisi, et paraît dès l\'ouverture');
     assert.ok(f.indexOf('points();') < f.indexOf('C.closePeriod('), 'l\'annonce se pose avant que le geste soit possible');
     assert.ok(/id="ct-points" class="small annonce-stable encadre"/.test(f), 'l\'annonce réserve sa hauteur : le bouton ne bouge pas sous le curseur');
+    // Le paquet d'un mois dont les mois d'avant restent ouverts dit « Clôturer jusqu'à … », et son clic
+    // ouvre cette fenêtre sur CE mois — « Clôturer août 2026 » menait à une page qui proposait juin.
+    assert.ok(/m\.to === vise \? ' selected' : ''/.test(f), 'la fenêtre ne présélectionne pas le mois demandé');
+    assert.ok(/comptaState\.clotJusqua = per\.to/.test(app), 'le lien du paquet ne dit pas quel mois il vise');
+    assert.ok(/aClore\[0\]\.to !== per\.to && aClore\.some\(m => m\.to === per\.to\) \? `Clôturer jusqu'à \$\{h\(per\.label\)\}…`/.test(app), 'le lien promet de clôturer un seul mois quand il en clôturera plusieurs');
   });
 
   // Vu à la souris (10.14.0) : choisir « août 2026 » dans « Clôturer jusqu'à… » puis « Annuler »
