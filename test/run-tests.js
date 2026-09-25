@@ -10103,8 +10103,12 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
   t('un mouvement mène à la pièce d\'où il vient', () => {
     const app = lireApp();
     // La phrase sous le tableau disait d'aller corriger le paiement sur sa pièce, sans offrir d'y aller.
-    assert.ok(/const cible = m\.source === 'libre' \? '' : m\.docId \? '#\/doc\/' \+ m\.docId : m\.purchaseId \? '#\/achat\/' \+ m\.purchaseId : m\.payslipId \? '#\/paie' : '';/.test(app),
-      'un mouvement ne sait pas d\'où il vient');
+    // La règle, pas la forme (10.14.0 — l'avance versée est une source de plus) : la ligne qui
+    // décide où mène un mouvement lit CHAQUE lien que `cashMovements` sait poser (vérifié plus bas).
+    const cibleLigne = (app.match(/const cible = m\.source === 'libre' \? '' : [^\n]*;/) || [''])[0];
+    assert.ok(cibleLigne, 'un mouvement ne sait pas d\'où il vient');
+    ['docId', 'purchaseId', 'payslipId', 'advanceId'].forEach(k =>
+      assert.ok(cibleLigne.includes('m.' + k), `un mouvement porteur de « ${k} » ne mène nulle part`));
     assert.ok(/else if \(tr\.dataset\.go\) tr\.onclick = \(\) => navigate\(tr\.dataset\.go\);/.test(app),
       'les lignes de mouvement venues d\'une pièce ne sont pas branchées');
     assert.ok(/Clique une ligne pour ouvrir la pièce d'où elle vient/.test(app),
@@ -10112,7 +10116,7 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     // Les trois sources que `cashMovements` sait produire sont bien couvertes.
     const core2 = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'core.js'), 'utf8');
     const bloc2 = core2.slice(core2.indexOf('function cashMovements('), core2.indexOf('function accountBalance('));
-    ['docId', 'purchaseId', 'payslipId'].forEach(k =>
+    ['docId', 'purchaseId', 'payslipId', 'advanceId'].forEach(k =>
       assert.ok(bloc2.includes(k + ':'), `cashMovements ne produit plus « ${k} » : le lien est mort`));
   });
 
@@ -14533,6 +14537,7 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
   require('./suites/audit-ux-cabinet.js')({ t, assert, lireSource });
   require('./suites/production.js')({ t, assert, lireSource });
   require('./suites/exemple-cinq-ans.js')({ t, assert, lireSource });
+  require('./suites/verite-comptable.js')({ t, assert, lireSource });
   require('./suites/visites.js')({ t, assert, lireSource });
   require('./suites/cabvisites.js')({ t, assert, lireSource });
   require('./suites/cabassistant.js')({ t, assert, lireSource });

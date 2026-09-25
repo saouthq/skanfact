@@ -8769,6 +8769,8 @@
         ${dateFieldHtml(lbl('Date de l\'avance', 'hr.advanceDate'), 'date', a.date, {})}
         ${field(lbl('Montant avancé', 'hr.advanceAmount'), 'amount', a.amount || '', 'number', 'step="0.001" min="0" class="num" placeholder="Ce que tu lui prêtes"').replace('class="field"', 'class="field obligatoire"')}
         ${field(lbl('Retenue mensuelle', 'hr.monthly'), 'monthly', a.monthly || '', 'number', 'step="0.001" min="0" class="num" placeholder="Retenue sur chaque bulletin"').replace('class="field"', 'class="field obligatoire"')}
+        <label class="field">${lbl('Mode', 'hr.advanceMethod')}<select name="method">${C.PAYMENT_METHODS.map(m => `<option value="${m[0]}" ${(a.method || 'virement') === m[0] ? 'selected' : ''}>${m[1]}</option>`).join('')}</select></label>
+        ${accountFieldHtml(a.accountId)}
         <label class="field">${lbl('Note', 'hr.advanceNote')}<input type="text" name="note" value="${h(a.note || '')}" placeholder="Pourquoi, et ce qui a été convenu"></label>
         <div class="span-2 annonce-stable" id="af2-hint"></div>
       </form>
@@ -11074,7 +11076,7 @@
         <div class="panel"><h2>Tous les mouvements de ${h(s.year)}</h2>
           <div class="inline mb"><button class="btn btn-sm" id="exp-moves">Exporter en CSV</button></div>
           ${rows.length ? `<div id="m-wrap"><table class="list compact sortable"><thead>${sortHead(cols, s.moves.sort)}</thead><tbody>
-            ${pg.rows.map(m => { const cible = m.source === 'libre' ? '' : m.docId ? '#/doc/' + m.docId : m.purchaseId ? '#/achat/' + m.purchaseId : m.payslipId ? '#/paie' : '';
+            ${pg.rows.map(m => { const cible = m.source === 'libre' ? '' : m.docId ? '#/doc/' + m.docId : m.purchaseId ? '#/achat/' + m.purchaseId : m.payslipId || m.advanceId ? '#/paie' : '';
               return `<tr class="${m.source === 'libre' || cible ? 'clickable' : ''}" data-mv="${m.source === 'libre' ? h(m.movementId) : ''}" data-go="${h(cible)}">
               ${cols.map(c => `<td class="${c.r ? 'r nw' : ''}${c.cls ? ' ' + c.cls : ''}">${c.get(m)}</td>`).join('')}</tr>`; }).join('')}
           </tbody></table></div>${pagerBar(pg.pg, { noun: 'mouvement' })}`
@@ -11203,6 +11205,11 @@
         data.documents.forEach(d => (d.payments || []).forEach(p => { if (p.id === id) hit = p; }));
         data.purchases.forEach(pu => (pu.payments || []).forEach(p => { if (p.id === id) hit = p; }));
         data.movements.forEach(m => { if (m.id === id) hit = m; });
+        // 10.14.0 : un salaire payé (« pay-… ») et une avance versée (« av-… ») portent leur drapeau
+        // sur le bulletin et sur l'avance. Sans ces deux lignes, leur case acceptait le clic et ne
+        // pointait rien : le rapprochement d'un mois de paie ne tombait jamais juste.
+        if (!hit && id.startsWith('pay-')) hit = data.payslips.find(sl => 'pay-' + sl.id === id) || null;
+        if (!hit && id.startsWith('av-')) hit = data.advances.find(a => 'av-' + a.id === id) || null;
         return hit;
       };
       $$('[data-rec]').forEach(cb => cb.onchange = () => {
@@ -11700,7 +11707,7 @@
         { key: 'category', label: 'Catégorie', asc: true, val: r => (r.category || '').toLowerCase(), get: r => `${h(r.category || '—')}${r.kind === 'Dépense' ? '<div class="small muted">dépense</div>' : ''}` },
         { key: 'ht', label: 'HT', r: true, val: r => r.ht, get: r => C.money(r.ht) },
         { key: 'tva', label: 'TVA', r: true, val: r => r.tva, get: r => C.money(r.tva) },
-        { key: 'deductible', label: 'dont déductible', r: true, val: r => r.deductible, get: r => r.deductible === r.tva ? C.money(r.deductible) : `<strong>${C.money(r.deductible)}</strong>` },
+        { key: 'deductible', label: 'dont déductible', r: true, val: r => r.deductible, get: r => r.deductible === r.tva ? C.money(r.deductible) : r.deductibleAcompte ? `<strong title="${h(`Déjà déduite avec l'acompte : ${C.money(r.deductibleAcompte)}`)}">${C.money(r.deductible)}</strong><span class="muted small"> acompte déduit</span>` : `<strong>${C.money(r.deductible)}</strong>` },
         { key: 'net', label: 'Net payé', r: true, val: r => r.net, get: r => C.money(r.net) },
         { key: 'status', label: 'Statut', val: r => r.status, get: r => buyBadge(r.status) }
       ];

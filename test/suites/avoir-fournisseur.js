@@ -150,14 +150,41 @@ module.exports = ({ t, assert }) => {
 
   t('10.2.0 : la TVA, la charge et le seuil suivent le sens de la pièce', () => {
     const d = jeu();
-    // TVA déductible du mois : 380 (facture) − 190 (avoir) + 95 (acompte) = 285.
-    const tva = core.vatReturn(d, société, '2026-03');
-    assert.strictEqual(tva.deductible, 285, 'l\'avoir vient en moins de la TVA déductible');
+    // TVA déductible du mois : 380 (facture) − 190 (avoir) + 95 (acompte) − 95 (la part de la
+    // facture que l'acompte avait déjà portée) = 190. Jusqu'à la 10.14.0 ce test attendait 285 :
+    // il gravait la TVA de l'acompte comptée DEUX fois — la facture porte la TVA du montant entier,
+    // acompte compris, et l'écriture le savait depuis la 10.2.0 (l'imputation recrédite le 4366).
+    const tva = core.vatReturn(d, société, { from: '2026-03-01', to: '2026-03-31' });
+    assert.strictEqual(tva.deductible, 190, 'l\'avoir vient en moins de la TVA déductible, et l\'acompte n\'est déduit qu\'une fois');
     // Charge de la période : 2 000 − 1 000 = 1 000. L'acompte n'est PAS une charge.
     const r = core.simpleResult(d, société, { from: '2026-01-01', to: '2026-12-31' });
     assert.strictEqual(r.charges, 1000, 'l\'acompte n\'entre pas dans les charges, l\'avoir les réduit');
     const be = core.breakEven(d, société, { from: '2026-01-01', to: '2026-12-31' });
     assert.ok(be.variable + be.fixed === 1000, 'le seuil de rentabilité voit la même charge');
+  });
+
+  t('10.14.0 : la TVA d\'un acompte versé le mois d\'avant n\'est pas déduite une seconde fois avec la facture', () => {
+    // Le cas du jeu d'exemple : l'acompte en février, la facture en mars. Chaque mois, la déductible
+    // de la déclaration doit être le mouvement du 4366 dans les écritures — deux chemins, un chiffre.
+    const d = jeu();
+    d.purchases = d.purchases.filter(p => p.id !== 'AVO');
+    const aco = d.purchases.find(p => p.id === 'ACO');
+    aco.date = '2026-02-20'; aco.payments[0].date = '2026-02-20';
+    const mois = (from, to) => {
+      const vr = core.vatReturn(d, société, { from, to });
+      const E = core.journalEntries(d, société, { from, to }, { sections: ['achats'] });
+      const ded = E.filter(e => e.account === core.chartAccounts(d).tvaDeductible).reduce((s, e) => s + e.debit - e.credit, 0);
+      return { vr: vr.deductible, journal: Math.round(ded * 1000) / 1000, taux: vr.byRate[19].deductible };
+    };
+    const fev = mois('2026-02-01', '2026-02-28'), mars = mois('2026-03-01', '2026-03-31');
+    // Calculé à la main : février, la TVA de l'acompte (500 × 19 % = 95) ; mars, celle de la
+    // facture (2 000 × 19 % = 380) moins les 95 déjà déduits = 285. Ensemble : 380, une seule fois.
+    assert.deepStrictEqual(fev, { vr: 95, journal: 95, taux: 95 });
+    assert.deepStrictEqual(mars, { vr: 285, journal: 285, taux: 285 }, 'la TVA de l\'acompte est déduite deux fois : 95 dans son mois, 95 encore avec la facture');
+    // Le journal des achats DIT pourquoi la facture déduit moins que sa TVA.
+    const ligne = core.purchaseJournal(d, société, { from: '2026-03-01', to: '2026-03-31' }).find(r => r.id === 'FAC');
+    assert.strictEqual(ligne.deductible, 285);
+    assert.strictEqual(ligne.deductibleAcompte, 95);
   });
 
   t('10.2.0 : un règlement sur un avoir est une entrée d\'argent', () => {

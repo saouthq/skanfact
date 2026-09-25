@@ -601,6 +601,33 @@ l'écran. Le matricule fiscal (« 1472411D/A/M/000 ») peut maintenant passer à
   « Où part ton argent », comme une dépense. Un montant négatif n'a plus de barre, dans les quatre
   classements de l'application.
 
+### La vérité comptable : deux chemins, un chiffre, sur cinq ans
+
+Un audit a comparé, sur les cinq ans de l'exemple, chaque chiffre que l'application calcule par
+deux chemins différents : la banque du grand livre et celle de la Trésorerie, la TVA des écritures
+et celle de la déclaration, mois par mois, le 411 et le lettrage, le 425 et les salaires dus. Il a
+trouvé trois défauts d'argent :
+
+- **La TVA d'un acompte fournisseur était déduite deux fois dans la déclaration.** L'acompte déduit
+  sa TVA le mois où il est versé. La facture porte ensuite la TVA du montant entier, acompte compris.
+  Les écritures le savaient depuis la 10.2.0 : l'imputation recrédite le 4366. La déclaration, elle,
+  l'ignorait. Sur l'exemple, septembre annonçait un **crédit** de 2,740 DT au lieu de **92,260 DT à
+  reverser**. Le journal des achats, la déclaration (taux par taux) et les chiffres du paquet du
+  comptable retranchent désormais ce que l'acompte a déjà déduit, et la ligne l'écrit
+  (« acompte déduit »).
+- **Une avance sur salaire ne sortait jamais de la banque.** Ni la Trésorerie ni les écritures ne
+  la voyaient : la banque était trop haute du montant avancé, et le compte 425 gardait pour toujours
+  les retenues qui la remboursent. L'avance est maintenant une sortie d'argent le jour où on la
+  verse, et une écriture « 425 au débit, banque au crédit ». Sa fenêtre demande le mode et le compte
+  d'où elle part.
+- **Un salaire payé ne se pointait pas au rapprochement.** Sa case acceptait le clic, le message
+  disait « Mouvement pointé », et rien n'était retenu. L'avance versée se pointe aussi.
+
+Et le jeu d'exemple ne payait jamais ses cotisations : cinq ans de CNSS (30 232 DT), d'IRPP
+(12 730 DT) et de TFP s'empilaient au passif. Il les paie désormais, au trimestre pour la CNSS et au
+mois pour le reste, et ne garde dû que ce qui n'est pas encore échu. Une suite de tests permanente
+(`test/suites/verite-comptable.js`) refait l'audit à chaque `npm test`.
+
 ## 10.13.0-beta.1 — 24/09/2026
 
 **Avant la mise en production : les deux applications et le pont entre elles, testés en entier.**

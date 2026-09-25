@@ -721,6 +721,28 @@
       d.movements.push({ id: C.uid(), date: echeance, kind: 'impot', amount: net, label: `TVA, timbres et retenues de ${C.MONTHS_FR[mm - 1]} ${yy}`,
         accountId: accBank.id, method: 'virement', reference: `TVA ${m.month}`, compte: '4365' });
     }));
+    // 10.14.0 : la paie se REVERSE aussi. L'IRPP retenu (avec la contribution sociale) et la TFP
+    // et le FOPROLOS partent avec la déclaration du mois, le 28 du mois suivant. Sans ces paiements,
+    // le bilan d'une entreprise de cinq ans portait douze mille dinars d'impôt sur les salaires
+    // « à payer » — une dette qui n'existe pas, et la première question du comptable.
+    const parMois = {};
+    d.payslips.forEach(sl => {
+      const k = `${sl.year}-${String(sl.month).padStart(2, '0')}`;
+      const c = sl.computed || {};
+      const x = parMois[k] || (parMois[k] = { irpp: 0, tfp: 0 });
+      x.irpp = C.round3(x.irpp + (c.irpp || 0) + (c.css || 0));
+      x.tfp = C.round3(x.tfp + (c.tfp || 0) + (c.foprolos || 0));
+    });
+    Object.keys(parMois).sort().forEach(k => {
+      const [yy, mm] = k.split('-').map(Number);
+      const echeance = C.addMonths(`${k}-01`, 1, 28);
+      if (echeance >= T) return;
+      const quand = `${C.MONTHS_FR[mm - 1]} ${yy}`;
+      if (parMois[k].irpp > 0) d.movements.push({ id: C.uid(), date: echeance, kind: 'impot', amount: parMois[k].irpp, label: `IRPP retenu sur les salaires de ${quand}`,
+        accountId: accBank.id, method: 'virement', reference: `IRPP ${k}`, compte: '4321' });
+      if (parMois[k].tfp > 0) d.movements.push({ id: C.uid(), date: echeance, kind: 'impot', amount: parMois[k].tfp, label: `TFP et FOPROLOS de ${quand}`,
+        accountId: accBank.id, method: 'virement', reference: `TFP ${k}`, compte: '4335' });
+    });
     // 8.9.0 : une opération diverse saisie à la main — ce que le comptable demande en premier.
     // La prime d'assurance du local, avancée par le gérant : une charge qui n'a ni facture
     // fournisseur enregistrée ni sortie de banque, donc invisible sans OD.
@@ -738,6 +760,8 @@
     d.purchases.forEach(pu => (pu.payments || []).forEach(p => { if (p.date < pointeAvant) p.reconciled = true; }));
     d.movements.forEach(m => { if (m.date < pointeAvant) m.reconciled = true; });
     d.payslips.forEach(sl => { if (sl.paidDate && sl.paidDate < pointeAvant) sl.reconciled = true; });
+    // L'avance versée sort de la banque (10.14.0) : pointée comme le reste de ce qui a deux mois.
+    d.advances.forEach(a => { if (a.date < pointeAvant) a.reconciled = true; });
 
     // ---------- modèles et textes prédéfinis ----------
     d.templates = [
@@ -762,6 +786,18 @@
     const soc = C.socialDue(d, T);
     const aGarder = soc.filter(x => x.kind === 'cnss').slice(-1).map(x => x.id);
     soc.filter(x => !aGarder.includes(x.id)).forEach(x => d.socialFilings.push({ id: x.id, filedAt: C.addDays(x.dueDate, -3), label: x.label }));
+    // Et une déclaration CNSS déposée se PAIE, le même jour (10.14.0) : la cotisation du trimestre
+    // quitte la banque sur le compte CNSS. Sans ça, trente mille dinars de cotisations s'empilaient
+    // au passif — cinq ans de CNSS jamais versée, sur une entreprise qui déclare tout à l'heure.
+    // Tous les trimestres ÉCHUS, pas seulement les deux dernières années que « À faire » regarde :
+    // une entreprise de cinq ans a payé les vingt précédents.
+    [...new Set(d.payslips.map(sl => Number(sl.year)))].sort().forEach(yy => [1, 2, 3, 4].forEach(q => {
+      const dec = C.cnssDeclaration(d, yy, q);
+      const id = `cnss-${yy}-T${q}`;
+      if (!dec.slips || dec.total <= 0 || aGarder.includes(id) || C.addDays(dec.dueDate, -3) >= T) return;
+      d.movements.push({ id: C.uid(), date: C.addDays(dec.dueDate, -3), kind: 'impot', amount: dec.total, label: `Cotisations CNSS — ${C.quarterLabel(q)} ${yy}`,
+        accountId: accBank.id, method: 'virement', reference: id.toUpperCase(), compte: '4531', reconciled: C.addDays(dec.dueDate, -3) < mo(2, 1) });
+    }));
     // Et ses mois sont CLÔTURÉS, au fil de l'eau, jusqu'à il y a quatre mois : un mois déclaré ne
     // bouge plus. Les trois derniers restent ouverts — c'est là que se fait le travail en cours, et
     // « À faire » en réclame la clôture le moment venu.

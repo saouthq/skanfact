@@ -1978,6 +1978,19 @@
     return out.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
   }
 
+  // La TVA déductible des acomptes imputés sur une facture d'achat : son total, et par taux. Même
+  // règle que l'imputation du journal — une seule définition pour l'écriture et la déclaration.
+  function acomptesDeduits(data, purchase, company) {
+    const out = { total: 0, byRate: {} };
+    if (!data || purchase.kind === 'avoir' || purchase.kind === 'acompte') return out;
+    piecesLieesAchat(data, purchase.id, 'acompte').forEach(a => {
+      const ta = purchaseTotals(a, company);
+      out.total = round3(out.total + ta.base.deductibleVAT);
+      Object.keys(ta.base.vatByRate || {}).forEach(r => { out.byRate[r] = round3((out.byRate[r] || 0) + (ta.base.vatByRate[r].deductible || 0)); });
+    });
+    return out;
+  }
+
   // Journal des achats d'une période : une ligne par pièce, prête pour le CSV du comptable.
   function purchaseJournal(data, company, period) {
     const name = id => ((data.suppliers || []).find(s => s.id === id) || {}).name || '—';
@@ -1986,10 +1999,15 @@
       .sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.createdAt || 0) - (b.createdAt || 0))
       .map(p => {
         const t = purchaseTotals(p, company);
+        // La TVA d'un acompte rattaché a déjà été déduite le mois où l'acompte a été versé ; la
+        // facture porte la TVA du montant ENTIER, acompte compris. L'écriture le sait depuis la
+        // 10.2.0 (l'imputation recrédite le 4366) ; la déclaration, elle, la déduisait une seconde
+        // fois. Ce qui reste déductible sur la facture est sa TVA MOINS celle des acomptes imputés.
+        const deductibleAcompte = acomptesDeduits(data, p, company);
         return {
           id: p.id, date: p.date, number: p.number || '', supplier: name(p.supplierId),
           kind: (PURCHASE_KINDS.find(k => k[0] === (p.kind || 'facture')) || PURCHASE_KINDS[0])[1], category: p.category || '',
-          ht: t.base.totalHT, tva: t.base.totalVAT, deductible: t.base.deductibleVAT, fees: t.base.fees,
+          ht: t.base.totalHT, tva: t.base.totalVAT, deductible: round3(t.base.deductibleVAT - deductibleAcompte.total), deductibleAcompte: deductibleAcompte.total, fees: t.base.fees,
           ttc: t.base.totalTTC, rs: t.base.withholding, net: t.base.netToPay,
           currency: t.currency, rate: t.rate,
           status: purchaseStatus(p, company, '9999-12-31', data), subject: p.subject || ''
@@ -3628,6 +3646,21 @@
         payslipId: sl.id, reconciled: !!sl.reconciled, source: 'paie'
       });
     });
+    // 10.14.0 : une AVANCE sur salaire est de l'argent qui sort le jour où on la verse. Elle ne
+    // remontait nulle part — ni ici, ni dans les écritures : la banque de la Trésorerie et celle du
+    // grand livre étaient toutes deux trop hautes du montant avancé, et le 425 gardait pour toujours
+    // les retenues qui la remboursent. Le remboursement, lui, est déjà dans le net versé plus bas.
+    (data.advances || []).forEach(a => {
+      const montant = round3(Number(a.amount) || 0);
+      if (!montant || !inPeriod(a.date, period && period.from, period && period.to) || !keep(a.accountId)) return;
+      const emp = (data.employees || []).find(e => e.id === a.employeeId) || {};
+      out.push({
+        id: 'av-' + a.id, kind: 'sortie', date: a.date, accountId: a.accountId || fallback,
+        label: 'Avance sur salaire', party: emp.name || 'Salarié',
+        amount: -montant, method: a.method || 'virement', reference: a.reference || '',
+        advanceId: a.id, reconciled: !!a.reconciled, source: 'avance'
+      });
+    });
     (data.movements || []).forEach(m => {
       if (!inPeriod(m.date, period && period.from, period && period.to) || !keep(m.accountId)) return;
       const label = (MOVE_KINDS.find(k => k[0] === m.kind) || [null, 'Mouvement'])[1];
@@ -3872,9 +3905,11 @@
     sales.forEach(row => VAT_RATES.forEach(r => { byRate[r].collected = round3(byRate[r].collected + (row.vatByRate[r] ? row.vatByRate[r].vat : 0)); }));
     (data.purchases || []).filter(p => inPeriod(p.date, period && period.from, period && period.to)).forEach(p => {
       const t = purchaseTotals(p, company);
-      Object.keys(t.vatByRate).forEach(rate => {
+      const dejaDeduite = acomptesDeduits(data, p, company).byRate;
+      // Un acompte à un autre taux que la facture se retranche aussi : l'union des deux listes.
+      [...new Set([...Object.keys(t.vatByRate), ...Object.keys(dejaDeduite)])].forEach(rate => {
         if (!byRate[rate]) byRate[rate] = { collected: 0, deductible: 0 };
-        byRate[rate].deductible = round3(byRate[rate].deductible + t.base.vatByRate[rate].deductible);
+        byRate[rate].deductible = round3(byRate[rate].deductible + ((t.base.vatByRate[rate] || {}).deductible || 0) - (dejaDeduite[rate] || 0));
       });
     });
     const collected = round3(sales.reduce((s, r) => s + r.tva, 0));
@@ -4895,6 +4930,24 @@
           const label = `Paiement salaire ${emp.name || ''} ${MONTHS_FR[Number(s.month) - 1] || ''} ${s.year}`;
           e.debit(acc.personnel, label, net);
           e.credit(j.compte, label, net);
+          out.push(...e.done());
+        });
+      // 10.14.0 : l'AVANCE versée. Elle débite le 425 : les retenues des bulletins suivants (portées
+      // au crédit avec le net, plus haut) la soldent mois après mois, et le 425 revient à ce qui est
+      // encore dû. Sans elle, le 425 gardait les retenues pour toujours et la banque ne voyait
+      // jamais partir l'argent. À VÉRIFIER : un compte d'avances au personnel distinct si le
+      // cabinet en tient un.
+      (data.advances || [])
+        .filter(a => inPeriod(a.date, period && period.from, period && period.to))
+        .forEach(a => {
+          const montant = round3(Number(a.amount) || 0);
+          if (!montant) return;
+          const emp = (data.employees || []).find(x => x.id === a.employeeId) || {};
+          const j = journalDeCompte(data, acc, a.accountId, a.method);
+          const e = entrySet({ date: a.date, journal: j.journal, piece: `AVANCE-${a.date || ''}`, tiers: emp.name || '', tiersId: '', source: 'avance', docId: a.id, currency: cur });
+          const label = `Avance sur salaire ${emp.name || ''}`.trim();
+          e.debit(acc.personnel, label, montant);
+          e.credit(j.compte, label, montant);
           out.push(...e.done());
         });
     }

@@ -69,6 +69,8 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Une **annonce** se calcule par les MÊMES constructeurs que ce qu'elle annonce | 10.12.0 — E-02, le solde d'acompte faux de deux timbres |
 | Une fonction qui rend un montant **NATIF** piège chaque appelant qui additionne : la couverture se fait par appelant, jamais par fonction | 10.12.0 — E-08, la prévision en euros ; 10.1.0 |
 | Un **argument facultatif** qui change un montant piège chaque appelant qui l'oublie : il se tient appel par appel | 10.14.0 — `purchaseBalance` sans `data`, un trop-payé prérempli |
+| Une règle posée d'un côté du moteur (l'écriture) se cherche de l'autre (la déclaration) : la TVA d'un **acompte** se déduit une fois | 10.14.0 — septembre annonçait un crédit au lieu de 92 DT à reverser |
+| Un mouvement d'argent enregistré existe dans les **deux livres** (Trésorerie et écritures) et se pointe | 10.14.0 — l'avance sur salaire qui ne sortait jamais de la banque |
 | Des **cartes qui forment une équation** (valeur − cumul = VNC) la tiennent, l'année d'une cession aussi | 10.14.0 — le bien sorti compté à moitié, dans les deux applications |
 | Un **coût moyen pondéré** dépend de l'ordre des gestes : un tri par identifiant est un ordre arbitraire | 10.12.0 — E-10, la vente sortie au coût de l'achat qui la suit |
 | Deux écrans qui montrent la **même pièce** ne disent qu'un montant, et deux recherches sur le même corpus qu'une réponse | 10.12.0 — H-E25, la palette et la liste ; la palette et la page Aide |
@@ -151,6 +153,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Une assertion sur une **pile** lit son SOMMET : c'est là que « ← » va | 10.12.0 — le devis vierge n'était jamais la dernière entrée |
 | Un test qui cherche une **CLASSE** laisse passer une remarque jamais posée : on JOUE la fonction | 10.14.0 — le résumé de l'image de marque, et `data.company.name` que les crochets ne comptaient pas |
 | Une erreur qui se **compense sur l'année** ne se voit que dans un MOIS : le test regarde janvier | 10.14.0 — l'ouverture comptée deux fois de janvier à septembre |
+| **Deux chemins, un chiffre** : un invariant compare ce que deux calculs indépendants rendent, et rend la LISTE des écarts | 10.14.0 — `verite-comptable.js`, deux défauts d'argent que les tests « à un chemin » laissaient passer |
 
 **Les deux applications**
 
@@ -7651,6 +7654,39 @@ faire seul, par ordre de priorité ») :
   coupée dans la case de 300 px des listes (291 px de texte pour 262 de place) ; la même longueur
   tient dans la case de 416 px de la Comptabilité. Le test borne donc les invites de `#q` seules,
   et le dit.
+
+**Puis la vérité comptable** (Skander : « on ne doit pas se permettre d'avoir de l'argent faux ou
+des données de comptabilité fausses ») — un audit qui confronte, sur les cinq ans de l'exemple,
+chaque chiffre calculé par DEUX chemins, devenu une suite permanente (`test/suites/verite-comptable.js`) :
+
+- **Deux chemins, un chiffre — et c'est la seule forme de test qui trouve ces défauts.** La TVA
+  d'un acompte fournisseur déduite deux fois, l'avance sur salaire qui ne sortait jamais de la
+  banque : chacun avait ses tests « à un chemin », tous verts. Le journal disait une chose, la
+  déclaration une autre, et aucun test ne les posait côte à côte. Les invariants : chaque pièce
+  équilibrée ; 532 et 54 = Trésorerie ; TVA collectée, déductible (et par taux) et CA du journal =
+  déclaration, **mois par mois** ; résultat des états = balance ; 22/28 = tableau des biens ;
+  à-nouveaux = soldes de clôture ; 411 et 401 = lettrage ; 425 = salaires dus − avances à
+  rembourser. Un invariant neuf s'ajoute à la fonction `ecarts`, qui rend la LISTE des écarts —
+  jamais un booléen : quand il tombe, il dit où.
+- **Une règle posée d'un côté du moteur se cherche de l'autre** (le jumeau manquant, 7.3.0, à
+  l'intérieur d'un seul fichier). L'imputation de l'acompte recréditait le 4366 dans les écritures
+  depuis la 10.2.0 ; `purchaseJournal` et `vatReturn` ne l'ont jamais su. `acomptesDeduits` est la
+  définition unique, que la déclaration lit — le journal de l'écriture reste celui qui l'a posée.
+- **Un test ancien gravait le défaut** (vingt-neuvième fois) : « 380 − 190 + 95 = 285 » comptait
+  la TVA de l'acompte dans l'acompte ET dans la facture. Retourné à 190, avec le cas qui trompait
+  l'exemple : l'acompte et sa facture dans deux mois différents.
+- **Un mouvement d'argent que l'écran enregistre doit exister dans les deux livres** : l'avance
+  vivait dans `data.advances`, lue par la paie pour ses retenues, et par personne pour sa sortie.
+  `cashMovements` et `journalEntries` la lisent ; un identifiant déduit (« av-… », « pay-… ») doit
+  aussi être connu de celui qui le POINTE (`porteur`), sinon la case accepte le clic et ne fait
+  rien — le test lit les préfixes que `cashMovements` fabrique et exige chacun dans `porteur`.
+- **Un exemple qui ne paie pas ses dettes ment sur le produit** : cinq ans de CNSS jamais versée,
+  c'est un bilan qu'aucun comptable ne croirait, et un utilisateur qui ne sait pas où enregistrer
+  le paiement. `socialDue` ne regarde que deux ans : l'exemple paie TOUS les trimestres échus.
+- Piège de l'outil humain : `getBoundingClientRect` donne des coordonnées dans la PAGE, le clic
+  système des coordonnées ÉCRAN (barre de titre et menu : 46 px de plus). Mesuré pendant un
+  défilement animé, le clic tombe une ligne plus haut — j'ai pointé deux mauvaises lignes avant
+  de le voir. `clicsel.sh` (scratch) ajoute le décalage.
 
 ## Pistes pour la suite (non demandées)
 
