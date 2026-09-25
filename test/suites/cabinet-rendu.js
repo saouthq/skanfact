@@ -759,7 +759,13 @@ t('9.4.2 : la ponctuation double porte une espace insécable', () => {
   // On travaille sur les NŒUDS DE TEXTE : toucher au HTML casserait une balise un jour.
   assert.ok(/createTreeWalker\([^)]*NodeFilter\.SHOW_TEXT\)/.test(zone),
     'seuls les nœuds de texte sont touchés, jamais les balises');
-  assert.ok(zone.includes(' '), 'l\'espace fine insécable (U+202F) est celle de la typographie française');
+  // 10.14.0 — la règle vit dans `typoTexte`, que la passe APPELLE — et la phrase de la grille aussi,
+  // qui se pose par `textContent` à la frappe. Elle s'écrit en échappement : l'outil d'édition pose
+  // sinon le caractère réel, que personne ne peut relire (9.2.1).
+  assert.ok(/n\.nodeValue = typoTexte\(t\)/.test(zone), 'la passe sur la prose ne passe plus par la règle commune');
+  const j = src.indexOf('const typoTexte = ');
+  const regle = j > 0 ? src.slice(j, src.indexOf('\n', j)) : '';
+  assert.ok(/'\\u202f\$1'/.test(regle) && /'«\\u202f'/.test(regle), 'l\'espace fine insécable (U+202F) est celle de la typographie française');
   // Et elle est APPELÉE — un mécanisme sans appelant est invisible (7.3.0). Trois portes : la page,
   // l'assistant (hors de #view) et les fenêtres.
   const appels = (src.match(/\btypographie\(/g) || []).length;

@@ -290,7 +290,7 @@
   b('#cl-cloturer', 'Clôture l\'exercice, après les contrôles : c\'est définitif et tracé.');
   b('#cl-rouvrir', 'Rouvre un exercice clôturé. Un motif est demandé : c\'est la trace qui explique pourquoi un chiffre a changé.');
   b('#cl-fichier', 'Enregistre le fichier de clôture à remettre au client.');
-  b('#cl-suivant', 'Ouvre l\'exercice suivant : les à-nouveaux se calculent sur les écritures réelles.');
+  b('#cl-suivant', 'L\'année d\'après : l\'ouvrir, refaire ou compléter son ouverture — ou voir ses à-nouveaux quand tout est reporté. Le bouton dit lequel.');
   b('#li-modele', 'Ajuste le modèle de rubriques de la liasse : ce qui va dans chaque case.');
   b('#li-csv', 'Enregistre la liasse dans un fichier.');
 
@@ -531,7 +531,7 @@
           texte: 'Un prélèvement de décembre, vu sur le relevé de janvier <b>après</b> la clôture. Pour le passer, il a fallu rouvrir l\'exercice — et <b>une réouverture exige un motif</b> : c\'est la seule trace qui expliquera pourquoi un chiffre a changé après coup. Puis il a été clos à nouveau.' },
         { si: garageDeuxExercices, page: garageEn(true, 'comptabilite/exercice'), avant: ouvrirPli('#cl-sec-an'),
           cible: '#cl-sec-an', cote: 'dessus', titre: 'Ce qu\'il laisse au suivant',
-          texte: 'Les <b>à-nouveaux</b> : chaque compte de bilan avec son solde de clôture, et le résultat de l\'année. Le bouton qui ouvre l\'année suivante les pose en une seule pièce — et le registre suit : les biens encore là, avec leur plan d\'amortissement, et les salariés encore présents.' },
+          texte: 'Les <b>à-nouveaux</b> : chaque compte de bilan avec son solde de clôture, et le résultat de l\'année. Le bouton de l\'année suivante les pose en une seule pièce, et dit ce qu\'il fera : une fois posés, il emmène les voir. Et le registre suit : les biens encore là, avec leur plan d\'amortissement, et les salariés encore présents.' },
         { si: garageDeuxExercices, page: garageEn(false, 'comptabilite/journal'),
           cible: ['#c-livres table.list tbody tr', '#c-livres .panel'], cote: 'dessous', titre: 'Les à-nouveaux reçus',
           texte: 'L\'exercice suivant commence par cette pièce, au 1<sup>er</sup> janvier : journal <b>AN</b>, <b>validée</b>, numéro 1. Ce que l\'an dernier a laissé, sans une ligne ressaisie.' },
@@ -1317,7 +1317,7 @@
       conclusion: 'Les à-nouveaux se refont tant qu\'ils ne sont pas validés : un exercice qui bouge encore change son report. Une extourne déjà validée n\'est jamais reposée.',
       etapes: [
         { page: dans('livre', 'comptabilite/exercice'), cible: ['#cl-suivant', '#c-livres .panel'], cote: 'dessous', titre: 'Ouvrir l\'année d\'après',
-          texte: 'Les soldes des comptes de bilan passent en à-nouveaux, en brouillard dans le livre suivant ; le résultat va au report à nouveau. Tu relis, puis tu valides.' }
+          texte: 'Le bouton dit ce qu\'il fera : ouvrir l\'année d\'après, refaire ses à-nouveaux, compléter son ouverture — ou, quand tout est déjà reporté, aller les voir. Les soldes des comptes de bilan passent en à-nouveaux, en brouillard ; le résultat va au report à nouveau. Tu relis, puis tu valides.' }
       ]
     });
 

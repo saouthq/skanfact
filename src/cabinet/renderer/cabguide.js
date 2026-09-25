@@ -278,8 +278,8 @@
         <li><b>Inventaire</b> : le stock compté entre, et sa variation s'écrit — dans le bon sens.</li>
         <li><b>Exercice</b> : les contrôles nomment ce qui manque sans bloquer, puis la clôture fige tout — plus aucun écran
           n'écrit dans un exercice clos. Une réouverture exige un motif : c'est la seule trace qui expliquera un chiffre qui a changé.</li>
-        <li><b>Ouvrir N+1</b> : les à-nouveaux entrent en brouillard sur l'exercice suivant, et se refont tant
-          qu'ils ne sont pas validés. Le registre suit : les biens encore détenus (avec leur plan d'amortissement)
+        <li><b>L'exercice suivant</b> : les à-nouveaux entrent en brouillard sur l'année d'après, et se refont tant
+          qu'ils ne sont pas validés — le bouton dit ce qu'il fera : ouvrir, refaire, compléter, ou voir quand tout est reporté. Le registre suit : les biens encore détenus (avec leur plan d'amortissement)
           et les salariés encore présents — leurs bulletins restent dans leur mois.</li>
         <li><b>Liasse</b> : le bilan et l'état de résultat en rubriques, le résultat fiscal, la déclaration
           d'employeur. <em>À VÉRIFIER : les rubriques suivent l'usage, et aucun taux d'impôt n'est écrit dans
@@ -407,7 +407,7 @@
       vide : il dit que rien n'a été compté.</p>` },
     {
       id: 'exercice', t: 'La clôture de l\'exercice',
-      s: 'Six contrôles, une clôture définitive, les à-nouveaux et le dossier pour le client', couleur: 'th-commencer',
+      s: 'Les contrôles, une clôture définitive, les à-nouveaux et le dossier pour le client', couleur: 'th-commencer',
       geste: { label: 'Ouvrir l\'Exercice', ecran: 'exercice' },
       icon: '<rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>', d: `
       <p class="small">Les <b>contrôles</b> nomment ce qui reste — un brouillard, une déclaration non préparée, une
@@ -416,6 +416,10 @@
       <p class="small"><b>Ouvrir l'exercice suivant</b> pose les à-nouveaux en brouillard, calculés sur les écritures
       réelles et l'ouverture — jamais sur les à-nouveaux précédents, sinon le passé compterait deux fois. Ils se refont
       tant qu'ils ne sont pas validés. Une charge à payer se prépare par l'extourne, posée au 1er janvier.</p>
+      <p class="small">Le bouton dit ce qu'il fera, avant qu'on clique : <b>ouvrir</b> l'année d'après, <b>refaire</b> ses
+      à-nouveaux encore en brouillard, <b>compléter</b> son ouverture quand un bien, un salarié ou une extourne reste à
+      reporter — ou, quand tout est reporté, <b>voir</b> ses à-nouveaux. Si l'exercice a changé après leur validation, l'écran
+      nomme les comptes qui ne suivent plus : on contre-passe la pièce d'à-nouveaux, et on les repose.</p>
       <p class="small">L'écran porte aussi les <b>états financiers</b>, les soldes intermédiaires — chacun avec sa
       formule, pour que tu puisses le refaire — et les ratios, qui valent « — » quand ils n'ont pas de dénominateur.</p>
       <h3>Le dossier pour le client</h3>

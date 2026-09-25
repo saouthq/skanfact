@@ -310,6 +310,13 @@ t('10.14.0 : « Le contrôle passe » ou « Les sept contrôles passent » — l
   assert.strictEqual(ctx.f(12), 'Les 12 contrôles passent.', 'au-delà de dix, le compte ne s\'écrit pas en chiffres');
   assert.ok(/controlesPassent\(\(d\.controles \|\| \[\]\)\.length\)/.test(appCab), 'l\'écran n\'écrit plus le compte lu sur la liste');
   assert.ok(!/Les six contrôles passent/.test(appCab), '« Les six contrôles » est revenu en dur');
+  // Le jumeau de l'Aide : son sous-titre écrivait « Six contrôles » pendant que l'écran en comptait
+  // sept. Ni l'Aide ni une visite ne comptent les contrôles — le compte vit sur l'écran, lu sur la liste.
+  ['cabguide.js', 'cabvisites.js'].forEach(f => {
+    const src = sansCommentaires(lireSource('src', 'cabinet', 'renderer', f));
+    const m = src.match(/\b(?:deux|trois|quatre|cinq|six|sept|huit|neuf|dix|\d+)\s+contrôles\b/i);
+    assert.ok(!m, f + ' écrit un nombre de contrôles en dur : « ' + (m && m[0]) + ' »');
+  });
 });
 
 t('10.14.0 : l\'exercice vit dans l\'ADRESSE de la comptabilité, et toute porte qui en change réécrit l\'adresse', () => {

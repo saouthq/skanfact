@@ -117,6 +117,7 @@
   // et refuser une écriture parce qu'un numéro n'est pas dans NOTRE liste serait imposer la nôtre.
   function ecritureValide(ecriture, plan, opts) {
     const motifs = [];
+    const avertissements = [];
     const e = ecriture || {};
     const lignes = (Array.isArray(e.lignes) ? e.lignes : [])
       .filter(l => l && (txt(l.compte) || num(l.debit) || num(l.credit)));
@@ -131,7 +132,16 @@
       if (!compte) motifs.push(`Ligne ${i + 1} : le compte manque.`);
       else if (!/^\d{1,12}$/.test(compte)) motifs.push(`Ligne ${i + 1} : le compte doit être un numéro.`);
       else if (plan && plan.length && !plan.some(p => compte === String(p) || compte.startsWith(String(p)))) {
-        motifs.push(`Ligne ${i + 1} : le compte ${compte} n'est pas dans le plan — à vérifier, ce n'est pas forcément une faute.`);
+        // 10.14.0 — un compte hors plan se SIGNALE, il ne fait jamais refuser (6.3.0 : chaque cabinet a
+        // son plan). Rangé parmi les motifs, il éteignait les DEUX boutons de la grille — brouillard
+        // compris — alors que rien d'autre ne fait entrer un compte dans le plan d'un dossier : dès la
+        // première pièce, le comptable ne pouvait plus en saisir un seul nouveau. La phrase dit ce qui
+        // se passera : le compte entre au plan à l'enregistrement, sous le nom que lui donnera
+        // `assurerCompte` — ou, si même le plan de référence ne le connaît pas, qu'il faut le relire.
+        const ref = libelleDuPlan(compte);
+        avertissements.push(ref
+          ? `Ligne ${i + 1} : ${compte} n'est pas encore dans le plan de ce dossier — il y entrera à l'enregistrement, sous le nom « ${ref} ».`
+          : `Ligne ${i + 1} : ${compte} n'est ni dans le plan de ce dossier ni dans le plan de référence — à vérifier, c'est peut-être une faute de frappe.`);
       }
       if (d < 0 || c < 0) motifs.push(`Ligne ${i + 1} : un montant négatif change de colonne, il ne garde pas son signe.`);
       if (d && c) motifs.push(`Ligne ${i + 1} : une ligne va au débit OU au crédit, pas les deux.`);
@@ -155,7 +165,7 @@
     if (opts && opts.valider && !txt(e.libelle) && lignes.some(l => !txt(l.libelle))) {
       motifs.push('Le libellé manque : une écriture validée ne se modifie plus, et rien ne dirait ce qu\'elle enregistre. Écris-le sur la pièce, ou sur chaque ligne.');
     }
-    return { ok: !motifs.length, motif: motifs[0] || '', motifs, debit, credit, lignes };
+    return { ok: !motifs.length, motif: motifs[0] || '', motifs, avertissements, debit, credit, lignes };
   }
 
   // ---------------------------------------------------------------- lire `journaux/ecritures.csv`

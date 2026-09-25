@@ -1531,6 +1531,11 @@
   // espaces ordinaires, donc rien de ce qu'un test compare ne change). U+202F est l'espace fine
   // insécable, celle de la typographie française.
   const PROSE = 'p, .lead, .help-body, .wiz-body, .warn-box, .banner span, .empty, .kv span';
+  // La même règle sur un TEXTE (10.14.0) : ce qui se pose par `textContent` pendant la frappe — la
+  // phrase de la grille de saisie — ne passe par aucune prose déjà posée, et son « « » finissait une
+  // ligne pendant que le nom du compte commençait la suivante. Une règle, deux entrées ; jamais deux
+  // copies d'expressions régulières qui divergent.
+  const typoTexte = t => String(t).replace(/ ([?!;:»])/g, '\u202f$1').replace(/« /g, '«\u202f');
   function typographie(racine) {
     (racine || document).querySelectorAll(PROSE).forEach(bloc => {
       const it = document.createTreeWalker(bloc, NodeFilter.SHOW_TEXT);
@@ -1538,7 +1543,7 @@
       while ((n = it.nextNode())) {
         const t = n.nodeValue;
         if (!/[ ][?!;:»]|«[ ]/.test(t)) continue;
-        n.nodeValue = t.replace(/ ([?!;:»])/g, ' $1').replace(/« /g, '« ');
+        n.nodeValue = typoTexte(t);
       }
     });
   }
@@ -1793,7 +1798,10 @@
             <button class="btn" id="imp">Importer un paquet…</button>
             <button class="btn btn-primary" id="new-d">Ajouter mes clients…</button>
           </div></div>
-        ${recoveryBanner()}
+        ${/* 10.14.0 — la ligne calme de la clé de secours doublait l'étape « Enregistrer ta clé de secours »
+              de « Tes premiers pas », dix pixels plus bas, avec le même bouton. Sur cet écran, le panneau est le
+              corps de la page : c'est lui qui la propose (7.18.0 — deux panneaux qui disent la même chose se
+              lisent comme deux choses). Le rouge, lui, ne peut pas vivre ici : il suit un vrai paquet. */''}
         ${premiersPasPanel(true)}
         <div class="panel"><h2>Ce que tu verras ici</h2>
           <p>Tes clients, un par ligne, avec le dernier mois reçu et ce qui manque.</p>
@@ -3736,6 +3744,8 @@
     if (su.etat === 'completer') return `Compléter l'ouverture de ${a}…`;
     return su.existe ? `Poser les à-nouveaux de ${a}…` : `Ouvrir ${a} (à-nouveaux)…`;
   }
+  // Une phrase du moteur citée après deux-points reprend en minuscule (typographie française).
+  const minusculeInitiale = t => (t ? t.charAt(0).toLowerCase() + t.slice(1) : t);
 
   const LIBELLE_CONTROLE = {
     brouillard: 'Les pièces encore en brouillard', attente: 'Le compte d\'attente',
@@ -3797,7 +3807,7 @@
     ${/* Un bouton éteint dit POURQUOI sous ses yeux, jamais dans une infobulle (9.4.5) — et par la
           fonction même qui refuserait le geste. En gris : « rien à reporter » est l'état d'un
           exercice vide, pas une alarme (8.0.1). */''}
-    ${su.etat === 'refus' ? `<p class="small muted mb" id="cl-suivant-motif">${esc(String(su.annee))} ne peut pas s'ouvrir : ${esc(su.motif || '')}</p>` : ''}
+    ${su.etat === 'refus' ? `<p class="small muted mb" id="cl-suivant-motif">${esc(String(su.annee))} ne peut pas s'ouvrir : ${esc(minusculeInitiale(su.motif || ''))}</p>` : ''}
     ${/* Des à-nouveaux VALIDÉS qui ne reprennent plus cet exercice : « contre-passe-les si le report a
           changé » se vérifie ici au lieu de se deviner. Le geste est nommé en entier — où, lequel,
           puis revenir — parce qu'il se fait dans un autre exercice. */''}
@@ -6306,18 +6316,24 @@
     return j.length === 1 && m.length === 1 ? j : j.concat(m);
   }
 
+  const TITRE_COMPTE_NEUF = 'Compte neuf pour ce dossier : il entrera au plan sous ce nom à l\'enregistrement.';
   function lignesSaisieHtml() {
     const p = saisieState.piece || pieceVide();
     const plan = ((livresState.livre || {}).plan) || [];
     const nom = c => (plan.find(x => x.compte === String(c || '').trim()) || {}).libelle || '';
+    // 10.14.0 — un compte que le dossier n'a pas encore montre le nom qu'il PRENDRA (le plan de
+    // référence, comme `assurerCompte`), en italique : on voit ce qu'on vient de taper avant de
+    // l'enregistrer, et on le distingue d'un compte déjà au plan.
+    const neuf = c => { const n = String(c || '').trim(); return !!n && !nom(n) && !!KC.libelleDuPlan(n); };
+    const intitule = c => nom(c) || (neuf(c) ? KC.libelleDuPlan(String(c).trim()) : '');
     // Chaque case porte son `aria-label` : le rapport entre une case et son en-tête de colonne est
     // évident à l'œil et invisible au clavier comme à la voix. Le numéro de ligne y est, sinon cinq
     // cases annoncent toutes « Compte » et on ne sait plus laquelle on remplit.
     const lab = (quoi, i) => `aria-label="${quoi} — ligne ${i + 1}"`;
     return (p.lignes || []).map((l, i) => `<tr data-i="${i}">
       <td><input data-k="compte" class="sa-compte" ${lab('Compte', i)} autocomplete="off" value="${esc(l.compte)}"></td>
-      <td class="sa-nom muted small" data-nom="${i}">${esc(nom(l.compte))}</td>
-      <td><input data-k="libelle" ${lab('Libellé', i)} autocomplete="off" value="${esc(l.libelle)}"></td>
+      <td class="sa-nom muted small${neuf(l.compte) ? ' sa-nom-neuf' : ''}" data-nom="${i}"${neuf(l.compte) ? ` title="${esc(TITRE_COMPTE_NEUF)}"` : ''}>${esc(intitule(l.compte))}</td>
+      <td><input data-k="libelle" ${lab('Libellé', i)} autocomplete="off" value="${esc(l.libelle)}" placeholder="${esc(p.libelle || '')}"></td>
       <td><input data-k="debit" class="r sa-montant${montantIllisible(l.debit) ? ' sa-ko' : ''}" ${lab('Débit', i)}${montantIllisible(l.debit) ? ' aria-invalid="true"' : ''} inputmode="decimal" autocomplete="off" value="${esc(l.debit)}"></td>
       <td><input data-k="credit" class="r sa-montant${montantIllisible(l.credit) ? ' sa-ko' : ''}" ${lab('Crédit', i)}${montantIllisible(l.credit) ? ' aria-invalid="true"' : ''} inputmode="decimal" autocomplete="off" value="${esc(l.credit)}"></td>
       <td class="sa-sup"><button type="button" class="btn btn-sm" data-sup="${i}" title="Retirer cette ligne" aria-label="Retirer cette ligne">✕</button></td>
@@ -6389,8 +6405,12 @@
       const bOk = $('#sa-ok', el), bVal = $('#sa-okvalider', el);
       if (bOk) { bOk.disabled = !v.ok; bOk.title = v.ok ? '' : v.motif; }
       if (bVal) { bVal.disabled = !vv.ok; bVal.title = vv.ok ? '' : vv.motif; }
-      const phrase = !v.ok ? v.motif : !vv.ok ? 'Pour valider : ' + vv.motif : '';
-      if (motif) { motif.hidden = !phrase; motif.textContent = phrase; }
+      // 10.14.0 — un compte neuf pour le dossier se LIT ici, il n'éteint rien : il entrera au plan à
+      // l'enregistrement (6.3.0). Un refus passe devant : c'est lui qui bloque.
+      const av = (v.ok && vv.ok && v.avertissements) || [];
+      const phrase = !v.ok ? v.motif : !vv.ok ? 'Pour valider : ' + vv.motif
+        : av.length ? av[0] + (av.length > 1 ? ` Et ${pl(av.length - 1, 'autre compte neuf', 'autres comptes neufs')} dans cette pièce.` : '') : '';
+      if (motif) { motif.hidden = !phrase; motif.textContent = typoTexte(phrase); }
 
       // Le geste de solde s'annonce là où il se déclenche, avec le montant qu'il posera — et il
       // nomme la colonne quand ce n'est pas celle où l'on est. Le placeholder se remet à jour ici,
@@ -6428,9 +6448,16 @@
           p.lignes[i][k] = inp.value;
           p.touchee = true;
           if (k === 'compte') {
-            const c = (s.livre.plan || []).find(x => x.compte === inp.value.trim());
+            const n = inp.value.trim();
+            const c = (s.livre.plan || []).find(x => x.compte === n);
+            // Le même intitulé qu'au dessin : le nom du plan du dossier, sinon celui qu'il PRENDRA.
+            const ref = !c && n ? KC.libelleDuPlan(n) : '';
             const cell = $(`[data-nom="${i}"]`, corps);
-            if (cell) cell.textContent = c ? (c.libelle || '') : '';
+            if (cell) {
+              cell.textContent = c ? (c.libelle || '') : ref;
+              cell.classList.toggle('sa-nom-neuf', !!ref);
+              if (ref) cell.title = TITRE_COMPTE_NEUF; else cell.removeAttribute('title');
+            }
           }
           // Débit et crédit s'excluent : une ligne va d'un côté OU de l'autre, jamais des deux
           // (invariant de SPEC-DATA-005). On vide l'autre colonne plutôt que de laisser saisir une
@@ -6483,8 +6510,12 @@
         };
         if (k === 'compte') {
           suggererCompte(inp, () => s.livre.plan || [], c => {
+            // 10.14.0 — le libellé de la ligne ne reçoit plus le NOM DU COMPTE : « Banques » sur le
+            // 532 ne dit rien de l'opération, il remplaçait dans le journal le libellé de la pièce
+            // qu'une ligne vide reprend — et la règle T-51 (une validée dit ce qu'elle enregistre)
+            // passait sur des noms de comptes. Le nom vit dans la colonne Intitulé ; le champ vide
+            // montre, en attente, le libellé de la pièce qu'il reprendra.
             p.lignes[i].compte = c.compte; p.touchee = true;
-            if (!String(p.lignes[i].libelle || '').trim()) p.lignes[i].libelle = c.libelle || '';
             redessinerLignes({ i, k: 'libelle' });
           });
         }
@@ -6502,7 +6533,7 @@
 
     // L'entête : chaque champ écrit dans la pièce, aucun ne redessine la grille.
     const j = $('#sa-journal', el);
-    if (j) j.onchange = () => { p.journal = j.value; p.touchee = true; api.dernierJournal(dossier.id, j.value).catch(() => {}); };
+    if (j) j.onchange = () => { p.journal = j.value; p.touchee = true; api.dernierJournal(dossier.id, j.value).catch(() => {}); majSolde(); };
     const dt = $('#sa-date', el);
     if (dt) {
       const lire = () => {
@@ -6512,6 +6543,7 @@
         dt.classList.toggle('sa-ko', ko);
         if (ko) dt.setAttribute('aria-invalid', 'true'); else dt.removeAttribute('aria-invalid');
         if (iso) dt.value = dateAffichee(iso, r);
+        majSolde();
       };
       dt.onblur = lire;
       // Un champ PRÉ-REMPLI se sélectionne au clic : sans ça, cliquer dedans et taper « 4/3 »
@@ -6521,7 +6553,14 @@
       dt.onfocus = () => dt.select();
     }
     const pc = $('#sa-piece', el); if (pc) pc.oninput = () => { p.piece = pc.value; p.touchee = true; signalerSaisies(); };
-    const lb = $('#sa-libelle', el); if (lb) lb.oninput = () => { p.libelle = lb.value; p.touchee = true; signalerSaisies(); };
+    // 10.14.0 — l'en-tête RELIT le verdict : les lignes tapées d'abord, « Pour valider : le libellé
+    // manque » restait écrit sous un libellé qu'on venait de taper, et le bouton restait éteint — un
+    // état lu une fois se périme (7.1.x). Les lignes sans libellé montrent celui qu'elles reprendront.
+    const lb = $('#sa-libelle', el); if (lb) lb.oninput = () => {
+      p.libelle = lb.value; p.touchee = true; signalerSaisies();
+      $$('input[data-k="libelle"]', corps).forEach(x => { x.placeholder = lb.value; });
+      majSolde();
+    };
 
     // L'en-tête a sa propre chaîne, et c'est ENTRÉE — la même touche que dans la grille. Tab ne
     // peut pas la faire : chaque libellé porte sa bulle « i », qui est un vrai bouton et prend donc
@@ -7024,7 +7063,7 @@
     const ok = await confirmDialog(`Extourner à l'ouverture de ${suivante} ?`,
       `<p>${esc(e.journal)} ${esc(e.piece || '(sans pièce)')} n° ${esc(String(e.numero))} du ${esc(fmtJour(e.date))}.</p>
        <p>Son extourne tombe le <b>${esc(fmtJour(date))}</b> : elle vit dans le livre de ${esc(String(suivante))}, pas dans celui-ci.
-       Elle y sera posée par <b>Exercice → Ouvrir ${esc(String(suivante))}</b>, avec les à-nouveaux. L'écriture d'origine ne bouge pas.</p>`,
+       Elle y sera posée depuis l'onglet <b>Exercice</b>, avec les à-nouveaux de ${esc(String(suivante))}. L'écriture d'origine ne bouge pas.</p>`,
       'Prévoir l\'extourne');
     if (!ok) return;
     try {

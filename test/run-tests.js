@@ -6576,8 +6576,14 @@ t('cabinet : la clé de secours se réclame là où on la lit, pas seulement dan
   // le panneau qui le suivait).
   const vide = app.slice(app.indexOf('if (!all.length) {'), app.indexOf('const shown = paginate(rows);'));
   assert.ok(vide.length > 500 && vide.length < 6000, 'tranche de l\'écran vide suspecte : ' + vide.length);
-  assert.ok(vide.includes('${recoveryBanner()}'),
-    'un cabinet sans aucun dossier ne verrait jamais l\'alerte — or c\'est le moment où elle compte le plus');
+  // 10.14.0 — retournée une seconde fois vers la règle : la ligne calme DOUBLAIT l'étape « Enregistrer ta
+  // clé de secours » de « Tes premiers pas », dix pixels plus bas, avec le même bouton. L'écran vide la
+  // propose par le panneau qui en est le corps — l'étape existe dans le moteur, avec son geste.
+  assert.ok(vide.includes('${premiersPasPanel(true)}') && !vide.includes('${recoveryBanner()}'),
+    'un cabinet sans aucun dossier ne verrait jamais l\'alerte, ou la verrait deux fois');
+  const pas = cab.premiersPas({ cabinet: { name: 'C' }, dossiers: [] }, {}).etapes.find(e => e.id === 'cle');
+  assert.ok(pas && !pas.fait && pas.action === 'cle', '« Tes premiers pas » ne propose plus la clé de secours');
+  assert.ok(/cle: \['Enregistrer ma clé…', \(\) => versReglages\('pan-secu'\)\]/.test(app), 'l\'étape de la clé n\'a plus son geste');
 });
 
 t('cabinet : chaque ligne de « À faire » mène quelque part', () => {
@@ -12010,8 +12016,17 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     // demander à l'utilisateur de les trier lui-même.
     assert.strictEqual(K.ecritureValide(cas[5][0]).motif, K.ecritureValide(cas[5][0]).motifs[0]);
     // Un compte hors plan se SIGNALE, il ne fait jamais refuser : chaque cabinet a le sien (6.3.0).
+    // 10.14.0 — l'assertion exigeait le REFUS, sous le commentaire qui l'interdit : elle gravait le
+    // défaut. Rangé parmi les motifs, un compte neuf éteignait les deux boutons de la grille du
+    // Cabinet, et rien d'autre ne fait entrer un compte dans le plan d'un dossier.
     const hors = K.ecritureValide(bonne, ['411', '707']);
-    assert.ok(!hors.ok && /n'est pas dans le plan/.test(hors.motif) && /à vérifier/.test(hors.motif));
+    assert.ok(hors.ok && !hors.motifs.length, 'un compte hors plan fait refuser l\'écriture : ' + hors.motif);
+    assert.ok(/4367/.test(hors.avertissements[0]) && /« TVA collectée »/.test(hors.avertissements[0]),
+      'le compte hors plan n\'est pas signalé avec le nom qu\'il prendra : ' + JSON.stringify(hors.avertissements));
+    // Un numéro que même le plan de référence ne connaît pas se relit : c'est peut-être une faute de frappe.
+    const inconnu = K.ecritureValide({ ...bonne, lignes: [{ compte: '411', debit: 119 }, { compte: '707', credit: 100 }, { compte: '9367', credit: 19 }] }, ['411', '707']);
+    assert.ok(inconnu.ok && /9367/.test(inconnu.avertissements[0]) && /faute de frappe/.test(inconnu.avertissements[0]),
+      'un compte inconnu du plan de référence ne se signale pas comme une faute possible : ' + JSON.stringify(inconnu.avertissements));
   });
 
   // TEST-9.1.0-002

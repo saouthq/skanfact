@@ -478,6 +478,9 @@ tr.cp-miroir td { background: var(--info-soft); }
 /* Le motif du refus, à côté du solde et AU-DESSUS des boutons. Il n'est ni rouge vif ni encadré :
    pendant qu'on tape, « la date manque » est l'état NORMAL d'une pièce qu'on commence. */
 .sa-refus { font-size: 12.5px; color: var(--muted); margin-block-start: 4px; max-width: 46ch; }
+/* 10.14.0 — l'intitulé d'un compte NEUF pour le dossier : le nom qu'il prendra, lu dans le plan de
+   référence. L'italique le distingue d'un compte déjà au plan, sans en faire une alarme. */
+.sa-grille .sa-nom.sa-nom-neuf { font-style: italic; }
 /* L'étiquette des totaux en pied de grille : alignée au début, comme le reste de sa colonne. */
 .sa-grille tfoot .sa-tl { font-weight: 600; }
 .sa-grille tfoot tr:last-child td { color: var(--danger); }

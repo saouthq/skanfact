@@ -908,6 +908,41 @@ t('H-3 : un montant s\'écrit en français dans un champ, et se relit tel que le
   const juste = verdictSaisie(piece([{ compte: '606', debit: '1 250,500' }, { compte: '532', credit: '1.250,500' }]), plan, { valider: true });
   assert.ok(juste.ok, 'une pièce juste tapée en français est refusée : ' + juste.motif);
   assert.strictEqual(juste.debit, 1250.5, 'la pièce juste est lue à un autre montant que celui tapé');
+  // 10.14.0 — le cas vu à la souris : le garage réouvert, des pneus de décembre au 6061. Le compte
+  // n'avait jamais servi dans ce dossier, et les DEUX boutons s'éteignaient avec pour raison « ce
+  // n'est pas forcément une faute » — or seule une écriture fait entrer un compte dans le plan d'un
+  // dossier. Le verdict laisse passer, et dit sous quel nom le compte entrera.
+  // Le plan du dossier ne porte PAS 606 : 6061 n'y entre par aucun préfixe (le plan de ce test, lui, le
+  // porte — il ne pourrait pas voir le défaut).
+  const neuf = verdictSaisie(piece([{ compte: '6061', debit: '250' }, { compte: '532', credit: '250' }]), ['411', '706', '4367', '532'], { valider: true });
+  assert.ok(neuf.ok, 'un compte neuf pour le dossier éteint les boutons de la grille : ' + neuf.motif);
+  assert.ok(/6061/.test(neuf.avertissements[0]) && /« Achats non stockés/.test(neuf.avertissements[0]),
+    'le compte neuf n\'est pas signalé avec le nom qu\'il prendra : ' + JSON.stringify(neuf.avertissements));
+  // Et la grille le MONTRE sans rien éteindre : les boutons suivent les seuls motifs, la phrase lit
+  // les avertissements quand rien ne bloque, et l'intitulé tiré du plan de référence est celui que
+  // `assurerCompte` donnera.
+  const maj = app.slice(app.indexOf('const v = verdictSaisie(p, plan);'), app.indexOf('if (motif) { motif.hidden = !phrase;'));
+  assert.ok(maj.length > 100 && maj.length < 1600, 'tranche de la phrase de la grille introuvable : ' + maj.length);
+  assert.ok(/bOk\.disabled = !v\.ok;/.test(maj) && /v\.avertissements/.test(maj), 'la grille ne montre pas le compte neuf qu\'elle laisse passer');
+  const lignesHtml = tranche(app, 'function lignesSaisieHtml()');
+  assert.ok(/KC\.libelleDuPlan\(/.test(lignesHtml) && /sa-nom-neuf/.test(lignesHtml), 'l\'intitulé d\'un compte neuf reste vide à l\'écran');
+  // La phrase se pose par `textContent` à chaque frappe : elle passe par la MÊME règle typographique
+  // que la prose, sinon son « « » finit une ligne et le nom du compte commence la suivante.
+  const typoTexte = evaluer(/const typoTexte = (t => [^\n]+\));\n/.exec(app)[1]);
+  assert.strictEqual(typoTexte('sous le nom « Achats » : ok ?'), 'sous le nom «\u202fAchats\u202f»\u202f: ok\u202f?', 'la règle typographique du texte ne rend pas l\'espace fine insécable');
+  assert.ok(/if \(motif\) \{ motif\.hidden = !phrase; motif\.textContent = typoTexte\(phrase\); \}/.test(app), 'la phrase de la grille ne passe pas par la règle typographique');
+  // Choisir un compte n'écrit plus son NOM dans le libellé de la ligne : « Banques » remplaçait dans le
+  // journal le libellé de la pièce, et la règle T-51 passait sur des noms de comptes. Le champ vide
+  // montre en attente le libellé de la pièce qu'il reprendra.
+  const pick = /suggererCompte\(inp, \(\) => s\.livre\.plan \|\| \[\], c => \{([\s\S]*?)\n {10}\}\);/.exec(app);
+  assert.ok(pick, 'le choix d\'un compte de la grille est introuvable');
+  assert.ok(!/\.libelle\s*=/.test(pick[1]), 'choisir un compte écrit encore son nom dans le libellé de la ligne');
+  assert.ok(/data-k="libelle"[^>]*placeholder="\$\{esc\(p\.libelle/.test(lignesHtml), 'une ligne sans libellé ne montre pas celui de la pièce qu\'elle reprendra');
+  // Et l'en-tête RELIT le verdict : sans ça, « Pour valider : le libellé manque » restait écrit sous
+  // un libellé qu'on venait de taper, bouton éteint. Chaque champ qui entre dans le verdict, un par un.
+  assert.ok(/j\.onchange = \(\) => \{[^\n]*majSolde\(\);/.test(app), 'changer de journal ne relit pas le verdict');
+  assert.ok(/const lire = \(\) => \{[\s\S]{0,700}?majSolde\(\);\n {6}\};/.test(app), 'corriger la date ne relit pas le verdict');
+  assert.ok(/lb\.oninput = \(\) => \{[\s\S]{0,400}?majSolde\(\);\n {4}\};/.test(app), 'taper le libellé de la pièce ne relit pas le verdict');
   // Une vraie cession tapée « 1 500,000 » s'écrivait « mise au rebut » : le motif suit le prix LU.
   assert.ok(!/Number\(v\('cessionPrix'\)\)/.test(app), 'le motif d\'une cession se lit encore sur le texte');
 });
