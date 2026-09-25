@@ -522,6 +522,12 @@ td.r, th.r { text-align: end; font-variant-numeric: tabular-nums; }
 .suffixe-av, .suffixe-ap { color: var(--muted); font-size: 13px; white-space: nowrap; }
 
 td.tronq { max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Un morceau de texte coupé DANS une cellule (une adresse email sous un téléphone) : la cellule
+   garde ses deux lignes, le morceau garde la sienne (10.14.0). */
+/* Le nom d'un tiers est ce qu'on lit d'abord : « Ahmed Ben Amor » se cassait sur trois lignes à
+   côté de colonnes insécables (10.14.0). */
+td.nom-tiers { min-width: 120px; }
+.ellipse { display: inline-block; max-width: 18ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
 td.tronq.lg { max-width: 320px; }
 /* Un piège de SPÉCIFICITÉ, vieux comme les tableaux de l'application. `table.list th` (une classe,
    deux éléments) l'emporte sur `th.r` (une classe, un élément) : l'en-tête restait donc aligné à

@@ -55,6 +55,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Une **ligne cachée sous l'en-tête collant** d'un tableau qu'on vient d'amener à l'écran | 10.14.0 — le 📎 de « Le trombone » ; un défilement s'arrête à la marge du haut |
 | Un **lien vers un panneau** qui atterrit sur celui d'au-dessus : les panneaux du dessous se remplissent APRÈS le défilement | 10.14.0 — la pastille de licence du Cabinet ; 10.13.0 — « Lire la réponse » |
 | Une **balance d'un mois qui compte l'ouverture deux fois** (le capital à 40 000 pour 20 000) : la contre-passation datée du jour, la nouvelle ouverture du 1er janvier — l'exercice entier, lui, tombe juste | 10.14.0 — l'écart se pose en à-nouveaux complémentaires ; un test qui regarde l'année ne le voit pas |
+| L'application **ne répond plus** sur des données pleines, et le chien de garde la recharge en boucle | 10.14.0 (saturation) — un calcul qui LIT tout se fait dans un lot ; un index se construit une fois, jamais par pièce |
 
 **Les chiffres**
 
@@ -243,6 +244,8 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Une **remarque qui dépend d'une valeur** vit dans la ligne de son titre : posée dessous, elle pousse le bouton qu'on vise | 10.14.0 — « trop claire » et « Enregistrer », 41 px |
 | Un **réglage a UNE porte** : le panneau le montre, la fenêtre qui le montre sur la pièce le change | 10.14.0 — l'image de marque ; une couleur enregistrée avant d'avoir été vue |
 | Le **mois regardé appartient à l'exercice regardé** : UNE garde au dessin, jamais une par porte | 10.14.0 — « décembre 2025 » au-dessus d'août 2026 |
+| **Toute liste qu'on nomme se pagine** — les tableaux secondaires aussi ; un objet trop grand se REPLIE sur sa ligne avant de se paginer | 10.14.0 (saturation) ; 9.4.5 |
+| Un **refus se dit AVANT la question** : on ne confirme pas « Valider 3 526 écritures ? » pour lire ensuite que c'est impossible | 10.14.0 (saturation) ; 7.6.0 |
 
 **Ce qu'on ne fait jamais**
 
@@ -7422,6 +7425,38 @@ fait tomber :
 - **Une porte ne dépend pas de chaque appelant** : `cab:contrepasser` sans date laissait `dateDuMiroir`
   retomber sur le jour de l'écriture corrigée — l'écran passe toujours le jour, le pont joué à la main
   non. Sans date valable, la porte prend le jour du geste ; vu en préparant le test à la souris.
+
+
+**Puis les deux applications sur des données saturées** (Skander : « tester comme un humain
+développeur et senior UI/UX designer les deux apps avec une saturation de données ») — huit mille
+pièces et mille cinq cents clients aux noms longs et arabes (`saturer-entreprise.js`, scratch), un
+livre de douze mille écritures et trois cents dossiers collés d'un coup (`saturer-cabinet.js`, par
+`cabstore` et le moteur). Rien n'y était faux ; tout y était lent ou interminable :
+
+- **Un calcul qui LIT tout se fait dans un lot** (`C.enLot`, `C.duLot`). L'app entreprise gelait à
+  l'ouverture — « L'interface n'a pas répondu depuis 12 s », pile dans `overdueInvoices` et
+  `stockAlerts` — parce que chaque pièce relisait toutes les autres (`creditsFor`, `itemOfLine`,
+  `stockMovements`, `facturesDuDevis`…). Dans un lot, chaque index se construit une fois ; hors lot,
+  rien ne change, et un test le prouve sur l'exemple (avec un avoir en BROUILLON : sans lui, le test
+  passait avec l'index faux — des données qui ne discriminent pas, 10.0.0). Le lot ne vit que le
+  temps d'un calcul en LECTURE (`render()`, chaque `draw` de liste, les agrégats exportés) et rend
+  des COPIES : un appelant qui trie ou annote ne fausse pas le suivant.
+- **Un index par livre, jamais un parcours par ligne** (`indexDuLivre`, WeakMap) : chaque menu de
+  ligne du Cabinet cherchait son écriture dans tout le livre — vingt millions de comparaisons pour
+  un lettrage. Et `validerLot` passait `find` + `reduce` par pièce : 2,2 s pour douze mille, 50 ms.
+- **Toute liste qu'on nomme se pagine, les secondaires aussi** : onze tableaux s'affichaient d'un
+  bloc (Rapprochement : 453 640 px). Un objet trop grand se replie sur sa ligne AVANT de se paginer
+  (le lettrage, comme le grand livre en 9.4.5).
+- **Un refus se dit avant la question** (7.6.0, porté à la licence du Cabinet) : `licence:verifier`
+  passe par la MÊME porte (`licenceBlockCab`) — une seconde phrase aurait divergé.
+- **Un nom se trie comme on le lit** (`Intl.Collator` numérique, créé UNE fois — `localeCompare(…,
+  'fr')` le recréait à chaque comparaison) et **un compte de milliers se groupe** (« 3 526 », dans
+  les cinq jumeaux de `pl()`).
+- **« À jour » ne se dit pas de clients qui n'envoient rien** (`hors` n'est pas `ok`, 6.8.0) : trois
+  cents dossiers hors SkanFact, et les Relances les félicitaient.
+- Trois des dix-sept preuves ont d'abord été discutées : deux défauts remis sont tombés sur un test
+  PLUS ANCIEN que le neuf (la numérotation, le tri) — la règle était déjà tenue ; le troisième est
+  resté vert, et c'est lui qui a montré que le test ne pouvait pas le voir.
 
 ## Pistes pour la suite (non demandées)
 

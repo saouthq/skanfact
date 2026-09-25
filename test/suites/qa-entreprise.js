@@ -1432,7 +1432,7 @@ module.exports = ({ t, assert, lireSource }) => {
     assert.strictEqual(vert('affaires', 0), false, 'Affaires vide : deux verts pour le même geste');
     for (const tab of ['analyse', 'contrats', 'seuil']) assert.strictEqual(vert(tab, 3), false, 'vert sur l\'onglet ' + tab);
     const mg = app.slice(app.indexOf('routes.marges = () =>'), app.indexOf('const affaireDocState = '));
-    const dr = mg.slice(mg.indexOf('const draw = () => {'), mg.indexOf('const draw = () => {') + 900);
+    const dr = mg.slice(mg.indexOf('const draw = dansUnLot(() => {'), mg.indexOf('const draw = dansUnLot(() => {') + 900);
     assert.ok(dr.indexOf("$('#new-proj').classList.toggle") > 0 && dr.indexOf("$('#new-proj').classList.toggle") < dr.indexOf('drawProjects()'), 'le vert se décide ailleurs qu\'au dessin de chaque onglet');
   });
   // 10.12.0 — la fenêtre qui rattache des achats montrait date, numéro, fournisseur : « BS-2026-0412,
@@ -1519,7 +1519,7 @@ module.exports = ({ t, assert, lireSource }) => {
   // le clic suivant au même endroit reclassait une charge qu'on n'avait pas visée.
   t('Seuil de rentabilité : reclasser une charge ne déplace aucune ligne', () => {
     const app = code('src', 'renderer', 'app.js');
-    const be = app.slice(app.indexOf('function drawBreakEven()'), app.indexOf('const draw = () => {', app.indexOf('function drawBreakEven()')));
+    const be = app.slice(app.indexOf('function drawBreakEven()'), app.indexOf('const draw = dansUnLot(() => {', app.indexOf('function drawBreakEven()')));
     assert.ok(be.length > 1500 && be.length < 9000, 'tranche drawBreakEven (' + be.length + ')');
     assert.ok(!/cats\.filter\(c => C\.isFixedCategory\(data, c\) === /.test(be), 'les catégories se rangent encore par état : elles changent de place au clic');
     assert.ok(/cats\.map\(\(c, i\) =>/.test(be) && /type="radio" name="fv-\$\{i\}" data-fix=/.test(be), 'chaque catégorie ne porte plus son choix sur sa ligne');
@@ -1593,7 +1593,7 @@ module.exports = ({ t, assert, lireSource }) => {
     assert.ok(vide > 0 && vide < dt.indexOf('<div class="stats">'), 'des cartes à zéro s\'affichent encore sans aucun bien');
     assert.ok(/etatVide\('Ce que tu gardes plusieurs années'/.test(dt), 'l\'état vide ne dit plus à quoi sert la page');
     assert.ok(/immo-premier', '\+ Enregistrer mon premier bien', true/.test(dt), 'l\'état vide ne porte plus son geste principal');
-    const draw = r.slice(r.indexOf('const draw = () => {'));
+    const draw = r.slice(r.indexOf('const draw = dansUnLot(() => {'));
     assert.ok(/\$\('#im-csv'\)\.hidden = s\.tab !== 'tableau' \|\| !data\.assets\.length/.test(draw), 'l\'export se propose sur rien');
     assert.ok(/years\.length < 2/.test(draw), 'une liste d\'une seule année s\'affiche encore');
     assert.ok(/classList\.toggle\('btn-primary', !!data\.assets\.length/.test(draw), 'deux verts pour le même geste (en-tête et état vide)');
@@ -1711,7 +1711,7 @@ module.exports = ({ t, assert, lireSource }) => {
   t('Le bouton de création d\'une liste nomme ce qu\'il va créer', () => {
     const app = code('src', 'renderer', 'app.js');
     const f = corpsDe(app, 'function bindCombo(');
-    const dessin = f.slice(f.indexOf('const draw = () => {'), f.indexOf('const close = () =>'));
+    const dessin = f.slice(f.indexOf('const draw = dansUnLot(() => {'), f.indexOf('const close = () =>'));
     // La RÈGLE, pas la ligne : cette assertion recopiait `${o.add} « … »` mot pour mot, et gravait
     // donc le défaut qu'elle a laissé passer — `o.add` vide quand `bindCombo` ne le reçoit pas, un
     // bouton blanc sous « Aucun client pour l'instant » (10.13.0, vu à la souris).

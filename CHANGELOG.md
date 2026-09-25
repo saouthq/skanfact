@@ -400,6 +400,38 @@ Et en suivant à la souris le conseil de l'écran jusqu'au bout :
 - Une contre-passation demandée sans date se date du jour du geste, borné à l'exercice : la porte ne
   dépend plus de l'écran qui l'appelle (sans date, le miroir tombait le jour de l'écriture corrigée).
 
+### Tester sur des données saturées
+
+Les deux applications ouvertes sur ce qu'aucun exemple ne porte : huit mille pièces et mille cinq
+cents clients (noms longs, arabes, guillemets), un livre de douze mille écritures, trois cents
+dossiers collés d'un coup. Rien n'y était faux ; tout y était lent ou interminable.
+
+- **L'application entreprise ne gèle plus à l'ouverture.** Avec huit mille pièces, l'interface
+  mettait plus de douze secondes à répondre, et le chien de garde la rechargeait en boucle. Les
+  calculs qui lisent tout (les relances, « À faire », les écritures, le stock, les statistiques, le
+  paquet) se font maintenant dans un « lot » où chaque index n'est construit qu'une fois : « À faire »
+  passe de 10,4 s à 0,27 s, les écritures d'une année de 8,9 s à 0,5 s, l'ouverture complète à moins
+  de quatre secondes. « Me guider » passe de 6 s à 0,3 s.
+- **Tout tableau qu'on nomme se pagine**, y compris les secondaires : reportées, échéances à sept
+  jours et devis sans réponse des Relances ; attestations de retenue ; état du stock, inventaire et
+  alertes ; prévision et rapprochement de trésorerie ; salariés et compteurs de congés. L'onglet
+  Rapprochement faisait 453 640 px de haut, il en fait 2 214.
+- Un nom se trie comme on le lit : « Café 3 » avant « Café 13 », dans les deux applications.
+- Un compte de milliers se lit groupé : « 3 526 pièces », jamais « 3526 ».
+- L'axe d'un graphique dit « 747 M » au lieu de « 746977 k » ; « 443 devis » au lieu de « 443 deviss ».
+- Un nom de client long ne pousse plus le tableau hors de l'écran : il se coupe, entier au survol.
+- **Cabinet** : valider un lot de douze mille pièces prenait 2,2 s (chaque validation relisait tout
+  le livre) : 50 ms. Le brouillard de la Saisie (3 526 pièces sur 153 000 px), la Production
+  (300 dossiers) et les Relances se paginent ; le Lettrage replie chaque tiers sur une ligne qui dit
+  ses pièces ouvertes et son reste dû ; les menus de ligne trouvent leur écriture par un index
+  (le Lettrage passe de 1,2 s à 0,1 s, la Saisie de 2 s à 0,06 s).
+- **Cabinet** : sans licence, « Valider », « Contre-passer », « Extourner », « Clôturer » et
+  « Valider un lot » disent le refus **avant** de poser leur question — on ne confirme plus
+  « Valider 3 526 écritures ? » pour lire ensuite que c'est impossible. « Enregistrer et valider »
+  garde la pièce dans la grille.
+- **Cabinet** : « Personne à relancer : tous tes dossiers sont à jour » ne se dit plus de clients
+  qui n'envoient aucun paquet ; la page dit combien envoient, et que les autres n'ont rien à envoyer.
+
 ## 10.13.0-beta.1 — 24/09/2026
 
 **Avant la mise en production : les deux applications et le pont entre elles, testés en entier.**

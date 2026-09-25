@@ -2413,6 +2413,15 @@ function licenceCabinetStatus() {
 }
 
 ipcMain.handle('licence:status', () => { requireOpen(); return licenceCabinetStatus(); });
+// Le refus de licence se dit AVANT la question « Valider ces 3 526 écritures ? », jamais après
+// (10.14.0, vu sur un cabinet saturé) : répondre oui à une question pour s'entendre dire non, c'est
+// répondre pour rien (règle 7.6.0 : les contrôles passent avant les grandes questions). Même porte,
+// même phrase que le geste lui-même — une seconde phrase aurait divergé.
+ipcMain.handle('licence:verifier', (_e, quoi) => {
+  requireOpen();
+  try { licenceBlockCab(String(quoi || 'Valider une écriture')); return { ok: true }; }
+  catch (e) { return { ok: false, motif: e.message }; }
+});
 
 // On REFUSE d'enregistrer une clé qui ne vaut rien ici, plutôt que de la ranger et de laisser le
 // comptable croire qu'il est en règle (règle 6.4.0). Et le refus dit POUR QUI la clé a été émise :

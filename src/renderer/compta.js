@@ -27,6 +27,8 @@
 
   // Le dinar tunisien compte trois décimales : un arrondi à deux centimes fabriquerait un écart de
   // balance sur la première facture venue. Corps IDENTIQUE à celui de core.js — un test l'exige.
+  // Un comparateur construit une fois (10.14.0) : voir core.js.
+  const TRI_NUMERIQUE = new Intl.Collator(undefined, { numeric: true });
   function round3(n) { return Math.round((Number(n) || 0) * 1000) / 1000; }
 
   // 10.10.0 (C-04) — un montant ou une date qui sort du moteur DANS UNE PHRASE s'écrit comme
@@ -104,7 +106,7 @@
   // Cabinet (« un logiciel qui écrit « 1 dossier(s) » paraît bâclé ») — et ce module, créé en
   // 9.1.0, n'avait jamais été couvert par le garde-fou de la 7.30.0. Même corps que `plFr` de
   // core.js, et un test compare les deux.
-  const plFr = (n, un, plur) => `${n} ${Math.abs(n) > 1 ? (plur || un + 's') : un}`;
+  const plFr = (n, un, plur) => `${Math.abs(n) >= 1000 ? Number(n).toLocaleString('fr-FR') : n} ${Math.abs(n) > 1 ? (plur || un + 's') : un}`;
 
   // ---------------------------------------------------------------- la validité d'une écriture
   //
@@ -452,7 +454,7 @@
       c.lignes.sort((a, b) => txt(a.date).localeCompare(txt(b.date))
         || (num(a.numero) - num(b.numero))
         || txt(a.journal).localeCompare(txt(b.journal))
-        || txt(a.piece).localeCompare(txt(b.piece), undefined, { numeric: true }));
+        || TRI_NUMERIQUE.compare(txt(a.piece), txt(b.piece)));
       c.lignes = c.lignes.map(e => {
         solde = round3(solde + num(e.debit) - num(e.credit));
         c.debit = round3(c.debit + num(e.debit));
@@ -505,7 +507,7 @@
       .sort((a, b) => a.date.localeCompare(b.date)
         // Le même jour : les validées dans l'ordre de leur numéro, puis les brouillards.
         || ((a.fixe ? 0 : 1) - (b.fixe ? 0 : 1)) || (a.fixe - b.fixe)
-        || a.piece.localeCompare(b.piece, undefined, { numeric: true })
+        || TRI_NUMERIQUE.compare(a.piece, b.piece)
         || a.journal.localeCompare(b.journal))
       .map((p, i) => {
         const { fixe, ...reste } = p;
@@ -993,13 +995,19 @@
 
   // Valider : le seul endroit où un numéro naît. Le contrôle passe AVANT l'attribution — sinon un
   // refus trouerait la numérotation, exactement le défaut que la 6.0.0 a trouvé sur `nextNumber`.
-  function validerEcriture(livre, id, qui, quand) {
-    const e = livre.ecritures.find(x => x.id === id);
+  //
+  // `lot` (interne) : ce que `validerLot` a déjà calculé une fois — l'index des écritures, le plan et
+  // le plus grand numéro. Sans lui, chaque validation d'un lot relisait le livre entier deux fois :
+  // 2,2 s pour douze mille pièces, le processus principal muet pendant ce temps (10.14.0,
+  // saturation). Le numéro reste le même : le plus grand attribué, plus un.
+  function validerEcriture(livre, id, qui, quand, lot) {
+    const e = lot ? lot.parId.get(id) : livre.ecritures.find(x => x.id === id);
     if (!e) return { ok: false, motif: 'Cette écriture n\'existe pas.' };
     if (e.statut !== 'brouillard') return { ok: false, motif: 'Cette écriture est déjà validée : elle se contre-passe, elle ne se revalide pas.' };
-    const v = ecritureValide(e, livre.plan.map(c => c.compte), { valider: true });
+    const v = ecritureValide(e, lot ? lot.plan : livre.plan.map(c => c.compte), { valider: true });
     if (!v.ok) return { ok: false, motif: v.motif, motifs: v.motifs };
-    e.numero = livre.ecritures.reduce((m, x) => Math.max(m, Number(x.numero) || 0), 0) + 1;
+    e.numero = (lot ? lot.max : livre.ecritures.reduce((m, x) => Math.max(m, Number(x.numero) || 0), 0)) + 1;
+    if (lot) lot.max = e.numero;
     e.statut = 'validee';
     e.valideeLe = Number(quand) || 0;
     trace(livre, qui, 'validation', `${e.journal} ${e.piece} n° ${e.numero}`, quand);
@@ -1405,16 +1413,22 @@
   // journal plutôt que dans celui, invisible, où les pièces ont été tapées.
   function validerLot(livre, filtre, qui, quand) {
     const f = filtre || {};
+    const ids = Array.isArray(f.ids) ? new Set(f.ids) : null;
     const cibles = (livre.ecritures || [])
       .filter(e => e.statut === 'brouillard')
       .filter(e => !f.journal || e.journal === f.journal)
       .filter(e => !f.mois || String(e.date || '').slice(0, 7) === f.mois)
-      .filter(e => !Array.isArray(f.ids) || f.ids.includes(e.id))
+      .filter(e => !ids || ids.has(e.id))
       .slice()
       .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : (Number(a.creeLe) || 0) - (Number(b.creeLe) || 0)));
     const validees = [], refusees = [];
+    const lot = {
+      parId: new Map((livre.ecritures || []).map(x => [x.id, x])),
+      plan: (livre.plan || []).map(c => c.compte),
+      max: (livre.ecritures || []).reduce((m, x) => Math.max(m, Number(x.numero) || 0), 0)
+    };
     cibles.forEach(e => {
-      const r = validerEcriture(livre, e.id, qui, quand);
+      const r = validerEcriture(livre, e.id, qui, quand, lot);
       if (r.ok) validees.push({ id: e.id, numero: e.numero, piece: e.piece, journal: e.journal, date: e.date });
       else refusees.push({ id: e.id, piece: e.piece, journal: e.journal, date: e.date, motif: r.motif, motifs: r.motifs || [] });
     });

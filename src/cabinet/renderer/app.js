@@ -68,7 +68,7 @@
   // La sélection posée par une échéance (9.4.6). Elle ne vit pas dans `prefs` : c'est un état de
   // parcours — « je viens de cliquer sur les onze clients de la TVA d'avril » — et le retrouver
   // lundi matin sans savoir d'où il vient serait un piège. Il se vide dès qu'on quitte les Relances.
-  const relState = { seulement: null, depuis: '', coches: new Set() };
+  const relState = { seulement: null, depuis: '', coches: new Set(), pg: { page: 1, size: 50 } };
 
   const listState = {
     q: '', withArchived: false, onlySkanfact: false,
@@ -580,7 +580,7 @@
   // « 1 dossier(s) » : personne n'écrit ça non plus. Un logiciel qui parle mal donne l'impression
   // d'être bâclé, et c'est le premier contact d'un comptable avec SkanFact.
   // Le pluriel regarde la valeur absolue (10.12.0, jumeau de l'app entreprise : « −3 jour »).
-  const pl = (n, un, plur) => `${n} ${Math.abs(n) > 1 ? (plur || un + 's') : un}`;
+  const pl = (n, un, plur) => `${Math.abs(n) >= 1000 ? Number(n).toLocaleString('fr-FR') : n} ${Math.abs(n) > 1 ? (plur || un + 's') : un}`;
   // Les douze mois, dans l'ordre du calendrier. Ils servent à dessiner l'année ENTIÈRE sur la fiche
   // d'un client : n'afficher que les mois attendus laissait croire que l'application en avait perdu.
   // Les codes de journal proposés. Ce réglage vaut pour TOUS les dossiers, donc la liste est celle
@@ -2888,11 +2888,21 @@
   // Les deux gestes du comptable sur une écriture. Chacun DEMANDE d'abord et dit ce qu'il fait —
   // valider est irréversible (le numéro est pris pour toujours), contre-passer laisse une trace
   // dans le journal que personne ne pourra effacer.
+  // La licence se vérifie AVANT la question (10.14.0) : sans ça, le comptable confirmait « Valider
+  // 3 526 écritures ? » pour lire ensuite que c'était impossible. Rend `true` si c'est refusé.
+  async function refusLicence(quoi) {
+    let v = null;
+    try { v = await api.licenceVerifier(quoi); } catch (_) { return false; }
+    if (v && v.ok === false) { await infoDialog('Validation impossible', plainError({ message: v.motif })); return true; }
+    return false;
+  }
+
   async function validerEcriture(root, dossier, e) {
     // Ce qu'on valide se NOMME (T-51). La fenêtre écrivait « AC — » sur une pièce sans référence ni
     // libellé : on lisait un tiret et on cliquait. Ce qui manque est écrit en toutes lettres — et la
     // référence n'est pas exigée pour autant (savoir si un cabinet l'impose est une règle
     // d'organisation que personne n'a confirmée, règle 9.1.1) : on la montre, et on laisse passer.
+    if (await refusLicence('Valider une écriture')) return;
     const quoi = [esc(e.journal), e.piece ? esc(e.piece) : '<i>sans référence</i>'].filter(Boolean).join(' ');
     const ok = await confirmDialog('Valider cette écriture ?',
       `<p><b>${quoi}</b>${e.libelle ? ' — ' + esc(e.libelle) : ''}</p>
@@ -2948,6 +2958,7 @@
   }
 
   async function contrepasserEcriture(root, dossier, e) {
+    if (await refusLicence('Contre-passer une écriture')) return;
     const jour = K.today();
     const ok = await confirmDialog('Contre-passer cette écriture ?',
       `<p><b>n° ${esc(String(e.numero))} — ${esc(e.journal)} ${esc(e.piece)}</b></p>
@@ -3239,7 +3250,7 @@
       const p = pastilleCompta(o);
       return `<button type="button" role="tab" data-tab="${o}" class="${s.onglet === o ? 'active' : ''}" aria-selected="${s.onglet === o}">${esc(ONGLETS_COMPTA[o])}${
         o === 'saisie' ? pointSale(dossier.id) : ''}${
-        p ? ` <span class="tab-n" title="${esc(p.titre)}">${p.n}</span>` : ''}${
+        p ? ` <span class="tab-n" title="${esc(p.titre)}">${esc(K.nbFr(p.n))}</span>` : ''}${
         o === 'exercice' && s.livre && s.livre.exercice && s.livre.exercice.clos ? ' <span class="badge b-paid">clos</span>' : ''}</button>`;
     };
 
@@ -3260,7 +3271,7 @@
         ${groupes.length > 1 ? `<div class="c-groupes" id="c-groupes" role="tablist" aria-label="Que fais-tu dans ce dossier ?">${groupes.map(g => {
           const n = totalGroupe(g);
           return `<button type="button" role="tab" data-groupe="${g.id}" class="${g.id === gOuvert.id ? 'active' : ''}" aria-selected="${g.id === gOuvert.id}">${esc(g.label)}${
-            g.id === 'saisir' ? pointSale(dossier.id) : ''}${n ? ` <span class="tab-n">${n}</span>` : ''}</button>`;
+            g.id === 'saisir' ? pointSale(dossier.id) : ''}${n ? ` <span class="tab-n">${esc(K.nbFr(n))}</span>` : ''}</button>`;
         }).join('')}</div>` : ''}
         <div class="tabs" id="c-tabs" role="tablist" aria-label="${esc(gOuvert.label)}">${gOuvert.onglets.filter(ongletDispo).map(boutonOnglet).join('')}</div>
       </div>${alerteHtml}${corps}`;
@@ -3561,14 +3572,21 @@
             Les soldés tiennent sur une ligne dépliable, sous les ouverts. Et chaque pièce ouverte
             S'OUVRE (T-11) : « FAC-2026-014 · en retard » est une question, pas une information. */''}
       ${pagerBar(ouverts.length, s, 'tiers', 'tiers')}
-      ${paginate(ouverts, s).map(r => `<div class="panel mt"><h2>${esc(r.tiers)} <span class="muted small">${esc(r.account)} · reste ${esc(money(r.reste))}</span></h2>
+      ${/* 10.14.0 (saturation) — un tiers REPLIÉ sur sa ligne, comme un compte du grand livre
+            (9.4.5) : vingt-cinq clients de soixante-dix pièces ouvertes chacun faisaient 77 000 px.
+            La ligne repliée porte ce qu'on vient chercher — combien de pièces, combien reste dû —
+            et une page de trois tiers au plus s'ouvre d'elle-même. */''}
+      ${(page => page.map(r => `<details class="panel mt gl-compte lt-tiers"${page.length <= 3 ? ' open' : ''}>
+        <summary class="gl-tete"><span class="gl-nom">${esc(r.tiers)} <span class="muted small">${esc(r.account)}</span></span>
+          <span class="gl-chiffres"><span class="muted gl-mv">${pl(r.ouverts.length, 'pièce ouverte', 'pièces ouvertes')}</span>
+            <strong class="gl-m gl-solde">Reste ${esc(money(r.reste))}</strong></span></summary>
         <div class="scroll-x"><table class="list compact"><thead><tr><th class="nw">Pièce</th><th class="nw">Date</th>
           <th class="r nw">Débit</th><th class="r nw">Crédit</th><th class="r nw">Reste</th><th></th></tr></thead>
         <tbody>${r.ouverts.map(o => `<tr>
           <td class="nw">${esc(o.piece)}${o.retard ? ' <span class="badge b-late">en retard</span>' : ''}</td>
           <td class="nw">${esc(fmtJour(o.date))}</td>
           <td class="r nw">${o.debit ? esc(money(o.debit)) : ''}</td><td class="r nw">${o.credit ? esc(money(o.credit)) : ''}</td>
-          <td class="r nw">${esc(money(o.reste))}</td>${rowMenuCell(o.ecritureId ? 'E:' + o.ecritureId : o.piece + '|' + (o.mois || ''))}</tr>`).join('')}</tbody></table></div></div>`).join('')}
+          <td class="r nw">${esc(money(o.reste))}</td>${rowMenuCell(o.ecritureId ? 'E:' + o.ecritureId : o.piece + '|' + (o.mois || ''))}</tr>`).join('')}</tbody></table></div></details>`).join(''))(paginate(ouverts, s))}
       ${soldes.length ? `<details class="mt" id="lv-soldes"><summary>${pl(soldes.length, 'tiers entièrement lettré', 'tiers entièrement lettrés')} — ${pl(soldes.reduce((a, r) => a + r.lettrees, 0), 'pièce soldée', 'pièces soldées')}</summary>
         <ul class="small">${soldes.map(r => `<li>${esc(r.tiers)} <span class="muted">${esc(r.account)} · ${pl(r.lettrees, 'pièce soldée', 'pièces soldées')}</span></li>`).join('')}</ul></details>` : ''}
       ${!ouverts.length && !soldes.length ? '<div class="empty mini">Aucune pièce sur ce compte pour cette période.</div>' : ''}`;
@@ -3706,7 +3724,7 @@
   const panneauPieces = (c, titre) => `<div class="panel mt" id="dc-pieces"><h2>${esc(titre)} — les pièces</h2>
     <div class="scroll-x"><table class="list compact"><thead><tr><th class="nw">Date</th><th class="nw">Journal</th><th class="nw">Pièce</th><th>Libellé</th></tr></thead>
     <tbody>${(c.ecritures || []).map(id => {
-      const e = (livresState.livre.ecritures || []).find(x => x.id === id);
+      const e = ecritureDuLivre(livresState.livre, id);
       return e ? `<tr><td class="nw">${esc(fmtJour(e.date))}</td><td class="nw">${esc(e.journal)}</td>
         <td class="nw">${esc(e.piece)}</td><td class="tronq lg" title="${esc(e.libelle)}">${esc(e.libelle)}</td></tr>` : '';
     }).join('')}</tbody></table></div></div>`;
@@ -4077,6 +4095,7 @@
     if (fus) fus.onclick = () => fusionnerLivre(root, dossier);
     const clo = $('#cl-cloturer', el);
     if (clo) clo.onclick = async () => {
+      if (await refusLicence('Clôturer un exercice')) return;
       const echecs = (s.cloture.controles || []).filter(c => !c.ok);
       // Le corps d'un `confirmDialog` du Cabinet est du HTML (T-25) : les `\n` et les puces d'une
       // chaîne brute s'y aplatissaient en un pavé de six lignes, et deux avertissements collés ne
@@ -5162,7 +5181,7 @@
     // Trois états, le vocabulaire du LIVRE (10.12.0) : « brouillon » disait un bulletin sans aucune
     // écriture, et « écrite » une écriture encore au brouillard — pendant que la déclaration du même
     // mois disait « pas encore d'écriture validée ». Deux écrans ne se contredisent pas (6.8.1).
-    const statutDe = id => ((L.ecritures || []).find(e => e.id === id) || {}).statut;
+    const statutDe = id => (ecritureDuLivre(L, id) || {}).statut;
     const etatDe = b => !b.ecritureId ? 'a-passer' : statutDe(b.ecritureId) === 'brouillard' ? 'brouillard' : 'ecrite';
     const auBrouillard = bulletins.some(b => etatDe(b) === 'brouillard');
     const t = s.paieTrimestre || Math.ceil(m / 3);
@@ -5741,7 +5760,7 @@
       </tr></thead><tbody>
       ${vues.map(l => {
         const r = l.rapprochement || { niveau: 'aucun' };
-        const e = r.ecritureId ? (s.livre.ecritures || []).find(x => x.id === r.ecritureId) : null;
+        const e = r.ecritureId ? ecritureDuLivre(s.livre, r.ecritureId) : null;
         // « En face » montre la LIGNE appariée, avec son montant (T-12) : le moteur rapproche ligne
         // à ligne, et deux lignes de relevé sur deux lignes d'une même pièce de paie affichaient le
         // même texte — trait pour trait la faute que le moteur interdit. Un contrôle qu'on ne peut
@@ -5854,7 +5873,7 @@
       const r = l.rapprochement || { niveau: 'aucun' };
       const actions = [];
       if (r.ecritureId) {
-        const e = (s.livre.ecritures || []).find(x => x.id === r.ecritureId);
+        const e = ecritureDuLivre(s.livre, r.ecritureId);
         if (e) actions.push({ icon: 'loupe', label: 'Voir l\'écriture en face', hint: `${e.journal || ''} ${e.piece || ''} — toutes ses lignes`, run: () => ecritureDialog(e, Number(r.ligne)) });
         actions.push({ icon: 'non', label: 'Défaire le rapprochement', hint: 'Même « rapproché » se défait : l\'automatique propose, c\'est toi qui décides', run: async () => {
           try { const x = await api.rapprocher({ dossierId: dossier.id, annee: s.annee, releveId: R.id, ligneId: l.id, choix: {} }); s.livre = x.livre; drawLivres(root, dossier); }
@@ -6339,6 +6358,11 @@
     const brouillards = (s.livre.ecritures || []).filter(e => e.statut === 'brouillard')
       .slice().sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
     const guides = K.guidesDuDossier(S, dossier);
+    // Le brouillard d'un gros dossier comptait 3 532 pièces sous la grille : 153 000 px et deux
+    // secondes à chaque redessin de la saisie (10.14.0, saturation). On pagine les PIÈCES (9.4.5) ;
+    // les lots proposés, eux, portent sur tout le brouillard — c'est lui qu'ils valident.
+    const pagerBrouillard = pagerBar(brouillards.length, s, 'pièce');
+    const brouillardsPage = paginate(brouillards, s);
 
     return `<div class="sa-tete" id="sa-tete">
         <label class="field sa-j"><span class="fl">Journal ${info('sa.journal')}</span>
@@ -6404,7 +6428,7 @@
         <div class="scroll-x"><table class="list compact"><thead><tr>
           <th class="nw">Date</th><th>Journal</th><th class="nw">Pièce</th><th>Libellé</th>
           <th class="r nw">Total</th><th class="nw">État</th><th></th></tr></thead>
-        <tbody>${brouillards.map(e => {
+        <tbody>${brouillardsPage.map(e => {
           const t = KC.soldeDeLignes(e.lignes);
           return `<tr data-br="${esc(e.id)}" class="br-ligne">
             <td class="nw">${esc(fmtJour(e.date))}</td><td>${esc(e.journal)}</td><td class="nw">${esc(e.piece || '—')}</td>
@@ -6412,7 +6436,7 @@
             <td class="r nw">${esc(montant(t.debit))}</td>
             <td class="nw">${t.equilibre ? '<span class="muted">équilibrée</span>' : `<span class="err-inline">écart ${esc(montant(t.ecart))}</span>`}</td>
             ${RowMenu.cellule('B:' + e.id, '')}</tr>`;
-        }).join('')}</tbody></table></div>`
+        }).join('')}</tbody></table></div>${pagerBrouillard}`
         : `<div class="empty mini"><p>Rien en brouillard.</p><p class="muted small">Tout ce que tu saisis ici arrive en brouillard : rien ne prend de numéro tant que tu ne l'as pas validé.</p></div>`}
       <p class="muted small mt">Une fois validée, une écriture ne se modifie plus : elle se <b>contre-passe</b> (une écriture miroir pour corriger une erreur, datée du jour — ou du dernier jour d'un exercice passé : le menu de la ligne dit laquelle)
       ou s'<b>extourne</b> ${info('sa.extourne')} (une écriture miroir au 1er du mois suivant, pour une charge à payer). Les deux gestes sont dans le menu de la ligne, au livre-journal comme à la recherche.</p>
@@ -6463,6 +6487,8 @@
   function brancherSaisie(el, root, dossier) {
     const s = livresState;
     if (!s.livre || !saisieState.piece) return;
+    // La pagination du brouillard : la pièce en cours vit dans `saisieState`, le redessin la garde.
+    bindPager(el, () => drawLivres(root, dossier), s);
     const p = saisieState.piece;
     const corps = $('#sa-lignes', el);
     const t = touchesSaisie();
@@ -6759,6 +6785,9 @@
         await infoDialog('Cette écriture n\'entre pas', v.motifs.join('\n'));
         return;
       }
+      // « Enregistrer et valider » sans licence : on le dit AVANT d'écrire quoi que ce soit, et la
+      // pièce reste dans la grille — elle s'enregistre en brouillard d'un clic (10.14.0).
+      if (puisValider && await refusLicence('Valider une écriture')) return;
       try {
         const res = p.id
           ? await api.modifierEcriture(dossier.id, s.annee, p.id, ecr)
@@ -6813,7 +6842,7 @@
     bindRowMenus(el, cle => {
       if (String(cle).startsWith('A:')) return actionsAbonnement(root, dossier, cle);
       if (!String(cle).startsWith('B:')) return [];
-      const e = (s.livre.ecritures || []).find(x => x.id === String(cle).slice(2));
+      const e = ecritureDuLivre(s.livre, String(cle).slice(2));
       return e ? actionsEcriture(root, dossier, e) : [];
     });
   }
@@ -6882,6 +6911,7 @@
       && (!filtre.journal || e.journal === filtre.journal)
       && (!filtre.mois || String(e.date || '').slice(0, 7) === filtre.mois));
     if (!cibles.length) { await infoDialog('Rien à valider', 'Aucune écriture en brouillard ne correspond.'); return; }
+    if (await refusLicence('Valider un lot d\'écritures')) return;
     const quoi = filtre.journal ? `du journal ${filtre.journal}` : KC.deMois(moisLabelCourt(filtre.mois));
     // L'accord suit le nombre (10.12.0, vu au test humain) : « Chacune… Celles qui… » sous « Valider
     // 1 écriture » se lisait comme un modèle de phrase qu'on n'a pas fini de remplir.
@@ -7113,11 +7143,28 @@
     const st = $('#re-statut', el); if (st) st.onchange = () => { rechState.statut = st.value; drawLivres(root, dossier); };
     bindRowMenus(el, cle => {
       if (!String(cle).startsWith('R:') || !s.livre) return [];
-      const e = (s.livre.ecritures || []).find(x => x.id === String(cle).slice(2));
+      const e = ecritureDuLivre(s.livre, String(cle).slice(2));
       if (!e) return [];
       return actionsEcriture(root, dossier, e);
     });
   }
+
+  // Une écriture retrouvée par son identifiant, dans un index tenu une fois par livre. Chaque menu de
+  // ligne la cherchait dans TOUT le livre : un lettrage de 1 700 lignes sur un livre de 12 000 pièces
+  // faisait vingt millions de comparaisons, 1,2 s à chaque dessin (10.14.0, saturation). L'index se
+  // refait dès que la liste change de taille ou d'objet ; une validation modifie l'écriture SUR
+  // place, et l'index pointe sur ce même objet.
+  const INDEX_LIVRE = new WeakMap();
+  function indexDuLivre(livre) {
+    const ec = (livre && livre.ecritures) || [];
+    let x = livre ? INDEX_LIVRE.get(livre) : null;
+    if (!x || x.ec !== ec || x.n !== ec.length) {
+      x = { ec, n: ec.length, parId: new Map(ec.map(e => [e.id, e])), extournees: new Set(ec.filter(e => e.extourneDe).map(e => e.extourneDe)) };
+      if (livre) INDEX_LIVRE.set(livre, x);
+    }
+    return x;
+  }
+  const ecritureDuLivre = (livre, id) => indexDuLivre(livre).parId.get(id) || null;
 
   // Les actions d'une écriture, à UN endroit. Elles sont les mêmes depuis la recherche, le
   // livre-journal et le brouillard — trois tables séparées auraient divergé au premier ajout, et
@@ -7150,7 +7197,7 @@
       // (l'extourne d'une contre-passation rétablirait l'erreur un mois plus tard) : l'extourne est
       // le geste des charges à payer et des produits à recevoir, et de rien d'autre (10.14.0).
       const extournable = e.source !== 'an' && !e.contrepasseDe && !e.extourneDe;
-      const dejaExt = (livresState.livre.ecritures || []).some(x => x.extourneDe === e.id);
+      const dejaExt = indexDuLivre(livresState.livre).extournees.has(e.id);
       const dateExt = KC.premierDuMoisSuivant(e.date);
       const auSuivant = dateExt && dateExt > String((livresState.livre.exercice || {}).au || '');
       const suivante = Number((livresState.livre.exercice || {}).annee) + 1;
@@ -7174,6 +7221,7 @@
   }
 
   async function extournerEcriture(root, dossier, e) {
+    if (await refusLicence('Extourner une écriture')) return;
     const date = KC.premierDuMoisSuivant(e.date);
     const ok = await confirmDialog('Extourner cette écriture ?',
       `<p>${esc(e.journal)} ${esc(e.piece || '(sans pièce)')} n° ${esc(String(e.numero))} du ${esc(fmtJour(e.date))}.</p><p>Une écriture miroir sera créée et VALIDÉE au ${esc(fmtJour(date))}. L'écriture d'origine ne bouge pas : elle reste dans son mois, avec son numéro — c'est ce qui distingue une extourne d'une contre-passation.</p>`,
@@ -7259,7 +7307,7 @@
       // toute la différence entre une comptabilité et un tableur.
       if (String(cle).startsWith('E:') && s.livre) {
         const id = String(cle).slice(2);
-        const e = s.livre.ecritures.find(x => x.id === id);
+        const e = ecritureDuLivre(s.livre, id);
         if (!e) return [];
         // La MÊME table que la recherche et le brouillard : trois listes séparées auraient divergé
         // au premier ajout (règle 7.29.0).
@@ -7364,7 +7412,7 @@
       catch (e2) { return toast(plainError(e2), 'error'); }
     }
     const order = f => (f.name === '00-page-de-garde.pdf' ? 0 : f.name.startsWith('journaux/') ? 1 : f.name === 'manifeste.json' ? 9 : 5);
-    files.sort((a, b) => order(a) - order(b) || a.name.localeCompare(b.name, 'fr'));
+    files.sort((a, b) => order(a) - order(b) || K.parNom(a.name, b.name));
     // Ce que le manifeste n'annonce pas n'a été comparé à rien — ni son empreinte, ni son existence.
     // Un paquet fabriqué par SkanFact n'en contient jamais.
     const trop = files.filter(f => f.annonce === false);
@@ -7600,6 +7648,19 @@
     // quatre boutons verts pour trois clients, et plus aucun ne disait par où commencer. Le bouton
     // de la ligne reste visible (c'est le geste pour lequel la page existe, 7.29.0) — sans couleur.
     const vertLigne = rows.length === 1 ? 'btn btn-primary btn-sm' : 'btn btn-sm';
+    // « Tous tes dossiers sont à jour » sur trois cents clients HORS SkanFact : aucun n'envoie de
+    // paquet, donc aucun ne peut être « à jour » (10.14.0, saturation ; `hors` n'est pas `ok`, 6.8.0).
+    // La phrase dit ce qu'on sait : combien envoient, et que les autres n'ont rien à t'envoyer.
+    const phraseRienARelancer = () => {
+      const tous = K.dossierList(S);
+      const envoient = tous.filter(r => r.level !== 'hors').length;
+      if (!envoient) return `<div class="info-box">Personne à relancer : aucun de tes ${esc(pl(tous.length, 'client'))} ne t'envoie encore ses paquets depuis SkanFact. Un client que tu tiens au cabinet n'a rien à t'envoyer.</div>`;
+      return `<div class="todo-ok">Personne à relancer : ${envoient === 1 ? 'ton client sur SkanFact est à jour' : `tes ${esc(pl(envoient, 'client'))} sur SkanFact sont à jour`}${envoient < tous.length ? ` — les ${esc(String(tous.length - envoient))} autres ne t'envoient rien, ils sont tenus au cabinet ou pas encore sur SkanFact` : ''}.</div>`;
+    };
+    // Trois cents clients en retard faisaient trois cents lignes d'un bloc : on pagine ce qu'on NOMME.
+    // Le geste de groupe, lui, porte sur tous ceux qui restent à relancer — pas sur la page.
+    const pagerRel = pagerBar(rows.length, relState.pg, 'client');
+    const rowsPage = paginate(rows, relState.pg);
     view.innerHTML = `
       ${/* U-13 — l'explication de la page vit dans la bulle du titre (règle 9.4.9) : un paragraphe
             permanent s'intercalait entre deux bandeaux, avant le premier nom. */''}
@@ -7624,9 +7685,9 @@
               l'écran MONTRE, jamais les soixante — cocher ce qu'on ne voit pas est un piège. */''}
         <thead><tr>
           <th class="nw sel-col"><input type="checkbox" id="rl-all" aria-label="Tout cocher sur cette page"
-            ${rows.length && rows.every(r => relState.coches.has(r.id)) ? 'checked' : ''}></th>
+            ${rowsPage.length && rowsPage.every(r => relState.coches.has(r.id)) ? 'checked' : ''}></th>
           <th class="nw">Client</th><th class="nw">Contact</th><th class="nw">Ce qui manque</th><th class="nw">Dernière relance</th><th></th></tr></thead>
-        <tbody>${rows.map(r => `<tr>
+        <tbody>${rowsPage.map(r => `<tr>
           <td class="nw sel-col"><input type="checkbox" data-sel="${esc(r.id)}" aria-label="Relancer ${esc(r.name)}" ${relState.coches.has(r.id) ? 'checked' : ''}></td>
           <td class="nw"><span class="dot-lvl ${r.level === 'ok' ? '' : esc(r.level)}"></span>${esc(r.name)}</td>
           <td class="muted nw">${esc(r.email || r.phone || '— à renseigner')}</td>
@@ -7634,8 +7695,8 @@
             ? esc(K.missingLabel(r.missingMonths))
             : `<span class="muted">${pl(r.provisionalCount, 'mois', 'mois')} non clôturé${r.provisionalCount > 1 ? 's' : ''}</span>`}</td>
           <td class="muted nw">${r.lastRelanceAt ? esc(fmtDay(r.lastRelanceAt)) + ` <span class="small">(${esc(ago(r.lastRelanceAt))}, ${esc(labelOf(K.RELANCE_WAYS, r.lastRelanceVia) || r.lastRelanceVia)})</span>` : 'jamais'}</td>
-          ${rowMenuCell(r.id, `<button class="${vertLigne}" data-rel="${esc(r.id)}">Écrire</button>`)}</tr>`).join('')}</tbody></table></div>`
-        : `<div class="todo-ok">Personne à relancer : tous tes dossiers sont à jour.</div>`}`;
+          ${rowMenuCell(r.id, `<button class="${vertLigne}" data-rel="${esc(r.id)}">Écrire</button>`)}</tr>`).join('')}</tbody></table></div>${pagerRel}`
+        : phraseRienARelancer()}`;
     const findRow = id => K.dossierList(S).find(x => x.id === id);
     // « Écrire » reste le seul bouton visible de la ligne : c'est le geste pour lequel cette page
     // existe, et l'enfouir dans un menu ajouterait un clic à ce qu'on vient y faire. Le reste — qui
@@ -7672,10 +7733,12 @@
     const all = $('#rl-all'); if (all) all.onchange = () => {
       // La case d'en-tête porte sur ce que l'écran MONTRE : sous filtre, cocher soixante clients
       // pendant que le bandeau en annonce onze serait exactement le chiffre qui ment (7.16.0).
-      rows.forEach(r => { if (all.checked) relState.coches.add(r.id); else relState.coches.delete(r.id); });
+      // Depuis la pagination (10.14.0), ce que l'écran montre est la PAGE : la case la coche, elle.
+      rowsPage.forEach(r => { if (all.checked) relState.coches.add(r.id); else relState.coches.delete(r.id); });
       render();
     };
-    const rt = $('#rl-tout'); if (rt) rt.onclick = () => { relState.seulement = null; relState.depuis = ''; render(); };
+    bindPager(view, render, relState.pg);
+    const rt = $('#rl-tout'); if (rt) rt.onclick = () => { relState.seulement = null; relState.depuis = ''; relState.pg.page = 1; render(); };
   }
 
   async function recordRelance(row, via, note) {
@@ -7769,7 +7832,7 @@
   // matin et à laquelle il répondait jusqu'ici en ouvrant soixante fiches. Tout est LU (paquets
   // reçus, écritures du livre, déclarations pointées) : une liste d'états qu'on coche à la main
   // est fausse le jour où quelqu'un oublie de cocher.
-  let prodState = { lignes: null, etapes: [], collaborateurs: [], collab: '', mois: 12 };
+  let prodState = { lignes: null, etapes: [], collaborateurs: [], collab: '', mois: 12, pg: { page: 1, size: 50 } };
 
   // 10.12.0 (U-17) — une FORME par état. « Reçu » et « hors mission » portaient le même point,
   // « à réviser » et « à déclarer » le même rond : seule la couleur les distinguait, et une couleur
@@ -7810,6 +7873,11 @@
     const colonnes = tous.slice(-prodState.mois);
     const parDossier = new Map(lignes.map(l => [l.id, new Map(l.mois.map(m => [m.mois, m]))]));
     const retard = lignes.reduce((s, l) => s + l.aSaisir, 0);
+    // Un portefeuille de trois cents dossiers faisait une page de 10 574 px (10.14.0, saturation) :
+    // on pagine ce qu'on NOMME (9.4.5) — des dossiers —, et le compte « à saisir » porte sur tous.
+    // `pagerBar` d'abord : c'est lui qui ramène la page dans les bornes quand un filtre réduit la liste.
+    const pager = pagerBar(lignes.length, prodState.pg, 'dossier');
+    const montrees = paginate(lignes, prodState.pg);
 
     view.innerHTML = `<div class="page-head"><h1>Production ${info('eq.production')}</h1>
       <div class="actions">
@@ -7843,7 +7911,7 @@
       <div class="panel"><div class="scroll-x"><table class="list compact prod">
         <thead><tr><th>Client</th>${colonnes.map((m, i) => `<th class="r nw" title="${esc(K.monthLabel(m))}">${esc(MOIS_COURTS[Number(m.slice(5, 7)) - 1] || m)}${
     i === 0 || m.slice(5, 7) === '01' ? `<br><span class="muted small">${esc(m.slice(0, 4))}</span>` : ''}</th>`).join('')}<th class="r nw">À saisir</th></tr></thead>
-        <tbody>${lignes.map(l => `<tr data-id="${esc(l.id)}">
+        <tbody>${montrees.map(l => `<tr data-id="${esc(l.id)}">
           <td class="prod-client"><span class="prod-nom" title="${esc(l.name)}">${esc(l.name)}</span>${l.demo ? ' <span class="badge">exemple</span>' : ''}</td>
           ${colonnes.map(m => {
     const c = (parDossier.get(l.id) || new Map()).get(m);
@@ -7861,6 +7929,7 @@
   }).join('')}
           <td class="r nw">${l.aSaisir ? `<b class="err-inline">${l.aSaisir}</b>` : '—'}</td></tr>`).join('')}</tbody>
       </table></div>
+      ${pager}
       ${/* Une couleur seule n'est pas une information (9.4.4) : la légende nomme chaque étape, et
             elle est engendrée depuis `ETAPES_PRODUCTION` — écrite à la main, elle oublierait la
             cinquième le jour où le cabinet en ajoute une. */''}
@@ -7871,7 +7940,8 @@
       </div>`}`;
 
     const c = $('#pr-collab', view);
-    if (c) c.onchange = () => { prodState.collab = c.value; render(); };
+    if (c) c.onchange = () => { prodState.collab = c.value; prodState.pg.page = 1; render(); };
+    bindPager(view, () => render(), prodState.pg);
     const pv = $('#pr-vers-dossiers', view);
     if (pv) pv.onclick = () => { location.hash = '#/dossiers'; };
     const m = $('#pr-mois', view);
@@ -8019,7 +8089,7 @@
     $$('[data-relq]', view).forEach(b2 => {
       b2.onclick = () => {
         const e = liste.find(x => K.cleEcheance(x) === b2.dataset.relq);
-        relState.seulement = e ? e.manquants.slice() : null;
+        relState.seulement = e ? e.manquants.slice() : null; relState.pg.page = 1;
         relState.depuis = e ? e.label : '';
         vers('#/relances');
       };
@@ -8784,7 +8854,7 @@
   function dessinerGuides(view) {
     const box = $('#sr-guides', view);
     if (!box) return;
-    const gs = (S.guides || []).slice().sort((a, b) => String(a.nom || '').localeCompare(String(b.nom || ''), 'fr'));
+    const gs = (S.guides || []).slice().sort((a, b) => K.parNom(a.nom, b.nom));
     if (!gs.length) {
       // Un état vide qui explique le geste en prose n'est pas une interface (règle 7.0.0) : le
       // bouton qui crée est juste en dessous, et cette phrase dit à quoi ça sert, pas comment faire.

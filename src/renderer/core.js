@@ -987,7 +987,7 @@
   // des phrases qu'on lit à l'écran : les lignes de « À faire », la liste de ce qui manque au
   // paquet du comptable, les bulletins. « 1 facture(s) en brouillon » paraît bâclé où qu'il soit
   // écrit. `plur` sert aux pluriels irréguliers ; `sAccord` accorde ce qui SUIT le nom.
-  const plFr = (n, un, plur) => `${n} ${Math.abs(n) > 1 ? (plur || un + 's') : un}`;
+  const plFr = (n, un, plur) => `${Math.abs(n) >= 1000 ? Number(n).toLocaleString('fr-FR') : n} ${Math.abs(n) > 1 ? (plur || un + 's') : un}`;
   const sAccord = n => (Number(n) > 1 ? 's' : '');
 
   // La ponctuation double à la française (10.14.0) : « ? », « ! », « ; », « : » et l'intérieur des
@@ -1215,8 +1215,47 @@
     return { lines, totalHT, discountRate, discount, netHT, vatByRate, totalVAT, stamp, totalTTC, withholdingRate, withholding, netToPay };
   }
 
+  // ---------- le lot de calcul (10.14.0, saturation) ----------
+  // Avec huit mille pièces, l'application gelait douze secondes à CHAQUE page, et le chien de garde
+  // la rechargeait : le statut d'une facture relisait toutes les pièces pour trouver ses avoirs, et
+  // le stock d'un article relisait tous les achats et toutes les ventes — pour chaque facture, pour
+  // chaque article. Des boucles dans des boucles, invisibles sur l'exemple (quatre cents pièces).
+  // Le remède n'est pas un cache qu'on invalide (une donnée modifiée en place ne prévient personne),
+  // c'est un LOT : pendant un calcul qui ne modifie rien — un dessin, « À faire », un journal —, les
+  // index se construisent une fois ; à la sortie du lot, ils disparaissent. Hors lot, chaque fonction
+  // relit tout, exactement comme avant : un appel isolé ne peut jamais lire un index périmé.
+  // Un comparateur construit UNE fois : `localeCompare(b, undefined, options)` en construit un à
+  // chaque appel, et un tri de quatorze mille écritures en faisait deux cent mille (10.14.0).
+  const TRI_NUMERIQUE = new Intl.Collator(undefined, { numeric: true });
+  const TRI_FR = new Intl.Collator('fr', { numeric: true, sensitivity: 'base' });
+  let lot = null;
+  function enLot(fn) {
+    if (lot) return fn();
+    lot = new Map();
+    try { return fn(); } finally { lot = null; }
+  }
+  function duLot(data, cle, calc) {
+    if (!lot || !data || typeof data !== 'object') return calc();
+    let parData = lot.get(data);
+    if (!parData) lot.set(data, parData = new Map());
+    if (!parData.has(cle)) parData.set(cle, calc());
+    return parData.get(cle);
+  }
+
   // Avoirs émis rattachés à une facture
   function creditsFor(data, invoiceId) {
+    if (lot && invoiceId) {
+      const idx = duLot(data, 'avoirs', () => {
+        const m = new Map();
+        (data.documents || []).forEach(d => {
+          if (d.type !== 'avoir' || !d.creditOf || d.status === 'brouillon') return;
+          if (!m.has(d.creditOf)) m.set(d.creditOf, []);
+          m.get(d.creditOf).push(d);
+        });
+        return m;
+      });
+      return (idx.get(invoiceId) || []).slice();
+    }
     return (data.documents || []).filter(d => d.type === 'avoir' && d.creditOf === invoiceId && d.status !== 'brouillon');
   }
 
@@ -1306,8 +1345,9 @@
     period = period || {};
     const docs = (data.documents || [])
       .filter(d => (d.type === 'facture' || d.type === 'avoir') && d.status !== 'brouillon' && d.number && inPeriod(d.date, period.from, period.to))
-      .sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.number || '').localeCompare(b.number || '', undefined, { numeric: true }));
-    const clientName = id => ((data.clients || []).find(c => c.id === id) || {}).name || '';
+      .sort((a, b) => (a.date || '').localeCompare(b.date || '') || TRI_NUMERIQUE.compare((a.number || ''), b.number || ''));
+    const noms = new Map(); (data.clients || []).forEach(c => { if (!noms.has(c.id)) noms.set(c.id, c.name || ''); });
+    const clientName = id => noms.get(id) || '';
     return docs.map(d => {
       const t = computeTotals(d, company);
       const cancelled = d.type === 'facture' && d.status === 'annulée';
@@ -1589,7 +1629,15 @@
 
   // Chiffres d'un client : facturé HT, encaissé, reste à payer, délai moyen, dates du premier et du dernier document.
   function clientSummary(data, company, clientId) {
-    const docs = (data.documents || []).filter(d => d.clientId === clientId);
+    // Dans un lot, les pièces se rangent par client une fois (10.14.0) : la liste des clients
+    // relisait les huit mille pièces pour chacun des mille cinq cents clients.
+    const docs = lot
+      ? (duLot(data, 'piecesParClient', () => {
+        const m = new Map();
+        (data.documents || []).forEach(d => { if (!m.has(d.clientId)) m.set(d.clientId, []); m.get(d.clientId).push(d); });
+        return m;
+      }).get(clientId) || []).slice()
+      : (data.documents || []).filter(d => d.clientId === clientId);
     const issued = docs.filter(d => (d.type === 'facture' || d.type === 'avoir') && d.status !== 'brouillon' && d.status !== 'annulée');
     const ht = round3(issued.reduce((s, d) => s + (d.type === 'avoir' ? -1 : 1) * toBase(d, computeTotals(d, company).netHT, company), 0));
     const invoices = docs.filter(d => d.type === 'facture' && d.status !== 'brouillon' && d.status !== 'annulée');
@@ -1767,6 +1815,14 @@
   // la facture n'arrive. C'est un état normal, pas une erreur : « À faire » le rappelle.
   function piecesLieesAchat(data, purchaseId, kind) {
     if (!purchaseId) return [];
+    if (lot) {
+      const idx = duLot(data, 'achatsLies', () => {
+        const m = new Map();
+        (data.purchases || []).forEach(p => { if (!p.achatLie) return; if (!m.has(p.achatLie)) m.set(p.achatLie, []); m.get(p.achatLie).push(p); });
+        return m;
+      });
+      return (idx.get(purchaseId) || []).filter(p => !kind || p.kind === kind);
+    }
     return (data.purchases || []).filter(p => p.achatLie === purchaseId && (!kind || p.kind === kind));
   }
 
@@ -1805,6 +1861,14 @@
   // pendant que l'action juste, « Facture de solde », dormait dans le menu « ▾ ».
   function facturesDuDevis(data, quoteId) {
     if (!quoteId) return [];
+    if (lot) {
+      const idx = duLot(data, 'facturesDuDevis', () => {
+        const m = new Map();
+        (data.documents || []).forEach(d => { if (d.type !== 'facture' || !d.fromQuoteId) return; if (!m.has(d.fromQuoteId)) m.set(d.fromQuoteId, []); m.get(d.fromQuoteId).push(d); });
+        return m;
+      });
+      return (idx.get(quoteId) || []).slice();
+    }
     return (data.documents || []).filter(d => d.type === 'facture' && d.fromQuoteId === quoteId);
   }
 
@@ -1898,7 +1962,13 @@
 
   // Chiffres d'un fournisseur, pour sa fiche.
   function supplierSummary(data, company, supplierId, todayIso) {
-    const mine = (data.purchases || []).filter(p => p.supplierId === supplierId);
+    const mine = lot
+      ? (duLot(data, 'achatsParFournisseur', () => {
+        const m = new Map();
+        (data.purchases || []).forEach(p => { if (!m.has(p.supplierId)) m.set(p.supplierId, []); m.get(p.supplierId).push(p); });
+        return m;
+      }).get(supplierId) || []).slice()
+      : (data.purchases || []).filter(p => p.supplierId === supplierId);
     let ht = 0, remaining = 0, late = 0;
     mine.forEach(p => {
       const b = purchaseBalance(p, company, data);
@@ -2178,6 +2248,20 @@
   // Retrouver l'article d'une ligne : par identifiant si la ligne en porte un (lignes posées depuis le
   // catalogue), sinon par libellé — même règle que `lineCost`, pour que l'historique reste lisible.
   function itemOfLine(line, data) {
+    if (lot) {
+      const idx = duLot(data, 'catalogue', () => {
+        const parId = new Map(), parLibelle = new Map();
+        (data.catalog || []).forEach(c => {
+          if (!parId.has(c.id)) parId.set(c.id, c);
+          const l = (c.label || '').trim().toLowerCase();
+          if (!parLibelle.has(l)) parLibelle.set(l, c);
+        });
+        return { parId, parLibelle };
+      });
+      if (line.itemId && idx.parId.has(line.itemId)) return idx.parId.get(line.itemId);
+      const label = (line.label || '').trim().toLowerCase();
+      return label ? idx.parLibelle.get(label) || null : null;
+    }
     if (line.itemId) {
       const byId = (data.catalog || []).find(c => c.id === line.itemId);
       if (byId) return byId;
@@ -2190,6 +2274,19 @@
   // Tous les mouvements d'un article, dans l'ordre chronologique, déduits des pièces existantes.
   // `itemId` restreint à un article ; sans lui, tout le stock.
   function stockMovements(data, itemId, toIso) {
+    // Dans un lot, les mouvements de TOUS les articles se calculent une fois, puis se rangent par
+    // article : l'ordre d'un article est la sous-suite de l'ordre total (le tri est un ordre total).
+    if (lot && itemId) {
+      const parArticle = duLot(data, 'stock@' + (toIso || ''), () => {
+        const m = new Map();
+        stockMovements(data, null, toIso).forEach(x => {
+          if (!m.has(x.itemId)) m.set(x.itemId, []);
+          m.get(x.itemId).push(x);
+        });
+        return m;
+      });
+      return (parArticle.get(itemId) || []).map(x => ({ ...x }));
+    }
     const out = [];
     const keep = c => c && c.tracked && (!itemId || c.id === itemId);
     const limit = toIso || null;
@@ -3185,13 +3282,13 @@
       .filter(x => (!f.itemId || x.itemId === f.itemId)
         && (!f.clientId || x.clientId === f.clientId)
         && (!f.status || x.status === f.status))
-      .sort((a, b) => (b.inDate || '').localeCompare(a.inDate || '') || (a.serial || '').localeCompare(b.serial || '', undefined, { numeric: true }));
+      .sort((a, b) => (b.inDate || '').localeCompare(a.inDate || '') || TRI_NUMERIQUE.compare((a.serial || ''), b.serial || ''));
   }
 
   // Les unités disponibles pour une vente : en stock, jamais sorties.
   function availableSerials(data, itemId) {
     return (data.serials || []).filter(x => x.itemId === itemId && x.status === 'stock')
-      .sort((a, b) => (a.inDate || '').localeCompare(b.inDate || '') || (a.serial || '').localeCompare(b.serial || '', undefined, { numeric: true }));
+      .sort((a, b) => (a.inDate || '').localeCompare(b.inDate || '') || TRI_NUMERIQUE.compare((a.serial || ''), b.serial || ''));
   }
 
   // Le parc d'un client : ce qu'il a chez lui, depuis quand, garanti jusqu'à quand.
@@ -4512,6 +4609,19 @@
   // Les écritures d'une période. `opts.auxiliaires` ajoute le nom du tiers en compte auxiliaire ;
   // `opts.sections` permet de n'exporter qu'une partie (ventes, achats, encaissements, paie).
   function journalEntries(data, company, period, opts) {
+    // Dans un lot, les écritures d'une même période ne se calculent qu'UNE fois (10.14.0) : le paquet
+    // du mois les demandait quatre fois (le journal, la TVA, la balance, le livre-journal) — une
+    // seconde et demie par clic sur l'onglet Cabinet avec huit mille pièces. Chaque appelant reçoit
+    // SES copies : un appelant qui annote une écriture n'écrit jamais dans celle d'un autre.
+    if (lot && data && typeof data === 'object') {
+      const cle = 'ecritures@' + JSON.stringify([period || null, opts || null]);
+      const parSociete = duLot(data, cle, () => new Map());
+      if (!parSociete.has(company)) parSociete.set(company, journalEntriesCalcul(data, company, period, opts));
+      return parSociete.get(company).map(e => ({ ...e }));
+    }
+    return journalEntriesCalcul(data, company, period, opts);
+  }
+  function journalEntriesCalcul(data, company, period, opts) {
     opts = opts || {};
     const acc = chartAccounts(data);
     const want = s => !opts.sections || opts.sections.indexOf(s) >= 0;
@@ -4734,7 +4844,11 @@
       const annees = new Set();
       const noter = d => { if (d && /^\d{4}/.test(d)) annees.add(d.slice(0, 4)); };
       (data.documents || []).forEach(d => noter(d.date)); (data.purchases || []).forEach(p => noter(p.date));
-      [...annees].sort().forEach(y => {
+      // Seules les années que la période touche : la chaîne d'une année part de son propre report
+      // (`vatCarryIn[année]`), jamais de l'année d'avant, donc calculer les cinq autres ne servait
+      // qu'à jeter leurs écritures — soixante-douze déclarations pour en garder une (10.14.0).
+      const y0 = period && period.from ? period.from.slice(0, 4) : '', y1 = period && period.to ? period.to.slice(0, 4) : '';
+      [...annees].sort().filter(y => (!y0 || y >= y0) && (!y1 || y <= y1)).forEach(y => {
         vatChain(data, company, y).forEach(m => {
           const dernier = `${m.month}-${pad2(daysInMonth(Number(y), Number(m.month.slice(5, 7))))}`;
           if (dernier >= t || !inPeriod(dernier, period && period.from, period && period.to)) return;
@@ -4871,7 +4985,7 @@
 
     return out.sort((a, b) => (a.date || '').localeCompare(b.date || '')
       || (a.journal || '').localeCompare(b.journal || '')
-      || (a.piece || '').localeCompare(b.piece || '', undefined, { numeric: true }));
+      || TRI_NUMERIQUE.compare((a.piece || ''), b.piece || ''));
   }
   const SECTIONS_ECRITURES = ['ventes', 'achats', 'encaissements', 'reglements', 'ouverture', 'tresorerie', 'paie', 'declarations', 'od', 'amortissements', 'anouveaux'];
 
@@ -5199,7 +5313,7 @@
     const out = Object.keys(comptes).sort().map(k => {
       const c = comptes[k];
       let solde = c.ouverture;
-      c.lignes.sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.journal || '').localeCompare(b.journal || '') || (a.piece || '').localeCompare(b.piece || '', undefined, { numeric: true }));
+      c.lignes.sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.journal || '').localeCompare(b.journal || '') || TRI_NUMERIQUE.compare((a.piece || ''), b.piece || ''));
       c.lignes = c.lignes.map(e => { solde = round3(solde + e.debit - e.credit); c.debit = round3(c.debit + e.debit); c.credit = round3(c.credit + e.credit); return { ...e, solde }; });
       return { ...c, label: accountLabel(data, k, c.tiers), classe: classeDe(k), solde };
     });
@@ -5342,7 +5456,7 @@
       else if (d.settles && d.settles.quoteId === doc.id) quoi = 'facture de solde';
       if (quoi) out.push({ id: d.id, number: d.number || '(brouillon)', type: d.type, quoi });
     });
-    return out.sort((a2, b2) => (a2.number || '').localeCompare(b2.number || '', undefined, { numeric: true }));
+    return out.sort((a2, b2) => TRI_NUMERIQUE.compare((a2.number || ''), b2.number || ''));
   }
 
   function derivedDocs(doc, data) {
@@ -5465,12 +5579,20 @@
     const seuil = Number(dormantDays) || 180;
     const nouveaux = [], dormants = [];
     const inside = issuedIn(data, fromIso, toIso);
+    // Les pièces se rangent par client UNE fois (10.14.0) : relire toutes les pièces pour chacun des
+    // mille cinq cents clients coûtait un tiers de seconde à chaque ouverture des Statistiques.
+    const parClient = new Map(), dedans = new Map();
+    (data.documents || []).forEach(d => {
+      if (!(d.type === 'facture' || d.type === 'avoir') || d.status === 'brouillon' || d.status === 'annulée' || !d.date) return;
+      if (!parClient.has(d.clientId)) parClient.set(d.clientId, []);
+      parClient.get(d.clientId).push(d.date);
+    });
+    inside.forEach(d => { if (!dedans.has(d.clientId)) dedans.set(d.clientId, []); dedans.get(d.clientId).push(d); });
     (data.clients || []).forEach(c => {
-      const dates = (data.documents || []).filter(d => d.clientId === c.id && (d.type === 'facture' || d.type === 'avoir')
-        && d.status !== 'brouillon' && d.status !== 'annulée').map(d => d.date).filter(Boolean).sort();
+      const dates = (parClient.get(c.id) || []).slice().sort();
       if (!dates.length) return;
       const first = dates[0], last = dates[dates.length - 1];
-      const ht = round3(inside.filter(d => d.clientId === c.id)
+      const ht = round3((dedans.get(c.id) || [])
         .reduce((s, d) => s + (d.type === 'avoir' ? -1 : 1) * toBase(d, computeTotals(d, company).netHT, company), 0));
       if (inPeriod(first, fromIso, toIso)) nouveaux.push({ clientId: c.id, name: c.name, since: first, ht });
       const idle = daysBetween(last, t);
@@ -7940,10 +8062,11 @@
     const xEmpty = x == null || x === '', yEmpty = y == null || y === '';
     if (xEmpty || yEmpty) return xEmpty && yEmpty ? 0 : (xEmpty ? 1 : -1);
     if (typeof x === 'number' && typeof y === 'number') return x - y;
-    return String(x).localeCompare(String(y), 'fr', { numeric: true, sensitivity: 'base' });
+    return TRI_FR.compare(String(x), String(y));
   }
 
-  return {
+  const api = {
+    enLot, duLot,
     VAT_RATES, WITHHOLDING_RATES, PAYMENT_METHODS, PREFIX, TITLES, DEFAULT_DATA, DEFAULT_COMPANY, ACTIVITIES, STATUSES, STATUT_ENVOI, DISPLAY_STATUSES, STATUS_LABELS,
     REGIMES, regimeOf, regimeSuggere, tfpSuggere, assujettiTVA, mentionTVA, estLiberal, docLabel, ribAttendu,
     DOC_FILTRES, docFiltre,
@@ -8006,4 +8129,14 @@
     clientVierge, articleVierge, IMPORT_CHAMPS, champDeEntete, decouperTableau, separateurTableau, uniteImport,
     planImport, appliquerImport, lireFichierTexte
   };
+  // Les calculs qui LISENT beaucoup ouvrent leur propre lot : appelés d'un test, de la palette ou du
+  // processus principal, ils profitent des index sans que l'appelant y pense. Aucun ne modifie les
+  // données — un calcul qui écrit n'a rien à faire ici, il lirait ses propres index périmés.
+  ['overdueInvoices', 'todoList', 'journalEntries', 'livreJournal', 'journalCentralisateur', 'agedReceivables',
+    'cashForecast', 'cashMovements', 'payablesList', 'stockList', 'stockTotals', 'stockJournal', 'stockAlerts',
+    'inventoryDiff', 'costOfGoodsSold', 'salesTotals', 'revenueByMonth', 'topItems', 'clientMovement', 'payerRanking',
+    'quoteFunnel', 'releveClient', 'packPlan', 'packChecklist', 'closureChecks', 'simpleResult', 'breakEven',
+    'marginBy', 'projectList', 'clientSummary', 'supplierSummary', 'balanceGenerale', 'grandLivre', 'etatsFinanciers', 'lettrage', 'firstSteps', 'reussites']
+    .forEach(n => { const f = api[n]; if (typeof f === 'function') api[n] = function () { return enLot(() => f.apply(this, arguments)); }; });
+  return api;
 });

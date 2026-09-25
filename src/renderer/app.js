@@ -522,7 +522,16 @@
     try { n.setSelectionRange(debut, fin); } catch (_) { /* un champ sans sélection : rien à rendre */ }
   }
   const docCur = doc => doc.currency || company().currency;
-  const short = n => Math.abs(n) >= 1000 ? (n / 1000).toFixed(Math.abs(n) >= 10000 ? 0 : 1).replace('.', ',') + ' k' : String(Math.round(n));
+  // L'axe d'un graphique écrit « 178984 k » au-delà du million, et le libellé sortait de sa marge
+  // (10.14.0) : au million on passe aux « M », au milliard aux « Md ».
+  const short = n => {
+    const a = Math.abs(n);
+    const unite = (div, suffixe) => (n / div).toFixed(a >= div * 10 ? 0 : 1).replace('.', ',').replace(/,0$/, '') + ' ' + suffixe;
+    if (a >= 1e9) return unite(1e9, 'Md');
+    if (a >= 1e6) return unite(1e6, 'M');
+    if (a >= 1000) return unite(1000, 'k');
+    return String(Math.round(n));
+  };
   const mq = window.matchMedia('(prefers-color-scheme: dark)');
   function applyTheme() { const t = company().theme || 'light'; document.body.classList.toggle('dark', t === 'dark' || (t === 'auto' && mq.matches)); }
   mq.addEventListener('change', () => { if (data) applyTheme(); });
@@ -1071,7 +1080,7 @@
       span.classList.toggle('ph', !it || !!it.vide);
       if (hidden) hidden.value = el._value || '';
     };
-    const draw = () => {
+    const draw = dansUnLot(() => {
       // Accents et majuscules ignorés (10.12.0) : « hotel » trouve « Hôtel Dar El Marsa SARL ».
       shown = el._items.filter(x => C.correspondRecherche(x.text || x.label || '', q.value));
       sel = Math.max(0, Math.min(sel, shown.length - 1));
@@ -1086,7 +1095,7 @@
       // Tunisie » introuvable ne disait pas que la fiche arriverait déjà nommée (10.12.0).
       if (add) { const saisi = q.value.trim(); add.textContent = saisi ? `${addBase} «\u00a0${saisi}\u00a0»` : addBase; }
       const cur = $('.combo-it.sel', list); if (cur) cur.scrollIntoView({ block: 'nearest' });
-    };
+    });
     const close = () => { pop.hidden = true; btn.setAttribute('aria-expanded', 'false'); el.classList.remove('up'); if (closeOverlay === close) closeOverlay = null; };
     const open = () => {
       if (closeOverlay) closeOverlay();
@@ -1173,7 +1182,7 @@
     host.appendChild(pop);
     let sel = 0, shown = [], query = '', demandee = false;
     const close = () => { pop.hidden = true; if (closeOverlay === close) closeOverlay = null; };
-    const draw = () => {
+    const draw = dansUnLot(() => {
       const p = propositionsCatalogue(o.items(), input.value, !!o.onCreate, demandee);
       shown = p.shown; query = p.query;
       const creer = p.creer;
@@ -1189,7 +1198,7 @@
       const add = $('.sugg-add', pop);
       if (add) add.onmousedown = e => { e.preventDefault(); close(); o.onCreate(query); };
       if (pop.hidden) { if (closeOverlay) closeOverlay(); pop.hidden = false; closeOverlay = close; }
-    };
+    });
     const pick = c => { if (!c) return; close(); o.onPick(c); };
     input.addEventListener('input', () => { sel = 0; demandee = false; draw(); });
     input.addEventListener('keydown', e => {
@@ -2162,7 +2171,14 @@
     return true;
   }
 
+  // Un dessin est un LOT de calcul (10.14.0) : les index des avoirs, du catalogue et du stock s'y
+  // construisent une fois, et disparaissent à la sortie. Sans lui, avec huit mille pièces, chaque
+  // page gelait douze secondes et le chien de garde rechargeait l'application.
+  // Le redessin d'une LISTE (une frappe dans la recherche, un tri, une page suivante) est un lot
+  // aussi : c'est lui que l'on refait à chaque touche, sur des milliers de pièces.
+  const dansUnLot = fn => function () { return C.enLot(() => fn.apply(this, arguments)); };
   function render(keepScroll) {
+    return C.enLot(() => {
     const view = $('#view');
     const scroll = keepScroll ? view.scrollTop : 0;
     const parts = (location.hash.replace(/^#\/?/, '') || 'dashboard').split('/');
@@ -2238,6 +2254,7 @@
         setTimeout(() => cible.classList.remove('flash'), 1600);
       }
     }
+  });
   }
 
   // Poser l'adresse sans réveiller notre propre routeur. Si l'adresse ne change pas, aucun événement
@@ -2637,11 +2654,12 @@
     opts = opts || {};
     if (pg.pages <= 1 && pg.total <= PAGE_SIZES[0][0]) return '';
     const noun = opts.noun || 'ligne';
-    const s = pg.total > 1 ? 's' : '';
+    // « 443 deviss » : un nom qui ne prend pas d'« s » au pluriel porte le sien (10.14.0).
+    const mot = pg.total > 1 ? (opts.pluriel || noun + 's') : noun;
     const filtered = opts.grandTotal != null && opts.grandTotal !== pg.total;
     const count = filtered
-      ? `${pg.from}–${pg.to} sur ${pg.total} ${noun}${s} après filtrage (${opts.grandTotal} au total)`
-      : `${pg.from}–${pg.to} sur ${pg.total} ${noun}${s}`;
+      ? `${pg.from}–${pg.to} sur ${pg.total} ${mot} après filtrage (${opts.grandTotal} au total)`
+      : `${pg.from}–${pg.to} sur ${pg.total} ${mot}`;
     return `<div class="pager">
       <span class="pg-info">${h(count)}</span>
       <div class="pg-nav">
@@ -2732,7 +2750,7 @@
   // que l'utilisateur regarde le plus souvent.
   // Le pluriel regarde la VALEUR ABSOLUE : « −3 jour » s'affichait sous un solde de congés
   // négatif (10.12.0). « −1 jour », « −3 jours ».
-  const pl = (n, un, plur) => `${n} ${Math.abs(n) > 1 ? (plur || un + 's') : un}`;
+  const pl = (n, un, plur) => `${Math.abs(n) >= 1000 ? Number(n).toLocaleString('fr-FR') : n} ${Math.abs(n) > 1 ? (plur || un + 's') : un}`;
   // L'accord de ce qui SUIT le nom — un adjectif, un participe. « 3 écarts enregistrés », mais
   // « 1 écart enregistré ». Sans lui, la moitié du travail de `pl` se perdait un mot plus loin.
   // Il sert aussi là où le nombre est déjà mis en forme (« 2,5 jours » : `pct` rend une chaîne, et
@@ -2944,7 +2962,7 @@
     if (s.year === '' && !s.yearTouched && years.includes(thisYear) && mine.length > 25) { s.year = thisYear; s.yearAuto = true; }
     if (s.year && !years.includes(s.year)) { s.year = ''; s.yearAuto = false; }
 
-    const draw = (sortKey) => {
+    const draw = dansUnLot((sortKey) => {
       if (!$('#list-wrap')) return;                 // liste vide : l'écran explique au lieu de lister
       if (typeof sortKey === 'string' && sortKey) { s.sort = toggleSort(s.sort, sortKey, cols); s.page = 1; }
       const list = mine
@@ -2967,7 +2985,7 @@
         `<span class="small muted">${list.length} sur ${mine.length}${s.year && s.yearAuto ? ` · année ${h(s.year)} affichée par défaut` : ''}</span>${filterReset(true)}`;
       if ($('#reset-f')) $('#reset-f').onclick = resetFilters;
       bindDocTable(draw, s, '#list-wrap');
-    };
+    });
     const resetFilters = () => { s.q = ''; s.st = ''; s.kind = ''; s.year = ''; s.yearAuto = false; s.yearTouched = true; s.page = 1; listView(type); };
     // « Émis » et « À encaisser » regroupent plusieurs statuts : ils passent par `C.docFiltre`, pas
     // par une comparaison de chaîne (voir DOC_FILTRES dans core.js — « Émis » rendait les avoirs).
@@ -4248,13 +4266,19 @@
   // un acompte porte `deposit.quoteId`.
   function piecesDuDevis(quoteId) {
     const totales = C.facturesDuDevis(data, quoteId).filter(d => !d.deposit);
-    const acomptes = (data.documents || []).filter(d => d.type === 'facture' && d.deposit
-      && d.deposit.quoteId === quoteId && d.status !== 'brouillon');
+    // Les acomptes rangés par devis une fois par lot (10.14.0) : la page « Me guider » cherchait le
+    // devis accepté le plus récent en relisant toutes les pièces pour chacun des deux mille devis.
+    const parDevis = C.duLot(data, 'acomptesDuDevis', () => {
+      const m = new Map();
+      (data.documents || []).forEach(d => { if (d.type !== 'facture' || !d.deposit || !d.deposit.quoteId) return; if (!m.has(d.deposit.quoteId)) m.set(d.deposit.quoteId, []); m.get(d.deposit.quoteId).push(d); });
+      return m;
+    });
+    const tous = parDevis.get(quoteId) || [];
+    const acomptes = tous.filter(d => d.status !== 'brouillon');
     // Un acompte encore en BROUILLON compte aussi (rapport QA E-03) : il n'était vu nulle part, et
     // « Facturer ce devis » fabriquait une facture complète à côté de lui, sans une question — deux
     // brouillons qui se recouvrent, 150 % du devis.
-    const brouillons = (data.documents || []).filter(d => d.type === 'facture' && d.deposit
-      && d.deposit.quoteId === quoteId && d.status === 'brouillon');
+    const brouillons = tous.filter(d => d.status === 'brouillon');
     return { totales, acomptes, brouillons };
   }
   // Le nom d'une pièce tirée d'un devis, dans une question : un brouillon n'a pas de numéro, et
@@ -4816,19 +4840,22 @@
     const cur = company().currency;
     const s = clientState;
     const cols = [
-      { key: 'name', label: 'Nom', asc: true, val: r => r.c.name.toLowerCase(), get: r => `<strong>${h(r.c.name)}</strong>${r.c.contact ? `<div class="small muted">${h(r.c.contact)}</div>` : ''}` },
+      { key: 'name', label: 'Nom', asc: true, cls: 'nom-tiers', val: r => r.c.name.toLowerCase(), get: r => `<strong>${h(r.c.name)}</strong>${r.c.contact ? `<div class="small muted">${h(r.c.contact)}</div>` : ''}` },
       { key: 'mf', label: 'MF / CIN', get: r => `${h(r.c.matricule)}${r.c.withholdingRate !== '' && r.c.withholdingRate != null && Number(r.c.withholdingRate) ? `<div class="small muted">RS ${pct(r.c.withholdingRate)} %</div>` : ''}` },
       // Un numéro de téléphone se lit d'un bloc : « 74 000 111 / 98 000 222 » se coupait entre
       // « 98 000 » et « 222 » (vu à la souris après un import). Chaque numéro tient sur sa ligne,
       // la coupure ne tombe que sur le « / » qui les sépare.
-      { key: 'contact', label: 'Contact', get: r => `<span class="small">${telLisible(r.c.phone)}${r.c.phone && r.c.email ? '<br>' : ''}${h(r.c.email)}</span>` },
+      // Une adresse email longue se coupe à l'écran, jamais sur quatre lignes (10.14.0) : elle
+      // faisait passer chaque ligne de la liste à quatre-vingt-dix pixels — sept clients par écran.
+      // Entière au survol, et intacte dans la fiche et à l'export.
+      { key: 'contact', label: 'Contact', get: r => `<span class="small">${telLisible(r.c.phone)}${r.c.phone && r.c.email ? '<br>' : ''}${r.c.email ? `<span class="ellipse" title="${h(r.c.email)}">${h(r.c.email)}</span>` : ''}</span>` },
       { key: 'docs', label: 'Documents', r: true, val: r => r.sum.count, get: r => r.sum.count },
       { key: 'ht', label: 'Facturé HT', r: true, val: r => r.sum.ht, get: r => r.sum.ht ? C.money(r.sum.ht, cur) : '<span class="muted">—</span>' },
       { key: 'due', label: 'Reste à payer', r: true, val: r => r.sum.due, get: r => r.sum.due > 0.0005 ? `<strong>${C.money(r.sum.due, cur)}</strong>` : '<span class="muted">—</span>' },
       { key: 'last', label: 'Dernier document', val: r => r.sum.last || '', get: r => r.sum.last ? C.fmtDate(r.sum.last) : '<span class="muted">—</span>' }
     ];
     const FILTERS = [['', 'Tous les clients'], ['due', 'Avec un impayé'], ['none', 'Sans aucun document']];
-    const draw = (sortKey) => {
+    const draw = dansUnLot((sortKey) => {
       if (typeof sortKey === 'string' && sortKey) { s.sort = toggleSort(s.sort, sortKey, cols); s.page = 1; }
       const all = data.clients.map(c => ({ c, sum: C.clientSummary(data, company(), c.id) }));
       const rows = applySort(all
@@ -4839,7 +4866,7 @@
       $('#list-wrap').innerHTML = rows.length ? `<table class="list sortable"><thead>
           ${sortHead(cols, s.sort, '<th class="row-actions-h"></th>')}</thead><tbody>
         ${page.map(r => `<tr class="clickable" data-cid="${r.c.id}">
-          ${cols.map(c => `<td class="${c.r ? 'r nw' : ''}">${c.get(r)}</td>`).join('')}
+          ${cols.map(c => `<td class="${c.r ? 'r nw' : ''}${c.cls ? ' ' + c.cls : ''}">${c.get(r)}</td>`).join('')}
           ${rowMenuCell(r.c.id)}</tr>`).join('')}
         </tbody><tfoot><tr>
           <td colspan="3"><strong>${pl(rows.length, 'client')}</strong>${filtered ? `<span class="muted"> sur ${all.length}</span>` : ''}</td>
@@ -4865,7 +4892,7 @@
       });
       bindSort($('#list-wrap'), draw);
       bindPager($('#list-wrap'), s, () => draw(), '#list-wrap');
-    };
+    });
     // Une recherche et des filtres au-dessus de ZÉRO ligne n'aident personne (`filtersBar`), et un
     // état vide en prose sans bouton est une notice de montage (7.0.0). Devis, Factures, Contrats et
     // Relances avaient ce traitement ; Clients, Fournisseurs, Achats et les autres pièces y
@@ -5335,7 +5362,7 @@
         return `<span class="${cls}"><strong>${pct(st.qty)}</strong>${c.unit ? ' ' + h(c.unit) : ''}</span>${st.negative ? '<div class="small warn-text">négatif</div>' : st.low ? '<div class="small warn-text">sous le seuil</div>' : ''}`;
       } }
     ];
-    const draw = drawList('#list-wrap', catalogState.presta, prestaCols, () => data.catalog.slice(), {
+    const draw = dansUnLot(drawList('#list-wrap', catalogState.presta, prestaCols, () => data.catalog.slice(), {
       noun: 'prestation', placeholder: 'Rechercher une prestation…', text: c => `${c.label} ${c.description || ''} ${c.unit || ''}`,
       // 10.12.0 (H-E26, vu au test humain) — deux chiffres du pied mentaient sans rien casser :
       // « moyenne 58,333 DT » faisait la moyenne de 25 DT de l'heure, d'un lot à 0 DT et d'une pièce
@@ -5365,7 +5392,7 @@
         { sep: true },
         { icon: 'copier', label: 'Dupliquer', hint: 'Même prestation, à renommer et à ajuster', run: () => duplicateCatalogItem(c, redraw) }
       ] : []
-    });
+    }));
 
     const tplCols = [
       { key: 'name', label: 'Modèle', asc: true, val: t => (t.name || '').toLowerCase(), get: t => `<strong>${h(t.name)}</strong><div class="small muted">${h(t.subject || '')}</div>` },
@@ -5892,7 +5919,7 @@
       { key: 'state', label: 'État', asc: true, val: r => r.active !== false ? 'actif' : 'suspendu', get: r => r.active !== false ? '<span class="badge envoyée">actif</span>' : '<span class="badge">suspendu</span>' }
     ];
     const STATES = [['', 'Tous les contrats'], ['actif', 'Actifs'], ['suspendu', 'Suspendus'], ['due', 'À générer']];
-    const draw = (sortKey) => {
+    const draw = dansUnLot((sortKey) => {
       if (typeof sortKey === 'string' && sortKey) { s.sort = toggleSort(s.sort, sortKey, cols); s.page = 1; }
       const due = C.dueRecurrences(data);
       const all = data.recurring.slice();
@@ -6009,7 +6036,7 @@
             hint: suspendu ? 'Les échéances passées ne seront pas rattrapées' : 'Plus aucun brouillon ne sera préparé', run: () => basculer(r) }
         ];
       });
-    };
+    });
     $('#view').innerHTML = `<div class="page-head"><h1>Facturation récurrente ${info('contrat.form')}</h1><div class="actions"><button class="btn btn-primary" id="new">+ Nouveau contrat</button></div></div><div id="c-wrap"></div>`;
     $('#new').onclick = () => recurrenceForm(contratNeuf(), draw);
     draw();
@@ -6055,9 +6082,14 @@
   }
 
   const relState = { sort: null, page: 1, q: '' };   // tri, page et recherche de la liste des factures à relancer
+  // Les trois tableaux secondaires ont chacun LEUR page (10.14.0) : avec huit mille pièces, « Devis
+  // sans réponse » en listait quatre cent quarante d'un bloc, et la page faisait vingt-huit mille
+  // pixels sous une liste principale, elle, paginée. Une page par tableau, parce qu'une page
+  // partagée ferait tourner les quatre tableaux ensemble.
+  const relPages = { reportees: { page: 1 }, bientot: { page: 1 }, devis: { page: 1 } };
   routes.relances = () => {
     const cur = company().currency;
-    const draw = () => {
+    const draw = dansUnLot(() => {
       const all = C.overdueInvoices(data, company());
       // Recherche : la page Relances était l'une des deux seules listes à ne pas en avoir (audit).
       const q = relState.q.trim().toLowerCase();
@@ -6092,6 +6124,7 @@
       const headFixed = `<thead>${sortHead(relCols.map(c => ({ ...c, val: null })), null, '<th class="row-actions-h"></th>')}</thead>`;
       const odSorted = applySort(od, relCols, relState.sort);
       const odPage = paginate(odSorted, relState);
+      const laterPage = paginate(later, relPages.reportees), soonPage = paginate(soon, relPages.bientot), quotesPage = paginate(quotes, relPages.devis);
       const nAll = all.filter(x => !x.snoozed).length;
       // Rien à relancer ET rien à venir : la page ne dit jamais la seule chose qui compte ici, à
       // savoir qu'elle se remplit TOUTE SEULE et qu'il n'y a rien à y saisir. Elle ouvrait sur un
@@ -6113,22 +6146,27 @@
           ${q ? `<span class="small muted">${od.length} sur ${nAll}</span>${filterReset(true)}` : ''}`, all.length, !!q)}
         ${od.length ? `<div class="banner">${pl(od.length, 'facture')} à relancer — ${C.money(total, cur)} à récupérer</div>` : `<div class="banner info">${q ? 'Aucune facture ne correspond à cette recherche.' : `Aucune facture à relancer${later.length ? ` (${pl(later.length, 'reportée')})` : ''}.`}</div>`}
         ${od.length ? `<table class="list sortable">${head}<tbody>${odPage.rows.map(row).join('')}</tbody></table>${pagerBar(odPage.pg, { noun: 'facture' })}` : ''}
-        ${later.length ? `<div class="section-head"><h2>Reportées ${info('rel.snooze')}</h2></div><table class="list">${headFixed}<tbody>${later.map(row).join('')}</tbody></table>` : ''}
-        ${soon.length ? `<div class="section-head"><h2>Échéances dans les 7 jours ${info('rel.soon')}</h2></div><table class="list compact"><thead><tr><th>Facture</th><th>Client</th><th>Échéance</th><th class="r">Reste</th></tr></thead><tbody>
-          ${soon.map(d => `<tr class="clickable" data-id="${d.id}"><td><strong>${h(d.number)}</strong></td><td>${h(clientName(d.clientId))}</td><td>${C.fmtDate(d.dueDate)}</td><td class="r">${C.money(balance(d).remaining, docCur(d))}</td></tr>`).join('')}
-        </tbody></table>` : ''}
-        ${quotes.length ? `<div class="section-head"><h2>Devis sans réponse ${info('rel.quotes')}</h2></div><table class="list compact"><thead><tr><th>Devis</th><th>Client</th><th>Envoyé il y a</th><th>Validité</th><th class="r">Montant</th><th></th></tr></thead><tbody>
-          ${quotes.map(d => `<tr><td><strong><a href="#/doc/${d.id}">${h(d.number)}</a></strong><div class="small muted">${h(d.subject || '')}</div></td><td>${h(clientName(d.clientId))}</td><td>${pl(C.daysBetween(d.date, C.today()), 'jour')}</td><td>${effStatus(d) === 'expiré' ? '<span class="badge expiré">expiré</span>' : C.fmtDate(d.dueDate)}</td><td class="r">${C.money(C.computeTotals(d, company()).totalTTC, docCur(d))}</td>
+        ${later.length ? `<div id="r-reportees"><div class="section-head"><h2>Reportées ${info('rel.snooze')}</h2></div><table class="list">${headFixed}<tbody>${laterPage.rows.map(row).join('')}</tbody></table>${pagerBar(laterPage.pg, { noun: 'facture' })}</div>` : ''}
+        ${soon.length ? `<div id="r-bientot"><div class="section-head"><h2>Échéances dans les 7 jours ${info('rel.soon')}</h2></div><table class="list compact"><thead><tr><th>Facture</th><th>Client</th><th>Échéance</th><th class="r">Reste</th></tr></thead><tbody>
+          ${soonPage.rows.map(d => `<tr class="clickable" data-id="${d.id}"><td><strong>${h(d.number)}</strong></td><td>${h(clientName(d.clientId))}</td><td>${C.fmtDate(d.dueDate)}</td><td class="r">${C.money(balance(d).remaining, docCur(d))}</td></tr>`).join('')}
+        </tbody></table>${pagerBar(soonPage.pg, { noun: 'facture' })}</div>` : ''}
+        ${quotes.length ? `<div id="r-devis"><div class="section-head"><h2>Devis sans réponse ${info('rel.quotes')}</h2></div><table class="list compact"><thead><tr><th>Devis</th><th>Client</th><th>Envoyé il y a</th><th>Validité</th><th class="r">Montant</th><th></th></tr></thead><tbody>
+          ${quotesPage.rows.map(d => `<tr><td><strong><a href="#/doc/${d.id}">${h(d.number)}</a></strong><div class="small muted">${h(d.subject || '')}</div></td><td>${h(clientName(d.clientId))}</td><td>${pl(C.daysBetween(d.date, C.today()), 'jour')}</td><td>${effStatus(d) === 'expiré' ? '<span class="badge expiré">expiré</span>' : C.fmtDate(d.dueDate)}</td><td class="r">${C.money(C.computeTotals(d, company()).totalTTC, docCur(d))}</td>
             <td class="actions"><button class="btn btn-sm" data-qrem="${d.id}">Relancer par email</button></td></tr>`).join('')}
-        </tbody></table>` : ''}
+        </tbody></table>${pagerBar(quotesPage.pg, { noun: 'devis', pluriel: 'devis' })}</div>` : ''}
         <p class="small muted mt">Niveaux : rappel amical jusqu'à 15 jours, relance jusqu'à 45 jours, dernière relance au-delà. Textes modifiables dans Paramètres → Envois.</p>`;
       const find = id => all.find(x => x.doc.id === id);
       if ($('#rel-vers-fac')) $('#rel-vers-fac').onclick = () => navigate('#/factures');
       if ($('#rel-vers-new')) $('#rel-vers-new').onclick = () => navigate('#/doc/new/facture');
-      if ($('#rel-q')) $('#rel-q').oninput = e => { relState.q = e.target.value; relState.page = 1; sansPerdreLaFrappe(e.target, draw); };
-      if ($('#reset-f')) $('#reset-f').onclick = () => { relState.q = ''; relState.page = 1; draw(); };
+      const auDebut = () => { relState.page = 1; Object.values(relPages).forEach(x => { x.page = 1; }); };
+      if ($('#rel-q')) $('#rel-q').oninput = e => { relState.q = e.target.value; auDebut(); sansPerdreLaFrappe(e.target, draw); };
+      if ($('#reset-f')) $('#reset-f').onclick = () => { relState.q = ''; auDebut(); draw(); };
       bindSort($('#r-wrap'), key => { relState.sort = toggleSort(relState.sort, key, relCols); relState.page = 1; draw(); });
+      // Chaque pager est lié à SON tableau : lié à la page entière, « Suivant » des devis aurait
+      // fait tourner la liste des factures.
       bindPager($('#r-wrap'), relState, () => draw(), '#r-wrap');
+      [['#r-reportees', relPages.reportees], ['#r-bientot', relPages.bientot], ['#r-devis', relPages.devis]]
+        .forEach(([sel, st]) => { if ($(sel)) bindPager($(sel), st, () => draw(), sel); });
       bindRowMenus(document, id => {
         const x = find(id); if (!x) return [];
         return [
@@ -6150,7 +6188,7 @@
       // un bouton posé DANS la ligne agit ET fait quitter la page. « Attestation reçue » cochait la
       // case puis emmenait sur la facture — on ne voyait jamais que c'était noté.
       $$('tr.clickable[data-id]').forEach(tr => tr.onclick = e => { if (e.target.closest('button')) return; navigate('#/doc/' + tr.dataset.id); });
-    };
+    });
     $('#view').innerHTML = `<div class="page-head"><h1>Relances ${info('rel.levels')}</h1></div><div id="r-wrap"></div>`;
     draw();
   };
@@ -6652,7 +6690,7 @@
     const HINT = $('#palette-root .hint').textContent;
     let sel = 0, shown = [];
     const input = $('#pal-q'), res = $('#pal-res');
-    const draw = () => {
+    const draw = dansUnLot(() => {
       // Plié comme le texte (10.12.0) : « delai » trouve « Délai de paiement », « hotel » l'Hôtel.
       const q = C.plier(input.value.trim());
       const words = q.split(/\s+/).filter(Boolean);
@@ -6677,7 +6715,7 @@
       sel = Math.min(sel, Math.max(0, shown.length - 1));
       res.innerHTML = shown.length ? shown.map((x, i) => `<div class="res ${i === sel ? 'sel' : ''}" data-i="${i}"><span class="kind">${h(x.kind)}</span><span class="main">${h(x.main)}${x.sub ? `<span class="sub">${h(x.sub)}</span>` : ''}</span>${x.amt ? `<span class="amt">${h(x.amt)}</span>` : ''}</div>`).join('') : `<div class="res"><span class="main muted">Aucun résultat</span></div>`;
       $$('.res[data-i]', res).forEach(el => el.onclick = () => { closePalette(); shown[Number(el.dataset.i)].run(); });
-    };
+    });
     input.oninput = () => { sel = 0; draw(); };
     input.onkeydown = e => {
       if (e.key === 'ArrowDown') { e.preventDefault(); sel = Math.min(sel + 1, shown.length - 1); draw(); }
@@ -6776,7 +6814,8 @@
     journal: { sort: null, page: 1 },      // journal des ventes
     pays: { sort: null, page: 1 },         // encaissements
     buys: { sort: null, page: 1 },         // journal des achats
-    decs: { sort: null, page: 1 }          // règlements fournisseurs (10.0.1)
+    decs: { sort: null, page: 1 },         // règlements fournisseurs (10.0.1)
+    rs: { page: 1 }                        // attestations de retenue à recevoir (10.14.0)
   };
   // Les onglets de l'option Comptabilité (9.1.0). Trois, et seulement trois : ce sont des écrans de
   // COMPTABLE. Les journaux, la TVA, le calendrier fiscal, les clôtures et le paquet du comptable
@@ -6848,14 +6887,14 @@
     const cols = [
       { key: 'name', label: 'Nom', asc: true, val: r => r.s.name.toLowerCase(), get: r => `<strong>${h(r.s.name)}</strong>${r.s.contact ? `<div class="small muted">${h(r.s.contact)}</div>` : ''}` },
       { key: 'mf', label: 'Matricule', get: r => `${h(r.s.matricule || '')}${Number(r.s.withholdingRate) ? `<div class="small muted">RS ${pct(r.s.withholdingRate)} %</div>` : ''}` },
-      { key: 'contact', label: 'Contact', get: r => `<span class="small">${h(r.s.phone || '')}${r.s.phone && r.s.email ? '<br>' : ''}${h(r.s.email || '')}</span>` },
+      { key: 'contact', label: 'Contact', get: r => `<span class="small">${h(r.s.phone || '')}${r.s.phone && r.s.email ? '<br>' : ''}${r.s.email ? `<span class="ellipse" title="${h(r.s.email)}">${h(r.s.email)}</span>` : ''}</span>` },
       { key: 'count', label: 'Achats', r: true, val: r => r.sum.count, get: r => r.sum.count || '<span class="muted">—</span>' },
       { key: 'ht', label: 'Acheté HT', r: true, val: r => r.sum.ht, get: r => r.sum.ht ? C.money(r.sum.ht, cur) : '<span class="muted">—</span>' },
       { key: 'due', label: 'Reste à payer', r: true, val: r => r.sum.remaining, get: r => r.sum.remaining > 0.0005 ? `<strong class="${r.sum.late > 0.0005 ? 'warn-text' : ''}">${C.money(r.sum.remaining, cur)}</strong>` : '<span class="muted">—</span>' },
       { key: 'last', label: 'Dernier achat', val: r => r.sum.last || '', get: r => r.sum.last ? C.fmtDate(r.sum.last) : '<span class="muted">—</span>' }
     ];
     const FILTERS = [['', 'Tous les fournisseurs'], ['due', 'Avec un impayé'], ['late', 'En retard de paiement'], ['none', 'Sans aucun achat']];
-    const draw = (sortKey) => {
+    const draw = dansUnLot((sortKey) => {
       if (typeof sortKey === 'string' && sortKey) { s.sort = toggleSort(s.sort, sortKey, cols); s.page = 1; }
       const all = data.suppliers.map(x => ({ s: x, sum: C.supplierSummary(data, company(), x.id, C.today()) }));
       const rows = applySort(all
@@ -6890,7 +6929,7 @@
       });
       bindSort($('#list-wrap'), draw);
       bindPager($('#list-wrap'), s, () => draw(), '#list-wrap');
-    };
+    });
     const vide = !data.suppliers.length && !(s.q || s.f);
     $('#view').innerHTML = `<div class="page-head"><h1>Fournisseurs</h1><div class="actions"><button class="btn ${vide ? '' : 'btn-primary'}" id="new">+ Nouveau fournisseur</button></div></div>
       ${filtersBar(`
@@ -6916,7 +6955,7 @@
     const cur = company().currency;
     const sum = C.supplierSummary(data, company(), s.id, C.today());
     const mine = data.purchases.filter(p => p.supplierId === s.id);
-    const draw = () => {
+    const draw = dansUnLot(() => {
       const { cols } = purchaseColumns({ hideSupplier: true });
       const list = applySort(mine.slice(), cols, supplierBuyState.sort);
       const { rows, pg } = paginate(list, supplierBuyState);
@@ -6927,7 +6966,7 @@
       $$('#sup-docs tr.clickable').forEach(tr => tr.onclick = () => navigate('#/achat/' + tr.dataset.id));
       bindSort($('#sup-docs'), key => { supplierBuyState.sort = toggleSort(supplierBuyState.sort, key, cols); supplierBuyState.page = 1; draw(); });
       bindPager($('#sup-docs'), supplierBuyState, () => draw(), '#sup-docs');
-    };
+    });
     $('#view').innerHTML = `
       <div class="page-head"><div><h1>${h(s.name)}</h1>${s.contact ? `<div class="small muted">${h(s.contact)}</div>` : ''}</div>
         <div class="actions">${backButton('#/fournisseurs')}<button class="btn" id="edit">Modifier</button><button class="btn btn-primary" id="buy">+ Enregistrer un achat</button></div></div>
@@ -7015,7 +7054,7 @@
     const all = data.purchases;
     const years = Array.from(new Set(all.map(p => (p.date || '').slice(0, 4)).filter(Boolean))).sort().reverse();
     const cats = Array.from(new Set(all.map(p => p.category).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'fr'));
-    const draw = (sortKey) => {
+    const draw = dansUnLot((sortKey) => {
       if (typeof sortKey === 'string' && sortKey) { s.sort = toggleSort(s.sort, sortKey, cols); s.page = 1; }
       const rows = applySort(all
         .filter(p => !s.kind || p.kind === s.kind)
@@ -7059,7 +7098,7 @@
       });
       bindSort($('#list-wrap'), draw);
       bindPager($('#list-wrap'), s, () => draw(), '#list-wrap');
-    };
+    });
     const videAchats = !data.purchases.length && !(s.q || s.st || s.kind || s.cat || s.year);
     $('#view').innerHTML = `
       <div class="page-head"><h1>Achats et dépenses</h1>
@@ -7856,7 +7895,7 @@
       ${vide ? etatVide(VIDE_AUTRES[type][0], [`${h(tab[2])} ${info('autres.' + type)}`, h(VIDE_AUTRES[type][1])],
         [['vide-new', '+ ' + NEW_LABELS[type], true], ...(sourcesAutres(type).length ? [['vide-depuis', DEPUIS_AUTRES[type] || 'Partir d\'une pièce existante']] : [])]) : '<div id="list-wrap"></div>'}`;
 
-    const draw = (sortKey) => {
+    const draw = dansUnLot((sortKey) => {
       if (typeof sortKey === 'string' && sortKey) { s.sort = toggleSort(s.sort, sortKey, cols); s.page = 1; }
       const list = mine
         .filter(d => !s.year || (d.date || '').startsWith(s.year))
@@ -7874,7 +7913,7 @@
       note.innerHTML = !filtered ? '' : `<span class="small muted">${list.length} sur ${mine.length}</span>${filterReset(true)}`;
       if ($('#reset-f')) $('#reset-f').onclick = () => { s.q = ''; s.st = ''; s.year = ''; s.page = 1; routes.autres([type]); };
       bindDocTable(draw, s, '#list-wrap');
-    };
+    });
     $$('#a-tabs button').forEach(b => b.onclick = () => { autresTab = b.dataset.tab; navigate('#/autres/' + b.dataset.tab); });
     $('#new').onclick = () => navigate('#/doc/new/' + type);
     if ($('#vide-new')) $('#vide-new').onclick = () => navigate('#/doc/new/' + type);
@@ -8146,7 +8185,7 @@
       });
     }
 
-    const draw = () => {
+    const draw = dansUnLot(() => {
       // Un sélecteur visible et sans effet est pire qu'absent : on change d'année, rien ne bouge, et
       // on croit que l'application est cassée. « Affaires » et « Contrats » portent sur toute la vie
       // de l'affaire ou du contrat, pas sur un exercice.
@@ -8159,7 +8198,7 @@
       if (s.tab === 'contrats') return drawContracts();
       if (s.tab === 'seuil') return drawBreakEven();
       drawProjects();
-    };
+    });
     $$('#mg-tabs button').forEach(b => b.onclick = () => {
       s.tab = b.dataset.tab;
       $$('#mg-tabs button').forEach(x => x.classList.toggle('active', x === b));
@@ -8730,7 +8769,7 @@
   }
 
   const paieState = { tab: 'bulletins', year: lastMonth.slice(0, 4), month: String(Number(lastMonth.slice(5, 7))),
-    quarter: String(Math.ceil(Number(lastMonth.slice(5, 7)) / 3)) };
+    quarter: String(Math.ceil(Number(lastMonth.slice(5, 7)) / 3)), salaries: { page: 1 }, compteurs: { page: 1 } };
   const PAIE_TABS = [['bulletins', 'Bulletins'], ['salaries', 'Salariés'], ['conges', 'Congés et absences'],
     ['avances', 'Avances'], ['declarations', 'Déclarations'], ['registre', 'Registre'], ['baremes', 'Barèmes']];
   // Idem sur la Paie : la liste des salariés, les avances en cours et le registre du personnel sont
@@ -8879,11 +8918,14 @@
       const list = data.employees.slice().sort((a, b) => (a.name || '').localeCompare(b.name || '', 'fr'));
       const st = C.payrollSettings(data);
       const active = C.activeEmployees(data).length;
+      // Paginé (10.14.0) : soixante salariés faisaient trois mille pixels. Le total porte tout le
+      // personnel en poste, jamais la page.
+      const salPage = paginate(list, s.salaries);
       $('#p-body').innerHTML = `
         <div class="panel"><h2>Salariés ${info('pay.employees')}</h2>
           ${list.length ? `<div class="scroll-x"><table class="list compact"><thead><tr>
             <th>Nom</th><th>Poste</th><th>Contrat</th><th>Depuis</th><th class="r">Brut mensuel</th><th class="r">Net estimé</th><th class="r">Coût employeur</th><th></th></tr></thead><tbody>
-            ${list.map(e => {
+            ${salPage.rows.map(e => {
               const c = C.computePayslip(e, {}, st);
               const out = e.endDate && e.endDate < C.today();
               return `<tr class="clickable ${out ? 'muted' : ''}" data-eid="${h(e.id)}">
@@ -8900,24 +8942,26 @@
               <td class="r"><strong>${C.money(C.round3(C.activeEmployees(data).reduce((a, e) => a + C.computePayslip(e, {}, st).net, 0)), cur)}</strong></td>
               <td class="r"><strong>${C.money(C.round3(C.activeEmployees(data).reduce((a, e) => a + C.computePayslip(e, {}, st).employerCost, 0)), cur)}</strong></td>
               <td></td></tr>
-          </tbody></table></div>
+          </tbody></table></div>${pagerBar(salPage.pg, { noun: 'salarié' })}
           <p class="small muted mt">Le coût employeur est ce que le salarié coûte vraiment : le brut plus les charges patronales. C'est lui qui entre dans ton résultat et dans ton seuil de rentabilité, pas le net.</p>`
             : '<div class="empty">Aucun salarié.</div>'}
         </div>`;
       $$('#p-body tr[data-eid]').forEach(tr => tr.onclick = e2 => { if (e2.target.closest('button')) return; navigate('#/salarie/' + tr.dataset.eid); });
       $$('#p-body [data-ee]').forEach(b => b.onclick = () => employeeForm(employeeById(b.dataset.ee), () => draw()));
+      bindPager($('#p-body'), s.salaries, () => drawEmployees(), '#p-body');
     }
 
     function drawLeaves() {
       const y = Number(s.year);
       const all = C.leavesOf(data, '', y);
       const emps = C.activeEmployees(data);
+      const cptPage = paginate(emps, s.compteurs);
       $('#p-body').innerHTML = `
-        <div class="panel"><h2>Compteurs de congés ${info('hr.balance')}</h2>
+        <div class="panel" id="p-compteurs"><h2>Compteurs de congés ${info('hr.balance')}</h2>
           <p class="small muted mb">Le droit annuel (<b>${pct(C.payrollSettings(data).leaveDaysPerYear)} ${Number(C.payrollSettings(data).leaveDaysPerYear) > 1 ? 'jours ouvrables' : 'jour ouvrable'}</b>) se règle dans l'onglet Barèmes. Il s'acquiert au prorata des mois travaillés. <em>À VÉRIFIER avec ton comptable : la convention collective de ton secteur peut prévoir davantage.</em></p>
           ${emps.length ? `<div class="scroll-x"><table class="list compact"><thead><tr>
             <th>Salarié</th><th class="r">Acquis ${y}</th><th class="r">Reporté</th><th class="r">Pris</th><th class="r">Solde</th><th class="r">Maladie</th><th class="r">Sans solde</th></tr></thead><tbody>
-            ${emps.map(e => { const b = C.leaveBalance(data, e.id, y);
+            ${cptPage.rows.map(e => { const b = C.leaveBalance(data, e.id, y);
               return `<tr class="clickable ${b.remaining < 0 ? 'row-warn' : ''}" data-eid="${h(e.id)}">
                 <td><strong>${h(e.name)}</strong></td>
                 <td class="r nw">${pct(b.acquired)}</td><td class="r nw">${b.carry ? pct(b.carry) : '<span class="muted">—</span>'}</td>
@@ -8926,7 +8970,7 @@
                 <td class="r nw">${b.byKind.maladie ? pct(b.byKind.maladie) : '<span class="muted">—</span>'}</td>
                 <td class="r nw">${b.byKind['sans-solde'] ? pct(b.byKind['sans-solde']) : '<span class="muted">—</span>'}</td></tr>`;
             }).join('')}
-          </tbody></table></div>
+          </tbody></table></div>${pagerBar(cptPage.pg, { noun: 'salarié' })}
           <p class="small muted mt">Un solde négatif veut dire que le salarié a pris plus de jours qu'il n'en a acquis : ce n'est pas interdit, mais il faut le savoir.</p>`
             : '<div class="empty">Aucun salarié en poste.</div>'}
         </div>
@@ -8950,6 +8994,7 @@
         </div>`;
       $$('#p-body [data-lv]').forEach(b => b.onclick = () => leaveForm(data.leaves.find(x => x.id === b.dataset.lv), null, () => draw()));
       $$('#p-body tr[data-eid]').forEach(tr => tr.onclick = e2 => { if (e2.target.closest('button')) return; navigate('#/salarie/' + tr.dataset.eid); });
+      if ($('#p-compteurs')) bindPager($('#p-compteurs'), s.compteurs, () => drawLeaves(), '#p-compteurs');
     }
 
     function drawAdvances() {
@@ -9346,7 +9391,7 @@
       if ($('#new-lv')) $('#new-lv').onclick = () => leaveForm(null, null, () => draw());
       if ($('#new-av')) $('#new-av').onclick = () => advanceForm(null, null, () => draw());
     };
-    const draw = () => {
+    const draw = dansUnLot(() => {
       $('#p-head').innerHTML = pHead(); bindHead(); poserLienAide('paie');
       if (!data.employees.length) { $('#p-body').innerHTML = ''; return; }
       if (s.tab === 'salaries') return drawEmployees();
@@ -9356,7 +9401,7 @@
       if (s.tab === 'registre') return drawRegister();
       if (s.tab === 'baremes') return drawRates();
       drawSlips();
-    };
+    });
     // Changer d'onglet quitte les Barèmes : la question « modifications non enregistrées » se pose
     // ici comme à la sortie de la page (10.12.0), et le garde-fou des Barèmes ne survit pas à
     // l'onglet qu'il protégeait.
@@ -9472,7 +9517,7 @@
   };
 
   // ---------- Stock (4.0.0) ----------
-  const stockState = { tab: 'etat', q: '', only: '', counts: {}, countDate: C.today(), year: C.today().slice(0, 4), moves: { page: 1 },
+  const stockState = { tab: 'etat', q: '', only: '', counts: {}, countDate: C.today(), year: C.today().slice(0, 4), moves: { page: 1 }, etat: { page: 1 }, inv: { page: 1 }, alertes: { page: 1 },
     ser: { q: '', status: '', page: 1 } };
   const STOCK_TABS = [['etat', 'État du stock'], ['mouvements', 'Mouvements'], ['series', 'Numéros de série'], ['inventaire', 'Inventaire'], ['alertes', 'Alertes']];
 
@@ -9591,6 +9636,9 @@
       const q = s.q.trim().toLowerCase();
       const rows = t.rows.filter(r => (!q || C.correspondRecherche(`${r.label || ''} ${r.location || ''}`, q))
         && (!s.only || (s.only === 'alerte' ? (r.low || r.negative) : r.qty > 0)));
+      // Paginé comme toute liste (2.2.0) : cent vingt articles faisaient six mille pixels. Le total,
+      // lui, porte la sélection entière, jamais la page (2.2.0, 7.16.0).
+      const pageEtat = paginate(rows, s.etat);
       $('#st-body').innerHTML = `
         <div class="stats">
           <div class="stat"><div class="lbl">Valeur du stock ${info('stk.value')}</div><div class="val">${C.money(t.value, cur)}</div><div class="sub">${pl(t.count, 'article')} suivi${sPl(t.count)}</div></div>
@@ -9614,7 +9662,7 @@
           </div>
           ${rows.length ? `<div class="scroll-x"><table class="list compact"><thead><tr>
             <th>Article</th><th>Emplacement</th><th class="r">En stock</th><th class="r">Seuil</th><th class="r">Coût moyen ${info('stk.cmp')}</th><th class="r">Valeur</th><th class="r">Prix de vente</th></tr></thead><tbody>
-            ${rows.map(r => `<tr class="clickable ${r.negative ? 'row-warn' : ''}" data-iid="${h(r.itemId)}">
+            ${pageEtat.rows.map(r => `<tr class="clickable ${r.negative ? 'row-warn' : ''}" data-iid="${h(r.itemId)}">
               <td><strong>${h(r.label)}</strong>${r.negative ? '<div class="small warn-text">stock négatif : une entrée manque</div>' : r.low ? '<div class="small warn-text">sous le seuil d\'alerte</div>' : ''}</td>
               <td>${h(r.location) || '<span class="muted">—</span>'}</td>
               <td class="r nw">${qtyCell(r)}</td>
@@ -9624,12 +9672,13 @@
               <td class="r nw">${Number(r.unitPrice) > 0 ? C.money(r.unitPrice, cur) : '<span class="muted" title="Pas de prix de vente fixé">—</span>'}</td></tr>`).join('')}
             <tr class="total-row"><td colspan="5"><strong>Total</strong></td>
               <td class="r"><strong>${C.money(C.round3(rows.reduce((a, r) => a + Math.max(0, r.value), 0)), cur)}</strong></td><td></td></tr>
-          </tbody></table></div>
+          </tbody></table></div>${pagerBar(pageEtat.pg, { noun: 'article' })}
           <p class="small muted mt">Valorisation au <b>coût moyen pondéré</b> : à chaque entrée, le coût unitaire moyen est recalculé sur tout le stock. <em>À VÉRIFIER avec ton comptable : la méthode retenue pour tes comptes annuels.</em></p>`
             : '<div class="empty">Aucun article ne correspond.</div>'}
         </div>`;
-      $('#st-q').oninput = e => { s.q = e.target.value; sansPerdreLaFrappe(e.target, drawState); };
-      $('#st-only').onchange = e => { s.only = e.target.value; drawState(); };
+      $('#st-q').oninput = e => { s.q = e.target.value; s.etat.page = 1; sansPerdreLaFrappe(e.target, drawState); };
+      $('#st-only').onchange = e => { s.only = e.target.value; s.etat.page = 1; drawState(); };
+      bindPager($('#st-body'), s.etat, () => drawState(), '#st-body');
       // Un compteur rouge qui nomme un ensemble doit l'ouvrir (7.15.0) : ces deux-là annonçaient un
       // problème et laissaient chercher les articles concernés à la main dans toute la liste.
       const versAlertes = () => { s.tab = 'alertes'; $$('#st-tabs button').forEach(x => x.classList.toggle('active', x.dataset.tab === 'alertes')); draw(); };
@@ -9706,6 +9755,9 @@
 
     function drawInventory() {
       const { rows } = etatInventaire();
+      // Paginé : le comptage d'un article d'une autre page reste dans `s.counts`, et les écarts se
+      // calculent sur TOUS les articles (`etatInventaire`), pas sur la page affichée.
+      const invPage = paginate(rows, s.inv);
       $('#st-body').innerHTML = `
         <div class="panel"><h2>Inventaire physique ${info('stk.inventory')}</h2>
           <p class="small muted mb">Une fois par an au minimum, on compte ce qu'il y a vraiment en rayon et on le compare à ce que dit l'application. Un écart n'est pas une faute : c'est de la casse non déclarée, une sortie oubliée ou une erreur de saisie. L'important est de le voir.</p>
@@ -9715,12 +9767,12 @@
           </div>
           <div class="scroll-x"><table class="list compact"><thead><tr>
             <th>Article</th><th class="r">Stock théorique</th><th class="r">Compté</th><th class="r">Écart</th><th class="r">Valeur de l'écart</th></tr></thead><tbody>
-            ${rows.map(r => `<tr data-ligne="${h(r.itemId)}">
+            ${invPage.rows.map(r => `<tr data-ligne="${h(r.itemId)}">
               <td><strong>${h(r.label)}</strong>${r.unit ? ` <span class="muted">(${h(r.unit)})</span>` : ''}</td>
               <td class="r nw">${pct(r.book)}</td>
               <td class="r"><input type="number" step="0.01" class="num inv-in" data-iid="${h(r.itemId)}" value="${r.counted == null ? '' : r.counted}" placeholder="—" style="width:90px" aria-label="Compté : ${h(r.label)}"></td>
               <td class="r nw" data-ecart></td><td class="r nw" data-valeur></td></tr>`).join('')}
-          </tbody></table></div>
+          </tbody></table></div>${pagerBar(invPage.pg, { noun: 'article' })}
           <div class="inline mt">
             <button class="btn btn-primary" id="inv-apply" disabled></button>
             <button class="btn" id="inv-clear" disabled>Effacer le comptage</button>
@@ -9734,6 +9786,7 @@
       majInventaire();
       $$('#st-body .inv-in').forEach(el => el.oninput = () => { s.counts[el.dataset.iid] = el.value; majInventaire(); });
       $('#inv-clear').onclick = () => { s.counts = {}; drawInventory(); };
+      bindPager($('#st-body'), s.inv, () => drawInventory(), '#st-body');
       $('#inv-apply').onclick = async () => {
         const { gaps } = etatInventaire();
         if (!gaps.length) return;
@@ -9747,11 +9800,12 @@
     }
 
     function drawAlerts() {
+      const alPage = paginate(alerts, s.alertes);
       $('#st-body').innerHTML = `
         <div class="panel"><h2>Ce qui demande ton attention ${info('stk.alerts')}</h2>
           ${alerts.length ? `<div class="scroll-x"><table class="list compact"><thead><tr>
             <th>Article</th><th>Problème</th><th class="r">En stock</th><th class="r">Seuil</th><th class="r">À commander</th><th></th></tr></thead><tbody>
-            ${alerts.map(r => `<tr class="clickable ${r.kind === 'negatif' ? 'row-warn' : ''}" data-see="${h(r.itemId)}">
+            ${alPage.rows.map(r => `<tr class="clickable ${r.kind === 'negatif' ? 'row-warn' : ''}" data-see="${h(r.itemId)}">
               <td><strong>${h(r.label)}</strong>${r.location ? `<div class="small muted">${h(r.location)}</div>` : ''}</td>
               <td>${r.kind === 'negatif' ? '<span class="warn-text">Stock négatif — tu as vendu plus que tu n\'as acheté. Un achat manque, ou une quantité a été saisie de travers.</span>'
                 : r.kind === 'rupture' ? '<span class="warn-text">Rupture : il n\'en reste plus.</span>'
@@ -9762,9 +9816,10 @@
               <td class="r">${/* 10.12.0 — deux boutons par ligne (règle 7.29.0 : au plus UN), et « Ajuster » pour
                    un stock négatif, que la règle 4.0.0 interdit d'ajuster. Le geste est l'ACHAT : oublié
                    (négatif) ou à passer (seuil). La ligne ouvre la fiche de l'article. */''}<button class="btn btn-sm" data-achat="${h(r.itemId)}" data-qte="${r.kind === 'negatif' ? '' : C.round3(Math.max(r.minStock, 1) - r.qty)}">${r.kind === 'negatif' ? 'Saisir l\'achat oublié…' : 'Commander…'}</button></td></tr>`).join('')}
-          </tbody></table></div>`
+          </tbody></table></div>${pagerBar(alPage.pg, { noun: 'article' })}`
             : '<div class="empty">Rien à signaler : aucun stock négatif, aucun article sous son seuil.</div>'}
         </div>`;
+      bindPager($('#st-body'), s.alertes, () => drawAlerts(), '#st-body');
       $$('#st-body [data-achat]').forEach(b => b.onclick = e => { e.stopPropagation(); navigate(`#/achat/new/-/facture/-/article/${b.dataset.achat}${b.dataset.qte ? '/' + b.dataset.qte : ''}`); });
       $$('#st-body tr[data-see]').forEach(tr => tr.onclick = () => navigate('#/article/' + tr.dataset.see));
     }
@@ -9827,7 +9882,7 @@
       if ($('#st-new')) $('#st-new').onclick = () => catalogForm(articleNeuf({ tracked: true }), it => { if (it) render(); }, { creation: true, titre: 'Nouvel article suivi' });
       if ($('#st-pick')) $('#st-pick').onclick = () => navigate('#/catalogue');
     };
-    const draw = () => {
+    const draw = dansUnLot(() => {
       $('#st-head').innerHTML = stHead(); bindStHead(); poserLienAide('stock');
       if (!items.length) { $('#st-body').innerHTML = ''; return; }
       if (s.tab === 'series') return drawSerials();
@@ -9836,7 +9891,7 @@
       if (s.tab === 'inventaire') return drawInventory();
       if (s.tab === 'alertes') return drawAlerts();
       drawState();
-    };
+    });
     $$('#st-tabs button').forEach(b => b.onclick = () => {
       s.tab = b.dataset.tab;
       $$('#st-tabs button').forEach(x => x.classList.toggle('active', x === b));
@@ -10103,7 +10158,7 @@
       .filter(x => x.item && x.item.serialized);
     if (!lines.length) return toast('Aucune ligne de ce document ne porte un article suivi par numéro de série.', true);
     const chosen = {};                       // itemId → Set d'identifiants
-    const draw = (root) => {
+    const draw = dansUnLot((root) => {
       const body = $('#sa-body', root);
       body.innerHTML = lines.map(({ l, item }) => {
         const need = Number(l.qty) || 0;
@@ -10128,7 +10183,7 @@
         if (cb.checked) set.add(cb.dataset.pick); else set.delete(cb.dataset.pick);
         draw(root);
       });
-    };
+    });
     modal(`<h2>Numéros de série de ${h(doc.number || 'ce document')}</h2>
       <p class="small muted">Coche les unités effectivement livrées. Leur garantie démarre à la date du document (${C.fmtDate(doc.date)}), et elles apparaîtront dans le parc de ${h(clientName(doc.clientId) || 'ce client')}.</p>
       <div id="sa-body"></div>
@@ -10564,7 +10619,7 @@
       $$('#im-body tr[data-aid]').forEach(tr => tr.onclick = () => navigate('#/immo/' + tr.dataset.aid));
     }
 
-    const draw = () => {
+    const draw = dansUnLot(() => {
       // Une liste d'une seule année ne choisit rien ; l'export est celui du TABLEAU (7.17.0 : un
       // export suit ce qu'on regarde) ; et sans aucun bien, le vert est celui de l'état vide (U-11).
       $('#im-year').hidden = s.tab === 'attente' || years.length < 2;
@@ -10573,7 +10628,7 @@
       if (s.tab === 'attente') return drawWaiting();
       if (s.tab === 'sorties') return drawDisposals();
       drawTable();
-    };
+    });
     $$('#im-tabs button').forEach(b => b.onclick = () => {
       s.tab = b.dataset.tab;
       $$('#im-tabs button').forEach(x => x.classList.toggle('active', x === b));
@@ -10655,7 +10710,11 @@
 
   // ---------- Trésorerie ----------
   const tresoState = { tab: 'position', account: '', days: 90, year: C.today().slice(0, 4), showPointed: false,
-    moves: { sort: null, page: 1 } };
+    moves: { sort: null, page: 1 },
+    // Le détail de la prévision et les deux listes du rapprochement sont paginés (10.14.0) : avec
+    // huit mille pièces, « Pas encore pointés » faisait neuf mille lignes — quatre cent cinquante
+    // mille pixels, et chaque case cochée redessinait le tout.
+    prevision: { page: 1 }, pending: { page: 1 }, pointes: { page: 1 } };
   const TRESO_TABS = [['position', 'Où j\'en suis'], ['prevision', 'Ce qui arrive'], ['mouvements', 'Mouvements'], ['rapprochement', 'Rapprochement']];
 
   // Le compte que la fiche société porte déjà, s'il n'existe pas encore (`C.compteDepuisFiche`).
@@ -10776,12 +10835,12 @@
         `<button role="tab" data-tab="${id}" class="${id === s.tab ? 'active' : ''}">${label}</button>`).join('')}</div>
       <div id="t-body"></div>`;
 
-    const draw = () => {
+    const draw = dansUnLot(() => {
       if (s.tab === 'prevision') return drawForecast();
       if (s.tab === 'mouvements') return drawMoves();
       if (s.tab === 'rapprochement') return drawReco();
       drawPosition();
-    };
+    });
 
     // --- Où j'en suis
     function drawPosition() {
@@ -10818,6 +10877,7 @@
     // --- Ce qui arrive
     function drawForecast() {
       const f = C.cashForecast(data, company(), s.days, C.today());
+      const prevPage = paginate(f.events.map((_, i) => i), s.prevision);
       $('#t-body').innerHTML = `
         <div class="filters">
           <select id="t-days">${[30, 60, 90, 180].map(d => `<option value="${d}" ${Number(s.days) === d ? 'selected' : ''}>${d} jours</option>`).join('')}</select>
@@ -10833,16 +10893,17 @@
           <ul class="small">${f.fiscal.map(x => `<li><strong>${C.fmtDate(x.date)}</strong> — ${h(x.label)}</li>`).join('')}</ul>
         </div>` : ''}
         <div class="panel"><h2>Le détail, dans l'ordre ${info('tre.events')}</h2>
-          ${f.events.length ? `<table class="list compact"><thead><tr><th>Date</th><th>Origine</th><th>Pièce</th><th class="r">Mouvement</th><th class="r">Solde après</th></tr></thead><tbody>
-            ${f.points.slice(1).map((p, i) => { const e = f.events[i]; return `<tr class="clickable ${p.balance < 0 ? 'row-warn' : ''}" data-fid="${h(e.id)}" data-fkind="${h(e.kind)}">
+          ${f.events.length ? `<div id="t-prev"><table class="list compact"><thead><tr><th>Date</th><th>Origine</th><th>Pièce</th><th class="r">Mouvement</th><th class="r">Solde après</th></tr></thead><tbody>
+            ${prevPage.rows.map(i => { const p = f.points[i + 1], e = f.events[i]; return `<tr class="clickable ${p.balance < 0 ? 'row-warn' : ''}" data-fid="${h(e.id)}" data-fkind="${h(e.kind)}">
               <td class="nw">${C.fmtDate(p.date)}${e.late ? '<div class="small warn-text">déjà échue</div>' : ''}</td>
               <td class="small">${e.kind === 'client' ? 'Facture client' : e.kind === 'fournisseur' ? 'Achat' : 'Contrat récurrent'}</td>
               <td>${h(e.label)}</td>
               <td class="r nw ${p.delta > 0 ? 'ok-text' : 'warn-text'}">${p.delta > 0 ? '+' : ''}${C.money(p.delta, cur)}</td>
               <td class="r nw ${p.balance < 0 ? 'warn-text' : ''}"><strong>${C.money(p.balance, cur)}</strong></td></tr>`; }).join('')}
-          </tbody></table>` : '<div class="empty">Rien d\'attendu sur cette période : aucune facture ouverte, aucun achat à régler.</div>'}
+          </tbody></table>${pagerBar(prevPage.pg, { noun: 'échéance' })}</div>` : '<div class="empty">Rien d\'attendu sur cette période : aucune facture ouverte, aucun achat à régler.</div>'}
         </div>`;
-      $('#t-days').onchange = e => { s.days = Number(e.target.value); draw(); };
+      $('#t-days').onchange = e => { s.days = Number(e.target.value); s.prevision.page = 1; draw(); };
+      if ($('#t-prev')) bindPager($('#t-prev'), s.prevision, () => draw(), '#t-prev');
       $$('#t-body tr[data-fid]').forEach(tr => tr.onclick = () => {
         const k = tr.dataset.fkind;
         navigate(k === 'client' ? '#/doc/' + tr.dataset.fid : k === 'fournisseur' ? '#/achat/' + tr.dataset.fid : '#/contrat/' + tr.dataset.fid);
@@ -10934,6 +10995,7 @@
       // ce qui avait été pointé. Or pointer par erreur fausse l'écart avec le relevé — c'est-à-dire
       // exactement le chiffre pour lequel on est venu sur cette page.
       const pointes = r.moves.filter(m => m.reconciled).slice().reverse();
+      const pendPage = paginate(pending, s.pending), pointPage = paginate(pointes, s.pointes);
       const ligne = m => `<tr><td><input type="checkbox" data-rec="${h(m.id)}" data-src="${h(m.source)}" ${m.reconciled ? 'checked' : ''}></td>
               <td class="nw">${C.fmtDate(m.date)}</td><td>${h(m.label)}<div class="small muted">${h(m.party || '')}</div></td>
               <td class="small">${h(m.reference || '')}</td>
@@ -10970,19 +11032,21 @@
         </div>
         <div class="panel"><h2>Pas encore pointés — ${pl(pending.length, 'mouvement')} ${info('tre.pending')}</h2>
           <p class="small muted mb">Coche ce que tu retrouves sur ton relevé. Ce qui reste décoché est soit en cours de traitement à la banque, soit une erreur de saisie.</p>
-          ${pending.length ? `<table class="list compact"><thead><tr><th style="width:46px"></th><th>Date</th><th>Libellé</th><th>Référence</th><th class="r">Montant</th></tr></thead><tbody>
-            ${pending.map(ligne).join('')}
-          </tbody><tfoot><tr><td colspan="4"><strong>Total non pointé</strong></td><td class="r"><strong>${C.money(r.pendingAmount, cur)}</strong></td></tr></tfoot></table>`
+          ${pending.length ? `<div id="t-pend"><table class="list compact"><thead><tr><th style="width:46px"></th><th>Date</th><th>Libellé</th><th>Référence</th><th class="r">Montant</th></tr></thead><tbody>
+            ${pendPage.rows.map(ligne).join('')}
+          </tbody><tfoot><tr><td colspan="4"><strong>Total non pointé</strong></td><td class="r"><strong>${C.money(r.pendingAmount, cur)}</strong></td></tr></tfoot></table>${pagerBar(pendPage.pg, { noun: 'mouvement' })}</div>`
             : '<div class="empty">Tout est pointé. Ton relevé et SkanFact sont alignés.</div>'}
         </div>
         ${pointes.length ? `<div class="panel"><h2><button class="btn btn-ghost btn-sm" id="t-vus">${s.showPointed ? '▾' : '▸'}</button> Déjà pointés — ${pl(pointes.length, 'mouvement')}</h2>
           <p class="small muted mb">Décoche si tu t'es trompé : le mouvement revient dans la liste du dessus et le solde pointé se recalcule.</p>
-          ${s.showPointed ? `<table class="list compact"><thead><tr><th style="width:46px"></th><th>Date</th><th>Libellé</th><th>Référence</th><th class="r">Montant</th></tr></thead><tbody>
-            ${pointes.map(ligne).join('')}
-          </tbody></table>` : ''}
+          ${s.showPointed ? `<div id="t-vus-l"><table class="list compact"><thead><tr><th style="width:46px"></th><th>Date</th><th>Libellé</th><th>Référence</th><th class="r">Montant</th></tr></thead><tbody>
+            ${pointPage.rows.map(ligne).join('')}
+          </tbody></table>${pagerBar(pointPage.pg, { noun: 'mouvement' })}</div>` : ''}
         </div>` : ''}`;
       if ($('#t-vus')) $('#t-vus').onclick = () => { s.showPointed = !s.showPointed; draw(); };
-      $('#t-acc2').onchange = e => { s.account = e.target.value; draw(); };
+      $('#t-acc2').onchange = e => { s.account = e.target.value; s.pending.page = 1; s.pointes.page = 1; draw(); };
+      if ($('#t-pend')) bindPager($('#t-pend'), s.pending, () => draw(), '#t-pend');
+      if ($('#t-vus-l')) bindPager($('#t-vus-l'), s.pointes, () => draw(), '#t-vus-l');
       if ($('#t-etat-csv')) $('#t-etat-csv').onclick = async () => {
         const et = C.etatRapprochement(data, company(), accId, C.today());
         const rows = [{ poste: 'Solde du relevé bancaire', montant: et.statement }]
@@ -11100,7 +11164,7 @@
       sel.innerHTML = opts.map(([v, l]) => `<option value="${v}" ${v === statsState.n ? 'selected' : ''}>${h(l)}</option>`).join('');
     };
 
-    const draw = () => {
+    const draw = dansUnLot(() => {
       const p = C.periodBounds(statsState.kind, statsState.year, statsState.n);
       const now = C.today();
       const cur1 = C.salesTotals(data, company(), p.from, p.to);
@@ -11214,7 +11278,7 @@
         const f = await bridge.saveText(name, C.toCsv(rows, cols));
         if (f) toast('Exporté : ' + f.split(/[\\/]/).pop());
       };
-    };
+    });
 
     fillN();
     $('#s-kind').onchange = e => { statsState.kind = e.target.value; fillN(); draw(); };
@@ -11327,7 +11391,7 @@
         `<button role="tab" data-tab="${id}" class="${id === comptaState.tab ? 'active' : ''}${ONGLETS_OPTION.includes(id) ? ' opt' : ''}">${label}${ONGLETS_OPTION.includes(id) && !(licence.options || []).includes('compta') ? ' 🔒' : ''}</button>`).join('')}
         ${!C.sousModuleOn(data, 'compta.livres') ? `<button class="btn btn-sm btn-ghost" id="c-plus" title="Grand livre, balance, états financiers">+ Comptabilité complète</button>` : ''}</div>
       <div id="c-body"></div>`;
-    const draw = () => {
+    const draw = dansUnLot(() => {
       // Un onglet masqué ne peut pas rester l'onglet courant : la page s'ouvrirait sur du vide,
       // sans onglet allumé, et on croirait s'être trompé de page.
       if (ONGLETS_OPTION.includes(comptaState.tab) && !C.sousModuleOn(data, 'compta.livres')) comptaState.tab = 'ventes';
@@ -11378,6 +11442,9 @@
       ];
       const jPage = paginate(applySort(rows, journalCols, comptaState.journal.sort), comptaState.journal);
       const pPage = paginate(applySort(pays, payCols, comptaState.pays.sort), comptaState.pays);
+      // Les attestations en attente couvrent TOUTES les années : onze cents lignes d'un bloc sous deux
+      // tableaux paginés (10.14.0). La plus ancienne d'abord, c'est celle qu'on réclame en premier.
+      const rsPage = paginate(rsPending, comptaState.rs);
       $('#c-body').innerHTML = `
         <div class="filters">
           <input type="search" id="cpt-q" placeholder="Rechercher : n°, client, objet, référence…" value="${h(comptaState.q)}">
@@ -11412,9 +11479,9 @@
         </div>
         <div class="panel" id="p-rs-clients"><h2>Retenues à la source — attestations à recevoir ${info('compta.rs')}</h2>
           ${rsPending.length ? `<p class="small muted">${C.money(rsPendingAmount, cur)} retenus par tes clients sans attestation reçue. Coche quand l'attestation arrive (elle justifie la retenue auprès du fisc).</p>
-          <table class="list compact"><thead><tr><th>Facture</th><th>Client</th><th>Date</th><th class="r">Retenue</th><th></th></tr></thead><tbody>
-            ${rsPending.map(d => { const t = C.computeTotals(d, company()); return `<tr class="clickable" data-id="${d.id}"><td><strong>${h(d.number)}</strong></td><td>${h(clientName(d.clientId))}</td><td>${C.fmtDate(d.date)}</td><td class="r">${C.money(t.withholding, cur)} <span class="muted small">(${pct(t.withholdingRate)} %)</span></td><td class="actions"><button class="btn btn-sm" data-cert="${d.id}">Attestation reçue</button></td></tr>`; }).join('')}
-          </tbody></table>` : '<p class="small muted">Aucune attestation en attente.</p>'}
+          <div id="rs-wrap"><table class="list compact"><thead><tr><th>Facture</th><th>Client</th><th>Date</th><th class="r">Retenue</th><th></th></tr></thead><tbody>
+            ${rsPage.rows.map(d => { const t = C.computeTotals(d, company()); return `<tr class="clickable" data-id="${d.id}"><td><strong>${h(d.number)}</strong></td><td>${h(clientName(d.clientId))}</td><td>${C.fmtDate(d.date)}</td><td class="r">${C.money(t.withholding, cur)} <span class="muted small">(${pct(t.withholdingRate)} %)</span></td><td class="actions"><button class="btn btn-sm" data-cert="${d.id}">Attestation reçue</button></td></tr>`; }).join('')}
+          </tbody></table></div>${pagerBar(rsPage.pg, { noun: 'attestation' })}` : '<p class="small muted">Aucune attestation en attente.</p>'}
         </div>`;
       // `if (e.target.closest('button')) return` comme les sept autres liaisons de ligne : sans lui,
       // un bouton posé DANS la ligne agit ET fait quitter la page. « Attestation reçue » cochait la
@@ -11431,6 +11498,7 @@
         bindSort(pPanel, key => { comptaState.pays.sort = toggleSort(comptaState.pays.sort, key, payCols); comptaState.pays.page = 1; draw(); });
         bindPager(pPanel, comptaState.pays, () => draw(), '#p-wrap');
       }
+      if ($('#rs-wrap')) bindPager($('#p-rs-clients'), comptaState.rs, () => draw(), '#p-rs-clients');
       // Même règle que « Marquer déposée » : la ligne quitte la liste des attestations manquantes,
       // et le seul endroit où l'on peut décocher est la fiche de la facture. Le retour vient à nous.
       $$('[data-cert]').forEach(b => b.onclick = () => {
@@ -11491,7 +11559,7 @@
         try { const dir = await bridge.exportPdfMany(files, `SkanFact-${tag}`); if (dir) { toast(`${files.length} PDF exportés`); bridge.openPath(dir); } }
         catch (e) { toast(plainError(e), true); }
       };
-    };
+    });
     // ---------- onglet Achats : le journal symétrique de celui des ventes ----------
     function drawBuyJournal(p, label) {
       const q = comptaState.q.trim().toLowerCase();
@@ -13777,7 +13845,15 @@
     const devis = docs.filter(d => d.type === 'devis' && (d.lines || []).length);
     const factures = docs.filter(d => d.type === 'facture');
     const st = d => C.effectiveStatus(d, data, co);
-    const plusRempli = (liste, compte) => liste.slice().sort((a, b) => compte(b) - compte(a))[0];
+    // Le plus rempli : UN compte par candidat (10.14.0). Le tri appelait `compte` à chaque
+    // comparaison, et chaque compte relisait toutes les pièces — six secondes sur « Me guider » avec
+    // mille cinq cents clients. À égalité, le premier de la liste, comme le tri stable d'avant.
+    const plusRempli = (liste, compte) => {
+      let meilleur, max = -Infinity;
+      liste.forEach(x => { const n = compte(x); if (n > max) { max = n; meilleur = x; } });
+      return meilleur;
+    };
+    const parCle = (liste, cle) => { const m = new Map(); liste.forEach(x => m.set(x[cle], (m.get(x[cle]) || 0) + 1)); return m; };
     switch (cle) {
       case 'doc':
       case 'devis': {
@@ -13790,11 +13866,11 @@
       case 'factureBrouillon': return lien('#/doc/', recent(factures.filter(d => d.status === 'brouillon')));
       case 'factureOuverte': return lien('#/doc/', recent(factures.filter(d => ['retard', 'partielle', 'envoyée'].includes(st(d)))));
       case 'factureEmise': return lien('#/doc/', recent(factures.filter(d => d.status !== 'brouillon' && st(d) !== 'annulée')));
-      case 'client': return lien('#/client/', plusRempli(data.clients || [], c => docs.filter(d => d.clientId === c.id).length));
+      case 'client': { const n = parCle(docs, 'clientId'); return lien('#/client/', plusRempli(data.clients || [], c => n.get(c.id) || 0)); }
       case 'contrat': return lien('#/contrat/', (data.recurring || []).find(r => r.active !== false) || (data.recurring || [])[0]);
-      case 'fournisseur': return lien('#/fournisseur/', plusRempli(data.suppliers || [], s => (data.purchases || []).filter(p => p.supplierId === s.id).length));
+      case 'fournisseur': { const n = parCle(data.purchases || [], 'supplierId'); return lien('#/fournisseur/', plusRempli(data.suppliers || [], s => n.get(s.id) || 0)); }
       case 'achat': return lien('#/achat/', recent((data.purchases || []).filter(p => (p.lines || []).length > 1)) || recent(data.purchases || []));
-      case 'affaire': return lien('#/affaire/', plusRempli(data.projects || [], p => docs.filter(d => d.projectId === p.id).length));
+      case 'affaire': { const n = parCle(docs, 'projectId'); return lien('#/affaire/', plusRempli(data.projects || [], p => n.get(p.id) || 0)); }
       case 'salarie': return lien('#/salarie/', C.activeEmployees(data)[0] || (data.employees || [])[0]);
       case 'article': return lien('#/article/', (data.catalog || []).find(c => c.tracked));
       case 'immo': return lien('#/immo/', (data.assets || []).find(a => !a.disposal) || (data.assets || [])[0]);
@@ -15608,7 +15684,7 @@
       { key: 'emise', label: 'Émise le', val: r => r.emisLe || '', get: r => r.emisLe ? C.fmtDate(r.emisLe) : '—' }
     ];
     const FILTRES = [['', 'Toutes'], ['bientot', 'À renouveler'], ['active', 'Actives'], ['vie', 'À vie'], ['expiree', 'Expirées'], ['revoquee', 'Révoquées']];
-    const draw = (sortKey) => {
+    const draw = dansUnLot((sortKey) => {
       if (typeof sortKey === 'string' && sortKey) { s.sort = toggleSort(s.sort, sortKey, cols); s.page = 1; }
       const all = C.licenceRows(data, C.today(), company());
       const kept = applySort(all
@@ -15666,7 +15742,7 @@
       });
       bindSort($('#lic-wrap'), draw);
       bindPager($('#lic-wrap'), s, () => draw(), '#lic-wrap');
-    };
+    });
     const all = data.licences || [];
     $('#view').innerHTML = `<div class="page-head"><h1>Licences ${info('lic.liste')}</h1><div class="actions">${peut ? '<button class="btn btn-primary" id="lic-new">+ Émettre une licence</button>' : ''}</div></div>
       ${peut ? '' : '<div class="banner info"><span>Historique en lecture : les clés de signature ne sont pas sur cet ordinateur. Copier une clé, la renvoyer ou ouvrir sa facture reste possible ; émettre et renouveler, non.</span></div>'}
@@ -16008,7 +16084,7 @@
         return '';
       };
 
-      const draw = () => {
+      const draw = dansUnLot(() => {
         const s = steps[i];
         // Le compteur et la barre comptent les QUESTIONS : la porte n'en est pas une, elle n'en porte
         // aucun — « 1 / 4 » sur un écran de bienvenue ferait croire à un formulaire de quatre pages.
@@ -16140,7 +16216,7 @@
           // la même phrase que « Non merci » de l'accueil).
           if (surLaPorte) toast('D\'accord. La découverte et chaque visite guidée restent dans « Me guider », en bas du menu.');
         };
-      };
+      });
       const collect = () => { const f = $('#sf-form', root); if (f) Object.assign(a, formValues(f)); };
       // La porte a été vue, quel que soit le battant choisi : elle ne se rouvre plus, ni ici ni sur
       // l'accueil (où elle vivait avant la 10.14.0, et vit encore pour qui ne l'a jamais vue). Au niveau

@@ -698,8 +698,10 @@ t('9.4.9 : on relance une SÉLECTION, pas tout le monde ou personne', () => {
   // La case d'en-tête porte sur ce que l'écran MONTRE : sous filtre, cocher soixante clients
   // pendant que le bandeau en annonce onze serait exactement le chiffre qui ment (7.16.0).
   const ka = app.indexOf("const all = $('#rl-all')");
-  const za = app.slice(ka, ka + 400);
-  assert.ok(/rows\.forEach/.test(za) && !/toutes\.forEach/.test(za),
+  const za = app.slice(ka, ka + 500);
+  // 10.14.0 — la liste se pagine : ce que l'écran montre est la PAGE (`rowsPage`), jamais la
+  // sélection entière (`rows`) ni la liste de tout le monde (`toutes`).
+  assert.ok(/rowsPage\.forEach/.test(za) && !/\brows\.forEach/.test(za) && !/toutes\.forEach/.test(za),
     'la case d\'en-tête coche ce que l\'écran montre, jamais la liste entière');
   // Une coche posée sur un client qui a envoyé son mois entre-temps n'a plus de sens.
   assert.ok(/relState\.coches = new Set\(\[\.\.\.relState\.coches\]\.filter/.test(zr),

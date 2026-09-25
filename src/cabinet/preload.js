@@ -148,6 +148,7 @@ contextBridge.exposeInMainWorld('cabinet', {
   // données d'un client, et la porte qu'elle ferme est celle de la validation d'une écriture —
   // jamais la lecture, jamais l'import, jamais l'export.
   licenceStatus: () => ipcRenderer.invoke('licence:status'),
+  licenceVerifier: quoi => ipcRenderer.invoke('licence:verifier', quoi),
   licenceSet: (key) => ipcRenderer.invoke('licence:set', key),
   licenceRequestMail: () => ipcRenderer.invoke('licence:requestMail'),
   relireLesPaquets: (dossierId, annee) => ipcRenderer.invoke('cab:relireLesPaquets', { dossierId, annee }),

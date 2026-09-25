@@ -227,6 +227,14 @@ Constats de l'audit du 22/09/2026 restés hors de la 10.6.0.
   insécable devant `? ! ; : »` n'y est posée que dans les visites et sur les questions du comptable
   (`C.typoFr`). Le portage général change le texte que les parcours comparent (bandeaux, `p`) :
   à faire avec les parcours, pas en passant.
+- **Saturation (10.14.0), ce qui reste** : un compte du grand livre ouvert affiche TOUTES ses lignes
+  (le 411 d'un livre de douze mille pièces en porte huit mille) — la page est rapide (0,4 s) parce
+  que les comptes sont repliés, mais le compte déplié n'est pas paginé ; les onglets Comptabilité ›
+  Écritures et Cabinet de l'app entreprise mettent ~1,3 s par clic sur huit mille pièces
+  (à-nouveaux et balance lus depuis le début de l'exercice, 10.0.1) ; à 1280 px, la liste des
+  clients déborde encore d'une quarantaine de pixels quand les montants dépassent cent millions ;
+  la Déclaration employeur et le Registre du personnel restent d'un seul tenant (ce sont des
+  documents imprimés, pas des listes).
 - Les trois pistes jamais demandées, gardées pour mémoire : séparer les installateurs arm64 / x64
   (les 222 Mo du dmg universel), la signature Apple et Windows (certificats payants — mais elle
   passe **avant la première vente**, cf. `QUESTIONS.md` : un expert-comptable ne clique pas sur

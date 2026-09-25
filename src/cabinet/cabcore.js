@@ -19,8 +19,14 @@
   const pad2 = n => String(n).padStart(2, '0');
   // « 1 dossier(s) » : un logiciel qui parle mal paraît bâclé, et c'est le premier contact d'un
   // comptable avec SkanFact.
-  const pl = (n, un, plur) => `${n} ${n > 1 ? (plur || un + 's') : un}`;
+  const pl = (n, un, plur) => `${Math.abs(n) >= 1000 ? Number(n).toLocaleString('fr-FR') : n} ${Math.abs(n) > 1 ? (plur || un + 's') : un}`;
+  // Un compte de milliers se lit groupé : « 3 526 », jamais « 3526 » (10.14.0, saturation).
+  const nbFr = n => (Math.abs(Number(n)) >= 1000 ? Number(n).toLocaleString('fr-FR') : String(n));
   const round3 = n => Math.round((Number(n) || 0) * 1000) / 1000;
+  // Un nom se trie comme on le lit : « Café 3 » avant « Café 13 », accents et casse ignorés.
+  // Un seul comparateur, créé une fois : localeCompare(…, 'fr') le recrée à chaque comparaison.
+  const TRI_NOM = new Intl.Collator('fr', { numeric: true, sensitivity: 'base' });
+  const parNom = (a, b) => TRI_NOM.compare(String(a || ''), String(b || ''));
   function monthLabel(m) {
     const [y, mm] = String(m || '').split('-').map(Number);
     return (MONTHS_FR[mm - 1] || '?') + ' ' + (y || '?');
@@ -463,7 +469,7 @@
           dernier: mois.filter(m => m.recu).slice(-1)[0] || null
         };
       })
-      .sort((a, b) => (b.aSaisir - a.aSaisir) || String(a.name).localeCompare(b.name, 'fr'));
+      .sort((a, b) => (b.aSaisir - a.aSaisir) || parNom(a.name, b.name));
   }
 
   function migrate(state) {
@@ -668,7 +674,7 @@
     const par = new Map();
     cab.forEach(g => par.set(g.id, { ...g, portee: 'cabinet' }));
     loc.forEach(g => par.set(g.id, { ...g, portee: 'dossier' }));
-    return Array.from(par.values()).sort((a, b) => String(a.nom || '').localeCompare(String(b.nom || ''), 'fr'));
+    return Array.from(par.values()).sort((a, b) => parNom(a.nom, b.nom));
   }
 
   // La correspondance qui s'applique à un dossier : celle du cabinet, puis ses exceptions. Une
@@ -995,13 +1001,13 @@
   // que l'application existe pour répondre), mais un cabinet à soixante lignes a besoin de ranger
   // par nom, par dernier mois reçu, par chiffre d'affaires.
   const SORTS = {
-    urgence: (a, b) => b.score - a.score || a.name.localeCompare(b.name, 'fr'),
-    nom: (a, b) => a.name.localeCompare(b.name, 'fr'),
-    dernier: (a, b) => String(b.lastMonth || '').localeCompare(String(a.lastMonth || '')) || a.name.localeCompare(b.name, 'fr'),
-    recu: (a, b) => (b.lastAt || 0) - (a.lastAt || 0) || a.name.localeCompare(b.name, 'fr'),
-    ca: (a, b) => ((b.lastFigures && b.lastFigures.ca) || 0) - ((a.lastFigures && a.lastFigures.ca) || 0) || a.name.localeCompare(b.name, 'fr'),
-    manquants: (a, b) => b.missingCount - a.missingCount || a.name.localeCompare(b.name, 'fr'),
-    relance: (a, b) => (a.lastRelanceAt || 0) - (b.lastRelanceAt || 0) || a.name.localeCompare(b.name, 'fr')
+    urgence: (a, b) => b.score - a.score || parNom(a.name, b.name),
+    nom: (a, b) => parNom(a.name, b.name),
+    dernier: (a, b) => String(b.lastMonth || '').localeCompare(String(a.lastMonth || '')) || parNom(a.name, b.name),
+    recu: (a, b) => (b.lastAt || 0) - (a.lastAt || 0) || parNom(a.name, b.name),
+    ca: (a, b) => ((b.lastFigures && b.lastFigures.ca) || 0) - ((a.lastFigures && a.lastFigures.ca) || 0) || parNom(a.name, b.name),
+    manquants: (a, b) => b.missingCount - a.missingCount || parNom(a.name, b.name),
+    relance: (a, b) => (a.lastRelanceAt || 0) - (b.lastRelanceAt || 0) || parNom(a.name, b.name)
   };
 
   function dossierList(state, todayIso, opts) {
@@ -1317,7 +1323,7 @@
   // caractères plus loin. Un code de journal commence par une voyelle une fois sur trois (AC, OD).
   function libelleLot(lot) {
     const n = Number(lot && lot.n) || 0;
-    const quoi = n > 1 ? `les ${n} pièces` : 'la seule pièce';
+    const quoi = n > 1 ? `les ${nbFr(n)} pièces` : 'la seule pièce';
     return `Valider ${quoi} ${de(String((lot && lot.label) || ''))}`;
   }
 
@@ -1674,7 +1680,7 @@
     });
     return out
       .filter(e => e.clients > 0)
-      .sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : a.label.localeCompare(b.label, 'fr'));
+      .sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : parNom(a.label, b.label));
   }
 
   // La clé d'une occurrence : la RÈGLE et sa DATE. Elle vit ici, pas dans l'écran, parce que le
@@ -1886,7 +1892,7 @@
         path: p.path, definitive: !!p.definitive, sealed: !!p.sealed
       }));
     });
-    pris.sort((a, b) => (a.month < b.month ? -1 : a.month > b.month ? 1 : a.name.localeCompare(b.name, 'fr')));
+    pris.sort((a, b) => (a.month < b.month ? -1 : a.month > b.month ? 1 : parNom(a.name, b.name)));
     return {
       packs: pris, sansPaquet,
       mois: [...new Set(pris.map(p => p.month))],
@@ -2052,7 +2058,7 @@
     let clients = motsClient.length ? actifs.filter(nomme) : (courant ? [courant] : actifs);
     // Le dossier ouvert passe devant : c'est de lui qu'on parle quand on tape « balance » sur sa fiche.
     clients = clients.slice().sort((a, b) => (b.id === courantId) - (a.id === courantId)
-      || String(a.name || '').localeCompare(String(b.name || ''), 'fr'));
+      || parNom(a.name, b.name));
     const out = [];
     for (const d of clients) {
       for (const c of vues) {
@@ -2064,6 +2070,8 @@
   }
 
   return {
+    nbFr,
+    parNom,
     mailAppairage, mailtoUrl, LIMITE_MAILTO,
     FORMAT, MONTHS_FR, DEFAULT_STATE, DEFAULT_SETTINGS, DEFAULT_SAISIE, TVA_PERIODS, REGIMES, RELANCE_WAYS, SORTS,
     sansAccents, paletteCompta,
