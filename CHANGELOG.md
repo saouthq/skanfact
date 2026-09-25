@@ -537,6 +537,27 @@ l'écran. Le matricule fiscal (« 1472411D/A/M/000 ») peut maintenant passer à
 - **La liste des ventes montre la date de la vente**, en première colonne ; une vente reprise de
   l'historique de SkanFact dit « importée le … ».
 
+### Chaque champ explique ce qu'il devient
+
+- **Cent dix-huit champs de plus portent leur bulle « i »**, dans toute l'application : le paiement (date,
+  montant, mode, référence, note), un salarié et ses absences, une avance, un mouvement de stock et
+  l'inventaire, les numéros de série, un bien, un mouvement de trésorerie, une écriture, un envoi par
+  mail, une relance téléphonique, les modèles et les textes, la licence, la clôture… Jusqu'ici seuls
+  les quatre formulaires du premier jour étaient tenus.
+- **La bulle d'un paiement mène à « Se faire payer »**, celle d'un acompte à « Acompte et solde » —
+  elles menaient toutes à l'article sur la numérotation.
+
+### « Clôturer jusqu'à… » montre ce qu'il faut regarder avant
+
+- Clôturer plusieurs mois d'un coup ne montrait **aucun** des points que le bouton du mois suivant
+  signale (une facture en brouillon, des bulletins à établir). La fenêtre les dit maintenant **pour
+  toute la période choisie**, et se met à jour quand on change de mois. On peut toujours clôturer
+  quand même.
+- **Choisir n'est pas taper.** Changer de mois dans cette fenêtre puis « Annuler » demandait
+  « Abandonner cette saisie ? Ce que tu viens de taper… » alors que rien n'avait été tapé. Une
+  fenêtre qui ne porte que des listes et des cases se referme maintenant sans question, dans les
+  deux applications ; la recherche dans une liste ne compte pas non plus comme une saisie.
+
 ## 10.13.0-beta.1 — 24/09/2026
 
 **Avant la mise en production : les deux applications et le pont entre elles, testés en entier.**

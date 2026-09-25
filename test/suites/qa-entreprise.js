@@ -1756,7 +1756,7 @@ module.exports = ({ t, assert, lireSource }) => {
   t('Une avance ne propose aucun montant, les dit obligatoires et refuse en montrant le champ', () => {
     const app = code('src', 'renderer', 'app.js');
     const f = corpsDe(app, 'function advanceForm(');
-    assert.ok(/field\('<span>Montant avancé<\/span>', 'amount', a\.amount \|\| ''/.test(f), 'le montant d\'une avance neuve s\'ouvre sur un zéro que personne n\'a décidé');
+    assert.ok(/Montant avancé[^\n]{0,80}'amount', a\.amount \|\| ''/.test(f), 'le montant d\'une avance neuve s\'ouvre sur un zéro que personne n\'a décidé');
     assert.ok(/'monthly', a\.monthly \|\| ''/.test(f), 'la retenue d\'une avance neuve s\'ouvre sur un zéro');
     assert.strictEqual((f.match(/replace\('class="field"', 'class="field obligatoire"'\)/g) || []).length, 2, 'les deux montants ne se disent pas obligatoires');
     assert.ok(/<div class="span-2 annonce-stable" id="af2-hint">/.test(f) && !/class="field span-2" id="af2-hint"/.test(f), 'l\'annonce de l\'avance est stylée comme un libellé, ou change de hauteur');
@@ -2333,7 +2333,7 @@ module.exports = ({ t, assert, lireSource }) => {
     assert.ok(pw.length > 1500 && !/function rappelerModules/.test(pw), 'tranche de passwordDialog : ' + pw.length);
     assert.ok(/r\.champ && \$\(`\[name=\$\{r\.champ\}\]`, root\) \? refus\(/.test(pw), 'la fenêtre du mot de passe ne montre pas la case que le refus nomme');
     assert.ok(/settingsFocus = 'p-motdepasse'; render\(\);/.test(pw), 'après le mot de passe, l\'écran repart en haut de l\'onglet au lieu du panneau où l\'on a agi');
-    assert.ok(/<label class="field span-2"><span>Mot de passe actuel<\/span><input type="password" name="current"/.test(pw), 'l\'ancien mot de passe partage sa rangée : « Confirmation » tombe sous lui, loin du nouveau qu\'elle confirme');
+    assert.ok(/<label class="field span-2">'[^\n]{0,80}Mot de passe actuel[^\n]{0,60}<input type="password" name="current"/.test(pw), 'l\'ancien mot de passe partage sa rangée : « Confirmation » tombe sous lui, loin du nouveau qu\'elle confirme');
     assert.ok(/mode === 'remove' \? '<p class="small muted">Le fichier de données et ses sauvegardes seront réécrits en clair/.test(pw), 'retirer le mot de passe ne dit pas, avant le geste, que tout repasse en clair');
     assert.ok(/\.act-grid\.champ-faute \{/.test(lireSource('src', 'renderer', 'style.css')), 'la grille des métiers refusée ne se marque pas');
   });

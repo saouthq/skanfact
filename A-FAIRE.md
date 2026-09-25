@@ -254,12 +254,15 @@ l'ordre proposé.
   Importer… depuis un tableur ; « Ta facture à ton image » (logo, cachet, couleurs sur la prochaine
   facture) ; A2 (devises nommées), A3 (l'étoile), A4 (« Question 1 sur 3 ») ; et les bulles de chaque
   champ des quatre formulaires du premier jour. Chaque geste joué à la souris. Reste :
-  - **les champs sans bulle hors du premier jour** : 22 appels `field('…')` à libellé nu (paiement,
-    référence, emplacement, remise globale, destinataire d'un envoi, CIN, poste, RIB d'un salarié,
-    coût unitaire, numéro et frais d'un achat, banque d'un compte, email du comptable, remise et
-    note d'un contrat…) et quelques `<label class="field">` écrits en texte. Le test de 10.14.0
-    ne tient que les quatre formulaires du premier jour ; l'étendre à tout le fichier ferait le
-    ménage d'un coup.
+  - ~~**les champs sans bulle hors du premier jour**~~ — *fait en 10.14.0* : 118 champs (libellés
+    nus, dates, listes de choix, libellés en expression), et le test lit désormais tout `app.js`
+    avec des exceptions nommées. Restent, notés au passage :
+    - **l'avance à un salarié n'entre ni en trésorerie ni en écritures** : la bulle le dit, le moteur
+      ne la sort pas du compte — à décider (quel compte, 425 ?) avec le comptable. À VÉRIFIER ;
+    - **le numéro de pièce d'une OD se modifie librement** et peut doubler un numéro existant : rien
+      ne le refuse. À ajouter à `odValide` (refus nommé) ;
+    - **le Cabinet** n'a pas de test statique équivalent (seul `e2e:cabinet-jour1` mesure les champs
+      sans bulle, à l'écran).
 - ~~**L'assistant du Cabinet**~~ — *fait en 10.14.0* (214a → 214d) : la porte, deux questions (le nom,
   la liste des clients collée), puis « Tes premiers pas » — la clé de secours, la copie externe, le
   fichier d'appairage qui PART (« Remettre le fichier à mes clients… » l'enregistre et prépare le mail,

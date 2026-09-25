@@ -480,7 +480,12 @@
   // question : « est-ce qu'il a tapé quelque chose ? ». Sans lui, Échap jetait huit champs sans un
   // mot — et un comptable qui perd une saisie deux fois n'ouvre plus jamais ce formulaire sereinement.
   function suivreSaisie(layer) {
-    const lire = () => JSON.stringify([...layer.querySelectorAll('input:not([type=hidden]), textarea, select')]
+    // Choisir n'est pas taper (10.14.0) : une fenêtre dont les seuls champs sont des listes et des
+    // cases (« Clôturer jusqu'à… ») se referme sans demander — la question dirait « ce que tu viens de
+    // taper » à quelqu'un qui n'a rien tapé, et se referait en un clic. La recherche d'une liste
+    // (`.combo-q`) cherche, elle ne saisit rien (10.12.0) : elle ne compte pas non plus.
+    if (!layer.querySelector('input:not([type=hidden]):not([type=checkbox]):not([type=radio]):not(.combo-q), textarea')) return () => false;
+    const lire = () => JSON.stringify([...layer.querySelectorAll('input:not([type=hidden]):not(.combo-q), textarea, select')]
       .map(c => (c.type === 'checkbox' || c.type === 'radio' ? String(c.checked) : c.value)));
     const depart = lire();
     return () => lire() !== depart;

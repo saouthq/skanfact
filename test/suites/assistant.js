@@ -1038,6 +1038,33 @@ t('10.14.0 : chaque champ des formulaires du premier jour porte sa bulle — la 
   // Qu'une bulle posée existe dans guide.js, c'est le test général des bulles qui le tient.
 });
 
+t('10.14.0 : chaque champ de TOUTE l\'application porte sa bulle — libellés, dates et listes de choix', () => {
+  // Le test du premier jour ne lisait que quatre formulaires : 113 champs des autres fenêtres (le
+  // paiement, un salarié, une absence, un mouvement de stock, une écriture…) n'expliquaient rien. La
+  // règle vaut pour tout le fichier ; les seules exceptions sont NOMMÉES, et chacune dit pourquoi.
+  const EXCEPTIONS = [
+    /^<label class="field">\$\{label/,          // field() lui-même : son libellé lui est passé
+    /^<div class="field">\$\{label/,            // dateFieldHtml() lui-même
+    /^<label class="field mb">\$\{h\(label\)/,  // une clause de contrat : le panneau « Clauses » porte la bulle
+    /^<label class="field span-2">\$\{\/\*/,    // promptDialog : la bulle est `o.info`, quand l'appelant la donne
+    /^<div class="field"><span>La prochaine portera/ // une lecture, pas un champ : le numéro que prendra la facture
+  ];
+  const nus = [
+    ...(code.match(/\bfield\((?!lbl\()(?!`<span class="fl")(?!label,)[^,\n]{0,70}/g) || []), // field() dont le libellé n'est pas lbl( : texte, gabarit ou expression
+    ...(code.match(/dateFieldHtml\('[^']+'/g) || []),                                  // une date au libellé nu
+    ...(code.match(/<(?:label|div) class="field[^"]*">(?!\$\{lbl\()(?!' \+ lbl\()[^<]{1,60}/g) || []), // texte ou ${…} sans lbl
+    ...(code.match(/<(?:label|div) class="field[^"]*"><span>[^<]*<\/span>/g) || [])  // un <span> sans bulle
+  ].filter(x => !/^<(label|div) class="field[^"]*">\s*$/.test(x))
+    .filter(x => !EXCEPTIONS.some(r => r.test(x)));
+  assert.deepStrictEqual(nus, [], `${nus.length} champ(s) sans bulle — ${nus.join(' · ')}`);
+  // Chaque exception désigne encore quelque chose : une exception qui ne sert plus finit par couvrir autre chose.
+  // Et une bulle mène à l'article qui PARLE du champ : « Montant » d'un paiement menait à la numérotation.
+  const G = require('../../src/renderer/guide.js');
+  [['ed.payAmount', 'paiements'], ['ed.payDate', 'paiements'], ['ed.depositMode', 'acompte'], ['ed.pieceDepart', 'pieces']]
+    .forEach(([k, art]) => assert.strictEqual(G.articleDe(k), art, k + ' mène à « ' + G.articleDe(k) + ' »'));
+  EXCEPTIONS.forEach(r => assert.ok((code.match(/<(?:label|div) class="field[^"]*">[^\n]{0,60}/g) || []).some(x => r.test(x)), 'exception sans objet : ' + r));
+});
+
 t('10.14.0 : un client et un article naissent d\'UN modèle — la fiche, la création à la volée et l\'import', () => {
   assert.ok(/const c = client \|\| C\.clientVierge\(preset\);/.test(code), 'la fiche client recopie son propre modèle');
   assert.ok(/function articleNeuf\(extra\) \{\s*return C\.articleVierge\(company\(\), extra\);/.test(code), 'la fiche article recopie son propre modèle');

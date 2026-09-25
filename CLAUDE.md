@@ -145,6 +145,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Un **instrument de test humain** doit ouvrir le produit qu'ont les clients — sinon on juge un autre objet | 10.12.0 — « v44.4.1 » : Electron lancé par `src/main.js` |
 | Un **rappel qui sert à deux choses** reçoit les arguments des deux : seule une chaîne est une colonne | 10.12.0 — onze listes perdaient leur tri à chaque fiche enregistrée ; 7.17.0 |
 | Un test qui **COMPTE des usages** (« au moins trois ») laisse passer tous ceux qu'il ne compte pas : il exige la règle sur CHAQUE usage | 10.12.0 — quatre listes hors de `filtersBar` ; 7.33.0 |
+| Un test qui ne lit que **quatre formulaires** laisse nus tous les autres, et une sonde qui ne reconnaît que `field('texte'` manque `field(expr ? 'a' : 'b'` | 10.14.0 — 118 champs sans bulle |
 | Une assertion sur une **pile** lit son SOMMET : c'est là que « ← » va | 10.12.0 — le devis vierge n'était jamais la dernière entrée |
 | Un test qui cherche une **CLASSE** laisse passer une remarque jamais posée : on JOUE la fonction | 10.14.0 — le résumé de l'image de marque, et `data.company.name` que les crochets ne comptaient pas |
 | Une erreur qui se **compense sur l'année** ne se voit que dans un MOIS : le test regarde janvier | 10.14.0 — l'ouverture comptée deux fois de janvier à septembre |
@@ -168,7 +169,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Le Cabinet **n'écrit jamais** chez un client et ne lui renvoie rien | Cabinet 1.0.0 |
 | Une classe du Cabinet ne peut pas porter un nom déjà pris dans la feuille partagée | 6.8.0 — `.setup-card` |
 | Un drapeau qui vit **en double** diverge, toujours | 7.26.0 — `src/depot.js` |
-| Une **fenêtre de formulaire** demande avant de jeter la saisie, avec le MÊME instantané des deux côtés | 10.12.0 |
+| Une **fenêtre de formulaire** demande avant de jeter la saisie, avec le MÊME instantané des deux côtés — et **choisir n'est pas taper** : une fenêtre de listes seules se referme sans question | 10.12.0 ; 10.14.0 — « Clôturer jusqu'à… » |
 | Une **clé qu'on épingle** est la même sur tous les postes de son propriétaire, sinon l'épinglage fabrique des refus | 10.13.0 — la signature du cabinet, dérivée de sa clé |
 
 **L'interface**
@@ -7573,6 +7574,33 @@ les offres, ouvre la page de paiement préremplie, et la clé revient toute seul
   phrase dit où est le reste, y compris avant d'imprimer : une rangée absente de l'écran ne
   s'imprime pas. Un compte ouvert à la main le reste au redessin (`glOuverts`, remis à zéro quand on
   change de client) — sinon « montrer la suite » refermait ce qu'on lisait.
+
+**Puis le ménage des bulles, et la fenêtre qui clôturait à l'aveugle** (P4, « fais ce que tu peux
+faire seul, par ordre de priorité ») :
+
+- **Un test qui ne tient que le premier jour laisse nu tout le reste.** Celui de 213g ne lisait que
+  quatre formulaires ; étendu à tout `app.js`, il a trouvé des dizaines de champs sans bulle, puis la
+  sonde a appris trois formes qu'elle ne lisait pas — un `dateFieldHtml('Date', …)`, un `<span>` nu
+  dans un `<div class="field">`, et un libellé passé en EXPRESSION (`field(rend ? 'Montant rendu' :
+  'Montant', …)`), celui-là trouvé à la souris sur la fenêtre de paiement. 118 en tout. La
+  sonde lit désormais tout premier argument qui n'est pas `lbl(`, et ses exceptions sont NOMMÉES
+  (field() et dateFieldHtml() eux-mêmes, les clauses d'un contrat, promptDialog, une lecture) — avec
+  un contrôle que chacune désigne encore quelque chose.
+- **Une bulle mène à l'article qui PARLE du champ** : le préfixe `ed.` envoyait « Montant » d'un
+  paiement à la numérotation. `ARTICLE_PAR_CLE` range les paiements, les acomptes et la pièce de
+  départ à leur article, et le test l'exige.
+- **Un geste en masse montre ce que montre son geste unitaire** : « Clôturer jusqu'à… » clôturait trois
+  mois sans un seul des contrôles que « Clôturer juin » affiche. Les points à régler se calculent sur
+  toute la période choisie, suivent la liste, et se lisent AVANT (9.4.2) ; on peut clôturer quand même
+  (6.0.0). Et l'annonce qui devient un encadré **réserve la hauteur de l'encadré** (`annonce-stable
+  encadre`) : `3lh` ne comptait que le texte, et « Clôturer » descendait de 13 px au choix du mois.
+- **Choisir n'est pas taper.** `suivreSaisie` comptait un `<select>` comme une frappe : changer le
+  mois puis « Annuler » demandait « Abandonner cette saisie ? Ce que tu viens de taper… ». Une fenêtre
+  sans champ où l'on tape se referme sans question, et la recherche d'une liste (`.combo-q`) ne compte
+  pas (chercher n'est pas modifier, 10.12.0) — dans les deux applications, même corps. Le test JOUE la
+  fonction sur une fausse fenêtre qui LIT le sélecteur : ma première version l'ignorait, et retirer
+  l'exclusion ne faisait rien tomber. Et la preuve se fait sur la règle entière : l'exclusion vit dans
+  la détection ET dans la lecture, en retirer une seule ne change rien.
 
 ## Pistes pour la suite (non demandées)
 

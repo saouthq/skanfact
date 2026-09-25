@@ -101,6 +101,54 @@ module.exports = ({ t, assert }) => {
     const css = fs.readFileSync(path.join(__dirname, '../../src/renderer/style.css'), 'utf8');
     assert.ok(/\.more-list \.ml-titre \{/.test(css) && /\.more-list \.ml-sep \{/.test(css));
   });
+  // « Clôturer jusqu'à… » clôturait plusieurs mois d'un coup sans montrer un seul contrôle, alors que
+  // le bouton du mois suivant les montre (6.0.0 : les contrôles nomment, ils ne bloquent pas). Un
+  // avertissement se lit AVANT le geste (9.4.2) — et sur toute la période choisie.
+  t('10.14.0 : « Clôturer jusqu\'à… » montre les points à régler de TOUTE la période choisie, avant le geste', () => {
+    const i = app.indexOf("if ($('#close-to')) $('#close-to').onclick");
+    const f = app.slice(i, app.indexOf("if ($('#do-reopen'))", i));
+    assert.ok(i > 0 && f.length > 600 && f.length < 4000, 'tranche close-to : ' + f.length);
+    assert.ok(/C\.closureChecks\(data, company\(\), next\.from, to\)\.filter\(c => c\.level === 'danger'\)/.test(f), 'les contrôles portent du premier mois ouvert au mois choisi');
+    assert.ok(/\$\('select\[name=m\]', root\)\.onchange = points;\s*points\(\);/.test(f), 'l\'annonce suit le mois choisi, et paraît dès l\'ouverture');
+    assert.ok(f.indexOf('points();') < f.indexOf('C.closePeriod('), 'l\'annonce se pose avant que le geste soit possible');
+    assert.ok(/id="ct-points" class="small annonce-stable encadre"/.test(f), 'l\'annonce réserve sa hauteur : le bouton ne bouge pas sous le curseur');
+  });
+
+  // Vu à la souris (10.14.0) : choisir « août 2026 » dans « Clôturer jusqu'à… » puis « Annuler »
+  // demandait « Abandonner cette saisie ? Ce que tu viens de taper… » — rien n'avait été tapé.
+  t('10.14.0 : choisir n\'est pas taper — une fenêtre de listes seules se referme sans demander, un champ tapé demande', () => {
+    const vm = require('vm');
+    const src = app.match(/function suivreSaisie\(layer\) \{[\s\S]*?\n  \}/)[0];
+    const suivre = vm.runInNewContext('(' + src + ')');
+    // Une fausse couche : `querySelector` ne trouve que ce qui répond au sélecteur « tapable ».
+    // Elle LIT le sélecteur : un `:not(...)` retiré du code doit changer ce qu'elle rend.
+    const repond = (sel, c) => sel.split(',').map(x => x.trim()).some(x => {
+      if (x === 'textarea' || x === 'select') return c.tag === x;
+      if (!x.startsWith('input') || c.tag !== 'input') return false;
+      const exclus = [...x.matchAll(/:not\(([^)]*)\)/g)].map(m => m[1]);
+      return !exclus.some(e => (e === '.combo-q' && c.cls === 'combo-q') || e === `[type=${c.type}]`);
+    });
+    const couche = champs => ({
+      querySelector: sel => champs.find(c => repond(sel, c)) || null,
+      querySelectorAll: sel => champs.filter(c => repond(sel, c))
+    });
+    const liste = { tag: 'select', type: 'select-one', value: '2026-06-30' };
+    const g1 = suivre(couche([liste]));
+    liste.value = '2026-08-31';
+    assert.strictEqual(g1(), false, 'une liste changée n\'est pas une saisie à protéger');
+    const recherche = { tag: 'input', type: 'text', cls: 'combo-q', value: '' };
+    const g2 = suivre(couche([liste, recherche]));
+    recherche.value = 'hôtel';
+    assert.strictEqual(g2(), false, 'la recherche d\'une liste ne compte pas');
+    const texte = { tag: 'input', type: 'text', value: '' };
+    const g3 = suivre(couche([liste, texte]));
+    texte.value = 'Menuiserie';
+    assert.strictEqual(g3(), true, 'une frappe dans un champ se protège toujours');
+    // Le jumeau du Cabinet a le même corps (test 10.12.0) — on le relit ici aussi.
+    const cab = fs.readFileSync(path.join(__dirname, '../../src/cabinet/renderer/app.js'), 'utf8');
+    assert.strictEqual(cab.match(/function suivreSaisie\(layer\) \{[\s\S]*?\n  \}/)[0], src, 'les deux applications ont le même garde-fou');
+  });
+
   // Un matricule fiscal est un seul mot pour le navigateur : il imposait sa largeur à la colonne, et
   // à 1280 px la liste des clients débordait de trente pixels (saturation, 10.14.0).
   t('10.14.0 : un matricule fiscal se coupe après ses « / », dans les listes des clients et des fournisseurs', () => {
