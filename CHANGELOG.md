@@ -938,6 +938,11 @@ douze mois et l'année. Voici ce qu'il a trouvé :
 - **Le lien du paquet dit ce qu'il fera.** « Clôturer août 2026 » menait à une page qui proposait de
   clôturer juin. Quand des mois d'avant restent ouverts, il s'appelle « Clôturer jusqu'à août 2026… »
   et ouvre la fenêtre de clôture sur août, avec les points de toute la période.
+- **La grille d'une opération diverse ne bouge plus sous les doigts.** Taper un compte faisait
+  apparaître son intitulé (« Locations ») dans sa colonne, et le tableau, en disposition
+  automatique, redistribuait toutes ses largeurs : les cases Débit et Crédit glissaient de 40 px
+  entre deux frappes, et le clic suivant tombait à côté. Les colonnes ont maintenant leur largeur,
+  l'intitulé qui paraît ne pousse rien.
 - La carte « TVA déductible » disait « sur 441,940 DT **payés** » : c'était la TVA des factures du
   mois, payées ou non. Elle dit « de TVA facturée ». Et la colonne « Net payé » du journal des achats
   s'appelle « Net à payer » : elle portait aussi les pièces pas encore réglées.

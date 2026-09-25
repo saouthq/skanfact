@@ -12404,7 +12404,7 @@
           <label class="field span-2 obligatoire">${lbl('Libellé', 'ecr.odLibelle')}<input type="text" name="label" value="${h(o.label || '')}" placeholder="Assurance annuelle du local, avancée par le gérant"></label>
         </form>
         <datalist id="od-comptes">${proposes.map(c => `<option value="${h(c.compte)}">${h(c.compte)} — ${h(c.label)}</option>`).join('')}</datalist>
-        <div class="scroll-x mt"><table class="list compact" id="od-lignes"><thead><tr><th>Compte</th><th>Intitulé</th><th>Libellé</th><th class="r">Débit</th><th class="r">Crédit</th><th></th></tr></thead>
+        <div class="scroll-x mt"><table class="list compact" id="od-lignes" style="table-layout:fixed"><thead><tr><th style="width:120px">Compte</th><th style="width:170px">Intitulé</th><th>Libellé</th><th class="r" style="width:120px">Débit</th><th class="r" style="width:120px">Crédit</th><th style="width:56px"></th></tr></thead>
           <tbody>${o.lignes.map(ligneHtml).join('')}</tbody>
           <tfoot><tr class="total-row"><td colspan="3"><button type="button" class="btn btn-ghost" id="od-add">+ Ajouter une ligne</button></td><td class="r nw" id="od-td">—</td><td class="r nw" id="od-tc">—</td><td></td></tr></tfoot></table></div>
         <div id="od-ecart" class="small mt"></div>

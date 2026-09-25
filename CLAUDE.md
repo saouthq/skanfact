@@ -8051,6 +8051,10 @@ aussi l'app cabinet ») — les invariants ont gagné le stock, le résultat, le
   jusqu'à… » ne gardait que les points bloquants, puis affirmait « Rien à signaler » sur une période qui
   en portait vingt-neuf. Filtrer décide de la COULEUR (l'orange pour ce qui bloque), jamais de ce
   qu'on tait. Et le test de la P4 recopiait le filtre — il gravait la phrase fausse (7.0.1).
+- **Une grille de saisie a des colonnes de largeur FIXE** (H-E1, dans une fenêtre comptable) : la
+  grille d'une OD en disposition automatique redistribuait ses largeurs dès qu'un intitulé de compte
+  paraissait, et Débit/Crédit glissaient de 40 px entre deux frappes. `table-layout: fixed` et une
+  largeur par colonne ; ce qui paraît selon une valeur tient dans la place qui existe déjà.
 
 ## Pistes pour la suite (non demandées)
 

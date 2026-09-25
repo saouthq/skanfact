@@ -1894,4 +1894,17 @@ t('10.14.0 : une déclaration sociale en retard reste au calendrier, et sa date 
   assert.ok(/date: C\.dateLimiteDeclarationSociale\(data, f\.id\)/.test(z), 'une déclaration déposée n\'a pas son échéance');
   assert.ok(/x\.retard \?/.test(z) && /en retard de/.test(z), 'le retard ne se dit pas');
 });
+
+// Vu à la souris : taper un compte dans une opération diverse fait paraître son intitulé (« Compte
+// courant des associés », sur deux lignes) — la colonne grandissait, et Débit et Crédit glissaient de
+// 15 px sous le curseur au moment d'y cliquer (H-E1, dans une fenêtre).
+t('10.14.0 : la grille d\'une opération diverse garde ses colonnes quand un intitulé paraît', () => {
+  const app = require('fs').readFileSync(require('path').join(__dirname, '../../src/renderer/app.js'), 'utf8');
+  const i = app.indexOf('id="od-lignes"');
+  assert.ok(i > 0, 'grille introuvable');
+  const tete = app.slice(i, app.indexOf('</thead>', i));
+  assert.ok(/style="table-layout:fixed"/.test(tete), 'la grille se met en page sur son contenu');
+  assert.ok(/<th style="width:\d+px">Intitulé<\/th>/.test(tete), 'la colonne de l\'intitulé n\'a pas de largeur réservée');
+  assert.ok(/<th class="r" style="width:\d+px">Débit<\/th>/.test(tete) && /<th class="r" style="width:\d+px">Crédit<\/th>/.test(tete), 'Débit et Crédit n\'ont pas de largeur réservée');
+});
 };
