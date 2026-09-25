@@ -105,6 +105,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Un **rôle** désigne le compte ; un préfixe écrit à part se trompe de compte | 10.12.0 — la déclaration d'employeur lisait le 65, la paie écrit au 645 |
 | Une **dotation** se réclame à l'inventaire, au dernier mois ; une sortie d'actif, tout de suite | 10.12.0 |
 | Un **écart d'ouverture** se pose en à-nouveaux COMPLÉMENTAIRES au 1er janvier, jamais par contre-passation puis nouvelle ouverture ; un **miroir** reste dans l'exercice de son livre | 10.14.0 — `poserComplementAnouveaux`, `dateDuMiroir` |
+| Une **chaîne qui reporte** de mois en mois reporte aussi d'une année à l'autre : un crédit de décembre perdu au 1er janvier, c'est de la TVA payée en trop | 10.14.0 — `reportTvaDebut` ; 3.1.0 |
 | Un chiffre qu'une **page** montre existe dans les **écritures**, sinon le bilan ment | 10.14.0 — le stock valorisé depuis la 4.0.0, et le 37 dans aucune écriture |
 | Une **TVA non récupérable** est un coût, et elle va où va la dépense (bien, stock, charge) | 10.14.0 — `coutAchat` |
 | Un **mois** finit à son vrai dernier jour, et **février** compte en base 360 ; les douze mois font l'année | 10.14.0 — « arrêtés au 31/09 », `fin360` |
@@ -186,6 +187,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Un drapeau qui vit **en double** diverge, toujours | 7.26.0 — `src/depot.js` |
 | Une **fenêtre de formulaire** demande avant de jeter la saisie, avec le MÊME instantané des deux côtés — et **choisir n'est pas taper** : une fenêtre de listes seules se referme sans question | 10.12.0 ; 10.14.0 — « Clôturer jusqu'à… » |
 | Une **clé qu'on épingle** est la même sur tous les postes de son propriétaire, sinon l'épinglage fabrique des refus | 10.13.0 — la signature du cabinet, dérivée de sa clé |
+| Deux applications qui lisent le **même client** se confrontent sur TOUT l'historique, par le vrai paquet, chaque case de chaque mois | 10.14.0 — le crédit de TVA perdu en janvier, vu par le Cabinet ; 9.1.0 (la parité des balances) |
 
 **L'interface**
 
@@ -7859,6 +7861,32 @@ aussi l'app cabinet ») — les invariants ont gagné le stock, le résultat, le
   code, c'est l'instrument qui se relit en premier).
 - Et une preuve restée VERTE a donné un test qui manquait : l'avoir fournisseur en dinars sur un
   achat en euros n'était porté par aucun test (le jumeau des ventes l'était).
+- **Une chaîne qui repart de zéro chaque année perd ce qu'elle reporte.** `vatChain` enchaînait les
+  crédits de mois en mois (3.1.0) et repartait, chaque 1er janvier, du seul crédit « saisi à la
+  main » : le crédit de décembre était PERDU, janvier réclamait la TVA entière, et le 4366 gardait
+  le crédit pour toujours — 316,160 DT sur l'exemple, cinq ans de suite, **de l'argent payé en
+  trop**. Aucun test ne pouvait le voir : ils regardaient un exercice, et la chaîne est juste DANS un
+  exercice. `reportTvaDebut` calcule le report depuis décembre de l'année d'avant dès que SkanFact la
+  connaît (`premiereAnneeTva`, qui ignore les brouillons — un brouillon oublié ferait de son année la
+  première, et le crédit saisi pour la suivante serait remplacé par zéro), et le saisi ne vaut que
+  pour la première année ; l'écriture d'ouverture du crédit saisi ne s'écrit que dans ce cas, sinon
+  elle doublerait les à-nouveaux. L'invariant qui le tient compare, chaque mois, le 4366 de la
+  balance au crédit que la déclaration reporte.
+- **Deux applications qui lisent le même client se confrontent sur tout l'historique, par le VRAI
+  paquet** : les cinq ans de l'exemple partent au Cabinet comme un client les envoie
+  (`packPlan` → `entreesDepuisCsv` → `importerPaquet`), et chaque case de la déclaration du Cabinet,
+  chaque compte, chaque groupe des états et la liasse sont comparés à l'app entreprise, mois par mois.
+  C'est la parité de la 9.1.0 (une balance), étendue à TOUT ce que les deux affichent — et c'est elle
+  qui a trouvé le crédit perdu : le Cabinet lit le 4366, l'app entreprise enchaîne ses mois, et le
+  même mars 2026 disait 52,079 DT à payer d'un côté, un crédit de 264,081 DT de l'autre.
+- **Vérifier le Cabinet, c'est le relancer — deuxième fois** : après `node scripts/exemple-cabinet.js`,
+  le Cabinet ouvert montrait encore l'ancien crédit (son processus principal `require` le gabarit une
+  fois). Et l'exemple de l'app entreprise, bâti par le moteur d'AVANT le correctif, payait encore sa
+  TVA en trop : il se refait en le marquant périmé (`data.exemple.version`), jamais en regardant un
+  jeu fabriqué par l'ancien code.
+- **Un crédit nul ne « vient en déduction » de rien** : la phrase de l'onglet TVA, écrite pour un
+  crédit, s'affichait avec 0,000 DT. Une phrase qui porte un montant se relit avec ZÉRO — c'est la
+  valeur que prend l'exercice en cours de la plupart des entreprises.
 
 ## Pistes pour la suite (non demandées)
 

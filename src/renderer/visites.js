@@ -477,7 +477,9 @@
   b('#exp-comptable', "Envoie les journaux de la période à ton comptable, en pièces jointes.");
   b('#vat-ventes', "Ouvre les ventes du mois qui font la TVA collectée.");
   b('#vat-achats', "Ouvre les achats du mois qui font la TVA récupérable.");
-  b('#set-carry', "Reporte un crédit de TVA venu de l'année précédente.");
+  b('#set-carry', "Saisit le crédit de TVA de ta dernière déclaration d'avant SkanFact : il vient en déduction de janvier (la première année seulement — ensuite, il se calcule).");
+  b('#carry-voir', "Ouvre la déclaration de décembre de l'année d'avant : c'est elle qui reporte le crédit dont janvier se sert.");
+  b('#carry-oublier', "Retire le crédit saisi à la main pour cette année : SkanFact calcule déjà le report.");
   b('[data-cert]', "Note que l'attestation de retenue à la source est reçue.", { nom: 'Attestation reçue', cle: 'cert' });
   b('[data-check]', "Ouvre ce que ce contrôle signale.", { nom: 'Voir', cle: 'check' });
   b('[data-fdone]', "Note que cette échéance est déposée (un pense-bête : SkanFact ne dépose rien).", { nom: 'Marquer déposée', cle: 'fdone' });

@@ -48,10 +48,14 @@ function ecarts(data) {
     ecart(`${y} banque (532) / Trésorerie`, solde(bg, acc.banque), banques.reduce((s, a) => s + core.accountBalance(data, co, a.id, per.to).balance, 0));
     ecart(`${y} caisse (54) / Trésorerie`, solde(bg, acc.caisse), caisses.reduce((s, a) => s + core.accountBalance(data, co, a.id, per.to).balance, 0));
     // TVA et chiffre d'affaires, mois par mois : l'écriture et la déclaration.
+    const chaine = core.vatChain(data, co, y, 12);
     for (let m = 1; m <= 12; m++) {
       const mm = `${y}-${String(m).padStart(2, '0')}`;
       if (mm > T.slice(0, 7)) break;
       const pm = { from: `${mm}-01`, to: `${mm}-${new Date(Date.UTC(+y, m, 0)).getUTCDate()}` };
+      // Le crédit de TVA que la déclaration reporte est celui que le 4366 porte à la fin du mois — y
+      // compris d'une année sur l'autre (10.14.0) : le crédit de décembre se perdait en janvier.
+      if (pm.to < T) ecart(`${mm} crédit de TVA : 4366 / déclaration`, solde(core.balanceGenerale(data, co, { from: `${y}-01-01`, to: pm.to }), acc.tvaDeductible), chaine[m - 1].carryOut);
       const E = core.journalEntries(data, co, pm, { sections: ['ventes', 'achats'] });
       const vr = core.vatReturn(data, co, pm);
       const mouv = (compte, sens) => r3(E.filter(e => e.account === compte).reduce((s, e) => s + sens * (e.debit - e.credit), 0));
@@ -72,7 +76,6 @@ function ecarts(data) {
     // Le paquet du comptable annonce, mois par mois, ce que dit la CHAÎNE des déclarations :
     // un mois isolé ignore le crédit reporté (3.1.0), et le paquet de mars disait 286,729 DT à
     // décaisser là où la chaîne dit 52,079.
-    const chaine = core.vatChain(data, co, +y);
     chaine.forEach((c, i) => {
       if (c.month > T.slice(0, 7)) return;
       const ch = core.packPlan(data, co, core.packPeriod(+y, i + 1), {}).manifest.chiffres;
@@ -867,6 +870,94 @@ t('10.14.0 : un avoir libre ne dit pas « vient en déduction de la facture . »
   const app = require('fs').readFileSync(require('path').join(__dirname, '../../src/renderer/app.js'), 'utf8');
   assert.ok(/clientCombo\.setValue\(inv\.clientId, true\); \} \} else doc\.creditOfNumber = '';/.test(app), 'détacher la facture laisse son numéro sur l\'avoir');
   assert.ok(/if \(isAv\) \{ const inv = doc\.creditOf \? docById\(doc\.creditOf\) : null; doc\.creditOfNumber = inv \? inv\.number : ''; \}/.test(app), 'l\'enregistrement garde un numéro de facture détachée');
+});
+t('10.14.0 : un crédit de TVA laissé en décembre se reporte sur janvier — calculé, et saisi seulement pour la première année', () => {
+  // L'exemple laissait 316,160 DT de crédit en décembre 2021 : janvier 2022 réclamait 314,830 DT au
+  // lieu de reporter un crédit de 1,330, et le 4366 gardait les 316,160 pour toujours — cinq ans de
+  // suite, pendant que le Cabinet, qui lit le 4366, disait l'inverse pour le même mois.
+  const L = (label, pu, taux) => ({ label, qty: 1, unit: 'u', unitPrice: pu, vatRate: taux, destination: 'charge', deductible: true });
+  const data = core.migrateData({
+    company: { ...CO, regime: 'reel' },
+    accounts: [{ id: 'b', name: 'Banque', kind: 'banque', opening: 20000, openingDate: '2024-01-01', isDefault: true }],
+    clients: [{ id: 'c', name: 'Client' }], suppliers: [{ id: 'f', name: 'Fournisseur' }],
+    vatCarryIn: { 2024: 50, 2025: 999 },
+    documents: [
+      { id: 'd1', type: 'facture', number: 'FAC-2024-001', status: 'envoyée', clientId: 'c', date: '2024-12-10', dueDate: '2025-01-10', applyStamp: false, lines: [{ label: 'Travaux', qty: 1, unitPrice: 1000, vatRate: 19 }] },
+      { id: 'd2', type: 'facture', number: 'FAC-2025-001', status: 'envoyée', clientId: 'c', date: '2025-01-10', dueDate: '2025-02-10', applyStamp: false, lines: [{ label: 'Travaux', qty: 1, unitPrice: 1000, vatRate: 19 }] },
+      // Un brouillon oublié, daté d'avant : il ne déclare rien, il ne fait donc pas de 2023 la
+      // première année connue — sinon le crédit saisi pour 2024 serait ignoré au profit de zéro.
+      { id: 'd0', type: 'facture', status: 'brouillon', clientId: 'c', date: '2023-06-01', applyStamp: false, lines: [{ label: 'Essai', qty: 1, unitPrice: 10, vatRate: 19 }] }
+    ],
+    purchases: [{ id: 'p1', kind: 'facture', supplierId: 'f', number: 'S-1', date: '2024-12-05', lines: [L('Matériel', 2000, 19)] }]
+  });
+  // Calculé à la main. Décembre 2024 : collectée 190, déductible 380, report saisi de 2024 : 50 en
+  // janvier — il n'a rien trouvé à imputer avant décembre, donc décembre : 190 − 380 − 50 = − 240,
+  // crédit de 240. Janvier 2025 : 190 − 0 − 240 = − 50, crédit de 50 — et le 999 saisi pour 2025
+  // n'est PAS repris : SkanFact connaît 2024, le report se calcule.
+  const r = core.reportTvaDebut(data, data.company, '2025');
+  assert.deepStrictEqual([r.montant, r.source, r.saisi], [240, 'calcule', 999]);
+  assert.strictEqual(core.reportTvaDebut(data, data.company, '2024').montant, 50, 'la première année garde son report saisi');
+  const jan = core.vatChain(data, data.company, '2025', 1)[0];
+  assert.deepStrictEqual([jan.carryIn, jan.toPay, jan.carryOut], [240, 0, 50]);
+  // Le 4366 ne porte que ce que la déclaration reporte : l'ouverture saisie de 2025 n'est plus
+  // écrite en plus des à-nouveaux (elle doublerait le crédit).
+  const bg = core.balanceGenerale(data, data.company, { from: '2025-01-01', to: '2025-01-31' });
+  assert.strictEqual(r3(bg.rows.filter(x => x.account.startsWith('4366')).reduce((s, x) => s + x.solde, 0)), 50);
+  const e = ecarts(data);
+  assert.deepStrictEqual(e, [], e.join('\n'));
+  // Et le compte ouvert le 1er janvier 2024 ne porte rien au 31 décembre 2023 (le brouillon de 2023
+  // fait entrer cette année dans l'audit) : la Trésorerie comptait son solde de départ avant sa date.
+  assert.strictEqual(core.accountBalance(data, data.company, 'b', '2023-12-31').balance, 0);
+  assert.strictEqual(core.accountBalance(data, data.company, 'b', '2024-01-01').balance, 20000);
+});
+t('10.14.0 : les cinq ans de l\'exemple, envoyés au Cabinet par le vrai paquet, disent les mêmes chiffres des deux côtés', () => {
+  // Deux applications, un seul client : la déclaration du Cabinet (qui lit le 4366) et celle de
+  // l'app entreprise (qui enchaîne ses mois) doivent dire la même TVA, le même report, les mêmes
+  // retenues, chaque mois ; et la balance, les états et la liasse bâtis au Cabinet depuis les
+  // paquets doivent être ceux de l'entreprise, compte par compte.
+  const K = require('../../src/renderer/compta.js');
+  const d = core.migrateData(require('../../src/renderer/demo.js').buildDemoData(core.DEFAULT_COMPANY, T));
+  const co = d.company, out = [];
+  const ec = (quoi, a, b) => { if (Math.abs(r3((a || 0) - (b || 0))) > 0.0005) out.push(`${quoi} : entreprise ${a} ≠ cabinet ${b}`); };
+  const annees = [...new Set(d.documents.map(x => String(x.date || '').slice(0, 4)).filter(Boolean))].sort();
+  assert.ok(annees.length >= 5, 'l\'exemple a maigri');
+  let mois = 0;
+  annees.forEach(y => {
+    const dernier = y === T.slice(0, 4) ? Number(T.slice(5, 7)) - 1 : 12;
+    if (dernier < 1) return;
+    const livre = K.livreVide('MF:X', Number(y));
+    for (let m = 1; m <= dernier; m++) {
+      const per = core.packPeriod(Number(y), m);
+      const f = core.packPlan(d, co, per, {}).entries.find(x => x.path === 'journaux/ecritures.csv');
+      const r = K.importerPaquet(livre, per.from.slice(0, 7), K.piecesDepuisLignes(K.entreesDepuisCsv(f.text)), true, 'test', 1000 + m);
+      if (r.nonValidees.length) out.push(`${y}-${m} : pièces non validées`);
+    }
+    core.vatChain(d, co, y, dernier).forEach(v => {
+      const c = K.declarationMensuelle(livre, v.month, {}).cases;
+      mois++;
+      ec(v.month + ' TVA collectée', v.collected, c.tvaCollectee.montant);
+      ec(v.month + ' TVA déductible', v.deductible, c.tvaDeductible.montant);
+      ec(v.month + ' crédit reporté', v.carryIn, c.creditReporte.montant);
+      ec(v.month + ' net à payer', v.toPay, c.netAPayer.montant);
+      ec(v.month + ' crédit à reporter', v.carryOut, c.creditAReporter.montant);
+      ec(v.month + ' timbre', v.stamps, c.timbre.montant);
+      ec(v.month + ' retenues opérées', v.withheldOnBuys, c.retenuesOperees.montant);
+      ec(v.month + ' retenues subies', v.withheldBySale, c.retenuesSubies.montant);
+    });
+    const au = core.packPeriod(Number(y), dernier).to;
+    const lignes = K.lignesDuLivre(livre, { du: `${y}-01-01`, au });
+    const sol = rows => Object.fromEntries(rows.filter(x => Math.abs(x.solde) > 0.0005).map(x => [x.account, r3(x.solde)]));
+    const a = sol(core.balanceGenerale(d, co, { from: `${y}-01-01`, to: au }).rows);
+    const b = sol(K.balanceDepuisLignes(lignes, K.soldesDepuisOuverture(livre), () => '').rows);
+    [...new Set([...Object.keys(a), ...Object.keys(b)])].forEach(k => ec(`${y} solde ${k}`, a[k], b[k]));
+    const ef = core.etatsFinanciers(d, co, y, au), eg = K.etatsDepuisLignes(lignes, K.soldesDepuisOuverture(livre), {});
+    ec(y + ' résultat', ef.resultat, eg.resultat);
+    ef.actif.concat(ef.passif).forEach((g, i) => ec(`${y} « ${g.titre} »`, g.total, eg.actif.concat(eg.passif)[i].total));
+    const li = K.liasseDepuisLignes(lignes, K.soldesDepuisOuverture(livre), {});
+    if (li.orphelins.length || !li.equilibre || !li.coherent) out.push(`${y} liasse : ${JSON.stringify(li.orphelins)}`);
+  });
+  assert.ok(mois >= 50, `seulement ${mois} mois comparés`);
+  assert.deepStrictEqual(out, [], out.join('\n'));
 });
 t('10.14.0 : un avoir resté en dinars sur une facture en euros la diminue de sa contre-valeur, pas de 300 €', () => {
   // « Nouvel avoir » part en dinars : rattaché à une facture de 1 000 €, un avoir de 300 DT en

@@ -3947,7 +3947,12 @@
     if (!acc) return { opening: 0, movements: 0, balance: 0, count: 0 };
     const moves = cashMovements(data, company, { from: acc.openingDate || '', to: toIso || '9999-12-31' }, accountId);
     const sum = round3(moves.reduce((s, m) => s + m.amount, 0));
-    const opening = round3(Number(acc.opening) || 0);
+    // Le solde de départ n'existe qu'à partir de sa date (10.14.0) : un compte ouvert le 1er octobre
+    // ne porte rien le 25 septembre. Le compté d'office, la Trésorerie annonçait un solde que les
+    // écritures (qui posent l'ouverture à sa date) ne portaient pas — la banque du grand livre et
+    // celle de la Trésorerie ne disaient plus la même chose.
+    const ouvert = !acc.openingDate || !toIso || String(toIso) >= String(acc.openingDate);
+    const opening = ouvert ? round3(Number(acc.opening) || 0) : 0;
     return { opening, movements: sum, balance: round3(opening + sum), count: moves.length };
   }
 
@@ -4231,9 +4236,35 @@
 
   // Enchaînement des déclarations sur plusieurs mois : le crédit d'un mois se reporte sur le suivant.
   // C'est la seule façon d'obtenir un chiffre juste — une déclaration isolée ignore le report.
+  // Le crédit de TVA avec lequel une année COMMENCE (10.14.0). La chaîne repartait de zéro chaque
+  // 1er janvier, sauf crédit « saisi à la main » : un crédit laissé en décembre était PERDU en
+  // janvier — la déclaration réclamait la TVA entière pendant que le 4366 gardait le crédit pour
+  // toujours (316,160 DT sur l'exemple, cinq ans de suite), et le Cabinet, qui lit le 4366, disait
+  // l'inverse de l'app entreprise pour le même mois. Le crédit se reporte d'une année à l'autre
+  // comme d'un mois à l'autre : calculé dès que SkanFact connaît l'année d'avant, saisi à la main
+  // pour la première année qu'il connaît (le crédit d'avant SkanFact).
+  function premiereAnneeTva(data) {
+    return duLot(data, 'tva:premiere', () => {
+      let min = '';
+      const noter = d => { const y = String(d || '').slice(0, 4); if (/^\d{4}$/.test(y) && (!min || y < min)) min = y; };
+      (data.documents || []).forEach(d => { if ((d.type === 'facture' || d.type === 'avoir') && d.status !== 'brouillon') noter(d.date); });
+      (data.purchases || []).forEach(p => noter(p.date));
+      return min;
+    });
+  }
+  function reportTvaDebut(data, company, year) {
+    const y = String(year);
+    const saisi = round3(Math.max(0, Number((data.vatCarryIn || {})[y]) || 0));
+    const premiere = premiereAnneeTva(data);
+    if (!premiere || y <= premiere) return { montant: saisi, source: 'saisi', saisi };
+    const precedente = String(Number(y) - 1);
+    const montant = duLot(data, 'tva:report:' + y, () => vatChain(data, company, precedente, 12)[11].carryOut);
+    return { montant, source: 'calcule', saisi, depuis: precedente };
+  }
+
   function vatChain(data, company, year, upToMonth) {
     const out = [];
-    let carry = Number((data.vatCarryIn || {})[year]) || 0;   // crédit venu de l'année précédente, saisi à la main
+    let carry = reportTvaDebut(data, company, year).montant;
     const last = Math.min(12, Math.max(1, Number(upToMonth) || 12));
     for (let m = 1; m <= last; m++) {
       const from = `${year}-${pad2(m)}-01`;
@@ -5277,10 +5308,13 @@
       });
       // Le crédit de TVA saisi à la main pour une année (3.1.0) : la déclaration de janvier le
       // reprend, donc le compte 4366 doit le porter, sinon il finirait créditeur de ce montant.
+      // Seulement pour une année dont SkanFact ne connaît pas l'année d'avant (10.14.0) : sinon le
+      // report est CALCULÉ, et le 4366 le porte déjà par ses à-nouveaux — l'écrire ici le doublerait.
       Object.keys(data.vatCarryIn || {}).forEach(y => {
         const montant = round3(Number(data.vatCarryIn[y]) || 0);
         const d = `${y}-01-01`;
         if (!montant || !/^\d{4}$/.test(y) || !inPeriod(d, period && period.from, period && period.to)) return;
+        if (reportTvaDebut(data, company, y).source !== 'saisi') return;
         const e = entrySet({ date: d, journal: 'AN', piece: `OUVERTURE-TVA-${y}`, tiers: '', tiersId: '', source: 'ouverture', docId: 'tva-' + y, currency: cur });
         e.debit(acc.tvaDeductible, `Crédit de TVA reporté de ${Number(y) - 1}`, montant);
         e.credit(acc.reportANouveau, `Crédit de TVA reporté de ${Number(y) - 1}`, montant);
@@ -5374,9 +5408,9 @@
       const annees = new Set();
       const noter = d => { if (d && /^\d{4}/.test(d)) annees.add(d.slice(0, 4)); };
       (data.documents || []).forEach(d => noter(d.date)); (data.purchases || []).forEach(p => noter(p.date));
-      // Seules les années que la période touche : la chaîne d'une année part de son propre report
-      // (`vatCarryIn[année]`), jamais de l'année d'avant, donc calculer les cinq autres ne servait
-      // qu'à jeter leurs écritures — soixante-douze déclarations pour en garder une (10.14.0).
+      // Seules les années que la période touche : calculer les autres ne servait qu'à jeter leurs
+      // écritures — soixante-douze déclarations pour en garder une (10.14.0). Le report de l'année
+      // d'avant, lui, vient de `reportTvaDebut`, qui ne rend qu'un chiffre.
       const y0 = period && period.from ? period.from.slice(0, 4) : '', y1 = period && period.to ? period.to.slice(0, 4) : '';
       [...annees].sort().filter(y => (!y0 || y >= y0) && (!y1 || y <= y1)).forEach(y => {
         vatChain(data, company, y).forEach(m => {
@@ -8673,7 +8707,7 @@
     CURRENCIES, DEVISES_NOMS, libelleDevise, TYPES_NUMEROTES, etatNumerotation, poserNumerotation, premiereNumerotation, normCurrency, decimalsFor, toBase, rateOf, missingRate, monthKeys, monthlySeries, topClients, quoteStats, avgPaymentDelay, clientSummary, I18N,
     EXTRA_TYPES, SALES_TYPES, CONVERSIONS, CONVERSION_LABELS, convertDoc, derivedDocs, chaineDePieces, DEFAULT_CLAUSES, CLAUSE_LABELS,
     PURCHASE_KINDS, PURCHASE_LIES, piecesLieesAchat, LINE_DESTINATIONS, DEFAULT_EXPENSE_CATEGORIES, PURCHASE_STATUSES, expenseCategories,
-    vatReturn, vatChain, DEFAULT_FISCAL_DEADLINES, fiscalDeadlines, nextDeadline, upcomingFiscal, fiscalFilingId, fiscalDone, echeanceSociale, socialesDeposees, simpleResult,
+    vatReturn, vatChain, reportTvaDebut, DEFAULT_FISCAL_DEADLINES, fiscalDeadlines, nextDeadline, upcomingFiscal, fiscalFilingId, fiscalDone, echeanceSociale, socialesDeposees, simpleResult,
     ACCOUNT_KINDS, MOVE_KINDS, compteDepuisFiche, cashMovements, accountBalance, cashPosition, cashForecast, reconciliation,
     lineCost, documentMargin, marginBy, PROJECT_STATUSES, projectMargin, projectList, recurringProfitability,
     DEFAULT_FIXED_CATEGORIES, isFixedCategory, breakEven,

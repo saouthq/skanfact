@@ -11920,7 +11920,20 @@
       const chain = C.vatChain(data, company(), year, 12);
       const cur1 = chain[upTo - 1] || null;
       const res = C.simpleResult(data, company(), period());
-      const carryIn = Number((data.vatCarryIn || {})[year]) || 0;
+      // Le crédit avec lequel l'année commence (10.14.0) : CALCULÉ dès que SkanFact connaît l'année
+      // d'avant — c'est le crédit que décembre reporte —, saisi à la main pour la première seulement.
+      // Le bouton « Reporter un crédit… » s'offrait sur toutes les années, et le chiffre calculé,
+      // lui, n'existait pas : le crédit de décembre se perdait chaque 1er janvier.
+      const rep = C.reportTvaDebut(data, company(), year);
+      const carryIn = rep.saisi;
+      const ligneReport = rep.source === 'calcule'
+        ? `<p class="small mt">${rep.montant
+            ? `Crédit de TVA venu de décembre ${h(rep.depuis)} : <b class="nw">${C.money(rep.montant, cur)}</b> — calculé sur tes pièces de ${h(rep.depuis)}, il vient en déduction de janvier.`
+            // Un crédit nul ne « vient en déduction » de rien : on dit qu'il n'y en a pas.
+            : `Aucun crédit de TVA venu de décembre ${h(rep.depuis)} : sa déclaration ne reporte rien sur janvier.`} ${info('compta.carryIn')}</p>
+           <div class="inline"><button class="btn btn-sm" id="carry-voir">Voir la déclaration de décembre ${h(rep.depuis)}</button>${carryIn && carryIn !== rep.montant ? `<button class="btn btn-sm" id="carry-oublier">Oublier le ${C.money(carryIn, cur)} saisi à la main</button>` : ''}</div>
+           ${carryIn && carryIn !== rep.montant ? `<p class="small muted">Un crédit de ${C.money(carryIn, cur)} avait été saisi à la main pour ${h(year)} : il n'est plus repris, SkanFact connaît ${h(rep.depuis)} et en calcule le report.</p>` : ''}`
+        : `<div class="inline mt"><button class="btn btn-sm" id="set-carry">${carryIn ? `Crédit de TVA venu de ${Number(year) - 1} : ${C.money(carryIn, cur)} — corriger…` : `Reporter un crédit de TVA de ${Number(year) - 1}…`}</button>${info('compta.carryIn')}</div>`;
       $('#c-body').innerHTML = `
         <div class="panel"><h2>Déclaration de TVA — ${h(MONTHS[upTo - 1])} ${year} ${info('compta.vatReturn')}</h2>
           ${auto ? `<p class="small muted mb">La TVA se déclare mois par mois : voici ${h(MONTHS[upTo - 1])}. Choisis un autre mois en haut à droite, ou lis le tableau ci-dessous pour toute l'année.</p>` : ''}
@@ -11944,7 +11957,7 @@
             <button class="btn btn-sm" id="vat-ventes">Voir les ventes de ${h(MONTHS[upTo - 1])}</button>
             <button class="btn btn-sm" id="vat-achats">Voir les achats de ${h(MONTHS[upTo - 1])}</button>
           </div>` : ''}
-          <div class="inline mt"><button class="btn btn-sm" id="set-carry">${carryIn ? `Crédit de TVA venu de ${Number(year) - 1} : ${C.money(carryIn, cur)} — corriger…` : `Reporter un crédit de TVA de ${Number(year) - 1}…`}</button>${info('compta.carryIn')}</div>
+          ${ligneReport}
         </div>
         ${chain.some(m => m.collected || m.deductible || m.carryIn) ? `
         <div class="panel"><h2>Mois par mois — ${year} ${info('compta.vatMonths')}</h2>
@@ -11982,7 +11995,14 @@
       $$('#c-body tr[data-vm]').forEach(tr => tr.onclick = () => { comptaState.month = tr.dataset.vm; if ($('#c-month')) $('#c-month').value = tr.dataset.vm; draw(); });
       if ($('#vat-ventes')) $('#vat-ventes').onclick = () => versOnglet('ventes', String(upTo).padStart(2, '0'));
       if ($('#vat-achats')) $('#vat-achats').onclick = () => versOnglet('achats', String(upTo).padStart(2, '0'));
-      $('#set-carry').onclick = () => promptDialog('Crédit de TVA reporté',
+      if ($('#carry-voir')) $('#carry-voir').onclick = vers('#/compta', () => { comptaState.year = rep.depuis; comptaState.month = '12'; resetPages(); });
+      if ($('#carry-oublier')) $('#carry-oublier').onclick = () => {
+        const avant = { ...(data.vatCarryIn || {}) };
+        const reste = { ...avant }; delete reste[year];
+        data.vatCarryIn = reste; save(true); draw();
+        toastUndo('Chiffre saisi oublié', () => { data.vatCarryIn = avant; save(true); draw(); });
+      };
+      if ($('#set-carry')) $('#set-carry').onclick = () => promptDialog('Crédit de TVA reporté',
         `Crédit de TVA restant à la fin de ${Number(year) - 1}, tel qu'il figure sur ta dernière déclaration. Il viendra en déduction du premier mois de ${year}.`,
         String(carryIn || ''), v => {
           data.vatCarryIn = { ...(data.vatCarryIn || {}), [year]: Math.max(0, Number(String(v).replace(',', '.')) || 0) };

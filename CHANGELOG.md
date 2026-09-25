@@ -775,6 +775,27 @@ douze mois et l'année. Voici ce qu'il a trouvé :
   endroit, partagé par les deux applications.
 - **L'excédent brut d'exploitation ne compte plus les intérêts d'emprunt.** Les soldes intermédiaires
   lisaient « charges de personnel » sur les comptes 64 et 65 ; le 65, ce sont les charges financières.
+- **Le crédit de TVA de décembre se perdait chaque 1er janvier — et tu payais la TVA en trop.** La
+  déclaration de janvier repartait de zéro, sauf crédit saisi à la main : sur l'exemple, décembre 2021
+  laissait 316,160 DT de crédit, et janvier 2022 réclamait 314,830 DT au lieu d'en reporter 1,330.
+  Le compte 4366 gardait le crédit pour toujours, et **SkanFact Cabinet, qui lit ce compte, disait
+  l'inverse de l'app entreprise pour le même mois** — mars 2026 : 52,079 DT à payer d'un côté, un
+  crédit de 264,081 DT de l'autre. Le crédit se reporte désormais d'une année à l'autre comme d'un mois
+  à l'autre : calculé dès que SkanFact connaît l'année d'avant, saisi à la main pour la première
+  seulement. L'onglet « TVA à payer » le dit (« Crédit de TVA venu de décembre 2021 : 316,160 DT —
+  calculé sur tes pièces de 2021 ») et mène à la déclaration de décembre qui le reporte ; un crédit
+  saisi à la main pour une année que SkanFact sait maintenant calculer est nommé, et s'oublie d'un
+  clic. **Si tu as déclaré une TVA de janvier avec SkanFact alors que décembre laissait un crédit,
+  vérifie cette déclaration avec ton comptable** : elle a pu être trop haute.
+- **Un compte bancaire ne porte rien avant sa date d'ouverture.** La Trésorerie comptait son solde de
+  départ à toute date : un compte ouvert le 1er octobre annonçait déjà ses 5 000 DT le 25 septembre,
+  pendant que les écritures, qui posent l'ouverture à sa date, disaient zéro.
+- **Un nouvel instrument compare les deux applications sur cinq ans** : les paquets de l'exemple
+  sont envoyés au Cabinet comme un client les envoie, puis chaque mois la TVA collectée, la déductible,
+  le report, le net à payer, le timbre et les retenues de la déclaration du Cabinet sont confrontés à
+  ceux de l'app entreprise, et chaque compte de la balance, chaque groupe des états financiers et la
+  liasse de chaque année. C'est lui qui a trouvé le crédit perdu : deux applications qui lisent le même
+  client ne peuvent pas dire deux chiffres.
 - **L'audit permanent a grandi** : la paie des écritures contre les bulletins (640, 645, 661, 4321,
   4531), la CNSS des quatre trimestres contre l'année, la déclaration d'employeur, le timbre fiscal
   et les retenues à la source contre leurs comptes, la dotation de chaque exercice terminé contre le

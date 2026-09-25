@@ -1300,12 +1300,19 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
       return chain.every(m => !(m.toPay > 0 && m.carryOut > 0));
     });
     if (!ok) throw new Error('un mois affiche à la fois un montant à payer et un crédit');
-    // crédit de TVA de l'année précédente
-    await win.click('#set-carry');
-    await win.waitForSelector('#pr');
-    await win.fill('#pr input[name=v]', '250');
-    await win.click('#modal-root #ok');
-    await win.waitForFunction(() => (document.querySelector('#set-carry') || {}).textContent.includes('250'));
+    // Le crédit de TVA avec lequel l'année commence (10.14.0) : sur l'exemple, SkanFact connaît
+    // l'année d'avant, donc il est CALCULÉ — il n'y a plus de bouton pour le saisir, et le lien mène
+    // à la déclaration de décembre qui le reporte. Avant, le crédit de décembre se perdait en janvier.
+    const annee = await win.evaluate(() => new Date().toISOString().slice(0, 4));
+    if (await win.$('#set-carry')) throw new Error('le crédit de début d\'année se saisit encore alors que SkanFact le calcule');
+    const report = await win.evaluate(y => window.SkanCore.reportTvaDebut(window.__data, window.__data.company, y), annee);
+    if (report.source !== 'calcule') throw new Error('le report de ' + annee + ' n\'est pas calculé : ' + JSON.stringify(report));
+    await win.click('#carry-voir');
+    await win.waitForFunction(y => /Décembre\s+\d{4}/i.test((document.querySelector('#c-body h2') || {}).textContent || '') && (document.querySelector('#c-body h2').textContent.includes(String(Number(y) - 1))), annee);
+    const dec = await win.evaluate(y => window.SkanCore.vatChain(window.__data, window.__data.company, String(Number(y) - 1), 12)[11].carryOut, annee);
+    if (Math.abs(dec - report.montant) > 0.0005) throw new Error(`décembre reporte ${dec}, janvier reprend ${report.montant}`);
+    await win.selectOption('#c-year', annee);
+    await win.selectOption('#c-month', '');
     // onglet Calendrier : activer une échéance la fait apparaître
     await win.click('#c-tabs button[data-tab=calendrier]');
     await win.waitForSelector('[data-active=tcl]');
