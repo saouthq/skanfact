@@ -157,12 +157,11 @@ lourds, ce qui n'est pas la même chose.
 
 Constats de l'audit du 22/09/2026 restés hors de la 10.6.0.
 
-- La vue **Cabinets n'a pas de colonne Actions** : on voit les cabinets, on ne peut rien en faire.
-- Le **Parc déborde à 1440 px** (la sonde de largeur de la 10.5.0 le mesure).
-- Le bouton **« ⋯ »** : Skander avait demandé en 7.29.0 qu'un menu de ligne porte un mot, pas un
-  pictogramme. Fait dans les deux applications, pas dans la console.
-- Les champs des **Réglages** ont des bords gauches irréguliers d'une ligne à l'autre.
-- La table des **ventes n'affiche pas la date de vente** — c'est pourtant la colonne qu'on trie.
+*Les cinq constats restés hors de la 10.6.0 sont faits en 10.14.0 :* ~~la vue Cabinets sans colonne
+Actions~~ (les gestes d'une licence, par la même fonction que la vue Licences) ; ~~le Parc qui
+déborde à 1440 px~~ (les titres de chiffres se plient) ; ~~le bouton « ⋯ »~~ (« Plus ▾ ») ; ~~les
+bords gauches irréguliers des Réglages~~ (une colonne de champs commune) ; ~~la date de vente
+absente~~ (« Vendue le », en tête).
 
 ## 4. Les applications
 

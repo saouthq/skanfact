@@ -2204,7 +2204,14 @@ async function repondreAdmin(r, request, env) {
       // pas est un canal qu'on ne sait pas récompenser, ni arrêter.
       return json({ lignes: await tous(
         'SELECT l.id, l.empreinte, l.cabinet_empreinte, l.debut, l.fin, l.dossiers_hors, l.illimite, l.revoquee_le, l.envoyee_le,' +
-        ' l.prix, l.devise, l.client_id, c.nom AS client, c.email,' +
+        ' l.prix, l.devise, l.client_id, c.nom AS client, c.email, c.matricule,' +
+        // Ce que les GESTES d'une licence lisent (`actesLicence`, `formEmettre`, `revoquer`) : sans
+        // eux, la colonne Actions proposerait « Renouveler » sur une licence déjà remplacée, et
+        // « Envoyer par mail » sur une clé qu'on ne sait pas refabriquer.
+        ' l.kid, l.offre, l.remise, l.emise_le, l.remplace_id, l.revoquee_motif, COALESCE(l.type, \'entreprise\') AS type,' +
+        ' l.charge IS NOT NULL AS resignable,' +
+        ' (SELECT r2.id FROM licences r2 WHERE r2.remplace_id = l.id LIMIT 1) AS remplacee_par,' +
+        ' (SELECT COUNT(*) FROM activations a2 WHERE a2.licence_id = l.id) AS activations,' +
         ' (SELECT COUNT(*) FROM licences p WHERE p.cabinet_empreinte = l.cabinet_empreinte' +
         '   AND COALESCE(p.type, \'entreprise\') = \'entreprise\' AND p.revoquee_le IS NULL) AS parraines,' +
         // Payants : ceux dont au moins une vente est encaissée. « Amené » et « payé » ne sont pas
@@ -3385,16 +3392,23 @@ const CONSOLE_HTML = `<!doctype html>
   tr:last-child td{border-bottom:0}
   th{font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--ink2);background:var(--surface2)}
   td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+  /* Un en-tête de CHIFFRES passe sur deux lignes quand la place manque (audit du 22/09/2026) : le
+     Parc empilait dix colonnes dont les titres (« SOUS LICENCE ⇅ i ») étaient cinq fois plus larges
+     que leurs valeurs (« 1 »), et à 1440 px la dernière, « Dernier vu », sortait du cadre. En
+     disposition automatique, le titre ne se plie que si la table ne tient pas : ailleurs il reste
+     sur une ligne. Les colonnes de texte gardent le leur entier — c'est leur contenu qui se coupe. */
+  th.num{white-space:normal}
   /* La cellule d'actions ne se PLIE plus : elle porte au plus deux boutons (le geste de la page,
-     et « ⋯ » pour le reste), donc elle tient sur une ligne. En « white-space: normal » avec cinq
+     et « Plus ▾ » pour le reste), donc elle tient sur une ligne. En « white-space: normal » avec cinq
      boutons, elle les empilait l'un sous l'autre et chaque ligne de Licences faisait 210 px —
      pour une pagination à 50 lignes, c'est-à-dire treize écrans de défilement par page. */
   td.acts{white-space:nowrap}
   td.acts .btn{margin:2px 0 2px 6px}
   td.acts .btn:first-child{margin-inline-start:0}
-  /* Le bouton du menu : un carré, pas un mot. Il accompagne un bouton NOMMÉ, jamais seul — un
-     pictogramme n'est pas un libellé (7.29.0), mais à côté d'un libellé c'est un repère. */
-  .menu-b{padding-inline:8px;font-weight:700;letter-spacing:1px}
+  /* Le bouton du menu porte un MOT et son chevron, comme « Actions ▾ » dans les deux applications
+     (7.29.0) : trois points ne se lisent que si l'on connaît la convention. */
+  .menu-b{padding-inline:10px}
+  .menu-b .chev{margin-inline-start:4px;font-size:10px;opacity:.7}
   .menu-b[aria-expanded="true"]{border-color:var(--acc);color:var(--acc)}
   /* Le menu lui-même vit sur le BODY : dans la cellule, le conteneur qui défile de côté le
      rognerait — et c'est justement le débordement qu'on répare. Chaque entrée porte une PHRASE et
@@ -3532,9 +3546,16 @@ const CONSOLE_HTML = `<!doctype html>
   .reg .src.base{color:var(--acc)}
   /* La LARGEUR dit ce qu'on attend : un nombre à trois chiffres, une devise, une URL et une
      signature ne se saisissent pas dans la même case. Le type de la valeur choisit le gabarit. */
-  .reg.court{grid-template-columns:minmax(220px,1fr) 130px}
-  .reg.moyen{grid-template-columns:minmax(220px,1fr) 220px}
-  .reg.long{grid-template-columns:minmax(200px,1fr) minmax(300px,1.1fr)}
+  /* Et TOUS les champs commencent au même bord (audit du 22/09/2026) : chaque gabarit avait sa
+     propre colonne, collée à droite, donc un nombre commençait à 1 260 px, une devise à 1 170 et un
+     lien à 815 — trois bords gauches dans le même panneau, que l'œil suit sans rien y trouver. La
+     colonne des champs est commune ; c'est la LARGEUR du champ, dans cette colonne, qui dit ce
+     qu'on attend. */
+  .reg,.reg.court,.reg.moyen,.reg.long{grid-template-columns:minmax(200px,1fr) minmax(300px,1.1fr)}
+  .reg>input{justify-self:start;max-width:100%}
+  .reg.court>input{width:130px}
+  .reg.moyen>input{width:220px}
+  .reg.long>input{width:100%}
   @media (max-width:640px){.reg,.reg.court,.reg.moyen,.reg.long{grid-template-columns:1fr}.reg .src{grid-column:auto}}
   /* Le SOMMAIRE d'une page de trois écrans : ce qu'elle contient, avant de l'avoir parcourue. */
   .sommaire{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px}
@@ -4356,7 +4377,8 @@ const CONSOLE_HTML = `<!doctype html>
   // d'un serveur — et son ton dépend du client. Resend ne sert qu'à la clé, qui suit un paiement et
   // ne se discute pas.
   function ecrire(r) {
-    api(onglet + '/' + r.id + '/relance').then(function (j) {
+    // Une licence de cabinet est une LICENCE : sa relance se compose sur la route des licences.
+    api((onglet === 'cabinets' ? 'licences' : onglet) + '/' + r.id + '/relance').then(function (j) {
       montrerMail(j, 'Écrire à ' + (j.client || 'ce client'));
     }, montrerErreur);
   }
@@ -4557,6 +4579,28 @@ const CONSOLE_HTML = `<!doctype html>
   // données au milieu d'un tableau est un piège (il change ce que comptent les sondes, et la
   // balise fermante casserait le gabarit de cette page). La table se vide à chaque dessin, sinon
   // elle retiendrait les lignes d'un écran qu'on a quitté.
+  // Les gestes d'une licence, en UNE fonction : la vue Licences et la vue Cabinets montrent la même
+  // chose (une licence), et deux tables d'actions divergeraient au premier geste ajouté (7.23.0).
+  // La vue Cabinets n'en avait AUCUNE (audit du 22/09/2026) : on voyait les cabinets, on ne pouvait
+  // rien en faire — ni revoir leur clé, ni la renouveler, ni changer leur quota.
+  var actesLicence = function (r) {
+    var actes = [{ act: 'voir', lib: 'Voir la clé', quoi: 'la clé signée, à copier ou à relire' }];
+    if (!r.revoquee_le) {
+      if (r.resignable) actes.push({ act: 'envoyer', lib: r.envoyee_le ? 'Renvoyer par mail' : 'Envoyer par mail',
+        quoi: r.envoyee_le ? 'le client l\\u2019a perdue' : 'la clé part à son adresse' });
+      if (!r.remplacee_par) {
+        actes.push({ act: 'renouveler', lib: 'Renouveler', quoi: 'repartir de la date de fin' });
+        actes.push({ act: 'offre', lib: estCabinet(r) ? 'Changer le quota' : 'Changer d\\u2019offre',
+          quoi: 'la différence se facture au prorata' });
+        // « Écrire… » n'apparaît que sur une licence qui SE TERMINE : c'est le geste que
+        // l'alerte annonce, et le proposer sur chaque ligne ferait une entrée de plus pour un
+        // besoin qui n'existe qu'une fois par an et par client.
+        if (r.fin && r.fin <= dansTrenteJours()) actes.push({ act: 'ecrire', lib: 'Écrire au client…', quoi: 'préparer le mail de renouvellement' });
+      }
+      actes.push({ act: 'revoquer', lib: 'Révoquer…', cls: ' d', quoi: 'la clé reste valable chez le client' });
+    }
+    return celluleActions(r.id, actes);
+  };
   var MENUS = {};
   var celluleActions = function (id, actions) {
     actions = (actions || []).filter(Boolean);
@@ -4568,8 +4612,11 @@ const CONSOLE_HTML = `<!doctype html>
     var s = '<button type="button" class="btn s' + (premier.cls || '') + '"' + att(premier) + '>' + h(premier.lib) + '</button>';
     if (actions.length === 1) return s;
     MENUS[id] = actions.slice(1);
-    return s + '<button type="button" class="btn s menu-b" data-menu="' + h(id) + '" aria-haspopup="menu" aria-expanded="false" aria-label="Autres actions">'
-      + '<span aria-hidden="true">\\u22ef</span></button>';
+    // « Plus ▾ », jamais « ⋯ » : Skander a demandé en 7.29.0 qu'un menu de ligne porte un MOT —
+    // un pictogramme ne se lit que si on connaît la convention. Fait dans les deux applications
+    // dès la 7.29.0, la console était restée à trois points (audit du 22/09/2026).
+    return s + '<button type="button" class="btn s menu-b" data-menu="' + h(id) + '" aria-haspopup="menu" aria-expanded="false" title="Autres actions">'
+      + 'Plus<span class="chev" aria-hidden="true">\\u25be</span></button>';
   };
   // Le menu vit sur le BODY, pas dans la cellule : un conteneur qui défile de côté le rognerait,
   // et c'est justement le cas qu'on répare. Il se ferme au clic à côté, à Échap, et au défilement
@@ -4626,24 +4673,7 @@ const CONSOLE_HTML = `<!doctype html>
       { k: 'revoquee_le', t: 'État', f: function (v, r) { return etatLic(r); }, brut: true },
       // Le geste pour lequel cette page existe est « Voir la clé » : c'est le produit. Tout le
       // reste vit dans le menu, dans l'ordre où l'on en a besoin, le destructeur en dernier.
-      { k: 'id', t: 'Actions', brut: true, a: true, f: function (v, r) {
-          var actes = [{ act: 'voir', lib: 'Voir la clé', quoi: 'la clé signée, à copier ou à relire' }];
-          if (!r.revoquee_le) {
-            if (r.resignable) actes.push({ act: 'envoyer', lib: r.envoyee_le ? 'Renvoyer par mail' : 'Envoyer par mail',
-              quoi: r.envoyee_le ? 'le client l\\u2019a perdue' : 'la clé part à son adresse' });
-            if (!r.remplacee_par) {
-              actes.push({ act: 'renouveler', lib: 'Renouveler', quoi: 'repartir de la date de fin' });
-              actes.push({ act: 'offre', lib: estCabinet(r) ? 'Changer le quota' : 'Changer d\\u2019offre',
-                quoi: 'la différence se facture au prorata' });
-              // « Écrire… » n'apparaît que sur une licence qui SE TERMINE : c'est le geste que
-              // l'alerte annonce, et le proposer sur chaque ligne ferait une entrée de plus pour un
-              // besoin qui n'existe qu'une fois par an et par client.
-              if (r.fin && r.fin <= dansTrenteJours()) actes.push({ act: 'ecrire', lib: 'Écrire au client…', quoi: 'préparer le mail de renouvellement' });
-            }
-            actes.push({ act: 'revoquer', lib: 'Révoquer…', cls: ' d', quoi: 'la clé reste valable chez le client' });
-          }
-          return celluleActions(r.id, actes);
-        } }
+      { k: 'id', t: 'Actions', brut: true, a: true, f: function (v, r) { return actesLicence(r); } }
     ],
     activations: [
       // L'APPLICATION d'abord : le champ était écrit en base depuis la 10.4.0 et affiché NULLE
@@ -4694,6 +4724,13 @@ const CONSOLE_HTML = `<!doctype html>
         } }
     ],
     ventes: [
+      // La date de la VENTE (audit du 22/09/2026) : c'est la colonne qu'on trie, et le tableau ne
+      // l'affichait pas. Une vente naît avec sa licence (« émise le ») ; une vente reprise de
+      // l'historique de SkanFact (8.7.0) n'a que sa date d'import, et le DIT.
+      { k: 'emise_le', t: 'Vendue le', f: function (v, r) {
+          if (v) return jour(v);
+          return r.importee_le ? 'importée le ' + jour(r.importee_le) : '\u2014';
+        } },
       { k: 'client', t: 'Client', tr: true },
       { k: 'montant_ht', t: 'Montant HT', n: true, f: function (v, r) { return montant(v, r.devise); } },
       // Un montant NUL n'a rien à encaisser : le dire « à encaisser » le fait entrer dans les
@@ -4780,7 +4817,7 @@ const CONSOLE_HTML = `<!doctype html>
       { k: 'postes', t: 'Postes', n: true, i: 'Le nombre d\\u2019ordinateurs distincts qui se sont annoncés sur cette version. Un poste qui change de version apparaît sur les deux lignes.' },
       // « Endormi » n'est pas « perdu » : un portable refermé pour les vacances compte à part, il
       // ne se retranche pas.
-      { k: 'vus', t: 'Vus (30 j)', n: true, i: 'Les postes qui se sont annoncés dans les trente derniers jours. La fenêtre se règle dans Réglages.' },
+      { k: 'vus', t: 'Vus (30\\u00a0j)', n: true, i: 'Les postes qui se sont annoncés dans les trente derniers jours. La fenêtre se règle dans Réglages.' },
       { k: 'endormis', t: 'Endormis', n: true, i: 'Les postes qu\\u2019on n\\u2019a pas vus dans la fenêtre. Endormi n\\u2019est PAS perdu : un portable refermé pour les vacances en fait partie. Ils se comptent à part, ils ne se retranchent pas — « vus » plus « endormis » font « postes ».' },
       { k: 'licences', t: 'Sous licence', n: true, i: 'Les postes qui présentent une clé, par opposition à ceux qui sont encore en essai.' },
       { k: 'enEssai', t: 'En essai', n: true, i: 'Les postes sans clé. Ils deviennent des clients ou ils disparaissent : c\\u2019est l\\u2019écran Essais qui dit lesquels appeler.' },
@@ -4838,7 +4875,8 @@ const CONSOLE_HTML = `<!doctype html>
       { k: 'postes', t: 'Postes', n: true },
       { k: 'fin', t: 'Fin', f: function (v) { return v ? jour(v) : 'à vie'; } },
       { k: 'vu', t: 'Vu', f: function (v) { return quandVu(v); }, brut: true },
-      { k: 'revoquee_le', t: 'État', f: function (v, r) { return etatLic(r); }, brut: true }
+      { k: 'revoquee_le', t: 'État', f: function (v, r) { return etatLic(r); }, brut: true },
+      { k: 'id', t: 'Actions', brut: true, a: true, f: function (v, r) { return actesLicence(r); } }
     ]
   };
   // Les icônes du rail : le même langage que les deux applications — 18 px, trait de 1,8, pas de

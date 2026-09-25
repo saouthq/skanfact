@@ -1533,4 +1533,65 @@ module.exports = async ({ t, ta, assert, lireSource }) => {
       'le workflow se surveille lui-même : il redéploierait la production pour une recette modifiée');
   });
 
+  // ------------------------------------------------- l'audit du 22/09/2026, les quatre restes (10.14.0)
+
+  // La vue Cabinets n'avait AUCUNE action : on voyait les cabinets, on ne pouvait ni revoir leur clé,
+  // ni la renouveler, ni changer leur quota. Les gestes sont ceux d'une licence, par UNE fonction —
+  // et la route rend ce que ces gestes lisent, sinon « Renouveler » s'offrirait sur une licence déjà
+  // remplacée et « Envoyer par mail » sur une clé qu'on ne sait pas refabriquer.
+  await ta('10.14.0 : la vue Cabinets porte les gestes d\'une licence, et la route rend ce qu\'ils lisent', async () => {
+    const src = fs.readFileSync(path.join(__dirname, '../../plateforme/skanfact-api.mjs'), 'utf8');
+    const cab = src.slice(src.indexOf('    cabinets: [\n      { k: \'client\''), src.indexOf('  // Les icônes du rail'));
+    assert.ok(cab.length > 500 && cab.length < 4000, 'tranche des colonnes Cabinets : ' + cab.length);
+    assert.ok(/t: 'Actions'[^\n]*actesLicence\(r\)/.test(cab), 'la vue Cabinets a sa colonne Actions');
+    assert.ok(/licences: \[[\s\S]*?t: 'Actions'[^\n]*return actesLicence\(r\)/.test(src), 'les Licences passent par la MÊME fonction');
+    assert.strictEqual((src.match(/act: 'renouveler'/g) || []).length, 1, 'une seule table d\'actions de licence');
+    const { baseD1 } = require('../d1-sqlite');
+    const P = await API();
+    const ADMIN = 'Z'.repeat(30);
+    const db = baseD1();
+    try {
+      db.lire("INSERT INTO clients (id, nom, cree_le) VALUES ('c1', 'Cabinet Ben Youssef', '2026-01-01T00:00:00Z')");
+      db.lire("INSERT INTO licences (id, client_id, kid, empreinte, offre, debut, fin, emise_le, cabinet_empreinte, type, dossiers_hors, charge)"
+        + " VALUES ('l1', 'c1', 'srv-1', 'e1', 'cabinet', '2026-01-01', '2027-01-01', '2026-01-01T00:00:00Z', '3f9a2c1e88b7d4056a12', 'cabinet', 10, '{}')");
+      db.lire("INSERT INTO licences (id, client_id, kid, empreinte, offre, debut, fin, emise_le, cabinet_empreinte, type, dossiers_hors, remplace_id, remplacee_motif)"
+        + " VALUES ('l2', 'c1', 'srv-1', 'e2', 'cabinet', '2027-01-01', '2028-01-01', '2026-06-01T00:00:00Z', '3f9a2c1e88b7d4056a12', 'cabinet', 20, 'l1', 'offre')");
+      const r = await P.default.fetch(new Request('https://x/v1/admin/cabinets', { headers: { 'x-skanfact-admin': ADMIN } }), { DB: db, ADMIN_SECRET: ADMIN });
+      const j = await r.json();
+      assert.strictEqual(r.status, 200);
+      const l1 = j.lignes.find(x => x.id === 'l1');
+      assert.strictEqual(l1.type, 'cabinet', 'le type : c\'est lui qui dit « Changer le quota » plutôt que « Changer d\'offre »');
+      assert.strictEqual(l1.remplacee_par, 'l2', 'remplacée : « Renouveler » ne doit plus s\'offrir');
+      assert.ok(Number(l1.resignable) === 1, 'la clé se refabrique : « Envoyer par mail » peut s\'offrir');
+      assert.strictEqual(Number(j.lignes.find(x => x.id === 'l2').resignable), 0);
+      assert.ok('activations' in l1 && 'kid' in l1 && 'offre' in l1, 'ce que « Révoquer » et le formulaire lisent');
+    } finally { db.fermer(); }
+  });
+
+  t('10.14.0 : un menu de ligne de la console porte un MOT, jamais trois points', () => {
+    const src = fs.readFileSync(path.join(__dirname, '../../plateforme/skanfact-api.mjs'), 'utf8');
+    const f = src.slice(src.indexOf('var celluleActions = function'), src.indexOf('var menuOuvertSur'));
+    assert.ok(f.length > 300 && f.length < 3000, 'tranche celluleActions : ' + f.length);
+    const code = f.split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
+    assert.ok(!/u22ef|⋯/.test(code), 'le bouton de menu est encore « ⋯ » (7.29.0 : un pictogramme n\'est pas un libellé)');
+    assert.ok(/'Plus<span class="chev"/.test(code), 'il dit « Plus ▾ »');
+  });
+
+  t('10.14.0 : la liste des ventes montre la date de la vente, en tête', () => {
+    const src = fs.readFileSync(path.join(__dirname, '../../plateforme/skanfact-api.mjs'), 'utf8');
+    const v = src.slice(src.indexOf('    ventes: [\n'), src.indexOf('    ventes: [\n') + 600);
+    const premiere = v.split('\n').find(l => /\{ k: '/.test(l));
+    assert.ok(/k: 'emise_le', t: 'Vendue le'/.test(premiere), 'la première colonne est la date de la vente : ' + premiere);
+    assert.ok(/importée le/.test(v), 'une vente reprise de l\'historique le DIT au lieu d\'un vide');
+  });
+
+  t('10.14.0 : un titre de chiffres se plie, et les champs des Réglages partent du même bord', () => {
+    const src = fs.readFileSync(path.join(__dirname, '../../plateforme/skanfact-api.mjs'), 'utf8');
+    assert.ok(/\n  th\.num\{white-space:normal\}/.test(src), 'le Parc déborde à 1440 : ses titres de chiffres ne se plient pas');
+    assert.ok(/Vus \(30\\\\u00a0j\)/.test(src), '« 30 j » ne se coupe pas entre le nombre et son unité');
+    const regle = src.match(/\n  \.reg,\.reg\.court,\.reg\.moyen,\.reg\.long\{grid-template-columns:([^}]+)\}/);
+    assert.ok(regle, 'les quatre gabarits partagent UNE colonne de champs');
+    assert.ok(!/\n  \.reg\.(court|moyen|long)\{grid-template-columns/.test(src), 'un gabarit a encore sa propre colonne : trois bords gauches');
+    assert.ok(/\n  \.reg>input\{justify-self:start/.test(src), 'le champ part du bord de sa colonne');
+  });
 };

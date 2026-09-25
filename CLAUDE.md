@@ -7463,6 +7463,16 @@ livre de douze mille écritures et trois cents dossiers collés d'un coup (`satu
   ses « / » (`mfCoupable`, échappé AVANT de poser les `<wbr>`), là où un comptable le coupe aussi.
   Les listes principales ne passent pas par `.scroll-x` : son `overflow` casserait l'en-tête
   collant (2.2.0) — on fait tenir la table, on ne la fait pas défiler.
+- **Deux vues qui montrent la même chose portent les mêmes gestes, par la même fonction** (la console,
+  audit du 22/09) : la vue Cabinets listait des licences sans aucune action. `actesLicence` sert les
+  deux tableaux ; et la route rend ce que ces gestes LISENT (`resignable`, `remplacee_par`, `type`),
+  sinon « Renouveler » s'offrirait sur une licence déjà remplacée — prouvé sur la vraie base.
+- **Un titre de chiffres se plie avant qu'une colonne sorte du cadre** (`th.num{white-space:normal}`) :
+  en disposition automatique, il ne se plie que si la table ne tient pas. Et une unité colle à son
+  nombre (« 30\u00a0j »). Coller le dernier mot à ses icônes a été essayé et retiré : l'essai a regagné
+  la largeur qu'on venait de libérer — la capture l'a dit.
+- **Des champs de largeurs différentes partent du même bord** : c'est la LARGEUR du champ, dans une
+  colonne commune, qui dit ce qu'on attend — pas une colonne par gabarit.
 - Trois des dix-sept preuves ont d'abord été discutées : deux défauts remis sont tombés sur un test
   PLUS ANCIEN que le neuf (la numérotation, le tri) — la règle était déjà tenue ; le troisième est
   resté vert, et c'est lui qui a montré que le test ne pouvait pas le voir.

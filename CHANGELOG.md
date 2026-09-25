@@ -523,6 +523,20 @@ de pixels sur un écran de 1280 px : la page défilait de côté et le bouton «
 l'écran. Le matricule fiscal (« 1472411D/A/M/000 ») peut maintenant passer à la ligne après ses
 « / », dans la liste des clients comme dans celle des fournisseurs, et la liste tient.
 
+### La console : les cinq restes de l'audit du 22/09
+
+- **La vue Cabinets a ses gestes.** On y voyait les cabinets sans pouvoir rien en faire. Chaque ligne
+  porte maintenant « Voir la clé » et un menu « Plus ▾ » : renvoyer la clé par mail, renouveler,
+  changer le quota, révoquer — les mêmes gestes que la vue Licences, par la même fonction.
+- **« Plus ▾ » au lieu de « ⋯ »** sur toutes les lignes de la console : un menu porte un mot, comme
+  dans les deux applications.
+- **Le Parc tient à 1440 px.** Ses titres de chiffres (« Sous licence », « Vus (30 j) ») passent sur
+  deux lignes quand la place manque, au lieu de pousser « Dernier vu » hors du cadre.
+- **Les champs des Réglages partent tous du même bord** : un nombre, une devise et un lien
+  commençaient à trois abscisses différentes dans le même panneau.
+- **La liste des ventes montre la date de la vente**, en première colonne ; une vente reprise de
+  l'historique de SkanFact dit « importée le … ».
+
 ## 10.13.0-beta.1 — 24/09/2026
 
 **Avant la mise en production : les deux applications et le pont entre elles, testés en entier.**
