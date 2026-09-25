@@ -86,6 +86,16 @@
   cursor: pointer; padding: 4px 8px; border-radius: 7px;
 }
 .pw-eye:hover { color: var(--primary); background: var(--primary-soft); }
+/* 10.14.0 — Tab passe par « Afficher » : il doit le MONTRER. Sans anneau, la frappe qui suivait
+   partait sur le bouton sans que rien à l'écran ne dise où était le curseur (vu à la souris). */
+.pw-eye:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; color: var(--primary); }
+/* Une case refusée se marque même quand elle vit dans l'enveloppe du bouton « Afficher » : la
+   règle partagée ne vise que l'enfant direct d'un `.field`. */
+.champ-faute > .pw-wrap > input { border-color: var(--danger) !important; box-shadow: 0 0 0 3px var(--danger-soft); }
+/* La ligne qui juge un mot de passe garde sa place AVANT d'avoir quelque chose à dire : née pendant
+   la frappe, elle poussait la confirmation de seize pixels sous le curseur (règle 10.12.0) — sur
+   l'écran de création comme dans « Changer le mot de passe ». */
+.ligne-reservee { display: block; min-block-size: 1lh; }
 .lock-warn { color: var(--danger); font-weight: 700; }
 /* Le texte courant de la carte est centré (titre, sous-titre) ; une phrase de trois lignes centrée
    ne se lit pas. Tout ce qui est une PHRASE y revient à gauche. */

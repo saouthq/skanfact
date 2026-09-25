@@ -219,6 +219,21 @@
     return '';
   }
 
+  // 10.14.0 — un mot de passe à confirmer : le verdict, ET la case qu'il faut montrer. Vu à la souris
+  // sur le premier écran de cette application : Tab pose le curseur sur « Afficher », la
+  // confirmation part dans le vide, et le refus disait « les deux mots de passe ne sont pas les
+  // mêmes » sans montrer aucune case. Une confirmation vide se NOMME, une confirmation fausse aussi.
+  //
+  // Le corps est identique à `verdictMotDePasse` de src/renderer/core.js : les deux applications
+  // refusent avec les mêmes mots, et un test compare les deux corps (comme `exemplePerime`).
+  function verdictMotDePasse(motDePasse, confirmation, min) {
+    const a = String(motDePasse || ''), b = String(confirmation || '');
+    if (a.length < min) return { ok: false, champ: 'motDePasse', message: `Mot de passe : ${min} caractères au minimum.` };
+    if (!b) return { ok: false, champ: 'confirmation', message: 'Retape le mot de passe dans la case de confirmation.' };
+    if (a !== b) return { ok: false, champ: 'confirmation', message: 'La confirmation ne correspond pas au mot de passe : retape-la.' };
+    return { ok: true, champ: '', message: '' };
+  }
+
   // ================================================================ LES COLLABORATEURS (9.9.0)
   //
   // Un cabinet de plus d'une personne. Trois rôles, et ils se contiennent l'un l'autre :
@@ -2057,7 +2072,7 @@
     monthLabel, monthListLabel, missingLabel, addMonth, monthsBetween, moisDeTravail, today, de, libelleLot,
     cleEcheance, echeanceDeposee,
     migrate, migrateDossier, dossierKey, packSummary, filePack, demoDossiers, rebaserPaquet, checkIntegrity, HORS_MANIFESTE,
-    exemplePerime,
+    exemplePerime, verdictMotDePasse,
     newDossier, parseDossierLines, noteRelance, portfolio, caDuPortefeuille, relanceDue, relanceRows, accuseMail,
     parseCsv, verdictOrigine, csvDangereux, toCsvLine, mergeEcritures, ecrituresPlan,
     DEFAULT_DEADLINES, deadlineSettings, echeances, dayOf,

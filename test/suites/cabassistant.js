@@ -377,4 +377,68 @@ t('10.14.0 Cabinet : « Sur cet ordinateur, c\'est … » est UNE phrase, pas tr
   const css = lireSource('src', 'cabinet', 'renderer', 'cabinet.css');
   assert.ok(/#eq-moi > \.eq-phrase \{[^}]*flex: 1 1 100%/.test(css), 'le sélecteur « Je suis » ne passe plus sous la phrase');
 });
+
+// Vu à la souris sur le PREMIER écran du Cabinet : taper le mot de passe, Tab, la confirmation…
+// Tab posait le curseur sur « Afficher », la confirmation partait dans le vide, et le refus disait
+// « les deux mots de passe ne sont pas les mêmes » sans montrer aucune case. Trois défauts, un geste.
+t('10.14.0 : un mot de passe à CONFIRMER — une confirmation vide se nomme, le refus montre SA case, et Entrée descend (les deux applications)', () => {
+  const C = require('../../src/renderer/core.js');
+  // Le verdict, dans les deux modules, avec des DONNÉES qui discriminent (10.0.0) : une confirmation
+  // vide n'est pas « pas la même », et une confirmation fausse se refait — jamais le mot de passe.
+  [[C, 6], [K, 8]].forEach(([M, min]) => {
+    const court = 'x'.repeat(min - 1), bon = 'y'.repeat(min);
+    assert.strictEqual(M.verdictMotDePasse(court, court, min).champ, 'motDePasse', 'un mot de passe trop court se refuse sur SA case');
+    const vide = M.verdictMotDePasse(bon, '', min);
+    assert.ok(!vide.ok && vide.champ === 'confirmation' && /Retape/.test(vide.message) && !/pas les mêmes|ne correspond/.test(vide.message),
+      'une confirmation VIDE doit se nommer, pas se dire différente');
+    const faux = M.verdictMotDePasse(bon, bon + 'z', min);
+    assert.ok(!faux.ok && faux.champ === 'confirmation' && /ne correspond pas/.test(faux.message), 'une confirmation fausse se refait');
+    assert.deepStrictEqual(M.verdictMotDePasse(bon, bon, min), { ok: true, champ: '', message: '' });
+  });
+  // Les deux applications refusent avec les MÊMES mots : les corps sont identiques (motif `exemplePerime`).
+  const corpsDe = (src, nom) => (src.match(new RegExp(`function ${nom}\\([^)]*\\) \\{[\\s\\S]*?\\n  \\}`)) || [''])[0];
+  const vA = corpsDe(lireSource('src', 'renderer', 'core.js'), 'verdictMotDePasse');
+  const vB = corpsDe(lireSource('src', 'cabinet', 'cabcore.js'), 'verdictMotDePasse');
+  assert.ok(vA.length > 200 && vA === vB, 'les deux verdicts ont divergé');
+  const eA = corpsDe(entreprise, 'enchainerConfirmation');
+  const eB = corpsDe(cabApp, 'enchainerConfirmation');
+  assert.ok(eA.length > 150 && eA === eB, 'les deux enchaînements ont divergé');
+  // Entrée ne vole la main que tant que la confirmation est VIDE, et ne laisse pas la fenêtre valider.
+  assert.ok(/confirmation\.value\) return;/.test(eA) && /stopPropagation\(\)/.test(eA) && /confirmation\.focus\(\)/.test(eA),
+    'Entrée ne descend plus vers la confirmation, ou valide la fenêtre par-dessus');
+  // CHAQUE formulaire à deux mots de passe neufs passe par le verdict et par l'enchaînement : la règle
+  // se lit sur les formulaires, pas sur une liste recopiée (10.12.0 — un compte laisse passer le reste).
+  const html = lireSource('src', 'cabinet', 'renderer', 'index.html');
+  const paires = (html.match(/autocomplete="new-password"/g) || []).length + (cabApp.match(/autocomplete="new-password"/g) || []).length / 2;
+  const verdictsCab = (app.match(/K\.verdictMotDePasse\(/g) || []).length;
+  const chainesCab = (app.match(/enchainerConfirmation\((?!champ)/g) || []).length;
+  assert.strictEqual(paires, 3, 'le Cabinet n\'a plus trois formulaires à deux mots de passe : relire ce test');
+  assert.strictEqual(verdictsCab, paires, `${paires} formulaires à deux mots de passe, ${verdictsCab} passent par le verdict`);
+  assert.strictEqual(chainesCab, paires, `${paires} formulaires à deux mots de passe, ${chainesCab} descendent sur Entrée`);
+  const ent = sansCommentaires(entreprise);
+  assert.strictEqual((entreprise.match(/autocomplete="new-password"/g) || []).length, 2, 'l\'app entreprise n\'a plus UNE paire de mots de passe neufs : relire ce test');
+  assert.ok(/C\.verdictMotDePasse\(v\.password, v\.confirm, 6\)/.test(ent), 'la fenêtre du mot de passe de l\'app entreprise ne passe plus par le verdict');
+  assert.ok(/enchainerConfirmation\(\$\('\[name=password\]', root\), \$\('\[name=confirm\]', root\)\)/.test(ent), 'Entrée ne descend plus vers la confirmation dans l\'app entreprise');
+  // Le refus MONTRE la case : plus un seul toast, plus une seule phrase posée sans curseur.
+  [app, ent].forEach(src => {
+    // La PHRASE entière : « ils ne correspondent pas aux tiens » vit dans le mail des écritures, et
+    // un test trop large accuse du code juste (9.4.7).
+    assert.ok(!/mots de passe ne sont pas les mêmes|mots de passe ne correspondent pas/.test(src), 'la phrase qui disait faux sur une confirmation vide est revenue');
+  });
+  assert.ok(!/toast\('Huit caractères/.test(app), 'un refus de mot de passe du Cabinet ne fait plus qu\'un toast');
+  assert.ok(/refus\(vm\.champ === 'confirmation' \? p2 : p1, vm\.message\)/.test(app), 'les fenêtres du Cabinet ne montrent plus la case refusée');
+  const verrou = app.slice(app.indexOf('$(\'#lock-form\').onsubmit'), app.indexOf('const go = $(\'#lock-go\');'));
+  assert.ok(verrou.length > 300 && verrou.length < 4000, 'la tranche de l\'écran du mot de passe est introuvable : ' + verrou.length);
+  assert.ok(/champ\.focus\(\)/.test(verrou) && /champ-faute/.test(verrou) && /vm\.champ === 'confirmation' \? pw2 : pw/.test(verrou),
+    'l\'écran de création ne montre plus la case refusée');
+  // « Afficher » reste sur le chemin de Tab (règle 9.3.0) — donc il MONTRE qu'il a le curseur ; et la
+  // ligne qui juge le mot de passe garde sa place avant d'avoir quelque chose à dire.
+  assert.ok(!/id="lock-eye"[^>]*tabindex="-1"/.test(html), '« Afficher » est sorti de l\'ordre de tabulation : un chemin coupé au lieu d\'un ajouté');
+  const css = lireSource('src', 'cabinet', 'renderer', 'cabinet.css');
+  assert.ok(/\.pw-eye:focus-visible \{[^}]*outline: 2px solid/.test(css), '« Afficher » ne montre pas qu\'il a le curseur');
+  assert.ok(/\.ligne-reservee \{[^}]*min-block-size: 1lh/.test(css), 'la ligne de force ne réserve plus sa place');
+  assert.ok(/\$\('#lock-strength'\)\.classList\.add\('ligne-reservee'\)/.test(app) && /class="muted small ligne-reservee" id="str"/.test(app),
+    'une ligne de force pousse encore la confirmation pendant la frappe');
+  assert.ok(/\.champ-faute > \.pw-wrap > input \{[^}]*border-color: var\(--danger\)/.test(css), 'une case refusée dans l\'enveloppe d\'« Afficher » ne se marque pas');
+});
 };

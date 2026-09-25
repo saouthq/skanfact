@@ -270,9 +270,27 @@ l'ordre proposé.
   `e2e:cabinet-couverture`. Puis la parité (même jour, demandée par Skander) : 49 gestes guidés, un
   par écran de travail au moins, le bandeau de l'exemple de SkanFact sur chaque page, et quatre
   constats du test à la souris corrigés. Joués à la souris : grand livre, balance, production,
-  paquets, et la découverte. Reste **le jeu d'exemple du Cabinet sur plusieurs exercices** — il porte
-  une année, et la découverte ne peut montrer ni une réouverture, ni des à-nouveaux reçus d'un
-  exercice clôturé au cabinet.
+  paquets, et la découverte.
+- ~~**Le jeu d'exemple du Cabinet sur plusieurs exercices**~~ — *fait en 10.14.0* (215) : le garage
+  tient deux exercices (le précédent clos, rouvert une fois avec son motif, reclos ; le courant ouvert
+  par ses à-nouveaux et son registre), et la découverte a son chapitre « D'un exercice à l'autre ». Ce
+  qu'il a fait tomber est corrigé : le registre qui ne suivait pas « Ouvrir N+1 », un exercice clos
+  qui bougeait (la porte d'écriture le refuse, ERR-CAB-064), janvier qui déclarait l'à-nouveau de
+  décembre, « les six contrôles » en dur. L'exercice vit dans l'adresse. Reste :
+  - **un client SUR SkanFact sur deux exercices** (Béji) : sa clôture partirait chez lui par le
+    `.skanclose`, et l'exemple de l'app entreprise devrait alors la recevoir — c'est le flux retour
+    joué des deux côtés, qui demande que les deux jeux d'exemple se répondent. À décider avant de
+    l'écrire : c'est l'exemple de SkanFact qui changerait.
+  - **À VÉRIFIER, lié au point précédent** : chez un client SUR SkanFact, les à-nouveaux de janvier
+    arrivent dans son paquet (`source: 'skanfact'`, journal AN). « Ouvrir N+1 » ne les reconnaît pas
+    comme des à-nouveaux (il ne connaît que `source: 'an'`) : il proposerait d'en poser une seconde
+    pièce, en brouillard, à côté de celle du client. Le geste ne touche jamais les pièces du client, et
+    rien n'est validé d'office — mais le bouton dirait « Poser les à-nouveaux » au lieu de « Voir », et
+    l'écart entre l'ouverture du client et la clôture du cabinet (`ecartAnouveaux`) ne se calculerait
+    pas. Le jeu d'exemple ne peut pas le montrer (seul le garage, hors SkanFact, a deux exercices) :
+    à trancher avec le flux retour ci-dessus — qui fait foi pour l'ouverture d'un client sur SkanFact,
+    sa pièce ou celle du cabinet ?
+  - le chapitre neuf passe par les instruments reportés ci-dessous (`e2e:cabinet-visites`).
 - **Les deux instruments `e2e:visites` et `e2e:cabinet-visites` — reportés le 24/09 par Skander**
   (« on laissera le E2E des deux app pour plus tard », pour passer à l'assistant de démarrage). Ils
   sont ÉCRITS (harnais partagé `test/e2e/jouer-visites.js`, `amenerGuide` qui dit où il s'est perdu,

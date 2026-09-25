@@ -13377,7 +13377,10 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     const app = lireSource('src', 'cabinet', 'renderer', 'app.js');
     const css = lireSource('src', 'cabinet', 'renderer', 'cabinet.css');
     const fiche = app.slice(app.indexOf('function drawDossier(view, id, ongletDemande'), app.indexOf('const labelOf = (list, id) =>'));
-    assert.ok(fiche.length > 5000 && fiche.length < 30000, 'tranche drawDossier suspecte : ' + fiche.length);
+    // La borne haute attrape une tranche qui s'emballe (une ancre disparue fait lire jusqu'à la fin du
+    // fichier, 400 000 caractères), pas la croissance de la fiche : 36 000 depuis que l'exercice vit
+    // dans l'adresse (10.14.0).
+    assert.ok(fiche.length > 5000 && fiche.length < 36000, 'tranche drawDossier suspecte : ' + fiche.length);
     // Trois onglets, pas quatre : la fiche d'identité (151 px) aurait fait un onglet d'un demi-écran,
     // ce que la 7.30.0 a retiré des Paramètres. Elle vit dans l'en-tête.
     assert.ok(/const ONGLETS_DOSSIER = \['suivi', 'comptabilite', 'paquets'\];/.test(app), 'les trois onglets de la fiche ont changé');
@@ -14474,7 +14477,14 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     assert.ok(/tes vrais dossiers sont à l'abri/.test(cbd.replace(/\s+/g, ' ')), 'et dire que les vrais dossiers n\'ont pas bougé');
     // Et il ne doit pas survivre à un exemple rechargé À LA MAIN : ce serait annoncer un rattrapage
     // qui n'a pas eu lieu.
-    assert.ok(!/await api\.demo\(/.test(cabr), 'les deux gestes manuels passent par la même porte');
+    // Retournée vers la RÈGLE (10.14.0) : elle interdisait `await api.demo(` partout, et la porte
+    // elle-même l'attend désormais (elle relit le résumé des livres une fois l'exemple écrit). La
+    // règle est qu'`api.demo(` ne vit QUE dans la porte.
+    const porteEx = cabr.slice(cabr.indexOf('async function chargerOuRetirerExemple(on)'), cabr.indexOf('\n  }\n', cabr.indexOf('async function chargerOuRetirerExemple(on)')));
+    assert.ok(porteEx.length > 60 && porteEx.length < 1500, 'tranche de la porte de l\'exemple inattendue : ' + porteEx.length);
+    assert.strictEqual((cabr.match(/api\.demo\(/g) || []).length, (porteEx.match(/api\.demo\(/g) || []).length,
+      'les deux gestes manuels passent par la même porte');
+    assert.ok(/api\.demo\(/.test(porteEx), 'la porte de l\'exemple n\'appelle plus le processus principal');
     assert.ok(cabr.includes('async function chargerOuRetirerExemple(on)') && cabr.includes('exempleRefait = null;'),
       'la porte manuelle doit éteindre le bandeau');
   });
@@ -14505,6 +14515,7 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
   require('./suites/visites.js')({ t, assert, lireSource });
   require('./suites/cabvisites.js')({ t, assert, lireSource });
   require('./suites/cabassistant.js')({ t, assert, lireSource });
+  require('./suites/exercices.js')({ t, assert, lireSource });
   // Asynchrone depuis 213d (la messagerie au premier envoi) : elle est ATTENDUE, sinon son `ta` part détaché (8.4.0).
   await require('./suites/assistant.js')({ t, ta, assert, lireSource });
   // Celle-ci reçoit `ta` en plus : elle interroge le vrai worker sur une vraie base SQLite.

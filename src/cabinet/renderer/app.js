@@ -31,7 +31,13 @@
 
   async function chargerOuRetirerExemple(on) {
     exempleRefait = null;
-    return api.demo(on);
+    const etat = await api.demo(on);
+    // 10.14.0 (vu à la souris) — l'exemple écrit et efface des LIVRES : le résumé des index (dossiers
+    // tenus au cabinet, exercices clos, questions) se relit ici. Lu au démarrage, avant l'exemple, il
+    // disait « aucun exercice » du garage, et la découverte sautait son chapitre « D'un exercice à
+    // l'autre » sans un mot — un état lu une fois se périme (7.1.x).
+    await chargerQuestionsAttente(false);
+    return etat;
   }
   let fermerPalette = null;              // de quoi refermer la palette quand une fenêtre s'ouvre au-dessus
   // Un raccourci vise un PANNEAU, pas une page (7.18.0) — porté de l'app entreprise (T-20). Le
@@ -197,6 +203,29 @@
     marque.addEventListener('change', nettoyer, { once: true });
     setTimeout(nettoyer, 6000);
     return false;
+  }
+
+  // 10.14.0 — un mot de passe se tape puis se confirme, et Entrée DESCEND de l'un à l'autre tant que
+  // la confirmation est vide. Tab passe par « Afficher », et ça reste : le sortir de l'ordre de
+  // tabulation rendrait le bouton inatteignable au clavier (règle 9.3.0 — on AJOUTE un chemin, on
+  // n'en coupe pas un). Vu à la souris : taper le mot de passe, Tab, la confirmation… et la
+  // confirmation partait sur le bouton. `stopPropagation` : la fenêtre valide sur Entrée, et
+  // valider une confirmation vide ne ferait qu'afficher un refus pour un pas normal.
+  // Le jumeau vit dans src/renderer/app.js, corps comparé par un test.
+  function enchainerConfirmation(champ, confirmation) {
+    if (!champ || !confirmation) return;
+    champ.addEventListener('keydown', e => {
+      if (e.key !== 'Enter' || e.shiftKey || e.isComposing || confirmation.value) return;
+      e.preventDefault(); e.stopPropagation();
+      confirmation.focus();
+    });
+  }
+
+  // 10.14.0 — un NOM dans une cellule tronquée, et ses marques à côté : le nom se coupe, les marques
+  // jamais (le motif « En face » du livre-journal, T-12). `nomHtml` et les marques sont déjà échappés.
+  function marquesDuNom(nomHtml, marques) {
+    const m = (marques || []).filter(Boolean);
+    return m.length ? `<span class="face"><span class="face-p">${nomHtml}</span><span class="face-m">${m.join(' ')}</span></span>` : nomHtml;
   }
 
   // ---------- bulles « i » ----------
@@ -763,6 +792,10 @@
       pw.focus();
     };
     if (!st.exists) pw.oninput = () => { $('#lock-strength').textContent = strengthText(pw.value); };
+    // 10.14.0 (vu à la souris) — Entrée descend vers la confirmation, et la ligne qui juge le mot de
+    // passe garde sa place avant d'avoir quelque chose à dire : née pendant la frappe, elle poussait
+    // la confirmation de seize pixels sous le curseur (règle 10.12.0).
+    if (!st.exists) { enchainerConfirmation(pw, pw2); $('#lock-strength').classList.add('ligne-reservee'); }
     // 10.14.0 — le curseur est dans le champ : on arrive ici pour taper un mot de passe, et rien
     // d'autre. Sans lui, la frappe partait dans le vide (vu à la souris) ; l'app entreprise le
     // posait depuis toujours — le jumeau manquant (7.3.0).
@@ -776,9 +809,26 @@
       const err = $('#lock-err');
       err.hidden = true;
       const v = pw.value;
-      if (!st.exists && v.length < 8) { err.textContent = 'Huit caractères au minimum : ce mot de passe protège les comptes de tous tes clients.'; err.hidden = false; return; }
-      if (st.exists && v.length < 1) { err.textContent = 'Entre ton mot de passe.'; err.hidden = false; return; }
-      if (!st.exists && v !== pw2.value) { err.textContent = 'Les deux mots de passe ne sont pas les mêmes.'; err.hidden = false; return; }
+      // Le refus MONTRE la case (règle 7.20.0) : le curseur y va, elle se marque. Et quand la
+      // confirmation manque ou ne correspond pas, c'est ELLE qu'on refait — jamais le mot de passe
+      // qu'on vient de choisir. « Les deux mots de passe ne sont pas les mêmes » sur une
+      // confirmation vide disait faux : elle avait été tapée sur « Afficher » (10.14.0).
+      const refuse = (champ, message) => {
+        err.textContent = message; err.hidden = false;
+        const marque = champ.closest('.field') || champ;
+        marque.classList.add('champ-faute'); champ.setAttribute('aria-invalid', 'true');
+        champ.addEventListener('input', () => { marque.classList.remove('champ-faute'); champ.removeAttribute('aria-invalid'); }, { once: true });
+        champ.focus();
+        if (champ.value) champ.select();
+      };
+      if (st.exists && v.length < 1) return refuse(pw, 'Entre ton mot de passe.');
+      if (!st.exists) {
+        const vm = K.verdictMotDePasse(v, pw2.value, 8);
+        if (!vm.ok) {
+          return refuse(vm.champ === 'confirmation' ? pw2 : pw, vm.champ === 'motDePasse'
+            ? 'Huit caractères au minimum : ce mot de passe protège les comptes de tous tes clients.' : vm.message);
+        }
+      }
       const go = $('#lock-go');
       go.disabled = true; go.textContent = 'Ouverture…';
       try {
@@ -1394,7 +1444,7 @@
     if (route !== routeLue && (route === 'echeances' || route === 'dossiers')) chargerQuestionsAttente(true);
     routeLue = route;
     const view = $('#view');
-    if (route === 'dossier') drawDossier(view, arg, hash.split('/')[2], hash.split('/')[3]);
+    if (route === 'dossier') drawDossier(view, arg, hash.split('/')[2], hash.split('/')[3], hash.split('/')[4]);
     else if (route === 'production') drawProduction(view);
     else if (route === 'ecritures') drawEcritures(view);
     else if (route === 'echeances') drawEcheances(view);
@@ -1445,7 +1495,13 @@
     view.insertBefore(el, view.firstChild);
     const off = $('#demo-off', el);
     off.onclick = async () => {
-      S = await chargerOuRetirerExemple(false); VISITES = null; render(); toast('Exemple effacé.');
+      S = await chargerOuRetirerExemple(false); VISITES = null;
+      // Quitté depuis la fiche d'un dossier FICTIF, on revient au portefeuille : l'écran restait sur
+      // un dossier qui venait de partir (vu à la souris). Sur la fiche d'un vrai dossier, on reste.
+      const ici = /^#\/dossier\/([^/]+)/.exec(location.hash);
+      if (ici && !(S.dossiers || []).some(d => d.id === decodeURIComponent(ici[1]))) location.hash = '#/dossiers';
+      else render();
+      toast('Exemple effacé.');
       // Après la découverte, l'assistant reprend là où la porte l'a laissé : posé à quelqu'un qui sait
       // maintenant à quoi servent les questions (10.14.0).
       if (!String((S.cabinet || {}).name || '').trim()) { await runSetup({ sansPorte: true }); render(); }
@@ -2010,12 +2066,19 @@
     changerDeDossierCompta(dossier.id);
     livresState.annee = mois.slice(0, 4);
     if (etape !== 'saisi') { declState.mois = mois; declState.ouverte = ''; }
-    location.hash = '#/dossier/' + encodeURIComponent(dossier.id) + '/comptabilite/' + (etape === 'saisi' ? 'saisie' : 'declaration');
+    location.hash = '#/dossier/' + encodeURIComponent(dossier.id) + '/comptabilite/' + (etape === 'saisi' ? 'saisie' : 'declaration') + '/' + mois.slice(0, 4);
   }
 
-  function drawDossier(view, id, ongletDemande, sousOnglet) {
+  function drawDossier(view, id, ongletDemande, sousOnglet, anneeDemandee) {
     const dossier = (S.dossiers || []).find(d => d.id === decodeURIComponent(id || ''));
-    if (!dossier) { view.innerHTML = `<div class="empty">Ce dossier n'existe plus.</div>`; return; }
+    // Un état vide dit sa raison ET donne le geste (7.0.0) : seul, « Ce dossier n'existe plus. » ne
+    // laissait que la barre latérale — vu à la souris après « Quitter l'exemple » sur la paie du garage.
+    if (!dossier) {
+      view.innerHTML = `<div class="empty">Ce dossier n'existe plus : il a été retiré, ou c'était un dossier de l'exemple.
+        <div class="mt"><button class="btn" id="dz-retour">Revenir aux dossiers</button></div></div>`;
+      $('#dz-retour', view).onclick = () => navigate('#/dossiers');
+      return;
+    }
     const row = K.dossierRow(dossier);
     // Les mois restent dans l'ordre du TEMPS. `.reverse()` les affichait « Août, Juillet, Juin,
     // Mai, Avril, Mars » sous une étiquette « 2026 » : personne ne lit un calendrier à l'envers, et
@@ -2300,6 +2363,13 @@
       if (sousOnglet && ONGLETS_COMPTA[sousOnglet] && livresState.onglet !== sousOnglet) {
         livresState.onglet = sousOnglet; livresState.page = 1;
       }
+      // L'EXERCICE aussi (10.14.0) : `…/comptabilite/<écran>/<année>`. Sans lui, un exercice précis ne
+      // s'atteignait qu'en changeant le sélecteur à la main — la visite ne pouvait pas montrer l'exercice
+      // clos de l'exemple, ni « précédent » revenir sur 2025 après un détour. Toute porte qui change
+      // d'exercice réécrit l'adresse (`suivreExercice`) : sinon le prochain redessin ramènerait l'ancien.
+      if (/^\d{4}$/.test(String(anneeDemandee || '')) && String(livresState.annee) !== anneeDemandee) {
+        livresState.annee = anneeDemandee; livresState.page = 1;
+      }
       const relire = () => drawLivres(view, dossier);
       const mode = $('#lv-mode', view);
       mode.onchange = () => { livresState.mode = mode.value; livresState.page = 1; render(); };
@@ -2307,6 +2377,7 @@
       // livre de 2026 sans que rien ne le dise.
       const an = $('#lv-annee', view); if (an) an.onchange = () => {
         livresState.annee = an.value; livresState.page = 1;
+        suivreExercice(dossier);
         chargerLeLivre(dossier).then(apres, apres);
       };
       const mo = $('#lv-mois', view); if (mo) mo.onchange = () => { livresState.mois = mo.value; livresState.page = 1; relire(); };
@@ -2746,6 +2817,7 @@
             const r = await api.reprendre({ dossierId: dossier.id, annee: Number(v.annee), du: v.du, au: v.au, ouverture: lire(), source: 'balance' });
             s.annee = v.annee; s.livre = r.livre; s.livreEtat = 'ouvert'; s.livreCle = dossier.id + '|' + v.annee; livresConnus.set(dossier.id, true);
             exerciceConnu(v.annee);
+            suivreExercice(dossier);
             close();
             drawLivres(root, dossier);
             toast(`Livre de ${v.annee} créé`);
@@ -2858,7 +2930,16 @@
   // autre page — ni la palette — ne pouvait y mener. `pushState` ne déclenche pas de redessin : on
   // dessine soi-même, une fois.
   function adresseCompta(dossier, onglet) {
-    return '#/dossier/' + encodeURIComponent(dossier.id) + '/comptabilite/' + onglet;
+    // L'exercice regardé entre dans l'adresse (10.14.0) : « précédent » revient sur CET exercice.
+    const annee = livresState.dossierId === dossier.id && /^\d{4}$/.test(String(livresState.annee)) ? '/' + livresState.annee : '';
+    return '#/dossier/' + encodeURIComponent(dossier.id) + '/comptabilite/' + onglet + annee;
+  }
+  // L'adresse suit l'exercice affiché, sans nouvelle entrée d'historique : changer d'exercice n'est pas
+  // changer de page. Seulement quand on est sur la comptabilité de CE dossier.
+  function suivreExercice(dossier) {
+    if (!location.hash.startsWith('#/dossier/' + encodeURIComponent(dossier.id) + '/comptabilite')) return;
+    const h = adresseCompta(dossier, livresState.onglet || 'journal');
+    if (location.hash !== h) history.replaceState(null, '', h);
   }
   function allerSousOnglet(root, dossier, onglet) {
     const s = livresState;
@@ -3641,6 +3722,21 @@
   // Clôturer, c'est arrêter de bouger. Les contrôles NOMMENT sans bloquer : un exercice clos avec
   // trois manques signalés vaut mieux qu'un exercice jamais clos (règle 6.0.0).
 
+  // « Les sept contrôles » : en toutes lettres jusqu'à dix, comme on l'écrit dans une phrase.
+  const EN_LETTRES = ['zéro', 'un', 'deux', 'trois', 'quatre', 'cinq', 'six', 'sept', 'huit', 'neuf', 'dix'];
+  const controlesPassent = n => (n === 1 ? 'Le contrôle passe.' : `Les ${EN_LETTRES[n] || n} contrôles passent.`);
+
+  // Le bouton de l'exercice suivant nomme ce que le geste FERA (10.14.0), d'après l'état que le
+  // moteur calcule en jouant le geste sur une copie (`etatExerciceSuivant`). Pas de points de
+  // suspension sur « Voir » : il ne pose aucune question, il emmène.
+  function libelleSuivant(su) {
+    const a = String(su.annee);
+    if (su.etat === 'voir') return `Voir les à-nouveaux de ${a}`;
+    if (su.etat === 'refaire') return `Refaire les à-nouveaux de ${a}…`;
+    if (su.etat === 'completer') return `Compléter l'ouverture de ${a}…`;
+    return su.existe ? `Poser les à-nouveaux de ${a}…` : `Ouvrir ${a} (à-nouveaux)…`;
+  }
+
   const LIBELLE_CONTROLE = {
     brouillard: 'Les pièces encore en brouillard', attente: 'Le compte d\'attente',
     tva: 'Les déclarations de TVA', tiers: 'La balance des tiers',
@@ -3676,6 +3772,11 @@
       <summary>${titre}<span class="pli-chiffre small muted">${chiffre}</span></summary>${corps}</details>`;
     const SECTIONS = [['controles', 'cl-sec-controles', 'Avant de clôturer'], ['etats', 'cl-sec-etats', 'Les états financiers'],
       ['sig', 'cl-sec-sig', 'Soldes intermédiaires'], ['an', 'cl-sec-an', `Les à-nouveaux de ${Number(ex.annee) + 1}`]];
+    // 10.14.0 — le bouton de l'exercice suivant dit ce qu'il FERA, lu dans le moteur (le même geste
+    // joué sur une copie) : « Ouvrir 2026 (à-nouveaux)… » répondait en rouge « déjà validés » sur un
+    // exercice dont 2026 était ouvert depuis longtemps — le geste qui restait était d'aller voir.
+    const su = d.suivant || { etat: 'ouvrir', annee: Number(ex.annee) + 1 };
+    const ecartAN = su.ecart || [];
     return `<div class="filters">
       ${info('cl.etat')}
       <span class="small muted">Exercice ${esc(ex.annee)}</span>
@@ -3685,7 +3786,7 @@
             qui reste est celui qu'on peut faire — rouvrir. */''}
       ${ex.clos ? '<button class="btn btn-sm" id="cl-rouvrir">Rouvrir (motif exigé)…</button>'
     : `<button class="btn btn-sm${exerciceTermine(ex.annee) ? ' btn-primary' : ''}" id="cl-cloturer">Clôturer l'exercice…</button>`}
-      <button class="btn btn-sm" id="cl-suivant">Ouvrir ${esc(Number(ex.annee) + 1)} (à-nouveaux)…</button>
+      <button class="btn btn-sm" id="cl-suivant" data-etat="${esc(su.etat)}"${su.etat === 'refus' ? ' disabled aria-describedby="cl-suivant-motif"' : ''}>${esc(libelleSuivant(su))}</button>
       <button class="btn btn-sm" id="cl-fichier">Le dossier pour le client…</button>
       ${/* Réunir deux postes (9.9.0). Ici, et pas dans la Saisie : c'est un geste d'exercice, rare,
             et qui touche le livre entier. Quand les deux postes voient le même fichier, il ne sert
@@ -3693,6 +3794,16 @@
             dit. Il ne reste que le cas où les deux ne se sont jamais vus. */''}
       <span class="nw"><button class="btn btn-sm" id="cl-fusion">Réunir le livre d'un autre poste…</button>${info('eq.fusion')}</span>
     </div>
+    ${/* Un bouton éteint dit POURQUOI sous ses yeux, jamais dans une infobulle (9.4.5) — et par la
+          fonction même qui refuserait le geste. En gris : « rien à reporter » est l'état d'un
+          exercice vide, pas une alarme (8.0.1). */''}
+    ${su.etat === 'refus' ? `<p class="small muted mb" id="cl-suivant-motif">${esc(String(su.annee))} ne peut pas s'ouvrir : ${esc(su.motif || '')}</p>` : ''}
+    ${/* Des à-nouveaux VALIDÉS qui ne reprennent plus cet exercice : « contre-passe-les si le report a
+          changé » se vérifie ici au lieu de se deviner. Le geste est nommé en entier — où, lequel,
+          puis revenir — parce qu'il se fait dans un autre exercice. */''}
+    ${ecartAN.length ? `<div class="warn-box mb" id="cl-ecart-an"><b>Les à-nouveaux validés de ${esc(String(su.annee))} ne reprennent plus cet exercice</b>
+       — ${esc(pl(ecartAN.length, 'compte diffère', 'comptes diffèrent'))} : ${ecartAN.slice(0, 4).map(x => `${esc(x.compte)} (${esc(money(x.porte))} portés, ${esc(money(x.attendu))} attendus)`).join(', ')}${ecartAN.length > 4 ? '…' : ''}.
+       Cet exercice a changé après leur validation. Contre-passe la pièce d'à-nouveaux dans ${esc(String(su.annee))}, puis reviens ici les reposer.</div>` : ''}
     ${/* Le motif d'une réouverture se lit PENDANT qu'elle sert (T-26) : un exercice rouvert est un
           exercice en train de changer, et c'est là que « pourquoi est-il ouvert ? » se pose. Il
           vivait dans la branche « clos » — donc il s'évaporait à la seconde où on le donnait, et
@@ -3708,7 +3819,11 @@
     : echecs.length
       ? `<div class="warn-box mb"><b>${pl(echecs.length, 'contrôle', 'contrôles')} ${echecs.length > 1 ? 'signalent' : 'signale'} quelque chose.</b>
            Ils ne bloquent pas : un exercice clos avec des manques signalés vaut mieux qu'un exercice jamais clos.</div>`
-      : '<p class="small ligne-ok mb" id="cl-ok"><span aria-hidden="true">✓</span> Les six contrôles passent.</p>'}
+      : `<p class="small ligne-ok mb" id="cl-ok"><span aria-hidden="true">✓</span> ${
+        /* Le compte se LIT sur la liste : sept contrôles quand le cabinet tient le registre des biens
+           (le tableau d'amortissement contre le 28, 10.10.0), six sinon. « Les six » écrit en dur
+           mentait sur chaque dossier qui a des biens — trouvé sur l'exercice clos de l'exemple. */''}${
+        esc(controlesPassent((d.controles || []).length))}</p>`}
     ${/* Un <div> et non un <nav> : la règle `nav { flex-direction: column }` de la barre latérale
           empilait les pastilles en quatre barres pleine largeur — le piège du fil d'Ariane (7.27.0). */''}
     <div class="set-somm cl-somm" role="navigation" aria-label="Les sections de l'exercice">${SECTIONS.map(([k, , l]) =>
@@ -3873,6 +3988,14 @@
     if (rou) rou.onclick = () => motifForm(root, dossier);
     const su = $('#cl-suivant', el);
     if (su) su.onclick = async () => {
+      // Tout est déjà reporté : le geste est d'aller VOIR l'année d'après, sur son journal des
+      // à-nouveaux — là où se lit ce qu'elle a reçu, et où se contre-passe la pièce si le report a
+      // changé. Jamais un appel qui répondrait « déjà validés » en rouge (10.14.0).
+      if ((s.cloture.suivant || {}).etat === 'voir') {
+        s.journal = 'AN';
+        await ouvrirExercice(root, dossier, String(Number(s.annee) + 1), 'journal');
+        return;
+      }
       su.disabled = true;
       try {
         const r = await api.ouvrirSuivant({ dossierId: dossier.id, annee: s.annee });
@@ -3881,13 +4004,28 @@
         // 10.10.0 (C-12) — le geste finit là où il se termine vraiment (7.19.0) : l'exercice qu'on
         // vient d'ouvrir. Un message passager annonçait « à-nouveaux refaits sur 2027 » et laissait
         // le comptable sur 2026, devant un sélecteur qui ne proposait même pas 2027.
-        const aller = await confirmDialog(`${r.refaits ? 'À-nouveaux refaits' : 'À-nouveaux posés'} sur ${r.annee}`,
-          `<p>Ils sont en <b>brouillard</b> dans le livre de ${esc(String(r.annee))} : relis-les, puis valide-les.
-           ${r.refaits ? 'Les précédents ont été remplacés — les validées, elles, n\'ont pas été touchées.' : ''}</p>`,
-          `Ouvrir ${r.annee}`, false, `Rester sur ${s.annee}`);
-        if (aller) await ouvrirExercice(root, dossier, String(r.annee), 'saisie');
+        // 10.14.0 — le registre suit les à-nouveaux : la phrase le DIT, avec ses deux nombres. Un
+        // exercice qui s'ouvre sans ses biens ni ses salariés ne réclamerait aucune dotation et ne
+        // proposerait aucun bulletin — et rien ne l'aurait montré.
+        const registre = [r.biens ? pl(r.biens, 'bien') : '', r.salaries ? pl(r.salaries, 'salarié') : ''].filter(Boolean).join(' et ');
+        const suit = registre ? `<p>${esc(registre)} de ${esc(String(s.annee))} ${(r.biens || 0) + (r.salaries || 0) > 1 ? 'suivent' : 'suit'} dans ${esc(String(r.annee))} :
+          les biens avec leur plan d'amortissement, les salariés sans leurs bulletins — ceux-là restent dans leur mois.</p>` : '';
+        // Une extourne prévue après la validation des à-nouveaux part ici aussi (10.14.0) : la
+        // phrase la nomme, sinon on la chercherait dans un journal sans savoir qu'elle y est.
+        const ext = r.extournes ? `<p>${esc(pl(r.extournes, 'extourne posée', 'extournes posées'))} au ${esc(fmtJour(`${r.annee}-01-01`))}, en <b>brouillard</b> : relis-${r.extournes > 1 ? 'les' : 'la'}, puis valide-${r.extournes > 1 ? 'les' : 'la'}.</p>` : '';
+        const aller = r.anDejaValides
+          ? await confirmDialog(`Ouverture de ${r.annee} complétée`,
+            `<p>Les à-nouveaux de ${esc(String(r.annee))} étaient déjà validés : ils n'ont pas bougé.</p>${ext}${suit}`,
+            `Ouvrir ${r.annee}`, false, `Rester sur ${s.annee}`)
+          : await confirmDialog(`${r.refaits ? 'À-nouveaux refaits' : 'À-nouveaux posés'} sur ${r.annee}`,
+            `<p>Ils sont en <b>brouillard</b> dans le livre de ${esc(String(r.annee))} : relis-les, puis valide-les.
+             ${r.refaits ? 'Les précédents ont été remplacés — les validées, elles, n\'ont pas été touchées.' : ''}</p>${ext}${suit}`,
+            `Ouvrir ${r.annee}`, false, `Rester sur ${s.annee}`);
+        if (aller) { await ouvrirExercice(root, dossier, String(r.annee), 'saisie'); return; }
       } catch (err) { toast(plainError(err), 'error'); }
-      su.disabled = false;
+      // On reste : le bouton se RELIT — ce qui était « Ouvrir » est devenu « Refaire » ou « Voir ». Le
+      // livre de N n'a pas bougé, donc rien d'autre ne relancerait la lecture de l'exercice.
+      await chargerCloture(root, dossier);
     };
     const fi = $('#cl-fichier', el);
     if (fi) fi.onclick = () => clotureFichierForm(root, dossier);
@@ -3903,7 +4041,7 @@
       // L'adresse suit l'écran (U-06) : sans elle, le prochain redessin ramènerait l'ancien onglet.
       const h = adresseCompta(dossier, onglet);
       if (location.hash !== h) history.pushState(null, '', h);
-    }
+    } else suivreExercice(dossier);
     s.livreCle = dossier.id + '|' + s.annee;
     await chargerLeLivre(dossier);
     const mode = $('#lv-mode'); if (mode) mode.value = 'exercice';
@@ -4594,9 +4732,13 @@
         <th class="r nw">Valeur</th><th class="r">Cumul au 01/01</th><th class="r">Dotation ${esc(s.annee)}</th>
         <th class="r nw">Cumul</th><th class="r nw">VNC</th><th></th></tr></thead>
       <tbody>${e.rows.map(r => `<tr>
-        <td class="tronq" title="${esc(r.libelle)}">${esc(r.libelle)}${r.cession
-    ? ` <span class="badge b-part">${esc(r.cession.motif === 'rebut' ? 'rebut' : 'cédé')}</span>` : ''}${
-  r.ecrite ? ' <span class="badge b-paid">écrite</span>' : ''}</td>
+        ${/* 10.14.0 (vu à la souris) — le NOM se coupe, jamais ses marques : écrites à la suite dans
+              une cellule tronquée, « repris de 2025 » tombait derrière les points de suspension, et la
+              découverte éclairait un « … » en disant « ce bien vient de l'exercice précédent ». */''}
+        <td class="tronq" title="${esc(r.libelle)}">${marquesDuNom(esc(r.libelle), [
+    r.reporteDe ? `<span class="badge" data-repris="${esc(r.reporteDe)}" title="Repris de l'exercice ${esc(r.reporteDe)} avec son plan d'amortissement">repris de ${esc(r.reporteDe)}</span>` : '',
+    r.cession ? `<span class="badge b-part">${esc(r.cession.motif === 'rebut' ? 'rebut' : 'cédé')}</span>` : '',
+    r.ecrite ? '<span class="badge b-paid">écrite</span>' : ''])}</td>
         <td class="nw">${esc(fmtJour(r.date))}</td>
         <td class="nw">${esc(METHODE_LABEL[r.methode] || r.methode)}</td>
         <td class="r nw">${esc(money(r.valeur))}</td>
@@ -4978,7 +5120,9 @@
     ? `<div class="scroll-x"><table class="list compact"><thead><tr><th>Nom</th><th class="nw">N° CNSS</th>
         <th>Poste</th><th class="nw">Contrat</th><th class="r nw">Brut mensuel</th><th class="row-actions-h"></th></tr></thead>
         <tbody>${(L.salaries || []).map(x => `<tr class="${x.actif ? '' : 'muted'}" data-sal="${esc(x.id)}">
-          <td class="tronq" title="${esc(x.nom)}">${esc(x.nom)}${x.actif ? '' : ' <span class="badge">sorti</span>'}</td>
+          <td class="tronq" title="${esc(x.nom)}">${marquesDuNom(esc(x.nom), [
+    x.reporteDe ? `<span class="badge" data-repris="${esc(x.reporteDe)}" title="Repris de l'exercice ${esc(x.reporteDe)} : sa fiche a suivi, ses bulletins restent dans leur mois">repris de ${esc(x.reporteDe)}</span>` : '',
+    x.actif ? '' : '<span class="badge">sorti</span>'])}</td>
           <td class="nw">${x.cnss ? esc(x.cnss) : '<span class="warn-text small">à renseigner</span>'}</td>
           <td class="tronq" title="${esc(x.poste)}">${esc(x.poste || '—')}</td>
           <td class="nw small">${esc(KC.contractLabel(x.contrat).split(' —')[0])}</td>
@@ -6888,11 +7032,18 @@
       livresState.livre = r.livre;
       drawLivres(root, dossier);
       if (r.suivantOuvert) {
-        // L'exercice suivant existe déjà : ses à-nouveaux ont été posés SANS elle. On propose de les
-        // refaire tout de suite — c'est le même geste, et il ne touche pas à ce qui est validé.
+        // L'exercice suivant existe déjà : ses à-nouveaux ont été posés SANS elle. On propose le même
+        // geste qu'« Ouvrir N+1 », nommé d'après ce qu'il FERA (10.14.0) : des à-nouveaux validés ne
+        // se refont pas — seule l'extourne entre ; la question disait « Refaire les à-nouveaux », et
+        // le clic répondait « déjà validés » en rouge.
+        const e = r.suivantEtat;
         const refaire = await confirmDialog(`${r.annee} est déjà ouvert`,
-          `<p>Ses à-nouveaux ont été posés avant cette extourne. Les refaire maintenant la fait entrer au ${esc(fmtJour(r.date))}.</p>`,
-          'Refaire les à-nouveaux', false, 'Plus tard');
+          e === 'completer'
+            ? `<p>Ses à-nouveaux sont déjà validés : ils ne bougent pas. L'extourne, elle, peut y entrer maintenant, au ${esc(fmtJour(r.date))}, en brouillard.</p>`
+            : e === 'ouvrir'
+              ? `<p>Ses à-nouveaux ne sont pas encore posés : les poser maintenant y fait entrer l'extourne au ${esc(fmtJour(r.date))}.</p>`
+              : `<p>Ses à-nouveaux ont été posés avant cette extourne. Les refaire maintenant la fait entrer au ${esc(fmtJour(r.date))}.</p>`,
+          e === 'completer' ? 'Poser l\'extourne' : e === 'ouvrir' ? 'Poser les à-nouveaux' : 'Refaire les à-nouveaux', false, 'Plus tard');
         if (refaire) {
           const o = await api.ouvrirSuivant({ dossierId: dossier.id, annee: livresState.annee });
           toast(`Extourne posée au ${fmtJour(r.date)} dans le livre de ${o.annee}.`);
@@ -9280,10 +9431,12 @@
           const t = p1.type === 'password' ? 'text' : 'password';
           p1.type = t; p2.type = t; $('#eye', layer).textContent = t === 'password' ? 'Afficher' : 'Masquer';
         };
+        enchainerConfirmation(p1, p2);
         $('#no', layer).onclick = close;
         $('#ok', layer).onclick = async () => {
-          if (p1.value.length < 8) return toast('Huit caractères au minimum.', 'error');
-          if (p1.value !== p2.value) return toast('Les deux mots de passe ne sont pas les mêmes.', 'error');
+          // Le refus MONTRE la case (règle 7.20.0) ; un toast seul laissait chercher laquelle.
+          const vm = K.verdictMotDePasse(p1.value, p2.value, 8);
+          if (!vm.ok) return refus(vm.champ === 'confirmation' ? p2 : p1, vm.message);
           try {
             const r = await api.exportRecovery(p1.value, $('#p0', layer).value);
             if (!r) return;
@@ -9327,7 +9480,7 @@
       `<h2>Changer le mot de passe</h2>
        <p class="small">Le fichier du cabinet et toutes ses sauvegardes seront rechiffrés avec le nouveau mot de passe.</p>
        <label class="field">Mot de passe actuel<input type="password" id="p0" autocomplete="current-password"></label>
-       <label class="field mt">Nouveau mot de passe<span class="pw-wrap"><input type="password" id="p1" autocomplete="new-password"><button type="button" class="pw-eye" id="eye">Afficher</button></span><span class="muted small" id="str"></span></label>
+       <label class="field mt">Nouveau mot de passe<span class="pw-wrap"><input type="password" id="p1" autocomplete="new-password"><button type="button" class="pw-eye" id="eye">Afficher</button></span><span class="muted small ligne-reservee" id="str"></span></label>
        <label class="field mt">Confirme<input type="password" id="p2" autocomplete="new-password"></label>
        <div class="warn-box mt">Il n'y a toujours aucun moyen de le récupérer. Note le nouveau avant de valider.</div>
        <div class="modal-actions"><button class="btn" id="no">Annuler</button><button class="btn btn-primary" id="ok">Changer</button></div>`,
@@ -9338,10 +9491,11 @@
           const t = p1.type === 'password' ? 'text' : 'password';
           p1.type = t; p2.type = t; $('#eye', layer).textContent = t === 'password' ? 'Afficher' : 'Masquer';
         };
+        enchainerConfirmation(p1, p2);
         $('#no', layer).onclick = close;
         $('#ok', layer).onclick = async () => {
-          if (p1.value.length < 8) return toast('Huit caractères au minimum.', 'error');
-          if (p1.value !== p2.value) return toast('Les deux mots de passe ne sont pas les mêmes.', 'error');
+          const vm = K.verdictMotDePasse(p1.value, p2.value, 8);
+          if (!vm.ok) return refus(vm.champ === 'confirmation' ? p2 : p1, vm.message);
           try {
             await api.changePassword($('#p0', layer).value, p1.value);
             close();
@@ -9462,9 +9616,16 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
     const r = tous.find(convient);
     return r ? r.id : null;
   }
+  // Les exercices d'un dossier tenu au cabinet, lus dans le résumé des index (jamais dans un livre) :
+  // c'est ce qui permet à la découverte de désigner l'exercice CLOS du garage de l'exemple.
+  function exercicesDe(sorte) {
+    const id = dossierPour(sorte);
+    const q = id && (questionsAttente || []).find(x => x.dossierId === id);
+    return ((q && q.tenu && q.tenu.exercices) || []).map(e => ({ annee: String(e.annee), clos: !!e.clos }));
+  }
   let VISITES = null;
   const visites = () => VISITES || (VISITES = CV.parcours({
-    state: () => S, dossier: dossierPour, estExemple: () => (S.dossiers || []).some(d => d.demo),
+    state: () => S, dossier: dossierPour, exercices: exercicesDe, estExemple: () => (S.dossiers || []).some(d => d.demo),
     cleSecours: () => (recoveryAt === undefined ? null : recoveryAt !== null),
     copieExterne: () => !!(backupInfo && backupInfo.external && backupInfo.external.dir),
     Visite
@@ -9517,6 +9678,10 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
       toast(phraseExemple());
     }
     const bande = $('#guide-band'); if (bande) bande.remove();
+    // Une visite lit le résumé des livres pendant qu'elle se déroule (l'exercice clos du garage, ses
+    // dossiers tenus) : relu au lancement, jamais celui du démarrage — un exercice clôturé ou rouvert
+    // depuis changerait sinon ce que les étapes montrent.
+    await chargerQuestionsAttente(false);
     Visite.lancer(p, depart || 0);
   }
   // L'étape suivante des premiers pas, guidée : la même que celle que « À faire » nomme.

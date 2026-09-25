@@ -590,6 +590,24 @@
     return '';
   }
 
+  // 10.14.0 — un mot de passe à confirmer : le verdict, ET la case qu'il faut montrer. « Les deux
+  // mots de passe ne sont pas les mêmes » sur une confirmation VIDE disait faux : vu à la souris sur
+  // le premier écran du Cabinet, la confirmation avait été tapée sur le bouton « Afficher », où Tab
+  // pose le curseur, et le refus ne montrait aucune case. Une confirmation vide se NOMME, une
+  // confirmation fausse aussi — et c'est elle qu'on refait, jamais le mot de passe qu'on vient de
+  // choisir. `min` vient de l'appelant : c'est la seule chose que les deux applications ne partagent
+  // pas (six caractères ici, huit pour le Cabinet, qui chiffre la comptabilité de soixante clients).
+  //
+  // Le corps est identique à `verdictMotDePasse` de src/cabinet/cabcore.js : les deux applications
+  // refusent avec les mêmes mots, et un test compare les deux corps (comme `exemplePerime`).
+  function verdictMotDePasse(motDePasse, confirmation, min) {
+    const a = String(motDePasse || ''), b = String(confirmation || '');
+    if (a.length < min) return { ok: false, champ: 'motDePasse', message: `Mot de passe : ${min} caractères au minimum.` };
+    if (!b) return { ok: false, champ: 'confirmation', message: 'Retape le mot de passe dans la case de confirmation.' };
+    if (a !== b) return { ok: false, champ: 'confirmation', message: 'La confirmation ne correspond pas au mot de passe : retape-la.' };
+    return { ok: true, champ: '', message: '' };
+  }
+
   // Le taux de TVA d'une ligne neuve. Il se règle dans Paramètres et l'assistant le pose à partir du
   // métier déclaré. `''`, `null` ou `undefined` = 19 % ; `0` est une valeur légitime (exonération),
   // d'où le test explicite plutôt qu'un `||`.
@@ -7977,7 +7995,7 @@
     amountToWords, intToWords, intToWordsEn, documentHtml, fitToPage, paginate, pageCount,
     MODULES, PAGES, moduleById, pageById, pageTitle, moduleCount, moduleCounts, modulesRevenus, moduleOn, moduleWhy, navPages, familleNavOuverte, FAMILLES_OUVERTES_AU_DEBUT,
     sousModuleOn, sousModuleById, sousModules, OPTION_LABELS,
-    MODULES_PAR_ACTIVITE, modulesSuggeres, wipeData, rendreLesEmprunts, estDemo, exemplePerime, firstSteps, reussites, liste, defaultVat, seuilRetenue, newLine,
+    MODULES_PAR_ACTIVITE, modulesSuggeres, wipeData, rendreLesEmprunts, estDemo, exemplePerime, verdictMotDePasse, firstSteps, reussites, liste, defaultVat, seuilRetenue, newLine,
     contrasteSurBlanc, lisibiliteMarque, ACCENTS_PROPOSES, marquePersonnalisee,
     canalDe, estBeta, pastilleLicence, empreinteCabinet, licencesDuCabinet,
     LICENCE_MOTIFS, prorataOffre, licenceSuivi, licencesAFaire,

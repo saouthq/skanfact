@@ -2302,20 +2302,30 @@
     // propres livres — ne compte PAS dans ce qu'elle déclare : elle solde ce qu'on est en train de
     // lire. L'inclure ferait afficher zéro sur un mois plein.
     const horsDeclaration = e => estEcritureDeclaration(e, comptes);
-    const mColl = mouvementCompte(livre, cColl, du, au, horsDeclaration);
-    const mDed = mouvementCompte(livre, cDed, du, au, horsDeclaration);
+    // 10.14.0 — un À-NOUVEAU n'est pas l'activité d'un mois. Il est daté du 1er janvier, donc il
+    // tombait dans la déclaration de janvier : l'IRPP de décembre, reporté au crédit du 4321, y
+    // comptait comme retenu en janvier (175,460 au lieu de 87,730 sur le garage de l'exemple), et
+    // les retenues opérées et le timbre de décembre avec lui — payés deux fois. Chaque client tenu
+    // sur deux exercices l'aurait eu, chaque mois de janvier : c'est l'exemple sur deux exercices qui
+    // l'a montré. L'ouverture (reprise ou report, journal AN) sort des cases du mois ; le crédit de
+    // TVA qu'elle porte va au crédit REPORTÉ, qui est ce qu'il est.
+    const ouverture = e => e.journal === 'AN';
+    const horsMois = e => horsDeclaration(e) || ouverture(e);
+    const mColl = mouvementCompte(livre, cColl, du, au, horsMois);
+    const mDed = mouvementCompte(livre, cDed, du, au, horsMois);
     const collectee = round3(mColl.credit - mColl.debit);
     const deductible = round3(mDed.debit - mDed.credit);
     // Le crédit REPORTÉ, c'est ce que le 4366 portait encore la veille — jamais un chiffre saisi.
     // Une déclaration isolée qui l'ignore donne un net faux, et c'est le défaut que `vatChain`
-    // corrigeait déjà côté entreprise en 3.1.0.
-    const avant = mouvementCompte(livre, cDed, livre.exercice.du, veille(du));
+    // corrigeait déjà côté entreprise en 3.1.0. Ce qu'il portait « la veille » du 1er janvier, c'est
+    // son à-nouveau : il compte ici, même daté du jour même.
+    const avant = mouvementCompte(livre, cDed, livre.exercice.du, au, e => !(e.date < du || ouverture(e)));
     const reporte = Math.max(0, round3(avant.debit - avant.credit));
     const net = round3(collectee - deductible - reporte);
-    const timbre = retenuDuMois(livre, compteDuRole(livre, 'timbre'), du, au, horsDeclaration);
-    const rsOp = retenuDuMois(livre, compteDuRole(livre, 'rsOperee'), du, au, horsDeclaration);
-    const rsSub = retenuDuMois(livre, compteDuRole(livre, 'rsSubie'), du, au, horsDeclaration, 'creance');
-    const irpp = retenuDuMois(livre, compteDuRole(livre, 'irpp'), du, au, horsDeclaration);
+    const timbre = retenuDuMois(livre, compteDuRole(livre, 'timbre'), du, au, horsMois);
+    const rsOp = retenuDuMois(livre, compteDuRole(livre, 'rsOperee'), du, au, horsMois);
+    const rsSub = retenuDuMois(livre, compteDuRole(livre, 'rsSubie'), du, au, horsMois, 'creance');
+    const irpp = retenuDuMois(livre, compteDuRole(livre, 'irpp'), du, au, horsMois);
 
     // Le détail par TAUX ne s'invente pas : il demande un sous-compte de TVA collectée par taux.
     // Quand le plan n'en a qu'un, on le DIT au lieu de rendre un tableau à une ligne qui laisserait
@@ -2369,7 +2379,7 @@
       // Si le plan du dossier porte un compte pour cette taxe, on la calcule ; sinon on le dit.
       const declare = (livre.plan || []).some(x => x.role === k);
       if (declare) {
-        const m = mouvementCompte(livre, c, du, au);
+        const m = mouvementCompte(livre, c, du, au, horsMois);
         cases[k] = caseDe(round3(m.credit - m.debit), m.ecritures);
         return;
       }
@@ -2386,7 +2396,7 @@
           cases[k] = { ...caseInconnue(`La paie de ce mois n'a pas encore d'écriture validée : ${nomTaxe[k]} se lira sur ses bulletins dès qu'elle le sera.`), attente: 'paie' };
           return;
         }
-        const porte = retenuDuMois(livre, cTfp, du, au, horsDeclaration);
+        const porte = retenuDuMois(livre, cTfp, du, au, horsMois);
         if (porte.v) {
           cases[k] = caseInconnue(k === 'tfp'
             ? `Le compte ${cTfp} porte ${fmtMontant(porte.v, 'DT')} ce mois-ci, TFP et FOPROLOS ENSEMBLE : leur répartition ne s'invente pas, elle se lit sur les bulletins du client. À VÉRIFIER avec le comptable.`
@@ -2409,12 +2419,6 @@
       controles: controlesDeclaration(livre, p, { ...cases, au, comptes }, o)
     };
   }
-
-  const veille = iso => {
-    const d = new Date(iso + 'T00:00:00Z');
-    d.setUTCDate(d.getUTCDate() - 1);
-    return d.toISOString().slice(0, 10);
-  };
 
   // Les contrôles AVANT dépôt. Ils ne bloquent jamais — un mois déclaré avec deux manques signalés
   // vaut mieux qu'un mois jamais déclaré parce que l'application faisait la difficile (règle 6.0.0).
@@ -2788,6 +2792,11 @@
     return { ok: true, fiche: f };
   }
 
+  // La dotation d'une ligne de plan vit-elle dans un AUTRE livre ? C'est le cas d'un bien repris
+  // (10.14.0) : les années d'avant ont été écrites dans l'exercice d'où il vient.
+  const dotationAilleurs = (livre, ligne) => Number(ligne.annee) !== Number(livre.exercice.annee)
+    && !(livre.ecritures || []).some(e => e.id === txt(ligne.ecritureId));
+
   // Modifier une fiche recalcule son plan. Mais une dotation DÉJÀ passée en écriture est un fait
   // écrit dans le livre : la changer en silence ferait diverger le plan et la comptabilité, et
   // personne ne verrait lequel des deux a raison. On refuse en nommant le geste qui débloque.
@@ -2802,9 +2811,19 @@
     const change = (f.plan || []).filter(p => p.ecritureId
       && round3(p.dotation) !== round3(((neuf.find(n => n.annee === p.annee)) || {}).dotation || 0));
     if (change.length) {
+      // 10.14.0 — un bien REPRIS d'un exercice précédent porte les dotations écrites de cet
+      // exercice-là : elles vivent dans SON livre, et « contre-passe-la d'abord » envoyait chercher
+      // une écriture que ce livre n'a pas. Le refus nomme l'exercice où la corriger.
+      const a = Number(change[0].annee);
+      if (dotationAilleurs(livre, change[0])) {
+        return {
+          ok: false,
+          motif: `La dotation de ${a} est passée dans l'exercice ${a} : ce changement la rendrait fausse. Corrige ce bien dans ${a} (rouvre-le s'il est clos), puis refais les à-nouveaux de ${livre.exercice.annee} : le bien repris suivra.`
+        };
+      }
       return {
         ok: false,
-        motif: `La dotation de ${change[0].annee} est déjà passée en écriture : ce changement la rendrait fausse. L'écriture de dotation de ${change[0].annee} : ${gesteQuiLibere(livre, change[0].ecritureId)}, puis recommence.`
+        motif: `La dotation de ${a} est déjà passée en écriture : ce changement la rendrait fausse. L'écriture de dotation de ${a} : ${gesteQuiLibere(livre, change[0].ecritureId)}, puis recommence.`
       };
     }
     Object.assign(f, patch || {});
@@ -2820,6 +2839,12 @@
     if (!f) return { ok: false, motif: 'Cette immobilisation n\'existe pas.' };
     const ecrite = (f.plan || []).find(p => p.ecritureId);
     if (ecrite) {
+      // Un bien repris d'un exercice précédent ne se SUPPRIME pas ici : il existe dans le registre
+      // de l'exercice d'où il vient, et ses à-nouveaux portent sa valeur. S'il n'est plus là, c'est
+      // une sortie — qui s'écrit, elle, dans cet exercice.
+      if (dotationAilleurs(livre, ecrite)) {
+        return { ok: false, motif: `Ce bien vient de l'exercice ${ecrite.annee}, où sa dotation est passée : le supprimer ici laisserait son amortissement sans bien. S'il n'est plus dans l'entreprise, enregistre sa cession ou sa mise au rebut.` };
+      }
       return { ok: false, motif: `La dotation de ${ecrite.annee} est passée en écriture : supprimer la fiche laisserait une dotation sans bien. L'écriture de dotation : ${gesteQuiLibere(livre, ecrite.ecritureId)}.` };
     }
     livre.immobilisations = (livre.immobilisations || []).filter(x => x.id !== id);
@@ -2846,6 +2871,9 @@
         reprise: repriseSubvention(f, y),
         cession: ced && Number(ced.date.slice(0, 4)) === y ? ced : null,
         ecrite: !!(ligne && ligne.ecritureId),
+        // Repris d'un exercice précédent par « Ouvrir N+1 » (10.14.0) : l'écran le DIT, sinon on ne
+        // comprend ni son cumul au 1er janvier ni pourquoi il refuse de se supprimer ici.
+        reporteDe: Number(f.reporteDe) || null,
         actif: (txt(f.dateMiseEnService) || txt(f.dateAcquisition)) <= `${y}-12-31`
           && !(ced && Number(ced.date.slice(0, 4)) < y)
       };
@@ -2882,6 +2910,16 @@
     if (!prefixe) return [];
     const connus = new Set();
     (livre.immobilisations || []).forEach(f => { if (f.origine && f.origine.docId) connus.add(f.origine.docId); });
+    // 10.14.0 — le REPORT d'un exercice n'est pas une acquisition. Les à-nouveaux portent au débit des
+    // comptes d'immobilisation la valeur brute des biens repris de l'exercice précédent : ceux-là ont
+    // leur fiche (« Ouvrir N+1 » les reprend). Seul ce que ces fiches NE couvrent PAS se propose —
+    // sans quoi le pont élévateur se proposait comme un achat du 1er janvier, et créer sa fiche
+    // relançait son amortissement à zéro (le défaut C-10). Et on ne tait pas le reste : un bien qui
+    // n'avait pas de fiche dans N n'en a toujours pas, et c'est ici qu'on le dit.
+    const repris = {};
+    (livre.immobilisations || []).filter(f => f.reporteDe).forEach(f => {
+      repris[txt(f.compte)] = round3((repris[txt(f.compte)] || 0) + num(f.valeur));
+    });
     const y = Number(annee) || 0;
     const out = [];
     (livre.ecritures || []).forEach(e => {
@@ -2892,7 +2930,14 @@
         if (!num(l.debit)) return;                       // une acquisition DÉBITE le compte
         const cle = e.id + '#' + i;
         if (connus.has(cle)) return;
-        out.push({ docId: cle, ecritureId: e.id, date: e.date, libelle: txt(l.libelle) || txt(e.libelle), compte: txt(l.compte), montant: round3(num(l.debit)) });
+        let montant = round3(num(l.debit));
+        if (e.journal === 'AN' && repris[txt(l.compte)]) {
+          const couvert = Math.min(montant, repris[txt(l.compte)]);
+          repris[txt(l.compte)] = round3(repris[txt(l.compte)] - couvert);
+          montant = round3(montant - couvert);
+          if (montant <= 0) return;
+        }
+        out.push({ docId: cle, ecritureId: e.id, date: e.date, libelle: txt(l.libelle) || txt(e.libelle), compte: txt(l.compte), montant });
       });
     });
     return out.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
@@ -3240,6 +3285,24 @@
     return { ok: true, brouillards: brouillards.length };
   }
 
+  // 10.14.0 — ce qu'un exercice CLOS ne laisse plus bouger. « Après la clôture, plus aucune écriture
+  // de cet exercice ne bouge » : la question de clôture le promettait, et seule la grille de saisie
+  // le tenait. La paie, les biens, la banque, la déclaration, l'inventaire et les menus de ligne
+  // écrivaient dans un exercice clos sans un mot — c'est l'exemple sur deux exercices, en mettant un
+  // exercice clos sous les yeux, qui l'a montré. La règle vit donc à la porte d'écriture (main.js),
+  // pour TOUS les gestes, et se juge ici. Ce qui reste mobile ne change aucun chiffre : la clôture
+  // elle-même et sa réouverture, la piste d'audit, le lettrage, la révision et les questions au client.
+  const FIGE_A_LA_CLOTURE = ['plan', 'journaux', 'ecritures', 'releves', 'immobilisations', 'declarations',
+    'inventaires', 'salaries', 'bulletins', 'ouverture'];
+  function empreinteFigee(livre) {
+    const l = livre || {};
+    return JSON.stringify(FIGE_A_LA_CLOTURE.map(k => (l[k] === undefined ? null : l[k])));
+  }
+  function refusExerciceClos(livre) {
+    const a = livre && livre.exercice ? livre.exercice.annee : '';
+    return `L'exercice ${a} est clos : plus rien n'y bouge. Rouvre-le (onglet Exercice, motif exigé) si tu dois vraiment y toucher — la réouverture est la seule trace qui expliquera pourquoi un chiffre a changé après coup.`;
+  }
+
   // Une réouverture exige un MOTIF : c'est la seule trace qui explique pourquoi un chiffre a changé
   // après que le client l'a reçu (règle 6.0.0).
   function rouvrirExercice(livre, motif, qui, quand) {
@@ -3354,6 +3417,209 @@
         libelle: 'Extourne — ' + (e.libelle || ''), source: 'inventaire',
         lignes: (e.lignes || []).map(l => ({ compte: l.compte, libelle: l.libelle, debit: round3(num(l.credit)), credit: round3(num(l.debit)) }))
       }));
+  }
+
+  // ---------------------------------------------------------------- l'exercice suivant (10.14.0)
+  //
+  // « Ouvrir N+1 » posait les à-nouveaux et les extournes… et laissait derrière lui le REGISTRE du
+  // dossier. Le livre de N+1 naissait sans un bien ni un salarié : les dotations de N+1 n'étaient
+  // réclamées nulle part, le contrôle des dotations passait sur un registre vide, et l'écran
+  // proposait de « créer la fiche » du pont élévateur comme d'un achat du 1er janvier — ce qui
+  // relançait son amortissement à zéro, le défaut même que la 10.10.0 (C-10) a fermé. La paie
+  // repartait de « Aucun salarié ». Aucun test ne pouvait le voir : c'est l'exemple sur DEUX
+  // exercices qui l'a montré — il n'avait plus rien à montrer après le 1er janvier.
+  //
+  // Ce que N+1 REPREND de N : les biens encore détenus au dernier jour (leur plan se recalcule ; les
+  // dotations déjà écrites restent des faits de LEUR exercice) et les salariés encore présents au
+  // premier jour. Les bulletins, eux, restent dans leur mois : ils appartiennent à N.
+  //
+  // Un bien repris se REFAIT avec les à-nouveaux tant que N+1 n'a rien décidé sur lui (ni dotation
+  // écrite, ni cession) — comme un brouillard d'à-nouveaux se refait tant qu'il n'est pas validé :
+  // un bien corrigé ou cédé dans N après l'ouverture de N+1 y arrive corrigé, ou en sort. Un salarié
+  // repris ne se réécrit jamais (une augmentation décidée en janvier ne se perd pas) ; il ne sort
+  // que s'il a quitté l'entreprise dans N et n'a aucun bulletin dans N+1.
+  const decideDansLExercice = (f, annee) => !!(f && f.cession && f.cession.date)
+    || ((f && f.plan) || []).some(p => Number(p.annee) >= Number(annee) && p.ecritureId);
+
+  function biensAReprendre(livre) {
+    const au = txt(livre.exercice.au) || `${livre.exercice.annee}-12-31`;
+    return (livre.immobilisations || []).filter(f => {
+      const sortie = f.cession && f.cession.date ? txt(f.cession.date) : '';
+      return !sortie || sortie > au;
+    });
+  }
+
+  function reporterBiens(livre, cible, qui, quand) {
+    cible.immobilisations = Array.isArray(cible.immobilisations) ? cible.immobilisations : [];
+    const annee = Number(livre.exercice.annee), suivante = Number(cible.exercice.annee);
+    const sources = biensAReprendre(livre);
+    const ids = new Set(sources.map(f => f.id));
+    const r = { repris: 0, refaits: 0, gardes: 0, retires: 0, total: 0 };
+    // Ce que N ne détient plus (cédé, ou retiré du registre après l'ouverture de N+1) sort de N+1,
+    // sauf si N+1 a déjà décidé quelque chose sur lui — alors c'est le contrôle du 28 qui parlera.
+    cible.immobilisations = cible.immobilisations.filter(f => {
+      if (Number(f.reporteDe) !== annee || ids.has(f.id)) return true;
+      if (decideDansLExercice(f, suivante)) { r.gardes++; return true; }
+      r.retires++;
+      return false;
+    });
+    sources.forEach(src => {
+      const copie = JSON.parse(JSON.stringify(src));
+      copie.reporteDe = annee;
+      copie.plan = planDuBien(copie);
+      const i = cible.immobilisations.findIndex(f => f.id === src.id);
+      if (i < 0) { cible.immobilisations.push(copie); r.repris++; return; }
+      const deja = cible.immobilisations[i];
+      if (Number(deja.reporteDe) === annee && !decideDansLExercice(deja, suivante)) {
+        cible.immobilisations[i] = copie;
+        r.refaits++;
+        return;
+      }
+      r.gardes++;
+    });
+    r.total = cible.immobilisations.filter(f => Number(f.reporteDe) === annee).length;
+    if (r.repris || r.retires) {
+      trace(cible, qui, 'biens repris', `${plFr(r.repris, 'bien')} de ${annee}${r.retires ? `, ${plFr(r.retires, 'retiré')}` : ''}`, quand);
+    }
+    return r;
+  }
+
+  function salariesAReprendre(livre, suivante) {
+    const premier = `${Number(suivante)}-01-01`;
+    return (livre.salaries || []).filter(s => s.actif !== false && (!s.sortie || String(s.sortie) >= premier));
+  }
+
+  function reporterSalaries(livre, cible, qui, quand) {
+    cible.salaries = Array.isArray(cible.salaries) ? cible.salaries : [];
+    const annee = Number(livre.exercice.annee), suivante = Number(cible.exercice.annee);
+    const sources = salariesAReprendre(livre, suivante);
+    const ids = new Set(sources.map(s => s.id));
+    const aUnBulletin = id => (cible.bulletins || []).some(b => b.salarieId === id);
+    const r = { repris: 0, gardes: 0, retires: 0, total: 0 };
+    cible.salaries = cible.salaries.filter(s => {
+      if (Number(s.reporteDe) !== annee || ids.has(s.id)) return true;
+      if (aUnBulletin(s.id)) { r.gardes++; return true; }
+      r.retires++;
+      return false;
+    });
+    sources.forEach(src => {
+      if (cible.salaries.some(s => s.id === src.id)) { r.gardes++; return; }
+      cible.salaries.push({ ...normaliserSalarie(src, src.id), reporteDe: annee });
+      r.repris++;
+    });
+    r.total = cible.salaries.filter(s => ids.has(s.id)).length;
+    if (r.repris || r.retires) {
+      trace(cible, qui, 'salariés repris', `${plFr(r.repris, 'salarié')} de ${annee}${r.retires ? `, ${plFr(r.retires, 'retiré')}` : ''}`, quand);
+    }
+    return r;
+  }
+
+  // Des à-nouveaux EN VIGUEUR : validés, ni contre-passés (l'original passe alors `contrepassee`) ni
+  // le MIROIR d'une contre-passation — qui garde `source: 'an'` et se valide. Compter le miroir
+  // faisait répondre « déjà validés, contre-passe-les » APRÈS la contre-passation que la phrase
+  // conseillait : une sortie promise qui n'existait pas (10.12.0), trouvée en corrigeant le bouton.
+  const anEnVigueur = e => !!e && e.source === 'an' && e.statut === 'validee' && !e.contrepasseDe;
+
+  // Le livre vide qui reçoit l'exercice suivant : le plan et les journaux de N, recopiés. UNE
+  // construction pour le geste, pour l'essai qui décide du libellé du bouton, et pour l'exemple.
+  // `dossierId` : celui du dossier tel qu'on l'a ouvert, qui prime sur celui que N a retenu.
+  const livreSuivantVide = (livre, dossierId) => livreVide(dossierId || livre.dossier, Number(livre.exercice.annee) + 1, {
+    plan: (livre.plan || []).map(p => ({ ...p })), journaux: (livre.journaux || []).map(j => ({ ...j }))
+  });
+
+  // Ouvrir l'exercice SUIVANT : les à-nouveaux en brouillard (refaits tant qu'ils ne sont pas
+  // validés), les extournes, et le registre. Pur : main.js lit les deux livres et écrit la cible, et
+  // l'exemple passe par ici — un exemple qui fabriquerait son second exercice à la main montrerait un
+  // écran que le produit ne sait pas produire (9.2.2).
+  //
+  // À-nouveaux DÉJÀ validés : ils ne bougent pas (« contre-passe-les si le report a changé »), mais
+  // le registre se reprend quand même — un livre de N+1 ouvert avant la 10.14.0 retrouve ainsi ses
+  // biens et ses salariés par le même geste, au lieu de rester vide pour toujours. Les EXTOURNES
+  // aussi : une extourne n'est pas un à-nouveau, et « Prévoir l'extourne » promet que ce geste la
+  // posera — il refusait dès que les à-nouveaux étaient validés, et l'extourne ne partait jamais.
+  function ouvrirExerciceSuivant(livre, cible, qui, quand, opts) {
+    const annee = Number(livre.exercice.annee);
+    const suivante = annee + 1;
+    if (Number(cible.exercice.annee) !== suivante) {
+      return { ok: false, motif: `Le livre qui reçoit les à-nouveaux porte l'exercice ${cible.exercice.annee}, pas ${suivante}.` };
+    }
+    const brouillon = ecritureAnouveaux(livre, suivante, opts);
+    if (!brouillon.lignes.length) return { ok: false, motif: 'Cet exercice ne porte aucun solde à reporter.' };
+    if (!brouillon.an.equilibre) return { ok: false, motif: 'Les à-nouveaux ne s\'équilibrent pas : la balance de l\'exercice est fausse, et la reporter propagerait la faute.' };
+    cible.ecritures = Array.isArray(cible.ecritures) ? cible.ecritures : [];
+    if (cible.ecritures.some(anEnVigueur)) {
+      // Seules les extournes qui MANQUENT : ni validées, ni déjà en brouillard — une extourne posée
+      // deux fois annule la charge deux fois.
+      const presentes = new Set(cible.ecritures.filter(e => e.extourneDe && (e.statut === 'validee' || e.statut === 'brouillard')).map(e => e.extourneDe));
+      const extournes = extournesDe(livre, suivante, presentes).map(x => ajouterEcriture(cible, x, qui, quand));
+      const biens = reporterBiens(livre, cible, qui, quand);
+      const salaries = reporterSalaries(livre, cible, qui, quand);
+      if (!extournes.length && !biens.repris && !biens.retires && !salaries.repris && !salaries.retires) {
+        // `rien` : ce n'est pas une panne, c'est que tout est déjà fait. L'écran ne propose pas ce
+        // geste-là (`etatExerciceSuivant`) ; un appelant qui le fait quand même le sait.
+        return { ok: false, rien: true, motif: `Les à-nouveaux de ${suivante} sont déjà validés. Contre-passe-les si le report a changé.` };
+      }
+      return { ok: true, annee: suivante, anDejaValides: true, ecriture: null, refaits: 0, extournes: extournes.length, biens, salaries };
+    }
+    const ancien = cible.ecritures.filter(e => e.statut === 'brouillard' && (e.source === 'an' || e.extourneDe));
+    // Ce qui a DÉJÀ été validé ne se repose pas : une extourne posée deux fois annule la charge deux
+    // fois, et rien à l'écran ne le montrerait.
+    const dejaFaites = new Set(cible.ecritures.filter(e => e.statut === 'validee' && e.extourneDe).map(e => e.extourneDe));
+    cible.ecritures = cible.ecritures.filter(e => !ancien.includes(e));
+    const ecriture = ajouterEcriture(cible, brouillon, qui, quand);
+    const extournes = extournesDe(livre, suivante, dejaFaites).map(x => ajouterEcriture(cible, x, qui, quand));
+    const biens = reporterBiens(livre, cible, qui, quand);
+    const salaries = reporterSalaries(livre, cible, qui, quand);
+    return { ok: true, annee: suivante, anDejaValides: false, ecriture, refaits: ancien.length, extournes: extournes.length, biens, salaries };
+  }
+
+  // Les à-nouveaux EN VIGUEUR de N+1 reprennent-ils encore la clôture de N ? Compte par compte : ce
+  // que le report calcule aujourd'hui contre ce que les pièces validées portent. « Contre-passe-les
+  // si le report a changé » se VÉRIFIE ici au lieu de se deviner — un exercice rouvert et corrigé
+  // après la validation des à-nouveaux laisse un bilan d'ouverture qui ne suit plus, et rien ne le
+  // montrait. Vide : ils suivent.
+  function ecartAnouveaux(livre, cible, opts) {
+    const suivante = Number(livre.exercice.annee) + 1;
+    const net = new Map();
+    const ajoute = (compte, v) => net.set(compte, round3((net.get(compte) || 0) + v));
+    ecritureAnouveaux(livre, suivante, opts).lignes.forEach(l => ajoute(txt(l.compte), num(l.debit) - num(l.credit)));
+    const attendu = new Map(net);
+    net.clear();
+    ((cible && cible.ecritures) || []).filter(anEnVigueur)
+      .forEach(e => (e.lignes || []).forEach(l => ajoute(txt(l.compte), num(l.debit) - num(l.credit))));
+    const comptes = [...new Set([...attendu.keys(), ...net.keys()])].sort();
+    return comptes.map(c => ({ compte: c, attendu: attendu.get(c) || 0, porte: net.get(c) || 0 }))
+      .map(x => ({ ...x, ecart: round3(x.attendu - x.porte) }))
+      .filter(x => x.ecart);
+  }
+
+  // Ce que ferait « Ouvrir N+1 » MAINTENANT, sans rien écrire (10.14.0). Le bouton de l'onglet
+  // Exercice disait « Ouvrir 2026 (à-nouveaux)… » sur un exercice dont 2026 portait déjà ses
+  // à-nouveaux validés, et le clic répondait en rouge « déjà validés, contre-passe-les » — une
+  // impasse, sur le geste le plus normal qui soit : aller voir l'année d'après. L'état se décide en
+  // jouant LE MÊME geste sur une copie : le libellé ne peut pas promettre autre chose que ce que le
+  // clic fera, et un bouton éteint dit pourquoi par la fonction qui refuserait (9.4.5).
+  //   ouvrir    N+1 n'a pas encore d'à-nouveaux (absent, ou créé autrement)
+  //   refaire   ses à-nouveaux sont en brouillard : le geste les remplace
+  //   completer ses à-nouveaux sont validés, mais un bien, un salarié ou une extourne reste à reporter
+  //   voir      tout est reporté : le geste est d'aller voir
+  //   refus     le report est impossible (rien à reporter, balance fausse) — avec le motif
+  function etatExerciceSuivant(livre, cible, opts) {
+    const annee = Number(livre.exercice.annee) + 1;
+    const essai = cible ? JSON.parse(JSON.stringify(cible)) : livreSuivantVide(livre);
+    const r = ouvrirExerciceSuivant(livre, essai, '', 0, opts);
+    const ecr = (cible && cible.ecritures) || [];
+    const base = { annee, existe: !!cible };
+    if (ecr.some(anEnVigueur)) {
+      const ecart = ecartAnouveaux(livre, cible, opts);
+      if (r.ok) {
+        return { ...base, etat: 'completer', ecart, extournes: r.extournes,
+          biens: r.biens.repris + r.biens.retires, salaries: r.salaries.repris + r.salaries.retires };
+      }
+      return { ...base, etat: 'voir', ecart };
+    }
+    if (!r.ok) return { ...base, etat: 'refus', motif: r.motif };
+    return { ...base, etat: ecr.some(e => e.source === 'an' && e.statut === 'brouillard') ? 'refaire' : 'ouvrir' };
   }
 
   // ---------------------------------------------------------------- les états financiers
@@ -4802,6 +5068,9 @@
     if (!v.ok) return { ok: false, motif: v.motif };
     const s = normaliserSalarie(salarie, (salarie && salarie.id) || ('sal-' + (Number(quand) || 0) + '-' + livre.salaries.length));
     const dejaLa = livre.salaries.findIndex(x => x.id === s.id);
+    // D'où vient la fiche (10.14.0) est un FAIT de la fiche, pas une donnée du formulaire : corriger
+    // le salaire d'un salarié repris de l'exercice précédent ne le fait pas naître ici.
+    if (dejaLa >= 0 && livre.salaries[dejaLa].reporteDe) s.reporteDe = livre.salaries[dejaLa].reporteDe;
     if (dejaLa >= 0) livre.salaries[dejaLa] = s; else livre.salaries.push(s);
     trace(livre, qui, dejaLa >= 0 ? 'salarie-modifie' : 'salarie-ajoute', s.nom, quand);
     return { ok: true, salarie: s };
@@ -5136,6 +5405,9 @@
     // La clôture d'exercice (9.8.0)
     GUIDES_INVENTAIRE, controlesCloture, soldesDepuisOuverture, soldesRepris,
     cloturerExercice, rouvrirExercice, noterDossierCloture, anouveauxDe, ecritureAnouveaux, extournesDe,
+    FIGE_A_LA_CLOTURE, empreinteFigee, refusExerciceClos,
+    biensAReprendre, salariesAReprendre, reporterBiens, reporterSalaries, ouvrirExerciceSuivant,
+    anEnVigueur, livreSuivantVide, ecartAnouveaux, etatExerciceSuivant,
     etatsDepuisLignes, sigDepuisLignes, dossierDeCloture, clotureValide,
     // La liasse et l'annuel (10.0.0)
     LIASSE_ETATS, MODELE_LIASSE, RETRAITEMENTS,

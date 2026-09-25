@@ -40,7 +40,8 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Une **version publiée que les applications ne voient pas** (« tu as la dernière version ») | 10.11.0 — la liste de l'API rend la release SANS ses fichiers ; une version téléchargée cachait la suivante |
 | Un bouton **hors de l'écran**, une barre empilée sur trois rangées | 7.13.0, 7.23.0 — `e2e:contraste` et `e2e:entetes` mesurent le bouton, jamais la page |
 | Un prix tapé **« 2,5 » qui devient 25** chez un client, juste chez l'auteur : un `type=number` suit la langue du SYSTÈME | 10.12.0 — H-E28, la langue posée par `main.js` avant `ready` ; un test qui POSE la valeur ne passe jamais par ce chemin, il faut TAPER les touches |
-| Un **refus qui promet une sortie qui n'existe pas** (« contre-passe d'abord », puis la même phrase) | 10.12.0 — une écriture contre-passée libère ce qu'elle portait |
+| Un **refus qui promet une sortie qui n'existe pas** (« contre-passe d'abord », puis la même phrase) | 10.12.0 — une écriture contre-passée libère ce qu'elle portait ; 10.14.0 — « déjà validés, contre-passe-les », puis la même phrase APRÈS la contre-passation : le miroir comptait comme des à-nouveaux |
+| Un **identifiant vide** désarme tout ce qui compare des identifiants : un verrou qui ne reconnaît personne, une clôture « par cabinet » | 10.14.0 — le nom du poste naissait à la première annonce à la plateforme |
 | Un **clic qui tombe à côté** : ce qui vient d'apparaître a poussé le formulaire, la frappe part sur la page | 10.12.0 — « Fiche du client » né sous le champ, 45 px ; le repère « non enregistré » qui fait passer l'en-tête sur deux rangées, 40 px (H-E19) |
 | Un **clic qui ouvre autre chose que ce qu'il visait** : une proposition que personne n'a demandée s'est posée sous le curseur | 10.12.0 (H-E20) — « + Créer … au catalogue » sur la quantité et le prix |
 | Une touche **Entrée qui agit DERRIÈRE la fenêtre** : une question sans champ laissait le curseur sur le bouton de la page, qu'Entrée re-cliquait | 10.13.0 — le choix de fichier rouvert par-dessus la question d'import ; le Cabinet faisait juste depuis la 10.12.0 |
@@ -199,7 +200,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Un **champ qui compte dans une unité** le dit à côté de lui, pas en légende dessous | 9.4.8 |
 | Un refus dit **trois** choses : ce qui est refusé, pourquoi, et le bouton qui débloque | 7.0.0, 9.2.1 |
 | Un refus qu'on a **écrit** est une réponse ; seule une **panne** va au journal | 9.4.10 |
-| Un **bouton éteint dit pourquoi**, et par la MÊME fonction que celle qui refusera | 9.4.5 |
+| Un **bouton éteint dit pourquoi**, et par la MÊME fonction que celle qui refusera — son LIBELLÉ aussi dit ce que le clic fera | 9.4.5 ; 10.14.0 — « Ouvrir N+1 » joué sur une copie : ouvrir, refaire, compléter, voir |
 | Une saisie refusée se **MONTRE** : on amène le champ à l'écran (`refus()`) — dans TOUTES les fenêtres, la règle se lit sur la condition | 7.0.0, 7.20.0 ; 10.12.0 — vingt-cinq refus qui ne faisaient qu'un message |
 | Ce qui **détruit** demande ; ce qui **se répare** laisse un « Annuler » (`toastUndo`) | 7.12.0 ; 9.4.6 — porté au Cabinet |
 | Un écran qui **NOMME** un ensemble doit pouvoir l'ouvrir | 7.15.0, 7.17.0, 7.21.0, 10.4.0 |
@@ -216,7 +217,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | `navigate()` vers la page courante ne redessine **rien** : `vers()` | 7.15.0, 7.29.0 |
 | Une mise en page qui dépend de sa **propre barre de défilement** a deux états stables : décider SANS elle | 10.12.0 — la barre latérale, un pixel, une ligne de plus |
 | Un **prix posé par le logiciel** n'est pas un prix décidé : l'étape se coche sur un geste de l'utilisateur | 10.12.0 ; 7.18.0 |
-| Un état lu une fois au démarrage **se périme** | 7.1.x, 8.0.0 |
+| Un état lu une fois au démarrage **se périme** | 7.1.x, 8.0.0 ; 10.14.0 — le résumé des livres, lu avant l'exemple, faisait sauter un chapitre de la découverte |
 | **Un seul bouton principal** par écran, et c'est l'étape suivante — calculée, jamais posée à la main ; UNE fonction pour les deux éditeurs | 10.12.0 (U-11, H-E5, H-E19, H-E21 — l'éditeur d'achat ne l'avait jamais reçue) |
 | Une **colonne collante** réserve sa largeur : elle ne recouvre jamais une donnée | 10.12.0 (U-02) |
 | Une **page de création** n'entre pas dans la pile : après l'enregistrement, « ← » ne mène jamais à une pièce VIERGE | 10.12.0 — `remplacerPage` ; 2.4.0 |
@@ -7302,6 +7303,53 @@ pas ». Ce que le lot et son test à la souris ont appris :
   change après « Écrire à mes clients… » garde la hauteur de celle d'avant (`.ap-etat`).
 - **Une phrase dans un conteneur flex est UN élément** (10.12.0, re-trouvée ailleurs que dans une
   case) : « c'est   Karim Ben Salah   qui travaille ».
+
+**Puis l'exemple du Cabinet sur deux exercices** (Skander : « ensuite le jeu d'exemple du cabinet ») :
+le garage tient l'an dernier — clos, rouvert une fois avec son motif, reclos — et l'exercice en cours,
+ouvert par ses à-nouveaux et son registre, tous deux fabriqués par les VRAIES portes du moteur
+(`ouvrirExerciceSuivant`, `cloturerExercice`, `rouvrirExercice`). Ce que le second exercice a fait
+tomber, et ce que la souris a trouvé ensuite :
+
+- **Un exemple d'UN exercice ne peut rien montrer de ce qui se passe au 1er janvier.** « Ouvrir N+1 »
+  posait les à-nouveaux et laissait le registre derrière lui (aucun bien, aucun salarié : les dotations
+  n'étaient réclamées nulle part, le pont élévateur se proposait comme un achat du 1er janvier) ;
+  l'à-nouveau, daté du 1er janvier, comptait dans les cases de janvier (l'IRPP de décembre deux fois,
+  le crédit reporté lu comme de la TVA déductible) ; un exercice clos bougeait par la paie, les biens,
+  la banque — seule la grille de saisie tenait la promesse. Aucun test ne pouvait le voir : les jeux
+  n'avaient qu'une année (10.12.0, « un exemple complet est un test »).
+- **La promesse d'une clôture vit à la porte d'écriture**, pas dans chaque écran : `empreinteFigee`
+  prise à la lecture d'un exercice clos, comparée AVANT de poser le verrou (sinon un refus le laisse
+  posé). La liste de ce qui est figé (`FIGE_A_LA_CLOTURE`) est un contrat, et ce qui ne change aucun
+  chiffre (révision, questions, lettrage, trace) reste mobile.
+- **Un refus qui promet une sortie doit l'avoir — y compris APRÈS le geste qu'il conseille** (10.12.0,
+  re-trouvée) : « déjà validés, contre-passe-les » revenait mot pour mot après la contre-passation, parce
+  que le MIROIR d'une contre-passation garde `source: 'an'` et se valide. `anEnVigueur` exclut le miroir
+  (`contrepasseDe`) ; l'original, lui, passe `contrepassee`. Un test joue la sortie jusqu'au bout.
+- **Un bouton dit ce qu'il FERA, décidé par le même geste joué sur une copie** (`etatExerciceSuivant`,
+  la règle 9.4.5 d'un cran plus haut) : ouvrir, refaire, compléter, voir, ou éteint avec la raison que
+  le geste donnerait. « Voir » ne rappelle jamais le geste : il emmène. Et « contre-passe-les si le
+  report a changé » se VÉRIFIE (`ecartAnouveaux`, compte par compte) au lieu de se deviner.
+- **Une promesse faite par un geste engage les autres** : « Prévoir l'extourne » annonçait qu'« Ouvrir
+  N+1 » la poserait, et ce geste refusait dès que les à-nouveaux étaient validés — l'extourne ne partait
+  jamais. Une extourne n'est pas un à-nouveau : elle part dans les deux branches, une seule fois.
+- **Un état lu une fois se périme, même celui d'une visite** (7.1.x) : le résumé des livres, pris au
+  démarrage AVANT l'exemple, faisait sauter tout le chapitre « D'un exercice à l'autre ». Il se relit
+  quand l'exemple change et quand une visite part. Un test pur ne pouvait pas le voir : il donne ses
+  exercices à la visite au lieu de les lire là où l'écran les lit.
+- **Dans une cellule tronquée, le NOM se coupe et ses marques jamais** (`marquesDuNom`) : la marque
+  « repris de 2025 », que la découverte éclairait, partait la première.
+- **Un identifiant qui naît plus tard qu'on ne s'en sert est un identifiant vide.** Le nom du poste
+  naissait à la première annonce à la plateforme : la clôture disait « par cabinet », et le VERROU d'un
+  livre portait un identifiant vide — `poserVerrou` ne reconnaît un autre poste qu'à un identifiant
+  non vide, donc deux postes ne se voyaient pas. `identitePoste()` le crée au premier besoin.
+- **Quitter un état fictif ramène à un écran qui existe** : quitter l'exemple depuis un de ses dossiers
+  laissait « Ce dossier n'existe plus », la barre latérale pour seule sortie.
+- **Un mot de passe à confirmer se joue au clavier** (les deux applications, `verdictMotDePasse` et
+  `enchainerConfirmation` jumeaux) : Tab tombait sur « Afficher » — resté sur le chemin, il montre
+  maintenant qu'il a le curseur (couper un chemin pour en ouvrir un autre, 9.3.0) —, Entrée descend vers
+  une confirmation vide, une confirmation VIDE se nomme au lieu de se dire « différente », et le refus
+  montre sa case. La ligne de solidité réserve sa place : née pendant la frappe, elle poussait la
+  confirmation sous le curseur (H-E1, sur un écran de mot de passe).
 
 ## Pistes pour la suite (non demandées)
 

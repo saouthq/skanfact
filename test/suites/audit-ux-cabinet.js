@@ -525,7 +525,10 @@ t('U-06 : quatorze écrans, trois groupes dans l\'ordre du mois, chaque écran d
 t('U-06 : l\'écran de la comptabilité vit dans l\'adresse, et « Précédent » y revient', () => {
   const app = code('src', 'cabinet', 'renderer', 'app.js');
   // Le routeur passe le quatrième segment à la fiche, qui le respecte s'il désigne un écran.
-  assert.ok(/drawDossier\(view, arg, hash\.split\('\/'\)\[2\], hash\.split\('\/'\)\[3\]\)/.test(app), 'le routeur ne transmet pas l\'écran de l\'adresse');
+  // 10.14.0 — retourné vers la règle : l'assertion recopiait l'appel jusqu'à sa parenthèse, et elle
+  // est tombée le jour où l'adresse a gagné l'exercice (cinquième segment). La règle est que l'écran
+  // de l'adresse arrive à la fiche, quel que soit ce qui le suit.
+  assert.ok(/drawDossier\(view, arg, hash\.split\('\/'\)\[2\], hash\.split\('\/'\)\[3\][,)]/.test(app), 'le routeur ne transmet pas l\'écran de l\'adresse');
   assert.ok(/if \(sousOnglet && ONGLETS_COMPTA\[sousOnglet\]/.test(app), 'la fiche ignore l\'écran de l\'adresse');
   // Changer d'écran POUSSE une adresse — et redessine soi-même : `pushState` ne déclenche aucun
   // `hashchange`, donc sans ce dessin le clic ne ferait rien de visible (7.15.0).

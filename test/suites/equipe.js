@@ -509,4 +509,35 @@ t('9.9.0 : l\'écran de l\'équipe et les droits existent, et leurs bulles sont 
   assert.ok(/id="eq-add" \$\{g\.ok \? '' : 'disabled'\}/.test(app), 'le bouton d\'ajout ne s\'éteint plus');
   assert.ok(/g\.ok \? '' : `<p class="muted small mt">\$\{esc\(g\.motif/.test(app), 'le bouton éteint ne dit pas pourquoi');
 });
+
+// Vu à la souris sur l'exemple : « Exercice clos le … par cabinet ». Le nom du poste n'existait pas
+// encore — il naissait à la première annonce à la plateforme, quelques minutes après le démarrage,
+// et jamais sans plan de contrôle. La piste d'audit écrivait « cabinet », et surtout le VERROU d'un
+// livre portait un identifiant vide : `poserVerrou` ne reconnaît un autre poste qu'à un identifiant
+// non vide, donc deux postes sur le même livre ne se voyaient pas.
+t('10.14.0 : l\'identité du poste naît au premier besoin — un verrou posé sans identifiant ne protège rien', () => {
+  const { createCabStore } = require('../../src/cabinet/cabstore.js');
+  const os = require('os'), path = require('path'), fs = require('fs');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'skanfact-verrou-'));
+  const st = createCabStore(dir);
+  st.create('motdepasse-essai');
+  const d = { id: 'D1', name: 'Client' }, d2 = { id: 'D2', name: 'Client 2' };
+  const idx = st.folderIndex([d, d2]);
+  // Un poste sans identifiant pose un verrou : un AUTRE poste passe outre, sans un mot. C'est ce que
+  // l'identité née au premier besoin empêche.
+  assert.ok(st.poserVerrou(d, 2026, { deviceId: '', deviceName: '' }, idx).ok);
+  assert.ok(st.poserVerrou(d, 2026, { deviceId: 'poste-B', deviceName: 'B' }, idx).ok, 'un verrou anonyme arrête quelqu\'un : le moteur a changé, relire ce test');
+  // Un poste identifié, lui, arrête l'autre — c'est la protection qu'un identifiant vide désarmait.
+  assert.ok(st.poserVerrou(d2, 2026, { deviceId: 'poste-A', deviceName: 'A' }, idx).ok);
+  assert.strictEqual(st.poserVerrou(d2, 2026, { deviceId: 'poste-B', deviceName: 'B' }, idx).ok, false, 'un verrou identifié n\'arrête plus l\'autre poste');
+  fs.rmSync(dir, { recursive: true, force: true });
+  // Et l'identité qu'on pose vient de `identitePoste`, qui la crée si elle manque — jamais de la seule
+  // lecture de la configuration, vide tant que la plateforme ne s'est pas annoncée.
+  const src = lireSource('src', 'cabinet', 'main.js').split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
+  const mp = (src.match(/const moiPoste = \(\) => [^\n]*/) || [''])[0];
+  assert.ok(/identitePoste\(\)/.test(mp) && !/readAppCfg\(\)\.deviceId/.test(mp), 'l\'identité du poste se lit encore sans être créée : ' + mp);
+  const ip = src.slice(src.indexOf('function identitePoste()'), src.indexOf('\n}\n', src.indexOf('function identitePoste()')));
+  assert.ok(ip.length > 100 && ip.length < 900, 'tranche suspecte : ' + ip.length);
+  assert.ok(/if \(!cfg\.deviceId\)/.test(ip) && /randomUUID\(\)/.test(ip) && /writeAppCfg\(cfg\)/.test(ip), 'l\'identité du poste ne se crée plus quand elle manque');
+});
 };

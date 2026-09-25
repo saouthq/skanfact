@@ -438,7 +438,9 @@ t('T-18 / T-20 / T-42 : les abonnements vivent dans la Saisie, un clic amène so
 
 t('T-24 / T-25 / T-26 / T-27 : l\'exercice se relit, sa fenêtre liste, son motif se lit, son dossier laisse une trace', () => {
   const app = cabApp();
-  const bc = tranche(app, 'function brancherCloture(', 'async function chargerCloture(', 800, 5000);
+  // 10.14.0 — borne relevée : le bouton de l'exercice suivant lit l'état du moteur, emmène sur
+  // « Voir » et se relit après le geste (≈ 5 400 caractères sans commentaires).
+  const bc = tranche(app, 'function brancherCloture(', 'async function chargerCloture(', 800, 7000);
   assert.ok(/const rev = `\$\{\(s\.livre\.audit \|\| \[\]\)\.length\}:\$\{\(s\.livre\.ecritures \|\| \[\]\)\.length\}`/.test(bc) && /s\.clotureRev !== rev/.test(bc), 'les contrôles de clôture ne se relisent pas quand le livre bouge (T-24)');
   // T-25 : le corps est du HTML, une vraie liste, et aucun `\n` dans un corps de confirmDialog.
   assert.ok(/<ul>\$\{echecs\.map\(c => `<li>\$\{esc\(c\.detail\)\}<\/li>`\)\.join\(''\)\}<\/ul>/.test(bc), 'la fenêtre de clôture ne liste pas ses contrôles');
@@ -452,7 +454,8 @@ t('T-24 / T-25 / T-26 / T-27 : l\'exercice se relit, sa fenêtre liste, son moti
   });
   assert.ok(app.includes("<p>Une écriture miroir sera créée et VALIDÉE au"), 'la fenêtre d\'extourne ne fait pas ses paragraphes');
   // T-26 : le motif se lit sur l'exercice ROUVERT, et l'historique complet existe.
-  const vc = tranche(app, 'function vueCloture(', 'function brancherCloture(', 3000, 14000);
+  // 10.14.0 — borne relevée : le motif d'un report impossible et l'écart des à-nouveaux validés.
+  const vc = tranche(app, 'function vueCloture(', 'function brancherCloture(', 3000, 16000);
   assert.ok(/id="cl-rouvert"/.test(vc) && /!ex\.clos && \(ex\.reouvertures \|\| \[\]\)\.length/.test(vc), 'le motif de réouverture disparaît dès que l\'exercice est rouvert');
   assert.ok(/id="cl-historique"/.test(vc) && /\(ex\.reouvertures \|\| \[\]\)\.map\(d =>/.test(vc), 'l\'historique complet des réouvertures manque');
   // T-27 : la trace du dossier produit, dans le livre, avec le bouton qui retrouve le fichier.

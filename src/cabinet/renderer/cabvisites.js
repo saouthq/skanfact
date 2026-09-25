@@ -222,6 +222,7 @@
   b('#imp', 'Importe un paquet reçu par mail (.skanpack). Tu peux aussi le glisser sur la fenêtre, ou le double-cliquer.');
   b('#demo-on', 'Charge six dossiers fictifs, pour voir chaque situation remplie. Ils disparaissent au premier vrai paquet.');
   b('#demo-off', 'Quitte l\'exemple : ses dossiers partent, tes vrais dossiers ne bougent pas.');
+  b('#dz-retour', 'Ramène au portefeuille : le dossier qu\'on regardait n\'existe plus.');
   b('#demo-visite', 'Lance la découverte guidée sur les dossiers de l\'exemple.');
   b('#q', 'Tape un nom, un matricule, un téléphone : la liste se réduit pendant la frappe.', { nom: 'Chercher' });
   b('#arch', 'Montre aussi les clients archivés (partis) : ils ne sont plus relancés.', { nom: 'Archivés' });
@@ -430,7 +431,35 @@
     // Le grand tour, sur l'exemple : six dossiers qui montrent chaque situation remplie. Le compte des
     // chapitres n'est écrit dans aucune bulle : il se lit dans l'en-tête, calculé.
     const beji = sous => dans('skanfact', sous);
-    const garage = sous => dans('hors', sous);
+    // Le garage de l'exemple tient DEUX exercices (10.14.0) : le précédent, clos — rouvert une fois
+    // avec son motif, puis reclos —, et le courant, ouvert par ses à-nouveaux. L'exercice vit dans
+    // l'adresse (`…/comptabilite/<écran>/<année>`) : chaque étape dit lequel elle montre, au lieu de
+    // dépendre de celui que la page avait en mémoire. Aucune année n'est écrite ici : elles se lisent
+    // dans le résumé des index (`ctx.exercices`), sans ouvrir un livre.
+    const anneeDuGarage = clos => {
+      const l = (typeof ctx.exercices === 'function' ? ctx.exercices('hors') : []).filter(e => !!e.clos === !!clos).map(e => String(e.annee)).sort();
+      return l.length ? l[l.length - 1] : '';
+    };
+    const garageEn = (clos, suite) => () => {
+      const id = ctx.dossier('hors');
+      if (!id) return null;
+      const a = anneeDuGarage(clos);
+      return '#/dossier/' + encodeURIComponent(id) + '/' + suite + (a ? '/' + a : '');
+    };
+    const garage = sous => garageEn(false, sous);
+    const garageDeuxExercices = () => !!anneeDuGarage(true) && !!anneeDuGarage(false);
+    // Déplie une section repliée quand la page l'a posée (le livre se lit de façon asynchrone) ;
+    // l'étape attend la promesse, bornée par le moteur.
+    const ouvrirPli = sel => () => new Promise(res => {
+      const limite = Date.now() + 2200;
+      const essayer = () => {
+        const d = typeof document !== 'undefined' ? document.querySelector(sel) : null;
+        if (d) { if (d.tagName === 'DETAILS' && !d.open) d.open = true; res(true); return; }
+        if (Date.now() >= limite) { res(false); return; }
+        setTimeout(essayer, 60);
+      };
+      essayer();
+    });
     visite({
       id: 'decouvrir', theme: 'demarrer', type: 'decouverte', exemple: true, duree: '10 min',
       titre: 'Découvrir le Cabinet avec l\'exemple',
@@ -491,6 +520,24 @@
           texte: 'Les contrôles nomment ce qui manque <b>sans jamais bloquer</b>. Puis la clôture : définitive, tracée, et le fichier qui part chez le client — son bilan et le tien disent alors la même chose.' },
         { page: beji('comptabilite/liasse'), cible: ['#c-livres .panel'], cote: 'dessus', titre: 'La liasse',
           texte: 'Le bilan et l\'état de résultat, rubrique par rubrique, selon un modèle que <b>tu ajustes</b>. Ce qu\'aucune rubrique ne capte est montré, jamais perdu.' },
+        // — D'un exercice à l'autre (10.14.0) : le garage tient deux exercices, et c'est là qu'on VOIT
+        // ce que la clôture fige, ce qu'une réouverture laisse comme trace, et ce qui passe à l'année
+        // suivante. Sauté si le livre n'a pas (encore) ses deux exercices.
+        { chapitre: 'D\'un exercice à l\'autre', couleur: 'equipe', si: garageDeuxExercices, page: garageEn(true, 'comptabilite/exercice'),
+          cible: ['#cl-clos', '#c-livres .panel'], cote: 'dessous', titre: 'Un exercice clos',
+          texte: 'Le garage a deux exercices, et celui de l\'an dernier est <b>clos</b> : plus rien n\'y bouge, aucun écran n\'y écrit plus. Tout s\'y lit encore — son journal, sa balance, ses états.' },
+        { si: garageDeuxExercices, page: garageEn(true, 'comptabilite/exercice'), avant: ouvrirPli('#cl-historique'),
+          cible: '#cl-historique', cote: 'dessous', titre: 'Rouvert, avec son motif',
+          texte: 'Un prélèvement de décembre, vu sur le relevé de janvier <b>après</b> la clôture. Pour le passer, il a fallu rouvrir l\'exercice — et <b>une réouverture exige un motif</b> : c\'est la seule trace qui expliquera pourquoi un chiffre a changé après coup. Puis il a été clos à nouveau.' },
+        { si: garageDeuxExercices, page: garageEn(true, 'comptabilite/exercice'), avant: ouvrirPli('#cl-sec-an'),
+          cible: '#cl-sec-an', cote: 'dessus', titre: 'Ce qu\'il laisse au suivant',
+          texte: 'Les <b>à-nouveaux</b> : chaque compte de bilan avec son solde de clôture, et le résultat de l\'année. Le bouton qui ouvre l\'année suivante les pose en une seule pièce — et le registre suit : les biens encore là, avec leur plan d\'amortissement, et les salariés encore présents.' },
+        { si: garageDeuxExercices, page: garageEn(false, 'comptabilite/journal'),
+          cible: ['#c-livres table.list tbody tr', '#c-livres .panel'], cote: 'dessous', titre: 'Les à-nouveaux reçus',
+          texte: 'L\'exercice suivant commence par cette pièce, au 1<sup>er</sup> janvier : journal <b>AN</b>, <b>validée</b>, numéro 1. Ce que l\'an dernier a laissé, sans une ligne ressaisie.' },
+        { si: garageDeuxExercices, page: garageEn(false, 'comptabilite/immobilisations'),
+          cible: ['#c-livres [data-repris]', '#c-livres .panel'], cote: 'dessous', titre: 'Le registre a suivi',
+          texte: 'Ce bien vient de l\'exercice précédent : son <b>cumul au 1<sup>er</sup> janvier</b> reprend là où il s\'était arrêté, et sa dotation de l\'année continue le même plan. Dans la paie, le salarié repris porte la même marque — ses bulletins, eux, restent dans leur mois.' },
         // — Tout le portefeuille
         { chapitre: 'Tout le portefeuille', couleur: 'encaisser', page: '#/relances', cible: ['#view table.list', '#view .panel'], cote: 'dessus', titre: 'Les relances',
           texte: 'Qui te doit un mois, et le mail tout prêt pour chacun. <b>« Écrire »</b> ouvre le mail ; tu relis, tu envoies. Tu peux aussi relancer plusieurs clients d\'un coup.' },

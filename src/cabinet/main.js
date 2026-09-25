@@ -685,6 +685,10 @@ function garnirVitrines(scenario) {
         const r = VITRINE.livreHorsSkanfact(d.id, { qui, quand, aujourdhui });
         if (r.motifs.length) logToFile('exemple', `vitrine de ${d.name} : ${r.motifs.join(' ; ')}`);
         livre = r.livre;
+        // 10.14.0 — l'exercice PRÉCÉDENT, clos, rouvert une fois puis reclos : c'est de lui que
+        // l'exercice courant tient ses à-nouveaux, ses biens et ses salariés. Écrit d'abord, par la
+        // même porte — un livre clos qui arrive d'un exemple ne se relit pas avant d'être écrit.
+        if (r.precedent && r.precedent.livre) ecrireLeLivre(d.id, r.precedent.livre, 'exemple', 'exercice précédent, clos');
       }
       ecrireLeLivre(d.id, livre, 'exemple', 'livre de démonstration');
     } catch (e) {
@@ -1327,7 +1331,12 @@ function dossierDe(dossierId) {
   return d;
 }
 const indexDossiers = () => getStore().folderIndex(state.dossiers);
-const moiPoste = () => ({ deviceId: readAppCfg().deviceId || '', deviceName: readAppCfg().deviceName || '' });
+// 10.14.0 — l'identité du poste naît au PREMIER besoin, pas à la première annonce à la plateforme
+// (qui ne part que quelques minutes après le démarrage, et jamais sans plan de contrôle configuré).
+// Sans elle, le verrou d'un livre portait un identifiant vide — et `poserVerrou` ne reconnaît un
+// AUTRE poste qu'à un identifiant non vide : deux postes sur le même livre ne se voyaient pas. Et la
+// piste d'audit, comme l'exemple, écrivait « clos … par cabinet » (vu à la souris).
+const moiPoste = () => { const p = identitePoste(); return { deviceId: p.id, deviceName: p.name }; };
 
 // ---------------------------------------------------------------- le cabinet à plusieurs (9.9.0)
 //
@@ -1357,9 +1366,15 @@ function droitBlock(dossierId, geste) {
 
 // Ouvrir un livre, ou dire pourquoi on ne peut pas. JAMAIS d'écriture ici : un livre créé en
 // silence à la première consultation ferait croire à un dossier repris qui ne l'est pas.
+// Ce que chaque livre CLOS portait quand on l'a lu (10.14.0) : la porte d'écriture le compare à ce
+// qu'on s'apprête à écrire. Un exercice clos ne bouge plus — pour TOUS les gestes, pas seulement la
+// grille de saisie. Un WeakMap : la marque suit l'objet lu, et disparaît avec lui.
+const figeAuChargement = new WeakMap();
+
 function ouvrirLivre(dossierId, annee) {
   const d = dossierDe(dossierId);
   const r = getStore().lireLivre(d, annee, indexDossiers());
+  if (r.livre && r.livre.exercice && r.livre.exercice.clos) figeAuChargement.set(r.livre, KC.empreinteFigee(r.livre));
   return { dossier: { id: d.id, name: d.name, matricule: d.matricule || '' }, ...r };
 }
 
@@ -1374,6 +1389,13 @@ function depuisQuand(ms) {
 }
 
 function ecrireLeLivre(dossierId, livre, quoi, detail, opts) {
+  // Un exercice clos à la lecture et encore clos à l'écriture ne change aucun chiffre : la clôture,
+  // sa trace, les questions et la révision passent ; une écriture, un bien, un bulletin, un relevé
+  // non. Le refus nomme le geste qui débloque (la réouverture, motif exigé).
+  const fige = figeAuChargement.get(livre);
+  if (fige !== undefined && livre.exercice && livre.exercice.clos && KC.empreinteFigee(livre) !== fige) {
+    throw erreur('ERR-CAB-064', KC.refusExerciceClos(livre));
+  }
   const d = dossierDe(dossierId);
   const idx = indexDossiers();
   const v = getStore().poserVerrou(d, livre.exercice.annee, moiPoste(), idx, { forcer: !!(opts && opts.forcerVerrou) });
@@ -2001,7 +2023,10 @@ ipcMain.handle('cab:cloture', (_e, { dossierId, annee } = {}) => {
     sig: KC.sigDepuisLignes(lignes, ouv, { libelle }),
     anouveaux: KC.anouveauxDe(livre),
     extournes: KC.extournesDe(livre, Number(annee) + 1),
-    guides: KC.GUIDES_INVENTAIRE
+    guides: KC.GUIDES_INVENTAIRE,
+    // Ce que ferait « Ouvrir N+1 » maintenant (10.14.0) : le bouton dit ce qu'il fera, et ne mène plus
+    // à « déjà validés » en rouge quand il n'y a plus qu'à aller voir l'année d'après.
+    suivant: KC.etatExerciceSuivant(livre, ouvrirLivre(dossierId, Number(annee) + 1).livre)
   };
 });
 
@@ -2029,29 +2054,23 @@ ipcMain.handle('cab:rouvrir', (_e, { dossierId, annee, motif } = {}) => {
 // Ouvrir l'exercice SUIVANT pendant que celui-ci se termine : les à-nouveaux y entrent en
 // brouillard, et le comptable continue de saisir janvier sans attendre que décembre soit fini.
 // Ils se REFONT tant qu'ils ne sont pas validés — un exercice qui bouge encore change son report.
+// 10.14.0 — et le REGISTRE suit : les biens encore détenus et les salariés encore présents. Tout le
+// geste vit dans le moteur (`ouvrirExerciceSuivant`), que l'exemple emprunte aussi : il n'existe
+// qu'une façon de passer d'un exercice au suivant.
 ipcMain.handle('cab:ouvrirSuivant', (_e, { dossierId, annee } = {}) => {
   requireOpen();
   droitBlock(dossierId, 'supervision');
   const livre = livreOuErreur(dossierId, annee);
   const suivante = Number(annee) + 1;
   const o = ouvrirLivre(dossierId, suivante);
-  const cible = o.livre || KC.livreVide(dossierId, suivante, { plan: (livre.plan || []).map(p => ({ ...p })), journaux: (livre.journaux || []).map(j => ({ ...j })) });
-  const brouillon = KC.ecritureAnouveaux(livre, suivante);
-  if (!brouillon.lignes.length) throw erreur('ERR-CAB-062', 'Cet exercice ne porte aucun solde à reporter.');
-  if (!brouillon.an.equilibre) throw erreur('ERR-CAB-062', 'Les à-nouveaux ne s\'équilibrent pas : la balance de l\'exercice est fausse, et la reporter propagerait la faute.');
-  const ancien = (cible.ecritures || []).filter(e => e.statut === 'brouillard' && (e.source === 'an' || e.extourneDe));
-  if ((cible.ecritures || []).some(e => e.source === 'an' && e.statut === 'validee')) {
-    throw erreur('ERR-CAB-062', `Les à-nouveaux de ${suivante} sont déjà validés. Contre-passe-les si le report a changé.`);
-  }
-  // Ce qui a DÉJÀ été validé ne se repose pas : une extourne posée deux fois annule la charge deux
-  // fois, et rien à l'écran ne le montrerait.
-  const dejaFaites = new Set((cible.ecritures || []).filter(e => e.statut === 'validee' && e.extourneDe).map(e => e.extourneDe));
-  cible.ecritures = (cible.ecritures || []).filter(e => !ancien.includes(e));
-  const qui = quiSuisJe();
-  const ne = KC.ajouterEcriture(cible, brouillon, qui, Date.now());
-  KC.extournesDe(livre, suivante, dejaFaites).forEach(x => KC.ajouterEcriture(cible, x, qui, Date.now()));
-  ecrireLeLivre(dossierId, cible, ancien.length ? 'à-nouveaux refaits' : 'à-nouveaux posés', String(suivante));
-  return { ok: true, id: ne.id, annee: suivante, refaits: ancien.length };
+  const cible = o.livre || KC.livreSuivantVide(livre, dossierId);
+  const r = KC.ouvrirExerciceSuivant(livre, cible, quiSuisJe(), Date.now());
+  if (!r.ok) throw erreur('ERR-CAB-062', r.motif);
+  ecrireLeLivre(dossierId, cible, r.anDejaValides ? 'registre repris' : r.refaits ? 'à-nouveaux refaits' : 'à-nouveaux posés', String(suivante));
+  return {
+    ok: true, id: r.ecriture ? r.ecriture.id : null, annee: suivante, refaits: r.refaits,
+    anDejaValides: r.anDejaValides, biens: r.biens.total, salaries: r.salaries.total, extournes: r.extournes
+  };
 });
 
 ipcMain.handle('cab:ecrireCloture', async (_e, { dossierId, annee, motDePasse } = {}) => {
@@ -2578,7 +2597,11 @@ ipcMain.handle('cab:prevoirExtourne', (_e, { dossierId, annee, id } = {}) => {
   if (!r.ok) throw erreur('ERR-CAB-025', r.motif);
   ecrireLeLivre(dossierId, o.livre, null);
   const suivant = ouvrirLivre(dossierId, r.annee);
-  return { ok: true, date: r.date, annee: r.annee, suivantOuvert: !!suivant.livre, livre: ouvrirLivre(dossierId, annee).livre };
+  // Ce que ferait « Ouvrir N+1 » maintenant : la question qui suit ne propose pas de « refaire » des
+  // à-nouveaux validés — seule l'extourne peut encore entrer (10.14.0).
+  return { ok: true, date: r.date, annee: r.annee, suivantOuvert: !!suivant.livre,
+    suivantEtat: suivant.livre ? KC.etatExerciceSuivant(o.livre, suivant.livre).etat : null,
+    livre: ouvrirLivre(dossierId, annee).livre };
 });
 
 // Valider un lot. Il n'échoue JAMAIS en bloc : ce qui passe est validé, ce qui ne passe pas est
@@ -2778,7 +2801,9 @@ ipcMain.handle('cab:questionsEnAttente', async () => {
     const employeur = Object.assign({}, ...(i.exercices || []).map(e => (e.employeur && typeof e.employeur === 'object') ? e.employeur : {}));
     // 10.12.0 — un dossier TENU AU CABINET porte aussi ses exercices et leur production : c'est ce
     // qui le fait entrer dans le calendrier des échéances, avec la même fonction que la Production.
-    const tenu = d.manual ? { exercices: (i.exercices || []).map(e => ({ annee: e.annee, du: e.du, au: e.au, production: e.production || {} })) } : null;
+    // Et s'il est CLOS (10.14.0) : la découverte montre l'exercice clos du garage de l'exemple, et
+    // elle ne peut pas le désigner sans savoir lequel l'est — sans ouvrir un livre pour autant.
+    const tenu = d.manual ? { exercices: (i.exercices || []).map(e => ({ annee: e.annee, du: e.du, au: e.au, clos: !!e.clos, production: e.production || {} })) } : null;
     return { dossierId: d.id, name: d.name, ...q, employeur, tenu };
   }).filter(r => r.ouvertes || r.repondues || Object.keys(r.employeur).length || (r.tenu && r.tenu.exercices.length));
 });

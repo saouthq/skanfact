@@ -172,11 +172,15 @@
       ${/* « Pas maintenant » plutôt qu'« Annuler » : la copie, elle, est faite — il n'y a rien à
            annuler, seulement une protection à remettre à plus tard (le panneau du dessous l'attend). */''}
       <div class="modal-actions"><button class="btn" data-close>${copie ? 'Pas maintenant' : 'Annuler'}</button><button class="btn ${mode === 'remove' ? 'btn-danger' : 'btn-primary'}" id="ok">${mode === 'remove' ? 'Retirer' : copie ? 'Protéger par ce mot de passe' : 'Enregistrer'}</button></div>`,
-      (root, close) => { $('#ok', root).onclick = async () => {
+      (root, close) => {
+      enchainerConfirmation($('[name=password]', root), $('[name=confirm]', root));
+      $('#ok', root).onclick = async () => {
         const v = formValues($('#pwf', root));
         if (mode !== 'remove') {
-          if (!v.password || v.password.length < 6) return refus($('[name=password]', root), 'Mot de passe : 6 caractères minimum.');
-          if (v.password !== v.confirm) return refus($('[name=confirm]', root), 'Les deux mots de passe ne correspondent pas.');
+          // Les mêmes mots que le Cabinet (`verdictMotDePasse`, jumeau comparé) : une confirmation
+          // vide se NOMME, et c'est elle qu'on refait — jamais le mot de passe qu'on vient de choisir.
+          const vm = C.verdictMotDePasse(v.password, v.confirm, 6);
+          if (!vm.ok) return refus($(vm.champ === 'confirmation' ? '[name=confirm]' : '[name=password]', root), vm.message);
         }
         const b = $('#ok', root); b.disabled = true; b.textContent = 'Chiffrement…';
         // Ce geste finit par `render()` : sans ça, activer un mot de passe depuis les Paramètres
@@ -432,6 +436,21 @@
       setTimeout(nettoyer, 6000);
     }
     return false;
+  }
+
+  // 10.14.0 — un mot de passe se tape puis se confirme, et Entrée DESCEND de l'un à l'autre tant que
+  // la confirmation est vide : valider une fenêtre sur une confirmation vide ne ferait qu'afficher
+  // un refus pour un pas normal (`stopPropagation` : la fenêtre valide sur Entrée). Vu à la souris
+  // sur le premier écran du Cabinet, où Tab passait par « Afficher » et la confirmation partait dans
+  // le vide ; on AJOUTE un chemin, on n'en coupe pas un (règle 9.3.0).
+  // Le jumeau vit dans src/cabinet/renderer/app.js, corps comparé par un test.
+  function enchainerConfirmation(champ, confirmation) {
+    if (!champ || !confirmation) return;
+    champ.addEventListener('keydown', e => {
+      if (e.key !== 'Enter' || e.shiftKey || e.isComposing || confirmation.value) return;
+      e.preventDefault(); e.stopPropagation();
+      confirmation.focus();
+    });
   }
 
   // Le nom du poste, tel que le stockage l'estampille à chaque écriture (3.2.0). Il sert à dire QUI

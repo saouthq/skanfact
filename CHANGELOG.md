@@ -281,6 +281,81 @@ Skander : « commence par faire ce qu'on vient de faire dans le dernier lot sur 
     écrite plus haut. L'explication propre à un bouton passe désormais toujours en premier — dans
     SkanFact aussi, où trois boutons de la comptabilité retrouvent leur phrase précise.
 
+**SkanFact Cabinet : l'exemple sur deux exercices, et ce qu'il a fait tomber**
+Skander : « ensuite le jeu d'exemple du cabinet ». Le garage de l'exemple — le client dont le cabinet
+tient toute la comptabilité — tient maintenant **deux exercices** : l'an dernier, repris au 1er janvier
+et tenu douze mois, **clos** au début de l'année, **rouvert** quelques jours plus tard pour un prélèvement
+d'assurance de décembre vu sur le relevé de janvier (le motif est écrit), puis **reclos** ; et
+l'exercice en cours, **ouvert par ses à-nouveaux** — la pièce n° 1, validée — et par le registre de
+l'an dernier. Un chapitre de la découverte, « D'un exercice à l'autre », le montre : l'exercice clos,
+sa réouverture et son motif, ce qu'il laisse au suivant, les à-nouveaux reçus, le registre qui a suivi.
+
+Ce que ce second exercice a fait tomber — rien de tout cela ne se voyait tant que l'exemple n'en
+avait qu'un :
+- **Ouvrir l'année suivante laissait le registre derrière soi.** Les à-nouveaux étaient posés, mais le
+  livre suivant naissait sans un bien ni un salarié : les dotations n'y étaient réclamées nulle part,
+  la paie repartait de « Aucun salarié », et l'écran proposait de « créer la fiche » du pont élévateur
+  comme d'un achat du 1er janvier — ce qui aurait relancé son amortissement à zéro. Les biens encore
+  détenus passent maintenant avec leur plan (les dotations déjà écrites restent des faits de leur
+  exercice), les salariés encore présents au 1er janvier aussi — leurs bulletins restent dans leur
+  mois. Refaire les à-nouveaux refait le registre sans le doubler, et un bien vendu entre-temps en
+  sort. Des à-nouveaux déjà validés ne bougent plus, mais le registre se reprend quand même ; la
+  fenêtre dit ce qui a suivi.
+- **Un bien repris porte « repris de » et son année**, dans les Immobilisations comme dans la Paie.
+  Le modifier ou le supprimer dans l'exercice suivant se refuse en disant **où** le corriger — dans
+  l'exercice où sa dotation est écrite — au lieu d'envoyer contre-passer une écriture que ce livre n'a
+  pas. Corriger le salaire d'un salarié repris ne lui fait plus perdre sa marque.
+- **Un exercice clos bougeait.** « Après la clôture, plus aucune écriture ne bouge » : seule la grille
+  de saisie tenait cette promesse. La paie, les biens, la banque, la déclaration, l'inventaire et les
+  menus de ligne écrivaient dans un exercice clos sans un mot. La règle vit désormais à la porte
+  d'écriture, pour tous les gestes, et le refus dit de rouvrir l'exercice (motif exigé). La révision,
+  les questions, le lettrage et la trace restent possibles : ils ne changent aucun chiffre.
+- **Janvier déclarait décembre.** L'à-nouveau, daté du 1er janvier, entrait dans les cases du mois :
+  l'IRPP de décembre qu'il reporte comptait comme retenu en janvier (175,460 au lieu de 87,730 sur le
+  garage), et le crédit de TVA reporté se lisait comme de la TVA déductible du mois. L'ouverture sort
+  des cases du mois, et le crédit qu'elle porte se lit comme un crédit **reporté**.
+- **« Les six contrôles passent »** était écrit en dur, sur un dossier qui en a sept (le tableau
+  d'amortissement contre le compte 28, quand le cabinet tient le registre des biens) : le compte se
+  lit sur la liste, et la bulle le dit.
+- **L'exercice vit dans l'adresse** de la comptabilité, comme l'écran : « ← » revient sur l'exercice
+  qu'on regardait, et une visite peut en ouvrir un précis.
+- Un exemple chargé avant cette version se refait tout seul à la mise à jour, avec ses deux exercices.
+
+Et ce que le parcours de cet exemple, à la souris, a encore trouvé :
+- **« Ouvrir 2026 » menait à une impasse.** Sur l'exercice clos du garage, le bouton répondait en rouge
+  « Les à-nouveaux de 2026 sont déjà validés. Contre-passe-les si le report a changé. » — et, la
+  contre-passation faite, **exactement la même phrase** : la pièce qui annule une écriture gardait sa
+  nature d'à-nouveau et comptait comme des à-nouveaux en vigueur. La sortie promise n'existait pas. Le
+  bouton dit maintenant ce qu'il fera, décidé en jouant le même geste sur une copie : « Ouvrir 2026
+  (à-nouveaux)… », « Refaire les à-nouveaux de 2026… », « Compléter l'ouverture de 2026… » quand un bien,
+  un salarié ou une extourne reste à reporter, et **« Voir les à-nouveaux de 2026 »** quand tout est
+  reporté — il emmène au journal des à-nouveaux de 2026, sans rien écrire. Un report impossible éteint
+  le bouton et dit pourquoi, sous ses yeux. Et « contre-passe-les si le report a changé » se vérifie :
+  quand les à-nouveaux validés ne reprennent plus l'exercice (rouvert et corrigé après leur validation),
+  l'écran nomme les comptes qui diffèrent.
+- **Une extourne prévue après la validation des à-nouveaux ne partait jamais.** « Prévoir l'extourne »
+  promettait qu'elle serait posée à l'ouverture de l'année suivante, et le geste refusait dès que les
+  à-nouveaux étaient validés. Elle part maintenant, une seule fois, et la question qui suit ne propose
+  plus de « refaire » des à-nouveaux validés.
+- **Le chapitre « D'un exercice à l'autre » se sautait** : la découverte lisait l'état des livres pris
+  au démarrage, avant le chargement de l'exemple. Il se relit quand l'exemple change et quand une visite
+  part.
+- **La marque « repris de 2025 » disparaissait la première** dans une cellule trop étroite : le nom se
+  coupe désormais, ses marques jamais.
+- **Quitter l'exemple depuis un de ses dossiers** laissait l'écran sur « Ce dossier n'existe plus. »,
+  la barre latérale pour seule sortie : on revient aux Dossiers, et un dossier disparu porte le bouton
+  qui en sort.
+- **L'exercice clos disait « par cabinet »** : le nom du poste n'existait pas encore — il naissait à la
+  première annonce à la plateforme, et jamais sans elle. Plus grave, le verrou d'un livre portait alors
+  un identifiant vide, et deux postes sur le même livre ne se voyaient pas. L'identité du poste naît
+  maintenant au premier besoin.
+- **Le mot de passe à confirmer, dans les deux applications.** Tab posait le curseur sur « Afficher »
+  et la confirmation partait dans le vide ; le refus disait « les deux mots de passe ne sont pas les
+  mêmes » d'une confirmation vide, sans montrer aucune case. Entrée descend maintenant vers la
+  confirmation, une confirmation vide se nomme, le refus montre la case fautive, « Afficher » montre
+  qu'il a le curseur, et la ligne qui juge la solidité du mot de passe garde sa place au lieu de
+  pousser la confirmation pendant la frappe.
+
 ## 10.13.0-beta.1 — 24/09/2026
 
 **Avant la mise en production : les deux applications et le pont entre elles, testés en entier.**

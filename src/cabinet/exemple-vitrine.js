@@ -219,7 +219,7 @@ function garnirRevision(livre, o) {
 // ------------------------------------------------------------------ le client hors SkanFact
 //
 // Le dossier que le cabinet FACTURE (9.4.0) : ses pièces arrivent sur papier, le cabinet tient
-// tout. L'exercice est celui du dernier mois terminé — en janvier, c'est l'année qui vient de
+// tout. L'exercice courant est celui du dernier mois terminé — en janvier, c'est l'année qui vient de
 // finir, jamais un exercice vide.
 //
 // 10.12.0 — une ANNÉE TENUE, pas deux mois posés sur du vide. La première vitrine n'écrivait rien de
@@ -231,123 +231,83 @@ function garnirRevision(livre, o) {
 // DERNIER mois reste à faire : sa paie attend son écriture, sa déclaration attend d'être préparée —
 // c'est l'état d'un dossier tenu le jour où on l'ouvre, et l'étape suivante que l'écran met en vert.
 // Les montants sont ceux d'un petit atelier et ne varient pas d'un chargement à l'autre.
+//
+// 10.14.0 — DEUX exercices. Un exemple d'un seul exercice n'a pas de passé : pas de clôture, pas
+// d'à-nouveaux, pas de réouverture — rien de ce qui se passe au changement d'année, c'est-à-dire au
+// moment où un cabinet travaille le plus. L'exercice précédent est repris au 1er janvier, tenu douze
+// mois, amorti au 31 décembre, CLOS ; un prélèvement d'assurance vu sur le relevé après la clôture le
+// fait ROUVRIR (motif écrit), passer la pièce, reclore. L'exercice courant est ouvert par le moteur,
+// exactement comme « Ouvrir N+1 » (`ouvrirExerciceSuivant`) : ses à-nouveaux, ses biens et ses
+// salariés viennent de là. C'est en le construisant que deux défauts sont tombés : le registre qui ne
+// passait pas l'année, et un exercice clos où tous les écrans sauf la saisie écrivaient encore.
 const RECETTES_HT = [5960, 6240, 6580, 6310, 6920, 7150, 6850, 7420, 6990, 7260, 6640, 7780];
 const PIECES_HT = [2180, 2310, 2460, 2240, 2590, 2720, 2530, 2860, 2400, 2650, 2380, 2900];
+// L'année d'avant tourne un peu en dessous : un atelier qui grandit. Arrondi au dinar, comme une
+// facture de pièces ou un dépôt de recettes.
+const CROISSANCE = 0.94;
 // Le taux de l'exemple, pas une règle : l'atelier de la vitrine facture ses réparations à 19 %, et
 // ses pièces lui sont facturées au même taux. Le moteur, lui, ne connaît aucun taux (règle 5.0.0).
 const TVA_EXEMPLE = 19;
 const tvaDe = ht => r3(ht * TVA_EXEMPLE / 100);
+// Le motif de la réouverture, tel qu'un comptable l'écrit : ce qui a été vu, et pourquoi il fallait
+// rouvrir. C'est la seule trace qui expliquera plus tard pourquoi le résultat a changé (6.0.0).
+const MOTIF_REOUVERTURE = 'Prélèvement de l\'assurance de l\'atelier du 24/12, vu sur le relevé de janvier après la clôture : il manquait à l\'exercice.';
+const ASSURANCE = 540;
 
-function livreHorsSkanfact(dossierId, o) {
-  const dernier = moisAvant(String(o.aujourdhui).slice(0, 7), 1);
-  const annee = Number(dernier.slice(0, 4));
-  const m = Number(dernier.slice(5, 7));
-  const livre = KC.livreVide(dossierId, annee);
-  const out = { livre, annee, biens: [], salaries: [], bulletins: [], paie: null, declarations: [], cnss: [], motifs: [] };
-  const garde = (r, quoi) => { if (!r || r.ok === false) out.motifs.push(`${quoi} : ${(r && (r.motif || (r.motifs || [])[0])) || 'refusé'}`); return r; };
-  // Une pièce écrite puis VALIDÉE, comme un comptable le fait pour un mois qu'il a terminé.
-  const ecrire = (ecriture, quoi) => {
-    const e = KC.ajouterEcriture(livre, ecriture, o.qui, o.quand);
-    garde(KC.validerEcriture(livre, e.id, o.qui, o.quand), quoi);
+// Les deux salariés de l'atelier. Le mécanicien est là depuis trois ans : il a un bulletin CHAQUE
+// mois, et il passe d'un exercice à l'autre par la reprise du registre. L'aide, embauché le mois
+// dernier, n'a pas encore son numéro CNSS : la paie se calcule quand même, et le contrôle le NOMME —
+// on ne bloque pas un bulletin pour un numéro qui manque (10.3.0).
+const mecanicien = annee => ({ id: 'sal-exemple-1', nom: 'Mounir Jaziri', poste: 'Mécanicien', contrat: 'cdi',
+  embauche: `${annee - 3}-02-01`, brut: 1150, cnss: '1234567-01', chefDeFamille: true, enfants: 2 });
+
+// Les gestes d'UNE année tenue par le cabinet. Chaque geste porte sa date et s'écrit dans le livre
+// qu'on lui donne : ce qui tombe dans l'année SUIVANTE — la déclaration de décembre payée le 20
+// janvier, la CNSS du 4e trimestre versée le 10 — part dans `reports`, que l'exercice suivant joue
+// dans son propre livre après ses à-nouveaux. Un paiement de janvier n'a rien à faire dans le livre de
+// décembre, et le jouer là-bas rendrait faux les deux exercices.
+function tenirAnnee(livre, o, p) {
+  const { annee, dernier, termines, facteur, out, garde, gestes, reports } = p;
+  const geste = (date, rang, run) => {
+    if (Number(String(date).slice(0, 4)) === annee) gestes.push({ date, rang, ordre: gestes.length, run });
+    else if (reports) reports.push({ date, rang, ordre: reports.length, run });
+    // Sinon : un geste de l'année suivante sans livre pour le recevoir — il n'est pas encore arrivé.
+  };
+  const ecrire = (L, ecriture, quoi) => {
+    const e = KC.ajouterEcriture(L, ecriture, o.qui, o.quand);
+    garde(KC.validerEcriture(L, e.id, o.qui, o.quand), quoi);
     return e;
   };
   const moisIso = mm => `${annee}-${pad(mm)}`;
-  // Le 20 du mois suivant : dépôt et paiement de la déclaration, avant l'échéance que l'écran
-  // propose (le 28, À VÉRIFIER) — jamais dans le futur, puisque ce mois suivant est au plus le
-  // dernier mois terminé.
-  const vingtDuSuivant = mm => `${annee}-${pad(mm + 1)}-20`;
-
-  // L'ouverture reprend un parc DÉJÀ amorti : le pont élévateur a deux ans. Son cumul au 1er
-  // janvier (3 600) est exactement ce que porte le 28 — c'est le contrôle de la 10.10.0 (C-10) qui
-  // tombe juste, et la fiche porte sa VRAIE date de mise en service.
-  const ouv = garde(KC.balanceOuverture(livre, [
-    { compte: '223', libelle: 'Pont élévateur', debit: 18000, credit: 0 },
-    { compte: '28', libelle: 'Amortissements cumulés', debit: 0, credit: 3600 },
-    { compte: '532', libelle: 'Banque — solde reporté', debit: 15600, credit: 0 },
-    { compte: '101', libelle: 'Capital', debit: 0, credit: 20000 },
-    { compte: '12', libelle: 'Résultats reportés', debit: 0, credit: 10000 }
-  ], `${annee}-01-01`, 'balance', o.qui, o.quand), 'ouverture');
-  const an = ouv && ouv.ecriture;
-  const pont = garde(KC.ajouterImmobilisation(livre, {
-    libelle: 'Pont élévateur deux colonnes', compte: '223', valeur: 18000,
-    dateAcquisition: `${annee - 2}-01-01`, dateMiseEnService: `${annee - 2}-01-01`, duree: 10, methode: 'lineaire',
-    origine: { source: 'ouverture', docId: an ? `${an.id}#${an.lignes.findIndex(l => l.compte === '223')}` : '', mois: `${annee}-01` }
-  }, o.qui, o.quand), 'pont élévateur');
-  if (pont && pont.ok) out.biens.push(pont.fiche);
-
-  // Les gestes de l'année s'exécutent dans l'ORDRE DES DATES (10.12.0). Le numéro d'une écriture
-  // naît à sa validation (9.2.0) : il raconte l'ordre du travail. Validés en vrac — l'achat
-  // d'équipement d'abord, toutes les déclarations à la fin —, les numéros du livre-journal sautaient
-  // (1, 4, 5…) et la déclaration de janvier portait le n° 57. Un exemple se valide comme un cabinet
-  // travaille : jour après jour, et la déclaration d'un mois une fois ses pièces passées.
-  const gestes = [];
-  const geste = (date, rang, run) => gestes.push({ date, rang, ordre: gestes.length, run });
-
-  // Un achat de l'année, facture puis règlement, et sa fiche rattachée à la ligne qui l'a porté :
-  // sans ce rattachement, l'écran proposerait de créer une fiche qui existe déjà.
-  const mAcq = Math.max(1, m - 2);
-  const jAcq = `${annee}-${pad(mAcq)}-10`;
-  geste(jAcq, 1, () => {
-    const fac = ecrire({
-      date: jAcq, journal: 'AC', piece: 'F-2291', libelle: 'Facture Auto Équipement Tunis — valise de diagnostic et ordinateur',
-      lignes: [
-        { compte: '228', libelle: 'Valise de diagnostic et ordinateur d\'atelier', debit: 2400, credit: 0 },
-        { compte: '4366', libelle: 'TVA déductible', debit: 456, credit: 0 },
-        { compte: '404', libelle: 'Auto Équipement Tunis', tiers: 'Auto Équipement Tunis', debit: 0, credit: 2856 }
-      ]
-    }, 'facture d\'équipement');
-    const valise = garde(KC.ajouterImmobilisation(livre, {
-      libelle: 'Valise de diagnostic et ordinateur d\'atelier', compte: '228', valeur: 2400, tva: 456,
-      dateAcquisition: jAcq, dateMiseEnService: jAcq, duree: 3, methode: 'lineaire',
-      origine: { source: 'saisie', docId: `${fac.id}#0`, mois: jAcq.slice(0, 7) }
-    }, o.qui, o.quand), 'valise de diagnostic');
-    if (valise && valise.ok) out.biens.push(valise.fiche);
-  });
-  geste(`${annee}-${pad(mAcq)}-15`, 1, () => ecrire({
-    date: `${annee}-${pad(mAcq)}-15`, journal: 'BQ', piece: 'F-2291', libelle: 'Règlement Auto Équipement Tunis (VIR)',
-    lignes: [
-      { compte: '404', libelle: 'Auto Équipement Tunis', tiers: 'Auto Équipement Tunis', debit: 2856, credit: 0 },
-      { compte: '532', libelle: 'Règlement Auto Équipement Tunis', debit: 0, credit: 2856 }
-    ]
-  }, 'règlement de l\'équipement'));
-
-  // Deux salariés. Le mécanicien est là depuis trois ans : il a un bulletin CHAQUE mois. L'aide,
-  // embauché le mois dernier, n'a pas encore son numéro CNSS : la paie se calcule quand même, et le
-  // contrôle le NOMME — on ne bloque pas un bulletin pour un numéro qui manque (10.3.0).
-  const embaucheAide = m >= 2 ? m - 1 : m;
-  [
-    { id: 'sal-exemple-1', nom: 'Mounir Jaziri', poste: 'Mécanicien', contrat: 'cdi', embauche: `${annee - 3}-02-01`,
-      brut: 1150, cnss: '1234567-01', chefDeFamille: true, enfants: 2 },
-    { id: 'sal-exemple-2', nom: 'Yassine Gharbi', poste: 'Aide-mécanicien', contrat: 'cdd',
-      embauche: `${annee}-${pad(embaucheAide)}-01`, brut: 650, cnss: '' }
-  ].forEach(s => { const r = garde(KC.ajouterSalarie(livre, s, o.qui, o.quand), s.nom); if (r && r.ok) out.salaries.push(r.salarie); });
-
+  const leSuivant = (mm, jour) => (mm === 12 ? `${annee + 1}-01-${jour}` : `${annee}-${pad(mm + 1)}-${jour}`);
+  const ht = n => Math.round(n * facteur);
   const fournisseur = 'Pièces Auto Ben Arous';
-  const passees = [];
   const decls = {};
-  for (let mm = 1; mm <= m; mm++) {
+  const passees = [];
+
+  for (let mm = 1; mm <= dernier; mm++) {
     const iso = moisIso(mm), fin = finDuMois(iso), duMois = KC.deMois(KC.fmtMois(iso));
     // Les pièces du mois : la facture du fournisseur le 12, réglée le 25.
-    const ht = PIECES_HT[mm - 1], tva = tvaDe(ht);
-    geste(`${iso}-12`, 1, () => ecrire({
+    const achat = ht(PIECES_HT[mm - 1]), tva = tvaDe(achat);
+    geste(`${iso}-12`, 1, L => ecrire(L, {
       date: `${iso}-12`, journal: 'AC', piece: `PA-${annee}-${pad(mm)}`, libelle: `Facture ${fournisseur} — pièces ${duMois}`,
       lignes: [
-        { compte: '607', libelle: 'Pièces détachées', debit: ht, credit: 0 },
+        { compte: '607', libelle: 'Pièces détachées', debit: achat, credit: 0 },
         { compte: '4366', libelle: 'TVA déductible', debit: tva, credit: 0 },
-        { compte: '401', libelle: fournisseur, tiers: fournisseur, debit: 0, credit: r3(ht + tva) }
+        { compte: '401', libelle: fournisseur, tiers: fournisseur, debit: 0, credit: r3(achat + tva) }
       ]
     }, 'pièces du mois'));
-    geste(`${iso}-25`, 1, () => ecrire({
+    geste(`${iso}-25`, 1, L => ecrire(L, {
       date: `${iso}-25`, journal: 'BQ', piece: `PA-${annee}-${pad(mm)}`, libelle: `Règlement ${fournisseur} (VIR)`,
       lignes: [
-        { compte: '401', libelle: fournisseur, tiers: fournisseur, debit: r3(ht + tva), credit: 0 },
-        { compte: '532', libelle: `Règlement ${fournisseur}`, debit: 0, credit: r3(ht + tva) }
+        { compte: '401', libelle: fournisseur, tiers: fournisseur, debit: r3(achat + tva), credit: 0 },
+        { compte: '532', libelle: `Règlement ${fournisseur}`, debit: 0, credit: r3(achat + tva) }
       ]
     }, 'règlement des pièces'));
 
     // Les recettes de l'atelier, déposées en banque en fin de mois.
-    const rec = RECETTES_HT[mm - 1], tvaRec = tvaDe(rec);
-    geste(fin, 1, () => ecrire({
+    const rec = ht(RECETTES_HT[mm - 1]), tvaRec = tvaDe(rec);
+    geste(fin, 1, L => ecrire(L, {
       date: fin, journal: 'VT', piece: `REC-${annee}-${pad(mm)}`, libelle: `Recettes de l'atelier — ${KC.fmtMois(iso)}`,
       lignes: [
         { compte: '532', libelle: 'Recettes déposées en banque', debit: r3(rec + tvaRec), credit: 0 },
@@ -357,95 +317,96 @@ function livreHorsSkanfact(dossierId, o) {
     }, 'recettes'));
 
     // Les bulletins du mois (ce ne sont pas des écritures : ils se posent tout de suite) — une prime
-    // de rendement sur le dernier, pour qu'un bulletin ne ressemble pas à tous les autres.
-    out.salaries.filter(s => mm >= Number(String(s.embauche).slice(5, 7)) || Number(String(s.embauche).slice(0, 4)) < annee).forEach(s => {
+    // de rendement sur le tout dernier, pour qu'un bulletin ne ressemble pas à tous les autres.
+    (livre.salaries || []).filter(s => mm >= Number(String(s.embauche).slice(5, 7)) || Number(String(s.embauche).slice(0, 4)) < annee).forEach(s => {
       const r = garde(KC.ajouterBulletin(livre, {
         salarieId: s.id, annee, mois: mm, brut: s.brut, joursTravailles: 26, joursAbsence: 0,
-        primes: s.id === 'sal-exemple-1' && mm === m ? [{ label: 'Prime de rendement', amount: 80, taxable: true }] : [],
+        primes: p.prime && s.id === 'sal-exemple-1' && mm === dernier ? [{ label: 'Prime de rendement', amount: 80, taxable: true }] : [],
         retenues: []
       }, {}, o.qui, o.quand), `bulletin de ${s.nom}`);
       if (r && r.ok) out.bulletins.push(r.bulletin);
     });
 
-    if (mm < m) {
-      // Un mois TERMINÉ : sa paie est écrite, validée et réglée le dernier jour. Le dernier mois,
-      // lui, attend son écriture — c'est le geste que l'écran de la Paie propose en vert.
-      geste(fin, 2, () => {
-        const prop = KC.ecritureDePaie(livre, annee, mm, {});
-        if (!prop.ok) { out.motifs.push(`paie ${duMois} : ${prop.motif}`); return; }
-        const e = ecrire(prop.ecriture, `paie ${duMois}`);
-        KC.noterEcriturePaie(livre, prop.lot, e.id, o.qui, o.quand);
-        const net = r3(prop.ecriture.lignes.filter(l => l.compte === '425').reduce((x, l) => x + (Number(l.credit) || 0), 0));
-        ecrire({
-          date: fin, journal: 'BQ', piece: `SAL-${annee}-${pad(mm)}`, libelle: `Virement des salaires ${duMois}`,
-          lignes: [
-            { compte: '425', libelle: `Salaires ${duMois}`, debit: net, credit: 0 },
-            { compte: '532', libelle: 'Virement des salaires', debit: 0, credit: net }
-          ]
-        }, 'virement des salaires');
-        passees.push(mm);
-      });
+    if (mm > termines) continue;
+    // Un mois TERMINÉ : sa paie est écrite, validée et réglée le dernier jour. Le dernier mois de
+    // l'exercice courant, lui, attend son écriture — c'est le geste que l'écran de la Paie met en vert.
+    geste(fin, 2, L => {
+      const prop = KC.ecritureDePaie(L, annee, mm, {});
+      if (!prop.ok) { out.motifs.push(`paie ${duMois} : ${prop.motif}`); return; }
+      const e = ecrire(L, prop.ecriture, `paie ${duMois}`);
+      KC.noterEcriturePaie(L, prop.lot, e.id, o.qui, o.quand);
+      const net = r3(prop.ecriture.lignes.filter(l => l.compte === '425').reduce((x, l) => x + (Number(l.credit) || 0), 0));
+      ecrire(L, {
+        date: fin, journal: 'BQ', piece: `SAL-${annee}-${pad(mm)}`, libelle: `Virement des salaires ${duMois}`,
+        lignes: [
+          { compte: '425', libelle: `Salaires ${duMois}`, debit: net, credit: 0 },
+          { compte: '532', libelle: 'Virement des salaires', debit: 0, credit: net }
+        ]
+      }, 'virement des salaires');
+      passees.push(mm);
+    });
 
-      // La déclaration du mois : préparée, écrite et validée une fois ses pièces passées (au dernier
-      // jour, APRÈS la paie), puis déposée et payée le 20 du mois suivant — les gestes de l'écran,
-      // dans leur ordre (9.6.0). Le reversement des retenues sur salaires (IRPP, TFP et FOPROLOS)
-      // part le même jour, à part : le « total à décaisser » reste exactement ce que le virement de
-      // TVA paie.
-      const periode = iso;
-      geste(fin, 9, () => {
-        const d = KC.declarationMensuelle(livre, periode);
-        if (!d.ok) { out.motifs.push(`déclaration ${duMois} : ${d.motif}`); return; }
-        const posee = garde(KC.poserDeclaration(livre, d, o.qui, o.quand), `déclaration ${duMois}`);
-        const brouillon = KC.ecritureDeclaration(livre, d);
-        if (brouillon.lignes.length) {
-          const e = ecrire(brouillon, `écriture de déclaration ${duMois}`);
-          if (posee && posee.declaration) posee.declaration.ecritureId = e.id;
-        }
-        decls[mm] = d;
-      });
-      const le = vingtDuSuivant(mm);
-      geste(le, 1, () => {
-        const d = decls[mm];
-        if (!d) return;
-        const aPayer = d.cases.aDecaisser.montant || 0;
-        if (aPayer > 0) {
-          ecrire({
-            date: le, journal: 'BQ', piece: `DECL-${periode}`, libelle: `Paiement de la déclaration ${duMois} (VIR)`,
-            lignes: [
-              { compte: d.comptes.aPayer, libelle: 'TVA à décaisser', debit: aPayer, credit: 0 },
-              { compte: '532', libelle: 'Recette des finances', debit: 0, credit: aPayer }
-            ]
-          }, `paiement de la déclaration ${duMois}`);
-        }
-        const irpp = d.cases.irpp.montant || 0;
-        const taxes = r3((d.cases.tfp.montant || 0) + (d.cases.foprolos.montant || 0));
-        if (irpp || taxes) {
-          ecrire({
-            date: le, journal: 'BQ', piece: `RSAL-${periode}`, libelle: `Retenues sur salaires ${duMois} (VIR)`,
-            lignes: [
-              ...(irpp ? [{ compte: '4321', libelle: 'IRPP et contribution sociale retenus', debit: irpp, credit: 0 }] : []),
-              ...(taxes ? [{ compte: '4335', libelle: 'TFP et FOPROLOS', debit: taxes, credit: 0 }] : []),
-              { compte: '532', libelle: 'Recette des finances', debit: 0, credit: r3(irpp + taxes) }
-            ]
-          }, `retenues sur salaires ${duMois}`);
-        }
-        garde(KC.pointerDeclaration(livre, periode, 'deposee', { le }, o.qui, o.quand), `dépôt ${duMois}`);
-        garde(KC.pointerDeclaration(livre, periode, 'payee', { le }, o.qui, o.quand), `paiement ${duMois}`);
-        out.declarations.push(periode);
-      });
-    }
+    // La déclaration du mois : préparée, écrite et validée une fois ses pièces passées (au dernier
+    // jour, APRÈS la paie), puis déposée et payée le 20 du mois suivant — les gestes de l'écran, dans
+    // leur ordre (9.6.0). Le reversement des retenues sur salaires (IRPP, TFP et FOPROLOS) part le
+    // même jour, à part : le « total à décaisser » reste exactement ce que le virement de TVA paie.
+    const periode = iso;
+    const le = leSuivant(mm, '20');
+    geste(fin, 9, L => {
+      const d = KC.declarationMensuelle(L, periode);
+      if (!d.ok) { out.motifs.push(`déclaration ${duMois} : ${d.motif}`); return; }
+      const posee = garde(KC.poserDeclaration(L, d, o.qui, o.quand), `déclaration ${duMois}`);
+      const brouillon = KC.ecritureDeclaration(L, d);
+      if (brouillon.lignes.length) {
+        const e = ecrire(L, brouillon, `écriture de déclaration ${duMois}`);
+        if (posee && posee.declaration) posee.declaration.ecritureId = e.id;
+      }
+      decls[mm] = d;
+      // Déposée et payée : c'est un pense-bête sur la déclaration, qui vit dans CE livre — même
+      // quand le paiement, lui, tombe dans l'exercice suivant.
+      garde(KC.pointerDeclaration(L, periode, 'deposee', { le }, o.qui, o.quand), `dépôt ${duMois}`);
+      garde(KC.pointerDeclaration(L, periode, 'payee', { le }, o.qui, o.quand), `paiement ${duMois}`);
+      out.declarations.push(periode);
+    });
+    geste(le, 1, L => {
+      const d = decls[mm];
+      if (!d) return;
+      const aPayer = d.cases.aDecaisser.montant || 0;
+      if (aPayer > 0) {
+        ecrire(L, {
+          date: le, journal: 'BQ', piece: `DECL-${periode}`, libelle: `Paiement de la déclaration ${duMois} (VIR)`,
+          lignes: [
+            { compte: d.comptes.aPayer, libelle: 'TVA à décaisser', debit: aPayer, credit: 0 },
+            { compte: '532', libelle: 'Recette des finances', debit: 0, credit: aPayer }
+          ]
+        }, `paiement de la déclaration ${duMois}`);
+      }
+      const irpp = d.cases.irpp.montant || 0;
+      const taxes = r3((d.cases.tfp.montant || 0) + (d.cases.foprolos.montant || 0));
+      if (irpp || taxes) {
+        ecrire(L, {
+          date: le, journal: 'BQ', piece: `RSAL-${periode}`, libelle: `Retenues sur salaires ${duMois} (VIR)`,
+          lignes: [
+            ...(irpp ? [{ compte: '4321', libelle: 'IRPP et contribution sociale retenus', debit: irpp, credit: 0 }] : []),
+            ...(taxes ? [{ compte: '4335', libelle: 'TFP et FOPROLOS', debit: taxes, credit: 0 }] : []),
+            { compte: '532', libelle: 'Recette des finances', debit: 0, credit: r3(irpp + taxes) }
+          ]
+        }, `retenues sur salaires ${duMois}`);
+      }
+    });
   }
 
   // La CNSS de chaque trimestre ÉCHU, versée le 10 du mois qui le suit (l'échéance proposée est le
   // 15, À VÉRIFIER). Le montant est le « Total à verser » de la déclaration CNSS du trimestre — celui
-  // que l'écran de la Paie affiche. Pas le mouvement net du compte : le versement du trimestre
-  // précédent, payé dans le premier mois de celui-ci, le réduirait d'autant.
-  [1, 2, 3, 4].filter(t => t * 3 < m).forEach(t => {
-    const le = `${moisIso(t * 3 + 1)}-10`, nom = `${t === 1 ? '1er' : t + 'e'} trimestre`;
-    geste(le, 1, () => {
+  // que l'écran de la Paie affiche, lu dans le livre de l'année des bulletins. Pas le mouvement net
+  // du compte : le versement du trimestre précédent, payé dans le premier mois de celui-ci, le
+  // réduirait d'autant.
+  [1, 2, 3, 4].filter(t => t * 3 <= termines).forEach(t => {
+    const le = leSuivant(t * 3, '10'), nom = `${t === 1 ? '1er' : t + 'e'} trimestre`;
+    geste(le, 1, L => {
       const montant = KC.cnssDuTrimestre(livre, annee, t).total;
       if (!(montant > 0)) return;
-      ecrire({
+      ecrire(L, {
         date: le, journal: 'BQ', piece: `CNSS-${annee}-T${t}`, libelle: `Versement CNSS du ${nom} ${annee} (VIR)`,
         lignes: [
           { compte: '4531', libelle: `CNSS du ${nom}`, debit: montant, credit: 0 },
@@ -455,9 +416,128 @@ function livreHorsSkanfact(dossierId, o) {
       out.cnss.push(t);
     });
   });
+  return { passees, decls, ecrire };
+}
 
-  gestes.sort((a, b) => a.date.localeCompare(b.date) || a.rang - b.rang || a.ordre - b.ordre).forEach(g => g.run());
-  out.paie = { passees, attend: m };
+// Joués dans l'ORDRE DES DATES (10.12.0). Le numéro d'une écriture naît à sa validation (9.2.0) : il
+// raconte l'ordre du travail. Validés en vrac — l'achat d'équipement d'abord, toutes les déclarations
+// à la fin —, les numéros du livre-journal sautaient (1, 4, 5…) et la déclaration de janvier portait
+// le n° 57. Un exemple se valide comme un cabinet travaille : jour après jour.
+const jouer = (gestes, L) => gestes.sort((a, b) => a.date.localeCompare(b.date) || a.rang - b.rang || a.ordre - b.ordre).forEach(g => g.run(L));
+
+function livreHorsSkanfact(dossierId, o) {
+  const dernier = moisAvant(String(o.aujourdhui).slice(0, 7), 1);
+  const annee = Number(dernier.slice(0, 4));
+  const m = Number(dernier.slice(5, 7));
+  const out = { livre: null, annee, biens: [], salaries: [], bulletins: [], paie: null, declarations: [], cnss: [], motifs: [], precedent: null };
+  const garde = (r, quoi) => { if (!r || r.ok === false) out.motifs.push(`${quoi} : ${(r && (r.motif || (r.motifs || [])[0])) || 'refusé'}`); return r; };
+
+  // ======================= l'exercice PRÉCÉDENT : repris, tenu douze mois, clos =======================
+  const avant = KC.livreVide(dossierId, annee - 1);
+  const prec = { livre: avant, annee: annee - 1, biens: [], salaries: [], bulletins: [], declarations: [], cnss: [], motifs: out.motifs, cloture: null };
+  out.precedent = prec;
+  // Le cabinet a repris le dossier au 1er janvier de l'an dernier : sa balance d'ouverture reprend un
+  // parc DÉJÀ amorti — le pont élévateur a un an. Son cumul à l'ouverture (1 800) est exactement ce
+  // que porte le 28 : c'est le contrôle de la 10.10.0 (C-10), et la fiche porte sa VRAIE date de mise
+  // en service.
+  const ouv = garde(KC.balanceOuverture(avant, [
+    { compte: '223', libelle: 'Pont élévateur', debit: 18000, credit: 0 },
+    { compte: '28', libelle: 'Amortissements cumulés', debit: 0, credit: 1800 },
+    { compte: '532', libelle: 'Banque — solde reporté', debit: 12400, credit: 0 },
+    { compte: '101', libelle: 'Capital', debit: 0, credit: 20000 },
+    { compte: '12', libelle: 'Résultats reportés', debit: 0, credit: 8600 }
+  ], `${annee - 1}-01-01`, 'balance', o.qui, o.quand), 'ouverture');
+  const an = ouv && ouv.ecriture;
+  const pont = garde(KC.ajouterImmobilisation(avant, {
+    libelle: 'Pont élévateur deux colonnes', compte: '223', valeur: 18000,
+    dateAcquisition: `${annee - 2}-01-01`, dateMiseEnService: `${annee - 2}-01-01`, duree: 10, methode: 'lineaire',
+    origine: { source: 'ouverture', docId: an ? `${an.id}#${an.lignes.findIndex(l => l.compte === '223')}` : '', mois: `${annee - 1}-01` }
+  }, o.qui, o.quand), 'pont élévateur');
+  if (pont && pont.ok) prec.biens.push(pont.fiche);
+  const meca = garde(KC.ajouterSalarie(avant, mecanicien(annee), o.qui, o.quand), 'Mounir Jaziri');
+  if (meca && meca.ok) prec.salaries.push(meca.salarie);
+
+  const gestesAvant = [], reports = [];
+  tenirAnnee(avant, o, { annee: annee - 1, dernier: 12, termines: 12, facteur: CROISSANCE, out: prec, garde, gestes: gestesAvant, reports });
+  // La dotation du 31 décembre : une écriture d'INVENTAIRE, passée à la clôture (9.0.0) — après les
+  // pièces de l'année, donc en dernier dans l'ordre du travail.
+  gestesAvant.push({ date: `${annee - 1}-12-31`, rang: 20, ordre: gestesAvant.length, run: L => {
+    KC.ecrituresImmobilisations(L, annee - 1).filter(x => x.genre === 'dotation').forEach(x => {
+      const e = KC.ajouterEcriture(L, x, o.qui, o.quand);
+      garde(KC.validerEcriture(L, e.id, o.qui, o.quand), `dotation ${annee - 1}`);
+      KC.noterEcritureImmo(L, x.immoId, annee - 1, e.id);
+    });
+  } });
+  jouer(gestesAvant, avant);
+
+  // La clôture, sa réouverture et la seconde clôture, à des dates PASSÉES : le 12 mars (l'usage, une
+  // fois décembre déclaré et payé), et jamais après aujourd'hui — en février, l'histoire se resserre.
+  const jour = iso => Date.parse(`${iso}T15:00:00Z`);
+  const tClos = Math.min(jour(`${annee}-03-12`), jour(String(o.aujourdhui).slice(0, 10)) - 8 * 864e5);
+  const tRouvert = tClos + 6 * 864e5;
+  const tReclos = tRouvert + 3 * 3600e3;
+  garde(KC.cloturerExercice(avant, o.qui, tClos), `clôture de ${annee - 1}`);
+  garde(KC.rouvrirExercice(avant, MOTIF_REOUVERTURE, o.qui, tRouvert), `réouverture de ${annee - 1}`);
+  const oubliee = KC.ajouterEcriture(avant, {
+    date: `${annee - 1}-12-24`, journal: 'BQ', piece: `ASS-${annee - 1}-12`, libelle: 'Prélèvement assurance de l\'atelier (décembre)',
+    lignes: [
+      { compte: '616', libelle: 'Assurance multirisque de l\'atelier', debit: ASSURANCE, credit: 0 },
+      { compte: '532', libelle: 'Prélèvement assurance', debit: 0, credit: ASSURANCE }
+    ]
+  }, o.qui, tRouvert + 1800e3);
+  garde(KC.validerEcriture(avant, oubliee.id, o.qui, tRouvert + 1800e3), 'la pièce oubliée');
+  garde(KC.cloturerExercice(avant, o.qui, tReclos), `seconde clôture de ${annee - 1}`);
+  prec.cloture = { closLe: tClos, rouvertLe: tRouvert, reclosLe: tReclos, motif: MOTIF_REOUVERTURE, oubliee: oubliee.id };
+
+  // =================== l'exercice COURANT : ouvert par le moteur, comme « Ouvrir N+1 » ===================
+  const livre = KC.livreSuivantVide(avant);
+  out.livre = livre;
+  const suivant = garde(KC.ouvrirExerciceSuivant(avant, livre, o.qui, o.quand), `ouverture de ${annee}`);
+  if (suivant && suivant.ok && suivant.ecriture) garde(KC.validerEcriture(livre, suivant.ecriture.id, o.qui, o.quand), `à-nouveaux de ${annee}`);
+  out.anouveaux = suivant && suivant.ok ? { ecritureId: suivant.ecriture && suivant.ecriture.id, biens: suivant.biens.total, salaries: suivant.salaries.total } : null;
+
+  // L'aide, embauché le mois dernier (voir `mecanicien`) : le seul salarié qui ne vient pas du registre.
+  const embaucheAide = m >= 2 ? m - 1 : m;
+  garde(KC.ajouterSalarie(livre, { id: 'sal-exemple-2', nom: 'Yassine Gharbi', poste: 'Aide-mécanicien', contrat: 'cdd',
+    embauche: `${annee}-${pad(embaucheAide)}-01`, brut: 650, cnss: '' }, o.qui, o.quand), 'Yassine Gharbi');
+
+  const gestes = reports.slice();   // les paiements de janvier de l'exercice précédent, dans CE livre
+  // Un achat de l'année, facture puis règlement, et sa fiche rattachée à la ligne qui l'a porté :
+  // sans ce rattachement, l'écran proposerait de créer une fiche qui existe déjà.
+  const mAcq = Math.max(1, m - 2);
+  const jAcq = `${annee}-${pad(mAcq)}-10`;
+  const ecrire = (ecriture, quoi) => {
+    const e = KC.ajouterEcriture(livre, ecriture, o.qui, o.quand);
+    garde(KC.validerEcriture(livre, e.id, o.qui, o.quand), quoi);
+    return e;
+  };
+  gestes.push({ date: jAcq, rang: 1, ordre: gestes.length, run: () => {
+    const fac = ecrire({
+      date: jAcq, journal: 'AC', piece: 'F-2291', libelle: 'Facture Auto Équipement Tunis — valise de diagnostic et ordinateur',
+      lignes: [
+        { compte: '228', libelle: 'Valise de diagnostic et ordinateur d\'atelier', debit: 2400, credit: 0 },
+        { compte: '4366', libelle: 'TVA déductible', debit: 456, credit: 0 },
+        { compte: '404', libelle: 'Auto Équipement Tunis', tiers: 'Auto Équipement Tunis', debit: 0, credit: 2856 }
+      ]
+    }, 'facture d\'équipement');
+    garde(KC.ajouterImmobilisation(livre, {
+      libelle: 'Valise de diagnostic et ordinateur d\'atelier', compte: '228', valeur: 2400, tva: 456,
+      dateAcquisition: jAcq, dateMiseEnService: jAcq, duree: 3, methode: 'lineaire',
+      origine: { source: 'saisie', docId: `${fac.id}#0`, mois: jAcq.slice(0, 7) }
+    }, o.qui, o.quand), 'valise de diagnostic');
+  } });
+  gestes.push({ date: `${annee}-${pad(mAcq)}-15`, rang: 1, ordre: gestes.length, run: () => ecrire({
+    date: `${annee}-${pad(mAcq)}-15`, journal: 'BQ', piece: 'F-2291', libelle: 'Règlement Auto Équipement Tunis (VIR)',
+    lignes: [
+      { compte: '404', libelle: 'Auto Équipement Tunis', tiers: 'Auto Équipement Tunis', debit: 2856, credit: 0 },
+      { compte: '532', libelle: 'Règlement Auto Équipement Tunis', debit: 0, credit: 2856 }
+    ]
+  }, 'règlement de l\'équipement') });
+  const t = tenirAnnee(livre, o, { annee, dernier: m, termines: m - 1, facteur: 1, prime: true, out, garde, gestes, reports: null });
+  jouer(gestes, livre);
+  out.biens = (livre.immobilisations || []).slice();
+  out.salaries = (livre.salaries || []).slice();
+  out.paie = { passees: t.passees, attend: m };
   return out;
 }
 
