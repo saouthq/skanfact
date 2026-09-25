@@ -7,6 +7,57 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 10.14.0 — 25/09/2026
+
+**La visite guidée, et des chiffres vérifiés deux fois.** La dernière stable en ligne était la
+**10.12.0**. Cette version rattrape la 10.13.0-beta.1 (publiée en essai) et la 10.14.0-beta.1 (jamais
+publiée). Publiée en stable **à la demande de Skander** : la règle du projet voulait une bêta
+d'abord, parce que cette version touche au moteur comptable. C'est sa décision, notée ici.
+
+**Découvrir avant de remplir**
+- **Le premier lancement ouvre une porte** : « Découvrir avec un exemple » (une entreprise de cinq
+  ans, visitée en douze chapitres) ou « Commencer avec mon entreprise » (trois questions au lieu de
+  six). Le RIB et la copie de sécurité se demandent plus tard, dans « Tes premiers pas ».
+- **Chaque page a sa visite guidée**, et chaque geste important son parcours pas à pas : faire un
+  devis, joindre un justificatif, relier son comptable, répondre à ses questions. Tout est dans
+  « Me guider », en bas du menu.
+- **Ta facture à ton image** (logo, cachet, couleurs, vus sur la facture même), **tes clients et ton
+  catalogue importés d'un tableur**, et **ta série de factures qui continue** si tu facturais déjà
+  ailleurs.
+- **Acheter ta licence depuis l'application** : Paramètres → Licence, paiement en ligne, et la clé
+  revient toute seule.
+- **SkanFact Cabinet a la même porte, les mêmes visites**, un exemple sur deux exercices, et le
+  fichier d'appairage qui part chez tes clients avec son message.
+
+**Ce qui était faux dans les chiffres, et qui est corrigé**
+- **Le crédit de TVA de décembre se perdait chaque 1er janvier : tu payais la TVA en trop.** Il se
+  reporte désormais d'une année à l'autre. **Si tu as déclaré une TVA de janvier avec SkanFact alors
+  que décembre laissait un crédit, vérifie cette déclaration avec ton comptable.**
+- **La TVA d'un acompte fournisseur était déduite deux fois** dans la déclaration.
+- **Au forfait ou exonéré, la TVA de tes achats ne se déduit plus** : elle fait partie du coût. Et
+  passer du forfait au réel ne fait plus naître de factures sans TVA.
+- **La retenue à la source naît le jour du paiement**, pour celle que tu fais comme pour celle que ton
+  client te fait. Un avoir posé après ne réécrit plus un mois déjà déclaré.
+- **Un paiement en devise passe à la banque au taux du jour**, et l'écart de change va au résultat.
+  Un avoir dans une autre devise que sa facture la diminue de sa contre-valeur.
+- **Le stock tient au bilan**, février s'amortit comme les autres mois, un salaire payé sans bulletin
+  est une charge, une avance sur salaire sort de la banque, le seuil de rentabilité et les
+  statistiques disent le même résultat que la comptabilité.
+- **Les états financiers ne comptent plus un emprunt dans les capitaux propres**, et l'excédent brut
+  d'exploitation ne compte plus les intérêts (les deux applications).
+- **SkanFact Cabinet** : la déclaration d'un mois en crédit se calcule juste, une pièce saisie après
+  l'écriture de déclaration se complète, et un exercice clos ne bouge plus.
+
+**Refais les paquets déjà envoyés à ton comptable** s'ils portent de la TVA non récupérable, du stock
+suivi ou une facture de solde remisée : ceux d'avant cette version ne gardent pas le résumé qui
+permet à SkanFact de te le signaler. Les paquets fabriqués à partir de cette version le disent tout
+seuls quand un mois a changé.
+
+**Plus rapide sur de gros dossiers** : l'application ne gèle plus à l'ouverture avec des milliers de
+pièces, et tout tableau long se pagine.
+
+Le détail complet est dans les deux sections qui suivent.
+
 ## 10.14.0-beta.1 — 24/09/2026
 
 **La visite guidée, et un premier jour qui commence par découvrir.** Skander : « quelqu'un qui
