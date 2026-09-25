@@ -236,6 +236,19 @@ absente~~ (« Vendue le », en tête).
   clients déborde encore d'une quarantaine de pixels quand les montants dépassent cent millions~~
   (fait : le matricule se coupe après ses « / ») ; la Déclaration employeur et le Registre du personnel restent d'un seul tenant (ce sont des
   documents imprimés, pas des listes).
+- **La vérité comptable (10.14.0), ce qui reste** :
+  - **Les paquets fabriqués avant la 10.14.0 n'ont pas de sceau** : SkanFact ne peut pas dire s'ils
+    sont devenus faux avec les corrections de cette version (TVA non récupérable, stock au bilan,
+    solde remisé, février). Le CHANGELOG demande de les refaire ; à dire aussi, de vive voix, au
+    cabinet pilote et à Skander pour ses propres mois déjà envoyés.
+  - **La prévision de trésorerie ne compte pas l'argent dû à un client** (un trop-perçu pas encore
+    rendu, un avoir libre) : elle ne projette que les échéances engagées, et ces dettes n'ont pas de
+    date. À décider : les montrer en bas de la courbe, sans date, plutôt que les taire.
+  - **Le Cabinet numérote ses propres pièces** dans un livre créé depuis les paquets (le numéro naît
+    à la validation, 9.2.0) : l'INVENTAIRE-2025, n° 272 chez le client, y prend le numéro de sa
+    validation au Cabinet. C'est voulu (le livre-journal officiel est celui du comptable), mais la
+    référence de pièce reste le seul identifiant commun — à dire dans l'Aide du Cabinet si le pilote
+    s'y trompe.
 - Les trois pistes jamais demandées, gardées pour mémoire : séparer les installateurs arm64 / x64
   (les 222 Mo du dmg universel), la signature Apple et Windows (certificats payants — mais elle
   passe **avant la première vente**, cf. `QUESTIONS.md` : un expert-comptable ne clique pas sur

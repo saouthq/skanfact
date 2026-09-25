@@ -97,12 +97,16 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Une écriture **validée** ne se modifie jamais : elle se contre-passe, à la date du jour | 9.2.0 |
 | Une **extourne** n'est pas une contre-passation : l'originale reste dans son exercice, avec son numéro | 9.3.0, 9.8.0 |
 | Les **à-nouveaux** se calculent sur les écritures réelles, jamais sur les à-nouveaux précédents | 9.0.0, 9.8.0 |
-| Un **numéro** naît à la validation, et le contrôle passe AVANT l'attribution ; l'écran l'AFFICHE, il ne le recompte pas | 9.2.0 ; 6.0.0 — `nextNumber` ; 9.8.8 — T-52, le livre-journal qui renumérotait par date |
+| Un **numéro** naît à la validation, et le contrôle passe AVANT l'attribution ; l'écran l'AFFICHE, il ne le recompte pas | 9.2.0 ; 6.0.0 — `nextNumber` ; 9.8.8 — T-52, le livre-journal qui renumérotait par date ; 10.14.0 — le Cabinet recomptait le numéro du client, et la recherche le changeait |
 | Un **numéro qu'on n'a pas encore pris se LIT** (`etatNumerotation`), il ne se réserve pas (`nextNumber`) | 10.14.0 — l'aperçu de la prochaine facture ; 6.0.0 |
 | On pointe une **occurrence**, jamais une règle ; et le pense-bête dit qu'il n'est qu'un pense-bête | 7.21.0, 5.2.0, 9.4.6 |
 | Un **rôle** désigne le compte ; un préfixe écrit à part se trompe de compte | 10.12.0 — la déclaration d'employeur lisait le 65, la paie écrit au 645 |
 | Une **dotation** se réclame à l'inventaire, au dernier mois ; une sortie d'actif, tout de suite | 10.12.0 |
 | Un **écart d'ouverture** se pose en à-nouveaux COMPLÉMENTAIRES au 1er janvier, jamais par contre-passation puis nouvelle ouverture ; un **miroir** reste dans l'exercice de son livre | 10.14.0 — `poserComplementAnouveaux`, `dateDuMiroir` |
+| Un chiffre qu'une **page** montre existe dans les **écritures**, sinon le bilan ment | 10.14.0 — le stock valorisé depuis la 4.0.0, et le 37 dans aucune écriture |
+| Une **TVA non récupérable** est un coût, et elle va où va la dépense (bien, stock, charge) | 10.14.0 — `coutAchat` |
+| Un **mois** finit à son vrai dernier jour, et **février** compte en base 360 ; les douze mois font l'année | 10.14.0 — « arrêtés au 31/09 », `fin360` |
+| Un **paquet envoyé** garde son sceau : un mois dont les écritures ont changé depuis le DIT, et propose de le refaire | 10.14.0 — `sceauEcritures`, `ecartsSceau` |
 
 **Les tests**
 
@@ -113,11 +117,11 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Une **suite découpée** que le lanceur ne charge pas n'existe pas : le dossier fait foi | 9.4.10 |
 | Un montant qui se **divise sans reste** ne prouve rien d'un arrondi : les DONNÉES du test comptent autant que sa forme | 9.6.1 |
 | Une **réexportation** se prouve par l'identité d'objet, jamais par le résultat | 9.6.1 |
-| Une preuve par réintroduction ne vaut que sur un lot **VERT** : sinon on mesure le vide | 9.7.0 |
+| Une preuve par réintroduction ne vaut que sur un lot **VERT** : sinon on mesure le vide | 9.7.0 ; 10.14.0 — re-rencontrée |
 | Quand une **mesure fait changer le code**, c'est l'INSTRUMENT qui se relit en premier : sinon il annonce un défaut qui n'existe plus | 9.9.1 — `npm run charge` mesurait le base64 d'un livre devenu binaire par sa faute |
 | Un **instrument qui n'ATTEINT pas l'écran** annonce « tout va bien » : l'état par défaut de l'objet qu'on ouvre cache la page autant que l'onglet par défaut | 9.8.8 — T-55, quatre écrans sur onze ; 9.4.3 ; 10.6.0 — cinq captures sur dix, et huit surfaces qu'aucune adresse ne mène ; 10.8.0 — un formulaire à DEUX visages, mesuré dans un seul |
 | Un test **trop LARGE** laisse passer le défaut, aussi sûrement qu'un test trop étroit accuse du code juste | 9.9.0 — la seconde piste d'audit qui satisfaisait l'assertion, la tranche qui avalait la porte ; 9.4.7 |
-| Un test dont les **DONNÉES ne discriminent pas** ne prouve rien : le modèle livré n'avait aucun préfixe imbriqué | 10.0.0 ; 9.6.1 |
+| Un test dont les **DONNÉES ne discriminent pas** ne prouve rien : le modèle livré n'avait aucun préfixe imbriqué | 10.0.0 ; 9.6.1 ; 10.14.0 — un sceau qui ne bougeait que des débits |
 | **Élargir** une sonde se prouve dans les DEUX sens : qu'elle voie le défaut, et qu'elle ne voie rien ailleurs | 9.8.8 — T-49 bis, 28 accusations sur du code juste ; 10.8.0 — le garde-fou qui ne lisait qu'une famille de déclarations sur deux |
 | Un **refus qu'on avale** en silence est pire que le refus : l'écran affirme alors le contraire du vrai | 9.8.0 |
 | Un parcours qui compare du texte **aplatit les espaces** : `textContent` garde les retours de la source — et COLLE deux cellules voisines | 9.8.0 ; 10.12.0 — « Facture corrigéeFAC- » |
@@ -190,6 +194,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Un CSS **physique** décrit un écran, un CSS **logique** décrit une lecture ; l'exception est NOMMÉE | 9.4.10 |
 | Une **règle générale qui vise un élément** avale l'exception qu'on vient d'y poser (`:not()`) | 7.23.0, 7.27.0, 7.30.0, 9.4.8 |
 | Une **phrase rassurante** se vérifie d'abord sur un univers non vide | 7.0.0, 7.3.0, 9.4.2 ; 10.4.0 — une alerte aussi |
+| Une **égalité affichée** se vérifie avant d'être affichée : l'équation ne paraît que si le calcul tombe | 10.14.0 — les états d'un mois en cours |
 | Une **phrase d'état vide** dit SA raison, et le jour où ça changera | 10.12.0 — E-06, « aucune pièce datée » sur cinq pièces |
 | Une **garde neuve** ferme la porte ; ce qui est passé AVANT se signale | 10.12.0 — E-04, les bulletins négatifs enregistrés avant la 10.10.0 |
 | Un champ jugé sur sa seule **présence** laisse passer une valeur fausse | 7.6.0 — le matricule inventé ; 10.12.0 — le RIB de dix chiffres |
@@ -7693,6 +7698,71 @@ chaque chiffre calculé par DEUX chemins, devenu une suite permanente (`test/sui
   système des coordonnées ÉCRAN (barre de titre et menu : 46 px de plus). Mesuré pendant un
   défilement animé, le clic tombe une ligne plus haut — j'ai pointé deux mauvaises lignes avant
   de le voir. `clicsel.sh` (scratch) ajoute le décalage.
+
+**Et la vérité comptable, élargie** (Skander : « je ne veux plus aucun calcul ou données ou chiffres
+faux », et « la compta est partagée avec l'app cabinet : quand tu trouves quelque chose, vérifie
+aussi l'app cabinet ») — les invariants ont gagné le stock, le résultat, les mois et le paquet :
+
+- **Un chiffre qu'une page montre existe dans les écritures, ou le bilan ment.** La page Stock
+  valorisait l'étagère depuis la 4.0.0 ; le 37 n'apparaissait dans AUCUNE écriture. Le stock de
+  départ entre au 37 contre le report à nouveau (jamais au résultat, qu'il n'a pas traversé), et
+  l'inventaire du 31 décembre écrit la variation au 603 (`inventaireComptable`) — après elle, le 37
+  vaut `stockTotals` au millime, et 607 + 603 = le coût des sorties de la page Stock. La valeur est
+  UNE : celle de la page Stock, pour la page, le bilan et le résultat.
+- **Une TVA non récupérable est un coût, et elle va où va la dépense** (`coutAchat`) : au 22 pour un
+  bien — il s'amortit TTC —, au 37 pour une marchandise, en charge pour le reste. Les écritures la
+  versaient en charge à part pendant que le résultat, la marge, la fiche du bien et le stock
+  l'ignoraient : deux chemins, deux chiffres.
+- **Deux résultats pour le même exercice, c'est un de trop.** Le résultat simplifié de l'onglet TVA
+  oubliait la TVA non récupérable, les achats d'un article non suivi, les frais bancaires, les OD et
+  les cessions ; sur un exercice terminé il est maintenant celui des états, et un invariant exige
+  aussi que **les douze mois fassent l'année** — une erreur qui se compense sur l'année ne se voit
+  que mois par mois (215g), et celle-ci ne se voyait qu'en additionnant les mois.
+- **Un mois finit à son vrai dernier jour, et février compte en base 360.** `period()` arrêtait
+  chaque mois au 31 (« arrêtés au 31/09/2025 ») ; et `days360` borne le jour à 30 (`min(d, 30)`) :
+  le 28 février n'est pas un mois entier, donc février comptait deux jours de trop que mars
+  reprenait. `packPeriod` donne le vrai dernier jour, `fin360` fait du dernier jour de février un
+  30 : chaque mois entier vaut un douzième de l'annuité. Le test l'exige sur un bien à 720 (60 par
+  mois) ET sur la somme des douze mois — un montant qui se divise sans reste ne prouve rien
+  d'un arrondi (9.6.1), un mois de février, si.
+- **Une égalité affichée se vérifie avant d'être affichée.** Les états d'un mois en cours attendent
+  deux écritures d'inventaire (la dotation, la variation du stock) : la phrase les nomme, et refait
+  le calcul jusqu'au résultat simplifié — `A − dotation ± variation = résultat` n'apparaît que si le
+  calcul TOMBE (`tombe`). Une équation écrite à l'écran est une promesse ; une équation fausse est
+  pire qu'une phrase.
+- **Une facture de solde remisée ne se remise pas deux fois** (`facteurRemise`) : le facteur se
+  calcule sur les lignes que la remise TOUCHE, jamais sur un total qui porte la déduction d'acompte
+  (`noDiscount`). Et l'acompte facturé est du chiffre d'affaires : Marges et Statistiques disent le
+  même, mois par mois.
+- **Corriger un calcul change des mois déjà envoyés : le paquet garde son sceau, et un mois qui
+  change le DIT** (`sceauEcritures`, `ecartsSceau`). Le journal est DÉDUIT : chaque correction de
+  cette version réécrit silencieusement des mois qu'un comptable a déjà reçus. Le paquet fabriqué
+  garde le débit et le crédit de chaque compte ; si l'écran ne les retrouve plus, le vert passe sur
+  « Refaire le paquet » et nomme les comptes (le côté qui a bougé seulement). Un paquet d'avant
+  n'a pas de sceau : on ne peut rien en dire, et le CHANGELOG demande de refaire ceux qui portaient
+  ce que la version corrige — c'est la seule honnêteté possible sur le passé.
+- **Deux écrans qui montrent la même pièce disent le même NUMÉRO.** Le paquet porte le numéro du
+  client depuis E-07 (10.12.0) ; le Cabinet le recomptait 1..n (la règle de la 9.8.8, écrite quand
+  le paquet n'en portait pas) — INVENTAIRE-2025, n° 272 chez le client, était « 41 » au Cabinet, et
+  « 1 » dès qu'on le cherchait. `journalDepuisLignes` reprend les numéros reçus quand ils TIENNENT
+  (un par pièce, aucun doublon), rend `numeros: 'livre' | 'client' | 'recomptes'`, et l'écran
+  numérote sur la PÉRIODE avant de filtrer : **un numéro qui change avec la recherche n'est plus un
+  numéro**. Le test de la 9.8.8 qui exigeait le recompte est retourné (trentième fois).
+- **Un nombre annoncé se compte sur ce que le code écrit** : « 16 fichiers » pour un paquet qui en
+  a 17 — la signature, ajoutée par le processus principal, n'entrait pas dans le compte. Le test lit
+  les `files.push` de `pack:build` et exige que l'annonce les ajoute (trente et unième assertion
+  retournée : celle de la 10.13.0 exigeait `+ 2`).
+- **Une preuve sur un lot rouge ne prouve rien — re-rencontrée** (9.7.0) : le premier lot de preuves
+  a rendu « TOMBE » partout, parce que la suite tombait déjà (un pluriel `pl(n, 'autre compte')`
+  sans son pluriel, deux tests de la 10.13.0). On vérifie le code de sortie AVANT la première
+  preuve.
+- **Des données qui ne bougent qu'un côté ne prouvent que ce côté** : le test du sceau ne changeait
+  que des débits, et retirer la comparaison des crédits le laissait vert. Il change aussi un crédit
+  seul, et fait disparaître un compte.
+- **Vérifier le Cabinet, c'est relancer le Cabinet** : son processus principal `require` le gabarit
+  d'exemple UNE fois ; régénéré après son démarrage, il gardait l'ancien, et la recherche
+  « INVENTAIRE » rendait zéro pièce. Avant de conclure qu'une écriture manque, vérifier que l'objet
+  regardé est celui qu'on vient de fabriquer (10.12.0, « v44.4.1 »).
 
 ## Pistes pour la suite (non demandées)
 

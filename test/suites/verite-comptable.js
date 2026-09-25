@@ -59,6 +59,10 @@ function ecarts(data) {
       ecart(`${mm} TVA déductible`, mouv(acc.tvaDeductible, 1), vr.deductible);
       ecart(`${mm} TVA déductible par taux`, Object.values(vr.byRate).reduce((s, x) => s + x.deductible, 0), vr.deductible);
       ecart(`${mm} chiffre d'affaires HT`, -r3(E.filter(e => e.account.startsWith('70')).reduce((s, e) => s + e.debit - e.credit, 0)), vr.salesHT);
+      // La page Marges et les Statistiques disent le même chiffre d'affaires, mois par mois (10.14.0).
+      const st = core.salesTotals(data, co, pm.from, pm.to).ht;
+      ecart(`${mm} marges par client / statistiques`, core.marginBy(data, co, pm.from, pm.to, 'client', 0).reduce((s, r) => s + r.revenue, 0), st);
+      ecart(`${mm} marges par prestation / statistiques`, core.marginBy(data, co, pm.from, pm.to, 'item', 0).reduce((s, r) => s + r.revenue, 0), st);
     }
     // Le paquet du comptable annonce, mois par mois, ce que dit la CHAÎNE des déclarations :
     // un mois isolé ignore le crédit reporté (3.1.0), et le paquet de mars disait 286,729 DT à
@@ -77,11 +81,33 @@ function ecarts(data) {
     const ef = core.etatsFinanciers(data, co, y, per.to);
     if (!ef.equilibre) out.push(`${y} bilan déséquilibré`);
     ecart(`${y} résultat`, ef.resultat, -solde(bg, '7') - solde(bg, '6'));
+    // En cours d'exercice, les états attendent deux écritures d'inventaire (la dotation, la variation
+    // du stock) que le résultat simplifié compte déjà : l'écran refait ce calcul, il doit tomber juste
+    // (10.14.0) — et le stock « sur l'étagère » qu'il annonce est celui de la page Stock.
+    [`${y}-03-31`, `${y}-06-30`, `${y}-09-30`, per.to].filter(d => d <= per.to && d < `${y}-12-31`).forEach(d => {
+      const e2 = core.etatsFinanciers(data, co, y, d);
+      const sr = core.simpleResult(data, co, { from: `${y}-01-01`, to: d }).resultat;
+      ecart(`${d} états − dotation + variation de stock / résultat simplifié`, e2.resultat - e2.dotationEnAttente + e2.variationStockEnAttente, sr);
+      const stocks = (e2.actif.find(g => g.titre === 'Stocks') || { total: 0 }).total;
+      ecart(`${d} stock du bilan + variation en attente / page Stock`, stocks + e2.variationStockEnAttente, core.stockTotals(data, d).value);
+    });
     // Les immobilisations d'un exercice terminé sont celles du tableau.
     if (per.to === `${y}-12-31` && per.to < T) {
       const at = core.assetTotals(data, +y);
       ecart(`${y} immobilisations (22)`, solde(bg, acc.immobilisations), at.grossActif);
       ecart(`${y} amortissements (28)`, -solde(bg, acc.amortissements), at.cumulActif);
+      // Le stock du bilan est celui de la page Stock, et le résultat des écritures est le résultat
+      // simplifié de l'onglet TVA — deux calculs que rien ne reliait (10.14.0).
+      ecart(`${y} stock (37) / page Stock`, solde(bg, acc.stocks), core.stockTotals(data, per.to).value);
+      ecart(`${y} résultat des états / résultat simplifié`, ef.resultat, core.simpleResult(data, co, per).resultat);
+      // Les douze mois font l'année : l'amortissement de février comptait deux jours de trop sur
+      // l'écran (le « 31 février »), et vingt-huit jours sur le paquet (10.14.0). Un millime par mois
+      // d'arrondi, pas plus.
+      let depM = 0, resM = 0;
+      for (let m = 1; m <= 12; m++) { const r = core.simpleResult(data, co, core.packPeriod(+y, m)); depM += r.depreciation; resM += r.resultat; }
+      const an = core.simpleResult(data, co, per);
+      if (Math.abs(r3(depM) - an.depreciation) > 0.012) out.push(`${y} amortissements : douze mois ${r3(depM)} ≠ année ${an.depreciation}`);
+      if (Math.abs(r3(resM) - an.resultat) > 0.012) out.push(`${y} résultat : douze mois ${r3(resM)} ≠ année ${an.resultat}`);
     }
     // Les à-nouveaux de l'exercice suivant sont les soldes de bilan de celui-ci.
     if (`${+y + 1}-01-01` <= T) {
@@ -176,5 +202,207 @@ t('10.14.0 : un salaire payé et une avance versée se pointent au rapprochement
   const prefixes = [...cm.matchAll(/id: '([a-z]+-)' \+/g)].map(m => m[1]);
   assert.ok(prefixes.includes('pay-') && prefixes.includes('av-'), 'les préfixes des mouvements déduits ont changé');
   prefixes.forEach(p => assert.ok(bloc.includes(`'${p}'`), `un mouvement « ${p}… » ne se pointe pas : sa case accepte le clic et ne fait rien`));
+});
+
+// ---------- 10.14.0 : ce qu'un achat coûte, et le stock du bilan ----------
+const base0 = extra => core.migrateData({ ...JSON.parse(JSON.stringify(core.DEFAULT_DATA)), company: CO, ...extra });
+const soldeDe = (E, compte) => r3(E.filter(e => e.account === compte).reduce((x, e) => x + e.debit - e.credit, 0));
+
+t('10.14.0 : la TVA non déductible fait partie du coût — la voiture s\'amortit TTC, la réception coûte TTC', () => {
+  // Calculé à la main : voiture 50 000 HT, TVA 19 % non récupérable → 59 500 au 22 ; réception
+  // 180 HT, TVA non récupérable → 214,2 au 606. Rien au 4366, 59 714,2 dus au fournisseur.
+  const d = base0({
+    suppliers: [{ id: 's', name: 'Auto Tunis' }],
+    purchases: [{ id: 'p', kind: 'facture', supplierId: 's', number: 'AT-1', date: '2026-02-10', payments: [], createdAt: 1, lines: [
+      { label: 'Voiture de tourisme', qty: 1, unitPrice: 50000, vatRate: 19, deductible: false, destination: 'immobilisation' },
+      { label: 'Réception', qty: 1, unitPrice: 180, vatRate: 19, deductible: false, destination: 'charge' }] }]
+  });
+  const acc = core.chartAccounts(d);
+  const E = core.journalEntries(d, CO, { from: '2026-02-01', to: '2026-02-28' }, { sections: ['achats'] });
+  assert.strictEqual(soldeDe(E, acc.immobilisations), 59500, 'la TVA non récupérable d\'une voiture partait en charge au lieu d\'entrer dans son coût');
+  assert.strictEqual(soldeDe(E, acc.charges), 214.2);
+  assert.strictEqual(soldeDe(E, acc.tvaDeductible), 0);
+  assert.strictEqual(core.assetsToCreate(d)[0].amount, 59500, 'la fiche proposée ne vaut pas ce que le 22 porte');
+  const r = core.simpleResult(d, CO, { from: '2026-02-01', to: '2026-02-28' });
+  assert.strictEqual(r.charges, 214.2, 'le résultat simplifié oubliait la TVA non récupérable');
+  assert.strictEqual(r.immo, 59500);
+});
+
+t('10.14.0 : un bien payé en devise se propose en dinars, au montant que le 22 porte', () => {
+  const d = base0({
+    suppliers: [{ id: 's', name: 'Fournisseur Lyon' }],
+    purchases: [{ id: 'p', kind: 'facture', supplierId: 's', number: 'L-9', date: '2026-02-10', currency: 'EUR', exchangeRate: 3.4, payments: [], createdAt: 1,
+      lines: [{ label: 'Machine', qty: 1, unitPrice: 1000, vatRate: 0, destination: 'immobilisation' }] }]
+  });
+  const E = core.journalEntries(d, CO, { from: '2026-02-01', to: '2026-02-28' }, { sections: ['achats'] });
+  assert.strictEqual(soldeDe(E, core.chartAccounts(d).immobilisations), 3400);
+  assert.strictEqual(core.assetsToCreate(d)[0].amount, 3400, 'la fiche proposait 1 000 « dinars » pour une machine payée 1 000 euros');
+});
+
+t('10.14.0 : un acompte ne s\'ajoute pas à sa facture — ni dans la marge d\'une affaire, ni dans « Acheté HT »', () => {
+  const d = base0({
+    suppliers: [{ id: 's', name: 'Bois du Sahel' }],
+    projects: [{ id: 'aff', name: 'Chantier', clientId: '' }],
+    purchases: [
+      { id: 'a', kind: 'acompte', supplierId: 's', number: 'AC-1', date: '2026-02-01', projectId: 'aff', achatLie: 'f', payments: [], createdAt: 1, lines: [{ label: 'Acompte bois', qty: 1, unitPrice: 300, vatRate: 19, destination: 'charge' }] },
+      { id: 'f', kind: 'facture', supplierId: 's', number: 'F-1', date: '2026-02-20', projectId: 'aff', payments: [], createdAt: 2, lines: [{ label: 'Bois', qty: 1, unitPrice: 1000, vatRate: 19, destination: 'charge' }] }]
+  });
+  assert.strictEqual(core.projectMargin(d, CO, 'aff').cost, 1000, 'le chantier payait deux fois l\'acompte');
+  assert.strictEqual(core.supplierSummary(d, CO, 's', '2026-03-01').ht, 1000);
+});
+
+t('10.14.0 : le 31 décembre, l\'inventaire porte le stock au bilan, et 607 + 603 font le coût des sorties', () => {
+  // Calculé à la main : un stock de départ de 10 à 5 (50), un achat de 20 à 6 (120), une vente de
+  // 15 au coût moyen 5,667 (85,005). Au 31/12 il reste 15 pour 84,995. Le départ entre en
+  // ouverture (37 / report), la variation vaut 84,995 − 50 = 34,995 (37 au débit, 603 au crédit),
+  // et 607 + 603 = 120 − 34,995 = 85,005 : exactement le coût de la vente.
+  const d = base0({
+    clients: [{ id: 'c', name: 'Client' }], suppliers: [{ id: 's', name: 'Grossiste' }],
+    catalog: [{ id: 'k', label: 'Vis', tracked: true, initialQty: 10, initialCost: 5, initialDate: '2024-06-01' }],
+    purchases: [{ id: 'p', kind: 'facture', supplierId: 's', number: 'G-1', date: '2024-07-01', payments: [], createdAt: 1, lines: [{ label: 'Vis', itemId: 'k', qty: 20, unitPrice: 6, vatRate: 19, destination: 'stock' }] }],
+    documents: [{ id: 'v', type: 'facture', number: 'FAC-2024-001', status: 'envoyée', date: '2024-09-01', dueDate: '2024-10-01', clientId: 'c', payments: [], createdAt: 1, lines: [{ label: 'Vis', itemId: 'k', qty: 15, unitPrice: 10, vatRate: 19 }] }]
+  });
+  const acc = core.chartAccounts(d);
+  const E = core.journalEntries(d, CO, { from: '2024-01-01', to: '2024-12-31' });
+  assert.strictEqual(soldeDe(E, acc.stocks), 84.995, 'le bilan n\'a pas le stock du 31 décembre');
+  assert.strictEqual(soldeDe(E, acc.variationStocks), -34.995);
+  assert.strictEqual(r3(soldeDe(E, acc.achatsStock) + soldeDe(E, acc.variationStocks)), 85.005);
+  assert.strictEqual(soldeDe(E, acc.reportANouveau), -50, 'le stock de départ n\'est pas une recette de l\'année : il entre contre le report');
+  const per = { from: '2024-01-01', to: '2024-12-31' };
+  assert.strictEqual(core.etatsFinanciers(d, CO, '2024', per.to).resultat, core.simpleResult(d, CO, per).resultat);
+  // Avant le 31 décembre, rien : c'est une écriture d'inventaire, comme la dotation.
+  assert.strictEqual(core.journalEntries(d, CO, { from: '2024-01-01', to: '2024-12-31' }, { todayIso: '2024-12-31', sections: ['inventaire'] }).length, 0);
+});
+
+t('10.14.0 : une marchandise à TVA non récupérable entre au stock à son coût TTC, comme au 607', () => {
+  const d = base0({
+    suppliers: [{ id: 's', name: 'Grossiste' }],
+    catalog: [{ id: 'k', label: 'Vis', tracked: true }],
+    purchases: [{ id: 'p', kind: 'facture', supplierId: 's', number: 'G-2', date: '2026-02-01', payments: [], createdAt: 1, lines: [{ label: 'Vis', itemId: 'k', qty: 10, unitPrice: 5, vatRate: 19, deductible: false, destination: 'stock' }] }]
+  });
+  const E = core.journalEntries(d, CO, { from: '2026-02-01', to: '2026-02-28' }, { sections: ['achats'] });
+  assert.strictEqual(soldeDe(E, core.chartAccounts(d).achatsStock), 59.5);
+  assert.strictEqual(core.stockOf(d, 'k', '2026-02-28').value, 59.5);
+});
+
+t('10.14.0 : des frais bancaires payés par un mouvement comptent dans le résultat simplifié', () => {
+  const d = base0({
+    accounts: [{ id: 'b', name: 'Banque', kind: 'banque', opening: 1000, openingDate: '2026-01-01', isDefault: true }],
+    movements: [{ id: 'm', date: '2026-02-15', kind: 'banque', amount: 30, accountId: 'b', label: 'Frais de tenue de compte' }]
+  });
+  const r = core.simpleResult(d, CO, { from: '2026-02-01', to: '2026-02-28' });
+  assert.strictEqual(r.autres, 30);
+  assert.strictEqual(r.resultat, -30, 'le « résultat avant impôt » ignorait les frais bancaires');
+});
+
+t('10.14.0 : la remise d\'une facture de solde ne s\'applique pas deux fois, et l\'acompte compte dans les marges', () => {
+  // Calculé à la main : un acompte de 300 facturé en janvier ; en mars la facture de solde porte une
+  // prestation de 1 000 remisée à 10 % et la déduction de l'acompte (300, sans remise). Net HT du
+  // solde : 1 000 − 100 − 300 = 600. Chiffre d'affaires des deux factures : 900, et la prestation
+  // s'est vendue 900 (1 000 moins la remise) — pas 857,1 (600 ÷ 700 appliqué aux 1 000).
+  const doc = (id, date, lines, extra) => ({ id, type: 'facture', number: 'FAC-2026-' + id, status: 'envoyée', date, dueDate: date, clientId: 'c', payments: [], createdAt: 1, lines, ...extra });
+  const d = base0({ clients: [{ id: 'c', name: 'Hôtel' }], documents: [
+    doc('001', '2026-01-10', [{ label: 'Acompte de 30 % sur le devis', qty: 1, unitPrice: 300, vatRate: 19, noDiscount: true }]),
+    doc('002', '2026-03-10', [{ label: 'Rénovation', qty: 1, unitPrice: 1000, vatRate: 19 }, { label: 'Acompte déjà facturé', qty: 1, unitPrice: -300, vatRate: 19, noDiscount: true }], { discountRate: 10 })] });
+  const somme = (from, to, dim) => r3(core.marginBy(d, CO, from, to, dim, 0).reduce((s, r) => s + r.revenue, 0));
+  assert.strictEqual(core.documentMargin(d.documents[1], d, CO).revenue, 900, 'la remise était appliquée une seconde fois sur la facture de solde');
+  assert.strictEqual(somme('2026-01-01', '2026-03-31', 'client'), 900);
+  assert.strictEqual(somme('2026-01-01', '2026-03-31', 'item'), 900);
+  assert.strictEqual(somme('2026-01-01', '2026-01-31', 'client'), 300, 'l\'acompte de janvier n\'était dans aucune marge');
+  const janvier = core.marginBy(d, CO, '2026-01-01', '2026-01-31', 'item', 0);
+  assert.deepStrictEqual(janvier.map(r => [r.label, r.revenue, r.rate, r.complete]), [['Acomptes facturés (repris au solde)', 300, null, true]]);
+  // Sur la période entière, l'acompte et sa reprise s'annulent : aucune ligne à zéro.
+  assert.ok(!core.marginBy(d, CO, '2026-01-01', '2026-03-31', 'item', 0).some(r => r.acomptes));
+});
+
+t('10.14.0 : février s\'amortit comme les autres mois, et la Comptabilité arrête un mois à son vrai dernier jour', () => {
+  // Calculé à la main : 3 600 DT sur cinq ans, mis en service le 1er janvier 2025 = 720 par an,
+  // 60 par mois en base 360. Lu au 28 février, février en donnait 56 et mars 64 ; lu au
+  // « 31 février » (l'écran), février en donnait 60 et mars 64 — deux jours comptés deux fois.
+  const d = base0({ assets: [{ id: 'a', label: 'Machine', date: '2025-01-01', amount: 3600, years: 5, residual: 0, classId: 'materiel' }] });
+  const mois = m => core.simpleResult(d, CO, core.packPeriod(2025, m)).depreciation;
+  assert.strictEqual(mois(1), 60);
+  assert.strictEqual(mois(2), 60, 'février ne compte que vingt-huit jours d\'amortissement');
+  assert.strictEqual(mois(3), 60, 'mars rattrape les jours que février n\'a pas comptés');
+  assert.strictEqual(r3([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].reduce((s, m) => s + mois(m), 0)), 720);
+  // L'écran : sa période d'un mois se lit sur le vrai calendrier (la jouer, pas la relire).
+  const app = require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'src', 'renderer', 'app.js'), 'utf8');
+  const debut = app.indexOf('const period = () => comptaState.month');
+  const src = app.slice(debut, app.indexOf(';\n', debut) + 1);
+  assert.ok(debut > 0 && src.length < 400, 'tranche de la période de la Comptabilité introuvable');
+  const vm = require('vm');
+  // Rendu dans un autre contexte : l'objet se relit en JSON, sinon son prototype diffère.
+  const jouer = (year, month) => JSON.parse(JSON.stringify(vm.runInNewContext(`${src} period()`, { comptaState: { year, month }, C: core })));
+  assert.deepStrictEqual(jouer('2025', '09'), { from: '2025-09-01', to: '2025-09-30' }, 'les états étaient « arrêtés au 31/09/2025 »');
+  assert.deepStrictEqual(jouer('2024', '02'), { from: '2024-02-01', to: '2024-02-29' });
+  assert.deepStrictEqual(jouer('2025', ''), { from: '2025-01-01', to: '2025-12-31' });
+});
+
+t('10.14.0 : un mois qui a changé depuis son paquet le DIT — et le vert passe sur « Refaire le paquet »', () => {
+  // Un achat de 180 HT au 606, envoyé au comptable ; puis on corrige : la TVA n'était pas
+  // récupérable. Le 606 passe de 180 à 214,2, le 4366 de 34,2 à 0 : deux comptes ont bougé,
+  // calculés à la main, et rien d'autre.
+  const achat = deductible => base0({ suppliers: [{ id: 's', name: 'Traiteur' }], purchases: [{ id: 'p', kind: 'facture', supplierId: 's', number: 'T-1', date: '2026-02-10', payments: [], createdAt: 1,
+    lines: [{ label: 'Réception', qty: 1, unitPrice: 180, vatRate: 19, deductible, destination: 'charge' }] }] });
+  const per = core.packPeriod(2026, 2);
+  const avant = core.packPlan(achat(true), CO, per, {}).sceau;
+  const apres = core.packPlan(achat(false), CO, per, {}).sceau;
+  const acc = core.chartAccounts(achat(true));
+  assert.deepStrictEqual(core.ecartsSceau(avant, avant), [], 'un mois inchangé se dit changé');
+  const ch = core.ecartsSceau(avant, apres);
+  assert.deepStrictEqual(ch.map(x => x.account), [acc.charges, acc.tvaDeductible].sort());
+  assert.deepStrictEqual(ch.find(x => x.account === acc.charges), { account: acc.charges, avant: [180, 0], maintenant: [214.2, 0] });
+  // Un compte dont seul le CRÉDIT bouge (le fournisseur, sur un avoir) se dit aussi : les données
+  // ci-dessus ne changent que des débits, elles ne pouvaient pas le voir.
+  assert.deepStrictEqual(core.ecartsSceau({ 401: [0, 100] }, { 401: [0, 120] }).map(x => x.account), ['401'], 'un crédit qui bouge ne se voit pas');
+  assert.deepStrictEqual(core.ecartsSceau({ 401: [0, 100] }, {}).map(x => x.account), ['401'], 'un compte qui disparaît ne se voit pas');
+  // L'écran : l'étape suivante se JOUE, avec un paquet dont le sceau est l'ancien.
+  const app = require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'src', 'renderer', 'app.js'), 'utf8');
+  const debut = app.indexOf('const change = sent.length');
+  const fin = app.indexOf(";\n", app.indexOf('const suivante = ', debut)) + 1;
+  const src = app.slice(debut, fin);
+  assert.ok(debut > 0 && src.length < 400 && !src.includes('innerHTML'), 'tranche de l\'étape suivante du paquet introuvable');
+  const jouer = sceau => require('vm').runInNewContext(`${src} suivante`, { sent: [{ at: 1, sceau }], plan: { sceau: apres }, C: core, moisVide: false, enAttente: [], nonParties: [] });
+  assert.strictEqual(jouer(avant), 'refaire', 'le paquet envoyé ne dit plus les écritures du mois, et l\'écran propose de l\'envoyer');
+  assert.strictEqual(jouer(apres), 'envoyer');
+  assert.strictEqual(jouer(undefined), 'envoyer', 'un paquet d\'avant la 10.14.0 n\'a pas de sceau : on ne peut rien en dire');
+  // Le compte de fichiers annoncé est celui que le processus principal écrit : les fichiers du
+  // plan, plus ceux qu'il ajoute lui-même, NOMMÉS dans sa source (« 16 » annoncés, 17 écrits).
+  const main = require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'src', 'main.js'), 'utf8');
+  const build = main.slice(main.indexOf("ipcMain.handle('pack:build'"), main.indexOf('const zip = zipBuffer(files', main.indexOf("ipcMain.handle('pack:build'")));
+  const ajoutes = [...build.matchAll(/files\.(?:push|unshift)\(\{ name: '([^']+)'/g)].map(m => m[1]);
+  assert.deepStrictEqual(ajoutes.sort(), ['00-page-de-garde.pdf', 'manifeste.json', 'signature.json'], 'le paquet gagne un fichier : l\'annonce doit le compter');
+  assert.ok(new RegExp(`plan\\.entries\\.length \\+ ${ajoutes.length}, 'fichier'`).test(app), 'l\'écran n\'annonce pas le nombre de fichiers que le paquet contient');
+  // Le paquet fabriqué emporte son sceau.
+  assert.ok(/sceau: plan\.sceau/.test(app.slice(app.indexOf('data.packs = (data.packs || []).concat'), app.indexOf('save(true)', app.indexOf('data.packs = (data.packs || []).concat')))), 'le paquet fabriqué ne garde pas le résumé de ses écritures');
+});
+
+// Le numéro d'une pièce au Cabinet est celui du client, et il ne bouge pas quand on la cherche :
+// INVENTAIRE-2025 était « n° 272 » chez le client, « 41 » dans le journal du Cabinet et « 1 » dès
+// qu'on le cherchait. On JOUE la tranche de l'écran (vm), sur le paquet de décembre de l'exemple,
+// avec les numéros du client puis sans (un vieux paquet) : dans les deux cas, chercher ne renumérote pas.
+t('10.14.0 : le Cabinet montre le numéro de pièce du client, et une recherche ne le change pas', () => {
+  const fs = require('fs'), path = require('path');
+  const KC = require('../../src/renderer/compta.js');
+  const cab = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'cabinet', 'renderer', 'app.js'), 'utf8');
+  const debut = cab.indexOf('const duJournal = lignes.filter');
+  const fin = cab.indexOf('\n', cab.indexOf('lj.pieces.forEach(p => {', debut)) + 1;
+  const src = cab.slice(debut, fin);
+  assert.ok(debut > 0 && src.length < 2000 && !src.includes('innerHTML'), 'tranche du livre-journal du Cabinet introuvable');
+  const commis = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'cabinet', 'exemple-paquets.json'), 'utf8'));
+  const dec = commis.mois.find(m => m.mois.endsWith('-12'));
+  const lignes = KC.entreesDepuisCsv(dec.fichiers.find(f => f.chemin === 'journaux/ecritures.csv').texte);
+  const inv = lignes.find(l => /^INVENTAIRE-/.test(l.piece));
+  assert.ok(inv && inv.numero > 1, 'le paquet de décembre de l\'exemple doit porter l\'inventaire et son numéro');
+  const jouer = (ls, q) => require('vm').runInNewContext(`${src} lj`, { lignes: ls, s: { journal: '' }, q, KC });
+  const numeroDe = (lj, piece) => (lj.pieces.find(p => p.piece === piece) || {}).numero;
+  // Avec les numéros du client : ce sont les siens, cherchés ou non.
+  assert.strictEqual(numeroDe(jouer(lignes, ''), inv.piece), inv.numero, 'le journal du Cabinet n\'affiche pas le numéro du client');
+  assert.strictEqual(numeroDe(jouer(lignes, 'inventaire'), inv.piece), inv.numero, 'chercher la pièce change son numéro');
+  // Sans numéro (paquet d'avant la 10.12.0) : recompté sur la période, et la recherche garde ce compte.
+  const vieux = lignes.map(l => ({ ...l, numero: 0 }));
+  const n = numeroDe(jouer(vieux, ''), inv.piece);
+  assert.ok(n > 1, 'l\'inventaire du 31 décembre n\'est pas la première pièce du mois');
+  assert.strictEqual(numeroDe(jouer(vieux, 'inventaire'), inv.piece), n, 'la recherche renumérote un vieux paquet');
 });
 };

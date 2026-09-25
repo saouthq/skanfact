@@ -605,8 +605,9 @@ l'écran. Le matricule fiscal (« 1472411D/A/M/000 ») peut maintenant passer à
 
 Un audit a comparé, sur les cinq ans de l'exemple, chaque chiffre que l'application calcule par
 deux chemins différents : la banque du grand livre et celle de la Trésorerie, la TVA des écritures
-et celle de la déclaration, mois par mois, le 411 et le lettrage, le 425 et les salaires dus. Il a
-trouvé trois défauts d'argent :
+et celle de la déclaration, mois par mois, le 411 et le lettrage, le 425 et les salaires dus, le
+stock de la page Stock et celui du bilan, le résultat simplifié et celui des états financiers, les
+douze mois et l'année. Voici ce qu'il a trouvé :
 
 - **La TVA d'un acompte fournisseur était déduite deux fois dans la déclaration.** L'acompte déduit
   sa TVA le mois où il est versé. La facture porte ensuite la TVA du montant entier, acompte compris.
@@ -627,6 +628,45 @@ trouvé trois défauts d'argent :
   au comptable une TVA à décaisser fausse : sur l'exemple, mars disait **286,729 DT** là où l'onglet
   « TVA à payer » disait **52,079 DT**. Le paquet lit maintenant la même chaîne des déclarations que
   l'onglet, et le Cabinet affiche le bon chiffre dans la colonne « TVA à décaisser ».
+- **La TVA non récupérable fait partie du coût, là où la dépense va.** Une voiture de tourisme ou
+  une réception dont la TVA ne se récupère pas coûtait son prix hors taxes au résultat, au stock, à
+  la fiche du bien et à la marge des affaires, pendant que les écritures versaient la TVA en charge
+  à part. Elle suit maintenant sa ligne : au compte du bien (22) pour une immobilisation — la
+  voiture de 50 000 DT HT s'amortit sur 59 500 —, au stock pour une marchandise, en charge pour le
+  reste ; et la fiche proposée pour un bien acheté en devise vaut son montant en dinars.
+- **Un acompte versé à un fournisseur ne s'ajoute plus à sa facture** dans la marge d'une affaire
+  ni dans le « Acheté HT » d'une fiche fournisseur : l'acompte est une avance, la facture le coût.
+- **Le stock tient au bilan.** Le stock de départ d'un article suivi entre au 37 contre le report à
+  nouveau, et l'inventaire du 31 décembre écrit la variation (37 / 603) : le bilan porte ce qui est
+  sur l'étagère, et le coût des marchandises vendues des écritures est celui de la page Stock.
+  Avant, le 37 n'existait dans aucune écriture.
+- **Le résultat simplifié de l'onglet TVA est complet** : la TVA non récupérable, les achats de
+  marchandises d'un article non suivi, les frais bancaires, les écritures diverses et les cessions y
+  entrent. Sur un exercice terminé, il est désormais celui des états financiers, au millime ; et
+  les douze mois font l'année.
+- **Février s'amortit comme les autres mois.** L'écran de la Comptabilité arrêtait un mois au 31 de
+  chaque mois — « arrêtés au 31/09/2025 » — et février comptait deux jours d'amortissement de trop,
+  que mars recomptait. Un mois finit à son vrai dernier jour, et chaque mois entier vaut un douzième
+  de l'annuité.
+- **Les états financiers d'un mois en cours disent ce qu'ils attendent.** Deux écritures
+  d'inventaire ne s'écrivent qu'au 31 décembre : la dotation et la variation du stock. La phrase
+  sous le bilan les nomme toutes les deux et refait le calcul qui mène au résultat simplifié.
+- **Les marges tombent juste avec une remise et un acompte.** Une facture de solde remisée appliquait
+  la remise une seconde fois à ses prestations, et l'acompte facturé n'apparaissait dans aucune
+  marge. Les pages Marges et Statistiques disent désormais le même chiffre d'affaires, mois par mois.
+- **Un mois qui a changé depuis son paquet le dit.** Un paquet fabriqué garde le résumé de ses
+  écritures ; si elles changent ensuite — une réouverture, ou une correction de SkanFact comme
+  celles-ci —, l'onglet Cabinet nomme les comptes qui ont bougé et propose de refaire le paquet.
+  **Si tu as déjà envoyé à ton comptable des paquets de mois qui portent de la TVA non récupérable,
+  du stock suivi ou une facture de solde remisée, refais-les** : ceux d'avant cette version n'ont
+  pas de résumé, SkanFact ne peut pas le voir pour toi.
+- **SkanFact Cabinet montre le numéro de pièce du client.** Depuis la 10.12.0, le paquet porte le
+  numéro que le client lit dans son livre-journal ; le Cabinet l'ignorait et renumérotait ce qu'il
+  affichait — l'inventaire du 31 décembre, n° 272 chez le client, devenait « 41 », puis « 1 » dès
+  qu'on le cherchait. Le comptable et son client parlent désormais de la même pièce, et une recherche
+  ne change plus un numéro. Seul un paquet d'avant la 10.12.0, qui n'en porte pas, se renumérote, et
+  l'écran le dit.
+- Et le paquet annonçait « 16 fichiers » pour 17 : la signature n'était pas comptée.
 
 Et le jeu d'exemple ne payait jamais ses cotisations : cinq ans de CNSS (30 232 DT), d'IRPP
 (12 730 DT) et de TFP s'empilaient au passif. Il les paie désormais, au trimestre pour la CNSS et au

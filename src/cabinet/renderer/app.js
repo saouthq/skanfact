@@ -3361,7 +3361,14 @@
       ? new Set(duJournal.filter(l => `${l.piece} ${l.tiers} ${l.label} ${l.account}`.toLowerCase().includes(q)).map(KC.cleDePiece))
       : null;
     const gardees = trouvees ? duJournal.filter(l => trouvees.has(KC.cleDePiece(l))) : duJournal;
+    // Le numéro d'une pièce se lit sur la PÉRIODE ENTIÈRE, jamais sur ce que le filtre garde : un
+    // numéro qui change quand on cherche la pièce n'est plus un numéro (INVENTAIRE-2025 passait
+    // « n° 1 » dans une recherche). Le livre et les paquets récents portent le leur ; seul un vieux
+    // paquet se recompte, et il se recompte sur tout ce qu'on lit.
+    const tout = KC.journalDepuisLignes(lignes);
+    const numeroDe = new Map(tout.pieces.map(p => [p.key, p.numero]));
     const lj = KC.journalDepuisLignes(gardees);
+    lj.pieces.forEach(p => { if (numeroDe.has(p.key)) p.numero = numeroDe.get(p.key); });
     const cz = KC.centralisateurDepuisLignes(gardees);
     // On pagine les PIÈCES, jamais les lignes : une pièce coupée en deux montrerait un débit sans
     // son crédit, et le lecteur conclurait à un déséquilibre qui n'existe pas. Le pied, lui, porte
@@ -3374,7 +3381,7 @@
     paginate(lj.pieces, s).forEach(p => p.lignes.forEach((e, i) => plates.push({ ...e, numero: p.numero, premiere: i === 0 })));
     return `${barreLivres(`<select id="lv-journal" aria-label="Filtrer par journal"><option value="">Tous les journaux</option>${journaux.map(j => `<option value="${esc(j)}" ${s.journal === j ? 'selected' : ''}>${esc(j)}</option>`).join('')}</select>
       <span class="champ-loupe"><input type="search" id="lv-q" placeholder="Pièce, tiers, libellé…" value="${esc(s.q)}"></span>`, 'Exporter le livre-journal')}
-      <div class="muted small mb">${pl(lj.pieces.length, 'pièce')} · ${pl(gardees.length, 'ligne')}${lj.off.length ? ` · <span class="err-inline">${pl(lj.off.length, 'pièce')} déséquilibrée${lj.off.length > 1 ? 's' : ''}</span>` : ''}</div>
+      <div class="muted small mb">${pl(lj.pieces.length, 'pièce')} · ${pl(gardees.length, 'ligne')}${tout.numeros === 'recomptes' && tout.pieces.length ? ' · <span title="Les paquets lus ne portent pas le numéro de pièce du client (paquets d\'avant la 10.12.0), ou deux paquets donnent le même numéro à deux pièces : elles sont numérotées ici, dans l\'ordre des dates.">numérotées ici, pas chez le client</span>' : ''}${lj.off.length ? ` · <span class="err-inline">${pl(lj.off.length, 'pièce')} déséquilibrée${lj.off.length > 1 ? 's' : ''}</span>` : ''}</div>
       <div class="scroll-x"><table class="list compact"><thead><tr>
         <th class="r nw">N°</th><th class="nw">Date</th><th>Journal</th><th class="nw">Pièce</th><th class="nw">Compte</th>
         <th>Tiers</th><th>Libellé</th><th class="r nw">Débit</th><th class="r nw">Crédit</th><th></th></tr></thead>

@@ -482,11 +482,15 @@
   //   ce que faisait la 9.1.0 : une pièce de mars validée en septembre passait « n° 1 » et poussait
   //   toutes les validées d'avant d'un cran — sur l'écran d'un comptable, le numéro qu'il a vu la
   //   veille avait changé (T-52).
-  // - Des lignes lues dans un PAQUET (pas d'`ecritureId`) : le numéro est DÉDUIT, 1..n, donc mobile
-  //   tant que la période est ouverte — une pièce datée en arrière décale les suivantes. Ce n'est
-  //   pas un défaut à corriger, c'est la raison d'être de la clôture. Le CSV porte bien un « N° »,
-  //   mais c'est celui que le client a déduit au moment de SON export : deux paquets de deux mois
-  //   peuvent donner le même numéro à deux pièces différentes, donc on recompte sur ce qu'on lit.
+  // - Des lignes lues dans un PAQUET (pas d'`ecritureId`) : le numéro est celui que le CLIENT lit
+  //   dans son livre-journal, que le paquet porte depuis la 10.12.0 (E-07). Recompter 1..n ici
+  //   donnait au comptable un autre numéro que celui du client pour la même pièce — « la pièce 42 »
+  //   au téléphone n'était pas la même des deux côtés — et un numéro qui CHANGEAIT avec la recherche
+  //   (l'inventaire du 31 décembre, n° 272 chez le client, s'affichait « 1 » dès qu'on le cherchait).
+  //   On ne recompte que si les numéros reçus ne tiennent pas : absents (un paquet d'avant la
+  //   10.12.0), ou contradictoires — deux paquets fabriqués à des moments différents peuvent donner
+  //   le même numéro à deux pièces, puisque le client DÉDUIT les siens tant que le mois est ouvert.
+  //   `numeros` dit lequel des trois cas on lit (`livre`, `client`, `recomptes`).
   function journalDepuisLignes(entries) {
     const by = {};
     const ordre = [];
@@ -503,6 +507,19 @@
       p.credit = round3(p.credit + num(e.credit));
     });
     const duLivre = ordre.some(k => by[k].lignes.some(e => e.ecritureId));
+    // Les numéros reçus d'un paquet valent s'ils tiennent : chaque pièce en porte UN (le même sur
+    // toutes ses lignes, jamais 0), et deux pièces n'ont jamais le même.
+    let recus = !duLivre && ordre.length > 0;
+    const pris = new Set();
+    if (recus) {
+      for (const k of ordre) {
+        const n = [...new Set(by[k].lignes.map(e => Math.floor(num(e.numero)) || 0))];
+        if (n.length !== 1 || !n[0] || pris.has(n[0])) { recus = false; break; }
+        pris.add(n[0]);
+        by[k].fixe = n[0];
+      }
+      if (!recus) ordre.forEach(k => { by[k].fixe = 0; });
+    }
     const pieces = ordre.map(k => by[k])
       .sort((a, b) => a.date.localeCompare(b.date)
         // Le même jour : les validées dans l'ordre de leur numéro, puis les brouillards.
@@ -511,10 +528,11 @@
         || a.journal.localeCompare(b.journal))
       .map((p, i) => {
         const { fixe, ...reste } = p;
-        return { ...reste, numero: duLivre ? (fixe || null) : i + 1, equilibree: round3(p.debit - p.credit) === 0 };
+        return { ...reste, numero: duLivre ? (fixe || null) : recus ? fixe : i + 1, equilibree: round3(p.debit - p.credit) === 0 };
       });
     return {
       pieces,
+      numeros: duLivre ? 'livre' : recus ? 'client' : 'recomptes',
       debit: round3(pieces.reduce((s, p) => s + p.debit, 0)),
       credit: round3(pieces.reduce((s, p) => s + p.credit, 0)),
       lignes: (entries || []).length,

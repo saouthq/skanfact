@@ -707,12 +707,34 @@ t('T-52 : le livre-journal montre le numéro ÉCRIT à la validation, jamais un 
   const seulAC = K.journalDepuisLignes(K.lignesDuLivre(livre).filter(l => l.journal === 'AC'));
   seulAC.pieces.forEach(p => assert.strictEqual(p.numero, avant.get(p.lignes[0].ecritureId) || max + 1, 'le filtre a renuméroté ' + p.piece));
 
-  // Des lignes lues dans un PAQUET n'ont pas de numéro écrit : là, on recompte 1..n — et le « N° »
-  // du CSV (celui que le client a déduit chez lui) n'est pas repris tel quel.
+  // Des lignes lues dans un PAQUET portent le numéro du CLIENT (E-07, 10.12.0) : il est repris tel
+  // quel, pour que « la pièce 272 » soit la même des deux côtés du téléphone. Retourné en 10.14.0 :
+  // la 9.8.8 exigeait le recompte, du temps où le paquet ne portait pas de numéro.
   const commis = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'cabinet', 'exemple-paquets.json'), 'utf8'));
   const csv = commis.mois[commis.mois.length - 1].fichiers.find(f => f.chemin === 'journaux/ecritures.csv').texte;
   const relues = K.entreesDepuisCsv(csv).map(l => ({ ...l, numero: l.numero + 40 }));
-  K.journalDepuisLignes(relues).pieces.forEach((p, i) => assert.strictEqual(p.numero, i + 1, 'un paquet se recompte 1..n'));
+  const lu = K.journalDepuisLignes(relues);
+  assert.strictEqual(lu.numeros, 'client');
+  lu.pieces.forEach(p => assert.strictEqual(p.numero, p.lignes[0].numero, 'le numéro du client n\'est pas repris : ' + p.piece));
+  // Et il ne dépend pas de ce qu'on garde : la dernière pièce, seule, garde son numéro.
+  const derniere = lu.pieces[lu.pieces.length - 1];
+  const seule = K.journalDepuisLignes(relues.filter(l => K.cleDePiece(l) === derniere.key));
+  assert.strictEqual(seule.pieces[0].numero, derniere.numero, 'une pièce cherchée seule est devenue « n° 1 »');
+  assert.ok(derniere.numero > 1);
+  // Un paquet d'avant la 10.12.0 (pas de numéro) se recompte 1..n, et le dit.
+  const sans = K.journalDepuisLignes(relues.map(l => ({ ...l, numero: 0 })));
+  assert.strictEqual(sans.numeros, 'recomptes');
+  sans.pieces.forEach((p, i) => assert.strictEqual(p.numero, i + 1, 'un paquet sans numéro se recompte 1..n'));
+  // Deux paquets fabriqués à des moments différents peuvent donner le même numéro à deux pièces :
+  // alors aucun des deux n'est cru, et on recompte — jamais deux pièces sous un seul numéro.
+  const n1 = lu.pieces[0].numero;
+  const doublon = relues.map(l => (K.cleDePiece(l) === lu.pieces[1].key ? { ...l, numero: n1 } : l));
+  const dd = K.journalDepuisLignes(doublon);
+  assert.strictEqual(dd.numeros, 'recomptes');
+  assert.strictEqual(new Set(dd.pieces.map(p => p.numero)).size, dd.pieces.length, 'deux pièces sous le même numéro');
+  // Une pièce dont les lignes portent deux numéros n'en a aucun de sûr.
+  const partage = relues.map((l, i) => (i === 0 ? { ...l, numero: l.numero + 1000 } : l));
+  assert.strictEqual(K.journalDepuisLignes(partage).numeros, 'recomptes');
 });
 
 // T-53 (9.8.8-beta.3) — « Valider la seule de AC » : le bouton de lot n'avait pas de nom et

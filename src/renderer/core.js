@@ -1805,6 +1805,15 @@
     const byDestination = {};
     LINE_DESTINATIONS.forEach(([k]) => { byDestination[k] = 0; });
     lines.forEach(l => { byDestination[l.destination] = round3(byDestination[l.destination] + l.ht); });
+    // La TVA NON DÉDUCTIBLE fait partie du coût de ce qu'elle a payé (10.14.0). Une voiture de
+    // tourisme — le cas même que cite la case — vaut son prix TTC au bilan, et s'amortit TTC ; une
+    // dépense de réception coûte TTC. Jusqu'ici l'écriture passait toute TVA non déductible en
+    // charge (606), même sur un bien immobilisé, et le résultat simplifié l'oubliait tout à fait.
+    // `byDestination` reste le HT (c'est ce que l'écran de la pièce affiche) ; `cout` est ce que
+    // chaque destination COÛTE, et c'est lui que lisent l'écriture, le résultat et la fiche du bien.
+    const ndByDestination = {};
+    LINE_DESTINATIONS.forEach(([k]) => { ndByDestination[k] = 0; });
+    lines.forEach(l => { if (!l.deductible) ndByDestination[l.destination] = round3(ndByDestination[l.destination] + l.vat); });
 
     // LA DEVISE DE L'ACHAT (10.1.0). Une facture fournisseur venue de l'étranger — une licence
     // logicielle, du matériel — est libellée en euros ou en dollars. Jusqu'ici l'achat n'avait
@@ -1844,18 +1853,31 @@
     // un agrégateur écrit demain le sera aussi. Seul `journalEntries` connaît `avance` : c'est lui
     // qui doit savoir dans quel compte la ranger.
     const estAvance = purchase.kind === 'acompte';
-    const baseByDestination = {};
-    Object.keys(byDestination).forEach(k => { baseByDestination[k] = estAvance ? 0 : conv(byDestination[k]); });
+    const baseByDestination = {}, baseNd = {}, baseCout = {};
+    Object.keys(byDestination).forEach(k => {
+      baseByDestination[k] = estAvance ? 0 : conv(byDestination[k]);
+      baseNd[k] = estAvance ? 0 : conv(ndByDestination[k]);
+      baseCout[k] = round3(baseByDestination[k] + baseNd[k]);
+    });
     const base = {
       totalHT: conv(totalHT), totalVAT: conv(totalVAT), deductibleVAT: conv(deductibleVAT),
       fees: estAvance ? 0 : conv(fees), totalTTC: conv(totalTTC), withholding: conv(withholding),
       netToPay: conv(netToPay), vatByRate: baseVatByRate, byDestination: baseByDestination,
+      nonDeductibleParDestination: baseNd, cout: baseCout,
       avance: estAvance ? conv(round3(totalHT + fees)) : 0
     };
     return {
       lines, totalHT, vatByRate, totalVAT, deductibleVAT, fees, totalTTC, withholdingRate, withholding, netToPay, byDestination,
       currency: purchase.currency || (company || {}).currency || '', rate: rateOf(purchase, company || {}), sens, base
     };
+  }
+
+  // Ce qu'un achat COÛTE, toutes destinations comprises : HT + TVA non déductible + frais, en
+  // dinars et signé (un avoir en retire). Un acompte ne coûte rien — c'est une avance que sa facture
+  // reprend en entier —, donc il vaut 0 : le compter avec sa facture faisait payer deux fois le
+  // même chantier dans la marge d'une affaire (10.14.0).
+  function coutAchat(t) {
+    return round3(Object.keys(t.base.cout).reduce((s, k) => s + t.base.cout[k], 0) + t.base.fees);
   }
 
   // Les avoirs et les acomptes rattachés à une facture d'achat (10.2.0). Le symétrique de
@@ -2039,7 +2061,8 @@
     let ht = 0, remaining = 0, late = 0;
     mine.forEach(p => {
       const b = purchaseBalance(p, company, data);
-      ht = round3(ht + b.totals.base.totalHT);
+      // Un acompte n'est pas un achat de plus : sa facture porte déjà le montant entier (10.14.0).
+      if (p.kind !== 'acompte') ht = round3(ht + b.totals.base.totalHT);
       if (b.remaining > 0.0005) {
         remaining = round3(remaining + toBase(p, b.remaining, company));
         if (purchaseStatus(p, company, todayIso, data) === 'retard') late = round3(late + toBase(p, b.remaining, company));
@@ -2086,11 +2109,21 @@
 
   // Marge d'un document de vente. Les lignes de déduction d'acompte ne sont pas des ventes : elles
   // ne portent ni chiffre d'affaires ni coût.
+  // Ce que la remise globale laisse d'une ligne remisable. La remise ne porte PAS sur les lignes
+  // « noDiscount » (la déduction d'un acompte déjà facturé) : diviser le net par le total, déduction
+  // comprise, appliquait la remise une seconde fois sur une facture de solde remisée — 160 DT de
+  // chiffre d'affaires disparaissaient de la page Marges sur l'exemple (10.14.0). C'est la règle de
+  // `computeTotals`, dite une fois.
+  function facteurRemise(t) {
+    const remisable = round3(t.lines.filter(l => !l.noDiscount).reduce((s, l) => s + l.ht, 0));
+    return remisable > 0 ? (remisable - round3(t.totalHT - t.netHT)) / remisable : 1;
+  }
+
   function documentMargin(doc, data, company) {
     const t = computeTotals(doc, company);
     const sign = doc.type === 'avoir' ? -1 : 1;
     let revenue = 0, cost = 0, known = 0, total = 0;
-    const factor = t.totalHT > 0 ? t.netHT / t.totalHT : 1;   // la remise globale ampute le prix, pas le coût
+    const factor = facteurRemise(t);   // la remise globale ampute le prix, pas le coût
     t.lines.forEach(l => {
       if (l.noDiscount) return;
       total++;
@@ -2115,9 +2148,22 @@
     issuedIn(data, fromIso, toIso).forEach(d => {
       const sign = d.type === 'avoir' ? -1 : 1;
       const t = computeTotals(d, company);
-      const factor = t.totalHT > 0 ? t.netHT / t.totalHT : 1;
+      const factor = facteurRemise(t);
       t.lines.forEach(l => {
-        if (l.noDiscount) return;
+        // Un acompte facturé, et sa déduction sur la facture de solde, SONT du chiffre d'affaires de
+        // leur période : les ignorer faisait dire à la page Marges un autre chiffre d'affaires que
+        // les Statistiques dès qu'un acompte et son solde tombaient dans deux périodes (10.14.0).
+        // Ils n'ont pas de coût, et ils ne comptent pas comme des lignes « sans coût connu ».
+        if (l.noDiscount) {
+          const key = dimension === 'client' ? d.clientId : '__acomptes__';
+          if (!key) return;
+          const a = acc[key] || (acc[key] = {
+            key, label: dimension === 'client' ? clientName(d.clientId) : 'Acomptes facturés (repris au solde)',
+            revenue: 0, cost: 0, lines: 0, costed: 0
+          });
+          a.revenue = round3(a.revenue + sign * toBase(d, l.ht, company));
+          return;
+        }
         const key = dimension === 'client' ? d.clientId : (l.label || '').trim().toLowerCase();
         if (!key) return;
         const a = acc[key] || (acc[key] = {
@@ -2130,10 +2176,14 @@
         a.lines++; if (c > 0) a.costed++;
       });
     });
-    const rows = Object.values(acc).map(a => ({
-      ...a, margin: round3(a.revenue - a.cost),
-      rate: a.revenue !== 0 ? Math.round((a.revenue - a.cost) / a.revenue * 1000) / 10 : null,
-      complete: a.lines > 0 && a.costed === a.lines
+    // Un acompte et sa déduction dans la même période s'annulent : une ligne à zéro n'apprend rien.
+    // La ligne des acomptes n'a pas de taux : son coût arrivera avec la facture de solde, et « 100 % »
+    // serait une marge qu'elle n'a pas. Elle n'est pas non plus « sans coût connu » : elle n'a pas de
+    // prestation, donc rien à chiffrer au catalogue.
+    const rows = Object.values(acc).filter(a => a.lines > 0 || Math.abs(a.revenue) > 0.0005).map(a => ({
+      ...a, margin: round3(a.revenue - a.cost), acomptes: a.key === '__acomptes__',
+      rate: a.key !== '__acomptes__' && a.revenue !== 0 ? Math.round((a.revenue - a.cost) / a.revenue * 1000) / 10 : null,
+      complete: a.lines === 0 || a.costed === a.lines
     })).sort((x, y) => y.margin - x.margin);
     // `limit` à 0 veut dire « tout ». La page Marges calculait ses trois cartes — chiffre d'affaires,
     // marge totale, coût des ventes — sur un tableau DÉJÀ tronqué à vingt lignes, quel que soit le
@@ -2167,7 +2217,7 @@
     let cost = 0, paid = 0;
     buys.forEach(p => {
       const t = purchaseTotals(p, company);
-      cost = round3(cost + t.base.totalHT + t.base.fees);
+      cost = round3(cost + coutAchat(t));
       paid = round3(paid + toBase(p, purchaseBalance(p, company, data).paid, company));
     });
     // Devis en cours : ce qui est proposé mais pas encore FACTURÉ, pour voir l'affaire en entier. Un
@@ -2210,7 +2260,7 @@
     });
     // Les achats rattachés au même client ET à la même affaire, s'il y en a une.
     const linked = (data.purchases || []).filter(p => rec && p.projectId && p.projectId === rec.projectId);
-    linked.forEach(p => { const t = purchaseTotals(p, company); cost = round3(cost + t.base.totalHT + t.base.fees); });
+    linked.forEach(p => { cost = round3(cost + coutAchat(purchaseTotals(p, company))); });
     const margin = round3(revenue - cost);
     const dates = invoices.map(d => d.date).filter(Boolean).sort();
     const months = dates.length ? Math.max(1, Math.round(daysBetween(dates[0], dates[dates.length - 1]) / 30) + 1) : 0;
@@ -2244,7 +2294,7 @@
     (data.purchases || []).filter(p => inPeriod(p.date, period && period.from, period && period.to)).forEach(p => {
       const t = purchaseTotals(p, company);
       // Le stock et les immobilisations ne sont pas des charges de la période.
-      const charge = round3(t.base.byDestination.charge + t.base.fees);
+      const charge = round3(t.base.cout.charge + t.base.fees);
       if (isFixedCategory(data, p.category)) fixed = round3(fixed + charge);
       else variable = round3(variable + charge);
     });
@@ -2385,7 +2435,9 @@
         // payé 120 € entrait à 120 DT, donc la valeur du stock, le coût des ventes et la marge
         // étaient faux ensemble et dans le même sens.
         out.push({ id: `buy-${p.id}-${i}`, date: p.date, itemId: c.id, label: c.label, qty,
-          unitCost: toBase(p, Number(l.unitPrice) || 0, data.company || {}),
+          // TVA non déductible comprise : c'est ce que la marchandise a coûté, et ce que l'écriture
+          // porte au 607 (10.14.0).
+          unitCost: toBase(p, (Number(l.unitPrice) || 0) * (l.deductible === false ? 1 + (Number(l.vatRate) || 0) / 100 : 1), data.company || {}),
           source: 'achat', ref: p.number || '', docId: p.id, note: '', rang: 1, ts: Number(p.createdAt) || 0 });
       });
     });
@@ -2536,12 +2588,67 @@
   // les ventes comptaient : une menuiserie qui achète des planches et les transforme en portes ne voyait
   // jamais son bois en charge — son résultat était gonflé de tout ce qu'elle avait consommé. Et un retour
   // sur avoir rend son coût : sans ça, la marchandise revenue en rayon restait comptée comme vendue.
-  // (La comptabilité, elle, passe les achats au 607 et l'inventaire au 603 : ce chiffre ne sert qu'aux
-  // vues de gestion — résultat simplifié, seuil de rentabilité.)
+  // (La comptabilité, elle, passe les achats au 607 et l'inventaire du 31 décembre au 603 —
+  // `inventaireComptable` — : ce chiffre sert aux vues de gestion, mois par mois.)
   function costOfGoodsSold(data, period) {
     return round3(stockJournal(data, period)
       .filter(m => !SOURCES_HORS_CHARGE.includes(m.source))
       .reduce((s, m) => s - (Number(m.qty) || 0) * (Number(m.unitApplied) || 0), 0));
+  }
+
+  // L'INVENTAIRE COMPTABLE (10.14.0). L'écriture passe les achats de marchandises au 607 — c'est
+  // l'inventaire INTERMITTENT, celui du système comptable tunisien — et ne passait JAMAIS
+  // l'inventaire : le bilan n'avait aucun stock, et le résultat des états financiers comptait toute
+  // marchandise achetée comme consommée, même restée sur l'étagère. Le commentaire de
+  // `costOfGoodsSold` affirmait pourtant « l'inventaire au 603 ». Ce que cette fonction rend :
+  //   - `departs` : le stock de départ saisi sur les articles, qui existait AVANT les premiers achats
+  //     enregistrés. Il entre au bilan en ouverture (37 contre le report à nouveau), comme le solde
+  //     de départ d'un compte bancaire — jamais au résultat, qu'il n'a pas traversé ;
+  //   - `variations` : au 31 décembre de chaque exercice TERMINÉ, l'écart entre la valeur du stock
+  //     et ce que le 37 porte, au 603 (le stock augmente : une charge en moins). Après elle, le 37
+  //     vaut exactement la valeur du stock du 31 décembre, et 607 + 603 = le coût des sorties.
+  // La valeur est celle de `stockTotals` (coût moyen pondéré, un article négatif compté à zéro) :
+  // un seul chiffre du stock pour la page Stock, le bilan et le résultat.
+  // Un stock de départ sans date (données anciennes : `1970-01-01`) prend la date de la première
+  // pièce de l'entreprise — un « stock au 1er janvier 1970 » dans le livre serait faux.
+  function inventaireComptable(data, todayIso) {
+    const t = todayIso || today();
+    const calcul = () => {
+      const moves = stockMovements(data, null);
+      if (!moves.length) return { departs: [], variations: [] };
+      const dates = [];
+      const noter = d => { if (d && /^\d{4}-\d{2}-\d{2}/.test(d) && d > '1970-01-01') dates.push(d.slice(0, 10)); };
+      (data.documents || []).forEach(d => noter(d.date)); (data.purchases || []).forEach(p => noter(p.date));
+      (data.movements || []).forEach(m => noter(m.date)); moves.forEach(m => noter(m.date));
+      const premiere = dates.sort()[0] || t;
+      const parArticle = new Map();
+      moves.forEach(m => { if (!parArticle.has(m.itemId)) parArticle.set(m.itemId, []); parArticle.get(m.itemId).push(m); });
+      const rangees = [...parArticle.values()].map(liste => runningStock(liste).rows);
+      const departsParDate = {};
+      rangees.forEach(rows => rows.filter(r => r.source === 'depart').forEach(r => {
+        const d = r.date && r.date > '1970-01-01' ? r.date : premiere;
+        departsParDate[d] = round3((departsParDate[d] || 0) + (Number(r.qty) || 0) * (Number(r.unitApplied) || 0));
+      }));
+      const departs = Object.keys(departsParDate).sort().filter(d => departsParDate[d]).map(d => ({ date: d, montant: departsParDate[d] }));
+      const valeurAu = ye => round3(rangees.reduce((s2, rows) => {
+        let v = 0;
+        for (const r of rows) { if (r.date > ye) break; v = r.valueAfter; }
+        return s2 + Math.max(0, v);
+      }, 0));
+      const annees = [premiere].concat(departs.map(x => x.date)).map(d => Number(d.slice(0, 4)));
+      const premiereAnnee = Math.min(...annees);
+      const variations = [];
+      let solde = 0;
+      for (let y = premiereAnnee; `${y}-12-31` < t; y++) {
+        solde = round3(solde + departs.filter(x => Number(x.date.slice(0, 4)) === y).reduce((s2, x) => s2 + x.montant, 0));
+        const fin = valeurAu(`${y}-12-31`);
+        const montant = round3(fin - solde);
+        if (montant) variations.push({ annee: y, date: `${y}-12-31`, montant, valeur: fin });
+        solde = fin;
+      }
+      return { departs, variations };
+    };
+    return lot ? duLot(data, 'inventaire@' + t, calcul) : calcul();
   }
 
   // Ce qu'un document sortirait du stock : appelé avant d'émettre une facture ou un bon de livraison,
@@ -3527,10 +3634,18 @@
     const done = new Set((data.assets || []).filter(a => a.purchaseId).map(a => `${a.purchaseId}#${a.lineIndex}`));
     const out = [];
     (data.purchases || []).forEach(p => {
+      // Un acompte n'est pas un bien reçu (il se reprend sur la facture, qui, elle, propose la
+      // fiche) ; un avoir n'est pas une acquisition. Les deux proposaient une fiche de plus.
+      if (p.kind === 'acompte' || p.kind === 'avoir') return;
       (p.lines || []).forEach((l, i) => {
         if (l.destination !== 'immobilisation') return;
         if (done.has(`${p.id}#${i}`)) return;
-        const amount = round3((Number(l.qty) || 0) * (Number(l.unitPrice) || 0));
+        // Le montant du bien est celui que l'écriture porte au compte d'immobilisation (10.14.0) :
+        // en DINARS (un bien payé en euros entrait à son montant en euros) et TVA non déductible
+        // comprise. Sinon le 22 et le tableau des biens divergent dès le premier achat en devise.
+        const ht = (Number(l.qty) || 0) * (Number(l.unitPrice) || 0);
+        const nd = l.deductible === false ? ht * (Number(l.vatRate) || 0) / 100 : 0;
+        const amount = round3(toBase(p, round3(ht) + round3(nd), data.company || {}));
         if (amount <= 0) return;
         out.push({ purchaseId: p.id, lineIndex: i, label: l.label || '', amount, date: p.date, supplierId: p.supplierId, number: p.number || '' });
       });
@@ -3551,9 +3666,20 @@
     // Année civile complète : on reprend le chiffre du tableau des amortissements, au millime près,
     // pour que la page Comptabilité et la page Immobilisations ne se contredisent jamais.
     if (period.from === `${y}-01-01` && period.to === `${y}-12-31`) return assetTotals(data, y).annuity;
-    const before = addDays(period.from, -1);
+    // Les bornes se lisent en base 360 : un mois entier vaut trente jours, février compris. Lu tel
+    // quel, le 28 février donnait vingt-huit jours à février et trente-deux à mars (10.14.0).
+    const before = fin360(addDays(period.from, -1));
+    const to = fin360(period.to);
     return round3((data.assets || []).reduce((s, a) =>
-      s + Math.max(0, round3(cappedCumulated(a, period.to) - cappedCumulated(a, before))), 0));
+      s + Math.max(0, round3(cappedCumulated(a, to) - cappedCumulated(a, before))), 0));
+  }
+  // Le dernier jour de février devient le 30 : c'est le seul mois que `days360` (qui ramène le 31 à
+  // 30) ne compte pas entier. Tout autre jour reste tel quel — une mise en service ou une cession
+  // le 28 février garde ses jours réels, comme dans le tableau des amortissements.
+  function fin360(iso) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(iso || ''))) return iso;
+    const [yy, mm, dd] = iso.split('-').map(Number);
+    return dd < 30 && dd === daysInMonth(yy, mm) ? `${iso.slice(0, 8)}30` : iso;
   }
 
   // ---------- trésorerie (3.3.0) ----------
@@ -4067,21 +4193,36 @@
     // Une ligne partie au stock ou en immobilisation n'est pas une charge de la période.
     let charges = 0, stock = 0, immo = 0;
     const cogs = costOfGoodsSold(data, period);
+    // Ce que chaque destination COÛTE, TVA non déductible comprise (10.14.0) : une dépense de
+    // réception à TVA non récupérable coûte son TTC, et l'écriture le passe ainsi au 606.
     (data.purchases || []).filter(p => inPeriod(p.date, period && period.from, period && period.to)).forEach(p => {
       const t = purchaseTotals(p, company);
-      charges = round3(charges + t.base.byDestination.charge + t.base.fees);
-      stock = round3(stock + t.base.byDestination.stock);
-      immo = round3(immo + t.base.byDestination.immobilisation);
+      charges = round3(charges + t.base.cout.charge + t.base.fees);
+      stock = round3(stock + t.base.cout.stock);
+      immo = round3(immo + t.base.cout.immobilisation);
     });
+    // De la marchandise achetée pour le stock sans article SUIVI n'entre dans aucun stock : aucune
+    // sortie ne la valorisera jamais. Elle ne peut être qu'une charge — c'est ce que fait l'écriture
+    // (607, sans inventaire). Sans cette ligne, le résultat simplifié l'oubliait (10.14.0).
+    const entreesSuivies = round3(stockJournal(data, period).filter(m => m.source === 'achat')
+      .reduce((s2, m) => s2 + (Number(m.qty) || 0) * (Number(m.unitApplied) || 0), 0));
+    const horsSuivi = round3(stock - entreesSuivies);
+    // Ce qui passe au résultat SANS être un achat, une vente ni un bulletin : des frais bancaires
+    // payés par un mouvement, une assurance passée en OD, la valeur d'un bien cédé et le prix de sa
+    // cession. Le résultat simplifié se présente comme le « résultat avant impôt » : il ne peut pas
+    // ignorer ce que les écritures comptent (10.14.0 — sur l'exemple, 144 DT de frais par an).
+    const autres = round3(journalEntries(data, company, period, { sections: ['tresorerie', 'od', 'amortissements'] })
+      .filter(e => e.source !== 'amortissement' && compteDeGestion(e.account))
+      .reduce((s2, e) => s2 + e.debit - e.credit, 0));
     // L'achat d'une immobilisation n'est pas une charge, mais son AMORTISSEMENT en est une : sans lui,
     // le résultat de l'année d'un gros investissement serait artificiellement bon (3.5.0).
     const depreciation = depreciationFor(data, period);
     // La paie n'est pas un achat : elle a sa propre page, mais c'est bien une charge de la période,
     // et la plus lourde de toutes dès qu'il y a un salarié (5.0.0). On compte le COÛT EMPLOYEUR.
     const payroll = payrollCost(data, period);
-    const resultat = round3(produits - charges - cogs - depreciation - payroll);
+    const resultat = round3(produits - charges - horsSuivi - cogs - depreciation - payroll - autres);
     return {
-      produits, charges, stock, immo, cogs, depreciation, payroll, resultat,
+      produits, charges, stock, immo, cogs, horsSuivi, depreciation, payroll, autres, resultat,
       marge: produits > 0 ? Math.round(resultat / produits * 100) : null,
       salesCount: sales.length, buysCount: buys.length
     };
@@ -4458,7 +4599,7 @@
       bulletins: slips.length
     };
     return {
-      manifest, entries, checklist, definitive, period, balance,
+      manifest, entries, checklist, definitive, period, balance, sceau: sceauEcritures(ecritures),
       ca: vs.ht, tvaCollectee: vs.tva, tvaDeductible: (bs && bs.deductible) || 0,
       encaisse: round3(pays.reduce((s2, r) => s2 + (Number(r.amount) || 0), 0)),
       totaux: {
@@ -4467,6 +4608,26 @@
         bulletins: slips.length
       }
     };
+  }
+
+  // Ce que le comptable a reçu, résumé : le débit et le crédit de chaque compte du mois (10.14.0).
+  // Rangé avec le paquet, il permet de DIRE qu'un mois a changé depuis son envoi — une réouverture,
+  // ou une version de SkanFact qui corrige un calcul. Un paquet fabriqué ne se réécrit pas : c'est
+  // l'utilisateur qui doit le refaire, et il ne le fera que si on le lui dit.
+  function sceauEcritures(lignes) {
+    const c = {};
+    (lignes || []).forEach(e => {
+      const x = c[e.account] || (c[e.account] = [0, 0]);
+      x[0] = round3(x[0] + (Number(e.debit) || 0)); x[1] = round3(x[1] + (Number(e.credit) || 0));
+    });
+    return c;
+  }
+  // Les comptes dont le débit ou le crédit n'est plus le même, triés par numéro.
+  function ecartsSceau(avant, maintenant) {
+    const a = avant || {}, b = maintenant || {};
+    return [...new Set([...Object.keys(a), ...Object.keys(b)])].sort()
+      .map(account => ({ account, avant: a[account] || [0, 0], maintenant: b[account] || [0, 0] }))
+      .filter(x => Math.abs(x.avant[0] - x.maintenant[0]) > 0.0005 || Math.abs(x.avant[1] - x.maintenant[1]) > 0.0005);
   }
 
   // La page de garde du paquet : la première chose que le comptable ouvre. Elle répond à trois
@@ -4800,9 +4961,19 @@
           });
           if (t.base.fees) e.debit(acc.fraisAccessoires, `Frais accessoires ${num}`, t.base.fees);
           if (t.base.deductibleVAT) e.debit(acc.tvaDeductible, `TVA déductible ${num}`, t.base.deductibleVAT);
-          // TVA non déductible : elle n'est pas récupérable, elle grossit la charge.
-          const nonDeductible = round3(t.base.totalVAT - t.base.deductibleVAT);
-          if (nonDeductible) e.debit(p.kind === 'acompte' ? acc.avancesFournisseurs : acc.charges, `TVA non déductible ${num}`, nonDeductible);
+          // TVA non déductible : elle n'est pas récupérable, elle grossit le COÛT de ce qu'elle a
+          // payé — la charge, le stock ou le bien immobilisé (10.14.0 ; avant, toujours la charge,
+          // et une voiture de tourisme passait sa TVA en frais l'année de l'achat au lieu de
+          // l'amortir). Sur un acompte, elle reste dans l'avance, que l'imputation reprend entière.
+          if (p.kind === 'acompte') {
+            const nonDeductible = round3(t.base.totalVAT - t.base.deductibleVAT);
+            if (nonDeductible) e.debit(acc.avancesFournisseurs, `TVA non déductible ${num}`, nonDeductible);
+          } else {
+            Object.keys(t.base.nonDeductibleParDestination).forEach(k => {
+              const nd = t.base.nonDeductibleParDestination[k];
+              if (nd) e.debit(dest[k] || acc.charges, `TVA non déductible ${num}`, nd, { destination: k });
+            });
+          }
           if (t.base.withholding) e.credit(acc.rsOperee, `Retenue à la source opérée ${num}`, t.base.withholding);
           e.credit(cptFourn(p.supplierId), label, t.base.netToPay, { role: 'fournisseurs' });
           out.push(...e.done());
@@ -4867,6 +5038,15 @@
         const compte = a.kind === 'caisse' ? acc.caisse : acc.banque;
         e.debit(compte, `Solde de départ — ${a.name || 'compte'}`, montant);
         e.credit(acc.reportANouveau, `Solde de départ — ${a.name || 'compte'}`, montant);
+        out.push(...e.done());
+      });
+      // Le stock de départ des articles (10.14.0) : de la marchandise déjà là avant les premiers
+      // achats enregistrés. Elle entre au bilan contre le report à nouveau, jamais au résultat.
+      inventaireComptable(data, opts.todayIso).departs.forEach(x => {
+        if (!inPeriod(x.date, period && period.from, period && period.to)) return;
+        const e = entrySet({ date: x.date, journal: 'AN', piece: 'OUVERTURE-STOCK', tiers: '', tiersId: '', source: 'ouverture', docId: 'stock-' + x.date, currency: cur });
+        e.debit(acc.stocks, 'Stock de départ des articles', x.montant);
+        e.credit(acc.reportANouveau, 'Stock de départ des articles', x.montant);
         out.push(...e.done());
       });
       // Le crédit de TVA saisi à la main pour une année (3.1.0) : la déclaration de janvier le
@@ -5043,6 +5223,19 @@
       });
     }
 
+    // --- 10.14.0 : l'inventaire du 31 décembre. Une écriture d'inventaire, comme la dotation :
+    // au 31 décembre d'un exercice TERMINÉ, jamais avant (voir `inventaireComptable`).
+    if (want('inventaire')) {
+      inventaireComptable(data, opts.todayIso).variations.forEach(v => {
+        if (!inPeriod(v.date, period && period.from, period && period.to)) return;
+        const e = entrySet({ date: v.date, journal: 'OD', piece: `INVENTAIRE-${v.annee}`, tiers: '', tiersId: '', source: 'inventaire', docId: 'inv-' + v.annee, currency: cur });
+        const lib = `Stock au 31/12/${v.annee} : ${money(v.valeur)}`;
+        if (v.montant > 0) { e.debit(acc.stocks, lib, v.montant); e.credit(acc.variationStocks, `Variation des stocks ${v.annee}`, v.montant); }
+        else { e.debit(acc.variationStocks, `Variation des stocks ${v.annee}`, -v.montant); e.credit(acc.stocks, lib, -v.montant); }
+        out.push(...e.done());
+      });
+    }
+
     // --- 9.0.0 : les à-nouveaux. Au 1er janvier de chaque exercice, une pièce AN rouvre chaque
     // compte de bilan avec son solde de la veille, et porte au compte de résultat le net des
     // charges et produits de TOUT ce qui précède — c'est ainsi que les classes 6 et 7 repartent de
@@ -5110,7 +5303,7 @@
       || (a.journal || '').localeCompare(b.journal || '')
       || TRI_NUMERIQUE.compare((a.piece || ''), b.piece || ''));
   }
-  const SECTIONS_ECRITURES = ['ventes', 'achats', 'encaissements', 'reglements', 'ouverture', 'tresorerie', 'paie', 'declarations', 'od', 'amortissements', 'anouveaux'];
+  const SECTIONS_ECRITURES = ['ventes', 'achats', 'encaissements', 'reglements', 'ouverture', 'tresorerie', 'paie', 'declarations', 'od', 'amortissements', 'inventaire', 'anouveaux'];
 
   // Le contrôle qu'un comptable fait en premier : est-ce que ça tombe juste ? Pièce par pièce, et
   // en tout. Une pièce déséquilibrée serait refusée à l'import de son logiciel.
@@ -5334,6 +5527,10 @@
       // Ce que la dotation de l'exercice en cours attend : elle ne s'écrit qu'au 31 décembre — sauf
       // celle d'un bien cédé, déjà passée au jour de la sortie, qu'on ne compte donc pas deux fois.
       dotationEnAttente: to < `${y}-12-31` ? round3(Math.max(0, depreciationFor(data, { from: `${y}-01-01`, to }) - charges.lignes.filter(l => l.account === acc.dotations).reduce((s, l) => s + l.montant, 0))) : 0,
+      // Le stock suit le même calendrier (10.14.0) : le 37 porte le dernier inventaire, la page
+      // Stock ce qui est sur l'étagère AUJOURD'HUI. En cours d'année, l'écart est la variation que
+      // l'inventaire du 31 décembre écrira — et que le résultat simplifié compte déjà.
+      variationStockEnAttente: to < `${y}-12-31` ? round3(stockTotals(data, to).value - (actif[2] ? actif[2].total : 0)) : 0,
       lignes: rows.map(ligne)
     };
   }
@@ -8232,7 +8429,7 @@
     assetCumulated, assetNBV, disposalResult, assetsList, assetTotals, assetsToCreate, depreciationFor,
     cappedCumulated,
     moisDePaie, premierePieceApres, MOVE_SOURCES, SOURCES_SORTIE, qteMouvement, moveSourceLabel, trackedItems, itemOfLine, stockMovements, runningStock, stockOf,
-    stockList, stockTotals, stockJournal, inventoryDiff, stockAlerts, stockImpact, costOfGoodsSold,
+    stockList, stockTotals, stockJournal, inventoryDiff, stockAlerts, stockImpact, costOfGoodsSold, inventaireComptable, coutAchat, sceauEcritures, ecartsSceau,
     ocrNumber, ocrToPurchase,
     CONTRACT_TYPES, contractLabel, DEFAULT_PAYROLL, payrollSettings, irppAnnual, computePayslip, saisiePaieValide,
     activeEmployees, payslipView, payslipsOf, payslipDate, payrollCost, payrollSummary, missingPayslips, bulletinsImpossibles,

@@ -1573,13 +1573,22 @@ t('résultat simple : stock et immobilisations ne sont pas des charges', () => {
         { label: 'Ordinateur', qty: 1, unitPrice: 2000, vatRate: 19, destination: 'immobilisation' }
       ] }]
   };
-  const r = core.simpleResult(data, CO, { from: '2026-03-01', to: '2026-03-31' });
+  // La marchandise entre dans un stock SUIVI : elle n'est pas une charge tant qu'elle n'est pas sortie.
+  const suivi = { ...data, catalog: [{ id: 'k1', label: 'Marchandise', tracked: true }] };
+  const r = core.simpleResult(suivi, CO, { from: '2026-03-01', to: '2026-03-31' });
   assert.strictEqual(r.produits, 10000);
   assert.strictEqual(r.charges, 1001);      // loyer + timbre, pas la marchandise ni l'ordinateur
   assert.strictEqual(r.stock, 3000);
+  assert.strictEqual(r.horsSuivi, 0);
   assert.strictEqual(r.immo, 2000);
   assert.strictEqual(r.resultat, 8999);
   assert.strictEqual(r.marge, 90);
+  // 10.14.0 — la même marchandise SANS article suivi n'entre dans aucun stock : aucune sortie ne la
+  // valorisera jamais, elle ne peut être qu'une charge (l'écriture la passe au 607 sans inventaire).
+  // L'ancien test attendait 8 999 ici : les 3 000 DT disparaissaient du résultat pour toujours.
+  const nonSuivi = core.simpleResult(data, CO, { from: '2026-03-01', to: '2026-03-31' });
+  assert.strictEqual(nonSuivi.horsSuivi, 3000);
+  assert.strictEqual(nonSuivi.resultat, 5999);
   // aucune vente : pas de division par zéro
   assert.strictEqual(core.simpleResult({ documents: [], purchases: [] }, CO, { from: '2026-01-01', to: '2026-12-31' }).marge, null);
 });

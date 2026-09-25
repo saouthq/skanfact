@@ -396,8 +396,10 @@ module.exports = ({ t, assert, lireSource }) => {
     const table = src.slice(i, src.indexOf('</table>', i));
     assert.ok(i > 0 && table.length > 200 && table.length < 2000, 'le tableau du contenu du paquet ne se trouve plus');
     assert.ok(!/total-row/.test(table), 'le contenu du paquet porte encore un « total » qui n\'est pas la somme de sa colonne');
-    const apres = src.slice(src.indexOf('</table>', i), src.indexOf('</table>', i) + 700);
-    assert.ok(/pl\(plan\.entries\.length \+ 2, 'fichier'\)/.test(apres), 'le poids du paquet ne se dit plus');
+    const apres = src.slice(src.indexOf('</table>', i), src.indexOf('</table>', i) + 1200);
+    // Le poids se DIT ; son compte exact (+ 3 depuis que la signature est comptée, 10.14.0) est tenu
+    // par verite-comptable.js, qui lit les fichiers que le processus principal ajoute au plan.
+    assert.ok(/pl\(plan\.entries\.length \+ \d, 'fichier'\)/.test(apres), 'le poids du paquet ne se dit plus');
   });
 
   t('10.13.0 : une question commence par une majuscule, même ouverte sur un nom de mois', () => {
@@ -425,7 +427,8 @@ module.exports = ({ t, assert, lireSource }) => {
     const i = src.indexOf('id="cab-build"');
     const zone = src.slice(src.lastIndexOf('<div class="inline">', i), src.indexOf('</div>', i));
     const etat = (sent, enAttente, nonParties) => {
-      const ctx = { sent, enAttente, nonParties, moisVide: false, h: x => x };
+      // `change` (10.14.0) : les écritures n'ont pas bougé depuis le paquet — ce test-ci juge les réponses.
+      const ctx = { sent, enAttente, nonParties, change: [], moisVide: false, h: x => x };
       ctx.suivante = vm.runInNewContext(m[1], ctx);
       const html = vm.runInNewContext('`' + zone.replace(/\$\{moisVide[^}]*\}/, '') + '`', ctx);
       return { suivante: ctx.suivante, verts: [...html.matchAll(/class="btn ([^"]*)" id="([^"]+)"/g)].filter(x => /btn-primary/.test(x[1])).map(x => x[2]), html };

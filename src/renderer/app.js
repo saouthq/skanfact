@@ -11510,8 +11510,11 @@
     const cur = company().currency;
     const years = Array.from(new Set(data.documents.map(d => (d.date || '').slice(0, 4)).filter(Boolean).concat([C.today().slice(0, 4)]))).sort().reverse();
     if (!years.includes(comptaState.year)) comptaState.year = years[0];
+    // Un mois finit à son VRAI dernier jour (10.14.0) : « -31 » pour tous faisait arrêter les états
+    // « au 31/09/2025 », et février comptait deux jours d'amortissement de trop (le 31 février vaut
+    // le 30 en base 360, et mars recomptait les 29 et 30).
     const period = () => comptaState.month
-      ? { from: `${comptaState.year}-${comptaState.month}-01`, to: `${comptaState.year}-${comptaState.month}-31` }
+      ? (({ from, to }) => ({ from, to }))(C.packPeriod(comptaState.year, comptaState.month))
       : { from: `${comptaState.year}-01-01`, to: `${comptaState.year}-12-31` };
     const periodLabel = () => comptaState.month ? `${MONTHS[Number(comptaState.month) - 1]} ${comptaState.year}` : `année ${comptaState.year}`;
 
@@ -11843,14 +11846,16 @@
         <div class="panel"><h2>Résultat simplifié — ${h(periodLabel())} ${info('compta.result')}</h2>
           <div class="stats compact-stats">
             <div class="stat"><div class="lbl">Produits (ventes HT)</div><div class="val">${C.money(res.produits, cur)}</div><div class="sub">${pl(res.salesCount, 'pièce')}</div></div>
-            <div class="stat"><div class="lbl">Charges HT</div><div class="val">${C.money(res.charges, cur)}</div><div class="sub">${pl(res.buysCount, 'pièce')} d'achat</div></div>
+            <div class="stat"><div class="lbl">Charges ${info('compta.charges')}</div><div class="val">${C.money(res.charges, cur)}</div><div class="sub">${pl(res.buysCount, 'pièce')} d'achat, TVA non récupérable comprise</div></div>
             <div class="stat"><div class="lbl">Coût des sorties de stock ${info('stk.cogs')}</div><div class="val">${C.money(res.cogs, cur)}</div><div class="sub">${res.cogs ? 'ventes, matière utilisée et casse, au coût moyen' : 'aucune sortie de stock'}</div></div>
             <div class="stat"><div class="lbl">Coût de la paie ${info('pay.employerCost')}</div><div class="val">${C.money(res.payroll, cur)}</div><div class="sub">${res.payroll ? 'brut + charges patronales' : 'aucun bulletin sur la période'}</div></div>
             <div class="stat"><div class="lbl">Dotation aux amortissements ${info('immo.annuity')}</div><div class="val">${C.money(res.depreciation, cur)}</div><div class="sub">${res.depreciation ? 'une charge qui ne sort pas d\'argent' : 'aucun bien amorti sur la période'}</div></div>
+            ${res.horsSuivi ? `<div class="stat"><div class="lbl">Marchandises sans article suivi ${info('compta.horsSuivi')}</div><div class="val">${C.money(res.horsSuivi, cur)}</div><div class="sub">achetées pour le stock, jamais entrées dans un stock suivi</div></div>` : ''}
+            ${res.autres ? `<div class="stat"><div class="lbl">${res.autres > 0 ? 'Autres charges' : 'Autres produits'} ${info('compta.autres')}</div><div class="val">${C.money(Math.abs(res.autres), cur)}</div><div class="sub">frais bancaires, écritures diverses, cessions</div></div>` : ''}
             <div class="stat"><div class="lbl">Résultat avant impôt</div><div class="val ${res.resultat >= 0 ? 'ok' : 'due'}">${C.money(res.resultat, cur)}</div><div class="sub">${res.marge == null ? '' : res.marge + ' % du chiffre d\'affaires'}</div></div>
-            <div class="stat"><div class="lbl">Non comptés en charges</div><div class="val">${C.money(C.round3(res.stock + res.immo), cur)}</div><div class="sub">${C.money(res.stock, cur)} en stock · ${C.money(res.immo, cur)} en immobilisations</div></div>
+            <div class="stat"><div class="lbl">Non comptés en charges</div><div class="val">${C.money(C.round3(res.stock - res.horsSuivi + res.immo), cur)}</div><div class="sub">${C.money(C.round3(res.stock - res.horsSuivi), cur)} en stock · ${C.money(res.immo, cur)} en immobilisations</div></div>
           </div>
-          <p class="small muted mt"><em>Ce n'est pas ton résultat comptable :</em> il manque les provisions. Les amortissements y sont depuis la 3.5.0 (<a href="#/immos">Immobilisations</a>), la variation de stock depuis la 4.0.0 (<a href="#/stock">Stock</a>) et les salaires depuis la 5.0.0 (<a href="#/paie">Paie</a>). C'est un ordre de grandeur pour savoir où tu en es, pas un bilan. <em>À VÉRIFIER avec ton comptable.</em></p>
+          <p class="small muted mt">Sur un exercice terminé, ce résultat est celui des écritures, au millime. En cours d'année, les amortissements y sont comptés jour par jour (<a href="#/immos">Immobilisations</a>) et le stock par ses sorties (<a href="#/stock">Stock</a>), alors que les écritures ne les passent qu'au 31 décembre. Il n'y manque que les provisions et l'impôt. <em>À VÉRIFIER avec ton comptable.</em></p>
         </div>`;
       // Cinq chiffres sur lesquels tout repose, et aucun ne menait à la pièce qui le fabrique : il
       // fallait retenir le mois, changer d'onglet, refaire le filtre. Les douze lignes du tableau
@@ -12242,6 +12247,21 @@
       // Sur l'année en cours, l'arrêté est à aujourd'hui ; sur un mois choisi, à la fin du mois.
       const to = comptaState.month ? (p.to > t ? t : p.to) : (y === t.slice(0, 4) ? t : `${y}-12-31`);
       const e = C.etatsFinanciers(data, company(), y, to, {});
+      // En cours d'exercice, deux écritures d'inventaire attendent le 31 décembre : la dotation et
+      // la variation du stock. La phrase les nomme toutes les deux et refait le calcul qui mène au
+      // résultat simplifié — seulement s'il tombe juste : une égalité affichée se vérifie (10.14.0).
+      const enAttente = (() => {
+        const dot = e.dotationEnAttente || 0, vs = e.variationStockEnAttente || 0;
+        if (!dot && !vs) return '';
+        const sr = C.simpleResult(data, company(), { from: `${y}-01-01`, to }).resultat;
+        const tombe = Math.abs(C.round3(e.resultat - dot + vs) - sr) < 0.002;
+        const stocks = (e.actif.find(g => g.titre === 'Stocks') || { total: 0 }).total;
+        const quoi = [
+          dot ? `la dotation aux amortissements (${C.money(dot, cur)} au ${C.fmtDate(to)})` : '',
+          vs ? `la variation du stock depuis le dernier inventaire (${moneySigne(vs, cur)} : ${C.money(C.round3(stocks + vs), cur)} sur l'étagère, ${C.money(stocks, cur)} au bilan)` : ''
+        ].filter(Boolean);
+        return `<p class="small muted mt" id="et-attente">${quoi.length > 1 ? 'Deux écritures d\'inventaire ne s\'écrivent' : 'Une écriture d\'inventaire ne s\'écrit'} qu'au 31 décembre, et le résultat ci-dessus ne ${quoi.length > 1 ? 'les' : 'la'} compte pas encore : ${quoi.join(' et ')}. Le <a href="#/compta" data-onglet="tva">résultat simplifié</a> ${quoi.length > 1 ? 'les' : 'la'} compte déjà${tombe ? ` : ${C.money(e.resultat, cur)}${dot ? ` − ${C.money(dot, cur)}` : ''}${vs ? ` ${vs > 0 ? '+' : '−'} ${C.money(Math.abs(vs), cur)}` : ''} = ${C.money(sr, cur)}` : ''}.</p>`;
+      })();
       const tab = (g) => g.lignes.length ? `<table class="list compact"><tbody>${g.lignes.map(l => `<tr><td class="nw"><strong>${h(l.account)}</strong></td><td>${h(l.label)}</td><td class="r nw">${C.money(l.montant)}</td></tr>`).join('')}
         <tr class="total-row"><td colspan="2">${h(g.titre)}</td><td class="r nw"><strong>${C.money(g.total)}</strong></td></tr></tbody></table>` : `<p class="small muted">${h(g.titre)} : —</p>`;
       $('#c-body').innerHTML = `
@@ -12254,7 +12274,7 @@
             <div><div class="k-label">Produits − charges</div><div class="v">${C.money(e.produits.total, cur)} − ${C.money(e.charges.total, cur)}</div></div>
           </div>
           ${e.equilibre ? '<div class="todo-ok" id="et-ok">Actif = passif : le bilan tient debout.</div>' : '<div class="banner" id="et-ko"><span>Le bilan ne tombe pas juste — signale-le avant d\'envoyer quoi que ce soit.</span></div>'}
-          ${e.dotationEnAttente ? `<p class="small muted mt">La dotation aux amortissements de l'exercice en cours (${C.money(e.dotationEnAttente, cur)} à ce jour) ne s'écrit qu'au 31 décembre : le résultat ci-dessus ne la compte pas encore, le <a href="#/compta" data-onglet="tva">résultat simplifié</a> si.</p>` : ''}
+          ${enAttente}
           <div class="inline mt"><button class="btn" id="et-csv">Exporter en CSV</button><button class="btn btn-ghost" id="et-plan">Plan de comptes…</button></div>
         </div>
         <div class="split">
@@ -12584,8 +12604,13 @@
       const questions = data.questionsCabinet || [];
       const enAttente = questions.filter(q => !repondue(q));
       const nonParties = sent.length ? C.reponsesApres(questions, sent[0].at) : [];
+      // 10.14.0 — les écritures du mois ne sont plus celles du dernier paquet fabriqué : une
+      // réouverture, ou une version de SkanFact qui corrige un calcul. Le comptable travaille sur
+      // l'ancien paquet ; un paquet fabriqué ne se réécrit pas, il se refait — encore faut-il le DIRE.
+      // (Un paquet d'avant la 10.14.0 n'a pas de sceau : on ne peut rien comparer, on ne dit rien.)
+      const change = sent.length && sent[0].sceau ? C.ecartsSceau(sent[0].sceau, plan.sceau) : [];
       const suivante = moisVide ? '' : enAttente.length ? 'repondre'
-        : !sent.length ? 'fabriquer' : nonParties.length ? 'refaire' : 'envoyer';
+        : !sent.length ? 'fabriquer' : nonParties.length || change.length ? 'refaire' : 'envoyer';
 
       $('#c-body').innerHTML = `
         <div class="panel"><h2>Le paquet du mois ${info('cab.paquet')}</h2>
@@ -12614,7 +12639,10 @@
               ${/* 10.13.0 — « Fichiers en tout : 15 » était posé en pied, sous une colonne qui additionne
                    14 et qui ne compte pas des fichiers (des lignes de journal, des encaissements) : un
                    total sous une colonne est lu comme sa somme (9.8.8). Le poids du paquet se DIT. */''}
-              <p class="small muted mt">Le paquet fera ${pl(plan.entries.length + 2, 'fichier')} : les pièces en PDF, les journaux en CSV, la page de garde et le manifeste.</p>
+              ${/* 10.14.0 — « 16 fichiers » annoncés, 17 comptés dans l'historique : la signature (9.2.0)
+                   part avec chaque paquet et n'était pas comptée. La page de garde, le manifeste et
+                   sa signature s'ajoutent aux fichiers du plan. */''}
+              <p class="small muted mt">Le paquet fera ${pl(plan.entries.length + 3, 'fichier')} : les pièces en PDF, les journaux en CSV, la page de garde, le manifeste et sa signature.</p>
             </div>
             <div>
               <div class="stat"><div class="lbl">CA HT du mois</div><div class="val">${C.money(plan.ca, cur)}</div></div>
@@ -12673,8 +12701,12 @@
                refaire d'abord quand une réponse est plus récente que le paquet, et répondre avant tout. */''}
           ${suivante === 'repondre' ? `<p class="small muted mb">${h(pl(enAttente.length, 'question de ton comptable attend', 'questions de ton comptable attendent'))} ta réponse, plus haut :
             réponds d'abord, ${enAttente.length > 1 ? 'tes réponses partiront' : 'ta réponse partira'} dans ce paquet.</p>` : ''}
-          ${suivante === 'refaire' ? `<div class="warn-box mb">Tu as répondu à ton comptable après avoir fabriqué ce paquet :
+          ${suivante === 'refaire' && nonParties.length ? `<div class="warn-box mb">Tu as répondu à ton comptable après avoir fabriqué ce paquet :
             ${nonParties.length > 1 ? 'tes réponses n\'y sont pas' : 'ta réponse n\'y est pas'}. Un paquet fabriqué ne se réécrit pas — refais-le avant de l'envoyer.</div>` : ''}
+          ${change.length ? `<div class="warn-box mb" id="cab-change">Les écritures de ${h(per.label)} ne sont plus celles du paquet fabriqué le ${h(C.fmtDate(C.jourDeLInstant(sent[0].at)))} :
+            ${change.slice(0, 4).map(x => `compte ${h(x.account)}, ${[0, 1].filter(i => Math.abs(x.avant[i] - x.maintenant[i]) > 0.0005)
+              .map(i => `${i ? 'crédit' : 'débit'} ${C.money(x.avant[i])} → ${C.money(x.maintenant[i])}`).join(', ')}`).join(' ; ')}${change.length > 4 ? ` — et ${pl(change.length - 4, 'autre compte', 'autres comptes')}` : ''}.
+            Ton comptable travaille sur l'ancien : refais le paquet et renvoie-le-lui.</div>` : ''}
           <div class="inline">
             <button class="btn ${suivante === 'fabriquer' || suivante === 'refaire' ? 'btn-primary' : ''}" id="cab-build" ${moisVide ? 'disabled title="Ce mois ne contient aucune pièce."' : ''}>${!sent.length ? 'Fabriquer le paquet…'
               : nonParties.length ? `Refaire le paquet avec ${nonParties.length > 1 ? 'tes réponses' : 'ta réponse'}…` : 'Refaire le paquet…'}</button>
@@ -12820,7 +12852,10 @@
             path: r.path, missing: (r.absents || []).length,
             // Combien de réponses le paquet emporte : le mail d'envoi le dit, et c'est ce que le
             // comptable cherche en l'ouvrant quand il a posé une question.
-            reponses: C.reponsesAEnvoyer(data.questionsCabinet || []).length
+            reponses: C.reponsesAEnvoyer(data.questionsCabinet || []).length,
+            // Le résumé des écritures envoyées (10.14.0) : c'est lui qui dira, un mois plus tard,
+            // que ce mois a changé depuis que le comptable l'a reçu.
+            sceau: plan.sceau
           }]);
           save(true);
           const warn = (r.absents || []).length ? ` ${pl(r.absents.length, 'fichier')} n'${r.absents.length > 1 ? 'ont' : 'a'} pas pu être joint${sPl(r.absents.length)} (voir le manifeste).` : '';
