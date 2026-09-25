@@ -251,10 +251,20 @@ l'ordre proposé.
     note d'un contrat…) et quelques `<label class="field">` écrits en texte. Le test de 10.14.0
     ne tient que les quatre formulaires du premier jour ; l'étendre à tout le fichier ferait le
     ménage d'un coup.
-- **L'assistant du Cabinet** — *la 10.14.0 l'a retourné comme celui de l'entreprise* : la porte, deux
-  questions (le nom, la liste des clients collée), et la clé de secours, la copie externe et le fichier
-  d'appairage dans « Tes premiers pas ». Reste : régler la saisie et déclarer les collaborateurs dès
-  le départ, et dire comment le fichier d'appairage part chez les clients (un mail préparé ?).
+- ~~**L'assistant du Cabinet**~~ — *fait en 10.14.0* (214a → 214d) : la porte, deux questions (le nom,
+  la liste des clients collée), puis « Tes premiers pas » — la clé de secours, la copie externe, le
+  fichier d'appairage qui PART (« Remettre le fichier à mes clients… » l'enregistre et prépare le mail,
+  clients en copie cachée, chemin exact dans SkanFact, empreinte à vérifier), et deux étapes
+  facultatives cochées sur un geste : déclarer l'équipe (le premier déclaré est proposé
+  « Supervision »), régler la grille de saisie (les touches se capturent et se lisent en français).
+  Chaque geste joué à la souris. Reste une **décision de Skander** :
+  - **la ligne rouge du premier jour.** Un cabinet qui colle sa liste de clients à l'assistant voit
+    aussitôt, en rouge, « 4 dossiers hors SkanFact sont comptés, 3 sont couverts » (et la pastille de
+    licence), avant d'avoir validé quoi que ce soit. C'est la règle de la 9.4.0 (trois dossiers hors
+    SkanFact gratuits, la validation fermée au-delà) — le chiffre est juste. Mais le premier écran d'un
+    comptable qui essaie est une alerte de paiement. Trois réponses possibles : un essai pour le
+    Cabinet (comme les trente jours de SkanFact), un ton orange tant qu'aucune validation n'a été
+    refusée, ou garder le rouge. C'est une décision commerciale, pas un défaut : rien n'est changé.
 - ~~**La visite guidée du Cabinet**~~ — *faite en 10.14.0* : `cabvisites.js` (découverte, une visite par
   page et par écran de comptabilité, gestes guidés et techniques), « Me guider », et
   `e2e:cabinet-couverture`. Puis la parité (même jour, demandée par Skander) : 49 gestes guidés, un

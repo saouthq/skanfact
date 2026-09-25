@@ -556,10 +556,10 @@ function licenceCabinet(opts) {
 // comme pour `round3` (9.1.0). Les deux applications doivent dire la même chose de la même échéance,
 // et aucune des deux ne peut charger le module de l'autre : core.js est un UMD de navigateur, ce
 // fichier a besoin de `crypto`. Le seul garde-fou possible est donc l'égalité, vérifiée.
-function pastille(lic) {
+function pastille(lic, chemin) {
   const l = lic || {};
   const j = l.daysLeft;
-  if (l.locked) return { show: true, ton: 'alerte', texte: (l.label || 'Licence requise') + ' — voir Paramètres → L\'application → Licence' };
+  if (l.locked) return { show: true, ton: 'alerte', texte: (l.label || 'Licence requise') + ' — voir ' + (chemin || 'Paramètres → L\'application → Licence') };
   if (l.state === 'essai' && j != null) {
     const reste = `Essai — ${j} jour${j === 1 ? '' : 's'}`;
     return j <= 7

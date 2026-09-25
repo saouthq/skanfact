@@ -87,6 +87,51 @@ facture juste, à ton nom, sans rien ressaisir.
     nuancier était invisible en thème sombre ; et les Paramètres enregistraient une couleur avant de
     l'avoir montrée sur une facture.
 
+**SkanFact Cabinet : l'assistant, jusqu'au bout**
+Le jumeau, côté comptable, de « l'assistant de démarrage, jusqu'au bout » : ce qui manquait pour que
+le premier jour d'un cabinet aille jusqu'à ses clients.
+- **Le fichier d'appairage part.** Il s'enregistrait sur le disque, et l'écran disait « envoie-le à
+  tes clients » : il fallait écrire soi-même le mail, retrouver les adresses et expliquer où cliquer
+  dans une application qu'on n'utilise pas. « Remettre le fichier à mes clients… » — le même bouton
+  dans les Réglages, dans les Échéances et dans « Tes premiers pas » — l'enregistre, puis prépare le
+  message : tes clients qui ont une adresse en **copie cachée** (jamais l'exemple ni un dossier
+  archivé ; une boîte partagée par deux dossiers ne reçoit qu'un message), ce qu'ils doivent faire
+  dans SkanFact — le chemin exact, lu dans l'application —, l'empreinte à vérifier et quoi faire si
+  elle diffère, et une phrase pour ceux qui n'utilisent pas SkanFact. La fenêtre dit à qui le message
+  partira AVANT de l'ouvrir, puis ce qui est vraiment parti : un lien de messagerie ne joint pas de
+  fichier (il est montré dans son dossier, à glisser dans le message), et un lien trop long est coupé
+  par Windows sans une erreur — les adresses vont alors dans le presse-papiers, et l'écran dit de les
+  coller dans « Cci ». La phrase qui change après le geste garde la hauteur de celle d'avant : les
+  boutons ne bougent pas sous le curseur.
+- **Deux étapes de plus dans « Tes premiers pas », facultatives** : déclarer ton équipe (si tu n'es
+  pas seul) et régler ta grille de saisie (reprendre les touches de ton logiciel actuel). Elles se
+  cochent sur ton geste — les réglages par défaut de la grille ne comptent pas — et ne passent jamais
+  devant une étape du métier. L'article « En trois gestes » de l'Aide les présente.
+- **Le premier collaborateur déclaré, c'est toi.** Il devient le nom de cet ordinateur (9.9.0), et
+  la liste lui proposait « Saisie » : le comptable envoyé par « Tes premiers pas » se retirait la
+  validation de ses propres écritures, et le refus l'envoyait chercher « un superviseur » qui
+  n'existait pas. Le premier est proposé « Supervision », la fenêtre le dit AVANT d'enregistrer, et un
+  refus sans superviseur dit où changer le rôle (Réglages → Mon cabinet → L'équipe).
+- **Les touches de la grille se lisent comme des touches.** Chaque champ affichait le nom interne
+  (« Enter », « Control+Enter ») à côté de la touche dessinée « ↵ Entrée » : on ne voit plus que la
+  touche, en français, et le champ devient la zone où l'on appuie — « Changer… », puis « Appuie sur
+  la touche… ». Sa largeur ne s'était jamais appliquée (une règle générale l'emportait), et une
+  touche plus large le poussait sous le curseur : il ne bouge plus.
+- **Vu à la souris, et corrigé avant de livrer** :
+  - la pastille de licence du Cabinet envoyait vers « Paramètres → L'application → Licence » — le
+    chemin de SkanFact : elle dit maintenant « Réglages → Mon cabinet → Licence » ;
+  - et cliquée, elle ouvrait « Le fichier à remettre », le panneau Licence sous le bas de l'écran :
+    « L'équipe » et « Licence » se remplissent après le premier dessin, et le défilement visait une
+    page plus courte. Il attend maintenant qu'ils soient là ;
+  - « Sur cet ordinateur, c'est Karim Ben Salah qui travaille » se lisait en trois morceaux espacés,
+    avec le sélecteur « Je suis » collé à côté : la phrase est d'un bloc, le sélecteur dessous ;
+  - la visite expliquait le « Fermer » d'une fenêtre dont le geste est fait comme « Annuler — ferme
+    sans rien garder » (dans les deux applications), alors que le fichier était enregistré ;
+  - l'identifiant du nouveau bouton « Écrire à mes clients… » était déjà celui d'un bouton de la Paie
+    (« Passe l'écriture de paie du mois en brouillard ») — la visite aurait expliqué l'un par l'autre.
+    Un test vérifie désormais, dans les deux applications, qu'un identifiant expliqué sans page n'est
+    posé que par une seule fonction.
+
 **La visite guidée**
 - **La découverte sur l'exemple**, en douze chapitres : l'accueil, vendre, les clients et le
   catalogue, acheter, l'argent, le personnel, le stock et les biens, piloter, ton comptable, les

@@ -193,7 +193,10 @@
   b('[data-rowmenu]', null, { rowmenu: true, nom: 'Actions', cle: 'rowmenu' });
   b('#gb-go', 'Lance la visite de cet écran : chaque bloc, chaque bouton, en une ou deux minutes.');
   b('#gb-non', 'Ne propose plus la visite de cet écran. Elle reste dans « Me guider ».');
-  b('[data-dismiss], [data-close]', 'Ferme la fenêtre sans rien garder. Si tu as tapé quelque chose, le Cabinet demande d\'abord.', { nom: 'Annuler', cle: 'fermer' });
+  // 10.14.0 — « Annuler » ET « Fermer » portent ces attributs : « sans rien garder » était faux sur le
+  // « Fermer » de « Le fichier est prêt » (le fichier est enregistré). L'explication dit ce qui est vrai
+  // des deux, et le bouton garde SON nom — une explication fausse est pire qu'absente.
+  b('[data-dismiss], [data-close]', 'Ferme la fenêtre. Ce qui est déjà enregistré le reste ; si tu viens de taper quelque chose, le Cabinet demande avant de le jeter.', { cle: 'fermer' });
   b('#no', 'Ferme sans rien faire.', { nom: 'Annuler', cle: 'non' });
   b('#ok', 'Valide ce que la fenêtre propose.', { nom: 'Valider', cle: 'ok' });
   b('.modal .modal-actions .btn-danger', 'Supprime, après confirmation. Le Cabinet dit d\'abord ce qui y est rattaché.', { nom: 'Supprimer', cle: 'supprimer' });
@@ -212,7 +215,7 @@
   b('#rl-nd', 'Ajoute tes clients : un par un, ou toute la liste collée depuis ton tableur. Ceux à qui il manque un mois arrivent ensuite ici, la relance déjà écrite.');
   b('#rl-imp', 'Importe un paquet reçu par mail (.skanpack) : le client entre dans ton portefeuille avec ses mois.');
   b('#ech-livre', 'Ouvre la comptabilité d\'un client que tu tiens toi-même : dès que son livre existe, ses déclarations entrent dans le calendrier.');
-  b('#ech-pair', 'Ouvre le fichier à remettre à tes clients : quand ils l\'importent dans SkanFact, leurs paquets arrivent chez toi, et leurs échéances ici.');
+  b('#ech-pair', 'Enregistre le fichier à remettre à tes clients et prépare le message qui l\'envoie : quand ils l\'importent dans SkanFact, leurs paquets arrivent chez toi, et leurs échéances ici.');
   b('#lv-ecrire', 'Écrit au client qu\'aucun paquet n\'est arrivé : le mail est prêt, tu le relis avant qu\'il parte.');
   b('#rv-relire', 'Relit le fichier avec les colonnes que tu viens d\'associer : les lignes lues s\'affichent avant que rien n\'entre.');
   b('#s-rec-in', 'Restaure une clé de secours enregistrée ailleurs : les paquets qu\'elle ouvre redeviennent lisibles sur ce poste.');
@@ -314,7 +317,9 @@
   b('#set-tabs button', null, { onglet: true });
   b('#set-q', 'Tape le nom d\'un réglage : la recherche dit dans quel onglet il est rangé.', { nom: 'Chercher un réglage' });
   b('#c-save', 'Enregistre les informations de ton cabinet.');
-  b('#c-pair', 'Enregistre le fichier d\'appairage à envoyer à tes clients : il ne contient rien de secret.');
+  b('#c-pair', 'Enregistre le fichier d\'appairage, puis prépare le message qui l\'envoie à tes clients : il ne contient rien de secret.');
+  b('#ap-ecrire', 'Ouvre ta messagerie avec le message tout prêt : tes clients en copie cachée, ce qu\'ils doivent faire, et l\'empreinte à vérifier.');
+  b('#ap-montrer', 'Montre le fichier dans son dossier, pour le glisser dans le message.');
   b('#c-copier-emp, #w-copier-emp, #lic-copier-emp', 'Copie l\'empreinte de ton cabinet, pour la dicter ou l\'envoyer.', { nom: 'Copier', cle: 'copier-emp' });
   b('#eq-add', 'Déclare un collaborateur et son rôle : qui saisit, qui valide.');
   b('#lic-ask', 'Prépare le mail de demande de licence, avec l\'empreinte de ton cabinet.');
@@ -581,13 +586,17 @@
       si: () => !!String((S().cabinet || {}).name || '').trim(),
       manque: { texte: 'Il faut d\'abord nommer ton cabinet : le nom entre dans le fichier.', visite: 'nommer-cabinet' },
       bravo: 'Le fichier est prêt',
-      conclusion: 'Envoie-le à tes clients sur SkanFact, par mail : il ne contient rien de secret. S\'ils te lisent au téléphone l\'empreinte qu\'ils voient, et qu\'elle correspond, c\'est bien à toi qu\'ils envoient.',
+      conclusion: 'Joins le fichier au message avant de l\'envoyer : il ne contient rien de secret. S\'ils te lisent au téléphone l\'empreinte qu\'ils voient, et qu\'elle correspond, c\'est bien à toi qu\'ils envoient.',
       etapes: [
         { page: '#/reglages', avant: onglet('#set-tabs', 'cabinet'), cible: '#pan-appairage', cote: 'dessus', titre: 'Le fichier et l\'empreinte',
           texte: 'L\'<b>empreinte</b> est courte exprès : elle se dicte au téléphone. C\'est elle qui prouve à ton client que le fichier vient de toi.' },
         { page: '#/reglages', cible: '#c-pair', cote: 'dessus', faire: 'clic', avant: () => { pairAvant = (S().cabinet || {}).pairingExportedAt || ''; },
           fait: () => ((S().cabinet || {}).pairingExportedAt || '') !== pairAvant,
-          titre: 'Enregistrer le fichier', texte: 'Choisis où l\'enregistrer ; tu l\'enverras ensuite par mail.', action: 'Clique sur <b>« Enregistrer le fichier d\'appairage… »</b>, puis choisis un endroit.', essai: { clic: true } }
+          titre: 'Enregistrer le fichier', texte: 'Choisis où l\'enregistrer : le message qui l\'envoie se prépare juste après.', action: 'Clique sur <b>« Remettre le fichier à mes clients… »</b>, puis choisis un endroit.', essai: { clic: true } },
+        // Le geste ouvre une fenêtre : la dernière étape la MONTRE (on ne termine pas par-dessus ce
+        // qu'on vient d'ouvrir) et ne clique rien — écrire à soixante clients ne se joue pas « pour voir ».
+        { page: '#/reglages', cible: '#modal-root #ap-ecrire', cote: 'dessus', titre: 'Le message tout prêt',
+          texte: '<b>« Écrire à mes clients… »</b> ouvre ta messagerie : tes clients qui ont une adresse sont en <b>copie cachée</b>, et le message leur dit où importer le fichier et quelle empreinte vérifier. Il ne te reste qu\'à joindre le fichier, montré dans son dossier.' }
       ]
     });
 

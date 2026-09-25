@@ -299,9 +299,27 @@
       motif: `${c ? c.nom : 'Ce collaborateur'} a le rôle « ${LIBELLE_ROLE[role]} » sur ce dossier : ce geste demande « ${LIBELLE_ROLE[geste] || geste} ».`,
       geste: qui.length
         ? `${qui.map(x => x.nom).join(', ')} ${qui.length > 1 ? 'peuvent' : 'peut'} le faire.`
-        : 'Personne n\'a encore ce rôle sur ce dossier : un superviseur peut le donner dans la fiche du dossier.'
+        // 10.14.0 — sans superviseur, personne ne peut « donner » ce rôle : la gestion de l'équipe
+        // est alors ouverte à tous (`peutGererCollaborateurs`), et c'est là qu'il se change. Le refus
+        // envoyait chercher un superviseur qui n'existe pas — un refus qui promet une sortie qui
+        // n'existe pas (10.12.0). Vu au test humain : un cabinet qui s'était déclaré « Saisie ».
+        : !collaborateurs(state).some(x => x.role === 'supervision')
+          ? `Aucun superviseur n'est déclaré : ce rôle se change dans ${CHEMIN_EQUIPE}.`
+          : 'Personne n\'a encore ce rôle sur ce dossier : un superviseur peut le donner dans la fiche du dossier.'
     };
   }
+
+  // Où l'équipe se règle — une phrase qui dit où cliquer est une promesse (10.9.2) : un test la
+  // confronte aux onglets et aux panneaux réels des Réglages.
+  const CHEMIN_EQUIPE = 'Réglages → Mon cabinet → L\'équipe';
+
+  // Le rôle proposé à un collaborateur NEUF (10.14.0). Le premier déclaré devient l'identité de ce
+  // poste (9.9.0) — c'est presque toujours le comptable qui ouvre l'application. « Saisie », la
+  // première option de la liste, lui retirait la validation de ses propres écritures au moment
+  // précis où « Tes premiers pas » l'envoyaient déclarer son équipe. Le premier est proposé
+  // « Supervision » (tout, gestion de l'équipe comprise) ; les suivants « Saisie », le rôle le plus
+  // étroit — on élargit un droit en le décidant, jamais par défaut.
+  const roleProposeCollab = state => collaborateurs(state).length ? 'saisie' : 'supervision';
 
   // Qui a le droit de créer ou de retirer un collaborateur. Tant qu'AUCUN superviseur n'existe, la
   // porte est ouverte — sinon le premier cabinet qui déclare deux saisisseurs et ferme l'écran ne
@@ -1117,11 +1135,21 @@
         action: 'decouverte' },
       { id: 'cabinet', titre: 'Nommer ton cabinet', fait: !!String(cab.name || '').trim(),
         quoi: 'Ce nom signe tes relances et le fichier que tes clients importent.', action: 'cabinet' },
+      // 10.14.0 (l'assistant, jusqu'au bout) — ce qui se règle UNE fois pour tout le cabinet et qui ne
+      // se demande pas au premier écran (un formulaire au premier écran se saute) : l'équipe, puis la
+      // grille de saisie, plus bas. Facultatifs : seul, on n'a personne à déclarer, et la grille marche
+      // telle quelle. Chacun se coche sur un GESTE du comptable, jamais sur une valeur posée par le
+      // logiciel (10.12.0) : `migrate` remplit les réglages de saisie d'office, donc leur présence ne
+      // prouve rien — c'est l'enregistrement du panneau qui laisse `regleLe`.
+      { id: 'equipe', titre: 'Déclarer ton équipe', fait: collaborateurs(state).length > 0, facultatif: true,
+        quoi: collaborateurs(state).length ? 'Ton équipe est déclarée : la piste d\'audit porte le nom de chacun, et chacun ne fait que ce que son rôle permet.'
+          : 'Si tu n\'es pas seul : chaque collaborateur, son rôle (saisie, validation, supervision) et les dossiers qu\'on lui confie. Seul, il n\'y a rien à faire : rien n\'est restreint tant que personne n\'est déclaré.',
+        action: 'equipe' },
       { id: 'clients', titre: 'Ajouter tes clients', fait: reels.length > 0,
         quoi: 'Tous, même ceux qui n\'utilisent pas SkanFact : l\'application devient le tableau de bord de ton portefeuille, et rien n\'est réclamé à ceux qui n\'ont pas commencé.',
         action: 'clients' },
       { id: 'appairage', titre: 'Remettre le fichier d\'appairage à tes clients', fait: !!cab.pairingExportedAt,
-        quoi: 'Un fichier sans rien de secret, à envoyer par mail. Chaque client l\'importe une fois : ses paquets sont ensuite chiffrés pour toi seul.',
+        quoi: 'Un fichier sans rien de secret : le Cabinet prépare le message qui l\'envoie à tes clients. Chacun l\'importe une fois, et ses paquets sont ensuite chiffrés pour toi seul.',
         action: 'appairage' },
       { id: 'cle', titre: 'Enregistrer ta clé de secours', fait: c.cleSecours === true,
         quoi: 'Sans elle, si cet ordinateur disparaît, aucun paquet déjà reçu ne pourra plus être ouvert — ni par nous, ni par personne.',
@@ -1129,6 +1157,10 @@
       { id: 'copie', titre: 'Mettre ton cabinet à l\'abri', fait: !!c.copieExterne,
         quoi: 'Une copie automatique hors de cet ordinateur : clé USB, disque, iCloud ou OneDrive. La base, les livres et les paquets y sont recopiés à chaque enregistrement.',
         action: 'copie' },
+      { id: 'saisie', titre: 'Régler ta grille de saisie', fait: !!(((s.settings || {}).saisie || {}).regleLe), facultatif: true,
+        quoi: (((s.settings || {}).saisie || {}).regleLe) ? 'Ta grille est réglée : ses touches et le journal proposé valent pour tous tes dossiers.'
+          : 'Les touches (solder la pièce, recopier la ligne, valider), le journal proposé, la date : reprends celles de ton logiciel actuel, pour saisir sans y penser. Telle quelle, la grille marche déjà.',
+        action: 'saisie' },
       { id: 'travail', titre: 'Recevoir un premier paquet, ou tenir un premier livre', fait: unPaquet || unLivre,
         quoi: unPaquet || unLivre ? 'Ton portefeuille vit : les mois reçus et saisis s\'y comptent tout seuls.'
           : 'Un client sur SkanFact t\'envoie son paquet du mois (tu le glisses sur la fenêtre) ; pour un client hors SkanFact, tu crées son livre et tu saisis.',
@@ -1919,6 +1951,54 @@
     return null;
   }
 
+  // 10.14.0 (l'assistant, jusqu'au bout) — le fichier d'appairage PART. Il s'enregistrait sur le disque
+  // et l'écran disait « envoie-le à tes clients » : il fallait écrire soi-même le mail, retrouver les
+  // soixante adresses, et expliquer où cliquer dans une application qu'on n'utilise pas. Le message se
+  // prépare ici — pur et testé — et le comptable n'a plus qu'à joindre le fichier et envoyer.
+  // Les destinataires : les VRAIS dossiers (jamais l'exemple), non archivés, qui ont une adresse — en
+  // copie cachée, parce qu'un client n'a pas à lire la liste des autres. Le message dit quoi faire à
+  // celui qui n'utilise pas SkanFact : rien.
+  // Vouvoiement : c'est le comptable qui écrit à ses clients (comme `relanceMail`).
+  // Deux comptes, qui ne disent pas la même chose : les CLIENTS qui ont une adresse (ce que l'écran
+  // annonce avant l'envoi) et les ADRESSES distinctes (ce qui part en copie cachée) — deux dossiers
+  // d'un même groupe partagent souvent la même boîte, et un seul message y suffit.
+  function mailAppairage(cabinet, dossiers, empreinte, nomFichier) {
+    const cab = cabinet || {};
+    const reels = (dossiers || []).filter(d => !d.demo && !d.archived);
+    const adresse = d => String(d.email || '').trim().toLowerCase();
+    const valide = e => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
+    const bcc = [...new Set(reels.map(adresse).filter(valide))];
+    const nom = String(cab.name || '').trim();
+    const fichier = nomFichier || 'le fichier joint';
+    const subject = `Vos envois ${nom ? 'à ' + nom : 'à votre cabinet'} : un fichier à importer une fois dans SkanFact`;
+    const body = 'Bonjour,\n\n'
+      + `Pour m'envoyer votre comptabilité chaque mois depuis SkanFact, importez une seule fois le fichier joint (« ${fichier} ») : `
+      + 'dans SkanFact, « Paramètres → Envois → Ton cabinet comptable », puis « Importer le fichier du cabinet… ».\n\n'
+      + `SkanFact vous montre alors une empreinte. Elle doit être exactement celle-ci : ${empreinte || '—'}\n`
+      + 'Si elle est différente, n\'allez pas plus loin et appelez-moi.\n\n'
+      + 'Ensuite, vos paquets mensuels me parviennent chiffrés pour moi seul : plus aucun mot de passe à échanger.\n\n'
+      + 'Vous n\'utilisez pas SkanFact ? Ne tenez pas compte de ce message : rien ne change pour vous.\n\n'
+      + `Bien à vous,\n${nom}`;
+    const avecAdresse = reels.filter(d => valide(adresse(d))).length;
+    return { subject, body, bcc, avecAdresse, sansAdresse: reels.length - avecAdresse };
+  }
+
+  // Un lien `mailto:` a une LONGUEUR qui ne se voit pas : au-delà d'environ deux mille caractères,
+  // Windows (et Outlook) le coupent ou ne l'ouvrent pas du tout — sans une erreur. Soixante adresses
+  // en copie cachée et un message accentué (chaque « é » devient « %C3%A9 ») dépassent vite. Les
+  // adresses entrent dans le lien seulement s'il tient ; sinon le lien part sans elles, et l'appelant
+  // les met dans le presse-papiers en le DISANT. Le message, lui, part toujours.
+  const LIMITE_MAILTO = 2000;
+  function mailtoUrl(m, limite) {
+    const o = m || {};
+    const max = limite || LIMITE_MAILTO;
+    const params = t => ['subject=' + encodeURIComponent(o.subject || ''), 'body=' + encodeURIComponent(o.body || '')]
+      .concat(t && (o.bcc || []).length ? ['bcc=' + (o.bcc || []).map(encodeURIComponent).join(',')] : []).join('&');
+    const avec = `mailto:${encodeURIComponent(o.to || '')}?${params(true)}`;
+    if (!(o.bcc || []).length || avec.length <= max) return { url: avec, bccInclus: (o.bcc || []).length > 0 };
+    return { url: `mailto:${encodeURIComponent(o.to || '')}?${params(false)}`, bccInclus: false };
+  }
+
   // Le fichier d'appairage remis aux clients. Il ne contient QUE la clé publique : rien de secret,
   // mais tout ce qu'il faut pour que leurs paquets n'appartiennent qu'à ce cabinet.
   function pairingFile(cabinet, fingerprint) {
@@ -1969,6 +2049,7 @@
   }
 
   return {
+    mailAppairage, mailtoUrl, LIMITE_MAILTO,
     FORMAT, MONTHS_FR, DEFAULT_STATE, DEFAULT_SETTINGS, DEFAULT_SAISIE, TVA_PERIODS, REGIMES, RELANCE_WAYS, SORTS,
     sansAccents, paletteCompta,
     guidesDuDossier, correspondanceDuDossier, dateTapee,
@@ -1986,7 +2067,7 @@
     // Le cabinet à plusieurs (9.9.0)
     ROLES_COLLAB, RANG_ROLE, LIBELLE_ROLE, DETAIL_ROLE, ETAPES_PRODUCTION,
     migrateCollaborateur, collaborateurs, collaborateurDe, collaborateurValide,
-    roleSurDossier, peut, peutGererCollaborateurs, dossiersConfies,
+    roleSurDossier, peut, peutGererCollaborateurs, dossiersConfies, CHEMIN_EQUIPE, roleProposeCollab,
     productionDuDossier, production
   };
 }));

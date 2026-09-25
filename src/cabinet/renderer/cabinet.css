@@ -480,9 +480,18 @@ tr.cp-miroir td { background: var(--info-soft); }
 .kbd-paire { font-size: 12px; color: var(--muted); white-space: nowrap; }
 .kbd-plus { color: var(--muted); font-size: 11px; margin-inline-start: 3px; }
 .touche-ligne { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-.touche-in { width: 9ch; text-align: center; cursor: pointer; }
+/* 10.14.0 — le champ est la zone où l'on APPUIE (« Changer… », puis « Appuie sur la touche… ») : la
+   touche elle-même se lit dessinée, à sa gauche. Assez large pour sa phrase au focus — et la largeur
+   porte la chaîne de `:not()` de la règle générale des champs (`width: 100%`), qui gagnait : la
+   largeur de ce champ ne s'était jamais appliquée (mesurée à 120 px, vue au test humain) ; et
+   `.field.narrow input` la plafonnait en plus à 120 px. */
+.touche-in { text-align: center; cursor: pointer; }
+input.touche-in:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]) { width: 22ch; max-width: none; flex: none; }
 .touche-in:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
-.touche-vue { white-space: nowrap; }
+/* La touche dessinée réserve sa largeur (celle de « Ctrl + ↵ Entrée ») : le champ de capture est à
+   sa droite, et une touche plus large le pousserait sous le curseur au moment où on appuie — ce qui
+   répond à un geste ne se déplace pas sous lui (10.12.0). Les champs s'alignent d'une rangée à l'autre. */
+.touche-vue { white-space: nowrap; display: inline-block; min-width: 8.5rem; }
 /* La colonne de sélection : au plus étroit, et sa case centrée sous l'en-tête qui la coche.
    Cocher est un geste de masse — la colonne ne doit pas reprendre la largeur du nom du client. */
 /* Le chiffre seul, quand la courbe n'a pas de quoi être une courbe (9.4.9). Ce n'est pas un repli
@@ -675,6 +684,9 @@ tr.eq-moi > td { background: var(--primary-soft); }
    la ligne, une marge horizontale seule ne décide de rien (T-56). */
 .mt-s { margin-block-start: 8px; }
 #eq-moi { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+/* 10.14.0 — la phrase prend toute la rangée : le sélecteur passe dessous, comme le dit la règle
+   ci-dessus, au lieu de se glisser à côté du nom. */
+#eq-moi > .eq-phrase { flex: 1 1 100%; }
 
 /* U-16 — sur la liasse, le MONTANT est le lien vers ses comptes. Il se reconnaît au repos (couleur et
    soulignement pointillé), pas au survol : un bouton sans bordure ni couleur n'est pas un bouton. */
@@ -729,3 +741,14 @@ a.lien-aide:hover, a.lien-aide:focus-visible { text-decoration-thickness: 2px; }
    se coupe, alignée à droite comme un chemin. */
 .palette .res .main:has(+ .sub) { flex: 0 1 auto; }
 .palette .res .main + .sub { flex: 1 1 0; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: end; }
+
+/* 10.14.0 (l'assistant, jusqu'au bout) — la place où la fenêtre du fichier d'appairage dit à qui le
+   message partira, puis ce qui est VRAIMENT parti. La réponse est plus longue que la question : sans
+   hauteur réservée, elle poussait les boutons sous le curseur au moment même du clic (H-E1, dans une
+   fenêtre). */
+.ap-etat { min-height: calc(4 * 1.55 * 13px + 22px); }
+/* Les deux états sont le MÊME encadré (annonce, puis réponse), de la même hauteur : quatre lignes
+   de `.info-box` / `.ok-box` (13 px, interligne 1,55, 11 px de marge intérieure en haut et en bas).
+   Une place réservée en `lh` sur la police du paragraphe laissait l'encadré de la réponse la
+   dépasser de 4 px — et les boutons descendaient sous le curseur au moment du clic (H-E1). */
+.ap-etat > div { min-height: inherit; box-sizing: border-box; }

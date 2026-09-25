@@ -236,14 +236,21 @@
   // « Control », et une faute de frappe donnait un raccourci qui ne se déclenchait jamais — sans
   // rien à l'écran pour le dire. Le champ reste un `input` (donc il garde le focus, l'étiquette et
   // la bulle), mais il est en lecture seule : c'est le clavier qui l'écrit.
+  //
+  // 10.14.0 — le champ ne montre plus le nom INTERNE de la touche (« Control+Enter » à côté de sa
+  // touche dessinée « Ctrl + ↵ Entrée ») : le format interne fuit dans l'écran de saisie (9.4.5). Il
+  // vit dans `data-code`, la touche se lit une fois — dessinée, en français — et le champ n'est plus
+  // que la zone où l'on appuie : « Changer… », puis « Appuie sur la touche… ». Vu au test humain,
+  // sur l'écran qu'ouvre « Régler ta grille de saisie » dans « Tes premiers pas ».
+  const nomTouche = combo => String(combo || '').split('+').map(t => NOM_TOUCHE[t] || t).join(' + ');
   const champTouche = (k, titre, cle) => {
     const v = (((S.settings || {}).saisie || {}).touches || {})[k] || K.DEFAULT_SAISIE.touches[k];
     return `<div class="field narrow touche-champ">${lbl(titre, cle)}
       <div class="touche-ligne">
-        <input type="text" readonly data-touche="${esc(k)}" value="${esc(v)}" class="touche-in"
-          aria-label="${esc(titre)} — appuie sur la touche à utiliser" title="Appuie sur la touche à utiliser">
         <span class="touche-vue" data-vue="${esc(k)}">${kbd(v)}</span>
-        <button type="button" class="btn btn-sm" data-touche-reset="${esc(k)}" title="Remettre ${esc(K.DEFAULT_SAISIE.touches[k])}">Remettre d'origine</button>
+        <input type="text" readonly data-touche="${esc(k)}" data-code="${esc(v)}" value="" placeholder="Changer…" class="touche-in"
+          aria-label="${esc(titre)} : ${esc(nomTouche(v))} — appuie sur la touche à utiliser" title="Clique, puis appuie sur la touche à utiliser">
+        <button type="button" class="btn btn-sm" data-touche-reset="${esc(k)}" title="Remettre ${esc(nomTouche(K.DEFAULT_SAISIE.touches[k]))}">Remettre d'origine</button>
       </div></div>`;
   };
 
@@ -7582,9 +7589,9 @@
     : `Tes ${clients.length} clients ne sont encore dans aucun de ces deux cas`} : dès qu'un client t'envoie
         un paquet ou que tu ouvres son livre, ses déclarations apparaissent ici.</p>
         <div class="modal-actions"><button class="btn btn-primary" id="ech-livre">${seul ? `Ouvrir la comptabilité ${esc(K.de(seul.name))}` : 'Choisir un client à tenir…'}</button>
-        <button class="btn" id="ech-pair">Remettre le fichier d'appairage…</button></div></div>`;
+        <button class="btn" id="ech-pair">Remettre le fichier à mes clients…</button></div></div>`;
     $('#ech-livre').onclick = () => { location.hash = seul ? `#/dossier/${seul.id}/comptabilite` : '#/dossiers'; };
-    $('#ech-pair').onclick = () => versReglages('pan-appairage');
+    $('#ech-pair').onclick = () => remettreAppairage();
     typographie(view);
   }
 
@@ -7925,8 +7932,11 @@
     const moi = liste.find(c => c.id === equipe.moi) || null;
     box.innerHTML = `
       ${liste.length ? `<div class="${moi ? 'ok-box' : 'warn-box'} mb" id="eq-moi">
-          ${moi ? `Sur cet ordinateur, c'est <b>${esc(moi.nom)}</b> qui travaille — ${esc(K.LIBELLE_ROLE[moi.role])}.`
-    : 'Cet ordinateur ne dit pas qui travaille dessus : la piste d\'audit portera le nom du poste, et les droits par dossier ne s\'appliquent pas.'}
+          ${/* 10.14.0 — la phrase est UN élément : dans ce bandeau flex, chaque morceau de texte et le
+                nom en gras devenaient trois éléments séparés par l'écart du bandeau (« c'est   Karim
+                   qui travaille »), la règle de la 10.12.0 sur l'étiquette d'une case, vue à la souris. */''}
+          <span class="eq-phrase">${moi ? `Sur cet ordinateur, c'est <b>${esc(moi.nom)}</b> qui travaille — ${esc(K.LIBELLE_ROLE[moi.role])}.`
+    : 'Cet ordinateur ne dit pas qui travaille dessus : la piste d\'audit portera le nom du poste, et les droits par dossier ne s\'appliquent pas.'}</span>
           <label class="f-lab mt-s">Je suis
             <select id="eq-je-suis" aria-label="Qui travaille sur cet ordinateur">
               <option value="">— personne de déclaré —</option>
@@ -7986,11 +7996,20 @@
   }
 
   function formCollaborateur(c) {
+    // 10.14.0 — le premier déclaré devient l'identité de ce poste (9.9.0) : c'est presque toujours le
+    // comptable lui-même, envoyé ici par « Tes premiers pas ». On le lui dit AVANT d'enregistrer
+    // (un avertissement se lit avant le geste, 9.4.2) — le toast le disait après — et on lui propose
+    // « Supervision » : « Saisie », la première option, lui retirait la validation de ses écritures.
+    const premier = !c && !K.collaborateurs({ collaborateurs: (equipe && equipe.liste) || [] }).length;
+    const role = c ? c.role : K.roleProposeCollab({ collaborateurs: (equipe && equipe.liste) || [] });
     modal(`<h2>${c ? 'Modifier ' + esc(c.nom) : 'Ajouter un collaborateur'}</h2>
-      <label class="field obligatoire"><span>Nom</span>
+      ${premier ? `<div class="info-box mb" id="eq-premier"><b>Commence par toi : le premier déclaré devient le nom de cet
+        ordinateur.</b> Tes écritures validées le porteront. « Supervision » te garde tous les droits — la clôture et la
+        gestion de l'équipe comprises.</div>` : ''}
+      <label class="field obligatoire">${lbl('Nom', 'eq.nom')}
         <input type="text" id="eq-nom" value="${esc(c ? c.nom : '')}" placeholder="Amine Ben Salah"></label>
-      <label class="field"><span>Rôle</span><select id="eq-role">
-        ${K.ROLES_COLLAB.map(r => `<option value="${r}" ${c && c.role === r ? 'selected' : ''}>${esc(K.LIBELLE_ROLE[r])}</option>`).join('')}
+      <label class="field">${lbl('Rôle', 'eq.role')}<select id="eq-role">
+        ${K.ROLES_COLLAB.map(r => `<option value="${r}" ${role === r ? 'selected' : ''}>${esc(K.LIBELLE_ROLE[r])}</option>`).join('')}
       </select></label>
       <p class="muted small" id="eq-detail"></p>
       <p class="muted small">Le rôle vaut partout, sauf sur les dossiers où un droit a été posé pour cette personne :
@@ -8132,7 +8151,8 @@
     // sortir d'un champ qui avale le clavier.
     $$('[data-touche]', view).forEach(inp => {
       const vue = $(`[data-vue="${inp.dataset.touche}"]`, view);
-      const poser = v => { inp.value = v; if (vue) vue.innerHTML = kbd(v); sale(inp); };
+      // La touche vit dans `data-code` ; le champ reste VIDE — il n'est que la zone où l'on appuie.
+      const poser = v => { inp.dataset.code = v; if (vue) vue.innerHTML = kbd(v); sale(inp); };
       inp.onkeydown = ev => {
         if (ev.key === 'Escape') { inp.blur(); return; }
         // Un modificateur seul n'est pas un raccourci : on attend la touche qui l'accompagne.
@@ -8140,13 +8160,14 @@
         ev.preventDefault();
         poser(toucheDe(ev));
       };
-      inp.onfocus = () => inp.select();
+      inp.onfocus = () => { inp.placeholder = 'Appuie sur la touche…'; };
+      inp.onblur = () => { inp.placeholder = 'Changer…'; };
     });
     $$('[data-touche-reset]', view).forEach(b => {
       b.onclick = () => {
         const k = b.dataset.toucheReset, d = K.DEFAULT_SAISIE.touches[k];
         const inp = $(`[data-touche="${k}"]`, view), vue = $(`[data-vue="${k}"]`, view);
-        if (inp) inp.value = d;
+        if (inp) inp.dataset.code = d;
         if (vue) vue.innerHTML = kbd(d);
         sale(b);
       };
@@ -8155,7 +8176,7 @@
     if (sr) {
       sr.onclick = async () => {
         const touches = {};
-        $$('[data-touche]', view).forEach(i => { touches[i.dataset.touche] = i.value.trim() || K.DEFAULT_SAISIE.touches[i.dataset.touche]; });
+        $$('[data-touche]', view).forEach(i => { touches[i.dataset.touche] = String(i.dataset.code || '').trim() || K.DEFAULT_SAISIE.touches[i.dataset.touche]; });
         try {
           S = await api.saveCabinet({
             name: (S.cabinet || {}).name || '', email: (S.cabinet || {}).email || '', phone: (S.cabinet || {}).phone || '',
@@ -8164,7 +8185,10 @@
                 journalParDefaut: $('#sr-journal', view).value.trim().toUpperCase(),
                 dateComplete: $('#sr-datec', view).checked,
                 validerParLot: $('#sr-lot', view).checked,
-                touches
+                touches,
+                // « Tes premiers pas » se cochent sur un GESTE (10.12.0) : `migrate` remplit ces
+                // réglages d'office, leur présence ne prouve rien. L'enregistrement, si.
+                regleLe: new Date().toISOString()
               }
             }
           });
@@ -8670,7 +8694,7 @@
           <div class="empreinte-ligne"><span class="fingerprint">${esc(c.signatureFingerprint)}</span></div></div>
         <p class="muted small mt">Tes clôtures et tes questions partent signées. Ton client retient cette signature la première fois,
         puis refuse un envoi qui en porterait une autre : si l'un d'eux te la lit au téléphone, c'est celle-ci.</p>` : ''}
-        <div class="modal-actions"><button class="btn" id="c-pair">Enregistrer le fichier d'appairage…</button></div>
+        <div class="modal-actions"><button class="btn" id="c-pair">Remettre le fichier à mes clients…</button></div>
       </div>
 
       ${panneauReg('pan-regimes', info('rg.regimes'))}
@@ -8723,7 +8747,7 @@
             ${lbl('Proposer « valider tout le journal du mois »', 'sa.validerLot')}</label>
         </div>
         <h3 class="mt">${lbl('Les touches', 'sa.touches')}</h3>
-        <p class="muted small">Clique dans le champ et <strong>appuie sur la touche</strong> que tu veux utiliser — elle s'inscrit toute seule. Échap pour ressortir sans rien changer.</p>
+        <p class="muted small">Clique sur « Changer… » et <strong>appuie sur la touche</strong> que tu veux utiliser : elle se dessine à gauche. Échap pour ressortir sans rien changer.</p>
         ${/* Chaque touche porte SA bulle : « Solder la pièce » ne dit pas ce que le geste fait, et
               c'est précisément ce qu'on veut savoir avant de lui donner une touche. */''}
         <div class="grid-2">
@@ -8859,11 +8883,13 @@
     showTab(reglagesTab);
     // Un lien qui promet « la clé de secours » ou « les sauvegardes » doit amener LE PANNEAU, pas le
     // haut d'un onglet. Même porte que le sommaire et que la recherche : l'onglet suit tout seul.
-    if (reglagesFocus) {
-      const vise = reglagesFocus;
-      reglagesFocus = '';
-      reg.montrer(vise);
-    }
+    // 10.14.0 — et on l'amène APRÈS le chargement de l'onglet (règle 10.13.0 : une cible
+    // asynchrone se pose après le chargement). « L'équipe » et « Licence » s'affichent
+    // « Chargement… » au premier dessin et grandissent ensuite : le défilement posé tout de suite
+    // visait une page plus courte, et la pastille de licence ouvrait « Le fichier à remettre »,
+    // le panneau Licence 50 px sous le bas de l'écran. Trouvé à la souris.
+    const vise = reglagesFocus;
+    reglagesFocus = '';
     const sup = $('#s-support'); if (sup) sup.onclick = supportDialog;
     const idee = $('#s-idee'); if (idee) idee.onclick = ideeDialog;
     // Le thème s'applique AVANT d'être enregistré : on choisit une apparence en la voyant, pas en
@@ -8890,8 +8916,9 @@
     // dessin à l'autre, et la recherche des réglages, posée hors du corps, ne salit rien.
     const corps = $('#set-corps', view);
     if (corps) { corps.addEventListener('input', e => sale(e.target)); corps.addEventListener('change', e => sale(e.target)); }
-    dessinerEquipe(view);
-    dessinerLicence(view);
+    Promise.allSettled([dessinerEquipe(view), dessinerLicence(view)]).then(() => {
+      if (vise && location.hash.startsWith('#/reglages')) reg.montrer(vise);
+    });
     bindRecoveryBanner(view);
     if ($('#r-demo-on')) $('#r-demo-on').onclick = async () => {
       S = await chargerOuRetirerExemple(true); toast(phraseExemple()); location.hash = '#/dossiers';
@@ -8928,20 +8955,62 @@
       } catch (e) { toast(plainError(e), 'error'); }
     };
     if ($('#c-copier-emp')) $('#c-copier-emp').onclick = () => copierEmpreinte(S.cabinet.fingerprint);
-    $('#c-pair').onclick = async () => {
-      if (!(S.cabinet.name || '').trim()) return toast('Renseigne d\'abord le nom de ton cabinet.', 'error');
-      try {
-        const r = await api.exportPairing();
-        // L'état porte la date de la remise (10.14.0) : « Tes premiers pas » la lisent.
-        if (r && r.state) S = r.state;
-        if (r) {
-          const ok = await confirmDialog('Fichier d\'appairage créé',
-            `<p>Envoie ce fichier à tes clients (par mail, il ne contient rien de secret).</p>
-             <p class="muted small">${esc(r.path)}</p>`, 'Le montrer dans le dossier', false, 'Fermer');
-          if (ok) api.reveal(r.path);
-        }
-      } catch (e) { toast(plainError(e), 'error'); }
-    };
+    $('#c-pair').onclick = () => remettreAppairage();
+  }
+
+  // 10.14.0 (l'assistant, jusqu'au bout) — le fichier d'appairage PART. Enregistré, il ne servait à
+  // rien tant que le comptable n'avait pas écrit lui-même le mail, retrouvé soixante adresses et
+  // expliqué où cliquer dans une application qu'il n'utilise pas. UNE porte pour les deux boutons (le
+  // panneau des Réglages et « Tes premiers pas ») : l'enregistrement, puis le message tout prêt
+  // (`K.mailAppairage`), adressé en copie cachée à chaque client qui a une adresse. Et l'écran dit ce
+  // qui est VRAIMENT parti (E-14) : un lien `mailto:` ne joint pas de fichier, et trop d'adresses le
+  // feraient couper par Windows — elles vont alors dans le presse-papiers, en le disant.
+  async function remettreAppairage() {
+    if (!(S.cabinet.name || '').trim()) {
+      toast('Nomme d\'abord ton cabinet : son nom entre dans le fichier que tes clients importent.', 'error');
+      versReglages('pan-cabinet');
+      return;
+    }
+    let r;
+    try { r = await api.exportPairing(); } catch (e) { toast(plainError(e), 'error'); return; }
+    if (!r) return;
+    // L'état porte la date de la remise (10.14.0) : « Tes premiers pas » la lisent.
+    if (r.state) S = r.state;
+    const nomFichier = String(r.path || '').split(/[\\/]/).pop();
+    const m = K.mailAppairage(S.cabinet, S.dossiers, r.fingerprint, nomFichier);
+    const qui = m.avecAdresse
+      ? `<b>${pl(m.avecAdresse, 'client')}</b> ${m.avecAdresse > 1 ? 'ont' : 'a'} une adresse : le message ${m.avecAdresse > 1 ? 'leur' : 'lui'} sera adressé en copie cachée.`
+        + (m.sansAdresse ? ` ${pl(m.sansAdresse, 'autre client', 'autres clients')} n'en ${m.sansAdresse > 1 ? 'ont' : 'a'} pas : ajoute-la sur sa fiche, ou écris-lui à part.` : '')
+      : 'Aucun de tes clients n\'a encore d\'adresse : le message s\'ouvrira sans destinataire, et tu choisiras à qui l\'envoyer.';
+    modal(`<h2>Le fichier est prêt ${info('cab.pairing')}</h2>
+      <p class="small">Il ne contient rien de secret : il s'envoie par mail. Chacun de tes clients qui utilise SkanFact l'importe une fois,
+      puis te lit au téléphone l'empreinte qu'il voit — si c'est la tienne, c'est bien à toi qu'il envoie.</p>
+      <div class="kv mt"><div><span>Fichier</span><span class="small">${esc(r.path)}</span></div>
+        <div><span>Empreinte</span><span class="fingerprint">${esc(r.fingerprint || '')}</span></div></div>
+      <div class="ap-etat mt" id="ap-etat" aria-live="polite"><div class="info-box">${qui}</div></div>
+      <div class="modal-actions"><button class="btn" data-close>Fermer</button><button class="btn" id="ap-montrer">Le montrer dans le dossier</button><button class="btn btn-primary" id="ap-ecrire">Écrire à mes clients…</button></div>`,
+      layer => {
+        $('#ap-montrer', layer).onclick = () => api.reveal(r.path);
+        $('#ap-ecrire', layer).onclick = async () => {
+          let res;
+          try { res = await api.mail({ bcc: m.bcc, subject: m.subject, body: m.body, attachment: r.path }); }
+          catch (e) { toast(plainError(e), 'error'); return; }
+          let copiees = false;
+          if (m.bcc.length && !(res && res.bccInclus)) {
+            try { await navigator.clipboard.writeText(m.bcc.join(', ')); copiees = true; } catch (_) { copiees = false; }
+          }
+          const dest = !m.bcc.length ? 'Choisis tes destinataires : aucun client n\'a d\'adresse.'
+            : res && res.bccInclus ? `${m.bcc.length > 1 ? `Les ${m.bcc.length} adresses sont` : 'L\'adresse est'} en copie cachée.`
+              : copiees ? `${m.bcc.length > 1 ? `Les ${m.bcc.length} adresses sont copiées` : 'L\'adresse est copiée'} : colle-${m.bcc.length > 1 ? 'les' : 'la'} dans le champ « Cci ».`
+                : `Ajoute ${m.bcc.length > 1 ? 'ces adresses' : 'cette adresse'} dans le champ « Cci » : ${esc(m.bcc.join(', '))}.`;
+          const piece = res && res.montre ? 'Le fichier est montré dans son dossier : glisse-le dans le message pour le joindre.'
+            : `Joins le fichier au message : ${esc(r.path)}.`;
+          $('#ap-etat', layer).innerHTML = `<div class="ok-box"><b>Ta messagerie s'ouvre avec le message tout prêt.</b> ${dest} ${piece}</div>`;
+          // L'étape suivante n'est plus d'écrire : c'est de fermer (U-11). Le message se rouvre au besoin.
+          const b = $('#ap-ecrire', layer); b.classList.remove('btn-primary'); b.textContent = 'Rouvrir le message…';
+          $('[data-close]', layer).classList.add('btn-primary');
+        };
+      });
   }
 
   // ---------- les filets : sauvegardes et sécurité ----------
@@ -9476,14 +9545,16 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
   const PAS_ACTIONS = {
     decouverte: ['Faire la découverte', () => { const r = decouverteEnPause(); lancerVisite(visiteParId('decouvrir'), r ? r.i : 0); }],
     cabinet: ['Nommer mon cabinet', () => versReglages('pan-cabinet')],
+    equipe: ['Déclarer mon équipe', () => versReglages('pan-equipe')],
     clients: ['Ajouter un client…', () => newDossierForm()],
-    appairage: ['Enregistrer le fichier…', () => versReglages('pan-appairage')],
+    appairage: ['Remettre le fichier à mes clients…', () => remettreAppairage()],
     cle: ['Enregistrer ma clé…', () => versReglages('pan-secu')],
     copie: ['Choisir un dossier de copie…', () => versReglages('pan-backup')],
+    saisie: ['Régler ma grille', () => versReglages('pan-saisie')],
     travail: ['Importer un paquet…', () => doImport()]
   };
-  const PAS_VISITES = { decouverte: 'decouvrir', cabinet: 'nommer-cabinet', clients: 'ajouter-client', appairage: 'appairage',
-    cle: 'cle-secours', copie: 'copie-externe', travail: 'recevoir-paquet' };
+  const PAS_VISITES = { decouverte: 'decouvrir', cabinet: 'nommer-cabinet', equipe: 'equipe', clients: 'ajouter-client', appairage: 'appairage',
+    cle: 'cle-secours', copie: 'copie-externe', saisie: 'grille-saisie', travail: 'recevoir-paquet' };
   const ICONE_GUIDE = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z"/></svg>';
   const ICONE_LECTURE = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M10.2 8.6l5 3.4-5 3.4z"/></svg>';
   const ICONE_COCHE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';

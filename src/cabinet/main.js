@@ -2364,6 +2364,12 @@ const empreinteDuCabinet = () => (state.cabinet && state.cabinet.publicKey) ? Z.
 
 // Ce que le cabinet doit : le comptage est PUR (`cabcore.comptageDossiers`), la décision aussi
 // (`licence.licenceCabinet`). Ce fichier ne fait que les mettre l'un devant l'autre.
+// Le chemin que la pastille donne quand la validation est fermée. La phrase vit dans `licence.js`,
+// partagée avec SkanFact où elle dit « Paramètres → L'application → Licence » — un chemin qui
+// n'existe PAS ici : le Cabinet a des Réglages, et sa licence vit dans « Mon cabinet ». La barre
+// latérale d'un cabinet de quatre clients hors SkanFact envoyait chercher un onglet introuvable
+// (vu au test humain de la 10.14.0). Un test confronte ce chemin aux onglets et aux panneaux réels.
+const CHEMIN_LICENCE = 'Réglages → Mon cabinet → Licence';
 function licenceCabinetStatus() {
   const compte = K.comptageDossiers(state, L.today());
   const lic = (state && state.licence) || {};
@@ -2374,7 +2380,7 @@ function licenceCabinetStatus() {
   // Le jumeau de `licenceStatus` de l'app entreprise (10.9.2) : l'empreinte de la clé se pose à la
   // sortie unique, dérivée et jamais rangée. C'est elle que la page publique de vérification
   // demande — et sans elle, le comptable n'avait aucun moyen de l'obtenir (règle 7.3.0).
-  return { ...etat, comptage: compte, pastille: L.pastille(etat),
+  return { ...etat, comptage: compte, pastille: L.pastille(etat, CHEMIN_LICENCE),
     empreinte: lic.key ? L.empreinteCle(lic.key) : '' };
 }
 
@@ -3515,10 +3521,17 @@ ipcMain.handle('upd:install', (_e, opts) => {
 });
 ipcMain.handle('upd:openReleases', () => shell.openExternal(RELEASES_URL + '/latest'));
 
-ipcMain.handle('cab:mail', async (_e, { to, subject, body } = {}) => {
-  const url = `mailto:${encodeURIComponent(to || '')}?subject=${encodeURIComponent(subject || '')}&body=${encodeURIComponent(body || '')}`;
-  await shell.openExternal(url);
-  return true;
+ipcMain.handle('cab:mail', async (_e, { to, bcc, subject, body, attachment } = {}) => {
+  // 10.14.0 — des destinataires en copie cachée (le fichier d'appairage part à tous les clients d'un
+  // coup) : ils n'entrent dans le lien que s'il TIENT (`K.mailtoUrl`), sinon Windows l'ouvrirait
+  // tronqué ou pas du tout, sans une erreur. La réponse dit ce qui est parti, pour que l'écran le dise
+  // (la règle de `messageOuvert`, E-14) — et une pièce à joindre est MONTRÉE dans son dossier : un
+  // lien `mailto:` ne sait pas joindre un fichier.
+  const m = K.mailtoUrl({ to, bcc: Array.isArray(bcc) ? bcc : [], subject, body });
+  await shell.openExternal(m.url);
+  let montre = false;
+  if (attachment && fs.existsSync(String(attachment))) { shell.showItemInFolder(String(attachment)); montre = true; }
+  return { state: 'mailto', bccInclus: m.bccInclus, montre };
 });
 
 // Un numéro de téléphone tunisien composé depuis l'ordinateur, ou le message WhatsApp tout prêt :

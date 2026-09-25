@@ -470,10 +470,10 @@
   //   alerte — la création est bloquée.
   //
   // Pure et testée sans Electron : c'est la règle qui se teste, pas la forme du renderer.
-  function pastilleLicence(lic) {
+  function pastilleLicence(lic, chemin) {
     const l = lic || {};
     const j = l.daysLeft;
-    if (l.locked) return { show: true, ton: 'alerte', texte: (l.label || 'Licence requise') + ' — voir Paramètres → L\'application → Licence' };
+    if (l.locked) return { show: true, ton: 'alerte', texte: (l.label || 'Licence requise') + ' — voir ' + (chemin || 'Paramètres → L\'application → Licence') };
     if (l.state === 'essai' && j != null) {
       const reste = `Essai — ${j} jour${j === 1 ? '' : 's'}`;
       return j <= 7

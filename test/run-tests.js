@@ -14504,6 +14504,7 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
   require('./suites/exemple-cinq-ans.js')({ t, assert, lireSource });
   require('./suites/visites.js')({ t, assert, lireSource });
   require('./suites/cabvisites.js')({ t, assert, lireSource });
+  require('./suites/cabassistant.js')({ t, assert, lireSource });
   // Asynchrone depuis 213d (la messagerie au premier envoi) : elle est ATTENDUE, sinon son `ta` part détaché (8.4.0).
   await require('./suites/assistant.js')({ t, ta, assert, lireSource });
   // Celle-ci reçoit `ta` en plus : elle interroge le vrai worker sur une vraie base SQLite.

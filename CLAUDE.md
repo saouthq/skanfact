@@ -52,6 +52,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Une **saisie perdue au premier « Enregistrer »** : la pièce était close, et rien ne le disait avant | 10.14.0 — un devis de 2022 sur l'exemple de cinq ans |
 | Une **visite qui avance sur un geste annulé ou refusé**, et décrit ce qui n'existe pas | 10.14.0 — un clic n'est pas un geste fait : « Où il est rangé » sur « Aucun justificatif » |
 | Une **ligne cachée sous l'en-tête collant** d'un tableau qu'on vient d'amener à l'écran | 10.14.0 — le 📎 de « Le trombone » ; un défilement s'arrête à la marge du haut |
+| Un **lien vers un panneau** qui atterrit sur celui d'au-dessus : les panneaux du dessous se remplissent APRÈS le défilement | 10.14.0 — la pastille de licence du Cabinet ; 10.13.0 — « Lire la réponse » |
 
 **Les chiffres**
 
@@ -191,6 +192,8 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Une **bulle d'aide** ne couvre ni ce qu'elle montre, ni la fenêtre où l'on relit ce qu'on vient de taper | 10.14.0 — `placerPres`, `hautPourBulle` et son jeu d'un demi-pixel |
 | Ce qu'une **visite cite « entre guillemets »** existe dans l'application — et un « bouton vert » ne se promet pas | 10.14.0 — « Chapitre suivant », « Faire mon premier devis » |
 | Une **catégorie** tient en un mot, sur une ligne, dans sa colonne | 10.14.0 — « Contrat de prestation » sur trois lignes dans la palette |
+| Un **fichier qui doit partir** part avec son message ; un lien `mailto` a une longueur, et Windows le coupe sans une erreur | 10.14.0 — le fichier d'appairage du Cabinet |
+| Le **rôle proposé par défaut** au premier déclaré est celui qui ne ferme rien | 10.14.0 — « Saisie » retirait la validation au comptable qui se déclarait |
 | Une ligne garde **au plus UN** bouton visible ; le reste passe par `rowmenu.js` | 7.29.0 ; 9.4.8 — un en-tête de fiche aussi |
 | **UNE seule table d'actions par racine** : `bindRowMenus` écrase la précédente, en silence | 9.4.8 |
 | Un **champ qui compte dans une unité** le dit à côté de lui, pas en légende dessous | 9.4.8 |
@@ -7243,6 +7246,62 @@ messagerie au premier envoi, l'import depuis un tableur, et « Ta facture à ton
   la fiche société qu'à l'enregistrement » ne comptait que les crochets et laissait passer
   `data.company.name = …` ; et la fin de la tranche de la fenêtre était ancrée sur la garde — retirer la
   garde faisait tomber « tranche inattendue » au lieu de « jette sans demander ».
+
+**Puis l'assistant du Cabinet, jusqu'au bout** (le jumeau de celui de l'entreprise, 213a → 213g) : le
+fichier d'appairage qui part chez les clients, l'équipe et la grille de saisie dans « Tes premiers
+pas ». Ce que le lot et son test à la souris ont appris :
+
+- **Enregistrer un fichier n'est pas l'envoyer** (10.13.0, vu de l'autre côté) : un fichier qui doit
+  partir chez quelqu'un part avec son MESSAGE. « Remettre le fichier à mes clients… » l'enregistre
+  puis compose le mail (`K.mailAppairage`, pur) : qui le reçoit, ce qu'il faut faire, où cliquer dans
+  l'autre application — un chemin confronté aux onglets et panneaux RÉELS de SkanFact (10.9.2) —,
+  l'empreinte à vérifier. Et la fenêtre dit ce qui est VRAIMENT parti : un lien de messagerie ne joint
+  pas de fichier.
+- **Un lien `mailto` a une longueur, et Windows le coupe sans une erreur** (~2 000 caractères). Le
+  pont compose le lien par le moteur (`K.mailtoUrl`), jamais à la main ; au-delà, les adresses vont
+  au presse-papiers et l'écran dit de les coller dans « Cci ». Soixante clients en copie cachée ne
+  sont pas un cas limite, c'est le cas normal d'un cabinet.
+- **Deux comptes qui se ressemblent ne disent pas la même chose** : les CLIENTS joignables (ce qu'on
+  annonce avant) et les ADRESSES (ce qui part) — deux dossiers d'un même groupe partagent une boîte.
+  Le jeu du test discrimine (une boîte partagée, une adresse en majuscules avec une espace, une
+  fausse, l'exemple, un archivé), sinon il ne prouverait rien des comptes (10.0.0).
+- **Une étape facultative se coche sur un GESTE** : les réglages de la grille existent dès le premier
+  jour (`migrate` les remplit), leur présence ne prouve rien — l'enregistrement pose `regleLe`. Et
+  l'équipe compte les collaborateurs ACTIFS : un retiré n'a pas « déclaré l'équipe ».
+- **Une phrase partagée prend le chemin de l'application qui l'affiche.** La pastille de licence vit
+  dans `licence.js` (jumelle de `core.pastilleLicence`, corps comparés) : elle disait au comptable
+  « Paramètres → L'application → Licence », le chemin de SkanFact. Elle reçoit le sien, et un test
+  confronte chacun aux onglets et panneaux de SON application.
+- **Une cible asynchrone se vise après le chargement — dans les Réglages aussi** (10.13.0) : « L'équipe »
+  et « Licence » s'affichent « Chargement… » puis grandissent, et la pastille ouvrait le panneau d'au-
+  dessus, Licence sous le bas de l'écran. `reg.montrer(vise)` attend `Promise.allSettled` des panneaux
+  de l'onglet.
+- **Le rôle proposé au premier déclaré est celui qui ne ferme rien.** Le premier collaborateur devient
+  l'identité de ce poste (9.9.0) — le comptable, envoyé là par « Tes premiers pas » — et la liste lui
+  proposait « Saisie » : il se retirait la validation de ses propres écritures. `roleProposeCollab`
+  propose « Supervision » au premier, « Saisie » aux suivants ; la fenêtre le dit AVANT d'enregistrer
+  (le toast le disait après) ; et un refus sans aucun superviseur dit où changer le rôle au lieu
+  d'envoyer chercher « un superviseur » qui n'existe pas (un refus qui promet une sortie qui n'existe
+  pas, 10.12.0).
+- **Un identifiant expliqué sans page n'a qu'un sens** : `#pa-ecrire` était déjà un bouton de la Paie.
+  Un test lit les deux applications et exige qu'un identifiant du dictionnaire (hors route) ne soit
+  posé que par une seule fonction.
+- **Une explication vraie de deux boutons, ou pas d'explication** : `[data-close]` porte « Annuler »
+  ET le « Fermer » d'une fenêtre dont le geste est fait. « Ferme sans rien garder », nommé « Annuler »,
+  était faux du second (le fichier est enregistré). La phrase dit ce qui est vrai des deux, et le
+  bouton garde SON nom.
+- **Le format interne ne fuit pas, même dans un champ en lecture seule** (9.4.5) : les champs de
+  touches affichaient « Control+Enter » à côté de « Ctrl + ↵ Entrée ». Le code vit dans `data-code`,
+  la touche se lit dessinée, et le champ n'est que la zone où l'on appuie.
+- **La règle générale des champs gagne, huitième fois** — et elle n'était pas seule : la largeur du
+  champ de capture ne s'était JAMAIS appliquée (`width: 100%` à quatre `:not()`, puis
+  `.field.narrow input { max-width: 120px }`). `regles.js` (scratch : les règles d'un élément qui
+  touchent une propriété, par CDP) l'a dit en une ligne.
+- **Ce qui répond à un geste ne se déplace pas sous lui, même d'un cran** : la touche dessinée est à
+  gauche du champ, et une touche plus large le poussait ; elle réserve sa largeur. Et la phrase qui
+  change après « Écrire à mes clients… » garde la hauteur de celle d'avant (`.ap-etat`).
+- **Une phrase dans un conteneur flex est UN élément** (10.12.0, re-trouvée ailleurs que dans une
+  case) : « c'est   Karim Ben Salah   qui travaille ».
 
 ## Pistes pour la suite (non demandées)
 

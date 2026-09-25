@@ -656,7 +656,10 @@
   b('[data-etats]', "Ouvre les états financiers que ton comptable a joints à sa clôture : son bilan et son compte de résultat.", { nom: 'Voir les états', cle: 'etats' });
 
   // ---------- fenêtres : les boutons communs ----------
-  b('[data-close]', "Ferme la fenêtre sans rien garder. Si tu as tapé quelque chose, SkanFact demande d'abord.", { nom: 'Annuler', cle: 'fermer' });
+  // 10.14.0 — « Annuler » ET « Fermer » portent cet attribut : « sans rien garder » était faux sur le
+  // « Fermer » d'une fenêtre dont le geste est fait (le fichier est enregistré). L'explication dit ce
+  // qui est vrai des deux, et le bouton garde SON nom — une explication fausse est pire qu'absente.
+  b('[data-close]', "Ferme la fenêtre. Ce qui est déjà enregistré le reste ; si tu viens de taper quelque chose, SkanFact demande avant de le jeter.", { cle: 'fermer' });
   b('.modal .modal-actions .btn-danger', "Supprime, après confirmation. SkanFact dit d'abord ce qui y est rattaché.", { nom: 'Supprimer', cle: 'supprimer' });
   b('.modal .modal-actions .btn-primary', "Valide ce que tu viens de saisir dans la fenêtre.", { nom: 'Valider', cle: 'valider' });
 

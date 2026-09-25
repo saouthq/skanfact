@@ -267,7 +267,7 @@ t('10.14.0 Cabinet : une étape « clique » qui peut s\'annuler attend la preuv
 
 t('10.14.0 Cabinet : « Tes premiers pas » se déduisent de l\'état — l\'ordre, la découverte facultative, l\'exemple qui ne compte pas', () => {
   const p0 = K.premiersPas({ cabinet: {}, dossiers: [] }, {});
-  assert.deepStrictEqual(p0.etapes.map(e => e.id), ['decouverte', 'cabinet', 'clients', 'appairage', 'cle', 'copie', 'travail']);
+  assert.deepStrictEqual(p0.etapes.map(e => e.id), ['decouverte', 'cabinet', 'equipe', 'clients', 'appairage', 'cle', 'copie', 'saisie', 'travail']);
   assert.strictEqual(p0.faits, 0);
   assert.strictEqual(p0.demarrage, true);
   assert.strictEqual(p0.suivante.id, 'cabinet', 'la découverte, facultative, ne passe jamais devant une étape du métier');
@@ -285,7 +285,8 @@ t('10.14.0 Cabinet : « Tes premiers pas » se déduisent de l\'état — l\'ord
   const p2 = K.premiersPas(plein, { cleSecours: true, copieExterne: true, tenus: { r: true } });
   assert.strictEqual(p2.demarrage, false, 'le panneau reste alors que le métier est en place');
   assert.strictEqual(p2.suivante, null);
-  assert.strictEqual(p2.faits, p2.total - 1, 'seule la découverte reste — facultative');
+  assert.deepStrictEqual(p2.etapes.filter(e => !e.fait).map(e => e.id), ['decouverte', 'equipe', 'saisie'], 'il ne reste que les facultatives');
+  assert.ok(p2.etapes.filter(e => !e.fait).every(e => e.facultatif), 'une étape du métier reste à faire alors que tout est en place');
   // Chaque étape a son geste ET sa visite guidée, dans l'application.
   const gestes = /const PAS_ACTIONS = \{([\s\S]*?)\n {2}\};/.exec(app);
   const guides = /const PAS_VISITES = \{([\s\S]*?)\};/.exec(app);
