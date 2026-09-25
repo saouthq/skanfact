@@ -278,4 +278,33 @@ module.exports = ({ t, assert }) => {
     const cab = fs.readFileSync(path.join(__dirname, '../../src/cabinet/renderer/app.js'), 'utf8');
     assert.ok(/r\.cession \?[^\n]*hors total/.test(cab), 'la ligne du bien sorti dit qu\'elle est hors total');
   });
+
+  // « +1 565,400 » collé au-dessus de « − 1 071,000 » espacé, dans la même colonne (10.14.0).
+  t('10.14.0 : un montant signé prend la même espace après son signe, qu\'il soit + ou −', () => {
+    const vm = require('vm');
+    const core = require('../../src/renderer/core.js');
+    const m = app.match(/const moneySigne = (\(n, cur\) => [^\n]+);/);
+    assert.ok(m, 'moneySigne est définie');
+    const f = vm.runInNewContext(m[1], { C: core });
+    const plus = f(1565.4, 'DT'), moins = f(-1071, 'DT');
+    assert.strictEqual(plus.slice(0, 2), '+ ', 'le plus est suivi de l\'espace insécable');
+    assert.strictEqual(moins.slice(0, 2), '− ', 'le moins de money() l\'est aussi');
+    assert.strictEqual(f(0, 'DT'), core.money(0, 'DT'), 'zéro ne porte aucun signe');
+    assert.ok(!/\? '\+' : ''\}\$\{C\.money\(/.test(app), 'aucun « + » collé à la main devant un montant');
+  });
+
+  // « CNSS à reverser » au-dessus du total de l'ANNÉE, trimestres déjà déposés compris (10.14.0).
+  t('10.14.0 : la carte CNSS de la Paie dit ce qui n\'est pas encore déclaré, jamais le total comme un reste', () => {
+    const core = require('../../src/renderer/core.js');
+    const slip = (m, emp, er) => ({ id: 'p' + m, employeeId: 'e1', year: 2026, month: m, computed: { cnssEmployee: emp, cnssEmployer: er, accident: 0, cnssBase: 1000 } });
+    const data = core.migrateData({ employees: [{ id: 'e1', name: 'Sami' }],
+      payslips: [slip(1, 91.8, 165.7), slip(4, 91.8, 165.7), slip(7, 91.8, 165.7)],
+      socialFilings: [{ id: 'cnss-2026-T1', date: '2026-04-10' }] });
+    // Calculé à la main : trois trimestres de 257,5 ; T1 déposé → T2 et T3 restent, 515.
+    assert.strictEqual(core.cnssNonDeclaree(data, 2026), 515);
+    data.socialFilings.push({ id: 'cnss-2026-T2', date: '2026-07-10' }, { id: 'cnss-2026-T3', date: '2026-10-10' });
+    assert.strictEqual(core.cnssNonDeclaree(data, 2026), 0, 'tout est déposé');
+    assert.ok(!/CNSS à reverser/.test(app), 'la carte ne nomme plus un reste dû');
+    assert.ok(/C\.cnssNonDeclaree\(data, Number\(s\.year\)\)/.test(app), 'la carte lit ce qui n\'est pas déclaré');
+  });
 };

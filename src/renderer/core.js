@@ -3185,6 +3185,14 @@
   }
 
   // Les déclarations sociales dues et pas encore marquées déposées.
+  // Ce que la CNSS d'une année porte encore de NON déclaré (10.14.0) : la carte de la Paie disait
+  // « CNSS à reverser » au-dessus du total de l'année, trimestres déjà déposés compris — un reste dû
+  // quatre fois trop grand en décembre. Le total reste le total ; ce qui n'est pas déposé se compte.
+  function cnssNonDeclaree(data, year) {
+    const done = socialesDeposees(data);
+    return round3(QUARTERS.reduce((t, [q]) => done.has(`cnss-${year}-T${q}`) ? t : t + cnssDeclaration(data, year, q).total, 0));
+  }
+
   function socialDue(data, todayIso) {
     const t = todayIso || today();
     if (!(data.employees || []).length) return [];
@@ -8170,7 +8178,7 @@
     CONTRACT_TYPES, contractLabel, DEFAULT_PAYROLL, payrollSettings, irppAnnual, computePayslip, saisiePaieValide,
     activeEmployees, payslipView, payslipsOf, payslipDate, payrollCost, payrollSummary, missingPayslips, bulletinsImpossibles,
     payslipHtml,
-    QUARTERS, quarterMonths, quarterLabel, cnssDeclaration, employerAnnual, socialDue,
+    QUARTERS, quarterMonths, quarterLabel, cnssDeclaration, cnssNonDeclaree, employerAnnual, socialDue,
     LEAVE_KINDS, leaveKindLabel, leaveIsPaid, workingDays, leaveDaysInMonth, leavesOf, leaveBalance,
     advancesOf, advanceBalance, payslipInputFor, HR_DOCS, hrDocLabel, hrDocumentHtml, staffRegister,
     SERIAL_STATUSES, serialStatusLabel, WARRANTY_CHOICES, serializedItems, warrantyEnd, serialView,

@@ -518,6 +518,9 @@
   // Une quantité SIGNÉE s'écrit avec le même signe moins que les montants (« − 38,500 DT ») : un « -1 »
   // en tiret à côté d'un « − 38,500 » se lit comme deux conventions, donc deux sortes de chiffres.
   const qteSignee = n => (n > 0 ? '+' : n < 0 ? '−' : '') + pct(Math.abs(n));
+  // Un montant signé prend la MÊME espace que `money()` pose après son « − » : « +1 565,400 » collé
+  // au-dessus de « − 1 071,000 » espacé, dans une colonne où l'œil compare les signes (10.14.0).
+  const moneySigne = (n, cur) => (n > 0 ? '+\u00a0' : '') + C.money(n, cur);
   // Une recherche qui redessine son écran rend le champ ET la place du curseur — le jumeau de celle du
   // Cabinet (10.12.0). Quatre recherches renvoyaient le curseur au bout du texte à chaque frappe :
   // corriger une lettre au milieu de « Trabelsi » faisait taper la suivante à la fin.
@@ -8947,7 +8950,7 @@
         <div class="stats">
           <div class="stat"><div class="lbl">Coût de la paie ${s.year} ${info('pay.employerCost')}</div><div class="val">${C.money(sum.cost, cur)}</div><div class="sub">${sum.count ? `${pl(sum.count, 'bulletin')} pour ${pl(sum.employees, 'salarié')}` : `aucun bulletin établi en ${h(s.year)}`}</div></div>
           <div class="stat"><div class="lbl">Net versé ${info('pay.netVerse')}</div><div class="val">${C.money(sum.netPaid, cur)}</div><div class="sub">${sum.net - sum.netPaid > 0.0005 ? `${C.money(C.round3(sum.net - sum.netPaid), cur)} restent à verser` : 'ce que touchent les salariés'}</div></div>
-          <div class="stat"><div class="lbl">CNSS à reverser ${info('pay.cnssTotal')}</div><div class="val">${C.money(C.round3(sum.cnssEmployee + sum.cnssEmployer + sum.accident), cur)}</div><div class="sub">parts salarié et employeur</div></div>
+          <div class="stat"><div class="lbl">CNSS ${h(s.year)} ${info('pay.cnssTotal')}</div><div class="val">${C.money(C.round3(sum.cnssEmployee + sum.cnssEmployer + sum.accident), cur)}</div><div class="sub">${(() => { const r = C.cnssNonDeclaree(data, Number(s.year)); return !sum.count ? 'parts salarié et employeur' : r > 0.0005 ? `dont ${C.money(r, cur)} pas encore déclarés` : 'tout est déclaré'; })()}</div></div>
           ${/* 10.12.0 — la colonne s'appelait « IRPP » et additionnait l'IRPP ET la contribution de
                solidarité : 2,264 DT d'« IRPP » ici, 0,000 DT d'IRPP et 2,264 DT de solidarité dans la
                déclaration annuelle, pour le même bulletin. Deux écrans, un montant, deux noms (H-E25). */''}
@@ -11017,7 +11020,7 @@
               <td class="nw">${C.fmtDate(p.date)}${e.late ? '<div class="small warn-text">déjà échue</div>' : ''}</td>
               <td class="small">${e.kind === 'client' ? 'Facture client' : e.kind === 'fournisseur' ? 'Achat' : 'Contrat récurrent'}</td>
               <td>${h(e.label)}</td>
-              <td class="r nw ${p.delta > 0 ? 'ok-text' : 'warn-text'}">${p.delta > 0 ? '+' : ''}${C.money(p.delta, cur)}</td>
+              <td class="r nw ${p.delta > 0 ? 'ok-text' : 'warn-text'}">${moneySigne(p.delta, cur)}</td>
               <td class="r nw ${p.balance < 0 ? 'warn-text' : ''}"><strong>${C.money(p.balance, cur)}</strong></td></tr>`; }).join('')}
           </tbody></table>${pagerBar(prevPage.pg, { noun: 'échéance' })}</div>` : '<div class="empty">Rien d\'attendu sur cette période : aucune facture ouverte, aucun achat à régler.</div>'}
         </div>`;
@@ -11037,7 +11040,7 @@
         { key: 'account', label: 'Compte', asc: true, val: m => m.accountId, get: m => h(((data.accounts.find(a => a.id === m.accountId)) || {}).name || '—') },
         { key: 'method', label: 'Mode', asc: true, val: m => m.method || '', get: m => h(methodLabel(m.method)) },
         { key: 'reference', label: 'Référence', asc: true, val: m => (m.reference || '').toLowerCase(), get: m => h(m.reference || '') || '<span class="muted">—</span>' },
-        { key: 'amount', label: 'Montant', r: true, val: m => m.amount, get: m => `<span class="${m.amount > 0 ? 'ok-text' : ''}">${m.amount > 0 ? '+' : ''}${C.money(m.amount, cur)}</span>` }
+        { key: 'amount', label: 'Montant', r: true, val: m => m.amount, get: m => `<span class="${m.amount > 0 ? 'ok-text' : ''}">${moneySigne(m.amount, cur)}</span>` }
       ];
       // L'année se choisit. Elle était figée sur l'année en cours, sans le moindre moyen de
       // remonter : le 3 janvier, la page de trésorerie devenait vide et l'année écoulée
@@ -11118,7 +11121,7 @@
       const ligne = m => `<tr><td><input type="checkbox" data-rec="${h(m.id)}" data-src="${h(m.source)}" ${m.reconciled ? 'checked' : ''}></td>
               <td class="nw">${C.fmtDate(m.date)}</td><td>${h(m.label)}<div class="small muted">${h(m.party || '')}</div></td>
               <td class="small">${h(m.reference || '')}</td>
-              <td class="r nw ${m.amount > 0 ? 'ok-text' : ''}">${m.amount > 0 ? '+' : ''}${C.money(m.amount, cur)}</td></tr>`;
+              <td class="r nw ${m.amount > 0 ? 'ok-text' : ''}">${moneySigne(m.amount, cur)}</td></tr>`;
       $('#t-body').innerHTML = `
         <div class="filters">
           <select id="t-acc2" aria-label="Compte bancaire à rapprocher">${data.accounts.map(a => `<option value="${a.id}" ${accId === a.id ? 'selected' : ''}>${h(a.name)}</option>`).join('')}</select>

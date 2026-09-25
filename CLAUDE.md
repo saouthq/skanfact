@@ -7636,6 +7636,12 @@ faire seul, par ordre de priorité ») :
   Trouvé en lisant les quatre cartes comme une addition ; vérifié au Cabinet en saisissant une
   cession à la souris (18 000 − 5 400 = 12 600). Quand trois cartes forment une équation, la page
   doit la tenir.
+- **« À reverser » est un ÉTAT, pas une nature** : la carte CNSS de la Paie additionnait l'année
+  entière sous ce mot, trimestres déposés compris. Un agrégat porte sa période (3.1.0) ET ne se
+  nomme d'un état que s'il ne compte que ce qui est dans cet état (« versé », 10.12.0).
+  `core.cnssNonDeclaree` lit les dépôts par la même porte que « À faire » (`socialesDeposees`).
+- **Un signe se compose comme son contraire** : `money()` pose « −\u00a0 », un « + » écrit à la main
+  était collé. `moneySigne`, et un test interdit la forme `? '+' : ''}${C.money(`.
 - **Le geste d'un journal vit sur l'onglet du journal** : « + Mouvement » disparaissait de l'onglet
   Mouvements du Stock — `ST_ACTION` ne connaissait que « État du stock ».
 - **Une invite se mesure dans SA case** : « Rechercher : n°, fournisseur, objet, catégo… » était

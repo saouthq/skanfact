@@ -590,6 +590,14 @@ l'écran. Le matricule fiscal (« 1472411D/A/M/000 ») peut maintenant passer à
   « + Mouvement ». Et « 0 article compté sur 3 » se lit à la hauteur de la case de date, pas de son
   étiquette.
 
+### La Paie et la Trésorerie disent ce qu'elles comptent
+
+- La carte « CNSS à reverser » de la Paie portait le total de **l'année**, trimestres déjà déposés
+  compris : en décembre, elle annonçait un reste dû quatre fois trop grand. Elle s'appelle
+  « CNSS 2026 », garde le total, et dit dessous **ce qui n'est pas encore déclaré**.
+- Trésorerie : « +1 565,400 » collé au-dessus de « − 1 071,000 » espacé, dans la même colonne. Le
+  plus prend la même espace insécable que le moins.
+
 ## 10.13.0-beta.1 — 24/09/2026
 
 **Avant la mise en production : les deux applications et le pont entre elles, testés en entier.**
