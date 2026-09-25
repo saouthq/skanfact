@@ -222,10 +222,10 @@ absente~~ (« Vendue le », en tête).
     TOUT PREMIER envoi d'un cabinet serait retenu à sa place. Même limite, assumée, que côté Cabinet
     (9.2.0). La lever demanderait que le fichier d'appairage porte aussi la clé de signature ET que
     l'empreinte lue au téléphone la couvre — donc un changement du format d'appairage.
-- **Porter `typographie()` du Cabinet à la prose de l'app entreprise** (10.14.0) : l'espace fine
-  insécable devant `? ! ; : »` n'y est posée que dans les visites et sur les questions du comptable
-  (`C.typoFr`). Le portage général change le texte que les parcours comparent (bandeaux, `p`) :
-  à faire avec les parcours, pas en passant.
+- ~~**Porter `typographie()` du Cabinet à la prose de l'app entreprise**~~ — *fait en 10.14.0* : un
+  observateur pose l'espace fine insécable sur toute la prose au moment où elle est posée (pages,
+  fenêtres, bulles, annonces), jamais dans un `textarea`, une `option` ou un code. Aucun parcours e2e
+  ne comparait une ponctuation double brute (vérifié par recherche) ; à confirmer au prochain lot e2e.
 - **Saturation (10.14.0), ce qui reste** : ~~un compte du grand livre ouvert affiche TOUTES ses lignes~~
   (fait : 300 lignes, puis la suite à la demande) ; les onglets Comptabilité ›
   Écritures et Cabinet de l'app entreprise mettent ~1,3 s par clic sur huit mille pièces

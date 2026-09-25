@@ -149,6 +149,31 @@ module.exports = ({ t, assert }) => {
     assert.strictEqual(cab.match(/function suivreSaisie\(layer\) \{[\s\S]*?\n  \}/)[0], src, 'les deux applications ont le même garde-fou');
   });
 
+  // La ponctuation double à la française, portée du Cabinet (9.4.2) à l'app entreprise : un « ? »
+  // seul en début de ligne. Un OBSERVATEUR la pose partout — un appel oublié dans un des cent draw()
+  // laisserait l'écran à moitié typographié — et jamais dans ce qui se saisit.
+  t('10.14.0 : la prose de l\'app entreprise prend l\'espace fine insécable, jamais un texte qu\'on saisit', () => {
+    const vm = require('vm');
+    const pas = app.match(/const PAS_TYPO = ('[^']+');/);
+    const noeud = app.match(/const typoNoeud = (n => \{[\s\S]*?\n  \});/);
+    assert.ok(pas && noeud, 'PAS_TYPO et typoNoeud sont définis');
+    const typoNoeud = vm.runInNewContext(`const PAS_TYPO = ${pas[1]}; (${noeud[1]})`, { C: core });
+    const exclus = pas[1].slice(1, -1).split(',').map(x => x.trim());
+    const n = (texte, parent) => ({ nodeValue: texte, parentElement: { closest: sel => (sel.split(',').map(x => x.trim()).includes(parent) ? {} : null) } });
+    const prose = n('Tu es sûr ? Oui : « bien »', 'p');
+    typoNoeud(prose);
+    assert.strictEqual(prose.nodeValue, 'Tu es sûr ? Oui : « bien »', 'la prose prend l\'espace fine insécable');
+    ['textarea', 'option', 'code'].forEach(tag => {
+      assert.ok(exclus.includes(tag), tag + ' est exclu');
+      const saisi = n('Note : à relire ?', tag);
+      typoNoeud(saisi);
+      assert.strictEqual(saisi.nodeValue, 'Note : à relire ?', tag + ' : ce qui se saisit ou se copie ne bouge pas');
+    });
+    // La règle est celle du moteur (C.typoFr), et l'observateur couvre tout le document.
+    assert.ok(/C\.typoFr\(t\)/.test(noeud[1]), 'une seule règle : C.typoFr');
+    assert.ok(/new MutationObserver\([\s\S]{0,300}typographie\(n\)[\s\S]{0,200}\.observe\(document\.body, \{ childList: true, subtree: true \}\)/.test(app), 'un observateur sur tout le document');
+  });
+
   // Un matricule fiscal est un seul mot pour le navigateur : il imposait sa largeur à la colonne, et
   // à 1280 px la liste des clients débordait de trente pixels (saturation, 10.14.0).
   t('10.14.0 : un matricule fiscal se coupe après ses « / », dans les listes des clients et des fournisseurs', () => {
@@ -160,7 +185,10 @@ module.exports = ({ t, assert }) => {
     assert.strictEqual(f('1472411D/A/M/000'), '1472411D/<wbr>A/<wbr>M/<wbr>000');
     assert.strictEqual(f('<b>/'), '&lt;b>/<wbr>', 'échappé AVANT de poser les coupures');
     assert.strictEqual(f(undefined), '');
-    assert.ok(/key: 'mf', label: 'MF \/ CIN', get: r => `\$\{mfCoupable\(r\.c\.matricule\)\}/.test(app), 'la liste des clients coupe le matricule');
-    assert.ok(/key: 'mf', label: 'Matricule', get: r => `\$\{mfCoupable\(r\.s\.matricule\)\}/.test(app), 'la liste des fournisseurs aussi');
+    assert.ok(/key: 'mf', cls: 'mf', label: 'MF \/ CIN', get: r => `\$\{mfCoupable\(r\.c\.matricule\)\}/.test(app), 'la liste des clients coupe le matricule');
+    assert.ok(/key: 'mf', cls: 'mf', label: 'Matricule', get: r => `\$\{mfCoupable\(r\.s\.matricule\)\}/.test(app), 'la liste des fournisseurs aussi');
+    // … mais seulement quand la place manque : sur un écran large, une ligne.
+    const css = fs.readFileSync(path.join(__dirname, '../../src/renderer/style.css'), 'utf8');
+    assert.ok(/@media \(min-width: 1340px\) \{ td\.mf wbr \{ display: none; \} \}/.test(css), 'au-dessus de 1340 px le matricule tient sur une ligne (nowrap ne suffit pas : Chrome coupe à un <wbr>)');
   });
 };

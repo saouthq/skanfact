@@ -2387,3 +2387,10 @@ body.dark .g-ligne.faite .g-l-ico { color: #0d1418; }
   .g-carte, .g-page { transition: none; }
   .g-carte:hover { transform: none; }
 }
+
+/* 10.14.0 — un matricule fiscal peut se couper après ses « / » (`mfCoupable`) : c'est ce qui fait
+   tenir la liste des clients à 1280 px. Mais sur un écran large il y a la place, et « 1213217T/A/ »
+   au-dessus de « M/000 » double la hauteur de chaque ligne pour rien. Au-dessus du seuil des listes
+   larges, il reste sur UNE ligne. Mesuré : Chrome coupe à un <wbr> MÊME sous `nowrap` — c'est le
+   <wbr> qu'on retire du rendu. */
+@media (min-width: 1340px) { td.mf wbr { display: none; } }

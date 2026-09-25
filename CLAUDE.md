@@ -7042,7 +7042,7 @@ test de contenu ne pouvait voir :
   ligne dans le bandeau d'une pièce. `C.typoFr` (jumeau de `typo` dans `visite.js`, corps comparés
   par un test) s'applique aux quatre endroits qui la MONTRENT, pas à la zone de texte où l'on répond —
   sinon elle réécrirait ce qu'on tape. Le portage complet de `typographie()` à la prose de l'app
-  entreprise reste à faire (`A-FAIRE.md` § 4) : il change ce que les parcours comparent.
+  entreprise est venu ensuite (P4, plus bas).
 - Piège d'outil, **deuxième fois** (9.2.1) : l'outil d'édition écrit `\u202f` en caractère RÉEL. Le
   fichier reste juste, mais une ancre de preuve écrite avec l'échappement ne trouve plus rien. On
   vérifie les octets après chaque édition, et on garde l'échappement.
@@ -7601,6 +7601,18 @@ faire seul, par ordre de priorité ») :
   fonction sur une fausse fenêtre qui LIT le sélecteur : ma première version l'ignorait, et retirer
   l'exclusion ne faisait rien tomber. Et la preuve se fait sur la règle entière : l'exclusion vit dans
   la détection ET dans la lecture, en retirer une seule ne change rien.
+- **La typographie de l'app entreprise vient d'UN observateur**, pas d'un appel par écran : cent
+  `draw()` posent de la prose, un appel oublié laisserait l'écran à moitié typographié. Il agit sur les
+  NŒUDS DE TEXTE de la prose au moment où elle est posée (pages, fenêtres, bulles, annonces réécrites
+  pendant la frappe), par `C.typoFr` — la règle du moteur, jamais une seconde expression. Il saute
+  ce qui se SAISIT ou se copie tel quel : le texte d'un `<textarea>` est un nœud enfant (sa valeur de
+  départ), une `<option>` est une valeur, un code se recopie au caractère. Mesuré par CDP sur cinq
+  écrans : zéro espace ordinaire restant, aucune erreur.
+- **Chrome coupe à un `<wbr>` MÊME sous `white-space: nowrap`.** Le matricule coupable de P3 (fait pour
+  1280) passait sur deux lignes à 1440, doublant la hauteur de chaque ligne de la liste. La règle qui
+  le garde sur une ligne au-dessus de 1340 px retire le `<wbr>` du rendu (`display: none`) ; `nowrap`,
+  essayé d'abord, n'y faisait rien — c'est la mesure (rectangles de ligne par CDP) qui l'a dit, la
+  capture qui l'a montré, et un correctif pensé pour UNE largeur se vérifie à l'autre.
 
 ## Pistes pour la suite (non demandées)
 

@@ -537,6 +537,14 @@ l'écran. Le matricule fiscal (« 1472411D/A/M/000 ») peut maintenant passer à
 - **La liste des ventes montre la date de la vente**, en première colonne ; une vente reprise de
   l'historique de SkanFact dit « importée le … ».
 
+### La ponctuation à la française, partout
+
+- Les « ? », « ! », « : », « ; » et les guillemets de toute l'app entreprise prennent l'espace fine
+  insécable du français (comme le Cabinet depuis la 9.4.2) : un point d'interrogation ne commence plus
+  jamais une ligne tout seul. Ce que tu tapes n'est jamais touché.
+- Le matricule fiscal ne passe plus sur deux lignes dans la liste des clients et des fournisseurs sur
+  un écran large ; il ne se coupe (après ses « / ») que quand la place manque.
+
 ### Chaque champ explique ce qu'il devient
 
 - **Cent dix-huit champs de plus portent leur bulle « i »**, dans toute l'application : le paiement (date,

@@ -659,6 +659,40 @@
   let resizeTimer = null;
   window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => { if (previewRedraw) previewRedraw(); }, 200); });
 
+  // ---------- la ponctuation double, à la française (10.14.0 — jumeau de la 9.4.2 du Cabinet) ----------
+  //
+  // « ? », « ! », « ; », « : » et l'intérieur des guillemets prennent une espace fine INSÉCABLE : avec
+  // une espace ordinaire, le navigateur coupe juste avant, et le « ? » d'une question commence la
+  // ligne suivante, tout seul. Le Cabinet le fait depuis la 9.4.2 ; l'app entreprise ne le faisait
+  // que pour la question d'un comptable. On travaille sur les NŒUDS DE TEXTE de la prose, au moment où
+  // elle est posée — page, fenêtre, bulle, annonce réécrite pendant la frappe — par UN observateur :
+  // un appel oublié dans l'un des cent `draw()` laisserait l'écran à moitié typographié. La règle est
+  // `C.typoFr`, jamais une seconde expression. Titres, libellés, boutons et cellules gardent leurs
+  // espaces : seule la prose est concernée, et aucune donnée n'est réécrite.
+  const PROSE = 'p, .lead, .help-body, .warn-box, .empty, .banner, .ip-body, .annonce-stable, .muted';
+  // Jamais ce qui se SAISIT ni ce qui se copie tel quel : le texte d'un <textarea> est un nœud enfant
+  // (sa valeur de départ), une <option> est une valeur, un code ou une clé se recopient au caractère.
+  const PAS_TYPO = 'textarea, script, style, option, code, .mono, [contenteditable]';
+  const typoNoeud = n => {
+    const t = n.nodeValue;
+    if (!/[ ][?!;:»]|«[ ]/.test(t) || !n.parentElement || n.parentElement.closest(PAS_TYPO)) return;
+    const u = C.typoFr(t); if (u !== t) n.nodeValue = u;
+  };
+  function typographie(racine) {
+    const blocs = racine.nodeType === 1 ? [...(racine.matches(PROSE) ? [racine] : []), ...racine.querySelectorAll(PROSE)] : [];
+    blocs.forEach(bloc => {
+      const it = document.createTreeWalker(bloc, NodeFilter.SHOW_TEXT);
+      let n;
+      while ((n = it.nextNode())) typoNoeud(n);
+    });
+  }
+  if (window.MutationObserver) {
+    new MutationObserver(recs => recs.forEach(r => r.addedNodes.forEach(n => {
+      if (n.nodeType === 1) typographie(n);
+      else if (n.nodeType === 3 && n.parentElement && n.parentElement.closest(PROSE)) typoNoeud(n);
+    }))).observe(document.body, { childList: true, subtree: true });
+  }
+
   function closeInfoPop() { const p = $('#info-pop'); if (p) p.remove(); }
   function openInfoPop(btn) {
     const x = G.INFO[btn.dataset.info]; if (!x) return;
@@ -4905,7 +4939,7 @@
     const s = clientState;
     const cols = [
       { key: 'name', label: 'Nom', asc: true, cls: 'nom-tiers', val: r => r.c.name.toLowerCase(), get: r => `<strong>${h(r.c.name)}</strong>${r.c.contact ? `<div class="small muted">${h(r.c.contact)}</div>` : ''}` },
-      { key: 'mf', label: 'MF / CIN', get: r => `${mfCoupable(r.c.matricule)}${r.c.withholdingRate !== '' && r.c.withholdingRate != null && Number(r.c.withholdingRate) ? `<div class="small muted">RS ${pct(r.c.withholdingRate)} %</div>` : ''}` },
+      { key: 'mf', cls: 'mf', label: 'MF / CIN', get: r => `${mfCoupable(r.c.matricule)}${r.c.withholdingRate !== '' && r.c.withholdingRate != null && Number(r.c.withholdingRate) ? `<div class="small muted">RS ${pct(r.c.withholdingRate)} %</div>` : ''}` },
       // Un numéro de téléphone se lit d'un bloc : « 74 000 111 / 98 000 222 » se coupait entre
       // « 98 000 » et « 222 » (vu à la souris après un import). Chaque numéro tient sur sa ligne,
       // la coupure ne tombe que sur le « / » qui les sépare.
@@ -6955,7 +6989,7 @@
     const s = supplierState;
     const cols = [
       { key: 'name', label: 'Nom', asc: true, val: r => r.s.name.toLowerCase(), get: r => `<strong>${h(r.s.name)}</strong>${r.s.contact ? `<div class="small muted">${h(r.s.contact)}</div>` : ''}` },
-      { key: 'mf', label: 'Matricule', get: r => `${mfCoupable(r.s.matricule)}${Number(r.s.withholdingRate) ? `<div class="small muted">RS ${pct(r.s.withholdingRate)} %</div>` : ''}` },
+      { key: 'mf', cls: 'mf', label: 'Matricule', get: r => `${mfCoupable(r.s.matricule)}${Number(r.s.withholdingRate) ? `<div class="small muted">RS ${pct(r.s.withholdingRate)} %</div>` : ''}` },
       { key: 'contact', label: 'Contact', get: r => `<span class="small">${h(r.s.phone || '')}${r.s.phone && r.s.email ? '<br>' : ''}${r.s.email ? `<span class="ellipse" title="${h(r.s.email)}">${h(r.s.email)}</span>` : ''}</span>` },
       { key: 'count', label: 'Achats', r: true, val: r => r.sum.count, get: r => r.sum.count || '<span class="muted">—</span>' },
       { key: 'ht', label: 'Acheté HT', r: true, val: r => r.sum.ht, get: r => r.sum.ht ? C.money(r.sum.ht, cur) : '<span class="muted">—</span>' },
