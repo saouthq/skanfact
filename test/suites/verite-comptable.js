@@ -60,6 +60,19 @@ function ecarts(data) {
       ecart(`${mm} TVA déductible par taux`, Object.values(vr.byRate).reduce((s, x) => s + x.deductible, 0), vr.deductible);
       ecart(`${mm} chiffre d'affaires HT`, -r3(E.filter(e => e.account.startsWith('70')).reduce((s, e) => s + e.debit - e.credit, 0)), vr.salesHT);
     }
+    // Le paquet du comptable annonce, mois par mois, ce que dit la CHAÎNE des déclarations :
+    // un mois isolé ignore le crédit reporté (3.1.0), et le paquet de mars disait 286,729 DT à
+    // décaisser là où la chaîne dit 52,079.
+    const chaine = core.vatChain(data, co, +y);
+    chaine.forEach((c, i) => {
+      if (c.month > T.slice(0, 7)) return;
+      const ch = core.packPlan(data, co, core.packPeriod(+y, i + 1), {}).manifest.chiffres;
+      ecart(`${c.month} paquet : TVA à décaisser / chaîne`, ch.tvaADecaisser, c.toPay);
+      ecart(`${c.month} paquet : crédit reporté / chaîne`, ch.creditTva, c.carryOut);
+      ecart(`${c.month} paquet : TVA collectée / déclaration`, ch.tvaCollectee, c.collected);
+      ecart(`${c.month} paquet : TVA déductible / déclaration`, ch.tvaDeductible, c.deductible);
+      ecart(`${c.month} paquet : chiffre d'affaires / déclaration`, ch.ca, c.salesHT);
+    });
     // Les états financiers tombent juste, et leur résultat est celui de la balance.
     const ef = core.etatsFinanciers(data, co, y, per.to);
     if (!ef.equilibre) out.push(`${y} bilan déséquilibré`);

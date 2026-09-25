@@ -85,7 +85,7 @@
     },
     {
      "chemin": "journaux/tva.json",
-     "texte": "{\n  \"period\": {\n    \"month\": \"2026-08\",\n    \"from\": \"2026-08-01\",\n    \"to\": \"2026-08-31\",\n    \"label\": \"août 2026\"\n  },\n  \"byRate\": {\n    \"0\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"7\": {\n      \"collected\": 21,\n      \"deductible\": 0\n    },\n    \"13\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"19\": {\n      \"collected\": 655.5,\n      \"deductible\": 511.1\n    }\n  },\n  \"collected\": 676.5,\n  \"deductible\": 511.1,\n  \"carryIn\": 0,\n  \"toPay\": 165.4,\n  \"carryOut\": 0,\n  \"stamps\": 4,\n  \"withheldBySale\": 57.472,\n  \"withheldOnBuys\": 0,\n  \"salesCount\": 4,\n  \"buysCount\": 5,\n  \"salesHT\": 3750,\n  \"buysHT\": 3190\n}"
+     "texte": "{\n  \"period\": {\n    \"month\": \"2026-08\",\n    \"from\": \"2026-08-01\",\n    \"to\": \"2026-08-31\",\n    \"label\": \"août 2026\"\n  },\n  \"byRate\": {\n    \"0\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"7\": {\n      \"collected\": 21,\n      \"deductible\": 0\n    },\n    \"13\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"19\": {\n      \"collected\": 655.5,\n      \"deductible\": 511.1\n    }\n  },\n  \"collected\": 676.5,\n  \"deductible\": 511.1,\n  \"carryIn\": 0,\n  \"toPay\": 165.4,\n  \"carryOut\": 0,\n  \"stamps\": 4,\n  \"withheldBySale\": 57.472,\n  \"withheldOnBuys\": 0,\n  \"salesCount\": 4,\n  \"buysCount\": 5,\n  \"salesHT\": 3750,\n  \"buysHT\": 3190,\n  \"month\": \"2026-08\",\n  \"label\": \"août\"\n}"
     }
    ],
    "lignes": {
@@ -181,7 +181,7 @@
     },
     {
      "chemin": "journaux/tva.json",
-     "texte": "{\n  \"period\": {\n    \"month\": \"2026-07\",\n    \"from\": \"2026-07-01\",\n    \"to\": \"2026-07-31\",\n    \"label\": \"juillet 2026\"\n  },\n  \"byRate\": {\n    \"0\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"7\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"13\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"19\": {\n      \"collected\": 3590.05,\n      \"deductible\": 2375\n    }\n  },\n  \"collected\": 3590.05,\n  \"deductible\": 2375,\n  \"carryIn\": 0,\n  \"toPay\": 1215.05,\n  \"carryOut\": 0,\n  \"stamps\": 3,\n  \"withheldBySale\": 322.728,\n  \"withheldOnBuys\": 0,\n  \"salesCount\": 4,\n  \"buysCount\": 2,\n  \"salesHT\": 22580,\n  \"buysHT\": 12500\n}"
+     "texte": "{\n  \"period\": {\n    \"month\": \"2026-07\",\n    \"from\": \"2026-07-01\",\n    \"to\": \"2026-07-31\",\n    \"label\": \"juillet 2026\"\n  },\n  \"byRate\": {\n    \"0\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"7\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"13\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"19\": {\n      \"collected\": 3590.05,\n      \"deductible\": 2375\n    }\n  },\n  \"collected\": 3590.05,\n  \"deductible\": 2375,\n  \"carryIn\": 0,\n  \"toPay\": 1215.05,\n  \"carryOut\": 0,\n  \"stamps\": 3,\n  \"withheldBySale\": 322.728,\n  \"withheldOnBuys\": 0,\n  \"salesCount\": 4,\n  \"buysCount\": 2,\n  \"salesHT\": 22580,\n  \"buysHT\": 12500,\n  \"month\": \"2026-07\",\n  \"label\": \"juillet\"\n}"
     }
    ],
    "lignes": {
@@ -265,7 +265,7 @@
     },
     {
      "chemin": "journaux/tva.json",
-     "texte": "{\n  \"period\": {\n    \"month\": \"2026-06\",\n    \"from\": \"2026-06-01\",\n    \"to\": \"2026-06-30\",\n    \"label\": \"juin 2026\"\n  },\n  \"byRate\": {\n    \"0\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"7\": {\n      \"collected\": 31.5,\n      \"deductible\": 0\n    },\n    \"13\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"19\": {\n      \"collected\": 1128.6,\n      \"deductible\": 0\n    }\n  },\n  \"collected\": 1160.1,\n  \"deductible\": 0,\n  \"carryIn\": 0,\n  \"toPay\": 1160.1,\n  \"carryOut\": 0,\n  \"stamps\": 4,\n  \"withheldBySale\": 6.069,\n  \"withheldOnBuys\": 0,\n  \"salesCount\": 5,\n  \"buysCount\": 0,\n  \"salesHT\": 6390,\n  \"buysHT\": 0\n}"
+     "texte": "{\n  \"period\": {\n    \"month\": \"2026-06\",\n    \"from\": \"2026-06-01\",\n    \"to\": \"2026-06-30\",\n    \"label\": \"juin 2026\"\n  },\n  \"byRate\": {\n    \"0\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"7\": {\n      \"collected\": 31.5,\n      \"deductible\": 0\n    },\n    \"13\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"19\": {\n      \"collected\": 1128.6,\n      \"deductible\": 0\n    }\n  },\n  \"collected\": 1160.1,\n  \"deductible\": 0,\n  \"carryIn\": 0,\n  \"toPay\": 1160.1,\n  \"carryOut\": 0,\n  \"stamps\": 4,\n  \"withheldBySale\": 6.069,\n  \"withheldOnBuys\": 0,\n  \"salesCount\": 5,\n  \"buysCount\": 0,\n  \"salesHT\": 6390,\n  \"buysHT\": 0,\n  \"month\": \"2026-06\",\n  \"label\": \"juin\"\n}"
     },
     {
      "chemin": "social/cnss-T2.json",
@@ -353,7 +353,7 @@
     },
     {
      "chemin": "journaux/tva.json",
-     "texte": "{\n  \"period\": {\n    \"month\": \"2026-05\",\n    \"from\": \"2026-05-01\",\n    \"to\": \"2026-05-31\",\n    \"label\": \"mai 2026\"\n  },\n  \"byRate\": {\n    \"0\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"7\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"13\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"19\": {\n      \"collected\": 801.401,\n      \"deductible\": 603.668\n    }\n  },\n  \"collected\": 801.401,\n  \"deductible\": 603.668,\n  \"carryIn\": 0,\n  \"toPay\": 197.733,\n  \"carryOut\": 0,\n  \"stamps\": 4,\n  \"withheldBySale\": 20.527,\n  \"withheldOnBuys\": 0,\n  \"salesCount\": 6,\n  \"buysCount\": 1,\n  \"salesHT\": 4217.9,\n  \"buysHT\": 3177.2\n}"
+     "texte": "{\n  \"period\": {\n    \"month\": \"2026-05\",\n    \"from\": \"2026-05-01\",\n    \"to\": \"2026-05-31\",\n    \"label\": \"mai 2026\"\n  },\n  \"byRate\": {\n    \"0\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"7\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"13\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"19\": {\n      \"collected\": 801.401,\n      \"deductible\": 603.668\n    }\n  },\n  \"collected\": 801.401,\n  \"deductible\": 603.668,\n  \"carryIn\": 0,\n  \"toPay\": 197.733,\n  \"carryOut\": 0,\n  \"stamps\": 4,\n  \"withheldBySale\": 20.527,\n  \"withheldOnBuys\": 0,\n  \"salesCount\": 6,\n  \"buysCount\": 1,\n  \"salesHT\": 4217.9,\n  \"buysHT\": 3177.2,\n  \"month\": \"2026-05\",\n  \"label\": \"mai\"\n}"
     }
    ],
    "lignes": {
@@ -430,7 +430,7 @@
     },
     {
      "chemin": "journaux/tva.json",
-     "texte": "{\n  \"period\": {\n    \"month\": \"2026-04\",\n    \"from\": \"2026-04-01\",\n    \"to\": \"2026-04-30\",\n    \"label\": \"avril 2026\"\n  },\n  \"byRate\": {\n    \"0\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"7\": {\n      \"collected\": 21,\n      \"deductible\": 0\n    },\n    \"13\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"19\": {\n      \"collected\": 539.6,\n      \"deductible\": 0\n    }\n  },\n  \"collected\": 560.6,\n  \"deductible\": 0,\n  \"carryIn\": 0,\n  \"toPay\": 560.6,\n  \"carryOut\": 0,\n  \"stamps\": 2,\n  \"withheldBySale\": 55.509,\n  \"withheldOnBuys\": 0,\n  \"salesCount\": 2,\n  \"buysCount\": 0,\n  \"salesHT\": 3140,\n  \"buysHT\": 0\n}"
+     "texte": "{\n  \"period\": {\n    \"month\": \"2026-04\",\n    \"from\": \"2026-04-01\",\n    \"to\": \"2026-04-30\",\n    \"label\": \"avril 2026\"\n  },\n  \"byRate\": {\n    \"0\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"7\": {\n      \"collected\": 21,\n      \"deductible\": 0\n    },\n    \"13\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"19\": {\n      \"collected\": 539.6,\n      \"deductible\": 0\n    }\n  },\n  \"collected\": 560.6,\n  \"deductible\": 0,\n  \"carryIn\": 0,\n  \"toPay\": 560.6,\n  \"carryOut\": 0,\n  \"stamps\": 2,\n  \"withheldBySale\": 55.509,\n  \"withheldOnBuys\": 0,\n  \"salesCount\": 2,\n  \"buysCount\": 0,\n  \"salesHT\": 3140,\n  \"buysHT\": 0,\n  \"month\": \"2026-04\",\n  \"label\": \"avril\"\n}"
     }
    ],
    "lignes": {
@@ -462,7 +462,7 @@
      "ca": 1509.1,
      "tvaCollectee": 286.729,
      "tvaDeductible": 0,
-     "tvaADecaisser": 286.729,
+     "tvaADecaisser": 52.079,
      "creditTva": 0,
      "encaisse": 2342.671,
      "devise": "DT"
@@ -507,7 +507,7 @@
     },
     {
      "chemin": "journaux/tva.json",
-     "texte": "{\n  \"period\": {\n    \"month\": \"2026-03\",\n    \"from\": \"2026-03-01\",\n    \"to\": \"2026-03-31\",\n    \"label\": \"mars 2026\"\n  },\n  \"byRate\": {\n    \"0\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"7\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"13\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"19\": {\n      \"collected\": 286.729,\n      \"deductible\": 0\n    }\n  },\n  \"collected\": 286.729,\n  \"deductible\": 0,\n  \"carryIn\": 0,\n  \"toPay\": 286.729,\n  \"carryOut\": 0,\n  \"stamps\": 2,\n  \"withheldBySale\": 6.069,\n  \"withheldOnBuys\": 0,\n  \"salesCount\": 2,\n  \"buysCount\": 0,\n  \"salesHT\": 1509.1,\n  \"buysHT\": 0\n}"
+     "texte": "{\n  \"period\": {\n    \"month\": \"2026-03\",\n    \"from\": \"2026-03-01\",\n    \"to\": \"2026-03-31\",\n    \"label\": \"mars 2026\"\n  },\n  \"byRate\": {\n    \"0\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"7\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"13\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"19\": {\n      \"collected\": 286.729,\n      \"deductible\": 0\n    }\n  },\n  \"collected\": 286.729,\n  \"deductible\": 0,\n  \"carryIn\": 234.65,\n  \"toPay\": 52.079,\n  \"carryOut\": 0,\n  \"stamps\": 2,\n  \"withheldBySale\": 6.069,\n  \"withheldOnBuys\": 0,\n  \"salesCount\": 2,\n  \"buysCount\": 0,\n  \"salesHT\": 1509.1,\n  \"buysHT\": 0,\n  \"month\": \"2026-03\",\n  \"label\": \"mars\"\n}"
     },
     {
      "chemin": "social/cnss-T1.json",
@@ -595,7 +595,7 @@
     },
     {
      "chemin": "journaux/tva.json",
-     "texte": "{\n  \"period\": {\n    \"month\": \"2026-02\",\n    \"from\": \"2026-02-01\",\n    \"to\": \"2026-02-28\",\n    \"label\": \"février 2026\"\n  },\n  \"byRate\": {\n    \"0\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"7\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"13\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"19\": {\n      \"collected\": 259.35,\n      \"deductible\": 494\n    }\n  },\n  \"collected\": 259.35,\n  \"deductible\": 494,\n  \"carryIn\": 0,\n  \"toPay\": 0,\n  \"carryOut\": 234.65,\n  \"stamps\": 3,\n  \"withheldBySale\": 20.527,\n  \"withheldOnBuys\": 0,\n  \"salesCount\": 3,\n  \"buysCount\": 1,\n  \"salesHT\": 1365,\n  \"buysHT\": 2600\n}"
+     "texte": "{\n  \"period\": {\n    \"month\": \"2026-02\",\n    \"from\": \"2026-02-01\",\n    \"to\": \"2026-02-28\",\n    \"label\": \"février 2026\"\n  },\n  \"byRate\": {\n    \"0\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"7\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"13\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"19\": {\n      \"collected\": 259.35,\n      \"deductible\": 494\n    }\n  },\n  \"collected\": 259.35,\n  \"deductible\": 494,\n  \"carryIn\": 0,\n  \"toPay\": 0,\n  \"carryOut\": 234.65,\n  \"stamps\": 3,\n  \"withheldBySale\": 20.527,\n  \"withheldOnBuys\": 0,\n  \"salesCount\": 3,\n  \"buysCount\": 1,\n  \"salesHT\": 1365,\n  \"buysHT\": 2600,\n  \"month\": \"2026-02\",\n  \"label\": \"février\"\n}"
     }
    ],
    "lignes": {
@@ -672,7 +672,7 @@
     },
     {
      "chemin": "journaux/tva.json",
-     "texte": "{\n  \"period\": {\n    \"month\": \"2026-01\",\n    \"from\": \"2026-01-01\",\n    \"to\": \"2026-01-31\",\n    \"label\": \"janvier 2026\"\n  },\n  \"byRate\": {\n    \"0\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"7\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"13\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"19\": {\n      \"collected\": 64.6,\n      \"deductible\": 0\n    }\n  },\n  \"collected\": 64.6,\n  \"deductible\": 0,\n  \"carryIn\": 0,\n  \"toPay\": 64.6,\n  \"carryOut\": 0,\n  \"stamps\": 1,\n  \"withheldBySale\": 6.069,\n  \"withheldOnBuys\": 0,\n  \"salesCount\": 1,\n  \"buysCount\": 0,\n  \"salesHT\": 340,\n  \"buysHT\": 0\n}"
+     "texte": "{\n  \"period\": {\n    \"month\": \"2026-01\",\n    \"from\": \"2026-01-01\",\n    \"to\": \"2026-01-31\",\n    \"label\": \"janvier 2026\"\n  },\n  \"byRate\": {\n    \"0\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"7\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"13\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"19\": {\n      \"collected\": 64.6,\n      \"deductible\": 0\n    }\n  },\n  \"collected\": 64.6,\n  \"deductible\": 0,\n  \"carryIn\": 0,\n  \"toPay\": 64.6,\n  \"carryOut\": 0,\n  \"stamps\": 1,\n  \"withheldBySale\": 6.069,\n  \"withheldOnBuys\": 0,\n  \"salesCount\": 1,\n  \"buysCount\": 0,\n  \"salesHT\": 340,\n  \"buysHT\": 0,\n  \"month\": \"2026-01\",\n  \"label\": \"janvier\"\n}"
     }
    ],
    "lignes": {
@@ -749,7 +749,7 @@
     },
     {
      "chemin": "journaux/tva.json",
-     "texte": "{\n  \"period\": {\n    \"month\": \"2025-12\",\n    \"from\": \"2025-12-01\",\n    \"to\": \"2025-12-31\",\n    \"label\": \"décembre 2025\"\n  },\n  \"byRate\": {\n    \"0\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"7\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"13\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"19\": {\n      \"collected\": 64.6,\n      \"deductible\": 0\n    }\n  },\n  \"collected\": 64.6,\n  \"deductible\": 0,\n  \"carryIn\": 0,\n  \"toPay\": 64.6,\n  \"carryOut\": 0,\n  \"stamps\": 1,\n  \"withheldBySale\": 6.069,\n  \"withheldOnBuys\": 0,\n  \"salesCount\": 1,\n  \"buysCount\": 0,\n  \"salesHT\": 340,\n  \"buysHT\": 0\n}"
+     "texte": "{\n  \"period\": {\n    \"month\": \"2025-12\",\n    \"from\": \"2025-12-01\",\n    \"to\": \"2025-12-31\",\n    \"label\": \"décembre 2025\"\n  },\n  \"byRate\": {\n    \"0\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"7\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"13\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"19\": {\n      \"collected\": 64.6,\n      \"deductible\": 0\n    }\n  },\n  \"collected\": 64.6,\n  \"deductible\": 0,\n  \"carryIn\": 0,\n  \"toPay\": 64.6,\n  \"carryOut\": 0,\n  \"stamps\": 1,\n  \"withheldBySale\": 6.069,\n  \"withheldOnBuys\": 0,\n  \"salesCount\": 1,\n  \"buysCount\": 0,\n  \"salesHT\": 340,\n  \"buysHT\": 0,\n  \"month\": \"2025-12\",\n  \"label\": \"décembre\"\n}"
     },
     {
      "chemin": "social/cnss-T4.json",
@@ -830,7 +830,7 @@
     },
     {
      "chemin": "journaux/tva.json",
-     "texte": "{\n  \"period\": {\n    \"month\": \"2025-11\",\n    \"from\": \"2025-11-01\",\n    \"to\": \"2025-11-30\",\n    \"label\": \"novembre 2025\"\n  },\n  \"byRate\": {\n    \"0\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"7\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"13\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"19\": {\n      \"collected\": 218.5,\n      \"deductible\": 0\n    }\n  },\n  \"collected\": 218.5,\n  \"deductible\": 0,\n  \"carryIn\": 0,\n  \"toPay\": 218.5,\n  \"carryOut\": 0,\n  \"stamps\": 2,\n  \"withheldBySale\": 20.527,\n  \"withheldOnBuys\": 0,\n  \"salesCount\": 2,\n  \"buysCount\": 0,\n  \"salesHT\": 1150,\n  \"buysHT\": 0\n}"
+     "texte": "{\n  \"period\": {\n    \"month\": \"2025-11\",\n    \"from\": \"2025-11-01\",\n    \"to\": \"2025-11-30\",\n    \"label\": \"novembre 2025\"\n  },\n  \"byRate\": {\n    \"0\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"7\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"13\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"19\": {\n      \"collected\": 218.5,\n      \"deductible\": 0\n    }\n  },\n  \"collected\": 218.5,\n  \"deductible\": 0,\n  \"carryIn\": 0,\n  \"toPay\": 218.5,\n  \"carryOut\": 0,\n  \"stamps\": 2,\n  \"withheldBySale\": 20.527,\n  \"withheldOnBuys\": 0,\n  \"salesCount\": 2,\n  \"buysCount\": 0,\n  \"salesHT\": 1150,\n  \"buysHT\": 0,\n  \"month\": \"2025-11\",\n  \"label\": \"novembre\"\n}"
     }
    ],
    "lignes": {
@@ -907,7 +907,7 @@
     },
     {
      "chemin": "journaux/tva.json",
-     "texte": "{\n  \"period\": {\n    \"month\": \"2025-10\",\n    \"from\": \"2025-10-01\",\n    \"to\": \"2025-10-31\",\n    \"label\": \"octobre 2025\"\n  },\n  \"byRate\": {\n    \"0\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"7\": {\n      \"collected\": 29.925,\n      \"deductible\": 0\n    },\n    \"13\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"19\": {\n      \"collected\": 588.05,\n      \"deductible\": 0\n    }\n  },\n  \"collected\": 617.975,\n  \"deductible\": 0,\n  \"carryIn\": 0,\n  \"toPay\": 617.975,\n  \"carryOut\": 0,\n  \"stamps\": 2,\n  \"withheldBySale\": 62.107,\n  \"withheldOnBuys\": 0,\n  \"salesCount\": 2,\n  \"buysCount\": 0,\n  \"salesHT\": 3522.5,\n  \"buysHT\": 0\n}"
+     "texte": "{\n  \"period\": {\n    \"month\": \"2025-10\",\n    \"from\": \"2025-10-01\",\n    \"to\": \"2025-10-31\",\n    \"label\": \"octobre 2025\"\n  },\n  \"byRate\": {\n    \"0\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"7\": {\n      \"collected\": 29.925,\n      \"deductible\": 0\n    },\n    \"13\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"19\": {\n      \"collected\": 588.05,\n      \"deductible\": 0\n    }\n  },\n  \"collected\": 617.975,\n  \"deductible\": 0,\n  \"carryIn\": 0,\n  \"toPay\": 617.975,\n  \"carryOut\": 0,\n  \"stamps\": 2,\n  \"withheldBySale\": 62.107,\n  \"withheldOnBuys\": 0,\n  \"salesCount\": 2,\n  \"buysCount\": 0,\n  \"salesHT\": 3522.5,\n  \"buysHT\": 0,\n  \"month\": \"2025-10\",\n  \"label\": \"octobre\"\n}"
     }
    ],
    "lignes": {
@@ -984,7 +984,7 @@
     },
     {
      "chemin": "journaux/tva.json",
-     "texte": "{\n  \"period\": {\n    \"month\": \"2025-09\",\n    \"from\": \"2025-09-01\",\n    \"to\": \"2025-09-30\",\n    \"label\": \"septembre 2025\"\n  },\n  \"byRate\": {\n    \"0\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"7\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"13\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"19\": {\n      \"collected\": 64.6,\n      \"deductible\": 0\n    }\n  },\n  \"collected\": 64.6,\n  \"deductible\": 0,\n  \"carryIn\": 0,\n  \"toPay\": 64.6,\n  \"carryOut\": 0,\n  \"stamps\": 1,\n  \"withheldBySale\": 6.069,\n  \"withheldOnBuys\": 0,\n  \"salesCount\": 1,\n  \"buysCount\": 0,\n  \"salesHT\": 340,\n  \"buysHT\": 0\n}"
+     "texte": "{\n  \"period\": {\n    \"month\": \"2025-09\",\n    \"from\": \"2025-09-01\",\n    \"to\": \"2025-09-30\",\n    \"label\": \"septembre 2025\"\n  },\n  \"byRate\": {\n    \"0\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"7\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"13\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"19\": {\n      \"collected\": 64.6,\n      \"deductible\": 0\n    }\n  },\n  \"collected\": 64.6,\n  \"deductible\": 0,\n  \"carryIn\": 0,\n  \"toPay\": 64.6,\n  \"carryOut\": 0,\n  \"stamps\": 1,\n  \"withheldBySale\": 6.069,\n  \"withheldOnBuys\": 0,\n  \"salesCount\": 1,\n  \"buysCount\": 0,\n  \"salesHT\": 340,\n  \"buysHT\": 0,\n  \"month\": \"2025-09\",\n  \"label\": \"septembre\"\n}"
     },
     {
      "chemin": "social/cnss-T3.json",

@@ -4373,7 +4373,13 @@
     add({ path: 'journaux/balance.csv', kind: 'text', label: 'Balance générale', text: toCsv(bal.rows, balanceCsvColumns()), rows: bal.rows.length });
 
     // 2. La TVA du mois, avec son report : un mois isolé sans le crédit reporté donne un chiffre faux.
-    const vat = vatReturn(data, company, period, (data.vatCarryIn || {})[period.month.slice(0, 4)] || 0);
+    // Le mois tel que la CHAÎNE des déclarations le calcule (10.14.0). Avant, le paquet reprenait
+    // le crédit de début d'année pour CHAQUE mois : dès qu'un mois laissait un crédit, le suivant
+    // annonçait au comptable une TVA à décaisser qui l'ignorait (mars de l'exemple : 286,729 DT au
+    // lieu de 52,079), et un crédit saisi en janvier se déduisait douze fois. Une déclaration isolée
+    // ignore le report (3.1.0) : seule `vatChain` le porte.
+    const [anVat, moisVat] = period.month.split('-').map(Number);
+    const vat = { ...vatChain(data, company, anVat, moisVat)[moisVat - 1], period };
     add({ path: 'journaux/tva.json', kind: 'text', label: 'TVA du mois', text: JSON.stringify(vat, null, 2) });
 
     // 2 bis. Les réponses aux questions du cabinet (9.10.0). Elles voyagent DANS le paquet plutôt

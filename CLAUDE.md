@@ -7683,6 +7683,12 @@ chaque chiffre calculé par DEUX chemins, devenu une suite permanente (`test/sui
 - **Un exemple qui ne paie pas ses dettes ment sur le produit** : cinq ans de CNSS jamais versée,
   c'est un bilan qu'aucun comptable ne croirait, et un utilisateur qui ne sait pas où enregistrer
   le paiement. `socialDue` ne regarde que deux ans : l'exemple paie TOUS les trimestres échus.
+- **Un chiffre qui part chez un tiers se calcule par la MÊME chaîne que l'écran qui le montre.**
+  Le paquet recalculait la TVA de son mois en isolant le mois avec le crédit de DÉBUT D'ANNÉE : la
+  règle de la 3.1.0 (« une déclaration isolée ignore le report ») écrite dans un commentaire à trois
+  lignes du défaut. `vatChain(...)[mois − 1]`, et l'invariant compare le manifeste à la chaîne pour
+  chaque mois des cinq ans. Il ne tombe que sur UN mois de l'exemple (mars) : un seul mois laissait
+  un crédit — des données qui discriminent à peine suffisent, si le test regarde tous les mois.
 - Piège de l'outil humain : `getBoundingClientRect` donne des coordonnées dans la PAGE, le clic
   système des coordonnées ÉCRAN (barre de titre et menu : 46 px de plus). Mesuré pendant un
   défilement animé, le clic tombe une ligne plus haut — j'ai pointé deux mauvaises lignes avant

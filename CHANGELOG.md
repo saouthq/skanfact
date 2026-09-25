@@ -622,6 +622,11 @@ trouvé trois défauts d'argent :
   d'où elle part.
 - **Un salaire payé ne se pointait pas au rapprochement.** Sa case acceptait le clic, le message
   disait « Mouvement pointé », et rien n'était retenu. L'avance versée se pointe aussi.
+- **Le paquet du comptable ignorait le crédit de TVA du mois précédent.** Il reprenait, pour chaque
+  mois, le crédit de début d'année. Dès qu'un mois laissait un crédit, le paquet du suivant annonçait
+  au comptable une TVA à décaisser fausse : sur l'exemple, mars disait **286,729 DT** là où l'onglet
+  « TVA à payer » disait **52,079 DT**. Le paquet lit maintenant la même chaîne des déclarations que
+  l'onglet, et le Cabinet affiche le bon chiffre dans la colonne « TVA à décaisser ».
 
 Et le jeu d'exemple ne payait jamais ses cotisations : cinq ans de CNSS (30 232 DT), d'IRPP
 (12 730 DT) et de TFP s'empilaient au passif. Il les paie désormais, au trimestre pour la CNSS et au
