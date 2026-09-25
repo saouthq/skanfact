@@ -489,6 +489,14 @@ ce paiement ? », « Émettre la facture ? », « Un paiement daté dans le futu
 clair ? ». Il est tiré de la question elle-même, ou du bouton quand il est parlant, et un titre
 choisi à la main pour les avertissements. Un numéro de pièce n'y est jamais coupé en fin de ligne.
 
+### Une facture émise se dit « émise »
+
+Une facture qu'on vient d'émettre s'affichait « envoyée », avant tout envoi — ce qui se lisait comme
+une erreur quand on ne l'avait envoyée à personne. Elle se dit maintenant « émise », partout où son
+statut s'affiche. Rien ne change dans les données. Une proforma garde « envoyée » : c'est l'envoi qui
+la pose. Dans le filtre des factures, le regroupement s'appelle « Toutes les pièces émises », pour ne
+pas se lire comme un doublon de « Émise ».
+
 ## 10.13.0-beta.1 — 24/09/2026
 
 **Avant la mise en production : les deux applications et le pont entre elles, testés en entier.**

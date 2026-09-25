@@ -7530,6 +7530,13 @@ les offres, ouvre la page de paiement préremplie, et la clé revient toute seul
   titres écrits à la main, qui divergeraient du message au premier ajustement.
 - **Un titre est un morceau de prose comme un autre** : il reçoit `numerosInsecables`, sinon
   « FAC-2026-015 » se coupe en fin de ligne dans le titre alors que le corps le protégeait déjà.
+- **Un mot d'état se change à l'AFFICHAGE, jamais dans la donnée** : « envoyée » est la valeur rangée
+  depuis la 1.4.0 (filtres, relances, fusion, CSV la lisent) ; c'est `statusLabel(s, type)` qui dit
+  « émise » — et le TYPE décide, parce qu'une proforma, elle, est vraiment envoyée. Le badge et les
+  listes passent le type de la pièce. Et un libellé neuf se relit contre ses VOISINS : « Émise » à
+  côté du regroupement « Émis » se lisait comme le même choix deux fois ; le regroupement a son nom.
+  Le test des listes de statuts (10.12.0) recopiait la forme `optionStatut(x)` : retourné vers la
+  règle (la valeur passe par `optionStatut`, avec ou sans type).
 
 ## Pistes pour la suite (non demandées)
 

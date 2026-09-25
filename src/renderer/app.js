@@ -512,7 +512,7 @@
   // statuts », « Français », « Factures et avoirs ») : « brouillon » entre les deux se lisait comme
   // une valeur oubliée (10.12.0). Le badge, lui, garde sa minuscule d'étiquette ; la VALEUR ne change
   // pas — elle part dans les données telle quelle.
-  const optionStatut = st => { const t = String(C.statusLabel(st) || ''); return t.charAt(0).toUpperCase() + t.slice(1); };
+  const optionStatut = (st, type) => { const t = String(C.statusLabel(st, type) || ''); return t.charAt(0).toUpperCase() + t.slice(1); };
   const deepCopy = o => JSON.parse(JSON.stringify(o));
   const pct = n => String(n).replace('.', ',');
   // Une quantité SIGNÉE s'écrit avec le même signe moins que les montants (« − 38,500 DT ») : un « -1 »
@@ -1353,11 +1353,11 @@
     };
   }
 
-  function badge(status) { return `<span class="badge ${h(status)}">${h(C.statusLabel(status))}</span>`; }
+  function badge(status, type) { return `<span class="badge ${h(status)}">${h(C.statusLabel(status, type))}</span>`; }
   // Statut d'un achat : « à payer » contient une espace, qui ferait deux classes CSS au lieu d'une.
   const BUY_BADGE = { 'à payer': 'b-due', partiel: 'b-part', retard: 'b-late', 'payée': 'b-paid' };
   function buyBadge(status) { return `<span class="badge ${BUY_BADGE[status] || ''}">${h(status)}</span>`; }
-  function statusBadge(doc) { return badge(effStatus(doc)); }
+  function statusBadge(doc) { return badge(effStatus(doc), doc && doc.type); }
   function methodLabel(m) { const x = C.PAYMENT_METHODS.find(p => p[0] === m); return x ? x[1] : (m || ''); }
   // Le compte d'un paiement qui n'en porte pas : c'est celui sur lequel `cashMovements` le fait
   // tomber (le compte par défaut). On l'écrit ainsi plutôt que de laisser la case vide — une case
@@ -3002,13 +3002,16 @@
     // « Émis » et « À encaisser » regroupent plusieurs statuts : ils passent par `C.docFiltre`, pas
     // par une comparaison de chaîne (voir DOC_FILTRES dans core.js — « Émis » rendait les avoirs).
     const statuses = isQ ? C.DISPLAY_STATUSES.devis : [...C.DISPLAY_STATUSES.facture, 'émis', 'à encaisser'];
+    // Les deux regroupements ont leur libellé : « Émis » se lisait à côté de « Émise » (une facture
+    // émise et pas encore payée), comme deux fois le même choix.
+    const FILTRES_REGROUPES = isQ ? {} : { 'émis': 'Toutes les pièces émises', 'à encaisser': 'À encaisser' };
     $('#view').innerHTML = `
       <div class="page-head"><h1>${isQ ? 'Devis' : 'Factures'}</h1>
         <div class="actions">${isQ || !data.documents.some(d => d.type === 'facture' && d.status !== 'brouillon' && d.number) ? '' : '<button class="btn" id="new-avoir">+ Avoir</button>'}<button class="btn ${mine.length ? 'btn-primary' : ''}" id="new">+ ${isQ ? 'Nouveau devis' : 'Nouvelle facture'}</button></div></div>
       ${filtersBar(`
         <input type="text" id="q" placeholder="Rechercher : n°, client, objet…" value="${h(s.q)}">
         ${isQ ? '' : `<select id="kind"><option value="">Factures et avoirs</option><option value="facture" ${s.kind === 'facture' ? 'selected' : ''}>Factures</option><option value="avoir" ${s.kind === 'avoir' ? 'selected' : ''}>Avoirs</option></select>`}
-        <select id="st"><option value="">Tous les statuts</option>${statuses.map(x => `<option value="${x}" ${s.st === x ? 'selected' : ''}>${h(optionStatut(x))}</option>`).join('')}</select>
+        <select id="st"><option value="">Tous les statuts</option>${statuses.map(x => `<option value="${x}" ${s.st === x ? 'selected' : ''}>${h(FILTRES_REGROUPES[x] || optionStatut(x))}</option>`).join('')}</select>
         ${years.length > 1 ? `<select id="yr"><option value="">Toutes les années</option>${years.map(y => `<option value="${y}" ${s.year === y ? 'selected' : ''}>${y}</option>`).join('')}</select>` : ''}
         ${info('list.filters')}
         <span class="f-note" id="f-note" hidden></span>
@@ -3152,8 +3155,8 @@
     const NEW_TITLES = { proforma: 'Nouvelle proforma', commande: 'Nouveau bon de commande', livraison: 'Nouveau bon de livraison', contrat: 'Nouveau contrat' };
     const title = isNew ? (isQ ? 'Nouveau devis' : isInv ? 'Nouvelle facture' : isAv ? 'Nouvel avoir' : NEW_TITLES[doc.type]) : docLabel(doc);
     const statusCell = isQ || isExtra
-      ? `<label class="field">${lbl('Statut', isQ ? 'ed.statusQuote' : 'ed.statusExtra')}<select name="status">${C.STATUSES[doc.type].map(st => `<option value="${h(st)}" ${st === doc.status ? 'selected' : ''}>${h(optionStatut(st))}</option>`).join('')}</select></label>`
-      : `<div class="field">${lbl('Statut', isInv ? 'ed.statusInvoice' : '')}<div class="status-cell">${isNew || doc.status === 'brouillon' ? `${badge('brouillon')}<span class="small muted">numéro attribué à l'émission</span> ${info('ed.draftNumber')}` : (isInv ? statusBadge(stored) : badge(doc.status))}</div></div>`;
+      ? `<label class="field">${lbl('Statut', isQ ? 'ed.statusQuote' : 'ed.statusExtra')}<select name="status">${C.STATUSES[doc.type].map(st => `<option value="${h(st)}" ${st === doc.status ? 'selected' : ''}>${h(optionStatut(st, doc.type))}</option>`).join('')}</select></label>`
+      : `<div class="field">${lbl('Statut', isInv ? 'ed.statusInvoice' : '')}<div class="status-cell">${isNew || doc.status === 'brouillon' ? `${badge('brouillon')}<span class="small muted">numéro attribué à l'émission</span> ${info('ed.draftNumber')}` : (isInv ? statusBadge(stored) : badge(doc.status, doc.type))}</div></div>`;
 
     // Facturer un devis, c'est le geste qui rapporte de l'argent — et c'était la seule porte de
     // toute l'application : un bouton gris, au contenu invisible avant clic, sans aucun double dans
@@ -7929,7 +7932,7 @@
       ${vide ? '' : `<p class="small muted mb">${h(tab[2])} ${info('autres.' + type)}</p>`}
       ${filtersBar(`
         <input type="text" id="q" placeholder="Rechercher : n°, client, objet…" value="${h(s.q)}">
-        <select id="st"><option value="">Tous les statuts</option>${C.STATUSES[type].map(x => `<option value="${x}" ${s.st === x ? 'selected' : ''}>${h(optionStatut(x))}</option>`).join('')}</select>
+        <select id="st"><option value="">Tous les statuts</option>${C.STATUSES[type].map(x => `<option value="${x}" ${s.st === x ? 'selected' : ''}>${h(optionStatut(x, type))}</option>`).join('')}</select>
         ${years.length > 1 ? `<select id="yr"><option value="">Toutes les années</option>${years.map(y => `<option value="${y}" ${s.year === y ? 'selected' : ''}>${y}</option>`).join('')}</select>` : ''}
         ${info('list.filters')}
         <span class="f-note" id="f-note" hidden></span>

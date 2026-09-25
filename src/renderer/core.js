@@ -1073,7 +1073,15 @@
     return tete.concat(reste);
   }
 
-  function statusLabel(s) { return STATUS_LABELS[s] || s; }
+  // 10.14.0 — une facture qu'on vient d'émettre se disait « envoyée », avant tout envoi : c'est le
+  // nom de la VALEUR depuis la 1.4.0 (elle reste, les données ne bougent pas), pas un mot pour
+  // quelqu'un qui n'a rien envoyé. Une facture se dit « émise ». Une proforma, elle, garde
+  // « envoyée » : c'est le geste d'envoi qui la pose (STATUT_ENVOI). Sans type, c'est une facture
+  // — le journal des ventes et les listes de factures n'en passent pas.
+  function statusLabel(s, type) {
+    if (s === 'envoyée' && type !== 'proforma') return 'émise';
+    return STATUS_LABELS[s] || s;
+  }
 
   // ---------- numérotation ----------
   // Format : DEV-2026-001 / FAC-2026-001 / AVO-2026-001, compteur par type et par année.

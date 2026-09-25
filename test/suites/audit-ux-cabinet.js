@@ -3189,7 +3189,9 @@ t('Les statuts d\'une liste déroulante commencent par une majuscule, sans chang
   assert.ok(selects.length >= 5, 'les listes de statuts ne sont plus trouvées : ' + selects.length);
   selects.forEach(([tout, v, attrs, lib]) => {
     assert.ok(new RegExp(`value="\\$\\{(?:h\\()?${v}\\)?\\}"`).test(attrs), 'une option de statut sans valeur explicite : le libellé partirait dans les données — ' + tout.slice(0, 80));
-    assert.ok(new RegExp(`optionStatut\\(${v}\\)`).test(lib), 'une liste de statuts affiche encore la valeur brute : ' + tout.slice(0, 80));
+    // 10.14.0 : l'appel peut porter le type de la pièce (« émise » / « envoyée ») — la règle est que
+    // la valeur passe par optionStatut, pas la forme de l'appel.
+    assert.ok(new RegExp(`optionStatut\\(${v}(?:,[^)]*)?\\)`).test(lib), 'une liste de statuts affiche encore la valeur brute : ' + tout.slice(0, 80));
   });
 });
 

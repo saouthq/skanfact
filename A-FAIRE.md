@@ -184,7 +184,9 @@ Constats de l'audit du 22/09/2026 restés hors de la 10.6.0.
   - ~~**Toutes les questions s'intitulent « Confirmation »**~~ — **fait en 10.14.0** : le titre se
     tire de la première phrase quand c'est une question, sinon du geste du bouton (sauf un geste
     générique), et dix-sept avertissements portent un titre écrit (`opts.titre`).
-  - **Une facture qu'on vient d'émettre se dit « envoyée »**, avant tout envoi : c'est le nom du
+  - ~~**Une facture qu'on vient d'émettre se dit « envoyée »**~~ — **fait en 10.14.0** : « émise » à
+    l'affichage (`statusLabel(s, type)`), la valeur `envoyée` reste ; la proforma garde « envoyée ».
+    Avant :, avant tout envoi : c'est le nom du
     statut déduit depuis la 1.4.0 (la bulle le dit), mais un créateur d'entreprise qui n'a rien
     envoyé le lit comme une erreur. Changer le mot touche les données (la valeur `envoyée`), les
     filtres, les relances et l'aide : à décider (« émise » ?), pas à glisser dans un correctif.
@@ -328,8 +330,8 @@ l'ordre proposé.
     workflow, branche `beta`). Le worker en service ne connaît ni `/v1/achat/cle` ni le jeton : une
     commande passée depuis l'application y resterait « en attente » (l'écran dit « hors ligne »,
     rien n'est perdu, la clé arrive par mail) — mais le geste neuf ne servirait à rien.
-- **Ne jamais se perdre** : ~~les 78 titres « Confirmation »~~ (fait en 10.14.0), « émise » au lieu
-  de « envoyée », H-E30, les barres qui passent sur deux rangées, et les restes de la console (§ 3).
+- **Ne jamais se perdre** : ~~les 78 titres « Confirmation »~~ (fait en 10.14.0), ~~« émise » au lieu
+  de « envoyée »~~ (fait), H-E30, les barres qui passent sur deux rangées, et les restes de la console (§ 3).
 - **Les tests humains mis en pause** le 24/09 pour la visite : l'app entreprise (achats, stock, biens,
   trésorerie, paie, comptabilité, paramètres, données) et le Cabinet en entier. Les 55 parcours de la
   10.13.0-beta.1 tournaient au même moment. Et le relancement de tous les parcours de la 10.14.0

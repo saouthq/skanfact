@@ -49,4 +49,25 @@ module.exports = ({ t, assert }) => {
     assert.ok(/opts && opts\.titre/.test(f), 'l\'appelant qui sait mieux peut donner le sien');
     assert.ok(/<h2>\$\{numerosInsecables\(h\(enTete\(q\.titre\)\)\)\}<\/h2>/.test(f), 'le titre est affiché, échappé, et un numéro de pièce ne s\'y coupe pas');
   });
+
+  // « Émise » au lieu de « envoyée » : le LIBELLÉ change, jamais la valeur rangée dans les données.
+  t('10.14.0 : une facture émise se dit « émise », une proforma envoyée reste « envoyée »', () => {
+    assert.strictEqual(core.statusLabel('envoyée'), 'émise', 'sans type : une facture');
+    assert.strictEqual(core.statusLabel('envoyée', 'facture'), 'émise');
+    assert.strictEqual(core.statusLabel('envoyée', 'proforma'), 'envoyée', 'une proforma, c\'est l\'envoi qui la pose');
+    assert.strictEqual(core.statusLabel('envoyé', 'devis'), 'envoyé', 'le devis garde son geste d\'envoi');
+    assert.strictEqual(core.statusLabel('retard', 'facture'), 'en retard');
+    // La donnée ne bouge pas : c'est toujours « envoyée » que l'émission range.
+    assert.ok(core.STATUSES.facture.includes('envoyée'));
+  });
+
+  t('10.14.0 : les badges et les listes passent le TYPE de la pièce, et « Émis » ne double pas « Émise »', () => {
+    assert.ok(/function statusBadge\(doc\) \{ return badge\(effStatus\(doc\), doc && doc\.type\); \}/.test(app), 'le badge d\'une pièce connaît son type');
+    assert.ok(/optionStatut\(x, type\)/.test(app), 'la liste des autres pièces passe son type');
+    assert.ok(/optionStatut\(st, doc\.type\)/.test(app), 'l\'éditeur passe le type');
+    const i = app.indexOf('const FILTRES_REGROUPES');
+    const zone = app.slice(i, i + 200);
+    assert.ok(i > 0 && /'émis': 'Toutes les pièces émises'/.test(zone), 'le regroupement a son libellé');
+    assert.ok(/FILTRES_REGROUPES\[x\] \|\| optionStatut\(x\)/.test(app), 'la liste des factures l\'utilise');
+  });
 };
