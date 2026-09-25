@@ -1535,7 +1535,9 @@ ipcMain.handle('cab:contrepasser', (_e, { dossierId, annee, id, date } = {}) => 
   const o = ouvrirLivre(dossierId, annee);
   if (!o.livre) throw erreur('ERR-CAB-026', 'Ce dossier n\'a pas de livre pour cet exercice.');
   licenceBlockCab('Contre-passer une écriture');
-  const r = KC.contrepasser(o.livre, id, quiSuisJe(), date, Date.now());
+  // Sans date, c'est le jour du GESTE (la règle 9.2.0) : un appelant qui l'oublie ne doit pas dater
+  // le miroir du jour de l'écriture corrigée — c'est ce que `dateDuMiroir` fait d'une date vide.
+  const r = KC.contrepasser(o.livre, id, quiSuisJe(), /^\d{4}-\d{2}-\d{2}$/.test(String(date || '')) ? date : K.today(), Date.now());
   if (!r.ok) throw erreur('ERR-CAB-025', r.motif);
   ecrireLeLivre(dossierId, o.livre, null);
   noterValidation(dossierId);

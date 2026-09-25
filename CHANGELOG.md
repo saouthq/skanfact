@@ -397,6 +397,8 @@ Et en suivant à la souris le conseil de l'écran jusqu'au bout :
   compte respire.
 - Après « Ajuster les à-nouveaux », la fenêtre ne redit plus « 1 bien et 1 salarié suivent » quand le
   registre n'a pas bougé. La page Dossiers vide ne propose plus la clé de secours deux fois.
+- Une contre-passation demandée sans date se date du jour du geste, borné à l'exercice : la porte ne
+  dépend plus de l'écran qui l'appelle (sans date, le miroir tombait le jour de l'écriture corrigée).
 
 ## 10.13.0-beta.1 — 24/09/2026
 

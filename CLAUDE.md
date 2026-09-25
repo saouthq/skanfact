@@ -7419,6 +7419,9 @@ fait tomber :
   assertion à deux valeurs sans message, sur laquelle deux défauts différents tombaient au même
   endroit. Et une quatrième tombait sur le test d'À CÔTÉ : la borne du miroir se prouve en
   neutralisant le test du complément le temps de la preuve (10.12.0).
+- **Une porte ne dépend pas de chaque appelant** : `cab:contrepasser` sans date laissait `dateDuMiroir`
+  retomber sur le jour de l'écriture corrigée — l'écran passe toujours le jour, le pont joué à la main
+  non. Sans date valable, la porte prend le jour du geste ; vu en préparant le test à la souris.
 
 ## Pistes pour la suite (non demandées)
 

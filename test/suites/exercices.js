@@ -636,6 +636,23 @@ t('10.14.0 : un règlement réaffecté d\'un client à l\'autre ne change pas le
 // d'une écriture de 2025 tombait en 2026 dans le livre de 2025 — hors de toutes ses lectures, et la
 // balance gardait l'écriture « contre-passée » ; et des à-nouveaux contre-passés un jour de septembre
 // laissaient l'ouverture comptée deux fois jusqu'à ce jour.
+// Vu en jouant la contre-passation par le pont (10.14.0) : sans date, `dateDuMiroir` retombe sur le jour
+// de l'écriture corrigée — l'écran passe toujours le jour, mais la PORTE ne doit pas dépendre de chaque
+// appelant. Sans date valable, c'est le jour du geste.
+t('10.14.0 : la contre-passation sans date se date du jour du geste, pas de l\'écriture corrigée', () => {
+  const i = mainCab.indexOf("ipcMain.handle('cab:contrepasser'");
+  const h = mainCab.slice(i, mainCab.indexOf('ipcMain.handle(', i + 10));
+  assert.ok(i > 0 && h.length < 2500, 'tranche du handler mal découpée : ' + h.length);
+  assert.ok(/KC\.contrepasser\(o\.livre, id, quiSuisJe\(\), \/\^\\d\{4\}-\\d\{2\}-\\d\{2\}\$\/\.test\(String\(date \|\| ''\)\) \? date : K\.today\(\)/.test(h),
+    'une contre-passation sans date se date du jour de l\'écriture corrigée');
+  const L = KC.livreVide('MF:X', 2025);
+  const e = KC.ajouterEcriture(L, { date: '2025-12-30', journal: 'OD', piece: 'X', libelle: 'x', lignes: [
+    { compte: '606', libelle: 'a', debit: 10, credit: 0 }, { compte: '532', libelle: 'b', debit: 0, credit: 10 }] }, 'moi', 1);
+  // Ce que le handler protège : une date vide donne le jour de l'écriture, le jour du geste la borne.
+  assert.strictEqual(KC.dateDuMiroir(L, e, ''), '2025-12-30');
+  assert.strictEqual(KC.dateDuMiroir(L, e, '2026-09-25'), '2025-12-31');
+});
+
 t('10.14.0 : un miroir reste dans son exercice — au dernier jour d\'un exercice passé, au 1er janvier pour des à-nouveaux, jamais avant l\'écriture corrigée', () => {
   const L = KC.livreVide('MF:X', 2025);
   const err = KC.ajouterEcriture(L, { date: '2025-11-10', journal: 'OD', piece: 'X', libelle: 'Erreur', lignes: [
