@@ -61,7 +61,7 @@
     },
     {
      "chemin": "journaux/achats.csv",
-     "texte": "﻿Date;N° fournisseur;Fournisseur;Nature;Catégorie;Objet;HT;TVA;TVA déductible;Timbre et frais;TTC;Retenue opérée;Net à payer;Statut\r\n02/08/2026;AV-2026-0198;Tunisie Matériel Informatique;Avoir fournisseur;Achats de marchandises;Erreur de prix sur une facture réglée;-120,000;-22,800;-22,800;0,000;-142,800;0,000;-142,800;remboursé\r\n05/08/2026;LOC-2026-09;Agence Immobilière Le Lac;Facture d'achat;Loyer et charges locatives;Loyer du bureau;1100,000;209,000;209,000;0,000;1309,000;0,000;1309,000;partiel\r\n17/08/2026;ACPT-2026-11;Tunisie Matériel Informatique;Acompte versé;Petit équipement;Acompte à la commande de l'imprimante;500,000;95,000;95,000;0,000;595,000;0,000;595,000;payée\r\n20/08/2026;STEG-884512;STEG;Facture d'achat;Électricité, eau, gaz;Électricité juillet-août;340,000;64,600;64,600;0,000;404,600;0,000;404,600;payée\r\n28/08/2026;AV-2026-0233;Agence Immobilière Le Lac;Avoir fournisseur;Loyer et charges locatives;Geste commercial sur le loyer;-200,000;-38,000;-38,000;0,000;-238,000;0,000;-238,000;imputé\r\n29/08/2026;FA-2026-1402;Tunisie Matériel Informatique;Facture d'achat;Petit équipement;Imprimante multifonction du bureau;1450,000;275,500;180,500;1,000;1726,500;0,000;1726,500;partiel\r\n"
+     "texte": "﻿Date;N° fournisseur;Fournisseur;Nature;Catégorie;Objet;HT;TVA;TVA déductible;Timbre et frais;TTC;Retenue à la source;Net à payer;Statut\r\n02/08/2026;AV-2026-0198;Tunisie Matériel Informatique;Avoir fournisseur;Achats de marchandises;Erreur de prix sur une facture réglée;-120,000;-22,800;-22,800;0,000;-142,800;0,000;-142,800;remboursé\r\n05/08/2026;LOC-2026-09;Agence Immobilière Le Lac;Facture d'achat;Loyer et charges locatives;Loyer du bureau;1100,000;209,000;209,000;0,000;1309,000;0,000;1309,000;partiel\r\n17/08/2026;ACPT-2026-11;Tunisie Matériel Informatique;Acompte versé;Petit équipement;Acompte à la commande de l'imprimante;500,000;95,000;95,000;0,000;595,000;0,000;595,000;payée\r\n20/08/2026;STEG-884512;STEG;Facture d'achat;Électricité, eau, gaz;Électricité juillet-août;340,000;64,600;64,600;0,000;404,600;0,000;404,600;payée\r\n28/08/2026;AV-2026-0233;Agence Immobilière Le Lac;Avoir fournisseur;Loyer et charges locatives;Geste commercial sur le loyer;-200,000;-38,000;-38,000;0,000;-238,000;0,000;-238,000;imputé\r\n29/08/2026;FA-2026-1402;Tunisie Matériel Informatique;Facture d'achat;Petit équipement;Imprimante multifonction du bureau;1450,000;275,500;180,500;1,000;1726,500;0,000;1726,500;partiel\r\n"
     },
     {
      "chemin": "journaux/encaissements.csv",
@@ -69,7 +69,7 @@
     },
     {
      "chemin": "journaux/reglements-fournisseurs.csv",
-     "texte": "﻿Date;Pièce fournisseur;Fournisseur;Montant;Mode;Référence;Note\r\n09/08/2026;AV-2026-0198;Tunisie Matériel Informatique;-142,800;Virement;VIR 202608-09;\r\n12/08/2026;LOC-2026-09;Agence Immobilière Le Lac;500,000;Virement;VIR 202608-12;\r\n15/08/2026;FA-2026-1187;Tunisie Matériel Informatique;13567,000;Virement;VIR 202608-15;\r\n17/08/2026;ACPT-2026-11;Tunisie Matériel Informatique;595,000;Virement;VIR 202608-17;\r\n28/08/2026;STEG-884512;STEG;404,600;Espèces;;\r\n"
+     "texte": "﻿Date;Pièce fournisseur;Fournisseur;Montant;Retenue opérée;Mode;Référence;Note\r\n09/08/2026;AV-2026-0198;Tunisie Matériel Informatique;-142,800;0,000;Virement;VIR 202608-09;\r\n12/08/2026;LOC-2026-09;Agence Immobilière Le Lac;500,000;0,000;Virement;VIR 202608-12;\r\n15/08/2026;FA-2026-1187;Tunisie Matériel Informatique;13567,000;0,000;Virement;VIR 202608-15;\r\n17/08/2026;ACPT-2026-11;Tunisie Matériel Informatique;595,000;0,000;Virement;VIR 202608-17;\r\n28/08/2026;STEG-884512;STEG;404,600;0,000;Espèces;;\r\n"
     },
     {
      "chemin": "journaux/tresorerie.csv",
@@ -157,7 +157,7 @@
     },
     {
      "chemin": "journaux/achats.csv",
-     "texte": "﻿Date;N° fournisseur;Fournisseur;Nature;Catégorie;Objet;HT;TVA;TVA déductible;Timbre et frais;TTC;Retenue opérée;Net à payer;Statut\r\n05/07/2026;LOC-2026-08;Agence Immobilière Le Lac;Facture d'achat;Loyer et charges locatives;Loyer du bureau;1100,000;209,000;209,000;0,000;1309,000;0,000;1309,000;partiel\r\n18/07/2026;FA-2026-1187;Tunisie Matériel Informatique;Facture d'achat;Achats de marchandises;Postes de travail pour l'École Les Lauriers;11400,000;2166,000;2166,000;1,000;13567,000;0,000;13567,000;payée\r\n"
+     "texte": "﻿Date;N° fournisseur;Fournisseur;Nature;Catégorie;Objet;HT;TVA;TVA déductible;Timbre et frais;TTC;Retenue à la source;Net à payer;Statut\r\n05/07/2026;LOC-2026-08;Agence Immobilière Le Lac;Facture d'achat;Loyer et charges locatives;Loyer du bureau;1100,000;209,000;209,000;0,000;1309,000;0,000;1309,000;partiel\r\n18/07/2026;FA-2026-1187;Tunisie Matériel Informatique;Facture d'achat;Achats de marchandises;Postes de travail pour l'École Les Lauriers;11400,000;2166,000;2166,000;1,000;13567,000;0,000;13567,000;payée\r\n"
     },
     {
      "chemin": "journaux/encaissements.csv",
@@ -165,7 +165,7 @@
     },
     {
      "chemin": "journaux/reglements-fournisseurs.csv",
-     "texte": "﻿Date;Pièce fournisseur;Fournisseur;Montant;Mode;Référence;Note\r\n"
+     "texte": "﻿Date;Pièce fournisseur;Fournisseur;Montant;Retenue opérée;Mode;Référence;Note\r\n"
     },
     {
      "chemin": "journaux/tresorerie.csv",
@@ -241,7 +241,7 @@
     },
     {
      "chemin": "journaux/achats.csv",
-     "texte": "﻿Date;N° fournisseur;Fournisseur;Nature;Catégorie;Objet;HT;TVA;TVA déductible;Timbre et frais;TTC;Retenue opérée;Net à payer;Statut\r\n"
+     "texte": "﻿Date;N° fournisseur;Fournisseur;Nature;Catégorie;Objet;HT;TVA;TVA déductible;Timbre et frais;TTC;Retenue à la source;Net à payer;Statut\r\n"
     },
     {
      "chemin": "journaux/encaissements.csv",
@@ -249,7 +249,7 @@
     },
     {
      "chemin": "journaux/reglements-fournisseurs.csv",
-     "texte": "﻿Date;Pièce fournisseur;Fournisseur;Montant;Mode;Référence;Note\r\n"
+     "texte": "﻿Date;Pièce fournisseur;Fournisseur;Montant;Retenue opérée;Mode;Référence;Note\r\n"
     },
     {
      "chemin": "journaux/tresorerie.csv",
@@ -329,7 +329,7 @@
     },
     {
      "chemin": "journaux/achats.csv",
-     "texte": "﻿Date;N° fournisseur;Fournisseur;Nature;Catégorie;Objet;HT;TVA;TVA déductible;Timbre et frais;TTC;Retenue opérée;Net à payer;Statut\r\n06/05/2026;INV-2026-77120;Tunisie Matériel Informatique;Facture d'achat;Logiciels et abonnements;Licences antivirus — renouvellement annuel;3177,200;603,668;603,668;0,000;3780,868;0,000;3780,868;payée\r\n"
+     "texte": "﻿Date;N° fournisseur;Fournisseur;Nature;Catégorie;Objet;HT;TVA;TVA déductible;Timbre et frais;TTC;Retenue à la source;Net à payer;Statut\r\n06/05/2026;INV-2026-77120;Tunisie Matériel Informatique;Facture d'achat;Logiciels et abonnements;Licences antivirus — renouvellement annuel;3177,200;603,668;603,668;0,000;3780,868;0,000;3780,868;payée\r\n"
     },
     {
      "chemin": "journaux/encaissements.csv",
@@ -337,7 +337,7 @@
     },
     {
      "chemin": "journaux/reglements-fournisseurs.csv",
-     "texte": "﻿Date;Pièce fournisseur;Fournisseur;Montant;Mode;Référence;Note\r\n26/05/2026;INV-2026-77120;Tunisie Matériel Informatique;3780,868;Virement;VIR 202605-26;\r\n"
+     "texte": "﻿Date;Pièce fournisseur;Fournisseur;Montant;Retenue opérée;Mode;Référence;Note\r\n26/05/2026;INV-2026-77120;Tunisie Matériel Informatique;3780,868;0,000;Virement;VIR 202605-26;\r\n"
     },
     {
      "chemin": "journaux/tresorerie.csv",
@@ -406,7 +406,7 @@
     },
     {
      "chemin": "journaux/achats.csv",
-     "texte": "﻿Date;N° fournisseur;Fournisseur;Nature;Catégorie;Objet;HT;TVA;TVA déductible;Timbre et frais;TTC;Retenue opérée;Net à payer;Statut\r\n"
+     "texte": "﻿Date;N° fournisseur;Fournisseur;Nature;Catégorie;Objet;HT;TVA;TVA déductible;Timbre et frais;TTC;Retenue à la source;Net à payer;Statut\r\n"
     },
     {
      "chemin": "journaux/encaissements.csv",
@@ -414,7 +414,7 @@
     },
     {
      "chemin": "journaux/reglements-fournisseurs.csv",
-     "texte": "﻿Date;Pièce fournisseur;Fournisseur;Montant;Mode;Référence;Note\r\n"
+     "texte": "﻿Date;Pièce fournisseur;Fournisseur;Montant;Retenue opérée;Mode;Référence;Note\r\n"
     },
     {
      "chemin": "journaux/tresorerie.csv",
@@ -483,7 +483,7 @@
     },
     {
      "chemin": "journaux/achats.csv",
-     "texte": "﻿Date;N° fournisseur;Fournisseur;Nature;Catégorie;Objet;HT;TVA;TVA déductible;Timbre et frais;TTC;Retenue opérée;Net à payer;Statut\r\n"
+     "texte": "﻿Date;N° fournisseur;Fournisseur;Nature;Catégorie;Objet;HT;TVA;TVA déductible;Timbre et frais;TTC;Retenue à la source;Net à payer;Statut\r\n"
     },
     {
      "chemin": "journaux/encaissements.csv",
@@ -491,7 +491,7 @@
     },
     {
      "chemin": "journaux/reglements-fournisseurs.csv",
-     "texte": "﻿Date;Pièce fournisseur;Fournisseur;Montant;Mode;Référence;Note\r\n"
+     "texte": "﻿Date;Pièce fournisseur;Fournisseur;Montant;Retenue opérée;Mode;Référence;Note\r\n"
     },
     {
      "chemin": "journaux/tresorerie.csv",
@@ -571,7 +571,7 @@
     },
     {
      "chemin": "journaux/achats.csv",
-     "texte": "﻿Date;N° fournisseur;Fournisseur;Nature;Catégorie;Objet;HT;TVA;TVA déductible;Timbre et frais;TTC;Retenue opérée;Net à payer;Statut\r\n09/02/2026;FA-2026-0940;Tunisie Matériel Informatique;Facture d'achat;Petit équipement;Ordinateur portable de l'entreprise;2600,000;494,000;494,000;1,000;3095,000;0,000;3095,000;payée\r\n"
+     "texte": "﻿Date;N° fournisseur;Fournisseur;Nature;Catégorie;Objet;HT;TVA;TVA déductible;Timbre et frais;TTC;Retenue à la source;Net à payer;Statut\r\n09/02/2026;FA-2026-0940;Tunisie Matériel Informatique;Facture d'achat;Petit équipement;Ordinateur portable de l'entreprise;2600,000;494,000;494,000;1,000;3095,000;0,000;3095,000;payée\r\n"
     },
     {
      "chemin": "journaux/encaissements.csv",
@@ -579,7 +579,7 @@
     },
     {
      "chemin": "journaux/reglements-fournisseurs.csv",
-     "texte": "﻿Date;Pièce fournisseur;Fournisseur;Montant;Mode;Référence;Note\r\n21/02/2026;FA-2026-0940;Tunisie Matériel Informatique;3095,000;Chèque;CHQ 4451;\r\n"
+     "texte": "﻿Date;Pièce fournisseur;Fournisseur;Montant;Retenue opérée;Mode;Référence;Note\r\n21/02/2026;FA-2026-0940;Tunisie Matériel Informatique;3095,000;0,000;Chèque;CHQ 4451;\r\n"
     },
     {
      "chemin": "journaux/tresorerie.csv",
@@ -648,7 +648,7 @@
     },
     {
      "chemin": "journaux/achats.csv",
-     "texte": "﻿Date;N° fournisseur;Fournisseur;Nature;Catégorie;Objet;HT;TVA;TVA déductible;Timbre et frais;TTC;Retenue opérée;Net à payer;Statut\r\n"
+     "texte": "﻿Date;N° fournisseur;Fournisseur;Nature;Catégorie;Objet;HT;TVA;TVA déductible;Timbre et frais;TTC;Retenue à la source;Net à payer;Statut\r\n"
     },
     {
      "chemin": "journaux/encaissements.csv",
@@ -656,7 +656,7 @@
     },
     {
      "chemin": "journaux/reglements-fournisseurs.csv",
-     "texte": "﻿Date;Pièce fournisseur;Fournisseur;Montant;Mode;Référence;Note\r\n"
+     "texte": "﻿Date;Pièce fournisseur;Fournisseur;Montant;Retenue opérée;Mode;Référence;Note\r\n"
     },
     {
      "chemin": "journaux/tresorerie.csv",
@@ -725,7 +725,7 @@
     },
     {
      "chemin": "journaux/achats.csv",
-     "texte": "﻿Date;N° fournisseur;Fournisseur;Nature;Catégorie;Objet;HT;TVA;TVA déductible;Timbre et frais;TTC;Retenue opérée;Net à payer;Statut\r\n"
+     "texte": "﻿Date;N° fournisseur;Fournisseur;Nature;Catégorie;Objet;HT;TVA;TVA déductible;Timbre et frais;TTC;Retenue à la source;Net à payer;Statut\r\n"
     },
     {
      "chemin": "journaux/encaissements.csv",
@@ -733,7 +733,7 @@
     },
     {
      "chemin": "journaux/reglements-fournisseurs.csv",
-     "texte": "﻿Date;Pièce fournisseur;Fournisseur;Montant;Mode;Référence;Note\r\n"
+     "texte": "﻿Date;Pièce fournisseur;Fournisseur;Montant;Retenue opérée;Mode;Référence;Note\r\n"
     },
     {
      "chemin": "journaux/tresorerie.csv",
@@ -806,7 +806,7 @@
     },
     {
      "chemin": "journaux/achats.csv",
-     "texte": "﻿Date;N° fournisseur;Fournisseur;Nature;Catégorie;Objet;HT;TVA;TVA déductible;Timbre et frais;TTC;Retenue opérée;Net à payer;Statut\r\n"
+     "texte": "﻿Date;N° fournisseur;Fournisseur;Nature;Catégorie;Objet;HT;TVA;TVA déductible;Timbre et frais;TTC;Retenue à la source;Net à payer;Statut\r\n"
     },
     {
      "chemin": "journaux/encaissements.csv",
@@ -814,7 +814,7 @@
     },
     {
      "chemin": "journaux/reglements-fournisseurs.csv",
-     "texte": "﻿Date;Pièce fournisseur;Fournisseur;Montant;Mode;Référence;Note\r\n"
+     "texte": "﻿Date;Pièce fournisseur;Fournisseur;Montant;Retenue opérée;Mode;Référence;Note\r\n"
     },
     {
      "chemin": "journaux/tresorerie.csv",
@@ -883,7 +883,7 @@
     },
     {
      "chemin": "journaux/achats.csv",
-     "texte": "﻿Date;N° fournisseur;Fournisseur;Nature;Catégorie;Objet;HT;TVA;TVA déductible;Timbre et frais;TTC;Retenue opérée;Net à payer;Statut\r\n"
+     "texte": "﻿Date;N° fournisseur;Fournisseur;Nature;Catégorie;Objet;HT;TVA;TVA déductible;Timbre et frais;TTC;Retenue à la source;Net à payer;Statut\r\n"
     },
     {
      "chemin": "journaux/encaissements.csv",
@@ -891,7 +891,7 @@
     },
     {
      "chemin": "journaux/reglements-fournisseurs.csv",
-     "texte": "﻿Date;Pièce fournisseur;Fournisseur;Montant;Mode;Référence;Note\r\n"
+     "texte": "﻿Date;Pièce fournisseur;Fournisseur;Montant;Retenue opérée;Mode;Référence;Note\r\n"
     },
     {
      "chemin": "journaux/tresorerie.csv",
@@ -960,7 +960,7 @@
     },
     {
      "chemin": "journaux/achats.csv",
-     "texte": "﻿Date;N° fournisseur;Fournisseur;Nature;Catégorie;Objet;HT;TVA;TVA déductible;Timbre et frais;TTC;Retenue opérée;Net à payer;Statut\r\n"
+     "texte": "﻿Date;N° fournisseur;Fournisseur;Nature;Catégorie;Objet;HT;TVA;TVA déductible;Timbre et frais;TTC;Retenue à la source;Net à payer;Statut\r\n"
     },
     {
      "chemin": "journaux/encaissements.csv",
@@ -968,7 +968,7 @@
     },
     {
      "chemin": "journaux/reglements-fournisseurs.csv",
-     "texte": "﻿Date;Pièce fournisseur;Fournisseur;Montant;Mode;Référence;Note\r\n"
+     "texte": "﻿Date;Pièce fournisseur;Fournisseur;Montant;Retenue opérée;Mode;Référence;Note\r\n"
     },
     {
      "chemin": "journaux/tresorerie.csv",

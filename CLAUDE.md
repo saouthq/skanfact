@@ -69,6 +69,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Une **annonce** se calcule par les MÊMES constructeurs que ce qu'elle annonce | 10.12.0 — E-02, le solde d'acompte faux de deux timbres |
 | Une fonction qui rend un montant **NATIF** piège chaque appelant qui additionne : la couverture se fait par appelant, jamais par fonction | 10.12.0 — E-08, la prévision en euros ; 10.1.0 |
 | Un **argument facultatif** qui change un montant piège chaque appelant qui l'oublie : il se tient appel par appel | 10.14.0 — `purchaseBalance` sans `data`, un trop-payé prérempli |
+| Un **fait fiscal naît à son fait générateur**, pas à la pièce qui l'annonce : la retenue à la source se déclare au mois du RÈGLEMENT | 10.14.0 — 32,130 DT « à reverser » sur une facture jamais payée ; `retenueDesReglements` |
 | Un **régime qui ne récupère pas la TVA** en fait un coût, figé sur chaque achat ; sa réparation ne touche que les mois non clôturés, et s'annonce par la fonction qui déclare | 10.14.0 — `tvaRecuperable`, `achatsHorsRegime` |
 | Un **taux affiché grisé** n'est pas un taux choisi : un formulaire qui lit les champs désactivés le range quand même | 10.14.0 — le 0 % du forfait rangé, des factures sans TVA au passage au réel ; un geste se teste aller ET retour |
 | Une pièce qui en **diminue une autre** le fait dans la devise de celle qu'elle diminue ; à un **autre taux**, l'écart part au change (655/755) | 10.14.0 — l'avoir de 300 DT qui retranchait 300 € ; les 15 DT restés au 411 |
@@ -7988,6 +7989,23 @@ aussi l'app cabinet ») — les invariants ont gagné le stock, le résultat, le
   0 % (le taux de ses ventes) ; recopié sur un achat, il faisait entrer l'article hors taxes alors
   que le fournisseur facture la TVA. `tauxAchatArticle` propose le taux ordinaire aux trois chemins
   d'un achat tiré du catalogue.
+- **Un fait fiscal naît le jour de son FAIT GÉNÉRATEUR, pas le jour de la pièce qui l'annonce.** La
+  retenue à la source se retient en PAYANT : SkanFact la déclarait au mois de la facture, y compris
+  sur une facture jamais payée (32,130 DT « à reverser » sur l'exemple), et l'annuelle la rangeait à
+  l'année de la facture pendant que l'attestation, datée du paiement, disait l'autre. Elle naît au
+  règlement (`retenueDesReglements` : au prorata de ce qu'il verse, le règlement qui solde prend le
+  reste, un trop-payé ne retient jamais plus que la retenue) ; le 401 porte le BRUT jusque-là, et
+  `retenueAOperer` dit l'écart entre le compte et le net qu'on versera. **La règle vit dans
+  l'écriture, pas dans l'écran** : c'est le seul contrat entre les deux applications, et le Cabinet,
+  qui lit le 4352 là où il naît, a suivi sans une ligne de code — la parité mois par mois le prouve.
+  Déplacer la retenue a déplacé ses lecteurs : lettrage fournisseurs en brut, fiche, attestations,
+  déclaration annuelle, colonnes des CSV. Un invariant « compte / pièces » écrit en NET est tombé le
+  premier — c'est lui qui a dit que le 401 et la fiche ne parlaient plus du même montant.
+- **Un plafond ne se prouve que par des données qui l'atteignent** (9.6.1, re-trouvée) : un
+  règlement complet tombe exactement sur le net, donc le « règlement qui solde prend le reste » ne
+  se voyait pas — c'est un trop-payé (1 200 versés sur 1 172,150 dus) qui fait tomber la preuve.
+  Et une preuve restée verte sur un garde-fou DOUBLE dit qu'il faut retirer les deux gardes pour
+  retrouver le défaut (7.27.0) : l'attestation d'une facture impayée était protégée deux fois.
 - **Un écran dit le chiffre qui s'imprimera** : au forfait, la colonne TVA du catalogue affichait
   19 % pour des articles qui sortent à 0 %. Elle affiche 0 %, le taux de l'article au survol.
 

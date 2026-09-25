@@ -147,7 +147,8 @@ module.exports = ({ t, assert }) => {
   });
 
   t('10.1.0 : la retenue à la source opérée se reverse en dinars', () => {
-    const d = jeu(achatEuro({ withholdingRate: 10 }));
+    // Payée : la retenue s'opère au règlement (10.14.0). 1 190 € − 10 % = 1 071 € versés.
+    const d = jeu(achatEuro({ withholdingRate: 10, payments: [{ id: 'y1', date: '2026-03-20', amount: 1071, method: 'virement' }] }));
     const w = core.withholdingsToIssue(d, société);
     assert.strictEqual(w.length, 1);
     assert.strictEqual(w[0].amount, core.round3(1190 * 0.10 * TAUX), 'la retenue part au Trésor en dinars');

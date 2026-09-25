@@ -451,7 +451,8 @@
         lines: [bline('Ordinateur portable 16 Go', 1, 2600, 19, 'immobilisation')],
         payments: [{ date: C.addDays(mo(7, 9), 12), amount: 'all', method: 'cheque', reference: 'CHQ 4451' }],
         notes: 'Reste dans l\'entreprise : à amortir. À VÉRIFIER avec le comptable : durée d\'amortissement.' }),
-      // prestataire avec retenue à la source opérée, attestation pas encore remise
+      // prestataire avec retenue à la source, PAS ENCORE PAYÉ : la retenue s'opère au règlement
+      // (10.14.0), donc elle n'est ni à reverser ni à attester tant que la facture attend
       buy({ supplierId: sp[1].id, number: 'H-2026-034', date: daysAgo(6), dueDate: C.addDays(T, 9), category: 'Honoraires (comptable, avocat)',
         subject: 'Honoraires comptables du trimestre', withholdingRate: 3, fees: 1,
         lines: [bline('Tenue de comptabilité et déclarations', 1, 900, 19)] }),
@@ -524,6 +525,7 @@
         payments: [{ date: C.addDays(date, entre(10, 28)), amount: 'all' }] }));
       stockLicences += qty;
     };
+    const DERNIER_TRIMESTRE_H = (HIST_DEBUT - HIST_FIN) - (((HIST_DEBUT - HIST_FIN) - 2) % 3);
     for (let m = HIST_DEBUT; m >= HIST_FIN; m--) {
       const age = HIST_DEBUT - m;
       const ref = mo(m, 1), y = ref.slice(0, 4), mm = ref.slice(5, 7);
@@ -540,8 +542,11 @@
       if (age % 3 === 2) {
         const q = Math.floor((Number(mm) - 1) / 3) + 1;
         d.purchases.push(buy({ supplierId: sp[1].id, number: `H-${y}-${String(10 + q)}`, date: mo(m, 15), dueDate: mo(m, 30), category: 'Honoraires (comptable, avocat)',
-          subject: 'Honoraires comptables du trimestre', withholdingRate: 3, fees: 1, withholdingCertificate: true,
-          lines: [bline('Tenue de comptabilité et déclarations', 1, age < 24 ? 750 : 900, 19)], payments: [{ date: mo(m, 25), amount: 'all' }] }));
+          // Le dernier trimestre de l'historique, payé, n'a pas encore son attestation : c'est la
+          // retenue OPÉRÉE que l'exemple montre à remettre (10.14.0 — une facture impayée n'a rien retenu).
+          subject: 'Honoraires comptables du trimestre', withholdingRate: 3, fees: 1, withholdingCertificate: age !== DERNIER_TRIMESTRE_H,
+          // Ce même trimestre est réglé le mois SUIVANT : sa retenue se déclare avec le mois du paiement.
+          lines: [bline('Tenue de comptabilité et déclarations', 1, age < 24 ? 750 : 900, 19)], payments: [{ date: age === DERNIER_TRIMESTRE_H ? mo(m - 1, 5) : mo(m, 25), amount: 'all' }] }));
       }
       // Le stock suit les ventes : on rachète AVANT la vente qui le ferait passer sous le seuil.
       ventesLicences.filter(v => v.age === age).sort((a, b) => a.date.localeCompare(b.date)).forEach(v => {

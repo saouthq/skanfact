@@ -1419,15 +1419,21 @@ t('achats : journal, récapitulatif et fiche fournisseur', () => {
 });
 
 t('achats : attestations de retenue à remettre au fournisseur', () => {
+  // Une retenue s'opère au RÈGLEMENT (10.14.0) : l'attestation n'est due que pour ce qui a été
+  // versé. 1 000 HT + 19 % = 1 190 ; 3 % = 35,700 retenus ; net versé 1 154,300.
   const data = { suppliers: SUP, purchases: [
-    buy({ id: 'a1', supplierId: 's2', withholdingRate: 3, lines: [{ label: 'Honoraires', qty: 1, unitPrice: 1000, vatRate: 19 }] }),
-    buy({ id: 'a2', supplierId: 's2', withholdingRate: 3, withholdingCertificate: true, lines: [{ label: 'Honoraires', qty: 1, unitPrice: 500, vatRate: 19 }] }),
-    buy({ id: 'a3', lines: [{ label: 'Papier', qty: 1, unitPrice: 60, vatRate: 19 }] })
+    buy({ id: 'a1', supplierId: 's2', withholdingRate: 3, lines: [{ label: 'Honoraires', qty: 1, unitPrice: 1000, vatRate: 19 }], payments: [{ id: 'r1', date: '2026-03-20', amount: 1154.3 }] }),
+    buy({ id: 'a2', supplierId: 's2', withholdingRate: 3, withholdingCertificate: true, lines: [{ label: 'Honoraires', qty: 1, unitPrice: 500, vatRate: 19 }], payments: [{ id: 'r2', date: '2026-03-20', amount: 577.15 }] }),
+    buy({ id: 'a3', lines: [{ label: 'Papier', qty: 1, unitPrice: 60, vatRate: 19 }], payments: [{ id: 'r3', date: '2026-03-20', amount: 71.4 }] }),
+    buy({ id: 'a4', supplierId: 's2', withholdingRate: 3, lines: [{ label: 'Honoraires', qty: 1, unitPrice: 2000, vatRate: 19 }] }),
+    // Payée à moitié : la moitié de la retenue est opérée — 71,400 × 1/2 = 35,700.
+    buy({ id: 'a5', supplierId: 's2', withholdingRate: 3, lines: [{ label: 'Honoraires', qty: 1, unitPrice: 2000, vatRate: 19 }], payments: [{ id: 'r5', date: '2026-03-20', amount: 1154.3 }] })
   ] };
   const w = core.withholdingsToIssue(data, CO);
-  assert.deepStrictEqual(w.map(x => x.id), ['a1']);         // a2 est déjà remise, a3 n'a pas de retenue
+  assert.deepStrictEqual(w.map(x => x.id), ['a1', 'a5']);   // a2 est remise, a3 sans retenue, a4 jamais payée
   assert.strictEqual(w[0].supplier, 'Cabinet Compta Plus');
-  assert.strictEqual(w[0].amount, core.round3(1190 * 0.03));
+  assert.strictEqual(w[0].amount, 35.7);
+  assert.strictEqual(w[1].amount, 35.7);
 });
 
 t('achats : catégories de charges, celles d\'origine plus les ajoutées', () => {
@@ -2714,6 +2720,16 @@ function declData() {
     purchases: [{ id: 'p1', kind: 'facture', supplierId: 'f1', number: 'H-1', date: '2026-03-10',
       category: 'Honoraires (comptable, avocat)', withholdingRate: 3, fees: 1,
       lines: [{ label: 'Honoraires', qty: 1, unitPrice: 1000, vatRate: 19, destination: 'charge', deductible: true }],
+      payments: [{ id: 'r1', date: '2026-04-05', amount: 1155.3 }], withholdingCertificate: false },
+    // Décembre payé en janvier : la retenue appartient à l'année du PAIEMENT (10.14.0).
+    { id: 'p2', kind: 'facture', supplierId: 'f1', number: 'H-2', date: '2026-12-20',
+      category: 'Honoraires (comptable, avocat)', withholdingRate: 3, fees: 1,
+      lines: [{ label: 'Honoraires', qty: 1, unitPrice: 1000, vatRate: 19, destination: 'charge', deductible: true }],
+      payments: [{ id: 'r2', date: '2027-01-10', amount: 1155.3 }], withholdingCertificate: false },
+    // Jamais payée : rien n'a été retenu, rien à déclarer.
+    { id: 'p3', kind: 'facture', supplierId: 'f1', number: 'H-3', date: '2026-06-20',
+      category: 'Honoraires (comptable, avocat)', withholdingRate: 3, fees: 1,
+      lines: [{ label: 'Honoraires', qty: 1, unitPrice: 1000, vatRate: 19, destination: 'charge', deductible: true }],
       payments: [], withholdingCertificate: false }]
   });
 }
@@ -2744,8 +2760,15 @@ t('déclaration d\'employeur : salaires et retenues sur fournisseurs, séparés'
   assert.strictEqual(a.gross, core.round3(a.rows.reduce((s, r) => s + r.gross, 0)));
   assert.ok(a.irpp > 0);
   assert.strictEqual(a.dueDate, '2027-04-30');
-  // la retenue opérée sur le comptable figure à part, avec l'attestation qui manque
+  // la retenue opérée sur le comptable figure à part, avec l'attestation qui manque — celle des
+  // RÈGLEMENTS de l'année : H-2 (payée en 2027) et H-3 (jamais payée) n'y sont pas (10.14.0)
   assert.strictEqual(a.held.length, 1);
+  assert.strictEqual(a.held[0].number, 'H-1');
+  assert.strictEqual(a.held[0].amount, 35.7);                // 1 190 × 3 %, calculé à la main
+  assert.strictEqual(a.held[0].base, 1190);
+  assert.strictEqual(a.held[0].date, '2026-04-05');
+  const a27 = core.employerAnnual(d, 2027, CO);
+  assert.deepStrictEqual(a27.held.map(x => x.number), ['H-2']);
   assert.strictEqual(a.held[0].rate, 3);
   assert.strictEqual(a.heldMissing, 1);
   assert.strictEqual(a.heldBySupplier.length, 1);

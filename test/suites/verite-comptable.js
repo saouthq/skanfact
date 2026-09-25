@@ -121,7 +121,8 @@ function ecarts(data, opts) {
     const timbres = (data.documents || []).filter(d => (d.type === 'facture' || d.type === 'avoir') && d.number && d.status !== 'brouillon' && d.status !== 'annulée' && d.date >= per.from && d.date <= per.to)
       .reduce((s, d) => s + (d.type === 'avoir' ? -1 : 1) * core.toBase(d, core.computeTotals(d, co).stamp || 0, co), 0);
     ecart(`${y} timbre (4368) / factures émises`, mv(acc.timbre, e => (e.source === 'declaration' ? 0 : e.credit - e.debit)), timbres);   // la déclaration du mois le solde
-    ecart(`${y} retenue opérée (4352) / déclaration d'employeur`, r3(core.journalEntries(data, co, per, { sections: ['achats'] })
+    // La retenue naît au RÈGLEMENT (10.14.0) : c'est la section des règlements qui la crédite.
+    ecart(`${y} retenue opérée (4352) / déclaration d'employeur`, r3(core.journalEntries(data, co, per, { sections: ['achats', 'reglements'] })
       .filter(e => e.account === acc.rsOperee).reduce((s, e) => s + e.credit - e.debit, 0)), (ea.held || []).reduce((s, x) => s + x.amount, 0));
     // Les immobilisations d'un exercice terminé sont celles du tableau.
     if (per.to === `${y}-12-31` && per.to < T) {
@@ -189,10 +190,14 @@ function ecarts(data, opts) {
   });
   (data.suppliers || []).forEach(f => {
     const aux = -(baf.rows.find(r => r.tiersId === f.id) || { solde: 0 }).solde;
+    // Le compte porte le BRUT (10.14.0) : ce qu'on versera au fournisseur, plus la retenue que les
+    // règlements à venir garderont pour l'État.
     ecart(`fournisseur ${f.name} : compte / pièces`, aux, (data.purchases || []).filter(p => p.supplierId === f.id)
-      .reduce((s, p) => s + core.toBase(p, core.purchaseBalance(p, co, data).remaining, co), 0));
-    // Sa fiche dit le même net que son compte (10.14.0) : un trop-payé est un crédit, comme un avoir libre.
-    ecart(`fournisseur ${f.name} : fiche / compte`, core.supplierSummary(data, co, f.id, T).remaining, aux);
+      .reduce((s, p) => s + core.toBase(p, core.purchaseBalance(p, co, data).remaining, co) + core.retenueAOperer(p, co, data), 0));
+    // Sa fiche dit le même montant que son compte : le net à verser et la retenue à opérer, côte à
+    // côte (10.14.0) ; un trop-payé est un crédit, comme un avoir libre.
+    const fiche = core.supplierSummary(data, co, f.id, T);
+    ecart(`fournisseur ${f.name} : fiche / compte`, r3(fiche.remaining + fiche.rsAOperer), aux);
   });
   // Le graphique de l'accueil, mois par mois sur cinq ans : le facturé est le chiffre d'affaires, et
   // l'encaissé ce que la Trésorerie voit entrer des clients (remboursements d'un trop-perçu déduits).
@@ -1675,5 +1680,65 @@ t('10.14.0 : un taux forcé par le régime ne se range jamais — le passage au 
   assert.ok(/await confirmDialog\(/.test(panneau) && /toastUndo\(/.test(panneau), 'le geste ne demande pas, ou ne se défait pas');
   assert.ok(/selTaux\.addEventListener\('change'/.test(app) && /dessinerCatalogueSansTva\(\);\s*\}\);\s*\/\/ Le taux choisi/.test(app), 'le panneau ne suit pas le choix');  // La liste du catalogue dit le taux qui s'IMPRIMERA : 0 % chez qui ne facture pas de TVA.
   assert.ok(/key: 'vat', label: 'TVA', r: true, val: c => Number\(c\.vatRate\) \|\| 0, get: c => C\.assujettiTVA\(company\(\)\) \|\| !\(Number\(c\.vatRate\) > 0\) \? c\.vatRate \+ ' %'/.test(app), 'le catalogue affiche 19 % à une entreprise qui facture 0 %');
+});
+
+t('10.14.0 : la retenue à la source naît au RÈGLEMENT — déclarée le mois du paiement, au prorata, le dernier règlement prend le reste', () => {
+  // Calculé à la main. H-1 : 1 000 HT + 19 % = 1 190 ; 1,5 % = 17,850 retenus ; net 1 172,150.
+  // Réglée 400 en avril et 772,150 en mai : 17,85 × 400 / 1 172,15 = 6,0913… → 6,091 ; le solde,
+  // 17,850 − 6,091 = 11,759. Rien en mars : la facture n'a encore rien retenu.
+  // A-1 (acompte, 500 HT → 595 ; 8,925 ; net 586,075) réglé en juin, F-2 (2 000 HT → 2 380 ; 35,700 ;
+  // net 2 344,300) réduite de l'acompte et de l'avoir AV-3 (100 HT → 119 ; 1,785 ; net 117,215) :
+  // il reste 1 641,010 à verser en août, qui retient 35,7 − 8,925 − 1,785 = 24,990. En tout 33,915 :
+  // 1,5 % des 2 261 TTC réellement servis (1 900 HT + 19 %).
+  // H-4 (1 000 HT, 1,5 %) n'est jamais payée : ni déclarée, ni attestée — son 401 porte le brut.
+  const ligne = ht => [{ label: 'Honoraires', qty: 1, unitPrice: ht, vatRate: 19, destination: 'charge', deductible: true }];
+  const d = base0({
+    accounts: [{ id: 'b', name: 'Banque', kind: 'banque', opening: 10000, openingDate: '2026-01-01', isDefault: true }],
+    suppliers: [{ id: 's', name: 'Cabinet Conseil' }],
+    purchases: [
+      { id: 'H1', kind: 'facture', supplierId: 's', number: 'H-1', date: '2026-03-10', withholdingRate: 1.5, fees: 0, createdAt: 1, lines: ligne(1000),
+        payments: [{ id: 'h1a', date: '2026-04-05', amount: 400 }, { id: 'h1b', date: '2026-05-20', amount: 772.15 }] },
+      { id: 'A1', kind: 'acompte', supplierId: 's', number: 'A-1', date: '2026-06-01', withholdingRate: 1.5, fees: 0, createdAt: 2, achatLie: 'F2', lines: ligne(500),
+        payments: [{ id: 'a1a', date: '2026-06-02', amount: 586.075 }] },
+      { id: 'F2', kind: 'facture', supplierId: 's', number: 'F-2', date: '2026-07-01', withholdingRate: 1.5, fees: 0, createdAt: 3, lines: ligne(2000),
+        payments: [{ id: 'f2a', date: '2026-08-10', amount: 1641.01 }] },
+      { id: 'AV3', kind: 'avoir', supplierId: 's', number: 'AV-3', date: '2026-07-15', withholdingRate: 1.5, fees: 0, createdAt: 4, achatLie: 'F2', lines: ligne(100), payments: [] },
+      { id: 'H4', kind: 'facture', supplierId: 's', number: 'H-4', date: '2026-08-12', withholdingRate: 1.5, fees: 0, createdAt: 5, lines: ligne(1000), payments: [] }
+    ]
+  });
+  const co = d.company, acc = core.chartAccounts(d);
+  // La déclaration de chaque mois : la retenue des RÈGLEMENTS du mois.
+  const rs = m => core.vatReturn(d, co, core.packPeriod(2026, m)).withheldOnBuys;
+  assert.deepStrictEqual([3, 4, 5, 6, 7, 8].map(rs), [0, 6.091, 11.759, 8.925, 0, 24.99], 'la retenue n\'est pas déclarée le mois du paiement');
+  // Les écritures : le fournisseur crédité du BRUT à la facture, rien au 4352 ; chaque règlement le solde.
+  const E = core.journalEntries(d, co, { from: '2026-01-01', to: '2026-08-31' }, { sections: ['achats', 'reglements'] });
+  const mars = E.filter(e => e.date === '2026-03-10');
+  assert.strictEqual(soldeDe(mars, acc.rsOperee), 0, 'la facture crédite encore le 4352');
+  assert.strictEqual(soldeDe(mars, acc.fournisseurs), -1190, 'le fournisseur n\'est pas crédité du brut');
+  const avril = E.filter(e => e.date === '2026-04-05');
+  assert.deepStrictEqual([soldeDe(avril, acc.fournisseurs), soldeDe(avril, acc.rsOperee)], [406.091, -6.091]);
+  // Tout ce qui a été versé retient en tout la retenue sur ce qui a été servi, au millime.
+  assert.strictEqual(soldeDe(E, acc.rsOperee), r3(-(17.85 + 33.915)), 'la retenue opérée n\'est pas celle des pièces servies');
+  assert.strictEqual(soldeDe(E, acc.avancesFournisseurs), 0, 'l\'acompte n\'est pas soldé');
+  assert.strictEqual(soldeDe(E, acc.fournisseurs), -1190, 'seule la facture impayée doit rester au 401, en brut');
+  // La facture impayée : ni attestation, ni déclaration ; la fiche dit le net ET la retenue à garder.
+  assert.deepStrictEqual(core.withholdingsToIssue(d, co).map(x => [x.number, x.amount]), [['H-1', 17.85], ['A-1', 8.925], ['F-2', 24.99]]);
+  const fiche = core.supplierSummary(d, co, 's', '2026-09-01');
+  assert.deepStrictEqual([fiche.remaining, fiche.rsAOperer], [1172.15, 17.85], 'la fiche ne dit pas le net et la retenue à garder');
+  // Le lettrage lit le compte : le brut de la facture impayée.
+  const lt = core.lettrage(d, co, 'fournisseurs', '2026-09-01');
+  assert.deepStrictEqual([lt.reste, lt.rows[0].ouverts.map(o => [o.piece, o.reste])], [1190, [['H-4', 1190]]], 'le lettrage ne dit pas ce que le compte porte');
+  // La déclaration annuelle : 51,765 retenus sur l'année, et H-4 n'y est pas.
+  const an = core.employerAnnual(d, 2026, co);
+  assert.deepStrictEqual([an.heldTotal, an.held.map(x => x.number).sort().join()], [51.765, 'A-1,F-2,H-1']);
+  // Payer PLUS que le net ne retient pas plus que la retenue : 1 200 versés sur 1 172,150 dus
+  // retiennent 17,850, pas 17,85 × 1 200 / 1 172,15 = 18,274 ; rendre le trop-payé n'y change rien.
+  const d2 = base0({ suppliers: [{ id: 's', name: 'Cabinet Conseil' }], purchases: [
+    { id: 'H5', kind: 'facture', supplierId: 's', number: 'H-5', date: '2026-04-01', withholdingRate: 1.5, fees: 0, createdAt: 1, lines: ligne(1000),
+      payments: [{ id: 'x1', date: '2026-04-02', amount: 1200 }, { id: 'x2', date: '2026-05-02', amount: -27.85 }] }] });
+  assert.deepStrictEqual([4, 5].map(m => core.vatReturn(d2, d2.company, core.packPeriod(2026, m)).withheldOnBuys), [17.85, 0], 'un trop-payé retient plus que la retenue');
+  // Chaque invariant, et le Cabinet qui lit le même client mois par mois (déclaration comprise).
+  const e = ecarts(d);
+  assert.deepStrictEqual(e, [], e.join('\n'));
 });
 };

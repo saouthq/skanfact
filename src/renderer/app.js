@@ -7185,7 +7185,7 @@
         <div class="stat"><div class="lbl">Acheté HT ${info('sup.total')}</div><div class="val">${C.money(sum.ht, cur)}</div><div class="sub">${pl(sum.count, 'pièce')}</div></div>
         ${sum.remaining < -0.0005
           ? `<div class="stat"><div class="lbl">En ta faveur ${info('sup.due')}</div><div class="val ok">${C.money(-sum.remaining, cur)}</div><div class="sub">trop-payés et avoirs à récupérer${sum.due > 0.0005 ? `, moins ${C.money(sum.due, cur)} dû` : ''}</div></div>`
-          : `<div class="stat"><div class="lbl">Reste à payer ${info('sup.due')}</div><div class="val ${sum.remaining > 0.0005 ? 'due' : ''}">${C.money(sum.remaining, cur)}</div><div class="sub">${sum.aRecuperer > 0.0005 ? `${C.money(sum.due, cur)} dû, moins ${C.money(sum.aRecuperer, cur)} à récupérer` : sum.late > 0.0005 ? `dont ${C.money(sum.late, cur)} en retard` : 'rien en retard'}</div></div>`}
+          : `<div class="stat"><div class="lbl">Reste à payer ${info('sup.due')}</div><div class="val ${sum.remaining > 0.0005 ? 'due' : ''}">${C.money(sum.remaining, cur)}</div><div class="sub">${sum.aRecuperer > 0.0005 ? `${C.money(sum.due, cur)} dû, moins ${C.money(sum.aRecuperer, cur)} à récupérer` : sum.late > 0.0005 ? `dont ${C.money(sum.late, cur)} en retard` : 'rien en retard'}${sum.rsAOperer > 0.0005 ? `<br>plus ${C.money(sum.rsAOperer, cur)} de retenue à la source à garder en payant, pour l'État` : ''}</div></div>`}
         <div class="stat"><div class="lbl">Délai accordé</div><div class="val">${s.paymentTermsDays === '' || s.paymentTermsDays == null ? '—' : s.paymentTermsDays + ' j'}</div><div class="sub">reporté sur chaque achat</div></div>
         <div class="stat"><div class="lbl">Relation</div><div class="val">${sum.first ? C.fmtDate(sum.first).slice(3) : '—'}</div><div class="sub">${sum.last ? 'dernier achat le ' + C.fmtDate(sum.last) : 'aucun achat'}</div></div>
       </div>
@@ -7452,6 +7452,7 @@
     const resteHors = b.remaining - (r0 ? effet(r0) : 0);
     const reste = Math.max(0, resteHors);
     const aRecuperer = C.round3(Math.max(0, -resteHors));
+    const avecRs = !rend && Number(p.withholdingRate) > 0;
     modal(`<h2>${rend ? (r0 ? 'Modifier le remboursement' : `Remboursement de ${h(p.number || 'cet achat')}`) : r0 ? 'Modifier le règlement' : `Régler ${h(p.number || 'cet achat')}`}</h2>
       <p class="small muted">${h(supplierName(p.supplierId))} · ${rend
         ? `${p.kind === 'avoir' ? `avoir de ${C.money(b.totals.netToPay, cur)}` : `payé ${C.money(b.paid, cur)} pour ${C.money(b.totals.netToPay, cur)}`} · à récupérer ${C.money(aRecuperer, cur)}`
@@ -7464,9 +7465,28 @@
         ${accountFieldHtml(r0 ? r0.accountId || '' : '')}
         ${field(lbl('Référence', 'buy.payReference'), 'reference', r0 ? r0.reference || '' : '', 'text', 'placeholder="N° de chèque, référence du virement…"')}
         <label class="field span-2">${lbl('Note', 'buy.payNote')}<input type="text" name="note" value="${h(r0 ? r0.note || '' : '')}"></label>
+        ${avecRs ? '<p class="small span-2 annonce-stable" id="spf-rs" aria-live="polite"></p>' : ''}
       </form>
       <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
-      (root, close) => { brancherTauxReglement(root, p, rend, rend ? 'Reçu' : 'Payé'); $('#ok', root).onclick = async () => {
+      (root, close) => { brancherTauxReglement(root, p, rend, rend ? 'Reçu' : 'Payé');
+      // Ce que CE règlement retient pour l'État, dit AVANT de l'enregistrer (9.4.2) et recalculé
+      // pendant la frappe : la retenue naît au paiement (10.14.0), donc c'est ici qu'elle se décide
+      // — et le mois de la date choisie est celui de la déclaration qui la reverse.
+      if (avecRs) {
+        const annoncer = () => {
+          const v = formValues($('#spf', root));
+          const essai = { ...p, payments: (p.payments || []).filter(x => !r0 || x.id !== r0.id).concat([{ id: '__essai', date: v.date || C.today(), amount: Number(v.amount) || 0 }]) };
+          const part = C.retenueDesReglements(essai, company(), data).parts.__essai || 0;
+          const d0 = v.date || C.today();
+          $('#spf-rs', root).innerHTML = part > 0.0005
+            ? `Ce règlement retient <b>${C.money(part, cur)}</b> de retenue à la source : tu la reverses à l'État avec la déclaration de ${C.MONTHS_FR[Number(d0.slice(5, 7)) - 1]} ${d0.slice(0, 4)}, et tu en remets l'attestation au fournisseur.`
+            : '';
+        };
+        $('#spf', root).addEventListener('input', annoncer);
+        $('#spf', root).addEventListener('change', annoncer);
+        annoncer();
+      }
+      $('#ok', root).onclick = async () => {
         const v = formValues($('#spf', root));
         if (!(Number(v.amount) > 0)) return refus($('[name=amount]', root), 'Montant invalide.');
         if (!v.date) return refus($('[name=date]', root), 'Date invalide.');
@@ -11981,7 +12001,9 @@
         { key: 'ht', label: 'HT', r: true, val: r => r.ht, get: r => C.money(r.ht) },
         { key: 'tva', label: 'TVA', r: true, val: r => r.tva, get: r => C.money(r.tva) },
         { key: 'deductible', label: 'dont déductible', r: true, val: r => r.deductible, get: r => r.deductible === r.tva ? C.money(r.deductible) : r.deductibleAcompte ? `<strong title="${h(`Déjà déduite avec l'acompte : ${C.money(r.deductibleAcompte)}`)}">${C.money(r.deductible)}</strong><span class="muted small"> acompte déduit</span>` : `<strong>${C.money(r.deductible)}</strong>` },
-        { key: 'net', label: 'Net payé', r: true, val: r => r.net, get: r => C.money(r.net) },
+        // « Net à payer » : une pièce pas encore réglée figure aussi dans ce journal — « payé » disait
+        // le contraire de son statut, affiché une colonne plus loin (10.14.0).
+        { key: 'net', label: 'Net à payer', r: true, val: r => r.net, get: r => C.money(r.net) },
         { key: 'status', label: 'Statut', val: r => r.status, get: r => buyBadge(r.status) }
       ];
       // 10.0.1 — Les règlements fournisseurs partaient dans le paquet du comptable
@@ -11993,13 +12015,20 @@
       const allDecs = C.supplierPayments(data, company(), p);
       const decs = allDecs.filter(r => !q || C.correspondRecherche(`${r.number || ''} ${r.supplier || ''} ${r.reference || ''} ${r.method || ''}`, q));
       const decTotal = decs.reduce((s, r) => s + r.amount, 0);
+      // La retenue à la source s'opère au RÈGLEMENT (10.14.0) : c'est ici, sur l'argent parti, qu'elle
+      // se lit — celle d'une facture pas encore payée n'est ni retenue, ni à reverser.
+      const rsOp = C.round3(decs.reduce((s, r) => s + (r.rs || 0), 0));
+      const avecRs = decs.some(r => Math.abs(r.rs || 0) > 0.0005);
       const decCols = [
         { key: 'date', label: 'Date', asc: true, cls: 'nw', val: r => r.date || '', get: r => C.fmtDate(r.date) },
         { key: 'number', label: 'Pièce', asc: true, cls: 'nw', val: r => (r.number || '').toLowerCase(), get: r => r.number ? `<strong>${h(r.number)}</strong>` : '<span class="muted">sans numéro</span>' },
         { key: 'supplier', label: 'Fournisseur', asc: true, val: r => (r.supplier || '').toLowerCase(), get: r => h(r.supplier) },
         { key: 'method', label: 'Mode', asc: true, val: r => r.method || '', get: r => h(r.method) },
         { key: 'reference', label: 'Référence', asc: true, val: r => (r.reference || '').toLowerCase(), get: r => h(r.reference) },
-        { key: 'amount', label: 'Montant', r: true, val: r => r.amount, get: r => C.money(r.amount, cur) }
+        { key: 'amount', label: 'Montant', r: true, val: r => r.amount, get: r => C.money(r.amount, cur) },
+        // La colonne n'existe que si un règlement de la sélection a retenu quelque chose : une colonne
+        // de zéros coûte de la largeur à toutes les autres (9.4.8).
+        ...(avecRs ? [{ key: 'rs', label: 'Retenue opérée', r: true, val: r => r.rs || 0, get: r => r.rs ? C.money(r.rs, cur) : '<span class="muted">—</span>' }] : [])
       ];
       const decPage = paginate(applySort(decs, decCols, comptaState.decs.sort), comptaState.decs);
       const pg = paginate(applySort(rows, cols, comptaState.buys.sort), comptaState.buys);
@@ -12011,8 +12040,8 @@
         </div>
         <div class="stats">
           <div class="stat"><div class="lbl">Achats HT — ${h(label)} ${info('compta.buyJournal')}</div><div class="val">${C.money(sum.ht, cur)}</div><div class="sub">${pl(sum.count, 'pièce')}</div></div>
-          <div class="stat"><div class="lbl">TVA déductible ${info('compta.deductible')}</div><div class="val">${C.money(sum.deductible, cur)}</div><div class="sub">${sum.deductible === sum.tva ? 'toute la TVA payée' : `sur ${C.money(sum.tva, cur)} payés`}</div></div>
-          <div class="stat"><div class="lbl">Retenues opérées ${info('buy.withholding')}</div><div class="val">${C.money(sum.rs, cur)}</div><div class="sub">à reverser au fisc</div></div>
+          <div class="stat"><div class="lbl">TVA déductible ${info('compta.deductible')}</div><div class="val">${C.money(sum.deductible, cur)}</div><div class="sub">${sum.deductible === sum.tva ? 'toute la TVA de tes achats' : `sur ${C.money(sum.tva, cur)} de TVA facturée`}</div></div>
+          <div class="stat"><div class="lbl">Retenues opérées ${info('buy.withholding')}</div><div class="val">${C.money(rsOp, cur)}</div><div class="sub">${Math.abs(sum.rs - rsOp) > 0.0005 ? `sur tes règlements, à reverser — les achats de la période en portent ${C.money(sum.rs, cur)}` : 'sur tes règlements, à reverser au fisc'}</div></div>
           <div class="stat"><div class="lbl">Total réglé ou dû ${info('compta.buyNet')}</div><div class="val">${C.money(sum.net, cur)}</div><div class="sub">net à payer, toutes pièces</div></div>
         </div>
         ${sum.byCategory.length ? `<div class="panel"><h2>Où part ton argent — ${h(label)} ${info('compta.byCategory')}</h2>
@@ -12030,7 +12059,7 @@
           <div class="inline mb"><button class="btn" id="exp-decs">Exporter en CSV</button></div>
           ${decs.length ? `<div id="d-wrap"><table class="list compact sortable"><thead>${sortHead(decCols, comptaState.decs.sort)}</thead><tbody>
             ${decPage.rows.map(r => `<tr class="clickable" data-bid="${r.purchaseId}">${decCols.map(c => `<td class="${c.r ? 'r nw' : ''}${c.cls ? ' ' + c.cls : ''}">${c.get(r)}</td>`).join('')}</tr>`).join('')}
-          </tbody><tfoot><tr><td colspan="5"><strong>Total réglé</strong></td><td class="r"><strong>${C.money(decTotal, cur)}</strong></td></tr></tfoot></table></div>${pagerBar(decPage.pg, { noun: 'règlement' })}`
+          </tbody><tfoot><tr><td colspan="5"><strong>Total réglé</strong></td><td class="r"><strong>${C.money(decTotal, cur)}</strong></td>${avecRs ? `<td class="r"><strong>${C.money(rsOp, cur)}</strong></td>` : ''}</tr></tfoot></table></div>${pagerBar(decPage.pg, { noun: 'règlement' })}`
             : '<div class="empty">Aucun règlement fournisseur sur cette période.</div>'}
         </div>`;
       $$('#c-body tr[data-bid]').forEach(tr => tr.onclick = () => navigate('#/achat/' + tr.dataset.bid));

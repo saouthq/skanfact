@@ -879,6 +879,25 @@ douze mois et l'année. Voici ce qu'il a trouvé :
   c'est le taux écrit sur la facture du fournisseur qui fait foi.
 - **Le catalogue dit le taux qui s'imprimera** : au forfait, un article à 19 % s'affiche « 0 % » (son
   taux reste lisible au survol), et sa fiche le précise sous le champ.
+- **La retenue à la source que tu opères naît le jour où tu PAIES le prestataire.** Elle était
+  déclarée au mois de la FACTURE — y compris sur une facture jamais payée : l'exemple réclamait
+  32,130 DT « à reverser au fisc » sur des honoraires qu'on ne lui avait pas encore réglés. Une
+  retenue ne se retient qu'en versant : elle se déclare maintenant avec le mois du **règlement**, au
+  prorata de ce que chaque règlement verse (le règlement qui solde la facture prend le reste, au
+  millime ; payer plus que le net ne retient jamais plus que la retenue). Le compte du fournisseur
+  porte le montant complet — retenue comprise — jusqu'au paiement ; chaque règlement le solde de ce
+  qu'il verse plus la retenue qu'il garde pour l'État. Une facture de décembre payée en janvier va
+  dans la déclaration annuelle de l'année du paiement (celle que dit l'attestation), et une
+  attestation n'est réclamée que pour ce qui a été versé. La fenêtre « Régler » annonce, pendant la
+  frappe, la retenue que CE règlement opère et le mois de la déclaration qui la reverse ; la fiche du
+  fournisseur dit, à côté du net à lui verser, la retenue qui reste à garder ; la page Comptabilité →
+  Achats compte les retenues de ses règlements (avec une colonne « Retenue opérée ») et nomme à côté
+  celles que portent les factures du mois ; le fichier des règlements envoyé au comptable gagne la
+  même colonne. Le Cabinet lit le même mois que toi : sa déclaration suit le 4352 là où il naît.
+  *À VÉRIFIER avec ton comptable.*
+- La carte « TVA déductible » disait « sur 441,940 DT **payés** » : c'était la TVA des factures du
+  mois, payées ou non. Elle dit « de TVA facturée ». Et la colonne « Net payé » du journal des achats
+  s'appelle « Net à payer » : elle portait aussi les pièces pas encore réglées.
 - Et le paquet annonçait « 16 fichiers » pour 17 : la signature n'était pas comptée.
 - Le bouton d'une question dit ce qu'il fera : « Supprimer ce mouvement ? » se confirme par
   « Supprimer », plus par « Confirmer ». Et le règlement d'un achat sans numéro s'appelle ainsi
