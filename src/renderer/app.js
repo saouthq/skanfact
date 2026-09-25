@@ -732,7 +732,10 @@
         question = true;
         // La QUESTION d'abord, comme dans l'app du comptable : la boîte de l'app entreprise s'intitule
         // toujours « Confirmation », qui ne dit pas ce qu'on confirme (vu au test humain).
-        const jeter = await confirmDialog('Abandonner cette saisie ?\nCe que tu viens de taper dans cette fenêtre ne sera pas enregistré.', 'Abandonner la saisie', true);
+        // Une fenêtre dont la saisie n'est pas du texte (un logo, une couleur) dit ce qui se perd :
+        // « ce que tu viens de taper » à quelqu'un qui n'a rien tapé fait relire la fenêtre (10.14.0).
+        const perte = (opts && opts.perte) || 'Ce que tu viens de taper dans cette fenêtre ne sera pas enregistré.';
+        const jeter = await confirmDialog('Abandonner cette saisie ?\n' + perte, 'Abandonner la saisie', true);
         question = false;
         if (!jeter) return;
       }
@@ -763,7 +766,10 @@
     if (onMount) onMount(layer, close);
     // L'instantané se prend APRÈS le montage : ce que la fenêtre préremplit n'est pas une saisie.
     // `garde: false` dit, en le nommant, qu'une fenêtre n'en veut pas.
-    if (!(opts && opts.garde === false) && layer.querySelector('form')) garde = suivreSaisie(layer);
+    // Une fenêtre dont la saisie ne vit pas dans ses champs (un logo choisi, une couleur prise dans
+    // un nuancier) dit elle-même ce qui a changé : `garde` peut être une fonction (10.14.0).
+    if (opts && typeof opts.garde === 'function') garde = opts.garde;
+    else if (!(opts && opts.garde === false) && layer.querySelector('form')) garde = suivreSaisie(layer);
     // 10.13.0 (vu au test humain) — le curseur ENTRE dans la fenêtre : le premier champ de saisie,
     // sinon le bouton principal. Il n'allait qu'au premier champ ; une question sans champ laissait
     // donc le curseur sur le bouton de la PAGE qui l'avait ouverte, derrière la fenêtre — et Entrée
@@ -2284,6 +2290,7 @@
   // tout seul quand tout est fait (il se retrouve alors dans l'Aide).
   const PAS_ACTIONS = {
     societe: ['Compléter ma fiche', () => allerParametres('societe', 'p-identite')],
+    marque: ['Personnaliser ma facture', () => imageDeMarque(() => render(true))],
     client: ['+ Créer un client', () => clientForm(null, () => render())],
     catalogue: ['Remplir le catalogue', () => navigate('#/catalogue')],
     devis: ['+ Créer un devis', () => navigate('#/doc/new/devis')],
@@ -2310,7 +2317,7 @@
   // La visite guidée de chaque étape (10.14.0) : le bouton de l'étape mène au bon endroit, « Me
   // guider » y mène EN MONTRANT où cliquer, clic par clic.
   const PAS_IMPORT = { client: ['clients', 'Ta liste est dans un tableur ? Importe-la d\'un coup'], catalogue: ['catalogue', 'Tes prix sont dans un tableur ? Importe-les d\'un coup'] };
-  const PAS_VISITES = { societe: 'societe', client: 'premier-client', catalogue: 'article', devis: 'premier-devis',
+  const PAS_VISITES = { societe: 'societe', marque: 'marque', client: 'premier-client', catalogue: 'article', devis: 'premier-devis',
     envoiDevis: 'envoyer', factures: 'devis-facture', sauvegarde: 'sauvegarde', decouverte: 'decouvrir', comptable: 'relier-comptable' };
   // L'accueil de la toute première fois (10.14.0). Skander : « appliquer la visite guidée au début,
   // sur un exemple de données ; et quand il passe à sa vraie entreprise, la visite pour le guider
@@ -4453,17 +4460,17 @@
     const c = client || C.clientVierge(preset);
     modal(`<h2>${client ? 'Modifier le client' : 'Nouveau client'}</h2>
       <form id="cf" class="grid-2">
-        <label class="field span-2 obligatoire"><span>Nom / Raison sociale</span><input type="text" name="name" value="${h(c.name)}" required></label>
+        <label class="field span-2 obligatoire">${lbl('Nom / Raison sociale', 'cl.name')}<input type="text" name="name" value="${h(c.name)}" required></label>
         ${field(lbl('Personne à contacter', 'cl.contact'), 'contact', c.contact || '', 'text', 'placeholder="Mme Leïla Mansour, directrice"')}
         ${field(lbl('Matricule fiscal / CIN', 'co.matricule'), 'matricule', c.matricule)}
         <label class="field">${lbl('Retenue à la source appliquée par ce client', 'ed.withholding')}${withholdingSelect('withholdingRate', c.withholdingRate, { vide: `Par défaut (${pct(company().defaultWithholdingRate || 0)} %)` })}</label>
         <label class="check"><input type="checkbox" name="stampExempt" ${c.stampExempt ? 'checked' : ''}> Exonéré de timbre fiscal ${info('client.stampExempt')}</label>
-        ${field('Téléphone', 'phone', c.phone)}
-        ${field('Email', 'email', c.email, 'email')}
-        <label class="field">Langue des documents<select name="lang"><option value="" ${!c.lang ? 'selected' : ''}>Par défaut</option><option value="fr" ${c.lang === 'fr' ? 'selected' : ''}>Français</option><option value="en" ${c.lang === 'en' ? 'selected' : ''}>English</option></select></label>
-        <label class="field">Devise<select name="currency"><option value="" ${!c.currency ? 'selected' : ''}>Par défaut (${h(company().currency)})</option>${C.CURRENCIES.map(x => `<option value="${x}" ${c.currency === x ? 'selected' : ''}>${h(C.libelleDevise(x))}</option>`).join('')}</select></label>
-        <label class="field span-2">Adresse<textarea name="address">${h(c.address)}</textarea></label>
-        <label class="field span-2">Notes internes<textarea name="notes">${h(c.notes || '')}</textarea></label>
+        ${field(lbl('Téléphone', 'cl.phone'), 'phone', c.phone)}
+        ${field(lbl('Email', 'cl.email'), 'email', c.email, 'email')}
+        <label class="field">${lbl('Langue des documents', 'cl.lang')}<select name="lang"><option value="" ${!c.lang ? 'selected' : ''}>Par défaut</option><option value="fr" ${c.lang === 'fr' ? 'selected' : ''}>Français</option><option value="en" ${c.lang === 'en' ? 'selected' : ''}>English</option></select></label>
+        <label class="field">${lbl('Devise', 'cl.currency')}<select name="currency"><option value="" ${!c.currency ? 'selected' : ''}>Par défaut (${h(company().currency)})</option>${C.CURRENCIES.map(x => `<option value="${x}" ${c.currency === x ? 'selected' : ''}>${h(C.libelleDevise(x))}</option>`).join('')}</select></label>
+        <label class="field span-2">${lbl('Adresse', 'cl.address')}<textarea name="address">${h(c.address)}</textarea></label>
+        <label class="field span-2">${lbl('Notes internes', 'cl.notesSaisie')}<textarea name="notes">${h(c.notes || '')}</textarea></label>
       </form>
       <div class="modal-actions">
         ${client ? '<button class="btn btn-danger" id="del-client" style="margin-inline-end:auto">Supprimer ce client</button>' : ''}
@@ -4659,6 +4666,127 @@
       if (prerempli) { champ.value = prerempli; tete = (prerempli.split(/\r?\n/)[0] || '').trim(); dessiner(); }
       champ.focus();
     });
+  }
+
+  // ---------- « Ta facture à ton image » (10.14.0) ----------
+  //
+  // Le logo, le cachet et les couleurs se réglaient dans les Paramètres, et le panneau disait « pour
+  // les voir, ouvre un document » : on choisissait à l'aveugle, puis on allait chercher un devis pour
+  // voir ce que ça donnait. Ici, chaque choix se voit TOUT DE SUITE sur une vraie facture — la
+  // prochaine, avec le numéro qu'elle prendra, tes prestations et ton premier client. Rien n'est
+  // enregistré avant le clic : la facture d'aperçu n'existe que dans cette fenêtre.
+  function factureDApercu(co) {
+    const doc = newDocument('facture');
+    // Émise, pour qu'aucun tampon « BROUILLON » ne couvre ce qu'on regarde ; son numéro est celui que
+    // la prochaine facture PRENDRA — `etatNumerotation` ne fait que lire, il ne consomme rien.
+    doc.status = 'envoyée';
+    doc.number = C.etatNumerotation(data, 'facture', C.today().slice(0, 4)).prochaine;
+    const articles = (data.catalog || []).filter(a => Number(a.unitPrice) > 0).slice(0, 3);
+    doc.lines = articles.length
+      ? articles.map((a, i) => C.newLine(co, { itemId: a.id, label: a.label, description: a.description || '', unit: a.unit || '', qty: i === 0 ? 2 : 1, unitPrice: Number(a.unitPrice) || 0, vatRate: a.vatRate }))
+      : [C.newLine(co, { label: 'Prestation de service', unit: 'u', qty: 1, unitPrice: 500 }), C.newLine(co, { label: 'Déplacement', unit: 'u', qty: 2, unitPrice: 40 })];
+    const client = (data.clients || [])[0] || { id: 'apercu', name: 'Ton client SARL', address: 'Rue de l\'exemple\n1000 Tunis', matricule: '' };
+    doc.clientId = client.id;
+    return { doc, client };
+  }
+  const MARQUE_CHAMPS = ['logo', 'stampImage', 'accentColor', 'primaryColor'];
+  function imageDeMarque(done) {
+    const depart = {};
+    MARQUE_CHAMPS.forEach(k => { depart[k] = company()[k] || ''; });
+    const b = { ...depart };
+    const change = () => MARQUE_CHAMPS.some(k => String(b[k] || '').toLowerCase() !== String(depart[k] || '').toLowerCase());
+    const image = (k, vide) => `<div class="mq-image" id="mq-${k}-vue">${b[k] ? `<img src="${b[k]}" alt="">` : `<span class="small muted">${vide}</span>`}</div>`;
+    modal(`<div class="marque"><h2>Ta facture à ton image ${info('mq.titre')}</h2>
+      <p class="small muted">Ton logo, ton cachet et ta couleur s'impriment sur chaque devis et chaque facture. Chaque choix se voit tout de suite, à droite, sur ta prochaine facture — rien n'est enregistré avant ton clic.</p>
+      <div class="mq-grille">
+        <div class="mq-choix" id="mq-choix">
+          <div class="mq-bloc"><div class="mq-t">Logo ${info('co.logo')}</div>
+            <div id="mq-logo-zone"></div>
+            <div class="inline"><button type="button" class="btn btn-sm" id="mq-logo">Choisir une image…</button><button type="button" class="btn btn-sm btn-ghost" id="mq-logo-rm">Retirer</button></div></div>
+          <div class="mq-bloc"><div class="mq-t">Cachet ou signature ${info('co.stampImage')}</div>
+            <div id="mq-cachet-zone"></div>
+            <div class="inline"><button type="button" class="btn btn-sm" id="mq-cachet">Choisir une image…</button><button type="button" class="btn btn-sm btn-ghost" id="mq-cachet-rm">Retirer</button></div></div>
+          <div class="mq-bloc"><div class="mq-t">Couleur d'accent ${info('mq.accent')}<span class="mq-note" id="mq-note-accentColor" aria-live="polite"></span></div>
+            <div class="mq-nuancier">${C.ACCENTS_PROPOSES.map(a => `<button type="button" class="mq-nuance" data-mq-accent="${a.hex}" style="--nuance:${a.hex}" title="${h(a.nom)}" aria-label="${h(a.nom)}"></button>`).join('')}
+              <label class="mq-autre"><input type="color" id="mq-accent" aria-label="Une autre couleur d'accent"><span class="small muted">Autre…</span></label></div></div>
+          <div class="mq-bloc"><div class="mq-t">Couleur du texte ${info('mq.principale')}<span class="mq-note" id="mq-note-primaryColor" aria-live="polite"></span></div>
+            <div class="inline"><label class="mq-autre"><input type="color" id="mq-principale" aria-label="Couleur du texte des documents"></label><button type="button" class="btn btn-sm btn-ghost" id="mq-origine">Couleurs d'origine</button></div></div>
+        </div>
+        <div class="mq-apercu-cadre"><iframe id="mq-apercu" title="Aperçu de ta prochaine facture"></iframe></div>
+      </div>
+      <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="mq-ok" disabled title="Choisis un logo, un cachet ou une couleur : l'enregistrement s'allume au premier changement.">Enregistrer</button></div></div>`,
+    (layer, close) => {
+      const ok = $('#mq-ok', layer), f = $('#mq-apercu', layer);
+      const ex = factureDApercu(company());
+      let minuteur = null;
+      const facture = () => {
+        const co = { ...company(), ...b };
+        // La page ENTIÈRE, pas sa largeur (7.13.0) : le logo est en haut, le cachet en bas, et on
+        // doit voir les deux sans faire défiler l'aperçu. 1 190 px : la feuille A4 et ses marges.
+        const zoom = Math.max(0.3, Math.floor(Math.min((f.clientWidth - 2) / 794, (f.clientHeight - 2) / 1190) * 100) / 100);
+        f.onload = () => { try { mettreEnPage(f.contentDocument); ajusterAuCadre(f.contentDocument); } catch (_) { /* aperçu indisponible */ } };
+        f.srcdoc = C.documentHtml(ex.doc, ex.client, co, { preview: true, stampText: stampFor(ex.doc), zoom });
+      };
+      const dessiner = () => {
+        $('#mq-logo-zone', layer).innerHTML = image('logo', 'Aucun logo : ta raison sociale s\'écrit à sa place.');
+        $('#mq-cachet-zone', layer).innerHTML = image('stampImage', 'Aucun cachet : la case de signature reste vide.');
+        $('#mq-logo-rm', layer).hidden = !b.logo;
+        $('#mq-cachet-rm', layer).hidden = !b.stampImage;
+        const accent = (b.accentColor || C.DEFAULT_COMPANY.accentColor).toLowerCase();
+        $$('[data-mq-accent]', layer).forEach(x => x.setAttribute('aria-pressed', String(x.dataset.mqAccent.toLowerCase() === accent)));
+        $('#mq-accent', layer).value = accent;
+        $('#mq-principale', layer).value = (b.primaryColor || C.DEFAULT_COMPANY.primaryColor).toLowerCase();
+        // Une couleur trop claire se DIT avant d'enregistrer, jamais après (9.4.2) — et ne s'interdit
+        // pas. Dans la ligne de SON titre, jamais dessous : posée sous les choix, elle poussait
+        // « Enregistrer » de 41 px au moment où on le visait (H-E1, dans une fenêtre — vu à la souris).
+        const alertes = C.lisibiliteMarque({ ...company(), ...b });
+        ['accentColor', 'primaryColor'].forEach(k => {
+          const a = alertes.find(x => x.champ === k), n = $('#mq-note-' + k, layer);
+          n.textContent = a ? a.court : ''; n.title = a ? a.texte : '';
+        });
+        ok.disabled = !change();
+        ok.title = ok.disabled ? 'Choisis un logo, un cachet ou une couleur : l\'enregistrement s\'allume au premier changement.' : '';
+        clearTimeout(minuteur);
+        minuteur = setTimeout(facture, 120);
+      };
+      const choisir = async (k, titre) => {
+        try { const l = await bridge.pickLogo(titre); if (l) { b[k] = l; dessiner(); } } catch (e) { toast(plainError(e), true); }
+      };
+      $('#mq-logo', layer).onclick = () => choisir('logo');
+      $('#mq-cachet', layer).onclick = () => choisir('stampImage', 'Choisir l\'image du cachet / de la signature');
+      $('#mq-logo-rm', layer).onclick = () => { b.logo = ''; dessiner(); };
+      $('#mq-cachet-rm', layer).onclick = () => { b.stampImage = ''; dessiner(); };
+      $$('[data-mq-accent]', layer).forEach(x => x.onclick = () => { b.accentColor = x.dataset.mqAccent; dessiner(); });
+      $('#mq-accent', layer).oninput = e => { b.accentColor = e.target.value; dessiner(); };
+      $('#mq-principale', layer).oninput = e => { b.primaryColor = e.target.value; dessiner(); };
+      $('#mq-origine', layer).onclick = () => { b.accentColor = C.DEFAULT_COMPANY.accentColor; b.primaryColor = C.DEFAULT_COMPANY.primaryColor; dessiner(); };
+      ok.onclick = () => {
+        if (!change()) return;
+        MARQUE_CHAMPS.forEach(k => { data.company[k] = b[k]; });
+        save(true);
+        close();
+        if (done) done();
+        toast('C\'est enregistré : ton image habille chaque devis et chaque facture.');
+      };
+      dessiner();
+      // Le curseur sur le premier choix, pas dans le sélecteur de couleur : Espace l'aurait ouvert.
+      $('#mq-logo', layer).focus();
+    }, null, { garde: () => change(), perte: 'Le logo, le cachet et les couleurs choisis dans cette fenêtre ne seront pas enregistrés.' });
+  }
+
+  // Ce que l'image de marque est AUJOURD'HUI, pour le panneau des Paramètres : on la regarde ici, on
+  // la change dans la fenêtre qui la montre sur une facture. Une couleur déjà trop claire le dit.
+  function marqueResume(c) {
+    const alertes = C.lisibiliteMarque(c);
+    const note = k => { const a = alertes.find(x => x.champ === k); return a ? `<span class="mq-note" title="${h(a.texte)}">${h(a.court)}</span>` : ''; };
+    const img = (src, vide, alt) => `<div class="mq-image mq-mini">${src ? `<img src="${src}" alt="${alt}">` : `<span class="small muted">${vide}</span>`}</div>`;
+    const couleur = (k, nom) => `<div class="mq-resume-c"><span class="mq-pastille" style="--nuance:${h(c[k] || C.DEFAULT_COMPANY[k])}"></span><span>${nom}</span>${note(k)}</div>`;
+    return `<div class="mq-resume">
+        <div class="mq-bloc"><div class="mq-t">Logo ${info('co.logo')}</div>${img(c.logo, 'Aucun logo : ta raison sociale s\'écrit à sa place.', 'Ton logo')}</div>
+        <div class="mq-bloc"><div class="mq-t">Cachet ou signature ${info('co.stampImage')}</div>${img(c.stampImage, 'Aucun cachet : la case de signature reste vide.', 'Ton cachet')}</div>
+        <div class="mq-bloc"><div class="mq-t">Couleurs ${info('co.colors')}</div>${couleur('accentColor', 'Accent')}${couleur('primaryColor', 'Texte')}</div>
+      </div>
+      <div class="mq-param mt"><button type="button" class="btn btn-sm" id="marque-apercu">Changer le logo, le cachet ou les couleurs…</button><span class="small muted">La fenêtre les montre sur ta prochaine facture, et rien n'est enregistré avant ton clic. Ils habillent tes devis et tes factures, pas l'application.</span></div>`;
   }
 
   const telLisible = tel => String(tel || '').split(/\s*\/\s*/).filter(Boolean).map(x => `<span class="nw">${h(x)}</span>`).join(' / ');
@@ -6437,6 +6565,7 @@
       ['Facturation récurrente (contrats qui refacturent)', () => navigate('#/contrats')], ['Achats et dépenses', () => navigate('#/achats')], ['Nouvelle facture d\'achat', () => navigate('#/achat/new')], ['Nouvelle dépense', () => navigate('#/achat/new/-/depense')], ['Fournisseurs', () => navigate('#/fournisseurs')], ['Trésorerie', () => navigate('#/tresorerie')], ['Marges et rentabilité', () => navigate('#/marges')], ['Paie', () => navigate('#/paie')], ['Nouveau salarié', () => employeeForm(null, () => render())], ['Stock', () => navigate('#/stock')], ['Garanties', () => navigate('#/garanties')], ['Entrée de numéros de série', () => serialIntakeForm(null, () => render())], ['Mouvement de stock', () => adjustForm(null, () => render())], ['Immobilisations', () => navigate('#/immos')], ['Nouvelle immobilisation', () => assetForm(null, a => navigate('#/immo/' + a.id))], ['Nouvelle affaire', () => projectForm(null, p => navigate('#/affaire/' + p.id))], ['Nouveau fournisseur', () => supplierForm(null, () => render())], ['Proformas', () => navigate('#/autres/proforma')], ['Bons de commande', () => navigate('#/autres/commande')], ['Bons de livraison', () => navigate('#/autres/livraison')], ['Contrats à signer', () => navigate('#/autres/contrat')], ['Clients', () => navigate('#/clients')], ['Catalogue', () => navigate('#/catalogue')], ['Statistiques', () => navigate('#/stats')], ['Comptabilité', () => navigate('#/compta')], ['Paramètres', () => navigate('#/parametres')],
       ['Aide et guide', () => navigate('#/aide')], ['Me guider (visites guidées)', () => navigate('#/guide')], ['Nouveau client', () => clientForm(null, () => render())],
       ['Importer mes clients depuis un tableur', () => importerTableau('clients', () => render(true))], ['Importer mon catalogue depuis un tableur', () => importerTableau('catalogue', () => render(true))],
+      ['Ta facture à ton image (logo, cachet, couleurs)', () => imageDeMarque(() => render(true))],
       // La palette liste TOUTES les pages, y compris celles des modules retirés du menu : c'est ce
       // qui rend le filtrage de la barre latérale inoffensif.
       ['Tous les modules', () => navigate('#/modules')],
@@ -6653,17 +6782,17 @@
     const s = supplier || Object.assign({ id: C.uid(), name: '', contact: '', matricule: '', address: '', phone: '', email: '', rib: '', bank: '', notes: '', paymentTermsDays: '', withholdingRate: '' }, preset || {});
     modal(`<h2>${supplier ? 'Modifier le fournisseur' : 'Nouveau fournisseur'}</h2>
       <form id="sf" class="grid-2">
-        <label class="field span-2 obligatoire"><span>Nom / Raison sociale</span><input type="text" name="name" value="${h(s.name)}" required></label>
+        <label class="field span-2 obligatoire">${lbl('Nom / Raison sociale', 'sup.name')}<input type="text" name="name" value="${h(s.name)}" required></label>
         ${field(lbl('Personne à contacter', 'cl.contact'), 'contact', s.contact || '', 'text', 'placeholder="M. Sami Gharbi, commercial"')}
         ${field(lbl('Matricule fiscal', 'co.matricule'), 'matricule', s.matricule || '')}
-        ${field('Téléphone', 'phone', s.phone || '')}
-        ${field('Email', 'email', s.email || '', 'email')}
+        ${field(lbl('Téléphone', 'sup.phone'), 'phone', s.phone || '')}
+        ${field(lbl('Email', 'sup.email'), 'email', s.email || '', 'email')}
         ${field(lbl('Délai de paiement accordé (jours)', 'sup.terms'), 'paymentTermsDays', s.paymentTermsDays == null ? '' : s.paymentTermsDays, 'number', 'min="0" class="num" placeholder="30"')}
         <label class="field">${lbl('Retenue à la source à opérer', 'sup.withholding')}${withholdingSelect('withholdingRate', s.withholdingRate, { vide: 'Aucune', sansZero: true })}</label>
         ${field(lbl('Banque', 'pay.bank'), 'bank', s.bank || '')}
         ${ribField('RIB du fournisseur', s.rib)}
-        <label class="field span-2">Adresse<textarea name="address">${h(s.address || '')}</textarea></label>
-        <label class="field span-2">Notes internes<textarea name="notes">${h(s.notes || '')}</textarea></label>
+        <label class="field span-2">${lbl('Adresse', 'sup.address')}<textarea name="address">${h(s.address || '')}</textarea></label>
+        <label class="field span-2">${lbl('Notes internes', 'sup.notes')}<textarea name="notes">${h(s.notes || '')}</textarea></label>
       </form>
       <div class="modal-actions">
         ${supplier ? '<button class="btn btn-danger" id="del-sup" style="margin-inline-end:auto">Supprimer ce fournisseur</button>' : ''}
@@ -12646,9 +12775,9 @@
           ${field(lbl('Matricule CNSS employeur', 'pay.cnssEmployerId'), 'cnss', c.cnss || '', 'text', 'placeholder="s\'il y a des salariés"')}
           ${field(lbl('Capital social', 'co.capital'), 'capital', c.capital || '', 'text', 'placeholder="facultatif, ex. 1 000 DT"')}
           <label class="field span-2">${lbl('Adresse', 'co.address')}<textarea name="address">${h(c.address)}</textarea></label>
-          ${field('Téléphone', 'phone', c.phone)}
-          ${field('Email', 'email', c.email, 'email')}
-          ${field('Site web', 'website', c.website || '')}
+          ${field(lbl('Téléphone', 'co.phone'), 'phone', c.phone)}
+          ${field(lbl('Email', 'co.email'), 'email', c.email, 'email')}
+          ${field(lbl('Site web', 'co.website'), 'website', c.website || '')}
           <label class="field span-2">${lbl('Slogan (sous le nom, sur les documents)', 'co.tagline')}<input type="text" name="tagline" value="${h(c.tagline || '')}" placeholder="Ce que fait ton entreprise, en quelques mots"></label>
         </div></div>
         <!-- Le régime fiscal vivait au milieu des « Règles de facturation », entre le délai de
@@ -12717,19 +12846,7 @@
              le matricule fiscal et le RIB) vers Apparence en 7.11.0, puis ici. Le titre disait
              depuis toujours ce qu'elle est — « sur tes documents » — et l'onglet Apparence, qui ne
              portait plus que deux listes déroulantes, ne pesait qu'un demi-écran. -->
-        ${panneau('p-marque')}<div class="grid-2">
-          <label class="field">${lbl('Couleur principale', 'co.colors')}<input type="color" name="primaryColor" value="${h(c.primaryColor || '#1b2430')}"></label>
-          <label class="field">${lbl('Couleur d\'accent', 'co.colors')}<input type="color" name="accentColor" value="${h(c.accentColor || '#0f9d8f')}"></label>
-          <label class="field">${lbl('Logo', 'co.logo')}
-            <div>${c.logo ? `<img class="logo-preview" src="${c.logo}">` : ''}
-            <div class="inline"><button type="button" class="btn btn-sm" id="pick-logo">Choisir une image…</button>${c.logo ? '<button type="button" class="btn btn-sm btn-ghost" id="rm-logo">Retirer</button>' : ''}</div></div>
-          </label>
-          <label class="field">${lbl('Cachet / signature', 'co.stampImage')}
-            <div>${c.stampImage ? `<img class="stamp-preview" src="${c.stampImage}">` : ''}
-            <div class="inline"><button type="button" class="btn btn-sm" id="pick-stamp">Choisir une image…</button>${c.stampImage ? '<button type="button" class="btn btn-sm btn-ghost" id="rm-stamp">Retirer</button>' : ''}</div></div>
-          </label>
-        </div>
-        <p class="small muted mt">Ces deux couleurs habillent les devis et les factures, pas l'application. Pour les voir, ouvre un document : l'aperçu se met à jour.</p></div>
+        ${panneau('p-marque')}${marqueResume(c)}</div>
         ${panneau('p-textes')}<div class="grid-2">
           <label class="field span-2">${lbl('Conditions des devis', 'doc.quoteTerms')}<textarea name="quoteTerms">${h(c.quoteTerms || '')}</textarea></label>
           <label class="field span-2">${lbl('Pied de page des documents', 'doc.footer')}<textarea name="footer">${h(c.footer)}</textarea></label>
@@ -13296,11 +13413,12 @@
     $('#import-data').onclick = importAll;
     // Choisir une image redessine toute la page : sans ce `applySettings()` préalable, tout ce qui était
     // saisi et pas encore enregistré dans le formulaire disparaissait en silence (défaut de l'audit).
-    const setImage = (field, value) => { if (applySettings() === false) return; data.company[field] = value; save(true); render(); };
-    $('#pick-logo').onclick = async () => { try { const l = await bridge.pickLogo(); if (l) setImage('logo', l); } catch (e) { toast(e.message.replace(/^.*Error: /, ''), true); } };
-    if ($('#rm-logo')) $('#rm-logo').onclick = () => setImage('logo', '');
-    $('#pick-stamp').onclick = async () => { try { const l = await bridge.pickLogo('Choisir l\'image du cachet / de la signature'); if (l) setImage('stampImage', l); } catch (e) { toast(e.message.replace(/^.*Error: /, ''), true); } };
-    if ($('#rm-stamp')) $('#rm-stamp').onclick = () => setImage('stampImage', '');
+    // UNE porte pour le logo, le cachet et les couleurs : la fenêtre qui les montre sur la prochaine
+    // facture. Le panneau gardait ses propres champs à côté — deux façons de modifier la même chose,
+    // et « Voir sur une facture… » enregistrait d'abord ce qui était tapé, donc une couleur pas encore
+    // vue (vu à la souris, 10.14.0). Ce qui est tapé AILLEURS dans la page s'enregistre d'abord, sinon
+    // le redessin qui suit l'effacerait (5.2.1).
+    $('#marque-apercu').onclick = () => { if (applySettings() === false) return; imageDeMarque(() => render()); };
     $('#load-demo').onclick = loadDemo;
     // Effacement définitif : on demande d'écrire le mot, pas juste de cliquer
     $('#wipe-data').onclick = () => {
@@ -15817,8 +15935,8 @@
           ${field(lbl('Matricule fiscal', 'co.matricule'), 'matricule', a.matricule || '', 'text', 'placeholder="1234567X/A/M/000"')}
           ${field(lbl('Registre de commerce (RC)', 'co.rc'), 'rc', a.rc || '', 'text', 'placeholder="facultatif, ex. B123456789"')}
           <label class="field span-2">${lbl('Adresse', 'co.address')}<textarea name="address" placeholder="Rue et numéro&#10;Code postal et ville">${h(a.address || '')}</textarea></label>
-          ${field('Téléphone', 'phone', a.phone || '')}
-          ${field('Email', 'email', a.email || '', 'email')}
+          ${field(lbl('Téléphone', 'co.phone'), 'phone', a.phone || '')}
+          ${field(lbl('Email', 'co.email'), 'email', a.email || '', 'email')}
           ${field(lbl('Capital social', 'co.capital'), 'capital', a.capital || '', 'text', 'placeholder="facultatif, ex. 1 000 DT"')}
         </form>
         ${a.depuisLicence ? '<p class="small muted">La raison sociale et le matricule viennent de ta clé de licence. Vérifie qu\'ils s\'écrivent exactement comme sur tes papiers : la clé reste valable tant que le matricule ne change pas.</p>'
@@ -15892,12 +16010,15 @@
         </div>`;
         // L'étoile d'un champ obligatoire et sa légende, comme dans toute fenêtre (7.20.0) : l'assistant
         // écrivait « OBLIGATOIRE » en orange, seul écran de l'application à le dire autrement (A3). La
-        // légende se DÉDUIT de l'étoile, elle ne se recopie pas écran par écran.
+        // légende se DÉDUIT de l'étoile, elle ne se recopie pas écran par écran — et elle vit dans le
+        // PIED, à côté des boutons, comme dans une fenêtre : posée sous le formulaire, elle ajoutait
+        // une ligne au corps, qui défilait alors pour 7 pixels à 1440×900 (vu à la souris).
         if ($('.field.obligatoire', root) && !$('.oblig-note', root)) {
-          const note = document.createElement('p');
+          const note = document.createElement('span');
           note.className = 'oblig-note';
           note.innerHTML = '<b>*</b> obligatoire';
-          $('.setup-body', root).appendChild(note);
+          const pied = $('.setup-foot', root);
+          pied.insertBefore(note, $('#sf-prev', pied) || $('#sf-next', pied));
         }
         const form = $('#sf-form', root);
         if (form) { const f = $('input, textarea', form); if (f) f.focus(); }

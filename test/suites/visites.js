@@ -577,16 +577,16 @@ t('10.14.0 : « Tes premiers pas » — chaque étape a sa visite, et la jauge d
 // plus tard. » La porte d'abord (découvrir ou commencer), trois questions ensuite, et tout le reste
 // dans « Tes premiers pas », au moment où la question devient concrète.
 
-t('10.14.0 : « Tes premiers pas » — l\'ordre, les deux étapes facultatives, et l\'étape suivante qui ne les propose jamais', () => {
+t('10.14.0 : « Tes premiers pas » — l\'ordre, les étapes facultatives, et l\'étape suivante qui ne les propose jamais', () => {
   const Core = require('../../src/renderer/core.js');
   const complete = { ...Core.DEFAULT_COMPANY, name: 'Atelier Nour SUARL', matricule: '1234567A/A/M/000', rib: '07040005810111129653' };
   assert.deepStrictEqual(Core.companyGaps(complete), [], 'les données doivent discriminer : une fiche complète');
   const vide = Core.firstSteps({ documents: [], clients: [], catalog: [] }, Core.DEFAULT_COMPANY, {});
   const ids = vide.etapes.map(e => e.id);
-  assert.deepStrictEqual(ids, ['decouverte', 'societe', 'client', 'catalogue', 'devis', 'sauvegarde', 'envoi', 'facture', 'comptable']);
+  assert.deepStrictEqual(ids, ['decouverte', 'societe', 'marque', 'client', 'catalogue', 'devis', 'sauvegarde', 'envoi', 'facture', 'comptable']);
   // La copie de sécurité vient JUSTE APRÈS le premier devis : avant, elle protégeait un fichier vide.
   assert.strictEqual(ids.indexOf('sauvegarde'), ids.indexOf('devis') + 1);
-  assert.deepStrictEqual(vide.etapes.filter(e => e.facultatif).map(e => e.id), ['decouverte', 'comptable'], 'seules la découverte et le comptable sont facultatifs');
+  assert.deepStrictEqual(vide.etapes.filter(e => e.facultatif).map(e => e.id), ['decouverte', 'marque', 'comptable'], 'seules la découverte, la facture à ton image et le comptable sont facultatifs');
   // La découverte est en tête et pas faite — l'étape suivante est pourtant la fiche société.
   assert.strictEqual(vide.suivante.id, 'societe', 'une étape facultative passe devant une étape du métier');
   // Faite, la découverte COMPTE : la liste démarre à « 1 sur n ».
@@ -602,7 +602,7 @@ t('10.14.0 : « Tes premiers pas » — l\'ordre, les deux étapes facultatives,
   const fin = Core.firstSteps(metier, complete, { copieExterne: true });
   assert.strictEqual(fin.demarrage, false, 'les étapes facultatives retiennent le panneau');
   assert.strictEqual(fin.suivante, null, 'une étape facultative devient « la suivante »');
-  assert.ok(fin.etapes.find(e => e.id === 'decouverte').fait === false && fin.etapes.find(e => e.id === 'comptable').fait === false);
+  assert.ok(['decouverte', 'marque', 'comptable'].every(id => fin.etapes.find(e => e.id === id).fait === false), 'les données doivent discriminer : aucune étape facultative faite');
   // Le comptable est relié par son adresse OU par son fichier d'appairage — une adresse vide ne compte pas.
   const cpt = co => Core.firstSteps(metier, co, {}).etapes.find(e => e.id === 'comptable').fait;
   assert.strictEqual(cpt({ ...complete, accountantEmail: '   ' }), false);

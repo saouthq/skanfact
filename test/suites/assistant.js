@@ -19,6 +19,15 @@ const app = lireSource('src', 'renderer', 'app.js');
 // Le code sans ses commentaires : un commentaire qui cite la forme interdite ne doit pas faire tomber
 // le test, ni une forme décrite en commentaire le faire passer (6.8.0, 7.25.0).
 const code = app.split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
+// Le corps d'UNE fonction de l'application, de sa déclaration à son accolade fermante (deux espaces :
+// tout vit dans la fermeture d'app.js). Une tranche bornée sur la déclaration VOISINE grandit dès
+// qu'une fonction s'insère entre les deux — la leçon de la 10.4.0, re-rencontrée ici en 213f.
+const corps = debut => {
+  const i = code.indexOf(debut);
+  if (i < 0) return '';
+  const j = code.indexOf('\n  }\n', i);
+  return j < 0 ? '' : code.slice(i, j + 4);
+};
 
 // ------------------------------------------------------------------ A2, A3, A4
 t('10.14.0 (A2) : chaque devise proposée porte son NOM, dans chaque liste de devises', () => {
@@ -45,6 +54,10 @@ t('10.14.0 (A3) : un champ obligatoire porte l\'étoile — nulle part « OBLIGA
   const i = code.indexOf('function runSetup(');
   const z = code.slice(i, code.indexOf('\n  }\n', i));
   assert.ok(/if \(\$\('\.field\.obligatoire', root\) && !\$\('\.oblig-note', root\)\)/.test(z), 'l\'assistant ne pose plus la légende de l\'étoile');
+  // Dans le PIED, à côté des boutons, comme dans une fenêtre : posée sous le formulaire, elle ajoutait
+  // une ligne au corps de « Ton entreprise », qui défilait pour 7 pixels à 1440×900 (vu à la souris).
+  const pose = z.slice(z.indexOf("note.className = 'oblig-note';"), z.indexOf("note.className = 'oblig-note';") + 400);
+  assert.ok(/\$\('\.setup-foot', root\)/.test(pose) && !/\$\('\.setup-body', root\)\.appendChild\(note\)/.test(pose), 'la légende de l\'étoile s\'ajoute au corps de l\'assistant, qui défile pour elle');
 });
 
 t('10.14.0 (A4) : le compteur de l\'assistant se lit « Question n sur N », comme dans le Cabinet', () => {
@@ -794,7 +807,7 @@ t('10.14.0 : un fichier CSV se lit dans SON encodage — Windows-1252 d\'Excel, 
 });
 
 t('10.14.0 : l\'import MONTRE avant d\'écrire, replanifie au clic, passe le stock par la licence et se défait', () => {
-  const f = code.slice(code.indexOf('async function importerTableau('), code.indexOf('const clientState = {'));
+  const f = corps('async function importerTableau(');
   assert.ok(f.length > 2000 && f.length < 16000, 'la tranche de la fenêtre d\'import est introuvable');
   const clic = f.slice(f.indexOf('ok.onclick = () => {'));
   assert.ok(clic.length > 300, 'le geste d\'import est introuvable');
@@ -835,7 +848,7 @@ t('10.14.0 : ce que l\'import a montré à la souris — colonnes lisibles en en
   const css = lireSource('src', 'renderer', 'style.css').replace(/\/\*[\s\S]*?\*\//g, '');
   // « Personne à co… » : la liste d'une colonne prend la largeur de sa plus longue réponse.
   assert.ok(/\.imp-table th select \{ min-inline-size: max-content; \}/.test(css), 'la liste d\'une colonne coupe son libellé');
-  const f = code.slice(code.indexOf('async function importerTableau('), code.indexOf('const clientState = {'));
+  const f = corps('async function importerTableau(');
   const apercu = f.slice(f.indexOf('const dessiner = () => {'), f.indexOf('ok.onclick = () => {'));
   // La ligne en double a son encadré titré ; la liste « À relire » ne porte plus que des avertissements.
   assert.ok(/class="info-box imp-doublons"/.test(apercu), 'la ligne en double flotte seule sous l\'encadré des refus');
@@ -870,10 +883,159 @@ t('10.14.0 : une liste collée dans la MAUVAISE fenêtre se reconnaît — un ta
   assert.strictEqual(C.planImport('clients', 'Hôtel\t71 234 567\ta@b.tn\n', d, d.company).autreListe, '', 'une liste sans titres est accusée');
   assert.strictEqual(C.planImport('clients', tarif, d, d.company, { entete: true }).autreListe, '', 'cocher « la première ligne donne les titres » ne passe pas outre');
   // L'écran : l'avertissement remplace le bilan, l'import s'éteint, et le vert emmène le TEXTE dans l'autre fenêtre.
-  const f = code.slice(code.indexOf('async function importerTableau('), code.indexOf('const telLisible'));
+  const f = corps('async function importerTableau(');
   assert.ok(/ok\.disabled = !!A \|\|/.test(f), 'l\'import d\'une liste collée dans la mauvaise fenêtre reste armé');
   assert.ok(/importerTableau\(p\.autreListe, done, t\)/.test(f), 'le geste ne passe pas la liste à l\'autre import');
   assert.ok(/if \(prerempli\) \{ champ\.value = prerempli;/.test(f), 'l\'autre import ne reprend pas le texte collé');
+});
+
+// ------------------------------------------------------------------ « Ta facture à ton image » (213f)
+// Le logo, le cachet et les couleurs se réglaient dans les Paramètres, et la page disait « pour les
+// voir, ouvre un document » : on choisissait à l'aveugle. La fenêtre montre chaque choix sur la
+// prochaine facture, et une couleur trop claire se dit AVANT d'enregistrer (9.4.2).
+
+t('10.14.0 (213f) : le contraste d\'une couleur sur la page blanche — les pastilles proposées se lisent toutes, une couleur claire se signale', () => {
+  // Les valeurs de référence du WCAG, calculées à la main : noir 21, blanc 1, gris #777 4,48.
+  assert.strictEqual(C.contrasteSurBlanc('#000000'), 21, 'le contraste du noir n\'est pas 21');
+  assert.strictEqual(C.contrasteSurBlanc('#ffffff'), 1, 'le contraste du blanc n\'est pas 1');
+  assert.strictEqual(C.contrasteSurBlanc('#777777'), 4.48, 'le contraste d\'un gris moyen est faux : la luminance n\'est pas linéarisée');
+  assert.strictEqual(C.contrasteSurBlanc('pas une couleur'), null, 'une valeur illisible n\'est pas « 1 »');
+  // Chaque pastille proposée se lit sur le blanc (seuil du texte en gras ou en capitales) : sinon la
+  // proposition ferait le défaut qu'elle évite.
+  assert.ok(C.ACCENTS_PROPOSES.length >= 6, 'le nuancier est trop court pour choisir');
+  C.ACCENTS_PROPOSES.forEach(a => {
+    assert.ok(/^#[0-9a-f]{6}$/.test(a.hex) && a.nom.length > 2, 'une pastille sans nom ou sans couleur : ' + JSON.stringify(a));
+    assert.ok(C.contrasteSurBlanc(a.hex) >= 3, `la pastille « ${a.nom} » (${a.hex}) se lit mal sur le blanc : ${C.contrasteSurBlanc(a.hex)}`);
+  });
+  assert.ok(C.ACCENTS_PROPOSES.some(a => a.hex.toLowerCase() === C.DEFAULT_COMPANY.accentColor.toLowerCase()), 'la couleur d\'origine n\'est pas dans le nuancier : on ne pourrait pas y revenir d\'un clic');
+  // Les couleurs d'origine passent ; une fiche sans couleur retombe sur elles.
+  assert.deepStrictEqual(C.lisibiliteMarque(C.DEFAULT_COMPANY), []);
+  assert.deepStrictEqual(C.lisibiliteMarque({}), []);
+  // Un jaune d'accent et un gris clair de texte se signalent, chacun avec SA raison.
+  const clair = C.lisibiliteMarque({ accentColor: '#facc15', primaryColor: '#9ca3af' });
+  assert.deepStrictEqual(clair.map(x => x.champ), ['primaryColor', 'accentColor']);
+  assert.ok(/tout le texte/.test(clair[0].texte) && /Net à payer/.test(clair[1].texte), 'la phrase ne dit pas ce que la couleur colore');
+  // Le mot court tient dans la ligne du titre (il ne pousse rien) : trois ou quatre mots.
+  clair.forEach(x => assert.ok(x.court && x.court.length <= 28, 'la remarque courte ne tient pas dans la ligne du titre : ' + x.court));
+  // Le seuil du texte courant (4,5) est plus strict que celui de l'accent (3) : #777 passe en accent, pas en texte.
+  assert.deepStrictEqual(C.lisibiliteMarque({ accentColor: '#777777', primaryColor: '#777777' }).map(x => x.champ), ['primaryColor'], 'le texte courant se juge au seuil de l\'accent (#777 passe pour du texte)');
+});
+
+t('10.14.0 (213f) : « Ta facture à ton image » est une étape FACULTATIVE des premiers pas, cochée par la fiche — jamais par un clic', () => {
+  const vide = C.firstSteps({ documents: [], clients: [], catalog: [] }, C.DEFAULT_COMPANY, {});
+  const m = vide.etapes.find(e => e.id === 'marque');
+  assert.ok(m && m.facultatif === true && m.fait === false, 'l\'étape manque ou n\'est pas facultative');
+  assert.strictEqual(vide.etapes.findIndex(e => e.id === 'marque'), vide.etapes.findIndex(e => e.id === 'societe') + 1, 'elle suit la fiche société : c\'est la même question, ce qui s\'imprime en haut');
+  const fait = co => C.marquePersonnalisee(co);
+  assert.strictEqual(fait(C.DEFAULT_COMPANY), false, 'les couleurs d\'origine ne sont pas une image de marque');
+  assert.strictEqual(fait({ ...C.DEFAULT_COMPANY, accentColor: C.DEFAULT_COMPANY.accentColor.toUpperCase() }), false, 'la casse d\'une couleur change le verdict');
+  assert.strictEqual(fait({ ...C.DEFAULT_COMPANY, logo: 'data:image/png;base64,AA' }), true);
+  assert.strictEqual(fait({ ...C.DEFAULT_COMPANY, stampImage: 'data:image/png;base64,AA' }), true);
+  assert.strictEqual(fait({ ...C.DEFAULT_COMPANY, accentColor: '#2563eb' }), true);
+  assert.strictEqual(fait({ ...C.DEFAULT_COMPANY, primaryColor: '#334155' }), true);
+  assert.strictEqual(fait({ ...C.DEFAULT_COMPANY, logo: '   ' }), false, 'un logo vide compte');
+  // Facultative : elle ne devient jamais « la suivante », même quand tout le reste est fait.
+  assert.notStrictEqual(vide.suivante && vide.suivante.id, 'marque');
+  // L'accueil a son bouton ET sa visite, et la palette la trouve.
+  assert.ok(/marque: \['Personnaliser ma facture', \(\) => imageDeMarque\(/.test(code), 'l\'étape n\'a pas de bouton dans l\'accueil');
+  assert.ok(/const PAS_VISITES = \{[^}]*marque: 'marque'/.test(code), 'l\'étape n\'a pas de visite guidée');
+  assert.ok(/\['Ta facture à ton image[^']*', \(\) => imageDeMarque\(/.test(code), 'la palette ne propose pas la fenêtre');
+});
+
+t('10.14.0 (213f) : la fenêtre montre la PROCHAINE facture sans prendre de numéro, et n\'enregistre que le logo, le cachet et les couleurs', () => {
+  const f = corps('function factureDApercu(co) {') + corps('function imageDeMarque(done) {');
+  // La tranche finit sur l'appel de `modal()` qui ferme la fenêtre : c'est ce qui prouve qu'elle est entière.
+  assert.ok(f.length > 2500 && f.length < 12000 && /\}, null, \{[^\n]*\}\);\s*\}$/.test(f), 'tranche de la fenêtre inattendue : ' + f.length);
+  // Aucun numéro consommé : `etatNumerotation` lit, `nextNumber` écrirait les compteurs (6.0.0).
+  assert.ok(!/nextNumber\(/.test(f), 'l\'aperçu consomme un numéro de facture');
+  assert.ok(/C\.etatNumerotation\(data, 'facture'/.test(f), 'l\'aperçu n\'annonce pas le numéro que la facture prendra');
+  // Émise pour l'aperçu : aucun tampon « BROUILLON » ne couvre ce qu'on regarde.
+  assert.ok(/doc\.status = 'envoyée';/.test(f), 'l\'aperçu porte le tampon BROUILLON');
+  // Rien n'est écrit avant le clic, et seuls les quatre champs de l'image de marque le sont.
+  const ok = f.slice(f.indexOf('ok.onclick = () => {'), f.indexOf('dessiner();', f.indexOf('ok.onclick = () => {')));
+  assert.ok(/MARQUE_CHAMPS\.forEach\(k => \{ data\.company\[k\] = b\[k\]; \}\);/.test(ok), 'l\'enregistrement n\'écrit pas le logo, le cachet et les couleurs');
+  // Toute écriture de la fiche — par un point, par des crochets ou par `Object.assign` : compter les
+  // seuls crochets laissait passer `data.company.name = …` (vu en le réintroduisant).
+  const ecritures = f.match(/data\.company(?:\.\w+|\[[^\]]+\])\s*=(?!=)|Object\.assign\(data\.company/g) || [];
+  assert.deepStrictEqual(ecritures, ['data.company[k] ='], 'la fenêtre écrit la fiche société ailleurs que dans « Enregistrer » : ' + ecritures.join(' · '));
+  assert.ok(!/data\.(documents|counters)/.test(f), 'la fenêtre touche aux pièces ou aux compteurs');
+  const champs = /const MARQUE_CHAMPS = (\[[^\]]*\]);/.exec(code);
+  // Un tableau d'un AUTRE contexte n'a pas le même prototype : on le recopie avant de comparer.
+  assert.deepStrictEqual([...require('vm').runInNewContext(champs[1])], ['logo', 'stampImage', 'accentColor', 'primaryColor']);
+  // Le bouton s'allume au premier changement, et Échap ou « Annuler » demandent avant de jeter un choix.
+  assert.ok(/ok\.disabled = !change\(\);/.test(f), '« Enregistrer » est armé sans rien avoir changé');
+  assert.ok(/\{ garde: \(\) => change\(\)\s*[,}]/.test(f), 'fermer la fenêtre jette un logo choisi sans demander');
+  // Une couleur trop claire se DIT dans la fenêtre, avant d'enregistrer — dans la ligne de SON titre,
+  // jamais dans un bloc posé sous les choix : il poussait « Enregistrer » de 41 px au moment où on le
+  // visait (vu à la souris). Rien ne s'ajoute sous les choix pendant qu'on les fait.
+  assert.ok(/C\.lisibiliteMarque\(/.test(f), 'la fenêtre ne prévient pas d\'une couleur illisible');
+  assert.ok(/<div class="mq-t">Couleur d'accent \$\{info\('mq\.accent'\)\}<span class="mq-note" id="mq-note-accentColor"/.test(f)
+    && /<div class="mq-t">Couleur du texte \$\{info\('mq\.principale'\)\}<span class="mq-note" id="mq-note-primaryColor"/.test(f), 'la remarque de lisibilité ne vit pas dans la ligne du titre de sa couleur');
+  assert.ok(!/warn-box/.test(f), 'un encadré apparaît sous les choix et pousse les boutons');
+  // La question d'abandon dit ce qui se perd : ici on n'a rien tapé.
+  assert.ok(/perte: 'Le logo, le cachet et les couleurs/.test(f), 'la question d\'abandon parle de ce qu\'on a « tapé »');
+  // La page entière dans l'aperçu : le logo est en haut, le cachet en bas (7.13.0).
+  assert.ok(/Math\.min\(\(f\.clientWidth - 2\) \/ 794, \(f\.clientHeight - 2\) \/ 1190\)/.test(f), 'l\'aperçu cale la largeur et coupe le cachet');
+});
+
+t('10.14.0 (213f) : `modal()` accepte une garde FONCTION — une saisie qui ne vit pas dans des champs (un logo, une pastille) se protège aussi', () => {
+  const m = code.slice(code.indexOf('function modal(html, onMount, onDismiss, opts) {'), code.indexOf('function suivreSaisie(layer) {'));
+  assert.ok(m.length > 2000, 'modal() introuvable');
+  // La garde fournie passe AVANT la garde des champs : sinon un `form` dans la fenêtre l'écraserait.
+  const i = m.indexOf("typeof opts.garde === 'function'"), j = m.indexOf('garde = suivreSaisie(layer)');
+  assert.ok(i > 0 && j > i, 'une garde fonction est ignorée, ou passe après celle des champs');
+  assert.ok(/if \(opts && typeof opts\.garde === 'function'\) garde = opts\.garde;\s*else if/.test(m), 'une garde fonction s\'AJOUTE à celle des champs au lieu de la remplacer');
+});
+
+t('10.14.0 (213f) : les Paramètres montrent l\'image de marque et n\'ont qu\'UNE porte pour la changer — la fenêtre qui la montre sur une facture', () => {
+  assert.ok(!/Pour les voir, ouvre un document/.test(code), 'le panneau renvoie encore à un document pour voir ses couleurs');
+  // Plus aucun champ du logo, du cachet ni des couleurs dans le formulaire : deux façons de modifier
+  // la même chose divergent, et « Voir sur une facture… » enregistrait d'abord une couleur pas encore vue.
+  const page = code.slice(code.indexOf("${panneau('p-marque')}"), code.indexOf("${panneau('p-textes')}"));
+  assert.ok(page.length > 20 && page.length < 400, 'panneau de l\'image de marque introuvable : ' + page.length);
+  assert.ok(/\$\{marqueResume\(c\)\}/.test(page), 'le panneau ne montre pas ce qui est posé');
+  assert.ok(!/name="(primaryColor|accentColor)"|id="pick-(logo|stamp)"/.test(code), 'les Paramètres gardent une seconde façon de changer le logo ou les couleurs');
+  assert.ok(!/const setImage = /.test(code), 'le geste qui écrivait une image sans aperçu est resté');
+  const r = corps('function marqueResume(c) {');
+  assert.ok(/id="marque-apercu">Changer le logo, le cachet ou les couleurs…</.test(r), 'le résumé n\'a pas son unique bouton');
+  // Une couleur déjà trop claire le dit dans le résumé aussi — JOUÉ, pas lu : une remarque définie
+  // dans la fonction et jamais posée dans son gabarit passerait un test qui cherche sa classe.
+  const resume = require('vm').runInNewContext('(' + r.replace(/^function marqueResume/, 'function') + ')',
+    { C, info: () => '', h: s => String(s) });
+  assert.ok(!/mq-note/.test(resume(C.DEFAULT_COMPANY)), 'le résumé signale une couleur d\'origine');
+  const pale = { ...C.DEFAULT_COMPANY, accentColor: '#facc15' };
+  assert.ok(resume(pale).includes('>' + C.lisibiliteMarque(pale)[0].court + '</span>'), 'le résumé tait une couleur illisible');
+  // Ouvrir la fenêtre enregistre d'abord ce qui est tapé AILLEURS dans la page (5.2.1).
+  assert.ok(/\$\('#marque-apercu'\)\.onclick = \(\) => \{ if \(applySettings\(\) === false\) return; imageDeMarque\(/.test(code), 'ouvrir la fenêtre jette ce qui est tapé dans les Paramètres (5.2.1)');
+  // La bulle « Couleurs » ne conseille plus les couleurs claires — ce sont celles qui ne se lisent pas.
+  const g = lireSource('src', 'renderer', 'guide.js');
+  const bulle = /'co\.colors': \{ t: 'Couleurs', d: '((?:[^'\\]|\\.)*)'/.exec(g);
+  assert.ok(bulle && !/couleurs claires/.test(bulle[1]) && /TOUT le texte/.test(bulle[1]), 'la bulle « Couleurs » conseille encore une couleur claire');
+  // Et les explications ne nomment plus un bouton qui n'existe plus.
+  assert.ok(!/Voir sur une facture/.test(g) && !/Voir sur une facture/.test(lireSource('src', 'renderer', 'visites.js')), 'une explication nomme encore « Voir sur une facture… »');
+});
+
+t('10.14.0 : chaque champ des formulaires du premier jour porte sa bulle — la fiche société, l\'assistant, un client, un fournisseur', () => {
+  // Vu au test humain de 213f : « Téléphone », « Email » et « Site web » n'avaient pas de « i » dans
+  // la fiche société, et la fiche client en avait quatre sur onze. Ce sont les quatre formulaires qu'on
+  // remplit le premier jour — la règle du projet veut que chaque champ explique ce qu'il devient.
+  const tranche = (debut, fin) => { const i = code.indexOf(debut); const j = i < 0 ? -1 : code.indexOf(fin, i); return i < 0 || j < 0 ? '' : code.slice(i, j); };
+  const formulaires = {
+    'fiche société': tranche("${panneau('p-identite')}", "${panneau('p-regime')}"),
+    'assistant': tranche("if (s.id === 'entreprise') return `<form id=\"sf-form\"", '</form>'),
+    'client': tranche('function clientForm(client, done, preset) {', '<div class="modal-actions">'),
+    'fournisseur': tranche('function supplierForm(supplier, done, preset) {', '<div class="modal-actions">')
+  };
+  Object.entries(formulaires).forEach(([nom, f]) => {
+    assert.ok(f.length > 400 && f.length < 5000, `formulaire « ${nom} » introuvable : ${f.length}`);
+    const nus = [
+      ...(f.match(/field\('[^']*'/g) || []),                                        // un libellé passé en texte à field()
+      ...(f.match(/<label class="field[^"]*">(?!\$\{lbl\()[^<$]+</g) || []),           // un libellé écrit en texte dans la balise
+      ...(f.match(/<label class="field[^"]*"><span>[^<]*<\/span>/g) || [])             // un libellé dans un <span> sans bulle
+    ];
+    assert.deepStrictEqual(nus, [], `« ${nom} » : ${nus.length} champ(s) sans bulle — ${nus.join(' · ')}`);
+  });
+  // Qu'une bulle posée existe dans guide.js, c'est le test général des bulles qui le tient.
 });
 
 t('10.14.0 : un client et un article naissent d\'UN modèle — la fiche, la création à la volée et l\'import', () => {

@@ -504,10 +504,17 @@
   b('#set-q', "Cherche un réglage par son nom (« timbre », « sauvegarde »…) : il te dit dans quel onglet il vit.", { nom: 'Chercher un réglage' });
   b('[data-somm]', "Descend au panneau nommé.", { nom: 'Le sommaire', cle: 'somm' });
   b('[data-vers-champ]', "T'emmène au champ cité.", { nom: 'Lien' });
-  b('#pick-logo', "Choisis ton logo (PNG, JPG ou SVG) : il s'imprime en haut de tes documents.");
-  b('#rm-logo', "Retire le logo.");
-  b('#pick-stamp', "Choisis l'image de ton cachet ou de ta signature : elle se pose dans la case « Cachet et signature ».");
-  b('#rm-stamp', "Retire le cachet.");
+  // « Ta facture à ton image » (10.14.0) : la fenêtre qui montre chaque choix sur la prochaine facture.
+  b('#marque-apercu', "Ouvre « Ta facture à ton image » : ton logo, ton cachet et tes couleurs se changent en regardant ta prochaine facture.");
+  b('#mq-logo', "Choisis ton logo (PNG, JPG ou SVG) : il se pose tout de suite en haut de la facture d'aperçu.");
+  b('#mq-logo-rm', "Retire le logo : ta raison sociale s'écrit à sa place.");
+  b('#mq-cachet', "Choisis l'image de ton cachet ou de ta signature : elle se pose dans la case du bas.");
+  b('#mq-cachet-rm', "Retire le cachet : la case de signature reste vide, à signer à la main.");
+  b('[data-mq-accent]', "Une couleur d'accent qui se lit sur une page blanche : le numéro, les petits titres et « Net à payer » la prennent.", { nom: 'Une couleur proposée', cle: 'mq-nuance' });
+  b('#mq-accent', "N'importe quelle autre couleur d'accent. SkanFact te prévient si elle devient trop claire pour être lue.");
+  b('#mq-principale', "La couleur de TOUT le texte de tes documents. Un noir bleuté se lit le mieux.");
+  b('#mq-origine', "Remet les deux couleurs de départ. Ton logo et ton cachet ne bougent pas.");
+  b('#mq-ok', "Enregistre ton logo, ton cachet et tes couleurs : chaque devis et chaque facture les porteront.");
   b('#go-modules', "Choisis les modules qui s'affichent dans le menu. Rien n'est supprimé : un module masqué revient d'un clic.");
   b('#set-support', "Prépare un mail pour signaler un problème, avec le journal technique joint.");
   b('#set-idee', "Propose une amélioration : ce que tu aimerais faire, et comment tu t'en sors aujourd'hui.");
@@ -921,6 +928,34 @@
           texte: 'Il s\'imprime sur tes factures pour que tes clients te paient par virement : vérifie-le deux fois. SkanFact contrôle sa clé et te prévient s\'il paraît faux.', facultatif: true },
         { page: '#/parametres', cible: ['#save-set', '.save-bar .btn-primary', '#set-save'], cote: 'dessus', faire: 'clic',
           titre: 'Enregistrer', texte: 'Une modification ne compte qu\'une fois enregistrée.', action: 'Clique sur <b>« Enregistrer »</b>.', essai: { clic: true } }
+      ]
+    });
+
+    // « Ta facture à ton image » (10.14.0) : l'étape facultative des premiers pas, et la même fenêtre
+    // depuis Paramètres → Documents. On règle en regardant la prochaine facture, jamais à l'aveugle.
+    visite({
+      id: 'marque', theme: 'demarrer', type: 'faire', reel: true, duree: '1 min', page: '#/parametres',
+      titre: 'Ta facture à ton image',
+      resume: 'Ton logo, ton cachet et ta couleur, réglés en regardant ta prochaine facture.',
+      mots: ['logo', 'cachet', 'signature', 'couleur', 'accent', 'marque', 'image', 'apparence', 'personnaliser'],
+      suite: ['premier-client', 'premier-devis'],
+      bravo: 'Ta facture est à ton image',
+      conclusion: 'Chaque devis et chaque facture portent maintenant tes couleurs. La même fenêtre se rouvre depuis Paramètres → Documents → « Changer le logo, le cachet ou les couleurs… ».',
+      etapes: [
+        { page: '#/parametres', avant: onglet('#set-tabs', 'documents'), cible: '#marque-apercu', cote: 'dessous', faire: 'clic',
+          titre: 'Ton image de marque', texte: 'Ce qui est posé aujourd\'hui : ton logo, ton cachet, tes deux couleurs. Ils se changent en regardant ta prochaine facture — pas à l\'aveugle.',
+          action: 'Clique sur <b>« Changer le logo, le cachet ou les couleurs… »</b>.', fait: () => fenetre('ton image'), essai: { clic: true } },
+        { cible: '#modal-root #mq-apercu', cote: 'gauche', titre: 'Ta prochaine facture',
+          texte: 'Son vrai numéro, tes prestations, ton premier client. Elle n\'existe que dans cette fenêtre : aucun numéro n\'est pris, rien n\'est enregistré avant ton clic.' },
+        { cible: '#modal-root #mq-logo', cote: 'droite', titre: 'Ton logo',
+          texte: 'Une image PNG, JPG ou SVG : elle se pose tout de suite en haut de la facture. Sans logo, ta raison sociale s\'écrit à sa place — c\'est propre aussi.', facultatif: true },
+        { cible: ['#modal-root .mq-nuancier'], cote: 'droite', faire: 'clic',
+          titre: 'Ta couleur', texte: 'Elle colore le numéro, les petits titres et « Net à payer ». Chaque pastille se lit sur une page blanche.',
+          action: 'Clique sur une <b>autre</b> pastille : la facture change tout de suite.',
+          fait: () => !!document.querySelector('#modal-root #mq-ok:not([disabled])'), essai: { clic: true } },
+        { cible: '#modal-root #mq-ok', cote: 'dessus', faire: 'clic',
+          titre: 'Enregistrer', texte: 'Rien n\'est enregistré avant ce clic : « Annuler » laisse tout comme avant.',
+          action: 'Clique sur <b>« Enregistrer »</b>.', fait: () => aucuneFenetre(), essai: { clic: true } }
       ]
     });
 

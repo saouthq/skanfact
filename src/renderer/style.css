@@ -1420,6 +1420,50 @@ body.dark .cal-d.out { color: #5b6572; }
 .imp-autre-geste { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-block-start: 10px; }
 .imp-refus ul, .imp-doublons ul, .imp-notes { margin-block: 6px; padding-inline-start: 20px; max-height: 150px; overflow-y: auto; }
 .pp-import { align-self: flex-start; }
+/* « Ta facture à ton image » (10.14.0). Les choix à gauche, la facture entière à droite : on regarde
+   ce qu'on règle, sans aller ouvrir un devis. La fenêtre a sa largeur DÈS l'ouverture — l'aperçu qui
+   se charge ne l'élargit pas sous le curseur (H-E1, dans une fenêtre). */
+.modal:where(:has(.marque)) { width: 900px; }
+.mq-grille { display: grid; grid-template-columns: minmax(0, 320px) minmax(0, 1fr); gap: 24px; align-items: start; margin-block-start: 14px; }
+.mq-choix { display: flex; flex-direction: column; gap: 18px; }
+.mq-bloc .inline { flex-wrap: wrap; }
+.mq-t { display: flex; align-items: center; gap: 4px; font-size: 13px; font-weight: 600; color: var(--text); margin-block-end: 8px; }
+/* L'image choisie se voit avant de se voir sur la facture : un cadre pointillé tant qu'elle manque,
+   pour dire qu'une place l'attend. Sa hauteur est FIXE : l'image arrivée ne pousse rien sous le
+   curseur (vu à la souris : 6 px à chaque image, et le bouton suivant descendait). */
+.mq-image { display: grid; place-items: center; block-size: 72px; padding: 8px; margin-block-end: 8px; border: 1px dashed var(--border); border-radius: 10px; background: var(--bg); text-align: center; overflow: hidden; }
+/* Une image posée se voit sur SON papier : blanc dans les deux thèmes, comme sur le PDF — un logo
+   sombre sur le fond d'un thème sombre ne se lirait pas, et ce n'est pas ce que le client verra. */
+.mq-image:has(img) { background: #fff; border-style: solid; }
+.mq-image img { max-block-size: 52px; max-inline-size: 100%; object-fit: contain; }
+.mq-nuancier { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+/* Une pastille est un bouton qui n'a que sa couleur : l'anneau dit laquelle est posée, la bordure de
+   la couleur du panneau la détache de lui dans les deux thèmes. */
+.mq-nuance { inline-size: 28px; block-size: 28px; padding: 0; border-radius: 50%; border: 2px solid var(--panel); background: var(--nuance); box-shadow: 0 0 0 1px var(--border); cursor: pointer; }
+.mq-nuance:hover { box-shadow: 0 0 0 2px var(--muted); }
+.mq-nuance[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--text); }
+.mq-nuance:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.mq-autre { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+/* La chaîne de `:not()` de la règle des champs gagne toujours (7.27.0, 7.30.0) : sans elle, la
+   pastille « Autre… » gardait les 72 px d'un sélecteur de couleur de formulaire. */
+.mq-autre input[type=color]:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=range]) { inline-size: 44px; block-size: 30px; padding: 2px; }
+/* Une couleur trop claire se dit dans la ligne de SON titre, poussée au bout : elle n'ajoute aucune
+   ligne, donc elle ne déplace rien (la remarque d'un RIB douteux, 10.12.0, pour une couleur). */
+.mq-note { margin-inline-start: auto; font-size: 12px; font-weight: 600; color: var(--warning); white-space: nowrap; }
+/* La page imprimée reste claire dans les deux thèmes, comme le PDF : c'est ce que le client reçoit. */
+.mq-apercu-cadre iframe { display: block; inline-size: 100%; block-size: min(60vh, 680px); border: 1px solid var(--border); border-radius: 12px; background: #e9edf1; }
+.mq-param { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+/* Le résumé des Paramètres : ce qui est posé, en trois colonnes — on le regarde ici, on le change
+   dans la fenêtre qui le montre sur une facture. */
+.mq-resume { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px 24px; align-items: start; }
+.mq-mini { margin-block-end: 0; }
+.mq-resume-c { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text); min-block-size: 30px; }
+.mq-pastille { inline-size: 22px; block-size: 22px; border-radius: 50%; background: var(--nuance); box-shadow: 0 0 0 1px var(--border); flex: 0 0 auto; }
+/* En sombre, une couleur foncée (Ardoise, le noir bleuté du texte) se fondait dans le fond : son
+   anneau prend la couleur des textes discrets, et l'état « choisi » garde le sien (vu à l'écran). */
+body.dark .mq-nuance, body.dark .mq-pastille { box-shadow: 0 0 0 1px var(--muted); }
+body.dark .mq-nuance:hover { box-shadow: 0 0 0 2px var(--muted); }
+body.dark .mq-nuance[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--text); }
 .warn-link { color: var(--warning); font-weight: 600; text-decoration: none; }
 .warn-link:hover { text-decoration: underline; }
 
@@ -1776,6 +1820,8 @@ kbd { font: inherit; font-size: 12px; font-family: -apple-system, system-ui, san
 .setup-body em { color: var(--warning); font-style: normal; font-weight: 600; }
 .setup-foot { display: flex; gap: 8px; justify-content: flex-end; padding: 16px 28px 22px; border-top: 1px solid var(--border); }
 .setup-foot .btn-ghost { margin-inline-end: auto; color: var(--muted); }
+/* La légende de l'étoile rejoint les boutons, à droite : « Passer… » garde seul la marge qui pousse. */
+.setup-foot .oblig-note { margin-inline-end: 8px; }
 /* La porte du premier lancement (10.14.0) : deux battants côte à côte, le recommandé en avant — les
    cartes sont celles de l'accueil (`.pp-choix`), pour que les deux portes se reconnaissent. Pas de
    défilement interne : sur un portable, c'est la fenêtre entière qui défile, jamais une boîte dans la boîte. */

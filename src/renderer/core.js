@@ -6369,6 +6369,54 @@
       action: 'catalogue' };
   }
 
+  // ---------- « Ta facture à ton image » (10.14.0) ----------
+  //
+  // Le logo, le cachet et les deux couleurs se réglaient dans les Paramètres, et la page disait
+  // « pour les voir, ouvre un document » : on choisissait une couleur à l'aveugle, puis on allait
+  // chercher un devis pour voir ce qu'elle donnait. Ce qui suit est pur : la couleur se JUGE sur la
+  // page blanche où elle s'imprime, et l'étape des premiers pas se lit dans la fiche société.
+  //
+  // Le contraste d'une couleur sur le blanc du papier (rapport WCAG, de 1 à 21). La couleur PRINCIPALE
+  // est celle de TOUT le texte du document ; l'accent colore le numéro, les titres de rubrique et
+  // « Net à payer ». Un jaune vif y serait illisible — sur la pièce qu'on envoie à son client.
+  function contrasteSurBlanc(hex) {
+    const m = /^#?([0-9a-f]{6})$/i.exec(String(hex == null ? '' : hex).trim());
+    if (!m) return null;
+    const v = parseInt(m[1], 16);
+    const lin = c => { c /= 255; return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
+    const L = 0.2126 * lin((v >> 16) & 255) + 0.7152 * lin((v >> 8) & 255) + 0.0722 * lin(v & 255);
+    return Math.round((1.05 / (L + 0.05)) * 100) / 100;
+  }
+  // Les seuils : 4,5 pour un texte courant, 3 pour un texte en gras ou en capitales (WCAG AA) — c'est
+  // exactement ce que l'accent colore. On PRÉVIENT, on n'interdit pas : c'est son papier.
+  const LISIBLE = { primaryColor: 4.5, accentColor: 3 };
+  function lisibiliteMarque(co) {
+    const c = co || {};
+    const out = [];
+    const p = contrasteSurBlanc(c.primaryColor || DEFAULT_COMPANY.primaryColor);
+    // `court` se lit dans la ligne du titre de la couleur (il ne pousse rien) ; `texte` l'explique.
+    const court = 'Trop claire pour être lue';
+    if (p != null && p < LISIBLE.primaryColor) out.push({ champ: 'primaryColor', rapport: p, court, texte: 'Ta couleur principale est très claire : c\'est celle de tout le texte de tes documents, et sur une page blanche il se lirait mal.' });
+    const a = contrasteSurBlanc(c.accentColor || DEFAULT_COMPANY.accentColor);
+    if (a != null && a < LISIBLE.accentColor) out.push({ champ: 'accentColor', rapport: a, court, texte: 'Ta couleur d\'accent est très claire : le numéro de la pièce, les titres de rubrique et « Net à payer » se liraient mal sur une page blanche.' });
+    return out;
+  }
+  // Un nuancier PROPOSÉ, jamais imposé (le sélecteur de couleur reste là pour tout le reste) : chaque
+  // teinte se lit sur le blanc — un test le vérifie, sinon la proposition ferait le défaut qu'elle évite.
+  const ACCENTS_PROPOSES = [
+    { nom: 'Vert d\'eau', hex: '#0f9d8f' }, { nom: 'Bleu', hex: '#2563eb' }, { nom: 'Indigo', hex: '#4f46e5' },
+    { nom: 'Vert', hex: '#15803d' }, { nom: 'Ambre', hex: '#b45309' }, { nom: 'Brique', hex: '#b91c1c' },
+    { nom: 'Prune', hex: '#86198f' }, { nom: 'Ardoise', hex: '#334155' }
+  ];
+  // Une image de marque POSÉE : un logo, un cachet, ou une couleur qui n'est plus celle d'origine.
+  // Se lit dans la fiche — une étape qu'on cocherait soi-même mentirait (7.0.0).
+  function marquePersonnalisee(co) {
+    const c = co || {};
+    const autre = (v, def) => !!String(v || '').trim() && String(v).trim().toLowerCase() !== def.toLowerCase();
+    return !!(String(c.logo || '').trim() || String(c.stampImage || '').trim()
+      || autre(c.accentColor, DEFAULT_COMPANY.accentColor) || autre(c.primaryColor, DEFAULT_COMPANY.primaryColor));
+  }
+
   function firstSteps(data, company, opts) {
     const d = data || {};
     const o = opts || {};
@@ -6395,6 +6443,14 @@
           ? `Il manque ${liste(gaps)}. Ces informations s'impriment en haut de chaque document, et une facture sans matricule fiscal n'est pas conforme.`
           : 'Raison sociale, matricule fiscal et RIB sont renseignés : tes documents sont en règle.',
         action: 'societe' },
+      // Ta facture à ton image (10.14.0) : juste après la fiche société, parce que c'est la même
+      // question — ce qui s'imprime en haut de chaque pièce. Facultative : une facture sans logo est
+      // une facture en règle, et l'étape ne passe jamais devant une étape du métier.
+      { id: 'marque', titre: 'Ta facture à ton image', fait: marquePersonnalisee(company), facultatif: true,
+        quoi: marquePersonnalisee(company)
+          ? 'Ton logo et tes couleurs habillent chaque devis et chaque facture.'
+          : 'Ton logo, ton cachet et ta couleur sur chaque devis et chaque facture — tu vois le résultat sur une vraie facture avant d\'enregistrer.',
+        action: 'marque' },
       { id: 'client', titre: 'Enregistrer ton premier client', fait: (d.clients || []).length > 0,
         quoi: 'Son adresse et son matricule se reporteront tout seuls sur chaque devis et chaque facture.',
         action: 'client' },
@@ -7922,6 +7978,7 @@
     MODULES, PAGES, moduleById, pageById, pageTitle, moduleCount, moduleCounts, modulesRevenus, moduleOn, moduleWhy, navPages, familleNavOuverte, FAMILLES_OUVERTES_AU_DEBUT,
     sousModuleOn, sousModuleById, sousModules, OPTION_LABELS,
     MODULES_PAR_ACTIVITE, modulesSuggeres, wipeData, rendreLesEmprunts, estDemo, exemplePerime, firstSteps, reussites, liste, defaultVat, seuilRetenue, newLine,
+    contrasteSurBlanc, lisibiliteMarque, ACCENTS_PROPOSES, marquePersonnalisee,
     canalDe, estBeta, pastilleLicence, empreinteCabinet, licencesDuCabinet,
     LICENCE_MOTIFS, prorataOffre, licenceSuivi, licencesAFaire,
     EXPORT_CONSOLE_DELAI, exportConsoleAFaire,

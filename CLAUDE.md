@@ -90,6 +90,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Une **extourne** n'est pas une contre-passation : l'originale reste dans son exercice, avec son numéro | 9.3.0, 9.8.0 |
 | Les **à-nouveaux** se calculent sur les écritures réelles, jamais sur les à-nouveaux précédents | 9.0.0, 9.8.0 |
 | Un **numéro** naît à la validation, et le contrôle passe AVANT l'attribution ; l'écran l'AFFICHE, il ne le recompte pas | 9.2.0 ; 6.0.0 — `nextNumber` ; 9.8.8 — T-52, le livre-journal qui renumérotait par date |
+| Un **numéro qu'on n'a pas encore pris se LIT** (`etatNumerotation`), il ne se réserve pas (`nextNumber`) | 10.14.0 — l'aperçu de la prochaine facture ; 6.0.0 |
 | On pointe une **occurrence**, jamais une règle ; et le pense-bête dit qu'il n'est qu'un pense-bête | 7.21.0, 5.2.0, 9.4.6 |
 | Un **rôle** désigne le compte ; un préfixe écrit à part se trompe de compte | 10.12.0 — la déclaration d'employeur lisait le 65, la paie écrit au 645 |
 | Une **dotation** se réclame à l'inventaire, au dernier mois ; une sortie d'actif, tout de suite | 10.12.0 |
@@ -140,6 +141,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Un **rappel qui sert à deux choses** reçoit les arguments des deux : seule une chaîne est une colonne | 10.12.0 — onze listes perdaient leur tri à chaque fiche enregistrée ; 7.17.0 |
 | Un test qui **COMPTE des usages** (« au moins trois ») laisse passer tous ceux qu'il ne compte pas : il exige la règle sur CHAQUE usage | 10.12.0 — quatre listes hors de `filtersBar` ; 7.33.0 |
 | Une assertion sur une **pile** lit son SOMMET : c'est là que « ← » va | 10.12.0 — le devis vierge n'était jamais la dernière entrée |
+| Un test qui cherche une **CLASSE** laisse passer une remarque jamais posée : on JOUE la fonction | 10.14.0 — le résumé de l'image de marque, et `data.company.name` que les crochets ne comptaient pas |
 
 **Les deux applications**
 
@@ -231,6 +233,8 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Un **état actif ne change pas la géométrie** : le gras qui fait passer à la ligne décale tout ce qui suit, au moment du clic | 10.12.0 — la barre latérale, 14 px |
 | Une **couleur de texte foncée écrite en dur a sa jumelle sombre**, dans les deux feuilles | 10.12.0 — le pied de la barre à 2,1 de contraste |
 | Un **instrument qui compare deux états** se place là où ils peuvent différer, et EXIGE cette condition — sinon il mesure l'égalité de deux défauts | 10.12.0 — la barre qui défilait : l'entrée était déjà sur deux lignes au repos |
+| Une **remarque qui dépend d'une valeur** vit dans la ligne de son titre : posée dessous, elle pousse le bouton qu'on vise | 10.14.0 — « trop claire » et « Enregistrer », 41 px |
+| Un **réglage a UNE porte** : le panneau le montre, la fenêtre qui le montre sur la pièce le change | 10.14.0 — l'image de marque ; une couleur enregistrée avant d'avoir été vue |
 
 **Ce qu'on ne fait jamais**
 
@@ -7172,6 +7176,73 @@ harnais commun `test/e2e/jouer-visites.js`) — et ce qu'il a trouvé que la sou
   déclarer ici, et la page le disait inexistant. Un état vide dit SA raison (E-06), au singulier comme
   au pluriel, avec le geste qui le remplit. Et l'état vide vit dans sa propre fonction : le test 9.4.6
   borne la taille de `drawEcheances`, et c'est la fonction qu'on sort, pas la borne qu'on relève.
+
+**Puis l'assistant de démarrage, jusqu'au bout** (Skander : « on va passer à l'assistant de démarrage
+complet » — sept lots, 213a → 213g, `test/suites/assistant.js`) : la numérotation qui continue, la porte
+qui prend une clé ou un dossier partagé, le compte depuis le RIB, le mot de passe avec la copie, la
+messagerie au premier envoi, l'import depuis un tableur, et « Ta facture à ton image ».
+
+- **Un numéro qu'on n'a pas encore pris se LIT, il ne se réserve pas.** L'aperçu de la prochaine
+  facture et la question « Je facturais déjà » lisent `etatNumerotation` (qui passe par la même règle
+  que `nextNumber`) ; `nextNumber` écrit les compteurs, et l'appeler pour MONTRER un numéro en
+  consommerait un (6.0.0). Et une série de factures déjà numérotée ici ne se règle plus : une série
+  légale reste continue.
+- **Un second chemin vers un geste irréversible porte la même garde** : « Exporter en PDF » un
+  brouillon de facture l'ÉMET — il passait sans le récapitulatif, donc sans les avertissements (RIB,
+  société incomplète, date antérieure). Le jumeau manquant (7.3.0), dans le même écran.
+- **Un refus écrit n'est pas une panne** (9.4.10, re-trouvé) : quinze refus de clé de licence
+  s'inscrivaient au journal comme des pannes, à chaque clé mal collée. Ils passent par `erreur()`.
+- **Une copie en clair sur une clé USB est la comptabilité entière** : choisir une copie externe
+  propose aussitôt le mot de passe. Et **une sauvegarde rechiffrée garde sa date** (elle prenait l'heure
+  du rechiffrement) — mais alors sa copie externe, de même taille et de même date, est jugée à jour
+  (7.30.0) et garde l'ANCIENNE clé : après un rechiffrement, elle se recopie de force.
+- **Une clause d'un modèle se décide sur le MODÈLE, jamais sur le texte rempli** : « concernant : . »
+  partait dans un mail quand l'objet était vide.
+- **Un import montre ce qui entre AVANT d'écrire, complète sans écraser, et nomme chaque refus** — la
+  ligne et ce qui y est écrit. Un fichier se lit dans SON encodage (Windows-1252 d'Excel, UTF-8,
+  UTF-16), et **une erreur de fenêtre se rattrape au lieu de se refuser** : un tarif collé chez les
+  clients (« 7 nouveaux clients », dont un nommé « Désignation ») se reconnaît et s'emmène dans le bon
+  import. Un client et un article naissent d'UN modèle (`clientVierge`, `articleVierge`) — la fiche,
+  la création à la volée et l'import.
+- **Un contraste se CALCULE (WCAG), il ne se juge pas à l'œil, et son seuil suit le RÔLE** :
+  `primaryColor` colore TOUT le texte d'une pièce (4,5), `accentColor` le numéro, les titres et « Net à
+  payer » (3). On prévient, on n'interdit pas ; et les pastilles proposées passent toutes — sinon la
+  proposition ferait le défaut qu'elle évite. Le test tient les valeurs de référence calculées à la
+  main (noir 21, blanc 1, gris #777 4,48 : c'est lui qui attrape une luminance non linéarisée).
+- **Une remarque qui dépend d'une valeur vit dans la ligne de son TITRE** (H-E1, dans une fenêtre) :
+  posée sous les choix, « trop claire » poussait « Enregistrer » de 41 px au moment où on le visait. Le
+  mot court tient en une ligne (`court`, borné par le test), la phrase entière est dans son `title`. Et
+  **une zone qui reçoit une image a une hauteur fixe** : elle grandissait de 6 px au premier logo.
+  Même famille, un écran plus tôt : la légende « * obligatoire » ajoutée SOUS le formulaire de « Ton
+  entreprise » faisait défiler son corps pour 7 px à 1440×900 — elle vit dans le pied, comme dans une
+  fenêtre (`modal()` la pose dans `.modal-actions`). Une légende suit le mécanisme qu'elle imite jusqu'à
+  sa PLACE, pas seulement jusqu'à son texte.
+- **Un réglage a UNE porte** : les Paramètres MONTRENT l'image de marque (logo, cachet, deux pastilles)
+  et la changent par un seul bouton, la fenêtre qui la montre sur la prochaine facture. Deux façons de
+  modifier la même chose divergent : « Voir sur une facture… » enregistrait d'abord une couleur qu'on
+  n'avait pas encore vue. Le test exige l'ABSENCE des anciens champs, pas seulement la présence du neuf.
+- **Un aperçu ne prend pas de numéro et ne porte pas le tampon BROUILLON** : il montre la pièce telle
+  qu'elle partira (`status: 'envoyée'` sur une COPIE, `etatNumerotation(…).prochaine`), et il passe par
+  `stampFor` comme tout document (7.13.0) — sinon le tampon de l'exemple lui échapperait.
+- **Une saisie qui ne vit pas dans des champs se garde par une FONCTION** : `modal(…, { garde: () =>
+  change() })` remplace la garde des champs (un logo choisi, une pastille cliquée n'ont pas de
+  `value`) ; et **la question d'abandon dit ce qui se perd** (`perte`) — « ce que tu viens de taper »
+  était faux pour un logo.
+- **Une pastille sans contour disparaît sur un fond de sa couleur** : l'Ardoise était invisible en
+  thème sombre. Les pastilles ont leur anneau sombre ; les images restent sur papier blanc, parce que
+  c'est ainsi qu'elles s'impriment.
+- **Chaque champ qu'on remplit le premier jour porte sa bulle** : la fiche client en avait quatre sur
+  onze, la fiche société n'en avait pas pour le téléphone, l'email et le site. Chaque bulle dit ce que
+  le CODE fait du champ (le téléphone de la société s'imprime sur les pièces et le relevé, pas sur le
+  bulletin ; l'email d'un fournisseur ne s'imprime nulle part ; SkanFact n'envoie rien depuis l'adresse
+  de la société) — une bulle fausse est pire qu'une bulle absente (10.14.0). Un test lit les quatre
+  formulaires du premier jour ; les autres champs nus de l'application sont notés dans `A-FAIRE.md`.
+- **Trois tests que la preuve a rendus plus forts** : « le résumé signale une couleur illisible »
+  cherchait la classe `mq-note`, qui vivait aussi dans une fonction jamais appelée par le gabarit — le
+  résumé est désormais JOUÉ (vm) avec une couleur pâle et une couleur d'origine ; « la fenêtre n'écrit
+  la fiche société qu'à l'enregistrement » ne comptait que les crochets et laissait passer
+  `data.company.name = …` ; et la fin de la tranche de la fenêtre était ancrée sur la garde — retirer la
+  garde faisait tomber « tranche inattendue » au lieu de « jette sans demander ».
 
 ## Pistes pour la suite (non demandées)
 

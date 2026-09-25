@@ -238,22 +238,19 @@ Skander a validé l'inventaire du 24/09 et choisi l'ordre : **d'abord la visite 
 (10.14.0), avec l'exemple sur cinq ans et le mode exemple rassurant. Le reste attend ici, dans
 l'ordre proposé.
 
-- **L'assistant de démarrage (entreprise)** — *la 10.14.0 l'a retourné* : une porte d'abord
-  (« Découvrir avec un exemple » ou « Commencer avec mon entreprise »), trois questions ensuite, et
-  le RIB, la copie de sécurité et le comptable dans « Tes premiers pas », au moment où ils servent ;
-  l'écran des règles de facturation a disparu (usages tunisiens par défaut, réglables dans
-  Paramètres), donc A1 aussi. Reste : le logo, le cachet et la couleur avec un aperçu du vrai
-  document pendant qu'on les choisit ; « où en est ta numérotation » (continuer à FAC-2026-048 et non
-  repartir à 001) ; importer ses clients et son catalogue depuis un tableur ; « j'ai déjà une clé de
-  licence » et « je rejoins un dossier partagé » dès la porte ; le compte bancaire créé depuis le RIB
-  saisi, avec son solde de départ ; le mot de passe proposé avec la copie de sécurité ; la façon
-  d'envoyer ses mails. Et trois des quatre défauts vus au test humain :
-  - ~~A1 — « Timbre fiscal par facture ( DT ) » : des espaces autour de la devise~~ (l'écran n'existe
-    plus dans l'assistant ; celui des Paramètres n'a pas le défaut).
-  - A2 — les devises proposées par leur code nu (MAD, DZD) sans leur nom.
-  - A3 — « obligatoire » en orange dans l'assistant (la raison sociale), l'étoile « * » partout ailleurs.
-  - A4 — « 1 / 7 » contre « Écran 2 sur 5 » dans le Cabinet (l'assistant de l'entreprise écrit
-    désormais « 1 / 3 », la porte ne se compte pas).
+- ~~**L'assistant de démarrage (entreprise)**~~ — *fait en 10.14.0* (213a → 213g) : la porte prend une
+  clé de licence ou un dossier partagé ; la numérotation continue (« Je facturais déjà », et
+  Paramètres → Documents → Numérotation de tes pièces) ; le RIB remplit le premier compte ; la copie
+  externe propose le mot de passe ; la messagerie se choisit au premier envoi ; Clients et Catalogue →
+  Importer… depuis un tableur ; « Ta facture à ton image » (logo, cachet, couleurs sur la prochaine
+  facture) ; A2 (devises nommées), A3 (l'étoile), A4 (« Question 1 sur 3 ») ; et les bulles de chaque
+  champ des quatre formulaires du premier jour. Chaque geste joué à la souris. Reste :
+  - **les champs sans bulle hors du premier jour** : 22 appels `field('…')` à libellé nu (paiement,
+    référence, emplacement, remise globale, destinataire d'un envoi, CIN, poste, RIB d'un salarié,
+    coût unitaire, numéro et frais d'un achat, banque d'un compte, email du comptable, remise et
+    note d'un contrat…) et quelques `<label class="field">` écrits en texte. Le test de 10.14.0
+    ne tient que les quatre formulaires du premier jour ; l'étendre à tout le fichier ferait le
+    ménage d'un coup.
 - **L'assistant du Cabinet** — *la 10.14.0 l'a retourné comme celui de l'entreprise* : la porte, deux
   questions (le nom, la liste des clients collée), et la clé de secours, la copie externe et le fichier
   d'appairage dans « Tes premiers pas ». Reste : régler la saisie et déclarer les collaborateurs dès

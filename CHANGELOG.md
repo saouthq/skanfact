@@ -32,6 +32,61 @@ pour ce qui touche au moteur.
 - **« Tes premiers pas » comptent la découverte** (la liste démarre à « 1 sur n ») ; la découverte et
   « Relier ton comptable » sont marqués facultatifs et ne passent jamais devant une étape du métier.
 
+**L'assistant de démarrage, jusqu'au bout**
+Skander : « on va passer à l'assistant de démarrage complet ». La porte et les trois questions
+existaient ; ce qui suit est ce qui manquait pour qu'un premier jour aille jusqu'à une première
+facture juste, à ton nom, sans rien ressaisir.
+- **Tu facturais déjà ailleurs ? Ta série continue.** À ta toute première émission, le récapitulatif
+  propose « Je facturais déjà : continuer ma numérotation… » : tu tapes le numéro de ta dernière
+  facture (47), et la suivante porte FAC-2026-048 — au lieu de repartir à 001 et de faire un doublon
+  sur une pièce légale. Le même réglage vit dans **Paramètres → Documents → Numérotation de tes
+  pièces** (factures, avoirs, devis) ; une série déjà numérotée ici ne se règle plus. « Exporter en
+  PDF » un brouillon de facture passe désormais par le même récapitulatif, avec ses avertissements.
+- **La porte prend une clé ou un dossier partagé.** « J'ai déjà une clé de licence… » l'enregistre
+  et reprend l'assistant avec le nom et le matricule qu'elle porte ; « Je rejoins un dossier
+  partagé… » ouvre celui d'un associé sans créer d'entreprise vide à côté.
+- **Ton RIB remplit ton premier compte bancaire**, choisir une copie externe propose aussitôt de la
+  protéger par un mot de passe, et la messagerie se choisit au premier envoi.
+- **Tes clients et ton catalogue depuis un tableur.** Clients → Importer…, Catalogue → Importer… :
+  tu colles la sélection (Excel, LibreOffice, Google Sheets) ou tu ouvres un CSV, SkanFact reconnaît
+  les colonnes à leurs titres, te montre ce qui entre AVANT d'écrire, complète une fiche existante
+  sans rien écraser, nomme chaque ligne refusée, et « Annuler » défait l'import pendant quelques
+  secondes. Une liste collée dans la mauvaise fenêtre (un tarif chez les clients) se reconnaît et
+  s'emmène dans le bon import.
+- **Ta facture à ton image.** Ton logo, ton cachet et tes couleurs se règlent en regardant ta
+  prochaine facture — son vrai numéro, tes prestations, ton premier client —, sans ouvrir de devis,
+  sans prendre de numéro et sans rien enregistrer avant ton clic. Huit couleurs proposées, qui se
+  lisent toutes sur une page blanche ; une couleur trop claire se dit **avant** d'enregistrer, dans
+  la ligne de son titre (« Trop claire pour être lue »), jamais après — et jamais en poussant le
+  bouton que tu vises. Nouvelle étape facultative des premiers pas, entrée de la recherche Ctrl K, et
+  dans **Paramètres → Documents**, l'image de marque se regarde (ton logo, ton cachet, tes deux
+  couleurs) et se change par une seule porte : « Changer le logo, le cachet ou les couleurs… ». Il n'y
+  a plus deux façons de modifier la même chose, et plus de couleur enregistrée avant d'avoir été vue.
+  Fermer la fenêtre après un choix demande avant de le jeter, et dit ce qui se perd (« le logo, le
+  cachet et les couleurs choisis ») au lieu de parler de ce qu'on aurait « tapé ».
+- **Chaque champ qu'on remplit le premier jour porte sa bulle « i »** : le téléphone, l'email et le
+  site de ta fiche société (ce qu'ils deviennent sur tes pièces, et que SkanFact n'envoie rien depuis
+  ton adresse), et toute la fiche d'un client et d'un fournisseur — nom, téléphone, email, langue,
+  devise, adresse, notes. La fiche client en avait quatre sur onze.
+- Et les petites choses qui font un logiciel fini : les devises portent leur nom (« DT — dinar
+  tunisien »), un champ obligatoire porte l'étoile au lieu d'un « OBLIGATOIRE » orange, l'assistant
+  dit « Question 1 sur 3 ».
+- **Vu à la souris, et corrigé avant de livrer** :
+  - la clé de licence collée à la porte fermait sa fenêtre sur une erreur et laissait l'écran sur la
+    porte ; et quinze refus de clé s'inscrivaient au journal comme des pannes, à chaque clé mal collée ;
+  - une sauvegarde rechiffrée par un changement de mot de passe prenait l'heure du rechiffrement, et sa
+    copie externe gardait l'ancienne clé (dans les deux applications) ;
+  - un mail disait « concernant : . » quand l'objet de la pièce était vide ;
+  - un tarif collé chez les clients faisait « 7 nouveaux clients », dont un nommé « Désignation » ;
+  - le motif d'un refus de numérotation élargissait sa colonne, et le champ partait de 220 pixels sous
+    le curseur ;
+  - la légende « * obligatoire », posée sous le formulaire de « Ton entreprise », le faisait défiler
+    pour 7 pixels : elle vit dans le pied, à côté des boutons, comme dans une fenêtre ;
+  - la remarque de lisibilité posée sous les couleurs poussait « Enregistrer » de 41 pixels au moment
+    où on le visait ; la zone d'une image grandissait de 6 pixels quand on en choisissait une ; le
+    nuancier était invisible en thème sombre ; et les Paramètres enregistraient une couleur avant de
+    l'avoir montrée sur une facture.
+
 **La visite guidée**
 - **La découverte sur l'exemple**, en douze chapitres : l'accueil, vendre, les clients et le
   catalogue, acheter, l'argent, le personnel, le stock et les biens, piloter, ton comptable, les
