@@ -494,7 +494,14 @@
       buy({ kind: 'avoir', supplierId: sp[0].id, number: 'AV-2026-0221', date: daysAgo(9),
         category: 'Achats de marchandises', subject: 'Rabais de fin d\'année',
         lines: [bline('Rabais commercial', 1, 300, 19)],
-        notes: 'À déduire de la prochaine facture de ce fournisseur.' })
+        notes: 'À déduire de la prochaine facture de ce fournisseur.' }),
+      // Un avoir que le fournisseur a REMBOURSÉ par virement (10.14.0) : il ne se rattache plus à
+      // rien, et l'argent est entré à la banque. Sans lui, l'exemple ne montrait jamais le statut
+      // « remboursé » — ni le geste « Remboursement reçu… ».
+      buy({ kind: 'avoir', supplierId: sp[0].id, number: 'AV-2026-0198', date: daysAgo(45),
+        category: 'Achats de marchandises', subject: 'Erreur de prix sur une facture réglée',
+        lines: [bline('Différence de prix facturée à tort', 1, 120, 19)],
+        payments: [{ date: daysAgo(38), amount: 'all' }] })
     ];
     // Le rattachement se pose APRÈS : une pièce se retrouve par son numéro, jamais par son indice.
     achatParNumero('ACPT-2026-11').achatLie = achatParNumero('FA-2026-1402').id;

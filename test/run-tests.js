@@ -3833,7 +3833,9 @@ t('8.5.1 : le justificatif se joint avant toute saisie, sans question, et ce qu\
   const app = lireApp();
   assert.ok(!app.includes('att-save-first'), 'plus aucun « enregistre d\'abord » pour joindre un fichier');
   const achat = app.slice(app.indexOf('routes.achat = '), app.indexOf('const AUTRES_TABS'));
-  assert.ok(achat.length > 5000 && achat.length < 40000, 'tranche routes.achat inattendue : ' + achat.length);
+  // La borne attrape une tranche qui déborde sur la route suivante ; elle se relève quand la route
+  // grandit pour de bon (10.14.0 : la pièce close, le remboursement du fournisseur).
+  assert.ok(achat.length > 5000 && achat.length < 50000, 'tranche routes.achat inattendue : ' + achat.length);
   // Le bouton de la barre est « Joindre », branché, et il ne demande NI enregistrement NI fournisseur.
   assert.ok(/id="attach-top">Joindre un justificatif/.test(achat) && /\$\('#attach-top'\)\.onclick/.test(achat), 'le bouton « Joindre un justificatif » manque ou n\'est pas branché');
   const joindre = achat.slice(achat.indexOf('const joindre = async'), achat.indexOf("$('#attach-top').onclick"));
@@ -8508,7 +8510,9 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     const i2 = code.indexOf('function drawPayments()', code.indexOf('function drawPayments()') + 10);
     const tableReg = code.slice(i2, i2 + 6000);
     assert.ok(/\$\{rowMenuCell\(x\.id\)\}/.test(tableReg), 'la ligne d\'un règlement doit porter son menu');
-    assert.ok(/label: 'Modifier ce règlement'[^\n]*supplierPaymentForm\(s2, [^\n]*, x\)/.test(tableReg), 'un règlement fournisseur doit se corriger comme un paiement client');
+    // Retournée vers la règle (10.14.0), comme sa jumelle : un remboursement reçu du fournisseur
+    // change le libellé ; « Modifier » ouvre toujours la fenêtre sur CE règlement.
+    assert.ok(/label: [^\n]*'Modifier ce règlement'[^\n]*supplierPaymentForm\(s2, [^\n]*, x\)/.test(tableReg), 'un règlement fournisseur doit se corriger comme un paiement client');
   });
 
   t('le paquet du comptable ne félicite pas un mois vide', () => {

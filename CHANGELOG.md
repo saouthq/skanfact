@@ -693,6 +693,88 @@ douze mois et l'année. Voici ce qu'il a trouvé :
   disparaissait lui aussi : il n'était ni dans le disponible, qui s'arrête aujourd'hui, ni dans ce
   qui arrive. Les deux sont projetés, chacun une seule fois, avec leur origine (« Bulletin à
   payer », « Mouvement saisi »…), et la ligne ouvre ce qu'elle nomme.
+- **La fiche d'un fournisseur dit ce qu'on lui doit NET.** Un trop-payé sur une facture et un avoir
+  qui n'a trouvé aucune facture sont de l'argent qu'il te doit : la fiche et la liste des
+  fournisseurs les retranchent désormais, comme son compte (401), et disent « en ta faveur » quand
+  c'est lui qui te doit. La carte détaille les deux : ce qui est dû, moins ce qui est à récupérer.
+- **Le fournisseur qui te rembourse : l'argent ENTRE.** Un remboursement porté sur un avoir sortait
+  de la banque dans la Trésorerie pendant que le grand livre le faisait entrer — deux banques
+  différentes pour le même compte. Il entre désormais partout, et un nouveau geste le dit :
+  « Remboursement reçu… » sur l'achat qui porte le crédit. Le montant se tape en positif, comme sur
+  le virement reçu ; la ligne porte « remboursement reçu ». Un avoir remboursé en entier passe au
+  statut **« remboursé »** : il n'est plus « à imputer », « À faire » ne demande plus de le
+  rattacher (le rattacher l'aurait déduit une seconde fois), et s'il l'est quand même, il ne diminue
+  sa facture que de ce qui n'a pas été rendu — comme le 401.
+- **Un achat d'un mois clôturé s'ouvre fermé**, et le dit avant qu'on tape : le jumeau de la pièce de
+  vente. On corrigeait l'objet d'une dépense de juillet 2025, « Enregistrer » ouvrait la fenêtre de
+  clôture, et la saisie était perdue. Le bandeau propose « Saisir un avoir sur cette pièce » et
+  « Voir les clôtures » ; le règlement, daté d'aujourd'hui, reste possible.
+- **La pièce d'achat dit ce que coûte chaque destination**, la TVA qu'on ne récupère pas comprise :
+  « Charge 139,000 » sous un carburant à 165,410 disait l'inverse du résultat et du 606.
+- **Un avoir fournisseur reprend les lignes de la pièce qu'il corrige**, leur TVA non récupérable
+  comprise : l'avoir sur un carburant partait d'une ligne à 19 % déductible et retirait de la TVA
+  récupérable une TVA qu'on n'avait jamais récupérée.
+- **La marge d'une affaire compte un remboursement de fournisseur en moins de ce qui a été payé.**
+- **Le lettrage des clients compte ce qu'on leur doit** : un avoir libre et un trop-perçu, comme le
+  411 et le relevé. Il ne regardait que ce qu'ils doivent — le jumeau du lettrage fournisseurs,
+  corrigé en 10.2.0 et jamais porté aux clients.
+- **Un article revenu à zéro ne vaut plus rien.** Un stock passé en négatif (une vente saisie avant
+  l'achat) puis comblé gardait une valeur pour zéro pièce — 100 DT de moteurs sans un seul moteur,
+  au bilan — et l'entrée qui comblait le manque gonflait le coût moyen des suivantes. Ce qui reste
+  après l'entrée vaut désormais son prix.
+- **Le coût des sorties est celui que le bilan retranche** : stock d'ouverture, plus les entrées par
+  achat, moins le stock de clôture. Le résultat simplifié et les états financiers disaient deux
+  résultats dès qu'un retour client rentrait au coût moyen (0,476 DT sur un cas simple) ou qu'un
+  article repartait de zéro. Et la ligne d'un retour affiche le coût auquel il est vraiment rentré.
+- Les colonnes des listes reçoivent leur classe : le matricule d'un fournisseur ne passe plus sur
+  deux lignes à 1440 px.
+- **Un retour de marchandise laisse le coût des sorties égal à ce que le bilan retranche.** Un
+  retour client rentrait au stock au coût moyen d'avant son entrée et se comptait à celui d'après
+  (0,476 DT d'écart sur un cas simple, sans qu'aucun écran ne paraisse faux). La ligne du retour dit
+  le coût auquel il est vraiment rentré.
+- **L'encaissé d'une affaire est l'argent reçu.** Un avoir diminue ce qu'on attend du client, il
+  n'entre pas en caisse : la fiche d'une affaire comptait l'avoir comme un encaissement (2 040 DT
+  « encaissés » pour 1 700 reçus). Et ce qu'un fournisseur rend vient en moins de ce qui a été payé.
+- **Un avoir libre dit qu'il n'est rattaché à rien.** L'aperçu d'un avoir sans facture imprimait
+  « Cet avoir vient en déduction de la facture . » — une phrase à trou, sur une pièce légale envoyée
+  au client. Il dit maintenant qu'il est à valoir sur une prochaine facture, ou remboursé ; et
+  détacher la facture dans l'éditeur défait le numéro imprimé.
+- **Un avoir resté en dinars sur une facture en euros la diminue de sa contre-valeur.** « Nouvel
+  avoir » partait en dinars : rattaché à une facture de 1 000 €, un avoir de 300 DT en retranchait
+  300 € (≈ 1 005 DT). La facture annonçait 200 € de reste, le 411 l'équivalent de 410 €. Même chose
+  côté achats. Et désormais **un avoir rattaché prend la devise, le taux et la langue de sa facture**,
+  que l'éditeur ne laisse plus changer ; un avoir enregistré avant se réaligne à l'enregistrement,
+  sans être rangé du même geste — ses montants changent de devise, ils se relisent d'abord.
+- **Un avoir ou un acompte à un autre taux que sa pièce règle le tiers au taux de la pièce.** Une
+  facture de 1 000 € à 3,35 corrigée par un avoir de 300 € saisi à 3,40 : le client ne doit plus rien
+  en euros, mais son compte gardait 15 DT pour toujours. L'écart part désormais au change — **gain de
+  change (755)** ou **perte de change (655)** —, dans les écritures, le résultat simplifié, le seuil
+  de rentabilité et les états financiers, par la même règle. Même chose pour un avoir fournisseur et
+  pour l'imputation d'un acompte versé à un autre taux. À VÉRIFIER avec le comptable.
+- **Chaque ligne du lettrage s'additionne.** Un trop-perçu se lisait « 3 685 − 3 685 = − 1 005 » :
+  l'avoir faisait la différence sans colonne. Le lettrage montre les avoirs (et, côté fournisseurs,
+  les acomptes imputés) dans leur colonne : Montant − Avoirs − Réglé = Reste, sur chaque ligne des
+  cinq ans de l'exemple, et l'export CSV l'emporte.
+- **La liasse range chaque compte sous le nom que le plan lui donne** (SkanFact Cabinet). « Produits
+  financiers » lisait le prix d'un bien cédé (775), les reprises d'amortissement (78) et les
+  transferts de charges (79), pendant que le vrai produit financier (75) était dans l'exploitation ;
+  « Autres charges » lisait les pertes extraordinaires (67). Trois rubriques naissent — Reprises,
+  Gains extraordinaires, Pertes extraordinaires —, et le 72 (production immobilisée), le 24
+  (crédit-bail), le 48 (charges et produits constatés d'avance, la première écriture d'inventaire
+  d'un cabinet) et les provisions 29, 49 et 59 ont enfin une rubrique : ils sortaient de la liasse,
+  et le bilan ne tombait plus juste. **Le 14 (« Autres capitaux propres », une subvention
+  d'investissement) était rangé sous « Provisions »**, au passif : les capitaux propres étaient
+  sous-estimés d'autant. Un modèle que le cabinet avait copié suit ces correctifs à la lecture, sauf
+  les rubriques qu'il a réécrites lui-même.
+- **Les états financiers ne comptent plus un emprunt dans les capitaux propres** (les deux
+  applications). Toute la classe 1 était rangée sous « Capitaux propres » : un emprunt de 50 000 DT
+  gonflait les fonds propres d'autant, sur le PDF de clôture envoyé au client. Et une provision sur
+  créances douteuses passait au passif comme une dette, au lieu de venir en moins des créances. Les
+  totaux tombaient juste — c'est ce qui rendait la faute invisible. Les capitaux propres sont les
+  comptes 10 à 14 ; 15 à 19 sont des « Passifs non courants ». Le rangement vit désormais en un seul
+  endroit, partagé par les deux applications.
+- **L'excédent brut d'exploitation ne compte plus les intérêts d'emprunt.** Les soldes intermédiaires
+  lisaient « charges de personnel » sur les comptes 64 et 65 ; le 65, ce sont les charges financières.
 - **L'audit permanent a grandi** : la paie des écritures contre les bulletins (640, 645, 661, 4321,
   4531), la CNSS des quatre trimestres contre l'année, la déclaration d'employeur, le timbre fiscal
   et les retenues à la source contre leurs comptes, la dotation de chaque exercice terminé contre le

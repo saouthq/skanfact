@@ -307,6 +307,8 @@
   b('#lock-unlock', "Rouvre cette pièce pour la modifier malgré son envoi.");
   b('#clos-dup', "Cette pièce est dans un mois clôturé : elle ne bouge plus. Ce bouton en fait une copie datée d'aujourd'hui, que tu peux modifier.");
   b('#clos-go', "Ouvre les clôtures : c'est là qu'un mois clôturé se rouvre, avec un motif que lira ton comptable.");
+  b('#buy-clos-avoir', "Cet achat est dans un mois clôturé : il ne bouge plus. Ce bouton saisit un avoir du fournisseur sur lui, daté d'aujourd'hui — c'est ainsi qu'un achat se corrige sans toucher au passé.");
+  b('#buy-clos-go', "Ouvre les clôtures : c'est là qu'un mois clôturé se rouvre, avec un motif que lira ton comptable.");
   b('#cancel-inv', "Marque la pièce annulée, avec son motif. Une facture émise, elle, se corrige par un avoir.");
   b('#uncancel', "Annule le marquage « annulée ».");
   b('#del', "Supprime la pièce (seulement si elle n'est pas émise). SkanFact dit d'abord ce qui y est rattaché.", { route: 'doc' });
@@ -359,6 +361,8 @@
   b('#save', "Garde la facture d'achat. Tant qu'elle n'est pas enregistrée, elle ne compte nulle part.", { route: 'achat' });
   b('#pay', "Note ton règlement au fournisseur : ce que tu lui dois se met à jour.", { route: 'achat' });
   b('#pay2', "Note ton règlement au fournisseur.", { route: 'achat' });
+  b('#recu', "Ce fournisseur te doit de l'argent — un avoir pas encore déduit, ou une facture payée en trop. Note ici le remboursement qu'il t'a fait : l'argent entre dans ta trésorerie.", { route: 'achat' });
+  b('#recu2', "Note le remboursement reçu de ce fournisseur.", { route: 'achat' });
   b('#add-line', "Ajoute une ligne d'achat.", { route: 'achat' });
   b('#add-att', "Joins le justificatif (photo, PDF).", { route: 'achat' });
   b('#more-btn', "Les gestes plus rares : dupliquer, supprimer.", { route: 'achat' });

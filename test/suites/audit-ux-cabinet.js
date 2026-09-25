@@ -3142,7 +3142,9 @@ t('Chaque classe posée par l\'app entreprise a une règle dans sa feuille, ou c
 t('Un règlement fournisseur se corrige, dans la devise de l\'achat', () => {
   const ent = code('src', 'renderer', 'app.js');
   const f = tranche(ent, 'function supplierPaymentForm(');
-  assert.ok(/function supplierPaymentForm\(p, done, pay\)/.test(f), 'le formulaire ne sait plus modifier un règlement');
+  // Retournée vers la règle (10.14.0) : la fenêtre a gagné un quatrième argument (le remboursement
+  // reçu) ; ce qui compte est qu'elle reçoive toujours le règlement à modifier en troisième.
+  assert.ok(/function supplierPaymentForm\(p, done, pay[,)]/.test(f), 'le formulaire ne sait plus modifier un règlement');
   assert.ok(/const cur = p\.currency \|\| company\(\)\.currency;/.test(f), 'le formulaire compte de nouveau un achat en euros en dinars');
   assert.ok(/closedBlock\(r0 \? \[r0\.date, v\.date\] : v\.date, 'Ce règlement'\)/.test(f), 'corriger la date d\'un règlement doit tester l\'ancienne ET la nouvelle');
   assert.ok(/if \(cible\) Object\.assign\(cible, champs\);/.test(f), 'modifier doit corriger le règlement, pas en ajouter un second');

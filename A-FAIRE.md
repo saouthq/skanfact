@@ -262,6 +262,31 @@ absente~~ (« Vendue le », en tête).
   - **Un salaire payé sans bulletin va au 640 en entier** : SkanFact ne sait pas quelle part est le
     net, le CNSS salarié ou l'IRPP retenu. À VÉRIFIER : un comptable voudra peut-être le 471, pour le
     ventiler lui-même — la contrepartie se choisit déjà à la main, dans la fenêtre du mouvement.
+  - **L'écart de change d'un RÈGLEMENT n'est pas écrit.** Un paiement d'une facture en euros se
+    convertit au taux de la facture : la banque reçoit en réalité le taux du jour, et la différence
+    (gain ou perte de change, 755/655) n'apparaît nulle part — le solde de la banque du grand livre
+    peut différer du relevé de quelques dinars. Ce qui est réglé en 10.14.0 : un avoir ou un acompte
+    à un autre taux que sa pièce. Pour un règlement, il faudrait saisir le montant reçu en dinars à
+    côté du montant en devise. À VÉRIFIER avec le comptable pilote : le taux retenu (celui du jour du
+    règlement, de la banque) et le geste attendu.
+  - **Un avoir LIBRE ne peut pas être remboursé depuis SkanFact** : seul un règlement sur une facture
+    se saisit en négatif (le trop-perçu, 10.14.0). Un avoir libre — de l'argent dû au client — ne
+    naît plus que d'un import ou d'une pièce d'avant ; il se rattache à une facture, ou se rembourse
+    par un mouvement de trésorerie à la main (qui ne le lettrera pas). À décider : un geste
+    « Rembourser cet avoir… » sur la pièce.
+  - **Un avoir libre reprend le taux de retenue à la source du client** : sur un avoir qui ne
+    corrige aucune facture, la retenue a-t-elle un sens ? À VÉRIFIER avec le comptable.
+  - **Une fenêtre qui date une saisie dans un mois clôturé la refuse à l'ENREGISTREMENT** (paiement,
+    mouvement, congé…) : l'éditeur de pièce le dit avant qu'on tape depuis la 10.14.0, les fenêtres
+    pas encore. La saisie tient en quelques champs, mais la règle 9.4.2 vaut aussi pour elles : dire
+    la clôture sous le champ date, pendant la frappe.
+  - **Un stock négatif se valorise au dernier coût connu, en négatif** (une vente saisie avant son
+    achat) : le bilan porte alors un 37 négatif jusqu'à l'achat qui le comble. C'est le signal
+    « pièce manquante » de la 4.0.0 ; un comptable voudra peut-être le ramener à zéro au bilan.
+    À VÉRIFIER.
+  - **La liasse : le 18 (comptes de liaison) n'a pas de rubrique, exprès** — un solde y est une
+    anomalie, que la liasse montre en orphelin. À confirmer par le cabinet pilote, avec la première
+    liasse réelle.
 - Les trois pistes jamais demandées, gardées pour mémoire : séparer les installateurs arm64 / x64
   (les 222 Mo du dmg universel), la signature Apple et Windows (certificats payants — mais elle
   passe **avant la première vente**, cf. `QUESTIONS.md` : un expert-comptable ne clique pas sur

@@ -93,11 +93,15 @@ module.exports = ({ t, assert }) => {
     const pay = core.payablesList(d, société, '2026-05-01');
     assert.ok(!pay.some(x => x.id === 'LIB' || x.id === 'AVO'), 'aucun avoir dans l\'échéancier');
     assert.ok(pay.some(x => x.id === 'FAC'), 'la facture, elle, y est');
-    assert.strictEqual(pay.find(x => x.id === 'FAC').remaining, 595, 'et pour son reste réel');
+    // Retourné en 10.14.0 : l'assertion attendait 595, c'est-à-dire l'avoir déduit ET remboursé. Le
+    // compte du fournisseur, lui, porte la facture 2 380 au crédit, l'avoir 1 190 au débit, le
+    // remboursement 1 190 au crédit et l'acompte 595 imputé : 1 785 dus. Un avoir remboursé ne
+    // déduit plus rien — 2 380 − 0 − 595 = 1 785, calculé à la main.
+    assert.strictEqual(pay.find(x => x.id === 'FAC').remaining, 1785, 'et pour son reste réel : l\'avoir remboursé ne la diminue plus');
     // La fiche du fournisseur, elle, compte le crédit : sinon on paierait une facture qu'un avoir
-    // couvrait déjà.
+    // couvrait déjà. 1 785 dus moins les 357 de l'avoir libre.
     const s = core.supplierSummary(d, société, 's1', '2026-05-01');
-    assert.strictEqual(s.remaining, 238, '595 dus moins 357 d\'avoir libre');
+    assert.strictEqual(s.remaining, 1428, '1 785 dus moins 357 d\'avoir libre');
   });
 
   t('10.2.0 : les écritures d\'un avoir changent de colonne, pas de signe', () => {

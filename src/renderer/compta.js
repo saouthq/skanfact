@@ -742,14 +742,14 @@
     ['627', 'Services bancaires'], ['628', 'Divers'],
     ['63', 'Charges diverses ordinaires'], ['64', 'Charges de personnel'], ['640', 'Salaires et traitements'],
     ['641', 'Rémunérations du personnel'], ['645', 'Charges sociales'], ['647', 'Charges sociales légales'],
-    ['65', 'Charges financières'], ['651', 'Intérêts des emprunts'], ['66', 'Impôts, taxes et versements assimilés'],
+    ['65', 'Charges financières'], ['651', 'Intérêts des emprunts'], ['655', 'Pertes de change'], ['66', 'Impôts, taxes et versements assimilés'],
     ['661', 'Impôts et taxes sur rémunérations (TFP, FOPROLOS)'], ['665', 'Autres impôts et taxes (TCL…)'],
     ['67', 'Pertes extraordinaires'], ['675', 'Valeur comptable des immobilisations cédées'],
     ['68', 'Dotations aux amortissements et provisions'], ['681', 'Dotations aux amortissements'], ['69', 'Impôt sur les bénéfices'],
     ['7', 'Produits'],
     ['70', 'Ventes'], ['701', 'Ventes de produits finis'], ['706', 'Prestations de services'], ['707', 'Ventes de marchandises'],
     ['708', 'Produits des activités annexes'], ['71', 'Production stockée'], ['72', 'Production immobilisée'],
-    ['73', 'Produits divers ordinaires'], ['74', 'Subventions d\'exploitation'], ['75', 'Produits financiers'],
+    ['73', 'Produits divers ordinaires'], ['74', 'Subventions d\'exploitation'], ['75', 'Produits financiers'], ['755', 'Gains de change'],
     ['77', 'Gains extraordinaires'], ['775', 'Produits des cessions d\'immobilisations'], ['78', 'Reprises sur amortissements et provisions'],
     ['79', 'Transferts de charges']
   ];
@@ -3768,6 +3768,41 @@
 
   // ---------------------------------------------------------------- les états financiers
 
+  // Le rangement des états financiers, UN pour les deux applications (10.14.0). Il vivait en deux
+  // exemplaires (ici et dans core.js), et les deux portaient la même faute : le passif rangeait la
+  // classe 1 ENTIÈRE sous « Capitaux propres » — un emprunt de 50 000 DT (16) et une provision pour
+  // risques (15) y gonflaient les fonds propres d'autant, sur le PDF de clôture envoyé au client.
+  // Le total tombait juste, donc aucun contrôle ne le voyait. Et une provision pour dépréciation
+  // des clients (49) ou des placements (59) passait au passif, comme une dette, au lieu de venir
+  // EN MOINS de ce qu'elle déprécie — actif et passif gonflés du même montant, encore une fois juste
+  // en total. Les capitaux propres sont les comptes 10 à 14 ; 15 à 19 sont des passifs non courants.
+  const PROVISION_ACTIF = /^(28|29|39|49|59)/;
+  function groupesDesEtats(rows, ligne, estAmorti) {
+    const amorti = r => PROVISION_ACTIF.test(String(r.account)) || !!(estAmorti && estAmorti(r));
+    const propres = r => /^1[0-4]/.test(String(r.account));
+    const groupe = (titre, pred, signe) => {
+      const l = rows.filter(pred).map(r => ligne(r, round3(signe * r.solde)));
+      return { titre, lignes: l, total: round3(l.reduce((s, x) => s + x.montant, 0)) };
+    };
+    return {
+      actif: [
+        groupe('Actifs non courants (valeur brute)', r => r.classe === '2' && !amorti(r), 1),
+        groupe('Amortissements et provisions', r => r.classe === '2' && amorti(r), 1),
+        groupe('Stocks', r => r.classe === '3', 1),
+        groupe('Clients et autres créances', r => r.classe === '4' && (r.solde > 0 || amorti(r)), 1),
+        groupe('Trésorerie', r => r.classe === '5' && (r.solde > 0 || amorti(r)), 1)
+      ],
+      passif: [
+        groupe('Capitaux propres et résultats reportés', r => r.classe === '1' && propres(r), -1),
+        groupe('Passifs non courants (provisions, emprunts)', r => r.classe === '1' && !propres(r), -1),
+        groupe('Fournisseurs et autres dettes', r => r.classe === '4' && r.solde < 0 && !amorti(r), -1),
+        groupe('Concours bancaires', r => r.classe === '5' && r.solde < 0 && !amorti(r), -1)
+      ],
+      produits: groupe('Produits', r => r.classe === '7', -1),
+      charges: groupe('Charges', r => r.classe === '6', 1)
+    };
+  }
+
   // Déduits de la BALANCE, rubrique par rubrique. Ce qui est garanti et testé : actif = passif, et
   // le résultat du bilan égale celui de l'état de résultat. Ce qui n'est PAS garanti : la
   // présentation exacte NCT 01, que personne n'a encore validée — et l'écran l'écrit.
@@ -3776,25 +3811,8 @@
     const libelle = o.libelle || (() => '');
     const bal = balanceDepuisLignes(lignes, ouverture || {}, libelle);
     const rows = bal.rows.filter(r => r.solde);
-    const amorti = r => /^(28|29|39|49|59)/.test(String(r.account));
-    const groupe = (titre, pred, signe) => {
-      const l = rows.filter(pred).map(r => ({ compte: r.account, libelle: r.label || '', montant: round3(signe * r.solde) }));
-      return { titre, lignes: l, total: round3(l.reduce((s, x) => s + x.montant, 0)) };
-    };
-    const actif = [
-      groupe('Actifs non courants (valeur brute)', r => r.classe === '2' && !amorti(r), 1),
-      groupe('Amortissements et provisions', r => r.classe === '2' && amorti(r), 1),
-      groupe('Stocks', r => r.classe === '3', 1),
-      groupe('Clients et autres créances', r => r.classe === '4' && r.solde > 0, 1),
-      groupe('Trésorerie', r => r.classe === '5' && r.solde > 0, 1)
-    ];
-    const passif = [
-      groupe('Capitaux propres et résultats reportés', r => r.classe === '1', -1),
-      groupe('Fournisseurs et autres dettes', r => r.classe === '4' && r.solde < 0, -1),
-      groupe('Concours bancaires', r => r.classe === '5' && r.solde < 0, -1)
-    ];
-    const produits = groupe('Produits', r => r.classe === '7', -1);
-    const charges = groupe('Charges', r => r.classe === '6', 1);
+    const { actif, passif, produits, charges } = groupesDesEtats(rows,
+      (r, montant) => ({ compte: r.account, libelle: r.label || '', montant }));
     const resultat = round3(produits.total - charges.total);
     const totalActif = round3(actif.reduce((s, g) => s + g.total, 0));
     const totalPassif = round3(passif.reduce((s, g) => s + g.total, 0) + resultat);
@@ -3814,7 +3832,9 @@
     const ventes = round3(somme(e.produits, '70') + somme(e.produits, '71'));
     const achats = round3(somme(e.charges, '60') + somme(e.charges, '61') + somme(e.charges, '62'));
     const valeurAjoutee = round3(ventes - achats);
-    const personnel = round3(somme(e.charges, '64') + somme(e.charges, '65'));
+    // Le 64 seul (10.14.0) : le 65, ce sont les charges FINANCIÈRES — un intérêt d'emprunt faisait
+    // baisser l'excédent brut d'exploitation, qui existe précisément pour ne pas le compter.
+    const personnel = somme(e.charges, '64');
     const impots = somme(e.charges, '66');
     const ebe = round3(valeurAjoutee - personnel - impots);
     const dotations = somme(e.charges, '68');
@@ -3825,7 +3845,7 @@
         { id: 'ca', label: 'Chiffre d\'affaires', montant: ventes, formule: 'comptes 70 et 71' },
         { id: 'achats', label: 'Achats et charges externes', montant: achats, formule: 'comptes 60, 61 et 62' },
         { id: 'va', label: 'Valeur ajoutée', montant: valeurAjoutee, formule: 'chiffre d\'affaires − achats et charges externes' },
-        { id: 'personnel', label: 'Charges de personnel', montant: personnel, formule: 'comptes 64 et 65' },
+        { id: 'personnel', label: 'Charges de personnel', montant: personnel, formule: 'compte 64' },
         { id: 'ebe', label: 'Excédent brut d\'exploitation', montant: ebe, formule: 'valeur ajoutée − personnel − impôts et taxes' },
         { id: 'dotations', label: 'Dotations aux amortissements', montant: dotations, formule: 'compte 68' },
         { id: 'rex', label: 'Résultat d\'exploitation', montant: resultatExploitation, formule: 'EBE − dotations' },
@@ -3916,22 +3936,40 @@
   const MODELE_LIASSE = [
     { id: 'AC1', etat: 'bilan-actif', label: 'Immobilisations incorporelles', comptes: ['20'], signe: 1 },
     { id: 'AC2', etat: 'bilan-actif', label: 'Amortissements des immobilisations incorporelles', comptes: ['280'], signe: -1, deduit: true },
-    { id: 'AC3', etat: 'bilan-actif', label: 'Immobilisations corporelles', comptes: ['21', '22', '23'], signe: 1 },
+    // 10.14.0 — le 24 (« à statut juridique particulier » au plan : un bien en crédit-bail) n'avait
+    // aucune rubrique, dans aucun sens : un dossier qui l'utilise sortait de sa liasse.
+    { id: 'AC3', etat: 'bilan-actif', label: 'Immobilisations corporelles', comptes: ['21', '22', '23', '24'], signe: 1 },
     // 10.10.0 (C-08) — « 28 » et pas seulement 281/282/283 : le moteur des deux applications écrit
     // ses dotations sur le compte 28 NU (`DEFAULT_ACCOUNTS.amortissements`), et un dossier alimenté
     // par SkanFact n'avait donc AUCUN amortissement dans sa liasse — le bilan ne tombait jamais
     // juste. 280 reste aux incorporelles : le préfixe le plus long gagne.
     { id: 'AC4', etat: 'bilan-actif', label: 'Amortissements des immobilisations corporelles', comptes: ['28'], signe: -1, deduit: true },
+    // Une provision pour dépréciation des immobilisations (29) vient EN MOINS de l'actif, comme un
+    // amortissement ; sans rubrique, elle sortait de la liasse (10.14.0).
+    { id: 'AC11', etat: 'bilan-actif', label: 'Provisions pour dépréciation des immobilisations', comptes: ['29'], signe: -1, deduit: true },
     { id: 'AC5', etat: 'bilan-actif', label: 'Immobilisations financières', comptes: ['25', '26', '27'], signe: 1 },
     { id: 'AC6', etat: 'bilan-actif', label: 'Stocks', comptes: ['3'], signe: 1 },
     { id: 'AC7', etat: 'bilan-actif', label: 'Provisions sur stocks', comptes: ['39'], signe: -1, deduit: true },
     { id: 'AC8', etat: 'bilan-actif', label: 'Clients et comptes rattachés', comptes: ['41'], signe: 1 },
     // Un fournisseur DÉBITEUR (avoir non imputé, acompte versé — 10.2.0) est une créance : sans
     // « 40 » ici, il sortait de la liasse. Le sens du solde le départage de PA3.
-    { id: 'AC9', etat: 'bilan-actif', label: 'Autres actifs courants', comptes: ['40', '42', '43', '44', '45', '46', '47'], signe: 1 },
+    // Le 48 (comptes de régularisation : charges constatées d'avance au débit, produits constatés
+    // d'avance au crédit) est la première écriture d'inventaire d'un cabinet — il n'avait pas de
+    // rubrique (10.14.0). Le sens du solde le départage de PA4.
+    { id: 'AC9', etat: 'bilan-actif', label: 'Autres actifs courants', comptes: ['40', '42', '43', '44', '45', '46', '47', '48'], signe: 1 },
+    // Une provision sur créances douteuses (49) vient en moins des créances qu'elle déprécie ; sans
+    // rubrique elle sortait de la liasse, et dans les états elle passait pour une dette (10.14.0).
+    { id: 'AC12', etat: 'bilan-actif', label: 'Provisions sur clients et autres créances', comptes: ['49'], signe: -1, deduit: true },
     { id: 'AC10', etat: 'bilan-actif', label: 'Liquidités et équivalents', comptes: ['5'], signe: 1 },
+    // Et une provision sur placements (59), en moins des liquidités — le préfixe « 5 » en faisait un
+    // concours bancaire.
+    { id: 'AC13', etat: 'bilan-actif', label: 'Provisions sur placements et liquidités', comptes: ['59'], signe: -1, deduit: true },
     { id: 'CP1', etat: 'bilan-passif', label: 'Capital social', comptes: ['10'], signe: -1 },
     { id: 'CP2', etat: 'bilan-passif', label: 'Réserves et primes', comptes: ['11'], signe: -1 },
+    // 10.14.0 — le 14 s'appelle « Autres capitaux propres » au plan (subventions d'investissement)
+    // et il était rangé sous « Provisions », au passif : les capitaux propres de la liasse étaient
+    // sous-estimés d'autant, en tombant quand même juste.
+    { id: 'CP5', etat: 'bilan-passif', label: 'Autres capitaux propres', comptes: ['14'], signe: -1 },
     // Le 12 s'appelle « Résultats reportés » dans le plan, et le 13 porte les exercices passés
     // (à-nouveau, 8.8.0) : les deux sont des résultats reportés. Et un résultat reporté peut être
     // une PERTE — un solde débiteur, que la rubrique n'acceptait pas : il sortait de la liasse, et
@@ -3940,16 +3978,19 @@
     { id: 'CP3', etat: 'bilan-passif', label: 'Résultats reportés', comptes: ['12', '13'], signe: -1, deuxSens: true },
     { id: 'CP4', etat: 'bilan-passif', label: 'Résultat de l\'exercice', comptes: [], signe: -1, resultat: true },
     { id: 'PA1', etat: 'bilan-passif', label: 'Emprunts et dettes financières', comptes: ['16', '17'], signe: -1 },
-    { id: 'PA2', etat: 'bilan-passif', label: 'Provisions', comptes: ['14', '15'], signe: -1 },
+    { id: 'PA2', etat: 'bilan-passif', label: 'Provisions', comptes: ['15'], signe: -1 },
     { id: 'PA3', etat: 'bilan-passif', label: 'Fournisseurs et comptes rattachés', comptes: ['40'], signe: -1 },
     // Un client CRÉDITEUR (avance reçue, avoir non remboursé) est une dette.
-    { id: 'PA4', etat: 'bilan-passif', label: 'Autres passifs courants', comptes: ['41', '42', '43', '44', '45', '46', '47'], signe: -1 },
+    { id: 'PA4', etat: 'bilan-passif', label: 'Autres passifs courants', comptes: ['41', '42', '43', '44', '45', '46', '47', '48'], signe: -1 },
     { id: 'PA5', etat: 'bilan-passif', label: 'Concours bancaires', comptes: ['5'], signe: -1 },
     // Un compte de gestion peut changer de sens sans changer de nature : des avoirs de vente qui
     // dépassent les ventes d'un compte, un stock qui baisse (603), un rabais obtenu sur un achat.
     // Ils restent dans leur rubrique, en moins — les sortir de la liasse la faussait.
     { id: 'RE1', etat: 'resultat', label: 'Revenus', comptes: ['70', '71'], signe: -1, deuxSens: true },
-    { id: 'RE2', etat: 'resultat', label: 'Autres produits d\'exploitation', comptes: ['73', '74', '75'], signe: -1, deuxSens: true },
+    // 10.14.0 — le 75 est « Produits financiers » dans le plan de cette application : il n'a rien à
+    // faire dans l'exploitation. Le 79 (transferts de charges), lui, y est chez lui.
+    // Le 72 (production immobilisée) est un produit d'exploitation, et il n'avait aucune rubrique.
+    { id: 'RE2', etat: 'resultat', label: 'Autres produits d\'exploitation', comptes: ['72', '73', '74', '79'], signe: -1, deuxSens: true },
     { id: 'RE3', etat: 'resultat', label: 'Achats consommés', comptes: ['60'], signe: 1, charge: true, deuxSens: true },
     { id: 'RE4', etat: 'resultat', label: 'Charges externes', comptes: ['61', '62'], signe: 1, charge: true, deuxSens: true },
     // 10.12.0 (U-03) — les charges sociales patronales (645, 647) font partie des charges de
@@ -3962,9 +4003,19 @@
     { id: 'RE5', etat: 'resultat', label: 'Charges de personnel', comptes: ['64'], signe: 1, charge: true, deuxSens: true },
     { id: 'RE7', etat: 'resultat', label: 'Impôts et taxes', comptes: ['66'], signe: 1, charge: true, deuxSens: true },
     { id: 'RE8', etat: 'resultat', label: 'Dotations aux amortissements et provisions', comptes: ['68'], signe: 1, charge: true, deuxSens: true },
-    { id: 'RE9', etat: 'resultat', label: 'Autres charges', comptes: ['63', '67'], signe: 1, charge: true, deuxSens: true },
-    { id: 'RE10', etat: 'resultat', label: 'Produits financiers', comptes: ['76', '77', '78', '79'], signe: -1, deuxSens: true },
+    // Les reprises (78) viennent en face des dotations (68) qu'elles défont.
+    { id: 'RE12', etat: 'resultat', label: 'Reprises sur amortissements et provisions', comptes: ['78'], signe: -1, deuxSens: true },
+    { id: 'RE9', etat: 'resultat', label: 'Autres charges', comptes: ['63'], signe: 1, charge: true, deuxSens: true },
+    // 10.14.0 — « Produits financiers » lisait 76, 77, 78 et 79 : le prix d'un bien cédé (775, un
+    // gain extraordinaire au plan), une reprise d'amortissement et un transfert de charges s'y
+    // présentaient comme des produits de placement, et le vrai produit financier (75) était dans
+    // l'exploitation. Le 76 reste ici : un cabinet habitué à l'autre plan y range ses intérêts.
+    { id: 'RE10', etat: 'resultat', label: 'Produits financiers', comptes: ['75', '76'], signe: -1, deuxSens: true },
     { id: 'RE6', etat: 'resultat', label: 'Charges financières', comptes: ['65'], signe: 1, charge: true, deuxSens: true },
+    // Le prix d'une cession (775) et la valeur du bien cédé (675) se lisent côte à côte, sous les noms
+    // que le plan leur donne.
+    { id: 'RE13', etat: 'resultat', label: 'Gains extraordinaires', comptes: ['77'], signe: -1, deuxSens: true },
+    { id: 'RE14', etat: 'resultat', label: 'Pertes extraordinaires', comptes: ['67'], signe: 1, charge: true, deuxSens: true },
     { id: 'RE11', etat: 'resultat', label: 'Impôt sur les bénéfices', comptes: ['69'], signe: 1, charge: true, deuxSens: true }
   ];
 
@@ -3986,9 +4037,28 @@
     CP2: { comptes: ['11', '12'], signe: -1 },
     CP3: { comptes: ['13'], signe: -1 },
     PA4: { comptes: ['42', '43', '44', '45', '46', '47'], signe: -1 },
-    RE10: { comptes: ['76'], signe: -1 }
+    RE10: { comptes: ['76'], signe: -1 },
+    // Écrites en toutes lettres depuis la 10.14.0, qui a changé leurs comptes : les déduire du
+    // modèle d'aujourd'hui ne reconnaîtrait plus la copie d'hier.
+    RE2: { comptes: ['73', '74', '75'], signe: -1 },
+    RE9: { comptes: ['63', '67'], signe: 1 }
   };
-  const RE_10_0_0 = ['RE1', 'RE2', 'RE3', 'RE4', 'RE5', 'RE6', 'RE7', 'RE8', 'RE9', 'RE11'];
+  const RE_10_0_0 = ['RE1', 'RE3', 'RE4', 'RE5', 'RE6', 'RE7', 'RE8', 'RE11'];
+  // 10.14.0 — les rubriques livrées jusqu'à la 10.13.0 qui contredisaient le plan ou laissaient un
+  // compte du plan dehors, TELLES QU'ELLES ÉTAIENT (drapeau « deux sens » compris), et les rubriques
+  // nées pour les remplacer. Même règle : on ne touche qu'une ligne restée IDENTIQUE à celle d'alors,
+  // et on n'ajoute une rubrique que si aucune ligne ne lit déjà ses comptes — sinon deux rubriques
+  // se disputeraient le même compte. Une rubrique ajoutée se pose après sa voisine du modèle.
+  const LIASSE_10_13 = {
+    AC3: { comptes: ['21', '22', '23'], signe: 1 },
+    AC9: { comptes: ['40', '42', '43', '44', '45', '46', '47'], signe: 1 },
+    PA2: { comptes: ['14', '15'], signe: -1 },
+    PA4: { comptes: ['41', '42', '43', '44', '45', '46', '47'], signe: -1 },
+    RE2: { comptes: ['73', '74', '75'], signe: -1, deuxSens: true },
+    RE9: { comptes: ['63', '67'], signe: 1, deuxSens: true },
+    RE10: { comptes: ['76', '77', '78', '79'], signe: -1, deuxSens: true }
+  };
+  const RUBRIQUES_10_14 = ['AC11', 'AC12', 'AC13', 'CP5', 'RE12', 'RE13', 'RE14'];
   function migrerModeleLiasse(table) {
     if (!Array.isArray(table) || !table.length) return table;
     const livre = new Map(MODELE_LIASSE.map(r => [r.id, r]));
@@ -3998,16 +4068,47 @@
       return v && r.label === v.label && meme(r.comptes || [], v.comptes)
         ? { ...r, label: livre.get(r.id).label } : r;
     };
-    return table.map(r0 => {
+    const out = table.map(r0 => {
       const r = renommer(r0);
       const neuf = livre.get(r && r.id);
       if (!neuf) return r;
+      const v13 = LIASSE_10_13[r.id];
+      if (v13 && !!r.deuxSens === !!v13.deuxSens && meme(r.comptes || [], v13.comptes) && Number(r.signe) === v13.signe) {
+        return { ...r, comptes: neuf.comptes.slice() };
+      }
       const vieux = LIASSE_10_0_0[r.id]
         || (RE_10_0_0.includes(r.id) ? { comptes: neuf.comptes, signe: neuf.signe } : null);
       if (!vieux || r.deuxSens) return r;
       if (!meme(r.comptes || [], vieux.comptes) || Number(r.signe) !== vieux.signe) return r;
       return { ...r, comptes: neuf.comptes.slice(), deuxSens: !!neuf.deuxSens };
     });
+    // Une ligne « lit déjà » les comptes d'une rubrique neuve si elle porte ce préfixe ou un plus
+    // précis — ou un préfixe plus COURT que le cabinet a écrit lui-même (une rubrique « 7 » pour
+    // tous ses produits est son choix). Un préfixe plus court resté celui du modèle ne compte pas :
+    // la rubrique neuve existe précisément pour lui reprendre ce compte (le 59 que « 5 » rangeait
+    // en concours bancaire).
+    const lit = p => out.some(r => (r.comptes || []).some(c0 => {
+      const c = String(c0);
+      if (c.startsWith(p)) return true;
+      if (!p.startsWith(c)) return false;
+      const neuf = livre.get(r.id);
+      return !(neuf && meme(r.comptes || [], neuf.comptes));
+    }));
+    const ordre = MODELE_LIASSE.map(r => r.id);
+    ordre.filter(id => RUBRIQUES_10_14.includes(id)).forEach(id => {
+      const neuf = livre.get(id);
+      if (out.some(r => r.id === id) || neuf.comptes.some(lit)) return;
+      // Après la rubrique qui la précède dans le modèle, si la copie la porte ; sinon après la
+      // dernière rubrique du même état ; sinon à la fin.
+      const avant = ordre.slice(0, ordre.indexOf(id)).reverse().find(x => out.some(r => r.id === x));
+      let i = avant ? out.findIndex(r => r.id === avant) + 1 : -1;
+      if (i < 0) {
+        const j = out.map(r => r.etat).lastIndexOf(neuf.etat);
+        i = j < 0 ? out.length : j + 1;
+      }
+      out.splice(i, 0, { ...neuf, comptes: neuf.comptes.slice() });
+    });
+    return out;
   }
 
   const modeleLiasse = table => (Array.isArray(table) && table.length ? table : MODELE_LIASSE);
@@ -5552,7 +5653,7 @@
     FIGE_A_LA_CLOTURE, empreinteFigee, refusExerciceClos,
     biensAReprendre, salariesAReprendre, reporterBiens, reporterSalaries, ouvrirExerciceSuivant,
     anEnVigueur, livreSuivantVide, ecartAnouveaux, lignesComplementAnouveaux, poserComplementAnouveaux, etatExerciceSuivant, dateDuMiroir,
-    etatsDepuisLignes, sigDepuisLignes, dossierDeCloture, clotureValide,
+    etatsDepuisLignes, groupesDesEtats, sigDepuisLignes, dossierDeCloture, clotureValide,
     // La liasse et l'annuel (10.0.0)
     LIASSE_ETATS, MODELE_LIASSE, RETRAITEMENTS,
     modeleLiasse, migrerModeleLiasse, rubriqueDuCompte, liasseDepuisLignes,

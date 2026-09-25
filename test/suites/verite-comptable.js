@@ -153,9 +153,12 @@ function ecarts(data) {
   const lc = core.lettrage(data, co, 'clients'), lf = core.lettrage(data, co, 'fournisseurs');
   ecart('411 / lettrage clients', solde(bgT, acc.clients), lc.reste);
   ecart('401 / lettrage fournisseurs', -solde(bgT, acc.fournisseurs), lf.reste);
-  ecart('restes des factures / lettrage clients', (data.documents || [])
+  // Les restes des factures, moins les avoirs LIBRES (une somme due au client, 10.14.0).
+  ecart('restes des factures − avoirs libres / lettrage clients', (data.documents || [])
     .filter(d => d.type === 'facture' && d.number && d.status !== 'brouillon')
-    .reduce((s, d) => s + core.toBase(d, core.invoiceBalance(d, data, co).remaining, co), 0), lc.reste);
+    .reduce((s, d) => s + core.toBase(d, core.invoiceBalance(d, data, co).remaining, co), 0)
+    - (data.documents || []).filter(d => d.type === 'avoir' && !d.creditOf && d.number && d.status !== 'brouillon' && d.status !== 'annulée')
+      .reduce((s, d) => s + core.toBase(d, core.computeTotals(d, co).netToPay, co), 0), lc.reste);
   // Le 425 : les nets des bulletins pas encore réglés, moins ce qui reste à rembourser des avances.
   const netsDus = (data.payslips || []).filter(s => !s.paidDate || s.paidDate > T).reduce((s, sl) => s + ((sl.computed || {}).net || 0), 0);
   const avances = (data.employees || []).reduce((s, e) => s + core.advanceBalance(data, e.id), 0);
@@ -185,7 +188,31 @@ function ecarts(data) {
     const aux = -(baf.rows.find(r => r.tiersId === f.id) || { solde: 0 }).solde;
     ecart(`fournisseur ${f.name} : compte / pièces`, aux, (data.purchases || []).filter(p => p.supplierId === f.id)
       .reduce((s, p) => s + core.toBase(p, core.purchaseBalance(p, co, data).remaining, co), 0));
+    // Sa fiche dit le même net que son compte (10.14.0) : un trop-payé est un crédit, comme un avoir libre.
+    ecart(`fournisseur ${f.name} : fiche / compte`, core.supplierSummary(data, co, f.id, T).remaining, aux);
   });
+  // Le graphique de l'accueil, mois par mois sur cinq ans : le facturé est le chiffre d'affaires, et
+  // l'encaissé ce que la Trésorerie voit entrer des clients (remboursements d'un trop-perçu déduits).
+  core.monthlySeries(data, co, T, 60).forEach(x => {
+    const y = +x.month.slice(0, 4), m = +x.month.slice(5, 7);
+    const pm = { from: `${x.month}-01`, to: `${x.month}-${new Date(Date.UTC(y, m, 0)).getUTCDate()}` };
+    ecart(`${x.month} accueil : facturé / chiffre d'affaires`, x.invoiced, core.salesTotals(data, co, pm.from, pm.to).ht);
+    ecart(`${x.month} accueil : encaissé / Trésorerie`, x.collected, core.cashMovements(data, co, pm, null).filter(v => v.source === 'vente').reduce((s, v) => s + v.amount, 0));
+  });
+  // Chaque affaire : son chiffre d'affaires est celui de ses écritures, son encaissé et son payé ceux
+  // de la Trésorerie.
+  const tout = { from: '2000-01-01', to: '2999-12-31' };
+  const mvTout = core.cashMovements(data, co, tout, null);
+  const ventes = core.journalEntries(data, co, { from: '2000-01-01', to: T }, { sections: ['ventes'] });
+  (data.projects || []).forEach(p => {
+    const pm = core.projectMargin(data, co, p.id), ids = new Set(pm.sales.map(d => d.id)), achats = new Set(pm.buys.map(b => b.id));
+    ecart(`affaire ${p.name} : CA / écritures`, pm.revenue, -ventes.filter(e => ids.has(e.docId) && e.account.startsWith('70')).reduce((s, e) => s + e.debit - e.credit, 0));
+    ecart(`affaire ${p.name} : encaissé / Trésorerie`, pm.collected, mvTout.filter(v => v.source === 'vente' && ids.has(v.docId)).reduce((s, v) => s + v.amount, 0));
+    ecart(`affaire ${p.name} : payé / Trésorerie`, pm.paid, -mvTout.filter(v => v.source === 'achat' && achats.has(v.purchaseId)).reduce((s, v) => s + v.amount, 0));
+  });
+  // Le stock de chaque article est la somme de ses mouvements.
+  core.stockList(data, T).forEach(x => ecart(`stock ${x.label} : quantité / mouvements`, x.qty,
+    core.stockMovements(data, x.itemId).filter(v => v.date <= T).reduce((s, v) => s + v.qty, 0)));
   return out;
 }
 
@@ -549,5 +576,410 @@ t('10.14.0 : la prévision de trésorerie compte les salaires dus et ce qui est 
   assert.deepStrictEqual(par('saisi').sort(), [['2026-06-15', 191], ['2026-06-20', -900], ['2026-07-03', -700]], 'ce qui est saisi pour plus tard sort ou entre à sa date');
   assert.deepStrictEqual(par('client'), [['2026-06-30', 1000]], 'la facture n\'attend plus que son reste');
   assert.strictEqual(f.end, 5000 - 1200 + 191 - 900 - 700 + 1000);
+});
+t('10.14.0 : la fiche d\'un fournisseur dit ce qu\'on lui doit NET — un trop-payé est un crédit, comme un avoir libre', () => {
+  // Calculé à la main, TVA à 0 pour des montants ronds :
+  //  - facture A de 1 000, payée 1 100 → on a payé 100 de trop : un crédit chez lui ;
+  //  - facture B de 500, rien payé → 500 dus ;
+  //  - avoir libre de 50 → un crédit de 50.
+  // Dû 500, à récupérer 150, net 350 — ce que dit son compte 401. La fiche disait 450 : elle
+  // comptait l'avoir libre et oubliait le trop-payé, deux crédits de même nature.
+  const ligne = m => [{ label: 'Fournitures', qty: 1, unitPrice: m, vatRate: 0, destination: 'charge' }];
+  const data = core.migrateData({
+    company: { ...CO },
+    suppliers: [{ id: 'f', name: 'Bureau Plus' }],
+    purchases: [
+      { id: 'a', kind: 'facture', supplierId: 'f', number: 'A-1', date: '2026-03-01', lines: ligne(1000), payments: [{ id: 'pa', date: '2026-03-10', amount: 1100 }] },
+      { id: 'b', kind: 'facture', supplierId: 'f', number: 'B-1', date: '2026-04-01', lines: ligne(500), payments: [] },
+      { id: 'c', kind: 'avoir', supplierId: 'f', number: 'AV-1', date: '2026-04-15', lines: ligne(50), payments: [] }
+    ]
+  });
+  const s = core.supplierSummary(data, data.company, 'f', '2026-06-10');
+  assert.strictEqual(s.due, 500, 'ce qui reste dû sur ses factures');
+  assert.strictEqual(s.aRecuperer, 150, 'le trop-payé (100) et l\'avoir libre (50)');
+  assert.strictEqual(s.remaining, 350, 'la fiche dit le même net que le compte du fournisseur');
+  const aux = core.balanceAuxiliaire(data, data.company, { from: '2026-01-01', to: '2026-06-10' }, 'fournisseurs');
+  assert.strictEqual(-(aux.rows.find(r => r.tiersId === 'f') || { solde: 0 }).solde, 350, 'le compte auxiliaire, calculé à la main');
+});
+t('10.14.0 : une colonne qui porte une classe la reçoit sur ses cellules — dans chaque liste', () => {
+  // Le matricule d'un fournisseur passait sur deux lignes à 1440 px : la colonne déclarait `cls: 'mf'`
+  // (la règle qui garde le matricule sur une ligne quand la place le permet), et la liste des
+  // fournisseurs ne posait pas la classe sur ses cellules. Chaque dessin de `cols` la pose.
+  const app = require('fs').readFileSync(require('path').join(__dirname, '../../src/renderer/app.js'), 'utf8');
+  const nus = app.match(/cols\.map\(\(?c(?:, i)?\)? => `<td class="\$\{c\.r \? 'r nw' : ''\}">/g) || [];
+  assert.deepStrictEqual(nus, [], `${nus.length} liste(s) dessinent leurs colonnes sans leur classe`);
+  assert.ok((app.match(/\$\{c\.cls \? ' ' \+ c\.cls : ''\}/g) || []).length >= 8, 'la forme qui pose la classe est celle des listes');
+});
+t('10.14.0 : un achat d\'un mois clôturé s\'ouvre fermé, et le dit avant qu\'on tape — le jumeau de la pièce de vente', () => {
+  // Vu à la souris sur l'exemple : une dépense de juillet 2025 (clôturé) s'ouvrait modifiable ; on
+  // corrigeait l'objet, « Enregistrer » ouvrait la fenêtre de clôture, et la saisie était perdue.
+  const app = require('fs').readFileSync(require('path').join(__dirname, '../../src/renderer/app.js'), 'utf8');
+  const i = app.indexOf('routes.achat = (parts) => {');
+  const zone = app.slice(i, app.indexOf('\n  // ---------- Autres documents', i));
+  assert.ok(i > 0 && zone.length > 5000 && zone.length < 60000, `tranche inattendue (${zone.length})`);
+  assert.ok(/const clos = !!stored && !!stored\.date && C\.isClosedDate\(data, stored\.date\)/.test(zone), 'l\'éditeur d\'achat ne sait pas qu\'une pièce est close');
+  assert.ok(/\$\{clos \? '' : `<button class="btn \$\{isNew \? 'btn-primary' : ''\}" id="save">/.test(zone), '« Enregistrer » reste proposé sur une pièce close');
+  assert.ok(/\$\{clos \? '' : '<button id="del" class="danger">/.test(zone), '« Supprimer » reste proposé sur une pièce close');
+  assert.ok(/id="clos-banner"/.test(zone) && /id="buy-clos-avoir"/.test(zone), 'la pièce close ne dit pas pourquoi, ni comment la corriger');
+  assert.ok(/if \(clos\) \$\$\('#b-head input:not\(\[type=hidden\]\), #b-head select, #b-head textarea, #b-notes'\)\.forEach\(el => \{ el\.disabled = true; \}\)/.test(zone), 'l\'en-tête d\'une pièce close reste modifiable');
+  assert.ok(/if \(clos\) \$\$\('input, select', body\)\.forEach\(el => \{ el\.disabled = true; \}\)/.test(zone), 'les lignes d\'une pièce close restent modifiables');
+  // Le règlement, lui, reste possible : il est daté d'aujourd'hui, dans un mois ouvert.
+  assert.ok(/\$\{!isNew && C\.purchaseBalance\(stored, company\(\), data\)\.remaining > 0\.0005 \? '<button class="btn btn-primary" id="pay">/.test(zone), 'le règlement d\'une pièce close ne doit pas disparaître');
+});
+t('10.14.0 : la pièce d\'achat dit ce que coûte chaque destination — la TVA qu\'on ne récupère pas comprise', () => {
+  // Calculé à la main : un plein de carburant de 139 HT à 19 %, TVA non déductible : 26,410 de TVA
+  // qu'on ne récupère pas, donc une charge de 165,410 — ce que comptent le résultat et le 606.
+  const p = { kind: 'depense', date: '2026-07-13', lines: [{ label: 'Carburant', qty: 1, unitPrice: 139, vatRate: 19, destination: 'charge', deductible: false }] };
+  const tt = core.purchaseTotals(p, CO);
+  assert.strictEqual(tt.byDestination.charge, 139, 'le HT de la destination');
+  assert.strictEqual(tt.nonDeductibleParDestination.charge, 26.41, 'la TVA non récupérable, en devise de la pièce');
+  assert.strictEqual(r3(tt.byDestination.charge + tt.nonDeductibleParDestination.charge), core.coutAchat(tt), 'ce que dit la pièce est ce que compte le résultat');
+  const app = require('fs').readFileSync(require('path').join(__dirname, '../../src/renderer/app.js'), 'utf8');
+  assert.ok(/\$\{lab\} \$\{C\.money\(C\.round3\(t\.byDestination\[k\] \+ \(nd\[k\] \|\| 0\)\), cur\)\}/.test(app), 'la pièce annonce le HT seul sous le nom de la destination');
+  assert.ok(/const dest = p\.kind === 'acompte' \? \[\] :/.test(app), 'un acompte annonce une destination, sous la phrase qui dit qu\'il n\'en est pas une');
+});
+t('10.14.0 : un avoir fournisseur reprend les lignes de la pièce qu\'il corrige — sa TVA non récupérable comprise', () => {
+  // Le jumeau de l'avoir de vente (`creditDraftFrom`, qui copie les lignes depuis toujours). Sans
+  // ça, l'avoir sur un carburant à TVA non déductible partait d'une ligne à 19 % déductible : il
+  // retirait de la TVA récupérable une TVA qu'on n'avait jamais récupérée.
+  const app = require('fs').readFileSync(require('path').join(__dirname, '../../src/renderer/app.js'), 'utf8');
+  const i = app.indexOf('routes.achat = (parts) => {');
+  const zone = app.slice(i, i + 5000);
+  assert.ok(/if \(p\.kind === 'avoir'\) \{\s*p\.lines = deepCopy\(vise\.lines \|\| \[\]\)/.test(zone), 'l\'avoir fournisseur ne reprend pas les lignes de sa pièce');
+  assert.ok(/p\.projectId = vise\.projectId \|\| ''/.test(zone), 'l\'avoir ne reste pas dans l\'affaire de sa pièce');
+  // Et ce que ça change, calculé à la main : un avoir de 139 HT sur un carburant non déductible
+  // retire 0 de TVA déductible — pas 26,410.
+  const av = { kind: 'avoir', date: '2026-09-25', lines: [{ label: 'Carburant', qty: 1, unitPrice: 139, vatRate: 19, destination: 'charge', deductible: false }] };
+  assert.strictEqual(core.purchaseTotals(av, CO).base.deductibleVAT, 0);
+});
+t('10.14.0 : le fournisseur qui rend de l\'argent — l\'argent ENTRE, dans la Trésorerie comme au grand livre', () => {
+  // Calculé à la main. Banque 1 000 au 1er janvier.
+  //  - facture A de 1 000, payée 1 100 le 10 mars, le fournisseur rend les 100 le 20 mars
+  //    (un règlement NÉGATIF sur A) ;
+  //  - avoir libre de 50, que le fournisseur rembourse le 20 avril (un règlement sur l'avoir).
+  // Banque : 1 000 − 1 100 + 100 + 50 = 50. Le fournisseur ne doit plus rien, on ne lui doit rien.
+  // La Trésorerie sortait le remboursement de l'avoir du compte (−50) quand le journal l'y faisait
+  // entrer : 950 d'un côté, 1 050 de l'autre, sur le même compte.
+  const ligne = m => [{ label: 'Fournitures', qty: 1, unitPrice: m, vatRate: 0, destination: 'charge' }];
+  const data = core.migrateData({
+    company: { ...CO },
+    accounts: [{ id: 'b', name: 'Banque', kind: 'banque', opening: 1000, openingDate: '2026-01-01', isDefault: true }],
+    suppliers: [{ id: 'f', name: 'Bureau Plus' }],
+    purchases: [
+      { id: 'a', kind: 'facture', supplierId: 'f', number: 'A-1', date: '2026-03-01', lines: ligne(1000),
+        payments: [{ id: 'pa', date: '2026-03-10', amount: 1100, accountId: 'b' }, { id: 'ra', date: '2026-03-20', amount: -100, accountId: 'b' }] },
+      { id: 'c', kind: 'avoir', supplierId: 'f', number: 'AV-1', date: '2026-04-15', lines: ligne(50),
+        payments: [{ id: 'rc', date: '2026-04-20', amount: 50, accountId: 'b' }] }
+    ]
+  });
+  const co = data.company;
+  const mv = core.cashMovements(data, co, { from: '2026-01-01', to: '2026-12-31' }, null).map(m => [m.date, m.kind, m.amount]);
+  assert.deepStrictEqual(mv.sort(), [['2026-03-10', 'decaissement', -1100], ['2026-03-20', 'encaissement', 100], ['2026-04-20', 'encaissement', 50]]);
+  assert.strictEqual(core.accountBalance(data, co, 'b', '2026-12-31').balance, 50);
+  assert.ok(core.estRemboursementAchat(data.purchases[0], data.purchases[0].payments[1]) && core.estRemboursementAchat(data.purchases[1], data.purchases[1].payments[0]), 'les deux gestes sont des remboursements');
+  assert.ok(!core.estRemboursementAchat(data.purchases[0], data.purchases[0].payments[0]), 'un règlement ordinaire n\'en est pas un');
+  assert.strictEqual(core.supplierSummary(data, co, 'f', '2026-12-31').remaining, 0, 'rien de dû, rien à récupérer');
+  // Et les deux chemins de chaque chiffre disent la même chose.
+  const e = ecarts(data);
+  assert.deepStrictEqual(e, [], e.join('\n'));
+});
+t('10.14.0 : « Remboursement reçu » range le signe — positif sur un avoir, négatif sur une facture payée en trop', () => {
+  // Le montant se tape en positif, comme sur le virement reçu. Rangé tel quel sur une facture, il
+  // devenait un SECOND règlement : le trop-payé doublait au lieu de revenir à zéro.
+  const app = require('fs').readFileSync(require('path').join(__dirname, '../../src/renderer/app.js'), 'utf8');
+  const i = app.indexOf('function supplierPaymentForm(p, done, pay, recu)');
+  const zone = app.slice(i, app.indexOf('\n  routes.achat = ', i));
+  assert.ok(i > 0 && zone.length > 2000 && zone.length < 9000, `tranche inattendue (${zone.length})`);
+  assert.ok(/const rend = r0 \? C\.estRemboursementAchat\(p, r0\) : !!recu;/.test(zone), 'la fenêtre ne sait pas qu\'elle reçoit un remboursement');
+  const m = zone.match(/const signe = ([^;]+);/);
+  assert.ok(m, 'le signe du remboursement n\'est pas posé');
+  const signe = (rend, kind) => require('vm').runInNewContext(m[1], { rend, p: { kind } });
+  assert.deepStrictEqual([signe(true, 'facture'), signe(true, 'avoir'), signe(false, 'facture'), signe(false, 'avoir')], [-1, 1, 1, 1]);
+  assert.ok(/amount: C\.round3\(signe \* Number\(v\.amount\)\)/.test(zone), 'le montant rangé ignore le signe');
+  // Le geste existe là où le crédit se lit : l'en-tête et le panneau des règlements.
+  assert.ok(/remaining < -0\.0005 \? '<button class="btn btn-primary" id="recu">/.test(app), 'aucun bouton « Remboursement reçu… » sur un achat qui porte un crédit');
+  assert.ok(/\$\('#recu'\)\.onclick = \(\) => supplierPaymentForm\(purchaseById\(p\.id\), \(\) => render\(\), null, true\)/.test(app), '« Remboursement reçu… » n\'ouvre pas la fenêtre du remboursement');
+});
+t('10.14.0 : un avoir REMBOURSÉ n\'est plus à imputer, et rattaché quand même il ne déduit que ce qui n\'a pas été rendu', () => {
+  // Calculé à la main. Facture F de 1 000, avoir A de 300 que le fournisseur rembourse.
+  //  - A remboursé en entier, libre : statut « remboursé », rien à rattacher, pas de ligne « À faire ».
+  //  - A rattaché quand même à F : le 401 porte F 1 000 au crédit, A 300 au débit, le remboursement
+  //    300 au crédit → 1 000 dû. F doit rester due de 1 000 ; la déduire de 300 la faisait passer pour
+  //    réglée à 700 pendant que le compte du fournisseur disait 1 000.
+  //  - Remboursement partiel de 100 : F rattachée doit 1 000 − (300 − 100) = 800, comme le 401.
+  const ligne = m => [{ label: 'Fournitures', qty: 1, unitPrice: m, vatRate: 0, destination: 'charge' }];
+  const faire = (rendu, lie) => core.migrateData({
+    company: { ...CO },
+    accounts: [{ id: 'b', name: 'Banque', kind: 'banque', opening: 5000, openingDate: '2026-01-01', isDefault: true }],
+    suppliers: [{ id: 'f', name: 'Bureau Plus' }],
+    purchases: [
+      { id: 'F', kind: 'facture', supplierId: 'f', number: 'F-1', date: '2026-03-01', lines: ligne(1000), payments: [] },
+      { id: 'A', kind: 'avoir', supplierId: 'f', number: 'AV-1', date: '2026-03-05', lines: ligne(300), achatLie: lie ? 'F' : '',
+        payments: rendu ? [{ id: 'r', date: '2026-03-10', amount: rendu, accountId: 'b' }] : [] }
+    ]
+  });
+  const libre = faire(300, false), co = libre.company;
+  const A = libre.purchases.find(p => p.id === 'A');
+  assert.strictEqual(core.purchaseStatus(A, co, '2026-03-20', libre), 'remboursé');
+  assert.ok(!core.aRattacherAchat(A, co, libre), 'un avoir remboursé n\'a plus rien à déduire');
+  assert.ok(!core.todoList(libre, co, '2026-03-20').some(x => x.id === 'achat-impute'), '« À faire » ne réclame pas son rattachement');
+  assert.strictEqual(core.purchaseStatus(faire(0, false).purchases[1], co, '2026-03-20', faire(0, false)), 'à imputer', 'un avoir non remboursé reste à imputer');
+  assert.ok(core.aRattacherAchat(faire(100, false).purchases[1], co, faire(100, false)), 'un avoir remboursé en partie porte encore un crédit');
+  const lieTout = faire(300, true), liePart = faire(100, true);
+  assert.strictEqual(core.purchaseBalance(lieTout.purchases[0], co, lieTout).remaining, 1000);
+  assert.strictEqual(core.purchaseBalance(liePart.purchases[0], co, liePart).remaining, 800);
+  [libre, lieTout, liePart].forEach(d => { const e = ecarts(d); assert.deepStrictEqual(e, [], e.join('\n')); });
+});
+t('10.14.0 : le lettrage des clients compte ce qu\'on leur doit — un avoir libre et un trop-perçu, comme le 411', () => {
+  // Calculé à la main. Client A : facture de 1 000 HT + 190 de TVA + 1 de timbre = 1 191, retenue de
+  // 1,5 % sur 1 190 = 17,850 → 1 173,150 à encaisser ; 800 reçus → 373,150 ouverts. Client EUR :
+  // 500 € + le timbre (1 DT = 0,294 €) = 500,294 €, 200 reçus → 300,294 € × 3,4 = 1 021,000 DT.
+  // Client Libre : un avoir libre de 100 HT + 19 = 119 qu'on lui doit. Le 411 : 373,150 + 1 021 − 119
+  // = 1 275,150. Le lettrage disait 1 394,150 : il ignorait l'avoir libre, et tout trop-perçu — le
+  // jumeau exact du défaut fournisseur corrigé en 10.2.0, jamais porté côté clients.
+  const data = core.migrateData({
+    company: { ...CO, regime: 'reel' },
+    accounts: [{ id: 'b', name: 'Banque', kind: 'banque', opening: 20000, openingDate: '2025-01-01', isDefault: true }],
+    clients: [{ id: 'c', name: 'Client A', withholdingRate: 1.5 }, { id: 'e', name: 'Client EUR' }, { id: 'l', name: 'Client Libre' }, { id: 't', name: 'Client Trop' }],
+    documents: [
+      { id: 'd1', type: 'facture', number: 'FAC-2025-001', status: 'envoyée', clientId: 'c', date: '2025-03-10', dueDate: '2025-04-10', withholdingRate: 1.5,
+        lines: [{ label: 'Service', qty: 1, unitPrice: 1000, vatRate: 19 }], payments: [{ id: 'q', date: '2025-03-20', amount: 800, accountId: 'b' }] },
+      { id: 'd3', type: 'facture', number: 'FAC-2025-002', status: 'envoyée', clientId: 'e', date: '2025-08-05', currency: 'EUR', exchangeRate: 3.4, dueDate: '2025-09-05',
+        lines: [{ label: 'Service', qty: 1, unitPrice: 500, vatRate: 0 }], payments: [{ id: 'w', date: '2025-08-20', amount: 200, accountId: 'b' }] },
+      { id: 'a1', type: 'avoir', number: 'AVO-2025-001', status: 'émis', clientId: 'l', date: '2025-06-10', lines: [{ label: 'Geste commercial', qty: 1, unitPrice: 100, vatRate: 19 }] },
+      // Un trop-perçu : 100 + 19 + 1 = 120 dus, 150 reçus → 30 à rendre.
+      { id: 'd4', type: 'facture', number: 'FAC-2025-003', status: 'envoyée', clientId: 't', date: '2025-09-01', dueDate: '2025-09-30',
+        lines: [{ label: 'Service', qty: 1, unitPrice: 100, vatRate: 19 }], payments: [{ id: 'v', date: '2025-09-05', amount: 150, accountId: 'b' }] }
+    ]
+  });
+  const l = core.lettrage(data, data.company, 'clients', '2025-12-31');
+  assert.strictEqual(l.reste, r3(373.15 + 1021 - 119 - 30));
+  const ouverts = Object.fromEntries(l.rows.flatMap(r => r.ouverts.map(o => [o.piece, o.reste])));
+  assert.strictEqual(ouverts['AVO-2025-001'], -119, 'l\'avoir libre est une pièce ouverte, au crédit du client');
+  assert.strictEqual(ouverts['FAC-2025-003'], -30, 'le trop-perçu aussi');
+  const e = ecarts(data);
+  assert.deepStrictEqual(e, [], e.join('\n'));
+});
+t('10.14.0 : un article revenu à zéro ne vaut plus rien, et le coût des sorties est celui que le bilan retranche', () => {
+  // Calculé à la main. Moteur : 3 achetés à 700, 1 consommé, 4 vendus — le stock tombe à −2 (un achat
+  // manque) —, puis les 2 arrivent à 750 : il n'en reste AUCUN. Les cinq moteurs achetés (2 100 +
+  // 1 500 = 3 600) sont tous sortis. Vis : 3 à 1 et 7 à 1,1 = 10,700, toutes sorties. Coût des
+  // sorties de l'année : 3 610,700 ; stock au 31 décembre : 0. L'article gardait 100 DT pour zéro
+  // pièce (l'entrée qui comble un manque s'ajoutait à une valeur négative), et le coût des sorties
+  // ne comptait que 3 510,700.
+  const L = (label, itemId, qty, pu) => ({ label, itemId, qty, unit: 'u', unitPrice: pu, vatRate: 19, destination: 'stock', deductible: true });
+  const F = (id, n, date, lignes) => ({ id, type: 'facture', number: n, status: 'envoyée', clientId: 'c', date, dueDate: date, lines: lignes, payments: [] });
+  const data = core.migrateData({
+    company: { ...CO, regime: 'reel' },
+    accounts: [{ id: 'b', name: 'Banque', kind: 'banque', opening: 20000, openingDate: '2025-01-01', isDefault: true }],
+    clients: [{ id: 'c', name: 'Client A' }], suppliers: [{ id: 'f', name: 'Grossiste' }],
+    catalog: [{ id: 'a', label: 'Vis', unitPrice: 1, tracked: true, unit: 'u' }, { id: 'm', label: 'Moteur', unitPrice: 900, tracked: true, unit: 'u' }],
+    purchases: [
+      { id: 'p1', kind: 'facture', supplierId: 'f', number: 'G-1', date: '2025-01-10', lines: [L('Vis', 'a', 3, 1), L('Moteur', 'm', 3, 700)], payments: [] },
+      { id: 'p2', kind: 'facture', supplierId: 'f', number: 'G-2', date: '2025-02-10', lines: [L('Vis', 'a', 7, 1.1)], payments: [] },
+      { id: 'p3', kind: 'facture', supplierId: 'f', number: 'G-3', date: '2025-06-10', lines: [L('Moteur', 'm', 2, 750)], payments: [] }
+    ],
+    stockAdjustments: [
+      { id: 's1', itemId: 'a', date: '2025-03-01', qty: -1, kind: 'casse', note: '' },
+      { id: 's2', itemId: 'm', date: '2025-04-01', qty: -1, kind: 'consommation', note: '' }
+    ],
+    documents: [
+      F('d1', 'FAC-2025-001', '2025-03-05', [{ label: 'Vis', itemId: 'a', qty: 9, unitPrice: 2, vatRate: 19 }]),
+      F('d2', 'FAC-2025-002', '2025-05-05', [{ label: 'Moteur', itemId: 'm', qty: 4, unitPrice: 900, vatRate: 19 }])
+    ]
+  });
+  const m = core.stockOf(data, 'm', '2025-12-31');
+  assert.strictEqual(m.qty, 0);
+  assert.strictEqual(m.value, 0, 'zéro moteur ne vaut rien');
+  assert.strictEqual(core.costOfGoodsSold(data, { from: '2025-01-01', to: '2025-12-31' }), 3610.7);
+  const e = ecarts(data);
+  assert.deepStrictEqual(e, [], e.join('\n'));
+});
+t('10.14.0 : un retour de marchandise — chez le fournisseur ou d\'un client — laisse le coût des sorties égal à ce que le bilan retranche', () => {
+  // Deux chemins, un chiffre : le coût des sorties que compte le résultat simplifié, et celui que les
+  // états financiers déduisent du stock (achats + stock d'ouverture − stock de clôture). Un retour
+  // client rentrait au coût moyen AVANT sa propre entrée mais s'affichait (et se comptait) au coût
+  // moyen d'APRÈS : 0,476 DT d'écart sur ce jeu, sans qu'aucun des deux écrans ne paraisse faux.
+  const L = (qty, pu) => ({ label: 'Écran 24 pouces', itemId: 'it', qty, unit: 'u', unitPrice: pu, vatRate: 19, destination: 'stock', deductible: true });
+  const V = (qty) => [{ label: 'Écran 24 pouces', itemId: 'it', qty, unitPrice: 400, vatRate: 19 }];
+  const data = core.migrateData({
+    company: { ...CO, regime: 'reel' },
+    accounts: [{ id: 'b', name: 'Banque', kind: 'banque', opening: 20000, openingDate: '2025-01-01', isDefault: true }],
+    clients: [{ id: 'c', name: 'Client A' }], suppliers: [{ id: 'f', name: 'Grossiste' }],
+    catalog: [{ id: 'it', label: 'Écran 24 pouces', unitPrice: 400, tracked: true, unit: 'u', initialQty: 2, initialCost: 240, initialDate: '2025-01-01' }],
+    purchases: [
+      { id: 'p1', kind: 'facture', supplierId: 'f', number: 'G-1', date: '2025-02-01', lines: [L(10, 250)], payments: [] },
+      { id: 'p2', kind: 'avoir', supplierId: 'f', number: 'GA-1', date: '2025-04-05', achatLie: 'p1', lines: [L(2, 250)], payments: [] }
+    ],
+    documents: [
+      { id: 'd1', type: 'facture', number: 'FAC-2025-001', status: 'envoyée', clientId: 'c', date: '2025-03-10', dueDate: '2025-04-10', lines: V(4), payments: [] },
+      { id: 'a1', type: 'avoir', number: 'AVO-2025-001', status: 'émis', clientId: 'c', date: '2025-05-10', creditOf: 'd1', lines: V(1) },
+      { id: 'd2', type: 'facture', number: 'FAC-2025-002', status: 'envoyée', clientId: 'c', date: '2025-07-05', dueDate: '2025-08-05', lines: V(3), payments: [] }
+    ]
+  });
+  const e = ecarts(data);
+  assert.deepStrictEqual(e, [], e.join('\n'));
+  // Le coût affiché sur la ligne d'un retour est celui qui a servi à le valoriser.
+  const retour = core.stockOf(data, 'it', '2025-12-31').moves.find(x => x.source === 'avoir');
+  assert.strictEqual(retour.unitApplied, 248.333, 'le retour client rentre au coût moyen du moment, et le dit');
+});
+t('10.14.0 : l\'encaissé d\'une affaire est l\'argent reçu — un avoir diminue ce qu\'on attend, il n\'entre pas en caisse', () => {
+  // Calculé à la main. Facture de 1 000 € (taux 3,4, sans TVA) : 500 € reçus = 1 700 DT ; un avoir de
+  // 100 € la diminue. Sous-traitant : 500 DT payés 600, 100 rendus ; un avoir de 50 remboursé. Chiffre
+  // d'affaires : 900 € × 3,4 = 3 060 ; encaissé 1 700 (l'avoir n'est pas de l'argent reçu — la fiche
+  // disait 2 040) ; payé 600 − 100 − 50 = 450 ; rapporté en caisse 1 700 − 450 = 1 250.
+  const L = (label, pu) => ({ label, qty: 1, unit: 'u', unitPrice: pu, vatRate: 0, destination: 'charge', deductible: true });
+  const data = core.migrateData({
+    company: { ...CO, regime: 'reel' },
+    accounts: [{ id: 'b', name: 'Banque', kind: 'banque', opening: 20000, openingDate: '2025-01-01', isDefault: true }],
+    clients: [{ id: 'c', name: 'Client EUR' }], suppliers: [{ id: 'f', name: 'Sous-traitant' }],
+    projects: [{ id: 'pr', name: 'Chantier', clientId: 'c', status: 'en cours' }],
+    documents: [
+      { id: 'd1', type: 'facture', number: 'FAC-2025-001', status: 'envoyée', clientId: 'c', projectId: 'pr', date: '2025-03-10', dueDate: '2025-04-10', currency: 'EUR', exchangeRate: 3.4,
+        lines: [{ label: 'Travaux', qty: 1, unitPrice: 1000, vatRate: 0 }], payments: [{ id: 'q', date: '2025-03-20', amount: 500, accountId: 'b' }] },
+      { id: 'a1', type: 'avoir', number: 'AVO-2025-001', status: 'émis', clientId: 'c', projectId: 'pr', date: '2025-04-10', creditOf: 'd1', currency: 'EUR', exchangeRate: 3.4,
+        lines: [{ label: 'Remise', qty: 1, unitPrice: 100, vatRate: 0 }] }
+    ],
+    purchases: [
+      { id: 'p1', kind: 'facture', supplierId: 'f', projectId: 'pr', number: 'S-1', date: '2025-03-01', lines: [L('Sous-traitance', 500)],
+        payments: [{ id: 'x', date: '2025-03-05', amount: 600, accountId: 'b' }, { id: 'x2', date: '2025-03-25', amount: -100, accountId: 'b' }] },
+      { id: 'p2', kind: 'avoir', supplierId: 'f', projectId: 'pr', number: 'SA-1', date: '2025-04-01', lines: [L('Rabais', 50)],
+        payments: [{ id: 'y', date: '2025-04-15', amount: 50, accountId: 'b' }] }
+    ]
+  });
+  const pm = core.projectMargin(data, data.company, 'pr');
+  assert.deepStrictEqual([pm.revenue, pm.collected, pm.paid, pm.cash], [3060, 1700, 450, 1250]);
+  const e = ecarts(data);
+  assert.deepStrictEqual(e, [], e.join('\n'));
+});
+t('10.14.0 : un avoir libre ne dit pas « vient en déduction de la facture . » — il dit qu\'il n\'est rattaché à rien', () => {
+  // Vu à la souris : l'aperçu d'un avoir sans facture imprimait « Cet avoir vient en déduction de la
+  // facture . » — une phrase à trou, sur une pièce légale envoyée au client.
+  const ligne = [{ label: 'Geste commercial', qty: 1, unitPrice: 200, vatRate: 19 }];
+  const libre = core.documentHtml({ type: 'avoir', number: 'AVO-2026-009', status: 'émis', date: '2026-09-25', lines: ligne }, { name: 'C' }, CO);
+  assert.ok(!/déduction de la facture\s*[.—]/.test(libre), 'phrase à trou sur un avoir libre');
+  assert.ok(/rattaché à aucune facture/.test(libre), 'l\'avoir libre ne dit pas ce qu\'il est');
+  const lie = core.documentHtml({ type: 'avoir', number: 'AVO-2026-010', status: 'émis', date: '2026-09-25', creditOfNumber: 'FAC-2026-001', lines: ligne }, { name: 'C' }, CO);
+  assert.ok(/déduction de la facture FAC-2026-001/.test(lie));
+  const en = core.documentHtml({ type: 'avoir', lang: 'en', number: 'AVO-2026-011', status: 'émis', date: '2026-09-25', lines: ligne }, { name: 'C' }, CO);
+  assert.ok(/not attached to any invoice/.test(en) && !/deducted from invoice\s*\./.test(en));
+  // Et le rattachement défait défait le numéro imprimé, dans l'éditeur comme à l'enregistrement.
+  const app = require('fs').readFileSync(require('path').join(__dirname, '../../src/renderer/app.js'), 'utf8');
+  assert.ok(/clientCombo\.setValue\(inv\.clientId, true\); \} \} else doc\.creditOfNumber = '';/.test(app), 'détacher la facture laisse son numéro sur l\'avoir');
+  assert.ok(/if \(isAv\) \{ const inv = doc\.creditOf \? docById\(doc\.creditOf\) : null; doc\.creditOfNumber = inv \? inv\.number : ''; \}/.test(app), 'l\'enregistrement garde un numéro de facture détachée');
+});
+t('10.14.0 : un avoir resté en dinars sur une facture en euros la diminue de sa contre-valeur, pas de 300 €', () => {
+  // « Nouvel avoir » part en dinars : rattaché à une facture de 1 000 €, un avoir de 300 DT en
+  // retranchait 300 € (≈ 1 005 DT). La facture annonçait 200 € de reste, le 411 l'équivalent de 410 €.
+  const data = core.migrateData({
+    company: { ...CO, regime: 'reel' },
+    accounts: [{ id: 'b', name: 'Banque', kind: 'banque', opening: 20000, openingDate: '2025-01-01', isDefault: true }],
+    clients: [{ id: 'c', name: 'Client EUR' }],
+    documents: [
+      { id: 'd1', type: 'facture', number: 'FAC-2025-001', status: 'envoyée', clientId: 'c', date: '2025-03-10', dueDate: '2025-04-10', currency: 'EUR', exchangeRate: 3.35, applyStamp: false,
+        lines: [{ label: 'Travaux', qty: 1, unitPrice: 1000, vatRate: 0 }], payments: [{ id: 'q', date: '2025-03-20', amount: 500, accountId: 'b' }] },
+      { id: 'a1', type: 'avoir', number: 'AVO-2025-001', status: 'émis', clientId: 'c', date: '2025-04-10', creditOf: 'd1', currency: 'DT',
+        lines: [{ label: 'Remise', qty: 1, unitPrice: 300, vatRate: 0 }] }
+    ]
+  });
+  // À la main : 300 DT / 3,35 = 89,552 € ; 1 000 − 89,552 − 500 = 410,448 € ; × 3,35 = 1 375,001 DT.
+  const b = core.invoiceBalance(data.documents[0], data, data.company);
+  assert.strictEqual(b.credited, 89.552);
+  assert.strictEqual(b.remaining, 410.448);
+  const e = ecarts(data);
+  assert.deepStrictEqual(e, [], e.join('\n'));
+});
+t('10.14.0 : un avoir fournisseur resté en dinars sur un achat en euros le diminue de sa contre-valeur', () => {
+  // Le jumeau côté achats (la preuve du correctif restait VERTE : aucun test ne le portait). L'éditeur
+  // refuse désormais deux devises (10.2.0), mais une pièce d'avant, ou importée, peut l'être : 340 DT
+  // retranchaient 340 € d'une facture de 1 000 €, et « À payer » disait 660 € au lieu de 900.
+  const L = (label, pu) => ({ label, qty: 1, unit: 'u', unitPrice: pu, vatRate: 0, destination: 'charge', deductible: true });
+  const data = core.migrateData({
+    company: { ...CO, regime: 'reel' },
+    accounts: [{ id: 'b', name: 'Banque', kind: 'banque', opening: 20000, openingDate: '2025-01-01', isDefault: true }],
+    suppliers: [{ id: 'f', name: 'Fournisseur EUR' }],
+    purchases: [
+      { id: 'p1', kind: 'facture', supplierId: 'f', number: 'S-1', date: '2025-03-01', currency: 'EUR', exchangeRate: 3.4, lines: [L('Matière', 1000)] },
+      { id: 'p2', kind: 'avoir', supplierId: 'f', number: 'SA-1', date: '2025-04-01', currency: 'DT', achatLie: 'p1', lines: [L('Rabais', 340)] }
+    ]
+  });
+  // À la main : 340 DT / 3,4 = 100 € ; 1 000 − 100 = 900 € ; × 3,4 = 3 060 DT au 401.
+  const b = core.purchaseBalance(data.purchases[0], data.company, data);
+  assert.strictEqual(b.remaining, 900);
+  const ent = core.journalEntries(data, data.company, { from: '2025-01-01', to: '2025-12-31' });
+  const solde = pref => Math.round(ent.filter(x => String(x.account).startsWith(pref)).reduce((s, x) => s + (x.debit || 0) - (x.credit || 0), 0) * 1000) / 1000;
+  assert.strictEqual(solde('401'), -3060);
+  const e = ecarts(data);
+  assert.deepStrictEqual(e, [], e.join('\n'));
+});
+t('10.14.0 : un avoir ou un acompte à un autre taux que sa pièce règle le tiers au taux de la pièce — l\'écart va au change', () => {
+  // Facture 1 000 € à 3,35, avoir de 300 € saisi à 3,40 : le client ne doit plus rien en euros, mais
+  // le 411 gardait 15 DT (300 × 0,05). Côté achats, avoir de 100 € à 3,40 sur une facture à 3,35
+  // (perte de 5) et acompte de 200 € payé à 3,30 (gain de 10).
+  const L = (label, pu) => ({ label, qty: 1, unit: 'u', unitPrice: pu, vatRate: 0, destination: 'charge', deductible: true });
+  const data = core.migrateData({
+    company: { ...CO, regime: 'reel' },
+    accounts: [{ id: 'b', name: 'Banque', kind: 'banque', opening: 20000, openingDate: '2025-01-01', isDefault: true }],
+    clients: [{ id: 'c', name: 'Client EUR' }], suppliers: [{ id: 'f', name: 'Fournisseur EUR' }],
+    documents: [
+      { id: 'd1', type: 'facture', number: 'FAC-2025-001', status: 'envoyée', clientId: 'c', date: '2025-03-10', dueDate: '2025-04-10', currency: 'EUR', exchangeRate: 3.35, applyStamp: false,
+        lines: [{ label: 'Travaux', qty: 1, unitPrice: 1000, vatRate: 0 }], payments: [{ id: 'q', date: '2025-03-20', amount: 700, accountId: 'b' }] },
+      { id: 'a1', type: 'avoir', number: 'AVO-2025-001', status: 'émis', clientId: 'c', date: '2025-04-10', creditOf: 'd1', currency: 'EUR', exchangeRate: 3.4,
+        lines: [{ label: 'Remise', qty: 1, unitPrice: 300, vatRate: 0 }] }
+    ],
+    purchases: [
+      { id: 'ac', kind: 'acompte', supplierId: 'f', number: 'AC-1', date: '2025-02-01', currency: 'EUR', exchangeRate: 3.3, achatLie: 'p1', lines: [L('Acompte', 200)],
+        payments: [{ id: 'z', date: '2025-02-01', amount: 200, accountId: 'b' }] },
+      { id: 'p1', kind: 'facture', supplierId: 'f', number: 'S-1', date: '2025-03-01', currency: 'EUR', exchangeRate: 3.35, lines: [L('Matière', 500)],
+        payments: [{ id: 'x', date: '2025-03-05', amount: 200, accountId: 'b' }] },
+      { id: 'p2', kind: 'avoir', supplierId: 'f', number: 'SA-1', date: '2025-04-01', currency: 'EUR', exchangeRate: 3.4, achatLie: 'p1', lines: [L('Rabais', 100)] }
+    ]
+  });
+  const ent = core.journalEntries(data, data.company, { from: '2025-01-01', to: '2025-12-31' });
+  const solde = pref => Math.round(ent.filter(x => String(x.account).startsWith(pref)).reduce((s, x) => s + (x.debit || 0) - (x.credit || 0), 0) * 1000) / 1000;
+  assert.strictEqual(solde('411'), 0, 'le client ne doit plus rien : son compte non plus');
+  assert.strictEqual(solde('401'), 0, 'le fournisseur est réglé : son compte aussi');
+  assert.strictEqual(solde('755'), -25, 'gains de change : 15 (avoir client) + 10 (acompte)');
+  assert.strictEqual(solde('655'), 5, 'perte de change : 5 (avoir fournisseur)');
+  const r = core.simpleResult(data, data.company, { from: '2025-01-01', to: '2025-12-31' });
+  assert.strictEqual(r.change, 20);
+  const e = ecarts(data);
+  assert.deepStrictEqual(e, [], e.join('\n'));
+});
+t('10.14.0 : chaque ligne du lettrage s\'additionne — Montant − Avoirs − Réglé = Reste, sur cinq ans', () => {
+  // Un trop-perçu s'affichait « 3 685 − 3 685 = −1 005 » : l'avoir faisait la différence sans colonne.
+  const d = core.migrateData(require('../../src/renderer/demo.js').buildDemoData(core.DEFAULT_COMPANY, T));
+  let lignes = 0;
+  ['clients', 'fournisseurs'].forEach(role => core.lettrage(d, d.company, role).rows.forEach(r => r.ouverts.forEach(o => {
+    lignes++;
+    assert.ok(Math.abs(r3(o.montant - o.avoirs - o.regle) - o.reste) < 0.0005, `${role} ${o.piece} : ${o.montant} − ${o.avoirs} − ${o.regle} ≠ ${o.reste}`);
+  })));
+  assert.ok(lignes >= 8, 'l\'exemple doit porter des lignes ouvertes des deux côtés');
+  // Des données qui discriminent : l'exemple porte des avoirs et acomptes imputés, et un avoir
+  // fournisseur ouvert (montant négatif).
+  const tous = ['clients', 'fournisseurs'].flatMap(role => core.lettrage(d, d.company, role).rows.flatMap(r => r.ouverts));
+  assert.ok(tous.some(o => o.avoirs > 0) && tous.some(o => o.montant < 0), 'l\'exemple ne porte plus ce que la colonne doit montrer');
+  // Et le cas vu à la souris : facture 1 000, avoir 300 émis APRÈS le paiement complet.
+  const tp = core.migrateData({
+    company: { ...CO, regime: 'reel' }, clients: [{ id: 'c', name: 'Client' }],
+    documents: [
+      { id: 'f', type: 'facture', number: 'FAC-2025-001', status: 'envoyée', clientId: 'c', date: '2025-03-10', dueDate: '2025-04-10', applyStamp: false,
+        lines: [{ label: 'Audit', qty: 1, unitPrice: 1000, vatRate: 0 }], payments: [{ id: 'q', date: '2025-03-20', amount: 1000 }] },
+      { id: 'a', type: 'avoir', number: 'AVO-2025-001', status: 'émis', clientId: 'c', date: '2025-04-10', creditOf: 'f', lines: [{ label: 'Remise', qty: 1, unitPrice: 300, vatRate: 0 }] }
+    ]
+  });
+  const ligne = core.lettrage(tp, tp.company, 'clients', '2025-12-31').rows[0].ouverts[0];
+  assert.deepStrictEqual([ligne.montant, ligne.avoirs, ligne.regle, ligne.reste], [1000, 300, 1000, -300]);
+  const app = require('fs').readFileSync(require('path').join(__dirname, '../../src/renderer/app.js'), 'utf8');
+  assert.ok(/'Avoirs' : 'Avoirs et acomptes'/.test(app) && /o\.avoirs \? C\.money\(o\.avoirs\)/.test(app), 'la colonne des avoirs manque à l\'écran du lettrage');
+});
+t('10.14.0 : un avoir rattaché prend la devise et le taux de sa facture, et ne les laisse plus changer', () => {
+  const app = require('fs').readFileSync(require('path').join(__dirname, '../../src/renderer/app.js'), 'utf8');
+  assert.ok(/const roDevise = ro \|\| \(isAv && doc\.creditOf \?/.test(app), 'la devise d\'un avoir rattaché reste modifiable');
+  assert.ok(/<select name="currency" \$\{roDevise\}>/.test(app) && /name="exchangeRate"[^>]*\$\{roDevise\}>/.test(app));
+  // Dans les données ET à l'écran, à chaque changement de l'en-tête.
+  assert.ok(/doc\.currency = docCur\(inv\); doc\.exchangeRate = inv\.exchangeRate \|\| '';\s*sel\.value = doc\.currency; taux\.value = doc\.exchangeRate;/.test(app), 'l\'avoir ne suit pas la devise de sa facture');
+  // Un avoir enregistré avant se réaligne à l'enregistrement, sans être rangé du même geste.
+  assert.ok(/docCur\(inv\) !== docCur\(doc\) \|\| String\(inv\.exchangeRate \|\| ''\) !== String\(doc\.exchangeRate \|\| ''\)\)\) \{\s*head\.onchange\(\{\}\);\s*return refus\(/.test(app));
 });
 };

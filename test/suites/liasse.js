@@ -286,4 +286,167 @@ t('10.0.0 : le Cabinet n\'embarque toujours pas le moteur de l\'app entreprise',
   ['liasseDepuisLignes', 'resultatFiscal', 'employeurAnnuel'].forEach(f =>
     assert.strictEqual(typeof K[f], 'function', `${f} doit vivre dans compta.js`));
 });
+
+// ---------------------------------------------------------------- le plan de l'application, rubrique par rubrique (10.14.0)
+
+// Le sens NATUREL d'un compte du plan : ce qu'il porte quand rien n'est anormal. Un compte « des
+// deux sens » (12, 42 à 48, 5) doit trouver sa place dans les deux.
+const sensNaturel = c => {
+  if (/^18/.test(c)) return null;                 // comptes de liaison : se soldent entre établissements
+  if (/^6/.test(c)) return [1];
+  if (/^7/.test(c)) return [-1];
+  if (/^1[23]/.test(c)) return [1, -1];
+  if (/^1/.test(c)) return [-1];
+  if (/^(28|29|39|49|59)/.test(c)) return [-1];
+  if (/^[23]/.test(c)) return [1];
+  if (/^40/.test(c)) return [-1];
+  if (/^41/.test(c)) return [1];
+  if (/^4/.test(c)) return [1, -1];
+  if (/^5/.test(c)) return [1, -1];
+  return null;
+};
+
+t('10.14.0 : chaque compte du plan de l\'application trouve sa rubrique dans son sens naturel', () => {
+  // Un compte que le plan NOMME et qu'aucune rubrique ne lit sort de la liasse : 24 (crédit-bail),
+  // 29 et 49 (provisions), 48 (charges et produits constatés d'avance, la première écriture
+  // d'inventaire d'un cabinet), 72 (production immobilisée). Le bilan ne tombait plus juste, et le
+  // comptable apprenait qu'il fallait réécrire le modèle au moment de clôturer.
+  const plan = K.PLAN_COMPTABLE.filter(([c]) => c.length >= 2);
+  assert.ok(plan.length > 60, 'le plan de référence a maigri');
+  const manquent = [];
+  plan.forEach(([c, nom]) => (sensNaturel(c) || []).forEach(s => {
+    if (!K.rubriqueDuCompte(c, s * 100)) manquent.push(`${c} ${nom} (${s > 0 ? 'débiteur' : 'créditeur'})`);
+  }));
+  assert.deepStrictEqual(manquent, [], 'des comptes du plan n\'ont aucune rubrique');
+  // L'exception est NOMMÉE et elle désigne encore quelque chose : un solde sur un compte de
+  // liaison est une anomalie, et une liasse qui la montre en orphelin dit vrai.
+  assert.ok(K.PLAN_COMPTABLE.some(([c]) => c === '18'), 'l\'exception « 18 » ne désigne plus rien');
+  assert.strictEqual(K.rubriqueDuCompte('18', -100), null);
+});
+
+t('10.14.0 : une rubrique ne contredit pas le nom que le plan donne à son compte', () => {
+  const r = (c, s) => (K.rubriqueDuCompte(c, s) || {});
+  // Le financier est financier, l'extraordinaire extraordinaire — dans les deux sens de la phrase.
+  const plan = K.PLAN_COMPTABLE.filter(([c]) => /^[67]\d$/.test(c));
+  plan.forEach(([c, nom]) => {
+    const rub = r(c, c[0] === '6' ? 1 : -1);
+    ['financi', 'extraordinaire'].forEach(mot => assert.strictEqual(
+      new RegExp(mot, 'i').test(rub.label || ''), new RegExp(mot, 'i').test(nom),
+      `${c} « ${nom} » est rangé sous « ${rub.label} »`));
+  });
+  // Les comptes que le moteur des deux applications écrit, un par un.
+  assert.strictEqual(r('755', -1).id, 'RE10', 'un gain de change est un produit financier');
+  assert.strictEqual(r('655', 1).id, 'RE6', 'une perte de change est une charge financière');
+  assert.strictEqual(r('651', 1).id, 'RE6', 'un intérêt d\'emprunt est une charge financière');
+  assert.strictEqual(r('775', -1).id, 'RE13', 'le prix d\'un bien cédé est un gain extraordinaire');
+  assert.strictEqual(r('675', 1).id, 'RE14', 'la valeur d\'un bien cédé est une perte extraordinaire');
+  assert.strictEqual(r('781', -1).id, 'RE12', 'une reprise vient en face des dotations');
+  assert.strictEqual(r('72', -1).id, 'RE2', 'la production immobilisée est un produit d\'exploitation');
+  // Le bilan : les capitaux propres sont 10 à 14, et une provision vient en MOINS de ce qu'elle déprécie.
+  assert.strictEqual(r('14', -1).id, 'CP5', 'le 14 est « Autres capitaux propres » au plan');
+  assert.ok(/^CP/.test(r('14', -1).id) && !/Provision/.test(r('14', -1).label));
+  assert.strictEqual(r('15', -1).id, 'PA2');
+  assert.strictEqual(r('16', -1).id, 'PA1');
+  ['29', '291', '49', '491', '59'].forEach(c => {
+    assert.strictEqual(r(c, -1).etat, 'bilan-actif', `${c} doit venir en moins de l'actif`);
+    assert.strictEqual(r(c, -1).deduit, true, `${c} se retranche`);
+  });
+  assert.strictEqual(r('486', 1).id, 'AC9', 'une charge constatée d\'avance est un actif courant');
+  assert.strictEqual(r('487', -1).id, 'PA4', 'un produit constaté d\'avance est un passif courant');
+  assert.strictEqual(r('24', 1).id, 'AC3');
+});
+
+// Le modèle tel qu'il était livré jusqu'à la 10.13.0, reconstitué depuis celui d'aujourd'hui : les
+// rubriques nées depuis retirées, les sept rubriques changées remises dans leur état d'alors.
+function modele1013() {
+  const alors = {
+    AC3: ['21', '22', '23'], AC9: ['40', '42', '43', '44', '45', '46', '47'], PA2: ['14', '15'],
+    PA4: ['41', '42', '43', '44', '45', '46', '47'], RE2: ['73', '74', '75'], RE9: ['63', '67'], RE10: ['76', '77', '78', '79']
+  };
+  return K.MODELE_LIASSE.filter(r => !['AC11', 'AC12', 'AC13', 'CP5', 'RE12', 'RE13', 'RE14'].includes(r.id))
+    .map(r => ({ ...r, comptes: (alors[r.id] || r.comptes).slice() }));
+}
+
+t('10.14.0 : une copie du modèle de la 10.13.0 rejoint le modèle d\'aujourd\'hui, rubrique par rubrique', () => {
+  const m = K.migrerModeleLiasse(modele1013());
+  assert.deepStrictEqual(m.map(r => r.id), K.MODELE_LIASSE.map(r => r.id),
+    'les rubriques ajoutées se posent à la place qu\'elles ont dans le modèle');
+  m.forEach(r => assert.deepStrictEqual(r.comptes, K.MODELE_LIASSE.find(x => x.id === r.id).comptes, r.id));
+  // Et une liasse calculée sur la copie migrée est celle du modèle : le 14 est aux capitaux propres.
+  const l = exercice(2026);
+  const e = K.ajouterEcriture(l, { date: '2026-06-30', journal: 'OD', piece: 'SUB', libelle: 'Subvention',
+    lignes: [{ compte: '532', debit: 2000 }, { compte: '14', credit: 2000 }] }, 'Amine', 3);
+  K.validerEcriture(l, e.id, 'Amine', 4);
+  const opts = modele => ({ modele, libelle: () => '' });
+  const lignes = K.lignesDuLivre(l, { du: l.exercice.du, au: l.exercice.au });
+  const avant = K.liasseDepuisLignes(lignes, K.soldesDepuisOuverture(l), opts(modele1013()));
+  const apres = K.liasseDepuisLignes(lignes, K.soldesDepuisOuverture(l), opts(m));
+  const rub = (li, id) => li.etats.flatMap(x => x.lignes).find(x => x.id === id);
+  assert.strictEqual(rub(avant, 'PA2').montant, 2000, 'la copie d\'hier rangeait la subvention sous « Provisions »');
+  assert.strictEqual(rub(apres, 'CP5').montant, 2000);
+  assert.ok(apres.equilibre && apres.coherent);
+});
+
+t('10.14.0 : une rubrique que le cabinet a réécrite reste la sienne, et rien ne vient lui disputer ses comptes', () => {
+  const copie = modele1013().map(r => {
+    if (r.id === 'RE10') return { ...r, comptes: ['76', '77'] };
+    if (r.id === 'PA2') return { ...r, label: 'Provisions et subventions', comptes: ['14', '15', '16'] };
+    return r;
+  });
+  const m = K.migrerModeleLiasse(copie);
+  assert.deepStrictEqual(m.find(r => r.id === 'RE10').comptes, ['76', '77']);
+  assert.ok(!m.some(r => r.id === 'RE13'), 'le 77 est déjà lu par le cabinet : pas de seconde rubrique');
+  assert.deepStrictEqual(m.find(r => r.id === 'PA2').comptes, ['14', '15', '16']);
+  assert.ok(!m.some(r => r.id === 'CP5'), 'le 14 est déjà lu par le cabinet : pas de seconde rubrique');
+  // Les autres rubriques neuves, elles, arrivent : aucune ligne du cabinet ne lit leurs comptes.
+  ['AC11', 'AC12', 'AC13', 'RE12', 'RE14'].forEach(id => assert.ok(m.some(r => r.id === id), id));
+});
+
+t('10.14.0 : les états rangent un emprunt hors des capitaux propres, et une provision en moins de l\'actif', () => {
+  // Les deux applications rangeaient la classe 1 ENTIÈRE sous « Capitaux propres » : un emprunt de
+  // 50 000 y gonflait les fonds propres, sur le PDF de clôture envoyé au client. Et une provision
+  // sur créances passait au passif comme une dette. Les totaux tombaient juste — c'est ce qui
+  // rendait la faute invisible.
+  const l = exercice(2026);
+  const p = (date, piece, lignes) => {
+    const e = K.ajouterEcriture(l, { date, journal: 'OD', piece, libelle: piece, lignes }, 'Amine', 5);
+    K.validerEcriture(l, e.id, 'Amine', 6);
+  };
+  p('2026-02-01', 'EMP', [{ compte: '532', debit: 50000 }, { compte: '164', credit: 50000 }]);
+  p('2026-12-31', 'PROV', [{ compte: '681', debit: 300 }, { compte: '491', credit: 300 }]);
+  const e = K.etatsDepuisLignes(K.lignesDuLivre(l, { du: l.exercice.du, au: l.exercice.au }), K.soldesDepuisOuverture(l));
+  const g = (cote, re) => e[cote].find(x => re.test(x.titre));
+  // Calculé à la main : capital 15 000 seul aux capitaux propres ; l'emprunt 50 000 à part.
+  assert.strictEqual(g('passif', /^Capitaux/).total, 15000, 'l\'emprunt est entré dans les capitaux propres');
+  assert.strictEqual(g('passif', /non courants/).total, 50000);
+  // Clients 1 190 − provision 300 = 890 ; la provision n'est pas une dette.
+  assert.strictEqual(g('actif', /Clients/).total, 890);
+  assert.ok(!g('passif', /Fournisseurs/).lignes.some(x => x.compte === '491'), 'une provision sur clients n\'est pas une dette');
+  assert.ok(e.equilibre, `actif ${e.totalActif} ≠ passif ${e.totalPassif}`);
+  // Et l'app entreprise range par la MÊME fonction : deux copies avaient la même faute.
+  const core = require('../../src/renderer/core.js');
+  const src = lireSource('src', 'renderer', 'core.js');
+  const i = src.indexOf('function etatsFinanciers(');
+  const f = src.slice(i, src.indexOf('\n  }\n', i));
+  assert.ok(f.length > 400 && /Compta\.groupesDesEtats\(/.test(f), 'l\'app entreprise range ses états elle-même');
+  assert.ok(!/Capitaux propres/.test(f), 'une seconde liste de rubriques vit encore dans core.js');
+  assert.strictEqual(typeof core.etatsFinanciers, 'function');
+});
+
+t('10.14.0 : l\'excédent brut d\'exploitation ne compte pas les charges financières', () => {
+  // Le SIG lisait « personnel » sur 64 ET 65 : un intérêt d'emprunt (651) faisait baisser l'EBE,
+  // qui existe précisément pour ne pas le compter.
+  const l = exercice(2026);
+  const e = K.ajouterEcriture(l, { date: '2026-06-30', journal: 'OD', piece: 'INT', libelle: 'Intérêts',
+    lignes: [{ compte: '651', debit: 120 }, { compte: '532', credit: 120 }] }, 'Amine', 7);
+  K.validerEcriture(l, e.id, 'Amine', 8);
+  const sig = K.sigDepuisLignes(K.lignesDuLivre(l, { du: l.exercice.du, au: l.exercice.au }), K.soldesDepuisOuverture(l));
+  const v = id => sig.lignes.find(x => x.id === id).montant;
+  // À la main : CA 1 000, achats 400 → VA 600 ; aucun salaire, aucun impôt → EBE 600 ; dotation 1 000.
+  assert.strictEqual(v('personnel'), 0, 'un intérêt d\'emprunt compté comme une charge de personnel');
+  assert.strictEqual(v('ebe'), 600);
+  assert.strictEqual(v('rex'), -400);
+  assert.strictEqual(v('net'), -520, 'le résultat net, lui, compte les intérêts : 1 000 − 400 − 1 000 − 120');
+  assert.strictEqual(sig.lignes.find(x => x.id === 'personnel').formule, 'compte 64');
+});
 };

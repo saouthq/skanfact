@@ -1402,7 +1402,7 @@
 
   function badge(status, type) { return `<span class="badge ${h(status)}">${h(C.statusLabel(status, type))}</span>`; }
   // Statut d'un achat : « à payer » contient une espace, qui ferait deux classes CSS au lieu d'une.
-  const BUY_BADGE = { 'à payer': 'b-due', partiel: 'b-part', retard: 'b-late', 'payée': 'b-paid' };
+  const BUY_BADGE = { 'à payer': 'b-due', partiel: 'b-part', retard: 'b-late', 'payée': 'b-paid', 'remboursé': 'b-paid' };
   function buyBadge(status) { return `<span class="badge ${BUY_BADGE[status] || ''}">${h(status)}</span>`; }
   function statusBadge(doc) { return badge(effStatus(doc), doc && doc.type); }
   function methodLabel(m) { const x = C.PAYMENT_METHODS.find(p => p[0] === m); return x ? x[1] : (m || ''); }
@@ -3166,6 +3166,10 @@
     const clos = !locked && !!stored && !!stored.date && C.isClosedDate(data, stored.date);
     const figee = locked || clos;
     const ro = figee ? 'disabled' : '';
+    // Un avoir rattaché est dans la devise ET au taux de sa facture (10.14.0) : il diminue ce que le
+    // client doit dans la devise de la facture. Resté en dinars — « Nouvel avoir » part en dinars —,
+    // il retranchait 300 € d'une facture en euros pour 300 DT, et la facture annonçait un reste faux.
+    const roDevise = ro || (isAv && doc.creditOf ? 'disabled title="Un avoir est dans la devise et au taux de la facture qu\'il corrige."' : '');
     const bal = isInv && !isNew && doc.status !== 'brouillon' ? balance(stored) : null;
     const canUnlock = locked && isInv && bal && !bal.paid && !bal.credits.length;
     // Pourquoi elle ne se rouvre plus, et si ses avoirs l'annulent EN ENTIER (10.12.0) : le bandeau,
@@ -3388,7 +3392,7 @@
               </div>
               ${isAv ? field(lbl('Motif de l\'avoir', 'ed.creditReason'), 'creditReason', doc.creditReason || '', 'text', ro + ' placeholder="Erreur de facturation, remise commerciale…"') : ''}
               <label class="field">${lbl('Langue du document', 'ed.lang')}<select name="lang" ${ro}><option value="fr" ${doc.lang !== 'en' ? 'selected' : ''}>Français</option><option value="en" ${doc.lang === 'en' ? 'selected' : ''}>English</option></select></label>
-              <label class="field">${lbl('Devise', 'ed.docCurrency')}<select name="currency" ${ro}>${C.CURRENCIES.map(c => `<option value="${c}" ${c === cur ? 'selected' : ''}>${h(C.libelleDevise(c))}</option>`).join('')}</select></label>
+              <label class="field">${lbl('Devise', 'ed.docCurrency')}<select name="currency" ${roDevise}>${C.CURRENCIES.map(c => `<option value="${c}" ${c === cur ? 'selected' : ''}>${h(C.libelleDevise(c))}</option>`).join('')}</select></label>
               ${statusCell}
               ${field(lbl('Remise globale (%)', 'ed.discount'), 'discountRate', doc.discountRate || 0, 'number', 'min="0" max="100" step="0.5" class="num" ' + ro)}
               ${isInv || isAv || isProforma ? `<label class="field">${lbl('Retenue à la source', 'ed.withholding')}${withholdingSelect('withholdingRate', doc.withholdingRate, null, ro)}</label>` : ''}
@@ -3398,7 +3402,7 @@
                    Statut et Remise d'une colonne, sous le curseur. Ce qui apparaît selon une valeur ne
                    pousse rien (H-E1) : il vit en fin de formulaire — sur un devis, pile sous la devise.
                    Le libellé tient sur une ligne, sinon sa case descend sous ses voisines. */''}
-              <label class="field obligatoire" id="rate-field" ${cur === company().currency ? 'hidden' : ''}><span class="fl"><span class="rate-lbl">1 ${h(cur)} = ? ${h(company().currency)}</span> ${info('ed.rate')}</span><input type="number" name="exchangeRate" value="${h(doc.exchangeRate || '')}" step="0.0001" min="0" class="num" placeholder="ex. 3,4" ${ro}></label>
+              <label class="field obligatoire" id="rate-field" ${cur === company().currency ? 'hidden' : ''}><span class="fl"><span class="rate-lbl">1 ${h(cur)} = ? ${h(company().currency)}</span> ${info('ed.rate')}</span><input type="number" name="exchangeRate" value="${h(doc.exchangeRate || '')}" step="0.0001" min="0" class="num" placeholder="ex. 3,4" ${roDevise}></label>
             </form>
           </div>
           <div class="panel"><h2>Lignes ${info('ed.lines')}</h2>
@@ -3656,7 +3660,12 @@
         drawLines();
       }
       if (e && e.target && e.target.name === 'creditOf') {
-        const inv = docById(doc.creditOf); if (inv) { doc.creditOfNumber = inv.number; if (!doc.clientId) { doc.clientId = inv.clientId; clientCombo.setValue(inv.clientId, true); } }
+        // Défaire le rattachement défait aussi le numéro que la pièce IMPRIME (10.14.0) : sans ça, un
+        // avoir détaché disait encore « vient en déduction de la facture FAC-… ».
+        const inv = docById(doc.creditOf); if (inv) { doc.creditOfNumber = inv.number; if (!doc.clientId) { doc.clientId = inv.clientId; clientCombo.setValue(inv.clientId, true); } } else doc.creditOfNumber = '';
+        // L'avoir parle la langue de la facture qu'il corrige (10.14.0), comme celui qu'on tire de la
+        // facture elle-même : un client anglophone recevait un avoir en français.
+        if (inv && inv.lang && !figee) { doc.lang = inv.lang; $('select[name=lang]', head).value = inv.lang; }
       }
       // Changer la date ne recalculait jamais l'échéance : on corrigeait la date d'une facture et
       // elle restait due au 30e jour de l'ANCIENNE. On ne recalcule que tant que l'échéance est
@@ -3669,6 +3678,22 @@
           const note = $('#due-auto', head);
           if (note) { note.textContent = `Échéance recalculée au ${C.fmtDate(neuf)} (${joursEcheance} j). Change-la si besoin.`; note.hidden = false; }
         }
+      }
+      // L'avoir suit la devise et le taux de sa facture, et ne les laisse plus changer (10.14.0) :
+      // dans les données ET à l'écran, sinon le prochain `formValues` relirait l'ancienne valeur.
+      if (isAv && !figee) {
+        const inv = doc.creditOf ? docById(doc.creditOf) : null;
+        const sel = $('select[name=currency]', head), taux = $('input[name=exchangeRate]', head);
+        if (inv) {
+          doc.currency = docCur(inv); doc.exchangeRate = inv.exchangeRate || '';
+          sel.value = doc.currency; taux.value = doc.exchangeRate;
+          sel.disabled = taux.disabled = true;
+          if (cur !== doc.currency) {
+            cur = doc.currency; setRateLabel(); drawLines();
+            // Les montants déjà tapés se lisent maintenant dans l'autre devise : on le dit.
+            if (e && e.target && e.target.name === 'creditOf' && doc.lines.some(l => Number(l.unitPrice))) toast(`L'avoir passe en ${cur}, la devise de ${inv.number} : vérifie ses montants.`);
+          } else setRateLabel();
+        } else sel.disabled = taux.disabled = false;
       }
       refreshTotals();
     };
@@ -3932,6 +3957,16 @@
       // de huit lignes, la barre d'actions est en haut et la ligne oubliée en bas : le bandeau noir
       // passait deux secondes et demie tout en bas de l'écran, pendant qu'on regardait le haut.
       if (!doc.clientId) return refus('[data-combo=clientId] .combo-btn', 'Choisis un client.');
+      // Un avoir rattaché AVANT la 10.14.0 peut être resté dans une autre devise ou à un autre taux
+      // que sa facture. On l'aligne sous les yeux, et on n'enregistre pas du même geste : ses
+      // montants changent de devise, ils se relisent avant d'être rangés.
+      if (isAv && doc.creditOf && !figee) {
+        const inv = docById(doc.creditOf);
+        if (inv && (docCur(inv) !== docCur(doc) || String(inv.exchangeRate || '') !== String(doc.exchangeRate || ''))) {
+          head.onchange({});
+          return refus('select[name=currency]', `Un avoir diminue sa facture dans la devise de la facture : celui-ci passe en ${docCur(inv)}${inv.exchangeRate ? ', au taux de ' + inv.number : ''}. Vérifie ses montants, puis enregistre.`);
+        }
+      }
       // Un taux de change absent ne se voit nulle part et fausse TOUT : le journal des ventes, la
       // TVA à déclarer, le chiffre d'affaires, le tableau de bord et le paquet du comptable comptent
       // alors 1 euro = 1 dinar. C'est le seul champ de l'application dont l'oubli change des chiffres
@@ -4027,7 +4062,7 @@
       // possible — sinon une licence expirée empêcherait de réparer une faute de frappe.
       if (!data.documents.some(d => d.id === doc.id) && licenceBlock('Créer un nouveau document')) return false;
       if ((isQ || isExtra) && !doc.number) doc.number = C.nextNumber(data, doc.type, doc.date);
-      if (isAv && doc.creditOf) { const inv = docById(doc.creditOf); if (inv) doc.creditOfNumber = inv.number; }
+      if (isAv) { const inv = doc.creditOf ? docById(doc.creditOf) : null; doc.creditOfNumber = inv ? inv.number : ''; }
       const idx = data.documents.findIndex(d => d.id === doc.id);
       const clean = deepCopy(doc);
       if (idx >= 0) data.documents[idx] = clean; else data.documents.push(clean);
@@ -5427,7 +5462,7 @@
         const foot = opts.foot ? opts.foot(kept, all) : '';
         $('.rows', wrap).innerHTML = kept.length
           ? `<table class="list sortable"><thead>${sortHead(cols, state.sort, '<th class="row-actions-h"></th>')}</thead><tbody>
-              ${page.map(r => `<tr${opts.ouvrir ? ` class="clickable" data-ouvrir="${h(r.id)}"` : ''}>${cols.map(c => `<td class="${c.r ? 'r nw' : ''}">${c.get(r)}</td>`).join('')}${rowMenuCell(r.id)}</tr>`).join('')}
+              ${page.map(r => `<tr${opts.ouvrir ? ` class="clickable" data-ouvrir="${h(r.id)}"` : ''}>${cols.map(c => `<td class="${c.r ? 'r nw' : ''}${c.cls ? ' ' + c.cls : ''}">${c.get(r)}</td>`).join('')}${rowMenuCell(r.id)}</tr>`).join('')}
             </tbody>${foot ? `<tfoot>${foot}</tfoot>` : ''}</table>${pagerBar(pg, { noun: opts.noun, grandTotal: all.length })}`
           : `<div class="empty">${state.q ? 'Rien ne correspond à cette recherche.' : h(opts.empty)}</div>`;
         const note = $('.f-note', wrap);
@@ -7001,7 +7036,9 @@
       { key: 'contact', label: 'Contact', get: r => `<span class="small">${h(r.s.phone || '')}${r.s.phone && r.s.email ? '<br>' : ''}${r.s.email ? `<span class="ellipse" title="${h(r.s.email)}">${h(r.s.email)}</span>` : ''}</span>` },
       { key: 'count', label: 'Achats', r: true, val: r => r.sum.count, get: r => r.sum.count || '<span class="muted">—</span>' },
       { key: 'ht', label: 'Acheté HT', r: true, val: r => r.sum.ht, get: r => r.sum.ht ? C.money(r.sum.ht, cur) : '<span class="muted">—</span>' },
-      { key: 'due', label: 'Reste à payer', r: true, val: r => r.sum.remaining, get: r => r.sum.remaining > 0.0005 ? `<strong class="${r.sum.late > 0.0005 ? 'warn-text' : ''}">${C.money(r.sum.remaining, cur)}</strong>` : '<span class="muted">—</span>' },
+      // Le NET, comme son compte (10.14.0) : un trop-payé et un avoir libre viennent en moins, et un
+      // net en ta faveur se dit en mots — un montant négatif sous « Reste à payer » se lit mal.
+      { key: 'due', label: 'Reste à payer', r: true, val: r => r.sum.remaining, get: r => r.sum.remaining > 0.0005 ? `<strong class="${r.sum.late > 0.0005 ? 'warn-text' : ''}">${C.money(r.sum.remaining, cur)}</strong>` : r.sum.remaining < -0.0005 ? `<span class="ok-text">${C.money(-r.sum.remaining, cur)} en ta faveur</span>` : '<span class="muted">—</span>' },
       { key: 'last', label: 'Dernier achat', val: r => r.sum.last || '', get: r => r.sum.last ? C.fmtDate(r.sum.last) : '<span class="muted">—</span>' }
     ];
     const FILTERS = [['', 'Tous les fournisseurs'], ['due', 'Avec un impayé'], ['late', 'En retard de paiement'], ['none', 'Sans aucun achat']];
@@ -7018,10 +7055,10 @@
       $('#list-wrap').innerHTML = rows.length ? `<table class="list sortable"><thead>
           ${sortHead(cols, s.sort, '<th class="row-actions-h"></th>')}</thead><tbody>
         ${page.map(r => `<tr class="clickable" data-sid="${r.s.id}">
-          ${cols.map(c => `<td class="${c.r ? 'r nw' : ''}">${c.get(r)}</td>`).join('')}
+          ${cols.map(c => `<td class="${c.r ? 'r nw' : ''}${c.cls ? ' ' + c.cls : ''}">${c.get(r)}</td>`).join('')}
           ${rowMenuCell(r.s.id)}</tr>`).join('')}
         </tbody><tfoot><tr><td colspan="4">${rows.length} fournisseur${rows.length > 1 ? 's' : ''}</td>
-          <td class="r">${C.money(totalHT, cur)}</td><td class="r">${totalDue > 0.0005 ? C.money(totalDue, cur) : '<span class="muted">—</span>'}</td><td></td><td></td></tr></tfoot>
+          <td class="r">${C.money(totalHT, cur)}</td><td class="r">${totalDue > 0.0005 ? C.money(totalDue, cur) : totalDue < -0.0005 ? `<span class="ok-text">${C.money(-totalDue, cur)} en ta faveur</span>` : '<span class="muted">—</span>'}</td><td></td><td></td></tr></tfoot>
         </table>${pagerBar(pg, { noun: 'fournisseur', grandTotal: all.length })}`
         : `<div class="empty">${filtered ? 'Aucun fournisseur ne correspond à cette recherche.' : 'Aucun fournisseur. Ajoute ceux chez qui tu achètes : leurs coordonnées et leur délai de paiement se reporteront sur chaque achat.'}</div>`;
       const note = $('#f-note');
@@ -7071,7 +7108,7 @@
       const list = applySort(mine.slice(), cols, supplierBuyState.sort);
       const { rows, pg } = paginate(list, supplierBuyState);
       $('#sup-docs').innerHTML = mine.length ? `<table class="list compact sortable"><thead>${sortHead(cols, supplierBuyState.sort)}</thead><tbody>
-          ${rows.map(p => `<tr class="clickable" data-id="${p.id}">${cols.map(c => `<td class="${c.r ? 'r nw' : ''}">${c.get(p)}</td>`).join('')}</tr>`).join('')}
+          ${rows.map(p => `<tr class="clickable" data-id="${p.id}">${cols.map(c => `<td class="${c.r ? 'r nw' : ''}${c.cls ? ' ' + c.cls : ''}">${c.get(p)}</td>`).join('')}</tr>`).join('')}
         </tbody></table>${pagerBar(pg, { noun: 'achat' })}`
         : '<div class="empty">Aucun achat chez ce fournisseur pour l\'instant.</div>';
       $$('#sup-docs tr.clickable').forEach(tr => tr.onclick = () => navigate('#/achat/' + tr.dataset.id));
@@ -7083,7 +7120,9 @@
         <div class="actions">${backButton('#/fournisseurs')}<button class="btn" id="edit">Modifier</button><button class="btn btn-primary" id="buy">+ Enregistrer un achat</button></div></div>
       <div class="stats">
         <div class="stat"><div class="lbl">Acheté HT ${info('sup.total')}</div><div class="val">${C.money(sum.ht, cur)}</div><div class="sub">${pl(sum.count, 'pièce')}</div></div>
-        <div class="stat"><div class="lbl">Reste à payer ${info('sup.due')}</div><div class="val ${sum.remaining > 0.0005 ? 'due' : ''}">${C.money(sum.remaining, cur)}</div><div class="sub">${sum.late > 0.0005 ? `dont ${C.money(sum.late, cur)} en retard` : 'rien en retard'}</div></div>
+        ${sum.remaining < -0.0005
+          ? `<div class="stat"><div class="lbl">En ta faveur ${info('sup.due')}</div><div class="val ok">${C.money(-sum.remaining, cur)}</div><div class="sub">trop-payés et avoirs à récupérer${sum.due > 0.0005 ? `, moins ${C.money(sum.due, cur)} dû` : ''}</div></div>`
+          : `<div class="stat"><div class="lbl">Reste à payer ${info('sup.due')}</div><div class="val ${sum.remaining > 0.0005 ? 'due' : ''}">${C.money(sum.remaining, cur)}</div><div class="sub">${sum.aRecuperer > 0.0005 ? `${C.money(sum.due, cur)} dû, moins ${C.money(sum.aRecuperer, cur)} à récupérer` : sum.late > 0.0005 ? `dont ${C.money(sum.late, cur)} en retard` : 'rien en retard'}</div></div>`}
         <div class="stat"><div class="lbl">Délai accordé</div><div class="val">${s.paymentTermsDays === '' || s.paymentTermsDays == null ? '—' : s.paymentTermsDays + ' j'}</div><div class="sub">reporté sur chaque achat</div></div>
         <div class="stat"><div class="lbl">Relation</div><div class="val">${sum.first ? C.fmtDate(sum.first).slice(3) : '—'}</div><div class="sub">${sum.last ? 'dernier achat le ' + C.fmtDate(sum.last) : 'aucun achat'}</div></div>
       </div>
@@ -7174,7 +7213,7 @@
         // `à rattacher` n'est pas un statut mais une QUESTION : quelles pièces ne viennent en
         // déduction de rien ? Elle vit dans le même sélecteur parce que c'est là qu'on la cherche,
         // et elle se réinitialise comme les autres — un filtre qu'on ne voit pas est un piège.
-        .filter(p => !s.st || (s.st === A_RATTACHER ? (C.PURCHASE_LIES.includes(p.kind) && !p.achatLie) : buyStatus(p) === s.st))
+        .filter(p => !s.st || (s.st === A_RATTACHER ? C.aRattacherAchat(p, company(), data) : buyStatus(p) === s.st))
         .filter(p => !s.q || C.correspondRecherche([p.number, supplierName(p.supplierId), p.subject, p.category].join(' '), s.q)), cols, s.sort);
       const filtered = !!(s.q || s.st || s.kind || s.cat || s.year);
       const { rows: page, pg } = paginate(rows, s);
@@ -7328,21 +7367,32 @@
   // pouvoir se corriger ») ; un règlement fournisseur n'avait que « ✕ » : un compte mal choisi, une
   // date fausse ne se rattrapaient qu'en supprimant pour ressaisir. Le jumeau manquant (7.3.0).
   // Et la DEVISE de l'achat (10.1.0) : la fenêtre annonçait en dinars le reste d'un achat en euros.
-  function supplierPaymentForm(p, done, pay) {
+  function supplierPaymentForm(p, done, pay, recu) {
     if (!p) return;
     const cur = p.currency || company().currency;
     // `data` : sans lui, les avoirs et acomptes imputés ne comptent pas, et la fenêtre proposait de
     // régler 1 309 DT sur un achat qui n'en doit plus que 1 071 — un trop-payé prérempli (10.14.0).
     const b = C.purchaseBalance(p, company(), data);
     const r0 = pay || null;
-    // Ce qui reste à régler SANS le règlement qu'on corrige : sinon le dépassement se compterait
-    // sur lui-même.
-    const reste = Math.max(0, b.remaining + (r0 ? Number(r0.amount) || 0 : 0));
-    modal(`<h2>${r0 ? 'Modifier le règlement' : `Régler ${h(p.number || 'cet achat')}`}</h2>
-      <p class="small muted">${h(supplierName(p.supplierId))} · net à payer ${C.money(b.totals.netToPay, cur)} · déjà réglé ${C.money(b.paid, cur)}${b.impute ? ` · ${b.liees.length > 1 ? 'avoirs et acomptes imputés' : (b.liees[0].kind === 'acompte' ? 'acompte imputé' : 'avoir imputé')} ${C.money(b.impute, cur)}` : ''} · reste ${C.money(Math.max(0, b.remaining), cur)}</p>
+    // LE REMBOURSEMENT DU FOURNISSEUR (10.14.0) : un avoir non imputé, ou une facture payée plus que
+    // son montant, est de l'argent qu'il te doit — et aucun geste ne permettait de dire qu'il l'a
+    // rendu : l'avoir restait un crédit pour toujours, et le 401 débiteur. Le jumeau de « Rembourser »
+    // côté client (P1 bis). Il se TAPE en positif, comme sur le virement reçu ; c'est la fenêtre qui
+    // range le signe — positif sur un avoir (il le solde), négatif sur une facture (il annule le trop).
+    const rend = r0 ? C.estRemboursementAchat(p, r0) : !!recu;
+    const effet = x => (p.kind === 'avoir' ? 1 : -1) * (Number(x.amount) || 0);   // ce qu'un règlement ajoute au reste
+    // Ce qui reste à régler — ou à récupérer — SANS le règlement qu'on corrige : sinon le dépassement
+    // se compterait sur lui-même.
+    const resteHors = b.remaining - (r0 ? effet(r0) : 0);
+    const reste = Math.max(0, resteHors);
+    const aRecuperer = C.round3(Math.max(0, -resteHors));
+    modal(`<h2>${rend ? (r0 ? 'Modifier le remboursement' : `Remboursement de ${h(p.number || 'cet achat')}`) : r0 ? 'Modifier le règlement' : `Régler ${h(p.number || 'cet achat')}`}</h2>
+      <p class="small muted">${h(supplierName(p.supplierId))} · ${rend
+        ? `${p.kind === 'avoir' ? `avoir de ${C.money(b.totals.netToPay, cur)}` : `payé ${C.money(b.paid, cur)} pour ${C.money(b.totals.netToPay, cur)}`} · à récupérer ${C.money(aRecuperer, cur)}`
+        : `net à payer ${C.money(b.totals.netToPay, cur)} · déjà réglé ${C.money(b.paid, cur)}${b.impute ? ` · ${b.liees.length > 1 ? 'avoirs et acomptes imputés' : (b.liees[0].kind === 'acompte' ? 'acompte imputé' : 'avoir imputé')} ${C.money(b.impute, cur)}` : ''} · reste ${C.money(reste, cur)}`}</p>
       <form id="spf" class="grid-2">
-        ${dateFieldHtml(lbl('Date du règlement', 'buy.payDate'), 'date', r0 ? r0.date : C.today(), {})}
-        ${field(lbl('Montant', 'buy.payAmount'), 'amount', r0 ? r0.amount : C.round3(reste), 'number', 'step="0.001" min="0" class="num"')}
+        ${dateFieldHtml(lbl(rend ? 'Date du remboursement' : 'Date du règlement', 'buy.payDate'), 'date', r0 ? r0.date : C.today(), {})}
+        ${field(lbl(rend ? 'Montant reçu' : 'Montant', 'buy.payAmount'), 'amount', r0 ? Math.abs(Number(r0.amount) || 0) : C.round3(rend ? aRecuperer : reste), 'number', 'step="0.001" min="0" class="num"')}
         <label class="field">${lbl('Mode', 'buy.payMethod')}<select name="method">${C.PAYMENT_METHODS.map(([v, l]) => `<option value="${v}" ${r0 && r0.method === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
         ${accountFieldHtml(r0 ? r0.accountId || '' : '')}
         ${field(lbl('Référence', 'buy.payReference'), 'reference', r0 ? r0.reference || '' : '', 'text', 'placeholder="N° de chèque, référence du virement…"')}
@@ -7354,16 +7404,18 @@
         if (!(Number(v.amount) > 0)) return refus($('[name=amount]', root), 'Montant invalide.');
         if (!v.date) return refus($('[name=date]', root), 'Date invalide.');
         if (v.date > C.today() && !await confirmDialog(`La date (${C.fmtDate(v.date)}) est dans le futur. Enregistrer quand même ?`, 'Enregistrer', undefined, { titre: 'Un règlement daté dans le futur' })) return;
-        if (Number(v.amount) > reste + 0.0005 && !await confirmDialog(`Le montant (${C.money(v.amount, cur)}) dépasse le reste dû (${C.money(reste, cur)}). Enregistrer quand même ?`, 'Enregistrer quand même', undefined, { titre: 'Plus que le reste dû' })) return;
+        if (!rend && Number(v.amount) > reste + 0.0005 && !await confirmDialog(`Le montant (${C.money(v.amount, cur)}) dépasse le reste dû (${C.money(reste, cur)}). Enregistrer quand même ?`, 'Enregistrer quand même', undefined, { titre: 'Plus que le reste dû' })) return;
+        if (rend && Number(v.amount) > aRecuperer + 0.0005 && !await confirmDialog(`Le montant reçu (${C.money(v.amount, cur)}) dépasse ce que ce fournisseur te devait (${C.money(aRecuperer, cur)}). Enregistrer quand même ?`, 'Enregistrer quand même', undefined, { titre: 'Plus que ce qu\'il te devait' })) return;
         // Corriger la date d'un règlement le sort peut-être d'un mois déclaré : l'ancienne date
         // compte autant que la nouvelle (règle 6.0.0).
         if (closedBlock(r0 ? [r0.date, v.date] : v.date, 'Ce règlement')) return;
         const stored = purchaseById(p.id) || p;
-        const champs = { date: v.date, amount: C.round3(v.amount), method: v.method, accountId: v.accountId || (r0 ? r0.accountId || '' : ''), reference: v.reference || '', note: v.note || '' };
+        const signe = rend && p.kind !== 'avoir' ? -1 : 1;
+        const champs = { date: v.date, amount: C.round3(signe * Number(v.amount)), method: v.method, accountId: v.accountId || (r0 ? r0.accountId || '' : ''), reference: v.reference || '', note: v.note || '' };
         const cible = r0 ? (stored.payments || []).find(x => x.id === r0.id) : null;
         if (cible) Object.assign(cible, champs);
         else stored.payments = (stored.payments || []).concat([{ id: C.uid(), ...champs }]);
-        save(true); close(); toast(r0 ? 'Règlement modifié' : 'Règlement enregistré'); if (done) done();
+        save(true); close(); toast(rend ? (r0 ? 'Remboursement modifié' : 'Remboursement enregistré') : r0 ? 'Règlement modifié' : 'Règlement enregistré'); if (done) done();
       }; });
   }
 
@@ -7388,6 +7440,17 @@
         p.exchangeRate = vise.exchangeRate || 1;
         p.category = vise.category || '';
         p.subject = (p.kind === 'avoir' ? 'Avoir sur ' : 'Acompte sur ') + (vise.number || vise.subject || 'la facture');
+        // Un avoir reprend les LIGNES de la pièce qu'il corrige (10.14.0), comme l'avoir d'une vente
+        // (`creditDraftFrom`) : leur taux, leur destination et surtout leur TVA déductible ou non.
+        // Il partait d'une ligne vide à 19 % déductible — un avoir sur un carburant dont la TVA
+        // n'avait jamais été récupérée retirait alors une TVA qu'on n'avait pas déduite. On ajuste
+        // ensuite la quantité ou le prix ; un acompte, lui, n'est qu'une part : il garde sa ligne vide.
+        if (p.kind === 'avoir') {
+          p.lines = deepCopy(vise.lines || []).map(l => ({ ...l }));
+          if (!p.lines.length) p.lines = [{ label: '', qty: 1, unit: '', unitPrice: 0, vatRate: 19, destination: 'charge', deductible: true }];
+          p.projectId = vise.projectId || '';
+          p.withholdingRate = vise.withholdingRate == null ? p.withholdingRate : vise.withholdingRate;
+        }
       }
       // Depuis la fiche d'une affaire, l'achat naît rattaché : c'est lui qui rend la marge exacte, et
       // « + Achat » y ouvrait un achat sans affaire (10.12.0).
@@ -7432,6 +7495,13 @@
     // l'a écrite, et tout ce qui agrège passe par `t.base`.
     let cur = p.currency || company().currency;
     const stored = isNew ? null : purchaseById(p.id);
+    // Un achat daté d'un mois CLÔTURÉ se lit, se règle et reçoit son justificatif ; il ne se modifie
+    // plus — et il le dit AVANT qu'on tape (10.14.0). L'éditeur de vente le fait depuis cette
+    // version ; celui d'achat s'ouvrait modifiable, et « Enregistrer » répondait par la fenêtre de
+    // clôture : la saisie était perdue. Le jumeau manquant (7.3.0), dans la même application.
+    const clos = !!stored && !!stored.date && C.isClosedDate(data, stored.date);
+    // Un avoir que le fournisseur a remboursé n'est plus « à rattacher plus tard » (10.14.0).
+    const phLie = stored && C.avoirRembourse(stored, C.purchaseBalance(stored, company(), data)) ? '— Aucune : il a été remboursé —' : '— À rattacher plus tard —';
     const cats = C.expenseCategories(data);
 
     const supplierItems = () => data.suppliers.slice().sort((a, b) => a.name.localeCompare(b.name, 'fr')).map(x => ({
@@ -7447,35 +7517,45 @@
         <div class="actions">
           ${backButton('#/achats')}
           ${!isNew && C.purchaseBalance(stored, company(), data).remaining > 0.0005 ? '<button class="btn btn-primary" id="pay">Enregistrer un règlement</button>' : ''}
+          ${!isNew && C.purchaseBalance(stored, company(), data).remaining < -0.0005 ? '<button class="btn btn-primary" id="recu">Remboursement reçu…</button>' : ''}
           <button class="btn" id="attach-top">Joindre un justificatif…</button>${info('ed.attachments')}
           <button class="btn" id="photo" hidden>Lire une photo…</button>${info('ocr.photo')}
-          <button class="btn ${isNew ? 'btn-primary' : ''}" id="save">Enregistrer</button>
+          ${clos ? '' : `<button class="btn ${isNew ? 'btn-primary' : ''}" id="save">Enregistrer</button>`}
           ${isNew ? '' : `<div class="more"><button class="btn" id="more-btn">Plus ▾</button><div class="more-list" id="more-list" hidden>
             <button id="dup">Dupliquer</button>
-            <button id="del" class="danger">Supprimer</button>
+            ${clos ? '' : '<button id="del" class="danger">Supprimer</button>'}
           </div></div>`}
         </div></div>
+      ${!clos ? '' : `<div class="banner info lock-banner" id="clos-banner">
+        <span><b>Cette pièce est datée de ${h(C.closedPeriodLabel(data, stored.date))}, un mois clôturé : elle ne se modifie plus.</b>
+        Tu peux la lire, la régler et y joindre son justificatif. Pour la corriger sans toucher au passé,
+        saisis un avoir du fournisseur à la date d'aujourd'hui ; sinon, rouvre le mois, avec un motif.
+        ${info('buy.clos')}</span>
+        <span class="lock-go">
+          ${C.PURCHASE_LIES.includes(p.kind) ? '' : '<button class="btn btn-sm" id="buy-clos-avoir">Saisir un avoir sur cette pièce</button>'}
+          <button class="btn btn-sm" id="buy-clos-go">Voir les clôtures</button>
+        </span></div>`}
       ${bandeauQuestions(p.number)}
       <div class="buy-editor">
         <div>
           <div class="panel"><h2>La pièce du fournisseur ${info('buy.head')}</h2>
             <form id="b-head" class="grid-3">
               <div class="field">${lbl('Fournisseur', 'buy.supplier')}
-                ${combo({ name: 'supplierId', value: p.supplierId, items: supplierItems(), placeholder: '— Choisir un fournisseur —', search: 'Rechercher : nom, contact, MF…', add: '+ Nouveau fournisseur' })}
+                ${combo({ name: 'supplierId', value: p.supplierId, items: supplierItems(), placeholder: '— Choisir un fournisseur —', search: 'Rechercher : nom, contact, MF…', add: clos ? null : '+ Nouveau fournisseur', ro: clos })}
               </div>
               ${field(lbl(`<span id="b-num-lbl">${h(motsDePiece(p.kind).numero)}</span>`, 'buy.number'), 'number', p.number || '', 'text', `placeholder="${h(motsDePiece(p.kind).invite)}"`)}
               <label class="field">${lbl('Nature', 'buy.kind')}<select name="kind">${C.PURCHASE_KINDS.map(([v, l]) => `<option value="${v}" ${p.kind === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
               <div class="field" id="b-lie-field" ${C.PURCHASE_LIES.includes(p.kind) ? '' : 'hidden'}>${lbl('Facture concernée', 'buy.lie')}
-                ${combo({ name: 'achatLie', value: p.achatLie || '', items: lieItems(p.supplierId), placeholder: '— À rattacher plus tard —', search: 'Rechercher : n°, objet…' })}
+                ${combo({ name: 'achatLie', value: p.achatLie || '', items: lieItems(p.supplierId), placeholder: phLie, search: 'Rechercher : n°, objet…', ro: clos })}
               </div>
-              ${dateFieldHtml(lbl('Date de la pièce', 'buy.date'), 'date', p.date, {})}
-              ${dateFieldHtml(lbl('Échéance de paiement', 'buy.due'), 'dueDate', p.dueDate || '', { quick: true })}
+              ${dateFieldHtml(lbl('Date de la pièce', 'buy.date'), 'date', p.date, { ro: clos })}
+              ${dateFieldHtml(lbl('Échéance de paiement', 'buy.due'), 'dueDate', p.dueDate || '', { quick: true, ro: clos })}
               <div class="field">${lbl('Catégorie de charge', 'buy.category')}
-                ${combo({ name: 'category', value: p.category || '', items: cats.map(c => ({ v: c, label: c })), placeholder: '— Choisir une catégorie —', search: 'Rechercher une catégorie…', add: '+ Nouvelle catégorie' })}
+                ${combo({ name: 'category', value: p.category || '', items: cats.map(c => ({ v: c, label: c })), placeholder: '— Choisir une catégorie —', search: 'Rechercher une catégorie…', add: clos ? null : '+ Nouvelle catégorie', ro: clos })}
               </div>
               <label class="field span-2">${lbl('Objet', 'buy.subject')}<input type="text" name="subject" value="${h(p.subject || '')}" placeholder="Ce que tu as acheté, et pour quel client ou quel chantier"></label>
               <div class="field">${lbl('Affaire (optionnel)', 'buy.project')}
-                ${combo({ name: 'projectId', value: p.projectId || '', items: projectItems(''), placeholder: '— Aucune affaire —', search: 'Rechercher une affaire…', add: '+ Nouvelle affaire' })}
+                ${combo({ name: 'projectId', value: p.projectId || '', items: projectItems(''), placeholder: '— Aucune affaire —', search: 'Rechercher une affaire…', add: clos ? null : '+ Nouvelle affaire', ro: clos })}
               </div>
               <label class="field">${lbl('Retenue à la source opérée', 'buy.withholding')}${withholdingSelect('withholdingRate', p.withholdingRate)}</label>
               ${field(lbl('Timbre et frais', 'buy.fees'), 'fees', p.fees || 0, 'number', 'step="0.001" min="0" class="num"')}
@@ -7484,9 +7564,9 @@
             </form>
           </div>
           <div class="panel"><h2>Lignes ${info('buy.lines')}</h2>
-            <div class="catalog-pick"><div id="b-cat">${combo({ items: [], placeholder: 'Ajouter depuis le catalogue…', search: 'Rechercher une prestation…' })}</div>
+            ${clos ? '' : `<div class="catalog-pick"><div id="b-cat">${combo({ items: [], placeholder: 'Ajouter depuis le catalogue…', search: 'Rechercher une prestation…' })}</div>
               <button class="btn btn-sm" id="add-line">+ Ligne</button>
-              <span class="small muted" id="b-lignes-hint">${h(motsDePiece(p.kind).lignes)}</span></div>
+              <span class="small muted" id="b-lignes-hint">${h(motsDePiece(p.kind).lignes)}</span></div>`}
             <table class="lines-edit buy-lines"><thead><tr><th>Désignation</th><th class="r" style="width:62px">Qté</th><th class="r" style="width:92px">P.U. HT</th><th style="width:76px">TVA</th>
               <th style="width:150px">Destination ${info('buy.destination')}</th><th class="nw" style="width:96px">Déduct. ${info('buy.deductible')}</th><th class="r" style="width:118px">Total HT</th><th></th></tr></thead>
               <tbody id="b-lines"></tbody></table>
@@ -7537,9 +7617,11 @@
         <td><select data-k="destination">${C.LINE_DESTINATIONS.map(([v, lab, d]) => `<option value="${v}" ${(l.destination || 'charge') === v ? 'selected' : ''} title="${h(d)}">${lab}</option>`).join('')}</select></td>
         <td class="c"><input type="checkbox" data-k="deductible" ${l.deductible !== false ? 'checked' : ''}></td>
         <td class="total" data-total="${i}"></td>
-        <td class="line-tools">
+        <td class="line-tools">${clos ? '' : `
           <button class="btn btn-ghost btn-sm" data-dup="${i}" title="Dupliquer la ligne">⧉</button>
-          <button class="btn btn-ghost btn-sm" data-rm="${i}" title="Supprimer la ligne">✕</button></td></tr>`).join('');
+          <button class="btn btn-ghost btn-sm" data-rm="${i}" title="Supprimer la ligne">✕</button>`}</td></tr>`).join('');
+      // Une pièce d'un mois clôturé se lit : chaque case de ses lignes est éteinte.
+      if (clos) $$('input, select', body).forEach(el => { el.disabled = true; });
       $$('[data-k]', body).forEach(el => {
         const ev = el.type === 'checkbox' || el.tagName === 'SELECT' ? 'onchange' : 'oninput';
         el[ev] = () => {
@@ -7551,7 +7633,7 @@
       // La désignation propose le catalogue pendant la frappe (9.2.1) : voir `suggererCatalogue`.
       // L'article créé depuis la liste part en « suivi en stock » si la ligne est déjà en destination
       // stock — c'est pour ça qu'on la créait.
-      $$('input[data-k=label]', body).forEach(el => suggererCatalogue(el, {
+      if (!clos) $$('input[data-k=label]', body).forEach(el => suggererCatalogue(el, {
         items: () => data.catalog,
         right: c => C.money(Number(c.unitCost) || Number(c.unitPrice) || 0, cur) + ' HT',
         onPick: c => poserArticle(Number(el.closest('tr').dataset.i), c),
@@ -7573,7 +7655,7 @@
       });
       refresh();
     }
-    $('#add-line').onclick = () => { p.lines.push({ label: '', qty: 1, unit: '', unitPrice: 0, vatRate: 19, destination: 'charge', deductible: true }); touch(); drawLines(); $$('input[data-k=label]', body).pop().focus(); };
+    if ($('#add-line')) $('#add-line').onclick = () => { p.lines.push({ label: '', qty: 1, unit: '', unitPrice: 0, vatRate: 19, destination: 'charge', deductible: true }); touch(); drawLines(); $$('input[data-k=label]', body).pop().focus(); };
     // L'éditeur d'achat reprochait ensuite un libellé qui ne correspond à aucun article du catalogue
     // (« cette ligne n'entrera dans aucun stock ») sans jamais avoir offert de le choisir dans la
     // liste. On pose le même sélecteur que dans l'éditeur de document et les modèles.
@@ -7596,7 +7678,13 @@
     function refresh() {
       const t = C.purchaseTotals(p, company());
       t.lines.forEach((l, i) => { const c = $(`[data-total="${i}"]`); if (c) c.textContent = C.money(l.ht, null, C.decimalsFor(cur)); });
-      const dest = C.LINE_DESTINATIONS.filter(([k]) => t.byDestination[k] > 0.0005);
+      // Ce que chaque destination COÛTE (10.14.0) : le HT et la TVA qu'on ne récupère pas, comme les
+      // écritures et le résultat la comptent. « Charge 139,000 » sous un carburant à 165,410 disait
+      // l'inverse du compte de résultat. Un acompte n'a pas de destination : c'est une avance.
+      const nd = t.nonDeductibleParDestination || {};
+      const dest = p.kind === 'acompte' ? [] : C.LINE_DESTINATIONS.filter(([k]) => t.byDestination[k] > 0.0005);
+      // Un avoir libre que le fournisseur a remboursé ne se rattache plus à rien (10.14.0).
+      const avoirRendu = p.kind === 'avoir' && C.avoirRembourse(p, C.purchaseBalance(p, company(), data));
       $('#b-totals').innerHTML = `<table>
         <tr><td>Total HT</td><td>${C.money(t.totalHT, cur)}</td></tr>
         <tr><td>TVA</td><td>${C.money(t.totalVAT, cur)}</td></tr>
@@ -7604,10 +7692,10 @@
         ${t.fees ? `<tr><td>Timbre et frais</td><td>${C.money(t.fees, cur)}</td></tr>` : ''}
         ${t.withholding ? `<tr><td>Total TTC</td><td>${C.money(t.totalTTC, cur)}</td></tr><tr><td>Retenue opérée ${pct(t.withholdingRate)}%</td><td>${C.money(-t.withholding, cur)}</td></tr>` : ''}
         <tr class="grand"><td>${p.kind === 'avoir' ? 'Montant de l\'avoir' : p.kind === 'acompte' ? 'Montant de l\'acompte' : 'Net à payer'}</td><td>${C.money(t.netToPay, cur)}</td></tr>
-        ${p.kind === 'avoir' ? `<tr><td colspan="2" class="small muted">Ce montant vient EN MOINS${p.achatLie ? ' de la facture ' + h((purchaseById(p.achatLie) || {}).number || 'rattachée') : ' — rattache-le à une facture pour qu\'il la diminue'}.</td></tr>` : ''}
+        ${p.kind === 'avoir' ? `<tr><td colspan="2" class="small muted">${p.achatLie ? 'Ce montant vient EN MOINS de la facture ' + h((purchaseById(p.achatLie) || {}).number || 'rattachée') + '.' : avoirRendu ? 'Le fournisseur te l\'a remboursé : il n\'y a plus rien à déduire d\'une facture.' : 'Ce montant vient EN MOINS — rattache-le à une facture pour qu\'il la diminue, ou note son remboursement.'}</td></tr>` : ''}
         ${p.kind === 'acompte' ? `<tr><td colspan="2" class="small muted">Une avance, pas une charge : elle se soldera${p.achatLie ? ' sur la facture ' + h((purchaseById(p.achatLie) || {}).number || 'rattachée') : ' le jour où tu la rattacheras à sa facture'}.</td></tr>` : ''}
         ${cur !== company().currency ? `<tr><td class="small muted">soit, en comptabilité ${C.missingRate(p, company()) ? '<span class="warn-text">(taux manquant)</span>' : `<span class="muted">(1 ${h(cur)} = ${pct(t.rate)} ${h(company().currency)})</span>`}</td><td class="small">${C.money(t.base.netToPay, company().currency)}</td></tr>` : ''}
-        ${dest.length ? `<tr><td colspan="2" class="small muted" style="padding-top:8px">${dest.map(([k, lab]) => `${lab} ${C.money(t.byDestination[k], cur)}`).join(' · ')}</td></tr>` : ''}
+        ${dest.length ? `<tr><td colspan="2" class="small muted" style="padding-top:8px">${dest.map(([k, lab]) => `${lab} ${C.money(C.round3(t.byDestination[k] + (nd[k] || 0)), cur)}${(nd[k] || 0) > 0.0005 ? `, dont ${C.money(nd[k], cur)} de TVA non récupérable` : ''}`).join(' · ')}</td></tr>` : ''}
       </table>`;
       // Une ligne « stock » dont le libellé ne retrouve aucun article suivi n'entrera dans aucun stock :
       // sans ce rappel, l'entrée disparaît en silence et le stock finit par passer en négatif.
@@ -7724,7 +7812,7 @@
       }
       refresh();
     };
-    const lieCombo = bindCombo($('[data-combo=achatLie]', head), { items: lieItems(p.supplierId), placeholder: '— À rattacher plus tard —' });
+    const lieCombo = bindCombo($('[data-combo=achatLie]', head), { items: lieItems(p.supplierId), placeholder: phLie });
     const supCombo = bindCombo($('[data-combo=supplierId]', head), {
       items: supplierItems(), placeholder: '— Choisir un fournisseur —', vide: 'Aucun fournisseur pour l\'instant',
       onAdd: saisi => supplierForm(null, sup => { supCombo.setItems(supplierItems()); supCombo.setValue(sup.id); }, { name: saisi })
@@ -7827,16 +7915,23 @@
       const t = b.totals;
       el.innerHTML = `
         <div class="pay-grid">
-          <div><div class="k-label">Net à payer</div><div class="v">${C.money(t.netToPay, cur)}</div>${t.withholding ? `<div class="small muted">TTC ${C.money(t.totalTTC, cur)} − retenue ${C.money(t.withholding, cur)}</div>` : ''}</div>
-          <div><div class="k-label">Réglé</div><div class="v">${C.money(b.paid, cur)}</div>${b.impute ? `<div class="small muted">+ ${C.money(b.impute, cur)} ${b.liees.length > 1 ? 'imputés' : 'imputé'} (${b.liees.map(x => h(x.number || (x.kind === 'acompte' ? 'acompte' : 'avoir'))).join(', ')})</div>` : ''}</div>
-          <div><div class="k-label">Reste dû</div><div class="v ${b.remaining > 0.0005 ? 'due' : 'ok'}">${C.money(Math.max(0, b.remaining), cur)}</div></div>
+          <div><div class="k-label">${s2.kind === 'avoir' ? 'Montant de l\'avoir' : 'Net à payer'}</div><div class="v">${C.money(t.netToPay, cur)}</div>${t.withholding ? `<div class="small muted">TTC ${C.money(t.totalTTC, cur)} − retenue ${C.money(t.withholding, cur)}</div>` : ''}</div>
+          <div><div class="k-label">${s2.kind === 'avoir' ? 'Remboursé' : 'Réglé'}</div><div class="v">${C.money(b.paid, cur)}</div>${b.impute ? `<div class="small muted">+ ${C.money(b.impute, cur)} ${b.liees.length > 1 ? 'imputés' : 'imputé'} (${b.liees.map(x => h(x.number || (x.kind === 'acompte' ? 'acompte' : 'avoir'))).join(', ')})</div>` : ''}</div>
+          ${b.remaining < -0.0005
+            ? `<div><div class="k-label">À récupérer</div><div class="v">${C.money(-b.remaining, cur)}</div><div class="small muted">${s2.kind === 'avoir' ? 'tant qu\'il n\'est ni déduit d\'une facture, ni remboursé' : 'payé en trop'}</div></div>`
+            : s2.kind === 'avoir'
+              // Un avoir ne DOIT rien : ce qu'on lit en face est ce qu'il reste à récupérer, et d'où
+              // il est parti — déduit d'une facture ou rendu par le fournisseur (10.14.0).
+              ? `<div><div class="k-label">À récupérer</div><div class="v ok">${C.money(0, cur)}</div><div class="small muted">${s2.achatLie ? 'déduit de la facture rattachée' : b.paid > 0.0005 ? 'remboursé par le fournisseur' : ''}</div></div>`
+              : `<div><div class="k-label">Reste dû</div><div class="v ${b.remaining > 0.0005 ? 'due' : 'ok'}">${C.money(Math.max(0, b.remaining), cur)}</div></div>`}
           <div><div class="k-label">Statut</div><div class="v">${buyBadge(buyStatus(s2))}</div></div>
         </div>
         ${rows.length ? `<table class="list compact"><thead><tr><th>Date</th><th>Mode</th><th>Référence</th><th class="r">Montant</th><th></th></tr></thead><tbody>
-          ${rows.map(x => `<tr><td>${C.fmtDate(x.date)}</td><td>${h(methodLabel(x.method))}</td><td>${h(x.reference || '')}${x.note ? `<div class="small muted">${h(x.note)}</div>` : ''}</td><td class="r">${C.money(x.amount, cur)}</td>${rowMenuCell(x.id)}</tr>`).join('')}
+          ${rows.map(x => `<tr><td>${C.fmtDate(x.date)}</td><td>${h(methodLabel(x.method))}</td><td>${C.estRemboursementAchat(s2, x) ? '<span class="badge">remboursement reçu</span> ' : ''}${h(x.reference || '')}${x.note ? `<div class="small muted">${h(x.note)}</div>` : ''}</td><td class="r">${C.money(Math.abs(Number(x.amount) || 0), cur)}</td>${rowMenuCell(x.id)}</tr>`).join('')}
         </tbody></table>` : '<p class="small muted">Aucun règlement enregistré.</p>'}
         <div class="inline mt">
           ${b.remaining > 0.0005 ? `<button class="btn ${$('#pay') ? '' : 'btn-primary'}" id="pay2">+ Enregistrer un règlement</button>` : ''}
+          ${b.remaining < -0.0005 ? `<button class="btn ${$('#recu') ? '' : 'btn-primary'}" id="recu2">+ Enregistrer le remboursement reçu</button>` : ''}
           ${t.withholding ? `<label class="check"><input type="checkbox" id="rs-cert2" ${s2.withholdingCertificate ? 'checked' : ''}> Attestation de retenue remise au fournisseur (${C.money(t.withholding, cur)}) ${info('buy.certificate')}</label>` : ''}
         </div>`;
       // Un « ✕ » muet supprimait le règlement : le geste le plus destructif de la ligne était le seul
@@ -7844,7 +7939,7 @@
       bindRowMenus(el, id => {
         const x = (s2.payments || []).find(y => y.id === id); if (!x) return [];
         return [
-          { icon: 'modifier', label: 'Modifier ce règlement', hint: 'Date, montant, mode, compte', run: () => supplierPaymentForm(s2, () => render(), x) },
+          { icon: 'modifier', label: C.estRemboursementAchat(s2, x) ? 'Modifier ce remboursement' : 'Modifier ce règlement', hint: 'Date, montant, mode, compte', run: () => supplierPaymentForm(s2, () => render(), x) },
           { sep: true },
           { icon: 'supprimer', label: 'Supprimer ce règlement', hint: 'Il ne comptera plus dans ce que tu as réglé', danger: true, run: async () => {
             // La clôture passe AVANT la question (7.6.0) : répondre « oui » pour s'entendre dire non.
@@ -7858,6 +7953,7 @@
         ];
       });
       if ($('#pay2')) $('#pay2').onclick = () => supplierPaymentForm(s2, () => render());
+      if ($('#recu2')) $('#recu2').onclick = () => supplierPaymentForm(s2, () => render(), null, true);
       if ($('#rs-cert2')) $('#rs-cert2').onchange = e => { s2.withholdingCertificate = e.target.checked; save(true); };
     }
 
@@ -7943,7 +8039,7 @@
       return true;
     }
     bindBack('#/achats');
-    $('#save').onclick = async () => {
+    if ($('#save')) $('#save').onclick = async () => {
       if (!validate()) return;            // les contrôles de saisie AVANT la grande question (7.6.0)
       if (!await doublonOk()) return;
       if (!persist()) return;
@@ -7951,6 +8047,7 @@
       if (isNew) remplacerPage('#/achat/' + p.id); else render(true);
     };
     if ($('#pay')) $('#pay').onclick = () => supplierPaymentForm(purchaseById(p.id), () => render());
+    if ($('#recu')) $('#recu').onclick = () => supplierPaymentForm(purchaseById(p.id), () => render(), null, true);
     if ($('#more-btn')) $('#more-btn').onclick = e => { e.stopPropagation(); const l = $('#more-list'); const open = l.hidden; closeMenus(); l.hidden = !open; };
     $$('#more-list button:not(.i)').forEach(b => b.addEventListener('click', () => { $('#more-list').hidden = true; }));
     if ($('#dup')) $('#dup').onclick = () => { untouch(); duplicatePurchase(purchaseById(p.id)); };
@@ -7961,9 +8058,15 @@
       data.purchases = data.purchases.filter(x => x.id !== p.id); save(true); untouch(); navigate('#/achats');
     };
 
+    if ($('#buy-clos-avoir')) $('#buy-clos-avoir').onclick = () => navigate(`#/achat/new/${p.supplierId || '-'}/avoir/${p.id}`);
+    if ($('#buy-clos-go')) $('#buy-clos-go').onclick = () => { comptaState.tab = 'clotures'; navigate('#/compta'); };
+
     drawLines();
     drawPayments();
     drawBuyAttachments();
+    // L'en-tête d'une pièce close s'éteint entier : les listes et les dates le sont déjà par leur `ro`,
+    // les cases de texte et de nombre, les notes et les listes natives le sont ici.
+    if (clos) $$('#b-head input:not([type=hidden]), #b-head select, #b-head textarea, #b-notes').forEach(el => { el.disabled = true; });
     // Une page redessinée avec la pièce en cours (lecture d'une photo) est, par construction, modifiée.
     if (repris) touch();
   };
@@ -8274,6 +8377,7 @@
             ${b.depreciation ? `<div class="vat-line sub-line"><span class="muted">dont dotation aux amortissements ${info('immo.annuity')}</span><span class="num muted">${C.money(b.depreciation, cur)}</span></div>` : ''}
             ${b.autres ? `<div class="vat-line sub-line"><span class="muted">dont frais, salaires sans bulletin et écritures diverses ${info('mg.autres')}</span><span class="num muted">${C.money(b.autres, cur)}</span></div>` : ''}
             ${b.exceptionnel ? `<div class="vat-line ${b.exceptionnel > 0 ? 'minus' : ''}"><span>${b.exceptionnel > 0 ? '− Moins-value' : '+ Plus-value'} de cession d'un bien ${info('mg.cession')}</span><span class="num">${C.money(Math.abs(b.exceptionnel), cur)}</span></div>` : ''}
+            ${b.change ? `<div class="vat-line ${b.change < 0 ? 'minus' : ''}"><span>${b.change < 0 ? '− Perte' : '+ Gain'} de change ${info('compta.change')}</span><span class="num">${C.money(Math.abs(b.change), cur)}</span></div>` : ''}
             <div class="vat-line total ${b.result < 0 ? 'due' : 'ok'}"><span>${b.result < 0 ? 'Perte' : 'Résultat'}</span><span class="num">${C.money(b.result, cur)}</span></div>
           </div>
           <h3 class="sub-h">Le chiffre d'affaires minimum</h3>
@@ -8490,7 +8594,7 @@
     drawVentes();
     const { cols } = purchaseColumns({ hideSupplier: false });
     $('#p-buys').innerHTML = buys.length ? `<div class="scroll-x"><table class="list compact"><thead>${sortHead(cols.map(c => ({ ...c, val: null })), null)}</thead><tbody>
-        ${buys.map(b => `<tr class="clickable" data-bid="${h(b.id)}">${cols.map(c => `<td class="${c.r ? 'r nw' : ''}">${c.get(b)}</td>`).join('')}</tr>`).join('')}
+        ${buys.map(b => `<tr class="clickable" data-bid="${h(b.id)}">${cols.map(c => `<td class="${c.r ? 'r nw' : ''}${c.cls ? ' ' + c.cls : ''}">${c.get(b)}</td>`).join('')}</tr>`).join('')}
       </tbody></table></div><div class="inline mt">${geste('p-att-a', achatsLibres ? 'Rattacher d\'autres achats…' : 'Détacher un achat…')}</div>`
       : `<div class="empty mini">Aucun achat rattaché : ce sont eux qui rendent la marge exacte. ${achatsLibres
         ? `<div class="inline mt">${geste('p-att-a', 'Rattacher des achats déjà saisis…')}</div>`
@@ -11865,6 +11969,7 @@
             <div class="stat"><div class="lbl">Dotation aux amortissements ${info('immo.annuity')}</div><div class="val">${C.money(res.depreciation, cur)}</div><div class="sub">${res.depreciation ? 'une charge qui ne sort pas d\'argent' : 'aucun bien amorti sur la période'}</div></div>
             ${res.horsSuivi ? `<div class="stat"><div class="lbl">Marchandises sans article suivi ${info('compta.horsSuivi')}</div><div class="val">${C.money(res.horsSuivi, cur)}</div><div class="sub">achetées pour le stock, jamais entrées dans un stock suivi</div></div>` : ''}
             ${res.autres ? `<div class="stat"><div class="lbl">${res.autres > 0 ? 'Autres charges' : 'Autres produits'} ${info('compta.autres')}</div><div class="val">${C.money(Math.abs(res.autres), cur)}</div><div class="sub">frais bancaires, écritures diverses, cessions</div></div>` : ''}
+            ${res.change ? `<div class="stat"><div class="lbl">${res.change < 0 ? 'Perte de change' : 'Gain de change'} ${info('compta.change')}</div><div class="val">${C.money(Math.abs(res.change), cur)}</div><div class="sub">avoir ou acompte à un autre taux que sa pièce</div></div>` : ''}
             <div class="stat"><div class="lbl">Résultat avant impôt</div><div class="val ${res.resultat >= 0 ? 'ok' : 'due'}">${C.money(res.resultat, cur)}</div><div class="sub">${res.marge == null ? '' : res.marge + ' % du chiffre d\'affaires'}</div></div>
             <div class="stat"><div class="lbl">Non comptés en charges</div><div class="val">${C.money(C.round3(res.stock - res.horsSuivi + res.immo), cur)}</div><div class="sub">${C.money(C.round3(res.stock - res.horsSuivi), cur)} en stock · ${C.money(res.immo, cur)} en immobilisations</div></div>
           </div>
@@ -12205,15 +12310,15 @@
         const lf = C.lettrage(data, company(), 'fournisseurs', C.today());
         const bloc = (l, qui) => `
           <h3 class="mt">${qui === 'clients' ? 'Clients' : 'Fournisseurs'} — ${pl(l.lettrees, 'pièce')} lettrée${l.lettrees > 1 ? 's' : ''}, ${pl(l.ouverts, 'pièce')} ouverte${l.ouverts > 1 ? 's' : ''}, reste ${C.money(l.reste, cur)}</h3>
-          ${l.ouverts ? `<div class="scroll-x"><table class="list compact" id="let-${qui}"><thead><tr><th>Compte</th><th>${qui === 'clients' ? 'Client' : 'Fournisseur'}</th><th>Pièce</th><th>Date</th><th>Échéance</th><th class="r">Montant</th><th class="r">Réglé</th><th class="r">Reste</th></tr></thead><tbody>
+          ${l.ouverts ? `<div class="scroll-x"><table class="list compact" id="let-${qui}"><thead><tr><th>Compte</th><th>${qui === 'clients' ? 'Client' : 'Fournisseur'}</th><th>Pièce</th><th>Date</th><th>Échéance</th><th class="r">Montant</th><th class="r">${qui === 'clients' ? 'Avoirs' : 'Avoirs et acomptes'}</th><th class="r">Réglé</th><th class="r">Reste</th></tr></thead><tbody>
             ${l.rows.flatMap(r => r.ouverts.map(o => `<tr class="${o.retard ? 'b-late' : ''}" data-go="${h(qui === 'clients' ? '#/doc/' + o.id : '#/achat/' + o.id)}" style="cursor:pointer">
               <td class="nw"><strong>${h(r.account)}</strong></td><td>${h(r.tiers)}</td><td class="nw">${h(o.piece)}</td><td class="nw">${C.fmtDate(o.date)}</td>
               <td class="nw ${o.retard ? 'due' : ''}">${o.echeance ? C.fmtDate(o.echeance) : '—'}</td>
-              <td class="r nw">${C.money(o.montant)}</td><td class="r nw">${o.regle ? C.money(o.regle) : '—'}</td><td class="r nw"><strong>${C.money(o.reste)}</strong></td></tr>`)).join('')}
-          </tbody><tfoot><tr class="total-row"><td colspan="7">Reste à lettrer</td><td class="r nw"><strong>${C.money(l.reste)}</strong></td></tr></tfoot></table></div>`
+              <td class="r nw">${C.money(o.montant)}</td><td class="r nw">${o.avoirs ? C.money(o.avoirs) : '—'}</td><td class="r nw">${o.regle ? C.money(o.regle) : '—'}</td><td class="r nw"><strong>${C.money(o.reste)}</strong></td></tr>`)).join('')}
+          </tbody><tfoot><tr class="total-row"><td colspan="8">Reste à lettrer</td><td class="r nw"><strong>${C.money(l.reste)}</strong></td></tr></tfoot></table></div>`
             : `<div class="todo-ok">Tout est lettré : aucune pièce ${qui === 'clients' ? 'client' : 'fournisseur'} ouverte.</div>`}`;
         csvRows = lc.rows.flatMap(r => r.ouverts.map(o => ({ role: 'client', account: r.account, tiers: r.tiers, ...o }))).concat(lf.rows.flatMap(r => r.ouverts.map(o => ({ role: 'fournisseur', account: r.account, tiers: r.tiers, ...o }))));
-        csvCols = [{ key: 'role', label: 'Rôle' }, { key: 'account', label: 'Compte' }, { key: 'tiers', label: 'Tiers' }, { key: 'piece', label: 'Pièce' }, { key: 'date', label: 'Date', type: 'date' }, { key: 'echeance', label: 'Échéance' }, { key: 'montant', label: 'Montant', type: 'money' }, { key: 'regle', label: 'Réglé', type: 'money' }, { key: 'reste', label: 'Reste', type: 'money' }];
+        csvCols = [{ key: 'role', label: 'Rôle' }, { key: 'account', label: 'Compte' }, { key: 'tiers', label: 'Tiers' }, { key: 'piece', label: 'Pièce' }, { key: 'date', label: 'Date', type: 'date' }, { key: 'echeance', label: 'Échéance' }, { key: 'montant', label: 'Montant', type: 'money' }, { key: 'avoirs', label: 'Avoirs et acomptes', type: 'money' }, { key: 'regle', label: 'Réglé', type: 'money' }, { key: 'reste', label: 'Reste', type: 'money' }];
         nomCsv = `lettrage-${C.today()}.csv`;
         corps = `<p class="small">Une facture soldée et ses règlements portent la même lettre — son numéro — dans le livre-journal et le grand livre. Ici, ce qui reste <b>ouvert</b> à ce jour, tiers par tiers : c'est la liste que ton comptable te demande avant de clôturer. ${info('bal.lettrage')}</p>${bloc(lc, 'clients')}${bloc(lf, 'fournisseurs')}`;
       } else {
@@ -16062,7 +16167,7 @@
       const { rows: page, pg } = paginate(kept, s);
       const aRenouveler = kept.filter(r => r.etat === 'bientot' && !r.renouvelee).length;
       $('#lic-wrap').innerHTML = kept.length ? `<table class="list sortable"><thead>${sortHead(cols, s.sort, '<th class="row-actions-h"></th>')}</thead><tbody>
-          ${page.map(r => `<tr>${cols.map(c => `<td class="${c.r ? 'r nw' : ''}">${c.get(r)}</td>`).join('')}${rowMenuCell(r.id)}</tr>`).join('')}
+          ${page.map(r => `<tr>${cols.map(c => `<td class="${c.r ? 'r nw' : ''}${c.cls ? ' ' + c.cls : ''}">${c.get(r)}</td>`).join('')}${rowMenuCell(r.id)}</tr>`).join('')}
         </tbody><tfoot><tr><td colspan="7">${pl(kept.length, 'licence')}${filtered ? ` sur ${all.length}` : ''}${aRenouveler ? ` · ${aRenouveler} à renouveler` : ''}</td><td></td></tr></tfoot></table>${pagerBar(pg, { noun: 'licence', grandTotal: all.length })}`
         : (filtered ? '<div class="empty">Aucune licence ne correspond.</div>'
           : etatVide('Aucune licence émise', ['Chaque licence que tu vends passe par ici : la clé est signée avec ta clé privée, la facture est créée dans tes ventes, et le mail au client est prêt.'], peut ? [['lic-first', '+ Émettre ma première licence', true]] : []));

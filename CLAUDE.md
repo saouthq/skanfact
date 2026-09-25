@@ -69,6 +69,8 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Une **annonce** se calcule par les MÊMES constructeurs que ce qu'elle annonce | 10.12.0 — E-02, le solde d'acompte faux de deux timbres |
 | Une fonction qui rend un montant **NATIF** piège chaque appelant qui additionne : la couverture se fait par appelant, jamais par fonction | 10.12.0 — E-08, la prévision en euros ; 10.1.0 |
 | Un **argument facultatif** qui change un montant piège chaque appelant qui l'oublie : il se tient appel par appel | 10.14.0 — `purchaseBalance` sans `data`, un trop-payé prérempli |
+| Une pièce qui en **diminue une autre** le fait dans la devise de celle qu'elle diminue ; à un **autre taux**, l'écart part au change (655/755) | 10.14.0 — l'avoir de 300 DT qui retranchait 300 € ; les 15 DT restés au 411 |
+| Un **rangement d'états** écrit deux fois a la même faute deux fois : un emprunt dans les capitaux propres, en tombant juste | 10.14.0 — `groupesDesEtats` ; une rubrique ne contredit pas le nom que le plan donne à ses comptes |
 | Une règle posée d'un côté du moteur (l'écriture) se cherche de l'autre (la déclaration) : la TVA d'un **acompte** se déduit une fois | 10.14.0 — septembre annonçait un crédit au lieu de 92 DT à reverser |
 | Un mouvement d'argent enregistré existe dans les **deux livres** (Trésorerie et écritures) et se pointe | 10.14.0 — l'avance sur salaire qui ne sortait jamais de la banque |
 | Des **cartes qui forment une équation** (valeur − cumul = VNC) la tiennent, l'année d'une cession aussi | 10.14.0 — le bien sorti compté à moitié, dans les deux applications |
@@ -7813,6 +7815,50 @@ aussi l'app cabinet ») — les invariants ont gagné le stock, le résultat, le
   prend l'infinitif par lequel la question commence (« Supprimer ce mouvement ? » → « Supprimer »),
   jamais « Annuler » (le bouton d'à côté), ni un mot qui n'en a que la terminaison (« Votre »,
   « Autre »). Le test relit CHAQUE `confirmDialog` à un seul argument et exige un verbe pour tous.
+- **Un avoir diminue sa facture dans la devise de la FACTURE** (`montantDansDeviseDe`) : « Nouvel
+  avoir » part en dinars, et un avoir de 300 DT rattaché à une facture de 1 000 € en retranchait
+  300 €. Le reste dû, le 411, le lettrage et `purchaseBalance` convertissent la pièce qui diminue
+  vers la devise de celle qu'elle diminue ; et l'éditeur ne laisse plus un avoir rattaché changer de
+  devise, de taux ni de langue (`roDevise`) — un avoir d'avant se réaligne à l'enregistrement, et
+  **n'est pas enregistré du même geste** : ses montants changent de devise, ils se relisent d'abord.
+- **Même devise, autre taux : le tiers se solde au taux de sa pièce, l'écart part au change**
+  (`ecartDeTauxEntre`, 655 / 755). Un avoir de 300 € à 3,40 sur une facture à 3,35 laissait 15 DT au
+  411 pour toujours — un client qui ne doit plus rien en euros et dont le compte dit le contraire.
+  La règle vit en UN endroit et trois lecteurs la lisent : les écritures, le résultat simplifié et
+  le seuil (`ecartsDeChange`) — sinon l'invariant « seuil = résultat simplifié » tombe, et c'est lui
+  qui a dit que le seuil l'oubliait. Ce que ça ne règle PAS : l'écart de change d'un RÈGLEMENT (un
+  paiement se convertit au taux de la facture) — c'est une limite du modèle, écrite dans A-FAIRE.
+- **Une ligne de tableau qui ne s'additionne pas fait douter de toutes les autres.** Le lettrage
+  affichait « 3 685 − 3 685 = − 1 005 » : l'avoir faisait la différence sans colonne. Montant −
+  Avoirs − Réglé = Reste sur chaque ligne, et un test l'exige sur les cinq ans ET sur un trop-perçu
+  fabriqué — l'exemple n'en portait pas au premier jet, donc le test ne pouvait rien prouver
+  (des données qui ne discriminent pas, 10.0.0).
+- **Un nom de rubrique ne contredit pas le nom que le plan donne à ses comptes**, et un test le lit
+  compte par compte : pour chaque compte à deux chiffres des classes 6 et 7, « financier » et
+  « extraordinaire » sont dans les deux noms ou dans aucun. « Produits financiers » lisait le prix
+  d'un bien cédé (775) et les reprises (78) pendant que le 75 était dans l'exploitation. Et **chaque
+  compte du plan de l'application trouve sa rubrique dans son sens naturel** : 24, 29, 48, 49, 59 et
+  72 sortaient de la liasse, 14 (« Autres capitaux propres ») était rangé en « Provisions ». Le seul
+  compte exclu est NOMMÉ (18, liaison : un solde y est une anomalie à montrer).
+- **Un rangement écrit deux fois a la même faute deux fois.** `etatsFinanciers` (core) et
+  `etatsDepuisLignes` (compta) rangeaient toute la classe 1 en « Capitaux propres » — un emprunt
+  gonflait les fonds propres, sur le PDF de clôture envoyé au client — et une provision 49 passait
+  au passif comme une dette. Les totaux tombaient juste : aucun contrôle ne pouvait le voir. Le
+  rangement vit dans `groupesDesEtats` (compta.js), core l'appelle, et un test interdit une seconde
+  liste de rubriques dans core.
+- **Une rubrique neuve dans une copie du cabinet se pose à SA place, et un préfixe plus court du
+  modèle ne la bloque pas** : `migrerModeleLiasse` n'ajoute une rubrique que si aucune ligne ne lit
+  déjà ses comptes — mais « 5 » (liquidités, resté celui du modèle) « lisait » le 59 et empêchait la
+  rubrique des provisions de naître. Un préfixe plus court que le CABINET a écrit bloque (c'est son
+  choix) ; celui du modèle non (la rubrique neuve existe pour lui reprendre ce compte). C'est la
+  preuve du test « la copie de la 10.13.0 rejoint le modèle » qui l'a dit, pas la relecture.
+- **L'EBE ne compte pas les charges financières** : le SIG lisait « personnel » sur 64 et 65.
+- Piège de ma propre méthode : `mini-suite.js` (scratch) ne passait pas `lireSource` — toutes les
+  preuves d'une suite qui en a besoin rendaient « TOMBE » sur des tests étrangers, ce qui ne prouve
+  rien. L'outil de preuve se répare avant de conclure (9.9.1 : quand une mesure fait changer le
+  code, c'est l'instrument qui se relit en premier).
+- Et une preuve restée VERTE a donné un test qui manquait : l'avoir fournisseur en dinars sur un
+  achat en euros n'était porté par aucun test (le jumeau des ventes l'était).
 
 ## Pistes pour la suite (non demandées)
 

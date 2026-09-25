@@ -919,6 +919,57 @@
     return r > 0 ? r : 1;      // le repli existe pour ne rien faire planter ; `missingRate` le signale
   }
 
+  // Un montant d'une pièce, exprimé dans la devise d'une AUTRE (10.14.0). Un avoir rattaché diminue
+  // sa facture dans la devise de la FACTURE : resté en dinars sur une facture en euros (le geste
+  // « Nouvel avoir », qui part en dinars), il en retranchait 300 € pour 300 DT — la facture
+  // annonçait 200 € de reste pendant que le 411 portait l'équivalent de 410. Même devise : le
+  // montant tel quel, un avoir de 300 € efface 300 € quel que soit son taux (l'écart de taux est une
+  // différence de change, que le journal écrit) ; autre devise : par la devise de la société.
+  function montantDansDeviseDe(piece, montant, cible, company) {
+    const dev = x => normCurrency((x && x.currency) || (company && company.currency));
+    if (dev(piece) === dev(cible)) return round3(montant);
+    return round3(toBase(piece, montant, company) / rateOf(cible, company));
+  }
+
+  // L'ÉCART DE CHANGE (10.14.0). Un avoir, un avoir fournisseur ou un acompte rattaché à une pièce
+  // de la MÊME devise étrangère, mais à un autre taux : le tiers doit (ou se voit devoir) ce qu'il
+  // doit dans SA devise — la facture de 1 000 € moins l'avoir de 300 € — donc son compte se règle au
+  // taux de la pièce qu'on diminue. La pièce, elle, garde ses propres comptes à son taux (le chiffre
+  // d'affaires ou la charge qu'elle corrige). La différence est un gain ou une perte de change : sans
+  // elle, le 411 gardait 15 DT sur une facture que le client ne doit plus, pendant que le lettrage,
+  // le relevé et la fiche disaient zéro. Rend ce qu'il faut AJOUTER au débit du compte du tiers pour
+  // le régler au taux de la cible, sur un montant `natif` de la pièce — c'est aussi l'effet sur le
+  // résultat (positif : un gain).
+  function ecartDeTauxEntre(piece, cible, natif, company) {
+    if (!piece || !cible || !natif) return 0;
+    const dev = x => normCurrency(x.currency || company.currency);
+    if (dev(piece) !== dev(cible) || dev(piece) === normCurrency(company.currency)) return 0;
+    return round3(toBase(cible, natif, company) - toBase(piece, natif, company));
+  }
+  // Le total des écarts de change d'une période, par la MÊME règle que le journal : le résultat
+  // simplifié ne peut pas dire un autre résultat que les états financiers.
+  function ecartsDeChange(data, company, period) {
+    const from = period && period.from, to = period && period.to;
+    const docs = new Map((data.documents || []).map(d => [d.id, d]));
+    const achats = new Map((data.purchases || []).map(p => [p.id, p]));
+    let total = 0;
+    (data.documents || []).forEach(av => {
+      if (av.type !== 'avoir' || !av.creditOf || av.status === 'brouillon' || !av.number || !inPeriod(av.date, from, to)) return;
+      total += ecartDeTauxEntre(av, docs.get(av.creditOf), -computeTotals(av, company).netToPay, company);
+    });
+    (data.purchases || []).forEach(p => {
+      if (!inPeriod(p.date, from, to)) return;
+      const n = purchaseTotals(p, company).netToPay;
+      if (p.kind === 'avoir' && p.achatLie && achats.get(p.achatLie)) {
+        const rendu = Math.min(n, Math.max(0, (p.payments || []).reduce((s, x) => s + (Number(x.amount) || 0), 0)));
+        total += ecartDeTauxEntre(p, achats.get(p.achatLie), round3(n - rendu), company);
+      } else if (p.kind !== 'avoir' && p.kind !== 'acompte') {
+        piecesLieesAchat(data, p.id, 'acompte').forEach(a => { total += ecartDeTauxEntre(a, p, purchaseTotals(a, company).netToPay, company); });
+      }
+    });
+    return round3(total);
+  }
+
   // Un document en devise étrangère SANS taux de change saisi. Le repli à 1 de `rateOf` évite un
   // écran cassé, mais il fait compter 1 EUR = 1 DT : le journal des ventes, la TVA à déclarer, le
   // chiffre d'affaires et le tableau de bord deviennent faux **en silence**, d'un facteur trois.
@@ -1284,7 +1335,7 @@
   function invoiceBalance(doc, data, company) {
     const totals = computeTotals(doc, company);
     const credits = creditsFor(data, doc.id);
-    const credited = round3(credits.reduce((s, a) => s + computeTotals(a, company).netToPay, 0));
+    const credited = round3(credits.reduce((s, a) => s + montantDansDeviseDe(a, computeTotals(a, company).netToPay, doc, company), 0));
     const paid = round3((doc.payments || []).reduce((s, p) => s + (Number(p.amount) || 0), 0));
     const remaining = round3(totals.netToPay - credited - paid);
     return { totals, credits, credited, paid, remaining };
@@ -1771,7 +1822,7 @@
     'Honoraires (comptable, avocat)', 'Publicité et communication', 'Frais bancaires',
     'Impôts et taxes', 'Formation', 'Divers'
   ];
-  const PURCHASE_STATUSES = ['à payer', 'partiel', 'retard', 'payée', 'à imputer', 'imputé'];
+  const PURCHASE_STATUSES = ['à payer', 'partiel', 'retard', 'payée', 'à imputer', 'imputé', 'remboursé'];
 
   function expenseCategories(data) {
     const extra = (data && Array.isArray(data.expenseCategories) ? data.expenseCategories : [])
@@ -1879,6 +1930,7 @@
     };
     return {
       lines, totalHT, vatByRate, totalVAT, deductibleVAT, fees, totalTTC, withholdingRate, withholding, netToPay, byDestination,
+      nonDeductibleParDestination: ndByDestination,
       currency: purchase.currency || (company || {}).currency || '', rate: rateOf(purchase, company || {}), sens, base
     };
   }
@@ -1926,8 +1978,38 @@
     const liees = data ? piecesLieesAchat(data, purchase.id) : [];
     // Un avoir et un acompte se déduisent de la même façon, et dans la MÊME devise : un fournisseur
     // avoise et encaisse dans la devise où il a facturé. L'éditeur le refuse autrement.
-    const impute = round3(liees.reduce((s, x) => s + purchaseTotals(x, company).netToPay, 0));
+    // Un avoir déjà REMBOURSÉ (en tout ou en partie) ne déduit que ce qui n'a pas été rendu (10.14.0) :
+    // l'argent reçu est entré en trésorerie et au 401, le déduire en plus de la facture la faisait
+    // passer pour payée pendant que le compte du fournisseur la disait due.
+    // Dans la devise de la FACTURE (10.14.0) : l'éditeur refuse une autre devise depuis la 10.2.0,
+    // mais une pièce enregistrée avant ne se relit pas autrement.
+    const impute = round3(liees.reduce((s, x) => {
+      const n = purchaseTotals(x, company).netToPay;
+      if (x.kind !== 'avoir') return s + montantDansDeviseDe(x, n, purchase, company);
+      const rendu = round3((x.payments || []).reduce((t, y) => t + (Number(y.amount) || 0), 0));
+      return s + montantDansDeviseDe(x, Math.max(0, round3(n - rendu)), purchase, company);
+    }, 0));
     return { totals, paid, liees, impute, remaining: round3(totals.netToPay - paid - impute) };
+  }
+
+  // Un règlement qui RAMÈNE de l'argent du fournisseur (10.14.0) : tout règlement porté par un avoir
+  // (il le rembourse), et un règlement négatif sur une facture payée plus que son montant.
+  function estRemboursementAchat(purchase, pay) {
+    return !!purchase && !!pay && (purchase.kind === 'avoir' || (Number(pay.amount) || 0) < 0);
+  }
+
+  // Un avoir LIBRE que le fournisseur a remboursé en entier : il ne porte plus aucun crédit.
+  function avoirRembourse(purchase, b) {
+    return !!purchase && purchase.kind === 'avoir' && !purchase.achatLie && b.paid > 0.0005 && b.remaining >= -0.0005;
+  }
+
+  // Une pièce fournisseur à rattacher à sa facture (10.2.0) : un avoir qui porte encore un crédit, un
+  // acompte sans facture. UNE règle pour la ligne de « À faire » et le filtre de la liste qu'elle
+  // ouvre (6.8.1) — un avoir déjà remboursé n'a plus rien à déduire, le rattacher le compterait deux fois.
+  function aRattacherAchat(purchase, company, data) {
+    if (!purchase || !PURCHASE_LIES.includes(purchase.kind) || purchase.achatLie) return false;
+    if (purchase.kind !== 'avoir') return true;
+    return purchaseBalance(purchase, company, data).remaining < -0.0005;
   }
 
   // Statut déduit des paiements, jamais saisi — comme pour une facture de vente.
@@ -1968,7 +2050,9 @@
 
   function purchaseStatus(purchase, company, todayIso, data) {
     const b = purchaseBalance(purchase, company, data);
-    if (purchase.kind === 'avoir') return purchase.achatLie ? 'imputé' : 'à imputer';
+    // Un avoir libre que le fournisseur a remboursé en entier n'a plus rien à imputer (10.14.0) : le
+    // dire « à imputer » faisait chercher une facture où le déduire, c'est-à-dire le compter deux fois.
+    if (purchase.kind === 'avoir') return purchase.achatLie ? 'imputé' : (avoirRembourse(purchase, b) ? 'remboursé' : 'à imputer');
     if (b.remaining <= 0.0005) return 'payée';
     if (b.paid > 0 || b.impute > 0) return 'partiel';
     if (purchase.dueDate && purchase.dueDate < (todayIso || today())) return 'retard';
@@ -2069,22 +2153,24 @@
         return m;
       }).get(supplierId) || []).slice()
       : (data.purchases || []).filter(p => p.supplierId === supplierId);
-    let ht = 0, remaining = 0, late = 0;
+    let ht = 0, due = 0, aRecuperer = 0, late = 0;
     mine.forEach(p => {
       const b = purchaseBalance(p, company, data);
       // Un acompte n'est pas un achat de plus : sa facture porte déjà le montant entier (10.14.0).
       if (p.kind !== 'acompte') ht = round3(ht + b.totals.base.totalHT);
-      if (b.remaining > 0.0005) {
-        remaining = round3(remaining + toBase(p, b.remaining, company));
-        if (purchaseStatus(p, company, todayIso, data) === 'retard') late = round3(late + toBase(p, b.remaining, company));
+      const reste = toBase(p, b.remaining, company);
+      if (reste > 0.0005) {
+        due = round3(due + reste);
+        if (purchaseStatus(p, company, todayIso, data) === 'retard') late = round3(late + reste);
       }
-      // Un avoir non imputé est un CRÉDIT chez ce fournisseur : il vient en moins de ce qu'on lui
-      // doit, et il se voit sur sa fiche (10.2.0). Le laisser hors du compte ferait payer une
-      // facture qu'un avoir couvrait déjà.
-      if (p.kind === 'avoir' && !p.achatLie) remaining = round3(remaining + toBase(p, b.remaining, company));
+      // Ce qu'on DÉTIENT chez ce fournisseur : un avoir non imputé (10.2.0), et un trop-payé sur une
+      // facture (10.14.0). Les deux sont des crédits de même nature — la fiche comptait le premier
+      // et oubliait le second, et disait 450 là où son compte 401 dit 350. Le net est celui du
+      // compte, la règle de la fiche client (`clientSummary.net`).
+      else if (reste < -0.0005) aRecuperer = round3(aRecuperer - reste);
     });
     const dates = mine.map(p => p.date).filter(Boolean).sort();
-    return { count: mine.length, ht, remaining, late, first: dates[0] || '', last: dates[dates.length - 1] || '' };
+    return { count: mine.length, ht, due, aRecuperer, remaining: round3(due - aRecuperer), late, first: dates[0] || '', last: dates[dates.length - 1] || '' };
   }
 
   // Retenues à la source que tu as opérées et dont le fournisseur attend l'attestation.
@@ -2220,16 +2306,19 @@
       const t = computeTotals(d, company);
       revenue = round3(revenue + sign * toBase(d, t.netHT, company));
       invoiced = round3(invoiced + sign * toBase(d, t.netToPay, company));
+      // L'encaissé est l'argent REÇU (10.14.0) : les règlements de la facture, un remboursement de
+      // trop-perçu en moins. « Montant − reste » y ajoutait les avoirs, qui diminuent le reste sans
+      // qu'un dinar n'entre : 2 040 annoncés pour 1 700 reçus, et le « rapporté en caisse » avec.
       if (d.type === 'facture') {
-        const b = invoiceBalance(d, data, company);
-        collected = round3(collected + toBase(d, round3(t.netToPay - b.remaining), company));
+        collected = round3(collected + toBase(d, (d.payments || []).reduce((s, p) => s + (Number(p.amount) || 0), 0), company));
       }
     });
     let cost = 0, paid = 0;
     buys.forEach(p => {
       const t = purchaseTotals(p, company);
       cost = round3(cost + coutAchat(t));
-      paid = round3(paid + toBase(p, purchaseBalance(p, company, data).paid, company));
+      // Un avoir remboursé RAPPORTE de l'argent (10.14.0) : son « réglé » vient en moins.
+      paid = round3(paid + (p.kind === 'avoir' ? -1 : 1) * toBase(p, purchaseBalance(p, company, data).paid, company));
     });
     // Devis en cours : ce qui est proposé mais pas encore FACTURÉ, pour voir l'affaire en entier. Un
     // devis entièrement facturé comptait encore « en devis » à côté de ses propres factures : la fiche
@@ -2335,12 +2424,14 @@
     const rate = revenue > 0 ? marginOnVariable / revenue : 0;
     const point = rate > 0 ? round3(fixed / rate) : null;
     return {
-      revenue, fixed, variable, cogs, depreciation, payroll, autres, exceptionnel, marginOnVariable,
+      revenue, fixed, variable, cogs, depreciation, payroll, autres, exceptionnel, change: r.change, marginOnVariable,
       rate: revenue > 0 ? Math.round(rate * 1000) / 10 : null,
       breakEven: point,
       // Là où tu en es par rapport au seuil : négatif = il manque du chiffre d'affaires.
       gap: point == null ? null : round3(revenue - point),
-      result: round3(marginOnVariable - fixed - exceptionnel),
+      // L'écart de change (10.14.0) ne tombe ni avec les ventes ni avec le temps : il vient après,
+      // comme une plus-value de cession.
+      result: round3(marginOnVariable - fixed - exceptionnel + r.change),
       reached: point != null && revenue >= point
     };
   }
@@ -2516,20 +2607,34 @@
     let qty = 0, value = 0, cmp = 0;
     const rows = moves.map(m => {
       const q = Number(m.qty) || 0;
+      // Le coût qui a SERVI à valoriser le mouvement (10.14.0) : il se lit sur la ligne, et c'est lui
+      // qu'on retranche. Pris APRÈS la mise à jour, un retour client affichait le nouveau coût moyen
+      // et non celui auquel il était rentré.
+      const unit = m.unitCost == null ? cmp : Number(m.unitCost) || 0;
       if (q > 0) {
         // Une entrée sans coût connu (retour sur avoir, ajustement) rentre au CMP courant.
-        const unit = m.unitCost == null ? cmp : Number(m.unitCost) || 0;
-        value = round3(value + q * unit);
+        const avant = qty;
         qty = round3(qty + q);
-        cmp = qty > 0 ? round3(value / qty) : 0;
+        if (avant >= 0) {
+          value = round3(value + q * unit);
+          cmp = qty > 0 ? round3(value / qty) : 0;
+        } else if (qty > 0) {
+          // L'entrée comble d'abord un manque (10.14.0) : les pièces vendues sans avoir été achetées
+          // sont sorties, et ce qui RESTE vaut le prix de cette entrée. Ajoutée à la valeur négative
+          // du manque, elle laissait 100 DT de stock pour zéro pièce, ou gonflait le coût moyen.
+          value = round3(qty * unit);
+          cmp = unit;
+        } else {
+          // Toujours en manque : valorisé au dernier coût connu, et rien du tout à zéro.
+          value = qty < 0 ? round3(qty * (cmp || unit)) : 0;
+        }
       } else {
-        const unit = m.unitCost == null ? cmp : Number(m.unitCost) || 0;
         qty = round3(qty + q);
         value = round3(value + q * unit);
         // Un stock retombé à zéro (ou négatif) ne garde aucune valeur : sinon le CMP dérive.
         if (qty <= 0) { value = qty < 0 ? round3(qty * cmp) : 0; }
       }
-      return { ...m, unitApplied: m.unitCost == null ? cmp : Number(m.unitCost) || 0, qtyAfter: qty, valueAfter: value, cmpAfter: cmp };
+      return { ...m, unitApplied: unit, qtyAfter: qty, valueAfter: value, cmpAfter: cmp };
     });
     return { rows, qty, value, cmp };
   }
@@ -2610,10 +2715,21 @@
   // sur avoir rend son coût : sans ça, la marchandise revenue en rayon restait comptée comme vendue.
   // (La comptabilité, elle, passe les achats au 607 et l'inventaire du 31 décembre au 603 —
   // `inventaireComptable` — : ce chiffre sert aux vues de gestion, mois par mois.)
+  // Le coût des sorties est ce que le bilan retranche (10.14.0) : le stock à l'ouverture, plus ce qui
+  // est ENTRÉ par un achat (un retour au fournisseur en moins) ou par un stock de départ, moins le
+  // stock à la clôture — les deux stocks tels que `stockTotals` les donne, donc tels que le 37 les
+  // porte. Additionner les sorties ligne à ligne donnait le même chiffre dans le cas simple, et un
+  // autre dès qu'un article repartait de zéro avec un reste d'arrondi, qu'un retour client rentrait
+  // au coût moyen, ou qu'un stock négatif (compté zéro au bilan) était comblé : le résultat simplifié
+  // et les états financiers ne disaient plus le même résultat. Douze mois font l'année par
+  // construction.
   function costOfGoodsSold(data, period) {
-    return round3(stockJournal(data, period)
-      .filter(m => !SOURCES_HORS_CHARGE.includes(m.source))
-      .reduce((s, m) => s - (Number(m.qty) || 0) * (Number(m.unitApplied) || 0), 0));
+    const from = period && period.from, to = (period && period.to) || '9999-12-31';
+    const ouverture = from ? stockTotals(data, addDays(from, -1)).value : 0;
+    const entrees = stockJournal(data, period)
+      .filter(m => SOURCES_HORS_CHARGE.includes(m.source))
+      .reduce((s, m) => s + (Number(m.qty) || 0) * (Number(m.unitApplied) || 0), 0);
+    return round3(ouverture + entrees - stockTotals(data, to).value);
   }
 
   // L'INVENTAIRE COMPTABLE (10.14.0). L'écriture passe les achats de marchandises au 607 — c'est
@@ -3766,14 +3882,20 @@
     }));
     (data.purchases || []).forEach(pu => (pu.payments || []).forEach(p => {
       if (!inPeriod(p.date, period && period.from, period && period.to) || !keep(p.accountId)) return;
+      // Un règlement porté par un AVOIR est un remboursement : l'argent ENTRE (10.2.0) — le journal
+      // (`supplierPayments`) le savait, la Trésorerie non : elle le sortait du compte, et la banque
+      // de la page et celle du grand livre différaient de deux fois le remboursement (10.14.0). Un
+      // règlement NÉGATIF sur une facture trop payée est le même geste : le fournisseur rend.
+      const montant = -round3((pu.kind === 'avoir' ? -1 : 1) * toBase(pu, Number(p.amount) || 0, company));
+      const rendu = montant > 0;
       out.push({
-        id: p.id, kind: 'decaissement', date: p.date, accountId: p.accountId || fallback,
-        label: `Règlement ${pu.number || 'd\'un achat sans numéro'}`, party: supplierName(pu.supplierId),
+        id: p.id, kind: rendu ? 'encaissement' : 'decaissement', date: p.date, accountId: p.accountId || fallback,
+        label: `${rendu ? 'Remboursement' : 'Règlement'} ${pu.number || 'd\'un achat sans numéro'}`, party: supplierName(pu.supplierId),
         // Ce qui sort du compte sort en DINARS (10.1.0), comme l'encaissement client dix lignes
         // plus haut : régler 500 € vide le compte de 1 700 DT, pas de 500. Sans ça, la trésorerie
         // de la page et celle du grand livre se contredisaient — et c'est le test des états
         // financiers qui l'a dit, pas la relecture.
-        amount: -round3(toBase(pu, Number(p.amount) || 0, company)), method: p.method || '',
+        amount: montant, method: p.method || '',
         reference: p.reference || '', purchaseId: pu.id, reconciled: !!p.reconciled, source: 'achat'
       });
     }));
@@ -4269,9 +4391,12 @@
     // La paie n'est pas un achat : elle a sa propre page, mais c'est bien une charge de la période,
     // et la plus lourde de toutes dès qu'il y a un salarié (5.0.0). On compte le COÛT EMPLOYEUR.
     const payroll = payrollCost(data, period);
-    const resultat = round3(produits - charges - horsSuivi - cogs - depreciation - payroll - autres);
+    // L'écart de change d'un avoir ou d'un acompte à un autre taux que sa pièce (10.14.0) : les
+    // écritures le comptent, le résultat simplifié aussi.
+    const change = ecartsDeChange(data, company, period);
+    const resultat = round3(produits - charges - horsSuivi - cogs - depreciation - payroll - autres + change);
     return {
-      produits, charges, stock, immo, cogs, horsSuivi, depreciation, payroll, autres, resultat,
+      produits, charges, stock, immo, cogs, horsSuivi, depreciation, payroll, autres, change, resultat,
       marge: produits > 0 ? Math.round(resultat / produits * 100) : null,
       salesCount: sales.length, buysCount: buys.length
     };
@@ -4813,7 +4938,12 @@
     stocks: '37',                // Stocks de marchandises et de matières
     variationStocks: '603',      // Variation des stocks — la contrepartie de l'inventaire
     subventions: '14',           // Subventions d'investissement (À VÉRIFIER)
-    repriseSubventions: '739'    // Quote-part de subvention reprise au résultat (À VÉRIFIER)
+    repriseSubventions: '739',   // Quote-part de subvention reprise au résultat (À VÉRIFIER)
+    // 10.14.0 — l'écart de change d'un avoir (ou d'un acompte) à un autre taux que la pièce qu'il
+    // diminue : le client doit ce qu'il doit dans SA devise, et le 411 le porte au taux de la
+    // facture ; la différence est un gain ou une perte de change (À VÉRIFIER).
+    pertesChange: '655',         // Pertes de change
+    gainsChange: '755'           // Gains de change
   };
   const ACCOUNT_LABELS = {
     clients: 'Clients', fournisseurs: 'Fournisseurs', ventes: 'Ventes',
@@ -4831,7 +4961,8 @@
     dotations: 'Dotations aux amortissements', amortissements: 'Amortissements cumulés', vncCedee: 'Valeur comptable des immobilisations cédées',
     produitsCession: 'Produits des cessions d\'immobilisations', taxesSalaires: 'TFP et FOPROLOS (charge)', tfpFoprolos: 'TFP et FOPROLOS à payer',
     stocks: 'Stocks', variationStocks: 'Variation des stocks',
-    subventions: 'Subventions d\'investissement', repriseSubventions: 'Quote-part de subvention reprise'
+    subventions: 'Subventions d\'investissement', repriseSubventions: 'Quote-part de subvention reprise',
+    pertesChange: 'Pertes de change', gainsChange: 'Gains de change'
   };
   // Un mouvement libre de trésorerie (3.3.0) porte une NATURE ; la 8.9.0 lui donne sa contrepartie.
   // La nature décide par défaut ; un mouvement peut porter son propre `compte` (la TVA du mois
@@ -4978,6 +5109,12 @@
     const lettreDoc = id => { const d = docsById[id]; if (!d) return ''; if (d.type === 'avoir') return d.creditOf ? lettreVente(docsById[d.creditOf]) : ''; return lettreVente(d); };
     const lettreAchat = p => (p && purchaseBalance(p, company, data).remaining <= 0.0005 && (p.payments || []).length) ? (p.number || p.id) : '';
     const achatsById = {}; (data.purchases || []).forEach(p => { achatsById[p.id] = p; });
+    const ecartDeTaux = (piece, cible, natif) => ecartDeTauxEntre(piece, cible, natif, company);
+    // `delta` a été AJOUTÉ au débit du compte du tiers : la contrepartie équilibre la pièce.
+    const ecrireEcartDeChange = (e, delta, label) => {
+      if (delta > 0.0005) e.credit(acc.gainsChange, label, delta);
+      else if (delta < -0.0005) e.debit(acc.pertesChange, label, -delta);
+    };
 
     // --- ventes : factures et avoirs émis
     if (want('ventes')) {
@@ -4993,7 +5130,12 @@
         // Ce que le client devra réellement payer (le net après retenue) reste au compte client ;
         // la retenue devient une créance sur l'État. À VÉRIFIER : certains cabinets la constatent
         // seulement au paiement.
-        e.debit(cptClient(r.clientId), label, r.net, { role: 'clients' });
+        // Un avoir rattaché à une facture de même devise mais à un autre taux règle le client au taux
+        // de la FACTURE ; l'écart part au change. Son `net` est négatif : le montant natif aussi.
+        const av = r.type === 'avoir' ? docsById[r.id] : null;
+        const deltaChange = av && av.creditOf ? ecartDeTaux(av, docsById[av.creditOf], -computeTotals(av, company).netToPay) : 0;
+        e.debit(cptClient(r.clientId), label, round3(r.net + deltaChange), { role: 'clients' });
+        ecrireEcartDeChange(e, deltaChange, `Écart de change ${r.number}${av && av.creditOfNumber ? ' (au taux de ' + av.creditOfNumber + ')' : ''}`);
         if (r.rs) e.debit(acc.rsSubie, `Retenue à la source ${r.number}`, r.rs);
         VAT_RATES.forEach(rate => {
           const v = r.vatByRate[rate];
@@ -5046,7 +5188,16 @@
             });
           }
           if (t.base.withholding) e.credit(acc.rsOperee, `Retenue à la source opérée ${num}`, t.base.withholding);
-          e.credit(cptFourn(p.supplierId), label, t.base.netToPay, { role: 'fournisseurs' });
+          // Un avoir IMPUTÉ sur une facture de même devise à un autre taux règle le fournisseur au
+          // taux de la facture, pour la part qu'il déduit (ce que le fournisseur a remboursé est
+          // sorti de son compte au taux de l'avoir, par le règlement) ; l'écart part au change.
+          let deltaChange = 0;
+          if (p.kind === 'avoir' && p.achatLie && achatsById[p.achatLie]) {
+            const rendu = Math.min(t.netToPay, Math.max(0, (p.payments || []).reduce((s, x) => s + (Number(x.amount) || 0), 0)));
+            deltaChange = ecartDeTaux(p, achatsById[p.achatLie], round3(t.netToPay - rendu));
+          }
+          e.credit(cptFourn(p.supplierId), label, round3(t.base.netToPay - deltaChange), { role: 'fournisseurs' });
+          ecrireEcartDeChange(e, deltaChange, `Écart de change ${num} (au taux de ${achatsById[p.achatLie] ? (achatsById[p.achatLie].number || 'la facture') : 'la facture'})`);
           out.push(...e.done());
 
           // L'IMPUTATION DE L'ACOMPTE (10.2.0). L'acompte a posé une avance au 409 et l'a réglée ;
@@ -5063,7 +5214,11 @@
               // ENTIER, acompte compris, donc la garder des deux côtés la déduirait deux fois.
               const im = entrySet({ date: p.date, journal: 'OD', piece: num, tiers: sup, tiersId: p.supplierId || '', source: 'achat', docId: p.id, currency: cur });
               const lbl = `Imputation acompte ${a.number || ''} sur ${num}`.replace('  ', ' ');
-              im.debit(cptFourn(p.supplierId), lbl, ta.base.netToPay, { role: 'fournisseurs' });
+              // Au taux de la FACTURE (10.14.0) : un acompte payé à 3,30 sur une facture à 3,35 règle
+              // 100 € de la dette, que le 401 porte à 3,35 ; l'écart part au change.
+              const deltaChange = ecartDeTaux(a, p, ta.netToPay);
+              im.debit(cptFourn(p.supplierId), lbl, round3(ta.base.netToPay + deltaChange), { role: 'fournisseurs' });
+              ecrireEcartDeChange(im, deltaChange, `Écart de change ${a.number || ''} (au taux de ${num})`.replace('  ', ' '));
               if (ta.base.withholding) im.debit(acc.rsOperee, lbl, ta.base.withholding);
               const avance = round3(ta.base.totalTTC - ta.base.deductibleVAT);
               if (avance) im.credit(acc.avancesFournisseurs, lbl, avance);
@@ -5510,10 +5665,30 @@
       (data.documents || []).filter(d => d.type === 'facture' && d.status !== 'brouillon' && d.status !== 'annulée' && d.number).forEach(d => {
         const b = invoiceBalance(d, data, company);
         const r = tiersDe(d.clientId || '');
-        if (b.remaining <= 0.0005) { r.lettrees++; return; }
-        const montant = round3(toBase(d, b.totals.netToPay, company)), reste = round3(toBase(d, b.remaining, company));
-        r.ouverts.push({ id: d.id, piece: d.number, date: d.date, echeance: d.dueDate || '', montant, regle: round3(montant - reste), reste, retard: !!(d.dueDate && d.dueDate < t) });
+        // Un trop-perçu est ouvert, au crédit du client (10.14.0) : c'est le jumeau de l'avoir
+        // fournisseur de la 10.2.0. Ne regarder que les restes positifs faisait dire au lettrage un
+        // chiffre différent du 411, sur la même donnée.
+        if (Math.abs(b.remaining) <= 0.0005) { r.lettrees++; return; }
+        // Une ligne s'ADDITIONNE (10.14.0) : Montant − Avoirs − Réglé = Reste. Un trop-perçu s'affichait
+        // « 3 685 − 3 685 = −1 005 » — l'avoir, invisible, faisait la différence. Chaque montant
+        // est celui que le 411 porte : la facture et ses règlements à son taux, un avoir au taux de
+        // la facture (l'écart de change est écrit à part), ou à son propre taux s'il est dans une
+        // autre devise.
+        const montant = round3(toBase(d, b.totals.netToPay, company));
+        const avoirs = round3(b.credits.reduce((x, a) => x + toBase(d, montantDansDeviseDe(a, computeTotals(a, company).netToPay, d, company), company), 0));
+        const regle = round3((d.payments || []).reduce((x, p) => x + toBase(d, Number(p.amount) || 0, company), 0));
+        const reste = round3(montant - avoirs - regle);
+        r.ouverts.push({ id: d.id, piece: d.number, date: d.date, echeance: d.dueDate || '', montant, avoirs, regle, reste, retard: reste > 0 && !!(d.dueDate && d.dueDate < t) });
         r.reste = round3(r.reste + reste);
+      });
+      // Un avoir LIBRE — rattaché à aucune facture — est une somme due au client : le 411 la porte au
+      // crédit, le relevé aussi. Un avoir rattaché est déjà dans le reste de sa facture.
+      (data.documents || []).filter(d => d.type === 'avoir' && !d.creditOf && d.status !== 'brouillon' && d.status !== 'annulée' && d.number).forEach(d => {
+        const net = round3(toBase(d, computeTotals(d, company).netToPay, company));
+        if (net <= 0.0005) return;
+        const r = tiersDe(d.clientId || '');
+        r.ouverts.push({ id: d.id, piece: d.number, date: d.date, echeance: '', montant: -net, avoirs: 0, regle: 0, reste: -net, retard: false });
+        r.reste = round3(r.reste - net);
       });
     } else {
       (data.purchases || []).forEach(p => {
@@ -5525,10 +5700,15 @@
         if (Math.abs(b.remaining) <= 0.0005) { if ((p.payments || []).length) r.lettrees++; return; }
         // En dinars, comme la branche des clients : le lettrage se confronte au solde du 401, qui est
         // en monnaie de la société depuis la 10.1.0. Une facture de 1 190 € restait 1 190 ici.
-        const montant = round3(toBase(p, b.totals.netToPay, company)), reste = round3(toBase(p, b.remaining, company));
-        // « Réglé » reste ce qui a été PAYÉ : pour un avoir non imputé, `montant − reste` compterait
-        // l'avoir deux fois (son reste est négatif).
-        r.ouverts.push({ id: p.id, piece: p.number || '(sans numéro)', date: p.date, echeance: p.dueDate || '', montant, regle: round3(toBase(p, b.paid, company)), reste, retard: !!(p.dueDate && p.dueDate < t) });
+        // Montant − Avoirs et acomptes − Réglé = Reste, comme côté clients (10.14.0). Un avoir non
+        // imputé porte un montant NÉGATIF — c'est un crédit — et ce que le fournisseur en a
+        // remboursé est un « réglé » négatif : l'argent est rentré.
+        const sens = p.kind === 'avoir' ? -1 : 1;
+        const montant = round3(sens * toBase(p, b.totals.netToPay, company));
+        const avoirs = round3(toBase(p, b.impute || 0, company));
+        const regle = round3(sens * (p.payments || []).reduce((x, y) => x + toBase(p, Number(y.amount) || 0, company), 0));
+        const reste = round3(montant - avoirs - regle);
+        r.ouverts.push({ id: p.id, piece: p.number || '(sans numéro)', date: p.date, echeance: p.dueDate || '', montant, avoirs, regle, reste, retard: reste > 0 && !!(p.dueDate && p.dueDate < t) });
         r.reste = round3(r.reste + reste);
       });
     }
@@ -5569,27 +5749,12 @@
     const b = balanceGenerale(data, company, { from: `${y}-01-01`, to }, opts);
     const rows = b.rows.filter(r => r.solde);
     const acc = chartAccounts(data);
-    const est = (r, pref) => r.account.startsWith(pref);
-    const amort = r => est(r, '28') || est(r, '29') || est(r, '39') || est(r, '49') || est(r, '59') || r.account === acc.amortissements;
     const ligne = r => ({ account: r.account, label: r.label, montant: r.solde });
-    const groupe = (titre, pred, signe) => {
-      const l = rows.filter(pred).map(r => ({ account: r.account, label: r.label, montant: round3(signe * r.solde) }));
-      return { titre, lignes: l, total: round3(l.reduce((s, x) => s + x.montant, 0)) };
-    };
-    const actif = [
-      groupe('Actifs non courants (valeur brute)', r => r.classe === '2' && !amort(r), 1),
-      groupe('Amortissements et provisions', r => r.classe === '2' && amort(r), 1),
-      groupe('Stocks', r => r.classe === '3', 1),
-      groupe('Clients et autres créances', r => r.classe === '4' && r.solde > 0, 1),
-      groupe('Trésorerie', r => r.classe === '5' && r.solde > 0, 1)
-    ];
-    const passif = [
-      groupe('Capitaux propres et résultats reportés', r => r.classe === '1', -1),
-      groupe('Fournisseurs et autres dettes', r => r.classe === '4' && r.solde < 0, -1),
-      groupe('Concours bancaires', r => r.classe === '5' && r.solde < 0, -1)
-    ];
-    const produits = groupe('Produits', r => r.classe === '7', -1);
-    const charges = groupe('Charges', r => r.classe === '6', 1);
+    // Le rangement vit dans compta.js, partagé avec le Cabinet (10.14.0) : deux copies avaient la
+    // même faute (un emprunt compté dans les capitaux propres), et une copie corrigée seule aurait
+    // fait dire deux bilans au client et à son comptable.
+    const { actif, passif, produits, charges } = Compta.groupesDesEtats(rows,
+      (r, montant) => ({ account: r.account, label: r.label, montant }), r => r.account === acc.amortissements);
     const resultat = round3(produits.total - charges.total);
     const totalActif = round3(actif.reduce((s, g) => s + g.total, 0));
     const totalPassif = round3(passif.reduce((s, g) => s + g.total, 0) + resultat);
@@ -6769,7 +6934,7 @@
     // de l'argent qu'on a déjà, un acompte non imputé est de l'argent déjà sorti : les deux sont
     // justes tant que la facture n'est pas arrivée, et faux le jour où elle est payée en entier.
     // Rien à l'écran ne le disait — d'où la ligne, avec le geste qui la règle.
-    const nonImputes = (data.purchases || []).filter(p => PURCHASE_LIES.includes(p.kind) && !p.achatLie);
+    const nonImputes = (data.purchases || []).filter(p => aRattacherAchat(p, company, data));
     if (nonImputes.length) out.push({
       id: 'achat-impute', level: 'warn',
       label: `${plFr(nonImputes.length, 'pièce')} fournisseur à rattacher à sa facture`,
@@ -7317,7 +7482,7 @@
       devis: 'Devis', facture: 'Facture', avoir: 'Avoir', issuedF: 'Émise le', issued: 'Émis le', dueBy: 'À régler avant le', dueLabel: 'À régler', onReceipt: 'À réception', validUntil: 'Valable jusqu\'au',
       deposit: 'Acompte', depositOf: '% du devis', balance: 'Solde', balanceOf: 'du devis', afterQuote: 'Suite au devis', reference: 'Référence', cancels: 'Annule / rectifie',
       billedTo: 'Facturé à', preparedFor: 'Préparé pour', client: 'Client', subject: 'Objet', designation: 'Désignation', qty: 'Qté', unitPrice: 'Prix unit. HT', vat: 'TVA', lineTotal: 'Total HT',
-      payment: 'Règlement', bank: 'Banque', rib: 'RIB', motif: 'Motif', creditText: n => `Cet avoir vient en déduction de la facture ${n}`, conditions: 'Conditions', validText: d => `Devis valable jusqu'au ${d}.`,
+      payment: 'Règlement', bank: 'Banque', rib: 'RIB', motif: 'Motif', creditText: n => `Cet avoir vient en déduction de la facture ${n}`, creditFreeText: 'Cet avoir n\'est rattaché à aucune facture : il est à valoir sur une prochaine facture, ou remboursé', conditions: 'Conditions', validText: d => `Devis valable jusqu'au ${d}.`,
       subtotal: 'Total HT', discount: 'Remise', netHT: 'Net HT', on: 'sur', stamp: 'Timbre fiscal', totalTTC: 'Total TTC', withholding: 'Retenue à la source', netToPay: 'Net à payer', creditAmount: 'Montant de l\'avoir',
       wordsInvoice: 'Arrêtée la présente facture à la somme de', wordsCredit: 'Arrêté le présent avoir à la somme de', wordsQuote: 'Arrêté le présent devis à la somme de', wordsDoc: 'Arrêté le présent document à la somme de',
       approve: 'Bon pour accord', approveSub: 'Date, signature et cachet du client', stampSign: 'Cachet et signature', provider: 'Le prestataire', draft: 'Brouillon', paid: 'Payée', cancelled: 'Annulée', mf: 'MF', mfCin: 'MF / CIN', rate: 'Taux',
@@ -7334,7 +7499,7 @@
       devis: 'Quote', facture: 'Invoice', avoir: 'Credit note', issuedF: 'Issued on', issued: 'Issued on', dueBy: 'Due by', dueLabel: 'Due', onReceipt: 'On receipt', validUntil: 'Valid until',
       deposit: 'Deposit', depositOf: '% of quote', balance: 'Balance', balanceOf: 'of quote', afterQuote: 'Following quote', reference: 'Reference', cancels: 'Cancels / corrects',
       billedTo: 'Billed to', preparedFor: 'Prepared for', client: 'Client', subject: 'Subject', designation: 'Description', qty: 'Qty', unitPrice: 'Unit price', vat: 'VAT', lineTotal: 'Total excl. VAT',
-      payment: 'Payment', bank: 'Bank', rib: 'Account (RIB)', motif: 'Reference', creditText: n => `This credit note is deducted from invoice ${n}`, conditions: 'Terms', validText: d => `This quote is valid until ${d}.`,
+      payment: 'Payment', bank: 'Bank', rib: 'Account (RIB)', motif: 'Reference', creditText: n => `This credit note is deducted from invoice ${n}`, creditFreeText: 'This credit note is not attached to any invoice: it may be applied to a future invoice, or refunded', conditions: 'Terms', validText: d => `This quote is valid until ${d}.`,
       subtotal: 'Subtotal excl. VAT', discount: 'Discount', netHT: 'Net excl. VAT', on: 'on', stamp: 'Stamp duty', totalTTC: 'Total incl. VAT', withholding: 'Withholding tax', netToPay: 'Amount due', creditAmount: 'Credit amount',
       wordsInvoice: 'Total amount in words:', wordsCredit: 'Total amount in words:', wordsQuote: 'Total amount in words:', wordsDoc: 'Total amount in words:',
       approve: 'Approved — signature', approveSub: 'Date, signature and stamp of the client', stampSign: 'Stamp and signature', provider: 'Provider', draft: 'Draft', paid: 'Paid', cancelled: 'Cancelled', mf: 'Tax ID', mfCin: 'Tax ID', rate: 'Rate',
@@ -7672,7 +7837,7 @@
         </div>` : ''}
         ${isCredit ? `
         <div class="info"><span class="k">${L.avoir}</span>
-          ${L.creditText(escapeHtml(doc.creditOfNumber || ''))}${doc.creditReason ? ' — ' + escapeHtml(doc.creditReason) : ''}.
+          ${doc.creditOfNumber ? L.creditText(escapeHtml(doc.creditOfNumber)) : L.creditFreeText}${doc.creditReason ? ' — ' + escapeHtml(doc.creditReason) : ''}.
         </div>` : ''}
         ${isQuote ? `
         <div class="info"><span class="k">${L.conditions}</span>
@@ -8501,7 +8666,7 @@
     debutExercice, soldesOuverture, balanceGenerale, grandLivre, grandLivreRows, balanceAuxiliaire,
     balanceCsvColumns, balanceAuxCsvColumns, grandLivreCsvColumns,
     salesCsvColumns, buyCsvColumns, payCsvColumns, supplierPayCsvColumns, cashCsvColumns, cashCsvRows,
-    nextNumber, isLocked, isIssued, computeTotals, creditsFor, invoiceBalance, estRemboursement, titreQuestion, gesteQuestion, dateDernierReglement, motifVerrou, delaisContradictoires, effectiveStatus,
+    estRemboursementAchat, avoirRembourse, aRattacherAchat, nextNumber, isLocked, isIssued, computeTotals, creditsFor, invoiceBalance, estRemboursement, titreQuestion, gesteQuestion, dateDernierReglement, motifVerrou, delaisContradictoires, effectiveStatus,
     depositLines, settlementLines, salesJournal, vatSummary, paymentsJournal, toCsv, migrateData,
     PERIODS, MONTHS_FR, MONTHS_SHORT, monthLabel, addMonths, nextRecurrenceDate, dueRecurrences, catchUpRecurrence, fillTemplate, buildRecurringInvoice,
     reminderLevel, REMINDER_LABELS, daysBetween, overdueInvoices, facturesAVenir, todoList, companyGaps, verifRib, documentHistory, DEFAULT_EMAIL_TEMPLATES, DEFAULT_EMAIL_TEMPLATES_EN, emailFor,
