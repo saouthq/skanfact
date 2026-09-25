@@ -3171,7 +3171,8 @@
     // il retranchait 300 € d'une facture en euros pour 300 DT, et la facture annonçait un reste faux.
     const roDevise = ro || (isAv && doc.creditOf ? 'disabled title="Un avoir est dans la devise et au taux de la facture qu\'il corrige."' : '');
     const bal = isInv && !isNew && doc.status !== 'brouillon' ? balance(stored) : null;
-    const canUnlock = locked && isInv && bal && !bal.paid && !bal.credits.length;
+    // Une facture annulée ne se rouvre pas pour être modifiée : on la RÉTABLIT d'abord (10.14.0).
+    const canUnlock = locked && isInv && bal && !bal.paid && !bal.credits.length && doc.status !== 'annulée';
     // Pourquoi elle ne se rouvre plus, et si ses avoirs l'annulent EN ENTIER (10.12.0) : le bandeau,
     // sa bulle et son bouton principal lisent la même réponse.
     const verrou = C.motifVerrou(bal);
@@ -3336,7 +3337,11 @@
             ${!figee ? `<button id="del" class="danger">Supprimer</button>` : ''}
           </div></div>` : ''}
         </div></div>
-      ${!locked ? '' : `<div class="banner info lock-banner">
+      ${!locked ? '' : isInv && doc.status === 'annulée' ? `<div class="banner info lock-banner" id="annulee-banner">
+        <span><b>Cette facture est annulée : elle ne se modifie plus.</b> Elle reste dans la
+        numérotation, et plus rien n'est dû : elle ne compte ni dans le chiffre d'affaires, ni dans la
+        TVA, ni dans ce qui part chez ton comptable. ${info('ed.annulee')}</span>
+        <span class="lock-go"><button class="btn btn-sm" id="lock-uncancel">Rétablir la facture</button></span></div>` : `<div class="banner info lock-banner">
         <span><b>Cette pièce est émise : elle ne se modifie plus.</b> C'est la règle qui rend une
         numérotation crédible — un numéro attribué ne doit jamais désigner deux contenus différents.
         ${isInv && doc.status !== 'annulée'
@@ -3897,7 +3902,10 @@
             // au CLIENT — un avoir émis après le paiement, ou un paiement plus fort que la facture. La
             // carte le dit en couleur d'alerte, et dit quoi en faire (la bulle dit la limite).
             ? `<div><div class="k-label">Trop-perçu ${info('ed.tropPercu')}</div><div class="v due">${C.money(-b.remaining, cur)}</div><div class="small">à rendre au client, ou à déduire de sa prochaine facture</div></div>`
-            : `<div><div class="k-label">Reste à payer</div><div class="v ${b.remaining > 0.0005 ? 'due' : 'ok'}">${C.money(Math.max(0, b.remaining), cur)}</div></div>`}
+            // Annulée : rien n'est dû, et ce n'est pas « réglée » non plus — ni orange, ni vert.
+            : b.annulee
+              ? `<div><div class="k-label">Reste à payer</div><div class="v">${C.money(0, cur)}</div><div class="small muted">facture annulée : plus rien n'est dû</div></div>`
+              : `<div><div class="k-label">Reste à payer</div><div class="v ${b.remaining > 0.0005 ? 'due' : 'ok'}">${C.money(Math.max(0, b.remaining), cur)}</div></div>`}
         </div>
         ${rows.length ? `<table class="list compact"><thead><tr><th>Date</th><th>Mode</th>${plusieursComptes ? '<th>Compte</th>' : ''}<th>Référence</th><th class="r">Montant</th><th></th></tr></thead><tbody>
           ${rows.map(p => `<tr><td>${C.fmtDate(p.date)}</td><td>${h(methodLabel(p.method))}</td>${plusieursComptes ? `<td>${h(accountLabel(p.accountId))}</td>` : ''}<td>${h(p.reference || '')}${p.note ? `<div class="small muted">${h(p.note)}</div>` : ''}</td><td class="r">${C.money(p.amount, cur)}${reglementEnDinars(s, p)}${C.estRemboursement(p) ? '<div class="small muted">rendu au client</div>' : ''}</td>${rowMenuCell(p.id)}</tr>`).join('')}
@@ -3913,7 +3921,7 @@
                règlement négatif. C'est l'étape suivante d'une facture payée en trop : vert, sauf si
                l'en-tête porte déjà le sien (U-11). */''}${s.status !== 'annulée' && b.remaining < -0.0005
             ? `<button class="btn ${document.querySelector('.page-head .btn-primary') ? '' : 'btn-primary'}" id="rembourser">Rembourser ${C.money(-b.remaining, cur)} au client…</button> ${info('ed.rembourser')}` : ''}
-          ${t.withholding ? `<label class="check"><input type="checkbox" id="rs-cert" ${s.withholdingCertificate ? 'checked' : ''}> Attestation de retenue à la source reçue (${C.money(t.withholding, cur)}) ${info('compta.rs')}</label>` : ''}
+          ${t.withholding && s.status !== 'annulée' ? `<label class="check"><input type="checkbox" id="rs-cert" ${s.withholdingCertificate ? 'checked' : ''}> Attestation de retenue à la source reçue (${C.money(t.withholding, cur)}) ${info('compta.rs')}</label>` : ''}
           ${s.status === 'annulée' ? `<span class="muted small">Facture annulée.</span><button class="btn btn-ghost btn-sm" id="uncancel">Rétablir</button>` : (!b.paid && !b.credits.length ? `<button class="btn btn-ghost btn-sm" id="cancel-inv">Marquer annulée…</button>` : '')}
         </div>`;
       // « ✎ » et « ✕ », deux pictogrammes muets en bout de ligne — le second supprimait un paiement
@@ -3941,8 +3949,9 @@
       if ($('#rembourser')) $('#rembourser').onclick = () => paymentForm(s, () => render(), null, true);
       if ($('#rs-cert')) $('#rs-cert').onchange = e => { s.withholdingCertificate = e.target.checked; save(true); };
       if ($('#cancel-inv')) $('#cancel-inv').onclick = async () => {
-        if (!await confirmDialog(`Marquer ${s.number} comme annulée ? La facture reste dans la numérotation. La façon conforme de corriger une facture émise est d'établir un avoir.`, 'Marquer annulée')) return;
+        // La clôture passe AVANT la question (7.6.0) : répondre « oui » pour s'entendre dire non.
         if (closedBlock(s.date, 'Cette facture')) return;
+        if (!await confirmDialog(`Marquer ${s.number} comme annulée ? La facture reste dans la numérotation. La façon conforme de corriger une facture émise est d'établir un avoir.`, 'Marquer annulée')) return;
         s.status = 'annulée'; save(true); render();
       };
       if ($('#uncancel')) $('#uncancel').onclick = () => {
@@ -4268,6 +4277,7 @@
     if ($('#clos-go')) $('#clos-go').onclick = () => { comptaState.tab = 'clotures'; navigate('#/compta'); };
     brancherQuestions();
     if ($('#lock-unlock')) $('#lock-unlock').onclick = () => { const u = $('#unlock'); if (u) u.onclick(); };
+    if ($('#lock-uncancel')) $('#lock-uncancel').onclick = () => { const u = $('#uncancel'); if (u) u.onclick(); };
     if ($('#email')) $('#email').onclick = async () => {
       // La porte de l'exemple AVANT tout le reste : sinon on explique d'abord comment émettre une
       // facture de démonstration, ce qui n'a pas de sens, et on refuse seulement à la fin.

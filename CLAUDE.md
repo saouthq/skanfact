@@ -106,6 +106,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Une **dotation** se réclame à l'inventaire, au dernier mois ; une sortie d'actif, tout de suite | 10.12.0 |
 | Un **écart d'ouverture** se pose en à-nouveaux COMPLÉMENTAIRES au 1er janvier, jamais par contre-passation puis nouvelle ouverture ; un **miroir** reste dans l'exercice de son livre | 10.14.0 — `poserComplementAnouveaux`, `dateDuMiroir` |
 | Un **geste quotidien sans nature** se fait par la mauvaise : alimenter la caisse passait au compte courant de l'associé ; une promesse de fenêtre se vérifie dans les DEUX chemins | 10.14.0 — « Virement entre mes comptes », `compteDe` |
+| Une **facture annulée** ne doit plus rien DANS la fonction qui calcule le reste, pas seulement dans les lecteurs qui pensent à la filtrer | 10.14.0 — `invoiceBalance().annulee` ; quatre filtres sur cinq lecteurs |
 | Un **règlement en devise** bouge la banque au TAUX DU JOUR, solde le tiers au taux de SA pièce, et l'écart est un gain (755) ou une perte (655) | 10.14.0 — `montantRegle`, `ecartDuReglement` ; la règle des avoirs à un autre taux |
 | Une **chaîne qui reporte** de mois en mois reporte aussi d'une année à l'autre : un crédit de décembre perdu au 1er janvier, c'est de la TVA payée en trop | 10.14.0 — `reportTvaDebut` ; 3.1.0 |
 | Ce qui **manque à une écriture passée** se pose en COMPLÉMENT, compte par rôle ; et un **dépôt se pointe sur les chiffres qu'on recopie**, jamais sur une préparation périmée | 10.14.0 — `ecritureComplementDeclaration`, `ecartDeclaration` ; 215g |
@@ -7951,6 +7952,14 @@ aussi l'app cabinet ») — les invariants ont gagné le stock, le résultat, le
   banque et l'écart ; la ligne du règlement le redit une fois la fenêtre fermée. Le test est calculé à
   la main — 1 000 € à 3,30 réglés à 3,40, un achat à 3,35 réglé à 3,30, un remboursement rendu à 3,40 —
   et la parité avec le Cabinet passe par le paquet (le 755 y part comme n'importe quelle ligne).
+- **Un instrument qui lit la bonne fonction trouve le défaut que les écrans cachent.** Le troisième
+  scénario (TVA à 13 %, facture annulée, avoir libre…) a d'abord accusé l'instrument : « restes des
+  factures − avoirs libres » ne filtrait pas les annulées. Faux diagnostic : il lisait
+  `invoiceBalance`, et c'est ELLE qui mentait — 834 DT « dus » sur une facture annulée, pendant que le
+  relevé, l'âge des impayés, le lettrage et les écritures l'écartaient chacun par un filtre. Cinq
+  lecteurs, quatre filtres, et le cinquième (la page de la facture) affichait la dette en orange. La
+  règle vit maintenant dans la fonction (`annulee` → reste 0) ; les filtres restent, ils ne suffisaient
+  pas. **Avant de corriger un instrument, vérifier qu'il n'a pas raison.**
 
 ## Pistes pour la suite (non demandées)
 

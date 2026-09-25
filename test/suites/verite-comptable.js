@@ -1375,6 +1375,90 @@ t('10.14.0 : un règlement en devise passe à la banque au taux du jour — le t
   const e2 = ecarts(d);
   assert.deepStrictEqual(e2, [], e2.join('\n'));
 });
+// Ce que ni l'exemple de cinq ans ni le premier scénario ne portent (10.14.0) : la TVA à 13 %, des
+// achats à 7, 13 et 0 %, une remise globale sur trois taux, une facture tirée d'un bon de livraison,
+// une facture que son avoir annule, une facture MARQUÉE annulée, un avoir libre. L'exemple n'a aucune
+// ligne à 13 % et aucune facture annulée : un défaut qui ne vit que là passait tous les invariants.
+function scenarioTaux() {
+  const d = base0({
+    company: { ...CO, regime: 'reel' },
+    accounts: [{ id: 'b', name: 'Banque', kind: 'banque', opening: 10000, openingDate: '2026-01-01', isDefault: true }],
+    clients: [{ id: 'c1', name: 'Hôtel du Lac' }], suppliers: [{ id: 's1', name: 'Grossiste Nord' }],
+    catalog: [{ id: 'art', label: 'Lampe', unitPrice: 100, unitCost: 50, vatRate: 19, unit: 'pièce', tracked: true, initialQty: 10, initialCost: 50, initialDate: '2026-01-01' }],
+    documents: [], purchases: [
+      { id: 'P1', kind: 'facture', supplierId: 's1', number: 'GN-1', date: '2026-02-15', createdAt: 1, fees: 1, payments: [], lines: [
+        { label: 'Fournitures', qty: 1, unitPrice: 1000, vatRate: 7, destination: 'charge', deductible: true },
+        { label: 'Transport', qty: 1, unitPrice: 500, vatRate: 13, destination: 'charge', deductible: true },
+        { label: 'Frais de dossier', qty: 1, unitPrice: 300, vatRate: 0, destination: 'charge', deductible: true }] },
+      { id: 'P2', kind: 'facture', supplierId: 's1', number: 'GN-2', date: '2026-03-20', createdAt: 1, payments: [], lines: [
+        { label: 'Lampe', itemId: 'art', qty: 5, unit: 'pièce', unitPrice: 60, vatRate: 7, destination: 'stock', deductible: true }] }]
+  });
+  const doc = o => ({ status: 'envoyée', payments: [], createdAt: 1, issuedTs: 1, ...o });
+  const lampe = { label: 'Lampe', itemId: 'art', qty: 3, unitPrice: 100, vatRate: 19 };
+  d.documents.push(
+    doc({ id: 'F1', type: 'facture', number: 'FAC-2026-001', clientId: 'c1', date: '2026-02-10', dueDate: '2026-03-10', discountRate: 10, lines: [
+      { label: 'Mobilier', qty: 1, unitPrice: 1000, vatRate: 19 }, { label: 'Transport', qty: 1, unitPrice: 500, vatRate: 13 }, { label: 'Livres', qty: 1, unitPrice: 200, vatRate: 7 }] }),
+    doc({ id: 'L1', type: 'livraison', number: 'BL-2026-001', status: 'livré', clientId: 'c1', date: '2026-03-01', lines: [{ ...lampe }] }),
+    doc({ id: 'F2', type: 'facture', number: 'FAC-2026-002', clientId: 'c1', date: '2026-03-05', dueDate: '2026-04-05', fromDocType: 'livraison', fromDocId: 'L1', fromDocNumber: 'BL-2026-001', lines: [{ ...lampe }] }),
+    doc({ id: 'F3', type: 'facture', number: 'FAC-2026-003', clientId: 'c1', date: '2026-04-01', dueDate: '2026-05-01', applyStamp: false, lines: [{ label: 'Étude', qty: 1, unitPrice: 1000, vatRate: 19 }] }),
+    doc({ id: 'AV1', type: 'avoir', number: 'AVO-2026-001', status: 'émis', clientId: 'c1', date: '2026-04-10', creditOf: 'F3', lines: [{ label: 'Étude', qty: 1, unitPrice: 1000, vatRate: 19 }] }),
+    doc({ id: 'F4', type: 'facture', number: 'FAC-2026-004', status: 'annulée', clientId: 'c1', date: '2026-05-01', dueDate: '2026-06-01', lines: [{ label: 'Jamais partie', qty: 1, unitPrice: 700, vatRate: 19 }] }),
+    doc({ id: 'AV2', type: 'avoir', number: 'AVO-2026-002', status: 'émis', clientId: 'c1', date: '2026-06-01', lines: [{ label: 'Geste commercial', qty: 1, unitPrice: 200, vatRate: 19 }] }));
+  d.documents[0].payments.push({ id: 'pF1', date: '2026-02-20', amount: 1773.1, accountId: 'b' });
+  d.purchases[0].payments.push({ id: 'pP1', date: '2026-02-28', amount: 1936, accountId: 'b' });
+  return core.migrateData(d);
+}
+t('10.14.0 : les taux à 13 et 7 %, la remise sur trois taux, la facture d\'un bon de livraison, l\'annulée et les avoirs — calculés à la main', () => {
+  const d = scenarioTaux(), co = d.company, an = { from: '2026-01-01', to: '2026-12-31' };
+  // F1 : 1 700 HT remisés de 10 % = 1 530 ; TVA 900 × 19 % + 450 × 13 % + 180 × 7 % = 171 + 58,5 +
+  // 12,6 = 242,1 ; timbre 1 → 1 773,1.
+  const t1 = core.computeTotals(d.documents.find(x => x.id === 'F1'), co);
+  assert.deepStrictEqual([t1.netHT, t1.totalVAT, t1.netToPay], [1530, 242.1, 1773.1]);
+  assert.deepStrictEqual([t1.vatByRate[13].base, t1.vatByRate[13].vat, t1.vatByRate[7].vat], [450, 58.5, 12.6], 'la remise ne se répartit pas sur chaque taux');
+  // P1 : 1 800 HT, TVA 70 + 65 = 135, timbre du fournisseur 1 → 1 936.
+  const tp = core.purchaseTotals(d.purchases.find(x => x.id === 'P1'), co);
+  assert.deepStrictEqual([tp.totalHT, tp.totalVAT, tp.deductibleVAT, tp.netToPay], [1800, 135, 135, 1936]);
+  // Le chiffre d'affaires : 1 530 + 300 + 1 000 − 1 000 − 200 = 1 630 ; la facture ANNULÉE n'y est pas.
+  const st = core.salesTotals(d, co, an.from, an.to);
+  assert.deepStrictEqual([st.ht, st.vat], [1630, 261.1], 'la facture annulée compte dans le chiffre d\'affaires');
+  // La TVA par taux, sur l'année : collectée 190 à 19 % (171 + 57 + 190 − 190 − 38), 58,5 à 13 %,
+  // 12,6 à 7 % ; déductible 91 à 7 % (70 + 21), 65 à 13 %.
+  const v = core.vatReturn(d, co, an);
+  assert.deepStrictEqual([v.byRate[19].collected, v.byRate[13].collected, v.byRate[7].collected, v.byRate[7].deductible, v.byRate[13].deductible, v.deductible], [190, 58.5, 12.6, 91, 65, 156]);
+  // Le mois de février se déclare seul : 242,1 − 135 = 107,1 ; juin laisse un crédit de 38 (l'avoir libre).
+  const ch = core.vatChain(d, co, 2026);
+  assert.strictEqual(ch.find(m => (m.month || m.key) === '2026-02').toPay, 107.1);
+  // Le stock : la facture tirée du bon de livraison ne sort PAS une seconde fois — 10 − 3 + 5 = 12,
+  // valeur 350 + 300 = 650 ; coût des ventes 3 × 50 = 150.
+  const so = core.stockOf(d, 'art', '2026-12-31');
+  assert.deepStrictEqual([so.qty, so.value], [12, 650], 'la facture du bon de livraison sort le stock une seconde fois');
+  assert.strictEqual(core.costOfGoodsSold(d, co, an), 150);
+  // Les tiers : le client doit F2 (300 + 57 + 1 = 358) moins l'avoir libre (238) = 120 ; la facture
+  // que son avoir annule ne doit rien, la facture annulée non plus ; le fournisseur attend GN-2 (321).
+  const E = core.journalEntries(d, co, an);
+  const solde = c => r3(E.filter(e => e.account === c).reduce((x, e) => x + e.debit - e.credit, 0));
+  assert.strictEqual(solde('411'), 120);
+  assert.strictEqual(solde('401'), -321);
+  assert.strictEqual(solde('532'), r3(10000 + 1773.1 - 1936));
+  assert.strictEqual(core.invoiceBalance(d.documents.find(x => x.id === 'F4'), d, co).remaining, 0, 'une facture annulée doit encore quelque chose');
+  assert.strictEqual(core.effectiveStatus(d.documents.find(x => x.id === 'F3'), d, co), 'annulée');
+  assert.ok(!E.some(e => e.docId === 'F4'), 'la facture annulée a des écritures');
+  const e = ecarts(d);
+  assert.deepStrictEqual(e, [], e.join('\n'));
+});
+t('10.14.0 : la page d\'une facture annulée ne réclame rien, et se rétablit d\'un bouton', () => {
+  const app = require('fs').readFileSync(require('path').join(__dirname, '../../src/renderer/app.js'), 'utf8');
+  // « Reste à payer 633,370 DT » en orange sur une facture que le client ne doit pas : la carte dit 0,
+  // ni orange ni vert, et pourquoi.
+  assert.ok(/: b\.annulee\s*\n\s*\? `<div><div class="k-label">Reste à payer<\/div><div class="v">\$\{C\.money\(0, cur\)\}/.test(app), 'la carte d\'une annulée ne dit pas 0 sans couleur');
+  // Le bandeau dit qu'elle est annulée, pas « émise » avec un déverrouillage de secours.
+  assert.ok(/isInv && doc\.status === 'annulée' \? `<div class="banner info lock-banner" id="annulee-banner">/.test(app) && /id="lock-uncancel">Rétablir la facture<\/button>/.test(app));
+  assert.ok(/const canUnlock = locked && isInv && bal && !bal\.paid && !bal\.credits\.length && doc\.status !== 'annulée';/.test(app), 'une facture annulée propose « Modifier quand même »');
+  // La clôture passe AVANT la question (7.6.0).
+  const z = app.slice(app.indexOf("if ($('#cancel-inv')) $('#cancel-inv').onclick"), app.indexOf("if ($('#uncancel'))"));
+  const iC = z.indexOf('closedBlock('), iQ = z.indexOf('confirmDialog(');
+  assert.ok(z.length > 100 && z.length < 900 && iC > 0 && iQ > 0 && iC < iQ, 'la question passe avant la clôture');
+});
 t('10.14.0 : la fenêtre d\'un règlement en devise demande le taux du jour, et dit AVANT d\'enregistrer ce qui passe à la banque', () => {
   const app = require('fs').readFileSync(require('path').join(__dirname, '../../src/renderer/app.js'), 'utf8');
   const vm = require('vm');

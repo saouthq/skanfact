@@ -1372,8 +1372,13 @@
     const credits = creditsFor(data, doc.id);
     const credited = round3(credits.reduce((s, a) => s + montantDansDeviseDe(a, computeTotals(a, company).netToPay, doc, company), 0));
     const paid = round3((doc.payments || []).reduce((s, p) => s + (Number(p.amount) || 0), 0));
-    const remaining = round3(totals.netToPay - credited - paid);
-    return { totals, credits, credited, paid, remaining };
+    // Une facture marquée ANNULÉE ne doit plus rien (10.14.0). Le relevé, l'âge des impayés, le
+    // lettrage et les écritures l'écartaient tous ; sa propre page, elle, affichait « Reste à payer
+    // 633,370 DT » en orange — la seule des cinq à dire le contraire. Elle ne se marque annulée que
+    // sans paiement ni avoir, donc il n'y a rien d'autre à solder.
+    const annulee = doc.status === 'annulée';
+    const remaining = annulee ? 0 : round3(totals.netToPay - credited - paid);
+    return { totals, credits, credited, paid, remaining, annulee };
   }
 
   // Le titre d'une question (10.14.0). Les quatre-vingt-sept questions de l'app entreprise

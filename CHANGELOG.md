@@ -830,6 +830,16 @@ douze mois et l'année. Voici ce qu'il a trouvé :
   taux de sa pièce ; l'écart part au 755 (gain) ou au 655 (perte), au résultat et chez ton comptable.
   Sans taux saisi, rien ne change pour les paiements déjà enregistrés. À VÉRIFIER avec ton comptable :
   le cours à retenir (celui de ta banque sur l'avis de crédit ou de débit).
+- **Une facture marquée annulée ne réclame plus rien.** Sa page affichait « Reste à payer » en orange
+  pour le montant entier, alors que le relevé du client, l'âge des impayés, le lettrage et les
+  écritures disaient tous qu'elle ne doit rien. Le reste est à zéro, sans couleur, et dit pourquoi ; le
+  bandeau dit qu'elle est annulée (et non « émise » avec un déverrouillage de secours) et porte
+  « Rétablir la facture ». Et une facture d'un mois clôturé se voit refuser l'annulation AVANT la
+  question, plus après.
+- **Nouveau contrôle permanent** : la TVA à 13 % et les achats à 7, 13 et 0 %, une remise globale sur
+  trois taux, une facture tirée d'un bon de livraison (le stock ne sort qu'une fois), une facture que
+  son avoir annule, une facture annulée et un avoir libre — chaque chiffre refait à la main, et
+  confronté au Cabinet.
 - **SkanFact Cabinet : la déclaration, les biens et l'inventaire se relisent quand le livre bouge.**
   Lus une fois, ils gardaient leurs chiffres d'avant : une vente validée dans la grille n'entrait dans
   la TVA collectée qu'au changement de dossier, et la déclaration de septembre disait « 1 pièce en
