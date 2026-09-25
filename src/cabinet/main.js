@@ -1722,8 +1722,14 @@ ipcMain.handle('cab:ecrireDeclaration', (_e, { dossierId, annee, periode } = {})
   const d = KC.declarationMensuelle(o.livre, periode);
   // Déjà passée — la nôtre, ou celle que le client avait dans ses propres livres, reconnue à sa
   // FORME et non à son libellé. La repasser compterait la TVA du mois deux fois.
+  // 10.14.0 — sauf ce qui lui MANQUE : une pièce saisie après elle. On pose le complément, jamais
+  // une seconde écriture entière (la même règle que les à-nouveaux complémentaires, 215g).
   if (d.ecritureExistante) {
-    throw erreur('ERR-CAB-042', 'L\'écriture de cette déclaration existe déjà dans le livre : la repasser compterait la TVA du mois deux fois.');
+    const complement = KC.ecritureComplementDeclaration(o.livre, d);
+    if (!complement) throw erreur('ERR-CAB-042', 'L\'écriture de cette déclaration existe déjà dans le livre : la repasser compterait la TVA du mois deux fois.');
+    const c = KC.ajouterEcriture(o.livre, complement, quiSuisJe(), Date.now());
+    ecrireLeLivre(dossierId, o.livre, 'complément de déclaration', periode);
+    return { ok: true, id: c.id, complement: true, livre: ouvrirLivre(dossierId, annee).livre };
   }
   const brouillon = KC.ecritureDeclaration(o.livre, d);
   if (!brouillon.lignes.length) throw erreur('ERR-CAB-042', 'Ce mois ne porte aucune TVA : il n\'y a pas d\'écriture à passer.');

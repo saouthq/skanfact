@@ -796,6 +796,28 @@ douze mois et l'année. Voici ce qu'il a trouvé :
   ceux de l'app entreprise, et chaque compte de la balance, chaque groupe des états financiers et la
   liasse de chaque année. C'est lui qui a trouvé le crédit perdu : deux applications qui lisent le même
   client ne peuvent pas dire deux chiffres.
+- **SkanFact Cabinet : la déclaration d'un mois en crédit, de timbre seul ou d'avoirs plus forts que
+  les ventes était fausse — et son écriture pouvait s'écrire deux fois.** Le Cabinet reconnaissait
+  l'écriture de déclaration du client à sa forme, et cette forme ne connaissait que le mois qui paie.
+  Sur un mois en crédit (TVA collectée contre déductible, rien au compte « à décaisser »), l'écriture
+  du client comptait dans les cases qu'elle solde : la TVA collectée et la déductible tombaient à des
+  chiffres faux, et « Écrire l'écriture du mois » en proposait une seconde. Les quatre formes sont
+  reconnues, une autoliquidation au milieu du mois reste de la TVA du mois, et l'instrument compare
+  désormais les deux applications sur chacun de ses scénarios, pas seulement sur l'exemple.
+- **SkanFact Cabinet : une pièce saisie après l'écriture de déclaration se complète.** L'écran disait
+  « Écriture du mois passée ✓ » au-dessus de « l'écriture de déclaration n'a pas été passée », et plus
+  aucun bouton ne l'écrivait. Le bouton propose le **complément** — ce qui manque, compte par rôle, en
+  brouillard au dernier jour du mois (DECL-2026-09-C1), jamais une seconde écriture entière — et un
+  contrôle le réclame même quand le 4367 tombe juste (un achat de plus sur un mois qui paie laissait
+  une dette de TVA fausse sans un mot). Préparée avant cette pièce, la déclaration ne se pointe plus
+  « déposée » sur des chiffres qui ne sont pas ceux qu'on recopie : le bouton s'éteint en nommant ce
+  qui a bougé, et recalculer le rallume. Déjà déposée, rien ne se bloque, mais l'écran dit « déposée
+  avec d'autres chiffres » et renvoie à une déclaration rectificative (À VÉRIFIER).
+- **SkanFact Cabinet : la déclaration, les biens et l'inventaire se relisent quand le livre bouge.**
+  Lus une fois, ils gardaient leurs chiffres d'avant : une vente validée dans la grille n'entrait dans
+  la TVA collectée qu'au changement de dossier, et la déclaration de septembre disait « 1 pièce en
+  brouillard » sur un mois devenu juste. Et un écran dont la lecture échoue le dit avec « Réessayer » :
+  il se redemandait en boucle, un message d'erreur par tour.
 - **L'audit permanent a grandi** : la paie des écritures contre les bulletins (640, 645, 661, 4321,
   4531), la CNSS des quatre trimestres contre l'année, la déclaration d'employeur, le timbre fiscal
   et les retenues à la source contre leurs comptes, la dotation de chaque exercice terminé contre le

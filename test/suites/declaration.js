@@ -255,4 +255,135 @@ t('9.6.0 : le plan du dossier prime sur le compte par défaut', () => {
   assert.strictEqual(d.cases.tvaCollectee.montant, 190);
   assert.strictEqual(d.comptes.collectee, '44571');
 });
+
+t('10.14.0 : une pièce saisie APRÈS l\'écriture du mois — le complément pose ce qui manque, et l\'écran ne se contredit plus', () => {
+  // Trouvé à la souris dans le Cabinet : DECL-2026-09 validée (190 collectée, 380 déductible),
+  // puis une vente de 95 de TVA saisie en septembre. L'écran disait « Écriture du mois passée ✓ »
+  // au-dessus de « l'écriture de déclaration n'a pas été passée », et plus rien ne l'écrivait.
+  const decl = (piece, lignes, statut) => ({ id: piece, piece, journal: 'OD', date: '2026-09-30', statut, lignes });
+  // 1. Un mois en CRÉDIT : 190 collectée, 380 déductible → D 4367 190 / C 4366 190.
+  const livre = livreDeTest([vente('V1', '2026-09-10', 1000, 190), achat('A1', '2026-09-12', 2000, 380),
+    decl('DECL-2026-09', [{ compte: '4367', debit: 190, credit: 0 }, { compte: '4366', debit: 0, credit: 190 }])]);
+  const avant = K.declarationMensuelle(livre, '2026-09');
+  assert.strictEqual(avant.ecritureExistante, 'DECL-2026-09');
+  assert.deepStrictEqual(avant.complement, [], 'une écriture qui couvre le mois n\'appelle aucun complément');
+  assert.ok(avant.controles.every(c => c.ok), avant.controles.filter(c => !c.ok).map(c => c.detail).join(' | '));
+  livre.ecritures.push({ id: 'V2', numero: 9, statut: 'validee', journal: 'VT', piece: 'V2', date: '2026-09-15', libelle: '', source: 'saisie',
+    lignes: vente('V2', '2026-09-15', 500, 95).lignes });
+  const apres = K.declarationMensuelle(livre, '2026-09');
+  // Calculé à la main : collectée 285, déductible 380 → l'écriture entière imputerait 285 de 4366.
+  // Déjà passés : 190. Ce qui manque : D 4367 95 / C 4366 95 — et rien au 4365 (le mois reste en crédit).
+  assert.strictEqual(apres.cases.tvaCollectee.montant, 285);
+  assert.strictEqual(apres.cases.creditAReporter.montant, 95);
+  assert.deepStrictEqual(apres.complement.map(l => [l.compte, l.debit, l.credit]), [['4367', 95, 0], ['4366', 0, 95]]);
+  const par = {}; apres.controles.forEach(c => { par[c.id] = c; });
+  assert.strictEqual(par['decl-complete'].ok, false);
+  assert.ok(/DECL-2026-09 ne couvre plus tout le mois/.test(par['decl-complete'].detail) && /complément/.test(par['decl-complete'].detail));
+  // Et plus jamais « n'a pas été passée » à côté d'une écriture passée.
+  assert.ok(apres.controles.every(c => !/n'a pas été passée/.test(c.detail)), 'deux phrases du même écran se contredisent');
+  // Le complément posé et validé : il est reconnu comme écriture de déclaration (il ne compte pas
+  // dans la TVA qu'il solde), le mois tombe juste, et il n'en appelle pas un second.
+  const ec = K.ecritureComplementDeclaration(livre, apres);
+  assert.strictEqual(ec.piece, 'DECL-2026-09-C1');
+  assert.strictEqual(ec.date, '2026-09-30');
+  livre.ecritures.push({ id: 'C1', numero: null, statut: 'brouillard', journal: ec.journal, piece: ec.piece, date: ec.date, libelle: ec.libelle, source: 'saisie', lignes: ec.lignes });
+  // Au brouillard, le complément ne solde rien encore : le contrôle nomme CELUI qui attend — pas
+  // « un mois précédent n'est pas soldé », trouvé à la souris sur ce geste exact.
+  const enAttente = K.declarationMensuelle(livre, '2026-09');
+  assert.strictEqual(enAttente.ecritureAuBrouillard, 'C1');
+  assert.deepStrictEqual(enAttente.complement, [], 'un complément au brouillard ne s\'en appelle pas un second');
+  const ts = enAttente.controles.find(c => c.id === 'tva-soldee');
+  assert.ok(!ts.ok && /DECL-2026-09-C1 est encore au brouillard/.test(ts.detail), ts.detail);
+  livre.ecritures[livre.ecritures.length - 1].statut = 'validee';
+  const fin = K.declarationMensuelle(livre, '2026-09');
+  assert.strictEqual(fin.cases.tvaCollectee.montant, 285, 'le complément ne se compte pas dans la TVA qu\'il solde');
+  assert.deepStrictEqual(fin.complement, []);
+  assert.ok(fin.controles.every(c => c.ok), fin.controles.filter(c => !c.ok).map(c => c.detail).join(' | '));
+  assert.strictEqual(K.ecritureComplementDeclaration(livre, fin), null);
+  // Une pièce de PLUS après le complément : le second se numérote C2, et la phrase parle des DEUX.
+  livre.ecritures.push({ id: 'V3', numero: 11, statut: 'validee', journal: 'VT', piece: 'V3', date: '2026-09-20', libelle: '', source: 'saisie',
+    lignes: vente('V3', '2026-09-20', 100, 19).lignes });
+  const encore = K.declarationMensuelle(livre, '2026-09');
+  assert.strictEqual(K.ecritureComplementDeclaration(livre, encore).piece, 'DECL-2026-09-C2');
+  const dc2 = encore.controles.find(c => c.id === 'decl-complete');
+  assert.ok(/Les écritures de déclaration DECL-2026-09 et DECL-2026-09-C1 ne couvrent plus/.test(dc2.detail), dc2.detail);
+
+  // 2. Un mois qui PAIE : un achat arrivé après laisse le 4367 soldé, mais la dette du 4365 fausse.
+  //    Collectée 190, déductible 0 → passé D 4367 190 / C 4365 190. Puis un achat de 38 de TVA :
+  //    l'écriture entière serait D 4367 190 / C 4366 38 / C 4365 152 → complément D 4365 38 / C 4366 38.
+  const paie = livreDeTest([vente('V1', '2026-04-10', 1000, 190),
+    decl('DECL-2026-04', [{ compte: '4367', debit: 190, credit: 0 }, { compte: '4365', debit: 0, credit: 190 }])]);
+  paie.ecritures[1].date = '2026-04-30';
+  paie.ecritures.push({ id: 'A2', numero: 5, statut: 'validee', journal: 'AC', piece: 'A2', date: '2026-04-20', libelle: '', source: 'saisie', lignes: achat('A2', '2026-04-20', 200, 38).lignes });
+  const p = K.declarationMensuelle(paie, '2026-04');
+  const pc = {}; p.controles.forEach(c => { pc[c.id] = c; });
+  assert.strictEqual(pc['tva-soldee'].ok, true, 'le 4367 tombe juste : ce n\'est pas lui qui le dit');
+  assert.strictEqual(pc['decl-complete'].ok, false, 'une dette de TVA surévaluée de 38 passait sans un mot');
+  assert.deepStrictEqual(p.complement.map(l => [l.compte, l.debit, l.credit]), [['4366', 0, 38], ['4365', 38, 0]]);
+
+  // 4. Une écriture du client passée sur un SOUS-compte (43671) compte pour son rôle (4367) : le
+  //    complément ne crédite pas 190 au 43671 pour débiter 285 au 4367 — il pose les 95 qui manquent.
+  const sous = livreDeTest([vente('V1', '2026-06-10', 1000, 190, '43671'), achat('A1', '2026-06-12', 2000, 380),
+    decl('DECL-2026-06', [{ compte: '43671', debit: 190, credit: 0 }, { compte: '4366', debit: 0, credit: 190 }])]);
+  sous.ecritures[2].date = '2026-06-30';
+  sous.ecritures.push({ id: 'V2', numero: 9, statut: 'validee', journal: 'VT', piece: 'V2', date: '2026-06-15', libelle: '', source: 'saisie',
+    lignes: vente('V2', '2026-06-15', 500, 95, '43671').lignes });
+  assert.deepStrictEqual(K.declarationMensuelle(sous, '2026-06').complement.map(l => [l.compte, l.debit, l.credit]), [['4367', 95, 0], ['4366', 0, 95]],
+    'un sous-compte ne compte pas pour son rôle');
+
+  // 3. Au BROUILLARD, l'écriture ne solde encore rien : le contrôle le dit tel quel.
+  const br = livreDeTest([vente('V1', '2026-05-10', 1000, 190),
+    decl('DECL-2026-05', [{ compte: '4367', debit: 190, credit: 0 }, { compte: '4365', debit: 0, credit: 190 }], 'brouillard')]);
+  br.ecritures[1].date = '2026-05-31';
+  const b = K.declarationMensuelle(br, '2026-05');
+  const bs = b.controles.find(c => c.id === 'tva-soldee');
+  assert.strictEqual(bs.ok, false);
+  assert.ok(/encore au brouillard/.test(bs.detail), bs.detail);
+});
+
+t('10.14.0 : un dépôt se pointe sur les chiffres qu\'on recopie — préparés avant une pièce, ils sont refusés', () => {
+  const livre = livreDeTest([vente('V1', '2026-09-10', 1000, 190)]);
+  const d0 = K.declarationMensuelle(livre, '2026-09');
+  assert.strictEqual(K.poserDeclaration(livre, d0, 'A', 1).ok, true);
+  assert.deepStrictEqual(K.declarationMensuelle(livre, '2026-09').ecart, [], 'une préparation fraîche n\'a aucun écart');
+  livre.ecritures.push({ id: 'V2', numero: 2, statut: 'validee', journal: 'VT', piece: 'V2', date: '2026-09-15', libelle: '', source: 'saisie', lignes: vente('V2', '2026-09-15', 500, 95).lignes });
+  const d1 = K.declarationMensuelle(livre, '2026-09');
+  const coll = d1.ecart.find(x => x.cle === 'tvaCollectee');
+  assert.deepStrictEqual([coll.avant, coll.maintenant], [190, 285]);
+  assert.ok(/TVA collectée : 190,000.*→ 285,000/.test(K.phraseEcartDeclaration(d1.ecart)), K.phraseEcartDeclaration(d1.ecart));
+  // Pointer « déposée » sur la préparation périmée est refusé — en nommant ce qui a bougé.
+  const r = K.pointerDeclaration(livre, '2026-09', 'deposee', { le: '2026-10-10' }, 'A', 2);
+  assert.strictEqual(r.ok, false);
+  assert.ok(/recalcule la déclaration/.test(r.motif) && /190,000/.test(r.motif));
+  // Recalculer, puis pointer : ça passe.
+  assert.strictEqual(K.poserDeclaration(livre, d1, 'A', 3).ok, true);
+  assert.strictEqual(K.pointerDeclaration(livre, '2026-09', 'deposee', { le: '2026-10-10' }, 'A', 4).ok, true);
+  // Une pièce arrive APRÈS le dépôt : on ne bloque rien (6.0.0), mais un contrôle le dit.
+  livre.ecritures.push({ id: 'V3', numero: 3, statut: 'validee', journal: 'VT', piece: 'V3', date: '2026-09-20', libelle: '', source: 'saisie', lignes: vente('V3', '2026-09-20', 100, 19).lignes });
+  const d2 = K.declarationMensuelle(livre, '2026-09');
+  const dp = d2.controles.find(c => c.id === 'depot-perime');
+  assert.strictEqual(dp.ok, false);
+  assert.ok(/Déposée le 10\/10\/2026 avec d'autres chiffres/.test(dp.detail) && /rectificative/.test(dp.detail), dp.detail);
+  // Et dé-pointer reste possible sur une déclaration périmée : ce qui se pointe se dé-pointe (7.12.0).
+  assert.strictEqual(K.pointerDeclaration(livre, '2026-09', 'deposee', null, 'A', 5).ok, true);
+});
+
+t('10.14.0 : le Cabinet écrit le complément par le même bouton, et « Marquer déposée » s\'éteint sur des chiffres périmés', () => {
+  const fs = require('fs'), path = require('path');
+  const sans = f => fs.readFileSync(path.join(__dirname, '../..', f), 'utf8').split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
+  const main = sans('src/cabinet/main.js'), app = sans('src/cabinet/renderer/app.js');
+  const h = main.slice(main.indexOf("ipcMain.handle('cab:ecrireDeclaration'"), main.indexOf('const brouillon = KC.ecritureDeclaration(o.livre, d);'));
+  assert.ok(h.length > 100 && h.length < 2000, 'tranche inattendue');
+  // Une écriture existante n'est plus un refus sec : ce qui lui manque se pose.
+  assert.ok(/if \(d\.ecritureExistante\) \{\s*const complement = KC\.ecritureComplementDeclaration\(o\.livre, d\);\s*if \(!complement\) throw/.test(h), 'le pont refuse encore d\'écrire ce qui manque');
+  assert.ok(/KC\.ajouterEcriture\(o\.livre, complement,/.test(h));
+  // L'écran : le bouton de l'écriture se rallume sur un complément, celui du dépôt s'éteint sur des
+  // chiffres préparés périmés — par ce que le MOTEUR rend (`complement`, `ecart`), jamais recalculé ici.
+  assert.ok(/const aCompleter = ecrite && \(d\.complement \|\| \[\]\)\.length > 0;/.test(app));
+  assert.ok(/id="dc-ecriture" \$\{!posee \|\| \(ecrite && !aCompleter\) \? 'disabled' : ''\}/.test(app), 'le bouton de l\'écriture reste éteint sur un complément');
+  assert.ok(/const perime = !!\(posee && ecart\.length\);/.test(app) && /const ecart = d\.ecart \|\| \[\];/.test(app));
+  assert.ok(/id="dc-deposee" \$\{!posee \|\| motifPerime \? 'disabled' : ''\}/.test(app), '« Marquer déposée » reste allumé sur des chiffres périmés');
+  assert.ok(/const suivante = !posee \|\| \(perime && !deposee\) \? 'preparer' : \(!ecrite \|\| aCompleter\) \? 'ecriture'/.test(app), 'le vert ne suit pas le travail qui reste');
+  assert.ok(/const LIBELLE_CASE = KC\.LIBELLES_CASES_DECL;/.test(app), 'deux tables de noms de cases divergeraient');
+});
 };

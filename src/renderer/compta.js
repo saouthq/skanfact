@@ -2282,13 +2282,30 @@
   // et un cabinet la nommera autrement. Sans elle, la TVA collectée d'un mois déjà déclaré tombe
   // à zéro : l'écriture de déclaration DÉBITE le 4367 d'exactement ce que les ventes y ont crédité,
   // et le mois paraît vide. C'est le parcours réel qui l'a montré, sur le jeu d'exemple.
+  // 10.14.0 — et un mois en CRÉDIT n'a rien à décaisser : sans timbre ni retenue, sa déclaration
+  // solde la collectée contre la déductible et ne touche pas le 4365. Non reconnue, elle effaçait la
+  // TVA collectée du mois (190 déclarés par le client, 0 au Cabinet) et la déductible avec elle —
+  // le net tombait juste, les deux cases qu'on recopie, non. Même chose un mois où les avoirs
+  // dépassent les ventes. Trouvé en confrontant les deux applications sur des jeux que l'exemple ne
+  // portait pas (chaque facture de l'exemple a un timbre, donc chaque déclaration un 4365). La
+  // seconde signature est étroite exprès : une pièce qui ne touche QUE des comptes fiscaux, qui
+  // porte la collectée ET la déductible, au dernier jour de son mois — une autoliquidation, datée de
+  // sa facture, n'y ressemble pas. Et un mois sans TVA mais avec un timbre (une vente exonérée) ou
+  // une retenue opérée déclare ces seuls comptes contre le 4365 : la première signature les lit aussi,
+  // sinon la case « Droit de timbre » tombait à zéro (1 DT déclaré par le client, 0 au Cabinet).
   function estEcritureDeclaration(e, comptes) {
     const c = comptes || {};
     const a = txt(c.aPayer), coll = txt(c.collectee), ded = txt(c.deductible);
     if (!a) return false;
     const lignes = (e && e.lignes) || [];
     const touche = p => !!p && lignes.some(l => txt(l.compte).startsWith(p));
-    return touche(a) && (touche(coll) || touche(ded));
+    if (touche(a) && [coll, ded, txt(c.timbre), txt(c.rsOperee)].some(touche)) return true;
+    if (!coll || !ded || !touche(coll) || !touche(ded)) return false;
+    const fiscaux = [a, coll, ded, txt(c.timbre), txt(c.rsOperee)].filter(Boolean);
+    if (!lignes.every(l => fiscaux.some(p => txt(l.compte).startsWith(p)))) return false;
+    const d = txt(e.date);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return false;
+    return Number(d.slice(8, 10)) === new Date(Date.UTC(Number(d.slice(0, 4)), Number(d.slice(5, 7)), 0)).getUTCDate();
   }
 
   const compteDuRole = (livre, role) => {
@@ -2371,7 +2388,7 @@
     const au = p + '-' + String(new Date(Date.UTC(Number(p.slice(0, 4)), Number(p.slice(5, 7)), 0)).getUTCDate()).padStart(2, '0');
     const cColl = compteDuRole(livre, 'tvaCollectee');
     const cDed = compteDuRole(livre, 'tvaDeductible');
-    const comptes = { collectee: cColl, deductible: cDed, aPayer: compteDuRole(livre, 'tvaAPayer') };
+    const comptes = { collectee: cColl, deductible: cDed, aPayer: compteDuRole(livre, 'tvaAPayer'), timbre: compteDuRole(livre, 'timbre'), rsOperee: compteDuRole(livre, 'rsOperee') };
     // L'écriture de déclaration du mois — la nôtre ou celle que le client a déjà passée dans ses
     // propres livres — ne compte PAS dans ce qu'elle déclare : elle solde ce qu'on est en train de
     // lire. L'inclure ferait afficher zéro sur un mois plein.
@@ -2481,17 +2498,26 @@
       cases[k] = caseInconnue(CASES_A_VERIFIER[k]);
     });
 
-    return {
-      ok: true, type: 'mensuelle', periode: p, du, au,
-      cases, parTaux, comptes,
-      // L'écriture de déclaration DÉJÀ passée sur ce mois, quelle que soit sa pièce : c'est elle qui
-      // éteint le bouton « Écrire l'écriture du mois ». La repasser compterait la TVA deux fois.
-      // 10.12.0 — un BROUILLARD compte : exclu, il laissait le bouton allumé après l'écriture, et un
-      // second clic en fabriquait une seconde. Une écriture CONTRE-PASSÉE et son miroir, non : on
-      // contre-passe précisément pour refaire, et le bouton restait éteint pour toujours.
-      ecritureExistante: ((livre.ecritures || []).find(e => e.date >= du && e.date <= au && e.statut !== 'contrepassee' && !e.contrepasseDe && estEcritureDeclaration(e, comptes)) || {}).id || '',
-      controles: controlesDeclaration(livre, p, { ...cases, au, comptes }, o)
-    };
+    // L'écriture de déclaration DÉJÀ passée sur ce mois, quelle que soit sa pièce : c'est elle qui
+    // éteint le bouton « Écrire l'écriture du mois ». La repasser compterait la TVA deux fois.
+    // 10.12.0 — un BROUILLARD compte : exclu, il laissait le bouton allumé après l'écriture, et un
+    // second clic en fabriquait une seconde. Une écriture CONTRE-PASSÉE et son miroir, non : on
+    // contre-passe précisément pour refaire, et le bouton restait éteint pour toujours.
+    const duMois = (livre.ecritures || []).filter(e => e.date >= du && e.date <= au && e.statut !== 'contrepassee' && !e.contrepasseDe && estEcritureDeclaration(e, comptes));
+    const existante = duMois[0] || null;
+    // Celle qui attend au BROUILLARD — l'écriture du mois ou son complément : c'est elle que le
+    // contrôle nomme quand le 4367 n'est pas soldé, et le bouton dit « à valider ».
+    const auBrouillard = duMois.find(e => e.statut === 'brouillard') || null;
+    const out = { ok: true, type: 'mensuelle', periode: p, du, au, cases, parTaux, comptes, ecritureExistante: existante ? existante.id : '', ecritureAuBrouillard: auBrouillard ? auBrouillard.id : '' };
+    // 10.14.0 — ce qui MANQUE à l'écriture passée (une pièce saisie après elle), et ce qui sépare les
+    // chiffres préparés de ceux du livre. Les deux se lisent ici, pas dans l'écran : c'est la même
+    // réponse pour le bouton, pour le contrôle et pour le pont qui écrira.
+    const complement = ecritureComplementDeclaration(livre, out);
+    out.complement = complement ? complement.lignes : [];
+    const posee = (livre.declarations || []).find(x => x.periode === p) || null;
+    out.ecart = ecartDeclaration(posee, out);
+    out.controles = controlesDeclaration(livre, p, { ...cases, au, comptes, existante, passees: duMois, auBrouillard, complement: out.complement, posee, ecart: out.ecart }, o);
+    return out;
   }
 
   // Les contrôles AVANT dépôt. Ils ne bloquent jamais — un mois déclaré avec deux manques signalés
@@ -2518,10 +2544,43 @@
     const cColl = (cases.comptes && cases.comptes.collectee) || compteDuRole(livre, 'tvaCollectee');
     const cDed = (cases.comptes && cases.comptes.deductible) || compteDuRole(livre, 'tvaDeductible');
     const soldeColl = (() => { const m = mouvementCompte(livre, cColl, livre.exercice.du, au); return round3(m.credit - m.debit); })();
+    // 10.14.0 — la raison se DIT telle qu'elle est. « n'a pas été passée » s'affichait sous
+    // « Écriture du mois passée ✓ » dès qu'une pièce arrivait après elle : deux phrases du même
+    // écran qui se contredisent (6.8.1). Quand l'écriture passée ne couvre plus le mois, c'est le
+    // contrôle suivant qui parle, avec son geste.
+    const ex = cases.existante || null;
+    const aCompleter = !!(ex && (cases.complement || []).length);
+    const piece = ex ? (ex.piece || 'du mois') : '';
+    // Au brouillard, l'écriture du mois OU son complément : elle ne solde rien tant qu'elle n'est pas
+    // validée, et c'est la seule raison à donner — pas « un mois précédent n'est pas soldé ».
+    const br = cases.auBrouillard || (ex && ex.statut === 'brouillard' ? ex : null);
     out.push({
-      id: 'tva-soldee', ok: soldeColl === 0,
-      detail: soldeColl === 0 ? ''
-        : `Le compte ${cColl} porte encore ${fmtMontant(soldeColl, 'DT')} à la fin du mois : l'écriture de déclaration n'a pas été passée.`
+      id: 'tva-soldee', ok: soldeColl === 0 || aCompleter,
+      detail: soldeColl === 0 || aCompleter ? ''
+        : !ex ? `Le compte ${cColl} porte encore ${fmtMontant(soldeColl, 'DT')} à la fin du mois : l'écriture de déclaration n'a pas été passée.`
+        : br ? `Le compte ${cColl} porte encore ${fmtMontant(soldeColl, 'DT')} à la fin du mois : l'écriture de déclaration ${br.piece || piece} est encore au brouillard — elle ne le solde qu'une fois validée.`
+        : `Le compte ${cColl} porte encore ${fmtMontant(soldeColl, 'DT')} à la fin du mois alors que l'écriture de déclaration ${piece} est passée : un mois précédent n'est pas soldé, ou cette écriture ne suit pas la forme attendue — vérifie le compte.`
+    });
+    // L'écriture passée ne couvre plus le mois : une pièce saisie ou corrigée après elle. Même
+    // quand le 4367 tombe juste (un achat de plus sur un mois qui paie), le 4365 dirait une dette
+    // fausse — d'où ce contrôle-là, qui ne regarde pas un compte mais ce qui MANQUE.
+    out.push({
+      id: 'decl-complete', ok: !aCompleter,
+      // Une phrase vraie de CHAQUE écriture passée : après un premier complément, elles sont deux.
+      detail: aCompleter ? (() => {
+        const ps = (cases.passees || [ex]).map(e => e.piece || 'du mois');
+        const qui = ps.length > 1 ? `Les écritures de déclaration ${ps.slice(0, -1).join(', ')} et ${ps[ps.length - 1]} ne couvrent` : `L'écriture de déclaration ${ps[0]} ne couvre`;
+        return `${qui} plus tout le mois : une pièce a été saisie ou corrigée après ${ps.length > 1 ? 'elles' : 'elle'} (${(cases.complement || []).map(l => l.compte).join(', ')}). Écris le complément : ce qui est passé, lui, ne se refait pas.`;
+      })() : ''
+    });
+    // Les chiffres POINTÉS déposés ne sont plus ceux du livre : une pièce est arrivée après le dépôt.
+    // On ne bloque rien (6.0.0) — le dépôt est fait — mais on le dit, avec ce qui a bougé.
+    const deposee = !!(cases.posee && cases.posee.deposee && cases.posee.deposee.le);
+    out.push({
+      id: 'depot-perime', ok: !(deposee && (cases.ecart || []).length),
+      detail: deposee && (cases.ecart || []).length
+        ? `Déposée le ${fmtJour(cases.posee.deposee.le)} avec d'autres chiffres (${phraseEcartDeclaration(cases.ecart)}) : une pièce a été saisie ou corrigée après le dépôt. À VÉRIFIER avec le client : une déclaration rectificative.`
+        : ''
     });
     // Et le 4366 ne peut pas être CRÉDITEUR : une TVA déductible négative n'existe pas. Quand elle
     // apparaît, c'est qu'une déclaration a imputé plus de crédit qu'il n'y en avait.
@@ -2561,6 +2620,69 @@
     };
   }
 
+  // 10.14.0 — Une pièce saisie ou corrigée APRÈS l'écriture de déclaration laisse la TVA du mois sur
+  // son compte : l'écriture passée ne couvre plus le mois. Trouvé à la souris : DECL-2026-09 validée,
+  // puis une vente de septembre saisie — l'écran disait « Écriture du mois passée ✓ » au-dessus de
+  // « l'écriture de déclaration n'a pas été passée », et plus aucun bouton ne l'écrivait (« elle
+  // existe déjà »). On ne la contre-passe pas pour la refaire : on pose ce qui MANQUE, la règle des
+  // à-nouveaux complémentaires (215g). Compte par RÔLE, la différence entre l'écriture que la
+  // déclaration écrirait aujourd'hui et celles déjà passées — brouillards compris, puisqu'ils seront
+  // validés. Un sous-compte (43671) compte pour son rôle (4367) : l'écriture de déclaration écrit
+  // sur le compte du rôle, et c'est le total du rôle qui doit tomber juste.
+  const LIBELLE_COMPLEMENT = { collectee: 'TVA collectée', deductible: 'TVA déductible imputée', timbre: 'Timbre fiscal', rsOperee: 'Retenues opérées', aPayer: 'À décaisser' };
+  function ecritureComplementDeclaration(livre, decl) {
+    if (!decl || !decl.ok || !decl.cases) return null;
+    const comptes = decl.comptes || {};
+    const roles = ['collectee', 'deductible', 'timbre', 'rsOperee', 'aPayer'].filter(r => txt(comptes[r]));
+    // Le rôle d'un compte : le préfixe le PLUS LONG qui le porte (règle des correspondances, 9.3.0).
+    const roleDe = c => roles.filter(r => txt(c).startsWith(txt(comptes[r]))).sort((a, b) => txt(comptes[b]).length - txt(comptes[a]).length)[0] || '';
+    const passees = (livre.ecritures || []).filter(e => e.date >= decl.du && e.date <= decl.au && e.statut !== 'contrepassee' && !e.contrepasseDe && estEcritureDeclaration(e, comptes));
+    if (!passees.length) return null;
+    const net = {};
+    const ajoute = (compte, sens, montant) => { const r = roleDe(compte); if (r) net[r] = round3((net[r] || 0) + sens * montant); };
+    ecritureDeclaration(livre, decl).lignes.forEach(l => ajoute(l.compte, 1, num(l.debit) - num(l.credit)));
+    passees.forEach(e => (e.lignes || []).forEach(l => ajoute(l.compte, -1, num(l.debit) - num(l.credit))));
+    const lignes = roles.filter(r => Math.abs(net[r] || 0) >= 0.0005).map(r => ({
+      compte: txt(comptes[r]), libelle: `${LIBELLE_COMPLEMENT[r]} — complément`,
+      debit: net[r] > 0 ? net[r] : 0, credit: net[r] < 0 ? round3(-net[r]) : 0
+    }));
+    if (!lignes.length) return null;
+    const e = {
+      journal: 'OD', date: decl.au, piece: `DECL-${decl.periode}-C${passees.length}`,
+      libelle: `Complément de la déclaration ${deMois(fmtMois(decl.periode))}`, source: 'declaration', lignes
+    };
+    // Ce qu'on propose doit tomber juste ET être reconnu comme une écriture de déclaration : sinon
+    // il compterait dans la TVA du mois qu'il solde. Aucun des deux ne se devine : on vérifie.
+    const d = lignes.reduce((s, l) => round3(s + l.debit - l.credit), 0);
+    if (Math.abs(d) >= 0.0005 || !estEcritureDeclaration(e, comptes)) return null;
+    return e;
+  }
+
+  // Les chiffres PRÉPARÉS (la déclaration enregistrée) et ceux du livre aujourd'hui. Une pièce saisie
+  // après la préparation les sépare, et « Marquer déposée » pointerait alors un dépôt sur des chiffres
+  // qui ne sont plus ceux qu'on recopie. Seules les cases que la préparation portait se comparent :
+  // une case ajoutée par une version plus récente ne rend pas une préparation périmée.
+  const LIBELLES_CASES_DECL = {
+    tvaCollectee: 'TVA collectée', tvaDeductible: 'TVA déductible', creditReporte: 'Crédit reporté du mois précédent',
+    netAPayer: 'TVA nette à payer', creditAReporter: 'Crédit à reporter', timbre: 'Droit de timbre',
+    retenuesOperees: 'Retenues à la source opérées', retenuesSubies: 'Retenues subies — à récupérer, pas à payer',
+    irpp: 'IRPP retenu sur salaires', aDecaisser: 'Total à décaisser (TVA nette + timbre + retenues opérées)',
+    tfp: 'TFP', foprolos: 'FOPROLOS', tcl: 'TCL', acomptes: 'Acomptes provisionnels'
+  };
+  function ecartDeclaration(posee, decl) {
+    if (!posee || !posee.cases || !decl || !decl.cases) return [];
+    const m = x => (x && x.montant != null && x.montant !== '') ? num(x.montant) : null;
+    return Object.keys(decl.cases).filter(k => k in posee.cases).map(k => ({
+      cle: k, libelle: LIBELLES_CASES_DECL[k] || k, avant: m(posee.cases[k]), maintenant: m(decl.cases[k])
+    })).filter(x => !(x.avant === null && x.maintenant === null) && (x.avant === null || x.maintenant === null || Math.abs(x.avant - x.maintenant) >= 0.0005));
+  }
+  // « TVA collectée : 190,000 → 285,000 DT » — les deux premiers écarts, et le compte du reste.
+  function phraseEcartDeclaration(ecart) {
+    const f = v => v === null ? '—' : fmtMontant(v, 'DT');
+    const tete = (ecart || []).slice(0, 2).map(x => `${x.libelle} : ${f(x.avant)} → ${f(x.maintenant)}`).join(' ; ');
+    return (ecart || []).length > 2 ? `${tete} ; et ${plFr(ecart.length - 2, 'autre case', 'autres cases')}` : tete;
+  }
+
   // Enregistrer la déclaration dans le livre. Une même période ne s'y trouve qu'UNE fois : la
   // refaire remplace la précédente plutôt que de s'y ajouter — deux déclarations du même mois, et
   // plus personne ne sait laquelle a été déposée.
@@ -2592,6 +2714,15 @@
     if (quoi !== 'deposee' && quoi !== 'payee') return { ok: false, motif: 'On ne pointe qu\'un dépôt ou un paiement.' };
     if (quoi === 'payee' && valeur && !(d.deposee && d.deposee.le)) {
       return { ok: false, motif: 'Cette déclaration n\'est pas marquée déposée : on ne paie pas ce qu\'on n\'a pas déposé.' };
+    }
+    // 10.14.0 — un dépôt se pointe sur les chiffres qu'on RECOPIE. Préparée avant une pièce saisie
+    // après elle, la déclaration porterait 190 pendant que l'écran en montre 285 : le dépôt pointé
+    // dirait l'un, le portail l'autre. Le bouton s'éteint par la même fonction (9.4.5).
+    if (quoi === 'deposee' && valeur) {
+      const ecart = ecartDeclaration(d, declarationMensuelle(livre, periode));
+      if (ecart.length) {
+        return { ok: false, motif: `Les chiffres du mois ont changé depuis la préparation (${phraseEcartDeclaration(ecart)}) : recalcule la déclaration avant de la pointer déposée — sinon le dépôt porterait d'autres chiffres que ceux que tu recopies.` };
+      }
     }
     d[quoi] = valeur
       ? { le: txt((valeur && valeur.le) || ''), par: txt(qui), reference: txt((valeur && valeur.reference) || '') }
@@ -5639,7 +5770,8 @@
     echeancierDepuisLignes, balanceAgeeDepuisLignes,
     // La déclaration mensuelle (9.6.0)
     COMPTES_FISCAUX, CASES_A_VERIFIER, mouvementCompte, declarationMensuelle, controlesDeclaration,
-    ecritureDeclaration, poserDeclaration, pointerDeclaration, etatDuMois,
+    ecritureDeclaration, ecritureComplementDeclaration, ecartDeclaration, phraseEcartDeclaration, LIBELLES_CASES_DECL,
+    poserDeclaration, pointerDeclaration, etatDuMois,
     // Les immobilisations et l'inventaire (9.7.0)
     IMMO_METHODES, COMPTES_IMMO, IMMO_A_VERIFIER,
     bienVersActif, planDegressif, planDuBien, cumulDuBien, vncDuBien,

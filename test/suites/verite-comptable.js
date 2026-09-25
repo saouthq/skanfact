@@ -24,7 +24,7 @@ let cache = null;
 const exemple = () => cache || (cache = core.migrateData(demo.buildDemoData(CO, T)));
 
 // Renvoie la liste des écarts, jamais un booléen : quand il tombe, le test DIT où.
-function ecarts(data) {
+function ecarts(data, opts) {
   const co = data.company, acc = core.chartAccounts(data), out = [];
   const ecart = (nom, a, b) => { if (Math.abs(r3(a) - r3(b)) > 0.002) out.push(`${nom} : ${r3(a)} ≠ ${r3(b)}`); };
   const solde = (bg, pref) => r3(bg.rows.filter(r => r.account.startsWith(pref)).reduce((s, r) => s + r.solde, 0));
@@ -216,11 +216,67 @@ function ecarts(data) {
   // Le stock de chaque article est la somme de ses mouvements.
   core.stockList(data, T).forEach(x => ecart(`stock ${x.label} : quantité / mouvements`, x.qty,
     core.stockMovements(data, x.itemId).filter(v => v.date <= T).reduce((s, v) => s + v.qty, 0)));
+  // Et le Cabinet, qui reçoit ce client par ses paquets, doit dire la même chose.
+  if (!(opts && opts.sansCabinet)) out.push(...parite(data).ecarts);
   return out;
 }
 
+// Le même client, lu par les DEUX applications (10.14.0) : chaque mois part au Cabinet par le vrai
+// paquet (packPlan → entreesDepuisCsv → importerPaquet), et chaque case de la déclaration, chaque
+// compte, chaque groupe des états et la liasse bâtis au Cabinet sont confrontés à l'app entreprise.
+// C'est ainsi qu'a été trouvé le crédit de TVA de décembre perdu en janvier. `ecarts` l'appelle sur
+// chaque jeu synthétique : un scénario ajouté à cette suite est aussi un scénario du Cabinet.
+function parite(d) {
+  const K = require('../../src/renderer/compta.js');
+  const co = d.company, out = [];
+  const ec = (quoi, a, b) => { if (Math.abs(r3((a || 0) - (b || 0))) > 0.0005) out.push(`Cabinet — ${quoi} : entreprise ${a} ≠ cabinet ${b}`); };
+  const dates = [...(d.documents || []).filter(x => x.status !== 'brouillon'), ...(d.purchases || []), ...(d.movements || []), ...(d.payslips || [])].map(x => String(x.date || x.paidDate || '').slice(0, 4));
+  const annees = [...new Set(dates.filter(y => /^\d{4}$/.test(y)))].sort();
+  let mois = 0;
+  annees.forEach(y => {
+    const dernier = y === T.slice(0, 4) ? Number(T.slice(5, 7)) - 1 : 12;
+    if (dernier < 1 || y > T.slice(0, 4)) return;
+    const livre = K.livreVide('MF:X', Number(y));
+    for (let m = 1; m <= dernier; m++) {
+      const per = core.packPeriod(Number(y), m);
+      const f = core.packPlan(d, co, per, {}).entries.find(x => x.path === 'journaux/ecritures.csv');
+      const r = K.importerPaquet(livre, per.from.slice(0, 7), K.piecesDepuisLignes(K.entreesDepuisCsv(f.text)), true, 'test', 1000 + m);
+      if (r.nonValidees.length) out.push(`Cabinet — ${y}-${m} : ${r.nonValidees.length} pièce(s) non validée(s) : ${JSON.stringify(r.nonValidees).slice(0, 200)}`);
+    }
+    core.vatChain(d, co, y, dernier).forEach(v => {
+      const dm = K.declarationMensuelle(livre, v.month, {});
+      const c = dm.cases;
+      mois++;
+      // 10.14.0 — la déclaration que le client a passée couvre le mois : le Cabinet ne doit jamais y
+      // proposer un complément (il écrirait une TVA de plus) ni la dire incomplète.
+      if (dm.ecritureExistante && dm.complement.length) out.push(`Cabinet — ${v.month} : un complément de déclaration proposé sur un mois que le client a déclaré en entier (${JSON.stringify(dm.complement)})`);
+      dm.controles.filter(x => !x.ok && x.id !== 'attente' && x.id !== 'brouillard').forEach(x => out.push(`Cabinet — ${v.month} : contrôle « ${x.id} » en échec sur un mois tenu par le client : ${x.detail}`));
+      ec(v.month + ' TVA collectée', v.collected, c.tvaCollectee.montant);
+      ec(v.month + ' TVA déductible', v.deductible, c.tvaDeductible.montant);
+      ec(v.month + ' crédit reporté', v.carryIn, c.creditReporte.montant);
+      ec(v.month + ' net à payer', v.toPay, c.netAPayer.montant);
+      ec(v.month + ' crédit à reporter', v.carryOut, c.creditAReporter.montant);
+      ec(v.month + ' timbre', v.stamps, c.timbre.montant);
+      ec(v.month + ' retenues opérées', v.withheldOnBuys, c.retenuesOperees.montant);
+      ec(v.month + ' retenues subies', v.withheldBySale, c.retenuesSubies.montant);
+    });
+    const au = core.packPeriod(Number(y), dernier).to;
+    const lignes = K.lignesDuLivre(livre, { du: `${y}-01-01`, au });
+    const sol = rows => Object.fromEntries(rows.filter(x => Math.abs(x.solde) > 0.0005).map(x => [x.account, r3(x.solde)]));
+    const a = sol(core.balanceGenerale(d, co, { from: `${y}-01-01`, to: au }).rows);
+    const b = sol(K.balanceDepuisLignes(lignes, K.soldesDepuisOuverture(livre), () => '').rows);
+    [...new Set([...Object.keys(a), ...Object.keys(b)])].forEach(k => ec(`${y} solde ${k}`, a[k], b[k]));
+    const ef = core.etatsFinanciers(d, co, y, au), eg = K.etatsDepuisLignes(lignes, K.soldesDepuisOuverture(livre), {});
+    ec(y + ' résultat', ef.resultat, eg.resultat);
+    ef.actif.concat(ef.passif).forEach((g, i) => ec(`${y} « ${g.titre} »`, g.total, eg.actif.concat(eg.passif)[i].total));
+    const li = K.liasseDepuisLignes(lignes, K.soldesDepuisOuverture(livre), {});
+    if (li.orphelins.length || !li.equilibre || !li.coherent) out.push(`Cabinet — ${y} liasse : ${JSON.stringify(li.orphelins)}`);
+  });
+  return { ecarts: out, mois };
+}
+
 t('10.14.0 : sur cinq ans d\'exemple, chaque chiffre calculé par deux chemins est le même', () => {
-  const e = ecarts(exemple());
+  const e = ecarts(exemple(), { sansCabinet: true });   // la parité de l'exemple a son test à elle
   assert.deepStrictEqual(e, [], `${e.length} écart(s) :\n  ${e.slice(0, 20).join('\n  ')}`);
 });
 
@@ -915,49 +971,38 @@ t('10.14.0 : les cinq ans de l\'exemple, envoyés au Cabinet par le vrai paquet,
   // l'app entreprise (qui enchaîne ses mois) doivent dire la même TVA, le même report, les mêmes
   // retenues, chaque mois ; et la balance, les états et la liasse bâtis au Cabinet depuis les
   // paquets doivent être ceux de l'entreprise, compte par compte.
-  const K = require('../../src/renderer/compta.js');
   const d = core.migrateData(require('../../src/renderer/demo.js').buildDemoData(core.DEFAULT_COMPANY, T));
-  const co = d.company, out = [];
-  const ec = (quoi, a, b) => { if (Math.abs(r3((a || 0) - (b || 0))) > 0.0005) out.push(`${quoi} : entreprise ${a} ≠ cabinet ${b}`); };
-  const annees = [...new Set(d.documents.map(x => String(x.date || '').slice(0, 4)).filter(Boolean))].sort();
-  assert.ok(annees.length >= 5, 'l\'exemple a maigri');
-  let mois = 0;
-  annees.forEach(y => {
-    const dernier = y === T.slice(0, 4) ? Number(T.slice(5, 7)) - 1 : 12;
-    if (dernier < 1) return;
-    const livre = K.livreVide('MF:X', Number(y));
-    for (let m = 1; m <= dernier; m++) {
-      const per = core.packPeriod(Number(y), m);
-      const f = core.packPlan(d, co, per, {}).entries.find(x => x.path === 'journaux/ecritures.csv');
-      const r = K.importerPaquet(livre, per.from.slice(0, 7), K.piecesDepuisLignes(K.entreesDepuisCsv(f.text)), true, 'test', 1000 + m);
-      if (r.nonValidees.length) out.push(`${y}-${m} : pièces non validées`);
-    }
-    core.vatChain(d, co, y, dernier).forEach(v => {
-      const c = K.declarationMensuelle(livre, v.month, {}).cases;
-      mois++;
-      ec(v.month + ' TVA collectée', v.collected, c.tvaCollectee.montant);
-      ec(v.month + ' TVA déductible', v.deductible, c.tvaDeductible.montant);
-      ec(v.month + ' crédit reporté', v.carryIn, c.creditReporte.montant);
-      ec(v.month + ' net à payer', v.toPay, c.netAPayer.montant);
-      ec(v.month + ' crédit à reporter', v.carryOut, c.creditAReporter.montant);
-      ec(v.month + ' timbre', v.stamps, c.timbre.montant);
-      ec(v.month + ' retenues opérées', v.withheldOnBuys, c.retenuesOperees.montant);
-      ec(v.month + ' retenues subies', v.withheldBySale, c.retenuesSubies.montant);
-    });
-    const au = core.packPeriod(Number(y), dernier).to;
-    const lignes = K.lignesDuLivre(livre, { du: `${y}-01-01`, au });
-    const sol = rows => Object.fromEntries(rows.filter(x => Math.abs(x.solde) > 0.0005).map(x => [x.account, r3(x.solde)]));
-    const a = sol(core.balanceGenerale(d, co, { from: `${y}-01-01`, to: au }).rows);
-    const b = sol(K.balanceDepuisLignes(lignes, K.soldesDepuisOuverture(livre), () => '').rows);
-    [...new Set([...Object.keys(a), ...Object.keys(b)])].forEach(k => ec(`${y} solde ${k}`, a[k], b[k]));
-    const ef = core.etatsFinanciers(d, co, y, au), eg = K.etatsDepuisLignes(lignes, K.soldesDepuisOuverture(livre), {});
-    ec(y + ' résultat', ef.resultat, eg.resultat);
-    ef.actif.concat(ef.passif).forEach((g, i) => ec(`${y} « ${g.titre} »`, g.total, eg.actif.concat(eg.passif)[i].total));
-    const li = K.liasseDepuisLignes(lignes, K.soldesDepuisOuverture(livre), {});
-    if (li.orphelins.length || !li.equilibre || !li.coherent) out.push(`${y} liasse : ${JSON.stringify(li.orphelins)}`);
-  });
-  assert.ok(mois >= 50, `seulement ${mois} mois comparés`);
-  assert.deepStrictEqual(out, [], out.join('\n'));
+  assert.ok(new Set(d.documents.map(x => String(x.date || '').slice(0, 4)).filter(Boolean)).size >= 5, 'l\'exemple a maigri');
+  const p = parite(d);
+  assert.ok(p.mois >= 50, `seulement ${p.mois} mois comparés`);
+  assert.deepStrictEqual(p.ecarts, [], p.ecarts.join('\n'));
+});
+t('10.14.0 : le Cabinet reconnaît la déclaration d\'un mois en crédit ou de timbre seul — et une autoliquidation reste de la TVA du mois', () => {
+  // Chaque facture de l'exemple porte un timbre, donc chaque déclaration touchait le 4365 : c'est la
+  // seule forme que le Cabinet reconnaissait. Un mois en crédit (4367 soldé contre 4366) ou un mois
+  // de timbre seul (4368 contre 4365) passait pour de l'activité, et effaçait la case qu'il déclare.
+  const K = require('../../src/renderer/compta.js');
+  const l = K.livreVide('MF:T', 2025);
+  const poser = (date, journal, piece, lignes) => { const e = K.ajouterEcriture(l, { date, journal, piece, libelle: piece, lignes }, 'moi', 1); K.validerEcriture(l, e.id, 'moi', 2); return e; };
+  // Mars : une vente à 190 de TVA, un achat à 380 — un crédit de 190 ; la déclaration du client
+  // solde 190 de collectée contre la déductible, sans rien à décaisser.
+  poser('2025-03-10', 'VT', 'FAC-1', [{ compte: '411', debit: 1190 }, { compte: '706', credit: 1000 }, { compte: '4367', credit: 190 }]);
+  poser('2025-03-12', 'AC', 'ACH-1', [{ compte: '607', debit: 2000 }, { compte: '4366', debit: 380 }, { compte: '401', credit: 2380 }]);
+  poser('2025-03-31', 'OD', 'TVA-2025-03', [{ compte: '4367', debit: 190 }, { compte: '4366', credit: 190 }]);
+  const mars = K.declarationMensuelle(l, '2025-03');
+  assert.deepStrictEqual([mars.cases.tvaCollectee.montant, mars.cases.tvaDeductible.montant, mars.cases.creditAReporter.montant], [190, 380, 190]);
+  assert.ok(mars.ecritureExistante, 'la déclaration du mois en crédit n\'est pas reconnue : le bouton proposerait d\'en passer une seconde');
+  // Avril : une vente exonérée avec son timbre ; la déclaration ne solde que le timbre.
+  poser('2025-04-08', 'VT', 'FAC-2', [{ compte: '411', debit: 501 }, { compte: '706', credit: 500 }, { compte: '4368', credit: 1 }]);
+  poser('2025-04-30', 'OD', 'TVA-2025-04', [{ compte: '4368', debit: 1 }, { compte: '4365', credit: 1 }]);
+  assert.strictEqual(K.declarationMensuelle(l, '2025-04').cases.timbre.montant, 1, 'le timbre d\'un mois sans TVA tombe à zéro');
+  // Mai : une autoliquidation (4366 / 4367), datée de sa facture — c'est de la TVA du mois, des deux côtés.
+  poser('2025-05-14', 'OD', 'AUTO-1', [{ compte: '4366', debit: 57 }, { compte: '4367', credit: 57 }]);
+  // … et la facture d'un prestataire étranger, autoliquidée dans sa propre pièce, reçue le 31 : elle
+  // porte la collectée ET la déductible au dernier jour, mais aussi une charge et le fournisseur.
+  poser('2025-05-31', 'AC', 'ETR-1', [{ compte: '604', debit: 100 }, { compte: '4366', debit: 19 }, { compte: '401', credit: 100 }, { compte: '4367', credit: 19 }]);
+  const mai = K.declarationMensuelle(l, '2025-05');
+  assert.deepStrictEqual([mai.cases.tvaCollectee.montant, mai.cases.tvaDeductible.montant], [76, 76], 'une autoliquidation prise pour une déclaration');
 });
 t('10.14.0 : un avoir resté en dinars sur une facture en euros la diminue de sa contre-valeur, pas de 300 €', () => {
   // « Nouvel avoir » part en dinars : rattaché à une facture de 1 000 €, un avoir de 300 DT en
@@ -1072,5 +1117,46 @@ t('10.14.0 : un avoir rattaché prend la devise et le taux de sa facture, et ne 
   assert.ok(/doc\.currency = docCur\(inv\); doc\.exchangeRate = inv\.exchangeRate \|\| '';\s*sel\.value = doc\.currency; taux\.value = doc\.exchangeRate;/.test(app), 'l\'avoir ne suit pas la devise de sa facture');
   // Un avoir enregistré avant se réaligne à l'enregistrement, sans être rangé du même geste.
   assert.ok(/docCur\(inv\) !== docCur\(doc\) \|\| String\(inv\.exchangeRate \|\| ''\) !== String\(doc\.exchangeRate \|\| ''\)\)\) \{\s*head\.onchange\(\{\}\);\s*return refus\(/.test(app));
+});
+t('10.14.0 : un écran du Cabinet lu au processus principal se relit quand le livre bouge — et une lecture ratée ne boucle pas', () => {
+  // Trouvé en validant à la souris l'écriture de déclaration de septembre : la page gardait
+  // « 1 pièce en brouillard » et « le 4367 porte encore 190 » sur un mois devenu juste, et une
+  // vente saisie dans la grille n'entrait dans la TVA collectée qu'au changement de dossier. La
+  // parade existait (T-24) sur trois écrans ; les trois autres ne l'avaient jamais reçue.
+  const src = require('fs').readFileSync(require('path').join(__dirname, '../../src/cabinet/renderer/app.js'), 'utf8')
+    .split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
+  const corps = nom => {
+    const i = src.search(new RegExp(`\\n  (async )?function ${nom}\\(`));
+    assert.ok(i > 0, `${nom} introuvable`);
+    const j = src.slice(i + 10).search(/\n  (async )?function /);
+    return src.slice(i, j < 0 ? undefined : i + 10 + j);
+  };
+  // La règle se JOUE : l'empreinte change quand une trace s'ajoute (valider) ou une écriture (saisir).
+  const m = corps('revDuLivre');
+  const rev = require('vm').runInNewContext(`${m}; revDuLivre`);
+  const l = { audit: [{}], ecritures: [{}] };
+  const r0 = rev(l);
+  l.audit.push({}); const r1 = rev(l);
+  l.ecritures.push({}); const r2 = rev(l);
+  assert.ok(r0 !== r1 && r1 !== r2, 'l\'empreinte du livre ne bouge pas avec lui');
+  assert.strictEqual(rev(null), '0:0');
+  const ecrans = [['brancherDeclaration', 'chargerDeclaration', 'vueDeclaration', 'decl'],
+    ['brancherImmobilisations', 'chargerImmobilisations', 'vueImmobilisations', 'immo'],
+    ['brancherInventaire', 'chargerInventaire', 'vueInventaire', 'inv'],
+    ['brancherCloture', 'chargerCloture', 'vueCloture', 'cloture'],
+    ['brancherLiasse', 'chargerLiasse', 'vueLiasse', 'liasse'],
+    ['brancherRevision', 'chargerRevision', 'vueRevision', 'revision']];
+  ecrans.forEach(([br, ch, vue, cle]) => {
+    const b = corps(br);
+    const tete = b.slice(0, b.indexOf(`${ch}(root, dossier); return; }`) + 40);
+    assert.ok(new RegExp(`s\\.${cle}Rev !== rev`).test(tete) && /const rev = (revDuLivre\(s\.livre\)|`\$\{\(s\.livre\.audit)/.test(tete),
+      `${br} ne se relit pas quand le livre bouge`);
+    assert.ok(new RegExp(`if \\(s\\.${cle}\\.erreur\\) return;`).test(b), `${br} branche un écran qui n'a pas pu être lu`);
+    const c = corps(ch);
+    assert.ok(/catch \(e\) \{ s\.\w+ = \{ erreur: plainError\(e\)/.test(c), `${ch} remet l'écran à « vide » sur une erreur : il se redemanderait en boucle`);
+    assert.ok(new RegExp(`lectureRatee\\(\\w+\\.erreur, '${cle}'\\)`).test(corps(vue)), `${vue} ne dit pas qu'il n'a pas pu être lu`);
+  });
+  // Le geste qui retente remet à vide CE que l'écran a lu, et redessine.
+  assert.ok(/\$\$\('\[data-relire-ecran\]', el\)\.forEach\(b => \{ b\.onclick = \(\) => \{ s\[b\.dataset\.relireEcran\] = null; drawLivres\(root, dossier\); \}; \}\);/.test(corps('drawLivres')));
 });
 };

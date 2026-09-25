@@ -237,6 +237,12 @@ absente~~ (« Vendue le », en tête).
   (fait : le matricule se coupe après ses « / ») ; la Déclaration employeur et le Registre du personnel restent d'un seul tenant (ce sont des
   documents imprimés, pas des listes).
 - **La vérité comptable (10.14.0), ce qui reste** :
+  - **L'app entreprise ne dit pas qu'une TVA « déclarée » a changé depuis.** Le Cabinet compare
+    désormais la déclaration préparée au livre et refuse de pointer un dépôt périmé ; dans l'app
+    entreprise, « Marquer déclarée » (calendrier fiscal) est un pense-bête sans copie des chiffres,
+    et une facture saisie ensuite dans le mois — s'il n'est pas clôturé — change la TVA sans un mot.
+    La clôture (6.0.0) est la parade, et « À faire » la réclame à dix jours ; à décider : garder les
+    chiffres au pointage, comme le Cabinet, pour pouvoir dire « déclarée avec d'autres chiffres ».
   - **Les paquets fabriqués avant la 10.14.0 n'ont pas de sceau** : SkanFact ne peut pas dire s'ils
     sont devenus faux avec les corrections de cette version (TVA non récupérable, stock au bilan,
     solde remisé, février). Le CHANGELOG demande de les refaire ; à dire aussi, de vive voix, au

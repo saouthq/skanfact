@@ -106,6 +106,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Une **dotation** se réclame à l'inventaire, au dernier mois ; une sortie d'actif, tout de suite | 10.12.0 |
 | Un **écart d'ouverture** se pose en à-nouveaux COMPLÉMENTAIRES au 1er janvier, jamais par contre-passation puis nouvelle ouverture ; un **miroir** reste dans l'exercice de son livre | 10.14.0 — `poserComplementAnouveaux`, `dateDuMiroir` |
 | Une **chaîne qui reporte** de mois en mois reporte aussi d'une année à l'autre : un crédit de décembre perdu au 1er janvier, c'est de la TVA payée en trop | 10.14.0 — `reportTvaDebut` ; 3.1.0 |
+| Ce qui **manque à une écriture passée** se pose en COMPLÉMENT, compte par rôle ; et un **dépôt se pointe sur les chiffres qu'on recopie**, jamais sur une préparation périmée | 10.14.0 — `ecritureComplementDeclaration`, `ecartDeclaration` ; 215g |
 | Un chiffre qu'une **page** montre existe dans les **écritures**, sinon le bilan ment | 10.14.0 — le stock valorisé depuis la 4.0.0, et le 37 dans aucune écriture |
 | Une **TVA non récupérable** est un coût, et elle va où va la dépense (bien, stock, charge) | 10.14.0 — `coutAchat` |
 | Un **mois** finit à son vrai dernier jour, et **février** compte en base 360 ; les douze mois font l'année | 10.14.0 — « arrêtés au 31/09 », `fin360` |
@@ -188,6 +189,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Une **fenêtre de formulaire** demande avant de jeter la saisie, avec le MÊME instantané des deux côtés — et **choisir n'est pas taper** : une fenêtre de listes seules se referme sans question | 10.12.0 ; 10.14.0 — « Clôturer jusqu'à… » |
 | Une **clé qu'on épingle** est la même sur tous les postes de son propriétaire, sinon l'épinglage fabrique des refus | 10.13.0 — la signature du cabinet, dérivée de sa clé |
 | Deux applications qui lisent le **même client** se confrontent sur TOUT l'historique, par le vrai paquet, chaque case de chaque mois | 10.14.0 — le crédit de TVA perdu en janvier, vu par le Cabinet ; 9.1.0 (la parité des balances) |
+| Reconnaître une écriture de l'autre application à sa **FORME**, c'est connaître TOUTES ses formes : la parité se braque sur chaque scénario qu'on sait fabriquer | 10.14.0 — le mois en crédit, le timbre seul, les avoirs plus forts que les ventes |
 
 **L'interface**
 
@@ -240,7 +242,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | `navigate()` vers la page courante ne redessine **rien** : `vers()` | 7.15.0, 7.29.0 |
 | Une mise en page qui dépend de sa **propre barre de défilement** a deux états stables : décider SANS elle | 10.12.0 — la barre latérale, un pixel, une ligne de plus |
 | Un **prix posé par le logiciel** n'est pas un prix décidé : l'étape se coche sur un geste de l'utilisateur | 10.12.0 ; 7.18.0 |
-| Un état lu une fois au démarrage **se périme** | 7.1.x, 8.0.0 ; 10.14.0 — le résumé des livres, lu avant l'exemple, faisait sauter un chapitre de la découverte |
+| Un état lu une fois au démarrage **se périme** — et un écran lu au processus principal se relit quand le livre bouge ; une lecture ratée se DIT, elle ne se redemande pas en boucle | 7.1.x, 8.0.0 ; 10.14.0 — le résumé des livres, lu avant l'exemple, faisait sauter un chapitre de la découverte ; la déclaration du Cabinet, lue avant la validation de sa propre écriture |
 | **Un seul bouton principal** par écran, et c'est l'étape suivante — calculée, jamais posée à la main ; UNE fonction pour les deux éditeurs | 10.12.0 (U-11, H-E5, H-E19, H-E21 — l'éditeur d'achat ne l'avait jamais reçue) |
 | Une **colonne collante** réserve sa largeur : elle ne recouvre jamais une donnée | 10.12.0 (U-02) |
 | Une **page de création** n'entre pas dans la pile : après l'enregistrement, « ← » ne mène jamais à une pièce VIERGE | 10.12.0 — `remplacerPage` ; 2.4.0 |
@@ -7887,6 +7889,36 @@ aussi l'app cabinet ») — les invariants ont gagné le stock, le résultat, le
 - **Un crédit nul ne « vient en déduction » de rien** : la phrase de l'onglet TVA, écrite pour un
   crédit, s'affichait avec 0,000 DT. Une phrase qui porte un montant se relit avec ZÉRO — c'est la
   valeur que prend l'exercice en cours de la plupart des entreprises.
+- **Reconnaître une écriture à sa FORME, c'est connaître TOUTES ses formes.** Le Cabinet reconnaissait
+  l'écriture de déclaration du client (pour ne pas la compter dans ce qu'elle solde) à la seule forme
+  du mois qui paie : sur un mois en crédit, de timbre seul, ou d'avoirs plus forts que les ventes,
+  elle comptait dans ses propres cases, et « Écrire l'écriture du mois » en proposait une seconde —
+  vérifié sur le code d'avant : deux clics, deux DECL-2026-09. C'est la parité étendue aux
+  **scénarios synthétiques** (l'exemple ne portait aucun mois en crédit) qui l'a montrée : un
+  instrument de parité se braque sur chaque jeu qu'on sait fabriquer, pas sur le seul exemple.
+- **Un écran qui LIT au processus principal se relit quand le livre bouge** — la parade de T-24, que la
+  clôture, la liasse et la révision portaient et que la déclaration, les biens et l'inventaire
+  n'avaient jamais reçue (le jumeau manquant, dans la même application). Une vente validée dans la
+  grille n'entrait dans la TVA collectée qu'au changement de dossier. Et une lecture ratée qui remet
+  l'écran à « vide » se redemande à chaque dessin : en boucle, un message d'erreur par tour — elle
+  se range comme une ERREUR, et l'écran la dit avec son « Réessayer ».
+- **Suivre l'écran après la correction trouve le défaut suivant.** Validée à la souris, la déclaration
+  de septembre était juste ; une vente de plus saisie ensuite a montré « Écriture du mois passée ✓ »
+  au-dessus de « l'écriture de déclaration n'a pas été passée », et plus aucun bouton pour l'écrire.
+  **Ce qui manque à une écriture passée se pose en COMPLÉMENT** (`ecritureComplementDeclaration`,
+  la règle des à-nouveaux complémentaires de 215g, une deuxième fois) : compte par RÔLE — un
+  sous-compte 43671 compte pour 4367 —, en brouillard, et proposé seulement s'il tombe juste ET s'il
+  sera reconnu comme une écriture de déclaration (sinon il compterait dans la TVA qu'il solde).
+- **Un dépôt se pointe sur les chiffres qu'on recopie.** La déclaration préparée garde ses cases
+  (`posee.cases`) ; une pièce saisie après les rend périmées, et « Marquer déposée » aurait figé 190
+  quand l'écran montre 285. `ecartDeclaration` les compare, `pointerDeclaration` refuse en nommant
+  ce qui a bougé, et le bouton s'éteint par la MÊME fonction (9.4.5). Après le dépôt, rien ne se
+  bloque (6.0.0) — le contrôle dit « déposée avec d'autres chiffres » et renvoie à une rectificative.
+- **Un contrôle qui ne regarde qu'un compte manque ce qui ne le touche pas** : un achat saisi après
+  l'écriture d'un mois qui paie laisse le 4367 soldé et le 4365 faux. Le contrôle `decl-complete`
+  regarde ce qui MANQUE, pas un solde. Et la raison d'un solde se dit TELLE QU'ELLE EST : « au
+  brouillard » quand c'est le complément qui attend, jamais « un mois précédent n'est pas soldé » —
+  trouvé à la souris sur ce geste exact, et prouvé.
 
 ## Pistes pour la suite (non demandées)
 

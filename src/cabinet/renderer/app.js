@@ -3316,6 +3316,8 @@
     };
     const sm = $('#lv-saisir', el);
     if (sm) sm.onclick = () => allerSousOnglet(root, dossier, 'saisie');
+    // Une lecture ratée se retente par son bouton, jamais toute seule (`lectureRatee`).
+    $$('[data-relire-ecran]', el).forEach(b => { b.onclick = () => { s[b.dataset.relireEcran] = null; drawLivres(root, dossier); }; });
     if (s.onglet === 'saisie') { brancherSaisie(el, root, dossier); dessinerAbonnements(el, dossier); }
     else if (s.onglet === 'recherche') brancherRecherche(el, root, dossier);
     else if (s.onglet === 'banque') brancherBanque(el, root, dossier);
@@ -3631,13 +3633,9 @@
   // ne le sache (règle 5.2.0).
   const declState = { mois: '', ouverte: '' };
 
-  const LIBELLE_CASE = {
-    tvaCollectee: 'TVA collectée', tvaDeductible: 'TVA déductible', creditReporte: 'Crédit reporté du mois précédent',
-    netAPayer: 'TVA nette à payer', creditAReporter: 'Crédit à reporter', timbre: 'Droit de timbre',
-    retenuesOperees: 'Retenues à la source opérées', retenuesSubies: 'Retenues subies — à récupérer, pas à payer',
-    irpp: 'IRPP retenu sur salaires', aDecaisser: 'Total à décaisser (TVA nette + timbre + retenues opérées)',
-    tfp: 'TFP', foprolos: 'FOPROLOS', tcl: 'TCL', acomptes: 'Acomptes provisionnels'
-  };
+  // Les noms des cases vivent dans le moteur (10.14.0) : c'est lui qui les cite quand il refuse de
+  // pointer un dépôt sur des chiffres périmés. Deux tables divergeraient (6.8.0).
+  const LIBELLE_CASE = KC.LIBELLES_CASES_DECL;
   const ORDRE_CASES = ['tvaCollectee', 'tvaDeductible', 'creditReporte', 'netAPayer', 'creditAReporter',
     'timbre', 'retenuesOperees', 'irpp', 'aDecaisser', 'retenuesSubies', 'tfp', 'foprolos', 'tcl', 'acomptes'];
 
@@ -3646,6 +3644,7 @@
     const d = s.decl;
     const tous = MOIS_COURTS.map((m, i) => `${s.annee}-${String(i + 1).padStart(2, '0')}`);
     if (!d) return `<div class="empty mini">Lecture de la déclaration…</div>`;
+    if (d.erreur) return lectureRatee(d.erreur, 'decl');
     const posee = d.posee;
     const etat = KC.etatDuMois(s.livre, d.periode, { recu: (dossier.months || []).includes(d.periode) });
     // L'écriture de déclaration déjà passée — la nôtre, ou celle que le client avait déjà dans ses
@@ -3653,14 +3652,23 @@
     const ecrite = !!d.ecritureExistante;
     // Au BROUILLARD, elle existe (un second clic en fabriquerait une seconde) mais n'est pas encore
     // un fait : le bouton le dit, et nomme ce qui reste — la valider dans la Saisie.
-    const auBrouillard = ecrite && ((s.livre.ecritures || []).find(e => e.id === d.ecritureExistante) || {}).statut === 'brouillard';
+    // 10.14.0 — l'écriture du mois OU son complément : celle qui attend est celle que le moteur nomme.
+    const auBrouillard = ecrite && !!d.ecritureAuBrouillard;
+    const complementAuBrouillard = auBrouillard && d.ecritureAuBrouillard !== d.ecritureExistante;
     const echecs = (d.controles || []).filter(c => !c.ok);
     const deposee = !!(posee && posee.deposee && posee.deposee.le), payee = !!(posee && posee.payee && posee.payee.le);
     // 10.12.0 (U-11) — UN seul bouton principal, et c'est l'ÉTAPE SUIVANTE. « Préparer la
     // déclaration » vivait deux fois (en haut, neutre ; en bas, en vert), et une fois préparée, plus
     // rien ne disait ce qui venait après. Les quatre gestes du mois se lisent maintenant dans leur
     // ordre, en haut, et le vert suit le travail : préparer, écrire, déposer, payer.
-    const suivante = !posee ? 'preparer' : !ecrite ? 'ecriture' : !deposee ? 'deposee' : !payee ? 'payee' : '';
+    // 10.14.0 — une pièce saisie APRÈS l'écriture du mois : elle ne couvre plus le mois, et ce qui
+    // manque se pose en complément. Une pièce saisie après la PRÉPARATION : les chiffres préparés ne
+    // sont plus ceux qu'on recopie, et un dépôt pointé les figerait. Les deux se lisent dans le moteur.
+    const aCompleter = ecrite && (d.complement || []).length > 0;
+    const ecart = d.ecart || [];
+    const perime = !!(posee && ecart.length);
+    const suivante = !posee || (perime && !deposee) ? 'preparer' : (!ecrite || aCompleter) ? 'ecriture' : !deposee ? 'deposee' : !payee ? 'payee' : '';
+    const motifPerime = perime && !deposee ? `Les chiffres ont changé depuis la préparation (${KC.phraseEcartDeclaration(ecart)}) : recalcule-la avant de la déposer.` : '';
     const cls = pas => 'btn btn-sm' + (pas === suivante ? ' btn-primary' : '');
     const fait = ok => ok ? '<span class="dc-coche" aria-hidden="true">✓</span>' : '';
     // La flèche est DESSINÉE : le caractère « → » se posait sous la ligne des boutons, sa hauteur
@@ -3671,9 +3679,9 @@
     // Une étape FAITE se dit sur son bouton (« ✓ Écriture du mois passée ») ; la phrase n'explique
     // que celles qui ATTENDENT — la première version redisait l'écriture faite et taisait le
     // paiement, qui était pourtant le seul bouton éteint.
-    const motif = !posee ? (ecrite ? 'Les deux pense-bêtes attendent la déclaration : prépare-la d\'abord.'
+    const motif = motifPerime || (!posee ? (ecrite ? 'Les deux pense-bêtes attendent la déclaration : prépare-la d\'abord.'
       : 'Les trois étapes suivantes attendent la déclaration : prépare-la d\'abord.')
-      : !deposee && !payee ? '« Marquer payée » attend le dépôt : on ne paie pas ce qu\'on n\'a pas déposé.' : '';
+      : !deposee && !payee ? '« Marquer payée » attend le dépôt : on ne paie pas ce qu\'on n\'a pas déposé.' : '');
     return `<div class="filters">
       <label class="f-lab">Mois<select id="dc-mois" aria-label="Le mois à déclarer">${tous.map((m, i) =>
         `<option value="${m}" ${m === d.periode ? 'selected' : ''}>${MOIS_COURTS[i]} ${esc(s.annee)}</option>`).join('')}</select></label>
@@ -3691,10 +3699,10 @@
       ${motif ? `<p class="small muted dc-motif">${esc(motif)}</p>` : ''}
       <div class="dc-etapes">
         <button class="${cls('preparer')}" id="dc-preparer">${posee ? fait(true) + 'Préparée — recalculer' : 'Préparer la déclaration'}</button>${fleche}
-        <button class="${cls('ecriture')}" id="dc-ecriture" ${!posee || ecrite ? 'disabled' : ''}
-          title="${!posee ? 'Prépare la déclaration d\'abord.' : ecrite ? 'Elle existe déjà : la refaire compterait la TVA du mois deux fois.' : ''}">${
-          auBrouillard ? fait(true) + 'Écriture au brouillard — à valider' : ecrite ? fait(true) + 'Écriture du mois passée' : 'Écrire l\'écriture du mois'}</button>${fleche}
-        <button class="${cls('deposee')}" id="dc-deposee" ${!posee ? 'disabled' : ''} title="${!posee ? 'Prépare la déclaration d\'abord.' : ''}">${
+        <button class="${cls('ecriture')}" id="dc-ecriture" ${!posee || (ecrite && !aCompleter) ? 'disabled' : ''}
+          title="${!posee ? 'Prépare la déclaration d\'abord.' : aCompleter ? 'Une pièce est arrivée après l\'écriture du mois : le complément pose ce qui lui manque, en brouillard.' : ecrite ? 'Elle existe déjà : la refaire compterait la TVA du mois deux fois.' : ''}">${
+          aCompleter ? 'Écrire le complément' : auBrouillard ? fait(true) + (complementAuBrouillard ? 'Complément au brouillard — à valider' : 'Écriture au brouillard — à valider') : ecrite ? fait(true) + 'Écriture du mois passée' : 'Écrire l\'écriture du mois'}</button>${fleche}
+        <button class="${cls('deposee')}" id="dc-deposee" ${!posee || motifPerime ? 'disabled' : ''} title="${!posee ? 'Prépare la déclaration d\'abord.' : esc(motifPerime)}">${
           deposee ? fait(true) + 'Déposée le ' + esc(fmtJour(posee.deposee.le)) + ' — annuler' : 'Marquer déposée'}</button>${fleche}
         ${/* Le bouton du paiement reste ALLUMÉ tant qu'un paiement est posé (T-21) : éteint dès que
               le dépôt est vide, il enfermait dans « payée mais pas déposée » sans aucune issue. */''}
@@ -3710,7 +3718,7 @@
         : 'ce dossier n\'a pas de relevé bancaire : le règlement se saisit dans la grille, sur le journal de banque.'}</p>
     </div>
     ${echecs.length ? `<div class="warn-box mt">${echecs.map(c => `<div>${esc(c.detail)}</div>`).join('')}</div>`
-      : `<p class="small ligne-ok mt"><span aria-hidden="true">✓</span> Les trois contrôles passent : aucun brouillard sur le mois, aucun compte d'attente ouvert, le report de TVA tombe juste.</p>`}
+      : `<p class="small ligne-ok mt"><span aria-hidden="true">✓</span> Les contrôles passent : aucun brouillard sur le mois, aucun compte d'attente ouvert, la TVA du mois soldée par son écriture, aucun crédit imputé en trop.</p>`}
     <div class="panel mt"><h2>Les cases ${info('dc.cases')}</h2>
       <div class="scroll-x"><table class="list compact"><thead><tr>
         <th>Case</th><th class="r nw">Montant</th><th class="nw">D'où ça vient</th></tr></thead>
@@ -3770,12 +3778,31 @@
     return `${annee}-${String(K.moisDeTravail(faits, annee, K.today())).padStart(2, '0')}`;
   }
 
+  // 10.14.0 — Ce qu'un écran de comptabilité LIT au processus principal se relit dès que le LIVRE a
+  // bougé (la parade de T-24, que la clôture, la liasse et la révision portaient seules). La
+  // déclaration de septembre, lue avant la validation de sa propre écriture, gardait ses cases et
+  // ses contrôles d'avant — « 1 pièce encore en brouillard », « le 4367 porte encore 190 » — sur
+  // un mois devenu juste ; une vente saisie dans la grille n'entrait dans la TVA collectée qu'au
+  // changement de dossier. La piste d'audit trace chaque geste, les écritures leur nombre.
+  function revDuLivre(livre) {
+    return `${((livre && livre.audit) || []).length}:${((livre && livre.ecritures) || []).length}`;
+  }
+
+  // Une lecture qui échoue ne se retente pas toute seule : l'écran l'aurait redemandée à chaque
+  // dessin, c'est-à-dire en boucle, un message d'erreur par tour. Elle se DIT, avec son geste.
+  function lectureRatee(motif, cle) {
+    return `<div class="warn-box">Cet écran n'a pas pu être lu : ${esc(motif)}
+      <div class="mt"><button class="btn" data-relire-ecran="${esc(cle)}">Réessayer</button></div></div>`;
+  }
+
   function brancherDeclaration(el, root, dossier) {
     const s = livresState;
     // Une déclaration se LIT au processus principal. Tant qu'elle n'est pas arrivée, l'écran le dit
     // — et c'est ici qu'on la demande, sinon l'onglet resterait sur « Lecture… » pour toujours.
     const veut = declState.mois || moisPropose(s.livre);
-    if (!s.decl || s.decl.periode !== veut) { chargerDeclaration(root, dossier); return; }
+    const rev = revDuLivre(s.livre);
+    if (!s.decl || s.decl.periode !== veut || s.declRev !== rev) { s.declRev = rev; chargerDeclaration(root, dossier); return; }
+    if (s.decl.erreur) return;
     const m = $('#dc-mois', el);
     if (m) m.onchange = () => { declState.mois = m.value; declState.ouverte = ''; s.decl = null; chargerDeclaration(root, dossier); };
     $$('[data-cases]', el).forEach(b => { b.onclick = () => {
@@ -3804,7 +3831,7 @@
       try {
         const r = await api.ecrireDeclaration({ dossierId: dossier.id, annee: s.annee, periode: s.decl.periode });
         s.livre = r.livre;
-        toast('Écriture créée en brouillard : valide-la quand tu es d\'accord.');
+        toast(r.complement ? 'Complément créé en brouillard : valide-le quand tu es d\'accord.' : 'Écriture créée en brouillard : valide-la quand tu es d\'accord.');
         await chargerDeclaration(root, dossier);
       } catch (e) { toast(plainError(e), 'error'); ec.disabled = false; }
     };
@@ -3855,7 +3882,7 @@
     const s = livresState;
     try {
       s.decl = await api.declaration({ dossierId: dossier.id, annee: s.annee, periode: declState.mois || moisPropose(s.livre) });
-    } catch (e) { s.decl = null; toast(plainError(e), 'error'); }
+    } catch (e) { s.decl = { erreur: plainError(e), periode: declState.mois || moisPropose(s.livre) }; }
     drawLivres(root, dossier);
   }
 
@@ -3908,6 +3935,7 @@
     const s = livresState;
     const d = s.cloture;
     if (!d) return `<div class="empty mini">Lecture de l'exercice…</div>`;
+    if (d.erreur) return lectureRatee(d.erreur, 'cloture');
     const ex = d.exercice;
     const echecs = (d.controles || []).filter(c => !c.ok);
     const e = d.etats;
@@ -4108,6 +4136,7 @@
     // l'écran qui décide d'une clôture, et la fenêtre de confirmation les affichait périmés.
     const rev = `${(s.livre.audit || []).length}:${(s.livre.ecritures || []).length}`;
     if (!s.cloture || s.clotureRev !== rev) { s.clotureRev = rev; chargerCloture(root, dossier); return; }
+    if (s.cloture.erreur) return;
     // U-19 — une section repliée ou dépliée le RESTE au prochain dessin ; le sommaire ouvre la
     // section qu'il nomme et l'amène à l'écran (un sommaire qui mène à un titre replié ne mène nulle part).
     const plis = s.clPlis || (s.clPlis = {});
@@ -4233,7 +4262,7 @@
   async function chargerCloture(root, dossier) {
     const s = livresState;
     try { s.cloture = await api.cloture({ dossierId: dossier.id, annee: s.annee }); }
-    catch (e) { s.cloture = null; toast(plainError(e), 'error'); }
+    catch (e) { s.cloture = { erreur: plainError(e) }; }
     drawLivres(root, dossier);
   }
 
@@ -4248,7 +4277,7 @@
   async function chargerLiasse(root, dossier) {
     const s = livresState;
     try { s.liasse = await api.liasse({ dossierId: dossier.id, annee: s.annee }); }
-    catch (e) { s.liasse = null; toast(plainError(e), 'error'); }
+    catch (e) { s.liasse = { erreur: plainError(e) }; }
     drawLivres(root, dossier);
   }
 
@@ -4256,6 +4285,7 @@
     const s = livresState;
     const L = s.liasse;
     if (!L) return `<div class="empty mini">Lecture de la liasse…</div>`;
+    if (L.erreur) return lectureRatee(L.erreur, 'liasse');
     const li = L.liasse, f = L.fiscal;
     const money0 = n => esc(money(n));
     const nature = id => (L.natures.find(x => x.id === id) || {}).label || id;
@@ -4345,6 +4375,7 @@
     const s = livresState;
     const rev = `${(s.livre.audit || []).length}:${(s.livre.ecritures || []).length}`;
     if (!s.liasse || s.liasseRev !== rev) { s.liasseRev = rev; chargerLiasse(root, dossier); return; }
+    if (s.liasse.erreur) return;
     const relire = () => { s.liasseRev = ''; chargerLiasse(root, dossier); };
 
     // Chaque rubrique s'OUVRE sur les comptes qui l'ont remplie : un chiffre qu'on ne peut pas
@@ -4438,7 +4469,7 @@
   async function chargerRevision(root, dossier) {
     const s = livresState;
     try { s.revision = await api.revision({ dossierId: dossier.id, annee: s.annee, periode: s.revPeriode || String(s.annee) }); }
-    catch (e) { s.revision = null; toast(plainError(e), 'error'); }
+    catch (e) { s.revision = { erreur: plainError(e) }; }
     drawLivres(root, dossier);
   }
 
@@ -4446,6 +4477,7 @@
     const s = livresState;
     const r = s.revision;
     if (!r) return `<div class="empty mini">Lecture du dossier de révision…</div>`;
+    if (r.erreur) return lectureRatee(r.erreur, 'revision');
     const d = r.dossier;
     const cycle = s.revCycle || '';
     const feuille = cycle ? d.feuilles.find(f => f.cycle === cycle) : null;
@@ -4571,6 +4603,7 @@
     // poser une question change ce que les feuilles maîtresses montrent (même parade qu'en T-24).
     const rev = `${(s.livre.audit || []).length}:${(s.livre.ecritures || []).length}:${s.revPeriode || s.annee}`;
     if (!s.revision || s.revisionRev !== rev) { s.revisionRev = rev; chargerRevision(root, dossier); return; }
+    if (s.revision.erreur) return;
     // 10.13.0 — un raccourci vise un PANNEAU (7.18.0) : « Lire la réponse », depuis le compte rendu
     // d'import, ouvrait la Révision en haut, et la réponse du client vivait trois panneaux plus bas.
     // La cible n'existe qu'une fois le dossier de révision LU : posée plus tôt, `focaliser` la
@@ -4851,6 +4884,7 @@
     const s = livresState;
     const d = s.immo;
     if (!d) return `<div class="empty mini">Lecture des immobilisations…</div>`;
+    if (d.erreur) return lectureRatee(d.erreur, 'immo');
     const e = d.etat;
     const y = Number(s.annee);
     // 10.12.0 (U-11) — un seul bouton en couleur, et c'est l'ÉTAPE SUIVANTE : une acquisition sans
@@ -4965,7 +4999,9 @@
 
   function brancherImmobilisations(el, root, dossier) {
     const s = livresState;
-    if (!s.immo) { chargerImmobilisations(root, dossier); return; }
+    const rev = revDuLivre(s.livre);
+    if (!s.immo || s.immoRev !== rev) { s.immoRev = rev; chargerImmobilisations(root, dossier); return; }
+    if (s.immo.erreur) return;
     [$('#im-neuf', el), $('#im-neuf2', el)].forEach(b => { if (b) b.onclick = () => immoForm(root, dossier, null); });
     $$('[data-creer]', el).forEach(b => {
       b.onclick = () => {
@@ -5029,7 +5065,7 @@
   async function chargerImmobilisations(root, dossier) {
     const s = livresState;
     try { s.immo = await api.immobilisations({ dossierId: dossier.id, annee: s.annee }); }
-    catch (e) { s.immo = null; toast(plainError(e), 'error'); }
+    catch (e) { s.immo = { erreur: plainError(e) }; }
     drawLivres(root, dossier);
   }
 
@@ -5590,6 +5626,7 @@
     const s = livresState;
     const d = s.inv;
     if (!d) return `<div class="empty mini">Lecture de l'inventaire…</div>`;
+    if (d.erreur) return lectureRatee(d.erreur, 'inv');
     const inv = d.inventaire;
     const v = d.variation || {};
     // 10.12.0 (U-11) — un seul vert, l'étape suivante. Sans inventaire, le geste vit dans l'état
@@ -5644,7 +5681,9 @@
 
   function brancherInventaire(el, root, dossier) {
     const s = livresState;
-    if (!s.inv) { chargerInventaire(root, dossier); return; }
+    const rev = revDuLivre(s.livre);
+    if (!s.inv || s.invRev !== rev) { s.invRev = rev; chargerInventaire(root, dossier); return; }
+    if (s.inv.erreur) return;
     [$('#iv-saisir', el), $('#iv-saisir2', el)].forEach(b => { if (b) b.onclick = () => inventaireForm(root, dossier); });
     const ec = $('#iv-ecrire', el);
     if (ec) ec.onclick = async () => {
@@ -5660,7 +5699,7 @@
   async function chargerInventaire(root, dossier) {
     const s = livresState;
     try { s.inv = await api.inventaire({ dossierId: dossier.id, annee: s.annee }); }
-    catch (e) { s.inv = null; toast(plainError(e), 'error'); }
+    catch (e) { s.inv = { erreur: plainError(e) }; }
     drawLivres(root, dossier);
   }
 

@@ -190,6 +190,7 @@
   b('#pg-prev, #pg-next, [data-pg]', 'Passe à la page précédente ou suivante de la liste.', { nom: 'Page précédente / suivante', cle: 'pager' });
   b('#pg-size', 'Combien de lignes tu vois à la fois. Les totaux portent toujours sur toute la sélection.', { nom: 'Lignes par page' });
   b('[data-sort]', 'Un clic trie la liste par cette colonne ; un second clic inverse l\'ordre.', { nom: 'Les en-têtes ⇅', cle: 'tri' });
+  b('[data-relire-ecran]', 'Redemande cet écran : sa première lecture n\'a pas abouti, et le Cabinet ne la retente pas tout seul en boucle.', { nom: 'Réessayer', cle: 'relire-ecran' });
   b('[data-gl-plus]', 'Met à l\'écran la suite des lignes de ce compte : un compte très chargé ne montre d\'abord que ses premières lignes, le pied porte toujours le compte entier.', { nom: 'Montrer la suite du compte', cle: 'glPlus' });
   b('[data-rowmenu]', null, { rowmenu: true, nom: 'Actions', cle: 'rowmenu' });
   b('#gb-go', 'Lance la visite de cet écran : chaque bloc, chaque bouton, en une ou deux minutes.');
@@ -276,8 +277,8 @@
 
   // ---------- la déclaration ----------
   b('#dc-preparer', 'Fige les cases du mois dans le livre. Tant que rien n\'est déposé, tu peux recalculer.');
-  b('#dc-ecriture', 'Passe l\'écriture de TVA du mois en brouillard, au dernier jour du mois.');
-  b('#dc-deposee', 'Note que la déclaration est déposée — un pense-bête : le Cabinet ne dépose rien.');
+  b('#dc-ecriture', 'Passe l\'écriture de TVA du mois en brouillard, au dernier jour du mois. Si une pièce est arrivée après elle, il pose le complément — ce qui lui manque, jamais une seconde écriture entière.');
+  b('#dc-deposee', 'Note que la déclaration est déposée — un pense-bête : le Cabinet ne dépose rien. Il s\'éteint si les chiffres ont changé depuis la préparation : recalcule d\'abord.');
   b('#dc-payee', 'Note que la TVA est payée. Le règlement, lui, vient du relevé bancaire.');
   b('#dc-pieces', 'Ouvre les pièces qui font ce chiffre.');
   b('#dc-csv', 'Enregistre les cases de la déclaration dans un fichier.');

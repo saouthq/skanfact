@@ -147,10 +147,14 @@ t('U-28 : un mois dans une phrase se dit « juillet 2026 », jamais « 2026-07 �
   assert.ok(!/\b20\d\d-\d\d\b/.test(tva.detail), `aucun mois en forme machine : ${tva.detail}`);
   assert.ok(/mars 2026/.test(tva.detail), tva.detail);
   // Le refus de refaire une déclaration déposée.
-  const posee = KC.poserDeclaration(l, decl, 'Amine', 5);
+  // 10.14.0 — la déclaration posée est celle du LIVRE : un dépôt ne se pointe plus sur des chiffres
+  // que le livre ne porte pas (la déclaration fabriquée ci-dessus annonce 950 de TVA collectée).
+  const vraie = KC.declarationMensuelle(l, '2026-05');
+  const posee = KC.poserDeclaration(l, vraie, 'Amine', 5);
   assert.ok(posee.ok, posee.motif);
-  KC.pointerDeclaration(l, '2026-05', 'deposee', { le: '2026-06-14' }, 'Amine', 6);
-  const refus = KC.poserDeclaration(l, decl, 'Amine', 7);
+  const pointe = KC.pointerDeclaration(l, '2026-05', 'deposee', { le: '2026-06-14' }, 'Amine', 6);
+  assert.ok(pointe.ok, pointe.motif);
+  const refus = KC.poserDeclaration(l, vraie, 'Amine', 7);
   assert.ok(!refus.ok);
   assert.ok(/mai 2026/.test(refus.motif) && /14\/06\/2026/.test(refus.motif), refus.motif);
 });
@@ -1142,12 +1146,18 @@ t('U-11 / U-13 / U-14 : la déclaration — ses étapes dans l\'ordre, un seul v
   // déclaration » était deux fois à l'écran, et une fois préparée plus rien ne disait la suite.
   const m = /const suivante = ([^;]+);/.exec(vue);
   assert.ok(m, 'l\'étape suivante n\'est plus calculée');
-  const suivante = (posee, ecrite, deposee, payee) => evaluer(m[1], { posee, ecrite, deposee, payee });
+  const suivante = (posee, ecrite, deposee, payee, perime = false, aCompleter = false) => evaluer(m[1], { posee, ecrite, deposee, payee, perime, aCompleter });
   assert.strictEqual(suivante(null, false, false, false), 'preparer', 'avant tout, l\'étape suivante est « Préparer »');
   assert.strictEqual(suivante({}, false, false, false), 'ecriture', 'une déclaration préparée attend son écriture avant le dépôt');
   assert.strictEqual(suivante({}, true, false, false), 'deposee', 'une écriture déjà passée par le client ne doit pas rester l\'étape suivante');
   assert.strictEqual(suivante({}, true, true, false), 'payee', 'une déclaration déposée attend son paiement');
   assert.strictEqual(suivante({}, true, true, true), '', 'un mois payé n\'a plus d\'étape suivante');
+  // 10.14.0 — une pièce arrivée après la préparation : recalculer passe avant le dépôt ; après
+  // l'écriture du mois : son complément redevient l'étape suivante. Déjà déposée, on ne recalcule
+  // plus (le moteur le refuse) : le vert ne l'y renvoie pas.
+  assert.strictEqual(suivante({}, true, false, false, true), 'preparer', 'des chiffres préparés périmés ne se déposent pas');
+  assert.strictEqual(suivante({}, true, true, false, true), 'payee', 'une déclaration déposée ne se recalcule pas');
+  assert.strictEqual(suivante({}, true, false, false, false, true), 'ecriture', 'le complément ne devient pas l\'étape suivante');
   // Chaque bouton ne prend la couleur que si c'est SON étape.
   [['dc-preparer', 'preparer'], ['dc-ecriture', 'ecriture'], ['dc-deposee', 'deposee'], ['dc-payee', 'payee']].forEach(([id, pas]) =>
     assert.ok(new RegExp(`class="\\$\\{cls\\('${pas}'\\)\\}" id="${id}"`).test(vue), `${id} ne prend pas la couleur de SON étape`));
