@@ -658,7 +658,7 @@
   // donnaient tous deux la clé vide « NOM: » : dans un portefeuille tunisien, tous les clients dont
   // la raison sociale est en arabe tombaient dans un SEUL dossier, et leurs paquets s'écrasaient les
   // uns les autres. Un cabinet de Sfax qui colle ses soixante clients en aurait perdu la moitié.
-  const sansAccents = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const sansAccents = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\u0153/g, 'oe').replace(/\u00e6/g, 'ae');
   function normNom(s) {
     return String(s || '').normalize('NFKC').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
       .replace(/[^\p{L}\p{N}]+/gu, ' ').trim().toUpperCase();

@@ -36,6 +36,7 @@ contextBridge.exposeInMainWorld('skanfact', {
   exportPdf: (html, suggestedName) => ipcRenderer.invoke('pdf:export', { html, suggestedName }),
   exportPdfMany: (files, folderName) => ipcRenderer.invoke('pdf:exportMany', { files, folderName }),
   saveText: (suggestedName, content) => ipcRenderer.invoke('file:saveText', { suggestedName, content }),
+  openText: (opts) => ipcRenderer.invoke('file:openText', opts || {}),
   exportPdfSilent: (html, name) => ipcRenderer.invoke('pdf:exportSilent', { html, name }),
   saveTextSilent: (name, content) => ipcRenderer.invoke('file:saveSilent', { name, content }),
   composeMail: (opts) => ipcRenderer.invoke('mail:compose', opts),

@@ -99,20 +99,8 @@
 /* Un contrôle qui porte son geste : la phrase, puis le bouton, dans une rangée dont le `gap` décide
    des deux écarts — posé dans la phrase, le bouton passait à la ligne collé sous elle (10.12.0). */
 .ctrl-geste { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; }
-/* Les deux soeurs de `.warn-box`, posées en 9.1.0 — elles étaient UTILISÉES sans être définies,
-   et une classe qui n'existe pas dans la feuille ne se voit nulle part : le verdict de la balance
-   s'affichait en texte nu au milieu de la page (même défaut que `.mono` en 8.1.0).
-   `ok-box` : ce qu'on peut affirmer. `info-box` : ce qu'on explique — un écart ATTENDU n'est pas un
-   avertissement, et du orange sur une situation normale apprend à ignorer l'orange (8.0.1).
-   Les couleurs viennent des variables, donc le thème sombre suit tout seul. */
-.ok-box {
-  background: var(--success-soft); border-inline-start: 3px solid var(--success); border-radius: 8px;
-  padding: 11px 14px; font-size: 13px; line-height: 1.55;
-}
-.info-box {
-  background: var(--info-soft); border-inline-start: 3px solid var(--info); border-radius: 8px;
-  padding: 11px 14px; font-size: 13px; line-height: 1.55;
-}
+/* `.ok-box` et `.info-box`, les deux soeurs de `.warn-box`, vivent aussi dans la feuille partagée
+   depuis la 10.14.0 : l'import depuis un tableur de l'app entreprise en a besoin. */
 /* 10.12.0 (U-11) — les quatre étapes d'une déclaration se lisent dans leur ORDRE : une rangée qui
    passe à la ligne, des flèches entre les gestes, et une seule couleur, celle de l'étape suivante.
    Le `gap` décide des deux écarts à la fois (règle 9.8.8, T-56) — jamais une espace de gabarit. */

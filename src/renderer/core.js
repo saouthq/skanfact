@@ -996,7 +996,11 @@
   // « delai » le réglage « Délai de paiement » — dans les quinze recherches de l'application, la
   // palette Ctrl K et l'Aide comprises. Le Cabinet plie les accents depuis la 6.8.0 : le jumeau
   // manquant (7.3.0), sur le geste qu'on fait le plus. Mot par mot : « marsa hotel » trouve aussi.
-  const plier = s => String(s == null ? '' : s).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  // Les ligatures aussi (10.14.0) : « œ » n'est pas un « o » accentué, la décomposition ne le touche
+  // pas — et un clavier AZERTY ne le tape pas. « main d'oeuvre » ne trouvait donc jamais la
+  // prestation « Main-d'œuvre » que l'assistant pose pour trois métiers, et l'import d'un tableur qui
+  // écrit « oeuvre » créait un doublon à côté de l'exemple.
+  const plier = s => String(s == null ? '' : s).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\u0153/g, 'oe').replace(/\u00e6/g, 'ae');
   function correspondRecherche(texte, q) {
     const mots = plier(q).split(/\s+/).filter(Boolean);
     if (!mots.length) return true;
@@ -7429,6 +7433,418 @@
     return weeks;
   }
 
+  // ---------- un client, un article : le modèle vierge (10.14.0) ----------
+  // Un client ou un article naît en UN endroit : la fiche (`clientForm`, `catalogForm`), les
+  // créations à la volée depuis une ligne (9.2.1) et l'import depuis un tableur partent du même
+  // modèle. Écrit trois fois, un champ ajouté demain manquerait à l'un des trois.
+  function clientVierge(extra) {
+    return Object.assign({ id: uid(), name: '', contact: '', matricule: '', address: '', phone: '', email: '', notes: '', withholdingRate: '' }, extra || {});
+  }
+  function articleVierge(company, extra, jour) {
+    return Object.assign({ id: uid(), label: '', description: '', unit: '', unitPrice: 0, unitCost: 0, vatRate: defaultVat(company),
+      tracked: false, minStock: 0, location: '', initialQty: 0, initialCost: 0, initialDate: jour || today(),
+      serialized: false, warrantyMonths: 0 }, extra || {});
+  }
+
+  // ---------- l'import depuis un tableur (10.14.0) ----------
+  //
+  // Quelqu'un qui démarre sur SkanFact a presque toujours DÉJÀ une liste : ses clients dans un
+  // tableur, ses prix dans un fichier, ou ce que son ancien logiciel sait exporter. Les retaper un
+  // à un dans un formulaire, personne ne le fait — et l'application reste vide le jour où l'on
+  // voulait s'en servir. C'est la leçon du Cabinet (6.8.0 : « l'ajout se fait en collant une liste
+  // depuis un tableur »), jamais portée à l'app entreprise.
+  //
+  // On COLLE : une sélection copiée dans Excel, LibreOffice ou Google Sheets arrive en tabulations.
+  // Un fichier CSV s'ouvre aussi (point-virgule à la française, virgule à l'anglaise). Tout ce qui
+  // DÉCIDE vit ici, pur : quelles colonnes, quelles lignes entrent, lesquelles existent déjà,
+  // lesquelles sont refusées et pourquoi. L'écran montre le plan et l'applique, rien d'autre.
+  //
+  // Chaque champ porte les titres de colonne qu'on lui connaît (sans accents ni ponctuation) et le
+  // séparateur qui joint deux colonnes du même champ (« Adresse 1 » et « Adresse 2 », « Nom » et
+  // « Prénom »). Un champ NOMBRE ne se joint pas : la première colonne gagne.
+  const IMPORT_CHAMPS = {
+    clients: [
+      { k: 'name', label: 'Nom / raison sociale', joint: ' ', noms: ['nom', 'noms', 'nom client', 'nom du client', 'client', 'clients', 'raison sociale', 'raison soc', 'denomination', 'denomination sociale', 'societe', 'entreprise', 'nom raison sociale', 'nom ou raison sociale', 'nom et prenom', 'nom prenom', 'prenom', 'nom complet', 'customer', 'customer name', 'name', 'company', 'company name', 'tiers', 'intitule'] },
+      { k: 'contact', label: 'Personne à contacter', joint: ' ', noms: ['contact', 'personne a contacter', 'interlocuteur', 'responsable', 'nom du contact', 'contact name', 'gerant', 'representant'] },
+      { k: 'matricule', label: 'Matricule fiscal / CIN', joint: ' ', noms: ['matricule', 'matricule fiscal', 'mf', 'm f', 'identifiant fiscal', 'id fiscal', 'identifiant unique', 'code tva', 'n tva', 'num tva', 'numero tva', 'cin', 'n cin', 'numero cin', 'mf cin', 'matricule fiscal cin', 'tax id', 'vat number', 'vat id'] },
+      { k: 'phone', label: 'Téléphone', joint: ' / ', noms: ['telephone', 'telephones', 'tel', 'tel fixe', 'tel portable', 'portable', 'mobile', 'gsm', 'phone', 'telephone portable', 'telephone mobile', 'telephone fixe', 'numero de telephone', 'n telephone', 'num tel', 'fixe'] },
+      { k: 'email', label: 'Email', joint: ', ', noms: ['email', 'e mail', 'emails', 'mail', 'courriel', 'adresse email', 'adresse e mail', 'adresse mail', 'email address', 'e mail address', 'mel'] },
+      { k: 'address', label: 'Adresse', joint: '\n', noms: ['adresse', 'adresse postale', 'address', 'rue', 'siege', 'siege social', 'adresse 1', 'adresse ligne 1', 'adresse 2', 'adresse ligne 2', 'street'] },
+      { k: 'complement', label: 'Code postal, ville, pays', joint: ' ', noms: ['code postal', 'cp', 'ville', 'localite', 'gouvernorat', 'delegation', 'pays', 'city', 'zip', 'zip code', 'postal code', 'country', 'region', 'cite'] },
+      { k: 'notes', label: 'Notes internes', joint: '\n', noms: ['notes', 'note', 'remarque', 'remarques', 'commentaire', 'commentaires', 'observation', 'observations', 'memo', 'comment', 'comments'] }
+    ],
+    catalogue: [
+      { k: 'label', label: 'Désignation', joint: ' ', noms: ['designation', 'libelle', 'intitule', 'produit', 'produits', 'article', 'articles', 'prestation', 'prestations', 'service', 'services', 'nom', 'nom du produit', 'nom produit', 'nom de l article', 'item', 'product', 'product name', 'name', 'titre', 'description courte'] },
+      { k: 'description', label: 'Description', joint: '\n', noms: ['description', 'descriptif', 'detail', 'details', 'description longue', 'caracteristiques'] },
+      { k: 'unitPrice', label: 'Prix unitaire HT', nombre: true, noms: ['prix', 'prix ht', 'prix unitaire', 'prix unitaire ht', 'pu', 'pu ht', 'p u', 'p u ht', 'prix de vente', 'prix de vente ht', 'pv', 'pv ht', 'tarif', 'tarif ht', 'price', 'unit price', 'montant', 'montant ht', 'prix hors taxe', 'prix hors taxes', 'prix unitaire hors taxe'] },
+      { k: 'unitPriceTTC', label: 'Prix unitaire TTC', nombre: true, noms: ['prix ttc', 'pu ttc', 'p u ttc', 'prix unitaire ttc', 'prix de vente ttc', 'pv ttc', 'tarif ttc', 'montant ttc', 'prix toutes taxes', 'prix toutes taxes comprises'] },
+      { k: 'unitCost', label: 'Coût de revient HT', nombre: true, noms: ['cout', 'cout ht', 'cout de revient', 'cout unitaire', 'cout d achat', 'prix d achat', 'prix d achat ht', 'prix achat', 'pa', 'pa ht', 'p a', 'prix de revient', 'cost', 'unit cost', 'purchase price'] },
+      { k: 'vatRate', label: 'TVA (%)', nombre: true, noms: ['tva', 'tva %', 'taux tva', 'taux tva %', 'taux de tva', 'vat', 'vat %', 'taxe', 'tax', 'taux'] },
+      { k: 'unit', label: 'Unité', joint: ' ', noms: ['unite', 'unites', 'u', 'unit', 'unite de vente', 'conditionnement', 'uv'] },
+      { k: 'initialQty', label: 'Stock de départ', nombre: true, noms: ['stock', 'quantite', 'qte', 'qt', 'quantite en stock', 'qte en stock', 'stock initial', 'stock actuel', 'stock de depart', 'en stock', 'quantity', 'qty', 'inventaire'] }
+    ]
+  };
+  // Quand le titre exact n'est pas connu, un MOT du titre peut décider — dans cet ordre, parce que
+  // « Adresse email » est un email et « Prix TTC » un prix TTC, pas une adresse ni un prix HT. Les
+  // mots LARGES (« client », « produit », « tva », « prix ») ne décident pas d'un titre qui parle
+  // d'un code : « Code client » est un code, pas le nom du client, et joint au nom il donnerait
+  // « Dupont C-0042 » sur chaque facture (le troisième élément d'une règle porte ce veto).
+  const IMPORT_MOTS = {
+    clients: [['email', /\b(e ?mail|courriel|mails?)\b/], ['phone', /\b(tel|telephone|portable|mobile|gsm|phone|fixe)\b/],
+      ['matricule', /\b(matricule|mf|fiscal|cin)\b/], ['complement', /\b(ville|postal|pays|gouvernorat|localite|cp)\b/],
+      ['address', /\b(adresse|address|rue)\b/], ['contact', /\b(contact|interlocuteur|responsable)\b/, true],
+      ['notes', /\b(notes?|remarques?|commentaires?|observations?)\b/], ['name', /\b(nom|raison|societe|client|entreprise|denomination)\b/, true]],
+    catalogue: [['unitPriceTTC', /\bttc\b/, true], ['unitCost', /\b(cout|achat|revient)\b/], ['vatRate', /\b(tva|vat|taxe)\b/, true],
+      ['unitPrice', /\b(prix|pu|tarif|price|montant)\b/, true], ['initialQty', /\b(stock|quantite|qte|qty)\b/], ['unit', /\bunites?\b/],
+      ['description', /\b(description|descriptif|details?)\b/], ['label', /\b(designation|libelle|produits?|articles?|prestations?|services?|nom|intitule)\b/, true]]
+  };
+  const VETO_MOTS = /\b(code|ref|reference|id|identifiant|numero|num|no|n)\b/;
+  const cleEntete = titre => plier(titre).replace(/[^a-z0-9%]+/g, ' ').trim();
+  function champDeEntete(type, titre) {
+    const brut = String(titre == null ? '' : titre);
+    // Une cellule qui porte un email ou un numéro n'est pas un titre de colonne : c'est une donnée.
+    // Sans ce garde-fou, « contact@darelmarsa.tn » passait pour le titre « Contact », et la
+    // première ligne d'une liste SANS titres disparaissait dans l'en-tête.
+    if (brut.includes('@') || (brut.match(/\d/g) || []).length >= 5) return '';
+    const t = cleEntete(brut);
+    if (!t) return '';
+    const exact = (IMPORT_CHAMPS[type] || []).find(c => c.noms.includes(t));
+    if (exact) return exact.k;
+    const mot = (IMPORT_MOTS[type] || []).find(([, re, veto]) => re.test(t) && !(veto && VETO_MOTS.test(t)));
+    return mot ? mot[0] : '';
+  }
+
+  // Le découpage d'un texte collé. Un guillemet n'OUVRE un champ protégé qu'en tête de champ (c'est
+  // ce qu'écrivent Excel et les CSV) : « Écran 24" » au milieu d'une désignation est un caractère,
+  // pas le début d'un champ qui avalerait tout le reste du fichier. Dans un vrai champ protégé, un
+  // guillemet est DOUBLÉ ; un guillemet seul qui n'est suivi ni d'un séparateur ni d'une fin de
+  // ligne (« "Premium" pack ») dit que ce n'en était pas un : le champ redevient du texte ordinaire,
+  // tel quel, sans aller chercher sa fermeture trois lignes plus bas. Un champ qui ne se referme
+  // jamais, pareil.
+  function decouperTableau(texte, sep) {
+    const s = String(texte == null ? '' : texte).replace(/^﻿/, '').replace(/\r\n?/g, '\n');
+    const n = s.length;
+    const rows = [];
+    let ligne = [], i = 0;
+    const brut = () => { let j = i; while (j < n && s[j] !== '\n' && s[j] !== sep) j++; const c = s.slice(i, j); i = j; return c; };
+    while (i <= n) {
+      let champ;
+      if (s[i] === '"') {
+        let j = i + 1, buf = '', ferme = -1;
+        while (j < n) {
+          if (s[j] === '"') {
+            if (s[j + 1] === '"') { buf += '"'; j += 2; continue; }
+            const apres = s[j + 1];
+            if (apres === undefined || apres === '\n' || apres === sep) ferme = j;
+            break;
+          }
+          buf += s[j]; j++;
+        }
+        if (ferme >= 0) { champ = buf; i = ferme + 1; } else champ = brut();
+      } else champ = brut();
+      ligne.push(champ);
+      if (i >= n) { rows.push(ligne); break; }
+      if (s[i] === sep) { i++; if (i === n) { ligne.push(''); rows.push(ligne); break; } continue; }
+      rows.push(ligne); ligne = []; i++;
+      if (i === n) break;
+    }
+    return rows.filter(r => r.some(c => String(c).trim() !== ''));
+  }
+  // Le séparateur se DÉDUIT : une tabulation vient d'un tableur, et elle gagne toujours. Sinon, le
+  // point-virgule (un CSV à la française) puis la virgule — à condition que la moitié au moins des
+  // lignes aient le même nombre de colonnes que la première : une liste de noms collée d'une seule
+  // colonne (« Ben Salah, Ali ») ne se découpe pas sur ses virgules.
+  function separateurTableau(texte) {
+    const s = String(texte == null ? '' : texte);
+    if (s.includes('\t')) return '\t';
+    for (const c of [';', ',']) {
+      if (!s.includes(c)) continue;
+      const rows = decouperTableau(s, c).slice(0, 30);
+      if (!rows.length || rows[0].length < 2) continue;
+      const pareilles = rows.filter(r => r.length === rows[0].length).length;
+      if (pareilles * 2 >= rows.length) return c;
+    }
+    return null;
+  }
+
+  // Un nombre tel qu'un tableur l'écrit : « 1 250,500 », « 25 DT », « 19 % ». Les unités se
+  // retirent, le reste passe par la lecture stricte du moteur comptable (une cellule illisible
+  // n'est jamais un zéro, 10.10.0 C-16) : `null` quand c'est vide, `NaN` quand ce n'est pas un nombre.
+  const nombreImport = v => Compta.nombreStrict(String(v == null ? '' : v)
+    .replace(/(?<![a-z])(dt|tnd|dinars?|millimes?|eur|euros?|usd|ht|ttc)(?![a-z])\.?/gi, '').replace(/[€$%]/g, '').trim());
+  // Une unité telle qu'on l'écrit : « pièce », « Heure », « m2 ». Ce qui correspond à une unité de
+  // la liste prend son code ; le reste est gardé tel quel (et rejoint la liste, comme une unité
+  // saisie à la main, `usedUnits`).
+  const UNITES_ECRITES = { unite: 'u', unites: 'u', un: 'u', pce: 'u', pc: 'u', piece: 'u', pieces: 'u', heure: 'h', heures: 'h', hr: 'h', hrs: 'h',
+    jour: 'j', jours: 'j', m2: 'm²', 'metre carre': 'm²', m3: 'm³', 'metre cube': 'm³', 'metre lineaire': 'ml', litre: 'L', litres: 'L', l: 'L',
+    kilogramme: 'kg', kilo: 'kg', kilos: 'kg', annee: 'an', ans: 'an' };
+  function uniteImport(v) {
+    const t = String(v == null ? '' : v).trim();
+    if (!t) return '';
+    const p = plier(t).replace(/\.$/, '').trim();
+    const connue = LINE_UNITS.find(([code, lib]) => plier(code) === p || plier(lib) === p || plier(lib.replace(/\s*\(.*\)$/, '')) === p);
+    if (connue) return connue[0];
+    return UNITES_ECRITES[p] || t;
+  }
+  // Deviner une colonne à son CONTENU, quand aucun titre ne parle : un email se reconnaît, un
+  // matricule tunisien aussi, un taux de TVA ne prend que quatre valeurs. Le reste est laissé à
+  // « Ignorer » : l'écran montre la colonne et son contenu, la personne choisit.
+  function devinerColonnes(type, lignes, largeur) {
+    const out = new Array(largeur).fill('');
+    const echantillon = lignes.slice(0, 50);
+    const part = (i, test) => {
+      const v = echantillon.map(r => String(r[i] == null ? '' : r[i]).trim()).filter(Boolean);
+      return v.length ? v.filter(test).length / v.length : 0;
+    };
+    const estNombre = x => { const n = nombreImport(x); return n !== null && !Number.isNaN(n); };
+    const libre = i => !out[i];
+    if (type === 'clients') {
+      for (let i = 0; i < largeur; i++) {
+        if (part(i, x => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(x)) >= 0.6) out[i] = 'email';
+        else if (part(i, x => /^\d{7}\s*[/-]?\s*[a-z]/i.test(x)) >= 0.6) out[i] = 'matricule';
+        else if (part(i, x => /^[+(\d][\d\s().\/-]{6,}$/.test(x) && (x.match(/\d/g) || []).length >= 8) >= 0.6) out[i] = 'phone';
+      }
+      const nom = [...out.keys()].find(i => libre(i) && part(i, x => !estNombre(x)) >= 0.6);
+      if (nom != null) out[nom] = 'name';
+    } else {
+      const lab = [...out.keys()].find(i => part(i, x => !estNombre(x)) >= 0.6);
+      if (lab != null) out[lab] = 'label';
+      const nombres = [...out.keys()].filter(i => libre(i) && part(i, estNombre) >= 0.8);
+      const tva = nombres.find(i => part(i, x => VAT_RATES.includes(Number(nombreImport(x)))) === 1);
+      const prix = nombres.find(i => i !== tva);
+      if (prix != null) out[prix] = 'unitPrice';
+      if (tva != null && prix != null) out[tva] = 'vatRate';
+    }
+    return out;
+  }
+
+  // Une clé pour reconnaître un doublon : le matricule d'abord (sept chiffres, comme la console et le
+  // Cabinet), le nom sinon — sans accents, sans ponctuation, sans espaces en trop. Deux homonymes
+  // aux matricules DIFFÉRENTS ne sont pas le même client.
+  const cleNom = nom => plier(nom).replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+  function memeClient(a, b) {
+    const ma = chiffresMatricule(a.matricule), mb = chiffresMatricule(b.matricule);
+    if (ma && mb) return ma === mb;
+    return !!cleNom(a.name) && cleNom(a.name) === cleNom(b.name);
+  }
+
+  // Le PLAN d'un import. `choix` : { entete: bool (sinon deviné), champs: [clé par colonne] (sinon
+  // déduits des titres, ou du contenu faute de titres) }. Chaque ligne rend son statut :
+  //   nouveau   — elle entre ;
+  //   existe    — elle désigne une fiche déjà là : on COMBLE ses cases vides (`complete`), jamais
+  //               on ne remplace ce qui est rempli (10.9.1 — une fiche appartient à son auteur) ;
+  //   remplace  — (catalogue) elle désigne une prestation d'EXEMPLE de l'assistant : ses prix sont
+  //               les tiens, l'exemple devient ta prestation (10.12.0 — un prix posé par le
+  //               logiciel n'est pas un prix décidé) ;
+  //   doublon   — même fiche qu'une ligne plus haut dans la liste collée ;
+  //   refus     — une cellule illisible ou un nom qui manque : la ligne n'entre pas, et le motif
+  //               nomme la ligne et ce qui y est écrit (une cellule illisible n'est jamais un zéro).
+  function planImport(type, texte, data, company, choix) {
+    const champs = IMPORT_CHAMPS[type];
+    if (!champs) throw new Error('Import : type inconnu « ' + type + ' »');
+    const o = choix || {};
+    const d = data || {};
+    const co = company || d.company || {};
+    const sep = separateurTableau(texte);
+    const brutes = decouperTableau(texte, sep).map(r => r.map(c => String(c == null ? '' : c)));
+    const largeur = brutes.reduce((m, r) => Math.max(m, r.length), 0);
+    const reconnus = brutes.length ? Array.from({ length: largeur }, (_, i) => champDeEntete(type, brutes[0][i])) : [];
+    // Une ligne de TITRES : plus de la moitié de ses cases désignent une colonne connue. Un seul mot
+    // reconnu dans une ligne de données (« Client Dupont », « Contact Pro SARL ») ne suffit pas à
+    // la faire disparaître dans l'en-tête ; la case à cocher de l'écran tranche sinon.
+    const pleines = brutes.length ? brutes[0].filter(c => String(c || '').trim()).length : 0;
+    const titresConnus = reconnus.filter(Boolean).length;
+    const entete = o.entete != null ? !!o.entete : (titresConnus > 0 && titresConnus * 2 > pleines);
+    // La MAUVAISE liste (vu à la souris) : un tarif collé dans l'import des CLIENTS annonçait
+    // « 7 nouveaux clients », dont un nommé « Désignation » — aucun de ses titres n'est celui d'un
+    // client, donc aucun n'était reconnu, donc chaque ligne devenait un client. Quand la première
+    // ligne n'est PAS une ligne de titres de ce type mais qu'elle en est une, à plus de moitié, de
+    // l'AUTRE, la liste a sans doute été collée dans la mauvaise fenêtre : le plan le DIT
+    // (`autreListe`), et l'écran propose de l'importer là où elle va. Cocher « la première ligne
+    // donne les titres » passe outre : c'est un choix, et il se respecte.
+    const autre = type === 'clients' ? 'catalogue' : 'clients';
+    const titresAutre = brutes.length && o.entete == null && !entete
+      ? brutes[0].map(c => String(c || '').trim()).filter(c => champDeEntete(autre, c)) : [];
+    const autreListe = titresAutre.length && titresAutre.length * 2 > pleines ? autre : '';
+    const titres = entete && brutes.length ? Array.from({ length: largeur }, (_, i) => String(brutes[0][i] || '').trim()) : [];
+    const donnees = entete ? brutes.slice(1) : brutes;
+    let colonnes;
+    if (Array.isArray(o.champs) && o.champs.length) colonnes = Array.from({ length: largeur }, (_, i) => champs.some(c => c.k === o.champs[i]) ? o.champs[i] : '');
+    else if (entete) colonnes = reconnus.slice();
+    else colonnes = devinerColonnes(type, donnees, largeur);
+    // Un champ NOMBRE n'a qu'une colonne : la première gagne, les suivantes sont ignorées (et le
+    // disent, puisque leur liste repasse sur « Ignorer »).
+    champs.filter(c => c.nombre).forEach(c => { let vu = false; colonnes = colonnes.map(k => { if (k !== c.k) return k; if (vu) return ''; vu = true; return k; }); });
+    // Un catalogue sans colonne « Désignation » mais avec une « Description » : c'est elle qui nomme
+    // (« Description / Prix », l'usage anglais). Sans ça, chaque ligne serait refusée faute de nom.
+    if (type === 'catalogue' && !colonnes.includes('label') && colonnes.includes('description')) colonnes[colonnes.indexOf('description')] = 'label';
+
+    const lire = (r, k) => {
+      const c = champs.find(x => x.k === k);
+      const vals = colonnes.map((kk, i) => kk === k ? String(r[i] == null ? '' : r[i]).trim() : '').filter(Boolean);
+      return c && c.nombre ? (vals[0] || '') : vals.join(c ? c.joint : ' ');
+    };
+    const assujetti = assujettiTVA(co);
+    const vatDefaut = defaultVat(co);
+    const existants = type === 'clients' ? (d.clients || []) : (d.catalog || []);
+    const vus = [];
+    const lignes = donnees.map((r, idx) => {
+      const n = idx + (entete ? 2 : 1);
+      const extrait = r.map(c => String(c || '').trim()).filter(Boolean).slice(0, 3).join(', ');
+      const ligne = { n, cellules: r, statut: 'nouveau', motifs: [], avert: [], complete: [], existant: null };
+      const refus = m => { ligne.statut = 'refus'; ligne.motifs.push(`Ligne ${n}${extrait ? ` (${extrait})` : ''} : ${m}`); };
+      if (type === 'clients') {
+        const adr = [lire(r, 'address'), lire(r, 'complement')].filter(Boolean).join('\n');
+        const obj = { name: lire(r, 'name'), contact: lire(r, 'contact'), matricule: lire(r, 'matricule'), phone: lire(r, 'phone'), email: lire(r, 'email'), address: adr, notes: lire(r, 'notes') };
+        ligne.objet = obj;
+        if (!obj.name) refus('le nom manque — c\'est lui qui s\'imprime sur chaque pièce.');
+        if (obj.email && !obj.email.split(/\s*,\s*/).every(e => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e))) ligne.avert.push(`l'email « ${obj.email} » n'a pas la forme d'une adresse : un envoi n'arriverait pas.`);
+        if (ligne.statut === 'refus') return ligne;
+        const avant = vus.find(v => memeClient(v.objet, obj));
+        if (avant) { ligne.statut = 'doublon'; ligne.motifs.push(`même client que la ligne ${avant.n}`); return ligne; }
+        const ex = existants.find(c => memeClient(c, obj));
+        if (ex) {
+          ligne.statut = 'existe'; ligne.existant = ex.id;
+          ligne.complete = ['contact', 'matricule', 'phone', 'email', 'address', 'notes'].filter(k => obj[k] && !String(ex[k] || '').trim());
+        }
+        vus.push(ligne);
+        return ligne;
+      }
+      // Le catalogue. Chaque nombre dit ce qu'il est, et son refus aussi — accordé à la main :
+      // « une quantité négatif » se lit.
+      const nombre = (k, quoi, negatif) => {
+        const brut = lire(r, k);
+        const v = nombreImport(brut);
+        if (v === null) return null;
+        if (Number.isNaN(v)) { refus(`« ${brut} » n'est pas ${quoi}. Écris-le en chiffres.`); return null; }
+        if (v < 0) { refus(`${negatif} (« ${brut} ») n'existe pas.`); return null; }
+        return v;
+      };
+      const label = lire(r, 'label');
+      if (!label) refus('la désignation manque — c\'est elle qui s\'écrit sur la ligne du devis.');
+      let vat = null;
+      const vBrut = lire(r, 'vatRate');
+      if (vBrut) {
+        let v = nombreImport(vBrut);
+        if (v !== null && !Number.isNaN(v) && v > 0 && v < 1) v = Math.round(v * 10000) / 100;
+        if (v === null || Number.isNaN(v) || !VAT_RATES.includes(v)) refus(`TVA « ${vBrut} » inconnue : SkanFact connaît ${liste(VAT_RATES.map(x => x + ' %'))}.`);
+        else vat = v;
+      }
+      if (vat == null) vat = vatDefaut;
+      if (!assujetti && vat > 0) { ligne.avert.push(`TVA mise à 0 % au lieu de ${vat} % : ton régime ne facture pas de TVA.`); vat = 0; }
+      let prix = nombre('unitPrice', 'un prix', 'un prix négatif');
+      const ttc = nombre('unitPriceTTC', 'un prix', 'un prix négatif');
+      if (prix == null && ttc != null) prix = round3(ttc / (1 + vat / 100));
+      const cout = nombre('unitCost', 'un coût', 'un coût négatif');
+      const qte = nombre('initialQty', 'une quantité', 'un stock de départ négatif');
+      const obj = { label, description: lire(r, 'description'), unit: uniteImport(lire(r, 'unit')), unitPrice: prix || 0, unitCost: cout || 0, vatRate: vat };
+      if (qte) Object.assign(obj, { tracked: true, initialQty: qte, initialCost: cout || 0 });
+      ligne.objet = obj;
+      if (ligne.statut === 'refus') return ligne;
+      const cle = cleNom(label);
+      const avant = vus.find(v => cleNom(v.objet.label) === cle);
+      if (avant) { ligne.statut = 'doublon'; ligne.motifs.push(`même prestation que la ligne ${avant.n}`); return ligne; }
+      const ex = existants.find(c => cleNom(c.label) === cle);
+      if (ex && ex.fromSetup) { ligne.statut = 'remplace'; ligne.existant = ex.id; }
+      else if (ex) {
+        ligne.statut = 'existe'; ligne.existant = ex.id;
+        ligne.complete = [['description', !String(ex.description || '').trim() && obj.description], ['unit', !String(ex.unit || '').trim() && obj.unit],
+          ['unitCost', !(Number(ex.unitCost) > 0) && obj.unitCost > 0]].filter(([, oui]) => oui).map(([k]) => k);
+        // Le stock d'une prestation qui existe déjà a peut-être déjà bougé : un stock de départ
+        // posé après coup réécrirait son histoire. On le DIT au lieu de l'avaler (règle 9.8.0).
+        if (obj.tracked) ligne.avert.push('le stock de départ n\'est pas repris sur une prestation qui existe déjà : passe par un mouvement sur la page Stock.');
+      }
+      // Un stock de départ SANS coût d'achat vaut zéro : la valeur du stock l'affiche, et chaque
+      // vente le sort au coût nul — sa marge paraît trop belle, sans un mot (vu à la souris : un
+      // tarif collé avec sa colonne « Stock » et sans colonne « Coût » annonçait 258 articles
+      // valant 0,000 DT). On ne l'invente pas : on le DIT, là où l'on peut encore l'ajouter.
+      if (obj.tracked && !(obj.initialCost > 0) && ligne.statut !== 'existe') {
+        ligne.avert.push(`stock de départ de ${qte} sans coût d'achat : il vaudra 0 dans ton stock, et la marge de ses ventes paraîtra trop belle tant que tu n'as pas renseigné ce coût (une colonne « Coût » dans ta liste, ou sa fiche).`);
+      }
+      vus.push(ligne);
+      return ligne;
+    });
+    const compte = st => lignes.filter(l => l.statut === st).length;
+    // Les exemples de l'assistant que la liste n'a pas repris : on propose de les retirer, s'ils ne
+    // servent à aucune pièce — un catalogue de quarante prix réels n'a que faire de huit exemples.
+    const repris = new Set(lignes.filter(l => l.statut === 'remplace').map(l => l.existant));
+    const servi = c => [...(d.documents || []), ...(d.templates || []), ...(d.recurring || [])]
+      .some(x => (x.lines || []).some(l => l.itemId === c.id || cleNom(l.label) === cleNom(c.label)));
+    const exemples = type === 'catalogue' && lignes.some(l => ['nouveau', 'remplace'].includes(l.statut))
+      ? (d.catalog || []).filter(c => c.fromSetup && !repris.has(c.id) && !servi(c)).map(c => ({ id: c.id, label: c.label }))
+      : [];
+    return {
+      type, sep, entete, titres, colonnes, largeur, lignes, exemples, autreListe, titresAutre: autreListe ? titresAutre : [],
+      nouveaux: compte('nouveau'), remplaces: compte('remplace'), doublons: compte('doublon'), refus: compte('refus'),
+      completes: lignes.filter(l => l.statut === 'existe' && l.complete.length).length,
+      inchanges: lignes.filter(l => l.statut === 'existe' && !l.complete.length).length,
+      // Un stock de départ EST un mouvement de stock : l'écran le passe par le garde-fou de l'offre,
+      // comme la fiche d'un article (7.33.0).
+      stock: lignes.some(l => ['nouveau', 'remplace'].includes(l.statut) && l.objet && l.objet.tracked)
+    };
+  }
+
+  // Appliquer un plan : les nouvelles fiches entrent, les existantes se COMPLÈTENT (jamais un champ
+  // rempli ne change), les exemples repris deviennent tiens, et — si on l'a demandé — les exemples
+  // restés sans usage partent (et le disent à l'autre poste d'un dossier partagé, `trackDeletion`).
+  function appliquerImport(data, plan, company, opts) {
+    const o = opts || {};
+    const out = { crees: [], completes: 0, remplaces: 0, retires: 0 };
+    const clients = plan.type === 'clients';
+    const liste = clients ? data.clients : data.catalog;
+    const jour = o.jour || today();
+    plan.lignes.forEach(l => {
+      if (l.statut === 'nouveau') {
+        const x = clients ? clientVierge(l.objet) : articleVierge(company, l.objet, jour);
+        liste.push(x); out.crees.push(x.id);
+      } else if (l.statut === 'existe' && l.complete.length) {
+        const x = liste.find(y => y.id === l.existant);
+        if (x) { l.complete.forEach(k => { x[k] = l.objet[k]; }); out.completes++; }
+      } else if (l.statut === 'remplace') {
+        const x = liste.find(y => y.id === l.existant);
+        if (x) {
+          ['label', 'unitPrice', 'vatRate'].forEach(k => { x[k] = l.objet[k]; });
+          ['description', 'unit'].forEach(k => { if (l.objet[k]) x[k] = l.objet[k]; });
+          if (l.objet.unitCost) x.unitCost = l.objet.unitCost;
+          // Un exemple de l'assistant n'a jamais été suivi en stock (l'enregistrer lui retire son
+          // repère d'exemple) : son stock de départ n'a pas d'histoire à réécrire.
+          if (l.objet.tracked) Object.assign(x, { tracked: true, initialQty: l.objet.initialQty, initialCost: l.objet.initialCost, initialDate: jour });
+          delete x.fromSetup;
+          out.remplaces++;
+        }
+      }
+    });
+    if (o.retirerExemples && plan.exemples && plan.exemples.length) {
+      const ids = new Set(plan.exemples.map(e => e.id));
+      data.catalog.filter(c => ids.has(c.id)).forEach(c => trackDeletion(data, 'catalog', c.id, c.label));
+      const avant = data.catalog.length;
+      data.catalog = data.catalog.filter(c => !ids.has(c.id));
+      out.retires = avant - data.catalog.length;
+    }
+    return out;
+  }
+
+  // Le texte d'un fichier ouvert pour l'import. Un CSV enregistré par Excel sous Windows est en
+  // Windows-1252, pas en UTF-8 : lu comme de l'UTF-8, « Hôtel » devenait « H�tel » sur chaque fiche.
+  // Un classeur (.xlsx, .ods, .xls) n'est pas du texte : on le DIT, avec le geste qui marche, au
+  // lieu d'afficher des caractères illisibles.
+  function lireFichierTexte(octets, nom) {
+    const u8 = octets instanceof Uint8Array ? octets : new Uint8Array(octets || []);
+    const debut = Array.from(u8.slice(0, 4));
+    const classeur = (debut[0] === 0x50 && debut[1] === 0x4b) ? 'un classeur (Excel .xlsx ou LibreOffice .ods)'
+      : (debut[0] === 0xd0 && debut[1] === 0xcf && debut[2] === 0x11 && debut[3] === 0xe0) ? 'un classeur Excel (.xls)' : '';
+    if (classeur) {
+      return { ok: false, motif: `« ${nom || 'Ce fichier'} » est ${classeur}, pas du texte. Dans ton tableur, sélectionne les lignes, copie-les et colle-les ici — ou enregistre-le au format CSV, puis ouvre ce fichier-là.` };
+    }
+    let texte;
+    if (debut[0] === 0xff && debut[1] === 0xfe) texte = new TextDecoder('utf-16le').decode(u8.slice(2));
+    else if (debut[0] === 0xfe && debut[1] === 0xff) texte = new TextDecoder('utf-16be').decode(u8.slice(2));
+    else {
+      try { texte = new TextDecoder('utf-8', { fatal: true }).decode(u8); } catch (_) { texte = new TextDecoder('windows-1252').decode(u8); }
+    }
+    return { ok: true, texte: texte.replace(/^﻿/, '') };
+  }
+
   // ---------- pagination et tri des listes ----------
   // Découpage d'une liste en pages. `size` à 0 (ou moins) = tout afficher.
   // Renvoie des bornes déjà corrigées : une page hors limites est ramenée dans l'intervalle,
@@ -7510,6 +7926,9 @@
     LICENCE_MOTIFS, prorataOffre, licenceSuivi, licencesAFaire,
     EXPORT_CONSOLE_DELAI, exportConsoleAFaire,
     LICENCE_PREAVIS, licenceEtat, licenceRows, licencesExpirant,
-    clientPourVente, chargeHistorique, facturesAAnnoncer
+    clientPourVente, chargeHistorique, facturesAAnnoncer,
+    // L'import depuis un tableur, et le modèle vierge d'une fiche (10.14.0)
+    clientVierge, articleVierge, IMPORT_CHAMPS, champDeEntete, decouperTableau, separateurTableau, uniteImport,
+    planImport, appliquerImport, lireFichierTexte
   };
 });

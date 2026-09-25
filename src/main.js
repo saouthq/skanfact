@@ -1628,7 +1628,7 @@ ipcMain.handle('ocr:read', async (_e, { path: file } = {}) => {
 
 // ---------- PDF ----------
 
-const { fitToPage, paginate, canalDe, jourDeLInstant } = require('./renderer/core.js');
+const { fitToPage, paginate, canalDe, jourDeLInstant, lireFichierTexte } = require('./renderer/core.js');
 
 // Rend un document HTML en PDF A4. Le HTML passe par un fichier temporaire : une URL data:
 // est limitée en taille (logo en base64).
@@ -2280,6 +2280,28 @@ ipcMain.handle('file:saveText', async (_e, { suggestedName, content }) => {
   if (canceled || !filePath) return null;
   fs.writeFileSync(filePath, content, 'utf8');
   return filePath;
+});
+
+// 10.14.0 — ouvrir un fichier CSV pour importer ses clients ou son catalogue. Le texte revient
+// DÉCODÉ par `lireFichierTexte` (core.js, pur et testé) : un CSV enregistré par Excel sous Windows
+// est en Windows-1252, et un classeur .xlsx se reconnaît au lieu de s'afficher en charabia. Un
+// refus se RENVOIE avec sa phrase (ce n'est pas une panne : la personne a choisi le mauvais
+// fichier, 9.4.10).
+ipcMain.handle('file:openText', async (_e, opts) => {
+  const o = opts || {};
+  const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
+    title: o.title || 'Ouvrir un fichier',
+    properties: ['openFile'],
+    filters: [{ name: 'Tableur enregistré en texte (CSV)', extensions: ['csv', 'tsv', 'txt'] }, { name: 'Tous les fichiers', extensions: ['*'] }]
+  });
+  if (canceled || !filePaths || !filePaths[0]) return { canceled: true };
+  const p = filePaths[0];
+  const nom = path.basename(p);
+  const taille = fs.statSync(p).size;
+  if (taille > 5 * 1024 * 1024) {
+    return { ok: false, nom, motif: `« ${nom} » fait ${Math.round(taille / 1048576)} Mo : une liste de clients ou de prix en fait quelques dizaines de Ko. Ce n'est probablement pas le bon fichier.` };
+  }
+  return Object.assign({ nom }, lireFichierTexte(fs.readFileSync(p), nom));
 });
 
 ipcMain.handle('shell:open', (_e, target) => shell.openPath(target));

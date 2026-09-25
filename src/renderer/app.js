@@ -2309,6 +2309,7 @@
   const premiersPasVisibles = () => lesPas().demarrage;
   // La visite guidée de chaque étape (10.14.0) : le bouton de l'étape mène au bon endroit, « Me
   // guider » y mène EN MONTRANT où cliquer, clic par clic.
+  const PAS_IMPORT = { client: ['clients', 'Ta liste est dans un tableur ? Importe-la d\'un coup'], catalogue: ['catalogue', 'Tes prix sont dans un tableur ? Importe-les d\'un coup'] };
   const PAS_VISITES = { societe: 'societe', client: 'premier-client', catalogue: 'article', devis: 'premier-devis',
     envoiDevis: 'envoyer', factures: 'devis-facture', sauvegarde: 'sauvegarde', decouverte: 'decouvrir', comptable: 'relier-comptable' };
   // L'accueil de la toute première fois (10.14.0). Skander : « appliquer la visite guidée au début,
@@ -2360,9 +2361,12 @@
         // UN seul vert (U-11) : tant que l'accueil propose la découverte, c'est lui l'étape suivante.
         // Une étape FACULTATIVE le dit à côté de son titre : elle attend sans presser, et ne passe
         // jamais devant une étape du métier.
+        // Une liste déjà dans un tableur s'importe d'un coup (10.14.0) : on le propose SOUS l'étape,
+        // en lien discret — le geste de l'étape reste le bouton, un second vert dirait deux suites.
+        const imp = !e.fait && PAS_IMPORT[e.action];
         return `<li class="${e.fait ? 'fait' : ''}${encours ? ' encours' : ''}">
           <span class="pp-marque">${e.fait ? '✓' : ''}</span>
-          <span class="pp-txt"><strong>${h(e.titre)}${e.facultatif && !e.fait ? ' <span class="pp-facult">facultatif</span>' : ''}</strong><span class="small muted">${h(e.quoi)}</span></span>
+          <span class="pp-txt"><strong>${h(e.titre)}${e.facultatif && !e.fait ? ' <span class="pp-facult">facultatif</span>' : ''}</strong><span class="small muted">${h(e.quoi)}</span>${imp ? `<button type="button" class="link-add pp-import" data-pas-import="${h(imp[0])}">${h(imp[1])}</button>` : ''}</span>
           <span class="pp-go">${!e.fait && guide ? `<button type="button" class="pp-guide" data-pas-guide="${h(guide)}" title="Je te montre où cliquer, étape par étape">${ICONE_GUIDE}Me guider</button>` : ''}${!e.fait && a ? `<button class="btn btn-sm ${encours && !accueil ? 'btn-primary' : ''}" data-pas="${h(e.action)}">${h(libelle)}</button>` : ''}</span>
         </li>`;
       }).join('')}</ol>
@@ -2375,6 +2379,7 @@
       if (a) a[1]();
     });
     $$('[data-pas-guide]').forEach(b => b.onclick = () => lancerVisite(visiteParId(b.dataset.pasGuide)));
+    $$('[data-pas-import]').forEach(b => b.onclick = () => importerTableau(b.dataset.pasImport, () => render(true)));
     if ($('#pp-decouvrir')) $('#pp-decouvrir').onclick = () => lancerVisite(visiteParId('decouvrir'));
     if ($('#pp-guider')) $('#pp-guider').onclick = () => { visitesPoser(e => { e.accueilVu = true; }); lancerVisite(visiteParId('premiers-pas')); };
     if ($('#pp-plus-tard')) $('#pp-plus-tard').onclick = () => {
@@ -4445,7 +4450,7 @@
   }
 
   function clientForm(client, done, preset) {
-    const c = client || Object.assign({ id: C.uid(), name: '', contact: '', matricule: '', address: '', phone: '', email: '', notes: '', withholdingRate: '' }, preset || {});
+    const c = client || C.clientVierge(preset);
     modal(`<h2>${client ? 'Modifier le client' : 'Nouveau client'}</h2>
       <form id="cf" class="grid-2">
         <label class="field span-2 obligatoire"><span>Nom / Raison sociale</span><input type="text" name="name" value="${h(c.name)}" required></label>
@@ -4483,6 +4488,180 @@
       });
   }
 
+  // ---------- importer depuis un tableur (10.14.0) ----------
+  // Le plan vient de `C.planImport`, pur et testé ; cette fenêtre le MONTRE — ce qui entre, ce qui se
+  // complète, ce qui est refusé et pourquoi — avant d'écrire quoi que ce soit, puis l'applique d'un
+  // geste. Avec « Annuler » pendant huit secondes : une colonne mal associée fabrique soixante fiches
+  // fausses, et les effacer une à une serait le pire moment de la journée (7.12.0).
+  const IMPORTS = {
+    clients: { titre: 'Importer mes clients', vers: 'Importer dans mes clients', nature: 'une liste de clients', un: 'client', des: 'clients', neuf: ['nouveau client', 'nouveaux clients'], fiche: 'fiche', chez: 'tes clients',
+      exemple: 'Nom\tTéléphone\tEmail\tAdresse\nHôtel Dar El Marsa\t71 234 567\tcontact@darelmarsa.tn\tRue du Lac, La Marsa' },
+    catalogue: { titre: 'Importer mon catalogue', vers: 'Importer dans mon catalogue', nature: 'un catalogue', un: 'prestation', des: 'prestations', neuf: ['nouvelle prestation', 'nouvelles prestations'], fiche: 'prestation', chez: 'ton catalogue',
+      exemple: 'Désignation\tPrix HT\tTVA\tUnité\nPose de carrelage\t35,000\t19\tm²' }
+  };
+  const APERCU_IMPORT = 8;
+  // Compléter une fiche ou reprendre un exemple est une INFORMATION, pas une alerte : en bleu, jamais
+  // en orange — du orange sur une situation normale apprend à ignorer l'orange (8.0.1 ; vu à la souris
+  // sur « exemple repris »). Seul le refus est rouge.
+  const STATUTS_IMPORT = { nouveau: ['b-paid', 'entre'], complete: ['b-due', 'complétée'], existe: ['', 'déjà là'], remplace: ['b-due', 'exemple repris'], doublon: ['', 'en double'], refus: ['b-late', 'refusée'] };
+  async function importerTableau(type, done, prerempli) {
+    const T = IMPORTS[type];
+    // Importer dans l'EXEMPLE, c'est importer dans des données qui partiront avec lui : « Quitter
+    // l'exemple » rend la sauvegarde d'avant, sans l'import (7.6.0 — l'exemple ne touche jamais au vrai,
+    // et le vrai ne se range pas dans l'exemple).
+    if (C.estDemo(data)) {
+      if (!await confirmDialog(`Tu regardes l'exemple.\nCe que tu importerais ici partirait avec lui. Quitte d'abord l'exemple : tes ${T.des} iront dans ta vraie entreprise.`, 'Quitter l\'exemple et importer', false)) return;
+      if (!await demoSortie()) return;
+    }
+    let choix = {}, plan = null, minuteur = null;
+    modal(`<div class="import-tableau"><h2>${T.titre} ${info('imp.coller')}</h2>
+      <p class="small muted">Dans ton tableur — Excel, LibreOffice ou Google Sheets —, sélectionne tes lignes <b>avec celle des titres</b>, copie-les (${clavierLocal('<kbd>⌘</kbd> <kbd>C</kbd>')}), puis colle-les dans la case (${clavierLocal('<kbd>⌘</kbd> <kbd>V</kbd>')}). Rien n'est enregistré avant ton clic : tu vois d'abord ce qui entre.</p>
+      <form id="imp-form" onsubmit="return false">
+        <label class="field"><span>Tes lignes</span><textarea id="imp-texte" rows="6" spellcheck="false" placeholder="${h(T.exemple)}"></textarea></label>
+      </form>
+      <div class="inline imp-source"><button type="button" class="btn btn-sm" id="imp-fichier">Ouvrir un fichier CSV…</button><span class="small muted" id="imp-lu"></span></div>
+      <div id="imp-apercu" aria-live="polite"></div>
+      <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="imp-ok" disabled>Importer</button></div></div>`,
+    (layer, close) => {
+      const zone = $('#imp-apercu', layer), ok = $('#imp-ok', layer), champ = $('#imp-texte', layer);
+      const champs = C.IMPORT_CHAMPS[type];
+      const nomDe = l => (l.objet && (l.objet.name || l.objet.label)) || l.cellules.map(c => String(c || '').trim()).filter(Boolean).slice(0, 2).join(', ') || '…';
+      const dessiner = () => {
+        const texte = champ.value;
+        // Le curseur d'une liste de colonne revient où il était : l'aperçu se redessine à chaque
+        // choix, et un clavier qui perd sa place à chaque geste ne sert plus à rien (7.17.0).
+        const actif = document.activeElement;
+        const retour = actif && zone.contains(actif) ? (actif.dataset.col != null ? `[data-col="${actif.dataset.col}"]` : actif.id ? '#' + actif.id : null) : null;
+        if (!texte.trim()) { plan = null; zone.innerHTML = ''; ok.disabled = true; ok.textContent = 'Importer'; return; }
+        plan = C.planImport(type, texte, data, company(), choix);
+        const p = plan;
+        const maj = p.completes + p.remplaces;
+        const morceaux = [];
+        if (p.nouveaux) morceaux.push(`<b>${pl(p.nouveaux, T.neuf[0], T.neuf[1])}</b>`);
+        if (p.completes) morceaux.push(`${pl(p.completes, `${T.fiche} existante`, `${T.fiche}s existantes`)} : leurs cases vides seront remplies, rien de rempli ne change`);
+        if (p.remplaces) morceaux.push(`${pl(p.remplaces, 'exemple de l\'assistant', 'exemples de l\'assistant')} ${p.remplaces > 1 ? 'prennent' : 'prend'} tes prix`);
+        if (p.inchanges) morceaux.push(`${pl(p.inchanges, 'ligne')} déjà dans ${T.chez}, sans rien à ajouter`);
+        if (p.doublons) morceaux.push(`${pl(p.doublons, 'ligne')} en double dans ta liste`);
+        if (p.refus) morceaux.push(`<span class="warn-text">${pl(p.refus, 'ligne refusée', 'lignes refusées')}</span>`);
+        const statut = l => l.statut === 'existe' && l.complete.length ? 'complete' : l.statut;
+        // Une ligne en double n'est ni une faute ni une alerte : c'est une ligne que SkanFact ne
+        // prendra pas deux fois. Elle se dit dans un encadré à elle, titré comme les refus — posée
+        // seule sous l'encadré orange, elle flottait sans qu'on sache à quoi elle se rattachait (vu
+        // à la souris, sur une liste collée depuis LibreOffice).
+        const doublons = p.lignes.filter(l => l.statut === 'doublon');
+        const notes = [];
+        p.lignes.forEach(l => l.avert.forEach(a => notes.push(`Ligne ${l.n} (${h(nomDe(l))}) : ${h(a)}`)));
+        const refus = p.lignes.filter(l => l.statut === 'refus');
+        const cols = Array.from({ length: p.largeur }, (_, i) => i);
+        // Une liste collée dans la MAUVAISE fenêtre (vu à la souris : un tarif dans l'import des
+        // clients annonçait « 7 nouveaux clients », dont un nommé « Désignation »). Le bilan cède la
+        // place à l'avertissement, et le seul vert est le geste qui emmène la liste là où elle va.
+        const A = p.autreListe ? IMPORTS[p.autreListe] : null;
+        const exemplesLignes = p.lignes.slice(0, 2).map(l => '« ' + h(String(l.cellules.find(c => String(c || '').trim()) || '').trim()) + ' »').join(', ');
+        // « à un catalogue, pas à une liste de clients » : la préposition « à » ne s'élide pas, là où
+        // « ceux de un catalogue » s'imprimait tel quel (vu à la souris).
+        const titresVus = p.titresAutre.length > 4 ? p.titresAutre.slice(0, 4).join(', ') + '…' : C.liste(p.titresAutre);
+        zone.innerHTML = `${A ? `<div class="warn-box imp-autre"><b>Cette liste ressemble à ${A.nature}, pas à ${T.nature}</b> — ses titres : ${h(titresVus)}${/…$/.test(titresVus) ? '' : '.'} Importée ici, chaque ligne deviendrait ${T.un === 'client' ? 'un client' : 'une prestation'} : ${exemplesLignes}…
+            <div class="imp-autre-geste"><button type="button" class="btn btn-primary btn-sm" id="imp-autre">${h(A.vers)}</button><span class="small">Ce sont bien ${T.chez} ? Coche « La première ligne donne les titres des colonnes » et choisis ce que contient chaque colonne.</span></div></div>`
+          : `<p class="imp-bilan">${morceaux.length ? morceaux.join(' · ') : 'Aucune ligne à lire.'}</p>`}
+          <label class="check"><input type="checkbox" id="imp-entete" ${p.entete ? 'checked' : ''}> La première ligne donne les titres des colonnes ${info('imp.entete')}</label>
+          ${/* Tant que la liste paraît collée dans la mauvaise fenêtre, l'aperçu ligne par ligne se tait :
+               des badges « entre » sous un avertissement disaient le contraire de lui. Cocher la case
+               des titres le fait revenir. */''}
+          ${A ? '' : `<p class="small muted">Au-dessus de chaque colonne, ce qu'elle contient : change-le si SkanFact s'est trompé. Une colonne sur « Ignorer » n'entre pas. ${info('imp.colonnes')}</p>
+          <div class="scroll-x imp-cadre"><table class="mini imp-table">
+            <thead><tr><th class="imp-st-h">Ligne</th>${cols.map(i => {
+              const titre = p.titres[i] || '';
+              return `<th><select data-col="${i}" aria-label="Colonne ${i + 1}${titre ? ` « ${h(titre)} »` : ''} : ce qu'elle contient">
+                <option value="" ${!p.colonnes[i] ? 'selected' : ''}>— Ignorer —</option>
+                ${champs.map(c => `<option value="${c.k}" ${p.colonnes[i] === c.k ? 'selected' : ''}>${h(c.label)}</option>`).join('')}</select>
+                ${titre ? `<div class="small muted imp-titre">« ${h(titre)} »</div>` : ''}</th>`;
+            }).join('')}</tr></thead>
+            <tbody>${p.lignes.slice(0, APERCU_IMPORT).map(l => {
+              const [cls, lib] = STATUTS_IMPORT[statut(l)];
+              return `<tr class="${l.statut === 'refus' ? 'row-warn' : ''}"><td class="nw"><span class="small muted">${l.n}</span> <span class="badge ${cls}">${lib}</span></td>
+                ${cols.map(i => `<td class="${p.colonnes[i] ? '' : 'imp-ignore'}" title="${h(l.cellules[i] || '')}">${h(l.cellules[i] || '')}</td>`).join('')}</tr>`;
+            }).join('')}</tbody></table></div>
+          ${p.lignes.length > APERCU_IMPORT ? `<p class="small muted">… et ${pl(p.lignes.length - APERCU_IMPORT, 'autre ligne', 'autres lignes')}, lues de la même façon.</p>` : ''}
+          ${refus.length ? `<div class="warn-box imp-refus"><b>${pl(refus.length, 'ligne refusée', 'lignes refusées')} : ${refus.length > 1 ? 'elles n\'entrent' : 'elle n\'entre'} pas.</b>
+            <ul>${refus.map(l => `<li>${h(l.motifs[0])}</li>`).join('')}</ul>
+            <span class="small">Corrige ${refus.length > 1 ? 'ces lignes' : 'cette ligne'} dans ton tableur et colle à nouveau : ce qui sera déjà importé sera reconnu, jamais doublé.</span></div>` : ''}
+          ${doublons.length ? `<div class="info-box imp-doublons"><b>${pl(doublons.length, 'ligne en double', 'lignes en double')} dans ta liste : ${doublons.length > 1 ? 'elles n\'entrent' : 'elle n\'entre'} pas une seconde fois.</b>
+            <ul>${doublons.map(l => `<li>Ligne ${l.n} (${h(nomDe(l))}) : ${h(l.motifs[0])}.</li>`).join('')}</ul></div>` : ''}
+          ${notes.length ? `<p class="small imp-notes-t"><b>À relire après l'import</b></p><ul class="small muted imp-notes">${notes.map(x => `<li>${x}</li>`).join('')}</ul>` : ''}
+          ${p.exemples.length ? `<label class="check"><input type="checkbox" id="imp-exemples" ${choix.retirerExemples === false ? '' : 'checked'}> Retirer ${p.exemples.length > 1 ? `les ${p.exemples.length} prestations d'exemple` : 'la prestation d\'exemple'} de l'assistant (${h(C.liste(p.exemples.slice(0, 3).map(e => '« ' + e.label + ' »')))}${p.exemples.length > 3 ? '…' : ''}) : aucune pièce ne s'en sert.</label>` : ''}`}`;
+        ok.disabled = !!A || !(p.nouveaux || maj);
+        ok.textContent = A ? 'Importer' : p.nouveaux ? `Importer ${pl(p.nouveaux, T.un, T.des)}` : maj ? `Mettre à jour ${pl(maj, T.fiche)}` : 'Importer';
+        // Le texte collé part avec la liste : on ne demande pas de le recoller dans l'autre fenêtre.
+        if ($('#imp-autre', zone)) $('#imp-autre', zone).onclick = () => { const t = champ.value; close(); importerTableau(p.autreListe, done, t); };
+        $$('[data-col]', zone).forEach(s => s.onchange = () => {
+          const k = s.value;
+          choix.champs = plan.colonnes.slice();
+          // Une colonne de NOMBRE n'a qu'une place : la choisir ailleurs libère l'ancienne, et la
+          // liste de celle-ci repasse sur « Ignorer » au lieu de garder deux prix pour une ligne.
+          if (k && (champs.find(c => c.k === k) || {}).nombre) choix.champs = choix.champs.map(x => (x === k ? '' : x));
+          choix.champs[Number(s.dataset.col)] = k;
+          dessiner();
+        });
+        $('#imp-entete', zone).onchange = e => { choix.champs = plan.colonnes.slice(); choix.entete = e.target.checked; dessiner(); };
+        if ($('#imp-exemples', zone)) $('#imp-exemples', zone).onchange = e => { choix.retirerExemples = e.target.checked; };
+        if (retour && $(retour, zone)) $(retour, zone).focus();
+      };
+      // Une AUTRE liste collée (sa première ligne a changé) repart de zéro : les colonnes choisies
+      // pour la précédente ne veulent rien dire pour celle-ci.
+      let tete = '';
+      champ.oninput = () => {
+        const t = (champ.value.split(/\r?\n/)[0] || '').trim();
+        if (t !== tete) { tete = t; choix = {}; }
+        clearTimeout(minuteur);
+        minuteur = setTimeout(dessiner, 120);
+      };
+      $('#imp-fichier', layer).onclick = async () => {
+        if (!bridge.openText) return;
+        let r;
+        try { r = await bridge.openText({ title: T.titre }); } catch (e) { return toast(plainError(e), true); }
+        if (!r || r.canceled) return;
+        if (!r.ok) { zone.innerHTML = `<div class="warn-box">${h(r.motif)}</div>`; return; }
+        champ.value = r.texte;
+        $('#imp-lu', layer).textContent = `Lu dans « ${r.nom} »`;
+        tete = (r.texte.split(/\r?\n/)[0] || '').trim(); choix = {};
+        dessiner();
+      };
+      ok.onclick = () => {
+        const p = C.planImport(type, champ.value, data, company(), choix);
+        if (!(p.nouveaux || p.completes || p.remplaces)) return;
+        // Un stock de départ EST un mouvement de stock : il passe par le garde-fou de l'offre, comme
+        // sur la fiche d'un article (7.33.0).
+        if (p.stock && licenceBlock('Créer un stock de départ', 'stock')) return;
+        const cle = type === 'clients' ? 'clients' : 'catalog';
+        const avant = { liste: deepCopy(data[cle]), deleted: deepCopy(data.deleted || []) };
+        const r = C.appliquerImport(data, p, company(), { retirerExemples: p.exemples.length > 0 && choix.retirerExemples !== false });
+        save(true);
+        close();
+        if (done) done(r);
+        const dits = [];
+        if (r.crees.length) dits.push(pl(r.crees.length, `${T.un} importé${type === 'clients' ? '' : 'e'}`, `${T.des} importé${type === 'clients' ? '' : 'e'}s`));
+        if (r.completes) dits.push(pl(r.completes, `${T.fiche} complétée`, `${T.fiche}s complétées`));
+        if (r.remplaces) dits.push(pl(r.remplaces, 'exemple repris', 'exemples repris'));
+        if (r.retires) dits.push(pl(r.retires, 'exemple retiré', 'exemples retirés'));
+        toastUndo(enTete(C.liste(dits)), () => {
+          data[cle] = avant.liste;
+          data.deleted = avant.deleted;
+          // Ce qui vient d'être créé part AUSSI de l'autre poste d'un dossier partagé.
+          r.crees.forEach(id => forget(cle, id, ''));
+          save(true);
+          if (done) done(null);
+          toast('Import annulé : rien n\'a changé.');
+        });
+      };
+      // Arrivé d'une autre fenêtre d'import (la liste y avait été collée par erreur) : le texte est
+      // déjà là, l'aperçu se dessine tout de suite.
+      if (prerempli) { champ.value = prerempli; tete = (prerempli.split(/\r?\n/)[0] || '').trim(); dessiner(); }
+      champ.focus();
+    });
+  }
+
+  const telLisible = tel => String(tel || '').split(/\s*\/\s*/).filter(Boolean).map(x => `<span class="nw">${h(x)}</span>`).join(' / ');
   const clientState = { q: '', f: '', sort: { key: 'name', dir: 'asc' }, page: 1 };
   const clientDocState = { sort: null, page: 1 };  // liste des documents dans la fiche client
 
@@ -4492,7 +4671,10 @@
     const cols = [
       { key: 'name', label: 'Nom', asc: true, val: r => r.c.name.toLowerCase(), get: r => `<strong>${h(r.c.name)}</strong>${r.c.contact ? `<div class="small muted">${h(r.c.contact)}</div>` : ''}` },
       { key: 'mf', label: 'MF / CIN', get: r => `${h(r.c.matricule)}${r.c.withholdingRate !== '' && r.c.withholdingRate != null && Number(r.c.withholdingRate) ? `<div class="small muted">RS ${pct(r.c.withholdingRate)} %</div>` : ''}` },
-      { key: 'contact', label: 'Contact', get: r => `<span class="small">${h(r.c.phone)}${r.c.phone && r.c.email ? '<br>' : ''}${h(r.c.email)}</span>` },
+      // Un numéro de téléphone se lit d'un bloc : « 74 000 111 / 98 000 222 » se coupait entre
+      // « 98 000 » et « 222 » (vu à la souris après un import). Chaque numéro tient sur sa ligne,
+      // la coupure ne tombe que sur le « / » qui les sépare.
+      { key: 'contact', label: 'Contact', get: r => `<span class="small">${telLisible(r.c.phone)}${r.c.phone && r.c.email ? '<br>' : ''}${h(r.c.email)}</span>` },
       { key: 'docs', label: 'Documents', r: true, val: r => r.sum.count, get: r => r.sum.count },
       { key: 'ht', label: 'Facturé HT', r: true, val: r => r.sum.ht, get: r => r.sum.ht ? C.money(r.sum.ht, cur) : '<span class="muted">—</span>' },
       { key: 'due', label: 'Reste à payer', r: true, val: r => r.sum.due, get: r => r.sum.due > 0.0005 ? `<strong>${C.money(r.sum.due, cur)}</strong>` : '<span class="muted">—</span>' },
@@ -4544,7 +4726,7 @@
     const vide = !data.clients.length && !(s.q || s.f);
     // Tant que la liste est vide, le bouton principal est celui de l'état vide : deux verts côte à
     // côte pour le même geste, c'est dire deux fois la même chose (U-11, 10.12.0).
-    $('#view').innerHTML = `<div class="page-head"><h1>Clients</h1><div class="actions"><button class="btn ${vide ? '' : 'btn-primary'}" id="new">+ Nouveau client</button></div></div>
+    $('#view').innerHTML = `<div class="page-head"><h1>Clients</h1><div class="actions"><button class="btn" id="imp-clients">Importer…</button><button class="btn ${vide ? '' : 'btn-primary'}" id="new">+ Nouveau client</button></div></div>
       ${filtersBar(`
         <input type="text" id="q" placeholder="Rechercher : nom, contact, MF, email…" value="${h(s.q)}">
         <select id="f">${FILTERS.map(([v, l]) => `<option value="${v}" ${s.f === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
@@ -4553,11 +4735,13 @@
       `, data.clients.length, !!(s.q || s.f))}
       ${vide ? etatVide('Les clients pour qui tu travailles',
         ['Un client se crée une fois : son adresse et son matricule fiscal se reportent ensuite tout seuls sur ses devis et ses factures.',
-         'Tu peux aussi le créer depuis un devis, au moment où tu en as besoin.'],
-        [['vide-client', '+ Ajouter mon premier client', true], ['vide-demo', 'Voir un exemple rempli']]) : '<div id="list-wrap"></div>'}`;
+         'Ta liste est déjà dans un tableur ? Colle-la : tous tes clients entrent d\'un coup.'],
+        [['vide-client', '+ Ajouter mon premier client', true], ['vide-import', 'Importer depuis un tableur'], ['vide-demo', 'Voir un exemple rempli']]) : '<div id="list-wrap"></div>'}`;
     // Le premier client fait apparaître la liste ET sa barre de recherche : c'est toute la page qui
     // se redessine, pas seulement la liste.
     $('#new').onclick = () => clientForm(null, () => (vide ? routes.clients() : draw()));
+    $('#imp-clients').onclick = () => importerTableau('clients', () => routes.clients());
+    if ($('#vide-import')) $('#vide-import').onclick = () => importerTableau('clients', () => routes.clients());
     if ($('#vide-client')) $('#vide-client').onclick = () => clientForm(null, () => routes.clients());
     if ($('#vide-demo')) $('#vide-demo').onclick = loadDemo;
     if ($('#q')) $('#q').oninput = e => { s.q = e.target.value.toLowerCase(); s.page = 1; draw(); };
@@ -4708,10 +4892,9 @@
   // et rien n'apparaîtrait dans la liste.
   // Un article vierge, en UN endroit : la fiche du catalogue et les créations « à la volée » depuis
   // une ligne (9.2.1) partent du même modèle, sinon un champ ajouté demain manquerait à l'un des deux.
+  // Le modèle vit dans core.js depuis la 10.14.0 : l'import depuis un tableur en fabrique aussi.
   function articleNeuf(extra) {
-    return Object.assign({ id: C.uid(), label: '', description: '', unit: '', unitPrice: 0, unitCost: 0, vatRate: C.defaultVat(company()),
-      tracked: false, minStock: 0, location: '', initialQty: 0, initialCost: 0, initialDate: C.today(),
-      serialized: false, warrantyMonths: 0 }, extra || {});
+    return C.articleVierge(company(), extra);
   }
   // « Choisir une prestation à suivre… » menait au Catalogue, et rien n'y disait quelle case cocher,
   // dans quelle fiche (10.12.0 — un bouton qui change de page mène au GESTE, H-E29). On choisit
@@ -5024,7 +5207,7 @@
           <td class="r" data-pied="stock">${tracked.length ? `<span class="muted">valeur</span> <strong>${C.money(stockValue, cur)}</strong>` : ''}</td>
           <td></td></tr>`;
       },
-      empty: 'Catalogue vide. Ajoute tes prestations récurrentes pour remplir les devis en un clic.',
+      empty: 'Catalogue vide. Ajoute tes prestations une à une, ou importe ta liste de prix depuis un tableur (« Importer… », en haut de la page) : tes devis les reprendront d\'un clic.',
       // Le Catalogue AFFICHE une quantité en stock et n'offrait aucun moyen d'aller voir d'où elle
       // vient : la fiche de l'article — mouvements, coût moyen, historique — n'était atteignable que
       // depuis la page Stock. Un chiffre qu'on lit doit s'ouvrir (7.15.0).
@@ -5068,7 +5251,7 @@
     const head = () => {
       const t = TABS.find(x => x[0] === catalogTab);
       return `<h1>${t[1]} ${info(t[2])}</h1><div class="actions">
-        ${catalogTab === 'presta' ? '<button class="btn btn-primary" id="new">+ Nouvelle prestation</button>' : ''}
+        ${catalogTab === 'presta' ? '<button class="btn" id="imp-catalogue">Importer…</button><button class="btn btn-primary" id="new">+ Nouvelle prestation</button>' : ''}
         ${catalogTab === 'textes' ? '<button class="btn btn-primary" id="new-snip">+ Nouveau texte</button>' : ''}
         ${catalogTab === 'modeles' ? '<span class="small muted">Depuis un devis ou une facture : Plus ▾ → « Enregistrer comme modèle »</span>' : ''}
       </div>`;
@@ -5080,6 +5263,7 @@
       <div data-pane="textes" hidden><div id="snip-wrap"></div></div>`;
     const bindHead = () => {
       if ($('#new')) $('#new').onclick = () => catalogForm(null, draw);
+      if ($('#imp-catalogue')) $('#imp-catalogue').onclick = () => importerTableau('catalogue', () => draw());
       if ($('#new-snip')) $('#new-snip').onclick = () => snippetForm(null, drawSnippets);
     };
     const showTab = id => {
@@ -6252,6 +6436,7 @@
       ['Accueil', () => navigate('#/dashboard')], ['Devis', () => navigate('#/devis')], ['Factures', () => navigate('#/factures')], ['Relances', () => navigate('#/relances')],
       ['Facturation récurrente (contrats qui refacturent)', () => navigate('#/contrats')], ['Achats et dépenses', () => navigate('#/achats')], ['Nouvelle facture d\'achat', () => navigate('#/achat/new')], ['Nouvelle dépense', () => navigate('#/achat/new/-/depense')], ['Fournisseurs', () => navigate('#/fournisseurs')], ['Trésorerie', () => navigate('#/tresorerie')], ['Marges et rentabilité', () => navigate('#/marges')], ['Paie', () => navigate('#/paie')], ['Nouveau salarié', () => employeeForm(null, () => render())], ['Stock', () => navigate('#/stock')], ['Garanties', () => navigate('#/garanties')], ['Entrée de numéros de série', () => serialIntakeForm(null, () => render())], ['Mouvement de stock', () => adjustForm(null, () => render())], ['Immobilisations', () => navigate('#/immos')], ['Nouvelle immobilisation', () => assetForm(null, a => navigate('#/immo/' + a.id))], ['Nouvelle affaire', () => projectForm(null, p => navigate('#/affaire/' + p.id))], ['Nouveau fournisseur', () => supplierForm(null, () => render())], ['Proformas', () => navigate('#/autres/proforma')], ['Bons de commande', () => navigate('#/autres/commande')], ['Bons de livraison', () => navigate('#/autres/livraison')], ['Contrats à signer', () => navigate('#/autres/contrat')], ['Clients', () => navigate('#/clients')], ['Catalogue', () => navigate('#/catalogue')], ['Statistiques', () => navigate('#/stats')], ['Comptabilité', () => navigate('#/compta')], ['Paramètres', () => navigate('#/parametres')],
       ['Aide et guide', () => navigate('#/aide')], ['Me guider (visites guidées)', () => navigate('#/guide')], ['Nouveau client', () => clientForm(null, () => render())],
+      ['Importer mes clients depuis un tableur', () => importerTableau('clients', () => render(true))], ['Importer mon catalogue depuis un tableur', () => importerTableau('catalogue', () => render(true))],
       // La palette liste TOUTES les pages, y compris celles des modules retirés du menu : c'est ce
       // qui rend le filtrage de la barre latérale inoffensif.
       ['Tous les modules', () => navigate('#/modules')],

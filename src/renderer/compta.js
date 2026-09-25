@@ -1254,7 +1254,9 @@
   // Comparer sans accent : « interets » trouve « Intérêts ». `\p{M}` après une décomposition NFD,
   // parce qu'un intervalle de caractères combinants écrit en dur dans la source est illisible et
   // se fait manger par le premier éditeur qui normalise le fichier.
-  const sansAccents = s => String(s == null ? '' : s).normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+  // Les ligatures comme les accents (10.14.0, le jumeau de `plier` dans core.js) : « œ » ne se
+  // décompose pas, et un clavier AZERTY ne le tape pas.
+  const sansAccents = s => String(s == null ? '' : s).normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().replace(/\u0153/g, 'oe').replace(/\u00e6/g, 'ae');
 
   // Ce qui manque pour que la pièce tombe juste. C'est le moteur du « Tab solde automatiquement » :
   // l'écran ne calcule rien lui-même, sinon sa façon d'arrondir finirait par différer de celle de

@@ -613,6 +613,18 @@
   b('#vide-new', "Ouvre la première pièce de cette liste, vierge : tu choisis le client, tu ajoutes tes lignes, le total se calcule.");
   b('#vide-demo', "Charge l'entreprise d'exemple de cinq ans pour voir cette page remplie. Tes données sont mises de côté, et « Quitter l'exemple » te les rend.");
   b('#vide-client', "Ouvre la fiche de ton premier client : son nom, son matricule, son adresse. Ils se reporteront tout seuls sur chaque pièce.");
+  // L'import depuis un tableur (10.14.0).
+  b('#vide-import', "Colle ta liste de clients depuis un tableur : ils entrent tous d'un coup, et tu vois ce qui entre avant de valider.");
+  b('#imp-clients', "Colle ta liste de clients depuis un tableur (Excel, LibreOffice, Google Sheets) : ils entrent tous d'un coup, et tu vois ce qui entre avant de valider.");
+  b('#imp-catalogue', "Colle ta liste de prix depuis un tableur : désignations, prix, TVA, unités — et même un stock de départ.");
+  b('[data-pas-import]', "Importe ta liste d'un coup depuis un tableur, au lieu de créer chaque fiche à la main.", { nom: 'Importer depuis un tableur', cle: 'pas-import' });
+  b('#imp-texte', "Colle ici les lignes copiées dans ton tableur, avec la ligne des titres.");
+  b('#imp-fichier', "Ouvre un fichier CSV enregistré depuis ton tableur ou ton ancien logiciel.");
+  b('#imp-entete', "Coché, la première ligne sert à reconnaître les colonnes, sans devenir une fiche.");
+  b('[data-col]', "Ce que contient cette colonne. Change-le si SkanFact s'est trompé ; « Ignorer » la laisse de côté.", { nom: 'Une colonne', cle: 'imp-col' });
+  b('#imp-exemples', "Retire les prestations d'exemple de l'assistant que ta liste ne reprend pas : aucune pièce ne s'en sert.");
+  b('#imp-ok', "Enregistre l'import tel que l'aperçu le montre. « Annuler » le défait pendant quelques secondes.");
+  b('#imp-autre', "Ta liste ressemble à celle de l'autre import (un tarif collé chez les clients, ou l'inverse) : l'emmène là où elle va, sans avoir à la recoller.");
   b('#vide-fournisseur', "Ouvre la fiche de ton premier fournisseur : ses factures d'achat s'y rattacheront, avec ce que tu lui dois.");
   b('#vide-achat', "Saisis ta première facture d'achat : ses lignes, et sa TVA — celle que tu récupères. Joins la photo de la facture avant de saisir.");
   b('#vide-dep', "Note une dépense du quotidien (carburant, fournitures) : plus courte qu'une facture d'achat.");

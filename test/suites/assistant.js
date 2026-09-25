@@ -601,4 +601,285 @@ t('10.14.0 : la visite « Envoyer » connaît les deux questions qui peuvent pr�
   assert.ok(/'Continuer quand même', null, \{ id: 'demo-q' \}\);/.test(code), 'la question de l\'exemple ne porte plus le nom que la visite reconnaît');
   assert.ok(/<h2\$\{opts && opts\.id \? ` id="\$\{h\(opts\.id\)\}"` : ''\}>/.test(code), '`choiceDialog` ne sait plus nommer sa question');
 });
+
+// ------------------------------------------------------------------ l'import depuis un tableur (213e)
+// Une entreprise qui démarre a déjà une liste : clients dans un tableur, prix dans un fichier. Les
+// retaper un à un, personne ne le fait. Le moteur est pur (`planImport`, `appliquerImport`) ; les
+// données de ces tests DISCRIMINENT (10.0.0) : des titres accentués et ponctués comme ceux d'un vrai
+// tableur, une adresse en trois colonnes, un homonyme au matricule différent, une ligature.
+const entreprise = (extra) => {
+  const d = C.migrateData({ company: Object.assign({ name: 'Menuiserie du Lac', currency: 'DT', taxRegime: 'reel' }, extra || {}) });
+  return d;
+};
+
+t('10.14.0 : un tableur collé — les colonnes se reconnaissent à leurs titres, accents et ponctuation compris', () => {
+  const texte = 'Raison sociale\tMatricule fiscal\tTél.\tAdresse e-mail\tAdresse\tCode postal\tVille\n'
+    + 'Café des Arts\t7654321/B/M/000\t98 111 222\tcafe@arts.tn\tAvenue Habib Bourguiba\t1000\tTunis\n';
+  const d = entreprise();
+  const p = C.planImport('clients', texte, d, d.company);
+  assert.strictEqual(p.sep, '\t', 'une copie de tableur arrive en tabulations');
+  assert.strictEqual(p.entete, true);
+  // « Adresse e-mail » est un EMAIL, pas une adresse : le titre exact d'abord, puis les mots dans l'ordre.
+  assert.deepStrictEqual(p.colonnes, ['name', 'matricule', 'phone', 'email', 'address', 'complement', 'complement']);
+  assert.strictEqual(p.lignes.length, 1, 'la ligne des titres ne devient pas un client');
+  const o = p.lignes[0].objet;
+  assert.strictEqual(o.address, 'Avenue Habib Bourguiba\n1000 Tunis', 'une adresse en trois colonnes se rassemble : la rue, puis « code postal ville »');
+  assert.strictEqual(o.email, 'cafe@arts.tn');
+  // Les titres du catalogue : un prix TTC n'est pas un prix HT.
+  assert.strictEqual(C.champDeEntete('catalogue', 'Prix TTC'), 'unitPriceTTC');
+  assert.strictEqual(C.champDeEntete('catalogue', 'P.U. HT'), 'unitPrice');
+  assert.strictEqual(C.champDeEntete('catalogue', 'Taux de TVA (%)'), 'vatRate');
+  assert.strictEqual(C.champDeEntete('catalogue', 'Prix d\'achat'), 'unitCost');
+  assert.strictEqual(C.champDeEntete('clients', 'Code TVA'), 'matricule');
+  // « Code client » est un CODE : joint au nom, il donnerait « Dupont C-0042 » sur chaque facture.
+  assert.strictEqual(C.champDeEntete('clients', 'Code client'), '', 'un titre qui parle d\'un code ne devient pas le nom');
+  assert.strictEqual(C.champDeEntete('catalogue', 'Réf. produit'), '', 'une référence ne devient pas la désignation');
+  // Une cellule qui porte un email ou un numéro est une donnée, jamais un titre.
+  assert.strictEqual(C.champDeEntete('clients', 'contact@darelmarsa.tn'), '');
+});
+
+t('10.14.0 : un guillemet au milieu d\'une cellule reste un caractère — il n\'avale pas le reste du tableur', () => {
+  // « Écran 24" » et « "Premium" pack » : un guillemet seul qui n'est pas suivi d'un séparateur dit
+  // que le champ n'était pas protégé. Les lignes suivantes restent des lignes.
+  const rows = C.decouperTableau('Écran 24" noir\t350\n"Premium" pack\t25\n"Autre"\t30\n', '\t');
+  assert.deepStrictEqual(rows, [['Écran 24" noir', '350'], ['"Premium" pack', '25'], ['Autre', '30']]);
+  // Un vrai champ protégé garde ses retours à la ligne et ses guillemets doublés.
+  assert.deepStrictEqual(C.decouperTableau('"12 rue X\nImmeuble ""B"""\t1000\n', '\t'), [['12 rue X\nImmeuble "B"', '1000']]);
+  // Une liste d'UNE colonne dont certains noms portent une virgule ne se découpe pas sur ses virgules.
+  assert.strictEqual(C.separateurTableau('Ben Salah, Ali\nTrabelsi Mohamed\nKarim Jlassi'), null);
+  assert.strictEqual(C.separateurTableau('Nom;Prix\nCâble, 5 m;12,500\nVis;0,200'), ';', 'un CSV à la française se lit au point-virgule, même avec des virgules dans les cellules');
+});
+
+t('10.14.0 : un nombre de tableur se lit en français, et une cellule illisible REFUSE sa ligne en la nommant', () => {
+  const d = entreprise();
+  const texte = 'Désignation;Prix HT;TVA;Coût;Stock\n'
+    + 'Planche chêne;1 250,500;19;980,000;12\n'
+    + 'Pose;25DT;0,07;;\n'
+    + 'Lot de vis;douze;19;;\n'
+    + 'Colle;-4;19;;\n'
+    + 'Vernis;18,000;18;;\n'
+    + 'Porte;400;;;-2\n';
+  const p = C.planImport('catalogue', texte, d, d.company);
+  const l = n => p.lignes.find(x => x.n === n);
+  assert.strictEqual(l(2).objet.unitPrice, 1250.5, '« 1 250,500 » vaut mille deux cent cinquante dinars et cinq cents millimes');
+  assert.deepStrictEqual([l(2).objet.tracked, l(2).objet.initialQty, l(2).objet.initialCost], [true, 12, 980], 'un stock de départ suit l\'article, à son coût');
+  assert.strictEqual(l(3).objet.unitPrice, 25, '« 25DT » : l\'unité collée au nombre se retire');
+  // « 0,07 », pas « 0,19 » : la TVA par défaut vaut 19, et un taux refusé qui retombe sur le défaut
+  // passerait pour un taux lu (des données qui ne discriminent pas ne prouvent rien, 10.0.0).
+  assert.strictEqual(l(3).statut, 'nouveau', 'un taux écrit en fraction entre');
+  assert.strictEqual(l(3).objet.vatRate, 7, '« 0,07 » est un taux écrit en fraction');
+  assert.strictEqual(l(4).statut, 'refus');
+  assert.ok(/Ligne 4 \(Lot de vis/.test(l(4).motifs[0]) && /« douze » n'est pas un prix/.test(l(4).motifs[0]), 'le refus nomme la ligne ET ce qui y est écrit : ' + l(4).motifs[0]);
+  assert.strictEqual(l(5).statut, 'refus', 'un prix négatif n\'existe pas');
+  assert.ok(/un prix négatif/.test(l(5).motifs[0]));
+  assert.strictEqual(l(6).statut, 'refus', 'une TVA inconnue n\'est jamais « arrondie » vers un taux voisin');
+  assert.ok(/TVA « 18 » inconnue/.test(l(6).motifs[0]) && /0 %, 7 %, 13 % et 19 %/.test(l(6).motifs[0]), l(6).motifs[0]);
+  assert.strictEqual(l(7).statut, 'refus');
+  assert.ok(/un stock de départ négatif/.test(l(7).motifs[0]), 'le refus s\'accorde à ce qu\'il nomme : ' + l(7).motifs[0]);
+  // Une TVA vide prend celle des nouvelles lignes — le régime décide (7.22.0).
+  const q = C.planImport('catalogue', 'Désignation\tPrix HT\nConseil\t100', d, d.company);
+  assert.strictEqual(q.lignes[0].objet.vatRate, C.defaultVat(d.company));
+});
+
+t('10.14.0 : un prix TTC se convertit en HT avec la TVA de SA ligne — et le régime qui ne facture pas de TVA la ramène à 0 en le disant', () => {
+  const d = entreprise();
+  const p = C.planImport('catalogue', 'Désignation\tPrix TTC\tTVA\nMain-d\'oeuvre\t23,800\t19\nLivre\t10,700\t7\n', d, d.company);
+  assert.strictEqual(p.lignes[0].objet.unitPrice, 20, '23,800 TTC à 19 % = 20,000 HT');
+  assert.strictEqual(p.lignes[1].objet.unitPrice, 10, '10,700 TTC à 7 % = 10,000 HT : chaque ligne avec SA TVA');
+  const f = entreprise({ taxRegime: 'forfaitaire' });
+  assert.ok(!C.assujettiTVA(f.company), 'le jeu de données doit porter un régime sans TVA');
+  const r = C.planImport('catalogue', 'Désignation\tPrix HT\tTVA\nConseil\t100\t19\n', f, f.company);
+  assert.strictEqual(r.lignes[0].objet.vatRate, 0, 'un régime sans TVA ne facture pas 19 % parce qu\'un vieux tableur le dit');
+  assert.ok(/TVA mise à 0 % au lieu de 19 %/.test(r.lignes[0].avert[0]), 'et il le DIT, ligne par ligne');
+});
+
+t('10.14.0 : un client déjà là se COMPLÈTE — jamais rien de rempli ne change ; un homonyme au matricule différent est un autre client', () => {
+  const d = entreprise();
+  d.clients.push(C.clientVierge({ id: 'c1', name: 'Hôtel Dar El Marsa SARL', matricule: '1234567/A/M/000', phone: '71 000 000', email: '' }));
+  d.clients.push(C.clientVierge({ id: 'c2', name: 'Boulangerie Ennour', matricule: '1111111/B' }));
+  const texte = 'Nom\tMatricule\tTéléphone\tEmail\n'
+    + 'HOTEL DAR EL MARSA sarl\t1234567A\t71 234 567\tcontact@darelmarsa.tn\n'
+    + 'Boulangerie Ennour\t2222222/C\t\t\n'
+    + 'Café des Arts\t\t98 111 222\t\n'
+    + 'Café des arts\t\t\t\n'
+    + '\t\t55 000 000\tsansnom@x.tn\n';
+  const p = C.planImport('clients', texte, d, d.company);
+  const [hotel, homonyme, cafe, double, sansNom] = p.lignes;
+  assert.strictEqual(hotel.statut, 'existe', 'le même matricule (sept chiffres) désigne le même client, quelle que soit sa graphie');
+  assert.deepStrictEqual(hotel.complete, ['email'], 'on ne comble que ce qui est VIDE : le téléphone déjà rempli ne change pas');
+  assert.strictEqual(homonyme.statut, 'nouveau', 'deux matricules différents sont deux clients, même sous le même nom');
+  assert.strictEqual(cafe.statut, 'nouveau');
+  assert.strictEqual(double.statut, 'doublon');
+  assert.strictEqual(double.motifs[0], 'même client que la ligne 4');
+  assert.strictEqual(sansNom.statut, 'refus');
+  assert.ok(/Ligne 6 \(55 000 000, sansnom@x\.tn\) : le nom manque/.test(sansNom.motifs[0]), sansNom.motifs[0]);
+  const r = C.appliquerImport(d, p, d.company);
+  assert.strictEqual(r.crees.length, 2);
+  assert.strictEqual(r.completes, 1);
+  const h1 = d.clients.find(c => c.id === 'c1');
+  assert.deepStrictEqual([h1.name, h1.phone, h1.email], ['Hôtel Dar El Marsa SARL', '71 000 000', 'contact@darelmarsa.tn'], 'la fiche existante garde son nom et son téléphone, et gagne l\'email qui lui manquait');
+  // Un client créé par l'import a la forme d'un client créé par la fiche : le même modèle vierge.
+  const cree = d.clients.find(c => c.id === r.crees[1]);
+  assert.deepStrictEqual(Object.keys(C.clientVierge()).filter(k => !(k in cree)), [], 'un champ du modèle manque au client importé');
+  // Rejouer le MÊME collage ne crée rien : tout est déjà là.
+  const encore = C.planImport('clients', texte, d, d.company);
+  assert.strictEqual(encore.nouveaux, 0, 'coller deux fois la même liste doublait les clients');
+});
+
+t('10.14.0 : sans titres, les colonnes se devinent à leur contenu — un email, un matricule, un taux de TVA se reconnaissent', () => {
+  const d = entreprise();
+  const p = C.planImport('clients', 'Hôtel Dar El Marsa\t1234567/A/M/000\tcontact@darelmarsa.tn\t71 234 567\nCafé des Arts\t7654321B\tcafe@arts.tn\t+216 98 111 222\n', d, d.company);
+  assert.strictEqual(p.entete, false, 'une première ligne sans aucun titre connu est une donnée');
+  assert.deepStrictEqual(p.colonnes, ['name', 'matricule', 'email', 'phone']);
+  assert.strictEqual(p.nouveaux, 2, 'la première ligne est un client, pas un titre');
+  // Un seul mot reconnu dans une ligne de DONNÉES (« Contact Pro SARL ») ne suffit pas à la faire
+  // passer pour la ligne des titres : il en faut plus de la moitié.
+  const u = C.planImport('clients', 'Contact Pro SARL\tTunis\nBoulangerie Ennour\tSfax\n', d, d.company);
+  assert.strictEqual(u.entete, false, '« Contact Pro SARL » a disparu dans l\'en-tête');
+  assert.strictEqual(u.nouveaux, 2);
+  const q = C.planImport('catalogue', 'Pose de carrelage\t35\t19\nPlinthe\t8,5\t19\n', d, d.company);
+  assert.deepStrictEqual(q.colonnes, ['label', 'unitPrice', 'vatRate']);
+  // Et le choix de la personne l'emporte : une colonne remise sur « Ignorer » n'entre pas.
+  const r = C.planImport('clients', 'Nom\tTéléphone\nCafé des Arts\t98 111 222\n', d, d.company, { champs: ['name', ''] });
+  assert.strictEqual(r.lignes[0].objet.phone, '', 'une colonne ignorée n\'entre pas');
+  // Un champ NOMBRE n'a qu'une colonne : la seconde repasse sur « Ignorer ».
+  const s = C.planImport('catalogue', 'Désignation\tPrix\tTarif\nPose\t10\t12\n', d, d.company);
+  assert.deepStrictEqual(s.colonnes, ['label', 'unitPrice', ''], 'deux colonnes de prix pour une ligne');
+});
+
+t('10.14.0 : un exemple de l\'assistant que la liste reprend prend TES prix — « oeuvre » reconnaît « œuvre »', () => {
+  const d = entreprise({ activity: 'artisanat' });
+  d.catalog.push(C.articleVierge(d.company, { id: 'ex1', label: 'Main-d\'œuvre', unitPrice: 20, unit: 'h', fromSetup: true }));
+  d.catalog.push(C.articleVierge(d.company, { id: 'ex2', label: 'Déplacement', unitPrice: 15, fromSetup: true }));
+  d.catalog.push(C.articleVierge(d.company, { id: 'ex3', label: 'Petites fournitures', unitPrice: 5, fromSetup: true }));
+  d.catalog.push(C.articleVierge(d.company, { id: 'mien', label: 'Placard sur mesure', unitPrice: 0, description: '' }));
+  // Un exemple déjà porté par une pièce ne part jamais, même proposé au retrait.
+  d.documents.push({ id: 'dv1', type: 'devis', lines: [{ itemId: 'ex3', label: 'Petites fournitures', qty: 1, unitPrice: 5 }] });
+  const texte = 'Désignation\tPrix HT\tDescription\tCoût\n'
+    + 'Main d\'oeuvre\t25\tHeure en atelier\t\n'
+    + 'Placard sur mesure\t900\tChêne massif\t400\n'
+    + 'Porte coulissante\t650\t\t\n';
+  const p = C.planImport('catalogue', texte, d, d.company);
+  assert.strictEqual(p.lignes[0].statut, 'remplace', 'la ligature « œ » n\'est pas un « o » accentué : sans le pli, l\'exemple restait et la liste créait un doublon');
+  assert.strictEqual(p.lignes[1].statut, 'existe', 'une prestation DÉCIDÉE n\'est jamais remplacée');
+  assert.deepStrictEqual(p.lignes[1].complete, ['description', 'unitCost'], 'elle gagne seulement ce qui lui manquait — pas le prix : 0 est une décision (« sur devis »)');
+  assert.deepStrictEqual(p.exemples.map(e => e.id), ['ex2'], 'seul l\'exemple ignoré ET sans usage se propose au retrait');
+  const r = C.appliquerImport(d, p, d.company, { retirerExemples: true });
+  const mo = d.catalog.find(c => c.id === 'ex1');
+  assert.deepStrictEqual([mo.unitPrice, mo.fromSetup, mo.description], [25, undefined, 'Heure en atelier'], 'l\'exemple repris devient TA prestation');
+  assert.strictEqual(d.catalog.find(c => c.id === 'mien').unitPrice, 0, 'le prix décidé ne change pas');
+  assert.ok(!d.catalog.some(c => c.id === 'ex2') && d.catalog.some(c => c.id === 'ex3'), 'l\'exemple retiré part, l\'exemple utilisé reste');
+  assert.ok((d.deleted || []).some(x => x.id === 'ex2' && x.kind === 'catalog'), 'un retrait se dit à l\'autre poste d\'un dossier partagé (trackDeletion)');
+  assert.deepStrictEqual([r.crees.length, r.remplaces, r.completes, r.retires], [1, 1, 1, 1]);
+  // Le pli sert TOUTE recherche : « main d'oeuvre » trouve enfin la prestation que l'assistant pose.
+  assert.ok(C.correspondRecherche('Main-d\'œuvre', 'oeuvre'), 'la recherche tapée ne trouve pas « Main-d\'œuvre » en tapant « oeuvre »');
+});
+
+t('10.14.0 : un fichier CSV se lit dans SON encodage — Windows-1252 d\'Excel, UTF-8, UTF-16 — et un classeur .xlsx se reconnaît', () => {
+  const cp1252 = C.lireFichierTexte(Buffer.from([0x48, 0xf4, 0x74, 0x65, 0x6c, 0x3b, 0x31, 0x32]), 'clients.csv');
+  assert.deepStrictEqual(cp1252, { ok: true, texte: 'Hôtel;12' }, 'un CSV enregistré par Excel sous Windows donnait « H�tel »');
+  assert.strictEqual(C.lireFichierTexte(Buffer.from('﻿Nom;Prix', 'utf8'), 'a.csv').texte, 'Nom;Prix', 'le BOM d\'un CSV UTF-8 se retire');
+  const u16 = Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from('Café;1', 'utf16le')]);
+  assert.strictEqual(C.lireFichierTexte(u16, 'a.txt').texte, 'Café;1', 'l\'export « Texte Unicode » d\'Excel est de l\'UTF-16');
+  const xlsx = C.lireFichierTexte(Buffer.from('PK\u0003\u0004reste'), 'Clients.xlsx');
+  assert.strictEqual(xlsx.ok, false);
+  assert.ok(/« Clients\.xlsx » est un classeur/.test(xlsx.motif) && /copie-les et colle-les ici/.test(xlsx.motif), 'le refus dit quoi faire : ' + xlsx.motif);
+  // Le processus principal passe par cette fonction, et rend un refus plutôt qu'une exception.
+  const main = lireSource('src', 'main.js');
+  const h = main.slice(main.indexOf("ipcMain.handle('file:openText'"), main.indexOf("ipcMain.handle('shell:open'"));
+  assert.ok(h.length > 200 && h.length < 2500, 'la tranche du handler est introuvable');
+  assert.ok(/lireFichierTexte\(fs\.readFileSync\(p\), nom\)/.test(h), 'le fichier ouvert ne passe plus par le décodeur');
+  assert.ok(!/throw /.test(h), 'un mauvais fichier n\'est pas une panne : il se refuse avec sa phrase');
+  assert.ok(/openText: \(opts\) => ipcRenderer\.invoke\('file:openText'/.test(lireSource('src', 'preload.js')), 'le pont n\'expose pas l\'ouverture du fichier');
+});
+
+t('10.14.0 : l\'import MONTRE avant d\'écrire, replanifie au clic, passe le stock par la licence et se défait', () => {
+  const f = code.slice(code.indexOf('async function importerTableau('), code.indexOf('const clientState = {'));
+  assert.ok(f.length > 2000 && f.length < 16000, 'la tranche de la fenêtre d\'import est introuvable');
+  const clic = f.slice(f.indexOf('ok.onclick = () => {'));
+  assert.ok(clic.length > 300, 'le geste d\'import est introuvable');
+  // Le plan se recalcule AU CLIC : celui de l'aperçu a pu être dessiné avant le dernier choix de colonne.
+  assert.ok(clic.indexOf('C.planImport(') >= 0 && clic.indexOf('C.planImport(') < clic.indexOf('C.appliquerImport('), 'l\'import applique un plan qu\'il n\'a pas recalculé');
+  // Un stock de départ est un mouvement de stock : le garde-fou de l'offre passe AVANT l'écriture.
+  assert.ok(clic.indexOf('licenceBlock(\'Créer un stock de départ\', \'stock\')') >= 0 && clic.indexOf('licenceBlock(') < clic.indexOf('C.appliquerImport('), 'le stock importé contourne la licence');
+  // « Annuler » rend la liste d'avant ET dit la suppression à l'autre poste.
+  const annul = clic.slice(clic.indexOf('toastUndo('));
+  assert.ok(/data\[cle\] = avant\.liste;/.test(annul) && /data\.deleted = avant\.deleted;/.test(annul) && /forget\(cle, id, ''\)/.test(annul), '« Annuler » ne défait pas tout l\'import');
+  // Rien n'est écrit tant qu'on regarde : l'aperçu ne touche pas aux données.
+  const apercu = f.slice(f.indexOf('const dessiner = () => {'), f.indexOf('ok.onclick = () => {'));
+  assert.ok(!/appliquerImport|save\(/.test(apercu), 'l\'aperçu écrit dans les données');
+  // Importer dans l'EXEMPLE, c'est importer dans des données qui partiront avec lui : on en sort d'abord.
+  assert.ok(f.indexOf('C.estDemo(data)') >= 0 && f.indexOf('demoSortie()') > f.indexOf('C.estDemo(data)') && f.indexOf('demoSortie()') < f.indexOf('modal('), 'l\'import se range dans l\'exemple');
+  // Les entrées : la page Clients (en-tête et état vide), le Catalogue, les premiers pas, la palette.
+  ['id="imp-clients"', '\'vide-import\'', 'id="imp-catalogue"', 'data-pas-import=', '\'Importer mes clients depuis un tableur\'', '\'Importer mon catalogue depuis un tableur\'']
+    .forEach(x => assert.ok(code.includes(x), 'une entrée de l\'import manque : ' + x));
+  // Chaque bulle posée existe dans le guide, et chaque contrôle neuf a son explication pour la visite.
+  const G = require('../../src/renderer/guide.js');
+  ['imp.coller', 'imp.entete', 'imp.colonnes'].forEach(k => assert.ok(G.INFO[k] && G.INFO[k].a, 'la bulle ' + k + ' manque ou ne mène à aucun article'));
+  const vis = lireSource('src', 'renderer', 'visites.js');
+  ['#imp-clients', '#imp-catalogue', '#vide-import', '[data-pas-import]', '#imp-texte', '#imp-fichier', '#imp-entete', '[data-col]', '#imp-exemples', '#imp-ok', '#imp-autre']
+    .forEach(x => assert.ok(vis.includes(`b('${x}'`), 'la visite n\'explique pas ' + x));
+});
+
+t('10.14.0 : un stock de départ sans coût d\'achat se DIT — il vaudrait zéro, et la marge de ses ventes paraîtrait trop belle', () => {
+  const d = entreprise();
+  const p = C.planImport('catalogue', 'Désignation\tPrix HT\tCoût\tStock\nCâble\t1,000\t0,600\t250\nÉcran\t500\t\t8\nPose\t30\t\t\n', d, d.company);
+  const l = n => p.lignes.find(x => x.n === n);
+  assert.strictEqual(l(2).avert.length, 0, 'un stock AVEC son coût n\'a rien à dire');
+  assert.strictEqual(l(3).statut, 'nouveau', 'le stock sans coût entre quand même : on ne l\'invente pas, on le signale');
+  assert.ok(l(3).avert.some(a => /stock de départ de 8 sans coût d'achat/.test(a) && /trop belle/.test(a)), 'le stock sans coût entre sans un mot : ' + JSON.stringify(l(3).avert));
+  assert.strictEqual(l(4).avert.length, 0, 'une prestation sans stock n\'a pas de coût de stock à réclamer');
+});
+
+t('10.14.0 : ce que l\'import a montré à la souris — colonnes lisibles en entier, doublons dans leur encadré, statuts normaux en bleu, téléphone d\'un bloc', () => {
+  const css = lireSource('src', 'renderer', 'style.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  // « Personne à co… » : la liste d'une colonne prend la largeur de sa plus longue réponse.
+  assert.ok(/\.imp-table th select \{ min-inline-size: max-content; \}/.test(css), 'la liste d\'une colonne coupe son libellé');
+  const f = code.slice(code.indexOf('async function importerTableau('), code.indexOf('const clientState = {'));
+  const apercu = f.slice(f.indexOf('const dessiner = () => {'), f.indexOf('ok.onclick = () => {'));
+  // La ligne en double a son encadré titré ; la liste « À relire » ne porte plus que des avertissements.
+  assert.ok(/class="info-box imp-doublons"/.test(apercu), 'la ligne en double flotte seule sous l\'encadré des refus');
+  const notes = apercu.slice(apercu.indexOf('const notes = [];'), apercu.indexOf('const refus ='));
+  assert.ok(notes.length > 20 && !/doublon/.test(notes), 'la liste des notes mêle encore les doublons aux avertissements');
+  // `.info-box` et `.ok-box` vivent dans la feuille PARTAGÉE : l'app entreprise les pose désormais.
+  assert.ok(/^\.info-box \{/m.test(css) && /^\.ok-box \{/m.test(css), '`.info-box` n\'existe que dans la feuille du Cabinet');
+  // Compléter une fiche ou reprendre un exemple est une information : jamais le orange d'une alerte.
+  const m = /const STATUTS_IMPORT = (\{[^;]*\});/.exec(app);
+  assert.ok(m, 'la table des statuts d\'import est introuvable');
+  const S = require('vm').runInNewContext('(' + m[1] + ')');
+  ['nouveau', 'complete', 'existe', 'remplace', 'doublon'].forEach(k => assert.ok(!/b-part|b-late/.test(S[k][0]), `le statut « ${S[k][1]} » est peint comme une alerte`));
+  assert.strictEqual(S.refus[0], 'b-late', 'un refus reste rouge');
+  // Un numéro de téléphone ne se coupe pas en son milieu dans la liste des clients.
+  assert.ok(/label: 'Contact', get: r => `<span class="small">\$\{telLisible\(r\.c\.phone\)\}/.test(code), 'la liste des clients coupe les numéros de téléphone');
+  assert.ok(/const telLisible = tel => [^\n]*class="nw"/.test(code), 'un numéro n\'est plus tenu d\'un bloc');
+});
+
+t('10.14.0 : une liste collée dans la MAUVAISE fenêtre se reconnaît — un tarif chez les clients, des clients dans le catalogue', () => {
+  const d = entreprise();
+  const tarif = 'Désignation\tUnité\tPrix TTC\tTVA\tStock\nMain-d\'œuvre\theure\t29,750 DT\t19%\t\nCâble\tm\t1,190\t0,19\t250\n';
+  const clients = 'Raison sociale\tContact\tMF\tAdresse\tVille\tTél\tEmail\nHôtel du Lac\tLeïla\t1234567/A/M/000\tavenue\tTunis\t71 000 000\ta@b.tn\n';
+  // Le défaut vu à la souris : « 7 nouveaux clients », dont un nommé « Désignation ».
+  const a = C.planImport('clients', tarif, d, d.company);
+  assert.strictEqual(a.autreListe, 'catalogue', 'un tarif collé chez les clients passe pour une liste de clients');
+  assert.ok(a.titresAutre.includes('Désignation') && a.titresAutre.includes('Prix TTC'), 'l\'avertissement ne nomme pas les titres reconnus');
+  const b = C.planImport('catalogue', clients, d, d.company);
+  assert.strictEqual(b.autreListe, 'clients', 'une liste de clients collée dans le catalogue passe pour un tarif');
+  // Les bons cas ne sont jamais accusés : la bonne fenêtre, une liste sans titres, un choix coché.
+  assert.strictEqual(C.planImport('clients', clients, d, d.company).autreListe, '', 'une liste de clients dans la bonne fenêtre est accusée');
+  assert.strictEqual(C.planImport('catalogue', tarif, d, d.company).autreListe, '', 'un tarif dans la bonne fenêtre est accusé');
+  assert.strictEqual(C.planImport('clients', 'Hôtel\t71 234 567\ta@b.tn\n', d, d.company).autreListe, '', 'une liste sans titres est accusée');
+  assert.strictEqual(C.planImport('clients', tarif, d, d.company, { entete: true }).autreListe, '', 'cocher « la première ligne donne les titres » ne passe pas outre');
+  // L'écran : l'avertissement remplace le bilan, l'import s'éteint, et le vert emmène le TEXTE dans l'autre fenêtre.
+  const f = code.slice(code.indexOf('async function importerTableau('), code.indexOf('const telLisible'));
+  assert.ok(/ok\.disabled = !!A \|\|/.test(f), 'l\'import d\'une liste collée dans la mauvaise fenêtre reste armé');
+  assert.ok(/importerTableau\(p\.autreListe, done, t\)/.test(f), 'le geste ne passe pas la liste à l\'autre import');
+  assert.ok(/if \(prerempli\) \{ champ\.value = prerempli;/.test(f), 'l\'autre import ne reprend pas le texte collé');
+});
+
+t('10.14.0 : un client et un article naissent d\'UN modèle — la fiche, la création à la volée et l\'import', () => {
+  assert.ok(/const c = client \|\| C\.clientVierge\(preset\);/.test(code), 'la fiche client recopie son propre modèle');
+  assert.ok(/function articleNeuf\(extra\) \{\s*return C\.articleVierge\(company\(\), extra\);/.test(code), 'la fiche article recopie son propre modèle');
+  const a = C.articleVierge({ taxRegime: 'reel', defaultVatRate: 7 }, { label: 'X' }, '2026-09-24');
+  assert.deepStrictEqual([a.label, a.vatRate, a.initialDate, a.tracked], ['X', 7, '2026-09-24', false]);
+});
 };

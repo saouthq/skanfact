@@ -1361,6 +1361,19 @@ body.dark .cal-d.out { color: #5b6572; }
   padding: 11px 14px; font-size: 13px; line-height: 1.55;
 }
 .warn-box.grave { background: var(--danger-soft); border-inline-start-color: var(--danger); }
+/* Les deux soeurs de `.warn-box`, posées en 9.1.0 dans la feuille du Cabinet — elles y étaient
+   UTILISÉES sans être définies, et une classe qui n'existe pas dans la feuille ne se voit nulle part.
+   `ok-box` : ce qu'on peut affirmer. `info-box` : ce qu'on explique — un écart ATTENDU (une ligne en
+   double dans un tableur) n'est pas un avertissement, et du orange sur une situation normale apprend
+   à ignorer l'orange (8.0.1). Elles vivent ici depuis la 10.14.0, pour les deux applications. */
+.ok-box {
+  background: var(--success-soft); border-inline-start: 3px solid var(--success); border-radius: 8px;
+  padding: 11px 14px; font-size: 13px; line-height: 1.55;
+}
+.info-box {
+  background: var(--info-soft); border-inline-start: 3px solid var(--info); border-radius: 8px;
+  padding: 11px 14px; font-size: 13px; line-height: 1.55;
+}
 /* Une clé se copie d'un bloc et n'a pas d'espace : sans `overflow-wrap`, elle sortait du cadre. */
 .code-box {
   background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px;
@@ -1379,6 +1392,34 @@ body.dark .cal-d.out { color: #5b6572; }
    la grille du modèle de liasse) — la fenêtre retombait à 860 px et cachait 25 px de colonnes
    derrière un défilement de côté. La règle générale qui avale l'exception, une fois de plus. */
 .modal:where(:has(table.mini, table.lines-edit, table.list)) { width: 860px; }
+/* L'import depuis un tableur (10.14.0). La fenêtre a sa largeur DÈS l'ouverture : l'aperçu qui
+   apparaît au collage l'aurait élargie sous le curseur, et « Importer » aurait bougé au moment où on
+   le vise (H-E1, dans une fenêtre). Le texte collé garde ses colonnes (chasse fixe, pas de retour à
+   la ligne) : c'est ce qui permet de reconnaître son tableur dans la case. */
+.modal:where(:has(.import-tableau)) { width: 860px; }
+.import-tableau textarea { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; line-height: 1.6; white-space: pre; overflow-x: auto; tab-size: 18; }
+.imp-source { margin-block-start: 8px; }
+.imp-bilan { margin-block: 16px 10px; line-height: 1.6; }
+.imp-cadre { margin-block: 8px 6px; max-height: 320px; overflow-y: auto; }
+.imp-table th { vertical-align: bottom; min-width: 150px; }
+.imp-table th.imp-st-h { min-width: 0; }
+.imp-table th select { width: 100%; }
+/* Une liste de colonne se lit EN ENTIER : « Personne à co… » ou « Code postal, vi… » obligeait à
+   l'ouvrir pour savoir ce que SkanFact avait reconnu (vu à la souris, sur une liste collée depuis
+   LibreOffice). La colonne prend la largeur de la plus longue réponse possible. */
+.imp-table th select { min-inline-size: max-content; }
+.imp-table .imp-titre { font-weight: 400; text-transform: none; letter-spacing: 0; margin-block-start: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px; }
+.imp-table td { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Une colonne sur « Ignorer » n'entre pas : elle se lit en retrait, comme ce qui ne compte pas. */
+.imp-table td.imp-ignore { color: var(--muted); opacity: .55; }
+.imp-refus, .imp-doublons { margin-block: 10px; }
+.imp-notes-t { margin-block: 12px 0; }
+.imp-autre { margin-block: 16px 10px; }
+/* Le geste et sa réserve dans une rangée dont le `gap` décide des deux écarts (T-56) : posé dans la
+   phrase, le bouton passait à la ligne collé sous elle. */
+.imp-autre-geste { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-block-start: 10px; }
+.imp-refus ul, .imp-doublons ul, .imp-notes { margin-block: 6px; padding-inline-start: 20px; max-height: 150px; overflow-y: auto; }
+.pp-import { align-self: flex-start; }
 .warn-link { color: var(--warning); font-weight: 600; text-decoration: none; }
 .warn-link:hover { text-decoration: underline; }
 
