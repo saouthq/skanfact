@@ -518,6 +518,11 @@
   // Une quantité SIGNÉE s'écrit avec le même signe moins que les montants (« − 38,500 DT ») : un « -1 »
   // en tiret à côté d'un « − 38,500 » se lit comme deux conventions, donc deux sortes de chiffres.
   const qteSignee = n => (n > 0 ? '+' : n < 0 ? '−' : '') + pct(Math.abs(n));
+  // La barre d'un classement : un montant NÉGATIF (un avoir fournisseur dans « Où part ton argent »,
+  // un client plus avoisé que facturé) n'a pas de barre. Avec `Math.max(4, …)`, − 300 DT devenait
+  // une barre de 4 %, dessinée comme une dépense (10.14.0) ; et `Math.abs` en faisait une barre
+  // de la taille d'une vente.
+  const largeurRang = (v, max) => (v > 0 && max > 0 ? Math.max(4, Math.round(v / max * 100)) : 0);
   // Un montant signé prend la MÊME espace que `money()` pose après son « − » : « +1 565,400 » collé
   // au-dessus de « − 1 071,000 » espacé, dans une colonne où l'œil compare les signes (10.14.0).
   const moneySigne = (n, cur) => (n > 0 ? '+\u00a0' : '') + C.money(n, cur);
@@ -2585,7 +2590,7 @@
           </div>
         </div>
         <div class="panel"><h2>Top clients ${year} (HT) ${info('dash.top')}</h2>
-          ${top.length ? `<ul class="rank">${top.map(x => `<li><a class="name" href="#/client/${h(x.clientId)}" title="Ouvrir la fiche de ${h(x.name)}">${h(x.name)}</a><span class="bar"><i style="width:${Math.max(4, Math.round(x.ht / topMax * 100))}%"></i></span><span class="amt">${C.money(x.ht, cur)}</span></li>`).join('')}</ul>` : '<p class="small muted">Aucune facture émise cette année. Ton premier devis accepté la remplira.</p>'}
+          ${top.length ? `<ul class="rank">${top.map(x => `<li><a class="name" href="#/client/${h(x.clientId)}" title="Ouvrir la fiche de ${h(x.name)}">${h(x.name)}</a><span class="bar"><i style="width:${largeurRang(x.ht, topMax)}%"></i></span><span class="amt">${C.money(x.ht, cur)}</span></li>`).join('')}</ul>` : '<p class="small muted">Aucune facture émise cette année. Ton premier devis accepté la remplira.</p>'}
         </div>
       </div>`}
       ${!recent.length ? '' : `<div class="panel"><h2>Documents récents <span class="small muted">— les ${recent.length} dernières pièces sur ${data.documents.length}</span></h2>${docTable(recent, { noFoot: true })}
@@ -11305,7 +11310,7 @@
       const payers = C.payerRanking(data, company(), 5);
       const yearHT = C.salesTotals(data, company(), `${p.year}-01-01`, `${p.year}-12-31`).ht;
       const obj = C.objectiveProgress(company().revenueTarget, yearHT, now, p.year);
-      const itemMax = items.length ? Math.max(...items.map(x => Math.abs(x.ht)), 1) : 1;
+      const itemMax = items.length ? Math.max(...items.map(x => x.ht), 1) : 1;
       const clientMax = clients.length ? Math.max(...clients.map(x => x.ht), 1) : 1;
       const funMax = Math.max(1, funnel.accepted, funnel.refused, funnel.expired, funnel.pending);
 
@@ -11358,12 +11363,12 @@
         </div>
         <div class="split">
           <div class="panel"><h2>Prestations les plus vendues ${info('stat.items')}</h2>
-            ${items.length ? `<ul class="rank">${items.map(x => `<li><span class="name">${h(x.label)}</span><span class="bar"><i style="width:${Math.max(4, Math.round(Math.abs(x.ht) / itemMax * 100))}%"></i></span><span class="amt">${C.money(x.ht, cur)}</span></li>`).join('')}</ul>
+            ${items.length ? `<ul class="rank">${items.map(x => `<li><span class="name">${h(x.label)}</span><span class="bar"><i style="width:${largeurRang(x.ht, itemMax)}%"></i></span><span class="amt">${C.money(x.ht, cur)}</span></li>`).join('')}</ul>
             <p class="small muted mt">Regroupées par libellé, quantités et remises comprises. Les lignes de déduction d'acompte sont ignorées.</p>`
             : '<div class="empty">Aucune vente sur cette période.</div>'}
           </div>
           <div class="panel"><h2>Meilleurs clients (HT) ${info('stat.clients')}</h2>
-            ${clients.length ? `<ul class="rank">${clients.map(x => `<li><a class="name" href="#/client/${h(x.clientId)}">${h(x.name)}</a><span class="bar"><i style="width:${Math.max(4, Math.round(x.ht / clientMax * 100))}%"></i></span><span class="amt">${C.money(x.ht, cur)}</span></li>`).join('')}</ul>
+            ${clients.length ? `<ul class="rank">${clients.map(x => `<li><a class="name" href="#/client/${h(x.clientId)}">${h(x.name)}</a><span class="bar"><i style="width:${largeurRang(x.ht, clientMax)}%"></i></span><span class="amt">${C.money(x.ht, cur)}</span></li>`).join('')}</ul>
             ${clients.length > 1 ? `<p class="small ${clients[0].ht / Math.max(1, cur1.ht) > 0.5 ? 'warn-text' : 'muted'} mt">Ton premier client pèse ${Math.round(clients[0].ht / Math.max(1, cur1.ht) * 100)} % du chiffre d'affaires.${clients[0].ht / Math.max(1, cur1.ht) > 0.5 ? ' C\'est beaucoup : perdre ce client ferait très mal.' : ''}</p>` : ''}`
             : '<div class="empty">Aucun client facturé sur cette période.</div>'}
           </div>
@@ -11731,7 +11736,7 @@
           <div class="stat"><div class="lbl">Total réglé ou dû ${info('compta.buyNet')}</div><div class="val">${C.money(sum.net, cur)}</div><div class="sub">net à payer, toutes pièces</div></div>
         </div>
         ${sum.byCategory.length ? `<div class="panel"><h2>Où part ton argent — ${h(label)} ${info('compta.byCategory')}</h2>
-          <ul class="rank">${sum.byCategory.slice(0, 10).map(x => `<li><span class="name">${h(x.label)}</span><span class="bar"><i style="width:${Math.max(4, Math.round(x.ht / Math.max(1, sum.byCategory[0].ht) * 100))}%"></i></span><span class="amt">${C.money(x.ht, cur)}</span></li>`).join('')}</ul>
+          <ul class="rank">${sum.byCategory.slice(0, 10).map(x => `<li><span class="name">${h(x.label)}</span><span class="bar"><i style="width:${largeurRang(x.ht, sum.byCategory[0].ht)}%"></i></span><span class="amt">${C.money(x.ht, cur)}</span></li>`).join('')}</ul>
         </div>` : ''}
         <div class="panel"><h2>Journal des achats — ${h(label)} ${info('compta.buyJournal')}</h2>
           <div class="inline mb"><button class="btn" id="exp-buys">Exporter en CSV</button></div>

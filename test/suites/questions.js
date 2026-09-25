@@ -307,4 +307,18 @@ module.exports = ({ t, assert }) => {
     assert.ok(!/CNSS à reverser/.test(app), 'la carte ne nomme plus un reste dû');
     assert.ok(/C\.cnssNonDeclaree\(data, Number\(s\.year\)\)/.test(app), 'la carte lit ce qui n\'est pas déclaré');
   });
+
+  // − 300 DT d'avoir de marchandises dessiné en barre de 4 % dans « Où part ton argent » (10.14.0).
+  t('10.14.0 : un montant négatif n\'a pas de barre dans un classement', () => {
+    const vm = require('vm');
+    const m = app.match(/const largeurRang = (\(v, max\) => [^\n]+);/);
+    assert.ok(m, 'largeurRang est définie');
+    const f = vm.runInNewContext(m[1]);
+    assert.strictEqual(f(-300, 1450), 0, 'un avoir n\'a pas de barre');
+    assert.strictEqual(f(0, 1450), 0);
+    assert.strictEqual(f(1450, 1450), 100);
+    assert.strictEqual(f(10, 1450), 4, 'une petite valeur garde un trait visible');
+    assert.ok(!/<i style="width:\$\{Math\.max\(4, /.test(app), 'aucune barre de classement ne recalcule sa largeur à la main');
+    assert.ok((app.match(/width:\$\{largeurRang\(/g) || []).length >= 4, 'les quatre classements passent par elle');
+  });
 };

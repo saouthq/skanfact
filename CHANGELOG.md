@@ -597,6 +597,9 @@ l'écran. Le matricule fiscal (« 1472411D/A/M/000 ») peut maintenant passer à
   « CNSS 2026 », garde le total, et dit dessous **ce qui n'est pas encore déclaré**.
 - Trésorerie : « +1 565,400 » collé au-dessus de « − 1 071,000 » espacé, dans la même colonne. Le
   plus prend la même espace insécable que le moins.
+- Comptabilité → Achats : un avoir de marchandises (− 300 DT) était dessiné par une barre dans
+  « Où part ton argent », comme une dépense. Un montant négatif n'a plus de barre, dans les quatre
+  classements de l'application.
 
 ## 10.13.0-beta.1 — 24/09/2026
 

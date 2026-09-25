@@ -7640,6 +7640,9 @@ faire seul, par ordre de priorité ») :
   entière sous ce mot, trimestres déposés compris. Un agrégat porte sa période (3.1.0) ET ne se
   nomme d'un état que s'il ne compte que ce qui est dans cet état (« versé », 10.12.0).
   `core.cnssNonDeclaree` lit les dépôts par la même porte que « À faire » (`socialesDeposees`).
+- **Un minimum de visibilité ne s'applique qu'à ce qui est positif** : `Math.max(4, …)` garantissait
+  un trait aux petites valeurs, et faisait d'un avoir de − 300 DT une barre de 4 % dans « Où part ton
+  argent ». `largeurRang`, pour les quatre classements.
 - **Un signe se compose comme son contraire** : `money()` pose « −\u00a0 », un « + » écrit à la main
   était collé. `moneySigne`, et un test interdit la forme `? '+' : ''}${C.money(`.
 - **Le geste d'un journal vit sur l'onglet du journal** : « + Mouvement » disparaissait de l'onglet
