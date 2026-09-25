@@ -409,7 +409,9 @@ module.exports = ({ t, assert, lireSource }) => {
     for (const nom of ['confirmDialog', 'infoDialog', 'choiceDialog']) {
       const i = src.indexOf('function ' + nom + '(');
       const corps = src.slice(i, src.indexOf('\n  }\n', i));
-      assert.ok(/enTete\(msg\)/.test(corps), nom + ' laisse une phrase commencer par une minuscule');
+      // Retournée vers la règle (10.14.0) : confirmDialog affiche un TITRE et un corps tirés du
+      // message ; ce qui compte est que ce qui s'affiche passe par `enTete(`, pas le nom de sa variable.
+      assert.ok(nom === 'confirmDialog' ? /enTete\(q\.titre\)[\s\S]*enTete\(q\.corps\)/.test(corps) : /enTete\(msg\)/.test(corps), nom + ' laisse une phrase commencer par une minuscule');
     }
   });
 
@@ -577,7 +579,8 @@ module.exports = ({ t, assert, lireSource }) => {
     // modal() ne s'applique pas quand la cible est un bouton).
     const o = src.slice(src.indexOf('async function origineAcceptee('), src.indexOf('const retenirSignature'));
     assert.ok(o.length > 200 && o.length < 1500, 'origineAcceptee introuvable (' + o.length + ')');
-    assert.ok(/confirmDialog\([^;]*accepter', true, \{ prudent: true \}\)/.test(o), 'la question sur une autre clé s\'accepte d\'un Entrée');
+    // Retournée vers la règle (10.14.0) : l'option gagne un titre, ce qui compte est `prudent: true`.
+    assert.ok(/confirmDialog\([^;]*accepter', true, \{[^}]*prudent: true[^}]*\}\)/.test(o), 'la question sur une autre clé s\'accepte d\'un Entrée');
     const d = src.slice(src.indexOf('function confirmDialog('), src.indexOf('function infoDialog('));
     assert.ok(/if \(opts && opts\.prudent\) \$\('\[data-close\]', root\)\.focus\(\);/.test(d), 'confirmDialog ne donne pas le curseur à « Annuler » quand on le lui demande');
     const m = src.slice(src.indexOf("layer.addEventListener('keydown'"), src.indexOf('if (onMount) onMount(layer, close);'));

@@ -181,10 +181,9 @@ Constats de l'audit du 22/09/2026 restés hors de la 10.6.0.
     pire qu'un affichage : sur un poste en anglais, « 2,5 » tapé devenait 25. L'application pose sa
     langue (`--lang fr-FR`) avant de démarrer. Reste, si un jour on le veut : les espaces de milliers
     DANS un champ (« 1 250,500 »), que le Cabinet sait lire (H-3) et qu'un `type=number` refuse.
-  - **Toutes les questions s'intitulent « Confirmation »** : le titre devrait dire le geste
-    (« Supprimer ce paiement ? »), la phrase en dessous dit déjà le reste. 78 appels ; dériver le
-    titre du libellé du bouton donnerait « Passer ? » ou « Le client a refusé ? » — c'est à écrire
-    appel par appel, pas à fabriquer.
+  - ~~**Toutes les questions s'intitulent « Confirmation »**~~ — **fait en 10.14.0** : le titre se
+    tire de la première phrase quand c'est une question, sinon du geste du bouton (sauf un geste
+    générique), et dix-sept avertissements portent un titre écrit (`opts.titre`).
   - **Une facture qu'on vient d'émettre se dit « envoyée »**, avant tout envoi : c'est le nom du
     statut déduit depuis la 1.4.0 (la bulle le dit), mais un créateur d'entreprise qui n'a rien
     envoyé le lit comme une erreur. Changer le mot touche les données (la valeur `envoyée`), les
@@ -329,7 +328,7 @@ l'ordre proposé.
     workflow, branche `beta`). Le worker en service ne connaît ni `/v1/achat/cle` ni le jeton : une
     commande passée depuis l'application y resterait « en attente » (l'écran dit « hors ligne »,
     rien n'est perdu, la clé arrive par mail) — mais le geste neuf ne servirait à rien.
-- **Ne jamais se perdre** : les 78 titres « Confirmation » à écrire geste par geste, « émise » au lieu
+- **Ne jamais se perdre** : ~~les 78 titres « Confirmation »~~ (fait en 10.14.0), « émise » au lieu
   de « envoyée », H-E30, les barres qui passent sur deux rangées, et les restes de la console (§ 3).
 - **Les tests humains mis en pause** le 24/09 pour la visite : l'app entreprise (achats, stock, biens,
   trésorerie, paie, comptabilité, paramètres, données) et le Cabinet en entier. Les 55 parcours de la

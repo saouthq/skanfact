@@ -481,6 +481,14 @@ et la carte restait pour toujours.
 - Un remboursement ne fausse pas les délais de paiement : rendre de l'argent n'est pas le jour où
   le client a fini de payer.
 
+### Les questions disent ce qu'elles demandent
+
+Toutes les fenêtres de confirmation s'intitulaient « Confirmation » — soixante-dix-huit, et il
+fallait lire la phrase en dessous pour savoir de quoi. Le titre dit maintenant le geste : « Supprimer
+ce paiement ? », « Émettre la facture ? », « Un paiement daté dans le futur », « Exporter en
+clair ? ». Il est tiré de la question elle-même, ou du bouton quand il est parlant, et un titre
+choisi à la main pour les avertissements. Un numéro de pièce n'y est jamais coupé en fin de ligne.
+
 ## 10.13.0-beta.1 — 24/09/2026
 
 **Avant la mise en production : les deux applications et le pont entre elles, testés en entier.**

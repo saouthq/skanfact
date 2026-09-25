@@ -1282,6 +1282,28 @@
     return { totals, credits, credited, paid, remaining };
   }
 
+  // Le titre d'une question (10.14.0). Les quatre-vingt-sept questions de l'app entreprise
+  // s'intitulaient toutes « Confirmation », ce qui ne dit pas ce qu'on confirme : on lit le corps
+  // pour savoir si l'on supprime un paiement ou si l'on quitte l'exemple. Le Cabinet donne un titre
+  // à chacune depuis toujours (le jumeau, 7.3.0). Ici le titre se DÉDUIT, dans cet ordre :
+  //   1. la question par laquelle le message commence (« Supprimer le paiement de 50 DT ? ») — elle
+  //      devient le titre et quitte le corps, pour ne pas se lire deux fois ;
+  //   2. sinon le geste du bouton, quand il en nomme un (« Marquer annulée ? ») ;
+  //   3. sinon « Avant de continuer » — un « … quand même » est un avertissement, pas un geste.
+  // Une question trop longue pour un titre reste dans le corps : un titre de trois lignes ne se lit
+  // plus comme un titre.
+  const GESTES_GENERIQUES = /^(confirmer|continuer|ok|oui|valider)$|quand même/i;
+  function titreQuestion(msg, okLabel) {
+    const texte = String(msg == null ? '' : msg);
+    // La PREMIÈRE phrase seulement : « La date est dans le futur. Enregistrer quand même ? » n'est
+    // pas un titre, c'est un avertissement qui finit par une question.
+    const m = /^([^?.!\n]{3,90}\?)[ \t]*\n?/.exec(texte);
+    if (m) return { titre: m[1].trim(), corps: texte.slice(m[0].length).trim() };
+    const geste = String(okLabel || '').trim().replace(/[….]+$/, '');
+    if (geste && !GESTES_GENERIQUES.test(geste)) return { titre: geste + ' ?', corps: texte };
+    return { titre: 'Avant de continuer', corps: texte };
+  }
+
   // Deux délais sur la même facture (10.12.0, H-E23) : les conditions de paiement disent « à
   // réception » pendant que la pièce imprime « À régler avant le … ». En cas de retard, c'est le
   // client qui choisit lequel lire. Rend la phrase qui contredit l'échéance, ou ''. Une échéance le
@@ -8114,7 +8136,7 @@
     debutExercice, soldesOuverture, balanceGenerale, grandLivre, grandLivreRows, balanceAuxiliaire,
     balanceCsvColumns, balanceAuxCsvColumns, grandLivreCsvColumns,
     salesCsvColumns, buyCsvColumns, payCsvColumns, supplierPayCsvColumns, cashCsvColumns, cashCsvRows,
-    nextNumber, isLocked, isIssued, computeTotals, creditsFor, invoiceBalance, estRemboursement, dateDernierReglement, motifVerrou, delaisContradictoires, effectiveStatus,
+    nextNumber, isLocked, isIssued, computeTotals, creditsFor, invoiceBalance, estRemboursement, titreQuestion, dateDernierReglement, motifVerrou, delaisContradictoires, effectiveStatus,
     depositLines, settlementLines, salesJournal, vatSummary, paymentsJournal, toCsv, migrateData,
     PERIODS, MONTHS_FR, MONTHS_SHORT, monthLabel, addMonths, nextRecurrenceDate, dueRecurrences, catchUpRecurrence, fillTemplate, buildRecurringInvoice,
     reminderLevel, REMINDER_LABELS, daysBetween, overdueInvoices, facturesAVenir, todoList, companyGaps, verifRib, documentHistory, DEFAULT_EMAIL_TEMPLATES, DEFAULT_EMAIL_TEMPLATES_EN, emailFor,

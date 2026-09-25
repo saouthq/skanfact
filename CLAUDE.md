@@ -246,6 +246,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Le **mois regardé appartient à l'exercice regardé** : UNE garde au dessin, jamais une par porte | 10.14.0 — « décembre 2025 » au-dessus d'août 2026 |
 | **Toute liste qu'on nomme se pagine** — les tableaux secondaires aussi ; un objet trop grand se REPLIE sur sa ligne avant de se paginer | 10.14.0 (saturation) ; 9.4.5 |
 | Un **refus se dit AVANT la question** : on ne confirme pas « Valider 3 526 écritures ? » pour lire ensuite que c'est impossible | 10.14.0 (saturation) ; 7.6.0 |
+| Une **question dit ce qu'elle confirme** dans son titre — dérivé de sa phrase (`titreQuestion`), nommé par l'appelant pour un avertissement ; jamais « Confirmation » | 10.14.0 (P2) |
 
 **Ce qu'on ne fait jamais**
 
@@ -7513,6 +7514,22 @@ les offres, ouvre la page de paiement préremplie, et la clé revient toute seul
 - Deux assertions retournées vers la règle (vingt-septième et vingt-huitième) : l'une recopiait le
   libellé « Modifier ce paiement » mot pour mot, l'autre bornait sa tranche à 700 caractères — une
   question qui gagne une phrase en sortait. Bornée sur la fin de l'action.
+
+**Puis les questions, qui s'intitulaient toutes « Confirmation »** (P2) :
+
+- **Une question dit ce qu'elle confirme, dans son titre.** Soixante-dix-huit fenêtres portaient le
+  même mot, et la phrase utile était en dessous — on lisait « Confirmation », puis on cherchait de
+  quoi. Le titre se DÉDUIT (`C.titreQuestion`, pur et testé) : la première phrase du message quand
+  c'est une question courte (« Supprimer ce paiement ? ») ; sinon le geste du bouton suivi de « ? »
+  — sauf un geste générique (« Confirmer », « Continuer », « … quand même »), qui donnerait
+  « Continuer ? » ; sinon « Avant de continuer ». Et quand la règle ne peut pas trouver le vrai
+  sujet — un AVERTISSEMENT (« Un paiement daté dans le futur ») —, l'appelant le nomme
+  (`opts.titre`, dix-sept appels). Le tri de l'A-FAIRE disait « à écrire appel par appel, pas à
+  fabriquer » : c'était vrai du geste seul (« Passer ? »), faux de la phrase, qui porte presque
+  toujours la question. **Dériver ce qui se dérive, nommer le reste** — jamais soixante-dix-huit
+  titres écrits à la main, qui divergeraient du message au premier ajustement.
+- **Un titre est un morceau de prose comme un autre** : il reçoit `numerosInsecables`, sinon
+  « FAC-2026-015 » se coupe en fin de ligne dans le titre alors que le corps le protégeait déjà.
 
 ## Pistes pour la suite (non demandées)
 

@@ -317,7 +317,7 @@
   async function closedWipeOk(what) {
     const c = C.closedUntil(data);
     if (!c) return true;
-    return await confirmDialog(`${what}\n\nTes données sont clôturées jusqu'au ${C.fmtDate(c)}. Ce que ton comptable a déjà reçu ne correspondra plus à ce que contient l'application. Une sauvegarde de l'état actuel est prise avant.`, 'Continuer quand même');
+    return await confirmDialog(`${what}\n\nTes données sont clôturées jusqu'au ${C.fmtDate(c)}. Ce que ton comptable a déjà reçu ne correspondra plus à ce que contient l'application. Une sauvegarde de l'état actuel est prise avant.`, 'Continuer quand même', undefined, { titre: 'Des mois sont déjà clôturés' });
   }
 
   // ---------- garde-fou de clôture (6.0.0) ----------
@@ -848,7 +848,11 @@
     return new Promise(resolve => {
       let settled = false;
       const finish = (close, v) => { settled = true; close(); resolve(v); };
-      modal(`<h2>Confirmation</h2><p>${numerosInsecables(C.nl2br(enTete(msg)))}</p>
+      // Un TITRE qui dit ce qu'on confirme (10.14.0) : « Confirmation » au-dessus des quatre-vingt-sept
+      // questions obligeait à lire le corps pour savoir si l'on supprimait un paiement ou quittait
+      // l'exemple. `opts.titre` quand l'appelant sait mieux, sinon `C.titreQuestion` le déduit.
+      const q = opts && opts.titre ? { titre: opts.titre, corps: String(msg) } : C.titreQuestion(msg, okLabel);
+      modal(`<h2>${numerosInsecables(h(enTete(q.titre)))}</h2>${q.corps ? `<p>${numerosInsecables(C.nl2br(enTete(q.corps)))}</p>` : ''}
         <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn ${danger === false ? 'btn-primary' : 'btn-danger'}" id="ok">${h(okLabel || 'Confirmer')}</button></div>`,
         (root, close) => {
           $('#ok', root).onclick = () => finish(close, true); $('[data-close]', root).onclick = () => finish(close, false);
@@ -2865,7 +2869,7 @@
     const repondreRefuse = async id => {
       const d = docById(id); if (!d) return;
       const quoi = `${d.number || 'Ce devis'} — ${clientName(d.clientId)} — ${C.money(C.computeTotals(d, company()).totalTTC, docCur(d))}`;
-      if (!await confirmDialog(`${quoi}\n\nMarquer ce devis « refusé » ? Il sortira de tes relances et de ton taux de conversion. Tu pourras revenir dessus.`, 'Le client a refusé', false)) return;
+      if (!await confirmDialog(`${quoi}\n\nMarquer ce devis « refusé » ? Il sortira de tes relances et de ton taux de conversion. Tu pourras revenir dessus.`, 'Le client a refusé', false, { titre: 'Le client a refusé ce devis ?' })) return;
       const avant = d.status;
       d.status = 'refusé'; save(true); refaire();
       toastUndo(`${d.number || 'Devis'} marqué refusé`, () => { const x = docById(id); if (x) { x.status = avant; save(true); refaire(); } });
@@ -4343,7 +4347,7 @@
     if (!acomptes.length) return;
     if (totales.length && !await confirmDialog(
       `Ce devis a déjà donné ${totales.map(nomDePiece).join(', ')}.\n\nUne facture de solde de plus facturerait une seconde fois ce qui reste à payer.`,
-      'Créer quand même', true)) return;
+      'Créer quand même', true, { titre: 'Une seconde facture de solde ?' })) return;
     const inv = invoiceFromQuote(q, C.settlementLines(q, acomptes), q.discountRate);
     inv.settles = { quoteId: q.id, quoteNumber: q.number, depositIds: acomptes.map(d => d.id) }; inv.fromQuoteId = q.id; inv.fromQuoteNumber = q.number;
     inv.subject = `Solde — ${q.subject || q.number}`;
@@ -4435,11 +4439,11 @@
         const v = formValues($('#pf2', root));
         if (!(Number(v.amount) > 0)) return refus($('[name=amount]', root), 'Montant invalide.');
         if (!v.date) return refus($('[name=date]', root), 'Date obligatoire.');
-        if (v.date > C.today() && !await confirmDialog(`La date du ${rend ? 'remboursement' : 'paiement'} (${C.fmtDate(v.date)}) est dans le futur. ${rend ? 'Un remboursement s\'enregistre quand l\'argent part' : 'Un paiement s\'enregistre quand l\'argent est reçu'}, pas quand il est promis. Enregistrer quand même ?`, 'Enregistrer quand même')) return;
+        if (v.date > C.today() && !await confirmDialog(`La date du ${rend ? 'remboursement' : 'paiement'} (${C.fmtDate(v.date)}) est dans le futur. ${rend ? 'Un remboursement s\'enregistre quand l\'argent part' : 'Un paiement s\'enregistre quand l\'argent est reçu'}, pas quand il est promis. Enregistrer quand même ?`, 'Enregistrer quand même', undefined, { titre: rend ? 'Un remboursement daté dans le futur' : 'Un paiement daté dans le futur' })) return;
         // Rendre plus que le trop-perçu ferait DEVOIR le client de nouveau : c'est presque toujours
         // une faute de frappe. On prévient, on n'interdit pas (7.6.0).
-        if (rend && Number(v.amount) > aRendre + 0.0005 && !await confirmDialog(`Le montant rendu (${C.money(v.amount, cur)}) dépasse le trop-perçu (${C.money(aRendre, cur)}). La facture redeviendrait due de la différence. Enregistrer quand même ?`, 'Enregistrer quand même')) return;
-        if (!rend && Number(v.amount) > reste + 0.0005 && !await confirmDialog(`Le montant (${C.money(v.amount, cur)}) dépasse le reste à payer (${C.money(reste, cur)}). La facture apparaîtra avec un trop-perçu. Enregistrer quand même ?`, 'Enregistrer quand même')) return;
+        if (rend && Number(v.amount) > aRendre + 0.0005 && !await confirmDialog(`Le montant rendu (${C.money(v.amount, cur)}) dépasse le trop-perçu (${C.money(aRendre, cur)}). La facture redeviendrait due de la différence. Enregistrer quand même ?`, 'Enregistrer quand même', undefined, { titre: 'Rendre plus que le trop-perçu ?' })) return;
+        if (!rend && Number(v.amount) > reste + 0.0005 && !await confirmDialog(`Le montant (${C.money(v.amount, cur)}) dépasse le reste à payer (${C.money(reste, cur)}). La facture apparaîtra avec un trop-perçu. Enregistrer quand même ?`, 'Enregistrer quand même', undefined, { titre: 'Plus que le reste à payer' })) return;
         // Modifier la date d'un paiement le sort d'un mois peut-être déjà déclaré : l'ancienne date
         // compte autant que la nouvelle, comme pour un document.
         if (closedBlock(p0 ? [p0.date, v.date] : v.date, rend ? 'Ce remboursement' : 'Ce paiement')) return;
@@ -5805,7 +5809,7 @@
     if (avance) {
       const quoi = r.active === false
         ? 'Ce contrat est suspendu.' : `La prochaine échéance est le ${C.fmtDate(r.nextDate)}, elle n'est pas encore arrivée.`;
-      if (!await confirmDialog(`${quoi}\n\nGénérer quand même le brouillon de facture ? L'échéance suivante sera repoussée d'une période.`, 'Générer', false)) return;
+      if (!await confirmDialog(`${quoi}\n\nGénérer quand même le brouillon de facture ? L'échéance suivante sera repoussée d'une période.`, 'Générer', false, { titre: 'Générer la facture en avance ?' })) return;
     }
     const avant = { lastIssued: r.lastIssued, nextDate: r.nextDate };
     const res = generateRecurring([r], true);
@@ -6273,7 +6277,7 @@
     const v = C.verdictEnvoiCabinet(data.cabinetSignature, lu.origine);
     if (v.ok) return v;
     if (v.etat !== 'autre-cle') { await infoDialog(quoi + ' refusé', v.texte); return null; }
-    const force = await confirmDialog(v.texte + '\n\nAccepter cette nouvelle signature ?', 'J\'ai vérifié avec mon comptable : accepter', true, { prudent: true });
+    const force = await confirmDialog(v.texte + '\n\nAccepter cette nouvelle signature ?', 'J\'ai vérifié avec mon comptable : accepter', true, { prudent: true, titre: 'Une autre signature pour ton comptable' });
     if (!force) return null;
     return { ok: true, etat: 'nouvelle', alerte: true, epingler: v.recue,
       ligne: `Nouvelle signature de ton cabinet (${v.recue}) : elle remplacera celle qui était retenue.` };
@@ -7278,8 +7282,8 @@
         const v = formValues($('#spf', root));
         if (!(Number(v.amount) > 0)) return refus($('[name=amount]', root), 'Montant invalide.');
         if (!v.date) return refus($('[name=date]', root), 'Date invalide.');
-        if (v.date > C.today() && !await confirmDialog(`La date (${C.fmtDate(v.date)}) est dans le futur. Enregistrer quand même ?`, 'Enregistrer')) return;
-        if (Number(v.amount) > reste + 0.0005 && !await confirmDialog(`Le montant (${C.money(v.amount, cur)}) dépasse le reste dû (${C.money(reste, cur)}). Enregistrer quand même ?`, 'Enregistrer quand même')) return;
+        if (v.date > C.today() && !await confirmDialog(`La date (${C.fmtDate(v.date)}) est dans le futur. Enregistrer quand même ?`, 'Enregistrer', undefined, { titre: 'Un règlement daté dans le futur' })) return;
+        if (Number(v.amount) > reste + 0.0005 && !await confirmDialog(`Le montant (${C.money(v.amount, cur)}) dépasse le reste dû (${C.money(reste, cur)}). Enregistrer quand même ?`, 'Enregistrer quand même', undefined, { titre: 'Plus que le reste dû' })) return;
         // Corriger la date d'un règlement le sort peut-être d'un mois déclaré : l'ancienne date
         // compte autant que la nouvelle (règle 6.0.0).
         if (closedBlock(r0 ? [r0.date, v.date] : v.date, 'Ce règlement')) return;
@@ -7735,7 +7739,7 @@
       let read;
       try { read = await bridge.ocrRead(file.path); }
       catch (e) {
-        const retry = await confirmDialog(`La lecture a échoué.\n\n${e.message || 'Erreur inconnue.'}\n\nTu peux joindre la photo et saisir la facture à la main.`, 'Joindre la photo', false);
+        const retry = await confirmDialog(`La lecture a échoué.\n\n${e.message || 'Erreur inconnue.'}\n\nTu peux joindre la photo et saisir la facture à la main.`, 'Joindre la photo', false, { titre: 'La lecture de la photo a échoué' });
         if (retry) await joindreFichier(file);
         return;
       }
@@ -7853,7 +7857,7 @@
         `La facture n° ${p.number} de ${supplierName(p.supplierId)} est déjà saisie.\n\n`
         + `Celle du ${C.fmtDate(jumeau.date)}, ${C.money(t.totalTTC, company().currency)} TTC. `
         + 'La saisir une seconde fois compterait deux fois sa TVA déductible et sa charge.\n\n'
-        + 'Enregistrer quand même ?', 'Enregistrer quand même', true);
+        + 'Enregistrer quand même ?', 'Enregistrer quand même', true, { titre: 'Cette facture est déjà saisie' });
     }
 
     function persist() {
@@ -10496,7 +10500,7 @@
           const champ = n => $(`#dsf [name=${n}]`, root);
           if (!v.date) return refus(champ('date'), 'Indique la date de sortie.');
           if (v.date < asset.date) return refus(champ('date'), `La sortie ne peut pas précéder la mise en service (${C.fmtDate(asset.date)}).`);
-          if (v.date > C.today() && !await confirmDialog(`La date (${C.fmtDate(v.date)}) est dans le futur. Enregistrer quand même ?`, 'Enregistrer')) return;
+          if (v.date > C.today() && !await confirmDialog(`La date (${C.fmtDate(v.date)}) est dans le futur. Enregistrer quand même ?`, 'Enregistrer', undefined, { titre: 'Une sortie datée dans le futur' })) return;
           if (closedBlock([asset.disposal && asset.disposal.date, v.date], 'Cette sortie')) return;
           // Un prix laissé VIDE n'est pas un prix décidé : on demande une fois si le bien sort vraiment
           // sans être vendu. Un « 0 » tapé, lui, est une réponse.
@@ -10833,7 +10837,7 @@
           if (!(Number(v.amount) > 0)) return refus($('[name=amount]', root), 'Montant invalide.');
           if (!v.date) return refus($('[name=date]', root), 'Date invalide.');
           if (!mv && licenceBlock('Créer un mouvement de trésorerie', 'pilotage')) return;
-          if (v.date > C.today() && !await confirmDialog(`La date (${C.fmtDate(v.date)}) est dans le futur. Un mouvement de trésorerie se saisit quand il a eu lieu. Enregistrer quand même ?`, 'Enregistrer')) return;
+          if (v.date > C.today() && !await confirmDialog(`La date (${C.fmtDate(v.date)}) est dans le futur. Un mouvement de trésorerie se saisit quand il a eu lieu. Enregistrer quand même ?`, 'Enregistrer', undefined, { titre: 'Un mouvement daté dans le futur' })) return;
           if (closedBlock([mv && mv.date, v.date], 'Ce mouvement')) return;
           Object.assign(m, v, { amount: Math.abs(Number(v.amount)), compte: String(v.compte || '').trim() });
           if (!mv) data.movements.push(m);
@@ -12679,7 +12683,7 @@
         const pw = (!paired && cabinetState.seal) ? ($('#cab-pwv').value || '').trim() : '';
         if (!paired && cabinetState.seal && pw.length < 6) return refus('#cab-pwv', 'Choisis un mot de passe d\'au moins six caractères.');
         if (await demoBlock('Fabriquer le paquet du comptable')) return;
-        if (!plan.definitive && !await confirmDialog(`${per.label} n'est pas clôturé : le paquet partira marqué « provisoire » et pourra encore changer.\n\nFabriquer quand même ?`, 'Fabriquer', false)) return;
+        if (!plan.definitive && !await confirmDialog(`${per.label} n'est pas clôturé : le paquet partira marqué « provisoire » et pourra encore changer.\n\nFabriquer quand même ?`, 'Fabriquer', false, { titre: 'Un paquet provisoire' })) return;
 
         // Le HTML de chaque pièce est produit ici : c'est le renderer qui sait dessiner un document.
         const entries = plan.entries.map(e => {
@@ -13491,7 +13495,7 @@
       ${(r.retires || []).length ? `<div class="small mt" id="dos-retires"><b>Retirés de la liste</b> <span class="muted">— leurs fichiers sont restés sur le disque</span>
         ${r.retires.map(d => `<div class="inline mt-s"><span>${h(d.name)}</span> <span class="muted">${h(d.dir)}</span> <button type="button" class="btn btn-sm" data-remettre="${h(d.id)}">Remettre dans la liste</button></div>`).join('')}</div>` : ''}`;
       $$('[data-open]', el).forEach(b => b.onclick = async () => {
-        if (setDirty && !await confirmDialog('Des paramètres ne sont pas enregistrés. Changer de dossier maintenant ?', 'Changer quand même')) return;
+        if (setDirty && !await confirmDialog('Des paramètres ne sont pas enregistrés. Changer de dossier maintenant ?', 'Changer quand même', undefined, { titre: 'Des paramètres ne sont pas enregistrés' })) return;
         await bridge.switchDossier(b.dataset.open);
       });
       bindRowMenus(el, id => {
@@ -16536,7 +16540,7 @@
 
   // ---------- import / export ----------
   async function exportAll() {
-    if (security.encrypted && !await confirmDialog('L\'export JSON est en clair (non chiffré). Continuer ?', 'Exporter', false)) return;
+    if (security.encrypted && !await confirmDialog('L\'export JSON est en clair (non chiffré). Continuer ?', 'Exporter', false, { titre: 'Exporter en clair ?' })) return;
     const p = await bridge.exportData(data); if (p) toast('Exporté : ' + p.split(/[\\/]/).pop());
   }
   async function importAll() {
