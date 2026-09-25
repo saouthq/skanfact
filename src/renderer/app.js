@@ -4886,6 +4886,11 @@
       <div class="mq-param mt"><button type="button" class="btn btn-sm" id="marque-apercu">Changer le logo, le cachet ou les couleurs…</button><span class="small muted">La fenêtre les montre sur ta prochaine facture, et rien n'est enregistré avant ton clic. Ils habillent tes devis et tes factures, pas l'application.</span></div>`;
   }
 
+  // Un matricule fiscal (« 1472411D/A/M/000 ») est un seul mot pour le navigateur : dans une
+  // colonne, il imposait sa largeur entière, et à 1280 px la liste des clients débordait de
+  // trente pixels dès que les montants dépassaient cent millions (10.14.0). Il se coupe après
+  // chaque « / » — là où un comptable le coupe aussi —, jamais au milieu d'un groupe.
+  const mfCoupable = mf => h(mf || '').replace(/\//g, '/<wbr>');
   const telLisible = tel => String(tel || '').split(/\s*\/\s*/).filter(Boolean).map(x => `<span class="nw">${h(x)}</span>`).join(' / ');
   const clientState = { q: '', f: '', sort: { key: 'name', dir: 'asc' }, page: 1 };
   const clientDocState = { sort: null, page: 1 };  // liste des documents dans la fiche client
@@ -4895,7 +4900,7 @@
     const s = clientState;
     const cols = [
       { key: 'name', label: 'Nom', asc: true, cls: 'nom-tiers', val: r => r.c.name.toLowerCase(), get: r => `<strong>${h(r.c.name)}</strong>${r.c.contact ? `<div class="small muted">${h(r.c.contact)}</div>` : ''}` },
-      { key: 'mf', label: 'MF / CIN', get: r => `${h(r.c.matricule)}${r.c.withholdingRate !== '' && r.c.withholdingRate != null && Number(r.c.withholdingRate) ? `<div class="small muted">RS ${pct(r.c.withholdingRate)} %</div>` : ''}` },
+      { key: 'mf', label: 'MF / CIN', get: r => `${mfCoupable(r.c.matricule)}${r.c.withholdingRate !== '' && r.c.withholdingRate != null && Number(r.c.withholdingRate) ? `<div class="small muted">RS ${pct(r.c.withholdingRate)} %</div>` : ''}` },
       // Un numéro de téléphone se lit d'un bloc : « 74 000 111 / 98 000 222 » se coupait entre
       // « 98 000 » et « 222 » (vu à la souris après un import). Chaque numéro tient sur sa ligne,
       // la coupure ne tombe que sur le « / » qui les sépare.
@@ -6945,7 +6950,7 @@
     const s = supplierState;
     const cols = [
       { key: 'name', label: 'Nom', asc: true, val: r => r.s.name.toLowerCase(), get: r => `<strong>${h(r.s.name)}</strong>${r.s.contact ? `<div class="small muted">${h(r.s.contact)}</div>` : ''}` },
-      { key: 'mf', label: 'Matricule', get: r => `${h(r.s.matricule || '')}${Number(r.s.withholdingRate) ? `<div class="small muted">RS ${pct(r.s.withholdingRate)} %</div>` : ''}` },
+      { key: 'mf', label: 'Matricule', get: r => `${mfCoupable(r.s.matricule)}${Number(r.s.withholdingRate) ? `<div class="small muted">RS ${pct(r.s.withholdingRate)} %</div>` : ''}` },
       { key: 'contact', label: 'Contact', get: r => `<span class="small">${h(r.s.phone || '')}${r.s.phone && r.s.email ? '<br>' : ''}${r.s.email ? `<span class="ellipse" title="${h(r.s.email)}">${h(r.s.email)}</span>` : ''}</span>` },
       { key: 'count', label: 'Achats', r: true, val: r => r.sum.count, get: r => r.sum.count || '<span class="muted">—</span>' },
       { key: 'ht', label: 'Acheté HT', r: true, val: r => r.sum.ht, get: r => r.sum.ht ? C.money(r.sum.ht, cur) : '<span class="muted">—</span>' },

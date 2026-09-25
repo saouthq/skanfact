@@ -7457,6 +7457,12 @@ livre de douze mille écritures et trois cents dossiers collés d'un coup (`satu
   les cinq jumeaux de `pl()`).
 - **« À jour » ne se dit pas de clients qui n'envoient rien** (`hors` n'est pas `ok`, 6.8.0) : trois
   cents dossiers hors SkanFact, et les Relances les félicitaient.
+- **Un identifiant fait d'un seul « mot » impose sa largeur à sa colonne** : le matricule fiscal
+  (« 1472411D/A/M/000 ») faisait déborder la liste des clients de trente pixels à 1280 dès que les
+  montants dépassaient cent millions — et la colonne Actions sortait de l'écran. Il se coupe après
+  ses « / » (`mfCoupable`, échappé AVANT de poser les `<wbr>`), là où un comptable le coupe aussi.
+  Les listes principales ne passent pas par `.scroll-x` : son `overflow` casserait l'en-tête
+  collant (2.2.0) — on fait tenir la table, on ne la fait pas défiler.
 - Trois des dix-sept preuves ont d'abord été discutées : deux défauts remis sont tombés sur un test
   PLUS ANCIEN que le neuf (la numérotation, le tri) — la règle était déjà tenue ; le troisième est
   resté vert, et c'est lui qui a montré que le test ne pouvait pas le voir.

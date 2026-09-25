@@ -101,4 +101,18 @@ module.exports = ({ t, assert }) => {
     const css = fs.readFileSync(path.join(__dirname, '../../src/renderer/style.css'), 'utf8');
     assert.ok(/\.more-list \.ml-titre \{/.test(css) && /\.more-list \.ml-sep \{/.test(css));
   });
+  // Un matricule fiscal est un seul mot pour le navigateur : il imposait sa largeur à la colonne, et
+  // à 1280 px la liste des clients débordait de trente pixels (saturation, 10.14.0).
+  t('10.14.0 : un matricule fiscal se coupe après ses « / », dans les listes des clients et des fournisseurs', () => {
+    const vm = require('vm');
+    const m = app.match(/const mfCoupable = (mf => [^\n]+);/);
+    assert.ok(m, 'mfCoupable est définie');
+    const h = x => String(x).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+    const f = vm.runInNewContext(m[1], { h });
+    assert.strictEqual(f('1472411D/A/M/000'), '1472411D/<wbr>A/<wbr>M/<wbr>000');
+    assert.strictEqual(f('<b>/'), '&lt;b>/<wbr>', 'échappé AVANT de poser les coupures');
+    assert.strictEqual(f(undefined), '');
+    assert.ok(/key: 'mf', label: 'MF \/ CIN', get: r => `\$\{mfCoupable\(r\.c\.matricule\)\}/.test(app), 'la liste des clients coupe le matricule');
+    assert.ok(/key: 'mf', label: 'Matricule', get: r => `\$\{mfCoupable\(r\.s\.matricule\)\}/.test(app), 'la liste des fournisseurs aussi');
+  });
 };

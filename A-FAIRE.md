@@ -230,9 +230,12 @@ Constats de l'audit du 22/09/2026 restés hors de la 10.6.0.
 - **Saturation (10.14.0), ce qui reste** : ~~un compte du grand livre ouvert affiche TOUTES ses lignes~~
   (fait : 300 lignes, puis la suite à la demande) ; les onglets Comptabilité ›
   Écritures et Cabinet de l'app entreprise mettent ~1,3 s par clic sur huit mille pièces
-  (à-nouveaux et balance lus depuis le début de l'exercice, 10.0.1) ; à 1280 px, la liste des
-  clients déborde encore d'une quarantaine de pixels quand les montants dépassent cent millions ;
-  la Déclaration employeur et le Registre du personnel restent d'un seul tenant (ce sont des
+  (à-nouveaux et balance lus depuis le début de l'exercice, 10.0.1) — **mesuré le 25/09** : 0,5 s
+  de calcul à l'année, dont 0,4 s d'à-nouveaux, immédiat au mois ; un cache entre deux clics
+  demanderait une invalidation à chaque enregistrement, et une invalidation oubliée montrerait un
+  chiffre périmé : non fait, c'est le prix d'un chiffre juste (10.0.1) ; ~~à 1280 px, la liste des
+  clients déborde encore d'une quarantaine de pixels quand les montants dépassent cent millions~~
+  (fait : le matricule se coupe après ses « / ») ; la Déclaration employeur et le Registre du personnel restent d'un seul tenant (ce sont des
   documents imprimés, pas des listes).
 - Les trois pistes jamais demandées, gardées pour mémoire : séparer les installateurs arm64 / x64
   (les 222 Mo du dmg universel), la signature Apple et Windows (certificats payants — mais elle

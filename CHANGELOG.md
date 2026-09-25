@@ -516,6 +516,13 @@ ou « Tout montrer ». Le pied du compte porte toujours ses totaux entiers, la p
 reste (l'export du grand livre, ou « Tout montrer » avant d'imprimer), et un compte ouvert reste
 ouvert quand on demande la suite.
 
+### La liste des clients tient à 1280 px
+
+Avec des montants de plusieurs centaines de millions, la liste des clients débordait d'une trentaine
+de pixels sur un écran de 1280 px : la page défilait de côté et le bouton « Actions » sortait de
+l'écran. Le matricule fiscal (« 1472411D/A/M/000 ») peut maintenant passer à la ligne après ses
+« / », dans la liste des clients comme dans celle des fournisseurs, et la liste tient.
+
 ## 10.13.0-beta.1 — 24/09/2026
 
 **Avant la mise en production : les deux applications et le pont entre elles, testés en entier.**
