@@ -328,6 +328,10 @@ l'ordre proposé.
   - **la décision de Skander** : une licence achetée pendant l'essai démarre-t-elle au paiement (ce
     que fait le code aujourd'hui) ou à la fin de l'essai ?
   - le remboursement d'un trop-perçu, avec le « reste à payer » net (§ 4 ci-dessus).
+  - **avant de publier la 10.14.0-beta.1 : déployer le worker de `beta`** (Actions → Worker → Run
+    workflow, branche `beta`). Le worker en service ne connaît ni `/v1/achat/cle` ni le jeton : une
+    commande passée depuis l'application y resterait « en attente » (l'écran dit « hors ligne »,
+    rien n'est perdu, la clé arrive par mail) — mais le geste neuf ne servirait à rien.
 - **Ne jamais se perdre** : les 78 titres « Confirmation » à écrire geste par geste, « émise » au lieu
   de « envoyée », H-E30, les barres qui passent sur deux rangées, et les restes de la console (§ 3).
 - **Les tests humains mis en pause** le 24/09 pour la visite : l'app entreprise (achats, stock, biens,
