@@ -1159,4 +1159,167 @@ t('10.14.0 : un écran du Cabinet lu au processus principal se relit quand le li
   // Le geste qui retente remet à vide CE que l'écran a lu, et redessine.
   assert.ok(/\$\$\('\[data-relire-ecran\]', el\)\.forEach\(b => \{ b\.onclick = \(\) => \{ s\[b\.dataset\.relireEcran\] = null; drawLivres\(root, dossier\); \}; \}\);/.test(corps('drawLivres')));
 });
+// 10.14.0 — ce que l'exemple de cinq ans ne porte pas. Mesuré sur l'exemple : aucune facture sans
+// timbre, aucun mouvement « retrait », « emprunt », « prêt » ni « autre entrée », aucun mouvement de
+// stock saisi à la main, aucun remboursement d'un trop-perçu, aucune mise au rebut. Un invariant qui
+// ne rencontre jamais un cas ne le prouve pas (10.0.0) : ce scénario les pose TOUS sur deux
+// exercices, et `ecarts` le confronte aux deux chemins de l'app entreprise ET au Cabinet, mois par
+// mois, par le vrai paquet.
+function scenarioComplet() {
+  const d = base0({
+    company: { ...CO, regime: 'reel' },
+    accounts: [
+      { id: 'b', name: 'Banque', kind: 'banque', opening: 5000, openingDate: '2025-01-01', isDefault: true },
+      { id: 'k', name: 'Caisse', kind: 'caisse', opening: 300, openingDate: '2025-01-01' }],
+    clients: [{ id: 'c1', name: 'Hôtel du Lac' }, { id: 'c2', name: 'Clinique Salama', stampExempt: true }, { id: 'c3', name: 'Société Étrangère' }],
+    suppliers: [{ id: 's1', name: 'Bois du Sahel' }, { id: 's2', name: 'Machines Europe' }],
+    catalog: [
+      { id: 'bois', label: 'Planche de chêne', unitPrice: 40, unitCost: 20, vatRate: 19, unit: 'pièce', tracked: true, initialQty: 50, initialCost: 20, initialDate: '2025-01-01' },
+      { id: 'vis', label: 'Boîte de vis', unitPrice: 3, unitCost: 0.5, vatRate: 19, unit: 'boîte', tracked: true, initialQty: 0 }],
+    documents: [],
+    purchases: [
+      { id: 'p1', kind: 'facture', supplierId: 's1', number: 'BS-1', date: '2025-01-20', createdAt: 1, lines: [{ label: 'Planche de chêne', itemId: 'bois', qty: 30, unit: 'pièce', unitPrice: 22, vatRate: 19, destination: 'stock', deductible: true }], payments: [] },
+      { id: 'p2', kind: 'facture', supplierId: 's1', number: 'LOY-4', date: '2025-04-10', createdAt: 1, withholdingRate: 10, category: 'Loyer et charges locatives', lines: [{ label: 'Loyer d\'avril', qty: 1, unitPrice: 800, vatRate: 19, destination: 'charge', deductible: true }], payments: [] },
+      { id: 'p3', kind: 'facture', supplierId: 's2', number: 'ME-77', date: '2025-08-01', createdAt: 1, currency: 'EUR', exchangeRate: 3.35, lines: [{ label: 'Scie à format', qty: 1, unitPrice: 5000, vatRate: 19, destination: 'immobilisation', deductible: true }], payments: [] },
+      { id: 'p4', kind: 'facture', supplierId: 's1', number: 'BS-9', date: '2026-01-15', createdAt: 1, lines: [{ label: 'Boîte de vis', itemId: 'vis', qty: 100, unit: 'boîte', unitPrice: 0.5, vatRate: 19, destination: 'stock', deductible: true }], payments: [] },
+      { id: 'p5', kind: 'facture', supplierId: 's1', number: 'REP-3', date: '2026-05-20', createdAt: 1, lines: [{ label: 'Réception clients', qty: 1, unitPrice: 180, vatRate: 19, destination: 'charge', deductible: false }], payments: [] }],
+    stockAdjustments: [
+      { id: 'sa1', itemId: 'bois', date: '2025-06-30', qty: -2, source: 'casse', note: 'Planches fendues', createdAt: 1 },
+      { id: 'sa2', itemId: 'bois', date: '2025-11-30', qty: 1, source: 'inventaire', note: 'Recompté', createdAt: 1 },
+      { id: 'sa3', itemId: 'vis', date: '2026-03-10', qty: -20, source: 'consommation', note: 'Chantier', createdAt: 1 },
+      { id: 'sa4', itemId: 'bois', date: '2026-05-05', qty: -1, source: 'ajustement', note: 'Erreur de saisie', createdAt: 1 }],
+    assets: [
+      { id: 'a1', label: 'Camionnette', category: 'transport', date: '2023-01-01', amount: 20000, residual: 0, years: 5, disposal: { date: '2026-06-30', amount: 9000, reason: 'Revendue' } },
+      { id: 'a2', label: 'Ordinateur', category: 'informatique', date: '2024-03-01', amount: 3000, residual: 0, years: 3, disposal: { date: '2025-11-15', amount: 0, reason: 'Mis au rebut' } },
+      { id: 'a3', label: 'Scie à format', category: 'materiel', date: '2025-08-01', amount: 16750, residual: 0, years: 5, purchaseId: 'p3' }],
+    employees: [{ id: 'e', name: 'Karim Ben Ali', cnss: '112233-44', contract: 'cdi', hireDate: '2024-01-01', endDate: '', grossSalary: 1200, headOfFamily: true, children: 1 }],
+    advances: [{ id: 'av', employeeId: 'e', date: '2026-02-10', amount: 600, monthly: 200, accountId: 'b', note: 'Avance' }],
+    movements: [
+      { id: 'm1', date: '2025-01-05', kind: 'apport', amount: 3000, accountId: 'b', label: 'Apport du gérant' },
+      { id: 'm2', date: '2025-02-01', kind: 'pret', amount: 10000, accountId: 'b', label: 'Prêt BIAT' },
+      { id: 'm3', date: '2025-03-20', kind: 'impot', amount: 150, accountId: 'b', label: 'Taxe municipale' },
+      { id: 'm4', date: '2025-07-07', kind: 'autre-sortie', amount: 50, accountId: 'k', label: 'Divers' },
+      { id: 'm5', date: '2025-12-20', kind: 'retrait', amount: 2000, accountId: 'b', label: 'Retrait du gérant' },
+      { id: 'm6', date: '2026-03-10', kind: 'emprunt', amount: 500, accountId: 'b', label: 'Échéance BIAT' },
+      { id: 'm7', date: '2026-06-30', kind: 'autre-entree', amount: 9000, accountId: 'b', compte: '775', label: 'Vente camionnette' },
+      { id: 'm8', date: '2025-06-30', kind: 'banque', amount: 12, accountId: 'b', label: 'Frais' },
+      { id: 'm9', date: '2026-04-15', kind: 'autre-entree', amount: 80, accountId: 'k', label: 'Chute vendue' },
+      { id: 'm10', date: '2025-09-01', kind: 'virement', amount: 500, accountId: 'b', versAccountId: 'k', label: '' },
+      { id: 'm11', date: '2026-06-10', kind: 'virement', amount: 300, accountId: 'k', versAccountId: 'b', label: 'Recette déposée' }],
+    ecrituresOD: [{ id: 'od1', date: '2025-12-31', piece: 'OD-2025-001', label: 'Assurance à payer', lignes: [
+      { compte: '616', label: 'Assurance', debit: 150, credit: 0 }, { compte: '408', label: 'Assurance à payer', debit: 0, credit: 150 }] }]
+  });
+  const co = d.company;
+  const doc = o => ({ status: 'envoyée', payments: [], createdAt: 1, issuedTs: 1, ...o });
+  const L = (label, qty, unitPrice, extra) => ({ label, qty, unitPrice, vatRate: 19, ...(extra || {}) });
+  const q = doc({ id: 'q', type: 'devis', number: 'DEV-2025-001', status: 'accepté', clientId: 'c1', date: '2025-06-01', lines: [L('Cuisine sur mesure', 1, 10000)] });
+  const fa = doc({ id: 'fa', type: 'facture', number: 'FAC-2025-004', clientId: 'c1', date: '2025-06-05', dueDate: '2025-06-05', fromQuoteId: 'q', deposit: { quoteId: 'q', percent: 30 }, lines: core.depositLines(q, 30, co) });
+  d.documents.push(
+    doc({ id: 'f1', type: 'facture', number: 'FAC-2025-001', clientId: 'c1', date: '2025-02-10', dueDate: '2025-03-10', lines: [L('Planche de chêne', 10, 40, { itemId: 'bois' })] }),
+    doc({ id: 'f2', type: 'facture', number: 'FAC-2025-002', clientId: 'c2', date: '2025-03-15', dueDate: '2025-03-15', applyStamp: false, lines: [L('Mobilier de salle d\'attente', 1, 1000)] }),
+    doc({ id: 'f3', type: 'facture', number: 'FAC-2025-003', clientId: 'c1', date: '2025-05-05', dueDate: '2025-06-05', withholdingRate: 1.5, lines: [L('Portes', 4, 1250)] }),
+    q, fa,
+    doc({ id: 'fs', type: 'facture', number: 'FAC-2025-005', clientId: 'c1', date: '2025-09-10', dueDate: '2025-10-10', fromQuoteId: 'q', lines: core.settlementLines(q, [fa]) }),
+    doc({ id: 'f4', type: 'facture', number: 'FAC-2026-001', clientId: 'c1', date: '2026-02-01', dueDate: '2026-02-28', lines: [L('Étagère', 1, 100)] }),
+    doc({ id: 'av1', type: 'avoir', number: 'AVO-2026-001', status: 'émis', clientId: 'c1', date: '2026-03-01', creditOf: 'f1', lines: [L('Planche de chêne', 2, 40, { itemId: 'bois' })] }),
+    doc({ id: 'f5', type: 'facture', number: 'FAC-2026-002', clientId: 'c3', date: '2026-04-10', dueDate: '2026-05-10', currency: 'EUR', exchangeRate: 3.3, lang: 'en', lines: [L('Consulting', 1, 1000, { vatRate: 0 })] }),
+    doc({ id: 'f6', type: 'facture', number: 'FAC-2026-003', clientId: 'c2', date: '2026-07-01', dueDate: '2026-07-31', applyStamp: false, lines: [L('Banque d\'accueil', 1, 2400)] }));
+  const net = id => core.computeTotals(d.documents.find(x => x.id === id), co).netToPay;
+  const payer = (id, date, amount, accountId) => d.documents.find(x => x.id === id).payments.push({ id: `${id}-${date}`, date, amount, accountId: accountId || 'b' });
+  payer('f1', '2025-03-01', net('f1'));
+  payer('f2', '2025-03-20', net('f2'), 'k');
+  payer('f3', '2025-06-01', net('f3'));
+  payer('fa', '2025-06-06', net('fa'));
+  payer('fs', '2025-10-01', net('fs'));
+  payer('f4', '2026-02-10', 150);                 // trop payé de 30
+  payer('f4', '2026-02-20', -30);                 // et remboursé
+  payer('f5', '2026-05-02', net('f5'));           // en euros
+  const netA = id => core.purchaseTotals(d.purchases.find(x => x.id === id), co).netToPay;
+  const regler = (id, date, amount, accountId) => d.purchases.find(x => x.id === id).payments.push({ id: `${id}-${date}`, date, amount, accountId: accountId || 'b' });
+  regler('p1', '2025-02-01', netA('p1'));
+  regler('p2', '2025-04-15', netA('p2'));
+  regler('p3', '2025-08-20', netA('p3'));
+  regler('p5', '2026-05-25', netA('p5'), 'k');
+  // La paie : chaque mois de 2025 et de 2026 jusqu'à juillet, payée le 3 du mois suivant ; l'avance
+  // de février 2026 se rembourse par les bulletins, par la même porte que l'application.
+  const e = d.employees[0], cfg = core.payrollSettings(d);
+  for (let y = 2025; y <= 2026; y++) for (let m = 1; m <= (y === 2025 ? 12 : 7); m++) {
+    const input = { ...core.payslipInputFor(d, e, y, m), gross: 1200, workedDays: 26 };
+    const suiv = m === 12 ? `${y + 1}-01-03` : `${y}-${String(m + 1).padStart(2, '0')}-03`;
+    d.payslips.push({ id: `sl${y}${m}`, employeeId: 'e', year: y, month: m, ...input, computed: core.computePayslip(e, input, cfg),
+      paidDate: y === 2026 && m === 7 ? '' : suiv, accountId: 'b', method: 'virement' });
+  }
+  return d;
+}
+t('10.14.0 : tout ce que l\'exemple ne porte pas — timbre exonéré, tous les mouvements, casse, rebut, remboursement, avance, devise, OD — dit les mêmes chiffres par deux chemins et au Cabinet', () => {
+  const d = scenarioComplet();
+  // Le scénario pose bien ce qu'il dit poser : un test dont les données ne discriminent pas ne
+  // prouve rien (10.0.0).
+  assert.strictEqual(core.computeTotals(d.documents.find(x => x.id === 'f2'), d.company).stamp, 0, 'la facture sans timbre en porte un');
+  assert.ok(d.payslips.some(s => (s.deductions || []).some(x => x.advanceId === 'av')), 'aucun bulletin ne rembourse l\'avance');
+  assert.strictEqual(core.invoiceBalance(d.documents.find(x => x.id === 'f4'), d, d.company).remaining, 0, 'le trop-perçu remboursé laisse la facture soldée');
+  const e = ecarts(d);
+  assert.deepStrictEqual(e, [], `${e.length} écart(s) :\n  ${e.slice(0, 30).join('\n  ')}`);
+});
+t('10.14.0 : un virement de la banque vers la caisse sort de l\'une, entre dans l\'autre — une écriture 54 / 532, aucun effet sur le résultat', () => {
+  // Il n'existait aucun geste pour alimenter la caisse : « Retrait » passe au compte courant de
+  // l'associé (4421) — le gérant devait l'argent, et la caisse ne recevait rien.
+  const d = scenarioComplet(), co = d.company;
+  const sept = { from: '2025-09-01', to: '2025-09-01' };
+  const lignes = core.cashMovements(d, co, sept, null).filter(m => m.movementId === 'm10').sort((a, b) => a.amount - b.amount);
+  assert.deepStrictEqual(lignes.map(m => [m.accountId, m.amount, m.label]), [['b', -500, 'Virement vers Caisse'], ['k', 500, 'Virement depuis Banque']]);
+  const E = core.journalEntries(d, co, sept, { sections: ['tresorerie'] }).filter(e => e.docId === 'm10');
+  assert.deepStrictEqual(E.map(e => [e.journal, e.account, e.debit, e.credit]), [['BQ', '54', 500, 0], ['BQ', '532', 0, 500]], 'la caisse au débit, la banque au crédit');
+  assert.ok(E.every(e => e.label === 'Virement vers Caisse'), 'le comptable lit la nature au lieu du compte qui reçoit');
+  // Le résultat de l'année et le compte de l'associé ne voient rien passer.
+  const sans = scenarioComplet(); sans.movements = sans.movements.filter(m => m.kind !== 'virement');
+  const an = { from: '2025-01-01', to: '2025-12-31' };
+  assert.strictEqual(core.simpleResult(d, co, an).resultat, core.simpleResult(sans, co, an).resultat);
+  assert.strictEqual(core.breakEven(d, co, an).result, core.breakEven(sans, co, an).result);
+  const assoc = x => r3(core.journalEntries(x, co, an).filter(e => e.account === '4421').reduce((t, e) => t + e.debit - e.credit, 0));
+  assert.strictEqual(assoc(d), assoc(sans), 'un virement passe au compte de l\'associé');
+  // Chaque côté se pointe sur SON relevé.
+  d.movements.find(m => m.id === 'm10').reconciledVers = true;
+  const cote = compte => core.cashMovements(d, co, sept, compte).find(m => m.movementId === 'm10');
+  const dep = cote('b'), arr = cote('k');
+  assert.strictEqual(dep.reconciled, false, 'pointer la caisse a pointé la banque');
+  assert.strictEqual(arr.reconciled, true);
+  // Un virement dont le compte d'arrivée a disparu n'est qu'une sortie, que le comptable verra au 471.
+  const orphelin = scenarioComplet(); orphelin.movements.find(m => m.id === 'm10').versAccountId = 'disparu';
+  assert.deepStrictEqual(core.cashMovements(orphelin, co, sept, null).filter(m => m.movementId === 'm10').map(m => m.amount), [-500]);
+  assert.deepStrictEqual(core.journalEntries(orphelin, co, sept, { sections: ['tresorerie'] }).filter(e => e.docId === 'm10').map(e => e.account), ['471', '532']);
+  const e = ecarts(orphelin);
+  assert.deepStrictEqual(e, [], e.join('\n'));
+});
+t('10.14.0 : les mouvements d\'un compte supprimé basculent sur le compte par défaut — dans la Trésorerie comme au grand livre', () => {
+  // La fenêtre de suppression le promettait ; la Trésorerie gardait l'identifiant disparu, et ces
+  // lignes ne tombaient plus dans aucun compte, pendant que les écritures les passaient au compte
+  // par défaut : la banque de la page et celle du grand livre divergeaient.
+  const d = scenarioComplet(), co = d.company;
+  d.accounts.push({ id: 'b2', name: 'Seconde banque', kind: 'banque', opening: 0, openingDate: '2025-01-01' });
+  d.documents.find(x => x.id === 'f3').payments.forEach(p => { p.accountId = 'b2'; });
+  d.movements.push({ id: 'm12', date: '2025-10-10', kind: 'banque', amount: 7, accountId: 'b2', label: 'Frais' });
+  const avant = core.cashPosition(d, co, '2026-08-31').total;
+  d.accounts = d.accounts.filter(a => a.id !== 'b2');
+  assert.strictEqual(core.cashPosition(d, co, '2026-08-31').total, avant, 'le disponible perd l\'argent du compte supprimé');
+  const e = ecarts(d, { sansCabinet: true });
+  assert.deepStrictEqual(e, [], e.join('\n'));
+});
+t('10.14.0 : le formulaire d\'un mouvement propose le virement entre comptes, et l\'arrivée se pointe sur son propre drapeau', () => {
+  const app = require('fs').readFileSync(require('path').join(__dirname, '../../src/renderer/app.js'), 'utf8');
+  const f = app.slice(app.indexOf('function movementForm('), app.indexOf('routes.tresorerie = '));
+  assert.ok(f.length > 2000 && f.length < 9000, 'tranche du formulaire inattendue');
+  // La nature n'est proposée qu'avec deux comptes : on ne propose pas un geste qui sera refusé.
+  assert.ok(/\.filter\(\(\[v\]\) => v !== 'virement' \|\| data\.accounts\.length > 1 \|\| m\.kind === 'virement'\)/.test(f));
+  // Le compte qui reçoit prend la place de la contrepartie : rien ne pousse le formulaire.
+  assert.ok(/id="mf-cp" \$\{m\.kind === 'virement' \? 'hidden' : ''\}/.test(f) && /id="mf-vers" \$\{m\.kind === 'virement' \? '' : 'hidden'\}/.test(f));
+  assert.ok(/\$\('#mf-cp', root\)\.hidden = vir; \$\('#mf-vers', root\)\.hidden = !vir;/.test(f), 'changer de nature n\'échange pas les deux champs');
+  assert.ok(/kindSel\.addEventListener\('change', accorder\);/.test(f) && /texteCompte\.data = vir \? 'Depuis le compte ' : 'Compte ';/.test(f), 'le compte d\'un virement ne dit pas qu\'il est celui du départ');
+  // Un virement sans compte d'arrivée, ou vers lui-même, est refusé en montrant le champ.
+  assert.ok(/if \(v\.kind === 'virement' && !v\.versAccountId\) return refus\(/.test(f));
+  assert.ok(/if \(v\.kind === 'virement' && v\.versAccountId === v\.accountId\) return refus\(/.test(f));
+  // Pointer l'arrivée écrit `reconciledVers`, jamais le drapeau du départ.
+  const p2 = app.slice(app.indexOf('const porteur = id => {'), app.indexOf('$$(\'[data-rec]\').forEach'));
+  assert.ok(/id\.endsWith\('~vers'\)/.test(p2) && /set reconciled\(x\) \{ mv\.reconciledVers = x; \}/.test(p2), 'l\'arrivée d\'un virement ne se pointe pas');
+});
 };

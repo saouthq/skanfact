@@ -813,6 +813,14 @@ douze mois et l'année. Voici ce qu'il a trouvé :
   « déposée » sur des chiffres qui ne sont pas ceux qu'on recopie : le bouton s'éteint en nommant ce
   qui a bougé, et recalculer le rallume. Déjà déposée, rien ne se bloque, mais l'écran dit « déposée
   avec d'autres chiffres » et renvoie à une déclaration rectificative (À VÉRIFIER).
+- **Trésorerie : « Virement entre mes comptes ».** Retirer des espèces pour la caisse ou déposer la
+  recette à la banque n'avait aucun geste : « Retrait » l'inscrivait au compte courant du gérant, et la
+  caisse ne recevait rien. La nature ⇄ (proposée dès qu'il y a deux comptes) fait sortir l'argent de
+  l'un et entrer dans l'autre en un seul mouvement ; chaque côté se pointe sur son propre relevé, le
+  résultat n'en voit rien, et le comptable reçoit l'écriture compte qui reçoit / compte qui paie.
+- **Trésorerie : les mouvements d'un compte supprimé basculent vraiment sur le compte par défaut.** La
+  fenêtre le promettait ; la page Trésorerie les perdait pendant que le grand livre les gardait — le
+  disponible et la banque de la comptabilité ne disaient plus la même chose.
 - **SkanFact Cabinet : la déclaration, les biens et l'inventaire se relisent quand le livre bouge.**
   Lus une fois, ils gardaient leurs chiffres d'avant : une vente validée dans la grille n'entrait dans
   la TVA collectée qu'au changement de dossier, et la déclaration de septembre disait « 1 pièce en

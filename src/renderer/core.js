@@ -3831,9 +3831,22 @@
   const MOVE_KINDS = [
     ['salaire', 'Salaires et charges', -1], ['impot', 'Impôts et taxes', -1], ['banque', 'Frais bancaires', -1],
     ['retrait', 'Retrait ou dividende', -1], ['emprunt', 'Échéance d\'emprunt', -1], ['autre-sortie', 'Autre sortie', -1],
-    ['apport', 'Apport ou subvention', 1], ['pret', 'Déblocage de prêt', 1], ['autre-entree', 'Autre entrée', 1]
+    ['apport', 'Apport ou subvention', 1], ['pret', 'Déblocage de prêt', 1], ['autre-entree', 'Autre entrée', 1],
+    ['virement', 'Virement entre mes comptes', -1]
   ];
   const moveSign = kind => { const m = MOVE_KINDS.find(x => x[0] === kind); return m ? m[2] : -1; };
+  // Le compte d'arrivée d'un virement entre deux comptes de l'entreprise (10.14.0), ou '' : un
+  // virement sans compte d'arrivée valable (supprimé, ou le même que le départ) n'est qu'une sortie,
+  // et son écriture va au compte d'attente — le comptable la verra, rien ne se perd en silence.
+  function virementVers(data, m) {
+    if (!m || m.kind !== 'virement') return '';
+    const vers = String(m.versAccountId || '');
+    const comptes = (data && data.accounts) || [];
+    if (!vers || !comptes.some(a => a.id === vers)) return '';
+    const defaut = comptes.find(a => a.isDefault) || comptes[0];
+    const depart = (m.accountId && comptes.some(a => a.id === m.accountId)) ? m.accountId : (defaut ? defaut.id : '');
+    return vers === depart ? '' : vers;
+  }
 
   // 10.14.0 — Le compte bancaire naît de la FICHE SOCIÉTÉ. L'entreprise a déjà donné sa banque et
   // son RIB (la fiche, « Tes premiers pas ») ; les retaper dans la Trésorerie, c'est la ressaisie
@@ -3866,7 +3879,14 @@
     const out = [];
     const defaultAccount = (data.accounts || []).find(a => a.isDefault) || (data.accounts || [])[0];
     const fallback = defaultAccount ? defaultAccount.id : '';
-    const keep = id => !accountId || (id || fallback) === accountId;
+    // Le compte d'une ligne : celui qu'elle nomme s'il existe encore, sinon le compte par défaut
+    // (10.14.0). Supprimer un compte promet « ses mouvements basculeront sur le compte par défaut » ;
+    // la Trésorerie gardait pourtant l'identifiant disparu, et ces lignes ne tombaient plus dans
+    // aucun compte — pendant que les écritures (`journalDeCompte`) les passaient bien au compte par
+    // défaut : la banque de la page et celle du grand livre ne disaient plus la même chose.
+    const existants = new Set((data.accounts || []).map(a => a.id));
+    const compteDe = id => (id && existants.has(id)) ? id : fallback;
+    const keep = id => !accountId || compteDe(id) === accountId;
     const clientName = id => ((data.clients || []).find(c => c.id === id) || {}).name || '—';
     const supplierName = id => ((data.suppliers || []).find(s => s.id === id) || {}).name || '—';
 
@@ -3874,7 +3894,7 @@
       if (!inPeriod(p.date, period && period.from, period && period.to) || !keep(p.accountId)) return;
       const rend = estRemboursement(p);
       out.push({
-        id: p.id, kind: rend ? 'decaissement' : 'encaissement', date: p.date, accountId: p.accountId || fallback,
+        id: p.id, kind: rend ? 'decaissement' : 'encaissement', date: p.date, accountId: compteDe(p.accountId),
         label: `${rend ? 'Remboursement' : 'Encaissement'} ${d.number || ''}`.trim(), party: clientName(d.clientId),
         amount: round3(toBase(d, Number(p.amount) || 0, company)), method: p.method || '',
         reference: p.reference || '', docId: d.id, reconciled: !!p.reconciled, source: 'vente'
@@ -3889,7 +3909,7 @@
       const montant = -round3((pu.kind === 'avoir' ? -1 : 1) * toBase(pu, Number(p.amount) || 0, company));
       const rendu = montant > 0;
       out.push({
-        id: p.id, kind: rendu ? 'encaissement' : 'decaissement', date: p.date, accountId: p.accountId || fallback,
+        id: p.id, kind: rendu ? 'encaissement' : 'decaissement', date: p.date, accountId: compteDe(p.accountId),
         label: `${rendu ? 'Remboursement' : 'Règlement'} ${pu.number || 'd\'un achat sans numéro'}`, party: supplierName(pu.supplierId),
         // Ce qui sort du compte sort en DINARS (10.1.0), comme l'encaissement client dix lignes
         // plus haut : régler 500 € vide le compte de 1 700 DT, pas de 500. Sans ça, la trésorerie
@@ -3908,7 +3928,7 @@
       const net = ((sl.computed || {}).net) || 0;
       if (!net) return;
       out.push({
-        id: 'pay-' + sl.id, kind: 'sortie', date: sl.paidDate, accountId: sl.accountId || fallback,
+        id: 'pay-' + sl.id, kind: 'sortie', date: sl.paidDate, accountId: compteDe(sl.accountId),
         label: `Salaire ${monthLabel(payslipDate(sl))}`, party: emp.name || 'Salarié',
         amount: -round3(net), method: sl.method || 'virement', reference: sl.reference || '',
         payslipId: sl.id, reconciled: !!sl.reconciled, source: 'paie'
@@ -3923,19 +3943,32 @@
       if (!montant || !inPeriod(a.date, period && period.from, period && period.to) || !keep(a.accountId)) return;
       const emp = (data.employees || []).find(e => e.id === a.employeeId) || {};
       out.push({
-        id: 'av-' + a.id, kind: 'sortie', date: a.date, accountId: a.accountId || fallback,
+        id: 'av-' + a.id, kind: 'sortie', date: a.date, accountId: compteDe(a.accountId),
         label: 'Avance sur salaire', party: emp.name || 'Salarié',
         amount: -montant, method: a.method || 'virement', reference: a.reference || '',
         advanceId: a.id, reconciled: !!a.reconciled, source: 'avance'
       });
     });
+    // Un VIREMENT entre deux comptes de l'entreprise (10.14.0) — la banque qui alimente la caisse, la
+    // caisse déposée à la banque — sort de l'un et entre dans l'autre : deux lignes, une par compte,
+    // chacune pointée sur SON relevé (`reconciled` au départ, `reconciledVers` à l'arrivée). Sans
+    // cette nature, le seul geste proposé pour alimenter la caisse était « Retrait », qui passe au
+    // compte courant de l'associé : la caisse ne recevait rien, et le gérant devait l'argent.
+    const nomCompte = id => ((data.accounts || []).find(a => a.id === id) || {}).name || 'un autre compte';
     (data.movements || []).forEach(m => {
-      if (!inPeriod(m.date, period && period.from, period && period.to) || !keep(m.accountId)) return;
+      if (!inPeriod(m.date, period && period.from, period && period.to)) return;
       const label = (MOVE_KINDS.find(k => k[0] === m.kind) || [null, 'Mouvement'])[1];
-      out.push({
-        id: m.id, kind: moveSign(m.kind) > 0 ? 'entree' : 'sortie', date: m.date, accountId: m.accountId || fallback,
-        label: m.label || label, party: label, amount: round3(moveSign(m.kind) * Math.abs(Number(m.amount) || 0)),
-        method: m.method || '', reference: m.reference || '', movementId: m.id, reconciled: !!m.reconciled, source: 'libre'
+      const montant = round3(Math.abs(Number(m.amount) || 0));
+      const vers = virementVers(data, m);
+      if (keep(m.accountId)) out.push({
+        id: m.id, kind: moveSign(m.kind) > 0 ? 'entree' : 'sortie', date: m.date, accountId: compteDe(m.accountId),
+        label: m.label || (vers ? `Virement vers ${nomCompte(vers)}` : label), party: label, amount: round3(moveSign(m.kind) * montant),
+        method: m.method || '', reference: m.reference || '', movementId: m.id, reconciled: !!m.reconciled, source: 'libre', virement: !!vers
+      });
+      if (vers && keep(vers)) out.push({
+        id: m.id + '~vers', kind: 'entree', date: m.date, accountId: vers,
+        label: m.label || `Virement depuis ${nomCompte(compteDe(m.accountId))}`, party: label, amount: montant,
+        method: m.method || '', reference: m.reference || '', movementId: m.id, reconciled: !!m.reconciledVers, source: 'libre', virement: true, arrivee: true
       });
     });
     return out.sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.label || '').localeCompare(b.label || ''));
@@ -5001,7 +5034,7 @@
   // d'attente : c'est le comptable qui ventile, et c'est écrit.
   const MOVE_ACCOUNTS = {
     salaire: 'personnel', impot: 'impots', banque: 'fraisBancaires', retrait: 'associes', emprunt: 'emprunts',
-    'autre-sortie': 'attente', apport: 'associes', pret: 'emprunts', 'autre-entree': 'attente'
+    'autre-sortie': 'attente', apport: 'associes', pret: 'emprunts', 'autre-entree': 'attente', virement: 'attente'
   };
   // Le RÔLE du compte d'un mouvement, sans contrepartie choisie (10.14.0). Un mouvement « Salaires »
   // RÈGLE ce qu'un bulletin a mis au 425 — mais une entreprise qui ne tient pas la Paie n'a pas de
@@ -5332,9 +5365,13 @@
         if (!montant || !inPeriod(m.date, period && period.from, period && period.to)) return;
         const j = journalDeCompte(data, acc, m.accountId, m.method);
         const nature = (MOVE_KINDS.find(k => k[0] === m.kind) || [null, 'Mouvement'])[1];
-        const contrepartie = String(m.compte || '').trim() || acc[compteDuMouvement(data, m, bulletins)];
+        // Un virement entre deux comptes de l'entreprise (10.14.0) : le compte d'arrivée EST la
+        // contrepartie — une banque qui alimente la caisse s'écrit 54 au débit, 532 au crédit.
+        const vers = virementVers(data, m);
+        const contrepartie = vers ? journalDeCompte(data, acc, vers, m.method).compte
+          : (m.kind !== 'virement' && String(m.compte || '').trim()) || acc[compteDuMouvement(data, m, bulletins)];
         const e = entrySet({ date: m.date, journal: j.journal, piece: m.reference || nature, tiers: '', tiersId: '', source: 'mouvement', docId: m.id, currency: cur });
-        const label = m.label || nature;
+        const label = m.label || (vers ? `Virement vers ${((data.accounts || []).find(a => a.id === vers) || {}).name || 'un autre compte'}` : nature);
         if (moveSign(m.kind) > 0) { e.debit(j.compte, label, montant); e.credit(contrepartie, label, montant); }
         else { e.debit(contrepartie, label, montant); e.credit(j.compte, label, montant); }
         out.push(...e.done());
@@ -8708,7 +8745,7 @@
     EXTRA_TYPES, SALES_TYPES, CONVERSIONS, CONVERSION_LABELS, convertDoc, derivedDocs, chaineDePieces, DEFAULT_CLAUSES, CLAUSE_LABELS,
     PURCHASE_KINDS, PURCHASE_LIES, piecesLieesAchat, LINE_DESTINATIONS, DEFAULT_EXPENSE_CATEGORIES, PURCHASE_STATUSES, expenseCategories,
     vatReturn, vatChain, reportTvaDebut, DEFAULT_FISCAL_DEADLINES, fiscalDeadlines, nextDeadline, upcomingFiscal, fiscalFilingId, fiscalDone, echeanceSociale, socialesDeposees, simpleResult,
-    ACCOUNT_KINDS, MOVE_KINDS, compteDepuisFiche, cashMovements, accountBalance, cashPosition, cashForecast, reconciliation,
+    ACCOUNT_KINDS, MOVE_KINDS, virementVers, compteDepuisFiche, cashMovements, accountBalance, cashPosition, cashForecast, reconciliation,
     lineCost, documentMargin, marginBy, PROJECT_STATUSES, projectMargin, projectList, recurringProfitability,
     DEFAULT_FIXED_CATEGORIES, isFixedCategory, breakEven,
     DEFAULT_ASSET_CLASSES, assetClassLabel, assetClassYears, days360, assetSchedule, assetYear,

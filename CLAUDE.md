@@ -105,6 +105,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Un **rôle** désigne le compte ; un préfixe écrit à part se trompe de compte | 10.12.0 — la déclaration d'employeur lisait le 65, la paie écrit au 645 |
 | Une **dotation** se réclame à l'inventaire, au dernier mois ; une sortie d'actif, tout de suite | 10.12.0 |
 | Un **écart d'ouverture** se pose en à-nouveaux COMPLÉMENTAIRES au 1er janvier, jamais par contre-passation puis nouvelle ouverture ; un **miroir** reste dans l'exercice de son livre | 10.14.0 — `poserComplementAnouveaux`, `dateDuMiroir` |
+| Un **geste quotidien sans nature** se fait par la mauvaise : alimenter la caisse passait au compte courant de l'associé ; une promesse de fenêtre se vérifie dans les DEUX chemins | 10.14.0 — « Virement entre mes comptes », `compteDe` |
 | Une **chaîne qui reporte** de mois en mois reporte aussi d'une année à l'autre : un crédit de décembre perdu au 1er janvier, c'est de la TVA payée en trop | 10.14.0 — `reportTvaDebut` ; 3.1.0 |
 | Ce qui **manque à une écriture passée** se pose en COMPLÉMENT, compte par rôle ; et un **dépôt se pointe sur les chiffres qu'on recopie**, jamais sur une préparation périmée | 10.14.0 — `ecritureComplementDeclaration`, `ecartDeclaration` ; 215g |
 | Un chiffre qu'une **page** montre existe dans les **écritures**, sinon le bilan ment | 10.14.0 — le stock valorisé depuis la 4.0.0, et le 37 dans aucune écriture |
@@ -7919,6 +7920,23 @@ aussi l'app cabinet ») — les invariants ont gagné le stock, le résultat, le
   regarde ce qui MANQUE, pas un solde. Et la raison d'un solde se dit TELLE QU'ELLE EST : « au
   brouillard » quand c'est le complément qui attend, jamais « un mois précédent n'est pas soldé » —
   trouvé à la souris sur ce geste exact, et prouvé.
+- **Un scénario qui pose ce que l'exemple ne porte pas** (`scenarioComplet`) : timbre exonéré, les
+  neuf natures de mouvement, casse, consommation, inventaire et ajustement de stock, une cession et une
+  mise au rebut, un trop-perçu remboursé, une avance retenue sur les bulletins, une caisse, une OD, un
+  achat et une vente en devise — sur deux exercices, confronté aux deux chemins ET au Cabinet. Il est
+  passé du premier coup, et ses chiffres ont été refaits À LA MAIN compte par compte (le 12, le 13, le
+  4365, le 4366, le 411, le 425…) : un invariant qui passe peut être juste des deux côtés et faux dans
+  les deux ; seule la main le dit.
+- **Un geste quotidien sans nature se fait par la mauvaise.** Alimenter la caisse depuis la banque
+  n'avait aucun geste : « Retrait » passe au compte courant de l'associé (le gérant devait l'argent,
+  la caisse ne recevait rien). « Virement entre mes comptes » (`virementVers`) : UN mouvement, deux
+  lignes de trésorerie, chacune pointée sur SON relevé (`reconciled` au départ, `reconciledVers` à
+  l'arrivée), une écriture compte d'arrivée / compte de départ, aucun effet sur le résultat, et un
+  virement dont l'arrivée a disparu n'est qu'une sortie au 471 — le comptable la verra.
+- **Une promesse d'une fenêtre se vérifie dans les DEUX chemins.** Supprimer un compte disait « ses
+  mouvements basculeront sur le compte par défaut » ; les écritures le faisaient (`journalDeCompte`),
+  la Trésorerie gardait l'identifiant disparu et ces lignes ne tombaient plus dans aucun compte.
+  `compteDe` résout chaque ligne comme les écritures la résolvent.
 
 ## Pistes pour la suite (non demandées)
 

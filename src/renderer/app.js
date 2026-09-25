@@ -11010,29 +11010,56 @@
   function movementForm(mv, done) {
     const m = mv || { id: C.uid(), date: C.today(), kind: 'autre-sortie', amount: 0, accountId: (data.accounts.find(a => a.isDefault) || data.accounts[0] || {}).id || '', label: '', reference: '', method: 'virement' };
     modal(`<h2>${mv ? 'Modifier le mouvement' : 'Nouveau mouvement'}</h2>
-      <p class="small muted">Ce qui n'a ni facture ni achat : salaires, impôts, frais bancaires, apport, retrait. Les encaissements clients et les règlements fournisseurs n'ont <b>pas</b> à être saisis ici — ils remontent tout seuls.</p>
+      <p class="small muted">Ce qui n'a ni facture ni achat : salaires, impôts, frais bancaires, apport, retrait${data.accounts.length > 1 ? ', virement entre tes comptes' : ''}. Les encaissements clients et les règlements fournisseurs n'ont <b>pas</b> à être saisis ici — ils remontent tout seuls.</p>
       <form id="mf2" class="grid-2">
         ${dateFieldHtml(lbl('Date', 'tre.moveDate'), 'date', m.date, {})}
-        <label class="field">${lbl('Nature', 'tre.moveKind')}<select name="kind">${C.MOVE_KINDS.map(([v, l, s]) => `<option value="${v}" ${m.kind === v ? 'selected' : ''}>${s > 0 ? '↑' : '↓'} ${l}</option>`).join('')}</select></label>
+        <label class="field">${lbl('Nature', 'tre.moveKind')}<select name="kind">${C.MOVE_KINDS
+          // Un virement entre deux comptes ne se propose qu'avec deux comptes (10.14.0) : on ne propose
+          // pas un geste qui sera refusé. Un virement déjà saisi garde sa nature, quoi qu'il arrive.
+          .filter(([v]) => v !== 'virement' || data.accounts.length > 1 || m.kind === 'virement')
+          .map(([v, l, s]) => `<option value="${v}" ${m.kind === v ? 'selected' : ''}>${v === 'virement' ? '⇄' : s > 0 ? '↑' : '↓'} ${l}</option>`).join('')}</select></label>
         ${field(lbl('Montant', 'tre.moveAmount'), 'amount', Math.abs(m.amount) || 0, 'number', 'step="0.001" min="0" class="num"')}
         <label class="field">${lbl('Compte', 'tre.moveAccount')}<select name="accountId">${data.accounts.map(a => `<option value="${a.id}" ${m.accountId === a.id ? 'selected' : ''}>${h(a.name)}</option>`).join('')}</select></label>
         <label class="field span-2">${lbl('Libellé', 'tre.moveLabel')}<input type="text" name="label" value="${h(m.label || '')}" placeholder="Salaires de septembre"></label>
         ${field(lbl('Référence', 'tre.moveRef'), 'reference', m.reference || '', 'text', 'placeholder="N° de chèque, référence du virement…"')}
         <label class="field">${lbl('Mode', 'tre.moveMethod')}<select name="method">${C.PAYMENT_METHODS.map(([v, l]) => `<option value="${v}" ${m.method === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
-        <label class="field span-2">${lbl('Contrepartie comptable', 'tre.compte')}<select name="compte">${C.COMPTES_CONTREPARTIE.map(([v, l]) => `<option value="${v}" ${String(m.compte || '') === v ? 'selected' : ''}>${v ? v + ' — ' : ''}${l}</option>`).join('')}${m.compte && !C.COMPTES_CONTREPARTIE.some(([v]) => v === String(m.compte)) ? `<option value="${h(m.compte)}" selected>${h(m.compte)} — ${h(C.accountLabel(data, m.compte))}</option>` : ''}</select></label>
+        <label class="field span-2" id="mf-cp" ${m.kind === 'virement' ? 'hidden' : ''}>${lbl('Contrepartie comptable', 'tre.compte')}<select name="compte">${C.COMPTES_CONTREPARTIE.map(([v, l]) => `<option value="${v}" ${String(m.compte || '') === v ? 'selected' : ''}>${v ? v + ' — ' : ''}${l}</option>`).join('')}${m.compte && !C.COMPTES_CONTREPARTIE.some(([v]) => v === String(m.compte)) ? `<option value="${h(m.compte)}" selected>${h(m.compte)} — ${h(C.accountLabel(data, m.compte))}</option>` : ''}</select></label>
+        <label class="field span-2" id="mf-vers" ${m.kind === 'virement' ? '' : 'hidden'}>${lbl('Vers le compte', 'tre.moveVers')}<select name="versAccountId"><option value="">— Choisir le compte qui reçoit —</option>${data.accounts.map(a => `<option value="${a.id}" ${m.versAccountId === a.id ? 'selected' : ''}>${h(a.name)}</option>`).join('')}</select></label>
       </form>
       <div class="modal-actions">
         ${mv ? '<button class="btn btn-danger" id="del-mv" style="margin-inline-end:auto">Supprimer</button>' : ''}
         <button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
       (root, close) => {
+        // La contrepartie comptable et le compte qui reçoit vivent à la MÊME place : un virement n'a
+        // pas de contrepartie à choisir, c'est le compte d'arrivée (règle H-E1 : ce qui apparaît
+        // selon une valeur ne pousse rien).
+        const kindSel = $('[name=kind]', root), versSel = $('[name=versAccountId]', root);
+        // Pour un virement, le compte choisi est celui d'où l'argent PART, et le libellé laissé vide
+        // s'écrira « Virement vers … » : l'invite le montre avant qu'on l'enregistre.
+        const texteCompte = $('[name=accountId]', root).closest('label').querySelector('.fl').firstChild;
+        const libelle = $('[name=label]', root);
+        const accorder = () => {
+          const vir = kindSel.value === 'virement';
+          $('#mf-cp', root).hidden = vir; $('#mf-vers', root).hidden = !vir;
+          texteCompte.data = vir ? 'Depuis le compte ' : 'Compte ';
+          const cible = data.accounts.find(a => a.id === versSel.value);
+          libelle.placeholder = vir ? (cible ? `Virement vers ${cible.name}` : 'Virement vers le compte choisi') : 'Salaires de septembre';
+        };
+        kindSel.addEventListener('change', accorder);
+        versSel.addEventListener('change', accorder);
+        accorder();
         $('#ok', root).onclick = async () => {
           const v = formValues($('#mf2', root));
           if (!(Number(v.amount) > 0)) return refus($('[name=amount]', root), 'Montant invalide.');
           if (!v.date) return refus($('[name=date]', root), 'Date invalide.');
+          if (v.kind === 'virement' && !v.versAccountId) return refus($('[name=versAccountId]', root), 'Choisis le compte qui reçoit l\'argent.');
+          if (v.kind === 'virement' && v.versAccountId === v.accountId) return refus($('[name=versAccountId]', root), 'Un virement va d\'un compte à un AUTRE : choisis le compte qui reçoit l\'argent.');
           if (!mv && licenceBlock('Créer un mouvement de trésorerie', 'pilotage')) return;
           if (v.date > C.today() && !await confirmDialog(`La date (${C.fmtDate(v.date)}) est dans le futur. Un mouvement de trésorerie se saisit quand il a eu lieu. Enregistrer quand même ?`, 'Enregistrer', undefined, { titre: 'Un mouvement daté dans le futur' })) return;
           if (closedBlock([mv && mv.date, v.date], 'Ce mouvement')) return;
-          Object.assign(m, v, { amount: Math.abs(Number(v.amount)), compte: String(v.compte || '').trim() });
+          const vir = v.kind === 'virement';
+          Object.assign(m, v, { amount: Math.abs(Number(v.amount)), compte: vir ? '' : String(v.compte || '').trim() });
+          if (!vir) { delete m.versAccountId; delete m.reconciledVers; }
           if (!mv) data.movements.push(m);
           save(true); close(); if (done) done(m);
         };
@@ -11176,8 +11203,12 @@
       const all = C.cashMovements(data, company(), period, s.account || null);
       const rows = applySort(all.slice().reverse(), cols, s.moves.sort);
       const pg = paginate(rows, s.moves);
-      const entrees = C.round3(all.filter(m => m.amount > 0).reduce((x, m) => x + m.amount, 0));
-      const sorties = C.round3(all.filter(m => m.amount < 0).reduce((x, m) => x + m.amount, 0));
+      // Tous comptes confondus, un virement entre deux comptes de l'entreprise n'est ni une entrée ni
+      // une sortie : l'argent change de poche (10.14.0). Il ne compte que sur UN compte choisi.
+      const interne = m => !s.account && m.virement;
+      const entrees = C.round3(all.filter(m => m.amount > 0 && !interne(m)).reduce((x, m) => x + m.amount, 0));
+      const sorties = C.round3(all.filter(m => m.amount < 0 && !interne(m)).reduce((x, m) => x + m.amount, 0));
+      const nbInternes = s.account ? 0 : all.filter(m => m.virement && !m.arrivee).length;
       $('#t-body').innerHTML = `
         <div class="filters">
           <select id="t-acc" aria-label="Compte"><option value="">Tous les comptes</option>${data.accounts.map(a => `<option value="${a.id}" ${s.account === a.id ? 'selected' : ''}>${h(a.name)}</option>`).join('')}</select>
@@ -11188,7 +11219,7 @@
         <div class="stats">
           <div class="stat"><div class="lbl">Entrées</div><div class="val ok">${C.money(entrees, cur)}</div><div class="sub">encaissements et apports</div></div>
           <div class="stat"><div class="lbl">Sorties</div><div class="val due">${C.money(-sorties, cur)}</div><div class="sub">règlements et charges</div></div>
-          <div class="stat"><div class="lbl">Variation</div><div class="val ${entrees + sorties < 0 ? 'due' : 'ok'}">${C.money(C.round3(entrees + sorties), cur)}</div><div class="sub">sur ${h(s.year)}</div></div>
+          <div class="stat"><div class="lbl">Variation</div><div class="val ${entrees + sorties < 0 ? 'due' : 'ok'}">${C.money(C.round3(entrees + sorties), cur)}</div><div class="sub">sur ${h(s.year)}${nbInternes ? `, hors ${pl(nbInternes, 'virement')} entre tes comptes` : ''}</div></div>
         </div>
         <div class="panel"><h2>Tous les mouvements de ${h(s.year)}</h2>
           <div class="inline mb"><button class="btn btn-sm" id="exp-moves">Exporter en CSV</button></div>
@@ -11322,6 +11353,13 @@
         data.documents.forEach(d => (d.payments || []).forEach(p => { if (p.id === id) hit = p; }));
         data.purchases.forEach(pu => (pu.payments || []).forEach(p => { if (p.id === id) hit = p; }));
         data.movements.forEach(m => { if (m.id === id) hit = m; });
+        // L'ARRIVÉE d'un virement entre deux comptes (10.14.0) se pointe sur le relevé du compte qui
+        // reçoit : son drapeau est `reconciledVers`, jamais celui du départ — sinon pointer la caisse
+        // pointait aussi la banque, et le relevé de la banque tombait juste sur une ligne jamais vue.
+        if (!hit && id.endsWith('~vers')) {
+          const mv = data.movements.find(m => m.id + '~vers' === id);
+          if (mv) hit = { get reconciled() { return !!mv.reconciledVers; }, set reconciled(x) { mv.reconciledVers = x; } };
+        }
         // 10.14.0 : un salaire payé (« pay-… ») et une avance versée (« av-… ») portent leur drapeau
         // sur le bulletin et sur l'avance. Sans ces deux lignes, leur case acceptait le clic et ne
         // pointait rien : le rapprochement d'un mois de paie ne tombait jamais juste.
