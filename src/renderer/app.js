@@ -9713,7 +9713,10 @@
     // Même défaut que sur Paie : le bouton vert de l'en-tête ne suivait pas l'onglet. Sur
     // « Numéros de série », il disait « + Mouvement » pendant que « + Entrée de numéros », le vrai
     // geste, était un bouton vert plus petit dans le panneau.
-    const ST_ACTION = { etat: ['st-adj', '+ Mouvement'], series: ['se-add', '+ Entrée de numéros'] };
+    // Et sur « Mouvements », le journal même des mouvements, le bouton qui en ajoute un disparaissait :
+    // l'onglet où on le cherche était le seul, avec « État du stock », à ne pas pouvoir l'avoir oublié
+    // (10.14.0, vu à la souris).
+    const ST_ACTION = { etat: ['st-adj', '+ Mouvement'], mouvements: ['st-adj', '+ Mouvement'], series: ['se-add', '+ Entrée de numéros'] };
     // Le bouton d'export DIT ce qu'il exporte : jusqu'ici il s'appelait « Exporter en CSV » sur les
     // cinq onglets et renvoyait l'état du stock sur les cinq.
     const ST_LABELS = { etat: 'l\'état du stock', mouvements: 'les mouvements', series: 'les numéros de série',
@@ -10642,9 +10645,9 @@
       }
       $('#im-body').innerHTML = `
         <div class="stats">
-          <div class="stat"><div class="lbl">Valeur d'acquisition ${info('immo.gross')}</div><div class="val">${C.money(t.gross, cur)}</div><div class="sub">${biensAuBilan(t, s.year)}</div></div>
+          <div class="stat"><div class="lbl">Valeur d'acquisition ${info('immo.gross')}</div><div class="val">${C.money(t.grossActif, cur)}</div><div class="sub">${biensAuBilan(t, s.year)}</div></div>
           <div class="stat"><div class="lbl">Dotation ${s.year} ${info('immo.annuity')}</div><div class="val">${C.money(t.annuity, cur)}</div><div class="sub">la charge de l'exercice</div></div>
-          <div class="stat"><div class="lbl">Amortissement cumulé</div><div class="val">${C.money(t.cumulated, cur)}</div><div class="sub">au 31/12/${s.year}, depuis l'origine</div></div>
+          <div class="stat"><div class="lbl">Amortissement cumulé</div><div class="val">${C.money(t.cumulActif, cur)}</div><div class="sub">au 31/12/${s.year}, depuis l'origine</div></div>
           <div class="stat"><div class="lbl">Valeur nette comptable ${info('immo.nbv')}</div><div class="val">${C.money(t.nbv, cur)}</div><div class="sub">au 31/12/${s.year} : ce qu'il reste à amortir</div></div>
         </div>
         <div class="panel"><h2>Tableau des amortissements — ${s.year} ${info('immo.table')}</h2>
@@ -10656,18 +10659,20 @@
               <td>${h(C.assetClassLabel(a.category))}</td>
               <td class="r nw">${C.fmtDate(a.date)}</td>
               <td class="r nw">${a.years} an${a.years > 1 ? 's' : ''}</td>
-              <td class="r nw">${C.money(a.amount, cur)}</td>
+              ${/* Un total sous une colonne est lu comme sa somme (9.8.8) : ce qui n'y entre pas le DIT. */''}
+              <td class="r nw">${a.out ? `<span class="muted">${C.money(a.amount, cur)}</span><div class="small muted">hors total</div>` : C.money(a.amount, cur)}</td>
               <td class="r nw">${C.money(a.opening, cur)}</td>
               <td class="r nw"><strong>${C.money(a.annuity, cur)}</strong></td>
-              <td class="r nw">${C.money(a.cumulated, cur)}</td>
+              <td class="r nw">${a.out ? `<span class="muted">${C.money(a.cumulated, cur)}</span><div class="small muted">hors total</div>` : C.money(a.cumulated, cur)}</td>
               <td class="r nw">${a.out ? '<span class="muted">—</span>' : C.money(a.nbv, cur)}</td></tr>`).join('')}
             <tr class="total-row"><td colspan="4"><strong>Total</strong></td>
-              <td class="r"><strong>${C.money(t.gross, cur)}</strong></td>
+              <td class="r"><strong>${C.money(t.grossActif, cur)}</strong></td>
               <td class="r"><strong>${C.money(t.opening, cur)}</strong></td>
               <td class="r"><strong>${C.money(t.annuity, cur)}</strong></td>
-              <td class="r"><strong>${C.money(t.cumulated, cur)}</strong></td>
+              <td class="r"><strong>${C.money(t.cumulActif, cur)}</strong></td>
               <td class="r"><strong>${C.money(t.nbv, cur)}</strong></td></tr>
           </tbody></table></div>
+          ${t.rows.some(r => r.out) ? `<p class="small muted mt">${t.rows.filter(r => r.out).length > 1 ? 'Les biens sortis' : 'Le bien sorti'} en ${s.year} ${t.rows.filter(r => r.out).length > 1 ? 'comptent' : 'compte'} dans la dotation de l'année, jusqu'au jour de la sortie ; au 31/12, ${t.rows.filter(r => r.out).length > 1 ? 'ils ne sont' : 'il n\'est'} plus à l'actif : ${t.rows.filter(r => r.out).length > 1 ? 'ni leur valeur ni leur cumul n\'entrent' : 'ni sa valeur ni son cumul n\'entrent'} dans le total.</p>` : ''}
           <p class="small muted mt">Amortissement linéaire, au prorata du nombre de jours d'utilisation la première année (base 360). La dotation de l'exercice est une <b>charge</b> : elle est déjà comptée dans le résultat simplifié et dans le seuil de rentabilité. <em>À VÉRIFIER avec ton comptable : les durées retenues et la règle de prorata.</em></p>`
             : '<div class="empty">Aucune immobilisation pour cet exercice. Un bien qui reste dans l\'entreprise — ordinateur, véhicule, mobilier — se saisit ici, ou se crée depuis l\'onglet « À immobiliser » à partir d\'une ligne d\'achat.</div>'}
         </div>`;

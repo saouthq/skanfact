@@ -1349,6 +1349,9 @@ body.dark .cal-d.out { color: #5b6572; }
 /* Repère « filtres actifs » : une liste filtrée ne doit jamais passer pour une liste vide. */
 .f-note { display: inline-flex; align-items: center; gap: 8px; margin-inline-start: auto; }
 .filters .f-note { margin-inline-start: auto; }
+/* Un compte posé à côté d'un champ ÉTIQUETÉ se lit à la hauteur de la case, pas du milieu du bloc
+   étiquette + case : « 0 article compté sur 3 » flottait au niveau de l'étiquette (10.14.0). */
+.filters > label + span.small { align-self: flex-end; padding-block-end: 11px; }
 
 /* ---------- fiche client ---------- */
 .kv { display: flex; flex-direction: column; gap: 9px; font-size: 13px; }

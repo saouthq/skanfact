@@ -3482,6 +3482,12 @@
       opening: sum(r => r.opening),
       annuity: sum(r => r.annuity),
       cumulated: sum(r => r.cumulated),
+      // Au 31/12, un bien sorti dans l'année n'est plus à l'actif : sa DOTATION de l'année compte (c'est
+      // une charge de l'exercice), sa valeur et son cumul non. Sans ces deux totaux, la carte « Valeur
+      // d'acquisition » annonçait « 5 biens à l'actif » avec la valeur des six, et valeur − cumul ne
+      // retombait pas sur la VNC, qui, elle, excluait déjà le bien sorti (10.14.0).
+      grossActif: sum(r => r.out ? 0 : r.amount),
+      cumulActif: sum(r => r.out ? 0 : r.cumulated),
       nbv: sum(r => r.out ? 0 : r.nbv),
       disposals: rows.filter(r => r.disposalResult && Number(r.disposalResult.date.slice(0, 4)) === Number(year)),
       rows

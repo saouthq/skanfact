@@ -2937,8 +2937,11 @@
     const somme = f => round3(rows.reduce((s, r) => s + (Number(f(r)) || 0), 0));
     return {
       rows,
-      valeur: somme(r => r.valeur), ouverture: somme(r => r.ouverture),
-      dotation: somme(r => r.dotation), cumul: somme(r => r.cumul), vnc: somme(r => r.vnc),
+      // Au 31/12, un bien sorti dans l'année n'est plus à l'actif : sa dotation compte, sa valeur et
+      // son cumul non — sinon valeur − cumul ne retombe pas sur la VNC, qui l'exclut déjà (10.14.0 ;
+      // le jumeau de `assetTotals` de l'app entreprise, trouvé à la souris le même jour).
+      valeur: somme(r => r.cession ? 0 : r.valeur), ouverture: somme(r => r.ouverture),
+      dotation: somme(r => r.dotation), cumul: somme(r => r.cession ? 0 : r.cumul), vnc: somme(r => r.vnc),
       reprise: somme(r => r.reprise),
       cessions: rows.filter(r => r.cession),
       // Ce qui reste à passer en écriture : c'est ce chiffre qui fait le bouton.

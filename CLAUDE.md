@@ -69,6 +69,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Une **annonce** se calcule par les MÊMES constructeurs que ce qu'elle annonce | 10.12.0 — E-02, le solde d'acompte faux de deux timbres |
 | Une fonction qui rend un montant **NATIF** piège chaque appelant qui additionne : la couverture se fait par appelant, jamais par fonction | 10.12.0 — E-08, la prévision en euros ; 10.1.0 |
 | Un **argument facultatif** qui change un montant piège chaque appelant qui l'oublie : il se tient appel par appel | 10.14.0 — `purchaseBalance` sans `data`, un trop-payé prérempli |
+| Des **cartes qui forment une équation** (valeur − cumul = VNC) la tiennent, l'année d'une cession aussi | 10.14.0 — le bien sorti compté à moitié, dans les deux applications |
 | Un **coût moyen pondéré** dépend de l'ordre des gestes : un tri par identifiant est un ordre arbitraire | 10.12.0 — E-10, la vente sortie au coût de l'achat qui la suit |
 | Deux écrans qui montrent la **même pièce** ne disent qu'un montant, et deux recherches sur le même corpus qu'une réponse | 10.12.0 — H-E25, la palette et la liste ; la palette et la page Aide |
 | Un montant **négatif change de colonne**, il ne garde pas son signe | 6.3.0 — les écritures comptables |
@@ -7627,6 +7628,16 @@ faire seul, par ordre de priorité ») :
   Et ce qui a été imputé se DIT là où on lit le reste — sinon « net 1 309, réglé 0, reste 1 071 »
   ne s'additionne pas, et le chiffre juste passe pour faux. Trouvé en cliquant « Régler » sur la
   première ligne de la liste ; aucun parcours ne compare la fenêtre à la liste.
+- **Un total d'une année porte ce qui est au bilan à la fin de l'année** — les deux applications
+  comptaient le bien cédé dans la valeur et le cumul, pas dans la VNC : « 5 biens à l'actif » sous
+  la valeur des six, et valeur − cumul ≠ VNC. La dotation, elle, reste : c'est une charge de
+  l'exercice. Le jumeau du Cabinet (`etatImmobilisations`) promettait en commentaire « des totaux
+  qui tombent juste » — vrai sauf l'année d'une cession, le seul cas qu'aucun exemple ne portait.
+  Trouvé en lisant les quatre cartes comme une addition ; vérifié au Cabinet en saisissant une
+  cession à la souris (18 000 − 5 400 = 12 600). Quand trois cartes forment une équation, la page
+  doit la tenir.
+- **Le geste d'un journal vit sur l'onglet du journal** : « + Mouvement » disparaissait de l'onglet
+  Mouvements du Stock — `ST_ACTION` ne connaissait que « État du stock ».
 - **Une invite se mesure dans SA case** : « Rechercher : n°, fournisseur, objet, catégo… » était
   coupée dans la case de 300 px des listes (291 px de texte pour 262 de place) ; la même longueur
   tient dans la case de 416 px de la Comptabilité. Le test borne donc les invites de `#q` seules,

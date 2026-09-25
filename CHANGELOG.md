@@ -578,6 +578,18 @@ l'écran. Le matricule fiscal (« 1472411D/A/M/000 ») peut maintenant passer à
 - L'invite de la recherche des achats (« Rechercher : n°, fournisseur, objet, catégo… ») et celle
   des licences étaient coupées au milieu d'un mot : elles tiennent dans leur case.
 
+### Le tableau des immobilisations tombe juste l'année d'une cession
+
+- Dans les **deux applications**, l'année où un bien est cédé, la carte « Valeur d'acquisition »
+  annonçait « 5 biens à l'actif » avec la valeur des **six**, et le total du tableau comptait la
+  valeur et l'amortissement du bien sorti — mais pas sa valeur nette. Valeur moins cumul ne
+  retombait donc pas sur la VNC (61 500 − 32 535 ≠ 27 027 sur l'exemple). Au 31/12, un bien sorti
+  n'est plus à l'actif : sa **dotation** de l'année compte, sa valeur et son cumul non, et sa ligne
+  le dit (« hors total »).
+- Stock : l'onglet **Mouvements** — le journal même des mouvements — perdait le bouton
+  « + Mouvement ». Et « 0 article compté sur 3 » se lit à la hauteur de la case de date, pas de son
+  étiquette.
+
 ## 10.13.0-beta.1 — 24/09/2026
 
 **Avant la mise en production : les deux applications et le pont entre elles, testés en entier.**

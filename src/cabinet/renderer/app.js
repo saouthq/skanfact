@@ -4914,10 +4914,11 @@
     r.ecrite ? '<span class="badge b-paid">écrite</span>' : ''])}</td>
         <td class="nw">${esc(fmtJour(r.date))}</td>
         <td class="nw">${esc(METHODE_LABEL[r.methode] || r.methode)}</td>
-        <td class="r nw">${esc(money(r.valeur))}</td>
+        ${/* Un total sous une colonne est lu comme sa somme (9.8.8) : un bien sorti le DIT. */''}
+        <td class="r nw">${r.cession ? `<span class="muted">${esc(money(r.valeur))}</span><div class="small muted">hors total</div>` : esc(money(r.valeur))}</td>
         <td class="r nw">${esc(money(r.ouverture))}</td>
         <td class="r nw">${esc(money(r.dotation))}</td>
-        <td class="r nw">${esc(money(r.cumul))}</td>
+        <td class="r nw">${r.cession ? `<span class="muted">${esc(money(r.cumul))}</span><div class="small muted">hors total</div>` : esc(money(r.cumul))}</td>
         <td class="r nw">${esc(money(r.vnc))}</td>
         ${RowMenu.cellule('IM:' + r.id)}</tr>`).join('')}</tbody>
       <tfoot><tr><th colspan="3">${esc(pl(e.rows.length, 'bien'))}</th>

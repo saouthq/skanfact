@@ -223,4 +223,59 @@ module.exports = ({ t, assert }) => {
     assert.ok(invites.length >= 7, 'les invites sont lues (' + invites.length + ')');
     invites.forEach(x => assert.ok(x.length <= 38, '« ' + x + ' » : ' + x.length + ' caractères, coupé dans une case de 300 px'));
   });
+
+  // L'onglet « Mouvements » du Stock est le journal des mouvements : c'est là qu'on cherche à en
+  // ajouter un, et le bouton de l'en-tête y disparaissait (10.14.0).
+  t('10.14.0 : le Stock propose « + Mouvement » sur l\'onglet des mouvements', () => {
+    const vm = require('vm');
+    const m = app.match(/const ST_ACTION = (\{[^\n]+\});/);
+    assert.ok(m, 'la table des actions du Stock est lue');
+    // JSON : un tableau né dans un autre contexte vm n'a pas le même prototype, et deepStrictEqual
+    // le compare aussi.
+    const table = JSON.parse(JSON.stringify(vm.runInNewContext('(' + m[1] + ')')));
+    assert.deepStrictEqual(table.mouvements, ['st-adj', '+ Mouvement'], 'l\'onglet des mouvements porte le geste qui en ajoute un');
+    assert.deepStrictEqual(table.etat, table.mouvements, 'le même bouton, branché une fois');
+  });
+
+  // Les cartes des immobilisations comptaient le bien cédé dans la valeur et le cumul, pas dans la
+  // VNC : « 5 biens à l'actif » sous la valeur des six, et valeur − cumul ≠ VNC (10.14.0).
+  t('10.14.0 : au 31/12, un bien sorti dans l\'année compte dans la dotation, plus dans la valeur ni le cumul', () => {
+    const core = require('../../src/renderer/core.js');
+    const data = core.migrateData({ assets: [
+      { id: 'a1', label: 'Portable', amount: 2400, residual: 0, years: 3, date: '2026-01-01', category: 'informatique' },
+      { id: 'a2', label: 'Camionnette', amount: 30000, residual: 0, years: 5, date: '2024-01-01', category: 'transport',
+        disposal: { date: '2026-06-30', amount: 16000, reason: '' } }
+    ] });
+    const t = core.assetTotals(data, 2026);
+    // Calculé à la main : le portable seul reste à l'actif — 2 400, dont 800 amortis sur 2026.
+    assert.strictEqual(t.grossActif, 2400, 'la valeur au 31/12 n\'a plus la camionnette');
+    assert.strictEqual(t.cumulActif, 800, 'le cumul au 31/12 non plus');
+    assert.strictEqual(t.nbv, 1600);
+    assert.strictEqual(core.round3(t.grossActif - t.cumulActif), t.nbv, 'valeur − cumul retombe sur la VNC');
+    assert.strictEqual(t.annuity, 3800, 'la dotation de l\'année compte encore la camionnette jusqu\'au 30/06');
+    // L'écran lit ces totaux-là, dans les cartes et sous le tableau.
+    const zone = app.slice(app.indexOf('function drawTable()'), app.indexOf('function drawWaiting()'));
+    assert.ok(zone.length > 1000 && zone.length < 12000, 'la tranche est celle du tableau (' + zone.length + ')');
+    assert.ok(!/C\.money\(t\.gross, cur\)/.test(zone) && !/C\.money\(t\.cumulated, cur\)/.test(zone), 'aucun total ne compte plus le bien sorti');
+    assert.ok((zone.match(/t\.grossActif/g) || []).length >= 2 && (zone.match(/t\.cumulActif/g) || []).length >= 2, 'cartes et pied lisent les totaux de l\'actif');
+    assert.ok(/a\.out \?[^\n]*hors total/.test(zone), 'la ligne du bien sorti dit qu\'elle est hors total');
+  });
+
+  // Le jumeau du Cabinet : `etatImmobilisations` promettait « des totaux qui tombent juste », sauf
+  // l'année d'une cession (10.14.0).
+  t('10.14.0 : le tableau des biens du Cabinet — valeur − cumul retombe sur la VNC l\'année d\'une cession', () => {
+    const KC = require('../../src/renderer/compta.js');
+    const livre = { immobilisations: [
+      { id: 'b1', libelle: 'Portable', valeur: 2400, duree: 3, methode: 'lineaire', dateMiseEnService: '2026-01-01', compte: '2183' },
+      { id: 'b2', libelle: 'Camionnette', valeur: 30000, duree: 5, methode: 'lineaire', dateMiseEnService: '2024-01-01', compte: '2182',
+        cession: { date: '2026-06-30', prix: 16000, motif: 'vente' } }
+    ] };
+    const e = KC.etatImmobilisations(livre, 2026);
+    assert.ok(e.rows.find(r => r.id === 'b2').cession, 'la cession de l\'année est lue');
+    assert.strictEqual(e.valeur, 2400, 'la valeur au 31/12 n\'a plus la camionnette');
+    assert.strictEqual(KC.round3(e.valeur - e.cumul), e.vnc, 'valeur − cumul retombe sur la VNC');
+    assert.ok(e.dotation > 800, 'la dotation compte encore la camionnette jusqu\'au 30/06');
+    const cab = fs.readFileSync(path.join(__dirname, '../../src/cabinet/renderer/app.js'), 'utf8');
+    assert.ok(/r\.cession \?[^\n]*hors total/.test(cab), 'la ligne du bien sorti dit qu\'elle est hors total');
+  });
 };
