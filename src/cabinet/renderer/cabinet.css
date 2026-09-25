@@ -319,6 +319,9 @@ main:has(.c-nav) { scroll-padding-block-start: calc(var(--c-nav-h) + 10px); }
 /* Un compte replié est une LIGNE, pas une carte : le padding d'un panneau en faisait 81 px, et
    vingt comptes repliés reprenaient la moitié de la hauteur qu'on venait de gagner. */
 .gl-compte:not([open]) { padding-block: 10px; }
+/* La suite d'un compte déplié (10.14.0, saturation) : la phrase qui dit où est le reste, et les deux gestes. */
+.gl-suite { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-block-start: 10px; }
+.gl-suite .small { flex: 1 1 320px; }
 
 /* Les échéances : une date lisible à gauche, ce qui manque à droite. Ce qui compte n'est pas la
    date (le comptable la connaît) mais le nombre de clients dont il n'a pas les pièces. */

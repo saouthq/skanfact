@@ -190,6 +190,7 @@
   b('#pg-prev, #pg-next, [data-pg]', 'Passe à la page précédente ou suivante de la liste.', { nom: 'Page précédente / suivante', cle: 'pager' });
   b('#pg-size', 'Combien de lignes tu vois à la fois. Les totaux portent toujours sur toute la sélection.', { nom: 'Lignes par page' });
   b('[data-sort]', 'Un clic trie la liste par cette colonne ; un second clic inverse l\'ordre.', { nom: 'Les en-têtes ⇅', cle: 'tri' });
+  b('[data-gl-plus]', 'Met à l\'écran la suite des lignes de ce compte : un compte très chargé ne montre d\'abord que ses premières lignes, le pied porte toujours le compte entier.', { nom: 'Montrer la suite du compte', cle: 'glPlus' });
   b('[data-rowmenu]', null, { rowmenu: true, nom: 'Actions', cle: 'rowmenu' });
   b('#gb-go', 'Lance la visite de cet écran : chaque bloc, chaque bouton, en une ou deux minutes.');
   b('#gb-non', 'Ne propose plus la visite de cet écran. Elle reste dans « Me guider ».');

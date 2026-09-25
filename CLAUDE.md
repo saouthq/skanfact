@@ -7550,6 +7550,13 @@ les offres, ouvre la page de paiement préremplie, et la clé revient toute seul
   « Partir d'un devis existant ». La phrase et le bouton lisent la MÊME condition (`aPartir`). Le
   « non enregistrée » de H-E30 n'existait plus (la liste arrête ses propres événements depuis la
   10.12.0) : vérifié à la souris par les deux chemins, avant d'écrire une ligne.
+- **Un objet qui se REPLIE doit encore se paginer une fois déplié** (saturation, suite) : le grand
+  livre replie ses comptes depuis la 9.4.5, et un compte déplié construisait toutes ses rangées —
+  7 175 pour le 411 d'un livre saturé. `lignesAffichees` en montre 300, la suite se demande
+  (« Montrer 300 lignes de plus », « Tout montrer »), le PIED garde le compte entier (2.2.0), et la
+  phrase dit où est le reste, y compris avant d'imprimer : une rangée absente de l'écran ne
+  s'imprime pas. Un compte ouvert à la main le reste au redessin (`glOuverts`, remis à zéro quand on
+  change de client) — sinon « montrer la suite » refermait ce qu'on lisait.
 
 ## Pistes pour la suite (non demandées)
 

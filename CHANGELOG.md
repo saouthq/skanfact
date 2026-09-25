@@ -508,6 +508,14 @@ pas se lire comme un doublon de « Émise ».
   au-dessus du bouton « Partir d'un devis existant », qui fait la même chose ici. La phrase parle
   maintenant du bouton qu'elle accompagne.
 
+### Un compte très chargé du grand livre (Cabinet)
+
+Déplié, un compte montrait toutes ses lignes d'un coup : le 411 d'un livre de douze mille pièces en
+porte plus de sept mille. Il montre maintenant les 300 premières, puis « Montrer 300 lignes de plus »
+ou « Tout montrer ». Le pied du compte porte toujours ses totaux entiers, la phrase dit où trouver le
+reste (l'export du grand livre, ou « Tout montrer » avant d'imprimer), et un compte ouvert reste
+ouvert quand on demande la suite.
+
 ## 10.13.0-beta.1 — 24/09/2026
 
 **Avant la mise en production : les deux applications et le pont entre elles, testés en entier.**

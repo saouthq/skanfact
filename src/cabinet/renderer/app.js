@@ -2528,6 +2528,7 @@
     s.annee = ''; s.mois = ''; s.du = ''; s.au = '';
     s.onglet = m.onglet || 'journal'; s.compte = ''; s.journal = ''; s.q = ''; s.aux = false;
     s.page = 1; s.dernierParGroupe = { ...(m.dernierParGroupe || {}) };
+    s.glOuverts = new Set(); s.glLimites = {};  // un compte ouvert chez un client ne l'est pas chez l'autre
     // Le mois de déclaration choisi chez un client ne suit pas chez le suivant (10.12.0) : juillet
     // 2026 du garage ouvrait la déclaration de juillet 2026 d'un client dont on regarde 2025.
     declState.mois = ''; declState.ouverte = '';
@@ -3436,20 +3437,38 @@
             l'information n'est pas perdue, elle est à un clic, et le PLAN du grand livre se lit
             enfin d'un coup d'oeil. Le compte choisi dans la liste s'ouvre tout seul, et l'impression
             les ouvre tous — un grand livre imprimé plié serait une feuille vide. */''}
-      ${paginate(gl.comptes, s).map(c => `<details class="panel mt gl-compte" ${s.compte || gl.comptes.length === 1 ? 'open' : ''}>
+      ${paginate(gl.comptes, s).map(c => `<details class="panel mt gl-compte" data-gl="${esc(c.account)}" ${s.compte || gl.comptes.length === 1 || glOuverts().has(c.account) ? 'open' : ''}>
         <summary class="gl-tete"><span class="gl-nom">${esc(c.account)}${c.label ? ' — ' + esc(c.label) : ''}</span>
           <span class="gl-chiffres"><span class="muted gl-mv">${pl(c.lignes.length, 'mouvement')}${c.ouverture ? ` · ouverture ${esc(money(c.ouverture))}` : ''}</span>
             <span class="gl-m">D ${esc(money(c.debit))}</span><span class="gl-m">C ${esc(money(c.credit))}</span>
             <strong class="gl-m gl-solde">Solde ${esc(money(c.solde))}</strong></span></summary>
         <div class="scroll-x"><table class="list compact"><thead><tr><th class="nw">Date</th><th class="nw">Pièce</th><th>Libellé</th>
           <th class="r nw">Débit</th><th class="r nw">Crédit</th><th class="r nw">Solde</th></tr></thead>
-        <tbody>${c.lignes.map(e => `<tr class="${e.statut === 'contrepassee' ? 'cp-ligne' : e.contrepasseDe || e.extourneDe ? 'cp-miroir' : ''}"><td class="nw">${esc(fmtJour(e.date))}</td><td><span class="nw">${esc(e.piece)}</span>${miroirBadge(e)}</td>
+        <tbody>${lignesAffichees(c).map(e => `<tr class="${e.statut === 'contrepassee' ? 'cp-ligne' : e.contrepasseDe || e.extourneDe ? 'cp-miroir' : ''}"><td class="nw">${esc(fmtJour(e.date))}</td><td><span class="nw">${esc(e.piece)}</span>${miroirBadge(e)}</td>
           <td class="tronq lg" title="${esc(e.label)}">${esc(e.label)}</td>
           <td class="r nw">${e.debit ? esc(money(e.debit)) : ''}</td><td class="r nw">${e.credit ? esc(money(e.credit)) : ''}</td>
           <td class="r nw">${esc(money(e.solde))}</td></tr>`).join('')}</tbody>
         <tfoot><tr><td colspan="3"><strong>${pl(c.lignes.length, 'mouvement')}</strong></td>
           <td class="r nw"><strong>${esc(money(c.debit))}</strong></td><td class="r nw"><strong>${esc(money(c.credit))}</strong></td>
-          <td class="r nw"><strong>${esc(money(c.solde))}</strong></td></tr></tfoot></table></div></details>`).join('')}`;
+          <td class="r nw"><strong>${esc(money(c.solde))}</strong></td></tr></tfoot></table></div>${suiteDuCompte(c)}</details>`).join('')}`;
+  }
+
+  // Saturation (10.14.0) — un compte déplié affichait TOUTES ses lignes : le 411 d'un livre de
+  // douze mille pièces en porte huit mille, et le déplier construisait huit mille rangées d'un coup.
+  // On montre les premières, puis la suite à la demande ; le PIED garde les totaux du compte entier
+  // (un pied porte la sélection entière, jamais la page, 2.2.0), et la phrase dit où est le reste —
+  // y compris avant d'imprimer, puisqu'une rangée absente de l'écran ne s'imprime pas.
+  const GL_PLAFOND = 300;
+  function glOuverts() { return livresState.glOuverts || (livresState.glOuverts = new Set()); }
+  function glLimite(compte) { return (livresState.glLimites || {})[compte] || GL_PLAFOND; }
+  function lignesAffichees(c) { return c.lignes.length > glLimite(c.account) ? c.lignes.slice(0, glLimite(c.account)) : c.lignes; }
+  function suiteDuCompte(c) {
+    const reste = c.lignes.length - glLimite(c.account);
+    if (reste <= 0) return '';
+    const pas = Math.min(reste, GL_PLAFOND);
+    return `<div class="gl-suite"><span class="small muted">${pl(glLimite(c.account), 'ligne affichée', 'lignes affichées')} sur ${esc(String(c.lignes.length).replace(/\B(?=(\d{3})+(?!\d))/g, '\u202f'))} — le pied porte le compte entier ; l'export du grand livre contient toutes les lignes, et « Tout montrer » les met à l'écran avant d'imprimer.</span>
+      <button class="btn btn-sm" data-gl-plus="${esc(c.account)}" data-gl-n="${pas}">Montrer ${pl(pas, 'ligne de plus', 'lignes de plus')}</button>
+      ${reste > GL_PLAFOND ? `<button class="btn btn-sm" data-gl-plus="${esc(c.account)}" data-gl-n="${reste}">Tout montrer</button>` : ''}</div>`;
   }
 
   function vueBalance(lignes) {
@@ -7280,6 +7299,17 @@
     // Recherche et la page Dossiers l'avaient ; lui, jamais (le jumeau manquant, 7.3.0).
     const q = $('#lv-q', el); if (q) q.oninput = () => { s.q = q.value; s.page = 1; sansPerdreLaFrappe(q, redraw); };
     const c = $('#lv-compte', el); if (c) c.onchange = () => { s.compte = c.value; s.page = 1; redraw(); };
+    // Un compte qu'on a ouvert reste ouvert quand l'écran se redessine (« Montrer la suite », une
+    // page suivante et retour) : sans ça, montrer plus de lignes refermait ce qu'on lisait.
+    $$('details.gl-compte[data-gl]', el).forEach(d => d.addEventListener('toggle', () => {
+      if (d.open) glOuverts().add(d.dataset.gl); else glOuverts().delete(d.dataset.gl);
+    }));
+    $$('[data-gl-plus]', el).forEach(b => b.onclick = () => {
+      const compte = b.dataset.glPlus;
+      s.glLimites = { ...(s.glLimites || {}), [compte]: glLimite(compte) + Number(b.dataset.glN) };
+      glOuverts().add(compte);
+      redraw();
+    });
     const a = $('#lv-aux', el); if (a) a.onclick = () => { s.aux = !s.aux; s.page = 1; redraw(); };
     const ar = $('#lv-aux-role', el); if (ar) ar.onchange = () => { s.auxRole = ar.value; s.page = 1; redraw(); };
     const x = $('#lv-csv', el); if (x) x.onclick = () => exporterLivre(lignes);

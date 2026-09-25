@@ -270,10 +270,21 @@ t('9.4.5 : les quatre vues du livre sont paginées, et le pied porte la sélecti
   // Et paginer ne suffisait pas : vingt comptes tiennent sur une page, et la page faisait sept
   // écrans. Chaque compte est REPLIÉ sur sa ligne de synthèse — sauf celui qu'on a demandé.
   assert.ok(/<details class="panel mt gl-compte"/.test(g), 'chaque compte doit être repliable');
-  assert.ok(/s\.compte \|\| gl\.comptes\.length === 1 \? 'open' : ''/.test(g),
+  // 10.14.0 : un compte ouvert à la main reste ouvert quand l'écran se redessine — une raison de
+  // plus d'être ouvert, jamais une de moins.
+  assert.ok(/s\.compte \|\| gl\.comptes\.length === 1(?: \|\| [^?]+)? \? 'open' : ''/.test(g),
     'le compte choisi dans la liste doit s\'ouvrir tout seul');
   assert.ok(/<summary class="gl-tete">/.test(g) && /Solde \$\{esc\(money\(c\.solde\)\)\}/.test(g),
     'la ligne repliée doit porter le solde : un compte replié sans son chiffre n\'apprend rien');
+  // Saturation (10.14.0) : un compte DÉPLIÉ se pagine aussi — le 411 d'un livre de douze mille
+  // pièces en porte huit mille, et le déplier construisait huit mille rangées. Les lignes passent par
+  // `lignesAffichees`, le PIED garde le compte entier, et la suite se demande.
+  assert.ok(/<tbody>\$\{lignesAffichees\(c\)\.map\(/.test(g), 'un compte déplié ne doit pas afficher toutes ses lignes');
+  assert.ok(!/<tbody>\$\{c\.lignes\.map\(/.test(g), 'plus aucune boucle sur toutes les lignes d\'un compte');
+  assert.ok(/<tfoot><tr><td colspan="3"><strong>\$\{pl\(c\.lignes\.length, 'mouvement'\)\}/.test(g), 'le pied porte le compte entier');
+  assert.ok(/\$\{suiteDuCompte\(c\)\}<\/details>/.test(g), 'la suite se demande depuis le compte');
+  const sourceCab = lireSource('src', 'cabinet', 'renderer', 'app.js');
+  assert.ok(/const GL_PLAFOND = \d+;/.test(sourceCab) && /data-gl-plus/.test(sourceCab) && /\$\$\('\[data-gl-plus\]', el\)/.test(sourceCab), 'le geste « Montrer la suite » est posé et branché');
   const cssGl = lireSource('src', 'cabinet', 'renderer', 'cabinet.css');
   assert.ok(/details\.gl-compte > \*:not\(summary\) \{ display: block !important/.test(cssGl),
     'un grand livre imprimé plié serait une feuille de soldes : l\'impression ouvre tout');
