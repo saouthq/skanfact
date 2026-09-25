@@ -191,4 +191,36 @@ module.exports = ({ t, assert }) => {
     const css = fs.readFileSync(path.join(__dirname, '../../src/renderer/style.css'), 'utf8');
     assert.ok(/@media \(min-width: 1340px\) \{ td\.mf wbr \{ display: none; \} \}/.test(css), 'au-dessus de 1340 px le matricule tient sur une ligne (nowrap ne suffit pas : Chrome coupe à un <wbr>)');
   });
+
+  // Trois écrans appelaient purchaseBalance sans `data` : les avoirs et acomptes imputés n'y
+  // comptaient pas. La fenêtre « Régler LOC-2026-08 » annonçait un reste de 1 309 DT et le
+  // PRÉREMPLISSAIT, pendant que la liste « À payer » disait 1 071 — un trop-payé proposé (10.14.0).
+  t('10.14.0 : chaque reste dû d\'un achat compte ses avoirs et acomptes imputés', () => {
+    const appels = [...app.matchAll(/C\.purchaseBalance\(([^()]*(?:\([^()]*\)[^()]*)*)\)/g)].map(m => m[1]);
+    assert.ok(appels.length >= 4, 'les appels sont lus (' + appels.length + ')');
+    appels.forEach(a => {
+      const args = a.split(',').map(x => x.trim());
+      assert.strictEqual(args[2], 'data', 'C.purchaseBalance(' + a + ') : sans data, un avoir imputé ne compte pas');
+    });
+    // Et ce qui a été imputé se LIT là où on lit le reste : sinon « net 1 309, réglé 0, reste 1 071 »
+    // ne s'additionne pas.
+    const fen = app.slice(app.indexOf('function supplierPaymentForm('), app.indexOf('function supplierPaymentForm(') + 2500);
+    assert.ok(/b\.impute \?[\s\S]{0,200}imputé/.test(fen), 'la fenêtre de règlement dit ce qui est imputé');
+    // Deux drawPayments existent (document et achat) : celle de l'achat suit l'éditeur d'achat.
+    const dp = app.indexOf('function drawPayments(', app.indexOf('function supplierPaymentForm('));
+    const grille = app.slice(dp, dp + 2000);
+    assert.ok(grille.includes('purchaseBalance'), 'la tranche est celle de l\'achat');
+    assert.ok(/b\.impute \?[\s\S]{0,200}imputé/.test(grille), 'la grille des règlements dit ce qui est imputé');
+  });
+
+  // La recherche d'une liste fait 300 px : « Rechercher : n°, fournisseur, objet, catégo… » s'y
+  // coupait au milieu d'un mot, la liste des licences aussi. Une invite qu'on lit coupée ne dit
+  // plus ce qu'on peut chercher (10.14.0 ; mesuré : 38 caractères tiennent dans la case).
+  t('10.14.0 : l\'invite d\'une recherche de liste tient dans sa case', () => {
+    // `#q` seul : c'est la case de 300 px des listes. Celle de la Comptabilité (`#cpt-q`) a 416 px
+    // de place, et son invite de 42 caractères y tient — mesuré, pas supposé.
+    const invites = [...app.matchAll(/<input type="(?:text|search)" id="q"[^>]*placeholder="([^"]*)"/g)].map(m => m[1]);
+    assert.ok(invites.length >= 7, 'les invites sont lues (' + invites.length + ')');
+    invites.forEach(x => assert.ok(x.length <= 38, '« ' + x + ' » : ' + x.length + ' caractères, coupé dans une case de 300 px'));
+  });
 };

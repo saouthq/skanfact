@@ -338,7 +338,8 @@ l'ordre proposé.
     rien n'est perdu, la clé arrive par mail) — mais le geste neuf ne servirait à rien.
 - **Ne jamais se perdre** : ~~les 78 titres « Confirmation »~~ (fait en 10.14.0), ~~« émise » au lieu
   de « envoyée »~~ (fait), ~~H-E30, les barres qui passent sur deux rangées~~ (faits), et les restes de la console (§ 3).
-- **Les tests humains mis en pause** le 24/09 pour la visite : l'app entreprise (achats, stock, biens,
+- **Les tests humains mis en pause** le 24/09 pour la visite : l'app entreprise (~~achats~~ — repris le
+  25/09 : le reste dû ignorait les avoirs imputés, corrigé —, stock, biens,
   trésorerie, paie, comptabilité, paramètres, données) et le Cabinet en entier. Les 55 parcours de la
   10.13.0-beta.1 tournaient au même moment. Et le relancement de tous les parcours de la 10.14.0
   (plus haut, avec les deux instruments de visites).

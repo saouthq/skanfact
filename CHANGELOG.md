@@ -566,6 +566,18 @@ l'écran. Le matricule fiscal (« 1472411D/A/M/000 ») peut maintenant passer à
   fenêtre qui ne porte que des listes et des cases se referme maintenant sans question, dans les
   deux applications ; la recherche dans une liste ne compte pas non plus comme une saisie.
 
+### Régler un achat déjà diminué par un avoir
+
+- La fenêtre « Régler » d'un achat ignorait les **avoirs et acomptes imputés** : sur un loyer de
+  1 309 DT diminué d'un avoir de 238 DT, elle annonçait un reste de 1 309 DT et **préremplissait
+  ce montant** — un trop-payé proposé, pendant que la liste « À payer » disait, juste en dessous,
+  1 071 DT. La fiche de l'achat faisait la même erreur dans sa grille des règlements et dans la
+  condition de son bouton. Les trois comptent maintenant ce qui a été imputé, et le **disent** :
+  « avoir imputé 238,000 DT » dans la fenêtre, « + 238,000 DT imputé (AV-…) » sous « Réglé » —
+  sans quoi « net 1 309, réglé 0, reste 1 071 » ne s'additionnerait pas.
+- L'invite de la recherche des achats (« Rechercher : n°, fournisseur, objet, catégo… ») et celle
+  des licences étaient coupées au milieu d'un mot : elles tiennent dans leur case.
+
 ## 10.13.0-beta.1 — 24/09/2026
 
 **Avant la mise en production : les deux applications et le pont entre elles, testés en entier.**

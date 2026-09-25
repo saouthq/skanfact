@@ -7208,7 +7208,7 @@
         <div class="actions"><button class="btn" id="new-dep">+ Dépense</button><button class="btn ${videAchats ? '' : 'btn-primary'}" id="new">+ Facture d'achat</button></div></div>
       ${payablesPanel()}
       ${filtersBar(`
-        <input type="text" id="q" placeholder="Rechercher : n°, fournisseur, objet, catégorie…" value="${h(s.q)}">
+        <input type="text" id="q" placeholder="Rechercher : n°, fournisseur, objet…" value="${h(s.q)}">
         <select id="kind"><option value="">Tout</option>${C.PURCHASE_KINDS.map(([v, , pluriel]) => `<option value="${v}" ${s.kind === v ? 'selected' : ''}>${pluriel}</option>`).join('')}</select>
         <select id="st"><option value="">Tous les statuts</option>${C.PURCHASE_STATUSES.map(x => `<option value="${x}" ${s.st === x ? 'selected' : ''}>${h(optionStatut(x))}</option>`).join('')}<option value="${A_RATTACHER}" ${s.st === A_RATTACHER ? 'selected' : ''}>à rattacher (avoir ou acompte)</option></select>
         ${cats.length > 1 ? `<select id="cat"><option value="">Toutes les catégories</option>${cats.map(c => `<option value="${h(c)}" ${s.cat === c ? 'selected' : ''}>${h(c)}</option>`).join('')}</select>` : ''}
@@ -7323,13 +7323,15 @@
   function supplierPaymentForm(p, done, pay) {
     if (!p) return;
     const cur = p.currency || company().currency;
-    const b = C.purchaseBalance(p, company());
+    // `data` : sans lui, les avoirs et acomptes imputés ne comptent pas, et la fenêtre proposait de
+    // régler 1 309 DT sur un achat qui n'en doit plus que 1 071 — un trop-payé prérempli (10.14.0).
+    const b = C.purchaseBalance(p, company(), data);
     const r0 = pay || null;
     // Ce qui reste à régler SANS le règlement qu'on corrige : sinon le dépassement se compterait
     // sur lui-même.
     const reste = Math.max(0, b.remaining + (r0 ? Number(r0.amount) || 0 : 0));
     modal(`<h2>${r0 ? 'Modifier le règlement' : `Régler ${h(p.number || 'cet achat')}`}</h2>
-      <p class="small muted">${h(supplierName(p.supplierId))} · net à payer ${C.money(b.totals.netToPay, cur)} · déjà réglé ${C.money(b.paid, cur)} · reste ${C.money(Math.max(0, b.remaining), cur)}</p>
+      <p class="small muted">${h(supplierName(p.supplierId))} · net à payer ${C.money(b.totals.netToPay, cur)} · déjà réglé ${C.money(b.paid, cur)}${b.impute ? ` · ${b.liees.length > 1 ? 'avoirs et acomptes imputés' : (b.liees[0].kind === 'acompte' ? 'acompte imputé' : 'avoir imputé')} ${C.money(b.impute, cur)}` : ''} · reste ${C.money(Math.max(0, b.remaining), cur)}</p>
       <form id="spf" class="grid-2">
         ${dateFieldHtml(lbl('Date du règlement', 'buy.payDate'), 'date', r0 ? r0.date : C.today(), {})}
         ${field(lbl('Montant', 'buy.payAmount'), 'amount', r0 ? r0.amount : C.round3(reste), 'number', 'step="0.001" min="0" class="num"')}
@@ -7436,7 +7438,7 @@
           ${isNew ? '' : `<div class="small muted">${h(supplierName(p.supplierId))} · ${C.fmtDate(p.date)}</div>`}</div>
         <div class="actions">
           ${backButton('#/achats')}
-          ${!isNew && C.purchaseBalance(stored, company()).remaining > 0.0005 ? '<button class="btn btn-primary" id="pay">Enregistrer un règlement</button>' : ''}
+          ${!isNew && C.purchaseBalance(stored, company(), data).remaining > 0.0005 ? '<button class="btn btn-primary" id="pay">Enregistrer un règlement</button>' : ''}
           <button class="btn" id="attach-top">Joindre un justificatif…</button>${info('ed.attachments')}
           <button class="btn" id="photo" hidden>Lire une photo…</button>${info('ocr.photo')}
           <button class="btn ${isNew ? 'btn-primary' : ''}" id="save">Enregistrer</button>
@@ -7812,13 +7814,13 @@
     function drawPayments() {
       const el = $('#b-pay'); if (!el) return;
       const s2 = purchaseById(p.id); if (!s2) return;
-      const b = C.purchaseBalance(s2, company());
+      const b = C.purchaseBalance(s2, company(), data);
       const rows = (s2.payments || []).slice().sort((a, x) => (a.date || '').localeCompare(x.date || ''));
       const t = b.totals;
       el.innerHTML = `
         <div class="pay-grid">
           <div><div class="k-label">Net à payer</div><div class="v">${C.money(t.netToPay, cur)}</div>${t.withholding ? `<div class="small muted">TTC ${C.money(t.totalTTC, cur)} − retenue ${C.money(t.withholding, cur)}</div>` : ''}</div>
-          <div><div class="k-label">Réglé</div><div class="v">${C.money(b.paid, cur)}</div></div>
+          <div><div class="k-label">Réglé</div><div class="v">${C.money(b.paid, cur)}</div>${b.impute ? `<div class="small muted">+ ${C.money(b.impute, cur)} ${b.liees.length > 1 ? 'imputés' : 'imputé'} (${b.liees.map(x => h(x.number || (x.kind === 'acompte' ? 'acompte' : 'avoir'))).join(', ')})</div>` : ''}</div>
           <div><div class="k-label">Reste dû</div><div class="v ${b.remaining > 0.0005 ? 'due' : 'ok'}">${C.money(Math.max(0, b.remaining), cur)}</div></div>
           <div><div class="k-label">Statut</div><div class="v">${buyBadge(buyStatus(s2))}</div></div>
         </div>
@@ -11710,7 +11712,7 @@
       const pg = paginate(applySort(rows, cols, comptaState.buys.sort), comptaState.buys);
       $('#c-body').innerHTML = `
         <div class="filters">
-          <input type="search" id="cpt-q" placeholder="Rechercher : n°, fournisseur, objet, catégorie…" value="${h(comptaState.q)}">
+          <input type="search" id="cpt-q" placeholder="Rechercher : n°, fournisseur, objet…" value="${h(comptaState.q)}">
           ${q ? `<span class="small muted">${rows.length} sur ${allRows.length}</span>${filterReset(true)}
             <span class="small warn-text">Les totaux ne portent que sur la sélection.</span>` : ''}
         </div>
@@ -16041,7 +16043,7 @@
     const all = data.licences || [];
     $('#view').innerHTML = `<div class="page-head"><h1>Licences ${info('lic.liste')}</h1><div class="actions">${peut ? '<button class="btn btn-primary" id="lic-new">+ Émettre une licence</button>' : ''}</div></div>
       ${peut ? '' : '<div class="banner info"><span>Historique en lecture : les clés de signature ne sont pas sur cet ordinateur. Copier une clé, la renvoyer ou ouvrir sa facture reste possible ; émettre et renouveler, non.</span></div>'}
-      ${filtersBar(`<input type="text" id="q" placeholder="Rechercher : client, matricule, n° de licence…" value="${h(s.q)}">
+      ${filtersBar(`<input type="text" id="q" placeholder="Rechercher : client, matricule, n°…" value="${h(s.q)}">
         <select id="st">${FILTRES.map(([v, l]) => `<option value="${v}" ${s.st === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
         ${info('list.sort')}<span class="f-note" id="lic-note" hidden></span>`, all.length, !!(s.q || s.st))}
       <div class="panel" id="lic-console" hidden></div>

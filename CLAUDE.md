@@ -68,6 +68,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Un compteur et la liste qu'il annonce se calculent avec la **même fonction** | 6.8.1 — le bandeau des relances ; 7.15.0 — « Reste à encaisser » |
 | Une **annonce** se calcule par les MÊMES constructeurs que ce qu'elle annonce | 10.12.0 — E-02, le solde d'acompte faux de deux timbres |
 | Une fonction qui rend un montant **NATIF** piège chaque appelant qui additionne : la couverture se fait par appelant, jamais par fonction | 10.12.0 — E-08, la prévision en euros ; 10.1.0 |
+| Un **argument facultatif** qui change un montant piège chaque appelant qui l'oublie : il se tient appel par appel | 10.14.0 — `purchaseBalance` sans `data`, un trop-payé prérempli |
 | Un **coût moyen pondéré** dépend de l'ordre des gestes : un tri par identifiant est un ordre arbitraire | 10.12.0 — E-10, la vente sortie au coût de l'achat qui la suit |
 | Deux écrans qui montrent la **même pièce** ne disent qu'un montant, et deux recherches sur le même corpus qu'une réponse | 10.12.0 — H-E25, la palette et la liste ; la palette et la page Aide |
 | Un montant **négatif change de colonne**, il ne garde pas son signe | 6.3.0 — les écritures comptables |
@@ -7613,6 +7614,23 @@ faire seul, par ordre de priorité ») :
   le garde sur une ligne au-dessus de 1340 px retire le `<wbr>` du rendu (`display: none`) ; `nowrap`,
   essayé d'abord, n'y faisait rien — c'est la mesure (rectangles de ligne par CDP) qui l'a dit, la
   capture qui l'a montré, et un correctif pensé pour UNE largeur se vérifie à l'autre.
+
+**Puis les achats, repris à la souris** (P5) :
+
+- **Un argument FACULTATIF qui change un montant piège chaque appelant qui l'oublie.**
+  `purchaseBalance(purchase, company, data)` ne compte les avoirs et acomptes imputés que si on
+  lui donne `data` ; trois appels de l'app entreprise ne le donnaient pas — la fenêtre « Régler »,
+  la grille des règlements et la condition de son bouton. La fenêtre annonçait 1 309 DT de reste
+  et les PRÉREMPLISSAIT sur un loyer que la liste « À payer », juste au-dessus, disait dû de
+  1 071 : un trop-payé proposé. C'est E-08 (un montant NATIF, 10.12.0) sous une autre forme : la
+  couverture se fait par appelant, et le test lit chaque `C.purchaseBalance(` et exige `data`.
+  Et ce qui a été imputé se DIT là où on lit le reste — sinon « net 1 309, réglé 0, reste 1 071 »
+  ne s'additionne pas, et le chiffre juste passe pour faux. Trouvé en cliquant « Régler » sur la
+  première ligne de la liste ; aucun parcours ne compare la fenêtre à la liste.
+- **Une invite se mesure dans SA case** : « Rechercher : n°, fournisseur, objet, catégo… » était
+  coupée dans la case de 300 px des listes (291 px de texte pour 262 de place) ; la même longueur
+  tient dans la case de 416 px de la Comptabilité. Le test borne donc les invites de `#q` seules,
+  et le dit.
 
 ## Pistes pour la suite (non demandées)
 
