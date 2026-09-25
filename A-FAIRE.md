@@ -318,12 +318,16 @@ l'ordre proposé.
     **10.14.0-beta.1** — elle attend ces deux instruments verts.
 - **Le test humain des visites** (souris, clavier, 1440 et 1280, clair et sombre) : toutes les
   visites de page, une par une — à faire avant la stable.
-- **Le paiement dans l'application** (bêta obligatoire : argent et clés) : « Acheter » et
-  « Renouveler » qui ouvrent la page de paiement préremplie (offre, matricule) et une clé récupérée
-  toute seule après le paiement, par une référence que l'application a elle-même créée — jamais par
-  le matricule, qui est public ; sans réseau, le mail reste. Une licence achetée pendant l'essai
-  démarre-t-elle au paiement ou à la fin de l'essai (décision de Skander). Et le remboursement d'un
-  trop-perçu, avec le « reste à payer » net (§ 4 ci-dessus).
+- **Le paiement dans l'application** — l'ACHAT est fait en 10.14.0 (Paramètres → Licence : offres
+  et prix lus sur le serveur, page de paiement préremplie, clé récupérée toute seule par le jeton que
+  la commande a rendu une fois). Reste :
+  - **le renouvellement en ligne** : une licence payée en cours ne se rachète pas en ligne (elle
+    repartirait d'aujourd'hui et perdrait les jours payés, règle 7.33.0), donc il passe encore par
+    le mail. Il demande un départ côté serveur (`depuis` = la fin de la licence en cours, PROUVÉE par
+    la clé présentée) et une colonne D1 de plus — un `ALTER TABLE` à passer à la main.
+  - **la décision de Skander** : une licence achetée pendant l'essai démarre-t-elle au paiement (ce
+    que fait le code aujourd'hui) ou à la fin de l'essai ?
+  - le remboursement d'un trop-perçu, avec le « reste à payer » net (§ 4 ci-dessus).
 - **Ne jamais se perdre** : les 78 titres « Confirmation » à écrire geste par geste, « émise » au lieu
   de « envoyée », H-E30, les barres qui passent sur deux rangées, et les restes de la console (§ 3).
 - **Les tests humains mis en pause** le 24/09 pour la visite : l'app entreprise (achats, stock, biens,

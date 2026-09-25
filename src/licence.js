@@ -596,6 +596,28 @@ function requestMailCabinet(cabinet, etat, version) {
 // clé, donc un client qui écrit « ma licence 3f9a2c1e » désigne une ligne précise.
 function licenceId() { return crypto.randomBytes(4).toString('hex'); }
 
+// 10.14.0 — ce que l'application envoie quand on ACHÈTE depuis elle : exactement ce que le
+// formulaire du site demande (plateforme/skanfact-api.mjs, `nettoyerCommande`), pris dans la fiche
+// société — et rien d'autre. Le prix n'y est pas : le serveur le lit dans ses réglages, jamais chez
+// le client. Pur, et un test fixe la liste des champs : un jour quelqu'un voudra « juste ajouter »
+// le nombre de factures pour proposer la bonne offre, et c'est ce test qui doit l'arrêter.
+const CHAMPS_COMMANDE = ['offre', 'raison', 'adresse', 'email', 'matricule', 'tel', 'cabinet'];
+function corpsCommande(offre, company) {
+  const c = company || {};
+  const net = (v, n) => String(v || '').trim().slice(0, n);
+  return {
+    offre: net(offre, 20),
+    raison: net(c.name, 120),
+    adresse: net(c.address, 300),
+    email: net(c.email, 200),
+    matricule: net(c.matricule, 30),
+    tel: net(c.phone, 40),
+    // L'empreinte du cabinet APPAIRÉ, jamais une empreinte tapée : c'est elle qui ouvre la remise
+    // de parrainage, et le serveur la confronte à ses licences de cabinet.
+    cabinet: net(((c.cabinet || {}).fingerprint), 40)
+  };
+}
+
 // Le mail de demande de licence : tout ce qu'il faut pour émettre la clé, déjà écrit.
 function requestMail(company, state, deviceName) {
   const cab = (company && company.cabinet) || {};
@@ -614,6 +636,6 @@ function requestMail(company, state, deviceName) {
 }
 
 module.exports = { FORMAT, TRIAL_DAYS, PREFIX, CONTACT, OFFRES, OFFRE_DEFAUT, DUREES, TOUTES_OPTIONS, OPTION_LABELS, optionsDe, generateKeys, signLicence, parseKey, verifyKey,
-  licenceState, licenceId, offreDe, expirationPour, dateValide, memeMatricule, normMatricule, requestMail, today, addDays, addMonths, daysBetween,
+  licenceState, licenceId, offreDe, expirationPour, dateValide, memeMatricule, normMatricule, requestMail, CHAMPS_COMMANDE, corpsCommande, today, addDays, addMonths, daysBetween,
   CABINET_GRATUITS, licenceCabinet, pastille, requestMailCabinet,
   lireCles, choisirCle, empreinteCle, corpsReponse, verifierReponse, ageReponse, REPONSE_V, REPONSE_JOURS_MAX };

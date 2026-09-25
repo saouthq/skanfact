@@ -63,6 +63,12 @@ contextBridge.exposeInMainWorld('skanfact', {
   licenceStatus: (matricule) => ipcRenderer.invoke('licence:status', { matricule }),
   licenceSet: (key, matricule) => ipcRenderer.invoke('licence:set', key, { matricule }),
   licenceMail: (company, device) => ipcRenderer.invoke('licence:requestMail', { company, device }),
+  // 10.14.0 — acheter depuis l'application : la commande part de la fiche société, la clé revient.
+  achatTarifs: () => ipcRenderer.invoke('achat:tarifs'),
+  achatCommander: (offre, company) => ipcRenderer.invoke('achat:commander', { offre, company }),
+  achatVerifier: (matricule) => ipcRenderer.invoke('achat:verifier', { matricule }),
+  achatOublier: (matricule) => ipcRenderer.invoke('achat:oublier', { matricule }),
+  achatReprendre: () => ipcRenderer.invoke('achat:reprendre'),
   // L'éditeur (7.33.0). Ce qui repasse ce pont est un état ou une clé « SKAN1.… » signée : la clé
   // privée, elle, reste dans le processus principal.
   licenceEmettre: (payload) => ipcRenderer.invoke('licence:emettre', payload),

@@ -664,7 +664,11 @@ t('10.14.0 : la porte — deux battants, un seul vert, vue une fois ; et l\'assi
 t('10.14.0 : après la découverte, l\'assistant reprend — au démarrage comme à la sortie de l\'exemple', () => {
   const app = lireSource('src', 'renderer', 'app.js');
   // Le démarrage : « Découvrir » choisi sur la porte lance l'exemple APRÈS le premier dessin.
-  const boot = app.slice(app.indexOf('let decouvrirDabord = false;'), app.indexOf('let decouvrirDabord = false;') + 4000);
+  // Jusqu'à la fin de la séquence de démarrage (`})();`), jamais un nombre de caractères en dur : une
+  // ligne de plus au démarrage (10.14.0, la commande en attente) faisait tomber ce test sur du code juste.
+  const iBoot = app.indexOf('let decouvrirDabord = false;');
+  const boot = app.slice(iBoot, app.indexOf('\n  })();', iBoot));
+  assert.ok(boot.length > 500 && boot.length < 12000, 'tranche du démarrage inattendue : ' + boot.length);
   assert.ok(/decouvrirDabord = done === 'decouvrir';/.test(boot) && /if \(decouvrirDabord\) decouvrirDepuisLaPorte\(\);/.test(boot), 'le battant « Découvrir » n\'est plus suivi au démarrage');
   // L'exemple qui ne se charge pas rend la main à l'assistant : personne ne reste devant un accueil vide.
   const ddp = app.slice(app.indexOf('async function decouvrirDepuisLaPorte() {'), app.indexOf('async function reprendreAssistant() {'));

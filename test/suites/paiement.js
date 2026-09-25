@@ -403,6 +403,84 @@ module.exports = async ({ ta, assert }) => {
     } finally { k.fin(); db.fermer(); }
   });
 
+  // 10.14.0 — l'application qui a commandé récupère SA clé, sans attendre le mail. La référence est
+  // publique (elle voyage dans l'adresse de retour) : ce qui ouvre la clé est le JETON, rendu à la
+  // seule réponse de « commander ». Ni un jeton faux, ni une commande inconnue, ni la page publique
+  // ne la rendent — et les deux premiers répondent la MÊME chose, pour ne rien apprendre à un curieux.
+  await ta('10.14.0 : la clé ne se rend qu\'à celui qui a commandé — le jeton, jamais la référence', async () => {
+    const P = await API();
+    const { baseD1 } = require('../d1-sqlite');
+    const srv = lic.generateKeys();
+    const db = baseD1();
+    const env = {
+      DB: db, ADMIN_SECRET: 'C'.repeat(30), SRV_PRIVATE_KEY: srv.privateKey, RESEND_API_KEY: 're_test',
+      KONNECT_API_KEY: 'k_test', LICENCE_PUBLIC_KEYS: JSON.stringify([{ kid: 'srv-1', publicKey: srv.publicKey }])
+    };
+    const k = fauxKonnect('pending');
+    const appeler = async (m, p, corps) => {
+      const r = await P.default.fetch(new Request('https://api.skanfact.tn' + p, {
+        method: m, body: corps ? JSON.stringify(corps) : undefined
+      }), env);
+      return { status: r.status, j: await r.json().catch(() => null) };
+    };
+    try {
+      await P.default.fetch(new Request('https://api.skanfact.tn/v1/admin/reglages', {
+        method: 'POST', headers: { 'x-skanfact-admin': 'C'.repeat(30) },
+        body: JSON.stringify({ valeurs: { konnect_wallet: 'w_1', achat_retour: 'https://skanfact.tn/merci' } })
+      }), env);
+      const c = await appeler('POST', '/v1/achat/commander', { offre: 'independant', raison: 'Atelier Jeton', email: 'jeton@exemple.tn' });
+      assert.strictEqual(c.status, 201, JSON.stringify(c.j));
+      assert.ok(/^[A-Za-z0-9_-]{40,}$/.test(c.j.jeton || ''), 'la réponse de « commander » porte le jeton : ' + c.j.jeton);
+      assert.strictEqual(c.j.jeton, await P.jetonCommande(env, c.j.commande), 'le jeton se REFAIT, il n\'a pas besoin d\'être rangé');
+
+      // Le jeton ne sort par aucune autre porte : la page publique ne le porte pas.
+      const pub = await appeler('GET', '/v1/achat/etat/' + c.j.commande);
+      assert.ok(!JSON.stringify(pub.j).includes(c.j.jeton), 'la page publique ne doit jamais rendre le jeton');
+      assert.ok(!('cle' in pub.j), 'ni la clé');
+
+      // Un jeton faux et une commande inconnue : la même réponse, mot pour mot.
+      const faux = await appeler('POST', '/v1/achat/cle', { commande: c.j.commande, jeton: 'x'.repeat(43) });
+      const inconnue = await appeler('POST', '/v1/achat/cle', { commande: 'cmd_' + '0'.repeat(32), jeton: await P.jetonCommande(env, 'cmd_' + '0'.repeat(32)) });
+      assert.strictEqual(faux.status, 403); assert.strictEqual(inconnue.status, 403);
+      assert.deepStrictEqual(faux.j, inconnue.j, 'un jeton faux et une commande inconnue ne doivent pas se distinguer');
+      assert.ok(!('cle' in faux.j));
+      // Le jeton d'une commande n'ouvre pas une autre commande.
+      // (Le faux prestataire répond pour la DERNIÈRE commande initialisée : on lui rend la première.)
+      const premiere = { orderId: k.etatCourant.orderId, montant: k.etatCourant.montant };
+      const c2 = await appeler('POST', '/v1/achat/commander', { offre: 'independant', raison: 'Autre Atelier', email: 'autre@exemple.tn' });
+      Object.assign(k.etatCourant, premiere);
+      assert.strictEqual((await appeler('POST', '/v1/achat/cle', { commande: c2.j.commande, jeton: c.j.jeton })).status, 403);
+      // En GET, jamais : le jeton finirait dans une adresse.
+      assert.strictEqual((await appeler('GET', '/v1/achat/cle')).status, 405);
+
+      // Le bon jeton, avant le paiement : l'état, sans clé.
+      const attente = await appeler('POST', '/v1/achat/cle', { commande: c.j.commande, jeton: c.j.jeton });
+      assert.strictEqual(attente.status, 200, JSON.stringify(attente.j));
+      assert.strictEqual(attente.j.etat, 'ouverte');
+      assert.ok(!attente.j.cle, 'aucune clé tant que rien n\'est payé');
+
+      // Le paiement passe, et le webhook n'arrive jamais : c'est l'application qui finit le travail,
+      // et elle reçoit la clé — vérifiable avec la clé publique du serveur.
+      k.etatCourant.valeur = 'completed';
+      const payee = await appeler('POST', '/v1/achat/cle', { commande: c.j.commande, jeton: c.j.jeton });
+      assert.strictEqual(payee.j.etat, 'payee', JSON.stringify(payee.j));
+      assert.ok(/^SKAN1\./.test(payee.j.cle || ''), 'la clé est rendue à celui qui a commandé : ' + payee.j.cle);
+      const v = lic.verifyKey(payee.j.cle, [{ kid: 'srv-1', publicKey: srv.publicKey }]);
+      assert.ok(v, 'la clé rendue se vérifie avec la clé publique du serveur');
+      assert.strictEqual(v.offre, 'independant');
+      // Idempotent : la redemander ne fabrique pas une seconde licence.
+      const encore = await appeler('POST', '/v1/achat/cle', { commande: c.j.commande, jeton: c.j.jeton });
+      assert.strictEqual(encore.j.cle, payee.j.cle);
+      const licences = (await P.default.fetch(new Request('https://api.skanfact.tn/v1/admin/licences', {
+        headers: { 'x-skanfact-admin': 'C'.repeat(30) } }), env).then(r => r.json())).lignes;
+      assert.strictEqual(licences.length, 1, 'une commande, une licence');
+
+      // Sans clé du serveur, il n'y a pas de jeton à fabriquer — donc rien à ouvrir.
+      assert.strictEqual(await P.jetonCommande({}, c.j.commande), '');
+      assert.strictEqual(await P.jetonCommande(env, '../etat'), '');
+    } finally { k.fin(); db.fermer(); }
+  });
+
   await ta('10.9.0 : la remise de parrainage ne se pose que sur un cabinet que la base CONNAÎT', async () => {
     const P = await API();
     const { baseD1 } = require('../d1-sqlite');
@@ -601,5 +679,89 @@ module.exports = async ({ ta, assert }) => {
       // Et l'espace d'administration n'est pas un espace public : l'autorisation ne déborde pas.
       assert.strictEqual(await depuis('/v1/admin/clients'), null);
     } finally { db.fermer(); }
+  });
+  // ------------------------------------------------ acheter depuis l'application (10.14.0)
+
+  await ta('10.14.0 : ce que l\'application envoie en achetant se COMPTE — la fiche société, jamais un prix', async () => {
+    const co = {
+      name: '  Menuiserie Ben Ali SARL ', address: 'Route de Sfax, Sousse', email: 'contact@menuiserie.tn',
+      matricule: '1234567/A/M/000', phone: '73 000 000', rib: '07 000 0000000000000 00', capital: '10000',
+      cabinet: { name: 'Cabinet X', fingerprint: '3F9A-2C1E-7B44-0D5A-9E12', publicKey: 'CLE' }
+    };
+    const corps = lic.corpsCommande('entreprise', co);
+    assert.deepStrictEqual(Object.keys(corps), lic.CHAMPS_COMMANDE,
+      'un champ de plus dans ce qui part vers le serveur est une DÉCISION, jamais un effet de bord');
+    assert.deepStrictEqual(lic.CHAMPS_COMMANDE, ['offre', 'raison', 'adresse', 'email', 'matricule', 'tel', 'cabinet']);
+    assert.strictEqual(corps.raison, 'Menuiserie Ben Ali SARL', 'la facture se libelle à la SOCIÉTÉ (10.9.1)');
+    assert.strictEqual(corps.cabinet, '3F9A-2C1E-7B44-0D5A-9E12', 'le parrain est le cabinet APPAIRÉ');
+    assert.ok(!JSON.stringify(corps).includes('CLE') && !JSON.stringify(corps).includes('0000000000000'),
+      'ni la clé du cabinet ni le RIB ne partent');
+    // Le serveur accepte ce corps tel quel : les deux moitiés parlent le même contrat (10.9.1).
+    const P = await API();
+    const n = P.nettoyerCommande(corps);
+    assert.ok(n.ok, n.erreur);
+    assert.strictEqual(n.c.nom, 'Menuiserie Ben Ali SARL');
+    assert.strictEqual(n.c.cabinet, '3f9a2c1e7b440d5a9e12');
+    assert.deepStrictEqual(Object.keys(lic.corpsCommande('independant', null)), lic.CHAMPS_COMMANDE, 'une fiche vide ne fait pas planter');
+  });
+
+  await ta('10.14.0 : la clé reçue du serveur passe par la MÊME garde qu\'une clé collée, et le jeton ne traverse pas le pont', async () => {
+    const fs = require('fs'); const path = require('path');
+    const main = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'main.js'), 'utf8')
+      .split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
+    const i = main.indexOf("ipcMain.handle('achat:verifier'");
+    const verif = main.slice(i, main.indexOf('ipcMain.handle(', i + 10));
+    assert.ok(verif.length > 500 && verif.length < 5000, 'tranche inattendue : ' + verif.length);
+    const iVerif = verif.indexOf('L.verifyKey(cle'), iAutre = verif.indexOf("essai.state === 'autre'"), iEcrit = verif.indexOf('ecrireLicence(cle)');
+    assert.ok(iVerif > 0 && iAutre > iVerif && iEcrit > iAutre,
+      'une clé venue du réseau s\'enregistre sans être vérifiée, ou pour une autre entreprise');
+    // Ce que l'écran reçoit de la commande : de quoi la montrer, jamais de quoi la rouvrir.
+    const j = main.indexOf('function commandePublique()');
+    const pub = main.slice(j, main.indexOf('\n}', j));
+    assert.ok(/id: c\.id/.test(pub) && !/jeton/.test(pub), 'le jeton de commande traverse le pont');
+    assert.ok(/commande: commandePublique\(\)/.test(main), 'l\'état de licence ne dit plus qu\'une commande attend');
+    // Le paiement ne s'ouvre jamais dans une fenêtre de SkanFact, et jamais ailleurs qu'en https.
+    const k = main.indexOf("ipcMain.handle('achat:commander'");
+    const cmd = main.slice(k, main.indexOf('ipcMain.handle(', k + 10));
+    assert.ok(/L\.corpsCommande\(offre, company\)/.test(cmd), 'le corps de commande ne passe plus par la fonction comptée');
+    assert.ok(/if \(\/\^https:\\\/\\\/\/\.test\(url\)\) await shell\.openExternal\(url\)/.test(cmd), 'la page de paiement s\'ouvre sans garde https');
+  });
+
+  await ta('10.14.0 : on n\'achète pas par-dessus une licence qui court — ni ne réserve Achats à l\'Entreprise', async () => {
+    const fs = require('fs'); const path = require('path'); const vm = require('vm');
+    const app = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'renderer', 'app.js'), 'utf8');
+    const ligne = app.split('\n').find(l => /const achatPossible = /.test(l));
+    assert.ok(ligne, 'achatPossible introuvable');
+    const achatPossible = vm.runInNewContext(ligne.replace(/^\s*const achatPossible = /, '').replace(/;\s*$/, ''));
+    // Un renouvellement en ligne partirait d'aujourd'hui et perdrait les jours payés (7.33.0).
+    assert.strictEqual(achatPossible({ state: 'active', key: 'SKAN1.x' }), false);
+    assert.strictEqual(achatPossible({ state: 'essai' }), true);
+    assert.strictEqual(achatPossible({ state: 'finessai', locked: true }), true);
+    assert.strictEqual(achatPossible({ state: 'expiree' }), true);
+    assert.strictEqual(achatPossible({ state: 'essai', editeur: true }), false, 'celui qui signe n\'achète pas (8.0.0)');
+    assert.strictEqual(achatPossible({ state: 'revoquee' }), false);
+    // Depuis la 10.7.0, Achats n'est plus réservé : le panneau le disait encore, en dur.
+    const panneau = app.slice(app.indexOf('function drawLicencePanel() {'), app.indexOf('function dessinerAchat() {'));
+    assert.ok(!/Achats, Stock, Immobilisations/.test(panneau), 'le panneau recopie une liste de modules au lieu de lire la clé');
+    assert.ok(/C\.liste\(\(st\.reserves \|\| \[\]\)\.map\(libelleOffre\)\)/.test(panneau));
+    const guide = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'renderer', 'guide.js'), 'utf8');
+    const bulle = guide.split('\n').find(l => /'lic\.offre':/.test(l));
+    assert.ok(!/tout, plus Achats/.test(bulle), 'la bulle de l\'offre réserve encore Achats à l\'Entreprise');
+  });
+  await ta('10.14.0 : un renvoi posé DANS les Paramètres y mène, et ce qu\'il lit est déclaré avant lui', async () => {
+    const fs = require('fs'); const path = require('path');
+    const app = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'renderer', 'app.js'), 'utf8');
+    // « Compléter ma fiche », posé par le panneau Licence, appelait `navigate('#/parametres')` sur la
+    // page où l'on était déjà : aucun redessin, aucun geste (7.15.0). La porte des renvois internes sert.
+    const i = app.indexOf('function allerParametres(tab, focus) {');
+    const aller = app.slice(i, app.indexOf('\n  }\n', i));
+    assert.ok(/location\.hash === '#\/parametres' && amenerDansParametres/.test(aller) && /amenerDansParametres\(focus/.test(aller),
+      'depuis la page elle-même, allerParametres ne mène nulle part');
+    assert.ok(/amenerDansParametres = spec =>/.test(app), 'la porte des renvois internes n\'est plus prêtée');
+    // `amenerChamp` lit `majLue` : déclarée plus bas en `const`, c'était une zone morte — la route
+    // asynchrone levait, `render` avalait, et les panneaux Mises à jour et Licence restaient vides.
+    const iDecl = app.indexOf('let majLue = null;'), iAmener = app.indexOf('const amenerChamp = spec =>');
+    assert.ok(iDecl > 0 && iDecl < iAmener, 'majLue n\'est plus déclarée avant la fonction qui la lit');
+    assert.ok(!/const majLue\b/.test(app), 'majLue redéclarée en const : la zone morte revient');
   });
 };

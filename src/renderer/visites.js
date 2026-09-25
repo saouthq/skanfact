@@ -547,6 +547,10 @@
   b('#lic-save', "Enregistre la clé de licence collée ci-dessus.");
   b('#lic-ask', "Prépare le mail qui demande une licence.");
   b('#lic-clear', "Retire la clé de licence.");
+  b('#achat-verifier', "Redemande au serveur si le paiement est passé ; s'il l'est, ta clé s'enregistre.");
+  b('#achat-reprendre', "Rouvre dans ton navigateur la page de paiement de cette commande.");
+  b('#achat-oublier', "Oublie cette commande sur cet ordinateur (rien n'a été payé, rien à annuler).");
+  b('[data-acheter]', "Récapitule l'offre et son prix, puis ouvre le paiement dans ton navigateur.");
   b('#lic-copier-emp', "Copie l'empreinte de ta licence (pour la vérifier sur skanfact.tn).");
   b('#lic-param', "Ouvre ta licence dans les Paramètres.");
   b('#upd-check', "Cherche tout de suite une nouvelle version.");
@@ -1653,6 +1657,8 @@
       etapes: [
         { page: '#/parametres', avant: onglet('#set-tabs', 'app'), cible: '#p-licence', cote: 'dessus', titre: 'Ta licence',
           texte: 'Où en est ton essai ou ta licence, jusqu\'à quand, et ce qu\'elle ouvre.' },
+        { page: '#/parametres', cible: '#lic-achat', cote: 'dessus', facultatif: true, titre: 'Acheter sans quitter SkanFact',
+          texte: 'Choisis ton offre : la commande part de ta fiche société, le paiement s\'ouvre dans ton navigateur, et <b>la clé revient ici toute seule</b> quand tu reviens dans SkanFact.' },
         { page: '#/parametres', cible: '#lic-key', cote: 'droite', facultatif: true, titre: 'Ta clé',
           texte: 'Quand tu la reçois — elle commence par <b>SKAN1.</b> —, colle-la ici, puis <b>« Enregistrer la clé »</b> : SkanFact la vérifie tout de suite, sans connexion.' },
         { page: '#/parametres', cible: '#lic-ask', cote: 'dessous', facultatif: true, titre: 'Pas encore de clé ?',

@@ -811,6 +811,9 @@ function licenceStatus(matricule) {
     // Ce n'est pas un secret — c'est un condensé — et c'est ce que la page publique de
     // vérification demande. La clé, elle, ne sort jamais d'ici.
     empreinte: lic.key ? L.empreinteCle(lic.key) : '',
+    // 10.14.0 — une commande passée depuis l'application et pas encore payée (sans son jeton).
+    // (Une licence en cours peut avoir la sienne : c'est un renouvellement.)
+    commande: commandePublique(),
     editeur: editeurActif()
   };
 }
@@ -1687,6 +1690,116 @@ ipcMain.handle('licence:set', (_e, key, opts) => {
 });
 
 ipcMain.handle('licence:requestMail', (_e, { company, device } = {}) => L.requestMail(company || {}, licenceStatus((company || {}).matricule), device || ''));
+
+// ---------- acheter depuis l'application (10.14.0) ----------
+// Le chemin du site (10.9.0), sans le site : la commande part de la fiche société, le paiement se
+// fait chez le prestataire dans le navigateur, et la clé REVIENT toute seule — au lieu d'arriver
+// par mail pour être copiée, collée, et refusée parce qu'il manquait un caractère.
+//
+// La commande en attente vit dans le dossier de l'entreprise (`<dossier>/licence.json`), comme la
+// clé qu'elle fera naître : une licence est émise pour UN matricule. Elle porte le jeton que le
+// serveur n'a rendu qu'à cette réponse — c'est lui, et lui seul, qui rouvre la clé. Le jeton ne
+// traverse pas le pont : l'écran reçoit la commande, jamais ce qui l'ouvre.
+function ecrireCommande(c) {
+  try {
+    const doc = lireJson(LIC_FILE()) || {};
+    if (c) doc.commande = c; else delete doc.commande;
+    fs.mkdirSync(path.dirname(LIC_FILE()), { recursive: true });
+    fs.writeFileSync(LIC_FILE(), JSON.stringify(doc, null, 2));
+  } catch (e) { logToFile('commande en attente', e); }
+}
+function commandeEnAttente() {
+  const c = (lireJson(LIC_FILE()) || {}).commande;
+  return c && typeof c === 'object' && /^cmd_[0-9a-f]{16,}$/.test(String(c.id || '')) ? c : null;
+}
+// Ce que l'écran en reçoit : de quoi dire « ta commande attend son paiement », rien pour la rouvrir.
+function commandePublique() {
+  const c = commandeEnAttente();
+  return c ? { id: c.id, offre: String(c.offre || ''), montant: c.montant, devise: String(c.devise || ''), creeLe: String(c.creeLe || '') } : null;
+}
+const HORS_LIGNE_ACHAT = 'Le serveur de SkanFact ne répond pas. Vérifie ta connexion, puis réessaie — ou demande ta licence par mail.';
+
+ipcMain.handle('achat:tarifs', async () => {
+  // Pas d'adresse configurée (une version de développement, une construction d'essai) : l'achat
+  // n'existe pas ici, et l'écran propose le mail — il ne montre pas un bouton qui échouerait.
+  if (!plateformeBase()) return { ouvert: false, raison: 'L\'achat en ligne n\'est pas disponible dans cette version.' };
+  try {
+    const r = await requetePlateforme('/v1/achat/tarifs', { timeout: 8000 });
+    if (r.status !== 200 || !r.corps || !Array.isArray(r.corps.offres)) return { ouvert: false, raison: HORS_LIGNE_ACHAT };
+    return r.corps;
+  } catch (e) {
+    logToFile('achat : tarifs', e);
+    return { ouvert: false, raison: HORS_LIGNE_ACHAT };
+  }
+});
+
+ipcMain.handle('achat:commander', async (_e, { offre, company } = {}) => {
+  const corps = L.corpsCommande(offre, company);
+  let r;
+  try { r = await requetePlateforme('/v1/achat/commander', { corps, timeout: 20000 }); }
+  catch (e) { logToFile('achat : commande', e); throw erreur('ERR-ENT-086', HORS_LIGNE_ACHAT); }
+  const j = r.corps || {};
+  if (r.status !== 201 || !j.commande) {
+    // Le refus du serveur est déjà écrit pour un acheteur (« Indique une adresse e-mail… ») :
+    // on le montre tel quel, c'est la même phrase que sur le site.
+    throw erreur('ERR-ENT-086', j.erreur || 'La commande n\'a pas pu être créée. Réessaie dans un moment, ou demande ta licence par mail.');
+  }
+  // Le paiement se fait chez le prestataire, dans le navigateur du système — jamais dans une
+  // fenêtre de SkanFact, où l'on ne verrait ni l'adresse ni le cadenas de la banque.
+  const url = String(j.payUrl || '');
+  ecrireCommande({ id: j.commande, jeton: String(j.jeton || ''), offre: corps.offre, montant: j.montant, devise: j.devise || '',
+    payUrl: /^https:\/\//.test(url) ? url : '', creeLe: new Date().toISOString() });
+  if (/^https:\/\//.test(url)) await shell.openExternal(url);
+  return { ok: true, commande: j.commande, montant: j.montant, devise: j.devise || '', payUrl: url, parraine: !!j.parraine };
+});
+
+ipcMain.handle('achat:verifier', async (_e, opts) => {
+  const matricule = (opts || {}).matricule || '';
+  const c = commandeEnAttente();
+  if (!c) return { etat: 'aucune', status: licenceStatus(matricule) };
+  let r;
+  try { r = await requetePlateforme('/v1/achat/cle', { corps: { commande: c.id, jeton: c.jeton }, timeout: 20000 }); }
+  catch (e) { logToFile('achat : vérification', e); return { etat: 'hors-ligne', phrase: HORS_LIGNE_ACHAT, status: licenceStatus(matricule) }; }
+  const j = r.corps || {};
+  if (r.status === 403) {
+    // Le serveur ne la reconnaît plus (jeton perdu, clé du serveur changée) : la clé arrivera par
+    // mail. On oublie la commande, sinon on la réclamerait à chaque ouverture pour toujours.
+    ecrireCommande(null);
+    return { etat: 'inconnue', phrase: j.erreur || 'Cette commande ne se retrouve pas depuis ici : ta clé arrive par mail.', status: licenceStatus(matricule) };
+  }
+  if (r.status !== 200) return { etat: 'hors-ligne', phrase: HORS_LIGNE_ACHAT, status: licenceStatus(matricule) };
+  const cle = String(j.cle || '').trim();
+  if (cle) {
+    // La MÊME garde qu'une clé collée à la main (`licence:set`) : une clé reçue du réseau ne
+    // s'enregistre qu'une fois vérifiée, et jamais pour une autre entreprise que celle-ci.
+    const cles = clePublique().cles;
+    if (cles.length && !L.verifyKey(cle, cles)) {
+      return { etat: 'refusee', phrase: 'La clé reçue n\'est pas reconnue par cette version. Elle arrive aussi par mail : colle-la ici quand tu l\'auras.', status: licenceStatus(matricule) };
+    }
+    const essai = L.licenceState({ key: cle, cles, matricule, today: L.today() });
+    if (essai.state === 'autre') {
+      ecrireCommande(null);
+      return { etat: 'refusee', phrase: essai.detail, status: licenceStatus(matricule) };
+    }
+    ecrireLicence(cle);                 // retire aussi la commande : elle a donné sa clé
+    annoncerPlateforme().catch(() => {});
+    return { etat: 'payee', phrase: 'Paiement reçu : ta licence est enregistrée.', status: licenceStatus(matricule) };
+  }
+  if (j.etat === 'abandonnee') ecrireCommande(null);
+  return { etat: String(j.etat || 'ouverte'), phrase: String(j.phrase || ''), status: licenceStatus(matricule) };
+});
+
+// « J'ai payé autrement » ou « je ne veux plus » : la commande en attente s'oublie ici. Elle ne
+// s'annule pas chez le prestataire — rien n'a été payé, il n'y a rien à rembourser.
+// Le navigateur a été fermé avant de payer : on rouvre la MÊME page de paiement, sans refaire une
+// commande (une seconde commande, c'est un second montant à surveiller chez le prestataire).
+ipcMain.handle('achat:reprendre', async () => {
+  const c = commandeEnAttente();
+  if (!c || !/^https:\/\//.test(String(c.payUrl || ''))) return { ok: false };
+  await shell.openExternal(c.payUrl);
+  return { ok: true };
+});
+ipcMain.handle('achat:oublier', (_e, opts) => { ecrireCommande(null); return licenceStatus((opts || {}).matricule || ''); });
 
 // ---------- éditeur (7.33.0) : les clés, et l'émission d'une licence ----------
 // Tout ce qui touche à la clé privée se passe ICI. L'écran demande, le processus principal signe,

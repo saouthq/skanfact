@@ -50,7 +50,9 @@ const ACTIONS = {
   // un visiteur qui l'appelle, depuis une page, avant d'être qui que ce soit pour nous. Ce qui le
   // protège n'est pas un secret — il n'en a pas — c'est que RIEN de ce qu'il envoie ne décide d'un
   // montant, et que la preuve du paiement se redemande au prestataire, jamais au navigateur.
-  achat: ['tarifs', 'commander', 'etat', 'webhook'],
+  achat: ['tarifs', 'commander', 'etat', 'webhook',
+    // 10.14.0 — la clé rendue à l'APPLICATION qui a commandé, et à elle seule (`jetonCommande`).
+    'cle'],
   admin: ['etat', 'stats', 'clients', 'licences', 'activations', 'ventes', 'evenements', 'importer',
     // 10.9.0 — les commandes en ligne, et le bouton qui redemande une preuve au prestataire.
     'commandes',
@@ -926,6 +928,25 @@ export function masquerEmail(email) {
   const nom = e.slice(0, at);
   const cache = nom.length <= 2 ? nom[0] + '*' : nom[0] + '*'.repeat(Math.min(6, nom.length - 2)) + nom[nom.length - 1];
   return cache + e.slice(at);
+}
+
+// 10.14.0 — ce qui permet à l'application qui a commandé de récupérer SA clé, sans attendre le mail.
+// La référence de commande est PUBLIQUE (elle voyage dans l'adresse de retour, 10.9.0) : elle ne
+// peut donc rien ouvrir à elle seule. Le jeton, lui, n'est rendu QU'À la réponse de « commander » —
+// jamais dans une adresse, jamais par une autre route — donc seul celui qui a passé la commande le
+// tient. Et il n'a pas besoin d'être rangé : c'est un HMAC de la référence, sous un secret du
+// serveur. Rien à migrer dans la base, rien à retrouver, et un jeton inventé ne désigne rien.
+//
+// Pas le matricule, jamais : il est imprimé sur chaque facture de l'entreprise, n'importe qui le
+// connaît. Le secret choisi est celui qui SIGNE les licences : sans lui il n'y a pas de clé à
+// rendre, donc pas de jeton à fabriquer — les deux s'ouvrent et se ferment ensemble.
+export async function jetonCommande(env, id) {
+  const secret = String((env || {}).SRV_PRIVATE_KEY || '').trim();
+  const ref = String(id || '');
+  if (!secret || !/^cmd_[0-9a-f]{16,}$/.test(ref)) return '';
+  const k = await crypto.subtle.importKey('raw', enc.encode('skanfact-achat-jeton-v1\n' + secret),
+    { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  return b64u(await crypto.subtle.sign('HMAC', k, enc.encode(ref)));
 }
 
 // ---------- la clé : ce que le serveur signe ----------
@@ -3019,7 +3040,8 @@ async function repondreAchat(r, request, env) {
       detail: n.c.nom + ' — ' + (OFFRES[n.c.offre] || {}).label + ', ' + fmtMontant(m.ttc, devise) + ' TTC'
         + (parrain ? ' (parrainé, −' + remise + ' %)' : '') + ' — ' + id
     });
-    return rep({ commande: id, payUrl: init.payUrl, montant: m.ttc, devise, detail: m, parraine: !!parrain }, 201);
+    // Le jeton ne part QUE dans cette réponse : c'est ce qui en fait la preuve d'avoir commandé.
+    return rep({ commande: id, jeton: await jetonCommande(env, id), payUrl: init.payUrl, montant: m.ttc, devise, detail: m, parraine: !!parrain }, 201);
   }
 
   // ----- où en est ma commande -----
@@ -3038,6 +3060,35 @@ async function repondreAchat(r, request, env) {
       cmd = (await un('SELECT * FROM commandes WHERE id = ?', r.id)) || cmd;
     }
     return rep(etatCommandePublic(cmd));
+  }
+
+  // ----- la clé, pour l'application qui a commandé (10.14.0) -----
+  // En POST, jamais en GET : le jeton ne doit pas finir dans une adresse, donc dans un journal de
+  // serveur ou un historique. Un jeton faux et une commande inconnue répondent la MÊME chose — sinon
+  // la route apprendrait à un curieux lesquelles existent.
+  if (r.action === 'cle') {
+    if (request.method !== 'POST') return rep({ erreur: 'Méthode non autorisée.' }, 405);
+    const corps = await request.json().catch(() => null);
+    const id = String((corps && corps.commande) || '').trim();
+    const attendu = await jetonCommande(env, id);
+    if (!attendu || !memeSecret(attendu, String((corps && corps.jeton) || '').trim())) {
+      return rep({ erreur: 'Cette commande ne se retrouve pas depuis ici : ta clé arrive par mail.' }, 403);
+    }
+    let cmd = await un('SELECT * FROM commandes WHERE id = ?', id);
+    if (!cmd) return rep({ erreur: 'Cette commande ne se retrouve pas depuis ici : ta clé arrive par mail.' }, 403);
+    // Le même chemin de secours que la page de retour : on redemande au prestataire tant que le
+    // paiement n'est pas confirmé. L'application qui interroge ici ne dépend donc pas du webhook.
+    if (cmd.etat === 'ouverte' && cmd.paiement_ref && !cmd.paiement_le) {
+      await sansCasser(finaliserCommande(env, valeurs, cmd, maintenant), null);
+      cmd = (await un('SELECT * FROM commandes WHERE id = ?', id)) || cmd;
+    }
+    const pub = etatCommandePublic(cmd);
+    if (cmd.etat === 'payee' && cmd.licence_id) {
+      const l = await un(SEL_LICENCE + ' WHERE l.id = ?', cmd.licence_id);
+      const c = l ? await atelierLicences(env, valeurs).cleDeLicence(l) : { cle: '' };
+      if (c.cle) return rep({ ...pub, cle: c.cle });
+    }
+    return rep(pub);
   }
 
   // ----- le prestataire dit « va regarder » -----

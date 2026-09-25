@@ -263,6 +263,8 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Jamais une **base de ventes sans copie** : D1 est le seul endroit où vit qui a acheté quelle clé | 10.4.0 ; 10.5.0 — une copie qui demande un clic ne se fait pas |
 | Jamais **croire un webhook non signé** : il notifie, il ne prouve pas | 10.9.0 |
 | Jamais **abandonner une commande payée** : ce serait garder l'argent en fermant la porte | 10.9.0 |
+| Jamais une **clé rendue sur ce qui est public** (le matricule) : seulement sur le jeton que la commande a rendu une fois | 10.14.0 — l'achat dans l'application |
+| Jamais **vendre en ligne par-dessus une licence qui court** : elle repartirait d'aujourd'hui et perdrait les jours payés | 10.14.0 ; 7.33.0 |
 | Jamais un **secret qu'on ne peut pas remplacer** sans se fermer la porte | 10.5.0 — le second secret de rotation |
 | Ce qui **protège une réponse publique** est la REQUÊTE, jamais la forme de la réponse | 10.5.0 — la vérification d'une empreinte |
 | Jamais **chiffrer en croyant signer** : seule une signature dit d'où ça vient | 9.2.0 |
@@ -7457,6 +7459,39 @@ livre de douze mille écritures et trois cents dossiers collés d'un coup (`satu
 - Trois des dix-sept preuves ont d'abord été discutées : deux défauts remis sont tombés sur un test
   PLUS ANCIEN que le neuf (la numérotation, le tri) — la règle était déjà tenue ; le troisième est
   resté vert, et c'est lui qui a montré que le test ne pouvait pas le voir.
+
+**Puis l'achat de la licence depuis l'application** (Skander : « fais ce que tu peux faire seul, par
+ordre de priorité » — le paiement dans l'application venait en tête). Paramètres → Licence propose
+les offres, ouvre la page de paiement préremplie, et la clé revient toute seule :
+
+- **Une clé ne se récupère jamais par ce qui est public.** Le matricule se lit sur chaque facture :
+  une route « donne-moi la clé de ce matricule » donnerait la licence à qui la demande. La commande
+  rend UNE fois un jeton (`jetonCommande`, HMAC de l'identifiant par un secret du serveur — aucune
+  colonne D1 de plus), l'application le garde à côté de la licence (`LIC_FILE`), et il ne traverse
+  jamais le pont (`commandePublique`). `POST /v1/achat/cle` répond la même chose à un jeton faux et
+  à une commande inconnue : la différence apprendrait quelles commandes existent.
+- **Ce qui arrive du réseau passe la même porte que ce qu'on colle** : la clé reçue repasse par
+  `verifyKey` puis le refus « autre entreprise » avant `ecrireLicence` — un serveur qui se trompe de
+  commande ne pose pas la licence d'un autre.
+- **On ne vend pas en ligne par-dessus une licence qui court** (`achatPossible`) : la clé achetée
+  partirait d'aujourd'hui et perdrait les jours payés (7.33.0, « un renouvellement part de la fin de
+  la licence en cours »). Le renouvellement en ligne demande un départ prouvé côté serveur ; il reste
+  au mail (`A-FAIRE.md` § 4).
+- **Un refus se dit avant la question** (7.6.0) : sans raison sociale ou sans email, la fenêtre le
+  nomme avant le récapitulatif, et son bouton ouvre la fiche le curseur dans la case qui manque.
+- **`allerParametres` depuis les Paramètres eux-mêmes ne faisait rien** : `navigate()` vers la page
+  courante ne redessine rien (7.15.0), et « Compléter ma fiche » était inerte précisément quand on
+  achetait depuis le panneau Licence. Les Paramètres exposent `amenerDansParametres` ; et la cible
+  se revise après le chargement des panneaux asynchrones (`Promise.allSettled([majLue,
+  achatDessine])`), sinon la palette arrivait en haut de l'onglet (10.13.0 : une cible asynchrone se
+  pose après le chargement). Un amenage se fait par `reg.montrer`, jamais par un `scrollIntoView` de
+  page — un test l'interdit.
+- **Une zone morte temporelle dans une route ASYNCHRONE ne dit rien** : `amenerChamp` lisait une
+  `const` déclarée plus bas ; l'exception était avalée par la promesse de `render()`, et les
+  panneaux restaient vides sans une ligne en console. La variable est déclarée avant tout lecteur, et
+  un test lit l'ordre des deux.
+- **Une phrase d'offre se déduit de l'offre** : le panneau citait « Achats » parmi ce qu'Indépendant
+  réserve, deux versions après la 10.7.0 qui l'a ouvert — il lit maintenant `st.reserves`.
 
 ## Pistes pour la suite (non demandées)
 

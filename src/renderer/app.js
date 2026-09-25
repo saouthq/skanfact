@@ -93,7 +93,15 @@
   // Un lien qui promet un réglage précis doit y arriver, pas en haut d'une pile de six panneaux.
   // `settingsFocus` porte l'identifiant du panneau visé ; il est consommé une seule fois.
   let settingsFocus = '';
-  function allerParametres(tab, focus) { settingsTab = tab || 'societe'; settingsFocus = focus || ''; navigate('#/parametres'); }
+  // Depuis la page elle-même, `navigate` vers l'adresse courante ne redessine rien (7.15.0) : « Compléter
+  // ma fiche », posé par le panneau Licence, ne faisait rien du tout (10.14.0). On passe alors par la
+  // porte des renvois internes de la page (`amenerChamp`), qui ouvre l'onglet, amène le panneau et y
+  // met le curseur — sans redessiner, donc sans jeter une saisie en cours.
+  let amenerDansParametres = null;
+  function allerParametres(tab, focus) {
+    if (location.hash === '#/parametres' && amenerDansParametres && $('#pf')) { amenerDansParametres(focus || ''); return; }
+    settingsTab = tab || 'societe'; settingsFocus = focus || ''; navigate('#/parametres');
+  }
   // La même idée, pour n'importe quelle page : « n attestations à réclamer » déposait tout en haut de
   // Comptabilité → Ventes, trois écrans au-dessus du panneau qui les liste. Le routeur consomme
   // `pageFocus` APRÈS le rendu de la page, une seule fois.
@@ -13150,11 +13158,26 @@
     // qui ouvrait la fiche société en haut laissait chercher la case parmi douze. La même porte sert
     // aux renvois d'un panneau à l'autre (`data-vers-champ`) : `allerParametres` depuis la page
     // elle-même viserait l'adresse courante, et ne redessinerait rien (7.15.0).
+    // Déclarée AVANT `amenerChamp`, qui la lit : une `const` posée plus bas dans la même route est une
+    // zone morte, et la ReferenceError, levée dans une route asynchrone, était avalée par `render` —
+    // les panneaux Mises à jour et Licence restaient vides, sans une ligne dans aucune console.
+    let majLue = null;
     const amenerChamp = spec => {
       const [vise, champ] = String(spec).split(':');
       reg.montrer(vise);
       if (champ) setTimeout(() => { const el = $(`#pf [name="${champ}"]`); if (el) el.focus(); }, 80);
+      // Les panneaux qui se remplissent APRÈS le dessin (la version et l'état des mises à jour,
+      // l'achat de la licence) poussent ce qui est dessous : la palette amenait « Licence » et le
+      // laissait 900 px sous le bord (10.14.0). On revise une fois qu'ils ont fini — la règle du
+      // Cabinet (`reg.montrer` attend ses panneaux), portée ici.
+      setTimeout(() => Promise.allSettled([majLue, achatDessine]).then(() => {
+        const cible = document.getElementById(vise);
+        if (!cible || location.hash !== '#/parametres') return;
+        const r = cible.getBoundingClientRect(), vue = $('#view').getBoundingClientRect();
+        if (r.top < vue.top || r.top > vue.bottom - 80) reg.montrer(vise);
+      }), 0);
     };
+    amenerDansParametres = spec => { if (spec) amenerChamp(spec); };
     $$('#pf [data-vers-champ]').forEach(b => b.onclick = () => amenerChamp(b.dataset.versChamp));
     if (settingsFocus) { const spec = settingsFocus; settingsFocus = ''; amenerChamp(spec); }
 
@@ -13301,7 +13324,7 @@
     drawUpdatePanel();
     // Les vérifications silencieuses (toutes les quatre heures) n'envoient rien quand il n'y a rien
     // à annoncer : sans cette relecture, la date affichée serait celle du démarrage, pour toujours.
-    bridge.updateVersion().then(v => { upd.app = v; drawUpdatePanel(); ouvrirPanneauMaj(); }).catch(() => {});
+    majLue = bridge.updateVersion().then(v => { upd.app = v; drawUpdatePanel(); ouvrirPanneauMaj(); }).catch(() => {});
     drawOcrPanel();
     $('#go-modules').onclick = () => navigate('#/modules');
     $$('#redo-setup, #redo-setup-2').forEach(b => b.onclick = rejouerAssistant);
@@ -14635,12 +14658,14 @@
          ${st.name ? `<table class="list compact"><tbody>
             <tr><td>Titulaire</td><td><strong>${h(st.name)}</strong></td></tr>
             ${st.matricule ? `<tr><td>Matricule</td><td>${h(st.matricule)}</td></tr>` : ''}
-            <tr><td>Offre ${info('lic.offre')}</td><td><strong>${h(st.offreLabel || 'Entreprise')}</strong>${(st.reserves || []).length ? ' <span class="small muted">— Achats, Stock, Immobilisations, Trésorerie et marges, Paie et le dossier partagé restent lisibles ; leur création fait partie de l\'offre Entreprise.</span>' : ''}</td></tr>
+            <tr><td>Offre ${info('lic.offre')}</td><td><strong>${h(st.offreLabel || 'Entreprise')}</strong>${(st.reserves || []).length ? ` <span class="small muted">— ${h(C.liste((st.reserves || []).map(libelleOffre)))} restent lisibles ; leur création fait partie de l'offre Entreprise.</span>` : ''}</td></tr>
             ${st.exp ? `<tr><td>Valable jusqu'au</td><td>${C.fmtDate(st.exp)}</td></tr>` : ''}
             ${st.cabinet ? `<tr><td>Cabinet parrain</td><td class="mono">${h(st.cabinet)}</td></tr>` : ''}
             ${st.empreinte ? `<tr><td>Empreinte ${info('lic.empreinteCle')}</td><td><span class="mono">${h(st.empreinte)}</span>
               <button type="button" class="btn btn-ghost btn-sm" id="lic-copier-emp">Copier</button></td></tr>` : ''}
           </tbody></table>` : ''}
+         ${/* 10.14.0 — acheter sans quitter l'application : rempli par `dessinerAchat`. */''}
+         <div id="lic-achat"></div>
          <label class="field mt">${lbl('Clé de licence', 'lic.cle')}
            <textarea id="lic-key" rows="3" placeholder="SKAN1.…">${h(st.key || '')}</textarea></label>
          <div class="inline mt">
@@ -14695,6 +14720,160 @@
       await bridge.composeMail({ to: LICENCE_CONTACT, subject: m.subject, body: m.body, mode: modeEnvoi() });
       toast('Message préparé');
     };
+    achatDessine = dessinerAchat();
+  }
+
+  // ---------- acheter depuis l'application (10.14.0) ----------
+  // Le chemin du site, sans le site : l'offre se choisit ici, la commande part de la fiche société
+  // (raison sociale, adresse, email, matricule — ce que la facture portera), le paiement se fait
+  // chez le prestataire dans le navigateur, et la clé REVIENT toute seule. Plus de clé à copier
+  // depuis un mail et à recoller ici, un caractère de moins, « pas reconnue ».
+  //
+  // Les prix ne sont écrits nulle part ici : ils viennent du serveur, qui les lit dans les réglages
+  // de la console (10.5.0). Un prix écrit dans l'application serait faux au premier changement.
+  let tarifsAchat = null, tarifsLusA = 0, achatDessine = null;
+  // On achète quand on n'a pas de licence payée en cours. Un renouvellement pendant qu'une licence
+  // court encore partirait d'AUJOURD'HUI et perdrait les jours déjà payés (règle 7.33.0) : il se
+  // demande par mail tant que le serveur ne sait pas partir de la fin de la licence en cours.
+  const achatPossible = st => !!st && !st.editeur && ['essai', 'finessai', 'expiree', 'invalide'].includes(st.state);
+  const PHRASE_OFFRE = {
+    independant: 'Ventes, achats, TVA et paquet du comptable. Sans stock, biens, paie, marges ni dossier partagé.',
+    entreprise: 'Tout SkanFact : stock, biens, paie, trésorerie et marges, dossier partagé à deux.'
+  };
+  async function lireTarifs() {
+    // Relus toutes les dix minutes au plus : un panneau qui se redessine ne doit pas interroger le
+    // serveur à chaque frappe, et un prix changé dans la console doit finir par arriver.
+    if (tarifsAchat && Date.now() - tarifsLusA < 10 * 60 * 1000) return tarifsAchat;
+    try { tarifsAchat = await bridge.achatTarifs(); } catch (_) { tarifsAchat = { ouvert: false, raison: '' }; }
+    tarifsLusA = Date.now();
+    return tarifsAchat;
+  }
+  async function dessinerAchat() {
+    const el = $('#lic-achat'); if (!el) return;
+    const st = licence || {};
+    const cmd = st.commande;
+    if (cmd) {
+      const offre = cmd.offre === 'independant' ? 'Indépendant' : 'Entreprise';
+      el.innerHTML = `<div class="lic-achat">
+          <p><strong>Ta commande attend son paiement</strong> ${info('lic.commande')}</p>
+          <p class="small">Offre ${h(offre)}${Number(cmd.montant) ? ' — ' + C.money(Number(cmd.montant), cmd.devise === 'TND' ? 'DT' : (cmd.devise || 'DT')) + ' TTC' : ''}, commandée le ${C.fmtDate(String(cmd.creeLe || '').slice(0, 10))}. Une fois payée, ta clé s'enregistre ici toute seule — elle part aussi par mail.</p>
+          <div class="inline">
+            <button type="button" class="btn btn-primary" id="achat-verifier">J'ai payé : récupérer ma clé</button>
+            <button type="button" class="btn" id="achat-reprendre">Rouvrir la page de paiement</button>
+            <button type="button" class="btn btn-ghost" id="achat-oublier">Oublier cette commande</button>
+          </div>
+          <p class="small muted" id="achat-etat" aria-live="polite"></p>
+        </div>`;
+      $('#achat-verifier').onclick = () => verifierAchat(true);
+      $('#achat-reprendre').onclick = async () => {
+        const r = await bridge.achatReprendre().catch(() => null);
+        if (!r || !r.ok) toast('La page de paiement n\'est plus disponible : oublie cette commande et repasse-la.', true);
+      };
+      $('#achat-oublier').onclick = async () => {
+        if (!await confirmDialog('Oublier cette commande ?\n\nRien n\'a été payé : il n\'y a rien à annuler chez le prestataire. Si tu as payé, attends plutôt ta clé : elle arrive aussi par mail.', 'Oublier la commande', true, { prudent: true })) return;
+        licence = await bridge.achatOublier(company().matricule || '');
+        drawLicencePanel();
+      };
+      return;
+    }
+    if (!achatPossible(st)) { el.innerHTML = ''; return; }
+    el.innerHTML = '<p class="small muted mt">Lecture des tarifs…</p>';
+    const t = await lireTarifs();
+    // Le panneau a pu être redessiné, ou quitté, pendant la question au serveur (10.5.0 : une
+    // réponse en retard ne repeint pas l'écran qu'on a quitté).
+    const ici = $('#lic-achat'); if (!ici || ici !== el) return;
+    if (!t || !t.ouvert) {
+      // Fermé, on le DIT — et le geste qui reste est le mail, juste en dessous.
+      el.innerHTML = t && t.raison ? `<p class="small muted mt">${h(t.raison)} Demande ta licence par mail : « Demander une licence », ci-dessous.</p>` : '';
+      return;
+    }
+    const urgent = st.locked || st.state === 'finessai' || st.state === 'expiree';
+    const offres = (t.offres || []).filter(o => o.ttc != null);
+    const devise = t.devise === 'TND' ? 'DT' : (t.devise || 'DT');
+    el.innerHTML = `<div class="lic-achat">
+        <p><strong>Acheter ta licence</strong> ${info('lic.acheter')}</p>
+        <div class="lic-offres">
+          ${offres.map(o => `<div class="lic-offre">
+            <strong>${h(o.label)}</strong>
+            <span class="lic-prix">${C.money(o.ttc, devise)} <span class="small muted">TTC${!t.duree || t.duree === '1a' ? ' · un an' : ''}</span></span>
+            <span class="small muted">${h(PHRASE_OFFRE[o.id] || '')}</span>
+            <button type="button" class="btn${urgent && o.id === 'entreprise' ? ' btn-primary' : ''}" data-acheter="${h(o.id)}">Acheter l'offre ${h(o.label)}…</button>
+          </div>`).join('')}
+        </div>
+        <p class="small muted">Payée par carte chez le prestataire, dans ton navigateur. La clé revient ici toute seule — et par mail.</p>
+      </div>`;
+    $$('[data-acheter]', el).forEach(b => { b.onclick = () => acheter(b.dataset.acheter, t); });
+  }
+
+  async function acheter(offreId, t) {
+    enregistrerEnCours();
+    const co = company();
+    const o = (t.offres || []).find(x => x.id === offreId);
+    if (!o) return;
+    // Ce que le serveur exige, dit AVANT la question : on ne confirme pas un achat pour lire ensuite
+    // qu'il manque l'adresse e-mail (10.14.0, « un refus se dit avant la question »).
+    if (!String(co.name || '').trim()) {
+      if (await confirmDialog('La raison sociale de ton entreprise manque : c\'est elle que la facture et la licence porteront.', 'Compléter ma fiche', false)) allerParametres('societe', 'p-identite:name');
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(co.email || '').trim())) {
+      if (await confirmDialog('L\'adresse e-mail de ton entreprise manque : c\'est par là que la facture et la clé arrivent aussi.', 'Compléter ma fiche', false)) allerParametres('societe', 'p-identite:email');
+      return;
+    }
+    const devise = t.devise === 'TND' ? 'DT' : (t.devise || 'DT');
+    const cab = (co.cabinet || {}).fingerprint;
+    const ligne = (k, v) => `<div><span>${h(k)}</span><span>${v}</span></div>`;
+    const ok = await new Promise(resolve => {
+      let fait = false;
+      modal(`<h2>Acheter l'offre ${h(o.label)}</h2>
+        <div class="kv recap-emission">
+          ${ligne('Offre', `<strong>${h(o.label)}</strong> — un an`)}
+          ${ligne('Montant', `<strong>${C.money(o.ttc, devise)} TTC</strong> <span class="small muted">(${C.money(o.ht, devise)} HT + TVA${o.timbre ? ' + timbre' : ''})</span>`)}
+          ${cab && Number(t.remiseParrainage) ? ligne('Parrainage', `−${h(String(t.remiseParrainage))} % sur le HT si le serveur reconnaît ton cabinet — le montant exact s'affiche sur la page de paiement`) : ''}
+          ${ligne('Au nom de', `<strong>${h(co.name)}</strong>${co.matricule ? ' · ' + h(co.matricule) : ''}`)}
+          ${ligne('Clé et facture', h(co.email))}
+        </div>
+        <p class="small muted">Ce qui part au serveur de SkanFact : la raison sociale, l'adresse, l'adresse e-mail, le matricule, le téléphone${cab ? ' et l\'empreinte de ton cabinet (pour la remise)' : ''} — ce que la facture porte. Rien de tes clients, de tes pièces ni de tes montants.</p>
+        <p class="small muted">Le paiement s'ouvre dans ton navigateur, chez le prestataire. Revenir ensuite ici suffit : la clé s'enregistre toute seule.</p>
+        <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Payer ${C.money(o.ttc, devise)}…</button></div>`,
+      (root, close) => {
+        $('#ok', root).onclick = () => { fait = true; close(); resolve(true); };
+        $('[data-close]', root).onclick = () => { fait = true; close(); resolve(false); };
+      }, () => { if (!fait) resolve(false); }, { garde: false });
+    });
+    if (!ok) return;
+    try {
+      const r = await bridge.achatCommander(offreId, co);
+      licence = await bridge.licenceStatus(co.matricule || '');
+      drawLicencePanel();
+      toast(r.payUrl ? 'La page de paiement s\'ouvre dans ton navigateur' : 'Commande enregistrée');
+    } catch (e) { toast(plainError(e), true); }
+  }
+
+  // Redemande au serveur où en est la commande. `voulu` : un clic (on dit tout) ; sinon c'est le
+  // retour au premier plan ou le démarrage, et une commande qui attend encore ne dit rien.
+  let verifEnCours = false;
+  async function verifierAchat(voulu) {
+    if (verifEnCours || !(licence && licence.commande)) return;
+    verifEnCours = true;
+    const bouton = $('#achat-verifier');
+    if (bouton) { bouton.disabled = true; bouton.textContent = 'Vérification…'; }
+    try {
+      const r = await bridge.achatVerifier(data ? (company().matricule || '') : '');
+      if (r && r.status) licence = r.status;
+      if (r && r.etat === 'payee') {
+        licenceBanner(); redessinerBarre();
+        toast(licenceEnregistree(licence));
+      } else if (voulu && r) {
+        const phrase = r.phrase || 'Le paiement n\'est pas encore confirmé.';
+        if (r.etat === 'ouverte') toast(phrase + ' Réessaie dans un instant.');
+        else toast(phrase, r.etat === 'refusee' || r.etat === 'hors-ligne');
+      } else if (r && (r.etat === 'refusee' || r.etat === 'inconnue')) {
+        // Même sans clic, une commande que le serveur ne rendra jamais se dit une fois.
+        toast(r.phrase, true);
+      }
+    } catch (e) { if (voulu) toast(plainError(e), true); }
+    finally { verifEnCours = false; drawLicencePanel(); }
   }
 
   // La pastille du pied de la barre. Ce qu'elle dit et le ton qu'elle prend se décident dans
@@ -16435,9 +16614,15 @@
     // …et se relit toutes les heures et au retour au premier plan : SkanFact reste ouvert des jours
     // entiers, et un état lu une fois au démarrage se périme (7.1.x) — sans ça, un essai ne se
     // terminait jamais tant que l'application n'était pas relancée.
-    const relireLicence = () => rafraichirLicence().then(() => { redessinerBarre(); if (location.hash === '#/parametres') drawLicencePanel(); });
+    // 10.14.0 — une commande passée depuis l'application se redemande au même moment : on revient de
+    // la page de paiement du navigateur, c'est le retour au premier plan, et la clé est là.
+    const relireLicence = () => rafraichirLicence().then(() => {
+      redessinerBarre(); if (location.hash === '#/parametres') drawLicencePanel();
+      if (licence && licence.commande) verifierAchat(false);
+    });
     setInterval(relireLicence, 60 * 60 * 1000);
     window.addEventListener('focus', relireLicence);
+    if (licence && licence.commande) verifierAchat(false);
     // La copie de sauvegarde externe ne vit pas dans les données : on la lit une fois ici pour que
     // « Tes premiers pas » sache si l'étape est faite. Un échec n'empêche rien : l'étape s'affiche
     // simplement comme à faire.

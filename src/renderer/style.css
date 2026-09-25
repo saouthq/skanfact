@@ -1362,6 +1362,15 @@ body.dark .cal-d.out { color: #5b6572; }
    questions restées sans réponse) et `.code-box` (la clé d'une licence) sur un texte NU : une classe
    que la feuille ne connaît pas ne se voit nulle part (10.12.0 ; `.mono` en 8.1.0, `th.r` en 7.23.0).
    Elles vivent ici, pour les deux applications. */
+/* 10.14.0 — acheter sa licence depuis Paramètres → Licence : deux offres côte à côte, le prix
+   lu sur le serveur, le bouton au pied de chaque carte (aligné d'une carte à l'autre). */
+.lic-achat { margin-block: 14px 4px; padding: 12px 14px; border-radius: 10px; background: var(--bg); display: flex; flex-direction: column; gap: 10px; }
+.lic-achat > p { margin: 0; }
+.lic-achat .inline { flex-wrap: wrap; }
+.lic-offres { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; }
+.lic-offre { display: flex; flex-direction: column; gap: 6px; padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); }
+.lic-offre > .btn { margin-block-start: auto; align-self: flex-start; }
+.lic-prix { font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .warn-box {
   background: var(--warning-soft); border-inline-start: 3px solid var(--warning); border-radius: 8px;
   padding: 11px 14px; font-size: 13px; line-height: 1.55;

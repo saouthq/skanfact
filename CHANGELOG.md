@@ -432,6 +432,34 @@ dossiers collés d'un coup. Rien n'y était faux ; tout y était lent ou intermi
 - **Cabinet** : « Personne à relancer : tous tes dossiers sont à jour » ne se dit plus de clients
   qui n'envoient aucun paquet ; la page dit combien envoient, et que les autres n'ont rien à envoyer.
 
+### Acheter sa licence depuis SkanFact
+
+Pendant l'essai, ou quand une licence a expiré, **Paramètres → Licence** propose les offres avec leur
+prix toutes taxes comprises, lu sur le serveur — jamais écrit dans l'application.
+
+- **« Acheter »** montre d'abord ce qui part : l'offre, le montant, le titulaire, et les champs de ta
+  fiche société qui vont au prestataire (raison sociale, adresse, email, matricule, téléphone, et
+  l'empreinte de ton cabinet s'il est relié). Le bouton dit le montant (« Payer 465,100 DT… ») et
+  ouvre la page de paiement préremplie.
+- **La clé revient toute seule** : au retour dans SkanFact après le paiement, et à chaque démarrage
+  tant qu'une commande attend. La commande rend UNE fois un jeton, que l'application garde à côté de
+  la licence et qui ne traverse jamais l'écran ; la clé ne se demande jamais par le matricule, qui est
+  public. La clé reçue passe les mêmes contrôles qu'une clé collée à la main. Sans réseau, le mail
+  qui porte la clé reste le chemin.
+- Tant qu'une commande attend : « J'ai payé : récupérer ma clé », « Rouvrir la page de paiement » et
+  « Oublier cette commande ».
+- **Une fiche société incomplète se dit avant la question** : sans raison sociale ou sans email, la
+  fenêtre le nomme et « Compléter ma fiche » ouvre la fiche le curseur dans la case qui manque.
+- Une licence payée en cours ne se rachète pas en ligne : elle repartirait d'aujourd'hui et perdrait
+  les jours déjà payés. Le renouvellement passe encore par le mail.
+- Le panneau de licence d'une offre Indépendant ne cite plus « Achats » parmi ce qui est réservé
+  (Achats est ouvert depuis la 10.7.0) ; la bulle de l'offre non plus.
+- Deux défauts trouvés en l'essayant à la souris : « Compléter ma fiche » ne faisait rien quand on
+  était déjà sur les Paramètres, et « Paramètres → Licence » depuis la palette arrivait en haut de
+  l'onglet au lieu du panneau.
+- **Serveur** : une route `POST /v1/achat/cle` rend l'état de la commande, et la clé une fois payée,
+  à qui présente son jeton — la même réponse, qu'une commande n'existe pas ou que le jeton soit faux.
+
 ## 10.13.0-beta.1 — 24/09/2026
 
 **Avant la mise en production : les deux applications et le pont entre elles, testés en entier.**
