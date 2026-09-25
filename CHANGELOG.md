@@ -821,6 +821,15 @@ douze mois et l'année. Voici ce qu'il a trouvé :
 - **Trésorerie : les mouvements d'un compte supprimé basculent vraiment sur le compte par défaut.** La
   fenêtre le promettait ; la page Trésorerie les perdait pendant que le grand livre les gardait — le
   disponible et la banque de la comptabilité ne disaient plus la même chose.
+- **Un paiement en devise passe à la banque au taux du jour.** Une facture de 1 100 € émise à 3,35 et
+  payée quand l'euro vaut 3,40 : ta banque reçoit 3 740 DT, pas 3 685. SkanFact convertissait le
+  paiement au taux de la facture — ta Trésorerie ne retombait jamais sur ton relevé, et le gain de
+  55 DT n'existait nulle part. La fenêtre de paiement (client et fournisseur) demande désormais le
+  « Taux du jour » quand la pièce est en devise, dit AVANT d'enregistrer ce qui passe à la banque et le
+  gain ou la perte de change, et la ligne du paiement le redit. Le client ou le fournisseur est soldé au
+  taux de sa pièce ; l'écart part au 755 (gain) ou au 655 (perte), au résultat et chez ton comptable.
+  Sans taux saisi, rien ne change pour les paiements déjà enregistrés. À VÉRIFIER avec ton comptable :
+  le cours à retenir (celui de ta banque sur l'avis de crédit ou de débit).
 - **SkanFact Cabinet : la déclaration, les biens et l'inventaire se relisent quand le livre bouge.**
   Lus une fois, ils gardaient leurs chiffres d'avant : une vente validée dans la grille n'entrait dans
   la TVA collectée qu'au changement de dossier, et la déclaration de septembre disait « 1 pièce en

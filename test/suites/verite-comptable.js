@@ -1233,12 +1233,14 @@ function scenarioComplet() {
   payer('fs', '2025-10-01', net('fs'));
   payer('f4', '2026-02-10', 150);                 // trop payé de 30
   payer('f4', '2026-02-20', -30);                 // et remboursé
-  payer('f5', '2026-05-02', net('f5'));           // en euros
+  payer('f5', '2026-05-02', net('f5'));           // en euros, à 3,4 le jour du règlement (facture à 3,3)
+  d.documents.find(x => x.id === 'f5').payments[0].exchangeRate = 3.4;
   const netA = id => core.purchaseTotals(d.purchases.find(x => x.id === id), co).netToPay;
   const regler = (id, date, amount, accountId) => d.purchases.find(x => x.id === id).payments.push({ id: `${id}-${date}`, date, amount, accountId: accountId || 'b' });
   regler('p1', '2025-02-01', netA('p1'));
   regler('p2', '2025-04-15', netA('p2'));
   regler('p3', '2025-08-20', netA('p3'));
+  d.purchases.find(x => x.id === 'p3').payments[0].exchangeRate = 3.3;   // réglé à 3,3 (achat à 3,35)
   regler('p5', '2026-05-25', netA('p5'), 'k');
   // La paie : chaque mois de 2025 et de 2026 jusqu'à juillet, payée le 3 du mois suivant ; l'avance
   // de février 2026 se rembourse par les bulletins, par la même porte que l'application.
@@ -1321,5 +1323,110 @@ t('10.14.0 : le formulaire d\'un mouvement propose le virement entre comptes, et
   // Pointer l'arrivée écrit `reconciledVers`, jamais le drapeau du départ.
   const p2 = app.slice(app.indexOf('const porteur = id => {'), app.indexOf('$$(\'[data-rec]\').forEach'));
   assert.ok(/id\.endsWith\('~vers'\)/.test(p2) && /set reconciled\(x\) \{ mv\.reconciledVers = x; \}/.test(p2), 'l\'arrivée d\'un virement ne se pointe pas');
+});
+t('10.14.0 : un règlement en devise passe à la banque au taux du jour — le tiers se solde au taux de sa pièce, l\'écart au change', () => {
+  // Calculé à la main. Facture de 1 000 € (sans TVA ni timbre) émise à 3,300 : le client doit
+  // 3 300 DT. Il paie 1 000 € un mois plus tard, à 3,400 : la banque reçoit 3 400 DT — 100 DT de
+  // gain de change (755). Un achat de 500 € à 3,350 (1 675 DT dus) réglé à 3,300 : 1 650 DT sortent
+  // de la banque — 25 DT de gain. SkanFact convertissait le règlement au taux de la PIÈCE : la banque
+  // disait 3 300 et 1 675, et le relevé ne tombait jamais juste.
+  const d = base0({
+    accounts: [{ id: 'b', name: 'Banque', kind: 'banque', opening: 0, openingDate: '2026-01-01', isDefault: true }],
+    clients: [{ id: 'c', name: 'Client Europe' }], suppliers: [{ id: 's', name: 'Fournisseur Europe' }],
+    documents: [{ id: 'f', type: 'facture', number: 'FAC-2026-001', status: 'envoyée', clientId: 'c', date: '2026-03-01', dueDate: '2026-03-31',
+      currency: 'EUR', exchangeRate: 3.3, applyStamp: false, createdAt: 1, lines: [{ label: 'Étude', qty: 1, unitPrice: 1000, vatRate: 0 }],
+      payments: [{ id: 'pf', date: '2026-04-02', amount: 1000, accountId: 'b', exchangeRate: 3.4 }] }],
+    purchases: [{ id: 'a', kind: 'facture', supplierId: 's', number: 'EU-1', date: '2026-03-05', currency: 'EUR', exchangeRate: 3.35, createdAt: 1,
+      lines: [{ label: 'Licence', qty: 1, unitPrice: 500, vatRate: 0, destination: 'charge' }],
+      payments: [{ id: 'pa', date: '2026-04-10', amount: 500, accountId: 'b', exchangeRate: 3.3 }] }]
+  });
+  const co = d.company, avril = { from: '2026-04-01', to: '2026-04-30' };
+  const mv = core.cashMovements(d, co, avril, null);
+  assert.deepStrictEqual(mv.map(m => [m.source, m.amount]).sort(), [['achat', -1650], ['vente', 3400]], 'la banque bouge du taux de la pièce');
+  const E = core.journalEntries(d, co, avril);
+  const solde = c => r3(E.filter(e => e.account === c).reduce((t, e) => t + e.debit - e.credit, 0));
+  assert.strictEqual(solde('532'), 1750);
+  assert.strictEqual(solde('411'), -3300, 'le client n\'est pas soldé au taux de sa facture');
+  assert.strictEqual(solde('401'), 1675, 'le fournisseur n\'est pas soldé au taux de sa pièce');
+  assert.strictEqual(solde('755'), -125, 'les deux gains de change');
+  assert.strictEqual(solde('655'), 0);
+  // Le client et le fournisseur sont soldés — ni reste, ni trop-perçu.
+  assert.strictEqual(core.invoiceBalance(d.documents[0], d, co).remaining, 0);
+  assert.strictEqual(core.purchaseBalance(d.purchases[0], co, d).remaining, 0);
+  // Le résultat simplifié compte le gain, comme les états.
+  const an = { from: '2026-01-01', to: '2026-12-31' };
+  assert.strictEqual(core.simpleResult(d, co, an).resultat, r3(3300 - 1675 + 125));
+  // À l'inverse : payé à un taux PLUS BAS que la facture, c'est une perte (655).
+  d.documents[0].payments[0].exchangeRate = 3.2;
+  assert.strictEqual(r3(core.journalEntries(d, co, avril).filter(e => e.account === '655').reduce((t, e) => t + e.debit - e.credit, 0)), 100);
+  // Sans taux saisi, le règlement prend celui de la pièce : rien ne change pour ce qui existait.
+  delete d.documents[0].payments[0].exchangeRate;
+  assert.strictEqual(core.cashMovements(d, co, avril, null).find(m => m.source === 'vente').amount, 3300);
+  const e = ecarts(d);
+  assert.deepStrictEqual(e, [], e.join('\n'));
+  // Un REMBOURSEMENT au client à un autre taux : rendre 100 € à 3,400 coûte 340 DT à la banque,
+  // le client n'est crédité que de 330 (le taux de sa facture) — 10 DT de perte de change.
+  d.documents[0].payments[0].exchangeRate = 3.3;
+  d.documents[0].payments.push({ id: 'pr', date: '2026-04-20', amount: -100, accountId: 'b', exchangeRate: 3.4 });
+  assert.strictEqual(core.cashMovements(d, co, avril, null).find(m => m.id === 'pr').amount, -340, 'le remboursement ne sort pas au taux du jour');
+  const E2 = core.journalEntries(d, co, avril);
+  assert.strictEqual(r3(E2.filter(e2 => e2.account === '655').reduce((t, e2) => t + e2.debit - e2.credit, 0)), 10, 'rendre plus de dinars que la pièce n\'en porte n\'est pas une perte');
+  assert.strictEqual(core.invoiceBalance(d.documents[0], d, co).remaining, 100, 'le reste suit la devise de la pièce');
+  const e2 = ecarts(d);
+  assert.deepStrictEqual(e2, [], e2.join('\n'));
+});
+t('10.14.0 : la fenêtre d\'un règlement en devise demande le taux du jour, et dit AVANT d\'enregistrer ce qui passe à la banque', () => {
+  const app = require('fs').readFileSync(require('path').join(__dirname, '../../src/renderer/app.js'), 'utf8');
+  const vm = require('vm');
+  const champ = app.slice(app.indexOf('function champTauxReglement('), app.indexOf('function brancherTauxReglement('));
+  const branche = app.slice(app.indexOf('function brancherTauxReglement('), app.indexOf('function paymentForm('));
+  assert.ok(champ.length > 200 && champ.length < 1500 && branche.length > 600 && branche.length < 3000, 'tranches inattendues');
+  // Le champ n'existe que sur une pièce en devise, et propose le taux de la pièce.
+  const co = { currency: 'DT' };
+  const ctx = { company: () => co, h: x => String(x), lbl: x => x, field: (l, n, v) => `[${l}|${n}|${v}]` };
+  const c = (piece, pay) => vm.runInNewContext(`${champ} champTauxReglement(piece, pay, 'k')`, { ...ctx, piece, pay });
+  assert.strictEqual(c({ currency: 'DT' }, null), '', 'le champ apparaît sur une pièce en dinars');
+  assert.ok(c({ currency: 'EUR', exchangeRate: 3.3 }, null).includes('|exchangeRate|3.3]'), 'le taux proposé n\'est pas celui de la pièce');
+  assert.ok(c({ currency: 'EUR', exchangeRate: 3.3 }, { exchangeRate: 3.45 }).includes('|3.45]'), 'le taux d\'un règlement déjà saisi n\'est pas repris');
+  // L'annonce, jouée : calculée à la main. 1 000 € reçus à 3,400 sur une facture à 3,300.
+  const el = v => ({ value: v, ecoute: [], addEventListener(ev, f) { this.ecoute.push(f); }, textContent: '', innerHTML: '' });
+  const jouer = (a, t, entre, verbe) => {
+    const root = { '#rg-change': el(''), '[name=amount]': el(a), '[name=exchangeRate]': el(t) };
+    vm.runInNewContext(`${branche} brancherTauxReglement(root, piece, entre, verbe)`, { $: (s, r) => r[s], C: core, company: () => co, root, piece: { currency: 'EUR', exchangeRate: 3.3 }, entre, verbe });
+    const z = root['#rg-change'];
+    return { z, root, texte: () => (z.innerHTML || z.textContent).replace(/<[^>]+>/g, '').replace(/\s+/g, ' ') };
+  };
+  let r = jouer('1000', '3.4', true, 'Reçu');
+  assert.ok(r.texte().includes(core.money(3400, 'DT').replace(/\s+/g, ' ')) && /gain de change de/.test(r.texte()) && r.texte().includes('755'), r.texte());
+  assert.ok(r.texte().includes(core.money(100, 'DT').replace(/\s+/g, ' ')), 'l\'écart annoncé n\'est pas celui calculé à la main : ' + r.texte());
+  // Payer un fournisseur à un taux plus haut que sa pièce : une perte.
+  r = jouer('1000', '3.4', false, 'Payé');
+  assert.ok(/perte de change de/.test(r.texte()) && r.texte().includes('655'), r.texte());
+  // Même taux : aucun écart, et c'est dit.
+  assert.ok(/aucun écart de change/.test(jouer('1000', '3.3', true, 'Reçu').texte()));
+  // L'annonce suit la frappe (9.4.2) : taper un autre taux la recalcule.
+  r = jouer('1000', '3.3', true, 'Reçu');
+  r.root['[name=exchangeRate]'].value = '3.2';
+  r.root['[name=exchangeRate]'].ecoute.forEach(f => f());
+  assert.ok(/perte de change de/.test(r.texte()), 'l\'annonce ne suit pas la frappe : ' + r.texte());
+  // Une fois la fenêtre fermée, la ligne du règlement dit ce qui est passé à la banque, et à quel
+  // taux : sans elle, le taux du jour n'était écrit nulle part à l'écran.
+  const enDinars = app.slice(app.indexOf('function reglementEnDinars('), app.indexOf('function brancherTauxReglement('));
+  const lire = (piece, p) => vm.runInNewContext(`${enDinars} reglementEnDinars(piece, p)`, { C: core, company: () => co, piece, p }).replace(/<[^>]+>/g, '').replace(/\s+/g, ' ');
+  assert.strictEqual(lire({ currency: 'DT' }, { amount: 100 }), '', 'une ligne en dinars porte un « = … DT »');
+  assert.strictEqual(lire({ currency: 'EUR', exchangeRate: 3.35 }, { amount: 1100, exchangeRate: 3.4 }), `= ${core.money(3740, 'DT').replace(/\s+/g, ' ')} au taux de 3,4`);
+  assert.strictEqual(lire({ currency: 'EUR', exchangeRate: 3.35 }, { amount: -100 }), `= ${core.money(335, 'DT').replace(/\s+/g, ' ')} au taux de 3,35`, 'un règlement sans taux ne reprend pas celui de sa pièce');
+  assert.ok(/C\.money\(p\.amount, cur\)\}\$\{reglementEnDinars\(s, p\)\}/.test(app), 'la ligne d\'un paiement client ne dit pas ce qui est passé à la banque');
+  assert.ok(/\$\{reglementEnDinars\(s2, x\)\}<\/td>\$\{rowMenuCell\(x\.id\)\}/.test(app), 'la ligne d\'un règlement fournisseur ne dit pas ce qui est passé à la banque');
+  // Les deux fenêtres posent le champ, le branchent, refusent un taux invalide et l'enregistrent.
+  const pf = app.slice(app.indexOf('function paymentForm('), app.indexOf('function paymentForm(') + 9000);
+  const sp = app.slice(app.indexOf('champTauxReglement(p, r0,') - 800, app.indexOf('champTauxReglement(p, r0,') + 5000);
+  [[pf, 'paymentForm', /champTauxReglement\(inv, p0, 'ed\.payRate'\)/, /brancherTauxReglement\(root, inv, !rend,/],
+    [sp, 'supplierPaymentForm', /champTauxReglement\(p, r0, 'buy\.payRate'\)/, /brancherTauxReglement\(root, p, rend,/]].forEach(([z, nom, pose, branchee]) => {
+    assert.ok(pose.test(z), `${nom} ne pose pas le champ`);
+    assert.ok(branchee.test(z), `${nom} ne branche pas l'annonce`);
+    assert.ok(/if \(\$\('\[name=exchangeRate\]', root\) && !\(Number\(v\.exchangeRate\) > 0\)\) return refus\(/.test(z), `${nom} accepte un taux invalide`);
+    assert.ok(/if \(\$\('\[name=exchangeRate\]', root\)\) champs\.exchangeRate = Number\(v\.exchangeRate\);/.test(z), `${nom} n'enregistre pas le taux du jour`);
+  });
 });
 };

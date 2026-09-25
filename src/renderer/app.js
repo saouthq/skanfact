@@ -3900,7 +3900,7 @@
             : `<div><div class="k-label">Reste à payer</div><div class="v ${b.remaining > 0.0005 ? 'due' : 'ok'}">${C.money(Math.max(0, b.remaining), cur)}</div></div>`}
         </div>
         ${rows.length ? `<table class="list compact"><thead><tr><th>Date</th><th>Mode</th>${plusieursComptes ? '<th>Compte</th>' : ''}<th>Référence</th><th class="r">Montant</th><th></th></tr></thead><tbody>
-          ${rows.map(p => `<tr><td>${C.fmtDate(p.date)}</td><td>${h(methodLabel(p.method))}</td>${plusieursComptes ? `<td>${h(accountLabel(p.accountId))}</td>` : ''}<td>${h(p.reference || '')}${p.note ? `<div class="small muted">${h(p.note)}</div>` : ''}</td><td class="r">${C.money(p.amount, cur)}${C.estRemboursement(p) ? '<div class="small muted">rendu au client</div>' : ''}</td>${rowMenuCell(p.id)}</tr>`).join('')}
+          ${rows.map(p => `<tr><td>${C.fmtDate(p.date)}</td><td>${h(methodLabel(p.method))}</td>${plusieursComptes ? `<td>${h(accountLabel(p.accountId))}</td>` : ''}<td>${h(p.reference || '')}${p.note ? `<div class="small muted">${h(p.note)}</div>` : ''}</td><td class="r">${C.money(p.amount, cur)}${reglementEnDinars(s, p)}${C.estRemboursement(p) ? '<div class="small muted">rendu au client</div>' : ''}</td>${rowMenuCell(p.id)}</tr>`).join('')}
         </tbody></table>` : `<p class="small muted">Aucun paiement enregistré.</p>`}
         <div class="inline mt">
           ${s.status !== 'annulée' && b.remaining > 0.0005
@@ -3921,7 +3921,7 @@
       bindRowMenus(el, id => {
         const p = (s.payments || []).find(x => x.id === id); if (!p) return [];
         return [
-          { icon: 'modifier', label: C.estRemboursement(p) ? 'Modifier ce remboursement' : 'Modifier ce paiement', hint: 'Date, montant, mode, compte', run: () => paymentForm(s, () => render(), p) },
+          { icon: 'modifier', label: C.estRemboursement(p) ? 'Modifier ce remboursement' : 'Modifier ce paiement', hint: (s.currency || company().currency) === company().currency ? 'Date, montant, mode, compte' : 'Date, montant, taux du jour, mode, compte', run: () => paymentForm(s, () => render(), p) },
           { sep: true },
           { icon: 'supprimer', label: C.estRemboursement(p) ? 'Supprimer ce remboursement' : 'Supprimer ce paiement', hint: C.estRemboursement(p) ? 'Le trop-perçu redeviendra à rendre' : 'Il ne comptera plus dans ce que le client a réglé', danger: true, run: async () => {
             // La clôture passe AVANT la question (7.6.0) : répondre « oui » pour s'entendre dire non.
@@ -4505,6 +4505,45 @@
   // `rembourser` (10.14.0) : la même fenêtre rend de l'argent au client. Le montant se TAPE en
   // positif — c'est ce qu'on lit sur le chèque ou le virement — et s'enregistre en négatif : c'est
   // le signe qui fait tout le reste (`C.estRemboursement`).
+  // Le taux du jour d'un règlement en devise (10.14.0) : la banque bouge de ce qu'elle a vraiment
+  // reçu ou payé, le tiers se solde au taux de sa pièce, et l'écart est un gain ou une perte de
+  // change. Le champ n'existe que sur une pièce en devise ; il propose le taux de la pièce, et
+  // l'annonce dit en dinars ce qui passe à la banque, AVANT d'enregistrer (9.4.2).
+  function champTauxReglement(piece, pay, cle) {
+    const cur = piece.currency || company().currency;
+    if (cur === company().currency) return '';
+    const t = Number(pay && pay.exchangeRate) > 0 ? pay.exchangeRate : (Number(piece.exchangeRate) || 1);
+    return `${field(lbl(`Taux du jour (1 ${h(cur)} en ${h(company().currency)})`, cle), 'exchangeRate', t, 'number', 'step="0.0001" min="0" class="num"')}
+      <p class="small span-2 annonce-stable" id="rg-change"></p>`;
+  }
+  // Sous le montant d'un règlement en devise, ce qui est VRAIMENT passé à la banque : la ligne ne
+  // montrait que 1 100 EUR, et le taux du jour n'était écrit nulle part une fois la fenêtre fermée.
+  function reglementEnDinars(piece, p) {
+    const base = company().currency;
+    if ((piece.currency || base) === base) return '';
+    const t = C.tauxDuReglement(piece, p, company());
+    return `<div class="small muted">= ${C.money(Math.abs(C.montantRegle(piece, p, company())), base)} <span class="nw">au taux de ${String(t).replace('.', ',')}</span></div>`;
+  }
+  // `entre` : l'argent ENTRE à la banque (un encaissement, un remboursement reçu) ; sinon il sort.
+  function brancherTauxReglement(root, piece, entre, verbe) {
+    const z = $('#rg-change', root);
+    if (!z) return;
+    const base = company().currency, tp = Number(piece.exchangeRate) || 1;
+    const taux = x => String(x).replace('.', ',');
+    const dire = () => {
+      const a = Number($('[name=amount]', root).value) || 0, t = Number($('[name=exchangeRate]', root).value) || 0;
+      if (!(a > 0) || !(t > 0)) { z.textContent = ''; return; }
+      const banque = C.round3(a * t), tiers = C.round3(a * tp), ecart = C.round3(banque - tiers);
+      const gain = entre ? ecart > 0 : ecart < 0;
+      z.innerHTML = `${verbe} en dinars : <b>${C.money(banque, base)}</b>. ${Math.abs(ecart) < 0.0005
+        ? `Même taux que la pièce : aucun écart de change.`
+        : `La pièce le portait au taux de ${taux(tp)} (${C.money(tiers, base)}) : <b>${gain ? 'gain' : 'perte'} de change de ${C.money(Math.abs(ecart), base)}</b>, que l'écriture passe au ${gain ? '755' : '655'}.`}`;
+    };
+    $('[name=amount]', root).addEventListener('input', dire);
+    $('[name=exchangeRate]', root).addEventListener('input', dire);
+    dire();
+  }
+
   function paymentForm(inv, done, pay, rembourser) {
     const b = balance(inv); const cur = docCur(inv);
     const p0 = pay || null;
@@ -4519,6 +4558,7 @@
       <form id="pf2" class="grid-2">
         ${dateFieldHtml(lbl('Date', 'ed.payDate'), 'date', p0 ? p0.date : C.today())}
         ${field(lbl(rend ? 'Montant rendu' : 'Montant', 'ed.payAmount'), 'amount', p0 ? Math.abs(Number(p0.amount) || 0) : (rend ? aRendre : reste), 'number', 'step="0.001" min="0" class="num"')}
+        ${champTauxReglement(inv, p0, 'ed.payRate')}
         <label class="field">${lbl('Mode', 'ed.payMethod')}<select name="method">${C.PAYMENT_METHODS.map(m => `<option value="${m[0]}" ${p0 && p0.method === m[0] ? 'selected' : ''}>${m[1]}</option>`).join('')}</select></label>
         ${accountFieldHtml(p0 && p0.accountId)}
         ${field(lbl('Référence (n° chèque, virement…)', 'ed.payReference'), 'reference', p0 ? p0.reference || '' : '')}
@@ -4530,6 +4570,7 @@
         <button type="button" class="btn btn-sm" id="pf-compte">${libelleCompteDepuisFiche('Créer le compte', 'Créer un compte')}…</button></div>` : ''}
       <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">${rend ? 'Enregistrer le remboursement' : 'Enregistrer'}</button></div>`,
       (root, close) => {
+        brancherTauxReglement(root, inv, !rend, rend ? 'Rendu' : 'Reçu');
         if ($('#pf-compte', root)) $('#pf-compte', root).onclick = () => accountForm(null, a => {
           const z = $('#pf-sans-compte', root);
           if (a && z) z.textContent = `Ce paiement sera rattaché au compte « ${a.name} ».`;
@@ -4538,6 +4579,7 @@
         const v = formValues($('#pf2', root));
         if (!(Number(v.amount) > 0)) return refus($('[name=amount]', root), 'Montant invalide.');
         if (!v.date) return refus($('[name=date]', root), 'Date obligatoire.');
+        if ($('[name=exchangeRate]', root) && !(Number(v.exchangeRate) > 0)) return refus($('[name=exchangeRate]', root), 'Taux du jour invalide : saisis combien de dinars valait une unité de la devise ce jour-là.');
         if (v.date > C.today() && !await confirmDialog(`La date du ${rend ? 'remboursement' : 'paiement'} (${C.fmtDate(v.date)}) est dans le futur. ${rend ? 'Un remboursement s\'enregistre quand l\'argent part' : 'Un paiement s\'enregistre quand l\'argent est reçu'}, pas quand il est promis. Enregistrer quand même ?`, 'Enregistrer quand même', undefined, { titre: rend ? 'Un remboursement daté dans le futur' : 'Un paiement daté dans le futur' })) return;
         // Rendre plus que le trop-perçu ferait DEVOIR le client de nouveau : c'est presque toujours
         // une faute de frappe. On prévient, on n'interdit pas (7.6.0).
@@ -4549,6 +4591,7 @@
         inv.payments = inv.payments || [];
         const cible = p0 ? inv.payments.find(x => x.id === p0.id) : null;
         const champs = { date: v.date, amount: C.round3(rend ? -v.amount : v.amount), method: v.method, accountId: v.accountId || (p0 ? p0.accountId || '' : ''), reference: v.reference || '', note: v.note || '' };
+        if ($('[name=exchangeRate]', root)) champs.exchangeRate = Number(v.exchangeRate);
         if (cible) Object.assign(cible, champs);
         else inv.payments.push({ id: C.uid(), ...champs });
         save(true); close();
@@ -7393,16 +7436,18 @@
       <form id="spf" class="grid-2">
         ${dateFieldHtml(lbl(rend ? 'Date du remboursement' : 'Date du règlement', 'buy.payDate'), 'date', r0 ? r0.date : C.today(), {})}
         ${field(lbl(rend ? 'Montant reçu' : 'Montant', 'buy.payAmount'), 'amount', r0 ? Math.abs(Number(r0.amount) || 0) : C.round3(rend ? aRecuperer : reste), 'number', 'step="0.001" min="0" class="num"')}
+        ${champTauxReglement(p, r0, 'buy.payRate')}
         <label class="field">${lbl('Mode', 'buy.payMethod')}<select name="method">${C.PAYMENT_METHODS.map(([v, l]) => `<option value="${v}" ${r0 && r0.method === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
         ${accountFieldHtml(r0 ? r0.accountId || '' : '')}
         ${field(lbl('Référence', 'buy.payReference'), 'reference', r0 ? r0.reference || '' : '', 'text', 'placeholder="N° de chèque, référence du virement…"')}
         <label class="field span-2">${lbl('Note', 'buy.payNote')}<input type="text" name="note" value="${h(r0 ? r0.note || '' : '')}"></label>
       </form>
       <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
-      (root, close) => { $('#ok', root).onclick = async () => {
+      (root, close) => { brancherTauxReglement(root, p, rend, rend ? 'Reçu' : 'Payé'); $('#ok', root).onclick = async () => {
         const v = formValues($('#spf', root));
         if (!(Number(v.amount) > 0)) return refus($('[name=amount]', root), 'Montant invalide.');
         if (!v.date) return refus($('[name=date]', root), 'Date invalide.');
+        if ($('[name=exchangeRate]', root) && !(Number(v.exchangeRate) > 0)) return refus($('[name=exchangeRate]', root), 'Taux du jour invalide : saisis combien de dinars valait une unité de la devise ce jour-là.');
         if (v.date > C.today() && !await confirmDialog(`La date (${C.fmtDate(v.date)}) est dans le futur. Enregistrer quand même ?`, 'Enregistrer', undefined, { titre: 'Un règlement daté dans le futur' })) return;
         if (!rend && Number(v.amount) > reste + 0.0005 && !await confirmDialog(`Le montant (${C.money(v.amount, cur)}) dépasse le reste dû (${C.money(reste, cur)}). Enregistrer quand même ?`, 'Enregistrer quand même', undefined, { titre: 'Plus que le reste dû' })) return;
         if (rend && Number(v.amount) > aRecuperer + 0.0005 && !await confirmDialog(`Le montant reçu (${C.money(v.amount, cur)}) dépasse ce que ce fournisseur te devait (${C.money(aRecuperer, cur)}). Enregistrer quand même ?`, 'Enregistrer quand même', undefined, { titre: 'Plus que ce qu\'il te devait' })) return;
@@ -7412,6 +7457,7 @@
         const stored = purchaseById(p.id) || p;
         const signe = rend && p.kind !== 'avoir' ? -1 : 1;
         const champs = { date: v.date, amount: C.round3(signe * Number(v.amount)), method: v.method, accountId: v.accountId || (r0 ? r0.accountId || '' : ''), reference: v.reference || '', note: v.note || '' };
+        if ($('[name=exchangeRate]', root)) champs.exchangeRate = Number(v.exchangeRate);
         const cible = r0 ? (stored.payments || []).find(x => x.id === r0.id) : null;
         if (cible) Object.assign(cible, champs);
         else stored.payments = (stored.payments || []).concat([{ id: C.uid(), ...champs }]);
@@ -7927,7 +7973,7 @@
           <div><div class="k-label">Statut</div><div class="v">${buyBadge(buyStatus(s2))}</div></div>
         </div>
         ${rows.length ? `<table class="list compact"><thead><tr><th>Date</th><th>Mode</th><th>Référence</th><th class="r">Montant</th><th></th></tr></thead><tbody>
-          ${rows.map(x => `<tr><td>${C.fmtDate(x.date)}</td><td>${h(methodLabel(x.method))}</td><td>${C.estRemboursementAchat(s2, x) ? '<span class="badge">remboursement reçu</span> ' : ''}${h(x.reference || '')}${x.note ? `<div class="small muted">${h(x.note)}</div>` : ''}</td><td class="r">${C.money(Math.abs(Number(x.amount) || 0), cur)}</td>${rowMenuCell(x.id)}</tr>`).join('')}
+          ${rows.map(x => `<tr><td>${C.fmtDate(x.date)}</td><td>${h(methodLabel(x.method))}</td><td>${C.estRemboursementAchat(s2, x) ? '<span class="badge">remboursement reçu</span> ' : ''}${h(x.reference || '')}${x.note ? `<div class="small muted">${h(x.note)}</div>` : ''}</td><td class="r">${C.money(Math.abs(Number(x.amount) || 0), cur)}${reglementEnDinars(s2, x)}</td>${rowMenuCell(x.id)}</tr>`).join('')}
         </tbody></table>` : '<p class="small muted">Aucun règlement enregistré.</p>'}
         <div class="inline mt">
           ${b.remaining > 0.0005 ? `<button class="btn ${$('#pay') ? '' : 'btn-primary'}" id="pay2">+ Enregistrer un règlement</button>` : ''}
@@ -7939,7 +7985,7 @@
       bindRowMenus(el, id => {
         const x = (s2.payments || []).find(y => y.id === id); if (!x) return [];
         return [
-          { icon: 'modifier', label: C.estRemboursementAchat(s2, x) ? 'Modifier ce remboursement' : 'Modifier ce règlement', hint: 'Date, montant, mode, compte', run: () => supplierPaymentForm(s2, () => render(), x) },
+          { icon: 'modifier', label: C.estRemboursementAchat(s2, x) ? 'Modifier ce remboursement' : 'Modifier ce règlement', hint: cur === company().currency ? 'Date, montant, mode, compte' : 'Date, montant, taux du jour, mode, compte', run: () => supplierPaymentForm(s2, () => render(), x) },
           { sep: true },
           { icon: 'supprimer', label: 'Supprimer ce règlement', hint: 'Il ne comptera plus dans ce que tu as réglé', danger: true, run: async () => {
             // La clôture passe AVANT la question (7.6.0) : répondre « oui » pour s'entendre dire non.

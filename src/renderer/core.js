@@ -967,6 +967,16 @@
         piecesLieesAchat(data, p.id, 'acompte').forEach(a => { total += ecartDeTauxEntre(a, p, purchaseTotals(a, company).netToPay, company); });
       }
     });
+    // Les règlements à un autre taux que leur pièce (10.14.0), à la date du règlement : recevoir plus
+    // de dinars est un gain, en payer plus une perte — un avoir remboursé à l'inverse.
+    (data.documents || []).forEach(d => {
+      if (d.type !== 'facture') return;
+      (d.payments || []).forEach(p => { if (inPeriod(p.date, from, to)) total += ecartDuReglement(d, p, company); });
+    });
+    (data.purchases || []).forEach(pu => {
+      const sens = pu.kind === 'avoir' ? -1 : 1;
+      (pu.payments || []).forEach(p => { if (inPeriod(p.date, from, to)) total -= sens * ecartDuReglement(pu, p, company); });
+    });
     return round3(total);
   }
 
@@ -984,6 +994,31 @@
     const cur = doc.currency || company.currency;
     if (!cur || cur === company.currency) return round3(amount);
     return round3(amount * rateOf(doc, company));
+  }
+
+  // Le RÈGLEMENT d'une pièce en devise (10.14.0). Une facture de 1 000 € émise à 3,300 se règle un
+  // mois plus tard à 3,400 : la banque reçoit 3 400 DT, pas 3 300. SkanFact convertissait le
+  // règlement au taux de la FACTURE — le solde bancaire de la page ne retombait jamais sur le relevé
+  // réel, et l'écart de change n'existait nulle part. Un règlement porte son taux du jour
+  // (`exchangeRate`, par défaut celui de la pièce) : la banque bouge de ce qu'elle a vraiment reçu ou
+  // payé, le client ou le fournisseur se solde au taux de SA pièce, et la différence est un gain (755)
+  // ou une perte (655) de change — la règle des avoirs à un autre taux, appliquée au règlement.
+  function tauxDuReglement(piece, p, company) {
+    const cur = (piece || {}).currency || (company || {}).currency;
+    if (!cur || cur === (company || {}).currency) return 1;
+    const r = Number((p || {}).exchangeRate);
+    return r > 0 ? r : rateOf(piece, company);
+  }
+  // Ce que la banque a vraiment reçu ou payé, en devise de la société.
+  function montantRegle(piece, p, company) {
+    const a = Number((p || {}).amount) || 0;
+    const cur = (piece || {}).currency || (company || {}).currency;
+    if (!cur || cur === (company || {}).currency) return round3(a);
+    return round3(a * tauxDuReglement(piece, p, company));
+  }
+  // L'écart entre ce que la banque a bougé et ce que le tiers voit soldé (au taux de la pièce).
+  function ecartDuReglement(piece, p, company) {
+    return round3(montantRegle(piece, p, company) - toBase(piece, Number((p || {}).amount) || 0, company));
   }
 
   function fmtDate(iso) {
@@ -1491,7 +1526,7 @@
       (d.payments || []).forEach(p => {
         if (!inPeriod(p.date, period.from, period.to)) return;
         const m = PAYMENT_METHODS.find(x => x[0] === p.method);
-        rows.push({ id: p.id, date: p.date, number: d.number, client: clientName(d.clientId), clientId: d.clientId || '', amount: toBase(d, p.amount, company), remboursement: estRemboursement(p), method: m ? m[1] : (p.method || ''), reference: p.reference || '', note: p.note || '', docId: d.id, currency: d.currency || company.currency, accountId: p.accountId || '' });
+        rows.push({ id: p.id, date: p.date, number: d.number, client: clientName(d.clientId), clientId: d.clientId || '', amount: montantRegle(d, p, company), amountTiers: toBase(d, Number(p.amount) || 0, company), remboursement: estRemboursement(p), method: m ? m[1] : (p.method || ''), reference: p.reference || '', note: p.note || '', docId: d.id, currency: d.currency || company.currency, accountId: p.accountId || '' });
       });
     });
     return rows.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
@@ -1709,7 +1744,7 @@
         if (d.status !== 'brouillon' && d.status !== 'annulée' && byKey[(d.date || '').slice(0, 7)]) {
           byKey[d.date.slice(0, 7)].invoiced = round3(byKey[d.date.slice(0, 7)].invoiced + (d.type === 'avoir' ? -1 : 1) * toBase(d, computeTotals(d, company).netHT, company));
         }
-        if (d.type === 'facture') (d.payments || []).forEach(p => { const k = (p.date || '').slice(0, 7); if (byKey[k]) byKey[k].collected = round3(byKey[k].collected + toBase(d, Number(p.amount) || 0, company)); });
+        if (d.type === 'facture') (d.payments || []).forEach(p => { const k = (p.date || '').slice(0, 7); if (byKey[k]) byKey[k].collected = round3(byKey[k].collected + montantRegle(d, p, company)); });
       }
     });
     return series;
@@ -2088,7 +2123,8 @@
         id: x.id, purchaseId: p.id, date: x.date, number: p.number || '', supplier: name(p.supplierId), supplierId: p.supplierId || '',
         // Un règlement porté par un AVOIR est un remboursement : l'argent ENTRE (10.2.0). Le signe
         // suffit — `entrySet` change alors la colonne tout seul, et la trésorerie suit.
-        amount: round3((p.kind === 'avoir' ? -1 : 1) * toBase(p, Number(x.amount) || 0, company)), method: m ? m[1] : (x.method || ''),
+        amount: round3((p.kind === 'avoir' ? -1 : 1) * montantRegle(p, x, company)),
+        amountTiers: round3((p.kind === 'avoir' ? -1 : 1) * toBase(p, Number(x.amount) || 0, company)), method: m ? m[1] : (x.method || ''),
         currency: p.currency || company.currency, reference: x.reference || '', note: x.note || '', accountId: x.accountId || ''
       });
     }));
@@ -2310,7 +2346,7 @@
       // trop-perçu en moins. « Montant − reste » y ajoutait les avoirs, qui diminuent le reste sans
       // qu'un dinar n'entre : 2 040 annoncés pour 1 700 reçus, et le « rapporté en caisse » avec.
       if (d.type === 'facture') {
-        collected = round3(collected + toBase(d, (d.payments || []).reduce((s, p) => s + (Number(p.amount) || 0), 0), company));
+        collected = round3(collected + (d.payments || []).reduce((s, p) => s + montantRegle(d, p, company), 0));
       }
     });
     let cost = 0, paid = 0;
@@ -2318,7 +2354,7 @@
       const t = purchaseTotals(p, company);
       cost = round3(cost + coutAchat(t));
       // Un avoir remboursé RAPPORTE de l'argent (10.14.0) : son « réglé » vient en moins.
-      paid = round3(paid + (p.kind === 'avoir' ? -1 : 1) * toBase(p, purchaseBalance(p, company, data).paid, company));
+      paid = round3(paid + (p.kind === 'avoir' ? -1 : 1) * (p.payments || []).reduce((s, x) => s + montantRegle(p, x, company), 0));
     });
     // Devis en cours : ce qui est proposé mais pas encore FACTURÉ, pour voir l'affaire en entier. Un
     // devis entièrement facturé comptait encore « en devis » à côté de ses propres factures : la fiche
@@ -3896,7 +3932,7 @@
       out.push({
         id: p.id, kind: rend ? 'decaissement' : 'encaissement', date: p.date, accountId: compteDe(p.accountId),
         label: `${rend ? 'Remboursement' : 'Encaissement'} ${d.number || ''}`.trim(), party: clientName(d.clientId),
-        amount: round3(toBase(d, Number(p.amount) || 0, company)), method: p.method || '',
+        amount: montantRegle(d, p, company), method: p.method || '',
         reference: p.reference || '', docId: d.id, reconciled: !!p.reconciled, source: 'vente'
       });
     }));
@@ -3906,7 +3942,7 @@
       // (`supplierPayments`) le savait, la Trésorerie non : elle le sortait du compte, et la banque
       // de la page et celle du grand livre différaient de deux fois le remboursement (10.14.0). Un
       // règlement NÉGATIF sur une facture trop payée est le même geste : le fournisseur rend.
-      const montant = -round3((pu.kind === 'avoir' ? -1 : 1) * toBase(pu, Number(p.amount) || 0, company));
+      const montant = -round3((pu.kind === 'avoir' ? -1 : 1) * montantRegle(pu, p, company));
       const rendu = montant > 0;
       out.push({
         id: p.id, kind: rendu ? 'encaissement' : 'decaissement', date: p.date, accountId: compteDe(p.accountId),
@@ -5300,7 +5336,11 @@
         const e = entrySet({ date: r.date, journal: j.journal, piece: r.number || '', tiers: r.client, tiersId: r.clientId || '', source: 'encaissement', docId: r.docId, currency: cur, lettre: lettreDoc(r.docId) });
         const label = `${r.remboursement ? 'Remboursement' : 'Règlement'} ${r.number || ''}${r.client ? ' — ' + r.client : ''}${r.reference ? ' (' + r.reference + ')' : ''}`;
         e.debit(j.compte, label, r.amount);
-        e.credit(cptClient(r.clientId), label, r.amount, { role: 'clients' });
+        e.credit(cptClient(r.clientId), label, r.amountTiers, { role: 'clients' });
+        // Le client se solde au taux de SA facture ; la banque a reçu au taux du jour (10.14.0).
+        const ecart = round3(r.amount - r.amountTiers);
+        if (ecart > 0) e.credit(acc.gainsChange, `Gain de change — ${label}`, ecart);
+        else if (ecart < 0) e.debit(acc.pertesChange, `Perte de change — ${label}`, -ecart);
         out.push(...e.done());
       });
     }
@@ -5311,8 +5351,12 @@
         const j = journalDeCompte(data, acc, r.accountId, r.method);
         const e = entrySet({ date: r.date, journal: j.journal, piece: r.number || '', tiers: r.supplier, tiersId: r.supplierId || '', source: 'règlement', docId: r.purchaseId, currency: cur, lettre: lettreAchat(achatsById[r.purchaseId]) });
         const label = `Règlement fournisseur ${r.number || ''}${r.supplier ? ' — ' + r.supplier : ''}`;
-        e.debit(cptFourn(r.supplierId), label, r.amount, { role: 'fournisseurs' });
+        e.debit(cptFourn(r.supplierId), label, r.amountTiers, { role: 'fournisseurs' });
         e.credit(j.compte, label, r.amount);
+        // Payer plus de dinars que la pièce n'en porte est une perte de change (10.14.0).
+        const ecart = round3(r.amount - r.amountTiers);
+        if (ecart > 0) e.debit(acc.pertesChange, `Perte de change — ${label}`, ecart);
+        else if (ecart < 0) e.credit(acc.gainsChange, `Gain de change — ${label}`, -ecart);
         out.push(...e.done());
       });
     }
@@ -8745,7 +8789,7 @@
     EXTRA_TYPES, SALES_TYPES, CONVERSIONS, CONVERSION_LABELS, convertDoc, derivedDocs, chaineDePieces, DEFAULT_CLAUSES, CLAUSE_LABELS,
     PURCHASE_KINDS, PURCHASE_LIES, piecesLieesAchat, LINE_DESTINATIONS, DEFAULT_EXPENSE_CATEGORIES, PURCHASE_STATUSES, expenseCategories,
     vatReturn, vatChain, reportTvaDebut, DEFAULT_FISCAL_DEADLINES, fiscalDeadlines, nextDeadline, upcomingFiscal, fiscalFilingId, fiscalDone, echeanceSociale, socialesDeposees, simpleResult,
-    ACCOUNT_KINDS, MOVE_KINDS, virementVers, compteDepuisFiche, cashMovements, accountBalance, cashPosition, cashForecast, reconciliation,
+    ACCOUNT_KINDS, MOVE_KINDS, virementVers, tauxDuReglement, montantRegle, ecartDuReglement, compteDepuisFiche, cashMovements, accountBalance, cashPosition, cashForecast, reconciliation,
     lineCost, documentMargin, marginBy, PROJECT_STATUSES, projectMargin, projectList, recurringProfitability,
     DEFAULT_FIXED_CATEGORIES, isFixedCategory, breakEven,
     DEFAULT_ASSET_CLASSES, assetClassLabel, assetClassYears, days360, assetSchedule, assetYear,
