@@ -497,6 +497,17 @@ statut s'affiche. Rien ne change dans les données. Une proforma garde « envoy�
 la pose. Dans le filtre des factures, le regroupement s'appelle « Toutes les pièces émises », pour ne
 pas se lire comme un doublon de « Émise ».
 
+### La barre d'une pièce tient sur une rangée
+
+- **« Transformer » et « Email » n'ont un bouton que quand ils sont l'étape suivante.** Sinon, ils
+  vivent en tête du menu « Plus ▾ » (« Envoyer par email… », puis « Transformer en… » et ses pièces).
+  L'en-tête d'un devis déjà envoyé, d'un bon de commande ou d'un bon de livraison passait sur deux
+  rangées à 1 440 px ; il tient sur une, et le formulaire remonte d'autant. Une facture garde son
+  bouton « Email » : l'envoi y est le geste de la pièce.
+- **L'onglet vide des proformas et des bons** disait « depuis son menu « Transformer » » juste
+  au-dessus du bouton « Partir d'un devis existant », qui fait la même chose ici. La phrase parle
+  maintenant du bouton qu'elle accompagne.
+
 ## 10.13.0-beta.1 — 24/09/2026
 
 **Avant la mise en production : les deux applications et le pont entre elles, testés en entier.**

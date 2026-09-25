@@ -7537,6 +7537,19 @@ les offres, ouvre la page de paiement préremplie, et la clé revient toute seul
   côté du regroupement « Émis » se lisait comme le même choix deux fois ; le regroupement a son nom.
   Le test des listes de statuts (10.12.0) recopiait la forme `optionStatut(x)` : retourné vers la
   règle (la valeur passe par `optionStatut`, avec ou sans type).
+- **Une barre d'actions n'a de bouton que pour l'étape suivante ; le reste va dans « Plus ▾ »**
+  (U-11, étendu de la COULEUR à la PLACE). « Transformer ▾ » et « Email » passaient la barre d'un
+  bon de commande sur deux rangées (1 216 px pour 1 129) : ils y restent quand ils sont le vert, et
+  vont sinon en tête de « Plus ▾ » sous un titre de section (`convDansPlus`, `emailDansPlus`). La
+  facture garde « Email » — l'envoi y est le geste de la pièce, émise ou pas. Un geste qui change de
+  menu garde son IDENTIFIANT (`#email`, `data-conv`) : le gestionnaire, la visite et le parcours le
+  retrouvent — et ce sont eux qui ont dû apprendre à ouvrir le menu d'abord (la visite « Envoyer »
+  a gagné une étape, `e2e:exemple` et `e2e:entreprise` passent par ce que le geste FAIT).
+- **Une phrase qui envoie ailleurs quand le geste est sous le doigt fait chercher ce qu'on a déjà**
+  (H-E30) : l'onglet vide renvoyait au menu « Transformer » d'une autre pièce, au-dessus de
+  « Partir d'un devis existant ». La phrase et le bouton lisent la MÊME condition (`aPartir`). Le
+  « non enregistrée » de H-E30 n'existait plus (la liste arrête ses propres événements depuis la
+  10.12.0) : vérifié à la souris par les deux chemins, avant d'écrire une ligne.
 
 ## Pistes pour la suite (non demandées)
 

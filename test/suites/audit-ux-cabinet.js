@@ -3259,7 +3259,11 @@ t('Un état vide ne propose de partir d\'une pièce existante que s\'il en exist
     assert.ok(i > 0, `le bouton ${id} n'est plus dans un état vide`);
     const avant = ent.slice(Math.max(0, i - 160), i);
     assert.ok(/\?\s*\[\s*$/.test(avant) && /\.\.\.\(/.test(avant), `le bouton ${id} est proposé sans condition : il répondrait « rien à faire » à qui n'a aucune pièce`);
-    assert.ok(/\.some\(|\.length/.test(avant), `la condition du bouton ${id} ne regarde pas si une pièce existe`);
+    // 10.14.0 : la condition peut être NOMMÉE (la phrase de l'état vide la lit aussi, H-E30) — on
+    // suit le nom jusqu'à sa définition au lieu d'exiger la forme en ligne.
+    const nom = (/\(\s*(\w+)\s*\?\s*\[\s*$/.exec(avant) || [])[1];
+    const def = nom ? (new RegExp(`const ${nom} = ([^;]+);`).exec(ent) || [])[1] || '' : '';
+    assert.ok(/\.some\(|\.length/.test(avant) || /\.some\(|\.length/.test(def), `la condition du bouton ${id} ne regarde pas si une pièce existe`);
   });
 });
 

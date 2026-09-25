@@ -1043,6 +1043,11 @@
       bravo: 'C\'est parti',
       conclusion: 'Le devis passe à « envoyé ». Quand ton client répond, note sa réponse depuis le menu « Actions » de la liste — ou facture directement.',
       etapes: [
+        // 10.14.0 — sur un devis déjà envoyé, l'envoi n'est plus l'étape suivante : il vit dans
+        // « Plus ▾ » (la barre tient ainsi sur une rangée). La visite ouvre d'abord le menu.
+        { page: () => ctx.premier('devisBrouillon') || ctx.premier('devis'), si: () => !!($('#more-list #email')), cible: '#more-btn', cote: 'dessous', faire: 'clic',
+          titre: 'L\'envoi est dans « Plus »', texte: 'Ce devis est déjà parti : renvoyer n\'est plus l\'étape suivante, alors le geste attend dans le menu.',
+          action: 'Clique sur <b>« Plus ▾ »</b>.', fait: () => { const l = $('#more-list'); return !!(l && !l.hidden); }, essai: { clic: true } },
         { page: () => ctx.premier('devisBrouillon') || ctx.premier('devis'), cible: '#email', cote: 'dessous', faire: 'clic',
           titre: 'Envoyer par mail', texte: 'SkanFact prépare le mail dans ta messagerie, avec le PDF joint et un texte poli (que tu changes dans Paramètres → Envois).',
           action: 'Clique sur <b>« Email »</b>.', essai: { clic: true } },

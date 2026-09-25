@@ -70,4 +70,35 @@ module.exports = ({ t, assert }) => {
     assert.ok(i > 0 && /'émis': 'Toutes les pièces émises'/.test(zone), 'le regroupement a son libellé');
     assert.ok(/FILTRES_REGROUPES\[x\] \|\| optionStatut\(x\)/.test(app), 'la liste des factures l\'utilise');
   });
+
+  // H-E30 (10.14.0) — l'onglet vide renvoyait au menu « Transformer » d'une autre pièce, juste
+  // au-dessus du bouton « Partir d'un devis existant » qui fait la même chose, ici.
+  t('10.14.0 : un onglet vide ne renvoie pas ailleurs quand le geste « Partir d\'… » est sous les yeux', () => {
+    const i = app.indexOf('const VIDE_AUTRES = {');
+    const table = app.slice(i, app.indexOf('};', i));
+    assert.ok(i > 0 && table.length > 300 && table.length < 3000, 'tranche VIDE_AUTRES : ' + table.length);
+    const lignes = [...table.matchAll(/(\w+): \[('(?:[^'\\]|\\.)*'),\s*('(?:[^'\\]|\\.)*'),\s*('(?:[^'\\]|\\.)*')\]/g)];
+    assert.strictEqual(lignes.length, 4, 'quatre onglets, trois phrases chacun');
+    lignes.forEach(([, type, , avecBouton]) => {
+      assert.ok(!/Transformer/.test(avecBouton), type + ' : la phrase posée à côté du bouton renvoie encore au menu « Transformer »');
+    });
+    assert.ok(/VIDE_AUTRES\[type\]\[aPartir \? 1 : 2\]/.test(app), 'la phrase suit la présence du bouton');
+    assert.ok(/\.\.\.\(aPartir \? \[\['vide-depuis'/.test(app), 'le bouton et la phrase lisent la même condition');
+  });
+
+  // La barre de l'éditeur tient sur UNE rangée (10.14.0) : « Transformer ▾ » et « Email » n'y ont un
+  // bouton que quand ils sont l'étape suivante ; sinon leurs entrées vivent dans « Plus ▾ ».
+  t('10.14.0 : Transformer et Email ont un bouton quand ils sont l\'étape suivante, une entrée de « Plus ▾ » sinon', () => {
+    assert.ok(/const convDansPlus = convertibles\.length > 0 && suiteExtra !== 'transform' && avecPlus;/.test(app), 'les conversions ne quittent la barre que si elles ne sont pas l\'étape suivante');
+    assert.ok(/const transformMenu = convertibles\.length && !convDansPlus \?/.test(app), 'pas de bouton Transformer quand ses entrées sont dans Plus');
+    assert.ok(/\$\{convDansPlus \? `<div class="ml-titre">Transformer en…<\/div>\$\{convBoutons\}/.test(app), 'les conversions sont en tête de « Plus ▾ », sous leur titre');
+    assert.ok(/const emailDansPlus = \(isQ \|\| isExtra\) && !envoiSuivant && avecPlus;/.test(app), 'l\'envoi d\'un devis ou d\'une pièce annexe suit la même règle — jamais celui d\'une facture');
+    assert.ok(/\$\{!isNew && !emailDansPlus \? `<button class="btn/.test(app), 'pas de bouton Email quand l\'envoi est dans Plus');
+    assert.ok(/\$\{emailDansPlus \? `<button id="email">Envoyer par email…<\/button>`/.test(app), 'l\'entrée garde l\'identifiant que le gestionnaire lit');
+    // Les entrées rangées dans Plus sont branchées comme celles du menu Transformer.
+    assert.ok(/\$\$\('#conv-list button, #more-list \[data-conv\]'\)\.forEach/.test(app), 'les conversions de Plus sont branchées');
+    // Et la feuille connaît les deux classes neuves (sinon le titre de section serait un bouton nu).
+    const css = fs.readFileSync(path.join(__dirname, '../../src/renderer/style.css'), 'utf8');
+    assert.ok(/\.more-list \.ml-titre \{/.test(css) && /\.more-list \.ml-sep \{/.test(css));
+  });
 };

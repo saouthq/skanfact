@@ -922,6 +922,10 @@ table.mini input, table.mini select { padding: 6px 8px; font-size: 13px; }
 .more-list .ml-ligne { display: flex; align-items: center; gap: 4px; }
 .more-list .ml-ligne > button:not(.i) { flex: 1 1 auto; }
 .more-list .ml-ligne > button.i { margin-inline-end: 8px; }
+/* Les conversions rangées dans « Plus ▾ » (10.14.0) : un titre de section et un trait qui les
+   séparent des gestes de la pièce elle-même. */
+.more-list .ml-titre { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); padding: 6px 12px 2px; }
+.more-list .ml-sep { border-top: 1px solid var(--border); margin: 6px 4px; }
 .section-head h2.small { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); }
 
 /* ---------- tableau de bord : graphiques ---------- */

@@ -94,7 +94,8 @@ SkanFact »). Restent trois questions qui ne sont pas du code :
 - **Un achat dont toutes les lignes vont en stock n'a pas de catégorie de charge** : la colonne
   affiche « — ». C'est juste (ce n'est pas une charge), mais rien ne le dit ; une mention « stock »
   à la place du tiret serait plus claire.
-- **L'éditeur d'une proforma ou d'un bon de livraison tient sa barre sur deux rangées à 1440 px**
+- ~~**L'éditeur d'une proforma ou d'un bon de livraison tient sa barre sur deux rangées à 1440 px**~~ —
+  **fait en 10.14.0** : Transformer et Email vont dans « Plus ▾ » quand ils ne sont pas l'étape suivante. Avant :
   avec l'aperçu (huit commandes, 1 216 px pour 1 129). C'est stable — rien ne saute au clic — mais
   45 px de moins pour le formulaire ; « Email » et « Transformer ▾ » pourraient entrer dans « Plus ▾ »
   quand ils ne sont pas l'étape suivante.
@@ -190,7 +191,8 @@ Constats de l'audit du 22/09/2026 restés hors de la 10.6.0.
     statut déduit depuis la 1.4.0 (la bulle le dit), mais un créateur d'entreprise qui n'a rien
     envoyé le lit comme une erreur. Changer le mot touche les données (la valeur `envoyée`), les
     filtres, les relances et l'aide : à décider (« émise » ?), pas à glisser dans un correctif.
-  - **Une pièce tirée d'une autre s'ouvre marquée « Modifications non enregistrées »** alors qu'elle
+  - ~~**Une pièce tirée d'une autre s'ouvre marquée « Modifications non enregistrées »**~~ — **vérifié en
+    10.14.0** : plus le cas par aucun des deux chemins ; restait la phrase de l'onglet vide, corrigée. Avant : alors qu'elle
     vient d'être enregistrée (même chemin que « Transformer ») : vu en 10.12.0 en partant d'un devis
     depuis l'onglet Proformas (H-E30), non corrigé — à comprendre avant d'y toucher.
   - **Un avoir tiré d'une facture ne porte pas le timbre** (réglage « avoir sans timbre par défaut —
@@ -331,7 +333,7 @@ l'ordre proposé.
     commande passée depuis l'application y resterait « en attente » (l'écran dit « hors ligne »,
     rien n'est perdu, la clé arrive par mail) — mais le geste neuf ne servirait à rien.
 - **Ne jamais se perdre** : ~~les 78 titres « Confirmation »~~ (fait en 10.14.0), ~~« émise » au lieu
-  de « envoyée »~~ (fait), H-E30, les barres qui passent sur deux rangées, et les restes de la console (§ 3).
+  de « envoyée »~~ (fait), ~~H-E30, les barres qui passent sur deux rangées~~ (faits), et les restes de la console (§ 3).
 - **Les tests humains mis en pause** le 24/09 pour la visite : l'app entreprise (achats, stock, biens,
   trésorerie, paie, comptabilité, paramètres, données) et le Cabinet en entier. Les 55 parcours de la
   10.13.0-beta.1 tournaient au même moment. Et le relancement de tous les parcours de la 10.14.0

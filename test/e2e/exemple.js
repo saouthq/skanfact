@@ -99,8 +99,10 @@ const os = require('os');
   j.ok('l\'aperçu porte le tampon EXEMPLE');
 
   // Et le bouton Email refuse, avec la sortie.
-  if (await win.$('#email')) {
-    await win.click('#email');
+  // 10.14.0 — sur une pièce dont l'envoi n'est pas l'étape suivante, « Email » vit dans « Plus ▾ ».
+  if (!(await win.$('#email:visible')) && (await win.$('#more-list #email'))) await win.click('#more-btn');
+  if (await win.$('#email:visible')) {
+    await win.click('#email:visible');
     await win.waitForSelector('#modal-root .modal');
     const dit = await win.textContent('#modal-root .modal');
     if (!/données d'exemple/.test(dit)) throw new Error('l\'envoi doit être refusé sur l\'exemple : ' + dit.slice(0, 160));

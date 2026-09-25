@@ -1107,9 +1107,11 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
     if (!pv.includes('Bon de livraison') || !pv.includes('Reçu conforme')) throw new Error('aperçu du BL : ' + pv.slice(0, 200));
     if (pv.includes('Prix unit')) throw new Error('prix visibles malgré la case cochée');
     // transformer en facture : un brouillon est créé, la filiation est enregistrée
-    await win.click('#conv-btn');
-    await win.waitForSelector('#conv-list button[data-conv=facture]');
-    await win.click('#conv-list button[data-conv=facture]');
+    // 10.14.0 — « Transformer ▾ » n'a son bouton que quand c'est l'étape suivante ; sinon la même
+    // entrée vit dans « Plus ▾ ». On reconnaît le geste à ce qu'il fait (data-conv), pas à son menu.
+    await win.click((await win.$('#conv-btn')) ? '#conv-btn' : '#more-btn');
+    await win.waitForSelector('[data-conv=facture]:visible');
+    await win.click('[data-conv=facture]:visible');
     await win.waitForFunction(() => /Facture/.test((document.querySelector('#view h1') || {}).textContent || ''));
     await win.waitForSelector('.timeline');
     if (!(await win.textContent('.timeline')).includes('BL-')) throw new Error('filiation absente de l\'historique');

@@ -3233,8 +3233,20 @@
       : envoiSuivant ? ''
       : doc.type === 'livraison' && doc.status === 'brouillon' ? 'pdf'
       : !/^annul/.test(doc.status || '') && convertibles.length && !C.chaineDePieces(data, doc).some(x => convertibles.includes(x.type) && !/^annul/.test(x.status || '')) ? 'transform' : '';
-    const transformMenu = convertibles.length ? `<div class="more"><button class="btn${suiteExtra === 'transform' ? ' btn-primary' : ''}" id="conv-btn">Transformer ▾</button><div class="more-list" id="conv-list" hidden>
-        ${convertibles.map(t => `<button data-conv="${t}">${h(C.CONVERSION_LABELS[t] || C.TITLES[t])}</button>`).join('')}
+    // 10.14.0 — « Transformer ▾ » a son bouton quand c'est l'étape suivante ; sinon ses entrées vont
+    // dans « Plus ▾ », en tête. La barre d'un bon de commande ou d'un bon de livraison portait huit
+    // commandes et passait sur deux rangées à 1440 px (1 216 px pour 1 129) — 37 px de formulaire en
+    // moins sur chaque pièce, pour un geste qu'on ne fait qu'une fois par pièce.
+    const avecPlus = !isNew && (!isAv || !figee);
+    const convDansPlus = convertibles.length > 0 && suiteExtra !== 'transform' && avecPlus;
+    // Même règle pour l'envoi d'un devis ou d'une pièce annexe : un bouton quand c'est l'étape
+    // suivante (le brouillon numéroté à envoyer), une entrée de « Plus ▾ » sinon — un devis déjà
+    // envoyé attend sa réponse, et c'est « Facturer ce devis » qui a la place. Facture et avoir
+    // gardent le leur : l'envoi y est le geste de la pièce, émise ou pas.
+    const emailDansPlus = (isQ || isExtra) && !envoiSuivant && avecPlus;
+    const convBoutons = convertibles.map(t => `<button data-conv="${t}">${h(C.CONVERSION_LABELS[t] || C.TITLES[t])}</button>`).join('');
+    const transformMenu = convertibles.length && !convDansPlus ? `<div class="more"><button class="btn${suiteExtra === 'transform' ? ' btn-primary' : ''}" id="conv-btn">Transformer ▾</button><div class="more-list" id="conv-list" hidden>
+        ${convBoutons}
       </div></div>` : '';
 
     $('#view').innerHTML = `
@@ -3256,13 +3268,15 @@
             <button class="btn btn-sm" id="pv-toggle" aria-pressed="false">Aperçu</button>
             <button class="btn btn-sm" id="pv-big" title="Voir le document en grand (${TOUCHES_APERCU})">Agrandir</button>
           </div>
-          ${!isNew ? `<button class="btn ${envoiSuivant ? 'btn-primary' : ''}" id="email">Email</button>` : ''}
+          ${!isNew && !emailDansPlus ? `<button class="btn ${envoiSuivant ? 'btn-primary' : ''}" id="email">Email</button>` : ''}
           <button class="btn${suiteExtra === 'pdf' ? ' btn-primary' : ''}" id="pdf">PDF</button>
           ${locked && isInv && doc.status !== 'annulée' && bal && bal.remaining > 0.0005 ? `<button class="btn btn-primary" id="pay">Enregistrer un paiement</button>` : ''}
           ${facturerMenu}${transformMenu}
           ${!figee ? `<button class="btn ${(isNew && (isQ || isExtra)) || suiteExtra === 'save' ? 'btn-primary' : ''}" id="save">Enregistrer${isQ || isExtra ? '' : ' le brouillon'}</button>` : ''}
           ${!figee && (isInv || isAv) ? `<button class="btn btn-primary" id="issue">${isInv ? 'Émettre la facture' : 'Émettre l\'avoir'}</button> ${info('ed.issue')}` : ''}
-          ${!isNew && (!isAv || !figee) ? `<div class="more"><button class="btn" id="more-btn" aria-label="Autres actions">Plus ▾</button><div class="more-list" id="more-list" hidden>
+          ${avecPlus ? `<div class="more"><button class="btn" id="more-btn" aria-label="Autres actions">Plus ▾</button><div class="more-list" id="more-list" hidden>
+            ${emailDansPlus ? `<button id="email">Envoyer par email…</button>` : ''}
+            ${convDansPlus ? `<div class="ml-titre">Transformer en…</div>${convBoutons}<div class="ml-sep"></div>` : ''}
             ${!isAv ? `<button id="dup">Dupliquer</button><button id="as-template">Enregistrer comme modèle…</button>` : ''}
             ${hasSerials ? `<button id="serials">Numéros de série livrés…</button>` : ''}
             ${isInv ? `<div class="ml-ligne"><button id="make-recurring">Rendre récurrent (contrat)…</button>${info('ed.recurring')}</div>` : ''}
@@ -4204,8 +4218,8 @@
     if ($('#more-btn')) $('#more-btn').onclick = e => { e.stopPropagation(); const l = $('#more-list'); const open = l.hidden; closeMenus(); l.hidden = !open; };
     $$('#more-list button:not(.i)').forEach(b => b.addEventListener('click', () => { $('#more-list').hidden = true; }));
     if ($('#conv-btn')) $('#conv-btn').onclick = e => { e.stopPropagation(); const l = $('#conv-list'); const open = l.hidden; closeMenus(); l.hidden = !open; };
-    $$('#conv-list button').forEach(b => b.addEventListener('click', async () => {
-      $('#conv-list').hidden = true;
+    $$('#conv-list button, #more-list [data-conv]').forEach(b => b.addEventListener('click', async () => {
+      $$('#conv-list, #more-list').forEach(l => { l.hidden = true; });
       // On part de ce qui est enregistré : convertir une saisie non sauvegardée donnerait une pièce fantôme.
       if (dirty && !persist()) return;
       transformerPiece(docById(doc.id) || doc, b.dataset.conv);
@@ -7923,6 +7937,7 @@
     const years = Array.from(new Set(mine.map(d => (d.date || '').slice(0, 4)).filter(Boolean))).sort().reverse();
     const filtreActif = !!(s.q || s.st || s.year);
     const vide = !mine.length && !filtreActif;
+    const aPartir = vide && sourcesAutres(type).length > 0;
 
     $('#view').innerHTML = `
       <div class="page-head"><h1>Proforma, bons et contrats</h1>
@@ -7937,8 +7952,8 @@
         ${info('list.filters')}
         <span class="f-note" id="f-note" hidden></span>
       `, mine.length, filtreActif)}
-      ${vide ? etatVide(VIDE_AUTRES[type][0], [`${h(tab[2])} ${info('autres.' + type)}`, h(VIDE_AUTRES[type][1])],
-        [['vide-new', '+ ' + NEW_LABELS[type], true], ...(sourcesAutres(type).length ? [['vide-depuis', DEPUIS_AUTRES[type] || 'Partir d\'une pièce existante']] : [])]) : '<div id="list-wrap"></div>'}`;
+      ${vide ? etatVide(VIDE_AUTRES[type][0], [`${h(tab[2])} ${info('autres.' + type)}`, h(VIDE_AUTRES[type][aPartir ? 1 : 2])],
+        [['vide-new', '+ ' + NEW_LABELS[type], true], ...(aPartir ? [['vide-depuis', DEPUIS_AUTRES[type] || 'Partir d\'une pièce existante']] : [])]) : '<div id="list-wrap"></div>'}`;
 
     const draw = dansUnLot((sortKey) => {
       if (typeof sortKey === 'string' && sortKey) { s.sort = toggleSort(s.sort, sortKey, cols); s.page = 1; }
@@ -7991,12 +8006,20 @@
   const sourcesAutres = type => data.documents.filter(d => d.type !== type && (C.CONVERSIONS[d.type] || []).includes(type))
     .sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.number || '').localeCompare(a.number || ''));
   const DEPUIS_AUTRES = { proforma: 'Partir d\'un devis existant', commande: 'Partir d\'un devis existant', livraison: 'Partir d\'une pièce existante', contrat: 'Partir d\'un devis existant' };
-  // Un onglet vide dit à quoi sert la pièce et donne le geste qui la crée (10.12.0) : [titre, seconde phrase].
+  // Un onglet vide dit à quoi sert la pièce et donne le geste qui la crée (10.12.0) :
+  // [titre, phrase quand « Partir d'… » est sous les yeux, phrase quand il n'y a rien dont partir].
+  // 10.14.0 — la seconde phrase renvoyait au menu « Transformer » d'une AUTRE pièce, juste au-dessus
+  // du bouton « Partir d'un devis existant » qui fait la même chose ici : une phrase qui envoie
+  // ailleurs quand le geste est sous le doigt fait chercher ce qu'on a déjà.
   const VIDE_AUTRES = {
-    proforma: ['Un prix ferme, avant la facture', 'Tu peux aussi en tirer une d\'un devis existant, depuis son menu « Transformer ».'],
-    commande: ['Ce que le client a commandé', 'Enregistre-le ici, avant la livraison ou la facture.'],
-    livraison: ['La preuve que tu as livré', 'Il se tire aussi d\'un devis, d\'une commande ou d\'une facture, en un clic depuis leur menu « Transformer ».'],
-    contrat: ['La pièce que ton client signe', 'Objet, durée, reconduction, préavis : rédige-la ici, puis fais-la signer.']
+    proforma: ['Un prix ferme, avant la facture', 'Ou pars d\'un devis existant : son client et ses lignes sont repris.',
+      'Elle se tire aussi d\'un devis, depuis son menu « Transformer ».'],
+    commande: ['Ce que le client a commandé', 'Enregistre-le ici, avant la livraison ou la facture — ou pars du devis qu\'il a accepté.',
+      'Enregistre-le ici, avant la livraison ou la facture.'],
+    livraison: ['La preuve que tu as livré', 'Ou pars d\'un devis, d\'une commande ou d\'une facture : ses lignes sont reprises.',
+      'Il se tire aussi d\'un devis, d\'une commande ou d\'une facture, en un clic depuis leur menu « Transformer ».'],
+    contrat: ['La pièce que ton client signe', 'Objet, durée, reconduction, préavis : rédige-la ici, ou pars d\'un devis accepté.',
+      'Objet, durée, reconduction, préavis : rédige-la ici, puis fais-la signer.']
   };
 
   // ---------- Affaires et marges ----------
