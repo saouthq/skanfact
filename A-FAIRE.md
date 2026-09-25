@@ -237,6 +237,19 @@ absente~~ (« Vendue le », en tête).
   (fait : le matricule se coupe après ses « / ») ; la Déclaration employeur et le Registre du personnel restent d'un seul tenant (ce sont des
   documents imprimés, pas des listes).
 - **La vérité comptable (10.14.0), ce qui reste** :
+  - **Où en est le tour à la souris (25/09/2026)** : dans l'app entreprise, tous les onglets de la
+    Comptabilité ont été relus chiffre par chiffre sur l'exemple de cinq ans, avec des paiements, une
+    OD et des retenues posés à la main — Ventes, Achats, TVA à payer, Écritures, Grand livre,
+    Balance (générale, deux auxiliaires, lettrage : 411 à 5 209,811 et 401 à 3 211,051 sur les
+    quatre écrans), États financiers (actif = passif = 127 581,008 ; dotation en attente = l'année
+    moins ce que la cession a déjà écrit), Calendrier fiscal, Clôtures, Cabinet. Reste à faire le
+    même tour dans le **Cabinet** sur un dossier qui reçoit ces paquets : la CNSS d'un trimestre en
+    retard (le Cabinet la réclame-t-il comme le calendrier de l'app entreprise ?), et les derniers
+    lots (retenue subie au règlement, régularisation d'un avoir) relus sur son livre.
+  - **Le compte d'attente se voit au bilan, pas dans « À faire »** : un mouvement « Autre entrée /
+    sortie » ou un virement sans compte va au 471 (« à ventiler par le comptable ») — c'est écrit
+    dans sa bulle, et le 471 paraît au bilan (120 DT sur l'exemple). Rien ne le rappelle avant la
+    clôture ; à décider : une ligne des contrôles de clôture « n mouvements au compte d'attente ».
   - **L'app entreprise ne dit pas qu'une TVA « déclarée » a changé depuis.** Le Cabinet compare
     désormais la déclaration préparée au livre et refuse de pointer un dépôt périmé ; dans l'app
     entreprise, « Marquer déclarée » (calendrier fiscal) est un pense-bête sans copie des chiffres,
