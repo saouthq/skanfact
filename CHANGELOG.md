@@ -895,6 +895,31 @@ douze mois et l'année. Voici ce qu'il a trouvé :
   celles que portent les factures du mois ; le fichier des règlements envoyé au comptable gagne la
   même colonne. Le Cabinet lit le même mois que toi : sa déclaration suit le 4352 là où il naît.
   *À VÉRIFIER avec ton comptable.*
+- **Et la retenue que ton CLIENT te fait naît le jour où il te PAIE.** Elle était comptée au mois de
+  la facture, même quand le client n'avait encore rien payé : la page Comptabilité → Ventes réclamait
+  l'attestation d'une retenue que personne n'avait encore gardée, et le paquet de ton comptable la
+  déclarait un mois trop tôt. Désormais le compte du client porte le montant complet de la facture
+  jusqu'à ce qu'il paie ; chaque encaissement le solde de ce qu'il verse **plus la retenue qu'il
+  garde**, au prorata (le paiement qui solde prend le reste, au millime), et cette retenue passe au
+  4358 ce jour-là. La fenêtre de paiement l'annonce pendant la frappe (« En payant, le client garde
+  3,038 DT de retenue à la source pour l'État… »), la ligne du paiement la redit, la case « Attestation reçue » dit le montant
+  qu'elle doit porter, la fiche du client dit à côté de ce qu'il doit la retenue qu'il gardera
+  encore, et Comptabilité → Ventes compte les retenues subies du mois dans une colonne à part et
+  **ne réclame d'attestation que pour ce qui a vraiment été retenu** (sur l'exemple, 48,107 DT au
+  lieu des retenues de toutes les factures, payées ou non ; une facture payée en partie le dit). Le
+  Cabinet déclare le même mois que toi. *À VÉRIFIER avec ton comptable.*
+- **Un avoir posé APRÈS le paiement ne réécrit plus un mois déjà déclaré.** Sur une facture payée en
+  mars et corrigée par un avoir en mai, la retenue de mars baissait après coup — la déclaration de
+  mars, déjà déposée, ne correspondait plus à ce que SkanFact affichait pour mars. La retenue de mars
+  reste ce qu'elle était ; l'avoir porte, à SA date, la régularisation (l'écriture de l'avoir
+  rend au client la retenue de trop, et au fournisseur côté achats), et c'est la déclaration de mai
+  qui la voit. Même règle pour la déclaration annuelle d'employeur. Les deux côtés, ventes et achats.
+- **SkanFact Cabinet : un remboursement au client ne passait pas pour un reversement au fisc.** Le
+  Cabinet traitait toute écriture qui touche la banque comme le paiement de la retenue à l'État :
+  rendre de l'argent à un client, qui défait une partie de sa retenue, disparaissait de la
+  déclaration. Seul ce qui va de l'État à la banque, sans client ni fournisseur, solde la retenue.
+- La ligne d'un règlement fournisseur dit la retenue qu'il garde pour l'État (« + 15,449 DT retenus
+  pour l'État »), comme la ligne d'un paiement client.
 - La carte « TVA déductible » disait « sur 441,940 DT **payés** » : c'était la TVA des factures du
   mois, payées ou non. Elle dit « de TVA facturée ». Et la colonne « Net payé » du journal des achats
   s'appelle « Net à payer » : elle portait aussi les pièces pas encore réglées.

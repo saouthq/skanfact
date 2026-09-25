@@ -157,12 +157,15 @@ function ecarts(data, opts) {
   const lc = core.lettrage(data, co, 'clients'), lf = core.lettrage(data, co, 'fournisseurs');
   ecart('411 / lettrage clients', solde(bgT, acc.clients), lc.reste);
   ecart('401 / lettrage fournisseurs', -solde(bgT, acc.fournisseurs), lf.reste);
-  // Les restes des factures, moins les avoirs LIBRES (une somme due au client, 10.14.0).
-  ecart('restes des factures − avoirs libres / lettrage clients', (data.documents || [])
+  // Les restes des factures, moins les avoirs LIBRES (une somme due au client, 10.14.0), plus la
+  // retenue que les clients garderont encore pour l'État en payant : le 411 porte le BRUT jusqu'à
+  // l'encaissement (10.14.0), la retenue subie naît au règlement.
+  ecart('restes des factures − avoirs libres + retenues à subir / lettrage clients', (data.documents || [])
     .filter(d => d.type === 'facture' && d.number && d.status !== 'brouillon')
     .reduce((s, d) => s + core.toBase(d, core.invoiceBalance(d, data, co).remaining, co), 0)
     - (data.documents || []).filter(d => d.type === 'avoir' && !d.creditOf && d.number && d.status !== 'brouillon' && d.status !== 'annulée')
-      .reduce((s, d) => s + core.toBase(d, core.computeTotals(d, co).netToPay, co), 0), lc.reste);
+      .reduce((s, d) => s + core.toBase(d, core.computeTotals(d, co).netToPay, co), 0)
+    + (data.documents || []).reduce((s, d) => s + core.retenueASubir(d, data, co), 0), lc.reste);
   // Le 425 : les nets des bulletins pas encore réglés, moins ce qui reste à rembourser des avances.
   const netsDus = (data.payslips || []).filter(s => !s.paidDate || s.paidDate > T).reduce((s, sl) => s + ((sl.computed || {}).net || 0), 0);
   const avances = (data.employees || []).reduce((s, e) => s + core.advanceBalance(data, e.id), 0);
@@ -185,8 +188,12 @@ function ecarts(data, opts) {
   const bac = core.balanceAuxiliaire(data, co, perT, 'clients'), baf = core.balanceAuxiliaire(data, co, perT, 'fournisseurs');
   (data.clients || []).forEach(c => {
     const aux = (bac.rows.find(r => r.tiersId === c.id) || { solde: 0 }).solde;
-    ecart(`client ${c.name} : compte / relevé`, aux, core.releveClient(data, c.id, co, { date: T }).total);
-    ecart(`client ${c.name} : fiche / relevé`, core.clientSummary(data, co, c.id).net, core.releveClient(data, c.id, co, { date: T }).total);
+    // Le relevé dit ce que le client VERSERA ; son compte porte en plus la retenue qu'il gardera pour
+    // l'État en payant (10.14.0). Les deux se disent à part, et leur somme est le compte.
+    const rel = core.releveClient(data, c.id, co, { date: T }), fic = core.clientSummary(data, co, c.id);
+    ecart(`client ${c.name} : compte / relevé + retenue à subir`, aux, r3(rel.total + rel.rsASubir));
+    ecart(`client ${c.name} : fiche / relevé`, fic.net, rel.total);
+    ecart(`client ${c.name} : fiche / compte`, r3(fic.net + fic.rsASubir), aux);
   });
   (data.suppliers || []).forEach(f => {
     const aux = -(baf.rows.find(r => r.tiersId === f.id) || { solde: 0 }).solde;
@@ -796,10 +803,13 @@ t('10.14.0 : un avoir REMBOURSÉ n\'est plus à imputer, et rattaché quand mêm
 });
 t('10.14.0 : le lettrage des clients compte ce qu\'on leur doit — un avoir libre et un trop-perçu, comme le 411', () => {
   // Calculé à la main. Client A : facture de 1 000 HT + 190 de TVA + 1 de timbre = 1 191, retenue de
-  // 1,5 % sur 1 190 = 17,850 → 1 173,150 à encaisser ; 800 reçus → 373,150 ouverts. Client EUR :
+  // 1,5 % sur 1 190 = 17,850 → 1 173,150 à encaisser ; 800 reçus → 373,150 à encaisser encore. Le
+  // 411 porte le BRUT (10.14.0) : en versant 800, le client a gardé 17,850 × 800 / 1 173,150 =
+  // 12,172 de retenue, donc le compte dit 1 191 − 800 − 12,172 = 378,828 — les 373,150 qu'il versera
+  // et les 5,678 qu'il gardera encore pour l'État. Client EUR :
   // 500 € + le timbre (1 DT = 0,294 €) = 500,294 €, 200 reçus → 300,294 € × 3,4 = 1 021,000 DT.
-  // Client Libre : un avoir libre de 100 HT + 19 = 119 qu'on lui doit. Le 411 : 373,150 + 1 021 − 119
-  // = 1 275,150. Le lettrage disait 1 394,150 : il ignorait l'avoir libre, et tout trop-perçu — le
+  // Client Libre : un avoir libre de 100 HT + 19 = 119 qu'on lui doit. Le 411 : 378,828 + 1 021 − 119
+  // − 30 = 1 250,828. Le lettrage disait 1 394,150 : il ignorait l'avoir libre, et tout trop-perçu — le
   // jumeau exact du défaut fournisseur corrigé en 10.2.0, jamais porté côté clients.
   const data = core.migrateData({
     company: { ...CO, regime: 'reel' },
@@ -817,7 +827,7 @@ t('10.14.0 : le lettrage des clients compte ce qu\'on leur doit — un avoir lib
     ]
   });
   const l = core.lettrage(data, data.company, 'clients', '2025-12-31');
-  assert.strictEqual(l.reste, r3(373.15 + 1021 - 119 - 30));
+  assert.strictEqual(l.reste, r3(378.828 + 1021 - 119 - 30));
   const ouverts = Object.fromEntries(l.rows.flatMap(r => r.ouverts.map(o => [o.piece, o.reste])));
   assert.strictEqual(ouverts['AVO-2025-001'], -119, 'l\'avoir libre est une pièce ouverte, au crédit du client');
   assert.strictEqual(ouverts['FAC-2025-003'], -30, 'le trop-perçu aussi');
@@ -1506,7 +1516,8 @@ t('10.14.0 : la fenêtre d\'un règlement en devise demande le taux du jour, et 
   assert.strictEqual(lire({ currency: 'EUR', exchangeRate: 3.35 }, { amount: 1100, exchangeRate: 3.4 }), `= ${core.money(3740, 'DT').replace(/\s+/g, ' ')} au taux de 3,4`);
   assert.strictEqual(lire({ currency: 'EUR', exchangeRate: 3.35 }, { amount: -100 }), `= ${core.money(335, 'DT').replace(/\s+/g, ' ')} au taux de 3,35`, 'un règlement sans taux ne reprend pas celui de sa pièce');
   assert.ok(/C\.money\(p\.amount, cur\)\}\$\{reglementEnDinars\(s, p\)\}/.test(app), 'la ligne d\'un paiement client ne dit pas ce qui est passé à la banque');
-  assert.ok(/\$\{reglementEnDinars\(s2, x\)\}<\/td>\$\{rowMenuCell\(x\.id\)\}/.test(app), 'la ligne d\'un règlement fournisseur ne dit pas ce qui est passé à la banque');
+  // Dans la cellule du montant, où qu'elle soit posée : la part de retenue peut la suivre (10.14.0).
+  assert.ok(/\$\{reglementEnDinars\(s2, x\)\}(?:(?!<\/td>)[^\n])*<\/td>\$\{rowMenuCell\(x\.id\)\}/.test(app), 'la ligne d\'un règlement fournisseur ne dit pas ce qui est passé à la banque');
   // Les deux fenêtres posent le champ, le branchent, refusent un taux invalide et l'enregistrent.
   const pf = app.slice(app.indexOf('function paymentForm('), app.indexOf('function paymentForm(') + 9000);
   const sp = app.slice(app.indexOf('champTauxReglement(p, r0,') - 800, app.indexOf('champTauxReglement(p, r0,') + 5000);
@@ -1738,6 +1749,97 @@ t('10.14.0 : la retenue à la source naît au RÈGLEMENT — déclarée le mois 
       payments: [{ id: 'x1', date: '2026-04-02', amount: 1200 }, { id: 'x2', date: '2026-05-02', amount: -27.85 }] }] });
   assert.deepStrictEqual([4, 5].map(m => core.vatReturn(d2, d2.company, core.packPeriod(2026, m)).withheldOnBuys), [17.85, 0], 'un trop-payé retient plus que la retenue');
   // Chaque invariant, et le Cabinet qui lit le même client mois par mois (déclaration comprise).
+  const e = ecarts(d);
+  assert.deepStrictEqual(e, [], e.join('\n'));
+});
+t('10.14.0 : un avoir fournisseur posé APRÈS le règlement régularise la retenue à SA date — le mois déjà déclaré ne bouge pas', () => {
+  // Calculé à la main. H-6 : 1 000 HT + 19 % = 1 190 ; 17,850 retenus ; réglée en entier le 5 mars
+  // (1 172,150). L'avoir AV-7 du 12 avril (100 HT → 119 ; 1,785 ; net 117,215) ramène la retenue due
+  // à 1,5 % de 1 071 = 16,065 : les 1,785 de trop se régularisent en AVRIL. Recalculer la part du
+  // règlement de mars réécrivait une déclaration déjà déposée.
+  const ligne = ht => [{ label: 'Honoraires', qty: 1, unitPrice: ht, vatRate: 19, destination: 'charge', deductible: true }];
+  const sans = base0({
+    accounts: [{ id: 'b', name: 'Banque', kind: 'banque', opening: 10000, openingDate: '2026-01-01', isDefault: true }],
+    suppliers: [{ id: 's', name: 'Cabinet Conseil' }],
+    purchases: [{ id: 'H6', kind: 'facture', supplierId: 's', number: 'H-6', date: '2026-03-02', withholdingRate: 1.5, fees: 0, createdAt: 1, lines: ligne(1000),
+      payments: [{ id: 'h6', date: '2026-03-05', amount: 1172.15 }] }]
+  });
+  const d = JSON.parse(JSON.stringify(sans));
+  d.purchases.push({ id: 'AV7', kind: 'avoir', supplierId: 's', number: 'AV-7', date: '2026-04-12', withholdingRate: 1.5, fees: 0, createdAt: 2, achatLie: 'H6', lines: ligne(100), payments: [] });
+  const co = d.company, acc = core.chartAccounts(d);
+  const rs = (x, m) => core.vatReturn(x, x.company, core.packPeriod(2026, m)).withheldOnBuys;
+  assert.deepStrictEqual([rs(sans, 3), rs(sans, 4)], [17.85, 0]);
+  assert.deepStrictEqual([rs(d, 3), rs(d, 4)], [17.85, -1.785], 'l\'avoir a réécrit la retenue du mois déjà déclaré');
+  const E = core.journalEntries(d, co, { from: '2026-01-01', to: '2026-04-30' }, { sections: ['achats', 'reglements'] });
+  const avril = E.filter(x => x.date === '2026-04-12');
+  assert.deepStrictEqual([soldeDe(avril, acc.rsOperee), soldeDe(avril, acc.fournisseurs)], [1.785, 117.215], 'l\'avoir ne régularise pas la retenue dans son écriture');
+  assert.strictEqual(soldeDe(E, acc.rsOperee), -16.065);
+  assert.deepStrictEqual(core.withholdingsToIssue(d, co).map(x => [x.number, x.amount]), [['H-6', 16.065]]);
+  assert.strictEqual(core.employerAnnual(d, 2026, co).heldTotal, 16.065);
+  assert.strictEqual(core.retenueAOperer(d.purchases[0], co, d), 0, 'une facture soldée n\'a plus rien à retenir');
+  const e = ecarts(d);
+  assert.deepStrictEqual(e, [], e.join('\n'));
+});
+t('10.14.0 : la retenue SUBIE naît à l\'encaissement — déclarée le mois où le client paie, et l\'attestation se réclame seulement quand il a retenu', () => {
+  // Calculé à la main.
+  // F-1 : 1 000 HT + 190 de TVA + 1 de timbre = 1 191 ; retenue 1,5 % de 1 190 = 17,850 ; net
+  //       1 173,150. 500 encaissés le 20 mars : 17,85 × 500 / 1 173,15 = 7,6077… → 7,608 ; le solde
+  //       du 5 avril (673,150) prend le reste, 10,242.
+  // F-2 : 100 HT + 19 + 1 = 120 ; 1,785 ; net 118,215, encaissée en entier le 15 mars (1,785 en
+  //       mars). L'avoir AV-2 du 10 avril (40 HT + 7,6 = 47,6 ; 0,714 ; net 46,886) la réduit à
+  //       72,400 brut : la retenue due tombe à 1,071, et les 0,714 de trop se régularisent en AVRIL.
+  //       Le trop-perçu (46,886) est rendu le 2 mai : la retenue n'en bouge plus.
+  // F-3 : impayée (200 HT + 38 + 1 = 239 ; 3,570 à subir) : ni déclarée, ni réclamée.
+  // F-5 : 300 HT + 57 + 1 = 358 ; 5,355 ; net 352,645. 100 encaissés le 3 mai (1,519 retenus), puis
+  //       rendus le 20 mai : la retenue est défaite le même mois — mai déclare 0.
+  // AV-4 : un avoir libre du client L (100 HT + 19 = 119, 1,5 %) : sa retenue (1,785) ne naîtra qu'au
+  //       règlement qui l'emploiera.
+  // Déclaré : mars 7,608 + 1,785 = 9,393 ; avril 10,242 − 0,714 = 9,528 ; mai 0. Au 4358 : 18,921.
+  const l = ht => [{ label: 'Service', qty: 1, unitPrice: ht, vatRate: 19 }];
+  const fac = (id, number, date, ht, payments) => ({ id, type: 'facture', number, status: 'envoyée', clientId: 'c', date, dueDate: date, withholdingRate: 1.5, lines: l(ht), payments });
+  const sans = base0({
+    accounts: [{ id: 'b', name: 'Banque', kind: 'banque', opening: 10000, openingDate: '2026-01-01', isDefault: true }],
+    clients: [{ id: 'c', name: 'Client RS', withholdingRate: 1.5 }, { id: 'lb', name: 'Client Libre' }],
+    documents: [
+      fac('F1', 'FAC-2026-001', '2026-03-10', 1000, [{ id: 'p1', date: '2026-03-20', amount: 500, accountId: 'b' }, { id: 'p2', date: '2026-04-05', amount: 673.15, accountId: 'b' }]),
+      fac('F2', 'FAC-2026-002', '2026-03-01', 100, [{ id: 'p3', date: '2026-03-15', amount: 118.215, accountId: 'b' }]),
+      fac('F3', 'FAC-2026-003', '2026-04-20', 200, []),
+      fac('F5', 'FAC-2026-004', '2026-05-01', 300, [{ id: 'p5', date: '2026-05-03', amount: 100, accountId: 'b' }, { id: 'p6', date: '2026-05-20', amount: -100, accountId: 'b' }]),
+      { id: 'A4', type: 'avoir', number: 'AVO-2026-002', status: 'émis', clientId: 'lb', date: '2026-05-05', withholdingRate: 1.5, lines: l(100) }
+    ]
+  });
+  const d = JSON.parse(JSON.stringify(sans));
+  d.documents.push({ id: 'A2', type: 'avoir', number: 'AVO-2026-001', status: 'émis', clientId: 'c', date: '2026-04-10', creditOf: 'F2', creditOfNumber: 'FAC-2026-002', withholdingRate: 1.5, lines: l(40) });
+  d.documents.find(x => x.id === 'F2').payments.push({ id: 'p4', date: '2026-05-02', amount: -46.886, accountId: 'b' });
+  const co = d.company, acc = core.chartAccounts(d);
+  const rs = (x, m) => core.vatReturn(x, x.company, core.packPeriod(2026, m)).withheldBySale;
+  assert.deepStrictEqual([3, 4, 5].map(m => rs(sans, m)), [9.393, 10.242, 0]);
+  assert.deepStrictEqual([3, 4, 5].map(m => rs(d, m)), [9.393, 9.528, 0], 'la retenue subie n\'est pas déclarée le mois de l\'encaissement, ou l\'avoir a réécrit mars');
+  // Les écritures : le client débité du BRUT à la facture, rien au 4358 ; chaque encaissement le solde.
+  const E = core.journalEntries(d, co, { from: '2026-01-01', to: '2026-05-31' }, { sections: ['ventes', 'encaissements'] });
+  const f1 = E.filter(x => x.date === '2026-03-10');
+  assert.deepStrictEqual([soldeDe(f1, acc.clients), soldeDe(f1, acc.rsSubie)], [1191, 0], 'la facture constate encore la retenue, ou le client n\'est pas débité du brut');
+  const p1 = E.filter(x => x.date === '2026-03-20');
+  assert.deepStrictEqual([soldeDe(p1, acc.clients), soldeDe(p1, acc.rsSubie)], [-507.608, 7.608]);
+  const av = E.filter(x => x.date === '2026-04-10');
+  assert.deepStrictEqual([soldeDe(av, acc.clients), soldeDe(av, acc.rsSubie)], [-46.886, -0.714], 'l\'avoir ne régularise pas la retenue dans son écriture');
+  assert.strictEqual(soldeDe(E, acc.rsSubie), 18.921);
+  assert.strictEqual(soldeDe(E, acc.clients), r3(239 + 358 - 119), 'le 411 ne porte pas le brut de ce qui reste dû');
+  // Les attestations : seulement ce que les clients ont DÉJÀ retenu, pour ce montant-là.
+  assert.deepStrictEqual(core.attestationsARecevoir(d, co).map(x => [x.number, x.amount]), [['FAC-2026-002', 1.071], ['FAC-2026-001', 17.85]]);
+  const todo = core.todoList(d, { ...co, name: 'X', matricule: '1234567A', rib: '00 006 0000123456789 01' }, '2026-06-01').find(x => x.id === 'attestations');
+  assert.deepStrictEqual([todo.count, todo.amount], [2, 18.921]);
+  // « Ce qui manque » du paquet de mars : deux attestations à RECEVOIR (et la phrase le dit) ; mai n'en a aucune.
+  const pm = core.packChecklist(d, co, core.packPeriod(2026, 3)).find(x => x.id === 'attestations');
+  assert.ok(pm && pm.count === 2 && /recevoir/.test(pm.label), JSON.stringify(pm));
+  assert.ok(!core.packChecklist(d, co, core.packPeriod(2026, 5)).some(x => x.id === 'attestations'));
+  // La fiche et le relevé disent le net ; la retenue à subir se dit à côté, et les deux font le compte.
+  const fiche = core.clientSummary(d, co, 'c'), rel = core.releveClient(d, 'c', co, { date: '2026-06-01' });
+  assert.deepStrictEqual([fiche.net, fiche.rsASubir, rel.total, rel.rsASubir], [588.075, 8.925, 588.075, 8.925]);
+  assert.strictEqual(core.clientSummary(d, co, 'lb').rsASubir, -1.785);
+  // Rien n'est retenu tant que rien n'est versé : une facture couverte par un avoir sans retenue,
+  // jamais payée, ne fait naître aucune retenue — même si ses deux taux ne se répondent pas.
+  assert.strictEqual(core.retenueChrono(118.215, 120, [{ key: 'a', date: '2026-04-01', net: 120, brut: 120 }], []).operee, 0);
   const e = ecarts(d);
   assert.deepStrictEqual(e, [], e.join('\n'));
 });

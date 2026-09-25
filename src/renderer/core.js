@@ -1024,7 +1024,9 @@
     let total = 0;
     (data.documents || []).forEach(av => {
       if (av.type !== 'avoir' || !av.creditOf || av.status === 'brouillon' || !av.number || !inPeriod(av.date, from, to)) return;
-      total += ecartDeTauxEntre(av, docs.get(av.creditOf), -computeTotals(av, company).netToPay, company);
+      // Le BRUT que le 411 transfère (10.14.0) : la retenue subie naît à l'encaissement.
+      const ta = computeTotals(av, company);
+      total += ecartDeTauxEntre(av, docs.get(av.creditOf), -round3(ta.netToPay + ta.withholding), company);
     });
     (data.purchases || []).forEach(p => {
       if (!inPeriod(p.date, from, to)) return;
@@ -1596,10 +1598,14 @@
     const clientName = id => ((data.clients || []).find(c => c.id === id) || {}).name || '';
     const rows = [];
     (data.documents || []).filter(d => d.type === 'facture').forEach(d => {
-      (d.payments || []).forEach(p => {
-        if (!inPeriod(p.date, period.from, period.to)) return;
+      const pays = (d.payments || []).map((p, i) => ({ p, i })).filter(x => inPeriod(x.p.date, period.from, period.to));
+      if (!pays.length) return;
+      // La retenue que le client garde sur CET encaissement (10.14.0) : elle naît au paiement, en
+      // dinars au taux de la facture — celui auquel le 411 porte le brut.
+      const rs = Number(d.withholdingRate) > 0 ? retenueSubie(d, data, company) : null;
+      pays.forEach(({ p, i }) => {
         const m = PAYMENT_METHODS.find(x => x[0] === p.method);
-        rows.push({ id: p.id, date: p.date, number: d.number, client: clientName(d.clientId), clientId: d.clientId || '', amount: montantRegle(d, p, company), amountTiers: toBase(d, Number(p.amount) || 0, company), remboursement: estRemboursement(p), method: m ? m[1] : (p.method || ''), reference: p.reference || '', note: p.note || '', docId: d.id, currency: d.currency || company.currency, accountId: p.accountId || '' });
+        rows.push({ id: p.id, date: p.date, number: d.number, client: clientName(d.clientId), clientId: d.clientId || '', amount: montantRegle(d, p, company), amountTiers: toBase(d, Number(p.amount) || 0, company), rs: rs ? round3(toBase(d, rs.parts[cleReglement(p, i)] || 0, company)) : 0, remboursement: estRemboursement(p), method: m ? m[1] : (p.method || ''), reference: p.reference || '', note: p.note || '', docId: d.id, currency: d.currency || company.currency, accountId: p.accountId || '' });
       });
     });
     return rows.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
@@ -1865,6 +1871,10 @@
     // rattaché est déjà dans le reste de sa facture.
     const aRendre = round3(invoices.reduce((s, d) => s + Math.max(0, -toBase(d, invoiceBalance(d, data, company).remaining, company)), 0)
       + issued.filter(d => d.type === 'avoir' && !d.creditOf).reduce((s, d) => s + Math.max(0, toBase(d, computeTotals(d, company).netToPay, company)), 0));
+    // La retenue que ce client gardera encore pour l'État en payant (10.14.0) : son compte 411 la
+    // porte jusqu'à l'encaissement, la fiche la dit à côté du net qu'il versera — le miroir de
+    // `supplierSummary.rsAOperer`.
+    const rsASubir = round3(issued.reduce((s, d) => s + retenueASubir(d, data, company), 0));
     const dates = docs.map(d => d.date).filter(Boolean).sort();
     const quotes = docs.filter(d => d.type === 'devis');
     const accepted = quotes.filter(d => d.status === 'accepté').length;
@@ -1877,7 +1887,7 @@
       if (last && d.date) delays.push(delaiConstate(d.date, last));
     });
     return {
-      docs, ht, paid, due, aRendre, net: round3(due - aRendre), count: docs.length, invoiceCount: invoices.length, quoteCount: quotes.length,
+      docs, ht, paid, due, aRendre, net: round3(due - aRendre), rsASubir, count: docs.length, invoiceCount: invoices.length, quoteCount: quotes.length,
       first: dates[0] || '', last: dates[dates.length - 1] || '',
       conversion: decided ? Math.round(accepted / decided * 100) : null,
       delay: delays.length ? Math.round(delays.reduce((s, x) => s + x, 0) / delays.length) : null
@@ -2128,33 +2138,151 @@
     return { net, brut: round3(t.netToPay + t.withholding - rendu - retenueDesReglements(x, company).operee) };
   }
 
+  // Le moteur des DEUX côtés (10.14.0) : la retenue d'une pièce naît à chacun de ses règlements, au
+  // prorata de ce qu'il verse, et le règlement qui SOLDE prend le reste — la retenue entière, au
+  // millime. Une pièce rattachée (un avoir, un acompte) diminue ce qui est dû à SA date : posée après
+  // un règlement, elle RÉGULARISE ce qui a déjà été retenu, le jour où elle existe. Recalculer la part
+  // d'un règlement déjà passé réécrivait la retenue d'un mois déjà déclaré — un avoir émis en avril
+  // changeait la déclaration de mars, sans un mot.
+  //   `liees`     [{ key, date, net, brut }] — ce que chaque pièce rattachée couvre (date '' : dès
+  //               l'origine, comme un acompte imputé à la facture même) ;
+  //   `paiements` [{ key, date, amount }], dans la devise de la pièce.
+  // Rend la part de chaque règlement (`parts`), la régularisation de chaque pièce rattachée
+  // (`ajustements`), la retenue que la pièce doit encore porter (`due`) et celle déjà née (`operee`).
+  // Rien n'est retenu tant que rien n'est versé : une pièce couverte sans aucun paiement ne porte rien.
+  function retenueChrono(net, brut, liees, paiements) {
+    const ev = (liees || []).map((x, i) => ({ ...x, lie: true, i }))
+      .concat((paiements || []).map((x, i) => ({ ...x, lie: false, i })))
+      .sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.lie === b.lie ? a.i - b.i : (a.lie ? -1 : 1)));
+    let netDu = round3(net), brutDu = round3(brut), cum = 0, reconnu = 0;
+    const parts = {}, ajustements = {};
+    const cible = () => {
+      const due = round3(brutDu - netDu);
+      if (!due || cum <= 0.0005) return 0;
+      return cum >= netDu - 0.0005 ? due : round3(due * cum / netDu);
+    };
+    ev.forEach(x => {
+      if (x.lie) { netDu = round3(netDu - (Number(x.net) || 0)); brutDu = round3(brutDu - (Number(x.brut) || 0)); }
+      else cum = round3(cum + (Number(x.amount) || 0));
+      const c = cible(), d = round3(c - reconnu);
+      reconnu = c;
+      if (!x.lie) parts[x.key] = d;
+      else if (d) ajustements[x.key] = round3((ajustements[x.key] || 0) + d);
+    });
+    return { parts, ajustements, due: round3(brutDu - netDu), operee: reconnu, netDu, brutDu };
+  }
+  const cleReglement = (y, i) => (y && y.id) || '#' + i;
+
   // La part de la retenue que chaque règlement opère (dans la devise de la pièce, signe de la pièce :
   // positive, un avoir compris — c'est le lecteur qui applique le sens). `due` est ce que les
-  // règlements de CETTE pièce doivent opérer, `operee` ce qu'ils ont opéré.
+  // règlements de CETTE pièce doivent opérer, `operee` ce qu'ils ont opéré, `ajustements` ce qu'un
+  // avoir posé après un règlement a régularisé, à sa date.
   function retenueDesReglements(purchase, company, data) {
     const p = purchase || {};
     const t = purchaseTotals(p, company);
-    const parts = {};
-    let netDu = t.netToPay, brutDu = round3(t.netToPay + t.withholding);
-    if (p.kind !== 'avoir' && p.kind !== 'acompte' && data) {
-      piecesLieesAchat(data, p.id).forEach(x => {
-        const im = imputationAchat(x, company);
-        netDu = round3(netDu - montantDansDeviseDe(x, im.net, p, company));
-        brutDu = round3(brutDu - montantDansDeviseDe(x, im.brut, p, company));
+    const liees = (p.kind !== 'avoir' && p.kind !== 'acompte' && data) ? piecesLieesAchat(data, p.id).map(x => {
+      const im = imputationAchat(x, company);
+      // Un acompte est imputé par la facture même : il couvre dès l'origine. Un avoir, à sa date.
+      return { key: x.id, date: x.kind === 'acompte' ? '' : (x.date || ''),
+        net: montantDansDeviseDe(x, im.net, p, company), brut: montantDansDeviseDe(x, im.brut, p, company) };
+    }) : [];
+    return retenueChrono(t.netToPay, round3(t.netToPay + t.withholding), liees,
+      (p.payments || []).map((y, i) => ({ key: cleReglement(y, i), date: y.date || '', amount: Number(y.amount) || 0 })));
+  }
+
+  // Les régularisations de retenue qu'un avoir fournisseur porte sur la facture qu'il diminue, datées
+  // de l'avoir, en dinars au taux de la FACTURE (celui auquel le 401 et le 4352 la portent), au sens
+  // d'une retenue opérée : négative quand l'avoir en diminue une déjà née. Une par avoir concerné.
+  function regularisationsRetenueAchats(data, company, period) {
+    const out = [];
+    (data.purchases || []).forEach(p => {
+      if (p.kind === 'avoir' || p.kind === 'acompte') return;
+      const rs = retenueDesReglements(p, company, data);
+      Object.keys(rs.ajustements).forEach(k => {
+        const av = (data.purchases || []).find(x => x.id === k);
+        if (!av || !inPeriod(av.date, period && period.from, period && period.to)) return;
+        out.push({ purchaseId: p.id, avoirId: av.id, date: av.date, number: p.number || '', avoirNumber: av.number || '',
+          supplierId: p.supplierId || '', rs: round3(toBase(p, rs.ajustements[k], company)) });
       });
-    }
-    const due = round3(brutDu - netDu);
-    const pays = (p.payments || []).map((y, i) => ({ y, i }))
-      .sort((a, b) => (a.y.date || '').localeCompare(b.y.date || '') || a.i - b.i);
-    let cum = 0, avant = 0;
-    pays.forEach(({ y, i }) => {
-      cum = round3(cum + (Number(y.amount) || 0));
-      const solde = cum >= netDu - 0.0005;
-      const cumul = !due ? 0 : solde ? due : round3(due * Math.max(0, cum) / netDu);
-      parts[y.id || '#' + i] = round3(cumul - avant);
-      avant = cumul;
     });
-    return { parts, due, operee: avant, netDu, brutDu };
+    return out.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+  }
+
+  // LE MIROIR, CÔTÉ VENTES (10.14.0) : la retenue que ton CLIENT opère sur ce qu'il te verse. Elle
+  // naît quand il paie, comme celle que tu opères sur tes fournisseurs — c'est ce jour-là qu'il la
+  // garde, la déclare, et te remet l'attestation qui te permet de la déduire de ton impôt. L'écriture
+  // de la facture la constatait comme une créance sur l'État dès l'émission, la page TVA la comptait
+  // dans le mois de la FACTURE, et « À faire » réclamait l'attestation de factures que personne
+  // n'avait encore réglées. Même moteur que les achats : au prorata de chaque encaissement, le
+  // dernier prend le reste, un avoir posé après un encaissement régularise à sa date.
+  function retenueSubie(doc, data, company) {
+    const d = doc || {};
+    if (d.type !== 'facture' || d.status === 'brouillon' || d.status === 'annulée') return retenueChrono(0, 0, [], []);
+    const t = computeTotals(d, company);
+    const liees = data ? creditsFor(data, d.id).map(a => {
+      const ta = computeTotals(a, company);
+      return { key: a.id, date: a.date || '', net: montantDansDeviseDe(a, ta.netToPay, d, company),
+        brut: montantDansDeviseDe(a, round3(ta.netToPay + ta.withholding), d, company) };
+    }) : [];
+    return retenueChrono(t.netToPay, round3(t.netToPay + t.withholding), liees,
+      (d.payments || []).map((y, i) => ({ key: cleReglement(y, i), date: y.date || '', amount: Number(y.amount) || 0 })));
+  }
+
+  // Ce que les encaissements à venir laisseront encore au client pour l'État, en dinars : l'écart
+  // entre ce que le 411 porte (le brut, ce que la pièce vaut) et ce que le client versera (le net).
+  // Un avoir LIBRE porte sa retenue en moins, comme un avoir fournisseur non imputé.
+  function retenueASubir(piece, data, company) {
+    const d = piece || {};
+    if (d.status === 'brouillon' || d.status === 'annulée' || !d.number) return 0;
+    if (d.type === 'avoir') return d.creditOf ? 0 : round3(-toBase(d, computeTotals(d, company).withholding, company));
+    if (d.type !== 'facture') return 0;
+    const rs = retenueSubie(d, data, company);
+    return round3(toBase(d, round3(rs.due - rs.operee), company));
+  }
+
+  // Les régularisations de retenue subie qu'un avoir de vente porte sur la facture qu'il corrige.
+  function regularisationsRetenueVentes(data, company, period) {
+    const out = [];
+    const docs = new Map((data.documents || []).map(d => [d.id, d]));
+    (data.documents || []).forEach(d => {
+      if (d.type !== 'facture' || d.status === 'brouillon' || d.status === 'annulée' || !d.number) return;
+      const rs = retenueSubie(d, data, company);
+      Object.keys(rs.ajustements).forEach(k => {
+        const av = docs.get(k);
+        if (!av || !inPeriod(av.date, period && period.from, period && period.to)) return;
+        out.push({ docId: d.id, avoirId: av.id, date: av.date, number: d.number, avoirNumber: av.number || '',
+          clientId: d.clientId || '', rs: round3(toBase(d, rs.ajustements[k], company)) });
+      });
+    });
+    return out.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+  }
+
+  // Les retenues nées dans une période, d'un côté : celles des règlements, plus les régularisations
+  // des avoirs. UNE somme pour la page TVA, les cartes, et le paquet du comptable (6.8.1).
+  function retenuesDeLaPeriode(data, company, period, cote) {
+    const ventes = cote === 'ventes';
+    const reglements = ventes ? paymentsJournal(data, company, period) : supplierPayments(data, company, period);
+    const regul = ventes ? regularisationsRetenueVentes(data, company, period) : regularisationsRetenueAchats(data, company, period);
+    const deReglements = round3(reglements.reduce((s, r) => s + (r.rs || 0), 0));
+    const deRegul = round3(regul.reduce((s, r) => s + (r.rs || 0), 0));
+    return { total: round3(deReglements + deRegul), reglements: deReglements, regularisations: deRegul, lignesRegul: regul };
+  }
+
+  // Les factures dont le client a DÉJÀ retenu quelque chose et dont l'attestation n'est pas arrivée
+  // (10.14.0). Une facture pas encore payée n'a rien retenu : on ne réclame pas l'attestation du néant.
+  // `amount` en dinars ; une seule définition pour « À faire », la page Comptabilité et le paquet.
+  function attestationsARecevoir(data, company, period) {
+    const out = [];
+    (data.documents || []).forEach(d => {
+      if (d.type !== 'facture' || d.withholdingCertificate || d.status === 'brouillon' || d.status === 'annulée' || !d.number) return;
+      if (!(Number(d.withholdingRate) > 0) || !(d.payments || []).length) return;
+      const rs = retenueSubie(d, data, company);
+      if (rs.operee <= 0.0005) return;
+      if (period && !(d.payments || []).some((y, i) => inPeriod(y.date, period.from, period.to) && (rs.parts[cleReglement(y, i)] || 0) > 0.0005)) return;
+      out.push({ doc: d, id: d.id, number: d.number, clientId: d.clientId || '', date: d.date,
+        native: rs.operee, amount: round3(toBase(d, rs.operee, company)), complete: rs.operee >= rs.due - 0.0005 });
+    });
+    return out.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
   }
 
   // Ce que les règlements à venir retiendront encore pour l'État, en dinars et au sens de la pièce :
@@ -3618,6 +3746,13 @@
       o.rs = round3(o.rs + r.rs);
       if ((r.date || '') > o.date) o.date = r.date;
     });
+    // Un avoir posé après le règlement régularise la retenue l'année où il est posé (10.14.0).
+    regularisationsRetenueAchats(data, co, { from: `${y}-01-01`, to: `${y}-12-31` }).forEach(r => {
+      const o = operees[r.purchaseId] || (operees[r.purchaseId] = { rs: 0, date: '' });
+      o.rs = round3(o.rs + r.rs);
+      if (!o.date) o.date = r.date;
+    });
+    Object.keys(operees).forEach(k => { if (Math.abs(operees[k].rs) <= 0.0005) delete operees[k]; });
     const held = (data.purchases || [])
       .filter(p => operees[p.id])
       .map(p => {
@@ -4458,11 +4593,11 @@
     const balance = round3(collected - deductible - carry);
     // Timbres encaissés : ils ne sont pas de la TVA mais se déclarent aussi. À VÉRIFIER.
     const stamps = round3(sales.reduce((s, r) => s + r.timbre, 0));
-    // Retenues subies (déductibles de ton impôt) et opérées (à reverser)
-    const withheldBySale = round3(sales.reduce((s, r) => s + r.rs, 0));
-    // Les retenues OPÉRÉES : celles des règlements du mois, jamais celles des factures (10.14.0) —
-    // tant qu'on n'a rien versé au fournisseur, on n'a rien retenu, donc rien à reverser.
-    const withheldOnBuys = round3(supplierPayments(data, company, period).reduce((s, r) => s + (r.rs || 0), 0));
+    // Retenues subies (déductibles de ton impôt) et opérées (à reverser) : celles des RÈGLEMENTS du
+    // mois, jamais celles des factures (10.14.0) — tant que rien n'est versé, rien n'est retenu. Un
+    // avoir posé après un règlement régularise dans SON mois.
+    const withheldBySale = retenuesDeLaPeriode(data, company, period, 'ventes').total;
+    const withheldOnBuys = retenuesDeLaPeriode(data, company, period, 'achats').total;
     return {
       period, byRate, collected, deductible, carryIn: carry,
       toPay: balance > 0 ? balance : 0,
@@ -4858,7 +4993,11 @@
   function payCsvColumns() {
     return [
       { key: 'date', label: 'Date', type: 'date' }, { key: 'number', label: 'Facture' }, { key: 'client', label: 'Client' },
-      { key: 'amount', label: 'Montant', type: 'money' }, { key: 'method', label: 'Mode' }, { key: 'reference', label: 'Référence' }, { key: 'note', label: 'Note' }
+      { key: 'amount', label: 'Montant', type: 'money' },
+      // La retenue que le client a gardée sur CET encaissement (10.14.0) : c'est elle que la
+      // déclaration du mois porte comme retenue subie.
+      { key: 'rs', label: 'Retenue subie', type: 'money' },
+      { key: 'method', label: 'Mode' }, { key: 'reference', label: 'Référence' }, { key: 'note', label: 'Note' }
     ];
   }
   function supplierPayCsvColumns() {
@@ -4914,16 +5053,14 @@
   // ce sont les mêmes questions — et on ajoute ce qui ne se voit qu'à l'envoi.
   function packChecklist(data, company, period) {
     const out = closureChecks(data, company, period.from, period.to).slice();
-    const inRange = d => d && d >= period.from && d <= period.to;
-    // Une facture émise dont la retenue à la source n'a pas d'attestation : le fournisseur (nous) doit
-    // la fournir, et sans elle le client ne peut pas déduire ce qu'il a retenu.
-    const certs = (data.documents || []).filter(d => d.type === 'facture' && inRange(d.date)
-      && d.status !== 'brouillon' && d.status !== 'annulée'
-      && computeTotals(d, company).withholding > 0 && !d.withholdingCertificate);
+    // Un client qui t'a payé ce mois en gardant une retenue à la source, et dont l'attestation n'est
+    // pas arrivée. C'est LUI qui la remet (10.14.0) : la phrase disait l'inverse — « non remise… ton
+    // client ne peut pas justifier » —, et elle comptait les factures DATÉES du mois, payées ou non.
+    const certs = attestationsARecevoir(data, company, period);
     if (certs.length) out.push({
       id: 'attestations', level: 'warn', count: certs.length,
-      label: `${plFr(certs.length, 'attestation')} de retenue à la source non remise${sAccord(certs.length)}`,
-      detail: 'Sans elle, ton client ne peut pas justifier ce qu\'il t\'a retenu.'
+      label: `${plFr(certs.length, 'attestation')} de retenue à la source à recevoir de tes clients`,
+      detail: 'Un client qui te paie en gardant une retenue te remet son attestation : sans elle, tu ne peux pas déduire cette retenue de ton impôt.'
     });
     return out;
   }
@@ -5403,16 +5540,29 @@
         // (reste ouvert ≠ solde du 411) qui l'a attrapé.
         const e = entrySet({ date: r.date, journal: 'VT', piece: r.number, tiers: r.client, tiersId: r.clientId || '', source: 'vente', docId: r.id, currency: cur, lettre: lettreDoc(r.id) });
         const label = `${r.typeLabel} ${r.number}${r.client ? ' — ' + r.client : ''}`;
-        // Ce que le client devra réellement payer (le net après retenue) reste au compte client ;
-        // la retenue devient une créance sur l'État. À VÉRIFIER : certains cabinets la constatent
-        // seulement au paiement.
+        // Le client est débité du BRUT — ce que la pièce vaut, retenue comprise (10.14.0). La retenue
+        // ne naît pas ici : c'est le client qui l'opère en payant, et chaque encaissement le solde
+        // de ce qu'il verse plus la part qu'il garde pour l'État (D 4358). À VÉRIFIER avec le
+        // comptable : le fait générateur (le paiement) et la constatation.
         // Un avoir rattaché à une facture de même devise mais à un autre taux règle le client au taux
-        // de la FACTURE ; l'écart part au change. Son `net` est négatif : le montant natif aussi.
+        // de la FACTURE ; l'écart part au change. Son montant est négatif : le montant natif aussi.
         const av = r.type === 'avoir' ? docsById[r.id] : null;
-        const deltaChange = av && av.creditOf ? ecartDeTaux(av, docsById[av.creditOf], -computeTotals(av, company).netToPay) : 0;
-        e.debit(cptClient(r.clientId), label, round3(r.net + deltaChange), { role: 'clients' });
+        const ta = av ? computeTotals(av, company) : null;
+        // Le brut, c'est le TTC : le net après retenue plus la retenue (un seul arrondi, celui du TTC).
+        const deltaChange = av && av.creditOf ? ecartDeTaux(av, docsById[av.creditOf], -ta.totalTTC) : 0;
+        e.debit(cptClient(r.clientId), label, round3(r.ttc + deltaChange), { role: 'clients' });
         ecrireEcartDeChange(e, deltaChange, `Écart de change ${r.number}${av && av.creditOfNumber ? ' (au taux de ' + av.creditOfNumber + ')' : ''}`);
-        if (r.rs) e.debit(acc.rsSubie, `Retenue à la source ${r.number}`, r.rs);
+        // Un avoir posé APRÈS un encaissement régularise la retenue que le client a déjà gardée, à SA
+        // date — jamais en réécrivant l'encaissement d'un mois déjà déclaré.
+        if (av && av.creditOf && docsById[av.creditOf]) {
+          const f = docsById[av.creditOf];
+          const adj = retenueSubie(f, data, company).ajustements[av.id];
+          if (adj) {
+            const b = toBase(f, adj, company);
+            e.debit(acc.rsSubie, `Régularisation de la retenue ${f.number || ''} (avoir ${r.number})`.replace(/\s+/g, ' '), b);
+            e.credit(cptClient(r.clientId), label, b, { role: 'clients' });
+          }
+        }
         VAT_RATES.forEach(rate => {
           const v = r.vatByRate[rate];
           if (v && v.base) e.credit(acc.ventes, `${label} (HT ${rate} %)`, v.base, { vatRate: rate });
@@ -5476,6 +5626,18 @@
           }
           e.credit(cptFourn(p.supplierId), label, round3(t.base.netToPay + t.base.withholding - deltaChange), { role: 'fournisseurs' });
           ecrireEcartDeChange(e, deltaChange, `Écart de change ${num} (au taux de ${achatsById[p.achatLie] ? (achatsById[p.achatLie].number || 'la facture') : 'la facture'})`);
+          // Un avoir posé APRÈS un règlement régularise la retenue déjà opérée sur sa facture, à SA
+          // date (10.14.0) — jamais en réécrivant le règlement d'un mois déjà déclaré. Positive, elle
+          // s'opère comme au règlement (C 4352 / D 401) ; négative, les colonnes s'inversent seules.
+          if (p.kind === 'avoir' && p.achatLie && achatsById[p.achatLie]) {
+            const f = achatsById[p.achatLie];
+            const adj = retenueDesReglements(f, company, data).ajustements[p.id];
+            if (adj) {
+              const b = toBase(f, adj, company);
+              e.credit(acc.rsOperee, `Régularisation de la retenue ${f.number || ''} (avoir ${num})`.replace(/\s+/g, ' '), b);
+              e.debit(cptFourn(p.supplierId), label, b, { role: 'fournisseurs' });
+            }
+          }
           out.push(...e.done());
 
           // L'IMPUTATION DE L'ACOMPTE (10.2.0). L'acompte a posé une avance au 409 et l'a réglée ;
@@ -5515,7 +5677,10 @@
         const e = entrySet({ date: r.date, journal: j.journal, piece: r.number || '', tiers: r.client, tiersId: r.clientId || '', source: 'encaissement', docId: r.docId, currency: cur, lettre: lettreDoc(r.docId) });
         const label = `${r.remboursement ? 'Remboursement' : 'Règlement'} ${r.number || ''}${r.client ? ' — ' + r.client : ''}${r.reference ? ' (' + r.reference + ')' : ''}`;
         e.debit(j.compte, label, r.amount);
-        e.credit(cptClient(r.clientId), label, r.amountTiers, { role: 'clients' });
+        // Le client est soldé de ce qu'il verse ET de la retenue qu'il garde pour l'État : c'est ici,
+        // à l'encaissement, que la retenue subie naît (10.14.0).
+        e.credit(cptClient(r.clientId), label, round3(r.amountTiers + (r.rs || 0)), { role: 'clients' });
+        if (r.rs) e.debit(acc.rsSubie, `Retenue à la source subie ${r.number || ''}`.trim(), r.rs);
         // Le client se solde au taux de SA facture ; la banque a reçu au taux du jour (10.14.0).
         const ecart = round3(r.amount - r.amountTiers);
         if (ecart > 0) e.credit(acc.gainsChange, `Gain de change — ${label}`, ecart);
@@ -5965,23 +6130,32 @@
         // Un trop-perçu est ouvert, au crédit du client (10.14.0) : c'est le jumeau de l'avoir
         // fournisseur de la 10.2.0. Ne regarder que les restes positifs faisait dire au lettrage un
         // chiffre différent du 411, sur la même donnée.
-        if (Math.abs(b.remaining) <= 0.0005) { r.lettrees++; return; }
         // Une ligne s'ADDITIONNE (10.14.0) : Montant − Avoirs − Réglé = Reste. Un trop-perçu s'affichait
         // « 3 685 − 3 685 = −1 005 » — l'avoir, invisible, faisait la différence. Chaque montant
         // est celui que le 411 porte : la facture et ses règlements à son taux, un avoir au taux de
         // la facture (l'écart de change est écrit à part), ou à son propre taux s'il est dans une
         // autre devise.
-        const montant = round3(toBase(d, b.totals.netToPay, company));
-        const avoirs = round3(b.credits.reduce((x, a) => x + toBase(d, montantDansDeviseDe(a, computeTotals(a, company).netToPay, d, company), company), 0));
-        const regle = round3((d.payments || []).reduce((x, p) => x + toBase(d, Number(p.amount) || 0, company), 0));
+        // En BRUT (10.14.0), comme le 401 : le 411 porte ce que la pièce vaut, retenue comprise,
+        // jusqu'à l'encaissement ; chaque encaissement le solde de ce que le client verse plus la
+        // retenue qu'il garde pour l'État, et un avoir posé après règle aussi sa régularisation.
+        const rs = retenueSubie(d, data, company);
+        const brut = round3(b.totals.netToPay + b.totals.withholding);
+        const montant = round3(toBase(d, brut, company));
+        // Chaque morceau arrondi comme l'écriture l'arrondit : un millime d'écart sur une facture en
+        // devise, et le lettrage ne retombe plus sur le 411.
+        const avoirs = round3(b.credits.reduce((x, a) => { const ta = computeTotals(a, company);
+          return x + toBase(d, montantDansDeviseDe(a, round3(ta.netToPay + ta.withholding), d, company), company) + toBase(d, rs.ajustements[a.id] || 0, company); }, 0));
+        const regle = round3((d.payments || []).reduce((x, p, i) => x + toBase(d, Number(p.amount) || 0, company) + toBase(d, rs.parts[cleReglement(p, i)] || 0, company), 0));
         const reste = round3(montant - avoirs - regle);
+        if (Math.abs(reste) <= 0.0005) { r.lettrees++; return; }
         r.ouverts.push({ id: d.id, piece: d.number, date: d.date, echeance: d.dueDate || '', montant, avoirs, regle, reste, retard: reste > 0 && !!(d.dueDate && d.dueDate < t) });
         r.reste = round3(r.reste + reste);
       });
       // Un avoir LIBRE — rattaché à aucune facture — est une somme due au client : le 411 la porte au
       // crédit, le relevé aussi. Un avoir rattaché est déjà dans le reste de sa facture.
+      // En brut, comme le 411 : la retenue qu'il porte ne naîtra qu'au règlement qui l'emploiera.
       (data.documents || []).filter(d => d.type === 'avoir' && !d.creditOf && d.status !== 'brouillon' && d.status !== 'annulée' && d.number).forEach(d => {
-        const net = round3(toBase(d, computeTotals(d, company).netToPay, company));
+        const net = round3(toBase(d, computeTotals(d, company).totalTTC, company));
         if (net <= 0.0005) return;
         const r = tiersDe(d.clientId || '');
         r.ouverts.push({ id: d.id, piece: d.number, date: d.date, echeance: '', montant: -net, avoirs: 0, regle: 0, reste: -net, retard: false });
@@ -6007,8 +6181,11 @@
         const rs = retenueDesReglements(p, company, data);
         const brut = round3(b.totals.netToPay + b.totals.withholding);
         const montant = round3(sens * toBase(p, brut, company));
-        const avoirs = round3(toBase(p, round3(brut - rs.brutDu), company));
-        const regle = round3(sens * (p.payments || []).reduce((x, y, i) => x + toBase(p, (Number(y.amount) || 0) + (rs.parts[y.id || '#' + i] || 0), company), 0));
+        // Chaque pièce rattachée et sa régularisation de retenue, chaque règlement et sa part : arrondis
+        // un par un, comme l'écriture les arrondit.
+        const avoirs = (p.kind === 'avoir' || p.kind === 'acompte') ? 0 : round3(piecesLieesAchat(data, p.id).reduce((x, a) =>
+          x + toBase(p, montantDansDeviseDe(a, imputationAchat(a, company).brut, p, company), company) + toBase(p, rs.ajustements[a.id] || 0, company), 0));
+        const regle = round3(sens * (p.payments || []).reduce((x, y, i) => x + toBase(p, Number(y.amount) || 0, company) + toBase(p, rs.parts[cleReglement(y, i)] || 0, company), 0));
         const reste = round3(montant - avoirs - regle);
         r.ouverts.push({ id: p.id, piece: p.number || '(sans numéro)', date: p.date, echeance: p.dueDate || '', montant, avoirs, regle, reste, retard: reste > 0 && !!(p.dueDate && p.dueDate < t) });
         r.reste = round3(r.reste + reste);
@@ -6550,8 +6727,14 @@
       });
     const somme = k => round3(lignes.reduce((s, l) => s + l[k], 0));
     const echu = round3(lignes.filter(l => l.retard > 0).reduce((s, l) => s + l.reste, 0));
+    // Le relevé dit ce que le client VERSERA (le net) ; son compte chez lui, comme le nôtre, porte
+    // aussi la retenue qu'il gardera pour l'État en payant (10.14.0). Elle se dit à part, pour que sa
+    // comptabilité rapproche son 401 du total sans deviner d'où vient l'écart.
+    const rsASubir = round3((data.documents || [])
+      .filter(d => d.clientId === clientId && (d.type === 'facture' || d.type === 'avoir') && d.date <= t)
+      .reduce((s, d) => s + retenueASubir(d, data, company), 0));
     return {
-      client, date: t, currency: company.currency || 'DT', lignes,
+      client, date: t, currency: company.currency || 'DT', lignes, rsASubir,
       montant: somme('montant'), regle: somme('regle'), total: somme('reste'),
       echu, aVenir: round3(somme('reste') - echu),
       plusAncien: lignes.reduce((n, l) => Math.max(n, l.retard), 0)
@@ -7019,9 +7202,11 @@
       count: silent.length, route: '#/devis', docs: silent
     });
 
-    const rsPending = (data.documents || []).filter(d => d.type === 'facture' && d.status !== 'brouillon' && d.status !== 'annulée'
-      && computeTotals(d, company).withholding > 0 && !d.withholdingCertificate);
-    const rsAmount = round3(rsPending.reduce((s, d) => s + toBase(d, computeTotals(d, company).withholding, company), 0));
+    // Seulement ce que les clients ont DÉJÀ retenu en payant (10.14.0) : une facture pas encore réglée
+    // n'a rien retenu, et son attestation n'existe pas encore. Le montant est celui des encaissements.
+    const rsAttendues = attestationsARecevoir(data, company);
+    const rsPending = rsAttendues.map(x => x.doc);
+    const rsAmount = round3(rsAttendues.reduce((s, x) => s + x.amount, 0));
     if (rsPending.length) out.push({
       id: 'attestations', level: 'warn', label: `${rsPending.length} attestation${rsPending.length > 1 ? 's' : ''} de retenue à réclamer`,
       detail: `${fmt(rsAmount)} retenus par tes clients. Sans attestation, tu ne peux pas les déduire de ton impôt.`,
@@ -8994,7 +9179,7 @@
     SERIAL_STATUSES, serialStatusLabel, WARRANTY_CHOICES, serializedItems, warrantyEnd, serialView,
     serialList, availableSerials, clientFleet, warrantiesEnding, serialGap, serialGaps,
     mergeData, trackDeletion, MERGE_LISTS, LIST_LABELS, LIST_PLURIELS, compteListe, piecesLiees,
-    purchaseTotals, purchaseBalance, retenueDesReglements, retenueAOperer, purchaseStatus, achatDoublon, facturesDuDevis, payablesList, purchaseJournal, purchaseSummary, supplierSummary, withholdingsToIssue, supplierPayments,
+    purchaseTotals, purchaseBalance, retenueDesReglements, retenueAOperer, retenueChrono, regularisationsRetenueAchats, retenueSubie, retenueASubir, regularisationsRetenueVentes, retenuesDeLaPeriode, attestationsARecevoir, purchaseStatus, achatDoublon, facturesDuDevis, payablesList, purchaseJournal, purchaseSummary, supplierSummary, withholdingsToIssue, supplierPayments,
     periodBounds, issuedIn, salesTotals, revenueByMonth, topItems, clientMovement, AGING_BUCKETS, agedReceivables, releveClient, releveHtml, payerRanking, quoteFunnel, objectiveProgress,
     amountToWords, intToWords, intToWordsEn, documentHtml, fitToPage, paginate, pageCount,
     MODULES, PAGES, moduleById, pageById, pageTitle, moduleCount, moduleCounts, modulesRevenus, moduleOn, moduleWhy, navPages, familleNavOuverte, FAMILLES_OUVERTES_AU_DEBUT,

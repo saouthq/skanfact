@@ -69,7 +69,9 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Une **annonce** se calcule par les MÊMES constructeurs que ce qu'elle annonce | 10.12.0 — E-02, le solde d'acompte faux de deux timbres |
 | Une fonction qui rend un montant **NATIF** piège chaque appelant qui additionne : la couverture se fait par appelant, jamais par fonction | 10.12.0 — E-08, la prévision en euros ; 10.1.0 |
 | Un **argument facultatif** qui change un montant piège chaque appelant qui l'oublie : il se tient appel par appel | 10.14.0 — `purchaseBalance` sans `data`, un trop-payé prérempli |
-| Un **fait fiscal naît à son fait générateur**, pas à la pièce qui l'annonce : la retenue à la source se déclare au mois du RÈGLEMENT | 10.14.0 — 32,130 DT « à reverser » sur une facture jamais payée ; `retenueDesReglements` |
+| Un **fait fiscal naît à son fait générateur**, pas à la pièce qui l'annonce : la retenue à la source se déclare au mois du RÈGLEMENT — l'opérée comme la subie | 10.14.0 — 32,130 DT « à reverser » sur une facture jamais payée ; `retenueDesReglements`, `retenueSubie` |
+| Un fait fiscal **se régularise à la date de la pièce qui le change**, jamais en réécrivant un mois déclaré | 10.14.0 — l'avoir de mai qui baissait la retenue de mars ; `retenueChrono`, `ajustements` |
+| Un **règlement de tiers n'est pas un reversement** : ce qui touche la banque ET un 40x/41x compte dans la retenue | 10.14.0 — le remboursement au client qui disparaissait de la déclaration du Cabinet |
 | Un **régime qui ne récupère pas la TVA** en fait un coût, figé sur chaque achat ; sa réparation ne touche que les mois non clôturés, et s'annonce par la fonction qui déclare | 10.14.0 — `tvaRecuperable`, `achatsHorsRegime` |
 | Un **taux affiché grisé** n'est pas un taux choisi : un formulaire qui lit les champs désactivés le range quand même | 10.14.0 — le 0 % du forfait rangé, des factures sans TVA au passage au réel ; un geste se teste aller ET retour |
 | Une pièce qui en **diminue une autre** le fait dans la devise de celle qu'elle diminue ; à un **autre taux**, l'écart part au change (655/755) | 10.14.0 — l'avoir de 300 DT qui retranchait 300 € ; les 15 DT restés au 411 |
@@ -8008,6 +8010,31 @@ aussi l'app cabinet ») — les invariants ont gagné le stock, le résultat, le
   retrouver le défaut (7.27.0) : l'attestation d'une facture impayée était protégée deux fois.
 - **Un écran dit le chiffre qui s'imprimera** : au forfait, la colonne TVA du catalogue affichait
   19 % pour des articles qui sortent à 0 %. Elle affiche 0 %, le taux de l'article au survol.
+- **La règle d'un côté se porte de l'autre, même quand elle est fiscale** (7.3.0) : la retenue
+  OPÉRÉE (achats) était passée au règlement, la retenue SUBIE (ventes) restait au mois de la facture —
+  les attestations réclamées portaient sur des factures jamais payées, et le 4358 naissait un mois
+  trop tôt. `retenueSubie` est le jumeau de `retenueDesReglements`, par le même moteur
+  (`retenueChrono`) ; le 411 porte le brut jusqu'au paiement, chaque encaissement le solde de ce
+  qu'il verse PLUS la retenue gardée. Et ce qui dépend de la retenue suit, par invariant : compte
+  411 = relevé net + `retenueASubir`, lettrage clients idem — c'est l'invariant qui est tombé le
+  premier, avant tout écran.
+- **Un fait fiscal se régularise à la date de la pièce qui le change, jamais en réécrivant un mois
+  déclaré.** Calculée au prorata du net DU, la retenue d'un règlement de mars baissait le jour où un
+  avoir de mai diminuait ce net : la déclaration de mars, déposée, ne tombait plus. `retenueChrono`
+  rejoue les événements dans l'ordre du temps (avoirs à leur date, acomptes d'origine en tête) : un
+  paiement fige sa part, un avoir postérieur porte l'écart dans `ajustements`, à SA date — écriture
+  de l'avoir (D 4358 / C 411 ; C 4352 / D 401), déclaration du mois de l'avoir, annuelle comprise.
+  Le test regarde MARS après un avoir de mai : une erreur qui se compense sur l'année ne se voit que
+  dans le mois (10.14.0, les à-nouveaux).
+- **Un règlement de tiers n'est pas un reversement** (Cabinet) : `retenuDuMois` écartait toute
+  écriture qui touche la banque, pour ne pas compter le paiement de la retenue à l'État comme une
+  retenue. Or un remboursement au client — qui défait une part de sa retenue — touche aussi la
+  banque. Ce qui distingue les deux est le TIERS : une écriture de trésorerie qui touche un 40x/41x
+  est un règlement, et compte ; sans tiers, c'est l'État. Trouvé par l'instrument de parité, sur un
+  scénario de remboursement que l'exemple ne portait pas.
+- **Une part au millime se compare arrondie comme l'écriture la pose** : le lettrage sommait des
+  parts non arrondies pendant que le journal posait chaque composante arrondie — un millime d'écart
+  sur cinq ans. On arrondit composante par composante, comme `entrySet`.
 
 ## Pistes pour la suite (non demandées)
 

@@ -2360,7 +2360,12 @@
       if (du && e.date < du) return;
       if (au && e.date > au) return;
       if (exclure && exclure(e)) return;
-      const tresorerie = (e.lignes || []).some(l => /^5/.test(txt(l.compte)));
+      // Un RÈGLEMENT de tiers n'est pas un reversement (10.14.0) : il touche la trésorerie ET un
+      // compte de client ou de fournisseur. La retenue y naît au paiement, et un remboursement au
+      // tiers la défait — les deux comptent. Seul ce qui passe de l'État à la banque (ou l'inverse),
+      // sans tiers, solde la retenue sans la défaire.
+      const tresorerie = (e.lignes || []).some(l => /^5/.test(txt(l.compte)))
+        && !(e.lignes || []).some(l => /^4[01]/.test(txt(l.compte)));
       let touche = false;
       (e.lignes || []).forEach(l => {
         if (!txt(l.compte).startsWith(n)) return;

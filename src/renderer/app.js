@@ -3890,6 +3890,11 @@
       const rows = (s.payments || []).slice().sort((a, x) => (a.date || '').localeCompare(x.date || ''));
       const rendu = C.round3(rows.filter(p => C.estRemboursement(p)).reduce((t, p) => t - (Number(p.amount) || 0), 0));
       const plusieursComptes = (data.accounts || []).length > 1;
+      // La retenue que le client garde en payant naît à CHAQUE encaissement (10.14.0) : la ligne dit
+      // la part de ce règlement-là, la case d'attestation dit ce qui a déjà été retenu.
+      const rsSubie = t.withholding ? C.retenueSubie(s, data, company()) : null;
+      const rsParts = {};
+      if (rsSubie) (s.payments || []).forEach((p, i) => { const v = rsSubie.parts[p.id || '#' + i] || 0; if (Math.abs(v) > 0.0005) rsParts[p.id] = v; });
       el.innerHTML = `
         <div class="pay-grid">
           <div><div class="k-label">Net à payer</div><div class="v">${C.money(t.netToPay, cur)}</div>${t.withholding ? `<div class="small muted">TTC ${C.money(t.totalTTC, cur)} − RS ${C.money(t.withholding, cur)} ${info('ed.withholding')}</div>` : ''}</div>
@@ -3908,7 +3913,7 @@
               : `<div><div class="k-label">Reste à payer</div><div class="v ${b.remaining > 0.0005 ? 'due' : 'ok'}">${C.money(Math.max(0, b.remaining), cur)}</div></div>`}
         </div>
         ${rows.length ? `<table class="list compact"><thead><tr><th>Date</th><th>Mode</th>${plusieursComptes ? '<th>Compte</th>' : ''}<th>Référence</th><th class="r">Montant</th><th></th></tr></thead><tbody>
-          ${rows.map(p => `<tr><td>${C.fmtDate(p.date)}</td><td>${h(methodLabel(p.method))}</td>${plusieursComptes ? `<td>${h(accountLabel(p.accountId))}</td>` : ''}<td>${h(p.reference || '')}${p.note ? `<div class="small muted">${h(p.note)}</div>` : ''}</td><td class="r">${C.money(p.amount, cur)}${reglementEnDinars(s, p)}${C.estRemboursement(p) ? '<div class="small muted">rendu au client</div>' : ''}</td>${rowMenuCell(p.id)}</tr>`).join('')}
+          ${rows.map(p => `<tr><td>${C.fmtDate(p.date)}</td><td>${h(methodLabel(p.method))}</td>${plusieursComptes ? `<td>${h(accountLabel(p.accountId))}</td>` : ''}<td>${h(p.reference || '')}${p.note ? `<div class="small muted">${h(p.note)}</div>` : ''}</td><td class="r">${C.money(p.amount, cur)}${reglementEnDinars(s, p)}${C.estRemboursement(p) ? '<div class="small muted">rendu au client</div>' : ''}${rsParts[p.id] ? `<div class="small muted">${rsParts[p.id] > 0 ? `+ ${C.money(rsParts[p.id], cur)} retenus par le client` : `retenue défaite : ${C.money(-rsParts[p.id], cur)}`}</div>` : ''}</td>${rowMenuCell(p.id)}</tr>`).join('')}
         </tbody></table>` : `<p class="small muted">Aucun paiement enregistré.</p>`}
         <div class="inline mt">
           ${s.status !== 'annulée' && b.remaining > 0.0005
@@ -3921,7 +3926,10 @@
                règlement négatif. C'est l'étape suivante d'une facture payée en trop : vert, sauf si
                l'en-tête porte déjà le sien (U-11). */''}${s.status !== 'annulée' && b.remaining < -0.0005
             ? `<button class="btn ${document.querySelector('.page-head .btn-primary') ? '' : 'btn-primary'}" id="rembourser">Rembourser ${C.money(-b.remaining, cur)} au client…</button> ${info('ed.rembourser')}` : ''}
-          ${t.withholding && s.status !== 'annulée' ? `<label class="check"><input type="checkbox" id="rs-cert" ${s.withholdingCertificate ? 'checked' : ''}> Attestation de retenue à la source reçue (${C.money(t.withholding, cur)}) ${info('compta.rs')}</label>` : ''}
+          ${/* L'attestation se réclame quand le client a RETENU, c'est-à-dire payé (10.14.0) : la case
+               s'offrait sur une facture que personne n'avait réglée, pour la retenue entière. */''}${t.withholding && s.status !== 'annulée' ? (rsSubie.operee > 0.0005 || s.withholdingCertificate
+            ? `<label class="check"><input type="checkbox" id="rs-cert" ${s.withholdingCertificate ? 'checked' : ''}> Attestation de retenue à la source reçue (${C.money(rsSubie.operee, cur)}${rsSubie.operee < rsSubie.due - 0.0005 ? ` retenus sur ${C.money(rsSubie.due, cur)}` : ''}) ${info('compta.rs')}</label>`
+            : `<span class="small muted">La retenue (${C.money(rsSubie.due, cur)}) naîtra quand le client paiera : il te remettra alors son attestation. ${info('compta.rs')}</span>`) : ''}
           ${s.status === 'annulée' ? `<span class="muted small">Facture annulée.</span><button class="btn btn-ghost btn-sm" id="uncancel">Rétablir</button>` : (!b.paid && !b.credits.length ? `<button class="btn btn-ghost btn-sm" id="cancel-inv">Marquer annulée…</button>` : '')}
         </div>`;
       // « ✎ » et « ✕ », deux pictogrammes muets en bout de ligne — le second supprimait un paiement
@@ -4580,6 +4588,7 @@
         ${accountFieldHtml(p0 && p0.accountId)}
         ${field(lbl('Référence (n° chèque, virement…)', 'ed.payReference'), 'reference', p0 ? p0.reference || '' : '')}
         <label class="field span-2">${lbl('Note', 'ed.payNote')}<input type="text" name="note" value="${h(p0 ? p0.note || '' : '')}"></label>
+        ${!rend && Number(inv.withholdingRate) > 0 ? '<p class="small span-2 annonce-stable" id="pf-rs" aria-live="polite"></p>' : ''}
       </form>
       ${/* 10.12.0 — la fiche société porte déjà la banque et le RIB ; le paiement disait « aucun compte » et
          n'offrait qu'un lien vers la Trésorerie, qui QUITTAIT la fenêtre et jetait la saisie. Le compte
@@ -4588,6 +4597,23 @@
       <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">${rend ? 'Enregistrer le remboursement' : 'Enregistrer'}</button></div>`,
       (root, close) => {
         brancherTauxReglement(root, inv, !rend, rend ? 'Rendu' : 'Reçu');
+        // Le miroir de la fenêtre de règlement d'un fournisseur (10.14.0) : ce que le client GARDE
+        // sur ce paiement pour l'État, dit avant d'enregistrer — c'est ce montant que tu déclareras
+        // comme retenue subie ce mois-là, et dont il te doit l'attestation.
+        if ($('#pf-rs', root)) {
+          const annoncer = () => {
+            const v = formValues($('#pf2', root));
+            const essai = { ...inv, payments: (inv.payments || []).filter(x => !p0 || x.id !== p0.id).concat([{ id: '__essai', date: v.date || C.today(), amount: Number(v.amount) || 0 }]) };
+            const part = C.retenueSubie(essai, data, company()).parts.__essai || 0;
+            const d0 = v.date || C.today();
+            $('#pf-rs', root).innerHTML = part > 0.0005
+              ? `En payant, le client garde <b>${C.money(part, cur)}</b> de retenue à la source pour l'État : c'est une retenue subie de ${C.MONTHS_FR[Number(d0.slice(5, 7)) - 1]} ${d0.slice(0, 4)}, qu'il doit te justifier par une attestation.`
+              : '';
+          };
+          $('#pf2', root).addEventListener('input', annoncer);
+          $('#pf2', root).addEventListener('change', annoncer);
+          annoncer();
+        }
         if ($('#pf-compte', root)) $('#pf-compte', root).onclick = () => accountForm(null, a => {
           const z = $('#pf-sans-compte', root);
           if (a && z) z.textContent = `Ce paiement sera rattaché au compte « ${a.name} ».`;
@@ -5158,7 +5184,7 @@
         <div class="stat"><div class="lbl">Facturé HT ${info('dash.caYear')}</div><div class="val">${C.money(sum.ht, cur)}</div><div class="sub">${pl(sum.invoiceCount, 'facture')}${sum.first ? ' depuis ' + C.fmtDate(sum.first) : ''}</div></div>
         ${sum.net < -0.0005
           ? `<div class="stat"><div class="lbl">En sa faveur ${info('cl.due')}</div><div class="val due">${C.money(-sum.net, cur)}</div><div class="sub">trop-perçus et avoirs à lui rendre</div></div>`
-          : `<div class="stat"><div class="lbl">Reste à payer ${info('cl.due')}</div><div class="val">${C.money(sum.net, cur)}</div><div class="sub">${sum.aRendre > 0.0005 ? `${C.money(sum.due, cur)} dû, moins ${C.money(sum.aRendre, cur)} à lui rendre` : sum.net > 0.0005 ? 'à encaisser' : 'tout est réglé'}</div></div>`}
+          : `<div class="stat"><div class="lbl">Reste à payer ${info('cl.due')}</div><div class="val">${C.money(sum.net, cur)}</div><div class="sub">${sum.aRendre > 0.0005 ? `${C.money(sum.due, cur)} dû, moins ${C.money(sum.aRendre, cur)} à lui rendre` : sum.net > 0.0005 ? 'à encaisser' : 'tout est réglé'}${sum.rsASubir > 0.0005 ? `<br>plus ${C.money(sum.rsASubir, cur)} de retenue à la source qu'il gardera en payant, pour l'État` : ''}</div></div>`}
         <div class="stat"><div class="lbl">Délai moyen de paiement ${info('dash.delay')}</div><div class="val">${sum.delay == null ? '—' : sum.delay + ' j'}</div><div class="sub">annoncé : ${pl(Number(company().paymentTermsDays) || 0, 'jour')}</div></div>
         <div class="stat"><div class="lbl">Devis acceptés ${info('dash.conversion')}</div><div class="val">${sum.conversion == null ? '—' : sum.conversion + ' %'}</div><div class="sub">${sum.quoteCount} devis, ${openQuotes.length} sans réponse</div></div>
       </div>
@@ -6572,7 +6598,7 @@
     bulletins: { label: 'Voir les bulletins', run: vers('#/paie', () => { paieState.tab = 'bulletins'; }) },
     stock: { label: 'Voir les alertes', run: vers('#/stock', () => { stockState.tab = 'alertes'; }) },
     series: { label: 'Voir les numéros', run: vers('#/stock', () => { stockState.tab = 'series'; }) },
-    attestations: { label: 'Voir les factures', run: vers('#/compta', () => { comptaState.tab = 'ventes'; }) }
+    attestations: { label: 'Voir les factures', run: vers('#/compta', () => { comptaState.tab = 'ventes'; pageFocus = 'p-rs-clients'; }) }
   };
   // Combien de lignes on montre avant de proposer « voir le reste ». En démo, « À faire » affichait
   // treize lignes et occupait l'écran entier : le chiffre d'affaires, le graphique et tout le reste
@@ -8045,6 +8071,9 @@
       const b = C.purchaseBalance(s2, company(), data);
       const rows = (s2.payments || []).slice().sort((a, x) => (a.date || '').localeCompare(x.date || ''));
       const t = b.totals;
+      const rsOp2 = C.retenueDesReglements(s2, company(), data);
+      // La part de retenue de chaque règlement, sur sa ligne — le jumeau de la facture de vente.
+      const partRs = x => { const i = (s2.payments || []).indexOf(x); const v = rsOp2.parts[x.id || '#' + i] || 0; return Math.abs(v) > 0.0005 ? v : 0; };
       el.innerHTML = `
         <div class="pay-grid">
           <div><div class="k-label">${s2.kind === 'avoir' ? 'Montant de l\'avoir' : 'Net à payer'}</div><div class="v">${C.money(t.netToPay, cur)}</div>${t.withholding ? `<div class="small muted">TTC ${C.money(t.totalTTC, cur)} − retenue ${C.money(t.withholding, cur)}</div>` : ''}</div>
@@ -8059,12 +8088,15 @@
           <div><div class="k-label">Statut</div><div class="v">${buyBadge(buyStatus(s2))}</div></div>
         </div>
         ${rows.length ? `<table class="list compact"><thead><tr><th>Date</th><th>Mode</th><th>Référence</th><th class="r">Montant</th><th></th></tr></thead><tbody>
-          ${rows.map(x => `<tr><td>${C.fmtDate(x.date)}</td><td>${h(methodLabel(x.method))}</td><td>${C.estRemboursementAchat(s2, x) ? '<span class="badge">remboursement reçu</span> ' : ''}${h(x.reference || '')}${x.note ? `<div class="small muted">${h(x.note)}</div>` : ''}</td><td class="r">${C.money(Math.abs(Number(x.amount) || 0), cur)}${reglementEnDinars(s2, x)}</td>${rowMenuCell(x.id)}</tr>`).join('')}
+          ${rows.map(x => `<tr><td>${C.fmtDate(x.date)}</td><td>${h(methodLabel(x.method))}</td><td>${C.estRemboursementAchat(s2, x) ? '<span class="badge">remboursement reçu</span> ' : ''}${h(x.reference || '')}${x.note ? `<div class="small muted">${h(x.note)}</div>` : ''}</td><td class="r">${C.money(Math.abs(Number(x.amount) || 0), cur)}${reglementEnDinars(s2, x)}${partRs(x) ? `<div class="small muted">${partRs(x) > 0 ? `+ ${C.money(partRs(x), cur)} retenus pour l'État` : `retenue défaite : ${C.money(-partRs(x), cur)}`}</div>` : ''}</td>${rowMenuCell(x.id)}</tr>`).join('')}
         </tbody></table>` : '<p class="small muted">Aucun règlement enregistré.</p>'}
         <div class="inline mt">
           ${b.remaining > 0.0005 ? `<button class="btn ${$('#pay') ? '' : 'btn-primary'}" id="pay2">+ Enregistrer un règlement</button>` : ''}
           ${b.remaining < -0.0005 ? `<button class="btn ${$('#recu') ? '' : 'btn-primary'}" id="recu2">+ Enregistrer le remboursement reçu</button>` : ''}
-          ${t.withholding ? `<label class="check"><input type="checkbox" id="rs-cert2" ${s2.withholdingCertificate ? 'checked' : ''}> Attestation de retenue remise au fournisseur (${C.money(t.withholding, cur)}) ${info('buy.certificate')}</label>` : ''}
+          ${/* La retenue s'opère au règlement (10.14.0) : l'attestation porte ce que les règlements ont
+               retenu, et ne se remet pas pour une pièce encore impayée. */''}${t.withholding ? (rsOp2.operee > 0.0005 || s2.withholdingCertificate
+            ? `<label class="check"><input type="checkbox" id="rs-cert2" ${s2.withholdingCertificate ? 'checked' : ''}> Attestation de retenue remise au fournisseur (${C.money(rsOp2.operee, cur)}${rsOp2.operee < rsOp2.due - 0.0005 ? ` retenus sur ${C.money(rsOp2.due, cur)}` : ''}) ${info('buy.certificate')}</label>`
+            : `<span class="small muted">La retenue (${C.money(rsOp2.due, cur)}) s'opérera quand tu paieras : tu remettras alors l'attestation au fournisseur. ${info('buy.certificate')}</span>`) : ''}
         </div>`;
       // Un « ✕ » muet supprimait le règlement : le geste le plus destructif de la ligne était le seul
       // sans nom (7.29.0). Un menu, avec la modification que la ligne n'avait pas (10.12.0).
@@ -11846,8 +11878,17 @@
       // Converti, comme sa jumelle de l'accueil : une facture en euros ne s'additionne pas
       // à une facture en dinars (7.16.0).
       const openAmount = open.reduce((s, d) => s + C.toBase(d, balance(d).remaining, company()), 0);
-      const rsPending = data.documents.filter(d => d.type === 'facture' && d.status !== 'brouillon' && d.status !== 'annulée' && C.computeTotals(d, company()).withholding > 0 && !d.withholdingCertificate);
-      const rsPendingAmount = rsPending.reduce((s, d) => s + C.computeTotals(d, company()).withholding, 0);
+      // Les attestations à recevoir : ce que les clients ont DÉJÀ retenu en payant (10.14.0), en
+      // dinars. La liste comptait les factures impayées, et additionnait les retenues en devise sans
+      // les convertir — la faute de la 7.16.0, un panneau plus bas.
+      const rsAttendues = C.attestationsARecevoir(data, company());
+      const rsPendingAmount = C.round3(rsAttendues.reduce((s, x) => s + x.amount, 0));
+      // Ce que les clients ont retenu sur les encaissements de la période : c'est ce chiffre-là qui se
+      // déclare, pas la retenue que les factures de la période portent.
+      // Un avoir posé après un encaissement régularise dans son mois : il compte ici, sauf sous un
+      // filtre de recherche (qui ne porte que sur des lignes d'encaissement).
+      const rsSubies = C.round3(pays.reduce((s, r) => s + (r.rs || 0), 0) + (q ? 0 : C.retenuesDeLaPeriode(data, company(), p, 'ventes').regularisations));
+      const avecRsSubie = pays.some(r => Math.abs(r.rs || 0) > 0.0005);
       const journalCols = [
         { key: 'date', label: 'Date', asc: true, val: r => r.date || '', get: r => C.fmtDate(r.date) },
         { key: 'number', label: 'Numéro', asc: true, val: r => r.number || '', get: r => `<strong>${h(r.number)}</strong>${r.type === 'avoir' ? `<div class="small muted">avoir · ${h(r.creditOfNumber)}</div>` : ''}` },
@@ -11865,13 +11906,15 @@
         { key: 'client', label: 'Client', asc: true, val: r => (r.client || '').toLowerCase(), get: r => h(r.client) },
         { key: 'method', label: 'Mode', asc: true, val: r => r.method || '', get: r => h(r.method) },
         { key: 'reference', label: 'Référence', asc: true, val: r => (r.reference || '').toLowerCase(), get: r => h(r.reference) },
-        { key: 'amount', label: 'Montant', r: true, val: r => r.amount, get: r => C.money(r.amount, cur) }
+        { key: 'amount', label: 'Montant', r: true, val: r => r.amount, get: r => C.money(r.amount, cur) },
+        // La colonne n'existe que si un encaissement de la sélection porte une retenue (9.4.8).
+        ...(avecRsSubie ? [{ key: 'rs', label: 'Retenue subie', r: true, val: r => r.rs || 0, get: r => r.rs ? C.money(r.rs, cur) : '<span class="muted">—</span>' }] : [])
       ];
       const jPage = paginate(applySort(rows, journalCols, comptaState.journal.sort), comptaState.journal);
       const pPage = paginate(applySort(pays, payCols, comptaState.pays.sort), comptaState.pays);
       // Les attestations en attente couvrent TOUTES les années : onze cents lignes d'un bloc sous deux
       // tableaux paginés (10.14.0). La plus ancienne d'abord, c'est celle qu'on réclame en premier.
-      const rsPage = paginate(rsPending, comptaState.rs);
+      const rsPage = paginate(rsAttendues, comptaState.rs);
       $('#c-body').innerHTML = `
         <div class="filters">
           <input type="search" id="cpt-q" placeholder="Rechercher : n°, client, objet, référence…" value="${h(comptaState.q)}">
@@ -11890,7 +11933,7 @@
             ${C.VAT_RATES.map(r => `<tr><td>TVA ${r} %</td><td class="r">${C.money(sum.byRate[r].base, cur)}</td><td class="r">${C.money(sum.byRate[r].vat, cur)}</td></tr>`).join('')}
             <tr class="total-row"><td><strong>Total</strong></td><td class="r"><strong>${C.money(sum.ht, cur)}</strong></td><td class="r"><strong>${C.money(sum.tva, cur)}</strong></td></tr>
           </tbody></table>
-          <p class="small muted mt">Timbres fiscaux : ${C.money(sum.timbre, cur)} · TTC facturé : ${C.money(sum.ttc, cur)} · Retenues à la source subies : ${C.money(sum.rs, cur)}. <em>À VÉRIFIER avec le comptable</em> avant déclaration.</p>
+          <p class="small muted mt">Timbres fiscaux : ${C.money(sum.timbre, cur)} · TTC facturé : ${C.money(sum.ttc, cur)} · Retenues à la source subies sur les encaissements de la période : ${C.money(rsSubies, cur)}${Math.abs(sum.rs - rsSubies) > 0.0005 ? ` (les factures de la période en portent ${C.money(sum.rs, cur)} : un client la retient en payant)` : ''}. <em>À VÉRIFIER avec le comptable</em> avant déclaration.</p>
         </div>
         <div class="panel"><h2>Journal des ventes — ${h(periodLabel())} ${info('compta.journal')}</h2>
           <div class="inline mb"><button class="btn" id="exp-journal">Exporter en CSV</button><button class="btn" id="exp-pdfs">Exporter tous les PDF de la période</button><button class="btn btn-primary" id="exp-comptable">Envoyer au comptable…</button>${info('compta.comptable')}</div>
@@ -11905,9 +11948,9 @@
           </tbody></table></div>${pagerBar(pPage.pg, { noun: 'paiement' })}` : '<div class="empty">Aucun encaissement sur cette période.</div>'}
         </div>
         <div class="panel" id="p-rs-clients"><h2>Retenues à la source — attestations à recevoir ${info('compta.rs')}</h2>
-          ${rsPending.length ? `<p class="small muted">${C.money(rsPendingAmount, cur)} retenus par tes clients sans attestation reçue. Coche quand l'attestation arrive (elle justifie la retenue auprès du fisc).</p>
+          ${rsAttendues.length ? `<p class="small muted">${C.money(rsPendingAmount, cur)} retenus par tes clients en te payant, sans attestation reçue. Coche quand l'attestation arrive (elle justifie la retenue auprès du fisc). Une facture pas encore payée n'y figure pas : rien n'a encore été retenu.</p>
           <div id="rs-wrap"><table class="list compact"><thead><tr><th>Facture</th><th>Client</th><th>Date</th><th class="r">Retenue</th><th></th></tr></thead><tbody>
-            ${rsPage.rows.map(d => { const t = C.computeTotals(d, company()); return `<tr class="clickable" data-id="${d.id}"><td><strong>${h(d.number)}</strong></td><td>${h(clientName(d.clientId))}</td><td>${C.fmtDate(d.date)}</td><td class="r">${C.money(t.withholding, cur)} <span class="muted small">(${pct(t.withholdingRate)} %)</span></td><td class="actions"><button class="btn btn-sm" data-cert="${d.id}">Attestation reçue</button></td></tr>`; }).join('')}
+            ${rsPage.rows.map(x => { const d = x.doc, t = C.computeTotals(d, company()); return `<tr class="clickable" data-id="${d.id}"><td><strong>${h(d.number)}</strong></td><td>${h(clientName(d.clientId))}</td><td>${C.fmtDate(d.date)}</td><td class="r">${C.money(x.amount, cur)} <span class="muted small">(${pct(t.withholdingRate)} %${x.complete ? '' : ', payée en partie'})</span></td><td class="actions"><button class="btn btn-sm" data-cert="${d.id}">Attestation reçue</button></td></tr>`; }).join('')}
           </tbody></table></div>${pagerBar(rsPage.pg, { noun: 'attestation' })}` : '<p class="small muted">Aucune attestation en attente.</p>'}
         </div>`;
       // `if (e.target.closest('button')) return` comme les sept autres liaisons de ligne : sans lui,
@@ -12018,6 +12061,9 @@
       // La retenue à la source s'opère au RÈGLEMENT (10.14.0) : c'est ici, sur l'argent parti, qu'elle
       // se lit — celle d'une facture pas encore payée n'est ni retenue, ni à reverser.
       const rsOp = C.round3(decs.reduce((s, r) => s + (r.rs || 0), 0));
+      // Un avoir posé après le règlement régularise la retenue dans SON mois (10.14.0) : la carte dit
+      // ce qui se reverse, régularisation comprise ; le tableau, lui, ne liste que les règlements.
+      const rsReg = q ? 0 : C.retenuesDeLaPeriode(data, company(), p, 'achats').regularisations;
       const avecRs = decs.some(r => Math.abs(r.rs || 0) > 0.0005);
       const decCols = [
         { key: 'date', label: 'Date', asc: true, cls: 'nw', val: r => r.date || '', get: r => C.fmtDate(r.date) },
@@ -12041,7 +12087,7 @@
         <div class="stats">
           <div class="stat"><div class="lbl">Achats HT — ${h(label)} ${info('compta.buyJournal')}</div><div class="val">${C.money(sum.ht, cur)}</div><div class="sub">${pl(sum.count, 'pièce')}</div></div>
           <div class="stat"><div class="lbl">TVA déductible ${info('compta.deductible')}</div><div class="val">${C.money(sum.deductible, cur)}</div><div class="sub">${sum.deductible === sum.tva ? 'toute la TVA de tes achats' : `sur ${C.money(sum.tva, cur)} de TVA facturée`}</div></div>
-          <div class="stat"><div class="lbl">Retenues opérées ${info('buy.withholding')}</div><div class="val">${C.money(rsOp, cur)}</div><div class="sub">${Math.abs(sum.rs - rsOp) > 0.0005 ? `sur tes règlements, à reverser — les achats de la période en portent ${C.money(sum.rs, cur)}` : 'sur tes règlements, à reverser au fisc'}</div></div>
+          <div class="stat"><div class="lbl">Retenues opérées ${info('buy.withholding')}</div><div class="val">${C.money(C.round3(rsOp + rsReg), cur)}</div><div class="sub">${Math.abs(sum.rs - rsOp - rsReg) > 0.0005 ? `sur tes règlements, à reverser — les achats de la période en portent ${C.money(sum.rs, cur)}` : 'sur tes règlements, à reverser au fisc'}${Math.abs(rsReg) > 0.0005 ? `, dont ${C.money(rsReg, cur)} de régularisation par un avoir` : ''}</div></div>
           <div class="stat"><div class="lbl">Total réglé ou dû ${info('compta.buyNet')}</div><div class="val">${C.money(sum.net, cur)}</div><div class="sub">net à payer, toutes pièces</div></div>
         </div>
         ${sum.byCategory.length ? `<div class="panel"><h2>Où part ton argent — ${h(label)} ${info('compta.byCategory')}</h2>
