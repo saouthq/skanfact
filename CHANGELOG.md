@@ -356,6 +356,48 @@ Et ce que le parcours de cet exemple, à la souris, a encore trouvé :
   qu'il a le curseur, et la ligne qui juge la solidité du mot de passe garde sa place au lieu de
   pousser la confirmation pendant la frappe.
 
+Et en suivant à la souris le conseil de l'écran jusqu'au bout :
+- **Un compte neuf éteignait la grille de saisie.** Un compte que le dossier n'avait encore jamais
+  utilisé — c'est le cas de toute première écriture sur un compte — rendait « Enregistrer » et
+  « Valider » inertes, alors que c'est justement une écriture qui fait entrer un compte au plan. Il se
+  **signale** maintenant, sans rien éteindre : la phrase dit le nom qu'il prendra (celui du plan de
+  référence), ou qu'il faut le relire quand le plan ne le connaît pas — une faute de frappe est
+  possible —, et l'intitulé le montre en italique.
+- **Choisir un compte n'écrit plus son nom dans le libellé de la ligne** : un libellé dit l'opération,
+  pas le compte. Le champ vide montre en attente le libellé de la pièce. Et changer de journal, de date
+  ou de libellé relit aussitôt ce que les boutons acceptent.
+- **L'écart des à-nouveaux se lit en mots** : « 411 (1 200,000 DT créditeur repris, 800,000 DT débiteur
+  à la clôture) » au lieu d'un solde précédé d'un signe moins qu'il fallait savoir traduire — et
+  « même solde, réparti autrement entre 2 tiers » quand seul le détail par client a changé.
+- **« Contre-passe-les, puis reviens les reposer » comptait l'ouverture deux fois.** Suivi à la souris,
+  le conseil de l'écran menait là : la contre-passation tombait à la date du jour, les nouveaux
+  à-nouveaux au 1er janvier, et de janvier à septembre chaque balance d'un mois portait le capital deux
+  fois (40 000 pour 20 000). L'écart se pose maintenant dans une pièce d'**à-nouveaux
+  complémentaires**, au 1er janvier, en brouillard : la différence seulement, compte par compte et, sur
+  un compte de clients ou de fournisseurs, client par client. Ce qui est déjà validé ne bouge pas, rien
+  n'est contre-passé. Le bouton dit « Ajuster les à-nouveaux de 2026… », puis « Ouvrir le brouillard de
+  2026 » tant que la pièce attend sa validation ; un écart qui disparaît retire le brouillard.
+- **Le miroir d'une contre-passation reste dans son exercice.** Daté du jour, le miroir d'une écriture
+  de 2025 corrigée en 2026 tombait en 2026 dans le livre de 2025 — hors de toutes ses balances, qui
+  gardaient l'écriture « contre-passée ». Il se date désormais du dernier jour d'un exercice passé (et
+  jamais avant l'écriture qu'il corrige), des à-nouveaux contre-passés du 1er janvier, et la question,
+  le menu de la ligne, la saisie et l'Aide disent ce jour-là avant le geste. Le miroir garde aussi le
+  nom du client ou du fournisseur, pas seulement son identifiant. Des à-nouveaux et un miroir ne se
+  proposent plus à l'extourne.
+- **« Un mois » s'ouvrait sur « décembre 2026 »** — un mois futur, la première option de la liste —
+  pendant que la balance montrait l'exercice entier : il s'ouvre sur le dernier mois qui porte des
+  écritures. Changer d'exercice recale le mois (la liste disait « décembre 2025 » au-dessus d'août 2026) ;
+  la liste propose les mois de chaque exercice tenu, et choisir un mois d'un autre exercice ouvre son
+  livre. « Ouvrir le brouillard de 2026 » ne laisse plus trois listes côte à côte.
+- **La phrase d'ouverture de la balance nomme ce qui la porte** — « les à-nouveaux AN-2026,
+  AN-2026-C1 » ou « la balance d'ouverture reprise (5 comptes) » — au lieu de « les soldes repris
+  (aucun) » au-dessus d'une colonne d'ouverture qui portait le capital.
+- **La balance d'un mois tient dans la largeur** : ses huit colonnes coupaient « Solde créditeur » au
+  bord de l'écran ; les titres des colonnes de montants passent sur deux lignes, et l'intitulé du
+  compte respire.
+- Après « Ajuster les à-nouveaux », la fenêtre ne redit plus « 1 bien et 1 salarié suivent » quand le
+  registre n'a pas bougé. La page Dossiers vide ne propose plus la clé de secours deux fois.
+
 ## 10.13.0-beta.1 — 24/09/2026
 
 **Avant la mise en production : les deux applications et le pont entre elles, testés en entier.**

@@ -1009,16 +1009,44 @@
   // Contre-passer : le MIROIR, jamais une modification ni une suppression. La date est celle du jour
   // où l'on corrige, pas celle de l'écriture d'origine — corriger en mars une écriture de janvier
   // dans un janvier déjà déclaré changerait la TVA de janvier en silence (règle 6.0.0).
+  //
+  // Le jour du miroir reste DANS l'exercice du livre (10.14.0), et jamais avant l'écriture qu'il
+  // corrige. On corrige un exercice PASSÉ au moment où on le clôture — en février, en mars : daté du
+  // jour, le miroir tombait en 2026 dans le livre de 2025, hors de toutes ses lectures, et la
+  // balance, le bilan, la liasse et les à-nouveaux gardaient l'écriture « contre-passée » comme si
+  // de rien n'était. Il se pose alors au dernier jour de l'exercice, là où vivent les corrections
+  // d'inventaire.
+  //
+  // Et une exception de fond : des À-NOUVEAUX se contre-passent à LEUR date, le premier jour de
+  // l'exercice. Une ouverture ne se corrige qu'au jour où elle s'ouvre : contre-passée le 25
+  // septembre puis reposée au 1er janvier, elle comptait les soldes d'ouverture DEUX FOIS de janvier
+  // à septembre — dans chaque balance d'un mois, chaque grand livre, chaque crédit de TVA reporté.
+  // Vu à la souris, en suivant le conseil que l'écran de l'exercice donnait alors. L'argument de la
+  // règle ne tient pas ici : reposer l'ouverture change janvier de toute façon.
+  function dateDuMiroir(livre, e, dateIso) {
+    if (e && e.source === 'an' && e.date) return e.date;
+    const ex = (livre && livre.exercice) || {};
+    let d = txt(dateIso);
+    if (ex.au && d > ex.au) d = ex.au;
+    if (ex.du && d && d < ex.du) d = ex.du;
+    if (e && e.date && d < e.date) d = e.date;
+    return d;
+  }
+  // Un miroir garde TOUT ce qui situe une ligne : son compte, son tiers (l'identifiant ET le nom), son
+  // libellé. Le nom se perdait depuis la 9.8.5 (la forme d'une ligne l'avait gagné, les miroirs non) :
+  // la contre-passation d'un règlement client tombait « sans tiers » dans la balance auxiliaire.
+  const ligneMiroir = l => ({ compte: l.compte, tiersId: l.tiersId, tiers: l.tiers, libelle: l.libelle, debit: l.credit, credit: l.debit });
   function contrepasser(livre, id, qui, dateIso, quand) {
     const e = livre.ecritures.find(x => x.id === id);
     if (!e) return { ok: false, motif: 'Cette écriture n\'existe pas.' };
     if (e.statut !== 'validee') return { ok: false, motif: 'Une écriture en brouillard se modifie : elle n\'a pas besoin d\'être contre-passée.' };
     if (livre.ecritures.some(x => x.contrepasseDe === id)) return { ok: false, motif: 'Cette écriture a déjà été contre-passée.' };
+    const date = dateDuMiroir(livre, e, dateIso);
     const miroir = ajouterEcriture(livre, {
-      date: dateIso, journal: e.journal, piece: e.piece,
+      date, journal: e.journal, piece: e.piece,
       libelle: 'Contre-passation — ' + e.libelle,
-      source: e.source, mois: String(dateIso).slice(0, 7), contrepasseDe: id,
-      lignes: e.lignes.map(l => ({ compte: l.compte, tiersId: l.tiersId, libelle: l.libelle, debit: l.credit, credit: l.debit }))
+      source: e.source, mois: String(date).slice(0, 7), contrepasseDe: id,
+      lignes: e.lignes.map(ligneMiroir)
     }, qui, quand);
     const r = validerEcriture(livre, miroir.id, qui, quand);
     if (!r.ok) { livre.ecritures = livre.ecritures.filter(x => x.id !== miroir.id); return r; }
@@ -1402,6 +1430,10 @@
     if (!e) return { ok: false, motif: 'Cette écriture n\'existe pas.' };
     if (e.statut !== 'validee') return { ok: false, motif: 'On extourne une écriture validée. Un brouillard se modifie ou se supprime.' };
     if (livre.ecritures.some(x => x.extourneDe === id)) return { ok: false, motif: 'Cette écriture a déjà été extournée.' };
+    // Des à-nouveaux n'ont rien à défaire au 1er février : ils OUVRENT l'exercice. Les extourner
+    // effacerait le bilan d'ouverture un mois après l'avoir posé — le menu ne le propose plus, et le
+    // moteur refuse pour le cas où un autre chemin le demanderait.
+    if (e.source === 'an') return { ok: false, motif: 'Des à-nouveaux ne s\'extournent pas : ils ouvrent l\'exercice. Un écart avec la clôture se reprend depuis l\'exercice précédent.' };
     const date = premierDuMoisSuivant(e.date);
     if (!date) return { ok: false, motif: 'Cette écriture n\'a pas de date lisible : impossible de savoir quel est le mois suivant.' };
     // Une extourne de décembre tombe au 1er janvier, c'est-à-dire dans l'exercice SUIVANT — et un
@@ -1414,7 +1446,7 @@
       date, journal: e.journal, piece: e.piece,
       libelle: 'Extourne — ' + e.libelle,
       source: e.source, mois: date.slice(0, 7), extourneDe: id,
-      lignes: e.lignes.map(l => ({ compte: l.compte, tiersId: l.tiersId, libelle: l.libelle, debit: l.credit, credit: l.debit }))
+      lignes: e.lignes.map(ligneMiroir)
     }, qui, quand);
     const r = validerEcriture(livre, miroir.id, qui, quand);
     if (!r.ok) { livre.ecritures = livre.ecritures.filter(x => x.id !== miroir.id); return r; }
@@ -3425,7 +3457,7 @@
         origineId: e.id, extourneDe: e.id,
         journal: 'OD', date: au, piece: 'EXT-' + (e.piece || e.numero || ''),
         libelle: 'Extourne — ' + (e.libelle || ''), source: 'inventaire',
-        lignes: (e.lignes || []).map(l => ({ compte: l.compte, libelle: l.libelle, debit: round3(num(l.credit)), credit: round3(num(l.debit)) }))
+        lignes: (e.lignes || []).map(l => ({ ...ligneMiroir(l), debit: round3(num(l.credit)), credit: round3(num(l.debit)) }))
       }));
   }
 
@@ -3564,12 +3596,16 @@
       const extournes = extournesDe(livre, suivante, presentes).map(x => ajouterEcriture(cible, x, qui, quand));
       const biens = reporterBiens(livre, cible, qui, quand);
       const salaries = reporterSalaries(livre, cible, qui, quand);
-      if (!extournes.length && !biens.repris && !biens.retires && !salaries.repris && !salaries.retires) {
+      const complement = poserComplementAnouveaux(livre, cible, qui, quand, opts);
+      if (!extournes.length && !biens.repris && !biens.retires && !salaries.repris && !salaries.retires && !complement.change) {
         // `rien` : ce n'est pas une panne, c'est que tout est déjà fait. L'écran ne propose pas ce
         // geste-là (`etatExerciceSuivant`) ; un appelant qui le fait quand même le sait.
-        return { ok: false, rien: true, motif: `Les à-nouveaux de ${suivante} sont déjà validés. Contre-passe-les si le report a changé.` };
+        return { ok: false, rien: true, motif: complement.enAttente
+          ? `L'écart des à-nouveaux de ${suivante} est déjà posé en brouillard, au 1er janvier : il reste à le valider.`
+          : `Les à-nouveaux de ${suivante} sont déjà validés, et ils reprennent la clôture de ${annee}.` };
       }
-      return { ok: true, annee: suivante, anDejaValides: true, ecriture: null, refaits: 0, extournes: extournes.length, biens, salaries };
+      return { ok: true, annee: suivante, anDejaValides: true, ecriture: complement.ecriture, refaits: 0, complement: complement.lignes,
+        complementRetire: complement.retire, extournes: extournes.length, biens, salaries };
     }
     const ancien = cible.ecritures.filter(e => e.statut === 'brouillard' && (e.source === 'an' || e.extourneDe));
     // Ce qui a DÉJÀ été validé ne se repose pas : une extourne posée deux fois annule la charge deux
@@ -3583,24 +3619,84 @@
     return { ok: true, annee: suivante, anDejaValides: false, ecriture, refaits: ancien.length, extournes: extournes.length, biens, salaries };
   }
 
-  // Les à-nouveaux EN VIGUEUR de N+1 reprennent-ils encore la clôture de N ? Compte par compte : ce
-  // que le report calcule aujourd'hui contre ce que les pièces validées portent. « Contre-passe-les
-  // si le report a changé » se VÉRIFIE ici au lieu de se deviner — un exercice rouvert et corrigé
-  // après la validation des à-nouveaux laisse un bilan d'ouverture qui ne suit plus, et rien ne le
-  // montrait. Vide : ils suivent.
-  function ecartAnouveaux(livre, cible, opts) {
+  // Les à-nouveaux EN VIGUEUR de N+1 reprennent-ils encore la clôture de N ? Ce que le report
+  // calcule aujourd'hui contre ce que les pièces validées portent — par compte ET, sur un collectif,
+  // par tiers. Un règlement réaffecté d'un client à l'autre dans N ne change pas le 411 : il change
+  // ce que CHACUN doit à l'ouverture, et c'est ce que la balance auxiliaire de N+1 doit dire.
+  function nettesAnouveaux(livre, cible, opts) {
     const suivante = Number(livre.exercice.annee) + 1;
     const net = new Map();
-    const ajoute = (compte, v) => net.set(compte, round3((net.get(compte) || 0) + v));
-    ecritureAnouveaux(livre, suivante, opts).lignes.forEach(l => ajoute(txt(l.compte), num(l.debit) - num(l.credit)));
-    const attendu = new Map(net);
-    net.clear();
-    ((cible && cible.ecritures) || []).filter(anEnVigueur)
-      .forEach(e => (e.lignes || []).forEach(l => ajoute(txt(l.compte), num(l.debit) - num(l.credit))));
-    const comptes = [...new Set([...attendu.keys(), ...net.keys()])].sort();
-    return comptes.map(c => ({ compte: c, attendu: attendu.get(c) || 0, porte: net.get(c) || 0 }))
-      .map(x => ({ ...x, ecart: round3(x.attendu - x.porte) }))
-      .filter(x => x.ecart);
+    const ajoute = (l, cote) => {
+      const compte = txt(l.compte), tiersId = l.tiersId || '', tiers = txt(l.tiers);
+      const k = compte + '|' + (tiersId || tiers);
+      const t = net.get(k) || { compte, tiersId, tiers, libelle: txt(l.libelle), attendu: 0, porte: 0 };
+      t[cote] = round3(t[cote] + num(l.debit) - num(l.credit));
+      net.set(k, t);
+    };
+    ecritureAnouveaux(livre, suivante, opts).lignes.forEach(l => ajoute(l, 'attendu'));
+    ((cible && cible.ecritures) || []).filter(anEnVigueur).forEach(e => (e.lignes || []).forEach(l => ajoute(l, 'porte')));
+    return [...net.keys()].sort().map(k => net.get(k)).map(t => ({ ...t, ecart: round3(t.attendu - t.porte) }));
+  }
+
+  // Compte par compte, pour l'écran : « contre-passe-les si le report a changé » se VÉRIFIE ici au
+  // lieu de se deviner — un exercice rouvert et corrigé après la validation des à-nouveaux laisse un
+  // bilan d'ouverture qui ne suit plus, et rien ne le montrait. `tiers` compte les tiers dont
+  // l'ouverture diffère : un compte au même solde mais réparti autrement se nomme aussi. Vide : ils
+  // suivent.
+  function ecartAnouveaux(livre, cible, opts) {
+    const par = new Map();
+    nettesAnouveaux(livre, cible, opts).forEach(t => {
+      const x = par.get(t.compte) || { compte: t.compte, attendu: 0, porte: 0, tiers: 0 };
+      x.attendu = round3(x.attendu + t.attendu);
+      x.porte = round3(x.porte + t.porte);
+      if (t.ecart && (t.tiersId || t.tiers)) x.tiers++;
+      par.set(t.compte, x);
+    });
+    return [...par.values()].map(x => ({ ...x, ecart: round3(x.attendu - x.porte) })).filter(x => x.ecart || x.tiers);
+  }
+
+  // L'écart, en LIGNES d'écriture : une par compte (et par tiers sur un collectif), au sens de
+  // l'écart. Somme nulle par construction — le report et les pièces validées s'équilibrent chacun.
+  function lignesComplementAnouveaux(livre, cible, opts) {
+    return nettesAnouveaux(livre, cible, opts).filter(t => t.ecart).map(t => {
+      const l = { compte: t.compte, libelle: t.tiers ? `${t.tiers} — écart d'ouverture` : t.libelle,
+        debit: t.ecart > 0 ? t.ecart : 0, credit: t.ecart < 0 ? round3(-t.ecart) : 0 };
+      if (t.tiers) l.tiers = t.tiers;
+      if (t.tiersId) l.tiersId = t.tiersId;
+      return l;
+    });
+  }
+
+  // Deux jeux de lignes disent-ils la même chose ? Compte, tiers et montants, dans n'importe quel
+  // ordre : c'est ce qui dit qu'un complément déjà posé n'a pas à être refait.
+  const empreinteLignes = lignes => (lignes || [])
+    .map(l => [txt(l.compte), l.tiersId || txt(l.tiers), round3(num(l.debit)), round3(num(l.credit))].join('|')).sort().join(';');
+
+  // L'écart avec la clôture, posé en À-NOUVEAUX COMPLÉMENTAIRES (10.14.0) : une pièce de plus, au 1er
+  // janvier, en brouillard, qui porte la différence et rien d'autre. La pièce d'à-nouveaux validée ne
+  // bouge pas (9.2.0), et rien n'est contre-passé : l'écran conseillait avant de contre-passer puis de
+  // reposer — la contre-passation tombait à la date du jour, la nouvelle ouverture au 1er janvier, et
+  // entre les deux chaque solde comptait l'ouverture deux fois. Vu à la souris, sur le garage.
+  // Un complément encore en brouillard se REFAIT (comme les à-nouveaux eux-mêmes) ; identique, il
+  // attend sa validation et le geste n'a rien à faire.
+  function poserComplementAnouveaux(livre, cible, qui, quand, opts) {
+    const suivante = Number(livre.exercice.annee) + 1;
+    const lignes = lignesComplementAnouveaux(livre, cible, opts);
+    const bro = cible.ecritures.filter(e => e.source === 'an' && e.statut === 'brouillard');
+    if (!lignes.length && !bro.length) return { change: false, ecriture: null, lignes: 0, retire: 0 };
+    if (bro.length === 1 && lignes.length && empreinteLignes(bro[0].lignes) === empreinteLignes(lignes)) {
+      return { change: false, enAttente: true, ecriture: null, lignes: lignes.length, retire: 0 };
+    }
+    cible.ecritures = cible.ecritures.filter(e => !bro.includes(e));
+    if (!lignes.length) return { change: true, ecriture: null, lignes: 0, retire: bro.length };
+    const deja = cible.ecritures.filter(e => e.source === 'an' && !e.contrepasseDe && /-C\d+$/.test(String(e.piece || ''))).length;
+    const ecriture = ajouterEcriture(cible, {
+      journal: 'AN', date: `${suivante}-01-01`, piece: `AN-${suivante}-C${deja + 1}`,
+      libelle: `À-nouveaux complémentaires ${suivante} — écart avec la clôture de ${livre.exercice.annee}`,
+      source: 'an', lignes
+    }, qui, quand);
+    trace(cible, qui, 'à-nouveaux complémentaires', `${plFr(lignes.length, 'ligne')} au ${suivante}-01-01`, quand);
+    return { change: true, ecriture, lignes: lignes.length, retire: bro.length };
   }
 
   // Ce que ferait « Ouvrir N+1 » MAINTENANT, sans rien écrire (10.14.0). Le bouton de l'onglet
@@ -3611,8 +3707,10 @@
   // clic fera, et un bouton éteint dit pourquoi par la fonction qui refuserait (9.4.5).
   //   ouvrir    N+1 n'a pas encore d'à-nouveaux (absent, ou créé autrement)
   //   refaire   ses à-nouveaux sont en brouillard : le geste les remplace
-  //   completer ses à-nouveaux sont validés, mais un bien, un salarié ou une extourne reste à reporter
-  //   voir      tout est reporté : le geste est d'aller voir
+  //   completer ses à-nouveaux sont validés, mais un écart avec la clôture, un bien, un salarié ou une
+  //             extourne reste à reporter — `complement` dit si le geste posera l'écart
+  //   voir      tout est reporté : le geste est d'aller voir — `enAttente` si un complément posé
+  //             attend sa validation
   //   refus     le report est impossible (rien à reporter, balance fausse) — avec le motif
   function etatExerciceSuivant(livre, cible, opts) {
     const annee = Number(livre.exercice.annee) + 1;
@@ -3622,11 +3720,12 @@
     const base = { annee, existe: !!cible };
     if (ecr.some(anEnVigueur)) {
       const ecart = ecartAnouveaux(livre, cible, opts);
+      const enAttente = ecr.some(e => e.source === 'an' && e.statut === 'brouillard');
       if (r.ok) {
-        return { ...base, etat: 'completer', ecart, extournes: r.extournes,
+        return { ...base, etat: 'completer', ecart, enAttente, complement: !!(r.complement || r.complementRetire), extournes: r.extournes,
           biens: r.biens.repris + r.biens.retires, salaries: r.salaries.repris + r.salaries.retires };
       }
-      return { ...base, etat: 'voir', ecart };
+      return { ...base, etat: 'voir', ecart, enAttente };
     }
     if (!r.ok) return { ...base, etat: 'refus', motif: r.motif };
     return { ...base, etat: ecr.some(e => e.source === 'an' && e.statut === 'brouillard') ? 'refaire' : 'ouvrir' };
@@ -5417,7 +5516,7 @@
     cloturerExercice, rouvrirExercice, noterDossierCloture, anouveauxDe, ecritureAnouveaux, extournesDe,
     FIGE_A_LA_CLOTURE, empreinteFigee, refusExerciceClos,
     biensAReprendre, salariesAReprendre, reporterBiens, reporterSalaries, ouvrirExerciceSuivant,
-    anEnVigueur, livreSuivantVide, ecartAnouveaux, etatExerciceSuivant,
+    anEnVigueur, livreSuivantVide, ecartAnouveaux, lignesComplementAnouveaux, poserComplementAnouveaux, etatExerciceSuivant, dateDuMiroir,
     etatsDepuisLignes, sigDepuisLignes, dossierDeCloture, clotureValide,
     // La liasse et l'annuel (10.0.0)
     LIASSE_ETATS, MODELE_LIASSE, RETRAITEMENTS,

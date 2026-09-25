@@ -1539,7 +1539,9 @@ ipcMain.handle('cab:contrepasser', (_e, { dossierId, annee, id, date } = {}) => 
   if (!r.ok) throw erreur('ERR-CAB-025', r.motif);
   ecrireLeLivre(dossierId, o.livre, null);
   noterValidation(dossierId);
-  return { ok: true, numero: r.ecriture.numero, livre: ouvrirLivre(dossierId, annee).livre };
+  // Le jour où le miroir s'est posé : celui qu'on a demandé, ou le dernier jour d'un exercice passé,
+  // ou le 1er janvier pour des à-nouveaux (`dateDuMiroir`). Le message le DIT.
+  return { ok: true, numero: r.ecriture.numero, date: r.ecriture.date, livre: ouvrirLivre(dossierId, annee).livre };
 });
 
 ipcMain.handle('cab:saisir', (_e, { dossierId, annee, ecriture } = {}) => {
@@ -2066,10 +2068,15 @@ ipcMain.handle('cab:ouvrirSuivant', (_e, { dossierId, annee } = {}) => {
   const cible = o.livre || KC.livreSuivantVide(livre, dossierId);
   const r = KC.ouvrirExerciceSuivant(livre, cible, quiSuisJe(), Date.now());
   if (!r.ok) throw erreur('ERR-CAB-062', r.motif);
-  ecrireLeLivre(dossierId, cible, r.anDejaValides ? 'registre repris' : r.refaits ? 'à-nouveaux refaits' : 'à-nouveaux posés', String(suivante));
+  ecrireLeLivre(dossierId, cible, r.anDejaValides ? (r.complement ? 'à-nouveaux complémentaires' : r.complementRetire ? 'à-nouveaux complémentaires retirés' : 'registre repris') : r.refaits ? 'à-nouveaux refaits' : 'à-nouveaux posés', String(suivante));
   return {
     ok: true, id: r.ecriture ? r.ecriture.id : null, annee: suivante, refaits: r.refaits,
-    anDejaValides: r.anDejaValides, biens: r.biens.total, salaries: r.salaries.total, extournes: r.extournes
+    anDejaValides: r.anDejaValides, biens: r.biens.total, salaries: r.salaries.total, extournes: r.extournes,
+    // Ce que le geste a CHANGÉ au registre — la même somme que le moteur lit pour dire « rien à
+    // faire » : un bien recopié à l'identique n'est pas une nouvelle.
+    registreBouge: r.biens.repris + r.biens.retires + r.salaries.repris + r.salaries.retires,
+    complement: r.complement || 0, complementRetire: r.complementRetire || 0,
+    piece: r.ecriture ? r.ecriture.piece : ''
   };
 });
 

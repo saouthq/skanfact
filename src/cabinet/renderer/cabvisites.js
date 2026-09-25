@@ -290,7 +290,7 @@
   b('#cl-cloturer', 'Clôture l\'exercice, après les contrôles : c\'est définitif et tracé.');
   b('#cl-rouvrir', 'Rouvre un exercice clôturé. Un motif est demandé : c\'est la trace qui explique pourquoi un chiffre a changé.');
   b('#cl-fichier', 'Enregistre le fichier de clôture à remettre au client.');
-  b('#cl-suivant', 'L\'année d\'après : l\'ouvrir, refaire ou compléter son ouverture — ou voir ses à-nouveaux quand tout est reporté. Le bouton dit lequel.');
+  b('#cl-suivant', 'L\'année d\'après : l\'ouvrir, refaire ou compléter son ouverture, ajuster ses à-nouveaux quand cet exercice a changé après leur validation — ou les voir quand tout est reporté. Le bouton dit lequel.');
   b('#li-modele', 'Ajuste le modèle de rubriques de la liasse : ce qui va dans chaque case.');
   b('#li-csv', 'Enregistre la liasse dans un fichier.');
 
@@ -1317,7 +1317,7 @@
       conclusion: 'Les à-nouveaux se refont tant qu\'ils ne sont pas validés : un exercice qui bouge encore change son report. Une extourne déjà validée n\'est jamais reposée.',
       etapes: [
         { page: dans('livre', 'comptabilite/exercice'), cible: ['#cl-suivant', '#c-livres .panel'], cote: 'dessous', titre: 'Ouvrir l\'année d\'après',
-          texte: 'Le bouton dit ce qu\'il fera : ouvrir l\'année d\'après, refaire ses à-nouveaux, compléter son ouverture — ou, quand tout est déjà reporté, aller les voir. Les soldes des comptes de bilan passent en à-nouveaux, en brouillard ; le résultat va au report à nouveau. Tu relis, puis tu valides.' }
+          texte: 'Le bouton dit ce qu\'il fera : ouvrir l\'année d\'après, refaire ses à-nouveaux, compléter son ouverture, ajuster ses à-nouveaux si cet exercice a changé après leur validation — ou, quand tout est déjà reporté, aller les voir. Les soldes des comptes de bilan passent en à-nouveaux, en brouillard ; le résultat va au report à nouveau. Tu relis, puis tu valides.' }
       ]
     });
 

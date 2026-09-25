@@ -242,7 +242,10 @@ t('C-06 : l\'extourne de décembre se PRÉVOIT, et « Ouvrir N+1 » la pose', ()
   // Et l'écran ne PROPOSE plus le geste qui sera refusé.
   const app = cabApp();
   const a = app.slice(app.indexOf('function actionsEcriture('), app.indexOf('async function extournerEcriture('));
-  assert.ok(/if \(!dejaExt && !auSuivant\)/.test(a) && /label: `Extourner à l'ouverture de \$\{suivante\}`/.test(a),
+  // La RÈGLE, pas la forme de la ligne (10.14.0 — elle a gagné une condition légitime, « extournable ») :
+  // l'extourne directe n'est proposée que si elle tombe DANS l'exercice.
+  assert.ok(/if \([^)]*!auSuivant\) \{\s*a\.push\(\{ icon: 'horloge', label: 'Extourner au 1er du mois suivant'/.test(a)
+    && /label: `Extourner à l'ouverture de \$\{suivante\}`/.test(a),
     'le menu propose encore une extourne que le moteur refusera');
 });
 

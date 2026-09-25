@@ -2380,7 +2380,15 @@
       }
       const relire = () => drawLivres(view, dossier);
       const mode = $('#lv-mode', view);
-      mode.onchange = () => { livresState.mode = mode.value; livresState.page = 1; render(); };
+      mode.onchange = () => {
+        livresState.mode = mode.value; livresState.page = 1;
+        // « Un mois » s'ouvre sur un mois VRAI de l'exercice regardé (U-12) — jamais sur la première
+        // option : la liste affichait « décembre 2026 », un mois futur, pendant que le livre montrait
+        // l'exercice entier faute de mois choisi. Un select dont aucune option ne correspond retient
+        // la première, en silence (8.3.0) ; ici il annonçait une période que l'écran ne montrait pas.
+        if (livresState.mode === 'mois' && !String(livresState.mois || '').startsWith(String(livresState.annee) + '-')) livresState.mois = moisDeLaPeriode();
+        render();
+      };
       // Changer d'exercice change de LIVRE : sans cette relecture, on regarderait 2025 dans le
       // livre de 2026 sans que rien ne le dise.
       const an = $('#lv-annee', view); if (an) an.onchange = () => {
@@ -2388,7 +2396,19 @@
         suivreExercice(dossier);
         chargerLeLivre(dossier).then(apres, apres);
       };
-      const mo = $('#lv-mois', view); if (mo) mo.onchange = () => { livresState.mois = mo.value; livresState.page = 1; relire(); };
+      // Un mois d'un AUTRE exercice change de livre, comme le sélecteur d'exercice : sinon on lirait
+      // novembre 2025 dans le livre de 2026 — vide, et « ce mois reste à saisir » à tort.
+      const mo = $('#lv-mois', view); if (mo) mo.onchange = () => {
+        livresState.mois = mo.value; livresState.page = 1;
+        const y = String(mo.value).slice(0, 4);
+        if (livresState.livre && /^\d{4}$/.test(y) && y !== String(livresState.annee)) {
+          livresState.annee = y;
+          suivreExercice(dossier);
+          chargerLeLivre(dossier).then(apres, apres);
+          return;
+        }
+        relire();
+      };
       const du = $('#lv-du', view); if (du) du.onchange = () => { livresState.du = du.value; livresState.page = 1; relire(); };
       const au = $('#lv-au', view); if (au) au.onchange = () => { livresState.au = au.value; livresState.page = 1; relire(); };
       // La page a pu changer pendant la lecture : on redemande l'élément APRÈS l'attente, jamais
@@ -2515,6 +2535,17 @@
 
   function moisLabelCourt(m) { return K.monthLabel(m); }
 
+  // Le mois où s'ouvre « Un mois » : le dernier qui porte des écritures dans l'exercice regardé, sinon
+  // le mois courant — la règle de la Paie et de la Déclaration (`K.moisDeTravail`, U-12). Sans livre,
+  // les mois des paquets reçus font foi.
+  function moisDeLaPeriode() {
+    const s = livresState;
+    if (s.livre) return moisPropose(s.livre);
+    const y = String(s.annee || K.today().slice(0, 4));
+    const faits = ((s.data || {}).tousLesMois || []).filter(m => String(m).startsWith(y + '-')).map(m => Number(String(m).slice(5, 7)));
+    return `${y}-${String(K.moisDeTravail(faits, y, K.today())).padStart(2, '0')}`;
+  }
+
   // Ce qui borne la période. Trois modes, et le défaut est l'exercice du dernier paquet reçu :
   // c'est celui sur lequel le comptable travaille.
   function bornesLivres(mois) {
@@ -2553,12 +2584,13 @@
       sel.innerHTML = ans.map(y => `<option value="${esc(y)}" ${String(livresState.annee) === y ? 'selected' : ''}>${esc(y)}</option>`).join('');
     }
     // Et les MOIS : un dossier tenu à la main n'a aucun paquet, donc « Un mois » ne proposait rien.
-    // Avec un livre, les douze mois de son exercice s'ajoutent à ceux des paquets.
+    // Avec un livre, les douze mois de CHAQUE exercice connu s'ajoutent à ceux des paquets : choisir
+    // décembre 2025 depuis 2026 ouvre le livre de 2025 (`lv-mois`), au lieu de le chercher en
+    // repassant par « L'exercice ».
     const mo = $('#lv-mois', root) || $('#lv-mois');
     if (mo && livresState.livre) {
-      const y = String(livresState.annee);
       const mois = new Set(((livresState.data || {}).tousLesMois || []));
-      for (let i = 1; i <= 12; i++) mois.add(`${y}-${String(i).padStart(2, '0')}`);
+      ans.forEach(y => { for (let i = 1; i <= 12; i++) mois.add(`${y}-${String(i).padStart(2, '0')}`); });
       const liste = [...mois].sort().reverse();
       const cleM = liste.join(',');
       if (mo.dataset.mois !== cleM) {
@@ -2670,19 +2702,38 @@
   // grand livre et la balance : la 9.1.0 écrivait « ce livre est lu dans les paquets, sans
   // à-nouveau » en permanence, y compris sur le LIVRE du cabinet (T-38) — le constat était vrai,
   // la raison donnée était fausse, et une phrase que rien ne tient est un bug (7.3.0).
+  // Ce qui porte les soldes d'ouverture, NOMMÉ : la balance reprise (pièce OUVERTURE du journal AN)
+  // et les à-nouveaux d'une clôture (pièces AN-…). La phrase disait « les soldes repris (aucun) »
+  // sur un exercice ouvert par ses à-nouveaux : vrai de la reprise, faux pour un comptable — le
+  // capital était là, dans la colonne d'à côté (10.14.0). Un brouillard ne compte que si l'écran
+  // montre les brouillards : c'est la même règle que les lignes de la balance.
+  function porteursDOuverture() {
+    const s = livresState;
+    const reprise = ((s.livre.ouverture || {}).lignes || []).length;
+    const an = (s.livre.ecritures || []).filter(e => e.source === 'an' && e.piece !== 'OUVERTURE' && !e.contrepasseDe
+      && (e.statut === 'validee' || (s.brouillard && e.statut === 'brouillard'))).map(e => e.piece || 'AN');
+    // L'accord se fait sur les PIÈCES, jamais sur les morceaux de phrase : « les à-nouveaux AN-2026,
+    // AN-2026-C1 est une pièce » se lisait comme une faute de l'écran.
+    return {
+      textes: [reprise ? `la balance d'ouverture reprise (${pl(reprise, 'compte')})` : '',
+        an.length ? `${an.length > 1 ? 'les à-nouveaux' : 'l\'à-nouveau'} ${an.join(', ')}` : ''].filter(Boolean),
+      pieces: (reprise ? 1 : 0) + an.length
+    };
+  }
+
   function phraseOuverture() {
     const s = livresState;
     const p = s.periode || {};
     if (p.source !== 'livre') return `Ouverture inconnue : ces écritures sont lues dans les paquets reçus, sans à-nouveau ${info('lv.ouverture')}`;
-    const reprise = ((s.livre.ouverture || {}).lignes || []).length;
+    const { textes: porte, pieces } = porteursDOuverture();
     const debutEx = String((s.livre.exercice || {}).du || '');
-    if (p.du && p.du > debutEx) return `Ouverture au ${esc(fmtJour(p.du))} : les soldes repris${reprise ? '' : ' (aucun)'} plus les mouvements de l'exercice avant cette date ${info('lv.ouverture')}`;
+    if (p.du && p.du > debutEx) return `Ouverture au ${esc(fmtJour(p.du))} : ${porte.length ? esc(porte.join(' et ')) + ', plus' : 'aucun solde reporté, seulement'} les mouvements de l'exercice avant cette date ${info('lv.ouverture')}`;
     // 10.12.0 — la reprise est une pièce du journal AN : sur l'exercice entier, elle est dans les
     // MOUVEMENTS, et la colonne d'ouverture est nulle. La phrase disait le contraire — et la balance
     // comptait les deux.
-    return reprise
-      ? `Ouverture au ${esc(fmtJour(debutEx))} : nulle sur l'exercice entier — la balance d'ouverture reprise (${pl(reprise, 'compte')}) est la pièce OUVERTURE du journal AN, dans les mouvements ${info('lv.ouverture')}`
-      : `Ouverture au ${esc(fmtJour(debutEx))} : nulle — aucune balance d'ouverture reprise ; si l'exercice porte une pièce d'à-nouveau, c'est elle qui porte les soldes reportés ${info('lv.ouverture')}`;
+    return porte.length
+      ? `Ouverture au ${esc(fmtJour(debutEx))} : nulle sur l'exercice entier — ${esc(porte.join(' et '))} ${pieces > 1 ? 'sont des pièces' : 'est une pièce'} du journal AN, dans les mouvements ${info('lv.ouverture')}`
+      : `Ouverture au ${esc(fmtJour(debutEx))} : nulle — ni balance d'ouverture reprise ni à-nouveau : ce livre part de zéro ${info('lv.ouverture')}`;
   }
 
   // ---------------------------------------------------------------- reprendre / relire (9.2.0)
@@ -2870,20 +2921,44 @@
     return `<p>Ce qu'${pronom === 'il' ? 'il' : 'elle'} porte redeviendra « à passer » : <b>${esc(liste)}</b>.</p>`;
   }
 
+  // Le jour où tombera le miroir, dit AVANT le geste, et par la fonction même qui le posera
+  // (`KC.dateDuMiroir`) : aujourd'hui ; le dernier jour d'un exercice passé ; le 1er janvier pour des
+  // à-nouveaux. Une phrase qui promettait « la date d'aujourd'hui » pendant que le miroir se posait
+  // ailleurs mentirait sur le seul chiffre qu'elle annonce (10.14.0).
+  function phraseMiroir(e, jour) {
+    const L = livresState.livre || {};
+    const dm = KC.dateDuMiroir(L, e, jour);
+    const ex = L.exercice || {};
+    if (e.source === 'an') {
+      return `Une écriture miroir sera enregistrée <b>au ${esc(fmtJour(dm))}</b>, le jour des à-nouveaux : une ouverture
+       ne se corrige qu'au jour où elle s'ouvre. Pour un simple écart avec la clôture de ${esc(String(Number(ex.annee) - 1))}, son
+       onglet Exercice le pose en à-nouveaux complémentaires, sans rien contre-passer.`;
+    }
+    if (dm === jour) {
+      return `Une écriture miroir sera enregistrée <b>à la date d'aujourd'hui</b> (${esc(fmtJour(jour))}),
+       pas à celle de l'écriture d'origine : corriger aujourd'hui une écriture d'un mois déjà déclaré
+       changerait ce mois-là sans que personne le voie. Les deux resteront dans le journal.`;
+    }
+    if (dm === ex.au) {
+      return `Une écriture miroir sera enregistrée <b>au dernier jour de l'exercice</b> (${esc(fmtJour(dm))}) : l'exercice
+       ${esc(String(ex.annee))} est terminé, et un miroir daté d'aujourd'hui tomberait hors de son livre. Les deux resteront dans le journal.`;
+    }
+    return `Une écriture miroir sera enregistrée <b>au ${esc(fmtJour(dm))}</b> : un miroir ne se date jamais hors de son
+     exercice, ni avant l'écriture qu'il corrige. Les deux resteront dans le journal.`;
+  }
+
   async function contrepasserEcriture(root, dossier, e) {
     const jour = K.today();
     const ok = await confirmDialog('Contre-passer cette écriture ?',
       `<p><b>n° ${esc(String(e.numero))} — ${esc(e.journal)} ${esc(e.piece)}</b></p>
        ${ceQuellePorte(e, 'elle')}
-       <p class="small muted">Une écriture miroir sera enregistrée <b>à la date d'aujourd'hui</b> (${esc(fmtJour(jour))}),
-       pas à celle de l'écriture d'origine : corriger aujourd'hui une écriture d'un mois déjà déclaré
-       changerait ce mois-là sans que personne le voie. Les deux resteront dans le journal.</p>`, 'Contre-passer');
+       <p class="small muted">${phraseMiroir(e, jour)}</p>`, 'Contre-passer');
     if (!ok) return;
     try {
       const r = await api.contrepasser(dossier.id, livresState.annee, e.id, jour);
       livresState.livre = r.livre;
       drawLivres(root, dossier);
-      toast(`Contre-passée sous le n° ${r.numero}`);
+      toast(r.date && r.date !== jour ? `Contre-passée au ${fmtJour(r.date)}, sous le n° ${r.numero}` : `Contre-passée sous le n° ${r.numero}`);
     } catch (err) { await infoDialog('Contre-passation impossible', plainError(err)); }
   }
 
@@ -3013,6 +3088,11 @@
     // l'adresse (« banque ») serait jugé indisponible le temps de la lecture et remplacé pour de bon
     // par le livre-journal.
     if (!s.livreEtat) { el.innerHTML = '<div class="empty">Lecture du livre…</div>'; return; }
+    // Le mois regardé appartient à l'exercice regardé (10.14.0). L'exercice change par l'adresse, le
+    // sélecteur, « Ouvrir N+1 » : « Un mois » gardait août 2026 dans le livre de 2025 — la liste
+    // affichait « décembre 2025 » (8.3.0), l'écran « aucune écriture sur août 2026 ». Une seule
+    // garde, ici, au lieu d'une par porte : c'est ce que chaque porte oubliait.
+    if (s.mode === 'mois' && !String(s.mois || '').startsWith(String(s.annee) + '-')) s.mois = moisDeLaPeriode();
     majSelecteurExercice(root);
     // Aucun paquet, et pas encore de livre : le dossier se TIENT ici, à la main (C-07). Un client
     // hors SkanFact n'enverra jamais rien ; un client sur SkanFact qui n'a encore rien envoyé peut
@@ -3404,15 +3484,20 @@
           repris ? `, dont ${esc(money(Math.abs(repris)))} de solde d'ouverture repris PAR COMPTE, que l'auxiliaire ne sait pas répartir entre les tiers` : ''}.</div>`;
       }
     }
-    const colOuv = avecOuv ? `<th class="r nw">Ouverture débit</th><th class="r nw">Ouverture crédit</th>` : '';
+    // Avec l'ouverture, la balance a HUIT colonnes : six en-têtes numériques tenus sur une ligne
+    // (« MOUVEMENTS CRÉDIT », 164 px pour des montants de 100) serraient l'intitulé sur trois lignes et
+    // coupaient « Solde créditeur » au bord de l'écran (10.14.0). Ils passent alors sur deux lignes :
+    // c'est la largeur des MONTANTS qui décide de la colonne, pas celle de son titre.
+    const thN = avecOuv ? 'r' : 'r nw';
+    const colOuv = avecOuv ? `<th class="${thN}">Ouverture débit</th><th class="${thN}">Ouverture crédit</th>` : '';
     return `${barreLivres(commandes, 'Exporter la balance')}
       ${s.aux ? '' : `<div class="muted small mb">${phraseOuverture()}</div>`}
       ${verdict}
       ${pager}
       <div class="scroll-x"><table class="list compact"><thead><tr>
         <th class="nw">${s.aux ? 'Tiers' : 'Compte'}</th><th>${s.aux ? 'Comptes' : 'Intitulé'}</th>${colOuv}
-        <th class="r nw">Mouvements débit</th><th class="r nw">Mouvements crédit</th>
-        <th class="r nw">Solde débiteur</th><th class="r nw">Solde créditeur</th></tr></thead>
+        <th class="${thN}">Mouvements débit</th><th class="${thN}">Mouvements crédit</th>
+        <th class="${thN}">Solde débiteur</th><th class="${thN}">Solde créditeur</th></tr></thead>
       <tbody>${paginate(b.rows, s).map(r => `<tr><td class="nw">${esc(s.aux ? r.tiers : r.account)}</td><td>${esc(s.aux ? r.account : (r.label || ''))}</td>${
         avecOuv ? `<td class="r nw">${r.ouvertureD ? esc(money(r.ouvertureD)) : ''}</td><td class="r nw">${r.ouvertureC ? esc(money(r.ouvertureC)) : ''}</td>` : ''}
         <td class="r nw">${esc(money(r.debit))}</td><td class="r nw">${esc(money(r.credit))}</td>
@@ -3737,19 +3822,31 @@
   // Le bouton de l'exercice suivant nomme ce que le geste FERA (10.14.0), d'après l'état que le
   // moteur calcule en jouant le geste sur une copie (`etatExerciceSuivant`). Pas de points de
   // suspension sur « Voir » : il ne pose aucune question, il emmène.
+  // Un écart avec la clôture se pose en à-nouveaux COMPLÉMENTAIRES : « Ajuster » quand le geste le
+  // posera, « Ouvrir le brouillard » quand il attend déjà sa validation — c'est là qu'il se valide.
   function libelleSuivant(su) {
     const a = String(su.annee);
-    if (su.etat === 'voir') return `Voir les à-nouveaux de ${a}`;
+    if (su.etat === 'voir') return su.enAttente ? `Ouvrir le brouillard de ${a}` : `Voir les à-nouveaux de ${a}`;
     if (su.etat === 'refaire') return `Refaire les à-nouveaux de ${a}…`;
-    if (su.etat === 'completer') return `Compléter l'ouverture de ${a}…`;
+    if (su.etat === 'completer') return su.complement ? `Ajuster les à-nouveaux de ${a}…` : `Compléter l'ouverture de ${a}…`;
     return su.existe ? `Poser les à-nouveaux de ${a}…` : `Ouvrir ${a} (à-nouveaux)…`;
   }
+  // Le bouton de l'exercice suivant est l'étape suivante (U-11) une fois l'exercice CLOS, tant qu'il
+  // reste un geste à faire dans l'année d'après — ouvrir, refaire, ajuster, compléter, ou valider le
+  // complément qui attend. Avant la clôture, l'étape suivante est de clôturer.
+  const suivantPrincipal = (su, clos) => !!clos && (['ouvrir', 'refaire', 'completer'].includes(su.etat) || (su.etat === 'voir' && !!su.enAttente));
   // Une phrase du moteur citée après deux-points reprend en minuscule (typographie française).
   const minusculeInitiale = t => (t ? t.charAt(0).toLowerCase() + t.slice(1) : t);
   // Un solde dans une PHRASE garde son sens en mots, jamais un signe : « −29 872,140 DT » se lit comme
   // une faute, « 29 872,140 DT créditeur » comme un solde (règle 6.3.0 — un montant négatif change de
   // colonne ; dans une phrase, la colonne se dit).
   const soldeEnClair = v => (!v ? 'soldé' : `${money(Math.abs(v))} ${v < 0 ? 'créditeur' : 'débiteur'}`);
+  // Un compte de l'écart, dans la phrase : ses deux soldes, ou — même solde, autre répartition — le
+  // nombre de tiers dont l'ouverture a changé. Un règlement réaffecté d'un client à l'autre ne change
+  // pas le 411, et « 411 (940 repris, 940 à la clôture) » se lirait comme une erreur de l'écran.
+  const ecartEnClair = x => (x.ecart
+    ? `${esc(x.compte)} (${esc(soldeEnClair(x.porte))} repris, ${esc(soldeEnClair(x.attendu))} à la clôture)`
+    : `${esc(x.compte)} (même solde, réparti autrement entre ${esc(pl(x.tiers, 'tiers', 'tiers'))})`);
 
   const LIBELLE_CONTROLE = {
     brouillard: 'Les pièces encore en brouillard', attente: 'Le compte d\'attente',
@@ -3800,7 +3897,7 @@
             qui reste est celui qu'on peut faire — rouvrir. */''}
       ${ex.clos ? '<button class="btn btn-sm" id="cl-rouvrir">Rouvrir (motif exigé)…</button>'
     : `<button class="btn btn-sm${exerciceTermine(ex.annee) ? ' btn-primary' : ''}" id="cl-cloturer">Clôturer l'exercice…</button>`}
-      <button class="btn btn-sm" id="cl-suivant" data-etat="${esc(su.etat)}"${su.etat === 'refus' ? ' disabled aria-describedby="cl-suivant-motif"' : ''}>${esc(libelleSuivant(su))}</button>
+      <button class="btn btn-sm${suivantPrincipal(su, ex.clos) ? ' btn-primary' : ''}" id="cl-suivant" data-etat="${esc(su.etat)}"${su.etat === 'refus' ? ' disabled aria-describedby="cl-suivant-motif"' : ''}>${esc(libelleSuivant(su))}</button>
       <button class="btn btn-sm" id="cl-fichier">Le dossier pour le client…</button>
       ${/* Réunir deux postes (9.9.0). Ici, et pas dans la Saisie : c'est un geste d'exercice, rare,
             et qui touche le livre entier. Quand les deux postes voient le même fichier, il ne sert
@@ -3812,12 +3909,15 @@
           fonction même qui refuserait le geste. En gris : « rien à reporter » est l'état d'un
           exercice vide, pas une alarme (8.0.1). */''}
     ${su.etat === 'refus' ? `<p class="small muted mb" id="cl-suivant-motif">${esc(String(su.annee))} ne peut pas s'ouvrir : ${esc(minusculeInitiale(su.motif || ''))}</p>` : ''}
-    ${/* Des à-nouveaux VALIDÉS qui ne reprennent plus cet exercice : « contre-passe-les si le report a
-          changé » se vérifie ici au lieu de se deviner. Le geste est nommé en entier — où, lequel,
-          puis revenir — parce qu'il se fait dans un autre exercice. */''}
+    ${/* Des à-nouveaux VALIDÉS qui ne reprennent plus cet exercice : l'écart se vérifie ici au lieu de
+          se deviner, et il se pose en À-NOUVEAUX COMPLÉMENTAIRES par le bouton juste au-dessus. Le
+          conseil d'avant — contre-passer la pièce, puis la reposer — comptait l'ouverture deux fois
+          entre le 1er janvier et le jour de la contre-passation (vu à la souris, 10.14.0). */''}
     ${ecartAN.length ? `<div class="warn-box mb" id="cl-ecart-an"><b>Les à-nouveaux validés de ${esc(String(su.annee))} ne reprennent plus cet exercice</b>
-       — ${esc(pl(ecartAN.length, 'compte diffère', 'comptes diffèrent'))} : ${ecartAN.slice(0, 4).map(x => `${esc(x.compte)} (${esc(soldeEnClair(x.porte))} repris, ${esc(soldeEnClair(x.attendu))} à la clôture)`).join(' ; ')}${ecartAN.length > 4 ? '…' : ''}.
-       Cet exercice a changé après leur validation. Contre-passe la pièce d'à-nouveaux dans ${esc(String(su.annee))}, puis reviens ici les reposer.</div>` : ''}
+       — ${esc(pl(ecartAN.length, 'compte diffère', 'comptes diffèrent'))} : ${ecartAN.slice(0, 4).map(ecartEnClair).join(' ; ')}${ecartAN.length > 4 ? '…' : ''}.
+       Cet exercice a changé après leur validation. ${su.enAttente && !su.complement
+    ? `L'écart est posé en <b>brouillard</b> dans ${esc(String(su.annee))}, au 1er janvier, dans une pièce d'à-nouveaux complémentaires : il reste à la valider.`
+    : `« ${esc(libelleSuivant(su).replace(/…$/, ''))} » pose l'écart dans une pièce d'<b>à-nouveaux complémentaires</b>, au 1er janvier, en brouillard : rien de ce qui est validé ne bouge.`}</div>` : ''}
     ${/* Le motif d'une réouverture se lit PENDANT qu'elle sert (T-26) : un exercice rouvert est un
           exercice en train de changer, et c'est là que « pourquoi est-il ouvert ? » se pose. Il
           vivait dans la branche « clos » — donc il s'évaporait à la seconde où on le donnait, et
@@ -4003,9 +4103,12 @@
     const su = $('#cl-suivant', el);
     if (su) su.onclick = async () => {
       // Tout est déjà reporté : le geste est d'aller VOIR l'année d'après, sur son journal des
-      // à-nouveaux — là où se lit ce qu'elle a reçu, et où se contre-passe la pièce si le report a
-      // changé. Jamais un appel qui répondrait « déjà validés » en rouge (10.14.0).
-      if ((s.cloture.suivant || {}).etat === 'voir') {
+      // à-nouveaux — là où se lit ce qu'elle a reçu. Jamais un appel qui répondrait « déjà validés »
+      // en rouge (10.14.0). Un complément qui attend sa validation se valide dans le BROUILLARD de la
+      // saisie : c'est là qu'on emmène.
+      const suiv = s.cloture.suivant || {};
+      if (suiv.etat === 'voir') {
+        if (suiv.enAttente) { await ouvrirExercice(root, dossier, String(Number(s.annee) + 1), 'saisie'); return; }
         s.journal = 'AN';
         await ouvrirExercice(root, dossier, String(Number(s.annee) + 1), 'journal');
         return;
@@ -4021,15 +4124,25 @@
         // 10.14.0 — le registre suit les à-nouveaux : la phrase le DIT, avec ses deux nombres. Un
         // exercice qui s'ouvre sans ses biens ni ses salariés ne réclamerait aucune dotation et ne
         // proposerait aucun bulletin — et rien ne l'aurait montré.
-        const registre = [r.biens ? pl(r.biens, 'bien') : '', r.salaries ? pl(r.salaries, 'salarié') : ''].filter(Boolean).join(' et ');
+        // Quand les à-nouveaux étaient déjà validés, le registre ne se redit que s'il a CHANGÉ : « 1 bien
+        // et 1 salarié suivent » sous « Ajuster les à-nouveaux », pour un registre intact, faisait
+        // chercher ce qui avait bougé.
+        const registre = r.anDejaValides && !r.registreBouge ? ''
+          : [r.biens ? pl(r.biens, 'bien') : '', r.salaries ? pl(r.salaries, 'salarié') : ''].filter(Boolean).join(' et ');
         const suit = registre ? `<p>${esc(registre)} de ${esc(String(s.annee))} ${(r.biens || 0) + (r.salaries || 0) > 1 ? 'suivent' : 'suit'} dans ${esc(String(r.annee))} :
           les biens avec leur plan d'amortissement, les salariés sans leurs bulletins — ceux-là restent dans leur mois.</p>` : '';
         // Une extourne prévue après la validation des à-nouveaux part ici aussi (10.14.0) : la
         // phrase la nomme, sinon on la chercherait dans un journal sans savoir qu'elle y est.
         const ext = r.extournes ? `<p>${esc(pl(r.extournes, 'extourne posée', 'extournes posées'))} au ${esc(fmtJour(`${r.annee}-01-01`))}, en <b>brouillard</b> : relis-${r.extournes > 1 ? 'les' : 'la'}, puis valide-${r.extournes > 1 ? 'les' : 'la'}.</p>` : '';
+        // L'écart avec la clôture, posé en à-nouveaux COMPLÉMENTAIRES (10.14.0) : la phrase nomme la
+        // pièce, sa date et ce qu'elle ne touche pas — la validée.
+        const comp = r.complement
+          ? `<p>L'écart avec la clôture de ${esc(String(s.annee))} est posé dans la pièce <b>${esc(r.piece || '')}</b>, au ${esc(fmtJour(`${r.annee}-01-01`))},
+             en <b>brouillard</b> : ${esc(pl(r.complement, 'ligne', 'lignes'))}, rien d'autre. Relis-la, puis valide-la — rien de ce qui était validé n'a bougé.</p>`
+          : r.complementRetire ? `<p>L'écart qui attendait en brouillard n'a plus lieu d'être : ${r.complementRetire > 1 ? 'les pièces complémentaires ont été retirées' : 'la pièce complémentaire a été retirée'}.</p>` : '';
         const aller = r.anDejaValides
-          ? await confirmDialog(`Ouverture de ${r.annee} complétée`,
-            `<p>Les à-nouveaux de ${esc(String(r.annee))} étaient déjà validés : ils n'ont pas bougé.</p>${ext}${suit}`,
+          ? await confirmDialog(r.complement ? `À-nouveaux de ${r.annee} ajustés` : `Ouverture de ${r.annee} complétée`,
+            `${r.complement ? '' : `<p>Les à-nouveaux de ${esc(String(r.annee))} étaient déjà validés : ils n'ont pas bougé.</p>`}${comp}${ext}${suit}`,
             `Ouvrir ${r.annee}`, false, `Rester sur ${s.annee}`)
           : await confirmDialog(`${r.refaits ? 'À-nouveaux refaits' : 'À-nouveaux posés'} sur ${r.annee}`,
             `<p>Ils sont en <b>brouillard</b> dans le livre de ${esc(String(r.annee))} : relis-les, puis valide-les.
@@ -4060,6 +4173,9 @@
     await chargerLeLivre(dossier);
     const mode = $('#lv-mode'); if (mode) mode.value = 'exercice';
     const an = $('#lv-annee'); if (an) an.hidden = false;
+    // Les champs des AUTRES modes se cachent aussi : « Ouvrir 2026 » depuis « Un mois » laissait trois
+    // listes côte à côte — l'exercice, 2026, et « décembre 2025 » au-dessus du livre de 2026 (10.14.0).
+    ['#lv-mois', '#lv-du', '#lv-au'].forEach(q => { const x = $(q); if (x) x.hidden = true; });
     majSelecteurExercice(document);
     if ($('#c-livres')) drawLivres(document, dossier);
   }
@@ -6298,7 +6414,7 @@
             ${RowMenu.cellule('B:' + e.id, '')}</tr>`;
         }).join('')}</tbody></table></div>`
         : `<div class="empty mini"><p>Rien en brouillard.</p><p class="muted small">Tout ce que tu saisis ici arrive en brouillard : rien ne prend de numéro tant que tu ne l'as pas validé.</p></div>`}
-      <p class="muted small mt">Une fois validée, une écriture ne se modifie plus : elle se <b>contre-passe</b> (une écriture miroir à la date du jour, pour corriger une erreur)
+      <p class="muted small mt">Une fois validée, une écriture ne se modifie plus : elle se <b>contre-passe</b> (une écriture miroir pour corriger une erreur, datée du jour — ou du dernier jour d'un exercice passé : le menu de la ligne dit laquelle)
       ou s'<b>extourne</b> ${info('sa.extourne')} (une écriture miroir au 1er du mois suivant, pour une charge à payer). Les deux gestes sont dans le menu de la ligne, au livre-journal comme à la recherche.</p>
       ${/* Un abonnement est un modèle d'écriture récurrente : il appartient à la SAISIE (T-18). Posé
             hors des sous-onglets, il s'affichait sous la Balance, le Grand livre, la Banque et la
@@ -7021,19 +7137,27 @@
         run: () => supprimerBrouillard(root, dossier, e) };
     }
     if (e.statut === 'validee') {
-      a.push({ icon: 'contrat', label: 'Contre-passer cette écriture', hint: 'Une écriture miroir, à la date du jour',
+      // Le jour du miroir se dit dès le menu, par la fonction qui le posera : « à la date du jour »
+      // sur un exercice passé était faux — le miroir tombe au dernier jour de l'exercice.
+      const jour = K.today();
+      const dm = KC.dateDuMiroir(livresState.livre, e, jour);
+      a.push({ icon: 'contrat', label: 'Contre-passer cette écriture', hint: dm === jour ? 'Une écriture miroir, à la date du jour' : `Une écriture miroir, au ${fmtJour(dm)}`,
         run: () => contrepasserEcriture(root, dossier, e) });
       // Une écriture de DÉCEMBRE ne s'extourne pas dans ce livre : son extourne tombe au 1er janvier,
       // dans l'exercice suivant. On ne PROPOSE pas le geste qui sera refusé (C-06) : on propose
       // celui qui marche — la prévoir, pour qu'« Ouvrir N+1 » la pose.
+      // Ni des à-nouveaux (ils ouvrent l'exercice : rien à défaire au 1er février), ni un MIROIR
+      // (l'extourne d'une contre-passation rétablirait l'erreur un mois plus tard) : l'extourne est
+      // le geste des charges à payer et des produits à recevoir, et de rien d'autre (10.14.0).
+      const extournable = e.source !== 'an' && !e.contrepasseDe && !e.extourneDe;
       const dejaExt = (livresState.livre.ecritures || []).some(x => x.extourneDe === e.id);
       const dateExt = KC.premierDuMoisSuivant(e.date);
       const auSuivant = dateExt && dateExt > String((livresState.livre.exercice || {}).au || '');
       const suivante = Number((livresState.livre.exercice || {}).annee) + 1;
-      if (!dejaExt && !auSuivant) {
+      if (extournable && !dejaExt && !auSuivant) {
         a.push({ icon: 'horloge', label: 'Extourner au 1er du mois suivant', hint: 'Pour une charge à payer ou un produit à recevoir',
           run: () => extournerEcriture(root, dossier, e) });
-      } else if (!dejaExt && !e.extourne) {
+      } else if (extournable && !dejaExt && !e.extourne) {
         a.push({ icon: 'horloge', label: `Extourner à l'ouverture de ${suivante}`, hint: `Elle sera posée au ${fmtJour(dateExt)}, dans le livre de ${suivante}`,
           run: () => prevoirExtourneEcriture(root, dossier, e, dateExt, suivante) });
       }

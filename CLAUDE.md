@@ -54,6 +54,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Une **visite qui avance sur un geste annulé ou refusé**, et décrit ce qui n'existe pas | 10.14.0 — un clic n'est pas un geste fait : « Où il est rangé » sur « Aucun justificatif » |
 | Une **ligne cachée sous l'en-tête collant** d'un tableau qu'on vient d'amener à l'écran | 10.14.0 — le 📎 de « Le trombone » ; un défilement s'arrête à la marge du haut |
 | Un **lien vers un panneau** qui atterrit sur celui d'au-dessus : les panneaux du dessous se remplissent APRÈS le défilement | 10.14.0 — la pastille de licence du Cabinet ; 10.13.0 — « Lire la réponse » |
+| Une **balance d'un mois qui compte l'ouverture deux fois** (le capital à 40 000 pour 20 000) : la contre-passation datée du jour, la nouvelle ouverture du 1er janvier — l'exercice entier, lui, tombe juste | 10.14.0 — l'écart se pose en à-nouveaux complémentaires ; un test qui regarde l'année ne le voit pas |
 
 **Les chiffres**
 
@@ -96,6 +97,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | On pointe une **occurrence**, jamais une règle ; et le pense-bête dit qu'il n'est qu'un pense-bête | 7.21.0, 5.2.0, 9.4.6 |
 | Un **rôle** désigne le compte ; un préfixe écrit à part se trompe de compte | 10.12.0 — la déclaration d'employeur lisait le 65, la paie écrit au 645 |
 | Une **dotation** se réclame à l'inventaire, au dernier mois ; une sortie d'actif, tout de suite | 10.12.0 |
+| Un **écart d'ouverture** se pose en à-nouveaux COMPLÉMENTAIRES au 1er janvier, jamais par contre-passation puis nouvelle ouverture ; un **miroir** reste dans l'exercice de son livre | 10.14.0 — `poserComplementAnouveaux`, `dateDuMiroir` |
 
 **Les tests**
 
@@ -144,6 +146,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Un test qui **COMPTE des usages** (« au moins trois ») laisse passer tous ceux qu'il ne compte pas : il exige la règle sur CHAQUE usage | 10.12.0 — quatre listes hors de `filtersBar` ; 7.33.0 |
 | Une assertion sur une **pile** lit son SOMMET : c'est là que « ← » va | 10.12.0 — le devis vierge n'était jamais la dernière entrée |
 | Un test qui cherche une **CLASSE** laisse passer une remarque jamais posée : on JOUE la fonction | 10.14.0 — le résumé de l'image de marque, et `data.company.name` que les crochets ne comptaient pas |
+| Une erreur qui se **compense sur l'année** ne se voit que dans un MOIS : le test regarde janvier | 10.14.0 — l'ouverture comptée deux fois de janvier à septembre |
 
 **Les deux applications**
 
@@ -239,6 +242,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Un **instrument qui compare deux états** se place là où ils peuvent différer, et EXIGE cette condition — sinon il mesure l'égalité de deux défauts | 10.12.0 — la barre qui défilait : l'entrée était déjà sur deux lignes au repos |
 | Une **remarque qui dépend d'une valeur** vit dans la ligne de son titre : posée dessous, elle pousse le bouton qu'on vise | 10.14.0 — « trop claire » et « Enregistrer », 41 px |
 | Un **réglage a UNE porte** : le panneau le montre, la fenêtre qui le montre sur la pièce le change | 10.14.0 — l'image de marque ; une couleur enregistrée avant d'avoir été vue |
+| Le **mois regardé appartient à l'exercice regardé** : UNE garde au dessin, jamais une par porte | 10.14.0 — « décembre 2025 » au-dessus d'août 2026 |
 
 **Ce qu'on ne fait jamais**
 
@@ -7350,6 +7354,71 @@ tomber, et ce que la souris a trouvé ensuite :
   une confirmation vide, une confirmation VIDE se nomme au lieu de se dire « différente », et le refus
   montre sa case. La ligne de solidité réserve sa place : née pendant la frappe, elle poussait la
   confirmation sous le curseur (H-E1, sur un écran de mot de passe).
+**Et la suite du même parcours, à la souris** — le conseil de l'écran suivi à la lettre, et ce qu'il a
+fait tomber :
+
+- **Ce qui entre au plan PAR l'écriture ne peut pas être refusé parce qu'il n'est pas au plan.** Un
+  compte que le dossier n'avait jamais servi éteignait « Enregistrer » et « Valider » — c'est-à-dire
+  toute première écriture sur un compte : un refus circulaire, que rien ne débloquait. `ecritureValide`
+  range le compte hors plan dans `avertissements`, jamais dans `motifs` : il se SIGNALE (le nom qu'il
+  prendra, lu dans le plan de référence, ou « faute de frappe possible ») et les boutons restent vivants.
+- **Choisir un compte n'écrit pas son nom dans le libellé** (T-51 : un compte porte un nom de compte,
+  une ligne dit l'opération) ; le champ vide montre en attente le libellé de la pièce. Et changer de
+  journal, de date ou de libellé relit le verdict des boutons : ils répondaient à l'état d'avant.
+- **Un solde dans une phrase dit son sens en mots** (6.3.0, portée aux phrases) : « 411 (−1 200,000
+  repris…) » demandait de savoir qu'un solde négatif est créditeur. `soldeEnClair` écrit « créditeur »,
+  « débiteur » ou « soldé » ; un compte au même solde mais réparti autrement entre ses tiers le dit
+  (`ecartEnClair`).
+- **Suivre le conseil de l'écran, c'est le tester.** « Contre-passe les à-nouveaux, puis reviens les
+  reposer » menait à ceci : la contre-passation tombait le 25 septembre, la nouvelle ouverture le 1er
+  janvier, et de janvier à septembre chaque balance d'un mois comptait l'ouverture DEUX fois — le
+  capital à 40 000 pour 20 000. Aucun test ne le voyait : ils regardaient l'exercice entier, où les deux
+  pièces se compensent. **Un écart d'ouverture se pose en À-NOUVEAUX COMPLÉMENTAIRES**
+  (`poserComplementAnouveaux`) : une pièce de plus, au 1er janvier, en brouillard, qui porte la
+  différence — par compte et, sur un collectif, par tiers (un règlement réaffecté d'un client à l'autre
+  ne change pas le 411, il change ce que chacun doit) — et rien d'autre. La validée ne bouge pas, rien
+  n'est contre-passé ; un complément identique ne se repose pas, un écart disparu retire le brouillard.
+  **Le test qui le tient regarde JANVIER**, pas l'exercice : une erreur qui se compense sur l'année ne
+  se voit que dans un mois.
+- **Un miroir reste dans son exercice** (`dateDuMiroir`, la règle 9.2.0 bornée) : « à la date du
+  jour » posait le miroir d'une écriture de 2025, corrigée en février 2026, dans le livre de 2025 à une
+  date de 2026 — hors de toutes ses lectures, et la balance gardait l'écriture « contre-passée ». Le
+  jour du geste, borné au dernier jour d'un exercice passé ; jamais avant l'écriture corrigée ; le 1er
+  janvier pour des à-nouveaux (une ouverture se corrige au jour où elle s'ouvre). La question, le menu,
+  la saisie et l'Aide disent CE jour-là avant le geste, par la fonction qui le posera.
+- **Un miroir garde tout ce qui situe une ligne** : le NOM du tiers se perdait depuis la 9.8.5 (la
+  forme d'une ligne l'avait gagné, les miroirs non) — un seul `ligneMiroir` pour la contre-passation et
+  l'extourne. Et **des à-nouveaux ou un miroir ne s'extournent pas** : ils n'ont rien à défaire au 1er
+  du mois suivant ; le menu ne le propose plus, le moteur refuse pour tout autre chemin.
+- **Le mois regardé appartient à l'exercice regardé, et la garde vit au DESSIN**, pas à chaque porte :
+  l'adresse, le sélecteur d'exercice et « Ouvrir N+1 » changeaient d'exercice en gardant août 2026 dans
+  le livre de 2025 — la liste affichait « décembre 2025 » (8.3.0), le contenu « aucune écriture sur
+  août 2026 ». Chaque porte l'oubliait ; une garde unique, avant la liste des mois, ne peut pas
+  l'être. Et un geste qui repasse à l'exercice entier cache les champs des autres modes : trois listes
+  côte à côte disaient deux périodes.
+- **Une phrase vraie de la mauvaise chose ment quand même** : « les soldes repris (aucun) » — vrai de
+  la balance de reprise, faux pour un comptable devant une colonne d'ouverture qui porte le capital (les
+  à-nouveaux de la clôture). La phrase nomme les pièces qui portent l'ouverture, et **s'accorde sur leur
+  NOMBRE**, jamais sur les morceaux de phrase (« les à-nouveaux AN-2026, AN-2026-C1 est une pièce »).
+- **Une colonne de montants prend la largeur de ses MONTANTS, pas celle de son titre** : huit colonnes
+  aux titres tenus sur une ligne (« MOUVEMENTS CRÉDIT », 164 px pour des montants de 100) coupaient
+  « Solde créditeur » au bord de l'écran pendant que l'intitulé passait sur trois lignes. Les titres
+  passent sur deux lignes quand la balance porte l'ouverture.
+- **Un compte rendu ne redit que ce que le geste a CHANGÉ** : « 1 bien et 1 salarié suivent » sous
+  « Ajuster les à-nouveaux », pour un registre intact, faisait chercher ce qui avait bougé
+  (`registreBouge`, la somme que le moteur lit déjà pour dire « rien à faire »). Et « la pièce validée
+  n'a pas bougé », vrai d'une pièce, devient faux à la deuxième : ce qui est validé se dit sans compter.
+- Piège de test : la tranche `vueBalance` avait une borne haute de 6 000 caractères, et la fonction l'a
+  dépassée d'un commentaire légitime. La borne attrape une tranche qui déborde sur la fonction suivante :
+  elle se relève (7 000) ; on ne raccourcit pas une explication pour plaire à un test.
+- **Trois preuves sont d'abord restées VERTES, et chacune a dit ce que son test ne pouvait pas voir** :
+  un écart posé compte par compte, sur un jeu d'un seul client (des données qui ne discriminent pas,
+  10.0.0 — un second test réaffecte un règlement entre DEUX clients : le 411 ne bouge pas, le partage
+  si) ; une condition neutralisée (`false && …`) dans le gestionnaire du mois, qu'une expression
+  régulière lisait encore (le gestionnaire est désormais JOUÉ, avec ses appels comptés) ; et une
+  assertion à deux valeurs sans message, sur laquelle deux défauts différents tombaient au même
+  endroit. Et une quatrième tombait sur le test d'À CÔTÉ : la borne du miroir se prouve en
+  neutralisant le test du complément le temps de la preuve (10.12.0).
 
 ## Pistes pour la suite (non demandées)
 

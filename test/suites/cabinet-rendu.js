@@ -253,7 +253,9 @@ t('9.4.5 : les quatre vues du livre sont paginées, et le pied porte la sélecti
     assert.ok(i > 0, nom + ' est introuvable');
     const fin = app.indexOf('\n  }', i);
     const z = app.slice(i, fin);
-    assert.ok(z.length > 500 && z.length < 6000, nom + ' : tranche de ' + z.length + ' caractères');
+    // La borne haute attrape une tranche qui déborderait sur la fonction suivante ; relevée de 6 000
+    // à 7 000 en 10.14.0, quand la balance a gagné ses en-têtes sur deux lignes et leur raison.
+    assert.ok(z.length > 500 && z.length < 7000, nom + ' : tranche de ' + z.length + ' caractères');
     return z;
   };
   const j = vue('vueJournal');

@@ -130,7 +130,11 @@ t('10.14.0 : des à-nouveaux VALIDÉS ne bougent plus — le registre se reprend
   assert.ok(KC.validerEcriture(N1, r.ecriture.id, 'moi', 12).ok);
   const rien = KC.ouvrirExerciceSuivant(N, N1, 'moi', 13);
   assert.strictEqual(rien.ok, false, 'un geste qui ne fait rien se dit réussi');
-  assert.ok(/déjà validés/.test(rien.motif) && /Contre-passe/.test(rien.motif), 'le refus ne nomme pas le geste qui débloque : ' + rien.motif);
+  // Retourné (10.14.0) : il exigeait « Contre-passe-les si le report a changé ». Ce conseil comptait
+  // l'ouverture deux fois (contre-passation du jour, ouverture reposée au 1er janvier), et un écart se
+  // pose désormais en à-nouveaux complémentaires par le même bouton. Rien à faire, c'est qu'ils SUIVENT.
+  assert.ok(/déjà validés/.test(rien.motif) && /reprennent la clôture de 2025/.test(rien.motif) && !/Contre-passe/.test(rien.motif),
+    'le geste qui n\'a rien à faire ne dit pas que les à-nouveaux suivent, ou conseille encore de les contre-passer : ' + rien.motif);
   // Un bien entré dans N après l'ouverture (une facture de décembre saisie en janvier) : les
   // à-nouveaux validés ne bougent pas, mais le bien suit.
   assert.ok(KC.ajouterImmobilisation(N, { id: 'valise', libelle: 'Valise de diagnostic', compte: '223', valeur: 3000,
@@ -523,8 +527,144 @@ t('10.14.0 : « contre-passe-les si le report a changé » se VÉRIFIE — l\'é
   assert.strictEqual(banque.ecart, -250, 'l\'écart de la banque n\'est pas celui de la pièce ajoutée');
   assert.strictEqual(banque.attendu, KC.round3(banque.porte - 250));
   assert.ok(e.some(x => x.compte === '13'), 'le résultat reporté ne se dit pas en écart');
+  // Retourné (10.14.0) : il exigeait « voir » — un écart qu'on constate sans geste pour le reprendre.
+  // L'écart est un geste à faire : le bouton propose d'AJUSTER.
+  const st = KC.etatExerciceSuivant(N, N1);
+  assert.deepStrictEqual([st.etat, st.complement], ['completer', true], 'un écart constaté ne propose pas de le poser : ' + JSON.stringify(st));
+  assert.strictEqual(st.ecart.length, e.length, 'l\'état ne porte pas l\'écart que l\'écran affiche');
+});
+
+// Vu à la souris, en suivant le conseil de l'écran (10.14.0) : « contre-passe la pièce d'à-nouveaux, puis
+// reviens les reposer ». La contre-passation tombait le 25 septembre, la nouvelle ouverture le 1er
+// janvier : de janvier à septembre, chaque balance d'un mois comptait l'ouverture DEUX fois — le 101
+// à 40 000 sur un capital de 20 000. L'écart se pose en à-nouveaux COMPLÉMENTAIRES, et rien d'autre.
+t('10.14.0 : l\'écart avec la clôture se pose en à-nouveaux COMPLÉMENTAIRES au 1er janvier — la validée ne bouge pas, et chaque mois s\'ouvre juste', () => {
+  const N = exerciceN();
+  // Une facture de novembre au client A, que N connaissait déjà à l'ouverture de N+1.
+  const fac = KC.ajouterEcriture(N, { date: '2025-11-10', journal: 'VT', piece: 'F-1', libelle: 'Facture A', lignes: [
+    { compte: '411', tiers: 'Client A', tiersId: 'A', libelle: 'Client A', debit: 1190, credit: 0 },
+    { compte: '706', libelle: 'Prestations', debit: 0, credit: 1000 }, { compte: '4367', libelle: 'TVA collectée', debit: 0, credit: 190 }] }, 'moi', 5);
+  assert.ok(KC.validerEcriture(N, fac.id, 'moi', 5).ok);
+  const N1 = livreN1(N);
+  const r = KC.ouvrirExerciceSuivant(N, N1, 'moi', 11);
+  assert.ok(KC.validerEcriture(N1, r.ecriture.id, 'moi', 12).ok);
+  const validee = JSON.stringify(N1.ecritures.find(x => x.id === r.ecriture.id));
+  // N change APRÈS la validation : le client A a payé 250 le 28 décembre, saisi en février. Des DONNÉES
+  // qui touchent un collectif ET un tiers — un écart par compte seulement perdrait le client.
+  const tard = KC.ajouterEcriture(N, { date: '2025-12-28', journal: 'BQ', piece: 'R-1', libelle: 'Règlement A', lignes: [
+    { compte: '532', libelle: 'Banque', debit: 250, credit: 0 }, { compte: '411', tiers: 'Client A', tiersId: 'A', libelle: 'Client A', debit: 0, credit: 250 }] }, 'moi', 13);
+  assert.ok(KC.validerEcriture(N, tard.id, 'moi', 13).ok);
+  const c = KC.ouvrirExerciceSuivant(N, N1, 'moi', 14);
+  assert.ok(c.ok, c.motif);
+  assert.strictEqual(c.anDejaValides, true);
+  assert.ok(c.ecriture, 'l\'écart n\'est pas posé');
+  assert.deepStrictEqual([c.ecriture.journal, c.ecriture.date, c.ecriture.source, c.ecriture.statut, c.ecriture.piece],
+    ['AN', '2026-01-01', 'an', 'brouillard', 'AN-2026-C1'], 'le complément n\'est pas une pièce d\'à-nouveaux en brouillard au 1er janvier');
+  const l411 = c.ecriture.lignes.find(l => l.compte === '411');
+  assert.ok(l411 && l411.credit === 250 && l411.tiersId === 'A' && l411.tiers === 'Client A', 'l\'écart du collectif a perdu son tiers : ' + JSON.stringify(l411));
+  const l532 = c.ecriture.lignes.find(l => l.compte === '532');
+  assert.ok(l532 && l532.debit === 250, 'l\'écart de la banque n\'est pas posé');
+  assert.strictEqual(c.ecriture.lignes.length, 2, 'le complément porte autre chose que l\'écart : ' + JSON.stringify(c.ecriture.lignes));
+  assert.strictEqual(JSON.stringify(N1.ecritures.find(x => x.id === r.ecriture.id)), validee, 'la pièce d\'à-nouveaux validée a bougé');
+  assert.ok(!N1.ecritures.some(x => x.contrepasseDe), 'l\'ajustement a contre-passé quelque chose');
+  // Posé et pas encore validé : le geste n'a rien à refaire, l'écran emmène au brouillard.
+  const attente = KC.etatExerciceSuivant(N, N1);
+  // Deux assertions nommées : l'état se décide en jouant le geste sur une copie, donc un complément
+  // qui se repose rend « completer » ici, avant même le second geste.
+  assert.strictEqual(attente.etat, 'voir', 'un complément identique se repose — l\'écran propose encore de l\'ajuster : ' + JSON.stringify(attente));
+  assert.strictEqual(attente.enAttente, true, 'un complément posé en brouillard ne se dit pas en attente : ' + JSON.stringify(attente));
+  const encore = KC.ouvrirExerciceSuivant(N, N1, 'moi', 15);
+  assert.ok(!encore.ok && encore.rien && /déjà posé en brouillard/.test(encore.motif), 'un complément identique se repose : ' + encore.motif);
+  assert.strictEqual(N1.ecritures.filter(x => x.source === 'an' && x.statut === 'brouillard').length, 1);
+  // Validé : l'écart disparaît, et JANVIER s'ouvre sur les soldes de la clôture — une seule fois.
+  assert.ok(KC.validerEcriture(N1, c.ecriture.id, 'moi', 16).ok);
+  assert.deepStrictEqual(KC.ecartAnouveaux(N, N1), []);
   assert.strictEqual(KC.etatExerciceSuivant(N, N1).etat, 'voir');
-  assert.strictEqual(KC.etatExerciceSuivant(N, N1).ecart.length, e.length, 'l\'état ne porte pas l\'écart que l\'écran affiche');
+  const janvier = KC.balanceDepuisLignes(KC.lignesDuLivre(N1, { du: '2026-01-01', au: '2026-01-31' }), {});
+  const solde = compte => (janvier.rows.find(x => x.account === compte) || {}).solde;
+  assert.strictEqual(solde('411'), 940, 'le client ne doit pas 1 190 - 250 en janvier');
+  assert.strictEqual(solde('532'), 12650, 'la banque de janvier ne porte pas le règlement de décembre');
+  assert.strictEqual(solde('101'), -28600, 'le capital compte deux fois');
+  // Un écart ANNULÉ dans N (la pièce contre-passée à la clôture) retire le complément en attente.
+  const N1b = livreN1(N);
+  const rb = KC.ouvrirExerciceSuivant(N, N1b, 'moi', 17);
+  assert.ok(KC.validerEcriture(N1b, rb.ecriture.id, 'moi', 17).ok);
+  const tard2 = KC.ajouterEcriture(N, { date: '2025-12-29', journal: 'OD', piece: 'X', libelle: 'Erreur', lignes: [
+    { compte: '6061', libelle: 'Pneus', debit: 80, credit: 0 }, { compte: '532', libelle: 'Banque', debit: 0, credit: 80 }] }, 'moi', 18);
+  assert.ok(KC.validerEcriture(N, tard2.id, 'moi', 18).ok);
+  assert.ok(KC.ouvrirExerciceSuivant(N, N1b, 'moi', 19).complement > 0);
+  assert.ok(KC.contrepasser(N, tard2.id, 'moi', '2026-02-15', 20).ok);
+  const retire = KC.ouvrirExerciceSuivant(N, N1b, 'moi', 21);
+  assert.ok(retire.ok && retire.complementRetire === 1 && !retire.ecriture, 'un complément devenu sans objet reste en brouillard : ' + JSON.stringify(retire));
+  assert.ok(!N1b.ecritures.some(x => x.source === 'an' && x.statut === 'brouillard'));
+});
+
+// Des DONNÉES qui discriminent (règle 10.0.0) : le test du dessus n'a qu'un client, donc un écart posé
+// compte par compte y donnait les mêmes lignes — la preuve par réintroduction restait verte. Ici le
+// 411 ne bouge pas, seul le partage entre deux clients change.
+t('10.14.0 : un règlement réaffecté d\'un client à l\'autre ne change pas le 411 — il change ce que chacun doit à l\'ouverture', () => {
+  const N = exerciceN();
+  [['F-1', 'A', 'Client A', 1190], ['F-2', 'B', 'Client B', 595]].forEach(([piece, id, nom, ttc]) => {
+    const f = KC.ajouterEcriture(N, { date: '2025-11-10', journal: 'VT', piece, libelle: 'Facture ' + id, lignes: [
+      { compte: '411', tiers: nom, tiersId: id, libelle: nom, debit: ttc, credit: 0 },
+      { compte: '706', libelle: 'Prestations', debit: 0, credit: ttc }] }, 'moi', 5);
+    assert.ok(KC.validerEcriture(N, f.id, 'moi', 5).ok);
+  });
+  const N1 = livreN1(N);
+  const r = KC.ouvrirExerciceSuivant(N, N1, 'moi', 11);
+  assert.ok(KC.validerEcriture(N1, r.ecriture.id, 'moi', 12).ok);
+  // Un règlement de 100 imputé à A par erreur, réaffecté à B après la validation des à-nouveaux.
+  const re = KC.ajouterEcriture(N, { date: '2025-12-30', journal: 'OD', piece: 'R-9', libelle: 'Réaffectation', lignes: [
+    { compte: '411', tiers: 'Client A', tiersId: 'A', libelle: 'Client A', debit: 100, credit: 0 },
+    { compte: '411', tiers: 'Client B', tiersId: 'B', libelle: 'Client B', debit: 0, credit: 100 }] }, 'moi', 13);
+  assert.ok(KC.validerEcriture(N, re.id, 'moi', 13).ok);
+  const e = KC.ecartAnouveaux(N, N1);
+  assert.deepStrictEqual(e.map(x => [x.compte, x.ecart, x.tiers]), [['411', 0, 2]],
+    'un règlement réaffecté a perdu son tiers : l\'écart ne nomme pas les deux clients — ' + JSON.stringify(e));
+  const c = KC.ouvrirExerciceSuivant(N, N1, 'moi', 14);
+  assert.ok(c.ok && c.ecriture, 'un règlement réaffecté a perdu son tiers : rien n\'est posé — ' + JSON.stringify(c));
+  assert.deepStrictEqual(c.ecriture.lignes.map(l => [l.compte, l.tiersId, l.debit, l.credit]).sort(),
+    [['411', 'A', 100, 0], ['411', 'B', 0, 100]], 'le complément ne porte pas le partage des deux clients');
+  // Janvier : chacun doit ce que la clôture dit, pas ce que la pièce validée disait.
+  assert.ok(KC.validerEcriture(N1, c.ecriture.id, 'moi', 15).ok);
+  const aux = KC.balanceAuxiliaireDepuisLignes(KC.lignesDuLivre(N1, { du: '2026-01-01', au: '2026-01-31' }), ['411']);
+  const doit = id => (aux.rows.find(x => x.tiersId === id) || {});
+  assert.deepStrictEqual([doit('A').solde, doit('B').solde], [1290, 495], 'janvier ne reprend pas le partage de la clôture : ' + JSON.stringify(aux));
+});
+
+// Le jour du miroir (10.14.0). Deux défauts, trouvés en suivant le même conseil : daté du jour, le miroir
+// d'une écriture de 2025 tombait en 2026 dans le livre de 2025 — hors de toutes ses lectures, et la
+// balance gardait l'écriture « contre-passée » ; et des à-nouveaux contre-passés un jour de septembre
+// laissaient l'ouverture comptée deux fois jusqu'à ce jour.
+t('10.14.0 : un miroir reste dans son exercice — au dernier jour d\'un exercice passé, au 1er janvier pour des à-nouveaux, jamais avant l\'écriture corrigée', () => {
+  const L = KC.livreVide('MF:X', 2025);
+  const err = KC.ajouterEcriture(L, { date: '2025-11-10', journal: 'OD', piece: 'X', libelle: 'Erreur', lignes: [
+    { compte: '606', libelle: 'a', debit: 100, credit: 0 }, { compte: '532', libelle: 'b', debit: 0, credit: 100 }] }, 'moi', 1);
+  assert.ok(KC.validerEcriture(L, err.id, 'moi', 1).ok);
+  assert.strictEqual(KC.dateDuMiroir(L, err, '2026-02-10'), '2025-12-31', 'un exercice passé reçoit un miroir daté hors de lui');
+  assert.strictEqual(KC.dateDuMiroir(L, err, '2025-11-20'), '2025-11-20', 'un jour dans l\'exercice n\'est plus celui du geste');
+  assert.strictEqual(KC.dateDuMiroir(L, err, '2025-11-01'), '2025-11-10', 'le miroir précède l\'écriture qu\'il corrige');
+  const cp = KC.contrepasser(L, err.id, 'moi', '2026-02-10', 2);
+  assert.ok(cp.ok, cp.motif);
+  assert.strictEqual(cp.ecriture.date, '2025-12-31');
+  const bal = KC.balanceDepuisLignes(KC.lignesDuLivre(L, { du: L.exercice.du, au: L.exercice.au }), {});
+  assert.ok(bal.rows.every(x => !x.solde), 'la contre-passation d\'un exercice passé ne change pas sa balance : ' + JSON.stringify(bal.rows));
+  // Des à-nouveaux : au 1er janvier, quel que soit le jour du geste — et ils ne s'extournent pas.
+  const N = exerciceN();
+  const N1 = livreN1(N);
+  const r = KC.ouvrirExerciceSuivant(N, N1, 'moi', 11);
+  assert.ok(KC.validerEcriture(N1, r.ecriture.id, 'moi', 12).ok);
+  assert.strictEqual(KC.extourner(N1, r.ecriture.id, 'moi', 13).ok, false, 'des à-nouveaux s\'extournent au 1er février');
+  const m = KC.contrepasser(N1, r.ecriture.id, 'moi', '2026-09-25', 14);
+  assert.ok(m.ok, m.motif);
+  assert.strictEqual(m.ecriture.date, '2026-01-01', 'des à-nouveaux contre-passés un jour de septembre');
+  // Et le miroir garde le NOM du tiers, pas seulement son identifiant.
+  const M = KC.livreVide('MF:X', 2026);
+  const reg = KC.ajouterEcriture(M, { date: '2026-03-02', journal: 'BQ', piece: 'R', libelle: 'Règlement', lignes: [
+    { compte: '532', libelle: 'Banque', debit: 50, credit: 0 }, { compte: '411', tiers: 'Client A', tiersId: 'A', libelle: 'Client A', debit: 0, credit: 50 }] }, 'moi', 1);
+  assert.ok(KC.validerEcriture(M, reg.id, 'moi', 1).ok);
+  const mm = KC.contrepasser(M, reg.id, 'moi', '2026-03-05', 2);
+  assert.strictEqual(mm.ecriture.lignes.find(l => l.compte === '411').tiers, 'Client A', 'le miroir perd le nom du tiers');
 });
 
 t('10.14.0 : l\'écran de l\'exercice lit l\'état du moteur — le bouton dit ce qu\'il fera, « Voir » emmène sans rien écrire, un refus s\'éteint avec sa raison', () => {
@@ -537,6 +677,18 @@ t('10.14.0 : l\'écran de l\'exercice lit l\'état du moteur — le bouton dit c
   assert.strictEqual(ctx.f({ etat: 'refaire', annee: 2026 }), 'Refaire les à-nouveaux de 2026…');
   assert.strictEqual(ctx.f({ etat: 'completer', annee: 2026 }), 'Compléter l\'ouverture de 2026…');
   assert.strictEqual(ctx.f({ etat: 'voir', annee: 2026 }), 'Voir les à-nouveaux de 2026', '« Voir » promet une question qu\'il ne pose pas');
+  // L'écart avec la clôture : « Ajuster » quand le geste le posera, « Ouvrir le brouillard » quand il
+  // attend sa validation — c'est là qu'il se valide.
+  assert.strictEqual(ctx.f({ etat: 'completer', annee: 2026, complement: true }), 'Ajuster les à-nouveaux de 2026…');
+  assert.strictEqual(ctx.f({ etat: 'voir', annee: 2026, enAttente: true }), 'Ouvrir le brouillard de 2026');
+  // Le bouton est l'étape suivante (U-11) une fois l'exercice clos, tant qu'un geste reste à faire.
+  const iP = appCab.indexOf('const suivantPrincipal = ');
+  assert.ok(iP > 0, 'suivantPrincipal introuvable');
+  const ctxP = {};
+  vm.runInNewContext(appCab.slice(iP, appCab.indexOf('\n', iP)) + '\nthis.f = suivantPrincipal;', ctxP);
+  assert.deepStrictEqual(
+    [ctxP.f({ etat: 'ouvrir' }, true), ctxP.f({ etat: 'completer' }, true), ctxP.f({ etat: 'voir' }, true), ctxP.f({ etat: 'voir', enAttente: true }, true), ctxP.f({ etat: 'ouvrir' }, false)],
+    [true, true, false, true, false], 'le bouton de l\'exercice suivant n\'est pas l\'étape suivante — ou l\'est avant la clôture');
   // Le bouton est posé par cette fonction, jamais par un libellé écrit en dur.
   const vue = corps(appCab, 'function vueCloture(', 2);
   assert.ok(/id="cl-suivant"[^>]*>\$\{esc\(libelleSuivant\(su\)\)\}<\/button>/.test(vue), 'le bouton de l\'exercice suivant ne lit plus l\'état du moteur');
@@ -553,9 +705,19 @@ t('10.14.0 : l\'écran de l\'exercice lit l\'état du moteur — le bouton dit c
   assert.strictEqual(ctxS.f(-29872.14), '29872,140 DT créditeur', 'un solde créditeur garde son signe dans la phrase');
   assert.strictEqual(ctxS.f(45718.075), '45718,075 DT débiteur');
   assert.strictEqual(ctxS.f(0), 'soldé');
+  // La phrase passe par `ecartEnClair`, qui dit les deux soldes en mots — ou, même solde, combien de
+  // tiers ont changé : « 411 (940 repris, 940 à la clôture) » se lirait comme une faute de l'écran.
   const phrase = vue.slice(vue.indexOf('id="cl-ecart-an"'), vue.indexOf('</div>', vue.indexOf('id="cl-ecart-an"')));
-  assert.ok(/soldeEnClair\(x\.porte\)/.test(phrase) && /soldeEnClair\(x\.attendu\)/.test(phrase) && !/money\(x\.(porte|attendu)\)/.test(phrase),
+  const iE = appCab.indexOf('const ecartEnClair = ');
+  assert.ok(iE > 0, 'ecartEnClair introuvable');
+  const ecE = appCab.slice(iE, appCab.indexOf('\n\n', iE));
+  assert.ok(/\.map\(ecartEnClair\)/.test(phrase) && !/money\(x\.(porte|attendu)\)/.test(phrase + ecE),
     'l\'écart des à-nouveaux écrit ses soldes avec un signe');
+  const ctxE = { esc: s => String(s), soldeEnClair: ctxS.f, pl: (n, a, b) => `${n} ${n > 1 ? b : a}` };
+  vm.runInNewContext(ecE + '\nthis.f = ecartEnClair;', ctxE);
+  assert.strictEqual(ctxE.f({ compte: '532', ecart: 250, porte: 12400, attendu: 12650 }), '532 (12400,000 DT débiteur repris, 12650,000 DT débiteur à la clôture)');
+  assert.strictEqual(ctxE.f({ compte: '411', ecart: 0, porte: 940, attendu: 940, tiers: 2 }), '411 (même solde, réparti autrement entre 2 tiers)',
+    'un compte au même solde mais réparti autrement se lit comme une erreur');
   // « Voir » n'appelle pas le geste : il emmène au journal des à-nouveaux de l'année d'après.
   const br = corps(appCab, 'function brancherCloture(', 2);
   const clic = br.slice(br.indexOf('const su = $(\'#cl-suivant\', el);'));
@@ -565,10 +727,130 @@ t('10.14.0 : l\'écran de l\'exercice lit l\'état du moteur — le bouton dit c
     '« Voir » ne mène pas au journal des à-nouveaux de l\'année d\'après');
   // Rester sur N après le geste relit l'état : sinon le bouton dirait encore « Ouvrir ».
   assert.ok(/await chargerCloture\(root, dossier\);\s*\};/.test(clic), 'le bouton ne se relit pas après le geste');
+  // Après « Ajuster », le registre ne se redit que s'il a CHANGÉ — par la somme que le moteur lit pour
+  // dire « rien à faire » : « 1 bien et 1 salarié suivent » sous un registre intact faisait chercher
+  // ce qui avait bougé.
+  assert.ok(/registreBouge: r\.biens\.repris \+ r\.biens\.retires \+ r\.salaries\.repris \+ r\.salaries\.retires,/.test(mainCab),
+    'le processus principal ne dit pas si le registre a changé');
+  assert.ok(/const registre = r\.anDejaValides && !r\.registreBouge \? ''/.test(clic), 'le registre intact se redit après « Ajuster les à-nouveaux »');
+  // Un complément qui attend sa validation emmène au BROUILLARD de la saisie, pas au journal.
+  assert.ok(/if \(suiv\.enAttente\) \{ await ouvrirExercice\(root, dossier, String\(Number\(s\.annee\) \+ 1\), 'saisie'\); return; \}/.test(clic),
+    '« Ouvrir le brouillard » ne mène pas au brouillard');
+  assert.ok(/suivantPrincipal\(su, ex\.clos\) \? ' btn-primary'/.test(vue), 'le bouton de l\'exercice suivant ne lit pas la règle de l\'étape suivante');
+  // Le jour du miroir se dit AVANT le geste, par la fonction qui le posera — dans la question ET le menu.
+  const cp = corps(appCab, 'function phraseMiroir(', 2);
+  assert.ok(/KC\.dateDuMiroir\(L, e, jour\)/.test(cp), 'la question de contre-passation ne lit pas le jour que le moteur posera');
+  assert.ok(/<p class="small muted">\$\{phraseMiroir\(e, jour\)\}<\/p>/.test(corps(appCab, 'async function contrepasserEcriture(', 2)),
+    'la question de contre-passation promet encore « la date d\'aujourd\'hui » quel que soit l\'exercice');
+  const act = corps(appCab, 'function actionsEcriture(', 2);
+  assert.ok(/const dm = KC\.dateDuMiroir\(livresState\.livre, e, jour\)/.test(act), 'le menu annonce « à la date du jour » sans le vérifier');
+  assert.ok(/const extournable = e\.source !== 'an' && !e\.contrepasseDe && !e\.extourneDe;/.test(act)
+    && /if \(extournable && !dejaExt && !auSuivant\)/.test(act) && /else if \(extournable && !dejaExt && !e\.extourne\)/.test(act),
+    'le menu propose d\'extourner des à-nouveaux ou un miroir');
   // Le processus principal rend l'état, et construit le livre suivant par la fonction du moteur.
   assert.ok(/suivant: KC\.etatExerciceSuivant\(livre, ouvrirLivre\(dossierId, Number\(annee\) \+ 1\)\.livre\)/.test(mainCab), 'la lecture de l\'exercice ne dit plus ce que ferait « Ouvrir N+1 »');
   assert.ok(/const cible = o\.livre \|\| KC\.livreSuivantVide\(livre, dossierId\);/.test(mainCab), 'le geste construit son livre suivant à part');
   assert.ok(/suivantEtat: suivant\.livre \? KC\.etatExerciceSuivant\(/.test(mainCab), '« Prévoir l\'extourne » propose encore de refaire des à-nouveaux validés');
+});
+
+
+// Vu à la souris (10.14.0) : Période → « Un mois » affichait « décembre 2026 » — un mois futur, la première
+// option de la liste — pendant que la balance montrait l'exercice ENTIER, faute de mois choisi.
+t('10.14.0 : « Un mois » s\'ouvre sur un mois VRAI de l\'exercice — le dernier qui a des écritures, jamais la première option', () => {
+  const f = corps(appCab, 'function moisDeLaPeriode(', 2);
+  const moisPropose = corps(appCab, 'function moisPropose(', 2);
+  const K = { today: () => '2026-09-25', moisDeTravail: (faits, a, auj) => (faits.length ? Math.max(...faits) : (Number(auj.slice(0, 4)) === Number(a) ? Number(auj.slice(5, 7)) : 12)) };
+  const ctx = { K, livresState: { annee: '2026', livre: { exercice: { du: '2026-01-01' }, ecritures: [{ date: '2026-01-01' }, { date: '2026-07-31' }] } } };
+  vm.runInNewContext(moisPropose + '\n' + f + '\nthis.f = moisDeLaPeriode;', ctx);
+  assert.strictEqual(ctx.f(), '2026-07', 'le mois proposé n\'est pas le dernier qui porte des écritures');
+  ctx.livresState.livre = null;
+  ctx.livresState.data = { tousLesMois: ['2025-11', '2026-03'] };
+  assert.strictEqual(ctx.f(), '2026-03', 'sans livre, le mois proposé ne suit pas les paquets de l\'exercice');
+  // Et le passage à « Un mois » le pose, avant de redessiner.
+  const h = appCab.slice(appCab.indexOf('mode.onchange = () => {'), appCab.indexOf('render();', appCab.indexOf('mode.onchange = () => {')));
+  assert.ok(/livresState\.mode === 'mois' && !String\(livresState\.mois \|\| ''\)\.startsWith\(String\(livresState\.annee\) \+ '-'\)\) livresState\.mois = moisDeLaPeriode\(\);/.test(h),
+    '« Un mois » s\'ouvre encore sans mois choisi — la liste affiche la première option, l\'écran l\'exercice entier');
+  // Vu à la souris ensuite : l'exercice changé par l'ADRESSE gardait août 2026 dans le livre de 2025 —
+  // la liste affichait « décembre 2025 », l'écran « aucune écriture sur août 2026 ». La garde vit au
+  // dessin du livre, avant la liste des mois : une seule, pour toutes les portes.
+  const dl = corps(appCab, 'function drawLivres(', 2);
+  const garde = dl.indexOf("if (s.mode === 'mois' && !String(s.mois || '').startsWith(String(s.annee) + '-')) s.mois = moisDeLaPeriode();");
+  assert.ok(garde > 0 && garde < dl.indexOf('majSelecteurExercice(root);'), 'le mois regardé n\'est pas recalé sur l\'exercice regardé avant le dessin');
+  // Et choisir un mois d'un autre exercice change de livre, comme le sélecteur d'exercice.
+  // Le gestionnaire est JOUÉ, pas lu : une condition neutralisée (`false && …`) garde le texte que
+  // cherchait une expression régulière, et la preuve par réintroduction restait verte.
+  const moH = appCab.slice(appCab.indexOf("const mo = $('#lv-mois', view);"), appCab.indexOf("const du = $('#lv-du', view);"));
+  const moF = moH.slice(moH.indexOf('() => {'), moH.lastIndexOf('};') + 1);
+  assert.ok(moF.length > 100 && moF.length < 1200 && !moF.includes('#lv-du'), 'tranche du gestionnaire du mois mal découpée : ' + moF.length);
+  const jouerMois = (valeur, annee) => {
+    const traces = [];
+    const ctxM = { livresState: { livre: { ecritures: [] }, annee, mois: '', page: 3 }, dossier: { id: 'D' }, mo: { value: valeur },
+      suivreExercice: () => traces.push('suivre'), relire: () => traces.push('relire'), apres: () => {},
+      chargerLeLivre: () => { traces.push('charger'); return { then: () => {} }; } };
+    vm.runInNewContext('this.f = ' + moF + ';', ctxM);
+    ctxM.f();
+    return { traces, annee: ctxM.livresState.annee, mois: ctxM.livresState.mois };
+  };
+  assert.deepStrictEqual(jouerMois('2025-11', '2026'), { traces: ['suivre', 'charger'], annee: '2025', mois: '2025-11' },
+    'un mois d\'un autre exercice se lit dans le livre de l\'exercice regardé');
+  assert.deepStrictEqual(jouerMois('2026-03', '2026'), { traces: ['relire'], annee: '2026', mois: '2026-03' },
+    'un mois de l\'exercice regardé recharge le livre au lieu de le relire');
+  assert.ok(/ans\.forEach\(y => \{ for \(let i = 1; i <= 12; i\+\+\) mois\.add/.test(corps(appCab, 'function majSelecteurExercice(', 2)),
+    '« Un mois » ne propose que les mois de l\'exercice regardé');
+  // Et un geste qui repasse à l'exercice entier cache les champs des autres modes : « Ouvrir 2026 »
+  // depuis « Un mois » laissait « décembre 2025 » affiché au-dessus du livre de 2026.
+  const oe = corps(appCab, 'async function ouvrirExercice(', 2);
+  assert.ok(/\['#lv-mois', '#lv-du', '#lv-au'\]\.forEach\(q => \{ const x = \$\(q\); if \(x\) x\.hidden = true; \}\);/.test(oe),
+    'ouvrir un exercice laisse visible le mois d\'un autre exercice');
+});
+
+// Vu à la souris (10.14.0) : sur « Un mois », la balance a HUIT colonnes, et six en-têtes numériques tenus
+// sur une ligne coupaient « Solde créditeur » au bord de l'écran — 18 px de trop, le montant tronqué.
+t('10.14.0 : avec l\'ouverture, les en-têtes numériques de la balance passent sur deux lignes', () => {
+  const b = corps(appCab, 'function vueBalance(', 2);
+  assert.ok(/const thN = avecOuv \? 'r' : 'r nw';/.test(b), 'les en-têtes de la balance à huit colonnes restent sur une ligne');
+  const n = (b.match(/<th class="\$\{thN\}">/g) || []).length;
+  assert.strictEqual(n, 6, 'six en-têtes numériques, tous par la même règle : ' + n);
+});
+
+// Vu à la souris (10.14.0), sur la balance d'août : « Ouverture au 01/08/2026 : les soldes repris
+// (aucun) plus les mouvements… », au-dessus d'une colonne d'ouverture qui portait le capital — les
+// à-nouveaux de la clôture n'étaient nommés nulle part, et « aucun » disait le contraire du tableau.
+t('10.14.0 : la phrase d\'ouverture nomme ce qui la porte — la reprise, les à-nouveaux de la clôture, ou rien', () => {
+  const f = corps(appCab, 'function porteursDOuverture(', 2);
+  const p = corps(appCab, 'function phraseOuverture(', 2);
+  const ctx = {
+    esc: s => String(s), info: () => '', fmtJour: iso => String(iso).split('-').reverse().join('/'),
+    pl: (n, a) => `${n} ${a}${n > 1 ? 's' : ''}`,
+    livresState: { brouillard: false, periode: { source: 'livre', du: '2026-08-01' }, livre: { exercice: { du: '2026-01-01' }, ouverture: null, ecritures: [
+      { source: 'an', piece: 'AN-2026', statut: 'validee' },
+      { source: 'an', piece: 'AN-2026-C1', statut: 'brouillard' },
+      { source: 'saisie', piece: 'X', statut: 'validee' }] } }
+  };
+  vm.runInNewContext(f + '\n' + p + '\nthis.f = phraseOuverture;', ctx);
+  const plat = () => ctx.f().replace(/\s+/g, ' ');
+  assert.ok(/: l'à-nouveau AN-2026, plus les mouvements de l'exercice avant cette date/.test(plat()), 'la phrase d\'un mois ne nomme pas les à-nouveaux : ' + plat());
+  assert.ok(!/aucun/.test(plat()), '« soldes repris (aucun) » au-dessus d\'une ouverture portée par les à-nouveaux : ' + plat());
+  // Un brouillard ne compte que si l'écran montre les brouillards — la règle des lignes de la balance.
+  ctx.livresState.brouillard = true;
+  assert.ok(/les à-nouveaux AN-2026, AN-2026-C1, plus/.test(plat()), plat());
+  // Et sur l'exercice entier, l'accord se fait sur les deux PIÈCES, pas sur le morceau de phrase.
+  ctx.livresState.periode.du = '2026-01-01';
+  assert.ok(/les à-nouveaux AN-2026, AN-2026-C1 sont des pièces du journal AN/.test(plat()), 'deux pièces d\'à-nouveaux s\'accordent au singulier : ' + plat());
+  ctx.livresState.periode.du = '2026-08-01';
+  // Contre-passés, ils ne portent plus rien.
+  ctx.livresState.brouillard = false;
+  ctx.livresState.livre.ecritures[0].statut = 'contrepassee';
+  assert.ok(/aucun solde reporté, seulement les mouvements/.test(plat()), plat());
+  // L'exercice entier : nulle, et la pièce qui la porte nommée.
+  ctx.livresState.livre.ecritures[0].statut = 'validee';
+  ctx.livresState.periode.du = '2026-01-01';
+  assert.ok(/nulle sur l'exercice entier — l'à-nouveau AN-2026 est une pièce du journal AN/.test(plat()), plat());
+  // La reprise (pièce OUVERTURE) se nomme comme une reprise, jamais comme un à-nouveau de clôture.
+  ctx.livresState.livre = { exercice: { du: '2026-01-01' }, ouverture: { lignes: [{}, {}] }, ecritures: [{ source: 'an', piece: 'OUVERTURE', statut: 'validee' }] };
+  assert.ok(/la balance d'ouverture reprise \(2 comptes\) est une pièce du journal AN/.test(plat()), plat());
+  ctx.livresState.livre = { exercice: { du: '2026-01-01' }, ouverture: null, ecritures: [] };
+  assert.ok(/ni balance d'ouverture reprise ni à-nouveau/.test(plat()), plat());
 });
 
 };

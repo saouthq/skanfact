@@ -289,7 +289,11 @@ l'ordre proposé.
     l'écart entre l'ouverture du client et la clôture du cabinet (`ecartAnouveaux`) ne se calculerait
     pas. Le jeu d'exemple ne peut pas le montrer (seul le garage, hors SkanFact, a deux exercices) :
     à trancher avec le flux retour ci-dessus — qui fait foi pour l'ouverture d'un client sur SkanFact,
-    sa pièce ou celle du cabinet ?
+    sa pièce ou celle du cabinet ? Même limite, depuis la suite de 215, pour les **à-nouveaux
+    complémentaires** (`poserComplementAnouveaux`, `nettesAnouveaux`) : l'écart et le complément ne
+    lisent que les pièces `source: 'an'`, donc l'ouverture d'un client sur SkanFact ne compterait pas
+    comme « portée » et l'écart annoncerait la clôture entière. La réponse à la question ci-dessus
+    décide des deux à la fois.
   - le chapitre neuf passe par les instruments reportés ci-dessous (`e2e:cabinet-visites`).
 - **Les deux instruments `e2e:visites` et `e2e:cabinet-visites` — reportés le 24/09 par Skander**
   (« on laissera le E2E des deux app pour plus tard », pour passer à l'assistant de démarrage). Ils
