@@ -107,6 +107,8 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Une **TVA non récupérable** est un coût, et elle va où va la dépense (bien, stock, charge) | 10.14.0 — `coutAchat` |
 | Un **mois** finit à son vrai dernier jour, et **février** compte en base 360 ; les douze mois font l'année | 10.14.0 — « arrêtés au 31/09 », `fin360` |
 | Un **paquet envoyé** garde son sceau : un mois dont les écritures ont changé depuis le DIT, et propose de le refaire | 10.14.0 — `sceauEcritures`, `ecartsSceau` |
+| Un **compte de passage** (425, 471, 409) se demande ce qui le solde : un salaire sans bulletin est une charge, pas une créance sur le personnel | 10.14.0 — `compteDuMouvement` |
+| Une **échéance d'emprunt n'est pas une charge**, ses intérêts si ; deux résultats pour la même année, c'est un de trop — **le seuil de rentabilité compris** | 10.14.0 — `breakEven` bâti sur `simpleResult` |
 
 **Les tests**
 
@@ -7763,6 +7765,33 @@ aussi l'app cabinet ») — les invariants ont gagné le stock, le résultat, le
   d'exemple UNE fois ; régénéré après son démarrage, il gardait l'ancien, et la recherche
   « INVENTAIRE » rendait zéro pièce. Avant de conclure qu'une écriture manque, vérifier que l'objet
   regardé est celui qu'on vient de fabriquer (10.12.0, « v44.4.1 »).
+- **Un compte de passage sans rien pour le créer devient une créance qui n'existe pas.** Un
+  mouvement « Salaires » s'écrivait au 425 quoi qu'il arrive : sans bulletin pour y créditer le net,
+  le 425 devenait débiteur (« les salariés te doivent ») et le salaire ne comptait dans AUCUNE
+  charge. `compteDuMouvement` : 640 quand ni le mois ni le précédent n'a de bulletin (un salaire se
+  paie le mois suivant — le test l'exige en février sur un bulletin de janvier), 425 sinon, la
+  contrepartie choisie à la main toujours. Le jumeau à surveiller : **toute contrepartie « de
+  passage » (425, 471, 409) se demande ce qui la solde, et ce qui arrive quand rien ne la solde.**
+- **Une échéance d'emprunt n'est pas une charge** : le seuil de rentabilité retranchait le capital
+  remboursé en charge fixe et oubliait les intérêts. Il est bâti sur les composants de
+  `simpleResult` (même CA, mêmes charges, même paie, même dotation), la cession à part
+  (`exceptionnel`, lue sur 675/775 dans les écritures) — et un invariant exige, chaque année, que
+  `breakEven.result` soit `simpleResult.resultat`. **Deux résultats pour la même année, c'est un de
+  trop — le seuil compris** : un écran qui calcule un résultat par son propre chemin finit par en
+  dire un autre.
+- **Un invariant qui compare un compte à sa source vaut pour CHAQUE compte que la source écrit** :
+  la paie (640 = brut, 645 = CNSS patronale + accident, 661 = TFP + FOPROLOS, 4321 = IRPP + CSS,
+  4531 = CNSS totale), les quatre trimestres CNSS contre l'année, le timbre des factures émises
+  contre le 4368 (avoirs compris, qui le reprennent ; la déclaration mensuelle, qui le solde,
+  exclue), les retenues opérées contre le 4352, la dotation d'un exercice terminé contre le tableau
+  des biens. Le premier jet du timbre tombait sur l'avoir qui reprend son timbre, puis sur la
+  déclaration qui solde le compte : **un invariant se lit sur ce que le moteur ÉCRIT, avec ses deux
+  sens** — comme la liasse (10.10.0).
+- **Une preuve qui déséquilibre une pièce tombe sur l'absorbeur, pas sur le test neuf** : retirer le
+  timbre d'un avoir laisse une pièce boiteuse, que le test de la 10.1.0 (`ecartAbsorbe`) attrape
+  d'abord. On prouve avec un défaut ÉQUILIBRÉ (le timbre crédité au 706 au lieu du 4368), et en
+  neutralisant l'ancien test de la même règle — sinon on ne sait pas si le neuf voit quelque chose
+  (9.8.8).
 
 ## Pistes pour la suite (non demandées)
 

@@ -59,6 +59,7 @@ function ecarts(data) {
       ecart(`${mm} TVA déductible`, mouv(acc.tvaDeductible, 1), vr.deductible);
       ecart(`${mm} TVA déductible par taux`, Object.values(vr.byRate).reduce((s, x) => s + x.deductible, 0), vr.deductible);
       ecart(`${mm} chiffre d'affaires HT`, -r3(E.filter(e => e.account.startsWith('70')).reduce((s, e) => s + e.debit - e.credit, 0)), vr.salesHT);
+      ecart(`${mm} timbre déclaré / 4368`, mouv(acc.timbre, -1), vr.stamps);
       // La page Marges et les Statistiques disent le même chiffre d'affaires, mois par mois (10.14.0).
       const st = core.salesTotals(data, co, pm.from, pm.to).ht;
       ecart(`${mm} marges par client / statistiques`, core.marginBy(data, co, pm.from, pm.to, 'client', 0).reduce((s, r) => s + r.revenue, 0), st);
@@ -91,11 +92,36 @@ function ecarts(data) {
       const stocks = (e2.actif.find(g => g.titre === 'Stocks') || { total: 0 }).total;
       ecart(`${d} stock du bilan + variation en attente / page Stock`, stocks + e2.variationStockEnAttente, core.stockTotals(data, d).value);
     });
+    // Le seuil de rentabilité dit le même résultat que l'onglet TVA (10.14.0) : il comptait ses
+    // propres mouvements — une échéance d'emprunt entière en charge fixe — et oubliait les autres.
+    ecart(`${y} seuil de rentabilité / résultat simplifié`, core.breakEven(data, co, per).result, core.simpleResult(data, co, per).resultat);
+    // La paie des écritures est celle des bulletins, la CNSS des quatre trimestres et la déclaration
+    // d'employeur aussi ; les crédits du 4321 et du 4531 se lisent HORS à-nouveaux (ce qu'on devait
+    // au 1er janvier n'est pas une retenue de l'année).
+    const Ey = core.journalEntries(data, co, per).filter(e => e.source !== 'anouveau');
+    const mv = (compte, f) => r3(Ey.filter(e => e.account === compte).reduce((s, e) => s + f(e), 0));
+    const ps = core.payrollSummary(data, +y);
+    ecart(`${y} salaires bruts (640) / bulletins`, mv(acc.salairesBruts, e => e.debit - e.credit), ps.gross);
+    ecart(`${y} charges patronales (645) / bulletins`, mv(acc.chargesPatronales, e => e.debit - e.credit), ps.cnssEmployer + ps.accident);
+    ecart(`${y} TFP et FOPROLOS (661) / bulletins`, mv(acc.taxesSalaires, e => e.debit - e.credit), ps.tfp + ps.foprolos);
+    ecart(`${y} IRPP retenu (4321) / bulletins`, mv(acc.irpp, e => e.credit), ps.irpp + ps.css);
+    ecart(`${y} CNSS (4531) / bulletins`, mv(acc.cnss, e => e.credit), ps.cnssEmployee + ps.cnssEmployer + ps.accident);
+    ecart(`${y} CNSS des quatre trimestres / bulletins`, [1, 2, 3, 4].reduce((s, q) => s + core.cnssDeclaration(data, +y, q).total, 0), ps.cnssEmployee + ps.cnssEmployer + ps.accident);
+    const ea = core.employerAnnual(data, +y, co);
+    ecart(`${y} déclaration d'employeur : bruts / bulletins`, ea.gross, ps.gross);
+    // Le timbre et la retenue opérée : ce que les pièces portent, ce que l'État attend.
+    // Un avoir qui porte un timbre le rend (la case est sur la pièce) : il vient en moins.
+    const timbres = (data.documents || []).filter(d => (d.type === 'facture' || d.type === 'avoir') && d.number && d.status !== 'brouillon' && d.status !== 'annulée' && d.date >= per.from && d.date <= per.to)
+      .reduce((s, d) => s + (d.type === 'avoir' ? -1 : 1) * core.toBase(d, core.computeTotals(d, co).stamp || 0, co), 0);
+    ecart(`${y} timbre (4368) / factures émises`, mv(acc.timbre, e => (e.source === 'declaration' ? 0 : e.credit - e.debit)), timbres);   // la déclaration du mois le solde
+    ecart(`${y} retenue opérée (4352) / déclaration d'employeur`, r3(core.journalEntries(data, co, per, { sections: ['achats'] })
+      .filter(e => e.account === acc.rsOperee).reduce((s, e) => s + e.credit - e.debit, 0)), (ea.held || []).reduce((s, x) => s + x.amount, 0));
     // Les immobilisations d'un exercice terminé sont celles du tableau.
     if (per.to === `${y}-12-31` && per.to < T) {
       const at = core.assetTotals(data, +y);
       ecart(`${y} immobilisations (22)`, solde(bg, acc.immobilisations), at.grossActif);
       ecart(`${y} amortissements (28)`, -solde(bg, acc.amortissements), at.cumulActif);
+      ecart(`${y} dotations (681) / annuités du tableau`, mv(acc.dotations, e => e.debit - e.credit), at.annuity);
       // Le stock du bilan est celui de la page Stock, et le résultat des écritures est le résultat
       // simplifié de l'onglet TVA — deux calculs que rien ne reliait (10.14.0).
       ecart(`${y} stock (37) / page Stock`, solde(bg, acc.stocks), core.stockTotals(data, per.to).value);
@@ -404,5 +430,64 @@ t('10.14.0 : le Cabinet montre le numéro de pièce du client, et une recherche 
   const n = numeroDe(jouer(vieux, ''), inv.piece);
   assert.ok(n > 1, 'l\'inventaire du 31 décembre n\'est pas la première pièce du mois');
   assert.strictEqual(numeroDe(jouer(vieux, 'inventaire'), inv.piece), n, 'la recherche renumérote un vieux paquet');
+});
+// Un salaire payé par un mouvement, sans bulletin, est une CHARGE (10.14.0). Il était écrit « 425 au
+// débit » — le règlement d'un bulletin qui n'existe pas : le salaire n'entrait dans aucune charge, le
+// résultat de l'onglet TVA, les états et le paquet du comptable le montraient trop beau, et le 425
+// restait débiteur pour toujours. Avec un bulletin ce mois-là ou le précédent, le mouvement règle le 425.
+t('10.14.0 : un salaire payé par un mouvement sans bulletin est une charge (640), avec un bulletin il règle le 425', () => {
+  const avec = slips => base0({
+    accounts: [{ id: 'b', name: 'Banque', kind: 'banque', opening: 0, openingDate: '2026-01-01', isDefault: true }],
+    employees: slips.length ? [{ id: 'e', name: 'Salma', hireDate: '2025-01-01', grossSalary: 1000 }] : [],
+    payslips: slips.map(([y, m]) => ({ id: `s${y}${m}`, employeeId: 'e', year: y, month: m, deductions: [], paidDate: '',
+      computed: { gross: 1000, net: 900, otherDeductions: 0, cnssEmployee: 0, cnssEmployer: 0, accident: 0, irpp: 100, css: 0 } })),
+    movements: [{ id: 'm', date: '2026-03-25', kind: 'salaire', amount: 900, accountId: 'b' }]
+  });
+  const mars = { from: '2026-03-01', to: '2026-03-31' };
+  const compte = d => core.journalEntries(d, CO, mars, { sections: ['tresorerie'] }).find(e => e.debit > 0).account;
+  const acc = core.chartAccounts(avec([]));
+  assert.strictEqual(compte(avec([])), acc.salairesBruts, 'sans bulletin, le salaire n\'entre dans aucune charge');
+  assert.strictEqual(core.simpleResult(avec([]), CO, mars).resultat, -900, 'le résultat oublie le salaire payé');
+  assert.strictEqual(compte(avec([[2026, 3]])), acc.personnel, 'avec le bulletin du mois, le mouvement le règle');
+  assert.strictEqual(compte(avec([[2026, 2]])), acc.personnel, 'le salaire de février se paie souvent en mars');
+  assert.strictEqual(compte(avec([[2026, 1]])), acc.salairesBruts, 'un bulletin de janvier ne fait pas d\'un paiement de mars un règlement');
+  // Et un mouvement qui porte sa contrepartie la garde.
+  const d = avec([]); d.movements[0].compte = '4531';
+  assert.strictEqual(compte(d), '4531');
+});
+
+// Le seuil de rentabilité et son « Résultat » (10.14.0). Calculé à la main : ventes 10 000 HT ;
+// loyer 1 200 (fixe) ; marchandises 4 000 (variable) ; salaire payé sans bulletin 1 850, intérêts
+// 120 au 651 et frais bancaires 30 (fixes) ; une échéance d'emprunt de 1 000 (capital : PAS une
+// charge) ; la camionnette de 30 000 sur cinq ans, cédée le 30 juin 2026 pour 16 000 — six mois de
+// dotation (3 000, fixe) et une plus-value de 1 000 (16 000 − 15 000 de VNC), qui ne se répète pas.
+// Fixes : 1 200 + 3 000 + 1 850 + 120 + 30 = 6 200. Résultat : 10 000 − 4 000 − 6 200 + 1 000 = 800.
+// Avant : l'échéance entière en charge fixe, rien des intérêts ni de la cession — « Perte 1 080 ».
+t('10.14.0 : le seuil de rentabilité dit le résultat de l\'onglet TVA — une échéance d\'emprunt n\'est pas une charge', () => {
+  const d = base0({
+    clients: [{ id: 'c', name: 'Client' }], suppliers: [{ id: 's', name: 'Fournisseur' }],
+    accounts: [{ id: 'b', name: 'Banque', kind: 'banque', opening: 0, openingDate: '2026-01-01', isDefault: true }],
+    documents: [{ id: 'v', type: 'facture', number: 'FAC-2026-001', status: 'envoyée', date: '2026-03-01', dueDate: '2026-03-31', clientId: 'c', payments: [], createdAt: 1,
+      lines: [{ label: 'Prestation', qty: 1, unitPrice: 10000, vatRate: 19 }] }],
+    purchases: [
+      { id: 'l', kind: 'facture', supplierId: 's', number: 'L1', date: '2026-03-01', category: 'Loyer et charges locatives', payments: [], createdAt: 1, lines: [{ label: 'Loyer', qty: 1, unitPrice: 1200, vatRate: 19, destination: 'charge' }] },
+      { id: 'm', kind: 'facture', supplierId: 's', number: 'M1', date: '2026-03-02', category: 'Achats de marchandises', payments: [], createdAt: 1, lines: [{ label: 'Bois', qty: 1, unitPrice: 4000, vatRate: 19, destination: 'charge' }] }],
+    assets: [{ id: 'a', label: 'Camionnette', amount: 30000, residual: 0, years: 5, date: '2024-01-01', category: 'transport', disposal: { date: '2026-06-30', amount: 16000, reason: 'Revendue' } }],
+    movements: [
+      { id: 'sal', date: '2026-03-25', kind: 'salaire', amount: 1850, accountId: 'b' },
+      { id: 'int', date: '2026-04-10', kind: 'autre-sortie', amount: 120, accountId: 'b', compte: '651', label: 'Intérêts' },
+      { id: 'fb', date: '2026-04-30', kind: 'banque', amount: 30, accountId: 'b' },
+      { id: 'emp', date: '2026-04-10', kind: 'emprunt', amount: 1000, accountId: 'b' },
+      { id: 'ces', date: '2026-06-30', kind: 'autre-entree', amount: 16000, accountId: 'b', compte: '775', label: 'Vente camionnette' }]
+  });
+  const per = { from: '2026-01-01', to: '2026-12-31' };
+  const b = core.breakEven(d, CO, per);
+  assert.strictEqual(b.revenue, 10000);
+  assert.strictEqual(b.variable, 4000);
+  assert.strictEqual(b.fixed, 6200, 'les charges fixes comptent le capital d\'un emprunt, ou oublient les intérêts, le salaire ou la dotation');
+  assert.strictEqual(b.exceptionnel, -1000, 'la plus-value de cession');
+  assert.strictEqual(b.result, 800);
+  assert.strictEqual(core.simpleResult(d, CO, per).resultat, 800, 'deux résultats pour la même année');
+  assert.strictEqual(b.breakEven, r3(6200 / 0.6), 'la cession déplace le seuil');
 });
 };

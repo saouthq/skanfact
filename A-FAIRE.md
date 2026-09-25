@@ -249,6 +249,13 @@ absente~~ (« Vendue le », en tête).
     validation au Cabinet. C'est voulu (le livre-journal officiel est celui du comptable), mais la
     référence de pièce reste le seul identifiant commun — à dire dans l'Aide du Cabinet si le pilote
     s'y trompe.
+  - **Une « Échéance d'emprunt » saisie en un seul mouvement va entière au 164** (le capital) :
+    ses intérêts n'entrent donc dans aucune charge tant qu'on ne les saisit pas à part (un second
+    mouvement, contrepartie 651). À VÉRIFIER avec le comptable pilote : proposer, dans la fenêtre du
+    mouvement, de ventiler capital et intérêts — le tableau d'amortissement de la banque les donne.
+  - **Un salaire payé sans bulletin va au 640 en entier** : SkanFact ne sait pas quelle part est le
+    net, le CNSS salarié ou l'IRPP retenu. À VÉRIFIER : un comptable voudra peut-être le 471, pour le
+    ventiler lui-même — la contrepartie se choisit déjà à la main, dans la fenêtre du mouvement.
 - Les trois pistes jamais demandées, gardées pour mémoire : séparer les installateurs arm64 / x64
   (les 222 Mo du dmg universel), la signature Apple et Windows (certificats payants — mais elle
   passe **avant la première vente**, cf. `QUESTIONS.md` : un expert-comptable ne clique pas sur

@@ -666,6 +666,24 @@ douze mois et l'année. Voici ce qu'il a trouvé :
   qu'on le cherchait. Le comptable et son client parlent désormais de la même pièce, et une recherche
   ne change plus un numéro. Seul un paquet d'avant la 10.12.0, qui n'en porte pas, se renumérote, et
   l'écran le dit.
+- **Un salaire payé par la Trésorerie, sans bulletin, est une charge.** Un mouvement « Salaires et
+  charges » s'écrivait toujours au 425 (le net dû aux salariés) : sans bulletin pour le créer, ce
+  425 devenait une créance sur le personnel qui n'existe pas, et le salaire ne comptait dans aucune
+  charge — ni les écritures ni le résultat simplifié ne le voyaient, pendant que le seuil de
+  rentabilité, lui, le retranchait. Il va désormais au 640
+  quand ni son mois ni le précédent n'a de bulletin (un salaire se paie souvent le mois suivant), et
+  reste au 425 sinon : il paie alors le net du bulletin. Une contrepartie choisie à la main l'emporte
+  toujours.
+- **Le seuil de rentabilité dit le même résultat que l'onglet TVA.** Il retranchait le remboursement
+  du capital d'un emprunt comme une charge fixe — ce n'est pas une charge, c'est une dette qui
+  diminue —, et oubliait les intérêts, les frais bancaires et les salaires payés sans bulletin. Il
+  est maintenant bâti sur les mêmes morceaux que le résultat simplifié, et la moins-value d'un bien
+  cédé s'y lit sur sa propre ligne, hors des charges fixes : une cession n'arrive pas tous les ans,
+  la compter dans le seuil ferait croire qu'il faut la couvrir chaque année.
+- **L'audit permanent a grandi** : la paie des écritures contre les bulletins (640, 645, 661, 4321,
+  4531), la CNSS des quatre trimestres contre l'année, la déclaration d'employeur, le timbre fiscal
+  et les retenues à la source contre leurs comptes, la dotation de chaque exercice terminé contre le
+  tableau des biens, et le seuil contre le résultat simplifié — chaque année des cinq ans de l'exemple.
 - Et le paquet annonçait « 16 fichiers » pour 17 : la signature n'était pas comptée.
 
 Et le jeu d'exemple ne payait jamais ses cotisations : cinq ans de CNSS (30 232 DT), d'IRPP

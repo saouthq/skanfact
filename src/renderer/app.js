@@ -8272,6 +8272,8 @@
             <div class="vat-line minus"><span>− Charges fixes ${info('mg.fixed')}</span><span class="num">${C.money(b.fixed, cur)}</span></div>
             ${b.payroll ? `<div class="vat-line sub-line"><span class="muted">dont coût de la paie ${info('pay.employerCost')}</span><span class="num muted">${C.money(b.payroll, cur)}</span></div>` : ''}
             ${b.depreciation ? `<div class="vat-line sub-line"><span class="muted">dont dotation aux amortissements ${info('immo.annuity')}</span><span class="num muted">${C.money(b.depreciation, cur)}</span></div>` : ''}
+            ${b.autres ? `<div class="vat-line sub-line"><span class="muted">dont frais, salaires sans bulletin et écritures diverses ${info('mg.autres')}</span><span class="num muted">${C.money(b.autres, cur)}</span></div>` : ''}
+            ${b.exceptionnel ? `<div class="vat-line ${b.exceptionnel > 0 ? 'minus' : ''}"><span>${b.exceptionnel > 0 ? '− Moins-value' : '+ Plus-value'} de cession d'un bien ${info('mg.cession')}</span><span class="num">${C.money(Math.abs(b.exceptionnel), cur)}</span></div>` : ''}
             <div class="vat-line total ${b.result < 0 ? 'due' : 'ok'}"><span>${b.result < 0 ? 'Perte' : 'Résultat'}</span><span class="num">${C.money(b.result, cur)}</span></div>
           </div>
           <h3 class="sub-h">Le chiffre d'affaires minimum</h3>

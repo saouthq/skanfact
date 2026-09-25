@@ -2028,16 +2028,20 @@ t('contrat récurrent : ce qu\'il rapporte par mois', () => {
 });
 
 t('seuil de rentabilité : charges fixes, variables et le CA minimum', () => {
-  const buy = (cat, ht, dest) => ({ id: 'a' + cat + ht, kind: 'facture', supplierId: 's1', number: 'F', date: '2026-03-01',
-    payments: [], createdAt: 1, lines: [{ label: 'x', qty: 1, unitPrice: ht, vatRate: 19, destination: dest || 'charge' }] });
+  const buy = (cat, ht, dest, itemId) => ({ id: 'a' + cat + ht, kind: 'facture', supplierId: 's1', number: 'F', date: '2026-03-01',
+    payments: [], createdAt: 1, lines: [{ label: 'x', qty: 1, unitPrice: ht, vatRate: 19, destination: dest || 'charge', itemId }] });
+  // La marchandise mise en stock est celle d'un article SUIVI (10.14.0) : sans article suivi, aucune
+  // sortie ne la valorisera jamais, et l'écriture la passe en charge (607) — ce test la comptait
+  // « pas une charge » pendant que l'onglet TVA la comptait : deux résultats pour la même année.
   const data = core.migrateData({
     clients: [{ id: 'c1', name: 'Alpha' }], suppliers: [{ id: 's1', name: 'B' }],
+    catalog: [{ id: 'k', label: 'x', tracked: true }],
     documents: [mInv('1', { lines: [{ label: 'Vente', qty: 1, unitPrice: 10000, vatRate: 19 }] })],
     purchases: [
       { ...buy('Loyer et charges locatives', 1200), category: 'Loyer et charges locatives' },
       { ...buy('Assurances', 300), category: 'Assurances' },
       { ...buy('Achats de marchandises', 4000), category: 'Achats de marchandises' },
-      { ...buy('Stock', 5000, 'stock'), category: 'Achats de marchandises' }   // stock : pas une charge
+      { ...buy('Stock', 5000, 'stock', 'k'), category: 'Achats de marchandises' }   // stock suivi : pas une charge
     ],
     movements: [{ id: 'm', date: '2026-03-28', kind: 'salaire', amount: 1850, accountId: 'x' }]
   });

@@ -2287,40 +2287,49 @@
   // Seuil de rentabilité : le chiffre d'affaires minimum pour couvrir les charges fixes.
   // Formule : charges fixes ÷ taux de marge sur coûts variables. Si le taux est nul ou négatif,
   // aucun volume ne suffit — et c'est une information, pas une erreur.
+  // Le seuil se construit sur les MÊMES morceaux que le résultat simplifié (10.14.0), et son
+  // « Résultat » est celui de l'onglet TVA : deux résultats pour la même année, c'est un de trop.
+  // Avant, il comptait ses propres mouvements — une échéance d'emprunt ENTIÈRE en charge fixe (son
+  // capital est un remboursement de dette, pas une charge), un salaire payé par un mouvement ET le
+  // bulletin du même salaire — et oubliait les écritures diverses, les intérêts passés au 651 et la
+  // marchandise d'un article non suivi. Chaque morceau est rangé fixe ou variable ; la cession d'un
+  // bien (sa valeur au 675, son prix au 775) n'est ni l'un ni l'autre : elle ne se répète pas, elle
+  // entre dans le résultat sans déplacer le seuil.
   function breakEven(data, company, period) {
-    const sales = salesJournal(data, company, period);
-    const revenue = round3(sales.reduce((s, r) => s + r.ht, 0));
-    let fixed = 0, variable = 0;
+    const r = simpleResult(data, company, period);
+    const revenue = r.produits;
+    let fixedAchats = 0, variableAchats = 0;
     (data.purchases || []).filter(p => inPeriod(p.date, period && period.from, period && period.to)).forEach(p => {
       const t = purchaseTotals(p, company);
       // Le stock et les immobilisations ne sont pas des charges de la période.
       const charge = round3(t.base.cout.charge + t.base.fees);
-      if (isFixedCategory(data, p.category)) fixed = round3(fixed + charge);
-      else variable = round3(variable + charge);
+      if (isFixedCategory(data, p.category)) fixedAchats = round3(fixedAchats + charge);
+      else variableAchats = round3(variableAchats + charge);
     });
-    // Les mouvements libres récurrents (salaires, échéances d'emprunt) sont des charges fixes.
-    (data.movements || []).filter(m => inPeriod(m.date, period && period.from, period && period.to)).forEach(m => {
-      if (['salaire', 'emprunt', 'banque'].includes(m.kind)) fixed = round3(fixed + Math.abs(Number(m.amount) || 0));
-    });
-    // Le coût des marchandises vendues est LA charge variable par excellence : pas de vente, pas de coût.
-    const cogs = costOfGoodsSold(data, period);
-    variable = round3(variable + cogs);
-    // La dotation aux amortissements est une charge fixe : elle tombe que tu vendes ou non (3.5.0).
-    const depreciation = depreciationFor(data, period);
-    fixed = round3(fixed + depreciation);
-    // Les salaires aussi, et ce sont les plus lourds : un salarié est payé le mois où tu ne vends rien.
-    const payroll = payrollCost(data, period);
-    fixed = round3(fixed + payroll);
+    const acc = chartAccounts(data);
+    const exceptionnel = round3(journalEntries(data, company, period, { sections: ['tresorerie', 'od', 'amortissements'] })
+      .filter(e => e.account === acc.vncCedee || e.account === acc.produitsCession)
+      .reduce((s, e) => s + e.debit - e.credit, 0));
+    // Frais bancaires, salaires payés sans bulletin, intérêts, écritures diverses : ils tombent que tu
+    // vendes ou non.
+    const autres = round3(r.autres - exceptionnel);
+    // Le coût des marchandises vendues est LA charge variable par excellence : pas de vente, pas de
+    // coût. La marchandise d'un article non suivi aussi.
+    const cogs = r.cogs;
+    const variable = round3(variableAchats + r.horsSuivi + cogs);
+    // La dotation est une charge fixe (3.5.0), les salaires aussi — et ce sont les plus lourds.
+    const depreciation = r.depreciation, payroll = r.payroll;
+    const fixed = round3(fixedAchats + depreciation + payroll + autres);
     const marginOnVariable = round3(revenue - variable);
     const rate = revenue > 0 ? marginOnVariable / revenue : 0;
     const point = rate > 0 ? round3(fixed / rate) : null;
     return {
-      revenue, fixed, variable, cogs, depreciation, payroll, marginOnVariable,
+      revenue, fixed, variable, cogs, depreciation, payroll, autres, exceptionnel, marginOnVariable,
       rate: revenue > 0 ? Math.round(rate * 1000) / 10 : null,
       breakEven: point,
       // Là où tu en es par rapport au seuil : négatif = il manque du chiffre d'affaires.
       gap: point == null ? null : round3(revenue - point),
-      result: round3(marginOnVariable - fixed),
+      result: round3(marginOnVariable - fixed - exceptionnel),
       reached: point != null && revenue >= point
     };
   }
@@ -4792,6 +4801,28 @@
     salaire: 'personnel', impot: 'impots', banque: 'fraisBancaires', retrait: 'associes', emprunt: 'emprunts',
     'autre-sortie': 'attente', apport: 'associes', pret: 'emprunts', 'autre-entree': 'attente'
   };
+  // Le RÔLE du compte d'un mouvement, sans contrepartie choisie (10.14.0). Un mouvement « Salaires »
+  // RÈGLE ce qu'un bulletin a mis au 425 — mais une entreprise qui ne tient pas la Paie n'a pas de
+  // bulletin : son mouvement était écrit « 425 au débit » et son salaire n'entrait dans AUCUNE
+  // charge. Le résultat de l'onglet TVA, les états financiers et le paquet du comptable le
+  // montraient trop beau du montant des salaires, et le 425 restait débiteur pour toujours. Sans
+  // bulletin ce mois-là ni le précédent (un salaire se paie souvent au début du mois suivant), le
+  // mouvement EST la charge : il va au 640 — À VÉRIFIER, le comptable ventile le net et les
+  // charges. Le mois d'avant, et pas plus loin : créer un bulletin ne réécrit jamais que le mois où
+  // il tombe et le suivant.
+  function moisAvecBulletin(data) {
+    return duLot(data, 'moisAvecBulletin', () => new Set((data.payslips || [])
+      .map(s => `${s.year}-${String(s.month).padStart(2, '0')}`)));
+  }
+  function compteDuMouvement(data, m, bulletins) {
+    if (m && m.kind === 'salaire') {
+      const mois = String(m.date || '').slice(0, 7);
+      const avant = mois ? addMonths(`${mois}-01`, -1).slice(0, 7) : '';
+      const b = bulletins || moisAvecBulletin(data);
+      if (!b.has(mois) && !b.has(avant)) return 'salairesBruts';
+    }
+    return MOVE_ACCOUNTS[m && m.kind] || 'attente';
+  }
   // Les contreparties qu'un mouvement peut choisir à la main, pour ne pas taper un numéro de compte.
   const COMPTES_CONTREPARTIE = [
     ['', 'Selon la nature du mouvement'], ['4365', 'TVA à payer (déclaration du mois)'], ['4531', 'CNSS'],
@@ -5066,12 +5097,13 @@
     // des frais bancaires : ils sortaient de la banque sur la page Trésorerie et n'existaient dans
     // aucune écriture — la banque du grand livre était fausse de ce montant-là.
     if (want('tresorerie')) {
+      const bulletins = moisAvecBulletin(data);
       (data.movements || []).forEach(m => {
         const montant = round3(Math.abs(Number(m.amount) || 0));
         if (!montant || !inPeriod(m.date, period && period.from, period && period.to)) return;
         const j = journalDeCompte(data, acc, m.accountId, m.method);
         const nature = (MOVE_KINDS.find(k => k[0] === m.kind) || [null, 'Mouvement'])[1];
-        const contrepartie = String(m.compte || '').trim() || acc[MOVE_ACCOUNTS[m.kind] || 'attente'];
+        const contrepartie = String(m.compte || '').trim() || acc[compteDuMouvement(data, m, bulletins)];
         const e = entrySet({ date: m.date, journal: j.journal, piece: m.reference || nature, tiers: '', tiersId: '', source: 'mouvement', docId: m.id, currency: cur });
         const label = m.label || nature;
         if (moveSign(m.kind) > 0) { e.debit(j.compte, label, montant); e.credit(contrepartie, label, montant); }
