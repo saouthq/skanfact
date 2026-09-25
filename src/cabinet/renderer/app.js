@@ -3746,6 +3746,10 @@
   }
   // Une phrase du moteur citée après deux-points reprend en minuscule (typographie française).
   const minusculeInitiale = t => (t ? t.charAt(0).toLowerCase() + t.slice(1) : t);
+  // Un solde dans une PHRASE garde son sens en mots, jamais un signe : « −29 872,140 DT » se lit comme
+  // une faute, « 29 872,140 DT créditeur » comme un solde (règle 6.3.0 — un montant négatif change de
+  // colonne ; dans une phrase, la colonne se dit).
+  const soldeEnClair = v => (!v ? 'soldé' : `${money(Math.abs(v))} ${v < 0 ? 'créditeur' : 'débiteur'}`);
 
   const LIBELLE_CONTROLE = {
     brouillard: 'Les pièces encore en brouillard', attente: 'Le compte d\'attente',
@@ -3812,7 +3816,7 @@
           changé » se vérifie ici au lieu de se deviner. Le geste est nommé en entier — où, lequel,
           puis revenir — parce qu'il se fait dans un autre exercice. */''}
     ${ecartAN.length ? `<div class="warn-box mb" id="cl-ecart-an"><b>Les à-nouveaux validés de ${esc(String(su.annee))} ne reprennent plus cet exercice</b>
-       — ${esc(pl(ecartAN.length, 'compte diffère', 'comptes diffèrent'))} : ${ecartAN.slice(0, 4).map(x => `${esc(x.compte)} (${esc(money(x.porte))} portés, ${esc(money(x.attendu))} attendus)`).join(', ')}${ecartAN.length > 4 ? '…' : ''}.
+       — ${esc(pl(ecartAN.length, 'compte diffère', 'comptes diffèrent'))} : ${ecartAN.slice(0, 4).map(x => `${esc(x.compte)} (${esc(soldeEnClair(x.porte))} repris, ${esc(soldeEnClair(x.attendu))} à la clôture)`).join(' ; ')}${ecartAN.length > 4 ? '…' : ''}.
        Cet exercice a changé après leur validation. Contre-passe la pièce d'à-nouveaux dans ${esc(String(su.annee))}, puis reviens ici les reposer.</div>` : ''}
     ${/* Le motif d'une réouverture se lit PENDANT qu'elle sert (T-26) : un exercice rouvert est un
           exercice en train de changer, et c'est là que « pourquoi est-il ouvert ? » se pose. Il

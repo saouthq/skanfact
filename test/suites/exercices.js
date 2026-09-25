@@ -544,6 +544,18 @@ t('10.14.0 : l\'écran de l\'exercice lit l\'état du moteur — le bouton dit c
   assert.ok(/su\.etat === 'refus' \? ' disabled aria-describedby="cl-suivant-motif"'/.test(vue) && /id="cl-suivant-motif"/.test(vue),
     'un report impossible laisse un bouton actif, ou éteint sans dire pourquoi sous ses yeux');
   assert.ok(/id="cl-ecart-an"/.test(vue), 'l\'écart des à-nouveaux validés ne se montre pas');
+  // Un solde dans une phrase dit son SENS en mots, jamais un signe (6.3.0) : « −29 872,140 DT portés »
+  // se lisait comme une faute de frappe sous les yeux d'un comptable.
+  const iS = appCab.indexOf('const soldeEnClair = ');
+  assert.ok(iS > 0, 'soldeEnClair introuvable');
+  const ctxS = { money: v => v.toFixed(3).replace('.', ',') + ' DT' };
+  vm.runInNewContext(appCab.slice(iS, appCab.indexOf('\n', iS)) + '\nthis.f = soldeEnClair;', ctxS);
+  assert.strictEqual(ctxS.f(-29872.14), '29872,140 DT créditeur', 'un solde créditeur garde son signe dans la phrase');
+  assert.strictEqual(ctxS.f(45718.075), '45718,075 DT débiteur');
+  assert.strictEqual(ctxS.f(0), 'soldé');
+  const phrase = vue.slice(vue.indexOf('id="cl-ecart-an"'), vue.indexOf('</div>', vue.indexOf('id="cl-ecart-an"')));
+  assert.ok(/soldeEnClair\(x\.porte\)/.test(phrase) && /soldeEnClair\(x\.attendu\)/.test(phrase) && !/money\(x\.(porte|attendu)\)/.test(phrase),
+    'l\'écart des à-nouveaux écrit ses soldes avec un signe');
   // « Voir » n'appelle pas le geste : il emmène au journal des à-nouveaux de l'année d'après.
   const br = corps(appCab, 'function brancherCloture(', 2);
   const clic = br.slice(br.indexOf('const su = $(\'#cl-suivant\', el);'));
