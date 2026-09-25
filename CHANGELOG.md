@@ -680,11 +680,27 @@ douze mois et l'année. Voici ce qu'il a trouvé :
   est maintenant bâti sur les mêmes morceaux que le résultat simplifié, et la moins-value d'un bien
   cédé s'y lit sur sa propre ligne, hors des charges fixes : une cession n'arrive pas tous les ans,
   la compter dans le seuil ferait croire qu'il faut la couvrir chaque année.
+- **Le classement des prestations des Statistiques fait le chiffre d'affaires.** Il additionnait
+  les lignes avant la remise globale et ignorait les acomptes facturés : mars annonçait une
+  prestation à 340 DT sous une carte de 1 509 DT, et mai la prestation entière quand le mois n'en
+  facturait que le solde. La remise est déduite de chaque ligne, comme sur la page Marges, et les
+  acomptes ont leur ligne ; le classement entier refait le chiffre d'affaires de la période, mois
+  par mois, et celui des clients aussi.
+- **La prévision de trésorerie compte les salaires dus et ce qui est déjà saisi pour plus tard.**
+  Un bulletin établi et pas encore payé ne sortait nulle part — sur l'exemple, les 2 005 DT de la
+  paie d'août manquaient au solde projeté à 30 jours, sur la page faite pour savoir si l'on
+  tiendra. Un paiement, un règlement, une avance ou un mouvement daté après aujourd'hui
+  disparaissait lui aussi : il n'était ni dans le disponible, qui s'arrête aujourd'hui, ni dans ce
+  qui arrive. Les deux sont projetés, chacun une seule fois, avec leur origine (« Bulletin à
+  payer », « Mouvement saisi »…), et la ligne ouvre ce qu'elle nomme.
 - **L'audit permanent a grandi** : la paie des écritures contre les bulletins (640, 645, 661, 4321,
   4531), la CNSS des quatre trimestres contre l'année, la déclaration d'employeur, le timbre fiscal
   et les retenues à la source contre leurs comptes, la dotation de chaque exercice terminé contre le
   tableau des biens, et le seuil contre le résultat simplifié — chaque année des cinq ans de l'exemple.
 - Et le paquet annonçait « 16 fichiers » pour 17 : la signature n'était pas comptée.
+- Le bouton d'une question dit ce qu'il fera : « Supprimer ce mouvement ? » se confirme par
+  « Supprimer », plus par « Confirmer ». Et le règlement d'un achat sans numéro s'appelle ainsi
+  dans la Trésorerie (« Règlement sans numéro » se lisait comme un règlement anonyme).
 
 Et le jeu d'exemple ne payait jamais ses cotisations : cinq ans de CNSS (30 232 DT), d'IRPP
 (12 730 DT) et de TFP s'empilaient au passif. Il les paie désormais, au trimestre pour la CNSS et au

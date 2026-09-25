@@ -109,6 +109,8 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Un **paquet envoyé** garde son sceau : un mois dont les écritures ont changé depuis le DIT, et propose de le refaire | 10.14.0 — `sceauEcritures`, `ecartsSceau` |
 | Un **compte de passage** (425, 471, 409) se demande ce qui le solde : un salaire sans bulletin est une charge, pas une créance sur le personnel | 10.14.0 — `compteDuMouvement` |
 | Une **échéance d'emprunt n'est pas une charge**, ses intérêts si ; deux résultats pour la même année, c'est un de trop — **le seuil de rentabilité compris** | 10.14.0 — `breakEven` bâti sur `simpleResult` |
+| Une **liste qu'on peut prendre entière** (un classement, un « top ») refait le total qu'elle détaille, remise et acomptes compris | 10.14.0 — `topItems` |
+| Une **prévision projette tout ce qui est engagé** (salaires dus, saisies datées après aujourd'hui), et chaque chose **une fois** | 10.14.0 — `cashForecast` |
 
 **Les tests**
 
@@ -7792,6 +7794,25 @@ aussi l'app cabinet ») — les invariants ont gagné le stock, le résultat, le
   d'abord. On prouve avec un défaut ÉQUILIBRÉ (le timbre crédité au 706 au lieu du 4368), et en
   neutralisant l'ancien test de la même règle — sinon on ne sait pas si le neuf voit quelque chose
   (9.8.8).
+- **Une liste qu'on peut prendre ENTIÈRE doit refaire le total qu'elle détaille.** Le « top » des
+  prestations additionnait les lignes AVANT remise et sautait les acomptes : pris en entier, il ne
+  refaisait pas le chiffre d'affaires de la carte d'à côté. `topItems` applique `facteurRemise` à
+  chaque ligne et range les acomptes (et leur déduction au solde) sur une ligne à part, comme
+  `marginBy` ; l'invariant prend le classement avec une limite qui ne coupe rien (`1e9` : `0`
+  donnait 8, le piège de la 7.16.0) et exige le CA de chaque mois — clients compris.
+- **Une prévision projette TOUT ce qui est engagé, et chaque chose une fois.** Elle projetait les
+  factures, les achats et les contrats ; un bulletin établi et impayé (la sortie la plus certaine
+  qui soit) et tout ce qui est saisi APRÈS aujourd'hui (un règlement daté du 3, un loyer
+  programmé) n'étaient nulle part — ni dans le disponible, qui s'arrête aujourd'hui, ni dans ce qui
+  arrive. La branche des saisies relit `cashMovements` sur `]aujourd'hui, horizon]` ; la branche
+  des salaires saute tout bulletin qui porte une date de paiement, parce que celui-là est déjà un
+  mouvement (passé : dans le disponible ; futur : dans les saisies). Le test le prouve en posant les
+  deux cas — et la preuve du double compte (`paidDate <= t`) tombe dessus. L'invariant : la somme
+  des salaires projetés égale les nets dus.
+- **Le bouton d'une question dit son verbe** (`gesteQuestion`) : sans bouton nommé, la fenêtre
+  prend l'infinitif par lequel la question commence (« Supprimer ce mouvement ? » → « Supprimer »),
+  jamais « Annuler » (le bouton d'à côté), ni un mot qui n'en a que la terminaison (« Votre »,
+  « Autre »). Le test relit CHAQUE `confirmDialog` à un seul argument et exige un verbe pour tous.
 
 ## Pistes pour la suite (non demandées)
 

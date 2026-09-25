@@ -64,6 +64,10 @@ function ecarts(data) {
       const st = core.salesTotals(data, co, pm.from, pm.to).ht;
       ecart(`${mm} marges par client / statistiques`, core.marginBy(data, co, pm.from, pm.to, 'client', 0).reduce((s, r) => s + r.revenue, 0), st);
       ecart(`${mm} marges par prestation / statistiques`, core.marginBy(data, co, pm.from, pm.to, 'item', 0).reduce((s, r) => s + r.revenue, 0), st);
+      // Le « top » des Statistiques, pris en entier, fait aussi le chiffre d'affaires : il comptait les
+      // prestations avant la remise globale de leur facture (10.14.0).
+      ecart(`${mm} top des prestations / statistiques`, core.topItems(data, co, pm.from, pm.to, 1e9).reduce((s, r) => s + r.ht, 0), st);
+      ecart(`${mm} top des clients / statistiques`, core.topClients(data, co, pm.from, pm.to, 1e9).reduce((s, r) => s + r.ht, 0), st);
     }
     // Le paquet du comptable annonce, mois par mois, ce que dit la CHAÎNE des déclarations :
     // un mois isolé ignore le crédit reporté (3.1.0), et le paquet de mars disait 286,729 DT à
@@ -156,6 +160,32 @@ function ecarts(data) {
   const netsDus = (data.payslips || []).filter(s => !s.paidDate || s.paidDate > T).reduce((s, sl) => s + ((sl.computed || {}).net || 0), 0);
   const avances = (data.employees || []).reduce((s, e) => s + core.advanceBalance(data, e.id), 0);
   ecart('425 / salaires dus − avances', -solde(bgT, acc.personnel), netsDus - avances);
+  // La prévision de trésorerie part du disponible et projette TOUT ce qui est engagé : chaque
+  // facture ouverte (l'âge des impayés), chaque achat à régler (« À payer »), chaque salaire dû. La
+  // paie non versée en manquait (10.14.0) : 2 005 DT absents du « Solde projeté à 30 jours ».
+  const fc = core.cashForecast(data, co, 3650, T);
+  const somme = k => fc.events.filter(e => e.kind === k).reduce((s, e) => s + e.amount, 0);
+  ecart('prévision : départ / disponible', fc.start, core.cashPosition(data, co, T).total);
+  ecart('prévision : factures / âge des impayés', somme('client'), core.agedReceivables(data, co, T).total);
+  ecart('prévision : achats / à payer', -somme('fournisseur'), core.payablesList(data, co, T).reduce((s, p) => s + p.remaining, 0));
+  ecart('prévision : salaires / nets dus', -somme('salaire') - fc.events.filter(e => e.kind === 'saisi' && e.source === 'paie').reduce((s, e) => s + e.amount, 0), netsDus);
+  ecart('âge des impayés / restes des factures', core.agedReceivables(data, co, T).total, (data.documents || [])
+    .filter(d => d.type === 'facture' && d.status !== 'brouillon' && d.status !== 'annulée')
+    .reduce((s, d) => s + Math.max(0, core.toBase(d, core.invoiceBalance(d, data, co).remaining, co)), 0));
+  // Chaque client : sa fiche, son relevé et son compte auxiliaire disent le même solde ; chaque
+  // fournisseur : son compte auxiliaire et le reste de ses pièces.
+  const perT = { from: `${T.slice(0, 4)}-01-01`, to: T };
+  const bac = core.balanceAuxiliaire(data, co, perT, 'clients'), baf = core.balanceAuxiliaire(data, co, perT, 'fournisseurs');
+  (data.clients || []).forEach(c => {
+    const aux = (bac.rows.find(r => r.tiersId === c.id) || { solde: 0 }).solde;
+    ecart(`client ${c.name} : compte / relevé`, aux, core.releveClient(data, c.id, co, { date: T }).total);
+    ecart(`client ${c.name} : fiche / relevé`, core.clientSummary(data, co, c.id).net, core.releveClient(data, c.id, co, { date: T }).total);
+  });
+  (data.suppliers || []).forEach(f => {
+    const aux = -(baf.rows.find(r => r.tiersId === f.id) || { solde: 0 }).solde;
+    ecart(`fournisseur ${f.name} : compte / pièces`, aux, (data.purchases || []).filter(p => p.supplierId === f.id)
+      .reduce((s, p) => s + core.toBase(p, core.purchaseBalance(p, co, data).remaining, co), 0));
+  });
   return out;
 }
 
@@ -489,5 +519,35 @@ t('10.14.0 : le seuil de rentabilité dit le résultat de l\'onglet TVA — une 
   assert.strictEqual(b.result, 800);
   assert.strictEqual(core.simpleResult(d, CO, per).resultat, 800, 'deux résultats pour la même année');
   assert.strictEqual(b.breakEven, r3(6200 / 0.6), 'la cession déplace le seuil');
+});
+
+t('10.14.0 : la prévision de trésorerie compte les salaires dus et ce qui est saisi pour plus tard — une fois chacun', () => {
+  // Calculé à la main. Aujourd'hui : 10 juin 2026. Compte : 5 000 DT au 1er juin.
+  //  - bulletin de mai, net 1 200, pas payé → sortie « aujourd'hui » (déjà dû) ;
+  //  - bulletin d'avril, net 900, payé le 20 juin (daté dans le futur) → sortie le 20, une seule fois ;
+  //  - loyer saisi en mouvement libre pour le 3 juillet, 700 → sortie le 3 juillet ;
+  //  - facture de 1 000 HT + 19 % + 1 de timbre = 1 191, dont 191 réglés le 15 juin (futur) →
+  //    le reste, 1 000, attendu à l'échéance du 30 juin, et les 191 le 15 : 1 191 en tout, pas 1 000.
+  const T0 = '2026-06-10';
+  const data = core.migrateData({
+    company: { ...CO },
+    accounts: [{ id: 'b', name: 'Banque', kind: 'banque', opening: 5000, openingDate: '2026-06-01', isDefault: true }],
+    employees: [{ id: 'e', name: 'Sami', gross: 1500 }],
+    payslips: [
+      { id: 's5', employeeId: 'e', year: 2026, month: 5, computed: { net: 1200 } },
+      { id: 's4', employeeId: 'e', year: 2026, month: 4, paidDate: '2026-06-20', accountId: 'b', computed: { net: 900 } }
+    ],
+    movements: [{ id: 'm', date: '2026-07-03', kind: 'autre-sortie', amount: 700, accountId: 'b', label: 'Loyer' }],
+    clients: [{ id: 'c', name: 'Alpha' }],
+    documents: [{ id: 'f', type: 'facture', number: 'FAC-2026-001', clientId: 'c', date: '2026-06-01', dueDate: '2026-06-30', status: 'envoyée', stampDuty: true,
+      lines: [{ label: 'Audit', qty: 1, unitPrice: 1000, vatRate: 19 }], payments: [{ id: 'p', date: '2026-06-15', amount: 191, accountId: 'b' }] }]
+  });
+  const f = core.cashForecast(data, data.company, 60, T0);
+  assert.strictEqual(f.start, 5000, 'rien de daté après aujourd\'hui n\'entre dans le disponible');
+  const par = k => f.events.filter(e => e.kind === k).map(e => [e.date, e.amount]);
+  assert.deepStrictEqual(par('salaire'), [[T0, -1200]], 'le bulletin de mai, dû et pas payé, sort aujourd\'hui ; celui d\'avril n\'est pas compté deux fois');
+  assert.deepStrictEqual(par('saisi').sort(), [['2026-06-15', 191], ['2026-06-20', -900], ['2026-07-03', -700]], 'ce qui est saisi pour plus tard sort ou entre à sa date');
+  assert.deepStrictEqual(par('client'), [['2026-06-30', 1000]], 'la facture n\'attend plus que son reste');
+  assert.strictEqual(f.end, 5000 - 1200 + 191 - 900 - 700 + 1000);
 });
 };

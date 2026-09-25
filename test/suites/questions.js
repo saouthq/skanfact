@@ -321,4 +321,34 @@ module.exports = ({ t, assert }) => {
     assert.ok(!/<i style="width:\$\{Math\.max\(4, /.test(app), 'aucune barre de classement ne recalcule sa largeur à la main');
     assert.ok((app.match(/width:\$\{largeurRang\(/g) || []).length >= 4, 'les quatre classements passent par elle');
   });
+
+  t('10.14.0 : le bouton d\'une question dit le geste — le verbe par lequel elle commence, jamais « Confirmer » par défaut', () => {
+    assert.strictEqual(core.gesteQuestion('Supprimer ce mouvement ?'), 'Supprimer');
+    assert.strictEqual(core.gesteQuestion('Retirer la mention « déposée » de T3 2026 ?'), 'Retirer');
+    assert.strictEqual(core.gesteQuestion('Créer la clé du serveur (srv-1) ?'), 'Créer');
+    assert.strictEqual(core.gesteQuestion('Émettre la facture ?'), 'Émettre');
+    // Ni « Annuler » (le bouton d'à côté s'appelle ainsi), ni un mot qui n'en a que la terminaison,
+    // ni un titre qui n'est pas une question.
+    ['Annuler l\'émission ?', 'Votre fichier est prêt ?', 'Autre chose ?', 'Avant de continuer', 'Confirmer ?', ''].forEach(x =>
+      assert.strictEqual(core.gesteQuestion(x), '', x));
+    // Chaque question posée sans bouton nommé en reçoit un : on relit les appels à un seul argument.
+    const sansBouton = [];
+    let i = 0;
+    while ((i = app.indexOf('confirmDialog(', i)) >= 0) {
+      if (app.slice(i - 9, i).includes('function')) { i += 14; continue; }
+      let j = i + 14, d = 1, virgules = 0, q = null, e = false, premier = '';
+      for (; j < app.length && d > 0; j++) {
+        const ch = app[j];
+        if (q) { if (e) { e = false; continue; } if (ch === '\\') { e = true; continue; } if (ch === q) { q = null; continue; } if (!virgules && d === 1) premier += ch; continue; }
+        if (ch === '\'' || ch === '"' || ch === '`') { q = ch; continue; }
+        if ('([{'.includes(ch)) d++; else if (')]}'.includes(ch)) d--; else if (ch === ',' && d === 1) virgules++;
+      }
+      if (!virgules) sansBouton.push(core.titreQuestion(premier.replace(/\$\{[^}]*\}/g, 'X')).titre);
+      i = j;
+    }
+    assert.ok(sansBouton.length >= 15, `la sonde a lu ${sansBouton.length} questions sans bouton nommé`);
+    const muets = sansBouton.filter(tq => !core.gesteQuestion(tq));
+    assert.deepStrictEqual(muets, [], 'une question sans bouton nommé en reçoit un');
+    assert.ok(/h\(okLabel \|\| C\.gesteQuestion\(q\.titre\) \|\| 'Confirmer'\)/.test(app), 'la fenêtre prend le verbe de sa question quand l\'appelant ne nomme pas le bouton');
+  });
 };

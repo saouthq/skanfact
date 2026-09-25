@@ -1301,6 +1301,17 @@
   // Une question trop longue pour un titre reste dans le corps : un titre de trois lignes ne se lit
   // plus comme un titre.
   const GESTES_GENERIQUES = /^(confirmer|continuer|ok|oui|valider)$|quand même/i;
+  // Le bouton d'une question dit le GESTE, jamais « Confirmer » (10.14.0) : « Supprimer ce
+  // mouvement ? » au-dessus de « Confirmer » fait relire la question pour savoir ce que le clic
+  // fera. Quand l'appelant ne nomme pas le bouton, il prend le verbe par lequel la question
+  // commence — un infinitif, jamais « Annuler » (le bouton d'à côté s'appelle déjà ainsi) ni un
+  // mot qui en a seulement la terminaison (« Votre », « Autre »).
+  const PAS_UN_GESTE = /^(annuler|votre|notre|autre|entre|contre|titre|cette|lettre|ordre|nombre|membre)$/i;
+  function gesteQuestion(titre) {
+    const m = /^([A-ZÉÈÀÂÎÔÛa-zéèàâîôûç][a-zéèêëàâîïôûç-]{2,}(?:er|ir|oir|re))(?=[\s?,.]|$)/.exec(String(titre || '').trim());
+    if (!m || PAS_UN_GESTE.test(m[1]) || GESTES_GENERIQUES.test(m[1])) return '';
+    return m[1].charAt(0).toUpperCase() + m[1].slice(1);
+  }
   function titreQuestion(msg, okLabel) {
     const texte = String(msg == null ? '' : msg);
     // La PREMIÈRE phrase seulement : « La date est dans le futur. Enregistrer quand même ? » n'est
@@ -3757,7 +3768,7 @@
       if (!inPeriod(p.date, period && period.from, period && period.to) || !keep(p.accountId)) return;
       out.push({
         id: p.id, kind: 'decaissement', date: p.date, accountId: p.accountId || fallback,
-        label: `Règlement ${pu.number || 'sans numéro'}`, party: supplierName(pu.supplierId),
+        label: `Règlement ${pu.number || 'd\'un achat sans numéro'}`, party: supplierName(pu.supplierId),
         // Ce qui sort du compte sort en DINARS (10.1.0), comme l'encaissement client dix lignes
         // plus haut : régler 500 € vide le compte de 1 700 DT, pas de 500. Sans ça, la trésorerie
         // de la page et celle du grand livre se contredisaient — et c'est le test des états
@@ -3860,6 +3871,35 @@
       if (due > horizon) return;
       events.push({ date: due, amount: -round3(toBase(p, rest, company)), kind: 'fournisseur', late: !!(p.dueDate && p.dueDate < t),
         label: `${p.number || 'Achat'} — ${((data.suppliers || []).find(s => s.id === p.supplierId) || {}).name || ''}`.trim(), id: p.id });
+    });
+    // Ce qui doit sortir aussi : le net des bulletins pas encore payés (10.14.0). Un salaire dû est la
+    // sortie la plus certaine qui soit — et la prévision l'ignorait : sur l'exemple, les 2 005 DT de
+    // la paie d'août manquaient au « Solde projeté à 30 jours », sur la page faite pour savoir si
+    // l'on tiendra. Le net est celui que le bulletin verse (avance déjà retenue), à la date de
+    // paiement prévue si elle est à venir, sinon à la fin du mois du bulletin, ramenée à aujourd'hui
+    // quand elle est passée — comme une facture échue.
+    // Un bulletin marqué payé, lui, est un mouvement : dans le disponible s'il l'est à ce jour, dans
+    // la branche des saisies à venir s'il l'est pour plus tard — jamais les deux.
+    (data.payslips || []).forEach(sl => {
+      if (sl.paidDate) return;
+      const net = round3(((sl.computed || {}).net) || 0);
+      if (net <= 0.0005) return;
+      const fin = payslipDate(sl);
+      const due = fin && fin > t ? fin : t;
+      if (due > horizon) return;
+      const emp = (data.employees || []).find(e => e.id === sl.employeeId) || {};
+      events.push({ date: due, amount: -net, kind: 'salaire', late: !!fin && fin < t,
+        label: `Salaire ${monthLabel(fin)} — ${emp.name || 'Salarié'}`, id: sl.id });
+    });
+    // Ce qui est déjà saisi pour plus tard (10.14.0) : un paiement client, un règlement, un bulletin
+    // payé, une avance ou un mouvement daté après aujourd'hui. Il n'est pas dans le disponible, qui
+    // s'arrête aujourd'hui, et une facture le compte déjà comme encaissé : sans cette branche, il
+    // disparaissait de la prévision — un loyer saisi pour le 3 ne sortait nulle part.
+    cashMovements(data, company, { from: addDays(t, 1), to: horizon }, null).forEach(m => {
+      if (!m.amount) return;
+      events.push({ date: m.date, amount: round3(m.amount), kind: 'saisi', source: m.source, late: false,
+        label: m.party && m.party !== m.label ? `${m.label} — ${m.party}` : m.label,
+        id: m.docId || m.purchaseId || m.payslipId || m.advanceId || m.movementId || m.id });
     });
     // Ce qui revient tout seul : les contrats récurrents déjà programmés.
     (data.recurring || []).filter(r => r.active !== false).forEach(r => {
@@ -5913,16 +5953,31 @@
     const totals = {};
     issuedIn(data, fromIso, toIso).forEach(d => {
       const sign = d.type === 'avoir' ? -1 : 1;
-      computeTotals(d, company).lines.forEach(l => {
+      const tt = computeTotals(d, company);
+      // La remise globale ampute le prix de chaque prestation (10.14.0) : sans elle, le « top » des
+      // Statistiques additionnait les lignes AVANT remise, et disait d'une prestation vendue sur une
+      // facture remisée plus que la page Marges, qui la compte depuis la 3.4.0 (`documentMargin`).
+      const factor = facteurRemise(tt);
+      tt.lines.forEach(l => {
+        // Un acompte facturé, et sa déduction sur la facture de solde, sont du chiffre d'affaires de
+        // LEUR mois — la règle de `marginBy` (10.14.0). Les ignorer faisait dire au « top » de mars
+        // 340 DT quand la carte d'à côté annonçait 1 509 DT, et à celui de mai la prestation entière
+        // quand le mois n'en facturait que le solde. Une ligne à part, comme sur la page Marges.
+        if (l.noDiscount) {
+          const t = totals.__acomptes__ || (totals.__acomptes__ = { label: 'Acomptes facturés (repris au solde)', ht: 0, qty: 0, count: 0, acomptes: true });
+          t.ht = round3(t.ht + sign * toBase(d, l.ht, company));
+          return;
+        }
         const key = (l.label || '').trim().toLowerCase();
-        if (!key || l.noDiscount) return;                       // acompte déjà facturé : pas une vente
+        if (!key) return;
         const t = totals[key] || (totals[key] = { label: (l.label || '').trim(), ht: 0, qty: 0, count: 0 });
-        t.ht = round3(t.ht + sign * toBase(d, l.ht, company));
+        t.ht = round3(t.ht + sign * toBase(d, round3(l.ht * factor), company));
         t.qty = round3(t.qty + sign * (Number(l.qty) || 0));
         t.count++;
       });
     });
-    return Object.values(totals).sort((a, b) => b.ht - a.ht).slice(0, limit || 8);
+    // Un acompte et sa déduction dans la même période s'annulent : une ligne à zéro n'apprend rien.
+    return Object.values(totals).filter(t => !t.acomptes || Math.abs(t.ht) > 0.0005).sort((a, b) => b.ht - a.ht).slice(0, limit || 8);
   }
 
   // Clients nouveaux sur la période (première facture dedans) et clients endormis (plus rien depuis `dormantDays`).
@@ -8446,7 +8501,7 @@
     debutExercice, soldesOuverture, balanceGenerale, grandLivre, grandLivreRows, balanceAuxiliaire,
     balanceCsvColumns, balanceAuxCsvColumns, grandLivreCsvColumns,
     salesCsvColumns, buyCsvColumns, payCsvColumns, supplierPayCsvColumns, cashCsvColumns, cashCsvRows,
-    nextNumber, isLocked, isIssued, computeTotals, creditsFor, invoiceBalance, estRemboursement, titreQuestion, dateDernierReglement, motifVerrou, delaisContradictoires, effectiveStatus,
+    nextNumber, isLocked, isIssued, computeTotals, creditsFor, invoiceBalance, estRemboursement, titreQuestion, gesteQuestion, dateDernierReglement, motifVerrou, delaisContradictoires, effectiveStatus,
     depositLines, settlementLines, salesJournal, vatSummary, paymentsJournal, toCsv, migrateData,
     PERIODS, MONTHS_FR, MONTHS_SHORT, monthLabel, addMonths, nextRecurrenceDate, dueRecurrences, catchUpRecurrence, fillTemplate, buildRecurringInvoice,
     reminderLevel, REMINDER_LABELS, daysBetween, overdueInvoices, facturesAVenir, todoList, companyGaps, verifRib, documentHistory, DEFAULT_EMAIL_TEMPLATES, DEFAULT_EMAIL_TEMPLATES_EN, emailFor,

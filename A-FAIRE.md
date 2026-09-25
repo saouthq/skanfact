@@ -253,6 +253,12 @@ absente~~ (« Vendue le », en tête).
     ses intérêts n'entrent donc dans aucune charge tant qu'on ne les saisit pas à part (un second
     mouvement, contrepartie 651). À VÉRIFIER avec le comptable pilote : proposer, dans la fenêtre du
     mouvement, de ventiler capital et intérêts — le tableau d'amortissement de la banque les donne.
+  - **La prévision de trésorerie ne chiffre pas les impôts et la CNSS à payer** : elle compte
+    désormais les salaires dus et tout ce qui est saisi pour plus tard, mais la TVA du mois
+    écoulé, l'IRPP retenu et la CNSS du trimestre ne sont listés sous la courbe que par leur date.
+    Leur montant est pourtant connu (les soldes du 4365/4367, 4321, 4531 à ce jour, ou `vatChain` et
+    `cnssDeclaration`) : à projeter à leur échéance du calendrier fiscal — qui reste un pense-bête
+    « À VÉRIFIER » —, une seule fois, et plus du tout une fois le mouvement de paiement saisi.
   - **Un salaire payé sans bulletin va au 640 en entier** : SkanFact ne sait pas quelle part est le
     net, le CNSS salarié ou l'IRPP retenu. À VÉRIFIER : un comptable voudra peut-être le 471, pour le
     ventiler lui-même — la contrepartie se choisit déjà à la main, dans la fenêtre du mouvement.

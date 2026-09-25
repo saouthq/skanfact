@@ -900,7 +900,7 @@
       // l'exemple. `opts.titre` quand l'appelant sait mieux, sinon `C.titreQuestion` le déduit.
       const q = opts && opts.titre ? { titre: opts.titre, corps: String(msg) } : C.titreQuestion(msg, okLabel);
       modal(`<h2>${numerosInsecables(h(enTete(q.titre)))}</h2>${q.corps ? `<p>${numerosInsecables(C.nl2br(enTete(q.corps)))}</p>` : ''}
-        <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn ${danger === false ? 'btn-primary' : 'btn-danger'}" id="ok">${h(okLabel || 'Confirmer')}</button></div>`,
+        <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn ${danger === false ? 'btn-primary' : 'btn-danger'}" id="ok">${h(okLabel || C.gesteQuestion(q.titre) || 'Confirmer')}</button></div>`,
         (root, close) => {
           $('#ok', root).onclick = () => finish(close, true); $('[data-close]', root).onclick = () => finish(close, false);
           if (opts && opts.prudent) $('[data-close]', root).focus();
@@ -10981,7 +10981,7 @@
         <div class="stats">
           <div class="stat"><div class="lbl">Disponible aujourd'hui ${info('tre.total')}</div><div class="val ${pos.total < 0 ? 'due' : ''}">${C.money(pos.total, cur)}</div><div class="sub">${pl(pos.accounts.length, 'compte')}</div></div>
           <div class="stat"><div class="lbl">À encaisser ${info('dash.open')}</div><div class="val">${C.money(f.inflow, cur)}</div><div class="sub">sous 30 jours</div></div>
-          <div class="stat"><div class="lbl">À décaisser ${info('buy.payables')}</div><div class="val">${C.money(-f.outflow, cur)}</div><div class="sub">sous 30 jours</div></div>
+          <div class="stat"><div class="lbl">À décaisser ${info('tre.decaisser')}</div><div class="val">${C.money(-f.outflow, cur)}</div><div class="sub">sous 30 jours</div></div>
           <div class="stat"><div class="lbl">Solde projeté à 30 jours ${info('tre.projected')}</div><div class="val ${f.end < 0 ? 'due' : 'ok'}">${C.money(f.end, cur)}</div><div class="sub">${f.shortfall ? `<span class="warn-text">passage en négatif le ${C.fmtDate(f.shortfall.date)}</span>` : 'aucun trou prévu'}</div></div>
         </div>
         ${f.shortfall ? `<div class="panel" style="border-inline-start:3px solid var(--danger)">
@@ -11006,6 +11006,13 @@
     }
 
     // --- Ce qui arrive
+    // L'origine d'une échéance, en mots : une saisie datée d'après aujourd'hui se nomme par ce
+    // qu'elle est (10.14.0), sinon « Contrat récurrent » l'aurait rangée parmi les factures à venir.
+    const ORIGINE_PREVISION = {
+      client: 'Facture client', fournisseur: 'Achat', salaire: 'Bulletin à payer',
+      'saisi-vente': 'Paiement client saisi', 'saisi-achat': 'Règlement saisi', 'saisi-paie': 'Bulletin payé',
+      'saisi-avance': 'Avance sur salaire', 'saisi-libre': 'Mouvement saisi'
+    };
     function drawForecast() {
       const f = C.cashForecast(data, company(), s.days, C.today());
       const prevPage = paginate(f.events.map((_, i) => i), s.prevision);
@@ -11017,7 +11024,7 @@
         </div>
         <div class="panel"><h2>Courbe du solde prévu ${info('tre.curve')}</h2>
           ${forecastChart(f)}
-          <p class="small muted mt">Seules les échéances connues sont projetées : factures ouvertes, achats à régler, contrats récurrents. Aucune estimation, aucune moyenne — ce que tu vois est ce qui est déjà engagé.</p>
+          <p class="small muted mt">Seules les échéances connues sont projetées : factures ouvertes, achats à régler, salaires dus, contrats récurrents, et ce qui est déjà saisi pour une date à venir. Aucune estimation, aucune moyenne — ce que tu vois est ce qui est déjà engagé.</p>
         </div>
         ${f.fiscal.length ? `<div class="panel"><h2>Échéances fiscales sur la période ${info('compta.fiscal')}</h2>
           <p class="small muted">Leur montant n'est pas dans la courbe : SkanFact connaît la date, pas la somme. Pense à les provisionner.</p>
@@ -11025,19 +11032,23 @@
         </div>` : ''}
         <div class="panel"><h2>Le détail, dans l'ordre ${info('tre.events')}</h2>
           ${f.events.length ? `<div id="t-prev"><table class="list compact"><thead><tr><th>Date</th><th>Origine</th><th>Pièce</th><th class="r">Mouvement</th><th class="r">Solde après</th></tr></thead><tbody>
-            ${prevPage.rows.map(i => { const p = f.points[i + 1], e = f.events[i]; return `<tr class="clickable ${p.balance < 0 ? 'row-warn' : ''}" data-fid="${h(e.id)}" data-fkind="${h(e.kind)}">
+            ${prevPage.rows.map(i => { const p = f.points[i + 1], e = f.events[i]; return `<tr class="clickable ${p.balance < 0 ? 'row-warn' : ''}" data-fid="${h(e.id)}" data-fkind="${h(e.kind)}" data-fsrc="${h(e.source || '')}">
               <td class="nw">${C.fmtDate(p.date)}${e.late ? '<div class="small warn-text">déjà échue</div>' : ''}</td>
-              <td class="small">${e.kind === 'client' ? 'Facture client' : e.kind === 'fournisseur' ? 'Achat' : 'Contrat récurrent'}</td>
+              <td class="small">${ORIGINE_PREVISION[e.kind === 'saisi' ? 'saisi-' + e.source : e.kind] || 'Contrat récurrent'}</td>
               <td>${h(e.label)}</td>
               <td class="r nw ${p.delta > 0 ? 'ok-text' : 'warn-text'}">${moneySigne(p.delta, cur)}</td>
               <td class="r nw ${p.balance < 0 ? 'warn-text' : ''}"><strong>${C.money(p.balance, cur)}</strong></td></tr>`; }).join('')}
-          </tbody></table>${pagerBar(prevPage.pg, { noun: 'échéance' })}</div>` : '<div class="empty">Rien d\'attendu sur cette période : aucune facture ouverte, aucun achat à régler.</div>'}
+          </tbody></table>${pagerBar(prevPage.pg, { noun: 'échéance' })}</div>` : '<div class="empty">Rien d\'attendu sur cette période : aucune facture ouverte, aucun achat à régler, aucun salaire dû.</div>'}
         </div>`;
       $('#t-days').onchange = e => { s.days = Number(e.target.value); s.prevision.page = 1; draw(); };
       if ($('#t-prev')) bindPager($('#t-prev'), s.prevision, () => draw(), '#t-prev');
       $$('#t-body tr[data-fid]').forEach(tr => tr.onclick = () => {
         const k = tr.dataset.fkind;
-        navigate(k === 'client' ? '#/doc/' + tr.dataset.fid : k === 'fournisseur' ? '#/achat/' + tr.dataset.fid : '#/contrat/' + tr.dataset.fid);
+        const src = tr.dataset.fsrc || '';
+        if (k === 'salaire' || src === 'paie') { const sl = (data.payslips || []).find(x => x.id === tr.dataset.fid); if (sl) payslipForm(sl, (data.employees || []).find(x => x.id === sl.employeeId), sl.year, sl.month, () => draw()); return; }
+        if (src === 'libre') { const m = (data.movements || []).find(x => x.id === tr.dataset.fid); if (m) movementForm(m, () => draw()); return; }
+        if (src === 'avance') { const a = (data.advances || []).find(x => x.id === tr.dataset.fid); if (a) advanceForm(a, a.employeeId, () => draw()); return; }
+        navigate(k === 'client' || src === 'vente' ? '#/doc/' + tr.dataset.fid : k === 'fournisseur' || src === 'achat' ? '#/achat/' + tr.dataset.fid : '#/contrat/' + tr.dataset.fid);
       });
     }
 
@@ -11373,7 +11384,7 @@
         <div class="split">
           <div class="panel"><h2>Prestations les plus vendues ${info('stat.items')}</h2>
             ${items.length ? `<ul class="rank">${items.map(x => `<li><span class="name">${h(x.label)}</span><span class="bar"><i style="width:${largeurRang(x.ht, itemMax)}%"></i></span><span class="amt">${C.money(x.ht, cur)}</span></li>`).join('')}</ul>
-            <p class="small muted mt">Regroupées par libellé, quantités et remises comprises. Les lignes de déduction d'acompte sont ignorées.</p>`
+            <p class="small muted mt">Regroupées par libellé, remises comprises. Un acompte facturé a sa ligne, le mois où il est facturé ; le mois du solde, sa déduction vient en moins de cette ligne.</p>`
             : '<div class="empty">Aucune vente sur cette période.</div>'}
           </div>
           <div class="panel"><h2>Meilleurs clients (HT) ${info('stat.clients')}</h2>
