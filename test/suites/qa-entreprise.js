@@ -2117,10 +2117,13 @@ module.exports = ({ t, assert, lireSource }) => {
   // titre et ses libellés, à l'ouverture comme quand on change la nature.
   t('Un avoir fournisseur se dit avoir : titre, numéro, invite et phrase des lignes suivent la nature', () => {
     const brut = lireSource('src', 'renderer', 'app.js');
-    const i = brut.indexOf('const motsDePiece = kind =>');
+    // Les mots de la NATURE ; le régime les habille ensuite (10.14.0 : au forfait, la TVA d'un achat
+    // ne se récupère pas, et la phrase des lignes ne le promet plus).
+    const i = brut.indexOf('const motsDeNature = kind =>');
     const fin = brut.indexOf('};\n', i);
-    assert.ok(i > 0 && fin > i && fin - i < 2500, 'tranche de motsDePiece (' + (fin - i) + ')');
-    const mots = require('vm').runInNewContext('(' + brut.slice(i + 'const motsDePiece = '.length, fin + 1) + ')');
+    assert.ok(i > 0 && fin > i && fin - i < 2500, 'tranche de motsDeNature (' + (fin - i) + ')');
+    const mots = require('vm').runInNewContext('(' + brut.slice(i + 'const motsDeNature = '.length, fin + 1) + ')');
+    assert.ok(/const motsDePiece = kind => \{\s*\n\s*const m = motsDeNature\(kind\);\s*\n\s*if \(!C\.tvaRecuperable\(p, company\(\)\)\) m\.lignes = /.test(brut), 'la phrase des lignes ne suit pas le régime de la pièce');
     const av = mots('avoir'), fa = mots('facture'), ac = mots('acompte'), de = mots('depense');
     assert.ok(/avoir/i.test(av.titre) && /avoir/i.test(av.numero) && /avoir/i.test(av.invite), 'un avoir se présente comme une facture : ' + JSON.stringify(av));
     assert.ok(/retire/.test(av.lignes) && !/permet de récupérer/.test(av.lignes), 'un avoir promet de récupérer la TVA');

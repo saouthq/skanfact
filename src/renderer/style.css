@@ -691,6 +691,14 @@ table.lignes-doc th { padding-bottom: 4px; }
 .totals-box table { background: var(--primary-soft); border-radius: 12px; padding: 8px 6px; }
 .totals-box table td { padding: 4px 14px; text-align: end; font-variant-numeric: tabular-nums; color: #3d4a57; }
 .totals-box table tr.grand td { font-weight: 700; font-size: 18px; color: var(--primary); padding-top: 8px; letter-spacing: -.3px; }
+/* Une phrase dans le cadre des totaux (10.14.0) : elle passe à la ligne au lieu d'élargir le cadre
+   — sinon les montants s'écartent au moment où elle apparaît. */
+/* Les articles restés à 0 % d'un ancien régime (10.14.0) : la phrase et son geste sur une rangée qui
+   passe à la ligne sans coller le bouton sous le texte (T-56). */
+/* La phrase sous le taux d'un article, chez qui ne facture pas de TVA : une précision, pas un libellé. */
+.field .taux-regime { font-weight: 400; }
+.regime-cat { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; }
+.totals-box .note-totaux { max-width: 17rem; margin-inline-start: auto; white-space: normal; line-height: 1.35; }
 .catalog-pick { display: flex; gap: 8px; align-items: center; margin: 4px 0 14px; }
 
 /* ---------- modal ---------- */

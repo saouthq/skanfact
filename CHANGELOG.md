@@ -849,6 +849,36 @@ douze mois et l'année. Voici ce qu'il a trouvé :
   4531), la CNSS des quatre trimestres contre l'année, la déclaration d'employeur, le timbre fiscal
   et les retenues à la source contre leurs comptes, la dotation de chaque exercice terminé contre le
   tableau des biens, et le seuil contre le résultat simplifié — chaque année des cinq ans de l'exemple.
+- **Au forfait ou exonéré, la TVA de tes achats est un coût — et elle ne se déduit plus.** Une
+  entreprise non assujettie paie la TVA de ses fournisseurs sans la récupérer ; SkanFact la déduisait
+  quand même : chaque achat mettait sa TVA au 4366, le résultat, le stock et la fiche d'un bien
+  valaient le prix hors taxes, et le fournisseur ne recevait pas le montant de sa facture dans le 401.
+  Désormais la TVA d'un achat au forfait entre dans son coût — charge, stock (au coût unitaire TTC) ou
+  bien (qui s'amortit TVA comprise) — et le 4366 n'en reçoit rien. **La règle est figée sur chaque
+  achat** (7.1.x) : changer de régime ne réécrit pas un mois déjà déclaré. Une erreur de régime se
+  répare pourtant : les Paramètres nomment les achats des mois non clôturés qui suivent l'ancien
+  régime et **annoncent l'écart de TVA de la déclaration** avant d'appliquer ; un achat seul porte
+  son bandeau « Récupérer sa TVA » / « Ne plus récupérer sa TVA », et l'avoir ou l'acompte qui lui
+  est rattaché suit sa pièce. Dans l'éditeur, « Déduct. » est grisé et la phrase des lignes dit que la
+  TVA entre dans le coût.
+- **Côté ventes, une entreprise qui ne facture pas de TVA ne fait plus naître de ligne à 19 %** :
+  un article du catalogue, une licence ou une vente venue de la console arrivent à 0 %, la case TVA
+  d'une ligne est grisée, et le récapitulatif d'émission prévient si une pièce en porte encore
+  (« Mets ses lignes à 0 % avant d'émettre »).
+- **Passer du forfait au réel ne fait plus de factures sans TVA.** Au forfait, le taux des nouvelles
+  lignes est affiché à 0 %, grisé — et enregistrer les Paramètres **rangeait ce 0 % comme si tu
+  l'avais choisi** (l'assistant faisait pareil) : le jour du passage au réel, chaque ligne naissait à
+  0 %, et la TVA collectée manquait sur tes factures, donc sur ta déclaration. Le taux forcé ne se
+  range plus : ton vrai taux revient tout seul au réel. Si un vieux 0 % est resté rangé, les
+  Paramètres le disent (« Tes nouvelles lignes naissent à 0 % de TVA »), et les articles du catalogue
+  nés à 0 % au forfait se signalent sous le régime, avec « Passer à 19 %… » (qui nomme les articles
+  avant, et se défait par « Annuler »). Un article vraiment exonéré garde son 0 % : on te le dit, on
+  ne le change pas.
+- **Un achat tiré du catalogue au forfait porte la TVA du fournisseur**, plus le 0 % de tes ventes :
+  recopié, ce 0 % faisait entrer l'article au coût hors taxes. La ligne propose le taux ordinaire ;
+  c'est le taux écrit sur la facture du fournisseur qui fait foi.
+- **Le catalogue dit le taux qui s'imprimera** : au forfait, un article à 19 % s'affiche « 0 % » (son
+  taux reste lisible au survol), et sa fiche le précise sous le champ.
 - Et le paquet annonçait « 16 fichiers » pour 17 : la signature n'était pas comptée.
 - Le bouton d'une question dit ce qu'il fera : « Supprimer ce mouvement ? » se confirme par
   « Supprimer », plus par « Confirmer ». Et le règlement d'un achat sans numéro s'appelle ainsi

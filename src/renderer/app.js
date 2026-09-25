@@ -3505,7 +3505,7 @@
     const poserArticle = (i, it) => {
       const l = doc.lines[i]; if (!l) return;
       Object.assign(l, { label: it.label, description: it.description || '', unit: it.unit || '',
-        unitPrice: it.unitPrice, unitCost: it.unitCost || '', vatRate: it.vatRate, itemId: it.id });
+        unitPrice: it.unitPrice, unitCost: it.unitCost || '', vatRate: C.tauxPourRegime(company(), it.vatRate), itemId: it.id });
       if (it.description) openDesc.add(i);
       touch(); drawLines();
       const q = $(`tr[data-i="${i}"] input[data-k=qty]`, linesBody); if (q) { q.focus(); q.select(); }
@@ -3523,7 +3523,7 @@
         <td><input type="number" class="num" data-k="qty" value="${l.qty}" step="0.01" ${ro}></td>
         <td><select data-k="unit" ${ro}>${unitOptions(l.unit, extraUnits)}</select></td>
         <td><input type="number" class="num" data-k="unitPrice" value="${l.unitPrice}" step="0.001" ${ro}></td>
-        <td><select data-k="vatRate" ${ro}>${C.VAT_RATES.map(r => `<option value="${r}" ${Number(l.vatRate) === r ? 'selected' : ''}>${r}%</option>`).join('')}</select></td>
+        <td><select data-k="vatRate" ${ro || (!C.assujettiTVA(company()) && !Number(l.vatRate) ? `disabled title="${h(`Ton régime (${C.regimeOf(company()).court.toLowerCase()}) ne facture pas de TVA.`)}"` : '')}>${C.VAT_RATES.map(r => `<option value="${r}" ${Number(l.vatRate) === r ? 'selected' : ''}>${r}%</option>`).join('')}</select></td>
         <td class="total" data-total="${i}"></td>
         <td class="line-tools">${figee ? '' : `
           <button class="btn btn-ghost btn-sm" data-up="${i}" title="Monter" ${i === 0 ? 'disabled' : ''}>↑</button>
@@ -3599,7 +3599,7 @@
         if (doc.lines.length === 1 && !doc.lines[0].label && !doc.lines[0].unitPrice) { doc.lines = []; openDesc.clear(); }
         // `itemId` rattache la ligne à l'article : c'est lui qui fait le lien avec le stock, même si le
         // libellé est retouché ensuite. Les lignes plus anciennes restent rattrapées par leur libellé.
-        doc.lines.push({ label: it.label, description: it.description || '', qty: 1, unit: it.unit || '', unitPrice: it.unitPrice, unitCost: it.unitCost || '', vatRate: it.vatRate, itemId: it.id });
+        doc.lines.push({ label: it.label, description: it.description || '', qty: 1, unit: it.unit || '', unitPrice: it.unitPrice, unitCost: it.unitCost || '', vatRate: C.tauxPourRegime(company(), it.vatRate), itemId: it.id });
         if (it.description) openDesc.add(doc.lines.length - 1);
         touch(); drawLines();
       }
@@ -4002,6 +4002,13 @@
       // Un RIB présent mais faux (rapport QA, 10.12.0) : il s'imprime dans le bloc « Règlement », et
       // un virement vers un compte qui n'existe pas revient des jours plus tard, ou ne revient pas.
       if (isInv && (co.rib || '').trim() && !C.verifRib(co.rib).ok) w.push(`Le RIB de ta fiche société semble faux — ${C.verifRib(co.rib).raison} Il s'imprime sur la facture : un virement vers un compte qui n'existe pas n'arrive jamais (Paramètres → Mon entreprise).`);
+      // De la TVA sur la pièce d'une entreprise qui n'en facture pas (10.14.0) : une ligne reprise d'un
+      // modèle, d'un ancien article ou d'avant un changement de régime. La pièce émise la garderait
+      // pour toujours (7.22.0) — on le dit avant, pendant qu'elle se corrige encore.
+      if (!C.assujettiTVA(co) && (isInv || doc.type === 'avoir')) {
+        const tva = C.computeTotals(doc, co).totalVAT;
+        if (tva > 0.0005) w.push(`Cette pièce porte ${C.money(tva, docCur(doc))} de TVA, alors que ton régime (${C.regimeOf(co).court.toLowerCase()}) n'en facture pas : une ligne l'a gardée d'un modèle ou d'un ancien article. Mets ses lignes à 0 % avant d'émettre.`);
+      }
       // Deux délais sur la même pièce (10.12.0, H-E23) : on MONTRE la phrase, on ne la réécrit pas.
       const deuxDelais = C.delaisContradictoires(co, doc);
       if (deuxDelais) w.push(`Tes conditions de paiement disent « ${deuxDelais} », mais cette facture est à régler avant le ${C.fmtDate(doc.dueDate)} : les deux s'impriment sur la pièce, et se contredisent. Le délai s'imprime déjà tout seul — la phrase peut se contenter du moyen de paiement (Paramètres → Mon entreprise).`);
@@ -5309,7 +5316,7 @@
         ${field(lbl(`Prix unitaire HT (${h(company().currency || 'DT')})`, 'cat.price'), 'unitPrice', it.unitPrice, 'number', 'step="0.001" min="0" class="num"')}
         ${field(lbl(`Coût de revient HT (${h(company().currency || 'DT')})`, 'cat.cost'), 'unitCost', it.unitCost || 0, 'number', 'step="0.001" min="0" class="num"')}
         <div class="span-2 annonce-stable" id="marge-hint"></div>
-        <label class="field">${lbl('TVA', 'cat.vat')}<select name="vatRate">${C.VAT_RATES.map(r => `<option value="${r}" ${Number(it.vatRate) === r ? 'selected' : ''}>${r}%</option>`).join('')}</select></label>
+        <label class="field">${lbl('TVA', 'cat.vat')}<select name="vatRate">${C.VAT_RATES.map(r => `<option value="${r}" ${Number(it.vatRate) === r ? 'selected' : ''}>${r}%</option>`).join('')}</select>${C.assujettiTVA(company()) ? '' : `<span class="small muted taux-regime">Sur tes devis et factures : 0\u00a0%, ton régime ne facture pas de TVA.</span>`}</label>
         <div class="field">${lbl('Unité', 'ed.unit')}<select name="unit" id="cat-unit">${unitOptions(it.unit || '', C.usedUnits(data))}</select></div>
         <label class="check span-2"><input type="checkbox" name="tracked" ${suit.tracked ? 'checked' : ''}> Suivi en stock ${info('stk.tracked')}</label>
         <!-- Cette case vivait À L'INTÉRIEUR du bloc masqué par « Suivi en stock » : quelqu'un qui
@@ -5455,7 +5462,7 @@
           onPick: id => {
             const it = data.catalog.find(c => c.id === id); if (!it) return;
             t.lines.push({ label: it.label, description: it.description || '', qty: 1, unit: it.unit || '',
-              unitPrice: it.unitPrice, unitCost: it.unitCost || '', vatRate: it.vatRate, itemId: it.id });
+              unitPrice: it.unitPrice, unitCost: it.unitCost || '', vatRate: C.tauxPourRegime(company(), it.vatRate), itemId: it.id });
             drawLines();
           }
         });
@@ -5552,7 +5559,10 @@
         const r = Number(c.unitPrice) ? Math.round(m / Number(c.unitPrice) * 1000) / 10 : 0;
         return `<span class="${m <= 0 ? 'warn-text' : ''}">${C.money(m, cur)} <span class="muted">(${pct(r)} %)</span></span>`;
       } },
-      { key: 'vat', label: 'TVA', r: true, val: c => Number(c.vatRate) || 0, get: c => c.vatRate + ' %' },
+      // Chez une entreprise qui ne facture pas de TVA, un article à 19 % sort à 0 % sur ses pièces
+      // (10.14.0) : la colonne dit ce qui s'IMPRIMERA, et le taux de l'article reste lisible au survol.
+      { key: 'vat', label: 'TVA', r: true, val: c => Number(c.vatRate) || 0, get: c => C.assujettiTVA(company()) || !(Number(c.vatRate) > 0) ? c.vatRate + ' %'
+        : `<span title="${h(`Taux de l'article : ${c.vatRate} %. Ton régime (${C.regimeOf(company()).court.toLowerCase()}) ne facture pas de TVA : tes pièces le portent à 0 %.`)}">0 %</span>` },
       { key: 'unit', label: 'Unité', asc: true, val: c => (c.unit || '').toLowerCase(), get: c => h(c.unit || '') },
       { key: 'stock', label: 'Stock', r: true, val: c => c.tracked ? C.stockOf(data, c.id).qty : -Infinity, get: c => {
         if (!c.tracked) return '<span class="muted">—</span>';
@@ -7400,6 +7410,9 @@
       // Côté ACHAT, le taux est celui du FOURNISSEUR, pas le nôtre : une entreprise exonérée paie
       // quand même la TVA de ses fournisseurs. Le réglage `defaultVatRate` ne s'applique donc pas ici.
       lines: [{ label: '', qty: 1, unit: '', unitPrice: 0, vatRate: 19, destination: 'charge', deductible: true }],
+      // Récupérer la TVA suit le régime DU JOUR DE LA PIÈCE (10.14.0) : un forfaitaire la paie et ne
+      // la déduit jamais ; la pièce le retient, un changement de régime ne la réécrit pas.
+      tvaRecuperable: C.assujettiTVA(company()),
       payments: [], attachments: [], createdAt: Date.now()
     };
   }
@@ -7408,7 +7421,7 @@
     if (!p) return;
     // Une copie est une CRÉATION : elle échappait au garde-fou de la licence depuis la 6.4.0.
     if (licenceBlock('Créer une copie de cet achat', 'achats')) return;
-    const copy = { ...deepCopy(p), id: C.uid(), number: '', date: C.today(), createdAt: Date.now(), payments: [], attachments: [], withholdingCertificate: false };
+    const copy = { ...deepCopy(p), id: C.uid(), number: '', date: C.today(), createdAt: Date.now(), payments: [], attachments: [], withholdingCertificate: false, tvaRecuperable: C.assujettiTVA(company()) };
     if (copy.dueDate) copy.dueDate = C.addDays(copy.date, 30);
     data.purchases.push(copy); save(true);
     toast('Copie créée — vérifie le numéro et la date de la facture du fournisseur');
@@ -7495,6 +7508,9 @@
         p.currency = vise.currency || company().currency;
         p.exchangeRate = vise.exchangeRate || 1;
         p.category = vise.category || '';
+        // Et la règle de TVA de la pièce qu'il vise (10.14.0) : un avoir sur un achat fait au forfait
+        // ne retire pas une TVA qu'on n'a jamais déduite, même si l'entreprise est au réel depuis.
+        p.tvaRecuperable = C.tvaRecuperable(vise, company());
         p.subject = (p.kind === 'avoir' ? 'Avoir sur ' : 'Acompte sur ') + (vise.number || vise.subject || 'la facture');
         // Un avoir reprend les LIGNES de la pièce qu'il corrige (10.14.0), comme l'avoir d'une vente
         // (`creditDraftFrom`) : leur taux, leur destination et surtout leur TVA déductible ou non.
@@ -7518,7 +7534,7 @@
       const iArt = parts.indexOf('article');
       const art = iArt > 0 ? data.catalog.find(c => c.id === parts[iArt + 1]) : null;
       if (art) p.lines = [{ label: art.label, itemId: art.id, qty: Number(parts[iArt + 2]) > 0 ? Number(parts[iArt + 2]) : 1, unit: art.unit || '',
-        unitPrice: Number(art.unitCost) || 0, vatRate: Number(art.vatRate) || 0, destination: 'stock', deductible: true }];
+        unitPrice: Number(art.unitCost) || 0, vatRate: C.tauxAchatArticle(art, company()), destination: 'stock', deductible: true }];
       isNew = true;
     } else {
       const stored = purchaseById(parts[0]);
@@ -7529,13 +7545,30 @@
     // 10.12.0 — un avoir fournisseur demandait « Numéro de la facture », « celui écrit sur la facture
     // du fournisseur », et promettait de « récupérer la TVA » — un avoir en RETIRE. Ce que la pièce
     // est se dit dans ses libellés — le titre compris — ; ils suivent la nature quand on la change.
-    const motsDePiece = kind => kind === 'avoir'
+    const motsDeNature = kind => kind === 'avoir'
       ? { titre: 'Nouvel avoir fournisseur', numero: 'Numéro de l\'avoir', invite: 'Celui écrit sur l\'avoir du fournisseur', lignes: 'Saisis au moins le total hors taxes et son taux de TVA : l\'avoir retire cette TVA de celle que tu récupères.' }
       : kind === 'acompte'
         ? { titre: 'Nouvel acompte versé', numero: 'Référence de l\'acompte', invite: 'Facture d\'acompte, reçu, virement…', lignes: 'Saisis au moins le total hors taxes et son taux de TVA : c\'est ce qui permet de récupérer la TVA de l\'acompte.' }
         : kind === 'depense'
           ? { titre: 'Nouvelle dépense', numero: 'Référence du justificatif', invite: 'Ticket, reçu…', lignes: 'Saisis au moins le total hors taxes et son taux de TVA : c\'est ce qui permet de récupérer la TVA.' }
           : { titre: 'Nouvelle facture d\'achat', numero: 'Numéro de la facture', invite: 'Celui écrit sur la facture du fournisseur', lignes: 'Saisis au moins le total hors taxes et son taux de TVA : c\'est ce qui permet de récupérer la TVA.' };
+    // Au forfait ou exonéré, la TVA d'un achat ne se récupère pas (10.14.0) : la phrase qui promettait
+    // de la récupérer se lisait au-dessus d'une case « Déduct. » éteinte.
+    // Une pièce saisie sous un autre régime garde sa règle (7.1.x) — et le DIT, avec le geste qui la
+    // remet d'aplomb si le régime d'alors était une erreur (10.14.0). Un avoir ou un acompte rattaché
+    // suit sa pièce : il n'a pas de règle à lui.
+    const horsRegime = () => C.tvaRecuperable(p, company()) !== C.assujettiTVA(company()) && !(p.achatLie && purchaseById(p.achatLie));
+    const phraseRegle = () => {
+      const t = C.purchaseTotals({ ...p, tvaRecuperable: true }, company());
+      return C.tvaRecuperable(p, company())
+        ? `Saisie quand ton entreprise récupérait la TVA : sa TVA (${C.money(t.base.deductibleVAT, company().currency)}) est récupérée. Si ce régime était une erreur, applique celui d'aujourd'hui.`
+        : `Saisie quand ton entreprise ne récupérait pas la TVA : sa TVA (${C.money(t.base.deductibleVAT, company().currency)}) est dans son coût. Si ce régime était une erreur, applique celui d'aujourd'hui.`;
+    };
+    const motsDePiece = kind => {
+      const m = motsDeNature(kind);
+      if (!C.tvaRecuperable(p, company())) m.lignes = 'Saisis le total hors taxes et le taux de TVA écrits par le fournisseur : ton régime ne récupère pas cette TVA, elle entre dans le coût de l\'achat.';
+      return m;
+    };
     // 10.2.0 : un avoir ou un acompte se RATTACHE à la facture qu'il diminue. Le rattachement est
     // facultatif — un avoir peut arriver avant la facture suivante, un acompte avant la commande —
     // et tant qu'il manque, « À faire » le rappelle.
@@ -7623,6 +7656,7 @@
             ${clos ? '' : `<div class="catalog-pick"><div id="b-cat">${combo({ items: [], placeholder: 'Ajouter depuis le catalogue…', search: 'Rechercher une prestation…' })}</div>
               <button class="btn btn-sm" id="add-line">+ Ligne</button>
               <span class="small muted" id="b-lignes-hint">${h(motsDePiece(p.kind).lignes)}</span></div>`}
+            ${!clos && horsRegime() ? `<div class="banner info mt" id="b-regle"><span id="b-regle-txt">${h(phraseRegle())}</span><button class="btn btn-sm" id="b-regle-ok">${C.assujettiTVA(company()) ? 'Récupérer sa TVA' : 'Ne plus récupérer sa TVA'}</button></div>` : ''}
             <table class="lines-edit buy-lines"><thead><tr><th>Désignation</th><th class="r" style="width:62px">Qté</th><th class="r" style="width:92px">P.U. HT</th><th style="width:76px">TVA</th>
               <th style="width:150px">Destination ${info('buy.destination')}</th><th class="nw" style="width:96px">Déduct. ${info('buy.deductible')}</th><th class="r" style="width:118px">Total HT</th><th></th></tr></thead>
               <tbody id="b-lines"></tbody></table>
@@ -7659,7 +7693,7 @@
     const poserArticle = (i, it) => {
       const l = p.lines[i]; if (!l) return;
       Object.assign(l, { label: it.label, itemId: it.id, unit: it.unit || '',
-        unitPrice: Number(it.unitCost) || Number(it.unitPrice) || 0, vatRate: Number(it.vatRate) || 0 });
+        unitPrice: Number(it.unitCost) || Number(it.unitPrice) || 0, vatRate: C.tauxAchatArticle(it, company()) });
       if (it.tracked) l.destination = 'stock';
       touch(); drawLines();
       const q = $(`tr[data-i="${i}"] input[data-k=qty]`, body); if (q) { q.focus(); q.select(); }
@@ -7671,7 +7705,9 @@
         <td><input type="number" class="num" data-k="unitPrice" value="${l.unitPrice}" step="0.001"></td>
         <td><select data-k="vatRate">${C.VAT_RATES.map(r => `<option value="${r}" ${Number(l.vatRate) === r ? 'selected' : ''}>${r}%</option>`).join('')}</select></td>
         <td><select data-k="destination">${C.LINE_DESTINATIONS.map(([v, lab, d]) => `<option value="${v}" ${(l.destination || 'charge') === v ? 'selected' : ''} title="${h(d)}">${lab}</option>`).join('')}</select></td>
-        <td class="c"><input type="checkbox" data-k="deductible" ${l.deductible !== false ? 'checked' : ''}></td>
+        <td class="c">${C.tvaRecuperable(p, company())
+          ? `<input type="checkbox" data-k="deductible" ${l.deductible !== false ? 'checked' : ''}>`
+          : `<input type="checkbox" disabled title="${h(`Ton régime (${C.regimeOf(company()).court.toLowerCase()}) ne récupère pas la TVA : elle fait partie du coût.`)}">`}</td>
         <td class="total" data-total="${i}"></td>
         <td class="line-tools">${clos ? '' : `
           <button class="btn btn-ghost btn-sm" data-dup="${i}" title="Dupliquer la ligne">⧉</button>
@@ -7712,6 +7748,16 @@
       refresh();
     }
     if ($('#add-line')) $('#add-line').onclick = () => { p.lines.push({ label: '', qty: 1, unit: '', unitPrice: 0, vatRate: 19, destination: 'charge', deductible: true }); touch(); drawLines(); $$('input[data-k=label]', body).pop().focus(); };
+    // Appliquer le régime du jour à une pièce saisie sous un autre : la phrase reste à sa place (elle
+    // dit ce qui vient de changer) — une ligne qui disparaît sous le clic ferait remonter la page.
+    if ($('#b-regle-ok')) $('#b-regle-ok').onclick = () => {
+      $('#b-regle').style.minHeight = $('#b-regle').offsetHeight + 'px';
+      p.tvaRecuperable = C.assujettiTVA(company());
+      touch(); drawLines();
+      if ($('#b-lignes-hint')) $('#b-lignes-hint').textContent = motsDePiece(p.kind).lignes;
+      $('#b-regle-txt').textContent = `Ton régime d'aujourd'hui s'applique à cette pièce${C.tvaRecuperable(p, company()) ? ' : sa TVA se récupère' : ' : sa TVA entre dans son coût'}. Enregistre pour le garder.`;
+      $('#b-regle-ok').hidden = true;
+    };
     // L'éditeur d'achat reprochait ensuite un libellé qui ne correspond à aucun article du catalogue
     // (« cette ligne n'entrera dans aucun stock ») sans jamais avoir offert de le choisir dans la
     // liste. On pose le même sélecteur que dans l'éditeur de document et les modèles.
@@ -7725,7 +7771,7 @@
       onPick: id => {
         const it = data.catalog.find(c => c.id === id); if (!it) return;
         p.lines.push({ label: it.label, qty: 1, unit: it.unit || '',
-          unitPrice: Number(it.unitCost) || Number(it.unitPrice) || 0, vatRate: Number(it.vatRate) || 0,
+          unitPrice: Number(it.unitCost) || Number(it.unitPrice) || 0, vatRate: C.tauxAchatArticle(it, company()),
           itemId: it.id, destination: it.tracked ? 'stock' : 'charge', deductible: true });
         touch(); drawLines();
       }
@@ -7744,7 +7790,8 @@
       $('#b-totals').innerHTML = `<table>
         <tr><td>Total HT</td><td>${C.money(t.totalHT, cur)}</td></tr>
         <tr><td>TVA</td><td>${C.money(t.totalVAT, cur)}</td></tr>
-        ${t.deductibleVAT !== t.totalVAT ? `<tr><td>dont TVA déductible</td><td>${C.money(t.deductibleVAT, cur)}</td></tr>` : ''}
+        ${!C.tvaRecuperable(p, company()) && t.totalVAT ? `<tr><td>dont TVA déductible</td><td>${C.money(0, cur)}</td></tr><tr><td colspan="2" class="small muted"><div class="note-totaux">Ton régime ne récupère pas la TVA : elle entre dans le coût de ce que tu achètes.</div></td></tr>`
+          : t.deductibleVAT !== t.totalVAT ? `<tr><td>dont TVA déductible</td><td>${C.money(t.deductibleVAT, cur)}</td></tr>` : ''}
         ${t.fees ? `<tr><td>Timbre et frais</td><td>${C.money(t.fees, cur)}</td></tr>` : ''}
         ${t.withholding ? `<tr><td>Total TTC</td><td>${C.money(t.totalTTC, cur)}</td></tr><tr><td>Retenue opérée ${pct(t.withholdingRate)}%</td><td>${C.money(-t.withholding, cur)}</td></tr>` : ''}
         <tr class="grand"><td>${p.kind === 'avoir' ? 'Montant de l\'avoir' : p.kind === 'acompte' ? 'Montant de l\'acompte' : 'Net à payer'}</td><td>${C.money(t.netToPay, cur)}</td></tr>
@@ -7849,6 +7896,15 @@
         const lie = C.PURCHASE_LIES.includes(p.kind);
         if (lf) lf.hidden = !lie;
         if (!lie && p.achatLie) { p.achatLie = ''; lieCombo.setValue(''); }
+      }
+      // Rattaché à une autre pièce, l'avoir ou l'acompte prend SA règle de TVA (10.14.0).
+      if (e && e.target && e.target.name === 'achatLie') {
+        const vise = purchaseById(p.achatLie);
+        const regle = vise ? C.tvaRecuperable(vise, company()) : C.assujettiTVA(company());
+        if (regle !== C.tvaRecuperable(p, company())) {
+          p.tvaRecuperable = regle; drawLines();
+          if ($('#b-lignes-hint')) $('#b-lignes-hint').textContent = motsDePiece(p.kind).lignes;
+        }
       }
       if (e && e.target && e.target.name === 'supplierId' && p.supplierId !== appliedSupplier) {
         appliedSupplier = p.supplierId;
@@ -8091,6 +8147,9 @@
       const idx = data.purchases.findIndex(x => x.id === p.id);
       const clean = deepCopy(p);
       if (idx >= 0) data.purchases[idx] = clean; else data.purchases.push(clean);
+      // Un avoir ou un acompte rattaché suit la règle de TVA de sa pièce (10.14.0) — sauf dans un mois
+      // clôturé, qui ne bouge plus.
+      data.purchases.forEach(x => { if (x.achatLie === p.id && !C.isClosedDate(data, x.date)) x.tvaRecuperable = C.tvaRecuperable(p, company()); });
       save(true); untouch();
       return true;
     }
@@ -13247,6 +13306,74 @@
   // Ce qui reste ici est ce que le module ne peut pas savoir : les noms d'onglets et quoi faire
   // quand la recherche ne trouve rien.
 
+  // Ce que le régime fait aux pièces, dit sous le choix du régime (10.14.0). La phrase se DÉDUIT du
+  // régime choisi : écrite au dessin seulement, elle disait « Tu es assujetti » sous un « Forfaitaire »
+  // qu'on venait de choisir — et même après l'avoir enregistré, jusqu'à la page suivante.
+  // Les achats encore ouverts qui suivent l'ancien régime (10.14.0) : la règle figée protège ce qui est
+  // déclaré, mais une erreur de régime doit pouvoir se réparer — dans les mois non clôturés, jamais
+  // au-delà. Le panneau lit le régime ENREGISTRÉ : proposer d'appliquer un régime qu'on n'a pas encore
+  // enregistré ferait deux vérités.
+  function dessinerAchatsHorsRegime() {
+    const zone = $('#regime-achats'); if (!zone) return;
+    const sel = $('#pf select[name=taxRegime]');
+    const r = C.achatsHorsRegime(data, company());
+    if (!r.pieces.length || (sel && sel.value !== C.regimeOf(company()).id)) { zone.innerHTML = ''; return; }
+    zone.innerHTML = `<div class="banner info mt"><span>${h(pl(r.pieces.length, 'achat'))} des mois non clôturés ${r.pieces.length > 1 ? 'suivent' : 'suit'} encore l'ancien régime : ${r.cible ? `${r.pieces.length > 1 ? 'leur' : 'sa'} TVA n'est pas récupérée` : `${r.pieces.length > 1 ? 'ils déduisent' : 'il déduit'} encore ${h(C.money(r.tva, company().currency))} de TVA`}. Si ce régime était une erreur, applique celui d'aujourd'hui.</span><button type="button" class="btn btn-sm" id="regime-achats-ok">Appliquer à ${h(pl(r.pieces.length, 'achat'))}…</button></div>`;
+    $('#regime-achats-ok').onclick = async () => {
+      const r2 = C.achatsHorsRegime(data, company());
+      if (!r2.pieces.length) return dessinerAchatsHorsRegime();
+      const ok = await confirmDialog(`${pl(r2.pieces.length, 'achat')} des mois non clôturés ${r2.cible ? 'récupéreront leur TVA' : 'ne récupéreront plus leur TVA'} : ${C.money(r2.tva, company().currency)} de TVA déductible ${r2.cible ? 'en plus' : 'en moins'} sur ${r2.pieces.length > 1 ? 'leurs mois' : 'son mois'}, ${r2.cible ? 'retirée' : 'ajoutée'} au coût de ces achats.\n\nLes mois clôturés ne bougent pas. Si la TVA d'un de ces mois est déjà déclarée, la déclaration changerait : vois-le avec ton comptable avant.`, 'Appliquer mon régime', false, { titre: 'Appliquer ton régime à ces achats ?' });
+      if (!ok) return;
+      const ids = new Set(r2.pieces.map(x => x.id));
+      data.purchases.forEach(x => { if (ids.has(x.id)) x.tvaRecuperable = r2.cible; });
+      save(true);
+      toast(`${pl(r2.pieces.length, 'achat')} ${r2.pieces.length > 1 ? 'suivent' : 'suit'} maintenant ton régime`);
+      dessinerAchatsHorsRegime();
+    };
+  }
+  // Le régime et le taux tels qu'ils sont CHOISIS à l'écran, avant d'enregistrer (9.4.2). Un taux
+  // grisé n'est pas un choix : c'est celui des réglages qui compte.
+  function regimeChoisi() {
+    const sel = $('#pf select[name=taxRegime]'), tv = $('#pf select[name=defaultVatRate]');
+    const co = { ...company(), taxRegime: sel ? sel.value : company().taxRegime };
+    if (tv && !tv.disabled) co.defaultVatRate = tv.value;
+    return co;
+  }
+  // Les articles du catalogue à 0 % quand l'entreprise facture la TVA (10.14.0) : nés au forfait, ils
+  // faisaient naître des lignes sans TVA après le passage au réel. Un article peut aussi être vraiment
+  // exonéré : la phrase le dit, et le geste ne se fait qu'à la demande, avec son « Annuler ». Elle lit
+  // le régime et le taux CHOISIS : c'est au moment où l'on passe au réel qu'il faut le voir.
+  function dessinerCatalogueSansTva() {
+    const zone = $('#regime-catalogue'); if (!zone) return;
+    const co = regimeChoisi();
+    const liste = C.articlesSansTva(data, co);
+    if (!liste.length) { zone.innerHTML = ''; return; }
+    const n = liste.length, taux = C.defaultVat(co), plus = n > 1;
+    zone.innerHTML = `<div class="regime-cat small mt"><span>${h(pl(n, 'article'))} de ton catalogue ${plus ? 'sont' : 'est'} à 0\u00a0% de TVA : une ligne tirée ${plus ? 'de l\'un d\'eux' : 'de lui'} n'en porte pas. C'est juste s'${plus ? 'ils sont exonérés' : 'il est exonéré'} ; s'${plus ? 'ils sont nés' : 'il est né'} quand ton entreprise ne facturait pas de TVA, passe-${plus ? 'les' : 'le'} au taux de tes nouvelles lignes.</span><button type="button" class="btn btn-sm" id="regime-cat-ok">Passer à ${taux}\u00a0%…</button></div>`;
+    $('#regime-cat-ok').onclick = async () => {
+      const co2 = regimeChoisi();
+      const l2 = C.articlesSansTva(data, co2);
+      if (!l2.length) return dessinerCatalogueSansTva();
+      const t2 = C.defaultVat(co2);
+      const noms = l2.slice(0, 8).map(x => '• ' + (x.label || 'Sans nom')).join('\n') + (l2.length > 8 ? `\n… et ${pl(l2.length - 8, 'autre')}` : '');
+      const ok = await confirmDialog(`${pl(l2.length, 'article')} de ton catalogue ${l2.length > 1 ? 'passeront' : 'passera'} de 0\u00a0% à ${t2}\u00a0% de TVA :\n\n${noms}\n\nLes lignes déjà posées sur tes devis et factures ne changent pas : seules les prochaines lignes tirées du catalogue porteront ce taux.`, `Passer à ${t2} %`, false, { titre: `Passer ${l2.length > 1 ? 'ces articles' : 'cet article'} à ${t2}\u00a0% de TVA ?` });
+      if (!ok) return;
+      const avant = new Map(l2.map(x => [x.id, x.vatRate]));
+      l2.forEach(x => { x.vatRate = t2; });
+      save(true);
+      toastUndo(`${pl(l2.length, 'article')} à ${t2}\u00a0% de TVA`, () => {
+        data.catalog.forEach(x => { if (avant.has(x.id)) x.vatRate = avant.get(x.id); });
+        save(true); dessinerCatalogueSansTva();
+      });
+      dessinerCatalogueSansTva();
+    };
+  }
+  function noteRegime(c) {
+    return C.assujettiTVA(c)
+      ? '<p class="small muted mt">Tu es assujetti : tes documents portent une colonne TVA et un total de TVA, tu récupères la TVA de tes achats, et la page Comptabilité calcule ce que tu dois déclarer.</p>'
+        + (C.defaultVat(c) === 0 ? '<p class="small mt"><strong>Tes nouvelles lignes naissent à 0\u00a0% de TVA.</strong> C\'est juste si tu vends surtout sans TVA ; sinon, choisis ton taux dans « TVA des nouvelles lignes » — un taux resté à 0\u00a0% d\'un ancien régime ferait des factures sans la TVA que tu dois collecter.</p>' : '')
+      : `<p class="small mt"><strong>Tu n'es pas assujetti à la TVA.</strong> Tes documents ne portent donc ni colonne TVA ni total de TVA : la mention « ${h(C.mentionTVA(c))} » s'imprime à la place. Le taux des nouvelles lignes est forcé à 0 % — c'est pour ça qu'il est grisé. La TVA que tu paies à tes fournisseurs ne se récupère pas : elle entre dans le coût de tes achats.</p>`;
+  }
   routes.parametres = async () => {
     const c = company();
     const path = await bridge.dataPath();
@@ -13290,10 +13417,10 @@
           <label class="field">${lbl('Régime fiscal', 'co.taxRegime')}<select name="taxRegime">${C.REGIMES.map(r => `<option value="${r.id}" ${C.regimeOf(c).id === r.id ? 'selected' : ''}>${h(r.label)}</option>`).join('')}</select></label>
           <label class="field">${lbl('TVA des nouvelles lignes', 'doc.defaultVat')}<select name="defaultVatRate" ${C.assujettiTVA(c) ? '' : 'disabled'}>${C.VAT_RATES.map(v => `<option value="${v}" ${C.defaultVat(c) === v ? 'selected' : ''}>${v} %</option>`).join('')}</select></label>
         </div>
-        ${C.assujettiTVA(c)
-          ? '<p class="small muted mt">Tu es assujetti : tes documents portent une colonne TVA et un total de TVA, et la page Comptabilité calcule ce que tu dois déclarer.</p>'
-          : `<p class="small mt"><strong>Tu n'es pas assujetti à la TVA.</strong> Tes documents ne portent donc ni colonne TVA ni total de TVA : la mention « ${h(C.mentionTVA(c))} » s'imprime à la place. Le taux des nouvelles lignes est forcé à 0 % — c'est pour ça qu'il est grisé.</p>`}
-        <p class="small muted mt">Changer de régime ne réécrit <b>aucune</b> pièce déjà émise : une facture qui porte de la TVA la garde pour toujours.</p></div>
+        <div id="regime-note">${noteRegime(c)}</div>
+        <div id="regime-achats"></div>
+        <div id="regime-catalogue"></div>
+        <p class="small muted mt">Changer de régime ne réécrit <b>aucune</b> pièce déjà émise : une facture qui porte de la TVA la garde pour toujours. Un achat déjà saisi non plus : sa TVA reste récupérée, ou non, comme le jour où tu l'as saisi.</p></div>
         ${panneau('p-banque')}
           <p class="small muted mb">Le RIB s'affiche sur les factures, dans le bloc « Règlement ». C'est ce que ton client copie pour te payer : relis-le deux fois.</p>
           <div class="grid-2">
@@ -13622,6 +13749,11 @@
       for (const el of nums) { const r = numEssai(el); if (!r.ok) { refus(el, r.motif); return false; } }
       nums.forEach(el => { C.poserNumerotation(data, el.dataset.num, anneeNum, el.value); el.dataset.avant = el.value.trim(); });
       const v = formValues($('#pf'));
+      // Le taux des nouvelles lignes d'une entreprise qui ne facture pas de TVA est AFFICHÉ à 0 %,
+      // grisé : c'est ce que ses lignes porteront, pas un réglage qu'elle a choisi (10.14.0). Le
+      // ranger écrasait son vrai taux — et le jour où elle passait au réel, chaque ligne naissait à
+      // 0 % : la TVA collectée manquait sur ses factures, donc sur sa déclaration.
+      if (!C.assujettiTVA({ ...data.company, ...v })) delete v.defaultVatRate;
       const et = {}, eten = {};
       Object.keys(v).forEach(k => { const m = k.match(/^(et|eten)_(\w+)_(subject|body)$/); if (m) { const bag = m[1] === 'et' ? et : eten; bag[m[2]] = bag[m[2]] || {}; bag[m[2]][m[3]] = v[k]; delete v[k]; } });
       Object.assign(data.company, v, { emailTemplates: et, emailTemplatesEn: eten });
@@ -13646,8 +13778,29 @@
       // La licence est attachée au matricule fiscal : une fiche société modifiée se revérifie.
       rafraichirLicence().then(() => { drawLicencePanel(); redessinerBarre(); });
       setDirty = false; $('#save-bar').hidden = true;
+      dessinerAchatsHorsRegime();
       return true;
     };
+    // Le régime choisi se lit tout de suite, AVANT d'enregistrer (9.4.2) : la phrase qui dit ce qu'il
+    // fait, et le taux des nouvelles lignes, grisé à 0 % quand il ne facture pas de TVA.
+    const selRegime = $('#pf select[name=taxRegime]');
+    if (selRegime) selRegime.addEventListener('change', () => {
+      const co = { ...data.company, taxRegime: selRegime.value };
+      if ($('#regime-note')) $('#regime-note').innerHTML = noteRegime(co);
+      const tv = $('#pf select[name=defaultVatRate]');
+      // Au réel, le taux retrouve celui des réglages ; sinon, 0 % et grisé — la même règle que `defaultVat`.
+      if (tv) { tv.disabled = !C.assujettiTVA(co); tv.value = String(C.defaultVat(co)); }
+      dessinerCatalogueSansTva();
+    });
+    // Le taux choisi change ce que dit la note (des lignes à 0 %) et ce que le catalogue peut recevoir.
+    const selTaux = $('#pf select[name=defaultVatRate]');
+    if (selTaux) selTaux.addEventListener('change', () => {
+      if ($('#regime-note')) $('#regime-note').innerHTML = noteRegime(regimeChoisi());
+      dessinerCatalogueSansTva();
+    });
+    dessinerCatalogueSansTva();
+    dessinerAchatsHorsRegime();
+    if (selRegime) selRegime.addEventListener('change', dessinerAchatsHorsRegime);
     setGuard({ dirty: () => setDirty, what: 'les paramètres', save: applySettings, discard: applyTheme });
     $('#save').onclick = () => { if (applySettings()) toast('Paramètres enregistrés'); };
     // « Annuler », collé à « Enregistrer », jetait sans un mot tout ce qui venait d'être tapé —
@@ -15594,7 +15747,7 @@
       const cab = v.type === 'cabinet';
       const produit = cab ? `SkanFact Cabinet — ${pl(Number(v.dossiers_hors) || 0, 'dossier')} hors SkanFact` : `SkanFact ${offreLabelDe(v.offre)}`;
       inv.lines = [{ label: `Licence ${produit} — ${fin}`, description: `Licence n° ${v.licence_id}, ${fin}`,
-        qty: 1, unit: '', unitPrice: Number(v.montant_ht) || 0, unitCost: '', vatRate: v.tva !== null && v.tva !== undefined && v.tva !== '' ? Number(v.tva) : C.defaultVat(company()) }];
+        qty: 1, unit: '', unitPrice: Number(v.montant_ht) || 0, unitCost: '', vatRate: C.tauxPourRegime(company(), v.tva !== null && v.tva !== undefined && v.tva !== '' ? Number(v.tva) : C.defaultVat(company())) }];
       Object.assign(inv, { clientId: client.id, subject: `Licence ${cab ? 'SkanFact Cabinet' : 'SkanFact ' + offreLabelDe(v.offre)}`,
         discountRate: Math.min(100, Math.max(0, Number(v.remise) || 0)), withholdingRate: clientWithholding(client.id),
         licenceId: v.licence_id, venteConsoleId: v.id });
@@ -15906,7 +16059,7 @@
           const produit = type === 'cabinet' ? `SkanFact Cabinet — ${pl(quota, 'dossier')} hors SkanFact` : `SkanFact ${offreLabelDe(r.offre)}`;
           const label = it ? it.label : `Licence ${produit} — ${fin}`;
           inv.lines = [{ label, description: `Licence n° ${r.id}${r.exp ? ', valable jusqu\'au ' + C.fmtDate(r.exp) : ', sans limite de durée'}`,
-            qty: 1, unit: (it && it.unit) || '', unitPrice: Number(v.prix), unitCost: (it && it.unitCost) || '', vatRate: Number(v.tva), ...(it ? { itemId: it.id } : {}) }];
+            qty: 1, unit: (it && it.unit) || '', unitPrice: Number(v.prix), unitCost: (it && it.unitCost) || '', vatRate: C.tauxPourRegime(company(), Number(v.tva)), ...(it ? { itemId: it.id } : {}) }];
           Object.assign(inv, { clientId: client.id, subject: `Licence ${type === 'cabinet' ? 'SkanFact Cabinet' : 'SkanFact ' + offreLabelDe(r.offre)}`,
             discountRate: type !== 'cabinet' && v.parrain ? Math.min(100, Math.max(0, Number(v.remise) || 0)) : 0, withholdingRate: clientWithholding(client.id), licenceId: r.id });
           data.documents.push(inv);
@@ -16079,7 +16232,7 @@
           inv.currency = company().currency; inv.exchangeRate = '';
           inv.lines = [{ label: `Passage à ${pl(q, 'dossier')} hors SkanFact`,
             description: `Différence depuis ${pl(actuel, 'dossier')}${pr.jours == null ? '' : `, au prorata des ${pl(pr.jours, 'jour')} restants`}${lic.exp ? ' jusqu\'au ' + C.fmtDate(lic.exp) : ''}`,
-            qty: 1, unit: '', unitPrice: pr.montant, unitCost: '', vatRate: Number(lic.tva) || C.defaultVat(company()) }];
+            qty: 1, unit: '', unitPrice: pr.montant, unitCost: '', vatRate: C.tauxPourRegime(company(), Number(lic.tva) || C.defaultVat(company())) }];
           Object.assign(inv, { clientId: lic.clientId, subject: `Changement de quota SkanFact Cabinet — ${pl(q, 'dossier')}`,
             discountRate: 0, withholdingRate: clientWithholding(lic.clientId), licenceId: r.id });
           data.documents.push(inv);
@@ -16143,7 +16296,7 @@
           inv.currency = company().currency; inv.exchangeRate = '';
           inv.lines = [{ label: `Passage à l'offre ${offreLabelDe(r.offre)}`,
             description: `Différence depuis ${offreLabelDe(lic.offre)}${pr.jours == null ? '' : `, au prorata des ${pl(pr.jours, 'jour')} restants`}${lic.exp ? ' jusqu\'au ' + C.fmtDate(lic.exp) : ''}`,
-            qty: 1, unit: '', unitPrice: pr.montant, unitCost: '', vatRate: Number(lic.tva) || C.defaultVat(company()) }];
+            qty: 1, unit: '', unitPrice: pr.montant, unitCost: '', vatRate: C.tauxPourRegime(company(), Number(lic.tva) || C.defaultVat(company())) }];
           Object.assign(inv, { clientId: lic.clientId, subject: `Changement d'offre SkanFact — ${offreLabelDe(r.offre)}`,
             discountRate: 0, withholdingRate: clientWithholding(lic.clientId), licenceId: r.id });
           data.documents.push(inv);

@@ -636,7 +636,76 @@
   }
 
   // Une ligne de document neuve, avec le bon taux. Il y avait huit `vatRate: 19` écrits à la main.
-  const newLine = (company, extra) => ({ label: '', description: '', qty: 1, unit: '', unitPrice: 0, vatRate: defaultVat(company), ...(extra || {}) });
+  const newLine = (company, extra) => {
+    const l = { label: '', description: '', qty: 1, unit: '', unitPrice: 0, vatRate: defaultVat(company), ...(extra || {}) };
+    l.vatRate = tauxPourRegime(company, l.vatRate);
+    return l;
+  };
+  // Le taux d'une ligne qui NAÎT d'un article du catalogue (10.14.0). Le catalogue garde le taux
+  // d'avant un changement de régime : un forfaitaire qui ajoutait un article à 19 % facturait de la
+  // TVA qu'il n'a pas le droit de facturer — c'est la règle de `defaultVat`, que le catalogue
+  // contournait. Une ligne déjà écrite garde le sien (7.22.0).
+  function tauxPourRegime(company, rate) {
+    return assujettiTVA(company || {}) ? rate : 0;
+  }
+  // La TVA d'un ACHAT n'est récupérable que pour un assujetti (10.14.0). Un forfaitaire ou un exonéré
+  // paie la TVA de ses fournisseurs et ne la déduit jamais : elle fait partie du coût. SkanFact la
+  // déduisait quand même — 4366 débité, charge au HT, résultat trop beau de toute la TVA payée. La
+  // pièce retient sa règle (`tvaRecuperable`, posée à la création et figée par la migration) : un
+  // changement de régime ne réécrit pas les achats déjà déclarés (la règle 7.1.x des pièces).
+  function tvaRecuperable(purchase, company) {
+    const v = (purchase || {}).tvaRecuperable;
+    return typeof v === 'boolean' ? v : assujettiTVA(company || {});
+  }
+  // La TVA d'une LIGNE d'achat entre-t-elle dans son coût ? Oui si la ligne est marquée non
+  // déductible, ET si la pièce entière ne récupère pas la TVA. Le stock et le montant d'un bien
+  // lisaient la case de la ligne seule : l'achat d'un forfaitaire entrait au 607 TVA comprise et
+  // au stock hors TVA — deux valeurs pour la même marchandise.
+  function tvaNonDeductible(line, purchase, company) {
+    return (line || {}).deductible === false || !tvaRecuperable(purchase, company);
+  }
+  // Le taux d'une ligne d'ACHAT tirée du catalogue (10.14.0). Chez une entreprise qui ne facture pas
+  // de TVA, le catalogue porte le taux FORCÉ de ses ventes (0 %) — pas celui de son fournisseur, qui
+  // lui facture la TVA quand même. Recopier ce 0 sur l'achat oubliait la TVA payée : le coût de
+  // l'article sortait hors taxe, alors qu'au forfait il la comprend. On propose le taux ordinaire,
+  // celui qu'une ligne d'achat vide propose déjà ; la ligne reste modifiable, et c'est le taux écrit
+  // par le fournisseur qui fait foi.
+  function tauxAchatArticle(item, company) {
+    const r = Number((item || {}).vatRate) || 0;
+    if (r > 0 || assujettiTVA(company || {})) return r;
+    return defaultVat({ ...(company || {}), taxRegime: 'reel' }) || defaultVat({ taxRegime: 'reel' });
+  }
+  // Les articles du catalogue à 0 % chez une entreprise qui facture la TVA (10.14.0). Tant qu'elle
+  // était au forfait, chaque article naissait à 0 % — c'était le taux de ses ventes. Le jour où elle
+  // passe au réel, ces articles faisaient naître des lignes sans TVA : la TVA collectée manquait sur
+  // chaque facture tirée du catalogue, donc sur la déclaration, sans un mot. Un article à 0 % peut
+  // aussi être vraiment exonéré : on le SIGNALE, avec le geste qui le corrige, on ne le change pas.
+  // Rien à dire quand le taux des nouvelles lignes est lui-même 0 : il n'y a pas de taux à proposer.
+  function articlesSansTva(data, company) {
+    if (!assujettiTVA(company || {}) || !(defaultVat(company) > 0)) return [];
+    return ((data || {}).catalog || []).filter(it => !(Number(it.vatRate) > 0));
+  }
+  // Les achats qui ne suivent pas le régime du jour et qu'on peut encore corriger (10.14.0) : figer la
+  // règle protège une pièce déjà déclarée, mais quelqu'un qui avait laissé « réel » par erreur doit
+  // pouvoir remettre ses achats d'aplomb. Jamais dans un mois clôturé (6.0.0). Un avoir ou un acompte
+  // rattaché suit SA pièce : il n'est corrigé que si elle l'est. `tva` : la TVA déductible qui change.
+  function achatsHorsRegime(data, company) {
+    const cible = assujettiTVA(company || {});
+    const tous = (data.purchases || []).filter(p => tvaRecuperable(p, company) !== cible && !isClosedDate(data, p.date));
+    const candidats = new Set(tous.map(p => p.id));
+    const byId = new Map((data.purchases || []).map(p => [p.id, p]));
+    const pieces = tous.filter(p => !(p.achatLie && byId.has(p.achatLie)) || candidats.has(p.achatLie));
+    // La TVA qui change se lit par la MÊME fonction que la déclaration, avant et après : additionner
+    // les pièces une à une comptait un avoir dans le mauvais sens et la TVA qu'un acompte avait déjà
+    // déduite — l'annonce disait 2 955 DT quand la déclaration bougeait de 2 720.
+    if (!pieces.length) return { pieces, tva: 0, cible };
+    const dates = pieces.map(p => String(p.date || '')).filter(Boolean).sort();
+    const per = { from: dates[0] || '2000-01-01', to: dates[dates.length - 1] || '2999-12-31' };
+    const ids = new Set(pieces.map(p => p.id));
+    const apres = { ...data, purchases: (data.purchases || []).map(p => ids.has(p.id) ? { ...p, tvaRecuperable: cible } : p) };
+    const tva = round3(Math.abs(vatReturn(apres, company, per).deductible - vatReturn(data, company, per).deductible));
+    return { pieces, tva, cible };
+  }
 
   const moduleById = id => MODULES.find(m => m.id === id) || null;
   const pageById = id => PAGES.find(p => p.id === id) || null;
@@ -1645,6 +1714,9 @@
       p.achatLie = PURCHASE_LIES.includes(p.kind) ? String(p.achatLie || '') : '';
       p.withholdingRate = Number(p.withholdingRate) || 0;
       p.fees = Number(p.fees) || 0;
+      // La TVA récupérable se FIGE sur la pièce (10.14.0) : un achat d'avant la règle prend le régime
+      // du jour une fois, puis ne bouge plus quand le régime change.
+      if (typeof p.tvaRecuperable !== 'boolean') p.tvaRecuperable = assujettiTVA(data.company || {});
       // La devise d'un achat (10.1.0). Un achat d'avant n'en portait pas : on lui pose celle de la
       // société avec un taux de 1, donc ses chiffres ne bougent pas d'un millime. Le faire ici et
       // pas à la lecture évite qu'un achat sans devise traverse un écran qui, lui, en attendrait
@@ -1873,6 +1945,7 @@
   // Totaux d'un achat. Même moteur que les ventes, deux différences : pas de remise globale (elle est
   // déjà dans le prix du fournisseur) et la TVA peut être non déductible ligne par ligne.
   function purchaseTotals(purchase, company) {
+    const recuperable = tvaRecuperable(purchase, company);
     const lines = (purchase.lines || []).map(l => {
       const qty = Number(l.qty) || 0;
       const unit = Number(l.unitPrice) || 0;
@@ -1883,7 +1956,8 @@
         ...l, qty, unitPrice: unit, vatRate: rate, ht, vat, ttc: round3(ht + vat),
         destination: LINE_DESTINATIONS.some(d => d[0] === l.destination) ? l.destination : 'charge',
         // TVA non déductible : voiture de tourisme, cadeaux, réception… À VÉRIFIER avec le comptable.
-        deductible: l.deductible !== false
+        // Et jamais pour une entreprise qui ne récupère pas la TVA (10.14.0).
+        deductible: recuperable && l.deductible !== false
       };
     });
     const totalHT = round3(lines.reduce((s, l) => s + l.ht, 0));
@@ -2589,7 +2663,7 @@
         out.push({ id: `buy-${p.id}-${i}`, date: p.date, itemId: c.id, label: c.label, qty,
           // TVA non déductible comprise : c'est ce que la marchandise a coûté, et ce que l'écriture
           // porte au 607 (10.14.0).
-          unitCost: toBase(p, (Number(l.unitPrice) || 0) * (l.deductible === false ? 1 + (Number(l.vatRate) || 0) / 100 : 1), data.company || {}),
+          unitCost: toBase(p, (Number(l.unitPrice) || 0) * (tvaNonDeductible(l, p, data.company) ? 1 + (Number(l.vatRate) || 0) / 100 : 1), data.company || {}),
           source: 'achat', ref: p.number || '', docId: p.id, note: '', rang: 1, ts: Number(p.createdAt) || 0 });
       });
     });
@@ -3821,7 +3895,7 @@
         // en DINARS (un bien payé en euros entrait à son montant en euros) et TVA non déductible
         // comprise. Sinon le 22 et le tableau des biens divergent dès le premier achat en devise.
         const ht = (Number(l.qty) || 0) * (Number(l.unitPrice) || 0);
-        const nd = l.deductible === false ? ht * (Number(l.vatRate) || 0) / 100 : 0;
+        const nd = tvaNonDeductible(l, p, data.company) ? ht * (Number(l.vatRate) || 0) / 100 : 0;
         const amount = round3(toBase(p, round3(ht) + round3(nd), data.company || {}));
         if (amount <= 0) return;
         out.push({ purchaseId: p.id, lineIndex: i, label: l.label || '', amount, date: p.date, supplierId: p.supplierId, number: p.number || '' });
@@ -8817,7 +8891,7 @@
     amountToWords, intToWords, intToWordsEn, documentHtml, fitToPage, paginate, pageCount,
     MODULES, PAGES, moduleById, pageById, pageTitle, moduleCount, moduleCounts, modulesRevenus, moduleOn, moduleWhy, navPages, familleNavOuverte, FAMILLES_OUVERTES_AU_DEBUT,
     sousModuleOn, sousModuleById, sousModules, OPTION_LABELS,
-    MODULES_PAR_ACTIVITE, modulesSuggeres, wipeData, rendreLesEmprunts, estDemo, exemplePerime, verdictMotDePasse, firstSteps, reussites, liste, defaultVat, seuilRetenue, newLine,
+    MODULES_PAR_ACTIVITE, modulesSuggeres, wipeData, rendreLesEmprunts, estDemo, exemplePerime, verdictMotDePasse, firstSteps, reussites, liste, defaultVat, seuilRetenue, newLine, tauxPourRegime, tvaRecuperable, tvaNonDeductible, achatsHorsRegime, tauxAchatArticle, articlesSansTva,
     contrasteSurBlanc, lisibiliteMarque, ACCENTS_PROPOSES, marquePersonnalisee,
     canalDe, estBeta, pastilleLicence, empreinteCabinet, licencesDuCabinet,
     LICENCE_MOTIFS, prorataOffre, licenceSuivi, licencesAFaire,

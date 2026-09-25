@@ -69,6 +69,8 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Une **annonce** se calcule par les MÊMES constructeurs que ce qu'elle annonce | 10.12.0 — E-02, le solde d'acompte faux de deux timbres |
 | Une fonction qui rend un montant **NATIF** piège chaque appelant qui additionne : la couverture se fait par appelant, jamais par fonction | 10.12.0 — E-08, la prévision en euros ; 10.1.0 |
 | Un **argument facultatif** qui change un montant piège chaque appelant qui l'oublie : il se tient appel par appel | 10.14.0 — `purchaseBalance` sans `data`, un trop-payé prérempli |
+| Un **régime qui ne récupère pas la TVA** en fait un coût, figé sur chaque achat ; sa réparation ne touche que les mois non clôturés, et s'annonce par la fonction qui déclare | 10.14.0 — `tvaRecuperable`, `achatsHorsRegime` |
+| Un **taux affiché grisé** n'est pas un taux choisi : un formulaire qui lit les champs désactivés le range quand même | 10.14.0 — le 0 % du forfait rangé, des factures sans TVA au passage au réel ; un geste se teste aller ET retour |
 | Une pièce qui en **diminue une autre** le fait dans la devise de celle qu'elle diminue ; à un **autre taux**, l'écart part au change (655/755) | 10.14.0 — l'avoir de 300 DT qui retranchait 300 € ; les 15 DT restés au 411 |
 | Un **rangement d'états** écrit deux fois a la même faute deux fois : un emprunt dans les capitaux propres, en tombant juste | 10.14.0 — `groupesDesEtats` ; une rubrique ne contredit pas le nom que le plan donne à ses comptes |
 | Une règle posée d'un côté du moteur (l'écriture) se cherche de l'autre (la déclaration) : la TVA d'un **acompte** se déduit une fois | 10.14.0 — septembre annonçait un crédit au lieu de 92 DT à reverser |
@@ -7960,6 +7962,34 @@ aussi l'app cabinet ») — les invariants ont gagné le stock, le résultat, le
   lecteurs, quatre filtres, et le cinquième (la page de la facture) affichait la dette en orange. La
   règle vit maintenant dans la fonction (`annulee` → reste 0) ; les filtres restent, ils ne suffisaient
   pas. **Avant de corriger un instrument, vérifier qu'il n'a pas raison.**
+- **Un régime qui ne récupère pas la TVA en fait un COÛT, et la règle se fige sur la pièce.** Au
+  forfait, SkanFact déduisait quand même la TVA de chaque achat (4366, résultat hors taxes, 401 court
+  de la TVA). `tvaRecuperable(p, company)` est rangé sur chaque achat à sa création (et figé par la
+  migration pour l'existant, 7.1.x) : changer de régime ne réécrit pas un mois déclaré.
+  `tvaNonDeductible` réunit la case de la ligne ET la règle de la pièce — les quatre lecteurs (coût,
+  stock, bien proposé, écritures) passent par elle. Un avoir ou un acompte suit la règle de la pièce
+  qu'il vise, sinon il retire une TVA que la pièce n'a jamais déduite.
+- **Une règle figée doit pouvoir se RÉPARER, et seulement là où rien n'est déclaré.** Quelqu'un qui
+  avait laissé « réel » par erreur doit pouvoir corriger — `achatsHorsRegime` ne propose que les mois
+  non clôturés, et le bandeau d'une pièce fait la même chose pour elle seule. **L'annonce se calcule
+  par la fonction qui déclare** (`vatReturn` avant/après) : la somme des TVA des pièces disait
+  2 955,640 DT pour une déclaration qui bougeait de 2 720,040 — elle ignorait ce que l'acompte avait
+  déjà déduit.
+- **Un taux AFFICHÉ grisé n'est pas un taux choisi — et le formulaire le range quand même.**
+  `formValues` lit les champs désactivés : enregistrer les Paramètres au forfait écrasait le taux des
+  nouvelles lignes par le 0 % forcé qu'il affichait, et l'assistant faisait pareil. Le jour du passage
+  au réel, chaque ligne naissait à 0 % : de la TVA collectée manquante, sur la déclaration, sans un
+  mot. `applySettings` jette `defaultVatRate` quand le régime ne facture pas de TVA, l'assistant ne le
+  range qu'au réel. Trouvé en REVENANT au réel à la souris après un test au forfait — un aller seul ne
+  montrait rien. **Un geste se teste aller ET retour.** Et ce que l'ancien défaut a laissé (un 0 %
+  rangé, des articles nés à 0 %) ne se devine pas : les Paramètres le DISENT, au régime et au taux
+  CHOISIS (`regimeChoisi`), et proposent le geste — un article vraiment exonéré garde son 0 %.
+- **Une valeur forcée pour les ventes n'est pas celle des achats.** Au forfait, le catalogue porte
+  0 % (le taux de ses ventes) ; recopié sur un achat, il faisait entrer l'article hors taxes alors
+  que le fournisseur facture la TVA. `tauxAchatArticle` propose le taux ordinaire aux trois chemins
+  d'un achat tiré du catalogue.
+- **Un écran dit le chiffre qui s'imprimera** : au forfait, la colonne TVA du catalogue affichait
+  19 % pour des articles qui sortent à 0 %. Elle affiche 0 %, le taux de l'article au survol.
 
 ## Pistes pour la suite (non demandées)
 

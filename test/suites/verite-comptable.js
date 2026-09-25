@@ -1381,7 +1381,7 @@ t('10.14.0 : un règlement en devise passe à la banque au taux du jour — le t
 // ligne à 13 % et aucune facture annulée : un défaut qui ne vit que là passait tous les invariants.
 function scenarioTaux() {
   const d = base0({
-    company: { ...CO, regime: 'reel' },
+    company: { ...CO, taxRegime: 'reel' },
     accounts: [{ id: 'b', name: 'Banque', kind: 'banque', opening: 10000, openingDate: '2026-01-01', isDefault: true }],
     clients: [{ id: 'c1', name: 'Hôtel du Lac' }], suppliers: [{ id: 's1', name: 'Grossiste Nord' }],
     catalog: [{ id: 'art', label: 'Lampe', unitPrice: 100, unitCost: 50, vatRate: 19, unit: 'pièce', tracked: true, initialQty: 10, initialCost: 50, initialDate: '2026-01-01' }],
@@ -1512,5 +1512,168 @@ t('10.14.0 : la fenêtre d\'un règlement en devise demande le taux du jour, et 
     assert.ok(/if \(\$\('\[name=exchangeRate\]', root\) && !\(Number\(v\.exchangeRate\) > 0\)\) return refus\(/.test(z), `${nom} accepte un taux invalide`);
     assert.ok(/if \(\$\('\[name=exchangeRate\]', root\)\) champs\.exchangeRate = Number\(v\.exchangeRate\);/.test(z), `${nom} n'enregistre pas le taux du jour`);
   });
+});
+// Une entreprise au forfait (ou exonérée) paie la TVA de ses fournisseurs et ne la déduit jamais :
+// elle fait partie du coût. SkanFact la déduisait quand même — le 4366 débité, la charge au HT, le
+// résultat trop beau de toute la TVA payée, et le stock et les biens entrés hors TVA.
+function scenarioForfait() {
+  return core.migrateData(base0({
+    company: { ...CO, taxRegime: 'forfaitaire' },
+    accounts: [{ id: 'b', name: 'Banque', kind: 'banque', opening: 5000, openingDate: '2026-01-01', isDefault: true }],
+    clients: [{ id: 'c', name: 'Client' }], suppliers: [{ id: 's', name: 'Fournisseur' }],
+    catalog: [{ id: 'it', label: 'Robinet', unitPrice: 100, unitCost: 60, vatRate: 19, unit: 'pièce', tracked: true, initialQty: 0 }],
+    documents: [{ id: 'F', type: 'facture', number: 'FAC-2026-001', status: 'envoyée', clientId: 'c', date: '2026-03-10', dueDate: '2026-04-10', createdAt: 3, issuedTs: 3, payments: [],
+      lines: [{ label: 'Robinet', itemId: 'it', qty: 2, unit: 'pièce', unitPrice: 100, vatRate: 0 }] }],
+    purchases: [
+      { id: 'A', kind: 'facture', supplierId: 's', number: 'X-1', date: '2026-03-02', createdAt: 1, payments: [{ id: 'pa', date: '2026-03-15', amount: 1190, accountId: 'b' }],
+        lines: [{ label: 'Outillage', qty: 1, unitPrice: 1000, vatRate: 19, destination: 'charge', deductible: true }] },
+      { id: 'S', kind: 'facture', supplierId: 's', number: 'X-2', date: '2026-03-05', createdAt: 2, payments: [],
+        lines: [{ label: 'Robinet', itemId: 'it', qty: 5, unit: 'pièce', unitPrice: 60, vatRate: 19, destination: 'stock', deductible: true }] },
+      { id: 'B', kind: 'facture', supplierId: 's', number: 'X-3', date: '2026-02-05', createdAt: 1, payments: [],
+        lines: [{ label: 'Machine', qty: 1, unitPrice: 1000, vatRate: 19, destination: 'immobilisation', deductible: true }] }]
+  }));
+}
+t('10.14.0 : au forfait, la TVA des achats est un coût — charge, stock et bien TTC, rien au 4366, figé par pièce', () => {
+  const d = scenarioForfait(), co = d.company, an = { from: '2026-01-01', to: '2026-12-31' };
+  assert.strictEqual(core.assujettiTVA(co), false);
+  // La migration fige la règle de chaque achat sur le régime du jour.
+  assert.deepStrictEqual(d.purchases.map(p => p.tvaRecuperable), [false, false, false], 'la règle n\'est pas figée sur les achats');
+  // A : 1 000 HT, TVA 190 payée et non récupérée → 1 190 de charge.
+  const ta = core.purchaseTotals(d.purchases[0], co);
+  assert.deepStrictEqual([ta.totalHT, ta.totalVAT, ta.deductibleVAT, ta.netToPay, ta.base.cout.charge], [1000, 190, 0, 1190, 1190]);
+  // Le résultat simplifié : 200 de ventes − 1 190 de charge − 142,8 de marchandises vendues.
+  const sr = core.simpleResult(d, co, an);
+  assert.deepStrictEqual([sr.produits, sr.charges, sr.stock, sr.immo, sr.cogs, sr.resultat], [200, 1190, 357, 1190, 142.8, r3(200 - 1190 - 142.8)]);
+  const v = core.vatReturn(d, co, an);
+  assert.deepStrictEqual([v.collected, v.deductible], [0, 0], 'un forfaitaire déduit la TVA de ses achats');
+  // Le stock : 5 × 60 × 1,19 = 357 ; deux sorties au coût moyen 71,4 = 142,8 ; il reste 3 × 71,4 = 214,2.
+  const so = core.stockOf(d, 'it', '2026-12-31');
+  assert.deepStrictEqual([so.qty, so.value], [3, 214.2], 'le stock d\'un forfaitaire entre hors TVA');
+  assert.strictEqual(core.costOfGoodsSold(d, co, an), 142.8);
+  // Le bien : 1 000 + 190 = 1 190.
+  assert.deepStrictEqual(core.assetsToCreate(d).map(a => a.amount), [1190], 'le bien d\'un forfaitaire entre hors TVA');
+  // Les écritures : rien au 4366 ; 401 = −(1 190 + 357 + 1 190) + 1 190 réglés = −1 547.
+  const E = core.journalEntries(d, co, an);
+  const solde = c => r3(E.filter(e => e.account.startsWith(c)).reduce((x, e) => x + e.debit - e.credit, 0));
+  assert.strictEqual(solde('4366'), 0, 'le 4366 est débité chez un forfaitaire');
+  assert.strictEqual(solde('401'), -1547);
+  // Une ligne née du catalogue ne porte pas de TVA ; une ligne neuve non plus.
+  assert.strictEqual(core.tauxPourRegime(co, 19), 0);
+  assert.strictEqual(core.tauxPourRegime({ ...CO, taxRegime: 'reel' }, 19), 19);
+  assert.strictEqual(core.newLine(co).vatRate, 0);
+  assert.strictEqual(core.newLine(co, { vatRate: 19 }).vatRate, 0, 'une ligne neuve d\'un forfaitaire garde 19 %');
+  // Le régime change : les pièces déjà saisies gardent LEUR règle (7.1.x), les neuves suivent le jour.
+  const reel = { ...co, taxRegime: 'reel' };
+  assert.strictEqual(core.purchaseTotals(d.purchases[0], reel).deductibleVAT, 0, 'passer au réel réécrit un achat fait au forfait');
+  const avant = core.migrateData(base0({ company: { ...CO, taxRegime: 'reel' }, suppliers: [{ id: 's', name: 'F' }],
+    purchases: [{ id: 'R', kind: 'facture', supplierId: 's', number: 'R-1', date: '2026-01-10', createdAt: 1, payments: [], lines: [{ label: 'x', qty: 1, unitPrice: 100, vatRate: 19, destination: 'charge', deductible: true }] }] }));
+  assert.strictEqual(avant.purchases[0].tvaRecuperable, true);
+  assert.strictEqual(core.purchaseTotals(avant.purchases[0], co).deductibleVAT, 19, 'passer au forfait retire la TVA déjà déduite au réel');
+  // Une ligne marquée non déductible au réel reste non déductible (le carburant, les cadeaux).
+  assert.strictEqual(core.tvaNonDeductible({ deductible: false }, { tvaRecuperable: true }, reel), true);
+  assert.strictEqual(core.tvaNonDeductible({ deductible: true }, { tvaRecuperable: false }, reel), true);
+  assert.strictEqual(core.tvaNonDeductible({ deductible: true }, { tvaRecuperable: true }, co), false);
+  const e = ecarts(d);
+  assert.deepStrictEqual(e, [], e.join('\n'));
+});
+t('10.14.0 : l\'écran d\'un achat au forfait éteint « Déduct. » et dit pourquoi — un avoir prend la règle de sa pièce', () => {
+  const app = require('fs').readFileSync(require('path').join(__dirname, '../../src/renderer/app.js'), 'utf8');
+  // La case se lit sur la règle de la PIÈCE, pas sur celle de la ligne.
+  assert.ok(/\$\{C\.tvaRecuperable\(p, company\(\)\)\s*\n\s*\? `<input type="checkbox" data-k="deductible"/.test(app), 'la case « Déduct. » ne suit pas la règle de la pièce');
+  assert.ok(/: `<input type="checkbox" disabled title="\$\{h\(`Ton régime/.test(app), 'la case éteinte ne dit pas pourquoi');
+  // Un achat neuf et une copie prennent la règle du jour ; un avoir ou un acompte celle de sa pièce.
+  assert.ok(/tvaRecuperable: C\.assujettiTVA\(company\(\)\),\s*\n\s*payments: \[\], attachments: \[\], createdAt: Date\.now\(\)/.test(app), 'un achat neuf ne prend pas la règle du jour');
+  assert.ok(/withholdingCertificate: false, tvaRecuperable: C\.assujettiTVA\(company\(\)\) \}/.test(app), 'une copie garde la règle de l\'original');
+  assert.ok(/p\.tvaRecuperable = C\.tvaRecuperable\(vise, company\(\)\);/.test(app), 'un avoir fournisseur ne prend pas la règle de la pièce qu\'il corrige');
+  assert.ok(/e\.target\.name === 'achatLie'\) \{\s*\n\s*const vise = purchaseById\(p\.achatLie\);/.test(app), 'rattacher un avoir à une autre pièce ne change pas sa règle');
+  // Chaque ligne née du catalogue passe par le régime : trois portes dans l'éditeur, les modèles, les licences.
+  const nus = (app.match(/vatRate: it\.vatRate/g) || []).length;
+  assert.strictEqual(nus, 0, 'une ligne née du catalogue reprend son taux sans le régime');
+  assert.ok((app.match(/vatRate: C\.tauxPourRegime\(company\(\), it\.vatRate\)/g) || []).length >= 3);
+  // L'émission prévient d'une TVA restée sur la pièce d'un non-assujetti.
+  assert.ok(/if \(!C\.assujettiTVA\(co\) && \(isInv \|\| doc\.type === 'avoir'\)\) \{\s*\n\s*const tva = C\.computeTotals\(doc, co\)\.totalVAT;/.test(app), 'l\'émission ne prévient pas de la TVA d\'un forfaitaire');
+});
+t('10.14.0 : une erreur de régime se répare dans les mois ouverts — l\'annonce est celle de la déclaration', () => {
+  // Saisis au réel, puis l'entreprise se découvre au forfait. Juin est clôturé.
+  const d = core.migrateData(base0({
+    company: { ...CO, taxRegime: 'reel' }, closedUntil: '2026-06-30', suppliers: [{ id: 's', name: 'F' }],
+    purchases: [
+      { id: 'J', kind: 'facture', supplierId: 's', number: 'J-1', date: '2026-06-10', createdAt: 1, payments: [], lines: [{ label: 'x', qty: 1, unitPrice: 500, vatRate: 19, destination: 'charge', deductible: true }] },
+      { id: 'K', kind: 'acompte', supplierId: 's', number: 'K-1', date: '2026-06-20', createdAt: 1, achatLie: 'P', payments: [], lines: [{ label: 'acompte', qty: 1, unitPrice: 100, vatRate: 19, destination: 'charge', deductible: true }] },
+      { id: 'P', kind: 'facture', supplierId: 's', number: 'P-1', date: '2026-07-05', createdAt: 1, payments: [], lines: [{ label: 'y', qty: 1, unitPrice: 1000, vatRate: 19, destination: 'charge', deductible: true }] },
+      { id: 'A', kind: 'avoir', supplierId: 's', number: 'A-1', date: '2026-07-15', createdAt: 1, achatLie: 'P', payments: [], lines: [{ label: 'y', qty: 1, unitPrice: 200, vatRate: 19, destination: 'charge', deductible: true }] },
+      { id: 'Q', kind: 'facture', supplierId: 's', number: 'Q-1', date: '2026-08-01', createdAt: 1, payments: [], lines: [{ label: 'z', qty: 1, unitPrice: 300, vatRate: 7, destination: 'charge', deductible: true }] }]
+  }));
+  const forf = { ...d.company, taxRegime: 'forfaitaire' };
+  d.company = forf;
+  const r = core.achatsHorsRegime(d, forf);
+  // J est clôturé ; l'acompte K est clôturé aussi. P, son avoir A (sa pièce change avec lui) et Q.
+  assert.deepStrictEqual(r.pieces.map(p => p.id).sort(), ['A', 'P', 'Q'], 'le lot touche un mois clôturé, ou oublie un avoir rattaché');
+  assert.strictEqual(r.cible, false);
+  // Juillet et août, à la main : P déduit 190 moins les 19 que l'acompte de juin a déjà déduits, soit
+  // 171 ; l'avoir retire 38 ; Q déduit 21. Déductible 171 − 38 + 21 = 154 ; après, P reprend les 19
+  // de l'acompte (−19) et le reste vaut 0 : la déclaration bouge de 154 + 19 = 173.
+  const per = { from: '2026-07-01', to: '2026-08-31' };
+  assert.strictEqual(core.vatReturn(d, forf, per).deductible, 154);
+  assert.strictEqual(r.tva, 173, 'l\'annonce n\'est pas l\'écart de la déclaration');
+  // Rien au régime du jour : aucune pièce.
+  assert.deepStrictEqual(core.achatsHorsRegime(d, { ...forf, taxRegime: 'reel' }).pieces, []);
+  const app = require('fs').readFileSync(require('path').join(__dirname, '../../src/renderer/app.js'), 'utf8');
+  // Le geste en lot : lit le régime ENREGISTRÉ, demande avant, n'écrit que les pièces du lot.
+  assert.ok(/const r2 = C\.achatsHorsRegime\(data, company\(\)\);[\s\S]{0,200}const ok = await confirmDialog\(/.test(app), 'le lot applique sans demander');
+  assert.ok(/data\.purchases\.forEach\(x => \{ if \(ids\.has\(x\.id\)\) x\.tvaRecuperable = r2\.cible; \}\);/.test(app));
+  // Le geste d'une pièce : le bandeau garde sa place, et les pièces rattachées suivent à l'enregistrement.
+  assert.ok(/\$\('#b-regle'\)\.style\.minHeight = \$\('#b-regle'\)\.offsetHeight \+ 'px';/.test(app), 'le bandeau se replie sous le clic');
+  assert.ok(/data\.purchases\.forEach\(x => \{ if \(x\.achatLie === p\.id && !C\.isClosedDate\(data, x\.date\)\) x\.tvaRecuperable = C\.tvaRecuperable\(p, company\(\)\); \}\);/.test(app), 'un avoir ou un acompte rattaché ne suit pas sa pièce');
+  // Le panneau du régime suit le choix AVANT l'enregistrement, par la même phrase qu'au dessin.
+  assert.ok(/<div id="regime-note">\$\{noteRegime\(c\)\}<\/div>/.test(app) && /\$\('#regime-note'\)\.innerHTML = noteRegime\(co\);/.test(app), 'le panneau du régime ne suit pas le choix');
+});
+t('10.14.0 : un taux forcé par le régime ne se range jamais — le passage au réel ne fait pas de factures sans TVA', () => {
+  const onboarding = require('../../src/renderer/onboarding.js');
+  // L'assistant d'un forfaitaire ne range PAS le 0 % forcé : le réglage reste vide, et le jour du
+  // passage au réel, les nouvelles lignes naissent au taux ordinaire.
+  const f = onboarding.applySetup(core.migrateData(null), { name: 'Menuiserie F', activity: 'batiment', taxRegime: 'forfaitaire', fillCatalog: true });
+  assert.strictEqual(core.defaultVat(f.company), 0, 'au forfait, les lignes naissent à 0 %');
+  assert.ok(f.company.defaultVatRate === '' || f.company.defaultVatRate == null, 'le 0 % forcé a été rangé comme réglage');
+  assert.strictEqual(core.defaultVat({ ...f.company, taxRegime: 'reel' }), 19, 'au passage au réel, les lignes naîtraient à 0 %');
+  // Un réel, lui, garde son taux dans le réglage.
+  const r = onboarding.applySetup(core.migrateData(null), { name: 'Menuiserie R', activity: 'batiment', taxRegime: 'reel', fillCatalog: false });
+  assert.strictEqual(Number(r.company.defaultVatRate), 19);
+
+  // Le catalogue du forfaitaire est à 0 % (le taux de ses ventes). Au réel, il se SIGNALE…
+  assert.ok(f.catalog.length > 0 && f.catalog.every(x => Number(x.vatRate) === 0));
+  assert.deepStrictEqual(core.articlesSansTva(f, f.company), [], 'au forfait, 0 % est juste : rien à signaler');
+  const reel = { ...f.company, taxRegime: 'reel' };
+  assert.strictEqual(core.articlesSansTva(f, reel).length, f.catalog.length, 'au réel, les articles à 0 % ne se signalent pas');
+  // …sauf ceux qui portent un taux, et rien quand le taux des nouvelles lignes est lui-même 0.
+  const mix = { catalog: [{ id: 'a', vatRate: 0 }, { id: 'b', vatRate: 19 }, { id: 'c', vatRate: 7 }, { id: 'd' }] };
+  assert.deepStrictEqual(core.articlesSansTva(mix, { taxRegime: 'reel' }).map(x => x.id), ['a', 'd']);
+  assert.deepStrictEqual(core.articlesSansTva(mix, { taxRegime: 'reel', defaultVatRate: 0 }), [], 'aucun taux à proposer : il n\'y a rien à dire');
+
+  // Un achat tiré du catalogue : au forfait, le 0 % du catalogue n'est pas la TVA du fournisseur.
+  assert.strictEqual(core.tauxAchatArticle({ vatRate: 0 }, { taxRegime: 'forfaitaire' }), 19, 'l\'achat recopie le 0 % forcé des ventes');
+  assert.strictEqual(core.tauxAchatArticle({ vatRate: 0 }, { taxRegime: 'forfaitaire', defaultVatRate: 0 }), 19, 'un vieux 0 % rangé fait encore un achat sans TVA');
+  assert.strictEqual(core.tauxAchatArticle({ vatRate: 7 }, { taxRegime: 'forfaitaire' }), 7);
+  assert.strictEqual(core.tauxAchatArticle({ vatRate: 0 }, { taxRegime: 'reel' }), 0, 'au réel, un article à 0 % s\'achète à 0 %');
+  assert.strictEqual(core.tauxAchatArticle({ vatRate: 13 }, { taxRegime: 'reel' }), 13);
+  // Et l'achat qui en naît compte la TVA dans son coût : 100 HT à 19 %, coût 119.
+  const p = { id: 'p', tvaRecuperable: false, lines: [{ qty: 1, unitPrice: 100, vatRate: core.tauxAchatArticle({ vatRate: 0 }, { taxRegime: 'forfaitaire' }), destination: 'charge', deductible: true }] };
+  assert.strictEqual(core.purchaseTotals(p, { taxRegime: 'forfaitaire' }).base.cout.charge, 119, 'le coût d\'un achat au forfait oublie la TVA payée');
+
+  const fs = require('fs'), path = require('path');
+  const app = fs.readFileSync(path.join(__dirname, '../../src/renderer/app.js'), 'utf8');
+  // Les Paramètres ne rangent pas le taux AFFICHÉ grisé d'un non-assujetti.
+  assert.ok(/const v = formValues\(\$\('#pf'\)\);[\s\S]{0,700}if \(!C\.assujettiTVA\(\{ \.\.\.data\.company, \.\.\.v \}\)\) delete v\.defaultVatRate;/.test(app), 'les Paramètres rangent le 0 % forcé');
+  // Les trois chemins d'un achat tiré du catalogue passent par la même fonction.
+  assert.strictEqual((app.match(/vatRate: C\.tauxAchatArticle\((it|art), company\(\)\)/g) || []).length, 3, 'un achat tiré du catalogue recopie son taux de vente');
+  assert.ok(!/vatRate: Number\((it|art)\.vatRate\) \|\| 0/.test(app), 'un chemin recopie encore le taux de vente sur un achat');
+  // Le catalogue à 0 % se signale au régime et au taux CHOISIS, et le geste se défait.
+  const panneau = app.slice(app.indexOf('function dessinerCatalogueSansTva()'), app.indexOf('function noteRegime('));
+  assert.ok(panneau.length > 500 && panneau.length < 4000, 'tranche inattendue');
+  assert.ok(/C\.articlesSansTva\(data, co\)/.test(panneau) && /C\.articlesSansTva\(data, co2\)/.test(panneau), 'le compte et le geste ne lisent pas la même fonction');
+  assert.ok(/const co = regimeChoisi\(\);/.test(panneau), 'le panneau lit le régime enregistré, pas celui qu\'on choisit');
+  assert.ok(/await confirmDialog\(/.test(panneau) && /toastUndo\(/.test(panneau), 'le geste ne demande pas, ou ne se défait pas');
+  assert.ok(/selTaux\.addEventListener\('change'/.test(app) && /dessinerCatalogueSansTva\(\);\s*\}\);\s*\/\/ Le taux choisi/.test(app), 'le panneau ne suit pas le choix');  // La liste du catalogue dit le taux qui s'IMPRIMERA : 0 % chez qui ne facture pas de TVA.
+  assert.ok(/key: 'vat', label: 'TVA', r: true, val: c => Number\(c\.vatRate\) \|\| 0, get: c => C\.assujettiTVA\(company\(\)\) \|\| !\(Number\(c\.vatRate\) > 0\) \? c\.vatRate \+ ' %'/.test(app), 'le catalogue affiche 19 % à une entreprise qui facture 0 %');
 });
 };

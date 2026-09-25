@@ -50,7 +50,10 @@
     // n'en facture pas — et l'erreur s'imprimait sur une pièce officielle.
     // `C.defaultVat` applique le régime : non assujetti = 0, quoi qu'il y ait dans les réglages.
     const tauxTva = C.defaultVat(co);
-    if (co.defaultVatRate === '' || co.defaultVatRate == null) co.defaultVatRate = tauxTva;
+    // Le 0 % d'un non-assujetti est FORCÉ, pas choisi (10.14.0) : le ranger comme réglage faisait
+    // naître des lignes sans TVA le jour du passage au réel. Le réglage reste vide, et `defaultVat`
+    // continue de rendre 0 tant que le régime ne facture pas de TVA.
+    if (C.assujettiTVA(co) && (co.defaultVatRate === '' || co.defaultVatRate == null)) co.defaultVatRate = tauxTva;
     if (act && a.fillCatalog && !(data.catalog || []).length) {
       // `fromSetup` marque ce que l'assistant a posé. Sans lui, « Remplir ton catalogue » se cochait
       // tout seul dans « Tes premiers pas » : l'étape était réputée faite parce que l'assistant
