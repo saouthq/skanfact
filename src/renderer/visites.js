@@ -287,6 +287,7 @@
   b('#pv-hide', "Ouvre le document en grand, pour le relire comme ton client le recevra.");
   b('#pay', "Note un règlement de ton client (virement, chèque, espèces) : le statut de la facture suit tout seul.", { route: 'doc' });
   b('#pay2', "Note un règlement de ton client.", { route: 'doc' });
+  b('#rembourser', "Rend au client ce qu'il a payé en trop : l'argent sort de ton compte, et la facture redevient simplement réglée.", { route: 'doc' });
   b('#convert', "Transforme ce devis en facture, en brouillon : client, lignes et prix repris tels quels.");
   b('#deposit', "Facture une partie du devis avant de commencer (un pourcentage ou un montant) ; le solde viendra plus tard, sans rien ressaisir.");
   b('#settle2', "Facture ce qui reste du devis, acomptes déduits.");

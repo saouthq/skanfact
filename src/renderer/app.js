@@ -3790,12 +3790,15 @@
       const cur = docCur(doc);
       const s = docById(doc.id); const b = balance(s); const t = b.totals;
       const rows = (s.payments || []).slice().sort((a, x) => (a.date || '').localeCompare(x.date || ''));
+      const rendu = C.round3(rows.filter(p => C.estRemboursement(p)).reduce((t, p) => t - (Number(p.amount) || 0), 0));
       const plusieursComptes = (data.accounts || []).length > 1;
       el.innerHTML = `
         <div class="pay-grid">
           <div><div class="k-label">Net à payer</div><div class="v">${C.money(t.netToPay, cur)}</div>${t.withholding ? `<div class="small muted">TTC ${C.money(t.totalTTC, cur)} − RS ${C.money(t.withholding, cur)} ${info('ed.withholding')}</div>` : ''}</div>
           <div><div class="k-label">Avoirs ${info('ed.credit')}</div><div class="v">${C.money(b.credited, cur)}</div>${b.credits.length ? `<div class="small">${b.credits.map(a => `<a href="#/doc/${a.id}">${h(a.number)}</a>`).join(', ')}</div>` : ''}</div>
-          <div><div class="k-label">Payé</div><div class="v">${C.money(b.paid, cur)}</div></div>
+          ${/* « Payé 1,000 DT » sur une facture réglée 405,600 puis remboursée de 404,600 (vu au test
+               humain, 10.14.0) : le net se lisait comme ce que le client avait versé. La carte dit
+               ce qui est REÇU, et ce qui a été rendu dessous. */''}<div><div class="k-label">Payé</div><div class="v">${C.money(C.round3(b.paid + rendu), cur)}</div>${rendu ? `<div class="small muted">dont ${C.money(rendu, cur)} rendus au client</div>` : ''}</div>
           ${b.remaining < -0.0005
             // Un trop-perçu n'est pas « 0,000 DT » en vert (10.12.0) : c'est de l'argent qui appartient
             // au CLIENT — un avoir émis après le paiement, ou un paiement plus fort que la facture. La
@@ -3804,13 +3807,19 @@
             : `<div><div class="k-label">Reste à payer</div><div class="v ${b.remaining > 0.0005 ? 'due' : 'ok'}">${C.money(Math.max(0, b.remaining), cur)}</div></div>`}
         </div>
         ${rows.length ? `<table class="list compact"><thead><tr><th>Date</th><th>Mode</th>${plusieursComptes ? '<th>Compte</th>' : ''}<th>Référence</th><th class="r">Montant</th><th></th></tr></thead><tbody>
-          ${rows.map(p => `<tr><td>${C.fmtDate(p.date)}</td><td>${h(methodLabel(p.method))}</td>${plusieursComptes ? `<td>${h(accountLabel(p.accountId))}</td>` : ''}<td>${h(p.reference || '')}${p.note ? `<div class="small muted">${h(p.note)}</div>` : ''}</td><td class="r">${C.money(p.amount, cur)}</td>${rowMenuCell(p.id)}</tr>`).join('')}
+          ${rows.map(p => `<tr><td>${C.fmtDate(p.date)}</td><td>${h(methodLabel(p.method))}</td>${plusieursComptes ? `<td>${h(accountLabel(p.accountId))}</td>` : ''}<td>${h(p.reference || '')}${p.note ? `<div class="small muted">${h(p.note)}</div>` : ''}</td><td class="r">${C.money(p.amount, cur)}${C.estRemboursement(p) ? '<div class="small muted">rendu au client</div>' : ''}</td>${rowMenuCell(p.id)}</tr>`).join('')}
         </tbody></table>` : `<p class="small muted">Aucun paiement enregistré.</p>`}
         <div class="inline mt">
           ${s.status !== 'annulée' && b.remaining > 0.0005
             // Le même geste que « Enregistrer un paiement » de l'en-tête : vert seulement quand
             // l'en-tête ne le porte pas (pièce rouverte par « Modifier quand même »).
             ? `<button class="btn ${$('#pay') ? '' : 'btn-primary'}" id="pay2">+ Enregistrer un paiement</button>` : ''}
+          ${/* Le trop-perçu a enfin son geste (10.14.0) : la bulle disait « note la sortie dans
+               Trésorerie, le trop-perçu restera affiché ici » — une sortie sans pièce, et une carte
+               d'alerte pour toujours. Le remboursement s'enregistre SUR la facture, comme un
+               règlement négatif. C'est l'étape suivante d'une facture payée en trop : vert, sauf si
+               l'en-tête porte déjà le sien (U-11). */''}${s.status !== 'annulée' && b.remaining < -0.0005
+            ? `<button class="btn ${document.querySelector('.page-head .btn-primary') ? '' : 'btn-primary'}" id="rembourser">Rembourser ${C.money(-b.remaining, cur)} au client…</button> ${info('ed.rembourser')}` : ''}
           ${t.withholding ? `<label class="check"><input type="checkbox" id="rs-cert" ${s.withholdingCertificate ? 'checked' : ''}> Attestation de retenue à la source reçue (${C.money(t.withholding, cur)}) ${info('compta.rs')}</label>` : ''}
           ${s.status === 'annulée' ? `<span class="muted small">Facture annulée.</span><button class="btn btn-ghost btn-sm" id="uncancel">Rétablir</button>` : (!b.paid && !b.credits.length ? `<button class="btn btn-ghost btn-sm" id="cancel-inv">Marquer annulée…</button>` : '')}
         </div>`;
@@ -3819,22 +3828,24 @@
       bindRowMenus(el, id => {
         const p = (s.payments || []).find(x => x.id === id); if (!p) return [];
         return [
-          { icon: 'modifier', label: 'Modifier ce paiement', hint: 'Date, montant, mode, compte', run: () => paymentForm(s, () => render(), p) },
+          { icon: 'modifier', label: C.estRemboursement(p) ? 'Modifier ce remboursement' : 'Modifier ce paiement', hint: 'Date, montant, mode, compte', run: () => paymentForm(s, () => render(), p) },
           { sep: true },
-          { icon: 'supprimer', label: 'Supprimer ce paiement', hint: 'Il ne comptera plus dans ce que le client a réglé', danger: true, run: async () => {
+          { icon: 'supprimer', label: C.estRemboursement(p) ? 'Supprimer ce remboursement' : 'Supprimer ce paiement', hint: C.estRemboursement(p) ? 'Le trop-perçu redeviendra à rendre' : 'Il ne comptera plus dans ce que le client a réglé', danger: true, run: async () => {
             // La clôture passe AVANT la question (7.6.0) : répondre « oui » pour s'entendre dire non.
-            if (closedBlock(p.date, 'Ce paiement')) return;
+            if (closedBlock(p.date, C.estRemboursement(p) ? 'Ce remboursement' : 'Ce paiement')) return;
             // Ce que la facture redevient VRAIMENT : « due de ce montant » était faux dès qu'un avoir
             // couvre une partie de la facture — vu au test humain, un paiement de 507,940 dont le
             // retrait ne laissait qu'1,000 DT à payer (10.12.0).
             const apres = C.round3(b.remaining + (Number(p.amount) || 0));
-            const suite = apres > 0.0005 ? `${s.number} redeviendra due de ${C.money(apres, cur)}.` : `${s.number} restera réglée.`;
-            if (!await confirmDialog(`Supprimer le paiement de ${C.money(p.amount, cur)} du ${C.fmtDate(p.date)}${p.reference ? ` (${p.reference})` : ''} ? ${suite}`, 'Supprimer le paiement')) return;
+            const suite = apres > 0.0005 ? `${s.number} redeviendra due de ${C.money(apres, cur)}.` : apres < -0.0005 ? `${C.money(-apres, cur)} redeviendront à rendre au client.` : `${s.number} restera réglée.`;
+            const rend = C.estRemboursement(p);
+            if (!await confirmDialog(`Supprimer ${rend ? 'le remboursement' : 'le paiement'} de ${C.money(Math.abs(p.amount), cur)} du ${C.fmtDate(p.date)}${p.reference ? ` (${p.reference})` : ''} ? ${suite}`, rend ? 'Supprimer le remboursement' : 'Supprimer le paiement')) return;
             s.payments = s.payments.filter(x => x.id !== p.id); save(true); render();
           } }
         ];
       });
       if ($('#pay2')) $('#pay2').onclick = () => paymentForm(s, () => render());
+      if ($('#rembourser')) $('#rembourser').onclick = () => paymentForm(s, () => render(), null, true);
       if ($('#rs-cert')) $('#rs-cert').onchange = e => { s.withholdingCertificate = e.target.checked; save(true); };
       if ($('#cancel-inv')) $('#cancel-inv').onclick = async () => {
         if (!await confirmDialog(`Marquer ${s.number} comme annulée ? La facture reste dans la numérotation. La façon conforme de corriger une facture émise est d'établir un avoir.`, 'Marquer annulée')) return;
@@ -4388,14 +4399,23 @@
 
   // `pay` : le paiement à modifier. Un paiement ne se modifiait pas — la seule action de sa ligne
   // était « ✕ » — donc une erreur de compte, de date ou de mode obligeait à supprimer et resaisir.
-  function paymentForm(inv, done, pay) {
+  // `rembourser` (10.14.0) : la même fenêtre rend de l'argent au client. Le montant se TAPE en
+  // positif — c'est ce qu'on lit sur le chèque ou le virement — et s'enregistre en négatif : c'est
+  // le signe qui fait tout le reste (`C.estRemboursement`).
+  function paymentForm(inv, done, pay, rembourser) {
     const b = balance(inv); const cur = docCur(inv);
     const p0 = pay || null;
+    const rend = p0 ? C.estRemboursement(p0) : !!rembourser;
     const reste = Math.max(0, b.remaining + (p0 ? Number(p0.amount) || 0 : 0));
-    modal(`<h2>${p0 ? 'Modifier le paiement' : 'Enregistrer un paiement'}</h2><p class="small muted">${h(inv.number)} — reste à payer ${C.money(p0 ? Math.max(0, b.remaining) : reste, cur)}</p>
+    // Ce qu'on peut rendre : le trop-perçu, en comptant le remboursement qu'on modifie.
+    const aRendre = Math.max(0, -(b.remaining + (p0 ? Number(p0.amount) || 0 : 0)));
+    const titre = rend ? (p0 ? 'Modifier le remboursement' : 'Rembourser le client') : (p0 ? 'Modifier le paiement' : 'Enregistrer un paiement');
+    const sous = rend ? `${h(inv.number)} — trop-perçu à rendre ${C.money(aRendre, cur)}` : `${h(inv.number)} — reste à payer ${C.money(p0 ? Math.max(0, b.remaining) : reste, cur)}`;
+    modal(`<h2>${titre}</h2><p class="small muted">${sous}</p>
+      ${rend ? '<p class="small">L\'argent sort de ton compte : la Trésorerie le verra partir, et l\'écriture du comptable passe au débit du client. Ce remboursement se rattache à cette facture, qui redevient simplement réglée.</p>' : ''}
       <form id="pf2" class="grid-2">
         ${dateFieldHtml('Date', 'date', p0 ? p0.date : C.today())}
-        ${field('Montant', 'amount', p0 ? p0.amount : reste, 'number', 'step="0.001" min="0" class="num"')}
+        ${field(rend ? 'Montant rendu' : 'Montant', 'amount', p0 ? Math.abs(Number(p0.amount) || 0) : (rend ? aRendre : reste), 'number', 'step="0.001" min="0" class="num"')}
         <label class="field">Mode<select name="method">${C.PAYMENT_METHODS.map(m => `<option value="${m[0]}" ${p0 && p0.method === m[0] ? 'selected' : ''}>${m[1]}</option>`).join('')}</select></label>
         ${accountFieldHtml(p0 && p0.accountId)}
         ${field('Référence (n° chèque, virement…)', 'reference', p0 ? p0.reference || '' : '')}
@@ -4403,9 +4423,9 @@
       </form>
       ${/* 10.12.0 — la fiche société porte déjà la banque et le RIB ; le paiement disait « aucun compte » et
          n'offrait qu'un lien vers la Trésorerie, qui QUITTAIT la fenêtre et jetait la saisie. Le compte
-         se crée par-dessus, prérempli avec ce que l'entreprise a déjà donné. */''}${!(data.accounts || []).length ? `<div class="inline small muted mt" id="pf-sans-compte">Aucun compte de trésorerie : ce paiement ne sera rattaché à aucun compte.
+         se crée par-dessus, prérempli avec ce que l'entreprise a déjà donné. */''}${!(data.accounts || []).length ? `<div class="inline small muted mt" id="pf-sans-compte">Aucun compte de trésorerie : ${rend ? 'ce remboursement' : 'ce paiement'} ne sera rattaché à aucun compte.
         <button type="button" class="btn btn-sm" id="pf-compte">${libelleCompteDepuisFiche('Créer le compte', 'Créer un compte')}…</button></div>` : ''}
-      <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
+      <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">${rend ? 'Enregistrer le remboursement' : 'Enregistrer'}</button></div>`,
       (root, close) => {
         if ($('#pf-compte', root)) $('#pf-compte', root).onclick = () => accountForm(null, a => {
           const z = $('#pf-sans-compte', root);
@@ -4415,18 +4435,21 @@
         const v = formValues($('#pf2', root));
         if (!(Number(v.amount) > 0)) return refus($('[name=amount]', root), 'Montant invalide.');
         if (!v.date) return refus($('[name=date]', root), 'Date obligatoire.');
-        if (v.date > C.today() && !await confirmDialog(`La date du paiement (${C.fmtDate(v.date)}) est dans le futur. Un paiement s'enregistre quand l'argent est reçu, pas quand il est promis. Enregistrer quand même ?`, 'Enregistrer quand même')) return;
-        if (Number(v.amount) > reste + 0.0005 && !await confirmDialog(`Le montant (${C.money(v.amount, cur)}) dépasse le reste à payer (${C.money(reste, cur)}). La facture apparaîtra avec un trop-perçu. Enregistrer quand même ?`, 'Enregistrer quand même')) return;
+        if (v.date > C.today() && !await confirmDialog(`La date du ${rend ? 'remboursement' : 'paiement'} (${C.fmtDate(v.date)}) est dans le futur. ${rend ? 'Un remboursement s\'enregistre quand l\'argent part' : 'Un paiement s\'enregistre quand l\'argent est reçu'}, pas quand il est promis. Enregistrer quand même ?`, 'Enregistrer quand même')) return;
+        // Rendre plus que le trop-perçu ferait DEVOIR le client de nouveau : c'est presque toujours
+        // une faute de frappe. On prévient, on n'interdit pas (7.6.0).
+        if (rend && Number(v.amount) > aRendre + 0.0005 && !await confirmDialog(`Le montant rendu (${C.money(v.amount, cur)}) dépasse le trop-perçu (${C.money(aRendre, cur)}). La facture redeviendrait due de la différence. Enregistrer quand même ?`, 'Enregistrer quand même')) return;
+        if (!rend && Number(v.amount) > reste + 0.0005 && !await confirmDialog(`Le montant (${C.money(v.amount, cur)}) dépasse le reste à payer (${C.money(reste, cur)}). La facture apparaîtra avec un trop-perçu. Enregistrer quand même ?`, 'Enregistrer quand même')) return;
         // Modifier la date d'un paiement le sort d'un mois peut-être déjà déclaré : l'ancienne date
         // compte autant que la nouvelle, comme pour un document.
-        if (closedBlock(p0 ? [p0.date, v.date] : v.date, 'Ce paiement')) return;
+        if (closedBlock(p0 ? [p0.date, v.date] : v.date, rend ? 'Ce remboursement' : 'Ce paiement')) return;
         inv.payments = inv.payments || [];
         const cible = p0 ? inv.payments.find(x => x.id === p0.id) : null;
-        const champs = { date: v.date, amount: C.round3(v.amount), method: v.method, accountId: v.accountId || (p0 ? p0.accountId || '' : ''), reference: v.reference || '', note: v.note || '' };
+        const champs = { date: v.date, amount: C.round3(rend ? -v.amount : v.amount), method: v.method, accountId: v.accountId || (p0 ? p0.accountId || '' : ''), reference: v.reference || '', note: v.note || '' };
         if (cible) Object.assign(cible, champs);
         else inv.payments.push({ id: C.uid(), ...champs });
         save(true); close();
-        const st = effStatus(inv); toast(p0 ? 'Paiement modifié' : st === 'payée' ? `${inv.number} payée intégralement` : 'Paiement enregistré');
+        const st = effStatus(inv); toast(rend ? (p0 ? 'Remboursement modifié' : `Remboursement enregistré : ${C.money(v.amount, cur)} rendus au client`) : p0 ? 'Paiement modifié' : st === 'payée' ? `${inv.number} payée intégralement` : 'Paiement enregistré');
         if (done) done();
       }; });
   }
@@ -4467,8 +4490,9 @@
           <td class="r nw"><strong>${C.money(l.reste, cur)}</strong></td></tr>`).join('')}</tbody>
         ${/* « dont 0,000 DT échu » (10.12.0) : un zéro qui ne dit rien, sous un compte que rien ne
              presse. Le mail du même relevé taisait déjà cette moitié quand elle est nulle. */''}
-        <tfoot><tr><td colspan="5">Total dû au ${C.fmtDate(r.date)}${r.echu > 0.0005 ? ` — dont ${C.money(r.echu, cur)} échu` : ' — rien n\'est encore échu'}</td>
-          <td class="r"><strong>${C.money(r.total, cur)}</strong></td></tr></tfoot></table>`
+        <tfoot><tr><td colspan="5">${r.total < -0.0005 ? `Solde en faveur du client au ${C.fmtDate(r.date)} — à lui rendre, ou à déduire de sa prochaine facture`
+          : `Total dû au ${C.fmtDate(r.date)}${r.echu > 0.0005 ? ` — dont ${C.money(r.echu, cur)} échu` : ' — rien n\'est encore échu'}`}</td>
+          <td class="r"><strong>${C.money(Math.abs(r.total), cur)}</strong></td></tr></tfoot></table>`
         : '<div class="empty mini">Rien d\'ouvert à cette date : le compte de ce client est soldé. Le relevé le dira, et c\'est une bonne nouvelle à envoyer.</div>';
       $$('#rv-body tr[data-go]', root).forEach(tr => tr.onclick = () => navigate('#/doc/' + tr.dataset.go));
     };
@@ -4498,7 +4522,8 @@
               to: c.email || '', mode: modeEnvoi(), attachment: att,
               subject: `Relevé de compte au ${C.fmtDate(au)} — ${company().name}`,
               body: `Bonjour,\n\nVous trouverez ci-joint le relevé de votre compte au ${C.fmtDate(au)}.\n\n`
-                + (r.total > 0.0005 ? `Solde restant dû : ${C.money(r.total, cur)}${r.echu > 0.0005 ? `, dont ${C.money(r.echu, cur)} échu` : ''}.\n\n` : 'Votre compte est soldé. Merci de votre confiance.\n\n')
+                + (r.total > 0.0005 ? `Solde restant dû : ${C.money(r.total, cur)}${r.echu > 0.0005 ? `, dont ${C.money(r.echu, cur)} échu` : ''}.\n\n`
+                  : r.total < -0.0005 ? `Votre compte présente un solde en votre faveur de ${C.money(-r.total, cur)}.\n\n` : 'Votre compte est soldé. Merci de votre confiance.\n\n')
                 + `Si un règlement s'est croisé avec cet envoi, merci de ne pas en tenir compte.\n\nCordialement,\n${company().name}`
             });
             close(); toast(messageOuvert(rm, 'le relevé'));
@@ -4859,7 +4884,10 @@
       { key: 'contact', label: 'Contact', get: r => `<span class="small">${telLisible(r.c.phone)}${r.c.phone && r.c.email ? '<br>' : ''}${r.c.email ? `<span class="ellipse" title="${h(r.c.email)}">${h(r.c.email)}</span>` : ''}</span>` },
       { key: 'docs', label: 'Documents', r: true, val: r => r.sum.count, get: r => r.sum.count },
       { key: 'ht', label: 'Facturé HT', r: true, val: r => r.sum.ht, get: r => r.sum.ht ? C.money(r.sum.ht, cur) : '<span class="muted">—</span>' },
-      { key: 'due', label: 'Reste à payer', r: true, val: r => r.sum.due, get: r => r.sum.due > 0.0005 ? `<strong>${C.money(r.sum.due, cur)}</strong>` : '<span class="muted">—</span>' },
+      // Le reste NET (10.14.0) : ce que le client doit, moins ce qu'on lui doit (ses trop-perçus et
+      // ses avoirs libres), comme son relevé de compte. Un client en sa faveur le DIT.
+      { key: 'due', label: 'Reste à payer', r: true, val: r => r.sum.net, get: r => r.sum.net > 0.0005 ? `<strong>${C.money(r.sum.net, cur)}</strong>`
+        : r.sum.net < -0.0005 ? `<span class="warn-text" title="Trop-perçus et avoirs à lui rendre">${C.money(-r.sum.net, cur)} en sa faveur</span>` : '<span class="muted">—</span>' },
       { key: 'last', label: 'Dernier document', val: r => r.sum.last || '', get: r => r.sum.last ? C.fmtDate(r.sum.last) : '<span class="muted">—</span>' }
     ];
     const FILTERS = [['', 'Tous les clients'], ['due', 'Avec un impayé'], ['none', 'Sans aucun document']];
@@ -4868,7 +4896,7 @@
       const all = data.clients.map(c => ({ c, sum: C.clientSummary(data, company(), c.id) }));
       const rows = applySort(all
         .filter(r => !s.q || C.correspondRecherche([r.c.name, r.c.contact, r.c.matricule, r.c.email, r.c.phone].join(' '), s.q))
-        .filter(r => !s.f || (s.f === 'due' ? r.sum.due > 0.0005 : r.sum.count === 0)), cols, s.sort);
+        .filter(r => !s.f || (s.f === 'due' ? r.sum.net > 0.0005 : r.sum.count === 0)), cols, s.sort);
       const filtered = !!(s.q || s.f);
       const { rows: page, pg } = paginate(rows, s);
       $('#list-wrap').innerHTML = rows.length ? `<table class="list sortable"><thead>
@@ -4880,7 +4908,7 @@
           <td colspan="3"><strong>${pl(rows.length, 'client')}</strong>${filtered ? `<span class="muted"> sur ${all.length}</span>` : ''}</td>
           <td class="r"><strong>${rows.reduce((a, r) => a + r.sum.count, 0)}</strong></td>
           <td class="r"><strong>${C.money(C.round3(rows.reduce((a, r) => a + r.sum.ht, 0)), cur)}</strong></td>
-          <td class="r"><strong>${C.money(C.round3(rows.reduce((a, r) => a + r.sum.due, 0)), cur)}</strong></td>
+          <td class="r"><strong>${C.money(C.round3(rows.reduce((a, r) => a + r.sum.net, 0)), cur)}</strong></td>
           <td colspan="2"></td></tr></tfoot></table>${pagerBar(pg, { noun: 'client', grandTotal: all.length })}`
         : `<div class="empty">${filtered ? 'Aucun client ne correspond à cette recherche.' : 'Aucun client. Ajoute ton premier client : son adresse et son matricule fiscal se reporteront automatiquement sur tes documents.'}</div>`;
       const note = $('#f-note');
@@ -4960,7 +4988,9 @@
       ${late.length ? `<div class="banner">${pl(late.length, 'facture')} en retard — ${C.money(lateAmount, cur)}<button class="btn" id="go-rel">Voir les relances</button></div>` : ''}
       <div class="stats">
         <div class="stat"><div class="lbl">Facturé HT ${info('dash.caYear')}</div><div class="val">${C.money(sum.ht, cur)}</div><div class="sub">${pl(sum.invoiceCount, 'facture')}${sum.first ? ' depuis ' + C.fmtDate(sum.first) : ''}</div></div>
-        <div class="stat"><div class="lbl">Reste à payer ${info('cl.due')}</div><div class="val">${C.money(sum.due, cur)}</div><div class="sub">${sum.due > 0.0005 ? 'à encaisser' : 'tout est réglé'}</div></div>
+        ${sum.net < -0.0005
+          ? `<div class="stat"><div class="lbl">En sa faveur ${info('cl.due')}</div><div class="val due">${C.money(-sum.net, cur)}</div><div class="sub">trop-perçus et avoirs à lui rendre</div></div>`
+          : `<div class="stat"><div class="lbl">Reste à payer ${info('cl.due')}</div><div class="val">${C.money(sum.net, cur)}</div><div class="sub">${sum.aRendre > 0.0005 ? `${C.money(sum.due, cur)} dû, moins ${C.money(sum.aRendre, cur)} à lui rendre` : sum.net > 0.0005 ? 'à encaisser' : 'tout est réglé'}</div></div>`}
         <div class="stat"><div class="lbl">Délai moyen de paiement ${info('dash.delay')}</div><div class="val">${sum.delay == null ? '—' : sum.delay + ' j'}</div><div class="sub">annoncé : ${pl(Number(company().paymentTermsDays) || 0, 'jour')}</div></div>
         <div class="stat"><div class="lbl">Devis acceptés ${info('dash.conversion')}</div><div class="val">${sum.conversion == null ? '—' : sum.conversion + ' %'}</div><div class="sub">${sum.quoteCount} devis, ${openQuotes.length} sans réponse</div></div>
       </div>
@@ -5052,7 +5082,7 @@
       const a2 = [{ icon: 'modifier', label: 'Modifier la fiche', hint: 'Coordonnées, conditions, retenue', run: () => clientForm(c, () => render(true)) }];
       if (c.email) a2.push({ icon: 'email', label: 'Écrire au client', hint: h(c.email), run: () => bridge.composeMail({ to: c.email, subject: '', body: '', attachment: null, mode: 'mailto' }) });
       a2.push({ sep: true }, { icon: 'pdf', label: 'Relevé de compte…',
-        hint: ouvert > 0.0005 ? `${C.money(ouvert, cur)} encore dû` : 'Le compte est soldé',
+        hint: ouvert > 0.0005 ? `${C.money(ouvert, cur)} encore dû` : ouvert < -0.0005 ? `${C.money(-ouvert, cur)} en sa faveur` : 'Le compte est soldé',
         run: () => releveForm(c.id) });
       return a2;
     });

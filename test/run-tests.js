@@ -8486,8 +8486,12 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     // (`rowMenuCell`), et ce menu appelle le formulaire AVEC le paiement — sans ce troisième argument,
     // il en créerait un second au lieu de corriger celui-là.
     const tablePay = code.slice(code.indexOf('function drawPayments()'), code.indexOf('function drawPayments()') + 6000);
-    assert.ok(/<td class="r">\$\{C\.money\(p\.amount, cur\)\}<\/td>\$\{rowMenuCell\(p\.id\)\}/.test(tablePay), 'la ligne d\'un paiement doit porter son menu');
-    assert.ok(/label: 'Modifier ce paiement'[^\n]*paymentForm\(s, [^\n]*, p\)/.test(tablePay), 'et ce menu doit ouvrir le paiement lui-même');
+    // Retournée vers la règle (10.14.0) : la cellule du montant gagne « rendu au client » sur un
+    // remboursement ; ce qui compte est que la ligne d'un paiement se termine par son menu.
+    assert.ok(/rows\.map\(p => `<tr>[\s\S]{0,900}?<\/td>\$\{rowMenuCell\(p\.id\)\}<\/tr>/.test(tablePay), 'la ligne d\'un paiement doit porter son menu');
+    // Retournée vers la règle (10.14.0) : le libellé change quand la ligne est un remboursement,
+    // ce qui compte est que l'entrée « Modifier » ouvre la fenêtre sur CE règlement.
+    assert.ok(/label: [^\n]*'Modifier ce paiement'[^\n]*paymentForm\(s, [^\n]*, p\)/.test(tablePay), 'et ce menu doit ouvrir le paiement lui-même');
     const i2 = code.indexOf('function drawPayments()', code.indexOf('function drawPayments()') + 10);
     const tableReg = code.slice(i2, i2 + 6000);
     assert.ok(/\$\{rowMenuCell\(x\.id\)\}/.test(tableReg), 'la ligne d\'un règlement doit porter son menu');
@@ -14524,6 +14528,7 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
   require('./suites/paie-cabinet.js')({ t, assert, lireSource });
   require('./suites/qa-cabinet.js')({ t, assert, lireSource });
   require('./suites/qa-entreprise.js')({ t, assert, lireSource });
+  require('./suites/remboursement.js')({ t, assert, lireSource });
   require('./suites/audit-ux-cabinet.js')({ t, assert, lireSource });
   require('./suites/production.js')({ t, assert, lireSource });
   require('./suites/exemple-cinq-ans.js')({ t, assert, lireSource });

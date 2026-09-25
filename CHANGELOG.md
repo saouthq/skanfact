@@ -460,6 +460,27 @@ prix toutes taxes comprises, lu sur le serveur — jamais écrit dans l'applicat
 - **Serveur** : une route `POST /v1/achat/cle` rend l'état de la commande, et la clé une fois payée,
   à qui présente son jeton — la même réponse, qu'une commande n'existe pas ou que le jeton soit faux.
 
+### Rendre un trop-perçu, et le reste à payer net d'un client
+
+Un avoir émis sur une facture déjà payée laisse de l'argent au client. SkanFact le disait sur une
+carte orange, et n'offrait aucun geste : la bulle conseillait de noter la sortie dans Trésorerie,
+et la carte restait pour toujours.
+
+- **« Rembourser … au client »** sur la facture en trop-perçu. Le montant se tape comme sur le
+  chèque ou le virement ; la Trésorerie voit la sortie (« Remboursement FAC-… »), le comptable reçoit
+  l'écriture au débit du client, et la facture redevient simplement réglée. Rendre plus que le
+  trop-perçu demande confirmation. Le remboursement se modifie et se supprime depuis sa ligne, et
+  l'historique de la pièce le nomme.
+- La carte « Payé » dit ce que le client a **versé**, et ce qui lui a été rendu dessous — elle
+  affichait le net, « 1,000 DT », sur une facture réglée 405,600.
+- **Le reste à payer d'un client est net** : ce qu'il doit, moins ce qu'on lui doit (trop-perçus et
+  avoirs libres), sur sa fiche, dans la liste des clients et dans son relevé. La fiche l'explique
+  (« 970,850 DT dû, moins 404,600 DT à lui rendre ») ; un client en sa faveur le dit.
+- **Le relevé de compte** montre le trop-perçu comme un crédit — il sautait la facture comme si elle
+  était soldée — et un total en faveur du client s'écrit « Solde en votre faveur », sans signe moins.
+- Un remboursement ne fausse pas les délais de paiement : rendre de l'argent n'est pas le jour où
+  le client a fini de payer.
+
 ## 10.13.0-beta.1 — 24/09/2026
 
 **Avant la mise en production : les deux applications et le pont entre elles, testés en entier.**

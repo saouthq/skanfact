@@ -7493,6 +7493,27 @@ les offres, ouvre la page de paiement préremplie, et la clé revient toute seul
 - **Une phrase d'offre se déduit de l'offre** : le panneau citait « Achats » parmi ce qu'Indépendant
   réserve, deux versions après la 10.7.0 qui l'a ouvert — il lit maintenant `st.reserves`.
 
+**Puis le trop-perçu, qui avait une carte et pas de geste** (P1 bis) :
+
+- **Un remboursement est un règlement NÉGATIF sur la facture.** Le signe fait tout le reste sans
+  qu'aucun agrégateur ait à s'en souvenir (la leçon de la 10.2.0) : le reste remonte à zéro, la
+  trésorerie voit une sortie, l'écriture change de colonne toute seule (`entrySet`, 6.3.0). Seuls
+  les lecteurs de DATES doivent le connaître — rendre de l'argent n'est pas « le jour où le client a
+  fini de payer » (`dateDernierReglement`, dans les trois délais et la date envoyée à la console).
+  Le montant se TAPE en positif, comme sur le chèque ; c'est la fenêtre qui pose le signe.
+- **Un net se lit comme ce qu'on a versé** : « Payé 1,000 DT » sur une facture réglée 405,600 puis
+  remboursée de 404,600 — vu à la souris, jamais par un test. La carte dit ce qui est reçu, et ce
+  qui a été rendu dessous.
+- **Deux écrans, un chiffre** (6.8.1) : le reste NET de la fiche client (`clientSummary.net`) suit la
+  règle du relevé — un avoir rattaché est déjà dans le reste de sa facture, un avoir libre et un
+  trop-perçu sont des crédits — et un test les compare. Le relevé, lui, SAUTAIT le trop-perçu comme
+  une facture soldée : le total disait au client qu'il devait plus qu'en réalité.
+- **Un total en faveur du client le dit en mots** : « Total dû : −404,600 » se lit comme une faute
+  de frappe, et c'est le client qui la lit.
+- Deux assertions retournées vers la règle (vingt-septième et vingt-huitième) : l'une recopiait le
+  libellé « Modifier ce paiement » mot pour mot, l'autre bornait sa tranche à 700 caractères — une
+  question qui gagne une phrase en sortait. Bornée sur la fin de l'action.
+
 ## Pistes pour la suite (non demandées)
 
 - Séparation des installateurs arm64 / x64 pour diviser par deux les 222 Mo du dmg universel.

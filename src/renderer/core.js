@@ -1259,6 +1259,19 @@
     return (data.documents || []).filter(d => d.type === 'avoir' && d.creditOf === invoiceId && d.status !== 'brouillon');
   }
 
+  // Le remboursement d'un trop-perçu (10.14.0). Un avoir émis sur une facture déjà payée, ou un
+  // paiement plus fort que la facture, laisse de l'argent au CLIENT ; le rendre est une SORTIE, et
+  // elle s'enregistre sur la facture même, comme un règlement de montant NÉGATIF. Le signe fait
+  // tout le reste sans qu'aucun agrégateur ait à s'en souvenir (la leçon de la 10.2.0) : le reste à
+  // payer remonte à zéro, la trésorerie voit une sortie, et l'écriture change de colonne toute
+  // seule (D client / C banque, règle 6.3.0). Seuls les lecteurs de DATES doivent le connaître :
+  // rendre de l'argent n'est pas « le jour où le client a fini de payer ».
+  function estRemboursement(p) { return (Number(p && p.amount) || 0) < 0; }
+  function dateDernierReglement(inv) {
+    const dates = ((inv && inv.payments) || []).filter(p => !estRemboursement(p)).map(p => p.date).filter(Boolean).sort();
+    return dates.length ? dates[dates.length - 1] : '';
+  }
+
   // Situation d'une facture : total, avoirs, paiements, reste à payer.
   function invoiceBalance(doc, data, company) {
     const totals = computeTotals(doc, company);
@@ -1386,7 +1399,7 @@
       (d.payments || []).forEach(p => {
         if (!inPeriod(p.date, period.from, period.to)) return;
         const m = PAYMENT_METHODS.find(x => x[0] === p.method);
-        rows.push({ id: p.id, date: p.date, number: d.number, client: clientName(d.clientId), clientId: d.clientId || '', amount: toBase(d, p.amount, company), method: m ? m[1] : (p.method || ''), reference: p.reference || '', note: p.note || '', docId: d.id, currency: d.currency || company.currency, accountId: p.accountId || '' });
+        rows.push({ id: p.id, date: p.date, number: d.number, client: clientName(d.clientId), clientId: d.clientId || '', amount: toBase(d, p.amount, company), remboursement: estRemboursement(p), method: m ? m[1] : (p.method || ''), reference: p.reference || '', note: p.note || '', docId: d.id, currency: d.currency || company.currency, accountId: p.accountId || '' });
       });
     });
     return rows.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
@@ -1643,6 +1656,12 @@
     const invoices = docs.filter(d => d.type === 'facture' && d.status !== 'brouillon' && d.status !== 'annulée');
     const paid = round3(invoices.reduce((s, d) => s + toBase(d, (d.payments || []).reduce((x, p) => x + (Number(p.amount) || 0), 0), company), 0));
     const due = round3(invoices.reduce((s, d) => s + Math.max(0, toBase(d, invoiceBalance(d, data, company).remaining, company)), 0));
+    // Ce qu'on DOIT à ce client (10.14.0) : les trop-perçus de ses factures et ses avoirs libres. Le
+    // « reste à payer » de sa fiche ne les retranchait pas — 1 012,500 DT affichés quand il nous doit
+    // 505,560 net. Le calcul est celui du relevé (`releveClient`), à la même règle près : un avoir
+    // rattaché est déjà dans le reste de sa facture.
+    const aRendre = round3(invoices.reduce((s, d) => s + Math.max(0, -toBase(d, invoiceBalance(d, data, company).remaining, company)), 0)
+      + issued.filter(d => d.type === 'avoir' && !d.creditOf).reduce((s, d) => s + Math.max(0, toBase(d, computeTotals(d, company).netToPay, company)), 0));
     const dates = docs.map(d => d.date).filter(Boolean).sort();
     const quotes = docs.filter(d => d.type === 'devis');
     const accepted = quotes.filter(d => d.status === 'accepté').length;
@@ -1651,11 +1670,11 @@
     const delays = [];
     invoices.forEach(d => {
       if (effectiveStatus(d, data, company, '9999-12-31') !== 'payée' || !(d.payments || []).length) return;
-      const last = d.payments.map(p => p.date).sort().pop();
+      const last = dateDernierReglement(d);
       if (last && d.date) delays.push(delaiConstate(d.date, last));
     });
     return {
-      docs, ht, paid, due, count: docs.length, invoiceCount: invoices.length, quoteCount: quotes.length,
+      docs, ht, paid, due, aRendre, net: round3(due - aRendre), count: docs.length, invoiceCount: invoices.length, quoteCount: quotes.length,
       first: dates[0] || '', last: dates[dates.length - 1] || '',
       conversion: decided ? Math.round(accepted / decided * 100) : null,
       delay: delays.length ? Math.round(delays.reduce((s, x) => s + x, 0) / delays.length) : null
@@ -1673,7 +1692,7 @@
     const delays = [];
     (data.documents || []).filter(d => d.type === 'facture' && d.status !== 'brouillon' && d.status !== 'annulée' && inPeriod(d.date, fromIso, toIso)).forEach(d => {
       if (effectiveStatus(d, data, company, '9999-12-31') !== 'payée' || !(d.payments || []).length) return;
-      const last = d.payments.map(p => p.date).sort().pop();
+      const last = dateDernierReglement(d);
       if (last && d.date) delays.push(delaiConstate(d.date, last));
     });
     return delays.length ? Math.round(delays.reduce((s, x) => s + x, 0) / delays.length) : null;
@@ -3529,9 +3548,10 @@
 
     (data.documents || []).filter(d => d.type === 'facture').forEach(d => (d.payments || []).forEach(p => {
       if (!inPeriod(p.date, period && period.from, period && period.to) || !keep(p.accountId)) return;
+      const rend = estRemboursement(p);
       out.push({
-        id: p.id, kind: 'encaissement', date: p.date, accountId: p.accountId || fallback,
-        label: `Encaissement ${d.number || ''}`.trim(), party: clientName(d.clientId),
+        id: p.id, kind: rend ? 'decaissement' : 'encaissement', date: p.date, accountId: p.accountId || fallback,
+        label: `${rend ? 'Remboursement' : 'Encaissement'} ${d.number || ''}`.trim(), party: clientName(d.clientId),
         amount: round3(toBase(d, Number(p.amount) || 0, company)), method: p.method || '',
         reference: p.reference || '', docId: d.id, reconciled: !!p.reconciled, source: 'vente'
       });
@@ -4194,7 +4214,7 @@
   // (T-01). Un test confronte désormais chaque clé des colonnes aux lignes produites ici.
   function cashCsvRows(data, moves) {
     const accName = id => ((data.accounts || []).find(a => a.id === id) || {}).name || '';
-    const nature = m => m.source === 'vente' ? 'Encaissement client'
+    const nature = m => m.source === 'vente' ? (m.amount < 0 ? 'Remboursement client' : 'Encaissement client')
       : m.source === 'achat' ? 'Règlement fournisseur'
         : m.source === 'paie' ? 'Salaire'
           : m.party || 'Mouvement';
@@ -4732,7 +4752,7 @@
       paymentsJournal(data, company, period).forEach(r => {
         const j = journalDeCompte(data, acc, r.accountId, r.method);
         const e = entrySet({ date: r.date, journal: j.journal, piece: r.number || '', tiers: r.client, tiersId: r.clientId || '', source: 'encaissement', docId: r.docId, currency: cur, lettre: lettreDoc(r.docId) });
-        const label = `Règlement ${r.number || ''}${r.client ? ' — ' + r.client : ''}${r.reference ? ' (' + r.reference + ')' : ''}`;
+        const label = `${r.remboursement ? 'Remboursement' : 'Règlement'} ${r.number || ''}${r.client ? ' — ' + r.client : ''}${r.reference ? ' (' + r.reference + ')' : ''}`;
         e.debit(j.compte, label, r.amount);
         e.credit(cptClient(r.clientId), label, r.amount, { role: 'clients' });
         out.push(...e.done());
@@ -5656,6 +5676,15 @@
           return;
         }
         const b = invoiceBalance(d, data, company);
+        // Une facture payée plus qu'elle ne vaut porte une somme due AU CLIENT (10.14.0) : le relevé
+        // la sautait comme une facture soldée, et le total disait au client qu'il devait plus qu'en
+        // réalité. Elle s'écrit comme un avoir libre : un montant qu'il peut encore employer.
+        if (b.remaining < -0.0005) {
+          const trop = round3(toBase(d, -b.remaining, company));
+          lignes.push({ id: d.id, type: 'tropPercu', date: d.date, number: d.number || '', dueDate: '',
+            libelle: 'Trop-perçu à rendre', montant: -trop, regle: 0, reste: -trop, retard: 0 });
+          return;
+        }
         if (b.remaining <= 0.0005) return;
         const montant = round3(toBase(d, b.totals.netToPay, company));
         const reste = round3(toBase(d, b.remaining, company));
@@ -5741,12 +5770,13 @@
         <td class="n">${fmt(l.montant)}</td>
         <td class="n">${l.regle ? fmt(l.regle) : '—'}</td>
         <td class="n">${fmt(l.reste)}</td></tr>`).join('')}
-      <tr class="tot"><td colspan="6">Total dû au ${fmtDate(r.date)}</td><td class="n">${fmt(r.total)} ${escapeHtml(cur)}</td></tr>
+      ${/* Un compte qui penche en faveur du client le DIT (10.14.0) : « Total dû : −505,560 » se lit
+         comme une faute de frappe, et c'est le client qui la lit. */''}<tr class="tot"><td colspan="6">${r.total < -0.0005 ? 'Solde en votre faveur au' : 'Total dû au'} ${fmtDate(r.date)}</td><td class="n">${fmt(Math.abs(r.total))} ${escapeHtml(cur)}</td></tr>
     </tbody></table>
-  <div class="recap">
+  ${r.total < -0.0005 ? '' : `<div class="recap">
     <div><div class="k">Échu</div><div class="v">${fmt(r.echu)} ${escapeHtml(cur)}</div></div>
     <div><div class="k">À échoir</div><div class="v">${fmt(r.aVenir)} ${escapeHtml(cur)}</div></div>
-  </div>`
+  </div>`}`
     : '<p>Aucune pièce ouverte à cette date : le compte est soldé. Merci de votre confiance.</p>'}
   ${r.total > 0.0005 && company.rib ? `<p class="pay">Règlement par virement : <b>${escapeHtml(company.rib)}</b>${company.bank ? ' — ' + escapeHtml(company.bank) : ''}</p>` : ''}
   <p class="pay">Ce relevé ne remplace pas les factures qu'il récapitule. Si un règlement s'est croisé avec son envoi, merci de ne pas en tenir compte.</p>
@@ -5761,7 +5791,7 @@
       const delays = [];
       (data.documents || []).filter(d => d.type === 'facture' && d.clientId === c.id && d.status !== 'brouillon' && d.status !== 'annulée').forEach(d => {
         if (effectiveStatus(d, data, company, '9999-12-31') !== 'payée' || !(d.payments || []).length) return;
-        const last = d.payments.map(p => p.date).sort().pop();
+        const last = dateDernierReglement(d);
         if (last && d.date) delays.push(delaiConstate(d.date, last));
       });
       if (delays.length) out.push({ clientId: c.id, name: c.name, delay: Math.round(delays.reduce((s, x) => s + x, 0) / delays.length), count: delays.length });
@@ -6012,10 +6042,7 @@
       };
     });
   }
-  function derniereDatePaiement(inv) {
-    const dates = (inv.payments || []).map(p => p.date).filter(Boolean).sort();
-    return dates.length ? dates[dates.length - 1] : '';
-  }
+  function derniereDatePaiement(inv) { return dateDernierReglement(inv); }
 
   // Les factures issues d'une vente de la console, émises, dont le numéro n'a pas encore été rendu.
   function facturesAAnnoncer(data) {
@@ -6735,7 +6762,7 @@
     }));
     (doc.payments || []).forEach(p => {
       const m = PAYMENT_METHODS.find(x => x[0] === p.method);
-      ev.push({ date: p.date, kind: 'paiement', label: `Paiement de ${money(p.amount, doc.currency || company.currency)}`, detail: [m ? m[1] : p.method, p.reference].filter(Boolean).join(' · ') });
+      ev.push({ date: p.date, kind: 'paiement', label: estRemboursement(p) ? `Remboursement au client de ${money(-p.amount, doc.currency || company.currency)}` : `Paiement de ${money(p.amount, doc.currency || company.currency)}`, detail: [m ? m[1] : p.method, p.reference].filter(Boolean).join(' · ') });
     });
     if (doc.remindAfter) ev.push({ date: doc.remindAfter, kind: 'report', label: 'Ne pas relancer avant cette date' });
     if (doc.type === 'facture') creditsFor(data, doc.id).forEach(a => ev.push({ date: a.date, kind: 'avoir', label: `Avoir ${a.number}`, detail: a.creditReason || '', id: a.id }));
@@ -8087,7 +8114,7 @@
     debutExercice, soldesOuverture, balanceGenerale, grandLivre, grandLivreRows, balanceAuxiliaire,
     balanceCsvColumns, balanceAuxCsvColumns, grandLivreCsvColumns,
     salesCsvColumns, buyCsvColumns, payCsvColumns, supplierPayCsvColumns, cashCsvColumns, cashCsvRows,
-    nextNumber, isLocked, isIssued, computeTotals, creditsFor, invoiceBalance, motifVerrou, delaisContradictoires, effectiveStatus,
+    nextNumber, isLocked, isIssued, computeTotals, creditsFor, invoiceBalance, estRemboursement, dateDernierReglement, motifVerrou, delaisContradictoires, effectiveStatus,
     depositLines, settlementLines, salesJournal, vatSummary, paymentsJournal, toCsv, migrateData,
     PERIODS, MONTHS_FR, MONTHS_SHORT, monthLabel, addMonths, nextRecurrenceDate, dueRecurrences, catchUpRecurrence, fillTemplate, buildRecurringInvoice,
     reminderLevel, REMINDER_LABELS, daysBetween, overdueInvoices, facturesAVenir, todoList, companyGaps, verifRib, documentHistory, DEFAULT_EMAIL_TEMPLATES, DEFAULT_EMAIL_TEMPLATES_EN, emailFor,

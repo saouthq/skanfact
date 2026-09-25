@@ -172,14 +172,11 @@ Constats de l'audit du 22/09/2026 restés hors de la 10.6.0.
   devis, sa première facture, puis son premier achat) a livré ses corrections en 10.12.0 (H-E1 →
   H-E28). Ce qu'il a vu
   et qui reste à décider ou à faire :
-  - **Un trop-perçu ne se rembourse pas dans SkanFact.** Un avoir émis sur une facture déjà payée
-    laisse une somme due au client : la carte « Trop-perçu » le dit, mais aucun geste n'enregistre
-    le remboursement rattaché à la facture — on note la sortie à la main dans Trésorerie, et la
-    carte reste. C'est de l'argent : à spécifier avant d'écrire (compte, pièce, effet sur le
-    lettrage), et à faire en bêta. Au même endroit : la liste des clients, la fiche du client et l'accueil
-    annoncent un « reste à payer » qui ne déduit pas ce qu'on doit à ce même client (1 012,500 DT
-    affichés quand il nous doit 505,560 net) — c'est le même chantier, le relevé de compte, lui, est
-    juste.
+  - ~~**Un trop-perçu ne se rembourse pas dans SkanFact.**~~ — **fait en 10.14.0** : « Rembourser …
+    au client » sur la facture (un règlement négatif : la Trésorerie voit la sortie, l'écriture passe
+    D client / C banque), et la fiche, la liste et le relevé du client donnent le reste NET. Reste :
+    rembourser un AVOIR LIBRE (non rattaché à une facture) — il compte dans le net, mais aucun geste
+    ne le rend encore.
   - ~~Les champs de montant suivent la langue du SYSTÈME~~ — **fait en 10.12.0 (H-E28)**, et c'était
     pire qu'un affichage : sur un poste en anglais, « 2,5 » tapé devenait 25. L'application pose sa
     langue (`--lang fr-FR`) avant de démarrer. Reste, si un jour on le veut : les espaces de milliers
@@ -327,7 +324,7 @@ l'ordre proposé.
     la clé présentée) et une colonne D1 de plus — un `ALTER TABLE` à passer à la main.
   - **la décision de Skander** : une licence achetée pendant l'essai démarre-t-elle au paiement (ce
     que fait le code aujourd'hui) ou à la fin de l'essai ?
-  - le remboursement d'un trop-perçu, avec le « reste à payer » net (§ 4 ci-dessus).
+  - ~~le remboursement d'un trop-perçu, avec le « reste à payer » net~~ — fait en 10.14.0.
   - **avant de publier la 10.14.0-beta.1 : déployer le worker de `beta`** (Actions → Worker → Run
     workflow, branche `beta`). Le worker en service ne connaît ni `/v1/achat/cle` ni le jeton : une
     commande passée depuis l'application y resterait « en attente » (l'écran dit « hors ligne »,

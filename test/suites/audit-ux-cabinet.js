@@ -3154,12 +3154,18 @@ t('Supprimer un paiement ou un règlement : la clôture d\'abord, puis une quest
   const ent = code('src', 'renderer', 'app.js');
   assert.ok(!/closedToast|ne peut pas être supprimé'\)/.test(ent), 'une phrase entière est de nouveau passée à la porte de clôture');
   for (const lab of ['Supprimer ce paiement', 'Supprimer ce règlement']) {
-    const i = ent.indexOf(`label: '${lab}'`);
+    // Le libellé peut dépendre de la ligne (10.14.0 : « Supprimer ce remboursement ») : on le
+    // cherche sur la ligne d'un `label:`, pas collé à lui.
+    const m = new RegExp(`label: [^\\n]*'${lab}'`).exec(ent);
+    const i = m ? m.index : -1;
     assert.ok(i > 0, `l'action « ${lab} » a disparu`);
-    const bloc = ent.slice(i, i + 700);
+    // Bornée sur la FIN de l'action (`} }`), pas sur un nombre de caractères : une question qui
+    // gagne une phrase ne sort plus de la tranche (règle 10.4.0).
+    const bloc = ent.slice(i, ent.indexOf('} }', i) > 0 ? ent.indexOf('} }', i) : i + 700);
+    assert.ok(bloc.length > 200 && bloc.length < 2500, `tranche de « ${lab} » : ${bloc.length}`);
     assert.ok(bloc.indexOf('closedBlock(') > 0 && bloc.indexOf('closedBlock(') < bloc.indexOf('confirmDialog('), `« ${lab} » : la clôture doit passer avant la question`);
     assert.ok(/danger: true/.test(bloc), `« ${lab} » doit s'annoncer comme un geste qui détruit`);
-    assert.ok(/C\.money\([a-z]\.amount, cur\)[^\n]*C\.fmtDate\([a-z]\.date\)/.test(bloc), `la question de « ${lab} » doit nommer le montant et la date`);
+    assert.ok(/C\.money\((?:Math\.abs\()?[a-z]\.amount\)?, cur\)[^\n]*C\.fmtDate\([a-z]\.date\)/.test(bloc), `la question de « ${lab} » doit nommer le montant et la date`);
   }
 });
 
