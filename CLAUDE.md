@@ -72,6 +72,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Un **fait fiscal naît à son fait générateur**, pas à la pièce qui l'annonce : la retenue à la source se déclare au mois du RÈGLEMENT — l'opérée comme la subie | 10.14.0 — 32,130 DT « à reverser » sur une facture jamais payée ; `retenueDesReglements`, `retenueSubie` |
 | Un fait fiscal **se régularise à la date de la pièce qui le change**, jamais en réécrivant un mois déclaré | 10.14.0 — l'avoir de mai qui baissait la retenue de mars ; `retenueChrono`, `ajustements` |
 | Un **règlement de tiers n'est pas un reversement** : ce qui touche la banque ET un 40x/41x compte dans la retenue | 10.14.0 — le remboursement au client qui disparaissait de la déclaration du Cabinet |
+| Un **pense-bête qui ne regarde que devant** oublie ce qui est passé sans être fait ; une **date réglable** ne s'écrit pas en dur à côté | 10.14.0 — la CNSS du 2e trimestre sortie du calendrier ; `calendrierFiscal`, `dateLimiteSociale` |
 | Un **régime qui ne récupère pas la TVA** en fait un coût, figé sur chaque achat ; sa réparation ne touche que les mois non clôturés, et s'annonce par la fonction qui déclare | 10.14.0 — `tvaRecuperable`, `achatsHorsRegime` |
 | Un **taux affiché grisé** n'est pas un taux choisi : un formulaire qui lit les champs désactivés le range quand même | 10.14.0 — le 0 % du forfait rangé, des factures sans TVA au passage au réel ; un geste se teste aller ET retour |
 | Une pièce qui en **diminue une autre** le fait dans la devise de celle qu'elle diminue ; à un **autre taux**, l'écart part au change (655/755) | 10.14.0 — l'avoir de 300 DT qui retranchait 300 € ; les 15 DT restés au 411 |
@@ -8035,6 +8036,17 @@ aussi l'app cabinet ») — les invariants ont gagné le stock, le résultat, le
 - **Une part au millime se compare arrondie comme l'écriture la pose** : le lettrage sommait des
   parts non arrondies pendant que le journal posait chaque composante arrondie — un millime d'écart
   sur cinq ans. On arrondit composante par composante, comme `entrySet`.
+- **Une page de pense-bête qui ne regarde que DEVANT oublie ce qui est passé sans être fait.**
+  `upcomingFiscal` prend la prochaine occurrence à partir d'aujourd'hui : la CNSS d'un trimestre
+  jamais déposée disparaissait du calendrier le lendemain de sa date limite, alors que `socialDue`
+  la savait en retard. `calendrierFiscal` met les retards CONNUS en tête — seulement ceux qu'on sait
+  (les bulletins disent qu'une CNSS est due) ; une TVA non pointée a pu être déposée sans être
+  pointée, la crier chaque mois serait du bruit (8.0.1).
+- **Une date réglable ne s'écrit pas en dur à côté** : la Paie posait le 15 et le 30 avril pendant que
+  le calendrier laisse régler le jour — deux écrans, deux dates pour une déclaration.
+  `dateLimiteSociale` lit la règle du calendrier ; `cnssDeclaration`, `employerAnnual`, `socialDue`
+  et le calendrier passent par elle. Et une valeur qu'on sait calculer ne s'affiche pas « — » : une
+  déclaration déposée a son échéance (`dateLimiteDeclarationSociale`).
 
 ## Pistes pour la suite (non demandées)
 

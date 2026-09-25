@@ -3699,9 +3699,9 @@
     });
     const rows = Object.values(byEmp).sort((a, b) => (a.name || '').localeCompare(b.name || '', 'fr'));
     const sum = f => round3(rows.reduce((s, r) => s + (Number(f(r)) || 0), 0));
-    // Échéance usuelle : le 15 du mois suivant la fin du trimestre. À VÉRIFIER.
-    const lastMonth = months[months.length - 1];
-    const dueDate = lastMonth === 12 ? `${Number(year) + 1}-01-15` : `${year}-${String(lastMonth + 1).padStart(2, '0')}-15`;
+    // Échéance : le jour réglé au calendrier fiscal (le 15 par défaut) du mois suivant la fin du
+    // trimestre. À VÉRIFIER. Une seule source pour la Paie et le calendrier (10.14.0).
+    const dueDate = dateLimiteSociale(data, 'cnss', year, quarter);
     return {
       year: Number(year), quarter: Number(quarter), label: quarterLabel(quarter), months, dueDate,
       employees: rows.length, slips: slips.length,
@@ -3781,8 +3781,44 @@
       held, heldBySupplier: Object.values(heldBySupplier).sort((a, b) => (a.supplier || '').localeCompare(b.supplier || '', 'fr')),
       heldTotal: round3(held.reduce((s, x) => s + x.amount, 0)),
       heldMissing: held.filter(x => !x.certificate).length,
-      dueDate: `${y + 1}-04-30`     // échéance usuelle — À VÉRIFIER
+      dueDate: dateLimiteSociale(data, 'employeur', y)     // échéance du calendrier — À VÉRIFIER
     };
+  }
+
+  // La date limite d'une déclaration sociale suit la RÈGLE du calendrier fiscal (10.14.0). La Paie
+  // écrivait le 15 et le 30 avril en dur, pendant que le calendrier laisse régler le jour de chaque
+  // échéance : réglée au 20, la même CNSS était due le 15 dans la Paie et « À faire », le 20 au
+  // calendrier — deux écrans, deux dates pour une déclaration.
+  function dateLimiteSociale(data, kind, year, quarter) {
+    const r = fiscalDeadlines(data).find(x => x.id === kind) || {};
+    const jour = (y, m) => `${y}-${pad2(m)}-${pad2(Math.min(Number(r.day) || (kind === 'cnss' ? 15 : 30), daysInMonth(y, m)))}`;
+    if (kind === 'cnss') {
+      const m = Number(quarter) * 3 + 1;
+      return m > 12 ? jour(Number(year) + 1, 1) : jour(Number(year), m);
+    }
+    return jour(Number(year) + 1, Number(r.month) || 4);
+  }
+  // Celle d'une déclaration désignée par son identifiant (`cnss-2026-T2`, `employeur-2025`) — c'est
+  // ainsi qu'une déclaration déposée se range : sans elle, le calendrier écrivait « — » à côté.
+  function dateLimiteDeclarationSociale(data, id) {
+    const c = /^cnss-(\d{4})-T([1-4])$/.exec(String(id || ''));
+    if (c) return dateLimiteSociale(data, 'cnss', Number(c[1]), Number(c[2]));
+    const e = /^employeur-(\d{4})$/.exec(String(id || ''));
+    return e ? dateLimiteSociale(data, 'employeur', Number(e[1])) : '';
+  }
+
+  // Le calendrier fiscal, tel que l'écran le montre : ce qui arrive, et d'abord ce qui est EN
+  // RETARD (10.14.0). Une occurrence passée disparaissait du calendrier — `upcomingFiscal` ne regarde
+  // que devant —, et la CNSS d'un trimestre jamais déposée n'était ni « à venir » ni « déposée » :
+  // nulle part, sur la page faite pour ne rien oublier. Seules les déclarations sociales ont un
+  // retard qu'on SAIT (`socialDue` connaît les bulletins) ; une TVA non pointée peut avoir été
+  // déposée sans être pointée, et la crier en retard chaque mois serait du bruit.
+  function calendrierFiscal(data, todayIso, withinDays) {
+    const t = todayIso || today();
+    const retards = socialDue(data, t).filter(x => x.late).map(x => ({ id: x.kind, label: x.label, note: '',
+      date: x.dueDate, days: daysBetween(t, x.dueDate), filingId: '', socialId: x.id, fin: '', enCours: false,
+      retard: true, amount: x.amount }));
+    return retards.concat(upcomingFiscal(data, t, withinDays).map(x => ({ ...x, retard: false })));
   }
 
   // Les déclarations sociales dues et pas encore marquées déposées.
@@ -9160,7 +9196,7 @@
     CURRENCIES, DEVISES_NOMS, libelleDevise, TYPES_NUMEROTES, etatNumerotation, poserNumerotation, premiereNumerotation, normCurrency, decimalsFor, toBase, rateOf, missingRate, monthKeys, monthlySeries, topClients, quoteStats, avgPaymentDelay, clientSummary, I18N,
     EXTRA_TYPES, SALES_TYPES, CONVERSIONS, CONVERSION_LABELS, convertDoc, derivedDocs, chaineDePieces, DEFAULT_CLAUSES, CLAUSE_LABELS,
     PURCHASE_KINDS, PURCHASE_LIES, piecesLieesAchat, LINE_DESTINATIONS, DEFAULT_EXPENSE_CATEGORIES, PURCHASE_STATUSES, expenseCategories,
-    vatReturn, vatChain, reportTvaDebut, DEFAULT_FISCAL_DEADLINES, fiscalDeadlines, nextDeadline, upcomingFiscal, fiscalFilingId, fiscalDone, echeanceSociale, socialesDeposees, simpleResult,
+    vatReturn, vatChain, reportTvaDebut, DEFAULT_FISCAL_DEADLINES, fiscalDeadlines, nextDeadline, upcomingFiscal, calendrierFiscal, dateLimiteSociale, dateLimiteDeclarationSociale, fiscalFilingId, fiscalDone, echeanceSociale, socialesDeposees, simpleResult,
     ACCOUNT_KINDS, MOVE_KINDS, virementVers, tauxDuReglement, montantRegle, ecartDuReglement, compteDepuisFiche, cashMovements, accountBalance, cashPosition, cashForecast, reconciliation,
     lineCost, documentMargin, marginBy, PROJECT_STATUSES, projectMargin, projectList, recurringProfitability,
     DEFAULT_FIXED_CATEGORIES, isFixedCategory, breakEven,

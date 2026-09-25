@@ -1843,4 +1843,55 @@ t('10.14.0 : la retenue SUBIE naît à l\'encaissement — déclarée le mois o�
   const e = ecarts(d);
   assert.deepStrictEqual(e, [], e.join('\n'));
 });
+
+// Le calendrier fiscal oubliait une déclaration manquée — la CNSS du 2e trimestre, due le 15 juillet,
+// n'était ni « à venir » ni « déposée » —, et la Paie écrivait le 15 et le 30 avril en dur pendant
+// que le calendrier laissait régler le jour : deux dates pour la même déclaration.
+t('10.14.0 : une déclaration sociale en retard reste au calendrier, et sa date limite est celle du calendrier partout', () => {
+  const d = base0({ employees: [{ id: 'e1', name: 'Hichem Trabelsi', grossSalary: 1200, hireDate: '2025-01-01' }] });
+  const e = d.employees[0];
+  d.payslips = [5, 6].map(m => { const i = core.payslipInputFor(d, e, 2026, m); return { id: 'p' + m, employeeId: 'e1', year: 2026, month: m, ...i, computed: core.computePayslip(e, i, core.payrollSettings(d)) }; });
+  // Par défaut : le 15 du mois qui suit le trimestre, le 30 avril de l'année suivante.
+  assert.strictEqual(core.dateLimiteSociale(d, 'cnss', 2026, 2), '2026-07-15');
+  assert.strictEqual(core.dateLimiteSociale(d, 'cnss', 2025, 4), '2026-01-15');
+  assert.strictEqual(core.dateLimiteSociale(d, 'employeur', 2025), '2026-04-30');
+  assert.strictEqual(core.dateLimiteDeclarationSociale(d, 'cnss-2025-T1'), '2025-04-15');
+  assert.strictEqual(core.dateLimiteDeclarationSociale(d, 'employeur-2025'), '2026-04-30');
+  assert.strictEqual(core.dateLimiteDeclarationSociale(d, 'tva@2026-05-28'), '');
+  // Le 25 septembre, la CNSS du 2e trimestre n'est pas déposée : le calendrier la montre EN RETARD,
+  // en tête, avec ses cotisations, et la déclaration sociale qu'elle désigne.
+  let cal = core.calendrierFiscal(d, '2026-09-25', 120);
+  const r = cal.find(x => x.retard);
+  assert.ok(r, 'la CNSS en retard a disparu du calendrier');
+  assert.strictEqual(cal[0], r, 'un retard ne passe pas avant ce qui arrive');
+  assert.strictEqual(r.socialId, 'cnss-2026-T2');
+  assert.strictEqual(r.date, '2026-07-15');
+  assert.strictEqual(r.days, -72);
+  assert.strictEqual(r.amount, core.cnssDeclaration(d, 2026, 2).total);
+  assert.ok(r.amount > 0);
+  // Ce qui arrive y est toujours, et une occurrence n'y est jamais deux fois.
+  assert.ok(cal.some(x => !x.retard && x.id === 'cnss' && x.date === '2026-10-15'), 'la CNSS à venir a disparu');
+  // Déposée, elle quitte les retards.
+  d.socialFilings = [{ id: 'cnss-2026-T2', filedAt: '2026-09-25', label: 'x' }];
+  assert.ok(!core.calendrierFiscal(d, '2026-09-25', 120).some(x => x.retard), 'une CNSS déposée reste en retard');
+  // Le jour réglé au calendrier fait la date partout : la Paie, « À faire » et le calendrier.
+  d.socialFilings = [];
+  d.fiscalDeadlines = [{ id: 'cnss', day: 20 }, { id: 'employeur', day: 25, month: 5 }];
+  assert.strictEqual(core.cnssDeclaration(d, 2026, 2).dueDate, '2026-07-20', 'la Paie garde le 15 écrit en dur');
+  assert.strictEqual(core.socialDue(d, '2026-09-25').find(x => x.id === 'cnss-2026-T2').dueDate, '2026-07-20');
+  assert.strictEqual(core.employerAnnual(d, 2025, d.company).dueDate, '2026-05-25', 'la déclaration d\'employeur garde le 30 avril écrit en dur');
+  cal = core.calendrierFiscal(d, '2026-09-25', 120);
+  assert.strictEqual(cal.find(x => x.retard).date, '2026-07-20');
+  assert.strictEqual(cal.find(x => !x.retard && x.id === 'cnss').date, core.dateLimiteSociale(d, 'cnss', 2026, 3), 'le calendrier et la Paie ne disent pas la même date');
+  // Un jour trop grand pour le mois se ramène à sa fin, comme au calendrier.
+  d.fiscalDeadlines = [{ id: 'employeur', day: 31, month: 4 }];
+  assert.strictEqual(core.dateLimiteSociale(d, 'employeur', 2025), '2026-04-30');
+  // L'écran lit le calendrier entier, et donne leur échéance aux déclarations déposées.
+  const app = require('fs').readFileSync(require('path').join(__dirname, '../../src/renderer/app.js'), 'utf8');
+  const z = app.slice(app.indexOf('function drawFiscal()'), app.indexOf('const tagOf = () =>'));
+  assert.ok(z.length > 2000 && z.length < 12000, 'tranche inattendue');
+  assert.ok(/const up = C\.calendrierFiscal\(/.test(z), 'le calendrier ne lit que ce qui arrive');
+  assert.ok(/date: C\.dateLimiteDeclarationSociale\(data, f\.id\)/.test(z), 'une déclaration déposée n\'a pas son échéance');
+  assert.ok(/x\.retard \?/.test(z) && /en retard de/.test(z), 'le retard ne se dit pas');
+});
 };

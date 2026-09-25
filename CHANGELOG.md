@@ -920,6 +920,16 @@ douze mois et l'année. Voici ce qu'il a trouvé :
   déclaration. Seul ce qui va de l'État à la banque, sans client ni fournisseur, solde la retenue.
 - La ligne d'un règlement fournisseur dit la retenue qu'il garde pour l'État (« + 15,449 DT retenus
   pour l'État »), comme la ligne d'un paiement client.
+- **Le calendrier fiscal n'oublie plus une déclaration manquée.** Une échéance passée sortait du
+  calendrier : sur l'exemple, la CNSS du 2e trimestre 2026 — due le 15 juillet, 1 668,571 DT de
+  cotisations, jamais marquée déposée — n'était ni « à venir » ni « déposée ». « À faire » et la Paie
+  la réclamaient ; la page faite pour ne rien oublier, non. Elle y est en tête, « en retard de
+  72 jours », avec « Préparer » et « Marquer déposée ». (Une TVA non pointée n'y est pas criée : on
+  peut l'avoir déposée sans la pointer, et SkanFact ne le sait pas.)
+- **La date limite de la CNSS et de la déclaration d'employeur est celle du calendrier, partout.** La
+  Paie écrivait le 15 et le 30 avril en dur, pendant que le calendrier laisse régler le jour de chaque
+  échéance : réglée au 20, la même CNSS était due le 15 dans la Paie et dans « À faire », le 20 au
+  calendrier. Et les déclarations déjà déposées affichent enfin leur échéance, au lieu de « — ».
 - La carte « TVA déductible » disait « sur 441,940 DT **payés** » : c'était la TVA des factures du
   mois, payées ou non. Elle dit « de TVA facturée ». Et la colonne « Net payé » du journal des achats
   s'appelle « Net à payer » : elle portait aussi les pièces pas encore réglées.

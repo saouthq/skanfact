@@ -13261,7 +13261,9 @@
     };
     function drawFiscal() {
       const rules = C.fiscalDeadlines(data);
-      const up = C.upcomingFiscal(data, C.today(), 120);
+      // En retard d'abord, puis ce qui arrive : une déclaration sociale jamais déposée ne sortait plus
+      // du calendrier une fois sa date passée (10.14.0).
+      const up = C.calendrierFiscal(data, C.today(), 120);
       // Une échéance marquée déposée quitte « Ce qui arrive » sur-le-champ. Le « Annuler » du
       // bandeau dure huit secondes ; passé ce délai, l'occurrence pointée par erreur n'était plus
       // NULLE PART, et le seul recours restant était de désactiver la règle — donc de perdre aussi
@@ -13275,14 +13277,15 @@
       }).concat((data.socialFilings || []).slice().sort((a2, b2) => String(b2.filedAt || '').localeCompare(String(a2.filedAt || ''))).map(f => ({
         // La CNSS et la déclaration d'employeur se pointent dans la Paie OU ici : c'est la même
         // mention (10.12.0), donc elle se relit et se retire des deux endroits.
-        id: f.id, at: f.filedAt ? Date.parse(f.filedAt + 'T12:00:00Z') : 0, date: '', label: f.label || f.id, sociale: true
+        // Son échéance se connaît : elle suit la même règle que la Paie (10.14.0 — « — » avant).
+        id: f.id, at: f.filedAt ? Date.parse(f.filedAt + 'T12:00:00Z') : 0, date: C.dateLimiteDeclarationSociale(data, f.id), label: f.label || f.id, sociale: true
       })));
       const attente = x => `${x.label} porte sur une période qui se termine le ${C.fmtDate(x.fin)} : on la marque déposée une fois la période terminée, sinon il manquerait ses derniers bulletins.`;
       $('#c-body').innerHTML = `
         <div class="panel"><h2>Ce qui arrive ${info('compta.fiscal')}</h2>
           ${up.length ? `<table class="list compact"><thead><tr><th>Échéance</th><th>Date</th><th class="r">Dans</th><th></th></tr></thead><tbody>
-            ${up.map(x => `<tr class="${x.days <= 7 && !x.enCours ? 'row-warn' : ''}"><td><strong>${h(x.label)}</strong>${x.note ? `<div class="small muted">${h(x.note)}</div>` : ''}${x.enCours ? `<div class="small muted">Déposable après le ${C.fmtDate(x.fin)}, une fois la période terminée.</div>` : ''}</td>
-              <td class="nw">${C.fmtDate(x.date)}</td><td class="r nw">${x.days === 0 ? "aujourd'hui" : x.days + ' j'}</td>
+            ${up.map(x => `<tr class="${x.retard || (x.days <= 7 && !x.enCours) ? 'row-warn' : ''}"><td><strong>${h(x.label)}</strong>${x.note ? `<div class="small muted">${h(x.note)}</div>` : ''}${x.enCours ? `<div class="small muted">Déposable après le ${C.fmtDate(x.fin)}, une fois la période terminée.</div>` : ''}${x.retard ? `<div class="small">${x.id === 'cnss' ? 'Cotisations du trimestre' : 'Retenues de l\'année'} : ${C.money(x.amount, company().currency)}. Pas encore marquée déposée : si tu l'as déjà fait, marque-la ; sinon, dépose-la au plus vite.</div>` : ''}</td>
+              <td class="nw">${C.fmtDate(x.date)}</td><td class="r nw">${x.retard ? `<span class="badge retard">en retard de ${pl(-x.days, 'jour')}</span>` : x.days === 0 ? "aujourd'hui" : x.days + ' j'}</td>
               <td class="actions">${FISCAL_VERS[x.id] ? `<button class="btn btn-sm btn-ghost" data-fvers="${h(x.id)}">Préparer</button>` : ''}<button class="btn btn-sm" data-fdone="${h(x.filingId)}" data-fsoc="${h(x.socialId || '')}" data-flab="${h(x.label)}"${x.enCours ? ` disabled title="${h(attente(x))}"` : ''}>Marquer déposée</button></td></tr>`).join('')}
           </tbody></table>` : '<div class="empty">Aucune échéance activée. Active celles qui te concernent ci-dessous.</div>'}
           <p class="small muted mt"><em>À VÉRIFIER avec ton comptable :</em> les dates limites, la périodicité et les déclarations qui te concernent dépendent de ta forme juridique, de ton régime fiscal et de la présence de salariés. Ce calendrier est un pense-bête que tu règles toi-même, pas une source officielle.</p>
