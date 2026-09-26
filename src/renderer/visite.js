@@ -1326,7 +1326,13 @@
     const faire = estFaire(e) && !cur.fin;
     // En RETRAIT pendant un essai, ou quand une liste est ouverte par-dessus la page : la bulle se
     // range dans un coin et rien ne s'assombrit — ce qu'on vient d'ouvrir se voit en entier.
-    const listes = cur.fin ? [] : listesOuvertes();
+    // Sauf celle que l'étape MONTRE : « Choisir, ou refermer » parle du menu d'actions ouvert, et la
+    // bulle se rangeait dans un coin justement parce qu'il l'était — son explication ne se lisait
+    // jamais (vu en guidant un débutant, 10.14.1). La liste qui est la zone reste éclairée, en entier.
+    const dansLaZone = l => !!zoneEl && (l === zoneEl || l.contains(zoneEl) || zoneEl.contains(l));
+    const toutesListes = cur.fin ? [] : listesOuvertes();
+    const zoneEstUneListe = toutesListes.some(dansLaZone);
+    const listes = toutesListes.filter(l => !dansLaZone(l));
     const couvre = cur.fin || cur.essai ? null : fenetreQuiCouvre(zoneEl);
     if (couvre) listes.push(couvre);
     // La FIN attend que la fenêtre ouverte par le dernier geste se referme : la carte « Ta pièce est
@@ -1340,6 +1346,8 @@
     if (zoneEl) {
       // Amener la cible à l'écran UNE fois par étape : la ramener à chaque image empêcherait de
       // faire défiler la page pour regarder autour.
+      // Une liste ouverte se referme au moindre défilement (`rowmenu.js`) : on ne la fait pas bouger.
+      if (!cur.defile && !cur.mini && zoneEstUneListe) cur.defile = true;
       if (!cur.defile && !cur.mini) {
         cur.defile = true;
         const rr = zoneEl.getBoundingClientRect();

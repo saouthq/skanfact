@@ -295,4 +295,46 @@ t('10.14.1 : cliquer dans une case pour y ÉCRIRE n\'ouvre pas l\'essai — cliq
   assert.strictEqual(V.ouvreEssai(zone), false);
   assert.strictEqual(V.ouvreEssai(el('div', {})), false, 'un clic sur du vide n\'est pas un essai');
 });
+
+t('10.14.1 : « Contre-passer ou extourner » ouvre le menu d\'une pièce ordinaire, jamais celui des à-nouveaux', () => {
+  // Sur un livre repris, la première ligne du livre-journal est l'ouverture (AN) : son menu ne propose
+  // pas l'extourne, et son miroir tombe au 1er janvier — la bulle, qui dit « aujourd'hui » et
+  // « extourner », décrivait un autre menu que celui qu'elle éclairait (vu en guidant un débutant).
+  const src = lireSource('src', 'cabinet', 'renderer', 'cabvisites.js');
+  const debut = src.indexOf('const pieceOrdinaire = () => {');
+  assert.ok(debut > 0, 'pieceOrdinaire introuvable');
+  const fin = src.indexOf('\n    };', debut) + 7;
+  const corps = src.slice(debut, fin);
+  assert.ok(corps.length < 800, 'tranche inattendue');
+  const visiteCp = src.slice(src.indexOf("id: 'contre-passer'"), src.indexOf("id: 'abonnement'"));
+  assert.ok(/cible: pieceOrdinaire,[^\n]*faire: 'clic'/.test(visiteCp), 'le geste « Contre-passer ou extourner » ne vise plus la pièce ordinaire');
+  const bouton = (journal, cle) => {
+    const tr = { children: [{ textContent: '1' }, { textContent: '01/01/2026' }, { textContent: journal }] };
+    return { cle, closest: () => tr };
+  };
+  const an = bouton('AN', 'E:an'), bq = bouton('BQ', 'E:bq');
+  const document = { querySelectorAll: () => [an, bq], querySelector: () => an };
+  const f = vm.runInNewContext('(' + corps.replace('const pieceOrdinaire = ', '').replace(/;\s*$/, '') + ')', { document });
+  assert.strictEqual(f().cle, 'E:bq', 'le menu éclairé est celui des à-nouveaux');
+  const seul = { querySelectorAll: () => [an], querySelector: () => an };
+  assert.strictEqual(vm.runInNewContext('(' + corps.replace('const pieceOrdinaire = ', '').replace(/;\s*$/, '') + ')', { document: seul })().cle, 'E:an', 'sans pièce ordinaire, le premier menu reste éclairé');
+});
+
+t('10.14.1 : une étape qui MONTRE le menu ouvert garde sa bulle entière (la liste ouverte n\'est pas une gêne quand elle est la zone)', () => {
+  // « Choisir, ou refermer » éclaire le menu d'actions ; la bulle se rangeait dans un coin parce qu'une
+  // liste était ouverte — la seule étape faite pour expliquer ce menu ne se lisait jamais.
+  const src = lireSource('src', 'renderer', 'visite.js');
+  const debut = src.indexOf('const toutesListes = cur.fin ? [] : listesOuvertes();');
+  assert.ok(debut > 0, 'la lecture des listes ouvertes a changé de forme');
+  const zone = src.slice(src.lastIndexOf('const dansLaZone', debut), debut + 400);
+  assert.ok(zone.length < 900, 'tranche inattendue');
+  const dansLaZone = vm.runInNewContext('(' + /const dansLaZone = (l => [^;]+);/.exec(zone)[1] + ')', { zoneEl: null });
+  const item = { contains: () => false }, liste = { contains: x => x === item }, autre = { contains: () => false };
+  const avec = vm.runInNewContext('(' + /const dansLaZone = (l => [^;]+);/.exec(zone)[1] + ')', { zoneEl: item });
+  assert.strictEqual(avec(liste), true, 'le menu qui contient la cible compte comme une gêne');
+  assert.strictEqual(avec(autre), false, 'une autre liste ouverte ne range plus la bulle');
+  assert.strictEqual(dansLaZone(liste), false, 'sans zone, toute liste doit ranger la bulle');
+  assert.ok(/const listes = toutesListes\.filter\(l => !dansLaZone\(l\)\);/.test(zone), 'les listes qui rangent la bulle ne sont plus filtrées par la zone');
+  assert.ok(/zoneEstUneListe\) cur\.defile = true;/.test(src), 'la page défile sous un menu ouvert — il se referme');
+});
 };

@@ -8494,6 +8494,13 @@ lots ; le détail de ce qui reste vit dans `A-FAIRE.md` § 0.
     première étape dont la cible répond (`noteEssai`). Piège de ma méthode : la page n'avait pas été
     RECHARGÉE après l'édition du moteur, et j'ai cru le correctif inopérant — un `fetch` du script sur
     le disque ne dit rien de ce que la page a chargé.
+  - **Une liste ouverte n'est une gêne que si elle n'est pas ce qu'on montre** : « Choisir, ou
+    refermer » explique le menu d'actions, et la bulle se rangeait dans un coin PARCE QUE le menu était
+    ouvert — l'étape faite pour l'expliquer ne se lisait jamais. La liste qui contient la zone reste
+    éclairée, et la page ne défile pas sous elle (le menu se refermerait). Et une cible qui dit « le
+    premier menu du tableau » éclairait celui des à-nouveaux, dont le miroir tombe au 1er janvier : la
+    bulle décrivait un autre menu que celui qu'elle montrait — une cible se choisit par ce qui
+    DISCRIMINE (`pieceOrdinaire`), comme un parcours e2e (10.14.0).
 
 ## Pistes pour la suite (non demandées)
 

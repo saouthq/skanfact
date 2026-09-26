@@ -53,6 +53,10 @@ Publiée en **bêta** : elle touche au moteur comptable (retenue à la source, d
   « Terminer » ne la laisse plus « en pause à l'étape 2 sur 2 ».
 - **« Tu peux cliquer ce qui est éclairé » ne se dit plus sur un bouton éteint** (« Enregistrer et
   valider » grisé sur une grille vide) : la phrase attend la première étape où le clic fait quelque chose.
+- **« Corriger une écriture validée » ouvre le menu d'une pièce ordinaire**, plus celui des à-nouveaux
+  (qui ne propose pas l'extourne) ; et la bulle qui explique le menu ouvert se lit à côté de lui, au
+  lieu de se ranger dans un coin. La contre-passation est dite « datée du jour où tu corriges, jamais
+  avant la pièce » — c'est la date que le menu affiche.
 
 **Pour l'entreprise (SkanFact)**
 - **Un acompte demandé en montant fait ce montant**, timbre compris (500 DT demandés faisaient 501,002).

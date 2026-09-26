@@ -1353,6 +1353,13 @@
       ]
     });
 
+    // Le bouton « Actions » d'une pièce qui n'est pas un à-nouveau (journal AN, fixé par le moteur) ; à
+    // défaut, le premier menu du livre-journal.
+    const pieceOrdinaire = () => {
+      const bs = [...document.querySelectorAll('#view table.list [data-rowmenu^="E:"]')];
+      const ordinaire = bs.find(b => { const tr = b.closest('tr'); const j = tr && tr.children[2]; return j && j.textContent.trim() !== 'AN'; });
+      return ordinaire || bs[0] || document.querySelector('#view table.list [data-rowmenu]');
+    };
     visite({
       id: 'contre-passer', theme: 'saisir', type: 'faire', duree: '1 min',
       page: dans('livre', 'comptabilite/journal'),
@@ -1362,13 +1369,15 @@
       si: () => !!ctx.dossier('livre'), manque: DOSSIER_MANQUE.livre,
       suite: ['saisir-piece', 'page-compta-journal'],
       bravo: 'Tu sais corriger',
-      conclusion: 'La contre-passation est datée du jour où tu corriges, jamais de l\'écriture d\'origine : un mois déjà déclaré ne change pas en silence. L\'extourne, elle, tombe le 1er du mois suivant.',
+      conclusion: 'La contre-passation est datée du jour où tu corriges — jamais avant la pièce qu\'elle corrige, jamais dans un mois passé : un mois déjà déclaré ne change pas en silence. L\'extourne, elle, tombe le 1er du mois suivant.',
       etapes: [
         { page: dans('livre', 'comptabilite/journal'), cible: ['#view table.list', '#c-livres .panel'], cote: 'dessus', titre: 'Le livre-journal',
           texte: 'Chaque pièce validée porte son numéro. Au bout de sa ligne, le menu <b>« Actions »</b>.' },
-        { page: dans('livre', 'comptabilite/journal'), cible: '#view table.list [data-rowmenu]', cote: 'gauche', faire: 'clic', titre: 'Contre-passer ou extourner',
+        // Le menu d'une pièce ORDINAIRE : celui des à-nouveaux (la première ligne d'un livre repris) ne
+        // propose pas l'extourne, et son miroir tombe au 1er janvier — le texte ci-dessous serait faux.
+        { page: dans('livre', 'comptabilite/journal'), cible: pieceOrdinaire, cote: 'gauche', faire: 'clic', titre: 'Contre-passer ou extourner',
           action: 'Ouvre le menu d\'une pièce : rien ne change tant que tu n\'y choisis rien.', essai: { clic: true },
-          texte: '<b>Contre-passer</b> écrit la pièce miroir aujourd\'hui : l\'originale et son miroir s\'annulent. <b>Extourner</b> la reprend au 1er du mois suivant : c\'est le geste d\'une charge à payer. Dans les deux cas, l\'originale reste, avec son numéro.' },
+          texte: '<b>Contre-passer</b> écrit la pièce miroir au jour où tu corriges — jamais avant la pièce, et le menu dit la date : l\'originale et son miroir s\'annulent. <b>Extourner</b> la reprend au 1er du mois suivant : c\'est le geste d\'une charge à payer. Dans les deux cas, l\'originale reste, avec son numéro.' },
         { page: dans('livre', 'comptabilite/journal'), cible: '.row-menu', cote: 'gauche', titre: 'Choisir, ou refermer',
           texte: 'Une pièce <b>validée</b> propose de contre-passer ou d\'extourner ; un <b>brouillard</b> se modifie ou se supprime. Un clic à côté referme le menu sans rien changer.' }
       ]
