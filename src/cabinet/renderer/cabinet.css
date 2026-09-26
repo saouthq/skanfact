@@ -108,7 +108,8 @@
    les posait sans que sa feuille les connaisse. */
 /* Un contrôle qui porte son geste : la phrase, puis le bouton, dans une rangée dont le `gap` décide
    des deux écarts — posé dans la phrase, le bouton passait à la ligne collé sous elle (10.12.0). */
-.ctrl-geste { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; }
+/* `.ctrl-geste` vit dans la feuille partagée depuis la 10.14.1 : le fichier CNSS de l'app entreprise
+   pose ses refus et leurs gestes dans la même rangée. */
 /* `.ok-box` et `.info-box`, les deux soeurs de `.warn-box`, vivent aussi dans la feuille partagée
    depuis la 10.14.0 : l'import depuis un tableur de l'app entreprise en a besoin. */
 /* 10.12.0 (U-11) — les quatre étapes d'une déclaration se lisent dans leur ORDRE : une rangée qui

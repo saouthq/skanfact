@@ -544,7 +544,7 @@ ipcMain.handle('cab:saveCabinet', (_e, patch) => {
   return save();
 });
 
-const DOSSIER_TEXT = ['name', 'email', 'phone', 'contact', 'note', 'regime', 'tvaPeriod', 'from'];
+const DOSSIER_TEXT = ['name', 'email', 'phone', 'contact', 'note', 'regime', 'tvaPeriod', 'from', 'cnssEmployeur', 'cnssCode'];
 
 ipcMain.handle('cab:saveDossier', (_e, { id, patch } = {}) => {
   requireOpen();
@@ -3185,6 +3185,31 @@ ipcMain.handle('cab:recoveryStatus', () => ({ exportedAt: readAppCfg().recoveryE
 
 // Exporter la liste des dossiers en CSV : un comptable doit pouvoir sortir ses données de
 // l'application. Une application qui garde ce qu'on lui confie n'inspire pas confiance.
+// 10.14.1 (DECL D2) — le fichier de télédéclaration CNSS du trimestre, format « DS » 2012. Calculé
+// ICI depuis le livre, par la même fonction que l'écran : le renderer n'envoie que le trimestre,
+// jamais un contenu. Tant qu'une ligne est fausse, aucun fichier ne s'écrit — le refus revient à
+// l'écran qui le nomme (un fichier rejeté le jour de l'échéance coûte plus qu'un refus).
+ipcMain.handle('cab:fichierCnss', async (_e, { dossierId, annee, trimestre } = {}) => {
+  requireOpen();
+  const d = state.dossiers.find(x => x.id === dossierId);
+  if (!d) throw erreur('ERR-CAB-009', 'Dossier introuvable.');
+  const o = ouvrirLivre(dossierId, annee);
+  if (!o.livre) throw erreur('ERR-CAB-026', 'Ce dossier n\'a pas de livre pour cet exercice.');
+  const f = KC.fichierCnssDuLivre(o.livre, { matricule: d.cnssEmployeur, code: d.cnssCode }, annee, trimestre);
+  if (!f.ok) return { ok: false, refus: f.refus };
+  const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
+    title: 'Enregistrer le fichier CNSS du trimestre',
+    // Le nom est celui que le format EXIGE : le changer ferait refuser le fichier par le portail.
+    // Pas de filtre d'extension : celle du format est le trimestre et l'année (« .32026 »).
+    defaultPath: path.join(app.getPath('documents'), f.nom)
+  });
+  if (canceled || !filePath) return null;
+  const dest = path.join(path.dirname(filePath), f.nom);
+  // ASCII pur (le moteur n'y laisse rien d'autre) : aucun encodage à deviner côté portail.
+  fs.writeFileSync(dest, f.contenu, 'ascii');
+  return { ok: true, path: dest, nom: f.nom, lignes: f.lignes, total: f.total, avertissements: f.avertissements, renomme: dest !== filePath };
+});
+
 ipcMain.handle('cab:exportCsv', async (_e, { rows, name } = {}) => {
   requireOpen();
   const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {

@@ -312,9 +312,17 @@ suit, et l'écran dit de le contrôler sur le portail avant l'échéance) :
   déclaration d'employeur (`EMPCCA_25V3.pdf`, pour D3) et une liasse fiscale (`Liasse_fiscale-CCT-OPCVM`,
   à lire pour D4 : son nom la dit propre aux OPCVM — vérifier qu'elle vaut pour une société ordinaire
   avant de s'en servir).
-- **D2 — la CNSS trimestrielle** devient un écran de « Déclarer et clôturer » : pointage déposée /
-  payée (comme la mensuelle), export CSV, et le **fichier texte CNSS** si le cahier des charges se lit
-  sans ambiguïté (sinon : pas de fichier, et on le dit).
+- ~~**D2 — la CNSS trimestrielle**~~ **Fait (26/09) : le fichier texte CNSS**, au format DS 2012
+  (122 caractères, 12 lignes par page, salaires en millimes, CRLF, nom `DS` + employeur + code +
+  `.` + trimestre + année), dans les DEUX applications, par UN moteur (`compta.fichierCnss`) : Cabinet
+  → Paie (matricule et code d'exploitation sur la fiche du dossier), app entreprise → Paie →
+  Déclarations (Paramètres → Identité). Aucun fichier tant qu'une ligne est fausse ; chaque refus
+  nomme le salarié, la case et le geste ; un trimestre EN COURS ne se déclare pas ; l'identité et la
+  CIN se complètent sur la fiche (« Compléter sa fiche… »), et ce que le fichier refuserait se refuse
+  déjà à la saisie. Testé à la souris des deux côtés, fichiers relus octet par octet. **Reste** : le
+  pointage déposée / payée de la CNSS dans le Cabinet (l'app entreprise l'a), et un écran à elle dans
+  « Déclarer et clôturer » — elle vit encore dans l'onglet Paie. **À VÉRIFIER** sur le portail : la
+  CIN vide, l'identité (nom de jeune fille), le code d'exploitation.
 - **D3 — la déclaration d'employeur** sort de la Liasse : son propre écran, état NOMINATIF lu dans les
   bulletins du livre (salaires) et dans les retenues opérées par fournisseur, phrase fausse corrigée,
   pointage, export ; les fichiers DECEMP_/ANXEMP_ seulement sur le cahier de l'année, versionné.

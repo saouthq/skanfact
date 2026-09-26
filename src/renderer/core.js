@@ -4020,6 +4020,22 @@
     };
   }
 
+  // 10.14.1 (DECL D2) — le fichier de télédéclaration CNSS du trimestre (format « DS » 2012), par le
+  // MÊME moteur que le Cabinet (`compta.fichierCnss`) : le fichier du client et celui de son
+  // comptable ne peuvent pas diverger. Le salaire déclaré est l'ASSIETTE du trimestre, lue dans la
+  // déclaration que la page affiche juste au-dessus — un seul calcul pour le tableau et le fichier.
+  function fichierCnssEntreprise(data, company, year, quarter) {
+    const cn = cnssDeclaration(data, year, quarter);
+    const c = company || {};
+    return Compta.fichierCnss({
+      employeur: c.cnss, code: c.cnssCode, annee: cn.year, trimestre: cn.quarter,
+      lignes: cn.rows.map(r => {
+        const e = (data.employees || []).find(x => x.id === r.employeeId) || {};
+        return { salarieId: r.employeeId, nom: r.name, identite: e.cnssName || '', cnss: r.cnss, cin: e.cin || '', salaire: r.base };
+      })
+    });
+  }
+
   // La déclaration annuelle d'employeur : le récapitulatif des salaires versés et des retenues opérées.
   // Elle porte sur deux choses distinctes que l'on confond souvent : les salaires, et les retenues à la
   // source pratiquées sur des fournisseurs (honoraires, loyers…).
@@ -9966,7 +9982,7 @@
     CONTRACT_TYPES, contractLabel, DEFAULT_PAYROLL, payrollSettings, irppAnnual, computePayslip, saisiePaieValide,
     activeEmployees, payslipView, payslipsOf, payslipDate, payrollCost, payrollSummary, missingPayslips, bulletinsImpossibles,
     payslipHtml,
-    QUARTERS, quarterMonths, quarterLabel, cnssDeclaration, cnssNonDeclaree, employerAnnual, socialDue,
+    QUARTERS, quarterMonths, quarterLabel, cnssDeclaration, fichierCnssEntreprise, lireMatriculeCnss: Compta.lireMatriculeCnss, identiteCnss: Compta.identiteCnss, motifIdentiteCnss: Compta.motifIdentiteCnss, cnssNonDeclaree, employerAnnual, socialDue,
     LEAVE_KINDS, leaveKindLabel, leaveIsPaid, workingDays, leaveDaysInMonth, leavesOf, leaveBalance,
     advancesOf, advanceBalance, payslipInputFor, HR_DOCS, hrDocLabel, hrDocumentHtml, staffRegister,
     SERIAL_STATUSES, serialStatusLabel, WARRANTY_CHOICES, serializedItems, warrantyEnd, serialView,

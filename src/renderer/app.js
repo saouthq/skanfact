@@ -6979,7 +6979,13 @@
     immobilisations: { label: 'Voir les lignes', run: vers('#/immos', () => { immoState.tab = 'attente'; }) },
     // 10.14.1 : la fiche du premier bien qui garde son montant d'avant l'avoir du fournisseur.
     'immobilisations-avoir': { label: 'Corriger la fiche', run: () => { const b = C.biensADiminuer(data)[0]; if (b) navigate('#/immo/' + b.assetId); } },
-    'declarations-sociales': { label: 'Voir les déclarations', run: vers('#/paie', () => { paieState.tab = 'declarations'; }) },
+    // Le lien ouvre la déclaration qu'il ANNONCE : la plus ancienne CNSS à déposer, son année et son
+    // trimestre (10.14.1) — pas le trimestre en cours, éteint, qu'on trouvait à la place.
+    'declarations-sociales': { label: 'Voir les déclarations', run: vers('#/paie', () => {
+      paieState.tab = 'declarations';
+      const d = C.socialDue(data).find(x => x.kind === 'cnss');
+      if (d) { paieState.year = String(d.year); paieState.quarter = String(d.quarter); }
+    }) },
     bulletins: { label: 'Voir les bulletins', run: vers('#/paie', () => { paieState.tab = 'bulletins'; }) },
     'salaires-double': { label: 'Voir les mouvements', run: vers('#/tresorerie', () => { tresoState.tab = 'mouvements'; }) },
     tresorerie: { label: 'Voir la prévision', run: vers('#/tresorerie', () => { tresoState.tab = 'prevision'; }) },
@@ -9276,7 +9282,7 @@
   const payslipById = id => data.payslips.find(p => p.id === id);
   const MONTHS_LONG = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
 
-  function employeeForm(employee, done) {
+  function employeeForm(employee, done, opts) {
     const e = employee || { id: C.uid(), name: '', cin: '', cnss: '', position: '', contract: 'cdi',
       hireDate: C.today(), endDate: '', grossSalary: 0, headOfFamily: false, children: 0,
       method: 'virement', iban: '', notes: '' };
@@ -9286,6 +9292,7 @@
         <label class="field span-2 obligatoire">${lbl('Nom et prénom', 'pay.name')}<input type="text" name="name" value="${h(e.name)}" placeholder="Ahmed Ben Ali"></label>
         ${field(lbl('CIN', 'pay.cin'), 'cin', e.cin || '', 'text', '')}
         ${field(lbl('Matricule CNSS', 'pay.cnss'), 'cnss', e.cnss || '', 'text', '')}
+        <label class="field span-2">${lbl('Identité CNSS (comme sur la carte d\'assuré)', 'pay.cnssName')}<input type="text" name="cnssName" value="${h(e.cnssName || '')}" placeholder="Prénom, prénom du père, nom"></label>
         ${field(lbl('Poste', 'pay.position'), 'position', e.position || '', 'text', 'placeholder="Technicien"')}
         <label class="field">${lbl('Contrat', 'pay.contract')}<select name="contract">${C.CONTRACT_TYPES.map(([v, l]) => `<option value="${v}" ${e.contract === v ? 'selected' : ''} title="${h(l)}">${h(l.split(' —')[0])}</option>`).join('')}</select></label>
         ${dateFieldHtml(lbl('Date d\'embauche', 'pay.hireDate'), 'hireDate', e.hireDate || '', { clearable: true })}
@@ -9311,11 +9318,17 @@
             : '<span class="small muted">Saisis le brut mensuel pour voir le net et le coût employeur.</span>';
         };
         $('#ef', root).oninput = $('#ef', root).onchange = hint; hint();
+        // Ouverte pour UNE case (celle que le fichier CNSS du trimestre réclame), elle y met le curseur.
+        if (opts && opts.focus) { const c = $(`[name=${opts.focus}]`, root); if (c) c.focus(); }
         $('#ok', root).onclick = () => {
           const v = formValues($('#ef', root));
           if (!v.name.trim()) return refus('#ef input[name=name]', 'Le nom du salarié est obligatoire : il figure sur chaque bulletin.');
           if (!(Number(v.grossSalary) > 0)) return refus($('[name=grossSalary]', root), 'Le salaire brut doit être supérieur à zéro.');
           if (v.endDate && v.hireDate && v.endDate < v.hireDate) return refus($('[name=endDate]', root), 'La sortie ne peut pas précéder l\'embauche.');
+          // Ce que le fichier CNSS refuserait se refuse ICI, où l'on peut le corriger (10.14.1) : le
+          // découvrir au moment de déclarer, c'est rouvrir la fiche sous l'échéance.
+          if (String(v.cnss || '').trim() && !C.lireMatriculeCnss(v.cnss).ok) return refus($('[name=cnss]', root), 'Le matricule CNSS s\'écrit 12345678-90 : huit chiffres au plus, puis la clé sur deux (comme sur la carte d\'assuré).');
+          if (String(v.cnssName || '').trim()) { const idc = C.identiteCnss(v.cnssName); if (!idc.ok) return refus($('[name=cnssName]', root), C.motifIdentiteCnss(idc)); }
           if (!employee && licenceBlock('Créer une fiche de salarié', 'paie')) return;
           Object.assign(e, v, { grossSalary: Number(v.grossSalary) || 0, children: Number(v.children) || 0, headOfFamily: !!v.headOfFamily });
           if (!employee) data.employees.push(e);
@@ -9970,11 +9983,43 @@
       };
     }
 
+    // Le fichier CNSS du trimestre : ce qui l'empêche de sortir, nommé case par case avec le geste qui
+    // le lève (le matricule de l'entreprise se renseigne déjà par « Le renseigner » au-dessus) ; les
+    // avertissements, une ligne par salarié ; puis le bouton. Même mise en page que le Cabinet.
+    function blocFichierCnss(f, enCours) {
+      if (!f) return '';
+      const fiche = (id, champ, lab) => `<button type="button" class="btn btn-sm" data-cn-sal="${h(id)}" data-cn-champ="${h(champ)}">${h(lab)}</button>`;
+      const champDe = { cnss: 'cnss', cin: 'cin', identite: 'cnssName' };
+      // Le matricule VIDE est déjà dit par #cn-employeur, avec « Le renseigner » ; mal écrit, il se dit ici.
+      const refus = f.refus.filter(r => !(r.champ === 'employeur' && !(company().cnss || '').trim()));
+      const court = { identite: 'identité reprise du nom de la fiche', cin: 'CIN absent (la case part vide)' };
+      const par = [];
+      f.avertissements.forEach(a => { let g = par.find(x => x.id === a.salarieId); if (!g) par.push(g = { id: a.salarieId, nom: a.nom, champs: [] }); g.champs.push(a.champ); });
+      return `<div class="mt" id="cn-fichier-bloc">
+        ${refus.length ? `<div class="warn-box mb"><div><b>Le fichier CNSS attend ${h(pl(f.refus.length, 'correction'))}</b> — il ne sort pas tant qu'une ligne est fausse : le portail le refuserait.</div>
+          ${refus.map(r => `<div class="ctrl-geste"><span>${r.nom ? `<b>${h(r.nom)}</b> — ` : ''}${h(r.motif)}</span>${r.salarieId && champDe[r.champ] ? fiche(r.salarieId, champDe[r.champ], `Ouvrir la fiche de ${r.nom}…`) : r.champ === 'code' || r.champ === 'employeur' ? `<button type="button" class="btn btn-sm" data-cn-regl="${r.champ === 'code' ? 'cnssCode' : 'cnss'}">${r.champ === 'code' ? 'Corriger le code d\'exploitation…' : 'Corriger le matricule CNSS…'}</button>` : ''}</div>`).join('')}</div>` : ''}
+        ${par.length ? `<div class="small mb">${par.map(g => `<div class="ctrl-geste"><span><b>${h(g.nom)}</b> — ${h(g.champs.map(c => court[c] || c).join(' · '))}</span>${fiche(g.id, g.champs.includes('identite') ? 'cnssName' : 'cin', 'Compléter sa fiche…')}</div>`).join('')}
+          <div class="muted">Le fichier sort quand même. <b>À VÉRIFIER</b> : la CNSS demande l'identité « prénom, prénom du père, nom » comme sur la carte d'assuré (le nom de jeune fille pour une femme mariée), et le portail peut refuser un CIN vide.</div></div>` : ''}
+        ${/* Un trimestre en cours n'a pas encore tous ses bulletins : le fichier se fabrique une fois le
+              trimestre TERMINÉ, par la même règle que « Marquer déposée » (10.12.0) — la raison est dite
+              juste au-dessus (#cn-en-cours). */''}
+        <div class="ctrl-geste"><button type="button" class="btn btn-sm" id="cn-fichier" ${f.ok && !enCours ? '' : `disabled title="${h(enCours || 'Corrige d\'abord ce qui est signalé au-dessus.')}"`}>Fabriquer le fichier CNSS…</button>
+          <span class="small muted">Au format ${h(f.format)} de la télédéclaration des salaires. <b>À VÉRIFIER</b> : contrôle-le sur le portail CNSS avant de valider le dépôt — SkanFact ne dépose rien.</span>${info('soc.fichierCnss')}</div>
+      </div>`;
+    }
+
     function drawDeclarations() {
       const y = Number(s.year);
-      const q = Number(s.quarter) || Math.ceil(Number(C.today().slice(5, 7)) / 3);
+      // 10.14.1 — sans trimestre choisi, la page s'ouvre sur celui qu'il FAUT déposer, pas sur le
+      // trimestre en cours (qui ne se déclare qu'une fois terminé) : « À faire » disait « CNSS 2e
+      // trimestre à déposer » et « Voir les déclarations » ouvrait le 3e, éteint (test humain).
+      const aDeposer = !Number(s.quarter) ? C.socialDue(data).find(x => x.kind === 'cnss' && x.year === y) : null;
+      const q = Number(s.quarter) || (aDeposer ? aDeposer.quarter : Math.ceil(Number(C.today().slice(5, 7)) / 3));
       s.quarter = String(q);
       const cn = C.cnssDeclaration(data, y, q);
+      // 10.14.1 (DECL D2) — le fichier de télédéclaration du trimestre, par le moteur du Cabinet.
+      // Ses refus se lisent AVANT le geste (9.4.2) et le bouton s'éteint par le même verdict (9.4.5).
+      const fichier = cn.rows.length ? C.fichierCnssEntreprise(data, company(), y, q) : null;
       const an = C.employerAnnual(data, y, company());
       const due = C.socialDue(data);
       const filed = id => (data.socialFilings || []).find(f => f.id === id);
@@ -10056,6 +10101,7 @@
                se lisent AVANT les boutons (9.4.2), et nomment qui. */''}
           ${cn.rows.some(r => !r.cnss) ? `<p class="small warn-text mt" id="cn-sans-numero">Le matricule CNSS manque sur ${cn.rows.filter(r => !r.cnss).length > 1 ? 'les fiches de' : 'la fiche de'} ${h(cn.rows.filter(r => !r.cnss).map(r => r.name).join(', '))} : la déclaration ne peut pas être déposée sans lui.</p>` : ''}
           ${(company().cnss || '').trim() ? '' : `<p class="small warn-text mt" id="cn-employeur">Le matricule CNSS de l'entreprise n'est pas renseigné : la déclaration et les bulletins le portent. <a href="#" id="cn-mat" class="warn-link">Le renseigner</a></p>`}
+          ${blocFichierCnss(fichier, enCoursCnss)}
           <div class="inline mt">
             <button class="btn" id="cn-csv">Exporter en CSV</button>
             <button class="btn" id="cn-mail">Envoyer au comptable</button>
@@ -10114,6 +10160,20 @@
         { key: 'accident', label: 'Accident du travail', type: 'money' }, { key: 'total', label: 'Total', type: 'money' }
       ];
       if ($('#cn-mat')) $('#cn-mat').onclick = e => { e.preventDefault(); allerParametres('societe', 'p-identite:cnss'); };
+      $$('[data-cn-regl]').forEach(b => { b.onclick = () => allerParametres('societe', 'p-identite:' + b.dataset.cnRegl); });
+      $$('[data-cn-sal]').forEach(b => { b.onclick = () => {
+        const emp = employeeById(b.dataset.cnSal);
+        if (emp) employeeForm(emp, () => draw(), { focus: b.dataset.cnChamp });
+      }; });
+      if ($('#cn-fichier')) $('#cn-fichier').onclick = async () => {
+        if (enCoursCnss) return toast(enCoursCnss, true);
+        const f = C.fichierCnssEntreprise(data, company(), Number(s.year), Number(s.quarter));
+        if (!f.ok) return toast((f.refus[0] || {}).motif || 'Le fichier n\'a pas pu être fabriqué.', true);
+        const chemin = await bridge.saveText(f.nom, f.contenu);
+        if (!chemin) return;
+        const renomme = chemin.split(/[\\/]/).pop() !== f.nom;
+        infoDialog('Fichier CNSS enregistré', `Le fichier ${f.nom} est prêt : ${pl(f.lignes, 'salarié')}, ${C.money(f.total, cur)} de salaires déclarés.\n\n${renomme ? `Tu l'as renommé : le portail CNSS refuse un fichier dont le nom n'est pas celui du format. Remets « ${f.nom} ».\n\n` : ''}Dépose-le sur le portail CNSS (télédéclaration des salaires), puis vérifie que le nombre de salariés et le total que le portail affiche sont ceux-ci.`);
+      };
       if ($('#cn-csv')) $('#cn-csv').onclick = async () => {
         const f = await bridge.saveText(`cnss-${y}-T${q}.csv`, C.toCsv(cn.rows, cnCols));
         if (f) toast('Exporté : ' + f.split(/[\\/]/).pop());
@@ -14153,6 +14213,7 @@
           ${field(lbl('Matricule fiscal', 'co.matricule'), 'matricule', c.matricule, 'text', 'placeholder="1234567X/A/M/000"')}
           ${field(lbl('Registre de commerce (RC)', 'co.rc'), 'rc', c.rc || '', 'text', 'placeholder="facultatif, ex. B123456789"')}
           ${field(lbl('Matricule CNSS employeur', 'pay.cnssEmployerId'), 'cnss', c.cnss || '', 'text', 'placeholder="s\'il y a des salariés"')}
+          ${field(lbl('Code d\'exploitation CNSS', 'pay.cnssCode'), 'cnssCode', c.cnssCode || '', 'text', 'placeholder="0000" inputmode="numeric"')}
           ${field(lbl('Capital social', 'co.capital'), 'capital', c.capital || '', 'text', 'placeholder="facultatif, ex. 1 000 DT"')}
           ${field(lbl('Gérant (qui signe)', 'co.managerName'), 'managerName', c.managerName || '', 'text', 'placeholder="Prénom et nom"')}
           <label class="field span-2">${lbl('Adresse', 'co.address')}<textarea name="address">${h(c.address)}</textarea></label>

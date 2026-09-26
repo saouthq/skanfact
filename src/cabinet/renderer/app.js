@@ -3887,11 +3887,11 @@
       <select id="dc-format" aria-label="La forme d'un montant copié">${K.FORMATS_COPIE.map(f =>
         `<option value="${f.id}" ${f.id === formatCopie() ? 'selected' : ''}>${esc(f.label)}</option>`).join('')}</select>${info('dc.format')}</div>`;
   }
-  function ligneEcheanceDeclaration(dossier, periode, deposeeLe, sorte) {
+  function ligneEcheanceDeclaration(dossier, periode, deposeeLe, sorte, idLien) {
     sorte = sorte || 'tva';
     const limite = K.dateLimiteDeclaration(S, periode, sorte, dossier);
     const portail = K.PORTAILS[sorte === 'cnss' ? 'cnss' : 'ejibaya'];
-    const lien = `<a class="btn btn-sm btn-ghost" id="dc-portail" href="${esc(portail.url)}" target="_blank" rel="noopener">Ouvrir ${esc(portail.label)} ↗</a>`;
+    const lien = `<a class="btn btn-sm btn-ghost" id="${esc(idLien || 'dc-portail')}" href="${esc(portail.url)}" target="_blank" rel="noopener">Ouvrir ${esc(portail.label)} ↗</a>`;
     const retard = !deposeeLe && limite < K.today();
     const phrase = deposeeLe ? `Déposée le ${esc(fmtJour(deposeeLe))} — la date limite était le ${esc(fmtJour(limite))}.`
       : retard ? `<b>Date limite dépassée</b> : c'était le ${esc(fmtJour(limite))}.`
@@ -5558,6 +5558,16 @@
     const auBrouillard = bulletins.some(b => etatDe(b) === 'brouillard');
     const t = s.paieTrimestre || Math.ceil(m / 3);
     const cnss = KC.cnssDuTrimestre(L, s.annee, t);
+    // 10.14.1 (DECL D2) — le fichier de télédéclaration du trimestre, par la MÊME fonction que le
+    // processus principal qui l'écrira : ses refus se lisent AVANT le geste (9.4.2), chacun avec la
+    // case qui le lève, et le bouton s'éteint par le même verdict (9.4.5).
+    const fichier = cnss.lignes.length ? KC.fichierCnssDuLivre(L, { matricule: dossier.cnssEmployeur, code: dossier.cnssCode }, s.annee, t) : null;
+    // Un trimestre EN COURS n'a pas encore tous ses bulletins : on le déclare une fois terminé (la
+    // règle de « Marquer déposée » de l'app entreprise, 10.12.0) — sinon le fichier oublierait son
+    // dernier mois, et le portail l'accepterait.
+    // Le dernier jour du trimestre, en UTC pur (règle 5.2.3) : le jour 0 du mois qui suit.
+    const finTrim = new Date(Date.UTC(Number(s.annee), t * 3, 0)).toISOString().slice(0, 10);
+    const trimEnCours = K.today() <= finTrim ? `Le ${KC.TRIMESTRES_PAIE[t - 1][1]} ${s.annee} se termine le ${fmtJour(finTrim)} : on le déclare une fois terminé, sinon il manquerait ses derniers bulletins.` : '';
     const actifs = (L.salaries || []).filter(x => x.actif);
 
     const lignesBulletins = bulletins.map(b => {
@@ -5670,9 +5680,11 @@
           <th class="r nw">${esc(money(cnss.assiette))}</th><th class="r nw">${esc(money(cnss.partSalarie))}</th>
           <th class="r nw">${esc(money(KC.round3(cnss.partEmployeur + cnss.accident)))}</th></tr>
           <tr class="dc-total"><th colspan="4"><b>Total à verser</b></th><th class="r nw"><b>${esc(money(cnss.total))}</b></th></tr></tfoot></table></div>
-        <p class="small muted mt">Échéance proposée : le ${esc(fmtJour(cnss.echeance))}. <b>À VÉRIFIER</b> — la date et la forme
-        exacte du dépôt dépendent du régime. SkanFact Cabinet ne dépose rien et ne se connecte à aucune administration :
-        c'est un tableau à recopier sur le portail.</p>`
+        ${/* La date limite par la règle des Échéances (le jour réglé dans les Réglages) : la Paie
+              écrivait « le 15 » à côté d'un calendrier réglable — deux écrans, deux dates pour la
+              même déclaration (10.14.0, dateLimiteSociale). */''}
+        <div class="mt">${ligneEcheanceDeclaration(dossier, `${s.annee}-${String(t * 3).padStart(2, '0')}`, null, 'cnss', 'pa-portail')}</div>
+        ${panneauFichierCnss(dossier, fichier, trimEnCours)}`
     : `<div class="empty mini">Aucun bulletin sur ce trimestre : il n'y a rien à déclarer.</div>`}
     </div>
 
@@ -5690,6 +5702,45 @@
     </div>`;
   }
 
+  // Le fichier CNSS du trimestre : ce qui l'empêche de sortir, nommé case par case avec le geste qui
+  // le lève, puis le bouton. Un avertissement (identité reprise du nom, CIN vide) ne bloque pas :
+  // il se lit, en gris, avant le dépôt.
+  function panneauFichierCnss(dossier, f, enCours) {
+    if (!f) return '';
+    const geste = r => {
+      if (r.champ === 'employeur' || r.champ === 'code') return `<button type="button" class="btn btn-sm" data-pa-emp="${esc(r.champ)}">Renseigner ${r.champ === 'code' ? 'le code d\'exploitation' : 'le matricule CNSS'} de ${esc(dossier.name)}…</button>`;
+      const champ = { cnss: 'cnss', cin: 'cin', identite: 'identiteCnss' }[r.champ];
+      return champ && r.salarieId ? `<button type="button" class="btn btn-sm" data-pa-sal="${esc(r.salarieId)}" data-pa-champ="${esc(champ)}">Ouvrir la fiche de ${esc(r.nom)}…</button>` : '';
+    };
+    const ligne = r => `<div class="ctrl-geste"><span>${r.nom ? `<b>${esc(r.nom)}</b> — ` : ''}${esc(r.motif)}</span>${geste(r)}</div>`;
+    return `<div class="mt" id="pa-fichier-bloc">
+      ${f.refus.length ? `<div class="warn-box mb"><div><b>Le fichier CNSS attend ${esc(pl(f.refus.length, 'correction'))}</b> — il ne sort pas tant qu'une ligne est fausse : le portail le refuserait.</div>${f.refus.map(ligne).join('')}</div>` : ''}
+      ${avertissementsCnss(f)}
+      ${enCours ? `<p class="small muted mb" id="pa-en-cours">${esc(enCours)}</p>` : ''}
+      <div class="ctrl-geste"><button type="button" class="btn btn-sm" id="pa-fichier" ${f.ok && !enCours ? '' : 'disabled'}
+        title="${esc(enCours || (f.ok ? '' : 'Corrige d\'abord ce qui est signalé au-dessus.'))}">Fabriquer le fichier CNSS…</button>
+        <span class="small muted">Au format ${esc(f.format)} de la télédéclaration des salaires. <b>À VÉRIFIER</b> : contrôle-le sur le portail avant de valider le dépôt — SkanFact Cabinet ne dépose rien.</span>${info('pa.fichier')}</div>
+    </div>`;
+  }
+
+  // Les avertissements, UNE ligne par salarié : deux phrases et deux boutons pour la même fiche
+  // (identité reprise du nom, CIN absent) se lisaient comme deux problèmes (vu au test humain).
+  // La règle de la CNSS se dit une fois, sous la liste.
+  function avertissementsCnss(f) {
+    if (!f.avertissements.length) return '';
+    const court = { identite: 'identité reprise du nom de la fiche', cin: 'CIN absent (la case part vide)' };
+    const par = [];
+    f.avertissements.forEach(a => {
+      let g = par.find(x => x.salarieId === a.salarieId);
+      if (!g) par.push(g = { salarieId: a.salarieId, nom: a.nom, champs: [] });
+      g.champs.push(a.champ);
+    });
+    const champDe = g => (g.champs.includes('identite') ? 'identiteCnss' : 'cin');
+    return `<div class="small mb pa-avert">${par.map(g => `<div class="ctrl-geste"><span><b>${esc(g.nom)}</b> — ${esc(g.champs.map(c => court[c] || c).join(' · '))}</span>
+        <button type="button" class="btn btn-sm" data-pa-sal="${esc(g.salarieId)}" data-pa-champ="${champDe(g)}">Compléter sa fiche…</button></div>`).join('')}
+      <div class="muted">Le fichier sort quand même. <b>À VÉRIFIER</b> : la CNSS demande l'identité « prénom, prénom du père, nom » comme sur la carte d'assuré (le nom de jeune fille pour une femme mariée), et le portail peut refuser un CIN vide.</div></div>`;
+  }
+
   function brancherPaie(el, root, dossier) {
     const s = livresState;
     const redraw = () => drawLivres(root, dossier);
@@ -5703,6 +5754,27 @@
       if (x) salarieForm(root, dossier, x, { focus: 'cnss' });
     }; });
     [$('#pa-bulletin', el), $('#pa-bulletin2', el)].forEach(b => { if (b) b.onclick = () => bulletinForm(root, dossier, null); });
+    $$('[data-pa-emp]', el).forEach(b => { b.onclick = () => dossierForm(dossier, { focus: b.dataset.paEmp === 'code' ? '#f-cnss-code' : '#f-cnss' }); });
+    $$('[data-pa-sal]', el).forEach(b => { b.onclick = () => {
+      const x = (s.livre.salaries || []).find(y => y.id === b.dataset.paSal);
+      if (x) salarieForm(root, dossier, x, { focus: b.dataset.paChamp });
+    }; });
+    const fc = $('#pa-fichier', el);
+    if (fc) fc.onclick = async () => {
+      fc.disabled = true;
+      try {
+        const t = s.paieTrimestre || Math.ceil(s.paieMois / 3);
+        const r = await api.fichierCnss({ dossierId: dossier.id, annee: s.annee, trimestre: t });
+        if (!r) return;                                    // le choix du dossier a été annulé
+        if (!r.ok) { redraw(); return toast((r.refus[0] || {}).motif || 'Le fichier n\'a pas pu être fabriqué.', 'error'); }
+        const html = `<p>Le fichier <b class="mono">${esc(r.nom)}</b> est prêt : ${esc(pl(r.lignes, 'salarié'))}, ${esc(money(r.total))} de salaires déclarés.</p>
+          <p class="small muted">${r.renomme ? 'Il porte le nom que le format exige — le portail refuse un fichier renommé. ' : ''}Dépose-le sur le portail CNSS
+          (télédéclaration des salaires), puis vérifie que le nombre de salariés et le total que le portail affiche sont ceux-ci.</p>`;
+        await infoHtml('Fichier CNSS enregistré', html);
+        api.reveal(r.path);
+      } catch (err) { toast(plainError(err), 'error'); }
+      finally { fc.disabled = false; }
+    };
     const pv = $('#pa-valider', el);
     if (pv) pv.onclick = () => allerSousOnglet(root, dossier, 'saisie');
     const ec = $('#pa-ecrire', el);
@@ -5784,6 +5856,7 @@
         <label class="field obligatoire span-2"><span>Nom et prénom</span><input name="nom" value="${esc(e.nom || '')}"></label>
         <label class="field"><span>N° CIN</span><input name="cin" value="${esc(e.cin || '')}"></label>
         <label class="field"><span>N° CNSS</span><input name="cnss" value="${esc(e.cnss || '')}"></label>
+        <label class="field span-2">${lbl('Identité CNSS (comme sur la carte d\'assuré)', 'pa.identite')}<input name="identiteCnss" value="${esc(e.identiteCnss || '')}" placeholder="Prénom, prénom du père, nom"></label>
         <label class="field span-2"><span>Poste occupé</span><input name="poste" value="${esc(e.poste || '')}"></label>
         <label class="field"><span>Type de contrat</span><select name="contrat">${KC.CONTRACT_TYPES.map(c => `<option value="${c[0]}" ${c[0] === (e.contrat || 'cdi') ? 'selected' : ''}>${esc(c[1].split(' —')[0])}</option>`).join('')}</select></label>
         ${/* 10.12.0 — la règle H-3 portée à la Paie (le jumeau manquant) : un montant s'écrit et se
@@ -5818,12 +5891,15 @@
         const sortie = dateDe('sortie', 'Date de sortie'); if (sortie === null) return;
         const v = {
           id: x ? x.id : '', nom: $('[name=nom]', f).value, cin: $('[name=cin]', f).value,
-          cnss: $('[name=cnss]', f).value, poste: $('[name=poste]', f).value,
+          cnss: $('[name=cnss]', f).value, identiteCnss: $('[name=identiteCnss]', f).value, poste: $('[name=poste]', f).value,
           contrat: $('[name=contrat]', f).value, brut: lireMontant($('[name=brut]', f).value),
           embauche, sortie,
           chefDeFamille: $('[name=chefDeFamille]', f).checked, enfants: Number($('[name=enfants]', f).value) || 0,
           actif: x ? x.actif : true
         };
+        // Ce que le fichier CNSS refuserait se refuse ICI, où l'on peut le corriger (10.14.1).
+        if (String(v.cnss || '').trim() && !KC.lireMatriculeCnss(v.cnss).ok) return refus($('[name=cnss]', f), 'Le matricule CNSS s\'écrit 12345678-90 : huit chiffres au plus, puis la clé sur deux (comme sur la carte d\'assuré).');
+        if (String(v.identiteCnss || '').trim()) { const idc = KC.identiteCnss(v.identiteCnss); if (!idc.ok) return refus($('[name=identiteCnss]', f), KC.motifIdentiteCnss(idc)); }
         const ok = KC.salarieValide(v);
         if (!ok.ok) return toast(ok.motif, 'error');
         try {
@@ -7934,6 +8010,8 @@
           <option value="">— non précisé —</option>${K.TVA_PERIODS.map(r => `<option value="${esc(r.id)}" ${d.tvaPeriod === r.id ? 'selected' : ''}>${esc(r.label)}</option>`).join('')}</select></label>
         <label class="field">${lbl('Début de mission', 'd.from')}<input type="text" id="f-from" value="${esc(K.moisAffiche(d.from))}" placeholder="01/2026" inputmode="numeric"></label>
         <label class="field">${lbl('Honoraires mensuels (DT)', 'd.fees')}<input type="text" inputmode="decimal" class="num montant" id="f-fees" value="${esc(montantChamp(d.fees))}" placeholder="0,000"></label>
+        <label class="field">${lbl('Matricule CNSS employeur', 'd.cnss')}<input type="text" id="f-cnss" value="${esc(d.cnssEmployeur || '')}" placeholder="123456-72"></label>
+        <label class="field">${lbl('Code d\'exploitation CNSS', 'd.cnssCode')}<input type="text" id="f-cnss-code" inputmode="numeric" value="${esc(d.cnssCode || '')}" placeholder="0000"></label>
       </div>
       <label class="field mt">${lbl('Note interne', 'd.note')}<textarea id="f-note" rows="3">${esc(d.note || '')}</textarea></label>`;
   }
@@ -7950,6 +8028,8 @@
       tvaPeriod: $('#f-tva', layer).value,
       from: from.ok ? from.mois : '',
       fees: lireMontant($('#f-fees', layer).value),
+      cnssEmployeur: $('#f-cnss', layer).value.trim(),
+      cnssCode: $('#f-cnss-code', layer).value.trim(),
       note: $('#f-note', layer).value
     };
   }
@@ -8022,7 +8102,7 @@
     );
   }
 
-  function dossierForm(dossier) {
+  function dossierForm(dossier, opts) {
     let change = () => false;
     modal(
       `<h2>Fiche du dossier</h2>
@@ -8037,6 +8117,8 @@
          <button class="btn" id="no">Annuler</button><button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
       (layer, close) => {
         change = suivreSaisie(layer);
+        // Ouverte pour UNE case (le matricule CNSS que le fichier du trimestre réclame), elle y va.
+        if (opts && opts.focus) { const c = $(opts.focus, layer); if (c) { c.focus(); c.select(); } }
         $('#no', layer).onclick = close;
         $('#del', layer).onclick = async () => {
           const n = (dossier.packs || []).length;
@@ -8055,6 +8137,10 @@
         $('#ok', layer).onclick = async () => {
           const f = readDossierFields(layer);
           if (!f.name) return toast('Le nom ne peut pas être vide.', 'error');
+          // Un matricule CNSS se refuse À LA SAISIE quand sa forme est fausse : sinon le refus
+          // n'arriverait qu'au fichier du trimestre, le jour de l'échéance.
+          if (f.cnssEmployeur && !KC.lireMatriculeCnss(f.cnssEmployeur).ok) return refus($('#f-cnss', layer), 'Le matricule CNSS s\'écrit 123456-72 : huit chiffres au plus, puis la clé sur deux.');
+          if (f.cnssCode && !/^\d{1,4}$/.test(f.cnssCode)) return refus($('#f-cnss-code', layer), 'Le code d\'exploitation tient en quatre chiffres (0000 pour le code ordinaire).');
           const mois = K.moisTape($('#f-from', layer).value);
           if (!mois.ok) return refus($('#f-from', layer), mois.motif);
           try {

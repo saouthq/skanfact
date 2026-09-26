@@ -14642,6 +14642,7 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
   require('./suites/devise-achat.js')({ t, assert, lireSource });
   require('./suites/avoir-fournisseur.js')({ t, assert, lireSource });
   require('./suites/paie-cabinet.js')({ t, assert, lireSource });
+  require('./suites/cnss-fichier.js')({ t, assert, lireSource });
   require('./suites/qa-cabinet.js')({ t, assert, lireSource });
   require('./suites/qa-entreprise.js')({ t, assert, lireSource });
   require('./suites/remboursement.js')({ t, assert, lireSource });

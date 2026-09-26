@@ -175,6 +175,10 @@
       // « je reprends ce dossier à partir de janvier » et d'être alerté sur les mois d'avant.
       from: /^\d{4}-\d{2}$/.test(String(d.from || '')) ? d.from : '',
       regime: d.regime || '', tvaPeriod: d.tvaPeriod || '', fees: Number(d.fees) || 0,
+      // 10.14.1 (DECL D2) — le matricule CNSS de l'EMPLOYEUR et son code d'exploitation (0000 pour
+      // le code ordinaire) : le fichier de télédéclaration du trimestre en a besoin. Même règle que
+      // les champs plus bas : absents d'ici, ils seraient jetés au prochain chargement.
+      cnssEmployeur: String(d.cnssEmployeur || ''), cnssCode: String(d.cnssCode || ''),
       createdAt: d.createdAt || null,
       // L'historique des relances. Sans lui, le lundi suivant on ne sait plus qui a été relancé.
       relances: Array.isArray(d.relances) ? d.relances.map(r => ({

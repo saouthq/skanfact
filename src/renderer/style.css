@@ -412,6 +412,9 @@ main { --main-haut: 32px; flex: 1; overflow-y: auto; padding: var(--main-haut) 3
    réserve la hauteur de l'encadré de trois lignes, marges comprises : 3lh ne comptait que le texte, et
    la fenêtre grandissait de 13 px au moment où l'on choisissait le mois. */
 .annonce-stable.encadre { min-height: 84px; margin-block-start: 10px; } /* 3 × 13 px × 1,55 + 22 px de marges */
+/* Une phrase et le geste qui la lève, dans une rangée qui passe à la ligne sans coller le bouton
+   sous le texte (T-56, 9.8.8). Partagée par les deux applications (10.14.1). */
+.ctrl-geste { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; }
 .annonce-stable.encadre > .warn-box, .annonce-stable.encadre > p { margin: 0; }
 /* Toute la ligne d'une grille, quel que soit son nombre de colonnes. La classe était posée par le
    formulaire d'un contrat récurrent et n'existait nulle part : « Notes sur la facture » tenait dans

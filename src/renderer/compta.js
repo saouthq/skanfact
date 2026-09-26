@@ -5629,6 +5629,9 @@
     return {
       id: String(id || e.id || ''), nom: String(e.nom || '').trim(),
       cin: String(e.cin || '').trim(), cnss: String(e.cnss || '').trim(),
+      // 10.14.1 (DECL D2) — l'identité telle que la CNSS l'écrit : « prénom, prénom du père, nom »,
+      // comme sur la carte d'assuré. Vide, le fichier du trimestre reprend `nom` et le dit.
+      identiteCnss: String(e.identiteCnss || '').trim(),
       poste: String(e.poste || '').trim(),
       contrat: CONTRACT_TYPES.some(c => c[0] === e.contrat) ? e.contrat : 'cdi',
       embauche: String(e.embauche || ''), sortie: String(e.sortie || ''),
@@ -5883,7 +5886,7 @@
     dans.forEach(b => {
       const s = (livre.salaries || []).find(x => x.id === b.salarieId) || {};
       const k = b.salarieId;
-      par[k] = par[k] || { salarieId: k, nom: s.nom || '', cnss: s.cnss || '', mois: 0, assiette: 0, partSalarie: 0, partEmployeur: 0, accident: 0 };
+      par[k] = par[k] || { salarieId: k, nom: s.nom || '', cnss: s.cnss || '', cin: s.cin || '', identite: s.identiteCnss || '', mois: 0, assiette: 0, partSalarie: 0, partEmployeur: 0, accident: 0 };
       const c = b.calcul || {};
       par[k].mois++;
       par[k].assiette = round3(par[k].assiette + (c.cnssBase || 0));
@@ -5903,6 +5906,146 @@
       // Le 4e trimestre bascule sur l'année suivante : `finMois` vaut alors 13.
       echeance: finMois > 12 ? `${Number(annee) + 1}-01-15` : `${annee}-${String(finMois).padStart(2, '0')}-15`
     };
+  }
+
+  // ---------- Le fichier de télédéclaration CNSS (format « DS », nouvelle version 2012) ----------
+  // Le document de la CNSS fixe un enregistrement de 122 caractères par salarié : employeur
+  // (matricule 8 + clé 2), code d'exploitation (4), trimestre (1) et année (4), n° de page (3) et de
+  // ligne (2) — exactement 12 lignes par page, sans trou ni doublon —, assuré (matricule 8 + clé 2),
+  // identité (60, en majuscules, « prénom, prénom du père, nom » comme sur la carte d'assuré), CIN
+  // (8), salaire du trimestre en millimes sans virgule (10) et une zone vierge (10). Le nom du fichier
+  // est « DS » + employeur sur 10 chiffres + code sur 4 + « . » + trimestre + année.
+  // SkanFact ne DÉPOSE rien (règle 5.2.0) : il fabrique le fichier que le portail demande. Et il n'en
+  // fabrique AUCUN tant qu'une ligne est fausse — un fichier rejeté le jour de l'échéance coûte plus
+  // cher qu'un refus qui nomme la case à corriger. Le format porte sa version : quand la CNSS en
+  // publiera une autre, c'est ici qu'elle s'écrira, et l'écran le dit.
+  const FORMAT_CNSS = { nom: 'CNSS 2012', longueur: 122, lignesParPage: 12 };
+
+  // Un matricule CNSS s'écrit « 123456-72 » : le matricule, puis sa clé sur deux chiffres. Sans
+  // séparateur, les deux derniers chiffres sont la clé. On ne CALCULE pas la clé (la règle n'est pas
+  // publiée ici) : on vérifie seulement la forme.
+  function lireMatriculeCnss(txt) {
+    const brut = String(txt == null ? '' : txt).trim();
+    if (!brut) return { ok: false, motif: 'manquant' };
+    const parts = brut.split(/[\s\-/.]+/).filter(Boolean);
+    let mat, cle;
+    if (parts.length === 2) { mat = parts[0]; cle = parts[1]; }
+    else if (parts.length === 1) { mat = parts[0].slice(0, -2); cle = parts[0].slice(-2); }
+    else return { ok: false, motif: 'forme' };
+    if (!/^\d{1,8}$/.test(mat) || !/^\d{2}$/.test(cle)) return { ok: false, motif: 'forme' };
+    return { ok: true, matricule: mat.padStart(8, '0'), cle, texte: mat.padStart(8, '0') + cle };
+  }
+
+  // L'identité passe en MAJUSCULES sans accents (le fichier est en ASCII : aucun encodage à deviner).
+  // Ce qui n'est pas une lettre latine — un nom saisi en arabe — ne se translittère pas au hasard :
+  // on le refuse, et la fiche du salarié a un champ pour l'écrire comme sur sa carte d'assuré.
+  function identiteCnss(txt) {
+    const t = String(txt == null ? '' : txt).normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      // La virgule SÉPARE ce que la CNSS demande (« prénom, prénom du père, nom ») : c'est ainsi
+      // que l'invite du champ l'écrit, donc ainsi qu'on le tape. Refuser la virgule qu'on vient de
+      // souffler, c'était dire « pas en lettres latines » d'une identité qui l'est (test humain).
+      .replace(/[’`]/g, '\'').replace(/[,;/]+/g, ' ').replace(/\s+/g, ' ').trim().toUpperCase();
+    if (!t) return { ok: false, motif: 'manquant' };
+    if (!/^[A-Z][A-Z '.-]*$/.test(t)) {
+      // Le refus NOMME ce qui ne passe pas : « lettres latines » ne se corrige pas sans savoir quoi.
+      const hors = [...new Set(t.replace(/[A-Z '.-]/g, ''))].join(' ');
+      return { ok: false, motif: 'latin', car: hors };
+    }
+    if (t.length > 60) return { ok: false, motif: 'long' };
+    return { ok: true, texte: t };
+  }
+
+  const MOTIFS_CNSS = {
+    employeur: {
+      manquant: 'Le matricule CNSS de l\'employeur manque.',
+      forme: 'Le matricule CNSS de l\'employeur n\'a pas la forme 123456-72 (huit chiffres au plus, puis la clé sur deux).'
+    },
+    code: { forme: 'Le code d\'exploitation doit tenir en quatre chiffres (0000 pour le code ordinaire).' },
+    cnss: {
+      manquant: 'Son numéro d\'assuré CNSS manque.',
+      forme: 'Son numéro d\'assuré CNSS n\'a pas la forme 12345678-90 (huit chiffres au plus, puis la clé sur deux).'
+    },
+    identite: {
+      manquant: 'Son identité manque.',
+      latin: 'Son identité doit s\'écrire en lettres latines, comme sur sa carte d\'assuré.',
+      long: 'Son identité dépasse les 60 caractères que le fichier accepte.'
+    },
+    cin: { forme: 'Son numéro de CIN doit compter huit chiffres.' },
+    salaire: {
+      negatif: 'Son salaire du trimestre est négatif.',
+      trop: 'Son salaire du trimestre dépasse ce que le fichier peut écrire (dix chiffres en millimes).'
+    }
+  };
+
+  // La phrase d'un refus d'identité, pour le fichier ET pour la fiche du salarié (qui refuse à la
+  // saisie) : deux phrases pour le même refus finiraient par ne pas dire la même chose.
+  function motifIdentiteCnss(id) {
+    const r = id || {};
+    if (r.ok) return '';
+    if (r.motif === 'latin' && r.car) return `Son identité contient « ${r.car} » : seules les lettres latines, l'espace, le tiret, le point et l'apostrophe passent dans le fichier, comme sur sa carte d'assuré.`;
+    return MOTIFS_CNSS.identite[r.motif] || MOTIFS_CNSS.identite.latin;
+  }
+
+  function fichierCnss(o) {
+    const e = o || {};
+    const refus = [];
+    const avertissements = [];
+    const emp = lireMatriculeCnss(e.employeur);
+    if (!emp.ok) refus.push({ champ: 'employeur', motif: MOTIFS_CNSS.employeur[emp.motif] });
+    const codeTxt = String(e.code == null || e.code === '' ? '0' : e.code).trim();
+    const code = /^\d{1,4}$/.test(codeTxt) ? codeTxt.padStart(4, '0') : null;
+    if (!code) refus.push({ champ: 'code', motif: MOTIFS_CNSS.code.forme });
+    const annee = Number(e.annee);
+    const trimestre = Number(e.trimestre);
+    if (!(annee >= 1000 && annee <= 9999) || ![1, 2, 3, 4].includes(trimestre)) refus.push({ champ: 'periode', motif: 'La période déclarée est invalide.' });
+    const lignes = (e.lignes || []).filter(l => l);
+    if (!lignes.length) refus.push({ champ: 'lignes', motif: 'Aucun salaire à déclarer sur ce trimestre.' });
+    if (lignes.length > 999 * FORMAT_CNSS.lignesParPage) refus.push({ champ: 'lignes', motif: 'Trop de salariés pour un seul fichier.' });
+    let total = 0;
+    const faites = lignes.map((l, i) => {
+      const qui = { salarieId: l.salarieId || '', nom: l.nom || '' };
+      const nt = refus.length;
+      const cn = lireMatriculeCnss(l.cnss);
+      if (!cn.ok) refus.push({ ...qui, champ: 'cnss', motif: MOTIFS_CNSS.cnss[cn.motif] });
+      const id = identiteCnss(l.identite || l.nom);
+      if (!id.ok) refus.push({ ...qui, champ: 'identite', motif: motifIdentiteCnss(id) });
+      else if (!String(l.identite || '').trim()) avertissements.push({ ...qui, champ: 'identite', motif: 'Son identité reprend son nom tel qu\'il est saisi : la CNSS demande « prénom, prénom du père, nom », comme sur sa carte d\'assuré (le nom de jeune fille pour une femme mariée). À VÉRIFIER.' });
+      const cinTxt = String(l.cin == null ? '' : l.cin).replace(/\s+/g, '');
+      if (cinTxt && !/^\d{8}$/.test(cinTxt)) refus.push({ ...qui, champ: 'cin', motif: MOTIFS_CNSS.cin.forme });
+      if (!cinTxt) avertissements.push({ ...qui, champ: 'cin', motif: 'Son numéro de CIN manque : la case part vide. À VÉRIFIER — le portail peut la refuser.' });
+      const millimes = Math.round((Number(l.salaire) || 0) * 1000);
+      if (millimes < 0) refus.push({ ...qui, champ: 'salaire', motif: MOTIFS_CNSS.salaire.negatif });
+      else if (millimes > 9999999999) refus.push({ ...qui, champ: 'salaire', motif: MOTIFS_CNSS.salaire.trop });
+      if (refus.length > nt || !emp.ok || !code) return null;
+      total += millimes;
+      const page = Math.floor(i / FORMAT_CNSS.lignesParPage) + 1;
+      const ligne = (i % FORMAT_CNSS.lignesParPage) + 1;
+      return emp.texte + code + String(trimestre) + String(annee) +
+        String(page).padStart(3, '0') + String(ligne).padStart(2, '0') +
+        cn.texte + id.texte.padEnd(60, ' ') + (cinTxt || '').padEnd(8, ' ') +
+        String(millimes).padStart(10, '0') + ' '.repeat(10);
+    });
+    const ok = !refus.length;
+    return {
+      ok, format: FORMAT_CNSS.nom, refus, avertissements,
+      lignes: lignes.length, total: round3(total / 1000),
+      nom: ok ? `DS${emp.texte}${code}.${trimestre}${annee}` : '',
+      // Chaque salarié sur sa ligne, chaque ligne finie par un retour chariot (l'ancien format le
+      // précise, le nouveau ne le contredit pas).
+      contenu: ok ? faites.map(r => r + '\r\n').join('') : ''
+    };
+  }
+
+  // Le fichier d'un trimestre, depuis le LIVRE : la même fonction pour l'écran (qui annonce les
+  // refus avant le geste) et pour le processus principal (qui écrit le fichier) — deux calculs
+  // finiraient par ne pas dire la même chose. Le salaire déclaré est l'ASSIETTE du trimestre.
+  function fichierCnssDuLivre(livre, employeur, annee, trimestre) {
+    const t = cnssDuTrimestre(livre, annee, trimestre);
+    const e = employeur || {};
+    return fichierCnss({
+      employeur: e.matricule, code: e.code, annee: t.annee, trimestre: t.trimestre,
+      lignes: t.lignes.map(l => ({ salarieId: l.salarieId, nom: l.nom, identite: l.identite, cnss: l.cnss, cin: l.cin, salaire: l.assiette }))
+    });
   }
 
   // Ce qui manque avant de déclarer ou de passer l'écriture. On NOMME, on ne bloque jamais
@@ -6008,6 +6151,7 @@
     salarieValide, normaliserSalarie, ajouterSalarie, retirerSalarie, salariesActifs,
     bulletinsDuMois, bulletinValide, saisiePaieValide, ajouterBulletin, supprimerBulletin, masseSalariale, moisEmployeur,
     ecritureDePaie, noterEcriturePaie, cnssDuTrimestre, controlesPaie,
+    fichierCnss, fichierCnssDuLivre, lireMatriculeCnss, identiteCnss, motifIdentiteCnss, FORMAT_CNSS,
     // La pièce équilibrée et l'amortissement (9.6.1)
     ajouterJoursIso, entrySet,
     DEFAULT_ASSET_CLASSES, assetClassLabel, assetClassYears, days360,

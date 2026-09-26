@@ -8318,6 +8318,20 @@ lots ; le détail de ce qui reste vit dans `A-FAIRE.md` § 0.
   discriminent pas, 10.0.0). Piège d'écran : mettre en minuscule la première lettre d'un libellé
   casse un sigle (« fOPROLOS ») — seulement si la deuxième lettre est déjà minuscule.
 
+- **Un fichier officiel se fabrique par UN moteur, et il ne sort pas faux** (D2, le fichier CNSS du
+  trimestre, format DS 2012 : 122 caractères, 12 lignes par page, millimes, CRLF). `compta.fichierCnss`
+  sert le Cabinet (depuis le livre) et l'app entreprise (depuis ses bulletins) : deux fabricants
+  auraient deux formats. **Aucun fichier tant qu'une ligne est fausse**, chaque refus nomme le
+  salarié, la case et le geste ; un trimestre EN COURS ne se déclare pas (règle de « Marquer
+  déposée »). **Une invite qui souffle une forme doit l'accepter** : « Prénom, prénom du père, nom »
+  invitait à taper des virgules, que le fichier refusait ensuite comme « pas en lettres latines » —
+  vu en tapant, jamais par un test qui pose une valeur propre. La virgule SÉPARE (elle devient une
+  espace), et **un refus nomme ce qui ne passe pas** (« contient « 2 » »), par la MÊME phrase dans la
+  fiche et dans le fichier (`motifIdentiteCnss`). **Ce que le fichier refuserait se refuse à la
+  saisie**, où on peut le corriger : le découvrir le jour de déclarer, c'est rouvrir la fiche sous
+  l'échéance. Et **un lien ouvre ce qu'il annonce** : « 1 déclaration sociale à déposer : CNSS 2e
+  trimestre » ouvrait le 3e, éteint.
+
 ## Pistes pour la suite (non demandées)
 
 - Séparation des installateurs arm64 / x64 pour diviser par deux les 222 Mo du dmg universel.
