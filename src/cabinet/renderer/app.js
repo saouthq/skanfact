@@ -3871,6 +3871,41 @@
   const ORDRE_CASES = ['tvaCollectee', 'tvaDeductible', 'creditReporte', 'netAPayer', 'creditAReporter',
     'timbre', 'retenuesOperees', 'irpp', 'aDecaisser', 'retenuesSubies', 'tfp', 'foprolos', 'tcl', 'acomptes'];
 
+  // 10.14.1 (D1) — ce qui ôte la ressaisie SANS rien déposer : le comptable recopie les cases sur le
+  // portail, alors un clic COPIE le montant sous la forme que le portail accepte (réglable : aucun
+  // cahier ne se lit d'ici, À VÉRIFIER), et la date limite se lit sur l'écran où l'on déclare, par
+  // la MÊME règle que le calendrier des Échéances. Le lien ouvre le navigateur : rien ne part d'ici.
+  const ICONE_COPIE = '<svg class="dc-copie-i" viewBox="0 0 16 16" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M10.5 3.5v-.5a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h.5"/></svg>';
+  const formatCopie = () => ((S && S.settings) || {}).formatCopie || 'point';
+  function boutonCopie(cle, montant) {
+    const txt = K.montantPortail(montant, formatCopie());
+    return `<button type="button" class="btn btn-sm dc-copie" data-copier="${esc(cle)}" data-valeur="${esc(txt)}"
+      title="Copier « ${esc(txt)} » pour le coller sur le portail" aria-label="Copier ${esc(money(montant))}">${esc(money(montant))}${ICONE_COPIE}</button>`;
+  }
+  function reglageCopie() {
+    return `<div class="dc-copie-regle"><span class="small muted">Un clic sur un montant le copie pour le portail, écrit</span>
+      <select id="dc-format" aria-label="La forme d'un montant copié">${K.FORMATS_COPIE.map(f =>
+        `<option value="${f.id}" ${f.id === formatCopie() ? 'selected' : ''}>${esc(f.label)}</option>`).join('')}</select>${info('dc.format')}</div>`;
+  }
+  function ligneEcheanceDeclaration(dossier, periode, deposeeLe, sorte) {
+    sorte = sorte || 'tva';
+    const limite = K.dateLimiteDeclaration(S, periode, sorte, dossier);
+    const portail = K.PORTAILS[sorte === 'cnss' ? 'cnss' : 'ejibaya'];
+    const lien = `<a class="btn btn-sm btn-ghost" id="dc-portail" href="${esc(portail.url)}" target="_blank" rel="noopener">Ouvrir ${esc(portail.label)} ↗</a>`;
+    const retard = !deposeeLe && limite < K.today();
+    const phrase = deposeeLe ? `Déposée le ${esc(fmtJour(deposeeLe))} — la date limite était le ${esc(fmtJour(limite))}.`
+      : retard ? `<b>Date limite dépassée</b> : c'était le ${esc(fmtJour(limite))}.`
+        : `À déposer au plus tard le <b>${esc(fmtJour(limite))}</b>.`;
+    return `<div class="dc-echeance${retard ? ' retard' : ''}"><span>${phrase}</span>${lien}${info('dc.portail')}</div>`;
+  }
+  async function copierPourPortail(b, libelle) {
+    const txt = b.dataset.valeur || '';
+    try {
+      await navigator.clipboard.writeText(txt);
+      toast(`Copié : ${txt} — colle-le dans la case « ${libelle} » du portail.`);
+    } catch (_) { toast('La copie n\'a pas pu se faire : sélectionne le montant et copie-le à la main.', 'error'); }
+  }
+
   function vueDeclaration(dossier) {
     const s = livresState;
     const d = s.decl;
@@ -3928,6 +3963,7 @@
           tiennent en une ligne discrète, et seul un contrôle qui ÉCHOUE garde l'orange : il porte
           un geste à faire. Un vert de plus au-dessus des cases n'apprenait rien. */''}
     <div class="panel dc-suite" id="dc-suite"><h2>Les étapes du mois ${info('dc.suite')}</h2>
+      ${ligneEcheanceDeclaration(dossier, d.periode, deposee && posee.deposee.le)}
       ${motif ? `<p class="small muted dc-motif">${esc(motif)}</p>` : ''}
       <div class="dc-etapes">
         <button class="${cls('preparer')}" id="dc-preparer">${posee ? fait(true) + 'Préparée — recalculer' : 'Préparer la déclaration'}</button>${fleche}
@@ -3952,6 +3988,7 @@
     ${echecs.length ? `<div class="warn-box mt">${echecs.map(c => `<div>${esc(c.detail)}</div>`).join('')}</div>`
       : `<p class="small ligne-ok mt"><span aria-hidden="true">✓</span> Les contrôles passent : aucun brouillard sur le mois, aucun compte d'attente ouvert, la TVA du mois soldée par son écriture, aucun crédit imputé en trop.</p>`}
     <div class="panel mt"><h2>Les cases ${info('dc.cases')}</h2>
+      ${reglageCopie()}
       <div class="scroll-x"><table class="list compact"><thead><tr>
         <th>Case</th><th class="r nw">Montant</th><th class="nw">D'où ça vient</th></tr></thead>
       <tbody>${(() => { let paieDite = ''; return ORDRE_CASES.filter(k => d.cases[k]).map(k => {
@@ -3971,7 +4008,7 @@
         const raison = suite ? `Attend, comme la ligne « ${paieDite} », que la paie du mois soit écrite.` : c.montant == null ? c.motif : c.horsTotal || '';
         return `<tr class="${k === 'aDecaisser' ? 'dc-total' : ''}">
           <td>${esc(LIBELLE_CASE[k] || k)}${raison ? `<div class="small muted dc-raison">${esc(raison)}</div>` : ''}</td>
-          <td class="r nw">${c.montant == null ? '<span class="muted">—</span>' : esc(money(c.montant))}</td>
+          <td class="r nw">${c.montant == null ? '<span class="muted">—</span>' : boutonCopie(k, c.montant)}</td>
           <td class="nw">${
             // Une case qui attend une ÉTAPE (la paie du mois pas encore écrite) n'est pas une règle
             // « à vérifier » : elle mène à l'écran où l'étape se fait (7.15.0).
@@ -4042,6 +4079,14 @@
       if (declState.ouverte) pageFocus = 'dc-pieces';
       drawLivres(root, dossier);
     }; });
+    $$('[data-copier]', el).forEach(b => { b.onclick = () => copierPourPortail(b, LIBELLE_CASE[b.dataset.copier] || b.dataset.copier); });
+    const fmt = $('#dc-format', el);
+    if (fmt) fmt.onchange = async () => {
+      try {
+        S = await api.saveCabinet({ ...S.cabinet, settings: { formatCopie: fmt.value } });
+        drawLivres(root, dossier);
+      } catch (e) { toast(plainError(e), 'error'); }
+    };
     // La paie du mois déclaré, ouverte sur CE mois : c'est lui qu'il faut écrire.
     $$('[data-vers-paie]', el).forEach(b => { b.onclick = () => {
       s.paieMois = Number(String(s.decl && s.decl.periode || '').slice(5, 7)) || s.paieMois;

@@ -276,9 +276,33 @@ lui-même ne la contredit pas ; mais un format officiel republié chaque année 
 fichier rejeté le jour de l'échéance : chaque fichier porte la version du cahier des charges qu'il
 suit, et l'écran dit de le contrôler sur le portail avant l'échéance) :
 
-- **D1 — sans ressaisie sur les écrans existants** : « Copier » sur chaque montant de la déclaration
+- ~~**D1 — sans ressaisie sur les écrans existants** : « Copier » sur chaque montant de la déclaration
   mensuelle (au format que le portail attend, sans espace ni devise), un lien « Ouvrir e-jibaya » et
-  « Ouvrir le portail CNSS », l'échéance de chaque déclaration dans son écran.
+  « Ouvrir le portail CNSS », l'échéance de chaque déclaration dans son écran.~~ **Fait pour la
+  déclaration mensuelle du Cabinet (26/09)** : bouton sur chaque montant, forme réglable (point,
+  virgule, millimes — le guide DGI dit « point décimal », d'où le défaut), date limite lue par la
+  règle des Échéances (trimestre compris), lien e-jibaya. Reste : le même geste sur la CNSS (D2).
+- **D1bis — la déclaration mensuelle dans l'ordre du formulaire 2026** (reçu de Skander le 26/09,
+  `mensuelle2026.pdf`, en arabe) : RS en 31 lignes (base, taux, montant), TFP (1 % industrie / 2 %
+  autres) et FOPROLOS (1 %) en base + taux, TVA par BASE HT et par taux (7/13/19 + autres), achats HT
+  déductibles par catégorie (immeubles ; équipements local / importé ; autres achats local /
+  importé), régularisations, crédit du mois précédent, timbre, TCL (0,2 % du CA local brut, 0,1 %
+  export), minimum de 30 DT pour une personne morale. Chaque case copiée doit tomber sur une case du
+  formulaire. **Ce qui manque au moteur** : la catégorie d'un achat (immeuble / équipement / autre,
+  local / importé) n'existe pas — la déduire de la destination (immobilisation = équipement) et
+  demander le reste, ne rien inventer (9.1.1).
+- **L'IS annuel** (`التصريح بالضريبة على الشركات 2025`, reçu le 26/09) : taux 10/15/20/35/40 %,
+  minimum d'impôt 0,2 % du CA local brut TTC (500 DT au moins ; 0,1 % et 300 DT au taux de 10 %),
+  contribution sociale solidaire 3 % (400 DT au moins aux taux 20/15 %) ou 4 % (500 DT, taux 35/40 %),
+  acomptes en trois, et la liste des retenues SUBIES à joindre (nous l'avons : `retenueSubie`).
+  La 10.0.0 refuse tout taux en dur : le formulaire officiel autorise maintenant à PROPOSER la liste
+  (« la liste propose, elle n'enferme pas », 8.3.0), le cabinet choisit. **À VÉRIFIER** avec le pilote.
+- **Documents officiels** (reçus de Skander, jamais commités) : guide de télédéclaration DGI, CNSS
+  DS 2012 (122 caractères) et ancien format, régime complémentaire (`Desc_Sal_Rc`), I16, mensuelle
+  2026, DEC-EMPL 2025 (formulaire papier), IS 2025. **Manquent encore** : le cahier des charges du
+  FICHIER de la déclaration d'employeur (`EMPCCA_25V2.pdf`, section « support magnétique » de
+  jibaya) et la spécification XML/XSD de la liasse — les PDF reçus sont les formulaires papier,
+  pas les formats de fichier.
 - **D2 — la CNSS trimestrielle** devient un écran de « Déclarer et clôturer » : pointage déposée /
   payée (comme la mensuelle), export CSV, et le **fichier texte CNSS** si le cahier des charges se lit
   sans ambiguïté (sinon : pas de fichier, et on le dit).

@@ -5,7 +5,7 @@
 // Ce que ces tests tiennent : que chaque case se DÉDUIT des écritures, qu'elle est traçable
 // jusqu'aux pièces qui la font, et qu'une case dont la règle n'est pas connue vaut `null` —
 // jamais 0. Un zéro se recopie sur un formulaire ; un « — » avec sa raison se demande.
-module.exports = ({ t, assert }) => {
+module.exports = ({ t, assert, lireSource }) => {
 const K = require('../../src/renderer/compta.js');
 
 function livreDeTest(ecritures, plan) {
@@ -385,5 +385,76 @@ t('10.14.0 : le Cabinet écrit le complément par le même bouton, et « Marquer
   assert.ok(/id="dc-deposee" \$\{!posee \|\| motifPerime \? 'disabled' : ''\}/.test(app), '« Marquer déposée » reste allumé sur des chiffres périmés');
   assert.ok(/const suivante = !posee \|\| \(perime && !deposee\) \? 'preparer' : \(!ecrite \|\| aCompleter\) \? 'ecriture'/.test(app), 'le vert ne suit pas le travail qui reste');
   assert.ok(/const LIBELLE_CASE = KC\.LIBELLES_CASES_DECL;/.test(app), 'deux tables de noms de cases divergeraient');
+});
+// 10.14.1 (D1) — le comptable RECOPIE les cases sur le portail. Ce qui supprime la ressaisie sans rien
+// déposer : un clic copie le montant sous la forme que le portail accepte, et la date limite se lit
+// sur l'écran où l'on déclare, par la MÊME règle que le calendrier des Échéances.
+t('10.14.1 (D1) : un montant copié pour le portail, sans espace ni devise, dans la forme choisie', () => {
+  const KB = require('../../src/cabinet/cabcore.js');
+  // Des montants qui DISCRIMINENT (9.6.1) : un millime, un négatif, un arrondi au demi-millime,
+  // un zéro de tête dans la partie décimale.
+  assert.strictEqual(KB.montantPortail(1234.567, 'point'), '1234.567');
+  assert.strictEqual(KB.montantPortail(1234.567, 'virgule'), '1234,567');
+  assert.strictEqual(KB.montantPortail(1234.567, 'millimes'), '1234567');
+  assert.strictEqual(KB.montantPortail(12.3, 'point'), '12.300', 'la décimale se complète : un portail qui attend trois chiffres');
+  assert.strictEqual(KB.montantPortail(0.05, 'virgule'), '0,050');
+  assert.strictEqual(KB.montantPortail(-0.5, 'virgule'), '-0,500', 'un négatif garde son signe (un crédit)');
+  assert.strictEqual(KB.montantPortail(2.0005, 'point'), '2.001', 'arrondi au millime, pas tronqué');
+  assert.strictEqual(KB.montantPortail(1000000, 'point'), '1000000.000', 'jamais une espace de milliers : le portail la refuserait');
+  // Un réglage inconnu retombe sur le point ; absent, il vaut le point.
+  assert.strictEqual(KB.migrate({}).settings.formatCopie, 'point');
+  assert.strictEqual(KB.migrate({ settings: { formatCopie: 'n\'importe' } }).settings.formatCopie, 'point');
+  assert.strictEqual(KB.migrate({ settings: { formatCopie: 'millimes' } }).settings.formatCopie, 'millimes');
+  // Chaque forme proposée à l'écran est une forme que la fonction sait écrire.
+  KB.FORMATS_COPIE.forEach(f => assert.ok(/^-?\d+([.,]\d{3})?$/.test(KB.montantPortail(7.25, f.id)), f.id));
+});
+
+t('10.14.1 (D1) : la date limite d\'une déclaration est celle du calendrier des Échéances', () => {
+  const KB = require('../../src/cabinet/cabcore.js');
+  const s = KB.migrate({ settings: { deadlines: { tvaDay: 28, cnssDay: 15 } } });
+  assert.strictEqual(KB.dateLimiteDeclaration(s, '2026-09', 'tva'), '2026-10-28');
+  // La CNSS se dépose après la FIN du trimestre, quel que soit le mois regardé.
+  assert.strictEqual(KB.dateLimiteDeclaration(s, '2026-08', 'cnss'), '2026-10-15');
+  assert.strictEqual(KB.dateLimiteDeclaration(s, '2026-12', 'cnss'), '2027-01-15', 'le 4e trimestre bascule sur janvier');
+  // Un dossier trimestriel : février se dépose avec mars, en avril — pas le 28 mars.
+  const trim = { tvaPeriod: 'trimestrielle' };
+  assert.strictEqual(KB.dateLimiteDeclaration(s, '2026-02', 'tva', trim), '2026-04-28');
+  assert.strictEqual(KB.dateLimiteDeclaration(s, '2026-02', 'tva', {}), '2026-03-28');
+  // Février n'a pas de 30 : le jour se ramène au dernier jour, comme dans le calendrier.
+  const s30 = KB.migrate({ settings: { deadlines: { tvaDay: 30, cnssDay: 15 } } });
+  assert.strictEqual(KB.dateLimiteDeclaration(s30, '2026-01', 'tva'), '2026-02-28');
+  // La MÊME date que le calendrier : on confronte CHAQUE échéance de TVA et de CNSS à `echeances`.
+  const st = KB.migrate({ settings: { deadlines: { tvaDay: 28, cnssDay: 15 } }, dossiers: [
+    { id: 'd1', name: 'Mensuel', months: ['2026-08'], from: '2026-01' },
+    { id: 'd2', name: 'Trimestriel', months: ['2026-06'], from: '2026-01', tvaPeriod: 'trimestrielle' }] });
+  const liste = KB.echeances(st, '2026-09-10').filter(x => ['tva-m', 'tva-t', 'cnss'].includes(x.id));
+  assert.ok(liste.some(x => x.id === 'tva-m') && liste.some(x => x.id === 'tva-t') && liste.some(x => x.id === 'cnss'), 'des données qui ne discriminent pas');
+  liste.forEach(x => {
+    const dossier = x.id === 'tva-t' ? st.dossiers[1] : st.dossiers[0];
+    // Le PREMIER mois de la période : c'est lui que la règle doit ramener à la fin du trimestre.
+    assert.strictEqual(KB.dateLimiteDeclaration(st, x.mois[0], x.id === 'cnss' ? 'cnss' : 'tva', dossier), x.date,
+      `${x.label} : deux écrans, deux dates pour la même échéance`);
+  });
+});
+
+t('10.14.1 (D1) : l\'écran copie par le moteur, retient la forme, et dit la date limite', () => {
+  const app = lireSource('src', 'cabinet', 'renderer', 'app.js');
+  const main = lireSource('src', 'cabinet', 'main.js');
+  // Le montant à copier vient du MOTEUR, jamais d'un `toFixed` de l'écran (10.10.0).
+  const b = app.slice(app.indexOf('function boutonCopie('), app.indexOf('function reglageCopie('));
+  assert.ok(b.length > 100 && b.length < 900, 'tranche inattendue');
+  assert.ok(/K\.montantPortail\(montant, formatCopie\(\)\)/.test(b), 'la copie doit passer par K.montantPortail');
+  // Chaque case chiffrée porte son bouton ; le message dit ce qui a été copié.
+  assert.ok(/c\.montant == null \? '<span class="muted">—<\/span>' : boutonCopie\(k, c\.montant\)/.test(app), 'une case chiffrée sans bouton de copie');
+  assert.ok(/toast\(`Copié : \$\{txt\}/.test(app), 'le message doit dire exactement ce qui a été copié');
+  // La forme se retient : fusionnée dans les réglages comme le thème, jamais en remplaçant.
+  assert.ok(/state\.settings = \{ \.\.\.state\.settings, formatCopie: String\(p\.settings\.formatCopie\) \}/.test(main), 'la forme de copie n\'est pas enregistrée');
+  assert.ok(/settings: \{ formatCopie: fmt\.value \}/.test(app), 'le sélecteur n\'enregistre pas la forme');
+  // La date limite vient de la règle partagée, et la ligne est posée en tête des étapes.
+  assert.ok(/K\.dateLimiteDeclaration\(S, periode, sorte, dossier\)/.test(app), 'la date limite doit venir de la règle du calendrier');
+  assert.ok(/ligneEcheanceDeclaration\(dossier, d\.periode, deposee && posee\.deposee\.le\)/.test(app), 'la date limite n\'est pas sur l\'écran de la déclaration');
+  // Le lien ouvre le NAVIGATEUR : une adresse http(s) en target=_blank, que la fenêtre renvoie dehors.
+  assert.ok(/href="\$\{esc\(portail\.url\)\}" target="_blank" rel="noopener"/.test(app), 'le portail doit s\'ouvrir dans le navigateur');
+  assert.ok(/setWindowOpenHandler\(\(\{ url \}\) => \{ if \(\/\^https\?:\/\.test\(url\)\) shell\.openExternal\(url\)/.test(main), 'un lien du Cabinet ne s\'ouvre plus dehors');
 });
 };

@@ -119,6 +119,14 @@
 .dc-coche { color: var(--success); font-weight: 700; margin-inline-end: 5px; }
 .btn-primary .dc-coche { color: inherit; }
 .dc-motif { margin-block: 0 10px; }
+/* 10.14.1 (D1) — la date limite et le portail, au-dessus des étapes ; un montant qui se COPIE est un
+   bouton (bordure au repos, 9.4.2), en chiffres de même chasse pour que la colonne reste droite. */
+.dc-echeance { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-block: 0 10px; }
+.dc-echeance.retard > span:first-child { color: var(--warning); }
+.dc-copie-regle { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-block: 0 10px; }
+.dc-copie-regle select { inline-size: auto; }
+.btn.dc-copie { font-variant-numeric: tabular-nums; gap: 6px; }
+.dc-copie-i { inline-size: 13px; block-size: 13px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.4; opacity: .7; }
 /* U-14 — la raison d'une case vide se lit en entier, sous son libellé, jamais coupée. */
 .dc-raison { margin-block-start: 3px; max-inline-size: 72ch; white-space: normal; line-height: 1.45; }
 /* U-13 — des contrôles qui passent tiennent en une ligne : un bandeau vert de plus au-dessus des

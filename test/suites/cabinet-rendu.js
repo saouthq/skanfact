@@ -155,7 +155,8 @@ t('9.4.3 : le Cabinet a un thème, et il le RETIENT', () => {
   // empêche un écran n'envoyant que des réglages d'effacer le NOM du cabinet. La borne ne protège
   // pas d'une taille, elle protège d'une tranche qui déborderait sur le handler suivant et
   // prouverait alors n'importe quoi (7.21.0) : le contrôle qui compte est celui du `fin` ci-dessus.
-  assert.ok(zone.length < 2900, 'la tranche du handler est trop large pour prouver quoi que ce soit');
+  // 3 300 depuis la 10.14.1 : la forme d'un montant copié pour un portail (D1), fusionnée comme le thème.
+  assert.ok(zone.length < 3300, 'la tranche du handler est trop large pour prouver quoi que ce soit');
   assert.ok(!zone.slice(10).includes('ipcMain.handle('), 'la tranche déborde sur le handler suivant');
   assert.ok(/state\.settings = \{ \.\.\.state\.settings, theme:/.test(zone),
     'le thème doit être FUSIONNÉ dans les réglages, pas les remplacer');

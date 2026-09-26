@@ -8293,6 +8293,18 @@ lots ; le détail de ce qui reste vit dans `A-FAIRE.md` § 0.
 - **Une visite qui choisit un client guide ce que ce choix fait apparaître** (`etapeTaux`, avec `si`) :
   le champ du taux paraît avec un client en devise, et la visite passait à côté — l'enregistrement
   refusait ensuite une case que personne n'avait montrée.
+- **Déposer sans ressaisir commence par copier juste** (DECL D1, question de Skander du 26/09 : « le
+  comptable transfère à l'État ? »). SkanFact ne dépose rien (5.2.0) ; il rend chaque montant de la
+  déclaration mensuelle COPIABLE, dans la forme que le portail attend — et **cette forme est un
+  réglage** (point, virgule, millimes) : le guide DGI dit « point décimal », mais un format officiel
+  change, et une forme écrite en dur ferait rejeter une déclaration le jour de l'échéance.
+  `montantPortail` compte en millimes entiers (jamais `toFixed` sur un flottant), et un test le joue
+  sur les négatifs et les arrondis. **La date limite d'une déclaration se lit par la règle des
+  Échéances** (`dateLimiteDeclaration`, confrontée item par item à `echeances()` — mensuelle,
+  trimestrielle et CNSS) : deux écrans, deux dates pour la même déclaration, c'est le défaut de la
+  Paie de la 10.14.0 (`dateLimiteSociale`) qui revenait. Les formulaires officiels reçus (mensuelle
+  2026, déclaration d'employeur 2025, IS 2025, cahiers CNSS) ne se commitent pas : ils vivent chez
+  Skander, et `A-FAIRE.md` § 0.3 dit ce qu'on en a tiré et ce qui manque encore.
 
 ## Pistes pour la suite (non demandées)
 

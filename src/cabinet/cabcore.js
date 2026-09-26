@@ -126,7 +126,11 @@
   // connecte à aucune administration — c'est un pense-bête, pas un accusé de réception (règle
   // 5.2.0). On pointe une OCCURRENCE (`tva-m@2026-05-15`), jamais une règle : faire taire « TVA »
   // ferait taire tous les mois suivants, et c'est le défaut que la 7.21.0 a corrigé côté entreprise.
-  const DEFAULT_SETTINGS = { relanceDay: 10, deadlines: null, saisie: null, theme: 'auto', depots: [] };
+  // `formatCopie` (10.14.1, D1) : la forme d'un montant qu'on COPIE pour le coller sur un portail
+  // (e-jibaya, CNSS). Aucune n'est garantie : le cahier du portail ne se lit pas d'ici, et un format
+  // qui change un jour se change dans la liste, pas dans une version. Défaut « point » : c'est ce
+  // qu'accepte un champ numérique de navigateur. À VÉRIFIER avec le comptable pilote.
+  const DEFAULT_SETTINGS = { relanceDay: 10, deadlines: null, saisie: null, theme: 'auto', depots: [], formatCopie: 'point' };
   const DEFAULT_STATE = {
     format: FORMAT,
     cabinet: { name: '', email: '', phone: '', publicKey: '', privateKey: '' },
@@ -516,6 +520,7 @@
     // Un thème inconnu retombe sur « auto » : une valeur inventée ne doit pas laisser l'application
     // dans un état qu'aucun écran ne propose.
     if (!['light', 'dark', 'auto'].includes(s.settings.theme)) s.settings.theme = 'auto';
+    if (!FORMATS_COPIE.some(f => f.id === s.settings.formatCopie)) s.settings.formatCopie = 'point';
     // Absent de cette liste, le pointage serait jeté au prochain démarrage et chaque échéance
     // déposée se remettrait à crier — en silence (défaut `matricule`, 6.8.0).
     // Les régimes déclarés par le cabinet (F-9.6.0-12). Absents d'ici, ils seraient jetés au
@@ -1683,6 +1688,43 @@
     return `${month}-${pad2(Math.min(day, dernier))}`;
   }
 
+  // 10.14.1 (D1, question de Skander du 26/09) — le comptable RECOPIE les chiffres sur le portail :
+  // SkanFact ne dépose rien et ne se connecte à aucune administration (5.2.0). Ce qui supprime la
+  // ressaisie sans rien déposer, c'est d'abord de COPIER un montant sous la forme que le portail
+  // accepte : sans espace, sans devise, avec la décimale choisie — ou en millimes entiers.
+  const FORMATS_COPIE = [
+    { id: 'point', label: '1234.567 — point décimal' },
+    { id: 'virgule', label: '1234,567 — virgule décimale' },
+    { id: 'millimes', label: '1234567 — en millimes' }
+  ];
+  function montantPortail(n, format) {
+    const v = Math.round(Number(n || 0) * 1000);
+    if (format === 'millimes') return String(v);
+    const signe = v < 0 ? '-' : '', a = Math.abs(v);
+    const txt = `${signe}${Math.floor(a / 1000)}.${String(a % 1000).padStart(3, '0')}`;
+    return format === 'virgule' ? txt.replace('.', ',') : txt;
+  }
+  // Les deux portails où le comptable dépose. Des ADRESSES, pas des connexions : le lien ouvre le
+  // navigateur, rien ne part de SkanFact. À VÉRIFIER : une adresse d'administration change.
+  const PORTAILS = {
+    ejibaya: { url: 'https://www.jibaya.tn/', label: 'e-jibaya' },
+    cnss: { url: 'https://www.cnss.tn/dspc/Cotisants.html', label: 'le portail CNSS' }
+  };
+  // La date limite d'UNE déclaration, par la MÊME règle que le calendrier des Échéances (le jour
+  // réglé dans les Réglages) : deux écrans qui disent la même échéance ne peuvent pas donner deux
+  // dates. Un mois d'un TRIMESTRE (la CNSS toujours, la TVA d'un dossier trimestriel) se dépose le
+  // mois qui suit la FIN du trimestre — sinon l'écran de février annoncerait le 28 mars une TVA
+  // que le calendrier réclame le 28 avril.
+  function dateLimiteDeclaration(state, mois, sorte, dossier) {
+    const cfg = deadlineSettings(state);
+    let m = String(mois).slice(0, 7);
+    if (sorte === 'cnss' || (dossier && periodeTva(state, dossier) === 'trimestrielle')) {
+      const mm = Number(m.slice(5, 7));
+      m = addMonth(m, (3 - (mm % 3)) % 3);
+    }
+    return dayOf(addMonth(m, 1), sorte === 'cnss' ? cfg.cnssDay : cfg.tvaDay);
+  }
+
   function echeances(state, todayIso, opts) {
     opts = opts || {};
     const t = todayIso || today();
@@ -2194,6 +2236,7 @@
     GRACE_MOIS, DORMANT_MOIS, dossierFacturable, comptageDossiers, licenceDuPaquet,
     monthLabel, moisTape, moisAffiche, monthListLabel, missingLabel, addMonth, monthsBetween, moisDeTravail, today, de, libelleLot,
     cleEcheance, echeanceDeposee,
+    FORMATS_COPIE, montantPortail, PORTAILS, dateLimiteDeclaration,
     migrate, migrateDossier, dossierKey, packSummary, filePack, demoDossiers, rebaserPaquet, checkIntegrity, HORS_MANIFESTE,
     justificatifsDuPaquet, justificatifsDeLigne,
     exemplePerime, verdictMotDePasse,

@@ -530,6 +530,9 @@ ipcMain.handle('cab:saveCabinet', (_e, patch) => {
     // Le thème (9.4.3). Fusionné comme le reste : un écran qui n'envoie que le thème ne doit pas
     // effacer le jour de relance, et réciproquement.
     if (p.settings.theme) state.settings = { ...state.settings, theme: String(p.settings.theme) };
+    // La forme d'un montant copié pour un portail (10.14.1, D1). Fusionnée comme le thème ; une
+    // valeur inconnue retombe sur « point » dans `migrate`.
+    if (p.settings.formatCopie) state.settings = { ...state.settings, formatCopie: String(p.settings.formatCopie) };
     // Les échéances pointées (9.4.6). REMPLACÉES et non fusionnées : dépointer est un geste, et une
     // fusion rendrait le « Annuler » impossible — on ne pourrait qu'ajouter. `migrate` filtre
     // ensuite les clés qui n'ont pas la forme attendue.

@@ -287,6 +287,9 @@
   b('#dc-pieces', 'Ouvre les pièces qui font ce chiffre.');
   b('#dc-csv', 'Enregistre les cases de la déclaration dans un fichier.');
   b('#dc-mois', 'Le mois déclaré.', { nom: 'Mois' });
+  b('[data-copier]', 'Copie ce montant pour le coller dans la case du portail, sans espace ni devise, dans la forme choisie au-dessus du tableau. Le message dit exactement ce qui est copié.', { nom: 'Copier le montant', cle: 'copier' });
+  b('#dc-format', 'La forme d\'un montant copié : point, virgule, ou millimes entiers — celle que le portail accepte.', { nom: 'Forme de la copie' });
+  b('#dc-portail', 'Ouvre le portail de l\'administration dans ton navigateur : SkanFact ne s\'y connecte pas et n\'y envoie rien.');
 
   // ---------- la révision, l'exercice, la liasse ----------
   b('#rv-poser', 'Pose les questions de ton questionnaire de fin d\'exercice à ce client.');
