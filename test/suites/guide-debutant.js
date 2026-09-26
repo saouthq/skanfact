@@ -633,4 +633,80 @@ t('10.14.1 : « Valider le brouillard » ne montre pas un bouton de grille étei
     assert.strictEqual(e.si(), true);
   } finally { if (avant === undefined) delete global.document; else global.document = avant; }
 });
+
+// Suivie au guide par un débutant, « Faire la paie » montrait trois boutons et le laissait seul
+// devant deux fenêtres de dix cases. Chaque case OBLIGATOIRE de la fiche du salarié a maintenant
+// son geste — lues dans le formulaire, jamais recopiées : une case obligatoire ajoutée demain sans
+// sa bulle ferait tomber ce test —, et les deux « Enregistrer » sont des gestes prouvés.
+t('10.14.1 : « Faire la paie » fait remplir chaque case obligatoire du salarié, puis le bulletin, au guide', () => {
+  const V2 = require('../../src/renderer/visite.js');
+  const ctx = { state: () => ({ cabinet: {}, dossiers: [] }), dossier: () => 'D', estExemple: () => false, cleSecours: () => null, copieExterne: () => false, Visite: V2 };
+  const v = CV.parcours(ctx).find(x => x.id === 'paie-cabinet');
+  assert.ok(v && v.type === 'faire', 'la paie n\'est plus un parcours guidé');
+  const app = lireSource('src', 'cabinet', 'renderer', 'app.js');
+  const f = app.indexOf('function salarieForm(');
+  const form = app.slice(f, app.indexOf('function bulletinForm(', f));
+  assert.ok(form.length > 1000 && form.length < 8000, 'tranche du formulaire suspecte : ' + form.length);
+  const obligatoires = [...form.matchAll(/field obligatoire[^>]*>[\s\S]{0,200}?<input name="([^"]+)"/g)].map(m => m[1]);
+  assert.deepStrictEqual(obligatoires.sort(), ['brut', 'embauche', 'nom'], 'les cases obligatoires de la fiche ont changé : ' + obligatoires);
+  obligatoires.forEach(n => {
+    const e = v.etapes.find(x => x.cible === '#modal-root [name="' + n + '"]');
+    assert.ok(e && e.faire === 'valeur' && !e.facultatif, 'la case obligatoire « ' + n + ' » n\'a pas de geste dans la visite');
+  });
+  // Deux fenêtres, deux « Enregistrer » prouvés par la fenêtre refermée — pas par le clic.
+  const enreg = v.etapes.filter(e => e.cible === '#modal-root #ok');
+  assert.strictEqual(enreg.length, 2);
+  enreg.forEach(e => assert.ok(e.faire === 'clic' && typeof e.fait === 'function', 'un « Enregistrer » avance sur le clic seul'));
+  ['#pa-salarie', '#pa-bulletin', '#pa-ecrire'].forEach(c =>
+    assert.ok(v.etapes.some(e => e.cible === c && e.faire === 'clic'), 'le geste ' + c + ' manque'));
+  // Le salarié déjà déclaré ne se redemande pas : « + Salarié » ne s'éclaire que si « + Bulletin » est éteint.
+  const avant = global.document;
+  try {
+    global.document = { querySelector: sel => (sel === '#pa-bulletin' ? { disabled: false } : null) };
+    assert.strictEqual(v.etapes.find(e => e.cible === '#pa-salarie').si(), false, 'on fait redéclarer un salarié qui existe');
+    global.document = { querySelector: sel => (sel === '#pa-bulletin' ? { disabled: true } : null) };
+    assert.strictEqual(v.etapes.find(e => e.cible === '#pa-salarie').si(), true);
+  } finally { if (avant === undefined) delete global.document; else global.document = avant; }
+});
+
+// Le jumeau de la règle de l'app entreprise (10.12.0), jamais porté au Cabinet : « Jours d'absence »
+// prérempli à 0, un clic à gauche du chiffre, « 2 » tapé… 20 jours. La règle est JOUÉE sur une fausse
+// page : un champ de nombre ou un montant en texte (`.num`) se sélectionne quand la PERSONNE y entre.
+t('10.14.1 : un champ de nombre prérempli du Cabinet se remplace à la frappe (clic ou Tab), jamais sur un focus du code', () => {
+  const app = lireSource('src', 'cabinet', 'renderer', 'app.js');
+  const i = app.indexOf('let nombreJusteEntre = null, entreeVoulue = false;');
+  assert.ok(i > 0, 'le Cabinet n\'a plus la règle des champs de nombre');
+  const fin = app.indexOf('nombreJusteEntre = null;\n  });', i);
+  const bloc = app.slice(i, fin + 'nombreJusteEntre = null;\n  });'.length);
+  assert.ok(bloc.length > 400 && bloc.length < 2000, 'tranche suspecte : ' + bloc.length);
+  const ecoute = {};
+  const document = { addEventListener: (type, fn) => { ecoute[type] = fn; } };
+  vm.runInNewContext(bloc, { document });
+  const champ = (type, cls, value, extra) => {
+    const el = Object.assign({ tagName: 'INPUT', type, value, readOnly: false, disabled: false, choisi: 0,
+      classList: { contains: c => (cls || '').split(' ').includes(c) } }, extra);
+    el.select = () => { el.choisi++; };
+    return el;
+  };
+  const entrer = (el, par) => {
+    if (par === 'clic') ecoute.pointerdown({});
+    else ecoute.keydown({ key: par });
+    ecoute.focusin({ target: el });
+    return el.choisi;
+  };
+  assert.strictEqual(entrer(champ('number', '', '0'), 'clic'), 1, 'un nombre prérempli ne se sélectionne pas au clic');
+  assert.strictEqual(entrer(champ('text', 'num montant', '1 200,000'), 'clic'), 1, 'un montant en texte ne se sélectionne pas au clic');
+  assert.strictEqual(entrer(champ('text', 'num', '26'), 'Tab'), 1, 'Tab n\'entre pas comme un clic');
+  assert.strictEqual(entrer(champ('number', '', '0'), 'Enter'), 0, 'un focus rendu par le code (Entrée) sélectionne ce qu\'on vient de taper');
+  assert.strictEqual(entrer(champ('text', '', 'Sami'), 'clic'), 0, 'un champ de texte ordinaire se sélectionne');
+  assert.strictEqual(entrer(champ('number', '', ''), 'clic'), 0, 'un champ vide n\'a rien à sélectionner');
+  assert.strictEqual(entrer(champ('number', '', '5', { readOnly: true }), 'clic'), 0, 'un champ en lecture seule se sélectionne');
+  // Le `mouseup` du même clic ne défait pas la sélection ; le suivant, si.
+  const el = champ('number', '', '0');
+  entrer(el, 'clic');
+  let bloque = 0;
+  ecoute.mouseup({ target: el, preventDefault: () => { bloque++; } });
+  ecoute.mouseup({ target: el, preventDefault: () => { bloque++; } });
+  assert.strictEqual(bloque, 1, 'le relâchement du clic défait la sélection, ou le second clic ne place plus le curseur');
+});
 };

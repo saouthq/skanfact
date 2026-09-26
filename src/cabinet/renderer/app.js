@@ -1181,6 +1181,28 @@
     if (redraw) render();
   }
 
+  // ---------- un champ de nombre prérempli se remplace, il ne se complète pas ----------
+  // Le jumeau de la règle de l'app entreprise (10.12.0, « 850 » devenu 8 500 DT), jamais porté ici
+  // (7.3.0) : vu en suivant la visite de la paie au guide (10.14.1), « Jours d'absence » prérempli
+  // à 0, un clic à gauche du chiffre aligné à droite, « 2 » tapé… et 20 jours d'absence, le net
+  // divisé par quatre. Le Cabinet écrit ses montants dans des champs TEXTE (`.num`, H-3) : la règle
+  // les vise comme les `type=number`. Seulement quand c'est la PERSONNE qui entre (un clic, Tab) : un
+  // focus rendu par le code n'est pas une entrée ; et le `mouseup` du même clic ne désélectionne pas.
+  let nombreJusteEntre = null, entreeVoulue = false;
+  const estNombre = el => !!el && el.tagName === 'INPUT' && !el.readOnly && !el.disabled
+    && (el.type === 'number' || (el.type === 'text' && el.classList.contains('num')));
+  document.addEventListener('pointerdown', () => { entreeVoulue = true; }, true);
+  document.addEventListener('keydown', e => { entreeVoulue = e.key === 'Tab'; }, true);
+  document.addEventListener('focusin', e => {
+    if (!estNombre(e.target) || e.target.value === '' || !entreeVoulue) return;
+    nombreJusteEntre = e.target;
+    try { e.target.select(); } catch (_) { /* un champ sans sélection possible reste tel quel */ }
+  });
+  document.addEventListener('mouseup', e => {
+    if (nombreJusteEntre && e.target === nombreJusteEntre) e.preventDefault();
+    nombreJusteEntre = null;
+  });
+
   // ---------- glisser-déposer ----------
   // Le geste le plus naturel — attraper le .skanpack reçu par mail et le lâcher sur la fenêtre.
   function setupDrop() {

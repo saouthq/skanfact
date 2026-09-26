@@ -8581,6 +8581,16 @@ lots ; le détail de ce qui reste vit dans `A-FAIRE.md` § 0.
 - **Le retour d'un geste extérieur a son geste guidé** : la visite de la déclaration finissait sur le
   portail ; « Noter le dépôt et le paiement » fait le clic, prouve sur le bouton, et ne réclame pas le
   paiement — un débutant ne paie pas toujours le jour où il dépose.
+- **Un guide qui MONTRE un bouton n'a pas guidé** : « Faire la paie » éclairait « + Salarié » et
+  « + Bulletin » puis se taisait devant deux fenêtres de dix cases — un débutant qui suit la bulle ne
+  sait pas quoi taper. Chaque case obligatoire a son geste, et un test lit les cases OBLIGATOIRES dans le
+  formulaire (jamais recopiées) et exige une étape `faire: 'valeur'` pour chacune : une case obligatoire
+  ajoutée demain sans sa bulle le fait tomber.
+- **Le jumeau manquant, encore, trouvé en suivant le guide** (7.3.0) : la sélection d'un champ de nombre
+  prérempli (10.12.0) n'existait que dans l'app entreprise — « 2 » tapé à gauche du « 0 » des jours
+  d'absence donnait 20. Le Cabinet écrit ses montants dans des champs TEXTE (`.num`) : sa règle vise les
+  deux formes. Le test la JOUE sur une fausse page (clic, Tab, Entrée, lecture seule, `mouseup`) ; aucun
+  parcours ne l'aurait vue, ils posent la valeur au lieu de la taper.
 
 ## Pistes pour la suite (non demandées)
 

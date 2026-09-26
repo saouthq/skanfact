@@ -1732,26 +1732,63 @@
       ]
     });
 
+    // 10.14.1 — suivie par un débutant, « Faire la paie » ne faisait RIEN faire : trois bulles montraient
+    // « + Salarié », « + Bulletin » et leurs promesses, et le comptable restait seul devant deux fenêtres
+    // de dix cases. Chaque case qui compte a maintenant sa bulle, et chaque fenêtre son « Enregistrer ».
+    const paieBtn = sel => document.querySelector(sel);
+    const aUnSalarie = () => { const b = paieBtn('#pa-bulletin'); return !!b && !b.disabled; };
     visite({
-      id: 'paie-cabinet', theme: 'saisir', type: 'faire', duree: '2 min',
+      id: 'paie-cabinet', theme: 'saisir', type: 'faire', duree: '3 min',
       page: dans('saisie', 'comptabilite/paie'),
       titre: 'Faire la paie d\'un client',
       resume: 'Ses salariés, les bulletins du mois, puis l\'écriture de paie en brouillard.',
       mots: ['paie', 'salaire', 'bulletin', 'salarie', 'cnss', 'irpp', 'employe'],
       si: () => !!ctx.dossier('saisie'), manque: DOSSIER_MANQUE.saisie,
       suite: ['cnss', 'page-compta-paie'],
+      // L'écriture passée arrive au brouillard : sa validation passe en tête de la suite.
+      pressee: () => (typeof document !== 'undefined' && document.querySelector('#pa-valider') ? ['valider-lot'] : []),
       bravo: 'Tu sais faire la paie',
       conclusion: 'Un bulletin garde une copie de son calcul : changer un barème ne réécrit jamais un bulletin déjà remis. Une fois l\'écriture passée, un bulletin ne se modifie plus — on contre-passe, puis on refait.',
       etapes: [
         { page: dans('saisie', 'comptabilite/paie'), cible: '#pa-mois', cote: 'dessous', titre: 'Le mois',
-          texte: 'La page s\'ouvre sur le dernier mois qui a des bulletins. Un salarié sans bulletin ce mois-là est nommé.' },
-        { page: dans('saisie', 'comptabilite/paie'), cible: ['#pa-salarie', '#pa-salarie2'], cote: 'dessous', titre: 'Les salariés',
-          texte: 'Son nom, son numéro CNSS (signalé s\'il manque, jamais bloquant), son poste, son brut.' },
-        { page: dans('saisie', 'comptabilite/paie'), cible: ['#pa-bulletin', '#pa-bulletin2'], cote: 'dessous', titre: 'Les bulletins',
-          texte: 'Le net se recalcule pendant la frappe. Un brut négatif est refusé en nommant le champ.' },
+          texte: 'La paie se fait <b>mois par mois</b> : ce mois-ci est celui des bulletins que tu vas établir. La page s\'ouvre sur le dernier mois qui a des bulletins, sinon sur le mois en cours.' },
+        { page: dans('saisie', 'comptabilite/paie'), cible: '#pa-salarie', cote: 'dessous', faire: 'clic', si: () => !aUnSalarie(),
+          titre: 'Déclarer le salarié', texte: 'Un bulletin se fait pour un <b>salarié</b> : on le déclare une fois, avec son salaire, et il sert tous les mois.',
+          action: 'Clique sur <b>« + Salarié… »</b>.', essai: { clic: true } },
+        { page: dans('saisie', 'comptabilite/paie'), cible: '#modal-root [name="nom"]', cote: 'droite', faire: 'valeur', bouton: 'Suivant',
+          titre: 'Son nom', texte: 'Nom et prénom, tels qu\'ils figureront sur son bulletin.', action: 'Tape le nom du salarié.', essai: { taper: 'Salarié Essai' } },
+        { page: dans('saisie', 'comptabilite/paie'), cible: '#modal-root [name="cnss"]', cote: 'droite', facultatif: true, titre: 'Son numéro CNSS',
+          texte: 'Comme sur sa carte d\'assuré : <b>12345678-90</b>. Il n\'empêche pas de calculer un bulletin ; la déclaration du trimestre, elle, le demande. Tu peux le laisser vide et l\'ajouter plus tard.' },
+        { page: dans('saisie', 'comptabilite/paie'), cible: '#modal-root [name="brut"]', cote: 'droite', faire: 'valeur', bouton: 'Suivant',
+          titre: 'Son salaire brut', texte: 'Le <b>brut mensuel</b> de son contrat, avant CNSS et impôt — c\'est lui que chaque bulletin propose. Écris-le comme sur le contrat : 1 250,500.',
+          action: 'Tape son salaire brut mensuel.', essai: { taper: '1200' } },
+        { page: dans('saisie', 'comptabilite/paie'), cible: '#modal-root [name="embauche"]', cote: 'droite', faire: 'valeur', bouton: 'Suivant',
+          titre: 'Sa date d\'embauche', texte: 'Le jour où il a commencé, <b>JJ/MM/AAAA</b>. Un mois avant cette date ne lui réclame aucun bulletin.',
+          action: 'Tape sa date d\'embauche.', essai: { taper: '01/01/2026' } },
+        { page: dans('saisie', 'comptabilite/paie'), cible: '#modal-root [name="enfants"]', cote: 'droite', facultatif: true, titre: 'Sa famille',
+          texte: '<b>Chef de famille</b> et <b>enfants à charge</b> réduisent son impôt sur le revenu. Laisse-les tels quels si tu ne sais pas : ils se corrigent sur sa fiche. <b>À VÉRIFIER</b> avec la loi de finances.' },
+        { page: dans('saisie', 'comptabilite/paie'), cible: '#modal-root #ok', cote: 'dessus', faire: 'clic', si: () => !!document.querySelector('#modal-root #sf'),
+          fait: () => aucuneFenetre() && aUnSalarie(),
+          titre: 'Enregistrer le salarié', texte: 'Il rejoint la liste des salariés du dossier. Si une case est refusée, elle devient rouge et dit pourquoi.',
+          action: 'Clique sur <b>« Enregistrer »</b>.', essai: { clic: true } },
+        { page: dans('saisie', 'comptabilite/paie'), cible: '#pa-bulletin', cote: 'dessous', faire: 'clic', si: aUnSalarie,
+          titre: 'Établir le bulletin', texte: 'Le bulletin du mois choisi, pour un salarié : son brut est proposé, le net se calcule tout seul.',
+          action: 'Clique sur <b>« + Bulletin… »</b>.', essai: { clic: true } },
+        { page: dans('saisie', 'comptabilite/paie'), cible: '#modal-root [name="salarieId"]', cote: 'droite', titre: 'Le salarié et le mois',
+          texte: 'Vérifie le <b>salarié</b> et le <b>mois</b> : ce sont eux que le bulletin portera. Son brut est repris de sa fiche.' },
+        { page: dans('saisie', 'comptabilite/paie'), cible: '#modal-root [name="joursAbsence"]', cote: 'droite', facultatif: true, titre: 'Les absences',
+          texte: 'Des jours d\'absence <b>non payés</b> ce mois-ci ? Tape-les : le brut baisse d\'autant. Sinon, laisse 0. Une prime ou une retenue se tape juste en dessous.' },
+        { page: dans('saisie', 'comptabilite/paie'), cible: '#modal-root #bf-apercu', cote: 'dessus', titre: 'Le net, avant d\'enregistrer',
+          texte: 'Le <b>net à payer</b> se recalcule à chaque frappe, avec le même calcul que celui qui enregistrera : retenues CNSS et impôt, et le coût pour l\'employeur. Relis-le avant d\'enregistrer.' },
+        { page: dans('saisie', 'comptabilite/paie'), cible: '#modal-root #ok', cote: 'dessus', faire: 'clic', si: () => !!document.querySelector('#modal-root #bf'),
+          fait: () => aucuneFenetre(),
+          titre: 'Enregistrer le bulletin', texte: 'Le bulletin garde une <b>copie</b> de son calcul : changer un barème plus tard ne le réécrira pas.',
+          action: 'Clique sur <b>« Enregistrer le bulletin »</b>.', essai: { clic: true } },
         { page: dans('saisie', 'comptabilite/paie'), cible: '#pa-ecrire', cote: 'dessous', faire: 'clic', facultatif: true,
-          titre: 'Passer l\'écriture de paie', texte: 'En brouillard, au dernier jour du mois. Le bouton s\'éteint une fois passée, et dit pourquoi.',
-          action: 'Clique sur <b>« Passer l\'écriture de paie »</b>.', essai: { clic: true } }
+          si: () => { const b = paieBtn('#pa-ecrire'); return !!b && !b.disabled; },
+          fait: () => { const b = paieBtn('#pa-ecrire'); return !b || b.disabled; },
+          titre: 'Passer l\'écriture de paie', texte: 'Tous les bulletins du mois sont faits ? L\'écriture arrive <b>en brouillard</b>, au dernier jour du mois : salaires, CNSS, impôt retenu, net à payer. Tu la valides à la saisie.',
+          action: 'Clique sur <b>« Passer l\'écriture de paie »</b>, ou passe l\'étape s\'il reste des bulletins à faire.', essai: { clic: true } }
       ]
     });
 

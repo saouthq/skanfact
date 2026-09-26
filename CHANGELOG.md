@@ -64,6 +64,16 @@ Publiée en **bêta** : elle touche au moteur comptable (retenue à la source, d
   livres le prenait pour un dépôt (la Production disait « déclaré » d'un mois dé-pointé). Les index d'avant
   se relisent une fois.
 - « Valider le brouillard » ne commence plus par un bouton de grille éteint quand on vient seulement valider.
+- **« Faire la paie d'un client » fait faire la paie, case par case** : suivie au guide par un débutant,
+  la visite montrait « + Salarié », « + Bulletin » et leurs promesses, puis le laissait seul devant deux
+  fenêtres de dix cases. Chaque case obligatoire de la fiche du salarié (nom, brut, date d'embauche) a sa
+  bulle et son geste, le numéro CNSS et la famille sont expliqués sans être exigés, et les deux
+  « Enregistrer » ne comptent que si la fenêtre s'est refermée. Un salarié déjà déclaré ne se redemande pas.
+- **Dans le Cabinet, un nombre prérempli se remplace quand on tape dedans** : « Jours d'absence » valait
+  0 ; un clic à gauche du chiffre, « 2 » tapé… et le bulletin comptait **20 jours** d'absence, le net
+  divisé par quatre. La règle de l'app entreprise (10.12.0) n'avait jamais été portée : un champ de nombre
+  ou de montant se sélectionne quand on y entre à la souris ou par Tab, jamais quand le logiciel y remet
+  le curseur.
 - **La déclaration s'ouvre sur un mois PASSÉ**, jamais sur un mois à venir : un brouillard daté du
   20 octobre (un prélèvement saisi d'avance) faisait ouvrir l'écran de septembre sur octobre, un mois
   qui n'est pas encore là. Le mois de travail est le dernier mois qui a des données jusqu'au mois
