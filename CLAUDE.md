@@ -8306,6 +8306,18 @@ lots ; le détail de ce qui reste vit dans `A-FAIRE.md` § 0.
   2026, déclaration d'employeur 2025, IS 2025, cahiers CNSS) ne se commitent pas : ils vivent chez
   Skander, et `A-FAIRE.md` § 0.3 dit ce qu'on en a tiré et ce qui manque encore.
 
+- **Une case copiée tombe sur une case du formulaire, dans son ordre** (D1bis) : l'écran de
+  déclaration du Cabinet range les cases du moteur dans les rubriques de l'imprimé 2026
+  (`formulaireMensuel`, rangé au processus principal — l'écran ne recalcule rien). **Un document
+  officiel tranche un « À VÉRIFIER »** : la retenue sur salaires (lignes 1 et 3), la TFP et le
+  FOPROLOS figurent sur la même déclaration que la TVA, donc dans son total ; ce que l'écriture du
+  mois porte au 4365 ne change pas. **Une répartition ne se fait que si elle refait le compte** :
+  IRPP et contribution sociale se séparent sur les bulletins seulement quand leur somme égale le
+  4321. Et une preuve est restée verte parce que le montant de la TFP était lui-même inconnu dans le
+  jeu du test — une base inventée n'avait aucun montant sur lequel se poser (des données qui ne
+  discriminent pas, 10.0.0). Piège d'écran : mettre en minuscule la première lettre d'un libellé
+  casse un sigle (« fOPROLOS ») — seulement si la deuxième lettre est déjà minuscule.
+
 ## Pistes pour la suite (non demandées)
 
 - Séparation des installateurs arm64 / x64 pour diviser par deux les 222 Mo du dmg universel.

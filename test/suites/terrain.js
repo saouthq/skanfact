@@ -433,7 +433,9 @@ t('T-18 / T-20 / T-42 : les abonnements vivent dans la Saisie, un clic amène so
   const dl = tranche(app, 'function drawLivres(', 'const miroirBadge', 3000, 16000);
   assert.ok(/else brancherVue\(el, root, dossier, lignes\);\s*focaliser\(el\);/.test(dl), 'focaliser doit venir APRÈS le dessin, pas au milieu');
   assert.ok(/if \(declState\.ouverte\) pageFocus = 'dc-pieces';/.test(app), 'ouvrir les pièces d\'une case ne les amène pas à l\'écran');
-  assert.ok(/data-cases="\$\{k\}" aria-expanded=/.test(app), 'le bouton ne dit pas qu\'il est ouvert');
+  // 10.14.1 (D1bis) — le bouton vit maintenant dans les lignes du formulaire : la règle est qu'il
+  // dise s'il est ouvert, quelle que soit la variable qui porte la case.
+  assert.ok(/data-cases="\$\{[^}]+\}" aria-expanded="\$\{declState\.ouverte === /.test(app), 'le bouton ne dit pas qu\'il est ouvert');
 });
 
 t('T-24 / T-25 / T-26 / T-27 : l\'exercice se relit, sa fenêtre liste, son motif se lit, son dossier laisse une trace', () => {
@@ -849,8 +851,10 @@ t('T-57 : une bulle qui suit un BOUTON a son écart, et rien ne se colle par une
   // La RÈGLE, pas la ligne (10.12.0 — l'assertion recopiait `const raison = …` mot pour mot, et elle
   // est tombée dès qu'une case a su renvoyer à la précédente) : la raison se tire du motif ou de la
   // note « hors total », et elle est posée SOUS le libellé.
-  assert.ok(/const raison = [^;]*c\.montant == null \? c\.motif : c\.horsTotal \|\| ''/.test(app), 'la raison d\'une case ne se tire plus de son motif ou de sa note « hors total »');
-  assert.ok(/<td>\$\{esc\(LIBELLE_CASE\[k\] \|\| k\)\}\$\{raison \? `<div class="small muted dc-raison">/.test(app), 'la note « hors total » ne vit plus sous le libellé');
+  // 10.14.1 (D1bis) — la case vit dans une LIGNE du formulaire : sa raison se tire de son motif
+  // (case inconnue) ou de sa note (ce qu'elle ne répartit pas), et se pose sous son libellé.
+  assert.ok(/const raison = l\.montant == null \? l\.motif : l\.note;/.test(app), 'la raison d\'une case ne se tire plus de son motif ou de sa note');
+  assert.ok(/\$\{esc\(l\.libelle\)\}\$\{raison \? `<div class="small muted dc-raison">/.test(app), 'la raison ne vit plus sous le libellé');
   assert.ok(!/data-cases="\$\{k\}"[^`]*<\/button>\$\{hors\}/.test(app), 'la mention « hors total » est revenue coller au bouton des écritures');
   const cab = lireSource('src', 'cabinet', 'renderer', 'cabinet.css');
   assert.ok(/^\.dc-raison \{[^}]*white-space: normal/m.test(cab), '.dc-raison doit exister dans la feuille, et passer à la ligne');

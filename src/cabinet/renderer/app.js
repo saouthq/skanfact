@@ -3877,9 +3877,9 @@
   // la MÊME règle que le calendrier des Échéances. Le lien ouvre le navigateur : rien ne part d'ici.
   const ICONE_COPIE = '<svg class="dc-copie-i" viewBox="0 0 16 16" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M10.5 3.5v-.5a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h.5"/></svg>';
   const formatCopie = () => ((S && S.settings) || {}).formatCopie || 'point';
-  function boutonCopie(cle, montant) {
+  function boutonCopie(cle, montant, libelle) {
     const txt = K.montantPortail(montant, formatCopie());
-    return `<button type="button" class="btn btn-sm dc-copie" data-copier="${esc(cle)}" data-valeur="${esc(txt)}"
+    return `<button type="button" class="btn btn-sm dc-copie" data-copier="${esc(cle)}" data-libelle="${esc(libelle || '')}" data-valeur="${esc(txt)}"
       title="Copier « ${esc(txt)} » pour le coller sur le portail" aria-label="Copier ${esc(money(montant))}">${esc(money(montant))}${ICONE_COPIE}</button>`;
   }
   function reglageCopie() {
@@ -3904,6 +3904,67 @@
       await navigator.clipboard.writeText(txt);
       toast(`Copié : ${txt} — colle-le dans la case « ${libelle} » du portail.`);
     } catch (_) { toast('La copie n\'a pas pu se faire : sélectionne le montant et copie-le à la main.', 'error'); }
+  }
+
+  // 10.14.1 (D1bis) — les cases, dans l'ORDRE du formulaire officiel (déclaration mensuelle des
+  // impôts, imprimé 2026) : ses rubriques, ses numéros de ligne, son récapitulatif. Un montant copié
+  // doit tomber sur une case du portail ; rangé dans l'ordre du moteur, il fallait le chercher. Le
+  // rangement se fait au processus principal (`formulaireMensuel`) : l'écran ne recalcule rien.
+  const tauxFr = t => (t == null ? '' : `${String(t).replace('.', ',')} %`);
+  function celluleOrigine(l, etat) {
+    // Plusieurs lignes attendent la MÊME étape (la paie du mois) : le bouton se pose une fois, sur la
+    // première ; les suivantes y renvoient (9.4.6).
+    if (l.montant == null) {
+      if (l.attente === 'paie') {
+        if (etat.paieDite) return '<span class="muted small">attend la paie</span>';
+        etat.paieDite = l.libelle;
+        return '<button type="button" class="btn btn-sm btn-ghost" data-vers-paie>Ouvrir la paie du mois</button>';
+      }
+      return '<span class="muted small">à vérifier</span>';
+    }
+    const c = l.source && livresState.decl.cases[l.source];
+    const n = c ? (c.ecritures || []).length : 0;
+    return n ? `<button type="button" class="btn btn-sm btn-ghost" data-cases="${esc(l.source)}" aria-expanded="${declState.ouverte === l.source ? 'true' : 'false'}">${esc(pl(n, 'écriture'))} ${declState.ouverte === l.source ? '▴' : '▾'}</button>`
+      : '<span class="muted small">calculé</span>';
+  }
+  function ligneFormulaire(l, etat, classe) {
+    const raison = l.montant == null ? l.motif : l.note;
+    return `<tr class="${classe || ''}">
+      <td>${l.ref ? `<span class="dc-ref">${esc(l.ref)}</span> ` : ''}${esc(l.libelle)}${raison ? `<div class="small muted dc-raison">${esc(raison)}</div>` : ''}</td>
+      <td class="r nw">${l.base == null ? '' : boutonCopie('base-' + l.cle, l.base, `base — ${l.libelle}`)}</td>
+      <td class="r nw">${esc(tauxFr(l.taux))}</td>
+      <td class="r nw">${l.montant == null ? '<span class="muted">—</span>' : boutonCopie(l.cle, l.montant, l.libelle)}</td>
+      <td class="nw">${celluleOrigine(l, etat)}</td></tr>`;
+  }
+  function panneauFormulaire(d) {
+    const f = d.formulaire;
+    if (!f) return '';
+    const etat = { paieDite: '' };
+    const rubriques = f.rubriques.map((r, i) => `<tr class="dc-rub"><th colspan="5">${i + 1}. ${esc(r.titre)}
+        <span class="dc-ar" lang="ar" dir="rtl">${esc(r.ar)}</span></th></tr>
+      ${r.lignes.map(l => ligneFormulaire(l, etat)).join('')}`).join('');
+    const recap = f.recap.map(x => `<tr><td>${esc(x.libelle)}</td><td></td><td></td>
+      <td class="r nw">${x.montant == null ? '<span class="muted">—</span>' : boutonCopie('recap-' + x.cle, x.montant, `${x.libelle} (récapitulatif)`)}</td><td></td></tr>`).join('');
+    // Ce qui n'entre pas dans le total le DIT, sur la ligne du total (9.4.5, 9.8.8).
+    const sans = f.manquent.length ? `Sans ${f.manquent.map(x => (/^\p{Lu}\p{Ll}/u.test(x) ? x.charAt(0).toLowerCase() + x.slice(1) : x)).join(', ')} : ${f.manquent.length > 1 ? 'leurs montants ne se savent' : 'son montant ne se sait'} pas ici.` : '';
+    return `<div class="panel mt" id="dc-formulaire"><h2>Le formulaire du mois ${info('dc.cases')}</h2>
+      <p class="small muted">Dans l'ordre de la déclaration mensuelle des impôts (imprimé 2026) : chaque montant tombe sur une case du portail.</p>
+      ${reglageCopie()}
+      <div class="scroll-x"><table class="list compact dc-form"><thead><tr>
+        <th>Case du formulaire</th><th class="r nw">Base</th><th class="r nw">Taux</th><th class="r nw">Montant</th><th class="nw">D'où ça vient</th></tr></thead>
+      <tbody>${rubriques}
+        <tr class="dc-rub"><th colspan="5">Récapitulatif : ce qui se paie <span class="dc-ar" lang="ar" dir="rtl">خلاصة الأداءات والمعاليم الواجب دفعها</span></th></tr>
+        ${recap}
+        <tr class="dc-total"><td>Total de la déclaration${sans ? `<div class="small muted dc-raison">${esc(sans)}</div>` : ''}${f.aDecaisser != null ? `<div class="small muted dc-raison">Dont ${esc(money(f.aDecaisser))} portés au compte ${esc(d.comptes.aPayer)} par l'écriture du mois (TVA, timbre, retenues opérées) ; le reste se verse depuis les comptes de la paie.</div>` : ''}</td>
+          <td></td><td></td><td class="r nw">${boutonCopie('total', f.total, 'Total de la déclaration')}</td><td></td></tr>
+        <tr class="dc-rub"><th colspan="5">Hors de ce formulaire</th></tr>
+        ${f.horsFormulaire.map(l => ligneFormulaire(l, etat)).join('')}
+      </tbody></table></div>
+      ${d.parTaux
+        ? `<h3 class="sub-h">TVA collectée par taux</h3><table class="list compact"><tbody>${d.parTaux.map(x =>
+            `<tr><td>${esc(x.compte)}</td><td class="r nw">${esc(money(x.montant))}</td></tr>`).join('')}</tbody></table>`
+        : ''}
+    </div>`;
   }
 
   function vueDeclaration(dossier) {
@@ -3987,45 +4048,7 @@
     </div>
     ${echecs.length ? `<div class="warn-box mt">${echecs.map(c => `<div>${esc(c.detail)}</div>`).join('')}</div>`
       : `<p class="small ligne-ok mt"><span aria-hidden="true">✓</span> Les contrôles passent : aucun brouillard sur le mois, aucun compte d'attente ouvert, la TVA du mois soldée par son écriture, aucun crédit imputé en trop.</p>`}
-    <div class="panel mt"><h2>Les cases ${info('dc.cases')}</h2>
-      ${reglageCopie()}
-      <div class="scroll-x"><table class="list compact"><thead><tr>
-        <th>Case</th><th class="r nw">Montant</th><th class="nw">D'où ça vient</th></tr></thead>
-      <tbody>${(() => { let paieDite = ''; return ORDRE_CASES.filter(k => d.cases[k]).map(k => {
-        const c = d.cases[k];
-        const n = (c.ecritures || []).length;
-        // Plusieurs cases attendent la MÊME étape (IRPP, TFP, FOPROLOS) : la phrase et le bouton se
-        // disent une fois, sur la première ; les suivantes y renvoient (9.4.6 — une explication se
-        // lit une fois, et trois boutons identiques empilés ne disent pas trois choses).
-        const suite = c.montant == null && c.attente === 'paie' && paieDite;
-        if (c.montant == null && c.attente === 'paie' && !paieDite) paieDite = LIBELLE_CASE[k] || k;
-        // 10.12.0 (U-14) — la RAISON d'une case se lit en entier, sous son libellé. Elle vivait dans
-        // la colonne « d'où ça vient », coupée à soixante caractères (« La taxe de formation
-        // professionnell… »), et la note de l'IRPP à dix (« Non compris d… ») : on ouvrait une
-        // infobulle pour lire la seule phrase qui dit pourquoi une case est vide. Une ligne qui
-        // N'ENTRE PAS dans le total le dit toujours (T-16) — un total posé au bas d'une colonne se
-        // lit comme la somme de la colonne (9.4.5) —, mais sous le libellé, là où l'œil lit la case.
-        const raison = suite ? `Attend, comme la ligne « ${paieDite} », que la paie du mois soit écrite.` : c.montant == null ? c.motif : c.horsTotal || '';
-        return `<tr class="${k === 'aDecaisser' ? 'dc-total' : ''}">
-          <td>${esc(LIBELLE_CASE[k] || k)}${raison ? `<div class="small muted dc-raison">${esc(raison)}</div>` : ''}</td>
-          <td class="r nw">${c.montant == null ? '<span class="muted">—</span>' : boutonCopie(k, c.montant)}</td>
-          <td class="nw">${
-            // Une case qui attend une ÉTAPE (la paie du mois pas encore écrite) n'est pas une règle
-            // « à vérifier » : elle mène à l'écran où l'étape se fait (7.15.0).
-            suite ? '<span class="muted small">attend la paie</span>'
-              : c.montant == null && c.attente === 'paie' ? '<button type="button" class="btn btn-sm btn-ghost" data-vers-paie>Ouvrir la paie du mois</button>'
-              : c.montant == null ? '<span class="muted small">à vérifier</span>'
-              : n ? `<button type="button" class="btn btn-sm btn-ghost" data-cases="${k}" aria-expanded="${declState.ouverte === k ? 'true' : 'false'}">${esc(pl(n, 'écriture'))} ${declState.ouverte === k ? '▴' : '▾'}</button>`
-                : c.sens === 'creance' ? '<span class="muted small">à récupérer — hors total</span>'
-                  : `<span class="muted small">calculé</span>`}</td></tr>`;
-      }).join(''); })()}</tbody></table></div>
-      ${d.parTaux
-        ? `<h3 class="sub-h">TVA collectée par taux</h3><table class="list compact"><tbody>${d.parTaux.map(x =>
-            `<tr><td>${esc(x.compte)}</td><td class="r nw">${esc(money(x.montant))}</td></tr>`).join('')}</tbody></table>`
-        : `<p class="small muted mt">Le détail par taux demande un sous-compte de TVA collectée par taux
-           (${esc(d.comptes.collectee)}1, ${esc(d.comptes.collectee)}2…). Ce dossier n'en a qu'un : le total est juste,
-           sa répartition ne s'invente pas.</p>`}
-    </div>
+    ${panneauFormulaire(d)}
     ${declState.ouverte && d.cases[declState.ouverte] ? panneauPieces(d.cases[declState.ouverte], LIBELLE_CASE[declState.ouverte]) : ''}`;
   }
 
@@ -4079,7 +4102,7 @@
       if (declState.ouverte) pageFocus = 'dc-pieces';
       drawLivres(root, dossier);
     }; });
-    $$('[data-copier]', el).forEach(b => { b.onclick = () => copierPourPortail(b, LIBELLE_CASE[b.dataset.copier] || b.dataset.copier); });
+    $$('[data-copier]', el).forEach(b => { b.onclick = () => copierPourPortail(b, b.dataset.libelle || LIBELLE_CASE[b.dataset.copier] || b.dataset.copier); });
     const fmt = $('#dc-format', el);
     if (fmt) fmt.onchange = async () => {
       try {
@@ -4139,12 +4162,17 @@
     // deux. Une case inconnue sort VIDE avec sa raison — jamais un zéro qu'on recopierait.
     const csv = $('#dc-csv', el);
     if (csv) csv.onclick = async () => {
-      const texte = [K.toCsvLine(['Case', 'Montant', 'Remarque'])]
-        .concat(ORDRE_CASES.filter(k => s.decl.cases[k]).map(k => K.toCsvLine([
-          LIBELLE_CASE[k] || k,
-          K.csvMontant(s.decl.cases[k].montant),
-          s.decl.cases[k].motif || ''
-        ]))).join('\r\n') + '\r\n';
+      // 10.14.1 (D1bis) — dans l'ordre du formulaire, comme l'écran : une rubrique, sa ligne, sa base
+      // et son taux quand ils se savent. Le récapitulatif et son total ferment le fichier.
+      const f = s.decl.formulaire;
+      const rangs = f ? [].concat(
+        ...f.rubriques.map(r => r.lignes.map(l => [r.titre, [l.ref, l.libelle].filter(Boolean).join(' — '), l.base, l.taux, l.montant, l.montant == null ? l.motif : l.note])),
+        f.recap.map(x => ['Récapitulatif', x.libelle, null, null, x.montant, '']),
+        [['Récapitulatif', 'Total de la déclaration', null, null, f.total, f.manquent.length ? `Sans : ${f.manquent.join(', ')}` : '']],
+        f.horsFormulaire.map(l => ['Hors de ce formulaire', l.libelle, null, null, l.montant, l.montant == null ? l.motif : ''])
+      ) : ORDRE_CASES.filter(k => s.decl.cases[k]).map(k => ['', LIBELLE_CASE[k] || k, null, null, s.decl.cases[k].montant, s.decl.cases[k].motif || '']);
+      const texte = [K.toCsvLine(['Rubrique', 'Case', 'Base', 'Taux (%)', 'Montant', 'Remarque'])]
+        .concat(rangs.map(r => K.toCsvLine([r[0], r[1], K.csvMontant(r[2]), r[3] == null ? '' : Number(r[3]).toLocaleString('fr-FR'), K.csvMontant(r[4]), r[5] || '']))).join('\r\n') + '\r\n';
       try {
         const r = await api.exportCsv(texte, `declaration-${s.decl.periode}-${dossier.matricule || dossier.name}`);
         if (r) toast('Fichier enregistré.');

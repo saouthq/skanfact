@@ -2582,6 +2582,111 @@
     return out;
   }
 
+  // 10.14.1 (D1bis) — la déclaration du mois DANS L'ORDRE DU FORMULAIRE officiel (déclaration
+  // mensuelle des impôts, imprimé 2026) : ses rubriques, ses numéros de ligne, et son récapitulatif
+  // « ce qui se paie ». Les cases du moteur restent ce qu'elles sont (l'écriture du mois, le
+  // pointage et la parité les lisent) ; ceci les RANGE là où le comptable les recopie, pour qu'une
+  // case copiée tombe sur une case du formulaire. Ce qui ne se sait pas vaut `null` avec sa raison
+  // (règle 9.1.1) — rien ne se répartit au hasard : les retenues opérées ne connaissent pas leur
+  // ligne (4 à 31, selon le taux), et restent un total qu'on répartit sur le portail.
+  // Le formulaire tranche une question que le moteur laissait « À VÉRIFIER » depuis la 9.8.8 : la
+  // retenue sur les salaires (ligne 1), la contribution sociale solidaire (ligne 3), la TFP et le
+  // FOPROLOS figurent sur CETTE déclaration et dans son récapitulatif. Ils entrent donc dans le total
+  // de ce qui se paie ; le montant que l'écriture du mois porte au compte « à décaisser » ne change
+  // pas — ces taxes se versent depuis leurs propres comptes (4321, 4335).
+  const RUBRIQUES_FORMULAIRE = [
+    { id: 'rs', titre: 'Retenue à la source', ar: 'الخصم من المورد' },
+    { id: 'tfp', titre: 'Taxe de formation professionnelle', ar: 'الأداء على التكوين المهني' },
+    { id: 'foprolos', titre: 'FOPROLOS', ar: 'المساهمة في صندوق النهوض بالمسكن لفائدة الأجراء' },
+    { id: 'tva', titre: 'TVA', ar: 'الأداء على القيمة المضافة' },
+    { id: 'timbre', titre: 'Droit de timbre', ar: 'معلوم الطابع الجبائي' },
+    { id: 'tcl', titre: 'Taxes des collectivités locales', ar: 'المعاليم الراجعة للجماعات المحلية' }
+  ];
+  const MOTIF_TCL = 'La taxe sur les établissements (TCL) : 0,2 % du chiffre d\'affaires local brut, 0,1 % à l\'export — ou 25 % de l\'impôt sur le revenu ou sur les sociétés, selon la catégorie de l\'entreprise (formulaire 2026). La catégorie se choisit : rien ne la dit dans ce livre. À VÉRIFIER avec le comptable.';
+  function formulaireMensuel(livre, decl) {
+    if (!decl || !decl.ok || !decl.cases) return null;
+    const c = decl.cases;
+    const p = decl.periode;
+    const m = k => (c[k] && c[k].montant != null ? c[k].montant : null);
+    // Les bulletins du mois ÉCRITS : c'est eux qui séparent l'IRPP de la contribution sociale (le
+    // 4321 les porte ensemble) et qui donnent la BASE de la TFP et du FOPROLOS — celle que le calcul
+    // a réellement prise, pas une base refaite à côté.
+    const validee = id => (livre.ecritures || []).some(e => e.id === id && e.statut === 'validee');
+    const bulletins = (livre.bulletins || []).filter(b => `${b.annee}-${String(b.mois).padStart(2, '0')}` === p && b.ecritureId && validee(b.ecritureId));
+    const somme = champ => round3(bulletins.reduce((s, b) => s + (Number((b.calcul || {})[champ]) || 0), 0));
+    const tauxDe = champ => {
+      const t = [...new Set(bulletins.map(b => Number(((b.calcul || {}).rates || {})[champ]) || 0))];
+      return t.length === 1 && t[0] ? t[0] : null;
+    };
+    const ligne = (o) => ({ ref: '', base: null, taux: null, montant: null, source: '', note: '', motif: '', attente: '', ...o });
+
+    // 1. La retenue à la source.
+    const rs = [];
+    const irpp = c.irpp || {};
+    if (irpp.montant == null) {
+      rs.push(ligne({ cle: 'rs1', ref: 'Lignes 1 et 3', libelle: 'Salaires : IRPP et contribution sociale solidaire', motif: irpp.motif || '', attente: irpp.attente || '' }));
+    } else if (bulletins.length && Math.abs(round3(somme('irpp') + somme('css')) - irpp.montant) < 0.0005) {
+      // Les deux montants des bulletins refont exactement le 4321 : la répartition est sûre.
+      rs.push(ligne({ cle: 'rs1', ref: 'Ligne 1', libelle: 'Salaires et traitements (IRPP retenu)', montant: somme('irpp'), source: 'irpp' }));
+      rs.push(ligne({ cle: 'rs3', ref: 'Ligne 3', libelle: 'Contribution sociale solidaire sur les salaires', montant: somme('css'), source: 'irpp' }));
+    } else if (irpp.montant) {
+      rs.push(ligne({ cle: 'rs1', ref: 'Lignes 1 et 3', libelle: 'Salaires : IRPP et contribution sociale solidaire, ensemble', montant: irpp.montant, source: 'irpp',
+        note: `Le compte ${compteDuRole(livre, 'irpp')} les porte ensemble : leur répartition entre la ligne 1 et la ligne 3 se lit sur les bulletins du client.` }));
+    }
+    if (m('retenuesOperees')) {
+      rs.push(ligne({ cle: 'rsAutres', ref: 'Lignes 4 à 31', libelle: 'Autres retenues opérées (honoraires, loyers, achats de 1 000 DT et plus…)', montant: m('retenuesOperees'), source: 'retenuesOperees',
+        note: 'Ce livre ne dit pas le taux de chaque retenue : le total se répartit sur le portail, ligne par ligne, selon la nature du paiement.' }));
+    }
+    // 2 et 3. La TFP et le FOPROLOS, avec leur base quand les bulletins la donnent.
+    const taxe = (k, champTaux) => {
+      const x = c[k] || {};
+      if (x.montant == null) return [ligne({ cle: k, libelle: 'Base : la masse salariale du mois', motif: x.motif || '', attente: x.attente || '' })];
+      return [ligne({ cle: k, libelle: 'Base : la masse salariale du mois', base: bulletins.length ? somme('cnssBase') : null, taux: tauxDe(champTaux), montant: x.montant, source: k })];
+    };
+    // 4. La TVA, dans l'ordre du formulaire : ce qui est dû (I), ce qui se déduit (II), le report.
+    const tva = [
+      ligne({ cle: 'tvaI', ref: 'I', libelle: 'TVA due sur le chiffre d\'affaires', montant: m('tvaCollectee'), source: 'tvaCollectee',
+        note: decl.parTaux ? '' : 'Répartie par taux (7 %, 13 %, 19 %) sur le portail : ce dossier n\'a qu\'un compte de TVA collectée.' }),
+      ligne({ cle: 'tvaII', ref: 'II', libelle: 'TVA déductible sur les achats', montant: m('tvaDeductible'), source: 'tvaDeductible',
+        note: 'Répartie sur le portail entre immeubles, équipements et autres achats, locaux ou importés : ce livre ne porte pas cette catégorie.' }),
+      ligne({ cle: 'tvaReport', libelle: 'Crédit du mois précédent', montant: m('creditReporte'), source: 'creditReporte' }),
+      m('creditAReporter') > 0
+        ? ligne({ cle: 'tvaSolde', libelle: 'Solde : crédit à reporter', montant: m('creditAReporter'), source: 'creditAReporter' })
+        : ligne({ cle: 'tvaSolde', libelle: 'Solde : TVA à payer', montant: m('netAPayer'), source: 'netAPayer' })
+    ];
+    const rubriques = RUBRIQUES_FORMULAIRE.map(r => ({ ...r, lignes: [] }));
+    const R = id => rubriques.find(r => r.id === id);
+    R('rs').lignes = rs;
+    R('tfp').lignes = taxe('tfp', 'tfpRate');
+    R('foprolos').lignes = taxe('foprolos', 'foprolosRate');
+    R('tva').lignes = tva;
+    R('timbre').lignes = [ligne({ cle: 'timbre', libelle: 'Droit de timbre sur les factures', montant: m('timbre'), source: 'timbre' })];
+    R('tcl').lignes = [ligne({ cle: 'tcl', libelle: 'Taxe sur les établissements (TCL)', motif: MOTIF_TCL })];
+
+    // Le récapitulatif : une ligne par taxe, comme la dernière page du formulaire. Ce qui ne se
+    // sait pas n'entre pas dans le total, et le total le DIT (un total se lit comme la somme de
+    // la colonne, 9.4.5).
+    const rsConnu = rs.every(l => l.montant != null);
+    const recap = [
+      { cle: 'rs', libelle: 'Retenue à la source', montant: rsConnu ? round3(rs.reduce((s, l) => s + (l.montant || 0), 0)) : null },
+      { cle: 'tfp', libelle: 'Taxe de formation professionnelle', montant: m('tfp') },
+      { cle: 'foprolos', libelle: 'FOPROLOS', montant: m('foprolos') },
+      { cle: 'tva', libelle: 'TVA', montant: m('netAPayer') },
+      { cle: 'timbre', libelle: 'Droit de timbre', montant: m('timbre') },
+      { cle: 'tcl', libelle: 'Taxes des collectivités locales', montant: null }
+    ];
+    const connues = recap.filter(x => x.montant != null);
+    const manquent = recap.filter(x => x.montant == null).map(x => x.libelle);
+    const total = round3(connues.reduce((s, x) => s + x.montant, 0));
+    // Ce que ce formulaire ne porte pas, et que l'écran montre à part : la retenue SUBIE (une
+    // créance, imputée sur l'impôt de l'année) et les acomptes provisionnels (une autre déclaration).
+    const horsFormulaire = [
+      ligne({ cle: 'retenuesSubies', libelle: 'Retenues subies — à récupérer sur l\'impôt de l\'année, pas à payer', montant: m('retenuesSubies'), source: 'retenuesSubies' }),
+      ligne({ cle: 'acomptes', libelle: 'Acomptes provisionnels — une déclaration à part', motif: (c.acomptes || {}).motif || CASES_A_VERIFIER.acomptes })
+    ];
+    return { periode: p, rubriques, recap, total, manquent, horsFormulaire, aDecaisser: m('aDecaisser') };
+  }
+
   // Les contrôles AVANT dépôt. Ils ne bloquent jamais — un mois déclaré avec deux manques signalés
   // vaut mieux qu'un mois jamais déclaré parce que l'application faisait la difficile (règle 6.0.0).
   function controlesDeclaration(livre, periode, cases, opts) {
@@ -5864,7 +5969,7 @@
     echeancierDepuisLignes, balanceAgeeDepuisLignes,
     // La déclaration mensuelle (9.6.0)
     COMPTES_FISCAUX, CASES_A_VERIFIER, mouvementCompte, declarationMensuelle, controlesDeclaration,
-    ecritureDeclaration, ecritureComplementDeclaration, ecartDeclaration, phraseEcartDeclaration, LIBELLES_CASES_DECL,
+    ecritureDeclaration, ecritureComplementDeclaration, ecartDeclaration, phraseEcartDeclaration, LIBELLES_CASES_DECL, formulaireMensuel, RUBRIQUES_FORMULAIRE,
     poserDeclaration, pointerDeclaration, etatDuMois,
     // Les immobilisations et l'inventaire (9.7.0)
     IMMO_METHODES, COMPTES_IMMO, IMMO_A_VERIFIER,

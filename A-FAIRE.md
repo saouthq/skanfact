@@ -282,7 +282,16 @@ suit, et l'écran dit de le contrôler sur le portail avant l'échéance) :
   déclaration mensuelle du Cabinet (26/09)** : bouton sur chaque montant, forme réglable (point,
   virgule, millimes — le guide DGI dit « point décimal », d'où le défaut), date limite lue par la
   règle des Échéances (trimestre compris), lien e-jibaya. Reste : le même geste sur la CNSS (D2).
-- **D1bis — la déclaration mensuelle dans l'ordre du formulaire 2026** (reçu de Skander le 26/09,
+- **D1bis — fait (26/09)** : l'écran de déclaration du Cabinet suit le formulaire 2026 — six
+  rubriques numérotées avec leur titre arabe, lignes 1 / 3 de la retenue séparées quand les bulletins
+  refont le 4321, base et taux de la TFP et du FOPROLOS lus sur les bulletins, TVA I / II / report /
+  solde, récapitulatif « ce qui se paie » avec son total (IRPP, TFP et FOPROLOS compris : le
+  formulaire les porte), et « hors formulaire » (retenues subies, acomptes). Le montant de l'écriture
+  du mois (4365) ne change pas. **Reste, et ne s'invente pas** : la répartition des retenues opérées
+  sur les lignes 4 à 31 (le livre ne porte pas leur taux), la TVA par taux et les achats par
+  catégorie (immeuble / équipement / autre, local / importé), la TCL (sa catégorie se choisit).
+  Le texte d'origine du plan :
+- ~~**D1bis — la déclaration mensuelle dans l'ordre du formulaire 2026**~~ (reçu de Skander le 26/09,
   `mensuelle2026.pdf`, en arabe) : RS en 31 lignes (base, taux, montant), TFP (1 % industrie / 2 %
   autres) et FOPROLOS (1 %) en base + taux, TVA par BASE HT et par taux (7/13/19 + autres), achats HT
   déductibles par catégorie (immeubles ; équipements local / importé ; autres achats local /
@@ -299,10 +308,10 @@ suit, et l'écran dit de le contrôler sur le portail avant l'échéance) :
   (« la liste propose, elle n'enferme pas », 8.3.0), le cabinet choisit. **À VÉRIFIER** avec le pilote.
 - **Documents officiels** (reçus de Skander, jamais commités) : guide de télédéclaration DGI, CNSS
   DS 2012 (122 caractères) et ancien format, régime complémentaire (`Desc_Sal_Rc`), I16, mensuelle
-  2026, DEC-EMPL 2025 (formulaire papier), IS 2025. **Manquent encore** : le cahier des charges du
-  FICHIER de la déclaration d'employeur (`EMPCCA_25V2.pdf`, section « support magnétique » de
-  jibaya) et la spécification XML/XSD de la liasse — les PDF reçus sont les formulaires papier,
-  pas les formats de fichier.
+  2026, DEC-EMPL 2025 (formulaire papier), IS 2025, puis le cahier des charges du fichier de la
+  déclaration d'employeur (`EMPCCA_25V3.pdf`, pour D3) et une liasse fiscale (`Liasse_fiscale-CCT-OPCVM`,
+  à lire pour D4 : son nom la dit propre aux OPCVM — vérifier qu'elle vaut pour une société ordinaire
+  avant de s'en servir).
 - **D2 — la CNSS trimestrielle** devient un écran de « Déclarer et clôturer » : pointage déposée /
   payée (comme la mensuelle), export CSV, et le **fichier texte CNSS** si le cahier des charges se lit
   sans ambiguïté (sinon : pas de fichier, et on le dit).

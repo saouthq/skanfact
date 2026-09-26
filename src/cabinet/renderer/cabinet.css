@@ -129,6 +129,9 @@
 .dc-copie-i { inline-size: 13px; block-size: 13px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.4; opacity: .7; }
 /* U-14 — la raison d'une case vide se lit en entier, sous son libellé, jamais coupée. */
 .dc-raison { margin-block-start: 3px; max-inline-size: 72ch; white-space: normal; line-height: 1.45; }
+.dc-form tr.dc-rub th { text-align: start; font-size: 13px; font-weight: 650; padding-block: 12px 6px; background: var(--bg); text-transform: none; letter-spacing: 0; color: var(--text); position: static; }
+.dc-ar { font-weight: 400; color: var(--muted); margin-inline-start: 8px; font-size: 12px; }
+.dc-ref { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 12px; margin-inline-end: 2px; }
 /* U-13 — des contrôles qui passent tiennent en une ligne : un bandeau vert de plus au-dessus des
    chiffres n'apprenait rien. Seul un contrôle qui échoue garde un bandeau (orange, avec son geste). */
 /* Un état ACCOMPLI se dit sur une ligne, en gris, avec sa coche : pas dans un encadré vert qui

@@ -445,7 +445,10 @@ t('10.14.1 (D1) : l\'écran copie par le moteur, retient la forme, et dit la dat
   assert.ok(b.length > 100 && b.length < 900, 'tranche inattendue');
   assert.ok(/K\.montantPortail\(montant, formatCopie\(\)\)/.test(b), 'la copie doit passer par K.montantPortail');
   // Chaque case chiffrée porte son bouton ; le message dit ce qui a été copié.
-  assert.ok(/c\.montant == null \? '<span class="muted">—<\/span>' : boutonCopie\(k, c\.montant\)/.test(app), 'une case chiffrée sans bouton de copie');
+  // 10.14.1 (D1bis) — les cases vivent maintenant dans les lignes du formulaire : chaque ligne
+  // chiffrée porte son bouton, le total aussi.
+  assert.ok(/l\.montant == null \? '<span class="muted">—<\/span>' : boutonCopie\(l\.cle, l\.montant, l\.libelle\)/.test(app), 'une ligne chiffrée sans bouton de copie');
+  assert.ok(/boutonCopie\('total', f\.total,/.test(app), 'le total de la déclaration sans bouton de copie');
   assert.ok(/toast\(`Copié : \$\{txt\}/.test(app), 'le message doit dire exactement ce qui a été copié');
   // La forme se retient : fusionnée dans les réglages comme le thème, jamais en remplaçant.
   assert.ok(/state\.settings = \{ \.\.\.state\.settings, formatCopie: String\(p\.settings\.formatCopie\) \}/.test(main), 'la forme de copie n\'est pas enregistrée');
@@ -456,5 +459,117 @@ t('10.14.1 (D1) : l\'écran copie par le moteur, retient la forme, et dit la dat
   // Le lien ouvre le NAVIGATEUR : une adresse http(s) en target=_blank, que la fenêtre renvoie dehors.
   assert.ok(/href="\$\{esc\(portail\.url\)\}" target="_blank" rel="noopener"/.test(app), 'le portail doit s\'ouvrir dans le navigateur');
   assert.ok(/setWindowOpenHandler\(\(\{ url \}\) => \{ if \(\/\^https\?:\/\.test\(url\)\) shell\.openExternal\(url\)/.test(main), 'un lien du Cabinet ne s\'ouvre plus dehors');
+});
+
+// 10.14.1 (D1bis) — la déclaration dans l'ORDRE du formulaire officiel (imprimé 2026, reçu de
+// Skander le 26/09). Ce que ces tests tiennent : l'ordre des rubriques, la répartition IRPP /
+// contribution sociale lue sur les bulletins et seulement quand elle refait le 4321, la base de la
+// TFP prise sur les bulletins, un total qui additionne ce que le formulaire fait payer (et dit ce
+// qu'il laisse de côté), et un montant « à décaisser » de l'écriture du mois qui ne change pas.
+function livrePaie(avecBulletins) {
+  const plan = [
+    { compte: '4367', libelle: 'TVA collectée', role: 'tvaCollectee' }, { compte: '4366', libelle: 'TVA déductible', role: 'tvaDeductible' },
+    { compte: '4365', libelle: 'TVA à décaisser', role: 'tvaAPayer' }, { compte: '4368', libelle: 'Timbre', role: 'timbre' },
+    { compte: '4352', libelle: 'RS opérée', role: 'rsOperee' }, { compte: '4321', libelle: 'IRPP', role: 'irpp' }
+  ];
+  const livre = livreDeTest([
+    vente('V1', '2026-03-04', 1000, 190),
+    achat('A1', '2026-03-06', 500, 95),
+    { id: 'T1', journal: 'VT', date: '2026-03-04', lignes: [{ compte: '411', debit: 1, credit: 0, libelle: 'Timbre' }, { compte: '4368', debit: 0, credit: 1, libelle: 'Timbre' }] },
+    { id: 'R1', journal: 'AC', date: '2026-03-10', lignes: [{ compte: '401', debit: 15, credit: 0, libelle: 'RS' }, { compte: '4352', debit: 0, credit: 15, libelle: 'RS opérée' }] },
+    // La paie : IRPP 120,450 et contribution sociale 12,070 ensemble au 4321 ; TFP 25 et FOPROLOS 12,5 au 4335.
+    { id: 'P1', journal: 'OD', date: '2026-03-31', lignes: [
+      { compte: '640', libelle: 'Salaires', debit: 1250, credit: 0 },
+      { compte: '661', libelle: 'TFP et FOPROLOS', debit: 37.5, credit: 0 },
+      { compte: '4321', libelle: 'IRPP et CSS', debit: 0, credit: 132.52 },
+      { compte: '4335', libelle: 'TFP et FOPROLOS', debit: 0, credit: 37.5 },
+      { compte: '425', libelle: 'Net', debit: 0, credit: 1117.48 }] }
+  ], plan);
+  if (avecBulletins) {
+    livre.bulletins = [
+      { id: 'B1', annee: 2026, mois: 3, ecritureId: 'P1', calcul: { irpp: 80.3, css: 8.05, cnssBase: 800, tfp: 16, foprolos: 8, rates: { tfpRate: 2, foprolosRate: 1 } } },
+      { id: 'B2', annee: 2026, mois: 3, ecritureId: 'P1', calcul: { irpp: 40.15, css: 4.02, cnssBase: 450, tfp: 9, foprolos: 4.5, rates: { tfpRate: 2, foprolosRate: 1 } } }
+    ];
+  }
+  return livre;
+}
+
+t('10.14.1 (D1bis) : les rubriques suivent l\'ordre du formulaire 2026', () => {
+  const livre = livrePaie(true);
+  const f = K.formulaireMensuel(livre, K.declarationMensuelle(livre, '2026-03'));
+  assert.deepStrictEqual(f.rubriques.map(r => r.id), ['rs', 'tfp', 'foprolos', 'tva', 'timbre', 'tcl']);
+  assert.deepStrictEqual(K.RUBRIQUES_FORMULAIRE.map(r => r.id), f.rubriques.map(r => r.id));
+  // Chaque rubrique porte le titre arabe du formulaire : c'est lui qu'on cherche sur l'imprimé.
+  assert.ok(f.rubriques.every(r => r.ar && /[؀-ۿ]/.test(r.ar)), 'une rubrique sans son titre du formulaire');
+  // Ce que le formulaire ne porte pas est à part, et nommé.
+  assert.deepStrictEqual(f.horsFormulaire.map(l => l.cle), ['retenuesSubies', 'acomptes']);
+});
+
+t('10.14.1 (D1bis) : l\'IRPP et la contribution sociale se séparent sur les bulletins — seulement s\'ils refont le 4321', () => {
+  const livre = livrePaie(true);
+  const f = K.formulaireMensuel(livre, K.declarationMensuelle(livre, '2026-03'));
+  const rs = f.rubriques.find(r => r.id === 'rs').lignes;
+  assert.deepStrictEqual(rs.map(l => l.cle), ['rs1', 'rs3', 'rsAutres']);
+  assert.strictEqual(rs[0].montant, 120.45, '80,300 + 40,150');
+  assert.strictEqual(rs[1].montant, 12.07, '8,050 + 4,020');
+  assert.strictEqual(rs[0].ref, 'Ligne 1');
+  assert.strictEqual(rs[2].montant, 15);
+  // Un bulletin dont le calcul ne refait plus le compte : pas de répartition inventée.
+  livre.bulletins[1].calcul.css = 4.5;
+  const f2 = K.formulaireMensuel(livre, K.declarationMensuelle(livre, '2026-03'));
+  const rs2 = f2.rubriques.find(r => r.id === 'rs').lignes;
+  assert.strictEqual(rs2[0].ref, 'Lignes 1 et 3');
+  assert.strictEqual(rs2[0].montant, 132.52, 'le compte, tel qu\'il est');
+  assert.ok(/bulletins du client/.test(rs2[0].note));
+});
+
+t('10.14.1 (D1bis) : sans bulletins, les lignes 1 et 3 restent ensemble et la TFP n\'a pas de base', () => {
+  const livre = livrePaie(false);
+  // Un plan qui porte la TFP sur son propre compte : son MONTANT se lit dans le livre — c'est ce
+  // qui rend la question de la base discriminante (sans montant, aucune base ne se pose).
+  livre.plan.push({ compte: '4335', libelle: 'TFP', role: 'tfp' });
+  const d = K.declarationMensuelle(livre, '2026-03');
+  const f = K.formulaireMensuel(livre, d);
+  const rs = f.rubriques.find(r => r.id === 'rs').lignes;
+  assert.strictEqual(rs[0].ref, 'Lignes 1 et 3');
+  assert.strictEqual(rs[0].montant, 132.52);
+  const tfp = f.rubriques.find(r => r.id === 'tfp').lignes[0];
+  assert.strictEqual(tfp.montant, 37.5, 'le montant se lit sur le compte');
+  assert.strictEqual(tfp.base, null, 'une base que rien ne donne ne s\'invente pas');
+});
+
+t('10.14.1 (D1bis) : le total additionne ce que le formulaire fait payer, et dit ce qu\'il laisse', () => {
+  const livre = livrePaie(true);
+  const d = K.declarationMensuelle(livre, '2026-03');
+  const f = K.formulaireMensuel(livre, d);
+  // Calculé à la main : RS 120,450 + 12,070 + 15 = 147,520 ; TFP 25 ; FOPROLOS 12,5 ;
+  // TVA 190 − 95 = 95 ; timbre 1. Total 281,020. La TCL ne se sait pas.
+  const tfp = f.rubriques.find(r => r.id === 'tfp').lignes[0];
+  assert.strictEqual(tfp.base, 1250, '800 + 450, la base qu\'a prise le calcul');
+  assert.strictEqual(tfp.taux, 2);
+  assert.strictEqual(tfp.montant, 25);
+  assert.deepStrictEqual(f.recap.map(x => [x.cle, x.montant]), [['rs', 147.52], ['tfp', 25], ['foprolos', 12.5], ['tva', 95], ['timbre', 1], ['tcl', null]]);
+  assert.strictEqual(f.total, 281.02);
+  assert.deepStrictEqual(f.manquent, ['Taxes des collectivités locales']);
+  // Le compte « à décaisser » de l'écriture du mois ne change pas : TVA, timbre, retenues opérées.
+  assert.strictEqual(f.aDecaisser, 111);
+  assert.strictEqual(d.cases.aDecaisser.montant, 111);
+});
+
+t('10.14.1 (D1bis) : un mois en crédit dit son solde, et ne paie pas de TVA', () => {
+  const livre = livreDeTest([vente('V1', '2026-03-04', 100, 19), achat('A1', '2026-03-06', 1000, 190)]);
+  const f = K.formulaireMensuel(livre, K.declarationMensuelle(livre, '2026-03'));
+  const solde = f.rubriques.find(r => r.id === 'tva').lignes.find(l => l.cle === 'tvaSolde');
+  assert.ok(/crédit à reporter/.test(solde.libelle));
+  assert.strictEqual(solde.montant, 171);
+  assert.strictEqual(f.recap.find(x => x.cle === 'tva').montant, 0);
+});
+
+t('10.14.1 (D1bis) : le formulaire se range au processus principal, l\'écran ne recalcule rien', () => {
+  const app = lireSource('src', 'cabinet', 'renderer', 'app.js');
+  const main = lireSource('src', 'cabinet', 'main.js');
+  assert.ok(/formulaire: KC\.formulaireMensuel\(o\.livre, d\)/.test(main), 'la déclaration lue doit porter son formulaire');
+  assert.ok(!/formulaireMensuel\(/.test(app), 'l\'écran recalcule la déclaration');
+  assert.ok(/\$\{panneauFormulaire\(d\)\}/.test(app), 'l\'écran ne montre pas le formulaire');
 });
 };

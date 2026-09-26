@@ -1174,7 +1174,8 @@ t('U-11 / U-13 / U-14 : la déclaration — ses étapes dans l\'ordre, un seul v
   assert.ok(/btn-primary/.test(cls('deposee')) && !/btn-primary/.test(cls('payee')), 'la couleur ne suit pas l\'étape suivante');
   assert.ok(!/btn-primary/.test(vue.replace(/' btn-primary'/, '')), 'un second bouton principal est écrit en dur dans la déclaration');
   // Les étapes passent AVANT les cases : la suite se voit sans descendre sous quatorze lignes.
-  const iSuite = vue.indexOf('id="dc-suite"'), iCases = vue.indexOf('<h2>Les cases');
+  // 10.14.1 (D1bis) — les cases sont devenues « Le formulaire du mois », posé par `panneauFormulaire`.
+  const iSuite = vue.indexOf('id="dc-suite"'), iCases = vue.indexOf('${panneauFormulaire(d)}');
   assert.ok(iSuite > 0 && iSuite < iCases, 'les étapes vivent encore sous les cases');
   // U-13 — aucun bandeau vert ni bleu avant les chiffres ; seul un contrôle qui ÉCHOUE en garde un
   // (orange, avec son geste). La promesse « ne dépose rien » vit avec les pense-bêtes qu'elle décrit.
@@ -1183,9 +1184,12 @@ t('U-11 / U-13 / U-14 : la déclaration — ses étapes dans l\'ordre, un seul v
   assert.ok(/echecs\.length \? `<div class="warn-box/.test(avantCases), 'un contrôle qui échoue ne dit plus rien');
   assert.ok(/ne dépose rien/.test(vue.slice(iSuite, iCases)), 'la promesse a quitté les pense-bêtes qu\'elle décrit');
   // U-14 — la raison d'une case se lit en entier, sous son libellé, jamais coupée par une ellipse.
-  assert.ok(!/\.slice\(0, 60\)/.test(vue), 'la raison d\'une case est encore coupée à soixante caractères');
-  assert.ok(/<div class="small muted dc-raison">\$\{esc\(raison\)\}<\/div>/.test(vue), 'la raison ne vit plus sous le libellé');
-  assert.ok(!/<td class="tronq"/.test(vue), 'une cellule tronquée est revenue dans le tableau des cases');
+  // Les lignes du formulaire se dessinent dans `ligneFormulaire` et `panneauFormulaire`.
+  const lignes = app.slice(app.indexOf('function celluleOrigine('), app.indexOf('function vueDeclaration('));
+  assert.ok(lignes.length > 1000 && lignes.length < 8000 && !/function vueDeclaration\(/.test(lignes), 'tranche inattendue');
+  assert.ok(!/\.slice\(0, 60\)/.test(vue + lignes), 'la raison d\'une case est encore coupée à soixante caractères');
+  assert.ok(/<div class="small muted dc-raison">\$\{esc\(raison\)\}<\/div>/.test(lignes), 'la raison ne vit plus sous le libellé');
+  assert.ok(!/<td class="tronq"/.test(vue + lignes), 'une cellule tronquée est revenue dans le tableau des cases');
 });
 
 t('U-12 : un écran de travail s\'ouvre sur le dernier mois qui a des données, sinon le mois courant — jamais un mois futur', () => {

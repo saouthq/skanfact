@@ -1718,7 +1718,9 @@ ipcMain.handle('cab:declaration', (_e, { dossierId, annee, periode } = {}) => {
   if (!d.ok) throw erreur('ERR-CAB-042', d.motif);
   // Celle qui est ENREGISTRÉE, si elle existe : c'est elle qui porte les pointages et l'écriture.
   const posee = (o.livre.declarations || []).find(x => x.periode === periode) || null;
-  return { ...d, posee };
+  // 10.14.1 (D1bis) — les mêmes cases, rangées dans l'ordre du formulaire officiel. Rangées ICI, au
+  // processus principal comme le reste : l'écran ne recalcule jamais une déclaration.
+  return { ...d, posee, formulaire: KC.formulaireMensuel(o.livre, d) };
 });
 
 ipcMain.handle('cab:poserDeclaration', (_e, { dossierId, annee, periode } = {}) => {
