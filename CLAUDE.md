@@ -8465,6 +8465,18 @@ lots ; le détail de ce qui reste vit dans `A-FAIRE.md` § 0.
     fois) : retournées vers la règle ; le vert se JOUE sur ses états (vm). Et une preuve est restée
     verte sur la lecture des classeurs : remplir les cellules vides est redondant (`join` rend un
     trou vide) — ce n'était pas un défaut, et on ne le prétend pas testé.
+  - **Cliquer dans une case pour y ÉCRIRE n'est pas essayer un bouton** (`ouvreEssai`, visite.js) :
+    un `<label>` entier comptait comme contrôle, donc taper « BIAT » faisait partir la bulle en coin
+    au premier clic — la fenêtre suivait, la visite se perdait. Un libellé qui porte une case de
+    texte ne range pas la bulle ; sa bulle « i », une liste, une case à cocher, si.
+  - **Un verdict qui ne peut jamais dire « juste » est un verdict faux** : le solde de fin appelait
+    `releveValide` sans le compte, qui refuse AVANT de compter — un relevé parfait disait « une ligne
+    manque peut-être ». Le test JOUE l'appel extrait de la fenêtre (vm) avec un compte vide. Et le
+    verdict des soldes lus se pose APRÈS le solde de début : posé avant, il jugeait l'ancien.
+  - **Un anneau qui couvre la réponse qu'il annonce** : l'étape « Le solde à la fin » éclairait le
+    champ, et l'anneau recouvrait le verdict en dessous. La cible est le libellé entier (`label:has`),
+    et l'étape attend qu'on ait écrit (`fait`). Chaque case que le formulaire demande a son étape —
+    la banque n'en avait pas.
 
 ## Pistes pour la suite (non demandées)
 

@@ -40,7 +40,11 @@ Publiée en **bêta** : elle touche au moteur comptable (retenue à la source, d
   trouvé ; la liste passe au-dessus de la fenêtre qui l'ouvre, et le curseur va dans la contrepartie.
 - **La clé de secours ne se réclame plus** tant qu'aucun vrai paquet n'est reçu (elle ne protège que
   les paquets) ; « Tes premiers pas » dit quand l'indispensable est fait.
-- **Le solde de fin d'un relevé** dit pendant la frappe s'il tombe juste.
+- **Le solde de fin d'un relevé** dit pendant la frappe s'il tombe juste — et quand il est lu dans le
+  fichier aussi (« lu dans le relevé · ✓ ça tombe juste »).
+- **La visite « Importer le relevé » fait remplir chaque case** : le nom de la banque a son étape, le
+  solde de fin attend qu'on l'ait écrit, et cliquer dans une case pour y taper ne fait plus partir la
+  bulle.
 
 **Pour l'entreprise (SkanFact)**
 - **Un acompte demandé en montant fait ce montant**, timbre compris (500 DT demandés faisaient 501,002).

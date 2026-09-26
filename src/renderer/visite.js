@@ -1216,9 +1216,22 @@
     cur.geste = Date.now();
     if (ev.type !== 'pointerdown' || cur.essai || cur.attente) return;
     const e = etape();
-    if (!e || estFaire(e) || !t.closest(INTERACTIF)) return;
+    if (!e || estFaire(e) || !ouvreEssai(t)) return;
     cur.essai = { x: ev.clientX, y: ev.clientY };
     dessinerBulle();
+  }
+  // Un clic ouvre l'essai s'il vise un CONTRÔLE — pas s'il entre dans une case pour y écrire. Chaque
+  // case des formulaires vit dans un `<label class="field">`, et `label` est un contrôle : cliquer dans
+  // « Banque » pour taper le nom rangeait la bulle dans un coin (« Vas-y, essaie »), au milieu de la
+  // phrase qu'elle expliquait (vu au guide, un comptable débutant, 10.14.1). Le bouton « i » posé DANS
+  // le libellé reste un contrôle : c'est le plus proche qui décide. Pure (sur `closest`).
+  const CHAMP_TEXTE = 'input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=button]):not([type=submit]), textarea';
+  function ouvreEssai(t) {
+    const x = t && t.closest ? t.closest(INTERACTIF) : null;
+    if (!x) return false;
+    if (String(x.tagName || '').toUpperCase() !== 'LABEL') return true;
+    const c = x.control || (x.querySelector ? x.querySelector('input, select, textarea') : null);
+    return !(c && c.matches && c.matches(CHAMP_TEXTE));
   }
   // La TOUCHE qu'une étape « valeur » annonce (« Tape le jour, puis Entrée ») est un geste : elle
   // fait avancer, une fois la case remplie. Sans elle, la bulle disait « puis Entrée », la personne
@@ -2146,7 +2159,7 @@
   const etapeCourante = () => { const e = etape(); if (!e) return null; const c = Object.assign({}, e); delete c.el; return c; };
 
   const api = { installer, lancer, quitter, enCours, etapeCourante, suivant, precedent, chapitreSuivant, reprendre, gestePasse, consequenceDuGeste, gesteQuiOuvre, issueDeFin, phrasePasses, texteDeFin, selonFin, finsHonnetes,
-    toucheAvance, pagesDuGeste, ongletDuGeste, guideDeLaPage, dansLeGuide, menuDuGuide, placerBulle, placerPres, largeurPres, zoneDeLaCase, placerMini, typo, chevauche, decouperHaut, trousDeListe, hautPourBulle, hautPourCouper, viseLaCible, estFaire, decider, enAttenteDe, compteDe, pointDeReprise, etapeAvecPage, repriseDuGeste, changementDePage, versLaReprise, dejaRempliDe, normNom, nomsCites, lieuDe, ouvrirOnglet,
+    toucheAvance, ouvreEssai, pagesDuGeste, ongletDuGeste, guideDeLaPage, dansLeGuide, menuDuGuide, placerBulle, placerPres, largeurPres, zoneDeLaCase, placerMini, typo, chevauche, decouperHaut, trousDeListe, hautPourBulle, hautPourCouper, viseLaCible, estFaire, decider, enAttenteDe, compteDe, pointDeReprise, etapeAvecPage, repriseDuGeste, changementDePage, versLaReprise, dejaRempliDe, normNom, nomsCites, lieuDe, ouvrirOnglet,
     chapitres, resoudre, visible, listerControles, etapesDeLaVue, blocsDe, cheminDe, PATIENCE, PATIENCE_FACULTATIVE, CONTROLES,
     nettoie, libelleDe, resumeBulle, routeDe, expliqueur, zoneur, phraseDuHaut, texteDuHaut };
   global.Visite = api;

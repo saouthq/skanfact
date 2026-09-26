@@ -186,5 +186,49 @@ t('10.14.1 : le solde de fin d\'un relevé dit, pendant la frappe, s\'il tombe j
   const f = cab.slice(cab.indexOf('function releveForm('), cab.indexOf('const barreLivres'));
   assert.ok(/const juste = [^\n]*KC\.releveValide\(\{/.test(f), 'le verdict ne passe pas par la règle qui refusera');
   assert.ok(/Ça tombe juste/.test(f), 'aucun verdict pendant la frappe');
+  // Le verdict se JOUE : `releveValide` refuse un relevé sans compte avant de compter, donc un
+  // appel qui l'oublie ne dit jamais « juste » — la forme de l'appel ne le montrait pas.
+  const appel = (/KC\.releveValide\((\{[^;]*?lignes: lu\.lignes \})\)\.ok/.exec(f) || [])[1];
+  assert.ok(appel, 'l\'appel du verdict est introuvable');
+  const juge = require('vm').runInNewContext('(' + appel + ')', { v: n => ({ compte: '', debut: '7 260,500', fin: '8 140,100' })[n],
+    KC: K, lu: { lignes: [{ montant: 980 }, { montant: -88.4 }, { montant: -12 }] } });
+  assert.strictEqual(K.releveValide(juge).ok, true, 'un relevé qui boucle ne se dit pas juste : ' + K.releveValide(juge).motif);
+  // Lus tous les deux dans le fichier, les soldes se jugent aussi — APRÈS le début, sinon la fin se
+  // comparait à un 0.
+  const lus = f.slice(f.indexOf('const soldesLus'), f.indexOf('const proposerDebut'));
+  assert.ok(lus.length > 200, 'tranche soldesLus suspecte');
+  const iDebut = lus.indexOf('champDebut.value ='), iVerdict = lus.indexOf("verdictFin('lu dans le relevé')");
+  assert.ok(iDebut > 0 && iVerdict > iDebut, 'des soldes lus dans le relevé ne disent pas s\'ils tombent juste, ou le disent avant de connaître le début');
+});
+t('10.14.1 : cliquer dans une case pour y ÉCRIRE n\'ouvre pas l\'essai — cliquer un contrôle, si', () => {
+  // Un faux DOM : chaque élément connaît ses ancêtres, `closest` et `matches` jouent les sélecteurs
+  // dont le moteur se sert (la balise, le type d'un input).
+  const el = (tag, attrs, parent) => {
+    const e = { tagName: tag.toUpperCase(), type: (attrs || {}).type || '', parent, enfants: [] };
+    if (parent) parent.enfants.push(e);
+    const ok = sel => sel.split(',').map(x => x.trim()).some(x => {
+      const m = /^([a-z]+)((?::not\(\[type=[a-z]+\]\))*)$/.exec(x) || /^([a-z]+)(\[type=[a-z]+\])$/.exec(x);
+      if (!m) return false;
+      if (m[1] !== tag) return false;
+      if (!m[2]) return true;
+      if (m[2].startsWith('[')) return m[2] === `[type=${e.type}]`;
+      return !(m[2].match(/type=([a-z]+)/g) || []).some(n => n === `type=${e.type}`);
+    });
+    e.matches = ok;
+    e.closest = sel => { for (let n = e; n; n = n.parent) if (n.matches(sel)) return n; return null; };
+    e.querySelector = sel => { const f = n => { for (const c of n.enfants) { if (c.matches(sel)) return c; const r = f(c); if (r) return r; } return null; }; return f(e); };
+    return e;
+  };
+  const lab = el('label', {}); const texte = el('input', { type: 'text' }, lab); const info = el('button', {}, lab);
+  assert.strictEqual(V.ouvreEssai(texte), false, 'une case de texte dans son libellé ouvre l\'essai : la bulle part dans le coin au milieu de la saisie');
+  assert.strictEqual(V.ouvreEssai(lab), false, 'cliquer le libellé d\'une case de texte ouvre l\'essai');
+  assert.strictEqual(V.ouvreEssai(info), true, 'la bulle « i » posée dans le libellé n\'est plus un contrôle');
+  const lab2 = el('label', {}); const liste = el('select', {}, lab2);
+  assert.strictEqual(V.ouvreEssai(liste), true, 'une liste qui s\'ouvre est un essai');
+  const lab3 = el('label', {}); const coche = el('input', { type: 'checkbox' }, lab3);
+  assert.strictEqual(V.ouvreEssai(coche), true, 'une case à cocher est un geste');
+  const zone = el('textarea', {}, el('label', {}));
+  assert.strictEqual(V.ouvreEssai(zone), false);
+  assert.strictEqual(V.ouvreEssai(el('div', {})), false, 'un clic sur du vide n\'est pas un essai');
 });
 };

@@ -6646,29 +6646,42 @@
         // « l'écart s'écrit sous la case », et on ne l'apprenait qu'en cliquant « Importer ». Tant que
         // ça ne tombe pas juste, rien de rouge (un chiffre à moitié tapé n'est pas une faute), et le
         // montant ATTENDU ne s'écrit jamais : on le recopierait, et le contrôle ne prouverait plus rien.
-        if (champFin) champFin.addEventListener('input', () => {
-          finTouche = true;
+        // UNE fonction pour la frappe et pour des soldes LUS dans le fichier : lus tous les deux, la
+        // fenêtre disait « lu dans le relevé » sans dire s'ils tombaient juste — la seule chose que le
+        // débutant voulait savoir (vu au guide, 10.14.1). Lus et faux, les lignes du fichier ne font
+        // pas le compte de la banque : c'est dit, sans rouge (le refus viendra à l'import, avec l'écart).
+        const verdictFin = source => {
           if (!hintFin) return;
-          const juste = !!(lu && (lu.lignes || []).length && v('fin') && KC.releveValide({
+          // Le verdict juge le BOUCLAGE : sans compte, `releveValide` refuse avant de compter, et le
+          // verdict ne pouvait jamais dire « juste » (vu au guide, 10.14.1). Le compte manquant a son
+          // propre refus, à l'import.
+          const juste = !!(lu && (lu.lignes || []).length && v('fin') && KC.releveValide({ compte: v('compte') || '532',
             soldeDebut: KC.nombreDepuisCsv(v('debut')), soldeFin: KC.nombreDepuisCsv(v('fin')), lignes: lu.lignes }).ok);
-          if (juste) { hintFin.className = 'small ok-inline'; hintFin.textContent = '✓ Ça tombe juste : début + mouvements = fin, aucune ligne ne manque.'; }
+          // Lu dans le fichier, la phrase tient sur UNE ligne : sur deux, elle poussait « Choisir le
+          // fichier… » au moment où le relevé se lisait (H-E1).
+          if (juste) { hintFin.className = 'small ok-inline'; hintFin.textContent = source ? source + ' · ✓ ça tombe juste' : '✓ Ça tombe juste : début + mouvements = fin, aucune ligne ne manque.'; }
+          else if (source) { hintFin.className = 'small muted'; hintFin.textContent = source + ' — mais début + mouvements ne donne pas cette fin : une ligne manque peut-être au fichier.'; }
           else { hintFin.className = 'small muted'; hintFin.textContent = 'recopie le solde de fin écrit sur le relevé'; }
-        });
+        };
+        if (champFin) champFin.addEventListener('input', () => { finTouche = true; verdictFin(''); });
         // Les soldes que le RELEVÉ écrit (10.14.1, IMP-01) passent avant ceux du livre : ce sont les
         // chiffres de la banque, ceux que la fenêtre demandait de recopier du papier. Ce qu'on a
         // tapé soi-même n'est jamais écrasé.
         const soldesLus = () => {
           const so = (lu && lu.soldes) || {};
+          let finLue = false, debutLu = false;
           if (champFin && !finTouche) {
-            if (so.fin != null) { champFin.value = montantChamp(so.fin) || '0'; if (hintFin) hintFin.textContent = 'lu dans le relevé'; }
-            else if (hintFin) hintFin.textContent = 'le fichier ne l\'écrit pas : recopie-le depuis le relevé papier ou PDF';
+            if (so.fin != null) { champFin.value = montantChamp(so.fin) || '0'; finLue = true; }
+            else if (hintFin) { hintFin.className = 'small muted'; hintFin.textContent = 'le fichier ne l\'écrit pas : recopie-le depuis le relevé papier ou PDF'; }
           }
           if (champDebut && !debutTouche && so.debut != null) {
             champDebut.value = montantChamp(so.debut) || '0';
             if (hint) hint.textContent = 'lu dans le relevé';
-            return true;
+            debutLu = true;
           }
-          return false;
+          // Le verdict APRÈS les deux soldes : jugé avant le début, il comparait la fin à un 0.
+          if (finLue) verdictFin('lu dans le relevé');
+          return debutLu;
         };
         const proposerDebut = lignes => {
           if (soldesLus()) return;
