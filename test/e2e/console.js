@@ -208,7 +208,7 @@ const { servir, SECRET } = require('./console-serveur');
     // 312 HT : 390 moins les 20 % de parrainage de l'étape 6. Le montant vient de la VENTE, il
     // n'est pas recopié du tarif — une remise oubliée dans une relance, c'est un client qui
     // reçoit un chiffre qu'il n'a jamais vu sur sa facture.
-    doit(/312,000 TND/.test(relance), 'et cite le montant réellement dû, avec sa devise : ' + relance.slice(0, 120));
+    doit(/312,000\sTND/.test(relance), 'et cite le montant réellement dû, avec sa devise : ' + relance.slice(0, 120));
     doit(!/undefined|null|NaN|\(\)/.test(relance), 'aucun trou dans le texte composé');
     // Le geste ouvre la messagerie de l'ÉDITEUR : rien ne part d'ici. Un mail de relance parti
     // sans être relu n'est pas une relance, c'est un automate.
@@ -448,10 +448,12 @@ const { servir, SECRET } = require('./console-serveur');
       ouvre: b.getAttribute('data-t') || ''
     })));
     const rentre = sous.find(s => /Encaissé/.test(s.etiquette));
-    doit(rentre && /\d{4}/.test(rentre.etiquette) && /[\d  ,]+ [A-Z]{2,4}/.test(rentre.nombre),
+    // 10.14.1 — les milliers sont séparés par une espace fine insécable et la devise tient au nombre
+    // (insécable) : `\s` couvre les deux, la RÈGLE est « un nombre puis sa devise », pas la forme d'une espace.
+    doit(rentre && /\d{4}/.test(rentre.etiquette) && /\d[\d\s,]*\s[A-Z]{2,4}/.test(rentre.nombre),
       'le total encaissé porte son année ET sa devise : « ' + (rentre ? rentre.etiquette + ' → ' + rentre.nombre : '—') + ' »');
     const attente = sous.find(s => /En attente/.test(s.etiquette));
-    doit(attente && /[\d  ,]+ [A-Z]{2,4}/.test(attente.nombre) && attente.ouvre === 'ventes',
+    doit(attente && /\d[\d\s,]*\s[A-Z]{2,4}/.test(attente.nombre) && attente.ouvre === 'ventes',
       'ce qui attend se lit à côté, et s\'ouvre sur les ventes (7.15.0)');
 
     await onglet('alertes');

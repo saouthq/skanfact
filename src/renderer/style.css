@@ -241,7 +241,12 @@ body.dark .beta-tag { background: #35255a; color: #cdb0f5; border-color: #4c3878
 .pp-list li.fait .pp-txt strong { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--border); }
 .pp-list li.fait .pp-txt .small { display: none; }         /* une étape faite n'a plus besoin d'être expliquée */
 .pp-list li.encours .pp-marque { border-color: var(--primary); }
-.pp-list li.encours { background: var(--primary-soft); border-radius: 10px; margin: 0 -8px; padding-inline-start: 10px; padding-inline-end: 10px; }
+/* La pastille de l'étape en cours déborde de 8 px de chaque côté pour respirer — SANS élargir la
+   liste (10.14.1). Posée par une marge négative, elle rendait la liste 8 px plus large que sa
+   colonne : un débordement horizontal que `e2e:cabinet-jour1` mesurait sur chaque écran qui la
+   montre. Une ombre ne compte pas dans ce qui défile, et le découpage la borne à l'horizontale. */
+.pp-list li.encours { background: var(--primary-soft); border-radius: 10px;
+  box-shadow: 0 0 0 8px var(--primary-soft); clip-path: inset(0 -8px round 10px); }
 .pp-list li.encours + li { border-top-color: transparent; }
 /* Une étape FACULTATIVE (la découverte, le comptable) le dit à côté de son titre, en gris : elle
    attend sans presser (10.14.0). */
@@ -294,8 +299,9 @@ body.dark .lock-banner .btn:not(.btn-primary):not(.btn-danger) { background: rgb
    d'elle-même. */
 .act-grid.champ-faute { border-radius: 12px; box-shadow: 0 0 0 2px var(--danger), 0 0 0 5px var(--danger-soft); }
 /* Une valeur DOUTEUSE sans être refusée (un RIB dont la clé ne tombe pas, 10.12.0) : orange, pas
-   rouge — on prévient, on ne bloque pas. `!important` pour la raison de `.champ-faute` : la règle
-   générale des champs porte quatre `:not()` et gagnerait contre une simple classe. */
+   rouge — on prévient, on ne bloque pas. `!important` comme `.champ-faute` : une marque de refus ou
+   de doute doit gagner contre TOUT habillage de conteneur (grille, ligne, en-tête), pas seulement
+   contre la règle générale des champs — qui ne pèse plus rien depuis la 10.14.1. */
 input.champ-doute { border-color: var(--warning) !important; }
 
 /* Ce qui est obligatoire se voit AVANT d'appuyer sur « Enregistrer ». L'attribut `required` posé sur
@@ -425,8 +431,18 @@ main { --main-haut: 32px; flex: 1; overflow-y: auto; padding: var(--main-haut) 3
 /* Énuméré type par type, ce sélecteur oubliait `search` : cinq listes affichaient donc une petite
    boîte native, non dimensionnée, dont le texte était coupé au milieu d'un mot — à côté de six
    listes correctement stylées. On exclut ce qui doit garder son apparence native plutôt que
-   d'énumérer ce qui doit être stylé : le prochain type d'input sera juste. */
-input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=range]), select, textarea {
+   d'énumérer ce qui doit être stylé : le prochain type d'input sera juste.
+   10.14.1 — la chaîne vit dans un `:where()`, qui ne pèse RIEN. Écrite nue en 7.9.0, elle avait fait
+   passer cette règle de 0,1,1 (`input[type=text]`) à 0,4,1 : toute règle de champ posée dans un
+   conteneur a perdu contre elle, en silence, dans les deux applications — vingt-six règles, dont
+   le rembourrage des cases de nombre des lignes (le prix d'un achat de 4 500 DT s'affichait
+   « 4500,00 », coupé), la place du bouton « Afficher » d'un mot de passe, la police à chasse fixe
+   d'une clé de licence, le champ de la palette, la bordure verte d'un champ qui a le curseur. On
+   l'avait rattrapée neuf fois, règle par règle, à coups de `:not()` recopiés (7.23.0, 7.27.0,
+   7.30.0, 9.4.4, 10.12.0…). La règle commune est une valeur PAR DÉFAUT : elle pèse désormais ce
+   que pèse `select` ou `textarea` (0,0,1), et n'importe quelle classe la corrige. Un test calcule
+   la spécificité de chaque règle de champ des deux feuilles et tombe si l'une d'elles perd. */
+input:where(:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=range])), select, textarea {
   font: inherit; font-size: 14px; color: var(--text); padding: 9px 11px; border: 1px solid var(--border);
   border-radius: var(--radius-sm); background: #fbfcfd; width: 100%; transition: border-color .12s, box-shadow .12s, background .12s;
 }
@@ -435,11 +451,9 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--p
 textarea { resize: vertical; min-height: 68px; }
 input.num { text-align: end; font-variant-numeric: tabular-nums; }
 /* Un sélecteur de couleur étiré sur toute la largeur du champ ressemble à un trait de séparation,
-   pas à un bouton qu'on clique. Il garde la taille d'une pastille.
-   La chaîne de `:not()` n'est pas décorative : la règle commune ci-dessus en porte quatre, donc
-   `input[type=color]` seul PERD contre elle et le `width` était ignoré en silence. Mesuré dans
-   l'application (537 px de large), pas déduit de la lecture du fichier. */
-input[type=color]:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=range]) {
+   pas à un bouton qu'on clique. Il garde la taille d'une pastille. (Il était étiré sur 537 px tant
+   que la règle commune pesait 0,4,1 — mesuré dans l'application ; elle ne pèse plus rien.) */
+input[type=color] {
   height: 40px; width: 72px; padding: 4px; cursor: pointer;
 }
 .inline { display: flex; gap: 8px; align-items: center; }
@@ -523,7 +537,10 @@ td.r, th.r { text-align: end; font-variant-numeric: tabular-nums; }
    un portefeuille. Le mot encadre le champ au lieu de flotter en légende dessous, parce qu'une
    légende sous un champ se lit après l'avoir rempli. */
 .suffixe { display: inline-flex; align-items: center; gap: 7px; }
-.suffixe input { width: 5.5ch; text-align: center; }
+/* 10.14.1 — la largeur compte AUSSI la marge intérieure (11 px de chaque côté) et les flèches du
+   champ de nombre. `5.5ch` ne se voyait pas tant que la règle commune gagnait (NUM-01) ; une fois
+   rendue à ce champ, elle affichait « 1 » pour le 10 : le zéro passait sous les flèches. */
+.suffixe input { width: calc(2ch + 46px); text-align: center; }
 .suffixe-av, .suffixe-ap { color: var(--muted); font-size: 13px; white-space: nowrap; }
 
 td.tronq { max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -590,11 +607,12 @@ table.list.compact td { padding: 9px 12px; font-size: 13px; }
 table.list tr.total-row td { background: var(--bg); }
 .scroll-x { overflow-x: auto; }
 .mb { margin-bottom: 12px; }
-/* La chaîne de :not() est celle de la règle générale des champs, et elle est NÉCESSAIRE : sans elle,
-   `input:disabled` (0,1,1) perd contre la règle générale (0,4,1). Sur une facture émise, les champs
-   texte gardaient donc le fond et l'encre d'un champ qu'on peut modifier, pendant que les listes
-   voisines, elles, se grisaient — la même pièce disait « modifiable » et « fermé » (10.12.0, la
-   septième fois que la règle générale des champs gagne ; le thème sombre portait déjà la chaîne). */
+/* Un champ fermé se lit fermé partout. Sur une facture émise, les champs texte gardaient le fond et
+   l'encre d'un champ qu'on peut modifier, pendant que les listes voisines se grisaient — la même
+   pièce disait « modifiable » et « fermé » (10.12.0). La chaîne de `:not()` est gardée NUE ici,
+   exprès, alors que la règle commune ne pèse plus rien (10.14.1) : elle fait peser cette règle plus
+   lourd que n'importe quel habillage de conteneur (une ligne de facture, une grille de saisie) —
+   c'est le seul état qui doive gagner contre eux. */
 input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=range]):disabled,
 select:disabled, textarea:disabled { background: #f3f5f7; color: #5b6673; cursor: not-allowed; }
 
@@ -744,7 +762,9 @@ body.dark .toast-undo:hover { background: rgba(18,22,28,.1); }
    La recherche est souple, pour que son texte d'invite reste lisible. Elle ne touche QUE la
    largeur : plus spécifique que la règle du thème sombre, un fond posé ici mettrait du blanc sous
    un texte clair (le défaut de la 7.30.0). Et seulement la recherche posée DANS la barre : un champ
-   date rangé dans une étiquette de filtre garde sa largeur à lui. */
+   date rangé dans une étiquette de filtre garde sa largeur à lui. (Depuis la 10.14.1 la règle
+   commune ne pèse plus rien ; la chaîne reste pour ce qu'elle DIT : une case à cocher n'est pas
+   une recherche à étirer.) */
 .filters > input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=range]) { width: auto; flex: 1 1 260px; max-width: 440px; }
 .filters select { width: auto; background: #fff; }
 .logo-preview { max-height: 60px; max-width: 200px; display: block; margin-bottom: 8px; border: 1px solid var(--border); padding: 6px; border-radius: 10px; background: #fff; }
@@ -1053,7 +1073,10 @@ body.dark {
    D'où un écran sombre où les zones de texte étaient lisibles et les champs d'une ligne, non.
    Mesuré dans l'application (getComputedStyle + rapport de luminance), pas déduit du fichier :
    c'est la troisième fois qu'une règle correcte perd contre une autre sans que rien ne le signale
-   (le `th.r` des colonnes en 7.23.0, `.help-fil` en 7.27.0). */
+   (le `th.r` des colonnes en 7.23.0, `.help-fil` en 7.27.0).
+   10.14.1 — la règle commune ne pèse plus rien (`:where()`), mais celle-ci garde sa chaîne NUE,
+   exprès : en sombre, un fond clair posé par un conteneur (une ligne, une palette, un en-tête)
+   remettrait du blanc sous un texte clair. Le thème sombre des champs doit gagner contre eux. */
 body.dark input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=range]),
 body.dark select, body.dark textarea { background: #12161c; color: var(--text); border-color: var(--border); }
 body.dark input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=range]):focus,
@@ -1479,9 +1502,8 @@ body.dark .cal-d.out { color: #5b6572; }
 .mq-nuance[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--text); }
 .mq-nuance:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 .mq-autre { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
-/* La chaîne de `:not()` de la règle des champs gagne toujours (7.27.0, 7.30.0) : sans elle, la
-   pastille « Autre… » gardait les 72 px d'un sélecteur de couleur de formulaire. */
-.mq-autre input[type=color]:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=range]) { inline-size: 44px; block-size: 30px; padding: 2px; }
+/* La pastille « Autre… » n'a pas les 72 px d'un sélecteur de couleur de formulaire. */
+.mq-autre input[type=color] { inline-size: 44px; block-size: 30px; padding: 2px; }
 /* Une couleur trop claire se dit dans la ligne de SON titre, poussée au bout : elle n'ajoute aucune
    ligne, donc elle ne déplace rien (la remarque d'un RIB douteux, 10.12.0, pour une couleur). */
 .mq-note { margin-inline-start: auto; font-size: 12px; font-weight: 600; color: var(--warning); white-space: nowrap; }
@@ -1701,10 +1723,10 @@ body.dark .th-piloter   { --th: #4dbcd6; --th-bg: #12303a; }
   position: absolute; inset-inline-start: 14px; top: 50%; transform: translateY(-50%); width: 17px; height: 17px;
   stroke: var(--muted); fill: none; stroke-width: 2; stroke-linecap: round; pointer-events: none;
 }
-/* `#aide-q` et pas `.help-search input` : la règle générale des champs porte quatre `:not(…)`
-   (spécificité 0,4,1) et bat n'importe quelle classe. Sans l'identifiant, le `padding-left` n'est
-   jamais appliqué — la loupe se posait alors SUR la première lettre du texte. Même famille que le
-   `th.r` des colonnes en 7.23.0 : le HTML est juste, c'est la feuille de style qui tranche. */
+/* `#aide-q` et pas `.help-search input` : jusqu'à la 10.14.1 la règle générale des champs portait
+   quatre `:not(…)` nus (spécificité 0,4,1) et battait n'importe quelle classe. Sans l'identifiant,
+   le `padding-left` n'était jamais appliqué — la loupe se posait SUR la première lettre du texte.
+   Même famille que le `th.r` des colonnes en 7.23.0 : le HTML est juste, la feuille tranche. */
 .help-search #aide-q, .help-search #guide-q { padding: 12px 14px 12px 41px; border-radius: 12px; }
 .help-search .help-count { padding: 8px 2px 0; }
 
@@ -1948,11 +1970,10 @@ kbd { font: inherit; font-size: 12px; font-family: -apple-system, system-ui, san
 /* Un champ de recherche se reconnaît à sa loupe, et il n'a pas besoin de toute la largeur : 1 220 px
    pour chercher parmi cinq clients, c'est un champ étiré, pas un champ large. */
 .champ-loupe { position: relative; display: inline-flex; flex: 1 1 260px; max-inline-size: 380px; }
-/* La chaîne de `:not()` n'est pas décorative : la règle générale des champs en porte QUATRE, donc
-   `.champ-loupe input` (une classe, un élément) PERD contre elle et le décalage n'est jamais
-   appliqué — la loupe se pose alors SUR la première lettre du texte. C'est exactement le défaut de
-   `.help-search input` en 7.27.0, et il ne se voit qu'en regardant l'écran. */
-.champ-loupe input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=range]) {
+/* Le texte commence après la loupe. Tant que la règle générale des champs pesait 0,4,1, ce décalage
+   n'était jamais appliqué et la loupe se posait SUR la première lettre (le défaut de `.help-search`
+   en 7.27.0) ; elle ne pèse plus rien depuis la 10.14.1. */
+.champ-loupe input {
   padding-inline-start: 34px;
 }
 .champ-loupe::before {

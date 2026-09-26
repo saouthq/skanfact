@@ -952,9 +952,11 @@ t('H-3 : un montant s\'écrit en français dans un champ, et se relit tel que le
 });
 
 // La spécificité d'un sélecteur, calculée — c'est elle qui décide, jamais l'ordre dans lequel on
-// relit la feuille (7.23.0, 7.27.0, 7.30.0, 9.4.4, U-01, H-3 bis). `:not(X)` vaut ce que vaut X.
+// relit la feuille (7.23.0, 7.27.0, 7.30.0, 9.4.4, U-01, H-3 bis). `:not(X)` vaut ce que vaut X ;
+// `:where(X)` ne vaut RIEN (10.14.1, NUM-01 : c'est ainsi que la règle commune des champs a cessé
+// d'écraser les règles de ses conteneurs).
 function specificite(sel) {
-  const s = sel.replace(/::[\w-]+/g, '');
+  const s = sel.replace(/::[\w-]+/g, '').replace(/:where\((?:[^()]|\([^()]*\))*\)/g, '');
   const a = (s.match(/#[\w-]+/g) || []).length;
   const b = (s.match(/\.[\w-]+/g) || []).length + (s.match(/\[[^\]]+\]/g) || []).length
     + (s.match(/:(?!not\()[\w-]+/g) || []).length;
@@ -969,14 +971,17 @@ const regles = css => [...css.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/([^{}]+
 t('H-3 bis : une case refusée reste ROUGE — au repos, au survol et sous le curseur', () => {
   // Contre-preuve de l'outil avant de juger le vrai code : il doit classer ce que le navigateur classe.
   assert.deepStrictEqual(specificite('input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=range])'), [0, 4, 1]);
+  assert.deepStrictEqual(specificite('input:where(:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=range]))'), [0, 0, 1]);
   assert.deepStrictEqual(specificite('#sa-lignes tr:hover input'), [1, 1, 2]);
   assert.deepStrictEqual(specificite('#sa-lignes input.sa-ko'), [1, 1, 1]);
   const style = lireSource('src', 'renderer', 'style.css');
   const cab = lireSource('src', 'cabinet', 'renderer', 'cabinet.css');
   // Ce que la marque doit battre : la règle générale des champs, en clair ET en sombre — LUES dans la
-  // feuille partagée, jamais recopiées (elles gagneront un `:not()` un jour).
+  // feuille partagée, jamais recopiées (elles gagneront un `:not()` un jour). Depuis la 10.14.1
+  // (NUM-01) la claire vit dans un `:where()` et la sombre garde sa chaîne nue : on lit les DEUX
+  // formes, et c'est la plus lourde qui reste à battre.
   const generales = regles(style).flatMap(r => r.selecteurs)
-    .filter(sel => /^(body\.dark )?input:not\(\[type=checkbox\]\)(:not\(\[type=[a-z]+\]\))*$/.test(sel));
+    .filter(sel => /^(body\.dark )?input(:where\(:not\(\[type=checkbox\]\)(:not\(\[type=[a-z]+\]\))*\)|:not\(\[type=checkbox\]\)(:not\(\[type=[a-z]+\]\))*)$/.test(sel));
   assert.ok(generales.length >= 2, 'la règle générale des champs est introuvable dans la feuille partagée');
   const aBattre = generales.map(specificite).reduce((m, x) => (plusFort(x, m) ? x : m));
   // Chaque règle qui peint une case refusée en rouge doit l'emporter.
@@ -1009,11 +1014,15 @@ t('H-3 ter : une case illisible reste marquée après un redessin, par la MÊME 
   ['debit', 'credit'].forEach(k => {
     const inp = new RegExp(`<input data-k="${k}"[^\\n]*`).exec(grille);
     assert.ok(inp, `la case ${k} de la grille est introuvable`);
-    assert.ok(inp[0].includes(`montantIllisible(l.${k}) ? ' sa-ko' : ''`), `la case ${k} redessinée perd sa marque rouge`);
-    assert.ok(inp[0].includes(`montantIllisible(l.${k}) ? ' aria-invalid="true"' : ''`), `la case ${k} redessinée ne se dit plus fautive au lecteur d'écran`);
+    // 10.14.1 — la case marque aussi ce que le moteur REFUSE (« -40 » au débit) : `montantRefuse`,
+    // bâtie sur `montantIllisible` — une définition, élargie, jamais une seconde.
+    const f = /(montant(?:Illisible|Refuse))\(l\./.exec(inp[0]);
+    assert.ok(f && inp[0].includes(`${f[1]}(l.${k}) ? ' sa-ko' : ''`), `la case ${k} redessinée perd sa marque rouge`);
+    assert.ok(inp[0].includes(`${f[1]}(l.${k}) ? ' aria-invalid="true"' : ''`), `la case ${k} redessinée ne se dit plus fautive au lecteur d'écran`);
   });
+  assert.ok(/const montantRefuse = v => montantIllisible\(v\) \|\|/.test(app), 'la case refusée juge avec une autre définition que la case illisible');
   // La frappe, la phrase et le dessin : UNE définition. Une seconde divergerait au premier ajustement.
-  assert.ok(/inp\.classList\.toggle\('sa-ko', montantIllisible\(inp\.value\)\)/.test(app), 'la frappe juge avec sa propre définition');
+  assert.ok(/inp\.classList\.toggle\('sa-ko', montant(?:Illisible|Refuse)\(inp\.value\)\)/.test(app), 'la frappe juge avec sa propre définition');
   const phrase = /const montantsIllisibles = (p => \{[\s\S]*?\n  \});/.exec(app)[1];
   assert.ok(/montantIllisible\(l\[k\]\)/.test(phrase) && !/nombreStrict/.test(phrase), 'la phrase juge avec sa propre définition');
   // Deux portes et deux seulement lisent un montant tapé : `lireMontant` (ce qu'il vaut) et
@@ -1517,7 +1526,8 @@ t('U-16 : la liasse masque ses rubriques vides (et le dit), le MONTANT ouvre ses
   assert.ok(vides >= 5 && pleines >= 3, `le jeu ne discrimine pas : ${pleines} pleines, ${vides} vides`);
   const rendre = liasseVides => evaluer(tranche(app, 'function vueLiasse('), {
     livresState: { liasse: L, annee: 2026, liasseVides },
-    esc: s => String(s == null ? '' : s), money: n => String(n), info: () => '', pl: (n, a, b) => `${n} ${n > 1 ? (b || a + 's') : a}`
+    esc: s => String(s == null ? '' : s), money: n => String(n), info: () => '', pl: (n, a, b) => `${n} ${n > 1 ? (b || a + 's') : a}`,
+    taux: v => (v == null || v === '' ? '' : String(v).replace('.', ','))
   })({ id: 'D1' });
   const masque = rendre(undefined), tout = rendre(true);
   // Par défaut : aucune ligne vide, et la case dit combien elle en cache.
@@ -2877,12 +2887,16 @@ t('H-E25 : la palette montre le montant de la liste, dans la devise de la pièce
 // Un champ `type=number` se lit dans la langue du SYSTÈME : sur un poste en anglais, « 2,5 » tapé
 // dans un prix devenait 25 (vu au test humain, en tapant au clavier). L'application pose SA langue
 // avant d'être prête — après, le commutateur ne change plus rien. `e2e:fiches` tape les touches.
-t('H-E28 : l\'application pose le français avant de démarrer, pour que « 2,5 » reste 2,5', () => {
-  const m = code('src', 'main.js');
-  const i = m.search(/app\.commandLine\.appendSwitch\('lang', 'fr(-FR)?'\)/);
-  assert.ok(i >= 0, 'l\'application ne pose plus sa langue : les champs de montant suivent celle du système');
-  const verrou = m.indexOf('app.requestSingleInstanceLock()');
-  assert.ok(verrou > 0 && i < verrou, 'la langue est posée APRÈS le démarrage : le commutateur ne sert plus à rien');
+// 10.14.1 (CA-03) : les DEUX applications. Le Cabinet ne l'avait jamais reçu — sa fenêtre de reprise
+// écrivait « 12/31/2026 », et « 01/04/2026 » tapé pour le 1er avril posait le 4 janvier.
+t('H-E28 / CA-03 : les deux applications posent le français avant de démarrer — « 2,5 » reste 2,5, « 01/04 » reste le 1er avril', () => {
+  [['src', 'main.js'], ['src', 'cabinet', 'main.js']].forEach(chemin => {
+    const m = code(...chemin);
+    const i = m.search(/app\.commandLine\.appendSwitch\('lang', 'fr(-FR)?'\)/);
+    assert.ok(i >= 0, chemin.join('/') + ' ne pose plus sa langue : les champs de montant et de date suivent celle du système');
+    const verrou = m.indexOf('app.requestSingleInstanceLock()');
+    assert.ok(verrou > 0 && i < verrou, chemin.join('/') + ' : la langue est posée APRÈS le démarrage, le commutateur ne sert plus à rien');
+  });
 });
 
 // Le marqueur « non enregistré » vivait À CÔTÉ du titre : au premier geste il élargissait l'en-tête,
@@ -2905,23 +2919,41 @@ t('Une page hors du catalogue prend le titre qu\'elle affiche pour nommer la fen
   const f = ent.slice(ent.indexOf('function setWindowTitle('), ent.indexOf('document.title = title;'));
   assert.ok(f.length > 100 && f.length < 1600, 'tranche de setWindowTitle : ' + f.length);
   assert.ok(!/'Nouveau document'/.test(f), 'le titre générique « Nouveau document » revient');
-  assert.ok(/if \(!t\) \{[\s\S]{0,160}\$\('#view \.page-head h1'\)[\s\S]{0,120}innerText/.test(f),
+  // 10.14.1 : l'assertion recopiait `innerText` — retournée vers la règle (trente-deuxième fois). Le titre
+  // se lit par `texteDeTitre`, qui ignore ce qui est caché ET la bulle « i » collée au dernier mot.
+  assert.ok(/if \(!t\) \{[\s\S]{0,260}\$\('#view \.page-head h1'\)[\s\S]{0,120}texteDeTitre\(h1\)/.test(f),
     'sans titre au catalogue, la fenêtre doit prendre celui de la page (et ignorer ce qui est caché)');
+  const lire = ent.slice(ent.indexOf('function texteDeTitre('), ent.indexOf('function setWindowTitle('));
+  assert.ok(/getClientRects\(\)\.length/.test(lire) && /tagName !== 'BUTTON'/.test(lire), 'le titre lu garde ce qui est caché, ou la bulle');
 });
 
 // La recherche d'une barre de filtres devait faire 300 px : la règle générale des champs porte
 // quatre :not() et gagnait, la recherche prenait toute la ligne et renvoyait filtres, bulle et
 // compteur sur une seconde rangée, au-dessus de chaque liste — sur le Catalogue, une bulle « i »
 // restait seule sous la recherche. Même famille que .help-search (7.27.0).
+// La règle générale des champs de la feuille partagée, sous ses DEUX formes : la chaîne nue de
+// `:not()` (0,4,1) jusqu'à la 10.14.0, le `:where()` qui ne pèse rien (0,0,1) depuis la 10.14.1
+// (NUM-01). On la LIT, on ne recopie jamais sa forme : c'est sa spécificité qui décide.
+const regleGeneraleDesChamps = css =>
+  (css.match(/^(input(?::where\((?::not\(\[type=\w+\]\))+\)|(?::not\(\[type=\w+\]\))+)), select, textarea \{([^}]*)\}/m) || []);
+// Qui gagne la cascade : la spécificité d'abord, et à spécificité égale la règle écrite APRÈS (le
+// rang). Juger la spécificité seule accuserait une règle égale posée plus bas, qui gagne pourtant.
+const gagne = (selA, rangA, selB, rangB) => {
+  const a = specificite(selA), b = specificite(selB);
+  return plusFort(a, b) || (!plusFort(b, a) && rangA > rangB);
+};
+
 t('La recherche d\'une barre de filtres ne prend pas toute la ligne : sa règle bat celle des champs', () => {
   const css = lireSource('src', 'renderer', 'style.css').replace(/\/\*[\s\S]*?\*\//g, '');
-  const general = (css.match(/^input((?::not\(\[type=\w+\]\))+), select, textarea \{[^}]*width: 100%/m) || [])[1] || '';
-  const nGeneral = (general.match(/:not\(/g) || []).length;
-  assert.ok(nGeneral >= 4, 'la règle générale des champs n\'est plus trouvée : ' + nGeneral);
-  const m = css.match(/^\.filters > input((?::not\(\[type=\w+\]\))+) \{([^}]*)\}/m);
+  // 10.14.1 — retournée vers la règle (trente-septième fois) : elle comptait les `:not()` des deux
+  // règles, c'est-à-dire une FORME ; la règle générale vit maintenant dans un `:where()`, et c'est la
+  // spécificité calculée qui dit qui gagne.
+  const [, general, corpsGeneral] = regleGeneraleDesChamps(css);
+  assert.ok(general && /width: 100%/.test(corpsGeneral), 'la règle générale des champs n\'est plus trouvée');
+  const m = css.match(/^([^{}\n]*\.filters\)? > input[^{,]*) \{([^}]*)\}/m);
   assert.ok(m, 'la règle de la recherche des filtres a disparu');
-  assert.ok((m[1].match(/:not\(/g) || []).length >= nGeneral,
-    'la règle des filtres porte moins de :not() que la règle générale : elle perd, et la recherche reprend toute la ligne');
+  assert.ok(gagne(m[1], css.indexOf(m[0]), general, css.indexOf(general + ', select, textarea {')),
+    `la règle des filtres (${specificite(m[1])}) ne bat pas la règle générale (${specificite(general)}) : la recherche reprend toute la ligne`);
   assert.ok(/max-width: \d+px/.test(m[2]), 'la recherche n\'a plus de borne : elle reprend toute la ligne');
   assert.ok(!/background/.test(m[2]), 'un fond posé par cette règle, plus spécifique que celle du thème sombre, mettrait du blanc sous un texte clair');
 });
@@ -3103,13 +3135,38 @@ t('Une liste vide n\'a qu\'un bouton principal : l\'en-tête cède le sien à l\
 // Sur une facture émise, les champs texte gardaient le fond et l'encre d'un champ modifiable
 // (#fbfcfd, texte foncé) pendant que les listes voisines se grisaient : `input:disabled` (0,1,1)
 // perdait contre la règle générale des champs (0,4,1) — la septième fois.
-t('Un champ texte désactivé se grise comme une liste : sa règle porte la chaîne de :not() de la règle générale', () => {
+// 10.14.1 — retournée vers la règle (trente-huitième fois) : elle exigeait la chaîne de `:not()`,
+// c'est-à-dire une FORME. La règle est qu'un champ fermé se lit fermé PARTOUT : la règle des champs
+// désactivés bat la règle générale ET chaque habillage de conteneur qui peint le fond d'un champ,
+// dans les deux feuilles (la partagée se charge avant celle du Cabinet).
+t('Un champ texte désactivé se grise comme une liste : sa règle bat la règle générale et les habillages de conteneur', () => {
   const css = lireSource('src', 'renderer', 'style.css').replace(/\/\*[\s\S]*?\*\//g, '');
-  const general = (css.match(/^input((?::not\(\[type=\w+\]\))+), select, textarea \{/m) || [])[1] || '';
-  assert.ok((general.match(/:not\(/g) || []).length >= 4, 'la règle générale des champs n\'est plus trouvée');
-  const m = css.match(/^input((?::not\(\[type=\w+\]\))+):disabled,\s*select:disabled, textarea:disabled \{([^}]*)\}/m);
-  assert.ok(m, 'la règle des champs désactivés ne porte plus la chaîne de :not() : `input:disabled` perd, et le champ a l\'air modifiable');
+  const cab = lireSource('src', 'cabinet', 'renderer', 'cabinet.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  const [, general] = regleGeneraleDesChamps(css);
+  assert.ok(general, 'la règle générale des champs n\'est plus trouvée');
+  const m = css.match(/^(input[^{,]*:disabled),\s*select:disabled, textarea:disabled \{([^}]*)\}/m);
+  assert.ok(m, 'la règle des champs désactivés a disparu');
   assert.ok(/background: #f3f5f7/.test(m[2]) && /color: #5b6673/.test(m[2]), 'le champ désactivé n\'a plus le fond et l\'encre d\'un champ fermé');
+  // Le rang dans la cascade : la feuille partagée, puis celle du Cabinet (les deux index.html).
+  const rangDans = (feuille, i) => (feuille === css ? 0 : css.length) + i;
+  const rangFerme = rangDans(css, css.indexOf(m[0]));
+  assert.ok(gagne(m[1], rangFerme, general, rangDans(css, css.indexOf(general + ', select, textarea {'))),
+    `la règle des champs désactivés (${specificite(m[1])}) perd contre la règle générale : le champ a l'air modifiable`);
+  // Les habillages : toute règle claire qui peint le fond ou l'encre d'un champ texte. Seule
+  // exception NOMMÉE, la grille de saisie du Cabinet : ses cases ne sont jamais désactivées (une pièce
+  // validée ne s'ouvre pas dans la grille), et la preuve en est relue ci-dessous.
+  const EXCEPTIONS = ['#sa-lignes input'];
+  const habillages = [css, cab].flatMap(feuille => [...feuille.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+    .filter(r => /(^|[;\s])(background(-color)?|color)\s*:/.test(r[2]))
+    .flatMap(r => r[1].split(',').map(x => ({ sel: x.trim(), rang: rangDans(feuille, r.index) })))
+    .filter(({ sel }) => /^input/.test(sel.split(/[\s>+~]+/).pop()) && !/::|body\.dark|:disabled|:focus|:hover|:checked|readonly|\.sa-ko|\[type=(checkbox|radio|range|color|file)\]|\.switch/.test(sel)));
+  assert.ok(habillages.length >= 3, 'les habillages de champ ne sont plus trouvés : ' + habillages.length);
+  const perdants = habillages.filter(h => !EXCEPTIONS.includes(h.sel) && !gagne(m[1], rangFerme, h.sel, h.rang)).map(h => h.sel);
+  assert.deepStrictEqual(perdants, [], 'un champ désactivé garde le fond de son conteneur : ' + perdants.join(' · '));
+  EXCEPTIONS.forEach(sel => assert.ok(habillages.some(h => h.sel === sel), `l'exception « ${sel} » ne désigne plus rien : retire-la`));
+  const grille = code('src', 'cabinet', 'renderer', 'app.js');
+  const lignes = grille.slice(grille.indexOf('function lignesSaisieHtml('), grille.indexOf('\n  }\n', grille.indexOf('function lignesSaisieHtml(')));
+  assert.ok(lignes.length > 200 && !/\bdisabled\b/.test(lignes), 'une case de la grille de saisie peut être désactivée : son exception ne tient plus');
 });
 
 // Une classe que la feuille ne connaît pas ne se voit nulle part (6.8.0, 7.23.0, 7.27.0, 8.1.0,
@@ -3129,7 +3186,8 @@ t('Chaque classe posée par l\'app entreprise a une règle dans sa feuille, ou c
     'od-compte': 'la saisie d\'une OD', 'od-lib': 'la saisie d\'une OD', 'od-label': 'la saisie d\'une OD', 'od-debit': 'la saisie d\'une OD',
     'od-credit': 'la saisie d\'une OD', 'od-del': 'la saisie d\'une OD', 'mod-go': 'une colonne de .mod-row', 'mod-txt': 'une colonne de .mod-row',
     'rate-lbl': 'le libellé du taux, réécrit par le code', 'b-rate-lbl': 'le même, sur un achat',
-    'set-res': 'les résultats de recherche des Paramètres, stylés par leur identifiant'
+    'set-res': 'les résultats de recherche des Paramètres, stylés par leur identifiant',
+    montant: 'un champ de montant, que `completerMontant` écrit avec les décimales de sa devise (10.14.1)'
   };
   // Une classe COLLÉE à une expression (`l${niveau}`, `bal-c${classe}`) est un préfixe dynamique : on
   // remplace chaque `${…}` par une marque, et un mot qui la touche n'est pas jugé ici.

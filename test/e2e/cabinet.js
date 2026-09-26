@@ -577,9 +577,12 @@ const étape = m => { pas++; console.log('\n' + pas + '. ' + m); };
     });
     await relq.click();
     await win.waitForSelector('#rl-tout', { timeout: 8000 });
+    // 10.14.1 — le PREMIER bandeau de la page est celui de l'exemple depuis la 10.14.0 : on lit celui
+    // qui porte « Voir tout le monde », jamais le premier venu (un e2e reconnaît un écran à ce qu'il
+    // CONTIENT, jamais à son rang — 7.28.0).
     const filtre = await win.evaluate(() => ({
       lignes: document.querySelectorAll('#view table.list tbody tr').length,
-      bandeau: (document.querySelector('.banner') || {}).textContent || ''
+      bandeau: ((document.querySelector('#rl-tout') || document.body).closest('.banner') || {}).textContent || ''
     }));
     // Nommer onze clients et en ouvrir soixante, c'est la promesse non tenue de la 7.15.0.
     if (attendus && filtre.lignes > attendus) {
@@ -625,7 +628,9 @@ const étape = m => { pas++; console.log('\n' + pas + '. ' + m); };
   await win.evaluate(() => { location.hash = '#/dossiers'; });
   await attendre(800);
   if (!await win.$('#inbox-go')) throw new Error('aucun bandeau sur la page Dossiers');
-  const bandeau = await win.textContent('.banner');
+  // Le bandeau qui porte « Importer » (#inbox-go), pas le premier venu : sur l'exemple, c'est le
+  // bandeau de l'exemple qui vient en tête de page depuis la 10.14.0.
+  const bandeau = await win.evaluate(() => ((document.querySelector('#inbox-go') || document.body).closest('.banner') || {}).textContent || '');
   if (!/2 nouveaux paquets/.test(bandeau)) throw new Error('bandeau inattendu : ' + bandeau);
   ok('bandeau : ' + bandeau.replace(/\s+/g, ' ').trim().slice(0, 80));
   await shot('16-boite');
@@ -725,7 +730,9 @@ const étape = m => { pas++; console.log('\n' + pas + '. ' + m); };
   étape('Adresse d\'un écran du livre sur un dossier sans livre (U-06)');
   for (const ecran of ['banque', 'saisie', 'liasse']) {
     await win.evaluate(([id, e]) => { location.hash = '#/dossier/' + encodeURIComponent(id) + '/comptabilite/' + e; }, [idSansLivre, ecran]);
-    await win.waitForFunction(() => /\/comptabilite\/journal$/.test(location.hash)
+    // L'adresse porte aussi l'exercice depuis la 10.14.0 (« …/journal/2026 ») : la règle est le
+    // livre-journal, pas la fin de la chaîne.
+    await win.waitForFunction(() => /\/comptabilite\/journal(\/\d{4})?$/.test(location.hash)
       && !!document.querySelector('#c-tabs button[data-tab="journal"][aria-selected="true"]'), null, { timeout: 5000 })
       .catch(async () => {
         const vu = await win.evaluate(() => location.hash + ' — ' + ((document.querySelector('#c-livres') || {}).innerText || '').slice(0, 80));

@@ -1030,8 +1030,8 @@ t('10.14.0 : chaque champ des formulaires du premier jour porte sa bulle — la 
     assert.ok(f.length > 400 && f.length < 5000, `formulaire « ${nom} » introuvable : ${f.length}`);
     const nus = [
       ...(f.match(/field\('[^']*'/g) || []),                                        // un libellé passé en texte à field()
-      ...(f.match(/<label class="field[^"]*">(?!\$\{lbl\()[^<$]+</g) || []),           // un libellé écrit en texte dans la balise
-      ...(f.match(/<label class="field[^"]*"><span>[^<]*<\/span>/g) || [])             // un libellé dans un <span> sans bulle
+      ...(f.match(/<label class="field[^"]*"[^>]*>(?!\$\{lbl\()[^<$]+</g) || []),      // un libellé écrit en texte dans la balise
+      ...(f.match(/<label class="field[^"]*"[^>]*><span>[^<]*<\/span>/g) || [])        // un libellé dans un <span> sans bulle
     ];
     assert.deepStrictEqual(nus, [], `« ${nom} » : ${nus.length} champ(s) sans bulle — ${nus.join(' · ')}`);
   });
@@ -1052,9 +1052,12 @@ t('10.14.0 : chaque champ de TOUTE l\'application porte sa bulle — libellés, 
   const nus = [
     ...(code.match(/\bfield\((?!lbl\()(?!`<span class="fl")(?!label,)[^,\n]{0,70}/g) || []), // field() dont le libellé n'est pas lbl( : texte, gabarit ou expression
     ...(code.match(/dateFieldHtml\('[^']+'/g) || []),                                  // une date au libellé nu
-    ...(code.match(/<(?:label|div) class="field[^"]*">(?!\$\{lbl\()(?!' \+ lbl\()[^<]{1,60}/g) || []), // texte ou ${…} sans lbl
-    ...(code.match(/<(?:label|div) class="field[^"]*"><span>[^<]*<\/span>/g) || [])  // un <span> sans bulle
-  ].filter(x => !/^<(label|div) class="field[^"]*">\s*$/.test(x))
+    // 10.14.1 — la balise peut porter d'autres attributs APRÈS sa classe (`id`, `style`, `hidden`) : la
+    // sonde les ignorait, et le « Pourcentage » de la facture d'acompte, le solde du relevé et le compte
+    // du grand livre passaient nus sous elle. Un test trop étroit laisse passer le défaut (9.9.0).
+    ...(code.match(/<(?:label|div) class="field[^"]*"[^>]*>(?!\$\{lbl\()(?!' \+ lbl\()[^<]{1,60}/g) || []), // texte ou ${…} sans lbl
+    ...(code.match(/<(?:label|div) class="field[^"]*"[^>]*><span>[^<]*<\/span>/g) || [])  // un <span> sans bulle
+  ].filter(x => !/^<(label|div) class="field[^"]*"[^>]*>\s*$/.test(x))
     .filter(x => !EXCEPTIONS.some(r => r.test(x)));
   assert.deepStrictEqual(nus, [], `${nus.length} champ(s) sans bulle — ${nus.join(' · ')}`);
   // Chaque exception désigne encore quelque chose : une exception qui ne sert plus finit par couvrir autre chose.

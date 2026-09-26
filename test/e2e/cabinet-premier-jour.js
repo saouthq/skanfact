@@ -225,7 +225,12 @@ const LARGE = 1440, HAUT = 900;
             : /client/i.test(c.id) ? '' : 'Cabinet Ben Salah';
         if (val) await win.fill('#setup #' + c.id, val);
       }
-      const suivant = e.boutons.find(b => /suivant|continuer|commencer|terminer|c'est parti|démarrer|j'ai compris/i.test(b.t));
+      // 10.14.0 — la PORTE propose deux chemins, et « Commencer la découverte » (l'exemple) vient en
+      // premier : prendre le premier bouton qui dit « commencer » chargeait l'exemple, et l'écran
+      // « portefeuille vide » mesurait un portefeuille plein. Ce parcours est celui d'un VRAI cabinet :
+      // `#w-next` (« Commencer avec mon cabinet », puis « Suivant ») d'abord.
+      const suivant = e.boutons.find(b => b.id === 'w-next')
+        || e.boutons.find(b => /suivant|continuer|commencer|terminer|c'est parti|démarrer|j'ai compris/i.test(b.t));
       if (!suivant) { mesures.defauts.push('assistant « ' + e.titre + ' » : aucun bouton pour avancer'); break; }
       await win.click(suivant.id ? '#setup #' + suivant.id : `#setup button:has-text("${suivant.t}")`);
       // Si l'écran n'a pas changé au bout d'une seconde, c'est un refus muet ou un bouton inerte.

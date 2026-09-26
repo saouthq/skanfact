@@ -971,7 +971,10 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
     // annuler la confirmation laisse le formulaire et sa saisie intacts
     await win.click('#modal-root .modal-bg:last-child [data-close]');
     await win.waitForFunction(() => document.querySelectorAll('#modal-root .modal-bg').length === 1);
-    if (await win.inputValue('#pf2 input[name=amount]') !== '999999') throw new Error('saisie perdue');
+    // 10.14.1 — le champ réécrit le montant à la française en le quittant (« 999999,000 ») : c'est
+    // la VALEUR qui doit survivre, pas la forme tapée.
+    const restant = await win.inputValue('#pf2 input[name=amount]');
+    if (Number(restant.replace(/[\s  ]/g, '').replace(',', '.')) !== 999999) throw new Error('saisie perdue : ' + restant);
     // 10.12.0 — « Annuler » sur un formulaire qu'on vient de remplir DEMANDE avant de jeter la saisie :
     // le parcours répond, comme un humain (un e2e qui attendait la fermeture restait bloqué).
     await win.click('#modal-root .modal-bg:last-child [data-close]');
@@ -1077,7 +1080,9 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
     // le réglage est bien celui de la société, et il se retrouve dans Paramètres
     await win.evaluate(() => { location.hash = '#/parametres'; });
     await setTab('documents');
-    if (await win.inputValue('#pf input[name=revenueTarget]') !== '60000') throw new Error('objectif absent des paramètres');
+    // 10.14.1 — un champ de montant complète ses décimales (« 60000.000 ») : c'est la VALEUR qu'on juge.
+    const objectif = await win.inputValue('#pf input[name=revenueTarget]');
+    if (Number(objectif) !== 60000) throw new Error('objectif absent des paramètres : ' + objectif);
     await win.evaluate(() => { location.hash = '#/stats'; });
     await win.waitForSelector('#s-export');
     await win.click('#s-export');
@@ -1443,8 +1448,13 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
     if (!n0) throw new Error('rien à pointer');
     // `check()` revérifie l'élément après le clic ; or le panneau se redessine et l'élément est détaché,
     // ce qui fait recommencer Playwright sur la ligne suivante. Un simple clic suffit.
-    await win.click('[data-rec]');
-    await win.waitForFunction(n => document.querySelectorAll('[data-rec]').length < n, n0);
+    // 10.14.1 — on attend que CE mouvement quitte la liste des « pas encore pointés » : elle est
+    // paginée, et l'exemple de cinq ans en a plus d'une page. Compter les cases à l'écran ne pouvait
+    // plus rien dire — la ligne pointée part dans « Déjà pointés » (replié par défaut), la suivante
+    // remonte, et le compte restait le même sur un pointage parfaitement fait.
+    const cible = await win.evaluate(() => document.querySelector('#t-pend [data-rec]:not(:checked)').dataset.rec);
+    await win.click(`#t-pend [data-rec="${cible}"]`);
+    await win.waitForFunction(id => ![...document.querySelectorAll('#t-pend [data-rec]')].some(e => e.dataset.rec === id), cible);
     // saisir le solde du relevé fait apparaître l'écart
     await win.fill('#stmt', '1');
     await win.evaluate(() => document.querySelector('#stmt').dispatchEvent(new Event('change', { bubbles: true })));
@@ -1682,7 +1692,12 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
     const coherent = await win.evaluate(() => {
       const C = window.SkanCore, d = window.__data, y = C.today().slice(0, 4);
       const r = C.simpleResult(d, d.company, { from: y + '-01-01', to: y + '-12-31' });
-      return r.depreciation > 0 && r.resultat === C.round3(r.produits - r.charges - r.cogs - r.depreciation - r.payroll);
+      // 10.14.1 — le résultat simplifié a gagné ses composantes depuis la 5.0.0 (achats hors suivi,
+      // frais et OD, écarts de change — 10.14.0) : l'ancienne formule recopiée les oubliait et
+      // accusait un résultat juste. La règle est que CHAQUE composante rendue entre dans le résultat,
+      // la dotation comprise.
+      return r.depreciation > 0 && r.resultat === C.round3(r.produits - r.charges - (r.horsSuivi || 0) - r.cogs
+        - r.depreciation - r.payroll - (r.autres || 0) + (r.change || 0));
     });
     if (!coherent) throw new Error('le résultat ne retire pas la dotation');
   });
@@ -1778,7 +1793,7 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
       const C = window.SkanCore, d = window.__data, y = C.today().slice(0, 4);
       const p = { from: y + '-01-01', to: y + '-12-31' };
       const r = C.simpleResult(d, d.company, p);
-      return r.cogs > 0 && r.resultat === C.round3(r.produits - r.charges - r.cogs - r.depreciation - r.payroll)
+      return r.cogs > 0 && r.resultat === C.round3(r.produits - r.charges - (r.horsSuivi || 0) - r.cogs - r.depreciation - r.payroll - (r.autres || 0) + (r.change || 0))
         && C.breakEven(d, d.company, p).cogs === r.cogs;
     });
     if (!coherent) throw new Error('le résultat ne retire pas le coût des marchandises vendues');
@@ -1978,7 +1993,9 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
     const tape = await win.evaluate(() => ({ up: document.querySelector('#rf-br tr[data-i="1"] input[data-b=upTo]').value,
       rate: document.querySelector('#rf-br tr[data-i="1"] input[data-b=rate]').value,
       de: document.querySelector('#rf-br [data-de="2"]').textContent, bar: document.querySelector('#rf-bar').hidden }));
-    if (tape.up !== '12000' || tape.rate !== '17') throw new Error(`la tranche ne se tape pas au clavier : ${JSON.stringify(tape)}`);
+    // 10.14.1 — une borne en dinars montre ses décimales en quittant la case (« 12000.000 ») : on
+    // compare le NOMBRE tapé, pas l'écriture du champ.
+    if (Number(tape.up) !== 12000 || Number(tape.rate) !== 17) throw new Error(`la tranche ne se tape pas au clavier : ${JSON.stringify(tape)}`);
     if (!/12\s000/.test(tape.de)) throw new Error(`la tranche suivante ne part pas de la nouvelle borne : ${tape.de}`);
     if (tape.bar) throw new Error('une tranche modifiée ne fait pas apparaître « Enregistrer les barèmes »');
     await win.click('#rf-save');
@@ -2016,7 +2033,7 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
       const p = { from: y + '-01-01', to: y + '-12-31' };
       const r = C.simpleResult(d, d.company, p);
       const b = C.breakEven(d, d.company, p);
-      return r.payroll > 0 && r.resultat === C.round3(r.produits - r.charges - r.cogs - r.depreciation - r.payroll)
+      return r.payroll > 0 && r.resultat === C.round3(r.produits - r.charges - (r.horsSuivi || 0) - r.cogs - r.depreciation - r.payroll - (r.autres || 0) + (r.change || 0))
         && b.payroll === r.payroll && b.fixed >= b.payroll;
     });
     if (!coherent) throw new Error('le résultat ne retire pas le coût de la paie');

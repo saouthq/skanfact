@@ -90,7 +90,10 @@ async function launchCabinet() {
   await app.evaluate(({ dialog }, p) => { dialog.showSaveDialog = async () => ({ canceled: false, filePath: p }); }, pairFile);
   await win.click('#c-pair');
   await win.waitForSelector('#modal-root .modal', { timeout: 8000 });
-  await win.click('#modal-root #no');
+  // 10.14.0 — la remise du fichier est une fenêtre « Le fichier est prêt » (Fermer / Le montrer /
+  // Écrire à mes clients) : le fichier est déjà écrit, on la referme comme un humain.
+  await win.click('#modal-root .modal-bg:last-child [data-close]');
+  await win.waitForFunction(() => !document.querySelector('#modal-root .modal-bg'), null, { timeout: 8000 });
   const pair = JSON.parse(fs.readFileSync(pairFile, 'utf8'));
   const pairOk = pair.fingerprint === fp && !!pair.publicKey && !pair.privateKey && pair.name === 'Cabinet Ben Salah';
   console.log(`3. appairage exporté : clé publique seule = ${pairOk}`);
@@ -151,7 +154,12 @@ async function launchCabinet() {
   const vu = await ew.evaluate(() => window.__data.company.cabinet);
   console.log(`5. l'entreprise voit « ${vu.name} » · empreinte identique : ${vu.fingerprint === fp}`);
 
-  // un mois qui contient des pièces, puis on le CLÔTURE pour que le paquet soit définitif
+  // Un mois qui contient des pièces et qui n'est PAS clôturé : le paquet part provisoire (la
+  // seconde question ci-dessous), et c'est ce qui fait entrer ses écritures en brouillard chez le
+  // cabinet — la suite du parcours le vérifie. 10.14.1 : depuis que l'exemple tient cinq ans et
+  // clôture ses vieux mois, « le plus ancien mois qui a des pièces » était DÉJÀ clôturé : le paquet
+  // partait définitif, ses écritures entraient validées, et la case du brouillard n'avait plus rien
+  // à compter. On choisit par ce qui DISCRIMINE (10.14.0), pas le premier venu.
   await ew.evaluate(() => { location.hash = '#/compta'; });
   await ew.waitForSelector('#c-tabs');
   await ew.evaluate(() => { const b = [...document.querySelectorAll('#c-tabs button')].find(x => /cabinet/i.test(x.textContent)); if (b) b.click(); });
@@ -160,12 +168,13 @@ async function launchCabinet() {
     const sel = document.querySelector('#cab-month'), C = window.SkanCore, d = window.__data;
     for (const o of [...sel.options].reverse()) {
       const per = C.packPeriod(Number(o.value.slice(0, 4)), Number(o.value.slice(5, 7)));
+      if (C.isClosedDate(d, per.to)) continue;
       const p = C.packPlan(d, d.company, per, {});
       if (p.totaux.pieces > 0) { sel.value = o.value; sel.dispatchEvent(new Event('change', { bubbles: true })); return o.value; }
     }
     return null;
   });
-  if (!choisi) throw new Error('aucun mois avec des pièces');
+  if (!choisi) throw new Error('aucun mois ouvert avec des pièces');
   console.log(`6. mois retenu : ${choisi}`);
 
   await ent.evaluate(({ dialog }, p) => { dialog.showSaveDialog = async () => ({ canceled: false, filePath: p }); }, packFile);

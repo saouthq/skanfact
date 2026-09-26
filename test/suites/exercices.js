@@ -278,9 +278,12 @@ t('10.14.0 : l\'exemple tient DEUX exercices — le précédent clos, rouvert un
     [re.closLe, re.le, p.exercice.closLe].forEach(x => assert.ok(new Date(x).toISOString().slice(0, 10) <= jour, `${jour} : une clôture datée du futur`));
     // La pièce oubliée est entrée dans l'exercice, validée, pendant la réouverture.
     assert.ok(p.ecritures.some(e => /^ASS-/.test(e.piece) && e.statut === 'validee'), jour + ' : la pièce oubliée n\'est pas passée');
-    // Les contrôles avant clôture passent tous — sept, puisque le cabinet tient le registre des biens.
+    // Les contrôles avant clôture passent tous — y compris celui du registre des biens, que le cabinet
+    // tient, et celui des déclarations confrontées au livre (10.14.1, CA-02). Un compte écrit en dur
+    // (« sept ») tombait au contrôle suivant : on exige ceux qui comptent, pas leur nombre.
     const c = KC.controlesCloture(p, {});
-    assert.strictEqual(c.length, 7, jour + ' : ' + c.map(x => x.id).join(', '));
+    const ids = c.map(x => x.id);
+    assert.ok(['amortissements', 'declarations'].every(id => ids.includes(id)), jour + ' : ' + ids.join(', '));
     assert.deepStrictEqual(c.filter(x => !x.ok).map(x => x.id + ' : ' + x.detail), [], jour);
     // Le courant s'ouvre par ses à-nouveaux, VALIDÉS, numéro 1.
     const l = h.livre;

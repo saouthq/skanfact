@@ -150,8 +150,11 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
   await win.keyboard.press('Control+a');
   await win.keyboard.type('1.2');
   const saisi = await win.evaluate(() => ({ prix: document.querySelector('#modal-root input[name=unitPrice]').value, cout: document.querySelector('#modal-root input[name=unitCost]').value }));
-  if (saisi.prix !== '2.5') throw new Error(`« 2,5 » tapé dans le prix vaut « ${saisi.prix} » : la virgule n'est pas lue comme une décimale`);
-  if (saisi.cout !== '1.2') throw new Error(`« 1.2 » tapé dans le coût vaut « ${saisi.cout} » : le point n'est plus accepté`);
+  // La VALEUR se compare, pas sa forme : depuis la 10.14.1 un montant complète ses décimales en
+  // quittant le champ (« 2,5 » s'affiche « 2,500 »), et l'assertion qui exigeait la chaîne « 2.5 »
+  // tombait sur un prix parfaitement juste (retournée vers la règle, 10.14.1).
+  if (Number(saisi.prix) !== 2.5) throw new Error(`« 2,5 » tapé dans le prix vaut « ${saisi.prix} » : la virgule n'est pas lue comme une décimale`);
+  if (Number(saisi.cout) !== 1.2) throw new Error(`« 1.2 » tapé dans le coût vaut « ${saisi.cout} » : le point n'est plus accepté`);
   // Échap sur une fenêtre modifiée demande d'abord s'il faut abandonner la saisie : on abandonne.
   await win.keyboard.press('Escape');
   await win.waitForSelector('#modal-root .modal-bg:nth-child(2) #ok', { timeout: 4000 });

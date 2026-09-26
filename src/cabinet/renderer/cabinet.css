@@ -417,6 +417,12 @@ tr.cp-miroir td { background: var(--info-soft); }
 
 .sa-outils { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-block-end: 10px; }
 .sa-outils select { width: auto; }
+/* 10.14.1 — le montant d'un guide tient À CÔTÉ du guide. La règle générale des champs (100 %) le
+   jetait seul sur une rangée pleine largeur, sous la liste qu'il complète : on tapait un montant au
+   milieu de nulle part. */
+#sa-guide-montant { width: 160px; flex: none; }
+/* Et le sens d'une ligne de guide se LIT : la colonne serrée coupait « Débit » en « D. ». */
+#g-lignes select { min-width: 104px; }
 .sa-aide { flex: 1; min-width: 200px; text-align: end; }
 
 /* La grille elle-même. Les champs remplissent leur cellule et perdent leur bordure : ce qu'on
@@ -428,6 +434,11 @@ tr.cp-miroir td { background: var(--info-soft); }
 }
 .sa-grille input:focus { border-color: var(--primary); background: var(--panel); }
 .sa-grille input.sa-montant { font-variant-numeric: tabular-nums; }
+/* 10.14.1 — un montant se lit aligné à droite, dans une case comme dans une colonne. La classe `r`
+   des cases de la grille n'a jamais rien fait : la feuille ne connaît que `td.r` et `th.r`, et
+   « 250,000 » s'écrivait à GAUCHE sous un en-tête « Débit » aligné à droite, au-dessus d'un total
+   aligné à droite (le HTML est juste, c'est la feuille qui décide — 7.23.0, encore). */
+input.sa-montant, input.montant, td > input.r { text-align: end; font-variant-numeric: tabular-nums; }
 .sa-grille .sa-nom { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 10.12.0 (U-01) — la règle générale des champs porte quatre `:not()` et la ligne compacte des
    tableaux deux classes : `.sa-grille input` et `.sa-grille td` PERDAIENT contre elles depuis la

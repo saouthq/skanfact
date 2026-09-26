@@ -29,7 +29,7 @@
   // balance sur la première facture venue. Corps IDENTIQUE à celui de core.js — un test l'exige.
   // Un comparateur construit une fois (10.14.0) : voir core.js.
   const TRI_NUMERIQUE = new Intl.Collator(undefined, { numeric: true });
-  function round3(n) { return Math.round((Number(n) || 0) * 1000) / 1000; }
+  function round3(n) { const x = Number(n) || 0, r = Math.round(Math.abs(x) * 1000 * (1 + 4 * Number.EPSILON)) / 1000; return x < 0 && r ? -r : r; }
 
   // 10.10.0 (C-04) — un montant ou une date qui sort du moteur DANS UNE PHRASE s'écrit comme
   // l'écran les écrit : « 120,000 » et « 01/01/2027 », jamais « 120.000 » ni « 2027-01-01 ». Onze
@@ -39,7 +39,9 @@
   function fmtMontant(n, devise) {
     const v = round3(n);
     const corps = Math.abs(v).toFixed(3).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '\u202f');
-    return (v < 0 ? '−' : '') + corps + (devise ? ' ' + devise : '');
+    // La devise tient au nombre par une espace INSÉCABLE (10.14.1), comme `money()` : « 1 500,000 »
+    // en fin de ligne et « DT » au début de la suivante se lisaient comme deux choses.
+    return (v < 0 ? '−' : '') + corps + (devise ? '\u00a0' + devise : '');
   }
   function fmtJour(iso) {
     const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || ''));
@@ -196,7 +198,10 @@
   // seule façon de ne pas se tromper est de regarder QUEL séparateur vient en dernier : dans
   // « 1.234,567 » c'est la virgule qui décide, dans « 1,234.567 » c'est le point.
   function nombreDepuisCsv(v) {
-    let s = String(v == null ? '' : v).replace(/\s| | /g, '').replace(/[^\d.,+-]/g, '');
+    // 10.14.1 — le moins que l'écran AFFICHE (U+2212, « −1 500,000 ») est un moins : copié depuis
+    // une colonne et collé dans un solde de relevé, il était jeté avec les lettres, et le solde
+    // perdait son signe sans un mot (le refus accusait ensuite des lignes manquantes).
+    let s = String(v == null ? '' : v).replace(/\u2212/g, '-').replace(/\s| | /g, '').replace(/[^\d.,+-]/g, '');
     if (!s) return 0;
     const dVirgule = s.lastIndexOf(','), dPoint = s.lastIndexOf('.');
     if (dVirgule >= 0 && dPoint >= 0) {
@@ -785,6 +790,41 @@
   function idEcriture(graine) {
     compteurId = (compteurId + 1) % 1000000;
     return 'e_' + String(graine || 0).toString(36) + '_' + compteurId.toString(36);
+  }
+
+  // 10.14.1 (CA-01) — l'exercice qu'une reprise peut poser. Tout le moteur raisonne en ANNÉE CIVILE :
+  // les à-nouveaux s'ouvrent au 1er janvier, l'exercice suivant naît du 1er janvier au 31 décembre, les
+  // dotations se calculent par année, les extournes de décembre partent au 1er janvier. Un exercice
+  // du 1er avril au 31 mars s'acceptait pourtant : l'exercice suivant commençait le 1er janvier d'après,
+  // neuf mois plus tard, et tout ce qui tombait entre les deux n'appartenait à aucun livre — sans un
+  // mot. On refuse donc ce qu'on ne sait pas tenir, en le DISANT (À VÉRIFIER : un exercice décalé est
+  // légal en Tunisie pour certaines sociétés ; le tenir demande que le moteur cesse de supposer l'année
+  // civile — noté dans A-FAIRE.md). Un PREMIER exercice plus court (une société créée en cours
+  // d'année) reste possible : il finit le 31 décembre, c'est tout ce que le moteur exige.
+  // Rend { ok, du, au } ou { ok: false, champ, motif } — `champ` nomme la case que l'écran montre.
+  function exerciceDeReprise(annee, du, au) {
+    const a = String(annee == null ? '' : annee).trim();
+    if (!/^\d{4}$/.test(a)) return { ok: false, champ: 'annee', motif: 'Une année s\'écrit sur quatre chiffres.' };
+    // Un jour du calendrier se vérifie par ses composantes, en UTC pur (5.2.3) : le 30 février
+    // retombe sur un autre jour, et c'est à ça qu'on le reconnaît.
+    const jourValide = j => {
+      const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(j);
+      if (!m) return false;
+      const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
+      return d.getUTCFullYear() === +m[1] && d.getUTCMonth() === +m[2] - 1 && d.getUTCDate() === +m[3];
+    };
+    const debut = String(du || '').trim() || `${a}-01-01`;
+    const fin = String(au || '').trim() || `${a}-12-31`;
+    if (!jourValide(debut)) return { ok: false, champ: 'du', motif: `« ${debut} » n'est pas un jour du calendrier.` };
+    if (!jourValide(fin)) return { ok: false, champ: 'au', motif: `« ${fin} » n'est pas un jour du calendrier.` };
+    if (fin !== `${a}-12-31`) {
+      return { ok: false, champ: 'au', motif: `L'exercice ${a} doit finir le 31/12/${a}. SkanFact Cabinet ne tient que des exercices qui suivent l'année civile : les à-nouveaux s'ouvrent au 1er janvier, et un exercice qui finit le ${fmtJour(fin)} laisserait tout ce qui suit, jusqu'au 1er janvier, hors de tout livre. À VÉRIFIER avec le client si son exercice est décalé.` };
+    }
+    if (debut < `${a}-01-01`) {
+      return { ok: false, champ: 'du', motif: `L'exercice ${a} ne peut pas commencer avant le 01/01/${a} : un premier exercice de plus de douze mois se reprend en deux livres, l'un par année.` };
+    }
+    if (debut > fin) return { ok: false, champ: 'du', motif: `L'exercice commence le ${fmtJour(debut)}, après sa fin (${fmtJour(fin)}).` };
+    return { ok: true, du: debut, au: fin };
   }
 
   function livreVide(dossierId, annee, opts) {
@@ -1514,8 +1554,12 @@
     const o = opts || {};
     const terme = sansAccents(q).trim();
     const mots = terme.split(/\s+/).filter(Boolean);
-    const brut = terme.replace(',', '.');
-    const montant = /^\d+(\.\d{1,3})?$/.test(brut) ? round3(Number(brut)) : null;
+    // 10.14.1 — un montant se cherche comme l'écran l'ÉCRIT : « 1 200,000 » copié de la colonne Total,
+    // « 1 200 » comme la visite le propose, « 1.200,000 », « −1 200 » ou « 1 200 DT ». La lecture
+    // d'avant (`^\d+(\.\d{1,3})?$`) ne connaissait ni l'espace des milliers ni l'unité : « Rien ne
+    // correspond » sur une pièce qui porte exactement ce montant. Une seule porte, celle des montants.
+    const nb = nombreStrict(terme.replace(/\s*(dt|tnd)\.?$/i, ''));
+    const montant = nb != null && Number.isFinite(nb) ? round3(Math.abs(nb)) : null;
     return (livre.ecritures || [])
       .filter(e => !o.journal || e.journal === o.journal)
       .filter(e => !o.statut || e.statut === o.statut)
@@ -1543,6 +1587,11 @@
   // Ni l'un ni l'autre ne vit dans `livre.json` (format figé, SPEC-DATA-005) : les guides au niveau
   // du cabinet, les abonnements sur le dossier.
 
+  // 10.14.1 — Le montant et le taux d'une ligne de guide se lisent comme un comptable les TAPE :
+  // « 12,5 », « 1 250,000 ». `Number()` les rendait NaN, et `num` les ramenait à ZÉRO sans un mot :
+  // un guide « TVA 5,5 % » posait une ligne à 0, et un loyer fixe « 1 250,000 » aussi. Ce qui ne se
+  // lit pas du tout est REFUSÉ par `guideValide`, en nommant la ligne ; ici il vaut 0.
+  const nombreDuGuide = v => { const n = nombreStrict(v); return Number.isFinite(n) ? n : 0; };
   function guideValide(guide) {
     const g = guide || {};
     const motifs = [];
@@ -1553,8 +1602,16 @@
     lignes.forEach((l, i) => {
       if (!/^\d{1,12}$/.test(txt(l.compte))) motifs.push(`Ligne ${i + 1} : le compte doit être un numéro.`);
       if (l.sens !== 'debit' && l.sens !== 'credit') motifs.push(`Ligne ${i + 1} : il faut dire si la ligne va au débit ou au crédit.`);
-      if (txt(l.montant) && num(l.montant) < 0) motifs.push(`Ligne ${i + 1} : un montant négatif change de colonne, il ne garde pas son signe.`);
-      if (txt(l.taux) && num(l.taux) < 0) motifs.push(`Ligne ${i + 1} : un taux négatif n'existe pas.`);
+      if (txt(l.montant) && !Number.isFinite(nombreStrict(l.montant))) motifs.push(`Ligne ${i + 1} : « ${txt(l.montant)} » n'est pas un montant. Écris-le en chiffres.`);
+      else if (txt(l.montant) && nombreDuGuide(l.montant) < 0) motifs.push(`Ligne ${i + 1} : un montant négatif change de colonne, il ne garde pas son signe.`);
+      if (txt(l.taux) && !Number.isFinite(nombreStrict(l.taux))) motifs.push(`Ligne ${i + 1} : « ${txt(l.taux)} » n'est pas un taux. Écris-le en chiffres.`);
+      else if (txt(l.taux) && nombreDuGuide(l.taux) < 0) motifs.push(`Ligne ${i + 1} : un taux négatif n'existe pas.`);
+      // 10.14.1 — une ligne prend son montant à UN seul endroit. `ecritureDepuisGuide` choisit dans
+      // l'ordre (montant fixe, taux, base, solde) et oublie le reste sans un mot : cochée « base »
+      // avec un loyer fixe, la ligne ignorait le montant tapé ; cochée « solde » avec un taux, elle
+      // ignorait le taux. Un guide qui dit deux choses sur la même ligne en fait une fausse.
+      const sources = [txt(l.montant) && 'un montant fixe', txt(l.taux) && 'un taux', l.base && '« base »', l.solde && '« solde »'].filter(Boolean);
+      if (sources.length > 1) motifs.push(`Ligne ${i + 1} : ${sources.slice(0, -1).join(', ')} et ${sources[sources.length - 1]} à la fois — une ligne prend son montant d'un seul endroit. Garde celui que tu veux.`);
     });
     const soldes = lignes.filter(l => l.solde).length;
     if (soldes > 1) motifs.push('Une seule ligne peut porter le solde : deux lignes qui réclament « le reste » n\'ont pas de réponse.');
@@ -1570,11 +1627,11 @@
   // calcul » (5.0.0) appliquée à la saisie : le taux vient du guide, que le comptable a réglé.
   function ecritureDepuisGuide(guide, champs) {
     const g = guide || {}, c = champs || {};
-    const base = num(c.montant);
+    const base = nombreDuGuide(c.montant);
     const lignes = (Array.isArray(g.lignes) ? g.lignes : []).filter(l => l && txt(l.compte)).map(l => {
       let m = 0;
-      if (txt(l.montant)) m = round3(num(l.montant));
-      else if (txt(l.taux)) m = round3(base * num(l.taux) / 100);
+      if (txt(l.montant)) m = round3(nombreDuGuide(l.montant));
+      else if (txt(l.taux)) m = round3(base * nombreDuGuide(l.taux) / 100);
       else if (l.base) m = round3(base);
       return {
         compte: txt(l.compte), tiersId: l.tiersId || null,
@@ -3252,7 +3309,7 @@
   function nombreStrict(v) {
     const t = String(v == null ? '' : v).trim();
     if (!t) return null;
-    if (!/^[+-]?[\d\s\u00a0\u202f.,]+$/.test(t) || !/\d/.test(t)) return NaN;
+    if (!/^[+\-\u2212]?[\d\s\u00a0\u202f.,]+$/.test(t) || !/\d/.test(t)) return NaN;
     return nombreDepuisCsv(t);
   }
   function lignesInventaireDepuisTexte(texte) {
@@ -3404,6 +3461,31 @@
       detail: sansDecl.length
         ? `${sansDecl.length} mois sans déclaration préparée (${sansDecl.slice(0, 4).map(fmtMois).join(', ')}${sansDecl.length > 4 ? '…' : ''}). Prépare-les dans l'onglet Déclaration.`
         : ''
+    });
+
+    // 10.14.1 (CA-02) — une déclaration préparée ou DÉPOSÉE se confronte au livre d'AUJOURD'HUI. Le
+    // contrôle ci-dessus ne regardait que l'EXISTENCE d'une déclaration : un exercice rouvert pour une
+    // vente de décembre oubliée se reclôturait avec « ok », pendant que le dépôt au fisc portait 190 de
+    // TVA collectée et le livre 285. La même fonction que l'onglet Déclaration (`ecartDeclaration`,
+    // 10.14.0) dit l'écart ; une déposée demande une rectificative (À VÉRIFIER), une préparée se refait.
+    // Ça ne bloque pas (règle 6.0.0) : ça se NOMME, mois par mois.
+    const perimees = (livre.declarations || [])
+      .filter(dd => dd && dd.type === 'mensuelle' && dd.cases && dd.periode >= String(du).slice(0, 7) && dd.periode <= String(au).slice(0, 7))
+      .map(dd => {
+        let ecart = [];
+        try { ecart = ecartDeclaration(dd, declarationMensuelle(livre, dd.periode)); } catch (_) { ecart = []; }
+        return { dd, ecart, deposee: !!(dd.deposee && dd.deposee.le) };
+      })
+      .filter(x => x.ecart.length)
+      .sort((a, b) => String(a.dd.periode).localeCompare(String(b.dd.periode)));
+    const deposees = perimees.filter(x => x.deposee), preparees = perimees.filter(x => !x.deposee);
+    const moisDe = xs => xs.slice(0, 3).map(x => `${fmtMois(x.dd.periode)} (${phraseEcartDeclaration(x.ecart.slice(0, 1))})`).join(', ') + (xs.length > 3 ? '…' : '');
+    out.push({
+      id: 'declarations', ok: !perimees.length,
+      detail: [
+        deposees.length ? `${plFr(deposees.length, 'déclaration déposée ne correspond', 'déclarations déposées ne correspondent')} plus au livre : ${moisDe(deposees)}. Une déclaration rectificative est à déposer — À VÉRIFIER avec le client.` : '',
+        preparees.length ? `${plFr(preparees.length, 'déclaration préparée est périmée', 'déclarations préparées sont périmées')} : ${moisDe(preparees)}. Refais-les dans l'onglet Déclaration.` : ''
+      ].filter(Boolean).join(' ')
     });
 
     // La balance des tiers : un compte client CRÉDITEUR ou un fournisseur DÉBITEUR n'est pas une
@@ -5115,8 +5197,15 @@
         // la dernière ligne plutôt que de livrer une pièce qui ne passera pas à l'import.
         const gap = round3(d - c);
         if (gap && lines.length) {
-          const last = lines[lines.length - 1];
-          if (gap > 0) last.credit = round3(last.credit + gap); else last.debit = round3(last.debit - gap);
+          // 10.14.1 — l'écart va dans la COLONNE de la ligne qui le reçoit, et sur la plus grosse ligne
+          // qui n'est pas celle d'un tiers. Il allait sur la DERNIÈRE ligne, et dans la colonne d'en
+          // face quand elle était au crédit : « 4368 D 0,001 C 1,002 », une ligne à deux colonnes que
+          // le Cabinet refuse de valider (et le timbre, un droit fixe, déclaré faux d'un millime). Posé
+          // sur le client ou le fournisseur, il laisserait un reste d'un millime au lettrage.
+          const hors = lines.filter(x => !x.role);
+          const cible = (hors.length ? hors : lines).reduce((m, x) => Math.max(x.debit, x.credit) > Math.max(m.debit, m.credit) ? x : m);
+          if (cible.credit > 0) cible.credit = round3(cible.credit + gap); else cible.debit = round3(cible.debit - gap);
+          const last = cible;
           if (last.credit < 0) { last.debit = round3(last.debit - last.credit); last.credit = 0; }
           if (last.debit < 0) { last.credit = round3(last.credit - last.debit); last.debit = 0; }
           // MAIS L'ABSORBEUR DIT CE QU'IL A AVALÉ (10.1.0), au-delà de ce qu'un arrondi peut
@@ -5758,7 +5847,7 @@
     // Le livre (9.2.0)
     LIVRE_FORMAT, STATUTS_ECRITURE, NATURES_COMPTE, SOURCES_ECRITURE, JOURNAUX_PAR_DEFAUT,
     PLAN_COMPTABLE, libelleDuPlan, migrerLivre,
-    natureDeCompte, livreVide, isValidLivre, livreVersionInconnue, assurerCompte,
+    natureDeCompte, livreVide, exerciceDeReprise, isValidLivre, livreVersionInconnue, assurerCompte,
     ajouterEcriture, validerEcriture, contrepasser, importerPaquet, piecesDepuisLignes,
     lettrer, delettrer, prochaineLettre, balanceOuverture, lignesDuLivre,
     planDepuisCsv, balanceDepuisCsv,

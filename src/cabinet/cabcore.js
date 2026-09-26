@@ -22,7 +22,7 @@
   const pl = (n, un, plur) => `${Math.abs(n) >= 1000 ? Number(n).toLocaleString('fr-FR') : n} ${Math.abs(n) > 1 ? (plur || un + 's') : un}`;
   // Un compte de milliers se lit groupé : « 3 526 », jamais « 3526 » (10.14.0, saturation).
   const nbFr = n => (Math.abs(Number(n)) >= 1000 ? Number(n).toLocaleString('fr-FR') : String(n));
-  const round3 = n => Math.round((Number(n) || 0) * 1000) / 1000;
+  function round3(n) { const x = Number(n) || 0, r = Math.round(Math.abs(x) * 1000 * (1 + 4 * Number.EPSILON)) / 1000; return x < 0 && r ? -r : r; }
   // Un nom se trie comme on le lit : « Café 3 » avant « Café 13 », accents et casse ignorés.
   // Un seul comparateur, créé une fois : localeCompare(…, 'fr') le recrée à chaque comparaison.
   const TRI_NOM = new Intl.Collator('fr', { numeric: true, sensitivity: 'base' });
@@ -31,6 +31,24 @@
     const [y, mm] = String(m || '').split('-').map(Number);
     return (MONTHS_FR[mm - 1] || '?') + ' ' + (y || '?');
   }
+  // Un MOIS tapé comme un comptable l'écrit (10.14.1) : « 01/2026 », « 1/2026 », « 01-2026 » — et
+  // l'ancienne forme « 2026-01 », pour ce qui a été tapé avant. Le champ « Début de mission »
+  // réclamait l'écriture machine (« s'écrit comme 2026-01 ») et effaçait EN SILENCE toute autre
+  // forme à la création d'un dossier. Rend { ok: true, mois: 'AAAA-MM' | '' } ou { ok: false, motif }.
+  function moisTape(texte) {
+    const t = String(texte == null ? '' : texte).trim();
+    if (!t) return { ok: true, mois: '' };
+    let m = /^(\d{4})-(\d{1,2})$/.exec(t), an, mo;
+    if (m) { an = +m[1]; mo = +m[2]; } else {
+      m = /^(\d{1,2})\s*[/.\-\s]\s*(\d{4})$/.exec(t);
+      if (!m) return { ok: false, motif: `« ${t} » n'est pas un mois : écris-le comme 01/2026.` };
+      mo = +m[1]; an = +m[2];
+    }
+    if (mo < 1 || mo > 12 || an < 1990 || an > 2999) return { ok: false, motif: `« ${t} » n'est pas un mois : écris-le comme 01/2026.` };
+    return { ok: true, mois: `${an}-${String(mo).padStart(2, '0')}` };
+  }
+  // Le mois rangé (« 2026-01 ») s'affiche comme il se tape : « 01/2026 ».
+  const moisAffiche = m => /^\d{4}-\d{2}$/.test(String(m || '')) ? `${m.slice(5, 7)}/${m.slice(0, 4)}` : '';
   // Arithmétique de mois en UTC pur : même règle que côté entreprise (voir CLAUDE.md, 5.2.3).
   function addMonth(m, n) {
     const [y, mm] = String(m).split('-').map(Number);
@@ -943,6 +961,13 @@
     // Un client hors SkanFact n'a rien à envoyer — SAUF si le comptable a posé une date de début de
     // mission : c'est précisément ce que la fiche lui propose de faire. Sans cette exception, l'écran
     // réclamait un geste qui ne faisait rien.
+    // 10.14.1 (MC-14) — mais ces mois ne sont jamais des paquets MANQUANTS. Depuis la 10.12.0, un
+    // dossier créé à la main est TENU AU CABINET : sa fiche dit « aucun paquet attendu », son Suivi
+    // « Rien n'est réclamé au client ». Sa date de début de mission dit d'où partent les mois À SAISIR
+    // (la Production, les Échéances), jamais qu'on attend un envoi : marqués « manquant », ces mois
+    // le mettaient en tête des Relances, en rouge dans « À faire » (« n'a pas envoyé son mois »), et
+    // sa fiche proposait « Relancer » en vert — à un client qui n'utilise pas SkanFact.
+    const tenu = !!dossier.manual;
     const { mois: first, tronque } = premierMoisAttendu(dossier, t);
     if (!first) return [];
     const last = addMonth(curMonth, -1);                    // le mois en cours n'est jamais attendu
@@ -951,7 +976,7 @@
       const p = (dossier.packs || []).find(x => x.month === m);
       return {
         month: m, label: monthLabel(m), pack: p || null,
-        state: !p ? (m === moisDeGrace ? 'attendu' : 'manquant') : p.definitive ? 'complet' : 'provisoire',
+        state: tenu ? 'tenu' : !p ? (m === moisDeGrace ? 'attendu' : 'manquant') : p.definitive ? 'complet' : 'provisoire',
         missing: p ? (p.missing || []).reduce((s, x) => s + (x.count || 0), 0) : 0
       };
     });
@@ -1609,8 +1634,11 @@
       // calendrier comptait « sur 5 clients » un portefeuille de six : le garage de l'exemple, dont
       // le cabinet dépose lui-même la TVA, n'y figurait jamais — alors qu'un cabinet a soixante
       // clients dont deux sur SkanFact (6.8.0), et que ce sont ceux-là qu'il déclare.
-      const tenu = d.manual && (opts.tenus || {})[d.id];
-      if (tenu) productionDuDossier(d, tenu, t, grace).forEach(m => parMois.set(m.mois, m.etape === 'saisi' ? 'a-saisir' : 'tenu'));
+      // 10.14.1 (MC-14) — TOUT dossier tenu, pas seulement celui dont on connaît déjà le livre : un
+      // dossier créé ce matin avec un début de mission n'a encore aucun livre, et ses mois sont
+      // précisément « à saisir ». Sans ça il retombait sur `dossierMonths` et se lisait « n'a pas
+      // envoyé son mois » — la phrase d'un paquet qu'on ne lui a jamais demandé.
+      if (d.manual) productionDuDossier(d, (opts.tenus || {})[d.id] || null, t, grace).forEach(m => parMois.set(m.mois, m.etape === 'saisi' ? 'a-saisir' : 'tenu'));
       attendus.set(d, parMois);
     });
     const concerne = (d, mois) => mois.some(m => attendus.get(d).has(m));
@@ -2077,7 +2105,7 @@
     sansAccents, paletteCompta,
     guidesDuDossier, correspondanceDuDossier, dateTapee,
     GRACE_MOIS, DORMANT_MOIS, dossierFacturable, comptageDossiers, licenceDuPaquet,
-    monthLabel, monthListLabel, missingLabel, addMonth, monthsBetween, moisDeTravail, today, de, libelleLot,
+    monthLabel, moisTape, moisAffiche, monthListLabel, missingLabel, addMonth, monthsBetween, moisDeTravail, today, de, libelleLot,
     cleEcheance, echeanceDeposee,
     migrate, migrateDossier, dossierKey, packSummary, filePack, demoDossiers, rebaserPaquet, checkIntegrity, HORS_MANIFESTE,
     exemplePerime, verdictMotDePasse,

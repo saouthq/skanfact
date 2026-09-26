@@ -55,6 +55,66 @@ await ta('relais : l\'état des canaux (/sante) relit les releases récentes', a
   assert.strictEqual(c.tag, 'v10.10.0', 'la console annoncerait la 10.9.3 sur le canal stable');
 });
 
+// S-01 (26/09/2026, Skander) : « quand on a une version en bêta, par exemple 13.0.0-beta.1, et qu'une
+// stable 14.0.0 sort, elle ne me la propose pas — je suis obligé de décocher la case ». Le relais
+// servait la dernière release qui PORTE l'index d'essai ; la stable ne le porte pas.
+const LISTE_S01 = () => [
+  { id: 3, tag_name: 'v14.0.0', prerelease: false, draft: false, published_at: '2026-10-02',
+    assets: [{ name: 'latest-mac.yml' }, { name: 'latest.yml' }, { name: 'cabinet-mac.yml' }, { name: 'cabinet.yml' }, { name: 'SkanFact-14.0.0-mac-universal.zip' }] },
+  { id: 2, tag_name: 'v14.0.0-beta.3', prerelease: true, draft: false, published_at: '2026-09-28',
+    assets: [{ name: 'beta-mac.yml' }, { name: 'beta.yml' }, { name: 'cabinet-beta-mac.yml' }, { name: 'cabinet-beta.yml' }] },
+  { id: 1, tag_name: 'v13.0.0', prerelease: false, draft: false, published_at: '2026-09-01',
+    assets: [{ name: 'latest-mac.yml' }, { name: 'latest.yml' }, { name: 'cabinet-mac.yml' }, { name: 'cabinet.yml' }] }
+];
+await ta('relais : une bêta dépassée par une stable reçoit la stable (S-01)', async () => {
+  const W = await import('../../worker/skanfact-maj.mjs');
+  // Les quatre index d'essai des deux applications, sur macOS et sous Windows.
+  for (const f of ['beta-mac.yml', 'beta.yml', 'cabinet-beta-mac.yml', 'cabinet-beta.yml']) {
+    const r = await W.trouveIndex(LISTE_S01(), f, async rel => rel.assets);
+    assert.ok(r && r.tag === 'v14.0.0', f + ' : la bêta 14.0.0-beta.3 reste servie alors que la 14.0.0 stable est publiée — « décoche la case pour la voir »');
+    assert.ok(r.stableServie, f + ' : la stable servie ne se dit pas');
+    // Et c'est le fichier du JUMEAU stable qui part : son contenu dit 14.0.0 et nomme ses installateurs.
+    assert.ok(/^(latest|cabinet)(-mac)?\.yml$/.test(r.asset.name), f + ' : le relais sert autre chose que l\'index stable : ' + r.asset.name);
+  }
+  // Une bêta PLUS RÉCENTE que la stable reste servie : recevoir les essais veut dire « avant les autres ».
+  const avecBeta = [{ id: 4, tag_name: 'v14.1.0-beta.1', prerelease: true, assets: [{ name: 'beta-mac.yml' }] }, ...LISTE_S01()];
+  const b = await W.trouveIndex(avecBeta, 'beta-mac.yml', async rel => rel.assets);
+  assert.ok(b.tag === 'v14.1.0-beta.1' && !b.stableServie, 'une bêta plus récente que la stable n\'est plus servie : ' + b.tag);
+  // Un index STABLE ne voit jamais une bêta, même plus récente (la cloison de la 9.8.8 ne bouge pas).
+  const s = await W.trouveIndex(avecBeta, 'latest-mac.yml', async rel => rel.assets);
+  assert.ok(s.tag === 'v14.0.0' && !s.stableServie, 'une installation stable reçoit une bêta : ' + s.tag);
+  // Aucune bêta publiée du tout : la stable, plutôt qu'un « aucune version » à qui a coché la case.
+  const sansBeta = LISTE_S01().filter(r => !r.prerelease);
+  const n = await W.trouveIndex(sansBeta, 'cabinet-beta-mac.yml', async rel => rel.assets);
+  assert.ok(n && n.tag === 'v14.0.0', 'sans aucune bêta, la case « essais » ne reçoit plus rien');
+  // La décision, pure, sur les numéros (une préversion passe AVANT la version qu'elle prépare).
+  assert.strictEqual(W.indexAServir('beta-mac.yml', { tag: 'v14.0.0-beta.3' }, { tag: 'v14.0.0' }).tag, 'v14.0.0');
+  assert.strictEqual(W.indexAServir('beta-mac.yml', { tag: 'v14.0.0-beta.10' }, { tag: 'v13.9.0' }).tag, 'v14.0.0-beta.10');
+  assert.strictEqual(W.indexAServir('latest-mac.yml', { tag: 'v14.0.0' }, { tag: 'v99.0.0' }).tag, 'v14.0.0', 'un index stable n\'a pas de jumeau');
+});
+
+t('relais : `comparerVersions` est la jumelle exacte de celle des applications (S-01)', () => {
+  // Le worker est un fichier unique déployé seul : il ne charge rien du dépôt. Deux façons de comparer
+  // des numéros finiraient par dire deux choses de la même bêta (motif `round3`, 9.1.0).
+  const src = lireSource('worker', 'skanfact-maj.mjs');
+  const corps = s => { const i = s.indexOf('function comparerVersions('); return s.slice(i, s.indexOf('\n}\n', i) + 2); };
+  const w = corps(src), c = corps(lireSource('src', 'canaux.js'));
+  assert.ok(w.length > 300 && c.length > 300, 'découpage de comparerVersions raté');
+  assert.strictEqual(w, c, 'les deux comparaisons de versions ont divergé');
+});
+
+await ta('relais : l\'état des canaux dit la stable qu\'une bêta dépassée reçoit (S-01)', async () => {
+  const W = await import('../../worker/skanfact-maj.mjs');
+  const l = W.resumeCanaux(LISTE_S01()).find(x => x.fichier === 'beta-mac.yml');
+  // La ligne garde la dernière bêta (l'écran en fait « est devenue la 14.0.0 ») et nomme la stable servie.
+  assert.strictEqual(l.tag, 'v14.0.0-beta.3', 'la ligne d\'essai perd le nom de la dernière bêta');
+  assert.strictEqual(l.sertStable, 'v14.0.0', 'la console dirait que le canal d\'essai sert la bêta, alors qu\'il sert la stable');
+  assert.strictEqual(W.resumeCanaux(LISTE_S01()).find(x => x.fichier === 'latest-mac.yml').sertStable, '', 'un index stable n\'a rien à nommer');
+  // Et l'écran des mises à jour, qui lit cette ligne, dit la bonne phrase.
+  const canaux = C.depuisSante({ v: 1, canaux: W.resumeCanaux(LISTE_S01()) }, 'app', 'darwin');
+  assert.ok(/Aucun essai en cours/.test(M.phraseEssai(canaux)) && /14\.0\.0-beta\.3/.test(M.phraseEssai(canaux)), 'la phrase des essais ne dit pas que la bêta est devenue la stable : ' + M.phraseEssai(canaux));
+});
+
 await ta('Cabinet : la bêta relue aussi quand la liste la rend vide', async () => {
   const liste = [
     { id: 5, tag_name: 'v10.11.0-beta.1', prerelease: true, assets: [] },

@@ -123,12 +123,18 @@
         <form id="lock-form"><input type="password" id="lock-pw" placeholder="Mot de passe" autocomplete="current-password"><div class="lock-err" id="lock-err" hidden>Mot de passe incorrect.</div><button class="btn btn-primary" type="submit" id="lock-ok">Déverrouiller</button></form></div>`;
       document.body.appendChild(el);
       const input = $('#lock-pw', el); input.focus();
+      const err = $('#lock-err', el);
+      // 10.14.1 — le reproche part quand on retape (le jumeau du Cabinet) : « Mot de passe
+      // incorrect. » restait écrit sous le mot de passe qu'on était en train de corriger. Et un
+      // champ vide ne se dit pas « incorrect » : il n'a rien été essayé.
+      input.addEventListener('input', () => { err.hidden = true; });
       $('#lock-form', el).onsubmit = async e => {
         e.preventDefault();
+        if (!input.value) { err.textContent = 'Entre ton mot de passe.'; err.hidden = false; input.focus(); return; }
         const b = $('#lock-ok', el); b.disabled = true;
         const r = await bridge.unlock(input.value);
         if (r && r.ok) { el.remove(); resolve(r.data); }
-        else { b.disabled = false; $('#lock-err', el).hidden = false; input.value = ''; input.focus(); }
+        else { b.disabled = false; err.textContent = 'Mot de passe incorrect.'; err.hidden = false; input.value = ''; input.focus(); }
       };
     });
   }
@@ -492,17 +498,23 @@
   const clientName = id => (clientById(id) || {}).name || '—';
   const effStatus = doc => C.effectiveStatus(doc, data, data.company);
   const balance = doc => C.invoiceBalance(doc, data, data.company);
-  const docLabel = doc => `${C.TITLES[doc.type]} ${doc.number || '(brouillon)'}`;
+  // Le nom d'une pièce À L'ÉCRAN est celui qu'elle imprime (10.14.1, MR-09) : une profession libérale
+  // émet une note d'honoraires, et l'éditeur, le retour et la fenêtre disaient « Facture FAC-… ».
+  const docLabel = doc => `${C.docLabel(doc.type, company())} ${doc.number || '(brouillon)'}`;
+  // « la facture » ou « la note d'honoraires » : le même nom dans les boutons que sur la pièce.
+  const laPiece = () => C.estLiberal(company()) ? 'la note d\'honoraires' : 'la facture';
   // « Facture créé en brouillon » : le participe s'accorde avec la pièce (10.12.0). Seules la facture
   // et la proforma sont féminines parmi les sept.
-  const pieceCreee = t => `${C.TITLES[t]} ${t === 'facture' || t === 'proforma' ? 'créée' : 'créé'}`;
+  const pieceCreee = t => `${C.docLabel(t, company())} ${t === 'facture' || t === 'proforma' ? 'créée' : 'créé'}`;
   // Transformer une pièce en une autre (« Transformer ▾ » de l'éditeur ET menu d'une ligne) : UNE
   // fonction, pour que les deux chemins fassent la même chose — la leçon de `facturerDevis` (7.29.0),
   // dont le menu de ligne était reparti sans le garde-fou de l'éditeur. On part de la pièce telle
   // qu'ENREGISTRÉE ; la nouvelle naît en brouillon, et c'est une création comme une autre.
   function transformerPiece(src, t) {
     if (licenceBlock('Créer une pièce')) return;
-    const out = C.convertDoc(src, t, company(), C.today());
+    // Le client de la pièce (10.14.1, MR-01) : une facture tirée d'un bon ou d'une proforma prend
+    // son exonération de timbre et sa retenue, comme « Facturer ce devis » les prend.
+    const out = C.convertDoc(src, t, company(), C.today(), clientById(src.clientId));
     data.documents.push(out); save(true);
     toast(`${pieceCreee(t)} en brouillon à partir de ${src.number || 'ce brouillon'}`);
     navigate('#/doc/' + out.id);
@@ -701,6 +713,50 @@
     }))).observe(document.body, { childList: true, subtree: true });
   }
 
+  // ---------- un montant s'écrit en dinars jusque dans un champ (10.14.1) ----------
+  //
+  // Skander : « des champs où le montant s'écrivait "250" au lieu de la vraie écriture en dinar ».
+  // Un champ de nombre montre la valeur telle qu'on la lui donne : le prix d'une ligne restait
+  // « 150 » à côté d'un aperçu, d'un total et d'une pièce qui écrivent « 150,000 ». Un champ de
+  // MONTANT (pas de 0,001, ou `.montant`) montre ses décimales — trois pour le dinar, deux pour une
+  // autre devise : celle de la pièce qu'il remplit (`data-devise` sur son conteneur), sinon celle de
+  // la société. On COMPLÈTE, on n'arrondit jamais : une valeur tapée avec plus de décimales garde
+  // les siennes, puisque c'est elle que les données portent. Le nombre ne change pas, donc aucun
+  // événement ne part et le formulaire lit ce qu'il lisait. UN observateur, comme la typographie :
+  // un champ posé par l'un des cent `draw()` ne peut pas y échapper.
+  const SEL_MONTANT = 'input[type="number"][step="0.001"], input[type="number"].montant';
+  function decimalesDuChamp(el) {
+    const d = el.closest('[data-devise]');
+    return C.decimalsFor(C.normCurrency(d ? d.dataset.devise : company().currency));
+  }
+  function completerMontant(el) {
+    if (el.value === '' || (el.validity && el.validity.badInput)) return;
+    const n = Number(el.value);
+    if (!isFinite(n)) return;
+    const s = n.toFixed(decimalesDuChamp(el));
+    if (Number(s) === n && el.value !== s) el.value = s;
+  }
+  // Une pièce qui change de devise change les décimales de ses champs : on le dit à son conteneur,
+  // puis on recomplète ceux qui y sont déjà (les lignes redessinées passent par l'observateur).
+  function poserDevise(dans, cur) {
+    const c = dans && dans.closest('[data-devise]');
+    if (!c) return;
+    c.dataset.devise = cur;
+    // Un champ dit sa devise à côté de lui (9.4.8) : quand la pièce en change, le libellé suit.
+    $$('[data-unite-devise]', c).forEach(u => { u.textContent = cur; });
+    $$(SEL_MONTANT, c).forEach(el => { if (el !== document.activeElement) { const n = Number(el.value); if (el.value !== '' && isFinite(n)) el.value = String(n); completerMontant(el); } });
+  }
+  function completerMontants(racine) {
+    if (!racine || racine.nodeType !== 1) return;
+    [...(racine.matches(SEL_MONTANT) ? [racine] : []), ...racine.querySelectorAll(SEL_MONTANT)]
+      .forEach(el => { if (el !== document.activeElement) completerMontant(el); });
+  }
+  if (window.MutationObserver) {
+    new MutationObserver(recs => recs.forEach(r => r.addedNodes.forEach(completerMontants)))
+      .observe(document.body, { childList: true, subtree: true });
+  }
+  document.addEventListener('focusout', e => { const el = e.target; if (el && el.matches && el.matches(SEL_MONTANT)) completerMontant(el); }, true);
+
   function closeInfoPop() { const p = $('#info-pop'); if (p) p.remove(); }
   function openInfoPop(btn) {
     const x = G.INFO[btn.dataset.info]; if (!x) return;
@@ -842,6 +898,10 @@
       if (main && !main.disabled) { e.preventDefault(); main.click(); }
     });
     if (onMount) onMount(layer, close);
+    // Les montants se complètent AVANT l'instantané (10.14.1) : l'observateur le ferait au tour
+    // suivant, et « 633,37 » devenu « 633,370 » passerait pour une frappe — fermer une fenêtre
+    // intacte demandait « Abandonner cette saisie ? » (vu à la souris).
+    completerMontants(layer);
     // L'instantané se prend APRÈS le montage : ce que la fenêtre préremplit n'est pas une saisie.
     // `garde: false` dit, en le nommant, qu'une fenêtre n'en veut pas.
     // Une fenêtre dont la saisie ne vit pas dans ses champs (un logo choisi, une couleur prise dans
@@ -959,7 +1019,7 @@
     const deduits = doc.settles ? (doc.settles.depositIds || []).map(docById).filter(Boolean).map(d => d.number || 'un acompte en brouillon') : [];
     const origine = doc.settles
       ? ligne('Solde du devis', `${h(doc.settles.quoteNumber || '—')}${deduits.length ? ` · acompte${sPl(deduits.length)} ${h(deduits.join(', '))} déduit${sPl(deduits.length)}` : ''}`)
-      : doc.deposit ? ligne('Acompte du devis', `${h(doc.deposit.quoteNumber || '—')} · ${h(String(doc.deposit.percent).replace('.', ','))} %`) : '';
+      : doc.deposit ? ligne('Acompte du devis', `${h(doc.deposit.quoteNumber || '—')} · ${h(C.acompteDit(doc.deposit, docCur(doc)))}`) : '';
     // La TOUTE première pièce de ce type (10.14.0) : c'est le moment de demander si l'on facturait déjà
     // ailleurs — avant, la question serait abstraite ; après, la suite ne se touche plus.
     const annee = String(doc.date || C.today()).slice(0, 4);
@@ -967,18 +1027,20 @@
     return new Promise(resolve => {
       let settled = false;
       const finish = (close, v) => { settled = true; close(); resolve(v); };
-      modal(`<h2 id="em-titre">Émettre ${isAv ? 'l\'avoir' : 'la facture'} ${h(numero)} ?</h2>
+      modal(`<h2 id="em-titre">Émettre ${isAv ? 'l\'avoir' : laPiece()} ${h(numero)} ?</h2>
         <div class="kv recap-emission">
           ${ligne('Client', `<strong>${h(cl ? cl.name : '—')}</strong>`)}
           ${origine}
           ${inv ? ligne('Facture corrigée', `${h(inv.number || '—')} · ${C.money(bInv.totals.netToPay, cur)}`) : ''}
-          ${premiere ? `<div id="em-num-ligne"><span>Numéro</span><span><span class="mono" id="em-num">${h(numero)}</span> — ${isAv ? 'ton tout premier avoir' : 'ta toute première facture'} ici
+          ${premiere ? `<div id="em-num-ligne"><span>Numéro</span><span><span class="mono" id="em-num">${h(numero)}</span> — ${isAv ? 'ton tout premier avoir' : 'ta toute première ' + laPiece().replace(/^la /, '')} ici
             <button type="button" class="btn btn-sm" id="num-suite">${isAv ? 'J\'émettais déjà des avoirs' : 'Je facturais déjà'} : continuer ma numérotation…</button></span></div>` : ''}
           ${ligne('Date', C.fmtDate(doc.date))}
-          ${!isAv && doc.dueDate ? ligne('Échéance', C.fmtDate(doc.dueDate)) : ''}
+          ${!isAv && doc.dueDate ? ligne('Échéance', doc.dueDate === doc.date ? 'À réception' : C.fmtDate(doc.dueDate)) : ''}
           ${ligne(isAv ? 'Montant de l\'avoir' : 'Net à payer', `<strong>${C.money(t.netToPay, cur)}</strong>`)}
+          ${C.normCurrency(cur) !== C.normCurrency(company().currency) && !C.missingRate(doc, company())
+            ? ligne('Taux de change', `1 ${h(cur)} = ${C.money(C.rateOf(doc, company()), company().currency)} · soit ${C.money(C.toBase(doc, t.netToPay, company()), company().currency)} à ce taux`) : ''}
         </div>
-        <p class="small">Le numéro devient définitif et ${isAv ? 'l\'avoir' : 'la facture'} ne se modifie plus.${isAv ? '' : ' Pour corriger après coup, on fait un avoir.'}${exporter ? ` « Exporter le brouillon » donne un PDF marqué « Brouillon », sans numéro : ${isAv ? 'l\'avoir' : 'la facture'} reste modifiable.` : ''}</p>
+        <p class="small">Le numéro devient définitif et ${isAv ? 'l\'avoir' : laPiece()} ne se modifie plus.${isAv ? '' : ' Pour corriger après coup, on fait un avoir.'}${exporter ? ` « Exporter le brouillon » donne un PDF marqué « Brouillon », sans numéro : ${isAv ? 'l\'avoir' : laPiece()} reste modifiable.` : ''}</p>
         ${surplus ? `<div class="warn-box mb">${numerosInsecables(surplus)}</div>` : ''}
         ${avertissements.length ? `<div class="warn-box mb">${avertissements.map(w => `<div>⚠ ${h(w)}</div>`).join('')}</div>` : ''}
         <div class="modal-actions"><button class="btn" data-close>Annuler</button>${exporter ? '<button class="btn" id="em-brouillon">Exporter le brouillon</button>' : ''}<button class="btn btn-primary" id="ok">${avertissements.length ? 'Émettre quand même' : 'Émettre'}${exporter ? ' et exporter' : ''}</button></div>`,
@@ -991,7 +1053,7 @@
           const suite = $('#num-suite', root);
           if (suite) suite.onclick = () => numerotationForm(doc.type, annee, () => {
             const n = peekNumber(doc.type, doc.date);
-            $('#em-titre', root).textContent = `Émettre ${isAv ? 'l\'avoir' : 'la facture'} ${n} ?`;
+            $('#em-titre', root).textContent = `Émettre ${isAv ? 'l\'avoir' : laPiece()} ${n} ?`;
             $('#em-num-ligne', root).innerHTML = `<span>Numéro</span><span><span class="mono" id="em-num">${h(n)}</span> — à la suite de ta numérotation</span>`;
           });
         },
@@ -1302,6 +1364,33 @@
     const box = hid.closest('.datefield');
     const txt = box && $('.d-txt', box);
     if (txt) txt.value = iso ? C.fmtDateInput(iso) : '';
+  }
+  // Une échéance posée par l'application SUIT la date de la pièce tant qu'on n'y a pas touché
+  // (7.19.0) — et dans les DEUX éditeurs : celui des achats ne l'avait jamais reçue, et un achat
+  // redaté au 10 janvier 2023 restait dû au 26 octobre 2026 (10.14.1). Une échéance est « posée par
+  // l'application » quand elle vaut la date plus le délai : une pièce rouverte dont l'échéance a été
+  // recopiée de la facture du fournisseur, ou négociée avec le client, ne bouge donc jamais — avant,
+  // toute échéance enregistrée se recalculait au premier changement de date.
+  function echeanceAuto(date, echeance, jours) {
+    return date && echeance && echeance === C.addDays(date, jours) ? echeance : '';
+  }
+  // La nouvelle échéance quand la date vient de changer, ou '' quand elle ne doit pas bouger.
+  function echeanceSuivie(date, echeance, auto, jours) {
+    if (!date || !auto || echeance !== auto) return '';
+    const neuf = C.addDays(date, jours);
+    return neuf !== echeance ? neuf : '';
+  }
+  // Et on le DIT par un message passager qui porte « Annuler » (10.14.1). La note de la 7.19.0
+  // naissait dans une cellule de la grille : tout le formulaire descendait d'une rangée, et le clic
+  // visé sur « Objet » tombait sur elle (H-E1, une fois de plus). Un message passager ne pousse rien.
+  // « Annuler » ne touche qu'une pièce encore à l'écran : cliqué après avoir quitté l'éditeur, il
+  // marquerait « modifiée » une page qui n'existe plus, et la fenêtre poserait sa question en se fermant.
+  function annoncerEcheance(nom, neuf, jours, racine, annuler) {
+    const ecart = Number(jours) ? `${pl(jours, 'jour')} après la date` : 'le jour même de la date';
+    toastUndo(`${nom} recalculée au ${C.fmtDate(neuf)} : ${ecart}.`, () => {
+      if (racine && racine.isConnected) annuler();
+      else toast('La pièce n\'est plus ouverte : son échéance n\'a pas été changée.');
+    });
   }
 
   function bindDateFields(root) {
@@ -2345,6 +2434,13 @@
     render();
   });
 
+  // Le texte VISIBLE d'un titre, sans ses boutons (la bulle « i ») et sans ce qui est caché (le repère
+  // « non enregistré ») : ce que la fenêtre porte dans sa barre de titre.
+  function texteDeTitre(el) {
+    const lire = n => n.nodeType === 3 ? n.data
+      : (n.nodeType === 1 && n.tagName !== 'BUTTON' && !n.classList.contains('dirty-dot') && n.getClientRects().length ? Array.from(n.childNodes).map(lire).join('') : '');
+    return Array.from(el.childNodes).map(lire).join('').replace(/\s+/g, ' ').trim();
+  }
   // Titre de la fenêtre : on voit dans le Dock et dans « Fenêtre » ce qui est ouvert
   function setWindowTitle(name, parts) {
     let t = '';
@@ -2363,9 +2459,11 @@
     // d'un salarié, d'un bien…) prend le titre qu'elle AFFICHE (10.12.0). La fenêtre s'appelait
     // « SkanFact » tout court sur un achat, et « Nouveau document » au-dessus d'une page qui dit
     // « Nouveau devis ». `innerText` ignore ce qui est caché (le repère « non enregistré »).
+    // 10.14.1 : sans la bulle « i ». Collée au dernier mot (10.12.0), elle est sur la même ligne que
+    // lui, et la fenêtre s'appelait « Maintenance mensuelle i ». On lit le texte VISIBLE, sans boutons.
     if (!t) {
       const h1 = $('#view .page-head h1');
-      t = h1 ? (h1.innerText || '').split('\n')[0].trim() : '';
+      t = h1 ? texteDeTitre(h1) : '';
     }
     const title = (t ? t + ' — ' : '') + 'SkanFact';
     document.title = title;
@@ -2791,15 +2889,17 @@
           : { key: 'reference', label: 'Référence', asc: true, val: d => (d.reference || '').toLowerCase(), get: d => h(d.reference || '') || '<span class="muted">—</span>' })
         : opts.quotes
           ? { key: 'due', label: 'Valable jusqu\'au', val: d => d.dueDate || '', get: d => C.fmtDate(d.dueDate) }
-          : { key: 'type', label: 'Type', asc: true, val: d => d.type, get: d => C.TITLES[d.type] },
+          : { key: 'type', label: 'Type', asc: true, val: d => d.type, get: d => C.docLabel(d.type, company()) },
       opts.hideClient
         ? { key: 'subject', label: 'Objet', asc: true, val: d => (d.subject || '').toLowerCase(), get: d => h(d.subject || '') || '<span class="muted">—</span>' }
         : { key: 'client', label: 'Client', asc: true, val: d => clientName(d.clientId).toLowerCase(), get: d => `${h(clientName(d.clientId))}${d.subject ? `<div class="small muted">${h(d.subject)}</div>` : ''}` },
       { key: 'date', label: 'Date', val: d => d.date || '', get: d => C.fmtDate(d.date) },
       { key: 'status', label: 'Statut', val: d => effStatus(d), get: d => statusBadge(d) },
-      { key: 'amount', label: opts.extra === 'proforma' || !opts.quotes ? 'Net à payer' : 'Total TTC', r: true, val: amountOf, get: d => C.money(amountOf(d), cur(d)) }
+      // Le tri compare des montants CONVERTIS (10.14.1, DEV-15) : trier 952,30 € après 2 000 DT
+      // classait une facture de 3 190 DT derrière une de 2 000. L'affichage reste dans la devise de la pièce.
+      { key: 'amount', label: opts.extra === 'proforma' || !opts.quotes ? 'Net à payer' : 'Total TTC', r: true, val: d => C.toBase(d, amountOf(d), company()), get: d => C.money(amountOf(d), cur(d)) }
     ];
-    if (!opts.quotes) cols.push({ key: 'rest', label: 'Reste', r: true, val: d => restOf(d) || 0, get: d => { const x = restOf(d); return x != null && x > 0.0005 ? C.money(x, cur(d)) : '<span class="muted">—</span>'; } });
+    if (!opts.quotes) cols.push({ key: 'rest', label: 'Reste', r: true, val: d => C.toBase(d, restOf(d) || 0, company()), get: d => { const x = restOf(d); return x != null && x > 0.0005 ? C.money(x, cur(d)) : '<span class="muted">—</span>'; } });
     return { cols, amountOf, restOf };
   }
 
@@ -2815,6 +2915,10 @@
   // Il sert aussi là où le nombre est déjà mis en forme (« 2,5 jours » : `pct` rend une chaîne, et
   // comparer une chaîne à 1 aurait rendu « 2,5 jour »).
   const sPl = n => (Math.abs(Number(n)) > 1 ? 's' : '');
+  // Un montant d'une table comptable (10.14.1, M-15) : la colonne porte déjà la devise dans son
+  // titre, le montant garde les décimales de la devise de la SOCIÉTÉ. Un `money` sans devise en
+  // prenait trois quelle qu'elle soit — des euros au millième. Une phrase, elle, nomme sa devise.
+  const montantCompta = n => C.money(n, '', C.decimalsFor(company().currency));
 
   // La liste des clients pour un `combo()`. Elle vivait en DOUBLE, déclarée localement dans deux
   // formulaires — et `serialForm` l'appelait sans en avoir : « Modifier » sur un numéro de série
@@ -2974,7 +3078,7 @@
         cibles.forEach(t => {
           const deja = C.chaineDePieces(data, d).find(x => x.type === t && !/^annul/.test(x.status || ''));
           a.push(deja
-            ? { icon: ICONE_CONVERSION[t], label: `Voir ${deja.number || `${t === 'facture' || t === 'proforma' ? 'la' : 'le'} ${C.TITLES[t].toLowerCase()} en brouillon`}`, hint: deja.fromDocId === d.id ? `Déjà tiré${t === 'facture' || t === 'proforma' ? 'e' : ''} de ${d.number}` : 'Déjà établi' + (t === 'facture' || t === 'proforma' ? 'e' : '') + ' pour cette vente', run: () => navigate('#/doc/' + deja.id) }
+            ? { icon: ICONE_CONVERSION[t], label: `Voir ${deja.number || `${t === 'facture' || t === 'proforma' ? 'la' : 'le'} ${C.docLabel(t, company()).toLowerCase()} en brouillon`}`, hint: deja.fromDocId === d.id ? `Déjà tiré${t === 'facture' || t === 'proforma' ? 'e' : ''} de ${d.number}` : 'Déjà établi' + (t === 'facture' || t === 'proforma' ? 'e' : '') + ' pour cette vente', run: () => navigate('#/doc/' + deja.id) }
             : { icon: ICONE_CONVERSION[t], label: C.CONVERSION_LABELS[t], hint: 'En brouillon, avec ses lignes et son client', run: () => transformerPiece(d, t) });
         });
       }
@@ -2993,7 +3097,7 @@
   function duplicateDoc(doc) {
     const isQ = doc.type === 'devis';
     const numbered = isQ || C.EXTRA_TYPES.includes(doc.type);   // ces pièces portent un numéro dès l'enregistrement
-    const copy = { ...deepCopy(doc), id: C.uid(), number: '', status: 'brouillon', date: C.today(), createdAt: Date.now(), issuedTs: undefined, payments: [], emails: [], reminders: [], attachments: [], withholdingCertificate: false, fromQuoteId: undefined, fromQuoteNumber: undefined, fromDocId: undefined, fromDocType: undefined, fromDocNumber: undefined, deposit: undefined, settles: undefined, recurringId: undefined };
+    const copy = { ...deepCopy(doc), id: C.uid(), number: '', status: 'brouillon', date: C.today(), createdAt: Date.now(), issuedTs: undefined, regimeTva: undefined, payments: [], emails: [], reminders: [], attachments: [], withholdingCertificate: false, fromQuoteId: undefined, fromQuoteNumber: undefined, fromDocId: undefined, fromDocType: undefined, fromDocNumber: undefined, deposit: undefined, settles: undefined, recurringId: undefined };
     if (copy.dueDate) copy.dueDate = C.addDays(copy.date, C.delaiJours(isQ ? company().quoteValidityDays : company().paymentTermsDays, 30));
     if (numbered) copy.number = C.nextNumber(data, doc.type, copy.date);
     data.documents.push(copy); save(true);
@@ -3122,9 +3226,7 @@
   }
 
   function clientWithholding(clientId) {
-    const c = clientById(clientId);
-    if (c && c.withholdingRate != null && c.withholdingRate !== '') return Number(c.withholdingRate) || 0;
-    return Number(company().defaultWithholdingRate) || 0;
+    return C.retenueDuClient(clientById(clientId), company());
   }
 
   routes.doc = (parts) => {
@@ -3183,14 +3285,23 @@
     // L'échéance posée par l'application (30 j par défaut) : tant que `doc.dueDate` lui est égale,
     // c'est qu'elle n'a pas été touchée à la main et elle suit la date du document.
     const joursEcheance = C.delaiJours(isQ ? company().quoteValidityDays : company().paymentTermsDays, 30);
-    let dueAuto = doc.dueDate;
+    let dueAuto = echeanceAuto(doc.date, doc.dueDate, joursEcheance);
     const poserDate = (name, iso) => poserDateField(head, name, iso);
     const timbreAffiche = () => {
       const t = C.computeTotals(doc, company());
       if (t.stamp) return t.stamp;
       const brut = doc.stampFee === undefined || doc.stampFee === null || doc.stampFee === ''
         ? Number(company().stampFee) || 0 : Number(doc.stampFee) || 0;
-      return C.round3(brut / C.rateOf(doc, company()));
+      return C.arrondiDevise(doc.currency || company().currency)(brut / C.rateOf(doc, company()));
+    };
+    // Le timbre est fixé en DINARS : sans taux de change, le convertir « à 1 pour 1 » affichait
+    // « Timbre fiscal (1,00 EUR) » — un montant faux, trois fois trop cher. On dit alors ce qu'il
+    // vaut vraiment et qu'il se convertira (10.14.1).
+    const libelleTimbre = () => {
+      if (!C.missingRate(doc, company())) return C.money(timbreAffiche(), cur);
+      const brut = doc.stampFee === undefined || doc.stampFee === null || doc.stampFee === ''
+        ? Number(company().stampFee) || 0 : Number(doc.stampFee) || 0;
+      return `${C.money(brut, company().currency)}, converti au taux`;
     };
     // Attribuer des numéros de série n'a de sens que sur une pièce qui livre vraiment : facture ou bon
     // de livraison, et seulement si une de ses lignes porte un article suivi par numéro.
@@ -3205,7 +3316,7 @@
     }));
 
     const NEW_TITLES = { proforma: 'Nouvelle proforma', commande: 'Nouveau bon de commande', livraison: 'Nouveau bon de livraison', contrat: 'Nouveau contrat' };
-    const title = isNew ? (isQ ? 'Nouveau devis' : isInv ? 'Nouvelle facture' : isAv ? 'Nouvel avoir' : NEW_TITLES[doc.type]) : docLabel(doc);
+    const title = isNew ? (isQ ? 'Nouveau devis' : isInv ? (C.estLiberal(company()) ? 'Nouvelle note d\'honoraires' : 'Nouvelle facture') : isAv ? 'Nouvel avoir' : NEW_TITLES[doc.type]) : docLabel(doc);
     const statusCell = isQ || isExtra
       ? `<label class="field">${lbl('Statut', isQ ? 'ed.statusQuote' : 'ed.statusExtra')}<select name="status">${C.STATUSES[doc.type].map(st => `<option value="${h(st)}" ${st === doc.status ? 'selected' : ''}>${h(optionStatut(st, doc.type))}</option>`).join('')}</select></label>`
       : `<div class="field">${lbl('Statut', isInv ? 'ed.statusInvoice' : '')}<div class="status-cell">${isNew || doc.status === 'brouillon' ? `${badge('brouillon')}<span class="small muted">numéro attribué à l'émission</span> ${info('ed.draftNumber')}` : (isInv ? statusBadge(stored) : badge(doc.status, doc.type))}</div></div>`;
@@ -3325,7 +3436,7 @@
           ${locked && isInv && doc.status !== 'annulée' && bal && bal.remaining > 0.0005 ? `<button class="btn btn-primary" id="pay">Enregistrer un paiement</button>` : ''}
           ${facturerMenu}${transformMenu}
           ${!figee ? `<button class="btn ${(isNew && (isQ || isExtra)) || suiteExtra === 'save' ? 'btn-primary' : ''}" id="save">Enregistrer${isQ || isExtra ? '' : ' le brouillon'}</button>` : ''}
-          ${!figee && (isInv || isAv) ? `<button class="btn btn-primary" id="issue">${isInv ? 'Émettre la facture' : 'Émettre l\'avoir'}</button> ${info('ed.issue')}` : ''}
+          ${!figee && (isInv || isAv) ? `<button class="btn btn-primary" id="issue">${isInv ? 'Émettre ' + laPiece() : 'Émettre l\'avoir'}</button> ${info('ed.issue')}` : ''}
           ${avecPlus ? `<div class="more"><button class="btn" id="more-btn" aria-label="Autres actions">Plus ▾</button><div class="more-list" id="more-list" hidden>
             ${emailDansPlus ? `<button id="email">Envoyer par email…</button>` : ''}
             ${convDansPlus ? `<div class="ml-titre">Transformer en…</div>${convBoutons}<div class="ml-sep"></div>` : ''}
@@ -3374,7 +3485,7 @@
           <button class="btn btn-sm" id="clos-go">Voir les clôtures</button>
         </span></div>`}
       ${bandeauQuestions(doc.number)}
-      <div class="editor">
+      <div class="editor" data-devise="${h(cur)}">
         <div>
           <div class="panel"><h2>Informations</h2>
             <form id="f-head" class="grid-3">
@@ -3387,7 +3498,6 @@
               ${isAv ? `<div class="field span-2">${lbl('Facture concernée', 'ed.creditOf')}${combo({ name: 'creditOf', value: doc.creditOf, items: invoiceItems(), placeholder: '— Facture concernée —', search: 'Rechercher : n°, client, objet…', ro: figee })}</div>` : ''}
               ${dateFieldHtml(lbl('Date', 'ed.date'), 'date', doc.date, { ro: figee })}
               ${hasDue ? dateFieldHtml(isQ ? lbl('Valable jusqu\'au', 'ed.validUntil') : lbl('Échéance', 'ed.due'), 'dueDate', doc.dueDate, { ro: figee, quick: true }) : ''}
-              ${hasDue ? '<div class="small muted" id="due-auto" hidden></div>' : ''}
               <label class="field span-2">${lbl('Objet', 'ed.subject')}<input type="text" name="subject" value="${h(doc.subject)}" placeholder="${h(exempleObjet())}" ${ro}></label>
               ${field(lbl('Référence (optionnel)', 'ed.reference'), 'reference', doc.reference || '', 'text', ro)}
               <div class="field">${lbl('Affaire (optionnel)', 'ed.project')}
@@ -3401,7 +3511,7 @@
               ${statusCell}
               ${field(lbl('Remise globale (%)', 'ed.discount'), 'discountRate', doc.discountRate || 0, 'number', 'min="0" max="100" step="0.5" class="num" ' + ro)}
               ${isInv || isAv || isProforma ? `<label class="field">${lbl('Retenue à la source', 'ed.withholding')}${withholdingSelect('withholdingRate', doc.withholdingRate, null, ro)}</label>` : ''}
-              ${isInv || isAv || isProforma ? `<label class="check" style="align-self:end"><input type="checkbox" name="applyStamp" ${doc.applyStamp === true || (isInv && doc.applyStamp !== false) ? 'checked' : ''} ${ro}> <span>Timbre fiscal (<span id="stamp-lbl">${C.money(timbreAffiche(), cur)}</span>)</span> ${info(isProforma ? 'ed.stampProforma' : 'ed.applyStamp')}</label>` : ''}
+              ${isInv || isAv || isProforma ? `<label class="check" style="align-self:end"><input type="checkbox" name="applyStamp" ${doc.applyStamp === true || (isInv && doc.applyStamp !== false) ? 'checked' : ''} ${ro}> <span>Timbre fiscal (<span id="stamp-lbl">${libelleTimbre()}</span>)</span> ${info(isProforma ? 'ed.stampProforma' : 'ed.applyStamp')}</label>` : ''}
               ${isDelivery ? `<label class="check" style="align-self:end"><input type="checkbox" name="hidePrices" ${doc.hidePrices !== false ? 'checked' : ''}> Masquer les prix sur le bon ${info('ed.hidePrices')}</label>` : ''}
               ${/* 10.12.0 — le taux apparaissait juste après la devise : choisir « EUR » faisait sauter
                    Statut et Remise d'une colonne, sous le curseur. Ce qui apparaît selon une valeur ne
@@ -3489,7 +3599,7 @@
     function untouch() { dirty = false; const el = $('#dirty-dot'); if (el) el.hidden = true; reportDirty(); }
     if (!figee) setGuard({
       dirty: () => dirty,
-      what: isQ ? 'ce devis' : isInv ? 'cette facture' : isAv ? 'cet avoir' : 'ce ' + (C.TITLES[doc.type] || 'document').toLowerCase(),
+      what: isQ ? 'ce devis' : isInv ? laPiece().replace(/^la /, 'cette ') : isAv ? 'cet avoir' : 'ce ' + (C.TITLES[doc.type] || 'document').toLowerCase(),
       save: () => { const ok = persist(); if (ok) untouch(); return ok; },
       // Quitter une pièce NEUVE sans l'enregistrer : les fichiers copiés pour elle n'appartiennent à
       // personne, on les retire (8.5.1). L'original de l'utilisateur ne bouge jamais.
@@ -3502,10 +3612,20 @@
     doc.lines.forEach((l, i) => { if (l.description) openDesc.add(i); });
     // Ce que « choisir un article » pose sur une ligne EXISTANTE : la même chose que le sélecteur du
     // catalogue, sauf la quantité déjà saisie, qu'on ne jette pas. Le curseur passe à la quantité.
+    // Un article du catalogue, tel qu'il se pose sur CETTE pièce (10.14.1) : son prix et son coût
+    // sont tenus dans la devise de la société, et se convertissent au taux de la pièce. Sans taux
+    // saisi, le prix reste vide et l'écran dit pourquoi — jamais 150 DT recopiés en 150 €.
+    const depuisCatalogue = it => {
+      const pu = C.prixDuCatalogue(it.unitPrice, doc, company()), cu = C.prixDuCatalogue(it.unitCost || '', doc, company());
+      if (pu === null) toast(`Saisis d'abord le taux de change de la pièce : les prix du catalogue sont en ${company().currency || 'DT'}.`, true);
+      return { label: it.label, description: it.description || '', unit: it.unit || '',
+        unitPrice: pu === null ? '' : pu, unitCost: cu === null ? '' : cu, vatRate: C.tauxPourRegime(company(), it.vatRate), itemId: it.id };
+    };
+    const prixAffiche = c => { const pu = C.prixDuCatalogue(c.unitPrice, doc, company()); return pu === null ? C.money(c.unitPrice, company().currency) : C.money(pu, cur); };
+    let catCombo = null;
     const poserArticle = (i, it) => {
       const l = doc.lines[i]; if (!l) return;
-      Object.assign(l, { label: it.label, description: it.description || '', unit: it.unit || '',
-        unitPrice: it.unitPrice, unitCost: it.unitCost || '', vatRate: C.tauxPourRegime(company(), it.vatRate), itemId: it.id });
+      Object.assign(l, depuisCatalogue(it));
       if (it.description) openDesc.add(i);
       touch(); drawLines();
       const q = $(`tr[data-i="${i}"] input[data-k=qty]`, linesBody); if (q) { q.focus(); q.select(); }
@@ -3555,7 +3675,7 @@
       // rien du stock et n'avait pas de coût — sans un mot.
       if (!figee) $$('input[data-k=label]', linesBody).forEach(el => suggererCatalogue(el, {
         items: () => data.catalog,
-        right: c => C.money(c.unitPrice, cur) + ' HT',
+        right: c => prixAffiche(c) + ' HT',
         onPick: c => poserArticle(Number(el.closest('tr').dataset.i), c),
         onCreate: q => {
           const i = Number(el.closest('tr').dataset.i);
@@ -3588,22 +3708,24 @@
     }
     if ($('#add-line')) $('#add-line').onclick = () => { doc.lines.push(C.newLine(company())); touch(); drawLines(); $$('input[data-k=label]', linesBody).pop().focus(); };
     // Catalogue, modèles et textes : listes de choix qui ne gardent pas de valeur (reset), avec recherche.
-    if ($('#cat-pick')) bindCombo($('.combo', $('#cat-pick')), {
+    // La liste affiche les prix dans la devise de la pièce : elle se redessine quand la devise change.
+    const itemsCatalogue = () => data.catalog.slice().sort((a, b) => a.label.localeCompare(b.label, 'fr')).map(c => ({
+      v: c.id, label: c.label, sub: c.description || '', right: prixAffiche(c) + ' HT',
+      text: `${c.label} ${c.description || ''} ${c.unit || ''}`
+    }));
+    catCombo = $('#cat-pick') ? bindCombo($('.combo', $('#cat-pick')), {
       reset: true, placeholder: 'Ajouter depuis le catalogue…',
-      items: data.catalog.slice().sort((a, b) => a.label.localeCompare(b.label, 'fr')).map(c => ({
-        v: c.id, label: c.label, sub: c.description || '', right: C.money(c.unitPrice, cur) + ' HT',
-        text: `${c.label} ${c.description || ''} ${c.unit || ''}`
-      })),
+      items: itemsCatalogue(),
       onPick: id => {
         const it = data.catalog.find(c => c.id === id); if (!it) return;
         if (doc.lines.length === 1 && !doc.lines[0].label && !doc.lines[0].unitPrice) { doc.lines = []; openDesc.clear(); }
         // `itemId` rattache la ligne à l'article : c'est lui qui fait le lien avec le stock, même si le
         // libellé est retouché ensuite. Les lignes plus anciennes restent rattrapées par leur libellé.
-        doc.lines.push({ label: it.label, description: it.description || '', qty: 1, unit: it.unit || '', unitPrice: it.unitPrice, unitCost: it.unitCost || '', vatRate: C.tauxPourRegime(company(), it.vatRate), itemId: it.id });
+        doc.lines.push({ qty: 1, ...depuisCatalogue(it) });
         if (it.description) openDesc.add(doc.lines.length - 1);
         touch(); drawLines();
       }
-    });
+    }) : null;
     if ($('#tpl-pick')) bindCombo($('.combo', $('#tpl-pick')), {
       reset: true, placeholder: 'Depuis un modèle…',
       items: templatesFor(doc.type).map(t => ({ v: t.id, label: t.name, sub: t.subject || '', right: `${(t.lines || []).length} ligne${(t.lines || []).length > 1 ? 's' : ''}`, text: `${t.name} ${t.subject || ''}` })),
@@ -3634,10 +3756,19 @@
       Object.assign(doc, formValues(head));
       touch();
       const setRateLabel = () => { const rf = $('#rate-field', head); rf.hidden = cur === company().currency; $('.rate-lbl', rf).textContent = `1 ${cur} = ? ${company().currency}`; };
+      // M-10 (10.14.1) : les prix déjà tapés ne se convertissent pas tout seuls — le taux n'est pas
+      // encore saisi — mais ils se LISENT maintenant dans l'autre devise : on le dit, une fois.
+      const avantDevise = cur;
+      const direDevise = () => {
+        if (cur !== avantDevise && doc.lines.some(l => Number(l.unitPrice))) toast(`La pièce passe en ${cur} : les prix déjà saisis se lisent maintenant en ${cur}. Vérifie-les.`);
+        if (cur !== avantDevise && catCombo) catCombo.setItems(itemsCatalogue());
+      };
       if (e && e.target && e.target.name === 'currency') {
         cur = docCur(doc);
+        poserDevise(head, cur);
         setRateLabel();
         drawLines();
+        direDevise();
       }
       if (e && e.target && e.target.name === 'clientId' && doc.clientId !== appliedClient && doc.status === 'brouillon') {
         appliedClient = doc.clientId;
@@ -3651,7 +3782,7 @@
         const caseTimbre = $('input[name=applyStamp]', head);
         if (caseTimbre) caseTimbre.checked = doc.applyStamp !== false;
         $('select[name=lang]', head).value = doc.lang || 'fr'; $('select[name=currency]', head).value = docCur(doc);
-        cur = docCur(doc); setRateLabel();
+        cur = docCur(doc); poserDevise(head, cur); setRateLabel(); direDevise();
         // les affaires proposées suivent le client : celles d'un autre client n'ont rien à faire ici.
         // Et celle qui était choisie PART avec l'ancien client (10.12.0) : absente de la liste, elle
         // restait dans la pièce sans plus s'afficher — le devis du client B comptait en silence dans
@@ -3675,14 +3806,15 @@
       // Changer la date ne recalculait jamais l'échéance : on corrigeait la date d'une facture et
       // elle restait due au 30e jour de l'ANCIENNE. On ne recalcule que tant que l'échéance est
       // restée celle que l'application avait posée — une date saisie à la main ne s'écrase jamais.
-      if (e && e.target && e.target.name === 'date' && doc.date && dueAuto && doc.dueDate === dueAuto) {
-        const neuf = C.addDays(doc.date, joursEcheance);
-        if (neuf !== doc.dueDate) {
-          doc.dueDate = neuf; dueAuto = neuf;
-          poserDate('dueDate', neuf);
-          const note = $('#due-auto', head);
-          if (note) { note.textContent = `Échéance recalculée au ${C.fmtDate(neuf)} (${joursEcheance} j). Change-la si besoin.`; note.hidden = false; }
-        }
+      const neuf = e && e.target && e.target.name === 'date' ? echeanceSuivie(doc.date, doc.dueDate, dueAuto, joursEcheance) : '';
+      if (neuf) {
+        const avant = doc.dueDate;
+        doc.dueDate = neuf; dueAuto = neuf;
+        poserDate('dueDate', neuf);
+        // « Annuler » rend l'ancienne échéance ET la tient pour choisie : elle ne suit plus la date.
+        annoncerEcheance(isQ ? 'Date de validité' : 'Échéance', neuf, joursEcheance, head, () => {
+          doc.dueDate = avant; dueAuto = ''; poserDate('dueDate', avant); touch(); refreshTotals();
+        });
       }
       // L'avoir suit la devise et le taux de sa facture, et ne les laisse plus changer (10.14.0) :
       // dans les données ET à l'écran, sinon le prochain `formValues` relirait l'ancienne valeur.
@@ -3856,7 +3988,7 @@
     pleinEcranCourant = apercuPleinEcran;
     function refreshTotals() {
       const t = C.computeTotals(doc, company());
-      const lbl2 = $('#stamp-lbl'); if (lbl2) lbl2.textContent = C.money(timbreAffiche(), cur);
+      const lbl2 = $('#stamp-lbl'); if (lbl2) lbl2.textContent = libelleTimbre();
       t.lines.forEach((l, i) => { const c = $(`[data-total="${i}"]`); if (c) c.textContent = C.money(l.ht, null, C.decimalsFor(cur)); });
       $('#totals').innerHTML = `<table>
         <tr><td>Total HT</td><td>${C.money(t.totalHT, cur)}</td></tr>
@@ -4017,6 +4149,10 @@
         const tva = C.computeTotals(doc, co).totalVAT;
         if (tva > 0.0005) w.push(`Cette pièce porte ${C.money(tva, docCur(doc))} de TVA, alors que ton régime (${C.regimeOf(co).court.toLowerCase()}) n'en facture pas : une ligne l'a gardée d'un modèle ou d'un ancien article. Mets ses lignes à 0 % avant d'émettre.`);
       }
+      // Aucune ligne ne porte de TVA alors que l'entreprise en facture (10.14.1, MR-02) : une pièce tirée
+      // d'un devis, d'un contrat ou d'un modèle nés sous un autre régime. C'est juste si tout est exonéré ;
+      // sinon la pièce émise garderait ses 0 % pour toujours — on le dit pendant qu'elle se corrige.
+      if (C.factureSansTvaSuspecte(doc, co)) w.push(`Aucune ligne de ${laPiece().replace(/^la /, 'cette ')} ne porte de TVA, alors que ton entreprise en facture (${C.defaultVat(co)}\u00a0% par défaut). C'est juste si tout est exonéré ; si elle vient d'un devis, d'un contrat ou d'un modèle nés quand tu ne facturais pas de TVA, corrige le taux de ses lignes avant d'émettre.`);
       // Deux délais sur la même pièce (10.12.0, H-E23) : on MONTRE la phrase, on ne la réécrit pas.
       const deuxDelais = C.delaisContradictoires(co, doc);
       if (deuxDelais) w.push(`Tes conditions de paiement disent « ${deuxDelais} », mais cette facture est à régler avant le ${C.fmtDate(doc.dueDate)} : les deux s'impriment sur la pièce, et se contredisent. Le délai s'imprime déjà tout seul — la phrase peut se contenter du moyen de paiement (Paramètres → Mon entreprise).`);
@@ -4047,12 +4183,12 @@
       // retire jamais la retenue soi-même : le seuil dépend de la nature de l'opération autant que
       // du montant, et c'est le comptable qui tranche. Sans seuil réglé (0), rien ne s'affiche
       // jamais — SkanFact n'invente pas le chiffre qu'on ne lui a pas donné.
-      const seuil = C.seuilRetenue(co);
-      if (seuil > 0 && isInv) {
-        const t = C.computeTotals(doc, co);
-        if (t.withholdingRate > 0 && t.totalTTC < seuil) {
-          w.push(`Cette facture (${C.money(t.totalTTC, docCur(doc))}) est sous le seuil de retenue (${C.money(seuil, co.currency)}) et porte une retenue de ${pct(t.withholdingRate)} %. Vérifie avec ton comptable.`);
-        }
+      // Le seuil est en dinars (la devise de la société) : on compare le TTC CONVERTI, et une pièce
+      // en devise dit sa contre-valeur — sinon « 300,00 € sous un seuil de 1 000 DT » se lit faux.
+      const sous = isInv && C.sousSeuilRetenue(doc, co);
+      if (sous) {
+        const enDevise = C.normCurrency(docCur(doc)) !== C.normCurrency(co.currency);
+        w.push(`Cette facture (${C.money(sous.ttc, docCur(doc))}${enDevise ? `, soit ${C.money(sous.ttcBase, co.currency)}` : ''}) est sous le seuil de retenue (${C.money(sous.seuil, co.currency)}) et porte une retenue de ${pct(sous.taux)} %. Vérifie avec ton comptable.`);
       }
       return w;
     }
@@ -4126,13 +4262,15 @@
       // Le timbre se fige ici, avec le numéro : les deux deviennent définitifs au même instant.
       // Sans ça, changer le réglage du timbre réécrivait le total des factures déjà envoyées.
       if (doc.stampFee === undefined || doc.stampFee === null || doc.stampFee === '') doc.stampFee = Number(company().stampFee) || 0;
+      // Le régime de TVA aussi (10.14.1, MR-06) : il décide de la colonne TVA et de la mention légale.
+      doc.regimeTva = C.regimeOf(company()).id;
       doc.status = isInv ? 'envoyée' : 'émis';
       // L'INSTANT de l'émission : c'est lui qui ordonne la sortie de stock dans sa journée (rapport QA
       // E-10) — un brouillon créé le matin et émis le soir, après un achat, sort après cet achat.
       doc.issuedTs = Date.now();
       unlockedIds.delete(doc.id);
       persist();
-      toast(`${C.TITLES[doc.type]} ${doc.number} émis${isInv ? 'e' : ''}`);
+      toast(`${C.docLabel(doc.type, company())} ${doc.number} émis${isInv ? 'e' : ''}`);
       // Une facture tirée d'une vente de la console lui rend son numéro dès l'émission (8.7.0) ;
       // en cas d'échec, la page Licences réessaiera — jamais un message rouge ici.
       if (doc.venteConsoleId) annoncerFacturesConsole().catch(() => {});
@@ -4229,34 +4367,43 @@
       // obtenu s'affiche en direct — l'écart d'arrondi se voit AVANT, pas après.
       const ttcDevis = C.computeTotals(doc, company()).totalTTC;
       modal(`<h2>Facture d'acompte</h2><p class="small muted">Une part du devis ${h(doc.number)} (${C.money(ttcDevis, cur)} TTC). La facture de solde déduira automatiquement cet acompte.</p>
-        <form id="df" class="grid-2">
+        <form id="df" class="grid-2" data-devise="${h(cur)}">
           <label class="field">${lbl('Exprimé en', 'ed.depositMode')}<select name="mode"><option value="pct">Pourcentage du devis</option><option value="dt">Montant TTC (${h(cur)})</option></select></label>
-          <label class="field" id="dp-pct">Pourcentage<input type="number" name="percent" value="30" min="0.1" max="99.9" step="0.5" class="num"></label>
-          <label class="field" id="dp-dt" hidden>Montant TTC${info('ed.depositAmount')}<input type="number" name="montant" value="${C.round3(ttcDevis * 0.3)}" min="0" step="0.001" class="num"></label>
+          <label class="field" id="dp-pct">${lbl('Pourcentage du devis', 'ed.depositPct')}<input type="number" name="percent" value="30" min="0.1" max="99.9" step="0.5" class="num"></label>
+          <label class="field" id="dp-dt" hidden>${lbl(`Montant TTC (${h(cur)})`, 'ed.depositAmount')}<input type="number" name="montant" value="${C.arrondiDevise(cur)(ttcDevis * 0.3)}" min="0" step="0.001" class="num"></label>
           <div class="small muted span-2" id="dp-apercu"></div>
         </form>
         <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Créer le brouillon</button></div>`,
         (root, close) => {
-        // Le pourcentage réellement demandé à `depositLines`, quel que soit le mode de saisie.
-        const lirePct = () => {
+        // Ce que la fenêtre demande, UNE fois, pour l'annonce ET pour « Créer le brouillon » (ACP-01) :
+        // un montant tapé fait des lignes qui tombent sur ce montant (`depositLinesMontant`) ; il
+        // passait avant par un pourcentage arrondi au millième, et « 500 DT » faisait 500,002 TTC.
+        const demande = () => {
           const v = formValues($('#df', root));
-          if (v.mode === 'dt') { const m = Number(v.montant); return ttcDevis > 0 ? (m / ttcDevis) * 100 : 0; }
-          return Number(v.percent);
+          if (v.mode === 'dt') {
+            const m = C.arrondiDevise(cur)(Number(v.montant) || 0);
+            const p = ttcDevis > 0 ? C.round3((m / ttcDevis) * 100) : 0;
+            const ok = m > 0 && m < ttcDevis;
+            return { ok, pct: p, montant: m, lignes: ok ? C.depositLinesMontant(doc, m, company()) : [], champ: 'montant' };
+          }
+          const p = C.round3(Number(v.percent));
+          const ok = p > 0 && p < 100;
+          return { ok, pct: p, montant: null, lignes: ok ? C.depositLines(doc, p, company()) : [], champ: 'percent' };
         };
         const apercu = () => {
-          const p2 = lirePct();
+          const q = demande();
           const el = $('#dp-apercu', root);
-          if (!(p2 > 0 && p2 < 100)) { el.textContent = 'Un acompte est une PART du devis : entre 0 et 100 % de son total TTC.'; return; }
+          if (!q.ok) { el.textContent = 'Un acompte est une PART du devis : entre 0 et 100 % de son total TTC.'; return; }
           // Les DEUX factures telles qu'elles naîtront, par le MÊME constructeur que « Créer le
           // brouillon » et que « Facture de solde » (rapport QA E-02). Le solde se calculait à la main,
           // « total du devis − acompte » : il retranchait le timbre de l'acompte et oubliait celui du
           // solde, deux dinars de moins que la vraie facture — le chiffre qu'on annonce au client au
           // téléphone. Et un client exonéré de timbre n'en a sur aucune des deux.
-          const acompte = invoiceFromQuote(doc, C.depositLines(doc, p2, company()), 0);
+          const acompte = invoiceFromQuote(doc, q.lignes, 0);
           const solde = invoiceFromQuote(doc, C.settlementLines(doc, [acompte]), doc.discountRate);
           const ta = C.computeTotals(acompte, company()), ts = C.computeTotals(solde, company());
           const timbre = Number(ta.stamp) > 0 ? ', timbre compris' : '';
-          el.innerHTML = `L'acompte fera <b id="dp-acompte">${h(C.money(ta.netToPay, cur))}</b> à payer (${pct(p2)} % du devis${timbre}). `
+          el.innerHTML = `L'acompte fera <b id="dp-acompte">${h(C.money(ta.netToPay, cur))}</b> à payer (${pct(q.pct)} % du devis${timbre}). `
             + `La facture de solde fera <b id="dp-solde">${h(C.money(ts.netToPay, cur))}</b>${Number(ts.stamp) > 0 ? ', avec son propre timbre' : ''}.`;
         };
         $('#df', root).oninput = $('#df', root).onchange = () => {
@@ -4267,11 +4414,12 @@
         };
         apercu();
         $('#ok', root).onclick = () => {
-          const p = C.round3(lirePct());
-          if (!(p > 0 && p < 100)) return refus('#df [name=' + (formValues($('#df', root)).mode === 'dt' ? 'montant' : 'percent') + ']', 'Un acompte est une part du devis : entre 0 et 100 % de son total TTC.');
-          const inv = invoiceFromQuote(doc, C.depositLines(doc, p, company()), 0);
-          inv.deposit = { percent: p, quoteId: doc.id, quoteNumber: doc.number }; inv.fromQuoteId = doc.id; inv.fromQuoteNumber = doc.number;
-          inv.subject = `Acompte ${pct(p)} % — ${doc.subject || doc.number}`;
+          const q = demande();
+          if (!q.ok) return refus('#df [name=' + q.champ + ']', 'Un acompte est une part du devis : entre 0 et 100 % de son total TTC.');
+          const inv = invoiceFromQuote(doc, q.lignes, 0);
+          inv.deposit = { percent: q.pct, quoteId: doc.id, quoteNumber: doc.number, ...(q.montant ? { montant: q.montant } : {}) };
+          inv.fromQuoteId = doc.id; inv.fromQuoteNumber = doc.number;
+          inv.subject = `Acompte ${C.acompteDit(inv.deposit, cur)} — ${doc.subject || doc.number}`;
           acceptQuote(doc.id); data.documents.push(inv); save(true); close(); toast('Brouillon de facture d\'acompte créé'); navigate('#/doc/' + inv.id);
         };
       });
@@ -4580,9 +4728,9 @@
     const sous = rend ? `${h(inv.number)} — trop-perçu à rendre ${C.money(aRendre, cur)}` : `${h(inv.number)} — reste à payer ${C.money(p0 ? Math.max(0, b.remaining) : reste, cur)}`;
     modal(`<h2>${titre}</h2><p class="small muted">${sous}</p>
       ${rend ? '<p class="small">L\'argent sort de ton compte : la Trésorerie le verra partir, et l\'écriture du comptable passe au débit du client. Ce remboursement se rattache à cette facture, qui redevient simplement réglée.</p>' : ''}
-      <form id="pf2" class="grid-2">
+      <form id="pf2" class="grid-2" data-devise="${h(cur)}">
         ${dateFieldHtml(lbl('Date', 'ed.payDate'), 'date', p0 ? p0.date : C.today())}
-        ${field(lbl(rend ? 'Montant rendu' : 'Montant', 'ed.payAmount'), 'amount', p0 ? Math.abs(Number(p0.amount) || 0) : (rend ? aRendre : reste), 'number', 'step="0.001" min="0" class="num"')}
+        ${field(lbl(`${rend ? 'Montant rendu' : 'Montant'} (${h(cur)})`, 'ed.payAmount'), 'amount', p0 ? Math.abs(Number(p0.amount) || 0) : (rend ? aRendre : reste), 'number', 'step="0.001" min="0" class="num"')}
         ${champTauxReglement(inv, p0, 'ed.payRate')}
         <label class="field">${lbl('Mode', 'ed.payMethod')}<select name="method">${C.PAYMENT_METHODS.map(m => `<option value="${m[0]}" ${p0 && p0.method === m[0] ? 'selected' : ''}>${m[1]}</option>`).join('')}</select></label>
         ${accountFieldHtml(p0 && p0.accountId)}
@@ -4666,14 +4814,17 @@
   function releveForm(clientId) {
     const c = clientById(clientId);
     if (!c) return;
-    const cur = company().currency;
     let au = C.today();
+    // Le relevé qu'on envoie parle la devise et la langue du client (10.14.1, DEV-12) : ce qu'on
+    // regarde ici est ce qui partira, au centime près.
+    const releve = () => C.releveClient(data, c.id, company(), { date: au, natif: true });
     const dessiner = (root) => {
-      const r = C.releveClient(data, c.id, company(), { date: au });
+      const r = releve();
+      const cur = r.currency;
       $('#rv-body', root).innerHTML = r.lignes.length ? `
         <table class="list"><thead><tr><th>Date</th><th>Pièce</th><th>Échéance</th><th class="r">Montant</th><th class="r">Réglé</th><th class="r">Reste dû</th></tr></thead>
         <tbody>${r.lignes.map(l => `<tr class="clickable" data-go="${h(l.id)}"><td class="nw">${C.fmtDate(l.date)}</td>
-          <td><span class="nw">${h(l.number || '—')}</span>${l.libelle ? `<div class="small muted">${h(l.libelle)}</div>` : ''}</td>
+          <td><span class="nw">${h(l.number || '—')}</span>${l.libelle || l.type !== 'facture' ? `<div class="small muted">${h(l.libelle || (l.type === 'avoir' ? 'Avoir' : 'Trop-perçu à rendre'))}</div>` : ''}${l.origine ? `<div class="small muted">pièce en ${h(l.origine)}</div>` : ''}</td>
           <td class="nw">${l.dueDate ? C.fmtDate(l.dueDate) : '<span class="muted">—</span>'}${l.retard > 0 ? `<div class="small warn-text">${pl(l.retard, 'jour')} de retard</div>` : ''}</td>
           <td class="r nw">${C.money(l.montant, cur)}</td><td class="r nw">${l.regle ? C.money(l.regle, cur) : '<span class="muted">—</span>'}</td>
           <td class="r nw"><strong>${C.money(l.reste, cur)}</strong></td></tr>`).join('')}</tbody>
@@ -4695,7 +4846,7 @@
       (root, close) => {
         dessiner(root);
         $('#rvf', root).onchange = () => { au = formValues($('#rvf', root)).au || C.today(); dessiner(root); };
-        const html = () => C.releveHtml(C.releveClient(data, c.id, company(), { date: au }), company(), { stampText: C.estDemo(data) ? 'EXEMPLE' : '' });
+        const html = () => C.releveHtml(releve(), company(), { stampText: C.estDemo(data) ? 'EXEMPLE' : '' });
         const nom = () => `Releve_${String(c.name).replace(/[^\w\- àâäéèêëïîôöùûüç]/gi, '').trim().replace(/\s+/g, '_')}_${au}.pdf`;
         $('#rv-pdf', root).onclick = async () => {
           try { const f = await bridge.exportPdf(html(), nom()); if (f) { toast('PDF enregistré : ' + f.split(/[\\/]/).pop()); close(); } }
@@ -4706,15 +4857,8 @@
           const b = $('#rv-mail', root); b.disabled = true; b.textContent = 'Préparation…';
           try {
             const att = await bridge.exportPdfSilent(html(), nom());
-            const r = C.releveClient(data, c.id, company(), { date: au });
-            const rm = await bridge.composeMail({
-              to: c.email || '', mode: modeEnvoi(), attachment: att,
-              subject: `Relevé de compte au ${C.fmtDate(au)} — ${company().name}`,
-              body: `Bonjour,\n\nVous trouverez ci-joint le relevé de votre compte au ${C.fmtDate(au)}.\n\n`
-                + (r.total > 0.0005 ? `Solde restant dû : ${C.money(r.total, cur)}${r.echu > 0.0005 ? `, dont ${C.money(r.echu, cur)} échu` : ''}.\n\n`
-                  : r.total < -0.0005 ? `Votre compte présente un solde en votre faveur de ${C.money(-r.total, cur)}.\n\n` : 'Votre compte est soldé. Merci de votre confiance.\n\n')
-                + `Si un règlement s'est croisé avec cet envoi, merci de ne pas en tenir compte.\n\nCordialement,\n${company().name}`
-            });
+            const r = releve();
+            const rm = await bridge.composeMail({ to: c.email || '', mode: modeEnvoi(), attachment: att, ...C.mailReleve(r, company()) });
             close(); toast(messageOuvert(rm, 'le relevé'));
           } catch (e) { b.disabled = false; b.textContent = 'Envoyer au client…'; toast(plainError(e), true); }
         };
@@ -5164,6 +5308,12 @@
     const late = docs.filter(d => d.type === 'facture' && effStatus(d) === 'retard');
     const lateAmount = late.reduce((s2, d) => s2 + C.toBase(d, balance(d).remaining, company()), 0);
     const openQuotes = docs.filter(d => d.type === 'devis' && ['envoyé', 'expiré'].includes(effStatus(d)));
+    // Un client qui paie dans une autre devise lit son reste dans SA devise sur le relevé
+    // (DEV-12) : la carte dit la même somme, sinon 3 190,205 DT et 952,30 EUR paraissent deux dettes.
+    const rvNatif = C.releveClient(data, c.id, company(), { natif: true });
+    const soitNatif = rvNatif.currency !== C.normCurrency(cur) && Math.abs(rvNatif.total) > 0.0005
+      ? ` · soit ${C.money(Math.abs(rvNatif.total), rvNatif.currency)}` : '';
+    const delaiAnnonce = C.delaiJours(company().paymentTermsDays, 30);
 
     $('#view').innerHTML = `
       <div class="page-head">
@@ -5183,9 +5333,9 @@
       <div class="stats">
         <div class="stat"><div class="lbl">Facturé HT ${info('dash.caYear')}</div><div class="val">${C.money(sum.ht, cur)}</div><div class="sub">${pl(sum.invoiceCount, 'facture')}${sum.first ? ' depuis ' + C.fmtDate(sum.first) : ''}</div></div>
         ${sum.net < -0.0005
-          ? `<div class="stat"><div class="lbl">En sa faveur ${info('cl.due')}</div><div class="val due">${C.money(-sum.net, cur)}</div><div class="sub">trop-perçus et avoirs à lui rendre</div></div>`
-          : `<div class="stat"><div class="lbl">Reste à payer ${info('cl.due')}</div><div class="val">${C.money(sum.net, cur)}</div><div class="sub">${sum.aRendre > 0.0005 ? `${C.money(sum.due, cur)} dû, moins ${C.money(sum.aRendre, cur)} à lui rendre` : sum.net > 0.0005 ? 'à encaisser' : 'tout est réglé'}${sum.rsASubir > 0.0005 ? `<br>plus ${C.money(sum.rsASubir, cur)} de retenue à la source qu'il gardera en payant, pour l'État` : ''}</div></div>`}
-        <div class="stat"><div class="lbl">Délai moyen de paiement ${info('dash.delay')}</div><div class="val">${sum.delay == null ? '—' : sum.delay + ' j'}</div><div class="sub">annoncé : ${pl(Number(company().paymentTermsDays) || 0, 'jour')}</div></div>
+          ? `<div class="stat"><div class="lbl">En sa faveur ${info('cl.due')}</div><div class="val due">${C.money(-sum.net, cur)}</div><div class="sub">trop-perçus et avoirs à lui rendre${soitNatif}</div></div>`
+          : `<div class="stat"><div class="lbl">Reste à payer ${info('cl.due')}</div><div class="val">${C.money(sum.net, cur)}</div><div class="sub">${sum.aRendre > 0.0005 ? `${C.money(sum.due, cur)} dû, moins ${C.money(sum.aRendre, cur)} à lui rendre` : sum.net > 0.0005 ? 'à encaisser' : 'tout est réglé'}${soitNatif}${sum.rsASubir > 0.0005 ? `<br>plus ${C.money(sum.rsASubir, cur)} de retenue à la source qu'il gardera en payant, pour l'État` : ''}</div></div>`}
+        <div class="stat"><div class="lbl">Délai moyen de paiement ${info('dash.delay')}</div><div class="val">${sum.delay == null ? '—' : sum.delay + ' j'}</div><div class="sub">annoncé : ${delaiAnnonce ? pl(delaiAnnonce, 'jour') : 'à réception'}</div></div>
         <div class="stat"><div class="lbl">Devis acceptés ${info('dash.conversion')}</div><div class="val">${sum.conversion == null ? '—' : sum.conversion + ' %'}</div><div class="sub">${sum.quoteCount} devis, ${openQuotes.length} sans réponse</div></div>
       </div>
       <div class="grid-2">
@@ -5272,11 +5422,13 @@
     // ligne sans action perd son bouton). C'est ce qui l'a fait disparaître de l'en-tête.
     bindRowMenus($('.page-head .actions'), id => {
       if (id !== 'CL:' + c.id) return [];
-      const ouvert = C.releveClient(data, c.id, company()).total;
+      // L'annonce dit ce que le relevé dira, dans SA devise (10.14.1, DEV-12).
+      const rv = C.releveClient(data, c.id, company(), { natif: true });
+      const ouvert = rv.total;
       const a2 = [{ icon: 'modifier', label: 'Modifier la fiche', hint: 'Coordonnées, conditions, retenue', run: () => clientForm(c, () => render(true)) }];
       if (c.email) a2.push({ icon: 'email', label: 'Écrire au client', hint: h(c.email), run: () => bridge.composeMail({ to: c.email, subject: '', body: '', attachment: null, mode: 'mailto' }) });
       a2.push({ sep: true }, { icon: 'pdf', label: 'Relevé de compte…',
-        hint: ouvert > 0.0005 ? `${C.money(ouvert, cur)} encore dû` : ouvert < -0.0005 ? `${C.money(-ouvert, cur)} en sa faveur` : 'Le compte est soldé',
+        hint: ouvert > 0.0005 ? `${C.money(ouvert, rv.currency)} encore dû` : ouvert < -0.0005 ? `${C.money(-ouvert, rv.currency)} en sa faveur` : 'Le compte est soldé',
         run: () => releveForm(c.id) });
       return a2;
     });
@@ -5358,7 +5510,7 @@
             ${field(lbl('Seuil d\'alerte', 'stk.min'), 'minStock', it.minStock || 0, 'number', 'step="0.01" min="0" class="num"')}
             ${field(lbl('Emplacement', 'stk.location'), 'location', it.location || '', 'text', 'placeholder="Étagère A, réserve…"')}
             ${field(lbl('Stock de départ', 'stk.initial'), 'initialQty', it.initialQty || 0, 'number', 'step="0.01" class="num"' + (already && already.moves.length > 1 ? ' disabled' : ''))}
-            ${field(lbl('Coût unitaire du départ', 'stk.initialCost'), 'initialCost', it.initialCost || 0, 'number', 'step="0.001" min="0" class="num"' + (already && already.moves.length > 1 ? ' disabled' : ''))}
+            ${field(lbl(`Coût unitaire du départ (${h(C.normCurrency(company().currency))})`, 'stk.initialCost'), 'initialCost', it.initialCost || 0, 'number', 'step="0.001" min="0" class="num"' + (already && already.moves.length > 1 ? ' disabled' : ''))}
           </div>
           ${already && already.moves.length > 1
             ? `<p class="small muted mt">Stock actuel : <b>${already.qty} ${h(already.unit)}</b> au coût moyen de ${C.money(already.cmp, company().currency)}. Le stock de départ n'est plus modifiable ici — des mouvements s'y appuient. Passe par un ajustement sur la page Stock.</p>`
@@ -5446,7 +5598,7 @@
     modal(`<h2>Modifier le modèle</h2>
       <form id="tf2" class="grid-2">
         <label class="field span-2 obligatoire">${lbl('Nom du modèle', 'cat.tplName')}<input type="text" name="name" value="${h(t.name || '')}"></label>
-        <label class="field">${lbl('Type', 'cat.tplType')}<select name="type">${['devis', 'facture'].map(x => `<option value="${x}" ${t.type === x ? 'selected' : ''}>${C.TITLES[x]}</option>`).join('')}</select></label>
+        <label class="field">${lbl('Type', 'cat.tplType')}<select name="type">${['devis', 'facture'].map(x => `<option value="${x}" ${t.type === x ? 'selected' : ''}>${C.docLabel(x, company())}</option>`).join('')}</select></label>
         ${field(lbl('Remise globale (%)', 'cat.tplDiscount'), 'discountRate', t.discountRate || 0, 'number', 'min="0" max="100" step="0.5" class="num"')}
         <label class="field span-2">${lbl('Objet', 'cat.tplSubject')}<input type="text" name="subject" value="${h(t.subject || '')}" placeholder="Ce qui sera proposé comme objet du document"></label>
         <label class="field span-2">${lbl('Notes', 'cat.tplNotes')}<textarea name="notes" rows="3">${h(t.notes || '')}</textarea></label>
@@ -5471,12 +5623,20 @@
             <td class="total">${C.money(C.round3((Number(l.qty) || 0) * (Number(l.unitPrice) || 0)), cur)}</td>
             <td class="line-tools"><button type="button" class="btn btn-ghost btn-sm" data-x="${i}" title="Supprimer">✕</button></td></tr>`).join('')
             : '<tr><td colspan="6" class="small muted">Aucune ligne. Un modèle sans ligne sert quand même : il pose l\'objet et les notes.</td></tr>';
+          // La frappe met à jour la DONNÉE et les seuls totaux qui en dépendent (10.14.1, règle 7.17.0) :
+          // redessiner toutes les lignes à chaque caractère détruisait le champ sous le curseur, et
+          // « 250 » devenait « 2 ». Les lignes ne se redessinent qu'à l'ajout ou au retrait.
           $$('[data-k]', $('#tf-lines', root)).forEach(el => el.oninput = el.onchange = () => {
-            const i = Number(el.closest('tr').dataset.i);
+            const tr = el.closest('tr'), i = Number(tr.dataset.i);
             t.lines[i][el.dataset.k] = el.type === 'number' || el.dataset.k === 'vatRate' ? Number(el.value) : el.value;
-            drawLines();
+            const l = t.lines[i], cell = $('td.total', tr);
+            if (cell) cell.textContent = C.money(C.round3((Number(l.qty) || 0) * (Number(l.unitPrice) || 0)), cur);
+            majSomme();
           });
           $$('[data-x]', $('#tf-lines', root)).forEach(b => b.onclick = () => { t.lines.splice(Number(b.dataset.x), 1); drawLines(); });
+          majSomme();
+        };
+        const majSomme = () => {
           const tot = C.round3(t.lines.reduce((a, l) => a + (Number(l.qty) || 0) * (Number(l.unitPrice) || 0), 0));
           $('#tf-sum', root).innerHTML = `${pl(t.lines.length, 'ligne')} · <b>${C.money(tot, cur)}</b> HT`;
         };
@@ -5631,7 +5791,7 @@
 
     const tplCols = [
       { key: 'name', label: 'Modèle', asc: true, val: t => (t.name || '').toLowerCase(), get: t => `<strong>${h(t.name)}</strong><div class="small muted">${h(t.subject || '')}</div>` },
-      { key: 'type', label: 'Type', asc: true, val: t => t.type || '', get: t => C.TITLES[t.type] || t.type },
+      { key: 'type', label: 'Type', asc: true, val: t => t.type || '', get: t => C.docLabel(t.type, company()) },
       { key: 'lines', label: 'Lignes', r: true, val: t => (t.lines || []).length, get: t => (t.lines || []).length }
     ];
     const drawTemplates = drawList('#tpl-wrap', catalogState.modeles, tplCols, () => data.templates.slice(), {
@@ -5720,7 +5880,7 @@
     const long = String(label).length > 48;
     const nom = long ? (o.champ || title) : label;
     modal(`<h2>${h(title)}</h2>${long ? `<p class="small muted">${h(label)}</p>` : ''}
-      <form id="pr" class="grid-2"><label class="field span-2">${/* `o.info` : la bulle du champ (10.14.0). Une fenêtre générique ne sait pas ce que devient ce qu'on y tape : c'est l'appelant qui le sait, et qui la donne. */''}${o.info ? lbl(h(nom) + (o.unite ? ` (${h(o.unite)})` : ''), o.info) : `<span>${h(nom)}${o.unite ? ` (${h(o.unite)})` : ''}</span>`}<input type="${type || 'text'}" name="v" value="${h(value || '')}"></label></form>
+      <form id="pr" class="grid-2"><label class="field span-2">${/* `o.info` : la bulle du champ (10.14.0). Une fenêtre générique ne sait pas ce que devient ce qu'on y tape : c'est l'appelant qui le sait, et qui la donne. */''}${o.info ? lbl(h(nom) + (o.unite ? ` (${h(o.unite)})` : ''), o.info) : `<span>${h(nom)}${o.unite ? ` (${h(o.unite)})` : ''}</span>`}<input type="${type || 'text'}" name="v" value="${h(value || '')}"${o.montant ? ' step="0.001" min="0" class="num montant"' : ''}></label></form>
       <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">${h(o.ok || 'Valider')}</button></div>`,
       (root, close) => {
         const champ = $('input[name=v]', root);
@@ -5823,7 +5983,7 @@
     // Mail avec le PDF joint »), et elle doit dire vrai dès le premier envoi.
     if (!await messagerie()) return;
     kind = kind || doc.type;
-    const m = C.emailFor(kind, doc, client, company(), extra);
+    const m = C.emailFor(kind, doc, client, company(), extra, data);
     const mtitle = kind === 'relanceDevis' ? 'Relancer le devis ' + h(doc.number)
       : /^relance\d$/.test(kind) ? C.REMINDER_LABELS[Number(kind.slice(-1))] + ' — ' + h(doc.number)
       : 'Envoyer ' + h(docLabel(doc)) + ' par email';
@@ -5884,7 +6044,14 @@
     const isNew = !data.recurring.find(r => r.id === rec.id);
     const r = deepCopy(rec);
     if (!r.lines || !r.lines.length) r.lines = [C.newLine(company())];
-    const cur = company().currency;
+    // La devise du contrat (10.14.1, M-08 / DEV-08) : c'est celle des factures qu'il fabrique
+    // (`buildRecurringInvoice` la reporte). Le formulaire annonçait ses totaux en dinars quoi qu'il
+    // arrive, et un contrat neuf ne prenait ni la devise ni la retenue du client choisi — ses
+    // factures partaient en dinars, sans retenue, pour un client réglé en euros à 1,5 %.
+    const co0 = company();
+    let cur = C.normCurrency(r.currency || co0.currency);
+    const enDevise = () => cur !== C.normCurrency(co0.currency);
+    let retenueTouchee = !isNew;
     // 10.12.0 — une bulle par champ (la règle du projet) : le formulaire n'en avait qu'une, sur
     // l'unité, et « ({mois} = mois facturé) » faisait passer l'étiquette de l'objet sur deux lignes.
     modal(`<h2>${isNew ? 'Nouveau contrat récurrent' : 'Modifier le contrat'} ${info('contrat.form')}</h2>
@@ -5896,19 +6063,49 @@
         ${dateFieldHtml(lbl('Prochaine facture', 'contrat.next'), 'nextDate', r.nextDate || C.today(), { quick: true })}
         <label class="field">${lbl('Retenue à la source', 'ed.withholding')}${withholdingSelect('withholdingRate', r.withholdingRate)}</label>
         ${field(lbl('Remise (%)', 'ed.discount'), 'discountRate', r.discountRate || 0, 'number', 'min="0" max="100" step="0.5" class="num"')}
+        <label class="field">${lbl('Devise des factures', 'contrat.devise')}<select name="currency">${C.CURRENCIES.map(x => `<option value="${x}" ${x === cur ? 'selected' : ''}>${h(C.libelleDevise(x))}</option>`).join('')}</select></label>
+        <label class="field obligatoire" id="rf-rate" ${enDevise() ? '' : 'hidden'}><span class="fl"><span id="rf-rate-lbl">1 ${h(cur)} = ? ${h(co0.currency)}</span> ${info('contrat.taux')}</span><input type="number" name="exchangeRate" value="${h(r.exchangeRate || '')}" step="0.0001" min="0" class="num" placeholder="ex. 3,4"></label>
         <label class="field span-3">${lbl('Notes sur la facture', 'ed.notes')}<textarea name="notes" rows="2">${h(r.notes || '')}</textarea></label>
         <label class="check span-3"><input type="checkbox" name="active" ${r.active !== false ? 'checked' : ''}> <span>Contrat actif (les factures sont proposées à la date prévue) ${info('contrat.actif')}</span></label>
       </form>
-      <table class="mini"><thead><tr><th>Désignation</th><th class="r" style="width:58px">Qté</th><th style="width:104px">Unité ${info('ed.unit')}</th><th class="r" style="width:96px">P.U. HT</th><th style="width:88px">TVA</th><th></th></tr></thead><tbody id="rl"></tbody></table>
+      <table class="mini" data-devise="${h(cur)}"><thead><tr><th>Désignation</th><th class="r" style="width:58px">Qté</th><th style="width:104px">Unité ${info('ed.unit')}</th><th class="r" style="width:96px">P.U. HT <span id="rl-cur">(${h(cur)})</span></th><th style="width:88px">TVA</th><th></th></tr></thead><tbody id="rl"></tbody></table>
       <div class="inline mt"><button type="button" class="btn btn-sm" id="rl-add">+ Ligne</button><span class="small muted" id="rl-total"></span></div>
       <div class="modal-actions">
         ${isNew ? '' : '<button class="btn btn-danger" id="del-rec" style="margin-inline-end:auto">Supprimer</button>'}
         <button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
       (root, close) => {
+        // Choisir le client pose SA devise, sa langue et sa retenue — comme l'éditeur de pièce
+        // (`applyClientDefaults`). La retenue ne change plus une fois touchée à la main, ni sur un
+        // contrat existant : on ne défait pas un choix déjà fait.
+        const selCur = $('select[name=currency]', root), txTaux = $('input[name=exchangeRate]', root);
+        const majDevise = () => {
+          cur = C.normCurrency(selCur.value);
+          $('#rf-rate', root).hidden = !enDevise();
+          $('#rf-rate-lbl', root).textContent = `1 ${cur} = ? ${co0.currency}`;
+          $('#rl-cur', root).textContent = `(${cur})`;
+          poserDevise($('#rl', root), cur);   // les prix s'écrivent avec les décimales de la devise
+          if (!enDevise()) txTaux.value = '';
+          tot();
+        };
+        const poserClient = id => {
+          const c = clientById(id); if (!c) return;
+          if (c.lang) r.lang = c.lang;
+          const dev = C.normCurrency(c.currency || co0.currency);
+          if (dev !== cur) { selCur.value = dev; majDevise(); }
+          if (!retenueTouchee) {
+            const sel = $('select[name=withholdingRate]', root);
+            const tx = clientWithholding(id);
+            if (sel && ![...sel.options].some(o => Number(o.value) === tx && o.value !== '__autre__')) sel.insertAdjacentHTML('afterbegin', `<option value="${tx}">${pct(tx)} %</option>`);
+            if (sel) sel.value = String(tx);
+          }
+        };
         const cliCombo = bindCombo($('[data-combo=clientId]', root), {
           items: clientItems(), placeholder: '— Choisir un client —',
-          onAdd: saisi => clientForm(null, c => { cliCombo.setItems(clientItems()); cliCombo.setValue(c.id); }, { name: saisi })
+          onPick: id => poserClient(id),
+          onAdd: saisi => clientForm(null, c => { cliCombo.setItems(clientItems()); cliCombo.setValue(c.id); poserClient(c.id); }, { name: saisi })
         });
+        selCur.onchange = majDevise;
+        $('select[name=withholdingRate]', root).addEventListener('change', () => { retenueTouchee = true; });
         // La suppression vit ici, comme pour les clients, les prestations et les textes : c'est la
         // fenêtre où l'on voit ce qu'on supprime (audit — elle était sur la ligne de la liste).
         if ($('#del-rec', root)) $('#del-rec', root).onclick = async () => {
@@ -5947,11 +6144,17 @@
         // Sans ligne chiffrée, le total n'était que le timbre : « 0,000 DT HT · 1,000 DT TTC par
         // facture » sur un contrat vide. On dit ce qui manque au lieu d'annoncer un dinar.
         const tot = () => {
-          const t = C.computeTotals({ type: 'facture', lines: r.lines, discountRate: Number($('input[name=discountRate]', root).value) || 0 }, company());
-          $('#rl-total', root).textContent = t.netHT > 0.0005 ? `${C.money(t.netHT, cur)} HT · ${C.money(t.totalTTC, cur)} TTC par facture` : 'Le montant par facture s\'affichera ici dès qu\'une ligne aura un prix.';
+          const t2 = C.computeTotals({ type: 'facture', lines: r.lines, discountRate: Number($('input[name=discountRate]', root).value) || 0, currency: cur, exchangeRate: Number(txTaux.value) || '' }, co0);
+          // Sans taux, le TTC n'est pas encore connu : le timbre est en dinars, et le convertir à 1
+          // pour 1 afficherait un total faux le temps de la frappe.
+          const sansTaux = enDevise() && !(Number(txTaux.value) > 0);
+          $('#rl-total', root).textContent = !(t2.netHT > 0.0005) ? 'Le montant par facture s\'affichera ici dès qu\'une ligne aura un prix.'
+            : sansTaux ? `${C.money(t2.netHT, cur)} HT par facture · le TTC s'affichera avec le taux de change (le timbre est en ${co0.currency})`
+            : `${C.money(t2.netHT, cur)} HT · ${C.money(t2.totalTTC, cur)} TTC par facture`;
         };
         $('#rl-add', root).onclick = () => { r.lines.push(C.newLine(company())); drawL(); };
         $('input[name=discountRate]', root).oninput = tot;
+        txTaux.oninput = tot;
         drawL();
         $('#ok', root).onclick = () => {
           const v = formValues($('#rf', root));
@@ -5961,7 +6164,11 @@
           if (!v.subject.trim()) return refus($('input[name=subject]', root), 'Indique l\'objet des factures — il apparaît sur chacune.');
           if (!r.lines.some(l => l.label && l.label.trim())) return refus($('#rl [data-k=label]', root), 'Ajoute au moins une ligne : ce que le contrat facture.');
           if (!v.nextDate) return refus($('[name=nextDate]', root), 'Indique la date de la prochaine facture.');
-          Object.assign(r, v, { day: Math.min(31, Math.max(1, Number(v.day) || 1)), withholdingRate: Number(v.withholdingRate) || 0, discountRate: Number(v.discountRate) || 0 });
+          // Le taux de change est obligatoire en devise, comme sur une pièce (7.0.1) : sans lui, chaque
+          // facture du contrat compterait 1 € pour 1 DT jusqu'à ce qu'on la corrige à la main.
+          if (enDevise() && !(Number(v.exchangeRate) > 0)) return refus(txTaux, `Indique le taux de change : combien vaut 1 ${cur} en ${co0.currency} ? Chaque facture du contrat le reprendra — tu pourras l'ajuster sur la facture.`);
+          Object.assign(r, v, { day: Math.min(31, Math.max(1, Number(v.day) || 1)), withholdingRate: Number(v.withholdingRate) || 0, discountRate: Number(v.discountRate) || 0,
+            currency: cur, exchangeRate: enDevise() ? Number(v.exchangeRate) : '' });
           const idx = data.recurring.findIndex(x => x.id === r.id);
           if (idx >= 0) data.recurring[idx] = r; else data.recurring.push(r);
           save(true); close(); if (done) done(r);
@@ -6026,10 +6233,9 @@
     const co = company();
     const cur = r.currency || co.currency;
     const invoices = data.documents.filter(d => d.recurringId === r.id).sort(byNumberDesc);
-    const issued = invoices.filter(d => d.status !== 'brouillon');
-    const drafts = invoices.filter(d => d.status === 'brouillon');
-    const facture = C.round3(issued.reduce((s, d) => s + C.toBase(d, C.computeTotals(d, co).netHT, co), 0));
-    const encaisse = C.round3(issued.reduce((s, d) => s + C.toBase(d, C.computeTotals(d, co).netToPay - balance(d).remaining, co), 0));
+    // Facturé (HT), encaissé (la banque) et restant (TTC dû) viennent d'UNE fonction : la fiche
+    // retranchait un encaissé TTC, avoirs compris, d'un facturé HT (10.14.1, DEV-09).
+    const suivi = C.contratSuivi(data, co, r.id);
     const next = C.buildRecurringInvoice(r, r.nextDate, co, clientById(r.clientId));   // la facture que le contrat produira
     const t = C.computeTotals(next, co);
     const active = r.active !== false;
@@ -6059,8 +6265,8 @@
       <div class="stats">
         <div class="stat"><div class="lbl">Par facture (HT) ${info('contrat.montant')}</div><div class="val">${C.money(t.netHT, cur)}</div><div class="sub">${C.money(t.totalTTC, cur)} TTC</div></div>
         <div class="stat"><div class="lbl">Prochaine facture ${info('contrat.next')}</div><div class="val">${C.fmtDate(r.nextDate)}</div><div class="sub">${isDue ? 'à générer' : period.toLowerCase()}${r.lastIssued ? ' · dernière : ' + C.fmtDate(r.lastIssued) : ''}</div></div>
-        <div class="stat"><div class="lbl">Facturé depuis le début ${info('contrat.total')}</div><div class="val">${C.money(facture, co.currency)}</div><div class="sub">${pl(issued.length, 'facture')} émise${sPl(issued.length)}${drafts.length ? ` · ${pl(drafts.length, 'brouillon')}` : ''}</div></div>
-        <div class="stat"><div class="lbl">Encaissé ${info('dash.open')}</div><div class="val">${C.money(encaisse, co.currency)}</div><div class="sub">${C.money(C.round3(facture - encaisse), co.currency)} restant, avoirs et taxes compris</div></div>
+        <div class="stat"><div class="lbl">Facturé depuis le début (HT) ${info('contrat.total')}</div><div class="val">${C.money(suivi.facture, co.currency)}</div><div class="sub">${pl(suivi.emises, 'facture')} émise${sPl(suivi.emises)}${suivi.avoirs ? ` · ${pl(suivi.avoirs, 'avoir')} déduit${sPl(suivi.avoirs)}` : ''}${suivi.brouillons ? ` · ${pl(suivi.brouillons, 'brouillon')}` : ''}</div></div>
+        <div class="stat"><div class="lbl">Encaissé ${info('contrat.encaisse')}</div><div class="val">${C.money(suivi.encaisse, co.currency)}</div><div class="sub">${!suivi.emises ? 'aucune facture émise' : suivi.restant > 0 ? `${C.money(suivi.restant, co.currency)} reste à encaisser (TTC)` : 'rien ne reste à encaisser'}${suivi.tropPercu > 0 ? ` · ${C.money(suivi.tropPercu, co.currency)} trop-perçu` : ''}</div></div>
       </div>
       <div class="editor editor-short">
         <div>
@@ -6558,6 +6764,8 @@
     'series-ecart': { label: 'Voir les numéros', run: vers('#/stock', () => { stockState.tab = 'series'; }) },
     garanties: { label: 'Voir les garanties', run: vers('#/garanties') },
     immobilisations: { label: 'Voir les lignes', run: vers('#/immos', () => { immoState.tab = 'attente'; }) },
+    // 10.14.1 : la fiche du premier bien qui garde son montant d'avant l'avoir du fournisseur.
+    'immobilisations-avoir': { label: 'Corriger la fiche', run: () => { const b = C.biensADiminuer(data)[0]; if (b) navigate('#/immo/' + b.assetId); } },
     'declarations-sociales': { label: 'Voir les déclarations', run: vers('#/paie', () => { paieState.tab = 'declarations'; }) },
     bulletins: { label: 'Voir les bulletins', run: vers('#/paie', () => { paieState.tab = 'bulletins'; }) },
     'salaires-double': { label: 'Voir les mouvements', run: vers('#/tresorerie', () => { tresoState.tab = 'mouvements'; }) },
@@ -6595,10 +6803,17 @@
     brouillons: { label: 'Voir les brouillons', run: vers('#/factures', filtre('facture', 'brouillon')) },
     justificatifs: { label: 'Voir les achats', run: vers('#/achats', () => { buyState.st = ''; buyState.year = ''; }) },
     pointage: { label: 'Pointer les mouvements', run: vers('#/tresorerie', () => { tresoState.tab = 'rapprochement'; }) },
-    bulletins: { label: 'Voir les bulletins', run: vers('#/paie', () => { paieState.tab = 'bulletins'; }) },
+    // Le PREMIER mois qui manque (10.14.1) : « 44 bulletins de paie à établir » sur trois ans menait au
+    // mois en cours, et laissait chercher, année par année, où l'oubli commençait.
+    bulletins: { label: 'Voir les bulletins', run: c => vers('#/paie', () => {
+      paieState.tab = 'bulletins';
+      if (c && /^\d{4}-\d{2}$/.test(c.mois || '')) { paieState.year = c.mois.slice(0, 4); paieState.month = String(Number(c.mois.slice(5, 7))); paieState.moisTouche = true; }
+    })() },
     stock: { label: 'Voir les alertes', run: vers('#/stock', () => { stockState.tab = 'alertes'; }) },
     series: { label: 'Voir les numéros', run: vers('#/stock', () => { stockState.tab = 'series'; }) },
-    attestations: { label: 'Voir les factures', run: vers('#/compta', () => { comptaState.tab = 'ventes'; pageFocus = 'p-rs-clients'; }) }
+    attestations: { label: 'Voir les factures', run: vers('#/compta', () => { comptaState.tab = 'ventes'; pageFocus = 'p-rs-clients'; }) },
+    // 10.14.1 — la ligne d'achat sans fiche : l'onglet où « Créer la fiche du bien… » l'attend.
+    immobilisations: { label: 'Voir les achats à immobiliser', run: vers('#/immos', () => { immoState.tab = 'attente'; }) }
   };
   // Combien de lignes on montre avant de proposer « voir le reste ». En démo, « À faire » affichait
   // treize lignes et occupait l'écran entier : le chiffre d'affaires, le graphique et tout le reste
@@ -6894,7 +7109,8 @@
     // La catégorie d'un résultat tient en UN mot : la colonne a la largeur du plus long (« Prestation »).
     // « Contrat de prestation » y passait sur trois lignes, « Bon de livraison » sur deux (vu à l'écran,
     // 10.14.0) ; le titre entier reste celui de la pièce, une fois ouverte.
-    const KIND_PIECE = { devis: 'Devis', facture: 'Facture', avoir: 'Avoir', proforma: 'Proforma', commande: 'Commande', livraison: 'Livraison', contrat: 'Contrat' };
+    // Une note d'honoraires porte son nom jusque dans la palette (10.14.1, MR-09) — en un mot.
+    const KIND_PIECE = { devis: 'Devis', facture: C.estLiberal(company()) ? 'Honoraires' : 'Facture', avoir: 'Avoir', proforma: 'Proforma', commande: 'Commande', livraison: 'Livraison', contrat: 'Contrat' };
     const aidePalette = x => ({ kind: 'Aide', main: x.title, sub: x.sub, text: `aide ${x.title} ${x.sub}`.toLowerCase(), run: () => navigate('#/aide/' + x.id) });
     const aidesPour = words => {
       const mots = words.filter(w => w !== 'aide');
@@ -6915,7 +7131,7 @@
       if (!utiles.length) return words.some(w => /^(guid|visit)/.test(w)) ? visitesPal.slice(0, 3) : [];
       return visitesPal.filter(x => utiles.every(w => x.text.includes(w))).slice(0, 3);
     };
-    const docs = data.documents.map(d => { const cn = clientName(d.clientId); return { kind: KIND_PIECE[d.type] || C.TITLES[d.type], main: d.number || 'Brouillon', sub: `${cn}${d.subject ? ' — ' + d.subject : ''}`, amt: C.money(montantDeListe(d), docCur(d)), text: `${d.number} ${cn} ${d.subject || ''} ${d.type}`.toLowerCase(), run: () => navigate('#/doc/' + d.id), ts: d.createdAt || 0, piece: true }; });
+    const docs = data.documents.map(d => { const cn = clientName(d.clientId); return { kind: KIND_PIECE[d.type] || C.TITLES[d.type], main: d.number || 'Brouillon', sub: `${cn}${d.subject ? ' — ' + d.subject : ''}`, amt: C.money(montantDeListe(d), docCur(d)), text: `${d.number} ${cn} ${d.subject || ''} ${d.type} ${C.docLabel(d.type, company())}`.toLowerCase(), run: () => navigate('#/doc/' + d.id), ts: d.createdAt || 0, piece: true }; });
     const clients = data.clients.map(c => ({ kind: 'Client', main: c.name, sub: [c.contact, c.email, c.phone].filter(Boolean).join(' · '), text: `${c.name} ${c.contact || ''} ${c.email || ''} ${c.phone || ''} ${c.matricule || ''}`.toLowerCase(), run: () => navigate('#/client/' + c.id) }));
     const items = data.catalog.map(c => ({ kind: 'Prestation', main: c.label, sub: C.money(c.unitPrice, cur) + ' HT', text: `${c.label} ${c.description || ''}`.toLowerCase(), run: () => navigate('#/catalogue') }));
     // Les pièces les plus RÉCENTES d'abord : sur cinq ans, le nom d'un client rendait ses factures
@@ -7424,10 +7640,18 @@
   let ocrDemoHandler = null;
   document.addEventListener('skanfact:ocr-demo', () => { if (ocrDemoHandler) ocrDemoHandler(); });
 
+  // Le délai de paiement d'un achat : celui du fournisseur, sinon trente jours (10.14.1). UNE règle
+  // pour l'achat neuf, sa copie, le choix du fournisseur et la date qui change : la copie d'un achat
+  // à soixante jours repartait à trente, et la date redressée ne recalculait rien du tout.
+  function delaiAchat(supplierId) {
+    const sup = supplierId ? supplierById(supplierId) : null;
+    return C.delaiJours(sup ? sup.paymentTermsDays : '', 30);
+  }
+
   function newPurchase(kind, supplierId) {
     const date = C.today();
     const sup = supplierId ? supplierById(supplierId) : null;
-    const days = sup && sup.paymentTermsDays !== '' && sup.paymentTermsDays != null ? Number(sup.paymentTermsDays) : 30;
+    const days = delaiAchat(supplierId);
     return {
       id: C.uid(), kind: C.PURCHASE_KINDS.some(k => k[0] === kind) ? kind : 'facture', supplierId: supplierId || '', number: '',
       date, dueDate: kind === 'depense' || kind === 'avoir' ? '' : C.addDays(date, days),
@@ -7448,7 +7672,7 @@
     // Une copie est une CRÉATION : elle échappait au garde-fou de la licence depuis la 6.4.0.
     if (licenceBlock('Créer une copie de cet achat', 'achats')) return;
     const copy = { ...deepCopy(p), id: C.uid(), number: '', date: C.today(), createdAt: Date.now(), payments: [], attachments: [], withholdingCertificate: false, tvaRecuperable: C.assujettiTVA(company()) };
-    if (copy.dueDate) copy.dueDate = C.addDays(copy.date, 30);
+    if (copy.dueDate) copy.dueDate = C.addDays(copy.date, delaiAchat(copy.supplierId));
     data.purchases.push(copy); save(true);
     toast('Copie créée — vérifie le numéro et la date de la facture du fournisseur');
     navigate('#/achat/' + copy.id);
@@ -7483,9 +7707,9 @@
       <p class="small muted">${h(supplierName(p.supplierId))} · ${rend
         ? `${p.kind === 'avoir' ? `avoir de ${C.money(b.totals.netToPay, cur)}` : `payé ${C.money(b.paid, cur)} pour ${C.money(b.totals.netToPay, cur)}`} · à récupérer ${C.money(aRecuperer, cur)}`
         : `net à payer ${C.money(b.totals.netToPay, cur)} · déjà réglé ${C.money(b.paid, cur)}${b.impute ? ` · ${b.liees.length > 1 ? 'avoirs et acomptes imputés' : (b.liees[0].kind === 'acompte' ? 'acompte imputé' : 'avoir imputé')} ${C.money(b.impute, cur)}` : ''} · reste ${C.money(reste, cur)}`}</p>
-      <form id="spf" class="grid-2">
+      <form id="spf" class="grid-2" data-devise="${h(cur)}">
         ${dateFieldHtml(lbl(rend ? 'Date du remboursement' : 'Date du règlement', 'buy.payDate'), 'date', r0 ? r0.date : C.today(), {})}
-        ${field(lbl(rend ? 'Montant reçu' : 'Montant', 'buy.payAmount'), 'amount', r0 ? Math.abs(Number(r0.amount) || 0) : C.round3(rend ? aRecuperer : reste), 'number', 'step="0.001" min="0" class="num"')}
+        ${field(lbl(`${rend ? 'Montant reçu' : 'Montant'} (${h(cur)})`, 'buy.payAmount'), 'amount', r0 ? Math.abs(Number(r0.amount) || 0) : C.round3(rend ? aRecuperer : reste), 'number', 'step="0.001" min="0" class="num"')}
         ${champTauxReglement(p, r0, 'buy.payRate')}
         <label class="field">${lbl('Mode', 'buy.payMethod')}<select name="method">${C.PAYMENT_METHODS.map(([v, l]) => `<option value="${v}" ${r0 && r0.method === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
         ${accountFieldHtml(r0 ? r0.accountId || '' : '')}
@@ -7671,7 +7895,7 @@
           <button class="btn btn-sm" id="buy-clos-go">Voir les clôtures</button>
         </span></div>`}
       ${bandeauQuestions(p.number)}
-      <div class="buy-editor">
+      <div class="buy-editor" data-devise="${h(cur)}">
         <div>
           <div class="panel"><h2>La pièce du fournisseur ${info('buy.head')}</h2>
             <form id="b-head" class="grid-3">
@@ -7693,7 +7917,7 @@
                 ${combo({ name: 'projectId', value: p.projectId || '', items: projectItems(''), placeholder: '— Aucune affaire —', search: 'Rechercher une affaire…', add: clos ? null : '+ Nouvelle affaire', ro: clos })}
               </div>
               <label class="field">${lbl('Retenue à la source opérée', 'buy.withholding')}${withholdingSelect('withholdingRate', p.withholdingRate)}</label>
-              ${field(lbl('Timbre et frais', 'buy.fees'), 'fees', p.fees || 0, 'number', 'step="0.001" min="0" class="num"')}
+              ${field(lbl(`<span>Timbre et frais (<span data-unite-devise>${h(cur)}</span>)</span>`, 'buy.fees'), 'fees', p.fees || 0, 'number', 'step="0.001" min="0" class="num"')}
               <label class="field">${lbl('Devise de la facture', 'buy.currency')}<select name="currency">${C.CURRENCIES.map(c => `<option value="${c}" ${c === cur ? 'selected' : ''}>${h(C.libelleDevise(c))}</option>`).join('')}</select></label>
               <label class="field obligatoire" id="b-rate-field" ${cur === company().currency ? 'hidden' : ''}><span class="fl"><span class="b-rate-lbl">1 ${h(cur)} = ? ${h(company().currency)}</span> ${info('buy.rate')}</span><input type="number" name="exchangeRate" value="${h(p.exchangeRate || '')}" step="0.0001" min="0" class="num" placeholder="ex. 3,4"></label>
             </form>
@@ -7736,10 +7960,14 @@
     // Ce que « choisir un article » pose sur une ligne EXISTANTE (9.2.1) : la même chose que le
     // sélecteur du catalogue, sauf la quantité déjà saisie. Un article suivi passe la ligne en
     // « stock » — c'est ce qu'on venait chercher.
+    // Le coût d'achat du catalogue est tenu dans la devise de la société : sur un achat en euros, il
+    // se convertit au taux de la pièce (10.14.1) — jamais 60 DT recopiés en 60 €.
+    const coutCatalogue = it => { const v = C.prixDuCatalogue(Number(it.unitCost) || Number(it.unitPrice) || 0, p, company()); if (v === null) toast(`Saisis d'abord le taux de change de la pièce : les prix du catalogue sont en ${company().currency || 'DT'}.`, true); return v === null ? '' : v; };
+    const coutAffiche = c => { const v = C.prixDuCatalogue(Number(c.unitCost) || Number(c.unitPrice) || 0, p, company()); return v === null ? C.money(Number(c.unitCost) || Number(c.unitPrice) || 0, company().currency) : C.money(v, cur); };
     const poserArticle = (i, it) => {
       const l = p.lines[i]; if (!l) return;
       Object.assign(l, { label: it.label, itemId: it.id, unit: it.unit || '',
-        unitPrice: Number(it.unitCost) || Number(it.unitPrice) || 0, vatRate: C.tauxAchatArticle(it, company()) });
+        unitPrice: coutCatalogue(it), vatRate: C.tauxAchatArticle(it, company()) });
       if (it.tracked) l.destination = 'stock';
       touch(); drawLines();
       const q = $(`tr[data-i="${i}"] input[data-k=qty]`, body); if (q) { q.focus(); q.select(); }
@@ -7773,7 +8001,7 @@
       // stock — c'est pour ça qu'on la créait.
       if (!clos) $$('input[data-k=label]', body).forEach(el => suggererCatalogue(el, {
         items: () => data.catalog,
-        right: c => C.money(Number(c.unitCost) || Number(c.unitPrice) || 0, cur) + ' HT',
+        right: c => coutAffiche(c) + ' HT',
         onPick: c => poserArticle(Number(el.closest('tr').dataset.i), c),
         onCreate: q => {
           const i = Number(el.closest('tr').dataset.i);
@@ -7812,12 +8040,12 @@
       reset: true, placeholder: 'Ajouter depuis le catalogue…',
       items: data.catalog.slice().sort((a2, b2) => (a2.label || '').localeCompare(b2.label || '', 'fr'))
         .map(c => ({ v: c.id, label: c.label, sub: c.tracked ? 'suivi en stock' : (c.description || ''),
-          right: C.money(Number(c.unitCost) || Number(c.unitPrice) || 0, cur) + ' HT',
+          right: coutAffiche(c) + ' HT',
           text: `${c.label} ${c.description || ''}` })),
       onPick: id => {
         const it = data.catalog.find(c => c.id === id); if (!it) return;
         p.lines.push({ label: it.label, qty: 1, unit: it.unit || '',
-          unitPrice: Number(it.unitCost) || Number(it.unitPrice) || 0, vatRate: C.tauxAchatArticle(it, company()),
+          unitPrice: coutCatalogue(it), vatRate: C.tauxAchatArticle(it, company()),
           itemId: it.id, destination: it.tracked ? 'stock' : 'charge', deductible: true });
         touch(); drawLines();
       }
@@ -7860,7 +8088,9 @@
       // la fiche enregistrée, l'achat répétait encore « ce montant n'est déduit nulle part » sous un
       // bien qui s'amortissait déjà. Une ligne qui a sa fiche le dit et y mène ; seules les autres
       // attendent (la même règle que `assetsToCreate` : l'achat et le rang de la ligne).
-      const fichesDeLAchat = new Map((data.assets || []).filter(a => a.purchaseId && a.purchaseId === p.id).map(a => [Number(a.lineIndex), a]));
+      // La ligne d'une fiche se lit par `C.ligneDeFiche` (10.14.1) : une fiche sans rang de ligne se
+      // rattache à la seule ligne « immobilisation » de l'achat, comme dans « À immobiliser ».
+      const fichesDeLAchat = new Map((data.assets || []).filter(a => a.purchaseId && a.purchaseId === p.id).map(a => [C.ligneDeFiche(a, p), a]));
       const lignesImmo = t.lines.map((l, i) => ({ l, i })).filter(({ l }) => l.destination === 'immobilisation' && C.round3((Number(l.qty) || 0) * (Number(l.unitPrice) || 0)) > 0);
       const immos = lignesImmo.filter(({ i }) => !fichesDeLAchat.has(i));
       const immosFaites = lignesImmo.filter(({ i }) => fichesDeLAchat.has(i)).map(({ i }) => fichesDeLAchat.get(i));
@@ -7917,16 +8147,29 @@
     // (sans nom), qui recopie déjà le nouvel identifiant dans `p`. L'événement utile arrivait donc toujours
     // « inchangé », et ni le délai de paiement ni la retenue du fournisseur n'étaient repris.
     let appliedSupplier = p.supplierId;
+    // L'échéance que l'application a posée — la date plus le délai du fournisseur (10.14.1, le jumeau
+    // de l'éditeur de document) : elle suit la date et le fournisseur tant qu'on n'y a pas touché.
+    let dueAuto = echeanceAuto(p.date, p.dueDate, delaiAchat(p.supplierId));
     head.oninput = head.onchange = (e) => {
       Object.assign(p, formValues(head));
       p.fees = Number(p.fees) || 0;
       p.withholdingRate = Number(p.withholdingRate) || 0;
       touch();
+      const neufDue = e && e.target && e.target.name === 'date' ? echeanceSuivie(p.date, p.dueDate, dueAuto, delaiAchat(p.supplierId)) : '';
+      if (neufDue) {
+        const avant = p.dueDate;
+        p.dueDate = neufDue; dueAuto = neufDue;
+        poserDateField(head, 'dueDate', neufDue);
+        annoncerEcheance('Échéance', neufDue, delaiAchat(p.supplierId), head, () => {
+          p.dueDate = avant; dueAuto = ''; poserDateField(head, 'dueDate', avant); touch(); refresh();
+        });
+      }
       // La devise de la pièce (10.1.0) : le champ du taux n'apparaît que quand il sert, et son
       // libellé NOMME les deux monnaies — « 1 EUR = ? TND » se remplit sans réfléchir, « Taux de
       // change » tout court se remplit à l'envers une fois sur deux.
       if (e && e.target && e.target.name === 'currency') {
         cur = p.currency || company().currency;
+        poserDevise(head, cur);
         const rf = $('#b-rate-field', head);
         if (rf) { rf.hidden = cur === company().currency; $('.b-rate-lbl', rf).textContent = `1 ${cur} = ? ${company().currency}`; }
         drawLines();
@@ -7958,11 +8201,15 @@
         // proposer une imputation impossible (même règle que l'affaire qui suit le client, 3.4.0).
         lieCombo.setItems(lieItems(p.supplierId));
         if (p.achatLie && !lieItems(p.supplierId).some(x => x.v === p.achatLie)) { p.achatLie = ''; lieCombo.setValue(''); }
-        // nouveau fournisseur : on reprend son délai de paiement et son taux de retenue
+        // nouveau fournisseur : on reprend son délai de paiement et son taux de retenue. L'échéance
+        // n'est reprise que si c'est l'application qui l'avait posée, ou qu'il n'y en a pas encore et
+        // que le fournisseur a son délai (10.14.1) : une échéance recopiée de sa facture AVANT de le
+        // choisir se faisait écraser par son délai habituel.
         const sup = supplierById(p.supplierId);
         if (sup) {
-          if (sup.paymentTermsDays !== '' && sup.paymentTermsDays != null && p.date) {
-            p.dueDate = C.addDays(p.date, Number(sup.paymentTermsDays) || 0);
+          const termes = sup.paymentTermsDays !== '' && sup.paymentTermsDays != null;
+          if (p.date && ((dueAuto && p.dueDate === dueAuto) || (!p.dueDate && termes))) {
+            p.dueDate = C.addDays(p.date, delaiAchat(p.supplierId)); dueAuto = p.dueDate;
             poserDateField(head, 'dueDate', p.dueDate);
           }
           if (Number(sup.withholdingRate)) { p.withholdingRate = Number(sup.withholdingRate); $('select[name=withholdingRate]', head).value = String(p.withholdingRate); }
@@ -8186,7 +8433,7 @@
       const t = C.purchaseTotals(jumeau, company());
       return await confirmDialog(
         `La facture n° ${p.number} de ${supplierName(p.supplierId)} est déjà saisie.\n\n`
-        + `Celle du ${C.fmtDate(jumeau.date)}, ${C.money(t.totalTTC, company().currency)} TTC. `
+        + `Celle du ${C.fmtDate(jumeau.date)}, ${C.money(t.totalTTC, jumeau.currency || company().currency)} TTC. `
         + 'La saisir une seconde fois compterait deux fois sa TVA déductible et sa charge.\n\n'
         + 'Enregistrer quand même ?', 'Enregistrer quand même', true, { titre: 'Cette facture est déjà saisie' });
     }
@@ -8305,7 +8552,7 @@
     // existant, depuis son menu « Transformer » » : le geste était sur une autre pièce, deux écrans
     // plus loin. On choisit la pièce de départ ICI, et la conversion est celle du menu (`convertDoc`).
     if ($('#vide-depuis')) $('#vide-depuis').onclick = () => {
-      const items = sourcesAutres(type).map(d => ({ v: d.id, label: `${d.number || 'Brouillon'} — ${C.TITLES[d.type]} — ${clientName(d.clientId)} — ${C.money(montantDeListe(d), docCur(d))}` }));
+      const items = sourcesAutres(type).map(d => ({ v: d.id, label: `${d.number || 'Brouillon'} — ${C.docLabel(d.type, company())} — ${clientName(d.clientId)} — ${C.money(montantDeListe(d), docCur(d))}` }));
       modal(`<h2>${h(DEPUIS_AUTRES[type] || 'Partir d\'une pièce existante')}</h2>
         <p class="small muted">La nouvelle pièce reprend son client et ses lignes, en brouillon : tu la relis avant de l'envoyer.</p>
         <div class="field">${lbl('Pièce de départ', 'ed.pieceDepart')}${combo({ name: 'depuis', items, value: items[0].v, placeholder: '— Choisis une pièce —', search: 'Rechercher une pièce…' })}</div>
@@ -8639,7 +8886,7 @@
     // comme s'il n'avait jamais été remboursé.
     const suit = x => (ventes && x.type === 'avoir' && x.creditOf ? x.creditOf : '');
     const ailleurs = x => (x.projectId && x.projectId !== p.id ? projectById(x.projectId) : null);
-    const texte = x => (ventes ? `${x.number || ''} ${C.TITLES[x.type] || ''} ${clientName(x.clientId)} ${x.subject || ''}` : `${x.number || ''} ${supplierName(x.supplierId)} ${contenuAchat(x)}`);
+    const texte = x => (ventes ? `${x.number || ''} ${C.docLabel(x.type, company())} ${clientName(x.clientId)} ${x.subject || ''}` : `${x.number || ''} ${supplierName(x.supplierId)} ${contenuAchat(x)}`);
     modal(`<h2>${ventes ? 'Rattacher des ventes' : 'Rattacher des achats'} à « ${h(p.name)} »</h2>
       <p class="small muted">Coche ce qui appartient à ce chantier${ventes && p.clientId ? ` — les pièces de ${h(clientName(p.clientId))}` : ''}. Décocher une pièce la détache de l'affaire sans la supprimer ni la modifier : l'affaire ne s'imprime pas et ne change aucun montant, c'est pourquoi une pièce émise peut la recevoir.</p>
       ${pieces.length ? `<div class="filters"><input type="text" id="rp-q" placeholder="Rechercher : numéro, ${ventes ? (p.clientId ? '' : 'client, ') : 'fournisseur, '}objet…" autocomplete="off"><span class="f-note" id="rp-compte"></span></div>
@@ -8789,7 +9036,7 @@
         <label class="field">${lbl('Contrat', 'pay.contract')}<select name="contract">${C.CONTRACT_TYPES.map(([v, l]) => `<option value="${v}" ${e.contract === v ? 'selected' : ''} title="${h(l)}">${h(l.split(' —')[0])}</option>`).join('')}</select></label>
         ${dateFieldHtml(lbl('Date d\'embauche', 'pay.hireDate'), 'hireDate', e.hireDate || '', { clearable: true })}
         ${dateFieldHtml(lbl('Date de sortie', 'pay.endDate'), 'endDate', e.endDate || '', { clearable: true })}
-        ${field(lbl('Salaire brut mensuel', 'pay.gross'), 'grossSalary', e.grossSalary || 0, 'number', 'step="0.001" min="0" class="num"')}
+        ${field(lbl(`Salaire brut mensuel (${h(C.normCurrency(company().currency))})`, 'pay.gross'), 'grossSalary', e.grossSalary || 0, 'number', 'step="0.001" min="0" class="num"')}
         <label class="field">${lbl('Mode de paiement', 'pay.method')}<select name="method">${C.PAYMENT_METHODS.map(([v, l]) => `<option value="${v}" ${e.method === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
         <label class="check"><input type="checkbox" name="headOfFamily" ${e.headOfFamily ? 'checked' : ''}> Chef de famille ${info('pay.family')}</label>
         ${field(lbl('Enfants à charge', 'pay.children'), 'children', e.children || 0, 'number', 'step="1" min="0" max="10" class="num"')}
@@ -8844,7 +9091,7 @@
 
     modal(`<h2>Bulletin de ${h(emp.name)} — ${h(MONTHS_LONG[Number(p.month) - 1])} ${h(String(p.year))}</h2>
       <form id="bf" class="grid-2">
-        ${field(lbl('Salaire brut du mois', 'pay.gross'), 'gross', p.gross != null ? p.gross : emp.grossSalary, 'number', 'step="0.001" min="0" class="num"')}
+        ${field(lbl(`Salaire brut du mois (${h(C.normCurrency(company().currency))})`, 'pay.gross'), 'gross', p.gross != null ? p.gross : emp.grossSalary, 'number', 'step="0.001" min="0" class="num"')}
         ${p.prorata ? `<p class="small muted span-2" id="bf-prorata">Brut proratisé — ${h(p.prorata.motif)} : ${pl(p.prorata.jours, 'jour')} sur ${pct(p.prorata.sur)}, pour un brut de ${C.money(p.prorata.brutFiche, cur)} sur la fiche. <em>À VÉRIFIER avec ton comptable.</em></p>` : ''}
         ${field(lbl('Jours ouvrables', 'pay.workedDays'), 'workedDays', p.workedDays || 26, 'number', 'step="0.5" min="1" max="31" class="num"')}
         ${field(lbl('Jours d\'absence non payés', 'pay.absent'), 'absentDays', p.absentDays || 0, 'number', 'step="0.5" min="0" class="num"')}
@@ -8853,9 +9100,9 @@
         <label class="field">${lbl('Mode', 'pay.slipMethod')}<select name="method">${C.PAYMENT_METHODS.map(([v, l]) => `<option value="${v}" ${p.method === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
       </form>
       <div class="split">
-        <div class="panel"><h2>Primes et indemnités ${info('pay.bonus')}</h2><div id="bf-bon"></div>
+        <div class="panel"><h2>Primes et indemnités (${h(C.normCurrency(company().currency))}) ${info('pay.bonus')}</h2><div id="bf-bon"></div>
           <button type="button" class="btn btn-sm mt" id="add-bon">+ Prime</button></div>
-        <div class="panel"><h2>Retenues ${info('pay.deduction')}</h2><div id="bf-ded"></div>
+        <div class="panel"><h2>Retenues (${h(C.normCurrency(company().currency))}) ${info('pay.deduction')}</h2><div id="bf-ded"></div>
           <button type="button" class="btn btn-sm mt" id="add-ded">+ Retenue</button></div>
       </div>
       <div class="panel"><h2>Ce que ça donne</h2><div id="bf-calc"></div></div>
@@ -8873,7 +9120,7 @@
           $(sel, root).innerHTML = list.length ? `<table class="lines-edit"><tbody>
             ${list.map((x, i) => `<tr data-i="${i}">
               <td><input type="text" data-f="label" value="${h(x.label || '')}" placeholder="${kind === 'bon' ? 'Prime de rendement' : 'Avance sur salaire'}"></td>
-              <td style="width:110px"><input type="number" class="num" data-f="amount" value="${x.amount || 0}" step="0.001"></td>
+              <td style="width:110px"><input type="number" class="num" data-f="amount" value="${x.amount || 0}" step="0.001" aria-label="Montant (${h(C.normCurrency(company().currency))})"></td>
               ${kind === 'bon' ? `<td style="width:110px"><label class="check small"><input type="checkbox" data-f="taxable" ${x.taxable !== false ? 'checked' : ''}> imposable</label></td>` : ''}
               <td class="line-tools"><button type="button" class="btn btn-ghost btn-sm" data-x="${i}">✕</button></td></tr>`).join('')}
           </tbody></table>` : `<p class="small muted">${kind === 'bon' ? 'Aucune prime ce mois-ci.' : 'Aucune retenue ce mois-ci.'}</p>`;
@@ -9040,8 +9287,8 @@
              et une demi-ligne vide à côté de la retenue. Les deux montants sont obligatoires : ils
              le disent avant qu'on appuie sur Enregistrer (7.20.0). */''}
         ${dateFieldHtml(lbl('Date de l\'avance', 'hr.advanceDate'), 'date', a.date, {})}
-        ${field(lbl('Montant avancé', 'hr.advanceAmount'), 'amount', a.amount || '', 'number', 'step="0.001" min="0" class="num" placeholder="Ce que tu lui prêtes"').replace('class="field"', 'class="field obligatoire"')}
-        ${field(lbl('Retenue mensuelle', 'hr.monthly'), 'monthly', a.monthly || '', 'number', 'step="0.001" min="0" class="num" placeholder="Retenue sur chaque bulletin"').replace('class="field"', 'class="field obligatoire"')}
+        ${field(lbl(`Montant avancé (${h(C.normCurrency(company().currency))})`, 'hr.advanceAmount'), 'amount', a.amount || '', 'number', 'step="0.001" min="0" class="num" placeholder="Ce que tu lui prêtes"').replace('class="field"', 'class="field obligatoire"')}
+        ${field(lbl(`Retenue mensuelle (${h(C.normCurrency(company().currency))})`, 'hr.monthly'), 'monthly', a.monthly || '', 'number', 'step="0.001" min="0" class="num" placeholder="Retenue sur chaque bulletin"').replace('class="field"', 'class="field obligatoire"')}
         <label class="field">${lbl('Mode', 'hr.advanceMethod')}<select name="method">${C.PAYMENT_METHODS.map(m => `<option value="${m[0]}" ${(a.method || 'virement') === m[0] ? 'selected' : ''}>${m[1]}</option>`).join('')}</select></label>
         ${accountFieldHtml(a.accountId)}
         <label class="field">${lbl('Note', 'hr.advanceNote')}<input type="text" name="note" value="${h(a.note || '')}" placeholder="Pourquoi, et ce qui a été convenu"></label>
@@ -9108,7 +9355,7 @@
         <label class="check" style="align-self:end"><input type="checkbox" name="withSalary"> Mentionner le salaire ${info('hr.withSalary')}</label>
       </form>
       <p class="small muted" id="hf-desc"></p>
-      <div class="panel" id="hf-solde" hidden><h2>Solde de tout compte</h2>
+      <div class="panel" id="hf-solde" hidden><h2>Solde de tout compte (${h(C.normCurrency(company().currency))})</h2>
         <p class="small muted mb">Ce que tu dois encore au salarié à son départ. Les montants sont à toi : SkanFact propose seulement l'indemnité de congés non pris, calculée sur son dernier salaire. <em>À VÉRIFIER : les indemnités dépendent du motif de la rupture et de la convention collective.</em></p>
         <div id="hf-lines"></div>
         ${/* 10.12.0 — un salarié qui a pris ses congés d'avance voyait « congés non pris (0 jour) » :
@@ -9123,7 +9370,7 @@
           $('#hf-lines', root).innerHTML = `<table class="lines-edit"><tbody>
             ${lines.map((l, i) => `<tr data-i="${i}">
               <td><input type="text" data-f="label" value="${h(l.label)}"></td>
-              <td style="width:130px"><input type="number" class="num" data-f="amount" value="${l.amount}" step="0.001"></td>
+              <td style="width:130px"><input type="number" class="num" data-f="amount" value="${l.amount}" step="0.001" aria-label="Montant (${h(C.normCurrency(company().currency))})"></td>
               <td class="line-tools"><button type="button" class="btn btn-ghost btn-sm" data-x="${i}">✕</button></td></tr>`).join('')}
           </tbody></table>
           <div class="inline mt"><button type="button" class="btn btn-sm" id="hf-add">+ Ligne</button>
@@ -9180,7 +9427,9 @@
     // choisi : figé sur le mois précédent, un premier salarié embauché ce mois-ci n'avait nulle part
     // où recevoir son bulletin (10.12.0).
     if (!s.moisTouche) { const mp = C.moisDePaie(data); s.year = String(mp.year); s.month = String(mp.month); }
-    const years = Array.from(new Set(data.payslips.map(p => String(p.year)).concat([C.today().slice(0, 4)]))).sort().reverse();
+    // Chaque année où un salarié était en poste, pas seulement celles qui portent déjà un bulletin :
+    // sinon les bulletins en retard d'une année passée n'avaient aucune porte (10.14.1).
+    const years = C.anneesDePaie(data);
     if (!years.includes(s.year)) s.year = years[0];
 
     // L'en-tête suit l'onglet ouvert. Il était écrit UNE fois, hors du redessin : sur « Congés »,
@@ -9265,7 +9514,9 @@
             // (rapport QA) : sans salarié en poste ce mois-là, il n'y a rien à établir — et c'est CE
             // qu'il faut dire, pas deux phrases vraies qui se contredisent à l'œil.
             : `<div class="empty" id="p-vide">${missing.length
-              ? `Aucun bulletin pour ${h(MONTHS_LONG[m - 1])} ${h(s.year)}. Le bouton ci-dessus les établit d'un coup, au brut de chaque fiche.`
+              ? `Aucun bulletin pour ${h(MONTHS_LONG[m - 1])} ${h(s.year)}. ${missing.length > 1
+                ? 'Le bouton ci-dessus les établit d\'un coup, au brut de chaque fiche.'
+                : 'Le bouton ci-dessus l\'établit, au brut de la fiche du salarié.'}`
               : `Aucun salarié en poste en ${h(MONTHS_LONG[m - 1])} ${h(s.year)} : il n'y a pas de bulletin à établir ce mois-là.${ailleurs
                 ? `<div class="mt"><button class="btn btn-primary" id="p-vers-mois">Voir ${h(MONTHS_LONG[ailleurs.month - 1])} ${ailleurs.year}</button></div>` : ''}`}</div>`}
         </div>`;
@@ -9641,7 +9892,7 @@
       // écrire « Proposé : — » à côté d'un champ serait un bruit permanent pour quatorze métiers
       // sur quinze. Aujourd'hui aucun n'en porte, tant que le comptable n'a pas tranché.
       const tfpPropose = C.tfpSuggere(company().activity);
-      const num = (k, lab, key) => `<label class="field">${lbl(lab, key)}<input type="number" name="${k}" value="${st[k]}" step="0.01" min="0" class="num"></label>`;
+      const num = (k, lab, key, montant) => `<label class="field">${lbl(lab, key)}<input type="number" name="${k}" value="${st[k]}" step="0.01" min="0" class="num${montant ? ' montant' : ''}"></label>`;
       // Un montant porte son unité à côté de son libellé (9.4.8) : « Plafond annuel des frais : 2000 »
       // ne disait ni dinars ni par an, et « Déduction chef de famille (par an) » pas davantage.
       $('#p-body').innerHTML = `
@@ -9664,9 +9915,9 @@
             <div class="grid-3">
               ${num('solidarity', 'Contribution de solidarité (%)', 'pay.solidarity')}
               ${num('proRate', 'Frais professionnels (%)', 'pay.pro')}
-              ${num('proCap', `Plafond annuel des frais (${h(cur)})`, 'pay.proCap')}
-              ${num('headOfFamily', `Déduction chef de famille (${h(cur)} par an)`, 'pay.family')}
-              ${num('perChild', `Déduction par enfant (${h(cur)} par an)`, 'pay.children')}
+              ${num('proCap', `Plafond annuel des frais (${h(cur)})`, 'pay.proCap', true)}
+              ${num('headOfFamily', `Déduction chef de famille (${h(cur)} par an)`, 'pay.family', true)}
+              ${num('perChild', `Déduction par enfant (${h(cur)} par an)`, 'pay.children', true)}
               ${num('maxChildren', 'Nombre maximum d\'enfants comptés', 'pay.children')}
             </div>
           </div>
@@ -9702,7 +9953,7 @@
       // l'exemple — le remède de la 7.17.0 (le solde de tout compte), un écran plus loin.
       const drawRows = () => {
         $('#rf-br').innerHTML = brackets.map((b, i) => `<tr data-i="${i}"><td class="nw r" data-de="${i}"></td>
-            <td class="r">${b.upTo == null ? '<span class="muted">au-delà</span>' : `<input type="number" class="num" data-b="upTo" value="${b.upTo}" step="100" style="width:130px" aria-label="Tranche ${i + 1} : jusqu'à">`}</td>
+            <td class="r">${b.upTo == null ? '<span class="muted">au-delà</span>' : `<input type="number" class="num montant" data-b="upTo" value="${b.upTo}" step="100" style="width:130px" aria-label="Tranche ${i + 1} : jusqu'à">`}</td>
             <td class="r"><input type="number" class="num" data-b="rate" value="${b.rate}" step="0.5" min="0" max="100" style="width:90px" aria-label="Tranche ${i + 1} : taux"> %</td>
             <td class="r">${brackets.length > 1 ? `<button type="button" class="btn btn-ghost btn-sm" data-brm="${i}" title="Retirer cette tranche" aria-label="Retirer la tranche ${i + 1}">✕</button>` : ''}</td></tr>`).join('');
         $$('[data-brm]', $('#rf-br')).forEach(b => b.onclick = () => { brackets.splice(Number(b.dataset.brm), 1); marquer(); drawRows(); });
@@ -9932,7 +10183,7 @@
         </div>
         <label class="field">${lbl('Nature', 'stk.moveKind')}<select name="source">${C.MOVE_SOURCES.filter(([k]) => ['casse', 'consommation', 'inventaire', 'ajustement'].includes(k)).map(([v, l]) => `<option value="${v}" ${a.source === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
         ${field(`<span class="fl"><span id="adj-qlbl">Quantité sortie</span> ${info('stk.adjustQty')}</span>`, 'qty', '', 'number', 'step="0.01" class="num" placeholder="ex. 10"')}
-        ${field(lbl('Coût unitaire (optionnel)', 'stk.adjustCost'), 'unitCost', '', 'number', 'step="0.001" min="0" class="num" placeholder="laisse vide : coût moyen"')}
+        ${field(lbl(`Coût unitaire (${h(C.normCurrency(company().currency))}, optionnel)`, 'stk.adjustCost'), 'unitCost', '', 'number', 'step="0.001" min="0" class="num" placeholder="laisse vide : coût moyen"')}
         ${field(lbl('Référence', 'stk.adjustRef'), 'reference', '', 'text', '')}
         <label class="field span-2">${lbl('Note', 'stk.adjustNote')}<input type="text" name="note" placeholder="Ce qui s'est passé, en une phrase"></label>
         <div class="span-2 annonce-stable" id="adj-hint"></div>
@@ -10417,7 +10668,7 @@
         ${field(lbl('Numéro de la facture', 'buy.number'), 'number', head.number, 'text', '')}
         ${dateFieldHtml(lbl('Date', 'buy.date'), 'date', head.date, {})}
         ${dateFieldHtml(lbl('Échéance', 'buy.due'), 'dueDate', head.dueDate, { clearable: true })}
-        ${field(lbl('Timbre et frais', 'buy.fees'), 'fees', head.fees, 'number', 'step="0.001" min="0" class="num"')}
+        ${field(lbl(`Timbre et frais (${h(C.normCurrency(company().currency))})`, 'buy.fees'), 'fees', head.fees, 'number', 'step="0.001" min="0" class="num"')}
         <label class="field span-2">${lbl('Objet', 'buy.subject')}<input type="text" name="subject" value="${h(head.subject)}"></label>
         <div class="field span-2">${lbl('Catégorie de charge', 'buy.category')}
           ${combo({ name: 'category', value: '', items: C.expenseCategories(data).map(c => ({ v: c, label: c })), placeholder: '— À choisir —', search: 'Rechercher une catégorie…' })}
@@ -10729,9 +10980,9 @@
         <label class="field span-2 obligatoire">${lbl('Désignation', 'immo.label')}<input type="text" name="label" value="${h(a.label)}" placeholder="Le bien, tel que tu l'appelles"></label>
         <label class="field obligatoire">${lbl('Famille', 'immo.class')}<select name="category"><option value="" ${a.category ? '' : 'selected'}>— Choisis la famille —</option>${C.DEFAULT_ASSET_CLASSES.map(([v, l]) => `<option value="${v}" ${a.category === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
         ${dateFieldHtml(lbl('Mise en service', 'immo.date'), 'date', a.date, {})}
-        ${field(lbl('Valeur d\'acquisition HT', 'immo.amount'), 'amount', a.amount || 0, 'number', 'step="0.001" min="0" class="num"').replace('class="field"', 'class="field obligatoire"')}
+        ${field(lbl(`Valeur d'acquisition HT (${h(C.normCurrency(company().currency))})`, 'immo.amount'), 'amount', a.amount || 0, 'number', 'step="0.001" min="0" class="num"').replace('class="field"', 'class="field obligatoire"')}
         ${field(lbl('Durée (années)', 'immo.years'), 'years', a.years || '', 'number', 'step="1" min="1" max="50" class="num"').replace('class="field"', 'class="field obligatoire"')}
-        ${field(lbl('Valeur résiduelle', 'immo.residual'), 'residual', a.residual || 0, 'number', 'step="0.001" min="0" class="num"')}
+        ${field(lbl(`Valeur résiduelle (${h(C.normCurrency(company().currency))})`, 'immo.residual'), 'residual', a.residual || 0, 'number', 'step="0.001" min="0" class="num"')}
         <div class="field">${lbl('Fournisseur', 'immo.supplier')}
           ${combo({ name: 'supplierId', value: a.supplierId || '', items: supItems(), placeholder: '— Aucun —', search: 'Rechercher un fournisseur…' })}
         </div>
@@ -10833,7 +11084,7 @@
       <p class="small muted">Vendu, mis au rebut ou volé : le bien quitte l'actif. On amortit jusqu'au jour de la sortie, puis on compare le prix obtenu à ce qu'il valait encore dans les comptes.</p>
       <form id="dsf" class="grid-2">
         ${dateFieldHtml(lbl('Date de sortie', 'immo.disposal'), 'date', d.date, {})}
-        ${field(lbl('Prix de cession HT', 'immo.disposalPrice'), 'amount', asset.disposal ? (d.amount || 0) : '', 'number', 'step="0.001" min="0" class="num" placeholder="0 si mis au rebut ou volé"')}
+        ${field(lbl(`Prix de cession HT (${h(C.normCurrency(company().currency))})`, 'immo.disposalPrice'), 'amount', asset.disposal ? (d.amount || 0) : '', 'number', 'step="0.001" min="0" class="num" placeholder="0 si mis au rebut ou volé"')}
         <label class="field span-2">${lbl('Motif', 'immo.disposalReason')}<input type="text" name="reason" value="${h(d.reason || '')}" placeholder="Revendu, mis au rebut, volé…"></label>
         <div class="span-2 annonce-stable" id="dsf-hint"></div>
       </form>
@@ -10908,9 +11159,48 @@
         + (sortis ? ` · ${pl(sortis, 'sorti', 'sortis')} en ${annee}` : '');
     }
 
+    // 10.14.1 — ce que le bilan du 31/12 porte au compte 22 sans que ce tableau le montre, et
+    // l'inverse (`C.immosHorsTableau`). Regardée un 1er janvier, la page disait 52 500 DT
+    // d'immobilisations et le bilan 53 950, sans un mot : l'imprimante de décembre n'avait pas de
+    // fiche. On le dit AU-DESSUS du tableau, avec le geste qui le règle.
+    function horsTableauHtml(hors, annee) {
+      const ferme = (licence.reserves || []).includes('immos');
+      const liste = rows => rows.map(r => `« ${h(r.label || 'sans désignation')} » (${C.money(r.amount, cur)})`).join(', ');
+      const out = [];
+      if (hors.sansFiche.length) {
+        const n = hors.sansFiche.length, un = n === 1;
+        out.push(`<div class="warn-box mb" id="im-sans-fiche"><b>${un ? `« ${h(hors.sansFiche[0].label || 'Une ligne d\'achat')} » n'a pas de fiche` : `${n} lignes d'achat marquées « immobilisation » n'ont pas de fiche`}</b> :
+          ${C.money(C.round3(hors.sansFiche.reduce((t, w) => t + w.amount, 0)), cur)} ${un ? 'est' : 'sont'} ${`${annee}-12-31` < C.today() ? `au bilan du 31/12/${h(annee)} (compte 22)` : `au bilan (compte 22) depuis ${un ? 'son' : 'leur'} achat`}, et ${un ? 'son' : 'leur'} amortissement n'est compté nulle part.
+          ${ferme ? `Ton comptable ${un ? 'la' : 'les'} voit dans les écritures du paquet et établit le plan : tu n'as rien à faire.`
+            : `<div class="mt"><button class="btn btn-sm btn-primary" id="im-creer-fiche">${un ? 'Créer la fiche du bien…' : `Voir les ${n} lignes à immobiliser`}</button></div>`}</div>`);
+      }
+      if (hors.pasEnService.length) {
+        const un = hors.pasEnService.length === 1;
+        out.push(`<p class="small muted mb" id="im-pas-en-service">Au bilan du 31/12/${h(annee)} sans être dans ce tableau : ${liste(hors.pasEnService)}, acheté${un ? '' : 's'} en ${h(annee)} et mis en service plus tard. L'amortissement commence à la mise en service.</p>`);
+      }
+      if (hors.avantFacture.length) {
+        const un = hors.avantFacture.length === 1;
+        out.push(`<p class="small muted mb" id="im-avant-facture">Dans ce tableau sans être encore au bilan du 31/12/${h(annee)} : ${liste(hors.avantFacture)}, mis en service avant ${un ? 'sa facture' : 'leur facture'}. Le compte 22 ${un ? 'le' : 'les'} reçoit avec la facture d'achat.</p>`);
+      }
+      return out.join('');
+    }
+    function brancherHorsTableau(hors) {
+      const b = $('#im-creer-fiche');
+      if (!b) return;
+      b.onclick = () => {
+        if (hors.sansFiche.length > 1) return $('#im-tabs button[data-tab=attente]').click();
+        const cible = hors.sansFiche[0];
+        // La fiche se propose au montant d'AUJOURD'HUI (un avoir postérieur au 31/12 l'a peut-être
+        // diminué) : c'est celui de la liste « à immobiliser ».
+        const w = waiting.find(x => x.purchaseId === cible.purchaseId && x.lineIndex === cible.lineIndex) || cible;
+        assetForm(null, () => render(), { label: w.label, amount: w.amount, date: w.date, supplierId: w.supplierId, purchaseId: w.purchaseId, lineIndex: w.lineIndex });
+      };
+    }
+
     function drawTable() {
       const y = Number(s.year);
       const t = C.assetTotals(data, y);
+      const hors = C.immosHorsTableau(data, y);
       // 10.12.0 — une entreprise sans AUCUN bien voyait quatre cartes à « 0,000 DT », un export sur
       // rien et une phrase sans bouton (7.0.0 : une liste vide dit à quoi elle sert et donne le geste
       // qui la remplit — ni filtres ni chiffres au-dessus du vide). Si des lignes d'achat attendent
@@ -10926,7 +11216,7 @@
         if ($('#immo-vers-attente')) $('#immo-vers-attente').onclick = () => $('#im-tabs button[data-tab=attente]').click();
         return;
       }
-      $('#im-body').innerHTML = `
+      $('#im-body').innerHTML = `${horsTableauHtml(hors, s.year)}
         <div class="stats">
           <div class="stat"><div class="lbl">Valeur d'acquisition ${info('immo.gross')}</div><div class="val">${C.money(t.grossActif, cur)}</div><div class="sub">${biensAuBilan(t, s.year)}</div></div>
           <div class="stat"><div class="lbl">Dotation ${s.year} ${info('immo.annuity')}</div><div class="val">${C.money(t.annuity, cur)}</div><div class="sub">la charge de l'exercice</div></div>
@@ -10960,6 +11250,7 @@
             : '<div class="empty">Aucune immobilisation pour cet exercice. Un bien qui reste dans l\'entreprise — ordinateur, véhicule, mobilier — se saisit ici, ou se crée depuis l\'onglet « À immobiliser » à partir d\'une ligne d\'achat.</div>'}
         </div>`;
       $$('#im-body tr[data-aid]').forEach(tr => tr.onclick = () => navigate('#/immo/' + tr.dataset.aid));
+      brancherHorsTableau(hors);
     }
 
     function drawWaiting() {
@@ -11026,7 +11317,11 @@
       // export suit ce qu'on regarde) ; et sans aucun bien, le vert est celui de l'état vide (U-11).
       $('#im-year').hidden = s.tab === 'attente' || years.length < 2;
       $('#im-csv').hidden = s.tab !== 'tableau' || !data.assets.length;
-      $('#new-imm').classList.toggle('btn-primary', !!data.assets.length && !(s.tab === 'attente' && waiting.length));
+      // Une ligne sans fiche dans l'exercice regardé : « Créer la fiche du bien… » est l'étape
+      // suivante, au-dessus du tableau — un seul vert (U-11).
+      const sansFicheAn = s.tab === 'tableau' && !(licence.reserves || []).includes('immos')
+        && C.immosEnAttente(data, `${s.year}-12-31`).length;
+      $('#new-imm').classList.toggle('btn-primary', !!data.assets.length && !(s.tab === 'attente' && waiting.length) && !sansFicheAn);
       if (s.tab === 'attente') return drawWaiting();
       if (s.tab === 'sorties') return drawDisposals();
       drawTable();
@@ -11139,7 +11434,7 @@
         <label class="field">${lbl('Type', 'tre.kind')}<select name="kind">${C.ACCOUNT_KINDS.map(([v, l]) => `<option value="${v}" ${a.kind === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
         ${field(lbl('Banque', 'tre.bank'), 'bank', a.bank || '')}
         ${ribField('RIB', a.rib)}
-        ${field(lbl('Solde de départ', 'tre.opening'), 'opening', a.opening || 0, 'number', 'step="0.001" class="num"')}
+        ${field(lbl(`Solde de départ (${h(C.normCurrency(company().currency))})`, 'tre.opening'), 'opening', a.opening || 0, 'number', 'step="0.001" class="num"')}
         ${dateFieldHtml(lbl('À la date du', 'tre.openingDate'), 'openingDate', a.openingDate || C.today(), {})}
         <label class="check span-2"><input type="checkbox" name="isDefault" ${a.isDefault ? 'checked' : ''}> Compte par défaut ${info('tre.default')}</label>
         <label class="field span-2">${lbl('Notes', 'tre.notes')}<input type="text" name="notes" value="${h(a.notes || '')}"></label>
@@ -11164,8 +11459,14 @@
           save(true); close(); if (done) done(a);
         };
         if ($('#del-acc', root)) $('#del-acc', root).onclick = async () => {
-          const n = C.cashMovements(data, company(), {}, a.id).length;
-          if (!await confirmDialog(`Supprimer « ${a.name} » ?${n ? ` ${pl(n, 'mouvement')} y ${n > 1 ? 'sont rattachés : ils basculeront' : 'est rattaché : il basculera'} sur le compte par défaut.` : ''}`)) return;
+          // Ce que la suppression fait, dit comme le moteur le fera (10.14.1) : un mouvement bascule
+          // sur le compte par défaut, mais un VIREMENT avec un autre compte reste sur cet autre compte
+          // — c'est ce que son relevé dit —, sa contrepartie passant au compte d'attente.
+          const lignes = C.cashMovements(data, company(), {}, a.id);
+          const vir = lignes.filter(x => x.virement).length, n = lignes.length - vir;
+          const phraseMv = n ? ` ${pl(n, 'mouvement')} y ${n > 1 ? 'sont rattachés : ils basculeront' : 'est rattaché : il basculera'} sur le compte par défaut.` : '';
+          const phraseVir = vir ? ` ${vir > 1 ? `${vir} virements avec tes autres comptes resteront sur ces comptes` : 'Un virement avec un autre de tes comptes restera sur cet autre compte'} : ${vir > 1 ? 'leur' : 'sa'} contrepartie passera au compte d'attente (471), où ton comptable la verra.` : '';
+          if (!await confirmDialog(`Supprimer « ${a.name} » ?${phraseMv}${phraseVir}`)) return;
           forget('accounts', a.id, a.name);
           data.accounts = data.accounts.filter(x => x.id !== a.id);
           if (data.accounts.length && !data.accounts.some(x => x.isDefault)) data.accounts[0].isDefault = true;
@@ -11185,7 +11486,7 @@
           // pas un geste qui sera refusé. Un virement déjà saisi garde sa nature, quoi qu'il arrive.
           .filter(([v]) => v !== 'virement' || data.accounts.length > 1 || m.kind === 'virement')
           .map(([v, l, s]) => `<option value="${v}" ${m.kind === v ? 'selected' : ''}>${v === 'virement' ? '⇄' : s > 0 ? '↑' : '↓'} ${l}</option>`).join('')}</select></label>
-        ${field(lbl('Montant', 'tre.moveAmount'), 'amount', Math.abs(m.amount) || 0, 'number', 'step="0.001" min="0" class="num"')}
+        ${field(lbl(`Montant (${h(C.normCurrency(company().currency))})`, 'tre.moveAmount'), 'amount', Math.abs(m.amount) || 0, 'number', 'step="0.001" min="0" class="num"')}
         <label class="field">${lbl('Compte', 'tre.moveAccount')}<select name="accountId">${data.accounts.map(a => `<option value="${a.id}" ${m.accountId === a.id ? 'selected' : ''}>${h(a.name)}</option>`).join('')}</select></label>
         <label class="field span-2">${lbl('Libellé', 'tre.moveLabel')}<input type="text" name="label" value="${h(m.label || '')}" placeholder="Salaires de septembre"></label>
         ${field(lbl('Référence', 'tre.moveRef'), 'reference', m.reference || '', 'text', 'placeholder="N° de chèque, référence du virement…"')}
@@ -11456,7 +11757,7 @@
             <div class="vat-line total"><span>Solde qui devrait figurer sur ton relevé</span><span class="num">${C.money(r.pointed, cur)}</span></div>
           </div>
           <div class="inline mt" style="flex-wrap:wrap">
-            <label class="field" style="max-width:220px">Solde réel de ton relevé<input type="number" id="stmt" step="0.001" value="${r.statement == null ? '' : r.statement}" class="num" placeholder="Recopie-le ici"></label>
+            <label class="field" style="max-width:220px">${lbl(`Solde réel de ton relevé (${h(C.normCurrency(company().currency))})`, 'tre.stmt')}<input type="number" id="stmt" step="0.001" value="${r.statement == null ? '' : r.statement}" class="num" placeholder="Recopie-le ici"></label>
             <span id="stmt-verdict">${verdictReleve(r.gap)}</span>
           </div>
         </div>
@@ -11645,10 +11946,10 @@
 
       $('#s-body').innerHTML = `
         <div class="stats">
-          ${statCard('Chiffre d\'affaires HT', C.money(cur1.ht, cur), cur1.ht, prev.ht, `${p.label} · avoirs déduits`, 'stat.ca')}
+          ${statCard('Chiffre d\'affaires HT', C.money(cur1.ht, cur), cur1.ht, prev.ht, `${p.label} · avoirs déduits`, 'stat.ca', x => C.money(x, cur))}
           ${statCard('Factures émises', String(cur1.invoices), cur1.invoices, prev.invoices, `${pl(cur1.count - cur1.invoices, 'avoir')} sur la période`, 'stat.count')}
-          ${statCard('Panier moyen HT', C.money(cur1.avgTicket, cur), cur1.avgTicket, prev.avgTicket, 'par facture émise', 'stat.avg')}
-          ${statCard('TVA collectée', C.money(cur1.vat, cur), cur1.vat, prev.vat, 'à reverser, avoirs déduits', 'stat.vat')}
+          ${statCard('Panier moyen HT', C.money(cur1.avgTicket, cur), cur1.avgTicket, prev.avgTicket, 'par facture émise', 'stat.avg', x => C.money(x, cur))}
+          ${statCard('TVA collectée', C.money(cur1.vat, cur), cur1.vat, prev.vat, 'à reverser, avoirs déduits', 'stat.vat', x => C.money(x, cur))}
         </div>
         ${obj ? `<div class="panel"><h2>Objectif ${p.year} ${info('stat.objectif')}</h2>
           <div class="gauge"><div class="g-bar"><i style="width:${Math.min(100, Math.max(0, obj.pct))}%"></i><span class="g-mark" style="inset-inline-start:${Math.min(100, obj.expectedPct)}%" title="Où tu devrais en être aujourd'hui"></span></div>
@@ -11720,7 +12021,7 @@
               <div><h3 class="sub-h">Les plus rapides</h3><ul class="rank plain">${payers.rapides.map(x => `<li><a class="name" href="#/client/${h(x.clientId)}">${h(x.name)}</a><span class="amt">${x.delay} j</span></li>`).join('')}</ul></div>
               <div><h3 class="sub-h">Les plus lents</h3><ul class="rank plain">${payers.lents.map(x => `<li><a class="name" href="#/client/${h(x.clientId)}">${h(x.name)}</a><span class="amt">${x.delay} j</span></li>`).join('')}</ul></div>
             </div>
-            <p class="small muted mt">Délai moyen entre la date de facture et le dernier paiement, sur les factures soldées. Ton délai annoncé est de ${pl(Number(company().paymentTermsDays) || 0, 'jour')}.</p>`
+            <p class="small muted mt">Délai moyen entre la date de facture et le dernier paiement, sur les factures soldées. ${C.delaiJours(company().paymentTermsDays, 30) ? `Ton délai annoncé est de ${pl(C.delaiJours(company().paymentTermsDays, 30), 'jour')}.` : 'Tes factures sont payables à réception.'}</p>`
             : '<div class="empty">Aucune facture soldée pour l\'instant : le classement apparaîtra au premier paiement.</div>'}
           </div>
         </div>`;
@@ -11744,11 +12045,13 @@
   };
 
   // Carte de statistique avec comparaison à la même période de l'an dernier.
-  function statCard(label, value, now, before, sub, key) {
+  // `fmt` écrit le chiffre de l'an dernier comme celui de la carte (10.14.1, M-04) : la bulle
+  // disait « 66572.5 » sous « 66 572,500 DT ».
+  function statCard(label, value, now, before, sub, key, fmt) {
     const delta = before ? Math.round((now - before) / Math.abs(before) * 100) : null;
     const cls = delta == null ? '' : delta > 0 ? 'up' : delta < 0 ? 'down' : '';
     const tip = delta == null ? 'Rien à comparer sur la même période l\'an dernier'
-      : `Même période l'an dernier : ${before}`;
+      : `Même période l'an dernier : ${fmt ? fmt(before) : before}`;
     return `<div class="stat"><div class="lbl">${label} ${info(key)}</div>
       <div class="val"><span>${value}</span>${delta == null ? '' : `<span class="delta ${cls}" title="${h(tip)}">${delta > 0 ? '▲' : delta < 0 ? '▼' : '='} ${Math.abs(delta)} %</span>`}</div>
       <div class="sub">${sub}</div></div>`;
@@ -11782,7 +12085,7 @@
   function askGoal(after) {
     modal(`<h2>Objectif de chiffre d'affaires</h2>
       <p class="small muted">Le montant HT que tu veux facturer sur une année entière. Tu peux le changer quand tu veux dans Paramètres → Documents.</p>
-      <form id="gf"><label class="field">${lbl(`Objectif annuel HT (${C.normCurrency(company().currency)})`, 'stat.target')}<input type="number" name="target" min="0" step="1" class="num" value="${Number(company().revenueTarget) || ''}" placeholder="aucun objectif"></label></form>
+      <form id="gf"><label class="field">${lbl(`Objectif annuel HT (${C.normCurrency(company().currency)})`, 'stat.target')}<input type="number" name="target" min="0" step="1" class="num montant" value="${Number(company().revenueTarget) || ''}" placeholder="aucun objectif"></label></form>
       <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
       (root, close) => { $('#ok', root).onclick = () => {
         const v = formValues($('#gf', root));
@@ -11893,11 +12196,11 @@
         { key: 'date', label: 'Date', asc: true, val: r => r.date || '', get: r => C.fmtDate(r.date) },
         { key: 'number', label: 'Numéro', asc: true, val: r => r.number || '', get: r => `<strong>${h(r.number)}</strong>${r.type === 'avoir' ? `<div class="small muted">avoir · ${h(r.creditOfNumber)}</div>` : ''}` },
         { key: 'client', label: 'Client', asc: true, val: r => (r.client || '').toLowerCase(), get: r => `${h(r.client)}<div class="small muted">${h(r.subject)}</div>` },
-        { key: 'ht', label: 'HT', r: true, val: r => r.ht, get: r => C.money(r.ht) },
-        { key: 'tva', label: 'TVA', r: true, val: r => r.tva, get: r => C.money(r.tva) },
-        { key: 'ttc', label: 'TTC', r: true, val: r => r.ttc, get: r => C.money(r.ttc) },
-        { key: 'rs', label: 'RS', r: true, val: r => r.rs, get: r => r.rs ? C.money(r.rs) : '—' },
-        { key: 'net', label: 'Net', r: true, val: r => r.net, get: r => C.money(r.net) },
+        { key: 'ht', label: 'HT', r: true, val: r => r.ht, get: r => montantCompta(r.ht) },
+        { key: 'tva', label: 'TVA', r: true, val: r => r.tva, get: r => montantCompta(r.tva) },
+        { key: 'ttc', label: 'TTC', r: true, val: r => r.ttc, get: r => montantCompta(r.ttc) },
+        { key: 'rs', label: 'RS', r: true, val: r => r.rs, get: r => r.rs ? montantCompta(r.rs) : '—' },
+        { key: 'net', label: 'Net', r: true, val: r => r.net, get: r => montantCompta(r.net) },
         { key: 'status', label: 'Statut', asc: true, val: r => r.status || '', get: r => badge(r.status) }
       ];
       const payCols = [
@@ -12041,12 +12344,12 @@
         { key: 'number', label: 'N° fournisseur', asc: true, cls: 'nw', val: r => (r.number || '').toLowerCase(), get: r => r.number ? `<strong>${h(r.number)}</strong>` : '<span class="muted">sans numéro</span>' },
         { key: 'supplier', label: 'Fournisseur', asc: true, val: r => r.supplier.toLowerCase(), get: r => `${h(r.supplier)}${r.subject ? `<div class="small muted">${h(r.subject)}</div>` : ''}` },
         { key: 'category', label: 'Catégorie', asc: true, val: r => (r.category || '').toLowerCase(), get: r => `${h(r.category || '—')}${r.kind === 'Dépense' ? '<div class="small muted">dépense</div>' : ''}` },
-        { key: 'ht', label: 'HT', r: true, val: r => r.ht, get: r => C.money(r.ht) },
-        { key: 'tva', label: 'TVA', r: true, val: r => r.tva, get: r => C.money(r.tva) },
-        { key: 'deductible', label: 'dont déductible', r: true, val: r => r.deductible, get: r => r.deductible === r.tva ? C.money(r.deductible) : r.deductibleAcompte ? `<strong title="${h(`Déjà déduite avec l'acompte : ${C.money(r.deductibleAcompte)}`)}">${C.money(r.deductible)}</strong><span class="muted small"> acompte déduit</span>` : `<strong>${C.money(r.deductible)}</strong>` },
+        { key: 'ht', label: 'HT', r: true, val: r => r.ht, get: r => montantCompta(r.ht) },
+        { key: 'tva', label: 'TVA', r: true, val: r => r.tva, get: r => montantCompta(r.tva) },
+        { key: 'deductible', label: 'dont déductible', r: true, val: r => r.deductible, get: r => r.deductible === r.tva ? montantCompta(r.deductible) : r.deductibleAcompte ? `<strong title="${h(`Déjà déduite avec l'acompte : ${montantCompta(r.deductibleAcompte)}`)}">${montantCompta(r.deductible)}</strong><span class="muted small"> acompte déduit</span>` : `<strong>${montantCompta(r.deductible)}</strong>` },
         // « Net à payer » : une pièce pas encore réglée figure aussi dans ce journal — « payé » disait
         // le contraire de son statut, affiché une colonne plus loin (10.14.0).
-        { key: 'net', label: 'Net à payer', r: true, val: r => r.net, get: r => C.money(r.net) },
+        { key: 'net', label: 'Net à payer', r: true, val: r => r.net, get: r => montantCompta(r.net) },
         { key: 'status', label: 'Statut', val: r => r.status, get: r => buyBadge(r.status) }
       ];
       // 10.0.1 — Les règlements fournisseurs partaient dans le paquet du comptable
@@ -12097,8 +12400,8 @@
           <div class="inline mb"><button class="btn" id="exp-buys">Exporter en CSV</button></div>
           ${rows.length ? `<div class="scroll-x" id="b-wrap"><table class="list compact sortable"><thead>${sortHead(cols, comptaState.buys.sort)}</thead><tbody>
             ${pg.rows.map(r => `<tr class="clickable" data-bid="${r.id}">${cols.map(c => `<td class="${c.r ? 'r nw' : ''}${c.cls ? ' ' + c.cls : ''}">${c.get(r)}</td>`).join('')}</tr>`).join('')}
-          </tbody><tfoot><tr><td colspan="4"><strong>Total</strong></td><td class="r"><strong>${C.money(sum.ht)}</strong></td><td class="r"><strong>${C.money(sum.tva)}</strong></td>
-            <td class="r"><strong>${C.money(sum.deductible)}</strong></td><td class="r"><strong>${C.money(sum.net)}</strong></td><td></td></tr></tfoot></table></div>${pagerBar(pg.pg, { noun: 'pièce' })}`
+          </tbody><tfoot><tr><td colspan="4"><strong>Total</strong></td><td class="r"><strong>${montantCompta(sum.ht)}</strong></td><td class="r"><strong>${montantCompta(sum.tva)}</strong></td>
+            <td class="r"><strong>${montantCompta(sum.deductible)}</strong></td><td class="r"><strong>${montantCompta(sum.net)}</strong></td><td></td></tr></tfoot></table></div>${pagerBar(pg.pg, { noun: 'pièce' })}`
             : '<div class="empty">Aucun achat sur cette période.</div>'}
         </div>
         <div class="panel"><h2>Règlements fournisseurs — ${h(label)} ${info('compta.decaissements')}</h2>
@@ -12190,13 +12493,13 @@
         ${chain.some(m => m.collected || m.deductible || m.carryIn) ? `
         <div class="panel"><h2>Mois par mois — ${year} ${info('compta.vatMonths')}</h2>
           <table class="list compact"><thead><tr><th>Mois</th><th class="r">Collectée</th><th class="r">Déductible</th><th class="r">Crédit repris</th><th class="r">À payer</th><th class="r">Crédit reporté</th></tr></thead><tbody>
-            ${chain.map((m, i) => `<tr class="clickable ${m.toPay ? '' : 'row-ok'}" data-vm="${String(i + 1).padStart(2, '0')}" title="Voir la déclaration de ${h(m.label)}"><td>${h(m.label)}</td><td class="r nw">${C.money(m.collected)}</td><td class="r nw">${C.money(m.deductible)}</td>
-              <td class="r nw">${m.carryIn ? C.money(m.carryIn) : '<span class="muted">—</span>'}</td>
-              <td class="r nw">${m.toPay ? `<strong>${C.money(m.toPay)}</strong>` : '<span class="muted">—</span>'}</td>
-              <td class="r nw">${m.carryOut ? C.money(m.carryOut) : '<span class="muted">—</span>'}</td></tr>`).join('')}
-            <tr class="total-row"><td><strong>Total à reverser</strong></td><td class="r">${C.money(chain.reduce((s, m) => s + m.collected, 0))}</td>
-              <td class="r">${C.money(chain.reduce((s, m) => s + m.deductible, 0))}</td><td></td>
-              <td class="r"><strong>${C.money(chain.reduce((s, m) => s + m.toPay, 0))}</strong></td><td></td></tr>
+            ${chain.map((m, i) => `<tr class="clickable ${m.toPay ? '' : 'row-ok'}" data-vm="${String(i + 1).padStart(2, '0')}" title="Voir la déclaration de ${h(m.label)}"><td>${h(m.label)}</td><td class="r nw">${montantCompta(m.collected)}</td><td class="r nw">${montantCompta(m.deductible)}</td>
+              <td class="r nw">${m.carryIn ? montantCompta(m.carryIn) : '<span class="muted">—</span>'}</td>
+              <td class="r nw">${m.toPay ? `<strong>${montantCompta(m.toPay)}</strong>` : '<span class="muted">—</span>'}</td>
+              <td class="r nw">${m.carryOut ? montantCompta(m.carryOut) : '<span class="muted">—</span>'}</td></tr>`).join('')}
+            <tr class="total-row"><td><strong>Total à reverser</strong></td><td class="r">${montantCompta(chain.reduce((s, m) => s + m.collected, 0))}</td>
+              <td class="r">${montantCompta(chain.reduce((s, m) => s + m.deductible, 0))}</td><td></td>
+              <td class="r"><strong>${montantCompta(chain.reduce((s, m) => s + m.toPay, 0))}</strong></td><td></td></tr>
           </tbody></table>
           <p class="small muted mt">Le crédit d'un mois vient en déduction du suivant : c'est pour ça que le total ne se lit pas ligne par ligne. <em>Ces chiffres sont l'arithmétique exacte de tes données, pas une déclaration officielle : à faire valider par ton comptable avant tout dépôt.</em></p>
         </div>
@@ -12235,7 +12538,7 @@
         String(carryIn || ''), v => {
           data.vatCarryIn = { ...(data.vatCarryIn || {}), [year]: Math.max(0, Number(String(v).replace(',', '.')) || 0) };
           save(true); draw(); toast('Crédit de TVA enregistré');
-        }, 'number', { champ: `Crédit de TVA de ${Number(year) - 1}`, unite: cur, ok: 'Enregistrer le crédit' });
+        }, 'number', { champ: `Crédit de TVA de ${Number(year) - 1}`, unite: cur, ok: 'Enregistrer le crédit', montant: true });
     }
 
     // ---------- onglet Calendrier fiscal ----------
@@ -12294,9 +12597,9 @@
 
         <div class="panel" id="ecr-ods"><h2>Opérations diverses saisies à la main ${info('ecr.od')}</h2>
           ${ods.length ? `<div class="scroll-x"><table class="list compact"><thead><tr><th>Date</th><th>Pièce</th><th>Libellé</th><th class="r">Montant</th><th>Comptes</th><th></th></tr></thead><tbody>
-            ${ods.map(o => { const v = C.odValide(o); return `<tr data-od="${h(o.id)}">
+            ${ods.map(o => { const v = C.odValide(o, company()); return `<tr data-od="${h(o.id)}">
               <td class="nw">${C.fmtDate(o.date)}</td><td class="nw"><strong>${h(o.piece)}</strong></td><td>${h(o.label)}</td>
-              <td class="r nw">${C.money(v.debit)}</td>
+              <td class="r nw">${montantCompta(v.debit)}</td>
               <td class="small muted">${h((o.lignes || []).map(l => l.compte).join(', '))}</td>
               ${rowMenuCell(o.id)}</tr>`; }).join('')}
           </tbody></table></div>`
@@ -12305,8 +12608,8 @@
 
         <div class="panel"><h2>Journal centralisateur — exercice ${h(exo)} ${info('ecr.central')}</h2>
           ${central.pieces ? `<div class="scroll-x"><table class="list compact" id="ecr-central"><thead><tr><th>Mois</th>${central.journaux.map(j => `<th class="r" colspan="2" title="${h(j.label)}">${h(j.code)} <span class="muted small">D / C</span></th>`).join('')}<th class="r">Débit</th><th class="r">Crédit</th><th class="r">Pièces</th></tr></thead><tbody>
-            ${central.mois.map(m => `<tr class="${m.pieces ? '' : 'muted'}"><td class="nw">${h(m.label)}</td>${central.journaux.map(j => `<td class="r nw">${m.par[j.code].debit ? C.money(m.par[j.code].debit) : '—'}</td><td class="r nw">${m.par[j.code].credit ? C.money(m.par[j.code].credit) : '—'}</td>`).join('')}<td class="r nw">${m.debit ? C.money(m.debit) : '—'}</td><td class="r nw">${m.credit ? C.money(m.credit) : '—'}</td><td class="r">${m.pieces || '—'}</td></tr>`).join('')}
-          </tbody><tfoot><tr class="total-row"><td>Total</td>${central.journaux.map(j => `<td class="r nw"><strong>${C.money(central.totaux[j.code].debit)}</strong></td><td class="r nw"><strong>${C.money(central.totaux[j.code].credit)}</strong></td>`).join('')}<td class="r nw"><strong>${C.money(central.debit)}</strong></td><td class="r nw"><strong>${C.money(central.credit)}</strong></td><td class="r"><strong>${central.pieces}</strong></td></tr></tfoot></table></div>
+            ${central.mois.map(m => `<tr class="${m.pieces ? '' : 'muted'}"><td class="nw">${h(m.label)}</td>${central.journaux.map(j => `<td class="r nw">${m.par[j.code].debit ? montantCompta(m.par[j.code].debit) : '—'}</td><td class="r nw">${m.par[j.code].credit ? montantCompta(m.par[j.code].credit) : '—'}</td>`).join('')}<td class="r nw">${m.debit ? montantCompta(m.debit) : '—'}</td><td class="r nw">${m.credit ? montantCompta(m.credit) : '—'}</td><td class="r">${m.pieces || '—'}</td></tr>`).join('')}
+          </tbody><tfoot><tr class="total-row"><td>Total</td>${central.journaux.map(j => `<td class="r nw"><strong>${montantCompta(central.totaux[j.code].debit)}</strong></td><td class="r nw"><strong>${montantCompta(central.totaux[j.code].credit)}</strong></td>`).join('')}<td class="r nw"><strong>${montantCompta(central.debit)}</strong></td><td class="r nw"><strong>${montantCompta(central.credit)}</strong></td><td class="r"><strong>${central.pieces}</strong></td></tr></tfoot></table></div>
           <div class="inline mt"><button class="btn" id="ecr-central-csv">Exporter le centralisateur</button></div>` : '<div class="empty">Aucune écriture sur cet exercice.</div>'}
         </div>
 
@@ -12315,8 +12618,8 @@
             ${byAcc.map(a => `<tr>
               <td class="nw"><strong>${h(a.account)}</strong></td>
               <td class="muted">${h(C.accountLabel(data, a.account, (entries.find(e => e.account === a.account && e.role) || {}).tiers))}</td>
-              <td class="r nw">${C.money(a.debit)}</td><td class="r nw">${C.money(a.credit)}</td>
-              <td class="r nw">${C.money(a.solde)}</td></tr>`).join('')}
+              <td class="r nw">${montantCompta(a.debit)}</td><td class="r nw">${montantCompta(a.credit)}</td>
+              <td class="r nw">${montantCompta(a.solde)}</td></tr>`).join('')}
           </tbody></table></div>` : '<div class="empty">—</div>'}
           <!-- « Retenue à la source opérée » et « subie » s'affichent l'une SOUS l'autre, avec des
                numéros de compte voisins, et rien dans toute l'application ne les distinguait : deux
@@ -12334,11 +12637,11 @@
               <td class="r nw muted">${e.numero}</td>
               <td class="nw">${C.fmtDate(e.date)}</td><td>${h(e.journal)}</td><td class="nw">${h(e.piece)}</td>
               <td class="nw"><strong>${h(e.account)}</strong></td><td>${h(e.label)}</td>
-              <td class="r nw">${e.debit ? C.money(e.debit) : '<span class="muted">—</span>'}</td>
-              <td class="r nw">${e.credit ? C.money(e.credit) : '<span class="muted">—</span>'}</td>
+              <td class="r nw">${e.debit ? montantCompta(e.debit) : '<span class="muted">—</span>'}</td>
+              <td class="r nw">${e.credit ? montantCompta(e.credit) : '<span class="muted">—</span>'}</td>
               <td class="nw small muted">${h(e.lettre || '')}</td></tr>`).join('')}</tbody>
             <tfoot><tr class="total-row"><td colspan="6">Total de la sélection</td>
-              <td class="r nw"><strong>${C.money(bal.debit)}</strong></td><td class="r nw"><strong>${C.money(bal.credit)}</strong></td><td></td></tr></tfoot>
+              <td class="r nw"><strong>${montantCompta(bal.debit)}</strong></td><td class="r nw"><strong>${montantCompta(bal.credit)}</strong></td><td></td></tr></tfoot>
           </table></div>${pagerBar(pg, { noun: 'écriture' })}`
             : '<div class="empty">Aucune pièce sur cette période.</div>'}
         </div>`;
@@ -12419,10 +12722,10 @@
             return { ...o, date: v.date, label: v.label, piece: od ? String(v.piece || '').trim() || o.piece : o.piece, lignes };
           };
           const recalc = () => {
-            const v = C.odValide(lire());
-            $('#od-td', layer).textContent = C.money(v.debit); $('#od-tc', layer).textContent = C.money(v.credit);
+            const v = C.odValide(lire(), company());
+            $('#od-td', layer).textContent = montantCompta(v.debit); $('#od-tc', layer).textContent = montantCompta(v.credit);
             const ecart = C.round3(v.debit - v.credit);
-            $('#od-ecart', layer).innerHTML = ecart ? `<span class="due">Écart de ${C.money(Math.abs(ecart))} : l'écriture ne tombe pas juste.</span>` : (v.debit ? '<span class="ok">Débit = crédit : l\'écriture tombe juste.</span>' : '');
+            $('#od-ecart', layer).innerHTML = ecart ? `<span class="due">Écart de ${C.money(Math.abs(ecart), company().currency)} : l'écriture ne tombe pas juste.</span>` : (v.debit ? '<span class="ok">Débit = crédit : l\'écriture tombe juste.</span>' : '');
             $$('#od-lignes tbody tr', layer).forEach(tr => { $('.od-lib', tr).textContent = C.accountLabel(data, $('.od-compte', tr).value.trim()); });
           };
           const brancher = () => {
@@ -12439,7 +12742,7 @@
           };
           $('#od-ok', layer).onclick = () => {
             const n = lire();
-            const v = C.odValide(n);
+            const v = C.odValide(n, company());
             if (!v.ok) { if (!n.label.trim()) return refus('#odf input[name=label]', v.erreurs[0]); return toast(v.erreurs[0], true); }
             if (!od && licenceBlock('Créer une opération diverse')) return;
             if (closedBlock([od && od.date, n.date], 'Cette opération diverse')) return;
@@ -12455,8 +12758,8 @@
     // mouvements, soldes — chaque montant dans SA colonne, débit ou crédit, jamais un signe.
     const BAL_HEAD = `<th class="r">Ouverture D</th><th class="r">Ouverture C</th><th class="r">Débit</th><th class="r">Crédit</th><th class="r">Solde D</th><th class="r">Solde C</th>`;
     const balCells = r => ['ouvertureD', 'ouvertureC', 'debit', 'credit', 'soldeD', 'soldeC']
-      .map(k => `<td class="r nw">${r[k] ? C.money(r[k]) : '<span class="muted">—</span>'}</td>`).join('');
-    const balFoot = t => `<tr class="total-row"><td colspan="2">Totaux</td>${['ouvertureD', 'ouvertureC', 'debit', 'credit', 'soldeD', 'soldeC'].map(k => `<td class="r nw"><strong>${C.money(t[k])}</strong></td>`).join('')}</tr>`;
+      .map(k => `<td class="r nw">${r[k] ? montantCompta(r[k]) : '<span class="muted">—</span>'}</td>`).join('');
+    const balFoot = t => `<tr class="total-row"><td colspan="2">Totaux</td>${['ouvertureD', 'ouvertureC', 'debit', 'credit', 'soldeD', 'soldeC'].map(k => `<td class="r nw"><strong>${montantCompta(t[k])}</strong></td>`).join('')}</tr>`;
 
     // Les comptes auxiliaires s'écrivent sur les fiches (compteAux) la première fois qu'on en a
     // besoin : un code figé ne change plus, quoi qu'il arrive à la liste.
@@ -12481,7 +12784,7 @@
         <div class="panel"><h2>Grand livre — ${h(periodLabel())} ${info('gl.quoi')}</h2>
           <p class="small">Chaque compte, mouvement par mouvement, avec le solde qui avance. Le solde d'ouverture reprend tout ce qui précède la période ; les charges et les produits repartent de zéro au 1er janvier. ${info('gl.solde')}</p>
           <div class="inline mt" style="align-items:center;gap:10px;flex-wrap:wrap">
-            <label class="field" style="min-width:320px;margin:0"><span>Compte</span>
+            <label class="field" style="min-width:320px;margin:0">${lbl('Compte', 'gl.compte')}
               ${combo({ name: 'glCompte', value: glState.compte, items: [{ v: '', label: 'Tous les comptes' }, ...choix], placeholder: 'Un compte, ou un début de numéro…' })}</label>
             <button class="btn" id="gl-csv" ${lignes ? '' : 'disabled'}>Exporter en CSV</button>
             <button class="btn btn-ghost" id="gl-plan">Plan de comptes…</button>
@@ -12500,17 +12803,17 @@
           <div class="scroll-x"><table class="list compact gl-t">
             <thead><tr><th>Date</th><th>Journal</th><th>Pièce</th><th>Libellé</th>${c.lignes.some(e => e.role) ? '<th>Let.</th>' : ''}<th class="r">Débit</th><th class="r">Crédit</th><th class="r">Solde ${info('gl.solde')}</th></tr></thead>
             <tbody>
-              <tr class="gl-ouv"><td class="nw muted">—</td><td></td><td></td><td class="muted">Solde d'ouverture</td>${c.lignes.some(e => e.role) ? '<td></td>' : ''}<td></td><td></td><td class="r nw">${C.money(c.ouverture)}</td></tr>
+              <tr class="gl-ouv"><td class="nw muted">—</td><td></td><td></td><td class="muted">Solde d'ouverture</td>${c.lignes.some(e => e.role) ? '<td></td>' : ''}<td></td><td></td><td class="r nw">${montantCompta(c.ouverture)}</td></tr>
               ${c.lignes.map(e => `<tr>
                 <td class="nw">${C.fmtDate(e.date)}</td><td>${h(e.journal)}</td><td class="nw">${h(e.piece)}</td><td>${h(e.label)}</td>
                 ${c.lignes.some(x => x.role) ? `<td class="nw small muted">${h(e.lettre || '')}</td>` : ''}
-                <td class="r nw">${e.debit ? C.money(e.debit) : '<span class="muted">—</span>'}</td>
-                <td class="r nw">${e.credit ? C.money(e.credit) : '<span class="muted">—</span>'}</td>
-                <td class="r nw gl-solde">${C.money(e.solde)}</td></tr>`).join('')}
+                <td class="r nw">${e.debit ? montantCompta(e.debit) : '<span class="muted">—</span>'}</td>
+                <td class="r nw">${e.credit ? montantCompta(e.credit) : '<span class="muted">—</span>'}</td>
+                <td class="r nw gl-solde">${montantCompta(e.solde)}</td></tr>`).join('')}
             </tbody>
             <tfoot><tr class="total-row"><td colspan="${c.lignes.some(e => e.role) ? 5 : 4}">Total du compte</td>
-              <td class="r nw"><strong>${C.money(c.debit)}</strong></td><td class="r nw"><strong>${C.money(c.credit)}</strong></td>
-              <td class="r nw"><strong>${C.money(c.solde)}</strong></td></tr></tfoot>
+              <td class="r nw"><strong>${montantCompta(c.debit)}</strong></td><td class="r nw"><strong>${montantCompta(c.credit)}</strong></td>
+              <td class="r nw"><strong>${montantCompta(c.solde)}</strong></td></tr></tfoot>
           </table></div>
         </div>`).join('')}`;
       bindCombo($('[data-combo=glCompte]'), { items: [{ v: '', label: 'Tous les comptes' }, ...choix], onPick: v => { glState.compte = v || ''; drawGrandLivre(); } });
@@ -12562,8 +12865,8 @@
             ${l.rows.flatMap(r => r.ouverts.map(o => `<tr class="${o.retard ? 'b-late' : ''}" data-go="${h(qui === 'clients' ? '#/doc/' + o.id : '#/achat/' + o.id)}" style="cursor:pointer">
               <td class="nw"><strong>${h(r.account)}</strong></td><td>${h(r.tiers)}</td><td class="nw">${h(o.piece)}</td><td class="nw">${C.fmtDate(o.date)}</td>
               <td class="nw ${o.retard ? 'due' : ''}">${o.echeance ? C.fmtDate(o.echeance) : '—'}</td>
-              <td class="r nw">${C.money(o.montant)}</td><td class="r nw">${o.avoirs ? C.money(o.avoirs) : '—'}</td><td class="r nw">${o.regle ? C.money(o.regle) : '—'}</td><td class="r nw"><strong>${C.money(o.reste)}</strong></td></tr>`)).join('')}
-          </tbody><tfoot><tr class="total-row"><td colspan="8">Reste à lettrer</td><td class="r nw"><strong>${C.money(l.reste)}</strong></td></tr></tfoot></table></div>`
+              <td class="r nw">${montantCompta(o.montant)}</td><td class="r nw">${o.avoirs ? montantCompta(o.avoirs) : '—'}</td><td class="r nw">${o.regle ? montantCompta(o.regle) : '—'}</td><td class="r nw"><strong>${montantCompta(o.reste)}</strong></td></tr>`)).join('')}
+          </tbody><tfoot><tr class="total-row"><td colspan="8">Reste à lettrer</td><td class="r nw"><strong>${montantCompta(l.reste)}</strong></td></tr></tfoot></table></div>`
             : `<div class="todo-ok">Tout est lettré : aucune pièce ${qui === 'clients' ? 'client' : 'fournisseur'} ouverte.</div>`}`;
         csvRows = lc.rows.flatMap(r => r.ouverts.map(o => ({ role: 'client', account: r.account, tiers: r.tiers, ...o }))).concat(lf.rows.flatMap(r => r.ouverts.map(o => ({ role: 'fournisseur', account: r.account, tiers: r.tiers, ...o }))));
         csvCols = [{ key: 'role', label: 'Rôle' }, { key: 'account', label: 'Compte' }, { key: 'tiers', label: 'Tiers' }, { key: 'piece', label: 'Pièce' }, { key: 'date', label: 'Date', type: 'date' }, { key: 'echeance', label: 'Échéance' }, { key: 'montant', label: 'Montant', type: 'money' }, { key: 'avoirs', label: 'Avoirs et acomptes', type: 'money' }, { key: 'regle', label: 'Réglé', type: 'money' }, { key: 'reste', label: 'Reste', type: 'money' }];
@@ -12628,8 +12931,8 @@
         ].filter(Boolean);
         return `<p class="small muted mt" id="et-attente">${quoi.length > 1 ? 'Deux écritures d\'inventaire ne s\'écrivent' : 'Une écriture d\'inventaire ne s\'écrit'} qu'au 31 décembre, et le résultat ci-dessus ne ${quoi.length > 1 ? 'les' : 'la'} compte pas encore : ${quoi.join(' et ')}. Le <a href="#/compta" data-onglet="tva">résultat simplifié</a> ${quoi.length > 1 ? 'les' : 'la'} compte déjà${tombe ? ` : ${C.money(e.resultat, cur)}${dot ? ` − ${C.money(dot, cur)}` : ''}${vs ? ` ${vs > 0 ? '+' : '−'} ${C.money(Math.abs(vs), cur)}` : ''} = ${C.money(sr, cur)}` : ''}.</p>`;
       })();
-      const tab = (g) => g.lignes.length ? `<table class="list compact"><tbody>${g.lignes.map(l => `<tr><td class="nw"><strong>${h(l.account)}</strong></td><td>${h(l.label)}</td><td class="r nw">${C.money(l.montant)}</td></tr>`).join('')}
-        <tr class="total-row"><td colspan="2">${h(g.titre)}</td><td class="r nw"><strong>${C.money(g.total)}</strong></td></tr></tbody></table>` : `<p class="small muted">${h(g.titre)} : —</p>`;
+      const tab = (g) => g.lignes.length ? `<table class="list compact"><tbody>${g.lignes.map(l => `<tr><td class="nw"><strong>${h(l.account)}</strong></td><td>${h(l.label)}</td><td class="r nw">${montantCompta(l.montant)}</td></tr>`).join('')}
+        <tr class="total-row"><td colspan="2">${h(g.titre)}</td><td class="r nw"><strong>${montantCompta(g.total)}</strong></td></tr></tbody></table>` : `<p class="small muted">${h(g.titre)} : —</p>`;
       $('#c-body').innerHTML = `
         <div class="panel"><h2>États financiers — exercice ${h(y)}, arrêtés au ${C.fmtDate(to)} ${info('etats.quoi')}</h2>
           <p class="small">Le bilan et l'état de résultat, déduits de la balance de l'exercice. Une présentation d'ensemble pour savoir où tu en es : <em>ce n'est pas la liasse fiscale, c'est ton comptable qui l'établit, à partir de ces chiffres.</em> <em>À VÉRIFIER avec lui.</em></p>
@@ -12647,7 +12950,7 @@
           <div class="panel"><h2>Bilan — actif ${info('etats.bilan')}</h2>${e.actif.map(tab).join('')}
             <p class="mt"><strong>Total actif : ${C.money(e.totalActif, cur)}</strong></p></div>
           <div class="panel"><h2>Bilan — passif</h2>${e.passif.map(tab).join('')}
-            <table class="list compact"><tbody><tr class="total-row"><td colspan="2">Résultat de l'exercice</td><td class="r nw"><strong>${C.money(e.resultat)}</strong></td></tr></tbody></table>
+            <table class="list compact"><tbody><tr class="total-row"><td colspan="2">Résultat de l'exercice</td><td class="r nw"><strong>${montantCompta(e.resultat)}</strong></td></tr></tbody></table>
             <p class="mt"><strong>Total passif : ${C.money(e.totalPassif, cur)}</strong></p></div>
         </div>
         <div class="split">
@@ -12727,7 +13030,7 @@
       const closed = C.closedUntil(data);
       const months = C.closableMonths(data, C.today());
       const next = months[0] || null;
-      const checks = next ? C.closureChecks(data, company(), next.from, next.to) : [];
+      const checks = next ? C.closureChecks(data, company(), next.from, next.to, { reserves: licence.reserves || [] }) : [];
       const log = C.closureLog(data);
       const blocking = checks.filter(c => c.level === 'danger');
 
@@ -12805,7 +13108,7 @@
       // les ouvrir, alors que la même liste porte ses boutons à un onglet de distance (Cabinet).
       // Même table, même branchement — un manque qu'on ne peut pas ouvrir n'est pas un manque,
       // c'est un reproche.
-      $$('[data-check]').forEach(b => b.onclick = () => CHECK_ACTIONS[b.dataset.check].run());
+      $$('[data-check]').forEach(b => b.onclick = () => CHECK_ACTIONS[b.dataset.check].run(checks.find(c => c.id === b.dataset.check)));
 
       // 9.8.0 — le flux RETOUR. Le fichier de clôture pose les à-nouveaux OFFICIELS du comptable et
       // verrouille l'exercice : on montre donc ce qui va changer AVANT d'écrire quoi que ce soit.
@@ -12910,7 +13213,7 @@
             // pour ce qui bloque vraiment ; le reste se dit en clair, sans alarme.
             const points = () => {
               const to = $('select[name=m]', root).value;
-              const tous = C.closureChecks(data, company(), next.from, to);
+              const tous = C.closureChecks(data, company(), next.from, to, { reserves: licence.reserves || [] });
               const dangers = tous.filter(c => c.level === 'danger');
               $('#ct-points', root).innerHTML = tous.length
                 ? `<p class="${dangers.length ? 'warn-box' : ''}">${pl(tous.length, 'point')} à regarder du ${C.fmtDate(next.from)} au ${C.fmtDate(to)} : ${tous.map(c => h(c.label)).join(', ')}. Tu peux clôturer quand même.</p>`
@@ -12969,7 +13272,7 @@
       if (!cabinetState.month) cabinetState.month = months[0];
       const per = C.packPeriod(Number(cabinetState.month.slice(0, 4)), Number(cabinetState.month.slice(5, 7)));
       const aClore = C.closableMonths(data, C.today());
-      const plan = C.packPlan(data, co, per, { device: deviceLabel() });
+      const plan = C.packPlan(data, co, per, { device: deviceLabel(), reserves: licence.reserves || [] });
       const paired = co.cabinet && co.cabinet.publicKey ? co.cabinet : null;
       const sent = (data.packs || []).filter(x => x.month === per.month).sort((a, b) => (b.at || 0) - (a.at || 0));
       const history = (data.packs || []).slice().sort((a, b) => (b.at || 0) - (a.at || 0)).slice(0, 12);
@@ -13085,7 +13388,7 @@
             ${nonParties.length > 1 ? 'tes réponses n\'y sont pas' : 'ta réponse n\'y est pas'}. Un paquet fabriqué ne se réécrit pas — refais-le avant de l'envoyer.</div>` : ''}
           ${change.length ? `<div class="warn-box mb" id="cab-change">Les écritures de ${h(per.label)} ne sont plus celles du paquet fabriqué le ${h(C.fmtDate(C.jourDeLInstant(sent[0].at)))} :
             ${change.slice(0, 4).map(x => `compte ${h(x.account)}, ${[0, 1].filter(i => Math.abs(x.avant[i] - x.maintenant[i]) > 0.0005)
-              .map(i => `${i ? 'crédit' : 'débit'} ${C.money(x.avant[i])} → ${C.money(x.maintenant[i])}`).join(', ')}`).join(' ; ')}${change.length > 4 ? ` — et ${pl(change.length - 4, 'autre compte', 'autres comptes')}` : ''}.
+              .map(i => `${i ? 'crédit' : 'débit'} ${C.money(x.avant[i], company().currency)} → ${C.money(x.maintenant[i], company().currency)}`).join(', ')}`).join(' ; ')}${change.length > 4 ? ` — et ${pl(change.length - 4, 'autre compte', 'autres comptes')}` : ''}.
             Ton comptable travaille sur l'ancien : refais le paquet et renvoie-le-lui.</div>` : ''}
           <div class="inline">
             <button class="btn ${suivante === 'fabriquer' || suivante === 'refaire' ? 'btn-primary' : ''}" id="cab-build" ${moisVide ? 'disabled title="Ce mois ne contient aucune pièce."' : ''}>${!sent.length ? 'Fabriquer le paquet…'
@@ -13195,7 +13498,7 @@
       $$('[data-reveal]').forEach(b2 => { if (b2.dataset.reveal) b2.onclick = () => bridge.showInFolder(b2.dataset.reveal); });
       // Chaque manque mène aux pièces concernées, filtrées. Le `if` n'est pas une précaution : la
       // table est complète par construction, et un test le vérifie contre `core.packChecklist`.
-      $$('[data-check]').forEach(b => b.onclick = () => CHECK_ACTIONS[b.dataset.check].run());
+      $$('[data-check]').forEach(b => b.onclick = () => CHECK_ACTIONS[b.dataset.check].run(plan.checklist.find(c => c.id === b.dataset.check)));
       $('#cab-build').onclick = async () => {
         // Les contrôles de saisie d'abord, la grande question ensuite : poser une question de fond
         // puis refuser sur un champ trop court, c'est faire répondre pour rien.
@@ -13463,6 +13766,38 @@
       dessinerCatalogueSansTva();
     };
   }
+  // 10.14.1 (MR-02) — le jumeau de `dessinerCatalogueSansTva` pour ce qui FABRIQUE des factures : un
+  // contrat récurrent ou un modèle né au forfait gardait ses lignes à 0 %, et chaque facture qu'il
+  // engendrait après le passage au réel sortait sans la TVA due. Même règle que le catalogue : on le
+  // SIGNALE avec le geste, on ne le change pas d'office (une prestation peut être vraiment exonérée).
+  function dessinerSourcesSansTva() {
+    const zone = $('#regime-sources'); if (!zone) return;
+    const co = regimeChoisi();
+    const src = C.sourcesSansTva(data, co);
+    const n = src.contrats.length + src.modeles.length;
+    if (!n) { zone.innerHTML = ''; return; }
+    const taux = C.defaultVat(co), plus = n > 1;
+    const quoi = [src.contrats.length ? pl(src.contrats.length, 'contrat récurrent', 'contrats récurrents') : '', src.modeles.length ? pl(src.modeles.length, 'modèle') : ''].filter(Boolean).join(' et ');
+    zone.innerHTML = `<div class="regime-cat small mt"><span>${h(quoi)} ${plus ? 'portent' : 'porte'} des lignes à 0\u00a0% de TVA : elles sortiront sans TVA sur chaque facture ${plus ? 'qu\'ils fabriquent' : 'qu\'il fabrique'}. C'est juste si elles sont exonérées ; ${plus ? 's\'ils sont nés' : 's\'il est né'} quand ton entreprise ne facturait pas de TVA, passe ces lignes au taux de tes nouvelles lignes.</span><button type="button" class="btn btn-sm" id="regime-src-ok">Passer à ${taux}\u00a0%…</button></div>`;
+    $('#regime-src-ok').onclick = async () => {
+      const co2 = regimeChoisi();
+      const s2 = C.sourcesSansTva(data, co2);
+      const tous = [...s2.contrats.map(r => ({ x: r, nom: `Contrat « ${r.subject || 'sans objet'} » — ${clientName(r.clientId)}` })), ...s2.modeles.map(t => ({ x: t, nom: `Modèle « ${t.name || 'sans nom'} »` }))];
+      if (!tous.length) return dessinerSourcesSansTva();
+      const t2 = C.defaultVat(co2);
+      const noms = tous.slice(0, 8).map(y => '• ' + y.nom).join('\n') + (tous.length > 8 ? `\n… et ${pl(tous.length - 8, 'autre')}` : '');
+      const ok = await confirmDialog(`Les lignes à 0\u00a0% de ${tous.length > 1 ? 'ces contrats et modèles' : 'ce contrat ou modèle'} passeront à ${t2}\u00a0% de TVA :\n\n${noms}\n\nLes factures déjà émises ne changent pas : seules les prochaines factures qu'ils fabriqueront porteront ce taux. Le montant hors taxe ne bouge pas ; le client paiera la TVA en plus.`, `Passer à ${t2} %`, false, { titre: `Passer ces lignes à ${t2}\u00a0% de TVA ?` });
+      if (!ok) return;
+      const avant = [];
+      tous.forEach(y => (y.x.lines || []).forEach(l => { if (C.ligneFactureeSansTva(l)) { avant.push([l, l.vatRate]); l.vatRate = t2; } }));
+      save(true);
+      toastUndo(`${pl(avant.length, 'ligne')} à ${t2}\u00a0% de TVA`, () => {
+        avant.forEach(([l, v]) => { l.vatRate = v; });
+        save(true); dessinerSourcesSansTva();
+      });
+      dessinerSourcesSansTva();
+    };
+  }
   function noteRegime(c) {
     return C.assujettiTVA(c)
       ? '<p class="small muted mt">Tu es assujetti : tes documents portent une colonne TVA et un total de TVA, tu récupères la TVA de tes achats, et la page Comptabilité calcule ce que tu dois déclarer.</p>'
@@ -13515,6 +13850,7 @@
         <div id="regime-note">${noteRegime(c)}</div>
         <div id="regime-achats"></div>
         <div id="regime-catalogue"></div>
+        <div id="regime-sources"></div>
         <p class="small muted mt">Changer de régime ne réécrit <b>aucune</b> pièce déjà émise : une facture qui porte de la TVA la garde pour toujours. Un achat déjà saisi non plus : sa TVA reste récupérée, ou non, comme le jour où tu l'as saisi.</p></div>
         ${panneau('p-banque')}
           <p class="small muted mb">Le RIB s'affiche sur les factures, dans le bloc « Règlement ». C'est ce que ton client copie pour te payer : relis-le deux fois.</p>
@@ -13527,7 +13863,7 @@
 
         <section data-pane="documents" hidden>
         ${panneau('p-facturation')}<div class="grid-3">
-          ${field(lbl(`Timbre fiscal par facture (<span data-unite-timbre>${C.normCurrency(c.currency)}</span>)`, 'doc.stampFee'), 'stampFee', c.stampFee, 'number', 'step="0.001" min="0" class="num"')}
+          ${field(lbl(`<span>Timbre fiscal par facture (<span data-unite-timbre>${C.normCurrency(c.currency)}</span>)</span>`, 'doc.stampFee'), 'stampFee', c.stampFee, 'number', 'step="0.001" min="0" class="num"')}
           ${field(lbl('Validité des devis (jours)', 'doc.quoteValidity'), 'quoteValidityDays', c.quoteValidityDays, 'number', 'min="0" class="num"')}
           ${field(lbl('Délai de paiement (jours)', 'doc.paymentDays'), 'paymentTermsDays', c.paymentTermsDays, 'number', 'min="0" class="num"')}
           <label class="field">${lbl('Retenue à la source par défaut', 'doc.withholdingDefault')}${withholdingSelect('defaultWithholdingRate', c.defaultWithholdingRate)}</label>
@@ -13583,7 +13919,7 @@
           <p class="small muted mb">Ces deux réglages ne servent qu'à la page Statistiques : ils ne s'impriment nulle part et ne changent aucun calcul de facture.</p>
           <div class="grid-3">
           ${/* 10.12.0 — « 0 » dans la case se lisait « un objectif de zéro » : vide, il dit « aucun ». */''}
-          ${field(lbl(`Objectif de chiffre d'affaires HT par an (${C.normCurrency(c.currency)})`, 'stat.target'), 'revenueTarget', Number(c.revenueTarget) > 0 ? c.revenueTarget : '', 'number', 'step="1" min="0" class="num" placeholder="aucun objectif"')}
+          ${field(lbl(`Objectif de chiffre d'affaires HT par an (${C.normCurrency(c.currency)})`, 'stat.target'), 'revenueTarget', Number(c.revenueTarget) > 0 ? c.revenueTarget : '', 'number', 'step="1" min="0" class="num montant" placeholder="aucun objectif"')}
           ${field(lbl('Un client est « endormi » après (jours)', 'stat.dormant'), 'dormantDays', c.dormantDays || 180, 'number', 'min="1" class="num"')}
         </div></div>
         </section>
@@ -13610,14 +13946,18 @@
                deux écrans et demi pour un onglet qui en compte quatre. Un modèle de message se
                modifie une fois par an ; on l'ouvre quand on vient pour ça. Le sommaire de l'onglet
                et la recherche mènent ici directement, donc rien n'est perdu. -->
-          ${[['fr', 'et', 'Modèles en français', C.DEFAULT_EMAIL_TEMPLATES, c.emailTemplates || {}], ['en', 'eten', 'Modèles en anglais (clients étrangers)', C.DEFAULT_EMAIL_TEMPLATES_EN, c.emailTemplatesEn || {}]].map(([lg, prefix, title, defs, cur2]) => `<details><summary>${title} <span class="muted small">— ${licence.editeur ? 9 : 8} messages</span></summary>
-          ${[['devis', lg === 'fr' ? 'Envoi d\'un devis' : 'Quote'], ['facture', lg === 'fr' ? 'Envoi d\'une facture' : 'Invoice'], ['avoir', lg === 'fr' ? 'Envoi d\'un avoir' : 'Credit note'], ['relance1', lg === 'fr' ? 'Rappel (≤ 15 jours de retard)' : 'Reminder (≤ 15 days)'], ['relance2', lg === 'fr' ? 'Relance (16 à 45 jours)' : 'Second reminder (16–45 days)'], ['relance3', lg === 'fr' ? 'Dernière relance (> 45 jours)' : 'Final reminder (> 45 days)'], ['relanceDevis', lg === 'fr' ? 'Relance d\'un devis sans réponse' : 'Quote follow-up'], ['comptable', lg === 'fr' ? 'Envoi au comptable' : 'To the accountant'],
+          ${[['fr', 'et', 'Modèles en français'], ['en', 'eten', 'Modèles en anglais (clients étrangers)']].map(([lg, prefix, title]) => { const modeles = [['devis', lg === 'fr' ? 'Envoi d\'un devis' : 'Quote'], ['facture', lg === 'fr' ? 'Envoi d\'une facture' : 'Invoice'], ['avoir', lg === 'fr' ? 'Envoi d\'un avoir' : 'Credit note'], ['relance1', lg === 'fr' ? 'Rappel (≤ 15 jours de retard)' : 'Reminder (≤ 15 days)'], ['relance2', lg === 'fr' ? 'Relance (16 à 45 jours)' : 'Second reminder (16–45 days)'], ['relance3', lg === 'fr' ? 'Dernière relance (> 45 jours)' : 'Final reminder (> 45 days)'], ['relanceDevis', lg === 'fr' ? 'Relance d\'un devis sans réponse' : 'Quote follow-up'], ['comptable', lg === 'fr' ? 'Envoi au comptable' : 'To the accountant'],
             // Le gabarit de la clé de licence n'a de sens que sur le poste de l'éditeur (7.33.0).
             ...(licence.editeur ? [['licence', lg === 'fr' ? 'Envoi d\'une clé de licence (éditeur)' : 'Licence key (publisher)'],
-              ['licenceCabinet', lg === 'fr' ? 'Envoi d\'une clé de licence Cabinet (éditeur)' : 'Cabinet licence key (publisher)']] : [])].map(([k, label]) => {
-            const t = { ...defs[k], ...(cur2[k] || {}) };
+              ['licenceCabinet', lg === 'fr' ? 'Envoi d\'une clé de licence Cabinet (éditeur)' : 'Cabinet licence key (publisher)']] : [])];
+            // Le compte se DÉDUIT de la liste (10.14.1) : écrit « 9 » à la main, il en annonçait un de
+            // moins que les dix de l'éditeur. Le modèle affiché est celui qui PARTIRA (`modeleMail`) :
+            // celui d'une profession libérale nomme sa note d'honoraires (MR-09).
+            return `<details><summary>${title} <span class="muted small">— ${modeles.length} messages</span></summary>
+          ${modeles.map(([k, label]) => {
+            const t = C.modeleMail(c, k, lg === 'en');
             return `<div class="section-head"><h2 class="small">${label}</h2></div><div class="grid-2"><label class="field span-2">${lbl('Objet', 'mail.modeleObjet')}<input type="text" name="${prefix}_${k}_subject" value="${h(t.subject)}"></label><label class="field span-2">${lbl('Message', 'mail.modeleMessage')}<textarea name="${prefix}_${k}_body" rows="4">${h(t.body)}</textarea></label></div>`; }).join('')}
-          </details>`).join('')}
+          </details>`; }).join('')}
         </div>
         </section>
 
@@ -13885,15 +14225,15 @@
       const tv = $('#pf select[name=defaultVatRate]');
       // Au réel, le taux retrouve celui des réglages ; sinon, 0 % et grisé — la même règle que `defaultVat`.
       if (tv) { tv.disabled = !C.assujettiTVA(co); tv.value = String(C.defaultVat(co)); }
-      dessinerCatalogueSansTva();
+      dessinerCatalogueSansTva(); dessinerSourcesSansTva();
     });
     // Le taux choisi change ce que dit la note (des lignes à 0 %) et ce que le catalogue peut recevoir.
     const selTaux = $('#pf select[name=defaultVatRate]');
     if (selTaux) selTaux.addEventListener('change', () => {
       if ($('#regime-note')) $('#regime-note').innerHTML = noteRegime(regimeChoisi());
-      dessinerCatalogueSansTva();
+      dessinerCatalogueSansTva(); dessinerSourcesSansTva();
     });
-    dessinerCatalogueSansTva();
+    dessinerCatalogueSansTva(); dessinerSourcesSansTva();
     dessinerAchatsHorsRegime();
     if (selRegime) selRegime.addEventListener('change', dessinerAchatsHorsRegime);
     setGuard({ dirty: () => setDirty, what: 'les paramètres', save: applySettings, discard: applyTheme });
@@ -14210,7 +14550,7 @@
         <p class="small muted">Une sauvegarde est prise juste avant : pour revenir en arrière, le panneau <em>Sauvegardes</em> de cet onglet la montrera en tête de liste, avec son bouton <em>Restaurer…</em>. ${empruntee
           ? '<b>La fiche société part également</b>, parce qu\'elle vient du jeu d\'exemple : garder un matricule et un RIB inventés ferait partir ta première vraie facture dans le vide.'
           : 'Tes paramètres société sont conservés.'}</p>
-        <form id="wf"><label class="field"><span class="fl">Pour confirmer, écris <b>EFFACER</b> ci-dessous</span><input type="text" name="w" autocomplete="off" spellcheck="false" placeholder="EFFACER"></label></form>
+        <form id="wf"><label class="field"><span>Pour confirmer, écris <b>EFFACER</b> ci-dessous</span><input type="text" name="w" autocomplete="off" spellcheck="false" placeholder="EFFACER"></label></form>
         <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-danger" id="ok" disabled>Tout effacer</button></div>`,
         (root, close) => {
           const inp = $('input[name=w]', root), ok = $('#ok', root);
@@ -15788,7 +16128,8 @@
     const dejaLa = new Set(data.documents.filter(d => d.venteConsoleId).map(d => d.venteConsoleId));
     const nouvelles = lignes.filter(v => !dejaLa.has(v.id));
     const enAttente = lignes.filter(v => dejaLa.has(v.id));
-    const cur = x => C.money(Number(x.montant_ht) || 0, x.devise || 'TND');
+    // « TND » (la console) et « DT » (SkanFact) sont la même monnaie : elle s'écrit comme partout ici (M-14).
+    const cur = x => C.money(Number(x.montant_ht) || 0, C.normCurrency(x.devise || 'DT'));
     el2.innerHTML = `<h2>Ventes de la console ${info('lic.console')}</h2>
       ${nouvelles.length ? `<p class="small">${pl(nouvelles.length, 'vente')} sans facture. Un clic crée un <strong>brouillon</strong> par vente ; le numéro se prend à l'émission, et il est rendu à la console.</p>
         <div class="scroll-x"><table class="list"><thead><tr><th>Client</th><th>Offre</th><th>Fin</th><th class="r">Montant HT</th><th>Payée</th></tr></thead><tbody>

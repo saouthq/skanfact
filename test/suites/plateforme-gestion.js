@@ -161,14 +161,18 @@ module.exports = async ({ t, ta, assert, lireSource }) => {
 
   await ta('10.4.0 : l\'argent se groupe par DEVISE, et « encaissé » porte son année', async () => {
     const P = await API();
+    // 10.14.1 (MC-07) — « DT », que SkanFact écrit à l'import, et « TND », que la console écrit, sont
+    // la MÊME monnaie : deux cartes « Encaissé » pour un seul dinar se lisaient comme deux caisses.
     const a = P.resumeArgent([
-      { montant_ht: 690, devise: 'DT', payee_le: '2026-03-01' },
+      { montant_ht: 390, devise: 'TND', payee_le: '2026-06-01' },  // vendue par la console
+      { montant_ht: 300, devise: 'DT', payee_le: '2026-03-01' },   // importée de SkanFact
       { montant_ht: 390, devise: 'DT', payee_le: '2025-11-01' },   // l'an dernier : hors de l'année
-      { montant_ht: 500, devise: 'DT', payee_le: '' },             // en attente, sans année
+      { montant_ht: 500, devise: '', payee_le: '' },               // en attente, sans année ni devise
       { montant_ht: 200, devise: 'EUR', payee_le: '2026-04-01' }
     ], '2026-09-21');
     assert.strictEqual(a.annee, '2026');
-    const dt = a.lignes.find(x => x.devise === 'DT');
+    assert.strictEqual(a.lignes.length, 2, 'le dinar se coupe en deux lignes : ' + a.lignes.map(x => x.devise).join(', '));
+    const dt = a.lignes.find(x => x.devise === 'TND');
     const eur = a.lignes.find(x => x.devise === 'EUR');
     // Additionner des dinars et des euros est la faute de la 7.16.0, et elle ne se voit pas.
     assert.ok(dt && eur, 'deux devises font DEUX lignes');
@@ -550,7 +554,7 @@ module.exports = async ({ t, ta, assert, lireSource }) => {
     assert.ok(!/le \./.test(nu.corps), 'sans date, la phrase se réécrit au lieu de garder son « le »');
 
     const im = P.mailRelance('impayee', { client: 'El Amen', montant: 690, devise: 'TND' });
-    assert.ok(/690,000 TND/.test(im.corps), 'le montant porte sa devise (7.16.0) : ' + im.corps);
+    assert.ok(/690,000\sTND/.test(im.corps), 'le montant porte sa devise (7.16.0) : ' + im.corps);
     // On relance sans accuser : le règlement a pu se croiser avec le mail.
     assert.ok(/ne tenez pas compte/.test(im.corps));
     assert.ok(!/690/.test(P.mailRelance('impayee', { client: 'X' }).corps),
@@ -603,7 +607,7 @@ module.exports = async ({ t, ta, assert, lireSource }) => {
       assert.strictEqual(rp.status, 409);
       assert.ok(/payée depuis le 2026-02-02/.test((await rp.json()).erreur));
       const rd = await (await get('ventes/v_due/relance')).json();
-      assert.ok(/690,000 TND/.test(rd.corps), rd.corps);
+      assert.ok(/690,000\sTND/.test(rd.corps), rd.corps);
 
       // Une relance ne change RIEN : elle lit. Le journal n'a pas à s'en souvenir, et surtout
       // aucune ligne ne doit avoir bougé.
@@ -826,7 +830,7 @@ module.exports = async ({ t, ta, assert, lireSource }) => {
     const iso = a.filter(x => /\b\d{4}-\d{2}-\d{2}\b/.test(x.detail));
     assert.deepStrictEqual(iso.map(x => x.quoi + ' : ' + x.detail), [], 'une date au format d\'un fichier dans une phrase de l\'écran');
     const cmd = a.find(x => x.quoi === 'Paiement encaissé, clé non partie').detail;
-    assert.ok(cmd.includes('1 822,100 TND payés le 22/09/2026'), 'le montant et la date s\'écrivent comme l\'écran : ' + cmd);
+    assert.ok(/1\s822,100\sTND payés le 22\/09\/2026/.test(cmd), 'le montant et la date s\'écrivent comme l\'écran : ' + cmd);
     assert.ok(/\. Le client attend\.$/.test(cmd) && !/\.\./.test(cmd), 'la raison du refus ne mange pas la ponctuation : ' + cmd);
     assert.ok(a.find(x => x.quoi === 'Licence expirée').detail.includes('01/09/2026'));
     assert.ok(a.find(x => x.quoi === 'Essai qui se termine').detail.includes('vers le 27/09/2026'));
@@ -1003,7 +1007,7 @@ module.exports = async ({ t, ta, assert, lireSource }) => {
       'une signature vidée arrête le mail à la formule de politesse');
     // Le DEVIS : ce que la console ne savait pas faire — parler à quelqu'un qui n'a rien acheté.
     const devis = P.mailRelance('devis', { client: 'Beta', offre: 'Entreprise', montant: 880, devise: 'TND' });
-    assert.ok(/880,000 TND HT par an/.test(devis.corps), 'le devis porte le prix RÉGLÉ : ' + devis.corps.slice(0, 200));
+    assert.ok(/880,000\sTND HT par an/.test(devis.corps), 'le devis porte le prix RÉGLÉ : ' + devis.corps.slice(0, 200));
     assert.ok(/proposition/.test(devis.sujet));
   });
 

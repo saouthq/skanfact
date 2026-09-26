@@ -110,7 +110,9 @@ module.exports = ({ t, assert }) => {
     assert.ok(i > 0 && f.length > 600 && f.length < 5000, 'tranche close-to : ' + f.length);
     // TOUS les contrôles de la période, pas seulement les bloquants : la première version filtrait
     // `level === 'danger'` et disait « Rien à signaler » sur des achats sans justificatif (10.14.0).
-    assert.ok(/const tous = C\.closureChecks\(data, company\(\), next\.from, to\);/.test(f), 'les contrôles portent du premier mois ouvert au mois choisi');
+    // Retourné en 10.14.1 : l'appel a gagné l'offre (`{ reserves }`, un contrôle ne réclame pas ce
+    // que l'offre interdit). La RÈGLE est la période : du premier mois ouvert au mois choisi.
+    assert.ok(/const tous = C\.closureChecks\(data, company\(\), next\.from, to[,)]/.test(f), 'les contrôles portent du premier mois ouvert au mois choisi');
     assert.ok(/innerHTML = tous\.length\s*\?/.test(f) && /tous\.map\(c => h\(c\.label\)\)/.test(f), '« Rien à signaler » sur une période qui porte des points');
     assert.ok(/\$\('select\[name=m\]', root\)\.onchange = points;\s*points\(\);/.test(f), 'l\'annonce suit le mois choisi, et paraît dès l\'ouverture');
     assert.ok(f.indexOf('points();') < f.indexOf('C.closePeriod('), 'l\'annonce se pose avant que le geste soit possible');

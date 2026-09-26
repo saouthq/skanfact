@@ -15,6 +15,14 @@ const Z = require('../zip');
 const K = require('./cabcore');
 const CS = require('./cabstore');
 
+// 10.14.1 (CA-03) — la langue des champs, le jumeau manquant de H-E28 (10.12.0). Un champ
+// `type=date` ou `type=number` se lit dans la langue du SYSTÈME : sur un poste réglé en anglais, la
+// fenêtre de reprise écrivait « 12/31/2026 » sous « 01/01/2026 », et un comptable qui tapait
+// « 01/04/2026 » pour le 1er avril posait le 4 janvier — sans un mot, dans le livre d'un client.
+// L'app entreprise force le français depuis la 10.12.0 ; le Cabinet ne l'avait jamais reçu. Posé
+// AVANT `ready`, sinon rien ne change.
+app.commandLine.appendSwitch('lang', 'fr-FR');
+
 const APP_ID = 'tn.skancyber.skanfact.cabinet';
 // Depuis la 6.6.0, les deux applications portent le MÊME numéro de version. C'est ce qui permet de
 // les publier dans la même release GitHub — et donc de donner au cabinet des mises à jour
@@ -1467,9 +1475,14 @@ ipcMain.handle('cab:reprendre', (_e, { dossierId, annee, du, au, plan, ouverture
     throw erreur(existant.versionInconnue ? 'ERR-CAB-020' : 'ERR-CAB-021',
       existant.motif || 'Le livre de cet exercice n\'est pas lisible.');
   }
-  const livre = KC.livreVide(dossierId, annee, { du, au, plan: Array.isArray(plan) ? plan : [] });
+  // 10.14.1 (CA-01) — l'exercice se juge AVANT le livre : le moteur ne sait tenir que l'année civile.
+  // L'écran refuse déjà en montrant la case ; le pont refuse aussi, parce qu'une porte ne dépend pas de
+  // chacun de ses appelants (10.14.0, `cab:contrepasser`).
+  const ex = KC.exerciceDeReprise(annee, du, au);
+  if (!ex.ok) throw erreur('ERR-CAB-081', ex.motif);
+  const livre = KC.livreVide(dossierId, annee, { du: ex.du, au: ex.au, plan: Array.isArray(plan) ? plan : [] });
   if (Array.isArray(ouverture) && ouverture.length) {
-    const r = KC.balanceOuverture(livre, ouverture, du || `${annee}-01-01`, source || 'balance', quiSuisJe(), Date.now());
+    const r = KC.balanceOuverture(livre, ouverture, ex.du, source || 'balance', quiSuisJe(), Date.now());
     if (!r.ok) { throw Object.assign(erreur('ERR-CAB-023', r.motif), { ecart: r.ecart }); }
   }
   ecrireLeLivre(dossierId, livre, 'reprise', `exercice ${annee}`);

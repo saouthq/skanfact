@@ -62,7 +62,9 @@ t('montants en lettres', () => {
   assert.strictEqual(core.amountToWords(1000), 'Mille dinars');
   assert.strictEqual(core.amountToWords(1500.5), 'Mille cinq cents dinars et cinq cents millimes');
   assert.strictEqual(core.amountToWords(2380.001), 'Deux mille trois cent quatre-vingts dinars et un millime');
-  assert.strictEqual(core.amountToWords(1000000), 'Un million dinars');
+  // 10.14.1 (MR-08) : cette assertion gravait la faute — « Un million dinars ». Un nombre qui finit par
+  // million (un nom) se lie à l'unité par « de » ; retournée vers la règle.
+  assert.strictEqual(core.amountToWords(1000000), 'Un million de dinars');
 });
 
 t('calculs facture avec TVA 19% et timbre', () => {
@@ -2478,7 +2480,8 @@ t('lecture : un écart, un fournisseur inconnu ou un numéro manquant sont signa
   assert.strictEqual(r.warnings.length, 3);                     // fournisseur, numéro, écart
   assert.ok(r.warnings.some(w => /Inconnu SARL/.test(w)));
   assert.ok(r.warnings.some(w => /numéro/.test(w)));
-  assert.ok(r.warnings.some(w => /900/.test(w) && /1000/.test(w)));
+  // 10.14.1 (M-16) : l'écart s'écrit comme à l'écran — retournée vers la règle : les deux montants, en français.
+  assert.ok(r.warnings.some(w => w.includes(core.money(900, 'DT')) && w.includes(core.money(1000, 'DT'))), r.warnings.join(' | '));
   // une date future est suspecte
   assert.ok(core.ocrToPurchase({ date: '2027-01-01', number: 'X', supplier: '' }, data, '2026-09-11')
     .warnings.some(w => /futur/.test(w)));
@@ -4908,7 +4911,8 @@ t('8.9.0 : le lettrage se lit — une facture soldée porte sa lettre, ce qui re
   // Et l'écran : le livre-journal numéroté, l'OD, le centralisateur, le lettrage et la contrepartie d'un mouvement.
   const app = lireApp();
   assert.ok(/C\.livreJournal\(data, company\(\), p, \{\}\)/.test(app), 'la page Écritures lit le livre-journal numéroté');
-  assert.ok(/function odForm\(od, done\)/.test(app) && /const v = C\.odValide\(n\);\s*if \(!v\.ok\)/.test(app), 'la fenêtre d\'OD refuse par odValide');
+  // 10.14.1 (M-05) : retournée vers la règle — la fenêtre refuse par odValide, quelle que soit la société qu'elle lui passe pour écrire ses montants.
+  assert.ok(/function odForm\(od, done\)/.test(app) && /const v = C\.odValide\(n(?:, company\(\))?\);\s*if \(!v\.ok\)/.test(app), 'la fenêtre d\'OD refuse par odValide');
   assert.ok(/if \(!od\) n\.piece = C\.odPiece\(data, n\.date\);/.test(app), 'le numéro de pièce est pris à l\'enregistrement');
   assert.ok(app.indexOf("licenceBlock('Créer une opération diverse')") < app.indexOf("if (!od) n.piece = C.odPiece("), 'le garde-fou passe avant le numéro');
   assert.ok(/closedBlock\(\[od && od\.date, n\.date\], 'Cette opération diverse'\)/.test(app), 'l\'ancienne date ET la nouvelle sont testées');
@@ -6956,7 +6960,15 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     const debutTf = src.indexOf('async function trouveFichier(');
     const tf = src.slice(debutTf, src.indexOf('\n}\n', debutTf) + 3);
     assert.ok(tf.length > 300 && tf.length < 2000, 'tranche trouveFichier suspecte : ' + tf.length);
-    assert.ok(/await trouveDans\(releases, fichier, /.test(tf), 'trouveFichier ne passe pas par trouveDans');
+    // 10.14.1 (S-01) — la recherche d'un index d'essai passe par `trouveIndex`, qui cherche la bêta
+    // ET sa jumelle stable, chacune par `trouveDans` : la stable est servie quand elle est plus
+    // récente. La règle reste que rien n'échappe à `trouveDans` (donc à releaseAdmissible).
+    assert.ok(/await trouveIndex\(releases, fichier, /.test(tf), 'trouveFichier ne passe pas par trouveIndex');
+    const debutTi = src.indexOf('export async function trouveIndex(');
+    const ti = src.slice(debutTi, src.indexOf('\n}\n', debutTi) + 3);
+    assert.ok(ti.length > 150 && ti.length < 1200, 'tranche trouveIndex suspecte : ' + ti.length);
+    assert.ok(/await trouveDans\(releases, fichier, /.test(ti) && /await trouveDans\(releases, jumeau, /.test(ti),
+      'trouveIndex ne cherche pas le fichier ET sa jumelle stable par trouveDans');
     const debutTd = src.indexOf('export async function trouveDans(');
     const td = src.slice(debutTd, src.indexOf('\n}\n', debutTd) + 3);
     assert.ok(td.length > 200 && td.length < 1500, 'tranche trouveDans suspecte : ' + td.length);
@@ -8244,8 +8256,10 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     // Le timbre fiscal est un montant fixé en dinars par l'État, pas un nombre sans unité. Ajouté tel
     // quel sur une facture en euros, il valait 1 € — soit 3,4 fois le timbre dû.
     const eur = core.computeTotals({ type: 'facture', currency: 'EUR', exchangeRate: 3.4, lines: lignes }, co);
-    assert.strictEqual(core.round3(eur.stamp * 3.4), 1,
-      `le timbre d'une facture en EUR vaut ${eur.stamp} €, soit ${core.round3(eur.stamp * 3.4)} DT au lieu de 1,000 DT`);
+    // 10.14.1 : la pièce le porte au CENTIME (0,29 €, le montant imprimé et payé), et c'est le
+    // dinar exact qui se déclare (`stampBase`) — l'écart de conversion part au change.
+    assert.strictEqual(eur.stamp, 0.29, `le timbre d'une facture en EUR vaut ${eur.stamp} € au lieu de 0,29 €`);
+    assert.strictEqual(eur.stampBase, 1, `le timbre déclaré vaut ${eur.stampBase} DT au lieu de 1,000 DT`);
     // Et il ne bouge pas dans la devise de l'entreprise, qui est le cas de presque toutes les factures.
     assert.strictEqual(core.computeTotals({ type: 'facture', currency: 'DT', lines: lignes }, co).stamp, 1);
     // Un devis n'a jamais de timbre, dans aucune devise.
@@ -8358,7 +8372,8 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
 
     // Et le gel tient aussi en devise : 1 DT figé reste 1 DT, converti au taux de la pièce.
     const eur = core.migrateData({ version: 6, company: avant, documents: [{ ...facture, id: 'f3', currency: 'EUR', exchangeRate: 3.4 }] }).documents[0];
-    assert.strictEqual(core.round3(core.computeTotals(eur, apres).stamp * 3.4), 1);
+    assert.strictEqual(core.computeTotals(eur, apres).stampBase, 1, 'le dinar figé se déclare tel quel');
+    assert.strictEqual(core.computeTotals(eur, apres).stamp, 0.29, 'et la pièce le porte au centime');
   });
 
   t('l\'assistant range le menu d\'après le métier déclaré', () => {
@@ -9347,7 +9362,10 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
 
     // Et le bouton est vraiment posé et branché, pas seulement décrit dans une table.
     assert.ok(/data-check="\$\{h\(c\.id\)\}"/.test(app), 'les lignes ne portent pas de bouton');
-    assert.ok(/\$\$\('\[data-check\]'\)\.forEach\(b => b\.onclick = \(\) => CHECK_ACTIONS\[b\.dataset\.check\]\.run\(\)\)/.test(app),
+    // Retourné en 10.14.1 : le geste reçoit la ligne cliquée (le contrôle des bulletins y lit son
+    // premier mois manquant). La règle est que chaque bouton appelle la table, pas qu'il le fasse
+    // sans argument — la forme recopiée est tombée sur du code juste.
+    assert.ok(/\$\$\('\[data-check\]'\)\.forEach\(b => b\.onclick = \(\) => CHECK_ACTIONS\[b\.dataset\.check\]\.run\(/.test(app),
       'les boutons de « Ce qui manque » ne sont pas branchés');
 
     // Et le piège qui rendait plusieurs de ces boutons inertes : `navigate` pose le hash, le routeur
@@ -9853,32 +9871,48 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     // L'étiquette montrait le réglage brut — « 1,00 € » — à côté d'un total qui comptait 0,29 €.
     assert.ok(/const timbreAffiche = \(\) => \{[\s\S]{0,420}?C\.rateOf\(doc, company\(\)\)/.test(app),
       'le montant du timbre affiché n\'est plus converti dans la devise de la pièce');
-    assert.ok(/<span id="stamp-lbl">\$\{C\.money\(timbreAffiche\(\), cur\)\}<\/span>/.test(app),
+    // Retourné vers la règle en 10.14.1 : l'étiquette passe par `libelleTimbre`, qui annonce le
+    // montant compté (`timbreAffiche`) dès qu'un taux existe, et le timbre en dinars avant.
+    assert.ok(/const libelleTimbre = \(\) => \{\s*if \(!C\.missingRate\(doc, company\(\)\)\) return C\.money\(timbreAffiche\(\), cur\);/.test(app),
       'l\'étiquette du timbre n\'utilise pas le montant réellement compté');
-    assert.ok(/const lbl2 = \$\('#stamp-lbl'\); if \(lbl2\) lbl2\.textContent = C\.money\(timbreAffiche\(\), cur\);/.test(app),
+    assert.ok(/<span id="stamp-lbl">\$\{libelleTimbre\(\)\}<\/span>/.test(app),
+      'l\'étiquette du timbre ne passe pas par libelleTimbre');
+    assert.ok(/const lbl2 = \$\('#stamp-lbl'\); if \(lbl2\) lbl2\.textContent = libelleTimbre\(\);/.test(app),
       'l\'étiquette ne se recalcule pas quand la devise ou le taux changent');
     // Et le calcul de core reste la référence : sur une facture en EUR, l'étiquette vaut `stamp`.
     const co = { currency: 'DT', stampFee: 1, vatRate: 19 };
     const f = { type: 'facture', currency: 'EUR', exchangeRate: 3.4, applyStamp: true, status: 'envoyée',
       lines: [{ label: 'X', qty: 1, unitPrice: 100, vatRate: 19 }] };
     const t2 = core.computeTotals(f, co);
-    assert.ok(Math.abs(t2.stamp - core.round3(1 / 3.4)) < 0.0005,
-      `le timbre d'une facture en EUR vaut ${t2.stamp} au lieu de ${core.round3(1 / 3.4)}`);
+    // Au centime pour une devise à deux décimales (10.14.1) : 1 / 3,4 = 0,294… → 0,29 €, le montant
+    // imprimé. L'étiquette passe par le même arrondi que le total.
+    assert.strictEqual(t2.stamp, 0.29, `le timbre d'une facture en EUR vaut ${t2.stamp} au lieu de 0,29`);
+    assert.ok(/const timbreAffiche = \(\) => \{[\s\S]{0,480}?C\.arrondiDevise\(/.test(app), 'l\'étiquette du timbre n\'arrondit pas comme le total');
   });
 
   t('changer la date recalcule l\'échéance, sauf si elle a été saisie à la main', () => {
     const app = lireApp();
-    assert.ok(/let dueAuto = doc\.dueDate;/.test(app), 'l\'échéance automatique n\'est plus mémorisée');
-    // La condition porte les DEUX moitiés : c'est la date qui a changé, et l'échéance n'a pas été touchée.
-    assert.ok(/e\.target\.name === 'date' && doc\.date && dueAuto && doc\.dueDate === dueAuto/.test(app),
-      'l\'échéance se recalcule même quand elle a été saisie à la main');
-    assert.ok(/doc\.dueDate = neuf; dueAuto = neuf;\s*\n\s*poserDate\('dueDate', neuf\);/.test(app),
-      'la nouvelle échéance n\'est pas écrite dans le champ visible');
+    // Retourné vers la RÈGLE en 10.14.1 : ce test recopiait la forme de l'éditeur de document
+    // (`let dueAuto = doc.dueDate;`, la note `#due-auto`) — et l'éditeur d'achat, qui n'avait pas la
+    // règle, ne pouvait pas le faire tomber. Les deux éditeurs passent par la même fonction, et c'est
+    // elle qui se joue ici (vm) ; `verif2.js` tient le reste (achat, fournisseur, note qui ne pousse rien).
+    const corps = nom => { const i = app.indexOf(`function ${nom}(`); return i < 0 ? '' : app.slice(i, app.indexOf('\n  }', i) + 4); };
+    const vm = require('vm');
+    const ctx = { C: core };
+    vm.runInNewContext(`${corps('echeanceAuto')}\n${corps('echeanceSuivie')}\nthis.echeanceAuto = echeanceAuto; this.echeanceSuivie = echeanceSuivie;`, ctx);
+    const J = core.addDays('2026-03-01', 30);
+    assert.strictEqual(ctx.echeanceSuivie('2026-03-01', '2026-02-10', '2026-02-10', 30), J, 'la date change et l\'échéance posée par l\'application ne suit pas');
+    assert.strictEqual(ctx.echeanceSuivie('2026-03-01', '2026-06-30', '2026-02-10', 30), '', 'une échéance saisie à la main a été recalculée');
+    assert.strictEqual(ctx.echeanceSuivie('2026-03-01', J, J, 30), '', 'rien n\'a changé et l\'échéance « bouge » quand même');
+    // La date change dans l'éditeur de document ET dans l'éditeur d'achat, par la même fonction.
+    assert.ok(/e\.target\.name === 'date' \? echeanceSuivie\(doc\.date, doc\.dueDate, dueAuto, joursEcheance\)/.test(app),
+      'l\'éditeur de document ne fait plus suivre l\'échéance');
     // Un champ date est un COUPLE (règle 3.0.0) : le helper touche les deux, et il est partagé.
     assert.ok(/function poserDateField\(root, name, iso\)[\s\S]{0,420}?hid\.value = iso;[\s\S]{0,300}?txt\.value = iso \? C\.fmtDateInput\(iso\) : '';/.test(app),
       'le helper de champ date ne met plus à jour le couple hidden + texte');
     assert.ok(/poserDateField\(head, 'dueDate', p\.dueDate\);/.test(app), 'l\'éditeur d\'achat ne passe pas par le helper');
-    assert.ok(/id="due-auto"/.test(app), 'rien ne dit que l\'échéance vient d\'être recalculée');
+    // Et on le DIT : par un message passager, jamais par une note posée dans la grille.
+    assert.ok(/function annoncerEcheance\([\s\S]{0,400}?toastUndo\(/.test(app), 'rien ne dit que l\'échéance vient d\'être recalculée');
   });
 
   t('une quantité effacée ne vaut pas zéro', () => {
@@ -9891,7 +9925,12 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
       'un champ numérique vide n\'est ni marqué ni ignoré');
     // Et on PRÉVIENT à l'émission : une ligne offerte reste légitime.
     assert.ok(/La ligne « \$\{l\.label\} » est à 0/.test(app), 'une ligne à zéro n\'est pas signalée avant d\'émettre');
-    assert.ok(/issueWarnings[\s\S]{0,3000}?!\(Number\(l\.qty\) > 0\) \|\| !\(Number\(l\.unitPrice\) > 0\)/.test(app),
+    // 10.14.1 : bornée sur le CORPS de la fonction, jamais sur un décalage en dur (9.4.6) — le seuil de
+    // retenue converti (M-09) a allongé issueWarnings, et la fenêtre de 3 000 caractères accusait du code juste.
+    const debutIW = app.indexOf('function issueWarnings() {');
+    const corpsIW = app.slice(debutIW, app.indexOf('\n    }\n', debutIW));
+    assert.ok(debutIW > 0 && corpsIW.length > 500 && /return w;$/.test(corpsIW.trim()), 'tranche de issueWarnings introuvable');
+    assert.ok(/!\(Number\(l\.qty\) > 0\) \|\| !\(Number\(l\.unitPrice\) > 0\)/.test(corpsIW),
       'le contrôle des lignes à zéro n\'est pas dans issueWarnings');
   });
 
@@ -9948,33 +9987,35 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     // montant réel une fois le brouillon créé.
     assert.ok(/<select name="mode"><option value="pct">.*?<option value="dt">/.test(app),
       'l\'acompte ne se demande qu\'en pourcentage');
-    assert.ok(/const lirePct = \(\) => \{[\s\S]{0,300}?if \(v\.mode === 'dt'\) \{ const m = Number\(v\.montant\); return ttcDevis > 0 \? \(m \/ ttcDevis\) \* 100 : 0; \}/.test(app),
-      'le montant n\'est pas converti en pourcentage (c\'est ce que depositLines attend)');
+    // 10.14.1 (ACP-01) — retourné vers la RÈGLE : un montant tapé fait des lignes qui tombent SUR ce
+    // montant (`depositLinesMontant`), au lieu d'un pourcentage arrondi au millième qui faisait
+    // 500,002 TTC pour 500 demandés. L'assertion d'avant recopiait la conversion en pourcentage.
+    assert.ok(/const demande = \(\) => \{[\s\S]{0,500}?if \(v\.mode === 'dt'\) \{[\s\S]{0,400}?C\.depositLinesMontant\(doc, m, company\(\)\)/.test(app),
+      'un montant tapé ne passe pas par depositLinesMontant');
     // Le TTC réellement obtenu s'affiche AVANT : l'écart d'arrondi ne se découvre pas après coup.
     // 10.12.0 (rapport QA E-02) — la RÈGLE plutôt que la ligne recopiée : les DEUX montants annoncés
     // (l'acompte et le solde) sortent du constructeur qui fabriquera les deux factures. Le solde se
     // calculait à la main (« total du devis − acompte ») et se trompait de deux timbres.
     const ap = app.slice(app.indexOf('const apercu = () => {'), app.indexOf('const apercu = () => {') + 2500);
-    assert.ok(/const acompte = invoiceFromQuote\(doc, C\.depositLines\(doc, p2, company\(\)\), 0\)/.test(ap)
+    assert.ok(/const q = demande\(\);[\s\S]{0,400}?const acompte = invoiceFromQuote\(doc, q\.lignes, 0\)/.test(ap)
       && /L'acompte fera <b id="dp-acompte">\$\{h\(C\.money\(ta\.netToPay, cur\)\)\}<\/b> à payer/.test(ap),
       'le montant réellement obtenu n\'est pas annoncé avant de créer le brouillon');
     assert.ok(/const solde = invoiceFromQuote\(doc, C\.settlementLines\(doc, \[acompte\]\), doc\.discountRate\)/.test(ap)
       && /id="dp-solde">\$\{h\(C\.money\(ts\.netToPay, cur\)\)\}/.test(ap),
       'le solde annoncé ne vient pas de la facture de solde telle qu\'elle sera fabriquée');
     assert.ok(!/ttcDevis - /.test(ap), 'le solde se calcule encore à la main : il oublie le timbre du solde');
-    assert.ok(/ttcDevis > 0 \? \(m \/ ttcDevis\) \* 100 : 0/.test(app), 'une division par zéro reste possible sur un devis à 0');
-    // `depositLines` ne change pas : c'est tout l'intérêt de convertir en amont.
+    assert.ok(/ttcDevis > 0 \? C\.round3\(\(m \/ ttcDevis\) \* 100\) : 0/.test(app), 'une division par zéro reste possible sur un devis à 0');
+    // Les lignes d'un acompte demandé à 300 DT font 300 DT TTC — EXACTEMENT, au millime (ACP-01).
     const co = { currency: 'DT', stampFee: 1 };
-    const q = { type: 'devis', lines: [{ label: 'X', qty: 1, unitPrice: 1000, vatRate: 19 }] };
-    const ttc = core.computeTotals(q, co).totalTTC;
-    const lignes = core.depositLines(q, (300 / ttc) * 100, co);
+    const q = { type: 'devis', number: 'DEV-X', lines: [{ label: 'X', qty: 1, unitPrice: 1000, vatRate: 19 }] };
+    const lignes = core.depositLinesMontant(q, 300, co);
     const sansTimbre = core.computeTotals({ type: 'facture', lines: lignes, applyStamp: false }, co);
-    assert.ok(Math.abs(sansTimbre.totalTTC - 300) < 0.01,
+    assert.strictEqual(sansTimbre.totalTTC, 300,
       `les lignes d'un acompte demandé à 300 DT doivent totaliser 300 DT TTC, obtenu ${sansTimbre.totalTTC}`);
     // Et le timbre s'ajoute PAR-DESSUS : c'est précisément l'écart que la fenêtre annonce avant de
     // créer le brouillon, au lieu de le laisser découvrir sur la facture.
     const avecTimbre = core.computeTotals({ type: 'facture', lines: lignes, applyStamp: true }, co);
-    assert.ok(Math.abs(avecTimbre.netToPay - 301) < 0.01,
+    assert.strictEqual(avecTimbre.netToPay, 301,
       `l'acompte réellement à payer vaut 300 + 1 DT de timbre, obtenu ${avecTimbre.netToPay}`);
   });
 
@@ -10021,8 +10062,12 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     const app = lireApp();
     assert.ok(/if \(\$\('#b-cat'\)\) bindCombo/.test(app), 'l\'éditeur d\'achat n\'a pas de sélecteur de catalogue');
     // On ACHÈTE : c'est le coût d'achat qui est repris, pas le prix de vente.
-    assert.ok(/unitPrice: Number\(it\.unitCost\) \|\| Number\(it\.unitPrice\) \|\| 0/.test(app),
+    // Retourné vers la règle en 10.14.1 : le coût passe désormais par `coutCatalogue`, qui le
+    // convertit dans la devise de l'achat — la règle reste qu'il lit le COÛT avant le prix.
+    assert.ok(/const coutCatalogue = it => \{ const v = C\.prixDuCatalogue\(Number\(it\.unitCost\) \|\| Number\(it\.unitPrice\) \|\| 0/.test(app),
       'la ligne d\'achat reprend le prix de VENTE du catalogue');
+    assert.ok((app.match(/unitPrice: coutCatalogue\(it\)/g) || []).length >= 2,
+      'une ligne d\'achat tirée du catalogue ne passe pas par coutCatalogue');
     // Et la ligne porte l'itemId : c'est lui qui relie l'achat au stock, sans dépendre du libellé.
     assert.ok(/itemId: it\.id, destination: it\.tracked \? 'stock' : 'charge'/.test(app),
       'la ligne choisie au catalogue ne porte pas son itemId ni sa destination');
@@ -10113,7 +10158,8 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     assert.ok(/data-check="\$\{h\(c\.id\)\}"/.test(zone), 'les contrôles avant clôture n\'ont toujours aucun bouton');
     // Le branchement vit dans le CORPS de `drawClosures`, pas dans son gabarit : on le cherche là.
     const corps = app.slice(app.indexOf('function drawClosures()'), app.indexOf('#do-close'));
-    assert.ok(/\$\$\('\[data-check\]'\)\.forEach\(b => b\.onclick = \(\) => CHECK_ACTIONS\[b\.dataset\.check\]\.run\(\)\);/.test(corps),
+    // Retourné en 10.14.1 : le geste reçoit la ligne cliquée (voir le test de la 7.15.0).
+    assert.ok(/\$\$\('\[data-check\]'\)\.forEach\(b => b\.onclick = \(\) => CHECK_ACTIONS\[b\.dataset\.check\]\.run\(/.test(corps),
       'les boutons des contrôles avant clôture ne sont pas branchés');
     // `closureChecks` est un sous-ensemble de `packChecklist` : le test de couverture de la 7.15.0
     // vaut donc aussi ici, et on le vérifie au lieu de le supposer.
@@ -12594,12 +12640,14 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     // commentaire, seulement sur du code (piège de la 8.2.0, re-rencontré).
     const iw = app.slice(app.indexOf('function issueWarnings()'), app.indexOf('async function premierEnvoiOk()'));
     assert.ok(iw.length > 500 && iw.length < 6000, `tranche d'issueWarnings suspecte : ${iw.length}`);
-    assert.ok(/C\.seuilRetenue\(co\)/.test(iw) && /seuil > 0/.test(iw),
+    // Retourné vers la règle en 10.14.1 : le seuil se juge par `sousSeuilRetenue`, qui compare le
+    // TTC CONVERTI dans la devise du seuil (M-09) — la règle reste qu'il vit dans issueWarnings.
+    assert.ok(/C\.sousSeuilRetenue\(doc, co\)/.test(iw),
       'l\'avertissement du seuil doit vivre dans issueWarnings');
     assert.ok(/w\.push\(`Cette facture/.test(iw), 'il doit AVERTIR (w.push), pas refuser');
     assert.ok(!/return false|refus\(/.test(iw), 'issueWarnings ne refuse rien, jamais');
     // Et nulle part ailleurs : c'est ce qui garantit qu'il ne devient pas un blocage en passant.
-    assert.strictEqual((app.match(/seuilRetenue/g) || []).length, 1,
+    assert.strictEqual((app.match(/seuilRetenue/gi) || []).length, 1,
       'le seuil ne se lit qu\'à un seul endroit de l\'interface');
   });
 
@@ -13317,7 +13365,9 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     // Les DEUX éditeurs branchent le composant sur la désignation : le stock ENTRE par l'achat et
     // SORT par la vente, par la même règle (`itemOfLine`). Un seul des deux serait la faute 7.3.0.
     const achat = zone("const body = $('#b-lines');", 'function refresh() {');
-    const doc = zone('const openDesc = new Set();', "if ($('#cat-pick')) bindCombo(");
+    // 10.14.1 (M-01) : bornée sur l'APPEL, présent sous ses deux formes — le combo du catalogue est
+    // désormais retenu (`catCombo = … ? bindCombo(…)`) pour suivre la devise de la pièce.
+    const doc = zone('const openDesc = new Set();', "bindCombo($('.combo', $('#cat-pick'))");
     assert.ok(!achat.includes('linesBody') && !doc.includes('#b-lines'), 'les tranches se chevauchent : le test jugerait un éditeur pour l\'autre');
     [['achat', achat], ['document', doc]].forEach(([nom, z]) => {
       assert.ok(z.includes('suggererCatalogue(el, {'), `l'éditeur de ${nom} ne propose plus le catalogue sur la désignation`);
@@ -14591,6 +14641,7 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
   await require('./suites/plateforme-gestion.js')({ t, ta, assert, lireSource });
   await require('./suites/paiement.js')({ ta, assert });
   await require('./suites/mises-a-jour.js')({ ta, t, assert, lireSource });
+  await require('./suites/verif2.js')({ t, ta, assert, lireSource });
 
   // ---------- 9.4.10 : aucune suite découpée ne reste sur le bord de la route ----------
   // Le danger d'un découpage, c'est le fichier qu'on écrit et que personne ne charge : les tests

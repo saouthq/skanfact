@@ -612,7 +612,9 @@ module.exports = ({ t, assert, lireSource }) => {
   // devise dans les Paramètres, là où les deux se règlent désormais.
   t('Le timbre fiscal dit son unité, et elle suit la devise choisie', () => {
     const app = code('src', 'renderer', 'app.js');
-    const champs = app.match(/lbl\(`Timbre fiscal par facture[^`]*`/g) || [];
+    // 10.14.1 : l'étiquette entière est UN élément (`<span>…</span>`) — dans `.fl`, le texte et l'unité
+    // étaient deux morceaux flex, et le libellé se lisait « ( DT ) » (H-E9 re-trouvé).
+    const champs = app.match(/lbl\(`(?:<span>)?Timbre fiscal par facture[^`]*`/g) || [];
     assert.ok(champs.length >= 1, 'aucun champ du timbre trouvé');
     for (const c of champs) assert.ok(/normCurrency\(/.test(c) && /data-unite-timbre/.test(c), 'le champ du timbre ne dit pas sa devise, ou elle ne suit pas : ' + c);
     assert.ok(!/lbl\('Timbre fiscal par facture'/.test(app), 'un champ du timbre reste sans unité');
@@ -1130,25 +1132,39 @@ module.exports = ({ t, assert, lireSource }) => {
     }
     const ok = zone.slice(zone.indexOf("$('#ok', root).onclick"));
     assert.ok(!/return toast\(/.test(ok.slice(0, 1500)), 'un refus du contrat reste un bandeau qui ne montre pas le champ');
-    assert.strictEqual((ok.slice(0, 1500).match(/return refus\(/g) || []).length, 4, 'les quatre refus du contrat ne passent pas tous par refus()');
-    assert.ok(/t\.netHT > 0\.0005 \?/.test(zone), 'un contrat vide annonce un montant fait du seul timbre');
+    // 10.14.1 : le contrat a gagné un cinquième refus (le taux de change, M-08) — un compte en dur décrivait
+    // l'état du jour. La règle porte sur CHAQUE refus : tout `return` avant l'enregistrement passe par refus().
+    const refusZone = ok.slice(0, ok.indexOf('Object.assign(r, v'));
+    const retours = refusZone.match(/return [^;]*/g) || [];
+    assert.ok(retours.length >= 4 && retours.every(x => /^return refus\(/.test(x)), 'un refus du contrat ne passe pas par refus() : ' + retours.filter(x => !/^return refus\(/.test(x)).join(' | '));
+    assert.ok(/\bt2?\.netHT > 0\.0005\)? \?/.test(zone), 'un contrat vide annonce un montant fait du seul timbre');
   });
   // 10.12.0 — un délai de 0 jour imprimait « À régler avant le 24/09/2026 » sous « Émise le
   // 24/09/2026 » : un délai qui se lit impossible. La mention d'usage est « à réception ».
-  t('Une facture payable le jour de son émission porte « à réception », pas « avant le » ce jour-là', () => {
+  // 10.14.1 (S-05, Skander : « ça sert à rien d'avoir les deux cadres avec la date ») — et la
+  // mention vit dans le MÊME cadre que la date : « Émise le 24/09 » à côté d'« À régler : à
+  // réception » disait deux fois la même date, dans deux cadres.
+  t('Une facture payable le jour de son émission porte « à réception » dans le cadre de sa date, et un seul', () => {
     const client = { id: 'c1', name: 'Client' };
     const base = { type: 'facture', number: 'FAC-2026-001', date: '2026-09-24', status: 'envoyée', clientId: 'c1', applyStamp: true,
       lines: [{ label: 'Pose', qty: 1, unitPrice: 100, vatRate: 19 }] };
     const html = d => core.documentHtml(d, client, société, {});
+    const cadres = h => h.match(/<div class="chip">[\s\S]*?<\/div>/g) || [];
     const jour = html({ ...base, dueDate: '2026-09-24', lang: 'fr' });
-    assert.ok(/À réception/.test(jour), 'une facture à 0 jour n\'imprime pas « à réception »');
+    assert.ok(/À régler à réception/.test(jour), 'une facture à 0 jour n\'imprime pas « à réception »');
     assert.ok(!/À régler avant le/.test(jour), 'une facture à 0 jour imprime encore « À régler avant le » le jour de son émission');
+    const avecDate = cadres(jour).filter(c => /24\/09\/2026/.test(c));
+    assert.strictEqual(avecDate.length, 1, 'la date du jour occupe ' + avecDate.length + ' cadres : ' + avecDate.join(' | '));
+    assert.ok(/À régler à réception/.test(avecDate[0]), 'la mention ne vit pas dans le cadre de la date : ' + avecDate[0]);
     const trente = html({ ...base, dueDate: '2026-10-24', lang: 'fr' });
     assert.ok(/À régler avant le/.test(trente) && /24\/10\/2026/.test(trente), 'une facture à trente jours ne dit plus sa date limite');
-    assert.ok(!/À réception/.test(trente), 'une facture à trente jours se dit « à réception »');
-    assert.ok(/On receipt/.test(html({ ...base, dueDate: '2026-09-24', lang: 'en' })), 'la facture anglaise à 0 jour n\'a pas sa mention');
+    assert.ok(!/réception/.test(trente), 'une facture à trente jours se dit « à réception »');
+    assert.strictEqual(cadres(jour).length, cadres(trente).length - 1, 'le cadre de l\'échéance ne disparaît pas quand elle tombe le jour même');
+    const en = html({ ...base, dueDate: '2026-09-24', lang: 'en' });
+    assert.ok(/Payable on receipt/.test(en) && !/Due by/.test(en), 'la facture anglaise à 0 jour n\'a pas sa mention');
     const pro = html({ ...base, type: 'proforma', dueDate: '2026-09-24', lang: 'fr' });
-    assert.ok(/À réception/.test(pro) && !/À régler avant le/.test(pro), 'la proforma à 0 jour garde « avant le » le jour même');
+    assert.ok(/À régler à réception/.test(pro) && !/À régler avant le/.test(pro), 'la proforma à 0 jour garde « avant le » le jour même');
+    assert.strictEqual(cadres(pro).filter(c => /24\/09\/2026/.test(c)).length, 1, 'la proforma à 0 jour garde deux cadres de date');
   });
   // 10.12.0 — la fiche d'un contrat, à la souris : l'aperçu de la prochaine facture barré d'une
   // barre de défilement horizontale (et le bord droit de la page coupé), un « Générer maintenant »

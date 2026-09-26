@@ -129,15 +129,27 @@ t('9.6.1 : un montant négatif change de COLONNE, il ne garde pas son signe', ()
   assert.strictEqual(b.debit, b.credit, 'la pièce doit rester équilibrée');
 });
 
-t('9.6.1 : l\'écart d\'arrondi s\'absorbe sur la dernière ligne, jamais livré déséquilibré', () => {
+t('9.6.1 / 10.14.1 : l\'écart d\'arrondi s\'absorbe sur la plus grosse ligne hors tiers, dans SA colonne', () => {
   const set = K.entrySet({ date: '2026-03-01', journal: 'VT', piece: 'FAC-1' });
-  set.debit('411', 'Client', 119.005);
+  set.debit('411', 'Client', 119.005, { role: 'clients' });
   set.credit('707', 'Ventes', 100);
   set.credit('4367', 'TVA', 19);
   const lignes = set.done();
   const b = K.entriesBalance(lignes);
   assert.strictEqual(b.debit, b.credit, 'un écart de quelques millimes ne doit jamais sortir de là');
-  assert.strictEqual(K.round3(b.debit), 119.005);
+  assert.strictEqual(K.round3(b.debit), 119.005, 'le client garde ce qu\'il doit : le lettrage ne laisse pas de millime');
+  assert.strictEqual(lignes.find(l => l.account === '707').credit, 100.005, 'l\'écart va aux ventes, la plus grosse ligne hors tiers');
+  assert.strictEqual(lignes.find(l => l.account === '4367').credit, 19, 'la TVA déclarée ne bouge pas');
+  // Le défaut de la 10.14.0 (DEV-01) : un écart NÉGATIF sur une dernière ligne au crédit partait
+  // dans la colonne d'en face — « D 0,001 C 1,002 », une ligne que le Cabinet refuse de valider.
+  const set2 = K.entrySet({ date: '2026-03-01', journal: 'VT', piece: 'FAC-2' });
+  set2.debit('411', 'Client', 924.461, { role: 'clients' });
+  set2.credit('706', 'Ventes', 925.462);
+  set2.credit('4368', 'Timbre', 1);
+  const l2 = set2.done();
+  assert.ok(l2.every(l => !(l.debit > 0 && l.credit > 0)), 'une ligne porte un débit ET un crédit : ' + JSON.stringify(l2.map(l => [l.account, l.debit, l.credit])));
+  assert.strictEqual(l2.find(l => l.account === '4368').credit, 1, 'le timbre, droit fixe, ne reçoit jamais l\'écart');
+  assert.strictEqual(l2.find(l => l.account === '706').credit, 923.461);
   // Une ligne nulle n'entre pas : elle n'apprend rien et alourdit chaque journal.
   const vide = K.entrySet({ date: '2026-03-01' });
   vide.debit('606', 'Rien', 0);

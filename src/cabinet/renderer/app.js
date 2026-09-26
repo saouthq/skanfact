@@ -455,6 +455,23 @@
       if (principal && !principal.disabled) { e.preventDefault(); principal.click(); }
     });
     if (onMount) onMount(layer, close);
+    // 10.14.1 — les montants préremplis s'écrivent comme l'écran AVANT l'instantané de la saisie :
+    // complétés plus tard, au premier passage du curseur, « 1250.5 » devenu « 1 250,500 » passerait
+    // pour une frappe, et fermer une fenêtre intacte demanderait « Abandonner cette saisie ? ».
+    $$(SEL_MONTANT, layer).forEach(completerMontant);
+    // Et une case de montant qu'on ne sait pas lire se REFUSE avant le geste, en la montrant. Hors de
+    // la grille, « 150 DT » ou « 12a » valaient ZÉRO sans un mot : une prime perdue sur un bulletin,
+    // une cession rangée en mise au rebut. UNE porte pour toutes les fenêtres : posée fenêtre par
+    // fenêtre, elle manquerait la suivante (7.20.0). Elle passe AVANT le gestionnaire du bouton
+    // (capture), et Entrée, qui clique ce même bouton, la traverse aussi.
+    layer.addEventListener('click', e => {
+      const b = e.target && e.target.closest ? e.target.closest('.modal-actions .btn-primary') : null;
+      if (!b || !layer.contains(b)) return;
+      const ko = montantIllisibleDans(layer);
+      if (!ko) return;
+      e.preventDefault(); e.stopImmediatePropagation();
+      refus(ko, motifIllisible(ko.value));
+    }, true);
     // 10.12.0 (vu au test humain) — une fenêtre qui porte un FORMULAIRE garde sa saisie d'office.
     // Cinq fenêtres posaient leur garde-fou à la main ; sept formulaires du livre — la fiche d'un
     // salarié, un bulletin, un bien, un inventaire, un relevé, la reprise d'ouverture, l'écriture
@@ -543,7 +560,7 @@
     return new Promise(resolve => {
       modal(
         `<h2>${esc(title)}</h2><div>${body}</div>
-         <label class="field mt">Recopie <b>${esc(word)}</b> pour confirmer<input type="text" id="w" autocomplete="off" spellcheck="false"></label>
+         <label class="field mt"><span>Recopie <b>${esc(word)}</b> pour confirmer</span><input type="text" id="w" autocomplete="off" spellcheck="false"></label>
          <div class="modal-actions"><button class="btn" id="no">Annuler</button>
          <button class="btn btn-danger" id="ok" disabled>${esc(okLabel || 'Supprimer')}</button></div>`,
         (layer, close) => {
@@ -623,8 +640,11 @@
     const v = Number(n);
     if (!isFinite(v)) return '—';
     const dec = dinar(cur) ? 3 : 2;
-    const corps = Math.abs(v).toFixed(dec).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '\u202f');
-    return (v < 0 ? '−' : '') + corps + '\u00a0' + (cur || 'DT');
+    // Le demi-centime s'arrondit vers le haut (10.14.1), comme `money()` de l'app entreprise, et un
+    // zéro n'a pas de signe : « −0,000 » se lit comme une dette de rien.
+    const p = 10 ** dec, a = Math.round(Math.abs(v) * p * (1 + 4 * Number.EPSILON)) / p;
+    const corps = a.toFixed(dec).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '\u202f');
+    return (v < 0 && a ? '−' : '') + corps + '\u00a0' + (cur || 'DT');
   };
   // Un montant AFFICHÉ, sans sa devise : la grille de saisie, le brouillard, les abonnements et
   // la recherche écrivaient « 4.500 » à côté d'un total à « 0,000 » (T-28). En français, le point
@@ -634,6 +654,9 @@
   // Un taux s'écrit comme un montant (10.12.0) : « 56,33 % » à côté de « -3,998 % », deux précisions
   // et deux signes moins dans le même tableau des ratios. Deux décimales, le vrai signe moins.
   const pourcent = v => { const n = Number(v); return v == null || !isFinite(n) ? '—' : (n < 0 ? '−' : '') + Math.abs(n).toFixed(2).replace('.', ',') + '\u00a0%'; };
+  // 10.14.1 — un TAUX tel qu'il a été réglé (« 9,18 », « 0,4 », « 22,5 »), sans zéros ajoutés :
+  // « 9.18 % de 1 500,000 DT » mettait un point décimal à côté d'une virgule, sur la même ligne.
+  const taux = v => { const n = Number(v); return v == null || v === '' || !isFinite(n) ? '' : String(n).replace('.', ','); };
   // Un montant DANS UN CHAMP (10.12.0, H-3 — trouvé en testant comme un humain). La 9.8.8 gardait
   // `toFixed(3)` pour « remplir un champ, qui se relit en interne » : mais un champ, c'est le
   // COMPTABLE qui le relit. Tab soldait une pièce en écrivant « 250.000 » sous un total à
@@ -645,6 +668,25 @@
   // pour l'espace des milliers, sans un mot : un prix de cession « 1 500,000 » devenait une mise au
   // rebut. Ce qui ne se lit pas du tout vaut 0 ici ; la grille de saisie, elle, le NOMME.
   const lireMontant = v => { const n = KC.nombreStrict(v); return Number.isFinite(n) ? n : 0; };
+  // 10.14.1 — Un montant TAPÉ se relit comme il s'imprime, dès qu'on quitte la case : « 250 » devient
+  // « 250,000 », comme le total juste en dessous (Skander : « des champs où le montant s'écrivait
+  // "250" au lieu de la vraie écriture en dinar »). Une case illisible garde sa frappe et son rouge
+  // (H-3). Le nombre ne change pas ; l'événement qui part met la donnée de la case à jour
+  // (la grille la garde en texte). UNE écoute pour toutes les cases de montant du Cabinet.
+  const montantSaisi = n => (n < 0 ? '-' : '') + montant(Math.abs(n));
+  const SEL_MONTANT = 'input.sa-montant, input.montant';
+  function completerMontant(el) {
+    const brut = String(el.value || '').trim();
+    if (!brut) return;
+    if (montantIllisible(brut)) return;
+    const n = lireMontant(brut);
+    // Le livre du cabinet compte au millime (`round3` à l'écriture) : « 12,3456 » s'écrirait 12,346.
+    // La case montre donc ce que la pièce portera, pas une décimale qui disparaîtra à l'enregistrement
+    // pendant que le total, juste en dessous, dit déjà 12,346.
+    const txt = montantSaisi(Math.round(n * 1000) / 1000);
+    if (txt !== el.value) { el.value = txt; el.dispatchEvent(new Event('input', { bubbles: true })); }
+  }
+  document.addEventListener('focusout', e => { const el = e.target; if (el && el.matches && el.matches(SEL_MONTANT)) completerMontant(el); }, true);
   // Une virgule décimale, comme les montants juste à côté : « 2.4 Mo » dans un tableau où tout le
   // reste s'écrit « 46 800,000 DT » se voit tout de suite.
   const fmtBytes = n => !n ? '—' : n >= 1073741824 ? (n / 1073741824).toFixed(1).replace('.', ',') + ' Go'
@@ -822,7 +864,9 @@
         err.textContent = message; err.hidden = false;
         const marque = champ.closest('.field') || champ;
         marque.classList.add('champ-faute'); champ.setAttribute('aria-invalid', 'true');
-        champ.addEventListener('input', () => { marque.classList.remove('champ-faute'); champ.removeAttribute('aria-invalid'); }, { once: true });
+        // 10.14.1 — et le reproche part avec la faute : « Entre ton mot de passe. » restait écrit
+        // sous un mot de passe qu'on était en train de taper.
+        champ.addEventListener('input', () => { marque.classList.remove('champ-faute'); champ.removeAttribute('aria-invalid'); err.hidden = true; }, { once: true });
         champ.focus();
         if (champ.value) champ.select();
       };
@@ -854,6 +898,7 @@
         go.disabled = false;
         go.textContent = st.exists ? 'Ouvrir' : 'Créer mon cabinet';
         pw.select();
+        pw.addEventListener('input', () => { err.hidden = true; }, { once: true });
       }
     };
     pw.focus();
@@ -1299,9 +1344,17 @@
     const bits = [];
     if (x.created) bits.push('nouveau dossier');
     if (x.adopted) bits.push('✓ ce client s\'est mis à SkanFact');
-    if (x.replaced) bits.push(x.wasDefinitive && !x.nowDefinitive
-      ? '⚠ remplace un mois qui était définitif — les chiffres ont pu changer'
-      : 'remplace le mois déjà reçu');
+    // 10.14.1 — un mois reçu deux fois DIT de combien ses chiffres ont bougé : le moteur le calcule
+    // (`filePack` → `ecart`) depuis la 9.x, et le rapport se contentait de « les chiffres ont pu
+    // changer ». Une rectificative se lit en montant, sinon on ouvre les deux paquets pour comparer.
+    if (x.replaced) {
+      const e = x.ecart;
+      const signe = n => (n > 0 ? '+' : n < 0 ? '−' : '') + money(Math.abs(n), e.devise);
+      const chiffres = !e ? (x.wasDefinitive && !x.nowDefinitive ? ' — les chiffres ont pu changer' : '')
+        : (e.ca === 0 && e.tvaADecaisser === 0) ? ' — chiffres inchangés'
+        : ` — chiffre d'affaires ${signe(e.ca)}, TVA à décaisser ${signe(e.tvaADecaisser)}`;
+      bits.push((x.wasDefinitive && !x.nowDefinitive ? '⚠ remplace un mois qui était définitif' : 'remplace le mois déjà reçu') + chiffres);
+    }
     bits.push(x.nowDefinitive ? 'mois clôturé (définitif)' : 'mois non clôturé (provisoire)');
     const integ = x.integrity || {};
     const bad = (integ.bad || []).length;
@@ -1890,11 +1943,11 @@
           ${col.relance ? '<td></td>' : ''}<td></td><td></td></tr></tfoot>
         </table></div>${pagerBar(rows.length)}
         <p class="legende">${legendeNiveaux()}</p>
-        <p class="muted small">Les totaux et l'export portent sur la sélection entière, pas sur la page affichée.${
-  col.masquees ? ` ${pl(col.masquees, 'colonne vide est masquée', 'colonnes vides sont masquées')}, pour laisser la place aux autres.
+        <div class="muted small ctrl-geste"><span>Les totaux et l'export portent sur la sélection entière, pas sur la page affichée.${
+  col.masquees ? ` ${pl(col.masquees, 'colonne vide est masquée', 'colonnes vides sont masquées')}, pour laisser la place aux autres.</span>
           <button type="button" class="btn btn-ghost btn-sm" id="col-tout">Tout afficher</button>`
-    : col.videsAffichees ? ` ${pl(col.videsAffichees, 'colonne vide est affichée', 'colonnes vides sont affichées')} : elles élargissent le tableau.
-          <button type="button" class="btn btn-ghost btn-sm" id="col-vides">Masquer les colonnes vides</button>` : ''}</p>`
+    : col.videsAffichees ? ` ${pl(col.videsAffichees, 'colonne vide est affichée', 'colonnes vides sont affichées')} : elles élargissent le tableau.</span>
+          <button type="button" class="btn btn-ghost btn-sm" id="col-vides">Masquer les colonnes vides</button>` : '</span>'}</div>`
         : `<div class="empty">Aucun dossier ne correspond à cette recherche.</div>`}`;
 
     $('#imp').onclick = () => doImport();
@@ -2252,9 +2305,12 @@
           <td class="muted">${esc(r.note || '')}</td></tr>`).join('')}</tbody></table>`
         : `<div class="empty mini">Aucune relance enregistrée pour ce client.<br>
           <span class="small">${/* 10.12.0 (U-22) — la phrase suit la condition du bouton : sur un client à
-                jour, « Relancer » n'existe pas, et l'écran renvoyait vers un bouton absent (7.3.0). */''}${row.missingCount || row.provisionalCount
+                jour, « Relancer » n'existe pas, et l'écran renvoyait vers un bouton absent (7.3.0).
+                Un dossier tenu au cabinet n'est pas « à jour » pour autant (10.14.1, MC-14) : on ne
+                lui réclame rien, et ses mois à saisir sont le travail du cabinet. */''}${row.missingCount || row.provisionalCount
     ? 'Le bouton « Relancer », en haut, écrit le message et l\'enregistre ici. '
-    : 'Ce client est à jour : il n\'y a rien à lui réclamer. '}Un appel ou un message
+    : dossier.manual ? 'Tenu au cabinet : SkanFact ne lui réclame rien. '
+      : 'Ce client est à jour : il n\'y a rien à lui réclamer. '}Un appel ou un message
           passé ailleurs se note à la main.</span></div>`}
         ${/* Un état vide qui explique le geste en prose n'est pas une interface (7.0.0) : le bouton
               vit DANS le panneau, et il en a l'air. */''}
@@ -2302,10 +2358,13 @@
       </section>
 
       <section data-onglet="paquets" ${onglet === 'paquets' ? '' : 'hidden'}>
-      ${years.length ? `<div class="panel"><h2>Chiffre d'affaires ${info('d.ca')}</h2>
+      ${/* 10.14.1 — le chiffre d'affaires se lit dans les PAQUETS : un dossier qui n'en a reçu aucun
+            (tenu au cabinet, ou pas encore d'envoi) n'a pas ce panneau, « Aucun paquet reçu » le dit
+            juste dessous. Et une année sans paquet ne se dit plus « sans chiffres » (`caSansChiffre`). */''}
+      ${years.length && packs.length ? `<div class="panel"><h2>Chiffre d'affaires ${info('d.ca')}</h2>
         ${years.length > 1 ? `<div class="filters"><label class="inline small">Exercice
           <select id="ca-year">${years.map(y => `<option value="${esc(y)}" ${y === anneeVue ? 'selected' : ''}>${esc(y)}</option>`).join('')}</select></label></div>` : ''}
-        ${caChart(packs, anneeVue) || '<div class="empty mini">Les paquets de cette année ne portent pas de chiffres (fabriqués avant la 6.2.1).</div>'}
+        ${caChart(packs, anneeVue) || `<div class="empty mini">${esc(caSansChiffre(packs, anneeVue))}</div>`}
       </div>` : ''}
 
       ${/* 10.12.0 (U-25) — deux bulles côte à côte sur le même titre se lisaient comme une seule, et
@@ -2806,11 +2865,14 @@
     const s = livresState;
     const annee = s.annee || String(new Date().getFullYear());
     let lignes = [{ compte: '', libelle: '', debit: '', credit: '' }];
+    // Un montant de la reprise s'écrit comme l'écran (H-3), qu'il vienne d'un nombre (import) ou de la
+    // frappe (une rangée relue) ; ce qui ne se lit pas garde sa frappe, pour être refusé en la montrant.
+    const montantRepris = v => typeof v === 'number' ? montantChamp(v) : montantIllisible(v) ? String(v) : montantChamp(lireMontant(v));
     const ligneHtml = (l, i) => `<tr>
       <td><input name="c${i}" value="${esc(l.compte)}" class="num" style="width:7em" placeholder="411"></td>
       <td><input name="l${i}" value="${esc(l.libelle)}" placeholder="Clients"></td>
-      <td><input name="d${i}" value="${esc(l.debit)}" class="num" inputmode="decimal" style="width:8em"></td>
-      <td><input name="k${i}" value="${esc(l.credit)}" class="num" inputmode="decimal" style="width:8em"></td>
+      <td><input name="d${i}" value="${esc(montantRepris(l.debit))}" class="num montant" inputmode="decimal" style="width:8em"></td>
+      <td><input name="k${i}" value="${esc(montantRepris(l.credit))}" class="num montant" inputmode="decimal" style="width:8em"></td>
       <td class="actions"><button type="button" class="btn btn-sm" data-sup="${i}">Retirer</button></td></tr>`;
     modal(`<h2>Reprendre ${esc(dossier.name)}</h2>
       <p class="small muted">Pour un client qui tenait sa comptabilité ailleurs. Tu poses son exercice et ce que
@@ -2821,6 +2883,7 @@
         <label class="field">Exercice<input name="annee" value="${esc(annee)}" class="num"></label>
         <label class="field">Du<input type="date" name="du" value="${esc(annee)}-01-01"></label>
         <label class="field">Au<input type="date" name="au" value="${esc(annee)}-12-31"></label>
+        <p id="rf-exo" class="annonce-stable span-3 muted" aria-live="polite"></p>
       </form>
       <h3 class="sub-h">Balance d'ouverture</h3>
       <div class="scroll-x"><table class="list compact"><thead><tr><th>Compte</th><th>Libellé</th><th class="r">Débit</th><th class="r">Crédit</th><th></th></tr></thead>
@@ -2844,6 +2907,14 @@
           return out.filter(l => l.compte || l.debit || l.credit);
         };
         const majEcart = () => {
+          // Une case qu'on ne sait pas lire ne compte pas pour ce qu'on devine : « 12a » valait 12,
+          // et l'écart pouvait dire « Équilibrée » sur une ouverture que la garde refusera (10.14.1).
+          const illisible = montantIllisibleDans(corps);
+          if (illisible) {
+            const lb = $('#rf-ecart', rootModal);
+            lb.textContent = motifIllisible(illisible.value); lb.className = 'small err-inline';
+            return;
+          }
           const L = lire();
           const d = KC.round3(L.reduce((a, x) => a + x.debit, 0));
           const c = KC.round3(L.reduce((a, x) => a + x.credit, 0));
@@ -2857,19 +2928,51 @@
           // le défaut `.mono` de la 8.1.0.
           lbl.className = 'small ' + (L.length && e === 0 ? 'ok-inline' : 'err-inline');
         };
+        // 10.14.1 — les rangées TELLES QU'À L'ÉCRAN, vides comprises : c'est sur elles que « Retirer »
+        // compte son rang. « Retirer » retirait dans l'état d'avant la dernière frappe — les montants
+        // corrigés depuis revenaient à leur ancienne valeur, et l'écart disait « Équilibrée » sur une
+        // ouverture que personne n'avait voulue.
+        const lireRangees = () => $$('tr', corps).map((tr, i) => {
+          const v = n => (($(`input[name=${n}${i}]`, tr) || {}).value || '').trim();
+          return { compte: v('c'), libelle: v('l'), debit: v('d'), credit: v('k') };
+        });
         const redessine = () => {
           corps.innerHTML = lignes.map(ligneHtml).join('');
-          $$('[data-sup]', corps).forEach(b => { b.onclick = () => { lignes.splice(Number(b.dataset.sup), 1); if (!lignes.length) lignes = [{ compte: '', libelle: '', debit: '', credit: '' }]; redessine(); }; });
+          $$('[data-sup]', corps).forEach(b => { b.onclick = () => { lignes = lireRangees(); lignes.splice(Number(b.dataset.sup), 1); if (!lignes.length) lignes = [{ compte: '', libelle: '', debit: '', credit: '' }]; redessine(); }; });
           corps.oninput = majEcart;
           majEcart();
         };
         redessine();
-        $('#rf-add', rootModal).onclick = () => { lignes = lire().concat([{ compte: '', libelle: '', debit: '', credit: '' }]); redessine(); };
+        // 10.14.1 (CA-01) — les deux dates SUIVENT l'année tant qu'on n'y a pas touché (règle 7.19.0) :
+        // taper 2025 laissait « du 01/01/2026 au 31/12/2026 » sous les yeux. Et le verdict se lit
+        // PENDANT la saisie, par la fonction du pont : un exercice décalé se refuse avant le clic.
+        const fRf = $('#rf', rootModal);
+        const champ = n => $(`input[name=${n}]`, fRf);
+        let anneeVue = champ('annee').value.trim();
+        const majExo = () => {
+          const ex = KC.exerciceDeReprise(champ('annee').value, champ('du').value, champ('au').value);
+          const lb = $('#rf-exo', rootModal);
+          lb.textContent = ex.ok ? `Le livre ouvrira le ${KC.fmtJour(ex.du)} et finira le ${KC.fmtJour(ex.au)}. La balance d'ouverture ci-dessous est celle du ${KC.fmtJour(ex.du)}.` : ex.motif;
+          lb.className = 'annonce-stable span-3 ' + (ex.ok ? 'muted' : 'err-inline');
+        };
+        champ('annee').addEventListener('input', () => {
+          const a = champ('annee').value.trim();
+          if (/^\d{4}$/.test(a) && /^\d{4}$/.test(anneeVue)) {
+            if (champ('du').value === `${anneeVue}-01-01`) champ('du').value = `${a}-01-01`;
+            if (champ('au').value === `${anneeVue}-12-31`) champ('au').value = `${a}-12-31`;
+          }
+          if (/^\d{4}$/.test(a)) anneeVue = a;
+          majExo();
+        });
+        champ('du').addEventListener('input', majExo);
+        champ('au').addEventListener('input', majExo);
+        majExo();
+        $('#rf-add', rootModal).onclick = () => { lignes = lireRangees().concat([{ compte: '', libelle: '', debit: '', credit: '' }]); redessine(); };
         $('#rf-csv', rootModal).onclick = async () => {
           try {
             const r = await api.importerBalance({ dossierId: dossier.id, annee: $('input[name=annee]', rootModal).value });
             if (r.annule) return;
-            lignes = r.lignes.map(l => ({ compte: l.compte, libelle: l.libelle, debit: l.debit || '', credit: l.credit || '' }));
+            lignes = r.lignes.map(l => ({ compte: l.compte, libelle: l.libelle, debit: montantChamp(l.debit), credit: montantChamp(l.credit) }));
             redessine();
             if (r.ignorees.length) await infoDialog('Lignes ignorées', r.ignorees.map(x => `Ligne ${x.ligne} : ${x.motif}`).join('\n'));
           } catch (e) { await infoDialog('Import impossible', plainError(e)); }
@@ -2877,7 +2980,13 @@
         $('#ok', rootModal).onclick = async () => {
           const f = $('#rf', rootModal);
           const v = { annee: $('input[name=annee]', f).value.trim(), du: $('input[name=du]', f).value, au: $('input[name=au]', f).value };
-          if (!/^\d{4}$/.test(v.annee)) return infoDialog('Exercice', 'Une année s\'écrit sur quatre chiffres.');
+          // 10.14.1 (CA-01) — l'exercice se juge par la MÊME fonction que le pont, et le refus montre la
+          // case (règle 7.20.0) : un exercice du 1er avril au 31 mars s'acceptait, et le suivant naissait
+          // le 1er janvier d'après.
+          const ex = KC.exerciceDeReprise(v.annee, v.du, v.au);
+          // Le bandeau ne redit que la première phrase : la raison entière est déjà écrite dans la
+          // fenêtre, sous les dates, et deux fois la même phrase de trois lignes ne se lit plus.
+          if (!ex.ok) return refus($(`input[name=${ex.champ}]`, f), ex.motif.split('. ')[0].replace(/\.?$/, '.'));
           try {
             const r = await api.reprendre({ dossierId: dossier.id, annee: Number(v.annee), du: v.du, au: v.au, ouverture: lire(), source: 'balance' });
             s.annee = v.annee; s.livre = r.livre; s.livreEtat = 'ouvert'; s.livreCle = dossier.id + '|' + v.annee; livresConnus.set(dossier.id, true);
@@ -3926,7 +4035,7 @@
 
   const LIBELLE_CONTROLE = {
     brouillard: 'Les pièces encore en brouillard', attente: 'Le compte d\'attente',
-    tva: 'Les déclarations de TVA', tiers: 'La balance des tiers',
+    tva: 'Les déclarations de TVA', declarations: 'Les déclarations et le livre d\'aujourd\'hui', tiers: 'La balance des tiers',
     dotations: 'Les dotations aux amortissements', amortissements: 'Le tableau d\'amortissement et le compte 28',
     equilibre: 'L\'équilibre de la balance'
   };
@@ -4340,7 +4449,7 @@
         <tr><td>− Déductions et reports</td><td class="r nw">${money0(f.deductions)}</td></tr>
         <tr class="gl-g"><th>Résultat fiscal</th><th class="r nw">${money0(f.base)}</th></tr>
         ${f.deficitaire ? '<tr><td colspan="2" class="small muted">Exercice déficitaire : la base imposable est nulle, et le déficit se reporte — le report s\'impute à la main sur l\'exercice suivant.</td></tr>' : ''}
-        <tr><td>Impôt${f.taux == null ? '' : ` au taux de ${esc(String(f.taux))} %`}</td>
+        <tr><td>Impôt${f.taux == null ? '' : ` au taux de ${esc(taux(f.taux))}\u00a0%`}</td>
           <td class="r nw">${f.impot === null ? '<span class="muted">—</span>' : money0(f.impot)}</td></tr>
         ${f.raisonImpot ? `<tr><td colspan="2" class="small muted">${esc(f.raisonImpot)}</td></tr>` : ''}
       </tbody></table>
@@ -4348,7 +4457,7 @@
       personne n'a confirmée ici, et un chiffre inventé sur une déclaration coûte plus cher qu'une case vide.</p>
       <div class="inline mt">
         <label class="field narrow"><span>Taux d'impôt (%) ${info('li.taux')}</span>
-          <input type="text" id="li-taux" value="${esc(L.tauxImpot == null ? '' : String(L.tauxImpot))}" placeholder="vide = aucun"></label>
+          <input type="text" id="li-taux" value="${esc(taux(L.tauxImpot))}" placeholder="vide = aucun"></label>
         <button class="btn btn-sm" id="li-taux-ok">Enregistrer le taux</button>
       </div>
       <h3 class="eyebrow mt">Retraitements</h3>
@@ -4434,7 +4543,7 @@
       rien n'est proposé, chaque ligne se saisit et s'explique. <em>À VÉRIFIER avec ton client.</em></p>
       <div class="grid-2">
         <label class="field"><span>Nature</span><select id="rt-nature">${nats.map(n => `<option value="${esc(n.id)}">${esc(n.label)}</option>`).join('')}</select></label>
-        <label class="field obligatoire"><span>Montant</span><input type="text" id="rt-montant" placeholder="0,000"></label>
+        <label class="field obligatoire"><span>Montant (DT)</span><input type="text" id="rt-montant" class="num montant" inputmode="decimal" placeholder="0,000"></label>
         <label class="field obligatoire span-2"><span>Libellé</span><input type="text" id="rt-libelle" placeholder="Amende fiscale non déductible"></label>
       </div>
       <p class="small muted" id="rt-aide">${esc(nats[0].aide)}</p>
@@ -4905,8 +5014,8 @@
         : e.rows.some(r => r.ecrite) ? `Celles de ${s.annee} sont passées — les repasser compterait la dotation deux fois.`
           : `Aucune dotation ni sortie sur ${s.annee} : rien à écrire.`;
     const au = String((s.livre && s.livre.exercice && s.livre.exercice.au) || `${s.annee}-12-31`);
-    const motifs = !e.rows.length ? ['« Passer les écritures » et « Exporter le tableau » attendent un premier bien.']
-      : pourquoiEcrire ? ['« Passer les écritures » : ' + pourquoiEcrire.charAt(0).toLowerCase() + pourquoiEcrire.slice(1)]
+    const motifs = !e.rows.length ? ['« Passer les écritures d\'inventaire » et « Exporter le tableau » attendent un premier bien.']
+      : pourquoiEcrire ? ['« Passer les écritures d\'inventaire » : ' + pourquoiEcrire.charAt(0).toLowerCase() + pourquoiEcrire.slice(1)]
         : !dues ? [`Les dotations de ${s.annee} s'écrivent à l'inventaire, au ${fmtJour(au)} : rien ne presse, le bouton les prépare dès maintenant si tu le veux.`] : [];
     return `<div class="filters">
       ${info('im.etat')}
@@ -4979,7 +5088,7 @@
     const ced = KC.resultatCession(f);
     return `<div class="panel mt" id="im-plan"><h2>${esc(f.libelle)} — le plan d'amortissement</h2>
       <p class="small muted">${esc(METHODE_LABEL[f.methode] || f.methode)}${
-  f.methode === 'degressif' ? ` au taux de ${esc(String(f.tauxDegressif))} %${f.bascule ? ', avec bascule au linéaire' : ''}` : ''}
+  f.methode === 'degressif' ? ` au taux de ${esc(taux(f.tauxDegressif))}\u00a0%${f.bascule ? ', avec bascule au linéaire' : ''}` : ''}
         · ${esc(f.duree)} ans · mise en service le ${esc(fmtJour(f.dateMiseEnService))}
         · compte ${esc(f.compte)} / amortissement ${esc(f.compteAmort)} / dotation ${esc(f.compteDotation)}</p>
       <div class="scroll-x"><table class="list compact"><thead><tr><th class="nw">Exercice</th>
@@ -5098,15 +5207,15 @@
         ${/* H-3 — un montant s'écrit dans son champ comme à l'écran (« 1 500,000 »), jamais
               « 1500.5 » : c'est le comptable qui relit le champ, et en français le point sépare
               les milliers. Il se relit par la porte commune (`lireMontant`), qui comprend les deux. */''}
-        <label class="field obligatoire"><span>Valeur d'acquisition (HT)</span>
-          <input name="valeur" class="num" inputmode="decimal" placeholder="0,000" value="${esc(montantChamp(f.valeur))}"></label>
-        <label class="field"><span>Valeur résiduelle</span>
-          <input name="residuelle" class="num" inputmode="decimal" placeholder="0,000" value="${esc(montantChamp(f.residuelle))}"></label>
+        <label class="field obligatoire"><span>Valeur d'acquisition HT (DT)</span>
+          <input name="valeur" class="num montant" inputmode="decimal" placeholder="0,000" value="${esc(montantChamp(f.valeur))}"></label>
+        <label class="field"><span>Valeur résiduelle (DT)</span>
+          <input name="residuelle" class="num montant" inputmode="decimal" placeholder="0,000" value="${esc(montantChamp(f.residuelle))}"></label>
         <label class="field">${lbl('Méthode', 'im.verifier')}
           <select name="methode">${KC.IMMO_METHODES.map(m =>
     `<option value="${m}" ${(f.methode || 'lineaire') === m ? 'selected' : ''}>${esc(METHODE_LABEL[m])}</option>`).join('')}</select></label>
         <label class="field" id="im-taux-l"><span>Taux dégressif (%)</span>
-          <input name="tauxDegressif" class="num" inputmode="decimal" value="${esc(f.tauxDegressif == null ? '' : String(f.tauxDegressif).replace('.', ','))}"></label>
+          <input name="tauxDegressif" class="num" inputmode="decimal" value="${esc(taux(f.tauxDegressif))}"></label>
         <label class="check span-2" id="im-bascule-l"><input type="checkbox" name="bascule" ${f.bascule ? 'checked' : ''}>
           Basculer au linéaire quand il devient plus favorable</label>
         ${/* U-20 — la réserve se lit là où la décision se prend : sous le taux dégressif, et
@@ -5119,13 +5228,13 @@
           <input name="compteAmort" value="${esc(f.compteAmort || '28')}" list="im-c1"></label>
         <label class="field"><span>Compte de dotation</span>
           <input name="compteDotation" value="${esc(f.compteDotation || '681')}" list="im-c2"><datalist id="im-c2">${dl('6').map(c => `<option value="${esc(c)}">`).join('')}</datalist></label>
-        <label class="field"><span>Subvention reçue (À VÉRIFIER)</span>
-          <input name="subvention" class="num" inputmode="decimal" placeholder="0,000" value="${esc(montantChamp(f.subvention && f.subvention.montant))}">
+        <label class="field"><span>Subvention reçue (DT, À VÉRIFIER)</span>
+          <input name="subvention" class="num montant" inputmode="decimal" placeholder="0,000" value="${esc(montantChamp(f.subvention && f.subvention.montant))}">
           <span class="champ-note" id="im-sub-n">${esc(KC.IMMO_A_VERIFIER.subvention)}</span></label>
         <label class="field"><span>Date de cession ou de rebut</span>
           <input name="cessionDate" placeholder="JJ/MM/AAAA" value="${esc(fmtJour((f.cession && f.cession.date) || ''))}"></label>
-        <label class="field"><span>Prix de cession (0 = rebut)</span>
-          <input name="cessionPrix" class="num" inputmode="decimal" placeholder="0,000" value="${esc(montantChamp(f.cession && f.cession.prix))}"></label>
+        <label class="field"><span>Prix de cession (DT, 0 = rebut)</span>
+          <input name="cessionPrix" class="num montant" inputmode="decimal" placeholder="0,000" value="${esc(montantChamp(f.cession && f.cession.prix))}"></label>
       </form>
       ${f.reprise ? `<div class="warn-box mt"><b>Cette ligne est un à-nouveau.</b> Elle porte un bien — ou tout un parc —
         <b>déjà amorti</b>${deja28 ? ` : le compte 28 en reprend ${esc(money(deja28))} au même jour` : ''}. Indique sa <b>vraie</b> date de
@@ -5179,7 +5288,8 @@
       const maj = () => {
         majTaux();
         const p = lire();
-        const val = KC.immoValide(p);
+        const illisible = montantIllisibleDans(rootModal);
+        const val = illisible ? { ok: false, motifs: [motifIllisible(illisible.value)] } : KC.immoValide(p);
         if (!val.ok) { apercu.innerHTML = touche ? `<div class="warn-box mt">${esc(val.motifs[0])}</div>` : ''; return; }
         const plan = KC.planDuBien(p);
         // Le cumul déjà pratiqué au premier jour de l'exercice : c'est ce qu'on vérifie quand on
@@ -5282,8 +5392,8 @@
     const pourquoiBulletin = actifs.length ? '' : 'Déclare d\'abord un salarié.';
     const pourquoiEcrire = aPasser ? '' : (bulletins.length ? 'L\'écriture de ce mois est déjà passée : la repasser compterait la paie deux fois.' : 'Aucun bulletin pour ce mois.');
     const motifs = [pourquoiBulletin && '« + Bulletin » attend un salarié : déclare-le d\'abord.',
-      pourquoiEcrire && (bulletins.length ? '« Passer l\'écriture » : celle de ce mois est déjà passée — la repasser compterait la paie deux fois.'
-        : '« Passer l\'écriture » attend les bulletins du mois.')].filter(Boolean);
+      pourquoiEcrire && (bulletins.length ? '« Passer l\'écriture de paie » : celle de ce mois est déjà passée — la repasser compterait la paie deux fois.'
+        : '« Passer l\'écriture de paie » attend les bulletins du mois.')].filter(Boolean);
     return `<div class="filters">
       ${info('pa.mois')}
       <label class="f-lab" for="pa-mois">Mois</label>
@@ -5304,8 +5414,10 @@
       (c.ids || []).map(id => `<button type="button" class="btn btn-sm" data-sal-cnss="${esc(id)}">Renseigner le n° de ${esc(nomDe(id))}…</button>`).join('')}</div>`).join('')}
       <div class="small muted">Ces contrôles NOMMENT, ils ne bloquent rien : un mois traité avec deux manques signalés vaut mieux qu'un mois jamais traité.</div></div>` : ''}
     ${etatsNormaux.length ? `<p class="small muted mb">${etatsNormaux.map(c => `${esc(c.quoi)} — ${esc(c.detail)}`).join(' · ')}</p>` : ''}
-    ${auBrouillard ? `<p class="small mb" id="pa-brouillard">L'écriture de paie ${esc(KC.deMois(KC.moisPaie(m)))} est <b>au brouillard</b> : elle n'entre dans les livres — et dans la déclaration du mois — qu'une fois validée.
-      <button type="button" class="${cls('valider')}" id="pa-valider">La valider dans la saisie</button></p>` : ''}
+    ${/* Le geste vit dans une rangée flex, pas dans la phrase (T-56) : passé à la ligne, le bouton se
+         collait sous le texte, à zéro pixel (vu au test humain, 10.14.1). */''}
+    ${auBrouillard ? `<div class="small mb ctrl-geste" id="pa-brouillard"><span>L'écriture de paie ${esc(KC.deMois(KC.moisPaie(m)))} est <b>au brouillard</b> : elle n'entre dans les livres — et dans la déclaration du mois — qu'une fois validée.</span>
+      <button type="button" class="${cls('valider')}" id="pa-valider">La valider dans la saisie</button></div>` : ''}
 
     <div class="panel mt"><h2>Les bulletins ${esc(KC.deMois(KC.moisPaie(m)))} ${esc(s.annee)} ${info('pa.bulletins')}</h2>
       ${bulletins.length
@@ -5454,15 +5566,15 @@
         ${c.absenceCut ? ligne('Absence non rémunérée', -c.absenceCut, `${pl(c.absentDays, 'jour')} sur ${c.workedDays}`) : ''}
         ${(c.bonuses || []).map(p => ligne(p.label, p.amount, p.taxable ? 'imposable' : 'non imposable')).join('')}
         <tr class="dc-total"><td><b>Brut du mois</b></td><td class="r nw"><b>${esc(money(c.gross))}</b></td></tr>
-        ${ligne('CNSS part salarié', -c.cnssEmployee, `${r.cnssEmployee} % de ${money(c.cnssBase)}`)}
+        ${ligne('CNSS part salarié', -c.cnssEmployee, `${taux(r.cnssEmployee)}\u00a0% de ${money(c.cnssBase)}`)}
         ${ligne('IRPP', -c.irpp, `barème annuel sur ${money(c.annualTaxable)} imposables`)}
-        ${ligne('Contribution sociale de solidarité', -c.css, `${r.solidarity} %`)}
+        ${ligne('Contribution sociale de solidarité', -c.css, `${taux(r.solidarity)}\u00a0%`)}
         ${(c.deductions || []).map(d => ligne(d.label, -d.amount)).join('')}
         <tr class="dc-total"><td><b>Net à payer</b></td><td class="r nw"><b>${esc(money(c.net))}</b></td></tr>
-        ${ligne('CNSS part employeur', c.cnssEmployer, `${r.cnssEmployer} %`)}
-        ${ligne('Accident du travail', c.accident, `${r.accidentRate} %`)}
-        ${ligne('TFP', c.tfp, `${r.tfpRate} %`)}
-        ${ligne('FOPROLOS', c.foprolos, `${r.foprolosRate} %`)}
+        ${ligne('CNSS part employeur', c.cnssEmployer, `${taux(r.cnssEmployer)}\u00a0%`)}
+        ${ligne('Accident du travail', c.accident, `${taux(r.accidentRate)}\u00a0%`)}
+        ${ligne('TFP', c.tfp, `${taux(r.tfpRate)}\u00a0%`)}
+        ${ligne('FOPROLOS', c.foprolos, `${taux(r.foprolosRate)}\u00a0%`)}
         <tr class="dc-total"><td><b>Coût employeur</b></td><td class="r nw"><b>${esc(money(c.employerCost))}</b></td></tr>
       </tbody></table>
       <p class="small muted mt">Les taux affichés sont ceux qui ont servi le jour où ce bulletin a été établi : ils sont
@@ -5484,7 +5596,7 @@
               relit en français (« 1 250,500 »), une date se saisit JJ/MM/AAAA. Les champs
               numériques du navigateur refusaient la virgule sans un mot, et « AAAA-MM-JJ » était
               le format interne affiché sur un écran de saisie (règle 9.4.5). */''}
-        <label class="field obligatoire"><span>Salaire brut mensuel</span><input name="brut" type="text" inputmode="decimal" class="num" placeholder="0,000" value="${esc(montantChamp(e.brut))}"></label>
+        <label class="field obligatoire"><span>Salaire brut mensuel (DT)</span><input name="brut" type="text" inputmode="decimal" class="num montant" placeholder="0,000" value="${esc(montantChamp(e.brut))}"></label>
         <label class="field obligatoire"><span>Date d'embauche</span><input name="embauche" placeholder="JJ/MM/AAAA" value="${esc(e.embauche ? fmtJour(e.embauche) : '')}"></label>
         <label class="field"><span>Date de sortie</span><input name="sortie" placeholder="JJ/MM/AAAA" value="${esc(e.sortie ? fmtJour(e.sortie) : '')}"></label>
         <label class="check span-2"><input type="checkbox" name="chefDeFamille" ${e.chefDeFamille ? 'checked' : ''}> Chef de famille (déduction annuelle)</label>
@@ -5540,14 +5652,14 @@
         <label class="field obligatoire span-2"><span>Salarié</span>
           <select name="salarieId" ${b ? 'disabled' : ''}>${actifs.map(x => `<option value="${esc(x.id)}" ${x.id === salDefaut ? 'selected' : ''}>${esc(x.nom)}</option>`).join('')}</select></label>
         <label class="field"><span>Mois</span><select name="mois">${KC.MOIS_PAIE.map((lab, i) => `<option value="${i + 1}" ${i + 1 === Number(e.mois) ? 'selected' : ''}>${esc(lab)}</option>`).join('')}</select></label>
-        <label class="field obligatoire"><span>Brut du mois</span><input name="brut" type="text" inputmode="decimal" class="num" placeholder="0,000" value="${esc(montantChamp(brutDefaut))}"></label>
+        <label class="field obligatoire"><span>Brut du mois (DT)</span><input name="brut" type="text" inputmode="decimal" class="num montant" placeholder="0,000" value="${esc(montantChamp(brutDefaut))}"></label>
         <label class="field"><span>Jours ouvrables du mois</span><input name="joursTravailles" type="number" min="1" step="1" class="num" value="${esc(String(e.joursTravailles || 26))}"></label>
         <label class="field"><span>Jours d'absence non payés</span><input name="joursAbsence" type="number" min="0" step="1" class="num" value="${esc(String(e.joursAbsence || 0))}"></label>
         <label class="field span-2"><span>Prime (facultatif)</span><input name="primeLabel" value="${esc(((e.primes || [])[0] || {}).label || '')}" placeholder="Prime de rendement"></label>
-        <label class="field"><span>Montant de la prime</span><input name="primeAmount" type="text" inputmode="decimal" class="num" placeholder="0,000" value="${esc(montantChamp(((e.primes || [])[0] || {}).amount))}"></label>
+        <label class="field"><span>Montant de la prime (DT)</span><input name="primeAmount" type="text" inputmode="decimal" class="num montant" placeholder="0,000" value="${esc(montantChamp(((e.primes || [])[0] || {}).amount))}"></label>
         <label class="check"><input type="checkbox" name="primeTaxable" ${((e.primes || [])[0] || {}).taxable !== false ? 'checked' : ''}> Prime imposable</label>
         <label class="field span-2"><span>Retenue (facultatif)</span><input name="retLabel" value="${esc(((e.retenues || [])[0] || {}).label || '')}" placeholder="Remboursement d'avance"></label>
-        <label class="field"><span>Montant de la retenue</span><input name="retAmount" type="text" inputmode="decimal" class="num" placeholder="0,000" value="${esc(montantChamp(((e.retenues || [])[0] || {}).amount))}"></label>
+        <label class="field"><span>Montant de la retenue (DT)</span><input name="retAmount" type="text" inputmode="decimal" class="num montant" placeholder="0,000" value="${esc(montantChamp(((e.retenues || [])[0] || {}).amount))}"></label>
       </form>
       <div id="bf-apercu" class="ok-box mt"></div>
       <p class="small warn-text" id="bf-refus" role="status" aria-live="polite" hidden></p>
@@ -5584,10 +5696,13 @@
             bonuses: v.primes.map(p => ({ label: p.label, amount: p.amount, taxable: p.taxable })),
             deductions: v.retenues.map(d => ({ label: d.label, amount: d.amount })) },
           KC.baremesPaie(baremes));
-        const verdict = KC.bulletinValide(v, L, baremes);
+        const illisible = montantIllisibleDans(rootModal);
+        const verdict = illisible ? { ok: false, motif: motifIllisible(illisible.value) } : KC.bulletinValide(v, L, baremes);
         const apercu = $('#bf-apercu', rootModal);
         apercu.className = verdict.ok ? 'ok-box mt' : 'warn-box mt';
-        apercu.innerHTML = `<b>Net à payer ${esc(money(c.net))}</b>
+        // Un net calculé en lisant une case illisible pour zéro serait un chiffre faux affiché : il
+        // attend que la case se lise, et le refus dessous dit laquelle.
+        apercu.innerHTML = illisible ? '<b>Net à payer —</b> <span class="small muted">— un montant ne se lit pas encore.</span>' : `<b>Net à payer ${esc(money(c.net))}</b>
           <span class="small muted">— brut ${esc(money(c.gross))}, retenues ${esc(money(KC.round3(c.cnssEmployee + c.irpp + c.css + c.otherDeductions)))},
           coût employeur ${esc(money(c.employerCost))}</span>`;
         const refus = $('#bf-refus', rootModal);
@@ -6114,9 +6229,9 @@
           <datalist id="rv-comptes">${comptes.map(c => `<option value="${esc(c)}">`).join('')}</datalist></label>
         <label class="field">Banque<input name="banque" value="${esc((dossier.banque || {}).banque || '')}" list="rv-banques" placeholder="Le nom, pour retenir ses colonnes">
           <datalist id="rv-banques">${Object.keys(banques).map(b => `<option value="${esc(b)}">`).join('')}</datalist></label>
-        <label class="field">Solde au début<input name="debut" class="num" inputmode="decimal" value="0">
+        <label class="field">Solde au début (DT)<input name="debut" class="num montant" inputmode="decimal" value="0,000">
           <span class="small muted" id="rv-debut-hint"></span></label>
-        <label class="field">Solde à la fin<input name="fin" class="num" inputmode="decimal" value="0"></label>
+        <label class="field">Solde à la fin (DT)<input name="fin" class="num montant" inputmode="decimal" value="0,000"></label>
       </form>
       <div class="modal-actions" style="justify-content:flex-start">
         <button type="button" class="btn btn-sm" id="rv-fichier">Choisir le fichier…</button>
@@ -6318,6 +6433,16 @@
   // la case redessinée : la marque ne posait qu'à la frappe, et une pièce rouverte gardait « 12a »
   // sans rouge pendant que la phrase le nommait.
   const montantIllisible = v => { const brut = String(v == null ? '' : v).trim(); return !!brut && !Number.isFinite(KC.nombreStrict(brut)); };
+  // 10.14.1 — Une case que le moteur REFUSE se marque comme une case qu'il ne sait pas lire : « -40 »
+  // au débit est refusé (« un montant négatif change de colonne »), la phrase le disait sous la grille
+  // et la case restait blanche — on cherchait laquelle des lignes.
+  const montantRefuse = v => montantIllisible(v) || lireMontant(v) < 0;
+  // 10.14.1 — la case de montant qu'on ne sait pas lire, et sa phrase. UNE définition pour la garde
+  // du clic ET pour les aperçus qui se recalculent à la frappe : l'aperçu d'un bien disait « La
+  // valeur d'acquisition doit être positive » sous « 85 000 DT », celui d'un bulletin comptait une
+  // prime « 150 DT » pour zéro — un chiffre faux affiché, et une raison qui accuse autre chose.
+  const montantIllisibleDans = root => $$(SEL_MONTANT, root).find(el => !el.disabled && el.offsetParent !== null && montantIllisible(el.value)) || null;
+  const motifIllisible = v => `« ${String(v).trim()} » ne se lit pas comme un montant. Écris-le en chiffres, par exemple 1\u202f250,500.`;
   const montantsIllisibles = p => {
     const out = [];
     (p.lignes || []).forEach((l, i) => ['debit', 'credit'].forEach(k => {
@@ -6549,8 +6674,8 @@
       <td><input data-k="compte" class="sa-compte" ${lab('Compte', i)} autocomplete="off" value="${esc(l.compte)}"></td>
       <td class="sa-nom muted small${neuf(l.compte) ? ' sa-nom-neuf' : ''}" data-nom="${i}"${neuf(l.compte) ? ` title="${esc(TITRE_COMPTE_NEUF)}"` : ''}>${esc(intitule(l.compte))}</td>
       <td><input data-k="libelle" ${lab('Libellé', i)} autocomplete="off" value="${esc(l.libelle)}" placeholder="${esc(p.libelle || '')}"></td>
-      <td><input data-k="debit" class="r sa-montant${montantIllisible(l.debit) ? ' sa-ko' : ''}" ${lab('Débit', i)}${montantIllisible(l.debit) ? ' aria-invalid="true"' : ''} inputmode="decimal" autocomplete="off" value="${esc(l.debit)}"></td>
-      <td><input data-k="credit" class="r sa-montant${montantIllisible(l.credit) ? ' sa-ko' : ''}" ${lab('Crédit', i)}${montantIllisible(l.credit) ? ' aria-invalid="true"' : ''} inputmode="decimal" autocomplete="off" value="${esc(l.credit)}"></td>
+      <td><input data-k="debit" class="r sa-montant${montantRefuse(l.debit) ? ' sa-ko' : ''}" ${lab('Débit', i)}${montantRefuse(l.debit) ? ' aria-invalid="true"' : ''} inputmode="decimal" autocomplete="off" value="${esc(l.debit)}"></td>
+      <td><input data-k="credit" class="r sa-montant${montantRefuse(l.credit) ? ' sa-ko' : ''}" ${lab('Crédit', i)}${montantRefuse(l.credit) ? ' aria-invalid="true"' : ''} inputmode="decimal" autocomplete="off" value="${esc(l.credit)}"></td>
       <td class="sa-sup"><button type="button" class="btn btn-sm" data-sup="${i}" title="Retirer cette ligne" aria-label="Retirer cette ligne">✕</button></td>
     </tr>`).join('');
   }
@@ -6689,8 +6814,8 @@
           }
           // La case qu'on ne sait pas lire se VOIT, pas seulement dans la phrase sous la grille (H-3).
           if (k === 'debit' || k === 'credit') {
-            inp.classList.toggle('sa-ko', montantIllisible(inp.value));
-            if (montantIllisible(inp.value)) inp.setAttribute('aria-invalid', 'true'); else inp.removeAttribute('aria-invalid');
+            inp.classList.toggle('sa-ko', montantRefuse(inp.value));
+            if (montantRefuse(inp.value)) inp.setAttribute('aria-invalid', 'true'); else inp.removeAttribute('aria-invalid');
           }
           majSolde();
           signalerSaisies();
@@ -6804,7 +6929,11 @@
       gs.onchange = () => {
         const g = K.guidesDuDossier(S, dossier).find(x => x.id === gs.value);
         if (!g) return;
-        const montant = lireMontant(($('#sa-guide-montant', el) || {}).value);
+        // Un montant qu'on ne sait pas lire ne s'applique pas pour zéro : le guide répartirait
+        // « 1 250 DT » en lignes à 0,000 sans un mot (10.14.1).
+        const champM = $('#sa-guide-montant', el);
+        if (champM && montantIllisible(champM.value)) { gs.value = ''; return refus(champM, motifIllisible(champM.value)); }
+        const montant = lireMontant((champM || {}).value);
         const ecr = KC.ecritureDepuisGuide(g, { date: p.date, journal: g.journal, piece: p.piece, libelle: p.libelle, montant });
         p.journal = ecr.journal; p.libelle = ecr.libelle;
         p.lignes = ecr.lignes.map(l => ({
@@ -7101,7 +7230,7 @@
          <label class="field narrow obligatoire"><span>Depuis</span><input type="date" id="ab-depuis" value="${esc(a.depuis)}"></label>
          <label class="field narrow">Jusqu'à<input type="date" id="ab-jusqua" value="${esc(a.jusqua || '')}"></label>
          <label class="field narrow">Tous les (mois)<input type="number" id="ab-pas" min="1" max="12" value="${Number(a.tousLesMois) || 1}"></label>
-         <label class="field narrow obligatoire"><span>Montant</span><input type="text" id="ab-montant" class="r" value="${esc(a.montant || '')}"></label>
+         <label class="field narrow obligatoire"><span>Montant (DT)</span><input type="text" id="ab-montant" class="num montant" inputmode="decimal" value="${esc(montantChamp(a.montant))}"></label>
          <label class="field">Préfixe de pièce<input type="text" id="ab-piece" value="${esc(a.piece || '')}" placeholder="LOYER"></label>
          <label class="field">Libellé<input type="text" id="ab-libelle" value="${esc(a.libelle || '')}" placeholder="Loyer du local"></label>
        </div>
@@ -7442,6 +7571,14 @@
   // que le comptable ne connaisse déjà.
   // Les douze mois de l'année sont toujours dessinés, ceux sans paquet estompés : un graphique
   // réduit aux trois mois reçus n'apprend rien (règle de la 2.5.0 côté entreprise).
+  // Ce que dit le panneau quand la courbe n'a rien à montrer — et pourquoi (10.14.1). Une explication
+  // fausse est pire qu'une explication absente (10.14.0) : « les paquets de cette année ne portent pas
+  // de chiffres (fabriqués avant la 6.2.1) » s'affichait pour une année qui n'en avait reçu AUCUN.
+  function caSansChiffre(packs, annee) {
+    return packs.some(p => String(p.month || '').slice(0, 4) === annee)
+      ? `Les paquets de ${annee} ne portent pas de chiffres : ils ont été fabriqués avant la 6.2.1.`
+      : `Aucun paquet reçu pour ${annee} : le chiffre d'affaires vient des paquets du client.`;
+  }
   function caChart(packs, annee) {
     const parMois = {};
     packs.forEach(p => { if (p.month.slice(0, 4) === annee && p.figures) parMois[p.month] = Number(p.figures.ca) || 0; });
@@ -7591,14 +7728,14 @@
           <option value="">— non précisé —</option>${K.REGIMES.map(r => `<option value="${esc(r.id)}" ${d.regime === r.id ? 'selected' : ''}>${esc(r.label)}</option>`).join('')}</select></label>
         <label class="field">${lbl('TVA', 'd.tvaPeriod')}<select id="f-tva">
           <option value="">— non précisé —</option>${K.TVA_PERIODS.map(r => `<option value="${esc(r.id)}" ${d.tvaPeriod === r.id ? 'selected' : ''}>${esc(r.label)}</option>`).join('')}</select></label>
-        <label class="field">${lbl('Début de mission', 'd.from')}<input type="text" id="f-from" value="${esc(d.from || '')}" placeholder="2026-01" pattern="\\d{4}-\\d{2}"></label>
-        <label class="field">${lbl('Honoraires mensuels', 'd.fees')}<input type="text" inputmode="decimal" class="num" id="f-fees" value="${esc(montantChamp(d.fees))}" placeholder="0,000"></label>
+        <label class="field">${lbl('Début de mission', 'd.from')}<input type="text" id="f-from" value="${esc(K.moisAffiche(d.from))}" placeholder="01/2026" inputmode="numeric"></label>
+        <label class="field">${lbl('Honoraires mensuels (DT)', 'd.fees')}<input type="text" inputmode="decimal" class="num montant" id="f-fees" value="${esc(montantChamp(d.fees))}" placeholder="0,000"></label>
       </div>
       <label class="field mt">${lbl('Note interne', 'd.note')}<textarea id="f-note" rows="3">${esc(d.note || '')}</textarea></label>`;
   }
 
   function readDossierFields(layer) {
-    const from = $('#f-from', layer).value.trim();
+    const from = K.moisTape($('#f-from', layer).value);
     return {
       name: $('#f-name', layer).value.trim(),
       matricule: $('#f-mat', layer).value.trim(),
@@ -7607,7 +7744,7 @@
       contact: $('#f-contact', layer).value.trim(),
       regime: $('#f-regime', layer).value,
       tvaPeriod: $('#f-tva', layer).value,
-      from: /^\d{4}-\d{2}$/.test(from) ? from : '',
+      from: from.ok ? from.mois : '',
       fees: lireMontant($('#f-fees', layer).value),
       note: $('#f-note', layer).value
     };
@@ -7629,6 +7766,8 @@
           const f = readDossierFields(layer);
           // Un refus MONTRE la case (7.0.0, 10.12.0) : le curseur y va, elle se marque.
           if (!f.name) return refus($('#f-name', layer), 'Donne au moins un nom à ce client.');
+          const mois = K.moisTape($('#f-from', layer).value);
+          if (!mois.ok) return refus($('#f-from', layer), mois.motif);
           try {
             const r = await api.newDossier(f);
             S = r.state; close(); render(); toast('Dossier créé.');
@@ -7674,8 +7813,8 @@
         $('#ok', layer).onclick = async () => {
           const f = readDossierFields(layer);
           if (!f.name) return toast('Le nom ne peut pas être vide.', 'error');
-          const fromRaw = $('#f-from', layer).value.trim();
-          if (fromRaw && !/^\d{4}-\d{2}$/.test(fromRaw)) return toast('Le début de mission s\'écrit comme 2026-01.', 'error');
+          const mois = K.moisTape($('#f-from', layer).value);
+          if (!mois.ok) return refus($('#f-from', layer), mois.motif);
           try {
             const patch = { ...f, archived: $('#f-arch', layer).checked };
             if (dossier.packs && dossier.packs.length) delete patch.matricule;  // il vient des paquets
@@ -8963,6 +9102,13 @@
 
   // Le formulaire d'un guide. La suppression vit DEDANS, comme partout depuis la 5.2.1 : plus aucun
   // « Supprimer » en bout de ligne.
+  // 10.14.1 — Le montant fixe et le taux d'une ligne de guide se rangent en NOMBRE quand ils se
+  // lisent, et restent tels quels sinon (le moteur les refuse alors en nommant la ligne). Rangés en
+  // texte français (« 1 250,000 »), ils se relisaient par `Number()` — c'est-à-dire en rien : le
+  // guide rouvert montrait une case VIDE, et l'enregistrer à nouveau effaçait le loyer fixe.
+  const nombreOuTexte = v => { const t = String(v == null ? '' : v).trim(); if (!t) return ''; return montantIllisible(t) ? t : lireMontant(t); };
+  const montantDuGuide = v => { const n = nombreOuTexte(v); return typeof n === 'number' ? montantSaisi(n) : n; };
+  const tauxDuGuide = v => { const n = nombreOuTexte(v); return typeof n === 'number' ? String(n).replace('.', ',') : n; };
   function guideForm(guide) {
     const g = guide
       ? { ...guide, lignes: (guide.lignes || []).map(l => ({ ...l })) }
@@ -8973,8 +9119,8 @@
       <td><input data-k="compte" value="${esc(l.compte || '')}" placeholder="607"></td>
       <td><input data-k="libelle" value="${esc(l.libelle || '')}" placeholder="Achat"></td>
       <td><select data-k="sens">${SENS.map(([v, t]) => `<option value="${v}" ${l.sens === v ? 'selected' : ''}>${t}</option>`).join('')}</select></td>
-      <td><input data-k="montant" class="r" value="${esc(l.montant == null ? '' : l.montant)}" placeholder="fixe"></td>
-      <td><input data-k="taux" class="r" value="${esc(l.taux == null ? '' : l.taux)}" placeholder="%"></td>
+      <td><input data-k="montant" class="num montant" inputmode="decimal" value="${esc(montantDuGuide(l.montant))}" placeholder="fixe"></td>
+      <td><input data-k="taux" class="r" inputmode="decimal" value="${esc(tauxDuGuide(l.taux))}" placeholder="%"></td>
       <td class="nw"><label class="check"><input type="checkbox" data-k="base" ${l.base ? 'checked' : ''}> base</label></td>
       <td class="nw"><label class="check"><input type="checkbox" data-k="solde" ${l.solde ? 'checked' : ''}> solde</label></td>
       <td class="sa-sup"><button type="button" class="btn btn-sm" data-sup="${i}" aria-label="Retirer cette ligne">✕</button></td>
@@ -9002,7 +9148,8 @@
           $$('tr[data-i]', corps).forEach(tr => {
             const i = Number(tr.dataset.i);
             $$('[data-k]', tr).forEach(f => {
-              g.lignes[i][f.dataset.k] = f.type === 'checkbox' ? f.checked : f.value;
+              const k = f.dataset.k;
+              g.lignes[i][k] = f.type === 'checkbox' ? f.checked : (k === 'montant' || k === 'taux') ? nombreOuTexte(f.value) : f.value;
             });
           });
         };
@@ -9739,7 +9886,7 @@
        (différent de celui de l'application : ce fichier a vocation à quitter cet ordinateur).</p>
        <div class="warn-box">Range-le <strong>ailleurs que sur ${CE_POSTE()}</strong> : une clé USB dans un tiroir, un coffre, chez ton associé.
        Une clé de secours posée à côté de l'ordinateur ne protège de rien.</div>
-       <label class="field mt">Mot de passe <strong>du cabinet</strong><input type="password" id="p0" autocomplete="current-password"></label>
+       <label class="field mt"><span>Mot de passe <strong>du cabinet</strong></span><input type="password" id="p0" autocomplete="current-password"></label>
        <p class="muted small">Redemandé parce que ce fichier ouvre les comptabilités de tous tes clients : sans ça, n'importe qui passant devant ce poste déverrouillé repartirait avec.</p>
        <label class="field mt">Mot de passe de ce fichier<span class="pw-wrap"><input type="password" id="p1" autocomplete="new-password"><button type="button" class="pw-eye" id="eye">Afficher</button></span></label>
        <label class="field mt">Confirme<input type="password" id="p2" autocomplete="new-password"></label>

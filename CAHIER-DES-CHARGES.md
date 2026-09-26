@@ -1941,6 +1941,7 @@ portent pas, et un test les nomme.
 | `ERR-CAB-078` | « Le nom du salarié est obligatoire. » / « La date d'embauche est obligatoire. » / « La date de sortie précède l'embauche. » / « Le salaire brut mensuel doit être supérieur à zéro. » / « Salarié introuvable. » | fiche d'un salarié d'un dossier (10.3.0) | compléter la fiche | Livré |
 | `ERR-CAB-079` | « Choisis un salarié. » / « Le mois doit être compris entre 1 et 12. » / « Ce bulletin est daté de AAAA et ce livre porte l'exercice AAAA. » / « Le brut du mois doit être supérieur à zéro. » / « X a déjà un bulletin pour <mois> <année>. » / « L'écriture de paie de ce mois est déjà passée : contre-passe-la d'abord. » | bulletin de paie d'un dossier (10.3.0) | corriger la saisie, ou contre-passer l'écriture du mois | Livré |
 | `ERR-CAB-080` | « Aucun bulletin à passer pour ce mois. » | écriture de paie du mois (10.3.0) | établir les bulletins d'abord | Livré |
+| `ERR-CAB-081` | « L'exercice <année> doit finir le 31/12/<année>. SkanFact Cabinet ne tient que des exercices qui suivent l'année civile… » / « … ne peut pas commencer avant le 01/01/<année> » | reprise d'un dossier (10.14.1) | poser un exercice civil — À VÉRIFIER si le client a un exercice décalé | Livré |
 | `ERR-CAB-077` | « Un import de paquets est déjà en cours. Attends qu'il finisse — ou arrête-le depuis la fenêtre d'avancement — avant d'en lancer un second. » | seconde entrée simultanée dans `cab:importPack` (10.0.1) | attendre, ou arrêter l'import en cours | Livré |
 
 ---

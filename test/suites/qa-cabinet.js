@@ -157,7 +157,9 @@ t('C-11 : le bulletin du Cabinet s\'éteint pendant la frappe, par la fonction q
   const app = cabApp();
   const f = app.slice(app.indexOf('function bulletinForm('), app.indexOf('function vueInventaire('));
   assert.ok(f.length > 2000 && f.length < 12000, 'tranche bulletinForm suspecte : ' + f.length);
-  assert.ok(/const verdict = KC\.bulletinValide\(v, L, baremes\);/.test(f), 'le bouton ne se juge pas par bulletinValide');
+  // 10.14.1 : une case illisible passe AVANT (elle vaudrait zéro dans le verdict) ; le reste se juge
+  // par la fonction qui refusera. On exige la règle, pas la forme exacte de la ligne.
+  assert.ok(/const verdict = [^;]*KC\.bulletinValide\(v, L, baremes\);/.test(f), 'le bouton ne se juge pas par bulletinValide');
   assert.ok(/bouton\.disabled = !verdict\.ok;/.test(f), 'le bouton ne s\'éteint pas');
   assert.ok(/KC\.baremesPaie\(baremes\)/.test(f) && /const baremes = dossier\.paie \|\| \{\};/.test(f),
     'l\'aperçu calcule encore avec les barèmes par défaut, pas ceux du dossier');
@@ -189,7 +191,9 @@ t('C-12 / C-07 : les exercices se lisent aussi dans les LIVRES, et un dossier sa
 // ---------------------------------------------------------------- C-13 · le document du client
 
 t('C-13 : les états remis au client s\'écrivent à la française, avec leur devise', () => {
-  assert.strictEqual(K.fmtMontant(76493.448, 'DT'), '76 493,448 DT');
+  // La devise tient au nombre par une espace INSÉCABLE (10.14.1) : « DT » seul en début de ligne
+  // se lisait comme une autre chose que le montant qu'il qualifie.
+  assert.strictEqual(K.fmtMontant(76493.448, 'DT'), '76\u202f493,448\u00a0DT');
   assert.strictEqual(K.fmtMontant(-12945.333), '−12 945,333');
   assert.strictEqual(K.fmtMontant(0), '0,000');
   assert.strictEqual(K.fmtJour('2026-12-31'), '31/12/2026');
@@ -261,7 +265,7 @@ t('C-10 : le tableau d\'amortissement se rapproche du compte 28, et l\'écart se
   assert.ok(r.ok, r.motif);
   const c = K.controlesCloture(l).find(x => x.id === 'amortissements');
   assert.ok(c && !c.ok, 'le rapprochement tableau / compte 28 ne voit pas le parc qui repart de zéro');
-  assert.ok(/12 945,333 DT/.test(c.detail) && /0,000 DT/.test(c.detail) && /date de mise en service/.test(c.detail), c.detail);
+  assert.ok(/12\s945,333\sDT/.test(c.detail) && /0,000\sDT/.test(c.detail) && /date de mise en service/.test(c.detail), c.detail);
   // Sans fiche, pas de contrôle : les biens d'un client sur SkanFact vivent chez lui.
   const sans = K.livreVide('D', 2026, {});
   assert.ok(!K.controlesCloture(sans).some(x => x.id === 'amortissements'));

@@ -52,16 +52,17 @@
       <p class="muted small" style="margin:0">L'application du comptable</p>
       <p class="muted small" id="lock-sub">Chargement…</p>
       <!-- Des champs sans étiquette font deviner. Un mot de passe qu'on ne peut pas relire fait
-           taper trois fois. -->
+           taper trois fois. Et pas d'invite « •••••••• » (10.14.1) : un champ vide qui montre des
+           points se lit comme un mot de passe déjà tapé, et l'on clique « Ouvrir » sur rien. -->
       <label class="field lock-field">Mot de passe
         <span class="pw-wrap">
-          <input type="password" id="lock-pw" autocomplete="current-password" placeholder="••••••••">
+          <input type="password" id="lock-pw" autocomplete="current-password">
           <button type="button" class="pw-eye" id="lock-eye" aria-label="Afficher le mot de passe">Afficher</button>
         </span>
       </label>
       <span class="muted small" id="lock-strength"></span>
       <label class="field lock-field" id="lock-pw2-wrap" hidden>Confirme le mot de passe
-        <input type="password" id="lock-pw2" autocomplete="new-password" placeholder="••••••••">
+        <input type="password" id="lock-pw2" autocomplete="new-password">
       </label>
       <div class="lock-err" id="lock-err" hidden></div>
       <!-- L'avertissement AVANT le bouton, pas après : « il n'y a aucun moyen de récupérer ce mot

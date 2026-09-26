@@ -119,7 +119,9 @@ function ecarts(data, opts) {
     // Le timbre et la retenue opérée : ce que les pièces portent, ce que l'État attend.
     // Un avoir qui porte un timbre le rend (la case est sur la pièce) : il vient en moins.
     const timbres = (data.documents || []).filter(d => (d.type === 'facture' || d.type === 'avoir') && d.number && d.status !== 'brouillon' && d.status !== 'annulée' && d.date >= per.from && d.date <= per.to)
-      .reduce((s, d) => s + (d.type === 'avoir' ? -1 : 1) * core.toBase(d, core.computeTotals(d, co).stamp || 0, co), 0);
+      // En DINARS exacts, même sur une pièce en devise (10.14.1) : c'est le droit que l'État fixe, et
+      // la pièce en devise le porte au centime (0,29 € pour 1 DT à 3,4) — l'écart part au change.
+      .reduce((s, d) => s + (d.type === 'avoir' ? -1 : 1) * (core.computeTotals(d, co).stampBase || 0), 0);
     ecart(`${y} timbre (4368) / factures émises`, mv(acc.timbre, e => (e.source === 'declaration' ? 0 : e.credit - e.debit)), timbres);   // la déclaration du mois le solde
     // La retenue naît au RÈGLEMENT (10.14.0) : c'est la section des règlements qui la crédite.
     ecart(`${y} retenue opérée (4352) / déclaration d'employeur`, r3(core.journalEntries(data, co, per, { sections: ['achats', 'reglements'] })
@@ -127,7 +129,12 @@ function ecarts(data, opts) {
     // Les immobilisations d'un exercice terminé sont celles du tableau.
     if (per.to === `${y}-12-31` && per.to < T) {
       const at = core.assetTotals(data, +y);
-      ecart(`${y} immobilisations (22)`, solde(bg, acc.immobilisations), at.grossActif);
+      // Le 22 est celui de la PAGE : son tableau, plus ce qu'elle nomme au-dessus — une ligne d'achat
+      // sans fiche, un bien acheté avant le 31/12 et mis en service après —, moins un bien en service
+      // avant sa facture (10.14.1). Regardé un 1er janvier, l'exemple portait l'imprimante de
+      // décembre au bilan et nulle part sur la page : cet invariant tombait chaque début d'année.
+      const hors = core.immosHorsTableau(data, +y);
+      ecart(`${y} immobilisations (22)`, solde(bg, acc.immobilisations), r3(at.grossActif + hors.auBilan - hors.horsBilan));
       ecart(`${y} amortissements (28)`, -solde(bg, acc.amortissements), at.cumulActif);
       ecart(`${y} dotations (681) / annuités du tableau`, mv(acc.dotations, e => e.debit - e.credit), at.annuity);
       // Le stock du bilan est celui de la page Stock, et le résultat des écritures est le résultat
@@ -687,7 +694,9 @@ t('10.14.0 : un achat d\'un mois clôturé s\'ouvre fermé, et le dit avant qu\'
   const app = require('fs').readFileSync(require('path').join(__dirname, '../../src/renderer/app.js'), 'utf8');
   const i = app.indexOf('routes.achat = (parts) => {');
   const zone = app.slice(i, app.indexOf('\n  // ---------- Autres documents', i));
-  assert.ok(i > 0 && zone.length > 5000 && zone.length < 60000, `tranche inattendue (${zone.length})`);
+  // La borne attrape une tranche qui déborderait sur la route suivante ; la route a grandi en 10.14.1
+  // (l'échéance qui suit la date, la ligne d'une fiche) : elle se relève, on ne raccourcit pas le code.
+  assert.ok(i > 0 && zone.length > 5000 && zone.length < 70000, `tranche inattendue (${zone.length})`);
   assert.ok(/const clos = !!stored && !!stored\.date && C\.isClosedDate\(data, stored\.date\)/.test(zone), 'l\'éditeur d\'achat ne sait pas qu\'une pièce est close');
   assert.ok(/\$\{clos \? '' : `<button class="btn \$\{isNew \? 'btn-primary' : ''\}" id="save">/.test(zone), '« Enregistrer » reste proposé sur une pièce close');
   assert.ok(/\$\{clos \? '' : '<button id="del" class="danger">/.test(zone), '« Supprimer » reste proposé sur une pièce close');
@@ -807,9 +816,9 @@ t('10.14.0 : le lettrage des clients compte ce qu\'on leur doit — un avoir lib
   // 411 porte le BRUT (10.14.0) : en versant 800, le client a gardé 17,850 × 800 / 1 173,150 =
   // 12,172 de retenue, donc le compte dit 1 191 − 800 − 12,172 = 378,828 — les 373,150 qu'il versera
   // et les 5,678 qu'il gardera encore pour l'État. Client EUR :
-  // 500 € + le timbre (1 DT = 0,294 €) = 500,294 €, 200 reçus → 300,294 € × 3,4 = 1 021,000 DT.
-  // Client Libre : un avoir libre de 100 HT + 19 = 119 qu'on lui doit. Le 411 : 378,828 + 1 021 − 119
-  // − 30 = 1 250,828. Le lettrage disait 1 394,150 : il ignorait l'avoir libre, et tout trop-perçu — le
+  // 500 € + le timbre au CENTIME (1 DT = 0,294… → 0,29 €, le montant imprimé, 10.14.1) = 500,29 €,
+  // 200 reçus → 300,29 € × 3,4 = 1 020,986 DT. Client Libre : un avoir libre de 100 HT + 19 = 119
+  // qu'on lui doit. Le 411 : 378,828 + 1 020,986 − 119 − 30 = 1 250,814. Le lettrage disait 1 394,150 : il ignorait l'avoir libre, et tout trop-perçu — le
   // jumeau exact du défaut fournisseur corrigé en 10.2.0, jamais porté côté clients.
   const data = core.migrateData({
     company: { ...CO, regime: 'reel' },
@@ -827,7 +836,7 @@ t('10.14.0 : le lettrage des clients compte ce qu\'on leur doit — un avoir lib
     ]
   });
   const l = core.lettrage(data, data.company, 'clients', '2025-12-31');
-  assert.strictEqual(l.reste, r3(378.828 + 1021 - 119 - 30));
+  assert.strictEqual(l.reste, r3(378.828 + 1020.986 - 119 - 30));
   const ouverts = Object.fromEntries(l.rows.flatMap(r => r.ouverts.map(o => [o.piece, o.reste])));
   assert.strictEqual(ouverts['AVO-2025-001'], -119, 'l\'avoir libre est une pièce ouverte, au crédit du client');
   assert.strictEqual(ouverts['FAC-2025-003'], -30, 'le trop-perçu aussi');
@@ -1019,6 +1028,67 @@ t('10.14.0 : le Cabinet reconnaît la déclaration d\'un mois en crédit ou de t
   const mai = K.declarationMensuelle(l, '2025-05');
   assert.deepStrictEqual([mai.cases.tvaCollectee.montant, mai.cases.tvaDeductible.montant], [76, 76], 'une autoliquidation prise pour une déclaration');
 });
+t('10.14.1 : un avoir fournisseur sur une machine diminue le bien — la fiche proposée, le 22 et la dotation disent le même montant', () => {
+  // RG-01. Une machine de 10 000 HT immobilisée le 1er mars, un avoir de 1 000 HT du fournisseur le
+  // 1er avril (l'avoir recopie les lignes, destination comprise). L'écriture de l'avoir crédite le 22 ;
+  // la fiche proposée gardait 10 000, et la dotation se calculait dessus.
+  const L = (label, pu) => ({ label, qty: 1, unitPrice: pu, vatRate: 19, destination: 'immobilisation', deductible: true });
+  const jeu = () => core.migrateData({
+    company: { ...CO, regime: 'reel' },
+    accounts: [{ id: 'b', name: 'Banque', kind: 'banque', opening: 50000, openingDate: '2025-01-01', isDefault: true }],
+    suppliers: [{ id: 's', name: 'Machines SA' }],
+    purchases: [
+      { id: 'M', kind: 'facture', supplierId: 's', number: 'MA-1', date: '2025-03-01', lines: [L('Machine', 10000)] },
+      { id: 'MA', kind: 'avoir', supplierId: 's', number: 'MA-1R', date: '2025-04-01', achatLie: 'M', lines: [L('Machine', 1000)] }]
+  });
+  const d = jeu();
+  const prop = core.assetsToCreate(d);
+  assert.deepStrictEqual(prop.map(x => x.amount), [9000], 'la fiche proposée garde le montant d\'avant l\'avoir');
+  // La fiche créée depuis la proposition : le 22 et le tableau disent 9 000, et la dotation de 2025
+  // (mise en service le 1er mars, 300 jours en base 360) vaut 9 000 / 5 × 300 / 360 = 1 500.
+  d.assets = [{ id: 'A', label: 'Machine', amount: 9000, years: 5, date: '2025-03-01', purchaseId: 'M', lineIndex: 0 }];
+  assert.strictEqual(core.assetTotals(d, 2025).annuity, 1500);
+  const e = ecarts(d);
+  assert.deepStrictEqual(e, [], e.join('\n'));
+  assert.deepStrictEqual(core.biensADiminuer(d), [], 'une fiche au bon montant n\'est pas à corriger');
+  // Une fiche créée AVANT l'avoir, au montant brut, est nommée — jamais corrigée d'office.
+  const avant = jeu(); avant.assets = [{ id: 'A', label: 'Machine', amount: 10000, years: 5, date: '2025-03-01', purchaseId: 'M', lineIndex: 0 }];
+  assert.deepStrictEqual(core.biensADiminuer(avant).map(b => [b.assetId, b.montant, b.attendu]), [['A', 10000, 9000]]);
+  const todo = core.todoList(avant, avant.company, '2025-06-01').find(x => x.id === 'immobilisations-avoir');
+  assert.ok(todo && todo.route === '#/immo/A', 'À faire ne nomme pas le bien resté au montant d\'avant l\'avoir');
+  // Une fiche ajustée à la main pour une autre raison (frais d'installation) n'est pas accusée.
+  const ajustee = jeu(); ajustee.assets = [{ id: 'A', label: 'Machine', amount: 10400, years: 5, date: '2025-03-01', purchaseId: 'M', lineIndex: 0 }];
+  assert.deepStrictEqual(core.biensADiminuer(ajustee), []);
+});
+t('10.14.1 : un mois dont la seule pièce est un avoir fournisseur passe son écriture de déclaration — le 4366 ne reste pas créditeur', () => {
+  // RG-02. Février : une vente de 2 000 HT et un achat de 1 000 HT ; mars : seulement un avoir du
+  // fournisseur de 200 HT. Mars n'a rien collecté, mais l'avoir reprend 38 DT de TVA déjà déduite :
+  // la chaîne annonce 38 à reverser, et l'écriture sautait (« rien collecté, rien à écrire »). Le
+  // 4366 gardait −38 pour toujours, et chaque mois suivant contredisait sa déclaration.
+  const L = (label, pu) => ({ label, qty: 1, unitPrice: pu, vatRate: 19, destination: 'charge', deductible: true });
+  const data = core.migrateData({
+    company: { ...CO, regime: 'reel' },
+    accounts: [{ id: 'b', name: 'Banque', kind: 'banque', opening: 5000, openingDate: '2025-01-01', isDefault: true }],
+    clients: [{ id: 'c', name: 'Client' }], suppliers: [{ id: 's', name: 'Consultant' }],
+    documents: [{ id: 'V', type: 'facture', number: 'FAC-2025-001', status: 'envoyée', clientId: 'c', date: '2025-02-05', dueDate: '2025-03-05', lines: [{ label: 'Service', qty: 1, unitPrice: 2000, vatRate: 19 }] }],
+    purchases: [
+      { id: 'F', kind: 'facture', supplierId: 's', number: 'C-1', date: '2025-02-10', lines: [L('Conseil', 1000)] },
+      { id: 'A', kind: 'avoir', supplierId: 's', number: 'C-1AV', date: '2025-03-10', achatLie: 'F', lines: [L('Remise', 200)] }
+    ]
+  });
+  const co = data.company, acc = core.chartAccounts(data);
+  // À la main : février 380 − 190 = 190 à payer (+ 1 de timbre) ; mars 0 − (−38) = 38 à payer.
+  const mars = core.vatChain(data, co, '2025', 3)[2];
+  assert.strictEqual(mars.toPay, 38);
+  const decl = core.journalEntries(data, co, { from: '2025-03-01', to: '2025-03-31' }, { sections: ['declarations'] });
+  assert.ok(decl.some(e => e.piece === 'TVA-2025-03'), 'aucune écriture de déclaration pour mars');
+  const bg = core.balanceGenerale(data, co, { from: '2025-01-01', to: '2025-03-31' });
+  const s = c => r3(bg.rows.filter(r => r.account === c).reduce((x, r) => x + r.solde, 0));
+  assert.strictEqual(s(acc.tvaDeductible), 0, 'le 4366 reste créditeur de la TVA que l\'avoir a reprise');
+  assert.strictEqual(s(acc.tvaAPayer), -229, 'le 4365 doit 190 + 1 de février et 38 de mars');
+  const e = ecarts(data);
+  assert.deepStrictEqual(e, [], e.join('\n'));
+});
 t('10.14.0 : un avoir resté en dinars sur une facture en euros la diminue de sa contre-valeur, pas de 300 €', () => {
   // « Nouvel avoir » part en dinars : rattaché à une facture de 1 000 €, un avoir de 300 DT en
   // retranchait 300 € (≈ 1 005 DT). La facture annonçait 200 € de reste, le 411 l'équivalent de 410 €.
@@ -1033,10 +1103,13 @@ t('10.14.0 : un avoir resté en dinars sur une facture en euros la diminue de sa
         lines: [{ label: 'Remise', qty: 1, unitPrice: 300, vatRate: 0 }] }
     ]
   });
-  // À la main : 300 DT / 3,35 = 89,552 € ; 1 000 − 89,552 − 500 = 410,448 € ; × 3,35 = 1 375,001 DT.
+  // À la main : 300 DT / 3,35 = 89,552… € — arrondi au CENTIME, la devise de la facture (10.14.1) :
+  // 89,55 €. 1 000 − 89,55 − 500 = 410,45 €. Au 411 : l'avoir crédite 89,55 × 3,35 = 299,993 DT
+  // (et non 300 : les 0,007 DT que l'arrondi fait perdre passent au 755), donc 3 350 − 299,993
+  // − 1 675 = 1 375,007 DT, le reste × 3,35 à un millime près.
   const b = core.invoiceBalance(data.documents[0], data, data.company);
-  assert.strictEqual(b.credited, 89.552);
-  assert.strictEqual(b.remaining, 410.448);
+  assert.strictEqual(b.credited, 89.55);
+  assert.strictEqual(b.remaining, 410.45);
   const e = ecarts(data);
   assert.deepStrictEqual(e, [], e.join('\n'));
 });
@@ -1122,7 +1195,7 @@ t('10.14.0 : chaque ligne du lettrage s\'additionne — Montant − Avoirs − R
   const ligne = core.lettrage(tp, tp.company, 'clients', '2025-12-31').rows[0].ouverts[0];
   assert.deepStrictEqual([ligne.montant, ligne.avoirs, ligne.regle, ligne.reste], [1000, 300, 1000, -300]);
   const app = require('fs').readFileSync(require('path').join(__dirname, '../../src/renderer/app.js'), 'utf8');
-  assert.ok(/'Avoirs' : 'Avoirs et acomptes'/.test(app) && /o\.avoirs \? C\.money\(o\.avoirs\)/.test(app), 'la colonne des avoirs manque à l\'écran du lettrage');
+  assert.ok(/'Avoirs' : 'Avoirs et acomptes'/.test(app) && /o\.avoirs \? (C\.money|montantCompta)\(o\.avoirs\)/.test(app), 'la colonne des avoirs manque à l\'écran du lettrage');
 });
 t('10.14.0 : un avoir rattaché prend la devise et le taux de sa facture, et ne les laisse plus changer', () => {
   const app = require('fs').readFileSync(require('path').join(__dirname, '../../src/renderer/app.js'), 'utf8');
@@ -1321,6 +1394,28 @@ t('10.14.0 : les mouvements d\'un compte supprimé basculent sur le compte par d
   assert.strictEqual(core.cashPosition(d, co, '2026-08-31').total, avant, 'le disponible perd l\'argent du compte supprimé');
   const e = ecarts(d, { sansCabinet: true });
   assert.deepStrictEqual(e, [], e.join('\n'));
+});
+t('10.14.1 : un virement dont le compte de DÉPART est supprimé reste sur le compte qui a reçu — et d\'un compte à lui-même, rien ne bouge', () => {
+  // RG-03. La recette de la caisse déposée à la banque (m11, 300 DT) : supprimer la caisse faisait
+  // basculer le DÉPART sur le compte par défaut — la banque, qui était aussi l'arrivée. « De la
+  // Banque à la Banque » passait en sortie au 471 : les 300 DT que la banque a vraiment reçus
+  // devenaient 300 DT perdus (10 300 → 9 700 sur le jeu de l'audit).
+  const d = scenarioComplet(), co = d.company;
+  const juin = { from: '2026-06-10', to: '2026-06-10' };
+  const avant = core.cashMovements(d, co, juin, 'b').filter(m => m.movementId === 'm11').reduce((t, m) => t + m.amount, 0);
+  assert.strictEqual(avant, 300, 'le jeu doit porter l\'arrivée de 300 DT à la banque');
+  d.accounts = d.accounts.filter(a => a.id !== 'k');
+  const lignes = core.cashMovements(d, co, juin, null).filter(m => m.movementId === 'm11');
+  assert.deepStrictEqual(lignes.map(m => [m.accountId, m.amount]), [['b', 300]], 'la banque perd les 300 DT qu\'elle a reçus');
+  const E = core.journalEntries(d, co, juin, { sections: ['tresorerie'] }).filter(e => e.docId === 'm11');
+  assert.deepStrictEqual(E.map(e => [e.account, e.debit, e.credit]), [['532', 300, 0], ['471', 0, 300]], 'la contrepartie d\'un départ disparu va au compte d\'attente');
+  const e = ecarts(d, { sansCabinet: true });
+  assert.deepStrictEqual(e, [], e.join('\n'));
+  // Un virement d'un compte à lui-même ne déplace rien : ni ligne de trésorerie, ni écriture, ni sortie inventée.
+  const soi = scenarioComplet(); const m10 = soi.movements.find(m => m.id === 'm10'); m10.versAccountId = m10.accountId;
+  const sept = { from: '2025-09-01', to: '2025-09-01' };
+  assert.deepStrictEqual(core.cashMovements(soi, co, sept, null).filter(m => m.movementId === 'm10'), []);
+  assert.deepStrictEqual(core.journalEntries(soi, co, sept, { sections: ['tresorerie'] }).filter(e => e.docId === 'm10'), []);
 });
 t('10.14.0 : le formulaire d\'un mouvement propose le virement entre comptes, et l\'arrivée se pointe sur son propre drapeau', () => {
   const app = require('fs').readFileSync(require('path').join(__dirname, '../../src/renderer/app.js'), 'utf8');
@@ -1605,7 +1700,11 @@ t('10.14.0 : l\'écran d\'un achat au forfait éteint « Déduct. » et dit pour
   // Chaque ligne née du catalogue passe par le régime : trois portes dans l'éditeur, les modèles, les licences.
   const nus = (app.match(/vatRate: it\.vatRate/g) || []).length;
   assert.strictEqual(nus, 0, 'une ligne née du catalogue reprend son taux sans le régime');
-  assert.ok((app.match(/vatRate: C\.tauxPourRegime\(company\(\), it\.vatRate\)/g) || []).length >= 3);
+  // Retourné vers la règle en 10.14.1 : les deux chemins de l'éditeur passent par UNE fonction,
+  // `depuisCatalogue` (qui convertit aussi le prix), donc la forme compte une occurrence de moins.
+  assert.ok((app.match(/vatRate: C\.tauxPourRegime\(company\(\), it\.vatRate\)/g) || []).length >= 2);
+  assert.ok(/const depuisCatalogue = it => \{[\s\S]{0,600}?vatRate: C\.tauxPourRegime\(company\(\), it\.vatRate\)/.test(app), 'l\'éditeur tire une ligne du catalogue sans le régime');
+  assert.ok(/doc\.lines\.push\(\{ qty: 1, \.\.\.depuisCatalogue\(it\) \}\)/.test(app) && /Object\.assign\(l, depuisCatalogue\(it\)\)/.test(app), 'un chemin de l\'éditeur contourne depuisCatalogue');
   // L'émission prévient d'une TVA restée sur la pièce d'un non-assujetti.
   assert.ok(/if \(!C\.assujettiTVA\(co\) && \(isInv \|\| doc\.type === 'avoir'\)\) \{\s*\n\s*const tva = C\.computeTotals\(doc, co\)\.totalVAT;/.test(app), 'l\'émission ne prévient pas de la TVA d\'un forfaitaire');
 });
@@ -1684,12 +1783,12 @@ t('10.14.0 : un taux forcé par le régime ne se range jamais — le passage au 
   assert.strictEqual((app.match(/vatRate: C\.tauxAchatArticle\((it|art), company\(\)\)/g) || []).length, 3, 'un achat tiré du catalogue recopie son taux de vente');
   assert.ok(!/vatRate: Number\((it|art)\.vatRate\) \|\| 0/.test(app), 'un chemin recopie encore le taux de vente sur un achat');
   // Le catalogue à 0 % se signale au régime et au taux CHOISIS, et le geste se défait.
-  const panneau = app.slice(app.indexOf('function dessinerCatalogueSansTva()'), app.indexOf('function noteRegime('));
+  const panneau = app.slice(app.indexOf('function dessinerCatalogueSansTva()'), app.indexOf('function dessinerSourcesSansTva('));
   assert.ok(panneau.length > 500 && panneau.length < 4000, 'tranche inattendue');
   assert.ok(/C\.articlesSansTva\(data, co\)/.test(panneau) && /C\.articlesSansTva\(data, co2\)/.test(panneau), 'le compte et le geste ne lisent pas la même fonction');
   assert.ok(/const co = regimeChoisi\(\);/.test(panneau), 'le panneau lit le régime enregistré, pas celui qu\'on choisit');
   assert.ok(/await confirmDialog\(/.test(panneau) && /toastUndo\(/.test(panneau), 'le geste ne demande pas, ou ne se défait pas');
-  assert.ok(/selTaux\.addEventListener\('change'/.test(app) && /dessinerCatalogueSansTva\(\);\s*\}\);\s*\/\/ Le taux choisi/.test(app), 'le panneau ne suit pas le choix');  // La liste du catalogue dit le taux qui s'IMPRIMERA : 0 % chez qui ne facture pas de TVA.
+  assert.ok(/selTaux\.addEventListener\('change'/.test(app) && /dessinerCatalogueSansTva\(\);( dessinerSourcesSansTva\(\);)?\s*\}\);\s*\/\/ Le taux choisi/.test(app), 'le panneau ne suit pas le choix');  // La liste du catalogue dit le taux qui s'IMPRIMERA : 0 % chez qui ne facture pas de TVA.
   assert.ok(/key: 'vat', label: 'TVA', r: true, val: c => Number\(c\.vatRate\) \|\| 0, get: c => C\.assujettiTVA\(company\(\)\) \|\| !\(Number\(c\.vatRate\) > 0\) \? c\.vatRate \+ ' %'/.test(app), 'le catalogue affiche 19 % à une entreprise qui facture 0 %');
 });
 

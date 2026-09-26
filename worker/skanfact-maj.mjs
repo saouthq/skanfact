@@ -220,6 +220,60 @@ function relireAssets(env) {
   };
 }
 
+// **Une bêta voit la stable qui la dépasse** (26/09/2026, S-01, signalé par Skander). Une installation
+// qui a coché « recevoir les versions d'essai » demande `beta-mac.yml` (ou `cabinet-beta-mac.yml`) :
+// le relais servait la dernière release qui PORTE cet index — la 13.0.0-beta.1 — alors que la
+// 14.0.0 stable, publiée après, ne le porte pas. Résultat : « tu as la dernière version » sur une
+// bêta dépassée, et la seule issue était de DÉCOCHER la case. Recevoir les essais veut dire « avant
+// les autres », jamais « à la place de la stable ». Pour un index d'essai, on regarde donc AUSSI son
+// jumeau stable, et la version la plus récente des deux est celle qu'on sert : le contenu de
+// `latest-mac.yml` sous le nom demandé — l'application lit un numéro et des noms de fichiers, et ces
+// fichiers se téléchargent par ce même relais. Une installation stable ne passe jamais par ici : son
+// index n'a pas de jumeau.
+export const INDEX_STABLE_DE = {
+  'beta.yml': 'latest.yml', 'beta-mac.yml': 'latest-mac.yml', 'beta-linux.yml': 'latest-linux.yml',
+  'cabinet-beta.yml': 'cabinet.yml', 'cabinet-beta-mac.yml': 'cabinet-mac.yml', 'cabinet-beta-linux.yml': 'cabinet-linux.yml'
+};
+
+// Comparer deux numéros comme des NOMBRES (10.10.0 après 9.8.8), une préversion AVANT sa version,
+// « beta.10 » après « beta.9 ». Jumelle EXACTE de `comparerVersions` de `src/canaux.js` (ce worker
+// est un fichier unique déployé seul, il ne peut rien charger du dépôt) : un test compare les corps.
+export function comparerVersions(a, b) {
+  const lire = v => {
+    const [base, pre] = String(v || '').replace(/^v/, '').split('-');
+    return { n: base.split('.').map(x => Number(x) || 0), pre: pre ? pre.split('.') : null };
+  };
+  const x = lire(a), y = lire(b);
+  for (let i = 0; i < 3; i++) if ((x.n[i] || 0) !== (y.n[i] || 0)) return (x.n[i] || 0) < (y.n[i] || 0) ? -1 : 1;
+  if (!x.pre && !y.pre) return 0;
+  if (!x.pre) return 1;
+  if (!y.pre) return -1;
+  for (let i = 0; i < Math.max(x.pre.length, y.pre.length); i++) {
+    const p = x.pre[i], q = y.pre[i];
+    if (p === undefined) return -1;
+    if (q === undefined) return 1;
+    const np = /^\d+$/.test(p), nq = /^\d+$/.test(q);
+    if (np && nq && Number(p) !== Number(q)) return Number(p) < Number(q) ? -1 : 1;
+    if (!np || !nq) { if (p !== q) return p < q ? -1 : 1; }
+  }
+  return 0;
+}
+
+// La décision, pure : `essai` est ce que porte l'index demandé, `stable` ce que porte son jumeau
+// stable (null si l'un manque). On garde l'essai tant qu'il est au moins aussi récent.
+export function indexAServir(fichier, essai, stable) {
+  if (!INDEX_STABLE_DE[String(fichier || '')]) return essai;
+  if (stable && (!essai || comparerVersions(stable.tag, essai.tag) > 0)) return { ...stable, stableServie: true };
+  return essai;
+}
+
+export async function trouveIndex(releases, fichier, relire) {
+  const essai = await trouveDans(releases, fichier, relire);
+  const jumeau = INDEX_STABLE_DE[fichier];
+  if (!jumeau) return essai;
+  return indexAServir(fichier, essai, await trouveDans(releases, jumeau, relire));
+}
+
 async function trouveFichier(fichier, env) {
   const base = `https://api.github.com/repos/${env.GITHUB_OWNER}/${env.GITHUB_REPO}/releases`;
   // On regarde la dernière release, puis les précédentes : une mise à jour peut demander un fichier
@@ -229,7 +283,7 @@ async function trouveFichier(fichier, env) {
   const r = await github(`${base}?per_page=20`, env);
   if (!r.ok) return { erreur: `GitHub a répondu ${r.status}` };
   const releases = await r.json();
-  const f = await trouveDans(releases, fichier, relireAssets(env));
+  const f = await trouveIndex(releases, fichier, relireAssets(env));
   return f || { erreur: 'fichier introuvable dans les dernières versions' };
 }
 
@@ -259,13 +313,24 @@ export async function rafraichirRecentes(releases, relire, n = RELECTURES_MAX) {
 // 404 et affiche « aucune version trouvée », ce qui n'a l'air d'une panne que de son côté.
 export function resumeCanaux(releases) {
   const out = [];
+  const premiere = fichier => {
+    for (const rel of (releases || [])) {
+      if (!releaseAdmissible(rel, fichier)) continue;
+      if ((rel.assets || []).some(a => a && a.name === fichier)) return rel;
+    }
+    return null;
+  };
   for (const canal of Object.keys(CANAUX)) {
     for (const fichier of CANAUX[canal].yml) {
-      let trouve = null;
-      for (const rel of (releases || [])) {
-        if (!releaseAdmissible(rel, fichier)) continue;
-        if ((rel.assets || []).some(a => a && a.name === fichier)) { trouve = rel; break; }
-      }
+      const trouve = premiere(fichier);
+      // S-01 (10.14.1) — ce que l'index d'essai SERT, par la même décision que le relais : quand la
+      // stable le dépasse, c'est elle qui part. La ligne garde la dernière bêta (`tag`), parce que
+      // l'écran des mises à jour en fait « la dernière version d'essai est devenue la 14.0.0 », et
+      // nomme la stable servie à sa place (`sertStable`) — deux écrans, un chiffre (6.8.1).
+      const jumeau = INDEX_STABLE_DE[fichier] ? premiere(INDEX_STABLE_DE[fichier]) : null;
+      const servie = indexAServir(fichier,
+        trouve ? { tag: String(trouve.tag_name || '') } : null,
+        jumeau ? { tag: String(jumeau.tag_name || '') } : null);
       out.push({
         canal, fichier,
         essai: !INDEX_STABLES.includes(fichier),
@@ -273,10 +338,11 @@ export function resumeCanaux(releases) {
         // restent dans la réponse, parce qu'un index servi alors qu'on ne l'attend pas est une
         // information, pas un silence.
         attendu: (CANAUX[canal].attendus || []).includes(fichier),
-        servi: !!trouve,
+        servi: !!(trouve || (servie && servie.stableServie)),
         tag: trouve ? String(trouve.tag_name || '') : '',
         prerelease: trouve ? !!trouve.prerelease : false,
-        publie: trouve ? String(trouve.published_at || '') : ''
+        publie: trouve ? String(trouve.published_at || '') : '',
+        sertStable: servie && servie.stableServie ? servie.tag : ''
       });
     }
   }
@@ -462,7 +528,7 @@ export default {
     if (f.erreur) return new Response(f.erreur, { status: 404 });
 
     // Une trace dans le journal Cloudflare : qui met à jour, et vers quoi. Rien n'est stocké.
-    console.log(`${r.canal} ${r.fichier} → ${f.tag} · ${a.qui}`);
+    console.log(`${r.canal} ${r.fichier} → ${f.tag}${f.stableServie ? ' (la stable, plus récente que la dernière bêta)' : ''} · ${a.qui}`);
 
     const bin = await github(f.asset.url, env, 'application/octet-stream');
     if (!bin.ok) return new Response(`Téléchargement impossible (${bin.status}).`, { status: 502 });

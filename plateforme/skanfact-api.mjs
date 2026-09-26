@@ -1040,10 +1040,18 @@ const fmtJour = iso => (dateValide(iso) ? iso.slice(8, 10) + '/' + iso.slice(5, 
 // « Pourquoi ça compte » recevaient « 822.1 TND », qui se lit huit cent vingt-deux MILLE chez un
 // lecteur français (10.10.0, la même faute côté Cabinet) — et ces phrases-là s'affichent telles
 // quelles. Un montant absent ne devient pas « 0,000 » : il disparaît de la phrase.
-const fmtMontant = (n, devise) => {
+// 10.14.1 — et UNE écriture pour toutes les phrases : le dinar a trois décimales, l'euro et le
+// dollar deux ; les milliers sont séparés par une espace fine insécable et la devise tient au
+// nombre (un montant ne se coupe pas en fin de ligne) ; « DT », que SkanFact écrit, et « TND », que
+// la console écrit, sont la même monnaie et portent le même nom — sinon « Encaissé » se coupait en
+// deux cartes pour un seul dinar.
+export const deviseConsole = d => { const x = String(d == null ? '' : d).trim().toUpperCase(); return !x || x === 'DT' || x === 'TND' ? 'TND' : x; };
+export const fmtMontant = (n, devise) => {
   const x = Number(n);
   if (n == null || n === '' || !isFinite(x)) return '';
-  return x.toFixed(3).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + (devise ? ' ' + devise : '');
+  const dev = devise ? deviseConsole(devise) : '';
+  const dec = !dev || dev === 'TND' ? 3 : 2;
+  return (x < 0 ? '\u2212' : '') + Math.abs(x).toFixed(dec).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '\u202f') + (dev ? '\u00a0' + dev : '');
 };
 export function mailLicence(o) {
   const x = o || {};
@@ -1226,7 +1234,7 @@ export function resumeArgent(ventes, aujourdhui) {
   const annee = String(aujourdhui || '').slice(0, 4);
   const par = new Map();
   (ventes || []).forEach(v => {
-    const devise = String(v.devise || 'DT').trim() || 'DT';
+    const devise = deviseConsole(v.devise);
     let g = par.get(devise);
     if (!g) { g = { devise, encaisse: 0, attente: 0, nbEncaisse: 0, nbAttente: 0 }; par.set(devise, g); }
     const montant = Number(v.montant_ht) || 0;
@@ -1517,8 +1525,7 @@ export function mailRelance(type, d) {
   const fi = String(o.fin || '');
   const fin = dateValide(fi) ? fi.slice(8, 10) + '/' + fi.slice(5, 7) + '/' + fi.slice(0, 4) : '';
   const off = String(o.offre || '').trim();
-  const mt = o.montant != null && o.montant !== '' && !isNaN(Number(o.montant))
-    ? Number(o.montant).toFixed(3).replace('.', ',') + (o.devise ? ' ' + String(o.devise) : '') : '';
+  const mt = fmtMontant(o.montant, o.devise);
   const lignes = [nom ? 'Bonjour ' + nom + ',' : 'Bonjour,', ''];
 
   if (type === 'fin') {
@@ -3730,9 +3737,13 @@ const CONSOLE_HTML = `<!doctype html>
     var q = depuis(iso); if (!q) return '—';
     return h(q) + '<span class="quand">' + h(horodate(iso)) + '</span>';
   };
+  // 10.14.1 : la même écriture que les phrases du serveur (deviseConsole, fmtMontant).
   var montant = function (n, dev) {
     var x = Number(n) || 0;
-    return x.toFixed(3).replace('.', ',').replace(/\\B(?=(\\d{3})+(?!\\d))/g, ' ') + ' ' + (dev || '');
+    var d = String(dev == null ? '' : dev).trim().toUpperCase();
+    if (!d || d === 'DT') d = 'TND';
+    var dec = d === 'TND' ? 3 : 2;
+    return (x < 0 ? '\u2212' : '') + Math.abs(x).toFixed(dec).replace('.', ',').replace(/\\B(?=(\\d{3})+(?!\\d))/g, '\u202f') + '\u00a0' + d;
   };
   var aujourdhui = function () {
     var d = new Date(), p = function (n) { return String(n).padStart(2, '0'); };

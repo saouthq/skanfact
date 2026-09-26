@@ -70,28 +70,43 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
   await win.selectOption('#f-head select[name=currency]', 'DT');
   await win.waitForTimeout(220);
   const lireDue = () => win.$eval('#f-head input[name=dueDate]', e => e.value);
+  const posObjet = () => win.$eval('#f-head input[name=subject]', e => { const r = e.getBoundingClientRect(); return `${Math.round(r.x)},${Math.round(r.y)},${Math.round(r.width)}`; });
+  const objet0 = await posObjet();
   const due0 = await lireDue();
   // On recule la date d'un mois par le champ visible, comme un utilisateur.
   const nouvelleDate = await win.evaluate(() => {
     const d = new Date(Date.now() - 40 * 86400000);
     return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
   });
-  await win.evaluate(iso => {
-    const hid = document.querySelector('#f-head input[name=date]');
-    hid.value = iso;
+  const poserDate = (sel, iso) => win.evaluate(([s, x]) => {
+    const hid = document.querySelector(s);
+    hid.value = x;
     hid.dispatchEvent(new Event('input', { bubbles: true }));
-  }, nouvelleDate);
+  }, [sel, iso]);
+  await poserDate('#f-head input[name=date]', nouvelleDate);
   await win.waitForTimeout(300);
   const due1 = await lireDue();
   if (due1 === due0) throw new Error(`l'échéance est restée au ${due0} alors que la date est passée au ${nouvelleDate}`);
-  const noteVisible = await win.evaluate(() => { const n = document.querySelector('#due-auto'); return n && !n.hidden ? n.textContent : ''; });
-  if (!/recalculée/.test(noteVisible)) throw new Error('rien ne dit que l\'échéance vient de bouger');
+  // 10.14.1 — on le dit par un message passager qui porte « Annuler » : la note de la 7.19.0 naissait
+  // dans une cellule de la grille et poussait tout le formulaire d'une rangée (H-E1).
+  const annonceDue = await win.evaluate(() => { const t = document.querySelector('#toast'); return t ? t.textContent : ''; });
+  if (!/recalculée/.test(annonceDue)) throw new Error('rien ne dit que l\'échéance vient de bouger');
+  if (!await win.$('#toast #toast-undo')) throw new Error('le message n\'offre pas de revenir en arrière');
+  const objet1 = await posObjet();
+  if (objet1 !== objet0) throw new Error(`le formulaire a bougé sous le curseur : « Objet » ${objet0} → ${objet1}`);
   // Le champ visible suit aussi (c'est un COUPLE hidden + texte).
   const texteVisible = await win.evaluate(() => {
     const hid = document.querySelector('#f-head input[name=dueDate]');
     return hid.closest('.datefield').querySelector('.d-txt').value;
   });
   if (!texteVisible) throw new Error('l\'échéance a changé dans les données mais pas à l\'écran');
+  // « Annuler » rend l'ancienne échéance, et la tient pour choisie : elle ne suit plus la date.
+  await win.click('#toast #toast-undo');
+  await win.waitForTimeout(200);
+  if (await lireDue() !== due0) throw new Error(`« Annuler » n'a pas rendu l'échéance d'avant (${await lireDue()} au lieu de ${due0})`);
+  await poserDate('#f-head input[name=date]', '2029-06-01');
+  await win.waitForTimeout(280);
+  if (await lireDue() !== due0) throw new Error('une échéance rendue par « Annuler » s\'est remise à suivre la date');
   // Maintenant on la saisit À LA MAIN : elle ne doit plus bouger.
   await win.evaluate(() => {
     const hid = document.querySelector('#f-head input[name=dueDate]');
@@ -99,15 +114,44 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
     hid.dispatchEvent(new Event('change', { bubbles: true }));
   });
   await win.waitForTimeout(200);
-  await win.evaluate(() => {
-    const hid = document.querySelector('#f-head input[name=date]');
-    hid.value = '2029-06-01';
-    hid.dispatchEvent(new Event('input', { bubbles: true }));
-  });
+  await poserDate('#f-head input[name=date]', '2029-07-01');
   await win.waitForTimeout(280);
   const due2 = await lireDue();
   if (due2 !== '2030-01-15') throw new Error(`une échéance saisie à la main a été écrasée (${due2})`);
-  j.ok(`${due0} → ${due1} avec la date, puis 2030-01-15 gardée telle quelle`);
+  j.ok(`${due0} → ${due1} avec la date, sans rien pousser ; « Annuler » la rend ; 2030-01-15 gardée telle quelle`);
+
+  // ------------------------------------------------------------- 2 bis. et dans un achat (10.14.1)
+  j.etape('L\'échéance d\'un achat suit aussi la date de la pièce');
+  // L'éditeur de document est modifié : on répond à la question en partant, comme un humain.
+  await win.evaluate(() => { location.hash = '#/achat/new'; });
+  const quitter = await win.waitForSelector('#modal-root #b', { timeout: 2500 }).catch(() => null);
+  if (quitter) await quitter.click();
+  // Le champ est un COUPLE : l'input nommé est caché, on attend qu'il existe, pas qu'il se voie.
+  await win.waitForSelector('#b-head input[name=dueDate]', { state: 'attached' });
+  const lireDueA = () => win.$eval('#b-head input[name=dueDate]', e => e.value);
+  const dA0 = await lireDueA();
+  await poserDate('#b-head input[name=date]', '2023-01-10');
+  await win.waitForTimeout(300);
+  const dA1 = await lireDueA();
+  if (dA1 !== '2023-02-09') throw new Error(`l'achat redaté au 10/01/2023 reste dû au ${dA1} (au lieu du 09/02/2023 — il était au ${dA0})`);
+  const annonceA = await win.evaluate(() => { const t = document.querySelector('#toast'); return t ? t.textContent : ''; });
+  if (!/recalculée au 09\/02\/2023/.test(annonceA)) throw new Error(`rien ne dit que l'échéance de l'achat a bougé (« ${annonceA} »)`);
+  // Recopiée de la facture du fournisseur, elle ne bouge plus.
+  await win.evaluate(() => {
+    const hid = document.querySelector('#b-head input[name=dueDate]');
+    hid.value = '2023-03-31';
+    hid.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await win.waitForTimeout(200);
+  await poserDate('#b-head input[name=date]', '2023-01-12');
+  await win.waitForTimeout(280);
+  if (await lireDueA() !== '2023-03-31') throw new Error(`l'échéance recopiée de la facture a été écrasée (${await lireDueA()})`);
+  j.ok(`${dA0} → 2023-02-09 avec la date du 10/01/2023, puis 2023-03-31 gardée telle quelle`);
+  // On rend l'éditeur de document à l'étape suivante, qui l'attend.
+  await win.evaluate(() => { location.hash = '#/doc/new/facture'; });
+  const quitter2 = await win.waitForSelector('#modal-root #b', { timeout: 2500 }).catch(() => null);
+  if (quitter2) await quitter2.click();
+  await win.waitForSelector('#f-head input[name=dueDate]', { state: 'attached' });
 
   // ------------------------------------------------------------- 3. une quantité effacée
   j.etape('Effacer une quantité ne la met pas à zéro');
@@ -167,13 +211,16 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
 
   // ------------------------------------------------------------- 5. l'acompte en dinars
   j.etape('Un acompte se demande en dinars, et le montant obtenu s\'annonce avant');
+  // 10.14.1 — sur l'exemple de cinq ans, « le premier devis venu » date de 2022, dans un mois
+  // clôturé : il s'ouvre fermé (10.14.0) et n'offre ni « Supprimer » ni rien à modifier. Le parcours
+  // choisit par ce qui DISCRIMINE — un devis d'un mois encore ouvert.
   const devis = await win.evaluate(() => {
-    const d = window.__data;
+    const d = window.__data, C = window.SkanCore;
     const factures = new Set(d.documents.filter(x => x.type === 'facture' && x.fromQuoteId).map(x => x.fromQuoteId));
-    const q = d.documents.find(x => x.type === 'devis' && x.number && x.clientId && !factures.has(x.id));
+    const q = d.documents.find(x => x.type === 'devis' && x.number && x.clientId && !factures.has(x.id) && !C.isClosedDate(d, x.date));
     return q ? q.id : null;
   });
-  if (!devis) throw new Error('aucun devis non facturé dans le jeu d\'exemple');
+  if (!devis) throw new Error('aucun devis non facturé d\'un mois ouvert dans le jeu d\'exemple');
   // On quitte un brouillon modifié : le garde-fou « modifications non enregistrées » pose sa
   // question et REMET la page précédente dans la barre d'adresse pour le faire (2.4.0). Sans y
   // répondre, la navigation suivante n'a tout simplement pas lieu — et le test cherche un bouton
@@ -223,11 +270,17 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
   const cree = await win.evaluate(() => {
     const id = location.hash.split('/').pop();
     const d = window.__data.documents.find(x => x.id === id);
-    return d ? { deposit: d.deposit, ttc: window.SkanCore.computeTotals(d, window.__data.company).netToPay } : null;
+    const t = d && window.SkanCore.computeTotals(d, window.__data.company);
+    return d ? { deposit: d.deposit, ttc: t.netToPay, horsTimbre: t.totalTTC - t.stamp } : null;
   });
   if (!cree || !cree.deposit) throw new Error('aucune facture d\'acompte créée');
-  if (Math.abs(cree.ttc - annonce) > 0.01) throw new Error(`la facture vaut ${cree.ttc} là où la fenêtre annonçait ${annonce}`);
-  j.ok(`500 DT demandés → ${cree.deposit.percent} % du devis, ${cree.ttc} à payer, comme annoncé`);
+  if (Math.abs(cree.ttc - annonce) > 0.0005) throw new Error(`la facture vaut ${cree.ttc} là où la fenêtre annonçait ${annonce}`);
+  // 10.14.1 (ACP-01) — 500 demandés font 500 TTC, au millime : un pourcentage arrondi au millième
+  // donnait 500,002 et le client payait deux millimes de plus que ce qu'on lui avait annoncé au
+  // téléphone. Le timbre (et une retenue éventuelle) s'y ajoutent ensuite, comme sur toute facture.
+  if (Math.abs(cree.horsTimbre - 500) > 1e-9) throw new Error(`500 DT demandés font ${cree.horsTimbre} TTC hors timbre au lieu de 500 exactement`);
+  if (Number(cree.deposit.montant) !== 500) throw new Error('la facture d\'acompte ne retient pas le montant demandé (500) : elle ne pourra pas le dire');
+  j.ok(`500 DT demandés → ${cree.horsTimbre} TTC hors timbre, ${cree.ttc} à payer, comme annoncé`);
 
   // ------------------------------------------------------------- 6. la suppression nomme les liens
   j.etape('Supprimer le devis nomme la facture d\'acompte qui en est issue');

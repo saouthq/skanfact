@@ -6,7 +6,116 @@ Il ne remplace pas `VERSIONS-A-VENIR.md`, qui inventorie les VERSIONS à écrire
 constats isolés, les dettes et les décisions en attente. Une ligne en sort quand elle est faite, ou
 quand elle devient une version.*
 
-Dernière relecture : 24/09/2026.
+Dernière relecture : 26/09/2026.
+
+---
+
+## 0. EN COURS — la 2e vérification (10.14.1, bêta) et les demandes du 26/09/2026
+
+*Écrit le 26/09/2026 à la demande de Skander, pour que rien ne se perde entre deux sessions. La
+10.14.0 est publiée en stable ; tout ce qui suit part en **10.14.1** en BÊTA (ça touche à l'argent
+et au moteur), puis en stable quand Skander valide.*
+
+### 0.1 Ce que je suis en train de faire (10.14.1)
+
+- **Fait, prouvé et testé à la souris (26/09)** :
+  - **C1** — un bien au bilan sans être au tableau des immobilisations (ligne d'achat sans fiche,
+    bien pas encore en service, en service avant sa facture) : page, contrôle de clôture, action,
+    invariant de janvier.
+  - **ACP-01** — un acompte demandé en MONTANT fait ce montant TTC au millime (`depositLinesMontant`,
+    recherche sur chaque base, plusieurs taux, remise, euros au centime) ; la facture dit « 500,000 DT
+    TTC du devis … » (`acompteDit`) ; les bulles et l'article « Acompte et solde » ne disent plus
+    « converti en pourcentage ».
+  - **NUM-01** — la règle commune des champs vit dans un `:where()` : les 26 règles de conteneur
+    qu'elle écrasait depuis la 7.9.0 s'appliquent (P.U. d'un achat, quantités, mot de passe sous
+    « Afficher », grilles du Cabinet). Trois anciens tests CSS retournés vers la règle (37e, 38e).
+  - **Bulles** : la sonde des champs sans bulle ne voyait pas une balise qui porte un `id` ou un
+    `style` après sa classe ; trois champs nus trouvés et habillés (pourcentage d'acompte, solde du
+    relevé, compte du grand livre).
+  - **Écrans de verrouillage** : le Cabinet n'a plus l'invite « •••••••• » (un champ vide qui se lit
+    rempli) ; dans les deux applications le reproche disparaît quand on retape.
+  - **S-01 (moitié relais)** — le relais sert la stable quand elle est plus récente que la dernière
+    bêta (`indexAServir`, `trouveIndex`, `INDEX_STABLE_DE`) ; `/sante` dit `sertStable`. Prouvé (4
+    preuves). **Reste** : le repli GitHub du Cabinet (`releasePourIndexRelue` ne cherche que
+    `cabinet-beta*.yml`) et l'affichage de `sertStable` dans la console. Le relais se déploie quand
+    `worker/skanfact-maj.mjs` arrive sur `main`.
+  - **S-05** — la facture ou la proforma payable le jour même : UN cadre, « Émise le 24/09/2026 » et
+    dessous « À régler à réception » ; le récapitulatif d'émission dit « À réception ». Test retourné
+    vers la règle, prouvé sur l'ancienne forme exacte de la 10.12.0.
+  - **Cabinet** : la pastille de l'étape en cours de « Tes premiers pas » débordait de sa liste
+    (marge négative → ombre + `clip-path`) ; le jour de relance affichait « 1 » pour le 10 (le zéro
+    sous les flèches, depuis NUM-01 : `5.5ch` ne comptait ni la marge ni les flèches).
+  - **Parcours e2e rafraîchis** (ils décrivaient l'état d'avant la 10.14.0) : `cabinet` (bandeaux
+    reconnus par ce qu'ils portent, adresse avec l'exercice), `cabinet-perte`, `boucle` (un mois
+    OUVERT, sinon le paquet part définitif et le brouillard n'existe pas), `cabinet-premier-jour`
+    (« Suivant » par son id), `console` (montants à espace insécable), `entreprise` (montant
+    complété, rapprochement paginé, résultat simplifié à toutes ses composantes).
+  - **Reste à `e2e:cabinet-jour1`** : la grille de saisie commence à 592 px sur un portable (seuil
+    480) — le bandeau de l'exemple et « Première fois sur cet écran ? » passent devant. À régler
+    avec S-03 (« Première fois » ne doit pas pousser l'écran de travail).
+- **Cabinet — 84 champs sans bulle « i »** (trouvés en portant la sonde de l'app entreprise au
+  Cabinet, le jumeau manquant) : salarié, bulletin, bien, cession, écriture de trésorerie, questions,
+  réouverture, mots de passe… À écrire dans `cabguide.js` (chaque bulle dit ce que le CODE fait du
+  champ), puis porter le test de `assistant.js` au Cabinet.
+- **C2 — les CSV du Cabinet au format machine** : `exporterLivre` (~L7534 de
+  `src/cabinet/renderer/app.js`), le CSV de la déclaration (~L3966), celui de la liasse (~L4515) et
+  `CSV_COLS` du portefeuille (~L1799) — les aligner sur le format des montants de `core.toCsv`.
+- **PERF-01** (la fenêtre « Nouvelle opération diverse » gelait 15,5 s sur dix ans ; corrigé par le
+  lot de `comptesProposes`) : le vérifier à la souris sur l'exemple de cinq ans.
+- **Le Cabinet, parcouru par moi-même** (les agents n'y ont rien trouvé : ça ne vaut pas preuve).
+- **Ce qui reste des tâches de la 2e vérification** : scénarios du moteur (entreprise neuve, cinq
+  ans, dix ans et plus, les quinze métiers, les régimes, les taux, les devises) ; aucun montant
+  affiché brut (« 250 » au lieu de « 250,000 DT ») dans les deux applications, toutes devises ;
+  parcours humains écran par écran (entreprise et Cabinet) ; relancer les recherches interrompues.
+- **Déjà fait dans la 10.14.1** (à écrire au CHANGELOG) : CA-01/02/03, MR-*, M-*, MC-*, DEV-*
+  (arrondis, libellés de devise), MC-14, MC-15, DEV-16, DEV-16 bis, H-V2-02, CLOT-01 (le contrôle des
+  bulletins compte TOUS les mois et nomme le premier qui manque), SOC-01, PERF-01, les années de la
+  Paie, l'accord de l'état vide de la Paie, l'échéance d'un ACHAT qui suit la date et le délai du
+  fournisseur (et ne réécrit pas une échéance recopiée), le message passager « Échéance recalculée »
+  avec « Annuler » (plus de note qui pousse le formulaire, H-E1), « Date de validité » sur un devis,
+  la copie d'un achat qui reprend le délai du fournisseur, deux tests retournés vers la règle
+  (`.run(` au lieu de `.run()`), et `e2e:editeur` réparé (champ caché attendu « attaché », devis
+  choisi dans un mois ouvert).
+- **Pour publier la 10.14.1-beta** : `npm run lint`, `npm test` complet (régénérer
+  `node scripts/exemple-cabinet.js` si un test du gabarit tombe), `npm run charge:entreprise`,
+  CHANGELOG, les leçons dans CLAUDE.md, bump, commit, push `beta`, workflow Release, vérifier les
+  fichiers et les index du canal bêta.
+- **Reporté par Skander le 24/09** : faire tourner `e2e:visites` et `e2e:cabinet-visites` jusqu'au
+  bout (§ 4 bis).
+
+### 0.2 Ce que Skander a demandé le 26/09/2026 (à faire, dans cet ordre de gravité)
+
+1. **Mises à jour : en bêta, une stable plus récente doit être proposée.** Sur une 13.0.0-beta.1
+   avec « Recevoir les versions bêta » coché, une 14.0.0 stable n'apparaît pas : il faut décocher
+   la case pour la voir. Le canal bêta doit prendre la plus récente des deux (bêta ou stable), dans
+   les DEUX applications (`beta` et `cabinet-beta`) — relais, repli GitHub et `canalDe` compris.
+2. **La visite guidée passe parfois toute seule à l'étape suivante** sans qu'on ait appuyé sur
+   « Suivant ». Trouver pourquoi (une preuve `fait` déjà vraie en entrant ? une étape « faire » qui
+   se valide sur un clic ailleurs ? une minuterie ?) et corriger dans le moteur (`visite.js`).
+3. **Quand la visite montre un bouton ou parle d'une action, on doit pouvoir CLIQUER dessus** pour
+   la découvrir — pas le voir assombri derrière le voile.
+4. **Remplacer « Comprendre cette page » par « Guide-moi »** : une liste de TOUTES les actions qu'on
+   peut faire sur la page, chacune lançant sa visite ou son geste guidé — l'assistant toujours à
+   portée de main.
+5. **Les textes des visites et de l'assistant doivent être beaucoup plus explicatifs**, surtout sur
+   les ACTIONS : ce que fait le bouton, quand s'en servir, ce qui se passe après. Et améliorer
+   « Première fois sur cette page ». Beaucoup de défauts UI/UX et d'ergonomie dans la page
+   « Me guider », l'assistant et la visite : tout reprendre, les deux applications.
+6. **Pièces jointes** : une pièce jointe se RETROUVE par la recherche (son nom de fichier, Ctrl K et
+   les listes), et **chaque ligne qui a un justificatif le montre** (📎 sur les factures, devis,
+   achats, dépenses, mouvements, écritures) — c'est la preuve qui part au comptable.
+7. **Une facture à échéance 0** (échéance = date) : l'aperçu montre deux cadres avec la même date.
+   N'en garder qu'un (« À réception »). Signalé une première fois, pas réglé.
+8. **Un chargement visible au lieu d'une page blanche** quand un calcul est long (la fenêtre OD
+   mesurée à 15,5 s sur dix ans avant PERF-01, et tout écran lourd sur des données pleines) : peindre
+   « Chargement… » AVANT de calculer, pour qu'on ne croie pas que l'application a planté.
+9. **L'application entreprise devient compliquée : une transition visible entre deux pages** (les
+   boutons du haut se ressemblent, on ne voit pas qu'on a changé de page, on s'y perd).
+10. **À chaque nouvelle version, au premier lancement : présenter la version et ses changements**
+    en phrases que tout le monde comprend (pas le CHANGELOG technique), dans les deux applications.
+
+Puis continuer les tests et les corrections, sans s'arrêter tant que les deux applications ont des
+défauts.
 
 ---
 

@@ -78,6 +78,10 @@ async function lancer() {
   // ---------- 3. ce que voit le comptable ----------
   etape('Réouverture');
   ({ app, win } = await lancer());
+  // 10.14.1 — le formulaire existe dans la page statique : il est là AVANT que l'écran ait demandé
+  // l'état du disque. On attend que la phrase de chargement ait cédé la place, sinon on lit un
+  // message qui n'a pas encore été écrit.
+  await win.waitForFunction(() => (document.getElementById('lock-sub') || {}).textContent !== 'Chargement…', null, { timeout: 10000 });
   const message = await win.textContent('#lock-err').catch(() => '');
   const visible = await win.isVisible('#lock-err');
   if (!visible) throw new Error('l\'application ne dit RIEN : elle propose de créer un cabinet comme au premier jour');
