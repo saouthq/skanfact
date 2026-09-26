@@ -33,6 +33,19 @@ Publiée en **bêta** : elle touche au moteur comptable (retenue à la source, d
   geste bancaire attend son relevé et le dit, la visite de la TVA fait préparer, signale le brouillard
   qui n'entre dans aucun chiffre, et saute l'écriture d'un mois sans TVA. Une visite reprise retrouve
   son étape par son titre ; la carte de fin attend que la fenêtre ouverte se ferme.
+- **Deux visites neuves, case par case : « Saisir une facture de vente » et « Saisir une facture
+  d'achat »** (trois lignes, TVA comprise, et Tab qui solde la dernière). Jouées bulle après bulle, elles
+  ont fait tomber quatre défauts du guide : la date proposée (aujourd'hui) était dite « Déjà rempli —
+  garde ce qui est écrit », et une facture d'août partait dans la TVA de septembre ; la bulle promettait
+  que « le jour seul suffit, le mois vient de l'exercice » alors qu'il garde le mois écrit dans la case
+  (elle demande maintenant jour/mois, 12/08) ; après Tab sur un compte, le curseur tombait dans le
+  libellé de la ligne et « tape 1190 dans Débit » s'y écrivait — **le guide pose désormais le curseur
+  dans la case qu'il désigne** ; et une visite reprise après avoir fermé l'application repartait sur le
+  montant d'une pièce vidée — **elle revient à la première case vide**, date comprise.
+- **« Valider le brouillard » éclaire le mois entier** (« Valider les 2 pièces d'août 2026 »), celui que
+  la déclaration lit, et propose ensuite de déclarer la TVA. Une case qui garde une valeur proposée se dit
+  « À vérifier », plus « ✓ Déjà rempli ».
+- **« 7 % » ne se coupe plus avant son signe**, dans les bulles comme dans la prose des deux applications.
 - **Un mois sans TVA** n'a plus de bouton vert qui mène à un refus : « Aucune écriture à passer », et
   l'étape suivante devient le dépôt.
 - **Les comptes proposés dans la grille et depuis la banque** se classent d'après le libellé de la

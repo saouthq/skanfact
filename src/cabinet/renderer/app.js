@@ -1663,14 +1663,14 @@
   // phrase de la grille de saisie — ne passe par aucune prose déjà posée, et son « « » finissait une
   // ligne pendant que le nom du compte commençait la suivante. Une règle, deux entrées ; jamais deux
   // copies d'expressions régulières qui divergent.
-  const typoTexte = t => String(t).replace(/ ([?!;:»])/g, '\u202f$1').replace(/« /g, '«\u202f');
+  const typoTexte = t => String(t).replace(/ ([?!;:»%])/g, '\u202f$1').replace(/« /g, '«\u202f');
   function typographie(racine) {
     (racine || document).querySelectorAll(PROSE).forEach(bloc => {
       const it = document.createTreeWalker(bloc, NodeFilter.SHOW_TEXT);
       let n;
       while ((n = it.nextNode())) {
         const t = n.nodeValue;
-        if (!/[ ][?!;:»]|«[ ]/.test(t)) continue;
+        if (!/[ ][?!;:»%]|«[ ]/.test(t)) continue;
         n.nodeValue = typoTexte(t);
       }
     });

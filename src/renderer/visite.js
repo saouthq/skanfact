@@ -156,12 +156,12 @@
   // règle `typographie()` du Cabinet (9.4.2) ; `typographier` ne touche que les NŒUDS DE TEXTE de la
   // bulle — aucune balise, aucun attribut.
   const FINE = '\u202f';
-  const typo = t => String(t).replace(/ ([?!;:»])/g, FINE + '$1').replace(/« /g, '«' + FINE);
+  const typo = t => String(t).replace(/ ([?!;:»%])/g, FINE + '$1').replace(/« /g, '«' + FINE);
   function typographier(racine) {
     if (!racine || typeof document === 'undefined' || !document.createTreeWalker) return;
     const it = document.createTreeWalker(racine, 4 /* NodeFilter.SHOW_TEXT */);
     let n;
-    while ((n = it.nextNode())) { const v = n.nodeValue; if (/ [?!;:»]|« /.test(v)) n.nodeValue = typo(v); }
+    while ((n = it.nextNode())) { const v = n.nodeValue; if (/ [?!;:»%]|« /.test(v)) n.nodeValue = typo(v); }
   }
 
   // Deux rectangles se chevauchent-ils ? (pour les tests : la bulle ne couvre jamais sa cible)
@@ -635,8 +635,20 @@
     // et ne proposait qu'« Arrêter la visite » (vu à la souris, 10.14.1). On reprend sur place si la
     // cible est à l'écran, sinon à la dernière étape qui dit où aller (`etapeAvecPage`).
     const ici = copie.etapes[dd];
-    entrer(cur.viser != null || (ici && cibleDe(ici) && pageOk(ici)) ? dd
-      : repriseDuGeste(copie.etapes, dd, j => ({ present: !!cibleDe(copie.etapes[j]), pageOk: pageOk(copie.etapes[j]) })), 1);
+    let depuis = cur.viser != null || (ici && cibleDe(ici) && pageOk(ici)) ? dd
+      : repriseDuGeste(copie.etapes, dd, j => ({ present: !!cibleDe(copie.etapes[j]), pageOk: pageOk(copie.etapes[j]) }));
+    // Une reprise ne saute pas une case que le temps a VIDÉE : l'application refermée entre-temps
+    // rend la grille de saisie vierge, et la visite reprenait sur le montant d'une pièce sans compte
+    // ni numéro (vu au guide, un comptable débutant, 10.14.1). On revient à la première case vide.
+    if (cur.viser == null && depuis > 0) {
+      const vide = valeurDefaiteAvant(copie.etapes, depuis, j => {
+        const e = copie.etapes[j], el = cibleDe(e);
+        if (!el || !pageOk(e)) return null;
+        try { return typeof e.fait === 'function' ? !!e.fait() : !!String(el.value || '').trim(); } catch (_) { return null; }
+      });
+      if (vide >= 0) depuis = vide;
+    }
+    entrer(depuis, 1);
     boucle = requestAnimationFrame(image);
     logique = setInterval(verifier, 180);
     return true;
@@ -666,7 +678,7 @@
     cur.i = i; cur.t0 = Date.now(); cur.defile = false; cur.couper = false; cur.clic = 0; cur.pret = false; cur.perdu = false; cur.pointe = -1; cur.sens = sens;
     // Ce qui ne vaut que pour l'étape qu'on quitte : un essai en cours, un geste, la zone déjà vue,
     // l'état du geste à l'entrée, les boutons nommés.
-    cur.essai = null; cur.geste = 0; cur.vu = false; cur.faitAvant = undefined; cur.dejaFait = false; cur.dejaRempli = false; cur.mini = false; cur.couvert = false; cur.nommes = []; cur.pointeN = -1;
+    cur.essai = null; cur.geste = 0; cur.vu = false; cur.faitAvant = undefined; cur.dejaFait = false; cur.dejaRempli = false; cur.curseur = false; cur.mini = false; cur.couvert = false; cur.nommes = []; cur.pointeN = -1;
     cur.note = cur.noteProchaine || ''; cur.noteProchaine = ''; cur.defait = false;
     // La première étape apparaît ; les suivantes glissent depuis la précédente.
     if (cur.vues++ > 0) glisser();
@@ -1485,6 +1497,19 @@
   // client » déclarent la même page : `etapeAvecPage` reprenait donc sur le champ TVA d'une fenêtre
   // fermée, et la bulle décrivait un champ absent (vu à la souris, 10.14.1). Sans clic pour la
   // rouvrir, la règle d'avant : la dernière étape qui dit où aller.
+  // La première étape « valeur », avant `i`, dont la case est à l'écran mais PAS remplie (PUR :
+  // `fait(j)` rend vrai, faux, ou null quand on ne peut pas juger — une case absente ne fait jamais
+  // revenir en arrière). Une case qu'une valeur par DÉFAUT remplit (`rempli` : la date d'aujourd'hui)
+  // se dit toujours remplie : juste avant une case vide, elle a été vidée avec elle — on y revient.
+  function valeurDefaiteAvant(etapes, i, fait) {
+    const l = etapes || [];
+    for (let j = 0; j < Math.min(i, l.length); j++) {
+      if (!(l[j] && l[j].faire === 'valeur' && fait(j) === false)) continue;
+      while (j > 0 && l[j - 1] && l[j - 1].faire === 'valeur' && l[j - 1].rempli) j--;
+      return j;
+    }
+    return -1;
+  }
   function repriseDuGeste(etapes, i, vu) {
     const l = etapes || [];
     const clicAvant = j => { for (let k = j - 1; k >= 0; k--) { const e = l[k]; if (e && e.faire === 'clic' && !e.facultatif) return k; } return -1; };
@@ -1687,7 +1712,10 @@
            ${faire && e.action ? (cur.dejaFait
              ? `<div class="vb-afaire fait"><span class="vb-atoi">${ICONE_COCHE}Déjà fait</span><span class="vb-action">C'est déjà fait : ${action(e)} Tu peux passer à la suite.</span></div>`
              : e.faire === 'valeur' && cur.dejaRempli
-               ? `<div class="vb-afaire fait"><span class="vb-atoi">${ICONE_COCHE}Déjà rempli</span><span class="vb-action">Cette case est déjà remplie : garde ce qui est écrit ou change-le, puis clique sur <b>« ${h(e.bouton || 'C\'est fait')} »</b>.</span></div>`
+               // 26/09 — une case remplie PAR DÉFAUT n'est pas une case juste : la date de la saisie
+               // porte le jour d'aujourd'hui, et « garde ce qui est écrit » faisait passer une facture
+               // d'août en septembre, avec sa TVA. L'étape dit alors ce qu'il faut VÉRIFIER (`rempli`).
+               ? `<div class="vb-afaire${e.rempli ? '' : ' fait'}"><span class="vb-atoi">${e.rempli ? ICONE_INFO + 'À vérifier' : ICONE_COCHE + 'Déjà rempli'}</span><span class="vb-action">${e.rempli || 'Cette case est déjà remplie : garde ce qui est écrit ou change-le'}, puis clique sur <b>« ${h(e.bouton || 'C\'est fait')} »</b>.</span></div>`
                : `<div class="vb-afaire"><span class="vb-atoi">${ICONE_MAIN}À toi</span><span class="vb-action">${action(e)}</span></div>`) : ''}
            ${noteEssai(e, faire) ? `<div class="vb-essai-note">${ICONE_MAIN}<span>Tu peux cliquer ce qui est éclairé pour l'essayer : je m'efface le temps que tu regardes, puis tu reprends la visite.</span></div>` : ''}
            ${t.prochain && !faire ? `<div class="vb-prochain">Ensuite : <b>${h(t.prochain)}</b></div>` : ''}`}
@@ -1704,6 +1732,19 @@
     const cibleEl = cibleDe(e);
     const champ = cibleEl && /^(INPUT|SELECT|TEXTAREA)$/.test(cibleEl.tagName);
     if ((!faire || cur.dejaFait) && !cur.perdu && !champ) focaliser('.vb-suiv');
+    // Une étape « tape ceci » sur une CASE y pose le curseur, une fois par étape : la touche de
+    // l'étape d'avant l'a souvent envoyé ailleurs — Tab sur le compte d'une ligne tombe sur son
+    // libellé, et « tape 1190 dans la case Débit » partait dans le libellé (vu au guide, un comptable
+    // débutant, 10.14.1). Après la touche (0 ms), jamais pendant.
+    if (faire && e.faire === 'valeur' && champ && !cur.perdu && !cur.curseur) {
+      cur.curseur = true;
+      const moi = cur, iMoi = cur.i;
+      setTimeout(() => {
+        if (cur !== moi || cur.i !== iMoi) return;
+        const c = cibleDe(e);
+        if (c && document.activeElement !== c && !c.disabled) { try { c.focus({ preventScroll: true }); } catch (_) { /* rien */ } }
+      }, 0);
+    }
   }
 
   // « Tu peux cliquer ce qui est éclairé » se dit UNE fois par visite, sur la première étape qui
@@ -2186,7 +2227,7 @@
   const etapeCourante = () => { const e = etape(); if (!e) return null; const c = Object.assign({}, e); delete c.el; return c; };
 
   const api = { installer, lancer, quitter, enCours, etapeCourante, suivant, precedent, chapitreSuivant, reprendre, gestePasse, consequenceDuGeste, gesteQuiOuvre, issueDeFin, phrasePasses, texteDeFin, selonFin, finsHonnetes,
-    toucheAvance, ouvreEssai, pagesDuGeste, ongletDuGeste, guideDeLaPage, dansLeGuide, menuDuGuide, placerBulle, placerPres, largeurPres, zoneDeLaCase, placerMini, typo, chevauche, decouperHaut, trousDeListe, hautPourBulle, hautPourCouper, viseLaCible, estFaire, decider, enAttenteDe, compteDe, pointDeReprise, etapeAvecPage, repriseDuGeste, changementDePage, versLaReprise, dejaRempliDe, normNom, nomsCites, lieuDe, ouvrirOnglet,
+    toucheAvance, ouvreEssai, pagesDuGeste, ongletDuGeste, guideDeLaPage, dansLeGuide, menuDuGuide, placerBulle, placerPres, largeurPres, zoneDeLaCase, placerMini, typo, chevauche, decouperHaut, trousDeListe, hautPourBulle, hautPourCouper, viseLaCible, estFaire, decider, enAttenteDe, compteDe, pointDeReprise, etapeAvecPage, repriseDuGeste, valeurDefaiteAvant, changementDePage, versLaReprise, dejaRempliDe, normNom, nomsCites, lieuDe, ouvrirOnglet,
     chapitres, resoudre, visible, listerControles, etapesDeLaVue, blocsDe, cheminDe, PATIENCE, PATIENCE_FACULTATIVE, CONTROLES,
     nettoie, libelleDe, resumeBulle, routeDe, expliqueur, zoneur, phraseDuHaut, texteDuHaut };
   global.Visite = api;

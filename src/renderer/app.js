@@ -695,7 +695,7 @@
   const PAS_TYPO = 'textarea, script, style, option, code, .mono, [contenteditable]';
   const typoNoeud = n => {
     const t = n.nodeValue;
-    if (!/[ ][?!;:»]|«[ ]/.test(t) || !n.parentElement || n.parentElement.closest(PAS_TYPO)) return;
+    if (!/[ ][?!;:»%]|«[ ]/.test(t) || !n.parentElement || n.parentElement.closest(PAS_TYPO)) return;
     const u = C.typoFr(t); if (u !== t) n.nodeValue = u;
   };
   function typographie(racine) {

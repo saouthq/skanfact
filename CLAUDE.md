@@ -8531,6 +8531,29 @@ lots ; le détail de ce qui reste vit dans `A-FAIRE.md` § 0.
     pour toi, jamais que rien n'est urgent. Et « Ouvre ce qui est nommé » ne nomme rien : un lien se
     dit par sa page.
 
+- **Le parcours d'un comptable novice fait UNIQUEMENT par la bulle** (Skander, 26/09 : « un comptable
+  novice aurait appuyé sur le guide afin de le guider pour faire toutes les cases, et pas tout seul
+  comme tu le fais »). Jouer une visite en tapant ce qu'elle dit, et seulement ça, trouve ce que la
+  souris experte contourne sans le voir :
+  - **Une valeur proposée n'est pas une valeur juste.** La saisie pose la date d'aujourd'hui ; la
+    bulle disait « ✓ Déjà rempli — garde ce qui est écrit », et une facture d'août partait dans la TVA
+    de septembre. Une étape porte sa remarque (`rempli`), le badge dit « À vérifier ».
+  - **Une bulle se relit contre la fonction qui interprète la frappe** : « le jour seul suffit, le mois
+    vient de l'exercice » — `dateTapee('12')` garde le mois ÉCRIT dans la case. Le guide fait taper
+    jour/mois, et l'essai du robot aussi.
+  - **Le guide pose le curseur dans la case qu'il désigne** (une fois par étape, après la touche) : Tab
+    sur un compte tombe sur le libellé de la ligne, et « tape 1190 dans Débit » s'écrivait dans le
+    libellé. Un texte qui compense (« Tab la passe ») est un correctif qui dépend du lecteur.
+  - **Une reprise revient à la première case que le temps a vidée** (`valeurDefaiteAvant`, pure) :
+    l'application refermée vide la grille, et la visite reprenait sur le montant d'une pièce sans
+    compte. Une case remplie par défaut (la date) juste avant une case vide a été vidée avec elle.
+  - **Un bouton de lot éclaire le MOIS**, pas le premier journal venu : c'est un mois validé que la
+    déclaration lit, et la visite propose ensuite de déclarer.
+  - Piège d'outil : `relance.sh` peut laisser tourner l'ancienne instance (le fichier pid ne la
+    désigne plus) — l'écran montre alors l'ANCIEN code après un correctif. Avant de juger, vérifier
+    l'heure de départ du processus (`ps -o lstart`) ; tuer par PID, jamais `pkill -f` sur un motif
+    que la commande elle-même contient (elle se tue).
+
 ## Pistes pour la suite (non demandées)
 
 - Séparation des installateurs arm64 / x64 pour diviser par deux les 222 Mo du dmg universel.

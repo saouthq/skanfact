@@ -458,7 +458,7 @@
     '#w-email': 'L\'adresse de ton cabinet.',
     '#w-phone': 'Le téléphone de ton cabinet.',
     '#w-clients': 'Colle ta liste de clients, un par ligne : nom ; matricule ; email ; téléphone.',
-    '#sa-date': 'La date de la pièce : tape le jour seul, ou la date entière.',
+    '#sa-date': 'La date de la pièce : le jour seul garde le mois écrit dans la case ; jour/mois (12/08) en change.',
     '#sa-journal': 'Le journal de la pièce : achats, ventes, banque, opérations diverses…',
     '#sa-piece': 'La référence de la pièce (le numéro de la facture, du chèque).',
     '#sa-libelle': 'Ce que dit la pièce, en quelques mots : il se reporte sur chaque ligne.',
@@ -655,7 +655,7 @@
           texte: 'Chaque cycle et ses comptes, que tu signes un par un. Une question au client <b>naît sur une ligne</b> — et s\'affiche chez lui, dans SkanFact, en face de la pièce. Sa réponse revient dans son paquet suivant.' },
         // — Un client que tu tiens
         { chapitre: 'Un client que tu tiens', couleur: 'acheter', page: garage('comptabilite/saisie'), cible: ['#sa-tete', '#c-livres .panel'], cote: 'dessous', titre: 'La saisie',
-          texte: 'Pour un client hors SkanFact, tu saisis ici. <b>Tout se fait au clavier</b> : la date (le jour seul suffit), le journal, puis les lignes — Entrée descend, Tab solde la pièce.' },
+          texte: 'Pour un client hors SkanFact, tu saisis ici. <b>Tout se fait au clavier</b> : la date (12/08 : le jour et le mois), le journal, puis les lignes — Entrée descend, Tab solde la pièce.' },
         { page: garage('comptabilite/saisie'), cible: ['#sa-ok', '#sa-okvalider'], cote: 'dessus', titre: 'Brouillard, puis validation',
           texte: '<b>« Enregistrer en brouillard »</b> : la pièce se corrige encore. <b>« Enregistrer et valider »</b> : elle reçoit son numéro et ne se modifie plus.' },
         { page: garage('comptabilite/paie'), cible: ['#c-livres .panel'], cote: 'dessus', titre: 'Sa paie',
@@ -929,8 +929,9 @@
           titre: 'Le journal', texte: 'Achats, ventes, banque, caisse, opérations diverses : le journal <b>range</b> la pièce. Pour ce premier essai, un <b>loyer payé par la banque</b> — il va dans le journal de la banque.',
           action: 'Choisis <b>BQ — Banque</b> dans la liste.', essai: { choisir: 'BQ' } },
         { page: dans('saisie', 'comptabilite/saisie'), cible: '#sa-date', cote: 'droite', faire: 'valeur', bouton: 'Suivant', touche: 'Enter',
-          titre: 'La date', texte: 'Le jour seul suffit : le mois et l\'année viennent de l\'exercice. C\'est la date écrite sur le papier (l\'avis de débit, la quittance).',
-          action: 'Tape le jour — <b>5</b> par exemple —, puis <kbd>Entrée</kbd>.', essai: { taper: '5' } },
+          titre: 'La date', texte: 'C\'est la date écrite sur le papier (l\'avis de débit, la quittance). Tape le jour et le mois — <b>5/08</b> : l\'année vient de l\'exercice. Le jour seul garderait le mois déjà écrit dans la case.',
+          rempli: 'La case porte la date d\'<b>aujourd\'hui</b> : garde-la seulement si c\'est celle du papier, sinon tape le jour de l\'avis de débit ou de la quittance',
+          action: 'Tape le jour et le mois — <b>5/08</b> par exemple —, puis <kbd>Entrée</kbd>.', essai: { taper: '5/08' } },
         { page: dans('saisie', 'comptabilite/saisie'), cible: '#sa-piece', cote: 'dessous', touche: 'Enter', titre: 'La pièce',
           texte: 'La référence du papier qui justifie l\'écriture : le n° de la facture, du chèque, de la quittance. Facultative, mais c\'est elle qui te fait retrouver le papier dans six mois. Tape-la si tu l\'as, puis <kbd>Entrée</kbd> pour passer au libellé.' },
         { page: dans('saisie', 'comptabilite/saisie'), cible: '#sa-libelle', cote: 'droite', faire: 'valeur', bouton: 'Suivant', touche: 'Enter',
@@ -942,7 +943,7 @@
           texte: 'Une pièce a au moins deux lignes : ce qui <b>coûte</b> (au débit) et d\'où vient l\'argent (au crédit). Le loyer est une charge : le compte <b>613 — Locations</b>. Tu ne connais pas le numéro ? Tape un mot — <b>loyer</b> — et choisis dans la liste.',
           action: 'Le loyer est une charge : tape <b>613</b> — ou le mot <b>loyer</b>, et choisis dans la liste —, puis <kbd>Tab</kbd>.', essai: { taper: '613' } },
         { page: dans('saisie', 'comptabilite/saisie'), cible: '#sa-lignes tr[data-i="0"] [data-k="debit"]', cote: 'dessous', faire: 'valeur', bouton: 'Suivant', touche: 'Enter',
-          titre: 'Le montant, au débit', texte: 'La case Libellé de la ligne reprend celui de la pièce : <kbd>Tab</kbd> la passe. Une charge se met au <b>débit</b>.',
+          titre: 'Le montant, au débit', texte: 'Une charge se met au <b>débit</b>. Le libellé de la ligne reprend celui de la pièce : rien à y taper.',
           action: 'Dans la case <b>Débit</b>, tape <b>800</b>, puis <kbd>Entrée</kbd> : la ligne suivante s\'ouvre.', essai: { taper: '800' } },
         { page: dans('saisie', 'comptabilite/saisie'), cible: '#sa-lignes tr[data-i="1"] [data-k="compte"]', cote: 'dessous', faire: 'valeur', bouton: 'Suivant', touche: 'Tab',
           fait: () => compteSaisi(1),
@@ -951,11 +952,109 @@
         { page: dans('saisie', 'comptabilite/saisie'), cible: '#sa-lignes tr[data-i="1"] [data-k="credit"]', cote: 'dessous', faire: 'valeur', bouton: 'Suivant', touche: 'Tab',
           fait: () => { const c = document.querySelector('#sa-lignes tr[data-i="1"] [data-k="credit"]'); return !!c && !!String(c.value || '').trim(); },
           titre: 'Solder la pièce', texte: 'Pas besoin de recalculer : sur la dernière ligne, <kbd>Tab</kbd> dans la case <b>Crédit</b> y pose ce qui manque pour que la pièce <b>tombe juste</b> — ici 800.',
-          action: 'Appuie sur <kbd>Tab</kbd> jusqu\'à la case <b>Crédit</b> de cette ligne, puis encore <kbd>Tab</kbd>.', essai: { touche: 'Tab' } },
+          action: 'Le curseur est dans la case <b>Crédit</b> de cette ligne : appuie sur <kbd>Tab</kbd>.', essai: { touche: 'Tab' } },
         { page: dans('saisie', 'comptabilite/saisie'), cible: '#sa-ok', cote: 'dessus', faire: 'clic',
           avant: () => { ecrituresAvant = nbEcritures(); }, fait: () => ecrituresAvant >= 0 && nbEcritures() > ecrituresAvant,
           titre: 'Enregistrer en brouillard', texte: 'Débit = crédit : le bouton s\'allume. S\'il reste éteint, il dit pourquoi, juste au-dessus de lui. En brouillard, la pièce se corrige encore : elle n\'a pas de numéro.', action: 'Clique sur <b>« Enregistrer en brouillard »</b>.', essai: { clic: true } }
       ]
+    });
+
+    // 26/09 — la TVA du mois se nourrit de ventes et d'achats. « Saisir une pièce » ne montrait qu'un
+    // loyer payé par la banque : un débutant devant sa pile de factures ne savait pas qu'une facture se
+    // ventile en TROIS lignes, ni lesquelles (vu au guide, parcours du comptable novice). Deux parcours,
+    // case par case, sur le même modèle : une facture de VENTE (411 / 707 / 4367) et une facture
+    // d'ACHAT (607 / 4366 / 401), avec le Tab qui solde la dernière ligne.
+    const ligne = (i, k) => '#sa-lignes tr[data-i="' + i + '"] [data-k="' + k + '"]';
+    const creditPose = i => () => { const c = document.querySelector(ligne(i, 'credit')); return !!c && !!String(c.value || '').trim(); };
+    const debitPose = i => () => { const c = document.querySelector(ligne(i, 'debit')); return !!c && !!String(c.value || '').trim(); };
+    const facture = o => visite({
+      id: o.id, theme: 'saisir', type: 'faire', duree: '3 min', pages: ['compta', 'dossier'],
+      page: dans('saisie', 'comptabilite/saisie'),
+      titre: o.titre, resume: o.resume, mots: o.mots,
+      si: () => !!ctx.dossier('saisie'), manque: DOSSIER_MANQUE.saisie,
+      suite: o.suite,
+      mesure: () => { ecrituresAvant = -1; return null; },
+      preuve: () => ecrituresAvant >= 0 && nbEcritures() > ecrituresAvant,
+      echec: 'La facture n\'est pas enregistrée — c\'est « Enregistrer en brouillard » qui la range. Il s\'éteint tant qu\'elle ne tombe pas juste, et dit pourquoi juste au-dessus de lui.',
+      bravo: o.bravo, conclusion: o.conclusion,
+      etapes: [
+        { page: dans('saisie', 'comptabilite/saisie'), cible: '#sa-journal', cote: 'droite', faire: 'valeur', bouton: 'Suivant',
+          fait: () => { const j = document.querySelector('#sa-journal'); return !!j && (j.value === o.journal || !j.querySelector('option[value="' + o.journal + '"]')); },
+          titre: 'Le journal', texte: o.journalTexte,
+          action: 'Choisis <b>' + o.journalNom + '</b> dans la liste.', essai: { choisir: o.journal } },
+        { page: dans('saisie', 'comptabilite/saisie'), cible: '#sa-date', cote: 'droite', faire: 'valeur', bouton: 'Suivant', touche: 'Enter',
+          titre: 'La date de la facture', texte: 'La date écrite <b>sur la facture</b> : c\'est elle qui range la TVA dans son mois. Tape le jour et le mois — l\'année vient de l\'exercice. Le jour seul garderait le mois déjà écrit dans la case.',
+          rempli: 'La case porte la date d\'<b>aujourd\'hui</b>, pas celle de ta facture : une facture d\'août datée de septembre compterait dans la TVA de septembre. Tape la date écrite sur la facture',
+          action: 'Tape le jour et le mois de la facture — <b>12/08</b> par exemple —, puis <kbd>Entrée</kbd>.', essai: { taper: '12/08' } },
+        { page: dans('saisie', 'comptabilite/saisie'), cible: '#sa-piece', cote: 'dessous', faire: 'valeur', bouton: 'Suivant', touche: 'Enter',
+          titre: 'Le n° de la facture', texte: 'Le numéro imprimé sur la facture : c\'est lui qui te fait retrouver le papier, et que ton contrôleur te demandera.',
+          action: 'Tape <b>' + o.piece + '</b>, puis <kbd>Entrée</kbd>.', essai: { taper: o.piece } },
+        { page: dans('saisie', 'comptabilite/saisie'), cible: '#sa-libelle', cote: 'droite', faire: 'valeur', bouton: 'Suivant', touche: 'Enter',
+          titre: 'Le libellé', texte: 'Qui et quoi, en quelques mots : il se reporte sur chaque ligne.',
+          action: 'Tape <b>' + o.libelle + '</b>, puis <kbd>Entrée</kbd> pour descendre aux lignes.', essai: { taper: o.libelle } },
+        { page: dans('saisie', 'comptabilite/saisie'), cible: ligne(0, 'compte'), cote: 'dessous', faire: 'valeur', bouton: 'Suivant', touche: 'Tab',
+          fait: () => compteSaisi(0), titre: o.l0.titre, texte: o.l0.texte,
+          action: 'Tape <b>' + o.l0.compte + '</b> — ou le mot <b>' + o.l0.mot + '</b>, et choisis dans la liste —, puis <kbd>Tab</kbd>.', essai: { taper: o.l0.compte } },
+        { page: dans('saisie', 'comptabilite/saisie'), cible: ligne(0, o.l0.sens), cote: 'dessous', faire: 'valeur', bouton: 'Suivant', touche: 'Enter',
+          fait: o.l0.sens === 'debit' ? debitPose(0) : creditPose(0), titre: o.l0.titreMontant, texte: o.l0.texteMontant,
+          action: 'Dans la case <b>' + (o.l0.sens === 'debit' ? 'Débit' : 'Crédit') + '</b>, tape <b>' + o.l0.montant + '</b>, puis <kbd>Entrée</kbd> : la ligne suivante s\'ouvre.', essai: { taper: o.l0.montant } },
+        { page: dans('saisie', 'comptabilite/saisie'), cible: ligne(1, 'compte'), cote: 'dessous', faire: 'valeur', bouton: 'Suivant', touche: 'Tab',
+          fait: () => compteSaisi(1), titre: o.l1.titre, texte: o.l1.texte,
+          action: 'Tape <b>' + o.l1.compte + '</b> — ou le mot <b>' + o.l1.mot + '</b> —, puis <kbd>Tab</kbd>.', essai: { taper: o.l1.compte } },
+        { page: dans('saisie', 'comptabilite/saisie'), cible: ligne(1, o.l1.sens), cote: 'dessous', faire: 'valeur', bouton: 'Suivant', touche: 'Enter',
+          fait: o.l1.sens === 'debit' ? debitPose(1) : creditPose(1), titre: o.l1.titreMontant, texte: o.l1.texteMontant,
+          action: 'Dans la case <b>' + (o.l1.sens === 'debit' ? 'Débit' : 'Crédit') + '</b> de cette ligne, tape <b>' + o.l1.montant + '</b>, puis <kbd>Entrée</kbd> : une troisième ligne s\'ouvre.', essai: { taper: o.l1.montant } },
+        { page: dans('saisie', 'comptabilite/saisie'), cible: ligne(2, 'compte'), cote: 'dessous', faire: 'valeur', bouton: 'Suivant', touche: 'Tab',
+          fait: () => compteSaisi(2), titre: o.l2.titre, texte: o.l2.texte,
+          action: 'Tape <b>' + o.l2.compte + '</b> — ou le mot <b>' + o.l2.mot + '</b> —, puis <kbd>Tab</kbd>.', essai: { taper: o.l2.compte } },
+        { page: dans('saisie', 'comptabilite/saisie'), cible: ligne(2, 'credit'), cote: 'dessous', faire: 'valeur', bouton: 'Suivant', touche: 'Tab',
+          fait: () => debitPose(2)() || creditPose(2)(),
+          titre: 'Solder la facture', texte: 'Pas de calcul : sur la dernière ligne, <kbd>Tab</kbd> dans la case <b>Crédit</b> pose ce qui manque pour que la facture <b>tombe juste</b> — ici ' + o.l2.solde + '. Si ce montant n\'est pas celui de la facture, une ligne est fausse : relis-les avant d\'enregistrer.',
+          action: 'Le curseur est dans la case <b>Crédit</b> de cette ligne : appuie sur <kbd>Tab</kbd>.', essai: { touche: 'Tab' } },
+        { page: dans('saisie', 'comptabilite/saisie'), cible: '#sa-ok', cote: 'dessus', faire: 'clic',
+          avant: () => { ecrituresAvant = nbEcritures(); }, fait: () => ecrituresAvant >= 0 && nbEcritures() > ecrituresAvant,
+          titre: 'Enregistrer en brouillard', texte: 'Débit = crédit : le bouton s\'allume. En brouillard, la facture se corrige encore ; elle compte dans la TVA du mois une fois <b>validée</b>.', action: 'Clique sur <b>« Enregistrer en brouillard »</b>.', essai: { clic: true } }
+      ]
+    });
+
+    facture({
+      id: 'saisir-vente', titre: 'Saisir une facture de vente',
+      resume: 'Une facture émise par ton client à ses propres clients, en trois lignes : ce qu\'on lui doit, ce qu\'il a vendu, la TVA collectée.',
+      mots: ['vente', 'facture', 'client', 'tva', 'collectee', 'chiffre', 'affaires', 'saisir', '411', '707', '706', '4367'],
+      suite: ['saisir-achat', 'valider-lot', 'declarer-tva'],
+      journal: 'VT', journalNom: 'VT — Ventes',
+      journalTexte: 'Une facture de vente va dans le journal des <b>Ventes</b> : c\'est lui que la déclaration de TVA lit pour la TVA <b>collectée</b>. Pour l\'exemple, une facture de <b>1 000 HT</b> avec une TVA à <b>19 %</b> — sur la tienne, prends le taux qui y est écrit.',
+      piece: 'FV-012', libelle: 'Facture FV-012',
+      l0: { compte: '411', mot: 'clients', sens: 'debit', montant: '1190', titre: 'Ce que le client doit', titreMontant: 'Le TTC, au débit',
+        texte: 'Première ligne : le compte <b>411 — Clients</b>. Il porte ce que le client doit payer, <b>TVA comprise</b>.',
+        texteMontant: 'Le client doit le <b>TTC</b> : 1 000 + 19 % = <b>1 190</b>. Ce qu\'on te doit se met au <b>débit</b>.' },
+      l1: { compte: '707', mot: 'ventes', sens: 'credit', montant: '1000', titre: 'Ce qui a été vendu', titreMontant: 'Le HT, au crédit',
+        texte: 'Deuxième ligne : le chiffre d\'affaires. <b>707 — Ventes de marchandises</b> pour des marchandises revendues, <b>706 — Prestations de services</b> pour un service : prends celui qui décrit la facture.',
+        texteMontant: 'Les ventes se mettent au <b>crédit</b>, et <b>hors taxe</b> : 1 000. La TVA a sa propre ligne, juste en dessous.' },
+      l2: { compte: '4367', mot: 'tva collectée', solde: '190',
+        titre: 'La TVA collectée', texte: 'Troisième ligne : <b>4367 — TVA collectée</b>. C\'est la TVA que ton client a encaissée pour l\'État : elle part dans sa déclaration du mois.' },
+      bravo: 'Ta facture de vente est enregistrée',
+      conclusion: 'Elle est en brouillard : valide-la, seule ou par lot, et sa TVA collectée entre dans la déclaration de son mois. Une vente à 7 % ou à 13 % se saisit pareil — seul le montant de la troisième ligne change, et Tab le pose.'
+    });
+
+    facture({
+      id: 'saisir-achat', titre: 'Saisir une facture d\'achat',
+      resume: 'Une facture reçue d\'un fournisseur, en trois lignes : ce qui a été acheté, la TVA récupérable, ce qu\'on doit au fournisseur.',
+      mots: ['achat', 'facture', 'fournisseur', 'tva', 'deductible', 'charge', 'saisir', '401', '607', '606', '4366'],
+      suite: ['saisir-vente', 'valider-lot', 'declarer-tva'],
+      journal: 'AC', journalNom: 'AC — Achats',
+      journalTexte: 'Une facture d\'achat va dans le journal des <b>Achats</b> : c\'est lui que la déclaration lit pour la TVA <b>déductible</b>. Pour l\'exemple, une facture de <b>500 HT</b> avec une TVA à <b>19 %</b>.',
+      piece: 'F-2026-331', libelle: 'Facture fournisseur F-2026-331',
+      l0: { compte: '607', mot: 'achats', sens: 'debit', montant: '500', titre: 'Ce qui a été acheté', titreMontant: 'Le HT, au débit',
+        texte: 'Première ligne : la charge. <b>607 — Achats de marchandises</b> pour ce qui se revend, <b>606 — Achats non stockés</b> pour les fournitures et les services.',
+        texteMontant: 'Une charge se met au <b>débit</b>, et <b>hors taxe</b> : 500. La TVA a sa propre ligne.' },
+      l1: { compte: '4366', mot: 'tva déductible', sens: 'debit', montant: '95', titre: 'La TVA récupérable', titreMontant: 'La TVA, au débit',
+        texte: 'Deuxième ligne : <b>4366 — TVA déductible</b>. C\'est la TVA que ton client récupère sur ses achats : elle vient en moins de ce qu\'il reverse à l\'État.',
+        texteMontant: 'Elle se met au <b>débit</b> : 19 % de 500 = <b>95</b>.' },
+      l2: { compte: '401', mot: 'fournisseurs', solde: '595',
+        titre: 'Ce qu\'on doit au fournisseur', texte: 'Troisième ligne : <b>401 — Fournisseurs</b>. Il porte ce que ton client doit payer, <b>TVA comprise</b> — au crédit.' },
+      bravo: 'Ta facture d\'achat est enregistrée',
+      conclusion: 'Elle est en brouillard : valide-la, et sa TVA déductible vient en moins dans la déclaration de son mois. Un client au forfait ne récupère pas la TVA : elle reste alors dans la charge, sans ligne 4366 — À VÉRIFIER avec le régime du dossier.'
     });
 
     visite({
@@ -1339,7 +1438,7 @@
       resume: 'Les pièces en brouillard reçoivent leur numéro — une par une, ou par lot.',
       mots: ['valider', 'lot', 'brouillard', 'numero', 'definitif'],
       si: () => !!ctx.dossier('saisie'), manque: DOSSIER_MANQUE.saisie,
-      suite: ['contre-passer', 'page-compta-journal'],
+      suite: ['declarer-tva', 'contre-passer', 'page-compta-journal'],
       // Le geste que le débutant est venu faire : valider SA pièce. Un bouton de lot ne valide que ce qui
       // tombe juste, et la fin se prouve sur le livre — une pièce de moins en brouillard (10.14.1).
       mesure: () => { brouillardsAvant = nbBrouillards(); return null; },
@@ -1350,11 +1449,11 @@
       etapes: [
         { page: dans('saisie', 'comptabilite/saisie'), cible: ['#sa-okvalider', '#sa-ok'], cote: 'dessus', titre: 'Valider en enregistrant',
           texte: '<b>« Enregistrer et valider »</b> donne son numéro à la pièce qu\'on vient de taper — il s\'allume dès qu\'elle tombe juste. Le numéro naît à la validation, et ne bouge plus.' },
-        { page: dans('saisie', 'comptabilite/saisie'), cible: ['[data-lot-journal]', '[data-lot-mois]'], cote: 'dessus', faire: 'clic',
+        { page: dans('saisie', 'comptabilite/saisie'), cible: ['[data-lot-mois]', '[data-lot-journal]'], cote: 'dessus', faire: 'clic',
           avant: () => { brouillardsAvant = nbBrouillards(); }, fait: () => brouillardsAvant >= 0 && nbBrouillards() < brouillardsAvant,
           titre: 'Valider par lot',
           texte: 'Sous le brouillard, un bouton par journal et par mois : il valide <b>toutes les pièces justes</b> d\'un coup, et chacune reçoit son numéro. Celles qui ne tombent pas juste restent en brouillard, et le compte rendu dit pourquoi. Une pièce validée ne se modifie plus : elle se contre-passe.',
-          action: 'Clique sur le bouton éclairé, puis confirme.', essai: { clic: true } }
+          action: 'Clique sur le bouton éclairé — le <b>mois entier</b> : c\'est un mois validé que la déclaration de TVA lit. Puis confirme.', essai: { clic: true } }
       ]
     });
 

@@ -1241,7 +1241,7 @@
   // seul. Le texte d'une question est tapé DANS LE CABINET, avec des espaces ordinaires : c'est donc
   // ici, à l'affichage, qu'il se corrige — jamais dans la donnée, qui repart telle quelle. Jumelle
   // de `typo` (visite.js) et de `typographie()` du Cabinet (9.4.2) ; un test compare les corps.
-  const typoFr = t => String(t == null ? '' : t).replace(/ ([?!;:»])/g, '\u202f$1').replace(/« /g, '«\u202f');
+  const typoFr = t => String(t == null ? '' : t).replace(/ ([?!;:»%])/g, '\u202f$1').replace(/« /g, '«\u202f');
 
   // Un délai en jours réglé par l'utilisateur (10.12.0). ZÉRO est un délai — « à réception » —, et
   // `Number(x) || 30` le changeait en trente jours : une entreprise réglée « paiement à réception »

@@ -443,4 +443,65 @@ t('10.14.1 : « Déjà passées » dit comment écarter les mois du prédécesse
   assert.ok(/<h2>Déjà passées \$\{info\('ec\.passees'\)\}<\/h2>\$\{aideMission\}/.test(zone), 'l\'aide ne vit plus sous « Déjà passées »');
   assert.ok(/dossierForm\(d, \{ focus: '#f-from' \}\)/.test(zone), 'le bouton n\'ouvre pas la fiche sur « Début de mission »');
 });
+
+t('10.14.1 : une date remplie d\'office ne se dit pas « garde ce qui est écrit » — elle se vérifie sur la pièce', () => {
+  // La saisie propose la date d'aujourd'hui : « Déjà rempli — garde ce qui est écrit » faisait passer
+  // une facture d'août en septembre, sa TVA avec elle (vu au guide, parcours du comptable novice).
+  assert.ok(/\$\{e\.rempli \|\| 'Cette case est déjà remplie/.test(moteur), 'le moteur ignore la phrase propre à l\'étape');
+  assert.ok(/e\.rempli \? ICONE_INFO \+ 'À vérifier'/.test(moteur), 'une case à vérifier se coche « Déjà rempli » en vert');
+  const vues = [];
+  const faux = { dossier: () => ({ id: 'D' }), premier: () => null, exercices: () => [2026], Visite: V };
+  CV.parcours(faux).filter(p => ['saisir-piece', 'saisir-vente', 'saisir-achat'].includes(p.id)).forEach(p => {
+    const date = p.etapes.find(e => e.cible === '#sa-date');
+    assert.ok(date && date.faire === 'valeur', p.id + ' : pas d\'étape de date');
+    assert.ok(/aujourd.hui/.test(date.rempli || ''), p.id + ' : la date d\'aujourd\'hui se laisse garder sans un mot');
+    vues.push(p.id);
+  });
+  assert.deepStrictEqual(vues.sort(), ['saisir-achat', 'saisir-piece', 'saisir-vente']);
+});
+
+t('10.14.1 : la date d\'une facture se tape jour/mois — « le jour seul » garde le mois déjà écrit', () => {
+  // `dateTapee('12')` prend le mois de la case, c'est-à-dire aujourd'hui au début : « 12 » pour une
+  // facture d'août donnait le 12 septembre (vu au guide). La bulle promettait « le mois vient de
+  // l'exercice ».
+  const Kc = require('../../src/cabinet/cabcore.js');
+  assert.strictEqual(Kc.dateTapee('12', 2026, '2026-09-26'), '2026-09-12', 'le jour seul ne garde plus le mois de la case');
+  assert.strictEqual(Kc.dateTapee('12/08', 2026, '2026-09-26'), '2026-08-12');
+  const faux = { dossier: () => ({ id: 'D' }), premier: () => null, exercices: () => [2026], Visite: V };
+  CV.parcours(faux).filter(p => ['saisir-piece', 'saisir-vente', 'saisir-achat'].includes(p.id)).forEach(p => {
+    const date = p.etapes.find(e => e.cible === '#sa-date');
+    assert.ok(/\//.test((date.essai || {}).taper || ''), p.id + ' : l\'essai tape le jour seul');
+    assert.ok(!/jour seul suffit|viennent de l.exercice/.test(date.texte + ' ' + date.action), p.id + ' : la bulle promet que le jour seul suffit');
+  });
+  assert.ok(!/jour seul suffit/.test(lireSource('src', 'cabinet', 'renderer', 'cabvisites.js')), 'une bulle dit encore « le jour seul suffit »');
+});
+
+t('10.14.1 : une étape « tape ceci » sur une case y pose le curseur — Tab sur le compte tombait sur le libellé', () => {
+  // Sans ça, « Dans la case Débit, tape 1190 » partait dans le libellé de la ligne.
+  const d = moteur.slice(moteur.indexOf('function dessinerBulle('), moteur.indexOf('function noteEssai('));
+  assert.ok(d.length > 2000 && d.length < 60000, 'tranche inattendue');
+  assert.ok(/if \(faire && e\.faire === 'valeur' && champ && !cur\.perdu && !cur\.curseur\)/.test(d), 'le curseur n\'est pas posé dans la case');
+  assert.ok(/c\.focus\(\{ preventScroll: true \}\)/.test(d));
+  assert.ok(/cur\.curseur = false/.test(moteur), 'le curseur ne se repose pas à chaque étape');
+  assert.ok(!/<kbd>Tab<\/kbd> la passe/.test(lireSource('src', 'cabinet', 'renderer', 'cabvisites.js')), 'une bulle demande encore de passer le libellé au Tab');
+});
+
+t('10.14.1 : une visite reprise revient à la première case que le temps a vidée', () => {
+  // L'application refermée vide la grille ; la visite reprenait sur le montant d'une pièce sans compte.
+  const et = [{ faire: 'valeur' }, { faire: 'valeur', rempli: 'x' }, { faire: 'valeur' }, { faire: 'valeur' }, { faire: 'valeur' }, { faire: 'clic' }];
+  // 0 journal (fait), 1 date par défaut (toujours « remplie »), 2 pièce vide, 3 libellé vide, 4 montant
+  assert.strictEqual(V.valeurDefaiteAvant(et, 4, j => j === 0 || j === 1), 1, 'la date par défaut, vidée avec la pièce, est sautée');
+  assert.strictEqual(V.valeurDefaiteAvant(et, 4, j => j <= 3), -1, 'tout est rempli : la reprise reste où elle est');
+  assert.strictEqual(V.valeurDefaiteAvant(et, 4, j => (j === 2 ? null : true)), -1, 'une case absente fait revenir en arrière');
+  assert.strictEqual(V.valeurDefaiteAvant(et, 2, () => false), 0, 'au-delà de l\'étape visée');
+  const lancer = moteur.slice(moteur.indexOf('function lancer('), moteur.indexOf('function entrer('));
+  assert.ok(/valeurDefaiteAvant\(copie\.etapes, depuis,/.test(lancer), 'lancer ne regarde pas les cases vidées');
+  assert.ok(/if \(vide >= 0\) depuis = vide;[\s\S]{0,40}entrer\(depuis, 1\)/.test(lancer), 'lancer ne reprend pas sur la case vidée');
+});
+
+t('10.14.1 : « 7 % » ne se coupe pas avant son signe — dans la bulle comme dans la prose', () => {
+  const C = require('../../src/renderer/core.js');
+  assert.strictEqual(C.typoFr('à 7 % ou'), 'à 7\u202f% ou');
+  assert.strictEqual(V.typo('à 7 % ou'), 'à 7\u202f% ou');
+});
 };
