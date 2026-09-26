@@ -405,6 +405,61 @@ t('10.14.0 : la bulle d\'une cible DANS une fenêtre se pose à côté de la fen
   assert.ok(/closest\('\.modal'\)/.test(p) && /placerPres\(/.test(p) && !/= placerBulle\(/.test(p), 'positionner ne cherche plus la fenêtre de sa cible');
 });
 
+// Vu à la souris (10.14.1) : la fenêtre « Nouveau contrat récurrent » fait 860 px de large ; il ne reste
+// que 264 px de chaque côté, et la bulle de 388 px se posait DESSUS — sur l'Objet, le jour du mois et la
+// remise. Elle se rétrécit pour tenir dans la marge, et seulement quand sa largeur ne tient pas.
+t('10.14.1 : à côté d\'une GRANDE fenêtre, la bulle se rétrécit pour tenir dans la marge au lieu de la couvrir', () => {
+  const ecran = { w: 1440, h: 873 };
+  // Les mesures relevées à l'écran : la fenêtre du contrat et son champ « Objet des factures ».
+  const fen = { l: 290, t: 87, r: 1150, b: 761 };
+  const objet = { l: 319, t: 243, r: 847, b: 278 };
+  // Les données discriminent : à sa largeur, la bulle ne tient nulle part à côté et couvre la fenêtre.
+  const grande = { w: 388, h: 300 };
+  const avant = V.placerPres(objet, fen, grande, ecran, { pref: 'droite' });
+  assert.ok(V.chevauche({ l: avant.x, t: avant.y, r: avant.x + grande.w, b: avant.y + grande.h }, fen), 'les données doivent discriminer : à 388 px, la bulle couvre la fenêtre');
+  const w = V.largeurPres(fen, ecran, 388);
+  assert.strictEqual(w, 264, 'la place qui reste à droite de la fenêtre');
+  const pos = V.placerPres(objet, fen, { w, h: 300 }, ecran, { pref: 'droite' });
+  assert.ok(!V.chevauche({ l: pos.x, t: pos.y, r: pos.x + w, b: pos.y + 300 }, fen), 'rétrécie, la bulle ne couvre plus la fenêtre : ' + JSON.stringify(pos));
+  assert.ok(pos.x + w <= ecran.w - 12, 'et elle ne sort pas de l\'écran');
+  // Une fenêtre étroite laisse la place d'une bulle entière : rien ne change.
+  assert.strictEqual(V.largeurPres({ l: 431, t: 240, r: 1011, b: 630 }, ecran, 388), null, 'une petite fenêtre garde la bulle entière');
+  // Une bulle plus large (une liste) se juge sur SA largeur.
+  assert.strictEqual(V.largeurPres({ l: 431, t: 240, r: 1011, b: 630 }, ecran, 448), 405, 'une bulle de liste qui ne tient pas se rétrécit aussi');
+  // Moins que le minimum lisible : on renonce, la règle ordinaire décide.
+  assert.strictEqual(V.largeurPres({ l: 150, t: 87, r: 1290, b: 761 }, ecran, 388), null, 'sous le minimum lisible, on ne rétrécit pas');
+  assert.strictEqual(V.largeurPres(null, ecran, 388), null, 'sans fenêtre, rien');
+  // Et le moteur s'en sert, sur la largeur de la bulle affichée.
+  const vj = lireSource('src', 'renderer', 'visite.js');
+  const p = vj.slice(vj.indexOf('function positionner('), vj.indexOf('// ---------- le dessin de la bulle'));
+  assert.ok(/largeurPres\(/.test(p) && /LARGEUR_LISTE/.test(p) && /if \(els\.bulle\.style\.width !== voulue\) els\.bulle\.style\.width = voulue;/.test(p), 'positionner rétrécit la bulle à côté d\'une grande fenêtre');
+  // Les largeurs du moteur sont celles de la feuille.
+  const css = lireSource('src', 'renderer', 'style.css');
+  assert.ok(/\.visite-bulle \{[^}]*width: 388px/.test(css) && /\.visite-bulle\.liste \{ width: 448px/.test(css) && /LARGEUR_BULLE = 388, LARGEUR_LISTE = 448/.test(vj), 'les largeurs du moteur et de la feuille divergent');
+});
+
+// Vu à la souris (10.14.1, « Établir un document RH ») : l'anneau entourait la case « Mentionner le
+// salaire » seule, 16 px, et mordait sur son libellé resté sous le voile. Une case se lit avec son
+// libellé : l'anneau prend le <label> qui la porte.
+t('10.14.1 : l\'anneau d\'une case à cocher entoure son libellé, pas la case seule', () => {
+  const lab = { tag: 'label' };
+  const faux = (type, parent) => ({
+    matches: sel => (type === 'checkbox' && /input\[type=checkbox\]/.test(sel)) || (type === 'radio' && /input\[type=radio\]/.test(sel)),
+    closest: sel => (sel === 'label' ? parent : null),
+  });
+  assert.strictEqual(V.zoneDeLaCase(faux('checkbox', lab)), lab, 'une case dans un libellé : le libellé');
+  assert.strictEqual(V.zoneDeLaCase(faux('radio', lab)), lab, 'un bouton radio dans un libellé : le libellé');
+  const seule = faux('checkbox', null);
+  assert.strictEqual(V.zoneDeLaCase(seule), seule, 'une case sans libellé reste elle-même');
+  const champ = faux('text', lab);
+  assert.strictEqual(V.zoneDeLaCase(champ), champ, 'un champ texte, même dans un libellé, reste lui-même');
+  assert.strictEqual(V.zoneDeLaCase(null), null, 'sans cible, rien');
+  // Et le moteur s'en sert quand l'étape ne nomme pas de zone.
+  const vj = lireSource('src', 'renderer', 'visite.js');
+  const p = vj.slice(vj.indexOf('function positionner('), vj.indexOf('// ---------- le dessin de la bulle'));
+  assert.ok(/const zoneEl = el && e\.zone \? \(resoudre\(e\.zone\) \|\| el\) : zoneDeLaCase\(el\);/.test(p), 'positionner éclaire le libellé d\'une case');
+});
+
 // Vu à l'écran : le tableau des questions du comptable, centré, ne laissait assez de place ni dessus
 // ni dessous — la bulle se rabattait dans un coin, sur « Importer les questions de ton comptable »,
 // le bouton même dont elle parlait. On fait défiler pour libérer le côté demandé.
@@ -1487,5 +1542,103 @@ t('10.14.1 : ce que les visites demandent à leur contexte, chaque application l
   ]);
   assert.ok(sortes.size >= 3 && connues.size >= 3, `les sortes n'ont pas été lues : ${[...sortes]} / ${[...connues]}`);
   assert.deepStrictEqual([...sortes].filter(s => !connues.has(s)), [], 'une visite du Cabinet demande une sorte de dossier que dossierPour ne reconnaît pas');
+});
+
+t('10.14.1 : une question ouverte PAR-DESSUS la cible range la visite — ni anneau ni bulle sur son texte (vu à la souris : « Abandonner cette saisie ? »)', () => {
+  const src = lireSource('src', 'renderer', 'visite.js').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  const f = src.slice(src.indexOf('function fenetreQuiCouvre('), src.indexOf('function listesOuvertes('));
+  assert.ok(f.length > 100 && f.length < 900, 'fenetreQuiCouvre introuvable ou tranche inattendue : ' + f.length);
+  assert.ok(/\.modal/.test(f) && /!haut\.contains\(el\)/.test(f), 'la fenêtre du dessus ne se juge plus sur « ne contient pas la cible »');
+  const pos = src.slice(src.indexOf('function positionner('), src.indexOf('function positionner(') + 4000);
+  assert.ok(/fenetreQuiCouvre\(zoneEl\)/.test(pos), 'positionner ne demande plus si une fenêtre couvre la cible');
+  assert.ok(/if \(couvre\) listes\.push\(couvre\)/.test(pos), 'une fenêtre qui couvre ne range pas la visite comme une liste ouverte');
+  assert.ok(/anneau\.hidden = [^;]*cur\.couvert/.test(pos), 'l\'anneau reste dessiné sur la question qui couvre la cible');
+  const mini = src.slice(src.indexOf('function dessinerMini('), src.indexOf('function dessinerMini(') + 2500);
+  assert.ok(/cur\.couvert \? 'Une question s\\'est ouverte par-dessus/.test(mini), 'la bulle rangée ne dit pas pourquoi elle attend');
+});
+
+t('10.14.1 : chaque cible d\'une visite existe dans son application — un identifiant, et un champ de fenêtre dans le formulaire qu\'elle ouvre', () => {
+  // Vu en rejouant les visites : « Son salaire brut » visait [name="gross"] — le champ du BULLETIN — dans
+  // la fiche du salarié, dont le champ s'appelle grossSalary : l'étape se sautait en silence, et
+  // « Enregistrer » refusait ensuite un brut nul. « L'aperçu » visait #pv-col, qu'aucune page ne pose.
+  // Une cible absente ne lève rien : la bulle attend, puis passe. On confronte donc chaque cible aux
+  // sources — l'identifiant à l'application, le NOM de champ au formulaire que la visite remplit.
+  const lireJs = f => lireSource(f);
+  // Une cible (une chaîne ou un tableau d'alternatives) → ses sélecteurs réunis, et sa ligne.
+  const cibles = src => [...src.matchAll(/cible:\s*(\[[^\]]*\]|'(?:[^'\\]|\\.)*')/g)].map(m => ({
+    sel: [...m[1].matchAll(/'((?:[^'\\]|\\.)*)'/g)].map(x => x[1]).join(', '),
+    ligne: src.slice(0, m.index).split('\n').length
+  }));
+  const communs = ['src/renderer/visite.js', 'src/renderer/majui.js', 'src/renderer/reglages.js', 'src/renderer/rowmenu.js'];
+  const apps = [
+    { visites: 'src/renderer/visites.js', sources: ['src/renderer/app.js', 'src/renderer/index.html', ...communs] },
+    { visites: 'src/cabinet/renderer/cabvisites.js', sources: ['src/cabinet/renderer/app.js', 'src/cabinet/renderer/index.html', ...communs] }
+  ];
+  const absents = [];
+  for (const a of apps) {
+    const v = lireJs(a.visites), tout = a.sources.map(lireJs).join('\n');
+    for (const c of cibles(v))
+      for (const id of [...c.sel.matchAll(/#([a-zA-Z][\w-]*)/g)].map(x => x[1]))
+        if (!new RegExp(`(^|[^\\w-])${id}([^\\w-]|$)`).test(tout)) absents.push(`${a.visites}:${c.ligne} #${id}`);
+  }
+  assert.deepStrictEqual(absents, [], 'des visites visent un identifiant qu\'aucune page ne pose');
+
+  // Le champ d'une fenêtre : chaque visite qui remplit une fenêtre nomme son formulaire, et chaque
+  // [name="x"] visé dans « #modal-root » existe DANS ce formulaire (un nom qui existe ailleurs —
+  // « gross » vit dans le bulletin — ne prouve rien).
+  const FORMULAIRE = {
+    'premier-client': ['clientForm'], encaisser: ['paymentForm'], article: ['catalogForm'], fournisseur: ['supplierForm'],
+    regler: ['supplierPaymentForm'], motdepasse: ['passwordDialog'], 'repondre-comptable': ['repondreA'], salarie: ['employeeForm'],
+    affaire: ['projectForm'], conge: ['leaveForm'], avance: ['advanceForm'], mouvement: ['movementForm'], virement: ['movementForm'],
+    'mouvement-stock': ['adjustForm'], 'numeros-serie': ['serialIntakeForm'], 'texte-predefini': ['snippetForm'],
+    'contrat-recurrent': ['recurrenceForm'], 'ceder-bien': ['disposalForm'], 'document-rh': ['hrDocForm']
+  };
+  const corps = (src, nom) => {
+    const i = src.search(new RegExp(`\\n( *)(?:async )?function ${nom}\\(`));
+    if (i < 0) return null;
+    const indent = src.slice(i + 1).match(/^ */)[0];
+    const fin = src.indexOf(`\n${indent}}`, i + 1);
+    return src.slice(i, fin < 0 ? src.length : fin);
+  };
+  const fautes = [];
+  for (const a of apps) {
+    const v = lireJs(a.visites), app = lireJs(a.sources[0]);
+    for (const bloc of v.split(/\n    visite\(\{/).slice(1)) {
+      const id = (bloc.match(/id:\s*'([\w-]+)'/) || [])[1];
+      const groupes = [];
+      // Une cible est une liste d'ALTERNATIVES (tableau, ou sélecteurs séparés d'une virgule) : un seul
+      // de ses noms doit exister — la visite éclaire le premier trouvé.
+      for (const c of cibles(bloc)) if (c.sel.includes('#modal-root')) {
+        const n = [...c.sel.matchAll(/\[name="([\w-]+)"\]/g)].map(x => x[1]); if (n.length) groupes.push(n);
+      }
+      if (!groupes.length) continue;
+      const fonctions = FORMULAIRE[id];
+      if (!fonctions) { fautes.push(`${id} : remplit une fenêtre, mais le test ne sait pas laquelle (FORMULAIRE)`); continue; }
+      const textes = fonctions.map(f => corps(app, f));
+      if (textes.some(x => !x)) { fautes.push(`${id} : formulaire ${fonctions.join('/')} introuvable`); continue; }
+      const porte = x => textes.some(t => t.includes(`'${x}'`) || t.includes(`name="${x}"`));
+      for (const g of groupes) if (!g.some(porte)) fautes.push(`${id} : [name="${g.join('|')}"] absent de ${fonctions.join('/')}`);
+    }
+  }
+  assert.deepStrictEqual(fautes, [], 'des visites visent un champ que leur fenêtre ne porte pas');
+  assert.ok(Object.keys(FORMULAIRE).length >= 19, 'la table des formulaires a perdu des visites');
+});
+
+t('10.14.1 : une visite qui choisit un client pour une pièce guide aussi le taux de change quand il devient obligatoire', () => {
+  // Vu à la souris : « Faire un devis » avec Nova Digital (euros) menait jusqu'à « Enregistrer », qui
+  // refusait — le taux, obligatoire en devise (7.0.1), n'avait pas d'étape. Toute visite qui choisit
+  // un client là où une devise suit le client porte `etapeTaux` ; l'affaire n'a pas de devise.
+  const src = lireSource('src/renderer/visites.js');
+  const SANS_DEVISE = { affaire: 'une affaire regroupe des pièces, elle ne porte ni devise ni taux' };
+  const manquent = [];
+  for (const bloc of src.split(/\n    visite\(\{/).slice(1)) {
+    const id = (bloc.match(/id:\s*'([\w-]+)'/) || [])[1];
+    if (!/combo\('clientId'\)/.test(bloc) || SANS_DEVISE[id]) continue;
+    if (!/etapeTaux\(/.test(bloc)) manquent.push(id);
+  }
+  assert.deepStrictEqual(manquent, [], 'des visites choisissent un client sans guider le taux de change');
+  // L'étape ne paraît que si le champ est affiché, et exige un taux positif.
+  assert.ok(/si: \(\) => !!\$\(champ \+ ':not\(\[hidden\]\)'\)/.test(src), 'l\'étape du taux paraît aussi pour un client en dinars');
+  assert.ok(/fait: \(\) => Number\(valeur\(champ \+ ' input\[name="exchangeRate"\]'\)\) > 0/.test(src), 'l\'étape du taux se valide sans taux');
 });
 };

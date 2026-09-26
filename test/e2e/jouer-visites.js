@@ -68,8 +68,16 @@ async function jouer(win, id, { ouvrirGuide, apresLancement, fautes, compte }) {
       const essai = s.faire.essai || {};
       if (s.cible === false) { await attendre(700); continue; }       // la cible arrive (une fenêtre s'ouvre)
       const el = (await win.evaluateHandle(() => window.Visite.resoudre(window.Visite.etapeCourante().cible))).asElement();
-      if (s.faire.mode === 'valeur' || essai.taper) {
+      if (s.faire.mode === 'valeur' || essai.taper || essai.choisir != null) {
         if (el && essai.taper) { await el.click({ clickCount: 3 }).catch(() => {}); await win.keyboard.type(String(essai.taper)); }
+        // Une liste : on choisit l'option par sa valeur, ou la première proposée quand la valeur est un identifiant tiré au hasard.
+        if (el && essai.choisir != null) {
+          // « premier » : la première option qui a une valeur et qu'on PROPOSE (une option cachée n'est pas un choix).
+          const v = essai.choisir === 'premier'
+            ? await el.evaluate(s => { const o = [...s.options].find(x => x.value && !x.hidden && !x.disabled); return o ? o.value : ''; })
+            : String(essai.choisir);
+          if (v) await el.selectOption(v).catch(() => {});
+        }
         await attendre(300);
         const ok = await win.$('#visite-bulle [data-v="suiv"]:not([disabled])');
         if (ok) await ok.click(); else await passer();

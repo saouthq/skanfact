@@ -2620,12 +2620,18 @@ t('Un champ obligatoire MONTRE son étoile : son libellé est un élément, jama
     const src = code(...f.split('/'));
     const champs = [...src.matchAll(/class="field[^"]*\bobligatoire\b[^"]*">\s*([\s\S]{0,12})/g)];
     assert.ok(champs.length >= 5, f + ' : les champs obligatoires ne sont plus trouvés (' + champs.length + ')');
-    const nus = champs.filter(m => !/^(<span|\$\{lbl\()/.test(m[1])).map(m => m[0].slice(0, 70));
+    // `${label}` : la balise de `dateFieldHtml` (10.14.1), qui reçoit son libellé tout fait — chaque
+    // appel qui demande l'étoile est vérifié plus bas.
+    const nus = champs.filter(m => !/^(<span|\$\{lbl\(|\$\{label\})/.test(m[1])).map(m => m[0].slice(0, 70));
     assert.deepStrictEqual(nus, [], f + ' : un libellé nu ne porte pas l\'étoile que la légende annonce');
   });
   // Et `lbl(texte)` sans clé de bulle rend le texte NU : il ne compte pas comme un élément.
   const ent = code('src', 'renderer', 'app.js');
   const sansCle = [...ent.matchAll(/obligatoire[^"]*">\$\{lbl\('[^']*'\)\}/g)].map(m => m[0]);
+  // Un champ date qui demande l'étoile passe un libellé À CLÉ (lbl('…', 'clé')), donc un élément.
+  const dates = ent.split('\n').filter(l => /dateFieldHtml\(/.test(l) && /obligatoire: true/.test(l));
+  assert.ok(dates.length >= 5, 'les champs date obligatoires ne sont plus trouvés (' + dates.length + ')');
+  dates.forEach(l => assert.ok(/dateFieldHtml\(lbl\([^)]*, '[\w.]+'\)/.test(l), 'un champ date obligatoire sans libellé à clé : ' + l.trim().slice(0, 90)));
   assert.deepStrictEqual(sansCle, [], 'lbl() sans clé rend un texte nu : ' + sansCle.join(' · '));
 });
 

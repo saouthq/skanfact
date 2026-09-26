@@ -20,6 +20,7 @@
     'co.tagline': { t: 'Slogan', d: 'Une ligne courte sous ton nom qui dit ce que tu fais, par exemple « Cybersécurité · Infrastructure · Services informatiques ». Optionnel, mais utile quand un client reçoit ton devis sans te connaître.' },
     'co.phone': { t: 'Téléphone', d: 'S\'imprime en haut de chaque devis, facture et relevé de compte, avec ton email : c\'est le numéro que ton client appellera. Mets celui où l\'on te répond.' },
     'co.email': { t: 'Email', d: 'S\'imprime en haut de chaque devis, facture et relevé de compte. SkanFact n\'envoie rien depuis cette adresse : un envoi part de ta messagerie, avec le compte qui y est ouvert.' },
+    'co.managerName': { t: 'Gérant (qui signe)', d: 'Le nom de la personne qui représente la société. Il s\'imprime sur les documents du personnel — « Je soussigné… » d\'une attestation ou d\'un certificat de travail, et sous « Pour la société » à la signature. Les devis et factures ne le portent pas.' },
     'co.website': { t: 'Site web', d: 'Facultatif. S\'il est rempli, il s\'imprime sous ton téléphone et ton email, en haut de chaque devis et facture.' },
     'co.logo': { t: 'Logo', d: 'Une image PNG, JPG ou SVG (1 Mo maximum) affichée en haut à gauche de tes documents. Préfère un fond transparent ou blanc. Sans logo, seul ton nom s\'affiche : c\'est propre aussi.' },
     'co.stampImage': { t: 'Cachet / signature', d: 'La photo de ton cachet d\'entreprise ou de ta signature. Elle se place dans la case « Cachet et signature » en bas des documents, ce qui t\'évite d\'imprimer, signer, scanner. Astuce : signe sur une feuille blanche, photographie-la en plein jour, recadre.' },
@@ -729,7 +730,7 @@
 </ul>`
     },
     {
-      id: 'pieces', title: 'Proforma, bons et contrat', sub: 'Les pièces qui entourent la facture',
+      id: 'pieces', title: 'Proforma, bons et contrats', sub: 'Les pièces qui entourent la facture',
       body: `
 <p>Quatre onglets, une pièce chacun : <b>Proformas</b>, <b>Bons de commande</b>, <b>Bons de livraison</b>, <b>Contrats à signer</b>.</p>
 <p>À côté du devis et de la facture, SkanFact sait établir quatre autres pièces. Elles sont réunies dans <b>Proforma, bons et contrats</b>. Aucune n'a de valeur comptable : elles n'entrent ni dans ton chiffre d'affaires, ni dans ta TVA, ni dans le journal des ventes. Elles servent à documenter ce qui se passe autour de la vente.</p>

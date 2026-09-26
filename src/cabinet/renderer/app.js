@@ -7888,11 +7888,13 @@
       `<h2>Nouveau dossier client</h2>
        <p class="muted small">Ajoute un client même s'il n'utilise pas encore SkanFact ${info('d.manual')} : il compte dans ton portefeuille,
        et rien ne lui est réclamé tant qu'il n'a pas commencé.</p>
+       <p class="small nd-plusieurs">Plusieurs clients d'un coup ? <button type="button" class="btn btn-sm" id="nd-coller">Coller une liste de clients…</button></p>
        ${dossierFields(empty)}
        <div class="modal-actions"><button class="btn" id="no">Annuler</button><button class="btn btn-primary" id="ok">Créer le dossier</button></div>`,
       (layer, close) => {
         change = suivreSaisie(layer);
         $('#no', layer).onclick = close;
+        $('#nd-coller', layer).onclick = () => { close(); collerDossiersForm(); };
         $('#ok', layer).onclick = async () => {
           const f = readDossierFields(layer);
           // Un refus MONTRE la case (7.0.0, 10.12.0) : le curseur y va, elle se marque.
@@ -7903,6 +7905,42 @@
             const r = await api.newDossier(f);
             S = r.state; close(); render(); toast('Dossier créé.');
             location.hash = '#/dossier/' + encodeURIComponent(r.id);
+          } catch (e) { toast(plainError(e), 'error'); }
+        };
+      },
+      null,
+      { garde: () => change() }
+    );
+  }
+
+  // 10.14.1 — la liste collée depuis un tableur (6.8.0 : « un par un dans un formulaire, personne ne
+  // le ferait ») ne vivait QUE dans l'assistant de démarrage : passé ce premier écran, « + Nouveau
+  // dossier » n'offrait plus que la fiche d'un seul client, pendant que sa visite promettait « toute
+  // la liste collée depuis ton tableur ». Le même moteur (`cab:importDossiers`), une porte de plus.
+  function collerDossiersForm() {
+    let change = () => false;
+    modal(
+      `<h2>Coller une liste de clients</h2>
+       <p class="small">Un client par ligne, collé depuis ton tableur. Pour donner plus qu'un nom, sépare les colonnes par un point-virgule :
+       <strong>nom ; matricule ; email ; téléphone</strong>. Seul le nom est obligatoire ; un client déjà dans ton portefeuille est ignoré et nommé.</p>
+       <label class="field mt">${lbl('Un client par ligne', 'd.liste')}
+         <textarea id="cl-liste" rows="9" placeholder="Menuiserie Trabelsi SUARL ; 1122334A/M/P/000 ; contact@trabelsi.tn&#10;Pharmacie El Menzah&#10;Café des Jasmins"></textarea></label>
+       <div class="modal-actions"><button class="btn" id="no">Annuler</button><button class="btn btn-primary" id="ok">Ajouter ces clients</button></div>`,
+      (layer, close) => {
+        change = suivreSaisie(layer);
+        $('#no', layer).onclick = close;
+        $('#ok', layer).onclick = async () => {
+          const txt = $('#cl-liste', layer).value.trim();
+          if (!txt) return refus($('#cl-liste', layer), 'Colle au moins un nom de client, un par ligne.');
+          try {
+            const r = await api.importDossiers(txt);
+            const ignores = (r.ignorés || []);
+            if (!r.added) return refus($('#cl-liste', layer), ignores.length
+              ? `Aucun client ajouté : ${pl(ignores.length, 'client')} déjà dans ton portefeuille (${ignores.slice(0, 3).join(', ')}${ignores.length > 3 ? '…' : ''}).`
+              : 'Aucun nom de client n\'a été reconnu dans cette liste.');
+            S = r.state; close(); render();
+            toast(`${pl(r.added, 'client')} ajouté${r.added > 1 ? 's' : ''} à ton portefeuille`
+              + (ignores.length ? ` — ${pl(ignores.length, 'doublon')} ignoré${ignores.length > 1 ? 's' : ''} : ${ignores.slice(0, 3).join(', ')}` : '') + '.');
           } catch (e) { toast(plainError(e), 'error'); }
         };
       },

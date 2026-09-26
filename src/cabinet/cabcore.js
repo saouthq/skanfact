@@ -913,6 +913,18 @@
   // On accepte le point-virgule et la tabulation (ce que produisent Excel et Numbers en français).
   function parseDossierLines(text, existants) {
     const vus = new Set((existants || []).map(d => d.id));
+    // 10.14.1 — la clé d'un dossier est son matricule quand il en a un : « Pharmacie El Menzah »
+    // collée SANS matricule prenait la clé NOM:… et passait à côté du dossier MF:… du même nom — le
+    // client entrait une seconde fois, pendant que la bulle promettait « même nom : ignoré ». Un nom
+    // déjà connu ne s'écarte que si les DEUX côtés portent un matricule, et qu'ils diffèrent : deux
+    // homonymes aux matricules distincts sont deux entreprises.
+    const parNom = new Map();
+    (existants || []).forEach(d => { const n = normNom(d.name); if (n) parNom.set(n, (parNom.get(n) || []).concat([String(d.matricule || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase()])); });
+    const memeNom = f => {
+      const n = normNom(f.name); if (!n || !parNom.has(n)) return false;
+      const mf = String(f.matricule || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+      return parNom.get(n).some(m => !m || !mf || m === mf);
+    };
     const out = [], ignorés = [];
     String(text || '').split(/\r?\n/).forEach((ligne, i) => {
       const l = ligne.trim();
@@ -939,8 +951,10 @@
       });
       if (!f.name) return;
       const d = newDossier(f);
-      if (vus.has(d.id)) return ignorés.push(f.name);
+      if (vus.has(d.id) || memeNom(f)) return ignorés.push(f.name);
       vus.add(d.id);
+      const n = normNom(f.name);
+      parNom.set(n, (parNom.get(n) || []).concat([String(f.matricule || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase()]));
       out.push(d);
     });
     return { dossiers: out, ignorés };

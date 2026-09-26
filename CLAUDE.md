@@ -8274,6 +8274,25 @@ lots ; le détail de ce qui reste vit dans `A-FAIRE.md` § 0.
   re-rencontrée deux fois ici) : `demoSortie` jusqu'à `render(keepScroll)` a avalé le chargement posé
   entre elles. Bornée sur la fin de la fonction ; et l'assertion « remise en haut avant `render()` »
   retournée vers la règle, quel que soit le nom de la porte (42e).
+- **Une cible de visite qui n'existe pas se SAUTE en silence** : « Son salaire brut » visait `gross`
+  (le champ du bulletin) dans la fiche du salarié, qui porte `grossSalary` — l'étape n'avait jamais
+  été montrée à personne, et « L'aperçu » visait un `#pv-col` qui n'a jamais existé. Aucun parcours ne
+  le voit : un moteur qui saute une cible absente est fait pour ne rien dire. Le test lit chaque
+  identifiant de chaque cible contre les sources de SON application, et chaque champ de fenêtre contre
+  le formulaire que la visite OUVRE (`FORMULAIRE`) — un nom qui existe ailleurs dans le fichier ne
+  prouve rien. Une cible est une liste d'ALTERNATIVES : on juge le groupe, pas chaque chaîne.
+- **Un champ que l'enregistrement refuse vide porte son étoile** (7.20.0, portée à quatorze fenêtres) :
+  la règle se lit sur la condition (`if (!v.x) return refus`), le test reconnaît les quatre formes qui
+  posent la classe, et une date passe `obligatoire` à `dateFieldHtml` — dont le libellé reste un
+  élément (`lbl`), sinon l'étoile ne s'affiche pas (8.1.0).
+- **Le client décide de la langue et de la devise, même quand il n'a pas de réglage propre** : un
+  client sans réglage prend ceux de la SOCIÉTÉ, jamais ceux du client d'avant. Choisir un client en
+  euros puis un client ordinaire laissait la pièce en anglais et en euros — vu à la souris dans la
+  visite du devis, invisible à un parcours qui choisit un seul client. Et le taux se VIDE quand la
+  devise change : un taux d'une autre devise est un chiffre faux.
+- **Une visite qui choisit un client guide ce que ce choix fait apparaître** (`etapeTaux`, avec `si`) :
+  le champ du taux paraît avec un client en devise, et la visite passait à côté — l'enregistrement
+  refusait ensuite une case que personne n'avait montrée.
 
 ## Pistes pour la suite (non demandées)
 

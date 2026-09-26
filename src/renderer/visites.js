@@ -340,7 +340,7 @@
   // ---------- clients et fournisseurs ----------
   b('#new-fac', "Crée une facture pour ce client, déjà rempli.");
   b('#new-dev', "Crée un devis pour ce client, déjà rempli.");
-  b('#go-rel', "Ouvre les relances de ce client.");
+  b('#go-rel', "Ouvre la page Relances filtrée sur ce client : seules ses factures en retard restent à l'écran. Efface la recherche pour revoir tout le monde.");
   b('#cl-notes', "Ce qu'il faut se rappeler sur ce client (habitudes de paiement, interlocuteur). Enregistré tout seul, jamais imprimé.", { nom: 'Notes internes' });
   b('#asuivre-ok', "Ouvre la fiche du client.");
   b('#buy', "Saisis un achat chez ce fournisseur, déjà rempli.");
@@ -412,6 +412,7 @@
   b('#edit-emp', "Modifie la fiche du salarié.");
   b('#new-slip', "Établit un bulletin pour ce salarié.");
   b('#hr-doc', "Établit un document : attestation de travail, certificat, solde de tout compte.");
+  b('#hf-gerant-go', "Ouvre ta fiche société sur le nom du gérant : c'est lui que l'attestation nomme « Je soussigné ».");
   b('[data-hr]', "Établit un document pour ce salarié.", { nom: 'Établir un document' });
   b('#add-lv', "Note un congé ou une absence.");
   b('#add-av', "Note une avance sur salaire.");
@@ -780,6 +781,16 @@
     const aucuneFenetre = () => !document.querySelector('#modal-root .modal');
     const combo = nom => `[data-combo="${nom}"] .combo-btn`;
     const valeur = sel => { const el = $(sel); return el ? String(el.value || '').trim() : ''; };
+    // 10.14.1 — le taux de change, dès que le client choisi est facturé dans une autre devise. Il est
+    // OBLIGATOIRE (7.0.1) : sans cette étape, une visite menait jusqu'à « Enregistrer », qui refusait.
+    // Vu à la souris avec Nova Digital. L'étape ne paraît que si le champ est là (`si`). `champ` est
+    // le conteneur du taux : #rate-field dans l'éditeur de pièce, #rf-rate dans la fenêtre d'un contrat.
+    const etapeTaux = champ => ({
+      si: () => !!$(champ + ':not([hidden])'), cible: champ + ' input[name="exchangeRate"]', cote: 'dessous', faire: 'valeur',
+      titre: 'Le taux de change',
+      texte: 'Ce client est facturé dans une autre devise. Le taux dit combien vaut <b>une unité</b> de cette devise en dinars : c\'est lui qui convertit la pièce dans ta comptabilité et ta TVA. <b>Il est obligatoire</b> — sans lui, un euro compterait pour un dinar.',
+      action: 'Tape le taux du jour (par exemple 3,4).', fait: () => Number(valeur(champ + ' input[name="exchangeRate"]')) > 0, essai: { taper: '3,4' }
+    });
     const nb = liste => (data()[liste] || []).length;
     // Le BUT d'une visite se mesure sur les données (10.14.1) : « Annuler » ferme la fenêtre aussi,
     // et une fin qui félicite une fenêtre fermée sans rien enregistrer dit le contraire du vrai.
@@ -853,8 +864,8 @@
           texte: 'Au bout de chaque ligne : tous les autres gestes, <b>chacun avec sa phrase</b> — envoyer, dupliquer, noter que le client a dit oui, facturer.' },
         { page: fiche('devis'), cible: ['table:has(> #lines)', '#lines'], cote: 'dessus', titre: 'Dans un devis : les lignes',
           texte: 'Ce que tu vends, ligne par ligne : la désignation, la quantité, le prix hors taxe, la TVA. <b>Le total se calcule tout seul</b>, et chaque ligne se reprend du catalogue d\'un clic.' },
-        { page: fiche('devis'), cible: '#pv-col', cote: 'gauche', titre: 'L\'aperçu',
-          texte: 'À droite, le document <b>tel que ton client le recevra</b>. « Agrandir » l\'ouvre en grand.' },
+        { page: fiche('devis'), cible: '#view .preview', cote: 'gauche', titre: 'L\'aperçu',
+          texte: 'À droite, le document <b>tel que ton client le recevra</b>, mis à jour à chaque frappe. Le repère « 1 page » dit combien de feuilles il fera une fois imprimé, et « Agrandir » l\'ouvre en grand pour le relire.' },
         { page: fiche('devis'), cible: ['#convert', '#bill-btn', '#email'], cote: 'dessous', titre: 'Du devis à la facture',
           texte: 'Quand le client dit oui, <b>« Facturer ce devis »</b> fabrique la facture sans rien ressaisir. Tu peux aussi facturer un acompte, puis le solde.' },
         { page: '#/factures', cible: ['#list-wrap table.list', '#view table.list'], zone: ['#list-wrap table.list', '#view table.list'], cote: 'dessus', titre: 'Les factures',
@@ -1066,6 +1077,10 @@
         { cible: combo('clientId'), cote: 'droite', faire: 'valeur', bouton: 'C\'est fait',
           titre: 'Choisis le client', texte: 'Clique dans la liste, tape les premières lettres de son nom, et choisis-le. S\'il n\'existe pas encore, « + Nouveau client » en bas de la liste le crée sans quitter le devis.',
           action: 'Choisis ton client dans la liste.', fait: () => !!valeur('input[name="clientId"]'), essai: { combo: 1 } },
+        // 10.14.1 — un client facturé dans une autre devise rend le taux OBLIGATOIRE (7.0.1) : sans
+        // cette étape, la visite menait jusqu'à « Enregistrer », qui refusait. Vu à la souris avec
+        // Nova Digital. Elle ne paraît que si le champ est là.
+        etapeTaux('#rate-field'),
         { cible: 'input[name="subject"]', cote: 'dessous', faire: 'valeur',
           titre: 'L\'objet', texte: 'Une ligne qui dit de quoi il s\'agit : ton client la lira en premier.',
           action: 'Écris l\'objet du devis, puis clique sur <b>« C\'est fait »</b>.', essai: { taper: 'Réfection de la vitrine' } },
@@ -1083,7 +1098,7 @@
           titre: 'Le prix unitaire hors taxe', texte: 'Le prix d\'une unité, <b>hors TVA</b>. La TVA et le total se calculent tout seuls.',
           action: 'Tape le prix unitaire HT.', fait: () => Number(valeur('#lines tr:first-child input[data-k="unitPrice"]')) > 0, essai: { taper: '350' } },
         { cible: '#totals', cote: 'gauche', titre: 'Les totaux', texte: 'Hors taxe, TVA, total : tout suit ce que tu tapes, ligne par ligne. Rien à calculer.' },
-        { cible: ['#pv-col', '#pv-toggle'], cote: 'gauche', titre: 'L\'aperçu', texte: 'À droite, le document tel que ton client le recevra. « Agrandir » l\'ouvre en grand pour le relire.' },
+        { cible: ['#view .preview', '#pv-toggle'], cote: 'gauche', titre: 'L\'aperçu', texte: 'À droite, le document <b>tel que ton client le recevra</b>, mis à jour à chaque frappe. Le repère « 1 page » dit combien de feuilles il fera une fois imprimé, et « Agrandir » l\'ouvre en grand pour le relire avant de l\'envoyer.' },
         { cible: '#save', cote: 'dessous', faire: 'clic',
           titre: 'Enregistrer', texte: 'Le devis reçoit son numéro. Tu pourras encore le modifier tant qu\'il n\'est pas accepté.',
           action: 'Clique sur <b>« Enregistrer »</b>.', fait: () => /^#\/doc\/(?!new)/.test(hash()), essai: { clic: true } }
@@ -1295,7 +1310,7 @@
         { cible: '#modal-root .modal input[name="unitPrice"]', cote: 'droite', faire: 'valeur',
           titre: 'Son prix hors taxe', texte: 'Le prix d\'une unité, hors TVA.', action: 'Tape le prix.', essai: { taper: '45' } },
         { cible: '#modal-root .modal .modal-actions .btn-primary', cote: 'dessus', faire: 'clic',
-          titre: 'Enregistrer', texte: '', action: 'Clique sur <b>« Enregistrer »</b>.', fait: () => aucuneFenetre(), essai: { clic: true } }
+          titre: 'Enregistrer', texte: 'La prestation rejoint ton catalogue : la prochaine fois, tu la choisis dans une liste au lieu de retaper son nom et son prix.', action: 'Clique sur <b>« Enregistrer »</b>.', fait: () => aucuneFenetre(), essai: { clic: true } }
       ]
     });
 
@@ -1310,7 +1325,7 @@
       conclusion: 'Il est proposé dans chaque facture d\'achat.',
       etapes: [
         { page: '#/fournisseurs', cible: ['.vide-utile .btn-primary', '.page-head #new'], cote: 'dessous', faire: 'clic',
-          titre: 'Nouveau fournisseur', texte: '', action: 'Clique sur {bouton}.', fait: () => !!$('#modal-root .modal'), essai: { clic: true } },
+          titre: 'Nouveau fournisseur', texte: 'Un fournisseur, c\'est celui qui te facture : son nom et son matricule fiscal suffisent pour commencer. Tu pourras compléter sa fiche plus tard.', action: 'Clique sur {bouton}.', fait: () => !!$('#modal-root .modal'), essai: { clic: true } },
         { cible: '#modal-root .modal input[name="name"]', cote: 'droite', faire: 'valeur',
           titre: 'Son nom', texte: 'Tel qu\'il apparaît sur ses factures.', action: 'Tape le nom du fournisseur.', essai: { taper: 'Quincaillerie du Centre' } },
         { cible: '#modal-root .modal .modal-actions .btn-primary', cote: 'dessus', faire: 'clic',
@@ -1667,10 +1682,14 @@
         // « + Salarié » ne vit que sur l'onglet Salariés (l'en-tête suit l'onglet) : la visite l'ouvre,
         // et « Guide-moi » range ce geste sous cet onglet au lieu de le promettre sur « Congés ».
         { page: '#/paie', avant: onglet('#p-tabs', 'salaries'), cible: ['#emp-first', '#new-emp'], cote: 'dessous', faire: 'clic',
-          titre: 'Nouveau salarié', texte: '', action: 'Clique sur {bouton}.', fait: () => !!$('#modal-root .modal'), essai: { clic: true } },
-        { cible: '#modal-root .modal input[name="name"]', cote: 'droite', faire: 'valeur', titre: 'Son nom', texte: '', action: 'Tape son nom et prénom.', essai: { taper: 'Sami Ben Ali' } },
-        { cible: '#modal-root .modal input[name="gross"], #modal-root .modal [name="gross"]', cote: 'droite', titre: 'Son salaire brut', texte: 'Le brut mensuel : les cotisations et l\'impôt se calculent à partir de lui.', facultatif: true },
-        { cible: '#modal-root .modal .modal-actions .btn-primary', cote: 'dessus', faire: 'clic', titre: 'Enregistrer', texte: '',
+          titre: 'Nouveau salarié', texte: 'Tu déclares la personne une fois ; ensuite, chaque mois, SkanFact prépare son bulletin à partir de sa fiche.', action: 'Clique sur {bouton}.', fait: () => !!$('#modal-root .modal'), essai: { clic: true } },
+        { cible: '#modal-root .modal input[name="name"]', cote: 'droite', faire: 'valeur', titre: 'Son nom', texte: 'Tel qu\'il figure sur sa carte d\'identité : c\'est le nom qui s\'imprime sur ses bulletins et ses attestations.', action: 'Tape son nom et prénom.', essai: { taper: 'Sami Ben Ali' } },
+        // Le champ s'appelle grossSalary (la fiche) — « gross » est celui du BULLETIN : l'étape visait un champ
+        // absent de cette fenêtre, se sautait en silence, et « Enregistrer » refusait ensuite un brut nul (10.14.1).
+        { cible: '#modal-root .modal [name="grossSalary"]', cote: 'droite', faire: 'valeur', titre: 'Son salaire brut',
+          texte: 'Le brut <b>mensuel</b>, avant cotisations. SkanFact en déduit la CNSS, l\'impôt et le net — tu les lis en bas de la fenêtre pendant que tu tapes. <b>Il est obligatoire</b> : sans lui, pas de bulletin.',
+          action: 'Tape le salaire brut mensuel.', fait: () => Number(valeur('#modal-root .modal [name="grossSalary"]')) > 0, essai: { taper: '1500' } },
+        { cible: '#modal-root .modal .modal-actions .btn-primary', cote: 'dessus', faire: 'clic', titre: 'Enregistrer', texte: 'Le salarié rejoint la liste. Son premier bulletin se prépare dans l\'onglet « Bulletins ».',
           action: 'Clique sur <b>« Enregistrer »</b>.', fait: () => aucuneFenetre(), essai: { clic: true } }
       ]
     });
@@ -1710,7 +1729,7 @@
       bravo: 'Le bien est enregistré',
       conclusion: 'Son amortissement de l\'année entre tout seul dans ton résultat.',
       etapes: [
-        { page: '#/immos', cible: '#new-imm', cote: 'dessous', faire: 'clic', titre: 'Nouveau bien', texte: '',
+        { page: '#/immos', cible: '#new-imm', cote: 'dessous', faire: 'clic', titre: 'Nouveau bien', texte: 'Un bien, c\'est ce que tu gardes plusieurs années : un ordinateur, un véhicule, une machine. Il ne passe pas en charge d\'un coup : il s\'amortit, année après année.',
           action: 'Clique sur <b>« + Nouveau bien »</b>.', fait: () => !!$('#modal-root .modal'), essai: { clic: true } },
         { cible: '#modal-root .modal', cote: 'gauche', titre: 'Sa fiche',
           texte: 'Son nom, sa famille (la durée d\'usage est proposée — change-la si ton comptable en décide une autre), son prix hors taxe et sa date de mise en service. <b>Le plan d\'amortissement s\'affiche pendant que tu tapes</b> : chaque année, la part du prix qui entre dans tes charges.' },
@@ -1739,7 +1758,7 @@
         { cible: [combo('clientId'), '#modal-root .modal [data-combo="clientId"]'], cote: 'droite', facultatif: true, titre: 'Son client',
           texte: 'Facultatif, mais utile : les pièces de ce client te proposeront cette affaire, et seulement elles.' },
         { cible: '#modal-root .modal .modal-actions .btn-primary', cote: 'dessus', faire: 'clic',
-          titre: 'Enregistrer', texte: '', action: 'Clique sur <b>« Enregistrer »</b>.', fait: () => aucuneFenetre(), essai: { clic: true } }
+          titre: 'Enregistrer', texte: 'L\'affaire est créée. Rattache-lui ensuite tes devis, tes factures et tes achats : sa marge se calcule toute seule.', action: 'Clique sur <b>« Enregistrer »</b>.', fait: () => aucuneFenetre(), essai: { clic: true } }
       ]
     });
 
@@ -1770,7 +1789,7 @@
       bravo: 'Ton compte est créé',
       conclusion: 'Les paiements notés sur ce compte y arrivent tout seuls.',
       etapes: [
-        { page: '#/tresorerie', cible: ['#first-acc', '#new-acc'], cote: 'dessous', faire: 'clic', titre: 'Nouveau compte', texte: '',
+        { page: '#/tresorerie', cible: ['#first-acc', '#new-acc'], cote: 'dessous', faire: 'clic', titre: 'Nouveau compte', texte: 'Chaque compte a son solde : ta banque, ta caisse, un second compte. SkanFact range chaque règlement sur celui que tu choisis, et le solde suit.',
           action: 'Clique sur {bouton}.', fait: () => !!$('#modal-root .modal'), essai: { clic: true } },
         { cible: '#modal-root .modal', cote: 'gauche', titre: 'Le compte', texte: 'Son nom, sa banque, son RIB — repris de ta fiche société quand elle les porte — et son <b>solde de départ</b> : celui de ton relevé à la date de départ. C\'est lui qui fait que le solde affiché tombera juste sur ton relevé.' },
         { cible: '#modal-root .modal .modal-actions .btn-primary', cote: 'dessus', faire: 'clic',
@@ -1790,6 +1809,395 @@
         { page: '#/tresorerie', avant: onglet('#t-tabs', 'rapprochement'), cible: '#stmt', cote: 'dessous', titre: 'Le solde du relevé',
           texte: 'Recopie le solde de ton relevé bancaire : SkanFact te dit tout de suite si ça tombe juste.', facultatif: true },
         { page: '#/tresorerie', cible: '[data-rec]', cote: 'droite', titre: 'Pointer', texte: 'Coche chaque ligne qui apparaît sur ton relevé. Ce qui reste non coché, c\'est ce qu\'il faut regarder.', facultatif: true }
+      ]
+    });
+
+    // ---------------------------------------------------------------------------------------------
+    // Les gestes qui manquaient (10.14.1, S-02) : « Guide-moi » listait ces pages sans un seul geste à
+    // faire — la page se regardait, rien ne s'y faisait. Chaque geste dit ce que le bouton fait, quand
+    // s'en servir, et ce qui se passe après ; sa fin se prouve par les données (`but`, `preuve`).
+    const suivis = () => (data().catalog || []).filter(c => c && c.tracked).length;
+    const enSerie = () => (data().catalog || []).filter(c => c && c.serialized).length;
+    const cedes = () => (data().assets || []).filter(a => a && a.disposal).length;
+    const virements = () => (data().movements || []).filter(m => m && m.kind === 'virement').length;
+    const deposees = () => (data().socialFilings || []).length;
+    let deposeesAvant = 0;
+
+    visite({
+      id: 'conge', theme: 'personnel', type: 'faire', duree: '1 min', page: '#/paie',
+      titre: 'Noter un congé ou une absence',
+      resume: 'Congé payé, maladie, absence non payée : le bulletin du mois en tient compte tout seul.',
+      mots: ['conge', 'absence', 'maladie', 'vacances', 'solde de conges'],
+      suite: ['bulletin'],
+      si: () => nb('employees') > 0,
+      manque: { texte: 'Il te faut d\'abord un salarié — une absence se note sur quelqu\'un.', visite: 'salarie' },
+      mesure: () => nb('leaves'), but: n0 => nb('leaves') > n0 && aucuneFenetre(),
+      bravo: 'L\'absence est notée',
+      conclusion: 'Le bulletin du mois la reprend tout seul : une absence non payée retire les jours du salaire, un congé payé ne change rien au net mais se retranche du solde. Une absence à cheval sur deux mois se répartit entre les deux bulletins.',
+      etapes: [
+        { page: '#/paie', avant: onglet('#p-tabs', 'conges'), cible: '#new-lv', cote: 'dessous', faire: 'clic',
+          titre: 'Nouvelle absence', texte: 'Tout ce qui fait qu\'un salarié n\'a pas travaillé : congé annuel, maladie, absence autorisée ou non.',
+          action: 'Clique sur <b>« + Congé ou absence »</b>.', fait: () => !!$('#modal-root .modal'), essai: { clic: true } },
+        { cible: '#modal-root .modal select[name="kind"]', cote: 'droite', titre: 'La nature',
+          texte: 'Elle décide de l\'effet sur le salaire : « (non payée) » après le nom veut dire que les jours seront retirés du brut. Si ton cas est différent, « Effet sur le salaire », juste à côté, le change.' },
+        { cible: '#modal-root .modal #lf-hint', cote: 'droite', facultatif: true, titre: 'Le compte des jours',
+          texte: 'Pendant que tu choisis les dates, SkanFact compte les jours ouvrables (sans les jours chômés réglés dans tes barèmes) et te montre le solde de congés <b>avant et après</b> — un solde qui passe sous zéro se voit avant d\'enregistrer.' },
+        { cible: '#modal-root .modal .modal-actions .btn-primary', cote: 'dessus', faire: 'clic',
+          titre: 'Enregistrer', texte: 'L\'absence est enregistrée : elle se retrouve sur le bulletin du mois concerné, et le solde de congés du salarié baisse d\'autant.', action: 'Clique sur <b>« Enregistrer »</b>.', fait: () => aucuneFenetre(), essai: { clic: true } }
+      ]
+    });
+
+    visite({
+      id: 'avance', theme: 'personnel', type: 'faire', duree: '1 min', page: '#/paie',
+      titre: 'Accorder une avance sur salaire',
+      resume: 'Une somme prêtée au salarié, remboursée par une retenue sur chaque bulletin.',
+      mots: ['avance', 'pret', 'acompte salaire', 'retenue'],
+      suite: ['bulletin'],
+      si: () => nb('employees') > 0,
+      manque: { texte: 'Il te faut d\'abord un salarié — une avance se prête à quelqu\'un.', visite: 'salarie' },
+      mesure: () => nb('advances'), but: n0 => nb('advances') > n0 && aucuneFenetre(),
+      bravo: 'L\'avance est enregistrée',
+      conclusion: 'L\'argent sort de ton compte le jour de l\'avance. Ensuite, chaque bulletin retient la mensualité, tout seul, jusqu\'à ce que l\'avance soit remboursée — tu n\'as rien à recalculer.',
+      etapes: [
+        { page: '#/paie', avant: onglet('#p-tabs', 'avances'), cible: '#new-av', cote: 'dessous', faire: 'clic',
+          titre: 'Nouvelle avance', texte: 'À utiliser quand tu donnes de l\'argent à un salarié avant sa paie : c\'est un prêt, pas un salaire.',
+          action: 'Clique sur <b>« + Avance »</b>.', fait: () => !!$('#modal-root .modal'), essai: { clic: true } },
+        { cible: '#modal-root .modal input[name="amount"]', cote: 'droite', faire: 'valeur',
+          titre: 'Le montant prêté', texte: 'Ce que tu lui donnes aujourd\'hui. Il sort du compte choisi plus bas, comme un paiement.',
+          action: 'Tape le montant de l\'avance.', essai: { taper: '300' } },
+        { cible: '#modal-root .modal input[name="monthly"]', cote: 'droite', faire: 'valeur',
+          titre: 'La retenue mensuelle', texte: 'Ce que chaque bulletin retiendra jusqu\'à ce que l\'avance soit remboursée. 300 retenus 100 par mois : trois bulletins.',
+          action: 'Tape la retenue de chaque mois.', essai: { taper: '100' } },
+        { cible: '#modal-root .modal .modal-actions .btn-primary', cote: 'dessus', faire: 'clic',
+          titre: 'Enregistrer', texte: 'L\'avance est notée : le bulletin la retiendra tout seul, mois après mois, jusqu\'à ce qu\'elle soit remboursée.', action: 'Clique sur <b>« Enregistrer »</b>.', fait: () => aucuneFenetre(), essai: { clic: true } }
+      ]
+    });
+
+    visite({
+      id: 'mouvement', theme: 'argent', type: 'faire', duree: '1 min', page: '#/tresorerie',
+      titre: 'Noter une entrée ou une sortie d\'argent',
+      resume: 'Ce qui n\'a ni facture ni achat : frais bancaires, impôt, apport, retrait.',
+      mots: ['mouvement', 'frais bancaires', 'impot', 'apport', 'retrait', 'sortie', 'entree'],
+      si: () => nb('accounts') > 0,
+      manque: { texte: 'Il te faut d\'abord un compte — un mouvement se note sur ta banque ou ta caisse.', visite: 'compte' },
+      mesure: () => nb('movements'), but: n0 => nb('movements') > n0 && aucuneFenetre(),
+      bravo: 'Le mouvement est noté',
+      conclusion: 'Il compte dans le solde du compte, dans la prévision et dans les écritures de ton comptable. Les paiements de tes clients et tes règlements aux fournisseurs, eux, n\'ont jamais à être notés ici : ils remontent tout seuls.',
+      etapes: [
+        { page: '#/tresorerie', avant: onglet('#t-tabs', 'mouvements'), cible: '#new-move', cote: 'dessous', faire: 'clic',
+          titre: 'Nouveau mouvement', texte: 'Un mouvement, c\'est l\'argent qui entre ou sort <b>sans facture</b> : des frais bancaires, un apport, un retrait. Les règlements de tes factures, eux, s\'enregistrent sur la facture, jamais ici.',
+          action: 'Clique sur <b>« + Mouvement »</b>.', fait: () => !!$('#modal-root .modal'), essai: { clic: true } },
+        { cible: '#modal-root .modal select[name="kind"]', cote: 'droite', titre: 'La nature',
+          texte: 'Elle dit si l\'argent entre (↑) ou sort (↓), et range le mouvement au bon compte chez ton comptable. Le montant se tape toujours <b>sans signe</b> : c\'est la nature qui décide du sens.' },
+        { cible: '#modal-root .modal input[name="amount"]', cote: 'droite', faire: 'valeur',
+          titre: 'Le montant', texte: 'Tel qu\'il apparaît sur ton relevé.', action: 'Tape le montant.', essai: { taper: '25' } },
+        { cible: '#modal-root .modal .modal-actions .btn-primary', cote: 'dessus', faire: 'clic',
+          titre: 'Enregistrer', texte: 'Le mouvement rejoint la liste et le solde du compte bouge. Tu pourras le pointer quand il apparaîtra sur ton relevé.', action: 'Clique sur <b>« Enregistrer »</b>.', fait: () => aucuneFenetre(), essai: { clic: true } }
+      ]
+    });
+
+    visite({
+      id: 'virement', theme: 'argent', type: 'faire', duree: '1 min', page: '#/tresorerie',
+      titre: 'Passer de l\'argent d\'un compte à l\'autre',
+      resume: 'Alimenter la caisse depuis la banque, ou l\'inverse : un seul mouvement, deux côtés.',
+      mots: ['virement', 'caisse', 'alimenter', 'transferer', 'entre mes comptes'],
+      si: () => nb('accounts') > 1,
+      manque: { texte: 'Il te faut deux comptes (ta banque et ta caisse, par exemple) — un virement part de l\'un et arrive sur l\'autre.', visite: 'compte' },
+      mesure: () => virements(), but: n0 => virements() > n0 && aucuneFenetre(),
+      bravo: 'Le virement est noté',
+      conclusion: 'Un seul mouvement, deux lignes : une sortie sur le compte de départ, une entrée sur le compte d\'arrivée. Ton résultat ne bouge pas — l\'argent n\'a fait que changer de poche.',
+      etapes: [
+        { page: '#/tresorerie', avant: onglet('#t-tabs', 'mouvements'), cible: '#new-move', cote: 'dessous', faire: 'clic',
+          titre: 'Nouveau mouvement', texte: 'Un virement se note comme un mouvement, avec sa propre nature.',
+          action: 'Clique sur <b>« + Mouvement »</b>.', fait: () => !!$('#modal-root .modal'), essai: { clic: true } },
+        { cible: '#modal-root .modal select[name="kind"]', cote: 'droite', faire: 'valeur', bouton: 'C\'est fait',
+          titre: 'La nature', texte: 'Choisis <b>« Virement entre mes comptes »</b> (le ⇄). Le champ du compte devient alors <b>« Depuis le compte »</b> : celui d\'où l\'argent part.',
+          action: 'Choisis « Virement entre mes comptes ».', fait: () => valeur('#modal-root .modal select[name="kind"]') === 'virement', essai: { choisir: 'virement' } },
+        { cible: '#modal-root .modal select[name="versAccountId"]', cote: 'droite', faire: 'valeur', bouton: 'C\'est fait',
+          titre: 'Le compte qui reçoit', texte: '« Vers le compte » : celui où l\'argent arrive — ta caisse, si tu viens de retirer des espèces.',
+          action: 'Choisis le compte qui reçoit.', fait: () => !!valeur('#modal-root .modal select[name="versAccountId"]'), essai: { choisir: 'premier' } },
+        { cible: '#modal-root .modal input[name="amount"]', cote: 'droite', faire: 'valeur',
+          titre: 'Le montant', texte: 'Tel qu\'il sort de ton relevé. Aucun signe à taper : la nature fait déjà sortir d\'un côté et entrer de l\'autre.', action: 'Tape le montant viré.', essai: { taper: '200' } },
+        { cible: '#modal-root .modal .modal-actions .btn-primary', cote: 'dessus', faire: 'clic',
+          titre: 'Enregistrer', texte: 'Le libellé laissé vide s\'écrira « Virement vers … » avec le nom du compte qui reçoit — l\'invite le montre déjà.', action: 'Clique sur <b>« Enregistrer »</b>.', fait: () => aucuneFenetre(), essai: { clic: true } }
+      ]
+    });
+
+    visite({
+      id: 'mouvement-stock', theme: 'stock', type: 'faire', duree: '1 min', page: '#/stock',
+      titre: 'Noter une casse ou de la matière utilisée',
+      resume: 'Ce qui sort du stock sans être vendu : un chantier, une casse, une perte.',
+      mots: ['stock', 'casse', 'perte', 'consommation', 'chantier', 'mouvement de stock'],
+      si: () => suivis() > 0,
+      manque: { texte: 'Aucun article n\'est suivi en stock — « + Nouvel article suivi », sur la page Stock, en crée un.' },
+      mesure: () => nb('stockAdjustments'), but: n0 => nb('stockAdjustments') > n0 && aucuneFenetre(),
+      bravo: 'Le mouvement de stock est noté',
+      conclusion: 'La quantité sort du stock au coût moyen, et ce coût entre dans tes charges. Les ventes et les achats, eux, font bouger le stock tout seuls — ne les note jamais ici.',
+      etapes: [
+        { page: '#/stock', avant: onglet('#st-tabs', 'mouvements'), cible: '#st-adj', cote: 'dessous', faire: 'clic',
+          titre: 'Nouveau mouvement', texte: 'Pour tout ce qui sort ou entre dans le stock <b>sans facture</b> : de la matière utilisée sur un chantier, une casse, une perte, un comptage.',
+          action: 'Clique sur <b>« + Mouvement »</b>.', fait: () => !!$('#modal-root .modal'), essai: { clic: true } },
+        { cible: '#modal-root .modal select[name="source"]', cote: 'droite', titre: 'La nature',
+          texte: 'Casse et matière utilisée ne font que <b>sortir</b> : tu tapes la quantité sortie, sans signe. Inventaire et ajustement peuvent aller dans les deux sens : là, « -2 » retire et « 3 » ajoute.' },
+        { cible: '#modal-root .modal input[name="qty"]', cote: 'droite', faire: 'valeur',
+          titre: 'La quantité', texte: 'Sous le champ, SkanFact annonce le stock après ce mouvement — avant que tu enregistres.',
+          action: 'Tape la quantité.', essai: { taper: '1' } },
+        { cible: '#modal-root .modal .modal-actions .btn-primary', cote: 'dessus', faire: 'clic',
+          titre: 'Enregistrer', texte: 'Le stock suit tout de suite : la quantité sort au coût moyen, et ce coût entre dans tes charges du mois.', action: 'Clique sur <b>« Enregistrer »</b>.', fait: () => aucuneFenetre(), essai: { clic: true } }
+      ]
+    });
+
+    visite({
+      id: 'inventaire', theme: 'stock', type: 'faire', duree: '2 min', page: '#/stock',
+      titre: 'Faire l\'inventaire',
+      resume: 'Compter ce qu\'il y a vraiment en rayon, et aligner le stock sur ce que tu as compté.',
+      mots: ['inventaire', 'compter', 'ecart', 'stock reel'],
+      si: () => suivis() > 0,
+      manque: { texte: 'Aucun article n\'est suivi en stock — il n\'y a rien à compter.' },
+      mesure: () => nb('stockAdjustments'), preuve: n0 => nb('stockAdjustments') > n0,
+      echec: 'Aucun écart n\'est enregistré — c\'est « Enregistrer », dans la question, qui aligne le stock sur ton comptage.',
+      bravo: 'L\'inventaire est enregistré',
+      conclusion: 'Chaque écart est devenu un mouvement d\'inventaire, daté du jour du comptage. Au 31 décembre, c\'est ce stock-là qui entre dans ton bilan.',
+      etapes: [
+        { page: '#/stock', avant: onglet('#st-tabs', 'inventaire'), cible: '#view .panel', cote: 'dessous', titre: 'L\'inventaire',
+          texte: 'Une fois par an au moins : tu comptes, tu tapes, et SkanFact calcule l\'écart avec ce qu\'il croyait avoir — et ce qu\'il vaut. Un écart n\'est pas une faute : c\'est une casse oubliée ou une erreur de saisie.' },
+        { cible: '#view input.inv-in', cote: 'gauche', faire: 'valeur',
+          titre: 'Ce que tu as compté', texte: 'Tape la quantité trouvée en rayon. Une case laissée vide veut dire « pas compté » — l\'article ne bouge pas.',
+          action: 'Tape la quantité comptée d\'un article.', essai: { taper: '0' } },
+        { cible: '#inv-apply', cote: 'dessous', faire: 'clic',
+          titre: 'Enregistrer les écarts', texte: 'Le bouton dit combien d\'écarts il va enregistrer, et la ligne à côté ce qu\'ils changent à la valeur du stock. Rien ne bouge avant ton clic, et une question te redemande confirmation.',
+          action: 'Clique sur le bouton d\'enregistrement.', fait: () => !!$('#modal-root .modal'), essai: { clic: true } },
+        { si: () => !!$('#modal-root .modal #ok'), cible: '#modal-root .modal #ok', cote: 'dessus', faire: 'clic',
+          titre: 'Confirmer', texte: 'Le stock est aligné sur ton comptage ; chaque écart devient un mouvement que tu retrouveras dans l\'onglet Mouvements.',
+          action: 'Clique sur <b>« Enregistrer »</b>.', fait: () => aucuneFenetre(), essai: { clic: true } }
+      ]
+    });
+
+    visite({
+      id: 'numeros-serie', theme: 'stock', type: 'faire', duree: '1 min', page: '#/stock',
+      titre: 'Entrer des numéros de série',
+      resume: 'Qui a quelle machine, et jusqu\'à quand elle est garantie.',
+      mots: ['numero de serie', 'serie', 'garantie', 'materiel'],
+      si: () => enSerie() > 0,
+      manque: { texte: 'Aucun article n\'est suivi par numéro de série — coche « Suivi par numéro de série » sur sa fiche, au Catalogue.' },
+      mesure: () => nb('serials'), but: n0 => nb('serials') > n0 && aucuneFenetre(),
+      bravo: 'Les numéros sont enregistrés',
+      conclusion: 'Ils sont en stock. Quand tu les livres (« Numéros de série livrés… », dans le menu d\'une facture ou d\'un bon de livraison), ils passent chez le client et leur garantie commence. Chaque numéro est une unité sur l\'étagère : s\'il n\'y a pas d\'achat pour la faire entrer, le panneau « Les deux comptes ne disent pas la même chose » te le signale — saisis l\'achat, le stock suivra.',
+      etapes: [
+        { page: '#/stock', avant: onglet('#st-tabs', 'series'), cible: '#se-add', cote: 'dessous', faire: 'clic',
+          titre: 'Entrée de numéros', texte: 'À faire quand la marchandise arrive : chaque unité a son numéro, celui qu\'on lit sur l\'étiquette.',
+          action: 'Clique sur <b>« + Entrée de numéros »</b>.', fait: () => !!$('#modal-root .modal'), essai: { clic: true } },
+        { cible: '#modal-root .modal [data-combo="itemId"]', cote: 'droite', titre: 'L\'article',
+          texte: 'La fenêtre propose le premier article suivi par numéro : vérifie que c\'est bien celui que tu reçois, sinon choisis-le dans la liste. Sa durée de garantie, réglée sur sa fiche, part avec chaque numéro.' },
+        { cible: '#modal-root .modal textarea[name="list"]', cote: 'droite', faire: 'valeur',
+          titre: 'Les numéros', texte: 'Un par ligne : colle-les depuis un tableur ou le bon du fournisseur. Un numéro déjà connu pour cet article est ignoré — la ligne sous le cadre le dit —, pour ne jamais compter deux fois la même machine.',
+          action: 'Tape ou colle un numéro.', essai: { taper: 'SN-2026-0001' } },
+        { cible: '#modal-root .modal .modal-actions .btn-primary', cote: 'dessus', faire: 'clic',
+          titre: 'Enregistrer', texte: 'Les numéros sont en stock : la garantie ne commence que le jour où tu les livres à un client.', action: 'Clique sur <b>« Enregistrer »</b>.', fait: () => aucuneFenetre(), essai: { clic: true } }
+      ]
+    });
+
+    visite({
+      id: 'texte-predefini', theme: 'fichiers', type: 'faire', duree: '1 min', page: '#/catalogue',
+      titre: 'Écrire un texte qu\'on réutilise',
+      resume: 'Conditions de garantie, modalités, mentions : écrites une fois, insérées d\'un clic dans les notes.',
+      mots: ['texte predefini', 'conditions', 'mentions', 'notes', 'garantie'],
+      mesure: () => nb('snippets'), but: n0 => nb('snippets') > n0 && aucuneFenetre(),
+      bravo: 'Ton texte est enregistré',
+      conclusion: 'Dans un devis ou une facture, il se choisit au-dessus des notes : il s\'ajoute à ce qui y est déjà écrit.',
+      etapes: [
+        { page: '#/catalogue', avant: onglet('#cat-tabs', 'textes'), cible: '#new-snip', cote: 'dessous', faire: 'clic',
+          titre: 'Nouveau texte', texte: 'Un texte prédéfini, c\'est une phrase que tu tapes souvent : tes conditions de garantie, un délai de livraison, une mention. Tu l\'écris une fois, tu l\'insères d\'un clic.',
+          action: 'Clique sur <b>« + Nouveau texte »</b>.', fait: () => !!$('#modal-root .modal'), essai: { clic: true } },
+        { cible: '#modal-root .modal input[name="name"]', cote: 'droite', faire: 'valeur',
+          titre: 'Son nom', texte: 'Celui qui s\'affiche dans la liste où tu le choisis — il ne s\'imprime pas.',
+          action: 'Donne-lui un nom.', essai: { taper: 'Garantie un an' } },
+        { cible: '#modal-root .modal textarea[name="text"]', cote: 'droite', faire: 'valeur',
+          titre: 'Le texte', texte: 'Ce qui s\'imprimera, mot pour mot.',
+          action: 'Écris le texte.', essai: { taper: 'Pièces et main-d\'œuvre garanties un an.' } },
+        { cible: '#modal-root .modal .modal-actions .btn-primary', cote: 'dessus', faire: 'clic',
+          titre: 'Enregistrer', texte: 'Le texte est rangé : dans un devis ou une facture, « Insérer un texte prédéfini… » l\'ajoute aux notes.', action: 'Clique sur <b>« Enregistrer »</b>.', fait: () => aucuneFenetre(), essai: { clic: true } }
+      ]
+    });
+
+    visite({
+      id: 'contrat-recurrent', theme: 'ventes', type: 'faire', duree: '2 min', page: '#/contrats',
+      titre: 'Facturer chaque mois sans y penser',
+      resume: 'Un contrat récurrent prépare la même facture à chaque échéance : maintenance, loyer, abonnement.',
+      mots: ['contrat', 'recurrent', 'abonnement', 'maintenance', 'chaque mois', 'mensuel'],
+      si: () => nb('clients') > 0,
+      manque: { texte: 'Il te faut d\'abord un client — un contrat se passe avec quelqu\'un.', visite: 'premier-client' },
+      mesure: () => nb('recurring'), but: n0 => nb('recurring') > n0 && aucuneFenetre(),
+      bravo: 'Ton contrat est en place',
+      conclusion: 'À chaque échéance, la facture est préparée <b>en brouillon</b> : tu la relis, puis tu l\'émets. Rien ne part tout seul chez ton client.',
+      etapes: [
+        { page: '#/contrats', cible: '.page-head #new', cote: 'dessous', faire: 'clic',
+          titre: 'Nouveau contrat', texte: 'À utiliser pour tout ce que tu factures à l\'identique à intervalles réguliers.',
+          action: 'Clique sur <b>« + Nouveau contrat »</b>.', fait: () => !!$('#modal-root .modal'), essai: { clic: true } },
+        { cible: [combo('clientId'), '#modal-root .modal [data-combo="clientId"]'], cote: 'droite', faire: 'valeur', bouton: 'C\'est fait',
+          titre: 'Le client', texte: 'Sa devise et sa retenue à la source sont reprises sur le contrat.',
+          action: 'Choisis le client.', fait: () => !!valeur('#modal-root .modal input[name="clientId"]'), essai: { combo: 1 } },
+        etapeTaux('#modal-root .modal #rf-rate'),
+        { cible: '#modal-root .modal select[name="every"]', cote: 'droite', titre: 'La période',
+          texte: 'Tous les mois, tous les trimestres ou tous les ans. Juste en dessous, « Jour du mois » dit quel jour la facture est préparée, et « Prochaine facture » la date de la première.' },
+        { cible: '#modal-root .modal input[name="subject"]', cote: 'droite', faire: 'valeur', bouton: 'C\'est fait',
+          titre: 'L\'objet des factures', texte: 'Il s\'imprime sur chaque facture du contrat. Écris <b>{mois}</b> où tu veux voir le mois facturé : « Maintenance — {mois} » devient « Maintenance — octobre 2026 » sur la facture d\'octobre.',
+          action: 'Écris l\'objet.', fait: () => !!String(valeur('#modal-root .modal input[name="subject"]') || '').trim(), essai: { taper: 'Maintenance — {mois}' } },
+        { cible: '#modal-root .modal #rl tr:first-child input[data-k="label"]', cote: 'droite', faire: 'valeur', bouton: 'C\'est fait',
+          titre: 'Ce que le contrat facture', texte: 'Une ligne par prestation, comme sur un devis. Elle revient à l\'identique sur chaque facture ; « + Ligne », sous le tableau, en ajoute une autre.',
+          action: 'Écris la désignation.', fait: () => !!String(valeur('#modal-root .modal #rl tr:first-child input[data-k="label"]') || '').trim(), essai: { taper: 'Maintenance mensuelle' } },
+        { cible: '#modal-root .modal #rl tr:first-child input[data-k="unitPrice"]', cote: 'droite', faire: 'valeur', bouton: 'C\'est fait',
+          titre: 'Le prix de chaque échéance', texte: 'Le prix hors taxes <b>d\'une</b> facture, pas celui de l\'année. Le montant par facture, TVA et timbre compris, s\'affiche sous le tableau pendant que tu tapes.',
+          action: 'Écris le prix.', fait: () => Number(valeur('#modal-root .modal #rl tr:first-child input[data-k="unitPrice"]')) > 0, essai: { taper: '250' } },
+        { cible: '#modal-root .modal .modal-actions .btn-primary', cote: 'dessus', faire: 'clic',
+          titre: 'Enregistrer', texte: 'Le contrat est rangé et <b>actif</b> : la première facture sera préparée à la date de « Prochaine facture ». Rien n\'est encore facturé aujourd\'hui.',
+          action: 'Clique sur <b>« Enregistrer »</b>.', fait: () => aucuneFenetre(), essai: { clic: true } }
+      ]
+    });
+
+    visite({
+      id: 'proforma', theme: 'ventes', type: 'faire', duree: '2 min', page: '#/autres/proforma', pages: ['autres'],
+      titre: 'Faire une proforma',
+      resume: 'Un prix ferme sans être une facture : pour un dossier de banque ou d\'administration.',
+      mots: ['proforma', 'pro forma', 'dossier', 'banque', 'administration', 'bon de commande', 'bon de livraison'],
+      mesure: () => nbType('proforma'), preuve: n0 => nbType('proforma') > n0,
+      echec: 'La proforma n\'a pas été enregistrée : sans « Enregistrer », elle n\'a ni numéro ni place dans la liste.',
+      bravo: 'Ta proforma est enregistrée',
+      conclusion: 'Elle a son numéro (PRO-…) et reste modifiable. Elle n\'entre ni dans ton chiffre d\'affaires ni dans ta TVA : quand le client confirme, « Transformer » en fait une facture, sans rien retaper.',
+      etapes: [
+        { page: '#/autres/proforma', avant: onglet('#a-tabs', 'proforma'), cible: ['.vide-utile .btn-primary', '.page-head #new'], cote: 'dessous', faire: 'clic',
+          titre: 'Nouvelle proforma', texte: 'Une proforma est un devis <b>ferme</b> : ton client la joint à un dossier de banque ou d\'administration pour obtenir le budget. Elle n\'est pas une facture. Les bons de commande, de livraison et les contrats à signer se font de la même façon, chacun dans son onglet.',
+          action: 'Clique sur {bouton}.', fait: () => /^#\/doc\/new\/proforma/.test(hash()), essai: { clic: true } },
+        { cible: combo('clientId'), cote: 'droite', faire: 'valeur', bouton: 'C\'est fait',
+          titre: 'Le client', texte: 'Son nom, son adresse et son matricule s\'impriment sur la pièce : c\'est à lui qu\'elle est adressée.', action: 'Choisis le client dans la liste.', fait: () => !!valeur('input[name="clientId"]'), essai: { combo: 1 } },
+        etapeTaux('#rate-field'),
+        { cible: '#lines tr:first-child input[data-k="label"]', cote: 'dessous', faire: 'valeur',
+          titre: 'Ce que tu proposes', texte: 'Les lignes se remplissent comme sur un devis : désignation, quantité, prix hors taxe.',
+          action: 'Écris la désignation de la première ligne.', essai: { taper: 'Fourniture et pose' } },
+        { cible: '#lines tr:first-child input[data-k="unitPrice"]', cote: 'dessous', faire: 'valeur',
+          titre: 'Le prix ferme', texte: 'C\'est tout l\'intérêt d\'une proforma : le prix que tu t\'engages à tenir, <b>hors TVA</b>. La TVA et le total se calculent tout seuls, comme sur un devis.',
+          action: 'Tape le prix unitaire HT.', fait: () => Number(valeur('#lines tr:first-child input[data-k="unitPrice"]')) > 0, essai: { taper: '350' } },
+        { cible: '#save', cote: 'dessous', faire: 'clic',
+          titre: 'Enregistrer', texte: 'Elle reçoit son numéro (PRO-…) à l\'enregistrement, et reste modifiable ensuite : ce n\'est pas une facture.',
+          action: 'Clique sur <b>« Enregistrer »</b>.', fait: () => /^#\/doc\/(?!new)/.test(hash()), essai: { clic: true } }
+      ]
+    });
+
+    visite({
+      id: 'ceder-bien', theme: 'stock', type: 'faire', duree: '1 min', page: () => ctx.premier('immo'), pages: ['immos', 'immo'],
+      titre: 'Vendre ou mettre au rebut un bien',
+      resume: 'Il sort de ton patrimoine : son amortissement s\'arrête, et la plus ou moins-value se calcule.',
+      mots: ['ceder', 'cession', 'vendre un bien', 'rebut', 'sortie', 'plus-value'],
+      si: () => (data().assets || []).some(a => a && !a.disposal),
+      manque: { texte: 'Aucun bien n\'est encore à ton actif.', visite: 'immobilisation' },
+      mesure: () => cedes(), but: n0 => cedes() > n0 && aucuneFenetre(),
+      bravo: 'Le bien est sorti de ton patrimoine',
+      conclusion: 'Son amortissement s\'arrête au jour de la sortie. Le prix de vente, lui, arrive par la facture que tu émets ou le versement que tu reçois : SkanFact ne l\'invente jamais.',
+      etapes: [
+        { page: () => ctx.premier('immo'), cible: '#dispose', cote: 'dessous', faire: 'clic',
+          titre: 'Sortir du patrimoine', texte: 'Quand tu vends le bien, qu\'il est volé ou qu\'il ne sert plus.',
+          action: 'Clique sur <b>« Sortir du patrimoine »</b>.', fait: () => !!$('#modal-root .modal'), essai: { clic: true } },
+        { cible: '#modal-root .modal', cote: 'gauche', titre: 'La sortie',
+          texte: 'La date, le prix hors taxe (zéro pour une mise au rebut) et le motif. SkanFact annonce la <b>plus-value ou la moins-value</b> — le prix contre ce que le bien vaut encore — avant que tu enregistres.' },
+        { cible: '#modal-root .modal .modal-actions .btn-primary', cote: 'dessus', faire: 'clic',
+          titre: 'Enregistrer la sortie', texte: 'Une sortie se modifie ou s\'annule ensuite depuis la fiche du bien.',
+          action: 'Clique sur <b>« Enregistrer la sortie »</b>.', fait: () => fenetre('sans prix') || aucuneFenetre(), essai: { clic: true } },
+        // Sans prix, SkanFact demande si c'est bien un rebut : la question passe PAR-DESSUS la fenêtre,
+        // et son bouton porte le même identifiant que celui du dessous — on vise la fenêtre du dessus, et
+        // seulement si c'est la question (sinon, après « Annuler », l'anneau glisserait sur le bouton d'en dessous).
+        { si: () => fenetre('sans prix'), cible: '#modal-root > :last-child:not(:has([name="reason"])) #ok', cote: 'dessus', faire: 'clic',
+          titre: 'Sans prix ?', texte: 'Tu n\'as pas tapé de prix : SkanFact vérifie que le bien sort <b>sans être vendu</b> (mis au rebut, volé), et te redit la moins-value. Si tu l\'as vendu, « Annuler » te ramène au prix.',
+          action: 'Clique sur <b>« Oui, sans prix »</b> si c\'est un rebut.', fait: () => aucuneFenetre(), essai: { clic: true } }
+      ]
+    });
+
+    visite({
+      id: 'deposer-cnss', theme: 'personnel', type: 'faire', duree: '1 min', page: '#/paie',
+      titre: 'Préparer la déclaration CNSS du trimestre',
+      resume: 'Les salaires du trimestre, salarié par salarié, prêts à recopier.',
+      mots: ['cnss', 'declaration', 'trimestre', 'cotisations', 'deposer'],
+      si: () => bulletins() > 0,
+      manque: { texte: 'Il te faut d\'abord des bulletins — la déclaration les additionne.', visite: 'bulletin' },
+      mesure: () => deposees(), but: n0 => deposees() > n0,
+      bravo: 'La déclaration est notée déposée',
+      conclusion: 'SkanFact ne dépose rien et ne se connecte à aucune administration : « Marquer déposée » est ton pense-bête, pour que le rappel s\'arrête. Si tu t\'es trompé : « Annuler » dans le bandeau du bas, ou plus tard choisis ce trimestre dans la liste de « Déclaration CNSS » — son bouton devient « Retirer « déposée » ».',
+      etapes: [
+        { page: '#/paie', avant: onglet('#p-tabs', 'declarations'), cible: '#view .panel', cote: 'dessous', titre: 'Ce qui reste à déposer',
+          texte: 'En tête, chaque déclaration que les bulletins rendent due, avec son échéance et son montant. Une échéance <b>dépassée</b> est en orange : c\'est elle qu\'il faut déposer en premier.' },
+        { cible: ['#view .panel:has(#d-quarter)', '#d-quarter'], cote: 'dessus', titre: 'Le tableau à recopier',
+          texte: 'Choisis le trimestre dans la liste : un salarié par ligne, son salaire soumis (l\'assiette), sa part, la tienne et l\'accident du travail. Un matricule CNSS manquant est nommé sous le tableau.' },
+        { cible: '#cn-csv', cote: 'dessous', facultatif: true, titre: 'Pour recopier',
+          texte: '« Exporter en CSV » te donne le tableau à recopier sur le portail de la CNSS, ou à envoyer à ton comptable.' },
+        { avant: () => { deposeesAvant = deposees(); }, cible: ['#view [data-file]:not([disabled])', '#cn-file:not([disabled])', '#cn-file'], cote: 'dessus', faire: 'clic',
+          titre: 'Marquer déposée', texte: 'Une fois la déclaration déposée sur le portail. Le bouton d\'un trimestre qui n\'est pas terminé est éteint : on ne déclare pas un trimestre qui peut encore changer — c\'est pourquoi celui qui est dû se marque depuis « À déposer ».',
+          action: 'Clique sur <b>« Marquer déposée »</b> si tu l\'as déposée.', fait: () => deposees() > deposeesAvant, essai: { clic: true } }
+      ]
+    });
+
+    visite({
+      id: 'document-rh', theme: 'personnel', type: 'faire', duree: '1 min', page: () => ctx.premier('salarie'), pages: ['paie', 'salarie'],
+      titre: 'Établir une attestation de travail',
+      resume: 'Attestation, certificat de travail, solde de tout compte : prêts à signer, en PDF.',
+      mots: ['attestation', 'certificat de travail', 'solde de tout compte', 'document salarie'],
+      si: () => nb('employees') > 0,
+      manque: { texte: 'Il te faut d\'abord un salarié.', visite: 'salarie' },
+      bravo: 'Tu sais établir un document du personnel',
+      conclusion: 'Le PDF porte la raison sociale et le matricule de ta société, et le nom du gérant qui signe s\'il est renseigné dans Paramètres. Un certificat de travail ne dit que les dates et l\'emploi — jamais le motif du départ.',
+      etapes: [
+        { page: () => ctx.premier('salarie'), cible: '#hr-doc', cote: 'dessous', faire: 'clic',
+          titre: 'Établir un document', texte: 'Sur la fiche du salarié : le document porte ses informations.',
+          action: 'Clique sur <b>« Établir un document… »</b>.', fait: () => !!$('#modal-root .modal'), essai: { clic: true } },
+        { cible: '#modal-root .modal select[name="kind"]', cote: 'droite', titre: 'Le document',
+          texte: 'L\'attestation dit que la personne travaille chez toi ; le certificat, qu\'elle y a travaillé ; le solde de tout compte, ce que tu lui verses à son départ.' },
+        { cible: '#modal-root .modal input[name="withSalary"]', cote: 'droite', facultatif: true, titre: 'Le salaire',
+          texte: 'Il ne figure sur une attestation que si tu le coches : c\'est une information personnelle du salarié.' },
+        { cible: '#modal-root .modal .modal-actions .btn-primary', cote: 'dessus', titre: 'Exporter en PDF',
+          texte: 'SkanFact prépare le PDF à ton en-tête et te demande <b>où l\'enregistrer</b>. Il ne garde pas de copie : pour en refaire un, reviens sur cette fiche. Imprime-le, signe-le et appose ton cachet avant de le remettre.' }
+      ]
+    });
+
+    visite({
+      id: 'lire-tva', theme: 'compta', type: 'faire', duree: '2 min', page: '#/compta',
+      titre: 'Lire ma TVA du mois',
+      resume: 'Ce que tu as collecté, ce que tu récupères, et ce qui reste à payer.',
+      mots: ['tva', 'tva a payer', 'declaration', 'credit de tva', 'collectee', 'deductible'],
+      bravo: 'Tu sais lire ta TVA',
+      conclusion: 'Recopie ces chiffres sur ta déclaration, ou envoie-les à ton comptable avec le paquet du mois. Un crédit du mois se reporte tout seul sur le suivant.',
+      etapes: [
+        { page: '#/compta', avant: onglet('#c-tabs', 'tva'), cible: '#view .panel', cote: 'dessous', titre: 'La déclaration du mois',
+          texte: 'La TVA de tes factures (collectée) moins celle de tes achats (déductible) et le crédit du mois d\'avant : ce qui reste, tu le paies. Si c\'est négatif, c\'est un <b>crédit</b> qui passe au mois suivant.' },
+        { page: '#/compta', cible: ['#view select', '#view .filters'], cote: 'dessous', facultatif: true, titre: 'Le mois',
+          texte: 'Une déclaration porte sur UN mois : additionner les mois donnerait un chiffre faux à cause des reports.' }
+      ]
+    });
+
+    visite({
+      id: 'lire-seuil', theme: 'pilotage', type: 'faire', duree: '2 min', page: '#/marges',
+      titre: 'Savoir à partir de quand je gagne de l\'argent',
+      resume: 'Le seuil de rentabilité : le chiffre d\'affaires qui paie tes charges fixes.',
+      mots: ['seuil de rentabilite', 'point mort', 'charges fixes', 'rentable'],
+      bravo: 'Tu sais lire ton seuil de rentabilité',
+      conclusion: 'Classe chaque charge en fixe ou variable une fois : le seuil se recalcule tout seul, mois après mois.',
+      etapes: [
+        { page: '#/marges', avant: onglet('#mg-tabs', 'seuil'), cible: '#view .panel', cote: 'dessous', titre: 'Le seuil',
+          texte: 'Tes charges fixes (loyer, salaires, amortissements) divisées par ta marge sur chaque dinar vendu : c\'est le chiffre d\'affaires à partir duquel tu gagnes de l\'argent.' },
+        { page: '#/marges', cible: '#view', cote: 'dessous', facultatif: true, titre: 'Fixe ou variable ?',
+          texte: 'Une charge fixe se paie même sans rien vendre ; une variable suit tes ventes. Le classement se règle ici, catégorie par catégorie.' }
+      ]
+    });
+
+    visite({
+      id: 'lire-garanties', theme: 'stock', type: 'faire', duree: '1 min', page: '#/garanties',
+      titre: 'Voir les garanties qui se terminent',
+      resume: 'Une fin de garantie est une occasion de proposer un contrat.',
+      mots: ['garantie', 'fin de garantie', 'contrat de maintenance', 'parc'],
+      bravo: 'Tu sais suivre tes garanties',
+      conclusion: '« Proposer un contrat » ouvre un devis au nom du client : c\'est le moment de lui proposer la maintenance.',
+      etapes: [
+        { page: '#/garanties', cible: '#g-days', cote: 'dessous', titre: 'L\'horizon',
+          texte: 'Les garanties qui se terminent dans les 30, 60, 90 jours… Choisis jusqu\'où tu regardes.' },
+        { page: '#/garanties', cible: '#view .panel', cote: 'dessous', facultatif: true, titre: 'Qui, quoi, quand',
+          texte: 'Le client, la machine et son numéro, et la date de fin. Chaque ligne porte <b>« Proposer un contrat »</b>.' }
       ]
     });
 

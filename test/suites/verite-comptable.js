@@ -1429,6 +1429,10 @@ t('10.14.0 : le formulaire d\'un mouvement propose le virement entre comptes, et
   assert.ok(/id="mf-cp" \$\{m\.kind === 'virement' \? 'hidden' : ''\}/.test(f) && /id="mf-vers" \$\{m\.kind === 'virement' \? '' : 'hidden'\}/.test(f));
   assert.ok(/\$\('#mf-cp', root\)\.hidden = vir; \$\('#mf-vers', root\)\.hidden = !vir;/.test(f), 'changer de nature n\'échange pas les deux champs');
   assert.ok(/kindSel\.addEventListener\('change', accorder\);/.test(f) && /texteCompte\.data = vir \? 'Depuis le compte ' : 'Compte ';/.test(f), 'le compte d\'un virement ne dit pas qu\'il est celui du départ');
+  // Le compte de départ ne se propose pas comme arrivée : on ne propose pas un choix qui sera refusé
+  // (10.14.1, vu à la souris : la liste « Vers le compte » offrait le compte qu'on venait de choisir).
+  assert.ok(/o\.hidden = !!o\.value && o\.value === depuis/.test(f), 'la liste d\'arrivée propose encore le compte de départ');
+  assert.ok(/\$\('\[name=accountId\]', root\)\.addEventListener\('change', accorder\)/.test(f), 'changer le compte de départ ne met pas à jour la liste d\'arrivée');
   // Un virement sans compte d'arrivée, ou vers lui-même, est refusé en montrant le champ.
   assert.ok(/if \(v\.kind === 'virement' && !v\.versAccountId\) return refus\(/.test(f));
   assert.ok(/if \(v\.kind === 'virement' && v\.versAccountId === v\.accountId\) return refus\(/.test(f));

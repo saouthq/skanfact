@@ -1351,9 +1351,12 @@
       <div class="cal-pop" hidden></div>
     </div>`;
   }
+  // `o.obligatoire` pose l'étoile (règle 7.20.0) : un champ que l'enregistrement refuse vide le DIT.
   function dateFieldHtml(label, name, value, o) {
-    return `<div class="field">${label}${dateInput(name, value, o)}</div>`;
+    return `<div class="field${o && o.obligatoire ? ' obligatoire' : ''}">${label}${dateInput(name, value, o)}</div>`;
   }
+  // Le même geste pour un champ bâti par `field()` : on ne recopie plus la chaîne `.replace(…)`.
+  const obligatoire = html => html.replace('class="field"', 'class="field obligatoire"');
   // Un champ date est un COUPLE : un <input type=hidden> nommé et un champ texte visible dans le
   // même `.datefield` (règle apprise en 3.0.0). Le mettre à jour depuis du code demande de toucher
   // les deux — sinon la valeur enregistrée change et l'écran continue d'afficher l'ancienne.
@@ -3414,8 +3417,15 @@
   // `computeTotals` allait lire le client, chaque pièce déjà partie chez lui se réécrirait.
   function applyClientDefaults(doc, clientId) {
     const c = clientById(clientId); if (!c) return;
-    if (c.lang) doc.lang = c.lang;
-    if (c.currency) doc.currency = c.currency;
+    // 10.14.1 — un client SANS langue ni devise propres est un client aux réglages de la société :
+    // passer de Nova Digital (anglais, euros) à la Clinique dentaire (rien de réglé) laissait le devis
+    // en anglais et en euros, parce que seul un réglage présent était posé. Vu à la souris dans la
+    // visite « Faire un devis ». Le client DÉCIDE, qu'il ait un réglage ou qu'il prenne celui de la
+    // société — et le taux d'une autre devise ne survit pas au retour au dinar.
+    doc.lang = c.lang || company().defaultLang || 'fr';
+    const devise = c.currency || company().currency;
+    if (devise !== doc.currency) doc.exchangeRate = '';
+    doc.currency = devise;
     // L'exonération de timbre (9.1.1) : on décoche la case du document, sans la verrouiller. Le
     // timbre reste réglable pièce par pièce — l'exonération est un défaut, pas un interdit, et
     // c'est le comptable qui tranche les cas (À VÉRIFIER).
@@ -3984,6 +3994,10 @@
         const caseTimbre = $('input[name=applyStamp]', head);
         if (caseTimbre) caseTimbre.checked = doc.applyStamp !== false;
         $('select[name=lang]', head).value = doc.lang || 'fr'; $('select[name=currency]', head).value = docCur(doc);
+        // Le taux suit la devise dans le champ aussi : laissé à l'écran, le prochain formValues le
+        // réécrirait dans la pièce.
+        const champTaux = $('input[name=exchangeRate]', head);
+        if (champTaux) champTaux.value = doc.exchangeRate || '';
         cur = docCur(doc); poserDevise(head, cur); setRateLabel(); direDevise();
         // les affaires proposées suivent le client : celles d'un autre client n'ont rien à faire ici.
         // Et celle qui était choisie PART avec l'ancien client (10.12.0) : absente de la liste, elle
@@ -4925,8 +4939,8 @@
     modal(`<h2>${titre}</h2><p class="small muted">${sous}</p>
       ${rend ? '<p class="small">L\'argent sort de ton compte : la Trésorerie le verra partir, et l\'écriture du comptable passe au débit du client. Ce remboursement se rattache à cette facture, qui redevient simplement réglée.</p>' : ''}
       <form id="pf2" class="grid-2" data-devise="${h(cur)}">
-        ${dateFieldHtml(lbl('Date', 'ed.payDate'), 'date', p0 ? p0.date : C.today())}
-        ${field(lbl(`${rend ? 'Montant rendu' : 'Montant'} (${h(cur)})`, 'ed.payAmount'), 'amount', p0 ? Math.abs(Number(p0.amount) || 0) : (rend ? aRendre : reste), 'number', 'step="0.001" min="0" class="num"')}
+        ${dateFieldHtml(lbl('Date', 'ed.payDate'), 'date', p0 ? p0.date : C.today(), { obligatoire: true })}
+        ${obligatoire(field(lbl(`${rend ? 'Montant rendu' : 'Montant'} (${h(cur)})`, 'ed.payAmount'), 'amount', p0 ? Math.abs(Number(p0.amount) || 0) : (rend ? aRendre : reste), 'number', 'step="0.001" min="0" class="num"'))}
         ${champTauxReglement(inv, p0, 'ed.payRate')}
         <label class="field">${lbl('Mode', 'ed.payMethod')}<select name="method">${C.PAYMENT_METHODS.map(m => `<option value="${m[0]}" ${p0 && p0.method === m[0] ? 'selected' : ''}>${m[1]}</option>`).join('')}</select></label>
         ${accountFieldHtml(p0 && p0.accountId)}
@@ -5628,7 +5642,10 @@
         run: () => releveForm(c.id) });
       return a2;
     });
-    if ($('#go-rel')) $('#go-rel').onclick = () => navigate('#/relances');
+    // 10.14.1 — le bouton de la fiche d'UN client ouvrait les relances de TOUTE l'entreprise : ses
+    // factures en retard noyées dans celles des autres. La recherche des Relances filtre tout l'écran
+    // (7.18.0) ; elle part au nom du client, visible dans son champ, et s'efface comme une autre.
+    if ($('#go-rel')) $('#go-rel').onclick = () => { relState.q = c.name || ''; relState.page = 1; navigate('#/relances'); };
     // Ces notes s'enregistrent au fil de la frappe. C'est agréable, mais c'était surprenant tant que
     // rien ne le disait — la fenêtre de modification, elle, attend « Enregistrer » (audit).
     let notesTimer = null;
@@ -5709,7 +5726,7 @@
             ${field(lbl(`Coût unitaire du départ (${h(C.normCurrency(company().currency))})`, 'stk.initialCost'), 'initialCost', it.initialCost || 0, 'number', 'step="0.001" min="0" class="num"' + (already && already.moves.length > 1 ? ' disabled' : ''))}
           </div>
           ${already && already.moves.length > 1
-            ? `<p class="small muted mt">Stock actuel : <b>${already.qty} ${h(already.unit)}</b> au coût moyen de ${C.money(already.cmp, company().currency)}. Le stock de départ n'est plus modifiable ici — des mouvements s'y appuient. Passe par un ajustement sur la page Stock.</p>`
+            ? `<p class="small muted mt">Stock actuel : <b>${pct(already.qty)}${already.unit ? ' ' + h(C.uniteAccordee(already.qty, already.unit)) : ''}</b> au coût moyen de ${C.money(already.cmp, company().currency)}. Le stock de départ n'est plus modifiable ici — des mouvements s'y appuient. Passe par un ajustement sur la page Stock.</p>`
             : '<p class="small muted mt">Ce que tu as en rayon aujourd\'hui, avant que SkanFact ne commence à compter. Les achats et les ventes s\'y ajoutent tout seuls ensuite.</p>'}
         </div>
       </form>
@@ -5950,7 +5967,7 @@
         if (!c.tracked) return '<span class="muted">—</span>';
         const st = C.stockOf(data, c.id);
         const cls = st.negative ? 'warn-text' : st.low ? 'warn-text' : '';
-        return `<span class="${cls}"><strong>${pct(st.qty)}</strong>${c.unit ? ' ' + h(c.unit) : ''}</span>${st.negative ? '<div class="small warn-text">négatif</div>' : st.low ? '<div class="small warn-text">sous le seuil</div>' : ''}`;
+        return `<span class="${cls}"><strong>${pct(st.qty)}</strong>${c.unit ? ' ' + h(C.uniteAccordee(st.qty, c.unit)) : ''}</span>${st.negative ? '<div class="small warn-text">négatif</div>' : st.low ? '<div class="small warn-text">sous le seuil</div>' : ''}`;
       } }
     ];
     const draw = dansUnLot(drawList('#list-wrap', catalogState.presta, prestaCols, () => data.catalog.slice(), {
@@ -6256,7 +6273,7 @@
         <label class="field">${lbl('Période', 'contrat.periode')}<select name="every">${C.PERIODS.map(p => `<option value="${p[0]}" ${p[0] === r.every ? 'selected' : ''}>${p[1]}</option>`).join('')}</select></label>
         <label class="field span-2 obligatoire">${lbl('Objet des factures', 'contrat.objet')}<input type="text" name="subject" value="${h(r.subject)}" placeholder="Entretien des portes — {mois}"></label>
         ${field(lbl('Jour du mois', 'contrat.jour'), 'day', r.day || 1, 'number', 'min="1" max="31" class="num"')}
-        ${dateFieldHtml(lbl('Prochaine facture', 'contrat.next'), 'nextDate', r.nextDate || C.today(), { quick: true })}
+        ${dateFieldHtml(lbl('Prochaine facture', 'contrat.next'), 'nextDate', r.nextDate || C.today(), { quick: true, obligatoire: true })}
         <label class="field">${lbl('Retenue à la source', 'ed.withholding')}${withholdingSelect('withholdingRate', r.withholdingRate)}</label>
         ${field(lbl('Remise (%)', 'ed.discount'), 'discountRate', r.discountRate || 0, 'number', 'min="0" max="100" step="0.5" class="num"')}
         <label class="field">${lbl('Devise des factures', 'contrat.devise')}<select name="currency">${C.CURRENCIES.map(x => `<option value="${x}" ${x === cur ? 'selected' : ''}>${h(C.libelleDevise(x))}</option>`).join('')}</select></label>
@@ -6686,7 +6703,7 @@
     modal(`<h2>Relance par téléphone — ${h(d.number)}</h2>
       <p class="small muted">${h(clientName(d.clientId))} · ${C.money(item.remaining, docCur(d))} · ${pl(item.daysLate, 'jour')} de retard</p>
       <form id="tf" class="grid-2">
-        ${dateFieldHtml(lbl('Date de l\'appel', 'rel.dateTel'), 'date', C.today())}
+        ${dateFieldHtml(lbl('Date de l\'appel', 'rel.dateTel'), 'date', C.today(), { obligatoire: true })}
         <label class="field">${lbl('Niveau', 'rel.niveauTel')}<select name="level">${[1, 2, 3].map(l => `<option value="${l}" ${l === item.level ? 'selected' : ''}>${h(C.REMINDER_LABELS[l])}</option>`).join('')}</select></label>
         <label class="field span-2">${lbl('Ce qui a été dit', 'rel.noteTel')}<input type="text" name="note" placeholder="Promet un virement avant le 20, relancer si rien"></label>
         ${dateFieldHtml(lbl('Ne pas relancer avant le (optionnel)', 'rel.snooze'), 'remindAfter', '', { quick: true, clearable: true })}
@@ -6707,7 +6724,7 @@
     const d = item.doc;
     modal(`<h2>Reporter la relance — ${h(d.number)}</h2>
       <p class="small muted">La facture reste en retard et continue de compter dans ton « reste à encaisser ». Elle passe simplement en bas de la liste des relances jusqu'à cette date.</p>
-      <form id="sf2" class="grid-2">${dateFieldHtml(lbl('Ne pas relancer avant le', 'rel.snooze'), 'remindAfter', C.addDays(C.today(), 15), { quick: true, clearable: true })}</form>
+      <form id="sf2" class="grid-2">${dateFieldHtml(lbl('Ne pas relancer avant le', 'rel.snooze'), 'remindAfter', C.addDays(C.today(), 15), { quick: true, clearable: true, obligatoire: true })}</form>
       <div class="modal-actions">${d.remindAfter ? '<button class="btn" id="clear" style="margin-inline-end:auto">Retirer le report</button>' : ''}<button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Reporter</button></div>`,
       (root, close) => {
         $('#ok', root).onclick = () => {
@@ -7950,8 +7967,8 @@
         ? `${p.kind === 'avoir' ? `avoir de ${C.money(b.totals.netToPay, cur)}` : `payé ${C.money(b.paid, cur)} pour ${C.money(b.totals.netToPay, cur)}`} · à récupérer ${C.money(aRecuperer, cur)}`
         : `net à payer ${C.money(b.totals.netToPay, cur)} · déjà réglé ${C.money(b.paid, cur)}${b.impute ? ` · ${b.liees.length > 1 ? 'avoirs et acomptes imputés' : (b.liees[0].kind === 'acompte' ? 'acompte imputé' : 'avoir imputé')} ${C.money(b.impute, cur)}` : ''} · reste ${C.money(reste, cur)}`}</p>
       <form id="spf" class="grid-2" data-devise="${h(cur)}">
-        ${dateFieldHtml(lbl(rend ? 'Date du remboursement' : 'Date du règlement', 'buy.payDate'), 'date', r0 ? r0.date : C.today(), {})}
-        ${field(lbl(`${rend ? 'Montant reçu' : 'Montant'} (${h(cur)})`, 'buy.payAmount'), 'amount', r0 ? Math.abs(Number(r0.amount) || 0) : C.round3(rend ? aRecuperer : reste), 'number', 'step="0.001" min="0" class="num"')}
+        ${dateFieldHtml(lbl(rend ? 'Date du remboursement' : 'Date du règlement', 'buy.payDate'), 'date', r0 ? r0.date : C.today(), { obligatoire: true })}
+        ${obligatoire(field(lbl(`${rend ? 'Montant reçu' : 'Montant'} (${h(cur)})`, 'buy.payAmount'), 'amount', r0 ? Math.abs(Number(r0.amount) || 0) : C.round3(rend ? aRecuperer : reste), 'number', 'step="0.001" min="0" class="num"'))}
         ${champTauxReglement(p, r0, 'buy.payRate')}
         <label class="field">${lbl('Mode', 'buy.payMethod')}<select name="method">${C.PAYMENT_METHODS.map(([v, l]) => `<option value="${v}" ${r0 && r0.method === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
         ${accountFieldHtml(r0 ? r0.accountId || '' : '')}
@@ -9273,7 +9290,8 @@
         <label class="field">${lbl('Contrat', 'pay.contract')}<select name="contract">${C.CONTRACT_TYPES.map(([v, l]) => `<option value="${v}" ${e.contract === v ? 'selected' : ''} title="${h(l)}">${h(l.split(' —')[0])}</option>`).join('')}</select></label>
         ${dateFieldHtml(lbl('Date d\'embauche', 'pay.hireDate'), 'hireDate', e.hireDate || '', { clearable: true })}
         ${dateFieldHtml(lbl('Date de sortie', 'pay.endDate'), 'endDate', e.endDate || '', { clearable: true })}
-        ${field(lbl(`Salaire brut mensuel (${h(C.normCurrency(company().currency))})`, 'pay.gross'), 'grossSalary', e.grossSalary || 0, 'number', 'step="0.001" min="0" class="num"')}
+        ${/* 10.14.1 — obligatoire (« Enregistrer » refuse un brut nul), et il ne le disait pas : l'étoile se pose. */''}
+        <label class="field obligatoire">${lbl(`Salaire brut mensuel (${h(C.normCurrency(company().currency))})`, 'pay.gross')}<input type="number" name="grossSalary" value="${h(e.grossSalary || 0)}" step="0.001" min="0" class="num"></label>
         <label class="field">${lbl('Mode de paiement', 'pay.method')}<select name="method">${C.PAYMENT_METHODS.map(([v, l]) => `<option value="${v}" ${e.method === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
         <label class="check"><input type="checkbox" name="headOfFamily" ${e.headOfFamily ? 'checked' : ''}> Chef de famille ${info('pay.family')}</label>
         ${field(lbl('Enfants à charge', 'pay.children'), 'children', e.children || 0, 'number', 'step="1" min="0" max="10" class="num"')}
@@ -9457,14 +9475,14 @@
       from: C.today(), to: C.today(), paid: null, note: '' };
     modal(`<h2>${leave ? 'Modifier l\'absence' : 'Congé ou absence'}</h2>
       <form id="lf" class="grid-2">
-        <div class="field span-2">${lbl('Salarié', 'hr.leaveEmployee')}
+        <div class="field span-2 obligatoire">${lbl('Salarié', 'hr.leaveEmployee')}
           ${combo({ name: 'employeeId', value: l.employeeId, items: emps.map(e => ({ v: e.id, label: e.name, sub: e.position || '', text: e.name })), placeholder: '— Choisir —', search: 'Rechercher un salarié…' })}
         </div>
         <label class="field">${lbl('Nature', 'hr.leaveKind')}<select name="kind">${C.LEAVE_KINDS.map(([v, lab, paid]) => `<option value="${v}" ${l.kind === v ? 'selected' : ''}>${lab}${paid ? '' : ' (non payée)'}</option>`).join('')}</select></label>
         <label class="field">${lbl('Effet sur le salaire', 'hr.paid')}<select name="paid">
           <option value="">selon la nature</option><option value="1" ${l.paid === true ? 'selected' : ''}>payée</option><option value="0" ${l.paid === false ? 'selected' : ''}>non payée</option></select></label>
-        ${dateFieldHtml(lbl('Du', 'hr.leaveDates'), 'from', l.from, {})}
-        ${dateFieldHtml(lbl('Au', 'hr.leaveDates'), 'to', l.to, {})}
+        ${dateFieldHtml(lbl('Du', 'hr.leaveDates'), 'from', l.from, { obligatoire: true })}
+        ${dateFieldHtml(lbl('Au', 'hr.leaveDates'), 'to', l.to, { obligatoire: true })}
         <label class="field span-2">${lbl('Motif', 'hr.leaveNote')}<input type="text" name="note" value="${h(l.note || '')}" placeholder="Certificat médical, congé annuel…"></label>
         <div class="span-2 annonce-stable" id="lf-hint"></div>
       </form>
@@ -9516,14 +9534,14 @@
     modal(`<h2>${advance ? 'Modifier l\'avance' : 'Avance sur salaire'}</h2>
       <p class="small muted">Une somme prêtée au salarié, remboursée par retenues sur ses prochains bulletins. La retenue se pose toute seule, mois après mois, jusqu'à extinction.</p>
       <form id="af2" class="grid-2">
-        <div class="field span-2">${lbl('Salarié', 'hr.advanceEmployee')}
+        <div class="field span-2 obligatoire">${lbl('Salarié', 'hr.advanceEmployee')}
           ${combo({ name: 'employeeId', value: a.employeeId, items: emps.map(e => ({ v: e.id, label: e.name, sub: e.position || '', text: e.name })), placeholder: '— Choisir —', search: 'Rechercher un salarié…' })}
         </div>
         ${/* 10.12.0 — deux « 0 » proposés d'office (un zéro posé par le logiciel n'est pas un chiffre
              décidé), la phrase d'aide en gras parce qu'elle portait la classe d'un LIBELLÉ (« field »),
              et une demi-ligne vide à côté de la retenue. Les deux montants sont obligatoires : ils
              le disent avant qu'on appuie sur Enregistrer (7.20.0). */''}
-        ${dateFieldHtml(lbl('Date de l\'avance', 'hr.advanceDate'), 'date', a.date, {})}
+        ${dateFieldHtml(lbl('Date de l\'avance', 'hr.advanceDate'), 'date', a.date, { obligatoire: true })}
         ${field(lbl(`Montant avancé (${h(C.normCurrency(company().currency))})`, 'hr.advanceAmount'), 'amount', a.amount || '', 'number', 'step="0.001" min="0" class="num" placeholder="Ce que tu lui prêtes"').replace('class="field"', 'class="field obligatoire"')}
         ${field(lbl(`Retenue mensuelle (${h(C.normCurrency(company().currency))})`, 'hr.monthly'), 'monthly', a.monthly || '', 'number', 'step="0.001" min="0" class="num" placeholder="Retenue sur chaque bulletin"').replace('class="field"', 'class="field obligatoire"')}
         <label class="field">${lbl('Mode', 'hr.advanceMethod')}<select name="method">${C.PAYMENT_METHODS.map(m => `<option value="${m[0]}" ${(a.method || 'virement') === m[0] ? 'selected' : ''}>${m[1]}</option>`).join('')}</select></label>
@@ -9592,6 +9610,10 @@
         <label class="check" style="align-self:end"><input type="checkbox" name="withSalary"> Mentionner le salaire ${info('hr.withSalary')}</label>
       </form>
       <p class="small muted" id="hf-desc"></p>
+      ${/* 10.14.1 — `company.managerName` était LU par le document et écrit nulle part : chaque
+           attestation disait « Je soussigné agissant en qualité de représentant légal » sans nom.
+           Le champ vit dans la fiche société ; ici, on le dit AVANT d'exporter. */''}
+      ${company().managerName ? '' : `<div class="warn-box mb" id="hf-gerant">Le document dira « Je soussigné » <b>sans nom</b> : le nom du gérant n'est pas renseigné. <button type="button" class="btn btn-sm" id="hf-gerant-go">Renseigner le gérant…</button></div>`}
       <div class="panel" id="hf-solde" hidden><h2>Solde de tout compte (${h(C.normCurrency(company().currency))})</h2>
         <p class="small muted mb">Ce que tu dois encore au salarié à son départ. Les montants sont à toi : SkanFact propose seulement l'indemnité de congés non pris, calculée sur son dernier salaire. <em>À VÉRIFIER : les indemnités dépendent du motif de la rupture et de la convention collective.</em></p>
         <div id="hf-lines"></div>
@@ -9637,6 +9659,7 @@
         };
         drawLines(); sync();
         $('#hf', root).onchange = sync;
+        if ($('#hf-gerant-go', root)) $('#hf-gerant-go', root).onclick = () => { close(); allerParametres('societe', 'p-identite:managerName'); };
         $('#ok', root).onclick = async () => {
           const v = formValues($('#hf', root));
           const html = C.hrDocumentHtml(v.kind, e, data, company(), { date: v.date, withSalary: !!v.withSalary, lines });
@@ -10414,8 +10437,8 @@
     modal(`<h2>Mouvement de stock</h2>
       <p class="small muted">Ce qui n'a ni facture ni achat : la matière utilisée sur un chantier, la casse, la perte, un cadeau, une correction d'inventaire. Les entrées d'achat et les sorties de vente remontent toutes seules — ne les saisis pas ici.</p>
       <form id="adf" class="grid-2">
-        ${dateFieldHtml(lbl('Date', 'stk.adjustDate'), 'date', a.date, {})}
-        <div class="field">${lbl('Article', 'stk.adjustItem')}
+        ${dateFieldHtml(lbl('Date', 'stk.adjustDate'), 'date', a.date, { obligatoire: true })}
+        <div class="field obligatoire">${lbl('Article', 'stk.adjustItem')}
           ${combo({ name: 'itemId', value: a.itemId, items: items.map(c => ({ v: c.id, label: c.label, sub: c.unit || '', text: c.label })), placeholder: '— Choisir un article —', search: 'Rechercher un article…' })}
         </div>
         <label class="field">${lbl('Nature', 'stk.moveKind')}<select name="source">${C.MOVE_SOURCES.filter(([k]) => ['casse', 'consommation', 'inventaire', 'ajustement'].includes(k)).map(([v, l]) => `<option value="${v}" ${a.source === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
@@ -10431,7 +10454,7 @@
         // Le libellé et l'invite suivent la nature : une casse ou de la matière utilisée se saisit en
         // quantité SORTIE, positive, et `C.qteMouvement` la signe ; seuls l'inventaire et l'ajustement
         // restent signés. Le libellé change EN PLACE (même ligne, même largeur) : rien ne descend.
-        const avecUnite = (n, u) => pct(n) + (u ? ' ' + h(u) : '');
+        const avecUnite = (n, u) => pct(n) + (u ? ' ' + h(C.uniteAccordee(n, u)) : '');
         const hint = () => {
           const v = formValues($('#adf', root));
           const sortie = C.SOURCES_SORTIE.includes(v.source);
@@ -10442,7 +10465,7 @@
           const after = C.round3(s.qty + q);
           $('#adj-hint', root).innerHTML = `<span class="small ${after < 0 ? 'warn-text' : 'muted'}">`
             + `Stock actuel : <b>${avecUnite(s.qty, s.unit)}</b> au coût moyen de ${C.money(s.cmp, cur)}. `
-            + (q ? `${q < 0 ? 'Sortent' : 'Entrent'} ${avecUnite(Math.abs(q), s.unit)} : il en restera <b>${avecUnite(after, s.unit)}</b>.`
+            + (q ? `${q < 0 ? (Math.abs(q) < 2 ? 'Sort' : 'Sortent') : (Math.abs(q) < 2 ? 'Entre' : 'Entrent')} ${avecUnite(Math.abs(q), s.unit)} : il en restera <b>${avecUnite(after, s.unit)}</b>.`
               : (sortie ? 'Tape la quantité qui quitte le stock : elle sera retirée.' : 'Une quantité négative sort de la marchandise, une positive en fait rentrer.'))
             + (after < 0 ? ' Un stock négatif veut dire qu\'une entrée manque quelque part.' : '') + '</span>';
         };
@@ -10517,7 +10540,7 @@
         `<button role="tab" data-tab="${id}" class="${id === s.tab ? 'active' : ''}">${label}${id === 'alertes' && alerts.length ? ` <span class="nav-count">${alerts.length}</span>` : ''}</button>`).join('')}</div>
       <div id="st-body"></div>`;
 
-    const qtyCell = (st) => `<span class="${st.negative ? 'warn-text' : st.low ? 'warn-text' : ''}"><strong>${pct(st.qty)}</strong>${st.unit ? ' ' + h(st.unit) : ''}</span>`;
+    const qtyCell = (st) => `<span class="${st.negative ? 'warn-text' : st.low ? 'warn-text' : ''}"><strong>${pct(st.qty)}</strong>${st.unit ? ' ' + h(C.uniteAccordee(st.qty, st.unit)) : ''}</span>`;
 
     function drawState() {
       const t = C.stockTotals(data);
@@ -10848,7 +10871,7 @@
       ${st.negative ? `<div class="panel" style="border-inline-start:3px solid var(--danger)"><h2 style="color:var(--danger)">Stock négatif</h2>
         <p class="small">D'après les pièces saisies, il en reste <b>${pct(st.qty)}</b> — ce qui est impossible. Il manque une entrée : un achat non saisi, une quantité mal recopiée, ou un stock de départ oublié. Corrige la pièce en cause plutôt que d'ajuster, sinon l'erreur restera dans les chiffres.</p></div>` : ''}
       <div class="stats">
-        <div class="stat"><div class="lbl">En stock</div><div class="val ${st.negative || st.low ? 'due' : ''}">${pct(st.qty)}${st.unit ? ' ' + h(st.unit) : ''}</div><div class="sub">${st.minStock ? 'seuil d\'alerte : ' + pct(st.minStock) : 'aucun seuil défini'}</div></div>
+        <div class="stat"><div class="lbl">En stock</div><div class="val ${st.negative || st.low ? 'due' : ''}">${pct(st.qty)}${st.unit ? ' ' + h(C.uniteAccordee(st.qty, st.unit)) : ''}</div><div class="sub">${st.minStock ? 'seuil d\'alerte : ' + pct(st.minStock) : 'aucun seuil défini'}</div></div>
         <div class="stat"><div class="lbl">Coût moyen pondéré ${info('stk.cmp')}</div><div class="val">${C.money(st.cmp, cur)}</div><div class="sub">recalculé à chaque entrée</div></div>
         <div class="stat"><div class="lbl">Valeur du stock</div><div class="val">${C.money(Math.max(0, st.value), cur)}</div><div class="sub">au coût moyen</div></div>
         <div class="stat"><div class="lbl">Marge unitaire</div><div class="val ${st.unitPrice - st.cmp < 0 ? 'due' : 'ok'}">${C.money(C.round3(st.unitPrice - st.cmp), cur)}</div><div class="sub">vendu ${C.money(st.unitPrice, cur)}</div></div>
@@ -10899,11 +10922,11 @@
       <p class="small muted">Lu sur « ${h(file.name)} ». <b>Rien n'est encore entré dans tes données.</b> Vérifie, corrige si besoin, puis valide — l'écran d'achat s'ouvrira pré-rempli et tu pourras encore tout changer.</p>
       <div id="ocr-warn"></div>
       <form id="orf" class="grid-2">
-        <div class="field span-2">${lbl('Fournisseur', 'ocr.supplier')}
+        <div class="field span-2 obligatoire">${lbl('Fournisseur', 'ocr.supplier')}
           ${combo({ name: 'supplierId', value: head.supplierId, items: data.suppliers.slice().sort((a, b) => a.name.localeCompare(b.name, 'fr')).map(x => ({ v: x.id, label: x.name, sub: x.matricule || '', text: `${x.name} ${x.matricule || ''}` })), placeholder: '— À choisir —', search: 'Rechercher un fournisseur…', add: head.supplierName && !head.supplierId ? `+ Créer « ${h(head.supplierName)} »` : '+ Nouveau fournisseur' })}
         </div>
         ${field(lbl('Numéro de la facture', 'buy.number'), 'number', head.number, 'text', '')}
-        ${dateFieldHtml(lbl('Date', 'buy.date'), 'date', head.date, {})}
+        ${dateFieldHtml(lbl('Date', 'buy.date'), 'date', head.date, { obligatoire: true })}
         ${dateFieldHtml(lbl('Échéance', 'buy.due'), 'dueDate', head.dueDate, { clearable: true })}
         ${field(lbl(`Timbre et frais (${h(C.normCurrency(company().currency))})`, 'buy.fees'), 'fees', head.fees, 'number', 'step="0.001" min="0" class="num"')}
         <label class="field span-2">${lbl('Objet', 'buy.subject')}<input type="text" name="subject" value="${h(head.subject)}"></label>
@@ -10995,7 +11018,7 @@
     modal(`<h2>Entrée de numéros de série</h2>
       <p class="small muted">Un numéro par ligne. Tu peux les coller depuis un bon de livraison fournisseur ou un fichier : SkanFact ignore les lignes vides et refuse les doublons.</p>
       <form id="sif" class="grid-2">
-        <div class="field">${lbl('Article', 'ser.item')}
+        <div class="field obligatoire">${lbl('Article', 'ser.item')}
           ${combo({ name: 'itemId', value: first, items: items.map(c => ({ v: c.id, label: c.label, sub: c.unit || '', text: c.label })), placeholder: '— Choisir un article —', search: 'Rechercher un article…' })}
         </div>
         ${dateFieldHtml(lbl('Date d\'entrée', 'ser.inDate'), 'inDate', C.today(), {})}
@@ -11221,7 +11244,7 @@
       <form id="imf" class="grid-2">
         <label class="field span-2 obligatoire">${lbl('Désignation', 'immo.label')}<input type="text" name="label" value="${h(a.label)}" placeholder="Le bien, tel que tu l'appelles"></label>
         <label class="field obligatoire">${lbl('Famille', 'immo.class')}<select name="category"><option value="" ${a.category ? '' : 'selected'}>— Choisis la famille —</option>${C.DEFAULT_ASSET_CLASSES.map(([v, l]) => `<option value="${v}" ${a.category === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
-        ${dateFieldHtml(lbl('Mise en service', 'immo.date'), 'date', a.date, {})}
+        ${dateFieldHtml(lbl('Mise en service', 'immo.date'), 'date', a.date, { obligatoire: true })}
         ${field(lbl(`Valeur d'acquisition HT (${h(C.normCurrency(company().currency))})`, 'immo.amount'), 'amount', a.amount || 0, 'number', 'step="0.001" min="0" class="num"').replace('class="field"', 'class="field obligatoire"')}
         ${field(lbl('Durée (années)', 'immo.years'), 'years', a.years || '', 'number', 'step="1" min="1" max="50" class="num"').replace('class="field"', 'class="field obligatoire"')}
         ${field(lbl(`Valeur résiduelle (${h(C.normCurrency(company().currency))})`, 'immo.residual'), 'residual', a.residual || 0, 'number', 'step="0.001" min="0" class="num"')}
@@ -11325,7 +11348,7 @@
     modal(`<h2>Sortie de « ${h(asset.label)} »</h2>
       <p class="small muted">Vendu, mis au rebut ou volé : le bien quitte l'actif. On amortit jusqu'au jour de la sortie, puis on compare le prix obtenu à ce qu'il valait encore dans les comptes.</p>
       <form id="dsf" class="grid-2">
-        ${dateFieldHtml(lbl('Date de sortie', 'immo.disposal'), 'date', d.date, {})}
+        ${dateFieldHtml(lbl('Date de sortie', 'immo.disposal'), 'date', d.date, { obligatoire: true })}
         ${field(lbl(`Prix de cession HT (${h(C.normCurrency(company().currency))})`, 'immo.disposalPrice'), 'amount', asset.disposal ? (d.amount || 0) : '', 'number', 'step="0.001" min="0" class="num" placeholder="0 si mis au rebut ou volé"')}
         <label class="field span-2">${lbl('Motif', 'immo.disposalReason')}<input type="text" name="reason" value="${h(d.reason || '')}" placeholder="Revendu, mis au rebut, volé…"></label>
         <div class="span-2 annonce-stable" id="dsf-hint"></div>
@@ -11734,13 +11757,13 @@
     modal(`<h2>${mv ? 'Modifier le mouvement' : 'Nouveau mouvement'}</h2>
       <p class="small muted">Ce qui n'a ni facture ni achat : salaires, impôts, frais bancaires, apport, retrait${data.accounts.length > 1 ? ', virement entre tes comptes' : ''}. Les encaissements clients et les règlements fournisseurs n'ont <b>pas</b> à être saisis ici — ils remontent tout seuls.</p>
       <form id="mf2" class="grid-2">
-        ${dateFieldHtml(lbl('Date', 'tre.moveDate'), 'date', m.date, {})}
+        ${dateFieldHtml(lbl('Date', 'tre.moveDate'), 'date', m.date, { obligatoire: true })}
         <label class="field">${lbl('Nature', 'tre.moveKind')}<select name="kind">${C.MOVE_KINDS
           // Un virement entre deux comptes ne se propose qu'avec deux comptes (10.14.0) : on ne propose
           // pas un geste qui sera refusé. Un virement déjà saisi garde sa nature, quoi qu'il arrive.
           .filter(([v]) => v !== 'virement' || data.accounts.length > 1 || m.kind === 'virement')
           .map(([v, l, s]) => `<option value="${v}" ${m.kind === v ? 'selected' : ''}>${v === 'virement' ? '⇄' : s > 0 ? '↑' : '↓'} ${l}</option>`).join('')}</select></label>
-        ${field(lbl(`Montant (${h(C.normCurrency(company().currency))})`, 'tre.moveAmount'), 'amount', Math.abs(m.amount) || 0, 'number', 'step="0.001" min="0" class="num"')}
+        ${obligatoire(field(lbl(`Montant (${h(C.normCurrency(company().currency))})`, 'tre.moveAmount'), 'amount', Math.abs(m.amount) || 0, 'number', 'step="0.001" min="0" class="num"'))}
         <label class="field">${lbl('Compte', 'tre.moveAccount')}<select name="accountId">${data.accounts.map(a => `<option value="${a.id}" ${m.accountId === a.id ? 'selected' : ''}>${h(a.name)}</option>`).join('')}</select></label>
         <label class="field span-2">${lbl('Libellé', 'tre.moveLabel')}<input type="text" name="label" value="${h(m.label || '')}" placeholder="Salaires de septembre"></label>
         ${field(lbl('Référence', 'tre.moveRef'), 'reference', m.reference || '', 'text', 'placeholder="N° de chèque, référence du virement…"')}
@@ -11765,11 +11788,17 @@
           const vir = kindSel.value === 'virement';
           $('#mf-cp', root).hidden = vir; $('#mf-vers', root).hidden = !vir;
           texteCompte.data = vir ? 'Depuis le compte ' : 'Compte ';
+          // Le compte d'où l'argent part ne se propose pas comme compte d'arrivée : l'enregistrement le
+          // refuserait (10.14.1 — on ne propose pas un choix qui sera refusé).
+          const depuis = $('[name=accountId]', root).value;
+          [...versSel.options].forEach(o => { o.hidden = !!o.value && o.value === depuis; });
+          if (versSel.value && versSel.value === depuis) versSel.value = '';
           const cible = data.accounts.find(a => a.id === versSel.value);
           libelle.placeholder = vir ? (cible ? `Virement vers ${cible.name}` : 'Virement vers le compte choisi') : 'Salaires de septembre';
         };
         kindSel.addEventListener('change', accorder);
         versSel.addEventListener('change', accorder);
+        $('[name=accountId]', root).addEventListener('change', accorder);
         accorder();
         // L'instantané des champs APRÈS le montage et les montants complétés (modal() le fait juste
         // après ce rappel) : le garde-fou additionne les champs et les fichiers joints.
@@ -14125,6 +14154,7 @@
           ${field(lbl('Registre de commerce (RC)', 'co.rc'), 'rc', c.rc || '', 'text', 'placeholder="facultatif, ex. B123456789"')}
           ${field(lbl('Matricule CNSS employeur', 'pay.cnssEmployerId'), 'cnss', c.cnss || '', 'text', 'placeholder="s\'il y a des salariés"')}
           ${field(lbl('Capital social', 'co.capital'), 'capital', c.capital || '', 'text', 'placeholder="facultatif, ex. 1 000 DT"')}
+          ${field(lbl('Gérant (qui signe)', 'co.managerName'), 'managerName', c.managerName || '', 'text', 'placeholder="Prénom et nom"')}
           <label class="field span-2">${lbl('Adresse', 'co.address')}<textarea name="address">${h(c.address)}</textarea></label>
           ${field(lbl('Téléphone', 'co.phone'), 'phone', c.phone)}
           ${field(lbl('Email', 'co.email'), 'email', c.email, 'email')}

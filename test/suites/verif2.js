@@ -1750,4 +1750,114 @@ module.exports = async ({ t, ta, assert, lireSource }) => {
     assert.ok(z.length > 100 && z.length < 2000, 'tranche des échéances à 7 jours inattendue : ' + z.length);
     assert.ok(/<a href="#\/doc\/\$\{d\.id\}">\$\{h\(d\.number\)\}<\/a>/.test(z), 'le numéro d\'une échéance à 7 jours n\'est pas un lien, comme celui des devis');
   });
+
+  t('10.14.1 : une quantité s\'accorde avec son unité — « 29 postes », « 1 poste », « 3 kg », « 2 mois » ; « Sort 1 poste », « Sortent 2 postes » (vu au test humain)', () => {
+    const u = core.uniteAccordee;
+    assert.strictEqual(u(29, 'poste'), 'postes');
+    assert.strictEqual(u(1, 'poste'), 'poste');
+    assert.strictEqual(u(1.5, 'heure'), 'heure');          // en français, le pluriel commence à 2
+    assert.strictEqual(u(-2, 'licence'), 'licences');      // un écart négatif s'accorde comme son contraire
+    assert.strictEqual(u(2, 'demi-journée'), 'demi-journées');
+    assert.strictEqual(u(2, 'an'), 'ans');                 // un mot court de la liste reste un mot
+    ['u', 'h', 'j', 'ml', 'kg', 'km', 'L', 'm²'].forEach(a => assert.strictEqual(u(5, a), a, 'une abréviation a pris un s : ' + a));
+    assert.strictEqual(u(2, 'mois'), 'mois');
+    assert.strictEqual(u(3, ''), '');
+    // Chaque affichage d'une quantité de stock passe par elle : aucun « ${h(x.unit)} » nu à côté d'un nombre.
+    const lignes = app.split('\n').filter(l => /(qty|pct\()[^\n]{0,80}\bh\((st|c|s|already)\.unit\)/.test(l));
+    assert.deepStrictEqual(lignes, [], 'une quantité de stock s\'affiche sans accorder son unité :\n' + lignes.join('\n'));
+    const hint = app.slice(app.indexOf('const avecUnite = '), app.indexOf('const avecUnite = ') + 900);
+    assert.ok(/C\.uniteAccordee\(n, u\)/.test(hint), 'l\'annonce du mouvement de stock n\'accorde pas son unité');
+    assert.ok(/'Sort' : 'Sortent'/.test(hint) && /'Entre' : 'Entrent'/.test(hint), 'le verbe de l\'annonce ne s\'accorde pas au nombre');
+  });
+
+  t('10.14.1 : le gérant qui signe une attestation s\'écrit quelque part — un champ lu par le document et écrit nulle part (vu au test humain)', () => {
+    // Le document le LIT…
+    const co = { ...core.DEFAULT_COMPANY, name: 'Menuiserie Test', matricule: '1234567X/A/M/000', managerName: 'Sami Trabelsi' };
+    const e = { id: 's1', name: 'Ahmed', job: 'Technicien', hireDate: '2022-07-01', contract: 'cdi', grossSalary: 1000 };
+    const html = core.hrDocumentHtml('attestation', e, { employees: [e], payslips: [] }, co, { date: '2026-09-26' });
+    assert.ok(/Je soussigné, <b>Sami Trabelsi<\/b>/.test(html), 'l\'attestation ne nomme pas le gérant');
+    // … la société a sa case …
+    assert.ok('managerName' in core.DEFAULT_COMPANY, 'DEFAULT_COMPANY ne porte pas le gérant');
+    // … la fiche société l'écrit (le formulaire des Paramètres a un champ de ce nom) …
+    const fiche = tranche("${panneau('p-identite')}", "${panneau('p-regime')}");
+    assert.ok(/field\(lbl\('[^']+', 'co\.managerName'\), 'managerName'/.test(fiche), 'aucun champ n\'écrit le gérant dans la fiche société');
+    // … et la fenêtre du document le dit AVANT d'exporter quand il manque, avec le geste qui le règle.
+    const hf = tranche('<h2>Document pour ${h(e.name)}</h2>', "$('#ok', root).onclick");
+    assert.ok(/company\(\)\.managerName \? '' :/.test(hf) && /id="hf-gerant-go"/.test(hf), 'la fenêtre du document ne prévient pas que le gérant manque');
+    assert.ok(/'#hf-gerant-go', root\)\.onclick = \(\) => \{ close\(\); allerParametres\('societe', 'p-identite:managerName'\)/.test(hf), 'le bouton ne mène pas au champ du gérant');
+  });
+
+  t('10.14.1 : une liste de clients collée dans le Cabinet — depuis « Nouveau client… » aussi, et un nom déjà suivi n\'entre pas deux fois (vu au test humain)', () => {
+    const K = require('../../src/cabinet/cabcore.js');
+    // Le dossier existant a un MATRICULE : sa clé est MF:…, celle d'une ligne collée sans matricule NOM:….
+    const ex = [{ id: 'MF:1234567A', name: 'Pharmacie El Menzah', matricule: '1234567A' }];
+    const r = K.parseDossierLines('Pharmacie El Menzah\nPHARMACIE el menzah ; 9999999Z\nGarage X\nGarage X\nBoulangerie Ennour ; 7788991B', ex);
+    assert.deepStrictEqual(r.ignorés, ['Pharmacie El Menzah', 'Garage X'], 'un nom déjà suivi (ou répété dans la liste) doit être ignoré et nommé');
+    assert.deepStrictEqual(r.dossiers.map(d => d.name), ['PHARMACIE el menzah', 'Garage X', 'Boulangerie Ennour'], 'deux homonymes aux matricules DIFFÉRENTS sont deux entreprises');
+    // La fenêtre « Nouveau dossier client » mène à la liste collée, par le même moteur que l'assistant.
+    const ca = fs.readFileSync(path.join(__dirname, '../../src/cabinet/renderer/app.js'), 'utf8');
+    const nd = ca.slice(ca.indexOf('function newDossierForm('), ca.indexOf('function dossierForm('));
+    assert.ok(nd.length > 500 && nd.length < 9000, 'tranche inattendue : ' + nd.length);
+    assert.ok(/id="nd-coller"/.test(nd) && /'#nd-coller', layer\)\.onclick = \(\) => \{ close\(\); collerDossiersForm\(\); \}/.test(nd), 'la fiche d\'un nouveau client ne propose pas de coller une liste');
+    const cf = nd.slice(nd.indexOf('function collerDossiersForm('));
+    assert.ok(/api\.importDossiers\(txt\)/.test(cf), 'la liste collée ne passe pas par le moteur de l\'assistant (cab:importDossiers)');
+  });
+
+  t('10.14.1 : un champ que l\'enregistrement refuse vide porte son étoile — dans chaque formulaire des deux applications', () => {
+    // Vu à la souris dans la visite « Déclarer un salarié » : « Salaire brut mensuel » refusé à zéro,
+    // et rien ne le disait avant le clic. La règle datait de la 7.20.0 (« required est inerte : ce qui
+    // est obligatoire se dit à la main, une étoile sur le champ ») et n'était tenue par aucun test :
+    // dix-huit champs l'avaient perdue. On lit chaque refus sur champ vide (`if (!v.x…) return refus`)
+    // et on exige l'étoile sur le champ, sous l'une des quatre formes qui la posent.
+    const fautes = [];
+    for (const f of ['src/renderer/app.js', 'src/cabinet/renderer/app.js']) {
+      const src = fs.readFileSync(path.join(__dirname, '../..', f), 'utf8');
+      const debuts = [...src.matchAll(/^  (?:async )?function (\w+)\(/gm)];
+      debuts.forEach((m, k) => {
+        const t = src.slice(m.index, k + 1 < debuts.length ? debuts[k + 1].index : src.length);
+        const vides = [...t.matchAll(/if \(\s*!\(?\s*(?:Number\()?v\.(\w+)(?:\.trim\(\))?\)?(?:\s*>\s*0\))?\s*\)\s*return refus/g)].map(x => x[1]);
+        for (const x of new Set(vides)) {
+          const lignes = t.split('\n');
+          // 1. un appel field(…)/dateFieldHtml(…) qui pose ce nom
+          const appel = lignes.find(l => new RegExp(`(?:field|dateFieldHtml)\\(lbl\\(.*?, '${x}'`).test(l));
+          if (appel) { if (!/obligatoire/.test(appel)) fautes.push(`${f} ${m[1]} : ${x}`); continue; }
+          // 2. une balise écrite à la main (name="x") ou une liste (combo({ name: 'x' })) : le
+          //    conteneur .field le plus proche au-dessus porte la classe
+          const i = t.search(new RegExp(`name="${x}"|combo\\(\\{ name: '${x}'`));
+          if (i < 0) { fautes.push(`${f} ${m[1]} : ${x} (champ introuvable)`); continue; }
+          const avant = t.slice(0, i), j = avant.lastIndexOf('class="field');
+          const cls = j < 0 ? '' : avant.slice(j, avant.indexOf('"', j + 7));
+          if (!/obligatoire/.test(cls)) fautes.push(`${f} ${m[1]} : ${x}`);
+        }
+      });
+    }
+    assert.deepStrictEqual(fautes, [], 'des champs sont refusés vides sans porter l\'étoile « obligatoire »');
+    // dateFieldHtml sait poser l'étoile, et la légende « * obligatoire » la suit (modal()).
+    assert.ok(/o && o\.obligatoire \? ' obligatoire'/.test(app), 'dateFieldHtml ne sait pas poser l\'étoile');
+  });
+
+  t('10.14.1 : changer de client rend la langue et la devise du nouveau — même quand il n\'en a pas de propres (vu à la souris)', () => {
+    // Nova Digital (anglais, euros) puis la Clinique dentaire (aucun réglage) : le devis restait
+    // « Quote » en euros, parce que seul un réglage PRÉSENT était posé. Le client décide, qu'il ait
+    // un réglage ou qu'il prenne celui de la société ; le taux d'une autre devise ne survit pas.
+    const i = app.indexOf('  function applyClientDefaults(');
+    const fin = app.indexOf('\n  }\n', i) + 4;
+    const corps = app.slice(i, fin);
+    assert.ok(corps.length > 200 && corps.length < 3000, 'tranche inattendue : ' + corps.length);
+    const clients = { nova: { lang: 'en', currency: 'EUR' }, clinique: {}, exo: { stampExempt: true } };
+    const ctx = { clientById: id => clients[id], company: () => ({ currency: 'DT', defaultLang: 'fr' }) };
+    vm.runInNewContext(corps + '\nthis.applyClientDefaults = applyClientDefaults;', ctx);
+    const doc = { type: 'devis', lang: 'fr', currency: 'DT', exchangeRate: '' };
+    ctx.applyClientDefaults(doc, 'nova');
+    assert.deepStrictEqual([doc.lang, doc.currency], ['en', 'EUR']);
+    doc.exchangeRate = '3.4';
+    ctx.applyClientDefaults(doc, 'clinique');
+    assert.deepStrictEqual([doc.lang, doc.currency, doc.exchangeRate], ['fr', 'DT', ''], 'le client sans réglage garde la langue, la devise ou le taux du précédent');
+    // Un client de même devise garde le taux déjà saisi : on ne vide que ce qui change de devise.
+    const d2 = { type: 'facture', lang: 'en', currency: 'EUR', exchangeRate: '3.35' };
+    ctx.applyClientDefaults(d2, 'nova');
+    assert.strictEqual(d2.exchangeRate, '3.35');
+    // Et le champ du taux suit dans l'écran (sinon formValues le réécrit).
+    assert.ok(/champTaux\.value = doc\.exchangeRate \|\| ''/.test(app), 'le champ du taux reste affiché après le changement de client');
+  });
 };

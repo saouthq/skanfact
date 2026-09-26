@@ -2117,7 +2117,9 @@ body.dark .scroll-x table.list:has(td.row-actions) thead th:last-child { box-sha
 .visite-bulle .vb-ou { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .visite-bulle .vb-sur { font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .8px;
   color: color-mix(in srgb, var(--th) 82%, var(--text)); font-variant-numeric: tabular-nums; }
-.visite-bulle .vb-lieu { font-size: 13.5px; font-weight: 700; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Le nom de la visite tient sur DEUX lignes au plus : une bulle rétrécie à côté d'une grande fenêtre
+   (`largeurPres`) coupait « Établir une attestati… » sur une seule. */
+.visite-bulle .vb-lieu { font-size: 13.5px; font-weight: 700; color: var(--text); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; text-wrap: balance; }
 .visite-bulle .vb-fermer { flex: none; align-self: flex-start; border: 0; background: transparent; color: var(--muted);
   width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; cursor: pointer; }
 .visite-bulle .vb-fermer svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2.1; stroke-linecap: round; }

@@ -34,6 +34,7 @@
     rc: '',
     cnss: '',                // matricule CNSS employeur (v6)
     capital: '',
+    managerName: '',     // le gérant qui signe les documents du personnel (attestation, certificat)
     address: '',
     phone: '',
     email: '',
@@ -9386,6 +9387,19 @@
   ];
   // Unités déjà employées dans les documents et le catalogue, hors liste standard : elles restent
   // proposées d'une fois sur l'autre sans rien avoir à régler dans les paramètres.
+  // Une quantité et son unité, accordées : « 29 postes », « 1 poste », « 3 kg », « 2 mois ». Une
+  // abréviation (u, h, j, kg, m², ml, L…) ne prend jamais de « s » ; un mot déjà terminé par s, x ou z
+  // non plus. Seul le nombre qui dépasse 1 (en valeur absolue) met le mot au pluriel, comme en français.
+  function uniteAccordee(n, unite) {
+    const u = String(unite == null ? '' : unite).trim();
+    if (!u) return '';
+    // Les abréviations de la liste sont celles dont le libellé porte la forme longue entre parenthèses.
+    const abrev = LINE_UNITS.some(([code, lib]) => code === u && /\(/.test(lib));
+    const connue = LINE_UNITS.some(([code]) => code === u);
+    const mot = !abrev && (connue ? /^[a-zà-ÿ-]+$/.test(u) : /^[a-zà-ÿ][a-zà-ÿ-]{2,}$/.test(u)) && !/[sxz]$/.test(u);
+    if (!mot || Math.abs(Number(n) || 0) < 2) return u;
+    return u.split('-').map(p => /^(demi|mi|semi)$/.test(p) ? p : p + 's').join('-');
+  }
   function usedUnits(data, extra) {
     const known = new Set(LINE_UNITS.map(u => u[0]));
     const out = [];
@@ -9913,7 +9927,7 @@
     VAT_RATES, WITHHOLDING_RATES, PAYMENT_METHODS, PREFIX, TITLES, DEFAULT_DATA, DEFAULT_COMPANY, ACTIVITIES, STATUSES, STATUT_ENVOI, DISPLAY_STATUSES, STATUS_LABELS,
     REGIMES, regimeOf, regimeSuggere, tfpSuggere, assujettiTVA, mentionTVA, estLiberal, docLabel, ribAttendu,
     DOC_FILTRES, docFiltre,
-    pageInfo, compareValues, LINE_UNITS, usedUnits, usedWithholdingRates, parseDateInput, fmtDateInput, monthMatrix,
+    pageInfo, compareValues, LINE_UNITS, usedUnits, uniteAccordee, usedWithholdingRates, parseDateInput, fmtDateInput, monthMatrix,
     uid, round3, money, fmtDate, addDays, daysInMonth, today, jourDeLInstant, escapeHtml, nl2br, capitalAffiche, statusLabel,
     plier, correspondRecherche, rangRecherche, classerRecherche, delaiJours, typoFr,
     CLOSURE_ACTIONS, closedUntil, isClosedDate, closedPeriodLabel, closableMonths, rienACloturer, closureChecks, closePeriod, reopenPeriod, closureLog,

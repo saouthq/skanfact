@@ -213,6 +213,7 @@
 
   // ---------- les dossiers ----------
   b('#new-d', 'Ajoute un client, même s\'il n\'utilise pas encore SkanFact : il entre dans ton portefeuille, et rien ne lui est réclamé tant qu\'il n\'a pas commencé.');
+  b('#nd-coller', 'Ouvre la fenêtre où tu colles toute ta liste de clients depuis un tableur, un par ligne : chacun devient un dossier d\'un seul geste, et les doublons sont nommés.');
   // Les boutons des états vides d'une PAGE : ils vivent dans une barre `.modal-actions` sans être dans
   // une fenêtre, et la famille « Valide ce que tu viens de saisir dans la fenêtre » leur répondait
   // (10.14.0). Chacun dit son propre geste.

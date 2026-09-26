@@ -1048,7 +1048,7 @@ t('10.14.0 : chaque champ de TOUTE l\'application porte sa bulle — libellés, 
   // règle vaut pour tout le fichier ; les seules exceptions sont NOMMÉES, et chacune dit pourquoi.
   const EXCEPTIONS = [
     /^<label class="field">\$\{label/,          // field() lui-même : son libellé lui est passé
-    /^<div class="field">\$\{label/,            // dateFieldHtml() lui-même
+    /^<div class="field\$\{o && o\.obligatoire[^}]*\}">\$\{label/, // dateFieldHtml() lui-même (son étoile suit `o.obligatoire`)
     /^<label class="field mb">\$\{h\(label\)/,  // une clause de contrat : le panneau « Clauses » porte la bulle
     /^<label class="field span-2">\$\{\/\*/,    // promptDialog : la bulle est `o.info`, quand l'appelant la donne
     /^<div class="field"><span>La prochaine portera/ // une lecture, pas un champ : le numéro que prendra la facture

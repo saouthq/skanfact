@@ -91,6 +91,18 @@
   // l'écran (10.14.0) : « Enregistrer ta réponse », posée au-dessus du bouton, couvrait la réponse et
   // la question qu'elle demandait d'enregistrer. Sans place ni à droite ni à gauche de la fenêtre (une
   // grande fenêtre sur un petit écran), la règle ordinaire autour de la cible.
+  // La largeur d'une bulle qui tient À CÔTÉ d'une fenêtre trop large pour la bulle entière (PUR : les
+  // tests le jouent) : la marge la plus grande, sans descendre sous une largeur lisible — null quand
+  // la bulle entière tient déjà, ou quand même la marge la plus grande est trop étroite pour se lire.
+  // Les largeurs de la feuille (`.visite-bulle`, `.visite-bulle.liste`) : la bulle ne se rétrécit que
+  // si SA largeur ne tient pas — une bulle de liste est plus large qu'une bulle ordinaire.
+  const LARGEUR_BULLE = 388, LARGEUR_LISTE = 448, LARGEUR_MIN = 264;
+  function largeurPres(fen, ecran, largeur) {
+    if (!fen || !ecran) return null;
+    const place = Math.floor(Math.max(ecran.w - MARGE - (fen.r + ECART), fen.l - ECART - MARGE));
+    if (place >= largeur) return null;
+    return place >= LARGEUR_MIN ? place : null;
+  }
   function placerPres(r, fen, bulle, ecran, opts) {
     opts = opts || {};
     if (r && fen) {
@@ -312,6 +324,15 @@
     }
     return null;
   }
+  // Ce que l'anneau entoure. Une case à cocher (ou un bouton radio) se lit avec son LIBELLÉ : un
+  // anneau de 16 px autour de la case seule mordait sur « Mentionner le salaire » et laissait le
+  // libellé sous le voile — or c'est lui qu'on lit, et lui qu'on clique (10.14.1).
+  function zoneDeLaCase(el) {
+    if (!el || typeof el.matches !== 'function') return el;
+    if (!el.matches('input[type=checkbox], input[type=radio]')) return el;
+    const lab = typeof el.closest === 'function' ? el.closest('label') : null;
+    return lab || el;
+  }
   // Le clic d'un geste vise la cible : le premier élément visible qui correspond, OU n'importe quel
   // autre élément du même sélecteur. « Clique sur la ligne d'un client » éclaire la première ligne ;
   // cliquer la troisième est le même geste (10.14.0 — sur la Production du Cabinet, le clic sur une
@@ -351,6 +372,18 @@
   // les suggestions du catalogue, la liste d'un sélecteur) : la bulle ne se pose jamais dessus.
   // L'hôte peut en déclarer d'autres (`hote.listes`).
   const LISTES_OUVERTES = '.combo-pop:not([hidden]), .cal-pop:not([hidden]), .sugg-pop:not([hidden]), .row-menu, .lm-pop';
+  // Une fenêtre ouverte PAR-DESSUS la cible — « Abandonner cette saisie ? », une confirmation : la
+  // dernière fenêtre de la pile ne contient pas l'endroit que la visite montre. L'anneau et la bulle
+  // restaient alors dessinés sur la question et cachaient son texte (vu à la souris, 10.14.1). La
+  // visite se range, comme devant une liste ouverte, le temps qu'on y réponde.
+  function fenetreQuiCouvre(el) {
+    if (!el || !el.isConnected) return null;
+    let fs = [];
+    try { fs = [...document.querySelectorAll('.modal')].filter(x => visible(x) && !(els.bulle && els.bulle.contains(x))); } catch (_) { fs = []; }
+    const haut = fs[fs.length - 1];
+    return haut && !haut.contains(el) ? haut : null;
+  }
+
   function listesOuvertes() {
     let sel = LISTES_OUVERTES;
     try { const x = hote.listes && hote.listes(); if (x) sel += ', ' + x; } catch (_) { /* la liste par défaut suffit */ }
@@ -627,7 +660,7 @@
     cur.i = i; cur.t0 = Date.now(); cur.defile = false; cur.couper = false; cur.clic = 0; cur.pret = false; cur.perdu = false; cur.pointe = -1; cur.sens = sens;
     // Ce qui ne vaut que pour l'étape qu'on quitte : un essai en cours, un geste, la zone déjà vue,
     // l'état du geste à l'entrée, les boutons nommés.
-    cur.essai = null; cur.geste = 0; cur.vu = false; cur.faitAvant = undefined; cur.dejaFait = false; cur.dejaRempli = false; cur.mini = false; cur.nommes = []; cur.pointeN = -1;
+    cur.essai = null; cur.geste = 0; cur.vu = false; cur.faitAvant = undefined; cur.dejaFait = false; cur.dejaRempli = false; cur.mini = false; cur.couvert = false; cur.nommes = []; cur.pointeN = -1;
     cur.note = cur.noteProchaine || ''; cur.noteProchaine = ''; cur.defait = false;
     // La première étape apparaît ; les suivantes glissent depuis la précédente.
     if (cur.vues++ > 0) glisser();
@@ -939,7 +972,7 @@
   function reprendre() {
     if (!cur) return;
     const e = etape();
-    cur.essai = null; cur.mini = false; cur.geste = 0;
+    cur.essai = null; cur.mini = false; cur.couvert = false; cur.geste = 0;
     // L'essai a refermé ce que l'étape montrait (« Annuler » dans le récapitulatif) : reprendre, c'est
     // revenir au geste qui l'ouvre — l'étape décrirait sinon une fenêtre qui n'est plus là.
     if (e && !cur.fin && e.cible && !cibleDe(e) && sourceDefaite(e)) { revenirAuGeste(); return; }
@@ -1027,7 +1060,7 @@
     if (dest && typeof dest === 'string') { try { hote.aller(dest); } catch (_) { /* rien */ } }
     const prep = e.retablir || e.avant;
     if (typeof prep === 'function') { try { prep(); } catch (_) { /* rien */ } }
-    cur.t0 = Date.now(); cur.perdu = false; cur.defile = false; cur.couper = false; cur.essai = null; cur.mini = false;
+    cur.t0 = Date.now(); cur.perdu = false; cur.defile = false; cur.couper = false; cur.essai = null; cur.mini = false; cur.couvert = false;
     dessinerBulle();
   }
   function lancerSuite(id) {
@@ -1049,7 +1082,7 @@
     // milieu de l'écran avec « Terminé » et plus rien à faire (7.27.0 : chaque écran finit par le
     // geste suivant).
     if (!cur) return;
-    cur.i = cur.p.etapes.length; cur.fin = true; cur.essai = null; cur.mini = false;
+    cur.i = cur.p.etapes.length; cur.fin = true; cur.essai = null; cur.mini = false; cur.couvert = false;
     // Une visite qui a un BUT (« un client de plus ») ne félicite que si le but est atteint : fermer
     // la fenêtre sans enregistrer, ou passer les étapes, n'est pas « Ton client est enregistré ».
     // Le but se relève à chaque tour et TERMINE la visite dès qu'il est atteint ; une PREUVE
@@ -1233,13 +1266,15 @@
     if (!e) return;
     const W = window.innerWidth, H = window.innerHeight;
     const el = cur.fin || cur.attente ? null : cibleDe(e);
-    const zoneEl = el && e.zone ? (resoudre(e.zone) || el) : el;
+    const zoneEl = el && e.zone ? (resoudre(e.zone) || el) : zoneDeLaCase(el);
     const faire = estFaire(e) && !cur.fin;
     // En RETRAIT pendant un essai, ou quand une liste est ouverte par-dessus la page : la bulle se
     // range dans un coin et rien ne s'assombrit — ce qu'on vient d'ouvrir se voit en entier.
     const listes = cur.fin ? [] : listesOuvertes();
+    const couvre = cur.fin || cur.essai ? null : fenetreQuiCouvre(zoneEl);
+    if (couvre) listes.push(couvre);
     const mini = !cur.fin && (!!cur.essai || listes.length > 0);
-    if (mini !== !!cur.mini) { cur.mini = mini; dessinerBulle(); }
+    if (mini !== !!cur.mini || !!couvre !== !!cur.couvert) { cur.mini = mini; cur.couvert = !!couvre; dessinerBulle(); }
     let r = null;
     if (zoneEl) {
       // Amener la cible à l'écran UNE fois par étape : la ramener à chaque image empêcherait de
@@ -1305,7 +1340,7 @@
     [...els.nommes.childNodes].forEach((d, k) => { d.hidden = !horsZone[k]; if (horsZone[k]) poser(d, horsZone[k]); });
     // Pendant un ESSAI, pas d'anneau : la page a pu changer, et le même sélecteur désignerait
     // l'en-tête d'un autre écran (vu à la souris : « Nouveau devis » cerclé comme « Le haut de la page »).
-    anneau.hidden = !r || cur.perdu || !!cur.essai;
+    anneau.hidden = !r || cur.perdu || !!cur.essai || !!cur.couvert;
     anneau.classList.toggle('pulse', faire && !cur.mini);
     if (r) poser(anneau, r);
     // Le second anneau : le bouton dont parle la ligne survolée de la bulle — ou le nom survolé
@@ -1317,6 +1352,13 @@
     point.hidden = !vu;
     point.classList.toggle('flash', !!(vu && nm && cur.flash && Date.now() - cur.flash < 1400));
     if (vu) poser(point, rect(cibleP, 3));
+    // Une GRANDE fenêtre ne laisse pas la place d'une bulle entière à côté d'elle : posée dessus, la
+    // bulle cachait trois champs du contrat récurrent (vu à la souris, 10.14.1). Elle se rétrécit pour
+    // tenir dans la marge quand la marge le permet (`largeurPres`) ; sinon la règle ordinaire.
+    const fenEl = !cur.mini && r && !cur.perdu && zoneEl && zoneEl.closest ? zoneEl.closest('.modal') : null;
+    const etroite = fenEl ? largeurPres(rect(fenEl, 0), { w: W, h: H }, els.bulle.classList.contains('liste') ? LARGEUR_LISTE : LARGEUR_BULLE) : null;
+    const voulue = etroite ? etroite + 'px' : '';
+    if (els.bulle.style.width !== voulue) els.bulle.style.width = voulue;
     const bw = els.bulle.offsetWidth, bh = els.bulle.offsetHeight;
     let pos;
     if (cur.mini) {
@@ -1327,8 +1369,7 @@
       pos = placerMini({ w: W, h: H }, { w: bw, h: bh }, evites);
     } else {
       const champ = el && /^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName) || (el && el.classList && el.classList.contains('combo-btn'));
-      const fen = r && !cur.perdu && zoneEl && zoneEl.closest ? zoneEl.closest('.modal') : null;
-      pos = placerPres(cur.perdu ? null : r, fen ? rect(fen, 0) : null, { w: bw, h: bh }, { w: W, h: H }, { pref: e.cote, reserveDessous: faire && champ });
+      pos = placerPres(cur.perdu ? null : r, fenEl ? rect(fenEl, 0) : null, { w: bw, h: bh }, { w: W, h: H }, { pref: e.cote, reserveDessous: faire && champ });
     }
     els.bulle.style.left = pos.x + 'px';
     els.bulle.style.top = pos.y + 'px';
@@ -1598,11 +1639,12 @@
     const dernier = cur.i === cur.p.etapes.length - 1;
     els.bulle.className = 'visite-bulle mini' + (faire ? ' faire' : '');
     teinter(els.bulle, coul);
-    const titre = essai ? 'Vas-y, essaie' : faire ? 'À toi' : 'La visite t\'attend';
+    const titre = essai ? 'Vas-y, essaie' : cur.couvert ? 'La visite t\'attend' : faire ? 'À toi' : 'La visite t\'attend';
     const texte = essai
       ? `Clique, ouvre, choisis : je m'efface le temps que tu regardes. Quand tu as vu, reprends l'étape <b>« ${h(e.titre || '')} »</b>.`
+      : cur.couvert ? 'Une question s\'est ouverte par-dessus : réponds-y d\'abord — la visite reprend juste après, là où tu en étais.'
       : faire ? (e.action ? action(e) : '') : 'Une liste est ouverte : choisis, ou appuie sur <kbd>Échap</kbd> pour la refermer — la visite reprend juste après.';
-    const pied = essai
+    const pied = cur.couvert && !essai ? '' : essai
       ? `<button type="button" class="vb-lien" data-v="suiv">${dernier ? 'Terminer la visite' : 'Étape suivante ›'}</button><button type="button" class="vb-suiv" data-v="reprendre">Reprendre la visite</button>`
       : faire ? '<button type="button" class="vb-lien" data-v="passer">Passer cette étape</button><span class="vb-attente" role="status"><span class="vb-points-attente" aria-hidden="true"><i></i><i></i><i></i></span>J\'attends ton geste</span>' : '';
     els.bulle.innerHTML = `<i class="vb-pointe" hidden></i>
@@ -1984,7 +2026,7 @@
   const etapeCourante = () => { const e = etape(); if (!e) return null; const c = Object.assign({}, e); delete c.el; return c; };
 
   const api = { installer, lancer, quitter, enCours, etapeCourante, suivant, precedent, chapitreSuivant, reprendre, gestePasse, consequenceDuGeste, gesteQuiOuvre, issueDeFin, phrasePasses, texteDeFin, selonFin, finsHonnetes,
-    pagesDuGeste, ongletDuGeste, guideDeLaPage, dansLeGuide, menuDuGuide, placerBulle, placerPres, placerMini, typo, chevauche, decouperHaut, trousDeListe, hautPourBulle, hautPourCouper, viseLaCible, estFaire, decider, enAttenteDe, compteDe, pointDeReprise, etapeAvecPage, versLaReprise, dejaRempliDe, normNom, nomsCites, lieuDe, ouvrirOnglet,
+    pagesDuGeste, ongletDuGeste, guideDeLaPage, dansLeGuide, menuDuGuide, placerBulle, placerPres, largeurPres, zoneDeLaCase, placerMini, typo, chevauche, decouperHaut, trousDeListe, hautPourBulle, hautPourCouper, viseLaCible, estFaire, decider, enAttenteDe, compteDe, pointDeReprise, etapeAvecPage, versLaReprise, dejaRempliDe, normNom, nomsCites, lieuDe, ouvrirOnglet,
     chapitres, resoudre, visible, listerControles, etapesDeLaVue, blocsDe, cheminDe, PATIENCE, PATIENCE_FACULTATIVE, CONTROLES,
     nettoie, libelleDe, resumeBulle, routeDe, expliqueur, zoneur, phraseDuHaut, texteDuHaut };
   global.Visite = api;

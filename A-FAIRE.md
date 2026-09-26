@@ -220,6 +220,77 @@ et au moteur), puis en stable quand Skander valide.*
 - **Reporté par Skander le 24/09** : faire tourner `e2e:visites` et `e2e:cabinet-visites` jusqu'au
   bout (§ 4 bis).
 
+- **Fait (26/09, commité)** — tout vérifié à la souris :
+  - l'anneau d'une case à cocher entoure son LIBELLÉ (`zoneDeLaCase`) ;
+  - le gérant qui signe une attestation s'écrit enfin quelque part (`managerName`) ;
+  - le Cabinet colle une liste de clients depuis « Nouveau client… » (`#nd-coller`), un homonyme sans
+    matricule est un doublon ;
+  - « Relancer » depuis la fiche d'un client ouvre les Relances filtrées sur lui (« 1 sur 3 », vu) ;
+  - deux cibles de visite fantômes (`gross` → `grossSalary`, `#pv-col` → `#view .preview`), et le test
+    permanent qui lit chaque cible contre son application et chaque champ contre le formulaire que la
+    visite ouvre (table `FORMULAIRE`) ; la visite « salarié » rejouée, le brut devenu geste obligatoire ;
+  - chaque champ que l'enregistrement refuse vide porte son étoile (quatorze fenêtres, test `verif2`) ;
+  - changer de client dans l'éditeur rend la langue et la devise DU NOUVEAU (défaut vu à la souris :
+    un client en euros laissait sa devise au suivant) ; le taux se vide quand la devise change ;
+  - les visites qui choisissent un client guident le taux de change quand il apparaît (`etapeTaux`,
+    devis, proforma, contrat récurrent), vu avec Nova Digital.
+- **Demandé par Skander le 26/09 — « Guide-moi » sur une entreprise VIDE qui vient d'être créée** :
+  c'est le cas le plus courant (on appuie sur le bouton pour découvrir), et tout n'a été joué que sur
+  l'exemple. Créer une entreprise neuve (porte → « Commencer avec mon entreprise », les trois
+  questions), puis sur chaque page : ouvrir « Guide-moi », lancer chaque geste proposé et le jouer
+  jusqu'au bout à la souris. À vérifier : un geste qui suppose une donnée absente (une facture à
+  émettre, un client, un article) ne doit ni se lancer dans le vide ni viser un bouton inexistant — il
+  propose d'abord le geste qui crée ce qui manque ; les listes vides et leurs visites ; les fins
+  honnêtes ; « Première fois sur cette page ». Idem dans le Cabinet avec un cabinet neuf sans dossier.
+- **Reste de ce lot** : les propositions de texte vérifiées des visites (sauter 22, 80, 81, 106,
+  118–129 ; accents de 77–79 ; réécrire 132) ; relancer `e2e:couverture` et `e2e:cabinet-couverture`
+  (boutons neufs `#hf-gerant-go`, `#nd-coller`).
+
+### 0.3 La question de Skander du 26/09 : « et après la comptabilité, le comptable transfère à l'État ? »
+
+*Il veut que le comptable dépose SANS RESSAISIE (DIRECTION.md, « zéro ressaisie »), CNSS comme
+e-jibaya. Ce qui se dépose (sources officielles, **À VÉRIFIER** avec le comptable pilote) : chaque mois
+avant le 28 la déclaration mensuelle sur e-jibaya (TVA, retenues, TFP, FOPROLOS, TCL, timbre, saisie
+sur le portail) ; chaque trimestre la déclaration des salaires à la CNSS (saisie OU fichier texte,
+salaires en millimes, cahier `services.cnss.tn/FileControl/Desc_File_cnss.pdf`) ; avant le 28 février
+la déclaration d'employeur (fichiers DECEMP_/ANXEMP_, cahier des charges republié chaque année :
+`jibaya.tn/wp-content/uploads/2026/01/EMPCCA_25V2.pdf`) ; avant le 25 mars l'IS avec la liasse fiscale
+en XML normalisé (LF 2017 art. 41) ; les acomptes provisionnels (6e, 9e, 12e mois après la clôture).*
+
+Constats **vérifiés dans le code du 26/09** (ceux de Skander, relus un par un) :
+
+1. Aucun export XML, aucune mention d'e-jibaya ni du portail CNSS dans `src/` : la liasse sort à
+   l'écran et en CSV.
+2. Cabinet, onglet Paie : « La déclaration CNSS » est un tableau par salarié qui dit « c'est un tableau
+   à recopier sur le portail » — ni export, ni « déposée / payée », et hors du groupe « Déclarer et
+   clôturer ».
+3. La déclaration annuelle d'employeur est un panneau en bas de la Liasse, en totaux seulement, sans
+   export ni pointage, alors qu'elle se dépose un mois AVANT la liasse. Sa phrase (`employeurAnnuel`,
+   compta.js) dit que le cabinet ne reçoit pas les bulletins : **fausse depuis la 10.3.0**, les
+   bulletins vivent dans le livre du Cabinet.
+4. La Déclaration mensuelle : les cases ne suivent ni l'ordre ni les codes du formulaire e-jibaya,
+   aucun montant n'a de bouton « Copier », aucun lien n'ouvre le portail, TCL et acomptes valent « — ».
+
+Ce que je décide (règle 5.2.0 : SkanFact ne dépose rien — produire un fichier que le comptable dépose
+lui-même ne la contredit pas ; mais un format officiel republié chaque année ne doit JAMAIS produire un
+fichier rejeté le jour de l'échéance : chaque fichier porte la version du cahier des charges qu'il
+suit, et l'écran dit de le contrôler sur le portail avant l'échéance) :
+
+- **D1 — sans ressaisie sur les écrans existants** : « Copier » sur chaque montant de la déclaration
+  mensuelle (au format que le portail attend, sans espace ni devise), un lien « Ouvrir e-jibaya » et
+  « Ouvrir le portail CNSS », l'échéance de chaque déclaration dans son écran.
+- **D2 — la CNSS trimestrielle** devient un écran de « Déclarer et clôturer » : pointage déposée /
+  payée (comme la mensuelle), export CSV, et le **fichier texte CNSS** si le cahier des charges se lit
+  sans ambiguïté (sinon : pas de fichier, et on le dit).
+- **D3 — la déclaration d'employeur** sort de la Liasse : son propre écran, état NOMINATIF lu dans les
+  bulletins du livre (salaires) et dans les retenues opérées par fournisseur, phrase fausse corrigée,
+  pointage, export ; les fichiers DECEMP_/ANXEMP_ seulement sur le cahier de l'année, versionné.
+- **D4 — la liasse en XML** : seulement sur spécification officielle lue ; sinon reporté, avec la
+  raison. TCL et acomptes provisionnels : ne rien inventer (9.1.1) — l'acompte peut se CALCULER si
+  l'impôt de l'exercice précédent est dans le livre (fiscal annuel de N-1), à vérifier.
+- **Côté app entreprise** : ses déclarations sociales (Paie → Déclarations) ont le même « à recopier » ;
+  même traitement pour la CNSS, et le lien vers le portail.
+
 ### 0.2 Ce que Skander a demandé le 26/09/2026 (à faire, dans cet ordre de gravité)
 
 1. ~~**Mises à jour : en bêta, une stable plus récente doit être proposée.** Sur une 13.0.0-beta.1
@@ -251,6 +322,14 @@ et au moteur), puis en stable quand Skander valide.*
 9. ~~**Une transition visible entre deux pages.**~~ **Fait (S-06, § 0.1).**
 10. ~~**À chaque nouvelle version, au premier lancement : présenter la version et ses changements.**~~
     **Fait (S-06, § 0.1)** — à chaque version, écrire ses phrases dans `src/renderer/nouveautes.js`.
+
+11. **Un arrêt maladie ou une absence porte son justificatif** (Skander, 26/09) : vérifié dans le code,
+    la fenêtre « Congé ou absence » (`leaveForm`) n'a aucune pièce jointe. Un arrêt de travail est
+    la preuve de l'absence payée ou retenue — c'est lui que le comptable et la CNSS demandent. Poser
+    le mécanisme des pièces jointes (celui des achats, 8.5.1 : joindre AVANT d'enregistrer, 📎 dans la
+    liste des absences, retrouvable par la recherche comme les autres, S-04), la bulle, la ligne de la
+    visite « conge », et le rappel dans « À faire » d'un arrêt maladie sans justificatif — sans jamais
+    bloquer l'enregistrement (le certificat arrive souvent après).
 
 Puis continuer les tests et les corrections, sans s'arrêter tant que les deux applications ont des
 défauts.
