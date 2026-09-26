@@ -7,6 +7,55 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 10.14.1-beta.1 — 26/09/2026
+
+**Une deuxième vérification, écran par écran, et le Cabinet prêt pour ses premiers comptables.**
+Publiée en **bêta** : elle touche au moteur comptable (retenue à la source, déclaration, banque).
+
+**Pour le comptable (SkanFact Cabinet)**
+- **Un client hors SkanFact se tient de bout en bout** : son livre, sa grille de saisie, sa banque,
+  sa paie, sa déclaration — sur une base vide, sans paquet reçu.
+- **La banque** : un relevé s'importe tel que la banque l'exporte, la ligne manquante s'écrit depuis
+  le relevé (le compte proposé, son nom affiché, la TVA à ventiler ensuite dans la grille) ; un mot
+  retenu est propre au tiers (« STEG », jamais « FACTURE ») et **se relit et se retire** dans l'onglet
+  Banque ; une écriture rapprochée se ventile sans défaire le rapprochement.
+- **La déclaration mensuelle suit le formulaire officiel 2026** et chaque montant se **copie** dans la
+  forme que le portail attend ; la date limite est celle des Échéances.
+- **Le fichier CNSS du trimestre**, prêt à déposer sur le portail, au format de télédéclaration —
+  **À VÉRIFIER** sur le portail avant de valider le dépôt : SkanFact Cabinet ne dépose rien.
+- **Corriger dans un tableur** : le livre-journal s'exporte, se corrige, et se réimporte en brouillard.
+  Rien ne bloque le comptable : ce qui ne tombe pas juste est nommé, jamais refusé en silence.
+- **Chaque champ porte sa bulle « i »** (salarié, bulletin, bien, relevé, abonnement, révision,
+  clôture…), qui dit ce que le logiciel fait de la valeur.
+- **Les CSV** écrivent montants et dates comme l'app entreprise (`1 200,500`, `26/09/2026`).
+
+**Pour l'entreprise (SkanFact)**
+- **Un acompte demandé en montant fait ce montant**, timbre compris (500 DT demandés faisaient 501,002).
+- **Changer de client** rend la langue et la devise du nouveau client (celles de ta société s'il n'en a
+  pas), et vide le taux de change quand la devise change.
+- **Un achat sans numéro de fournisseur** reçoit une référence lisible (lettrage, règlements, paquet
+  du comptable) au lieu d'un identifiant interne.
+- **Un prix d'achat de plus de 1 000 DT** n'est plus coupé dans son champ, ni une quantité, ni le mot
+  de passe sous « Afficher ».
+- **Une facture payable à réception** n'a plus qu'un cadre de date sur le document.
+- **Un champ refusé porte son étoile** avant qu'on le remplisse, et le refus amène à la case.
+- **Un bien au bilan sans fiche** (une ligne d'achat pas encore immobilisée) se voit sur la page des
+  immobilisations et dans les contrôles de clôture.
+
+**Pour l'éditeur (console)**
+- **Une licence Cabinet offerte, sans limite de dossiers**, n'est plus « à encaisser » : la clé part
+  tout de suite, la liste des impayées ne la compte pas, les ventes et la fiche disent « offerte », et
+  son renouvellement garde la case « sans limite ».
+
+**Pour tous**
+- **« Guide-moi »**, en haut de chaque page : tout ce qu'on peut faire ici, la visite de la page et
+  son article. La visite guidée n'avance plus toute seule, et elle dit honnêtement quand un geste n'a
+  pas été fait.
+- **« Chargement… »** s'affiche avant un calcul long, et **les nouveautés** se présentent au premier
+  lancement d'une version.
+- **Mises à jour** : en bêta, une stable plus récente est proposée.
+- **Un fichier joint qui ne s'ouvre pas** se montre dans son dossier, avec une phrase qui dit pourquoi.
+
 ## 10.14.0 — 25/09/2026
 
 **La visite guidée, et des chiffres vérifiés deux fois.** La dernière stable en ligne était la
