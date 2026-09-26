@@ -197,6 +197,13 @@ et au moteur), puis en stable quand Skander valide.*
   déclaration, liasse, livres. Vu à la souris : le livre-journal du garage exporté par « Enregistrer »,
   lu sur le disque (`01/01/2026`, `20000,000`). Et deux constats du test à la souris faits : la ligne
   « Reportées » ne pâlit plus son bouton « Actions », le numéro d'une échéance à 7 jours est un lien.
+- ~~**L'aller-retour par un tableur** (Skander, 26/09 : le comptable corrige dans Excel et
+  réimporte)~~ **Fait (26/09)** : « Réimporter depuis un tableur… » sur le livre-journal du Cabinet —
+  rien n'est supprimé, tout entre en brouillard, une validée ne se contre-passe que si on coche,
+  chaque ligne écartée nommée par sa ligne dans le tableur, Windows-1252 lu. Vu à la souris sur le
+  garage (2 nouvelles, 1 validée corrigée, 1 déséquilibrée, 2 lignes écartées). Reste : **l'app
+  entreprise n'a pas ce geste** (elle ne tient pas de livre : ce n'est pas un manque tant qu'aucun
+  client ne le demande), et **un fichier .xlsx est refusé** en le disant — l'enregistrer en CSV.
 - **PERF-01** (la fenêtre « Nouvelle opération diverse » gelait 15,5 s sur dix ans ; corrigé par le
   lot de `comptesProposes`) : le vérifier à la souris sur l'exemple de cinq ans.
 - **Le Cabinet, parcouru par moi-même** (les agents n'y ont rien trouvé : ça ne vaut pas preuve).

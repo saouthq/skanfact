@@ -9893,26 +9893,9 @@
     return out;
   }
 
-  // Le texte d'un fichier ouvert pour l'import. Un CSV enregistré par Excel sous Windows est en
-  // Windows-1252, pas en UTF-8 : lu comme de l'UTF-8, « Hôtel » devenait « H�tel » sur chaque fiche.
-  // Un classeur (.xlsx, .ods, .xls) n'est pas du texte : on le DIT, avec le geste qui marche, au
-  // lieu d'afficher des caractères illisibles.
-  function lireFichierTexte(octets, nom) {
-    const u8 = octets instanceof Uint8Array ? octets : new Uint8Array(octets || []);
-    const debut = Array.from(u8.slice(0, 4));
-    const classeur = (debut[0] === 0x50 && debut[1] === 0x4b) ? 'un classeur (Excel .xlsx ou LibreOffice .ods)'
-      : (debut[0] === 0xd0 && debut[1] === 0xcf && debut[2] === 0x11 && debut[3] === 0xe0) ? 'un classeur Excel (.xls)' : '';
-    if (classeur) {
-      return { ok: false, motif: `« ${nom || 'Ce fichier'} » est ${classeur}, pas du texte. Dans ton tableur, sélectionne les lignes, copie-les et colle-les ici — ou enregistre-le au format CSV, puis ouvre ce fichier-là.` };
-    }
-    let texte;
-    if (debut[0] === 0xff && debut[1] === 0xfe) texte = new TextDecoder('utf-16le').decode(u8.slice(2));
-    else if (debut[0] === 0xfe && debut[1] === 0xff) texte = new TextDecoder('utf-16be').decode(u8.slice(2));
-    else {
-      try { texte = new TextDecoder('utf-8', { fatal: true }).decode(u8); } catch (_) { texte = new TextDecoder('windows-1252').decode(u8); }
-    }
-    return { ok: true, texte: texte.replace(/^﻿/, '') };
-  }
+  // Déplacé dans compta.js (10.14.1) : le Cabinet lit les mêmes fichiers Excel (plan, balance,
+  // écritures) et ne charge pas core.js. Réexporté à l'IDENTITÉ — une copie divergerait.
+  const lireFichierTexte = Compta.lireFichierTexte;
 
   // ---------- pagination et tri des listes ----------
   // Découpage d'une liste en pages. `size` à 0 (ou moins) = tout afficher.

@@ -3614,7 +3614,7 @@
     const plates = [];
     paginate(lj.pieces, s).forEach(p => p.lignes.forEach((e, i) => plates.push({ ...e, numero: p.numero, premiere: i === 0 })));
     return `${barreLivres(`<select id="lv-journal" aria-label="Filtrer par journal"><option value="">Tous les journaux</option>${journaux.map(j => `<option value="${esc(j)}" ${s.journal === j ? 'selected' : ''}>${esc(j)}</option>`).join('')}</select>
-      <span class="champ-loupe"><input type="search" id="lv-q" placeholder="Pièce, tiers, libellé…" value="${esc(s.q)}"></span>`, 'Exporter le livre-journal')}
+      <span class="champ-loupe"><input type="search" id="lv-q" placeholder="Pièce, tiers, libellé…" value="${esc(s.q)}"></span>`, 'Exporter le livre-journal', !!s.livre)}
       <div class="muted small mb">${pl(lj.pieces.length, 'pièce')} · ${pl(gardees.length, 'ligne')}${tout.numeros === 'recomptes' && tout.pieces.length ? ' · <span title="Les paquets lus ne portent pas le numéro de pièce du client (paquets d\'avant la 10.12.0), ou deux paquets donnent le même numéro à deux pièces : elles sont numérotées ici, dans l\'ordre des dates.">numérotées ici, pas chez le client</span>' : ''}${lj.off.length ? ` · <span class="err-inline">${pl(lj.off.length, 'pièce')} déséquilibrée${lj.off.length > 1 ? 's' : ''}</span>` : ''}</div>
       <div class="scroll-x"><table class="list compact"><thead><tr>
         <th class="r nw">N°</th><th class="nw">Date</th><th>Journal</th><th class="nw">Pièce</th><th class="nw">Compte</th>
@@ -6602,8 +6602,11 @@
   // Le fil du parcours (3/3) : depuis le livre d'UN client, rien ne menait à l'export qui regroupe
   // TOUS les clients d'un mois — le geste qui suit la relecture d'un livre, et la dernière étape de
   // la boucle. Il fallait connaître la page Écritures et y aller par le menu.
-  const barreLivres = (controles, libelleExport) => `<div class="filters">${controles}
+  // `reimport` (10.14.1) : le retour de l'aller-retour, posé À CÔTÉ de l'export qu'il reprend — on
+  // exporte, on corrige dans Excel, on réimporte, et les deux gestes se lisent ensemble.
+  const barreLivres = (controles, libelleExport, reimport) => `<div class="filters">${controles}
     <button class="btn btn-sm btn-ghost" id="lv-csv">${esc(libelleExport)}</button>
+    ${reimport ? `<button class="btn btn-sm btn-ghost" id="lv-reimport" title="Le livre-journal exporté, corrigé dans ton tableur puis enregistré en CSV : ce qu'il change entre en brouillard, rien n'est supprimé">Réimporter depuis un tableur…</button>` : ''}
     ${/* Un libellé décrit l'écran d'ARRIVÉE (7.29.0). L'ancien libellé (« Regrouper… ») se lisait comme
           « donner à chacun son sous-compte » — deux lecteurs sur deux (T-42) — alors qu'il quitte le
           dossier pour la page Écritures, l'export de tout le portefeuille. Le mot « Exporter » le
@@ -6692,7 +6695,10 @@
     .map(l => ({
       compte: String(l.compte || '').trim(), libelle: String(l.libelle || ''),
       debit: lireMontant(l.debit),
-      credit: lireMontant(l.credit)
+      credit: lireMontant(l.credit),
+      // Présents seulement sur une ligne reprise d'une écriture rangée : une ligne tapée n'a pas de
+      // tiers, et `undefined` laisse `modifierEcriture` garder celui du même compte.
+      ...(l.tiers !== undefined ? { tiers: l.tiers, tiersId: l.tiersId || null, lettre: l.lettre || '' } : {})
     }));
 
   // Un montant qu'on ne sait pas lire n'est pas un zéro : « 12a » passait pour une ligne « sans
@@ -7322,9 +7328,12 @@
   const pieceDepuis = e => ({
     id: e.id, date: e.date, journal: e.journal, piece: e.piece, libelle: e.libelle,
     pieceJointe: e.pieceJointe || null,
+    // Le tiers et le lettrage de chaque ligne voyagent avec elle, sans case à l'écran : reprise dans
+    // la grille puis enregistrée, une ligne de règlement client perdait son tiers (10.14.1).
     lignes: (e.lignes || []).map(l => ({
       compte: l.compte, libelle: l.libelle,
-      debit: montantChamp(l.debit), credit: montantChamp(l.credit)
+      debit: montantChamp(l.debit), credit: montantChamp(l.credit),
+      tiers: l.tiers || '', tiersId: l.tiersId || null, lettre: l.lettre || ''
     })).concat([ligneVide()])
   });
 
@@ -7765,6 +7774,7 @@
     const a = $('#lv-aux', el); if (a) a.onclick = () => { s.aux = !s.aux; s.page = 1; redraw(); };
     const ar = $('#lv-aux-role', el); if (ar) ar.onchange = () => { s.auxRole = ar.value; s.page = 1; redraw(); };
     const x = $('#lv-csv', el); if (x) x.onclick = () => exporterLivre(lignes);
+    const ri = $('#lv-reimport', el); if (ri) ri.onclick = () => importerTableur(root, dossier);
     const tt = $('#lv-tous', el); if (tt) tt.onclick = () => vers('#/ecritures');
     // Le lettrage automatique (9.5.0). Il DIT ce qu'il a posé et ce qu'il a laissé : « 12 lignes
     // traitées » laisserait croire que tout est réglé alors que la moitié attend une décision.
@@ -7840,6 +7850,82 @@
       const r = await api.exportCsv(csv, `${nom}-${s.data.dossier.matricule || s.data.dossier.name}`);
       if (r) toast('Fichier enregistré.');
     } catch (e) { toast(plainError(e), 'error'); }
+  }
+
+  // 10.14.1 — L'aller-retour par le tableur : exporter le livre-journal, corriger dans Excel une
+  // comptabilité mal tenue, et réimporter. Le comptable pilote le fait déjà avec Sage ; un logiciel
+  // qui ne lui rend pas la main pour ça est un logiciel qu'on contourne. Deux temps : la fenêtre dit
+  // ce qui entrera AVANT d'écrire quoi que ce soit (le moteur ne touche au livre qu'au second geste,
+  // et il relit le fichier à ce moment-là).
+  async function importerTableur(root, dossier) {
+    const s = livresState;
+    if (!s.livre) return;
+    let lu;
+    try { lu = await api.lireEcrituresTableur(dossier.id, s.annee); } catch (e) { return infoDialog('Ce fichier ne s\'importe pas', plainError(e)); }
+    if (!lu || lu.annule) return;
+    const a = lu.analyse, c = a.compte;
+    const parAction = act => a.pieces.filter(p => p.action === act);
+    const nomPiece = p => `${p.journal || '?'} ${p.piece || '(sans pièce)'} du ${fmtJour(p.date) || '?'}`;
+    const lignesDe = p => (p.lignes_csv.length > 1 ? `lignes ${p.lignes_csv[0]} à ${p.lignes_csv[p.lignes_csv.length - 1]}` : `ligne ${p.lignes_csv[0]}`);
+    const liste = (items, fn, max) => `<ul class="imp-liste">${items.slice(0, max || 8).map(x => `<li>${fn(x)}</li>`).join('')}${items.length > (max || 8) ? `<li class="muted">… et ${pl(items.length - (max || 8), 'autre')}</li>` : ''}</ul>`;
+    const desequ = a.pieces.filter(p => ['nouvelle', 'brouillard', 'validee'].includes(p.action) && KC.round3(p.ecart) !== 0);
+    const validees = parAction('validee');
+    const aFaire = c.nouvelles + c.brouillards;
+    const jourMiroir = s.livre ? KC.dateDuMiroir(s.livre, {}, K.today()) : K.today();
+    // Le bouton dit ce que le clic FERA — la case cochée ajoute un geste, le libellé l'ajoute aussi.
+    const libelleOk = corriger => {
+      const morceaux = [aFaire ? `Importer ${pl(aFaire, 'pièce')}` : '', corriger && validees.length ? `${aFaire ? 'corriger' : 'Corriger'} ${pl(validees.length, 'validée')}` : ''].filter(Boolean);
+      return morceaux.length ? morceaux.join(' et ') : validees.length ? `Corriger ${pl(validees.length, 'validée')}` : 'Rien à importer';
+    };
+    modal(`<h2>Réimporter depuis un tableur</h2>
+      <p class="small muted">${esc(lu.nom)} — ${pl(a.pieces.length, 'pièce lue', 'pièces lues')}. Rien n'est encore écrit : voici ce que l'import fera.</p>
+      <div class="imp-bilan">
+        ${c.nouvelles ? `<div class="ok-box mb"><b>${pl(c.nouvelles, 'pièce nouvelle', 'pièces nouvelles')}</b> — ${c.nouvelles > 1 ? 'elles entreront' : 'elle entrera'} en brouillard.</div>` : ''}
+        ${c.brouillards ? `<div class="ok-box mb"><b>${pl(c.brouillards, 'brouillard corrigé', 'brouillards corrigés')}</b> — ta version remplace ${c.brouillards > 1 ? 'celles' : 'celle'} du livre, sans numéro.</div>` : ''}
+        ${validees.length ? `<div class="warn-box mb" id="imp-validees"><b>${pl(validees.length, 'écriture validée que ton fichier change', 'écritures validées que ton fichier change')}</b> : une validée ne se modifie jamais.
+          ${liste(validees, p => `n° ${p.cibleNumero} — ${esc(nomPiece(p))} <span class="muted">(${esc(lignesDe(p))})</span>`, 5)}
+          <label class="check mt"><input type="checkbox" id="imp-corriger"> <span>${validees.length > 1 ? 'Les' : 'La'} contre-passer au ${esc(fmtJour(jourMiroir))} et poser ma version en brouillard</span></label>
+          <span class="small muted">Sans cette case, ${validees.length > 1 ? 'elles restent telles quelles' : 'elle reste telle quelle'} dans le livre et ta version n'entre pas.</span></div>` : ''}
+        ${c.identiques ? `<p class="small muted">${pl(c.identiques, 'pièce identique au livre', 'pièces identiques au livre')} : rien à faire.</p>` : ''}
+        ${desequ.length ? `<div class="warn-box mb"><b>${pl(desequ.length, 'pièce ne tombe pas juste', 'pièces ne tombent pas juste')}</b> : ${desequ.length > 1 ? 'elles entreront' : 'elle entrera'} quand même en brouillard, pour que tu la corriges dans la grille avant de valider.
+          ${liste(desequ, p => `${esc(nomPiece(p))} — écart ${esc(money(Math.abs(p.ecart)))} <span class="muted">(${esc(lignesDe(p))})</span>`, 5)}</div>` : ''}
+        ${c.refusees ? `<div class="warn-box mb"><b>${pl(c.refusees, 'pièce refusée', 'pièces refusées')}</b> :
+          ${liste(parAction('refusee'), p => `${esc(nomPiece(p))} <span class="muted">(${esc(lignesDe(p))})</span> — ${esc(p.motif)}`)}</div>` : ''}
+        ${a.ignorees.length ? `<div class="warn-box mb"><b>${pl(a.ignorees.length, 'ligne écartée', 'lignes écartées')}</b> :
+          ${liste(a.ignorees, i => `ligne ${i.ligne} — ${esc(i.motif)}`)}</div>` : ''}
+        ${a.comptesNouveaux.length ? `<p class="small">Comptes qui entreront au plan de ce dossier : <b>${a.comptesNouveaux.map(esc).join(', ')}</b>.</p>` : ''}
+      </div>
+      <p class="small muted">Rien n'est supprimé : une écriture du livre absente de ton fichier ne bouge pas. Tout entre en brouillard : tu relis, puis tu valides toi-même.</p>
+      <div class="modal-actions"><button class="btn" data-close>Annuler</button>
+        <button class="btn btn-primary" id="ok" ${aFaire || validees.length ? '' : 'disabled'}>${libelleOk(false)}</button></div>`,
+    (rootModal, close) => {
+      const ok = $('#ok', rootModal), coche = $('#imp-corriger', rootModal);
+      // Sans pièce nouvelle ni brouillard, le seul geste est de corriger les validées : le bouton
+      // s'éteint tant que la case n'est pas cochée, et le dit.
+      const majOk = () => {
+        ok.textContent = libelleOk(!!(coche && coche.checked));
+        if (aFaire) return;
+        ok.disabled = !(coche && coche.checked);
+        ok.title = ok.disabled ? (validees.length ? 'Coche la case pour contre-passer les validées : sans elle, l\'import ne change rien.' : 'Ton fichier ne change rien au livre.') : '';
+      };
+      if (coche) coche.onchange = majOk;
+      majOk();
+      ok.onclick = async () => {
+        const corriger = !!(coche && coche.checked);
+        if (corriger && await refusLicence('Contre-passer une écriture')) return;
+        ok.disabled = true;
+        try {
+          const r = await api.importerEcrituresTableur(dossier.id, s.annee, lu.fichier, corriger);
+          s.livre = r.livre;
+          close();
+          const faits = [[r.ajoutees, 'pièce ajoutée', 'pièces ajoutées'], [r.remplacees, 'brouillard corrigé', 'brouillards corrigés'],
+            [r.corrigees, 'validée corrigée par contre-passation', 'validées corrigées par contre-passation']].filter(x => x[0]).map(x => pl(x[0], x[1], x[2]));
+          toast(faits.length ? `Import fait : ${faits.join(', ')}. Tout est en brouillard.` : 'Rien n\'a changé dans le livre.');
+          if (r.refusees.length) await infoDialog('Ce qui n\'est pas entré', r.refusees.map(x => `${x.nom} — ${x.motif}`).join('\n'));
+          allerSousOnglet(root, dossier, 'saisie');
+        } catch (e) { ok.disabled = false; await infoDialog('Import impossible', plainError(e)); }
+      };
+    });
   }
 
   // Le chiffre d'affaires mois par mois, en barres. Une fiche client qui ne montre que des cases

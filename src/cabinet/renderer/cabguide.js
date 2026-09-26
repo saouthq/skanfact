@@ -214,7 +214,16 @@
       <p class="small">Ce n'est pas une sévérité inutile : une comptabilité qu'on peut réécrire après coup ne prouve plus rien. C'est aussi pour ça que <b>valider un lot ne refuse jamais en bloc</b> — ce qui tombe juste est validé, ce qui ne tombe pas juste t'est nommé et reste en brouillard, sans trouer la numérotation.</p>
       <h3>Ce qui fait gagner du temps</h3>
       <p class="small">Un <b>guide</b> est un modèle de pièce (journal, comptes, d'où vient chaque montant). Un <b>abonnement</b> est un guide plus une périodicité : le loyer de chaque mois. Les deux <b>proposent</b> — l'abonnement génère en brouillard, jamais une écriture validée que personne n'a regardée. Ils se règlent dans Réglages → Comptabilité, et les abonnements sur la fiche du client.</p>
-      <p class="small">Tu peux glisser un <b>justificatif</b> sur une écriture : le fichier est copié dans le dossier du client, jamais simplement pointé — celui qui est sur ton Bureau aura disparu bien avant l'écriture qu'il justifie.</p>` },
+      <p class="small">Tu peux glisser un <b>justificatif</b> sur une écriture : le fichier est copié dans le dossier du client, jamais simplement pointé — celui qui est sur ton Bureau aura disparu bien avant l'écriture qu'il justifie.</p>
+      <h3>Corriger dans ton tableur, puis réimporter</h3>
+      <p class="small">Une comptabilité mal tenue se corrige souvent plus vite dans Excel. Dans le <b>Livre-journal</b>, <b>Exporter le livre-journal</b> (coche « Compter … en brouillard », en haut du livre, pour emporter aussi les pièces pas encore validées), corrige dans ton tableur — comptes, libellés, montants, pièces ajoutées —, enregistre au format <b>CSV</b>, puis <b>Réimporter depuis un tableur…</b> à côté.</p>
+      <ul class="small" style="line-height:1.9">
+        <li>Avant d'écrire quoi que ce soit, SkanFact te montre ce qu'il fera : les pièces nouvelles, les brouillards corrigés, les pièces identiques, et <b>chaque ligne écartée avec son numéro de ligne</b> dans ton tableur.</li>
+        <li>Tout entre en <b>brouillard</b>, même une pièce qui ne tombe pas juste : tu la corriges dans la grille, puis tu valides toi-même.</li>
+        <li><b>Rien n'est supprimé</b> : une écriture du livre que ton fichier ne contient pas ne bouge pas. Pour en retirer une, supprime le brouillard dans la grille.</li>
+        <li>Une écriture <b>validée</b> ne se modifie jamais. Si ton fichier la change, une case te propose de la <b>contre-passer</b> et de poser ta version en brouillard ; sans elle, la validée reste telle quelle.</li>
+        <li>Une pièce reçue d'un client que tu as corrigée ici <b>n'est plus écrasée</b> quand il renvoie son mois : ta correction fait foi, l'écart éventuel t'est signalé.</li>
+      </ul>` },
     {
       id: 'paquet', t: 'Ce que contient un paquet',
       s: 'Ce que ton client t\'envoie, et ce que tu peux en affirmer', couleur: 'th-vendre', geste: { label: 'Voir mes dossiers', hash: '#/' },

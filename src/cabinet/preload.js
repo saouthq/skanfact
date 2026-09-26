@@ -54,6 +54,8 @@ contextBridge.exposeInMainWorld('cabinet', {
   reprendre: (o) => ipcRenderer.invoke('cab:reprendre', o || {}),
   importerPlan: (o) => ipcRenderer.invoke('cab:importerPlan', o || {}),
   importerBalance: (o) => ipcRenderer.invoke('cab:importerBalance', o || {}),
+  lireEcrituresTableur: (dossierId, annee, chemin) => ipcRenderer.invoke('cab:lireEcrituresTableur', { dossierId, annee, chemin }),
+  importerEcrituresTableur: (dossierId, annee, chemin, corrigerValidees) => ipcRenderer.invoke('cab:importerEcrituresTableur', { dossierId, annee, chemin, corrigerValidees }),
   valider: (dossierId, annee, id) => ipcRenderer.invoke('cab:valider', { dossierId, annee, id }),
   contrepasser: (dossierId, annee, id, date) => ipcRenderer.invoke('cab:contrepasser', { dossierId, annee, id, date }),
   saisir: (dossierId, annee, ecriture) => ipcRenderer.invoke('cab:saisir', { dossierId, annee, ecriture }),

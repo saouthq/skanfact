@@ -806,3 +806,9 @@ a.lien-aide:hover, a.lien-aide:focus-visible { text-decoration-thickness: 2px; }
    Une place réservée en `lh` sur la police du paragraphe laissait l'encadré de la réponse la
    dépasser de 4 px — et les boutons descendaient sous le curseur au moment du clic (H-E1). */
 .ap-etat > div { min-height: inherit; box-sizing: border-box; }
+
+/* 10.14.1 — La fenêtre de réimport depuis un tableur. Le bilan peut nommer des dizaines de lignes
+   écartées : il défile dans la fenêtre, jamais la fenêtre hors de l'écran. */
+.imp-bilan { max-height: 55vh; overflow-y: auto; }
+.imp-liste { margin: 6px 0 0; padding-inline-start: 18px; }
+.imp-liste li + li { margin-block-start: 2px; }

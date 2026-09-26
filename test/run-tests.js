@@ -13857,7 +13857,10 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     // s'écrit en double et ne se lit plus.
     const C = lireSource('src', 'renderer', 'compta.js');
     const mod = C.slice(C.indexOf('function modifierEcriture'), C.indexOf('function supprimerEcriture'));
-    assert.ok(mod.length > 400 && mod.length < 3000, 'la tranche de modifierEcriture fait ' + mod.length + ' caractères');
+    // 10.14.1 : la borne passe de 3 000 à 4 500 — la fonction garde désormais le tiers et la source
+    // d'une pièce du client, avec leurs raisons. La borne attrape une tranche qui déborderait sur la
+    // fonction suivante ; elle ne raccourcit pas une explication.
+    assert.ok(mod.length > 400 && mod.length < 4500, 'la tranche de modifierEcriture fait ' + mod.length + ' caractères');
     assert.ok(!/trace\(/.test(mod), 'modifierEcriture trace : la piste d\'audit s\'écrira en double');
   });
 
@@ -14643,6 +14646,7 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
   require('./suites/avoir-fournisseur.js')({ t, assert, lireSource });
   require('./suites/paie-cabinet.js')({ t, assert, lireSource });
   require('./suites/cnss-fichier.js')({ t, assert, lireSource });
+  require('./suites/tableur.js')({ t, assert, lireSource });
   require('./suites/qa-cabinet.js')({ t, assert, lireSource });
   require('./suites/qa-entreprise.js')({ t, assert, lireSource });
   require('./suites/remboursement.js')({ t, assert, lireSource });

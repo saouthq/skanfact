@@ -243,7 +243,10 @@
   function lignesCsv(texte, sep) {
     const s = String(texte || '').replace(/^﻿/, '');
     const rows = [];
-    let ligne = [], champ = '', i = 0, guill = false;
+    // `ligne.no` : le numéro de la ligne PHYSIQUE où la rangée commence (1 = l'entête). Il survit au
+    // retrait des lignes vides et aux champs sur plusieurs lignes — c'est celui du tableur.
+    let ligne = [], champ = '', i = 0, guill = false, no = 1;
+    ligne.no = no;
     while (i < s.length) {
       const c = s[i];
       if (guill) {
@@ -251,12 +254,13 @@
           if (s[i + 1] === '"') { champ += '"'; i += 2; continue; }
           guill = false; i++; continue;
         }
+        if (c === '\n') no++;
         champ += c; i++; continue;
       }
       if (c === '"') { guill = true; i++; continue; }
       if (c === sep) { ligne.push(champ); champ = ''; i++; continue; }
       if (c === '\r') { i++; continue; }
-      if (c === '\n') { ligne.push(champ); rows.push(ligne); ligne = []; champ = ''; i++; continue; }
+      if (c === '\n') { ligne.push(champ); rows.push(ligne); no++; ligne = []; ligne.no = no; champ = ''; i++; continue; }
       champ += c; i++;
     }
     if (champ !== '' || ligne.length) { ligne.push(champ); rows.push(ligne); }
@@ -283,12 +287,24 @@
     out.entete = map.account != null;
     if (!out.entete) return out;
 
+    // 10.14.1 — le NUMÉRO de ligne du fichier voyage avec chaque ligne, et ceux qui sont ignorés sont
+    // retenus : un import d'écritures qui dit « 3 lignes ignorées » sans dire lesquelles fait relire
+    // tout le tableur. Une ligne de tableur se compte à partir de 1, entête compris — c'est le numéro
+    // que le comptable voit à gauche de sa feuille.
+    out.ignoreesLignes = [];
     for (let r = 1; r < rows.length; r++) {
       const c = rows[r];
       const at = k => (map[k] == null ? '' : txt(c[map[k]]));
       const account = at('account');
-      if (!account) { out.ignorees++; continue; }
+      if (!account) {
+        out.ignorees++;
+        // Une rangée entièrement vide (« ;;;; » qu'un tableur laisse en bas) se compte mais ne se
+        // NOMME pas : la citer ferait chercher une faute qui n'existe pas.
+        if (c.some(x => txt(x))) out.ignoreesLignes.push(c.no || r + 1);
+        continue;
+      }
       out.push({
+        ligneCsv: c.no || r + 1,
         numero: Number(at('numero')) || 0,
         date: dateDepuisCsv(at('date')), journal: at('journal'), piece: at('piece'),
         account, tiers: at('tiers'), label: at('label'),
@@ -298,6 +314,27 @@
       });
     }
     return out;
+  }
+
+  // Le texte d'un fichier ouvert pour l'import. Un CSV enregistré par Excel sous Windows est en
+  // Windows-1252, pas en UTF-8 : lu comme de l'UTF-8, « Hôtel » devenait « H�tel » sur chaque fiche.
+  // Un classeur (.xlsx, .ods, .xls) n'est pas du texte : on le DIT, avec le geste qui marche, au
+  // lieu d'afficher des caractères illisibles.
+  function lireFichierTexte(octets, nom) {
+    const u8 = octets instanceof Uint8Array ? octets : new Uint8Array(octets || []);
+    const debut = Array.from(u8.slice(0, 4));
+    const classeur = (debut[0] === 0x50 && debut[1] === 0x4b) ? 'un classeur (Excel .xlsx ou LibreOffice .ods)'
+      : (debut[0] === 0xd0 && debut[1] === 0xcf && debut[2] === 0x11 && debut[3] === 0xe0) ? 'un classeur Excel (.xls)' : '';
+    if (classeur) {
+      return { ok: false, motif: `« ${nom || 'Ce fichier'} » est ${classeur}, pas du texte. Dans ton tableur, sélectionne les lignes, copie-les et colle-les ici — ou enregistre-le au format CSV, puis ouvre ce fichier-là.` };
+    }
+    let texte;
+    if (debut[0] === 0xff && debut[1] === 0xfe) texte = new TextDecoder('utf-16le').decode(u8.slice(2));
+    else if (debut[0] === 0xfe && debut[1] === 0xff) texte = new TextDecoder('utf-16be').decode(u8.slice(2));
+    else {
+      try { texte = new TextDecoder('utf-8', { fatal: true }).decode(u8); } catch (_) { texte = new TextDecoder('windows-1252').decode(u8); }
+    }
+    return { ok: true, texte: texte.replace(/^﻿/, '') };
   }
 
   // ---------------------------------------------------------------- l'équilibre
@@ -1138,22 +1175,28 @@
     const avant = livre.ecritures.filter(e => e.source === 'skanfact' && e.mois === m);
     const parCle = {};
     avant.forEach(e => { parCle[cleDuPaquet(e)] = e; });
-    const res = { ajoutees: 0, remplacees: 0, ecarts: [], validees: 0, nonValidees: [] };
+    const res = { ajoutees: 0, remplacees: 0, ecarts: [], validees: 0, nonValidees: [], corrigeesGardees: 0 };
 
-    // Les brouillards du mois s'en vont : ils seront réécrits depuis ce que le paquet dit.
-    const aJeter = avant.filter(e => e.statut === 'brouillard').map(e => e.id);
+    // Les brouillards du mois s'en vont : ils seront réécrits depuis ce que le paquet dit — SAUF ceux
+    // que le cabinet a corrigés (10.14.1). Un comptable qui reprend la compta mal tenue d'un client
+    // la corrige pièce par pièce ; le paquet relu effaçait sa correction et reposait la pièce fausse,
+    // sans un mot. Une pièce corrigée se traite comme une validée : elle ne bouge pas, et l'écart
+    // se DIT (règle 3 : le paquet du client ne gagne jamais contre le cabinet).
+    const garde = e => e.statut !== 'brouillard' || !!e.corrigeeLe;
+    const aJeter = avant.filter(e => !garde(e)).map(e => e.id);
     livre.ecritures = livre.ecritures.filter(e => !aJeter.includes(e.id));
 
     (Array.isArray(ecritures) ? ecritures : []).forEach(src => {
       const e = { ...src, source: 'skanfact', mois: m };
       const ancienne = parCle[cleDuPaquet(e)];
-      if (ancienne && ancienne.statut !== 'brouillard') {
+      if (ancienne && garde(ancienne)) {
         // Une validée ne bouge pas. On DIT l'écart, et c'est tout : l'appliquer serait écraser le
         // travail du comptable au nom de ce que le client a refait de son côté.
         const apres = totalEcriture(e);
         if (round3(apres - totalEcriture(ancienne)) !== 0) {
           res.ecarts.push({ id: ancienne.id, piece: ancienne.piece, avant: totalEcriture(ancienne), apres });
         }
+        if (ancienne.statut === 'brouillard') res.corrigeesGardees++;
         return;
       }
       const nouvelle = ajouterEcriture(livre, e, qui || 'import', quand);
@@ -1416,7 +1459,7 @@
     return null;
   }
 
-  function modifierEcriture(livre, id, patch) {
+  function modifierEcriture(livre, id, patch, quand) {
     const e = (livre.ecritures || []).find(x => x.id === id);
     if (!e) return { ok: false, motif: 'Cette écriture n\'existe pas.' };
     if (e.statut !== 'brouillard') {
@@ -1428,19 +1471,38 @@
     const p = patch || {};
     ['journal', 'piece', 'libelle'].forEach(k => { if (p[k] !== undefined) e[k] = String(p[k] == null ? '' : p[k]); });
     if (p.pieceJointe !== undefined) e.pieceJointe = p.pieceJointe || null;
-    if (p.date !== undefined) { e.date = String(p.date || ''); e.mois = e.date.slice(0, 7); }
-    if (p.source !== undefined && SOURCES_ECRITURE.includes(p.source)) e.source = p.source;
+    // Le `mois` d'une pièce venue d'un paquet est le mois du PAQUET, pas celui de sa date : c'est lui
+    // que le paquet relu cherche. Changer la date d'une pièce du client (le comptable la range en
+    // avril) le lui faisait perdre, et le paquet de mars reposait la pièce à côté de la corrigée.
+    if (p.date !== undefined) { e.date = String(p.date || ''); if (e.source !== 'skanfact' || !e.mois) e.mois = e.date.slice(0, 7); }
+    // 10.14.1 — une pièce du CLIENT reste une pièce du client. La grille renvoie `source: 'saisie'`
+    // pour tout ce qu'elle enregistre : reprise dans la grille puis corrigée, une pièce venue d'un
+    // paquet devenait une « saisie », le paquet relu ne la reconnaissait plus, et il reposait SA
+    // version à côté — la même facture deux fois au 411 et au 706. Elle garde sa source, et la
+    // correction se RETIENT (`corrigeeLe`) : c'est ce qui dit au paquet relu de ne pas l'écraser.
+    if (p.source !== undefined && SOURCES_ECRITURE.includes(p.source) && e.source !== 'skanfact') e.source = p.source;
     if (Array.isArray(p.lignes)) {
-      e.lignes = p.lignes.map(l => ({
-        compte: String((l && l.compte) || '').trim(),
-        tiersId: (l && l.tiersId) || null,
-        libelle: String((l && l.libelle) || ''),
-        debit: round3(Math.max(0, Number(l && l.debit) || 0)),
-        credit: round3(Math.max(0, Number(l && l.credit) || 0)),
-        lettre: String((l && l.lettre) || '')
-      }));
+      const avant = e.lignes || [];
+      e.lignes = p.lignes.map(l => {
+        // Le tiers de la ligne (9.8.5) se perdait ici : la forme d'une ligne l'avait gagné, cette
+        // fonction non — corriger le libellé d'un règlement client le faisait tomber « sans tiers »
+        // dans la balance auxiliaire. Une ligne qui ne dit rien de son tiers garde celui qu'elle
+        // avait (même compte) ; une ligne qui en dit un le prend.
+        const compte = String((l && l.compte) || '').trim();
+        const origine = (l && l.tiers === undefined) ? avant.find(x => x.compte === compte && (x.tiers || x.tiersId)) : null;
+        return {
+          compte,
+          tiersId: (l && l.tiersId) || (origine && origine.tiersId) || null,
+          tiers: String((l && l.tiers !== undefined ? l.tiers : origine && origine.tiers) || ''),
+          libelle: String((l && l.libelle) || ''),
+          debit: round3(Math.max(0, Number(l && l.debit) || 0)),
+          credit: round3(Math.max(0, Number(l && l.credit) || 0)),
+          lettre: String((l && l.lettre) || '')
+        };
+      });
       e.lignes.forEach(l => assurerCompte(livre, l.compte, l.libelle));
     }
+    if (e.source === 'skanfact') e.corrigeeLe = Number(quand) || e.corrigeeLe || 1;
     return { ok: true, ecriture: e };
   }
 
@@ -1459,6 +1521,171 @@
     livre.ecritures = livre.ecritures.filter(x => x.id !== id);
     const liberes = libererEcriture(livre, id);
     return { ok: true, ecriture: e, liberes };
+  }
+
+  // ================================================================ L'ALLER-RETOUR PAR LE TABLEUR (10.14.1)
+  //
+  // Le métier réel, dit par un comptable : une entreprise qui n'a jamais tenu sa comptabilité arrive
+  // avec des pièces fausses et mal rangées ; il EXPORTE tout dans Excel, corrige, ajuste, et
+  // RÉIMPORTE dans son logiciel. Un logiciel qui ne rend pas la main pour ça est un logiciel qu'on
+  // contourne. Deux temps, comme l'import d'un relevé (9.5.0) : on LIT et on montre ce qui entrera,
+  // puis on applique — écrire dans un livre à partir d'un fichier que personne n'a regardé, non.
+  //
+  // Les quatre règles, et aucune ne se négocie :
+  //   — rien n'est SUPPRIMÉ : une écriture du livre absente du fichier ne bouge pas. Un fichier peut
+  //     n'être qu'un extrait, et un import qui efface ce qu'il ne voit pas serait une catastrophe ;
+  //   — tout entre en BROUILLARD, même équilibré : le comptable relit et valide lui-même ;
+  //   — une VALIDÉE ne se modifie jamais (9.2.0) : si le fichier la change, on le dit, et on propose
+  //     le seul geste juste — la contre-passer et poser la version corrigée en brouillard ;
+  //   — rien de ce qui pourrait se lire n'est jeté en silence : chaque ligne écartée est NOMMÉE par
+  //     son numéro de ligne dans le tableur, chaque pièce refusée par sa raison.
+  const jourReel = iso => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(iso || ''))) return false;
+    const d = new Date(String(iso) + 'T00:00:00Z');
+    return !isNaN(d) && d.toISOString().slice(0, 10) === iso;
+  };
+  const signatureLignes = (lignes, libellePiece) => (lignes || [])
+    .map(l => [txt(l.compte), round3(num(l.debit)), round3(num(l.credit)), txt(l.libelle || libellePiece), txt(l.tiers)].join('|'))
+    .sort().join('¦');
+
+  function analyserImportEcritures(livre, texte) {
+    const lu = entreesDepuisCsv(texte);
+    const res = {
+      ok: false, motif: '', pieces: [], ignorees: [], comptesNouveaux: [],
+      colonnes: lu.colonnes || {}, sep: lu.sep, avecTiers: false,
+      compte: { nouvelles: 0, brouillards: 0, validees: 0, identiques: 0, refusees: 0, desequilibrees: 0 }
+    };
+    if (!lu.entete) {
+      res.motif = 'Ce fichier n\'a pas de colonne « Compte » : ce n\'est pas un fichier d\'écritures. La première ligne doit nommer les colonnes — Date, Journal, Pièce, Compte, Libellé, Débit, Crédit — comme dans l\'export du livre-journal.';
+      return res;
+    }
+    const col = lu.colonnes;
+    if (col.date == null) { res.motif = 'Ce fichier n\'a pas de colonne « Date » : sans elle, SkanFact ne saurait pas dans quel mois ranger chaque pièce.'; return res; }
+    if (col.debit == null && col.credit == null) { res.motif = 'Ce fichier n\'a ni colonne « Débit » ni colonne « Crédit » : il n\'y a aucun montant à importer.'; return res; }
+    res.avecTiers = col.tiers != null;
+    (lu.ignoreesLignes || []).forEach(no => res.ignorees.push({ ligne: no, motif: 'aucun compte sur cette ligne' }));
+
+    const ex = livre.exercice || {};
+    const planAvant = new Set((livre.plan || []).map(c => c.compte));
+    const nouveaux = new Set();
+    // Les pièces du fichier : par NUMÉRO quand la ligne en porte un (c'est l'identité d'une validée,
+    // et l'export du livre-journal l'écrit), sinon par journal, pièce et date.
+    const groupes = new Map();
+    lu.forEach(l => {
+      const compte = txt(l.account).replace(/\s+/g, '');
+      if (!/^\d{1,12}$/.test(compte)) { res.ignorees.push({ ligne: l.ligneCsv, motif: `le compte « ${txt(l.account)} » n'est pas un numéro` }); return; }
+      let d = round3(num(l.debit)), c = round3(num(l.credit));
+      // Un montant négatif CHANGE DE COLONNE (6.3.0) — c'est ce qu'un tableur fait écrire le plus
+      // souvent (« -40 » au débit pour annuler). Une ligne qui porte les deux garde leur différence.
+      if (d < 0) { c = round3(c - d); d = 0; }
+      if (c < 0) { d = round3(d - c); c = 0; }
+      if (d && c) { const n = round3(d - c); d = n > 0 ? n : 0; c = n < 0 ? -n : 0; }
+      if (!d && !c) { res.ignorees.push({ ligne: l.ligneCsv, motif: `aucun montant sur le compte ${compte}` }); return; }
+      const cle = l.numero > 0 ? 'N:' + l.numero : 'P:' + cleDePiece(l);
+      if (!groupes.has(cle)) {
+        groupes.set(cle, { numero: l.numero > 0 ? l.numero : 0, date: l.date, journal: l.journal, piece: l.piece, libelle: '', lignes: [], lignesCsv: [] });
+      }
+      const g = groupes.get(cle);
+      if (!g.journal && l.journal) g.journal = l.journal;
+      if (!g.libelle && l.label) g.libelle = l.label;
+      g.lignesCsv.push(l.ligneCsv);
+      g.lignes.push({ compte, tiers: txt(l.tiers), libelle: txt(l.label), debit: d, credit: c, lettre: txt(l.lettre) });
+    });
+    const ecritures = livre.ecritures || [];
+    const parCle = new Map();
+    ecritures.forEach(e => { const k = cleDePiece(e); if (!parCle.has(k)) parCle.set(k, e); });
+    const parNumero = new Map(ecritures.filter(e => e.numero).map(e => [Number(e.numero), e]));
+    const dejaPris = new Set();
+
+    groupes.forEach(g => {
+      const p = {
+        numero: g.numero, date: g.date, journal: txt(g.journal), piece: txt(g.piece), libelle: txt(g.libelle),
+        lignes: g.lignes, lignes_csv: g.lignesCsv.slice().sort((a, b) => a - b), action: '', motif: '', cibleId: '', cibleNumero: 0
+      };
+      const sd = soldeDeLignes(p.lignes);
+      p.debit = sd.debit; p.credit = sd.credit; p.ecart = sd.ecart;
+      if (!jourReel(p.date)) { p.action = 'refusee'; p.motif = `la date « ${p.date || '(vide)'} » ne se lit pas comme un jour — écris-la JJ/MM/AAAA`; }
+      else if ((ex.du && p.date < ex.du) || (ex.au && p.date > ex.au)) { p.action = 'refusee'; p.motif = `datée du ${p.date.split('-').reverse().join('/')}, hors de l'exercice ${ex.annee || ''} — importe-la dans le livre de son exercice`; }
+      if (!p.action) {
+        let cible = p.numero ? parNumero.get(p.numero) : null;
+        if (p.numero && !cible) { p.action = 'refusee'; p.motif = `le n° ${p.numero} ne désigne aucune écriture validée de ce livre — vide la colonne « N° » pour l'importer comme une pièce nouvelle`; }
+        if (!p.action && !cible) cible = parCle.get(cleDePiece(p)) || null;
+        // Une pièce en brouillard dont on a changé la DATE dans le tableur : même journal, même
+        // pièce, et une seule candidate — c'est la même, pas une nouvelle à côté de l'ancienne.
+        if (!p.action && !cible && p.piece) {
+          const memes = ecritures.filter(e => e.statut === 'brouillard' && e.journal === p.journal && e.piece === p.piece);
+          if (memes.length === 1) cible = memes[0];
+        }
+        if (cible && dejaPris.has(cible.id)) { p.action = 'refusee'; p.motif = `deux pièces du fichier désignent la même écriture (${cible.journal} ${cible.piece || '(sans pièce)'}) — donne-leur deux références différentes`; }
+        else if (cible) {
+          dejaPris.add(cible.id);
+          p.cibleId = cible.id; p.cibleNumero = Number(cible.numero) || 0;
+          const pareil = p.date === cible.date && p.journal === txt(cible.journal) && p.piece === txt(cible.piece)
+            && signatureLignes(p.lignes, p.libelle) === signatureLignes(cible.lignes, cible.libelle);
+          // Un tiers que le fichier ne porte pas (colonne absente) n'est pas un changement.
+          const pareilSansTiers = !res.avecTiers && p.date === cible.date && p.journal === txt(cible.journal) && p.piece === txt(cible.piece)
+            && signatureLignes(p.lignes, p.libelle) === signatureLignes((cible.lignes || []).map(l => ({ ...l, tiers: '' })), cible.libelle);
+          if (pareil || pareilSansTiers) p.action = 'identique';
+          else if (ex.clos) { p.action = 'refusee'; p.motif = `l'exercice ${ex.annee || ''} est clôturé : rouvre-le d'abord (onglet Exercice), avec son motif`; }
+          else if (cible.statut === 'contrepassee') { p.action = 'refusee'; p.motif = `l'écriture n° ${cible.numero} est déjà contre-passée : sa correction existe peut-être déjà dans le livre`; }
+          else if (cible.statut === 'validee') p.action = 'validee';
+          else if (rapprochementDe(livre, cible.id)) { p.action = 'refusee'; p.motif = 'ce brouillard est rapproché d\'une ligne de relevé : défais le rapprochement d\'abord (onglet Banque)'; }
+          else p.action = 'brouillard';
+          // Les identifiants de tiers se retrouvent par le compte et le NOM : l'export ne les porte
+          // pas, et les perdre ferait tomber la ligne « sans tiers » dans la balance auxiliaire.
+          p.lignes.forEach(l => {
+            const o = (cible.lignes || []).find(x => x.compte === l.compte && txt(x.tiers) === l.tiers && x.tiersId);
+            if (o) l.tiersId = o.tiersId;
+          });
+        } else if (!p.action) {
+          if (ex.clos) { p.action = 'refusee'; p.motif = `l'exercice ${ex.annee || ''} est clôturé : rouvre-le d'abord (onglet Exercice), avec son motif`; }
+          else p.action = 'nouvelle';
+        }
+      }
+      if (['nouvelle', 'brouillard', 'validee'].includes(p.action) && !sd.equilibre) res.compte.desequilibrees++;
+      res.compte[{ nouvelle: 'nouvelles', brouillard: 'brouillards', validee: 'validees', identique: 'identiques', refusee: 'refusees' }[p.action]]++;
+      // Les comptes que l'import fera entrer au plan : seulement ceux des pièces qui ENTRENT —
+      // une pièce refusée n'ajoute rien, et la nommer ici ferait croire le contraire.
+      if (['nouvelle', 'brouillard', 'validee'].includes(p.action)) p.lignes.forEach(l => { if (!planAvant.has(l.compte)) nouveaux.add(l.compte); });
+      res.pieces.push(p);
+    });
+    res.comptesNouveaux = [...nouveaux].sort();
+    // Dans l'ordre du tableur : on les corrige en descendant la feuille.
+    res.ignorees.sort((x, y) => x.ligne - y.ligne);
+    res.ok = true;
+    return res;
+  }
+
+  // Appliquer ce que l'analyse a montré. `corrigerValidees` : le geste que la fenêtre propose pour
+  // une validée que le fichier change — la contre-passer (au jour du miroir, `dateDuMiroir`) et
+  // poser la version corrigée en brouillard. Sans lui, les validées ne bougent pas et sont nommées.
+  function appliquerImportEcritures(livre, analyse, opts) {
+    const o = opts || {};
+    const out = { ajoutees: 0, remplacees: 0, corrigees: 0, identiques: 0, refusees: [], validees: [], desequilibrees: [], comptesNouveaux: (analyse.comptesNouveaux || []).slice() };
+    (analyse.pieces || []).forEach(p => {
+      const nom = `${p.journal || '?'} ${p.piece || '(sans pièce)'} du ${String(p.date || '').split('-').reverse().join('/')}`;
+      const lignes = p.lignes.map(l => ({ compte: l.compte, tiersId: l.tiersId || null, libelle: l.libelle, debit: l.debit, credit: l.credit, lettre: l.lettre,
+        ...(analyse.avecTiers ? { tiers: l.tiers } : {}) }));
+      const tete = { date: p.date, journal: p.journal, piece: p.piece, libelle: p.libelle };
+      if (p.action === 'identique') { out.identiques++; return; }
+      if (p.action === 'refusee') { out.refusees.push({ nom, lignes: p.lignes_csv, motif: p.motif }); return; }
+      if (p.action === 'nouvelle') {
+        ajouterEcriture(livre, { ...tete, source: 'import', lignes }, o.qui, o.quand);
+        out.ajoutees++;
+      } else if (p.action === 'brouillard') {
+        const r = modifierEcriture(livre, p.cibleId, { ...tete, lignes }, o.quand);
+        if (!r.ok) { out.refusees.push({ nom, lignes: p.lignes_csv, motif: r.motif }); return; }
+        out.remplacees++;
+      } else if (p.action === 'validee') {
+        if (!o.corrigerValidees) { out.validees.push({ nom, numero: p.cibleNumero, lignes: p.lignes_csv }); return; }
+        const r = contrepasser(livre, p.cibleId, o.qui, o.jour, o.quand);
+        if (!r.ok) { out.refusees.push({ nom, lignes: p.lignes_csv, motif: r.motif }); return; }
+        ajouterEcriture(livre, { ...tete, source: 'import', lignes }, o.qui, o.quand);
+        out.corrigees++;
+      }
+      if (round3(p.ecart) !== 0) out.desequilibrees.push({ nom, ecart: p.ecart, lignes: p.lignes_csv });
+    });
+    return out;
   }
 
   // Valider un LOT — un journal, un mois, ou une sélection. Chaque pièce passe par `validerEcriture`
@@ -6101,7 +6328,7 @@
     planDepuisCsv, balanceDepuisCsv,
     // La saisie (9.3.0)
     premierDuMoisSuivant, ajouterMoisIso, sansAccents, soldeDeLignes, comptesQuiCorrespondent,
-    modifierEcriture, supprimerEcriture, validerLot, extourner, prevoirExtourne, chercherEcritures, ceQuePorte,
+    modifierEcriture, supprimerEcriture, analyserImportEcritures, appliquerImportEcritures, lireFichierTexte, validerLot, extourner, prevoirExtourne, chercherEcritures, ceQuePorte,
     guideValide, ecritureDepuisGuide, occurrencesAGenerer,
     correspondanceValide, compteCorrespondant, appliquerCorrespondance,
     // La banque (9.5.0)

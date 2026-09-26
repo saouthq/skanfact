@@ -1513,9 +1513,16 @@ ipcMain.handle('cab:reprendre', (_e, { dossierId, annee, du, au, plan, ouverture
 
 // Les deux imports CSV. Le fichier est lu ici, l'analyse est PURE (`compta.js`) : c'est elle qui
 // associe les colonnes par nom et nomme chaque ligne ignorée.
-function lireCsvFichier(chemin) {
-  const brut = fs.readFileSync(chemin, 'utf8').replace(/^﻿/, '');
-  return K.parseCsv(brut);
+// Un CSV enregistré par Excel sous Windows est en Windows-1252 : lu comme de l'UTF-8, l'entête
+// « Libellé » devenait « Libell� », la colonne ne s'associait plus, et le plan importé arrivait
+// sans ses noms (10.14.1). Le décodeur est celui de l'app entreprise, déplacé dans compta.js.
+function lireTexteFichier(chemin, code) {
+  const r = KC.lireFichierTexte(fs.readFileSync(chemin), path.basename(chemin));
+  if (!r.ok) throw erreur(code, r.motif);
+  return r.texte;
+}
+function lireCsvFichier(chemin, code) {
+  return K.parseCsv(lireTexteFichier(chemin, code || 'ERR-CAB-027'));
 }
 
 ipcMain.handle('cab:importerPlan', async (_e, { dossierId, annee, chemin } = {}) => {
@@ -1544,9 +1551,45 @@ ipcMain.handle('cab:importerBalance', async (_e, { dossierId, annee, chemin } = 
   droitBlock(dossierId, 'saisie');
   const f = chemin || (await dialog.showOpenDialog({ title: 'Importer une balance d\'ouverture', filters: [{ name: 'CSV', extensions: ['csv', 'txt'] }], properties: ['openFile'] })).filePaths[0];
   if (!f) return { annule: true };
-  const r = KC.balanceDepuisCsv(lireCsvFichier(f));
+  const r = KC.balanceDepuisCsv(lireCsvFichier(f, 'ERR-CAB-023'));
   if (r.motif) throw erreur('ERR-CAB-023', r.motif);
   return { lignes: r.lignes, ignorees: r.ignorees, fichier: f };
+});
+
+// 10.14.1 — L'aller-retour par le tableur : le comptable exporte le livre-journal, corrige dans
+// Excel une comptabilité mal tenue, et réimporte. Deux gestes, comme un relevé (9.5.0) : LIRE (rien
+// n'est écrit, l'écran montre ce qui entrera et ce qui sera refusé), puis IMPORTER — qui relit le
+// fichier et refait l'analyse sur le livre du moment, jamais sur une analyse gardée par l'écran.
+ipcMain.handle('cab:lireEcrituresTableur', async (_e, { dossierId, annee, chemin } = {}) => {
+  requireOpen();
+  droitBlock(dossierId, 'saisie');
+  const f = chemin || (await dialog.showOpenDialog({ title: 'Importer des écritures depuis un tableur', filters: [{ name: 'CSV ou texte', extensions: ['csv', 'txt'] }], properties: ['openFile'] })).filePaths[0];
+  if (!f) return { annule: true };
+  const o = ouvrirLivre(dossierId, annee);
+  if (!o.livre) throw erreur('ERR-CAB-026', 'Ce dossier n\'a pas encore de livre pour cet exercice.');
+  const a = KC.analyserImportEcritures(o.livre, lireTexteFichier(f, 'ERR-CAB-082'));
+  if (!a.ok) throw erreur('ERR-CAB-082', a.motif);
+  return { fichier: f, nom: path.basename(f), analyse: a };
+});
+
+ipcMain.handle('cab:importerEcrituresTableur', (_e, { dossierId, annee, chemin, corrigerValidees } = {}) => {
+  requireOpen();
+  droitBlock(dossierId, 'saisie');
+  const o = ouvrirLivre(dossierId, annee);
+  if (!o.livre) throw erreur('ERR-CAB-026', 'Ce dossier n\'a pas encore de livre pour cet exercice.');
+  const a = KC.analyserImportEcritures(o.livre, lireTexteFichier(chemin, 'ERR-CAB-082'));
+  if (!a.ok) throw erreur('ERR-CAB-082', a.motif);
+  // Contre-passer une validée est un geste de VALIDATION (droit et licence), jamais de saisie :
+  // la porte se pose seulement quand le fichier en change une ET qu'on a demandé de la corriger.
+  const touche = corrigerValidees && a.pieces.some(p => p.action === 'validee');
+  if (touche) { droitBlock(dossierId, 'validation'); licenceBlockCab('Contre-passer une écriture'); }
+  const r = KC.appliquerImportEcritures(o.livre, a, { qui: quiSuisJe(), quand: Date.now(), jour: K.today(), corrigerValidees: !!corrigerValidees });
+  const n = r.ajoutees + r.remplacees + r.corrigees;
+  if (n) {
+    ecrireLeLivre(dossierId, o.livre, 'import-tableur', `${path.basename(chemin)} — ${[[r.ajoutees, 'ajoutée'], [r.remplacees, 'remplacée'], [r.corrigees, 'corrigée par contre-passation']].filter(x => x[0]).map(x => `${x[0]} ${x[0] > 1 ? x[1].replace(/^(\S+)/, '$1s') : x[1]}`).join(', ')}`);
+    if (r.corrigees) noterValidation(dossierId);
+  }
+  return { ...r, livre: ouvrirLivre(dossierId, annee).livre };
 });
 
 // Les trois gestes du comptable sur une écriture. Chacun rend le livre relu : l'écran ne devine
@@ -2616,7 +2659,7 @@ ipcMain.handle('cab:modifierEcriture', (_e, { dossierId, annee, id, patch } = {}
   droitBlock(dossierId, 'saisie');
   const o = ouvrirLivre(dossierId, annee);
   if (!o.livre) throw erreur('ERR-CAB-026', 'Ce dossier n\'a pas de livre pour cet exercice.');
-  const r = KC.modifierEcriture(o.livre, id, patch);
+  const r = KC.modifierEcriture(o.livre, id, patch, Date.now());
   if (!r.ok) throw erreur('ERR-CAB-025', r.motif);
   ecrireLeLivre(dossierId, o.livre, 'modification', `${r.ecriture.journal} ${r.ecriture.piece || '(sans pièce)'}`);
   return { ok: true, id: r.ecriture.id, livre: ouvrirLivre(dossierId, annee).livre };

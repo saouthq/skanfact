@@ -8331,6 +8331,27 @@ lots ; le détail de ce qui reste vit dans `A-FAIRE.md` § 0.
   saisie**, où on peut le corriger : le découvrir le jour de déclarer, c'est rouvrir la fiche sous
   l'échéance. Et **un lien ouvre ce qu'il annonce** : « 1 déclaration sociale à déposer : CNSS 2e
   trimestre » ouvrait le 3e, éteint.
+- **L'aller-retour par un tableur** (Skander, 26/09 : « il exporte tout sur Excel afin de tout
+  corriger, et ensuite il le réimporte — faut leur laisser la main, que notre app ne soit pas
+  bloquante »). Le livre-journal exporté se réimporte (`analyserImportEcritures`,
+  `appliquerImportEcritures`, purs) : **un import n'efface jamais rien**, tout entre en brouillard,
+  une pièce identique ne bouge pas, un brouillard corrigé est remplacé, et **une validée ne se
+  modifie jamais — elle se contre-passe SEULEMENT si on coche la case**, au jour du geste, la version
+  corrigée entrant en brouillard. Une pièce déséquilibrée entre quand même (le brouillard est fait
+  pour ça) ; ce qui ne peut pas entrer (hors exercice, date illisible, exercice clos, brouillard
+  rapproché) est refusé avec sa raison. **Une ligne écartée se nomme par sa ligne DANS LE TABLEUR**
+  (`lignesCsv` compte les lignes physiques, y compris dans un champ entre guillemets) : « ligne 7 »
+  d'un tableau de données n'est pas celle que le comptable voit dans Excel. **La fenêtre dit ce qui
+  entrera AVANT, et le bouton ce que le clic fera** (« Importer 2 pièces et corriger 1 validée ») —
+  il suivait mal la case, vu à la souris. Trois défauts du moteur tombés en le construisant, qu'aucun
+  test n'avait les données pour voir : **`modifierEcriture` perdait le tiers** (et le lettrage) d'un
+  brouillard repris dans la grille ; **une pièce du client corrigée par le cabinet devenait une
+  « saisie »**, et le paquet relu la DÉDOUBLAIT — elle reste une pièce du client (source et mois
+  gardés), marquée `corrigeeLe`, et le paquet relu la traite comme une validée (l'écart se dit, rien
+  ne s'écrase : la règle 9.2.0 « le paquet ne gagne jamais contre le cabinet », qui ne protégeait que
+  les validées) ; et **le Cabinet ne lisait ses imports qu'en UTF-8** — un CSV d'Excel sous Windows
+  est en Windows-1252 : `lireFichierTexte` a déménagé dans compta.js (core le réexporte à
+  l'identité), et le plan et la balance de reprise passent par lui aussi.
 
 ## Pistes pour la suite (non demandées)
 

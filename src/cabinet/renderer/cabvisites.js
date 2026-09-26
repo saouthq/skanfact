@@ -340,6 +340,8 @@
   b('#lv-du, #lv-au', 'Le premier et le dernier mois de la période affichée.', { nom: 'Du… au…', cle: 'lv-intervalle' });
   b('#lv-journal', 'Ne garde que les pièces d\'un journal : ventes, achats, banque, opérations diverses…', { nom: 'Journal' });
   b('#lv-csv', 'Enregistre ce que tu vois dans un fichier CSV, que tout tableur ouvre.');
+  b('#lv-reimport', 'Le retour de l\'export : le livre-journal corrigé dans ton tableur et enregistré en CSV. SkanFact montre d\'abord ce qu\'il fera — pièces nouvelles, brouillards corrigés, validées changées —, puis tout entre en brouillard. Rien n\'est supprimé.');
+  b('#imp-corriger', 'Une validée ne se modifie jamais : cochée, cette case la contre-passe au jour du geste et pose ta version en brouillard, pour que tu la valides. Décochée, la validée reste telle quelle.', { nom: 'Contre-passer les validées changées' });
   b('#lv-tous', 'Ouvre la page Écritures, qui regroupe dans un seul fichier les écritures de tous tes clients sur une période.');
   b('#lv-compte', 'N\'affiche qu\'un compte ; « Tous les comptes » les remet tous.', { nom: 'Compte', route: 'compta-grand-livre' });
   b('#lv-compte', 'Le compte dont tu rapproches les pièces : les clients (411) par défaut, ou un fournisseur, un compte d\'attente.', { nom: 'Compte à lettrer', route: 'compta-lettrage' });
