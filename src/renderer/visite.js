@@ -630,7 +630,8 @@
     // et ne proposait qu'« Arrêter la visite » (vu à la souris, 10.14.1). On reprend sur place si la
     // cible est à l'écran, sinon à la dernière étape qui dit où aller (`etapeAvecPage`).
     const ici = copie.etapes[dd];
-    entrer(cur.viser != null || (ici && cibleDe(ici) && pageOk(ici)) ? dd : etapeAvecPage(copie.etapes, dd), 1);
+    entrer(cur.viser != null || (ici && cibleDe(ici) && pageOk(ici)) ? dd
+      : repriseDuGeste(copie.etapes, dd, j => ({ present: !!cibleDe(copie.etapes[j]), pageOk: pageOk(copie.etapes[j]) })), 1);
     boucle = requestAnimationFrame(image);
     logique = setInterval(verifier, 180);
     return true;
@@ -1409,6 +1410,42 @@
   // Une case « à remplir » déjà remplie en ARRIVANT se dit (PUR) ; remplie pendant l'étape, c'est le
   // geste attendu ; vidée ensuite, l'étape redevient une demande — et le reste.
   const dejaRempliDe = (pret, entree, avant) => !!pret && (!!entree || !!avant);
+  // Où reprendre une visite de geste dont la cible n'est PAS à l'écran (PUR : `vu(j)` dit si la cible
+  // de l'étape j est là, et si l'on est sur sa page). Une fenêtre qu'un rechargement ou « Guide-moi » a
+  // refermée ne se rouvre pas toute seule : on remonte au CLIC qui l'ouvre (« Nouveau client… »),
+  // puis, s'il n'est pas à l'écran non plus, au clic d'avant. Toutes les étapes d'« Ajouter un
+  // client » déclarent la même page : `etapeAvecPage` reprenait donc sur le champ TVA d'une fenêtre
+  // fermée, et la bulle décrivait un champ absent (vu à la souris, 10.14.1). Sans clic pour la
+  // rouvrir, la règle d'avant : la dernière étape qui dit où aller.
+  function repriseDuGeste(etapes, i, vu) {
+    const l = etapes || [];
+    const clicAvant = j => { for (let k = j - 1; k >= 0; k--) { const e = l[k]; if (e && e.faire === 'clic' && !e.facultatif) return k; } return -1; };
+    let j = Math.min(i, l.length - 1);
+    for (let n = 0; n < l.length && j >= 0; n++) {
+      const v = vu(j) || {};
+      if (v.present && v.pageOk) return j;
+      const k = clicAvant(j);
+      if (k < 0) break;
+      const vk = vu(k) || {};
+      // Hors de sa page, le clic y mène — mais jamais avant la dernière étape qui CHANGE de page :
+      // un brouillon de devis ouvert se rejoint par sa page, sans refaire le devis.
+      if (!vk.pageOk && typeof pageDe(l[k]) === 'string') return Math.max(k, changementDePage(l, i));
+      j = k;
+    }
+    return etapeAvecPage(l, i);
+  }
+  // La dernière étape, jusqu'à `i`, dont la page DIFFÈRE de celle de l'étape d'avant (PUR) : là où la
+  // visite change d'écran. Une page répétée d'étape en étape ne dit pas où aller, elle le rappelle.
+  function changementDePage(etapes, i) {
+    let avant = null, dernier = 0;
+    for (let j = 0; j <= Math.min(i, (etapes || []).length - 1); j++) {
+      const p = pageDe(etapes[j]);
+      if (typeof p !== 'string') continue;
+      if (p !== avant) dernier = j;
+      avant = p;
+    }
+    return dernier;
+  }
   // La dernière étape, en remontant depuis `i`, qui dit où aller (sa page) : c'est d'elle qu'une
   // visite arrêtée au milieu d'un geste peut repartir.
   function etapeAvecPage(etapes, i) {
@@ -2026,7 +2063,7 @@
   const etapeCourante = () => { const e = etape(); if (!e) return null; const c = Object.assign({}, e); delete c.el; return c; };
 
   const api = { installer, lancer, quitter, enCours, etapeCourante, suivant, precedent, chapitreSuivant, reprendre, gestePasse, consequenceDuGeste, gesteQuiOuvre, issueDeFin, phrasePasses, texteDeFin, selonFin, finsHonnetes,
-    pagesDuGeste, ongletDuGeste, guideDeLaPage, dansLeGuide, menuDuGuide, placerBulle, placerPres, largeurPres, zoneDeLaCase, placerMini, typo, chevauche, decouperHaut, trousDeListe, hautPourBulle, hautPourCouper, viseLaCible, estFaire, decider, enAttenteDe, compteDe, pointDeReprise, etapeAvecPage, versLaReprise, dejaRempliDe, normNom, nomsCites, lieuDe, ouvrirOnglet,
+    pagesDuGeste, ongletDuGeste, guideDeLaPage, dansLeGuide, menuDuGuide, placerBulle, placerPres, largeurPres, zoneDeLaCase, placerMini, typo, chevauche, decouperHaut, trousDeListe, hautPourBulle, hautPourCouper, viseLaCible, estFaire, decider, enAttenteDe, compteDe, pointDeReprise, etapeAvecPage, repriseDuGeste, changementDePage, versLaReprise, dejaRempliDe, normNom, nomsCites, lieuDe, ouvrirOnglet,
     chapitres, resoudre, visible, listerControles, etapesDeLaVue, blocsDe, cheminDe, PATIENCE, PATIENCE_FACULTATIVE, CONTROLES,
     nettoie, libelleDe, resumeBulle, routeDe, expliqueur, zoneur, phraseDuHaut, texteDuHaut };
   global.Visite = api;

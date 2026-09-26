@@ -739,11 +739,17 @@
       conclusion: 'Rien ne lui est réclamé tant qu\'il n\'a pas commencé. S\'il utilise SkanFact, remets-lui le fichier d\'appairage ; sinon, crée son livre et saisis.',
       etapes: [
         { page: '#/dossiers', cible: '#new-d', cote: 'dessous', faire: 'clic', avant: () => { clientsAvant = reels().length; },
-          titre: 'Nouveau client', texte: 'Tu peux aussi coller toute une liste depuis un tableur, au premier lancement.', action: 'Clique sur <b>« Nouveau client… »</b>.', essai: { clic: true } },
+          titre: 'Nouveau client', texte: 'Plusieurs clients d\'un coup ? La fenêtre qui s\'ouvre propose <b>« Coller une liste de clients… »</b>, depuis un tableur.', action: 'Clique sur <b>« Nouveau client… »</b>.', essai: { clic: true } },
         { page: '#/dossiers', cible: '#f-name', cote: 'droite', faire: 'valeur', bouton: 'Suivant',
           titre: 'Son nom', texte: 'Tel qu\'il s\'écrit sur ses papiers, forme juridique comprise.', action: 'Tape le nom du client.', essai: { taper: 'Client Essai SARL' } },
         { page: '#/dossiers', cible: '#f-mat', cote: 'droite', titre: 'Son matricule', facultatif: true,
           texte: 'C\'est lui qui identifie le dossier : son premier paquet arrivera dans CE dossier, et pas dans un second.' },
+        { page: '#/dossiers', cible: '#f-tva', cote: 'droite', titre: 'Sa TVA', facultatif: true,
+          texte: 'Mensuelle, trimestrielle ou non assujetti : c\'est elle qui décide des déclarations que la page Échéances lui réclame. « non précisé » compte comme mensuelle, sauf si son régime en décide autrement.' },
+        { page: '#/dossiers', cible: '#f-from', cote: 'droite', titre: 'Le début de ta mission', facultatif: true,
+          texte: 'Le premier mois que tu tiens pour lui, écrit comme 01/2026. Tu reprends un dossier en cours d\'année ? Mets le mois où tu commences : les mois d\'avant ne te seront ni réclamés ni comptés à saisir.' },
+        { page: '#/dossiers', cible: '#f-cnss', cote: 'droite', titre: 'S\'il a des salariés', facultatif: true,
+          texte: 'Son matricule CNSS employeur : le fichier de télédéclaration du trimestre, dans l\'écran Paie, ne sort pas sans lui. Le code d\'exploitation, laissé vide, vaut 0000. Tu pourras les ajouter plus tard depuis sa fiche.' },
         { page: '#/dossiers', cible: '#modal-root #ok', cote: 'dessus', faire: 'clic', fait: () => reels().length > clientsAvant && aucuneFenetre(),
           titre: 'Créer', texte: 'La fiche s\'ouvre juste après.', action: 'Clique sur <b>« Créer le dossier »</b>.', essai: { clic: true } }
       ]

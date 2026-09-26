@@ -1377,7 +1377,37 @@ t('10.14.1 : un geste arrêté au milieu repart de l\'étape qui ouvre son écra
   // Le moteur fait le même calcul au lancement, sauf quand la cible de l'étape est déjà à l'écran.
   const vj = lireSource('src', 'renderer', 'visite.js').replace(/\/\/[^\n]*/g, '');
   const lancer = vj.slice(vj.indexOf('function lancer('), vj.indexOf('function entrer('));
-  assert.ok(/cibleDe\(ici\) && pageOk\(ici\)\) \? dd : etapeAvecPage\(copie\.etapes, dd\)/.test(lancer), 'lancer reprend au milieu d\'un geste dont l\'écran n\'existe plus');
+  assert.ok(/cibleDe\(ici\) && pageOk\(ici\)\) \? dd\s*:\s*repriseDuGeste\(copie\.etapes, dd,/.test(lancer), 'lancer reprend au milieu d\'un geste dont l\'écran n\'existe plus');
+});
+
+// Vu à la souris (10.14.1) : « Ajouter un client » repris après un rechargement — toutes ses étapes
+// déclarent la même page, donc `etapeAvecPage` reprenait sur le champ TVA d'une fenêtre fermée, et la
+// bulle décrivait un champ absent de l'écran. On remonte au CLIC qui rouvre la fenêtre.
+t('10.14.1 : une visite reprise dans une fenêtre fermée repart du clic qui l\'ouvre, sans refaire ce qui a une page', () => {
+  const client = [
+    { page: '#/dossiers', cible: '#new-d', faire: 'clic' }, { page: '#/dossiers', cible: '#f-name', faire: 'valeur' },
+    { page: '#/dossiers', cible: '#f-mat' }, { page: '#/dossiers', cible: '#f-tva', facultatif: true },
+    { page: '#/dossiers', cible: '#modal-root #ok', faire: 'clic' }];
+  // Sur la page, la fenêtre fermée : seul « Nouveau client… » est à l'écran.
+  const surPlace = j => ({ present: j === 0, pageOk: true });
+  assert.strictEqual(V.repriseDuGeste(client, 3, surPlace), 0, 'la reprise vise un champ d\'une fenêtre fermée');
+  assert.strictEqual(V.repriseDuGeste(client, 4, surPlace), 0);
+  // Depuis une autre page (« Me guider ») : le premier clic y mène.
+  const ailleurs = () => ({ present: false, pageOk: false });
+  assert.strictEqual(V.repriseDuGeste(client, 3, ailleurs), 0);
+  // Le devis : le brouillon a SA page (l'étape 3) ; repris d'ailleurs, on le rejoint, on ne refait
+  // pas le devis depuis « Nouveau devis ».
+  const devis = [
+    { page: '#/devis', cible: '#new', faire: 'clic' }, { page: '#/devis', cible: '#client', faire: 'valeur' },
+    { page: '#/devis', cible: '#save', faire: 'clic' }, { page: '#/doc/x', cible: '#lignes' },
+    { cible: '#email', faire: 'clic' }, { cible: '#modal-root #envoyer' }];
+  assert.strictEqual(V.changementDePage(devis, 5), 3);
+  assert.strictEqual(V.repriseDuGeste(devis, 5, ailleurs), 3, 'un brouillon qui a sa page se refait depuis le début');
+  // Sur la page du brouillon, la fenêtre d'envoi fermée : on repart de « Email ».
+  assert.strictEqual(V.repriseDuGeste(devis, 5, j => ({ present: j <= 4 && j >= 3, pageOk: j >= 3 })), 4);
+  // Sans clic pour rouvrir, la règle d'avant.
+  const sansClic = [{ page: '#/a', cible: 'x' }, { page: '#/b', cible: 'y' }, { cible: 'z' }];
+  assert.strictEqual(V.repriseDuGeste(sansClic, 2, ailleurs), V.etapeAvecPage(sansClic, 2));
 });
 
 // Vu à la souris (10.14.1) : une prestation prise au catalogue remplit la désignation, et l'étape

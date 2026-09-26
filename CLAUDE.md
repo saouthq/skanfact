@@ -8300,6 +8300,14 @@ lots ; le détail de ce qui reste vit dans `A-FAIRE.md` § 0.
   et de l'exercice suivant, l'absence retire brut × jours ÷ ouvrables, le prix de cession ne s'écrit
   jamais d'office). Et « versé » est un ÉTAT (10.12.0) : la masse salariale du Cabinet lit des
   bulletins, pas leur paiement — « Net des bulletins », tant que le 425 n'est pas soldé.
+- **Une page répétée d'étape en étape ne dit pas où aller** : « Ajouter un client », repris après un
+  rechargement, visait le champ TVA d'une fenêtre fermée — ses sept étapes déclarent toutes
+  `#/dossiers`, donc « la dernière étape qui a une page » était l'étape elle-même. Une cible absente
+  fait remonter au CLIC qui rouvre la fenêtre (`repriseDuGeste`), jamais avant la dernière étape qui
+  CHANGE de page (`changementDePage`) : un brouillon de devis se rejoint par sa page, il ne se refait
+  pas. Et une bulle qui dit « au premier lancement » d'un geste offert dans la fenêtre même ment
+  (7.3.0) ; celle du client dit maintenant sa TVA, son début de mission et sa CNSS — les trois champs
+  qui décident de ce qu'on lui réclame.
 - **Déposer sans ressaisir commence par copier juste** (DECL D1, question de Skander du 26/09 : « le
   comptable transfère à l'État ? »). SkanFact ne dépose rien (5.2.0) ; il rend chaque montant de la
   déclaration mensuelle COPIABLE, dans la forme que le portail attend — et **cette forme est un
