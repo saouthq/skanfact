@@ -1633,9 +1633,13 @@
   // Ouvrir les Réglages SUR un panneau : on pose l'onglet et la cible avant de naviguer, et on
   // redessine quand on y est déjà (sinon aucun `hashchange` n'a lieu et le clic paraît inerte —
   // piège 7.15.0).
-  function versReglages(panneau) {
+  // `refusDe` ({ sel, message }) : un refus qui mène aux Réglages MONTRE son champ une fois le panneau
+  // chargé (règle 7.0.0) — le curseur dedans, marqué. Sans lui, « Nomme d'abord ton cabinet »
+  // remontait au panneau et laissait le curseur nulle part, le champ blanc parmi cinq autres.
+  function versReglages(panneau, refusDe) {
     const p = REG_PANNEAUX[panneau];
     if (p) { reglagesTab = p.onglet; reglagesFocus = panneau; }
+    reglagesRefus = refusDe || null;
     if (location.hash.startsWith('#/reglages')) render();
     else location.hash = '#/reglages';
   }
@@ -3459,6 +3463,43 @@
       ? ` <span class="badge" title="${esc(e.libellePiece || '')}">extourne${e.origineNumero ? ` ↩ n° ${esc(String(e.origineNumero))}` : ''}</span>`
       : '';
 
+  // Le 📎 d'une pièce (10.14.1, S-04) : le justificatif que le CABINET a joint (`pieceJointe`,
+  // 9.3.0) et ceux du CLIENT, arrivés dans son paquet avec la pièce qu'ils prouvent. Skander : « c'est
+  // grâce à ça qu'on prouve tout ». UNE forme pour le livre-journal, le grand livre et la recherche —
+  // la recherche posait un 📎 à la main qui ne disait que la moitié (le fichier du cabinet), et le
+  // journal n'en montrait aucun.
+  const justifsDuClient = e => K.justificatifsDeLigne((livresState.data && livresState.data.paquets) || [], e);
+  function marqueJustif(e, pieceJointe) {
+    const noms = [];
+    if (pieceJointe) noms.push(`${String(pieceJointe).split(/[\\/]/).pop()} (joint au cabinet)`);
+    justifsDuClient(e).forEach(j => noms.push(`${j.nom} (joint par le client)`));
+    if (!noms.length) return '';
+    const dit = `${pl(noms.length, 'justificatif')} : ${noms.join(', ')}`;
+    return ` <span class="att-mark" role="img" aria-label="${esc(dit)}" title="${esc(dit)}">📎</span>`;
+  }
+  // Le fichier du client s'ouvre DANS le paquet, comme n'importe quelle pièce du paquet : extrait en
+  // lecture, jamais lancé s'il n'est pas un document (6.8.1). Un paquet protégé demande son mot de passe.
+  async function ouvrirJustifClient(j) {
+    const ouvrir = async password => {
+      const r = await api.openInPack(j.path, j.chemin, password);
+      if (r && r.opened === false) toast(r.reason, 'error');
+    };
+    try { await ouvrir(); } catch (e) {
+      const msg = plainError(e);
+      if (!/mot de passe|déchiffr|authenticate/i.test(msg)) return toast(/absent/i.test(msg) ? `« ${j.nom} » n'est plus dans le paquet de ${moisLabelCourt(j.month)}.` : msg, 'error');
+      const password = await askPassword('Paquet protégé', 'Ce paquet est scellé par un mot de passe.');
+      if (!password) return;
+      try { await ouvrir(password); } catch (e2) { toast(plainError(e2), 'error'); }
+    }
+  }
+  // Les gestes d'ouverture d'une pièce : un par justificatif du client (trois au plus, le paquet
+  // montre le reste). Rangés par la table d'actions de l'écriture ET par celle d'une ligne de paquet.
+  function actionsJustifsClient(e) {
+    const l = justifsDuClient(e);
+    return l.slice(0, 3).map(j => ({ icon: 'ouvrir', label: l.length > 1 ? `Ouvrir « ${j.nom} »` : 'Ouvrir le justificatif du client',
+      court: 'Justificatif', hint: `${j.nom} — joint par le client, dans son paquet de ${moisLabelCourt(j.month)}`, run: () => ouvrirJustifClient(j) }));
+  }
+
   function vueJournal(lignes) {
     const s = livresState;
     const journaux = [...new Set(lignes.map(l => l.journal).filter(Boolean))].sort();
@@ -3504,13 +3545,13 @@
         <td class="r muted">${e.premiere ? (e.statut === 'brouillard' ? '<span class="badge">brouillard</span>' : e.numero || '') : ''}</td>
         <td class="nw">${e.premiere ? esc(fmtJour(e.date)) : ''}</td>
         <td>${e.premiere ? esc(e.journal) : ''}</td>
-        <td>${e.premiere ? `<span class="nw">${esc(e.piece)}</span>${miroirBadge(e)}` : ''}</td>
+        <td>${e.premiere ? `<span class="nw">${esc(e.piece)}</span>${marqueJustif(e, e.ecritureId && s.livre ? (ecritureDuLivre(s.livre, e.ecritureId) || {}).pieceJointe : '')}${miroirBadge(e)}` : ''}</td>
         <td class="nw">${esc(e.account)}</td>
         <td class="tronq" title="${esc(e.tiers)}">${esc(e.tiers)}</td>
         <td class="tronq lg" title="${esc(e.label)}">${esc(e.label)}</td>
         <td class="r nw">${e.debit ? esc(money(e.debit, e.currency)) : ''}</td>
         <td class="r nw">${e.credit ? esc(money(e.credit, e.currency)) : ''}</td>
-        ${e.premiere ? rowMenuCell(e.ecritureId ? 'E:' + e.ecritureId : e.piece + '|' + (e.mois || '')) : '<td class="row-actions"></td>'}</tr>`).join('')}</tbody>
+        ${e.premiere ? rowMenuCell(e.ecritureId ? 'E:' + e.ecritureId : [e.piece, e.mois || '', e.journal || '', e.date || ''].join('|')) : '<td class="row-actions"></td>'}</tr>`).join('')}</tbody>
       <tfoot><tr><td colspan="7"><strong>Total de la sélection</strong> <span class="muted small">— toutes les pièces, pas seulement la page affichée</span></td>
         <td class="r nw"><strong>${esc(money(lj.debit))}</strong></td>
         <td class="r nw"><strong>${esc(money(lj.credit))}</strong></td><td></td></tr></tfoot></table></div>
@@ -3567,7 +3608,7 @@
             <strong class="gl-m gl-solde">Solde ${esc(money(c.solde))}</strong></span></summary>
         <div class="scroll-x"><table class="list compact"><thead><tr><th class="nw">Date</th><th class="nw">Pièce</th><th>Libellé</th>
           <th class="r nw">Débit</th><th class="r nw">Crédit</th><th class="r nw">Solde</th></tr></thead>
-        <tbody>${lignesAffichees(c).map(e => `<tr class="${e.statut === 'contrepassee' ? 'cp-ligne' : e.contrepasseDe || e.extourneDe ? 'cp-miroir' : ''}"><td class="nw">${esc(fmtJour(e.date))}</td><td><span class="nw">${esc(e.piece)}</span>${miroirBadge(e)}</td>
+        <tbody>${lignesAffichees(c).map(e => `<tr class="${e.statut === 'contrepassee' ? 'cp-ligne' : e.contrepasseDe || e.extourneDe ? 'cp-miroir' : ''}"><td class="nw">${esc(fmtJour(e.date))}</td><td><span class="nw">${esc(e.piece)}</span>${marqueJustif(e, e.ecritureId && s.livre ? (ecritureDuLivre(s.livre, e.ecritureId) || {}).pieceJointe : '')}${miroirBadge(e)}</td>
           <td class="tronq lg" title="${esc(e.label)}">${esc(e.label)}</td>
           <td class="r nw">${e.debit ? esc(money(e.debit)) : ''}</td><td class="r nw">${e.credit ? esc(money(e.credit)) : ''}</td>
           <td class="r nw">${esc(money(e.solde))}</td></tr>`).join('')}</tbody>
@@ -7310,8 +7351,8 @@
           const t = KC.soldeDeLignes(e.lignes);
           return `<tr data-re="${esc(e.id)}" class="${e.statut === 'brouillard' ? 'br-ligne' : e.statut === 'contrepassee' ? 'cp-ligne' : ''}">
             <td class="r nw">${e.numero == null ? '—' : e.numero}</td><td class="nw">${esc(fmtJour(e.date))}</td>
-            <td>${esc(e.journal)}</td><td class="nw">${esc(e.piece || '—')}</td>
-            <td>${esc(e.libelle || '')}${e.pieceJointe ? ' <span title="Justificatif joint">📎</span>' : ''}</td>
+            <td>${esc(e.journal)}</td><td class="nw">${esc(e.piece || '—')}${marqueJustif(e, e.pieceJointe)}</td>
+            <td>${esc(e.libelle || '')}</td>
             <td class="r nw">${esc(montant(t.debit))}</td>
             <td class="nw">${e.statut === 'brouillard' ? '<i>brouillard</i>' : e.statut === 'contrepassee' ? 'contre-passée' : 'validée'}</td>
             ${RowMenu.cellule('R:' + e.id, '')}</tr>`;
@@ -7412,6 +7453,7 @@
     a.push({ icon: 'texte', label: e.pieceJointe ? 'Remplacer le justificatif…' : 'Joindre un justificatif…',
       court: 'Justificatif…',
       hint: 'Le fichier est copié dans le dossier du client', run: () => joindreJustificatif(root, dossier, e.id) });
+    a.push(...actionsJustifsClient(e));
     if (e.pieceJointe) {
       a.push({ icon: 'ouvrir', label: 'Ouvrir le justificatif', hint: esc(e.pieceJointe),
         run: async () => { try { await api.ouvrirJustificatif(dossier.id, e.pieceJointe); } catch (x) { await infoDialog('Justificatif introuvable', plainError(x)); } } });
@@ -7529,11 +7571,11 @@
         }
         return actions;
       }
-      const [piece, mois] = String(cle).split('|');
+      const [piece, mois, journal, date] = String(cle).split('|');
       const p = (s.data.paquets || []).find(z => z.month === mois);
       if (!p || !p.path) return [];
-      return [{ icon: 'loupe', label: 'Voir dans le paquet', hint: `${piece} · ${moisLabelCourt(mois)}`,
-        run: () => openPack(dossier, mois) }];
+      return actionsJustifsClient({ piece, mois, journal, date }).concat([{ icon: 'loupe', label: 'Voir dans le paquet', hint: `${piece} · ${moisLabelCourt(mois)}`,
+        run: () => openPack(dossier, mois) }]);
     });
   }
 
@@ -9263,6 +9305,7 @@
   // bon panneau, dans le bon onglet, plutôt qu'en haut d'une page.
   let reglagesTab = 'cabinet';
   let reglagesFocus = '';
+  let reglagesRefus = null;
 
   function drawReglages(view) {
     const c = S.cabinet || {};
@@ -9507,6 +9550,8 @@
     // le panneau Licence 50 px sous le bas de l'écran. Trouvé à la souris.
     const vise = reglagesFocus;
     reglagesFocus = '';
+    const aRefuser = reglagesRefus;
+    reglagesRefus = null;
     const sup = $('#s-support'); if (sup) sup.onclick = supportDialog;
     const idee = $('#s-idee'); if (idee) idee.onclick = ideeDialog;
     // Le thème s'applique AVANT d'être enregistré : on choisit une apparence en la voyant, pas en
@@ -9535,6 +9580,7 @@
     if (corps) { corps.addEventListener('input', e => sale(e.target)); corps.addEventListener('change', e => sale(e.target)); }
     Promise.allSettled([dessinerEquipe(view), dessinerLicence(view)]).then(() => {
       if (vise && location.hash.startsWith('#/reglages')) reg.montrer(vise);
+      if (aRefuser && location.hash.startsWith('#/reglages')) refus(aRefuser.sel, aRefuser.message);
     });
     bindRecoveryBanner(view);
     if ($('#r-demo-on')) $('#r-demo-on').onclick = async () => {
@@ -9584,8 +9630,7 @@
   // feraient couper par Windows — elles vont alors dans le presse-papiers, en le disant.
   async function remettreAppairage() {
     if (!(S.cabinet.name || '').trim()) {
-      toast('Nomme d\'abord ton cabinet : son nom entre dans le fichier que tes clients importent.', 'error');
-      versReglages('pan-cabinet');
+      versReglages('pan-cabinet', { sel: '#c-name', message: 'Nomme d\'abord ton cabinet : son nom entre dans le fichier que tes clients importent.' });
       return;
     }
     let r;

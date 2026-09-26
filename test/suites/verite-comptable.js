@@ -1420,7 +1420,9 @@ t('10.14.1 : un virement dont le compte de DÉPART est supprimé reste sur le co
 t('10.14.0 : le formulaire d\'un mouvement propose le virement entre comptes, et l\'arrivée se pointe sur son propre drapeau', () => {
   const app = require('fs').readFileSync(require('path').join(__dirname, '../../src/renderer/app.js'), 'utf8');
   const f = app.slice(app.indexOf('function movementForm('), app.indexOf('routes.tresorerie = '));
-  assert.ok(f.length > 2000 && f.length < 9000, 'tranche du formulaire inattendue');
+  // La borne attrape une tranche qui déborde sur la route suivante ; elle se relève quand le
+  // formulaire grandit pour de bon (10.14.1, S-04 : les justificatifs d'un mouvement libre).
+  assert.ok(f.length > 2000 && f.length < 14000, 'tranche du formulaire inattendue : ' + f.length);
   // La nature n'est proposée qu'avec deux comptes : on ne propose pas un geste qui sera refusé.
   assert.ok(/\.filter\(\(\[v\]\) => v !== 'virement' \|\| data\.accounts\.length > 1 \|\| m\.kind === 'virement'\)/.test(f));
   // Le compte qui reçoit prend la place de la contrepartie : rien ne pousse le formulaire.

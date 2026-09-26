@@ -760,6 +760,42 @@
     };
   }
 
+  // ---------- les justificatifs du client (10.14.1, S-04) ----------
+  //
+  // Le paquet emporte les fichiers que le client a joints à ses pièces (la facture d'un fournisseur,
+  // le bon de commande d'un client, la quittance d'un loyer), et `justificatifs.json` dit à quelle
+  // pièce du fichier des écritures chacun appartient : journal, pièce, date. C'est ce qui permet de
+  // poser le 📎 sur la LIGNE d'écriture qu'il prouve, et de l'ouvrir d'un clic — le comptable n'a
+  // plus à chercher la facture de l'achat F-99 dans une liste de soixante fichiers.
+  //
+  // Le fichier vient de l'EXTÉRIEUR (6.8.1) : on n'en garde que ce qu'on sait lire, borné, et un
+  // chemin qui remonte (« .. ») ou qui part de la racine ne désigne rien — il ne sert qu'à retrouver
+  // une entrée DANS le paquet, jamais un fichier du disque.
+  function justificatifsDuPaquet(obj) {
+    if (!obj || Number(obj.format) !== 1 || !Array.isArray(obj.justificatifs)) return [];
+    const txt = (v, max) => String(v == null ? '' : v).slice(0, max);
+    return obj.justificatifs.slice(0, 5000).map(j => {
+      if (!j || typeof j !== 'object') return null;
+      const chemin = txt(j.chemin, 400);
+      if (!chemin || chemin.startsWith('/') || chemin.split('/').includes('..')) return null;
+      return {
+        chemin, nom: txt(j.nom, 200) || chemin.split('/').pop(),
+        journal: txt(j.journal, 20), piece: txt(j.piece, 120),
+        date: /^\d{4}-\d{2}-\d{2}$/.test(String(j.date || '')) ? String(j.date) : ''
+      };
+    }).filter(Boolean);
+  }
+  // Les justificatifs d'une LIGNE : ceux du paquet de SON mois qui désignent SA pièce (même clé que
+  // `cleDePiece` : journal, pièce, date). Une ligne saisie au cabinet qui porte la même pièce les
+  // montre aussi — c'est la même pièce. Rend aussi le paquet, pour savoir où ouvrir.
+  function justificatifsDeLigne(paquets, l) {
+    if (!l || !l.piece || !l.mois) return [];
+    const p = (paquets || []).find(z => z && z.month === l.mois && z.path);
+    if (!p || !Array.isArray(p.justificatifs)) return [];
+    return p.justificatifs.filter(j => j.piece === l.piece && j.journal === l.journal && (!j.date || j.date === l.date))
+      .map(j => ({ ...j, path: p.path, month: p.month }));
+  }
+
   // Vérifier ce qu'annonce le manifeste contre ce qu'on a réellement reçu. `hashes` est un objet
   // { chemin: empreinte } calculé par le processus principal (le calcul, lui, a besoin de Node).
   // C'est la seule affirmation rigoureuse de cette application : « ce que j'ai reçu est exactement
@@ -2108,6 +2144,7 @@
     monthLabel, moisTape, moisAffiche, monthListLabel, missingLabel, addMonth, monthsBetween, moisDeTravail, today, de, libelleLot,
     cleEcheance, echeanceDeposee,
     migrate, migrateDossier, dossierKey, packSummary, filePack, demoDossiers, rebaserPaquet, checkIntegrity, HORS_MANIFESTE,
+    justificatifsDuPaquet, justificatifsDeLigne,
     exemplePerime, verdictMotDePasse,
     newDossier, parseDossierLines, noteRelance, portfolio, caDuPortefeuille, relanceDue, relanceRows, accuseMail,
     parseCsv, verdictOrigine, csvDangereux, toCsvLine, mergeEcritures, ecrituresPlan,

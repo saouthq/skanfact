@@ -188,8 +188,10 @@ t('10.14.0 Cabinet : UNE porte pour remettre le fichier — les trois boutons y 
   // U-11 : après le geste, l'étape suivante est de fermer — le vert passe sur « Fermer ».
   assert.ok(/b\.classList\.remove\('btn-primary'\)[\s\S]{0,160}\[data-close\]', layer\)\.classList\.add\('btn-primary'\)/.test(porte), 'le vert reste sur « Écrire » une fois le message ouvert');
   // Sans nom de cabinet, la porte refuse en MONTRANT où le nommer (7.0.0), avant tout sélecteur de fichier.
-  assert.ok(porte.indexOf("versReglages('pan-cabinet')") > 0 && porte.indexOf("versReglages('pan-cabinet')") < porte.indexOf('api.exportPairing('),
-    'la porte doit mener au nom du cabinet AVANT de proposer d\'enregistrer');
+  // (REF-01 : le renvoi montre aussi la case du nom — on exige la règle, pas la forme de l'appel.)
+  const renvoi = porte.search(/versReglages\('pan-cabinet'[^)]*#c-name/);
+  assert.ok(renvoi > 0 && renvoi < porte.indexOf('api.exportPairing('),
+    'la porte doit mener au nom du cabinet, en montrant sa case, AVANT de proposer d\'enregistrer');
   // La place de la réponse est réservée (H-E1, dans une fenêtre) : la phrase qui la remplace est plus longue.
   const css = lireSource('src', 'cabinet', 'renderer', 'cabinet.css');
   assert.ok(/\.ap-etat \{ min-height: [^;}]+; \}/.test(css), 'la place de la réponse n\'est plus réservée');

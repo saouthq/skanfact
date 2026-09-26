@@ -3814,7 +3814,9 @@ t('8.7.0 : le pont comptable — le secret reste sur le poste, la console est ti
   ['pontStatus', 'pontSetSecret', 'pontRequete'].forEach(f => assert.ok(new RegExp(f + ': async \\(').test(app), 'doublure navigateur manquante : ' + f));
   // Le brouillon : `newDocument`, jamais `nextNumber` ; le garde-fou de licence ; le client retrouvé
   // par le cœur ; la licence miroir marquée `origine: 'console'`.
-  const creer = app.slice(app.indexOf('async function creerBrouillonsConsole('), app.indexOf('routes.licences();', app.indexOf('async function creerBrouillonsConsole(')));
+  // Bornée sur la FIN de la fonction (l'accolade à deux espaces), jamais sur sa dernière ligne : elle
+  // finissait par `routes.licences()`, devenu `render(true)` (10.14.1, RESET-01), et la tranche débordait.
+  const creer = app.slice(app.indexOf('async function creerBrouillonsConsole('), app.indexOf('\n  }\n', app.indexOf('async function creerBrouillonsConsole(')));
   assert.ok(creer.length > 800 && creer.length < 5000, 'tranche creerBrouillonsConsole inattendue : ' + creer.length);
   assert.ok(/newDocument\('facture'\)/.test(creer) && !/nextNumber/.test(creer), 'un brouillon, jamais un numéro');
   assert.ok(/licenceBlock\('Créer une facture de licence'\)/.test(creer) && /await demoBlock\(/.test(creer), 'les deux garde-fous de création');
@@ -3885,7 +3887,11 @@ t('8.5.1 : le justificatif se joint avant toute saisie, sans question, et ce qu\
   assert.ok(/doc\.attachments = \(doc\.attachments \|\| \[\]\)\.concat\(added\);/.test(doc), 'la pièce en cours reçoit le fichier');
   // Le trombone dans la liste des achats.
   const cols = app.slice(app.indexOf('function purchaseColumns('), app.indexOf('const buyState'));
-  assert.ok(/📎/.test(cols) && /\(p\.attachments \|\| \[\]\)\.length/.test(cols), 'la liste des achats doit montrer quelles pièces ont un justificatif');
+  // Retournée vers la règle (10.14.1, S-04) : le trombone vit dans UNE fonction partagée par toutes
+  // les listes (`marqueJustif`) ; l'assertion recopiait la forme d'avant, et tombait sur du code juste.
+  const marque = app.slice(app.indexOf('function marqueJustif('), app.indexOf('function tableauJustificatifs('));
+  assert.ok(marque.length > 100 && marque.length < 1500 && /📎/.test(marque), 'marqueJustif doit poser le 📎');
+  assert.ok(/marqueJustif\(p\.attachments\)/.test(cols), 'la liste des achats doit montrer quelles pièces ont un justificatif');
   // La bulle du bouton de lecture ne promet plus « joindre sans clé » : c'est l'autre bouton qui le fait.
   const guide = lireSource('src', 'renderer', 'guide.js');
   assert.ok(/'ocr\.photo': \{ t: 'Lire une photo'/.test(guide) && /Joindre un justificatif/.test(guide.slice(guide.indexOf("'ocr.photo'"), guide.indexOf("'ocr.photo'") + 900)), 'la bulle « ocr.photo » doit renvoyer vers « Joindre un justificatif »');
@@ -7384,7 +7390,9 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     // Et la vue posée doit exister dans le filtre, sinon on arrive sur une liste qui ignore la ligne.
     ['envoi', 'facture', 'impaye'].forEach(v => assert.ok(new RegExp("s\\.tri === '" + v + "'").test(app), 'la liste ignore la vue « ' + v + ' »'));
     // « Réinitialiser les filtres » doit pouvoir en sortir : un filtre sans sortie est un piège.
-    assert.ok(/s\.q = ''; s\.st = ''; s\.tri = ''; s\.page = 1; routes\.licences\(\)/.test(app), 'on doit pouvoir sortir de la vue');
+    // La RÈGLE, pas la ligne : le reset efface la vue (`s.tri`). Il redessinait par `routes.licences()`,
+    // qui perdait le bandeau de l'exemple — c'est `render(true)` depuis la 10.14.1 (RESET-01).
+    assert.ok(/\$\('#reset-f'\)\.onclick = \(\) => \{[^}]*s\.tri = ''[^}]*\}/.test(app), 'on doit pouvoir sortir de la vue');
   });
 
   // 8.1.0 — L'empreinte d'un cabinet arrive recopiée d'un message ou dictée au téléphone. Mal
@@ -14465,7 +14473,7 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     assert.ok(/SkanFact Cabinet → Réglages → Mon cabinet → Licence/.test(mc), 'montrerCle n\'indique pas où coller une clé de cabinet');
     // Les ventes de la console : une vente de cabinet se facture « SkanFact Cabinet », avec son quota.
     const iCb = app.indexOf('async function creerBrouillonsConsole(');
-    const cb = app.slice(iCb, app.indexOf('routes.licences();', iCb));
+    const cb = app.slice(iCb, app.indexOf('\n  }\n', iCb));   // la fin de la fonction, jamais sa dernière ligne (RESET-01)
     assert.ok(cb.length > 1500 && cb.length < 6000, 'la tranche de creerBrouillonsConsole fait ' + cb.length);
     assert.ok(/v\.type === 'cabinet'/.test(cb) && /SkanFact Cabinet — \$\{pl\(Number\(v\.dossiers_hors\)/.test(cb), 'une vente de cabinet se facture comme une offre');
     assert.ok(/dossiersHors: cab \? Number\(v\.dossiers_hors\)/.test(cb), 'la licence miroir ne garde pas le quota');
@@ -14635,6 +14643,7 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
   require('./suites/cabassistant.js')({ t, assert, lireSource });
   require('./suites/exercices.js')({ t, assert, lireSource });
   require('./suites/saturation.js')({ t, assert, lireSource });
+  require('./suites/justificatifs.js')({ t, assert, lireSource });
   // Asynchrone depuis 213d (la messagerie au premier envoi) : elle est ATTENDUE, sinon son `ta` part détaché (8.4.0).
   await require('./suites/assistant.js')({ t, ta, assert, lireSource });
   // Celle-ci reçoit `ta` en plus : elle interroge le vrai worker sur une vraie base SQLite.

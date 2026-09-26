@@ -534,7 +534,9 @@ t('T-34 : le miroir d\'une contre-passation se reconnaît, au journal comme au g
   // La RÈGLE (la ligne est marquée, la cellule de la pièce porte le badge), pas la forme de la
   // cellule : le badge a quitté la concaténation `esc(e.piece) + …` en 10.12.0 pour passer sous la
   // référence, et l'assertion recopiée est tombée sur du code juste.
-  assert.ok(/e\.contrepasseDe \|\| e\.extourneDe \? 'cp-miroir'/.test(vj) && /esc\(e\.piece\)[^\n]{0,40}miroirBadge\(e\)/.test(vj), 'le livre-journal ne marque pas le miroir');
+  // Et la cellule, c'est la LIGNE du gabarit : la 10.14.1 (S-04) a posé le 📎 entre la référence
+  // et le badge, et les quarante caractères d'écart que l'assertion tolérait sont tombés sur du code juste.
+  assert.ok(/e\.contrepasseDe \|\| e\.extourneDe \? 'cp-miroir'/.test(vj) && /esc\(e\.piece\)[^\n]*miroirBadge\(e\)/.test(vj), 'le livre-journal ne marque pas le miroir');
   const gl = tranche(app, 'function vueGrandLivre(', 'function vueBalance(', 1500, 8000);
   assert.ok(/'cp-ligne' : e\.contrepasseDe \|\| e\.extourneDe \? 'cp-miroir'/.test(gl) && /miroirBadge\(e\)/.test(gl), 'le grand livre ne marque ni l\'originale ni le miroir');
   assert.ok(/^tr\.cp-miroir td \{/m.test(lireSource('src', 'cabinet', 'renderer', 'cabinet.css')), 'la classe du miroir n\'existe pas dans la feuille');

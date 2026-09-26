@@ -1261,9 +1261,11 @@
           titre: 'Joindre le justificatif', texte: 'La photo ou le PDF de la facture du fournisseur. Sans lui, ni la charge ni la TVA ne se récupèrent — et c\'est la première chose que ton comptable réclame.',
           action: 'Clique sur {bouton}, puis choisis le fichier.', fait: () => !!$('#attachments [data-open]'), essai: { clic: true } },
         { si: () => !!$('#attachments [data-open]'), cible: '.panel:has(> #attachments)', cote: 'dessus', titre: 'Où il est rangé',
-          texte: 'SkanFact en garde une <b>copie</b> à côté de tes données : ton original ne bouge pas. Le nom ouvre le fichier, <b>« Dossier »</b> le montre sur ton ordinateur, ✕ retire la copie.' },
+          texte: 'SkanFact en garde une <b>copie</b> à côté de tes données : ton original ne bouge pas. Le nom ouvre le fichier ; le menu <b>« Actions »</b> de sa ligne le montre dans son dossier sur ton ordinateur, ou retire la copie. Et il part tout seul dans le paquet du mois de ton comptable, rangé avec son achat.' },
         { page: '#/achats', cible: '#list-wrap table.list', cote: 'dessus', titre: 'Le trombone',
-          texte: 'Dans la liste des achats, 📎 marque ceux qui ont leur justificatif. Ceux qui n\'en ont pas sont ceux que ton comptable te réclamera.' }
+          texte: 'Dans la liste des achats, 📎 marque ceux qui ont leur justificatif — survole-le pour lire le nom du fichier. Ceux qui n\'en ont pas sont ceux que ton comptable te réclamera : le filtre <b>« Sans justificatif »</b> les rassemble.' },
+        { page: '#/achats', cible: '#q', cote: 'dessous', titre: 'Le retrouver par son nom',
+          texte: 'Tape un morceau du nom du fichier (quittance, steg, facture de mars…) dans la recherche de la liste, ou n\'importe où avec <b>Ctrl K</b> : la pièce qui le porte remonte, et un clic l\'ouvre sur ses pièces jointes.' }
       ]
     });
 
@@ -1627,7 +1629,7 @@
         { page: () => ctx.premier('factureEmise') || ctx.premier('devis'), si: () => !!(ctx.premier('factureEmise') || ctx.premier('devis')), cible: '#pdf', cote: 'dessous',
           titre: 'Le PDF d\'une pièce', texte: '<b>« PDF »</b> l\'enregistre là où tu le choisis sur ton ordinateur, puis l\'ouvre. Pour l\'envoyer, <b>« Email »</b> prépare le message avec le PDF déjà joint.' },
         { si: () => !!$('#attachments'), cible: '.panel:has(> #attachments)', cote: 'dessus', facultatif: true,
-          titre: 'Les fichiers joints à une pièce', texte: 'Le bon signé, une photo du chantier : le nom ouvre le fichier, <b>« Dossier »</b> le montre sur ton ordinateur.' },
+          titre: 'Les fichiers joints à une pièce', texte: 'Le bon signé, une photo du chantier : le nom ouvre le fichier, le menu <b>« Actions »</b> de sa ligne le montre dans son dossier sur ton ordinateur. Pour en retrouver un sans savoir sur quelle pièce il est, tape son nom dans <b>Ctrl K</b>.' },
         { page: '#/compta', avant: onglet('#c-tabs', 'ventes'), cible: '#exp-pdfs', cote: 'dessous', facultatif: true,
           titre: 'Tous les PDF d\'un coup', texte: 'Les PDF de toutes les pièces d\'une période, enregistrés en une fois dans le dossier que tu choisis.' },
         { page: '#/compta', avant: onglet('#c-tabs', 'cabinet'), cible: '#p-paquets', cote: 'dessus', facultatif: true,

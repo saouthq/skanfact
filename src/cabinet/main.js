@@ -1260,9 +1260,15 @@ function lireEcritures(p) {
     let buf = fs.readFileSync(p.path);
     if (Z.isSealedForCabinet(buf)) buf = Z.openWithCabinetKey(buf, state.cabinet.privateKey);
     else if (Z.isSealed(buf)) return { motif: 'protégé par un mot de passe' };
-    const e = Z.zipRead(buf).find(x => x.name === 'journaux/ecritures.csv');
+    const entrees = Z.zipRead(buf);
+    const e = entrees.find(x => x.name === 'journaux/ecritures.csv');
     if (!e) return { motif: 'paquet sans écritures (version trop ancienne)' };
-    return { csv: e.data().toString('utf8') };
+    // Où va chaque justificatif du client (10.14.1, S-04) : lu dans le paquet lui-même, donc aussi
+    // pour un paquet reçu avant cette version. Un fichier illisible ne coûte que les 📎.
+    let justificatifs = [];
+    const j = entrees.find(x => x.name === 'justificatifs.json');
+    if (j) { try { justificatifs = K.justificatifsDuPaquet(JSON.parse(j.data().toString('utf8'))); } catch (err) { logToFile('justificatifs-paquet', err); } }
+    return { csv: e.data().toString('utf8'), justificatifs };
   } catch (err) {
     return { motif: String((err && err.message) || err) };
   }
@@ -1292,7 +1298,7 @@ ipcMain.handle('cab:livres', (_e, { dossierId, du, au } = {}) => {
     cache = { paquets: [] };
     (d.packs || []).filter(p => p.path).sort((a, b) => (a.month < b.month ? -1 : 1)).forEach(p => {
       const r = lireEcritures(p);
-      cache.paquets.push({ month: p.month, definitive: !!p.definitive, path: p.path, motif: r.motif || '', csv: r.csv || '' });
+      cache.paquets.push({ month: p.month, definitive: !!p.definitive, path: p.path, motif: r.motif || '', csv: r.csv || '', justificatifs: r.justificatifs || [] });
     });
     cacheLivres.set(dossierId, cache);
   }
@@ -1304,7 +1310,7 @@ ipcMain.handle('cab:livres', (_e, { dossierId, du, au } = {}) => {
     dossier: { id: d.id, name: d.name, matricule: d.matricule || '' },
     // Les mois du paquet, avec leur CSV brut : c'est le RENDERER qui l'analyse, par `compta.js`,
     // exactement comme l'app entreprise. Le processus principal ne fait que déchiffrer et lire.
-    paquets: pris.map(p => ({ month: p.month, definitive: p.definitive, path: p.path, motif: p.motif, csv: p.csv })),
+    paquets: pris.map(p => ({ month: p.month, definitive: p.definitive, path: p.path, motif: p.motif, csv: p.csv, justificatifs: p.justificatifs })),
     // Tous les mois connus du dossier, pour le sélecteur de période — y compris hors bornes.
     tousLesMois: cache.paquets.map(p => p.month),
     aucunPaquet: !cache.paquets.length,

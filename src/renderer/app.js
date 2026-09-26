@@ -2877,12 +2877,78 @@
   const montantDeListe = d => { const t = C.computeTotals(d, company()); return d.type === 'avoir' ? -t.netToPay : (['facture', 'proforma'].includes(d.type) ? t.netToPay : t.totalTTC); };
 
   // Colonnes d'une liste de documents. `get` sert à l'affichage, `val` au tri (nombre ou texte comparable).
+  // Le trombone (10.14.1, S-04) : une ligne qui a son justificatif le MONTRE — facture, devis, achat,
+  // dépense, mouvement, écriture. Skander : « c'est ce qui part au comptable, et c'est grâce à ça
+  // qu'on prouve tout ». Et c'est la question du comptable : quelles pièces n'ont PAS le leur ? Le
+  // repère dit combien, et les noms des fichiers au survol. Une seule fonction pour toutes les listes :
+  // une copie par liste finirait par dire autre chose (la 7.29.0).
+  function marqueJustif(liste) {
+    const l = (liste || []).filter(Boolean);
+    if (!l.length) return '';
+    const noms = l.map(a => a.name).filter(Boolean);
+    const dit = `${pl(l.length, 'justificatif')} joint${sPl(l.length)}${noms.length ? ' : ' + noms.join(', ') : ''}`;
+    return ` <span class="att-mark" role="img" aria-label="${h(dit)}" title="${h(dit)}">📎</span>`;
+  }
+  // Pourquoi CETTE ligne répond à la recherche (10.14.1, S-04) : taper « scierie » rendait
+  // « H-2026-034 · Cabinet Comptable Ben Youssef », où le mot n'apparaît nulle part — on croyait la
+  // recherche en panne. Chaque résultat montre ce qui l'a fait sortir (règle 7.27.0 de l'Aide : « sinon
+  // il n'explique pas pourquoi il est là ») : le nom du fichier joint, quand c'est lui qui répond.
+  function justifTrouve(liste, q) {
+    if (!q || !String(q).trim()) return '';
+    const noms = (liste || []).map(a => (a && a.name) || '').filter(n => n && C.correspondRecherche(n, q));
+    if (!noms.length) return '';
+    return `<div class="small muted att-trouve" title="${h(noms.join(', '))}">📎 ${h(noms.join(', '))}</div>`;
+  }
+  // Le numéro d'un achat tel qu'une liste le montre (10.14.1, LET-01). Un ticket de caisse n'a pas de
+  // numéro de fournisseur ; les écritures, le paquet et le comptable l'appellent « SN-AAAAMMJJ ». Une
+  // ligne qui ne montrait que « sans numéro » ne se retrouvait pas quand le comptable citait SA
+  // référence, et la recherche la rendait sans dire pourquoi (7.27.0). La référence se lit dessous.
+  function celluleNumeroAchat(num, ref, marque) {
+    if (num) return `<strong>${h(num)}</strong>${marque || ''}`;
+    return `<span class="muted">sans numéro</span>${marque || ''}<div class="small muted nw" title="${h('Sa référence dans les écritures et chez ton comptable')}">réf. ${h(ref || '')}</div>`;
+  }
+
+  // La liste des justificatifs d'une pièce (10.14.1, S-04) : UNE forme pour la pièce de vente, l'achat
+  // et le mouvement. Le nom du fichier l'ouvre ; « Montrer dans le dossier » et « Retirer » vivent dans
+  // le menu de la ligne (7.29.0) — le « ✕ » muet retirait un justificatif sans dire lequel, à côté
+  // d'un « Dossier » qui ne disait pas quel dossier. Deux copies de ce tableau avaient déjà divergé
+  // (l'une nommait le fichier dans sa question, l'autre non).
+  function tableauJustificatifs(list) {
+    return `<table class="list compact pj"><thead><tr><th>Fichier</th><th>Ajouté le</th><th class="r">Taille</th><th class="row-actions-h"></th></tr></thead><tbody>
+      ${list.map(a => `<tr><td><a href="#" data-open="${h(a.file)}">${h(a.name || a.file)}</a></td><td class="nw">${C.fmtDate(a.date)}</td><td class="r nw">${fileSize(a.size)}</td>${rowMenuCell(a.file)}</tr>`).join('')}
+    </tbody></table>`;
+  }
+  // Ouvrir la COPIE rangée par SkanFact. `shell.openPath` rend un message d'erreur en anglais du système
+  // quand le fichier n'est plus là ; on dit ce qui se passe, en français (7.26.0).
+  async function ouvrirJustificatif(ownerId, a) {
+    try {
+      const err = await bridge.openAttachment(ownerId, a.file);
+      if (err) toast(`« ${a.name || a.file} » ne s'ouvre pas : la copie rangée par SkanFact a peut-être été déplacée ou supprimée du disque.`, true);
+    } catch (e) { toast(plainError(e), true); }
+  }
+  function brancherJustificatifs(el, ownerId, list, retirer) {
+    $$('[data-open]', el).forEach(x => x.onclick = e => {
+      e.preventDefault();
+      const a = list.find(y => y.file === x.dataset.open);
+      if (a) ouvrirJustificatif(ownerId, a);
+    });
+    bindRowMenus(el, file => {
+      const a = list.find(x => x.file === file); if (!a) return [];
+      return [
+        { icon: 'ouvrir', label: 'Ouvrir le fichier', hint: a.name || a.file, run: () => ouvrirJustificatif(ownerId, a) },
+        { icon: 'dossier', label: `Montrer dans ${EXPLORATEUR}`, hint: 'La copie que SkanFact range à côté de tes données', run: () => bridge.revealAttachment(ownerId, a.file) },
+        { sep: true },
+        { icon: 'supprimer', label: 'Retirer ce justificatif', hint: 'La copie est supprimée ; ton fichier d\'origine ne bouge pas', danger: true, run: () => retirer(a) }
+      ];
+    });
+  }
+
   function docColumns(opts) {
     const cur = doc => docCur(doc);
     const amountOf = montantDeListe;
     const restOf = d => d.type === 'facture' && d.status !== 'brouillon' ? balance(d).remaining : null;
     const cols = [
-      { key: 'number', label: 'Numéro', cls: 'nw', val: d => (d.number ? '1' : '0') + (d.number || ''), get: d => `<strong>${d.number ? h(d.number) : '<span class="muted">Brouillon</span>'}</strong>` },
+      { key: 'number', label: 'Numéro', cls: 'nw', val: d => (d.number ? '1' : '0') + (d.number || ''), get: d => `<strong>${d.number ? h(d.number) : '<span class="muted">Brouillon</span>'}</strong>${marqueJustif(d.attachments)}${justifTrouve(d.attachments, opts.q && opts.q())}` },
       opts.extra
         ? (opts.extra === 'proforma'
           ? { key: 'due', label: 'Échéance', val: d => d.dueDate || '', get: d => C.fmtDate(d.dueDate) }
@@ -3116,7 +3182,7 @@
   function listView(type) {
     const isQ = type === 'devis';
     const s = listState[type];
-    const { cols } = docColumns({ quotes: isQ });
+    const { cols } = docColumns({ quotes: isQ, q: () => s.q });
     const mine = data.documents.filter(d => isQ ? d.type === 'devis' : (d.type === 'facture' || d.type === 'avoir'));
     const years = Array.from(new Set(mine.map(d => (d.date || '').slice(0, 4)).filter(Boolean))).sort().reverse();
     const thisYear = C.today().slice(0, 4);
@@ -3132,7 +3198,7 @@
         .filter(d => !s.kind || d.type === s.kind)
         .filter(d => !s.year || (d.date || '').startsWith(s.year))
         .filter(d => C.docFiltre(s.st, effStatus(d)))
-        .filter(d => !s.q || C.correspondRecherche([d.number, clientName(d.clientId), d.subject, d.reference].join(' '), s.q))
+        .filter(d => !s.q || C.correspondRecherche([d.number, clientName(d.clientId), d.subject, d.reference, C.nomsJustificatifs(d)].join(' '), s.q))
         .sort(byNumberDesc);
       const filtered = !!(s.q || s.st || s.kind || s.year);
       $('#list-wrap').innerHTML = docTable(list, {
@@ -3149,7 +3215,7 @@
       if ($('#reset-f')) $('#reset-f').onclick = resetFilters;
       bindDocTable(draw, s, '#list-wrap');
     });
-    const resetFilters = () => { s.q = ''; s.st = ''; s.kind = ''; s.year = ''; s.yearAuto = false; s.yearTouched = true; s.page = 1; listView(type); };
+    const resetFilters = () => { s.q = ''; s.st = ''; s.kind = ''; s.year = ''; s.yearAuto = false; s.yearTouched = true; s.page = 1; render(true); };
     // « Émis » et « À encaisser » regroupent plusieurs statuts : ils passent par `C.docFiltre`, pas
     // par une comparaison de chaîne (voir DOC_FILTRES dans core.js — « Émis » rendait les avoirs).
     const statuses = isQ ? C.DISPLAY_STATUSES.devis : [...C.DISPLAY_STATUSES.facture, 'émis', 'à encaisser'];
@@ -3543,7 +3609,7 @@
           <!-- Une pièce jointe se joint AVANT l'enregistrement (8.5.1) : la pièce neuve a déjà son
                identifiant. La liste vit dans la pièce en cours jusqu'à l'enregistrement, et part
                avec lui. (Aucun backtick dans ce commentaire : il vit dans un template literal.) -->
-          <div class="panel"><h2>Pièces jointes ${info('ed.attachments')}</h2><div id="attachments"></div></div>
+          <div class="panel" id="p-pj"><h2>Pièces jointes ${info('ed.attachments')}</h2><div id="attachments"></div></div>
           ${isNew ? '' : `<div class="panel"><h2>Historique ${info('ed.history')}</h2><div id="doc-history"></div></div>`}
           <div class="panel"><h2>Notes (affichées sur le document) ${info('ed.notes')}</h2>
             ${!figee && data.snippets.length ? `<div class="catalog-pick"><div id="snip-pick">${combo({ items: [], placeholder: 'Insérer un texte prédéfini…', search: 'Rechercher un texte…' })}</div></div>` : ''}
@@ -4501,10 +4567,7 @@
       const cible = s2 || doc;
       const list = cible.attachments || [];
       el.innerHTML = `
-        ${list.length ? `<table class="list compact"><thead><tr><th>Fichier</th><th>Ajouté le</th><th class="r">Taille</th><th></th></tr></thead><tbody>
-          ${list.map(a => `<tr><td><a href="#" data-open="${h(a.file)}">${h(a.name)}</a></td><td class="nw">${C.fmtDate(a.date)}</td><td class="r nw">${fileSize(a.size)}</td>
-            <td class="actions"><button class="btn btn-ghost btn-sm" data-reveal="${h(a.file)}" title="Montrer dans le dossier">Dossier</button><button class="btn btn-ghost btn-sm" data-rmatt="${h(a.file)}" title="Retirer">✕</button></td></tr>`).join('')}
-        </tbody></table>` : '<p class="small muted">Aucune pièce jointe. Le devis signé scanné, le bon de commande du client, une photo du chantier : tout ce qui justifie ce document a sa place ici.</p>'}
+        ${list.length ? tableauJustificatifs(list) : '<p class="small muted">Aucune pièce jointe. Le devis signé scanné, le bon de commande du client, une photo du chantier : tout ce qui justifie ce document a sa place ici.</p>'}
         <div class="inline mt"><button class="btn btn-sm" id="add-att">+ Joindre un fichier…</button>
         <span class="small muted">${isNew && list.length ? 'Joint à cette pièce : il sera enregistré avec elle. ' : ''}Les fichiers sont copiés à côté de tes données. Ils ne sont pas dans les sauvegardes quotidiennes (qui ne contiennent qu'un fichier texte) mais le sont dans la copie externe.</span></div>`;
       $('#add-att').onclick = async () => {
@@ -4517,14 +4580,11 @@
           toast(added.length > 1 ? `${added.length} pièces jointes ajoutées` : 'Pièce jointe ajoutée');
         } catch (e) { toast(plainError(e), true); }
       };
-      $$('[data-open]', el).forEach(a => a.onclick = e => { e.preventDefault(); bridge.openAttachment(doc.id, a.dataset.open); });
-      $$('[data-reveal]', el).forEach(b => b.onclick = () => bridge.revealAttachment(doc.id, b.dataset.reveal));
-      $$('[data-rmatt]', el).forEach(b => b.onclick = async () => {
-        const a = list.find(x => x.file === b.dataset.rmatt);
-        if (!await confirmDialog(`Retirer « ${a ? a.name : 'cette pièce'} » ? Le fichier copié sera supprimé, ton fichier d'origine ne bouge pas.`)) return;
-        await bridge.removeAttachment(doc.id, b.dataset.rmatt);
-        doc.attachments = (doc.attachments || []).filter(x => x.file !== b.dataset.rmatt);
-        if (s2) { s2.attachments = (s2.attachments || []).filter(x => x.file !== b.dataset.rmatt); save(true); } else touch();
+      brancherJustificatifs(el, doc.id, list, async a => {
+        if (!await confirmDialog(`Retirer « ${a.name || a.file} » ? La copie rangée par SkanFact sera supprimée ; ton fichier d'origine ne bouge pas.`, 'Retirer')) return;
+        await bridge.removeAttachment(doc.id, a.file);
+        doc.attachments = (doc.attachments || []).filter(x => x.file !== a.file);
+        if (s2) { s2.attachments = (s2.attachments || []).filter(x => x.file !== a.file); save(true); } else touch();
         drawAttachments(); drawHistory();
       });
     }
@@ -5252,7 +5312,7 @@
       const note = $('#f-note');
       note.hidden = !filtered;
       note.innerHTML = !filtered ? '' : `<span class="small muted">${rows.length} sur ${all.length}</span>${filterReset(true)}`;
-      if ($('#reset-f')) $('#reset-f').onclick = () => { s.q = ''; s.f = ''; s.page = 1; routes.clients(); };
+      if ($('#reset-f')) $('#reset-f').onclick = () => { s.q = ''; s.f = ''; s.page = 1; render(true); };
       $$('tr.clickable[data-cid]').forEach(tr => tr.onclick = e => { if (e.target.closest('button')) return; navigate('#/client/' + tr.dataset.cid); });
       bindRowMenus(document, id => {
         const c = clientById(id); if (!c) return [];
@@ -5287,10 +5347,10 @@
         [['vide-client', '+ Ajouter mon premier client', true], ['vide-import', 'Importer depuis un tableur'], ['vide-demo', 'Voir un exemple rempli']]) : '<div id="list-wrap"></div>'}`;
     // Le premier client fait apparaître la liste ET sa barre de recherche : c'est toute la page qui
     // se redessine, pas seulement la liste.
-    $('#new').onclick = () => clientForm(null, () => (vide ? routes.clients() : draw()));
-    $('#imp-clients').onclick = () => importerTableau('clients', () => routes.clients());
-    if ($('#vide-import')) $('#vide-import').onclick = () => importerTableau('clients', () => routes.clients());
-    if ($('#vide-client')) $('#vide-client').onclick = () => clientForm(null, () => routes.clients());
+    $('#new').onclick = () => clientForm(null, () => (vide ? render(true) : draw()));
+    $('#imp-clients').onclick = () => importerTableau('clients', () => render(true));
+    if ($('#vide-import')) $('#vide-import').onclick = () => importerTableau('clients', () => render(true));
+    if ($('#vide-client')) $('#vide-client').onclick = () => clientForm(null, () => render(true));
     if ($('#vide-demo')) $('#vide-demo').onclick = loadDemo;
     if ($('#q')) $('#q').oninput = e => { s.q = e.target.value.toLowerCase(); s.page = 1; draw(); };
     if ($('#f')) $('#f').onchange = e => { s.f = e.target.value; s.page = 1; draw(); };
@@ -6756,8 +6816,8 @@
     // Les treize qui ne menaient nulle part.
     cloture: { label: 'Clôturer un mois', run: vers('#/compta', () => { comptaState.tab = 'clotures'; }) },
     fiscal: { label: 'Voir le calendrier', run: vers('#/compta', () => { comptaState.tab = 'calendrier'; }) },
-    'fournisseurs-retard': { label: 'Voir les achats', run: vers('#/achats', () => { buyState.st = 'retard'; buyState.year = ''; }) },
-    'fournisseurs-echeances': { label: 'Voir les achats', run: vers('#/achats', () => { buyState.st = 'à payer'; buyState.year = ''; }) },
+    'fournisseurs-retard': { label: 'Voir les achats', run: vers('#/achats', () => filtreAchats('retard')) },
+    'fournisseurs-echeances': { label: 'Voir les achats', run: vers('#/achats', () => filtreAchats('à payer')) },
     'attestations-fournisseurs': { label: 'Voir la liste', run: vers('#/compta', () => { comptaState.tab = 'achats'; }) },
     'stock-negatif': { label: 'Voir les alertes', run: vers('#/stock', () => { stockState.tab = 'alertes'; }) },
     'stock-bas': { label: 'Voir les alertes', run: vers('#/stock', () => { stockState.tab = 'alertes'; }) },
@@ -6774,10 +6834,10 @@
     // Le jumeau côté achats (10.1.0). Les deux lignes nomment des pièces différentes et mènent donc
     // à deux listes différentes : une seule entrée pour les deux enverrait la moitié des gens sur
     // un écran où ce qu'on vient de leur annoncer n'existe pas.
-    'taux-achat': { label: 'Voir les achats', run: vers('#/achats', () => { buyState.q = ''; buyState.st = ''; buyState.kind = ''; buyState.cat = ''; buyState.year = ''; buyState.page = 1; }) },
+    'taux-achat': { label: 'Voir les achats', run: vers('#/achats', () => filtreAchats('')) },
     // Les avoirs et acomptes sans facture (10.2.0). On pose le filtre sur la liste : arriver sur
     // quarante achats quand deux posent question est la même impasse que ne pas pouvoir cliquer.
-    'achat-impute': { label: 'Voir les pièces à rattacher', run: vers('#/achats', () => { buyState.q = ''; buyState.st = A_RATTACHER; buyState.kind = ''; buyState.cat = ''; buyState.year = ''; buyState.page = 1; }) },
+    'achat-impute': { label: 'Voir les pièces à rattacher', run: vers('#/achats', () => filtreAchats(A_RATTACHER)) },
     sauvegarde: { label: 'Choisir un dossier', run: vers('#/parametres', () => { settingsTab = 'donnees'; settingsFocus = 'p-externe'; }) },
     'licences-expirent': { label: 'Voir les licences', run: vers('#/licences') },
     // Chaque ligne emmène sur la liste AVEC sa vue : arriver sur cent licences quand trois seulement
@@ -6801,7 +6861,9 @@
   // entre ce que `core.packChecklist` peut PRODUIRE et ce que l'interface sait ouvrir.
   const CHECK_ACTIONS = {
     brouillons: { label: 'Voir les brouillons', run: vers('#/factures', filtre('facture', 'brouillon')) },
-    justificatifs: { label: 'Voir les achats', run: vers('#/achats', () => { buyState.st = ''; buyState.year = ''; }) },
+    // Les achats SANS justificatif de la période du contrôle, et eux seuls (10.14.1, S-04) : « Voir les
+    // achats » ouvrait la liste entière, et il fallait chercher lesquels n'avaient pas leur pièce.
+    justificatifs: { label: 'Voir les achats sans justificatif', run: c => vers('#/achats', () => filtreAchats(SANS_JUSTIF, c && c.du, c && c.au))() },
     pointage: { label: 'Pointer les mouvements', run: vers('#/tresorerie', () => { tresoState.tab = 'rapprochement'; }) },
     // Le PREMIER mois qui manque (10.14.1) : « 44 bulletins de paie à établir » sur trois ans menait au
     // mois en cours, et laissait chercher, année par année, où l'oubli commençait.
@@ -7064,7 +7126,7 @@
     fermerDossiers();
     closeMenus();
     root.hidden = false;
-    root.innerHTML = `<div class="palette"><input type="text" id="pal-q" placeholder="Rechercher un document, un client, une prestation, une action…" autocomplete="off" spellcheck="false"><div class="results" id="pal-res"></div><div class="hint">↑ ↓ pour naviguer · Entrée pour ouvrir · Échap pour fermer</div></div>`;
+    root.innerHTML = `<div class="palette"><input type="text" id="pal-q" placeholder="Rechercher une pièce, un client, un fournisseur, un fichier joint, une action…" autocomplete="off" spellcheck="false"><div class="results" id="pal-res"></div><div class="hint">↑ ↓ pour naviguer · Entrée pour ouvrir · Échap pour fermer</div></div>`;
     const cur = company().currency;
     const actions = [
       ['Nouveau devis', () => navigate('#/doc/new/devis')], ['Nouvelle facture', () => navigate('#/doc/new/facture')], ['Nouvel avoir', () => navigate('#/doc/new/avoir')],
@@ -7134,10 +7196,39 @@
     const docs = data.documents.map(d => { const cn = clientName(d.clientId); return { kind: KIND_PIECE[d.type] || C.TITLES[d.type], main: d.number || 'Brouillon', sub: `${cn}${d.subject ? ' — ' + d.subject : ''}`, amt: C.money(montantDeListe(d), docCur(d)), text: `${d.number} ${cn} ${d.subject || ''} ${d.type} ${C.docLabel(d.type, company())}`.toLowerCase(), run: () => navigate('#/doc/' + d.id), ts: d.createdAt || 0, piece: true }; });
     const clients = data.clients.map(c => ({ kind: 'Client', main: c.name, sub: [c.contact, c.email, c.phone].filter(Boolean).join(' · '), text: `${c.name} ${c.contact || ''} ${c.email || ''} ${c.phone || ''} ${c.matricule || ''}`.toLowerCase(), run: () => navigate('#/client/' + c.id) }));
     const items = data.catalog.map(c => ({ kind: 'Prestation', main: c.label, sub: C.money(c.unitPrice, cur) + ' HT', text: `${c.label} ${c.description || ''}`.toLowerCase(), run: () => navigate('#/catalogue') }));
+    // Les ACHATS et les FOURNISSEURS (10.14.1, S-04). La palette ne connaissait que les pièces de
+    // vente : une facture d'achat — la moitié des pièces d'une entreprise, et celles que le comptable
+    // réclame — ne se trouvait pas par Ctrl K. Une catégorie en un mot, comme les pièces de vente.
+    const KIND_ACHAT = { facture: 'Achat', depense: 'Dépense', avoir: 'Avoir', acompte: 'Acompte' };
+    // Dans un lot : la référence d'une pièce sans numéro (« SN-20260914 ») se calcule une fois pour toutes.
+    const achats = C.enLot(() => (data.purchases || []).map(p => {
+      const sn = p.supplierId ? supplierName(p.supplierId) : '';
+      const quoi = contenuAchat(p);
+      return { kind: KIND_ACHAT[p.kind] || 'Achat', main: p.number || 'Sans numéro', sub: [sn, quoi].filter(Boolean).join(' — '),
+        amt: C.money(C.purchaseTotals(p, company()).netToPay, p.currency || cur),
+        text: `${C.referenceAchat(p, data)} ${sn} ${quoi} ${p.category || ''} achat`.toLowerCase(), run: () => navigate('#/achat/' + p.id), ts: p.createdAt || 0, piece: true };
+    }));
+    const fournisseurs = (data.suppliers || []).map(sp => ({ kind: 'Fournisseur', main: sp.name, sub: [sp.contact, sp.email, sp.phone].filter(Boolean).join(' · '),
+      text: `${sp.name} ${sp.contact || ''} ${sp.email || ''} ${sp.phone || ''} ${sp.matricule || ''}`.toLowerCase(), run: () => navigate('#/fournisseur/' + sp.id) }));
+    // Les JUSTIFICATIFS (10.14.1, S-04) : un fichier joint se cherche par son NOM. Skander : « quand je
+    // cherche une pièce jointe, je la trouve pas ». Le résultat ouvre la pièce qui le porte, sur son
+    // panneau « Pièces jointes » — là où on l'ouvre, où on le montre dans le dossier, où on le retire.
+    const justifs = [];
+    const joindre = (x, quoi, ouvrir) => (x.attachments || []).forEach(a => justifs.push({
+      // « Fichier » : une catégorie tient en un mot court dans sa colonne (« Justificatif » y touchait
+      // le bord, 77,9 px mesurés pour 78). Le mot « justificatif » reste cherchable.
+      kind: 'Fichier', main: a.name || a.file, sub: quoi,
+      text: `${a.name || ''} ${quoi} justificatif`.toLowerCase(), run: ouvrir, ts: x.createdAt || 0 }));
+    data.documents.forEach(d => joindre(d, `${C.docLabel(d.type, company())} ${d.number || '(brouillon)'} — ${clientName(d.clientId)}`,
+      () => { pageFocus = 'p-pj'; navigate('#/doc/' + d.id); }));
+    (data.purchases || []).forEach(p => joindre(p, `Achat ${C.referenceAchat(p, data)}${p.supplierId ? ' — ' + supplierName(p.supplierId) : ''}`,
+      () => { pageFocus = 'p-pj'; navigate('#/achat/' + p.id); }));
+    (data.movements || []).forEach(m => joindre(m, `Mouvement du ${C.fmtDate(m.date)}${m.label ? ' — ' + m.label : ''}`,
+      () => { vers('#/tresorerie', () => { tresoState.tab = 'mouvements'; tresoState.year = (m.date || '').slice(0, 4); })(); movementForm(m, () => render()); }));
     // Les pièces les plus RÉCENTES d'abord : sur cinq ans, le nom d'un client rendait ses factures
-    // de la première année avant celles du mois.
-    const recentes = docs.slice().sort((a, b) => b.ts - a.ts);
-    const all = [...actions, ...reglagesDePalette(), ...recentes, ...clients, ...items];
+    // de la première année avant celles du mois. Ventes et achats mêlés : ce sont toutes des pièces.
+    const recentes = docs.concat(achats).sort((a, b) => b.ts - a.ts);
+    const all = [...actions, ...reglagesDePalette(), ...recentes, ...clients, ...fournisseurs, ...items, ...justifs];
     const HINT = $('#palette-root .hint').textContent;
     let sel = 0, shown = [];
     const input = $('#pal-q'), res = $('#pal-res');
@@ -7369,7 +7460,7 @@
       const note = $('#f-note');
       note.hidden = !filtered;
       note.innerHTML = !filtered ? '' : `<span class="small muted">${rows.length} sur ${all.length}</span>${filterReset(true)}`;
-      if ($('#reset-f')) $('#reset-f').onclick = () => { s.q = ''; s.f = ''; s.page = 1; routes.fournisseurs(); };
+      if ($('#reset-f')) $('#reset-f').onclick = () => { s.q = ''; s.f = ''; s.page = 1; render(true); };
       $$('tr.clickable[data-sid]').forEach(tr => tr.onclick = e => { if (e.target.closest('button')) return; navigate('#/fournisseur/' + tr.dataset.sid); });
       bindRowMenus(document, id => {
         const f = supplierById(id); if (!f) return [];
@@ -7395,8 +7486,8 @@
         ['Un fournisseur se crée une fois : ses coordonnées et son délai de paiement se reportent ensuite sur chaque facture d\'achat, et c\'est sur sa fiche que se lit ce que tu lui dois.',
          'Tu peux aussi le créer depuis une facture d\'achat, au moment de la saisir.'],
         [['vide-fournisseur', '+ Ajouter mon premier fournisseur', true]]) : '<div id="list-wrap"></div>'}`;
-    $('#new').onclick = () => supplierForm(null, () => (vide ? routes.fournisseurs() : draw()));
-    if ($('#vide-fournisseur')) $('#vide-fournisseur').onclick = () => supplierForm(null, () => routes.fournisseurs());
+    $('#new').onclick = () => supplierForm(null, () => (vide ? render(true) : draw()));
+    if ($('#vide-fournisseur')) $('#vide-fournisseur').onclick = () => supplierForm(null, () => render(true));
     if ($('#q')) $('#q').oninput = e => { s.q = e.target.value.toLowerCase(); s.page = 1; draw(); };
     if ($('#f')) $('#f').onchange = e => { s.f = e.target.value; s.page = 1; draw(); };
     if (!vide) draw();
@@ -7462,6 +7553,10 @@
   // facture ne la diminuerait nulle part à l'écran, alors que les écritures, elles, le savent.
   const buyStatus = p => C.purchaseStatus(p, company(), C.today(), data);
   const A_RATTACHER = 'à rattacher';
+  // « Sans justificatif » n'est pas un statut non plus : c'est LA question du comptable (10.14.1,
+  // S-04). Elle vit dans le même sélecteur, et le contrôle de clôture « n achats sans justificatif »
+  // y mène avec sa période — la même règle (`C.sansJustificatif`) compte et montre.
+  const SANS_JUSTIF = 'sans justificatif';
 
   // Ce qu'un achat a acheté, en quelques mots : son objet s'il en a un, sinon les libellés de ses
   // lignes (les deux premiers, et le compte des autres).
@@ -7484,9 +7579,8 @@
       { key: 'date', label: 'Date', cls: 'nw', val: p => p.date || '', get: p => C.fmtDate(p.date) },
       // Le trombone : on voit d'un coup d'œil quelles pièces ont leur justificatif — et lesquelles
       // n'en ont pas, ce qui est la question du comptable.
-      { key: 'number', label: 'N° fournisseur', cls: 'nw', asc: true, val: p => (p.number || '').toLowerCase(),
-        get: p => (p.number ? `<strong>${h(p.number)}</strong>` : '<span class="muted">sans numéro</span>')
-          + ((p.attachments || []).length ? ` <span class="att-mark" title="${pl((p.attachments || []).length, 'justificatif')} joint${(p.attachments || []).length > 1 ? 's' : ''}">📎</span>` : '') }
+      { key: 'number', label: 'N° fournisseur', cls: 'nw', asc: true, val: p => (p.number || C.referenceAchat(p, data)).toLowerCase(),
+        get: p => celluleNumeroAchat(p.number, C.referenceAchat(p, data), marqueJustif(p.attachments)) + justifTrouve(p.attachments, opts.q && opts.q()) }
     ];
     if (!opts.hideSupplier) cols.push({ key: 'supplier', label: 'Fournisseur', asc: true, val: p => supplierName(p.supplierId).toLowerCase(), get: p => `${h(supplierName(p.supplierId))}${contenuAchat(p) ? `<div class="small muted">${h(contenuAchat(p))}</div>` : ''}` });
     else cols.push({ key: 'subject', label: 'Objet', asc: true, val: p => (p.subject || '').toLowerCase(), get: p => h(p.subject || '') || '<span class="muted">—</span>' });
@@ -7500,12 +7594,21 @@
     return { cols, netOf, restOf };
   }
 
-  const buyState = { q: '', st: '', kind: '', cat: '', year: '', sort: { key: 'date', dir: 'desc' }, page: 1 };
+  // `du` / `au` : la période posée par un contrôle de clôture (« 3 achats sans justificatif » d'un mois).
+  // Aucun sélecteur ne la pose à la main : elle se DIT à côté des filtres, et « Réinitialiser » l'efface.
+  const buyState = { q: '', st: '', kind: '', cat: '', year: '', du: '', au: '', sort: { key: 'date', dir: 'desc' }, page: 1 };
+  // Poser un filtre des achats depuis une autre page : TOUT le reste se remet à zéro (la règle 7.18.0,
+  // portée aux achats). Recopiées à la main, les remises à zéro en oubliaient une — la période d'un
+  // contrôle de clôture serait restée posée sous « Voir les achats en retard », et aurait caché ceux
+  // d'avant.
+  function filtreAchats(st, du, au) {
+    Object.assign(buyState, { q: '', st: st || '', kind: '', cat: '', year: '', du: du || '', au: au || '', page: 1 });
+  }
 
   routes.achats = () => {
     const cur = company().currency;
     const s = buyState;
-    const { cols, netOf, restOf } = purchaseColumns({});
+    const { cols, netOf, restOf } = purchaseColumns({ q: () => s.q });
     const all = data.purchases;
     const years = Array.from(new Set(all.map(p => (p.date || '').slice(0, 4)).filter(Boolean))).sort().reverse();
     const cats = Array.from(new Set(all.map(p => p.category).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'fr'));
@@ -7515,12 +7618,14 @@
         .filter(p => !s.kind || p.kind === s.kind)
         .filter(p => !s.year || (p.date || '').startsWith(s.year))
         .filter(p => !s.cat || p.category === s.cat)
+        .filter(p => !s.du || ((p.date || '') >= s.du && (p.date || '') <= (s.au || '9999-12-31')))
         // `à rattacher` n'est pas un statut mais une QUESTION : quelles pièces ne viennent en
         // déduction de rien ? Elle vit dans le même sélecteur parce que c'est là qu'on la cherche,
         // et elle se réinitialise comme les autres — un filtre qu'on ne voit pas est un piège.
-        .filter(p => !s.st || (s.st === A_RATTACHER ? C.aRattacherAchat(p, company(), data) : buyStatus(p) === s.st))
-        .filter(p => !s.q || C.correspondRecherche([p.number, supplierName(p.supplierId), p.subject, p.category].join(' '), s.q)), cols, s.sort);
-      const filtered = !!(s.q || s.st || s.kind || s.cat || s.year);
+        .filter(p => !s.st || (s.st === A_RATTACHER ? C.aRattacherAchat(p, company(), data)
+          : s.st === SANS_JUSTIF ? C.sansJustificatif(p) : buyStatus(p) === s.st))
+        .filter(p => !s.q || C.correspondRecherche([C.referenceAchat(p, data), supplierName(p.supplierId), p.subject, p.category, contenuAchat(p), C.nomsJustificatifs(p)].join(' '), s.q)), cols, s.sort);
+      const filtered = !!(s.q || s.st || s.kind || s.cat || s.year || s.du);
       const { rows: page, pg } = paginate(rows, s);
       // Les totaux portent sur toute la sélection, jamais sur la page affichée.
       const totHT = rows.reduce((a, p) => a + C.purchaseTotals(p, company()).base.totalHT, 0);
@@ -7534,8 +7639,8 @@
         : `<div class="empty">${filtered ? 'Aucune pièce ne correspond à ces filtres.' : 'Aucun achat enregistré. Saisis tes factures fournisseurs et tes dépenses ici : c\'est ce qui permettra de récupérer la TVA et de connaître ta marge réelle.'}</div>`;
       const note = $('#f-note');
       note.hidden = !filtered;
-      note.innerHTML = !filtered ? '' : `<span class="small muted">${rows.length} sur ${all.length}</span>${filterReset(true)}`;
-      if ($('#reset-f')) $('#reset-f').onclick = () => { s.q = ''; s.st = ''; s.kind = ''; s.cat = ''; s.year = ''; s.page = 1; routes.achats(); };
+      note.innerHTML = !filtered ? '' : `<span class="small muted">${rows.length} sur ${all.length}${s.du ? ` · du ${C.fmtDate(s.du)} au ${C.fmtDate(s.au)}` : ''}</span>${filterReset(true)}`;
+      if ($('#reset-f')) $('#reset-f').onclick = () => { s.q = ''; s.st = ''; s.kind = ''; s.cat = ''; s.year = ''; s.du = ''; s.au = ''; s.page = 1; render(true); };
       $$('#list-wrap tr.clickable').forEach(tr => tr.onclick = e => { if (e.target.closest('button')) return; navigate('#/achat/' + tr.dataset.id); });
       bindRowMenus(document, id => {
         const p = purchaseById(id); if (!p) return [];
@@ -7554,7 +7659,7 @@
       bindSort($('#list-wrap'), draw);
       bindPager($('#list-wrap'), s, () => draw(), '#list-wrap');
     });
-    const videAchats = !data.purchases.length && !(s.q || s.st || s.kind || s.cat || s.year);
+    const videAchats = !data.purchases.length && !(s.q || s.st || s.kind || s.cat || s.year || s.du);
     $('#view').innerHTML = `
       <div class="page-head"><h1>Achats et dépenses</h1>
         <div class="actions"><button class="btn" id="new-dep">+ Dépense</button><button class="btn ${videAchats ? '' : 'btn-primary'}" id="new">+ Facture d'achat</button></div></div>
@@ -7562,12 +7667,12 @@
       ${filtersBar(`
         <input type="text" id="q" placeholder="Rechercher : n°, fournisseur, objet…" value="${h(s.q)}">
         <select id="kind"><option value="">Tout</option>${C.PURCHASE_KINDS.map(([v, , pluriel]) => `<option value="${v}" ${s.kind === v ? 'selected' : ''}>${pluriel}</option>`).join('')}</select>
-        <select id="st"><option value="">Tous les statuts</option>${C.PURCHASE_STATUSES.map(x => `<option value="${x}" ${s.st === x ? 'selected' : ''}>${h(optionStatut(x))}</option>`).join('')}<option value="${A_RATTACHER}" ${s.st === A_RATTACHER ? 'selected' : ''}>à rattacher (avoir ou acompte)</option></select>
+        <select id="st"><option value="">Tous les statuts</option>${C.PURCHASE_STATUSES.map(x => `<option value="${x}" ${s.st === x ? 'selected' : ''}>${h(optionStatut(x))}</option>`).join('')}<option value="${A_RATTACHER}" ${s.st === A_RATTACHER ? 'selected' : ''}>À rattacher (avoir ou acompte)</option><option value="${SANS_JUSTIF}" ${s.st === SANS_JUSTIF ? 'selected' : ''}>Sans justificatif</option></select>
         ${cats.length > 1 ? `<select id="cat"><option value="">Toutes les catégories</option>${cats.map(c => `<option value="${h(c)}" ${s.cat === c ? 'selected' : ''}>${h(c)}</option>`).join('')}</select>` : ''}
         ${years.length > 1 ? `<select id="yr"><option value="">Toutes les années</option>${years.map(y => `<option value="${y}" ${s.year === y ? 'selected' : ''}>${y}</option>`).join('')}</select>` : ''}
         ${info('list.filters')}
         <span class="f-note" id="f-note" hidden></span>
-      `, data.purchases.length, !!(s.q || s.st || s.kind || s.cat || s.year))}
+      `, data.purchases.length, !!(s.q || s.st || s.kind || s.cat || s.year || s.du))}
       ${videAchats ? etatVide('Ce que tu dépenses, et la TVA que tu récupères',
         ['Saisis ici tes factures fournisseurs et tes dépenses : c\'est ce qui permet de récupérer la TVA que tu as payée, et de connaître ta marge réelle.',
          'Commence par joindre la photo ou le PDF de la facture : la saisie se fait en la regardant.'],
@@ -7602,7 +7707,7 @@
         <table class="list compact"><thead><tr><th>Fournisseur</th><th>Pièce</th><th>Échéance</th><th class="r">Reste dû</th><th></th></tr></thead><tbody>
           ${due.slice(0, 8).map(x => `<tr class="clickable ${x.late > 0 ? 'row-warn' : ''}" data-id="${h(x.id)}">
             <td>${h(supplierName(x.supplierId))}</td>
-            <td>${x.number ? `<strong>${h(x.number)}</strong>` : '<span class="muted">sans numéro</span>'}${x.subject ? `<div class="small muted">${h(x.subject)}</div>` : ''}</td>
+            <td>${celluleNumeroAchat(x.number, C.referenceAchat(x, data))}${x.subject ? `<div class="small muted">${h(x.subject)}</div>` : ''}</td>
             <td class="nw">${x.dueDate ? C.fmtDate(x.dueDate) : '—'}${x.late ? `<div class="small warn-text">${x.late} j de retard</div>` : ''}</td>
             <td class="r nw"><strong>${C.money(x.remaining, cur)}</strong></td>
             <td class="actions"><button class="btn btn-sm" data-payx="${h(x.id)}">Régler</button></td></tr>`).join('')}
@@ -7872,7 +7977,7 @@
       <div class="page-head">
         <div><h1>${isNew ? `<span id="b-titre">${h(motsDePiece(p.kind).titre)}</span>` : `${natureLabel(p.kind)} ${h(p.number || 'sans numéro')}`}
           <span class="dirty-dot" id="dirty-dot" hidden>Modifications non enregistrées</span></h1>
-          ${isNew ? '' : `<div class="small muted">${h(supplierName(p.supplierId))} · ${C.fmtDate(p.date)}</div>`}</div>
+          ${isNew ? '' : `<div class="small muted">${h(supplierName(p.supplierId))} · ${C.fmtDate(p.date)}${String(stored.number || '').trim() ? '' : ` · <span title="${h('Sa référence dans les écritures et chez ton comptable')}">réf. ${h(C.referenceAchat(stored, data))}</span>`}</div>`}</div>
         <div class="actions">
           ${backButton('#/achats')}
           ${!isNew && C.purchaseBalance(stored, company(), data).remaining > 0.0005 ? '<button class="btn btn-primary" id="pay">Enregistrer un règlement</button>' : ''}
@@ -7938,7 +8043,7 @@
                identifiant, donc son dossier de pièces jointes. Exiger d'enregistrer d'abord — et donc
                de choisir un fournisseur et d'écrire une ligne — pour pouvoir accrocher la photo qu'on
                a sous les yeux, c'est le contraire de l'ordre dans lequel on travaille. -->
-          <div class="panel"><h2>Pièces jointes ${info('ed.attachments')}</h2><div id="attachments"></div></div>
+          <div class="panel" id="p-pj"><h2>Pièces jointes ${info('ed.attachments')}</h2><div id="attachments"></div></div>
           <div class="panel"><h2>Notes internes</h2>
             <textarea id="b-notes" placeholder="Ce qu'il faut se rappeler sur cet achat">${h(p.notes || '')}</textarea>
           </div>
@@ -8378,23 +8483,18 @@
       const cible = s2 || p;
       const list = cible.attachments || [];
       el.innerHTML = `
-        ${list.length ? `<table class="list compact"><thead><tr><th>Fichier</th><th>Ajouté le</th><th class="r">Taille</th><th></th></tr></thead><tbody>
-          ${list.map(a => `<tr><td><a href="#" data-open="${h(a.file)}">${h(a.name)}</a></td><td class="nw">${C.fmtDate(a.date)}</td><td class="r nw">${fileSize(a.size)}</td>
-            <td class="actions"><button class="btn btn-ghost btn-sm" data-reveal="${h(a.file)}">Dossier</button><button class="btn btn-ghost btn-sm" data-rmatt="${h(a.file)}">✕</button></td></tr>`).join('')}
-        </tbody></table>` : '<p class="small muted">Aucun justificatif. Photographie ou scanne la facture du fournisseur : sans justificatif, ni la charge ni la TVA ne sont récupérables.</p>'}
-        <div class="inline mt"><button class="btn btn-sm" id="add-att">+ Joindre le justificatif…</button>
+        ${list.length ? tableauJustificatifs(list) : '<p class="small muted">Aucun justificatif. Photographie ou scanne la facture du fournisseur : sans justificatif, ni la charge ni la TVA ne sont récupérables.</p>'}
+        <div class="inline mt"><button class="btn btn-sm" id="add-att">${list.length ? '+ Joindre un autre fichier…' : '+ Joindre le justificatif…'}</button>
         ${isNew && list.length ? '<span class="small muted">Joint à cette pièce : il sera enregistré avec elle.</span>' : ''}</div>`;
       $('#add-att').onclick = async () => {
         try { await joindre(await bridge.addAttachments(p.id)); }
         catch (e) { toast(plainError(e), true); }
       };
-      $$('[data-open]', el).forEach(a => a.onclick = e => { e.preventDefault(); bridge.openAttachment(p.id, a.dataset.open); });
-      $$('[data-reveal]', el).forEach(b => b.onclick = () => bridge.revealAttachment(p.id, b.dataset.reveal));
-      $$('[data-rmatt]', el).forEach(b => b.onclick = async () => {
-        if (!await confirmDialog('Retirer ce justificatif ? Le fichier copié sera supprimé, ton original ne bouge pas.')) return;
-        await bridge.removeAttachment(p.id, b.dataset.rmatt);
-        p.attachments = (p.attachments || []).filter(x => x.file !== b.dataset.rmatt);
-        if (s2) { s2.attachments = (s2.attachments || []).filter(x => x.file !== b.dataset.rmatt); save(true); } else touch();
+      brancherJustificatifs(el, p.id, list, async a => {
+        if (!await confirmDialog(`Retirer « ${a.name || a.file} » ? La copie rangée par SkanFact sera supprimée ; ton fichier d'origine ne bouge pas.`, 'Retirer')) return;
+        await bridge.removeAttachment(p.id, a.file);
+        p.attachments = (p.attachments || []).filter(x => x.file !== a.file);
+        if (s2) { s2.attachments = (s2.attachments || []).filter(x => x.file !== a.file); save(true); } else touch();
         drawBuyAttachments();
       });
     }
@@ -8503,7 +8603,7 @@
     const type = autresTab;
     const s = autresState[type];
     const tab = AUTRES_TABS.find(x => x[0] === type);
-    const { cols } = docColumns({ quotes: true, extra: type });
+    const { cols } = docColumns({ quotes: true, extra: type, q: () => s.q });
     const mine = data.documents.filter(d => d.type === type);
     const years = Array.from(new Set(mine.map(d => (d.date || '').slice(0, 4)).filter(Boolean))).sort().reverse();
     const filtreActif = !!(s.q || s.st || s.year);
@@ -8531,7 +8631,7 @@
       const list = mine
         .filter(d => !s.year || (d.date || '').startsWith(s.year))
         .filter(d => !s.st || d.status === s.st)
-        .filter(d => !s.q || C.correspondRecherche([d.number, clientName(d.clientId), d.subject, d.reference].join(' '), s.q))
+        .filter(d => !s.q || C.correspondRecherche([d.number, clientName(d.clientId), d.subject, d.reference, C.nomsJustificatifs(d)].join(' '), s.q))
         .sort(byNumberDesc);
       const filtered = !!(s.q || s.st || s.year);
       $('#list-wrap').innerHTML = docTable(list, {
@@ -8542,7 +8642,7 @@
       const note = $('#f-note');
       note.hidden = !filtered;
       note.innerHTML = !filtered ? '' : `<span class="small muted">${list.length} sur ${mine.length}</span>${filterReset(true)}`;
-      if ($('#reset-f')) $('#reset-f').onclick = () => { s.q = ''; s.st = ''; s.year = ''; s.page = 1; routes.autres([type]); };
+      if ($('#reset-f')) $('#reset-f').onclick = () => { s.q = ''; s.st = ''; s.year = ''; s.page = 1; render(true); };
       bindDocTable(draw, s, '#list-wrap');
     });
     $$('#a-tabs button').forEach(b => b.onclick = () => { autresTab = b.dataset.tab; navigate('#/autres/' + b.dataset.tab); });
@@ -10750,6 +10850,11 @@
         });
     }
     const first = itemId && items.some(c => c.id === itemId) ? itemId : items[0].id;
+    // La facture d'achat se choisit par sa référence (10.14.1, LET-01) : un ticket sans numéro porte
+    // « SN-AAAAMMJJ », pas « sans numéro » répété sur chaque ligne de la liste.
+    const achatsChoix = C.enLot(() => data.purchases.map(p => ({ v: p.id, date: p.date, label: C.referenceAchat(p, data),
+      sub: `${C.fmtDate(p.date)} · ${supplierName(p.supplierId)}${String(p.number || '').trim() ? '' : ' · sans numéro'}`,
+      text: `${C.referenceAchat(p, data)} ${supplierName(p.supplierId)}` })));
     modal(`<h2>Entrée de numéros de série</h2>
       <p class="small muted">Un numéro par ligne. Tu peux les coller depuis un bon de livraison fournisseur ou un fichier : SkanFact ignore les lignes vides et refuse les doublons.</p>
       <form id="sif" class="grid-2">
@@ -10758,7 +10863,7 @@
         </div>
         ${dateFieldHtml(lbl('Date d\'entrée', 'ser.inDate'), 'inDate', C.today(), {})}
         <div class="field span-2">${lbl('Facture d\'achat (optionnel)', 'ser.purchase')}
-          ${combo({ name: 'inPurchaseId', value: '', items: data.purchases.slice().sort((a, b) => (b.date || '').localeCompare(a.date || '')).slice(0, 200).map(p => ({ v: p.id, label: p.number || 'sans numéro', sub: `${C.fmtDate(p.date)} · ${supplierName(p.supplierId)}`, text: `${p.number || ''} ${supplierName(p.supplierId)}` })), placeholder: '— Aucune —', search: 'Rechercher une facture d\'achat…' })}
+          ${combo({ name: 'inPurchaseId', value: '', items: achatsChoix.slice().sort((a, b) => (b.date || '').localeCompare(a.date || '')).slice(0, 200), placeholder: '— Aucune —', search: 'Rechercher une facture d\'achat…' })}
         </div>
         <label class="field span-2">${lbl('Numéros de série', 'ser.intake')}<textarea name="list" rows="8" placeholder="SN-2026-0001&#10;SN-2026-0002&#10;SN-2026-0003"></textarea></label>
         <div class="span-2 annonce-stable" id="sif-hint"></div>
@@ -10766,7 +10871,7 @@
       <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
       (root, close) => {
         bindCombo($('[data-combo=itemId]', root), { items: items.map(c => ({ v: c.id, label: c.label, text: c.label })), placeholder: '— Choisir un article —' });
-        bindCombo($('[data-combo=inPurchaseId]', root), { items: data.purchases.map(p => ({ v: p.id, label: p.number || 'sans numéro', text: p.number || '' })), placeholder: '— Aucune —' });
+        bindCombo($('[data-combo=inPurchaseId]', root), { items: achatsChoix, placeholder: '— Aucune —' });
         const parse = () => (formValues($('#sif', root)).list || '').split(/\r?\n/).map(x => x.trim()).filter(Boolean);
         const hint = () => {
           const v = formValues($('#sif', root));
@@ -11398,7 +11503,7 @@
         ${dis ? `<p class="small muted mt">Ce tableau est le plan <b>d'origine</b>, celui qui aurait couru si le bien était resté. Il est sorti le ${C.fmtDate(dis.date)} : l'exercice ${dis.date.slice(0, 4)} n'a été amorti que jusqu'à ce jour-là (${C.money(C.round3(C.assetCumulated(a, dis.date) - C.assetCumulated(a, `${Number(dis.date.slice(0, 4)) - 1}-12-31`)), cur)}), et les suivants n'ont plus aucune dotation. C'est ce que montre le tableau des amortissements de l'exercice.</p>` : ''}
       </div>
       ${buy ? `<div class="panel"><h2>Achat d'origine</h2>
-        <p class="small">Ce bien vient de la pièce <a href="#/achat/${h(buy.id)}">${h(buy.number || 'sans numéro')}</a> du ${C.fmtDate(buy.date)}${buy.supplierId ? ', ' + h(supplierName(buy.supplierId)) : ''}. Modifier l'achat ne change pas cette fiche : la valeur immobilisée est recopiée à la création.</p></div>` : ''}
+        <p class="small">Ce bien vient de la pièce <a href="#/achat/${h(buy.id)}">${h(C.referenceAchat(buy, data))}</a> du ${C.fmtDate(buy.date)}${buy.supplierId ? ', ' + h(supplierName(buy.supplierId)) : ''}. Modifier l'achat ne change pas cette fiche : la valeur immobilisée est recopiée à la création.</p></div>` : ''}
       ${a.notes ? `<div class="panel"><h2>Notes</h2><p class="small">${C.nl2br(a.notes)}</p></div>` : ''}`;
     bindBack('#/immos');
     $('#edit-imm').onclick = () => assetForm(a, () => render());
@@ -11477,6 +11582,18 @@
 
   function movementForm(mv, done) {
     const m = mv || { id: C.uid(), date: C.today(), kind: 'autre-sortie', amount: 0, accountId: (data.accounts.find(a => a.isDefault) || data.accounts[0] || {}).id || '', label: '', reference: '', method: 'virement' };
+    // Les justificatifs d'un mouvement libre (10.14.1, S-04) : la quittance d'un loyer payé sans
+    // facture, l'avis d'imposition, le relevé qui prouve des frais bancaires. Un mouvement sans facture
+    // n'a QUE ce fichier pour se justifier — et il part dans le paquet du comptable. Sur un mouvement
+    // neuf, les copies partent avec l'enregistrement, et une fenêtre abandonnée les retire ; sur un
+    // mouvement rangé, le fichier s'enregistre tout de suite (comme dans l'éditeur d'un achat).
+    const ajoutes = [];
+    let enregistre = false;
+    let champs = null;
+    const opts = {
+      garde: () => (champs ? champs() : false) || ajoutes.length > 0,
+      perte: 'Ce que tu viens de saisir dans cette fenêtre ne sera pas enregistré.'
+    };
     modal(`<h2>${mv ? 'Modifier le mouvement' : 'Nouveau mouvement'}</h2>
       <p class="small muted">Ce qui n'a ni facture ni achat : salaires, impôts, frais bancaires, apport, retrait${data.accounts.length > 1 ? ', virement entre tes comptes' : ''}. Les encaissements clients et les règlements fournisseurs n'ont <b>pas</b> à être saisis ici — ils remontent tout seuls.</p>
       <form id="mf2" class="grid-2">
@@ -11494,6 +11611,7 @@
         <label class="field span-2" id="mf-cp" ${m.kind === 'virement' ? 'hidden' : ''}>${lbl('Contrepartie comptable', 'tre.compte')}<select name="compte">${C.COMPTES_CONTREPARTIE.map(([v, l]) => `<option value="${v}" ${String(m.compte || '') === v ? 'selected' : ''}>${v ? v + ' — ' : ''}${l}</option>`).join('')}${m.compte && !C.COMPTES_CONTREPARTIE.some(([v]) => v === String(m.compte)) ? `<option value="${h(m.compte)}" selected>${h(m.compte)} — ${h(C.accountLabel(data, m.compte))}</option>` : ''}</select></label>
         <label class="field span-2" id="mf-vers" ${m.kind === 'virement' ? '' : 'hidden'}>${lbl('Vers le compte', 'tre.moveVers')}<select name="versAccountId"><option value="">— Choisir le compte qui reçoit —</option>${data.accounts.map(a => `<option value="${a.id}" ${m.versAccountId === a.id ? 'selected' : ''}>${h(a.name)}</option>`).join('')}</select></label>
       </form>
+      <div class="mv-pj"><div class="field">${lbl('Justificatifs', 'tre.moveJustif')}</div><div id="mv-pj"></div></div>
       <div class="modal-actions">
         ${mv ? '<button class="btn btn-danger" id="del-mv" style="margin-inline-end:auto">Supprimer</button>' : ''}
         <button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
@@ -11516,6 +11634,34 @@
         kindSel.addEventListener('change', accorder);
         versSel.addEventListener('change', accorder);
         accorder();
+        // L'instantané des champs APRÈS le montage et les montants complétés (modal() le fait juste
+        // après ce rappel) : le garde-fou additionne les champs et les fichiers joints.
+        queueMicrotask(() => { champs = suivreSaisie(root); });
+        const drawPj = () => {
+          const el = $('#mv-pj', root); if (!el) return;
+          const list = m.attachments || [];
+          el.innerHTML = `${list.length ? tableauJustificatifs(list) : '<p class="small muted">Aucun justificatif. Un mouvement sans facture — un loyer, un impôt, des frais bancaires — n\'a que ce fichier pour se prouver : c\'est lui que ton comptable demandera.</p>'}
+            <div class="inline mt"><button type="button" class="btn btn-sm" id="mv-add-pj">${list.length ? '+ Joindre un autre fichier…' : '+ Joindre un justificatif…'}</button>${!mv && list.length ? '<span class="small muted">Joint à ce mouvement : il sera enregistré avec lui.</span>' : ''}</div>`;
+          $('#mv-add-pj', root).onclick = async () => {
+            try {
+              const nouveaux = (await bridge.addAttachments(m.id)).filter(Boolean);
+              if (!nouveaux.length) return;
+              m.attachments = (m.attachments || []).concat(nouveaux);
+              if (mv) save(true); else ajoutes.push(...nouveaux);
+              drawPj();
+              toast(nouveaux.length > 1 ? `${nouveaux.length} justificatifs joints` : 'Justificatif joint');
+            } catch (e) { toast(plainError(e), true); }
+          };
+          brancherJustificatifs(el, m.id, list, async a => {
+            if (!await confirmDialog(`Retirer « ${a.name || a.file} » ? La copie rangée par SkanFact sera supprimée ; ton fichier d'origine ne bouge pas.`, 'Retirer')) return;
+            await bridge.removeAttachment(m.id, a.file);
+            m.attachments = (m.attachments || []).filter(x => x.file !== a.file);
+            const i = ajoutes.findIndex(x => x.file === a.file); if (i >= 0) ajoutes.splice(i, 1);
+            if (mv) save(true);
+            drawPj();
+          });
+        };
+        drawPj();
         $('#ok', root).onclick = async () => {
           const v = formValues($('#mf2', root));
           if (!(Number(v.amount) > 0)) return refus($('[name=amount]', root), 'Montant invalide.');
@@ -11529,15 +11675,22 @@
           Object.assign(m, v, { amount: Math.abs(Number(v.amount)), compte: vir ? '' : String(v.compte || '').trim() });
           if (!vir) { delete m.versAccountId; delete m.reconciledVers; }
           if (!mv) data.movements.push(m);
+          enregistre = true;
           save(true); close(); if (done) done(m);
         };
         if ($('#del-mv', root)) $('#del-mv', root).onclick = async () => {
-          if (!await confirmDialog('Supprimer ce mouvement ?')) return;
+          const pj = (m.attachments || []).length;
+          if (!await confirmDialog(`Supprimer ce mouvement ?${pj ? ` ${pj > 1 ? `Ses ${pj} justificatifs partent` : 'Son justificatif part'} avec lui.` : ''}`, 'Supprimer')) return;
           if (closedBlock(m.date, 'Ce mouvement')) return;
           forget('movements', m.id, m.label || '');
-          data.movements = data.movements.filter(x => x.id !== m.id); save(true); close(); render();
+          (m.attachments || []).forEach(a => { try { bridge.removeAttachment(m.id, a.file); } catch (_) { /* une copie déjà partie */ } });
+          data.movements = data.movements.filter(x => x.id !== m.id); enregistre = true; save(true); close(); render();
         };
-      });
+      },
+      // Une fenêtre abandonnée ne laisse pas de copie derrière elle (le jumeau de `discard` des
+      // éditeurs, 8.5.1) : le fichier d'origine ne bouge pas, seule la copie rangée part.
+      () => { if (!enregistre && !mv) ajoutes.forEach(a => { try { bridge.removeAttachment(m.id, a.file); } catch (_) { /* rien à retirer */ } }); },
+      opts);
   }
 
   routes.tresorerie = () => {
@@ -11655,7 +11808,9 @@
     function drawMoves() {
       const cols = [
         { key: 'date', label: 'Date', cls: 'nw', asc: true, val: m => m.date || '', get: m => C.fmtDate(m.date) },
-        { key: 'label', label: 'Libellé', asc: true, val: m => (m.label || '').toLowerCase(), get: m => `${h(m.label)}${m.party ? `<div class="small muted">${h(m.party)}</div>` : ''}` },
+        // Le 📎 d'une ligne DÉDUITE est celui de la pièce d'où elle vient (10.14.1, S-04) : le règlement
+        // d'un achat montre le justificatif de l'achat, un mouvement libre le sien.
+        { key: 'label', label: 'Libellé', asc: true, val: m => (m.label || '').toLowerCase(), get: m => `${h(m.label)}${marqueJustif(C.justificatifsDe(data, m))}${m.party ? `<div class="small muted">${h(m.party)}</div>` : ''}` },
         { key: 'account', label: 'Compte', asc: true, val: m => m.accountId, get: m => h(((data.accounts.find(a => a.id === m.accountId)) || {}).name || '—') },
         { key: 'method', label: 'Mode', asc: true, val: m => m.method || '', get: m => h(methodLabel(m.method)) },
         { key: 'reference', label: 'Référence', asc: true, val: m => (m.reference || '').toLowerCase(), get: m => h(m.reference || '') || '<span class="muted">—</span>' },
@@ -11697,7 +11852,7 @@
               ${cols.map(c => `<td class="${c.r ? 'r nw' : ''}${c.cls ? ' ' + c.cls : ''}">${c.get(m)}</td>`).join('')}</tr>`; }).join('')}
           </tbody></table></div>${pagerBar(pg.pg, { noun: 'mouvement' })}`
             : `<div class="empty">Aucun mouvement en ${h(s.year)}.</div>`}
-          <p class="small muted mt">Clique une ligne pour ouvrir la pièce d'où elle vient : le compte et le mode de règlement se corrigent là-bas, avec le bouton ✎ à côté du paiement. Les mouvements libres (salaires, impôts, apports, frais bancaires) se modifient ici même.</p>
+          <p class="small muted mt">Clique une ligne pour ouvrir la pièce d'où elle vient : le compte et le mode de règlement se corrigent là-bas, dans le menu « Actions » du paiement. Les mouvements libres (salaires, impôts, apports, frais bancaires) se modifient ici même, et leur justificatif s'y joint. Un 📎 dit qu'une ligne a le sien.</p>
         </div>`;
       $('#t-acc').onchange = e => { s.account = e.target.value; s.moves.page = 1; draw(); };
       $('#t-year').onchange = e => { s.year = e.target.value; s.moves.page = 1; draw(); };
@@ -12172,7 +12327,9 @@
       const q = comptaState.q.trim().toLowerCase();
       const hit = (...parts) => !q || C.correspondRecherche(parts.filter(Boolean).join(' '), q);
       const allRows = C.salesJournal(data, company(), p);
-      const rows = allRows.filter(r => hit(r.number, r.client, r.subject, r.creditOfNumber));
+      // Le nom d'un justificatif se cherche ici aussi (10.14.1, S-04) : « bon de commande Hôtel »
+      // retrouve la facture qui le porte.
+      const rows = allRows.filter(r => hit(r.number, r.client, r.subject, r.creditOfNumber, C.nomsJustificatifs({ attachments: C.justificatifsDe(data, { source: 'vente', docId: r.id }) })));
       const sum = C.vatSummary(rows);
       const allPays = C.paymentsJournal(data, company(), p);
       const pays = allPays.filter(r => hit(r.number, r.client, r.reference, r.method));
@@ -12194,7 +12351,7 @@
       const avecRsSubie = pays.some(r => Math.abs(r.rs || 0) > 0.0005);
       const journalCols = [
         { key: 'date', label: 'Date', asc: true, val: r => r.date || '', get: r => C.fmtDate(r.date) },
-        { key: 'number', label: 'Numéro', asc: true, val: r => r.number || '', get: r => `<strong>${h(r.number)}</strong>${r.type === 'avoir' ? `<div class="small muted">avoir · ${h(r.creditOfNumber)}</div>` : ''}` },
+        { key: 'number', label: 'Numéro', asc: true, val: r => r.number || '', get: r => `<strong>${h(r.number)}</strong>${marqueJustif(C.justificatifsDe(data, { source: 'vente', docId: r.id }))}${r.type === 'avoir' ? `<div class="small muted">avoir · ${h(r.creditOfNumber)}</div>` : ''}` },
         { key: 'client', label: 'Client', asc: true, val: r => (r.client || '').toLowerCase(), get: r => `${h(r.client)}<div class="small muted">${h(r.subject)}</div>` },
         { key: 'ht', label: 'HT', r: true, val: r => r.ht, get: r => montantCompta(r.ht) },
         { key: 'tva', label: 'TVA', r: true, val: r => r.tva, get: r => montantCompta(r.tva) },
@@ -12337,11 +12494,11 @@
     function drawBuyJournal(p, label) {
       const q = comptaState.q.trim().toLowerCase();
       const allRows = C.purchaseJournal(data, company(), p);
-      const rows = allRows.filter(r => !q || C.correspondRecherche(`${r.number || ''} ${r.supplier || ''} ${r.subject || ''} ${r.category || ''}`, q));
+      const rows = allRows.filter(r => !q || C.correspondRecherche(`${r.piece || ''} ${r.supplier || ''} ${r.subject || ''} ${r.category || ''} ${C.nomsJustificatifs({ attachments: C.justificatifsDe(data, { purchaseId: r.id }) })}`, q));
       const sum = C.purchaseSummary(rows);
       const cols = [
         { key: 'date', label: 'Date', asc: true, cls: 'nw', val: r => r.date || '', get: r => C.fmtDate(r.date) },
-        { key: 'number', label: 'N° fournisseur', asc: true, cls: 'nw', val: r => (r.number || '').toLowerCase(), get: r => r.number ? `<strong>${h(r.number)}</strong>` : '<span class="muted">sans numéro</span>' },
+        { key: 'number', label: 'N° fournisseur', asc: true, cls: 'nw', val: r => (r.number || r.piece || '').toLowerCase(), get: r => celluleNumeroAchat(r.number, r.piece, marqueJustif(C.justificatifsDe(data, { purchaseId: r.id }))) },
         { key: 'supplier', label: 'Fournisseur', asc: true, val: r => r.supplier.toLowerCase(), get: r => `${h(r.supplier)}${r.subject ? `<div class="small muted">${h(r.subject)}</div>` : ''}` },
         { key: 'category', label: 'Catégorie', asc: true, val: r => (r.category || '').toLowerCase(), get: r => `${h(r.category || '—')}${r.kind === 'Dépense' ? '<div class="small muted">dépense</div>' : ''}` },
         { key: 'ht', label: 'HT', r: true, val: r => r.ht, get: r => montantCompta(r.ht) },
@@ -12370,7 +12527,7 @@
       const avecRs = decs.some(r => Math.abs(r.rs || 0) > 0.0005);
       const decCols = [
         { key: 'date', label: 'Date', asc: true, cls: 'nw', val: r => r.date || '', get: r => C.fmtDate(r.date) },
-        { key: 'number', label: 'Pièce', asc: true, cls: 'nw', val: r => (r.number || '').toLowerCase(), get: r => r.number ? `<strong>${h(r.number)}</strong>` : '<span class="muted">sans numéro</span>' },
+        { key: 'number', label: 'Pièce', asc: true, cls: 'nw', val: r => (r.number || r.piece || '').toLowerCase(), get: r => celluleNumeroAchat(r.number, r.piece) },
         { key: 'supplier', label: 'Fournisseur', asc: true, val: r => (r.supplier || '').toLowerCase(), get: r => h(r.supplier) },
         { key: 'method', label: 'Mode', asc: true, val: r => r.method || '', get: r => h(r.method) },
         { key: 'reference', label: 'Référence', asc: true, val: r => (r.reference || '').toLowerCase(), get: r => h(r.reference) },
@@ -12635,7 +12792,7 @@
             <thead>${sortHead(cols, ecrState.sort)}</thead>
             <tbody>${rows.map(e => `<tr>
               <td class="r nw muted">${e.numero}</td>
-              <td class="nw">${C.fmtDate(e.date)}</td><td>${h(e.journal)}</td><td class="nw">${h(e.piece)}</td>
+              <td class="nw">${C.fmtDate(e.date)}</td><td>${h(e.journal)}</td><td class="nw">${h(e.piece)}${marqueJustif(C.justificatifsDe(data, e))}</td>
               <td class="nw"><strong>${h(e.account)}</strong></td><td>${h(e.label)}</td>
               <td class="r nw">${e.debit ? montantCompta(e.debit) : '<span class="muted">—</span>'}</td>
               <td class="r nw">${e.credit ? montantCompta(e.credit) : '<span class="muted">—</span>'}</td>
@@ -12805,7 +12962,7 @@
             <tbody>
               <tr class="gl-ouv"><td class="nw muted">—</td><td></td><td></td><td class="muted">Solde d'ouverture</td>${c.lignes.some(e => e.role) ? '<td></td>' : ''}<td></td><td></td><td class="r nw">${montantCompta(c.ouverture)}</td></tr>
               ${c.lignes.map(e => `<tr>
-                <td class="nw">${C.fmtDate(e.date)}</td><td>${h(e.journal)}</td><td class="nw">${h(e.piece)}</td><td>${h(e.label)}</td>
+                <td class="nw">${C.fmtDate(e.date)}</td><td>${h(e.journal)}</td><td class="nw">${h(e.piece)}${marqueJustif(C.justificatifsDe(data, e))}</td><td>${h(e.label)}</td>
                 ${c.lignes.some(x => x.role) ? `<td class="nw small muted">${h(e.lettre || '')}</td>` : ''}
                 <td class="r nw">${e.debit ? montantCompta(e.debit) : '<span class="muted">—</span>'}</td>
                 <td class="r nw">${e.credit ? montantCompta(e.credit) : '<span class="muted">—</span>'}</td>
@@ -16200,7 +16357,7 @@
     save(true);
     redessinerBarre();
     toast(`${pl(crees, 'brouillon créé', 'brouillons créés')}${clientsCrees ? ' · ' + pl(clientsCrees, 'fiche client créée', 'fiches client créées') : ''}`);
-    routes.licences();
+    render(true);
   }
 
   // ---------- la clé du serveur (8.5.0, P 0.2) ----------
@@ -16876,7 +17033,7 @@
           : etatVide('Aucune licence émise', ['Chaque licence que tu vends passe par ici : la clé est signée avec ta clé privée, la facture est créée dans tes ventes, et le mail au client est prêt.'], peut ? [['lic-first', '+ Émettre ma première licence', true]] : []));
       const note = $('#lic-note');
       if (note) { note.hidden = !filtered; note.innerHTML = filtered ? `<span class="small muted">${kept.length} sur ${all.length}</span>${filterReset(true)}` : ''; }
-      if ($('#reset-f')) $('#reset-f').onclick = () => { s.q = ''; s.st = ''; s.tri = ''; s.page = 1; routes.licences(); };
+      if ($('#reset-f')) $('#reset-f').onclick = () => { s.q = ''; s.st = ''; s.tri = ''; s.page = 1; render(true); };
       if ($('#lic-first')) $('#lic-first').onclick = () => licenceForm(null, draw);
       // Seul `#lic-wrap` se redessine : l'en-tête suit l'état vide ici (U-11, comme les contrats).
       const nouvelle = $('#lic-new');

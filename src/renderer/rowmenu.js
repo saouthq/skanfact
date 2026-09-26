@@ -145,6 +145,11 @@
       : `<button type="button" role="menuitem" data-i="${i}"${a.danger ? ' class="danger"' : ''}>
           ${ico(a.icon)}<span class="rm-t"><span class="rm-l">${h(a.label)}</span>${a.hint ? `<span class="rm-h">${h(a.hint)}</span>` : ''}</span></button>`).join('');
     document.body.appendChild(m);
+    // Un menu ouvert DANS une fenêtre passe au-dessus d'elle (10.14.1, S-04) : à sa couche 70, il
+    // naissait SOUS la fenêtre (400 et plus) — ouvert, invisible, et le clic suivant tombait dessus.
+    // Juste au-dessus de SA fenêtre : une question que l'action ouvrira se pose encore par-dessus.
+    const couche = bouton.closest('.modal-bg');
+    if (couche) m.style.zIndex = String((Number(getComputedStyle(couche).zIndex) || 400) + 1);
     // On mesure APRÈS avoir posé le menu : sa hauteur dépend de ce qu'il contient, et une ligne du
     // bas de l'écran doit le voir s'ouvrir vers le haut plutôt que hors de la fenêtre.
     const r = bouton.getBoundingClientRect();

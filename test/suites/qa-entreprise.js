@@ -1402,7 +1402,9 @@ module.exports = ({ t, assert, lireSource }) => {
   t('La largeur des fenêtres à tableau ne bat pas la largeur qu\'une fenêtre demande', () => {
     const css = lireSource('src', 'renderer', 'style.css').replace(/\/\*[\s\S]*?\*\//g, '');
     assert.ok(!/^\.modal:has\(/m.test(css), 'une règle `.modal:has(…)` pèse plus lourd qu\'une classe de largeur');
-    assert.ok(/^\.modal:where\(:has\(table\.mini, table\.lines-edit, table\.list\)\) \{ width: 860px; \}/m.test(css), 'les fenêtres à tableau ne s\'élargissent plus');
+    // La liste des justificatifs d'un mouvement en est exclue (`:not(.pj)`, 10.14.1) : née au premier
+    // fichier joint, elle faisait passer la fenêtre de 580 à 860 px sous le curseur.
+    assert.ok(/^\.modal:where\(:has\(table\.mini, table\.lines-edit, table\.list(:not\(\.pj\))?\)\) \{ width: 860px; \}/m.test(css), 'les fenêtres à tableau ne s\'élargissent plus');
     const cab = lireSource('src', 'cabinet', 'renderer', 'cabinet.css').replace(/\/\*[\s\S]*?\*\//g, '');
     assert.ok(/^\.modal\.cab-large \{ width: 1240px; \}/m.test(cab) && /^\.modal\.cab-moyen \{ width: 880px; \}/m.test(cab), 'les largeurs voulues du Cabinet ne sont plus trouvées');
   });

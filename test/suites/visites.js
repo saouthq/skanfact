@@ -911,7 +911,8 @@ t('10.14.0 : chaque catégorie de la palette tient sur une ligne, dans sa colonn
   const regle = (css.match(/\.palette \.res \.kind \{[^}]*\}/) || [''])[0];
   assert.ok(/white-space: nowrap/.test(regle), 'la catégorie peut passer à la ligne : ' + regle);
   const largeur = Number((regle.match(/width: (\d+)px/) || [])[1]);
-  assert.ok(largeur >= 76, 'colonne trop étroite pour « Prestation » (73 px mesurés) : ' + largeur);
+  // 10.14.1 (S-04) : « Fournisseur », la catégorie la plus large, mesure 83,8 px dans l'application.
+  assert.ok(largeur >= 86, 'colonne trop étroite pour « Fournisseur » (83,8 px mesurés) : ' + largeur);
   const kinds = new Set();
   for (const src of [app, cab]) for (const m of src.matchAll(/kind: '([^']+)'/g)) kinds.add(m[1]);
   // Les catégories des pièces passent par la table courte, jamais par le titre entier.
@@ -921,7 +922,8 @@ t('10.14.0 : chaque catégorie de la palette tient sur une ligne, dans sa colonn
   assert.ok(/kind: KIND_PIECE\[d\.type\]/.test(app), 'les pièces reprennent leur titre entier dans la palette');
   // Les « kind » qui ne sont pas des catégories de palette (des états de listes, des natures).
   const HORS = new Set(['conges', 'banque', 'autre-sortie', 'annee', 'licence', 'facture']);
-  const trop = [...kinds].filter(k => !HORS.has(k) && k.length > 10);
+  // Onze lettres au plus : la plus longue tient dans la colonne (« Fournisseur », 11, 83,8 px).
+  const trop = [...kinds].filter(k => !HORS.has(k) && k.length > 11);
   assert.deepStrictEqual(trop, [], 'des catégories trop longues pour leur colonne');
 });
 

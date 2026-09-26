@@ -1422,6 +1422,41 @@ module.exports = async ({ t, ta, assert }) => {
     assert.deepStrictEqual([...new Set(auraientPerdu)].sort(), ['.palette input', '.pw-wrap input', '.token-box input', 'input:focus', 'table.lines-edit input.num'].sort());
   });
 
+  // REF-01 (10.14.1) : « Remettre le fichier à mes clients… » sur un cabinet sans nom disait
+  // « Nomme d'abord ton cabinet » dans un bandeau, remontait au panneau… et laissait le curseur
+  // nulle part, le champ blanc parmi cinq autres. Un refus MONTRE son champ (7.0.0) — y compris quand
+  // il faut d'abord changer de page : le champ n'existe qu'une fois le panneau chargé.
+  t('REF-01 : un refus du Cabinet qui mène aux Réglages y montre son champ — le curseur dedans, marqué', () => {
+    const code = cab.split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
+    assert.ok(!/toast\([^;]*'error'\);\s*versReglages\(/.test(code), 'un refus dit sa phrase puis part aux Réglages sans montrer le champ');
+    assert.ok(/versReglages\('pan-cabinet', \{ sel: '#c-name', message: 'Nomme d\\'abord ton cabinet/.test(code), 'le nom du cabinet n\'est plus montré par le refus');
+    const vers = code.slice(code.indexOf('  function versReglages('), code.indexOf('\n  }\n', code.indexOf('  function versReglages(')));
+    assert.ok(/reglagesRefus = refusDe \|\| null;/.test(vers), 'versReglages ne retient plus le refus à montrer');
+    // Le refus se joue APRÈS le chargement des panneaux (10.13.0 : une cible asynchrone se pose après
+    // le chargement), par la MÊME fonction que les autres refus.
+    assert.ok(/const aRefuser = reglagesRefus;\s*reglagesRefus = null;/.test(code), 'le refus n\'est pas consommé une fois');
+    assert.ok(/Promise\.allSettled\(\[dessinerEquipe\(view\), dessinerLicence\(view\)\]\)\.then\(\(\) => \{[\s\S]{0,200}if \(aRefuser && [^)]*\)\) refus\(aRefuser\.sel, aRefuser\.message\);/.test(code),
+      'le refus ne se joue pas après le chargement du panneau');
+  });
+
+  t('RESET-01 : aucune page ne se redessine en appelant sa route à la main — c\'est le routeur qui pose le bandeau de l\'exemple, le lien d\'aide et les branchements', () => {
+    // « Réinitialiser les filtres » des Achats appelait `routes.achats()` : la page revenait sans le
+    // bandeau lilas de l'exemple ni « Comprendre cette page », et un champ date posé par la page
+    // restait inerte (bindDateFields ne passe que par render()). Cinq pages, douze appels, et la
+    // liste des devis et des factures par `listView(type)`. La seule porte est render().
+    const code = app.split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n').replace(/\/\*[\s\S]*?\*\//g, '');
+    const appels = [...code.matchAll(/\broutes\.(\w+)\s*\(/g)].map(m => m[0]);
+    assert.deepStrictEqual(appels, [], 'une route appelée hors du routeur : ' + appels.join(', '));
+    // listView ne se dessine que par ses deux routes : sa définition, `routes.devis`, `routes.factures`.
+    const lv = [...code.matchAll(/\blistView\s*\(/g)].length;
+    assert.strictEqual(lv, 3, 'listView appelée hors de ses deux routes (' + lv + ' occurrences)');
+    // Et ce que render() pose, il le pose APRÈS la route — sinon la preuve ne dirait rien de la règle.
+    const r = tranche('  function render(keepScroll) {', '  function setHashSilently(hash) {');
+    const iRoute = r.indexOf('(routes[name] || routes.dashboard)(parts.slice(1))');
+    assert.ok(iRoute > 0, 'render() ne dessine plus la route par la table');
+    ['poserLienAide(name)', 'bandeauDemo()', 'bindDateFields(view)'].forEach(x => assert.ok(r.indexOf(x) > iRoute, x + ' ne suit plus la route dans render()'));
+  });
+
   await ta('MC-07 / MC-11 : la console écrit un montant d\'une seule façon — le dinar à trois décimales, l\'euro à deux, « DT » et « TND » la même monnaie', async () => {
     const P = await import('../../plateforme/skanfact-api.mjs');
     assert.strictEqual(P.fmtMontant(1822.1, 'TND'), '1\u202f822,100\u00a0TND');

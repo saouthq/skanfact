@@ -3181,7 +3181,7 @@ t('Chaque classe posée par l\'app entreprise a une règle dans sa feuille, ou c
   const definies = new Set([...css.matchAll(/\.([a-zA-Z][\w-]*)/g)].map(m => m[1]));
   const CROCHETS = {
     q: 'la recherche d\'une liste générique (drawList)', rows: 'le conteneur de ses lignes', sortable: 'une table triable (bindSort)',
-    solo: 'un lien de la barre latérale sans famille', 'att-mark': 'le trombone d\'un achat', 'inv-in': 'une case de l\'inventaire',
+    solo: 'un lien de la barre latérale sans famille', 'att-mark': 'le trombone d\'une ligne qui a son justificatif', 'inv-in': 'une case de l\'inventaire',
     'gl-compte': 'le grand livre (e2e:livres)', 'gl-ouv': 'le grand livre', 'gl-solde': 'le grand livre', 'gl-t': 'le grand livre',
     'od-compte': 'la saisie d\'une OD', 'od-lib': 'la saisie d\'une OD', 'od-label': 'la saisie d\'une OD', 'od-debit': 'la saisie d\'une OD',
     'od-credit': 'la saisie d\'une OD', 'od-del': 'la saisie d\'une OD', 'mod-go': 'une colonne de .mod-row', 'mod-txt': 'une colonne de .mod-row',
@@ -3309,7 +3309,9 @@ t('Une fenêtre qui porte un tableau de liste a la place de ses colonnes (le rel
   const css = lireSource('src', 'renderer', 'style.css').replace(/\/\*[\s\S]*?\*\//g, '');
   // `:where()` autour du `:has()` (10.12.0) : la même règle, sans le poids qui écrasait les largeurs
   // voulues du Cabinet — ce test juge la règle, pas l'écriture du sélecteur.
-  const regle = css.match(/\.modal(?::where\()?:has\(([^)]*)\)\)?\s*\{\s*width:\s*(\d+)px/);
+  // Paresseux plutôt que `[^)]*` : le sélecteur porte un `:not(.pj)` (10.14.1), dont la parenthèse
+  // arrêtait la capture — le test tombait alors sur la règle suivante, et jugeait une autre fenêtre.
+  const regle = css.match(/\.modal(?::where\()?:has\(([^{]*?)\)\)?\s*\{\s*width:\s*(\d+)px/);
   assert.ok(regle, 'la règle qui élargit une fenêtre selon son contenu a disparu');
   assert.ok(/\btable\.list\b/.test(regle[1]), 'une fenêtre qui porte un tableau de liste garde 580 px : le relevé cache son total');
   assert.ok(Number(regle[2]) >= 820, `${regle[2]} px ne suffisent pas à six colonnes de montants`);

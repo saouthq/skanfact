@@ -2546,6 +2546,35 @@
     return (data.documents || []).filter(d => d.type === 'facture' && d.fromQuoteId === quoteId);
   }
 
+  // La référence d'un achat dans les ÉCRITURES (10.14.1, LET-01) : le numéro du fournisseur, sinon
+  // « SN- » et sa date (« SN-20260914 », « SN-20260914-2 » pour le deuxième du même jour). Une dépense
+  // sans numéro — le carburant, la papeterie — s'écrivait avec la pièce « (sans numéro) », son
+  // règlement avec une pièce VIDE, et sa lettre de lettrage était son identifiant interne
+  // (« muhp44v9q0rsl9 » dans la colonne Let. du livre-journal, dans le CSV du comptable et comme nom
+  // de dossier dans le paquet). Deux dépenses du même jour portaient la même pièce : le 📎 de l'une se
+  // posait sur l'autre au Cabinet. La référence est lisible, unique, et la même partout ; l'ordre
+  // entre deux pièces du même jour suit leur identifiant, donc elle ne bouge pas d'un calcul à l'autre.
+  function referencesSansNumeroCalcul(data) {
+    const parJour = {};
+    (data && data.purchases || []).forEach(p => {
+      if (!p || String(p.number || '').trim()) return;
+      (parJour[p.date || ''] = parJour[p.date || ''] || []).push(p);
+    });
+    const refs = {};
+    Object.keys(parJour).forEach(jour => {
+      const base = 'SN-' + (String(jour).replace(/-/g, '') || 'sans-date');
+      parJour[jour].slice().sort((a, b) => String(a.id).localeCompare(String(b.id)))
+        .forEach((p, i) => { refs[p.id] = i ? `${base}-${i + 1}` : base; });
+    });
+    return refs;
+  }
+  function referenceAchat(p, data) {
+    if (!p) return '';
+    const num = String(p.number || '').trim();
+    if (num) return num;
+    return duLot(data, 'refsSansNumero', () => referencesSansNumeroCalcul(data))[p.id] || 'SN';
+  }
+
   function achatDoublon(data, achat) {
     if (!achat || achat.kind === 'depense') return null;       // une dépense n'a pas de numéro qui fasse foi
     const num = String(achat.number || '').trim().toLowerCase();
@@ -2601,7 +2630,7 @@
         const m = PAYMENT_METHODS.find(k => k[0] === x.method);
         const rsNatif = rs.parts[x.id || '#' + (p.payments || []).indexOf(x)] || 0;
         out.push({
-          id: x.id, purchaseId: p.id, date: x.date, number: p.number || '', supplier: name(p.supplierId), supplierId: p.supplierId || '',
+          id: x.id, purchaseId: p.id, date: x.date, number: p.number || '', piece: referenceAchat(p, data), supplier: name(p.supplierId), supplierId: p.supplierId || '',
           // Un règlement porté par un AVOIR est un remboursement : l'argent ENTRE (10.2.0). Le signe
           // suffit — `entrySet` change alors la colonne tout seul, et la trésorerie suit.
           amount: round3((p.kind === 'avoir' ? -1 : 1) * montantRegle(p, x, company)),
@@ -2641,7 +2670,10 @@
         // fois. Ce qui reste déductible sur la facture est sa TVA MOINS celle des acomptes imputés.
         const deductibleAcompte = acomptesDeduits(data, p, company);
         return {
-          id: p.id, date: p.date, number: p.number || '', supplier: name(p.supplierId),
+          // `piece` : la référence de l'achat dans les écritures — son numéro, ou « SN-AAAAMMJJ » quand
+          // le fournisseur n'en a pas donné (10.14.1, LET-01). C'est elle qui nomme son dossier dans
+          // le paquet : le journal des achats la porte pour que le comptable les rapproche.
+          id: p.id, date: p.date, number: p.number || '', piece: referenceAchat(p, data), supplier: name(p.supplierId),
           kind: (PURCHASE_KINDS.find(k => k[0] === (p.kind || 'facture')) || PURCHASE_KINDS[0])[1], category: p.category || '',
           ht: t.base.totalHT, tva: t.base.totalVAT, deductible: round3(t.base.deductibleVAT - deductibleAcompte.total), deductibleAcompte: deductibleAcompte.total, fees: t.base.fees,
           ttc: t.base.totalTTC, rs: t.base.withholding, net: t.base.netToPay,
@@ -5337,15 +5369,17 @@
     const out = [];
     const reserves = (opts && opts.reserves) || [];
     const inRange = d => d && d >= from && d <= to;
-    const add = (id, level, label, detail, count) => { if (count) out.push({ id, level, label, detail, count }); };
+    // `extra` : ce dont le bouton de la ligne a besoin pour ouvrir EXACTEMENT l'ensemble qu'elle nomme
+    // (7.15.0) — la période, pour les achats sans justificatif.
+    const add = (id, level, label, detail, count, extra) => { if (count) out.push({ id, level, label, detail, count, ...(extra || {}) }); };
 
     const drafts = (data.documents || []).filter(d => d.type === 'facture' && d.status === 'brouillon' && inRange(d.date));
     add('brouillons', 'danger', `${plFr(drafts.length, 'facture')} en brouillon dans la période`,
       'Un brouillon n\'a pas de numéro et n\'entre dans aucun journal. Émets-le ou change sa date avant de clôturer, sinon il restera invisible pour ton comptable.', drafts.length);
 
-    const noProof = (data.purchases || []).filter(p => inRange(p.date) && !(p.attachments || []).length);
+    const noProof = (data.purchases || []).filter(p => inRange(p.date) && sansJustificatif(p));
     add('justificatifs', 'warn', `${plFr(noProof.length, 'achat')} sans justificatif`,
-      'Sans la pièce jointe, ton comptable ne peut pas récupérer la TVA de ces achats.', noProof.length);
+      'Sans la pièce jointe, ton comptable ne peut pas récupérer la TVA de ces achats.', noProof.length, { du: from, au: to });
 
     const unticked = cashMovements(data, company).filter(m => inRange(m.date) && !m.reconciled);
     add('pointage', 'warn', `${plFr(unticked.length, 'mouvement')} non pointé${sAccord(unticked.length)}`,
@@ -5454,7 +5488,9 @@
   }
   function buyCsvColumns() {
     return [
-      { key: 'date', label: 'Date', type: 'date' }, { key: 'number', label: 'N° fournisseur' }, { key: 'supplier', label: 'Fournisseur' },
+      // « Pièce » est la référence des écritures (10.14.1, LET-01) : le numéro du fournisseur, ou
+      // « SN-AAAAMMJJ » pour un ticket qui n'en a pas — le nom de son dossier dans le paquet.
+      { key: 'date', label: 'Date', type: 'date' }, { key: 'number', label: 'N° fournisseur' }, { key: 'piece', label: 'Pièce' }, { key: 'supplier', label: 'Fournisseur' },
       { key: 'kind', label: 'Nature' }, { key: 'category', label: 'Catégorie' }, { key: 'subject', label: 'Objet' },
       { key: 'ht', label: 'HT', type: 'money' }, { key: 'tva', label: 'TVA', type: 'money' }, { key: 'deductible', label: 'TVA déductible', type: 'money' },
       { key: 'fees', label: 'Timbre et frais', type: 'money' }, { key: 'ttc', label: 'TTC', type: 'money' },
@@ -5475,7 +5511,7 @@
   }
   function supplierPayCsvColumns() {
     return [
-      { key: 'date', label: 'Date', type: 'date' }, { key: 'number', label: 'Pièce fournisseur' }, { key: 'supplier', label: 'Fournisseur' },
+      { key: 'date', label: 'Date', type: 'date' }, { key: 'number', label: 'Pièce fournisseur' }, { key: 'piece', label: 'Pièce' }, { key: 'supplier', label: 'Fournisseur' },
       { key: 'amount', label: 'Montant', type: 'money' },
       // La retenue que CE règlement a opérée (10.14.0) : c'est elle que la déclaration du mois reverse.
       { key: 'rs', label: 'Retenue opérée', type: 'money' },
@@ -5538,6 +5574,39 @@
     return out;
   }
 
+  // ---------- les justificatifs (10.14.1, S-04) ----------
+  //
+  // Skander : « quand je cherche une pièce jointe je la trouve pas, et il faut qu'on voie quand une
+  // ligne a un justificatif — c'est ce qui part au comptable, et c'est grâce à ça qu'on prouve tout ».
+  // Un fichier joint vit sur SA pièce : un document, un achat, un mouvement libre. Une ligne DÉDUITE
+  // — un encaissement, un règlement, une écriture — montre ceux de la pièce d'où elle vient : on ne
+  // joint pas deux fois la même facture, et le 📎 d'un règlement est celui de l'achat qu'il paie.
+  // La règle qui fait un achat « sans justificatif » : UNE fonction pour le contrôle de clôture qui
+  // les compte et pour le filtre de la liste qui les montre (6.8.1 : un compteur et la liste qu'il
+  // annonce se calculent avec la même fonction).
+  function sansJustificatif(p) { return !((p && p.attachments) || []).length; }
+  function nomsJustificatifs(x) {
+    return ((x && x.attachments) || []).map(a => (a && a.name) || '').filter(Boolean).join(' ');
+  }
+  function justificatifsDe(data, x) {
+    if (!x) return [];
+    if (Array.isArray(x.attachments)) return x.attachments;
+    const dans = (liste, id) => (id && ((data && data[liste]) || []).find(y => y.id === id) || {}).attachments || [];
+    if (x.movementId) return dans('movements', x.movementId);
+    if (x.purchaseId) return dans('purchases', x.purchaseId);
+    const s = x.source;
+    if (s === 'achat' || s === 'règlement') return dans('purchases', x.docId);
+    if (s === 'mouvement') return dans('movements', x.docId);
+    if (s === 'vente' || s === 'encaissement') return dans('documents', x.docId);
+    return [];
+  }
+  // Le dossier d'un justificatif dans le paquet : lisible, et sans rien que le système refuse dans un
+  // nom (le numéro d'une pièce porte des « / » chez certains fournisseurs). Les LETTRES de toutes les
+  // écritures restent (`\p{L}`, règle 6.8.1) : le ZIP porte ses noms en UTF-8, et `\w` changeait
+  // « quittance août.pdf » en « quittance ao_t.pdf » — et deux noms en arabe en le même « ____.pdf ».
+  const dossierDuPaquet = s => String(s || '').replace(/[^\p{L}\p{N}_.-]+/gu, '_') || 'piece';
+  const nomDansPaquet = a => String(a.name || a.file || '').replace(/[^\p{L}\p{N}_.\- ]+/gu, '_').trim() || 'fichier';
+
   // Le plan du paquet : la liste exacte de ce qu'il contiendra, chaque entrée sachant d'où vient son
   // contenu. main.js n'a plus qu'à exécuter ce plan. Le séparer ainsi permet de le tester entièrement
   // sans Electron, et de montrer à l'utilisateur ce qui va partir AVANT de le fabriquer.
@@ -5545,7 +5614,16 @@
     opts = opts || {};
     const entries = [];
     const inRange = d => d && d >= period.from && d <= period.to;
-    const add = e => { entries.push(e); return e; };
+    // Deux fichiers ne partent jamais sous le même chemin (10.14.1, S-04) : deux justificatifs nommés
+    // « facture.pdf » sur la même pièce faisaient deux entrées identiques dans le ZIP, et le
+    // comptable n'en voyait qu'une. Le second devient « facture (2).pdf ».
+    const pris = new Set();
+    const unique = chemin => {
+      let c = chemin, n = 2;
+      while (pris.has(c)) { c = chemin.replace(/(\.[^./]*)?$/, m => ` (${n})${m}`); n++; }
+      pris.add(c); return c;
+    };
+    const add = e => { e.path = unique(e.path); entries.push(e); return e; };
 
     // 1. Les journaux, en CSV — ce que le comptable saisit dans son logiciel.
     const sales = salesJournal(data, company, period);
@@ -5600,14 +5678,46 @@
       path: `ventes/${(d.number || d.id).replace(/[^\w.-]+/g, '_')}.pdf`,
       kind: 'pdf', label: `${TITLES[d.type] || 'Pièce'} ${d.number || ''}`, docId: d.id, docType: d.type
     }));
+    // 3 bis. Ce que l'utilisateur a joint à une pièce de vente émise (10.14.1, S-04) : le bon de
+    // commande du client, le devis signé, le procès-verbal de réception. Il l'a joint pour prouver
+    // quelque chose, et c'est au comptable que la preuve sert. Rangé à côté du PDF de la pièce.
+    issued.forEach(d => (d.attachments || []).forEach(a => add({
+      path: `ventes/${dossierDuPaquet(d.number || d.id)}/${nomDansPaquet(a)}`,
+      kind: 'attachment', label: `Justificatif ${d.number || ''}`, ownerId: d.id, file: a.file
+    })));
 
     // 4. Les justificatifs d'achat. Sans eux, la TVA déductible n'est pas récupérable.
     (data.purchases || []).filter(p => inRange(p.date)).forEach(p => {
       (p.attachments || []).forEach(a => add({
-        path: `achats/${(p.number || p.id).replace(/[^\w.-]+/g, '_')}/${String(a.name || a.file).replace(/[^\w.\- ]+/g, '_')}`,
-        kind: 'attachment', label: `Justificatif ${p.number || ''}`, ownerId: p.id, file: a.file
+        path: `achats/${dossierDuPaquet(referenceAchat(p, data))}/${nomDansPaquet(a)}`,
+        kind: 'attachment', label: `Justificatif ${referenceAchat(p, data)}`, ownerId: p.id, file: a.file
       }));
     });
+    // 4 bis. Ceux d'un mouvement libre (10.14.1, S-04) : la quittance d'un loyer payé sans facture,
+    // l'avis d'imposition, le relevé qui prouve des frais bancaires. Un mouvement sans facture n'a
+    // QUE ce fichier pour se justifier.
+    (data.movements || []).filter(m => inRange(m.date)).forEach(m => {
+      (m.attachments || []).forEach(a => add({
+        path: `tresorerie/${dossierDuPaquet(`${m.date}_${m.reference || m.label || m.id}`)}/${nomDansPaquet(a)}`,
+        kind: 'attachment', label: `Justificatif du mouvement ${m.label || m.reference || ''}`.trim(), ownerId: m.id, file: a.file
+      }));
+    });
+    // 4 ter. Où va chaque justificatif (10.14.1, S-04) : la pièce comptable qu'il prouve, par la clé
+    // qui la désigne dans `ecritures.csv` (journal, pièce, date). Le cabinet s'en sert pour poser le
+    // 📎 sur l'écriture et l'ouvrir d'un clic. On lit la clé dans les ÉCRITURES du mois plutôt que de
+    // la refabriquer : un règlement ou une imputation porte le même document, et seule l'écriture de
+    // la pièce elle-même (vente, achat, mouvement) désigne le justificatif.
+    const piecesJointes = entries.filter(e => e.kind === 'attachment');
+    if (piecesJointes.length) {
+      const cleDe = {};
+      ecritures.forEach(e => {
+        if (!e.docId || cleDe[e.docId] || !['vente', 'achat', 'mouvement'].includes(e.source)) return;
+        cleDe[e.docId] = { journal: e.journal, piece: e.piece, date: e.date };
+      });
+      const liens = piecesJointes.map(e => ({ chemin: e.path, nom: e.path.split('/').pop(), ...(cleDe[e.ownerId] || {}) }));
+      add({ path: 'justificatifs.json', kind: 'text', label: 'Où va chaque justificatif',
+        text: JSON.stringify({ format: 1, justificatifs: liens }, null, 2), rows: liens.length });
+    }
 
     // 5. Les bulletins du mois.
     const slips = (data.payslips || []).filter(s => `${s.year}-${String(s.month).padStart(2, '0')}` === period.month);
@@ -5744,7 +5854,7 @@
         <tr><td>Pièces de vente émises (PDF joints)</td><td class="r">${t.pieces}</td></tr>
         <tr><td>Lignes au journal des ventes</td><td class="r">${t.ventes}</td></tr>
         <tr><td>Lignes au journal des achats</td><td class="r">${t.achats}</td></tr>
-        <tr><td>Justificatifs d'achat joints</td><td class="r">${t.justificatifs}</td></tr>
+        <tr><td>Justificatifs joints (achats, ventes, mouvements)</td><td class="r">${t.justificatifs}</td></tr>
         <tr><td>Encaissements clients</td><td class="r">${t.encaissements}</td></tr>
         <tr><td>Bulletins de paie</td><td class="r">${t.bulletins}</td></tr>
       </tbody></table>
@@ -5993,7 +6103,10 @@
     const lettreVente = doc => (doc && doc.type === 'facture' && doc.status !== 'annulée' && invoiceBalance(doc, data, company).remaining <= 0.0005) ? doc.number : '';
     const docsById = {}; (data.documents || []).forEach(d => { docsById[d.id] = d; });
     const lettreDoc = id => { const d = docsById[id]; if (!d) return ''; if (d.type === 'avoir') return d.creditOf ? lettreVente(docsById[d.creditOf]) : ''; return lettreVente(d); };
-    const lettreAchat = p => (p && purchaseBalance(p, company, data).remaining <= 0.0005 && (p.payments || []).length) ? (p.number || p.id) : '';
+    // La référence d'un achat sans numéro (10.14.1, LET-01) : « SN- » et sa date, jamais son identifiant.
+    const refsSN = referencesSansNumeroCalcul(data);
+    const refAchat = p => (p && String(p.number || '').trim()) || (p && refsSN[p.id]) || '';
+    const lettreAchat = p => (p && purchaseBalance(p, company, data).remaining <= 0.0005 && (p.payments || []).length) ? (refAchat(p) || p.id) : '';
     const achatsById = {}; (data.purchases || []).forEach(p => { achatsById[p.id] = p; });
     const ecartDeTaux = (piece, cible, natif) => ecartDeTauxEntre(piece, cible, natif, company);
     // `delta` a été AJOUTÉ au débit du compte du tiers : la contrepartie équilibre la pièce.
@@ -6056,7 +6169,8 @@
           const t = purchaseTotals(p, company);
           const sup = ((data.suppliers || []).find(s => s.id === p.supplierId) || {}).name || '';
           const num = p.number || '(sans numéro)';
-          const e = entrySet({ date: p.date, journal: 'AC', piece: num, tiers: sup, tiersId: p.supplierId || '', source: 'achat', docId: p.id, currency: cur, lettre: lettreAchat(p) });
+          const piece = refAchat(p);
+          const e = entrySet({ date: p.date, journal: 'AC', piece, tiers: sup, tiersId: p.supplierId || '', source: 'achat', docId: p.id, currency: cur, lettre: lettreAchat(p) });
           const NATURE = { depense: 'Dépense', avoir: 'Avoir fournisseur', acompte: 'Acompte versé' };
           const label = `${NATURE[p.kind] || 'Achat'} ${num}${sup ? ' — ' + sup : ''}`;
           // Un acompte versé n'est pas une charge : c'est une créance sur le fournisseur tant qu'il
@@ -6126,7 +6240,7 @@
               // L'imputation REPREND ce que l'acompte avait posé, ligne par ligne, et recrédite le
               // fournisseur. La TVA en fait partie : celle de la facture porte sur le montant
               // ENTIER, acompte compris, donc la garder des deux côtés la déduirait deux fois.
-              const im = entrySet({ date: p.date, journal: 'OD', piece: num, tiers: sup, tiersId: p.supplierId || '', source: 'achat', docId: p.id, currency: cur });
+              const im = entrySet({ date: p.date, journal: 'OD', piece, tiers: sup, tiersId: p.supplierId || '', source: 'achat', docId: p.id, currency: cur });
               const lbl = `Imputation acompte ${a.number || ''} sur ${num}`.replace('  ', ' ');
               // Au taux de la FACTURE (10.14.0) : un acompte payé à 3,30 sur une facture à 3,35 règle
               // 100 € de la dette, que le 401 porte à 3,35 ; l'écart part au change.
@@ -6167,7 +6281,7 @@
     if (want('reglements')) {
       supplierPayments(data, company, period).forEach(r => {
         const j = journalDeCompte(data, acc, r.accountId, r.method);
-        const e = entrySet({ date: r.date, journal: j.journal, piece: r.number || '', tiers: r.supplier, tiersId: r.supplierId || '', source: 'règlement', docId: r.purchaseId, currency: cur, lettre: lettreAchat(achatsById[r.purchaseId]) });
+        const e = entrySet({ date: r.date, journal: j.journal, piece: refAchat(achatsById[r.purchaseId]) || r.number || '', tiers: r.supplier, tiersId: r.supplierId || '', source: 'règlement', docId: r.purchaseId, currency: cur, lettre: lettreAchat(achatsById[r.purchaseId]) });
         const label = `Règlement fournisseur ${r.number || ''}${r.supplier ? ' — ' + r.supplier : ''}`;
         // Le fournisseur est soldé de ce qu'on lui verse ET de la retenue qu'on garde pour l'État :
         // c'est ici, au paiement, que la retenue à la source naît (10.14.0).
@@ -6706,7 +6820,7 @@
           x + toBase(p, montantDansDeviseDe(a, imputationAchat(a, company).brut, p, company), company) + toBase(p, rs.ajustements[a.id] || 0, company), 0));
         const regle = round3(sens * (p.payments || []).reduce((x, y, i) => x + toBase(p, Number(y.amount) || 0, company) + toBase(p, rs.parts[cleReglement(y, i)] || 0, company), 0));
         const reste = round3(montant - avoirs - regle);
-        r.ouverts.push({ id: p.id, piece: p.number || '(sans numéro)', date: p.date, echeance: p.dueDate || '', montant, avoirs, regle, reste, retard: reste > 0 && !!(p.dueDate && p.dueDate < t) });
+        r.ouverts.push({ id: p.id, piece: referenceAchat(p, data), date: p.date, echeance: p.dueDate || '', montant, avoirs, regle, reste, retard: reste > 0 && !!(p.dueDate && p.dueDate < t) });
         r.reste = round3(r.reste + reste);
       });
     }
@@ -9801,6 +9915,8 @@
     plier, correspondRecherche, rangRecherche, classerRecherche, delaiJours, typoFr,
     CLOSURE_ACTIONS, closedUntil, isClosedDate, closedPeriodLabel, closableMonths, rienACloturer, closureChecks, closePeriod, reopenPeriod, closureLog,
     PACK_FORMAT, packPeriod, packPlan, packChecklist, packFileName, packCoverHtml,
+    // Les justificatifs (10.14.1, S-04)
+    nomsJustificatifs, justificatifsDe, sansJustificatif, referenceAchat,
     DEFAULT_ACCOUNTS, ACCOUNT_LABELS, ENTRY_JOURNALS, journalLabel, chartAccounts, journalEntries,
     entriesBalance, entriesByAccount, entryCsvColumns, MOVE_ACCOUNTS, COMPTES_CONTREPARTIE, journalDeCompte, clotureValide,
     // Les questions du cabinet (9.10.0)
