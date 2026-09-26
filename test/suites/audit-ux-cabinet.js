@@ -1159,7 +1159,7 @@ t('U-11 / U-13 / U-14 : la déclaration — ses étapes dans l\'ordre, un seul v
   // déclaration » était deux fois à l'écran, et une fois préparée plus rien ne disait la suite.
   const m = /const suivante = ([^;]+);/.exec(vue);
   assert.ok(m, 'l\'étape suivante n\'est plus calculée');
-  const suivante = (posee, ecrite, deposee, payee, perime = false, aCompleter = false, rien = false) => evaluer(m[1], { posee, ecrite, deposee, payee, perime, aCompleter, rien });
+  const suivante = (posee, ecrite, deposee, payee, perime = false, aCompleter = false, rien = false) => evaluer(m[1], { posee, ecrite, deposee, payee, perime, aCompleter, rien, enCours: false });
   assert.strictEqual(suivante(null, false, false, false), 'preparer', 'avant tout, l\'étape suivante est « Préparer »');
   assert.strictEqual(suivante({}, false, false, false), 'ecriture', 'une déclaration préparée attend son écriture avant le dépôt');
   assert.strictEqual(suivante({}, true, false, false), 'deposee', 'une écriture déjà passée par le client ne doit pas rester l\'étape suivante');
@@ -1216,7 +1216,31 @@ t('U-12 : un écran de travail s\'ouvre sur le dernier mois qui a des données, 
   assert.ok(/s\.paieMois = K\.moisDeTravail\(/.test(paie), 'la Paie ne choisit plus son mois par la règle commune');
   assert.ok(!/exercice\.au[^\n]*slice\(5, 7\)\)\s*\|\|\s*12/.test(paie), 'la Paie s\'ouvre encore sur le dernier mois de l\'exercice');
   const propose = tranche(app, 'function moisPropose(');
-  assert.ok(/K\.moisDeTravail\(/.test(propose), 'la Déclaration ne choisit plus son mois par la règle commune');
+  assert.ok(/\(regle \|\| K\.moisDeTravail\)\(/.test(propose), 'le mois proposé ne passe plus par la règle commune');
+});
+
+// Vu en guidant un débutant le 26 septembre : la Déclaration s'ouvrait sur septembre, pas fini, avec
+// « Préparer » en vert, pendant qu'août — à déposer avant le 28 — attendait, et la visite n'en disait rien.
+t('10.14.1 : une déclaration s\'ouvre sur le dernier mois TERMINÉ, un mois en cours n\'a pas de vert, et la visite commence par le mois', () => {
+  assert.strictEqual(C.moisADeclarer([8, 9, 10], 2026, '2026-09-26'), 8, 'la déclaration s\'ouvre sur un mois pas encore fini');
+  assert.strictEqual(C.moisADeclarer([3, 7], 2026, '2026-09-26'), 7, 'le dernier mois fini qui a des écritures n\'est pas proposé');
+  assert.strictEqual(C.moisADeclarer([9], 2026, '2026-09-26'), 9, 'sans mois fini, la règle des écrans de travail doit s\'appliquer');
+  assert.strictEqual(C.moisADeclarer([12], 2025, '2026-01-10'), 12, 'un exercice passé déclare son dernier mois');
+  assert.strictEqual(C.moisADeclarer([], 2026, '2026-09-26'), 9, 'sans écriture : le mois courant');
+  const app = code('src', 'cabinet', 'renderer', 'app.js');
+  assert.ok(/const moisDeclarationPropose = livre => moisPropose\(livre, K\.moisADeclarer\);/.test(app), 'la Déclaration ne choisit plus son mois par la règle des mois terminés');
+  const br = tranche(app, 'function brancherDeclaration(');
+  assert.ok(/const veut = declState\.mois \|\| moisDeclarationPropose\(s\.livre\);/.test(br), 'la Déclaration demande encore le mois des écrans de travail');
+  const vue = tranche(app, 'function vueDeclaration(');
+  const m = /const suivante = ([^;]+);/.exec(vue);
+  assert.ok(m, 'l\'étape suivante de la déclaration n\'est plus calculée');
+  assert.strictEqual(evaluer(m[1], { enCours: true, posee: null, perime: false, deposee: false, ecrite: false, rien: false, aCompleter: false, payee: false }), 'mois', 'un mois pas fini garde « Préparer » en vert');
+  assert.strictEqual(evaluer(m[1], { enCours: false, posee: null, perime: false, deposee: false, ecrite: false, rien: false, aCompleter: false, payee: false }), 'preparer', 'un mois fini ne propose plus de préparer');
+  assert.ok(/id="dc-en-cours"[\s\S]{0,400}data-dc-mois="\$\{esc\(precedent\)\}"/.test(vue), 'un mois pas fini ne propose pas de passer au mois qui se déclare');
+  const v = code('src', 'cabinet', 'renderer', 'cabvisites.js');
+  const decl = v.slice(v.indexOf("id: 'declarer-tva'"), v.indexOf("id: 'rapprocher'"));
+  const premiere = decl.slice(decl.indexOf('etapes: ['));
+  assert.ok(/^etapes: \[[\s\S]{0,600}?cible: '#dc-mois'/.test(premiere) && premiere.indexOf("'#dc-mois'") < premiere.indexOf("'#dc-suite'"), 'la visite de la déclaration ne commence pas par le mois à déclarer');
 });
 
 t('U-11 / U-13 / U-23 / U-24 : la Paie — un seul vert à l\'étape suivante, des raisons visibles, des états vides qui disent quoi faire', () => {

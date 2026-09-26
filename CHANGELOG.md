@@ -46,6 +46,13 @@ Publiée en **bêta** : elle touche au moteur comptable (retenue à la source, d
   la déclaration lit, et propose ensuite de déclarer la TVA. Une case qui garde une valeur proposée se dit
   « À vérifier », plus « ✓ Déjà rempli ».
 - **« 7 % » ne se coupe plus avant son signe**, dans les bulles comme dans la prose des deux applications.
+- **La déclaration s'ouvre sur le dernier mois TERMINÉ** : le 26 septembre, c'est la TVA d'août qui
+  se dépose (avant le 28), et l'écran s'ouvrait sur septembre avec « Préparer » en vert. Un mois
+  pas encore fini n'a plus de vert ; l'écran le dit et propose « Déclarer août 2026 ».
+- **La visite « Déclarer la TVA du mois », suivie par un débutant** : elle commence par le mois à
+  déclarer, fait copier la TVA collectée (et plus le premier montant venu, souvent 0,000), et sa fin
+  dit que l'écriture du mois attend au brouillard — « Valider le brouillard » passe en tête de la
+  suite. « ← » revient à l'étape d'avant même quand une étape conditionnelle les sépare.
 - **La déclaration s'ouvre sur un mois PASSÉ**, jamais sur un mois à venir : un brouillard daté du
   20 octobre (un prélèvement saisi d'avance) faisait ouvrir l'écran de septembre sur octobre, un mois
   qui n'est pas encore là. Le mois de travail est le dernier mois qui a des données jusqu'au mois

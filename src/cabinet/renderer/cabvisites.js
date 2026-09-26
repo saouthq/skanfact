@@ -1090,9 +1090,31 @@
       mots: ['tva', 'declaration', 'declarer', 'mois', 'deposer', 'mensuelle', 'portail', 'jibaya', 'copier', 'formulaire'],
       si: () => !!ctx.dossier('livre'), manque: DOSSIER_MANQUE.livre,
       suite: ['page-compta-declaration', 'page-echeances'],
+      // 10.14.1 — joué en novice : « Écrire l'écriture du mois » la pose AU BROUILLARD, et la fin
+      // n'en disait rien — le 4367 restait non soldé, et « Et maintenant ? » proposait une visite de
+      // page. Une pièce du mois restée en brouillard se dit, et sa validation passe en tête.
+      pressee: () => (typeof document !== 'undefined' && document.querySelector('#dc-controles [data-vers-saisie]') ? ['valider-lot'] : []),
       bravo: 'Tu connais la déclaration',
-      conclusion: 'Le Cabinet ne dépose rien et ne se connecte à aucune administration : tu ouvres le portail, tu colles chaque montant dans sa case, puis tu pointes « déposée » et « payée » — deux pense-bêtes qui se défont.',
+      conclusion: () => {
+        const base = 'Le Cabinet ne dépose rien et ne se connecte à aucune administration : tu ouvres le portail, tu colles chaque montant dans sa case, puis tu pointes « déposée » et « payée » — deux pense-bêtes qui se défont.';
+        const brouillard = typeof document !== 'undefined' && document.querySelector('#dc-controles [data-vers-saisie]');
+        return brouillard ? 'Il reste une chose : une pièce de ce mois est encore <b>en brouillard</b> — l\'écriture du mois, si tu viens de la poser. Elle n\'entre dans les chiffres qu\'une fois <b>validée</b> : c\'est le geste proposé ci-dessous. ' + base : base;
+      },
       etapes: [
+        // 10.14.1 — suivie par un débutant le 26 septembre, la visite partait sur septembre sans un mot
+        // du mois : on déclare un mois TERMINÉ (la TVA d'août se dépose en septembre). Le mois se dit
+        // d'abord, et un mois pas encore fini se quitte d'un clic vers celui qui se dépose.
+        { page: dans('livre', 'comptabilite/declaration'), cible: '#dc-mois', cote: 'dessous', titre: 'Le mois à déclarer',
+          get texte() {
+            const NOMS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+            const m = new Date().getMonth(), avant = NOMS[(m + 11) % 12];
+            return 'On déclare un mois <b>terminé</b> : en ' + NOMS[m] + ', c\'est la TVA ' + (/^[aeiouyéèh]/.test(avant) ? 'd\'' : 'de ') + '<b>' + avant + '</b> qui se dépose. La page s\'ouvre sur le dernier mois fini qui porte des écritures ; pour un autre mois, choisis-le dans cette liste.';
+          } },
+        { page: dans('livre', 'comptabilite/declaration'), cible: '#dc-en-cours [data-dc-mois]', cote: 'dessous', faire: 'clic',
+          si: () => !!document.querySelector('#dc-en-cours [data-dc-mois]'),
+          fait: () => !document.querySelector('#dc-en-cours'),
+          titre: 'Ce mois n\'est pas fini', texte: 'Le mois affiché n\'est <b>pas terminé</b> : ses pièces n\'arriveront pas toutes avant sa fin, et sa déclaration se dépose le mois prochain. Celle à déposer maintenant est celle du mois d\'avant.',
+          action: 'Clique sur le bouton éclairé pour passer au mois qui se déclare.', essai: { clic: true } },
         { page: dans('livre', 'comptabilite/declaration'), cible: ['#dc-suite', '#dc-preparer'], cote: 'dessous', titre: 'Les étapes du mois',
           texte: 'En tête, la <b>date limite</b> — calculée par la même règle que la page Échéances — et le bouton qui ouvre le portail. Puis quatre gestes dans l\'ordre : <b>Préparer</b> fige les cases ; <b>l\'écriture</b> solde la TVA du mois, en brouillard ; <b>déposée</b> et <b>payée</b> sont des pense-bêtes. Le bouton en couleur est toujours le suivant.' },
         // 10.14.1 — suivie par un débutant, la visite montrait le bandeau « 1 pièce encore en brouillard »
@@ -1108,9 +1130,11 @@
           action: 'Clique sur <b>« Préparer la déclaration »</b>.', essai: { clic: true } },
         { page: dans('livre', 'comptabilite/declaration'), cible: ['#dc-formulaire', '#c-livres .panel'], cote: 'dessus', titre: 'Le formulaire du mois',
           texte: 'Les cases sont rangées <b>dans l\'ordre de la déclaration mensuelle</b> : retenues à la source, TFP, FOPROLOS, TVA, timbre, puis le récapitulatif de ce qui se paie. Chaque montant est tiré des écritures validées du mois ; « n écritures » ouvre celles qui le font. Une case dont la règle n\'est pas connue vaut <b>« — »</b> avec sa raison : un zéro se recopierait, un « — » se demande.' },
-        { page: dans('livre', 'comptabilite/declaration'), cible: '#dc-formulaire [data-copier]', cote: 'dessous', faire: 'clic',
+        { page: dans('livre', 'comptabilite/declaration'), cible: ['#dc-formulaire [data-copier="tvaI"]', '#dc-formulaire [data-copier]'], cote: 'gauche', faire: 'clic',
+          // 10.14.1 — le premier montant venu était la retenue à la source, souvent 0,000 : on apprenait
+          // à copier un zéro, et la bulle posée dessous couvrait les vrais montants de TVA.
           titre: 'Copier un montant', texte: 'Un clic sur un montant le <b>copie</b>, sans espace ni devise, prêt à coller dans la case du portail. La forme (point, virgule ou millimes) se choisit au-dessus du tableau : prends celle que le portail accepte. Le message qui suit dit exactement ce qui est copié et dans quelle case le coller.',
-          action: 'Clique sur le montant éclairé.', essai: { clic: true } },
+          action: 'Clique sur le montant éclairé : la TVA due sur les ventes du mois (case I).', essai: { clic: true } },
         { page: dans('livre', 'comptabilite/declaration'), cible: '#dc-ecriture', cote: 'dessous', faire: 'clic', facultatif: true,
           si: () => { const e = document.querySelector('#dc-ecriture'); return !!e && !e.disabled; },
           fait: () => /brouillard|passée/.test((document.querySelector('#dc-ecriture') || {}).textContent || ''),

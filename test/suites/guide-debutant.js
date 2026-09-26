@@ -173,7 +173,7 @@ t('10.14.1 : la visite de la TVA fait préparer, dit son brouillard, et saute l\
   const ec = d.etapes.find(e => cible(e) === '#dc-ecriture');
   assert.ok(ec && ec.faire === 'clic' && ec.si, 'l\'écriture du mois n\'est pas guidée, ou pas sautée quand elle est éteinte');
   // L'ordre : le brouillard avant de préparer, préparer avant de copier, le dépôt en dernier.
-  assert.ok(i('#dc-controles') < i('#dc-preparer') && i('#dc-preparer') < i('#dc-formulaire [data-copier]') && i('#dc-deposee') === d.etapes.length - 1);
+  assert.ok(i('#dc-controles') < i('#dc-preparer') && i('#dc-preparer') < d.etapes.findIndex(e => cible(e).startsWith('#dc-formulaire [data-copier')) && i('#dc-deposee') === d.etapes.length - 1);
 });
 
 // Un livre minimal : un mois avec de la TVA, un autre sans.
@@ -503,5 +503,45 @@ t('10.14.1 : « 7 % » ne se coupe pas avant son signe — dans la bulle comme d
   const C = require('../../src/renderer/core.js');
   assert.strictEqual(C.typoFr('à 7 % ou'), 'à 7\u202f% ou');
   assert.strictEqual(V.typo('à 7 % ou'), 'à 7\u202f% ou');
+});
+
+// Joué à la souris : dans la déclaration, « ← » ne ramenait pas à « Le mois à déclarer » — l'étape
+// d'entre les deux (« ce mois n'est pas fini ») est un geste qui ne s'applique pas sur un mois terminé.
+t('10.14.1 : « ← » saute une étape qui ne s\'applique pas, comme « → » à l\'aller', () => {
+  const debut = moteur.indexOf('function etapeAvant(');
+  assert.ok(debut > 0, 'le retour ne cherche plus l\'étape qui s\'applique');
+  const corps = moteur.slice(debut, moteur.indexOf('\n  function peutReculer(', debut));
+  const cur = { p: { etapes: [{ titre: 'mois' }, { titre: 'pas fini', faire: 'clic', si: () => false }, { titre: 'étapes' }, { titre: 'boom', si: () => { throw new Error('x'); } }, { titre: 'fin' }] } };
+  const ctx = { cur };
+  vm.runInNewContext(corps + '\nthis.f = etapeAvant;', ctx);
+  assert.strictEqual(ctx.f(2), 0, '« ← » depuis « Les étapes du mois » ne revient pas à « Le mois »');
+  assert.strictEqual(ctx.f(4), 2, 'une étape dont la condition lève doit se sauter');
+  assert.strictEqual(ctx.f(0), -1);
+  const pr = moteur.slice(moteur.indexOf('function peutReculer('), moteur.indexOf('function peutReculer(') + 400);
+  assert.ok(/const j = etapeAvant\(cur\.i\);/.test(pr) && /cur\.p\.etapes\[j\]/.test(pr), 'peutReculer juge encore l\'étape d\'à côté, même quand elle ne s\'applique pas');
+  assert.ok(/entrer\(etapeAvant\(cur\.i\), -1\)/.test(moteur), '« ← » recule encore d\'un seul cran');
+});
+
+// Joué en novice : « Écrire l'écriture du mois » la pose au brouillard, et la fin de la visite n'en
+// disait rien — « Et maintenant ? » proposait une visite de page.
+t('10.14.1 : la fin de « Déclarer la TVA » dit le brouillard du mois et propose de le valider', () => {
+  const V2 = require('../../src/renderer/visite.js');
+  const ctx = { state: () => ({ cabinet: {}, dossiers: [] }), dossier: () => 'D', estExemple: () => false, cleSecours: () => null, copieExterne: () => false, Visite: V2 };
+  const v = CV.parcours(ctx).find(x => x.id === 'declarer-tva');
+  const avant = global.document;
+  try {
+    global.document = { querySelector: sel => (sel === '#dc-controles [data-vers-saisie]' ? {} : null) };
+    assert.deepStrictEqual(v.pressee(), ['valider-lot'], 'un brouillard du mois ne propose pas de le valider');
+    assert.ok(/en brouillard/.test(v.conclusion()) && /validée/.test(v.conclusion()), 'la fin tait le brouillard du mois');
+    global.document = { querySelector: () => null };
+    assert.deepStrictEqual(v.pressee(), []);
+    assert.ok(!/en brouillard/.test(v.conclusion()), 'la fin parle d\'un brouillard qui n\'existe pas');
+    // Et la visite commence par le mois — on déclare un mois TERMINÉ.
+    assert.strictEqual(v.etapes[0].cible, '#dc-mois');
+    assert.ok(/terminé/.test(v.etapes[0].texte));
+    // On copie un montant qui compte : la TVA collectée, pas la première case venue (souvent 0).
+    const copier = v.etapes.find(e => e.titre === 'Copier un montant');
+    assert.strictEqual([].concat(copier.cible)[0], '#dc-formulaire [data-copier="tvaI"]');
+  } finally { if (avant === undefined) delete global.document; else global.document = avant; }
 });
 };

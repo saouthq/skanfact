@@ -391,7 +391,7 @@ t('10.14.0 : le Cabinet écrit le complément par le même bouton, et « Marquer
   // payer — et un mois sans TVA passe de « préparée » au dépôt, sans une écriture qui refuserait.
   const exprSuivante = (/const suivante = ([^\n]+);/.exec(app) || [])[1];
   assert.ok(exprSuivante, 'le calcul du vert est introuvable');
-  const vert = etat => require('vm').runInNewContext(exprSuivante, Object.assign({ posee: true, perime: false, deposee: false, payee: false, ecrite: false, aCompleter: false, rien: false }, etat));
+  const vert = etat => require('vm').runInNewContext(exprSuivante, Object.assign({ enCours: false, posee: true, perime: false, deposee: false, payee: false, ecrite: false, aCompleter: false, rien: false }, etat));
   assert.strictEqual(vert({ posee: false }), 'preparer');
   assert.strictEqual(vert({ perime: true }), 'preparer', 'des chiffres périmés se recalculent d\'abord');
   assert.strictEqual(vert({}), 'ecriture');
@@ -399,6 +399,7 @@ t('10.14.0 : le Cabinet écrit le complément par le même bouton, et « Marquer
   assert.strictEqual(vert({ rien: true }), 'deposee', 'un mois sans TVA proposait encore une écriture qui refuse');
   assert.strictEqual(vert({ ecrite: true }), 'deposee');
   assert.strictEqual(vert({ ecrite: true, deposee: true }), 'payee');
+  assert.strictEqual(vert({ enCours: true, posee: false }), 'mois', 'un mois en cours non préparé propose d\'abord le mois terminé');
   assert.ok(/const LIBELLE_CASE = KC\.LIBELLES_CASES_DECL;/.test(app), 'deux tables de noms de cases divergeraient');
 });
 // 10.14.1 (D1) — le comptable RECOPIE les cases sur le portail. Ce qui supprime la ressaisie sans rien

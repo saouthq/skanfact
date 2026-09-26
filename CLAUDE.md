@@ -8557,6 +8557,15 @@ lots ; le détail de ce qui reste vit dans `A-FAIRE.md` § 0.
   re-trouvée) : un brouillard saisi d'avance, daté du mois suivant, faisait ouvrir la déclaration sur
   un mois qui n'existe pas encore. `moisDeTravail` écarte les mois futurs de l'exercice en cours ; un
   exercice passé garde son dernier mois saisi.
+- **Une déclaration porte sur un mois TERMINÉ** (`moisADeclarer`) : la règle des écrans de travail
+  (le dernier mois qui a des données) ouvrait la déclaration sur le mois en cours, « Préparer » en
+  vert, pendant que le mois à déposer attendait. Un mois pas fini n'a pas de vert et propose le mois
+  d'avant. Et une visite qui fait POSER une écriture au brouillard le dit à sa fin et propose de la
+  valider — sinon le débutant repart avec un compte non soldé et « Et maintenant ? » qui parle
+  d'autre chose. Trouvé en suivant la bulle, pas en lisant le code : un parcours qui connaît le
+  bon mois ne se trompe jamais de mois.
+- **« ← » dans une visite saute ce que « → » a sauté** (`etapeAvant`) : une étape conditionnelle
+  absente entre deux étapes qu'on regarde bloquait le retour — sans rien dire.
 
 ## Pistes pour la suite (non demandées)
 

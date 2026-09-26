@@ -76,6 +76,17 @@
     if (courant) return m;
     return y > a ? 12 : 1;
   }
+  // 10.14.1 — une DÉCLARATION porte sur un mois TERMINÉ : le 26 septembre, c'est la TVA d'août qui
+  // se dépose (avant le 28), pas celle d'un septembre qui n'est pas fini. L'écran s'ouvrait sur
+  // septembre avec « Préparer la déclaration » en vert, et un débutant guidé préparait un mois
+  // incomplet pendant qu'août, qu'il venait de saisir, attendait. Le dernier mois FINI qui a des
+  // données ; sinon la règle des écrans de travail.
+  function moisADeclarer(moisAvecDonnees, annee, aujourdhui) {
+    const a = Number(annee), y = Number(String(aujourdhui || '').slice(0, 4)), m = Number(String(aujourdhui || '').slice(5, 7));
+    const finis = (moisAvecDonnees || []).map(Number).filter(x => x >= 1 && x <= 12 && (y > a || (y === a && x < m)));
+    if (finis.length) return Math.max(...finis);
+    return moisDeTravail(moisAvecDonnees, annee, aujourdhui);
+  }
   function monthsBetween(from, to) {
     const out = [];
     let m = from;
@@ -2310,7 +2321,7 @@
     sansAccents, paletteCompta,
     guidesDuDossier, correspondanceDuDossier, dateTapee,
     GRACE_MOIS, DORMANT_MOIS, dossierFacturable, comptageDossiers, licenceDuPaquet,
-    monthLabel, moisTape, moisAffiche, monthListLabel, missingLabel, addMonth, monthsBetween, moisDeTravail, today, de, libelleLot,
+    monthLabel, moisTape, moisAffiche, monthListLabel, missingLabel, addMonth, monthsBetween, moisDeTravail, moisADeclarer, today, de, libelleLot,
     cleEcheance, echeanceDeposee,
     FORMATS_COPIE, montantPortail, PORTAILS, dateLimiteDeclaration,
     migrate, migrateDossier, dossierKey, packSummary, filePack, demoDossiers, rebaserPaquet, checkIntegrity, HORS_MANIFESTE,

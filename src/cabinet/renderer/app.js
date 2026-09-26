@@ -4049,7 +4049,12 @@
     // Un mois sans TVA n'a pas d'écriture à passer (`rienAEcrire`, la réponse du moteur) : l'étape
     // suivante est le dépôt, et le bouton de l'écriture s'éteint en le disant.
     const rien = !!d.rienAEcrire && !ecrite;
-    const suivante = !posee || (perime && !deposee) ? 'preparer' : ((!ecrite && !rien) || aCompleter) ? 'ecriture' : !deposee ? 'deposee' : !payee ? 'payee' : '';
+    // 10.14.1 — un mois PAS ENCORE TERMINÉ ne se déclare pas : il n'a pas de vert, et l'écran dit
+    // lequel se dépose maintenant (vu en guidant un débutant, le 26 septembre : « Préparer » vert sur
+    // septembre pendant que la TVA d'août, à déposer avant le 28, attendait).
+    const enCours = d.periode >= K.today().slice(0, 7);
+    const precedent = K.addMonth(d.periode, -1);
+    const suivante = enCours && !posee ? 'mois' : !posee || (perime && !deposee) ? 'preparer' : ((!ecrite && !rien) || aCompleter) ? 'ecriture' : !deposee ? 'deposee' : !payee ? 'payee' : '';
     const motifPerime = perime && !deposee ? `Les chiffres ont changé depuis la préparation (${KC.phraseEcartDeclaration(ecart)}) : recalcule-la avant de la déposer.` : '';
     const cls = pas => 'btn btn-sm' + (pas === suivante ? ' btn-primary' : '');
     const fait = ok => ok ? '<span class="dc-coche" aria-hidden="true">✓</span>' : '';
@@ -4079,6 +4084,8 @@
           un geste à faire. Un vert de plus au-dessus des cases n'apprenait rien. */''}
     <div class="panel dc-suite" id="dc-suite"><h2>Les étapes du mois ${info('dc.suite')}</h2>
       ${ligneEcheanceDeclaration(dossier, d.periode, deposee && posee.deposee.le)}
+      ${enCours && !posee ? `<div class="warn-box mt" id="dc-en-cours"><div>${esc(K.monthLabel(d.periode).replace(/^./, c => c.toUpperCase()))} n'est pas terminé : sa TVA se déclare le mois prochain, une fois toutes ses pièces saisies.${
+          precedent.startsWith(String(s.annee) + '-') ? ` <button type="button" class="${cls('mois')}" data-dc-mois="${esc(precedent)}">Déclarer ${esc(K.monthLabel(precedent))}</button>` : ''}</div></div>` : ''}
       ${motif ? `<p class="small muted dc-motif">${esc(motif)}</p>` : ''}
       <div class="dc-etapes">
         <button class="${cls('preparer')}" id="dc-preparer">${posee ? fait(true) + 'Préparée — recalculer' : 'Préparer la déclaration'}</button>${fleche}
@@ -4121,11 +4128,15 @@
   // écran pour le mois qu'il vient de saisir ; le faire commencer au premier mois de l'exercice
   // serait onze clics par déclaration. Sans écriture, le mois courant (U-12) : la règle vit dans
   // `K.moisDeTravail`, la même que celle de la Paie.
-  function moisPropose(livre) {
+  function moisPropose(livre, regle) {
     const annee = Number(String((livre.exercice || {}).du || '').slice(0, 4)) || Number(livresState.annee);
-    const faits = (livre.ecritures || []).map(e => String(e.date || '')).filter(d => d.startsWith(annee + '-')).map(d => Number(d.slice(5, 7)));
-    return `${annee}-${String(K.moisDeTravail(faits, annee, K.today())).padStart(2, '0')}`;
+    const faits = (livre.ecritures || []).filter(e => e.journal !== 'AN').map(e => String(e.date || '')).filter(d => d.startsWith(annee + '-')).map(d => Number(d.slice(5, 7)));
+    return `${annee}-${String((regle || K.moisDeTravail)(faits, annee, K.today())).padStart(2, '0')}`;
   }
+  // 10.14.1 — une déclaration porte sur un mois TERMINÉ : `K.moisADeclarer` préfère le dernier mois
+  // fini qui a des écritures. Le 26 septembre, l'écran s'ouvrait sur septembre, « Préparer » en vert,
+  // pendant qu'août — la TVA à déposer avant le 28 — attendait (vu en guidant un débutant).
+  const moisDeclarationPropose = livre => moisPropose(livre, K.moisADeclarer);
 
   // 10.14.0 — Ce qu'un écran de comptabilité LIT au processus principal se relit dès que le LIVRE a
   // bougé (la parade de T-24, que la clôture, la liasse et la révision portaient seules). La
@@ -4148,12 +4159,13 @@
     const s = livresState;
     // Une déclaration se LIT au processus principal. Tant qu'elle n'est pas arrivée, l'écran le dit
     // — et c'est ici qu'on la demande, sinon l'onglet resterait sur « Lecture… » pour toujours.
-    const veut = declState.mois || moisPropose(s.livre);
+    const veut = declState.mois || moisDeclarationPropose(s.livre);
     const rev = revDuLivre(s.livre);
     if (!s.decl || s.decl.periode !== veut || s.declRev !== rev) { s.declRev = rev; chargerDeclaration(root, dossier); return; }
     if (s.decl.erreur) return;
     const m = $('#dc-mois', el);
     if (m) m.onchange = () => { declState.mois = m.value; declState.ouverte = ''; s.decl = null; chargerDeclaration(root, dossier); };
+    $$('[data-dc-mois]', el).forEach(b => { b.onclick = () => { declState.mois = b.dataset.dcMois; declState.ouverte = ''; s.decl = null; chargerDeclaration(root, dossier); }; });
     $$('[data-cases]', el).forEach(b => { b.onclick = () => {
       declState.ouverte = declState.ouverte === b.dataset.cases ? '' : b.dataset.cases;
       if (declState.ouverte) pageFocus = 'dc-pieces';
@@ -4243,8 +4255,8 @@
   async function chargerDeclaration(root, dossier) {
     const s = livresState;
     try {
-      s.decl = await api.declaration({ dossierId: dossier.id, annee: s.annee, periode: declState.mois || moisPropose(s.livre) });
-    } catch (e) { s.decl = { erreur: plainError(e), periode: declState.mois || moisPropose(s.livre) }; }
+      s.decl = await api.declaration({ dossierId: dossier.id, annee: s.annee, periode: declState.mois || moisDeclarationPropose(s.livre) });
+    } catch (e) { s.decl = { erreur: plainError(e), periode: declState.mois || moisDeclarationPropose(s.livre) }; }
     drawLivres(root, dossier);
   }
 

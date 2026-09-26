@@ -1064,7 +1064,7 @@
   }
   function precedent() {
     if (!cur || !peutReculer()) return;
-    entrer(cur.i - 1, -1);
+    entrer(etapeAvant(cur.i), -1);
   }
   function chapitreSuivant() {
     if (!cur) return;
@@ -1074,9 +1074,24 @@
   // Revenir en arrière n'a de sens qu'entre deux étapes qu'on REGARDE : défaire un geste déjà fait
   // (« clique sur Nouveau devis ») ferait repasser aussitôt à l'étape suivante, puisque le geste est
   // fait — un bouton qui ne mène nulle part.
+  // 10.14.1 — l'étape d'avant est celle qui S'APPLIQUE : une étape conditionnelle sautée à l'aller
+  // (`si` faux) se saute aussi au retour. Sinon « ← » restait sans effet dès qu'une étape « faire »
+  // qui ne s'appliquait pas séparait deux étapes qu'on regarde (vu dans la déclaration : l'étape
+  // « ce mois n'est pas fini », absente sur un mois terminé, bloquait le retour vers « Le mois »).
+  function etapeAvant(i) {
+    for (let j = i - 1; j >= 0; j--) {
+      const e = cur.p.etapes[j];
+      let garder = true;
+      try { garder = !e.si || !!e.si(); } catch (_) { garder = false; }
+      if (garder) return j;
+    }
+    return -1;
+  }
   function peutReculer() {
     if (!cur || cur.i <= 0) return false;
-    const e = etape(), av = cur.p.etapes[cur.i - 1];
+    const j = etapeAvant(cur.i);
+    if (j < 0) return false;
+    const e = etape(), av = cur.p.etapes[j];
     return !estFaire(e) && !estFaire(av);
   }
   function retourner() {
