@@ -943,6 +943,35 @@ t('10.14.1 : la fiche société fait taper la banque et le RIB, et la fiche clie
     .map(c => art.indexOf(geste(art, c)));
   assert.deepStrictEqual(ordre.slice().sort((x, y) => x - y), ordre, 'les étapes de la prestation ne suivent pas le formulaire');
   assert.ok(/VÉRIFIER/.test(geste(art, 'vatRate').texte), 'le taux de TVA ne dit pas qu\'il se vérifie');
+  // Le devis : chaque case de l'en-tête a son étape, dans l'ordre de l'écran.
+  const dev = etapes('premier-devis');
+  const ordreDev = ['clientId', 'name="date"', 'name="dueDate"', 'name="subject"', 'name="reference"', 'projectId', 'name="lang"', 'name="currency"', 'name="status"', 'name="discountRate"']
+    .map(c => dev.indexOf(geste(dev, c)));
+  assert.deepStrictEqual(ordreDev.slice().sort((x, y) => x - y), ordreDev, 'les étapes du devis ne suivent pas l\'en-tête');
+  // Une autre devise choisie SUR l'étape de la devise fait paraître le taux, obligatoire : il a son
+  // étape juste après, avant le statut (vu à la souris — sinon « Enregistrer » refusait une case
+  // que la visite n'avait jamais montrée).
+  // … et chaque case de la ligne, unité et TVA comprises, dans l'ordre de la ligne.
+  const ordreLigne = ['data-k="label"', 'data-k="qty"', 'data-k="unit"', 'data-k="unitPrice"', 'data-k="vatRate"'].map(c => dev.indexOf(geste(dev, c)));
+  assert.deepStrictEqual(ordreLigne.slice().sort((x, y) => x - y), ordreLigne, 'les étapes de la ligne ne suivent pas la ligne');
+  assert.ok(/VÉRIFIER/.test(geste(dev, 'data-k="vatRate"').texte), 'la TVA de la ligne ne dit pas qu\'elle se vérifie');
+  // Sous les lignes : la marge, les pièces jointes et les notes, avant « Enregistrer ».
+  const iEnreg = dev.indexOf(geste(dev, '#save'));
+  ['#totals', '#p-pj', '#notes'].forEach(c => assert.ok(dev.indexOf(geste(dev, c)) < iEnreg, c + ' n\'est pas guidé avant « Enregistrer »'));
+  assert.ok(/marge estimée/i.test(geste(dev, '#totals').texte), 'la marge estimée, sous les totaux, n\'est pas expliquée');
+  // Lancée depuis un devis neuf déjà ouvert, la visite ne ramène pas à la liste pour recliquer
+  // « Nouveau devis » : on croyait le devis perdu (vu au guide).
+  const avantLoc = globalThis.location;
+  try {
+    globalThis.location = { hash: '#/doc/new/devis' };
+    assert.ok(typeof dev[0].si === 'function' && dev[0].si() === false, 'dans un devis neuf, la visite renvoie cliquer « Nouveau devis »');
+    globalThis.location = { hash: '#/devis' };
+    assert.strictEqual(dev[0].si(), true, 'depuis la liste, « Nouveau devis » n\'est plus demandé');
+  } finally { if (avantLoc === undefined) delete globalThis.location; else globalThis.location = avantLoc; }
+  const iDevise = ordreDev[7], iStatut = ordreDev[8];
+  const tauxApres = dev.slice(iDevise + 1, iStatut).find(e => /exchangeRate/.test(String(e.cible)));
+  assert.ok(tauxApres && tauxApres.faire === 'valeur' && typeof tauxApres.si === 'function',
+    'après l\'étape de la devise, le taux de change qui paraît n\'est pas guidé');
   ['minStock', 'location', 'initialQty', 'initialCost'].forEach(c => assert.ok(geste(art, c).si, 'la case ' + c + ' s\'éclaire même quand le suivi en stock n\'est pas coché'));
 });
 };

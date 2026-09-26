@@ -130,6 +130,13 @@ Publiée en **bêta** : elle touche au moteur comptable (retenue à la source, d
 - **Après un choix pendant « Vas-y, essaie », la suite passe devant** : choisir l'unité dans la liste
   laissait « Reprendre la visite » en bouton principal, qui ramenait à la même étape. Une fois la case
   changée, la bulle dit « C'est fait » et propose « Étape suivante ».
+- **« Faire un devis » guide chaque case, jouée bulle après bulle** : l'unité et la TVA de la ligne, la
+  marge sous les totaux, les pièces jointes et les notes avaient été laissées seules. Une autre devise
+  choisie dans la visite fait paraître le taux de change, **obligatoire** : il a maintenant son étape
+  (sans elle, « Enregistrer » refusait une case que personne n'avait montrée). Garder l'unité proposée
+  compte comme un choix, et une ligne ajoutée depuis le catalogue aussi (« C'est fait »).
+- **« Guide-moi », ouvert dans un devis neuf, propose de le faire ou de le reprendre** — sans renvoyer
+  à la liste recliquer « Nouveau devis », ce qui faisait croire le devis perdu.
 - **« Guide-moi » ne se contredit plus sur une visite en pause** : « Arrêtée à l'étape 2 — tu étais à
   l'étape 4 » devient « Reprise à l'étape 2 — tu étais à l'étape 4 : on repart de… ».
 - **La bulle réduite ne couvre plus les boutons d'une fenêtre** : devant une fenêtre qui prend tout

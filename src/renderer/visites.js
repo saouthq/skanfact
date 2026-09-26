@@ -1087,7 +1087,10 @@
     });
 
     visite({
-      id: 'premier-devis', theme: 'ventes', type: 'faire', duree: '4 min', page: '#/devis', pages: ['devis', 'dashboard'],
+      // 10.14.1 — dans l'éditeur aussi, mais seulement sur un devis NEUF : c'est là qu'on ouvre
+      // « Guide-moi » quand on s'est arrêté au milieu, et la reprise n'y était pas proposée (vu au guide).
+      id: 'premier-devis', theme: 'ventes', type: 'faire', duree: '5 min', page: '#/devis', pages: ['devis', 'dashboard', 'doc'],
+      surLaPage: cle => cle !== 'doc' || /^#\/doc\/new\/devis/.test(hash()),
       titre: 'Faire un devis',
       resume: 'Du client à l\'aperçu : les lignes, les prix, la TVA, et l\'enregistrement.',
       mots: ['devis', 'proposition', 'offre', 'prix', 'premier', 'faire un devis'],
@@ -1098,7 +1101,10 @@
       bravo: 'Ton devis est prêt',
       conclusion: 'Il a reçu son numéro. Il reste à l\'envoyer à ton client — puis, quand il dit oui, à le transformer en facture d\'un clic.',
       etapes: [
+        // Lancée depuis un devis neuf déjà ouvert (« Guide-moi » de l'éditeur), la visite y reste : la
+        // ramener à la liste pour recliquer « Nouveau devis » faisait croire le devis perdu (10.14.1).
         { page: '#/devis', cible: ['.vide-utile .btn-primary', '.page-head #new'], cote: 'dessous', faire: 'clic',
+          si: () => !/^#\/doc\/new\/devis/.test(hash()),
           titre: 'Nouveau devis', texte: 'Un devis dit à ton client ce que tu vas faire, et combien ça coûte. Il n\'engage personne tant qu\'il n\'est pas accepté.',
           action: 'Clique sur {bouton}.', fait: () => /^#\/doc\/new\/devis/.test(hash()), essai: { clic: true } },
         { cible: combo('clientId'), cote: 'droite', faire: 'valeur', bouton: 'C\'est fait',
@@ -1108,9 +1114,36 @@
         // cette étape, la visite menait jusqu'à « Enregistrer », qui refusait. Vu à la souris avec
         // Nova Digital. Elle ne paraît que si le champ est là.
         etapeTaux('#rate-field'),
+        // 10.14.1 : les cases de l'en-tête que la visite laissait seules (vu en suivant la bulle sur une
+        // entreprise neuve). Chacune a son étape, dans l'ordre de l'écran ; la consigne d'une case à
+        // lire vient du moteur (« Si tu veux »).
+        { cible: '#view .datefield:has(input[name="date"]) .d-txt', cote: 'dessous', titre: 'La date du devis',
+          texte: 'Aujourd\'hui, proposée d\'office. Elle s\'imprime sur le devis ; tu peux l\'écrire comme tu veux (12/03/2026, 12-3-26…) ou la choisir dans le calendrier.' },
+        { cible: '#view .datefield:has(input[name="dueDate"]) .d-txt', cote: 'dessous', titre: 'Jusqu\'à quand il vaut',
+          texte: 'Au-delà, ton prix ne t\'engage plus : le devis passe « expiré » tout seul. Elle suit la date du devis tant que tu n\'y touches pas, avec le délai réglé dans tes Paramètres.' },
         { cible: 'input[name="subject"]', cote: 'dessous', faire: 'valeur',
           titre: 'L\'objet', texte: 'Une ligne qui dit de quoi il s\'agit : ton client la lira en premier.',
           action: 'Écris l\'objet du devis, puis clique sur <b>« C\'est fait »</b>.', essai: { taper: 'Réfection de la vitrine' } },
+        { cible: '#view input[name="reference"]', cote: 'dessous', titre: 'Sa référence',
+          texte: 'Le numéro de commande ou de marché que ton client t\'a donné (« BC 118 »), s\'il en a un. Beaucoup de sociétés et d\'administrations ne paient pas une pièce qui ne le rappelle pas.' },
+        { cible: combo('projectId'), cote: 'droite', si: () => !!$(combo('projectId')), titre: 'L\'affaire',
+          texte: 'Facultatif : rattache ce devis à un chantier, pour comparer plus tard ce qu\'il a rapporté à ce qu\'il a coûté. Une vente simple n\'en a pas besoin.' },
+        { cible: '#view select[name="lang"]', cote: 'dessous', titre: 'La langue',
+          texte: 'Français ou anglais : tout le document change, jusqu\'au montant écrit en toutes lettres. Elle suit le client choisi.' },
+        { cible: '#view select[name="currency"]', cote: 'dessous', titre: 'La devise',
+          texte: 'Elle suit le client, elle aussi. Une autre devise que le dinar demande son taux de change, pour que ta comptabilité compte juste.' },
+        // 10.14.1 — choisir une autre devise ICI fait paraître le taux, obligatoire : la première étape
+        // du taux (après le client) était déjà passée, et la visite menait à « Enregistrer », qui
+        // refusait une case que personne n'avait montrée (vu à la souris : EUR choisi dans la liste
+        // éclairée). Elle ne paraît que si le taux est là ET encore vide.
+        Object.assign(etapeTaux('#rate-field'), {
+          texte: 'Ce devis est maintenant dans une autre devise que le dinar. Le taux dit combien vaut <b>une unité</b> de cette devise en dinars : c\'est lui qui convertit la pièce dans ta comptabilité et ta TVA. <b>Il est obligatoire</b> — sans lui, « Enregistrer » refuse le devis.',
+          si: () => !!$('#rate-field:not([hidden])') && !(Number(String(valeur('#rate-field input[name="exchangeRate"]') || '').replace(',', '.')) > 0)
+        }),
+        { cible: '#view select[name="status"]', cote: 'dessous', titre: 'Son statut',
+          texte: 'Le devis naît « Brouillon ». C\'est toi qui le passes à « Envoyé », puis à « Accepté » ou « Refusé » quand ton client répond : SkanFact ne peut pas le deviner.' },
+        { cible: '#view input[name="discountRate"]', cote: 'dessous', titre: 'Une remise',
+          texte: 'Un pourcentage retiré du total hors taxe, avant la TVA. Elle s\'affiche en clair sur le devis. Pour une remise sur une seule ligne, baisse plutôt son prix.' },
         // La case de la désignation est éclairée aussi : la bulle propose d'y taper, elle ne reste pas
         // dans l'ombre (10.14.1 — « ce dont le guide parle, je dois pouvoir cliquer dessus »).
         { cible: ['#cat-pick .combo-btn', '#add-line'], cote: 'dessus', titre: 'Ajouter une ligne', eclairer: '#lines tr:first-child input[data-k="label"]',
@@ -1121,10 +1154,21 @@
         { cible: '#lines tr:first-child input[data-k="qty"]', cote: 'dessous', faire: 'valeur',
           titre: 'La quantité', texte: 'Des heures, des pièces, un forfait : l\'unité se choisit juste à côté.',
           action: 'Indique la quantité.', fait: () => Number(valeur('#lines tr:first-child input[data-k="qty"]')) > 0, essai: { taper: '2' } },
+        // 10.14.1 — l'unité et la TVA de la ligne, les deux cases que la visite laissait seules (vu au
+        // guide : « unité (u) » et « 19 % » sans un mot, sur la seule ligne d'un premier devis).
+        { cible: '#lines tr:first-child select[data-k="unit"]', cote: 'dessous', titre: 'L\'unité',
+          texte: 'Elle s\'imprime à côté de la quantité : heure, jour, pièce, forfait, mètre carré… Une prestation du catalogue apporte la sienne. « Autre… », en bas de la liste, en ajoute une qui y restera.' },
         { cible: '#lines tr:first-child input[data-k="unitPrice"]', cote: 'dessous', faire: 'valeur',
           titre: 'Le prix unitaire hors taxe', texte: 'Le prix d\'une unité, <b>hors TVA</b>. La TVA et le total se calculent tout seuls.',
           action: 'Tape le prix unitaire HT.', fait: () => Number(valeur('#lines tr:first-child input[data-k="unitPrice"]')) > 0, essai: { taper: '350' } },
-        { cible: '#totals', cote: 'gauche', titre: 'Les totaux', texte: 'Hors taxe, TVA, total : tout suit ce que tu tapes, ligne par ligne. Rien à calculer.' },
+        { cible: '#lines tr:first-child select[data-k="vatRate"]', cote: 'dessous', titre: 'La TVA de la ligne',
+          texte: 'Le taux vient de la prestation du catalogue, sinon de tes Paramètres. Chaque ligne a le sien : une prestation exonérée reste à 0 % à côté des autres. En cas de doute sur un taux, À VÉRIFIER avec ton comptable.' },
+        { cible: '#totals', cote: 'gauche', titre: 'Les totaux', texte: 'Hors taxe, TVA, total : tout suit ce que tu tapes, ligne par ligne. Rien à calculer. Dessous, la <b>marge estimée</b> retire le coût de revient de chaque ligne (celui de ton catalogue) : c\'est pour toi, elle ne s\'imprime pas.' },
+        // 10.14.1 — les deux panneaux sous les lignes, que la visite laissait seuls (vu au guide).
+        { cible: '#p-pj', cote: 'dessus', titre: 'Les pièces jointes',
+          texte: 'Le bon de commande du client, une photo du chantier, le devis signé scanné : « + Joindre un fichier… » les range avec ce devis. Le fichier est <b>copié</b> à côté de tes données, et la pièce porte un 📎 dans les listes. Rien ne s\'imprime sur le devis.' },
+        { cible: '#notes', cote: 'dessus', titre: 'Les notes',
+          texte: 'Un texte libre <b>imprimé</b> sur le devis : délai d\'intervention, matériel non compris, conditions particulières. Les phrases que tu réutilises s\'enregistrent en « textes prédéfinis » dans le Catalogue, pour les insérer en un clic.' },
         { cible: ['#view .preview', '#pv-toggle'], cote: 'gauche', titre: 'L\'aperçu', texte: 'À droite, le document <b>tel que ton client le recevra</b>, mis à jour à chaque frappe. Le repère « 1 page » dit combien de feuilles il fera une fois imprimé, et « Agrandir » l\'ouvre en grand pour le relire avant de l\'envoyer.' },
         { cible: '#save', cote: 'dessous', faire: 'clic',
           titre: 'Enregistrer', texte: 'Le devis reçoit son numéro. Tu pourras encore le modifier tant qu\'il n\'est pas accepté.',

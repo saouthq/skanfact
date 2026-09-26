@@ -1191,7 +1191,10 @@
     if (el) cur.vu = true;
     // Pendant un essai sur une CASE, le choix fait change le bouton principal de la bulle réduite.
     if (cur.essai && cur.essai.v0 != null) {
-      const change = etatDeCase(caseDe(el)) !== cur.essai.v0;
+      const liste = genreDeCase(caseDe(el)) === 'liste';
+      const ouverte = liste && listesOuvertes().length > 0;
+      if (ouverte) cur.essai.ouvert = true;
+      const change = essaiAbouti({ v0: cur.essai.v0, v: etatEssai(e), liste, aEteOuverte: !!cur.essai.ouvert, ouverte });
       if (change !== !!cur.essai.change) { cur.essai.change = change; dessinerBulle(); }
     }
     // Le geste est fait ? La preuve de l'étape (`fait`), relevée à chaque tour — et son état à
@@ -1268,8 +1271,7 @@
     if (ev.type !== 'pointerdown' || cur.essai || cur.attente) return;
     const e = etape();
     if (!e || estFaire(e) || !ouvreEssai(t)) return;
-    const c0 = caseDe(cibleDe(e));
-    cur.essai = { x: ev.clientX, y: ev.clientY, v0: etatDeCase(c0) };
+    cur.essai = { x: ev.clientX, y: ev.clientY, v0: etatEssai(e) };
     dessinerBulle();
   }
   // Un clic ouvre l'essai s'il vise un CONTRÔLE — pas s'il entre dans une case pour y écrire. Chaque
@@ -1851,6 +1853,26 @@
     const cochable = genreDeCase(c) === 'case';
     return cochable ? 'coche:' + !!c.checked : 'valeur:' + String(c.value == null ? '' : c.value);
   }
+  // L'état de TOUT ce qu'un essai peut changer : la case de la cible, et les cases que l'étape
+  // éclaire à côté d'elle (`eclairer`). « Ajouter depuis le catalogue » remet sa liste à zéro après
+  // le choix : sa case ne change pas, la désignation de la ligne si — sans elle, la bulle réduite
+  // répétait « Vas-y, essaie » sur une ligne déjà ajoutée (vu au guide, 10.14.1). `null` sans case.
+  function etatEssai(e) {
+    const els = [cibleDe(e)];
+    const ecl = e && e.eclairer ? (Array.isArray(e.eclairer) ? e.eclairer : [e.eclairer]) : [];
+    for (const s of ecl) { try { els.push(document.querySelector(s)); } catch (_) { /* sélecteur invalide : rien */ } }
+    const etats = els.map(x => etatDeCase(caseDe(x))).filter(x => x != null);
+    return etats.length ? etats.join('|') : null;
+  }
+  // Un essai sur une case est ABOUTI quand la case a changé — ou, pour une liste, quand elle a été
+  // ouverte puis refermée : garder ce qui était proposé (« Aucune affaire », « unité ») est un choix,
+  // et « Reprendre la visite » ramenait à une étape qui disait justement « garde ce qui est proposé,
+  // puis Suivant » — un clic de plus pour rien (vu au guide, 10.14.1). PURE.
+  function essaiAbouti(o) {
+    if (!o) return false;
+    if (o.v !== o.v0) return true;
+    return !!(o.liste && o.aEteOuverte && !o.ouverte);
+  }
   function caseRemplie(c) {
     const brut = String((c && c.value) || '').trim();
     return genreDeCase(c) === 'texte' && brut !== '' && !ZERO.test(brut);
@@ -2347,7 +2369,7 @@
   const etapeCourante = () => { const e = etape(); if (!e) return null; const c = Object.assign({}, e); delete c.el; return c; };
 
   const api = { installer, lancer, quitter, enCours, etapeCourante, suivant, precedent, chapitreSuivant, reprendre, gestePasse, consequenceDuGeste, gesteQuiOuvre, issueDeFin, phrasePasses, texteDeFin, selonFin, finsHonnetes,
-    toucheAvance, ouvreEssai, pagesDuGeste, ongletDuGeste, guideDeLaPage, dansLeGuide, menuDuGuide, placerBulle, placerPres, largeurPres, zoneDeLaCase, placerMini, caseDe, genreDeCase, consigneDeCase, caseRemplie, etatDeCase, typo, chevauche, decouperHaut, trousDeListe, hautPourBulle, hautPourCouper, viseLaCible, estFaire, decider, enAttenteDe, compteDe, pointDeReprise, etapeAvecPage, repriseDuGeste, valeurDefaiteAvant, changementDePage, versLaReprise, dejaRempliDe, valeurDonnee, normNom, nomsCites, lieuDe, ouvrirOnglet,
+    toucheAvance, ouvreEssai, pagesDuGeste, ongletDuGeste, guideDeLaPage, dansLeGuide, menuDuGuide, placerBulle, placerPres, largeurPres, zoneDeLaCase, placerMini, caseDe, genreDeCase, consigneDeCase, caseRemplie, etatDeCase, typo, chevauche, decouperHaut, trousDeListe, hautPourBulle, hautPourCouper, viseLaCible, estFaire, decider, enAttenteDe, compteDe, pointDeReprise, etapeAvecPage, repriseDuGeste, valeurDefaiteAvant, changementDePage, versLaReprise, dejaRempliDe, valeurDonnee, essaiAbouti, normNom, nomsCites, lieuDe, ouvrirOnglet,
     chapitres, resoudre, visible, listerControles, etapesDeLaVue, blocsDe, cheminDe, PATIENCE, PATIENCE_FACULTATIVE, CONTROLES,
     nettoie, libelleDe, resumeBulle, routeDe, expliqueur, zoneur, phraseDuHaut, texteDuHaut };
   global.Visite = api;

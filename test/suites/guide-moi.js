@@ -177,6 +177,11 @@ t('S-03 : sur une pièce ouverte, « Guide-moi » ne propose que ce qui s\'y fai
     // Sur la LISTE des factures, ils sont tous là : on choisira la pièce en route.
     const liste = ids(V.guideDeLaPage(vs, 'factures', { cleDe: cleEnt }).ici);
     assert.ok(surDoc.filter(id => V.pagesDuGeste(vs.find(v => v.id === id), cleEnt).includes('factures')).every(id => liste.includes(id)));
+    // « Faire un devis » vit aussi dans l'éditeur d'un devis NEUF (10.14.1) : c'est là qu'on ouvre
+    // « Guide-moi » après s'être arrêté au milieu — et nulle part ailleurs sur une pièce.
+    assert.ok(!ici.includes('premier-devis'), '« Faire un devis » proposé sur un brouillon de facture');
+    globalThis.location = { hash: '#/doc/new/devis' };
+    assert.ok(ids(V.guideDeLaPage(vs, 'doc', { cleDe: cleEnt }).ici).includes('premier-devis'), '« Faire un devis » n\'est pas proposé dans l\'éditeur d\'un devis neuf');
   } finally { if (avant === undefined) delete globalThis.location; else globalThis.location = avant; }
 });
 

@@ -1182,7 +1182,24 @@ t('10.14.1 : une étape à lire sur une CASE dit quoi en faire — taper, choisi
   const srcMini = require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'src', 'renderer', 'visite.js'), 'utf8');
   assert.ok(/essai && cur\.essai\.change\s*\?\s*`<button type="button" class="vb-lien" data-v="reprendre">[^`]*<button type="button" class="vb-suiv" data-v="suiv">/.test(srcMini),
     'après un choix dans la case éclairée, le bouton principal de la bulle réduite ramène encore à la même étape');
-  assert.ok(/cur\.essai = \{[^}]*v0: etatDeCase\(/.test(srcMini), 'l\'essai ne note pas l\'état de la case à son ouverture');
+  assert.ok(/cur\.essai = \{[^}]*v0: etatEssai\(e\)/.test(srcMini), 'l\'essai ne note pas l\'état de la case à son ouverture');
+  // … ni celui des cases que l'étape ÉCLAIRE à côté de sa cible (10.14.1) : « Ajouter depuis le
+  // catalogue » remet sa liste à zéro, c'est la désignation de la ligne qui change.
+  const corpsEssai = (srcMini.match(/function etatEssai\(e\) \{[\s\S]*?\n  \}/) || [''])[0];
+  // Joué, pas lu : une mention de `e.eclairer` restait vraie avec la boucle retirée.
+  const vmEssai = require('vm');
+  const bac = { document: { querySelector: s => ({ v: 'ecl:' + s }) }, cibleDe: e => e.el, caseDe: x => x, etatDeCase: x => (x ? x.v : null) };
+  vmEssai.runInNewContext(corpsEssai + '\nthis.etatEssai = etatEssai;', bac);
+  assert.strictEqual(bac.etatEssai({ el: { v: 'a' }, eclairer: ['#l1', '#l2'] }), 'a|ecl:#l1|ecl:#l2', 'l\'essai ne regarde pas les cases éclairées par l\'étape');
+  assert.strictEqual(bac.etatEssai({ el: { v: 'a' }, eclairer: '#l1' }), 'a|ecl:#l1', 'un seul sélecteur éclairé n\'est pas regardé');
+  assert.strictEqual(bac.etatEssai({ el: null }), null, 'un essai sans case rend un état');
+  assert.ok(/const change = essaiAbouti\(\{ v0: cur\.essai\.v0, v: etatEssai\(e\)/.test(srcMini), 'le changement pendant l\'essai ne se juge pas sur le même état qu\'à son ouverture');
+  // Garder ce qu'une liste proposait est un choix : ouverte puis refermée, l'essai a abouti.
+  assert.strictEqual(V.essaiAbouti({ v0: 'a', v: 'b' }), true);
+  assert.strictEqual(V.essaiAbouti({ v0: 'a', v: 'a', liste: true, aEteOuverte: true, ouverte: false }), true, 'un choix identique à la proposition, dans une liste, ne compte pas');
+  assert.strictEqual(V.essaiAbouti({ v0: 'a', v: 'a', liste: true, aEteOuverte: true, ouverte: true }), false, 'une liste encore ouverte passe pour un choix fait');
+  assert.strictEqual(V.essaiAbouti({ v0: 'a', v: 'a', liste: true, aEteOuverte: false, ouverte: false }), false, 'une liste jamais ouverte passe pour un choix fait');
+  assert.strictEqual(V.essaiAbouti({ v0: 'a', v: 'a', liste: false, aEteOuverte: true, ouverte: false }), false, 'une case de texte inchangée passe pour un choix fait');
   const srcV = require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'src', 'renderer', 'visite.js'), 'utf8');
   assert.strictEqual((srcV.match(/valeurDonnee\(el\.value, cur\.valeur0\)/g) || []).length, 2, 'un des deux chemins d\'un geste « valeur » juge encore la case sur sa seule présence');
   assert.strictEqual(V.caseRemplie(champ('SELECT', { value: 'h' })), false, 'une liste n\'est jamais « remplie » au sens d\'un texte');

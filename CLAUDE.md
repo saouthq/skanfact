@@ -8645,6 +8645,22 @@ lots ; le détail de ce qui reste vit dans `A-FAIRE.md` § 0.
   après le prix, les numéros de série après le bloc stock qu'ils précèdent.
 - **Une phrase de reprise dit ce qui va arriver, pas ce qui est arrivé** : « Arrêtée à l'étape 2 — tu
   étais à l'étape 4 » se lisait comme deux arrêts ; « Reprise à l'étape 2 — tu étais à l'étape 4 ».
+- **Ce qu'une étape fait APPARAÎTRE a son étape, juste après elle** (le devis, joué au guide) : choisir
+  EUR sur l'étape de la devise faisait paraître le taux, obligatoire, et la visite l'avait déjà passé
+  (sa première étape du taux suit le CLIENT) — elle menait jusqu'à « Enregistrer », qui refusait une
+  case que personne n'avait montrée. Une seconde étape du taux, conditionnelle (`si` : champ visible ET
+  vide), vit entre la devise et le statut. Le test cherche le taux dans cette tranche-là.
+- **Un essai se juge sur TOUT ce que l'étape éclaire** (`etatEssai`) : « Ajouter depuis le catalogue »
+  remet sa liste à zéro, c'est la désignation de la ligne qui change — la bulle répétait « Vas-y,
+  essaie » sur une ligne ajoutée. Et **garder la valeur d'une liste est un choix** (`essaiAbouti`) :
+  ouverte puis refermée sur « unité (u) », l'essai a abouti. La preuve de `etatEssai` est restée
+  VERTE sur une assertion qui cherchait la MENTION de `e.eclairer` : le test JOUE maintenant la
+  fonction (vm, document factice) — une mention survit à la boucle retirée (7.2.0).
+- **Un guide qui s'ouvre au milieu d'un geste le propose, et ne le recommence pas** : « Guide-moi »
+  dans l'éditeur d'un devis neuf ne proposait pas « Faire un devis » (ses `pages` ne connaissaient pas
+  `doc`) ; ajouté avec `surLaPage` (seulement un devis NEUF, jamais une autre pièce), la visite lancée
+  de là renvoyait à la liste recliquer « Nouveau devis » — on croyait le devis perdu. La première étape
+  porte `si` : déjà dans un devis neuf, elle se saute.
 
 ## Pistes pour la suite (non demandées)
 

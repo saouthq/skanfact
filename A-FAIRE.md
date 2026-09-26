@@ -299,7 +299,12 @@ et au moteur), puis en stable quand Skander valide.*
     enregistré » (2/10). Une étape à lire posée sur une case reçoit sa consigne, déduite par le moteur
     (19 étapes des deux applications). Puis « Ajouter une prestation » guidée case par case (stock
     compris), le zéro d'arrivée qui passait pour une réponse, et la suite qui passe devant après un
-    choix pendant l'essai. Suite : premier devis, envoi, facture, encaissement, copie. Petits notés : le toast « C'est prêt. » après l'assistant est laconique ;
+    choix pendant l'essai. Puis « Faire un devis » joué jusqu'à « Ton devis est prêt » : le taux après
+    une devise choisie en route, l'unité et la TVA de la ligne, la marge, les pièces jointes et les notes
+    (+ 14 preuves), et « Guide-moi » de l'éditeur qui propose ou reprend le devis sans renvoyer à la
+    liste. Suite : envoi, facture, encaissement, copie. Petits notés sur le devis : la bulle de la
+    quantité couvre l'unité et la TVA de la ligne (on les lit après) ; lancée depuis l'éditeur, la
+    visite compte encore « Étape 2 sur 24 » (l'étape sautée reste comptée). Petits notés : le toast « C'est prêt. » après l'assistant est laconique ;
     l'invitation « Première fois sur cette page » couvre le texte des premiers pas ; la visite
     « Ajouter une prestation au catalogue » porte l'icône des clients (thème « fichiers »).
   - **Cabinet, tout joué au guide.** À vérifier encore : « Me guider » marque « Clôturer un exercice —
