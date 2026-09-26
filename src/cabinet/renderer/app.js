@@ -579,7 +579,7 @@
     return new Promise(resolve => {
       modal(
         `<h2>${esc(title)}</h2><p class="muted small">${esc(note || '')}</p>
-         <label class="field mt">Mot de passe<span class="pw-wrap"><input type="password" id="pw" autocomplete="off"><button type="button" class="pw-eye" id="eye" aria-label="Afficher le mot de passe">Afficher</button></span></label>
+         <label class="field mt">${lbl('Mot de passe', 'b.pwOuvrir')}<span class="pw-wrap"><input type="password" id="pw" autocomplete="off"><button type="button" class="pw-eye" id="eye" aria-label="Afficher le mot de passe">Afficher</button></span></label>
          <div class="modal-actions"><button class="btn" id="no">Annuler</button>
          <button class="btn btn-primary" id="ok">${esc(okLabel || 'Ouvrir')}</button></div>`,
         (layer, close) => {
@@ -987,7 +987,7 @@
        ${vu.packs ? '' : `<div class="warn-box mt">Aucun paquet là-dedans : tes dossiers et ta clé reviendront, pas les pièces déjà reçues.
          Si tu as le dossier <code>paquets</code> ailleurs, recopie-le ensuite dans le dossier de l'application
          (Réglages → Données et sécurité → Sauvegardes, « Ouvrir le dossier ») : elles seront retrouvées à l'ouverture suivante.</div>`}
-       <label class="field mt">Le mot de passe de ce cabinet<span class="pw-wrap">
+       <label class="field mt">${lbl('Le mot de passe de ce cabinet', 'b.pwReprise')}<span class="pw-wrap">
          <input type="password" id="rp-pw" autocomplete="current-password"><button type="button" class="pw-eye" id="rp-eye">Afficher</button></span></label>
        <p class="muted small">Celui de l'autre ordinateur : c'est lui qui chiffre ce fichier, il n'a pas changé.</p>
        <div class="modal-actions"><button class="btn" id="rp-no">Annuler</button><button class="btn btn-primary" id="rp-go">Reprendre ce cabinet</button></div>`,
@@ -4787,9 +4787,9 @@
       <p class="small muted">Ce qui se réintègre et ce qui se déduit dépend du <b>droit fiscal</b>, pas de nous :
       rien n'est proposé, chaque ligne se saisit et s'explique. <em>À VÉRIFIER avec ton client.</em></p>
       <div class="grid-2">
-        <label class="field"><span>Nature</span><select id="rt-nature">${nats.map(n => `<option value="${esc(n.id)}">${esc(n.label)}</option>`).join('')}</select></label>
-        <label class="field obligatoire"><span>Montant (DT)</span><input type="text" id="rt-montant" class="num montant" inputmode="decimal" placeholder="0,000"></label>
-        <label class="field obligatoire span-2"><span>Libellé</span><input type="text" id="rt-libelle" placeholder="Amende fiscale non déductible"></label>
+        <label class="field">${lbl('Nature', 'li.rtNature')}<select id="rt-nature">${nats.map(n => `<option value="${esc(n.id)}">${esc(n.label)}</option>`).join('')}</select></label>
+        <label class="field obligatoire">${lbl('Montant (DT)', 'li.rtMontant')}<input type="text" id="rt-montant" class="num montant" inputmode="decimal" placeholder="0,000"></label>
+        <label class="field obligatoire span-2">${lbl('Libellé', 'li.rtLibelle')}<input type="text" id="rt-libelle" placeholder="Amende fiscale non déductible"></label>
       </div>
       <p class="small muted" id="rt-aide">${esc(nats[0].aide)}</p>
       <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="rt-ok">Ajouter</button></div>`,
@@ -5032,7 +5032,7 @@
     $$('[data-qq]', el).forEach(b => { b.onclick = () => {
       const q = (s.revision.dossier.questionnaire || []).find(x => x.id === b.dataset.qq);
       modal(`<h2>Répondre</h2><p class="small">${esc((q && q.question) || '')}</p>
-        <label class="field"><span>La réponse</span><textarea id="qq-rep" rows="3">${esc((q && q.reponse) || '')}</textarea></label>
+        <label class="field">${lbl('La réponse', 'rv.reponse')}<textarea id="qq-rep" rows="3">${esc((q && q.reponse) || '')}</textarea></label>
         <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="qq-ok">Enregistrer</button></div>`,
       (couche, close) => { $('#qq-ok', couche).onclick = async () => {
         try {
@@ -5083,7 +5083,7 @@
     modal(`<h2>Note de revue</h2>
       <p class="small muted">Ce qu'il reste à vérifier${base.compte ? ` sur le compte ${esc(base.compte)}` : ''}. Elle reste dans le
       dossier de révision et ne part jamais chez le client — c'est une note pour toi et ton équipe.</p>
-      <label class="field obligatoire"><span>La note</span><textarea id="nv-texte" rows="3" placeholder="Rapprocher le 471 avec le relevé de décembre"></textarea></label>
+      <label class="field obligatoire">${lbl('La note', 'rv.note')}<textarea id="nv-texte" rows="3" placeholder="Rapprocher le 471 avec le relevé de décembre"></textarea></label>
       <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="nv-ok">Écrire la note</button></div>`,
     (couche, close) => { $('#nv-ok', couche).onclick = async () => {
       const t = $('#nv-texte', couche).value.trim();
@@ -5142,7 +5142,7 @@
       <p class="small">${esc(pl(en.length, 'question partira', 'questions partiront'))} dans un fichier <code>.skanask</code>.
       Chez le client, chacune s'affiche en face de la pièce qu'elle vise, et ses réponses reviennent dans son prochain paquet.</p>
       <label class="check"><input type="checkbox" id="qe-seal"> Protéger le fichier par un mot de passe</label>
-      <label class="field" id="qe-pwf" hidden><span>Le mot de passe</span><input type="password" id="qe-pw" placeholder="Dis-le-lui au téléphone, jamais dans le même mail"></label>
+      <label class="field" id="qe-pwf" hidden>${lbl('Le mot de passe', 'rv.pwQuestions')}<input type="password" id="qe-pw" placeholder="Dis-le-lui au téléphone, jamais dans le même mail"></label>
       <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="qe-ok">Écrire le fichier…</button></div>`,
     (couche, close) => {
       const c = $('#qe-seal', couche);
@@ -5175,7 +5175,7 @@
     modal(`<h2>Rouvrir l'exercice ${esc(s.annee)}</h2>
       <p class="small muted">Le motif est la <b>seule trace</b> qui expliquera, dans six mois, pourquoi un
       chiffre a changé après que le client a reçu ses états. Il est obligatoire.</p>
-      <label class="field obligatoire"><span>Pourquoi rouvrir</span>
+      <label class="field obligatoire">${lbl('Pourquoi rouvrir', 'cl.motif')}
         <textarea id="cl-motif" rows="3" placeholder="Facture d'électricité de décembre reçue après la clôture"></textarea></label>
       <div class="modal-actions"><button class="btn" data-close>Annuler</button>
         <button class="btn btn-primary" id="ok">Rouvrir</button></div>`,
@@ -5201,7 +5201,7 @@
       <p class="small muted">Un fichier <code>.skanclose</code> : les à-nouveaux officiels, les écritures
       d'inventaire, et les états en <b>HTML et PDF</b> — lisibles par n'importe qui, même par un client
       qui ne met jamais son application à jour. Sans lui, son bilan et le tien divergent pour toujours.</p>
-      <label class="field"><span>Mot de passe (facultatif)</span>
+      <label class="field">${lbl('Mot de passe (facultatif)', 'cl.mdp')}
         <input id="cl-mdp" type="password" placeholder="Laisse vide pour un fichier non scellé"></label>
       <p class="small muted">Le mot de passe se dit au téléphone, jamais dans le même mail que le fichier.
       La clé de signature de ton cabinet, elle, est posée automatiquement : c'est elle qui prouve que ce
@@ -5438,28 +5438,28 @@
       + Object.entries(KC.soldesDepuisOuverture(s.livre)).filter(([c]) => c.startsWith('28')).reduce((t, [, v]) => t - v, 0)) : 0;
     modal(`<h2>${neuf ? 'Ajouter un bien' : 'Modifier ' + esc(f.libelle)}</h2>
       <form id="im" class="grid-2">
-        <label class="field obligatoire span-2"><span>Désignation</span>
+        <label class="field obligatoire span-2">${lbl('Désignation', 'im.designation')}
           <input name="libelle" value="${esc(f.libelle || '')}" placeholder="Serveur Dell R450"></label>
-        <label class="field"><span>Famille</span>
+        <label class="field">${lbl('Famille', 'im.famille')}
           <select name="famille"><option value="">—</option>${familles.map(c =>
     `<option value="${esc(c[0])}" data-duree="${c[2]}">${esc(c[1])} (${c[2]} ans)</option>`).join('')}</select></label>
-        <label class="field obligatoire"><span>Durée (années)</span>
+        <label class="field obligatoire">${lbl('Durée (années)', 'im.duree')}
           <input name="duree" class="num" inputmode="numeric" value="${esc(String(f.duree || ''))}"></label>
-        <label class="field obligatoire"><span>Date de mise en service</span>
+        <label class="field obligatoire">${lbl('Date de mise en service', 'im.miseEnService')}
           <input name="dateMiseEnService" placeholder="JJ/MM/AAAA" value="${esc(fmtJour(f.dateMiseEnService || ''))}"></label>
-        <label class="field"><span>Date d'acquisition</span>
+        <label class="field">${lbl('Date d\'acquisition', 'im.acquisition')}
           <input name="dateAcquisition" placeholder="JJ/MM/AAAA" value="${esc(fmtJour(f.dateAcquisition || ''))}"></label>
         ${/* H-3 — un montant s'écrit dans son champ comme à l'écran (« 1 500,000 »), jamais
               « 1500.5 » : c'est le comptable qui relit le champ, et en français le point sépare
               les milliers. Il se relit par la porte commune (`lireMontant`), qui comprend les deux. */''}
-        <label class="field obligatoire"><span>Valeur d'acquisition HT (DT)</span>
+        <label class="field obligatoire">${lbl('Valeur d\'acquisition HT (DT)', 'im.valeur')}
           <input name="valeur" class="num montant" inputmode="decimal" placeholder="0,000" value="${esc(montantChamp(f.valeur))}"></label>
-        <label class="field"><span>Valeur résiduelle (DT)</span>
+        <label class="field">${lbl('Valeur résiduelle (DT)', 'im.residuelle')}
           <input name="residuelle" class="num montant" inputmode="decimal" placeholder="0,000" value="${esc(montantChamp(f.residuelle))}"></label>
         <label class="field">${lbl('Méthode', 'im.verifier')}
           <select name="methode">${KC.IMMO_METHODES.map(m =>
     `<option value="${m}" ${(f.methode || 'lineaire') === m ? 'selected' : ''}>${esc(METHODE_LABEL[m])}</option>`).join('')}</select></label>
-        <label class="field" id="im-taux-l"><span>Taux dégressif (%)</span>
+        <label class="field" id="im-taux-l">${lbl('Taux dégressif (%)', 'im.tauxDegressif')}
           <input name="tauxDegressif" class="num" inputmode="decimal" value="${esc(taux(f.tauxDegressif))}"></label>
         <label class="check span-2" id="im-bascule-l"><input type="checkbox" name="bascule" ${f.bascule ? 'checked' : ''}>
           Basculer au linéaire quand il devient plus favorable</label>
@@ -5467,18 +5467,18 @@
               seulement quand on a choisi le dégressif. Elle vivait dans un panneau permanent,
               sous le tableau, où personne ne la relisait au moment de choisir. */''}
         <p class="small muted champ-note span-2" id="im-degr-n">${esc(KC.IMMO_A_VERIFIER.tauxDegressif)} ${esc(KC.IMMO_A_VERIFIER.bascule)}</p>
-        <label class="field obligatoire"><span>Compte du bien</span>
+        <label class="field obligatoire">${lbl('Compte du bien', 'im.compte')}
           <input name="compte" value="${esc(f.compte || '22')}" list="im-c1"><datalist id="im-c1">${dl('2').map(c => `<option value="${esc(c)}">`).join('')}</datalist></label>
-        <label class="field"><span>Compte d'amortissement</span>
+        <label class="field">${lbl('Compte d\'amortissement', 'im.compteAmort')}
           <input name="compteAmort" value="${esc(f.compteAmort || '28')}" list="im-c1"></label>
-        <label class="field"><span>Compte de dotation</span>
+        <label class="field">${lbl('Compte de dotation', 'im.compteDotation')}
           <input name="compteDotation" value="${esc(f.compteDotation || '681')}" list="im-c2"><datalist id="im-c2">${dl('6').map(c => `<option value="${esc(c)}">`).join('')}</datalist></label>
-        <label class="field"><span>Subvention reçue (DT, À VÉRIFIER)</span>
+        <label class="field">${lbl('Subvention reçue (DT, À VÉRIFIER)', 'im.subvention')}
           <input name="subvention" class="num montant" inputmode="decimal" placeholder="0,000" value="${esc(montantChamp(f.subvention && f.subvention.montant))}">
           <span class="champ-note" id="im-sub-n">${esc(KC.IMMO_A_VERIFIER.subvention)}</span></label>
-        <label class="field"><span>Date de cession ou de rebut</span>
+        <label class="field">${lbl('Date de cession ou de rebut', 'im.cessionDate')}
           <input name="cessionDate" placeholder="JJ/MM/AAAA" value="${esc(fmtJour((f.cession && f.cession.date) || ''))}"></label>
-        <label class="field"><span>Prix de cession (DT, 0 = rebut)</span>
+        <label class="field">${lbl('Prix de cession (DT, 0 = rebut)', 'im.cessionPrix')}
           <input name="cessionPrix" class="num montant" inputmode="decimal" placeholder="0,000" value="${esc(montantChamp(f.cession && f.cession.prix))}"></label>
       </form>
       ${f.reprise ? `<div class="warn-box mt"><b>Cette ligne est un à-nouveau.</b> Elle porte un bien — ou tout un parc —
@@ -5907,21 +5907,21 @@
     const e = x || { contrat: 'cdi', actif: true, enfants: 0 };
     modal(`<h2>${x ? 'Modifier ' + esc(x.nom) : 'Déclarer un salarié'}</h2>
       <form id="sf" class="grid-2">
-        <label class="field obligatoire span-2"><span>Nom et prénom</span><input name="nom" value="${esc(e.nom || '')}"></label>
-        <label class="field"><span>N° CIN</span><input name="cin" value="${esc(e.cin || '')}"></label>
-        <label class="field"><span>N° CNSS</span><input name="cnss" value="${esc(e.cnss || '')}"></label>
+        <label class="field obligatoire span-2">${lbl('Nom et prénom', 'pa.nom')}<input name="nom" value="${esc(e.nom || '')}"></label>
+        <label class="field">${lbl('N° CIN', 'pa.cin')}<input name="cin" value="${esc(e.cin || '')}"></label>
+        <label class="field">${lbl('N° CNSS', 'pa.numCnss')}<input name="cnss" value="${esc(e.cnss || '')}"></label>
         <label class="field span-2">${lbl('Identité CNSS (comme sur la carte d\'assuré)', 'pa.identite')}<input name="identiteCnss" value="${esc(e.identiteCnss || '')}" placeholder="Prénom, prénom du père, nom"></label>
-        <label class="field span-2"><span>Poste occupé</span><input name="poste" value="${esc(e.poste || '')}"></label>
-        <label class="field"><span>Type de contrat</span><select name="contrat">${KC.CONTRACT_TYPES.map(c => `<option value="${c[0]}" ${c[0] === (e.contrat || 'cdi') ? 'selected' : ''}>${esc(c[1].split(' —')[0])}</option>`).join('')}</select></label>
+        <label class="field span-2">${lbl('Poste occupé', 'pa.poste')}<input name="poste" value="${esc(e.poste || '')}"></label>
+        <label class="field">${lbl('Type de contrat', 'pa.contrat')}<select name="contrat">${KC.CONTRACT_TYPES.map(c => `<option value="${c[0]}" ${c[0] === (e.contrat || 'cdi') ? 'selected' : ''}>${esc(c[1].split(' —')[0])}</option>`).join('')}</select></label>
         ${/* 10.12.0 — la règle H-3 portée à la Paie (le jumeau manquant) : un montant s'écrit et se
               relit en français (« 1 250,500 »), une date se saisit JJ/MM/AAAA. Les champs
               numériques du navigateur refusaient la virgule sans un mot, et « AAAA-MM-JJ » était
               le format interne affiché sur un écran de saisie (règle 9.4.5). */''}
-        <label class="field obligatoire"><span>Salaire brut mensuel (DT)</span><input name="brut" type="text" inputmode="decimal" class="num montant" placeholder="0,000" value="${esc(montantChamp(e.brut))}"></label>
-        <label class="field obligatoire"><span>Date d'embauche</span><input name="embauche" placeholder="JJ/MM/AAAA" value="${esc(e.embauche ? fmtJour(e.embauche) : '')}"></label>
-        <label class="field"><span>Date de sortie</span><input name="sortie" placeholder="JJ/MM/AAAA" value="${esc(e.sortie ? fmtJour(e.sortie) : '')}"></label>
+        <label class="field obligatoire">${lbl('Salaire brut mensuel (DT)', 'pa.brut')}<input name="brut" type="text" inputmode="decimal" class="num montant" placeholder="0,000" value="${esc(montantChamp(e.brut))}"></label>
+        <label class="field obligatoire">${lbl('Date d\'embauche', 'pa.embauche')}<input name="embauche" placeholder="JJ/MM/AAAA" value="${esc(e.embauche ? fmtJour(e.embauche) : '')}"></label>
+        <label class="field">${lbl('Date de sortie', 'pa.sortie')}<input name="sortie" placeholder="JJ/MM/AAAA" value="${esc(e.sortie ? fmtJour(e.sortie) : '')}"></label>
         <label class="check span-2"><input type="checkbox" name="chefDeFamille" ${e.chefDeFamille ? 'checked' : ''}> Chef de famille (déduction annuelle)</label>
-        <label class="field"><span>Enfants à charge</span><input name="enfants" type="number" min="0" step="1" class="num" value="${esc(String(e.enfants || 0))}"></label>
+        <label class="field">${lbl('Enfants à charge', 'pa.enfants')}<input name="enfants" type="number" min="0" step="1" class="num" value="${esc(String(e.enfants || 0))}"></label>
       </form>
       <p class="small muted">Le numéro CNSS n'est pas nécessaire pour calculer un bulletin ; la déclaration trimestrielle le
       demande. Le chef de famille et les enfants à charge entrent dans le calcul de l'IRPP.
@@ -5973,17 +5973,17 @@
     const brutDefaut = b ? b.brut : ((actifs[0] || {}).brut || 0);
     modal(`<h2>${b ? 'Modifier le bulletin' : 'Établir un bulletin'}</h2>
       <form id="bf" class="grid-2">
-        <label class="field obligatoire span-2"><span>Salarié</span>
+        <label class="field obligatoire span-2">${lbl('Salarié', 'pa.bSalarie')}
           <select name="salarieId" ${b ? 'disabled' : ''}>${actifs.map(x => `<option value="${esc(x.id)}" ${x.id === salDefaut ? 'selected' : ''}>${esc(x.nom)}</option>`).join('')}</select></label>
-        <label class="field"><span>Mois</span><select name="mois">${KC.MOIS_PAIE.map((lab, i) => `<option value="${i + 1}" ${i + 1 === Number(e.mois) ? 'selected' : ''}>${esc(lab)}</option>`).join('')}</select></label>
-        <label class="field obligatoire"><span>Brut du mois (DT)</span><input name="brut" type="text" inputmode="decimal" class="num montant" placeholder="0,000" value="${esc(montantChamp(brutDefaut))}"></label>
-        <label class="field"><span>Jours ouvrables du mois</span><input name="joursTravailles" type="number" min="1" step="1" class="num" value="${esc(String(e.joursTravailles || 26))}"></label>
-        <label class="field"><span>Jours d'absence non payés</span><input name="joursAbsence" type="number" min="0" step="1" class="num" value="${esc(String(e.joursAbsence || 0))}"></label>
-        <label class="field span-2"><span>Prime (facultatif)</span><input name="primeLabel" value="${esc(((e.primes || [])[0] || {}).label || '')}" placeholder="Prime de rendement"></label>
-        <label class="field"><span>Montant de la prime (DT)</span><input name="primeAmount" type="text" inputmode="decimal" class="num montant" placeholder="0,000" value="${esc(montantChamp(((e.primes || [])[0] || {}).amount))}"></label>
+        <label class="field">${lbl('Mois', 'pa.bMois')}<select name="mois">${KC.MOIS_PAIE.map((lab, i) => `<option value="${i + 1}" ${i + 1 === Number(e.mois) ? 'selected' : ''}>${esc(lab)}</option>`).join('')}</select></label>
+        <label class="field obligatoire">${lbl('Brut du mois (DT)', 'pa.bBrut')}<input name="brut" type="text" inputmode="decimal" class="num montant" placeholder="0,000" value="${esc(montantChamp(brutDefaut))}"></label>
+        <label class="field">${lbl('Jours ouvrables du mois', 'pa.bOuvrables')}<input name="joursTravailles" type="number" min="1" step="1" class="num" value="${esc(String(e.joursTravailles || 26))}"></label>
+        <label class="field">${lbl('Jours d\'absence non payés', 'pa.bAbsence')}<input name="joursAbsence" type="number" min="0" step="1" class="num" value="${esc(String(e.joursAbsence || 0))}"></label>
+        <label class="field span-2">${lbl('Prime (facultatif)', 'pa.bPrime')}<input name="primeLabel" value="${esc(((e.primes || [])[0] || {}).label || '')}" placeholder="Prime de rendement"></label>
+        <label class="field">${lbl('Montant de la prime (DT)', 'pa.bPrimeMontant')}<input name="primeAmount" type="text" inputmode="decimal" class="num montant" placeholder="0,000" value="${esc(montantChamp(((e.primes || [])[0] || {}).amount))}"></label>
         <label class="check"><input type="checkbox" name="primeTaxable" ${((e.primes || [])[0] || {}).taxable !== false ? 'checked' : ''}> Prime imposable</label>
-        <label class="field span-2"><span>Retenue (facultatif)</span><input name="retLabel" value="${esc(((e.retenues || [])[0] || {}).label || '')}" placeholder="Remboursement d'avance"></label>
-        <label class="field"><span>Montant de la retenue (DT)</span><input name="retAmount" type="text" inputmode="decimal" class="num montant" placeholder="0,000" value="${esc(montantChamp(((e.retenues || [])[0] || {}).amount))}"></label>
+        <label class="field span-2">${lbl('Retenue (facultatif)', 'pa.bRetenue')}<input name="retLabel" value="${esc(((e.retenues || [])[0] || {}).label || '')}" placeholder="Remboursement d'avance"></label>
+        <label class="field">${lbl('Montant de la retenue (DT)', 'pa.bRetenueMontant')}<input name="retAmount" type="text" inputmode="decimal" class="num montant" placeholder="0,000" value="${esc(montantChamp(((e.retenues || [])[0] || {}).amount))}"></label>
       </form>
       <div id="bf-apercu" class="ok-box mt"></div>
       <p class="small warn-text" id="bf-refus" role="status" aria-live="polite" hidden></p>
@@ -6156,12 +6156,12 @@
       <p class="small muted">Une ligne par référence : <b>référence, désignation, quantité, coût unitaire</b>,
       séparées par une tabulation ou un point-virgule. Colle-les depuis ton tableur.</p>
       <form id="iv" class="grid-2">
-        <label class="field obligatoire"><span>Date de l'inventaire</span>
+        <label class="field obligatoire">${lbl('Date de l\'inventaire', 'iv.date')}
           <input name="date" placeholder="31/12/${esc(s.annee)}" value="${esc(fmtJour((dejaLa && dejaLa.date) || (s.livre.exercice.au || '')))}"></label>
-        <label class="field"><span>Compte de stock</span>
+        <label class="field">${lbl('Compte de stock', 'iv.compte')}
           <input name="compte" value="${esc((dejaLa && dejaLa.compte) || KC.COMPTES_IMMO.stocks)}"></label>
       </form>
-      <label class="field mt"><span>Les lignes comptées</span>
+      <label class="field mt">${lbl('Les lignes comptées', 'iv.coller')}
         <textarea id="iv-lignes" rows="10" placeholder="REF-01&#9;Câble HDMI 2 m&#9;24&#9;7,500">${esc(depart)}</textarea></label>
       <div id="iv-apercu" class="small muted"></div>
       <div class="modal-actions"><button class="btn" data-close>Annuler</button>
@@ -6517,11 +6517,11 @@
         ? `<div class="ok-box mb">Le libellé contient « ${esc(brouillon.regle)} » : le compte ${esc(contre.compte)} est proposé.</div>`
         : `<div class="info-box mb">Aucune règle ne reconnaît ce libellé. Choisis le compte : il sera retenu, et le prochain relevé le proposera tout seul.</div>`}
       <form id="bf" class="grid-2">
-        <label class="field">Journal<input name="journal" value="${esc(brouillon.journal)}"></label>
-        <label class="field">Date<input type="date" name="date" value="${esc(brouillon.date)}"></label>
-        <label class="field span-2">Libellé<input name="libelle" value="${esc(brouillon.libelle)}"></label>
-        <label class="field">Compte ${esc(R.compte)}<input value="${esc(money(ligne.montant))}" disabled></label>
-        <label class="field obligatoire"><span>Contrepartie</span><input name="compte" value="${esc(contre.compte)}" placeholder="606">
+        <label class="field">${lbl('Journal', 'bq.eJournal')}<input name="journal" value="${esc(brouillon.journal)}"></label>
+        <label class="field">${lbl('Date', 'bq.eDate')}<input type="date" name="date" value="${esc(brouillon.date)}"></label>
+        <label class="field span-2">${lbl('Libellé', 'bq.eLibelle')}<input name="libelle" value="${esc(brouillon.libelle)}"></label>
+        <label class="field">${lbl('Compte ' + esc(R.compte), 'bq.eBanque')}<input value="${esc(money(ligne.montant))}" disabled></label>
+        <label class="field obligatoire">${lbl('Contrepartie', 'bq.eContrepartie')}<input name="compte" value="${esc(contre.compte)}" placeholder="606">
           <small class="muted bf-nom" id="bf-nom">${esc(nomDeCompte()(contre.compte) || ' ')}</small></label>
         ${brouillon.regle ? '' : `<div class="span-2 bf-retenir"><label class="check"><input type="checkbox" name="retenir" ${KC.motifDeLibelle(ligne.libelle) ? 'checked' : ''}> <span>Proposer ce compte aux lignes qui contiennent</span></label>
           <input name="motif" class="bf-motif" value="${esc(KC.motifDeLibelle(ligne.libelle))}" placeholder="STEG" aria-label="Mot retenu"></div>`}
@@ -6592,14 +6592,14 @@
       <p class="small muted">Le fichier tel que la banque l'exporte. Les colonnes s'associent par leur NOM ;
       si cette banque est nouvelle, tu les associes une fois et je les retiens.</p>
       <form id="rv" class="grid-2">
-        <label class="field obligatoire"><span>Compte bancaire</span>
+        <label class="field obligatoire">${lbl('Compte bancaire', 'bq.rCompte')}
           <input name="compte" value="${esc(defaut)}" list="rv-comptes" placeholder="532">
           <datalist id="rv-comptes">${comptes.map(c => `<option value="${esc(c)}">`).join('')}</datalist></label>
-        <label class="field">Banque<input name="banque" value="${esc((dossier.banque || {}).banque || '')}" list="rv-banques" placeholder="Le nom, pour retenir ses colonnes">
+        <label class="field">${lbl('Banque', 'bq.rBanque')}<input name="banque" value="${esc((dossier.banque || {}).banque || '')}" list="rv-banques" placeholder="Le nom, pour retenir ses colonnes">
           <datalist id="rv-banques">${Object.keys(banques).map(b => `<option value="${esc(b)}">`).join('')}</datalist></label>
-        <label class="field">Solde au début (DT)<input name="debut" class="num montant" inputmode="decimal" value="0,000">
+        <label class="field">${lbl('Solde au début (DT)', 'bq.rDebut')}<input name="debut" class="num montant" inputmode="decimal" value="0,000">
           <span class="small muted" id="rv-debut-hint"></span></label>
-        <label class="field">Solde à la fin (DT)<input name="fin" class="num montant" inputmode="decimal" value="0,000"></label>
+        <label class="field">${lbl('Solde à la fin (DT)', 'bq.rFin')}<input name="fin" class="num montant" inputmode="decimal" value="0,000"></label>
       </form>
       <div class="modal-actions" style="justify-content:flex-start">
         <button type="button" class="btn btn-sm" id="rv-fichier">Choisir le fichier…</button>
@@ -6650,7 +6650,7 @@
               <tbody>${lignes.slice(0, 12).map(l => `<tr><td class="nw">${esc(fmtJour(l.date))}</td><td class="tronq" title="${esc(l.libelle)}">${esc(l.libelle)}</td><td class="r nw">${esc(money(l.montant))}</td></tr>`).join('')}</tbody></table></div>` : ''}
             ${lu.motif && lu.entetes ? `<h3 class="sub-h">Associer les colonnes</h3>
               <div class="grid-2">${['date', 'libelle', 'montant', 'debit', 'credit', 'reference'].map(champ =>
-                `<label class="field">${champ === 'libelle' ? 'Libellé' : champ[0].toUpperCase() + champ.slice(1)}
+                `<label class="field">${lbl(champ === 'libelle' ? 'Libellé' : champ[0].toUpperCase() + champ.slice(1), 'bq.colonne')}
                   <select data-col="${champ}"><option value="">—</option>${lu.entetes.map((e, i) => `<option value="${i}">${esc(e || ('Colonne ' + (i + 1)))}</option>`).join('')}</select></label>`).join('')}</div>
               <div class="modal-actions" style="justify-content:flex-start"><button type="button" class="btn btn-sm" id="rv-relire">Relire avec cette association</button></div>` : ''}`;
           ok.disabled = !lignes.length || !!deja;
@@ -7621,14 +7621,14 @@
     modal(
       `<h2>${abo ? 'Modifier l\'abonnement' : 'Nouvel abonnement'}</h2>
        <div class="grid-2">
-         <label class="field obligatoire"><span>Nom</span><input type="text" id="ab-nom" value="${esc(a.nom)}" placeholder="Loyer du local"></label>
-         <label class="field obligatoire"><span>Guide</span><select id="ab-guide">${guides.map(g => `<option value="${esc(g.id)}" ${a.guideId === g.id ? 'selected' : ''}>${esc(g.nom)}</option>`).join('')}</select></label>
-         <label class="field narrow obligatoire"><span>Depuis</span><input type="date" id="ab-depuis" value="${esc(a.depuis)}"></label>
-         <label class="field narrow">Jusqu'à<input type="date" id="ab-jusqua" value="${esc(a.jusqua || '')}"></label>
-         <label class="field narrow">Tous les (mois)<input type="number" id="ab-pas" min="1" max="12" value="${Number(a.tousLesMois) || 1}"></label>
-         <label class="field narrow obligatoire"><span>Montant (DT)</span><input type="text" id="ab-montant" class="num montant" inputmode="decimal" value="${esc(montantChamp(a.montant))}"></label>
-         <label class="field">Préfixe de pièce<input type="text" id="ab-piece" value="${esc(a.piece || '')}" placeholder="LOYER"></label>
-         <label class="field">Libellé<input type="text" id="ab-libelle" value="${esc(a.libelle || '')}" placeholder="Loyer du local"></label>
+         <label class="field obligatoire">${lbl('Nom', 'sa.abNom')}<input type="text" id="ab-nom" value="${esc(a.nom)}" placeholder="Loyer du local"></label>
+         <label class="field obligatoire">${lbl('Guide', 'sa.abGuide')}<select id="ab-guide">${guides.map(g => `<option value="${esc(g.id)}" ${a.guideId === g.id ? 'selected' : ''}>${esc(g.nom)}</option>`).join('')}</select></label>
+         <label class="field narrow obligatoire">${lbl('Depuis', 'sa.abDepuis')}<input type="date" id="ab-depuis" value="${esc(a.depuis)}"></label>
+         <label class="field narrow">${lbl('Jusqu\'à', 'sa.abJusqua')}<input type="date" id="ab-jusqua" value="${esc(a.jusqua || '')}"></label>
+         <label class="field narrow">${lbl('Tous les (mois)', 'sa.abPas')}<input type="number" id="ab-pas" min="1" max="12" value="${Number(a.tousLesMois) || 1}"></label>
+         <label class="field narrow obligatoire">${lbl('Montant (DT)', 'sa.abMontant')}<input type="text" id="ab-montant" class="num montant" inputmode="decimal" value="${esc(montantChamp(a.montant))}"></label>
+         <label class="field">${lbl('Préfixe de pièce', 'sa.abPiece')}<input type="text" id="ab-piece" value="${esc(a.piece || '')}" placeholder="LOYER"></label>
+         <label class="field">${lbl('Libellé', 'sa.abLibelle')}<input type="text" id="ab-libelle" value="${esc(a.libelle || '')}" placeholder="Loyer du local"></label>
        </div>
        <p class="muted small">La génération crée les écritures manquantes <strong>en brouillard</strong>, jusqu'à aujourd'hui. Relancer ne double rien : les mois déjà générés sont retenus.</p>
        <div class="modal-actions">
@@ -8162,9 +8162,9 @@
     let change = () => false;
     modal(
       `<h2>Accuser réception à ${esc(dossier.name)}</h2>
-       <label class="field">Destinataire<input type="text" id="a-to" value="${esc(m.to)}" placeholder="adresse@client.tn"></label>
-       <label class="field mt">Objet<input type="text" id="a-sub" value="${esc(m.subject)}"></label>
-       <label class="field mt">Message<textarea id="a-body" rows="10">${esc(m.body)}</textarea></label>
+       <label class="field">${lbl('Destinataire', 'r.mailTo')}<input type="text" id="a-to" value="${esc(m.to)}" placeholder="adresse@client.tn"></label>
+       <label class="field mt">${lbl('Objet', 'r.mailObjet')}<input type="text" id="a-sub" value="${esc(m.subject)}"></label>
+       <label class="field mt">${lbl('Message', 'r.mailMessage')}<textarea id="a-body" rows="10">${esc(m.body)}</textarea></label>
        <p class="muted small mt">Le message s'ouvre dans ta messagerie : rien ne part sans que tu cliques sur « Envoyer ».</p>
        <div class="modal-actions"><button class="btn" id="no">${onDone ? 'Passer' : 'Annuler'}</button>
        <button class="btn" id="copy">Copier</button>
@@ -8504,9 +8504,9 @@
     let change = () => false;
     modal(
       `<h2>Relancer ${esc(row.name)}</h2>
-       <label class="field">Destinataire<input type="text" id="r-to" value="${esc(m.to)}" placeholder="adresse@client.tn"></label>
-       <label class="field mt">Objet<input type="text" id="r-sub" value="${esc(m.subject)}"></label>
-       <label class="field mt">Message<textarea id="r-body" rows="10">${esc(m.body)}</textarea></label>
+       <label class="field">${lbl('Destinataire', 'r.mailTo')}<input type="text" id="r-to" value="${esc(m.to)}" placeholder="adresse@client.tn"></label>
+       <label class="field mt">${lbl('Objet', 'r.mailObjet')}<input type="text" id="r-sub" value="${esc(m.subject)}"></label>
+       <label class="field mt">${lbl('Message', 'r.mailMessage')}<textarea id="r-body" rows="10">${esc(m.body)}</textarea></label>
        <p class="muted small mt">Le message s'ouvre dans ton logiciel de messagerie : rien ne part sans que tu cliques sur « Envoyer ».
        La relance est enregistrée dans la fiche du client dès que tu l'ouvres.</p>
        <div class="modal-actions"><button class="btn" id="no">${onDone ? 'Passer' : 'Annuler'}</button>
@@ -8563,7 +8563,7 @@
       `<h2>Noter une relance</h2>
        <p class="muted small">Tu l'as appelé, croisé, ou relancé depuis ton téléphone : garde-en la trace ici.</p>
        <label class="field">${lbl('Moyen', 'r.via')}<select id="n-via">${K.RELANCE_WAYS.map(w => `<option value="${esc(w.id)}">${esc(w.label)}</option>`).join('')}</select></label>
-       <label class="field mt">Note<input type="text" id="n-note" placeholder="« promet d'envoyer avant vendredi »"></label>
+       <label class="field mt">${lbl('Note', 'r.note')}<input type="text" id="n-note" placeholder="« promet d'envoyer avant vendredi »"></label>
        <div class="modal-actions"><button class="btn" id="no">Annuler</button><button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
       (layer, close) => {
         $('#no', layer).onclick = close;
@@ -9665,8 +9665,8 @@
     modal(
       `<h2>${existe ? 'Modifier le guide' : 'Nouveau guide'}</h2>
        <div class="grid-2">
-         <label class="field obligatoire"><span>Nom</span><input type="text" id="g-nom" value="${esc(g.nom || '')}" placeholder="Achat avec TVA 19 %"></label>
-         <label class="field narrow obligatoire"><span>Journal</span><input type="text" id="g-journal" maxlength="5" value="${esc(g.journal || '')}" placeholder="AC"></label>
+         <label class="field obligatoire">${lbl('Nom', 'sa.gNom')}<input type="text" id="g-nom" value="${esc(g.nom || '')}" placeholder="Achat avec TVA 19 %"></label>
+         <label class="field narrow obligatoire">${lbl('Journal', 'sa.gJournal')}<input type="text" id="g-journal" maxlength="5" value="${esc(g.journal || '')}" placeholder="AC"></label>
        </div>
        <h3 class="mt">Les lignes ${info('sa.guideLigne')}</h3>
        <div class="scroll-x"><table class="list compact sa-table"><thead><tr>
@@ -10425,10 +10425,10 @@
        (différent de celui de l'application : ce fichier a vocation à quitter cet ordinateur).</p>
        <div class="warn-box">Range-le <strong>ailleurs que sur ${CE_POSTE()}</strong> : une clé USB dans un tiroir, un coffre, chez ton associé.
        Une clé de secours posée à côté de l'ordinateur ne protège de rien.</div>
-       <label class="field mt"><span>Mot de passe <strong>du cabinet</strong></span><input type="password" id="p0" autocomplete="current-password"></label>
+       <label class="field mt">${lbl('Mot de passe du cabinet', 'b.pwCabinet')}<input type="password" id="p0" autocomplete="current-password"></label>
        <p class="muted small">Redemandé parce que ce fichier ouvre les comptabilités de tous tes clients : sans ça, n'importe qui passant devant ce poste déverrouillé repartirait avec.</p>
-       <label class="field mt">Mot de passe de ce fichier<span class="pw-wrap"><input type="password" id="p1" autocomplete="new-password"><button type="button" class="pw-eye" id="eye">Afficher</button></span></label>
-       <label class="field mt">Confirme<input type="password" id="p2" autocomplete="new-password"></label>
+       <label class="field mt">${lbl('Mot de passe de ce fichier', 'b.pwFichier')}<span class="pw-wrap"><input type="password" id="p1" autocomplete="new-password"><button type="button" class="pw-eye" id="eye">Afficher</button></span></label>
+       <label class="field mt">${lbl('Confirme', 'b.pwConfirme')}<input type="password" id="p2" autocomplete="new-password"></label>
        <div class="modal-actions"><button class="btn" id="no">Annuler</button><button class="btn btn-primary" id="ok">Enregistrer le fichier…</button></div>`,
       (layer, close) => {
         const p1 = $('#p1', layer), p2 = $('#p2', layer);
@@ -10484,9 +10484,9 @@
     modal(
       `<h2>Changer le mot de passe</h2>
        <p class="small">Le fichier du cabinet et toutes ses sauvegardes seront rechiffrés avec le nouveau mot de passe.</p>
-       <label class="field">Mot de passe actuel<input type="password" id="p0" autocomplete="current-password"></label>
-       <label class="field mt">Nouveau mot de passe<span class="pw-wrap"><input type="password" id="p1" autocomplete="new-password"><button type="button" class="pw-eye" id="eye">Afficher</button></span><span class="muted small ligne-reservee" id="str"></span></label>
-       <label class="field mt">Confirme<input type="password" id="p2" autocomplete="new-password"></label>
+       <label class="field">${lbl('Mot de passe actuel', 'b.pwActuel')}<input type="password" id="p0" autocomplete="current-password"></label>
+       <label class="field mt">${lbl('Nouveau mot de passe', 'b.pwNouveau')}<span class="pw-wrap"><input type="password" id="p1" autocomplete="new-password"><button type="button" class="pw-eye" id="eye">Afficher</button></span><span class="muted small ligne-reservee" id="str"></span></label>
+       <label class="field mt">${lbl('Confirme', 'b.pwConfirme')}<input type="password" id="p2" autocomplete="new-password"></label>
        <div class="warn-box mt">Il n'y a toujours aucun moyen de le récupérer. Note le nouveau avant de valider.</div>
        <div class="modal-actions"><button class="btn" id="no">Annuler</button><button class="btn btn-primary" id="ok">Changer</button></div>`,
       (layer, close) => {
@@ -10559,9 +10559,9 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
     modal(
       `<h2>Proposer une amélioration</h2>
        <p class="small">SkanFact Cabinet est écrit par une seule personne, et ce sont les cabinets qui s'en servent tous les jours qui décident de la suite. Dites ce qui vous manque — même si cela vous paraît petit.</p>
-       <label class="field">Ce que vous aimeriez faire
+       <label class="field">${lbl('Ce que vous aimeriez faire', 'b.ideeQuoi')}
          <textarea id="idee-quoi" rows="3" placeholder="Ex. : relancer d'un seul geste tous les clients qui n'ont pas envoyé août."></textarea></label>
-       <label class="field">Comment vous faites aujourd'hui
+       <label class="field">${lbl('Comment vous faites aujourd\'hui', 'b.ideeAuj')}
          <textarea id="idee-auj" rows="3" placeholder="Ex. : j'ouvre chaque dossier et j'écris un mail à la main."></textarea></label>
        <p class="small muted">Cette seconde question est celle qui sert le plus : elle dit le vrai problème, et pas seulement la solution imaginée.</p>
        <p class="small muted">Joint automatiquement : ${esc(tech)}. Rien d'autre — ni journal, ni nom de dossier, ni chiffre de vos clients.</p>

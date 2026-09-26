@@ -8293,6 +8293,13 @@ lots ; le détail de ce qui reste vit dans `A-FAIRE.md` § 0.
 - **Une visite qui choisit un client guide ce que ce choix fait apparaître** (`etapeTaux`, avec `si`) :
   le champ du taux paraît avec un client en devise, et la visite passait à côté — l'enregistrement
   refusait ensuite une case que personne n'avait montrée.
+- **Un test porté d'une application à l'autre trouve ce que la première avait réglé** (#276, le jumeau
+  manquant, 7.3.0) : 80 champs du Cabinet sans bulle — le salarié, le bulletin, le bien, le relevé —,
+  là où l'app entreprise en tenait 118 depuis la 10.14.0. Chaque bulle dit ce que le CODE fait du
+  champ, lu dans le moteur avant d'être écrit (la date de sortie exclut le salarié des mois suivants
+  et de l'exercice suivant, l'absence retire brut × jours ÷ ouvrables, le prix de cession ne s'écrit
+  jamais d'office). Et « versé » est un ÉTAT (10.12.0) : la masse salariale du Cabinet lit des
+  bulletins, pas leur paiement — « Net des bulletins », tant que le 425 n'est pas soldé.
 - **Déposer sans ressaisir commence par copier juste** (DECL D1, question de Skander du 26/09 : « le
   comptable transfère à l'État ? »). SkanFact ne dépose rien (5.2.0) ; il rend chaque montant de la
   déclaration mensuelle COPIABLE, dans la forme que le portail attend — et **cette forme est un

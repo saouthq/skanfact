@@ -443,4 +443,27 @@ t('10.14.0 : un mot de passe à CONFIRMER — une confirmation vide se nomme, le
     'une ligne de force pousse encore la confirmation pendant la frappe');
   assert.ok(/\.champ-faute > \.pw-wrap > input \{[^}]*border-color: var\(--danger\)/.test(css), 'une case refusée dans l\'enveloppe d\'« Afficher » ne se marque pas');
 });
+// 10.14.1 (#276) — le jumeau du test de l'app entreprise (10.14.0, 118 champs) : le Cabinet en avait
+// 84 sans bulle — le salarié, le bulletin, le bien, le relevé, les mots de passe. Un comptable qui
+// découvre l'écran d'un salarié se demande à quoi sert le poste, ce que fait la date de sortie : la
+// bulle dit ce que le CODE fait du champ. La règle vaut pour tout le fichier ; les exceptions sont NOMMÉES.
+t('10.14.1 : chaque champ du Cabinet porte sa bulle, et chaque bulle existe dans le guide', () => {
+  const EXCEPTIONS = [
+    /^\$\{lbl\(titre, cle\)\}/,           // les touches de la grille : la clé est portée par la ligne de la table TOUCHES
+    /^<span>Recopie <b>/                   // confirmTyped : un mot de confirmation, pas un champ
+  ];
+  const champs = [...app.matchAll(/<(?:label|div) class="field[^"]*"[^>]*>([\s\S]{0,200}?)<(?:input|select|textarea)/g)].map(m => m[1].trim());
+  assert.ok(champs.length > 100, 'la sonde ne voit plus les champs : ' + champs.length);
+  const nus = champs.filter(x => !/info\(|\$\{lbl\([\s\S]*?,\s*'[a-zA-Z]+\.[a-zA-Z]+'\)\}/.test(x))
+    .filter(x => !EXCEPTIONS.some(r => r.test(x)));
+  assert.deepStrictEqual(nus, [], `${nus.length} champ(s) du Cabinet sans bulle — ${nus.map(x => x.slice(0, 50)).join(' · ')}`);
+  EXCEPTIONS.forEach(r => assert.ok(champs.some(x => r.test(x)), 'exception sans objet : ' + r));
+  const G = require('../../src/cabinet/renderer/cabguide.js');
+  const cles = [...app.matchAll(/\blbl\([^\n]*?,\s*'([a-zA-Z]+\.[a-zA-Z]+)'\)/g)].map(m => m[1]);
+  const absentes = [...new Set(cles)].filter(k => !G.INFO[k]);
+  assert.deepStrictEqual(absentes, [], 'des bulles posées que le guide ne connaît pas');
+  // Une bulle de paie mène à l'article de la paie, une de bien à celui des immobilisations.
+  [['pa.sortie', 'paie'], ['pa.bAbsence', 'paie'], ['im.miseEnService', 'immobilisations'], ['bq.rDebut', 'banque'], ['li.rtMontant', 'liasse']]
+    .forEach(([k, a]) => assert.strictEqual(G.articleDe(k), a, k + ' mène à « ' + G.articleDe(k) + ' »'));
+});
 };

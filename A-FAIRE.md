@@ -188,10 +188,11 @@ et au moteur), puis en stable quand Skander valide.*
   « Reprendre un dossier (balance d'ouverture) » sur un dossier sans livre. Et des textes trop
   courts à réécrire (« Ouvre un devis vierge. », « Le reste à payer est proposé : tu n'as souvent
   qu'à valider. », « Clique sur « + Salarié ». »).
-- **Cabinet — 84 champs sans bulle « i »** (trouvés en portant la sonde de l'app entreprise au
-  Cabinet, le jumeau manquant) : salarié, bulletin, bien, cession, écriture de trésorerie, questions,
-  réouverture, mots de passe… À écrire dans `cabguide.js` (chaque bulle dit ce que le CODE fait du
-  champ), puis porter le test de `assistant.js` au Cabinet.
+- ~~**Cabinet — 84 champs sans bulle « i »**~~ **Fait (26/09)** : 80 champs (salarié, bulletin, bien,
+  relevé, écriture depuis le relevé, abonnement, guide, inventaire, retraitement, révision, clôture,
+  mails, mots de passe) portent leur bulle, qui dit ce que le code fait du champ ; le test de
+  `assistant.js` est porté au Cabinet (`cabassistant.js`), exceptions nommées. Vu à la souris sur le
+  formulaire du salarié et du relevé.
 - ~~**C2 — les CSV du Cabinet au format machine**~~ **Fait (26/09)** : `K.csvMontant` / `K.csvDate`
   (le format de `core.toCsv`, comparé à lui par un test) dans les cinq exports — portefeuille, biens,
   déclaration, liasse, livres. Vu à la souris : le livre-journal du garage exporté par « Enregistrer »,
