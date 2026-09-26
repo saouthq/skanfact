@@ -44,6 +44,9 @@ et au moteur), puis en stable quand Skander valide.*
 >
 > Tâches ouvertes reportées : #256–#263, #266, #270, #280, #281, #285, #288 ; e2e des visites des
 > deux applications (#198, #212) reportés sur décision de Skander (24/09).
+>
+> **Après les tests** : `PLAN-COMMERCIAL.md` (26/09) — le lot 0 (sans code) peut partir tout de
+> suite, puis les lots A (renouvellement en ligne, passer à Entreprise, revenus, Access) → D.
 
 - **Fait, prouvé et testé à la souris (26/09)** :
   - **C1** — un bien au bilan sans être au tableau des immobilisations (ligne d'achat sans fiche,
@@ -495,9 +498,9 @@ Rien ici ne demande d'écrire du code. Tant que ces lignes tiennent, on ne peut 
 | **RNE, capital social**, et un numéro de téléphone — ou la décision de ne pas en publier | `conditions-vente.html`, mentions légales | Skander |
 | **Vérification d'identité Konnect**, puis `KONNECT_API_KEY` en Secret Cloudflare, `konnect_wallet` et `achat_retour` dans Console → Réglages | plateforme | Skander |
 | **TVA 19 % et timbre 1 DT** sur une facture de licence — « À VÉRIFIER » depuis la 10.9.0 | réglages de la console | le comptable |
-| **Une convention « cabinet fondateur »** : « gratuit à vie » sans aucun écrit inquiète un expert-comptable au lieu de le rassurer, et les conditions de vente ne parlent pas du Cabinet | à écrire | Skander |
+| **Une convention « cabinet fondateur »** : une gratuité sans aucun écrit inquiète un expert-comptable au lieu de le rassurer, et les conditions de vente ne parlent pas du Cabinet. L'offre à écrire a changé le 26/09 : douze mois gratuits sans limite, puis −50 % à vie (`PLAN-COMMERCIAL.md` § 3) | à écrire | Skander |
 | **La signature des exécutables** (Windows et Mac) : la première chose qu'un expert-comptable refuse, c'est « Exécuter quand même » sur le poste qui porte cinquante-cinq comptabilités | certificats | Skander |
-| **Prix du Cabinet** (par dossier au-delà de trois) et de l'option Comptabilité : `prix_cabinet_dossier` vaut 0, donc le Cabinet ne se vend pas en ligne | `TARIFS-REFERENCE.md` | Skander, après l'avis de l'Ordre |
+| **Prix du Cabinet** (par dossier au-delà de trois) et de l'option Comptabilité : `prix_cabinet_dossier` vaut 0, donc le Cabinet ne se vend pas en ligne. Grille par tranches proposée le 26/09 (`PLAN-COMMERCIAL.md` § 2) — à confronter à ce que le pilote paie aujourd'hui | `TARIFS-REFERENCE.md` | Skander, après l'avis de l'Ordre |
 
 ## 1 bis. Deux décisions de produit ouvertes par l'audit « trois regards » (23/09/2026)
 
@@ -629,6 +632,12 @@ lourds, ce qui n'est pas la même chose.
 - **Une branche distante orpheline** : `claude/bancs-de-captures` sur le dépôt du site.
 
 ## 3. La console
+
+**Le plan du 26/09/2026** : les quatorze contrôles proposés (revenus, quota des cabinets, effet
+canal, santé, entonnoir, clé offerte, codes de campagne, actions en masse, message signé, version
+minimale ciblée, déploiement progressif, testeurs bêta, Cloudflare Access, journal d'audit) et
+l'ordre des lots vivent dans `PLAN-COMMERCIAL.md` §§ 6–7. Piège écrit d'avance : Access sur
+`/v1/admin/*` coupe le pont de SkanFact tant qu'il n'a pas son jeton de service.
 
 Constats de l'audit du 22/09/2026 restés hors de la 10.6.0.
 

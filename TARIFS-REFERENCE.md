@@ -126,6 +126,12 @@ vérifie les deux sens : la porte sur les gestes qui valident, et son **absence*
 
 ## 5. L'offre fondatrice des 20 premiers cabinets — proposée, pas livrée
 
+> **Révisée le 26/09/2026 — le site ne doit PAS écrire « sans date de fin ».** Skander a retenu une
+> gratuité AVEC une date de fin pour les cabinets pilotes. La proposition qui remplace celle-ci —
+> douze mois gratuits sans limite, puis un prix fondateur à vie à −50 % sur la grille par tranches —
+> est dans `PLAN-COMMERCIAL.md` § 3. Elle n'est ni dans le code ni décidée pour le site : ce
+> paragraphe reste ici pour l'histoire de la décision.
+
 **La proposition** (session « site », 22/09/2026) : les vingt premiers cabinets sont gratuits, sans
 limite de dossiers, définitivement ; la grille ci-dessus ne s'applique qu'à partir du vingt-et-unième.
 
@@ -168,7 +174,8 @@ spécifiques.
 **Pas décidé — aucun de ces chiffres ne doit paraître sur le site :**
 
 - Le prix d'un dossier de cabinet au-delà du palier gratuit. L'avis de l'Ordre des experts-comptables
-  n'est pas revenu.
+  n'est pas revenu. Une grille **par tranches** (10, 25, 50, sans limite) est proposée dans
+  `PLAN-COMMERCIAL.md` § 2 : c'est une proposition, pas un tarif.
 - Le prix de l'option Comptabilité.
 - L'offre fondatrice du § 5, tant que ses trois points ne sont pas tranchés.
 

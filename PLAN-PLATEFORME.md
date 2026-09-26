@@ -304,6 +304,12 @@ un chemin de dossier, une adresse e-mail saisie dans l'application.
 La clé elle-même contient le nom et le matricule de l'acheteur — c'est normal, c'est le contrat de
 vente. Rien de plus ne part.
 
+**Décision du 26/09/2026 (Skander) : des COMPTES peuvent s'ajouter, jamais la base d'un client** —
+le nombre de dossiers d'un cabinet, le nombre de pièces émises sur trente jours, l'empreinte du
+cabinet appairé. La liste proposée, champ par champ avec la décision que chacun sert, est dans
+`PLAN-COMMERCIAL.md` § 5 ; rien n'est codé. La liste « ne remonte jamais » ci-dessus ne bouge pas,
+et chaque champ ajouté entrera dans le test qui compte les champs.
+
 **Et l'application le dit à l'écran.** La 8.0.0 a déjà attrapé une phrase rassurante devenue fausse
 sur ce sujet (« SkanFact n'envoie jamais ta clé nulle part »). Un test relit la phrase et la liste
 des champs envoyés : les deux ne peuvent pas diverger.

@@ -290,7 +290,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Jamais **toucher à la clé publique** de `build/licences-publiques.json` | Règles de travail, 8.0.0 |
 | Jamais **embarquer une clé publique dont la privée a été VUE** : elle est brûlée, on la recrée | 9.4.1 |
 | Jamais de **token** commité | Règles de travail, 6.7.0 |
-| Jamais une **donnée de plus** dans ce qui part vers le serveur : la liste se compte | 8.4.0, 10.4.0 |
+| Jamais une **donnée de plus** dans ce qui part vers le serveur : la liste se compte — des COMPTES agrégés (dossiers, pièces émises) sont admis depuis le 26/09/2026, jamais la base d'un client | 8.4.0, 10.4.0 ; `PLAN-COMMERCIAL.md` § 5 |
 | Jamais une **base de ventes sans copie** : D1 est le seul endroit où vit qui a acheté quelle clé | 10.4.0 ; 10.5.0 — une copie qui demande un clic ne se fait pas |
 | Jamais **croire un webhook non signé** : il notifie, il ne prouve pas | 10.9.0 |
 | Jamais **abandonner une commande payée** : ce serait garder l'argent en fermant la porte | 10.9.0 |
@@ -319,7 +319,7 @@ calendrier et les jalons). `QUESTIONS.md` répond à tout le reste — c'est le 
 on est perdu. **`A-FAIRE.md`** est le carnet des constats isolés et des décisions en attente, sur
 les TROIS surfaces (applications, site, plateforme) — il se relit quand on cherche quoi faire
 ensuite, et ce qui y bloque une vente passe avant ce qui y bloque du code. **`TARIFS-REFERENCE.md`** dit ce que le code tient en matière d'offres et de prix : c'est le
-contrat avec la session qui écrit `skanfact.tn`, et il se relit à chaque changement d'offre ou de prix. `PLAN-CABINET.md`, `PLAN-COMPTABLE.md`, `PLAN-PLATEFORME.md`, `PLAN-UX.md` pour un
+contrat avec la session qui écrit `skanfact.tn`, et il se relit à chaque changement d'offre ou de prix. **`PLAN-COMMERCIAL.md`** (26/09/2026) dit comment on vend : la grille par tranches proposée pour le Cabinet, les fondateurs, l'entonnoir, les comptes que les applications enverront et les contrôles de la console — un plan, jamais une source de prix pour le site. `PLAN-CABINET.md`, `PLAN-COMPTABLE.md`, `PLAN-PLATEFORME.md`, `PLAN-UX.md` pour un
 chantier précis ; `ROADMAP.md` est une **archive**.
 
 ---

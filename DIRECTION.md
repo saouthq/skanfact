@@ -122,7 +122,9 @@ toujours.
 
 Un clic pour vendre, pas zéro (`PLAN-PLATEFORME.md`, § 12) : Skander marque « payé » dans la console,
 la clé part. Le paiement en ligne (Konnect, Paymee, Flouci, ClicToPay — À VÉRIFIER) viendra brancher
-le même bouton. Aucune donnée d'entreprise ni de cabinet ne remonte au serveur, jamais.
+le même bouton. Aucune donnée d'entreprise ni de cabinet ne remonte au serveur, jamais — seulement
+des comptes (nombre de dossiers, de pièces émises), décidé par Skander le 26/09/2026
+(`PLAN-COMMERCIAL.md` § 5).
 
 ---
 
