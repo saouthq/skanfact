@@ -8489,6 +8489,11 @@ lots ; le détail de ce qui reste vit dans `A-FAIRE.md` § 0.
   - **Une réussite s'enregistre à sa carte de fin, pas au clic sur « Terminer »** : fermer
     l'application sur « Tu sais rapprocher » laissait une pause « à l'étape 2 sur 2 ». Après les
     confettis, qui lisent « déjà fait » ; jamais sur une fin ratée.
+  - **On n'invite pas à essayer un bouton éteint** : « Tu peux cliquer ce qui est éclairé » s'affichait
+    sur « Enregistrer et valider » grisé — une promesse de clic qui ne fait rien. La phrase attend la
+    première étape dont la cible répond (`noteEssai`). Piège de ma méthode : la page n'avait pas été
+    RECHARGÉE après l'édition du moteur, et j'ai cru le correctif inopérant — un `fetch` du script sur
+    le disque ne dit rien de ce que la page a chargé.
 
 ## Pistes pour la suite (non demandées)
 

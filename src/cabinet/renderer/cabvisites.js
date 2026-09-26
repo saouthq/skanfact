@@ -1344,7 +1344,7 @@
       conclusion: 'Une pièce refusée au milieu d\'un lot ne consomme aucun numéro, et elle est nommée avec son motif : la suite des numéros reste 1, 2, 3… sans trou.',
       etapes: [
         { page: dans('saisie', 'comptabilite/saisie'), cible: ['#sa-okvalider', '#sa-ok'], cote: 'dessus', titre: 'Valider en enregistrant',
-          texte: '<b>« Enregistrer et valider »</b> donne son numéro à la pièce qu\'on vient de taper. Le numéro naît à la validation, et ne bouge plus.' },
+          texte: '<b>« Enregistrer et valider »</b> donne son numéro à la pièce qu\'on vient de taper — il s\'allume dès qu\'elle tombe juste. Le numéro naît à la validation, et ne bouge plus.' },
         { page: dans('saisie', 'comptabilite/saisie'), cible: ['[data-lot-journal]', '[data-lot-mois]'], cote: 'dessus', faire: 'clic',
           avant: () => { brouillardsAvant = nbBrouillards(); }, fait: () => brouillardsAvant >= 0 && nbBrouillards() < brouillardsAvant,
           titre: 'Valider par lot',

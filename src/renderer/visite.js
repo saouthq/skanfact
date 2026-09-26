@@ -1702,6 +1702,11 @@
   // éclaire quelque chose — le redire à chaque bulle, c'est une phrase qu'on apprend à sauter.
   function noteEssai(e, faire) {
     if (faire || cur.perdu || !e || !e.cible) return false;
+    // Un bouton ÉTEINT ne s'essaie pas : « Tu peux cliquer ce qui est éclairé » sur « Enregistrer et
+    // valider » grisé (grille vide) promettait un clic qui ne fait rien (vu en guidant un débutant).
+    // La phrase attend alors la première étape où l'on peut vraiment cliquer.
+    const el = cibleDe(e);
+    if (el && (el.disabled || (el.getAttribute && el.getAttribute('aria-disabled') === 'true'))) return false;
     if (cur.noteEssai === undefined) cur.noteEssai = cur.i;
     return cur.noteEssai === cur.i;
   }

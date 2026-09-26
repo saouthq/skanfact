@@ -149,6 +149,17 @@ t('10.14.1 : la réussite d\'une visite s\'enregistre dès sa carte de fin — p
   assert.ok(fini > fete, 'la visite s\'enregistre avant les confettis, qui lisent « déjà fait »');
 });
 
+t('10.14.1 : « Tu peux cliquer ce qui est éclairé » ne se dit pas sur un bouton éteint', () => {
+  // « Valider le brouillard » éclaire d'abord « Enregistrer et valider », grisé tant que la grille est
+  // vide : la bulle promettait un essai qui ne fait rien.
+  const vj = moteur.replace(/\/\/[^\n]*/g, '');
+  const f = vj.slice(vj.indexOf('function noteEssai('), vj.indexOf('function lierNommes('));
+  assert.ok(f.length > 150 && f.length < 900, 'tranche inattendue : ' + f.length);
+  const eteint = f.search(/el\.disabled \|\| \(el\.getAttribute && el\.getAttribute\('aria-disabled'\) === 'true'\)\)\) return false/);
+  assert.ok(eteint > 0, 'un bouton éteint reçoit la phrase de l\'essai');
+  assert.ok(eteint < f.indexOf('cur.noteEssai = cur.i'), 'l\'étape éteinte consomme la phrase : elle ne se dirait plus nulle part');
+});
+
 t('10.14.1 : la visite de la TVA fait préparer, dit son brouillard, et saute l\'écriture d\'un mois sans TVA', () => {
   const vs = CV.parcours({ state: () => ({ cabinet: {}, dossiers: [] }), dossier: () => 'D1', estExemple: () => false,
     cleSecours: () => null, copieExterne: () => false, Visite: V });

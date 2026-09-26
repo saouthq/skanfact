@@ -51,6 +51,8 @@ Publiée en **bêta** : elle touche au moteur comptable (retenue à la source, d
   STEG » → 606) ; sur une case vide, Tab ne pose plus le premier compte du plan (« 101 Capital social »).
 - **Une visite réussie compte comme faite dès sa carte de fin** : fermer l'application avant
   « Terminer » ne la laisse plus « en pause à l'étape 2 sur 2 ».
+- **« Tu peux cliquer ce qui est éclairé » ne se dit plus sur un bouton éteint** (« Enregistrer et
+  valider » grisé sur une grille vide) : la phrase attend la première étape où le clic fait quelque chose.
 
 **Pour l'entreprise (SkanFact)**
 - **Un acompte demandé en montant fait ce montant**, timbre compris (500 DT demandés faisaient 501,002).
