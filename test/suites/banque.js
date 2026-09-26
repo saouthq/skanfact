@@ -313,16 +313,60 @@ t('9.5.0 : un brouillard se rapproche, et une écriture rapprochée ne bouge plu
   K.rapprocherAuto(livre, livre.releves[0].id, {});
   assert.strictEqual(livre.releves[0].lignes[0].rapprochement.niveau, 'certain',
     'le comptable saisit depuis son relevé : exclure le brouillard rendrait le rapprochement inutile');
-  // Et maintenant elle est tenue : la modifier ferait pointer le rapprochement sur un montant qui
-  // a changé, la supprimer sur une écriture disparue. Les deux refusent, et disent le geste.
-  const m = K.modifierEcriture(livre, 'E1', { libelle: 'autre chose' });
+  // Et maintenant elle est tenue : changer la ligne de banque ou la date ferait pointer le
+  // rapprochement sur un montant qui a changé, la supprimer sur une écriture disparue. Les deux
+  // refusent, et disent le geste.
+  const e1 = livre.ecritures.find(x => x.id === 'E1');
+  const m = K.modifierEcriture(livre, 'E1', { lignes: [{ compte: '532', debit: 90 }, { compte: '606', credit: 90 }] });
   assert.strictEqual(m.ok, false);
   assert.ok(/rapprochée/.test(m.motif) && /défais/i.test(m.motif), 'le refus doit nommer le geste qui débloque');
+  assert.ok(/532/.test(m.motif), 'le refus nomme la ligne que le relevé tient');
+  assert.strictEqual(K.modifierEcriture(livre, 'E1', { date: '2026-03-09' }).ok, false, 'la date est tenue aussi');
+  assert.strictEqual(e1.date, '2026-03-04');
   const s = K.supprimerEcriture(livre, 'E1');
   assert.strictEqual(s.ok, false);
   assert.ok(/rapprochée/.test(s.motif));
   // Défait, tout redevient possible : un garde-fou n'est pas un piège (7.12.0).
   K.rapprocherLigne(livre, livre.releves[0].id, livre.releves[0].lignes[0].id, {}, 'moi', 1);
-  assert.strictEqual(K.modifierEcriture(livre, 'E1', { libelle: 'autre chose' }).ok, true);
+  assert.strictEqual(K.modifierEcriture(livre, 'E1', { date: '2026-03-09' }).ok, true);
+});
+
+// 10.14.1 (test humain du 26/09) : « PRLV STEG FACTURE 0926 » retenait FACTURE → 606 — le mot le
+// plus long —, et le virement d'un CLIENT « VIR RECU FACTURE 012 » était ensuite proposé en charge.
+// Un mot bancaire ne se retient pas, et une règle ancienne qui n'en porte qu'un ne décide plus rien.
+t('10.14.1 : le mot retenu d\'un libellé de relevé n\'est jamais un mot bancaire', () => {
+  assert.strictEqual(K.motifDeLibelle('PRLV STEG FACTURE 0926'), 'STEG');
+  assert.strictEqual(K.motifDeLibelle('FRAIS TENUE DE COMPTE'), 'FRAIS');
+  assert.strictEqual(K.motifDeLibelle('Prélèvement Sonède facture 1026'), 'SONÈDE');
+  assert.strictEqual(K.motifDeLibelle('VIR RECU FACTURE 012'), '', 'rien de propre au tiers : on ne retient rien');
+  const table = [{ motif: 'FACTURE', compte: '606' }, { motif: 'STEG', compte: '6061' }];
+  assert.strictEqual(K.compteDuLibelle(table, 'VIR RECU FACTURE 012 CLIENT'), null, 'une règle ancienne sur un mot bancaire ne décide plus rien');
+  assert.strictEqual(K.compteDuLibelle(table, 'PRLV STEG FACTURE 1126').compte, '6061');
+});
+
+// 10.14.1 (test humain du 26/09) : écrire depuis le relevé « PRLV STEG 214,500 », puis ventiler
+// la TVA — le geste qu'un comptable fait juste après — était refusé en bloc, alors que la ligne 532
+// que le relevé désigne n'avait pas bougé. Ce que le rapprochement TIENT, c'est cette ligne (compte,
+// montant) et la date ; le libellé et la contrepartie se corrigent, et le lien suit sa ligne.
+t('10.14.1 : une écriture rapprochée se ventile, la ligne que le relevé désigne ne bouge pas', () => {
+  const livre = livreDeTest([{ id: 'E1', statut: 'brouillard', date: '2026-09-10', ...bq('2026-09-10', -214.5, 'PRLV STEG') }]);
+  K.ajouterReleve(livre, { compte: '532', soldeDebut: 0, soldeFin: -214.5, empreinte: 'steg', lignes: [{ date: '2026-09-10', libelle: 'PRLV STEG', montant: -214.5 }] }, 'moi', 1);
+  K.rapprocherAuto(livre, livre.releves[0].id, {});
+  const lien = livre.releves[0].lignes[0].rapprochement;
+  assert.strictEqual(lien.niveau, 'certain');
+  assert.strictEqual(K.modifierEcriture(livre, 'E1', { libelle: 'STEG facture 0926' }).ok, true, 'un libellé ne change aucun montant');
+  // La ventilation, avec une ligne insérée AU-DESSUS de la banque : le lien doit suivre la 532.
+  const v = K.modifierEcriture(livre, 'E1', { lignes: [
+    { compte: '606', debit: 180.252 }, { compte: '4366', debit: 34.248 }, { compte: '532', credit: 214.5 }] });
+  assert.strictEqual(v.ok, true, v.motif);
+  const e = livre.ecritures.find(x => x.id === 'E1');
+  assert.strictEqual(e.lignes.length, 3);
+  assert.strictEqual(lien.ligne, 2, 'le rapprochement suit la ligne 532 à son nouveau rang');
+  assert.strictEqual(e.lignes[lien.ligne].compte, '532');
+  // Et la ligne de banque elle-même reste tenue.
+  const faux = K.modifierEcriture(livre, 'E1', { lignes: [
+    { compte: '606', debit: 180.252 }, { compte: '4366', debit: 34.248 }, { compte: '5311', credit: 214.5 }] });
+  assert.strictEqual(faux.ok, false, 'déplacer la ligne de banque vers un autre compte défait ce que le relevé désigne');
+  assert.strictEqual(lien.ligne, 2, 'un refus ne touche pas au lien');
 });
 };

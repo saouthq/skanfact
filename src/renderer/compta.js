@@ -1459,15 +1459,45 @@
     return null;
   }
 
+  // 10.14.1 — ce que le rapprochement TIENT, c'est la ligne qu'il désigne (son compte, son montant)
+  // et la date de la pièce ; pas le reste. Le refus portait sur toute l'écriture : écrire depuis le
+  // relevé « PRLV STEG 214,500 » puis ventiler la TVA (606 + 4366) — le geste qu'un comptable fait
+  // juste après — était refusé, alors que la ligne 532 n'avait pas bougé (vu au test humain). Rend
+  // l'index que chaque ligne désignée prend dans les nouvelles lignes, ou le motif du refus.
+  function rapprochementTient(livre, e, p) {
+    const liens = [];
+    for (const r of (livre.releves || [])) {
+      for (const l of r.lignes) if (l.rapprochement && l.rapprochement.ecritureId === e.id) liens.push(l);
+    }
+    if (!liens.length) return { ok: true, liens: [] };
+    const refus = quoi => ({ ok: false, motif: `Cette écriture est rapprochée d'une ligne de relevé : ${quoi} change, et le rapprochement désignerait un montant qui n'est plus le même. Défais le rapprochement d'abord (onglet Banque) — ou ne change que les autres lignes : ventiler la TVA ou corriger la contrepartie reste possible.` });
+    if (p.date !== undefined && String(p.date || '') !== String(e.date || '')) return refus('sa date');
+    if (!Array.isArray(p.lignes)) return { ok: true, liens: liens.map(l => ({ l, i: l.rapprochement.ligne })) };
+    const neuves = p.lignes.map(l => ({ compte: String((l && l.compte) || '').trim(), debit: round3(Math.max(0, Number(l && l.debit) || 0)), credit: round3(Math.max(0, Number(l && l.credit) || 0)) }));
+    const pris = new Set();
+    const places = [];
+    for (const l of liens) {
+      const ancienne = (e.lignes || [])[l.rapprochement.ligne];
+      if (!ancienne) return refus('la ligne désignée');
+      const pareille = j => !pris.has(j) && neuves[j] && neuves[j].compte === ancienne.compte
+        && neuves[j].debit === round3(ancienne.debit || 0) && neuves[j].credit === round3(ancienne.credit || 0);
+      const i = pareille(l.rapprochement.ligne) ? l.rapprochement.ligne : neuves.findIndex((_, j) => pareille(j));
+      if (i < 0) return refus(`la ligne ${ancienne.compte} de ${fmtMontant(ancienne.debit || ancienne.credit || 0)}`);
+      pris.add(i); places.push({ l, i });
+    }
+    return { ok: true, liens: places };
+  }
+
   function modifierEcriture(livre, id, patch, quand) {
     const e = (livre.ecritures || []).find(x => x.id === id);
     if (!e) return { ok: false, motif: 'Cette écriture n\'existe pas.' };
     if (e.statut !== 'brouillard') {
       return { ok: false, motif: 'Cette écriture est validée : elle ne se modifie pas, elle se contre-passe.' };
     }
-    if (rapprochementDe(livre, id)) {
-      return { ok: false, motif: 'Cette écriture est rapprochée d\'une ligne de relevé : défais le rapprochement d\'abord, sinon il désignerait un montant qui a changé.' };
-    }
+    const tient = rapprochementTient(livre, e, patch || {});
+    if (!tient.ok) return { ok: false, motif: tient.motif };
+    // La ligne désignée a pu changer de rang (une ligne insérée au-dessus) : le lien la suit.
+    tient.liens.forEach(x => { x.l.rapprochement.ligne = x.i; });
     const p = patch || {};
     ['journal', 'piece', 'libelle'].forEach(k => { if (p[k] !== undefined) e[k] = String(p[k] == null ? '' : p[k]); });
     if (p.pieceJointe !== undefined) e.pieceJointe = p.pieceJointe || null;
@@ -2398,9 +2428,29 @@
   // le code serait poser une règle comptable que personne n'a validée (règle de la 9.1.1 : la
   // valeur par défaut d'une règle qu'on ne connaît pas est celle qui ne fait rien). Elle se
   // remplit toute seule, un libellé à la fois, quand le comptable choisit un compte.
+  // 10.14.1 — les mots qu'on trouve sur TOUTES sortes de lignes de relevé ne disent rien du compte.
+  // Le mot retenu était le plus long du libellé : « PRLV STEG FACTURE 0926 » retenait FACTURE → 606,
+  // et le virement d'un CLIENT « VIR RECU FACTURE 012 » était ensuite proposé en charge (vu au test
+  // humain). Un mot de cette liste n'est jamais retenu, et une règle ancienne qui n'en porte qu'un
+  // ne décide plus rien.
+  const MOTS_BANCAIRES = ['facture', 'factures', 'fact', 'prlv', 'prelevement', 'prelev', 'virement', 'vir', 'virt',
+    'recu', 'recue', 'emis', 'emise', 'cheque', 'cheques', 'chq', 'remise', 'paiement', 'reglement', 'carte', 'agence',
+    'compte', 'date', 'reference', 'numero', 'mois', 'tunis', 'tunisie', 'banque', 'operation', 'montant', 'dinars', 'client', 'fournisseur'];
+  function motGenerique(m) { return MOTS_BANCAIRES.includes(sansAccents(String(m || '').toLowerCase()).trim()); }
+
+  // Le mot d'un libellé qui servira de règle : le plus long de quatre lettres ou plus qui n'est pas un
+  // mot bancaire. « PRLV STEG FACTURE 0926 » → STEG ; « FRAIS TENUE DE COMPTE » → FRAIS. Rien si le
+  // libellé n'en a aucun : mieux vaut ne rien retenir que retenir un mot qui trompera.
+  function motifDeLibelle(libelle) {
+    const mots = String(libelle || '').split(/[^\p{L}]+/u).filter(m => m.length >= 4 && !motGenerique(m));
+    let choisi = '';
+    mots.forEach(m => { if (m.length > choisi.length) choisi = m; });
+    return choisi.toUpperCase();
+  }
+
   function compteDuLibelle(table, libelle) {
     const L = sansAccents(String(libelle || '').toLowerCase());
-    const T = (Array.isArray(table) ? table : []).filter(x => x && txt(x.motif) && txt(x.compte));
+    const T = (Array.isArray(table) ? table : []).filter(x => x && txt(x.motif) && txt(x.compte) && !motGenerique(x.motif));
     // Le motif le plus LONG gagne : « STEG PRELEVEMENT » est plus précis que « STEG », et sans
     // cette règle le résultat dépendrait de l'ordre du tableau (règle de la correspondance, 9.3.0).
     let choisi = null;
@@ -6338,7 +6388,7 @@
     RELEVE_NIVEAUX, RELEVE_JOURS, AGING_BUCKETS,
     colonnesReleve, releveDepuisCsv, releveValide, releveDejaImporte, ajouterReleve, supprimerReleve,
     lignesBancaires, lignesARapprocher, candidatsDeLigne, rapprocherAuto, rapprocherLigne, derapprocherReleve, suspens,
-    compteDuLibelle, ecritureProposee, lettrageAuto,
+    compteDuLibelle, motifDeLibelle, ecritureProposee, lettrageAuto,
     echeancierDepuisLignes, balanceAgeeDepuisLignes,
     // La déclaration mensuelle (9.6.0)
     COMPTES_FISCAUX, CASES_A_VERIFIER, mouvementCompte, declarationMensuelle, controlesDeclaration,

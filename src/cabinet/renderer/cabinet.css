@@ -818,3 +818,11 @@ a.lien-aide:hover, a.lien-aide:focus-visible { text-decoration-thickness: 2px; }
 .imp-bilan { max-height: 55vh; overflow-y: auto; }
 .imp-liste { margin: 6px 0 0; padding-inline-start: 18px; }
 .imp-liste li + li { margin-block-start: 2px; }
+
+/* 10.14.1 — « Écrire depuis le relevé » : le mot retenu se voit et se corrige sur la ligne de sa
+   case, jamais en dessous (il pousserait les boutons sous le curseur). */
+.bf-retenir { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.bf-retenir .check { margin: 0; }
+.bf-retenir .bf-motif { width: 150px; }
+/* L'intitulé du compte tapé : UNE ligne réservée, pour que la frappe ne fasse rien bouger. */
+.bf-nom { display: block; min-height: 1.4em; margin-top: 4px; }

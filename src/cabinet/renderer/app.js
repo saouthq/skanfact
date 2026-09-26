@@ -6491,16 +6491,32 @@
         <label class="field">Date<input type="date" name="date" value="${esc(brouillon.date)}"></label>
         <label class="field span-2">Libellé<input name="libelle" value="${esc(brouillon.libelle)}"></label>
         <label class="field">Compte ${esc(R.compte)}<input value="${esc(money(ligne.montant))}" disabled></label>
-        <label class="field obligatoire"><span>Contrepartie</span><input name="compte" value="${esc(contre.compte)}" placeholder="606"></label>
-        <label class="check span-2"><input type="checkbox" name="retenir" ${brouillon.regle ? '' : 'checked'}> Retenir ce libellé pour la prochaine fois</label>
+        <label class="field obligatoire"><span>Contrepartie</span><input name="compte" value="${esc(contre.compte)}" placeholder="606">
+          <small class="muted bf-nom" id="bf-nom">${esc(nomDeCompte()(contre.compte) || ' ')}</small></label>
+        ${brouillon.regle ? '' : `<div class="span-2 bf-retenir"><label class="check"><input type="checkbox" name="retenir" ${KC.motifDeLibelle(ligne.libelle) ? 'checked' : ''}> <span>Proposer ce compte aux lignes qui contiennent</span></label>
+          <input name="motif" class="bf-motif" value="${esc(KC.motifDeLibelle(ligne.libelle))}" placeholder="STEG" aria-label="Mot retenu"></div>`}
       </form>
+      ${/* 10.14.1 — la TVA d'une facture payée par la banque se ventile APRÈS : la pièce arrive en
+            brouillard, « Reprendre dans la grille » l'ouvre, et la ligne de banque reste rapprochée. */''}
+      <p class="small muted">Une TVA à récupérer ? Crée le brouillard, puis <b>Reprendre dans la grille</b> (onglet Saisie) pour ventiler HT et TVA : la ligne ${esc(R.compte)} reste rapprochée.</p>
       <div class="modal-actions"><button class="btn" data-close>Annuler</button>
         <button class="btn btn-primary" id="ok">Créer le brouillard</button></div>`,
       (rootModal, close) => {
+        // Le compte tapé se NOMME pendant la frappe, comme dans la grille : un 6061 qu'on croit
+        // être l'électricité se voit avant d'être écrit. Seul l'intitulé se récrit (7.17.0).
+        const nomC = nomDeCompte();
+        $('[name=compte]', rootModal).addEventListener('input', ev => {
+          const c = ev.target.value.trim();
+          $('#bf-nom', rootModal).textContent = c ? (nomC(c) || 'compte hors plan : il sera ajouté au plan du dossier') : ' ';
+        });
         $('#ok', rootModal).onclick = async () => {
           const v = n => (($(`[name=${n}]`, rootModal) || {}).value || '').trim();
           const compte = v('compte');
           if (!compte) return refus($('[name=compte]', rootModal), 'Choisis le compte de contrepartie : sans lui, l\'écriture ne s\'enregistre pas.');
+          const cocheR = $('[name=retenir]', rootModal);
+          if (cocheR && cocheR.checked && v('motif') && !KC.motifDeLibelle(v('motif'))) {
+            return refus($('[name=motif]', rootModal), `« ${v('motif')} » se trouve sur trop de lignes de relevé pour décider d'un compte : garde un mot propre à ce tiers (STEG, SONEDE, le nom du client…), ou décoche.`);
+          }
           const ec = {
             ...brouillon, journal: v('journal') || 'BQ', date: v('date'), libelle: v('libelle'),
             lignes: [{ ...brouillon.lignes[0], libelle: v('libelle') }, { ...contre, compte, libelle: v('libelle') }]
@@ -6509,11 +6525,12 @@
           try {
             const r = await api.saisir(dossier.id, s.annee, ec);
             s.livre = r.livre;
-            // Le mot RETENU est le plus long du libellé : « PRELEVEMENT STEG 03/2026 » ne se
-            // reverra jamais tel quel, mais « PRELEVEMENT » si — et il ne veut rien dire tout seul.
-            if ($('[name=retenir]', rootModal).checked) {
-              const mot = (String(ligne.libelle || '').split(/[^A-Za-zÀ-ÿ]+/).filter(m => m.length >= 4)
-                .sort((a, b) => b.length - a.length)[0] || '').toUpperCase();
+            // Le mot RETENU se voit et se corrige dans la fenêtre (10.14.1) : le moteur propose le plus
+            // long qui ne soit pas un mot bancaire (`motifDeLibelle`) — « FACTURE » retenu à la place de
+            // « STEG » faisait proposer 606 sur le virement d'un client.
+            const coche = $('[name=retenir]', rootModal);
+            if (coche && coche.checked) {
+              const mot = v('motif').toUpperCase();
               if (mot) {
                 const table2 = (Array.isArray(S.libelles) ? S.libelles : []).filter(x => x.motif !== mot).concat([{ motif: mot, compte }]);
                 S = await api.saveBanque({ libelles: table2 });
@@ -6578,7 +6595,9 @@
           const avant = KC.lignesBancaires(s.livre, compte).filter(c => c.date < premiere);
           const solde = KC.round3(avant.reduce((a, c) => a + c.montant, 0));
           champDebut.value = montantChamp(solde) || '0';
-          if (hint) hint.textContent = `d'après le livre : ${money(solde)} au ${fmtJour(premiere)} (veille de la première ligne)`;
+          // Le solde s'arrête AVANT la première ligne : c'est celui du soir de la veille. « au 02/10
+          // (veille de la première ligne) » sous une première ligne du 02/10 se contredisait.
+          if (hint) hint.textContent = `d'après le livre : ${money(solde)} au soir du ${fmtJour(KC.ajouterJoursIso(premiere, -1))}, veille de la première ligne`;
         };
         const montrer = () => {
           if (!lu) return;
@@ -7466,7 +7485,13 @@
     try {
       const r = await api.validerLot({ dossierId: dossier.id, annee: s.annee, journal: filtre.journal, mois: filtre.mois });
       s.livre = r.livre;
-      const lignes = [`${pl(r.validees.length, 'écriture validée', 'écritures validées')}.`];
+      // Les numéros pris se DISENT : c'est ce que le comptable reporte sur la pièce papier, et « 3
+      // écritures validées » l'obligeait à rouvrir le journal pour les lire (vu au test humain).
+      const nums = r.validees.map(x => Number(x.numero)).filter(n => n > 0).sort((a, b) => a - b);
+      const plage = !nums.length ? '' : nums.length === 1 ? ` sous le n° ${nums[0]}`
+        : nums[nums.length - 1] - nums[0] === nums.length - 1 ? ` sous les n° ${nums[0]} à ${nums[nums.length - 1]}`
+          : ` sous les n° ${nums.join(', ')}`;
+      const lignes = [`${pl(r.validees.length, 'écriture validée', 'écritures validées')}${plage}.`];
       if (r.refusees.length) {
         // L'accord suit le nombre, et la date s'écrit comme à l'écran (U-28) : « 1 écriture n'est pas
         // entrée — elles restent en brouillard », « du 2026-08-31 », vus en relisant ce message.

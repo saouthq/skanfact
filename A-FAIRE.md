@@ -217,9 +217,14 @@ et au moteur), puis en stable quand Skander valide.*
   titres Excel ignorés au collage, « Commencer le livre » dans les premiers pas et son vert, visite
   « premier-livre », livre créé → Saisie, écran vide → « Saisir une première pièce », Tab dans
   l'en-tête de la saisie, appairage et clé facultatifs sans paquet, cartes « livres tenus », zéro de
-  la retenue, bulles de la reprise. Vu à la souris jusqu'à la déclaration de septembre. **Restent à
-  parcourir** : la banque (relevé importé sur un livre neuf), la paie et la CNSS d'un client hors
-  SkanFact, la clôture de son premier exercice, et « Guide-moi » écran par écran sur ce cabinet neuf.
+  la retenue, bulles de la reprise. Vu à la souris jusqu'à la déclaration de septembre. ~~La banque~~
+  **faite (26/09)** : deux relevés BIAT, trois lignes écrites depuis le relevé, la TVA de la STEG
+  ventilée APRÈS le rapprochement (refusé jusque-là), le mot retenu propre au tiers (« FACTURE » →
+  606 était retenu), l'intitulé du compte tapé, le solde de départ daté au soir de la veille, les
+  numéros dits à la validation, écart à zéro. **Restent à parcourir** : la paie et la CNSS d'un
+  client hors SkanFact, la clôture de son premier exercice, et « Guide-moi » écran par écran sur ce
+  cabinet neuf. Noté : la table des mots retenus n'a pas d'écran où la relire et la corriger — une
+  règle apprise par erreur ne se retire qu'en en retenant une autre plus longue.
   Constats notés sans les corriger : la TFP et le FOPROLOS d'un livre sans aucun salaire disent
   « — à vérifier » là où la masse salariale vaut zéro ; le compte 5311 s'intitule « Banques et
   établissements financiers » (le plan de référence lit le préfixe 53 — À VÉRIFIER avec le pilote) ;

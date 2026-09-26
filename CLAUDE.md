@@ -8399,6 +8399,24 @@ lots ; le détail de ce qui reste vit dans `A-FAIRE.md` § 0.
     source d'un mois sans retenue dit maintenant son zéro, sur sa ligne.
   - La bulle des bornes de l'exercice promettait un exercice décalé que `exerciceDeReprise` refuse :
     **une bulle se relit contre la fonction qui jugera** (le 1er janvier au 31 décembre, À VÉRIFIER).
+- **La banque d'un client hors SkanFact, relevé par relevé, à la souris** — trois défauts qui
+  auraient fait lâcher le rapprochement dès le premier relevé :
+  - **Ce qu'un rapprochement TIENT, c'est la ligne qu'il désigne, pas toute la pièce.** Écrire depuis
+    le relevé « PRLV STEG 214,500 », puis ventiler la TVA (606 + 4366) — le geste qu'un comptable fait
+    juste après — était refusé : « défais le rapprochement d'abord », alors que la ligne 532 n'avait
+    pas bougé. `rapprochementTient` ne refuse que si la ligne désignée change de compte ou de montant,
+    ou si la date change ; le lien suit la ligne à son nouveau rang, et le refus dit ce qui reste
+    possible. Le test de la 9.5.0 qui refusait un changement de LIBELLÉ décrivait l'ancienne règle :
+    retourné vers celle-ci (quarante-troisième fois).
+  - **Un mot retenu pour une règle doit être propre au tiers.** « Retenir ce libellé » gardait le
+    mot le plus long : FACTURE → 606 pour la STEG, et le virement d'un CLIENT « VIR RECU FACTURE 012 »
+    aurait été proposé en charge. `motifDeLibelle` écarte les mots bancaires (facture, prlv, virement,
+    compte…), la fenêtre MONTRE le mot retenu et le laisse corriger, refuse un mot générique en le
+    nommant, et une règle ancienne sur un tel mot ne décide plus rien. La fenêtre nomme aussi le
+    compte tapé pendant la frappe, comme la grille, et dit comment ventiler la TVA après coup.
+  - « au 02/10 (veille de la première ligne) » sous une première ligne du 02/10 : **une phrase qui
+    date un solde le date au jour qu'elle nomme** (le soir du 01/10). Et la validation d'un lot dit
+    les numéros qu'elle a pris (« sous les n° 2 à 4 ») — c'est ce qu'on reporte sur la pièce papier.
 
 ## Pistes pour la suite (non demandées)
 
