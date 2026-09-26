@@ -295,8 +295,13 @@ module.exports = ({ t, assert, lireSource }) => {
     assert.ok((app.match(/tableauJustificatifs\(list\)/g) || []).length >= 3, 'une liste de justificatifs recopiée à la main');
     assert.ok((app.match(/brancherJustificatifs\(el, /g) || []).length >= 3);
     // Un fichier qui n'est plus là se dit en français, jamais par le message du système (7.26.0).
+    // Depuis OPEN-01 (10.14.1) la phrase vit dans `ditOuverture`, que chaque ouverture appelle — on
+    // exige la règle (l'ouverture passe par elle, et la copie disparue s'y dit), pas une forme.
     const ouvrir = tranche('  async function ouvrirJustificatif(ownerId, a) {', '  function brancherJustificatifs(');
-    assert.ok(/if \(err\) toast\(`« \$\{a\.name \|\| a\.file\} » ne s'ouvre pas/.test(ouvrir));
+    assert.ok(/ditOuverture\(await bridge\.openAttachment\(ownerId, a\.file\), a\.name \|\| a\.file\)/.test(ouvrir),
+      'l\'ouverture d\'un justificatif ne dit plus pourquoi le fichier ne s\'ouvre pas');
+    const dit = tranche('  function ditOuverture(r, nom) {', '  async function ouvrirJustificatif(');
+    assert.ok(/if \(r\.absent\) toast\(`« \$\{nom\} » ne s'ouvre pas/.test(dit), 'une copie disparue ne se dit plus en français');
   });
 
   // LET-01 (10.14.1) : un achat sans numéro — le carburant, la papeterie, un ticket de caisse —

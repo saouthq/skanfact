@@ -53,6 +53,37 @@ et au moteur), puis en stable quand Skander valide.*
   - **Reste à `e2e:cabinet-jour1`** : la grille de saisie commence à 592 px sur un portable (seuil
     480) — le bandeau de l'exemple et « Première fois sur cet écran ? » passent devant. À régler
     avec S-03 (« Première fois » ne doit pas pousser l'écran de travail).
+- **Fait, prouvé et testé à la souris (26/09, suite)** :
+  - **S-04** — une pièce jointe se retrouve par son nom (Ctrl K, recherche des listes) et chaque
+    ligne qui a un justificatif porte 📎 (factures, devis, achats, dépenses, mouvements, écritures).
+    Vérifié de bout en bout jusqu'au Cabinet : 📎 sur la pièce du journal, et « Ouvrir le
+    justificatif du client » qui ouvre le fichier du paquet.
+  - **RESET-01** — « Réinitialiser les filtres » et les gestes d'un état vide redessinaient la page
+    par `routes.X()` direct : le bandeau de l'exemple, le lien d'aide et les bandeaux de la page
+    disparaissaient. Tout passe par le routeur.
+  - **LET-01** — un achat sans numéro de fournisseur reçoit une référence lisible et unique
+    `SN-AAAAMMJJ[-n]` : la pièce, le lettrage, le dossier du paquet, la recherche et la colonne
+    « Pièce » de `achats.csv` et `reglements-fournisseurs.csv` (au Cabinet, deux achats du même
+    jour sont deux pièces distinctes, 114 et 115). **Limite** : supprimer un achat sans numéro plus
+    ancien le même jour décale les `-n` des suivants (la référence est déduite, comme un statut) —
+    à dire au CHANGELOG avec le conseil de refaire les paquets des mois qui portaient des achats
+    sans numéro.
+  - **REF-01** (Cabinet) — un refus qui renvoie aux Réglages montre la case fautive une fois le
+    panneau chargé (le nom du cabinet avant d'enregistrer l'appairage).
+  - **OPEN-01** (les deux applications) — `shell.openPath` ne lève rien : il REND un message quand
+    aucun programme n'ouvre le fichier, et ce message était ignoré (clic accepté, rien ne s'ouvre).
+    Une seule porte par application (`ouvrirOuMontrer`, jumelles comparées par un test) : le
+    fichier est montré dans son dossier et l'écran le dit ; une copie disparue du disque se dit
+    autrement. Vérifié à la souris : la copie déplacée (« ne s'ouvre pas : la copie … a peut-être
+    été déplacée »), et le cas « aucun programme » sur une copie de l'application lancée avec un
+    `shell` simulé (ce poste Linux prétend tout ouvrir).
+  - **Élision** : « le brouillon d'octobre 2026 », « dans son paquet d'août 2026 » (`deLibelle` dans
+    core.js, jumelle de `de` du Cabinet), vues à l'écran dans les deux applications.
+  - **Limites notées, non bloquantes** : le jeu d'exemple porte peu de justificatifs (la recherche
+    par nom de fichier s'y démontre mal) ; une copie jointe à une pièce abandonnée peut rester sur
+    le disque si l'application est tuée pendant la saisie ; la liste des mouvements de Trésorerie
+    n'a pas de champ de recherche ; sous Linux (qui n'est pas une plateforme livrée) l'écran dit
+    « l'Explorateur ».
 - **Cabinet — 84 champs sans bulle « i »** (trouvés en portant la sonde de l'app entreprise au
   Cabinet, le jumeau manquant) : salarié, bulletin, bien, cession, écriture de trésorerie, questions,
   réouverture, mots de passe… À écrire dans `cabguide.js` (chaque bulle dit ce que le CODE fait du
@@ -101,11 +132,13 @@ et au moteur), puis en stable quand Skander valide.*
    les ACTIONS : ce que fait le bouton, quand s'en servir, ce qui se passe après. Et améliorer
    « Première fois sur cette page ». Beaucoup de défauts UI/UX et d'ergonomie dans la page
    « Me guider », l'assistant et la visite : tout reprendre, les deux applications.
-6. **Pièces jointes** : une pièce jointe se RETROUVE par la recherche (son nom de fichier, Ctrl K et
+6. ~~**Pièces jointes** : une pièce jointe se RETROUVE par la recherche (son nom de fichier, Ctrl K et
    les listes), et **chaque ligne qui a un justificatif le montre** (📎 sur les factures, devis,
-   achats, dépenses, mouvements, écritures) — c'est la preuve qui part au comptable.
-7. **Une facture à échéance 0** (échéance = date) : l'aperçu montre deux cadres avec la même date.
-   N'en garder qu'un (« À réception »). Signalé une première fois, pas réglé.
+   achats, dépenses, mouvements, écritures) — c'est la preuve qui part au comptable.~~ **Fait (S-04,
+   § 0.1).**
+7. ~~**Une facture à échéance 0** (échéance = date) : l'aperçu montre deux cadres avec la même date.
+   N'en garder qu'un (« À réception »). Signalé une première fois, pas réglé.~~ **Fait (S-05,
+   § 0.1).**
 8. **Un chargement visible au lieu d'une page blanche** quand un calcul est long (la fenêtre OD
    mesurée à 15,5 s sur dix ans avant PERF-01, et tout écran lourd sur des données pleines) : peindre
    « Chargement… » AVANT de calculer, pour qu'on ne croie pas que l'application a planté.

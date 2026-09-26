@@ -1472,4 +1472,88 @@ module.exports = async ({ t, ta, assert }) => {
       assert.ok(!/1380/.test(mail), type + ' : le mail écrit le montant sans ses milliers');
     });
   });
+
+  // ---------- OPEN-01 : un fichier qui ne s'ouvre pas se montre, et l'écran le dit ----------
+  // `shell.openPath` REND un message quand aucun programme n'ouvre le fichier ; ignoré, le clic sur
+  // « Ouvrir le justificatif du client » était accepté et rien ne s'ouvrait (vu à la souris, 10.14.1).
+  const sansCommentaires = src => src.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').map(l => l.replace(/^\s*\/\/.*$/, '')).join('\n');
+  const mainE = fs.readFileSync(path.join(__dirname, '../../src/main.js'), 'utf8');
+  const mainC = fs.readFileSync(path.join(__dirname, '../../src/cabinet/main.js'), 'utf8');
+  const corpsDe = (src, sig) => { const a = src.indexOf(sig); assert.ok(a >= 0, 'introuvable : ' + sig); const b = src.indexOf('\n}\n', a); return src.slice(a, b + 2); };
+
+  t('10.14.1 OPEN-01 : ouvrirOuMontrer est la seule porte vers shell.openPath, jumelle exacte dans les deux applications', () => {
+    const sig = 'async function ouvrirOuMontrer(p) {';
+    assert.strictEqual(corpsDe(mainE, sig), corpsDe(mainC, sig), 'les deux ouvrirOuMontrer ont divergé');
+    for (const [nom, src] of [['src/main.js', mainE], ['src/cabinet/main.js', mainC]]) {
+      const code = sansCommentaires(src);
+      const n = (code.match(/shell\.openPath\(/g) || []).length;
+      assert.strictEqual(n, 1, `${nom} : shell.openPath est appelé ${n} fois — tout passe par ouvrirOuMontrer, qui lit sa réponse`);
+      assert.ok(corpsDe(code, sig).includes('shell.openPath('), `${nom} : l'appel n'est pas dans ouvrirOuMontrer`);
+    }
+  });
+
+  await ta('10.14.1 OPEN-01 : un fichier qu\'aucun programme n\'ouvre est MONTRÉ dans son dossier et le dit ; un fichier absent le dit aussi', async () => {
+    const src = corpsDe(mainE, 'async function ouvrirOuMontrer(p) {');
+    const jouer = async ({ existe, err }) => {
+      const montre = [];
+      const ctx = { fs: { existsSync: () => existe }, path, shell: { openPath: async () => err, showItemInFolder: p => montre.push(p) } };
+      vm.runInNewContext(src + '\nthis.f = ouvrirOuMontrer;', ctx);
+      // Un objet né dans le contexte vm n'a pas le prototype d'ici : on compare ses valeurs.
+      return { r: JSON.parse(JSON.stringify(await ctx.f('/tmp/x/ticket.png'))), montre };
+    };
+    let o = await jouer({ existe: true, err: '' });
+    assert.deepStrictEqual(o.r, { ouvert: true }); assert.strictEqual(o.montre.length, 0);
+    o = await jouer({ existe: true, err: 'Failed to open path' });
+    assert.strictEqual(o.r.ouvert, false); assert.strictEqual(o.r.sansProgramme, true, 'l\'échec du système est avalé');
+    assert.strictEqual(o.r.nom, 'ticket.png'); assert.deepStrictEqual(o.montre, ['/tmp/x/ticket.png'], 'le fichier n\'est pas montré dans son dossier');
+    o = await jouer({ existe: false, err: '' });
+    assert.deepStrictEqual(o.r, { ouvert: false, absent: true });
+  });
+
+  t('10.14.1 OPEN-01 : chaque ouverture des deux écrans passe par ditOuverture, qui a deux phrases pour deux causes', () => {
+    // L'app entreprise : les quatre ouvertures (justificatif, PDF exporté, dossier de PDF, états de clôture).
+    assert.ok(/ditOuverture\(await bridge\.openAttachment\(/.test(app), 'le justificatif ne dit plus pourquoi il ne s\'ouvre pas');
+    const bruts = (app.match(/bridge\.openPath\(/g) || []).length;
+    const dits = (app.match(/ditOuverture\(await bridge\.openPath\(/g) || []).length;
+    assert.ok(bruts >= 2 && bruts === dits, `bridge.openPath : ${bruts} appels, ${dits} passent par ditOuverture`);
+    assert.ok(/const r = await bridge\.ouvrirEtatsCloture\([^)]*\); ditOuverture\(r,/.test(app), 'les états de clôture ne disent plus rien');
+    const cab = fs.readFileSync(path.join(__dirname, '../../src/cabinet/renderer/app.js'), 'utf8');
+    const ouvre = (cab.match(/api\.openInPack\(/g) || []).length;
+    const ouvreDit = (cab.match(/ditOuverture\(await api\.openInPack\(/g) || []).length;
+    assert.ok(ouvre >= 2 && ouvre === ouvreDit, `Cabinet : api.openInPack ${ouvre} fois, ${ouvreDit} par ditOuverture`);
+    assert.ok(/ditOuverture\(await api\.ouvrirJustificatif\(/.test(cab), 'Cabinet : le justificatif du cabinet ne dit plus pourquoi il ne s\'ouvre pas');
+    // Joué : le message dit la BONNE cause — attribuer « aucun programme » à un fichier supprimé (ou
+    // l'inverse) enverrait chercher ce qui est là.
+    for (const [nom, src, expl] of [['entreprise', app, 'EXPLORATEUR'], ['Cabinet', cab, 'EXPLORATEUR']]) {
+      const f = src.slice(src.indexOf('  function ditOuverture(r, nom) {'), src.indexOf('\n  }\n', src.indexOf('  function ditOuverture(r, nom) {')) + 4);
+      assert.ok(f.length > 100 && f.length < 1500, nom + ' : tranche de ditOuverture inattendue');
+      const dit = [];
+      const ctx = { toast: m => dit.push(m), [expl]: nom === 'Cabinet' ? () => 'l\'Explorateur' : 'l\'Explorateur' };
+      vm.runInNewContext(f + '\nthis.d = ditOuverture;', ctx);
+      ctx.d({ ouvert: true }, 'a.png'); ctx.d({ opened: true }, 'a.png'); ctx.d(null, 'a.png');
+      assert.strictEqual(dit.length, 0, nom + ' : un fichier ouvert fait parler l\'écran');
+      ctx.d({ ouvert: false, sansProgramme: true }, 'ticket.png');
+      assert.ok(/Aucun programme[\s\S]*ticket\.png[\s\S]*Explorateur/.test(dit[0] || ''), nom + ' : sans programme, la phrase ne le dit pas : ' + dit[0]);
+      ctx.d({ ouvert: false, absent: true }, 'ticket.png');
+      assert.ok(/ticket\.png/.test(dit[1] || '') && !/Aucun programme/.test(dit[1]) && /(supprim|déplac)/.test(dit[1]), nom + ' : un fichier absent est dit « sans programme » : ' + dit[1]);
+    }
+  });
+
+  t('10.14.1 : « de » s\'élide devant un mois — « d\'août », « d\'octobre », dans les deux applications (jumelles)', () => {
+    const cabcore = require('../../src/cabinet/cabcore.js');
+    assert.strictEqual(core.deLibelle('août 2026'), 'd\'août 2026');
+    assert.strictEqual(core.deLibelle('octobre 2026'), 'd\'octobre 2026');
+    assert.strictEqual(core.deLibelle('mars 2026'), 'de mars 2026');
+    const coreSrc = fs.readFileSync(path.join(__dirname, '../../src/renderer/core.js'), 'utf8');
+    const cabSrc = fs.readFileSync(path.join(__dirname, '../../src/cabinet/cabcore.js'), 'utf8');
+    const corpsLigne = (src, sig) => { const a = src.indexOf(sig); assert.ok(a >= 0, sig); return src.slice(src.indexOf('{', a), src.indexOf('\n', a)); };
+    assert.strictEqual(corpsLigne(coreSrc, 'function deLibelle(label)'), corpsLigne(cabSrc, 'function de(label)'), 'deLibelle et de ont divergé');
+    assert.strictEqual(cabcore.de('août 2026'), 'd\'août 2026');
+    // Aucune phrase ne colle « de » devant un mois fabriqué (« de août 2026 ») : on passe par l'élision.
+    const cabApp = fs.readFileSync(path.join(__dirname, '../../src/cabinet/renderer/app.js'), 'utf8');
+    for (const [nom, src] of [['app.js', app], ['cabinet/app.js', cabApp]]) {
+      const m = src.match(/\bde \$\{(?:moisLabelCourt|K\.monthLabel|C\.monthLabel|monthLabel)\(/);
+      assert.ok(!m, `${nom} : « de \${mois} » sans élision (donne « de août ») : ${m && src.slice(m.index - 40, m.index + 60)}`);
+    }
+  });
 };

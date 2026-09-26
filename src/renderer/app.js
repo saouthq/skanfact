@@ -2918,12 +2918,19 @@
       ${list.map(a => `<tr><td><a href="#" data-open="${h(a.file)}">${h(a.name || a.file)}</a></td><td class="nw">${C.fmtDate(a.date)}</td><td class="r nw">${fileSize(a.size)}</td>${rowMenuCell(a.file)}</tr>`).join('')}
     </tbody></table>`;
   }
-  // Ouvrir la COPIE rangée par SkanFact. `shell.openPath` rend un message d'erreur en anglais du système
-  // quand le fichier n'est plus là ; on dit ce qui se passe, en français (7.26.0).
+  // Ce que `ouvrirOuMontrer` (main.js) rend quand un fichier ne s'ouvre pas, dit en français avec son nom
+  // (7.26.0) : la copie a disparu du disque, ou aucun programme de l'ordinateur n'ouvre ce type de
+  // fichier — il est alors montré dans son dossier. Deux causes, deux phrases : attribuer la seconde à
+  // la première enverrait chercher un fichier qui est là. Rien quand tout va bien.
+  function ditOuverture(r, nom) {
+    if (!r || r.ouvert !== false) return;
+    if (r.absent) toast(`« ${nom} » ne s'ouvre pas : la copie rangée par SkanFact a peut-être été déplacée ou supprimée du disque.`, true);
+    else if (r.sansProgramme) toast(`Aucun programme de cet ordinateur n'ouvre « ${nom} » : SkanFact le montre dans ${EXPLORATEUR}, ouvre-le avec le programme de ton choix.`, true);
+  }
+  // Ouvrir la COPIE rangée par SkanFact.
   async function ouvrirJustificatif(ownerId, a) {
     try {
-      const err = await bridge.openAttachment(ownerId, a.file);
-      if (err) toast(`« ${a.name || a.file} » ne s'ouvre pas : la copie rangée par SkanFact a peut-être été déplacée ou supprimée du disque.`, true);
+      ditOuverture(await bridge.openAttachment(ownerId, a.file), a.name || a.file);
     } catch (e) { toast(plainError(e), true); }
   }
   function brancherJustificatifs(el, ownerId, list, retirer) {
@@ -4860,7 +4867,7 @@
       const p = await bridge.exportPdf(html, name);
       if (p) {
         toast('PDF enregistré : ' + p.split(/[\\/]/).pop());
-        if (company().openAfterExport !== false) bridge.openPath(p);
+        if (company().openAfterExport !== false) ditOuverture(await bridge.openPath(p), p.split(/[\\/]/).pop());
       }
     } catch (e) { toast('Export PDF impossible : ' + plainError(e), true); }
   }
@@ -6530,7 +6537,7 @@
           // On mène à la fiche du contrat : c'est là qu'on voit le brouillon qui vient d'être créé.
           // `vers()` redessine quand on y est déjà — l'annulation repasse par ici et le hash n'a pas
           // changé, donc aucun `hashchange` ne viendrait rafraîchir la page (piège de la 7.15.0).
-          { icon: 'facture', label: 'Générer maintenant', hint: suspendu ? 'Le contrat est suspendu : la question sera posée' : `Le brouillon de ${C.monthLabel(r.nextDate)}`, run: () => genererContrat(r, vers('#/contrat/' + r.id)) },
+          { icon: 'facture', label: 'Générer maintenant', hint: suspendu ? 'Le contrat est suspendu : la question sera posée' : `Le brouillon ${C.deLibelle(C.monthLabel(r.nextDate))}`, run: () => genererContrat(r, vers('#/contrat/' + r.id)) },
           { sep: true },
           { icon: 'modifier', label: 'Modifier le contrat', hint: 'Client, lignes, périodicité, prochaine échéance', run: () => recurrenceForm(r, draw) },
           { icon: suspendu ? 'reprendre' : 'pause', label: suspendu ? 'Reprendre le contrat' : 'Suspendre le contrat',
@@ -12486,7 +12493,7 @@
         if (!rows.length) return toast('Rien à exporter sur cette période.', true);
         const files = rows.map(r => { const d = docById(r.id); return { name: `${d.number}_${(r.client || '').replace(/[^\w\-àâäéèêëïîôöùûüç ]/gi, '').trim().replace(/\s+/g, '_')}.pdf`, html: C.documentHtml(d, clientById(d.clientId), company(), { stampText: stampFor(d) }) }; });
         toast(`Génération de ${files.length} PDF…`);
-        try { const dir = await bridge.exportPdfMany(files, `SkanFact-${tag}`); if (dir) { toast(`${files.length} PDF exportés`); bridge.openPath(dir); } }
+        try { const dir = await bridge.exportPdfMany(files, `SkanFact-${tag}`); if (dir) { toast(`${files.length} PDF exportés`); ditOuverture(await bridge.openPath(dir), dir.split(/[\\/]/).pop()); } }
         catch (e) { toast(plainError(e), true); }
       };
     });
@@ -13272,7 +13279,7 @@
       $$('[data-etats]').forEach(b => b.onclick = async () => {
         const c = (data.clotures || []).find(x => String(x.exercice) === b.dataset.etats);
         if (!c) return;
-        try { await bridge.ouvrirEtatsCloture({ source: c.exercice, html: c.etatsHtml }); }
+        try { const r = await bridge.ouvrirEtatsCloture({ source: c.exercice, html: c.etatsHtml }); ditOuverture(r, r && r.path ? r.path.split(/[\\/]/).pop() : `les états de ${c.exercice}`); }
         catch (e) { toast(plainError(e), true); }
       });
       if ($('#cl-import')) $('#cl-import').onclick = () => importerCloture();

@@ -343,6 +343,14 @@ chantier précis ; `ROADMAP.md` est une **archive**.
   test-là est le regard (il clique des PIXELS). Le hook `.claude/hooks/session-start.sh` installe tout
   au démarrage d'une session web ; `scripts/humain/fermer.sh` ferme l'application. Aucun de ces
   outils ne demande de clé d'API : c'est Claude qui regarde et qui décide du clic suivant.
+  **Rien ne s'annonce « réglé » avant d'avoir été refait à la souris et VU à l'écran** (rappelé par
+  Skander le 26/09/2026 : « toujours vérifier comme un humain avant de confirmer que c'est réglé, faut
+  le prouver avec la souris ») — un test vert ou une valeur lue par CDP ne sont pas la preuve.
+- **Les workflows lancent leurs agents en `sonnet`** (décidé par Skander le 26/09/2026 : « ça consomme
+  moins mon quota hebdomadaire ») : `agent(prompt, { model: 'sonnet', … })` sur chaque appel, et
+  `model: 'sonnet'` pour un agent lancé par l'outil Agent. Ce que les agents trouvent se REVÉRIFIE à
+  la main avant d'être retenu (« chercher avec des agents, vérifier soi-même ») : un constat d'agent
+  n'est qu'une piste.
 - Ne jamais commiter de token. Le jeton GitHub que l'utilisateur colle (quand le dépôt est privé) est stocké dans `userData/update-config.json`, jamais dans le code.
 - **La licence est ARMÉE depuis la 8.0.0** : la clé publique de Skander (créée dans SkanFact le 14/09/2026) vit dans `build/licences-publiques.json` sous le `kid` **`master`**, et `build/licence-public.json` la porte encore à l'identique (repli des versions d'avant la 8.4.0). Ne jamais la supprimer, la régénérer ni la remplacer — une autre clé invaliderait toutes les licences déjà vendues, et son absence désarmerait tous les clients. **Une licence sans `kid` se vérifie avec `master`** : toutes celles vendues depuis la 8.0.0 sont dans ce cas. La clé privée vit dans `~/.skanfact/` sur son Mac, jamais dans le dépôt. Des tests exigent la présence du fichier, que ce soit une vraie clé Ed25519, que `master` soit identique au caractère près à celle de la 8.0.0, et que le glob d'electron-builder embarque bien les deux fichiers. **Depuis la 8.6.0 le même fichier porte `srv-1`** (créée dans SkanFact le 15/09/2026), la clé de second rang avec laquelle la console signe les ventes : sa privée vit dans le réglage Cloudflare `SRV_PRIVATE_KEY`, jamais dans le dépôt. La retirer un jour (compromission) est une décision qui exige de réémettre les licences qu'elle a signées ; la « retirer » se fait par `retiree: true`, pas en effaçant l'entrée. **Depuis la 9.4.1 le champ `reponse` porte la clé publique de RÉPONSE** (créée dans SkanFact le 17/09/2026 — celle du 15/09 était brûlée, sa privée ayant transité par une conversation) : sa privée vit dans le réglage Cloudflare `REPONSE_PRIVATE_KEY`, jamais dans le dépôt, et c'est elle qui fait qu'une révocation prononcée depuis la console s'applique chez un client à jour. Un test exige qu'elle soit une Ed25519 distincte de `master` et de `srv-1`. Ne jamais la remplacer par une clé dont la privée a été vue (`plateforme/README.md` § 4).
 - **Partager un dossier à deux se fait en DEUX gestes**, et ils vivent dans `src/main.js` :
@@ -8055,6 +8063,70 @@ aussi l'app cabinet ») — les invariants ont gagné le stock, le résultat, le
   grille d'une OD en disposition automatique redistribuait ses largeurs dès qu'un intitulé de compte
   paraissait, et Débit/Crédit glissaient de 40 px entre deux frappes. `table-layout: fixed` et une
   largeur par colonne ; ce qui paraît selon une valeur tient dans la place qui existe déjà.
+
+### 10.14.1 — La deuxième vérification (en cours, bêta)
+
+Skander, après la 10.14.0 stable : « tu vas reparcourir toutes les deux applications comme un humain
+et revérifier que toutes les données et l'argent sont justes — tu ne t'arrêtes pas tant que les deux
+applications contiennent des défauts ». Puis, le 26/09 : la visite qui passe toute seule, « Guide-moi »,
+les pièces jointes introuvables, la page blanche des calculs longs. Ce qui suit est écrit au fil des
+lots ; le détail de ce qui reste vit dans `A-FAIRE.md` § 0.
+
+- **La règle générale des champs perdait pour la huitième fois : on l'a rendue sans poids** (NUM-01).
+  `input:not(…)×4` battait toute règle de conteneur (0,4,1 contre 0,2,1) ; chaque version posait une
+  exception de plus, et vingt-six règles écrites depuis la 7.9.0 ne s'étaient jamais appliquées (le
+  P.U. d'un achat coupé dès 1 000 DT, les quantités, le mot de passe sous « Afficher », les grilles du
+  Cabinet). Elle vit sous `:where()` : n'importe quelle classe la bat. **Quand un défaut revient pour la
+  même cause, on corrige la cause, pas l'occurrence** — le correctif structurel coûte un sélecteur, les
+  huit correctifs ponctuels coûtaient chacun une capture pour être vus.
+- **Un canal d'essai sert la plus récente des deux, bêta ou stable** (S-01). Sur une 13.0.0-beta.1,
+  une 14.0.0 stable n'était pas proposée tant que la case « bêta » restait cochée : le relais ne
+  cherchait que `beta*.yml`. `indexAServir` compare les deux, `/sante` le dit (`sertStable`). **Une
+  case qui ENFERME dans un canal est un piège** (7.25.0 : décocher ramène à la stable ; cocher ne doit
+  pas en priver).
+- **Un montant demandé se tient au millime** (ACP-01) : un acompte de 500 DT faisait 501,002 DT, parce
+  que le montant devenait un pourcentage puis une ligne, et que le timbre s'y ajoutait. Le montant
+  demandé est TTC, cherché base par base ; la facture le dit en toutes lettres. Une conversion
+  intermédiaire (montant → pourcentage → montant) est un arrondi de plus, et il se voit sur la pièce.
+- **Un bien peut être au bilan sans être au tableau des immobilisations** (C1) : une ligne d'achat
+  sans fiche, un bien pas encore en service, un bien en service avant sa facture. La page le montre,
+  la clôture le signale, et l'invariant de janvier compare le 22 au tableau.
+- **Un achat sans numéro de fournisseur n'a pas d'identifiant interne à montrer** (LET-01). Le
+  lettrage, les règlements et le paquet affichaient l'identifiant de la base (« mfq3w2… ») — et au
+  Cabinet, deux achats sans numéro du même jour portaient le même « N° » vide : ils ne faisaient
+  qu'UNE pièce dans le journal. La référence se DÉDUIT (`SN-AAAAMMJJ[-n]`, comme un statut), passe dans
+  la colonne « Pièce » des CSV, et chaque achat redevient une pièce. Sa limite est écrite : supprimer
+  un achat sans numéro plus ancien du même jour décale les suivants.
+- **Redessiner une page, c'est passer par le routeur** (RESET-01) : « Réinitialiser les filtres »
+  appelait `routes.x()` directement — la page revenait sans le bandeau de l'exemple, sans son lien
+  d'aide ni ses bandeaux, que le routeur pose APRÈS la route. `vers()` (7.15.0) est la seule porte.
+- **Une preuve de ce qui part chez le comptable se retrouve** (S-04) : le nom d'un fichier joint est
+  cherché par Ctrl K et par les listes, et chaque ligne qui porte un justificatif montre 📎 — jusqu'au
+  Cabinet, où l'écriture reçue ouvre le fichier du paquet.
+- **`shell.openPath` ne lève rien : il REND un message** quand aucun programme n'ouvre le fichier
+  (OPEN-01). Les deux applications ignoraient ce retour : un clic accepté, rien ne s'ouvre, rien ne se
+  dit (7.0.0). Une porte par application (`ouvrirOuMontrer`, jumelles comparées par un test) : le
+  fichier est MONTRÉ dans son dossier, et l'écran le dit avec ses mots, jamais le message du système
+  (7.26.0). **Deux causes, deux phrases** : une copie disparue du disque ne se règle pas comme un type
+  de fichier sans programme.
+- **Quand l'environnement ne sait pas produire un cas, on simule le SYSTÈME dans une copie lancée,
+  jamais la page.** Ce poste Linux fait croire que tout s'ouvre (`openPath` rend « succès » sans
+  aucune visionneuse) : la branche « aucun programme » y était invisible. Une copie de l'application
+  lancée par Playwright `_electron` sur un troisième écran (`:97`), avec `shell.openPath` remplacé
+  dans le processus principal, a montré le vrai message à l'écran — à la souris, comme les autres.
+  Remplacer la fonction dans la page n'aurait rien prouvé : le pont est figé (8.3.0), et c'est le
+  processus principal qui décide.
+- **Le jumeau manquant, une fois de plus** (7.3.0) : le Cabinet élidait « de » devant un mois depuis sa
+  1.0.0 (`de()`), l'app entreprise écrivait « le brouillon de octobre ». `deLibelle` (core.js) a le
+  même corps, comparé par un test.
+- **Un refus qui renvoie aux Réglages montre la case, une fois le panneau chargé** (REF-01, le
+  10.13.0 d'un cran plus loin) : le panneau s'affiche « Chargement… » avant de grandir ; viser la
+  case avant la fin de la lecture amène à la case d'au-dessus.
+- Pièges de méthode re-rencontrés : un bandeau « Première fois sur cet écran ? » qu'on ferme fait
+  REMONTER tout ce qui suit — on remesure avant le clic suivant (q-rect), sinon le clic tombe une
+  ligne plus haut ; un objet créé dans un `vm` a un autre prototype, on compare par aller-retour JSON ;
+  et une assertion de `cabassistant.js` qui recopiait la forme d'un appel est tombée sur du code juste
+  — retournée vers la règle (le renvoi montre la case du nom AVANT d'enregistrer).
 
 ## Pistes pour la suite (non demandées)
 

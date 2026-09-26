@@ -585,7 +585,7 @@ function buildMenu() {
         { label: 'Nouveautés de cette version', click: act('changelog') },
         { label: 'Toutes les versions (GitHub)', click: () => shell.openExternal(RELEASES_URL) },
         { type: 'separator' },
-        { label: 'Ouvrir le dossier des données', click: () => shell.openPath(app.getPath('userData')) },
+        { label: 'Ouvrir le dossier des données', click: () => ouvrirOuMontrer(app.getPath('userData')) },
         ...(IS_MAC ? [] : [
           { type: 'separator' },
           { label: 'Vérifier les mises à jour…', click: () => { act('settings')(); checkForUpdates(false); } },
@@ -1395,9 +1395,22 @@ ipcMain.handle('data:import', async (_e, opts) => {
   return { data: parsed, piecesJointes: storage.reprendrePiecesJointes(file, parsed) };
 });
 
+// `shell.openPath` ne lève rien : il REND un message quand aucun programme de l'ordinateur n'ouvre le
+// fichier (aucune application associée à son type). Ignoré, le clic était accepté et rien ne s'ouvrait
+// (règle 7.0.0 : un bouton qui accepte le clic et ne fait rien). On montre alors le fichier dans son
+// dossier, et l'écran le DIT avec ses mots — jamais le message du système, en anglais (7.26.0).
+// Jumelle exacte de celle du Cabinet (src/cabinet/main.js) : un test compare les deux corps.
+async function ouvrirOuMontrer(p) {
+  if (!p || !fs.existsSync(p)) return { ouvert: false, absent: true };
+  const err = await shell.openPath(p);
+  if (!err) return { ouvert: true };
+  try { shell.showItemInFolder(p); } catch (_) { /* rien à montrer de plus */ }
+  return { ouvert: false, sansProgramme: true, nom: path.basename(p) };
+}
+
 function openBackups() {
   fs.mkdirSync(storage.backupDir, { recursive: true });
-  return shell.openPath(storage.backupDir);
+  return ouvrirOuMontrer(storage.backupDir);
 }
 ipcMain.handle('backups:open', () => openBackups());
 ipcMain.handle('backups:create', (_e, label) => storage.backupNow(typeof label === 'string' && label ? label : 'manuelle'));
@@ -1486,7 +1499,7 @@ ipcMain.handle('attach:addPath', (_e, { docId, path: file } = {}) => {
   if (size > 25 * 1024 * 1024) throw erreur('ERR-ENT-011', `« ${path.basename(file)} » dépasse 25 Mo.`);
   return storage.addAttachment(docId, file);
 });
-ipcMain.handle('attach:open', (_e, { docId, file }) => shell.openPath(storage.attachmentPath(docId, file)));
+ipcMain.handle('attach:open', (_e, { docId, file }) => ouvrirOuMontrer(storage.attachmentPath(docId, file)));
 ipcMain.handle('attach:reveal', (_e, { docId, file }) => shell.showItemInFolder(storage.attachmentPath(docId, file)));
 ipcMain.handle('attach:remove', (_e, { docId, file }) => storage.removeAttachment(docId, file));
 
@@ -2145,8 +2158,8 @@ ipcMain.handle('cloture:ouvrirEtats', async (_e, { source, html, pdf } = {}) => 
   fs.mkdirSync(dir, { recursive: true });
   const cible = path.join(dir, 'etats-' + String(source || 'cloture').replace(/[^\w-]/g, '') + '.html');
   fs.writeFileSync(cible, String(html || ''), 'utf8');
-  await shell.openPath(cible);
-  return { ok: true, path: cible };
+  const r = await ouvrirOuMontrer(cible);
+  return { ok: true, path: cible, ouvert: r.ouvert, sansProgramme: !!r.sansProgramme };
 });
 
 // ---------- les questions du cabinet (9.10.0) ----------
@@ -2417,7 +2430,7 @@ ipcMain.handle('file:openText', async (_e, opts) => {
   return Object.assign({ nom }, lireFichierTexte(fs.readFileSync(p), nom));
 });
 
-ipcMain.handle('shell:open', (_e, target) => shell.openPath(target));
+ipcMain.handle('shell:open', (_e, target) => ouvrirOuMontrer(target));
 ipcMain.handle('shell:showInFolder', (_e, target) => shell.showItemInFolder(target));
 ipcMain.handle('app:changelog', () => {
   try { return fs.readFileSync(path.join(app.getAppPath(), 'CHANGELOG.md'), 'utf8'); } catch { return ''; }

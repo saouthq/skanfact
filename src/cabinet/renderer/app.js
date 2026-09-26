@@ -3479,14 +3479,23 @@
   }
   // Le fichier du client s'ouvre DANS le paquet, comme n'importe quelle pièce du paquet : extrait en
   // lecture, jamais lancé s'il n'est pas un document (6.8.1). Un paquet protégé demande son mot de passe.
+  // Ce que le processus principal rend quand un fichier ne s'ouvre pas, dit en français avec son nom :
+  // un fichier qui n'est pas un document n'est jamais lancé (sa raison vient du pont), et un document
+  // qu'aucun programme de l'ordinateur n'ouvre est montré dans son dossier (`ouvrirOuMontrer`, main.js).
+  // Sans cette phrase, le clic était accepté et rien ne s'ouvrait. Rien quand tout va bien.
+  function ditOuverture(r, nom) {
+    if (!r || (r.opened !== false && r.ouvert !== false)) return;
+    if (r.reason) return toast(r.reason, 'error');
+    if (r.absent) return toast(`« ${nom} » n'est plus sur le disque : il a peut-être été déplacé ou supprimé.`, 'error');
+    if (r.sansProgramme) toast(`Aucun programme de cet ordinateur n'ouvre « ${nom} » : SkanFact le montre dans ${EXPLORATEUR()}, ouvre-le avec le programme de ton choix.`, 'error');
+  }
   async function ouvrirJustifClient(j) {
     const ouvrir = async password => {
-      const r = await api.openInPack(j.path, j.chemin, password);
-      if (r && r.opened === false) toast(r.reason, 'error');
+      ditOuverture(await api.openInPack(j.path, j.chemin, password), j.nom);
     };
     try { await ouvrir(); } catch (e) {
       const msg = plainError(e);
-      if (!/mot de passe|déchiffr|authenticate/i.test(msg)) return toast(/absent/i.test(msg) ? `« ${j.nom} » n'est plus dans le paquet de ${moisLabelCourt(j.month)}.` : msg, 'error');
+      if (!/mot de passe|déchiffr|authenticate/i.test(msg)) return toast(/absent/i.test(msg) ? `« ${j.nom} » n'est plus dans le paquet ${K.de(moisLabelCourt(j.month))}.` : msg, 'error');
       const password = await askPassword('Paquet protégé', 'Ce paquet est scellé par un mot de passe.');
       if (!password) return;
       try { await ouvrir(password); } catch (e2) { toast(plainError(e2), 'error'); }
@@ -3497,7 +3506,7 @@
   function actionsJustifsClient(e) {
     const l = justifsDuClient(e);
     return l.slice(0, 3).map(j => ({ icon: 'ouvrir', label: l.length > 1 ? `Ouvrir « ${j.nom} »` : 'Ouvrir le justificatif du client',
-      court: 'Justificatif', hint: `${j.nom} — joint par le client, dans son paquet de ${moisLabelCourt(j.month)}`, run: () => ouvrirJustifClient(j) }));
+      court: 'Justificatif', hint: `${j.nom} — joint par le client, dans son paquet ${K.de(moisLabelCourt(j.month))}`, run: () => ouvrirJustifClient(j) }));
   }
 
   function vueJournal(lignes) {
@@ -7456,7 +7465,7 @@
     a.push(...actionsJustifsClient(e));
     if (e.pieceJointe) {
       a.push({ icon: 'ouvrir', label: 'Ouvrir le justificatif', hint: esc(e.pieceJointe),
-        run: async () => { try { await api.ouvrirJustificatif(dossier.id, e.pieceJointe); } catch (x) { await infoDialog('Justificatif introuvable', plainError(x)); } } });
+        run: async () => { try { ditOuverture(await api.ouvrirJustificatif(dossier.id, e.pieceJointe), String(e.pieceJointe).split(/[\\/]/).pop()); } catch (x) { await infoDialog('Justificatif introuvable', plainError(x)); } } });
     }
     if (detruire) a.push({ sep: true }, detruire);
     return a;
@@ -7702,10 +7711,9 @@
               if (!suite) return;
             }
             try {
-              const r = await api.openInPack(p.path, f.name, password);
               // Un fichier dont l'extension n'est pas celle d'un document n'est pas lancé : c'est le
               // nom choisi par l'expéditeur qui déciderait sinon quel programme s'exécute.
-              if (r && r.opened === false) toast(r.reason, 'error');
+              ditOuverture(await api.openInPack(p.path, f.name, password), f.name);
             } catch (e) { toast(plainError(e), 'error'); }
           };
         });

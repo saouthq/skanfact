@@ -403,8 +403,8 @@ function buildMenu() {
       { label: 'Comment ça marche', click: act('go:aide') },
       { label: 'Signaler un problème…', click: act('support') },
       { type: 'separator' },
-      { label: 'Ouvrir le journal technique', click: () => { try { shell.openPath(path.join(app.getPath('userData'), 'main.log')); } catch {} } },
-      { label: 'Ouvrir le dossier de l\'application', click: () => { try { shell.openPath(app.getPath('userData')); } catch {} } }
+      { label: 'Ouvrir le journal technique', click: () => { ouvrirOuMontrer(path.join(app.getPath('userData'), 'main.log')).catch(() => {}); } },
+      { label: 'Ouvrir le dossier de l\'application', click: () => { ouvrirOuMontrer(app.getPath('userData')).catch(() => {}); } }
     ] }
   ]);
 }
@@ -1080,6 +1080,19 @@ function posterReponses(dossierId, reponses) {
 const tempDirs = [];
 // Ce qu'un paquet comptable contient légitimement, et que le système peut ouvrir sans risque.
 const LISIBLES = new Set(['.pdf', '.csv', '.txt', '.json', '.xml', '.png', '.jpg', '.jpeg', '.gif', '.webp', '.heic', '.tif', '.tiff']);
+// `shell.openPath` ne lève rien : il REND un message quand aucun programme de l'ordinateur n'ouvre le
+// fichier (aucune application associée à son type). Ignoré, le clic était accepté et rien ne s'ouvrait
+// (règle 7.0.0 : un bouton qui accepte le clic et ne fait rien). On montre alors le fichier dans son
+// dossier, et l'écran le DIT avec ses mots — jamais le message du système, en anglais (7.26.0).
+// Jumelle exacte de celle de l'app entreprise (src/main.js) : un test compare les deux corps.
+async function ouvrirOuMontrer(p) {
+  if (!p || !fs.existsSync(p)) return { ouvert: false, absent: true };
+  const err = await shell.openPath(p);
+  if (!err) return { ouvert: true };
+  try { shell.showItemInFolder(p); } catch (_) { /* rien à montrer de plus */ }
+  return { ouvert: false, sansProgramme: true, nom: path.basename(p) };
+}
+
 ipcMain.handle('cab:openInPack', async (_e, { packPath, name, password } = {}) => {
   requireOpen();
   let buf = fs.readFileSync(packPath);
@@ -1101,8 +1114,8 @@ ipcMain.handle('cab:openInPack', async (_e, { packPath, name, password } = {}) =
     shell.showItemInFolder(out);
     return { path: out, opened: false, reason: `« ${base} » n'est pas un document (${ext || 'sans extension'}) : SkanFact ne l'ouvre pas tout seul. Il est montré dans le dossier.` };
   }
-  await shell.openPath(out);
-  return { path: out, opened: true };
+  const r = await ouvrirOuMontrer(out);
+  return { path: out, opened: r.ouvert, sansProgramme: !!r.sansProgramme };
 });
 
 function cleanTemp() {
@@ -2688,12 +2701,12 @@ ipcMain.handle('cab:joindreEcriture', async (_e, { dossierId, annee, id, chemin 
   return { ok: true, pieceJointe: range.relatif, livre: ouvrirLivre(dossierId, annee).livre };
 });
 
-ipcMain.handle('cab:ouvrirJustificatif', (_e, { dossierId, relatif } = {}) => {
+ipcMain.handle('cab:ouvrirJustificatif', async (_e, { dossierId, relatif } = {}) => {
   requireOpen();
   const p = getStore().cheminPieceJointe(dossierDe(dossierId), state.dossiers, relatif);
   if (!p) throw erreur('ERR-CAB-029', 'Ce justificatif n\'est plus sur le disque. Il a peut-être été rangé ailleurs, ou le dossier a changé de nom.');
-  shell.openPath(p);
-  return { ok: true };
+  const r = await ouvrirOuMontrer(p);
+  return { ok: true, ouvert: r.ouvert, sansProgramme: !!r.sansProgramme };
 });
 
 // ---------------------------------------------------------------- les collaborateurs (9.9.0)
@@ -3213,8 +3226,8 @@ ipcMain.handle('cab:support', () => ({
   dernierGel: lastFreeze ? { at: lastFreeze.at, silence: lastFreeze.silence } : null
 }));
 
-ipcMain.handle('cab:openLog', () => shell.openPath(path.join(app.getPath('userData'), 'main.log')));
-ipcMain.handle('cab:openDataDir', () => shell.openPath(app.getPath('userData')));
+ipcMain.handle('cab:openLog', () => ouvrirOuMontrer(path.join(app.getPath('userData'), 'main.log')));
+ipcMain.handle('cab:openDataDir', () => ouvrirOuMontrer(app.getPath('userData')));
 
 // ---------- mises à jour (6.6.0) ----------
 //
