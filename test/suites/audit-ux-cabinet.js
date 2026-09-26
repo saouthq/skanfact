@@ -2505,7 +2505,10 @@ t('Un AUTRE écran commence en haut : un changement d\'adresse remet la vue du C
   const m = /window\.addEventListener\('hashchange', \(\) => \{([\s\S]*?)\n    \}\);/.exec(app);
   assert.ok(m, 'le changement d\'adresse ne passe plus par un gestionnaire qui remet la vue en haut');
   const corps = m[1];
-  assert.ok(/vue\.scrollTop = 0/.test(corps) && corps.indexOf('vue.scrollTop = 0') < corps.indexOf('render()'),
+  // Le dessin passe par le chargement visible depuis la 10.14.1 (S-06) : la règle reste « remis en
+  // haut AVANT de dessiner », quel que soit le nom de la porte.
+  const dessin = corps.search(/\brender(AvecChargement)?\(\)/);
+  assert.ok(/vue\.scrollTop = 0/.test(corps) && dessin > 0 && corps.indexOf('vue.scrollTop = 0') < dessin,
     'la vue n\'est pas remise en haut AVANT le dessin du nouvel écran');
   assert.ok(!/window\.addEventListener\('hashchange', render\)/.test(app), 'un second gestionnaire redessine sans remettre la vue en haut');
   // Les sous-onglets de la comptabilité ne passent PAS par là : ils ont leur règle, sous la barre collante.

@@ -55,7 +55,7 @@ const NODE = {
 const PARTAGES = {
   SkanCore: 'readonly', SkanCompta: 'readonly', SkanDemo: 'readonly', SkanGuide: 'readonly',
   SkanOnboarding: 'readonly', RowMenu: 'readonly', Reglages: 'readonly', MajUI: 'readonly',
-  Visite: 'readonly', SkanVisites: 'readonly',
+  Visite: 'readonly', SkanVisites: 'readonly', Nouveautes: 'readonly',
   CabCore: 'readonly', CabGuide: 'readonly'
 };
 

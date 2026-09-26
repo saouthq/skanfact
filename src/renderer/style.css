@@ -2544,3 +2544,44 @@ body.dark .g-ligne.faite .g-l-ico { color: #0d1418; }
    larges, il reste sur UNE ligne. Mesuré : Chrome coupe à un <wbr> MÊME sous `nowrap` — c'est le
    <wbr> qu'on retire du rendu. */
 @media (min-width: 1340px) { td.mf wbr { display: none; } }
+
+/* 10.14.1 (S-06) — une page LENTE se voit charger. Le voile couvre la zone de travail (sa place est
+   mesurée en JavaScript, la barre latérale reste lisible) et n'apparaît qu'au bout d'un quart de
+   seconde : une page rapide est dessinée avant qu'il se montre. Son apparition et sa roue sont des
+   animations d'opacité et de rotation, que le compositeur joue même pendant que le calcul occupe le
+   fil principal — c'est tout ce qui permet de le voir. Partagé par les deux applications. */
+#chargement-page { position: fixed; z-index: 55; display: flex; align-items: center; justify-content: center; gap: 12px;
+  background: color-mix(in srgb, var(--bg) 78%, transparent); color: var(--text); font-size: 15px; font-weight: 600;
+  opacity: 0; animation: cp-apparait .18s ease-out .25s forwards; pointer-events: none; }
+#chargement-page .cp-roue { width: 24px; height: 24px; border-radius: 50%; border: 3px solid var(--border); border-top-color: var(--primary);
+  animation: maj-tourne .8s linear infinite; }
+@keyframes cp-apparait { to { opacity: 1; } }
+
+/* 10.14.1 (S-06) — une page qui change SE VOIT changer : son contenu monte de quelques pixels en
+   apparaissant. `backwards` et non `both` : une transformation laissée en place ferait du contenu le
+   bloc de référence de tout ce qui y est posé en `position: fixed`. Seulement quand la PAGE change. */
+#view.entree > * { animation: page-entree .2s ease-out backwards; }
+@keyframes page-entree { from { opacity: 0; transform: translateY(8px); } }
+@media (prefers-reduced-motion: reduce) {
+  #view.entree > * { animation: none; }
+  #chargement-page { animation-delay: .25s; animation-duration: 0s; }
+  #chargement-page .cp-roue { animation-duration: 2.4s; }
+}
+
+/* 10.14.1 (S-06) — les nouveautés d'une version, au premier lancement : une carte au coin de l'écran,
+   pas une fenêtre (elle ne bloque rien, on peut travailler à côté), sous les questions (400) et au-dessus
+   de la page. Partagée par les deux applications. */
+#nouveautes { position: fixed; inset-block-end: 22px; inset-inline-end: 22px; z-index: 380; width: min(400px, calc(100vw - 44px));
+  background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 14px;
+  box-shadow: 0 18px 48px rgba(20, 40, 60, .22); padding: 18px 18px 14px; animation: nouv-entre .28s ease-out; }
+#nouveautes.sort { opacity: 0; transform: translateY(8px); transition: opacity .18s, transform .18s; }
+#nouveautes .nouv-tete { display: flex; gap: 12px; align-items: flex-start; margin-block-end: 10px; }
+#nouveautes .nouv-ico { flex: none; width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center;
+  background: var(--primary-soft); color: var(--primary); font-size: 16px; }
+#nouveautes .nouv-titre { font-size: 15px; font-weight: 700; }
+#nouveautes .nouv-sous { font-size: 12.5px; color: var(--muted); margin-block-start: 2px; }
+#nouveautes .nouv-liste { margin: 0; padding-inline-start: 20px; display: grid; gap: 7px; font-size: 13.5px; line-height: 1.45;
+  max-height: 46vh; overflow-y: auto; }
+#nouveautes .nouv-actions { display: flex; justify-content: flex-end; margin-block-start: 14px; }
+@keyframes nouv-entre { from { opacity: 0; transform: translateY(12px); } }
+@media (prefers-reduced-motion: reduce) { #nouveautes, #nouveautes.sort { animation: none; transition: none; } }

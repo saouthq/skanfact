@@ -170,7 +170,10 @@ t('10.14.0 : le branchement — une seule porte décide qu\'une visite ne peut p
   // `loadDemo` et `demoSortie` DISENT s'ils ont abouti : un `return;` nu rendrait `undefined`, et la
   // visite partirait sur les mauvaises données.
   const ld = app.slice(app.indexOf('async function loadDemo('), app.indexOf('async function demoSortie('));
-  const ds = app.slice(app.indexOf('async function demoSortie('), app.indexOf('function render(keepScroll)'));
+  // Bornée sur SA fin (l'accolade de la fonction), jamais sur un voisin qui déménage (10.4.0) : la
+  // 10.14.1 a posé le chargement visible entre `demoSortie` et `render`.
+  const iDs = app.indexOf('async function demoSortie(');
+  const ds = app.slice(iDs, app.indexOf('\n  }\n', iDs) + 4);
   [['loadDemo', ld], ['demoSortie', ds]].forEach(([nom, z]) => {
     assert.ok(z.length > 400, 'tranche de ' + nom + ' introuvable');
     const code = z.replace(/\/\/[^\n]*/g, '');

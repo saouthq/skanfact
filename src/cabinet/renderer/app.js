@@ -889,6 +889,14 @@
         $('#lock-screen').remove();
         $('#app').hidden = false;
         start(r.created, r.reorganized, aRecuperer, r.exemple);
+        // Les nouveautés de la version, au premier lancement (10.14.1, S-06) — le jumeau de l'app
+        // entreprise, même module : jamais à un cabinet qu'on vient de créer, jamais par-dessus une
+        // fenêtre, l'assistant ou une visite.
+        if (typeof Nouveautes !== 'undefined') Nouveautes.presenter({
+          app: 'cabinet', nomApp: 'SkanFact Cabinet', version: st.version,
+          installationNeuve: !!r.created || (!S.cabinet.name && !(S.dossiers || []).length),
+          peutMontrer: () => !$('#modal-root').children.length && !$('#setup') && !(typeof Visite !== 'undefined' && Visite.enCours())
+        });
       } catch (ex) {
         // L'écran de verrouillage a la place d'un code, et c'est le seul refus qu'on ne peut pas
         // dépanner en regardant l'application : elle n'est pas encore ouverte.
@@ -1045,7 +1053,7 @@
     window.addEventListener('hashchange', () => {
       const vue = $('#view');
       if (vue) vue.scrollTop = 0;
-      render();
+      renderAvecChargement();
     });
     api.onUpdateEvent(ev => {
       upd.state = ev.state;
@@ -1475,9 +1483,53 @@
   }
 
   let routeLue = '';
+  // Un chargement VISIBLE et une page qui se voit changer (10.14.1, S-06) — les jumeaux de l'app
+  // entreprise (son `renderAvecChargement` et son `marquerEntree`), même feuille partagée. Sur un
+  // portefeuille de trois cents dossiers, compter les relances et dessiner la liste occupe le fil
+  // principal : on pose « Chargement… », on laisse une image se peindre, puis on dessine.
+  let chargementPose = null, dessinPrevu = false, entreeFin = 0, dernierEcran = '';
+  function annoncerChargement() {
+    const view = $('#view');
+    if (chargementPose || !view) return;
+    const r = view.getBoundingClientRect();
+    const el = document.createElement('div');
+    el.id = 'chargement-page';
+    el.setAttribute('role', 'status');
+    el.innerHTML = '<span class="cp-roue" aria-hidden="true"></span><span>Chargement…</span>';
+    Object.assign(el.style, { left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', height: r.height + 'px' });
+    document.body.appendChild(el);
+    chargementPose = el;
+  }
+  function retirerChargement() { if (chargementPose) { chargementPose.remove(); chargementPose = null; } }
+  function renderAvecChargement() {
+    if (document.hidden) { render(); return; }
+    if (dessinPrevu) return;
+    dessinPrevu = true;
+    annoncerChargement();
+    let fait = false;
+    const dessiner = () => {
+      if (fait) return;
+      fait = true; dessinPrevu = false;
+      try { render(); } finally { retirerChargement(); }
+    };
+    requestAnimationFrame(() => setTimeout(dessiner, 0));
+    setTimeout(dessiner, 80);
+  }
+  function marquerEntree(view) {
+    view.classList.remove('entree');
+    void view.offsetWidth;
+    view.classList.add('entree');
+    clearTimeout(entreeFin);
+    entreeFin = setTimeout(() => view.classList.remove('entree'), 320);
+  }
+
   function render() {
     const hash = location.hash.replace(/^#\//, '') || 'dossiers';
     const [route, arg] = hash.split('/');
+    // Seul un changement d'ÉCRAN s'anime (la page, ou le dossier ouvert) : un redessin sur place ne bouge pas.
+    const ecran = route + '/' + (arg || '');
+    const ecranChange = ecran !== dernierEcran;
+    dernierEcran = ecran;
     appliquerTheme();
     // L'invitation « Première fois sur cet écran ? » appartient à l'écran qu'on quitte ; l'observateur
     // qui repose « Guide-moi » se branche une fois, au premier dessin (10.14.1, S-03).
@@ -1516,6 +1568,7 @@
     else if (route === 'aide') drawAide(view, arg);
     else if (route === 'guide') drawGuide(view);
     else drawDossiers(view);
+    if (ecranChange) marquerEntree(view);
     typographie(view);
     surveillerBandeauDemo();
     // « Ce ne sont pas tes dossiers » — sur CHAQUE page, en permanence, comme l'app entreprise (10.14.0).

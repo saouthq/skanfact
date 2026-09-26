@@ -161,6 +161,22 @@ et au moteur), puis en stable quand Skander valide.*
     « Guide-moi », quatre anciens tests remis sur la règle ; `npm test` 1541 OK, lint propre. Vérifié
     à la souris : listes, facture, Paie (onglets), Paramètres/Réglages, fiche et écrans de
     comptabilité d'un dossier du Cabinet, invitation, pause puis reprise à l'étape 3.
+- **Fait, prouvé et testé à la souris (26/09, S-06)** :
+  - **« Chargement… » avant un calcul long** (les deux applications) : la navigation pose un voile
+    sur la zone de travail, laisse une image se peindre, puis dessine ; le voile n'apparaît qu'après
+    un quart de seconde (une page rapide ne le montre jamais) et c'est le compositeur qui le joue
+    pendant que le calcul occupe le fil principal. Vu à l'écran pendant un dessin rendu lent (trois
+    secondes), et parti ensuite.
+  - **Une page qui change se voit changer** : son contenu monte de 8 px en apparaissant (200 ms),
+    seulement quand la PAGE change — un tri, un filtre, un enregistrement ne rejouent rien ; « réduire
+    les animations » l'éteint. Vu au milieu de l'animation dans les deux applications.
+  - **« Nouveau dans SkanFact 10.14.1 »** : au premier lancement d'une version, une carte au coin de
+    l'écran dit en phrases simples ce qui change pour la personne (`src/renderer/nouveautes.js`, une
+    table par version, partagée) — jamais à une installation neuve, jamais par-dessus une fenêtre,
+    l'assistant ou une visite, une seule fois ; revenir sur une version plus ancienne n'oublie pas ce
+    qui a été lu (trouvé à la souris : la version retenue reculait au redémarrage). Un test exige les
+    phrases de chaque version publiée, et que ce qu'elles citent existe. Vu et fermé à la souris dans
+    les deux applications. 12 preuves ; `npm test` 1554 OK.
 - **Ce que « Guide-moi » a montré qu'il manque (S-02, à faire)** — des pages sans aucun geste guidé
   dans leur section « Ce que tu peux faire ici » : **Catalogue** (modèles, textes), **Proforma, bons et
   contrats** (faire une proforma, un bon de commande ou de livraison), **Facturation récurrente**
@@ -228,13 +244,11 @@ et au moteur), puis en stable quand Skander valide.*
 7. ~~**Une facture à échéance 0** (échéance = date) : l'aperçu montre deux cadres avec la même date.
    N'en garder qu'un (« À réception »). Signalé une première fois, pas réglé.~~ **Fait (S-05,
    § 0.1).**
-8. **Un chargement visible au lieu d'une page blanche** quand un calcul est long (la fenêtre OD
-   mesurée à 15,5 s sur dix ans avant PERF-01, et tout écran lourd sur des données pleines) : peindre
-   « Chargement… » AVANT de calculer, pour qu'on ne croie pas que l'application a planté.
-9. **L'application entreprise devient compliquée : une transition visible entre deux pages** (les
-   boutons du haut se ressemblent, on ne voit pas qu'on a changé de page, on s'y perd).
-10. **À chaque nouvelle version, au premier lancement : présenter la version et ses changements**
-    en phrases que tout le monde comprend (pas le CHANGELOG technique), dans les deux applications.
+8. ~~**Un chargement visible au lieu d'une page blanche** quand un calcul est long.~~ **Fait (S-06,
+   § 0.1)** — la navigation ; une FENÊTRE qui calcule longtemps à l'ouverture n'a pas encore le sien.
+9. ~~**Une transition visible entre deux pages.**~~ **Fait (S-06, § 0.1).**
+10. ~~**À chaque nouvelle version, au premier lancement : présenter la version et ses changements.**~~
+    **Fait (S-06, § 0.1)** — à chaque version, écrire ses phrases dans `src/renderer/nouveautes.js`.
 
 Puis continuer les tests et les corrections, sans s'arrêter tant que les deux applications ont des
 défauts.

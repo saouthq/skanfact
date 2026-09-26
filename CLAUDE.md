@@ -8256,6 +8256,24 @@ lots ; le détail de ce qui reste vit dans `A-FAIRE.md` § 0.
   porté au panneau des droits, qui n'apparaît qu'une fois des collaborateurs déclarés : aucun des
   instruments, qui tournent sans équipe, ne pouvait le voir. Et le « ✓ enregistré » se pose APRÈS le
   redessin : posé avant, il partait avec l'ancien panneau, et on ne l'avait jamais vu.
+- **Ce qu'on pose AVANT un calcul synchrone ne se voit pas** (S-06) : le navigateur ne peint qu'une
+  fois le fil principal rendu. « Chargement… » se pose, une image se peint (`requestAnimationFrame`
+  puis `setTimeout`), et seulement alors on dessine ; le voile apparaît par une animation RETARDÉE
+  d'opacité, que le compositeur joue même pendant que le calcul bloque — une page rapide ne le montre
+  jamais. Deux filets : une fenêtre cachée n'appelle pas `requestAnimationFrame` (on dessine tout de
+  suite), et un minuteur dessine si l'image ne vient pas. Vu à la souris en rendant un dessin lent
+  (`SkanCore.enLot` enveloppé par CDP pour trois secondes) — la seule façon honnête de le voir.
+- **Une animation d'entrée est `backwards`, jamais `both`** : une transformation laissée en place
+  fait du contenu le bloc de référence de tout ce qui y est en `position: fixed`. Et la classe qui
+  l'arme se RETIRE après coup, sinon chaque redessin complet de la même page rejoue l'entrée.
+- **Une valeur retenue « dernière vue » ne recule jamais** : la carte des nouveautés retenait la
+  version qui tourne, et la sortie de la bêta (une version plus ancienne) lui faisait oublier ce
+  qu'on avait lu — la carte se remontrait à la mise à jour suivante. Trouvé à la souris, au
+  redémarrage ; on retient la plus récente des deux.
+- **Une tranche de test bornée sur un VOISIN tombe quand on insère du code entre les deux** (10.4.0,
+  re-rencontrée deux fois ici) : `demoSortie` jusqu'à `render(keepScroll)` a avalé le chargement posé
+  entre elles. Bornée sur la fin de la fonction ; et l'assertion « remise en haut avant `render()` »
+  retournée vers la règle, quel que soit le nom de la porte (42e).
 
 ## Pistes pour la suite (non demandées)
 

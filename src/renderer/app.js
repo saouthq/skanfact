@@ -2340,6 +2340,59 @@
   // Le redessin d'une LISTE (une frappe dans la recherche, un tri, une page suivante) est un lot
   // aussi : c'est lui que l'on refait à chaque touche, sur des milliers de pièces.
   const dansUnLot = fn => function () { return C.enLot(() => fn.apply(this, arguments)); };
+
+  // Un chargement VISIBLE (10.14.1, S-06). Un dessin est synchrone : sur des données pleines, une page
+  // peut calculer une seconde ou plus, et pendant ce temps l'écran restait figé sur la page qu'on
+  // quittait — on croyait avoir mal cliqué, ou que l'application avait planté. On pose « Chargement… »
+  // par-dessus la zone de travail, on laisse UNE image se peindre, puis on dessine. Le voile apparaît
+  // par une animation retardée (le compositeur la joue même quand le calcul occupe le fil principal) :
+  // une page rapide est dessinée avant qu'il se voie, une page lente le montre.
+  let chargementPose = null, dessinPrevu = false;
+  function annoncerChargement() {
+    const view = $('#view');
+    if (chargementPose || !view) return;
+    const r = view.getBoundingClientRect();
+    const el = document.createElement('div');
+    el.id = 'chargement-page';
+    el.setAttribute('role', 'status');
+    el.innerHTML = '<span class="cp-roue" aria-hidden="true"></span><span>Chargement…</span>';
+    Object.assign(el.style, { left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', height: r.height + 'px' });
+    document.body.appendChild(el);
+    chargementPose = el;
+  }
+  function retirerChargement() { if (chargementPose) { chargementPose.remove(); chargementPose = null; } }
+  function renderAvecChargement() {
+    // Fenêtre cachée : aucune image ne se peindra, et `requestAnimationFrame` n'y est pas appelé.
+    if (document.hidden) { render(); return; }
+    if (dessinPrevu) return;           // un dessin déjà prévu lira l'adresse du moment
+    dessinPrevu = true;
+    annoncerChargement();
+    let fait = false;
+    const dessiner = () => {
+      if (fait) return;
+      fait = true; dessinPrevu = false;
+      try { render(); } finally { retirerChargement(); }
+    };
+    requestAnimationFrame(() => setTimeout(dessiner, 0));
+    setTimeout(dessiner, 80);           // filet : une image qui ne vient pas ne bloque pas la navigation
+  }
+
+  // Une page qui change SE VOIT changer (10.14.1, S-06) : les en-têtes se ressemblent, et sans
+  // transition on ne savait pas toujours qu'on avait quitté l'écran. Seulement quand la PAGE change —
+  // un redessin sur place (un tri, un filtre) ne bouge pas. La feuille respecte « réduire les
+  // animations ».
+  // La classe se RETIRE une fois l'animation jouée : laissée en place, chaque redessin complet de la
+  // même page (un enregistrement, un filtre qui réécrit la vue) rejouerait l'entrée — la page
+  // clignoterait sans qu'on en ait quitté aucune.
+  let entreeFin = 0;
+  function marquerEntree(view) {
+    view.classList.remove('entree');
+    void view.offsetWidth;
+    view.classList.add('entree');
+    clearTimeout(entreeFin);
+    entreeFin = setTimeout(() => view.classList.remove('entree'), 320);
+  }
+
   function render(keepScroll) {
     return C.enLot(() => {
     const view = $('#view');
@@ -2389,7 +2442,9 @@
     // suivante montrerait une pièce qui n'est plus celle qu'on regarde.
     const grand = $('#pv-full'); if (grand) grand.remove();
     pushHistory(currentHash);        // d'où l'on vient, pour le bouton retour de la page qui s'ouvre
+    const pageChange = routeOf(currentHash) !== name || (currentHash || '').split('/')[2] !== parts[1];
     const dessine = (routes[name] || routes.dashboard)(parts.slice(1));
+    if (pageChange && !keepScroll) marquerEntree(view);
     poserGuideMoi();                 // « Guide-moi » : ce qu'on peut faire sur cette page, et son article (10.14.1)
     bandeauDemo(name);               // « ce ne sont pas tes données » — sur chaque page, en permanence
     bandeauModule(active);           // « cette page n'est pas dans ton menu » — et le bouton pour l'y mettre
@@ -2448,10 +2503,10 @@
       try { ok = await leaveOk(); } finally { askingLeave = false; }
       if (!ok) return;
       setHashSilently(target);
-      render();
+      renderAvecChargement();
       return;
     }
-    render();
+    renderAvecChargement();
   });
 
   // Le texte VISIBLE d'un titre, sans ses boutons (la bulle « i ») et sans ce qui est caché (le repère
@@ -17962,8 +18017,16 @@
       // Le repère se pose sur la VERSION INSTALLÉE, jamais sur le canal choisi : ce qui compte,
       // c'est ce qui tourne. Quelqu'un qui vient de décocher la case tourne encore sur une bêta.
       const tag = $('#beta-tag'); if (tag) tag.hidden = !C.estBeta(v.version);
+      // Les nouveautés de la version, dites en phrases de tous les jours, au premier lancement (10.14.1,
+      // S-06). Une installation neuve n'a rien qui change ; l'écran doit être libre (ni fenêtre, ni
+      // assistant, ni visite) — la carte attend son tour, elle ne passe jamais par-dessus une question.
+      const presentee = typeof Nouveautes !== 'undefined' && Nouveautes.presenter({
+        app: 'entreprise', nomApp: 'SkanFact', version: v.version,
+        installationNeuve: !data.company.name && !(data.documents || []).length && !(data.clients || []).length,
+        peutMontrer: () => !$('.modal-bg') && !$('#setup') && !(typeof Visite !== 'undefined' && Visite.enCours())
+      });
       if (v.lastUpdate) {
-        if (v.lastUpdate.ok) toast('SkanFact mis à jour en version ' + v.version);
+        if (v.lastUpdate.ok && !presentee) toast('SkanFact mis à jour en version ' + v.version);
         else modal(`<h2>Mise à jour non installée</h2><p>${h(v.lastUpdate.message || 'Erreur inconnue')}.</p><p class="small muted">Tu peux installer la nouvelle version à la main depuis la page des versions, ou réessayer depuis Paramètres → L'application → Mises à jour.</p>
           <div class="modal-actions"><button class="btn" data-close>Fermer</button><button class="btn btn-primary" id="open-rel">Voir les versions</button></div>`, (root) => { $('#open-rel', root).onclick = () => bridge.updateOpenReleases(); });
       }
