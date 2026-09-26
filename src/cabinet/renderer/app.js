@@ -1920,7 +1920,7 @@
     // les paquets de l'exemple sont fictifs, les perdre ne coûte rien, et un rouge au premier écran de
     // la découverte apprend à ignorer le rouge. Avant, « Tes premiers pas » la propose calmement.
     const cleReclamee = recoveryAt === undefined ? null : recoveryAt !== null ? true : paquetsReelsRecus() ? false : null;
-    const todo = K.cabinetTodo(S, null, { cleSecours: cleReclamee, licence: licCab, questions: questionsAttente, employeurs: employeursConnus(), tenus: tenusConnus() });
+    const todo = K.cabinetTodo(S, null, { cleSecours: cleReclamee, licence: licCab, questions: questionsAttente, employeurs: employeursConnus(), tenus: tenusConnus(), declares: declaresConnus() });
     // Tes premiers pas (10.14.0), quand le portefeuille a déjà des dossiers : UNE ligne de « À faire »,
     // juste après ce qui presse — jamais un panneau qui repousserait la liste des clients sous la ligne
     // de flottaison (9.4.4). La clé de secours déjà réclamée en rouge ne se réclame pas deux fois.
@@ -8879,7 +8879,7 @@
   }
 
   function drawEcheances(view) {
-    const liste = K.echeances(S, null, { employeurs: employeursConnus(), tenus: tenusConnus() });
+    const liste = K.echeances(S, null, { employeurs: employeursConnus(), tenus: tenusConnus(), declares: declaresConnus() });
     const prochaines = liste.filter(e => !e.passee);
     const passees = liste.filter(e => e.passee).reverse();
 
@@ -8895,7 +8895,8 @@
     let derniersManquants = '';
     const carte = e => {
       const cle = K.cleEcheance(e);
-      const depose = K.echeanceDeposee(S, e);
+      // Pointée ici, ou déposée client par client dans leur Déclaration (10.14.1) : le même fait.
+      const depose = K.echeanceDeposee(S, e) || !!e.toutDepose;
       const nouveauDetail = !vus.has(e.id);
       vus.add(e.id);
       const sig = e.manquants.join('|');
@@ -8912,7 +8913,8 @@
         <div class="ech-lab">${esc(e.label)}<span class="ech-when">${depose ? 'déposée' : e.passee ? `il y a ${-e.jours} j` : e.jours === 0 ? "aujourd'hui" : `dans ${e.jours} j`}</span></div>
         ${nouveauDetail ? `<div class="small muted">${esc(e.detail)}</div>` : ''}
         <div class="ech-bar">
-          <span class="ok-inline">${e.prets} prêt${e.prets > 1 ? 's' : ''}</span>
+          ${(e.deposes || []).length ? `<span class="ok-inline" title="${esc(e.deposes.join(', '))}">${e.deposes.length} déposé${e.deposes.length > 1 ? 's' : ''}</span>` : ''}
+          ${e.prets || !(e.deposes || []).length ? `<span class="ok-inline">${e.prets} prêt${e.prets > 1 ? 's' : ''}</span>` : ''}
           ${e.provisoires.length ? `<span class="warn-inline">${e.provisoires.length} en provisoire</span>` : ''}
           ${e.manquants.length ? `<span class="err-inline">${e.manquants.length} sans ${e.mois.length > 1 ? 'les mois' : 'le mois'}</span>` : ''}
           ${(e.aSaisir || []).length ? `<span class="err-inline">${e.aSaisir.length} à saisir au cabinet</span>` : ''}
@@ -8935,7 +8937,11 @@
         ${/* Pointer une occurrence, jamais une règle (7.21.0) : la TVA d'avril cesse de réclamer,
               celle de mai reste due. Et c'est un PENSE-BÊTE — le Cabinet ne dépose rien et ne se
               connecte à aucune administration : c'est écrit UNE fois, en tête de la page (U-21). */''}
-        <div class="ech-fin"><button class="btn btn-sm ${depose ? '' : 'btn-ghost'}" data-depot="${esc(cle)}" aria-label="${esc(depLab + ' — ' + e.label)}">${esc(depLab)}</button></div>
+        ${/* Déposée par la Déclaration de chaque client, pas pointée ici : il n'y a rien à annuler
+              sur cette page — c'est dans la Déclaration du client que le pointage se défait. */''}
+        <div class="ech-fin">${e.toutDepose && !K.echeanceDeposee(S, e)
+          ? `<span class="small muted">Notée déposée dans la Déclaration de ${e.clients > 1 ? 'chaque client' : 'ce client'}.</span>`
+          : `<button class="btn btn-sm ${depose ? '' : 'btn-ghost'}" data-depot="${esc(cle)}" aria-label="${esc(depLab + ' — ' + e.label)}">${esc(depLab)}</button>`}</div>
       </div></div>`;
     };
 
@@ -10516,6 +10522,8 @@
   // Les livres des dossiers TENUS AU CABINET (10.12.0), du même résumé : ils entrent dans le
   // calendrier et dans « À faire » avec leurs mois à saisir, jamais comme des retardataires.
   const tenusConnus = () => Object.fromEntries(questionsAttente.filter(q => q.tenu).map(q => [q.dossierId, q.tenu]));
+  // Les mois dont la déclaration est notée déposée dans le livre de chaque client (10.14.1).
+  const declaresConnus = () => Object.fromEntries(questionsAttente.filter(q => (q.declares || []).length).map(q => [q.dossierId, q.declares]));
   function chargerQuestionsAttente(redessiner) {
     if (!api.questionsEnAttente) return Promise.resolve();
     const avant = JSON.stringify(questionsAttente);

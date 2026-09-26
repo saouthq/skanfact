@@ -8567,6 +8567,21 @@ lots ; le détail de ce qui reste vit dans `A-FAIRE.md` § 0.
 - **« ← » dans une visite saute ce que « → » a sauté** (`etapeAvant`) : une étape conditionnelle
   absente entre deux étapes qu'on regarde bloquait le retour — sans rien dire.
 
+- **Un pense-bête posé à deux endroits est un pense-bête qui ment à l'un des deux** (joué en débutant,
+  par le guide, le 26/09) : « Marquer déposée » dans la Déclaration d'un client laissait la carte des
+  Échéances le réclamer. La carte lit maintenant le dépôt du livre (`opts.declares`, tiré des index, le
+  MÊME pour « À faire ») ; son propre pointage reste pour le portefeuille entier. Et c'est la fin de la
+  visite qui l'a montré : « le mois reste dans ton calendrier tant qu'il n'est pas payé » ne tenait pas —
+  **une phrase de fin se vérifie contre l'écran qu'elle nomme**.
+- **Une valeur « vide » qui est un OBJET est vraie pour `!!`** : annuler un dépôt pose `{ le: '' }`, et
+  l'index lisait `!!d.deposee`. La date décide (`d.deposee.le`), et le test de la 9.9.0 qui posait
+  `deposee: true` — une forme qu'aucun livre ne porte — est retourné vers les formes réelles : **un test se
+  nourrit des formes que le moteur ÉCRIT** (10.10.0). Un index d'ancienne forme se relit une fois
+  (`FORME_INDEX`), comme en 10.12.0.
+- **Le retour d'un geste extérieur a son geste guidé** : la visite de la déclaration finissait sur le
+  portail ; « Noter le dépôt et le paiement » fait le clic, prouve sur le bouton, et ne réclame pas le
+  paiement — un débutant ne paie pas toujours le jour où il dépose.
+
 ## Pistes pour la suite (non demandées)
 
 - Séparation des installateurs arm64 / x64 pour diviser par deux les 222 Mo du dmg universel.

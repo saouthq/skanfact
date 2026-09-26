@@ -2916,8 +2916,12 @@ ipcMain.handle('cab:questionsEnAttente', async () => {
     // Et s'il est CLOS (10.14.0) : la découverte montre l'exercice clos du garage de l'exemple, et
     // elle ne peut pas le désigner sans savoir lequel l'est — sans ouvrir un livre pour autant.
     const tenu = d.manual ? { exercices: (i.exercices || []).map(e => ({ annee: e.annee, du: e.du, au: e.au, clos: !!e.clos, production: e.production || {} })) } : null;
-    return { dossierId: d.id, name: d.name, ...q, employeur, tenu };
-  }).filter(r => r.ouvertes || r.repondues || Object.keys(r.employeur).length || (r.tenu && r.tenu.exercices.length));
+    // 10.14.1 — les mois dont la déclaration est notée DÉPOSÉE dans le livre (tout dossier, tenu ou
+    // non) : la carte TVA des Échéances les compte déposés. Sans ça, « Marquer déposée » dans la
+    // Déclaration laissait la même échéance réclamée sur l'autre page — deux pense-bêtes, deux vérités.
+    const declares = [].concat(...(i.exercices || []).map(e => Object.keys(e.production || {}).filter(m => (e.production[m] || {}).declare))).sort();
+    return { dossierId: d.id, name: d.name, ...q, employeur, tenu, declares };
+  }).filter(r => r.ouvertes || r.repondues || Object.keys(r.employeur).length || (r.tenu && r.tenu.exercices.length) || r.declares.length);
 });
 
 // ---------------------------------------------------------------- réunir deux postes (9.9.0)

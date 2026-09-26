@@ -872,6 +872,7 @@ function createCabStore(dir, opts) {
   // « Révisé » a reçu son écrivain en 9.10.0 (`arreterRevision`). Il vaut `false` tant que rien ne
   // l'a posé, et l'absence du livre lui-même vaut `undefined`, que l'écran écrit « — » : ne pas
   // savoir n'est pas « non ».
+  const FORME_INDEX = 2;
   function productionDuLivre(livre) {
     const p = {};
     const mois = m => (p[m] = p[m] || { ecritures: 0, validees: 0, brouillards: 0, revise: false, declare: false, qui: '', depuis: null });
@@ -889,7 +890,9 @@ function createCabStore(dir, opts) {
     (livre.declarations || []).forEach(d => {
       const m = String(d.periode || '');
       if (!/^\d{4}-\d{2}$/.test(m)) return;
-      mois(m).declare = !!d.deposee;
+      // Un dépôt ANNULÉ laisse { le: '' } — un objet, donc vrai pour « !! ». Ce qui dit « déposé »,
+      // c'est la date (même règle que l'écran de la Déclaration).
+      mois(m).declare = !!(d.deposee && d.deposee.le);
     });
     (livre.revisions || []).forEach(r => {
       const m = String(r.periode || '');
@@ -907,6 +910,9 @@ function createCabStore(dir, opts) {
       ecritures: livre.ecritures.length,
       brouillards: livre.ecritures.filter(x => x.statut === 'brouillard').length,
       production: productionDuLivre(livre),
+      // La forme de l'index (10.14.1 : « déclaré » se lit sur la DATE du dépôt). Un index plus
+      // ancien se relit une fois (`relireIndexAncien`), sinon un dépôt annulé resterait « déclaré ».
+      forme: FORME_INDEX,
       // Ce que le livre sait de la qualité d'employeur, mois par mois (10.12.0, U-21) : c'est ce
       // que le calendrier lit pour ne réclamer la CNSS qu'aux employeurs, sans ouvrir de livre.
       employeur: KC.moisEmployeur(livre),
@@ -937,7 +943,7 @@ function createCabStore(dir, opts) {
   // celle de toujours, et l'écriture ne touche que l'index, jamais le livre.
   function relireIndexAncien(dossier, collisions) {
     let n = 0;
-    lireIndexLivres(dossier, collisions).exercices.filter(e => !('employeur' in e)).forEach(e => {
+    lireIndexLivres(dossier, collisions).exercices.filter(e => !('employeur' in e) || e.forme !== FORME_INDEX).forEach(e => {
       const r = lireLivre(dossier, e.annee, collisions);
       if (r.livre) { majIndexLivres(dossier, r.livre, collisions); n++; }
     });

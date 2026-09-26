@@ -1409,7 +1409,7 @@
     // plus qu'un état. Une échéance proche mais complète n'a pas à crier.
     // La MÊME connaissance des employeurs que la page Échéances : un compteur et la liste qu'il
     // annonce se calculent avec la même fonction ET les mêmes données (règle 6.8.1).
-    const urgente = echeances(state, todayIso, { avant: 1, apres: 1, employeurs: (opts || {}).employeurs, tenus: (opts || {}).tenus })
+    const urgente = echeances(state, todayIso, { avant: 1, apres: 1, employeurs: (opts || {}).employeurs, tenus: (opts || {}).tenus, declares: (opts || {}).declares })
       // Un mois qu'un dossier TENU AU CABINET attend encore de saisir bloque la déclaration autant
       // qu'un paquet qui n'est pas arrivé (10.12.0) — mais il ne se dit pas pareil : on ne l'a pas
       // « envoyé », on ne l'a pas saisi.
@@ -1853,8 +1853,12 @@
 
       const mensuels = actifs.filter(d => periodeTva(state, d) === 'mensuelle' && concerne(d, [mois]));
       // « TVA de octobre » ne s'écrit pas : quatre mois sur douze commencent par une voyelle.
+      // 10.14.1 — un client dont la Déclaration de CE mois est notée déposée dans son livre est
+      // DÉPOSÉ ici aussi : c'est le même pense-bête, lu au même endroit (`opts.declares`, tiré des
+      // index). Sans ça, « Marquer déposée » dans la Déclaration laissait la carte réclamer ce client.
+      const deposes = mensuels.filter(d => ((opts.declares || {})[d.id] || []).includes(mois));
       if (mensuels.length) out.push(ligneEcheance('tva-m', `TVA ${de(monthLabel(mois))}`, dayOf(depot, cfg.tvaDay), mois, mensuels, t, attendus,
-        'Déclaration mensuelle de TVA. Les clients dont tu n\'as pas le mois ne peuvent pas être déclarés.'));
+        'Déclaration mensuelle de TVA. Les clients dont tu n\'as pas le mois ne peuvent pas être déclarés.', deposes));
 
       const [, mm] = mois.split('-').map(Number);
       if (QUARTER_END[mm]) {
@@ -1921,13 +1925,16 @@
   const echeanceDeposee = (state, e) =>
     ((((state || {}).settings || {}).depots) || []).includes(cleEcheance(e));
 
-  function ligneEcheance(id, label, date, mois, dossiers, todayIso, attendus, detail) {
+  function ligneEcheance(id, label, date, mois, dossiers, todayIso, attendus, detail, deposesDans) {
     const liste = Array.isArray(mois) ? mois : [mois];
+    const deposes = (deposesDans || []).filter(d => dossiers.includes(d));
     // `aSaisir` : les dossiers tenus au cabinet dont un mois n'a encore aucune écriture (10.12.0).
     // Jamais mêlés aux `manquants` : un manquant se RELANCE, un mois à saisir se saisit — relancer
     // un client qui n'envoie rien serait la faute que la 10.12.0 a retirée du livre.
     const manquants = [], provisoires = [], aSaisir = [], aSaisirIds = [];
     dossiers.forEach(d => {
+      // Déjà déposé (sa Déclaration le dit) : ce client n'a plus rien qui manque pour cette date.
+      if (deposes.includes(d)) return;
       // Un mois qui n'est pas attendu de ce client (avant son début de mission) n'est pas un manque.
       const etats = liste.map(m => attendus.get(d).get(m)).filter(Boolean);
       if (!etats.length) return;
@@ -1941,7 +1948,11 @@
     return {
       id, label, date, detail, mois: liste,
       clients, manquants, provisoires, aSaisir, aSaisirIds,
-      prets: clients - manquants.length - provisoires.length - aSaisir.length,
+      deposes: deposes.map(d => d.name),
+      // Tous les clients de la date ont leur déclaration notée déposée dans leur livre : la carte
+      // l'est aussi, sans un second pointage.
+      toutDepose: clients > 0 && deposes.length === clients,
+      prets: clients - deposes.length - manquants.length - provisoires.length - aSaisir.length,
       jours, passee: jours < 0,
       // Ce qui décide de la couleur : une échéance proche avec des pièces qui manquent est le seul
       // cas vraiment urgent. Une échéance proche mais complète n'a pas à crier. Un mois qu'on doit

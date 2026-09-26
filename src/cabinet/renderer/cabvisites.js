@@ -1089,11 +1089,13 @@
       resume: 'Les cases dans l\'ordre du formulaire, copiées d\'un clic pour le portail, puis l\'écriture et les deux pense-bêtes.',
       mots: ['tva', 'declaration', 'declarer', 'mois', 'deposer', 'mensuelle', 'portail', 'jibaya', 'copier', 'formulaire'],
       si: () => !!ctx.dossier('livre'), manque: DOSSIER_MANQUE.livre,
-      suite: ['page-compta-declaration', 'page-echeances'],
+      suite: ['deposer-tva', 'page-compta-declaration', 'page-echeances'],
       // 10.14.1 — joué en novice : « Écrire l'écriture du mois » la pose AU BROUILLARD, et la fin
       // n'en disait rien — le 4367 restait non soldé, et « Et maintenant ? » proposait une visite de
       // page. Une pièce du mois restée en brouillard se dit, et sa validation passe en tête.
-      pressee: () => (typeof document !== 'undefined' && document.querySelector('#dc-controles [data-vers-saisie]') ? ['valider-lot'] : []),
+      // Et une fois le portail fait, le retour a son geste : « Noter le dépôt » suit.
+      pressee: () => (typeof document !== 'undefined' && document.querySelector('#dc-controles [data-vers-saisie]') ? ['valider-lot'] : [])
+        .concat(depotANoter() ? ['deposer-tva'] : []),
       bravo: 'Tu connais la déclaration',
       conclusion: () => {
         const base = 'Le Cabinet ne dépose rien et ne se connecte à aucune administration : tu ouvres le portail, tu colles chaque montant dans sa case, puis tu pointes « déposée » et « payée » — deux pense-bêtes qui se défont.';
@@ -1144,6 +1146,46 @@
           texte: 'Ce bouton ouvre le portail des impôts dans ton <b>navigateur</b> : tu t\'y connectes toi-même, tu colles les montants, tu valides. Le jour de l\'échéance, dépose avant 17 h.' },
         { page: dans('livre', 'comptabilite/declaration'), cible: '#dc-deposee', cote: 'dessous', titre: 'Après le dépôt',
           texte: 'Une fois la déclaration <b>déposée sur le portail</b>, reviens ici cliquer <b>« Marquer déposée »</b>, puis <b>« Marquer payée »</b> quand elle est réglée. Ce sont deux pense-bêtes, pas des accusés de réception : ils se défont d\'un clic si tu t\'es trompé.' }
+      ]
+    });
+
+    // 10.14.1 — suivie par un débutant : après le portail, « Après le dépôt » MONTRAIT les deux
+    // pense-bêtes et passait, et le guide de la page disait « Fait » à la déclaration d'un mois ni
+    // déposé ni payé. Le retour du portail a son geste guidé, prouvé sur le livre.
+    const texteBouton = sel => ((document.querySelector(sel) || {}).textContent || '');
+    const depotANoter = () => {
+      const b = typeof document !== 'undefined' && document.querySelector('#dc-deposee');
+      return !!b && !/Déposée le/.test(b.textContent || '');
+    };
+    visite({
+      id: 'deposer-tva', theme: 'declarer', type: 'faire', duree: '1 min', pages: ['compta', 'dossier'],
+      page: dans('livre', 'comptabilite/declaration'),
+      titre: 'Noter le dépôt et le paiement',
+      resume: 'De retour du portail : la déclaration notée déposée, puis payée — deux pense-bêtes qui se défont.',
+      mots: ['deposer', 'depot', 'deposee', 'payee', 'paiement', 'tva', 'declaration', 'portail', 'jibaya', 'pense-bete'],
+      si: () => !!ctx.dossier('livre'), manque: DOSSIER_MANQUE.livre,
+      suite: ['declarer-tva', 'page-echeances'],
+      preuve: () => /Déposée le/.test(texteBouton('#dc-deposee')),
+      echec: 'La déclaration n\'est pas notée déposée — c\'est « Marquer déposée », dans les étapes du mois, qui la note.',
+      bravo: 'Ta déclaration est notée déposée',
+      conclusion: 'Sur la page <b>Échéances</b>, ce client compte désormais « déposé » pour cette date, et la <b>Production</b> passe le mois à « déclaré ». Pas encore payée ? « Marquer payée » t\'attend ici. Si tu t\'es trompé de mois, un clic sur le même bouton défait le pointage.',
+      etapes: [
+        { page: dans('livre', 'comptabilite/declaration'), cible: '#dc-mois', cote: 'dessous', titre: 'Le mois que tu as déposé',
+          texte: 'Vérifie d\'abord le <b>mois</b> : c\'est celui dont tu viens de recopier les cases sur le portail. Pour un autre mois, choisis-le dans cette liste.' },
+        { page: dans('livre', 'comptabilite/declaration'), cible: '#dc-preparer', cote: 'dessous', faire: 'clic',
+          si: () => { const d = document.querySelector('#dc-deposee'); return !!d && d.disabled && !/Déposée le/.test(d.textContent || ''); },
+          fait: () => { const d = document.querySelector('#dc-deposee'); return !!d && !d.disabled; },
+          titre: 'D\'abord, les chiffres du mois', texte: 'On ne note déposés que les chiffres que tu as recopiés. Ceux du mois ne sont pas encore préparés — ou une pièce est arrivée depuis : <b>Préparer</b> les fige tels que l\'écran les montre.',
+          action: 'Clique sur le bouton éclairé.', essai: { clic: true } },
+        { page: dans('livre', 'comptabilite/declaration'), cible: '#dc-deposee', cote: 'dessous', faire: 'clic',
+          si: depotANoter, fait: () => /Déposée le/.test(texteBouton('#dc-deposee')),
+          titre: 'Marquer déposée', texte: 'Un <b>pense-bête</b>, daté d\'aujourd\'hui : la page Échéances cesse de réclamer ce client pour ce mois. Ce n\'est pas un accusé de réception — garde celui du portail.',
+          action: 'Clique sur <b>« Marquer déposée »</b>.', essai: { clic: true } },
+        { page: dans('livre', 'comptabilite/declaration'), cible: '#dc-payee', cote: 'dessous', faire: 'clic', facultatif: true,
+          si: () => { const b = document.querySelector('#dc-payee'); return !!b && !b.disabled && !/Payée le/.test(b.textContent || ''); },
+          fait: () => /Payée le/.test(texteBouton('#dc-payee')),
+          titre: 'Marquer payée', texte: 'Quand la somme est <b>réglée</b>, note-la payée. Ce pointage n\'écrit rien dans le livre : le paiement viendra du relevé bancaire — l\'écrire ici le compterait deux fois. Pas encore payée ? Passe cette étape.',
+          action: 'Clique sur <b>« Marquer payée »</b>, ou passe l\'étape.', essai: { clic: true } }
       ]
     });
 
@@ -1471,7 +1513,10 @@
       bravo: 'Ta pièce est validée',
       conclusion: 'Une pièce refusée au milieu d\'un lot ne consomme aucun numéro, et elle est nommée avec son motif : la suite des numéros reste 1, 2, 3… sans trou.',
       etapes: [
+        // 10.14.1 — qui vient VALIDER son brouillard arrive sur une grille vide : ce bouton y est éteint,
+        // et la première bulle éclairait un bouton qu'on ne peut pas cliquer. Elle ne se montre que s'il sert.
         { page: dans('saisie', 'comptabilite/saisie'), cible: ['#sa-okvalider', '#sa-ok'], cote: 'dessus', titre: 'Valider en enregistrant',
+          si: () => { const b = document.querySelector('#sa-okvalider'); return !!b && !b.disabled; },
           texte: '<b>« Enregistrer et valider »</b> donne son numéro à la pièce qu\'on vient de taper — il s\'allume dès qu\'elle tombe juste. Le numéro naît à la validation, et ne bouge plus.' },
         { page: dans('saisie', 'comptabilite/saisie'), cible: ['[data-lot-mois]', '[data-lot-journal]'], cote: 'dessus', faire: 'clic',
           avant: () => { brouillardsAvant = nbBrouillards(); }, fait: () => brouillardsAvant >= 0 && nbBrouillards() < brouillardsAvant,

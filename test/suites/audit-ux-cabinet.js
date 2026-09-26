@@ -1726,12 +1726,21 @@ t('U-21 : un index écrit avant la 10.12.0 se relit une fois — sinon la CNSS e
     assert.strictEqual(s.relireIndexAncien(d, null), 0, 'un index à jour se relit encore à chaque appel');
     // Et la relecture ne réécrit JAMAIS le livre : seule la révision du disque le prouve.
     assert.strictEqual(s.enteteLivre(s.livrePath(d, 2026, null)).revision, 1, 'la relecture a réécrit le livre');
+    // 10.14.1 — un index d'une forme plus ancienne (qui lisait un dépôt annulé comme « déclaré ») se
+    // relit lui aussi, une fois.
+    const ancien2 = JSON.parse(fs.readFileSync(f, 'utf8'));
+    delete ancien2.exercices[0].forme;
+    ancien2.exercices[0].production['2026-07'].declare = true;
+    fs.writeFileSync(f, JSON.stringify(ancien2));
+    assert.strictEqual(s.relireIndexAncien(d, null), 1, 'un index d\'ancienne forme n\'est pas relu');
+    assert.strictEqual(s.lireIndexLivres(d, null).exercices[0].production['2026-07'].declare, false, 'la relecture garde le « déclaré » faux');
+    assert.strictEqual(s.relireIndexAncien(d, null), 0);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
   // Le résumé que les deux écrans lisent attend la relecture AVANT de lire les index.
   const main = lireSource('src', 'cabinet', 'main.js');
   const i = main.indexOf("ipcMain.handle('cab:questionsEnAttente'");
   const h = main.slice(i, main.indexOf('ipcMain.handle(', i + 10));
-  assert.ok(h.length > 200 && h.length < 2500, 'tranche du handler suspecte : ' + h.length);
+  assert.ok(h.length > 200 && h.length < 3200, 'tranche du handler suspecte : ' + h.length);
   assert.ok(h.indexOf('await relireIndexAnciens()') > 0 && h.indexOf('await relireIndexAnciens()') < h.indexOf('lireIndexLivres'),
     'le résumé lit les index sans avoir relu ceux d\'avant');
 });

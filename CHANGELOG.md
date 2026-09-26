@@ -53,6 +53,17 @@ Publiée en **bêta** : elle touche au moteur comptable (retenue à la source, d
   déclarer, fait copier la TVA collectée (et plus le premier montant venu, souvent 0,000), et sa fin
   dit que l'écriture du mois attend au brouillard — « Valider le brouillard » passe en tête de la
   suite. « ← » revient à l'étape d'avant même quand une étape conditionnelle les sépare.
+- **Le retour du portail a son geste guidé** (« Noter le dépôt et le paiement ») : joué en débutant, la
+  visite « Déclarer la TVA » s'arrêtait sur une bulle qui MONTRAIT « Marquer déposée », et le guide de la
+  page la disait « Fait » d'un mois ni déposé ni payé. La nouvelle visite fait cliquer le dépôt (preuve
+  lue sur le bouton), propose le paiement sans l'exiger, et suit « Déclarer la TVA » en tête de sa fin.
+- **Un dépôt noté dans la Déclaration d'un client compte sur la page Échéances** : la carte « TVA d'août »
+  réclamait encore un client déposé — deux pense-bêtes pour une même déclaration. Le client compte
+  « déposé », et une carte dont tous les clients le sont se dit déposée sans second pointage.
+- **Un dépôt ANNULÉ ne se lit plus « déclaré »** : annuler pose `{ le: '' }`, un objet, et l'index des
+  livres le prenait pour un dépôt (la Production disait « déclaré » d'un mois dé-pointé). Les index d'avant
+  se relisent une fois.
+- « Valider le brouillard » ne commence plus par un bouton de grille éteint quand on vient seulement valider.
 - **La déclaration s'ouvre sur un mois PASSÉ**, jamais sur un mois à venir : un brouillard daté du
   20 octobre (un prélèvement saisi d'avance) faisait ouvrir l'écran de septembre sur octobre, un mois
   qui n'est pas encore là. Le mois de travail est le dernier mois qui a des données jusqu'au mois

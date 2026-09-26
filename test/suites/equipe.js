@@ -281,14 +281,17 @@ t('9.9.0 : l\'état de production d\'un livre se DÉDUIT, il ne se coche pas', (
   piece(l, { id: 'a', date: '2026-03-04' }, true, 'Amine');
   piece(l, { id: 'b', date: '2026-03-08' }, false, 'Sonia');
   piece(l, { id: 'c', date: '2026-04-02' }, true, 'Amine');
-  l.declarations.push({ periode: '2026-03', deposee: true });
+  // Les formes que le MOTEUR écrit (`pointerDeclaration`) : un dépôt daté, un dépôt annulé { le: '' }.
+  // `deposee: true` n'existe dans aucun livre — c'est lui qui laissait passer le dépôt annulé (10.14.1).
+  l.declarations.push({ periode: '2026-03', deposee: { le: '2026-04-10', par: 'Amine', reference: '' } });
+  l.declarations.push({ periode: '2026-04', deposee: { le: '', par: '', reference: '' } });
   const p = createCabStore(require('os').tmpdir()).productionDuLivre(l);
   assert.strictEqual(p['2026-03'].ecritures, 2);
   assert.strictEqual(p['2026-03'].validees, 1);
   assert.strictEqual(p['2026-03'].brouillards, 1);
   assert.strictEqual(p['2026-03'].declare, true);
   assert.strictEqual(p['2026-03'].revise, false);
-  assert.strictEqual(p['2026-04'].declare, false, 'un mois sans déclaration ne doit pas hériter de celle d\'à côté');
+  assert.strictEqual(p['2026-04'].declare, false, 'un dépôt ANNULÉ se lit encore « déclaré »');
   assert.ok(p['2026-03'].qui, 'le mois ne retient pas qui l\'a touché en dernier');
 });
 

@@ -544,4 +544,93 @@ t('10.14.1 : la fin de « Déclarer la TVA » dit le brouillard du mois et propo
     assert.strictEqual([].concat(copier.cible)[0], '#dc-formulaire [data-copier="tvaI"]');
   } finally { if (avant === undefined) delete global.document; else global.document = avant; }
 });
+
+// Joué en novice, de retour du portail : « Déclarer la TVA » ne faisait pas noter le dépôt, le guide
+// de la page la disait « Fait », et la page Échéances ignorait le dépôt noté dans la Déclaration —
+// deux pense-bêtes pour une même déclaration, deux vérités.
+t('10.14.1 : le dépôt noté dans la Déclaration d\'un client le compte « déposé » sur la page Échéances', () => {
+  const KC = require('../../src/cabinet/cabcore.js');
+  const jour = '2026-09-26';
+  const S = KC.migrate({ settings: { relanceDay: 10 }, dossiers: [
+    { id: 'a', name: 'Pharmacie Ennour', manual: true, from: '2026-01', packs: [] },
+    { id: 'b', name: 'Café Sidi', manual: true, from: '2026-01', packs: [] }
+  ] });
+  const tenu = { exercices: [{ annee: 2026, du: '2026-01-01', au: '2026-12-31', production: { '2026-08': { ecritures: 3, validees: 3, brouillards: 0 } } }] };
+  const tenus = { a: tenu, b: tenu };
+  const aout = o => KC.echeances(S, jour, Object.assign({ tenus }, o)).find(e => e.id === 'tva-m' && e.mois.includes('2026-08'));
+  // Personne n'a déposé : aucune carte n'est déposée d'office.
+  const rien = aout({});
+  assert.deepStrictEqual(rien.deposes, []);
+  assert.strictEqual(rien.toutDepose, false);
+  assert.strictEqual(rien.prets, 2);
+  // Un client déposé dans sa Déclaration : il sort des « prêts », la carte ne l'est pas encore.
+  const un = aout({ declares: { a: ['2026-08'] } });
+  assert.deepStrictEqual(un.deposes, ['Pharmacie Ennour'], 'le dépôt noté dans la Déclaration ne compte pas sur la carte');
+  assert.strictEqual(un.prets, 1);
+  assert.strictEqual(un.toutDepose, false);
+  // Un AUTRE mois déclaré ne vaut rien pour août.
+  assert.deepStrictEqual(aout({ declares: { a: ['2026-07'] } }).deposes, [], 'un autre mois déposé compte pour août');
+  // Les deux : la carte est déposée, sans second pointage.
+  const tous = aout({ declares: { a: ['2026-08'], b: ['2026-08'] } });
+  assert.strictEqual(tous.toutDepose, true, 'tous les clients déposés, et la carte réclame encore');
+  // « À faire » lit la même donnée que la page (règle 6.8.1).
+  assert.ok(/declares: \(opts \|\| \{\}\)\.declares/.test(lireSource('src', 'cabinet', 'cabcore.js')), '« À faire » ne lit pas les dépôts des Déclarations');
+  assert.ok(/declares: declaresConnus\(\) \}\);/.test(cab) && /K\.echeances\(S, null, \{[^}]*declares: declaresConnus\(\)/.test(cab), 'la page ne passe pas les dépôts');
+  assert.ok(/const depose = K\.echeanceDeposee\(S, e\) \|\| !!e\.toutDepose;/.test(cab), 'la carte ignore toutDepose');
+  // Le pont rend les mois déclarés de TOUT dossier (tenu ou non), tirés des index.
+  const main = lireSource('src', 'cabinet', 'main.js');
+  assert.ok(/const declares = \[\]\.concat\(\.\.\.\(i\.exercices \|\| \[\]\)\.map\(e => Object\.keys\(e\.production \|\| \{\}\)\.filter\(m => \(e\.production\[m\] \|\| \{\}\)\.declare\)\)\)/.test(main));
+  assert.ok(/\|\| r\.declares\.length\);/.test(main), 'un dossier qui n\'a que des dépôts est filtré du résumé');
+});
+
+t('10.14.1 : « Noter le dépôt et le paiement » est un geste guidé, prouvé sur le bouton, et il suit « Déclarer la TVA »', () => {
+  const V2 = require('../../src/renderer/visite.js');
+  const ctx = { state: () => ({ cabinet: {}, dossiers: [] }), dossier: () => 'D', estExemple: () => false, cleSecours: () => null, copieExterne: () => false, Visite: V2 };
+  const liste = CV.parcours(ctx);
+  const v = liste.find(x => x.id === 'deposer-tva');
+  assert.ok(v && v.type === 'faire', 'le retour du portail n\'a pas de geste guidé');
+  const decl = liste.find(x => x.id === 'declarer-tva');
+  assert.ok(decl.suite.includes('deposer-tva'));
+  const avant = global.document;
+  try {
+    const bouton = (t2, off) => ({ textContent: t2, disabled: !!off });
+    let dep = bouton('Marquer déposée');
+    const pay = bouton('Marquer payée', true);
+    global.document = { querySelector: sel => (sel === '#dc-deposee' ? dep : sel === '#dc-payee' ? pay : null) };
+    assert.deepStrictEqual(decl.pressee(), ['deposer-tva'], 'la fin de « Déclarer la TVA » ne propose pas de noter le dépôt');
+    assert.strictEqual(v.preuve(), false, 'la visite se dit réussie sans dépôt');
+    const geste = v.etapes.find(e => e.cible === '#dc-deposee');
+    assert.strictEqual(geste.faire, 'clic');
+    assert.strictEqual(geste.si(), true);
+    dep = bouton('✓ Déposée le 26/09/2026 — annuler');
+    assert.strictEqual(v.preuve(), true);
+    assert.strictEqual(geste.si(), false, 'le geste se redemande sur un mois déjà déposé');
+    assert.deepStrictEqual(decl.pressee(), [], 'noter le dépôt se propose sur un mois déjà déposé');
+    // Des chiffres à préparer d'abord : l'étape « Préparer » ne se montre QUE si le dépôt est éteint.
+    const prep = v.etapes.find(e => e.cible === '#dc-preparer');
+    dep = bouton('Marquer déposée', true);
+    assert.strictEqual(prep.si(), true);
+    dep = bouton('Marquer déposée');
+    assert.strictEqual(prep.si(), false, 'on fait recalculer des chiffres déjà prêts');
+    // Le paiement est facultatif : un débutant n'a pas forcément payé le jour du dépôt.
+    assert.strictEqual(v.etapes.find(e => e.cible === '#dc-payee').facultatif, true);
+    // La fin ne promet que ce que l'application tient : la page Échéances et la Production.
+    assert.ok(/Échéances/.test(v.conclusion) && /déclaré/.test(v.conclusion) && !/calendrier tant qu/.test(v.conclusion));
+  } finally { if (avant === undefined) delete global.document; else global.document = avant; }
+});
+
+t('10.14.1 : « Valider le brouillard » ne montre pas un bouton de grille éteint à qui vient seulement valider', () => {
+  const V2 = require('../../src/renderer/visite.js');
+  const ctx = { state: () => ({ cabinet: {}, dossiers: [] }), dossier: () => 'D', estExemple: () => false, cleSecours: () => null, copieExterne: () => false, Visite: V2 };
+  const v = CV.parcours(ctx).find(x => x.id === 'valider-lot');
+  const e = v.etapes[0];
+  assert.strictEqual(e.titre, 'Valider en enregistrant');
+  const avant = global.document;
+  try {
+    global.document = { querySelector: () => ({ disabled: true }) };
+    assert.strictEqual(e.si(), false, 'la bulle éclaire un bouton éteint');
+    global.document = { querySelector: () => ({ disabled: false }) };
+    assert.strictEqual(e.si(), true);
+  } finally { if (avant === undefined) delete global.document; else global.document = avant; }
+});
 };
