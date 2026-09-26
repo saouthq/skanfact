@@ -8501,6 +8501,17 @@ lots ; le détail de ce qui reste vit dans `A-FAIRE.md` § 0.
     premier menu du tableau » éclairait celui des à-nouveaux, dont le miroir tombe au 1er janvier : la
     bulle décrivait un autre menu que celui qu'elle montrait — une cible se choisit par ce qui
     DISCRIMINE (`pieceOrdinaire`), comme un parcours e2e (10.14.0).
+  - **Un bouton du même nom n'a pas la même explication partout** : « Actions » d'une LIGNE et
+    « Actions » d'un EN-TÊTE de fiche partagent `[data-rowmenu]`, et la famille générique décrivait le
+    second comme le premier (« contre-passer, extourner » sur le bouton qui imprime la fiche). Une
+    entrée par préfixe de clé (`F:`, `REL:`, `CL:`) passe avant la famille. Et un nom lu dans l'écran
+    retire ce qui n'est pas du texte (`[role="img"]`, `[aria-hidden]`), sinon le repère d'un onglet
+    s'y colle.
+  - **Une visite « de la page » s'arrête à la page que la clé désigne** : la fiche d'un dossier porte
+    trois onglets, et `etapesDeLaVue` en faisait trois chapitres — la visite du livre-journal passait
+    à « Suivi » et décrivait les relances, au centre de l'écran, sans l'ouvrir. Quand la clé de page
+    nomme un onglet (`compta-journal`, `dossier`), la barre est une étape et la suite est l'onglet
+    ouvert (`onglets: 'actif'`) ; les pages qui couvrent tous leurs onglets gardent les chapitres.
 
 ## Pistes pour la suite (non demandées)
 

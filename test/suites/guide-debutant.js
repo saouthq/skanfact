@@ -337,4 +337,31 @@ t('10.14.1 : une étape qui MONTRE le menu ouvert garde sa bulle entière (la li
   assert.ok(/const listes = toutesListes\.filter\(l => !dansLaZone\(l\)\);/.test(zone), 'les listes qui rangent la bulle ne sont plus filtrées par la zone');
   assert.ok(/zoneEstUneListe\) cur\.defile = true;/.test(src), 'la page défile sous un menu ouvert — il se referme');
 });
+
+t('10.14.1 : le nom d\'un onglet lu par la visite ne porte pas son repère (« Comptabilité● »)', () => {
+  // Le point « une pièce commencée n'est pas enregistrée » vit DANS le bouton de l'onglet ; la liste
+  // des onglets l'écrivait collé au nom.
+  const V = require('../../src/renderer/visite.js');
+  let retire = false;
+  const repere = { remove: () => { retire = true; } };
+  const clone = {
+    querySelectorAll: sel => (/\[role="img"\]/.test(sel) ? [repere] : []),
+    get textContent() { return 'Comptabilité' + (retire ? '' : '●'); }
+  };
+  const el = { getAttribute: () => null, matches: () => false, classList: { contains: () => false }, cloneNode: () => clone };
+  assert.strictEqual(V.libelleDe(el), 'Comptabilité');
+});
+
+t('10.14.1 : la visite d\'un écran de dossier explique CET onglet, sans chapitres sur les autres', () => {
+  // La visite du livre-journal enchaînait sur « Suivi » (les relances du client), hors de l'écran.
+  const moteur = lireSource('src', 'renderer', 'visite.js');
+  const debut = moteur.indexOf('function etapesDeLaVue(opts) {');
+  const corps = moteur.slice(debut, moteur.indexOf('\n  function ouvrirOnglet', debut));
+  assert.ok(corps.length > 500 && corps.length < 5000, 'tranche inattendue');
+  const actif = corps.indexOf("if (o.onglets === 'actif') continue;");
+  const chapitres = corps.indexOf("chapitre: nom");
+  assert.ok(actif > 0 && actif < chapitres, 'le mode « onglet ouvert » ne coupe plus les chapitres des autres onglets');
+  const cv = lireSource('src', 'cabinet', 'renderer', 'cabvisites.js');
+  assert.ok(/etapesDeLaVue\(\{ onglets: sorte \? 'actif' : true \}\)/.test(cv), 'la visite d\'un écran de dossier lit tous les onglets de la fiche');
+});
 };

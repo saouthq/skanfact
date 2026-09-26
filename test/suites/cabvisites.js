@@ -507,6 +507,27 @@ t('10.14.0 : une explication écrite pour CE bouton passe avant une famille, et 
   });
 });
 
+t('10.14.1 : le menu « Actions » de l\'EN-TÊTE d\'une fiche ne se décrit pas comme celui d\'une ligne', () => {
+  // « Tous les autres gestes de cette ligne : ouvrir la pièce, contre-passer, extourner » sur le bouton
+  // qui imprime la fiche du client (vu en guidant un débutant dans le livre-journal).
+  const faux = (sels, txt) => ({
+    id: '', dataset: {}, textContent: txt, getAttribute: () => null,
+    matches: s => String(s).split(',').map(x => x.trim()).some(x => sels.includes(x)),
+    classList: { contains: () => false }, closest: () => null, querySelector: () => null,
+    cloneNode: () => ({ querySelectorAll: () => [], textContent: txt })
+  });
+  const S = require('../../src/renderer/visites.js');
+  const LIGNE = /de cette ligne/;
+  const fiche = CV.expliquer(faux(['[data-rowmenu]', '[data-rowmenu^="F:"]'], 'Actions'), { route: () => 'compta-journal', G: { INFO: {} } });
+  assert.ok(fiche && !LIGNE.test(fiche.texte) && /imprimer/.test(fiche.texte), 'Cabinet, en-tête : ' + JSON.stringify(fiche));
+  const releve = CV.expliquer(faux(['[data-rowmenu]', '[data-rowmenu^="REL:"]'], 'Ce relevé'), { route: () => 'compta-banque', G: { INFO: {} } });
+  assert.ok(releve && !LIGNE.test(releve.texte), 'Cabinet, relevé : ' + JSON.stringify(releve));
+  const ligne = CV.expliquer(faux(['[data-rowmenu]'], 'Actions'), { route: () => 'compta-journal', G: { INFO: {} } });
+  assert.ok(ligne && LIGNE.test(ligne.texte), 'une vraie ligne perd son explication : ' + JSON.stringify(ligne));
+  const client = S.expliquer(faux(['[data-rowmenu]', '[data-rowmenu^="CL:"]'], 'Actions'), { route: () => 'client', G: { INFO: {} } });
+  assert.ok(client && !LIGNE.test(client.texte) && /relevé/.test(client.texte), 'entreprise, fiche client : ' + JSON.stringify(client));
+});
+
 t('10.14.0 Cabinet : les cartes du portefeuille s\'accordent au chiffre qu\'elles portent — « 1 client suivi », « 0 mois manquant »', () => {
   // « 1 clients suivis » sur le tout premier écran d'un cabinet qui vient d'ajouter son premier client
   // (vu au test humain) : le libellé vit à côté du nombre, séparé de lui, et `pl()` n'y passait pas.

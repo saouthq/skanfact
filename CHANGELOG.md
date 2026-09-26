@@ -57,6 +57,11 @@ Publiée en **bêta** : elle touche au moteur comptable (retenue à la source, d
   (qui ne propose pas l'extourne) ; et la bulle qui explique le menu ouvert se lit à côté de lui, au
   lieu de se ranger dans un coin. La contre-passation est dite « datée du jour où tu corriges, jamais
   avant la pièce » — c'est la date que le menu affiche.
+- **Le bouton « Actions » d'une fiche se décrit comme tel** (imprimer, appeler, WhatsApp — ou, dans
+  SkanFact, modifier, écrire, le relevé), plus comme le menu d'une ligne d'écriture ; et le nom d'un
+  onglet ne porte plus son repère (« Comptabilité● »).
+- **La visite d'un écran de dossier reste sur cet écran** : celle du livre-journal enchaînait sur un
+  chapitre « Suivi » qui décrivait les relances du client, hors de l'écran.
 
 **Pour l'entreprise (SkanFact)**
 - **Un acompte demandé en montant fait ce montant**, timbre compris (500 DT demandés faisaient 501,002).

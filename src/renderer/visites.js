@@ -241,6 +241,8 @@
   b('[data-pg="prev"], [data-pg="next"]', "Passe à la page précédente ou suivante de la liste.", { nom: 'Page précédente / suivante', cle: 'pager' });
   b('[data-pg="size"]', "Combien de lignes tu vois à la fois. Les totaux, eux, portent toujours sur toute la sélection.", { nom: 'Lignes par page' });
   b('[data-sort]', "Un clic trie la liste par cette colonne ; un second clic inverse l'ordre.", { nom: 'Les en-têtes ⇅', cle: 'tri' });
+  // Le menu de l'EN-TÊTE d'une fiche client n'est pas celui d'une ligne (le jumeau du Cabinet, 10.14.1).
+  b('[data-rowmenu^="CL:"]', 'Les gestes plus rares de ce client : modifier sa fiche, lui écrire, et son relevé de compte — ce qu\'il doit encore, ou ce qui est en sa faveur.', { nom: 'Actions', cle: 'rowmenu-fiche' });
   b('[data-rowmenu]', null, { rowmenu: true, nom: 'Actions', cle: 'rowmenu' });
   b('#ga-go', "Lance la visite de cette page : à quoi elle sert, puis chaque bloc et chaque bouton, en une ou deux minutes.");
   b('#ga-non', "Ne plus proposer la visite de cette page. Elle reste dans « Guide-moi », en haut de la page.");

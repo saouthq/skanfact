@@ -1989,7 +1989,12 @@
       if (!n && !texte) continue;
       if (!etape.titre) etape.titre = n ? 'Ce que fait chaque bouton ici' : 'À savoir';
       out.push(etape);
-      // Une barre d'onglets : chaque onglet devient un chapitre, lu après son clic.
+      // Une barre d'onglets : chaque onglet devient un chapitre, lu après son clic. Sauf quand l'écran
+      // EST un onglet (`onglets: 'actif'`) : la visite du livre-journal enchaînait sur un chapitre
+      // « Suivi » qui décrivait les relances du client, hors de l'écran, sans même l'ouvrir (vu en
+      // guidant un débutant, 10.14.1). La barre est expliquée par l'étape ci-dessus ; la suite de la
+      // page est l'onglet ouvert, qui se lit comme le reste.
+      if (o.onglets === 'actif') continue;
       if (o.onglets && b.matches('.tabs') && b.id) {
         const barre = '#' + b.id;
         [...b.querySelectorAll('button[data-tab]')].filter(x => visible(x) && !x.disabled).forEach(t => {
@@ -2045,7 +2050,9 @@
       return nettoie(el.placeholder || el.getAttribute('title') || '');
     }
     const c = el.cloneNode(true);
-    c.querySelectorAll('button.i, .badge, .pp-compte').forEach(x => x.remove());
+    // Un repère qui n'est pas du texte (le point « pièce non enregistrée » d'un onglet, une icône) ne
+    // fait pas partie du NOM : « Comptabilité● » dans la liste des onglets (vu en guidant un débutant).
+    c.querySelectorAll('button.i, .badge, .pp-compte, [role="img"], [aria-hidden="true"]').forEach(x => x.remove());
     return nettoie(c.textContent || el.value || el.getAttribute('title'));
   }
   // Le résumé d'une bulle « i » : sa première ou ses deux premières phrases, sans balise.

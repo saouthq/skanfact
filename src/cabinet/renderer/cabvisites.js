@@ -198,6 +198,11 @@
   b('[data-sort]', 'Un clic trie la liste par cette colonne ; un second clic inverse l\'ordre.', { nom: 'Les en-têtes ⇅', cle: 'tri' });
   b('[data-relire-ecran]', 'Redemande cet écran : sa première lecture n\'a pas abouti, et le Cabinet ne la retente pas tout seul en boucle.', { nom: 'Réessayer', cle: 'relire-ecran' });
   b('[data-gl-plus]', 'Met à l\'écran la suite des lignes de ce compte : un compte très chargé ne montre d\'abord que ses premières lignes, le pied porte toujours le compte entier.', { nom: 'Montrer la suite du compte', cle: 'glPlus' });
+  // Le menu de l'EN-TÊTE d'une fiche n'est pas celui d'une ligne : « Ouvrir la pièce, contre-passer,
+  // extourner » décrivait le menu d'une écriture sur le bouton qui imprime la fiche (vu en guidant un
+  // débutant, 10.14.1). Il passe avant la famille générique.
+  b('[data-rowmenu^="F:"]', 'Les gestes plus rares de ce client : imprimer toute sa fiche, onglets compris — et, si son téléphone est connu, l\'appeler ou lui écrire la relance sur WhatsApp.', { nom: 'Actions', cle: 'rowmenu-fiche' });
+  b('[data-rowmenu^="REL:"]', 'Les gestes de ce relevé : défaire tous ses rapprochements, ou le retirer — le journal ne bouge pas.', { nom: 'Ce relevé', cle: 'rowmenu-releve' });
   b('[data-rowmenu]', null, { rowmenu: true, nom: 'Actions', cle: 'rowmenu' });
   b('#guide-moi', 'Liste tout ce qu\'on peut faire sur cet écran : sa visite, chaque geste montré pas à pas sur ton vrai écran, et l\'article qui l\'explique. Il est au même endroit sur chaque écran.', { nom: 'Guide-moi' });
   b('#ga-go', 'Lance la visite de cet écran : à quoi il sert, puis chaque bloc et chaque bouton, en une ou deux minutes.');
@@ -1871,7 +1876,8 @@
         etapes: [
           P.vide ? { page: ouvrir, si: () => !!document.querySelector(P.vide.cible), cible: P.vide.cible, cote: 'dessous', titre: P.vide.titre, texte: P.vide.texte } : null,
           { page: ouvrir, titre: P.titre, texte: P.texte, si: P.vide ? () => !document.querySelector(P.vide.cible) : undefined },
-          { page: ouvrir, titre: P.titre, deplier: () => ctx.Visite.etapesDeLaVue({ onglets: true }) }
+          // Un écran de DOSSIER est un onglet de la fiche : sa visite s'arrête à lui (`'actif'`).
+          { page: ouvrir, titre: P.titre, deplier: () => ctx.Visite.etapesDeLaVue({ onglets: sorte ? 'actif' : true }) }
         ].filter(Boolean)
       });
     });
