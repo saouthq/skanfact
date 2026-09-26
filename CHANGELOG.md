@@ -74,6 +74,10 @@ Publiée en **bêta** : elle touche au moteur comptable (retenue à la source, d
   divisé par quatre. La règle de l'app entreprise (10.12.0) n'avait jamais été portée : un champ de nombre
   ou de montant se sélectionne quand on y entre à la souris ou par Tab, jamais quand le logiciel y remet
   le curseur.
+- **« Préparer la CNSS du trimestre » fait corriger ce qui bloque le fichier** : la visite montrait
+  « Le fichier CNSS attend 2 corrections » et se taisait. Le matricule CNSS de l'employeur (dans la fiche
+  du client) et le numéro d'assuré de chaque salarié se tapent maintenant bulle par bulle, et un dossier
+  déjà complet va droit au fichier ; la dernière bulle dit pourquoi le bouton peut être grisé.
 - **La déclaration s'ouvre sur un mois PASSÉ**, jamais sur un mois à venir : un brouillard daté du
   20 octobre (un prélèvement saisi d'avance) faisait ouvrir l'écran de septembre sur octobre, un mois
   qui n'est pas encore là. Le mois de travail est le dernier mois qui a des données jusqu'au mois

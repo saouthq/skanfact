@@ -284,8 +284,9 @@ et au moteur), puis en stable quand Skander valide.*
     est fait ». Tests : `test/suites/guide-debutant.js` (19 preuves). Puis (26/09, soir) : noter le
     dépôt et le paiement de la TVA au guide, la page Échéances qui lit le dépôt d'un client, et **la paie
     faite case par case au guide** (salarié, brut, embauche, bulletin, écriture) — ce qui a trouvé le
-    champ de nombre prérempli qui donnait 20 jours d'absence pour « 2 » (+ 23 preuves).
-  - **Cabinet, encore à jouer au guide** : CNSS du trimestre, immobilisations, inventaire, révision,
+    champ de nombre prérempli qui donnait 20 jours d'absence pour « 2 » (+ 23 preuves) ; puis la CNSS
+    du trimestre, qui fait corriger au guide le matricule employeur et le numéro d'assuré (+ 5 preuves).
+  - **Cabinet, encore à jouer au guide** : immobilisations, inventaire, révision,
     clôture, liasse. Petits : la bulle « Sa famille » n'éclaire que « Enfants à charge ».
   - **Cabinet, vu et pas encore corrigé** : le message « Copié » recouvre le bas de la bulle une
     seconde ; la ligne « Quotidienne · sans les livres » des sauvegardes se lit comme une anomalie ;

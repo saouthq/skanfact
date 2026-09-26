@@ -1792,9 +1792,16 @@
       ]
     });
 
+    // 10.14.1 — suivie au guide par un débutant, « Préparer la CNSS » montrait le bloc « Le fichier
+    // CNSS attend 2 corrections » et se taisait : le matricule de l'employeur et le numéro d'assuré,
+    // c'est justement ce qu'un débutant ne sait pas où taper. Chaque correction qui bloque le fichier a
+    // maintenant son geste — le bouton de la ligne, la case, « Enregistrer » —, et seulement si elle
+    // est là : un dossier déjà complet va droit au fichier.
+    const corr = sel => (typeof document !== 'undefined' ? document.querySelector(sel) : null);
+    const fenetreClient = () => !!corr('#modal-root #f-cnss');
+    const fenetreSalarie = () => !!corr('#modal-root #sf');
     visite({
-      id: 'cnss', theme: 'declarer', type: 'faire', duree: '1 min',
-      sansGeste: 'La CNSS du trimestre est une déclaration : on la prépare au bon trimestre, pas pour voir.',
+      id: 'cnss', theme: 'declarer', type: 'faire', duree: '2 min',
       page: dans('saisie', 'comptabilite/paie'),
       titre: 'Préparer la CNSS du trimestre',
       resume: 'La déclaration trimestrielle des salaires, tirée des bulletins, et le fichier à déposer sur le portail.',
@@ -1804,12 +1811,40 @@
       bravo: 'Tu connais la CNSS',
       conclusion: 'Le Cabinet ne dépose rien et ne se connecte pas à la CNSS : il prépare le fichier, un salarié par ligne, et tu le déposes toi-même. Un trimestre se déclare une fois TERMINÉ.',
       etapes: [
-        { page: dans('saisie', 'comptabilite/paie'), cible: ['#pa-trim', '#c-livres .panel'], cote: 'dessous', titre: 'Le trimestre',
-          texte: 'Choisis le trimestre dans la liste : un salarié par ligne, son numéro d\'assuré, son assiette, sa part et celle de l\'employeur, et le <b>total à verser</b> en bas. Un numéro CNSS manquant est signalé sur la ligne.' },
+        { page: dans('saisie', 'comptabilite/paie'), cible: ['#pa-trim', '#c-livres .panel'], cote: 'dessus', titre: 'Le trimestre',
+          texte: 'Choisis le trimestre dans la liste : juste en dessous, un salarié par ligne, son numéro d\'assuré, son assiette, sa part et celle de l\'employeur, et le <b>total à verser</b> en bas. Un trimestre se déclare une fois <b>terminé</b>.' },
+        // Ce qui bloque le fichier, dans l'ordre où l'écran le liste : l'employeur (le client), puis ses salariés.
+        { page: dans('saisie', 'comptabilite/paie'), cible: '[data-pa-emp="employeur"]', cote: 'dessous', faire: 'clic',
+          si: () => !!corr('[data-pa-emp="employeur"]'),
+          titre: 'Le matricule de l\'employeur', texte: 'Le fichier porte le <b>matricule CNSS de l\'employeur</b> — ton client. Il figure sur son affiliation et sur ses anciennes déclarations CNSS.',
+          action: 'Clique sur le bouton <b>Renseigner le matricule CNSS</b> de ton client.', essai: { clic: true } },
+        { page: dans('saisie', 'comptabilite/paie'), cible: '#modal-root #f-cnss', cote: 'droite', faire: 'valeur', bouton: 'Suivant', si: fenetreClient,
+          titre: 'Son matricule', texte: 'Il s\'écrit <b>123456-72</b> : huit chiffres au plus, puis la clé sur deux.',
+          action: 'Tape le matricule CNSS de l\'employeur.', essai: { taper: '123456-72' } },
+        { page: dans('saisie', 'comptabilite/paie'), cible: '#modal-root #f-cnss-code', cote: 'droite', facultatif: true, si: fenetreClient,
+          titre: 'Le code d\'exploitation', texte: '<b>0000</b> pour le code ordinaire : ne le change que si la CNSS en a donné un autre à ton client.' },
+        { page: dans('saisie', 'comptabilite/paie'), cible: '#modal-root #ok', cote: 'dessus', faire: 'clic', si: fenetreClient, fait: () => aucuneFenetre(),
+          titre: 'Enregistrer la fiche du client', texte: 'Le matricule est retenu pour tous les trimestres de ce client.',
+          action: 'Clique sur <b>« Enregistrer »</b>.', essai: { clic: true } },
+        { page: dans('saisie', 'comptabilite/paie'), cible: '[data-pa-emp="code"]', cote: 'dessous', faire: 'clic', facultatif: true,
+          si: () => !!corr('[data-pa-emp="code"]'),
+          titre: 'Le code d\'exploitation', texte: 'Le fichier demande aussi le <b>code d\'exploitation</b> de l\'employeur : 0000 pour le code ordinaire.',
+          action: 'Clique sur le bouton <b>Renseigner le code d\'exploitation</b>, tape-le et enregistre.', essai: { clic: true } },
+        { page: dans('saisie', 'comptabilite/paie'), cible: '[data-pa-sal][data-pa-champ="cnss"]', cote: 'dessous', faire: 'clic',
+          si: () => !!corr('[data-pa-sal][data-pa-champ="cnss"]'),
+          titre: 'Le numéro d\'assuré', texte: 'Chaque salarié se déclare sous son <b>numéro d\'assuré social</b> : sans lui, sa ligne est refusée.',
+          action: 'Clique sur <b>« Ouvrir la fiche de… »</b>.', essai: { clic: true } },
+        { page: dans('saisie', 'comptabilite/paie'), cible: '#modal-root [name="cnss"]', cote: 'droite', faire: 'valeur', bouton: 'Suivant', si: fenetreSalarie,
+          titre: 'Son numéro CNSS', texte: 'Comme sur sa carte d\'assuré : <b>12345678-90</b>.', action: 'Tape son numéro d\'assuré.', essai: { taper: '12345678-90' } },
+        { page: dans('saisie', 'comptabilite/paie'), cible: '#modal-root [name="identiteCnss"]', cote: 'droite', facultatif: true, si: fenetreSalarie,
+          titre: 'Son identité CNSS', texte: '<b>Prénom, prénom du père, nom</b>, comme sur la carte d\'assuré (le nom de jeune fille pour une femme mariée). Vide, le fichier reprend le nom de la fiche. <b>À VÉRIFIER</b>.' },
+        { page: dans('saisie', 'comptabilite/paie'), cible: '#modal-root #ok', cote: 'dessus', faire: 'clic', si: fenetreSalarie, fait: () => aucuneFenetre(),
+          titre: 'Enregistrer sa fiche', texte: 'Si le numéro n\'a pas la bonne forme, la case devient rouge et dit pourquoi.',
+          action: 'Clique sur <b>« Enregistrer »</b>.', essai: { clic: true } },
         { page: dans('saisie', 'comptabilite/paie'), cible: ['#pa-portail', '#pa-trim'], cote: 'dessous', titre: 'La date limite',
           texte: 'La date limite suit le jour réglé dans Réglages → Mon cabinet, par la même règle que la page Échéances. Le bouton ouvre le portail de la CNSS dans ton <b>navigateur</b>.' },
         { page: dans('saisie', 'comptabilite/paie'), cible: ['#pa-fichier-bloc', '#pa-fichier', '#pa-trim'], cote: 'dessus', titre: 'Le fichier à déposer',
-          texte: '<b>« Fabriquer le fichier CNSS… »</b> écrit le fichier de télédéclaration des salaires : sur le portail, tu le déposes au lieu de taper chaque salarié. Il porte le nom que la CNSS exige — <b>ne le renomme pas</b>. Tant qu\'une ligne serait refusée (un numéro d\'assuré, le matricule ou le code d\'exploitation du client), il ne sort pas : la ligne le dit, avec le bouton qui ouvre la bonne fiche. Sur le portail, vérifie que le nombre de salariés et le total sont ceux du tableau.' }
+          texte: '<b>« Fabriquer le fichier CNSS… »</b> écrit le fichier de télédéclaration des salaires : sur le portail, tu le déposes au lieu de taper chaque salarié. Il porte le nom que la CNSS exige — <b>ne le renomme pas</b>. Tant qu\'une ligne serait refusée (un numéro d\'assuré, le matricule ou le code d\'exploitation du client), il ne sort pas : la ligne le dit, avec le bouton qui ouvre la bonne fiche. Grisé, le bouton dit pourquoi dans la phrase juste au-dessus — le plus souvent, le trimestre n\'est pas encore terminé. Sur le portail, vérifie que le nombre de salariés et le total sont ceux du tableau.' }
       ]
     });
 

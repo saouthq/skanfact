@@ -709,4 +709,42 @@ t('10.14.1 : un champ de nombre prérempli du Cabinet se remplace à la frappe (
   ecoute.mouseup({ target: el, preventDefault: () => { bloque++; } });
   assert.strictEqual(bloque, 1, 'le relâchement du clic défait la sélection, ou le second clic ne place plus le curseur');
 });
+
+// Suivie au guide, « Préparer la CNSS » montrait « Le fichier CNSS attend 2 corrections » et se
+// taisait : le matricule de l'employeur et le numéro d'assuré sont justement ce qu'un débutant ne sait
+// pas où taper. Chaque correction que l'écran peut demander — lue dans le panneau, jamais recopiée — a
+// son geste, et seulement quand elle est là.
+t('10.14.1 : « Préparer la CNSS » fait corriger au guide ce qui bloque le fichier, et saute ce qui est déjà complet', () => {
+  const V2 = require('../../src/renderer/visite.js');
+  const ctx = { state: () => ({ cabinet: {}, dossiers: [] }), dossier: () => 'D', estExemple: () => false, cleSecours: () => null, copieExterne: () => false, Visite: V2 };
+  const v = CV.parcours(ctx).find(x => x.id === 'cnss');
+  assert.ok(v && !v.sansGeste, 'la CNSS se dit encore « sans geste »');
+  const app = lireSource('src', 'cabinet', 'renderer', 'app.js');
+  const f = app.indexOf('function panneauFichierCnss(');
+  const panneau = app.slice(f, app.indexOf('function avertissementsCnss(', f));
+  assert.ok(panneau.length > 500 && panneau.length < 4000, 'tranche suspecte : ' + panneau.length);
+  // Les gestes que le panneau pose : les deux champs de l'employeur, et le numéro d'assuré.
+  assert.ok(/data-pa-emp="\$\{esc\(r\.champ\)\}"/.test(panneau) && /cnss: 'cnss'/.test(panneau), 'le panneau ne pose plus ses gestes');
+  const attendus = ['[data-pa-emp="employeur"]', '[data-pa-emp="code"]', '[data-pa-sal][data-pa-champ="cnss"]'];
+  const avant = global.document;
+  try {
+    global.document = { querySelector: () => null };
+    attendus.forEach(c => {
+      const e = v.etapes.find(x => x.cible === c);
+      assert.ok(e && e.faire === 'clic', 'la correction ' + c + ' n\'a pas de geste');
+      assert.strictEqual(e.si(), false, 'on fait corriger ' + c + ' sur un dossier déjà complet');
+    });
+    const present = new Set(attendus);
+    global.document = { querySelector: sel => (present.has(sel) ? {} : null) };
+    attendus.forEach(c => assert.strictEqual(v.etapes.find(x => x.cible === c).si(), true));
+    // Les cases à taper dans les deux fenêtres, puis leurs « Enregistrer » prouvés fenêtre refermée.
+    ['#modal-root #f-cnss', '#modal-root [name="cnss"]'].forEach(c => {
+      const e = v.etapes.find(x => x.cible === c);
+      assert.ok(e && e.faire === 'valeur', 'la case ' + c + ' n\'a pas de geste');
+    });
+    const enreg = v.etapes.filter(e => e.cible === '#modal-root #ok');
+    assert.strictEqual(enreg.length, 2);
+    enreg.forEach(e => assert.ok(typeof e.fait === 'function', 'un « Enregistrer » avance sur le clic seul'));
+  } finally { if (avant === undefined) delete global.document; else global.document = avant; }
+});
 };
