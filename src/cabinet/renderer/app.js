@@ -1882,14 +1882,14 @@
     { label: 'Sur SkanFact', get: r => r.manual ? 'non' : 'oui' },
     { label: 'Dernier mois reçu', get: r => r.lastLabel },
     { label: 'Définitif', get: r => r.lastMonth ? (r.lastDefinitive ? 'oui' : 'non') : '' },
-    { label: 'CA du dernier mois reçu', get: r => r.lastFigures ? String(r.lastFigures.ca).replace('.', ',') : '' },
+    { label: 'CA du dernier mois reçu', get: r => r.lastFigures ? K.csvMontant(r.lastFigures.ca) : '' },
     { label: 'Mois manquants', get: r => r.missingCount },
     { label: 'Provisoires', get: r => r.provisionalCount },
     { label: 'Points signalés', get: r => r.issues },
     { label: 'Dernière relance', get: r => r.lastRelanceAt ? fmtDay(r.lastRelanceAt) : '' },
     { label: 'Régime', get: r => r.regime },
     { label: 'TVA', get: r => r.tvaPeriod },
-    { label: 'Honoraires', get: r => r.fees || '' },
+    { label: 'Honoraires', get: r => r.fees ? K.csvMontant(r.fees) : '' },
     { label: 'Archivé', get: r => r.archived ? 'oui' : '' }
   ];
 
@@ -4094,11 +4094,10 @@
     // deux. Une case inconnue sort VIDE avec sa raison — jamais un zéro qu'on recopierait.
     const csv = $('#dc-csv', el);
     if (csv) csv.onclick = async () => {
-      const cell = v => String(v == null ? '' : v).replace('.', ',');
       const texte = [K.toCsvLine(['Case', 'Montant', 'Remarque'])]
         .concat(ORDRE_CASES.filter(k => s.decl.cases[k]).map(k => K.toCsvLine([
           LIBELLE_CASE[k] || k,
-          s.decl.cases[k].montant == null ? '' : cell(s.decl.cases[k].montant),
+          K.csvMontant(s.decl.cases[k].montant),
           s.decl.cases[k].motif || ''
         ]))).join('\r\n') + '\r\n';
       try {
@@ -4645,10 +4644,9 @@
     if (csv) csv.onclick = async () => {
       // `K.toCsvLine` échappe comme le reste du Cabinet : un libellé de rubrique qui commence par
       // « = » serait exécuté par un tableur (9.1.1).
-      const cell = v => String(v == null ? '' : v).replace('.', ',');
       const texte = [K.toCsvLine(['État', 'Code', 'Rubrique', 'Montant', 'Sens'])]
         .concat(s.liasse.liasse.etats.flatMap(e => e.lignes.map(x => K.toCsvLine([
-          e.label, x.id, x.label, x.montant === null ? '' : cell(x.montant),
+          e.label, x.id, x.label, K.csvMontant(x.montant),
           (x.deduit || x.charge) ? 'en moins' : ''
         ])))).join('\r\n') + '\r\n';
       try {
@@ -5281,11 +5279,11 @@
     const cs = $('#im-csv', el);
     if (cs) cs.onclick = async () => {
       const cols = [
-        { label: 'Bien', get: r => r.libelle }, { label: 'Mise en service', get: r => r.date },
+        { label: 'Bien', get: r => r.libelle }, { label: 'Mise en service', get: r => K.csvDate(r.date) },
         { label: 'Méthode', get: r => METHODE_LABEL[r.methode] || r.methode },
-        { label: 'Valeur', get: r => r.valeur }, { label: 'Cumul au 01/01', get: r => r.ouverture },
-        { label: 'Dotation', get: r => r.dotation }, { label: 'Cumul', get: r => r.cumul },
-        { label: 'VNC', get: r => r.vnc }
+        { label: 'Valeur', get: r => K.csvMontant(r.valeur) }, { label: 'Cumul au 01/01', get: r => K.csvMontant(r.ouverture) },
+        { label: 'Dotation', get: r => K.csvMontant(r.dotation) }, { label: 'Cumul', get: r => K.csvMontant(r.cumul) },
+        { label: 'VNC', get: r => K.csvMontant(r.vnc) }
       ];
       try {
         const r = await api.exportCsv(toCsv(cols, s.immo.etat.rows), `immobilisations-${s.annee}`);
@@ -7678,9 +7676,12 @@
       : KC.journalDepuisLignes(lignes).pieces.flatMap(p => p.lignes.map(e => ({ ...e, numero: p.numero })));
     // `K.toCsvLine` échappe comme le reste du Cabinet : un libellé de facture contient un
     // point-virgule un jour sur dix, et un montant s'écrit à la virgule décimale.
-    const cell = v => (typeof v === 'number' ? String(v).replace('.', ',') : String(v == null ? '' : v));
+    // Un montant et une date au format de l'app entreprise (C2) : les colonnes se reconnaissent à leur
+    // clé, jamais au type de la valeur — un n° de pièce ou de compte est aussi un nombre.
+    const MONTANTS = ['debit', 'credit', 'ouvertureD', 'ouvertureC', 'soldeD', 'soldeC'];
+    const cell = (v, cle) => MONTANTS.includes(cle) ? K.csvMontant(v) : cle === 'date' ? K.csvDate(v) : String(v == null ? '' : v);
     const csv = [K.toCsvLine(cols.map(c => c[1]))]
-      .concat(rows.map(r => K.toCsvLine(cols.map(c => cell(r[c[0]])))))
+      .concat(rows.map(r => K.toCsvLine(cols.map(c => cell(r[c[0]], c[0])))))
       .join('\r\n') + '\r\n';
     const nom = s.onglet === 'balance' ? 'balance' : s.onglet === 'grand-livre' ? 'grand-livre'
       : s.onglet === 'lettrage' ? 'lettrage' : 'livre-journal';

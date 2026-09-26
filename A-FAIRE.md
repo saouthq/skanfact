@@ -192,9 +192,11 @@ et au moteur), puis en stable quand Skander valide.*
   Cabinet, le jumeau manquant) : salarié, bulletin, bien, cession, écriture de trésorerie, questions,
   réouverture, mots de passe… À écrire dans `cabguide.js` (chaque bulle dit ce que le CODE fait du
   champ), puis porter le test de `assistant.js` au Cabinet.
-- **C2 — les CSV du Cabinet au format machine** : `exporterLivre` (~L7534 de
-  `src/cabinet/renderer/app.js`), le CSV de la déclaration (~L3966), celui de la liasse (~L4515) et
-  `CSV_COLS` du portefeuille (~L1799) — les aligner sur le format des montants de `core.toCsv`.
+- ~~**C2 — les CSV du Cabinet au format machine**~~ **Fait (26/09)** : `K.csvMontant` / `K.csvDate`
+  (le format de `core.toCsv`, comparé à lui par un test) dans les cinq exports — portefeuille, biens,
+  déclaration, liasse, livres. Vu à la souris : le livre-journal du garage exporté par « Enregistrer »,
+  lu sur le disque (`01/01/2026`, `20000,000`). Et deux constats du test à la souris faits : la ligne
+  « Reportées » ne pâlit plus son bouton « Actions », le numéro d'une échéance à 7 jours est un lien.
 - **PERF-01** (la fenêtre « Nouvelle opération diverse » gelait 15,5 s sur dix ans ; corrigé par le
   lot de `comptesProposes`) : le vérifier à la souris sur l'exemple de cinq ans.
 - **Le Cabinet, parcouru par moi-même** (les agents n'y ont rien trouvé : ça ne vaut pas preuve).

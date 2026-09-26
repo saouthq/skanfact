@@ -1907,6 +1907,19 @@
     return { ok: true, etat: 'signe', empreinte: s.empreinte, epingler: null, texte: `Signé par le client (${s.empreinte}).` };
   }
 
+  // Un MONTANT et une DATE dans un CSV du Cabinet s'écrivent comme dans ceux de l'app entreprise
+  // (`core.toCsv`, 10.14.1 — C2) : trois décimales à la virgule, jour/mois/année. Le Cabinet écrivait
+  // « 1234,5 » et « 2026-09-01 » — un format de machine, et deux formats pour les mêmes chiffres selon
+  // l'application qui les exporte. Vide reste vide : une case inconnue ne devient jamais un zéro.
+  function csvMontant(v) {
+    if (v === null || v === undefined || v === '' || !isFinite(Number(v))) return '';
+    return round3(v).toFixed(3).replace('.', ',');
+  }
+  function csvDate(iso) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || ''));
+    return m ? `${m[3]}/${m[2]}/${m[1]}` : String(iso == null ? '' : iso);
+  }
+
   function toCsvLine(cells) {
     return cells.map(v => {
       let t = String(v == null ? '' : v);
@@ -2171,7 +2184,7 @@
     justificatifsDuPaquet, justificatifsDeLigne,
     exemplePerime, verdictMotDePasse,
     newDossier, parseDossierLines, noteRelance, portfolio, caDuPortefeuille, relanceDue, relanceRows, accuseMail,
-    parseCsv, verdictOrigine, csvDangereux, toCsvLine, mergeEcritures, ecrituresPlan,
+    parseCsv, verdictOrigine, csvDangereux, toCsvLine, csvMontant, csvDate, mergeEcritures, ecrituresPlan,
     DEFAULT_DEADLINES, deadlineSettings, echeances, dayOf,
     TVA_PERIODES, migrateRegime, regimes, regimeDe, choixRegimes, regimeEnPhrase, periodeTva, deposeCnss,
     dossierMonths, debutDeMission, dossierRow, dossierList, cabinetTodo, premiersPas, relanceMail, pairingFile,

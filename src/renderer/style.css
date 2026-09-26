@@ -930,8 +930,10 @@ nav a.active .nav-count { background: #fff; }
 .level { display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 700; background: var(--ink-soft); color: var(--muted); }
 .level.l2 { background: var(--warning-soft); color: var(--warning); }
 .level.l3 { background: var(--danger-soft); color: var(--danger); }
-table.list tr.snoozed td { opacity: .62; }
-table.list tr.snoozed:hover td { opacity: 1; }
+/* Une relance reportée se lit en retrait — mais pas son bouton : pâli, il paraissait éteint (vu au test
+   humain, 10.14.1). Le geste reste entier ; seul ce qu'on lit recule. */
+table.list tr.snoozed td:not(.row-actions):not(.actions) { opacity: .62; }
+table.list tr.snoozed:hover td:not(.row-actions):not(.actions) { opacity: 1; }
 table.mini { width: 100%; border-collapse: collapse; margin-top: 8px; }
 table.mini th { text-align: start; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .8px; padding: 4px 6px; }
 table.mini td { padding: 3px 6px; vertical-align: middle; }

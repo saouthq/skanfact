@@ -4,7 +4,7 @@
 //
 // Skander : « des champs où le montant s'écrivait "250" au lieu de la vraie écriture en dinar ».
 // Chaque test de ce fichier se prouve en réintroduisant son défaut (7.2.0).
-module.exports = async ({ t, ta, assert }) => {
+module.exports = async ({ t, ta, assert, lireSource }) => {
   const fs = require('fs');
   const path = require('path');
   const vm = require('vm');
@@ -1706,5 +1706,48 @@ module.exports = async ({ t, ta, assert }) => {
     assert.ok(/\.dr-role[\s\S]{0,80}addEventListener\('change', \(\) => sale\(sel\)\)/.test(brancher), 'un choix changé n\'allume pas « Enregistrer les droits »');
     const iRender = brancher.indexOf('render();'), iFlash = brancher.indexOf("flash($('#dr-saved'))");
     assert.ok(iRender > 0 && iFlash > iRender, 'le « ✓ enregistré » doit se poser sur le panneau redessiné (après render)');
+  });
+
+  t('C2 — un CSV du Cabinet écrit ses montants et ses dates comme ceux de l\'app entreprise', () => {
+    const K = require('../../src/cabinet/cabcore.js');
+    const core = require('../../src/renderer/core.js');
+    // Le même format que `core.toCsv` : on compare aux deux branches du jumeau, pas à une chaîne recopiée.
+    const ref = core.toCsv([{ m: 1234.5, d: '2026-09-01' }], [{ key: 'm', label: 'M', type: 'money' }, { key: 'd', label: 'D', type: 'date' }])
+      .replace(/^\ufeff/, '').split('\r\n')[1].split(';');
+    assert.deepStrictEqual([K.csvMontant(1234.5), K.csvDate('2026-09-01')], ref);
+    assert.strictEqual(K.csvMontant(-12.5), '-12,500');
+    assert.strictEqual(K.csvMontant(0.1 + 0.2), '0,300');
+    // Une case inconnue reste VIDE, jamais un zéro (9.6.0).
+    ['', null, undefined, 'abc'].forEach(v => assert.strictEqual(K.csvMontant(v), ''));
+    // Un montant négatif garde son signe et n'est pas pris pour une formule (9.1.1).
+    assert.strictEqual(K.toCsvLine([K.csvMontant(-12.5)]), '-12,500');
+    // Aucun export du Cabinet ne fabrique plus un montant par `String(v).replace('.', ',')`.
+    const app = lireSource('src', 'cabinet', 'renderer', 'app.js');
+    ['CA du dernier mois reçu', 'immobilisations-', 'declaration-', 'liasse-', 'function exporterLivre'].forEach(ancre => {
+      const i = app.indexOf(ancre);
+      assert.ok(i > 0, 'ancre introuvable : ' + ancre);
+    });
+    const exports = [app.slice(app.indexOf('const CSV_COLS = ['), app.indexOf('function drawDossiers(')),
+      app.slice(app.indexOf("const cs = $('#im-csv', el);"), app.indexOf('`immobilisations-')),
+      app.slice(app.indexOf("const csv = $('#dc-csv', el);"), app.indexOf('`declaration-')),
+      app.slice(app.indexOf("const csv = $('#li-csv', el);"), app.indexOf('`liasse-')),
+      app.slice(app.indexOf('async function exporterLivre('), app.indexOf('`${nom}-${s.data.dossier'))];
+    exports.forEach((z, n) => {
+      assert.ok(z.length > 100 && z.length < 4000, 'tranche d\'export inattendue n° ' + n + ' : ' + z.length);
+      assert.ok(!/String\([^)]*\)\.replace\('\.', ','\)/.test(z), 'un export fabrique encore son montant à la main (n° ' + n + ')');
+      assert.ok(/K\.csvMontant\(/.test(z), 'un export ne passe pas par K.csvMontant (n° ' + n + ')');
+    });
+    assert.ok(/K\.csvDate\(/.test(exports[1]) && /K\.csvDate\(/.test(exports[4]), 'les dates des biens et du journal ne passent pas par K.csvDate');
+  });
+
+  t('Relances — une ligne reportée recule, pas son bouton ; une échéance à 7 jours s\'ouvre par son numéro (vu au test humain)', () => {
+    const css = lireSource('src', 'renderer', 'style.css');
+    const regles = css.split('\n').filter(l => /tr\.snoozed/.test(l) && /opacity/.test(l));
+    assert.ok(regles.length >= 1, 'la règle de la ligne reportée a disparu');
+    regles.forEach(l => assert.ok(/:not\(\.row-actions\)/.test(l), 'la ligne reportée pâlit aussi son bouton « Actions » : ' + l));
+    const app = lireSource('src', 'renderer', 'app.js');
+    const z = app.slice(app.indexOf('<div id="r-bientot">'), app.indexOf('<div id="r-devis">'));
+    assert.ok(z.length > 100 && z.length < 2000, 'tranche des échéances à 7 jours inattendue : ' + z.length);
+    assert.ok(/<a href="#\/doc\/\$\{d\.id\}">\$\{h\(d\.number\)\}<\/a>/.test(z), 'le numéro d\'une échéance à 7 jours n\'est pas un lien, comme celui des devis');
   });
 };
