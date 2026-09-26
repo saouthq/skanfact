@@ -139,7 +139,8 @@ t('S-03 : une visite en pause se REPREND depuis « Guide-moi » — à son étap
   assert.ok(!geste.fait, 'une visite en pause n\'est pas « faite » à l\'écran');
   const page = menu.find(a => /visite de la page/.test(a.label || ''));
   assert.strictEqual(page.label, 'Reprendre la visite de la page');
-  assert.ok(/^Arrêtée à l'étape 2 — tu étais à l'étape 4/.test(page.hint), page.hint);
+  // Retournée (10.14.1) : « Arrêtée à l'étape 2 — tu étais à l'étape 4 » se contredisait.
+  assert.ok(/^Reprise à l'étape 2 — tu étais à l'étape 4/.test(page.hint), page.hint);
   geste.run(); page.run();
   assert.deepStrictEqual(lances, [['sans-onglet', 2], ['p-x', 1]], 'la reprise relance à son étape, pas au début');
   // Une reprise qui lève ne casse pas le menu.

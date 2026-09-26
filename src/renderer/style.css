@@ -2163,6 +2163,12 @@ body.dark .scroll-x table.list:has(td.row-actions) thead th:last-child { box-sha
 /* Le geste déjà fait en entrant : on le dit, sans l'attente animée. */
 .visite-bulle .vb-afaire.fait { border-style: solid; }
 .visite-bulle .vb-afaire.fait .vb-atoi svg { animation: none; }
+/* Une case qu'une étape à LIRE éclaire (10.14.1) : la consigne est une proposition, pas un geste
+   attendu — le pavé est plus calme, sans l'attente animée, et « Suivant » reste là. */
+.visite-bulle .vb-afaire.vb-libre { border-style: solid; background: transparent; }
+.visite-bulle .vb-afaire.vb-libre .vb-atoi { color: var(--th); background: var(--th-bg); }
+.visite-bulle .vb-afaire.vb-libre .vb-atoi svg { animation: none; }
+.visite-bulle .vb-afaire.vb-libre .vb-action { font-size: 13.5px; }
 /* Un nom de bouton cité dans la bulle est un LIEN vers ce bouton : le survoler l'éclaire, le
    cliquer l'amène à l'écran. Souligné en pointillé, comme un mot qu'on peut toucher. */
 .visite-bulle .vb-nomme { color: var(--text); font-weight: 650; cursor: pointer; border-radius: 4px;

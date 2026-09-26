@@ -934,7 +934,10 @@
     // « en pause ») et relance à cette étape — sans quoi « Guide-moi » la recommençait au début, pendant
     // que « Me guider » proposait de la reprendre (vu à la souris, 10.14.1).
     const pause = v => { try { return (x.reprise && x.reprise(v)) || null; } catch (_) { return null; } };
-    const enPause = r => `Arrêtée à l'${bas(r.texte)}${r.note ? ' — ' + r.note : ''}.`;
+    // Une reprise qui repart plus tôt que l'arrêt (le début du geste) ne se dit pas « arrêtée » à
+    // l'étape où elle REPREND : « Arrêtée à l'étape 1 — tu étais à l'étape 4 » se contredisait
+    // (vu à la souris, 10.14.1). Elle se dit comme « Me guider » la dit : l'étape de reprise.
+    const enPause = r => r.note ? `Reprise à l'${bas(r.texte)} — ${r.note}.` : `Arrêtée à l'${bas(r.texte)}.`;
     const geste = v => {
       const m = x.manque ? x.manque(v) : null;
       const r = m ? null : pause(v);
@@ -1700,6 +1703,7 @@
       + (neuve ? (cur.sens < 0 ? ' entre-arriere' : ' entre') : '') + (neuve && t.debutChap && cur.sens > 0 ? ' nouveau-chapitre' : '');
     teinter(els.bulle, coul);
     const dernier = cur.i === n - 1;
+    const champLibre = !faire && !cur.perdu && !cur.items.length ? consigneDeLaCible(e, dernier) : '';
     const chapSuiv = t.avecChapitres && !t.dernierChap && !faire && !cur.perdu
       ? `<div class="vb-pied2"><button type="button" class="vb-lien" data-v="chapitre" title="Aller au début du chapitre suivant">Passer au chapitre suivant ›</button></div>` : '';
     const suivant = `<button type="button" class="vb-suiv" data-v="suiv">${dernier ? 'Terminer' : `Suivant${FLECHE}`}</button>`;
@@ -1751,7 +1755,8 @@
                // d'août en septembre, avec sa TVA. L'étape dit alors ce qu'il faut VÉRIFIER (`rempli`).
                ? `<div class="vb-afaire${e.rempli ? '' : ' fait'}"><span class="vb-atoi">${e.rempli ? ICONE_INFO + 'À vérifier' : ICONE_COCHE + 'Déjà rempli'}</span><span class="vb-action">${e.rempli || 'Cette case est déjà remplie : garde ce qui est écrit ou change-le'}, puis clique sur <b>« ${h(e.bouton || 'C\'est fait')} »</b>.</span></div>`
                : `<div class="vb-afaire"><span class="vb-atoi">${ICONE_MAIN}À toi</span><span class="vb-action">${action(e)}</span></div>`) : ''}
-           ${noteEssai(e, faire) ? `<div class="vb-essai-note">${ICONE_MAIN}<span>Tu peux cliquer ce qui est éclairé pour l'essayer : je m'efface le temps que tu regardes, puis tu reprends la visite.</span></div>` : ''}
+           ${champLibre ? `<div class="vb-afaire vb-libre"><span class="vb-atoi">${ICONE_MAIN}Si tu veux</span><span class="vb-action">${champLibre}</span></div>` : ''}
+           ${!champLibre && noteEssai(e, faire) ? `<div class="vb-essai-note">${ICONE_MAIN}<span>Tu peux cliquer ce qui est éclairé pour l'essayer : je m'efface le temps que tu regardes, puis tu reprends la visite.</span></div>` : ''}
            ${t.prochain && !faire ? `<div class="vb-prochain">Ensuite : <b>${h(t.prochain)}</b></div>` : ''}`}
       </div>
       <div class="vb-pied">${pied}</div>${chapSuiv}${astuce}`;
@@ -1783,6 +1788,48 @@
 
   // « Tu peux cliquer ce qui est éclairé » se dit UNE fois par visite, sur la première étape qui
   // éclaire quelque chose — le redire à chaque bulle, c'est une phrase qu'on apprend à sauter.
+  // ---------- une CASE éclairée par une étape à lire (PUR : les tests le jouent) ----------
+  // Skander, 26/09/2026 : « un comptable novice aurait appuyé sur le guide pour qu'il le guide à faire
+  // toutes les cases ». Une étape « à regarder » posée sur une case de saisie laissait le débutant
+  // devant un champ sans dire quoi en faire — son `action` ne s'affiche que sur un geste, et 19 étapes
+  // sur 33 des deux applications n'en disaient rien dans leur texte. La consigne se DÉDUIT de la case,
+  // dans le moteur : écrite étape par étape, elle manquerait à la prochaine.
+  function caseDe(el) {
+    if (!el || !el.tagName) return null;
+    const tag = String(el.tagName).toUpperCase();
+    if (tag === 'SELECT' || tag === 'TEXTAREA') return el;
+    if (tag === 'INPUT') return /^(hidden|button|submit|reset|file|image)$/i.test(el.type || '') ? null : el;
+    if (el.matches && el.matches('.combo, [data-combo], .combo-btn')) return el;
+    // Une zone qui porte UNE seule case (un libellé et son champ) parle de cette case ; plusieurs,
+    // c'est une rangée ou un formulaire, et l'étape le dit elle-même.
+    if (!el.querySelectorAll) return null;
+    const cases = [...el.querySelectorAll('input:not([type=hidden]):not([type=button]):not([type=submit]), select, textarea, [data-combo]')]
+      .filter(c => !(c.closest && c.closest('[data-combo]') && c.closest('[data-combo]') !== c));
+    return cases.length === 1 ? caseDe(cases[0]) : null;
+  }
+  function genreDeCase(c) {
+    if (!c || !c.tagName) return null;
+    const tag = String(c.tagName).toUpperCase();
+    if (tag === 'SELECT' || (c.matches && c.matches('.combo, [data-combo], .combo-btn'))) return 'liste';
+    if (tag === 'INPUT' && /^(checkbox|radio)$/i.test(c.type || '')) return 'case';
+    return 'texte';
+  }
+  function consigneDeCase(genre, o) {
+    o = o || {};
+    if (!genre || o.desactive) return '';
+    const b = `<b>« ${h(o.bouton || 'Suivant')} »</b>`;
+    if (genre === 'case') return `Coche la case éclairée si c'est ton cas, puis ${b}.`;
+    if (genre === 'liste') return `Choisis dans la liste éclairée — ou garde ce qui est proposé —, puis ${b}.`;
+    return o.rempli ? `La case éclairée est déjà remplie : garde ce qui est écrit ou change-le, puis ${b}.`
+      : `Remplis la case éclairée si tu as l'information, puis ${b}. Sinon, ${b} directement : tu la compléteras plus tard.`;
+  }
+  function consigneDeLaCible(e, dernier) {
+    const c = caseDe(cibleDe(e));
+    if (!c) return '';
+    const rempli = genreDeCase(c) === 'texte' && String(c.value || '').trim() !== '';
+    return consigneDeCase(genreDeCase(c), { bouton: dernier ? 'Terminer' : 'Suivant', rempli, desactive: !!(c.disabled || c.readOnly) });
+  }
+
   function noteEssai(e, faire) {
     if (faire || cur.perdu || !e || !e.cible) return false;
     // Un bouton ÉTEINT ne s'essaie pas : « Tu peux cliquer ce qui est éclairé » sur « Enregistrer et
@@ -2261,7 +2308,7 @@
   const etapeCourante = () => { const e = etape(); if (!e) return null; const c = Object.assign({}, e); delete c.el; return c; };
 
   const api = { installer, lancer, quitter, enCours, etapeCourante, suivant, precedent, chapitreSuivant, reprendre, gestePasse, consequenceDuGeste, gesteQuiOuvre, issueDeFin, phrasePasses, texteDeFin, selonFin, finsHonnetes,
-    toucheAvance, ouvreEssai, pagesDuGeste, ongletDuGeste, guideDeLaPage, dansLeGuide, menuDuGuide, placerBulle, placerPres, largeurPres, zoneDeLaCase, placerMini, typo, chevauche, decouperHaut, trousDeListe, hautPourBulle, hautPourCouper, viseLaCible, estFaire, decider, enAttenteDe, compteDe, pointDeReprise, etapeAvecPage, repriseDuGeste, valeurDefaiteAvant, changementDePage, versLaReprise, dejaRempliDe, normNom, nomsCites, lieuDe, ouvrirOnglet,
+    toucheAvance, ouvreEssai, pagesDuGeste, ongletDuGeste, guideDeLaPage, dansLeGuide, menuDuGuide, placerBulle, placerPres, largeurPres, zoneDeLaCase, placerMini, caseDe, genreDeCase, consigneDeCase, typo, chevauche, decouperHaut, trousDeListe, hautPourBulle, hautPourCouper, viseLaCible, estFaire, decider, enAttenteDe, compteDe, pointDeReprise, etapeAvecPage, repriseDuGeste, valeurDefaiteAvant, changementDePage, versLaReprise, dejaRempliDe, normNom, nomsCites, lieuDe, ouvrirOnglet,
     chapitres, resoudre, visible, listerControles, etapesDeLaVue, blocsDe, cheminDe, PATIENCE, PATIENCE_FACULTATIVE, CONTROLES,
     nettoie, libelleDe, resumeBulle, routeDe, expliqueur, zoneur, phraseDuHaut, texteDuHaut };
   global.Visite = api;

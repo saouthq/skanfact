@@ -293,6 +293,14 @@ et au moteur), puis en stable quand Skander valide.*
     dont les contrôles « à voir » ne portaient aucun geste (+ 6 preuves) ; puis la liasse, dont le taux
     se demandait par une consigne jamais affichée et dont la bulle réduite couvrait les boutons du
     modèle (+ 8 preuves).
+  - **SkanFact neuve, au guide (en cours)** : fiche société (banque et RIB devenus des gestes
+    facultatifs) puis « Ajouter un client » refaite case par case — contact, matricule, retenue,
+    timbre, téléphone, email, devise, adresse — jouées à la souris jusqu'à « Ton client est
+    enregistré » (2/10). Une étape à lire posée sur une case reçoit sa consigne, déduite par le moteur
+    (19 étapes des deux applications). Suite : premier devis, envoi, facture, encaissement, copie,
+    catalogue. Petits notés : le toast « C'est prêt. » après l'assistant est laconique ;
+    l'invitation « Première fois sur cette page » couvre le texte des premiers pas ; la visite
+    « Ajouter une prestation au catalogue » porte l'icône des clients (thème « fichiers »).
   - **Cabinet, tout joué au guide.** À vérifier encore : « Me guider » marque « Clôturer un exercice —
     Fait » après « Annuler » (marquage trop généreux ?) ; une étape « faire » n'a pas de « Précédent » ;
     Guide-moi d'une visite en pause ne propose pas « Recommencer ». Les toasts de refus du modèle de

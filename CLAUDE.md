@@ -8626,6 +8626,18 @@ lots ; le détail de ce qui reste vit dans `A-FAIRE.md` § 0.
   une fenêtre qui prend tout l'écran, aucun coin n'évite la fenêtre, et le premier coin tombait sur
   « Annuler ». On cherche un coin qui ne couvre rien, puis un coin qui ne couvre pas les
   `.modal-actions` — ce qu'on doit pouvoir cliquer passe avant ce qu'on doit pouvoir lire.
+- **Une étape posée sur une CASE dit quoi en faire, et la consigne se DÉDUIT de la case** (Skander :
+  « un comptable novice aurait appuyé sur le guide pour faire toutes les cases, et pas tout seul comme
+  tu le fais »). Dix-neuf étapes à lire éclairaient un champ sans rien demander. Plutôt que d'écrire
+  dix-neuf consignes — et d'oublier la vingtième —, le moteur lit la cible (`caseDe` : un champ, une
+  liste, une zone qui n'a qu'UNE case ; `genreDeCase`) et pose sous « Si tu veux » : tape ou passe,
+  choisis ou garde, coche si c'est ton cas, garde ou change ce qui est déjà rempli. Une zone de
+  plusieurs cases ne reçoit rien (on ne sait pas laquelle), une case désactivée non plus. La règle
+  7.3.0 appliquée au guide : **une consigne que le moteur peut déduire ne s'écrit pas à la main**.
+  Et une étape à LIRE sur une information qu'on doit fournir (le RIB, la banque) est un GESTE
+  facultatif, pas un paragraphe — la fiche client est guidée case par case, retenue et devise comprises.
+- **Une phrase de reprise dit ce qui va arriver, pas ce qui est arrivé** : « Arrêtée à l'étape 2 — tu
+  étais à l'étape 4 » se lisait comme deux arrêts ; « Reprise à l'étape 2 — tu étais à l'étape 4 ».
 
 ## Pistes pour la suite (non demandées)
 

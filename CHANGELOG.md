@@ -108,6 +108,20 @@ Publiée en **bêta** : elle touche au moteur comptable (retenue à la source, d
   maintenant dans son texte (aucun taux n'est proposé : il dépend du droit). Le retraitement ajouté se
   montre dans son tableau avant de passer au modèle de rubriques, et la fenêtre du modèle, ouverte en
   dernier, a son étape qui dit comment la refermer sans rien changer.
+- **Une étape posée sur une case dit toujours quoi en faire** — dans les deux applications. Dix-neuf
+  étapes « à lire » éclairaient un champ sans rien demander : le débutant qui suit la bulle ne savait
+  pas s'il devait taper, choisir ou passer. Le moteur le déduit maintenant de la case elle-même, sous
+  « Si tu veux » : tape si tu as l'information (sinon « Suivant », tu la compléteras plus tard),
+  choisis dans la liste ou garde ce qui est proposé, coche si c'est ton cas — et une case déjà
+  remplie se dit « garde ou change ». Rien n'est écrit à la main, étape par étape : un champ ajouté
+  demain aura sa consigne.
+- **La fiche société fait taper la banque et le RIB, et la fiche client se remplit case par case** :
+  le RIB se lisait (« garde-le à jour ») et la bulle couvrait la case de la banque ; ce sont
+  maintenant deux gestes qu'on peut passer. « Ajouter un client » guide le contact, le matricule, la
+  retenue à la source (avec l'attestation qu'elle fait réclamer — À VÉRIFIER), le timbre, le
+  téléphone, l'email, la devise (et la langue des documents) et l'adresse, puis « Enregistrer ».
+- **« Guide-moi » ne se contredit plus sur une visite en pause** : « Arrêtée à l'étape 2 — tu étais à
+  l'étape 4 » devient « Reprise à l'étape 2 — tu étais à l'étape 4 : on repart de… ».
 - **La bulle réduite ne couvre plus les boutons d'une fenêtre** : devant une fenêtre qui prend tout
   l'écran (le modèle de liasse), « La visite t'attend » se posait sur « Annuler » et « Enregistrer ».
   Elle cherche d'abord un coin qui ne couvre rien, puis un coin qui laisse au moins les boutons libres.

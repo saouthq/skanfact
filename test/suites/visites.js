@@ -1139,6 +1139,37 @@ t('10.14.1 : la bulle EN RETRAIT se range dans un coin qui ne couvre ni la liste
   assert.ok(V.placerMini({ w: 360, h: 300 }, bulle, [liste]).x >= 12, 'sur un petit écran, la bulle sort par la gauche');
 });
 
+// Une étape « à regarder » posée sur une case laissait un débutant devant un champ sans dire quoi en
+// faire : son `action` ne s'affiche que sur un geste. La consigne se déduit de la case éclairée.
+t('10.14.1 : une étape à lire sur une CASE dit quoi en faire — taper, choisir ou cocher, puis Suivant', () => {
+  const champ = (tagName, o) => Object.assign({ tagName, type: '', value: '', matches: () => false, closest: () => null }, o);
+  const zone = cases => ({ tagName: 'LABEL', matches: () => false, querySelectorAll: () => cases });
+  const texte = champ('INPUT', { type: 'text' });
+  assert.strictEqual(V.caseDe(texte), texte);
+  assert.strictEqual(V.genreDeCase(texte), 'texte');
+  assert.strictEqual(V.genreDeCase(champ('TEXTAREA')), 'texte');
+  assert.strictEqual(V.genreDeCase(champ('SELECT')), 'liste');
+  assert.strictEqual(V.genreDeCase(champ('INPUT', { type: 'checkbox' })), 'case');
+  assert.strictEqual(V.caseDe(champ('INPUT', { type: 'hidden' })), null, 'une case cachée n\'est pas une case à remplir');
+  assert.strictEqual(V.caseDe(champ('BUTTON')), null, 'un bouton n\'est pas une case');
+  // Une zone : un libellé et SA case parlent de la case ; une rangée de plusieurs cases, non.
+  assert.strictEqual(V.caseDe(zone([texte])), texte, 'la zone d\'une seule case ne donne pas sa consigne');
+  assert.strictEqual(V.caseDe(zone([texte, champ('SELECT')])), null, 'une rangée de cases reçoit la consigne d\'une seule');
+  // La phrase : ce qu'on fait de la case, puis le bouton du pied, cité tel qu'il est écrit.
+  const t1 = V.consigneDeCase('texte', { bouton: 'Suivant' });
+  assert.ok(/Remplis la case/.test(t1) && /« Suivant »/.test(t1) && /plus tard/.test(t1), 'la case vide ne dit pas quoi faire, ni qu\'on peut la laisser : ' + t1);
+  assert.ok(/déjà remplie/.test(V.consigneDeCase('texte', { rempli: true })), 'une case remplie se dit « à remplir »');
+  assert.ok(/Choisis/.test(V.consigneDeCase('liste', {})) && /Coche/.test(V.consigneDeCase('case', {})));
+  assert.ok(/« Terminer »/.test(V.consigneDeCase('texte', { bouton: 'Terminer' })), 'la dernière étape cite « Suivant » alors que son bouton dit « Terminer »');
+  assert.strictEqual(V.consigneDeCase('texte', { desactive: true }), '', 'une case éteinte reçoit une consigne qu\'on ne peut pas suivre');
+  assert.strictEqual(V.consigneDeCase(null, {}), '');
+  // Le rendu la pose sur toute étape à LIRE (jamais sur un geste, qui a son « À toi »), et elle
+  // remplace l'invitation à « cliquer pour essayer », fausse devant un champ.
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'src', 'renderer', 'visite.js'), 'utf8');
+  assert.ok(/const champLibre = !faire && !cur\.perdu[^;]*consigneDeLaCible\(e, dernier\)/.test(src), 'la consigne d\'une case n\'est plus calculée pour une étape à lire');
+  assert.ok(/\$\{!champLibre && noteEssai\(e, faire\)/.test(src), '« Tu peux cliquer pour l\'essayer » s\'affiche encore devant une case');
+});
+
 t('10.14.1 : la bulle en retrait ne couvre jamais les boutons d\'une fenêtre, même quand la fenêtre prend tout l\'écran', () => {
   // Le modèle de liasse : une fenêtre de 1240 × 760, sa barre « Annuler / Enregistrer » en bas, et
   // « La visite t'attend » qui demande de la refermer. Les quatre coins touchent la fenêtre : la

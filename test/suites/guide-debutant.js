@@ -904,7 +904,7 @@ t('10.14.1 : « Établir la liasse » se fait au guide, taux, retraitement et mo
   // Le taux : aucune valeur proposée (le taux dépend du droit), et la consigne vit dans le TEXTE.
   const taux = et[idx('#li-taux')];
   assert.ok(taux && !taux.faire && !taux.essai, 'le taux d\'impôt est devenu un geste avec un essai : un taux serait proposé');
-  assert.ok(/Tape-le/.test(taux.texte) && /Suivant/.test(taux.texte), 'l\'étape du taux ne dit plus comment le poser');
+  assert.ok(/pour cent/.test(taux.texte), 'l\'étape du taux ne dit plus dans quelle unité le taper');
   const ok = et[idx('#li-taux-ok')];
   assert.ok(ok && typeof ok.si === 'function', '« Enregistrer le taux » est demandé même quand la case est vide');
   // Le retraitement ajouté se MONTRE, après « Ajouter », et la table porte l'identifiant visé.
@@ -916,5 +916,26 @@ t('10.14.1 : « Établir la liasse » se fait au guide, taux, retraitement et mo
   // Le dernier geste ouvre le modèle : l'étape d'après le montre, et dit comment refermer.
   const der = et[et.length - 1];
   assert.ok(idx('#li-modele') === et.length - 2 && der.si && /Annuler/.test(der.texte), 'la fenêtre du modèle, ouverte en dernier, n\'a plus son étape');
+});
+
+t('10.14.1 : la fiche société fait taper la banque et le RIB, et la fiche client se remplit case par case (au guide)', () => {
+  // Un débutant qui suit la bulle ne remplit que ce qu'elle lui fait remplir : le RIB se LISAIT
+  // (« garde-le à jour »), la fiche client sautait le contact, la retenue, le timbre, la devise.
+  const S = require('../../src/renderer/visites.js');
+  const vs = S.parcours({ data: () => ({ clients: [], documents: [], catalog: [] }), premier: () => null,
+    estDemo: () => false, editeur: () => false, Visite: V, G: { INFO: {} } });
+  const etapes = id => { const v = vs.find(x => x.id === id); assert.ok(v, id); return v.etapes; };
+  const geste = (et, cible) => { const e = et.find(x => String(x.cible).includes(cible)); assert.ok(e, 'aucune étape sur ' + cible); return e; };
+  const soc = etapes('societe');
+  ['input[name="bank"]', 'input[name="rib"]'].forEach(c => {
+    const e = geste(soc, c);
+    assert.ok(e.faire === 'valeur' && e.facultatif && e.action && e.essai && e.essai.taper, c + ' n\'est pas un geste facultatif qu\'on tape');
+  });
+  const cli = etapes('premier-client');
+  ['name="name"', 'name="contact"', 'withholdingRate', 'stampExempt', 'name="currency"', 'name="email"', 'name="phone"', 'address'].forEach(c => geste(cli, c));
+  // La retenue dit l'attestation, et que le taux reste à vérifier.
+  assert.ok(/attestation/i.test(geste(cli, 'withholdingRate').texte) && /VÉRIFIER/.test(geste(cli, 'withholdingRate').texte));
+  // Enregistrer vient en dernier.
+  assert.ok(/Enregistrer/.test(cli[cli.length - 1].titre), cli[cli.length - 1].titre);
 });
 };

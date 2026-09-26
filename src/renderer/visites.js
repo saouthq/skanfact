@@ -997,8 +997,15 @@
           titre: 'Le matricule fiscal', texte: 'Obligatoire sur toute facture. En Tunisie : <b>1234567X/A/M/000</b>.', action: 'Tape ton matricule fiscal.', essai: { taper: '1234567A/A/M/000' } },
         { page: '#/parametres', cible: ['#view textarea[name="address"]', '#view [name="address"]'], cote: 'droite', faire: 'valeur', bouton: 'Suivant',
           titre: 'L\'adresse', texte: 'Celle du siège, sur deux lignes : elle s\'imprime telle quelle.', action: 'Tape ton adresse.', essai: { taper: '12 rue de la Liberté\n1002 Tunis' } },
-        { page: '#/parametres', cible: ['#view input[name="rib"]', '#view [name="rib"]'], cote: 'droite', titre: 'Ton RIB',
-          texte: 'Il s\'imprime sur tes factures pour que tes clients te paient par virement : vérifie-le deux fois. SkanFact contrôle sa clé et te prévient s\'il paraît faux.', facultatif: true },
+        // La banque et le RIB sont deux GESTES : une étape « à regarder » n'affiche pas sa consigne, et
+        // l'accueil disait « il manque le RIB » pendant que la bulle ne disait pas de le taper — et
+        // couvrait la case de la banque, à gauche (10.14.1). Facultatifs : qui encaisse sur place n'en
+        // a pas besoin.
+        { page: '#/parametres', cible: ['#view input[name="bank"]', '#view [name="bank"]'], cote: 'droite', faire: 'valeur', bouton: 'Suivant', facultatif: true,
+          titre: 'Ta banque', texte: 'Son nom s\'imprime à côté du RIB, sur tes factures.', action: 'Tape le nom de ta banque — ou passe cette étape si tes clients ne paient pas par virement.', essai: { taper: 'BIAT' } },
+        { page: '#/parametres', cible: ['#view input[name="rib"]', '#view [name="rib"]'], cote: 'droite', faire: 'valeur', bouton: 'Suivant', facultatif: true,
+          titre: 'Ton RIB', texte: 'Il s\'imprime sur tes factures pour que tes clients te paient par virement : vérifie-le deux fois. SkanFact contrôle sa clé et te prévient s\'il paraît faux.',
+          action: 'Tape les 20 chiffres de ton RIB — ou passe cette étape si tes clients ne paient pas par virement.', essai: { taper: '08006000123456789079' } },
         // Rien de modifié, rien à enregistrer : l'étape ne se pose que si la barre le réclame. Et elle ne
         // passe qu'une fois la barre partie — un « Enregistrer » refusé (un champ faux) la garde.
         { page: '#/parametres', si: () => !parametresEnregistres(), cible: '#save-bar #save', cote: 'dessus', faire: 'clic',
@@ -1037,7 +1044,7 @@
     });
 
     visite({
-      id: 'premier-client', theme: 'fichiers', type: 'faire', duree: '1 min', page: '#/clients', pages: ['clients', 'dashboard'],
+      id: 'premier-client', theme: 'fichiers', type: 'faire', duree: '2 min', page: '#/clients', pages: ['clients', 'dashboard'],
       titre: 'Ajouter un client',
       resume: 'La fiche de celui à qui tu vends : son nom, son matricule, son adresse.',
       mots: ['client', 'ajouter', 'nouveau', 'fiche', 'creer'],
@@ -1052,12 +1059,25 @@
         { cible: '#modal-root .modal input[name="name"]', cote: 'droite', faire: 'valeur',
           titre: 'Son nom', texte: 'La raison sociale telle qu\'elle doit s\'imprimer sur la facture (ou le nom et prénom d\'un particulier).',
           action: 'Tape le nom du client, puis clique sur <b>« C\'est fait »</b>.', essai: { taper: 'Boulangerie du Lac' } },
+        // Chaque case de la fiche, dans l'ordre où l'œil la lit : un débutant suit le guide « pour faire
+        // toutes les cases » (Skander, 26/09/2026) — la retenue à la source, la plus mal connue, n'était
+        // montrée nulle part. Chaque étape à lire reçoit du moteur la consigne de sa case.
+        { cible: '#modal-root .modal input[name="contact"]', cote: 'droite', titre: 'La personne à contacter',
+          texte: 'Ton interlocuteur chez ce client, avec sa fonction si tu veux. Il s\'imprime sous la raison sociale : ta facture arrive sur le bon bureau.' },
         { cible: '#modal-root .modal input[name="matricule"]', cote: 'droite', titre: 'Son matricule fiscal',
           texte: 'Pour une entreprise, il est obligatoire sur la facture. Pour un particulier, laisse vide. Tu pourras le compléter plus tard.' },
-        { cible: ['#modal-root .modal textarea[name="address"]', '#modal-root .modal [name="address"]'], cote: 'droite', titre: 'Son adresse',
-          texte: 'Elle s\'imprime sous son nom, sur chaque pièce.' },
+        { cible: ['#modal-root .modal select[name="withholdingRate"]', '#modal-root .modal [name="withholdingRate"]'], cote: 'droite', titre: 'La retenue à la source',
+          texte: 'Certains clients gardent une partie de ta facture et la versent au fisc à ta place : tu ne reçois que le net, et ils te remettent une <b>attestation</b> qui te rend cette somme sur ton impôt. Si ce client le fait, choisis son taux ; sinon, garde « Par défaut ». <b>À VÉRIFIER</b> avec ton comptable.' },
+        { cible: '#modal-root .modal input[name="stampExempt"]', cote: 'droite', titre: 'Le timbre fiscal',
+          texte: 'Chaque facture porte un timbre fiscal. Un client exonéré (exportateur total, secteur public…) le verra retiré d\'office de ses nouvelles factures. Dans le doute, laisse décoché : <b>À VÉRIFIER</b> avec ton comptable.' },
+        { cible: '#modal-root .modal input[name="phone"]', cote: 'droite', titre: 'Son téléphone',
+          texte: 'Il s\'imprime sous son nom, sur ses devis et ses factures. Deux numéros ? Sépare-les par « / ».' },
         { cible: ['#modal-root .modal input[name="email"]'], cote: 'droite', titre: 'Son adresse mail',
           texte: 'C\'est là que partiront tes devis, tes factures et tes relances, d\'un clic.' },
+        { cible: ['#modal-root .modal select[name="currency"]', '#modal-root .modal [name="currency"]'], cote: 'droite', titre: 'Un client à l\'étranger',
+          texte: 'Ses pièces peuvent partir dans sa devise — un taux de change se saisira alors sur chaque pièce — et en anglais, avec la « Langue des documents » juste à côté. Pour un client en Tunisie, garde « Par défaut ».' },
+        { cible: ['#modal-root .modal textarea[name="address"]', '#modal-root .modal [name="address"]'], cote: 'droite', titre: 'Son adresse',
+          texte: 'Elle s\'imprime sous son nom, sur chaque pièce.' },
         { cible: '#modal-root .modal .modal-actions .btn-primary', cote: 'dessus', faire: 'clic',
           titre: 'Enregistrer', texte: 'Rien d\'autre n\'est obligatoire.', action: 'Clique sur <b>« Enregistrer »</b>.',
           fait: () => aucuneFenetre() && nb('clients') > 0, essai: { clic: true } }

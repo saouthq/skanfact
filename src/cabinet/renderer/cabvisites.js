@@ -2024,9 +2024,10 @@
         { page: dans('livre', 'comptabilite/liasse'), cible: ['#c-livres [data-rub]', '#c-livres .panel'], cote: 'dessous', titre: 'Les rubriques',
           texte: 'Le bilan et le résultat, rubrique par rubrique, déduits de la balance. Un montant <b>souligné</b> s\'ouvre sur les comptes qui l\'ont rempli : c\'est là qu\'on vérifie une rubrique qui étonne.' },
         // Une étape « regarder », pas un geste : un geste attendu porte son essai, et aucun taux
-        // ne se propose ici — le taux dépend du droit (règle 10.0.0). On tape, puis Suivant.
+        // ne se propose ici — le taux dépend du droit (règle 10.0.0). La consigne (remplir, puis
+        // Suivant) vient du moteur, qui la déduit de la case éclairée.
         { page: dans('livre', 'comptabilite/liasse'), cible: '#li-taux', cote: 'dessous', titre: 'Le taux d\'impôt',
-          texte: 'Celui de ton client, selon sa forme juridique et son secteur — <b>à vérifier</b> dans la loi de finances de l\'année. Vide, l\'impôt n\'est pas calculé et la ligne dit pourquoi.<br><br>Tape-le dans la case éclairée, en pour cent sans le signe %, puis <b>Suivant</b>. Tu ne le connais pas encore ? <b>Suivant</b> directement : tu le poseras plus tard.' },
+          texte: 'Celui de ton client, selon sa forme juridique et son secteur — <b>à vérifier</b> dans la loi de finances de l\'année. Vide, l\'impôt n\'est pas calculé et la ligne dit pourquoi. Il se tape en pour cent, sans le signe %.' },
         { page: dans('livre', 'comptabilite/liasse'), cible: '#li-taux-ok', cote: 'dessous', faire: 'clic', facultatif: true,
           si: () => !!((corr('#li-taux') || {}).value || '').trim(), titre: 'Enregistrer le taux',
           texte: 'L\'impôt se calcule sur le résultat fiscal, retraitements compris.',
