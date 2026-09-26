@@ -308,6 +308,13 @@
   b('#pa-salarie, #pa-salarie2', 'Déclare un salarié : son contrat, son salaire, son numéro CNSS.', { nom: 'Salarié', cle: 'salarie' });
   b('#pa-ecrire', 'Passe l\'écriture de paie du mois en brouillard.');
   b('#pa-mois', 'Le mois de paie affiché.', { nom: 'Mois' });
+  b('#pa-trim', 'Le trimestre de la CNSS affiché : un salarié par ligne, son assiette et ses cotisations.', { nom: 'Trimestre' });
+  b('#pa-fichier', 'Fabrique le fichier de télédéclaration des salaires du trimestre, au format de la CNSS : tu le déposes toi-même sur le portail au lieu d\'y taper chaque salarié. Il ne sort pas tant qu\'une ligne serait refusée — chaque case à corriger est nommée au-dessus.', { nom: 'Fichier CNSS' });
+  b('#pa-portail', 'Ouvre le portail de la CNSS dans ton navigateur : SkanFact ne s\'y connecte pas et n\'y envoie rien.');
+  b('[data-pa-emp]', 'Ouvre la fiche du client, le curseur dans la case que le fichier CNSS attend : le matricule d\'employeur ou le code d\'exploitation.', { nom: 'Fiche du client', cle: 'pa-emp' });
+  b('[data-pa-sal], [data-sal-cnss]', 'Ouvre la fiche de ce salarié, le curseur dans la case qui manque (numéro d\'assuré, CIN ou identité).', { nom: 'Fiche du salarié', cle: 'pa-sal' });
+  b('[data-vers-paie]', 'Ouvre la paie du mois : ces cases se calculent sur ses bulletins, et attendent qu\'ils soient écrits.', { nom: 'Paie du mois', cle: 'vers-paie' });
+  b('[data-cases]', 'Déplie les écritures qui font ce montant : un chiffre qu\'on peut ouvrir se vérifie.', { nom: 'Écritures de la case', cle: 'cases' });
   b('#im-neuf, #im-neuf2', 'Ajoute un bien : sa valeur, sa mise en service, sa durée.', { nom: 'Ajouter un bien', cle: 'bien' });
   b('#im-ecrire', 'Passe les dotations de l\'exercice en brouillard, au dernier jour.');
   b('#im-csv', 'Enregistre le tableau des immobilisations dans un fichier.');
@@ -874,20 +881,24 @@
 
     visite({
       id: 'declarer-tva', theme: 'declarer', type: 'faire', duree: '2 min', pages: ['compta'],
-      sansGeste: 'Passer la déclaration écrit une pièce dans le livre : on la décide, on ne la fait pas pour voir.',
       page: dans('livre', 'comptabilite/declaration'),
       titre: 'Déclarer la TVA du mois',
-      resume: 'Les cases du mois, l\'écriture, puis les deux pense-bêtes : déposée, payée.',
-      mots: ['tva', 'declaration', 'declarer', 'mois', 'deposer', 'mensuelle'],
+      resume: 'Les cases dans l\'ordre du formulaire, copiées d\'un clic pour le portail, puis l\'écriture et les deux pense-bêtes.',
+      mots: ['tva', 'declaration', 'declarer', 'mois', 'deposer', 'mensuelle', 'portail', 'jibaya', 'copier', 'formulaire'],
       si: () => !!ctx.dossier('livre'), manque: DOSSIER_MANQUE.livre,
       suite: ['page-compta-declaration', 'page-echeances'],
       bravo: 'Tu connais la déclaration',
-      conclusion: 'Le Cabinet ne dépose rien : tu recopies les cases sur le portail, puis tu pointes « déposée » et « payée » — deux pense-bêtes qui se défont.',
+      conclusion: 'Le Cabinet ne dépose rien et ne se connecte à aucune administration : tu ouvres le portail, tu colles chaque montant dans sa case, puis tu pointes « déposée » et « payée » — deux pense-bêtes qui se défont.',
       etapes: [
-        { page: dans('livre', 'comptabilite/declaration'), cible: ['#view table.list', '#c-livres .panel'], cote: 'dessus', titre: 'Les cases',
-          texte: 'Tirées du livre du mois. Une case dont la règle n\'est pas connue vaut <b>« — »</b> avec sa raison : un zéro se recopie, un « — » se demande.' },
-        { page: dans('livre', 'comptabilite/declaration'), cible: ['#dc-suite', '#dc-preparer'], cote: 'dessous', titre: 'Les quatre gestes',
-          texte: '<b>Préparer</b> fige les cases ; <b>l\'écriture</b> solde la TVA du mois, en brouillard ; <b>déposée</b> et <b>payée</b> sont des pense-bêtes. Le bouton en couleur est toujours le suivant.' }
+        { page: dans('livre', 'comptabilite/declaration'), cible: ['#dc-suite', '#dc-preparer'], cote: 'dessous', titre: 'Les étapes du mois',
+          texte: 'En tête, la <b>date limite</b> — calculée par la même règle que la page Échéances — et le bouton qui ouvre le portail. Puis quatre gestes dans l\'ordre : <b>Préparer</b> fige les cases ; <b>l\'écriture</b> solde la TVA du mois, en brouillard ; <b>déposée</b> et <b>payée</b> sont des pense-bêtes. Le bouton en couleur est toujours le suivant.' },
+        { page: dans('livre', 'comptabilite/declaration'), cible: ['#dc-formulaire', '#c-livres .panel'], cote: 'dessus', titre: 'Le formulaire du mois',
+          texte: 'Les cases sont rangées <b>dans l\'ordre de la déclaration mensuelle</b> : retenues à la source, TFP, FOPROLOS, TVA, timbre, puis le récapitulatif de ce qui se paie. Chaque montant est tiré des écritures validées du mois ; « n écritures » ouvre celles qui le font. Une case dont la règle n\'est pas connue vaut <b>« — »</b> avec sa raison : un zéro se recopierait, un « — » se demande.' },
+        { page: dans('livre', 'comptabilite/declaration'), cible: '#dc-formulaire [data-copier]', cote: 'dessous', faire: 'clic',
+          titre: 'Copier un montant', texte: 'Un clic sur un montant le <b>copie</b>, sans espace ni devise, prêt à coller dans la case du portail. La forme (point, virgule ou millimes) se choisit au-dessus du tableau : prends celle que le portail accepte. Le message qui suit dit exactement ce qui est copié et dans quelle case le coller.',
+          action: 'Clique sur le montant éclairé.', essai: { clic: true } },
+        { page: dans('livre', 'comptabilite/declaration'), cible: '#dc-portail', cote: 'dessous', titre: 'Le portail',
+          texte: 'Ce bouton ouvre le portail des impôts dans ton <b>navigateur</b> : tu t\'y connectes toi-même, tu colles les montants, tu valides. Le jour de l\'échéance, dépose avant 17 h. Une fois déposée, reviens ici cliquer « Marquer déposée ».' }
       ]
     });
 
@@ -1358,15 +1369,19 @@
       sansGeste: 'La CNSS du trimestre est une déclaration : on la prépare au bon trimestre, pas pour voir.',
       page: dans('saisie', 'comptabilite/paie'),
       titre: 'Préparer la CNSS du trimestre',
-      resume: 'La déclaration trimestrielle des salaires, tirée des bulletins.',
-      mots: ['cnss', 'trimestre', 'declaration sociale', 'salaires', 'employeur'],
+      resume: 'La déclaration trimestrielle des salaires, tirée des bulletins, et le fichier à déposer sur le portail.',
+      mots: ['cnss', 'trimestre', 'declaration sociale', 'salaires', 'employeur', 'fichier', 'teledeclaration', 'portail'],
       si: () => !!ctx.dossier('saisie'), manque: DOSSIER_MANQUE.saisie,
       suite: ['paie-cabinet', 'page-echeances'],
       bravo: 'Tu connais la CNSS',
-      conclusion: 'Le Cabinet ne dépose rien : il prépare les montants, un salarié par ligne. Un trimestre se déclare une fois TERMINÉ.',
+      conclusion: 'Le Cabinet ne dépose rien et ne se connecte pas à la CNSS : il prépare le fichier, un salarié par ligne, et tu le déposes toi-même. Un trimestre se déclare une fois TERMINÉ.',
       etapes: [
         { page: dans('saisie', 'comptabilite/paie'), cible: ['#pa-trim', '#c-livres .panel'], cote: 'dessous', titre: 'Le trimestre',
-          texte: 'Choisis le trimestre : l\'assiette et les cotisations de chaque salarié, et l\'échéance au 15 du mois qui suit.' }
+          texte: 'Choisis le trimestre dans la liste : un salarié par ligne, son numéro d\'assuré, son assiette, sa part et celle de l\'employeur, et le <b>total à verser</b> en bas. Un numéro CNSS manquant est signalé sur la ligne.' },
+        { page: dans('saisie', 'comptabilite/paie'), cible: ['#pa-portail', '#pa-trim'], cote: 'dessous', titre: 'La date limite',
+          texte: 'La date limite suit le jour réglé dans Réglages → Mon cabinet, par la même règle que la page Échéances. Le bouton ouvre le portail de la CNSS dans ton <b>navigateur</b>.' },
+        { page: dans('saisie', 'comptabilite/paie'), cible: ['#pa-fichier-bloc', '#pa-fichier', '#pa-trim'], cote: 'dessus', titre: 'Le fichier à déposer',
+          texte: '<b>« Fabriquer le fichier CNSS… »</b> écrit le fichier de télédéclaration des salaires : sur le portail, tu le déposes au lieu de taper chaque salarié. Il porte le nom que la CNSS exige — <b>ne le renomme pas</b>. Tant qu\'une ligne serait refusée (un numéro d\'assuré, le matricule ou le code d\'exploitation du client), il ne sort pas : la ligne le dit, avec le bouton qui ouvre la bonne fiche. Sur le portail, vérifie que le nombre de salariés et le total sont ceux du tableau.' }
       ]
     });
 

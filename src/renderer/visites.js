@@ -400,6 +400,9 @@
   b('#cn-mail', "Envoie la déclaration à ton comptable, en pièce jointe.");
   b('#cn-file', "Note que la déclaration CNSS est déposée. C'est un pense-bête : SkanFact ne dépose rien à ta place.");
   b('#cn-mat', "Renseigne ton numéro d'employeur CNSS dans ta fiche société.");
+  b('#cn-fichier', "Fabrique le fichier de télédéclaration des salaires du trimestre, au format de la CNSS : tu le déposes toi-même sur le portail au lieu d'y taper chaque salarié. Il ne sort pas tant qu'une ligne serait refusée — chaque case à corriger est nommée au-dessus.", { nom: 'Fichier CNSS' });
+  b('[data-cn-sal]', "Ouvre la fiche de ce salarié, le curseur dans la case que le fichier CNSS attend (numéro d'assuré, CIN ou identité).", { nom: 'Fiche du salarié', cle: 'cn-sal' });
+  b('[data-cn-regl]', "Ouvre ta fiche société sur la case que le fichier CNSS refuse : le matricule d'employeur ou le code d'exploitation.", { nom: 'Fiche société', cle: 'cn-regl' });
   b('#an-csv', "Exporte la déclaration d'employeur en CSV.");
   b('#an-file', "Note que la déclaration d'employeur est déposée (ou retire la mention).");
   b('#reg-csv', "Exporte le registre du personnel.");
@@ -2126,6 +2129,8 @@
           texte: 'En tête, chaque déclaration que les bulletins rendent due, avec son échéance et son montant. Une échéance <b>dépassée</b> est en orange : c\'est elle qu\'il faut déposer en premier.' },
         { cible: ['#view .panel:has(#d-quarter)', '#d-quarter'], cote: 'dessus', titre: 'Le tableau à recopier',
           texte: 'Choisis le trimestre dans la liste : un salarié par ligne, son salaire soumis (l\'assiette), sa part, la tienne et l\'accident du travail. Un matricule CNSS manquant est nommé sous le tableau.' },
+        { cible: ['#cn-fichier-bloc', '#cn-fichier'], cote: 'dessus', facultatif: true, titre: 'Le fichier à déposer',
+          texte: '<b>« Fabriquer le fichier CNSS… »</b> écrit le fichier de télédéclaration des salaires : tu le déposes sur le portail de la CNSS au lieu d\'y taper chaque salarié. Il porte le nom que la CNSS exige — <b>ne le renomme pas</b>. S\'il manque une information (un numéro d\'assuré, ton matricule d\'employeur), la ligne le dit, avec le bouton qui ouvre la bonne fiche. Il se fabrique une fois le trimestre <b>terminé</b>. Sur le portail, vérifie que le nombre de salariés et le total sont ceux du tableau.' },
         { cible: '#cn-csv', cote: 'dessous', facultatif: true, titre: 'Pour recopier',
           texte: '« Exporter en CSV » te donne le tableau à recopier sur le portail de la CNSS, ou à envoyer à ton comptable.' },
         { avant: () => { deposeesAvant = deposees(); }, cible: ['#view [data-file]:not([disabled])', '#cn-file:not([disabled])', '#cn-file'], cote: 'dessus', faire: 'clic',

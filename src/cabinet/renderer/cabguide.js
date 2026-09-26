@@ -403,9 +403,17 @@
       <p class="small"><b>Passer l'écriture de paie</b> la pose en brouillard au dernier jour du mois, équilibrée ; chaque
       bulletin retient celle qui le porte, et le bouton s'éteint en le disant — la repasser compterait la paie deux fois.
       Un bulletin dont l'écriture est passée ne se modifie plus : on contre-passe, puis on refait.</p>
-      <p class="small">La <b>déclaration CNSS</b> du trimestre s'affiche à côté, un salarié par ligne, à recopier sur le
-      portail — celle du quatrième trimestre tombe en janvier. <em>À VÉRIFIER : les barèmes, les taux et les échéances
-      dépendent de la loi de finances.</em></p>` },
+      <p class="small">La <b>déclaration CNSS</b> du trimestre s'affiche à côté, un salarié par ligne, avec sa date limite
+      (la règle des Échéances) et le bouton qui ouvre le portail de la CNSS — celle du quatrième trimestre tombe en
+      janvier. <em>À VÉRIFIER : les barèmes, les taux et les échéances dépendent de la loi de finances.</em></p>
+      <h3>Le fichier à déposer</h3>
+      <p class="small">Un trimestre <b>terminé</b>, <b>Fabriquer le fichier CNSS…</b> écrit le fichier de
+      télédéclaration des salaires : sur le portail, tu le déposes au lieu de taper chaque salarié. Il porte le nom que
+      la CNSS exige — ne le renomme pas. Il a besoin du <b>matricule d'employeur</b> et du <b>code d'exploitation</b>
+      du client (sur sa fiche), et du <b>numéro d'assuré</b> de chaque salarié : tant qu'il en manque un, il ne sort
+      pas, et chaque ligne à corriger porte le bouton qui ouvre la bonne fiche. Une identité reprise du nom ou un CIN
+      vide ne bloquent pas : ils se signalent. SkanFact Cabinet ne dépose rien et ne se connecte pas à la CNSS.
+      <em>À VÉRIFIER : sur le portail, le nombre de salariés et le total avant de valider.</em></p>` },
     {
       id: 'immobilisations', t: 'Les immobilisations et l\'inventaire',
       s: 'Le plan d\'amortissement, les dotations au 31 décembre, et le stock compté', couleur: 'th-acheter',

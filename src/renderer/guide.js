@@ -1022,8 +1022,11 @@
   <li>la <b>part salarié</b>, déjà retenue sur ses bulletins ;</li>
   <li>la <b>part employeur</b> et l'<b>accident du travail</b>, à ta charge.</li>
 </ul>
-<p>Le <b>total est ce que tu verses à la CNSS</b>, les deux parts confondues. Un matricule CNSS manquant sur une fiche est signalé en rouge : la déclaration ne peut pas partir sans lui.</p>
-<p>Échéance usuelle : le 15 du mois suivant la fin du trimestre. <em>À VÉRIFIER avec ton comptable.</em></p>
+<p>Le <b>total est ce que tu verses à la CNSS</b>, les deux parts confondues. Un matricule CNSS manquant sur une fiche est signalé sous le tableau : la déclaration ne peut pas partir sans lui.</p>
+<p>Échéance usuelle : le 15 du mois suivant la fin du trimestre — le jour se règle dans le <a href="#/compta">calendrier fiscal</a>, et la Paie le lit au même endroit. <em>À VÉRIFIER avec ton comptable.</em></p>
+<h3>Le fichier à déposer</h3>
+<p>Un trimestre <b>terminé</b>, <b>« Fabriquer le fichier CNSS… »</b> écrit le fichier de télédéclaration des salaires : sur le portail de la CNSS, tu le déposes au lieu de taper chaque salarié. Il porte le nom que la CNSS exige — <b>ne le renomme pas</b>, le portail refuserait un autre nom.</p>
+<p>Il a besoin de ton <b>matricule d'employeur</b> et de ton <b>code d'exploitation</b> (Paramètres → Mon entreprise), et du <b>numéro d'assuré</b> de chaque salarié. Tant qu'il en manque un, il ne sort pas : la ligne le dit, avec le bouton qui ouvre la bonne fiche. Une identité reprise du nom de la fiche ou un CIN vide ne bloquent pas, ils se signalent. Sur le portail, vérifie que le nombre de salariés et le total sont ceux du tableau avant de valider. <em>À VÉRIFIER : la première fois, avec ton comptable.</em></p>
 <h3>La déclaration annuelle d'employeur</h3>
 <p>Elle porte sur <b>deux choses distinctes</b>, et c'est la source de confusion la plus fréquente :</p>
 <ol>
