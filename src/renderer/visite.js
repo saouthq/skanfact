@@ -690,7 +690,7 @@
     if (sens < 0) cur.consequences = false;
     if (i < 0) i = 0;
     if (i >= cur.p.etapes.length) { finir(); return; }
-    cur.i = i; cur.t0 = Date.now(); cur.defile = false; cur.couper = false; cur.clic = 0; cur.pret = false; cur.perdu = false; cur.pointe = -1; cur.sens = sens;
+    cur.i = i; cur.t0 = Date.now(); cur.defile = false; cur.couper = false; cur.clic = 0; cur.pret = false; cur.valeur0 = undefined; cur.perdu = false; cur.pointe = -1; cur.sens = sens;
     // Ce qui ne vaut que pour l'étape qu'on quitte : un essai en cours, un geste, la zone déjà vue,
     // l'état du geste à l'entrée, les boutons nommés.
     cur.essai = null; cur.geste = 0; cur.vu = false; cur.faitAvant = undefined; cur.dejaFait = false; cur.dejaRempli = false; cur.curseur = false; cur.mini = false; cur.couvert = false; cur.nommes = []; cur.pointeN = -1;
@@ -1189,6 +1189,11 @@
     }
     const el = cibleDe(e);
     if (el) cur.vu = true;
+    // Pendant un essai sur une CASE, le choix fait change le bouton principal de la bulle réduite.
+    if (cur.essai && cur.essai.v0 != null) {
+      const change = etatDeCase(caseDe(el)) !== cur.essai.v0;
+      if (change !== !!cur.essai.change) { cur.essai.change = change; dessinerBulle(); }
+    }
     // Le geste est fait ? La preuve de l'étape (`fait`), relevée à chaque tour — et son état à
     // l'ENTRÉE, qui dit si le geste était déjà fait avant qu'on le demande.
     let faitFn = false;
@@ -1225,7 +1230,8 @@
       d = decider(Object.assign({}, s, { geste: false }));
     }
     if (d === 'valeur') {
-      const pret = typeof e.fait === 'function' ? faitFn : !!(el && String(el.value || '').trim());
+      if (el && cur.valeur0 === undefined) cur.valeur0 = String(el.value || '');
+      const pret = typeof e.fait === 'function' ? faitFn : !!(el && valeurDonnee(el.value, cur.valeur0));
       // Déjà rempli en arrivant (une prestation prise au catalogue remplit la désignation, le client
       // est déjà choisi) : la bulle le DIT, au lieu de demander d'écrire ce qui est écrit (vu à la
       // souris, 10.14.1). Vidé ensuite, l'étape redevient une demande.
@@ -1262,7 +1268,8 @@
     if (ev.type !== 'pointerdown' || cur.essai || cur.attente) return;
     const e = etape();
     if (!e || estFaire(e) || !ouvreEssai(t)) return;
-    cur.essai = { x: ev.clientX, y: ev.clientY };
+    const c0 = caseDe(cibleDe(e));
+    cur.essai = { x: ev.clientX, y: ev.clientY, v0: etatDeCase(c0) };
     dessinerBulle();
   }
   // Un clic ouvre l'essai s'il vise un CONTRÔLE — pas s'il entre dans une case pour y écrire. Chaque
@@ -1301,7 +1308,7 @@
       if (!cur || cur.fin || cur.i !== i) return;
       if (e.faire === 'valeur') {
         let pret = false;
-        try { pret = typeof e.fait === 'function' ? !!e.fait() : !!String(el.value || '').trim(); } catch (_) { pret = false; }
+        try { pret = typeof e.fait === 'function' ? !!e.fait() : valeurDonnee(el.value, cur.valeur0); } catch (_) { pret = false; }
         if (!pret) return;
         cur.pret = true;
       }
@@ -1527,6 +1534,18 @@
   // Une case « à remplir » déjà remplie en ARRIVANT se dit (PUR) ; remplie pendant l'étape, c'est le
   // geste attendu ; vidée ensuite, l'étape redevient une demande — et le reste.
   const dejaRempliDe = (pret, entree, avant) => !!pret && (!!entree || !!avant);
+  // Une case est-elle REMPLIE par la personne ? (PUR : `v` sa valeur, `v0` celle qu'elle avait à
+  // l'entrée dans l'étape.) Un zéro posé par le formulaire (« 0,000 » d'un coût) n'est pas une
+  // réponse : la bulle disait « Déjà rempli — garde ce qui est écrit » devant un coût que personne
+  // n'a donné (vu en suivant la bulle, 10.14.1). Mais un zéro TAPÉ en est une — un inventaire compté
+  // à 0, un solde de fin à 0 : il suffit qu'il diffère de ce qui était là.
+  const ZERO = /^[-−]?0*([.,]0*)?$/;
+  function valeurDonnee(v, v0) {
+    const brut = String(v == null ? '' : v).trim();
+    if (!brut) return false;
+    if (!ZERO.test(brut)) return true;
+    return v0 !== undefined && brut !== String(v0 == null ? '' : v0).trim();
+  }
   // Où reprendre une visite de geste dont la cible n'est PAS à l'écran (PUR : `vu(j)` dit si la cible
   // de l'étape j est là, et si l'on est sur sa page). Une fenêtre qu'un rechargement ou « Guide-moi » a
   // refermée ne se rouvre pas toute seule : on remonte au CLIC qui l'ouvre (« Nouveau client… »),
@@ -1823,10 +1842,23 @@
     return o.rempli ? `La case éclairée est déjà remplie : garde ce qui est écrit ou change-le, puis ${b}.`
       : `Remplis la case éclairée si tu as l'information, puis ${b}. Sinon, ${b} directement : tu la compléteras plus tard.`;
   }
+  // Un zéro posé par le formulaire (« 0,000 » d'un coût, « 0 » d'une quantité) n'est pas une
+  // information donnée : « garde ce qui est écrit » ferait garder un chiffre que personne n'a choisi.
+  // L'état d'une case, pour savoir si elle a CHANGÉ pendant un essai (PUR) : sa valeur, et pour une
+  // case à cocher, si elle est cochée. Sans case, `null` — rien ne peut changer.
+  function etatDeCase(c) {
+    if (!c) return null;
+    const cochable = genreDeCase(c) === 'case';
+    return cochable ? 'coche:' + !!c.checked : 'valeur:' + String(c.value == null ? '' : c.value);
+  }
+  function caseRemplie(c) {
+    const brut = String((c && c.value) || '').trim();
+    return genreDeCase(c) === 'texte' && brut !== '' && !ZERO.test(brut);
+  }
   function consigneDeLaCible(e, dernier) {
     const c = caseDe(cibleDe(e));
     if (!c) return '';
-    const rempli = genreDeCase(c) === 'texte' && String(c.value || '').trim() !== '';
+    const rempli = caseRemplie(c);
     return consigneDeCase(genreDeCase(c), { bouton: dernier ? 'Terminer' : 'Suivant', rempli, desactive: !!(c.disabled || c.readOnly) });
   }
 
@@ -1888,17 +1920,24 @@
     teinter(els.bulle, coul);
     // Le titre de l'étape plutôt que « À toi » : quand une liste s'ouvre sous la case (les comptes de
     // la grille), la bulle réduite était tout ce qu'on lisait — « À toi » ne disait pas ce qu'on fait.
-    const titre = essai ? 'Vas-y, essaie' : cur.couvert ? 'La visite t\'attend' : faire ? (nettoie(e.titre || '') || 'À toi') : 'La visite t\'attend';
+    const titre = essai && cur.essai.change ? 'C\'est fait' : essai ? 'Vas-y, essaie' : cur.couvert ? 'La visite t\'attend' : faire ? (nettoie(e.titre || '') || 'À toi') : 'La visite t\'attend';
     // Une case déjà remplie n'attend plus rien : la bulle réduite (une liste s'est ouverte sous la
     // case) garde « Suivant », sinon elle disait « J'attends ton geste » d'un geste déjà fait.
     const rempli = faire && !essai && !cur.couvert && e.faire === 'valeur' && !!cur.pret;
     const texte = rempli
       ? `C'est rempli${e.touche ? ` : appuie sur <kbd>${[].concat(e.touche)[0] === 'Tab' ? 'Tab' : 'Entrée'}</kbd>, ou clique` : ' : clique'} sur <b>« ${h(e.bouton || 'C\'est fait')} »</b>.`
+      : essai && cur.essai.change
+      ? `Passe à la suite — ou reviens à l'étape <b>« ${h(e.titre || '')} »</b> pour la relire.`
       : essai
       ? `Clique, ouvre, choisis : je m'efface le temps que tu regardes. Quand tu as vu, reprends l'étape <b>« ${h(e.titre || '')} »</b>.`
       : cur.couvert ? 'Une question s\'est ouverte par-dessus : réponds-y d\'abord — la visite reprend juste après, là où tu en étais.'
       : faire ? (e.action ? action(e) : '') : 'Une liste est ouverte : choisis, ou appuie sur <kbd>Échap</kbd> pour la refermer — la visite reprend juste après.';
-    const pied = cur.couvert && !essai ? '' : essai
+    // Une case changée pendant l'essai (un choix dans la liste, une case cochée) : le geste est fait,
+    // et « Reprendre la visite » ramenait à la MÊME étape, où il fallait encore cliquer « Suivant »
+    // (vu en suivant la bulle, 10.14.1). La suite passe devant ; relire reste à côté.
+    const pied = cur.couvert && !essai ? '' : essai && cur.essai.change
+      ? `<button type="button" class="vb-lien" data-v="reprendre">Revoir l'étape</button><button type="button" class="vb-suiv" data-v="suiv">${dernier ? 'Terminer la visite' : 'Étape suivante'}</button>`
+      : essai
       ? `<button type="button" class="vb-lien" data-v="suiv">${dernier ? 'Terminer la visite' : 'Étape suivante ›'}</button><button type="button" class="vb-suiv" data-v="reprendre">Reprendre la visite</button>`
       : rempli ? `<button type="button" class="vb-lien" data-v="passer">Passer cette étape</button><button type="button" class="vb-suiv" data-v="suiv">${h(e.bouton || 'C\'est fait')}</button>`
       : faire ? '<button type="button" class="vb-lien" data-v="passer">Passer cette étape</button><span class="vb-attente" role="status"><span class="vb-points-attente" aria-hidden="true"><i></i><i></i><i></i></span>J\'attends ton geste</span>' : '';
@@ -2308,7 +2347,7 @@
   const etapeCourante = () => { const e = etape(); if (!e) return null; const c = Object.assign({}, e); delete c.el; return c; };
 
   const api = { installer, lancer, quitter, enCours, etapeCourante, suivant, precedent, chapitreSuivant, reprendre, gestePasse, consequenceDuGeste, gesteQuiOuvre, issueDeFin, phrasePasses, texteDeFin, selonFin, finsHonnetes,
-    toucheAvance, ouvreEssai, pagesDuGeste, ongletDuGeste, guideDeLaPage, dansLeGuide, menuDuGuide, placerBulle, placerPres, largeurPres, zoneDeLaCase, placerMini, caseDe, genreDeCase, consigneDeCase, typo, chevauche, decouperHaut, trousDeListe, hautPourBulle, hautPourCouper, viseLaCible, estFaire, decider, enAttenteDe, compteDe, pointDeReprise, etapeAvecPage, repriseDuGeste, valeurDefaiteAvant, changementDePage, versLaReprise, dejaRempliDe, normNom, nomsCites, lieuDe, ouvrirOnglet,
+    toucheAvance, ouvreEssai, pagesDuGeste, ongletDuGeste, guideDeLaPage, dansLeGuide, menuDuGuide, placerBulle, placerPres, largeurPres, zoneDeLaCase, placerMini, caseDe, genreDeCase, consigneDeCase, caseRemplie, etatDeCase, typo, chevauche, decouperHaut, trousDeListe, hautPourBulle, hautPourCouper, viseLaCible, estFaire, decider, enAttenteDe, compteDe, pointDeReprise, etapeAvecPage, repriseDuGeste, valeurDefaiteAvant, changementDePage, versLaReprise, dejaRempliDe, valeurDonnee, normNom, nomsCites, lieuDe, ouvrirOnglet,
     chapitres, resoudre, visible, listerControles, etapesDeLaVue, blocsDe, cheminDe, PATIENCE, PATIENCE_FACULTATIVE, CONTROLES,
     nettoie, libelleDe, resumeBulle, routeDe, expliqueur, zoneur, phraseDuHaut, texteDuHaut };
   global.Visite = api;

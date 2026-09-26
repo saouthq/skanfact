@@ -937,5 +937,12 @@ t('10.14.1 : la fiche société fait taper la banque et le RIB, et la fiche clie
   assert.ok(/attestation/i.test(geste(cli, 'withholdingRate').texte) && /VÉRIFIER/.test(geste(cli, 'withholdingRate').texte));
   // Enregistrer vient en dernier.
   assert.ok(/Enregistrer/.test(cli[cli.length - 1].titre), cli[cli.length - 1].titre);
+  // La prestation : chaque case de la fiche a son étape, dans l'ordre du formulaire.
+  const art = etapes('article');
+  const ordre = ['name="label"', 'textarea[name="description"]', 'name="unitPrice"', 'name="unitCost"', 'name="vatRate"', '#cat-unit', 'name="tracked"', 'name="serialized"', 'name="minStock"', 'name="location"', 'name="initialQty"', 'name="initialCost"']
+    .map(c => art.indexOf(geste(art, c)));
+  assert.deepStrictEqual(ordre.slice().sort((x, y) => x - y), ordre, 'les étapes de la prestation ne suivent pas le formulaire');
+  assert.ok(/VÉRIFIER/.test(geste(art, 'vatRate').texte), 'le taux de TVA ne dit pas qu\'il se vérifie');
+  ['minStock', 'location', 'initialQty', 'initialCost'].forEach(c => assert.ok(geste(art, c).si, 'la case ' + c + ' s\'éclaire même quand le suivi en stock n\'est pas coché'));
 });
 };

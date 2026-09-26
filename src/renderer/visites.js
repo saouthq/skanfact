@@ -784,6 +784,8 @@
     const surLaPiece = (page, sorte) => cle => cle !== page || ici(sorte);
     const fenetre = mot => [...document.querySelectorAll('#modal-root .modal')].some(m => { const t = m.querySelector('h2'); return !!(t && t.textContent.includes(mot)); });
     const aucuneFenetre = () => !document.querySelector('#modal-root .modal');
+    // Le bloc stock d'une prestation n'existe à l'écran que quand « Suivi en stock » est coché.
+    const stockOuvert = () => { const b = document.querySelector('#modal-root #stock-block'); return !!(b && !b.hidden); };
     const combo = nom => `[data-combo="${nom}"] .combo-btn`;
     const valeur = sel => { const el = $(sel); return el ? String(el.value || '').trim() : ''; };
     // 10.14.1 — le taux de change, dès que le client choisi est facturé dans une autre devise. Il est
@@ -1319,7 +1321,7 @@
     });
 
     visite({
-      id: 'article', theme: 'fichiers', type: 'faire', duree: '1 min', page: '#/catalogue',
+      id: 'article', theme: 'fichiers', type: 'faire', duree: '2 min', page: '#/catalogue',
       titre: 'Ajouter une prestation au catalogue',
       resume: 'Décrite une fois avec son prix : chaque devis la reprend d\'un clic.',
       mots: ['catalogue', 'prestation', 'article', 'prix', 'produit', 'service'],
@@ -1332,8 +1334,32 @@
           titre: 'Nouvelle prestation', texte: 'Ce que tu vends, avec son prix.', action: 'Clique sur {bouton}.', fait: () => !!$('#modal-root .modal'), essai: { clic: true } },
         { cible: '#modal-root .modal input[name="label"], #modal-root .modal input[name="name"]', cote: 'droite', faire: 'valeur',
           titre: 'Son nom', texte: 'Tel qu\'il s\'imprimera sur la ligne du devis.', action: 'Tape le nom de la prestation.', essai: { taper: 'Heure de main-d\'œuvre' } },
+        { cible: '#modal-root .modal textarea[name="description"]', cote: 'droite', titre: 'Sa description',
+          texte: 'Une précision qui s\'imprime sous la désignation, sur le devis et la facture : les dimensions, la matière, ce qui est compris. Elle se reprend à chaque devis — tu pourras encore la retoucher sur la pièce.' },
         { cible: '#modal-root .modal input[name="unitPrice"]', cote: 'droite', faire: 'valeur',
           titre: 'Son prix hors taxe', texte: 'Le prix d\'une unité, hors TVA.', action: 'Tape le prix.', essai: { taper: '45' } },
+        // 10.14.1 : la visite s'arrêtait au nom et au prix, et laissait seules cinq cases qu'un débutant
+        // ne sait pas lire (vu en suivant la bulle sur une entreprise neuve). Chacune a son étape ; la
+        // consigne d'une case à lire vient du moteur (« Si tu veux »).
+        { cible: '#modal-root .modal input[name="unitCost"]', cote: 'droite', faire: 'valeur', bouton: 'Suivant', facultatif: true,
+          titre: 'Ce qu\'elle te coûte', texte: 'Ce que cette prestation te coûte à toi, hors taxe : la matière, la sous-traitance. SkanFact en tire ta marge sur chaque devis. À zéro, la marge n\'est simplement pas calculée.',
+          action: 'Tape ton coût — ou passe cette étape si tu ne le connais pas.', essai: { taper: '28' } },
+        { cible: '#modal-root .modal select[name="vatRate"]', cote: 'droite', titre: 'Son taux de TVA',
+          texte: 'Proposé d\'après ton régime ; la plupart des ventes sont à 19 %, certaines à 7 ou 13 % — À VÉRIFIER avec ton comptable. Si ton régime ne facture pas de TVA, tes pièces sortent à 0 % quoi qu\'il soit écrit ici.' },
+        { cible: '#modal-root .modal #cat-unit', cote: 'droite', titre: 'Son unité',
+          texte: 'Comment tu la comptes : l\'heure, la pièce, le mètre carré… Elle s\'imprime à côté de la quantité sur le devis. « Autre… » en crée une.' },
+        { cible: '#modal-root .modal input[name="tracked"]', cote: 'droite', titre: 'Suivi en stock',
+          texte: 'Pour une marchandise que tu achètes et revends : SkanFact compte ce qui entre et ce qui sort, et te prévient quand il en manque. Un service ne se stocke pas — une heure de travail, laisse la case décochée.' },
+        { cible: '#modal-root .modal input[name="serialized"]', cote: 'droite', titre: 'Les numéros de série',
+          texte: 'Seulement pour du matériel que tu garantis à l\'unité (un appareil, un ordinateur) : chaque unité vendue garde son numéro et sa fin de garantie. Sinon, laisse la case décochée.' },
+        { cible: '#modal-root .modal input[name="minStock"]', cote: 'droite', si: stockOuvert,
+          titre: 'Le seuil d\'alerte', texte: 'Quand le stock descend à ce nombre, SkanFact te le signale dans « À faire » : c\'est le moment de recommander. À zéro, rien ne te prévient avant la rupture.' },
+        { cible: '#modal-root .modal input[name="location"]', cote: 'droite', si: stockOuvert,
+          titre: 'Où il est rangé', texte: 'Une étagère, une réserve, un dépôt : pour le retrouver le jour de l\'inventaire.' },
+        { cible: '#modal-root .modal input[name="initialQty"]', cote: 'droite', si: stockOuvert,
+          titre: 'Ce que tu as déjà', texte: 'La quantité que tu as aujourd\'hui sur l\'étagère. Les achats l\'augmenteront, les factures la diminueront.' },
+        { cible: '#modal-root .modal input[name="initialCost"]', cote: 'droite', si: stockOuvert,
+          titre: 'Ce qu\'il t\'a coûté', texte: 'Le prix d\'achat d\'une unité de ce stock de départ, hors taxe : c\'est lui qui donne sa valeur à ton stock, et le coût de ce que tu vendras.' },
         { cible: '#modal-root .modal .modal-actions .btn-primary', cote: 'dessus', faire: 'clic',
           titre: 'Enregistrer', texte: 'La prestation rejoint ton catalogue : la prochaine fois, tu la choisis dans une liste au lieu de retaper son nom et son prix.', action: 'Clique sur <b>« Enregistrer »</b>.', fait: () => aucuneFenetre(), essai: { clic: true } }
       ]

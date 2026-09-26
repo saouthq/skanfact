@@ -120,6 +120,16 @@ Publiée en **bêta** : elle touche au moteur comptable (retenue à la source, d
   maintenant deux gestes qu'on peut passer. « Ajouter un client » guide le contact, le matricule, la
   retenue à la source (avec l'attestation qu'elle fait réclamer — À VÉRIFIER), le timbre, le
   téléphone, l'email, la devise (et la langue des documents) et l'adresse, puis « Enregistrer ».
+- **« Ajouter une prestation » guide toute la fiche** : la visite s'arrêtait au nom et au prix ; elle
+  fait remplir la description, le coût (d'où la marge affichée en direct), le taux de TVA (À VÉRIFIER),
+  l'unité, le suivi en stock, les numéros de série, et — quand le stock est coché — le seuil d'alerte,
+  l'emplacement, la quantité et le coût du stock de départ, dans l'ordre de l'écran.
+- **Un zéro posé par le formulaire n'est pas une réponse** : devant « 0,000 » d'un coût, la bulle
+  disait « Déjà rempli — garde ce qui est écrit » et laissait passer. Un zéro TAPÉ, lui, compte (un
+  inventaire compté à 0).
+- **Après un choix pendant « Vas-y, essaie », la suite passe devant** : choisir l'unité dans la liste
+  laissait « Reprendre la visite » en bouton principal, qui ramenait à la même étape. Une fois la case
+  changée, la bulle dit « C'est fait » et propose « Étape suivante ».
 - **« Guide-moi » ne se contredit plus sur une visite en pause** : « Arrêtée à l'étape 2 — tu étais à
   l'étape 4 » devient « Reprise à l'étape 2 — tu étais à l'étape 4 : on repart de… ».
 - **La bulle réduite ne couvre plus les boutons d'une fenêtre** : devant une fenêtre qui prend tout

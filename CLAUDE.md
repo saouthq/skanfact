@@ -8636,6 +8636,13 @@ lots ; le détail de ce qui reste vit dans `A-FAIRE.md` § 0.
   7.3.0 appliquée au guide : **une consigne que le moteur peut déduire ne s'écrit pas à la main**.
   Et une étape à LIRE sur une information qu'on doit fournir (le RIB, la banque) est un GESTE
   facultatif, pas un paragraphe — la fiche client est guidée case par case, retenue et devise comprises.
+- **Un zéro qu'on trouve n'est pas un zéro qu'on donne** (`valeurDonnee`, les DEUX chemins d'un geste
+  « valeur ») : la présence d'une valeur ne dit pas qu'elle a été choisie — « 0,000 » d'un coût passait
+  pour « déjà rempli ». On compare à la valeur d'ENTRÉE dans l'étape : un zéro tapé (un inventaire à 0)
+  reste une réponse. Et **un essai qui a fait le geste passe à la suite** : le bouton principal suit ce
+  que la personne vient de faire, pas ce qu'elle faisait avant.
+- **Une visite de formulaire suit l'ordre de l'ÉCRAN**, et le test le vérifie : la description venait
+  après le prix, les numéros de série après le bloc stock qu'ils précèdent.
 - **Une phrase de reprise dit ce qui va arriver, pas ce qui est arrivé** : « Arrêtée à l'étape 2 — tu
   étais à l'étape 4 » se lisait comme deux arrêts ; « Reprise à l'étape 2 — tu étais à l'étape 4 ».
 

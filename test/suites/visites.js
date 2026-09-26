@@ -1163,6 +1163,30 @@ t('10.14.1 : une étape à lire sur une CASE dit quoi en faire — taper, choisi
   assert.ok(/« Terminer »/.test(V.consigneDeCase('texte', { bouton: 'Terminer' })), 'la dernière étape cite « Suivant » alors que son bouton dit « Terminer »');
   assert.strictEqual(V.consigneDeCase('texte', { desactive: true }), '', 'une case éteinte reçoit une consigne qu\'on ne peut pas suivre');
   assert.strictEqual(V.consigneDeCase(null, {}), '');
+  // Un zéro posé par le formulaire n'est pas une information donnée : on ne dit pas de le « garder ».
+  ['', '0', '0,000', '0.00', ' 0 '].forEach(v => assert.strictEqual(V.caseRemplie(champ('INPUT', { type: 'number', value: v })), false, 'rempli : ' + JSON.stringify(v)));
+  ['28', '0,5', '10,000', 'BIAT'].forEach(v => assert.strictEqual(V.caseRemplie(champ('INPUT', { type: 'text', value: v })), true, 'vide : ' + v));
+  // Le même zéro devant un GESTE (« tape ton coût ») : posé par le formulaire, il ne rend ni l'étape
+  // faite ni « déjà remplie » ; tapé par la personne (un inventaire compté à 0), si.
+  assert.strictEqual(V.valeurDonnee('0,000', '0,000'), false, 'le zéro d\'arrivée passe pour une réponse');
+  assert.strictEqual(V.valeurDonnee('', ''), false);
+  assert.strictEqual(V.valeurDonnee('0', ''), true, 'un zéro TAPÉ dans une case vide n\'est pas une réponse');
+  assert.strictEqual(V.valeurDonnee('0', '3'), true, 'un zéro qui remplace une valeur n\'est pas une réponse');
+  assert.strictEqual(V.valeurDonnee('28', '0,000'), true);
+  assert.strictEqual(V.valeurDonnee('BIAT', undefined), true);
+  // Pendant un essai sur une case, un choix fait passe « Étape suivante » en bouton principal : la
+  // personne a fait le geste que la consigne demandait.
+  assert.strictEqual(V.etatDeCase(null), null);
+  assert.notStrictEqual(V.etatDeCase(champ('SELECT', { value: '' })), V.etatDeCase(champ('SELECT', { value: 'u' })));
+  assert.notStrictEqual(V.etatDeCase(champ('INPUT', { type: 'checkbox', checked: false })), V.etatDeCase(champ('INPUT', { type: 'checkbox', checked: true })));
+  const srcMini = require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'src', 'renderer', 'visite.js'), 'utf8');
+  assert.ok(/essai && cur\.essai\.change\s*\?\s*`<button type="button" class="vb-lien" data-v="reprendre">[^`]*<button type="button" class="vb-suiv" data-v="suiv">/.test(srcMini),
+    'après un choix dans la case éclairée, le bouton principal de la bulle réduite ramène encore à la même étape');
+  assert.ok(/cur\.essai = \{[^}]*v0: etatDeCase\(/.test(srcMini), 'l\'essai ne note pas l\'état de la case à son ouverture');
+  const srcV = require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'src', 'renderer', 'visite.js'), 'utf8');
+  assert.strictEqual((srcV.match(/valeurDonnee\(el\.value, cur\.valeur0\)/g) || []).length, 2, 'un des deux chemins d\'un geste « valeur » juge encore la case sur sa seule présence');
+  assert.strictEqual(V.caseRemplie(champ('SELECT', { value: 'h' })), false, 'une liste n\'est jamais « remplie » au sens d\'un texte');
+  assert.ok(/caseRemplie\(c\)/.test(require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'src', 'renderer', 'visite.js'), 'utf8')), 'la consigne ne juge plus la case par caseRemplie');
   // Le rendu la pose sur toute étape à LIRE (jamais sur un geste, qui a son « À toi »), et elle
   // remplace l'invitation à « cliquer pour essayer », fausse devant un champ.
   const src = require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'src', 'renderer', 'visite.js'), 'utf8');
