@@ -8598,7 +8598,9 @@ lots ; le détail de ce qui reste vit dans `A-FAIRE.md` § 0.
   qui bouge** : l'aperçu du plan passait d'une ligne à trois pendant la frappe et poussait « Ajouter »
   de 41 px (H-E1, une fenêtre de plus) ; il réserve sa place (`annonce-stable encadre`, `.ok-box` y
   perd sa marge). Une bulle qui parle d'un chiffre explique aussi ce qui étonne : trois ans en mars
-  font quatre exercices.
+  font quatre exercices. Le même défaut, dans la fenêtre d'à côté (l'inventaire, 54 px) : **un défaut
+  trouvé dans une fenêtre se cherche dans ses sœurs** ; et l'exemple qu'une bulle fait taper passe par
+  le moteur qui le lira — le test le fait lire, sinon la bulle ferait taper une ligne refusée.
 
 ## Pistes pour la suite (non demandées)
 

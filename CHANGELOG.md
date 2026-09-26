@@ -84,6 +84,12 @@ Publiée en **bêta** : elle touche au moteur comptable (retenue à la source, d
   comptes proposés s'expliquent ; le plan se relit avant « Ajouter » — et la bulle dit pourquoi un bien
   de trois ans mis en service en mars s'étale sur quatre exercices. La fin dit ce qui reste : la
   dotation attend en brouillard, elle compte une fois validée.
+- **« Saisir l'inventaire de fin d'année » fait taper les lignes** : la visite éclairait le bouton et
+  s'arrêtait ; un débutant sans tableur ouvert ne savait pas quoi mettre dans la fenêtre. La date et le
+  compte de stock proposés s'expliquent, la zone des lignes se fait taper (« REF-01;Câble HDMI;24;7,500 »,
+  un point-virgule entre les valeurs), le total se relit, « Enregistrer l'inventaire » est prouvé, et la
+  variation se lit avant d'être écrite. Le total ou le refus qui paraît à la frappe ne pousse plus
+  « Enregistrer l'inventaire » de 54 px.
 - **Le plan d'un bien ne pousse plus « Ajouter » sous le curseur** : l'aperçu passait d'une ligne (ce
   qui manque) à trois (le plan) et « Ajouter » descendait de 41 px pendant la saisie. Il réserve sa
   place (vérifié à la souris : « Ajouter » ne bouge plus d'un pixel du premier au dernier chiffre).

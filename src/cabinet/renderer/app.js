@@ -6206,7 +6206,9 @@
       </form>
       <label class="field mt">${lbl('Les lignes comptées', 'iv.coller')}
         <textarea id="iv-lignes" rows="10" placeholder="REF-01&#9;Câble HDMI 2 m&#9;24&#9;7,500">${esc(depart)}</textarea></label>
-      <div id="iv-apercu" class="small muted"></div>
+      ${/* 10.14.1 — le total ou le refus paraît à la première frappe : sans hauteur réservée,
+            « Enregistrer l'inventaire » descendait de 54 px sous le curseur. */''}
+      <div id="iv-apercu" class="small muted annonce-stable encadre"></div>
       <div class="modal-actions"><button class="btn" data-close>Annuler</button>
         <button class="btn btn-primary" id="ok">Enregistrer l'inventaire</button></div>`,
     (rootModal, close) => {

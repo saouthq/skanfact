@@ -1897,8 +1897,9 @@
       ]
     });
 
+    const fenetreInventaire = () => !!corr('#modal-root #iv');
     visite({
-      id: 'inventaire', theme: 'saisir', type: 'faire', duree: '1 min',
+      id: 'inventaire', theme: 'saisir', type: 'faire', duree: '2 min',
       page: dans('saisie', 'comptabilite/inventaire'),
       titre: 'Saisir l\'inventaire de fin d\'année',
       resume: 'Le stock compté, collé depuis un tableur, et la variation écrite dans le bon sens.',
@@ -1906,10 +1907,29 @@
       si: () => !!ctx.dossier('saisie'), manque: DOSSIER_MANQUE.saisie,
       suite: ['biens', 'cloturer'],
       bravo: 'Tu sais saisir l\'inventaire',
-      conclusion: 'Un inventaire sans ligne ne dit pas que le stock est vide : il dit que rien n\'a été compté. Une variation nulle ne produit aucune écriture.',
+      // 10.14.1 — la fin disait ce que le code refuse, pas ce qui reste à faire.
+      conclusion: 'La variation passée par <b>Écrire la variation de stock</b> attend <b>en brouillard</b>, dans la Saisie : elle compte une fois le brouillard validé. Un inventaire sans ligne ne dit pas que le stock est vide : il dit que rien n\'a été compté.',
       etapes: [
-        { page: dans('saisie', 'comptabilite/inventaire'), cible: ['#iv-saisir', '#iv-saisir2'], cote: 'dessous', titre: 'Saisir l\'inventaire',
-          texte: 'Colle les lignes depuis un tableur : référence, désignation, quantité, coût. Une cellule illisible est refusée en nommant la ligne.' },
+        // 10.14.1 — suivie au guide, la visite éclairait « Saisir l'inventaire… » et s'arrêtait là :
+        // un débutant qui n'a pas de tableur sous la main ne savait pas quoi mettre dans la fenêtre.
+        { page: dans('saisie', 'comptabilite/inventaire'), cible: ['#iv-saisir', '#iv-saisir2'], cote: 'dessous', faire: 'clic',
+          si: () => !fenetreInventaire(),
+          titre: 'Saisir l\'inventaire', texte: 'L\'<b>inventaire</b>, c\'est ce qui reste en magasin le dernier jour de l\'exercice, compté et valorisé. La différence avec ce que porte le compte de stock devient une écriture.',
+          action: 'Clique sur le bouton de l\'inventaire.', essai: { clic: true } },
+        { page: dans('saisie', 'comptabilite/inventaire'), cible: '#modal-root [name="date"]', cote: 'droite', facultatif: true, si: fenetreInventaire,
+          titre: 'Sa date', texte: 'Le jour du comptage — le <b>dernier jour de l\'exercice</b>, proposé. Change-le seulement si le client a compté un autre jour.' },
+        { page: dans('saisie', 'comptabilite/inventaire'), cible: '#modal-root [name="compte"]', cote: 'droite', facultatif: true, si: fenetreInventaire,
+          titre: 'Le compte de stock', texte: 'Le compte des marchandises (37) est <b>proposé</b> : change-le seulement si le plan du client en a un autre.' },
+        { page: dans('saisie', 'comptabilite/inventaire'), cible: '#modal-root #iv-lignes', cote: 'droite', faire: 'valeur', bouton: 'Suivant', si: fenetreInventaire,
+          titre: 'Les lignes comptées', texte: 'Une ligne par article : <b>référence ; désignation ; quantité ; coût unitaire</b>. Colle-les depuis le tableur du client, ou tape-les en séparant les quatre valeurs par un point-virgule. Une ligne illisible est refusée en nommant la ligne.',
+          action: 'Colle ou tape au moins une ligne, par exemple <b>REF-01;Câble HDMI;24;7,500</b>.', essai: { taper: 'REF-01;Câble HDMI;24;7,500' } },
+        { page: dans('saisie', 'comptabilite/inventaire'), cible: '#modal-root #iv-apercu', cote: 'dessus', si: fenetreInventaire,
+          titre: 'Le total', texte: 'Le nombre de lignes et la valeur du stock s\'affichent ici pendant la saisie : relis le total avant d\'enregistrer.' },
+        { page: dans('saisie', 'comptabilite/inventaire'), cible: '#modal-root #ok', cote: 'dessus', faire: 'clic', si: fenetreInventaire, fait: () => aucuneFenetre(),
+          titre: 'Enregistrer l\'inventaire', texte: 'Il rejoint l\'exercice. Le bouton reste éteint tant qu\'une ligne est illisible, et dit laquelle.',
+          action: 'Clique sur <b>« Enregistrer l\'inventaire »</b>.', essai: { clic: true } },
+        { page: dans('saisie', 'comptabilite/inventaire'), cible: '#iv-variation', cote: 'dessous', si: () => !fenetreInventaire() && !!corr('#iv-variation'),
+          titre: 'La variation', texte: 'Le stock que portent les comptes, le stock <b>compté</b>, et leur différence. Un stock qui <b>baisse</b> devient une charge, un stock qui monte un produit ; la phrase juste dessous dit dans quel sens l\'écriture sera passée.' },
         { page: dans('saisie', 'comptabilite/inventaire'), cible: '#iv-ecrire', cote: 'dessous', faire: 'clic', facultatif: true,
           titre: 'Écrire la variation de stock', texte: 'En brouillard, dans le bon sens : un stock qui baisse est une charge.',
           action: 'Clique sur <b>« Écrire la variation de stock »</b>.', essai: { clic: true } }

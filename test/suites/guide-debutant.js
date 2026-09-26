@@ -782,4 +782,33 @@ t('10.14.1 : « Ajouter un bien » fait remplir au guide chaque case obligatoire
   const css = lireSource('src', 'renderer', 'style.css');
   assert.ok(/\.annonce-stable\.encadre > \.ok-box/.test(css), 'l\'encadré vert du plan garde sa marge et dépasse la place réservée');
 });
+
+// Suivie au guide, « Saisir l'inventaire » éclairait le bouton et s'arrêtait : un débutant sans
+// tableur ouvert ne savait pas quoi mettre dans la zone des lignes. La zone a son geste (et dit qu'on
+// peut TAPER, point-virgule entre les valeurs), « Enregistrer l'inventaire » est prouvé par la
+// fenêtre refermée, la variation se lit avant d'être écrite, et l'aperçu réserve sa place.
+t('10.14.1 : « Saisir l\'inventaire » fait taper les lignes au guide, et « Enregistrer » ne bouge pas', () => {
+  const V2 = require('../../src/renderer/visite.js');
+  const ctx = { state: () => ({ cabinet: {}, dossiers: [] }), dossier: () => 'D', estExemple: () => false, cleSecours: () => null, copieExterne: () => false, Visite: V2 };
+  const v = CV.parcours(ctx).find(x => x.id === 'inventaire');
+  assert.ok(v && v.type === 'faire', 'l\'inventaire n\'est plus un parcours guidé');
+  const lignes = v.etapes.find(e => e.cible === '#modal-root #iv-lignes');
+  assert.ok(lignes && lignes.faire === 'valeur' && !lignes.facultatif, 'les lignes comptées ne se font pas taper au guide');
+  assert.ok(/point-virgule/.test(lignes.texte), 'la bulle ne dit pas qu\'on peut taper les lignes sans tableur');
+  // L'exemple donné se lit vraiment : sinon la bulle ferait taper une ligne que la fenêtre refuse.
+  const ex = (lignes.essai && lignes.essai.taper) || '';
+  const lu = require('../../src/renderer/compta.js').lignesInventaireDepuisTexte(ex);
+  assert.ok(lu.lignes.length === 1 && !lu.refus.length, 'l\'exemple de la bulle est refusé par la fenêtre : ' + ex);
+  const enreg = v.etapes.filter(e => e.cible === '#modal-root #ok');
+  assert.strictEqual(enreg.length, 1);
+  assert.ok(enreg[0].faire === 'clic' && typeof enreg[0].fait === 'function', '« Enregistrer l\'inventaire » avance sur le clic seul');
+  const iVar = v.etapes.findIndex(e => e.cible === '#iv-variation');
+  const iEcr = v.etapes.findIndex(e => e.cible === '#iv-ecrire');
+  assert.ok(iVar > 0 && iVar < iEcr, 'la variation ne se lit pas avant d\'être écrite');
+  const app = lireSource('src', 'cabinet', 'renderer', 'app.js');
+  const f = app.indexOf('function inventaireForm(');
+  const form = app.slice(f, app.indexOf('const banqueState', f));
+  assert.ok(form.length > 1500 && form.length < 8000, 'tranche du formulaire suspecte : ' + form.length);
+  assert.ok(/<div id="iv-apercu" class="[^"]*\bannonce-stable encadre\b/.test(form), 'le total de l\'inventaire ne réserve plus sa place : « Enregistrer » bouge sous le curseur');
+});
 };

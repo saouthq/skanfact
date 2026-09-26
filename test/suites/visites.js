@@ -1627,7 +1627,7 @@ t('10.14.1 : chaque cible d\'une visite existe dans son application — un ident
     affaire: ['projectForm'], conge: ['leaveForm'], avance: ['advanceForm'], mouvement: ['movementForm'], virement: ['movementForm'],
     'mouvement-stock': ['adjustForm'], 'numeros-serie': ['serialIntakeForm'], 'texte-predefini': ['snippetForm'],
     'contrat-recurrent': ['recurrenceForm'], 'ceder-bien': ['disposalForm'], 'document-rh': ['hrDocForm'],
-    'paie-cabinet': ['salarieForm', 'bulletinForm'], cnss: ['dossierForm', 'salarieForm'], biens: ['immoForm']
+    'paie-cabinet': ['salarieForm', 'bulletinForm'], cnss: ['dossierForm', 'salarieForm'], biens: ['immoForm'], inventaire: ['inventaireForm']
   };
   const corps = (src, nom) => {
     const i = src.search(new RegExp(`\\n( *)(?:async )?function ${nom}\\(`));
