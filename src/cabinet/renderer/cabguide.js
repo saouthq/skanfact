@@ -552,5 +552,30 @@
     return r ? r[1] : null;
   };
 
-  return { INFO, ARTICLES, ARTICLE_PAR_CLE, articleDe };
+  // L'article qui explique chaque écran (10.14.1, S-03) : la dernière ligne de « Guide-moi ». La clé est
+  // celle de `CabVisites.cleDePage`. Un test exige que chaque écran qui a sa visite ait son article, et
+  // que chaque article cité existe — une table en double diverge, une table qui cite un article disparu
+  // propose un lien mort.
+  const PAR_PAGE = {
+    dossiers: 'demarrer', relances: 'definitif', echeances: 'travail', ecritures: 'travail',
+    production: 'tenue', reglages: 'filets', dossier: 'tenue', 'dossier-paquets': 'paquet',
+    compta: 'tenue', 'compta-saisie': 'saisir', 'compta-journal': 'saisir', 'compta-grand-livre': 'tenue',
+    'compta-recherche': 'saisir', 'compta-balance': 'tenue', 'compta-banque': 'banque', 'compta-lettrage': 'banque',
+    'compta-paie': 'paie', 'compta-immobilisations': 'immobilisations', 'compta-inventaire': 'immobilisations',
+    'compta-declaration': 'declaration', 'compta-revision': 'revision', 'compta-exercice': 'exercice',
+    'compta-liasse': 'liasse'
+  };
+  // Les Réglages parlent de plusieurs sujets : l'article de « Guide-moi » suit l'onglet OUVERT (le
+  // jumeau de l'app entreprise, 10.14.1). Un onglet absent de la table garde l'article de l'écran.
+  const PAR_ONGLET = {
+    reglages: { barre: '#set-tabs', articles: { cabinet: 'demarrer', compta: 'saisir', donnees: 'filets', app: 'maj' } }
+  };
+  const articleDeLaPage = (cle, ongletActif) => {
+    const o = PAR_ONGLET[cle];
+    let t = null;
+    try { t = o && ongletActif ? ongletActif(o.barre) : null; } catch (_) { t = null; }
+    return (o && t && o.articles[t]) || PAR_PAGE[cle] || null;
+  };
+
+  return { INFO, ARTICLES, ARTICLE_PAR_CLE, articleDe, PAR_PAGE, PAR_ONGLET, articleDeLaPage };
 });

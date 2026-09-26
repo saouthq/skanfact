@@ -8343,7 +8343,11 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     // La table vit maintenant dans guide.js, à côté des articles qu'elle désigne (7.23.0) : elle
     // était en double avec app.js, et deux tables divergent toujours. On lit donc l'OBJET plutôt
     // qu'une expression régulière sur du texte — et on vérifie que l'interface s'en sert vraiment.
-    assert.ok(/const id = G\.PAR_PAGE\[route\];/.test(app), 'l\'interface ne lit plus la table de guide.js');
+    // Retourné en 10.14.1 (S-03) : l'article de « Guide-moi » suit l'onglet ouvert, par
+    // `G.articleDeLaPage` — qui retombe sur PAR_PAGE. La règle est que l'interface LISE la table de
+    // guide.js, pas la forme exacte de la ligne qui la lit.
+    assert.ok(/G\.articleDeLaPage\(route, ongletActif\)/.test(app), 'l\'interface ne lit plus la table de guide.js');
+    Object.keys(guide.PAR_PAGE).forEach(k => { if (!guide.PAR_ONGLET[k]) assert.strictEqual(guide.articleDeLaPage(k, () => null), guide.PAR_PAGE[k], 'articleDeLaPage ne retombe plus sur PAR_PAGE pour ' + k); });
     assert.ok(!app.includes('const PAGE_AIDE'), 'la table est revenue en double dans app.js');
     const paires = Object.entries(guide.PAR_PAGE);
     assert.ok(paires.length >= 20, `PAR_PAGE ne couvre que ${paires.length} pages`);
@@ -14580,7 +14584,9 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     const app = lireApp();
     const j = app.indexOf('async function rafraichirExemple(');
     assert.ok(j > 0, 'le rafraîchissement de l\'exemple est introuvable dans app.js');
-    const za = app.slice(j, app.indexOf('function bandeauDemo(', j));
+    // 10.14.1 — le bandeau s'écrit dans `htmlBandeauDemo`, posé juste après : la tranche s'arrête au
+    // premier des deux (assertion retournée : elle bornait sur `bandeauDemo`, qui a reculé).
+    const za = app.slice(j, app.indexOf('function htmlBandeauDemo(', j));
     assert.ok(za.length > 200 && za.length < 900, 'tranche du rafraîchissement inattendue : ' + za.length);
     assert.ok(/if \(!data \|\| !C\.estDemo\(data\)\) return;/.test(za),
       'on ne remplace que des données qui SONT déjà l\'exemple');
@@ -14593,7 +14599,7 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     // sont à l'abri ») y est PERMANENTE, donc aussi quand il annonce le rattrapage. La règle se lit
     // dans le corps de `bandeauDemo` — l'annonce ET la phrase qui rassure —, plus à 400 caractères
     // d'un mot : la phrase a changé de place, pas de sens.
-    const bd = app.slice(app.indexOf('function bandeauDemo('), app.indexOf('async function loadDemo('));
+    const bd = app.slice(app.indexOf('function htmlBandeauDemo('), app.indexOf('async function loadDemo('));
     assert.ok(bd.length > 300 && bd.length < 4000, 'tranche du bandeau inattendue : ' + bd.length);
     assert.ok(/exempleRefait[\s\S]{0,300}Il vient d'être refait/.test(bd), 'le bandeau de l\'app entreprise doit annoncer le rattrapage');
     assert.ok(/tes vraies données sont à l'abri/.test(bd.replace(/\s+/g, ' ')), 'et dire que les vraies données n\'ont pas bougé');
@@ -14650,6 +14656,7 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
   require('./suites/exercices.js')({ t, assert, lireSource });
   require('./suites/saturation.js')({ t, assert, lireSource });
   require('./suites/justificatifs.js')({ t, assert, lireSource });
+  require('./suites/guide-moi.js')({ t, assert, lireSource });
   // Asynchrone depuis 213d (la messagerie au premier envoi) : elle est ATTENDUE, sinon son `ta` part détaché (8.4.0).
   await require('./suites/assistant.js')({ t, ta, assert, lireSource });
   // Celle-ci reçoit `ta` en plus : elle interroge le vrai worker sur une vraie base SQLite.

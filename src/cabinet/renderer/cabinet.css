@@ -221,6 +221,16 @@
    à chaque écran de la fiche : sur un portable, la grille de saisie commençait au bas de l'écran. */
 .fiche-titre { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .fiche-titre .btn-back { flex: none; }
+/* 10.14.1 — la fiche : le nom et ses gestes sur UNE rangée, l'identité et l'état sur une ligne pleine
+   largeur dessous. Le titre part d'une largeur nulle (`flex: 1 1 0`) : c'est ce qui garde les gestes
+   sur la rangée du nom — sinon la ligne d'état, longue, élargissait le titre et les gestes passaient
+   dessous (126 px d'en-tête à 1280 px). Un nom trop long passe à la ligne DANS le titre, les gestes
+   ne bougent pas. */
+.page-head.fiche-dossier { row-gap: 4px; }
+.fiche-dossier > .fiche-titre { flex: 1 1 0; min-width: 0; flex-wrap: nowrap; }
+.fiche-dossier > .fiche-titre h1 { min-width: 0; overflow-wrap: anywhere; }
+.fiche-dossier > .d-meta { flex: 1 0 100%; display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 18px; }
+.fiche-dossier > .d-meta > .d-ident, .fiche-dossier > .d-meta > .d-etat { margin: 0; }
 
 /* La barre de la comptabilité : ce que je regarde (la période) et d'où ça vient (le livre ou les
    paquets), sur UNE ligne. Elle remplace trois rangées — le titre « Comptabilité », les listes de

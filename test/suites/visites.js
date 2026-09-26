@@ -268,9 +268,10 @@ t('10.14.0 : l\'accueil de la toute première fois — un seul vert, et une seul
   assert.ok(/id="pp-decouvrir"/.test(pp) && /btn btn-primary" id="pp-decouvrir"/.test(pp), 'la découverte est le bouton vert de l\'accueil');
   assert.ok(/encours && !accueil \? 'btn-primary'/.test(pp), 'le bouton de l\'étape ne reste pas vert à côté de l\'accueil');
   // « Première fois sur cette page ? » se tait quand l'accueil est déjà là : deux invitations l'une
-  // sous l'autre se contredisent (7.18.0) — vu à l'écran au premier lancement.
-  const bv = app.slice(app.indexOf('function bandeauVisite('), app.indexOf('const ICONE_GUIDE'));
-  assert.ok(bv.length > 300 && bv.length < 3000, 'tranche de bandeauVisite inattendue : ' + bv.length);
+  // sous l'autre se contredisent (7.18.0) — vu à l'écran au premier lancement. Depuis la 10.14.1 (S-03)
+  // l'invitation s'accroche à « Guide-moi » (`appelGuide`) ; la règle est la même.
+  const bv = app.slice(app.indexOf('function appelGuide('), app.indexOf('const ICONE_GUIDE = '));
+  assert.ok(bv.length > 300 && bv.length < 6000, 'tranche de appelGuide inattendue : ' + bv.length);
   const iAcc = bv.indexOf(".pp-accueil"), iCompte = bv.indexOf('e.vues[route] = (e.vues[route] || 0) + 1');
   assert.ok(iAcc > 0 && iAcc < iCompte, 'l\'invitation de page se tait (et ne compte pas) quand l\'accueil est affiché');
 });

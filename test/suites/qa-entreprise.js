@@ -879,15 +879,22 @@ module.exports = ({ t, assert, lireSource }) => {
     assert.ok(!/data-ed=/.test(zone) && !/data-pdf=/.test(zone), 'la ligne d\'un bulletin porte encore deux boutons');
     assert.ok(/toastUndo\([^;]*marqué payé/.test(zone), 'marquer un salaire payé ne se défait pas');
   });
-  // « Comprendre cette page → » est posé une fois par le routeur. La Paie, le Stock et le Catalogue
+  // « Comprendre cette page → » était posé une fois par le routeur. La Paie, le Stock et le Catalogue
   // redessinent leur en-tête à chaque onglet et à chaque geste : le lien disparaissait après le
-  // premier clic (marquer un salaire payé), et l'article qui explique l'écran avec lui.
-  t('Une page qui redessine son en-tête y repose « Comprendre cette page »', () => {
+  // premier clic (marquer un salaire payé), et l'article qui explique l'écran avec lui. Retourné en
+  // 10.14.1 (S-03) : c'est « Guide-moi » qui doit revenir — par chaque redessin d'en-tête ET par
+  // l'observateur de la vue, qui rattrape une page asynchrone ou un en-tête qu'on oublierait demain.
+  t('Une page qui redessine son en-tête y repose « Guide-moi »', () => {
     const app = code('src', 'renderer', 'app.js');
     const redessins = app.split('\n').filter(l => /\$\('#[\w-]*head'\)\.innerHTML = /.test(l));
     assert.ok(redessins.length >= 3, 'redessins d\'en-tête introuvables (' + redessins.length + ')');
-    const sans = redessins.filter(l => !/poserLienAide\('/.test(l));
-    assert.deepStrictEqual(sans, [], 'un en-tête redessiné perd son lien d\'aide');
+    const sans = redessins.filter(l => !/poserGuideMoi\(\)/.test(l));
+    assert.deepStrictEqual(sans, [], 'un en-tête redessiné perd « Guide-moi »');
+    const obs = app.slice(app.indexOf('function surveillerGuideMoi('), app.indexOf('const ICONE_GUIDE_MOI'));
+    assert.ok(obs.length > 80 && obs.length < 800, 'tranche de surveillerGuideMoi inattendue : ' + obs.length);
+    assert.ok(/new MutationObserver\(\(\) => poserGuideMoi\(\)\)/.test(obs) && /observe\(view, \{ childList: true, subtree: true \}\)/.test(obs), 'aucun observateur ne repose « Guide-moi » quand la vue change');
+    const r = app.slice(app.indexOf('  function render(keepScroll) {'), app.indexOf('  function setHashSilently(hash) {'));
+    assert.ok(/surveillerGuideMoi\(\);/.test(r), 'render() ne branche plus l\'observateur de « Guide-moi »');
   });
   // Le paquet d'août d'une menuiserie qui a commencé en septembre : « commence par émettre une
   // facture » à quelqu'un qui en a émis deux, et « Clôturer août 2026 » en orange sur le néant.
@@ -2181,12 +2188,17 @@ module.exports = ({ t, assert, lireSource }) => {
   });
 
   // L'introduction de l'Aide promettait « le ? en haut de chaque page » : ce bouton n'existe nulle part,
-  // le lien s'appelle « Comprendre cette page ». Une phrase affichée que rien ne tient (7.3.0).
-  t('L\'Aide nomme le lien d\'aide des pages par son vrai nom', () => {
+  // le lien s'appelait « Comprendre cette page ». Une phrase affichée que rien ne tient (7.3.0).
+  // Retourné en 10.14.1 (S-03) : le bouton s'appelle « Guide-moi », et plus aucun texte affiché ne
+  // promet un lien « Comprendre cette page » qui n'existe plus — ni l'Aide, ni les visites.
+  t('L\'Aide nomme « Guide-moi » par son vrai nom, et plus rien ne cite l\'ancien lien', () => {
     const app = code('src', 'renderer', 'app.js');
     assert.ok(!/le <b>\?<\/b> en haut de chaque page/.test(app), 'l\'Aide promet un « ? » qui n\'existe pas');
-    assert.ok(/a\.textContent = 'Comprendre cette page →'/.test(app), 'le lien des pages a changé de nom');
-    assert.ok(/«&nbsp;Comprendre cette page&nbsp;» en haut de chaque page/.test(app), 'l\'Aide ne nomme plus le lien des pages');
+    assert.ok(/b\.innerHTML = ICONE_GUIDE_MOI \+ '<span>Guide-moi<\/span>'/.test(app), 'le bouton des pages a changé de nom');
+    assert.ok(/«&nbsp;Guide-moi&nbsp;» en haut de chaque page/.test(app), 'l\'Aide ne nomme plus « Guide-moi »');
+    ['src/renderer/app.js', 'src/renderer/visites.js', 'src/renderer/guide.js', 'src/cabinet/renderer/app.js', 'src/cabinet/renderer/cabvisites.js'].forEach(f => {
+      assert.ok(!/Comprendre cette page/.test(code(...f.split('/'))), f + ' cite encore « Comprendre cette page »');
+    });
   });
 
   // « Taux : 1 EUR = ? DT » à l'ouverture et « 1 EUR = ? DT » après un changement de devise, dans un

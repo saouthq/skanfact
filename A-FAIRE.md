@@ -57,9 +57,13 @@ et au moteur), puis en stable quand Skander valide.*
     OUVERT, sinon le paquet part définitif et le brouillard n'existe pas), `cabinet-premier-jour`
     (« Suivant » par son id), `console` (montants à espace insécable), `entreprise` (montant
     complété, rapprochement paginé, résultat simplifié à toutes ses composantes).
-  - **Reste à `e2e:cabinet-jour1`** : la grille de saisie commence à 592 px sur un portable (seuil
-    480) — le bandeau de l'exemple et « Première fois sur cet écran ? » passent devant. À régler
-    avec S-03 (« Première fois » ne doit pas pousser l'écran de travail).
+  - ~~**Reste à `e2e:cabinet-jour1`** : la grille de saisie commence à 592 px sur un portable (seuil
+    480)~~ **Fait (26/09)** : « Première fois ? » ne pousse plus rien (S-03), le bandeau de l'exemple
+    se RAPPELLE sur une ligne hors de la page d'accueil (les deux applications), et l'en-tête d'une
+    fiche garde ses gestes sur la rangée du nom — la grille commence à 462 px et montre 9 lignes ;
+    `e2e:cabinet-jour1` passe. Vu au passage et corrigé : « Voir dans le paquet » recouvrait le
+    Crédit à 1280 px (mot court « Paquet »), « Commence par la page de garde » sur un paquet qui
+    n'en a pas, et « Enregistrer les droits » vert au repos à côté de « Relancer ».
 - **Fait, prouvé et testé à la souris (26/09, suite)** :
   - **S-04** — une pièce jointe se retrouve par son nom (Ctrl K, recherche des listes) et chaque
     ligne qui a un justificatif porte 📎 (factures, devis, achats, dépenses, mouvements, écritures).
@@ -141,6 +145,33 @@ et au moteur), puis en stable quand Skander valide.*
     `e2e:couverture` et `e2e:cabinet-couverture`. Quand `e2e:visites` tournera (§ 4 bis), la visite
     « motdepasse » chiffrera le profil du robot (essai « Visite-2026 ») : les visites suivantes
     trouveront l'écran de verrouillage.
+- **Fait, prouvé et testé à la souris (26/09, S-03 — « Guide-moi »)** :
+  - « Comprendre cette page → » est remplacé, dans les DEUX applications, par **« Guide-moi »** : en
+    haut de chaque page (reposé par un observateur quand une page redessine son en-tête), il ouvre la
+    liste de ce qu'on peut faire ici — la visite de la page et son article d'abord, puis les gestes
+    guidés de l'onglet ouvert, ceux des autres onglets rangés par onglet, et « Toutes les visites
+    guidées ». Un seul moteur (`Visite.guideDeLaPage` / `menuDuGuide` / `dansLeGuide`, purs).
+  - Sur une fiche, seuls les gestes qui s'y feront (le brouillon ouvert → « Émettre » ; le dossier
+    regardé au Cabinet) ; une visite en pause se REPREND depuis « Guide-moi », à son étape ; la pause
+    ne nomme « Guide-moi » que s'il la propose ; l'article suit l'onglet ouvert (`PAR_ONGLET`) ;
+    « Déclarer un salarié » ouvre l'onglet Salariés avant de viser « + Salarié » ; un menu s'ouvre
+    vers la page (`RowMenu.placerMenu`) ; « Première fois sur cette page ? » s'accroche au bouton,
+    par-dessus la page, au lieu de pousser l'écran de travail.
+  - `test/suites/guide-moi.js` (17 tests, 22 preuves par réintroduction), `e2e:aide` passe par
+    « Guide-moi », quatre anciens tests remis sur la règle ; `npm test` 1541 OK, lint propre. Vérifié
+    à la souris : listes, facture, Paie (onglets), Paramètres/Réglages, fiche et écrans de
+    comptabilité d'un dossier du Cabinet, invitation, pause puis reprise à l'étape 3.
+- **Ce que « Guide-moi » a montré qu'il manque (S-02, à faire)** — des pages sans aucun geste guidé
+  dans leur section « Ce que tu peux faire ici » : **Catalogue** (modèles, textes), **Proforma, bons et
+  contrats** (faire une proforma, un bon de commande ou de livraison), **Facturation récurrente**
+  (créer un contrat), **Trésorerie** (noter un mouvement, un virement entre mes comptes), **Paie**
+  (poser un congé ou une absence `#new-lv`, une avance `#new-av`, déposer la CNSS, un document du
+  personnel, les barèmes), **Stock** (un article suivi, un mouvement `#st-adj`, un inventaire, des
+  numéros de série `#se-add`), **Garanties**, **Comptabilité** onglet TVA, **Immobilisations** (céder
+  un bien), **Marges** (analyse, contrats, seuil) ; au Cabinet, « Créer le livre d'un client » et
+  « Reprendre un dossier (balance d'ouverture) » sur un dossier sans livre. Et des textes trop
+  courts à réécrire (« Ouvre un devis vierge. », « Le reste à payer est proposé : tu n'as souvent
+  qu'à valider. », « Clique sur « + Salarié ». »).
 - **Cabinet — 84 champs sans bulle « i »** (trouvés en portant la sonde de l'app entreprise au
   Cabinet, le jumeau manquant) : salarié, bulletin, bien, cession, écriture de trésorerie, questions,
   réouverture, mots de passe… À écrire dans `cabguide.js` (chaque bulle dit ce que le CODE fait du
@@ -182,9 +213,10 @@ et au moteur), puis en stable quand Skander valide.*
    « Suivant ».~~ **Fait (S-02, § 0.1).**
 3. ~~**Quand la visite montre un bouton ou parle d'une action, on doit pouvoir CLIQUER dessus** pour
    la découvrir — pas le voir assombri derrière le voile.~~ **Fait (S-02, § 0.1).**
-4. **Remplacer « Comprendre cette page » par « Guide-moi »** : une liste de TOUTES les actions qu'on
+4. ~~**Remplacer « Comprendre cette page » par « Guide-moi »** : une liste de TOUTES les actions qu'on
    peut faire sur la page, chacune lançant sa visite ou son geste guidé — l'assistant toujours à
-   portée de main.
+   portée de main.~~ **Fait (S-03, § 0.1)** — les pages qui n'ont encore aucun geste guidé sont
+   listées au § 0.1 : c'est la suite de S-02.
 5. **Les textes des visites et de l'assistant doivent être beaucoup plus explicatifs**, surtout sur
    les ACTIONS : ce que fait le bouton, quand s'en servir, ce qui se passe après. Et améliorer
    « Première fois sur cette page ». Beaucoup de défauts UI/UX et d'ergonomie dans la page

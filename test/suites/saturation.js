@@ -91,7 +91,12 @@ t('saturation : les agrégats lourds s\'exécutent dans un lot, et l\'interface 
 t('saturation : « Me guider » trouve l\'objet le plus rempli en UN passage, pas par un tri', () => {
   const app = code('src', 'renderer', 'app.js');
   const i = app.indexOf('const plusRempli = ');
-  const z = app.slice(i, i + 2500);
+  // Bornée sur la ligne qui cherche le client (10.14.1) : une fenêtre de 2 500 caractères en dur est
+  // tombée quand « la pièce ouverte d'abord » (S-03) s'est insérée entre les deux (9.4.6 : jamais sur
+  // un décalage en dur).
+  const fin = app.indexOf("case 'client':", i);
+  assert.ok(i > 0 && fin > i && fin - i < 8000, 'tranche introuvable ou trop large : ' + (fin - i));
+  const z = app.slice(i, app.indexOf('\n', fin));
   assert.ok(i > 0 && !/\.sort\(/.test(z.slice(0, z.indexOf('const parCle'))), 'plusRempli trie encore toute la liste');
   assert.ok(/const parCle = /.test(z) && /parCle\(docs, 'clientId'\)/.test(z), 'le compte par client se refait pour chaque client');
 });

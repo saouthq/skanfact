@@ -9,7 +9,7 @@
 //   2. Une pastille mène à sa section — sans redessiner la liste des thèmes par-dessus.
 //   3. Le fil d'Ariane tient sur UNE ligne, et « suivant » reste dans la colonne de l'article.
 //   4. Le geste au bout de l'article ouvre vraiment la page qu'il annonce.
-//   5. La recherche classe ses résultats, et « Comprendre cette page » ouvre l'article de LA page.
+//   5. La recherche classe ses résultats, et « Guide-moi » ouvre l'article de LA page.
 //   6. Un article long porte son sommaire, et le sommaire mène à son intertitre.
 //
 //   xvfb-run -a node test/e2e/aide.js
@@ -180,16 +180,26 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
   await win.fill('#aide-q', '');
   await win.waitForTimeout(250);
 
-  // Le lien contextuel : on ouvre une page, et « Comprendre cette page » doit viser SON article.
+  // L'article de LA page (10.14.1, S-03) : « Comprendre cette page → » est devenu « Guide-moi », dont
+  // la section « Cette page » porte l'article. On ouvre le menu comme un humain, on y trouve l'entrée
+  // qui nomme l'article de la Trésorerie, et on la clique.
   await aller('#/tresorerie');
-  const lien = await win.$('.page-help');
-  if (!lien) throw new Error('la page Trésorerie n\'offre aucun lien vers son article');
-  const href = await lien.getAttribute('href');
-  if (href !== '#/aide/' + G.PAR_PAGE.tresorerie) throw new Error(`le lien vise ${href} au lieu de l'article de la page`);
-  await lien.click();
+  await win.waitForSelector('#guide-moi');
+  await win.click('#guide-moi');
+  await win.waitForSelector('.row-menu.guide-menu');
+  const attendu = G.ARTICLES.find(a => a.id === G.PAR_PAGE.tresorerie);
+  if (!attendu) throw new Error('l\'article de la Trésorerie n\'existe pas : ' + G.PAR_PAGE.tresorerie);
+  // La typographie pose des espaces fines insécables (guillemets, deux-points) : on compare les mots.
+  const plat = t => String(t).replace(/[\u00a0\u202f\s]+/g, ' ').trim();
+  const entrees = await win.$$eval('.row-menu.guide-menu button[role=menuitem] .rm-l', l => l.map(e => e.textContent.trim()));
+  const i = entrees.findIndex(t => plat(t) === plat(`Lire l'article « ${attendu.title} »`));
+  if (i < 0) throw new Error(`« Guide-moi » de la Trésorerie ne propose pas son article « ${attendu.title} » : ${entrees.join(' | ')}`);
+  await (await win.$$('.row-menu.guide-menu button[role=menuitem]'))[i].click();
   await win.waitForSelector('.help-body');
+  if (!/^#\/aide\//.test(await win.evaluate(() => location.hash))) throw new Error('l\'entrée de l\'article n\'a pas ouvert l\'Aide');
   const titre = await win.$eval('.help-h', e => e.textContent.trim());
-  j.ok(`Trésorerie → « ${titre} »`);
+  if (plat(titre) !== plat(attendu.title)) throw new Error(`l'entrée ouvre « ${titre} » au lieu de « ${attendu.title} »`);
+  j.ok(`Trésorerie → « Guide-moi » → « ${titre} »`);
 
   // -------------------------------------------------- 6. le sommaire d'un article long
   j.etape('Un article long porte son sommaire, et le sommaire mène à son intertitre');

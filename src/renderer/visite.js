@@ -793,6 +793,118 @@
     });
     return r;
   }
+  // ---------- « Guide-moi » : ce qu'on peut faire sur CETTE page (10.14.1, S-03) ----------
+  // Skander : « au lieu de garder “Comprendre cette page”, un bouton “Guide-moi” avec la liste de
+  // toutes les actions qu'on peut faire sur cette page, afin que l'assistant soit toujours à portée
+  // de main ». Les trois fonctions qui suivent sont PURES et servent les deux applications : chacune
+  // prête ses visites, la clé de ses pages et l'onglet ouvert ; le rangement est le même.
+  //
+  // Les pages d'un geste guidé : celles qu'il déclare (`pages`) et celle où il COMMENCE — sa première
+  // étape qui a une adresse. `cleDe(hash)` rend la clé de page d'une adresse (« doc » dans SkanFact,
+  // « compta-saisie » dans le Cabinet).
+  function pagesDuGeste(v, cleDe) {
+    const cles = new Set(((v && v.pages) || []).filter(Boolean));
+    const e = ((v && v.etapes) || []).find(x => x && x.page);
+    const p = e ? pageDe(e) : null;
+    const k = p && typeof p === 'string' ? cleDe(p) : null;
+    if (k) cles.add(k);
+    return [...cles];
+  }
+  // L'onglet qu'un geste ouvre sur une page : la première de ses étapes sur CETTE page qui prépare un
+  // onglet (`avant` ou `retablir` construits par `onglet(barre, cle)`). Null quand il n'en ouvre aucun.
+  function ongletDuGeste(v, cle, cleDe) {
+    for (const e of (v && v.etapes) || []) {
+      if (!e) continue;
+      const p = pageDe(e);
+      if (!p || typeof p !== 'string' || cleDe(p) !== cle) continue;
+      const prep = [e.avant, e.retablir].find(f => f && f.barre && f.cle);
+      if (prep) return { barre: prep.barre, cle: prep.cle };
+    }
+    return null;
+  }
+  // Ce que « Guide-moi » montre sur une page : sa visite ; les gestes qu'on peut faire ICI — ceux de
+  // l'onglet ouvert, et ceux qui n'en ouvrent aucun — ; puis ceux des autres onglets, rangés par
+  // onglet. Dans l'ordre des visites : les tables les rangent déjà par domaine. L'onglet ouvert se
+  // lit à l'écran (`ongletActif(barre)`), par l'application : sur les Paramètres, douze gestes d'un
+  // bloc feraient chercher celui de l'onglet qu'on regarde.
+  // Un geste qui déclare `surLaPage(cle)` ne se propose que là où il s'applique : sur une fiche de
+  // pièce, « Émettre » sur un brouillon de facture, jamais sur un devis. Une règle qui lève ne cache
+  // rien : mieux vaut un geste proposé en trop qu'un geste perdu.
+  const convientParDefaut = (v, cle) => { if (typeof v.surLaPage !== 'function') return true; try { return !!v.surLaPage(cle); } catch (_) { return true; } };
+  function guideDeLaPage(visites, cle, o) {
+    const opts = o || {};
+    const cleDe = opts.cleDe || (x => x);
+    const convient = opts.convient || convientParDefaut;
+    const liste = (visites || []).filter(Boolean);
+    const page = liste.find(v => v.type === 'page' && v.route === cle) || null;
+    const ici = [], autres = new Map();
+    liste.filter(v => v.type === 'faire' && pagesDuGeste(v, cleDe).includes(cle) && convient(v, cle)).forEach(v => {
+      const og = ongletDuGeste(v, cle, cleDe);
+      const actif = og && opts.ongletActif ? opts.ongletActif(og.barre) : null;
+      if (!og || !actif || og.cle === actif) { ici.push(v); return; }
+      if (!autres.has(og.cle)) autres.set(og.cle, { onglet: og, gestes: [] });
+      autres.get(og.cle).gestes.push(v);
+    });
+    return { page, ici, ailleurs: [...autres.values()] };
+  }
+  // Le « Guide-moi » de cette page propose-t-il cette visite ? (PUR.) Une visite mise en pause se dit
+  // reprise « depuis Guide-moi » seulement si elle y figure — la découverte, elle, n'est que dans
+  // « Me guider ». Par identifiant : la visite en cours est une COPIE de sa définition (`lancer`).
+  function dansLeGuide(g, id) {
+    if (!g || !id) return false;
+    const est = v => !!v && v.id === id;
+    return est(g.page) || (g.ici || []).some(est) || (g.ailleurs || []).some(a => (a.gestes || []).some(est));
+  }
+  // Les entrées du menu « Guide-moi », prêtes pour `RowMenu.ouvrir`. L'application prête ses gestes :
+  // lancer une visite, ce qui lui manque encore (`manque`, la MÊME fonction que celle qui refuserait
+  // au lancement — 9.4.5), si elle est faite, ce qu'elle change aux données (`avertir` : l'exemple
+  // qu'on quitte ou qu'on charge), le nom d'un onglet, l'article de la page. Les DEUX applications
+  // passent par ici : un menu recopié aurait divergé au premier ajustement (7.29.0).
+  function menuDuGuide(g, o) {
+    const x = o || {};
+    const bas = t => String(t || '').charAt(0).toLowerCase() + String(t || '').slice(1);
+    const avertir = v => (x.avertir && x.avertir(v)) || '';
+    // Une visite mise en pause se REPREND là où on l'a laissée : l'entrée le dit (« Reprendre », l'étape,
+    // « en pause ») et relance à cette étape — sans quoi « Guide-moi » la recommençait au début, pendant
+    // que « Me guider » proposait de la reprendre (vu à la souris, 10.14.1).
+    const pause = v => { try { return (x.reprise && x.reprise(v)) || null; } catch (_) { return null; } };
+    const enPause = r => `Arrêtée à l'${bas(r.texte)}${r.note ? ' — ' + r.note : ''}.`;
+    const geste = v => {
+      const m = x.manque ? x.manque(v) : null;
+      const r = m ? null : pause(v);
+      const hint = m ? 'Pas encore : ' + bas(m.texte)
+        : [r ? enPause(r) : v.resume || '', avertir(v)].filter(Boolean).join(' ');
+      return { icon: 'reprendre', label: r ? 'Reprendre : ' + bas(v.titre) : v.titre, hint, note: r ? 'en pause' : v.duree || '',
+        fait: !m && !r && !!(x.fait && x.fait(v)), off: !!m, run: () => (r ? x.lancer(v, r.i) : x.lancer(v)) };
+    };
+    const actions = [];
+    // Ce qui parle de LA page vient d'abord, ensemble : sa visite et son article. L'article en bas d'une
+    // longue liste se perdait sous les gestes (vu à la souris sur l'accueil : sept gestes, l'article
+    // hors de l'écran).
+    if (g.page || x.article) {
+      actions.push({ titre: x.titrePage || 'Cette page' });
+      if (g.page) {
+        const r = pause(g.page);
+        const fait = !r && !!(x.fait && x.fait(g.page));
+        actions.push({ icon: 'reprendre', label: r ? 'Reprendre la visite de la page' : fait ? 'Revoir la visite de la page' : 'Visite de la page',
+          hint: r ? [enPause(r), g.page.resume || ''].filter(Boolean).join(' ')
+            : [g.page.resume || '', 'Ce que fait chaque bouton, en ' + (g.page.duree || 'une minute') + '.'].filter(Boolean).join(' '),
+          note: r ? 'en pause' : '', fait, run: () => (r ? x.lancer(g.page, r.i) : x.lancer(g.page)) });
+      }
+      if (x.article) actions.push({ icon: 'texte', label: `Lire l'article « ${x.article.titre} »`, hint: 'Le pourquoi, les règles et les pièges de cette page, expliqués en détail.', run: x.article.ouvrir });
+    }
+    if (g.ici.length) { actions.push({ titre: 'Ce que tu peux faire ici' }); g.ici.forEach(v => actions.push(geste(v))); }
+    g.ailleurs.forEach(a => {
+      const nom = (x.libelleOnglet && x.libelleOnglet(a.onglet)) || a.onglet.cle;
+      actions.push({ titre: `Sur l'onglet « ${nom} »` });
+      a.gestes.forEach(v => actions.push(geste(v)));
+    });
+    if (x.tout) {
+      if (actions.length) actions.push({ sep: true });
+      actions.push({ icon: 'loupe', label: 'Toutes les visites guidées', hint: 'La découverte avec l\'exemple, chaque geste pas à pas, et où tu en es.', run: x.tout });
+    }
+    return actions;
+  }
   // Le mot de la fin peut dépendre de ce qui a été fait (« Ton comptable est relié » seulement si son
   // fichier l'est) : une fonction se lit au moment de la fin, jamais au lancement.
   function selonFin(x) {
@@ -1871,7 +1983,8 @@
   // Sans l'élément lu sur l'écran (`el`) : une copie qui traverse le pont de l'instrument se sérialise.
   const etapeCourante = () => { const e = etape(); if (!e) return null; const c = Object.assign({}, e); delete c.el; return c; };
 
-  const api = { installer, lancer, quitter, enCours, etapeCourante, suivant, precedent, chapitreSuivant, reprendre, gestePasse, consequenceDuGeste, gesteQuiOuvre, issueDeFin, phrasePasses, texteDeFin, selonFin, finsHonnetes, placerBulle, placerPres, placerMini, typo, chevauche, decouperHaut, trousDeListe, hautPourBulle, hautPourCouper, viseLaCible, estFaire, decider, enAttenteDe, compteDe, pointDeReprise, etapeAvecPage, versLaReprise, dejaRempliDe, normNom, nomsCites, lieuDe, ouvrirOnglet,
+  const api = { installer, lancer, quitter, enCours, etapeCourante, suivant, precedent, chapitreSuivant, reprendre, gestePasse, consequenceDuGeste, gesteQuiOuvre, issueDeFin, phrasePasses, texteDeFin, selonFin, finsHonnetes,
+    pagesDuGeste, ongletDuGeste, guideDeLaPage, dansLeGuide, menuDuGuide, placerBulle, placerPres, placerMini, typo, chevauche, decouperHaut, trousDeListe, hautPourBulle, hautPourCouper, viseLaCible, estFaire, decider, enAttenteDe, compteDe, pointDeReprise, etapeAvecPage, versLaReprise, dejaRempliDe, normNom, nomsCites, lieuDe, ouvrirOnglet,
     chapitres, resoudre, visible, listerControles, etapesDeLaVue, blocsDe, cheminDe, PATIENCE, PATIENCE_FACULTATIVE, CONTROLES,
     nettoie, libelleDe, resumeBulle, routeDe, expliqueur, zoneur, phraseDuHaut, texteDuHaut };
   global.Visite = api;

@@ -69,7 +69,10 @@
   // `.sugg-host` : la cellule dont la désignation propose le catalogue (app entreprise, 9.2.1) —
   // le champ ET sa liste, sinon replacer le curseur dans le champ fermerait la liste.
   // `.lm-pop` : la liste déroulante de SkanFact posée sur un `<select>` (listes.js, 10.13.0).
-  const SURFACES = '.combo, .datefield, .row-menu, .row-menu-btn, .sugg-host, .lm-pop';
+  // `.guide-moi` : le bouton « Guide-moi » de l'en-tête de chaque page (10.14.1, S-03) ouvre ce même
+  // menu — c'est un interrupteur comme `.row-menu-btn`. `.guide-appel` : l'invitation « Première fois
+  // sur cette page ? » accrochée à ce bouton ; cliquer dedans ne doit pas la refermer.
+  const SURFACES = '.combo, .datefield, .row-menu, .row-menu-btn, .sugg-host, .lm-pop, .guide-moi, .guide-appel';
 
   // L'application hôte prête son registre d'overlay : c'est lui qui garantit qu'un calendrier, une
   // liste déroulante et un menu ne restent jamais ouverts en même temps. L'app du cabinet n'a pas
@@ -130,7 +133,37 @@
 
   let ouvertSur = null;   // le bouton dont le menu est ouvert : sans ça, un reclic le rouvre
 
-  function ouvrir(bouton, actions) {
+  // Une entrée du menu. En plus d'une action de ligne, le menu « Guide-moi » (10.14.1, S-03) range ses
+  // entrées sous des TITRES (`{ titre }`, qu'on ne clique pas), dit la durée d'une visite (`note`),
+  // coche ce qui est déjà fait (`fait`) et grise ce qui ne peut pas encore se faire (`off`) — sans
+  // l'éteindre : le clic explique ce qui manque et propose ce qui le fabrique (un bouton éteint qui ne
+  // dit rien ne sert à rien, 9.4.5).
+  const entree = (a, i) => {
+    if (a.sep) return '<hr>';
+    if (a.titre) return `<div class="rm-titre" role="presentation">${h(a.titre)}</div>`;
+    const classes = [a.danger ? 'danger' : '', a.off ? 'off' : '', a.fait ? 'fait' : ''].filter(Boolean).join(' ');
+    const fin = a.fait || a.note ? `<span class="rm-fin">${a.fait ? '<span class="rm-fait">Fait</span>' : ''}${a.note ? `<span class="rm-note">${h(a.note)}</span>` : ''}</span>` : '';
+    return `<button type="button" role="menuitem" data-i="${i}"${a.cle ? ` data-act="${h(a.cle)}"` : ''}${classes ? ` class="${classes}"` : ''}>
+          ${ico(a.icon)}<span class="rm-t"><span class="rm-l">${h(a.label)}</span>${a.hint ? `<span class="rm-h">${h(a.hint)}</span>` : ''}</span>${fin}</button>`;
+  };
+
+  // Où poser un menu de `haut` × `large` ouvert par un bouton de rectangle `r`, dans un écran de
+  // `vw` × `vh` (PUR : les tests la jouent). Sous le bouton quand il y tient, sinon au-dessus — une
+  // ligne du bas de l'écran le voit s'ouvrir vers le haut plutôt que hors de la fenêtre. Et VERS la
+  // page : calé sur le bord droit d'un bouton de la moitié droite (le bout d'une ligne), sur le bord
+  // gauche d'un bouton de la moitié gauche — « Guide-moi » sur la fiche d'un dossier du Cabinet
+  // s'ouvrait vers la gauche, par-dessus la barre latérale (10.14.1). Jamais à moins de 8 px du bord.
+  function placerMenu(r, haut, large, vw, vh) {
+    const top = r.bottom + 6 + haut <= vh - 8 ? r.bottom + 6 : Math.max(8, r.top - 6 - haut);
+    const versLaGauche = r.left + r.width / 2 >= vw / 2;
+    const left = Math.max(8, Math.min(vw - large - 8, versLaGauche ? r.right - large : r.left));
+    return { top, left };
+  }
+
+  // `opts.classe` : une classe de plus sur le menu (`guide-menu` : plus large, et il défile quand la
+  // liste dépasse l'écran). `opts.label` : ce que lit un lecteur d'écran en entrant dans le menu.
+  function ouvrir(bouton, actions, opts) {
+    const o = opts || {};
     // Un second clic sur le MÊME bouton REFERME. Sans ce test, le garde-fou `mousedown` global
     // fermait le menu puis le `click` le rouvrait aussitôt : on appuyait pour fermer, ça clignotait,
     // et le menu restait ouvert. Un bouton qui ne fait pas le contraire de ce qu'il vient de faire
@@ -139,13 +172,12 @@
     if (ouvertSur === bouton) { if (dejaOuvert) dejaOuvert(); return; }
     if (dejaOuvert) dejaOuvert();
     const m = document.createElement('div');
-    m.className = 'row-menu';
+    m.className = 'row-menu' + (o.classe ? ' ' + o.classe : '');
     m.setAttribute('role', 'menu');
+    if (o.label) m.setAttribute('aria-label', o.label);
     // `cle` (facultatif) nomme l'action pour qui doit la DÉSIGNER sans lire son libellé — une visite
     // guidée qui dit « Clique sur « Relancer par email » » éclaire CETTE entrée, pas la troisième du menu.
-    m.innerHTML = actions.map((a, i) => a.sep ? '<hr>'
-      : `<button type="button" role="menuitem" data-i="${i}"${a.cle ? ` data-act="${h(a.cle)}"` : ''}${a.danger ? ' class="danger"' : ''}>
-          ${ico(a.icon)}<span class="rm-t"><span class="rm-l">${h(a.label)}</span>${a.hint ? `<span class="rm-h">${h(a.hint)}</span>` : ''}</span></button>`).join('');
+    m.innerHTML = actions.map(entree).join('');
     document.body.appendChild(m);
     // Un menu ouvert DANS une fenêtre passe au-dessus d'elle (10.14.1, S-04) : à sa couche 70, il
     // naissait SOUS la fenêtre (400 et plus) — ouvert, invisible, et le clic suivant tombait dessus.
@@ -154,10 +186,9 @@
     if (couche) m.style.zIndex = String((Number(getComputedStyle(couche).zIndex) || 400) + 1);
     // On mesure APRÈS avoir posé le menu : sa hauteur dépend de ce qu'il contient, et une ligne du
     // bas de l'écran doit le voir s'ouvrir vers le haut plutôt que hors de la fenêtre.
-    const r = bouton.getBoundingClientRect();
-    const haut = m.offsetHeight, large = m.offsetWidth;
-    m.style.top = (r.bottom + 6 + haut <= window.innerHeight - 8 ? r.bottom + 6 : Math.max(8, r.top - 6 - haut)) + 'px';
-    m.style.left = Math.max(8, Math.min(window.innerWidth - large - 8, r.right - large)) + 'px';
+    const pos = placerMenu(bouton.getBoundingClientRect(), m.offsetHeight, m.offsetWidth, window.innerWidth, window.innerHeight);
+    m.style.top = pos.top + 'px';
+    m.style.left = pos.left + 'px';
     bouton.setAttribute('aria-expanded', 'true');
     const scroller = bouton.closest('main');
     // La position de départ du défilement. Un menu ancré sur une ligne se ferme quand la page
@@ -206,5 +237,5 @@
     const premier = m.querySelector('button'); if (premier) premier.focus();
   }
 
-  global.RowMenu = { ICO, ico, SURFACES, brancher, cellule, bouton, brancherMenus };
+  global.RowMenu = { ICO, ico, SURFACES, brancher, cellule, bouton, brancherMenus, ouvrir, placerMenu };
 })(typeof window !== 'undefined' ? window : globalThis);

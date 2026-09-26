@@ -1567,8 +1567,9 @@ rencontres. Si un mot affiché dans l'application manque ici, c'est un défaut :
     // nulle part depuis un glossaire, et « Signaler un problème » a déjà son propre bouton.
   };
 
-  // L'aide s'ouvre LÀ OÙ L'ON EST. « Comprendre cette page » ouvre l'article de cette page, au lieu
-  // de déposer quelqu'un en haut d'une liste de trente-deux titres. Un test vérifie que chaque
+  // L'aide s'ouvre LÀ OÙ L'ON EST. La dernière ligne de « Guide-moi » (10.14.1 — avant, le lien
+  // « Comprendre cette page ») ouvre l'article de cette page, au lieu de déposer quelqu'un en haut
+  // d'une liste de trente-deux titres. Un test vérifie que chaque
   // page de l'application a son entrée et que chaque cible existe.
   const PAR_PAGE = {
     dashboard: 'demarrer', devis: 'devis', factures: 'facture', doc: 'facture',
@@ -1579,6 +1580,22 @@ rencontres. Si un mot affiché dans l'application manque ici, c'est un défaut :
     paie: 'paie', salarie: 'conges', stock: 'stock', article: 'stock', garanties: 'series',
     immos: 'immobilisations', immo: 'immobilisations', stats: 'statistiques',
     compta: 'compta', parametres: 'donnees', modules: 'gestion', licences: 'licence'
+  };
+  // Une page à onglets parle de plusieurs sujets : l'article de « Guide-moi » suit l'onglet OUVERT
+  // (10.14.1, vu à la souris : « Tes données : sauvegarder et protéger » proposé sur l'onglet « Mon
+  // entreprise » des Paramètres). Un onglet absent de sa table garde l'article de la page. Un test
+  // confronte chaque onglet nommé ici à la barre qui le porte, et chaque article à ARTICLES.
+  const PAR_ONGLET = {
+    parametres: { barre: '#set-tabs', articles: { societe: 'demarrer', documents: 'facture', envois: 'cabinet', donnees: 'donnees', app: 'support' } },
+    paie: { barre: '#p-tabs', articles: { conges: 'conges', avances: 'conges', registre: 'conges', declarations: 'declarations' } },
+    stock: { barre: '#st-tabs', articles: { series: 'series' } },
+    compta: { barre: '#c-tabs', articles: { achats: 'achats', tva: 'fiscal', calendrier: 'fiscal', clotures: 'cloture', cabinet: 'cabinet' } }
+  };
+  const articleDeLaPage = (cle, ongletActif) => {
+    const o = PAR_ONGLET[cle];
+    let t = null;
+    try { t = o && ongletActif ? ongletActif(o.barre) : null; } catch (_) { t = null; }
+    return (o && t && o.articles[t]) || PAR_PAGE[cle] || null;
   };
 
   // Le thème d'un article, et ses voisins : « article suivant » évite de repasser par la liste.
@@ -1643,5 +1660,5 @@ rencontres. Si un mot affiché dans l'application manque ici, c'est un défaut :
     return r ? r[1] : null;
   };
 
-  return { INFO, ARTICLES, THEMES, GESTES, PAR_PAGE, themeOf, ARTICLE_PAR_CLE, articleDe };
+  return { INFO, ARTICLES, THEMES, GESTES, PAR_PAGE, PAR_ONGLET, articleDeLaPage, themeOf, ARTICLE_PAR_CLE, articleDe };
 });

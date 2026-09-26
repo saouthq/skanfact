@@ -8193,6 +8193,69 @@ lots ; le détail de ce qui reste vit dans `A-FAIRE.md` § 0.
   ligne plus haut ; un objet créé dans un `vm` a un autre prototype, on compare par aller-retour JSON ;
   et une assertion de `cabassistant.js` qui recopiait la forme d'un appel est tombée sur du code juste
   — retournée vers la règle (le renvoi montre la case du nom AVANT d'enregistrer).
+- **« Guide-moi » remplace « Comprendre cette page → »** (S-03, « un bouton avec la liste de toutes
+  les actions qu'on peut faire sur cette page, afin que l'assistant soit toujours à portée de main »).
+  Le lien n'ouvrait qu'un article à LIRE ; le bouton ouvre ce qu'on peut FAIRE ici. Un seul moteur
+  pour les deux applications (`Visite.guideDeLaPage`, `Visite.menuDuGuide`, `Visite.dansLeGuide`,
+  purs) : chacune ne prête que ses visites, la clé de ses pages et l'onglet ouvert. **Ce qui parle de
+  LA page vient d'abord** (sa visite, puis son article) : l'article en bas d'une liste de sept gestes
+  finissait hors de l'écran.
+- **Un geste ne se propose que là où il se fera, par la MÊME règle que celle qui choisit sa cible**
+  (`surLaPage`) : sur un brouillon de facture, « Émettre », pas « Facturer ce devis » ; sur le dossier
+  de Béji, jamais une visite qui partirait dans le garage. La cible (`ctx.premier`, `ctx.dossier`)
+  prend la pièce ou le dossier ouverts quand ils conviennent — deux règles séparées auraient proposé
+  un geste qui part ailleurs. Une règle qui LÈVE ne cache rien : un geste proposé en trop vaut mieux
+  qu'un geste perdu.
+- **Un bouton d'en-tête qui n'existe que sur un onglet s'atteint en ouvrant cet onglet** : « Déclarer
+  un salarié » était proposé sur l'onglet Congés, où « + Salarié » n'existe pas — la bulle attendait
+  un bouton absent. Le geste déclare son onglet (`avant: onglet(…)`), et un test lit les boutons de
+  chaque onglet dans l'application (`P_ACTION`, `ST_ACTION`), jamais dans une table recopiée.
+- **L'article suit l'onglet ouvert** (`PAR_ONGLET`, `articleDeLaPage` — les deux applications) :
+  « Tes données : sauvegarder et protéger » était proposé sur l'onglet « Mon entreprise ». Un onglet
+  absent de la table garde l'article de la page ; chaque onglet nommé est confronté à sa barre.
+- **Une visite en pause se reprend depuis « Guide-moi », à son étape** (`pointDeReprise`, le calcul de
+  « Me guider ») : le menu la recommençait au début pendant que « Me guider » proposait de la
+  reprendre. Et la pause ne nomme « Guide-moi » que si « Guide-moi » la propose (`dansLeGuide`) : la
+  découverte n'y est pas. **Deux portes vers la même chose disent la même chose** (6.8.1).
+- **Un menu s'ouvre vers la page** (`RowMenu.placerMenu`, pur) : « Guide-moi » de la fiche d'un
+  dossier s'ouvrait par-dessus la barre latérale. Un bouton de la moitié gauche ancre le menu sur son
+  bord gauche, un bouton de la moitié droite sur son bord droit ; dessous s'il tient, sinon dessus.
+- **« Première fois sur cette page ? » ne pousse plus l'écran de travail** : c'était une bande sous
+  l'en-tête (la grille de saisie commençait 90 px plus bas pendant les trois premières ouvertures) ;
+  elle s'accroche à « Guide-moi », par-dessus la page, et dit où la visite se retrouve.
+- **`npm test` s'arrête au premier test rouge — le suivant attend derrière.** Quatre tests qui
+  recopiaient une forme sont tombés l'un après l'autre, chaque correction révélant le suivant : on
+  relance jusqu'au vert, jamais « c'était le seul ». Trois retournés vers la règle (39e à 41e : la
+  table d'articles lue par `articleDeLaPage`, `bouton` qui fait PARTIE de l'export, une tranche bornée
+  sur la ligne qu'elle juge au lieu de 2 500 caractères en dur — 9.4.6) ; le quatrième se répare dans
+  le code (le thème reposé en tête de `render()`, avant ce qui s'y est ajouté). Et le test des
+  variables CSS apprend `style.setProperty('--x')` : la flèche de l'invitation est posée par le code.
+- **Une explication se lit une fois ; ensuite, un RAPPEL** (`e2e:cabinet-jour1`, la grille de saisie
+  à 573 px sur un portable pour un seuil de 480). La 10.14.0 avait posé le bandeau de l'exemple sur
+  CHAQUE page — à raison — mais avec sa phrase entière : trois lignes, 87 px, en tête de chaque écran
+  de travail. Il s'explique sur la page d'accueil de chaque application (Accueil, Dossiers) et se
+  rappelle ailleurs sur une ligne, ses deux portes gardées, la phrase entière au survol
+  (`htmlBandeauDemo`, la même décision des deux côtés). **Un composant posé partout se dessine pour
+  l'écran où il coûte le plus, pas pour celui où on l'a écrit.**
+- **Le nom d'une fiche et ses gestes partagent UNE rangée ; ce qui DÉCRIT le dossier va dessous, sur
+  toute la largeur** (`.fiche-dossier`, `.d-meta`). Empilés sous le nom, l'identité et l'état
+  élargissaient le bloc du titre à la largeur de leur ligne la plus longue : à 1280 px les gestes
+  passaient sur une seconde rangée (126 px d'en-tête), selon le client ouvert — le Café le faisait, le
+  garage non. Le titre part d'une largeur nulle (`flex: 1 1 0`), donc les gestes ne bougent jamais ;
+  c'est le nom qui passe à la ligne. Mesuré sur les huit dossiers de l'exemple : 61 à 103 px.
+- **Une action seule dans un tableau dense porte son mot court, partout où elle naît** (10.12.0,
+  re-trouvée) : « Voir dans le paquet » (170 px, colonne collante) recouvrait le Crédit du
+  livre-journal lu dans les paquets, 23 px à 1280. « Paquet », la phrase entière au survol — et le
+  tableau tient sans défiler de côté. Vu sur la capture prise pour autre chose.
+- **Une phrase qui envoie chercher un fichier le trouve d'abord** : « Commence par la page de garde »
+  au-dessus d'une liste de neuf fichiers sans page de garde (les paquets de l'exemple sont fabriqués
+  sans imprimante). La phrase se conditionne à la présence de `00-page-de-garde.pdf` (7.3.0).
+- **Le vert d'un panneau secondaire s'allume au premier changement, jamais au repos** (U-11) : sur le
+  Suivi d'un dossier, « Relancer » en haut et « Enregistrer les droits » en bas étaient verts ensemble.
+  Le mécanisme existait déjà pour les Réglages (`data-enreg`, `sale`, `flash`) — il n'avait pas été
+  porté au panneau des droits, qui n'apparaît qu'une fois des collaborateurs déclarés : aucun des
+  instruments, qui tournent sans équipe, ne pouvait le voir. Et le « ✓ enregistré » se pose APRÈS le
+  redessin : posé avant, il partait avec l'ancien panneau, et on ne l'avait jamais vu.
 
 ## Pistes pour la suite (non demandées)
 

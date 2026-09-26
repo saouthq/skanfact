@@ -138,10 +138,11 @@
   // Les blocs de l'écran que la visite d'une page nomme — les plus précis d'abord.
   const ZONES = [
     { sel: '#demo-banner', titre: 'Des dossiers d\'exemple', texte: 'Ils sont fictifs : rien de ce que tu fais dessus ne compte. Ils disparaissent au premier vrai paquet, ou d\'un clic.' },
-    { sel: '#guide-band', titre: 'La visite de cet écran', texte: 'Proposée les trois premières fois que tu l\'ouvres. Tu la retrouves ensuite dans « Me guider ».' },
+    // L'invitation « Première fois sur cet écran ? » (10.14.1, S-03) s'accroche à « Guide-moi ».
+    { sel: '#guide-appel', titre: 'La visite de cet écran', texte: 'Proposée les trois premières fois que tu l\'ouvres. Tu la retrouves ensuite dans « Guide-moi », avec tout ce qu\'on peut faire ici.' },
     { sel: '.premiers-pas', titre: 'Tes premiers pas', texte: 'L\'ordre des choses pour démarrer le Cabinet. Chaque étape se coche <b>toute seule</b> quand c\'est fait.' },
     // Dit tel qu'il EST : le bouton vert nommé, ou son absence (`texteDuHaut`, 10.14.1).
-    { sel: '.page-head', titre: 'Le haut de l\'écran', texte: el => M.texteDuHaut(el) },
+    { sel: '.page-head', titre: 'Le haut de l\'écran', texte: el => M.texteDuHaut(el, el.querySelector('.guide-moi') ? '« Guide-moi » liste tout ce qu\'on peut faire ici : la visite de l\'écran, chaque geste montré pas à pas, et l\'article qui l\'explique.' : '') },
     { sel: '#d-tabs', titre: 'Les trois onglets du dossier', texte: 'Suivi, Comptabilité, Paquets : l\'onglet vit dans l\'adresse, « ← » revient dessus.' },
     { sel: '#c-groupes', titre: 'Les trois groupes', texte: 'Saisir, Consulter, Déclarer et clôturer : l\'ordre du mois. Le chiffre sur un groupe dit ce qui y attend une décision.' },
     { sel: '.tabs', titre: 'Les onglets', texte: 'L\'écran se range en onglets. Je vais te les ouvrir un par un ; « Passer au chapitre suivant » en saute un.' },
@@ -194,8 +195,9 @@
   b('[data-relire-ecran]', 'Redemande cet écran : sa première lecture n\'a pas abouti, et le Cabinet ne la retente pas tout seul en boucle.', { nom: 'Réessayer', cle: 'relire-ecran' });
   b('[data-gl-plus]', 'Met à l\'écran la suite des lignes de ce compte : un compte très chargé ne montre d\'abord que ses premières lignes, le pied porte toujours le compte entier.', { nom: 'Montrer la suite du compte', cle: 'glPlus' });
   b('[data-rowmenu]', null, { rowmenu: true, nom: 'Actions', cle: 'rowmenu' });
-  b('#gb-go', 'Lance la visite de cet écran : chaque bloc, chaque bouton, en une ou deux minutes.');
-  b('#gb-non', 'Ne propose plus la visite de cet écran. Elle reste dans « Me guider ».');
+  b('#guide-moi', 'Liste tout ce qu\'on peut faire sur cet écran : sa visite, chaque geste montré pas à pas sur ton vrai écran, et l\'article qui l\'explique. Il est au même endroit sur chaque écran.', { nom: 'Guide-moi' });
+  b('#ga-go', 'Lance la visite de cet écran : à quoi il sert, puis chaque bloc et chaque bouton, en une ou deux minutes.');
+  b('#ga-non', 'Ne propose plus la visite de cet écran. Elle reste dans « Guide-moi », en haut de l\'écran.');
   // 10.14.0 — « Annuler » ET « Fermer » portent ces attributs : « sans rien garder » était faux sur le
   // « Fermer » de « Le fichier est prêt » (le fichier est enregistré). L'explication dit ce qui est vrai
   // des deux, et le bouton garde SON nom — une explication fausse est pire qu'absente.
@@ -497,16 +499,33 @@
     // pour un panneau rangé dans « Mon cabinet », et se perdait (vu à la souris, 10.14.1).
     const onglet = (barre, cle) => Object.assign(() => ctx.Visite.ouvrirOnglet(barre, cle), { barre, cle });
     // L'adresse d'un écran dans un dossier : celui qu'on regarde s'il convient, sinon celui de l'exemple.
-    const dans = (sorte, suite) => () => { const id = ctx.dossier(sorte); return id ? '#/dossier/' + encodeURIComponent(id) + '/' + suite : null; };
+    // La fonction PORTE sa sorte : « Guide-moi » s'en sert pour ne proposer, sur un dossier, que les
+    // gestes qui s'y feront (10.14.1, S-03).
+    const dans = (sorte, suite) => Object.assign(() => { const id = ctx.dossier(sorte); return id ? '#/dossier/' + encodeURIComponent(id) + '/' + suite : null; }, { sorte });
+    // Le dossier ouvert à l'écran, ou null.
+    const dossierOuvert = () => { const m = /^#\/dossier\/([^/]+)/.exec((typeof location !== 'undefined' && location.hash) || ''); return m ? decodeURIComponent(m[1]) : null; };
+    // Les écrans qui vivent DANS un dossier : la fiche, ses paquets, et chaque écran de comptabilité.
+    const ecranDeDossier = cle => cle === 'dossier' || cle === 'dossier-paquets' || /^compta/.test(cle);
     const DOSSIER_MANQUE = {
       skanfact: { texte: 'Il faut un client qui t\'envoie ses paquets : importe son premier paquet, ou charge l\'exemple (Réglages → L\'application).', visite: 'recevoir-paquet' },
       hors: { texte: 'Il faut un client dont tu tiens le livre : crée un dossier et son livre, ou charge l\'exemple.', visite: 'ajouter-client' },
+      saisie: { texte: 'Il faut un dossier qui a son livre : crée le livre d\'un client (sa fiche → Comptabilité), ou charge l\'exemple.', visite: 'ajouter-client' },
       livre: { texte: 'Il faut un dossier qui a son livre : crée le livre d\'un client, ou charge l\'exemple.', visite: 'ajouter-client' },
       client: { texte: 'Il faut au moins un client dans ton portefeuille.', visite: 'ajouter-client' }
     };
 
     const L = [];
-    const visite = v => { L.push(v); return v; };
+    // Un geste qui se fait dans un dossier ne se propose, sur l'écran d'un dossier, que s'il s'y fera :
+    // « Guide-moi » sur le dossier de Béji ne lance pas une visite qui part dans le garage (10.14.1, S-03).
+    // Le dossier qu'il choisit (`ctx.dossier`) prend celui qu'on regarde dès qu'il convient : la même
+    // règle décide de la cible et de la proposition.
+    const visite = v => {
+      if (v.type === 'faire' && !v.surLaPage && v.page && v.page.sorte) {
+        const sorte = v.page.sorte;
+        v.surLaPage = cle => !ecranDeDossier(cle) || (!!dossierOuvert() && ctx.dossier(sorte) === dossierOuvert());
+      }
+      L.push(v); return v;
+    };
 
     // ======================================================================= LA DÉCOUVERTE
     // Le grand tour, sur l'exemple : six dossiers qui montrent chaque situation remplie. Le compte des
@@ -548,7 +567,7 @@
       mots: ['visite', 'decouvrir', 'commencer', 'exemple', 'tour', 'debutant', 'demo'],
       suite: ['nommer-cabinet', 'ajouter-client', 'page-dossiers'],
       bravo: 'Tu as fait le tour !',
-      conclusion: '<p>Tu as vu le Cabinet rempli, du portefeuille à la liasse. Retiens : <b>le menu</b> à gauche, <kbd>Ctrl</kbd> <kbd>K</kbd> pour tout trouver — un client, un écran, un réglage — et <b>« Me guider »</b> dans le menu : chaque écran y a sa visite, bouton par bouton.</p><p>Les dossiers de l\'exemple restent tant que tu veux ; ils s\'effacent au premier vrai paquet reçu, ou d\'un clic.</p>',
+      conclusion: '<p>Tu as vu le Cabinet rempli, du portefeuille à la liasse. Retiens : <b>le menu</b> à gauche, <kbd>Ctrl</kbd> <kbd>K</kbd> pour tout trouver — un client, un écran, un réglage —, <b>« Guide-moi »</b> en haut de chaque écran (sa visite, chaque geste pas à pas, son article) et <b>« Me guider »</b> dans le menu, qui rassemble toutes les visites.</p><p>Les dossiers de l\'exemple restent tant que tu veux ; ils s\'effacent au premier vrai paquet reçu, ou d\'un clic.</p>',
       actions: () => [{ id: 'poser-cabinet', label: 'Poser mon cabinet', principal: true },
         { id: 'rester', label: 'Continuer à explorer l\'exemple', detail: 'Les dossiers fictifs restent jusqu\'à ce que tu les effaces' }],
       etapes: [
@@ -559,6 +578,9 @@
           texte: 'Ce bandeau le rappelle tant que l\'exemple est là. Rien de ce que tu fais dessus ne compte, et tes vrais dossiers ne sont jamais touchés. <b>« Quitter l\'exemple »</b> les retire d\'un clic.' },
         { page: '#/dossiers', cible: '.sidebar nav', cote: 'droite', titre: 'Le menu',
           texte: 'Les dossiers, les relances, les échéances, l\'export d\'écritures, la production, les réglages — et <b>« Me guider »</b>. Au clavier, <kbd>Ctrl</kbd> <kbd>K</kbd> trouve un client, un écran ou un réglage de n\'importe où.' },
+        // « Guide-moi » (10.14.1, S-03) : l'assistant à portée de main, au même endroit sur chaque écran.
+        { page: '#/dossiers', cible: '#guide-moi', cote: 'dessous', titre: 'Guide-moi, sur chaque écran',
+          texte: 'En haut de chaque écran, <b>« Guide-moi »</b> liste tout ce qu\'on peut y faire : la visite de l\'écran, chaque geste montré <b>pas à pas sur ton vrai écran</b>, et l\'article qui l\'explique. Toujours au même endroit : c\'est là qu\'il faut cliquer quand tu ne sais plus.' },
         // — Le portefeuille
         { chapitre: 'Le portefeuille', couleur: 'vendre', page: '#/dossiers', cible: '#view .stats', cote: 'dessous', titre: 'Les chiffres du portefeuille',
           texte: 'Combien de clients, combien sur SkanFact, combien sont à jour, combien sont en retard. <b>Chaque carte s\'ouvre</b> sur la liste qu\'elle résume.' },
@@ -772,7 +794,7 @@
 
     let paquetsAvant = 0;
     visite({
-      id: 'recevoir-paquet', theme: 'recevoir', type: 'faire', duree: '1 min', page: '#/dossiers',
+      id: 'recevoir-paquet', theme: 'recevoir', type: 'faire', duree: '1 min', page: '#/dossiers', pages: ['dossiers', 'dossier-paquets'],
       titre: 'Recevoir le paquet d\'un client',
       resume: 'Le fichier du mois qu\'un client t\'envoie depuis SkanFact : vérifié, rangé, prêt à lire.',
       mots: ['paquet', 'skanpack', 'importer', 'recevoir', 'mail', 'glisser'],
@@ -790,12 +812,12 @@
     });
 
     visite({
-      id: 'saisir-piece', theme: 'saisir', type: 'faire', duree: '2 min',
-      page: dans('hors', 'comptabilite/saisie'),
+      id: 'saisir-piece', theme: 'saisir', type: 'faire', duree: '2 min', pages: ['compta'],
+      page: dans('saisie', 'comptabilite/saisie'),
       titre: 'Saisir une pièce',
       resume: 'Une pièce tapée au clavier : la date, le journal, les lignes, le solde, puis le brouillard.',
       mots: ['saisir', 'saisie', 'ecriture', 'piece', 'clavier', 'grille', 'brouillard'],
-      si: () => !!ctx.dossier('hors'), manque: DOSSIER_MANQUE.hors,
+      si: () => !!ctx.dossier('saisie'), manque: DOSSIER_MANQUE.saisie,
       suite: ['page-compta-saisie', 'page-compta-journal'],
       // Une écriture de plus dans le livre OUVERT, comptée à l'étape « Enregistrer » : à l'entrée de la
       // visite, le livre du dossier n'est peut-être pas encore lu (10.14.1).
@@ -805,15 +827,15 @@
       bravo: 'Ta pièce est enregistrée',
       conclusion: 'Elle est en brouillard : elle se corrige encore. Tu la valideras seule, ou par lot avec les autres — elle recevra alors son numéro.',
       etapes: [
-        { page: dans('hors', 'comptabilite/saisie'), cible: '#sa-date', cote: 'droite', faire: 'valeur', bouton: 'Suivant',
+        { page: dans('saisie', 'comptabilite/saisie'), cible: '#sa-date', cote: 'droite', faire: 'valeur', bouton: 'Suivant',
           titre: 'La date', texte: 'Le jour seul suffit : le mois et l\'année viennent de l\'exercice.', action: 'Tape le jour de la pièce, puis Entrée.', essai: { taper: '15' } },
-        { page: dans('hors', 'comptabilite/saisie'), cible: '#sa-journal', cote: 'droite', titre: 'Le journal',
+        { page: dans('saisie', 'comptabilite/saisie'), cible: '#sa-journal', cote: 'droite', titre: 'Le journal',
           texte: 'Achats, ventes, banque, opérations diverses : le journal range la pièce. Le Cabinet propose celui que tu as utilisé en dernier.' },
-        { page: dans('hors', 'comptabilite/saisie'), cible: '#sa-libelle', cote: 'droite', faire: 'valeur', bouton: 'Suivant',
+        { page: dans('saisie', 'comptabilite/saisie'), cible: '#sa-libelle', cote: 'droite', faire: 'valeur', bouton: 'Suivant',
           titre: 'Le libellé', texte: 'Ce que dit la pièce : il se reporte sur chaque ligne.', action: 'Tape le libellé, puis Entrée pour descendre aux lignes.', essai: { taper: 'Loyer du mois' } },
-        { page: dans('hors', 'comptabilite/saisie'), cible: ['#sa-lignes', '#c-livres .panel'], cote: 'dessus', titre: 'Les lignes',
+        { page: dans('saisie', 'comptabilite/saisie'), cible: ['#sa-lignes', '#c-livres .panel'], cote: 'dessus', titre: 'Les lignes',
           texte: 'Un compte (tape ses premiers chiffres), un montant au débit ou au crédit. <b>Tab sur la dernière ligne solde la pièce</b> : le Cabinet pose l\'écart dans la bonne colonne.' },
-        { page: dans('hors', 'comptabilite/saisie'), cible: '#sa-ok', cote: 'dessus', faire: 'clic',
+        { page: dans('saisie', 'comptabilite/saisie'), cible: '#sa-ok', cote: 'dessus', faire: 'clic',
           avant: () => { ecrituresAvant = nbEcritures(); }, fait: () => ecrituresAvant >= 0 && nbEcritures() > ecrituresAvant,
           titre: 'Enregistrer en brouillard', texte: 'Le bouton reste éteint tant que la pièce ne tombe pas juste — et il dit pourquoi, juste au-dessus de lui. En brouillard, la pièce se corrige encore : elle n\'a pas de numéro.', action: 'Clique sur <b>« Enregistrer en brouillard »</b>.', essai: { clic: true } }
       ]
@@ -845,7 +867,7 @@
     });
 
     visite({
-      id: 'declarer-tva', theme: 'declarer', type: 'faire', duree: '2 min',
+      id: 'declarer-tva', theme: 'declarer', type: 'faire', duree: '2 min', pages: ['compta'],
       sansGeste: 'Passer la déclaration écrit une pièce dans le livre : on la décide, on ne la fait pas pour voir.',
       page: dans('livre', 'comptabilite/declaration'),
       titre: 'Déclarer la TVA du mois',
@@ -864,7 +886,7 @@
     });
 
     visite({
-      id: 'rapprocher', theme: 'saisir', type: 'faire', duree: '2 min',
+      id: 'rapprocher', theme: 'saisir', type: 'faire', duree: '2 min', pages: ['compta'],
       page: dans('livre', 'comptabilite/banque'),
       titre: 'Rapprocher la banque',
       resume: 'Le relevé importé, et chaque ligne rapprochée de son écriture.',
@@ -901,7 +923,7 @@
     });
 
     visite({
-      id: 'cloturer', theme: 'declarer', type: 'faire', duree: '2 min',
+      id: 'cloturer', theme: 'declarer', type: 'faire', duree: '2 min', pages: ['compta'],
       sansGeste: 'Clôturer fige un exercice : un geste irréversible ne se fait jamais par réflexe, dans une visite.',
       page: dans('livre', 'comptabilite/exercice'),
       titre: 'Clôturer un exercice',
@@ -1089,18 +1111,18 @@
     visite({
       id: 'valider-lot', theme: 'saisir', type: 'faire', duree: '1 min',
       sansGeste: 'Valider donne un numéro définitif : une validée ne se défait plus, elle se contre-passe.',
-      page: dans('hors', 'comptabilite/saisie'),
+      page: dans('saisie', 'comptabilite/saisie'),
       titre: 'Valider le brouillard',
       resume: 'Les pièces en brouillard reçoivent leur numéro — une par une, ou par lot.',
       mots: ['valider', 'lot', 'brouillard', 'numero', 'definitif'],
-      si: () => !!ctx.dossier('hors'), manque: DOSSIER_MANQUE.hors,
+      si: () => !!ctx.dossier('saisie'), manque: DOSSIER_MANQUE.saisie,
       suite: ['contre-passer', 'page-compta-journal'],
       bravo: 'Tu sais valider',
       conclusion: 'Une pièce refusée au milieu d\'un lot ne consomme aucun numéro, et elle est nommée avec son motif : la suite des numéros reste 1, 2, 3… sans trou.',
       etapes: [
-        { page: dans('hors', 'comptabilite/saisie'), cible: ['#sa-okvalider', '#sa-ok'], cote: 'dessus', titre: 'Valider en enregistrant',
+        { page: dans('saisie', 'comptabilite/saisie'), cible: ['#sa-okvalider', '#sa-ok'], cote: 'dessus', titre: 'Valider en enregistrant',
           texte: '<b>« Enregistrer et valider »</b> donne son numéro à la pièce qu\'on vient de taper. Le numéro naît à la validation, et ne bouge plus.' },
-        { page: dans('hors', 'comptabilite/saisie'), cible: ['[data-lot-journal]', '[data-lot-mois]', '#c-livres .panel'], cote: 'dessus', titre: 'Valider par lot',
+        { page: dans('saisie', 'comptabilite/saisie'), cible: ['[data-lot-journal]', '[data-lot-mois]', '#c-livres .panel'], cote: 'dessus', titre: 'Valider par lot',
           texte: 'Sous le brouillard, un bouton par journal et par mois : il valide <b>toutes les pièces justes</b> d\'un coup. Celles qui ne tombent pas juste restent en brouillard, et le compte rendu dit pourquoi.' }
       ]
     });
@@ -1128,18 +1150,18 @@
 
     visite({
       id: 'abonnement', theme: 'saisir', type: 'faire', duree: '1 min',
-      page: dans('hors', 'comptabilite/saisie'),
+      page: dans('saisie', 'comptabilite/saisie'),
       titre: 'Programmer une écriture qui revient',
       resume: 'Un loyer, un abonnement : écrit une fois, généré chaque mois en brouillard.',
       mots: ['abonnement', 'loyer', 'mensuel', 'recurrent', 'revient', 'chaque mois', 'guide'],
-      si: () => !!ctx.dossier('hors'), manque: DOSSIER_MANQUE.hors,
+      si: () => !!ctx.dossier('saisie'), manque: DOSSIER_MANQUE.saisie,
       suite: ['guide-saisie', 'valider-lot'],
       bravo: 'Tu sais programmer un abonnement',
       conclusion: 'Chaque mois dû arrive en brouillard, jamais validé d\'office : une écriture que personne n\'a regardée n\'engage pas ta signature. Générer deux fois ne double rien.',
       etapes: [
-        { page: dans('hors', 'comptabilite/saisie'), cible: ['#ab-new', '#ab-guides'], cote: 'dessus', titre: 'Les abonnements',
+        { page: dans('saisie', 'comptabilite/saisie'), cible: ['#ab-new', '#ab-guides'], cote: 'dessus', titre: 'Les abonnements',
           texte: 'Un abonnement part d\'un <b>guide d\'écritures</b> (le loyer : 613 au débit, la banque au crédit) et d\'un montant. Tu dis depuis quand, et jusqu\'à quand.' },
-        { page: dans('hors', 'comptabilite/saisie'), cible: ['#ab-gen', '#ab-new'], cote: 'dessus', faire: 'clic', facultatif: true,
+        { page: dans('saisie', 'comptabilite/saisie'), cible: ['#ab-gen', '#ab-new'], cote: 'dessus', faire: 'clic', facultatif: true,
           titre: 'Générer ce qui manque', texte: 'Les mois dus arrivent en brouillard, datés : tu les relis, puis tu valides.',
           action: 'Clique sur le bouton, puis relis le brouillard.', essai: { clic: true } }
       ]
@@ -1164,16 +1186,16 @@
 
     visite({
       id: 'justificatif', theme: 'saisir', type: 'faire', duree: '1 min',
-      page: dans('hors', 'comptabilite/saisie'),
+      page: dans('saisie', 'comptabilite/saisie'),
       titre: 'Joindre un justificatif à une pièce',
       resume: 'Le scan de la facture, copié dans le dossier du client et rattaché à l\'écriture.',
       mots: ['justificatif', 'piece jointe', 'scan', 'facture', 'joindre', 'pdf'],
-      si: () => !!ctx.dossier('hors'), manque: DOSSIER_MANQUE.hors,
+      si: () => !!ctx.dossier('saisie'), manque: DOSSIER_MANQUE.saisie,
       suite: ['saisir-piece'],
       bravo: 'Tu sais joindre un justificatif',
       conclusion: 'Le fichier est COPIÉ dans le dossier du client : il suit le dossier quand tu changes d\'ordinateur. Une validée peut encore recevoir son justificatif — ça ne change aucun chiffre.',
       etapes: [
-        { page: dans('hors', 'comptabilite/saisie'), cible: '#sa-joindre', cote: 'gauche', faire: 'clic', facultatif: true,
+        { page: dans('saisie', 'comptabilite/saisie'), cible: '#sa-joindre', cote: 'gauche', faire: 'clic', facultatif: true,
           titre: 'Joindre', texte: 'Pendant la saisie de la pièce, avant ou après avoir tapé ses lignes.',
           action: 'Clique sur <b>« Joindre un justificatif… »</b> et choisis le fichier.', essai: { clic: true } }
       ]
@@ -1304,22 +1326,22 @@
 
     visite({
       id: 'paie-cabinet', theme: 'saisir', type: 'faire', duree: '2 min',
-      page: dans('hors', 'comptabilite/paie'),
+      page: dans('saisie', 'comptabilite/paie'),
       titre: 'Faire la paie d\'un client',
       resume: 'Ses salariés, les bulletins du mois, puis l\'écriture de paie en brouillard.',
       mots: ['paie', 'salaire', 'bulletin', 'salarie', 'cnss', 'irpp', 'employe'],
-      si: () => !!ctx.dossier('hors'), manque: DOSSIER_MANQUE.hors,
+      si: () => !!ctx.dossier('saisie'), manque: DOSSIER_MANQUE.saisie,
       suite: ['cnss', 'page-compta-paie'],
       bravo: 'Tu sais faire la paie',
       conclusion: 'Un bulletin garde une copie de son calcul : changer un barème ne réécrit jamais un bulletin déjà remis. Une fois l\'écriture passée, un bulletin ne se modifie plus — on contre-passe, puis on refait.',
       etapes: [
-        { page: dans('hors', 'comptabilite/paie'), cible: '#pa-mois', cote: 'dessous', titre: 'Le mois',
+        { page: dans('saisie', 'comptabilite/paie'), cible: '#pa-mois', cote: 'dessous', titre: 'Le mois',
           texte: 'La page s\'ouvre sur le dernier mois qui a des bulletins. Un salarié sans bulletin ce mois-là est nommé.' },
-        { page: dans('hors', 'comptabilite/paie'), cible: ['#pa-salarie', '#pa-salarie2'], cote: 'dessous', titre: 'Les salariés',
+        { page: dans('saisie', 'comptabilite/paie'), cible: ['#pa-salarie', '#pa-salarie2'], cote: 'dessous', titre: 'Les salariés',
           texte: 'Son nom, son numéro CNSS (signalé s\'il manque, jamais bloquant), son poste, son brut.' },
-        { page: dans('hors', 'comptabilite/paie'), cible: ['#pa-bulletin', '#pa-bulletin2'], cote: 'dessous', titre: 'Les bulletins',
+        { page: dans('saisie', 'comptabilite/paie'), cible: ['#pa-bulletin', '#pa-bulletin2'], cote: 'dessous', titre: 'Les bulletins',
           texte: 'Le net se recalcule pendant la frappe. Un brut négatif est refusé en nommant le champ.' },
-        { page: dans('hors', 'comptabilite/paie'), cible: '#pa-ecrire', cote: 'dessous', faire: 'clic', facultatif: true,
+        { page: dans('saisie', 'comptabilite/paie'), cible: '#pa-ecrire', cote: 'dessous', faire: 'clic', facultatif: true,
           titre: 'Passer l\'écriture de paie', texte: 'En brouillard, au dernier jour du mois. Le bouton s\'éteint une fois passée, et dit pourquoi.',
           action: 'Clique sur <b>« Passer l\'écriture de paie »</b>.', essai: { clic: true } }
       ]
@@ -1328,34 +1350,34 @@
     visite({
       id: 'cnss', theme: 'declarer', type: 'faire', duree: '1 min',
       sansGeste: 'La CNSS du trimestre est une déclaration : on la prépare au bon trimestre, pas pour voir.',
-      page: dans('hors', 'comptabilite/paie'),
+      page: dans('saisie', 'comptabilite/paie'),
       titre: 'Préparer la CNSS du trimestre',
       resume: 'La déclaration trimestrielle des salaires, tirée des bulletins.',
       mots: ['cnss', 'trimestre', 'declaration sociale', 'salaires', 'employeur'],
-      si: () => !!ctx.dossier('hors'), manque: DOSSIER_MANQUE.hors,
+      si: () => !!ctx.dossier('saisie'), manque: DOSSIER_MANQUE.saisie,
       suite: ['paie-cabinet', 'page-echeances'],
       bravo: 'Tu connais la CNSS',
       conclusion: 'Le Cabinet ne dépose rien : il prépare les montants, un salarié par ligne. Un trimestre se déclare une fois TERMINÉ.',
       etapes: [
-        { page: dans('hors', 'comptabilite/paie'), cible: ['#pa-trim', '#c-livres .panel'], cote: 'dessous', titre: 'Le trimestre',
+        { page: dans('saisie', 'comptabilite/paie'), cible: ['#pa-trim', '#c-livres .panel'], cote: 'dessous', titre: 'Le trimestre',
           texte: 'Choisis le trimestre : l\'assiette et les cotisations de chaque salarié, et l\'échéance au 15 du mois qui suit.' }
       ]
     });
 
     visite({
       id: 'biens', theme: 'saisir', type: 'faire', duree: '1 min',
-      page: dans('hors', 'comptabilite/immobilisations'),
+      page: dans('saisie', 'comptabilite/immobilisations'),
       titre: 'Ajouter un bien et ses dotations',
       resume: 'Un bien que le client garde plusieurs années : son plan, puis ses dotations en fin d\'exercice.',
       mots: ['immobilisation', 'bien', 'amortissement', 'dotation', 'vnc', 'cession', 'materiel'],
-      si: () => !!ctx.dossier('hors'), manque: DOSSIER_MANQUE.hors,
+      si: () => !!ctx.dossier('saisie'), manque: DOSSIER_MANQUE.saisie,
       suite: ['inventaire', 'cloturer'],
       bravo: 'Tu sais tenir les biens',
       conclusion: 'Un dégressif sans taux est refusé en nommant le taux : aucun coefficient n\'est écrit dans le code. Une cession sort l\'actif ; son prix arrive par la facture ou le relevé.',
       etapes: [
-        { page: dans('hors', 'comptabilite/immobilisations'), cible: ['#im-neuf', '#im-neuf2'], cote: 'dessous', titre: 'Ajouter un bien',
+        { page: dans('saisie', 'comptabilite/immobilisations'), cible: ['#im-neuf', '#im-neuf2'], cote: 'dessous', titre: 'Ajouter un bien',
           texte: 'Sa valeur, sa mise en service, sa durée, sa méthode : le plan s\'affiche pendant la saisie.' },
-        { page: dans('hors', 'comptabilite/immobilisations'), cible: '#im-ecrire', cote: 'dessous', faire: 'clic', facultatif: true,
+        { page: dans('saisie', 'comptabilite/immobilisations'), cible: '#im-ecrire', cote: 'dessous', faire: 'clic', facultatif: true,
           titre: 'Les écritures d\'inventaire', texte: 'Les dotations de l\'exercice, en brouillard au 31 décembre. Elles se réclament au dernier mois ; le bouton les prépare plus tôt si tu veux.',
           action: 'Clique sur le bouton des écritures d\'inventaire.', essai: { clic: true } }
       ]
@@ -1363,25 +1385,25 @@
 
     visite({
       id: 'inventaire', theme: 'saisir', type: 'faire', duree: '1 min',
-      page: dans('hors', 'comptabilite/inventaire'),
+      page: dans('saisie', 'comptabilite/inventaire'),
       titre: 'Saisir l\'inventaire de fin d\'année',
       resume: 'Le stock compté, collé depuis un tableur, et la variation écrite dans le bon sens.',
       mots: ['inventaire', 'stock', 'variation', 'compter', 'fin annee'],
-      si: () => !!ctx.dossier('hors'), manque: DOSSIER_MANQUE.hors,
+      si: () => !!ctx.dossier('saisie'), manque: DOSSIER_MANQUE.saisie,
       suite: ['biens', 'cloturer'],
       bravo: 'Tu sais saisir l\'inventaire',
       conclusion: 'Un inventaire sans ligne ne dit pas que le stock est vide : il dit que rien n\'a été compté. Une variation nulle ne produit aucune écriture.',
       etapes: [
-        { page: dans('hors', 'comptabilite/inventaire'), cible: ['#iv-saisir', '#iv-saisir2'], cote: 'dessous', titre: 'Saisir l\'inventaire',
+        { page: dans('saisie', 'comptabilite/inventaire'), cible: ['#iv-saisir', '#iv-saisir2'], cote: 'dessous', titre: 'Saisir l\'inventaire',
           texte: 'Colle les lignes depuis un tableur : référence, désignation, quantité, coût. Une cellule illisible est refusée en nommant la ligne.' },
-        { page: dans('hors', 'comptabilite/inventaire'), cible: '#iv-ecrire', cote: 'dessous', faire: 'clic', facultatif: true,
+        { page: dans('saisie', 'comptabilite/inventaire'), cible: '#iv-ecrire', cote: 'dessous', faire: 'clic', facultatif: true,
           titre: 'Écrire la variation de stock', texte: 'En brouillard, dans le bon sens : un stock qui baisse est une charge.',
           action: 'Clique sur <b>« Écrire la variation de stock »</b>.', essai: { clic: true } }
       ]
     });
 
     visite({
-      id: 'reviser', theme: 'declarer', type: 'faire', duree: '2 min',
+      id: 'reviser', theme: 'declarer', type: 'faire', duree: '2 min', pages: ['compta'],
       page: dans('livre', 'comptabilite/revision'),
       titre: 'Réviser un dossier',
       resume: 'Cycle par cycle, compte par compte : signer, noter, questionner, puis arrêter.',
@@ -1606,7 +1628,7 @@
         si: sorte ? () => !!(cleDePage() === k || ctx.dossier(sorte)) : null,
         manque: sorte ? DOSSIER_MANQUE[sorte] : null,
         bravo: 'Tu connais cet écran',
-        conclusion: 'Chaque bouton a son explication. Tu retrouveras cette visite dans « Me guider », et le détail dans l\'Aide.',
+        conclusion: 'Chaque bouton a son explication. Tu retrouveras cette visite dans « Guide-moi », en haut de l\'écran, avec son article et tout ce qu\'on peut y faire.',
         etapes: [
           { page: ouvrir, titre: P.titre, texte: P.texte },
           { page: ouvrir, titre: P.titre, deplier: () => ctx.Visite.etapesDeLaVue({ onglets: true }) }

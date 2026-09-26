@@ -634,7 +634,9 @@ t('9.4.8 : un geste rare vit dans le menu, un manque porte le bouton qui le comb
   // aurait perdu `aria-expanded` ou `data-rowmenu` au premier ajustement (7.29.0).
   assert.ok(/const cellule = \(id, avant\) => `<td class="actions row-actions">\$\{avant \|\| ''\}\$\{bouton\(id, 'Actions'\)\}<\/td>`;/.test(rm),
     'la cellule doit passer par `bouton`, sinon les deux divergent');
-  assert.ok(/bouton, brancherMenus \};/.test(rm), 'et `bouton` doit être exporté');
+  // Retourné en 10.14.1 : l'export a gagné `ouvrir` et `placerMenu` (« Guide-moi », S-03) ; la règle
+  // est que `bouton` en FASSE partie, pas qu'il soit l'avant-dernier.
+  assert.ok(/global\.RowMenu = \{[^}]*\bbouton\b[^}]*\};/.test(rm), 'et `bouton` doit être exporté');
 
   // UNE seule table d'actions par racine : `bindRowMenus` écrase le gestionnaire précédent, donc
   // une seconde table rendrait la première parfaitement inerte, sans une erreur nulle part.

@@ -152,9 +152,11 @@
     // Cette phrase ne se lit que PENDANT une visite, et le bandeau retire alors son bouton « Visite
     // guidée » (on y est déjà) : elle ne cite que ce qui est à l'écran (10.14.1).
     { sel: '.demo-banner', titre: "Tu es dans l'exemple", texte: "Une entreprise inventée, pleine de données : essaie tout, rien de ce que tu fais ici ne compte, et tes vraies données sont à l'abri. « Quitter l'exemple » te les rend quand tu veux." },
-    { sel: '#guide-band', titre: "La visite de cette page", texte: "Proposée les trois premières fois que tu ouvres une page. Tu la retrouves ensuite dans « Me guider »." },
+    // L'invitation « Première fois sur cette page ? » (10.14.1, S-03) s'accroche à « Guide-moi » : une
+    // visite la referme en partant, mais l'instrument de couverture la voit.
+    { sel: '#guide-appel', titre: "La visite de cette page", texte: "Proposée les trois premières fois que tu ouvres une page. Tu la retrouves ensuite dans « Guide-moi », avec tout ce qu'on peut faire ici." },
     // Dit tel qu'il EST : le bouton vert nommé, ou son absence (`texteDuHaut`, 10.14.1).
-    { sel: '.page-head', titre: "Le haut de la page", texte: el => M.texteDuHaut(el, el.querySelector('.help-link') ? "« Comprendre cette page » ouvre son article d'Aide." : '') },
+    { sel: '.page-head', titre: "Le haut de la page", texte: el => M.texteDuHaut(el, el.querySelector('.guide-moi') ? "« Guide-moi » liste tout ce qu'on peut faire ici : la visite de la page, chaque geste montré pas à pas, et l'article qui l'explique." : '') },
     { sel: '#bal-vues', titre: "Les quatre vues de la balance", texte: "La même balance, lue de quatre façons." },
     { sel: '.tabs', titre: "Les onglets", texte: "La page se range en onglets. Je vais te les ouvrir un par un ; « Passer au chapitre suivant » en saute un." },
     { sel: '.filters', titre: "Retrouver une ligne", texte: "La recherche lit le numéro, le nom et l'objet pendant que tu tapes ; les listes filtrent par statut et par année. « n sur N » dit combien de lignes tu gardes." },
@@ -234,14 +236,14 @@
 
   // ---------- partout ----------
   b('#back', "Revient à la page d'où tu viens — elle est nommée sur le bouton.", { nom: 'Retour' });
-  b('a.page-help', "Ouvre l'article d'Aide de cette page : le pourquoi, les règles, les pièges.");
+  b('#guide-moi', "Liste tout ce qu'on peut faire sur cette page : sa visite, chaque geste montré pas à pas sur ton vrai écran, et l'article qui l'explique. Il est au même endroit sur chaque page.", { nom: 'Guide-moi' });
   b('#reset-f', "Efface la recherche et tous les filtres : toute la liste revient.");
   b('[data-pg="prev"], [data-pg="next"]', "Passe à la page précédente ou suivante de la liste.", { nom: 'Page précédente / suivante', cle: 'pager' });
   b('[data-pg="size"]', "Combien de lignes tu vois à la fois. Les totaux, eux, portent toujours sur toute la sélection.", { nom: 'Lignes par page' });
   b('[data-sort]', "Un clic trie la liste par cette colonne ; un second clic inverse l'ordre.", { nom: 'Les en-têtes ⇅', cle: 'tri' });
   b('[data-rowmenu]', null, { rowmenu: true, nom: 'Actions', cle: 'rowmenu' });
-  b('#gb-go', "Lance la visite de cette page : chaque bloc, chaque bouton, en une ou deux minutes.");
-  b('#gb-non', "Ne plus proposer la visite de cette page. Elle reste dans « Me guider ».");
+  b('#ga-go', "Lance la visite de cette page : à quoi elle sert, puis chaque bloc et chaque bouton, en une ou deux minutes.");
+  b('#ga-non', "Ne plus proposer la visite de cette page. Elle reste dans « Guide-moi », en haut de la page.");
   b('#demo-visite', "Le grand tour de SkanFact sur cet exemple, en chapitres : tu vois chaque page remplie, sans rien risquer.");
   b('#demo-out', "Quitte l'exemple : tes données d'avant reviennent (elles avaient été mises de côté) ; s'il n'y en avait pas, tu repars d'une entreprise vide.");
   b('#todo-toggle', "Replie ou déplie la liste « À faire ».", { nom: 'À faire' });
@@ -768,6 +770,12 @@
     const $ = s => document.querySelector(s);
     const data = () => ctx.data();
     const hash = () => location.hash;
+    // « Ce geste se fait-il sur la pièce OUVERTE ? » (10.14.1, S-03) — la MÊME règle que celle qui choisit
+    // sa cible : `ctx.premier` prend la pièce ouverte quand elle convient. « Guide-moi » ne propose alors,
+    // sur une fiche, que ce qui s'y fait (`surLaPage`) : « Émettre » sur un brouillon de facture, pas sur
+    // un devis.
+    const ici = sorte => !!ctx.premier && ctx.premier(sorte) === hash();
+    const surLaPiece = (page, sorte) => cle => cle !== page || ici(sorte);
     const fenetre = mot => [...document.querySelectorAll('#modal-root .modal')].some(m => { const t = m.querySelector('h2'); return !!(t && t.textContent.includes(mot)); });
     const aucuneFenetre = () => !document.querySelector('#modal-root .modal');
     const combo = nom => `[data-combo="${nom}"] .combo-btn`;
@@ -917,10 +925,13 @@
           texte: 'SkanFact sauvegarde chaque jour. Mais la <b>copie automatique</b> vers une clé USB, iCloud ou OneDrive est l\'étape que tout le monde saute — et la seule dont l\'absence coûte tout.' },
         { page: '#/parametres', avant: onglet('#set-tabs', 'app'), cible: '#p-maj', cote: 'dessus', titre: 'Les mises à jour',
           texte: 'SkanFact se met à jour tout seul, en arrière-plan, et <b>n\'installe rien sans ton accord</b> : une fenêtre te propose de redémarrer quand une version est prête. Tes données ne bougent pas.' },
-        { chapitre: 'Pour la suite', couleur: 'commencer', page: '#/dashboard', cible: '.sidebar-foot a[data-route="guide"]', cote: 'droite', titre: 'Me guider, toujours là',
-          texte: 'Chaque page a sa visite, <b>bouton par bouton</b>, et chaque geste se fait guidé, clic par clic — les gestes du métier comme les gestes techniques : répondre à ton comptable, retrouver un fichier, installer une mise à jour, revenir à une sauvegarde.' },
+        // « Guide-moi » (10.14.1, S-03) : l'assistant à portée de main, au même endroit sur chaque page.
+        { chapitre: 'Pour la suite', couleur: 'commencer', page: '#/dashboard', cible: '#guide-moi', cote: 'dessous', titre: 'Guide-moi, sur chaque page',
+          texte: 'En haut de chaque page, <b>« Guide-moi »</b> liste tout ce qu\'on peut y faire : la visite de la page, chaque geste montré <b>pas à pas sur ton vrai écran</b>, et l\'article qui l\'explique. Il est toujours au même endroit : c\'est là qu\'il faut cliquer quand tu ne sais plus.' },
+        { page: '#/dashboard', cible: '.sidebar-foot a[data-route="guide"]', cote: 'droite', titre: 'Me guider : toutes les visites',
+          texte: 'Toutes les visites d\'un coup, rangées par ce que tu veux faire : la découverte, chaque page <b>bouton par bouton</b>, et chaque geste guidé clic par clic — ceux du métier comme les techniques (répondre à ton comptable, retrouver un fichier, installer une mise à jour, revenir à une sauvegarde).' },
         { page: '#/dashboard', cible: '.sidebar-foot a[data-route="aide"]', cote: 'droite', titre: 'L\'Aide',
-          texte: 'Pour comprendre plus en détail : la facturation, la TVA, la routine du mois. Sur chaque page, <b>« Comprendre cette page »</b> ouvre le bon article, et chaque petit <b>i</b> explique le mot à côté.' }
+          texte: 'Pour comprendre plus en détail : la facturation, la TVA, la routine du mois. Chaque page a son article (la dernière ligne de <b>« Guide-moi »</b>), et chaque petit <b>i</b> explique le mot à côté.' }
       ]
     });
 
@@ -1010,7 +1021,7 @@
     });
 
     visite({
-      id: 'premier-client', theme: 'fichiers', type: 'faire', duree: '1 min', page: '#/clients',
+      id: 'premier-client', theme: 'fichiers', type: 'faire', duree: '1 min', page: '#/clients', pages: ['clients', 'dashboard'],
       titre: 'Ajouter un client',
       resume: 'La fiche de celui à qui tu vends : son nom, son matricule, son adresse.',
       mots: ['client', 'ajouter', 'nouveau', 'fiche', 'creer'],
@@ -1038,7 +1049,7 @@
     });
 
     visite({
-      id: 'premier-devis', theme: 'ventes', type: 'faire', duree: '4 min', page: '#/devis',
+      id: 'premier-devis', theme: 'ventes', type: 'faire', duree: '4 min', page: '#/devis', pages: ['devis', 'dashboard'],
       titre: 'Faire un devis',
       resume: 'Du client à l\'aperçu : les lignes, les prix, la TVA, et l\'enregistrement.',
       mots: ['devis', 'proposition', 'offre', 'prix', 'premier', 'faire un devis'],
@@ -1080,12 +1091,14 @@
     });
 
     visite({
-      id: 'envoyer', theme: 'ventes', type: 'faire', duree: '1 min', page: () => ctx.premier('devisBrouillon') || ctx.premier('devis'),
+      // La pièce OUVERTE d'abord (un devis, une facture ou un avoir émis), sinon un devis (10.14.1).
+      id: 'envoyer', theme: 'ventes', type: 'faire', duree: '1 min', page: () => ctx.premier('pieceAEnvoyer'),
+      pages: ['devis', 'factures', 'doc'], surLaPage: surLaPiece('doc', 'pieceAEnvoyer'),
       titre: 'Envoyer un devis ou une facture',
       resume: 'Le mail est prêt dans ta messagerie, avec le PDF joint : tu relis, tu envoies.',
       mots: ['envoyer', 'mail', 'email', 'pdf', 'client'],
       suite: ['devis-facture'],
-      si: () => !!(ctx.premier('devisBrouillon') || ctx.premier('devis')),
+      si: () => !!ctx.premier('pieceAEnvoyer'),
       manque: { texte: 'Il te faut d\'abord un devis à envoyer.', visite: 'premier-devis' },
       // SkanFact PRÉPARE le message ; c'est ta messagerie qui l'envoie. La fin le dit tel quel, et ne
       // félicite qu'un envoi noté sur la pièce (10.14.1) — « Annuler » ferme aussi la fenêtre.
@@ -1096,10 +1109,10 @@
       etapes: [
         // 10.14.0 — sur un devis déjà envoyé, l'envoi n'est plus l'étape suivante : il vit dans
         // « Plus ▾ » (la barre tient ainsi sur une rangée). La visite ouvre d'abord le menu.
-        { page: () => ctx.premier('devisBrouillon') || ctx.premier('devis'), si: () => !!($('#more-list #email')), cible: '#more-btn', cote: 'dessous', faire: 'clic',
+        { page: () => ctx.premier('pieceAEnvoyer'), si: () => !!($('#more-list #email')), cible: '#more-btn', cote: 'dessous', faire: 'clic',
           titre: 'L\'envoi est dans « Plus »', texte: 'Ce devis est déjà parti : renvoyer n\'est plus l\'étape suivante, alors le geste attend dans le menu.',
           action: 'Clique sur <b>« Plus ▾ »</b>.', fait: () => { const l = $('#more-list'); return !!(l && !l.hidden); }, essai: { clic: true } },
-        { page: () => ctx.premier('devisBrouillon') || ctx.premier('devis'), cible: '#email', cote: 'dessous', faire: 'clic',
+        { page: () => ctx.premier('pieceAEnvoyer'), cible: '#email', cote: 'dessous', faire: 'clic',
           titre: 'Envoyer par mail', texte: 'SkanFact prépare le mail dans ta messagerie, avec le PDF joint et un texte poli (que tu changes dans Paramètres → Envois).',
           // Fait quand une fenêtre s'ouvre : « Annuler » dans la question qui suit y ramène (10.14.1).
           action: 'Clique sur <b>« Email »</b>.', fait: () => !aucuneFenetre(), essai: { clic: true } },
@@ -1123,12 +1136,13 @@
     });
 
     visite({
-      id: 'devis-facture', theme: 'ventes', type: 'faire', duree: '2 min', page: () => ctx.premier('devisAccepte') || ctx.premier('devis'),
+      id: 'devis-facture', theme: 'ventes', type: 'faire', duree: '2 min', page: () => ctx.premier('devisAFacturer'),
+      pages: ['devis', 'doc'], surLaPage: surLaPiece('doc', 'devisAFacturer'),
       titre: 'Transformer un devis en facture',
       resume: 'Le client a dit oui : la facture se fabrique sans rien ressaisir.',
       mots: ['facturer', 'transformer', 'convertir', 'devis accepte', 'facture'],
       suite: ['emettre', 'encaisser'],
-      si: () => !!(ctx.premier('devisAccepte') || ctx.premier('devis')),
+      si: () => !!ctx.premier('devisAFacturer'),
       manque: { texte: 'Il te faut d\'abord un devis — accepté par ton client, de préférence.', visite: 'premier-devis' },
       // Une facture de plus : jugée à la FIN, pour que l'étape qui montre le brouillon se lise (10.14.1).
       mesure: () => nbType('facture'), preuve: n0 => nbType('facture') > n0,
@@ -1136,7 +1150,7 @@
       bravo: 'Ta facture est prête',
       conclusion: 'Elle est en brouillon : relis-la, puis <b>« Émettre la facture »</b> lui donne son numéro définitif.',
       etapes: [
-        { page: () => ctx.premier('devisAccepte') || ctx.premier('devis'), cible: ['#convert', '#bill-btn'], cote: 'dessous', faire: 'clic',
+        { page: () => ctx.premier('devisAFacturer'), cible: ['#convert', '#bill-btn'], cote: 'dessous', faire: 'clic',
           titre: 'Facturer ce devis', texte: 'Client, lignes, prix : tout est repris. Tu peux aussi facturer un acompte d\'abord (le menu à côté).',
           action: 'Clique sur {bouton}.', fait: () => /^#\/doc\/(new|[^/]+)/.test(hash()) && !!$('#issue'), essai: { clic: true } },
         { cible: '#issue', cote: 'dessous', titre: 'Le brouillon de facture',
@@ -1146,6 +1160,7 @@
 
     visite({
       id: 'emettre', theme: 'ventes', type: 'faire', duree: '1 min', page: () => ctx.premier('factureBrouillon'),
+      pages: ['factures', 'doc'], surLaPage: surLaPiece('doc', 'factureBrouillon'),
       titre: 'Émettre une facture',
       resume: 'Le numéro définitif, le verrou, et le récapitulatif avant.',
       mots: ['emettre', 'facture', 'numero', 'valider'],
@@ -1174,6 +1189,7 @@
 
     visite({
       id: 'encaisser', theme: 'ventes', type: 'faire', duree: '1 min', page: () => ctx.premier('factureOuverte'),
+      pages: ['factures', 'relances', 'dashboard', 'doc'], surLaPage: surLaPiece('doc', 'factureOuverte'),
       titre: 'Enregistrer un paiement',
       resume: 'Ton client a payé : le montant, le mode, la date — la facture suit toute seule.',
       mots: ['paiement', 'encaisser', 'regle', 'payee', 'virement', 'cheque'],
@@ -1195,7 +1211,7 @@
     });
 
     visite({
-      id: 'relancer', theme: 'ventes', type: 'faire', duree: '2 min', page: '#/relances',
+      id: 'relancer', theme: 'ventes', type: 'faire', duree: '2 min', page: '#/relances', pages: ['relances', 'factures', 'dashboard'],
       titre: 'Relancer un client',
       resume: 'Une facture en retard : le mail au bon ton, prêt à partir.',
       mots: ['relance', 'retard', 'impaye', 'rappel'],
@@ -1235,6 +1251,7 @@
 
     visite({
       id: 'avoir', theme: 'ventes', type: 'faire', duree: '1 min', page: () => ctx.premier('factureEmise'),
+      pages: ['factures', 'doc'], surLaPage: surLaPiece('doc', 'factureEmise'),
       titre: 'Corriger une facture par un avoir',
       resume: 'Une facture émise ne se modifie pas : un avoir la corrige.',
       mots: ['avoir', 'corriger', 'annuler', 'erreur', 'remise', 'retour'],
@@ -1302,7 +1319,7 @@
     });
 
     visite({
-      id: 'achat', theme: 'achats', type: 'faire', duree: '3 min', page: '#/achats',
+      id: 'achat', theme: 'achats', type: 'faire', duree: '3 min', page: '#/achats', pages: ['achats', 'fournisseurs', 'fournisseur'],
       titre: 'Saisir une facture d\'achat',
       resume: 'Le justificatif d\'abord, puis le fournisseur, les lignes, la TVA récupérable.',
       mots: ['achat', 'facture fournisseur', 'depense', 'tva deductible', 'justificatif'],
@@ -1359,6 +1376,7 @@
 
     visite({
       id: 'justificatif', theme: 'achats', type: 'faire', duree: '1 min', page: () => ctx.premier('achatSansJustif'),
+      pages: ['achats', 'achat'], surLaPage: surLaPiece('achat', 'achatSansJustif'),
       titre: 'Joindre un justificatif, et le retrouver',
       resume: 'La photo ou le PDF d\'une facture d\'achat : sans lui, ni la charge ni la TVA ne se récupèrent.',
       mots: ['justificatif', 'piece jointe', 'photo', 'scan', 'pdf', 'fichier', 'joindre', 'trombone', 'retrouver'],
@@ -1646,7 +1664,9 @@
       bravo: 'Ton salarié est déclaré',
       conclusion: 'Ses bulletins se calculent à partir de sa fiche. Fais valider le premier par ton comptable.',
       etapes: [
-        { page: '#/paie', cible: ['#emp-first', '#new-emp'], cote: 'dessous', faire: 'clic',
+        // « + Salarié » ne vit que sur l'onglet Salariés (l'en-tête suit l'onglet) : la visite l'ouvre,
+        // et « Guide-moi » range ce geste sous cet onglet au lieu de le promettre sur « Congés ».
+        { page: '#/paie', avant: onglet('#p-tabs', 'salaries'), cible: ['#emp-first', '#new-emp'], cote: 'dessous', faire: 'clic',
           titre: 'Nouveau salarié', texte: '', action: 'Clique sur {bouton}.', fait: () => !!$('#modal-root .modal'), essai: { clic: true } },
         { cible: '#modal-root .modal input[name="name"]', cote: 'droite', faire: 'valeur', titre: 'Son nom', texte: '', action: 'Tape son nom et prénom.', essai: { taper: 'Sami Ben Ali' } },
         { cible: '#modal-root .modal input[name="gross"], #modal-root .modal [name="gross"]', cote: 'droite', titre: 'Son salaire brut', texte: 'Le brut mensuel : les cotisations et l\'impôt se calculent à partir de lui.', facultatif: true },
@@ -1724,7 +1744,7 @@
     });
 
     visite({
-      id: 'lire-stats', theme: 'pilotage', type: 'faire', duree: '2 min', page: '#/stats',
+      id: 'lire-stats', theme: 'pilotage', type: 'faire', duree: '2 min', page: '#/stats', pages: ['stats', 'dashboard'],
       titre: 'Lire mes statistiques',
       resume: 'Ton chiffre d\'affaires comparé à l\'an dernier, sur l\'année, un trimestre ou un mois.',
       mots: ['statistiques', 'chiffre d affaires', 'comparer', 'an dernier', 'evolution', 'periode'],
@@ -1787,7 +1807,7 @@
 
     // ======================================================================= L'APPLICATION ET TES FICHIERS
     visite({
-      id: 'fichiers', theme: 'appli', type: 'faire', duree: '2 min', page: '#/factures',
+      id: 'fichiers', theme: 'appli', type: 'faire', duree: '2 min', page: '#/factures', pages: ['factures', 'devis', 'achats', 'autres', 'dashboard'],
       titre: 'Retrouver un document ou un fichier',
       resume: 'Le PDF d\'une pièce, un fichier joint, un paquet envoyé, tes sauvegardes : où se trouve chacun.',
       mots: ['fichier', 'document', 'pdf', 'retrouver', 'ou est', 'dossier', 'piece jointe', 'sauvegarde', 'exporter', 'imprimer'],
@@ -1897,7 +1917,7 @@
         // Les licences ne concernent que l'éditeur de SkanFact : chez un client, la visite n'existe pas.
         visible: r === 'licences' ? () => !!(ctx.editeur && ctx.editeur()) || nb('licences') > 0 : null,
         bravo: 'Tu connais cette page',
-        conclusion: 'Chaque bouton a son explication. Tu retrouveras cette visite dans « Me guider », et l\'article complet dans « Comprendre cette page ».',
+        conclusion: 'Chaque bouton a son explication. Tu retrouveras cette visite dans « Guide-moi », en haut de la page, avec l\'article complet et tout ce qu\'on peut y faire.',
         etapes: [
           { page: ouvrir, titre: P.titre, texte: P.texte },
           { page: ouvrir, titre: P.titre, deplier: () => ctx.Visite.etapesDeLaVue({ onglets: true }) }

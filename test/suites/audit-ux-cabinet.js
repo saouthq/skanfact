@@ -1783,6 +1783,9 @@ t('Aucune variable CSS utilisée sans être définie : une variable inconnue ren
   // la trajectoire d'un confetti) est définie sur l'élément même qui la lit (10.14.0).
   sources.slice(feuilles.length).forEach(src => [...src.matchAll(/style="[^"]*"/g)]
     .forEach(m => [...m[0].matchAll(/(--[a-z0-9-]+)\s*:/g)].forEach(x => definies.add(x[1]))));
+  // Ou par `style.setProperty('--x', …)` : la flèche de l'invitation « Première fois sur cette page ? »
+  // se cale sur le milieu de « Guide-moi », mesuré à l'écran (10.14.1, S-03).
+  sources.slice(feuilles.length).forEach(src => [...src.matchAll(/setProperty\(\s*'(--[a-z0-9-]+)'/g)].forEach(x => definies.add(x[1])));
   assert.ok(definies.size > 15 && utilisees.size > 15, `lecture suspecte : ${definies.size} définies, ${utilisees.size} utilisées`);
   const inconnues = [...utilisees].filter(v => !definies.has(v));
   assert.deepStrictEqual(inconnues, [], 'variable CSS utilisée et définie nulle part : ' + inconnues.join(', '));

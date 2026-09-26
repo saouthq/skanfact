@@ -208,6 +208,11 @@ body.dark .banner.demo-banner { background: #2a2340; color: #d2c4ff; border-colo
 .demo-banner .db-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .banner.demo-banner .btn:not(.btn-primary):not(.btn-danger) { background: #fff; color: #4d3399; border-color: #cdbdf7; white-space: nowrap; }
 body.dark .banner.demo-banner .btn:not(.btn-primary):not(.btn-danger) { background: #362c55; color: #e2d8ff; border-color: #564a85; }
+/* 10.14.1 — le RAPPEL, sur une ligne, hors de la page d'accueil de chaque application : la phrase
+   entière s'y lit une fois ; répétée sur trois lignes en tête de chaque écran, elle poussait l'écran
+   de travail sous le bas d'un portable. Trois classes : `.banner.demo-banner` en a deux. */
+.banner.demo-banner.court { padding-block: 6px; margin-bottom: 12px; }
+.demo-banner.court .db-ico svg { width: 18px; height: 18px; }
 
 /* Le repère « bêta » (7.25.0). Discret mais permanent : il vit dans le nom de l'application, en
    haut à gauche, et dans l'écran des mises à jour. Il ne doit pas crier — une bêta est un mode
@@ -266,9 +271,6 @@ body.dark .beta-tag { background: #35255a; color: #cdb0f5; border-color: #4c3878
 /* Le lien vers l'article d'aide de la page où l'on est. */
 .help-link { color: var(--primary); text-decoration: none; font-weight: 600; }
 .help-link:hover { text-decoration: underline; }
-/* Le lien d'aide de la page : discret, mais toujours au même endroit — sinon on le cherche. */
-.page-head .page-help { font-size: 13px; font-weight: 500; color: var(--muted); margin-inline-end: 4px; white-space: nowrap; }
-.page-head .page-help:hover { color: var(--primary); }
 .todo-more { margin-top: 6px; }
 
 /* Le bandeau d'une pièce émise (7.0.0). Avant, c'était une ligne grise de 12 px sous le titre, et la
@@ -2314,6 +2316,54 @@ body.dark .guide-band .gb-ico { color: #0d1418; }
 .guide-band .gb-go svg, .g-prochain .btn svg, .g-ligne .g-l-ico svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
 /* Sur l'Aide, la même ligne calme propose de se faire montrer plutôt que de lire. */
 .aide-guide { margin: 0 0 16px; max-width: 980px; }
+
+/* « Guide-moi » (10.14.1, S-03) : dans l'en-tête de CHAQUE page, à la même place, dans les deux
+   applications. Il se reconnaît au repos (une teinte et une bordure, jamais le vert plein : U-11 ne
+   laisse qu'un bouton principal, l'étape suivante du métier), et sa boussole dit qu'il oriente. */
+.btn.guide-moi { background: var(--primary-soft); color: var(--primary); border-color: color-mix(in srgb, var(--primary) 32%, transparent); }
+.btn.guide-moi:hover, .btn.guide-moi[aria-expanded="true"] { background: var(--primary-soft-2); }
+body.dark .btn.guide-moi { background: var(--primary-soft); color: var(--primary); }
+body.dark .btn.guide-moi:hover, body.dark .btn.guide-moi[aria-expanded="true"] { background: var(--primary-soft-2); }
+.btn.guide-moi svg { width: 15px; height: 15px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+
+/* Son menu : la visite de la page, ce qu'on peut faire ICI, les autres onglets, puis l'article. Plus
+   large qu'un menu de ligne (les phrases disent ce que fait chaque geste), et il DÉFILE quand la liste
+   dépasse l'écran — les Paramètres en portent une douzaine. */
+.row-menu.guide-menu { min-width: 340px; max-width: 400px; max-height: min(78vh, 620px); overflow-y: auto; overscroll-behavior: contain; }
+.row-menu .rm-titre { padding: 8px 10px 3px; font-size: 12px; font-weight: 700; color: var(--muted); letter-spacing: .1px; }
+.row-menu .rm-titre:not(:first-child) { margin-top: 4px; padding-top: 10px; border-top: 1px solid var(--border); }
+.row-menu button:has(.rm-fin) { grid-template-columns: 18px 1fr auto; }
+.row-menu .rm-fin { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; padding-top: 1px; }
+.row-menu .rm-note { font-size: 11px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.row-menu .rm-fait { font-size: 10.5px; font-weight: 700; color: var(--success); background: var(--success-soft); border-radius: 999px; padding: 1px 7px; white-space: nowrap; }
+/* Ce qui ne peut pas encore se faire reste cliquable (le clic dit ce qui manque et propose ce qui le
+   fabrique) ; il se lit en second plan, jamais éteint en silence. */
+.row-menu button.off .rm-l { color: var(--muted); }
+.row-menu button.off .rm-i { opacity: .6; }
+
+/* « Première fois sur cette page ? » (10.14.1, S-03) : accrochée à « Guide-moi », par-dessus la page
+   — elle ne pousse plus l'écran de travail (la bande d'avant faisait commencer la grille de saisie
+   90 px plus bas) et apprend où la visite se retrouve. Couche 55 : sous la palette (60), les menus
+   (70) et les fenêtres (400). À la couleur du domaine de la page, sans vert (U-11). */
+.guide-appel { position: fixed; z-index: 55; width: 330px; max-width: calc(100vw - 24px); padding: 14px 16px 12px;
+  background: linear-gradient(180deg, var(--th-bg) 0%, var(--panel) 62%); color: var(--text);
+  border: 1px solid color-mix(in srgb, var(--th) 30%, var(--border)); border-radius: 14px;
+  box-shadow: 0 16px 40px rgba(20, 40, 60, .2); font-size: 13px; animation: ga-entre .18s ease-out; }
+@keyframes ga-entre { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+.guide-appel .ga-fleche { position: absolute; top: -7px; inset-inline-start: calc(var(--ga-fleche, 40px) - 6px); width: 12px; height: 12px;
+  background: var(--th-bg); border-top: 1px solid color-mix(in srgb, var(--th) 30%, var(--border));
+  border-inline-start: 1px solid color-mix(in srgb, var(--th) 30%, var(--border)); transform: rotate(45deg); }
+.guide-appel .ga-tete { display: flex; align-items: center; gap: 10px; }
+.guide-appel .ga-tete b { font-size: 14px; font-weight: 750; }
+.guide-appel .ga-ico { flex: none; width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; background: var(--th); color: #fff; }
+.guide-appel .ga-ico svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; display: block; }
+body.dark .guide-appel .ga-ico { color: #0d1418; }
+.guide-appel .ga-txt { margin: 9px 0 12px; line-height: 1.5; color: color-mix(in srgb, var(--text) 86%, var(--muted)); }
+.guide-appel .ga-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.guide-appel .ga-go svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+.guide-appel .ga-note { margin: 10px 0 0; font-size: 11.5px; color: var(--muted); line-height: 1.45; }
+@media (prefers-reduced-motion: reduce) { .guide-appel { animation: none; } }
+@media print { .guide-moi, .guide-appel { display: none !important; } }
 
 /* L'accueil de la toute première fois (10.14.0) : une PORTE à deux battants — découvrir sur
    l'exemple, ou démarrer guidé dans sa vraie entreprise. Un fond teinté et une illustration, pas une

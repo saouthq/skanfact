@@ -1454,7 +1454,9 @@ module.exports = async ({ t, ta, assert }) => {
     const r = tranche('  function render(keepScroll) {', '  function setHashSilently(hash) {');
     const iRoute = r.indexOf('(routes[name] || routes.dashboard)(parts.slice(1))');
     assert.ok(iRoute > 0, 'render() ne dessine plus la route par la table');
-    ['poserLienAide(name)', 'bandeauDemo()', 'bindDateFields(view)'].forEach(x => assert.ok(r.indexOf(x) > iRoute, x + ' ne suit plus la route dans render()'));
+    // « Guide-moi » (10.14.1, S-03) a pris la place du lien d'aide : même règle, même porte.
+    // Le bandeau reçoit la page (10.14.1 : il s'explique sur l'accueil, se rappelle ailleurs).
+    ['poserGuideMoi()', 'bandeauDemo(name)', 'bindDateFields(view)'].forEach(x => assert.ok(r.indexOf(x) > iRoute, x + ' ne suit plus la route dans render()'));
   });
 
   await ta('MC-07 / MC-11 : la console écrit un montant d\'une seule façon — le dinar à trois décimales, l\'euro à deux, « DT » et « TND » la même monnaie', async () => {
@@ -1672,5 +1674,37 @@ module.exports = async ({ t, ta, assert }) => {
       const m = src.match(/\bde \$\{(?:moisLabelCourt|K\.monthLabel|C\.monthLabel|monthLabel)\(/);
       assert.ok(!m, `${nom} : « de \${mois} » sans élision (donne « de août ») : ${m && src.slice(m.index - 40, m.index + 60)}`);
     }
+  });
+
+  t('10.14.1 : la fenêtre d\'un paquet ne cite sa page de garde que si le paquet en porte une', () => {
+    // Vu à la souris : « Commence par la page de garde » au-dessus d'une liste de neuf fichiers qui
+    // n'en contient aucune — les paquets de l'exemple sont fabriqués sans imprimante. Une phrase qui
+    // envoie chercher un fichier absent est une phrase que rien ne tient (7.3.0).
+    const cab = fs.readFileSync(path.join(__dirname, '../../src/cabinet/renderer/app.js'), 'utf8');
+    const i = cab.indexOf('Commence par la page de garde');
+    assert.ok(i > 0, 'la phrase de la page de garde est introuvable');
+    const avant = cab.slice(Math.max(0, i - 160), i);
+    assert.ok(/files\.some\(f => f\.name === '00-page-de-garde\.pdf'\)\s*\?\s*'$/.test(avant),
+      'la page de garde est citée sans que le paquet la contienne');
+    assert.strictEqual(cab.split('Commence par la page de garde').length - 1, 1, 'la phrase existe ailleurs, sans condition');
+    // Et le nom attendu est bien celui que le paquet écrit.
+    const main = fs.readFileSync(path.join(__dirname, '../../src/main.js'), 'utf8') + fs.readFileSync(path.join(__dirname, '../../src/renderer/core.js'), 'utf8');
+    assert.ok(main.includes('00-page-de-garde.pdf'), 'le paquet n\'écrit plus « 00-page-de-garde.pdf » : la condition ne se réalise jamais');
+  });
+
+  t('10.14.1 (U-11) : « Enregistrer les droits » d\'un dossier n\'est pas vert au repos — il s\'allume au premier choix changé', () => {
+    // Vu à la souris : sur le Suivi d'un dossier, « Relancer » en haut ET « Enregistrer les droits »
+    // en bas, deux verts, alors que rien n'avait changé. Le mécanisme des Réglages du Cabinet
+    // (`data-enreg` + `sale`, rendu au repos par `flash`) s'applique au panneau des droits.
+    const cab = fs.readFileSync(path.join(__dirname, '../../src/cabinet/renderer/app.js'), 'utf8');
+    const i = cab.indexOf('function panneauDroits(');
+    const j = cab.indexOf('function brancherDroits(');
+    const k = cab.indexOf('\n  }\n', j);
+    assert.ok(i > 0 && j > i && k > j && k - i < 6000, 'tranche des droits inattendue');
+    const panneau = cab.slice(i, j), brancher = cab.slice(j, k);
+    assert.ok(/<button class="btn" id="dr-save" data-enreg>Enregistrer les droits<\/button>/.test(panneau), 'le bouton des droits est vert au repos, ou n\'est plus un bouton `data-enreg`');
+    assert.ok(/\.dr-role[\s\S]{0,80}addEventListener\('change', \(\) => sale\(sel\)\)/.test(brancher), 'un choix changé n\'allume pas « Enregistrer les droits »');
+    const iRender = brancher.indexOf('render();'), iFlash = brancher.indexOf("flash($('#dr-saved'))");
+    assert.ok(iRender > 0 && iFlash > iRender, 'le « ✓ enregistré » doit se poser sur le panneau redessiné (après render)');
   });
 };

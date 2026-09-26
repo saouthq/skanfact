@@ -1479,6 +1479,11 @@
     const hash = location.hash.replace(/^#\//, '') || 'dossiers';
     const [route, arg] = hash.split('/');
     appliquerTheme();
+    // L'invitation « Première fois sur cet écran ? » appartient à l'écran qu'on quitte ; l'observateur
+    // qui repose « Guide-moi » se branche une fois, au premier dessin (10.14.1, S-03).
+    fermerAppelGuide();
+    appelEnAttente = '';
+    surveillerGuideMoi();
     $$('.sidebar nav a').forEach(a => a.classList.toggle('active', a.dataset.route === route));
     $('#brand-cab').textContent = S.cabinet.name || 'Cabinet';
     updateBanner();
@@ -1515,8 +1520,11 @@
     surveillerBandeauDemo();
     // « Ce ne sont pas tes dossiers » — sur CHAQUE page, en permanence, comme l'app entreprise (10.14.0).
     bandeauDemo();
-    // La première fois sur un écran, sa visite se propose (10.14.0) — une ligne calme, sous l'en-tête.
-    bandeauVisite();
+    // « Guide-moi » dans l'en-tête de chaque écran (10.14.1, S-03) ; une page asynchrone le reçoit par
+    // l'observateur, quand elle pose son en-tête.
+    poserGuideMoi();
+    // La première fois sur un écran, sa visite se propose — accrochée à « Guide-moi » (10.14.1).
+    appelGuide();
   }
 
   // ---------- le bandeau de l'exemple ----------
@@ -1536,10 +1544,19 @@
       montre des retards qui n'existent pas.${exempleRefait.livres
         ? ` ${pl(exempleRefait.livres, 'livre de démonstration est parti', 'livres de démonstration sont partis')} avec l'ancien exemple.` : ''}` : '';
     const enVisite = typeof Visite !== 'undefined' && Visite.enCours();
-    return `<div class="banner demo-banner" id="demo-banner"><span class="db-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 3h6M10 3v6.2L4.8 18a2 2 0 0 0 1.7 3h11a2 2 0 0 0 1.7-3L14 9.2V3"/><path d="M7.5 15h9"/></svg></span>
-      <span class="db-txt"><b>Tu explores un cabinet d'exemple</b> — ${demoCount > 1 ? `${pl(demoCount, 'dossier')} inventés` : 'un dossier inventé'},
+    // 10.14.1 — sur la page Dossiers il s'EXPLIQUE ; ailleurs il se RAPPELLE, sur une ligne. Trois
+    // lignes de la même phrase en tête de chaque écran poussaient la grille de saisie à 573 px sur un
+    // portable (seuil 480, `e2e:cabinet-jour1`) : une explication se lit une fois, un rappel suffit
+    // ensuite. Les deux portes restent, la phrase entière est au survol. Le MÊME choix que l'app
+    // entreprise (son `htmlBandeauDemo`).
+    const court = (location.hash.replace(/^#\/?/, '') || 'dossiers').split('/')[0] !== 'dossiers';
+    const texte = court
+      ? `<b>Cabinet d'exemple</b> : ici, rien ne compte — tes vrais dossiers sont à l'abri.`
+      : `<b>Tu explores un cabinet d'exemple</b> — ${demoCount > 1 ? `${pl(demoCount, 'dossier')} inventés` : 'un dossier inventé'},
       du client en retard à celui dont tu tiens toute la comptabilité. Ouvre, saisis, déclare : rien de ce que tu fais ici ne compte, et
-      tes vrais dossiers sont à l'abri. L'exemple s'efface tout seul au premier vrai paquet.${refait}</span>
+      tes vrais dossiers sont à l'abri. L'exemple s'efface tout seul au premier vrai paquet.${refait}`;
+    return `<div class="banner demo-banner${court ? ' court' : ''}" id="demo-banner"><span class="db-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 3h6M10 3v6.2L4.8 18a2 2 0 0 0 1.7 3h11a2 2 0 0 0 1.7-3L14 9.2V3"/><path d="M7.5 15h9"/></svg></span>
+      <span class="db-txt"${court ? ` title="Tu explores un cabinet d'exemple : des dossiers inventés, du client en retard à celui dont tu tiens toute la comptabilité. Rien de ce que tu fais ici ne compte, et l'exemple s'efface tout seul au premier vrai paquet."` : ''}>${texte}</span>
       <span class="db-actions">${enVisite ? '' : `<button class="btn btn-sm" id="demo-visite">${decouverteEnPause() ? 'Reprendre la visite' : 'Visite guidée'}</button>`}
       <button class="btn btn-sm" id="demo-off" title="Les dossiers de l'exemple partent ; tes vrais dossiers ne bougent pas">Quitter l'exemple</button></span></div>`;
   }
@@ -2218,12 +2235,14 @@
       ${/* 10.12.0 (U-01) — le bouton retour vit sur la LIGNE du titre. Posé seul au-dessus, il coûtait
             une rangée entière à chaque écran de la fiche, et sur un portable de 1280×800 la grille de
             saisie commençait à 764 px : une seule ligne visible. */''}
-      <div class="page-head"><div>
+      ${/* 10.14.1 — le nom et ses gestes sur UNE rangée, l'identité et l'état sur une ligne pleine
+            largeur dessous. Empilés sous le nom, ils élargissaient le titre : à 1280 px
+            les gestes passaient sur une seconde rangée (126 px d'en-tête), et la grille de saisie
+            tombait sous le bas de l'écran. */''}
+      <div class="page-head fiche-dossier">
         <div class="fiche-titre"><button class="btn btn-ghost btn-sm btn-back" id="back" title="Revenir à la liste des dossiers">← Dossiers</button>
         <h1>${esc(dossier.name)}${dossier.archived ? ' <span class="badge">archivé</span>' : ''}${dossier.manual ? ' <span class="badge b-hors">pas encore sur SkanFact</span>' : ''}</h1></div>
-        <div class="d-ident">${ident}</div>
-        <div class="d-etat" id="d-etat">${etat}</div>
-      </div><div class="actions">
+      <div class="actions">
         ${/* U-11 — un seul vert par écran. Sur l'onglet Comptabilité, l'étape suivante est celle du
               livre (le créer, saisir, déclarer) et « Relancer » y redevient un bouton ordinaire : deux
               verts côte à côte ne désignent plus rien. Il reprend sa couleur sur le Suivi et les
@@ -2236,7 +2255,8 @@
               numéro qu'un dossier sur deux n'a pas, donc la barre changeait de forme d'un client
               à l'autre. */''}
         ${RowMenu.bouton('F:' + dossier.id, 'Actions', 'btn')}
-      </div></div>
+      </div>
+      <div class="d-meta"><div class="d-ident">${ident}</div><div class="d-etat" id="d-etat">${etat}</div></div></div>
       <div class="print-only print-head">${esc(S.cabinet.name || 'Cabinet')} — fiche client imprimée le ${esc(fmtDay(Date.now()))}</div>
 
       ${altere
@@ -7575,7 +7595,7 @@
         // au premier ajout (règle 7.29.0).
         const actions = actionsEcriture(root, dossier, e);
         if (e.mois && (s.data.paquets || []).some(z => z.month === e.mois && z.path)) {
-          actions.push({ icon: 'loupe', label: 'Voir dans le paquet', hint: `${e.piece} · ${moisLabelCourt(e.mois)}`,
+          actions.push({ icon: 'loupe', label: 'Voir dans le paquet', court: 'Paquet', hint: `${e.piece} · ${moisLabelCourt(e.mois)}`,
             run: () => openPack(dossier, e.mois) });
         }
         return actions;
@@ -7583,7 +7603,9 @@
       const [piece, mois, journal, date] = String(cle).split('|');
       const p = (s.data.paquets || []).find(z => z.month === mois);
       if (!p || !p.path) return [];
-      return actionsJustifsClient({ piece, mois, journal, date }).concat([{ icon: 'loupe', label: 'Voir dans le paquet', hint: `${piece} · ${moisLabelCourt(mois)}`,
+      // 10.14.1 — seule sur sa ligne, l'action porte son mot court (10.12.0) : à 1280 px, « Voir dans
+      // le paquet » (170 px, collé au bord) recouvrait le Crédit du livre-journal lu dans les paquets.
+      return actionsJustifsClient({ piece, mois, journal, date }).concat([{ icon: 'loupe', label: 'Voir dans le paquet', court: 'Paquet', hint: `${piece} · ${moisLabelCourt(mois)}`,
         run: () => openPack(dossier, mois) }]);
     });
   }
@@ -7688,7 +7710,12 @@
     const trop = files.filter(f => f.annonce === false);
     modal(
       `<h2>${esc(dossier.name)} — ${esc(p.label)}</h2>
-       <p class="muted small">${pl(files.length, 'fichier')}. Commence par la page de garde : elle résume le mois et liste ce qui manque.</p>
+       ${/* 10.14.1 — la page de garde se CITE si elle est là : les paquets de l'exemple (fabriqués sans
+             imprimante) n'en ont pas, et « commence par la page de garde » envoyait chercher un fichier
+             absent de la liste juste en dessous. */''}
+       <p class="muted small">${pl(files.length, 'fichier')}. ${files.some(f => f.name === '00-page-de-garde.pdf')
+         ? 'Commence par la page de garde : elle résume le mois et liste ce qui manque.'
+         : 'Ce paquet n\'a pas de page de garde : les journaux s\'ouvrent dans ton tableur, et le manifeste dit ce que ton client a envoyé.'}</p>
        ${trop.length ? `<div class="warn-box mt"><strong>${pl(trop.length, 'fichier')} ${trop.length > 1 ? 'ne sont pas annoncés' : 'n\'est pas annoncé'} par le manifeste de ton client ${info('p.intrus')}</strong>
          ${trop.length > 1 ? 'Ils n\'ont' : 'Il n\'a'} été ${trop.length > 1 ? 'vérifiés' : 'vérifié'} par personne : ${trop.length > 1 ? 'ils portent' : 'il porte'} un « ? » dans la liste, et SkanFact pose une question avant l'ouverture.</div>` : ''}
        <table class="list compact mt"><tbody>${files.map((f, i) => `<tr class="clickable" data-i="${i}">
@@ -8551,21 +8578,25 @@
       <p class="muted small mt">${confies.length
     ? `Ce dossier est confié à <b>${confies.map(c => esc(c.nom)).join(', ')}</b> : il apparaît dans ${confies.length > 1 ? 'leurs' : 'son'} « À faire ».`
     : 'Ce dossier n\'est confié à personne : tout le monde peut y travailler selon son rôle général, et il n\'apparaît dans aucun « À faire » personnel.'}</p>
+      ${/* 10.14.1 (U-11) — au repos, rien à enregistrer : le vert de la page est « Relancer ». Le
+            bouton s'allume au premier choix changé (`data-enreg` + `sale`, comme les Réglages). */''}
       <div class="modal-actions"><span class="saved" id="dr-saved" hidden></span>
-        <button class="btn btn-primary" id="dr-save">Enregistrer les droits</button></div></div>`;
+        <button class="btn" id="dr-save" data-enreg>Enregistrer les droits</button></div></div>`;
   }
 
   function brancherDroits(view, dossier) {
     const b = $('#dr-save', view);
     if (!b) return;
+    $$('.dr-role', view).forEach(sel => sel.addEventListener('change', () => sale(sel)));
     b.onclick = async () => {
       const droits = {};
       $$('.dr-role', view).forEach(s => { if (s.value) droits[s.dataset.collab] = s.value; });
       try {
         S = await api.saveDroits(dossier.id, droits);
-        const sv = $('#dr-saved', view);
-        if (sv) { sv.textContent = '✓ enregistré'; sv.hidden = false; setTimeout(() => { sv.hidden = true; }, 2200); }
+        // La page se redessine (la phrase « confié à … » change) : le « ✓ enregistré » se pose sur
+        // le panneau NEUF — posé avant, il partait avec l'ancien, et on ne le voyait jamais.
         render();
+        flash($('#dr-saved'));
       } catch (e) { await infoDialog('Les droits n\'ont pas été enregistrés', plainError(e)); }
     };
   }
@@ -10117,19 +10148,23 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
   };
   // Le dossier qu'une visite montre : celui qu'on regarde s'il convient, sinon la vitrine de l'exemple
   // qui le montre rempli, sinon le premier qui convient. `sorte` : 'skanfact' (il envoie ses paquets),
-  // 'hors' (tenu au cabinet), 'livre' (il a son livre), 'client' (n'importe lequel).
+  // 'hors' (tenu au cabinet), 'livre' (il a son livre), 'client' (n'importe lequel), et 'saisie' (10.14.1,
+  // S-03) : n'importe quel dossier qui a son livre — celui qu'on regarde d'abord, sinon le garage de
+  // l'exemple. C'est la sorte des GESTES de saisie : « Saisir une pièce », lancé depuis « Guide-moi » sur
+  // un client qui envoie ses paquets, se fait dans SON livre. La découverte, elle, garde 'hors' : ses
+  // bulles parlent du garage, et ne doivent jamais se poser sur un autre dossier.
   function dossierPour(sorte) {
     const tous = (S && S.dossiers) || [];
     const livres = avecLivre();
     const convient = d => !!d && !d.archived && (sorte === 'client'
-      || (sorte === 'livre' && livres.has(d.id))
+      || ((sorte === 'livre' || sorte === 'saisie') && livres.has(d.id))
       || (sorte === 'skanfact' && livres.has(d.id) && (d.packs || []).length > 0)
       || (sorte === 'hors' && livres.has(d.id) && !!d.manual));
     const ouvert = (/^#\/dossier\/([^/]+)/.exec(location.hash) || [])[1];
     const courant = ouvert ? tous.find(d => d.id === decodeURIComponent(ouvert)) : null;
     if (convient(courant)) return courant.id;
     const vitrines = K.demoDossiers(K.today()).filter(d => d.vitrine);
-    const vit = vitrines.find(v => v.vitrine === (sorte === 'hors' ? 'hors' : 'skanfact'));
+    const vit = vitrines.find(v => v.vitrine === (sorte === 'hors' || sorte === 'saisie' ? 'hors' : 'skanfact'));
     const v = vit && tous.find(d => d.id === vit.id);
     if (v && (sorte === 'client' || convient(v) || (v.demo && sorte !== 'client'))) return v.id;
     const r = tous.find(convient);
@@ -10198,7 +10233,7 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
       render();
       toast(phraseExemple());
     }
-    const bande = $('#guide-band'); if (bande) bande.remove();
+    fermerAppelGuide();
     // Une visite lit le résumé des livres pendant qu'elle se déroule (l'exercice clos du garage, ses
     // dossiers tenus) : relu au lancement, jamais celui du démarrage — un exercice clôturé ou rouvert
     // depuis changerait sinon ce que les étapes montrent.
@@ -10326,38 +10361,152 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
       },
       interrompu: (p, i, compte) => {
         visitesPoser(e => { e.reprise = Object.assign({ id: p.id, i: Math.max(0, i) }, compte || {}); });
-        toast('Visite mise en pause. Tu la reprends quand tu veux depuis « Me guider », dans le menu.');
+        // Où la reprendre : « Guide-moi » de cet écran quand il la propose, sinon « Me guider » — la
+        // découverte n'est que là (S-03, le jumeau de l'app entreprise).
+        const g = Visite.guideDeLaPage(visites(), CV.cleDePage(location.hash), { cleDe: h => CV.cleDePage(h) });
+        toast($('#guide-moi') && Visite.dansLeGuide(g, p.id)
+          ? 'Visite mise en pause. Tu la reprends depuis « Guide-moi », en haut de cet écran, ou depuis « Me guider », dans le menu.'
+          : 'Visite mise en pause. Tu la reprends quand tu veux depuis « Me guider », dans le menu.');
         if (location.hash === '#/guide') render();
       }
     });
   }
 
-  // La première fois qu'on ouvre un écran, une ligne calme propose sa visite — trois fois au plus.
-  // Posée SOUS l'en-tête, avec l'écran : elle ne surgit pas après coup sous le curseur (H-E1). Pas de
-  // vert : le bouton principal de l'écran reste le seul (U-11).
+  // « Guide-moi » (10.14.1, S-03) — le jumeau de l'app entreprise, par le MÊME moteur
+  // (`Visite.guideDeLaPage`, `Visite.menuDuGuide`) : dans l'en-tête de chaque écran, à la même place, la
+  // liste de ce qu'on peut faire ICI — la visite de l'écran, chaque geste guidé pas à pas (ceux de
+  // l'onglet ouvert d'abord), puis l'article qui l'explique et toutes les visites. Sur l'écran d'un
+  // dossier, un geste ne se propose que s'il se fera dans CE dossier (`surLaPage`, cabvisites.js).
+  // Un observateur le repose quand un écran redessine son en-tête — la fiche d'un dossier lit son livre
+  // et réécrit `#view` après le routeur.
+  const ICONE_GUIDE_MOI = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z"/></svg>';
+  function poserGuideMoi() {
+    const view = $('#view');
+    const head = view && view.querySelector('.page-head');
+    if (!S || !head || head.querySelector('.guide-moi')) return;
+    const cle = CV.cleDePage(location.hash);
+    // « Me guider » EST la liste de toutes les visites : un bouton qui y mène depuis elle-même non.
+    if (cle === 'guide') return;
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'btn btn-sm guide-moi';
+    b.id = 'guide-moi';
+    b.setAttribute('aria-haspopup', 'menu');
+    b.setAttribute('aria-expanded', 'false');
+    b.title = 'Ce qu\'on peut faire sur cet écran, montré pas à pas';
+    b.innerHTML = ICONE_GUIDE_MOI + '<span>Guide-moi</span>';
+    b.onclick = e => { e.stopPropagation(); ouvrirGuideMoi(b); };
+    const actions = head.querySelector(':scope > .actions');
+    if (actions) actions.insertBefore(b, actions.firstChild); else head.appendChild(b);
+    // Un écran asynchrone pose son en-tête APRÈS le routeur : l'invitation attendait ce bouton.
+    if (appelEnAttente && appelEnAttente === cle) { appelEnAttente = ''; appelGuide(); }
+  }
+  let guideObs = null;
+  function surveillerGuideMoi() {
+    const view = $('#view');
+    if (guideObs || !view || !window.MutationObserver) return;
+    guideObs = new MutationObserver(() => poserGuideMoi());
+    guideObs.observe(view, { childList: true, subtree: true });
+  }
+  function ouvrirGuideMoi(bouton) {
+    fermerAppelGuide();
+    const cle = CV.cleDePage(location.hash);
+    const et = visitesEtat();
+    const ongletActif = barre => { const t = $(barre + ' button[data-tab].active'); return t ? t.dataset.tab : null; };
+    const g = Visite.guideDeLaPage(visites(), cle, { cleDe: h => CV.cleDePage(h), ongletActif });
+    // L'article suit l'onglet ouvert des Réglages (`G.articleDeLaPage`).
+    const artId = G.articleDeLaPage ? G.articleDeLaPage(cle, ongletActif) : G.PAR_PAGE && G.PAR_PAGE[cle];
+    const art = artId && G.ARTICLES.find(a => a.id === artId);
+    const exemple = (S.dossiers || []).some(d => d.demo);
+    const actions = Visite.menuDuGuide(g, {
+      titrePage: g.page ? g.page.titre : 'Cet écran',
+      lancer: (v, i) => lancerVisite(v, i),
+      manque: v => visiteManque(v),
+      fait: v => !!et.faites[v.id],
+      // Une visite en pause se reprend à son étape (`Visite.pointDeReprise`, le même calcul que « Me guider »).
+      reprise: v => (et.reprise && et.reprise.id === v.id ? Visite.pointDeReprise(v, et.reprise) : null),
+      avertir: v => v.exemple && !exemple ? 'L\'exemple se charge d\'abord ; tes vrais dossiers ne bougent pas.' : '',
+      // Le nom d'un onglet, tel qu'il est écrit dans sa barre — sans le compteur qui le suit.
+      libelleOnglet: og => {
+        const t = $(og.barre + ' button[data-tab="' + og.cle + '"]');
+        return t ? [...t.childNodes].filter(n => n.nodeType === 3).map(n => n.textContent).join('').trim() || og.cle : og.cle;
+      },
+      article: art ? { titre: art.t, ouvrir: () => navigate('#/aide/' + art.id) } : null,
+      tout: () => navigate('#/guide')
+    });
+    RowMenu.ouvrir(bouton, actions, { classe: 'guide-menu', label: 'Guide-moi : ce qu\'on peut faire sur cet écran' });
+  }
+
+  // La première fois qu'on ouvre un écran, une invitation propose sa visite — trois fois au plus.
+  // 10.14.1 (S-03) : elle s'ACCROCHE à « Guide-moi », par-dessus l'écran, au lieu de pousser l'écran de
+  // travail (la bande d'avant faisait commencer la grille de saisie plus bas pendant ses trois
+  // premières ouvertures), et elle apprend où la visite se retrouve. Pas de vert : le bouton principal
+  // de l'écran reste le seul (U-11).
   const VISITE_PROPOSEE_MAX = 3;
-  function bandeauVisite() {
+  let appelEnAttente = '';
+  function fermerAppelGuide() {
+    const a = document.getElementById('guide-appel');
+    if (a) { if (typeof a._fermer === 'function') a._fermer(); else a.remove(); }
+  }
+  function appelGuide() {
     const cle = CV.cleDePage(location.hash);
     if (!S || Visite.enCours() || cle === 'guide' || cle === 'aide') return;
     const p = visitePage(cle);
     const et = visitesEtat();
     if (!p || visiteManque(p) || !et.proposer || et.faites[p.id] || (et.vues[cle] || 0) >= VISITE_PROPOSEE_MAX) return;
-    const head = $('#view .page-head');
-    if (!head || $('#guide-band')) return;
     // Une page vide qui porte « Tes premiers pas » est déjà une invitation.
     if ($('#view .premiers-pas')) return;
+    const bouton = $('#guide-moi');
+    // Un écran asynchrone n'a pas encore son en-tête : l'invitation attend le bouton (`poserGuideMoi`).
+    if (!bouton) { appelEnAttente = cle; return; }
+    fermerAppelGuide();
     visitesPoser(e => { e.vues[cle] = (e.vues[cle] || 0) + 1; });
     const coul = CV.couleurDe(p);
     const el = document.createElement('div');
-    el.className = 'guide-band' + (coul ? ' th-' + coul : '');
-    el.id = 'guide-band';
-    el.innerHTML = `<span class="gb-ico" aria-hidden="true">${ICONE_GUIDE}</span>
-      <span class="gb-txt"><b>Première fois sur cet écran ?</b> Je te montre à quoi il sert et ce que fait chaque bouton, en une minute.</span>
-      <button type="button" class="btn btn-sm gb-go" id="gb-go">${ICONE_LECTURE}Visite de l'écran</button>
-      <button type="button" class="btn btn-ghost btn-sm" id="gb-non" title="Ne plus me proposer la visite de cet écran">Plus tard</button>`;
-    head.insertAdjacentElement('afterend', el);
-    $('#gb-go').onclick = () => { el.remove(); lancerVisite(p); };
-    $('#gb-non').onclick = () => { visitesPoser(e => { e.vues[cle] = VISITE_PROPOSEE_MAX; }); el.remove(); };
+    el.className = 'guide-appel' + (coul ? ' th-' + coul : '');
+    el.id = 'guide-appel';
+    el.setAttribute('role', 'dialog');
+    el.setAttribute('aria-labelledby', 'ga-t');
+    el.innerHTML = `<span class="ga-fleche" aria-hidden="true"></span>
+      <div class="ga-tete"><span class="ga-ico" aria-hidden="true">${ICONE_GUIDE}</span>
+        <b id="ga-t">Première fois sur cet écran ?</b></div>
+      <p class="ga-txt">${esc(p.resume || '')} Je te montre à quoi il sert et ce que fait chaque bouton, en ${esc(p.duree || 'une minute')}.</p>
+      <div class="ga-actions"><button type="button" class="btn btn-sm ga-go" id="ga-go">${ICONE_LECTURE}Faire la visite</button>
+        <button type="button" class="btn btn-ghost btn-sm" id="ga-non" title="Ne plus me proposer la visite de cet écran">Plus tard</button></div>
+      <p class="ga-note">Tu la retrouves dans « Guide-moi », avec tout ce qu'on peut faire ici.</p>`;
+    document.body.appendChild(el);
+    typographie(el);
+    const scroller = $('#view');
+    const depart = scroller ? scroller.scrollTop : 0;
+    // Sous le bouton, calée sur son bord droit, la flèche sur son milieu ; jamais hors de l'écran.
+    const placer = () => {
+      const r = bouton.getBoundingClientRect();
+      if (!r.width || !document.body.contains(bouton)) { fermer(); return; }
+      const w = el.offsetWidth;
+      const gauche = Math.max(12, Math.min(window.innerWidth - w - 12, r.right - w));
+      el.style.top = Math.round(r.bottom + 10) + 'px';
+      el.style.left = Math.round(gauche) + 'px';
+      el.style.setProperty('--ga-fleche', Math.round(Math.min(w - 22, Math.max(14, r.left + r.width / 2 - gauche))) + 'px');
+    };
+    // Le premier geste ailleurs la referme : on s'est mis au travail.
+    const dehors = e => { if (!el.contains(e.target)) fermer(); };
+    const clavier = e => { if (e.key === 'Escape' && el.contains(document.activeElement)) { e.stopPropagation(); fermer(); bouton.focus(); } };
+    const defile = () => { if (!scroller || Math.abs(scroller.scrollTop - depart) > 4) fermer(); };
+    function fermer() {
+      el.remove();
+      document.removeEventListener('mousedown', dehors, true);
+      document.removeEventListener('keydown', clavier, true);
+      window.removeEventListener('resize', placer);
+      if (scroller) scroller.removeEventListener('scroll', defile);
+    }
+    el._fermer = fermer;
+    placer();
+    document.addEventListener('mousedown', dehors, true);
+    document.addEventListener('keydown', clavier, true);
+    window.addEventListener('resize', placer);
+    if (scroller) scroller.addEventListener('scroll', defile);
+    $('#ga-go', el).onclick = () => { fermer(); lancerVisite(p); };
+    $('#ga-non', el).onclick = () => { visitesPoser(e => { e.vues[cle] = VISITE_PROPOSEE_MAX; }); fermer(); };
   }
 
   // La page « Me guider » : où j'en suis, LE prochain geste (un seul vert), les grands départs, chaque
@@ -10659,6 +10808,7 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
 
   function openPalette() {
     if (!palettePossible()) return;
+    fermerAppelGuide();
     const root = document.createElement('div');
     root.id = 'palette-root';
     root.innerHTML = `<div class="palette">

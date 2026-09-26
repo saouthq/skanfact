@@ -2188,24 +2188,39 @@
     exempleRefait = { version: v, raison };
   }
 
-  function bandeauDemo() {
-    if (!data || !C.estDemo(data)) return;
-    const el = document.createElement('div');
-    // 10.14.0 — un BAC À SABLE, pas une alerte. Skander : « il faut que l'utilisateur n'ait pas peur
-    // ni ne se sente perdu quand il joue avec le jeu de données ». L'orange disait « attention » à
-    // chaque page, et « N'envoie rien à personne » se lisait comme une menace. Le bandeau dit
-    // maintenant ce qu'on PEUT faire (tout), ce qui est à l'abri (tes données), et les deux portes :
-    // se faire guider, et revenir chez soi.
-    el.className = 'banner demo-banner';
+  // 10.14.0 — un BAC À SABLE, pas une alerte. Skander : « il faut que l'utilisateur n'ait pas peur
+  // ni ne se sente perdu quand il joue avec le jeu de données ». L'orange disait « attention » à
+  // chaque page, et « N'envoie rien à personne » se lisait comme une menace. Le bandeau dit ce qu'on
+  // PEUT faire (tout), ce qui est à l'abri (tes données), et les deux portes : se faire guider, et
+  // revenir chez soi.
+  //
+  // 10.14.1 — sur l'ACCUEIL il s'explique ; ailleurs il se RAPPELLE, sur une ligne. Les trois lignes
+  // de la même phrase, en tête de chaque écran, poussaient l'écran de travail sous le bas d'un
+  // portable (au Cabinet, la grille de saisie commençait à 573 px, seuil 480) : une explication se
+  // lit une fois, un rappel suffit ensuite. Les deux portes restent dans les deux formes, et la
+  // phrase entière reste au survol du rappel. Le MÊME choix au Cabinet (`htmlBandeauDemo`).
+  function htmlBandeauDemo(route) {
+    const court = route !== 'dashboard';
     const enVisite = typeof Visite !== 'undefined' && Visite.enCours();
-    el.innerHTML = `<span class="db-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 3h6M10 3v6.2L4.8 18a2 2 0 0 0 1.7 3h11a2 2 0 0 0 1.7-3L14 9.2V3"/><path d="M7.5 15h9"/></svg></span>
-      <span class="db-txt"><b>Tu explores une entreprise d'exemple</b> — cinq ans d'activité inventée. Clique, ouvre, modifie :
+    const texte = court
+      ? `<b>Entreprise d'exemple</b> : ici, rien ne compte — tes vraies données sont à l'abri.`
+      : `<b>Tu explores une entreprise d'exemple</b> — cinq ans d'activité inventée. Clique, ouvre, modifie :
       rien de ce que tu fais ici ne compte, et tes vraies données sont à l'abri.${exempleRefait
         ? ` <b>Il vient d'être refait</b> ${exempleRefait.raison === 'version' ? `pour la version ${h(exempleRefait.version)}` : 'sur le mois en cours'} :
           un exemple qui date montre des retards qui n'existent pas.`
-        : ''}</span>
+        : ''}`;
+    return { court, html: `<span class="db-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 3h6M10 3v6.2L4.8 18a2 2 0 0 0 1.7 3h11a2 2 0 0 0 1.7-3L14 9.2V3"/><path d="M7.5 15h9"/></svg></span>
+      <span class="db-txt"${court ? ` title="Tu explores une entreprise d'exemple : cinq ans d'activité inventée. Clique, ouvre, modifie — rien de ce que tu fais ici ne compte."` : ''}>${texte}</span>
       <span class="db-actions">${enVisite ? '' : `<button class="btn btn-sm" id="demo-visite">${decouverteEnPause() ? 'Reprendre la visite' : 'Visite guidée'}</button>`}
-      <button class="btn btn-sm" id="demo-out" title="Tes données d'avant l'exemple reviennent ; s'il n'y en avait pas, tu repars d'une entreprise vide">Quitter l'exemple</button></span>`;
+      <button class="btn btn-sm" id="demo-out" title="Tes données d'avant l'exemple reviennent ; s'il n'y en avait pas, tu repars d'une entreprise vide">Quitter l'exemple</button></span>` };
+  }
+
+  function bandeauDemo(route) {
+    if (!data || !C.estDemo(data)) return;
+    const { court, html } = htmlBandeauDemo(route);
+    const el = document.createElement('div');
+    el.className = 'banner demo-banner' + (court ? ' court' : '');
+    el.innerHTML = html;
     const view = $('#view');
     view.insertBefore(el, view.firstChild);
     $('#demo-out').onclick = demoSortie;
@@ -2331,6 +2346,11 @@
     const scroll = keepScroll ? view.scrollTop : 0;
     const parts = (location.hash.replace(/^#\/?/, '') || 'dashboard').split('/');
     const name = parts[0];
+    // L'invitation « Première fois sur cette page ? » appartient à la page qu'on quitte ; l'observateur
+    // qui repose « Guide-moi » se branche une fois, au premier dessin.
+    fermerAppelGuide();
+    appelEnAttente = '';
+    surveillerGuideMoi();
     let active = name;
     if (name === 'doc') {
       const type = parts[1] === 'new' ? parts[2] : (docById(parts[1]) || {}).type;
@@ -2370,11 +2390,11 @@
     const grand = $('#pv-full'); if (grand) grand.remove();
     pushHistory(currentHash);        // d'où l'on vient, pour le bouton retour de la page qui s'ouvre
     const dessine = (routes[name] || routes.dashboard)(parts.slice(1));
-    poserLienAide(name);             // « Comprendre cette page → » : l'article qui explique cet écran
-    bandeauDemo();                   // « ce ne sont pas tes données » — sur chaque page, en permanence
+    poserGuideMoi();                 // « Guide-moi » : ce qu'on peut faire sur cette page, et son article (10.14.1)
+    bandeauDemo(name);               // « ce ne sont pas tes données » — sur chaque page, en permanence
     bandeauModule(active);           // « cette page n'est pas dans ton menu » — et le bouton pour l'y mettre
     bandeauOffre(active);            // « ce module fait partie de l'offre Entreprise » — lecture libre, création fermée
-    bandeauVisite(name);             // « première fois sur cette page ? » — sa visite, en une minute (10.14.0)
+    appelGuide(name);                // « première fois sur cette page ? » — accrochée à « Guide-moi » (10.14.1)
     bindDateFields(view);            // champs date posés par la page qui vient d'être dessinée
     bindWithholdingFields(view);     // « Autre taux… » des retenues à la source, même principe
     bindRibFields(view);             // la clé d'un RIB, vérifiée pendant la frappe (10.12.0)
@@ -2592,27 +2612,81 @@
   // Le lien vers l'article d'aide qui explique l'écran où l'on est. Trente-deux articles existaient,
   // et aucune page n'y menait : on ne les atteignait qu'en ouvrant l'Aide et en lisant trente-deux
   // titres — depuis un bouton qui, lui, était hors de l'écran.
-  const helpLink = (id, label) => `<a href="#/aide/${h(id)}" class="help-link">${h(label || 'Comprendre cette page')} →</a>`;
+  const helpLink = (id, label) => `<a href="#/aide/${h(id)}" class="help-link">${h(label || 'Lire l\'article')} →</a>`;
 
-  // Quel article explique quelle page. Trente-deux articles existaient et **aucune page n'y menait** :
-  // il fallait ouvrir l'Aide — depuis un bouton qui était hors de l'écran — et lire trente-deux
-  // titres. Le lien se pose une seule fois, dans le routeur : dix-huit `page-head` à modifier à la
-  // main, c'est dix-huit endroits qu'on oublie au prochain module ajouté.
-  function poserLienAide(route) {
-    // La table vit dans guide.js, à côté des articles qu'elle désigne : elle y était en
-    // double depuis la refonte, et deux tables divergent toujours.
-    const id = G.PAR_PAGE[route];
-    if (!id || !G.ARTICLES.some(a => a.id === id)) return;
-    const head = $('#view .page-head');
-    if (!head || $('.page-help', head)) return;
-    const a = document.createElement('a');
-    a.href = '#/aide/' + id;
-    a.className = 'help-link page-help';
-    a.textContent = 'Comprendre cette page →';
-    // Dans le bloc d'actions quand il existe, sinon en bout de titre : la place doit être la même
-    // d'une page à l'autre, sinon on la cherche.
-    const actions = $('.actions', head);
-    if (actions) actions.insertBefore(a, actions.firstChild); else head.appendChild(a);
+  // « Guide-moi » (10.14.1, S-03) remplace « Comprendre cette page → ». Skander : « au lieu de garder
+  // le bouton “Comprendre cette page”, un bouton “Guide-moi” avec la liste de toutes les actions
+  // qu'on peut faire sur cette page, afin que l'assistant soit toujours à portée de main ». Le lien
+  // n'ouvrait qu'un article à LIRE ; le bouton ouvre ce qu'on peut FAIRE ici — la visite de la page,
+  // chaque geste guidé pas à pas — et garde l'article en dernière entrée.
+  //
+  // Il se pose dans l'en-tête de CHAQUE page, à la même place (la place doit être la même d'une page à
+  // l'autre, sinon on la cherche), et il y RESTE : un observateur le repose quand une page redessine
+  // son en-tête (la Paie, le Stock et le Catalogue le font à chaque onglet — le lien d'aide y
+  // disparaissait, 10.12.0) ou quand une page ASYNCHRONE pose le sien après coup (les Paramètres, où
+  // l'ancien lien ne s'est jamais affiché). Quatre appels écrits à la main en oubliaient un.
+  const cleDePage = hash => String(hash || '').replace(/^#\/?/, '').split('/')[0] || 'dashboard';
+  function poserGuideMoi() {
+    const view = $('#view');
+    const head = view && view.querySelector('.page-head');
+    if (!head || head.querySelector('.guide-moi')) return;
+    const route = cleDePage(location.hash);
+    // « Me guider » EST la liste de toutes les visites : un bouton qui y mène depuis elle-même non.
+    if (route === 'guide' || !data) return;
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'btn btn-sm guide-moi';
+    b.id = 'guide-moi';
+    b.setAttribute('aria-haspopup', 'menu');
+    b.setAttribute('aria-expanded', 'false');
+    b.title = 'Ce qu\'on peut faire sur cette page, montré pas à pas';
+    b.innerHTML = ICONE_GUIDE_MOI + '<span>Guide-moi</span>';
+    b.onclick = e => { e.stopPropagation(); ouvrirGuideMoi(b); };
+    const actions = head.querySelector(':scope > .actions');
+    if (actions) actions.insertBefore(b, actions.firstChild); else head.appendChild(b);
+    // Une page asynchrone pose son en-tête APRÈS le routeur : l'invitation « Première fois sur cette
+    // page ? » attendait ce bouton pour s'y accrocher.
+    if (appelEnAttente && appelEnAttente === route) { appelEnAttente = ''; appelGuide(route); }
+  }
+  let guideObs = null;
+  function surveillerGuideMoi() {
+    const view = $('#view');
+    if (guideObs || !view || typeof MutationObserver === 'undefined') return;
+    guideObs = new MutationObserver(() => poserGuideMoi());
+    guideObs.observe(view, { childList: true, subtree: true });
+  }
+  const ICONE_GUIDE_MOI = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z"/></svg>';
+  // Le menu : la visite de la page, ce qu'on peut faire ICI (l'onglet ouvert d'abord), puis l'article
+  // et toutes les visites. Rangé par le moteur (`Visite.guideDeLaPage`, `Visite.menuDuGuide`), le
+  // même que dans le Cabinet ; l'application ne prête que ses gestes.
+  function ouvrirGuideMoi(bouton) {
+    fermerAppelGuide();
+    const route = cleDePage(location.hash);
+    const et = visitesEtat();
+    const ongletActif = barre => { const t = $(barre + ' button[data-tab].active'); return t ? t.dataset.tab : null; };
+    const g = Visite.guideDeLaPage(visitesVisibles(), route, { cleDe: cleDePage, ongletActif });
+    // L'article suit l'onglet ouvert quand la page en a plusieurs (`G.articleDeLaPage`).
+    const artId = G.articleDeLaPage(route, ongletActif);
+    const art = artId && G.ARTICLES.find(a => a.id === artId);
+    const ex = C.estDemo(data);
+    const actions = Visite.menuDuGuide(g, {
+      titrePage: g.page ? g.page.titre : 'Cette page',
+      lancer: (v, i) => lancerVisite(v, i),
+      manque: v => visiteManque(v),
+      fait: v => !!et.faites[v.id],
+      // Une visite en pause se reprend à son étape (`Visite.pointDeReprise`, le même calcul que « Me guider »).
+      reprise: v => (et.reprise && et.reprise.id === v.id ? Visite.pointDeReprise(v, et.reprise) : null),
+      avertir: v => v.reel && ex ? 'Tu quittes d\'abord l\'exemple : ce geste se fait dans ta vraie entreprise.'
+        : v.exemple && !ex ? 'L\'exemple se charge d\'abord ; tes données restent à l\'abri.' : '',
+      // Le nom d'un onglet, tel qu'il est écrit dans sa barre — sans le compteur qui le suit.
+      libelleOnglet: og => {
+        const t = $(og.barre + ' button[data-tab="' + og.cle + '"]');
+        return t ? [...t.childNodes].filter(n => n.nodeType === 3).map(n => n.textContent).join('').trim() || og.cle : og.cle;
+      },
+      article: art ? { titre: art.title, ouvrir: () => navigate('#/aide/' + art.id) } : null,
+      tout: () => navigate('#/guide')
+    });
+    RowMenu.ouvrir(bouton, actions, { classe: 'guide-menu', label: 'Guide-moi : ce qu\'on peut faire sur cette page' });
   }
 
   routes.dashboard = () => {
@@ -5906,7 +5980,7 @@
       catalogTab = id;
       $$('#cat-tabs button').forEach(b => b.classList.toggle('active', b.dataset.tab === id));
       $$('[data-pane]').forEach(p => p.hidden = p.dataset.pane !== id);
-      $('#cat-head').innerHTML = head(); bindHead(); poserLienAide('catalogue');
+      $('#cat-head').innerHTML = head(); bindHead(); poserGuideMoi();
     };
     $$('#cat-tabs button').forEach(b => b.onclick = () => showTab(b.dataset.tab));
     showTab(catalogTab);
@@ -7132,6 +7206,7 @@
     if (closeOverlay) closeOverlay();
     fermerDossiers();
     closeMenus();
+    fermerAppelGuide();
     root.hidden = false;
     root.innerHTML = `<div class="palette"><input type="text" id="pal-q" placeholder="Rechercher une pièce, un client, un fournisseur, un fichier joint, une action…" autocomplete="off" spellcheck="false"><div class="results" id="pal-res"></div><div class="hint">↑ ↓ pour naviguer · Entrée pour ouvrir · Échap pour fermer</div></div>`;
     const cur = company().currency;
@@ -10147,7 +10222,7 @@
       if ($('#new-av')) $('#new-av').onclick = () => advanceForm(null, null, () => draw());
     };
     const draw = dansUnLot(() => {
-      $('#p-head').innerHTML = pHead(); bindHead(); poserLienAide('paie');
+      $('#p-head').innerHTML = pHead(); bindHead(); poserGuideMoi();
       if (!data.employees.length) { $('#p-body').innerHTML = ''; return; }
       if (s.tab === 'salaries') return drawEmployees();
       if (s.tab === 'conges') return drawLeaves();
@@ -10641,7 +10716,7 @@
       if ($('#st-pick')) $('#st-pick').onclick = () => navigate('#/catalogue');
     };
     const draw = dansUnLot(() => {
-      $('#st-head').innerHTML = stHead(); bindStHead(); poserLienAide('stock');
+      $('#st-head').innerHTML = stHead(); bindStHead(); poserGuideMoi();
       if (!items.length) { $('#st-body').innerHTML = ''; return; }
       if (s.tab === 'series') return drawSerials();
       if (s.tab === 'mouvements') return drawMoves();
@@ -15036,30 +15111,45 @@
       return meilleur;
     };
     const parCle = (liste, cle) => { const m = new Map(); liste.forEach(x => m.set(x[cle], (m.get(x[cle]) || 0) + 1)); return m; };
+    // La pièce OUVERTE à l'écran passe avant toutes les autres quand elle convient (10.14.1, S-03) :
+    // « Enregistrer un paiement », lancé depuis « Guide-moi » sur une facture, guide sur CETTE facture —
+    // pas sur la plus récente de la liste, trois écrans plus loin. Une seule règle pour le choix de la
+    // cible et pour « ce geste se fait-il ici ? » (`ici` dans les visites).
+    const ouverte = prefixe => { const m = new RegExp('^#/' + prefixe + '/([^/]+)$').exec(location.hash); return m && m[1] !== 'new' ? m[1] : null; };
+    const docIci = (() => { const id = ouverte('doc'); return id ? docById(id) : null; })();
+    const achatIci = (() => { const id = ouverte('achat'); return id ? (data.purchases || []).find(p => p.id === id) || null : null; })();
+    const pref = (x, ok) => (x && ok(x) ? x : null);
+    const aFacturer = d => d.type === 'devis' && (d.lines || []).length && !piecesDuDevis(d.id).totales.length;
+    const ouverteSt = d => d.type === 'facture' && ['retard', 'partielle', 'envoyée'].includes(st(d));
+    const emiseSt = d => d.type === 'facture' && d.status !== 'brouillon' && st(d) !== 'annulée';
+    const du = p => { try { return C.purchaseBalance(p, co, data).remaining > 0.0005; } catch (_) { return false; } };
     switch (cle) {
       case 'doc':
       case 'devis': {
         // Celui qui montre le plus : un devis accepté pas encore facturé porte « Facturer ce devis ».
         const acceptes = devis.filter(d => d.status === 'accepté' && !piecesDuDevis(d.id).totales.length);
-        return lien('#/doc/', recent(acceptes) || recent(devis.filter(d => d.status === 'envoyé')) || recent(devis));
+        return lien('#/doc/', pref(docIci, d => d.type === 'devis' && (d.lines || []).length) || recent(acceptes) || recent(devis.filter(d => d.status === 'envoyé')) || recent(devis));
       }
-      case 'devisBrouillon': return lien('#/doc/', recent(devis.filter(d => d.status === 'brouillon')));
-      case 'devisAccepte': return lien('#/doc/', recent(devis.filter(d => d.status === 'accepté' && !piecesDuDevis(d.id).totales.length)));
-      case 'factureBrouillon': return lien('#/doc/', recent(factures.filter(d => d.status === 'brouillon')));
-      case 'factureOuverte': return lien('#/doc/', recent(factures.filter(d => ['retard', 'partielle', 'envoyée'].includes(st(d)))));
-      case 'factureEmise': return lien('#/doc/', recent(factures.filter(d => d.status !== 'brouillon' && st(d) !== 'annulée')));
+      // Ce qu'on envoie depuis la pièce ouverte : un devis, une facture ou un avoir émis ; sinon un devis.
+      case 'pieceAEnvoyer': return lien('#/doc/', pref(docIci, d => (d.lines || []).length && (d.type === 'devis' || (['facture', 'avoir'].includes(d.type) && d.status !== 'brouillon')))
+        || recent(devis.filter(d => d.status === 'brouillon')) || recent(devis));
+      // Le devis ouvert, s'il n'est pas encore facturé ; sinon le plus parlant (accepté d'abord).
+      case 'devisAFacturer': return lien('#/doc/', pref(docIci, aFacturer) || recent(devis.filter(d => d.status === 'accepté' && aFacturer(d))) || recent(devis));
+      case 'devisBrouillon': return lien('#/doc/', pref(docIci, d => d.type === 'devis' && d.status === 'brouillon' && (d.lines || []).length) || recent(devis.filter(d => d.status === 'brouillon')));
+      case 'devisAccepte': return lien('#/doc/', pref(docIci, d => d.type === 'devis' && d.status === 'accepté' && aFacturer(d)) || recent(devis.filter(d => d.status === 'accepté' && !piecesDuDevis(d.id).totales.length)));
+      case 'factureBrouillon': return lien('#/doc/', pref(docIci, d => d.type === 'facture' && d.status === 'brouillon') || recent(factures.filter(d => d.status === 'brouillon')));
+      case 'factureOuverte': return lien('#/doc/', pref(docIci, ouverteSt) || recent(factures.filter(ouverteSt)));
+      case 'factureEmise': return lien('#/doc/', pref(docIci, emiseSt) || recent(factures.filter(emiseSt)));
       // Ce qu'une visite « faire » doit trouver pour avoir un sens (10.14.1) : une facture en retard à
       // relancer, un achat qui attend son règlement, un mois terminé à clôturer. Sans eux, la visite
       // dit POURQUOI elle ne peut pas se lancer, au lieu de finir sur un geste impossible.
-      case 'factureRetard': return lien('#/doc/', recent(factures.filter(d => st(d) === 'retard')));
-      case 'achatDu': return lien('#/achat/', recent((data.purchases || []).filter(p => {
-        try { return C.purchaseBalance(p, co, data).remaining > 0.0005; } catch (_) { return false; }
-      })));
+      case 'factureRetard': return lien('#/doc/', pref(docIci, d => d.type === 'facture' && st(d) === 'retard') || recent(factures.filter(d => st(d) === 'retard')));
+      case 'achatDu': return lien('#/achat/', pref(achatIci, du) || recent((data.purchases || []).filter(du)));
       case 'moisACloturer': return C.closableMonths(data, C.today()).length ? '#/compta' : null;
       case 'client': { const n = parCle(docs, 'clientId'); return lien('#/client/', plusRempli(data.clients || [], c => n.get(c.id) || 0)); }
       case 'contrat': return lien('#/contrat/', (data.recurring || []).find(r => r.active !== false) || (data.recurring || [])[0]);
       case 'fournisseur': { const n = parCle(data.purchases || [], 'supplierId'); return lien('#/fournisseur/', plusRempli(data.suppliers || [], s => n.get(s.id) || 0)); }
-      case 'achat': return lien('#/achat/', recent((data.purchases || []).filter(p => (p.lines || []).length > 1)) || recent(data.purchases || []));
+      case 'achat': return lien('#/achat/', achatIci || recent((data.purchases || []).filter(p => (p.lines || []).length > 1)) || recent(data.purchases || []));
       case 'affaire': { const n = parCle(docs, 'projectId'); return lien('#/affaire/', plusRempli(data.projects || [], p => n.get(p.id) || 0)); }
       case 'salarie': return lien('#/salarie/', C.activeEmployees(data)[0] || (data.employees || [])[0]);
       case 'article': return lien('#/article/', (data.catalog || []).find(c => c.tracked));
@@ -15080,7 +15170,8 @@
         const sans = (data.purchases || []).filter(p => p.kind !== 'acompte' && !(p.attachments || []).length);
         const reclame = (data.questionsCabinet || []).find(x => x.attendu === 'piece' && !(x.reponse && String(x.reponse.texte || '').trim()));
         const vise = reclame && sans.find(p => p.number === reclame.piece);
-        return lien('#/achat/', vise || recent(sans) || recent(data.purchases || []));
+        // L'achat ouvert passe avant : joindre un second fichier à une pièce qui en a déjà un reste un geste juste.
+        return lien('#/achat/', pref(achatIci, p => p.kind !== 'acompte') || vise || recent(sans) || recent(data.purchases || []));
       }
       default: return null;
     }
@@ -15103,7 +15194,7 @@
     if (p.exemple && !C.estDemo(data) && !await loadDemo()) return;
     if (p.reel && C.estDemo(data) && !await demoSortie()) return;
     // La proposition « Première fois sur cette page ? » n'a plus d'objet pendant une visite.
-    const bande = $('#guide-band'); if (bande) bande.remove();
+    fermerAppelGuide();
     Visite.lancer(p, depart || 0);
     // Le bouton « Visite guidée » du bandeau de l'exemple disparaît pendant la visite.
     const bv = $('#demo-visite'); if (bv) bv.remove();
@@ -15209,40 +15300,91 @@
     },
     interrompu: (p, i, compte) => {
       visitesPoser(e => { e.reprise = Object.assign({ id: p.id, i: Math.max(0, i) }, compte || {}); });
-      toast('Visite mise en pause. Tu la reprends quand tu veux depuis « Me guider », en bas du menu.');
+      // Où la reprendre : « Guide-moi » de cette page quand il la propose (la visite de la page, un geste
+      // qui se fait ici), sinon « Me guider » — la découverte n'est que là (S-03).
+      const g = Visite.guideDeLaPage(visitesVisibles(), cleDePage(location.hash), { cleDe: cleDePage });
+      toast($('#guide-moi') && Visite.dansLeGuide(g, p.id)
+        ? 'Visite mise en pause. Tu la reprends depuis « Guide-moi », en haut de cette page, ou depuis « Me guider », en bas du menu.'
+        : 'Visite mise en pause. Tu la reprends quand tu veux depuis « Me guider », en bas du menu.');
       if (location.hash === '#/guide') render(true);
     }
   });
 
-  // La première fois qu'on ouvre une page, une ligne calme propose sa visite — trois fois au plus,
+  // La première fois qu'on ouvre une page, une invitation propose sa visite — trois fois au plus,
   // puis elle se tait : un débutant la voit, quelqu'un qui connaît la page n'en est pas encombré.
-  // Elle se pose SOUS l'en-tête (le titre reste en haut) et avec la page : elle ne surgit pas
-  // après coup sous le curseur (H-E1). Pas de vert : le bouton principal de la page reste le seul.
-  // Elle porte la couleur du domaine de la page, comme la visite qu'elle propose.
+  //
+  // 10.14.1 (S-03) : elle ne pousse plus l'écran de travail. C'était une bande SOUS l'en-tête, avec la
+  // page : sur un portable, la grille de saisie commençait 90 px plus bas pendant les trois premières
+  // visites. Elle s'ACCROCHE désormais au bouton « Guide-moi », par-dessus la page, et se referme au
+  // premier geste ailleurs : elle apprend en passant où la visite se retrouvera — dans « Guide-moi »,
+  // avec tout ce qu'on peut faire ici. Pas de vert : le bouton principal de la page reste le seul
+  // (U-11). Elle porte la couleur du domaine de la page, comme la visite qu'elle propose.
   const VISITE_PROPOSEE_MAX = 3;
-  function bandeauVisite(route) {
+  let appelEnAttente = '';
+  function fermerAppelGuide() {
+    const a = document.getElementById('guide-appel');
+    if (a) { if (typeof a._fermer === 'function') a._fermer(); else a.remove(); }
+  }
+  function appelGuide(route) {
     // Sur « Me guider » et sur l'Aide, la page EST déjà l'invitation : la proposer encore serait du bruit.
     if (!data || Visite.enCours() || route === 'guide' || route === 'aide') return;
     const p = visitePage(route);
     const et = visitesEtat();
     if (!p || !et.proposer || et.faites[p.id] || (et.vues[route] || 0) >= VISITE_PROPOSEE_MAX) return;
-    const head = $('#view .page-head');
-    if (!head || $('#guide-band')) return;
     // Deux invitations l'une sous l'autre se contredisent (7.18.0) : quand l'accueil propose déjà
     // « Nouveau sur SkanFact ? », la visite de la page se tait — et ne compte pas cette ouverture.
     if ($('#view .pp-accueil')) return;
+    const bouton = $('#guide-moi');
+    // Une page asynchrone n'a pas encore son en-tête : l'invitation attend le bouton (`poserGuideMoi`).
+    if (!bouton) { appelEnAttente = route; return; }
+    fermerAppelGuide();
     visitesPoser(e => { e.vues[route] = (e.vues[route] || 0) + 1; });
     const coul = SkanVisites.couleurDe(p);
     const el = document.createElement('div');
-    el.className = 'guide-band' + (coul ? ' th-' + coul : '');
-    el.id = 'guide-band';
-    el.innerHTML = `<span class="gb-ico" aria-hidden="true">${iconeDomaine(coul) || ICONE_GUIDE}</span>
-      <span class="gb-txt"><b>Première fois sur cette page ?</b> Je te montre à quoi elle sert et ce que fait chaque bouton, en une minute.</span>
-      <button type="button" class="btn btn-sm gb-go" id="gb-go">${ICONE_LECTURE}Visite de la page</button>
-      <button type="button" class="btn btn-ghost btn-sm" id="gb-non" title="Ne plus me proposer la visite de cette page">Plus tard</button>`;
-    head.insertAdjacentElement('afterend', el);
-    $('#gb-go').onclick = () => { el.remove(); lancerVisite(p); };
-    $('#gb-non').onclick = () => { visitesPoser(e => { e.vues[route] = VISITE_PROPOSEE_MAX; }); el.remove(); };
+    el.className = 'guide-appel' + (coul ? ' th-' + coul : '');
+    el.id = 'guide-appel';
+    el.setAttribute('role', 'dialog');
+    el.setAttribute('aria-labelledby', 'ga-t');
+    el.innerHTML = `<span class="ga-fleche" aria-hidden="true"></span>
+      <div class="ga-tete"><span class="ga-ico" aria-hidden="true">${iconeDomaine(coul) || ICONE_GUIDE}</span>
+        <b id="ga-t">Première fois sur cette page ?</b></div>
+      <p class="ga-txt">${h(p.resume || '')} Je te montre à quoi elle sert et ce que fait chaque bouton, en ${h(p.duree || 'une minute')}.</p>
+      <div class="ga-actions"><button type="button" class="btn btn-sm ga-go" id="ga-go">${ICONE_LECTURE}Faire la visite</button>
+        <button type="button" class="btn btn-ghost btn-sm" id="ga-non" title="Ne plus me proposer la visite de cette page">Plus tard</button></div>
+      <p class="ga-note">Tu la retrouves dans « Guide-moi », avec tout ce qu'on peut faire ici.</p>`;
+    document.body.appendChild(el);
+    const scroller = $('#view');
+    const depart = scroller ? scroller.scrollTop : 0;
+    // Sous le bouton, calée sur son bord droit, la flèche sur son milieu ; jamais hors de l'écran.
+    const placer = () => {
+      const r = bouton.getBoundingClientRect();
+      if (!r.width || !document.body.contains(bouton)) { fermer(); return; }
+      const w = el.offsetWidth;
+      const gauche = Math.max(12, Math.min(window.innerWidth - w - 12, r.right - w));
+      el.style.top = Math.round(r.bottom + 10) + 'px';
+      el.style.left = Math.round(gauche) + 'px';
+      el.style.setProperty('--ga-fleche', Math.round(Math.min(w - 22, Math.max(14, r.left + r.width / 2 - gauche))) + 'px');
+    };
+    // Le premier geste ailleurs la referme : on s'est mis au travail. Un clic sur « Guide-moi » ouvre
+    // le menu (qui la referme aussi) ; un défilement de la page aussi — elle flotterait loin du bouton.
+    const dehors = e => { if (!el.contains(e.target)) fermer(); };
+    const clavier = e => { if (e.key === 'Escape' && el.contains(document.activeElement)) { e.stopPropagation(); fermer(); bouton.focus(); } };
+    const defile = () => { if (!scroller || Math.abs(scroller.scrollTop - depart) > 4) fermer(); };
+    function fermer() {
+      el.remove();
+      document.removeEventListener('mousedown', dehors, true);
+      document.removeEventListener('keydown', clavier, true);
+      window.removeEventListener('resize', placer);
+      if (scroller) scroller.removeEventListener('scroll', defile);
+    }
+    el._fermer = fermer;
+    placer();
+    document.addEventListener('mousedown', dehors, true);
+    document.addEventListener('keydown', clavier, true);
+    window.addEventListener('resize', placer);
+    if (scroller) scroller.addEventListener('scroll', defile);
+    $('#ga-go', el).onclick = () => { fermer(); lancerVisite(p); };
+    $('#ga-non', el).onclick = () => { visitesPoser(e => { e.vues[route] = VISITE_PROPOSEE_MAX; }); fermer(); };
   }
   const ICONE_GUIDE = '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z"/></svg>';
   const ICONE_LECTURE = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M10.2 8.6l5 3.4-5 3.4z"/></svg>';
@@ -15468,8 +15610,8 @@
     // `#/aide` seul ouvre l'ACCUEIL. Avant, il ouvrait d'office le premier article : on ne voyait
     // jamais la carte du domaine, et on ne savait pas qu'il y en avait trente et un autres.
     aideArticle = arts.some(x => x.id === vise) ? vise : '';
-    // Demander un article PRÉCIS efface la recherche en cours. Sans ça, arriver ici par
-    // « Comprendre cette page » alors qu'une recherche traînait en mémoire relançait le filtrage au
+    // Demander un article PRÉCIS efface la recherche en cours. Sans ça, arriver ici par l'article
+    // d'une page (« Guide-moi ») alors qu'une recherche traînait en mémoire relançait le filtrage au
     // dessin : `#aide-vue` — qui CONTIENT l'article — repartait caché, et la page s'ouvrait blanche.
     // Trouvé par `npm run e2e:aide`, invisible à la lecture.
     if (aideArticle) aideQ = '';
@@ -15486,9 +15628,9 @@
       <div class="page-head"><h1>Aide</h1>
         <div class="actions">${backButton('#/dashboard', 'aide')}<button class="btn" id="aide-support">Signaler un problème</button><button class="btn" id="aide-idee">Proposer une amélioration</button><button class="btn" id="aide-changelog">Nouveautés de la version</button></div></div>
       ${/* 10.12.0 — la phrase promettait « le ? en haut de chaque page » : aucune page n'en porte. Le
-           lien s'appelle « Comprendre cette page » (poserLienAide) ; une phrase affichée que rien ne
-           tient est un bug (7.3.0). */''}
-      ${a ? '' : `<p class="lead">Comment marche SkanFact, et comment tenir la gestion d'une petite entreprise sans rien oublier. Cherche un mot, ou choisis un domaine. Partout ailleurs dans l'application, les petits <span class="i-demo">i</span> expliquent le champ juste à côté, et «&nbsp;Comprendre cette page&nbsp;» en haut de chaque page ouvre l'article de cette page.</p>
+           bouton s'appelle « Guide-moi » depuis la 10.14.1 (poserGuideMoi) ; une phrase affichée que
+           rien ne tient est un bug (7.3.0). */''}
+      ${a ? '' : `<p class="lead">Comment marche SkanFact, et comment tenir la gestion d'une petite entreprise sans rien oublier. Cherche un mot, ou choisis un domaine. Partout ailleurs dans l'application, les petits <span class="i-demo">i</span> expliquent le champ juste à côté, et «&nbsp;Guide-moi&nbsp;» en haut de chaque page liste tout ce qu'on peut y faire — sa visite, chaque geste pas à pas — et ouvre l'article de cette page.</p>
       <div class="guide-band aide-guide"><span class="gb-ico" aria-hidden="true">${ICONE_GUIDE}</span>
         <span class="gb-txt"><b>Tu préfères qu'on te montre ?</b> La visite guidée te fait faire chaque geste sur ton vrai écran, et explique chaque bouton de chaque page.</span>
         <button type="button" class="btn btn-sm" id="aide-guide">Me guider</button></div>`}
