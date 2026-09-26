@@ -1206,6 +1206,10 @@ t('U-12 : un écran de travail s\'ouvre sur le dernier mois qui a des données, 
   assert.strictEqual(C.moisDeTravail([], 2025, '2026-09-23'), 12, 'un exercice passé sans données s\'ouvre sur son dernier mois');
   assert.strictEqual(C.moisDeTravail([], 2027, '2026-09-23'), 1, 'un exercice futur s\'ouvre sur son premier mois, jamais sur un mois qui n\'existe pas');
   assert.strictEqual(C.moisDeTravail([13, 0, 'x'], 2026, '2026-02-10'), 2, 'un mois hors bornes ne doit pas passer pour une donnée');
+  // 10.14.1 : une pièce d'un mois futur (un brouillard du 20/10, fin septembre) n'emporte pas l'écran.
+  assert.strictEqual(C.moisDeTravail([8, 10], 2026, '2026-09-26'), 8, 'un mois futur emporte l\'écran');
+  assert.strictEqual(C.moisDeTravail([10], 2026, '2026-09-26'), 9, 'seul un mois futur a des données : le mois courant');
+  assert.strictEqual(C.moisDeTravail([10], 2025, '2026-09-26'), 10, 'un exercice passé garde tous ses mois');
   // Et les DEUX écrans passent par elle — une seconde règle écrite ailleurs divergerait.
   const app = code('src', 'cabinet', 'renderer', 'app.js');
   const paie = tranche(app, 'function vuePaie(');

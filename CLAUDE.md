@@ -8553,6 +8553,10 @@ lots ; le détail de ce qui reste vit dans `A-FAIRE.md` § 0.
     désigne plus) — l'écran montre alors l'ANCIEN code après un correctif. Avant de juger, vérifier
     l'heure de départ du processus (`ps -o lstart`) ; tuer par PID, jamais `pkill -f` sur un motif
     que la commande elle-même contient (elle se tue).
+- **Un écran de travail s'ouvre sur le dernier mois qui a des données, JUSQU'AU mois courant** (U-12,
+  re-trouvée) : un brouillard saisi d'avance, daté du mois suivant, faisait ouvrir la déclaration sur
+  un mois qui n'existe pas encore. `moisDeTravail` écarte les mois futurs de l'exercice en cours ; un
+  exercice passé garde son dernier mois saisi.
 
 ## Pistes pour la suite (non demandées)
 

@@ -46,6 +46,10 @@ Publiée en **bêta** : elle touche au moteur comptable (retenue à la source, d
   la déclaration lit, et propose ensuite de déclarer la TVA. Une case qui garde une valeur proposée se dit
   « À vérifier », plus « ✓ Déjà rempli ».
 - **« 7 % » ne se coupe plus avant son signe**, dans les bulles comme dans la prose des deux applications.
+- **La déclaration s'ouvre sur un mois PASSÉ**, jamais sur un mois à venir : un brouillard daté du
+  20 octobre (un prélèvement saisi d'avance) faisait ouvrir l'écran de septembre sur octobre, un mois
+  qui n'est pas encore là. Le mois de travail est le dernier mois qui a des données jusqu'au mois
+  courant — sur l'exercice en cours.
 - **Un mois sans TVA** n'a plus de bouton vert qui mène à un refus : « Aucune écriture à passer », et
   l'étape suivante devient le dépôt.
 - **Les comptes proposés dans la grille et depuis la banque** se classent d'après le libellé de la

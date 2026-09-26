@@ -65,11 +65,15 @@
   // l'air d'un dossier vide —, pendant que la Déclaration s'ouvrait sur janvier faute d'écriture.
   // Un exercice PASSÉ sans données s'ouvre sur son dernier mois, un exercice futur sur son premier :
   // jamais un mois qui n'existe pas encore.
+  // 10.14.1 — une pièce datée d'un mois FUTUR (un prélèvement programmé, une faute de frappe) ne
+  // l'emporte pas : la Déclaration s'ouvrait sur octobre, fin septembre, pour une seule pièce en
+  // brouillard du 20/10 (vu au guide, un comptable débutant).
   function moisDeTravail(moisAvecDonnees, annee, aujourdhui) {
-    const faits = (moisAvecDonnees || []).map(Number).filter(m => m >= 1 && m <= 12);
-    if (faits.length) return Math.max(...faits);
     const a = Number(annee), y = Number(String(aujourdhui || '').slice(0, 4)), m = Number(String(aujourdhui || '').slice(5, 7));
-    if (y === a && m >= 1 && m <= 12) return m;
+    const courant = y === a && m >= 1 && m <= 12;
+    const faits = (moisAvecDonnees || []).map(Number).filter(x => x >= 1 && x <= 12 && (!courant || x <= m));
+    if (faits.length) return Math.max(...faits);
+    if (courant) return m;
     return y > a ? 12 : 1;
   }
   function monthsBetween(from, to) {
