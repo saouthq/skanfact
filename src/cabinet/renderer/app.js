@@ -1819,6 +1819,20 @@
     const caSub = !ca.mois ? 'aucun paquet ne porte de chiffres'
       : [esc(K.monthLabel(ca.mois)), ca.montant == null ? 'pas de total entre deux devises' : '',
         `${pl(ca.clients, 'client')} sur ${ca.sur}`].filter(Boolean).join(' · ');
+    // 26/09 — un portefeuille SANS aucun client sur SkanFact (le premier jour d'un comptable, qui
+    // commence par ses dossiers hors SkanFact) ne reçoit aucun paquet : « 0 / 0 à jour », « 0 mois
+    // manquant — aucun paquet reçu » et « — de CA » y sont trois cartes vides qui parlent d'un travail
+    // qu'il ne fait pas. On garde les clients, et on compte ce qu'il fait : les livres qu'il tient.
+    if (!p.surSkanfact) {
+      const sans = p.total - (p.livres || 0);
+      return `<div class="stats rangee">
+      ${item('tous', p.total > 1 ? 'clients suivis' : 'client suivi', p.total,
+    `${p.horsSkanfact} hors SkanFact`, '', 'Voir tous tes clients, par ordre alphabétique')}
+      ${item('livres', (p.livres || 0) > 1 ? 'livres tenus' : 'livre tenu', `${p.livres || 0}<span class="val-sur"> / ${p.total}</span>`,
+    sans ? `${pl(sans, 'client')} sans livre` : 'chaque client a son livre',
+    sans ? '' : 'ok', 'Voir ce que tu as saisi, mois par mois')}
+    </div>`;
+    }
     return `<div class="stats rangee">
       ${/* Le libellé s'accorde au chiffre qu'il suit : « 1 clients suivis » se lisait sur le tout
             premier écran d'un cabinet qui vient d'ajouter son premier client (10.14.0). */''}
@@ -1851,6 +1865,7 @@
       b.onclick = () => {
         const cle = b.dataset.pf;
         if (cle === 'manquants') { location.hash = '#/relances'; return; }
+        if (cle === 'livres') { location.hash = '#/production'; return; }
         const v = CARTES_PORTEFEUILLE[cle];
         if (!v) { toast('Ce chiffre n\'a pas encore d\'écran à ouvrir.', 'error'); return; }
         listState.q = ''; listState.withArchived = false; listState.page = 1;
@@ -1915,6 +1930,9 @@
       todo.splice(apresUrgent, 0, lignePas);
     }
     const p = K.portfolio(S);
+    // Les livres que le cabinet TIENT, parmi les clients de la liste : c'est le chiffre d'un
+    // portefeuille hors SkanFact, qui ne reçoit aucun paquet (26/09).
+    { const tenus = avecLivre(); p.livres = K.dossierList(S).filter(r => tenus.has(r.id)).length; }
 
     // Écran d'ouverture d'un cabinet qui vient d'installer l'application : il n'a rien reçu, et il
     // n'a rien à chercher ni à filtrer. Trois propositions, trois VRAIS boutons — la première version
@@ -1964,11 +1982,19 @@
 
     const shown = paginate(rows);
     const col = colonnesUtiles(rows);
+    // 26/09 — un portefeuille de clients hors SkanFact (le premier jour d'un comptable) n'a aucun
+    // paquet à importer : l'étape suivante est de commencer un livre, et c'est elle qui est verte (U-11).
+    const pasSuivant = lesPas().suivante;
+    const premierLivre = pasSuivant && pasSuivant.action === 'livre';
+    // Un portefeuille sans client sur SkanFact n'a aucun paquet à attendre : « Importer un paquet »
+    // n'y est pas l'étape suivante, et il reste un geste ordinaire (U-11).
+    const importerVert = !premierLivre && p.surSkanfact > 0;
     view.innerHTML = `
       <div class="page-head"><h1>Dossiers</h1>
         <div class="actions">
           <button class="btn" id="new-d">Nouveau client…</button>
-          <button class="btn btn-primary" id="imp">Importer un paquet…</button>
+          <button class="btn${importerVert ? ' btn-primary' : ''}" id="imp">Importer un paquet…</button>
+          ${premierLivre ? '<button class="btn btn-primary" id="pp-livre">Commencer un premier livre…</button>' : ''}
         </div></div>
       ${portfolioPanel(p)}
       ${inboxBanner()}
@@ -2025,6 +2051,7 @@
         : `<div class="empty">Aucun dossier ne correspond à cette recherche.</div>`}`;
 
     $('#imp').onclick = () => doImport();
+    const ppl = $('#pp-livre'); if (ppl) ppl.onclick = () => ouvrirPremierLivre();
     $('#new-d').onclick = () => newDossierForm();
     const q = $('#q');
     q.oninput = () => { listState.q = q.value; listState.page = 1; sansPerdreLaFrappe(q, render); };
@@ -2171,7 +2198,9 @@
     const mois = K.productionDuDossier(dossier, index, K.today(), (S.settings || {}).relanceDay);
     if (!mois.length) {
       zone.innerHTML = `<div class="empty mini">Ce client n'utilise pas SkanFact : rien ne lui est réclamé, sa comptabilité se tient ici.
-        <div class="inline mt"><button type="button" class="btn btn-sm" data-vers="comptabilite">Ouvrir sa comptabilité</button></div></div>`;
+        <div class="inline mt"><button type="button" class="btn btn-sm btn-primary" data-vers="comptabilite">Ouvrir sa comptabilité</button></div></div>`;
+      /* 26/09 — c'est l'étape suivante d'un client hors SkanFact qu'on vient d'ajouter, et rien d'autre
+         sur la fiche n'est vert : elle l'est (U-11, un bouton principal par écran). */
       $$('[data-vers]', zone).forEach(b => { b.onclick = () => { location.hash = '#/dossier/' + encodeURIComponent(dossier.id) + '/' + b.dataset.vers; }; });
       return;
     }
@@ -2708,6 +2737,14 @@
     const set = new Set((d.tousLesMois || []).map(m => m.slice(0, 4)));
     (d.exercices || []).forEach(x => set.add(String(x.annee)));
     if (s.annee) set.add(String(s.annee));
+    // 26/09 — un dossier qui n'a encore AUCUN exercice propose aussi l'année d'avant : un cabinet qui
+    // reprend un client en cours d'année commence souvent par clôturer l'exercice précédent, et la
+    // liste ne lui offrait que l'année en cours (on ne le trouvait qu'en changeant le champ de la
+    // fenêtre de reprise, vu à la souris).
+    if (!(d.exercices || []).length && !(d.tousLesMois || []).length) {
+      const n = Number(K.today().slice(0, 4)); // l'année du CALENDRIER : partir de l'année choisie reculerait d'un an à chaque choix
+      set.add(String(n)); set.add(String(n - 1));
+    }
     return [...set].filter(y => /^\d{4}$/.test(y)).sort().reverse();
   }
   function exerciceConnu(annee) {
@@ -2951,18 +2988,22 @@
       <td><input name="d${i}" value="${esc(montantRepris(l.debit))}" class="num montant" inputmode="decimal" style="width:8em"></td>
       <td><input name="k${i}" value="${esc(montantRepris(l.credit))}" class="num montant" inputmode="decimal" style="width:8em"></td>
       <td class="actions"><button type="button" class="btn btn-sm" data-sup="${i}">Retirer</button></td></tr>`;
-    modal(`<h2>Reprendre ${esc(dossier.name)}</h2>
-      <p class="small muted">Pour un client qui tenait sa comptabilité ailleurs. Tu poses son exercice et ce que
-      ses comptes portaient au premier jour ; tout ce qui suivra s'appuiera dessus.
-      <b>La balance d'ouverture doit s'équilibrer</b> — une reprise fausse fausse l'exercice entier, et on ne
-      s'en aperçoit qu'au bilan.</p>
-      <form id="rf" class="grid-2">
-        <label class="field">Exercice<input name="annee" value="${esc(annee)}" class="num"></label>
-        <label class="field">Du<input type="date" name="du" value="${esc(annee)}-01-01"></label>
-        <label class="field">Au<input type="date" name="au" value="${esc(annee)}-12-31"></label>
+    // 26/09 — la fenêtre ne parlait qu'à la REPRISE (« pour un client qui tenait sa comptabilité
+    // ailleurs ») alors qu'elle est aussi celle du client qui démarre, à qui l'écran d'avant et la
+    // visite disent de laisser la balance vide. Elle dit les deux, et ses trois champs tiennent sur
+    // une ligne avec leur bulle (vu à la souris).
+    modal(`<h2>Commencer le livre de ${esc(dossier.name)}</h2>
+      <p class="small muted"><b>Un client qui démarre</b> : pose son exercice et laisse la balance d'ouverture vide.
+      <b>Un client qui tenait sa comptabilité ailleurs</b> : reprends ce que ses comptes portaient au premier jour
+      — à la main, ou « Importer un CSV… » depuis son ancien logiciel. Elle doit s'équilibrer : une reprise fausse
+      fausse l'exercice entier, et on ne s'en aperçoit qu'au bilan.</p>
+      <form id="rf" class="grid-3">
+        <label class="field">${lbl('Exercice', 'rp.exercice')}<input name="annee" value="${esc(annee)}" class="num"></label>
+        <label class="field">${lbl('Du', 'rp.bornes')}<input type="date" name="du" value="${esc(annee)}-01-01"></label>
+        <label class="field">${lbl('Au', 'rp.bornes')}<input type="date" name="au" value="${esc(annee)}-12-31"></label>
         <p id="rf-exo" class="annonce-stable span-3 muted" aria-live="polite"></p>
       </form>
-      <h3 class="sub-h">Balance d'ouverture</h3>
+      <h3 class="sub-h">Balance d'ouverture ${info('rp.balance')}</h3>
       <div class="scroll-x"><table class="list compact"><thead><tr><th>Compte</th><th>Libellé</th><th class="r">Débit</th><th class="r">Crédit</th><th></th></tr></thead>
         <tbody id="rf-lignes">${lignes.map(ligneHtml).join('')}</tbody></table></div>
       <div class="modal-actions" style="justify-content:flex-start">
@@ -3070,7 +3111,11 @@
             exerciceConnu(v.annee);
             suivreExercice(dossier);
             close();
-            drawLivres(root, dossier);
+            // 10.14.1 — un livre qu'on vient de créer s'ouvre sur la SAISIE, par la porte qui tient
+            // l'adresse : c'est l'étape suivante. Il s'ouvrait sur un livre-journal vide, « Aucune
+            // écriture sur cette période », sans un geste — la première impasse d'un comptable qui
+            // commence un client hors SkanFact.
+            allerSousOnglet(root, dossier, 'saisie');
             toast(`Livre de ${v.annee} créé`);
           } catch (e) { await infoDialog('Reprise impossible', plainError(e)); }
         };
@@ -3396,7 +3441,12 @@
                   : s.onglet === 'inventaire' ? vueInventaire(dossier)
                   : s.onglet === 'paie' ? vuePaie(dossier)
                     : !lignes.length
-                      ? `<div class="empty mini">Aucune écriture sur cette période.</div>`
+                      // Un écran de lecture vide sur un livre OUVERT dit d'où viennent les écritures,
+                      // et mène à la saisie (7.0.0 : une liste vide donne le geste qui la remplit).
+                      ? (s.livre && s.livreEtat === 'ouvert'
+                        ? `<div class="empty mini">Aucune écriture sur cette période : elles arrivent par la saisie, un relevé de banque ou un paquet du client.
+                            <div class="modal-actions" style="justify-content:flex-start"><button class="btn btn-sm btn-primary" id="lv-vers-saisie">Saisir une première pièce</button></div></div>`
+                        : `<div class="empty mini">Aucune écriture sur cette période.</div>`)
                       : s.onglet === 'journal' ? vueJournal(lignes)
                         : s.onglet === 'grand-livre' ? vueGrandLivre(lignes)
                           : s.onglet === 'balance' ? vueBalance(lignes)
@@ -3494,6 +3544,7 @@
     if (cb) cb.onchange = () => { s.brouillard = cb.checked; drawLivres(root, dossier); };
     [$('#lv-relire', el), $('#lv-relire2')].forEach(b => { if (b) b.onclick = () => relireLesPaquets(root, dossier); });
     const rp = $('#lv-reprendre', el); if (rp) rp.onclick = () => repriseForm(root, dossier);
+    const vs = $('#lv-vers-saisie', el); if (vs) vs.onclick = () => allerSousOnglet(root, dossier, 'saisie');
     // Le manque NOMMÉ porte son geste (7.15.0) : la relance part préremplie sur CES mois-là.
     const rm = $('#lv-relancer', el);
     if (rm) rm.onclick = () => {
@@ -7185,11 +7236,22 @@
     // le focus au passage. Les retirer de l'ordre de tabulation rendrait l'explication
     // inatteignable au clavier, ce que ce projet s'interdit depuis la 7.0.0. On ajoute un chemin
     // au lieu d'en couper un : Entrée descend de champ en champ, jusqu'à la première ligne.
+    // 10.14.1 (26/09, tapé comme un comptable) — et TAB vers l'avant fait pareil : l'aide des touches
+    // annonce « Champ suivant : Tab », et un comptable tape Tab. Après la date, Tab tombait sur la
+    // bulle de « Pièce » : la référence tapée partait dans un bouton, perdue sans un mot, et le
+    // libellé atterrissait dans la case Pièce. Maj+Tab, lui, passe toujours par les bulles : elles
+    // restent atteignables au clavier, par l'autre sens.
     const chaine = [dt, pc, lb];
+    // Le journal, lui, ne prend que Tab : Entrée y ouvre la liste.
+    if (j && dt) j.addEventListener('keydown', ev => {
+      if (ev.key !== 'Tab' || ev.shiftKey || ev.ctrlKey || ev.altKey || ev.metaKey) return;
+      ev.preventDefault(); dt.focus(); dt.select();
+    });
     chaine.forEach((champ, i) => {
       if (!champ) return;
       champ.addEventListener('keydown', ev => {
-        if (toucheDe(ev) !== t.ligneSuivante) return;
+        const avance = ev.key === 'Tab' && !ev.shiftKey && !ev.ctrlKey && !ev.altKey && !ev.metaKey;
+        if (!avance && toucheDe(ev) !== t.ligneSuivante) return;
         ev.preventDefault();
         if (champ === dt) champ.dispatchEvent(new Event('blur'));
         const suivant = chaine.slice(i + 1).find(Boolean);
@@ -8085,7 +8147,7 @@
   // ---------- les formulaires de dossier ----------
   function dossierFields(d) {
     return `<div class="grid-2">
-        <label class="field span-2">${lbl('Nom du client', 'd.name')}<input type="text" id="f-name" value="${esc(d.name || '')}"></label>
+        <label class="field obligatoire span-2">${lbl('Nom du client', 'd.name')}<input type="text" id="f-name" value="${esc(d.name || '')}"></label>
         <label class="field span-2">${lbl('Matricule fiscal', 'd.matricule')}<input type="text" id="f-mat" value="${esc(d.matricule || '')}" placeholder="1234567X/A/M/000" ${d.packs && d.packs.length ? 'readonly' : ''}></label>
         <label class="field">${lbl('Email', 'd.email')}<input type="email" id="f-email" value="${esc(d.email || '')}" placeholder="Pour les relances"></label>
         <label class="field">${lbl('Téléphone', 'd.phone')}<input type="tel" id="f-phone" value="${esc(d.phone || '')}" placeholder="+216 …"></label>
@@ -8160,8 +8222,9 @@
     let change = () => false;
     modal(
       `<h2>Coller une liste de clients</h2>
-       <p class="small">Un client par ligne, collé depuis ton tableur. Pour donner plus qu'un nom, sépare les colonnes par un point-virgule :
-       <strong>nom ; matricule ; email ; téléphone</strong>. Seul le nom est obligatoire ; un client déjà dans ton portefeuille est ignoré et nommé.</p>
+       <p class="small">Un client par ligne. Depuis Excel, copie tes colonnes telles quelles, dans cet ordre :
+       <strong>nom, matricule, email, téléphone</strong> (une ligne de titres est ignorée) ; tapées à la main, sépare-les par un point-virgule.
+       Seul le nom est obligatoire ; un client déjà dans ton portefeuille est ignoré et nommé.</p>
        <label class="field mt">${lbl('Un client par ligne', 'd.liste')}
          <textarea id="cl-liste" rows="9" placeholder="Menuiserie Trabelsi SUARL ; 1122334A/M/P/000 ; contact@trabelsi.tn&#10;Pharmacie El Menzah&#10;Café des Jasmins"></textarea></label>
        <div class="modal-actions"><button class="btn" id="no">Annuler</button><button class="btn btn-primary" id="ok">Ajouter ces clients</button></div>`,
@@ -10521,6 +10584,8 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
     copieExterne: () => !!(backupInfo && backupInfo.external && backupInfo.external.dir),
     // Le nombre d'écritures du livre ouvert : la preuve qu'une pièce a été enregistrée (10.14.1).
     ecritures: () => ((livresState.livre && livresState.livre.ecritures) || []).length,
+    // Les dossiers qui ont leur livre, et leur nombre : la preuve qu'un livre vient d'être créé (26/09).
+    avecLivre: () => avecLivre(), livres: () => avecLivre().size,
     Visite
   }));
   const visiteParId = id => visites().find(v => v.id === id) || null;
@@ -10609,10 +10674,16 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
     cle: ['Enregistrer ma clé…', () => versReglages('pan-secu')],
     copie: ['Choisir un dossier de copie…', () => versReglages('pan-backup')],
     saisie: ['Régler ma grille', () => versReglages('pan-saisie')],
-    travail: ['Importer un paquet…', () => doImport()]
+    travail: ['Importer un paquet…', () => doImport()],
+    // 26/09 — le premier client hors SkanFact sans livre : sa comptabilité, où l'attend « Commencer le livre ».
+    livre: ['Commencer son livre…', () => ouvrirPremierLivre()]
   };
+  function ouvrirPremierLivre() {
+    const e = lesPas().etapes.find(x => x.id === 'travail');
+    if (e && e.dossierId) location.hash = '#/dossier/' + encodeURIComponent(e.dossierId) + '/comptabilite';
+  }
   const PAS_VISITES = { decouverte: 'decouvrir', cabinet: 'nommer-cabinet', equipe: 'equipe', clients: 'ajouter-client', appairage: 'appairage',
-    cle: 'cle-secours', copie: 'copie-externe', saisie: 'grille-saisie', travail: 'recevoir-paquet' };
+    cle: 'cle-secours', copie: 'copie-externe', saisie: 'grille-saisie', travail: 'recevoir-paquet', livre: 'premier-livre' };
   const ICONE_GUIDE = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z"/></svg>';
   const ICONE_LECTURE = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M10.2 8.6l5 3.4-5 3.4z"/></svg>';
   const ICONE_COCHE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
@@ -11070,8 +11141,8 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
             de ton portefeuille, et rien n'est réclamé à ceux qui n'ont pas commencé.</p>
             <label class="field mt">${lbl('Un client par ligne', 'd.liste')}
               <textarea id="w-clients" rows="8" placeholder="Menuiserie Trabelsi SUARL ; 1122334A/M/P/000 ; contact@trabelsi.tn ; +216 22 333 444&#10;Pharmacie El Menzah&#10;Café des Jasmins ; ; jasmins@example.tn"></textarea></label>
-            <p class="muted small">Tu peux coller une colonne entière depuis Excel. Les colonnes, quand tu en mets, se séparent par
-            un point-virgule : <strong>nom ; matricule ; email ; téléphone</strong>. Seul le nom est obligatoire.</p>
+            <p class="muted small">Depuis Excel, copie tes colonnes telles quelles, dans cet ordre : <strong>nom, matricule, email,
+            téléphone</strong> (une ligne de titres est ignorée) ; tapées à la main, sépare-les par un point-virgule. Seul le nom est obligatoire.</p>
             <p class="muted small">Pas envie maintenant ? Passe : tu pourras charger un jeu d'exemple ou ajouter tes clients un par un.</p>`,
           next: async () => {
             const txt = $('#w-clients', el).value.trim();

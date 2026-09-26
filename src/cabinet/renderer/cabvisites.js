@@ -104,6 +104,10 @@
     'dossier-paquets': { titre: 'Les paquets d\'un client', resume: 'Chaque paquet reçu, vérifié pièce par pièce.', dossier: 'skanfact',
       texte: '<p>Chaque mois reçu : définitif ou provisoire, son chiffre d\'affaires, et le verdict de la vérification — <b>chaque pièce comparée à son empreinte</b>. Un paquet s\'ouvre pour lire ses journaux et ses justificatifs.</p>' },
     compta: { titre: 'La comptabilité d\'un dossier', resume: 'Le livre du client, rangé en trois groupes.', dossier: 'livre',
+      // 26/09 — un client hors SkanFact qu'on vient d'ajouter n'a PAS de livre : la visite décrivait
+      // quatorze écrans absents au-dessus du seul bouton qui existe. Elle commence alors par lui.
+      vide: { cible: '#lv-reprendre', titre: 'Ce client n\'a pas encore de livre',
+        texte: '<p>Sa comptabilité se tient ici, à la main. <b>« Commencer le livre »</b> pose son exercice et, s\'il en a une, sa balance d\'ouverture — laisse-la vide pour un client qui démarre.</p><p>S\'ouvrent alors la <b>Saisie</b> et les quatorze écrans du livre : Saisir, Consulter, Déclarer et clôturer.</p>' },
       texte: '<p>Quatorze écrans, rangés dans l\'ordre du mois : <b>Saisir</b> (la grille, la banque, la paie, les biens), <b>Consulter</b> (journal, grand livre, balance, lettrage) et <b>Déclarer et clôturer</b>.</p><p>Chaque dossier rouvre sur l\'écran où tu l\'as laissé.</p>' },
     'compta-saisie': { titre: 'La saisie', resume: 'La grille où l\'on tape les pièces, au clavier.', dossier: 'hors',
       texte: '<p>La grille de saisie : une pièce, ses lignes, et le solde qui se calcule pendant la frappe. <b>Tout se fait au clavier</b> — Entrée descend, Tab solde la pièce.</p><p>Une pièce s\'enregistre en <b>brouillard</b> (elle se corrige), puis se <b>valide</b> : elle reçoit son numéro et ne se modifie plus.</p>' },
@@ -256,7 +260,8 @@
   b('#lv-relire2', 'Relit les paquets reçus pour mettre le livre à jour.');
   b('#lv-saisir', 'Ouvre la saisie de ce dossier.');
   b('#lv-relancer', 'Prépare la relance de ce client pour les mois qui manquent.');
-  b('#lv-reprendre', 'Reprend l\'ouverture de l\'exercice : les soldes de départ d\'un client qui arrive au cabinet.');
+  b('#lv-reprendre', 'Commence le livre de l\'exercice : vide pour un client qui démarre, ou avec les soldes de départ d\'un client qui arrive au cabinet.');
+  b('#lv-vers-saisie', 'Ouvre la saisie : c\'est là qu\'on écrit la première pièce d\'un livre encore vide.');
   b('#lv-brouillard', 'Montre aussi les pièces en brouillard, pas encore validées.', { nom: 'Brouillard' });
   b('#c-groupes button', 'Ouvre ce groupe d\'écrans : Saisir, Consulter, ou Déclarer et clôturer.', { nom: 'Les groupes', cle: 'groupe' });
   b('#c-tabs button', null, { onglet: true });
@@ -522,8 +527,10 @@
     const DOSSIER_MANQUE = {
       skanfact: { texte: 'Il faut un client qui t\'envoie ses paquets : importe son premier paquet, ou charge l\'exemple (Réglages → L\'application).', visite: 'recevoir-paquet' },
       hors: { texte: 'Il faut un client dont tu tiens le livre : crée un dossier et son livre, ou charge l\'exemple.', visite: 'ajouter-client' },
-      saisie: { texte: 'Il faut un dossier qui a son livre : crée le livre d\'un client (sa fiche → Comptabilité), ou charge l\'exemple.', visite: 'ajouter-client' },
-      livre: { texte: 'Il faut un dossier qui a son livre : crée le livre d\'un client, ou charge l\'exemple.', visite: 'ajouter-client' },
+      // La visite proposée se calcule : commencer un livre s'il y a un client à tenir, sinon en ajouter un
+      // — jamais un bouton éteint qui renvoie à un autre bouton éteint (26/09).
+      saisie: { texte: 'Il faut un dossier qui a son livre : crée le livre d\'un client (sa fiche → Comptabilité), ou charge l\'exemple.', get visite() { return aTenir() ? 'premier-livre' : 'ajouter-client'; } },
+      livre: { texte: 'Il faut un dossier qui a son livre : crée le livre d\'un client, ou charge l\'exemple.', get visite() { return aTenir() ? 'premier-livre' : 'ajouter-client'; } },
       client: { texte: 'Il faut au moins un client dans ton portefeuille.', visite: 'ajouter-client' }
     };
 
@@ -726,7 +733,7 @@
       titre: 'Ajouter un client',
       resume: 'Un client dans ton portefeuille, même s\'il n\'utilise pas encore SkanFact.',
       mots: ['client', 'ajouter', 'nouveau', 'dossier', 'creer'],
-      suite: ['appairage', 'page-dossier'],
+      suite: ['premier-livre', 'appairage', 'page-dossier'],
       mesure: () => reels().length, but: n0 => reels().length > n0 && aucuneFenetre(),
       bravo: 'Ton client est dans le portefeuille',
       conclusion: 'Rien ne lui est réclamé tant qu\'il n\'a pas commencé. S\'il utilise SkanFact, remets-lui le fichier d\'appairage ; sinon, crée son livre et saisis.',
@@ -821,6 +828,41 @@
         { page: '#/dossiers', cible: '#imp', cote: 'dessous', faire: 'clic', avant: () => { paquetsAvant = paquets(); },
           fait: () => paquets() > paquetsAvant && aucuneFenetre(),
           titre: 'Importer', texte: 'Tu peux en choisir plusieurs d\'un coup.', action: 'Clique sur <b>« Importer un paquet… »</b> et choisis le fichier reçu.', essai: { clic: true } }
+      ]
+    });
+
+    // 26/09 — LE geste du premier jour d'un comptable dont les clients sont hors SkanFact : commencer
+    // le livre d'un client. Il n'avait aucune visite ; « Tes premiers pas » y mène maintenant.
+    const livresConnus = () => (ctx.livres ? ctx.livres() : 0);
+    const aTenir = () => {
+      const tenus = ctx.avecLivre ? ctx.avecLivre() : new Set();
+      const libre = d => !!d && !d.demo && !d.archived && !(d.packs || []).length && !tenus.has(d.id);
+      const ouvert = reels().find(d => d.id === dossierOuvert());
+      return libre(ouvert) ? ouvert : reels().find(libre) || null;
+    };
+    const versCompta = () => { const d = aTenir(); return d ? '#/dossier/' + encodeURIComponent(d.id) + '/comptabilite' : null; };
+    let livresAvant = 0;
+    visite({
+      id: 'premier-livre', theme: 'saisir', type: 'faire', duree: '1 min', page: versCompta, pages: ['compta'],
+      titre: 'Commencer le livre d\'un client',
+      resume: 'Pour un client hors SkanFact : son exercice, sa balance d\'ouverture s\'il en a une, puis la saisie.',
+      mots: ['livre', 'commencer', 'reprise', 'ouverture', 'balance', 'exercice', 'hors', 'tenir'],
+      si: () => !!aTenir(),
+      manque: { texte: 'Il faut un client hors SkanFact qui n\'a pas encore de livre : ajoute d\'abord ton client.', visite: 'ajouter-client' },
+      suite: ['saisir-piece', 'page-compta-saisie'],
+      mesure: () => livresConnus(), but: n0 => livresConnus() > n0 && aucuneFenetre(),
+      bravo: 'Son livre est ouvert',
+      conclusion: 'La Saisie et tous les écrans du livre sont là. Tape ta première pièce, ou reprends ses écritures depuis un tableur (Livre-journal → « Réimporter depuis un tableur… »).',
+      etapes: [
+        { page: versCompta, cible: '#lv-reprendre', cote: 'dessous', faire: 'clic', avant: () => { livresAvant = livresConnus(); },
+          titre: 'Commencer son livre', texte: 'Sa comptabilité se tient ici, à la main : on pose d\'abord son exercice.',
+          action: 'Clique sur <b>« Commencer le livre »</b>.', essai: { clic: true } },
+        { page: versCompta, cible: '#rf [name="annee"]', cote: 'droite', titre: 'L\'exercice',
+          texte: 'L\'année du livre, du 1er janvier au 31 décembre. Pour clôturer d\'abord l\'an dernier, tape son année ici.' },
+        { page: versCompta, cible: ['#rf-lignes', '#modal-root .modal'], cote: 'droite', titre: 'Sa balance d\'ouverture',
+          texte: 'Ce que ses comptes portaient au premier jour : capital, banque, clients, fournisseurs. <b>Laisse-la vide pour un client qui démarre.</b> « Importer un CSV… » reprend celle de son ancien logiciel ; elle doit s\'équilibrer.' },
+        { page: versCompta, cible: '#modal-root #ok', cote: 'dessus', faire: 'clic', fait: () => livresConnus() > livresAvant && aucuneFenetre(),
+          titre: 'Créer le livre', texte: 'La Saisie s\'ouvre juste après.', action: 'Clique sur <b>« Créer le livre »</b>.', essai: { clic: true } }
       ]
     });
 
@@ -1651,9 +1693,10 @@
         bravo: 'Tu connais cet écran',
         conclusion: 'Chaque bouton a son explication. Tu retrouveras cette visite dans « Guide-moi », en haut de l\'écran, avec son article et tout ce qu\'on peut y faire.',
         etapes: [
-          { page: ouvrir, titre: P.titre, texte: P.texte },
+          P.vide ? { page: ouvrir, si: () => !!document.querySelector(P.vide.cible), cible: P.vide.cible, cote: 'dessous', titre: P.vide.titre, texte: P.vide.texte } : null,
+          { page: ouvrir, titre: P.titre, texte: P.texte, si: P.vide ? () => !document.querySelector(P.vide.cible) : undefined },
           { page: ouvrir, titre: P.titre, deplier: () => ctx.Visite.etapesDeLaVue({ onglets: true }) }
-        ]
+        ].filter(Boolean)
       });
     });
 

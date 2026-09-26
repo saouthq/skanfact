@@ -556,6 +556,21 @@ t('10.14.1 (D1bis) : le total additionne ce que le formulaire fait payer, et dit
   assert.strictEqual(d.cases.aDecaisser.montant, 111);
 });
 
+t('10.14.1 (26/09) : un mois sans aucune retenue le dit sur sa rubrique, avec son zéro — jamais un titre sans ligne', () => {
+  // Une boulangerie hors SkanFact, une seule vente saisie : ni salaire, ni retenue. La rubrique 1
+  // n'affichait que son titre, et on la lisait comme une case perdue.
+  const livre = livreDeTest([vente('V1', '2026-03-04', 1000, 190)]);
+  const f = K.formulaireMensuel(livre, K.declarationMensuelle(livre, '2026-03'));
+  const rs = f.rubriques.find(r => r.id === 'rs').lignes;
+  assert.strictEqual(rs.length, 1, 'la rubrique de la retenue reste vide');
+  assert.strictEqual(rs[0].montant, 0, 'un zéro connu se dit zéro');
+  assert.ok(/Aucune retenue/.test(rs[0].libelle), rs[0].libelle);
+  assert.strictEqual(f.recap.find(x => x.cle === 'rs').montant, 0);
+  // Et une retenue qui existe ne se double pas d'une ligne « aucune ».
+  const avec = K.formulaireMensuel(livrePaie(true), K.declarationMensuelle(livrePaie(true), '2026-03'));
+  assert.ok(!avec.rubriques.find(r => r.id === 'rs').lignes.some(l => l.cle === 'rs0'), 'une ligne « aucune retenue » à côté de vraies retenues');
+});
+
 t('10.14.1 (D1bis) : un mois en crédit dit son solde, et ne paie pas de TVA', () => {
   const livre = livreDeTest([vente('V1', '2026-03-04', 100, 19), achat('A1', '2026-03-06', 1000, 190)]);
   const f = K.formulaireMensuel(livre, K.declarationMensuelle(livre, '2026-03'));

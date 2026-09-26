@@ -5703,6 +5703,15 @@ t('cabinet : une liste de clients se colle depuis un tableur', () => {
   assert.strictEqual(cab.parseDossierLines('', []).dossiers.length, 0);
   assert.strictEqual(cab.parseDossierLines(null, null).dossiers.length, 0);
   assert.strictEqual(cab.parseDossierLines('Nom\n', []).dossiers.length, 0, 'une entête seule ne crée pas un client « Nom »');
+  // 10.14.1 — une ligne de titres copiée d'Excel telle quelle (« Nom du client | Matricule | E-mail »)
+  // ne devient pas un dossier ; un client nommé « Société … » ou « Entreprise … » reste un client, et
+  // seule la première ligne non vide peut être des titres.
+  const noms = t => cab.parseDossierLines(t, []).dossiers.map(d => d.name);
+  assert.deepStrictEqual(noms('Nom du client\tMatricule\tE-mail\tTéléphone\nBoulangerie\t1234567A'), ['Boulangerie']);
+  assert.deepStrictEqual(noms('Client ; MF\nX ; 1234567A'), ['X']);
+  assert.deepStrictEqual(noms('\n\nRaison sociale\nA\nSociété\nB'), ['A', 'Société', 'B']);
+  assert.deepStrictEqual(noms('Société Tunisienne du Sucre\t1234567A'), ['Société Tunisienne du Sucre']);
+  assert.deepStrictEqual(noms('Entreprise Ben Ali\nB'), ['Entreprise Ben Ali', 'B']);
 });
 
 t('cabinet : la date de début de mission réclame les mois d\'avant', () => {

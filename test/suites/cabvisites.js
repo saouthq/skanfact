@@ -135,6 +135,22 @@ t('10.14.0 Cabinet : chaque geste attendu porte son essai ; une visite qui peut 
   });
 });
 
+t('10.14.1 (26/09) : sur un portefeuille hors SkanFact sans livre, la saisie propose de commencer le livre — pas d\'ajouter un client qui existe déjà', () => {
+  const hors = { ...ctx, state: () => ({ cabinet: { name: 'Cab' }, dossiers: [{ id: 'h', name: 'Boulangerie Ennour', packs: [] }] }), avecLivre: () => new Set(), livres: () => 0 };
+  const vs = CV.parcours(hors);
+  const par = id => vs.find(v => v.id === id);
+  const livre = par('premier-livre');
+  assert.ok(livre && livre.si(), 'la visite « premier-livre » ne se lance pas sur un client hors SkanFact sans livre');
+  ['saisir-piece'].forEach(id => {
+    const v = par(id);
+    assert.ok(v && !v.si(), id + ' se lance sans livre');
+    assert.strictEqual(v.manque.visite, 'premier-livre', id + ' renvoie ailleurs que vers le premier livre : ' + v.manque.visite);
+  });
+  // Le livre commencé, il n'y a plus de client « à tenir » : la même question renvoie à l'ajout d'un client.
+  const tenu = CV.parcours({ ...hors, avecLivre: () => new Set(['h']), livres: () => 1 });
+  assert.ok(!tenu.find(v => v.id === 'premier-livre').si(), 'le premier livre se repropose à un client qui a le sien');
+});
+
 t('10.14.0 Cabinet : la découverte se fait sur l\'EXEMPLE, couvre le Cabinet chapitre par chapitre, et ne recopie jamais leur compte', () => {
   const d = parId('decouvrir');
   assert.strictEqual(d.exemple, true, 'la découverte doit charger l\'exemple');
@@ -267,7 +283,9 @@ t('10.14.0 Cabinet : une étape « clique » qui peut s\'annuler attend la preuv
 
 t('10.14.0 Cabinet : « Tes premiers pas » se déduisent de l\'état — l\'ordre, la découverte facultative, l\'exemple qui ne compte pas', () => {
   const p0 = K.premiersPas({ cabinet: {}, dossiers: [] }, {});
-  assert.deepStrictEqual(p0.etapes.map(e => e.id), ['decouverte', 'cabinet', 'equipe', 'clients', 'appairage', 'cle', 'copie', 'saisie', 'travail']);
+  // 26/09 — le livre vient juste après les clients : c'est le métier, et un portefeuille hors SkanFact
+  // (le premier jour d'un comptable) n'a pas à passer par le fichier d'appairage pour y arriver.
+  assert.deepStrictEqual(p0.etapes.map(e => e.id), ['decouverte', 'cabinet', 'equipe', 'clients', 'travail', 'appairage', 'cle', 'copie', 'saisie']);
   assert.strictEqual(p0.faits, 0);
   assert.strictEqual(p0.demarrage, true);
   assert.strictEqual(p0.suivante.id, 'cabinet', 'la découverte, facultative, ne passe jamais devant une étape du métier');
@@ -280,6 +298,24 @@ t('10.14.0 Cabinet : « Tes premiers pas » se déduisent de l\'état — l\'ord
   assert.strictEqual(p1.suivante.id, 'clients');
   // « Ne pas savoir » n'est pas « non » : une clé dont la réponse n'est pas revenue ne se coche pas.
   assert.strictEqual(K.premiersPas(demo, { cleSecours: null }).etapes.find(e => e.id === 'cle').fait, false);
+  // Un client hors SkanFact sans livre : l'étape suivante est de commencer SON livre, et elle le nomme ;
+  // un client archivé ou un dossier qui a reçu un paquet ne le devient pas.
+  const hors = { cabinet: { name: 'Cab' }, dossiers: [{ id: 'z', name: 'Vieux', archived: true, packs: [] }, { id: 'h', name: 'Boulangerie Ennour', packs: [] }] };
+  const ph = K.premiersPas(hors, {});
+  assert.strictEqual(ph.suivante.id, 'travail', 'après les clients, l\'étape suivante n\'est plus le livre : ' + ph.suivante.id);
+  assert.strictEqual(ph.suivante.action, 'livre');
+  assert.strictEqual(ph.suivante.dossierId, 'h', 'le livre proposé est celui d\'un client archivé');
+  assert.ok(/Boulangerie Ennour/.test(ph.suivante.quoi), 'l\'étape ne nomme pas le client');
+  const recu = { cabinet: { name: 'Cab' }, dossiers: [{ id: 's', name: 'Sur SkanFact', packs: [{ month: '2026-08' }] }] };
+  assert.strictEqual(K.premiersPas(recu, {}).etapes.find(e => e.id === 'travail').action, 'travail', 'un paquet reçu fait encore proposer un livre');
+  // Un livre tenu, aucun paquet reçu : l'appairage et la clé de secours ne protègent encore rien,
+  // la copie protège ses livres — elle passe devant. Le premier paquet reçu les rend dus.
+  const tenu = K.premiersPas(hors, { tenus: { h: true } });
+  assert.strictEqual(tenu.suivante.id, 'copie', 'un cabinet sans paquet se voit réclamer l\'appairage avant la copie de ses livres : ' + (tenu.suivante || {}).id);
+  assert.ok(['appairage', 'cle'].every(id => tenu.etapes.find(e => e.id === id).facultatif), 'l\'appairage ou la clé retient le panneau sans paquet');
+  const tenuRecu = K.premiersPas({ ...hors, dossiers: hors.dossiers.concat([{ id: 's', name: 'Sur SkanFact', packs: [{ month: '2026-08' }] }]) }, { tenus: { h: true } });
+  assert.strictEqual(tenuRecu.suivante.id, 'appairage', 'un paquet reçu ne rend pas l\'appairage dû');
+  assert.ok(!tenuRecu.etapes.find(e => e.id === 'cle').facultatif, 'un paquet reçu laisse la clé de secours facultative');
   // Tout en place — les facultatives ne retiennent pas le panneau.
   const plein = { cabinet: { name: 'Cab', pairingExportedAt: '2026-09-24T10:00:00Z' }, dossiers: [{ id: 'r', packs: [] }] };
   const p2 = K.premiersPas(plein, { cleSecours: true, copieExterne: true, tenus: { r: true } });
@@ -291,7 +327,7 @@ t('10.14.0 Cabinet : « Tes premiers pas » se déduisent de l\'état — l\'ord
   const gestes = /const PAS_ACTIONS = \{([\s\S]*?)\n {2}\};/.exec(app);
   const guides = /const PAS_VISITES = \{([\s\S]*?)\};/.exec(app);
   assert.ok(gestes && guides, 'PAS_ACTIONS / PAS_VISITES introuvables');
-  p0.etapes.forEach(e => {
+  [...p0.etapes, ph.suivante].forEach(e => {
     assert.ok(new RegExp('\\b' + e.action + ': \\[').test(gestes[1]), 'l\'étape « ' + e.id + ' » n\'a pas son bouton');
     const m = new RegExp('\\b' + e.action + ": '([a-z-]+)'").exec(guides[1]);
     assert.ok(m && parId(m[1]), 'l\'étape « ' + e.id + ' » n\'a pas sa visite guidée');
@@ -480,13 +516,20 @@ t('10.14.0 Cabinet : les cartes du portefeuille s\'accordent au chiffre qu\'elle
   // Le `\n` avant la parenthèse : la tranche finit sur les commentaires qui suivent la fonction.
   const panneau = vm.runInNewContext('(' + src.replace(/^function portfolioPanel/, 'function') + '\n)',
     { esc: x => String(x), pl, money: x => String(x), K: { monthLabel: m => m } });
-  const base = { surSkanfact: 0, horsSkanfact: 1, aJour: 0, enRetard: 0, provisoires: 0, paquets: 0, ca: {} };
+  const base = { surSkanfact: 1, horsSkanfact: 1, aJour: 0, enRetard: 0, provisoires: 0, paquets: 0, ca: {} };
   const texte = h => h.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
   const un = texte(panneau({ ...base, total: 1, moisManquants: 0 }));
   assert.ok(/\b1 client suivi\b/.test(un) && !/clients suivis/.test(un), 'un client : ' + un);
   assert.ok(/\b0 mois manquant\b/.test(un) && !/mois manquants/.test(un), 'aucun mois : ' + un);
   const trois = texte(panneau({ ...base, total: 3, moisManquants: 4 }));
   assert.ok(/\b3 clients suivis\b/.test(trois) && /\b4 mois manquants\b/.test(trois), 'plusieurs : ' + trois);
+  // 26/09 — un portefeuille SANS client sur SkanFact ne montre pas trois cartes de paquets vides
+  // (« 0 / 0 à jour », « aucun paquet reçu », « — de CA ») : il compte les livres qu'il tient.
+  const hors = texte(panneau({ ...base, surSkanfact: 0, horsSkanfact: 3, total: 3, moisManquants: 0, livres: 1 }));
+  assert.ok(!/à jour|mois manquant|de CA/.test(hors), 'des cartes de paquets sur un portefeuille hors SkanFact : ' + hors);
+  assert.ok(/\b1 \/ 3 livre tenu\b/.test(hors) && /\b2 clients sans livre\b/.test(hors), 'hors SkanFact : ' + hors);
+  const tous = texte(panneau({ ...base, surSkanfact: 0, horsSkanfact: 2, total: 2, moisManquants: 0, livres: 2 }));
+  assert.ok(/\b2 \/ 2 livres tenus\b/.test(tous) && /chaque client a son livre/.test(tous), 'tous tenus : ' + tous);
 });
 
 t('10.14.0 Cabinet : les Échéances d\'un cabinet qui A des clients ne disent pas « Aucun client »', () => {

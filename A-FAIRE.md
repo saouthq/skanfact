@@ -210,9 +210,21 @@ et au moteur), puis en stable quand Skander valide.*
   empreinte en cinq groupes, cadre du bloc de la clé. Vu à la souris jusqu'au Cabinet (clé collée :
   « Couverts : sans limite »). Constats restés : **le formulaire d'émission sans client dit « crée-le
   d'abord » sans bouton sur place** ; **l'app entreprise n'a pas de lien vers le portail CNSS** ; le
-  texte du champ mot de passe du Cabinet est centré ; la carte « 0 / 0 à jour » s'affiche sur un
-  portefeuille de dossiers hors SkanFact (vrai, mais pas utile) ; « Postes 0 » dans la console est
-  attendu (le Cabinet local ne s'annonce pas).
+  ~~texte du champ mot de passe du Cabinet est centré~~ (fait) ; ~~la carte « 0 / 0 à jour » s'affiche
+  sur un portefeuille de dossiers hors SkanFact~~ (fait : « livres tenus ») ; « Postes 0 » dans la
+  console est attendu (le Cabinet local ne s'annonce pas).
+- ~~**Le premier jour d'un comptable sur un Cabinet vide, clients hors SkanFact**~~ **Fait (26/09)** :
+  titres Excel ignorés au collage, « Commencer le livre » dans les premiers pas et son vert, visite
+  « premier-livre », livre créé → Saisie, écran vide → « Saisir une première pièce », Tab dans
+  l'en-tête de la saisie, appairage et clé facultatifs sans paquet, cartes « livres tenus », zéro de
+  la retenue, bulles de la reprise. Vu à la souris jusqu'à la déclaration de septembre. **Restent à
+  parcourir** : la banque (relevé importé sur un livre neuf), la paie et la CNSS d'un client hors
+  SkanFact, la clôture de son premier exercice, et « Guide-moi » écran par écran sur ce cabinet neuf.
+  Constats notés sans les corriger : la TFP et le FOPROLOS d'un livre sans aucun salaire disent
+  « — à vérifier » là où la masse salariale vaut zéro ; le compte 5311 s'intitule « Banques et
+  établissements financiers » (le plan de référence lit le préfixe 53 — À VÉRIFIER avec le pilote) ;
+  l'annonce de la fenêtre de reprise réserve trois lignes pour un refus, ce qui laisse un blanc au
+  repos.
 - **PERF-01** (la fenêtre « Nouvelle opération diverse » gelait 15,5 s sur dix ans ; corrigé par le
   lot de `comptesProposes`) : le vérifier à la souris sur l'exemple de cinq ans.
 - **Le Cabinet, parcouru par moi-même** (les agents n'y ont rien trouvé : ça ne vaut pas preuve).

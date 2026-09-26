@@ -78,6 +78,12 @@
 /* L'écran de verrouillage : des étiquettes, un bouton pour relire, et l'avertissement qui compte
    écrit comme un avertissement. */
 .lock-card .lock-field { width: 100%; text-align: start; margin-top: 4px; }
+/* Un champ sous une étiquette alignée à gauche commence à gauche : la règle partagée centre le
+   champ de l'écran de verrouillage (un champ seul, sans étiquette), et le curseur flottait au milieu
+   d'une case qui porte « Afficher » à sa droite (vu à la souris, 26/09). */
+.lock-card .lock-field input { text-align: start; }
+/* Le verdict de solidité appartient au champ de gauche : centré, il flottait entre les deux. */
+.lock-card #lock-strength { width: 100%; text-align: start; }
 .pw-wrap { position: relative; display: block; }
 .pw-wrap input { width: 100%; padding-inline-end: 82px; }
 .pw-eye {

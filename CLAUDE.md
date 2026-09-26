@@ -8364,6 +8364,41 @@ lots ; le détail de ce qui reste vit dans `A-FAIRE.md` § 0.
   formulaire coche la case. **Un `className` écrit en entier écrase la classe de mise en page** :
   `el.className = 'ok'` retirait `panel` au bloc de la clé émise, qui touchait la carte d'en dessous.
   Et l'empreinte d'un cabinet s'affiche comme elle se dicte (cinq groupes de quatre), pas nue.
+- **Le premier jour d'un comptable, joué sur un Cabinet VIDE avec trois clients hors SkanFact**
+  (Skander : « ils vont commencer par gérer leurs dossiers hors SkanFact, en partant d'une base vide
+  — faut pas foirer »). Ce que la souris et le clavier ont trouvé, et qu'aucun test ne voyait :
+  - **Une liste de clients collée depuis Excel porte sa ligne de titres** : « Nom du client »
+    devenait un client. La PREMIÈRE ligne est ignorée quand elle ressemble à des titres (un nom de
+    colonne connu en première cellule, ou une colonne de matricule, d'email ou de téléphone
+    ensuite) ; « Société Tunisienne du Sucre », plus bas ou même en tête, reste un client.
+  - **Un client hors SkanFact n'avait aucun chemin vers son livre** : « Tes premiers pas » proposait
+    un paquet qu'il n'enverra jamais. L'étape vient juste après les clients, NOMME le client à
+    tenir (`aTenir` : ni exemple, ni archivé, ni paquet, ni livre), et son geste — le vert de
+    l'en-tête, la ligne d'« À faire », la visite « premier-livre » — ouvre SA comptabilité. Et une
+    visite qui ne se lance pas propose celle qu'on PEUT faire (`get visite()`), jamais « ajouter un
+    client » à qui en a déjà trois.
+  - **Un livre créé s'ouvrait sur un livre-journal vide, sans un geste** : il s'ouvre sur la Saisie
+    (par `allerSousOnglet`, la porte qui tient l'adresse), et tout écran de lecture vide d'un livre
+    ouvert dit d'où viennent les écritures et mène à la saisie (7.0.0).
+  - **Tab, dans l'en-tête de la saisie, tombait sur la bulle de « Pièce »** : la référence tapée
+    partait dans un bouton, perdue sans un mot, et le libellé atterrissait dans la case Pièce —
+    pendant que l'aide des touches annonçait « Champ suivant : Tab ». La 9.3.0 avait choisi Entrée
+    pour garder les bulles au clavier ; Tab vers l'AVANT suit maintenant la même chaîne (journal →
+    date → pièce → libellé → première ligne), et Maj+Tab passe toujours par les bulles : **on garde
+    un chemin en en ouvrant un autre, pas en coupant celui qu'on tape**.
+  - **Un filet se réclame quand il protège quelque chose de réel, dans « Tes premiers pas » aussi** :
+    un cabinet qui tient un livre sans avoir reçu un seul paquet se voyait réclamer le fichier
+    d'appairage, puis la clé de secours (qui ne protège que les paquets). Les deux deviennent
+    facultatifs tant qu'aucun paquet n'est reçu, et c'est la copie — qui protège ses livres — qui
+    passe devant ; le premier paquet les rend dus.
+  - **Trois cartes vraies et inutiles** (« 0 / 0 à jour », « 0 mois manquant — aucun paquet reçu »,
+    « — de CA ») sur un portefeuille sans client SkanFact : il garde ses clients et compte ce qu'il
+    fait, les livres tenus (« 1 / 3 livre tenu », vers la Production). « Importer un paquet » n'y
+    est plus vert (U-11).
+  - **Un titre de rubrique sans une ligne dessous se lit comme une case perdue** : la retenue à la
+    source d'un mois sans retenue dit maintenant son zéro, sur sa ligne.
+  - La bulle des bornes de l'exercice promettait un exercice décalé que `exerciceDeReprise` refuse :
+    **une bulle se relit contre la fonction qui jugera** (le 1er janvier au 31 décembre, À VÉRIFIER).
 
 ## Pistes pour la suite (non demandées)
 

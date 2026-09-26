@@ -920,6 +920,8 @@
   // l'application resterait vide le jour de la démonstration.
   // Une ligne = un client. Les colonnes, quand il y en a : nom ; matricule ; email ; téléphone.
   // On accepte le point-virgule et la tabulation (ce que produisent Excel et Numbers en français).
+  const ENTETE_NOM = /^(noms?( (du|de la) (client|dossier|société|entreprise))?|clients?|raison sociale|soci[ée]t[ée]s?|d[ée]nomination( sociale)?|entreprises?|dossiers?)$/i;
+  const ENTETE_COLONNE = /^(matricule( fiscal)?|m\.? ?f\.?|identifiant( fiscal| unique)?|e-?mails?|courriel|t[ée]l[ée]phone|t[ée]l\.?|portable|gsm)$/i;
   function parseDossierLines(text, existants) {
     const vus = new Set((existants || []).map(d => d.id));
     // 10.14.1 — la clé d'un dossier est son matricule quand il en a un : « Pharmacie El Menzah »
@@ -935,12 +937,19 @@
       return parNom.get(n).some(m => !m || !mf || m === mf);
     };
     const out = [], ignorés = [];
-    String(text || '').split(/\r?\n/).forEach((ligne, i) => {
+    let premiere = true;
+    String(text || '').split(/\r?\n/).forEach(ligne => {
       const l = ligne.trim();
       if (!l) return;
       const cols = l.split(/\s*[;\t]\s*/);
-      // Une ligne d'entête copiée avec le tableau ne doit pas devenir un client nommé « Nom ».
-      if (i === 0 && /^(nom|client|raison sociale|société)$/i.test(cols[0])) return;
+      // Une ligne d'entête copiée avec le tableau ne doit pas devenir un client nommé « Nom ». On la
+      // reconnaît à son premier titre, OU (26/09) à un titre de colonne ailleurs : un comptable copie
+      // « Nom du client | Matricule | E-mail » tel qu'il l'a dans Excel, et « Nom du client » devenait
+      // un dossier. Seule la PREMIÈRE ligne non vide peut en être une : un client appelé « Société »
+      // plus bas reste un client.
+      const titre = premiere && (ENTETE_NOM.test(cols[0]) || cols.slice(1).some(c => ENTETE_COLONNE.test(c)));
+      premiere = false;
+      if (titre) return;
       // Les colonnes arrivent parfois dans le désordre. Mais la DEUXIÈME reste le matricule tant
       // qu'elle n'est pas manifestement une adresse : un matricule tunisien écrit en chiffres seuls
       // (« 1234567 ») ressemble à un numéro de téléphone, et l'ancienne heuristique le déplaçait
@@ -1231,6 +1240,9 @@
     const cab = s.cabinet || {};
     const unPaquet = reels.some(d => (d.packs || []).length);
     const unLivre = reels.some(d => tenus[d.id]);
+    // Le premier client qu'on tiendra : hors SkanFact (aucun paquet), sans livre, pas archivé.
+    const aTenir = reels.find(d => !d.archived && !(d.packs || []).length && !tenus[d.id]) || null;
+    const sansPaquet = unLivre && !unPaquet;
     const etapes = [
       // La découverte : facultative, comme dans l'application entreprise. Faite, elle compte ; pas
       // faite, elle attend sans jamais passer devant une étape du métier.
@@ -1253,11 +1265,27 @@
       { id: 'clients', titre: 'Ajouter tes clients', fait: reels.length > 0,
         quoi: 'Tous, même ceux qui n\'utilisent pas SkanFact : l\'application devient le tableau de bord de ton portefeuille, et rien n\'est réclamé à ceux qui n\'ont pas commencé.',
         action: 'clients' },
-      { id: 'appairage', titre: 'Remettre le fichier d\'appairage à tes clients', fait: !!cab.pairingExportedAt,
-        quoi: 'Un fichier sans rien de secret : le Cabinet prépare le message qui l\'envoie à tes clients. Chacun l\'importe une fois, et ses paquets sont ensuite chiffrés pour toi seul.',
+      // 26/09 — juste après les clients : c'est le MÉTIER (un livre qui vit), et un cabinet dont les
+      // clients sont tous hors SkanFact — le cas du premier jour — n'a pas à passer par le fichier
+      // d'appairage pour y arriver. Son geste suit le portefeuille : un client hors SkanFact sans livre
+      // → commencer son livre ; sinon, importer un paquet.
+      { id: 'travail', titre: 'Tenir un premier livre, ou recevoir un premier paquet', fait: unPaquet || unLivre,
+        quoi: unPaquet || unLivre ? 'Ton portefeuille vit : les mois reçus et saisis s\'y comptent tout seuls.'
+          : aTenir ? 'Ouvre ' + aTenir.name + ' et commence son livre : son exercice, sa balance d\'ouverture s\'il en a une, puis la saisie. Un client sur SkanFact, lui, t\'envoie son paquet du mois.'
+            : 'Un client sur SkanFact t\'envoie son paquet du mois (tu le glisses sur la fenêtre) ; pour un client hors SkanFact, tu crées son livre et tu saisis.',
+        action: !unPaquet && !unLivre && aTenir ? 'livre' : 'travail', dossierId: aTenir ? aTenir.id : null },
+      // 26/09 — un cabinet qui TIENT ses livres sans avoir reçu un seul paquet (le premier jour d'un
+      // comptable dont les clients sont hors SkanFact) n'a encore rien à chiffrer ni à ouvrir :
+      // l'appairage et la clé de secours ne protègent que des paquets. Ils restent listés, mais ne
+      // passent plus devant la copie, qui protège ce qu'il vient de saisir (« un filet se réclame
+      // quand il protège quelque chose de réel »). Le premier paquet reçu les rend à nouveau dus.
+      { id: 'appairage', titre: 'Remettre le fichier d\'appairage à tes clients', fait: !!cab.pairingExportedAt, facultatif: sansPaquet,
+        quoi: (sansPaquet ? 'Pour le jour où un client adopte SkanFact : tes clients hors SkanFact n\'en ont pas besoin. ' : '')
+          + 'Un fichier sans rien de secret : le Cabinet prépare le message qui l\'envoie à tes clients. Chacun l\'importe une fois, et ses paquets sont ensuite chiffrés pour toi seul.',
         action: 'appairage' },
-      { id: 'cle', titre: 'Enregistrer ta clé de secours', fait: c.cleSecours === true,
-        quoi: 'Sans elle, si cet ordinateur disparaît, aucun paquet déjà reçu ne pourra plus être ouvert — ni par nous, ni par personne.',
+      { id: 'cle', titre: 'Enregistrer ta clé de secours', fait: c.cleSecours === true, facultatif: sansPaquet,
+        quoi: sansPaquet ? 'Elle protège la clé qui ouvre les paquets de tes clients : elle deviendra indispensable au premier paquet reçu. Tes livres, eux, sont protégés par la copie.'
+          : 'Sans elle, si cet ordinateur disparaît, aucun paquet déjà reçu ne pourra plus être ouvert — ni par nous, ni par personne.',
         action: 'cle' },
       { id: 'copie', titre: 'Mettre ton cabinet à l\'abri', fait: !!c.copieExterne,
         quoi: 'Une copie automatique hors de cet ordinateur : clé USB, disque, iCloud ou OneDrive. La base, les livres et les paquets y sont recopiés à chaque enregistrement.',
@@ -1266,10 +1294,6 @@
         quoi: (((s.settings || {}).saisie || {}).regleLe) ? 'Ta grille est réglée : ses touches et le journal proposé valent pour tous tes dossiers.'
           : 'Les touches (solder la pièce, recopier la ligne, valider), le journal proposé, la date : reprends celles de ton logiciel actuel, pour saisir sans y penser. Telle quelle, la grille marche déjà.',
         action: 'saisie' },
-      { id: 'travail', titre: 'Recevoir un premier paquet, ou tenir un premier livre', fait: unPaquet || unLivre,
-        quoi: unPaquet || unLivre ? 'Ton portefeuille vit : les mois reçus et saisis s\'y comptent tout seuls.'
-          : 'Un client sur SkanFact t\'envoie son paquet du mois (tu le glisses sur la fenêtre) ; pour un client hors SkanFact, tu crées son livre et tu saisis.',
-        action: 'travail' }
     ];
     const faits = etapes.filter(x => x.fait).length;
     // Le panneau ne vaut que pendant le DÉMARRAGE : les facultatives ne le retiennent pas (un panneau

@@ -2864,6 +2864,9 @@
       rs.push(ligne({ cle: 'rsAutres', ref: 'Lignes 4 à 31', libelle: 'Autres retenues opérées (honoraires, loyers, achats de 1 000 DT et plus…)', montant: m('retenuesOperees'), source: 'retenuesOperees',
         note: 'Ce livre ne dit pas le taux de chaque retenue : le total se répartit sur le portail, ligne par ligne, selon la nature du paiement.' }));
     }
+    // Rien de retenu ce mois (aucun salaire, aucune retenue opérée) : la rubrique le DIT, avec son
+    // zéro connu. Un titre sans une ligne dessous se lisait comme une case perdue (26/09).
+    if (!rs.length) rs.push(ligne({ cle: 'rs0', libelle: 'Aucune retenue ce mois : ni salaire, ni honoraires, loyers ou achats retenus', montant: 0 }));
     // 2 et 3. La TFP et le FOPROLOS, avec leur base quand les bulletins la donnent.
     const taxe = (k, champTaux) => {
       const x = c[k] || {};

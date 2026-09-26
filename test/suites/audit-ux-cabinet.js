@@ -252,8 +252,10 @@ t('U-04 : la carte et le pied du tableau lisent la même fonction, et nomment le
 t('U-25 : les quatre cartes du portefeuille ouvrent quelque chose', () => {
   const src = code('src', 'cabinet', 'renderer', 'app.js');
   const carte = tranche(src, 'function portfolioPanel(');
-  const cles = [...carte.matchAll(/\$\{item\('([^']*)'/g)].map(m => m[1]);
-  assert.strictEqual(cles.length, 4, `quatre cartes attendues, ${cles.length} trouvées`);
+  // 26/09 — deux jeux de cartes : quatre pour un portefeuille qui reçoit des paquets, deux (clients,
+  // livres tenus) pour un portefeuille entièrement hors SkanFact. Chaque clé, dans l'un ou l'autre.
+  const cles = [...new Set([...carte.matchAll(/\$\{item\('([^']*)'/g)].map(m => m[1]))];
+  assert.deepStrictEqual(cles.slice().sort(), ['ajour', 'ca', 'livres', 'manquants', 'tous'], `cartes trouvées : ${cles}`);
   cles.forEach(c => assert.ok(c, 'une carte sans clé ne s\'ouvre pas'));
   assert.ok(/<button type="button" class="stat ouvre" data-pf=/.test(carte), 'chaque carte est un vrai bouton');
   assert.ok(!/<\$\{cle \? 'button/.test(carte), 'plus de carte qui ressemble à un bouton sans en être un');
@@ -261,7 +263,9 @@ t('U-25 : les quatre cartes du portefeuille ouvrent quelque chose', () => {
   const i = src.indexOf('const CARTES_PORTEFEUILLE = {');
   assert.ok(i > 0, 'la table des cartes est introuvable');
   const table = src.slice(i, src.indexOf('};', i));
-  cles.filter(c => c !== 'manquants').forEach(c => {
+  assert.ok(/if \(cle === 'livres'\) \{ location\.hash = '#\/production'/.test(tranche(src, 'function bindPortfolio(')),
+    'les livres tenus mènent à la Production');
+  cles.filter(c => c !== 'manquants' && c !== 'livres').forEach(c => {
     assert.ok(new RegExp(`\\b${c}: \\{`).test(table), `la carte « ${c} » doit poser son filtre ou son tri`);
   });
   assert.ok(/if \(cle === 'manquants'\) \{ location\.hash = '#\/relances'/.test(tranche(src, 'function bindPortfolio(')),
@@ -3353,6 +3357,28 @@ t('Un état vide ne propose de partir d\'une pièce existante que s\'il en exist
     const def = nom ? (new RegExp(`const ${nom} = ([^;]+);`).exec(ent) || [])[1] || '' : '';
     assert.ok(/\.some\(|\.length/.test(avant) || /\.some\(|\.length/.test(def), `la condition du bouton ${id} ne regarde pas si une pièce existe`);
   });
+});
+
+
+t('10.14.1 (26/09) : un premier livre se tape au clavier, et ne mène à aucune impasse', () => {
+  const src = code('src', 'cabinet', 'renderer', 'app.js');
+  // 1. Tab avance dans l'en-tête de la saisie. Il tombait sur la bulle de « Pièce » : la référence
+  //    tapée partait dans un bouton, et le libellé atterrissait dans la case Pièce.
+  const i = src.indexOf('const chaine = [dt, pc, lb];');
+  assert.ok(i > 0, 'la chaîne de l\'en-tête est introuvable');
+  const chaine = src.slice(i, src.indexOf('});\n    });', i) + 12);
+  assert.ok(/ev\.key === 'Tab' && !ev\.shiftKey/.test(chaine), 'Tab vers l\'avant ne suit pas la chaîne de l\'en-tête');
+  assert.ok(/if \(!avance && toucheDe\(ev\) !== t\.ligneSuivante\) return;/.test(chaine), 'Entrée ou Tab : l\'un des deux ne descend plus');
+  assert.ok(/j\.addEventListener\('keydown'[\s\S]{0,200}ev\.key !== 'Tab'[\s\S]{0,120}dt\.focus\(\)/.test(chaine), 'Tab depuis le journal ne mène pas à la date');
+  // 2. Le livre qu'on vient de créer s'ouvre sur la SAISIE, par la porte qui tient l'adresse.
+  const reprise = src.slice(src.indexOf('function repriseForm('), src.indexOf('async function refusLicence('));
+  assert.ok(/allerSousOnglet\(root, dossier, 'saisie'\)/.test(reprise), 'le livre créé s\'ouvre ailleurs que sur la Saisie');
+  // 3. Un écran de lecture vide sur un livre ouvert mène à la saisie.
+  assert.ok(/s\.livre && s\.livreEtat === 'ouvert'[\s\S]{0,400}id="lv-vers-saisie"/.test(src), 'l\'écran vide d\'un livre ouvert ne propose rien');
+  assert.ok(/\$\('#lv-vers-saisie', el\); if \(vs\) vs\.onclick = \(\) => allerSousOnglet\(root, dossier, 'saisie'\)/.test(src), 'le bouton de l\'écran vide n\'est pas branché');
+  // 4. Sans client sur SkanFact, « Importer un paquet » n'est pas l'étape suivante (U-11).
+  assert.ok(/const importerVert = !premierLivre && p\.surSkanfact > 0;/.test(src) && /class="btn\$\{importerVert \? ' btn-primary' : ''\}" id="imp"/.test(src),
+    '« Importer un paquet » reste vert sur un portefeuille sans client SkanFact');
 });
 
 };
