@@ -34,11 +34,18 @@ et au moteur), puis en stable quand Skander valide.*
     relevé, compte du grand livre).
   - **Écrans de verrouillage** : le Cabinet n'a plus l'invite « •••••••• » (un champ vide qui se lit
     rempli) ; dans les deux applications le reproche disparaît quand on retape.
-  - **S-01 (moitié relais)** — le relais sert la stable quand elle est plus récente que la dernière
-    bêta (`indexAServir`, `trouveIndex`, `INDEX_STABLE_DE`) ; `/sante` dit `sertStable`. Prouvé (4
-    preuves). **Reste** : le repli GitHub du Cabinet (`releasePourIndexRelue` ne cherche que
-    `cabinet-beta*.yml`) et l'affichage de `sertStable` dans la console. Le relais se déploie quand
-    `worker/skanfact-maj.mjs` arrive sur `main`.
+  - **S-01** — en bêta, une stable plus récente que la dernière bêta est proposée, par TOUS les
+    chemins : le relais (`indexAServir`, `trouveIndex`, `INDEX_STABLE_DE`, `/sante` dit
+    `sertStable`), le repli GitHub du Cabinet (même décision, jumelle dans `src/canaux.js`, et le
+    canal reposé dans les trois chemins par `poserCanal`), le repli GitHub de l'app entreprise
+    (electron-updater le fait déjà avec notre `appliquerCanal` — prouvé sur le vrai module) et la
+    console (la ligne « Essais » nomme la stable servie). 11 preuves. **Vu à l'écran** : le vrai
+    relais lancé sur les VRAIES releases (10.14.0 stable, 10.13.0-beta.1) sert la 10.14.0 aux
+    quatre index d'essai, et la vraie console branchée dessus l'affiche. Le relais ne se déploie que
+    quand `worker/skanfact-maj.mjs` arrive sur `main` (à la stable 10.14.1) : d'ici là, un Cabinet
+    en 10.13.0-beta.1 case cochée reste sur « tu as la dernière version » — il doit décocher une
+    fois, ou attendre la stable. Le test à la souris dans l'application elle-même demande une
+    application construite (une copie de développement ne cherche pas de mise à jour).
   - **S-05** — la facture ou la proforma payable le jour même : UN cadre, « Émise le 24/09/2026 » et
     dessous « À régler à réception » ; le récapitulatif d'émission dit « À réception ». Test retourné
     vers la règle, prouvé sur l'ancienne forme exacte de la 10.12.0.
@@ -116,10 +123,11 @@ et au moteur), puis en stable quand Skander valide.*
 
 ### 0.2 Ce que Skander a demandé le 26/09/2026 (à faire, dans cet ordre de gravité)
 
-1. **Mises à jour : en bêta, une stable plus récente doit être proposée.** Sur une 13.0.0-beta.1
+1. ~~**Mises à jour : en bêta, une stable plus récente doit être proposée.** Sur une 13.0.0-beta.1
    avec « Recevoir les versions bêta » coché, une 14.0.0 stable n'apparaît pas : il faut décocher
    la case pour la voir. Le canal bêta doit prendre la plus récente des deux (bêta ou stable), dans
-   les DEUX applications (`beta` et `cabinet-beta`) — relais, repli GitHub et `canalDe` compris.
+   les DEUX applications (`beta` et `cabinet-beta`) — relais, repli GitHub et `canalDe` compris.~~
+   **Fait (S-01, § 0.1)** — en ligne quand le relais sera déployé avec la stable.
 2. **La visite guidée passe parfois toute seule à l'étape suivante** sans qu'on ait appuyé sur
    « Suivant ». Trouver pourquoi (une preuve `fait` déjà vraie en entrant ? une étape « faire » qui
    se valide sur un clic ailleurs ? une minuterie ?) et corriger dans le moteur (`visite.js`).

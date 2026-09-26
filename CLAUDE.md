@@ -8084,6 +8084,23 @@ lots ; le détail de ce qui reste vit dans `A-FAIRE.md` § 0.
   cherchait que `beta*.yml`. `indexAServir` compare les deux, `/sante` le dit (`sertStable`). **Une
   case qui ENFERME dans un canal est un piège** (7.25.0 : décocher ramène à la stable ; cocher ne doit
   pas en priver).
+- **Un repli sert ce que sert le chemin normal, et il se prouve sur le canal qu'il doit servir**
+  (9.8.8, re-trouvée). Corriger le relais laissait deux replis sur l'ancienne règle : le Cabinet
+  choisit lui-même sa page GitHub (`releasePourIndexRelue` ne cherchait que l'index d'essai), et la
+  console annonçait la bêta qu'un canal ne sert plus. Le Cabinet décide par la JUMELLE de la fonction
+  du relais (`src/canaux.js`, corps comparés) ; l'app entreprise, qui laisse electron-updater choisir,
+  est prouvée sur le VRAI module avec le canal que pose NOTRE `appliquerCanal` — un test qui imite le
+  module aurait prouvé l'imitation.
+- **Le canal se pose après le flux dans TOUS les chemins** : `u.channel` prime sur le `channel` passé
+  à `setFeedURL`, et le repli qui sert la stable pose `cabinet` — sans `poserCanal` dans le chemin du
+  relais, le relais interrogé ensuite demandait l'index STABLE et ne voyait plus la bêta suivante.
+  Un état posé par un chemin se repose dans les autres (6.7.3 : et `allowDowngrade` juste après).
+- **Des données réelles valent mieux qu'un décor quand elles portent le cas** : les releases
+  publiées (10.14.0 stable après 10.13.0-beta.1) étaient EXACTEMENT le scénario de Skander. Le vrai
+  relais lancé en local sur elles, et la vraie console branchée dessus, ont montré à l'écran « la
+  stable, plus récente que la bêta v10.13.0-beta.1 » — une preuve que le jeu fabriqué ne donnait pas.
+  (Piège d'outil : le `fetch` de Node n'emprunte le proxy de la session qu'avec
+  `NODE_USE_ENV_PROXY=1`.)
 - **Un montant demandé se tient au millime** (ACP-01) : un acompte de 500 DT faisait 501,002 DT, parce
   que le montant devenait un pourcentage puis une ligne, et que le timbre s'y ajoutait. Le montant
   demandé est TTC, cherché base par base ; la facture le dit en toutes lettres. Une conversion

@@ -3366,19 +3366,42 @@ async function feedGithub(u) {
   u.requestHeaders = null;
   if (!cfg.beta) {
     u.setFeedURL({ provider: 'github', owner: GITHUB.owner, repo: GITHUB.repo, channel: 'cabinet', private: !!cfg.token, token: cfg.token || undefined });
+    poserCanal(u, 'cabinet');
     return;
   }
   const fichier = K.nomIndex('cabinet-beta', process.platform);
   // La liste peut rendre une release récente SANS ses fichiers (23/09/2026) : on relit celle qui
   // paraît vide avant de retomber sur une plus ancienne, sinon on sert une vieille bêta.
   const relire = r => releasesGithub(cfg.token, `/${r.id}/assets?per_page=100`).catch(() => null);
-  const rel = await K.releasePourIndexRelue(await releasesGithub(cfg.token), fichier, relire);
+  const liste = await releasesGithub(cfg.token);
+  // **Une bêta voit la stable qui la dépasse** (S-01, 10.14.1) : sur une 13.0.0-beta.1, une 14.0.0
+  // stable publiée ensuite n'était proposée qu'en DÉCOCHANT la case. La plus récente des deux, la
+  // dernière bêta ou la dernière stable, par la même décision que le relais (`indexAServir`,
+  // jumelle dans src/canaux.js) — le repli ne doit pas servir autre chose que le chemin normal.
+  const essai = await K.releasePourIndexRelue(liste, fichier, relire);
+  const stable = await K.releasePourIndexRelue(liste, K.nomIndex('cabinet', process.platform), relire);
+  const rel = require('../canaux').indexAServir(fichier, essai, stable);
   if (!rel) {
-    // Pas de bêta publiée : le même code que le fournisseur générique sur un index absent, pour que
-    // `updateProblem` en fasse la même phrase grise.
+    // Ni bêta ni stable publiée : le même code que le fournisseur générique sur un index absent,
+    // pour que `updateProblem` en fasse la même phrase grise.
     throw Object.assign(new Error(`Aucune release ne porte ${fichier}`), { code: 'ERR_UPDATER_CHANNEL_FILE_NOT_FOUND' });
   }
-  u.setFeedURL({ provider: 'generic', url: `https://github.com/${GITHUB.owner}/${GITHUB.repo}/releases/download/${rel.tag}`, channel: 'cabinet-beta' });
+  // La page de la stable ne porte pas l'index d'essai : on y lit l'index stable.
+  const canal = rel.stableServie ? 'cabinet' : 'cabinet-beta';
+  u.setFeedURL({ provider: 'generic', url: `https://github.com/${GITHUB.owner}/${GITHUB.repo}/releases/download/${rel.tag}`, channel: canal });
+  poserCanal(u, canal);
+}
+
+// Le canal se pose APRÈS le flux, dans TOUS les chemins (jumeau de `appliquerCanal` de l'app
+// entreprise) : `u.channel` prime sur le `channel` passé à `setFeedURL` (fournisseur générique), et le
+// repli GitHub peut en avoir posé un autre — l'index stable servi à une bêta (S-01). Sans cette
+// remise, le relais interrogé ensuite demanderait l'index STABLE et ne verrait plus la bêta suivante.
+// Et `u.channel = …` remet `allowDowngrade` à true (6.7.3) : on le repose juste après, toujours.
+function poserCanal(u, canal) {
+  const beta = !!readUpdateCfg().beta;
+  u.channel = canal || UPDATE_CHANNEL();
+  u.allowDowngrade = !beta && canalDeVersion(VERSION) !== 'latest';
+  u.allowPrerelease = beta;
 }
 
 // Le relais a échoué pendant une vérification : on ne repasse plus par lui de la session — sauf
@@ -3393,6 +3416,7 @@ async function configureFeed(u) {
     const url = new URL(`${base}/cabinet`).toString();
     u.requestHeaders = { 'X-SkanFact-App': relaySecret() };
     u.setFeedURL({ provider: 'generic', url, channel: UPDATE_CHANNEL() });
+    poserCanal(u);
   } catch (e) {
     // Jamais de cabinet sans recours : on retombe sur GitHub, et on le dit.
     relayFailure = `Relais injoignable (${String(e && e.message || e).slice(0, 120)}). Retour au téléchargement direct depuis GitHub.`;

@@ -49,6 +49,26 @@ function comparerVersions(a, b) {
   return 0;
 }
 
+// **Une bêta voit la stable qui la dépasse** (S-01, 10.14.1). Cocher « recevoir les versions d'essai »
+// veut dire « avant les autres », jamais « à la place de la stable » : sur une 13.0.0-beta.1, une
+// 14.0.0 stable publiée ensuite doit être proposée sans décocher la case. Pour un index d'essai, on
+// regarde aussi son jumeau stable, et la plus récente des deux est celle qu'on sert.
+// Jumelles EXACTES de `INDEX_STABLE_DE` et `indexAServir` du relais (worker/skanfact-maj.mjs, un
+// fichier déployé seul qui ne peut rien charger du dépôt) : un test compare les deux. C'est ce qui
+// fait que le repli GitHub du Cabinet décide comme le relais.
+const INDEX_STABLE_DE = {
+  'beta.yml': 'latest.yml', 'beta-mac.yml': 'latest-mac.yml', 'beta-linux.yml': 'latest-linux.yml',
+  'cabinet-beta.yml': 'cabinet.yml', 'cabinet-beta-mac.yml': 'cabinet-mac.yml', 'cabinet-beta-linux.yml': 'cabinet-linux.yml'
+};
+
+// `essai` est ce que porte l'index demandé, `stable` ce que porte son jumeau stable (null si l'un
+// manque) — chacun `{ tag }`. On garde l'essai tant qu'il est au moins aussi récent.
+function indexAServir(fichier, essai, stable) {
+  if (!INDEX_STABLE_DE[String(fichier || '')]) return essai;
+  if (stable && (!essai || comparerVersions(stable.tag, essai.tag) > 0)) return { ...stable, stableServie: true };
+  return essai;
+}
+
 const ligne = (tag, publie) => tag ? { version: versionDuTag(tag), publie: String(publie || '') } : null;
 
 // Depuis la réponse de `/sante` du relais : une ligne par (canal, index).
@@ -123,4 +143,4 @@ async function lireCanaux({ app, plateforme, relaisBase, relaisSecret, owner, re
   return valeur;
 }
 
-module.exports = { INDEX, nomIndex, versionDuTag, comparerVersions, depuisSante, depuisReleases, lireCanaux };
+module.exports = { INDEX, nomIndex, versionDuTag, comparerVersions, INDEX_STABLE_DE, indexAServir, depuisSante, depuisReleases, lireCanaux };

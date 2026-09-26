@@ -1539,6 +1539,123 @@ module.exports = async ({ t, ta, assert }) => {
     }
   });
 
+  // ---------- S-01 : sur le canal d'essai, une stable plus récente que la dernière bêta est proposée ----------
+  // Skander, 26/09 : sur une 13.0.0-beta.1 avec « versions bêta » coché, la 14.0.0 stable n'apparaissait
+  // pas — il fallait DÉCOCHER la case. Le relais sert la plus récente des deux depuis la 10.14.1 ; il
+  // faut que les deux REPLIS GitHub en fassent autant, et que la console dise ce qui est servi.
+  await ta('10.14.1 S-01 : la décision « bêta ou stable » du repli est la jumelle exacte de celle du relais', async () => {
+    const R = await import('../../worker/skanfact-maj.mjs');
+    const canaux = require('../../src/canaux.js');
+    assert.deepStrictEqual({ ...canaux.INDEX_STABLE_DE }, { ...R.INDEX_STABLE_DE }, 'les jumeaux d\'index ont divergé');
+    const corps = (src, sig) => { const a = src.indexOf(sig); assert.ok(a >= 0, sig); return src.slice(src.indexOf('{', a), src.indexOf('\n}\n', a) + 2); };
+    const srcR = fs.readFileSync(path.join(__dirname, '../../worker/skanfact-maj.mjs'), 'utf8');
+    const srcC = fs.readFileSync(path.join(__dirname, '../../src/canaux.js'), 'utf8');
+    assert.strictEqual(corps(srcC, 'function indexAServir(fichier, essai, stable)'), corps(srcR, 'export function indexAServir(fichier, essai, stable)'), 'indexAServir a divergé du relais');
+    // Et elle décide : la stable plus récente gagne, la bêta plus récente reste, une seule suffit.
+    const v = (e, s) => canaux.indexAServir('cabinet-beta-mac.yml', e && { tag: e }, s && { tag: s });
+    assert.deepStrictEqual(v('v13.0.0-beta.1', 'v14.0.0'), { tag: 'v14.0.0', stableServie: true });
+    assert.deepStrictEqual(v('v14.1.0-beta.1', 'v14.0.0'), { tag: 'v14.1.0-beta.1' });
+    assert.deepStrictEqual(v(null, 'v14.0.0'), { tag: 'v14.0.0', stableServie: true });
+    assert.strictEqual(v(null, null), null);
+    assert.deepStrictEqual(canaux.indexAServir('cabinet-mac.yml', { tag: 'v1.0.0' }, { tag: 'v2.0.0' }), { tag: 'v1.0.0' }, 'un index stable n\'a pas de jumeau');
+  });
+
+  await ta('10.14.1 S-01 : le repli GitHub du Cabinet sert la stable quand elle dépasse la dernière bêta — et repose le canal', async () => {
+    const K = require('../../src/cabinet/cabcore.js');
+    const src = sansCommentaires(mainC);
+    const bloc = src.slice(src.indexOf('async function feedGithub(u) {'), src.indexOf('let relayDown = false;'));
+    assert.ok(bloc.length > 500 && bloc.length < 6000 && bloc.includes('function poserCanal('), 'tranche du repli inattendue : ' + bloc.length);
+    const rel = (tag, pre, fichiers) => ({ id: tag, tag_name: tag, prerelease: pre, draft: false, assets: fichiers.map(name => ({ name })) });
+    const jouer = async (releases, beta = true) => {
+      const u = { reglages: [] };
+      u.setFeedURL = o => u.reglages.push(o);
+      const ctx = {
+        K, GITHUB: { owner: 'o', repo: 'r' }, VERSION: '13.0.0-beta.1', process: { platform: 'darwin' },
+        require: m => (m === '../canaux' ? require('../../src/canaux.js') : require(m)),
+        readUpdateCfg: () => ({ beta }), UPDATE_CHANNEL: () => (beta ? 'cabinet-beta' : 'cabinet'),
+        canalDeVersion: v => (/-/.test(v) ? 'beta' : 'latest'),
+        releasesGithub: async (tok, chemin) => (chemin ? null : releases)
+      };
+      vm.runInNewContext(bloc + '\nthis.f = feedGithub;', ctx);
+      await ctx.f(u);
+      return JSON.parse(JSON.stringify({ reglage: u.reglages[u.reglages.length - 1], channel: u.channel, down: u.allowDowngrade, pre: u.allowPrerelease }));
+    };
+    const stable14 = rel('v14.0.0', false, ['cabinet-mac.yml', 'cabinet.yml']);
+    const beta13 = rel('v13.0.0-beta.1', true, ['cabinet-beta-mac.yml', 'cabinet-beta.yml']);
+    // La stable publiée APRÈS la bêta : c'est elle, et on y lit l'index STABLE.
+    let o = await jouer([stable14, beta13]);
+    assert.ok(/download\/v14\.0\.0$/.test(o.reglage.url), 'le repli ne sert pas la stable plus récente : ' + o.reglage.url);
+    assert.strictEqual(o.channel, 'cabinet', 'la page de la stable ne porte que l\'index stable');
+    assert.strictEqual(o.down, false, 'une bêta ne recule jamais : allowDowngrade reposé après le canal');
+    assert.strictEqual(o.pre, true);
+    // Une bêta plus récente que la dernière stable : c'est elle.
+    const beta141 = rel('v14.1.0-beta.1', true, ['cabinet-beta-mac.yml']);
+    o = await jouer([beta141, stable14, beta13]);
+    assert.ok(/download\/v14\.1\.0-beta\.1$/.test(o.reglage.url) && o.channel === 'cabinet-beta', 'la bêta plus récente n\'est plus servie');
+    // Aucune bêta en ligne : la stable, plutôt qu'un refus.
+    o = await jouer([stable14]);
+    assert.ok(/download\/v14\.0\.0$/.test(o.reglage.url) && o.channel === 'cabinet');
+    // Rien du tout : le même refus gris qu'un index absent.
+    await assert.rejects(jouer([rel('v1.0.0', false, ['latest.yml'])]), e => e.code === 'ERR_UPDATER_CHANNEL_FILE_NOT_FOUND');
+    // Et le chemin du relais repose le canal lui aussi : après une stable servie par le repli, le
+    // relais demanderait sinon l'index STABLE et ne verrait plus la bêta suivante.
+    const conf = src.slice(src.indexOf('async function configureFeed(u) {'), src.indexOf('\n}\n', src.indexOf('async function configureFeed(u) {')));
+    assert.ok(/setFeedURL\(\{ provider: 'generic', url, channel: UPDATE_CHANNEL\(\) \}\);\s*poserCanal\(u\);/.test(conf), 'le chemin du relais ne repose pas le canal');
+  });
+
+  await ta('10.14.1 S-01 : le repli GitHub de l\'app entreprise, réglé par appliquerCanal, prend une stable plus récente (le vrai module)', async () => {
+    const { GitHubProvider } = require('electron-updater/out/providers/GitHubProvider');
+    const { HttpError } = require('builder-util-runtime');
+    // Le canal et `allowPrerelease` viennent de NOTRE code, joué : le test porte sur la configuration
+    // autant que sur le module.
+    const src = sansCommentaires(mainE);
+    const ap = src.slice(src.indexOf('function appliquerCanal(u) {'), src.indexOf('\n}\n', src.indexOf('function appliquerCanal(u) {')) + 2);
+    const u = {};
+    const ctx = { readUpdateCfg: () => ({ beta: true }), canalDe: () => 'beta', app: { getVersion: () => '13.0.0-beta.1' } };
+    vm.runInNewContext(ap + '\nthis.f = appliquerCanal;', ctx);
+    ctx.f(u);
+    assert.strictEqual(u.channel, 'beta'); assert.strictEqual(u.allowPrerelease, true);
+    const entree = tag => `<entry><id>${tag}</id><link rel="alternate" type="text/html" href="https://github.com/o/r/releases/tag/${tag}"/><title>${tag}</title></entry>`;
+    const jouer = async (tags) => {
+      const lus = [];
+      const executor = { request: async o => {
+        lus.push(o.path);
+        if (o.path.endsWith('.atom')) return `<?xml version="1.0" encoding="UTF-8"?><feed xmlns="http://www.w3.org/2005/Atom">${tags.map(entree).join('')}</feed>`;
+        const m = o.path.match(/download\/v([^/]+)\/(latest|beta)-mac\.yml$/);
+        if (m && (m[2] === 'beta') === /-/.test(m[1])) return `version: ${m[1]}\npath: a.zip\nsha512: x\nreleaseNotes: n\n`;
+        throw new HttpError(404);
+      } };
+      const p = new GitHubProvider({ provider: 'github', owner: 'o', repo: 'r' },
+        { channel: u.channel, allowPrerelease: u.allowPrerelease, currentVersion: '13.0.0-beta.1', fullChangelog: false },
+        { executor, platform: 'darwin', isUseMultipleRangeRequest: false });
+      return { version: (await p.getLatestVersion()).version, lus };
+    };
+    let r = await jouer(['v14.0.0', 'v13.0.0-beta.1']);
+    assert.strictEqual(r.version, '14.0.0', 'une stable publiée après la bêta n\'est pas proposée');
+    assert.ok(r.lus.some(x => /v14\.0\.0\/latest-mac\.yml$/.test(x)), 'l\'index stable n\'est pas lu sur la page de la stable');
+    r = await jouer(['v14.1.0-beta.1', 'v14.0.0']);
+    assert.strictEqual(r.version, '14.1.0-beta.1', 'une bêta plus récente n\'est plus proposée');
+  });
+
+  t('10.14.1 S-01 : la console nomme la stable qu\'un index d\'essai sert à la place de sa bêta', () => {
+    const src = fs.readFileSync(path.join(__dirname, '../../plateforme/skanfact-api.mjs'), 'utf8');
+    const i = src.indexOf('function dessinerSante() {');
+    const f = src.slice(i, src.indexOf('\n  }\n', i) + 4);
+    assert.ok(f.length > 400 && f.length < 3500, 'tranche de dessinerSante inattendue : ' + f.length);
+    const el = { innerHTML: '' };
+    let rendu = null;
+    const ctx = { $: () => el, h: s => String(s), api: () => ({ then: ok => { rendu = () => ok({ ok: true, verdict: { niveau: 'calme', phrase: 'Les 4 canaux stables servent une version.' }, canaux: [
+      { fichier: 'latest-mac.yml', servi: true, essai: false, tag: 'v14.0.0' },
+      { fichier: 'beta-mac.yml', servi: true, essai: true, tag: 'v13.0.0-beta.1', sertStable: 'v14.0.0' },
+      { fichier: 'cabinet-beta-mac.yml', servi: true, essai: true, tag: '', sertStable: 'v14.0.0' }
+    ] }); } }) };
+    vm.runInNewContext(f + '\nthis.d = dessinerSante;', ctx);
+    ctx.d(); rendu();
+    const essais = el.innerHTML.slice(el.innerHTML.indexOf('Essais'));
+    assert.ok(/beta-mac\.yml[^·]*v14\.0\.0[^·]*la bêta v13\.0\.0-beta\.1/.test(essais), 'la console annonce la bêta alors que le canal sert la stable : ' + essais);
+    assert.ok(/cabinet-beta-mac\.yml[^·]*v14\.0\.0[^·]*toute bêta publiée/.test(essais), 'un index d\'essai sans bêta, servi par la stable, ne le dit pas : ' + essais);
+  });
+
   t('10.14.1 : « de » s\'élide devant un mois — « d\'août », « d\'octobre », dans les deux applications (jumelles)', () => {
     const cabcore = require('../../src/cabinet/cabcore.js');
     assert.strictEqual(core.deLibelle('août 2026'), 'd\'août 2026');

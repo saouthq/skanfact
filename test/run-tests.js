@@ -5464,10 +5464,16 @@ t('canal d\'essai du Cabinet : jamais par le fournisseur GitHub d\'electron-upda
     'le fournisseur GitHub ne doit jamais recevoir cabinet-beta : il ne connaît que alpha et beta, et irait chercher beta-mac.yml, l\'index de l\'app entreprise');
   // Depuis le 23/09/2026 la règle pure RELIT une release que la liste rend vide (la liste de l'API a
   // rendu la 10.10.0 sans aucun fichier) : `releasePourIndexRelue`, qui applique la même règle.
-  assert.ok(/K\.releasePourIndex(Relue)?\(await releasesGithub\(/.test(fg) && /K\.nomIndex\('cabinet-beta', process\.platform\)/.test(fg),
+  // S-01 (10.14.1) : la liste est lue UNE fois, puis la règle pure choisit — la bêta ET la stable
+  // (une stable plus récente que la dernière bêta est servie à la bêta). L'assertion d'avant exigeait
+  // `K.releasePourIndex(await releasesGithub(` et le canal `cabinet-beta` écrit en dur : elle recopiait
+  // une forme, et elle est tombée sur du code juste (quarantième fois). Le COMPORTEMENT — quelle
+  // page, quel index — est joué par « le repli GitHub du Cabinet sert la stable… » (verif2.js).
+  assert.ok(/await releasesGithub\(/.test(fg) && /K\.releasePourIndexRelue\(/.test(fg) && /K\.nomIndex\('cabinet-beta', process\.platform\)/.test(fg),
     'la release de la bêta se choisit par la règle pure, sur la vraie liste des releases');
-  assert.ok(/provider: 'generic', url: `https:\/\/github\.com\/\$\{GITHUB\.owner\}\/\$\{GITHUB\.repo\}\/releases\/download\/\$\{rel\.tag\}`, channel: 'cabinet-beta'/.test(fg),
-    'la bêta se lit par le fournisseur générique, sur la page de CETTE release, canal cabinet-beta');
+  assert.ok(/provider: 'generic', url: `https:\/\/github\.com\/\$\{GITHUB\.owner\}\/\$\{GITHUB\.repo\}\/releases\/download\/\$\{rel\.tag\}`/.test(fg)
+    && /rel\.stableServie \? 'cabinet' : 'cabinet-beta'/.test(fg),
+    'la version choisie se lit par le fournisseur générique, sur la page de CETTE release, avec l\'index qu\'elle porte');
   assert.ok(/code: 'ERR_UPDATER_CHANNEL_FILE_NOT_FOUND'/.test(fg), 'pas de bêta publiée = le code du fournisseur générique sur un index absent, donc la même phrase grise');
   // La phrase, sur le canal d'essai, dit « version d'essai » et n'annonce pas une publication en cours.
   const up = src.slice(src.indexOf('function updateProblem('), src.indexOf('function releasesGithub('));

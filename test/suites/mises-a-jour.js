@@ -123,7 +123,12 @@ await ta('Cabinet : la bêta relue aussi quand la liste la rend vide', async () 
   const r = await K.releasePourIndexRelue(liste, 'cabinet-beta-mac.yml', async rel => rel.id === 5 ? [{ name: 'cabinet-beta-mac.yml' }] : rel.assets);
   assert.strictEqual(r.tag, 'v10.11.0-beta.1', 'le Cabinet retomberait sur la bêta précédente');
   const src = sansComm(lireSource('src', 'cabinet', 'main.js'));
-  assert.ok(/K\.releasePourIndexRelue\(await releasesGithub\(/.test(src), 'le repli du Cabinet n\'utilise pas la règle qui relit');
+  // S-01 (10.14.1) : la liste est lue UNE fois, puis la règle qui relit choisit la bêta ET la stable
+  // (une stable plus récente est servie à la bêta). On exige la règle sur les deux index, pas la
+  // forme d'un appel — `K.releasePourIndexRelue(await releasesGithub(` est tombé sur du code juste.
+  const fg = src.slice(src.indexOf('async function feedGithub('), src.indexOf('let relayDown'));
+  assert.ok(fg.length > 400 && /await releasesGithub\(/.test(fg) && (fg.match(/K\.releasePourIndexRelue\(/g) || []).length >= 2,
+    'le repli du Cabinet n\'utilise pas la règle qui relit, pour la bêta ET pour la stable');
 });
 
 t('une version téléchargée n\'empêche plus de chercher la suivante — dans les deux applications', () => {

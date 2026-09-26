@@ -3841,7 +3841,12 @@ const CONSOLE_HTML = `<!doctype html>
       // lignes. Un compteur et la liste qu'il annonce se calculent avec la même fonction (6.8.1) —
       // ici on ne retire rien, on SÉPARE, parce que ce que sert le canal d'essai est utile aussi.
       var servis = (s.canaux || []).filter(function (c) { return c.servi; });
-      var rendu = function (liste) { return liste.map(function (c) { return h(c.fichier) + ' \\u2192 ' + h(c.tag); }).join(' \\u00b7 '); };
+      // S-01 (10.14.1) : un index d'essai que la stable a dépassé SERT la stable (le relais la donne
+      // sous le nom demandé) ; c'est elle qu'on nomme, avec la bêta qu'elle remplace.
+      var rendu = function (liste) { return liste.map(function (c) {
+        if (c.sertStable) return h(c.fichier) + ' \\u2192 ' + h(c.sertStable) + ' (la stable, plus récente que ' + (c.tag ? 'la bêta ' + h(c.tag) : 'toute bêta publiée') + ')';
+        return h(c.fichier) + ' \\u2192 ' + h(c.tag);
+      }).join(' \\u00b7 '); };
       var stables = servis.filter(function (c) { return !c.essai; });
       var essais = servis.filter(function (c) { return c.essai; });
       var detail = (stables.length ? '<div class="quand" style="margin-block-start:6px">Stables : ' + rendu(stables) + '</div>' : '')
