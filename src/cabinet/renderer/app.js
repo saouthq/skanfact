@@ -11118,14 +11118,20 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
     const pp = lesPas();
     const dec = visiteParId('decouvrir');
     const pas = pp.suivante && visiteParId(PAS_VISITES[pp.suivante.action]);
+    const pasPret = !!(pas && !visiteManque(pas));
+    // 26/09 — la découverte est FACULTATIVE : elle ne passe jamais devant un premier pas du métier
+    // (règle des premiers pas, 10.14.0). Elle mène quand l'exemple est chargé (on est en train de
+    // découvrir) ou quand aucun premier pas n'attend. Un cabinet qui tient déjà ses clients ne se
+    // voit plus proposer « Charger l'exemple » en vert à la place de ce qui lui manque.
+    const decouvrirDabord = !!(dec && !et.faites.decouvrir && (exemple || !pasPret));
     const prochain = reprise
       ? { etiq: 'En pause', label: 'Reprendre', titre: reprise.titre, sous: rep.note ? `${rep.texte} — ${rep.note}` : rep.texte, run: () => lancerVisite(reprise, repriseI) }
-      : dec && !et.faites.decouvrir
+      : decouvrirDabord
         ? { etiq: 'Pour commencer', label: exemple ? 'Commencer la découverte' : 'Charger l\'exemple et découvrir', titre: dec.titre, sous: `${dec.duree} · ${pl(Visite.chapitres(dec.etapes).length, 'chapitre')}`, run: () => lancerVisite(dec) }
-        : pas && !visiteManque(pas)
+        : pasPret
           ? { etiq: 'Prochaine étape', label: 'Me guider', titre: pas.titre, sous: `Premier pas ${pp.etapes.indexOf(pp.suivante) + 1} sur ${pp.total} · ${pas.duree}`, run: () => lancerVisite(pas) }
           : null;
-    const titreHero = reprise ? 'Reprends ta visite là où tu l\'as laissée' : !et.faites.decouvrir ? 'Apprends le Cabinet en le faisant'
+    const titreHero = reprise ? 'Reprends ta visite là où tu l\'as laissée' : decouvrirDabord ? 'Apprends le Cabinet en le faisant'
       : pp.demarrage ? 'Continue tes premiers pas' : 'Tu as les bases — explore à ton rythme';
     const anneauPas = pp.demarrage;
     const aFait = anneauPas ? pp.faits : nbFaites;

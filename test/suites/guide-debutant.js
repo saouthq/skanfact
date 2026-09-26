@@ -364,4 +364,32 @@ t('10.14.1 : la visite d\'un écran de dossier explique CET onglet, sans chapitr
   const cv = lireSource('src', 'cabinet', 'renderer', 'cabvisites.js');
   assert.ok(/etapesDeLaVue\(\{ onglets: sorte \? 'actif' : true \}\)/.test(cv), 'la visite d\'un écran de dossier lit tous les onglets de la fiche');
 });
+
+t('10.14.1 : « Me guider » ne met pas la découverte devant un premier pas du métier (les deux apps)', () => {
+  // Un cabinet qui tient déjà trois clients voyait « Pour commencer : Charger l'exemple et découvrir »
+  // en vert, à la place de ce qui lui manquait — la découverte est FACULTATIVE (10.14.0).
+  const lire = (src, nomPas) => {
+    const m = src.match(/const decouvrirDabord = ([^;]+);/);
+    assert.ok(m, 'la règle de la découverte a une seule ligne');
+    const debut = src.indexOf('const decouvrirDabord');
+    const suite = src.slice(debut, debut + 1200);
+    assert.ok(/: decouvrirDabord\s*\n\s*\?/.test(suite), 'le héros suit cette règle');
+    assert.ok(/titreHero = [^\n]*decouvrirDabord \?/.test(src), 'le titre du héros suit la même règle');
+    return (ctx) => vm.runInNewContext(m[1], ctx);
+  };
+  const cabR = lire(cab, 'pasPret');
+  const ent = lireSource('src', 'renderer', 'app.js');
+  const entR = lire(ent, 'pas');
+  const dec = { id: 'decouvrir' };
+  const nonFaite = { faites: {} }, faite = { faites: { decouvrir: true } };
+  // Cabinet : un premier pas prêt → pas la découverte ; exemple chargé → la découverte ; rien n'attend → la découverte.
+  assert.strictEqual(cabR({ dec, et: nonFaite, exemple: false, pasPret: true }), false);
+  assert.strictEqual(cabR({ dec, et: nonFaite, exemple: true, pasPret: true }), true);
+  assert.strictEqual(cabR({ dec, et: nonFaite, exemple: false, pasPret: false }), true);
+  assert.strictEqual(cabR({ dec, et: faite, exemple: true, pasPret: false }), false);
+  // L'app entreprise, la même règle.
+  assert.strictEqual(entR({ dec, et: nonFaite, exemple: false, pas: { visite: {} } }), false);
+  assert.strictEqual(entR({ dec, et: nonFaite, exemple: true, pas: { visite: {} } }), true);
+  assert.strictEqual(entR({ dec, et: nonFaite, exemple: false, pas: null }), true);
+});
 };

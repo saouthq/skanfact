@@ -8512,6 +8512,12 @@ lots ; le détail de ce qui reste vit dans `A-FAIRE.md` § 0.
     à « Suivi » et décrivait les relances, au centre de l'écran, sans l'ouvrir. Quand la clé de page
     nomme un onglet (`compta-journal`, `dossier`), la barre est une étape et la suite est l'onglet
     ouvert (`onglets: 'actif'`) ; les pages qui couvrent tous leurs onglets gardent les chapitres.
+  - **Une étape facultative ne passe jamais devant une étape du métier — dans le HÉROS aussi.** La
+    règle vivait dans `premiersPas` (`suivante` saute les facultatives) et pas dans « Me guider », qui
+    proposait « Charger l'exemple et découvrir » en vert tant que la découverte n'était pas faite,
+    premiers pas en attente ou pas. `decouvrirDabord` (les deux applications, même règle) : la
+    découverte mène si l'exemple est chargé ou si aucun premier pas n'est prêt. Une règle posée sur
+    une liste se cherche dans chaque écran qui CHOISIT dans cette liste.
 
 ## Pistes pour la suite (non demandées)
 

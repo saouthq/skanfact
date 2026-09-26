@@ -62,6 +62,10 @@ Publiée en **bêta** : elle touche au moteur comptable (retenue à la source, d
   onglet ne porte plus son repère (« Comptabilité● »).
 - **La visite d'un écran de dossier reste sur cet écran** : celle du livre-journal enchaînait sur un
   chapitre « Suivi » qui décrivait les relances du client, hors de l'écran.
+- **« Me guider » ne met plus la découverte de l'exemple devant ce qui te manque** : tant qu'un de tes
+  premiers pas attend (tes clients, un premier livre, la copie de sécurité), c'est lui le prochain
+  geste proposé, dans les deux applications. La découverte reste dans les grands départs, et elle
+  revient en tête quand l'exemple est chargé ou quand tes premiers pas sont faits.
 
 **Pour l'entreprise (SkanFact)**
 - **Un acompte demandé en montant fait ce montant**, timbre compris (500 DT demandés faisaient 501,002).

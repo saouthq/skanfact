@@ -15615,18 +15615,21 @@
     const pas = pasSuivant();
     const dec = visiteParId('decouvrir');
     // LE prochain geste, et UN seul vert (U-11) : reprendre ce qui est commencé ; sinon la
-    // découverte, tant qu'elle n'est pas faite ; sinon le premier pas qui manque ; sinon rien — tout
-    // se vaut, c'est la personne qui choisit.
+    // découverte si l'exemple est chargé ou si rien d'autre n'attend ; sinon le premier pas qui
+    // manque ; sinon rien — tout se vaut, c'est la personne qui choisit.
+    // 26/09 — la découverte est FACULTATIVE : elle ne passe jamais devant un premier pas du métier.
+    // Elle mène quand l'exemple est chargé, ou quand aucun premier pas n'attend.
+    const decouvrirDabord = !!(dec && !et.faites.decouvrir && (exemple || !pas));
     const prochain = reprise
       ? { etiq: 'En pause', label: libelleVisite(reprise, 'reprendre'), titre: reprise.titre, sous: rep.note ? `${rep.texte} — ${rep.note}` : rep.texte, run: () => lancerVisite(reprise, repriseI) }
-      : dec && !et.faites.decouvrir
+      : decouvrirDabord
         ? { etiq: 'Pour commencer', label: exemple ? 'Commencer la découverte' : 'Charger l\'exemple et découvrir', titre: dec.titre, sous: `${dec.duree} · ${pl(Visite.chapitres(dec.etapes).length, 'chapitre')}`, run: () => lancerVisite(dec) }
         : pas
           // Le sous-titre dit OÙ l'on en est — le titre dit déjà quoi : « Compléter ma fiche société »
           // suivi de « compléter ta fiche société » ne s'écrit qu'une fois.
           ? { etiq: 'Prochaine étape', label: 'Me guider', titre: pas.visite.titre, sous: `Premier pas ${pp.etapes.findIndex(x => x.action === pas.etape.action) + 1} sur ${pp.total} · ${pas.visite.duree}`, run: () => lancerVisite(pas.visite) }
           : null;
-    const titreHero = reprise ? 'Reprends ta visite là où tu l\'as laissée' : !et.faites.decouvrir ? 'Apprends SkanFact en le faisant'
+    const titreHero = reprise ? 'Reprends ta visite là où tu l\'as laissée' : decouvrirDabord ? 'Apprends SkanFact en le faisant'
       : pas ? 'Continue tes premiers pas' : 'Tu as les bases — explore à ton rythme';
     // L'anneau : tes premiers pas tant qu'ils ne sont pas faits (dans ta vraie entreprise), sinon les
     // visites faites. Ce qu'il compte est écrit dessous.
