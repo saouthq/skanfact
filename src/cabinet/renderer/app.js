@@ -4908,7 +4908,9 @@
     // 10.13.0 (U-11, test humain du pont) — une question posée et pas encore partie passe AVANT la
     // suite de la révision : le client a besoin de temps pour répondre, chaque jour compte.
     const aEnvoyer = controles.some(c => c.envoyer);
-    const suivante = d.faite ? '' : aEnvoyer ? 'envoyer' : ouvertIncomplet ? 'signer' : prochain ? 'cycle' : horsARevoir ? 'hors' : 'arreter';
+    // 10.14.1 (joué au guide) — une révision ARRÊTÉE avec une question pas encore partie n'avait
+    // plus aucun vert : l'envoi est l'étape suivante, que la révision soit arrêtée ou non.
+    const suivante = aEnvoyer ? 'envoyer' : d.faite ? '' : ouvertIncomplet ? 'signer' : prochain ? 'cycle' : horsARevoir ? 'hors' : 'arreter';
     const aFaire = controles.filter(c => c.gravite !== 'info');
     const etatsNormaux = controles.filter(c => c.gravite === 'info' && c.id !== 'comptes');
     return `<div class="filters">
@@ -5026,7 +5028,7 @@
         const c = (s.revision.dossier.feuilles.flatMap(f => f.rows).concat(s.revision.dossier.hors)).find(x => x.compte === id);
         if (!c) return [];
         return [
-          { icon: c.revu ? 'non' : 'oui', label: c.revu ? 'Retirer ma signature' : 'Signer ce compte',
+          { icon: c.revu ? 'non' : 'oui', label: c.revu ? 'Retirer ma signature' : 'Signer ce compte', cle: c.revu ? 'retirer-signature' : 'signer-compte',
             hint: c.revu ? 'Le compte redevient « à revoir ».' : 'Je l\'ai revu : il est juste.',
             run: async () => {
               try {
@@ -5128,7 +5130,7 @@
       <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="nv-ok">Écrire la note</button></div>`,
     (couche, close) => { $('#nv-ok', couche).onclick = async () => {
       const t = $('#nv-texte', couche).value.trim();
-      if (!t) return toast('Une note de revue sans texte n\'apprend rien.', 'error');
+      if (!t) return refus($('#nv-texte', couche), 'Une note de revue sans texte n\'apprend rien.');
       try {
         const r = await api.noteRevue({ dossierId: dossier.id, annee: s.annee, periode: (s.revision && s.revision.dossier.periode) || String(s.annee),
           note: { texte: t, compte: base.compte || '', cycle: base.cycle || '' } });

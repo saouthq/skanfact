@@ -811,4 +811,51 @@ t('10.14.1 : « Saisir l\'inventaire » fait taper les lignes au guide, et « En
   assert.ok(form.length > 1500 && form.length < 8000, 'tranche du formulaire suspecte : ' + form.length);
   assert.ok(/<div id="iv-apercu" class="[^"]*\bannonce-stable encadre\b/.test(form), 'le total de l\'inventaire ne réserve plus sa place : « Enregistrer » bouge sous le curseur');
 });
+// Suivie au guide, « Réviser un dossier » s'arrêtait à « ouvre une feuille, signe » : ni la note ni la
+// question ne se tapaient, et la première étape se sautait toute seule — elle comptait les menus du
+// volet replié « comptes hors cycle », cachés mais présents. Une fois arrêtée, la révision n'avait
+// plus aucun vert alors qu'une question attendait d'être envoyée.
+t('10.14.1 : « Réviser un dossier » se fait au guide, du cycle à la question, et l\'envoi reste l\'étape suivante', () => {
+  const V2 = require('../../src/renderer/visite.js');
+  const ctx = { state: () => ({ cabinet: {}, dossiers: [] }), dossier: () => 'D', estExemple: () => false, cleSecours: () => null, copieExterne: () => false, Visite: V2 };
+  const v = CV.parcours(ctx).find(x => x.id === 'reviser');
+  assert.ok(v && v.type === 'faire', 'la révision n\'est plus un parcours guidé');
+  const cibles = v.etapes.map(e => [].concat(e.cible).join('|'));
+  const ouvre = v.etapes[0];
+  assert.ok([].concat(ouvre.cible).includes('#rv-suivant') && typeof ouvre.fait === 'function', 'le premier geste n\'ouvre plus un cycle, ou avance sur le clic seul');
+  ['[data-act="signer-compte"]', '#modal-root #nv-texte', '#modal-root #nv-ok', '#modal-root #qf-texte', '#modal-root #qf-ok']
+    .forEach(c => assert.ok(cibles.includes(c), 'la visite ne guide plus « ' + c + ' »'));
+  ['#modal-root #nv-texte', '#modal-root #qf-texte'].forEach(c => {
+    const e = v.etapes.find(x => x.cible === c);
+    assert.ok(e.faire === 'valeur' && !e.facultatif, 'la case « ' + c + ' » ne se fait pas taper');
+  });
+  ['#modal-root #nv-ok', '#modal-root #qf-ok'].forEach(c => {
+    const e = v.etapes.find(x => x.cible === c);
+    assert.ok(typeof e.fait === 'function', '« ' + c + ' » avance sur le clic seul, même quand l\'enregistrement refuse');
+  });
+  // La première étape ne se juge que sur un menu VISIBLE : un <details> fermé cache ses lignes.
+  const det = { open: false, parentElement: null };
+  const fauxEl = o => ({ isConnected: true, closest: s => (s === 'details' ? det : null), getBoundingClientRect: () => ({ width: 80, height: 24 }), ...o });
+  global.getComputedStyle = () => ({ visibility: 'visible', display: 'block', opacity: '1' });
+  try {
+    assert.strictEqual(V2.visible(fauxEl()), false, 'une ligne d\'un volet replié passe pour visible : la visite éclaire du vide');
+    det.open = true;
+    assert.strictEqual(V2.visible(fauxEl()), true);
+  } finally { delete global.getComputedStyle; }
+  // Le menu d'un compte pose la clé que la visite vise.
+  const app = lireSource('src', 'cabinet', 'renderer', 'app.js');
+  assert.ok(/cle: c\.revu \? '[a-z-]+' : 'signer-compte'/.test(app), 'le menu d\'un compte ne pose plus « signer-compte » : la visite éclaire la troisième entrée');
+  // Une note vide se MONTRE (refus), pas seulement un message.
+  const nf = app.indexOf('function noteForm(');
+  const note = app.slice(nf, app.indexOf('\n  function ', nf + 20));
+  assert.ok(/if \(!t\) return refus\(/.test(note), 'une note vide ne montre pas sa case');
+  // L'envoi d'une question en attente est l'étape suivante, révision arrêtée ou non.
+  const m = app.match(/const suivante = (d\.faite \? [^;]+|aEnvoyer \? [^;]+);/);
+  assert.ok(m, 'le calcul de l\'étape suivante de la révision a changé de forme');
+  const vm = require('vm');
+  const jouer = o => vm.runInNewContext(m[1], Object.assign({ ouvertIncomplet: false, prochain: null, horsARevoir: 0 }, o));
+  assert.strictEqual(jouer({ aEnvoyer: true, d: { faite: true } }), 'envoyer', 'une révision arrêtée n\'a plus de vert alors qu\'une question attend');
+  assert.strictEqual(jouer({ aEnvoyer: false, d: { faite: true } }), '');
+  assert.strictEqual(jouer({ aEnvoyer: true, d: { faite: false } }), 'envoyer');
+});
 };

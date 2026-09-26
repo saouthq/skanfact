@@ -1936,8 +1936,13 @@
       ]
     });
 
+    // Une feuille OUVERTE : un menu de compte qu'on VOIT. Le volet replié « comptes hors cycle » porte
+    // aussi ses menus, cachés : les compter sautait l'étape qui ouvre un cycle (10.14.1, au guide).
+    const feuilleOuverte = () => !!(typeof Visite !== 'undefined' && Visite.resoudre ? Visite.resoudre('#c-livres [data-rowmenu^="RV:"]') : corr('#c-livres [data-rowmenu^="RV:"]'));
+    const fenetreNote = () => !!corr('#modal-root #nv-texte');
+    const fenetreQuestion = () => !!corr('#modal-root #qf-texte');
     visite({
-      id: 'reviser', theme: 'declarer', type: 'faire', duree: '2 min', pages: ['compta'],
+      id: 'reviser', theme: 'declarer', type: 'faire', duree: '3 min', pages: ['compta'],
       page: dans('livre', 'comptabilite/revision'),
       titre: 'Réviser un dossier',
       resume: 'Cycle par cycle, compte par compte : signer, noter, questionner, puis arrêter.',
@@ -1945,15 +1950,45 @@
       si: () => !!ctx.dossier('livre'), manque: DOSSIER_MANQUE.livre,
       suite: ['questions-client', 'cloturer'],
       bravo: 'Tu sais réviser',
-      conclusion: 'Une feuille maîtresse ne lit que les validées : on ne révise pas un brouillard. Les contrôles nomment ce qui manque avant d\'arrêter, sans jamais bloquer.',
+      conclusion: 'Une feuille maîtresse ne lit que les validées : on ne révise pas un brouillard. Les questions posées attendent le bouton <b>Envoyer les questions au client…</b>, qui écrit le fichier à lui transmettre.',
       etapes: [
-        { page: dans('livre', 'comptabilite/revision'), cible: ['#c-livres .panel'], cote: 'dessus', titre: 'Les cycles',
-          texte: 'Trésorerie, ventes, achats, personnel, fiscal… Chaque cycle compte ses comptes signés. <b>Un cycle s\'ouvre</b> sur sa feuille maîtresse.' },
-        { page: dans('livre', 'comptabilite/revision'), cible: ['#rv-arreter', '#c-livres .panel'], cote: 'dessous', titre: 'Arrêter la révision',
-          texte: 'La période révisée se fige ; elle se rouvre si un chiffre bouge.' },
-        { page: dans('livre', 'comptabilite/revision'), cible: '#rv-note', cote: 'dessous', faire: 'clic', titre: 'Noter et questionner',
-          texte: '<b>« Note de revue… »</b> garde ce que tu as vu ; <b>« Poser une question… »</b> part chez le client, sur la pièce.',
-          action: 'Ouvre la <b>« Note de revue… »</b> : tu peux la refermer sans rien écrire.', essai: { clic: true } }
+        // 10.14.1 — suivie au guide, la visite montrait les cycles, parlait d'arrêter AVANT d'avoir
+        // revu quoi que ce soit, et ouvrait une note « que tu peux refermer sans rien écrire » :
+        // un débutant finissait sans avoir signé un seul compte.
+        { page: dans('livre', 'comptabilite/revision'), cible: ['#rv-suivant', '#rv-voir-hors', '#c-livres .cy-carte'], cote: 'dessous', faire: 'clic',
+          si: () => !feuilleOuverte(), fait: feuilleOuverte,
+          titre: 'Ouvrir un cycle', texte: 'Trésorerie, ventes, achats, fiscal… Chaque carte compte les comptes signés du cycle (0 / 3 : aucun sur trois). Le bouton vert ouvre le premier cycle qui reste à revoir.',
+          action: 'Clique sur le bouton vert, ou sur la carte d\'un cycle.', essai: { clic: true } },
+        { page: dans('livre', 'comptabilite/revision'), cible: '#c-livres [data-rowmenu^="RV:"]', cote: 'dessous', faire: 'clic', si: feuilleOuverte,
+          titre: 'Un compte à revoir', texte: 'La feuille maîtresse montre chaque compte du cycle : son ouverture, ses mouvements, son solde et sa variation. Relis-le, puis ouvre son menu.',
+          action: 'Ouvre le menu <b>Actions</b> d\'un compte.', essai: { clic: true } },
+        { page: dans('livre', 'comptabilite/revision'), cible: '[data-act="signer-compte"]', cote: 'droite', faire: 'clic', facultatif: true,
+          titre: 'Signer le compte', texte: 'Signer, c\'est dire <i>je l\'ai revu, il est juste</i> : le compteur du cycle avance, et la signature se retire du même menu. Ce menu écrit aussi une note ou pose une question au client <b>sur ce compte</b>.',
+          action: 'Clique sur <b>« Signer ce compte »</b>.', essai: { clic: true } },
+        { page: dans('livre', 'comptabilite/revision'), cible: '#rv-note', cote: 'dessous', faire: 'clic', facultatif: true,
+          titre: 'Une note de revue', texte: 'Ce qu\'il reste à vérifier : elle reste dans le dossier de révision et ne part <b>jamais</b> chez le client.',
+          action: 'Clique sur <b>« Note de revue… »</b>.', essai: { clic: true } },
+        { page: dans('livre', 'comptabilite/revision'), cible: '#modal-root #nv-texte', cote: 'droite', faire: 'valeur', bouton: 'Suivant', si: fenetreNote,
+          titre: 'La note', texte: 'Une phrase qui dit quoi vérifier, et sur quoi.',
+          action: 'Écris la note.', essai: { taper: 'Rapprocher le 532 avec le relevé de décembre' } },
+        { page: dans('livre', 'comptabilite/revision'), cible: '#modal-root #nv-ok', cote: 'dessus', faire: 'clic', si: fenetreNote, fait: () => aucuneFenetre(),
+          titre: 'Écrire la note', texte: 'Elle rejoint les notes de revue, ouverte jusqu\'à ce que tu la lèves.',
+          action: 'Clique sur <b>« Écrire la note »</b>.', essai: { clic: true } },
+        { page: dans('livre', 'comptabilite/revision'), cible: '#rv-question', cote: 'dessous', faire: 'clic', facultatif: true,
+          titre: 'Une question au client', texte: 'Elle part chez lui et s\'affiche <b>en face de la pièce</b> qu\'elle vise ; sa réponse revient dans son prochain paquet.',
+          action: 'Clique sur <b>« Poser une question… »</b>.', essai: { clic: true } },
+        { page: dans('livre', 'comptabilite/revision'), cible: '#modal-root #qf-texte', cote: 'droite', faire: 'valeur', bouton: 'Suivant', si: fenetreQuestion,
+          titre: 'La question', texte: 'La pièce et le compte au-dessus la placent chez le client ; la question dit ce que tu attends de lui.',
+          action: 'Écris la question.', essai: { taper: 'Peux-tu m\'envoyer la facture de ce virement ?' } },
+        { page: dans('livre', 'comptabilite/revision'), cible: '#modal-root #qf-ok', cote: 'dessus', faire: 'clic', si: fenetreQuestion, fait: () => aucuneFenetre(),
+          titre: 'Poser la question', texte: 'Elle attend l\'envoi : rien ne part chez le client tant que tu n\'as pas écrit le fichier.',
+          action: 'Clique sur <b>« Poser la question »</b>.', essai: { clic: true } },
+        { page: dans('livre', 'comptabilite/revision'), cible: '#rv-arreter', cote: 'dessous', faire: 'clic', facultatif: true,
+          titre: 'Arrêter la révision', texte: 'Quand les comptes sont revus : la période se marque révisée dans la production. Les points qui restent sont listés avant, sans bloquer, et elle se rouvre à tout moment.',
+          action: 'Clique sur <b>« Arrêter la révision… »</b>.', essai: { clic: true } },
+        { page: dans('livre', 'comptabilite/revision'), cible: '#modal-root #ok', cote: 'dessus', faire: 'clic', si: () => !!corr('#modal-root #ok'), fait: () => aucuneFenetre(),
+          titre: 'Confirmer', texte: 'La question nomme la période et les points signalés : relis-les avant de confirmer.',
+          action: 'Clique sur <b>« Arrêter la révision »</b>.', essai: { clic: true } }
       ]
     });
 

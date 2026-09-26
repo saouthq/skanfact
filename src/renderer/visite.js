@@ -306,6 +306,13 @@
   function visible(el) {
     if (!el || !el.isConnected) return false;
     if (el.closest('[hidden]')) return false;
+    // Le contenu d'un volet replié (<details> fermé) garde une boîte dans Chromium, qui le rend en
+    // content-visibility: hidden : sans ce test, la bulle éclairait un compte caché dans « 1 compte hors
+    // cycle » et l'anneau entourait du vide (10.14.1, joué au guide). Le <summary> reste visible.
+    for (let d = el.closest('details'); d; d = d.parentElement && d.parentElement.closest('details')) {
+      if (!d.open && !el.closest('summary')) return false;
+    }
+    if (typeof el.checkVisibility === 'function' && !el.checkVisibility()) return false;
     const r = el.getBoundingClientRect();
     if (r.width < 2 || r.height < 2) return false;
     const cs = getComputedStyle(el);

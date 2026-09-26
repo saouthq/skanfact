@@ -288,9 +288,12 @@ et au moteur), puis en stable quand Skander valide.*
     du trimestre, qui fait corriger au guide le matricule employeur et le numéro d'assuré (+ 5 preuves) ;
     puis un bien, fiche remplie au guide et plan relu, dont l'aperçu poussait « Ajouter » de 41 px
     (+ 5 preuves) ; puis l'inventaire, lignes tapées au guide, même aperçu qui poussait « Enregistrer »
-    de 54 px (+ 5 preuves).
-  - **Cabinet, encore à jouer au guide** : révision,
-    clôture, liasse. Petits : la bulle « Sa famille » n'éclaire que « Enfants à charge » ; « Ses comptes »
+    de 54 px (+ 5 preuves) ; puis la révision, du cycle à la question, qui sautait sa première étape sur
+    les comptes cachés du volet « hors cycle » et laissait une révision arrêtée sans vert (+ 5 preuves).
+  - **Cabinet, encore à jouer au guide** : clôture, liasse. Révision : une fois arrêtée, la ligne de la
+    période passe sur deux rangées (la date et l'auteur s'ajoutent) — sans conséquence sous le curseur
+    (la fenêtre était ouverte), à resserrer un jour. Le nom de l'auteur, sans collaborateur déclaré, est
+    celui de l'ordinateur (« vm » sur la machine de test). Petits : la bulle « Sa famille » n'éclaire que « Enfants à charge » ; « Ses comptes »
     (bien) n'éclaire que le compte du bien, pas l'amortissement ni la dotation.
     Le refus du bulletin (`#bf-refus`, un brut négatif) apparaît sous l'aperçu et pousse « Enregistrer » :
     même défaut que le bien et l'inventaire, sur un cas rare — à régler par la même place réservée.

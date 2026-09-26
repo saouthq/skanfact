@@ -8601,6 +8601,14 @@ lots ; le détail de ce qui reste vit dans `A-FAIRE.md` § 0.
   font quatre exercices. Le même défaut, dans la fenêtre d'à côté (l'inventaire, 54 px) : **un défaut
   trouvé dans une fenêtre se cherche dans ses sœurs** ; et l'exemple qu'une bulle fait taper passe par
   le moteur qui le lira — le test le fait lire, sinon la bulle ferait taper une ligne refusée.
+- **Un élément présent n'est pas un élément visible — et un volet replié garde ses boîtes.** Jouée au
+  guide, « Réviser un dossier » sautait sa première étape (« ouvre un cycle ») : sa condition comptait
+  les menus de compte du volet « comptes hors cycle », replié. Chromium rend le contenu d'un `<details>`
+  fermé en `content-visibility: hidden` : ses éléments gardent un rectangle, et le moteur éclairait une
+  ligne invisible — l'anneau entourait du vide. `Visite.visible` refuse le contenu d'un `<details>`
+  fermé (et `checkVisibility()` quand elle existe), et une condition d'étape passe par `Visite.resoudre`,
+  jamais par un `querySelector` nu. Et **l'étape suivante ne s'éteint pas avec l'état qui la précède** :
+  une révision arrêtée perdait tout vert alors qu'une question attendait son envoi (U-11).
 
 ## Pistes pour la suite (non demandées)
 

@@ -90,6 +90,14 @@ Publiée en **bêta** : elle touche au moteur comptable (retenue à la source, d
   un point-virgule entre les valeurs), le total se relit, « Enregistrer l'inventaire » est prouvé, et la
   variation se lit avant d'être écrite. Le total ou le refus qui paraît à la frappe ne pousse plus
   « Enregistrer l'inventaire » de 54 px.
+- **« Réviser un dossier » se fait au guide, du cycle à la question** : la visite s'arrêtait à « ouvre
+  une feuille, signe » et sautait sa première étape toute seule — elle comptait les comptes du volet
+  replié « comptes hors cycle », cachés mais présents, et l'anneau entourait du vide. Elle fait ouvrir un
+  cycle, ouvrir le menu d'un compte, le signer, écrire une note de revue, poser une question au client et
+  arrêter la révision, chaque geste prouvé par ce qu'il enregistre. La visite ne vise plus jamais une
+  ligne d'un volet replié, sur aucun écran. Une note vide montre sa case au lieu d'un message seul.
+- **Une révision arrêtée garde son étape suivante** : une question pas encore partie laissait l'écran
+  sans aucun bouton vert une fois la révision arrêtée ; « Envoyer les questions au client… » reste vert.
 - **Le plan d'un bien ne pousse plus « Ajouter » sous le curseur** : l'aperçu passait d'une ligne (ce
   qui manque) à trois (le plan) et « Ajouter » descendait de 41 px pendant la saisie. Il réserve sa
   place (vérifié à la souris : « Ajouter » ne bouge plus d'un pixel du premier au dernier chiffre).
