@@ -295,6 +295,7 @@
   b('[data-copier]', 'Copie ce montant pour le coller dans la case du portail, sans espace ni devise, dans la forme choisie au-dessus du tableau. Le message dit exactement ce qui est copié.', { nom: 'Copier le montant', cle: 'copier' });
   b('#dc-format', 'La forme d\'un montant copié : point, virgule, ou millimes entiers — celle que le portail accepte.', { nom: 'Forme de la copie' });
   b('#dc-portail', 'Ouvre le portail de l\'administration dans ton navigateur : SkanFact ne s\'y connecte pas et n\'y envoie rien.');
+  b('[data-vers-saisie]', 'Ouvre la saisie, où le brouillard du mois se relit et se valide : une pièce en brouillard n\'entre dans aucun chiffre de la déclaration.', { nom: 'Voir le brouillard', cle: 'vers-saisie' });
 
   // ---------- la révision, l'exercice, la liasse ----------
   b('#rv-poser', 'Pose les questions de ton questionnaire de fin d\'exercice à ce client.');
@@ -532,6 +533,20 @@
       saisie: { texte: 'Il faut un dossier qui a son livre : crée le livre d\'un client (sa fiche → Comptabilité), ou charge l\'exemple.', get visite() { return aTenir() ? 'premier-livre' : 'ajouter-client'; } },
       livre: { texte: 'Il faut un dossier qui a son livre : crée le livre d\'un client, ou charge l\'exemple.', get visite() { return aTenir() ? 'premier-livre' : 'ajouter-client'; } },
       client: { texte: 'Il faut au moins un client dans ton portefeuille.', visite: 'ajouter-client' }
+    };
+
+    // Rapprocher et écrire une ligne du relevé supposent un relevé importé : sans lui, « Guide-moi »
+    // les proposait en tête, et la visite montrait un bouton d'import en renvoyant à une AUTRE visite
+    // (vu en guidant un débutant, 26/09). Elles proposent d'abord l'import.
+    const aUnReleve = () => {
+      const id = ctx.dossier('livre');
+      if (!id) return false;
+      const n = typeof ctx.releves === 'function' ? ctx.releves(id) : null;
+      return n === null || n > 0;
+    };
+    const RELEVE_MANQUE = {
+      get texte() { return ctx.dossier('livre') ? 'Il faut d\'abord le relevé de la banque dans le livre : importe-le, la visite le fait avec toi.' : DOSSIER_MANQUE.livre.texte; },
+      get visite() { return ctx.dossier('livre') ? 'importer-releve' : DOSSIER_MANQUE.livre.visite; }
     };
 
     const L = [];
@@ -849,7 +864,12 @@
     const versCompta = () => { const d = aTenir(); return d ? '#/dossier/' + encodeURIComponent(d.id) + '/comptabilite' : null; };
     let livresAvant = 0;
     visite({
-      id: 'premier-livre', theme: 'saisir', type: 'faire', duree: '1 min', page: versCompta, pages: ['compta'],
+      id: 'premier-livre', theme: 'saisir', type: 'faire', duree: '1 min', page: versCompta, pages: ['dossiers', 'dossier', 'compta'],
+      // Proposée là où le débutant la cherche (10.14.1, GUIDE-01) : sur la page Dossiers, et sur la fiche
+      // d'un client qui n'a pas de livre — elle n'existait que dans la comptabilité, c'est-à-dire là où
+      // l'on n'arrive qu'après avoir su la chercher. Sur un dossier, seulement s'il est CELUI à tenir :
+      // « Guide-moi » sur le dossier de la boulangerie ne part pas commencer le livre du café.
+      surLaPage: cle => !ecranDeDossier(cle) || (!!dossierOuvert() && (aTenir() || {}).id === dossierOuvert()),
       titre: 'Commencer le livre d\'un client',
       resume: 'Pour un client hors SkanFact : son exercice, sa balance d\'ouverture s\'il en a une, puis la saisie.',
       mots: ['livre', 'commencer', 'reprise', 'ouverture', 'balance', 'exercice', 'hors', 'tenir'],
@@ -866,20 +886,20 @@
         { page: versCompta, cible: '#rf [name="annee"]', cote: 'droite', titre: 'L\'exercice',
           texte: 'L\'année du livre, du 1er janvier au 31 décembre. Pour clôturer d\'abord l\'an dernier, tape son année ici.' },
         { page: versCompta, cible: ['#rf-lignes', '#modal-root .modal'], cote: 'droite', titre: 'Sa balance d\'ouverture',
-          texte: 'Ce que ses comptes portaient au premier jour : capital, banque, clients, fournisseurs. <b>Laisse-la vide pour un client qui démarre.</b> « Importer un CSV… » reprend celle de son ancien logiciel ; elle doit s\'équilibrer.' },
+          texte: 'Ce que ses comptes portaient au premier jour : capital, banque, clients, fournisseurs. <b>Laisse-la vide pour un client qui démarre.</b> « Importer depuis Excel ou CSV… » reprend celle de son ancien logiciel ; elle doit s\'équilibrer.' },
         { page: versCompta, cible: '#modal-root #ok', cote: 'dessus', faire: 'clic', fait: () => livresConnus() > livresAvant && aucuneFenetre(),
           titre: 'Créer le livre', texte: 'La Saisie s\'ouvre juste après.', action: 'Clique sur <b>« Créer le livre »</b>.', essai: { clic: true } }
       ]
     });
 
     visite({
-      id: 'saisir-piece', theme: 'saisir', type: 'faire', duree: '2 min', pages: ['compta'],
+      id: 'saisir-piece', theme: 'saisir', type: 'faire', duree: '2 min', pages: ['compta', 'dossier'],
       page: dans('saisie', 'comptabilite/saisie'),
       titre: 'Saisir une pièce',
-      resume: 'Une pièce tapée au clavier : la date, le journal, les lignes, le solde, puis le brouillard.',
+      resume: 'Un loyer payé par la banque, tapé au clavier : le journal, la date, les deux comptes, le solde, puis le brouillard.',
       mots: ['saisir', 'saisie', 'ecriture', 'piece', 'clavier', 'grille', 'brouillard'],
       si: () => !!ctx.dossier('saisie'), manque: DOSSIER_MANQUE.saisie,
-      suite: ['page-compta-saisie', 'page-compta-journal'],
+      suite: ['valider-lot', 'importer-releve', 'page-compta-journal'],
       // Une écriture de plus dans le livre OUVERT, comptée à l'étape « Enregistrer » : à l'entrée de la
       // visite, le livre du dossier n'est peut-être pas encore lu (10.14.1).
       mesure: () => { ecrituresAvant = -1; return null; },
@@ -887,18 +907,43 @@
       echec: 'La pièce n\'est pas enregistrée — c\'est « Enregistrer en brouillard » qui la range. Il s\'éteint tant qu\'elle ne tombe pas juste, et dit pourquoi juste au-dessus de lui.',
       bravo: 'Ta pièce est enregistrée',
       conclusion: 'Elle est en brouillard : elle se corrige encore. Tu la valideras seule, ou par lot avec les autres — elle recevra alors son numéro.',
+      // Case par case, avec UN exemple qui se tient du journal au solde : un loyer payé par la
+      // banque. La première version montrait les lignes sans rien y faire taper (« Un compte, un
+      // montant ») et proposait « Loyer du mois » dans le journal des Ventes : un débutant arrivait
+      // devant « Enregistrer » éteint sans savoir quoi écrire (vu au guide, 10.14.1). Chaque case
+      // suit l'ordre de l'écran, et la touche que la bulle annonce fait avancer (`touche`).
       etapes: [
-        { page: dans('saisie', 'comptabilite/saisie'), cible: '#sa-date', cote: 'droite', faire: 'valeur', bouton: 'Suivant',
-          titre: 'La date', texte: 'Le jour seul suffit : le mois et l\'année viennent de l\'exercice.', action: 'Tape le jour de la pièce, puis Entrée.', essai: { taper: '15' } },
-        { page: dans('saisie', 'comptabilite/saisie'), cible: '#sa-journal', cote: 'droite', titre: 'Le journal',
-          texte: 'Achats, ventes, banque, opérations diverses : le journal range la pièce. Le Cabinet propose celui que tu as utilisé en dernier.' },
-        { page: dans('saisie', 'comptabilite/saisie'), cible: '#sa-libelle', cote: 'droite', faire: 'valeur', bouton: 'Suivant',
-          titre: 'Le libellé', texte: 'Ce que dit la pièce : il se reporte sur chaque ligne.', action: 'Tape le libellé, puis Entrée pour descendre aux lignes.', essai: { taper: 'Loyer du mois' } },
-        { page: dans('saisie', 'comptabilite/saisie'), cible: ['#sa-lignes', '#c-livres .panel'], cote: 'dessus', titre: 'Les lignes',
-          texte: 'Un compte (tape ses premiers chiffres), un montant au débit ou au crédit. <b>Tab sur la dernière ligne solde la pièce</b> : le Cabinet pose l\'écart dans la bonne colonne.' },
+        { page: dans('saisie', 'comptabilite/saisie'), cible: '#sa-journal', cote: 'droite', faire: 'valeur', bouton: 'Suivant',
+          fait: () => { const j = document.querySelector('#sa-journal'); return !!j && (j.value === 'BQ' || !j.querySelector('option[value="BQ"]')); },
+          titre: 'Le journal', texte: 'Achats, ventes, banque, caisse, opérations diverses : le journal <b>range</b> la pièce. Pour ce premier essai, un <b>loyer payé par la banque</b> — il va dans le journal de la banque.',
+          action: 'Choisis <b>BQ — Banque</b> dans la liste.', essai: { choisir: 'BQ' } },
+        { page: dans('saisie', 'comptabilite/saisie'), cible: '#sa-date', cote: 'droite', faire: 'valeur', bouton: 'Suivant', touche: 'Enter',
+          titre: 'La date', texte: 'Le jour seul suffit : le mois et l\'année viennent de l\'exercice. C\'est la date écrite sur le papier (l\'avis de débit, la quittance).',
+          action: 'Tape le jour — <b>5</b> par exemple —, puis <kbd>Entrée</kbd>.', essai: { taper: '5' } },
+        { page: dans('saisie', 'comptabilite/saisie'), cible: '#sa-piece', cote: 'dessous', touche: 'Enter', titre: 'La pièce',
+          texte: 'La référence du papier qui justifie l\'écriture : le n° de la facture, du chèque, de la quittance. Facultative, mais c\'est elle qui te fait retrouver le papier dans six mois. Tape-la si tu l\'as, puis <kbd>Entrée</kbd> pour passer au libellé.' },
+        { page: dans('saisie', 'comptabilite/saisie'), cible: '#sa-libelle', cote: 'droite', faire: 'valeur', bouton: 'Suivant', touche: 'Enter',
+          titre: 'Le libellé', texte: 'Ce que dit la pièce, en quelques mots : il se reporte sur chaque ligne.',
+          action: 'Tape <b>Loyer de septembre</b>, puis <kbd>Entrée</kbd> pour descendre aux lignes.', essai: { taper: 'Loyer de septembre' } },
+        { page: dans('saisie', 'comptabilite/saisie'), cible: '#sa-lignes tr[data-i="0"] [data-k="compte"]', cote: 'dessous', faire: 'valeur', bouton: 'Suivant', touche: 'Tab',
+          fait: () => compteSaisi(0),
+          titre: 'Ce que coûte le loyer',
+          texte: 'Une pièce a au moins deux lignes : ce qui <b>coûte</b> (au débit) et d\'où vient l\'argent (au crédit). Le loyer est une charge : le compte <b>613 — Locations</b>. Tu ne connais pas le numéro ? Tape un mot — <b>loyer</b> — et choisis dans la liste.',
+          action: 'Le loyer est une charge : tape <b>613</b> — ou le mot <b>loyer</b>, et choisis dans la liste —, puis <kbd>Tab</kbd>.', essai: { taper: '613' } },
+        { page: dans('saisie', 'comptabilite/saisie'), cible: '#sa-lignes tr[data-i="0"] [data-k="debit"]', cote: 'dessous', faire: 'valeur', bouton: 'Suivant', touche: 'Enter',
+          titre: 'Le montant, au débit', texte: 'La case Libellé de la ligne reprend celui de la pièce : <kbd>Tab</kbd> la passe. Une charge se met au <b>débit</b>.',
+          action: 'Dans la case <b>Débit</b>, tape <b>800</b>, puis <kbd>Entrée</kbd> : la ligne suivante s\'ouvre.', essai: { taper: '800' } },
+        { page: dans('saisie', 'comptabilite/saisie'), cible: '#sa-lignes tr[data-i="1"] [data-k="compte"]', cote: 'dessous', faire: 'valeur', bouton: 'Suivant', touche: 'Tab',
+          fait: () => compteSaisi(1),
+          titre: 'D\'où vient l\'argent', texte: 'La banque a payé : le compte <b>532 — Banques</b> (ou le mot <b>banque</b>). Il va au <b>crédit</b> : l\'argent en sort.',
+          action: 'La banque a payé : tape <b>532</b> — ou le mot <b>banque</b> —, puis <kbd>Tab</kbd>.', essai: { taper: '532' } },
+        { page: dans('saisie', 'comptabilite/saisie'), cible: '#sa-lignes tr[data-i="1"] [data-k="credit"]', cote: 'dessous', faire: 'valeur', bouton: 'Suivant', touche: 'Tab',
+          fait: () => { const c = document.querySelector('#sa-lignes tr[data-i="1"] [data-k="credit"]'); return !!c && !!String(c.value || '').trim(); },
+          titre: 'Solder la pièce', texte: 'Pas besoin de recalculer : sur la dernière ligne, <kbd>Tab</kbd> dans la case <b>Crédit</b> y pose ce qui manque pour que la pièce <b>tombe juste</b> — ici 800.',
+          action: 'Appuie sur <kbd>Tab</kbd> jusqu\'à la case <b>Crédit</b> de cette ligne, puis encore <kbd>Tab</kbd>.', essai: { touche: 'Tab' } },
         { page: dans('saisie', 'comptabilite/saisie'), cible: '#sa-ok', cote: 'dessus', faire: 'clic',
           avant: () => { ecrituresAvant = nbEcritures(); }, fait: () => ecrituresAvant >= 0 && nbEcritures() > ecrituresAvant,
-          titre: 'Enregistrer en brouillard', texte: 'Le bouton reste éteint tant que la pièce ne tombe pas juste — et il dit pourquoi, juste au-dessus de lui. En brouillard, la pièce se corrige encore : elle n\'a pas de numéro.', action: 'Clique sur <b>« Enregistrer en brouillard »</b>.', essai: { clic: true } }
+          titre: 'Enregistrer en brouillard', texte: 'Débit = crédit : le bouton s\'allume. S\'il reste éteint, il dit pourquoi, juste au-dessus de lui. En brouillard, la pièce se corrige encore : elle n\'a pas de numéro.', action: 'Clique sur <b>« Enregistrer en brouillard »</b>.', essai: { clic: true } }
       ]
     });
 
@@ -928,7 +973,7 @@
     });
 
     visite({
-      id: 'declarer-tva', theme: 'declarer', type: 'faire', duree: '2 min', pages: ['compta'],
+      id: 'declarer-tva', theme: 'declarer', type: 'faire', duree: '2 min', pages: ['compta', 'dossier'],
       page: dans('livre', 'comptabilite/declaration'),
       titre: 'Déclarer la TVA du mois',
       resume: 'Les cases dans l\'ordre du formulaire, copiées d\'un clic pour le portail, puis l\'écriture et les deux pense-bêtes.',
@@ -940,13 +985,31 @@
       etapes: [
         { page: dans('livre', 'comptabilite/declaration'), cible: ['#dc-suite', '#dc-preparer'], cote: 'dessous', titre: 'Les étapes du mois',
           texte: 'En tête, la <b>date limite</b> — calculée par la même règle que la page Échéances — et le bouton qui ouvre le portail. Puis quatre gestes dans l\'ordre : <b>Préparer</b> fige les cases ; <b>l\'écriture</b> solde la TVA du mois, en brouillard ; <b>déposée</b> et <b>payée</b> sont des pense-bêtes. Le bouton en couleur est toujours le suivant.' },
+        // 10.14.1 — suivie par un débutant, la visite montrait le bandeau « 1 pièce encore en brouillard »
+        // sans un mot, ne faisait jamais PRÉPARER la déclaration ni écrire l'écriture du mois — les deux
+        // gestes que son titre promet — et finissait sur le portail. Le brouillard se dit s'il existe,
+        // et les deux gestes se font avec la bulle.
+        { page: dans('livre', 'comptabilite/declaration'), cible: '#dc-controles', cote: 'dessus', si: () => !!document.querySelector('#dc-controles [data-vers-saisie]'),
+          titre: 'Un brouillard n\'entre dans aucun chiffre',
+          texte: 'Une pièce <b>en brouillard</b> sur ce mois n\'est comptée dans aucune case : la TVA déclarée serait fausse. <b>« Voir le brouillard »</b> t\'amène à la saisie, où tu la relis et la valides — puis reviens ici. Si elle n\'appartient pas à ce mois, change sa date avant de valider.' },
+        { page: dans('livre', 'comptabilite/declaration'), cible: '#dc-preparer', cote: 'dessous', faire: 'clic',
+          fait: () => /Préparée/.test((document.querySelector('#dc-preparer') || {}).textContent || ''),
+          titre: 'Préparer la déclaration', texte: '<b>Préparer</b> fige les cases du mois dans le livre : ce sont elles que tu vas recopier. Tant que rien n\'est déposé, tu peux recalculer — si une pièce arrive après, l\'écran te le dira.',
+          action: 'Clique sur <b>« Préparer la déclaration »</b>.', essai: { clic: true } },
         { page: dans('livre', 'comptabilite/declaration'), cible: ['#dc-formulaire', '#c-livres .panel'], cote: 'dessus', titre: 'Le formulaire du mois',
           texte: 'Les cases sont rangées <b>dans l\'ordre de la déclaration mensuelle</b> : retenues à la source, TFP, FOPROLOS, TVA, timbre, puis le récapitulatif de ce qui se paie. Chaque montant est tiré des écritures validées du mois ; « n écritures » ouvre celles qui le font. Une case dont la règle n\'est pas connue vaut <b>« — »</b> avec sa raison : un zéro se recopierait, un « — » se demande.' },
         { page: dans('livre', 'comptabilite/declaration'), cible: '#dc-formulaire [data-copier]', cote: 'dessous', faire: 'clic',
           titre: 'Copier un montant', texte: 'Un clic sur un montant le <b>copie</b>, sans espace ni devise, prêt à coller dans la case du portail. La forme (point, virgule ou millimes) se choisit au-dessus du tableau : prends celle que le portail accepte. Le message qui suit dit exactement ce qui est copié et dans quelle case le coller.',
           action: 'Clique sur le montant éclairé.', essai: { clic: true } },
+        { page: dans('livre', 'comptabilite/declaration'), cible: '#dc-ecriture', cote: 'dessous', faire: 'clic', facultatif: true,
+          si: () => { const e = document.querySelector('#dc-ecriture'); return !!e && !e.disabled; },
+          fait: () => /brouillard|passée/.test((document.querySelector('#dc-ecriture') || {}).textContent || ''),
+          titre: 'L\'écriture du mois', texte: 'Elle <b>solde la TVA du mois</b> dans le livre : la collectée et la déductible passent au compte de TVA à payer. Elle arrive <b>en brouillard</b>, au dernier jour du mois — tu la valides à la saisie quand tu es d\'accord.',
+          action: 'Clique sur <b>« Écrire l\'écriture du mois »</b>.', essai: { clic: true } },
         { page: dans('livre', 'comptabilite/declaration'), cible: '#dc-portail', cote: 'dessous', titre: 'Le portail',
-          texte: 'Ce bouton ouvre le portail des impôts dans ton <b>navigateur</b> : tu t\'y connectes toi-même, tu colles les montants, tu valides. Le jour de l\'échéance, dépose avant 17 h. Une fois déposée, reviens ici cliquer « Marquer déposée ».' }
+          texte: 'Ce bouton ouvre le portail des impôts dans ton <b>navigateur</b> : tu t\'y connectes toi-même, tu colles les montants, tu valides. Le jour de l\'échéance, dépose avant 17 h.' },
+        { page: dans('livre', 'comptabilite/declaration'), cible: '#dc-deposee', cote: 'dessous', titre: 'Après le dépôt',
+          texte: 'Une fois la déclaration <b>déposée sur le portail</b>, reviens ici cliquer <b>« Marquer déposée »</b>, puis <b>« Marquer payée »</b> quand elle est réglée. Ce sont deux pense-bêtes, pas des accusés de réception : ils se défont d\'un clic si tu t\'es trompé.' }
       ]
     });
 
@@ -956,15 +1019,87 @@
       titre: 'Rapprocher la banque',
       resume: 'Le relevé importé, et chaque ligne rapprochée de son écriture.',
       mots: ['banque', 'releve', 'rapprochement', 'rapprocher', 'suspens'],
-      si: () => !!ctx.dossier('livre'), manque: DOSSIER_MANQUE.livre,
+      si: aUnReleve, manque: RELEVE_MANQUE,
       suite: ['page-compta-banque', 'page-compta-lettrage'],
       bravo: 'Tu sais rapprocher',
       conclusion: 'Ce qui reste non rapproché — les suspens — doit expliquer tout l\'écart entre la banque et le livre. Sinon, il manque une écriture.',
       etapes: [
-        { page: dans('livre', 'comptabilite/banque'), cible: '#bq-import', cote: 'dessous', titre: 'Importer le relevé',
-          texte: 'Un CSV de la banque, quelle qu\'elle soit : tu vérifies les colonnes et tu saisis les deux soldes du relevé papier. <b>Un relevé qui ne se boucle pas n\'entre pas</b>, et le refus dit l\'écart.' },
+        { page: dans('livre', 'comptabilite/banque'), cible: ['#bq-releve', '#bq-import'], cote: 'dessous', titre: 'Le relevé à rapprocher',
+          texte: 'Chaque relevé importé se choisit ici. Il est entré parce qu\'il <b>tombe juste</b> : ses deux soldes et ses lignes se bouclent. Ses lignes cherchent maintenant chacune leur écriture dans le livre.' },
         { page: dans('livre', 'comptabilite/banque'), cible: '#bq-auto', cote: 'dessous', faire: 'clic', facultatif: true,
           titre: 'Rapprocher automatiquement', texte: 'Seul le <b>certain</b> se pose : un seul candidat au bon montant, à quelques jours. Une ambiguïté reste proposée.', action: 'Clique sur <b>« Rapprocher automatiquement »</b>.', essai: { clic: true } }
+      ]
+    });
+
+    // Le relevé de la banque, case par case (10.14.1) : « Rapprocher la banque » MONTRAIT le bouton
+    // d'import et passait — un débutant restait seul devant le fichier, les deux soldes et les colonnes.
+    // Un compte est un NUMÉRO : « loyer » tapé dans la case n'est pas encore un compte — c'est Tab (ou
+    // un clic dans la liste) qui y pose 613. Sans ce contrôle, la bulle disait « C'est rempli » d'un mot,
+    // et « Suivant » laissait dans la pièce une ligne que l'enregistrement refuse.
+    let brouillardsAvant = -1;
+    const nbBrouillards = () => (typeof ctx.brouillards === 'function' ? ctx.brouillards() : 0);
+    const compteSaisi = i => { const c = typeof document !== 'undefined' && document.querySelector('#sa-lignes tr[data-i="' + i + '"] [data-k="compte"]'); return !!c && /^\d{2,}$/.test(String(c.value || '').trim()); };
+    const lignesRepondues = () => (typeof document === 'undefined' ? 0 : document.querySelectorAll('tr[data-lig]:not([data-etat="aucun"])').length);
+    const relevesAffiches = () => (typeof document === 'undefined' ? 0 : document.querySelectorAll('#bq-releve option').length);
+    let relevesAvant = 0, repAvant = 0;
+    visite({
+      id: 'importer-releve', theme: 'saisir', type: 'faire', duree: '2 min', pages: ['compta', 'dossier'],
+      page: dans('livre', 'comptabilite/banque'),
+      titre: 'Importer le relevé de la banque',
+      resume: 'Le fichier de la banque (Excel ou CSV), le compte, les deux soldes du relevé : il entre s\'il tombe juste.',
+      mots: ['banque', 'releve', 'importer', 'excel', 'csv', 'solde', 'fichier'],
+      si: () => !!ctx.dossier('livre'), manque: DOSSIER_MANQUE.livre,
+      suite: ['ecrire-ligne-releve', 'rapprocher'],
+      mesure: () => relevesAffiches(), but: n0 => relevesAffiches() > n0 && aucuneFenetre(),
+      bravo: 'Le relevé est dans le livre',
+      conclusion: 'Chaque ligne cherche maintenant son écriture. « Rapprocher automatiquement » pose ce qui est certain ; une ligne « Sans réponse » s\'écrit depuis son menu.',
+      etapes: [
+        { page: dans('livre', 'comptabilite/banque'), cible: '#bq-import', cote: 'dessous', faire: 'clic', avant: () => { relevesAvant = relevesAffiches(); },
+          titre: 'Importer le relevé', texte: 'Le fichier tel que la banque te l\'a donné, Excel (.xlsx) ou CSV : les lignes d\'en-tête de la banque et les lignes de solde sont reconnues toutes seules.',
+          action: 'Clique sur <b>« Importer un relevé… »</b>.', essai: { clic: true } },
+        { page: dans('livre', 'comptabilite/banque'), cible: '#rv [name="compte"]', cote: 'droite', titre: 'Le compte bancaire',
+          texte: '532 pour une banque. Un client qui a deux banques a deux comptes (5321, 5322) : chaque relevé va dans le sien.' },
+        { page: dans('livre', 'comptabilite/banque'), cible: '#rv-fichier', cote: 'dessous', faire: 'clic', fait: () => !!(typeof document !== 'undefined' && document.querySelector('#rv-apercu table')),
+          titre: 'Le fichier de la banque', texte: 'Il reste sur ton ordinateur : SkanFact le lit, rien ne part ailleurs.',
+          action: 'Clique sur <b>« Choisir le fichier… »</b> et prends le relevé.', essai: { clic: true } },
+        { page: dans('livre', 'comptabilite/banque'), cible: '#rv-apercu', cote: 'dessus', titre: 'Ce qui a été lu',
+          texte: 'Compare le nombre de lignes et le total des mouvements avec le relevé papier. Si les colonnes n\'ont pas été reconnues, associe-les ici : la banque est retenue pour la prochaine fois.' },
+        { page: dans('livre', 'comptabilite/banque'), cible: '#rv [name="debut"]', cote: 'droite', titre: 'Le solde au début',
+          texte: 'Proposé d\'après le livre, ou lu dans le relevé. Il doit être celui écrit en haut du relevé papier.' },
+        { page: dans('livre', 'comptabilite/banque'), cible: '#rv [name="fin"]', cote: 'droite', faire: 'valeur', bouton: 'Suivant', titre: 'Le solde à la fin',
+          texte: 'C\'est lui qui prouve qu\'aucune ligne ne manque : <b>un relevé qui ne tombe pas juste est refusé</b>, et l\'écart s\'écrit sous la case.',
+          action: 'Recopie le solde de fin écrit sur le relevé.', essai: { taper: '0' } },
+        { page: dans('livre', 'comptabilite/banque'), cible: '#modal-root #ok', cote: 'dessus', faire: 'clic', fait: () => relevesAffiches() > relevesAvant && aucuneFenetre(),
+          titre: 'Importer', texte: 'Les lignes apparaissent aussitôt, chacune avec son état.', action: 'Clique sur <b>« Importer »</b>.', essai: { clic: true } }
+      ]
+    });
+
+    visite({
+      id: 'ecrire-ligne-releve', theme: 'saisir', type: 'faire', duree: '1 min', pages: ['compta'],
+      page: dans('livre', 'comptabilite/banque'),
+      titre: 'Écrire une ligne du relevé',
+      resume: 'Un prélèvement ou des frais que personne n\'a saisis : l\'écriture se fait depuis la ligne, et elle est rapprochée du même geste.',
+      mots: ['banque', 'releve', 'ecrire', 'ligne', 'prelevement', 'frais', 'sans reponse', 'contrepartie'],
+      si: aUnReleve, manque: RELEVE_MANQUE,
+      suite: ['valider-lot', 'rapprocher'],
+      mesure: () => lignesRepondues(), but: n0 => lignesRepondues() > n0 && aucuneFenetre(),
+      bravo: 'La ligne a son écriture',
+      conclusion: 'L\'écriture attend en brouillard : tu la valides avec les autres, dans la Saisie. S\'il y a de la TVA à récupérer, « Reprendre dans la grille » la ventile.',
+      etapes: [
+        { page: dans('livre', 'comptabilite/banque'), cible: 'tr[data-etat="aucun"] [data-rowmenu]', cote: 'gauche', faire: 'clic', avant: () => { repAvant = lignesRepondues(); },
+          titre: 'Une ligne sans réponse', texte: 'Une ligne <b>« Sans réponse »</b> n\'a rien en face dans le livre : un prélèvement, des frais, un virement que personne n\'a encore saisi.',
+          action: 'Ouvre le menu <b>« Actions »</b> d\'une ligne « Sans réponse ».', essai: { clic: true } },
+        { page: dans('livre', 'comptabilite/banque'), cible: '[data-act="ecrire-manquante"]', cote: 'gauche', faire: 'clic',
+          titre: 'L\'écrire', texte: 'Un brouillon prérempli : la date, le montant, le compte de la banque. Rien n\'est enregistré tant que tu n\'as pas cliqué.',
+          action: 'Clique sur <b>« Écrire l\'écriture manquante »</b>.', essai: { clic: true } },
+        { page: dans('livre', 'comptabilite/banque'), cible: '#bf [name="compte"]', cote: 'droite', faire: 'valeur', bouton: 'Suivant', touche: 'Tab', titre: 'La contrepartie',
+          fait: () => { const c = typeof document !== 'undefined' && document.querySelector('#bf [name="compte"]'); return !!c && /^\d{2,}$/.test(String(c.value || '').trim()); },
+          texte: 'Le compte en face de la banque : un client qui paie (411), un fournisseur payé (401), des frais (627), une charge (606, 613…). Tape son numéro ou un mot comme <b>client</b>, <b>frais</b>, <b>loyer</b> : la liste propose les comptes, plan de référence compris.',
+          action: 'Tape le numéro, ou un mot, puis choisis le compte dans la liste : <kbd>Tab</kbd> prend le premier.', essai: { taper: '627' } },
+        { page: dans('livre', 'comptabilite/banque'), cible: ['#modal-root .bf-retenir', '#modal-root .ok-box'], cote: 'droite', titre: 'Pour la prochaine fois',
+          texte: 'Le mot propre à ce tiers (STEG, SONEDE, le nom du client) : au prochain relevé, la même ligne proposera ce compte toute seule.' },
+        { page: dans('livre', 'comptabilite/banque'), cible: '#modal-root #ok', cote: 'dessus', faire: 'clic', fait: () => lignesRepondues() > repAvant && aucuneFenetre(),
+          titre: 'Créer le brouillard', texte: 'La ligne passe « rapprochée » du même geste.', action: 'Clique sur <b>« Créer le brouillard »</b>.', essai: { clic: true } }
       ]
     });
 
@@ -1174,21 +1309,28 @@
     });
 
     visite({
-      id: 'valider-lot', theme: 'saisir', type: 'faire', duree: '1 min',
-      sansGeste: 'Valider donne un numéro définitif : une validée ne se défait plus, elle se contre-passe.',
+      id: 'valider-lot', theme: 'saisir', type: 'faire', duree: '1 min', pages: ['compta', 'dossier'],
       page: dans('saisie', 'comptabilite/saisie'),
       titre: 'Valider le brouillard',
       resume: 'Les pièces en brouillard reçoivent leur numéro — une par une, ou par lot.',
       mots: ['valider', 'lot', 'brouillard', 'numero', 'definitif'],
       si: () => !!ctx.dossier('saisie'), manque: DOSSIER_MANQUE.saisie,
       suite: ['contre-passer', 'page-compta-journal'],
-      bravo: 'Tu sais valider',
+      // Le geste que le débutant est venu faire : valider SA pièce. Un bouton de lot ne valide que ce qui
+      // tombe juste, et la fin se prouve sur le livre — une pièce de moins en brouillard (10.14.1).
+      mesure: () => { brouillardsAvant = nbBrouillards(); return null; },
+      preuve: () => brouillardsAvant >= 0 && nbBrouillards() < brouillardsAvant,
+      echec: 'Rien n\'a été validé — ce sont les boutons « Valider… » sous le brouillard qui donnent leur numéro aux pièces justes.',
+      bravo: 'Ta pièce est validée',
       conclusion: 'Une pièce refusée au milieu d\'un lot ne consomme aucun numéro, et elle est nommée avec son motif : la suite des numéros reste 1, 2, 3… sans trou.',
       etapes: [
         { page: dans('saisie', 'comptabilite/saisie'), cible: ['#sa-okvalider', '#sa-ok'], cote: 'dessus', titre: 'Valider en enregistrant',
           texte: '<b>« Enregistrer et valider »</b> donne son numéro à la pièce qu\'on vient de taper. Le numéro naît à la validation, et ne bouge plus.' },
-        { page: dans('saisie', 'comptabilite/saisie'), cible: ['[data-lot-journal]', '[data-lot-mois]', '#c-livres .panel'], cote: 'dessus', titre: 'Valider par lot',
-          texte: 'Sous le brouillard, un bouton par journal et par mois : il valide <b>toutes les pièces justes</b> d\'un coup. Celles qui ne tombent pas juste restent en brouillard, et le compte rendu dit pourquoi.' }
+        { page: dans('saisie', 'comptabilite/saisie'), cible: ['[data-lot-journal]', '[data-lot-mois]'], cote: 'dessus', faire: 'clic',
+          avant: () => { brouillardsAvant = nbBrouillards(); }, fait: () => brouillardsAvant >= 0 && nbBrouillards() < brouillardsAvant,
+          titre: 'Valider par lot',
+          texte: 'Sous le brouillard, un bouton par journal et par mois : il valide <b>toutes les pièces justes</b> d\'un coup, et chacune reçoit son numéro. Celles qui ne tombent pas juste restent en brouillard, et le compte rendu dit pourquoi. Une pièce validée ne se modifie plus : elle se contre-passe.',
+          action: 'Clique sur le bouton éclairé, puis confirme.', essai: { clic: true } }
       ]
     });
 

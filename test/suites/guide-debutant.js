@@ -1,0 +1,190 @@
+'use strict';
+// ============================================================================================
+// Un comptable débutant, guidé par la bulle (10.14.1)
+//
+// Skander, 26/09 : « un comptable novice aurait appuyé sur le guide afin de le guider pour faire
+// toutes les cases, et pas tout seul comme tu le fais ». Le Cabinet a donc été parcouru UNIQUEMENT
+// par « Guide-moi » et « Me guider », bulle après bulle, sur un cabinet neuf et trois clients hors
+// SkanFact. Ce que ces tests tiennent, c'est ce que ce parcours a trouvé :
+//   - la bulle ne couvre plus un compte rendu (la fin attend la fenêtre) ;
+//   - « Guide-moi » met en tête ce qu'on PEUT faire, et un geste bancaire attend son relevé ;
+//   - le libellé de la ligne CLASSE les comptes proposés, il n'en ajoute aucun ;
+//   - la déclaration fait préparer, dit son brouillard, et n'écrit rien sur un mois sans TVA ;
+//   - une visite reprise après un changement de ses étapes retrouve son étape par son titre ;
+//   - le panneau Sécurité ne menace pas un cabinet qui n'a reçu aucun paquet.
+module.exports = ({ t, assert, lireSource }) => {
+const K = require('../../src/renderer/compta.js');
+const V = require('../../src/renderer/visite.js');
+const CV = require('../../src/cabinet/renderer/cabvisites.js');
+const vm = require('vm');
+const cab = lireSource('src', 'cabinet', 'renderer', 'app.js');
+const moteur = lireSource('src', 'renderer', 'visite.js');
+
+// Le plan de référence, tel que la grille et la fenêtre de la banque le proposent.
+const plan = K.comptesProposables(Object.keys(K.PLAN_COMPTABLE).map(c => ({ compte: c, libelle: K.PLAN_COMPTABLE[c] })));
+const comptes = (q, ctx) => K.comptesQuiCorrespondent(plan, q, 8, ctx).map(c => c.compte);
+
+t('10.14.1 : le libellé de la ligne CLASSE les comptes proposés — il n\'en ajoute jamais un', () => {
+  // « frais » tapé sur la ligne « FRAIS TENUE DE COMPTE » : 627 (services bancaires) en tête. Sans le
+  // libellé, 627 n'est que cinquième — c'est exactement ce que le débutant voyait.
+  assert.strictEqual(comptes('frais', 'FRAIS TENUE DE COMPTE')[0], '627');
+  assert.notStrictEqual(comptes('frais')[0], '627', 'des données qui ne discriminent pas : sans libellé, 627 était déjà premier');
+  assert.ok(K.comptesQuiCorrespondent(plan, 'frais', 8, 'FRAIS TENUE DE COMPTE')[0].parLibelle, 'le compte classé par le libellé ne le DIT pas');
+  assert.strictEqual(comptes('client', 'VIR RECU CLIENT FACTURE 012')[0], '411');
+  assert.strictEqual(comptes('steg', 'PRLV STEG FACTURE 2026-09')[0], '606');
+  // Le libellé ne choisit pas : ce que la frappe n'a pas trouvé n'apparaît pas.
+  assert.ok(!comptes('client', 'FRAIS TENUE DE COMPTE').includes('627'), 'le libellé a AJOUTÉ un compte que la frappe ne trouvait pas');
+  // Sans libellé, rien ne bouge : l'ordre est celui d'avant.
+  assert.deepStrictEqual(comptes('frais', ''), comptes('frais'));
+});
+
+t('10.14.1 : chaque mot courant désigne un compte que le plan connaît', () => {
+  // Le plan de référence nomme par préfixe (le plus long gagne) : un compte « connu » est un compte
+  // que ce plan sait NOMMER.
+  const inconnus = Object.keys(K.MOTS_COURANTS).filter(c => !K.libelleDuPlan(c));
+  assert.deepStrictEqual(inconnus, [], 'un mot courant renvoie à un compte hors plan');
+  assert.ok(K.motsCourantsDe('627').some(m => /frais/.test(m)), 'les frais bancaires ne mènent plus au 627');
+});
+
+t('10.14.1 : la grille et la fenêtre de la banque passent le libellé de la ligne aux comptes proposés', () => {
+  assert.ok(/KC\.comptesQuiCorrespondent\(planDe\(\), input\.value, 8, contexteDe \? contexteDe\(\) : ''\)/.test(cab), 'la liste ne reçoit pas le libellé');
+  assert.ok(/suggererCompte\(champC, [^\n]+, \(\) => ligne\.libelle\);/.test(cab), 'la fenêtre de la banque ne passe pas le libellé du relevé');
+  assert.ok(/\}, \(\) => \(p\.lignes\[i\] && p\.lignes\[i\]\.libelle\) \|\| p\.libelle \|\| ''\);/.test(cab), 'la grille ne passe pas le libellé de la ligne');
+  // Et la contrepartie proposée suit le SENS de la ligne : un virement reçu n'appelle pas 606.
+  assert.ok(/Number\(ligne\.montant\) >= 0 \? '411, ou tape « client »' : '627, ou tape « frais »'/.test(cab), 'l\'invite de la contrepartie ignore le sens');
+  assert.ok(/if \(!contre\.compte\) setTimeout\(\(\) => \{ try \{ champC\.focus\(\);/.test(cab), 'le curseur ne va pas à la case qu\'on doit remplir');
+});
+
+t('10.14.1 : une liste de comptes ouverte dans une fenêtre passe AU-DESSUS de la fenêtre', () => {
+  const css = lireSource('src', 'cabinet', 'renderer', 'cabinet.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  const z = Number((/\.sugg-pop\.sugg-fixe\s*\{[^}]*z-index:\s*(\d+)/.exec(css) || [])[1]);
+  // Les fenêtres commencent à 400 et s'empilent ; la bulle « i » (900) et le bandeau (950) restent dessus.
+  assert.ok(z > 400 && z < 900, 'z-index de la liste : ' + z);
+});
+
+t('10.14.1 : la fin d\'une visite attend que la fenêtre ouverte se ferme', () => {
+  const pos = moteur.slice(moteur.indexOf('function positionner('), moteur.indexOf('function versLaReprise('));
+  assert.ok(/const finAttend = !!cur\.fin && !!fenetreOuverte\(\);/.test(pos), 'la carte de fin se pose par-dessus le compte rendu');
+  assert.ok(/const mini = finAttend \|\|/.test(pos), 'la fin qui attend ne se réduit pas');
+  assert.ok(/if \(cur\.fin && cur\.mini\) \{ dessinerFinAttente\(p\); return; \}/.test(moteur), 'la bulle d\'attente n\'est pas dessinée');
+  // La bulle d'attente nomme la visite, jamais « Étape n+1 sur n ».
+  const att = moteur.slice(moteur.indexOf('function dessinerFinAttente('), moteur.indexOf('function dessinerFinAttente(') + 900);
+  assert.ok(/p\.titre/.test(att) && !/enTete\(/.test(att), 'la bulle d\'attente recompte les étapes');
+});
+
+t('10.14.1 : « Guide-moi » met en tête ce qu\'on peut faire, et ce qui attend un préalable après', () => {
+  const v = (id, titre) => ({ id, titre, type: 'faire', resume: '', etapes: [{ page: '#/x' }] });
+  const g = { page: null, ici: [v('rapprocher', 'Rapprocher la banque'), v('importer', 'Importer le relevé'), v('ecrire', 'Écrire une ligne')], ailleurs: [] };
+  const menu = V.menuDuGuide(g, { lancer: () => {}, manque: x => (x.id !== 'importer' ? { texte: 'Il faut d\'abord le relevé.' } : null) });
+  const labels = menu.map(a => a.label).filter(Boolean);
+  assert.deepStrictEqual(labels.slice(0, 3), ['Importer le relevé', 'Rapprocher la banque', 'Écrire une ligne'], 'ordre : ' + labels.join(' | '));
+  // Le préalable manquant est GRISÉ, pas retiré, et dit pourquoi.
+  const r = menu.find(a => a.label === 'Rapprocher la banque');
+  assert.ok(r.off && /^Pas encore/.test(r.hint));
+});
+
+t('10.14.1 : un geste bancaire attend son relevé, et dit quelle visite l\'importe', () => {
+  const avec = n => CV.parcours({ state: () => ({ cabinet: {}, dossiers: [] }), dossier: () => 'D1', estExemple: () => false,
+    cleSecours: () => null, copieExterne: () => false, Visite: V, releves: () => n });
+  for (const id of ['rapprocher', 'ecrire-ligne-releve']) {
+    const sans = avec(0).find(x => x.id === id);
+    assert.strictEqual(sans.si(), false, id + ' se lance sans relevé');
+    assert.strictEqual(sans.manque.visite, 'importer-releve', id + ' ne renvoie pas à l\'import');
+    assert.strictEqual(avec(2).find(x => x.id === id).si(), true, id + ' refusé avec deux relevés');
+    // « Je ne sais pas » (livre pas encore lu) n'est pas « non » : on propose.
+    assert.strictEqual(avec(null).find(x => x.id === id).si(), true, id + ' caché faute de savoir');
+  }
+});
+
+t('10.14.1 : la visite de la TVA fait préparer, dit son brouillard, et saute l\'écriture d\'un mois sans TVA', () => {
+  const vs = CV.parcours({ state: () => ({ cabinet: {}, dossiers: [] }), dossier: () => 'D1', estExemple: () => false,
+    cleSecours: () => null, copieExterne: () => false, Visite: V });
+  const d = vs.find(x => x.id === 'declarer-tva');
+  const cible = e => [].concat(e.cible).join(' ');
+  // La première étape dont la cible COMMENCE par ce sélecteur : « Les étapes du mois » cite aussi
+  // `#dc-preparer` en repli, et ne doit pas passer pour l'étape qui fait préparer.
+  const i = s => d.etapes.findIndex(e => cible(e).startsWith(s));
+  assert.ok(i('#dc-controles') >= 0 && d.etapes[i('#dc-controles')].si, 'le brouillard du mois n\'est jamais dit');
+  assert.ok(i('#dc-preparer') >= 0 && d.etapes.some(e => cible(e) === '#dc-preparer' && e.faire === 'clic'), 'la visite ne fait pas préparer');
+  const ec = d.etapes.find(e => cible(e) === '#dc-ecriture');
+  assert.ok(ec && ec.faire === 'clic' && ec.si, 'l\'écriture du mois n\'est pas guidée, ou pas sautée quand elle est éteinte');
+  // L'ordre : le brouillard avant de préparer, préparer avant de copier, le dépôt en dernier.
+  assert.ok(i('#dc-controles') < i('#dc-preparer') && i('#dc-preparer') < i('#dc-formulaire [data-copier]') && i('#dc-deposee') === d.etapes.length - 1);
+});
+
+// Un livre minimal : un mois avec de la TVA, un autre sans.
+function livreDeTest(ecritures) {
+  const l = K.livreVide('D1', 2026, { plan: [
+    { compte: '4367', libelle: 'TVA collectée', role: 'tvaCollectee' },
+    { compte: '4366', libelle: 'TVA déductible', role: 'tvaDeductible' },
+    { compte: '4365', libelle: 'TVA à décaisser', role: 'tvaAPayer' }
+  ] });
+  ecritures.forEach((e, n) => l.ecritures.push({ id: 'E' + n, numero: n + 1, statut: 'validee', journal: 'OD', piece: 'P' + n, source: 'saisie', ...e }));
+  return l;
+}
+
+t('10.14.1 : un mois sans TVA n\'a pas d\'écriture à passer — le moteur le dit AVANT le clic', () => {
+  const livre = livreDeTest([
+    { date: '2026-03-10', libelle: 'Vente', lignes: [{ compte: '411', debit: 119, credit: 0 }, { compte: '706', debit: 0, credit: 100 }, { compte: '4367', debit: 0, credit: 19 }] },
+    { date: '2026-10-31', libelle: 'Frais bancaires', lignes: [{ compte: '627', debit: 12, credit: 0 }, { compte: '532', debit: 0, credit: 12 }] }
+  ]);
+  const oct = K.declarationMensuelle(livre, '2026-10');
+  assert.strictEqual(oct.rienAEcrire, true, 'octobre ne porte aucune TVA');
+  assert.strictEqual(K.ecritureDeclaration(livre, oct).lignes.length, 0, 'le moteur qui écrira dit autre chose que le bouton');
+  const mars = K.declarationMensuelle(livre, '2026-03');
+  assert.strictEqual(mars.rienAEcrire, false, 'mars a 19 DT de TVA à écrire');
+  // Le pont refuse par la MÊME phrase que le bouton, jamais une seconde.
+  const main = lireSource('src', 'cabinet', 'main.js');
+  assert.ok(/if \(d\.rienAEcrire\) throw erreur\('ERR-CAB-042', KC\.MOTIF_RIEN_A_ECRIRE\);/.test(main), 'le pont a sa propre phrase');
+  assert.ok(/rien \? esc\(KC\.MOTIF_RIEN_A_ECRIRE\)/.test(cab), 'le bouton éteint ne dit pas pourquoi');
+});
+
+t('10.14.1 : un zéro de retenue se colle dans la case de la RUBRIQUE, pas dans une phrase', () => {
+  const livre = livreDeTest([{ date: '2026-10-31', libelle: 'Frais', lignes: [{ compte: '627', debit: 12, credit: 0 }, { compte: '532', debit: 0, credit: 12 }] }]);
+  const f = K.formulaireMensuel(livre, K.declarationMensuelle(livre, '2026-10'));
+  const rs0 = f.rubriques.flatMap(r => r.lignes || []).find(l => l.cle === 'rs0');
+  assert.ok(rs0, 'la ligne « aucune retenue » manque');
+  assert.strictEqual(rs0.caseCopie, 'Retenue à la source');
+  assert.ok(/boutonCopie\(l\.cle, l\.montant, l\.caseCopie \|\| l\.libelle\)/.test(cab), 'le bouton de copie ignore la case');
+});
+
+t('10.14.1 : un contrôle de brouillard porte le geste qui le débloque', () => {
+  assert.ok(/id="dc-controles"/.test(cab) && /c\.id === 'brouillard'[\s\S]{0,80}data-vers-saisie/.test(cab), 'le bandeau du brouillard n\'a pas de bouton');
+  assert.ok(/\$\$\('\[data-vers-saisie\]', el\)\.forEach\(b => \{ b\.onclick = \(\) => allerSousOnglet\(root, dossier, 'saisie'\); \}\);/.test(cab), 'le bouton n\'est pas branché');
+});
+
+t('10.14.1 : une visite reprise retrouve son étape par son TITRE, et repart du début si elle a disparu', () => {
+  const v = { etapes: ['A', 'B', 'C', 'D'].map(titre => ({ titre, page: '#/x' })) };
+  // Une étape ajoutée devant : le rang 1 désigne désormais « B », le titre retrouve « C ».
+  assert.strictEqual(V.pointDeReprise(v, { i: 1, titre: 'C' }).i, 2);
+  const perdue = V.pointDeReprise(v, { i: 2, titre: 'Z' });
+  assert.strictEqual(perdue.i, 0);
+  assert.ok(/a changé/.test(perdue.note), 'la reprise ne dit pas pourquoi elle recommence');
+  // Un point d'arrêt d'avant (sans titre) se reprend comme avant.
+  assert.strictEqual(V.pointDeReprise(v, { i: 2 }).i, 2);
+  assert.ok(/titre: c && c\.p && c\.p\.etapes\[c\.i\]/.test(moteur), 'le point d\'arrêt ne retient pas le titre');
+});
+
+t('10.14.1 : sans paquet VRAI reçu, la clé de secours ne se réclame ni en orange ni en vert', () => {
+  const s = cab.slice(cab.indexOf('s.innerHTML = `<h2>Sécurité</h2>'), cab.indexOf('id="s-rec-in"'));
+  assert.ok(s.length > 200 && s.length < 4000, 'tranche : ' + s.length);
+  assert.ok(/recoveryAt === null && !paquetsReelsRecus\(\) \?/.test(s), 'le panneau crie avant le premier paquet');
+  assert.ok(/recoveryAt === null && paquetsReelsRecus\(\) \? ' btn-primary'/.test(s), 'le bouton est vert sur un cabinet sans paquet');
+});
+
+t('10.14.1 : « 4 / 9 » ne se lit plus au-dessus de « Tout est en place »', () => {
+  const p = cab.slice(cab.indexOf('progres: p => {'), cab.indexOf('suites: p => {'));
+  const texte = (/texte: ([\s\S]+?) \};\n/.exec(p) || [])[1];
+  assert.ok(texte, 'la phrase de progression est introuvable');
+  const lire = pp => vm.runInNewContext(texte, { pp, pl: (n, un, plur) => `${n} ${n > 1 ? plur || un + 's' : un}` });
+  assert.strictEqual(lire({ faits: 9, total: 9, suivante: null }), 'Tout est en place : ton cabinet est prêt.');
+  assert.ok(/facultatives/.test(lire({ faits: 4, total: 9, suivante: null })), 'des étapes restantes passent pour faites');
+  assert.ok(/^Prochaine étape : mettre/.test(lire({ faits: 3, total: 9, suivante: { titre: 'Mettre ton cabinet à l\'abri' } })));
+});
+
+t('10.14.1 : le solde de fin d\'un relevé dit, pendant la frappe, s\'il tombe juste', () => {
+  const f = cab.slice(cab.indexOf('function releveForm('), cab.indexOf('const barreLivres'));
+  assert.ok(/const juste = [^\n]*KC\.releveValide\(\{/.test(f), 'le verdict ne passe pas par la règle qui refusera');
+  assert.ok(/Ça tombe juste/.test(f), 'aucun verdict pendant la frappe');
+});
+};

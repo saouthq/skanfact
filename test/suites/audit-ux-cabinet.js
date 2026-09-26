@@ -942,7 +942,7 @@ t('H-3 : un montant s\'écrit en français dans un champ, et se relit tel que le
   // Choisir un compte n'écrit plus son NOM dans le libellé de la ligne : « Banques » remplaçait dans le
   // journal le libellé de la pièce, et la règle T-51 passait sur des noms de comptes. Le champ vide
   // montre en attente le libellé de la pièce qu'il reprendra.
-  const pick = /suggererCompte\(inp, \(\) => s\.livre\.plan \|\| \[\], c => \{([\s\S]*?)\n {10}\}\);/.exec(app);
+  const pick = /suggererCompte\(inp, \(\) => [^\n]*?, c => \{([\s\S]*?)\n {10}\}[,)]/.exec(app);
   assert.ok(pick, 'le choix d\'un compte de la grille est introuvable');
   assert.ok(!/\.libelle\s*=/.test(pick[1]), 'choisir un compte écrit encore son nom dans le libellé de la ligne');
   assert.ok(/data-k="libelle"[^>]*placeholder="\$\{esc\(p\.libelle/.test(lignesHtml), 'une ligne sans libellé ne montre pas celui de la pièce qu\'elle reprendra');
@@ -1159,7 +1159,7 @@ t('U-11 / U-13 / U-14 : la déclaration — ses étapes dans l\'ordre, un seul v
   // déclaration » était deux fois à l'écran, et une fois préparée plus rien ne disait la suite.
   const m = /const suivante = ([^;]+);/.exec(vue);
   assert.ok(m, 'l\'étape suivante n\'est plus calculée');
-  const suivante = (posee, ecrite, deposee, payee, perime = false, aCompleter = false) => evaluer(m[1], { posee, ecrite, deposee, payee, perime, aCompleter });
+  const suivante = (posee, ecrite, deposee, payee, perime = false, aCompleter = false, rien = false) => evaluer(m[1], { posee, ecrite, deposee, payee, perime, aCompleter, rien });
   assert.strictEqual(suivante(null, false, false, false), 'preparer', 'avant tout, l\'étape suivante est « Préparer »');
   assert.strictEqual(suivante({}, false, false, false), 'ecriture', 'une déclaration préparée attend son écriture avant le dépôt');
   assert.strictEqual(suivante({}, true, false, false), 'deposee', 'une écriture déjà passée par le client ne doit pas rester l\'étape suivante');
@@ -1171,6 +1171,8 @@ t('U-11 / U-13 / U-14 : la déclaration — ses étapes dans l\'ordre, un seul v
   assert.strictEqual(suivante({}, true, false, false, true), 'preparer', 'des chiffres préparés périmés ne se déposent pas');
   assert.strictEqual(suivante({}, true, true, false, true), 'payee', 'une déclaration déposée ne se recalcule pas');
   assert.strictEqual(suivante({}, true, false, false, false, true), 'ecriture', 'le complément ne devient pas l\'étape suivante');
+  // 10.14.1 — un mois sans TVA n'a pas d'écriture à passer : le vert passe au dépôt.
+  assert.strictEqual(suivante({}, false, false, false, false, false, true), 'deposee', 'un mois sans TVA proposait une écriture que le pont refuse');
   // Chaque bouton ne prend la couleur que si c'est SON étape.
   [['dc-preparer', 'preparer'], ['dc-ecriture', 'ecriture'], ['dc-deposee', 'deposee'], ['dc-payee', 'payee']].forEach(([id, pas]) =>
     assert.ok(new RegExp(`class="\\$\\{cls\\('${pas}'\\)\\}" id="${id}"`).test(vue), `${id} ne prend pas la couleur de SON étape`));
@@ -1457,9 +1459,12 @@ t('U-13 : la clé de secours se dit UNE fois sur « Données et sécurité », e
   // Le panneau la disait dans un encadré orange MÊME une fois enregistrée, puis une seconde fois
   // dans sa ligne d'état.
   assert.ok(!/recoveryLine\(/.test(app), 'la seconde phrase sur la clé est revenue dans le panneau');
-  assert.ok(/\$\{recoveryAt === null \? `<div class="warn-box mt">/.test(pan), 'l\'encadré orange ne dépend plus de l\'absence de clé');
+  // 10.14.1 — l'orange attend aussi un VRAI paquet : avant lui, la clé ne protège rien (le filet se
+  // réclame quand il protège quelque chose, 9.4.4) ; la ligne calme passe devant.
+  assert.ok(/recoveryAt === null && !paquetsReelsRecus\(\) \? `<p class="small muted mt" id="s-rec-plus-tard">/.test(pan), 'la clé est réclamée à un cabinet qui n\'a reçu aucun paquet');
+  assert.ok(/: recoveryAt === null \? `<div class="warn-box mt">/.test(pan), 'l\'encadré orange ne dépend plus de l\'absence de clé');
   assert.ok(/: recoveryAt \? `<p class="small ligne-ok mt" id="s-rec-ok">/.test(pan), 'une clé enregistrée ne se dit plus sur une ligne grise');
-  assert.ok(/<button class="btn\$\{recoveryAt === null \? ' btn-primary' : ''\}" id="s-rec">/.test(pan), 'le bouton de la clé reste vert une fois la clé enregistrée');
+  assert.ok(/<button class="btn\$\{recoveryAt === null && paquetsReelsRecus\(\) \? ' btn-primary' : ''\}" id="s-rec">/.test(pan), 'le bouton de la clé reste vert une fois la clé enregistrée, ou avant le premier paquet');
   // Le bandeau au-dessus des onglets se tait sur l'onglet qui porte le panneau Sécurité.
   const reg = tranche(app, 'function drawReglages(');
   assert.ok(/<div id="rec-banniere">\$\{recoveryBanner\(\)\}<\/div>/.test(reg), 'le bandeau de la clé n\'est plus isolé');

@@ -277,6 +277,17 @@ et au moteur), puis en stable quand Skander valide.*
   émettre, un client, un article) ne doit ni se lancer dans le vide ni viser un bouton inexistant — il
   propose d'abord le geste qui crée ce qui manque ; les listes vides et leurs visites ; les fins
   honnêtes ; « Première fois sur cette page ». Idem dans le Cabinet avec un cabinet neuf sans dossier.
+  - **Cabinet, fait (26/09, joué uniquement par les bulles)** : ordre de « Guide-moi » (ce qu'on peut
+    faire d'abord), gestes bancaires qui attendent leur relevé, visite de la TVA (préparer, brouillard,
+    écriture sautée sur un mois sans TVA), fin qui attend la fenêtre, reprise par titre, comptes classés
+    par le libellé, liste au-dessus de la fenêtre, clé de secours calme sans paquet, « L'indispensable
+    est fait ». Tests : `test/suites/guide-debutant.js` (19 preuves).
+  - **Cabinet, vu et pas encore corrigé** : le message « Copié » recouvre le bas de la bulle une
+    seconde ; la ligne « Quotidienne · sans les livres » des sauvegardes se lit comme une anomalie ;
+    un « Écart » rouge pendant la saisie d'une pièce qu'on n'a pas finie ; le cercle de la visite
+    d'import couvre l'aide du solde de début ; la visite d'import saute le champ « Banque » ; une
+    visite relancée depuis sa carte de fin reste en pause.
+  - **Entreprise** : le même parcours par les bulles, sur une entreprise neuve — à faire.
 - **Reste de ce lot** : les propositions de texte vérifiées des visites (sauter 22, 80, 81, 106,
   118–129 ; accents de 77–79 ; réécrire 132) ; relancer `e2e:couverture` et `e2e:cabinet-couverture`
   (boutons neufs `#hf-gerant-go`, `#nd-coller`).

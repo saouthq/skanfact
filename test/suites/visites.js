@@ -342,7 +342,10 @@ t('10.14.0 : une zone plus haute que l\'écran ne relègue pas la bulle dans un 
   assert.ok(d2.b > 0 && d2.b <= Math.round(ecran.h * 0.44) + 1, 'découpe depuis le bord de l\'écran : ' + JSON.stringify(d2));
   // Et la découpe ne sert qu'à MONTRER : pendant un geste, la bulle garde toute la zone.
   const vj = lireSource('src', 'renderer', 'visite.js');
-  const pos = vj.slice(vj.indexOf('function positionner('), vj.indexOf('function positionner(') + 3000);
+  // Bornée sur la fonction qui SUIT, jamais sur une longueur : positionner a grandi (la fin qui attend
+  // une fenêtre, 10.14.1) et une tranche de 3 000 caractères n'atteignait plus la découpe (9.4.6).
+  const pos = vj.slice(vj.indexOf('function positionner('), vj.indexOf('function versLaReprise('));
+  assert.ok(pos.length > 1000 && !pos.includes('function versLaReprise('), 'tranche de positionner suspecte : ' + pos.length);
   assert.ok(/if \(!faire[^\n]*\) r = decouperHaut\(r, H[,)]/.test(pos), 'positionner découpe les zones hautes, sauf pendant un geste');
 });
 

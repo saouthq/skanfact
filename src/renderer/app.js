@@ -5141,11 +5141,11 @@
     }
     let choix = {}, plan = null, minuteur = null;
     modal(`<div class="import-tableau"><h2>${T.titre} ${info('imp.coller')}</h2>
-      <p class="small muted">Dans ton tableur — Excel, LibreOffice ou Google Sheets —, sélectionne tes lignes <b>avec celle des titres</b>, copie-les (${clavierLocal('<kbd>⌘</kbd> <kbd>C</kbd>')}), puis colle-les dans la case (${clavierLocal('<kbd>⌘</kbd> <kbd>V</kbd>')}). Rien n'est enregistré avant ton clic : tu vois d'abord ce qui entre.</p>
+      <p class="small muted">Dans ton tableur — Excel, LibreOffice ou Google Sheets —, sélectionne tes lignes <b>avec celle des titres</b>, copie-les (${clavierLocal('<kbd>⌘</kbd> <kbd>C</kbd>')}), puis colle-les dans la case (${clavierLocal('<kbd>⌘</kbd> <kbd>V</kbd>')}) — ou ouvre directement ton fichier Excel ou CSV, avec le bouton sous la case. Rien n'est enregistré avant ton clic : tu vois d'abord ce qui entre.</p>
       <form id="imp-form" onsubmit="return false">
         <label class="field">${lbl('Tes lignes', 'imp.lignes')}<textarea id="imp-texte" rows="6" spellcheck="false" placeholder="${h(T.exemple)}"></textarea></label>
       </form>
-      <div class="inline imp-source"><button type="button" class="btn btn-sm" id="imp-fichier">Ouvrir un fichier CSV…</button><span class="small muted" id="imp-lu"></span></div>
+      <div class="inline imp-source"><button type="button" class="btn btn-sm" id="imp-fichier">Ouvrir un fichier Excel ou CSV…</button><span class="small muted" id="imp-lu"></span></div>
       <div id="imp-apercu" aria-live="polite"></div>
       <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="imp-ok" disabled>Importer</button></div></div>`,
     (layer, close) => {
@@ -18060,7 +18060,11 @@
     // Toute première ouverture : la porte, puis l'assistant qui remplit l'entreprise avant d'entrer
     // dans l'application — ou la découverte d'abord, si c'est le battant choisi (10.14.0).
     let decouvrirDabord = false;
-    if (OB.needsSetup(data)) {
+    // Retenu AVANT l'assistant : une fois la société remplie, rien ne distingue plus une installation
+    // neuve d'une mise à jour, et la carte « Ce qui change pour toi » s'ouvrait sur le tout premier
+    // écran de quelqu'un pour qui rien n'a changé (vu à la souris, parcours d'un débutant).
+    const premierLancement = OB.needsSetup(data);
+    if (premierLancement) {
       const done = await runSetup();
       applyTheme();
       // Le premier message de l'application était un toast de deux secondes et demie, qui nommait
@@ -18113,7 +18117,7 @@
       // assistant, ni visite) — la carte attend son tour, elle ne passe jamais par-dessus une question.
       const presentee = typeof Nouveautes !== 'undefined' && Nouveautes.presenter({
         app: 'entreprise', nomApp: 'SkanFact', version: v.version,
-        installationNeuve: !data.company.name && !(data.documents || []).length && !(data.clients || []).length,
+        installationNeuve: premierLancement || (!data.company.name && !(data.documents || []).length && !(data.clients || []).length),
         peutMontrer: () => !$('.modal-bg') && !$('#setup') && !(typeof Visite !== 'undefined' && Visite.enCours())
       });
       if (v.lastUpdate) {

@@ -2995,7 +2995,7 @@
     modal(`<h2>Commencer le livre de ${esc(dossier.name)}</h2>
       <p class="small muted"><b>Un client qui démarre</b> : pose son exercice et laisse la balance d'ouverture vide.
       <b>Un client qui tenait sa comptabilité ailleurs</b> : reprends ce que ses comptes portaient au premier jour
-      — à la main, ou « Importer un CSV… » depuis son ancien logiciel. Elle doit s'équilibrer : une reprise fausse
+      — à la main, ou « Importer depuis Excel ou CSV… » depuis son ancien logiciel. Elle doit s'équilibrer : une reprise fausse
       fausse l'exercice entier, et on ne s'en aperçoit qu'au bilan.</p>
       <form id="rf" class="grid-3">
         <label class="field">${lbl('Exercice', 'rp.exercice')}<input name="annee" value="${esc(annee)}" class="num"></label>
@@ -3008,7 +3008,7 @@
         <tbody id="rf-lignes">${lignes.map(ligneHtml).join('')}</tbody></table></div>
       <div class="modal-actions" style="justify-content:flex-start">
         <button type="button" class="btn btn-sm" id="rf-add">Ajouter une ligne</button>
-        <button type="button" class="btn btn-sm" id="rf-csv">Importer un CSV…</button>
+        <button type="button" class="btn btn-sm" id="rf-csv">Importer depuis Excel ou CSV…</button>
         <span id="rf-ecart" class="small"></span>
       </div>
       <div class="modal-actions">
@@ -3984,7 +3984,7 @@
       <td>${l.ref ? `<span class="dc-ref">${esc(l.ref)}</span> ` : ''}${esc(l.libelle)}${raison ? `<div class="small muted dc-raison">${esc(raison)}</div>` : ''}</td>
       <td class="r nw">${l.base == null ? '' : boutonCopie('base-' + l.cle, l.base, `base — ${l.libelle}`)}</td>
       <td class="r nw">${esc(tauxFr(l.taux))}</td>
-      <td class="r nw">${l.montant == null ? '<span class="muted">—</span>' : boutonCopie(l.cle, l.montant, l.libelle)}</td>
+      <td class="r nw">${l.montant == null ? '<span class="muted">—</span>' : boutonCopie(l.cle, l.montant, l.caseCopie || l.libelle)}</td>
       <td class="nw">${celluleOrigine(l, etat)}</td></tr>`;
   }
   function panneauFormulaire(d) {
@@ -4046,7 +4046,10 @@
     const aCompleter = ecrite && (d.complement || []).length > 0;
     const ecart = d.ecart || [];
     const perime = !!(posee && ecart.length);
-    const suivante = !posee || (perime && !deposee) ? 'preparer' : (!ecrite || aCompleter) ? 'ecriture' : !deposee ? 'deposee' : !payee ? 'payee' : '';
+    // Un mois sans TVA n'a pas d'écriture à passer (`rienAEcrire`, la réponse du moteur) : l'étape
+    // suivante est le dépôt, et le bouton de l'écriture s'éteint en le disant.
+    const rien = !!d.rienAEcrire && !ecrite;
+    const suivante = !posee || (perime && !deposee) ? 'preparer' : ((!ecrite && !rien) || aCompleter) ? 'ecriture' : !deposee ? 'deposee' : !payee ? 'payee' : '';
     const motifPerime = perime && !deposee ? `Les chiffres ont changé depuis la préparation (${KC.phraseEcartDeclaration(ecart)}) : recalcule-la avant de la déposer.` : '';
     const cls = pas => 'btn btn-sm' + (pas === suivante ? ' btn-primary' : '');
     const fait = ok => ok ? '<span class="dc-coche" aria-hidden="true">✓</span>' : '';
@@ -4060,7 +4063,7 @@
     // paiement, qui était pourtant le seul bouton éteint.
     const motif = motifPerime || (!posee ? (ecrite ? 'Les deux pense-bêtes attendent la déclaration : prépare-la d\'abord.'
       : 'Les trois étapes suivantes attendent la déclaration : prépare-la d\'abord.')
-      : !deposee && !payee ? '« Marquer payée » attend le dépôt : on ne paie pas ce qu\'on n\'a pas déposé.' : '');
+      : !deposee && !payee ? (rien ? KC.MOTIF_RIEN_A_ECRIRE + ' ' : '') + '« Marquer payée » attend le dépôt : on ne paie pas ce qu\'on n\'a pas déposé.' : '');
     return `<div class="filters">
       <label class="f-lab">Mois<select id="dc-mois" aria-label="Le mois à déclarer">${tous.map((m, i) =>
         `<option value="${m}" ${m === d.periode ? 'selected' : ''}>${MOIS_COURTS[i]} ${esc(s.annee)}</option>`).join('')}</select></label>
@@ -4079,9 +4082,9 @@
       ${motif ? `<p class="small muted dc-motif">${esc(motif)}</p>` : ''}
       <div class="dc-etapes">
         <button class="${cls('preparer')}" id="dc-preparer">${posee ? fait(true) + 'Préparée — recalculer' : 'Préparer la déclaration'}</button>${fleche}
-        <button class="${cls('ecriture')}" id="dc-ecriture" ${!posee || (ecrite && !aCompleter) ? 'disabled' : ''}
-          title="${!posee ? 'Prépare la déclaration d\'abord.' : aCompleter ? 'Une pièce est arrivée après l\'écriture du mois : le complément pose ce qui lui manque, en brouillard.' : ecrite ? 'Elle existe déjà : la refaire compterait la TVA du mois deux fois.' : ''}">${
-          aCompleter ? 'Écrire le complément' : auBrouillard ? fait(true) + (complementAuBrouillard ? 'Complément au brouillard — à valider' : 'Écriture au brouillard — à valider') : ecrite ? fait(true) + 'Écriture du mois passée' : 'Écrire l\'écriture du mois'}</button>${fleche}
+        <button class="${cls('ecriture')}" id="dc-ecriture" ${!posee || rien || (ecrite && !aCompleter) ? 'disabled' : ''}
+          title="${!posee ? 'Prépare la déclaration d\'abord.' : rien ? esc(KC.MOTIF_RIEN_A_ECRIRE) : aCompleter ? 'Une pièce est arrivée après l\'écriture du mois : le complément pose ce qui lui manque, en brouillard.' : ecrite ? 'Elle existe déjà : la refaire compterait la TVA du mois deux fois.' : ''}">${
+          rien ? 'Aucune écriture à passer' : aCompleter ? 'Écrire le complément' : auBrouillard ? fait(true) + (complementAuBrouillard ? 'Complément au brouillard — à valider' : 'Écriture au brouillard — à valider') : ecrite ? fait(true) + 'Écriture du mois passée' : 'Écrire l\'écriture du mois'}</button>${fleche}
         <button class="${cls('deposee')}" id="dc-deposee" ${!posee || motifPerime ? 'disabled' : ''} title="${!posee ? 'Prépare la déclaration d\'abord.' : esc(motifPerime)}">${
           deposee ? fait(true) + 'Déposée le ' + esc(fmtJour(posee.deposee.le)) + ' — annuler' : 'Marquer déposée'}</button>${fleche}
         ${/* Le bouton du paiement reste ALLUMÉ tant qu'un paiement est posé (T-21) : éteint dès que
@@ -4097,7 +4100,10 @@
         ? 'le règlement viendra du relevé bancaire — pointer « payée » ne l\'écrit pas, sinon il serait compté deux fois.'
         : 'ce dossier n\'a pas de relevé bancaire : le règlement se saisit dans la grille, sur le journal de banque.'}</p>
     </div>
-    ${echecs.length ? `<div class="warn-box mt">${echecs.map(c => `<div>${esc(c.detail)}</div>`).join('')}</div>`
+    ${/* 10.14.1 — un contrôle qui échoue porte le geste qui le débloque (7.20.0) : « 1 pièce encore en
+          brouillard » laissait le débutant chercher où elle était. */''}
+    ${echecs.length ? `<div class="warn-box mt" id="dc-controles">${echecs.map(c => `<div>${esc(c.detail)}${c.id === 'brouillard'
+          ? ' <button type="button" class="btn btn-sm" data-vers-saisie>Voir le brouillard</button>' : ''}</div>`).join('')}</div>`
       : `<p class="small ligne-ok mt"><span aria-hidden="true">✓</span> Les contrôles passent : aucun brouillard sur le mois, aucun compte d'attente ouvert, la TVA du mois soldée par son écriture, aucun crédit imputé en trop.</p>`}
     ${panneauFormulaire(d)}
     ${declState.ouverte && d.cases[declState.ouverte] ? panneauPieces(d.cases[declState.ouverte], LIBELLE_CASE[declState.ouverte]) : ''}`;
@@ -4166,6 +4172,7 @@
       s.paieMois = Number(String(s.decl && s.decl.periode || '').slice(5, 7)) || s.paieMois;
       allerSousOnglet(root, dossier, 'paie');
     }; });
+    $$('[data-vers-saisie]', el).forEach(b => { b.onclick = () => allerSousOnglet(root, dossier, 'saisie'); });
     // UN bouton « Préparer » (U-11) : il était répété sous « Ce qui suit » (T-17) parce que les
     // gestes qu'il débloque vivaient deux écrans plus bas ; ils sont maintenant sur la même rangée.
     const prep = $('#dc-preparer', el);
@@ -6229,8 +6236,9 @@
     if (!releves.length) {
       // L'état vide qui EST le corps de son écran garde sa présence, et porte son geste (9.4.7).
       return `<div class="empty">Aucun relevé bancaire importé pour ${esc(s.annee)}.
-        <div class="small mt">Un relevé se lit tel que la banque l'exporte : on associe ses colonnes par leur NOM,
-        une fois par banque. Ensuite le rapprochement propose, et c'est toi qui tranches.</div>
+        <div class="small mt">Le fichier tel que la banque le donne : <b>Excel (.xlsx)</b> ou <b>CSV</b>. Les lignes que
+        la banque écrit au-dessus du tableau (son nom, le compte, la période) et les lignes de solde sont reconnues ;
+        les colonnes se reconnaissent à leur titre (Date, Libellé, Débit, Crédit…), et une banque nouvelle s'associe une fois. Ensuite le rapprochement propose, et c'est toi qui tranches.</div>
         <div class="mt"><button class="btn btn-primary" id="bq-import">Importer un relevé…</button></div>
         <div class="small mt">${lienArticle('banque')}</div></div>`;
     }
@@ -6277,7 +6285,9 @@
         // pas faire finit par ne plus se faire.
         const lg = e && Array.isArray(e.lignes) ? e.lignes[Number(r.ligne)] : null;
         const mFace = lg ? KC.round3((Number(lg.debit) || 0) - (Number(lg.credit) || 0)) : null;
-        return `<tr data-lig="${esc(l.id)}">
+        // `data-etat` : l'état de la ligne, que la visite « Écrire une ligne du relevé » vise (10.14.1) —
+        // la première ligne venue peut être déjà rapprochée, et son menu n'a pas le geste.
+        return `<tr data-lig="${esc(l.id)}" data-etat="${esc(r.ecritureId ? 'face' : r.niveau)}">
           <td class="nw">${esc(fmtJour(l.date))}</td>
           <td class="tronq lg" title="${esc(l.libelle)}">${esc(l.libelle)}</td>
           <td class="nw">${esc(l.reference)}</td>
@@ -6417,8 +6427,8 @@
           catch (e) { toast(plainError(e), 'error'); }
         } });
       } else {
-        actions.push({ icon: 'loupe', label: 'Choisir l\'écriture en face', hint: 'Toutes les écritures du compte, la bonne se pointe à la main', run: () => choisirEcritureForm(root, dossier, R, l) });
-        actions.push({ icon: 'nouveau', label: 'Écrire l\'écriture manquante', hint: 'Un brouillon prérempli — rien n\'est enregistré tant que tu n\'as pas cliqué', run: () => ecrireDepuisBanque(root, dossier, R, l) });
+        actions.push({ icon: 'loupe', cle: 'choisir-en-face', label: 'Choisir l\'écriture en face', hint: 'Toutes les écritures du compte, la bonne se pointe à la main', run: () => choisirEcritureForm(root, dossier, R, l) });
+        actions.push({ icon: 'nouveau', cle: 'ecrire-manquante', label: 'Écrire l\'écriture manquante', hint: 'Un brouillon prérempli — rien n\'est enregistré tant que tu n\'as pas cliqué', run: () => ecrireDepuisBanque(root, dossier, R, l) });
       }
       return actions;
     });
@@ -6521,7 +6531,7 @@
         <label class="field">${lbl('Date', 'bq.eDate')}<input type="date" name="date" value="${esc(brouillon.date)}"></label>
         <label class="field span-2">${lbl('Libellé', 'bq.eLibelle')}<input name="libelle" value="${esc(brouillon.libelle)}"></label>
         <label class="field">${lbl('Compte ' + esc(R.compte), 'bq.eBanque')}<input value="${esc(money(ligne.montant))}" disabled></label>
-        <label class="field obligatoire">${lbl('Contrepartie', 'bq.eContrepartie')}<input name="compte" value="${esc(contre.compte)}" placeholder="606">
+        <label class="field obligatoire">${lbl('Contrepartie', 'bq.eContrepartie')}<input name="compte" value="${esc(contre.compte)}" placeholder="${Number(ligne.montant) >= 0 ? '411, ou tape « client »' : '627, ou tape « frais »'}">
           <small class="muted bf-nom" id="bf-nom">${esc(nomDeCompte()(contre.compte) || ' ')}</small></label>
         ${brouillon.regle ? '' : `<div class="span-2 bf-retenir"><label class="check"><input type="checkbox" name="retenir" ${KC.motifDeLibelle(ligne.libelle) ? 'checked' : ''}> <span>Proposer ce compte aux lignes qui contiennent</span></label>
           <input name="motif" class="bf-motif" value="${esc(KC.motifDeLibelle(ligne.libelle))}" placeholder="STEG" aria-label="Mot retenu"></div>`}
@@ -6535,14 +6545,22 @@
         // Le compte tapé se NOMME pendant la frappe, comme dans la grille : un 6061 qu'on croit
         // être l'électricité se voit avant d'être écrit. Seul l'intitulé se récrit (7.17.0).
         const nomC = nomDeCompte();
-        $('[name=compte]', rootModal).addEventListener('input', ev => {
-          const c = ev.target.value.trim();
-          $('#bf-nom', rootModal).textContent = c ? (nomC(c) || 'compte hors plan : il sera ajouté au plan du dossier') : ' ';
-        });
+        // Un compte est un NUMÉRO (10.14.1, BANK-02) : « elec » tapé à sa place s'annonçait « compte
+        // hors plan : il sera ajouté au plan », et l'enregistrement le refusait ensuite. Le mot sert
+        // à CHERCHER — la liste propose les comptes par leur nom, plan de référence compris.
+        const nomDe = c => !c ? ' ' : !/^\d{1,12}$/.test(c) ? 'un compte est un numéro : choisis-le dans la liste, par son nom ou son numéro'
+          : (nomC(c) || KC.libelleDuPlan(c) ? `${nomC(c) || KC.libelleDuPlan(c)}${nomC(c) ? '' : ' — il entrera au plan du dossier'}` : 'ni dans le plan du dossier ni dans le plan de référence : vérifie le numéro');
+        const champC = $('[name=compte]', rootModal);
+        // Le curseur va dans la SEULE case à remplir (26/09) : le journal, la date et le libellé
+        // viennent du relevé ; il se posait dans « Journal », et la frappe partait au mauvais endroit.
+        if (!contre.compte) setTimeout(() => { try { champC.focus(); } catch (_) { /* rien */ } }, 0);
+        champC.addEventListener('input', () => { $('#bf-nom', rootModal).textContent = nomDe(champC.value.trim()); });
+        suggererCompte(champC, () => KC.comptesProposables(s.livre.plan || []), c => { $('#bf-nom', rootModal).textContent = nomDe(c.compte); }, () => ligne.libelle);
         $('#ok', rootModal).onclick = async () => {
           const v = n => (($(`[name=${n}]`, rootModal) || {}).value || '').trim();
           const compte = v('compte');
           if (!compte) return refus($('[name=compte]', rootModal), 'Choisis le compte de contrepartie : sans lui, l\'écriture ne s\'enregistre pas.');
+          if (!/^\d{1,12}$/.test(compte)) return refus($('[name=compte]', rootModal), `« ${compte} » n'est pas un numéro de compte : cherche-le par son nom dans la liste qui s'ouvre sous la case.`);
           const cocheR = $('[name=retenir]', rootModal);
           if (cocheR && cocheR.checked && v('motif') && !KC.motifDeLibelle(v('motif'))) {
             return refus($('[name=motif]', rootModal), `« ${v('motif')} » se trouve sur trop de lignes de relevé pour décider d'un compte : garde un mot propre à ce tiers (STEG, SONEDE, le nom du client…), ou décoche.`);
@@ -6582,6 +6600,9 @@
   // L'import d'un relevé, en DEUX temps. On lit le fichier, on montre ce qu'on a compris, et on
   // demande ce que le fichier ne dit pas : le compte bancaire, et les deux soldes du relevé papier.
   // C'est ce contrôle-là qui refuse un fichier auquel il manque des lignes (ERR-CAB-040).
+  // Le nom d'une colonne de relevé tel qu'on l'écrit, accents compris : « Debit » et « Credit »,
+  // fabriqués depuis la clé technique, se lisaient comme des fautes (IMP-01).
+  const NOM_COLONNE_RELEVE = { date: 'Date', libelle: 'Libellé', montant: 'Montant (signé)', debit: 'Débit', credit: 'Crédit', reference: 'Référence' };
   function releveForm(root, dossier) {
     const s = livresState;
     const banques = (S.banques && typeof S.banques === 'object') ? S.banques : {};
@@ -6589,8 +6610,9 @@
     const defaut = (dossier.banque || {}).compte || comptes[0] || '532';
     let lu = null;
     modal(`<h2>Importer un relevé bancaire</h2>
-      <p class="small muted">Le fichier tel que la banque l'exporte. Les colonnes s'associent par leur NOM ;
-      si cette banque est nouvelle, tu les associes une fois et je les retiens.</p>
+      <p class="small muted">Le fichier tel que la banque le donne — <b>Excel (.xlsx)</b> ou <b>CSV</b>, sans rien retoucher :
+      les lignes au-dessus du tableau et les lignes de solde sont reconnues, et les soldes que le relevé écrit se reportent
+      tout seuls. Les colonnes se reconnaissent à leur titre (Date, Libellé, Débit, Crédit…) ; si cette banque est nouvelle, tu les associes une fois et je les retiens.</p>
       <form id="rv" class="grid-2">
         <label class="field obligatoire">${lbl('Compte bancaire', 'bq.rCompte')}
           <input name="compte" value="${esc(defaut)}" list="rv-comptes" placeholder="532">
@@ -6599,7 +6621,8 @@
           <datalist id="rv-banques">${Object.keys(banques).map(b => `<option value="${esc(b)}">`).join('')}</datalist></label>
         <label class="field">${lbl('Solde au début (DT)', 'bq.rDebut')}<input name="debut" class="num montant" inputmode="decimal" value="0,000">
           <span class="small muted" id="rv-debut-hint"></span></label>
-        <label class="field">${lbl('Solde à la fin (DT)', 'bq.rFin')}<input name="fin" class="num montant" inputmode="decimal" value="0,000"></label>
+        <label class="field">${lbl('Solde à la fin (DT)', 'bq.rFin')}<input name="fin" class="num montant" inputmode="decimal" value="" placeholder="écrit sur le relevé">
+          <span class="small muted" id="rv-fin-hint"></span></label>
       </form>
       <div class="modal-actions" style="justify-content:flex-start">
         <button type="button" class="btn btn-sm" id="rv-fichier">Choisir le fichier…</button>
@@ -6616,9 +6639,39 @@
         // « 0 » passait le bouclage tout en rendant l'écart de rapprochement faux. La proposition
         // est NOMMÉE (« d'après le livre ») et cède la place à ce qu'on tape.
         const champDebut = $('[name=debut]', rootModal), hint = $('#rv-debut-hint', rootModal);
-        let debutTouche = false;
+        let debutTouche = false, finTouche = false;
         if (champDebut) champDebut.addEventListener('input', () => { debutTouche = true; });
+        const champFin = $('[name=fin]', rootModal), hintFin = $('#rv-fin-hint', rootModal);
+        // Le verdict se lit PENDANT la frappe dès qu'il tombe juste (10.14.1) : la bulle promettait
+        // « l'écart s'écrit sous la case », et on ne l'apprenait qu'en cliquant « Importer ». Tant que
+        // ça ne tombe pas juste, rien de rouge (un chiffre à moitié tapé n'est pas une faute), et le
+        // montant ATTENDU ne s'écrit jamais : on le recopierait, et le contrôle ne prouverait plus rien.
+        if (champFin) champFin.addEventListener('input', () => {
+          finTouche = true;
+          if (!hintFin) return;
+          const juste = !!(lu && (lu.lignes || []).length && v('fin') && KC.releveValide({
+            soldeDebut: KC.nombreDepuisCsv(v('debut')), soldeFin: KC.nombreDepuisCsv(v('fin')), lignes: lu.lignes }).ok);
+          if (juste) { hintFin.className = 'small ok-inline'; hintFin.textContent = '✓ Ça tombe juste : début + mouvements = fin, aucune ligne ne manque.'; }
+          else { hintFin.className = 'small muted'; hintFin.textContent = 'recopie le solde de fin écrit sur le relevé'; }
+        });
+        // Les soldes que le RELEVÉ écrit (10.14.1, IMP-01) passent avant ceux du livre : ce sont les
+        // chiffres de la banque, ceux que la fenêtre demandait de recopier du papier. Ce qu'on a
+        // tapé soi-même n'est jamais écrasé.
+        const soldesLus = () => {
+          const so = (lu && lu.soldes) || {};
+          if (champFin && !finTouche) {
+            if (so.fin != null) { champFin.value = montantChamp(so.fin) || '0'; if (hintFin) hintFin.textContent = 'lu dans le relevé'; }
+            else if (hintFin) hintFin.textContent = 'le fichier ne l\'écrit pas : recopie-le depuis le relevé papier ou PDF';
+          }
+          if (champDebut && !debutTouche && so.debut != null) {
+            champDebut.value = montantChamp(so.debut) || '0';
+            if (hint) hint.textContent = 'lu dans le relevé';
+            return true;
+          }
+          return false;
+        };
         const proposerDebut = lignes => {
+          if (soldesLus()) return;
           if (!champDebut || debutTouche || !lignes.length) return;
           const compte = v('compte'), premiere = lignes.map(l => l.date).filter(Boolean).sort()[0];
           if (!compte || !premiere) return;
@@ -6644,13 +6697,15 @@
             ${deja ? `<div class="warn-box mb" id="rv-deja"><b>Ce fichier a déjà été importé</b> le ${esc(fmtJour(String(deja.importeLe || '').slice(0, 10)))} (${esc(fmtJour(deja.du))} → ${esc(fmtJour(deja.au))}).
               L'importer une seconde fois doublerait chacun de ses mouvements : les soldes n'ont pas besoin d'être saisis.</div>`
             : lignes.length ? `<div class="ok-box mb">${pl(lignes.length, 'ligne lue', 'lignes lues')} · mouvements ${esc(money(somme))}${
-              lu.ignorees.length ? ` · ${pl(lu.ignorees.length, 'ligne ignorée', 'lignes ignorées')}` : ''}</div>` : ''}
+              lu.ignorees.length ? ` · ${pl(lu.ignorees.length, 'ligne ignorée', 'lignes ignorées')}` : ''}${
+              lu.totaux ? ` · ${pl(lu.totaux, 'ligne de total écartée', 'lignes de total écartées')}` : ''}${
+              lu.ligneTitres > 1 ? ` · titres trouvés ligne ${lu.ligneTitres}` : ''}</div>` : ''}
             ${lu.ignorees && lu.ignorees.length ? `<div class="small muted">${lu.ignorees.slice(0, 5).map(i => `Ligne ${i.ligne} : ${esc(i.motif)}`).join(' · ')}</div>` : ''}
             ${lignes.length ? `<div class="scroll-x" style="max-height:200px"><table class="list compact"><thead><tr><th class="nw">Date</th><th>Libellé</th><th class="r nw">Montant</th></tr></thead>
               <tbody>${lignes.slice(0, 12).map(l => `<tr><td class="nw">${esc(fmtJour(l.date))}</td><td class="tronq" title="${esc(l.libelle)}">${esc(l.libelle)}</td><td class="r nw">${esc(money(l.montant))}</td></tr>`).join('')}</tbody></table></div>` : ''}
             ${lu.motif && lu.entetes ? `<h3 class="sub-h">Associer les colonnes</h3>
               <div class="grid-2">${['date', 'libelle', 'montant', 'debit', 'credit', 'reference'].map(champ =>
-                `<label class="field">${lbl(champ === 'libelle' ? 'Libellé' : champ[0].toUpperCase() + champ.slice(1), 'bq.colonne')}
+                `<label class="field">${lbl(NOM_COLONNE_RELEVE[champ], 'bq.colonne')}
                   <select data-col="${champ}"><option value="">—</option>${lu.entetes.map((e, i) => `<option value="${i}">${esc(e || ('Colonne ' + (i + 1)))}</option>`).join('')}</select></label>`).join('')}</div>
               <div class="modal-actions" style="justify-content:flex-start"><button type="button" class="btn btn-sm" id="rv-relire">Relire avec cette association</button></div>` : ''}`;
           ok.disabled = !lignes.length || !!deja;
@@ -6677,11 +6732,24 @@
           if (!lu || !lu.lignes.length) return;
           const compte = v('compte');
           if (!compte) return refus($('[name=compte]', rootModal), 'Choisis le compte bancaire : il ne se devine pas depuis le fichier.');
+          // Le solde de fin est la PREUVE qu'aucune ligne ne manque (10.14.1, BANK-01) : il ne se
+          // propose pas à 0 — un « 0,000 » posé d'office faisait cliquer « Importer » et tomber sur
+          // un refus rouge au bas de l'écran, par-dessus les boutons. Vide, il se réclame ; faux, le
+          // refus du moteur se MONTRE sur la case (10.12.0), avec l'écart.
+          if (!v('fin')) return refus(champFin, 'Recopie le solde de fin écrit sur le relevé (papier ou PDF) : c\'est lui qui prouve qu\'aucune ligne ne manque.');
           const releve = {
             compte, banque: v('banque'), fichier: lu.fichier, empreinte: lu.empreinte,
             soldeDebut: KC.nombreDepuisCsv(v('debut')), soldeFin: KC.nombreDepuisCsv(v('fin')),
             lignes: lu.lignes
           };
+          const boucle = KC.releveValide(releve);
+          if (!boucle.ok) {
+            // Le motif reste écrit SOUS la case : le bandeau s'efface en quelques secondes, et il
+            // se pose par-dessus les boutons de la fenêtre — l'écart doit rester lisible pendant
+            // qu'on le compare au papier.
+            if (hintFin) { hintFin.textContent = boucle.motif; hintFin.className = 'small err-inline'; }
+            return refus(champFin, boucle.motif);
+          }
           try {
             const r = await api.ajouterReleve({ dossierId: dossier.id, annee: s.annee, releve });
             s.livre = r.livre; banqueState.releve = r.releve.id;
@@ -6854,14 +6922,14 @@
   // `compta.comptesQuiCorrespondent` : l'écran ne trie rien lui-même, sinon sa façon de classer
   // finirait par différer de celle qu'un test prouve. Les classes `.sugg-*` viennent de la feuille
   // PARTAGÉE (9.2.1) : même composant visuel des deux côtés, et aucune règle en double.
-  function suggererCompte(input, planDe, onPick) {
+  function suggererCompte(input, planDe, onPick, contexteDe) {
     const host = input.closest('td') || input.parentElement;
     if (!host) return;
     host.classList.add('sugg-host');
     let pop = null, sel = 0, items = [];
     const fermer = () => { if (pop) pop.remove(); pop = null; items = []; };
     const dessiner = () => {
-      items = KC.comptesQuiCorrespondent(planDe(), input.value, 8);
+      items = KC.comptesQuiCorrespondent(planDe(), input.value, 8, contexteDe ? contexteDe() : '');
       if (!items.length || document.activeElement !== input) { fermer(); return; }
       // La liste vit sur le BODY, en position fixe calculée sur le champ (T-33) : dans la cellule,
       // elle était rognée par le `.scroll-x` du tableau — une seule entrée visible, coupée en deux.
@@ -6873,7 +6941,7 @@
       pop.style.minWidth = Math.max(320, r.width) + 'px';
       sel = Math.min(sel, items.length - 1);
       pop.innerHTML = items.map((c, i) => `<div class="sugg-it ${i === sel ? 'sel' : ''}" data-i="${i}">
-        <b>${esc(c.compte)}</b> <span class="muted">${esc(c.libelle || '')}</span></div>`).join('');
+        <b>${esc(c.compte)}</b> <span class="muted">${esc(c.libelle || '')}</span>${c.horsPlan ? ' <span class="small muted" title="Pas encore dans le plan de ce dossier : il y entrera à l\'enregistrement">· plan de référence</span>' : ''}${c.parLibelle ? ' <span class="small ok-inline" title="Le libellé de la ligne nomme aussi ce compte">· d\'après le libellé</span>' : ''}</div>`).join('');
       $$('.sugg-it', pop).forEach(d => {
         // `mousedown` et pas `click` : le `blur` du champ referme la liste avant qu'un `click`
         // n'arrive, et le choix se perdrait sans que rien ne plante.
@@ -7227,7 +7295,7 @@
           }
         };
         if (k === 'compte') {
-          suggererCompte(inp, () => s.livre.plan || [], c => {
+          suggererCompte(inp, () => KC.comptesProposables(s.livre.plan || []), c => {
             // 10.14.0 — le libellé de la ligne ne reçoit plus le NOM DU COMPTE : « Banques » sur le
             // 532 ne dit rien de l'opération, il remplaçait dans le journal le libellé de la pièce
             // qu'une ligne vide reprend — et la règle T-51 (une validée dit ce qu'elle enregistre)
@@ -7235,7 +7303,7 @@
             // montre, en attente, le libellé de la pièce qu'il reprendra.
             p.lignes[i].compte = c.compte; p.touchee = true;
             redessinerLignes({ i, k: 'libelle' });
-          });
+          }, () => (p.lignes[i] && p.lignes[i].libelle) || p.libelle || '');
         }
       });
       $$('[data-sup]', corps).forEach(b => {
@@ -8273,18 +8341,44 @@
   // le ferait ») ne vivait QUE dans l'assistant de démarrage : passé ce premier écran, « + Nouveau
   // dossier » n'offrait plus que la fiche d'un seul client, pendant que sa visite promettait « toute
   // la liste collée depuis ton tableur ». Le même moteur (`cab:importDossiers`), une porte de plus.
+  // 10.14.1 (IMP-02) — une liste collée se MONTRE avant d'entrer : un décalage de colonne (le
+  // téléphone pris pour le matricule, donc pour l'identifiant du dossier) ne se rattrape pas après
+  // coup sans recréer le dossier. L'aperçu est calculé par le MÊME moteur que l'enregistrement
+  // (`parseDossierLines`) : deux lectures donneraient deux listes.
+  const CONSIGNE_LISTE = 'Un client par ligne. Depuis Excel, copie tes colonnes <strong>avec leur ligne de titres</strong> : '
+    + 'elles se reconnaissent à leur titre (nom, matricule, email, téléphone), dans n\'importe quel ordre, et une colonne '
+    + 'qu\'on ne sait pas lire (adresse, ville…) est laissée de côté. Tapées à la main, sépare-les par un point-virgule. '
+    + 'Seul le nom est obligatoire ; tu vois ce qui entrera avant de valider.';
+  function brancherApercuListe(champ, zone, bouton) {
+    if (!champ || !zone) return;
+    const dessiner = () => {
+      const txt = champ.value.trim();
+      if (!txt) { zone.innerHTML = ''; return; }
+      const r = K.parseDossierLines(txt, S.dossiers || []);
+      const n = r.dossiers.length;
+      const cellule = (v, douteux) => v ? `<td class="${douteux ? 'douteux' : ''}">${esc(v)}${douteux ? ' <span class="small">(à vérifier)</span>' : ''}</td>` : '<td class="muted">—</td>';
+      zone.innerHTML = `<div class="${n ? 'ok-box' : 'warn-box'} mb">${n ? `${pl(n, 'client entrera', 'clients entreront')} dans ton portefeuille` : 'Aucun nom de client reconnu.'}${
+        r.ignorés.length ? ` · ${pl(r.ignorés.length, 'déjà là, ignoré', 'déjà là, ignorés')} : ${esc(r.ignorés.slice(0, 3).join(', '))}${r.ignorés.length > 3 ? '…' : ''}` : ''}${
+        r.colonnesIgnorees && r.colonnesIgnorees.length ? ` · ${pl(r.colonnesIgnorees.length, 'colonne laissée de côté', 'colonnes laissées de côté')} : ${esc(r.colonnesIgnorees.join(', '))}` : ''}</div>
+        ${n ? `<div class="scroll-x" style="max-height:170px"><table class="list compact"><thead><tr><th>Nom</th><th>Matricule</th><th>Email</th><th>Téléphone</th></tr></thead>
+          <tbody>${r.dossiers.slice(0, 50).map(d => `<tr><td>${esc(d.name)}</td>${cellule(d.matricule)}${cellule(d.email, d.email && K.emailDouteux(d.email))}${cellule(d.phone)}</tr>`).join('')}</tbody></table></div>` : ''}`;
+      if (bouton) bouton.textContent = n ? `Ajouter ${pl(n, 'client')}` : 'Ajouter ces clients';
+    };
+    champ.addEventListener('input', dessiner);
+    dessiner();
+  }
   function collerDossiersForm() {
     let change = () => false;
     modal(
       `<h2>Coller une liste de clients</h2>
-       <p class="small">Un client par ligne. Depuis Excel, copie tes colonnes telles quelles, dans cet ordre :
-       <strong>nom, matricule, email, téléphone</strong> (une ligne de titres est ignorée) ; tapées à la main, sépare-les par un point-virgule.
-       Seul le nom est obligatoire ; un client déjà dans ton portefeuille est ignoré et nommé.</p>
+       <p class="small">${CONSIGNE_LISTE} Un client déjà dans ton portefeuille est ignoré et nommé.</p>
        <label class="field mt">${lbl('Un client par ligne', 'd.liste')}
          <textarea id="cl-liste" rows="9" placeholder="Menuiserie Trabelsi SUARL ; 1122334A/M/P/000 ; contact@trabelsi.tn&#10;Pharmacie El Menzah&#10;Café des Jasmins"></textarea></label>
+       <div id="cl-apercu" class="apercu-liste" aria-live="polite"></div>
        <div class="modal-actions"><button class="btn" id="no">Annuler</button><button class="btn btn-primary" id="ok">Ajouter ces clients</button></div>`,
       (layer, close) => {
         change = suivreSaisie(layer);
+        brancherApercuListe($('#cl-liste', layer), $('#cl-apercu', layer), $('#ok', layer));
         $('#no', layer).onclick = close;
         $('#ok', layer).onclick = async () => {
           const txt = $('#cl-liste', layer).value.trim();
@@ -10239,7 +10333,13 @@
             « Ta clé n'existe qu'ici » dans un encadré orange MÊME une fois la clé enregistrée, puis
             la même chose une seconde fois dans sa ligne d'état. `undefined` = on ne sait pas encore
             (la date arrive par une promesse) : on ne crie pas. */''}
-      ${recoveryAt === null ? `<div class="warn-box mt"><strong>${lbl('Tu n\'as jamais enregistré de clé de secours.', 'b.recovery')}</strong>
+      ${/* 10.14.1 — sans paquet VRAI reçu, la clé ne protège encore rien : l'orange et le bouton vert
+            répétaient au cabinet neuf une menace (« aucun paquet déjà reçu… ») sur des paquets qui
+            n'existent pas, pendant que la visite « Mettre mon cabinet à l'abri » l'amenait ici pour la
+            copie. Le bandeau de la page (`recoveryBanner`) fait déjà ce choix depuis la 9.4.4. */''}
+      ${recoveryAt === null && !paquetsReelsRecus() ? `<p class="small muted mt" id="s-rec-plus-tard">${lbl('Pas encore de clé de secours.', 'b.recovery')}
+      Elle ne protège que les paquets reçus de tes clients, et tu n'en as reçu aucun : enregistre-la au premier paquet — l'application te le rappellera.</p>`
+    : recoveryAt === null ? `<div class="warn-box mt"><strong>${lbl('Tu n\'as jamais enregistré de clé de secours.', 'b.recovery')}</strong>
       Elle n'existe qu'ici : ni nous, ni personne d'autre ne peut la reconstituer. Sans elle et sans cet ordinateur,
       <strong>aucun paquet déjà reçu ne pourra plus être ouvert</strong>, et tes clients devront tous réimporter un nouveau
       fichier d'appairage. Trois minutes maintenant, une fois pour toutes.</div>`
@@ -10247,7 +10347,7 @@
       ${info('b.recovery')} — vérifie qu'elle n'est pas sur ${CE_POSTE()}.</p>` : ''}
 
       <div class="modal-actions wrap">
-        <button class="btn${recoveryAt === null ? ' btn-primary' : ''}" id="s-rec">Enregistrer ma clé de secours…</button>
+        <button class="btn${recoveryAt === null && paquetsReelsRecus() ? ' btn-primary' : ''}" id="s-rec">Enregistrer ma clé de secours…</button>
         <button class="btn" id="s-rec-in">Restaurer une clé de secours…</button>
         <span class="grow"></span>
         <button class="btn" id="s-pw">Changer le mot de passe…</button>${info('b.password')}
@@ -10639,6 +10739,11 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
     copieExterne: () => !!(backupInfo && backupInfo.external && backupInfo.external.dir),
     // Le nombre d'écritures du livre ouvert : la preuve qu'une pièce a été enregistrée (10.14.1).
     ecritures: () => ((livresState.livre && livresState.livre.ecritures) || []).length,
+    // Et ses brouillards : la preuve qu'une pièce vient d'être validée (10.14.1).
+    brouillards: () => ((livresState.livre && livresState.livre.ecritures) || []).filter(e => e.statut === 'brouillard').length,
+    // Les relevés de la banque du livre de CE dossier — `null` quand son livre n'est pas en mémoire :
+    // ne pas savoir n'est pas « aucun » (on ne cache pas une visite sur une donnée qu'on n'a pas lue).
+    releves: id => (livresState.livre && String(livresState.livreCle || '').startsWith(id + '|') ? (livresState.livre.releves || []).length : null),
     // Les dossiers qui ont leur livre, et leur nombre : la preuve qu'un livre vient d'être créé (26/09).
     avecLivre: () => avecLivre(), livres: () => avecLivre().size,
     Visite
@@ -10805,7 +10910,11 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
         if (!['premiers-pas', ...Object.values(PAS_VISITES)].includes(p.id)) return null;
         const pp = lesPas();
         return { titre: 'Tes premiers pas', fait: pp.faits, total: pp.total,
-          texte: pp.suivante ? 'Prochaine étape : ' + pp.suivante.titre.charAt(0).toLowerCase() + pp.suivante.titre.slice(1) + '.' : 'Tout est en place : ton cabinet est prêt.' };
+          // « 4 / 9 » au-dessus de « Tout est en place » se contredisait : ce qui reste est FACULTATIF
+          // (la clé de secours avant le premier paquet, l'équipe, la grille), et la phrase le dit.
+          texte: pp.suivante ? 'Prochaine étape : ' + pp.suivante.titre.charAt(0).toLowerCase() + pp.suivante.titre.slice(1) + '.'
+            : pp.faits < pp.total ? `L'indispensable est fait : ${pl(pp.total - pp.faits, 'étape reste', 'étapes restent')} facultative${pp.total - pp.faits > 1 ? 's' : ''}, à faire le jour où ${pp.total - pp.faits > 1 ? 'elles serviront' : 'elle servira'}.`
+              : 'Tout est en place : ton cabinet est prêt.' };
       },
       suites: p => {
         const et = visitesEtat();
@@ -11191,13 +11300,14 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
         },
         {
           t: 'Tes clients',
+          mount: () => brancherApercuListe($('#w-clients', el), $('#w-apercu', el), null),
           html: () => `
             <p class="small">Mets-les <strong>tous</strong>, même ceux qui n'utilisent pas encore SkanFact : l'application devient le tableau de bord
             de ton portefeuille, et rien n'est réclamé à ceux qui n'ont pas commencé.</p>
             <label class="field mt">${lbl('Un client par ligne', 'd.liste')}
               <textarea id="w-clients" rows="8" placeholder="Menuiserie Trabelsi SUARL ; 1122334A/M/P/000 ; contact@trabelsi.tn ; +216 22 333 444&#10;Pharmacie El Menzah&#10;Café des Jasmins ; ; jasmins@example.tn"></textarea></label>
-            <p class="muted small">Depuis Excel, copie tes colonnes telles quelles, dans cet ordre : <strong>nom, matricule, email,
-            téléphone</strong> (une ligne de titres est ignorée) ; tapées à la main, sépare-les par un point-virgule. Seul le nom est obligatoire.</p>
+            <div id="w-apercu" class="apercu-liste" aria-live="polite"></div>
+            <p class="muted small">${CONSIGNE_LISTE}</p>
             <p class="muted small">Pas envie maintenant ? Passe : tu pourras charger un jeu d'exemple ou ajouter tes clients un par un.</p>`,
           next: async () => {
             const txt = $('#w-clients', el).value.trim();

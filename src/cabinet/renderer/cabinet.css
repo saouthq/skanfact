@@ -423,8 +423,11 @@ tr.cp-miroir td { background: var(--info-soft); }
    de la grille, pour la souris. */
 .sa-ajout { margin-top: 6px; }
 /* La liste des comptes, sortie du tableau qui la rognait (T-33) : position fixe, calculée sur le
-   champ, au-dessus de tout ce qui défile. */
-.sugg-pop.sugg-fixe { position: fixed; inset-inline-start: auto; top: auto; z-index: 380; }
+   champ, au-dessus de tout ce qui défile. Et au-dessus des FENÊTRES (400 et plus, empilées) : la
+   contrepartie d'une ligne de relevé se choisit dans une fenêtre, et la liste s'ouvrait derrière elle,
+   floutée, impossible à cliquer (vu en guidant un débutant, 26/09). Sous la bulle « i » (900) et le
+   bandeau (950), qui se lisent par-dessus tout. */
+.sugg-pop.sugg-fixe { position: fixed; inset-inline-start: auto; top: auto; z-index: 850; }
 
 /* ---------------------------------------------------------------- la grille de saisie (9.3.0)
    Toutes les classes sont préfixées `sa-` : une classe du cabinet ne peut pas porter un nom déjà
@@ -826,3 +829,8 @@ a.lien-aide:hover, a.lien-aide:focus-visible { text-decoration-thickness: 2px; }
 .bf-retenir .bf-motif { width: 150px; }
 /* L'intitulé du compte tapé : UNE ligne réservée, pour que la frappe ne fasse rien bouger. */
 .bf-nom { display: block; min-height: 1.4em; margin-top: 4px; }
+
+/* 10.14.1 (IMP-02) — l'aperçu d'une liste de clients collée : ce qui entrera, avant de valider. */
+.apercu-liste { margin-block-start: 8px; }
+.apercu-liste:empty { display: none; }
+.apercu-liste td.douteux { color: var(--warning); }

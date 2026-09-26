@@ -380,10 +380,25 @@ t('10.14.0 : le Cabinet écrit le complément par le même bouton, et « Marquer
   // L'écran : le bouton de l'écriture se rallume sur un complément, celui du dépôt s'éteint sur des
   // chiffres préparés périmés — par ce que le MOTEUR rend (`complement`, `ecart`), jamais recalculé ici.
   assert.ok(/const aCompleter = ecrite && \(d\.complement \|\| \[\]\)\.length > 0;/.test(app));
-  assert.ok(/id="dc-ecriture" \$\{!posee \|\| \(ecrite && !aCompleter\) \? 'disabled' : ''\}/.test(app), 'le bouton de l\'écriture reste éteint sur un complément');
+  // La condition qui éteint le bouton, lue telle quelle : un complément (écriture passée, pièce
+  // arrivée après) le rallume ; « rien à écrire » ne vaut que tant qu'aucune écriture n'est passée.
+  const eteint = (/id="dc-ecriture" \$\{([^?]+)\? 'disabled' : ''\}/.exec(app) || [])[1] || '';
+  assert.ok(/!posee/.test(eteint) && /\(ecrite && !aCompleter\)/.test(eteint), 'le bouton de l\'écriture reste éteint sur un complément : ' + eteint);
+  assert.ok(/const rien = !!d\.rienAEcrire && !ecrite;/.test(app), 'un mois sans TVA éteindrait aussi le complément d\'une écriture passée');
   assert.ok(/const perime = !!\(posee && ecart\.length\);/.test(app) && /const ecart = d\.ecart \|\| \[\];/.test(app));
   assert.ok(/id="dc-deposee" \$\{!posee \|\| motifPerime \? 'disabled' : ''\}/.test(app), '« Marquer déposée » reste allumé sur des chiffres périmés');
-  assert.ok(/const suivante = !posee \|\| \(perime && !deposee\) \? 'preparer' : \(!ecrite \|\| aCompleter\) \? 'ecriture'/.test(app), 'le vert ne suit pas le travail qui reste');
+  // Le vert, JOUÉ sur chaque état plutôt que recopié : préparer, écrire (ou compléter), déposer,
+  // payer — et un mois sans TVA passe de « préparée » au dépôt, sans une écriture qui refuserait.
+  const exprSuivante = (/const suivante = ([^\n]+);/.exec(app) || [])[1];
+  assert.ok(exprSuivante, 'le calcul du vert est introuvable');
+  const vert = etat => require('vm').runInNewContext(exprSuivante, Object.assign({ posee: true, perime: false, deposee: false, payee: false, ecrite: false, aCompleter: false, rien: false }, etat));
+  assert.strictEqual(vert({ posee: false }), 'preparer');
+  assert.strictEqual(vert({ perime: true }), 'preparer', 'des chiffres périmés se recalculent d\'abord');
+  assert.strictEqual(vert({}), 'ecriture');
+  assert.strictEqual(vert({ ecrite: true, aCompleter: true }), 'ecriture', 'le complément reste l\'étape suivante');
+  assert.strictEqual(vert({ rien: true }), 'deposee', 'un mois sans TVA proposait encore une écriture qui refuse');
+  assert.strictEqual(vert({ ecrite: true }), 'deposee');
+  assert.strictEqual(vert({ ecrite: true, deposee: true }), 'payee');
   assert.ok(/const LIBELLE_CASE = KC\.LIBELLES_CASES_DECL;/.test(app), 'deux tables de noms de cases divergeraient');
 });
 // 10.14.1 (D1) — le comptable RECOPIE les cases sur le portail. Ce qui supprime la ressaisie sans rien
@@ -447,7 +462,7 @@ t('10.14.1 (D1) : l\'écran copie par le moteur, retient la forme, et dit la dat
   // Chaque case chiffrée porte son bouton ; le message dit ce qui a été copié.
   // 10.14.1 (D1bis) — les cases vivent maintenant dans les lignes du formulaire : chaque ligne
   // chiffrée porte son bouton, le total aussi.
-  assert.ok(/l\.montant == null \? '<span class="muted">—<\/span>' : boutonCopie\(l\.cle, l\.montant, l\.libelle\)/.test(app), 'une ligne chiffrée sans bouton de copie');
+  assert.ok(/l\.montant == null \? '<span class="muted">—<\/span>' : boutonCopie\(l\.cle, l\.montant, l\.caseCopie \|\| l\.libelle\)/.test(app), 'une ligne chiffrée sans bouton de copie');
   assert.ok(/boutonCopie\('total', f\.total,/.test(app), 'le total de la déclaration sans bouton de copie');
   assert.ok(/toast\(`Copié : \$\{txt\}/.test(app), 'le message doit dire exactement ce qui a été copié');
   // La forme se retient : fusionnée dans les réglages comme le thème, jamais en remplaçant.

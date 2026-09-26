@@ -2418,7 +2418,7 @@ ipcMain.handle('file:openText', async (_e, opts) => {
   const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
     title: o.title || 'Ouvrir un fichier',
     properties: ['openFile'],
-    filters: [{ name: 'Tableur enregistré en texte (CSV)', extensions: ['csv', 'tsv', 'txt'] }, { name: 'Tous les fichiers', extensions: ['*'] }]
+    filters: [{ name: 'Tableur (Excel .xlsx ou CSV)', extensions: ['xlsx', 'csv', 'tsv', 'txt'] }, { name: 'Tous les fichiers', extensions: ['*'] }]
   });
   if (canceled || !filePaths || !filePaths[0]) return { canceled: true };
   const p = filePaths[0];
@@ -2427,7 +2427,8 @@ ipcMain.handle('file:openText', async (_e, opts) => {
   if (taille > 5 * 1024 * 1024) {
     return { ok: false, nom, motif: `« ${nom} » fait ${Math.round(taille / 1048576)} Mo : une liste de clients ou de prix en fait quelques dizaines de Ko. Ce n'est probablement pas le bon fichier.` };
   }
-  return Object.assign({ nom }, lireFichierTexte(fs.readFileSync(p), nom));
+  // Un classeur Excel (.xlsx) se lit ici : c'est un ZIP de XML, et `zipRead` sait l'ouvrir (IMP-01).
+  return Object.assign({ nom }, lireFichierTexte(fs.readFileSync(p), nom, { dezipper: zipRead }));
 });
 
 ipcMain.handle('shell:open', (_e, target) => ouvrirOuMontrer(target));

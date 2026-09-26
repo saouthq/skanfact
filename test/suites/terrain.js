@@ -557,7 +557,7 @@ t('T-07 / T-08 : la banque nomme « rien à faire », et un doublon se voit dès
   const app = cabApp();
   assert.ok(app.includes('Tout est déjà rapproché : ${pl(total, \'ligne\')} sur ${total}.'), 'trois zéros pour la meilleure nouvelle possible');
   assert.ok(app.includes('Rien à rapprocher d\'office'), 'les deux riens ne sont pas distingués');
-  const z = tranche(app, 'function releveForm(', 'const barreLivres', 3000, 9000);
+  const z = tranche(app, 'function releveForm(', 'const barreLivres', 3000, 10000);
   assert.ok(z.includes('KC.releveDejaImporte(s.livre, lu.empreinte)') && z.includes('id="rv-deja"'), 'la fenêtre n\'annonce pas le doublon à la lecture du fichier');
   assert.ok(z.includes('ok.disabled = !lignes.length || !!deja'), 'le bouton « Importer » reste allumé sur un doublon');
   // T-06, côté écran : la carte affiche l'écart de rapprochement avec ses deux termes.

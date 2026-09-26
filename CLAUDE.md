@@ -8432,6 +8432,39 @@ lots ; le détail de ce qui reste vit dans `A-FAIRE.md` § 0.
   - « au 02/10 (veille de la première ligne) » sous une première ligne du 02/10 : **une phrase qui
     date un solde le date au jour qu'elle nomme** (le soir du 01/10). Et la validation d'un lot dit
     les numéros qu'elle a pris (« sous les n° 2 à 4 ») — c'est ce qu'on reporte sur la pièce papier.
+- **Le même parcours, refait UNIQUEMENT par les bulles** (Skander : « un comptable novice aurait
+  appuyé sur le guide pour faire toutes les cases, et pas tout seul comme tu le fais »). Tester à la
+  souris en sachant où cliquer ne voit pas ce que le guide oublie ; suivre la bulle, si. Ce que ça a
+  trouvé (`test/suites/guide-debutant.js`, dix-neuf preuves par réintroduction) :
+  - **Ce qu'on peut faire maintenant passe devant ce qui attend un préalable** (`ordre` dans
+    `menuDuGuide`) : « Rapprocher la banque », grisé faute de relevé, était en tête au-dessus
+    d'« Importer le relevé » qui le débloque. Un geste bancaire attend son relevé (`si`) et dit
+    quelle visite l'importe (`manque.visite`) — `null` (on ne sait pas) n'est pas « aucun ».
+  - **Un bouton vert ne mène pas à un refus.** Sur un mois sans TVA, « Écrire l'écriture du mois »
+    était l'étape suivante et le pont refusait. `rienAEcrire` vient du moteur (la MÊME fonction que
+    l'écriture), le pont refuse par `MOTIF_RIEN_A_ECRIRE`, le bouton s'éteint avec cette phrase, et
+    le vert passe au dépôt (9.4.5, un cran plus haut).
+  - **Un contrôle qui bloque porte le geste qui le débloque** (« Voir le brouillard ») ; la visite
+    le dit, fait préparer par un vrai clic, et saute l'écriture quand son bouton est éteint.
+  - **Une fin attend la fenêtre ouverte** : la carte « Bravo » se posait sur le compte rendu qu'on
+    lisait encore.
+  - **Une visite qui a gagné des étapes se reprend par TITRE**, jamais par rang (`pointDeReprise`) ;
+    une étape disparue fait repartir du début, et le dit.
+  - **Le libellé CLASSE les comptes proposés, il n'en ajoute jamais** (`comptesQuiCorrespondent`,
+    4e argument) : « frais » sur « FRAIS TENUE DE COMPTE » mettait 608 en tête. Chaque mot courant
+    désigne un compte que le plan connaît (lu par `libelleDuPlan` : le plan est rangé par PRÉFIXE).
+  - **Une liste ouverte depuis une fenêtre passe au-dessus d'elle** (`.sugg-fixe`, z 850 : entre
+    les fenêtres et les bulles).
+  - **Un zéro se colle dans la case de sa RUBRIQUE** (`caseCopie`) : le message disait « Copié :
+    Aucune retenue ce mois : ni salaire, ni… ».
+  - **Le filet ne crie pas avant d'avoir quelque chose à protéger** (9.4.4, porté au panneau
+    Sécurité) : sans vrai paquet, la clé de secours se dit en gris, sans vert.
+  - **« 4 / 9 » au-dessus de « Tout est en place » se contredisent** : quand seules des étapes
+    facultatives restent, la phrase le dit (« L'indispensable est fait »).
+  - Trois assertions anciennes recopiaient une forme (le panneau Sécurité, le calcul du vert deux
+    fois) : retournées vers la règle ; le vert se JOUE sur ses états (vm). Et une preuve est restée
+    verte sur la lecture des classeurs : remplir les cellules vides est redondant (`join` rend un
+    trou vide) — ce n'était pas un défaut, et on ne le prétend pas testé.
 
 ## Pistes pour la suite (non demandées)
 

@@ -28,6 +28,19 @@ Publiée en **bêta** : elle touche au moteur comptable (retenue à la source, d
 - **Chaque champ porte sa bulle « i »** (salarié, bulletin, bien, relevé, abonnement, révision,
   clôture…), qui dit ce que le logiciel fait de la valeur.
 - **Les CSV** écrivent montants et dates comme l'app entreprise (`1 200,500`, `26/09/2026`).
+- **Le parcours d'un débutant, fait uniquement avec « Guide-moi » et « Me guider »** : les visites
+  mettent en tête ce qu'on peut faire maintenant (« Importer le relevé » avant « Rapprocher »), un
+  geste bancaire attend son relevé et le dit, la visite de la TVA fait préparer, signale le brouillard
+  qui n'entre dans aucun chiffre, et saute l'écriture d'un mois sans TVA. Une visite reprise retrouve
+  son étape par son titre ; la carte de fin attend que la fenêtre ouverte se ferme.
+- **Un mois sans TVA** n'a plus de bouton vert qui mène à un refus : « Aucune écriture à passer », et
+  l'étape suivante devient le dépôt.
+- **Les comptes proposés dans la grille et depuis la banque** se classent d'après le libellé de la
+  ligne (« FRAIS TENUE DE COMPTE » met 627 en tête), sans en ajouter un que la recherche n'a pas
+  trouvé ; la liste passe au-dessus de la fenêtre qui l'ouvre, et le curseur va dans la contrepartie.
+- **La clé de secours ne se réclame plus** tant qu'aucun vrai paquet n'est reçu (elle ne protège que
+  les paquets) ; « Tes premiers pas » dit quand l'indispensable est fait.
+- **Le solde de fin d'un relevé** dit pendant la frappe s'il tombe juste.
 
 **Pour l'entreprise (SkanFact)**
 - **Un acompte demandé en montant fait ce montant**, timbre compris (500 DT demandés faisaient 501,002).

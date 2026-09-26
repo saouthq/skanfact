@@ -267,20 +267,55 @@
     return rows.filter(r => r.length > 1 || txt(r[0]) !== '');
   }
 
+  // 10.14.1 (IMP-01) — le séparateur se DÉDUIT des premières lignes, pas de la première seule. Un
+  // export de banque ou de logiciel commence souvent par un titre (« Relevé de compte courant »,
+  // « Journal général au 31/12 ») qui ne porte aucun séparateur : la première ligne seule faisait
+  // choisir au hasard. On retient le séparateur qui découpe le plus la ligne qui en porte le plus.
+  function separateurCsv(brut) {
+    const lignes = String(brut || '').split(/\r?\n/).slice(0, 20);
+    let meilleur = ';', max = 0;
+    [';', '\t', ','].forEach(c => {
+      const n = lignes.reduce((m, l) => Math.max(m, l.split(c).length - 1), 0);
+      if (n > max) { max = n; meilleur = c; }
+    });
+    return meilleur;
+  }
+  // Les rangées d'un texte de tableur, séparateur déduit. C'est la porte des imports du Cabinet
+  // (plan, balance, relevé) : `cabcore.parseCsv` ne connaît que le point-virgule, et un relevé en
+  // virgules ou en tabulations y devenait une seule colonne.
+  function rangeesDeTexte(texte) {
+    const brut = String(texte || '').replace(/^﻿/, '');
+    return lignesCsv(brut, separateurCsv(brut));
+  }
+  // 10.14.1 (IMP-01) — la ligne de TITRES n'est pas toujours la première. Une banque écrit son nom,
+  // le titulaire, le numéro de compte et la période au-dessus de son tableau ; un logiciel écrit le
+  // nom du dossier. Prendre la première ligne pour les titres faisait proposer « BANQUE
+  // INTERNATIONALE… », « Colonne 2 », « Colonne 3 » à associer — à un comptable qui avait choisi le
+  // fichier tel que sa banque le donne, c'est-à-dire exactement ce que l'écran lui demandait.
+  // On cherche parmi les trente premières rangées la première qui NOMME les colonnes attendues.
+  function ligneDEntete(rows, estEntete) {
+    const n = Math.min((rows || []).length, 30);
+    for (let i = 0; i < n; i++) if (estEntete(rows[i] || [])) return i;
+    return 0;
+  }
+
   function entreesDepuisCsv(texte) {
     const brut = String(texte || '').replace(/^﻿/, '');
-    const tete = (brut.split(/\r?\n/)[0] || '');
-    // Le séparateur se DÉDUIT de l'entête : celui qu'on y voit le plus. Un fichier exporté d'un
-    // tableur anglophone arrive en tabulations, et le refuser n'apprendrait rien à personne.
-    const sep = [';', '\t', ','].map(c => [c, tete.split(c).length]).sort((a, b) => b[1] - a[1])[0][0];
+    // Le séparateur se DÉDUIT : celui qu'on voit le plus. Un fichier exporté d'un tableur
+    // anglophone arrive en tabulations, et le refuser n'apprendrait rien à personne.
+    const sep = separateurCsv(brut);
     const rows = lignesCsv(brut, sep);
     const out = [];
     out.ignorees = 0; out.colonnes = {}; out.sep = sep;
     if (!rows.length) { out.entete = false; return out; }
 
-    const entete = rows[0].map(c => txt(c).toLowerCase());
-    const map = {};
-    entete.forEach((nom, i) => { if (ENTETES[nom] && map[ENTETES[nom]] == null) map[ENTETES[nom]] = i; });
+    const mapDe = ligne => {
+      const m = {};
+      ligne.map(c => txt(c).toLowerCase()).forEach((nom, i) => { if (ENTETES[nom] && m[ENTETES[nom]] == null) m[ENTETES[nom]] = i; });
+      return m;
+    };
+    const h = ligneDEntete(rows, l => mapDe(l).account != null);
+    const map = mapDe(rows[h]);
     out.colonnes = map;
     // Sans colonne « Compte », ce n'est pas un fichier d'écritures. On le dit au lieu de rendre
     // deux cents lignes vides : un import qui réussit sur rien est pire qu'un import qui refuse.
@@ -292,7 +327,7 @@
     // tout le tableur. Une ligne de tableur se compte à partir de 1, entête compris — c'est le numéro
     // que le comptable voit à gauche de sa feuille.
     out.ignoreesLignes = [];
-    for (let r = 1; r < rows.length; r++) {
+    for (let r = h + 1; r < rows.length; r++) {
       const c = rows[r];
       const at = k => (map[k] == null ? '' : txt(c[map[k]]));
       const account = at('account');
@@ -320,13 +355,147 @@
   // Windows-1252, pas en UTF-8 : lu comme de l'UTF-8, « Hôtel » devenait « H�tel » sur chaque fiche.
   // Un classeur (.xlsx, .ods, .xls) n'est pas du texte : on le DIT, avec le geste qui marche, au
   // lieu d'afficher des caractères illisibles.
-  function lireFichierTexte(octets, nom) {
+  // 10.14.1 (IMP-01) — un classeur Excel se LIT, il ne se refuse plus. Une banque, un logiciel de
+  // paie ou un confrère donnent un .xlsx neuf fois sur dix, et « enregistre-le au format CSV »
+  // demandait à un comptable un geste que son tableur lui cache derrière trois menus — et qui, sous
+  // Windows, écrit un fichier dans un encodage que personne ne choisit. Un .xlsx est un ZIP de XML :
+  // `main.js` l'ouvre (zip.js), ceci lit la PREMIÈRE feuille et la rend en texte de tableur
+  // (point-virgule), pour que la suite de chaque import reste la même.
+  //
+  // Ce qu'un classeur a de piégeux, et que ce lecteur tient :
+  //  - les textes vivent dans une table à part (sharedStrings) : une cellule `t="s"` n'en porte que
+  //    le RANG ;
+  //  - une DATE est un nombre de jours depuis 1900 (ou 1904), et seul le FORMAT de la cellule dit que
+  //    c'est une date : lue comme un nombre, le 02/10/2026 devenait « 46297 » ;
+  //  - une cellule vide n'existe pas dans le fichier : c'est sa RÉFÉRENCE (« D7 ») qui dit sa colonne.
+  const XML_ENTITES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" };
+  const xmlTexte = s => String(s || '').replace(/&(#x[0-9a-f]+|#\d+|amp|lt|gt|quot|apos);/gi, (m, e) => {
+    if (e[0] === '#') return String.fromCodePoint(e[1] === 'x' || e[1] === 'X' ? parseInt(e.slice(2), 16) : Number(e.slice(1)));
+    return XML_ENTITES[e.toLowerCase()] || m;
+  });
+  // Le texte d'un `<si>` ou d'un `<is>` : toutes ses `<t>`, sauf la phonétique (`<rPh>`).
+  const texteXml = frag => {
+    const sans = String(frag || '').replace(/<rPh\b[\s\S]*?<\/rPh>/g, '');
+    let out = ''; const re = /<t(?:\s[^>]*)?>([\s\S]*?)<\/t>/g; let m;
+    while ((m = re.exec(sans))) out += xmlTexte(m[1]);
+    return out;
+  };
+  const DATES_INTEGREES = new Set([14, 15, 16, 17, 22, 27, 28, 29, 30, 31, 34, 35, 36, 45, 46, 47, 50, 51, 52, 53, 54, 55, 56, 57, 58]);
+  function formatEstDate(code) {
+    const c = String(code || '').replace(/"[^"]*"/g, '').replace(/\\./g, '').replace(/\[[^\]]*\]/g, '').toLowerCase();
+    return /[dy]/.test(c) || /mmm/.test(c);
+  }
+  const colonneDe = ref => {
+    const m = /^([A-Z]+)/.exec(String(ref || ''));
+    if (!m) return -1;
+    return m[1].split('').reduce((n, c) => n * 26 + (c.charCodeAt(0) - 64), 0) - 1;
+  };
+  // Un nombre de jours Excel → « JJ/MM/AAAA », en UTC pur (règle 5.2.3) : c'est un JOUR, pas un
+  // instant. Le système 1900 compte depuis le 30/12/1899 (Excel croit au 29/02/1900, le décalage est
+  // déjà dans cette origine) ; le système 1904 depuis le 01/01/1904.
+  function jourExcel(serie, date1904) {
+    const t = (date1904 ? Date.UTC(1904, 0, 1) : Date.UTC(1899, 11, 30)) + Math.floor(Number(serie)) * 86400000;
+    const d = new Date(t);
+    return `${String(d.getUTCDate()).padStart(2, '0')}/${String(d.getUTCMonth() + 1).padStart(2, '0')}/${d.getUTCFullYear()}`;
+  }
+  const celluleCsv = v => /[;"\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+
+  // `lire(nom)` rend le texte d'un fichier du classeur, ou null. Pure : les tests lui donnent des XML.
+  function texteDeClasseur(lire) {
+    const wb = lire('xl/workbook.xml');
+    if (wb == null) return { ok: false, motif: '' };
+    const date1904 = /<workbookPr\b[^>]*\bdate1904="(1|true)"/i.test(wb);
+    // La PREMIÈRE feuille dans l'ordre du classeur, pas « sheet1.xml » : une feuille déplacée garde
+    // son nom de fichier.
+    const premiere = /<sheet\b[^>]*\br:id="([^"]+)"/.exec(wb);
+    let chemin = 'xl/worksheets/sheet1.xml';
+    const rels = lire('xl/_rels/workbook.xml.rels');
+    if (premiere && rels) {
+      const rel = new RegExp(`<Relationship\\b[^>]*\\bId="${premiere[1].replace(/[^\w-]/g, '')}"[^>]*>`).exec(rels);
+      const cible = rel && /\bTarget="([^"]+)"/.exec(rel[0]);
+      if (cible) chemin = cible[1].startsWith('/') ? cible[1].slice(1) : 'xl/' + cible[1].replace(/^\.\//, '');
+    }
+    const feuille = lire(chemin);
+    if (feuille == null) return { ok: false, motif: 'La première feuille de ce classeur est introuvable.' };
+    const partages = [];
+    const ss = lire('xl/sharedStrings.xml');
+    if (ss) { const re = /<si\b[^>]*>([\s\S]*?)<\/si>/g; let m; while ((m = re.exec(ss))) partages.push(texteXml(m[1])); }
+    // Les formats de cellule (styles.xml) : lesquels sont des dates.
+    const estDateStyle = [];
+    const st = lire('xl/styles.xml');
+    if (st) {
+      const perso = {};
+      const reF = /<numFmt\b[^>]*numFmtId="(\d+)"[^>]*formatCode="([^"]*)"/g; let m;
+      while ((m = reF.exec(st))) perso[m[1]] = xmlTexte(m[2]);
+      const xfs = /<cellXfs\b[^>]*>([\s\S]*?)<\/cellXfs>/.exec(st);
+      if (xfs) {
+        const reX = /<xf\b([^>]*)\/?>/g;
+        while ((m = reX.exec(xfs[1]))) {
+          const id = Number((/numFmtId="(\d+)"/.exec(m[1]) || [])[1] || 0);
+          estDateStyle.push(DATES_INTEGREES.has(id) || (perso[id] != null && formatEstDate(perso[id])));
+        }
+      }
+    }
+    const rangees = [];
+    // Une rangée VIDE n'existe pas dans le fichier non plus : c'est son numéro (`r="7"`) qui dit
+    // où elle est. Sans lui, « ligne 7 » d'un refus ne serait plus la ligne 7 du tableur.
+    const reRow = /<row\b([^>]*)>([\s\S]*?)<\/row>|<row\b([^>]*)\/>/g; let mr;
+    while ((mr = reRow.exec(feuille))) {
+      const numero = Number((/\br="(\d+)"/.exec(mr[1] || mr[3] || '') || [])[1] || 0);
+      while (numero && rangees.length < numero - 1) rangees.push([]);
+      const cells = [];
+      const reC = /<c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g; let mc;
+      while ((mc = reC.exec(mr[2] || ''))) {
+        const att = mc[1], corps = mc[2] || '';
+        const ref = (/\br="([A-Z]+\d+)"/.exec(att) || [])[1];
+        const t = (/\bt="([^"]+)"/.exec(att) || [])[1] || 'n';
+        const s = Number((/\bs="(\d+)"/.exec(att) || [])[1] || 0);
+        const v = (/<v>([\s\S]*?)<\/v>/.exec(corps) || [])[1];
+        let val = '';
+        if (t === 's') val = partages[Number(v)] || '';
+        else if (t === 'inlineStr') val = texteXml(corps);
+        else if (t === 'str' || t === 'e') val = xmlTexte(v || '');
+        else if (t === 'b') val = v === '1' ? 'VRAI' : v === '0' ? 'FAUX' : '';
+        else if (v != null && v !== '') {
+          const n = Number(v);
+          val = !isFinite(n) ? xmlTexte(v) : estDateStyle[s] ? jourExcel(n, date1904) : String(Math.round(n * 1e6) / 1e6);
+        }
+        const i = ref ? colonneDe(ref) : cells.length;
+        while (cells.length < i) cells.push('');
+        cells[i] = val;
+      }
+      rangees.push(cells);
+    }
+    return { ok: true, texte: rangees.map(c => c.map(x => celluleCsv(String(x))).join(';')).join('\n') };
+  }
+
+  function lireFichierTexte(octets, nom, opts) {
     const u8 = octets instanceof Uint8Array ? octets : new Uint8Array(octets || []);
     const debut = Array.from(u8.slice(0, 4));
+    // Un .xlsx se lit quand l'appelant sait ouvrir un ZIP (le processus principal, qui a zlib). Un
+    // .ods (LibreOffice) et un .xls (l'ancien format binaire d'Excel) restent refusés, avec le
+    // geste qui marche : les enregistrer en .xlsx.
+    if (debut[0] === 0x50 && debut[1] === 0x4b && opts && typeof opts.dezipper === 'function') {
+      let entrees = null;
+      try { entrees = opts.dezipper(u8); } catch (_) { entrees = null; }
+      if (entrees) {
+        const par = {};
+        entrees.forEach(e => { par[e.name] = e; });
+        const lire = n => { const e = par[n]; if (!e) return null; try { return new TextDecoder('utf-8').decode(e.data()); } catch (_) { return null; } };
+        if (par['xl/workbook.xml']) {
+          const r = texteDeClasseur(lire);
+          if (r.ok) return { ok: true, texte: r.texte, classeur: true };
+          return { ok: false, motif: `« ${nom || 'Ce classeur'} » ne se lit pas : ${r.motif || 'sa première feuille est illisible.'} Ouvre-le dans ton tableur et enregistre-le de nouveau (Excel .xlsx ou CSV).` };
+        }
+        if (par['content.xml']) {
+          return { ok: false, motif: `« ${nom || 'Ce fichier'} » est un classeur LibreOffice (.ods). Dans LibreOffice : Fichier → Enregistrer sous… → « Excel 2007-365 (.xlsx) », puis choisis ce fichier-là.` };
+        }
+      }
+    }
     const classeur = (debut[0] === 0x50 && debut[1] === 0x4b) ? 'un classeur (Excel .xlsx ou LibreOffice .ods)'
-      : (debut[0] === 0xd0 && debut[1] === 0xcf && debut[2] === 0x11 && debut[3] === 0xe0) ? 'un classeur Excel (.xls)' : '';
+      : (debut[0] === 0xd0 && debut[1] === 0xcf && debut[2] === 0x11 && debut[3] === 0xe0) ? 'un classeur Excel de l\'ancien format (.xls)' : '';
     if (classeur) {
-      return { ok: false, motif: `« ${nom || 'Ce fichier'} » est ${classeur}, pas du texte. Dans ton tableur, sélectionne les lignes, copie-les et colle-les ici — ou enregistre-le au format CSV, puis ouvre ce fichier-là.` };
+      return { ok: false, motif: `« ${nom || 'Ce fichier'} » est ${classeur}. Dans Excel : Fichier → Enregistrer sous… → « Classeur Excel (.xlsx) » ou « CSV (séparateur : point-virgule) », puis choisis ce fichier-là. Tu peux aussi sélectionner les lignes, les copier et les coller ici.` };
     }
     let texte;
     if (debut[0] === 0xff && debut[1] === 0xfe) texte = new TextDecoder('utf-16le').decode(u8.slice(2));
@@ -795,6 +964,39 @@
     ['77', 'Gains extraordinaires'], ['775', 'Produits des cessions d\'immobilisations'], ['78', 'Reprises sur amortissements et provisions'],
     ['79', 'Transferts de charges']
   ];
+
+  // Les MOTS de tous les jours qui mènent à un compte : ce qu'on tape quand on ne connaît pas le
+  // nom du plan (« loyer » pour 613 « Locations », « électricité » pour 606). Ils ne servent qu'à
+  // CHERCHER — jamais à ranger une pièce d'office : le compte reste choisi par la personne. Chaque
+  // clé existe dans PLAN_COMPTABLE (un test le tient) ; un sous-compte (6132) hérite des mots de son
+  // compte (613) par le plus long préfixe.
+  const MOTS_COURANTS = {
+    101: ['capital'], 12: ['resultat', 'report'],
+    401: ['fournisseur', 'facture fournisseur'], 411: ['client', 'facture client'],
+    421: ['salaire du', 'net a payer'], 4321: ['irpp', 'impot sur salaire'],
+    4352: ['retenue a la source', 'rs'], 4358: ['retenue subie', 'rs'],
+    4366: ['tva deductible', 'tva achat'], 4367: ['tva collectee', 'tva vente'], 4365: ['tva a payer'],
+    4368: ['timbre'], 4531: ['cnss'], 442: ['associe', 'gerant', 'compte courant'],
+    532: ['banque', 'compte bancaire', 'virement', 'cheque', 'biat', 'stb', 'bna', 'attijari', 'amen', 'ubci', 'bh', 'zitouna'],
+    54: ['caisse', 'especes', 'liquide', 'cash'],
+    601: ['matiere premiere'], 606: ['fourniture', 'electricite', 'steg', 'eau', 'sonede', 'gaz', 'carburant', 'essence', 'papeterie'],
+    607: ['marchandise', 'achat de marchandises', 'revente'],
+    611: ['sous-traitance'], 613: ['loyer', 'location', 'bail'], 615: ['entretien', 'reparation', 'maintenance'],
+    616: ['assurance'], 622: ['honoraires', 'avocat', 'comptable', 'expert'], 623: ['publicite', 'pub', 'annonce'],
+    624: ['transport', 'livraison', 'fret'], 625: ['deplacement', 'voyage', 'restaurant', 'mission', 'hotel'],
+    626: ['telephone', 'internet', 'poste', 'ooredoo', 'orange', 'tunisie telecom', 'topnet', 'mobile'],
+    627: ['frais bancaires', 'commission', 'agios', 'tenue de compte', 'frais de banque'],
+    640: ['salaire', 'paie', 'personnel'], 645: ['cnss patronale', 'charges sociales'],
+    651: ['interet'], 661: ['tfp', 'foprolos'], 665: ['tcl', 'taxe'],
+    681: ['amortissement', 'dotation'],
+    706: ['prestation', 'service vendu'], 707: ['vente', 'vente de marchandises', 'recette']
+  };
+  function motsCourantsDe(compte) {
+    const n = String(compte || '').trim();
+    let best = '';
+    Object.keys(MOTS_COURANTS).forEach(p => { if (n.startsWith(p) && p.length > best.length) best = p; });
+    return best ? MOTS_COURANTS[best] : [];
+  }
 
   // Le nom d'un compte d'après le plan, par le plus LONG préfixe : `4366` donne « TVA déductible »
   // et pas « Tiers ». Rend `''` quand le plan ne connaît pas le numéro — c'est à l'appelant de
@@ -1422,11 +1624,39 @@
     };
   }
 
+  // Les comptes qu'on PEUT proposer à la frappe (10.14.1, BANK-02) : ceux du plan du dossier, puis
+  // ceux du plan de référence qu'il n'a pas encore. Un dossier qui vient de naître n'a que les
+  // comptes de sa balance d'ouverture : chercher « achat » dans ce seul plan ne rendait rien, et le
+  // débutant tapait un mot à la place d'un numéro. Un compte de référence est marqué `horsPlan` —
+  // il entrera au plan à l'enregistrement (10.14.0), et la liste le dit. Une classe (« 6 ») ou un
+  // groupe qui a des sous-comptes (« 60 ») ne s'imputent pas.
+  function comptesProposables(plan) {
+    const du = (Array.isArray(plan) ? plan : []).filter(c => c && c.compte && !c.desactive);
+    const deja = new Set(du.map(c => String(c.compte)));
+    // Un compte à deux chiffres qui n'a aucun sous-compte au plan (54 Caisse, 12 Résultat) se
+    // saisit tel quel : l'écarter faisait chercher « caisse » dans le vide (10.14.1). Les classes
+    // et les groupes qui ont des sous-comptes (53, 60…) restent de côté.
+    const feuille = n => n.length >= 3 || (n.length === 2 && !PLAN_COMPTABLE.some(([m]) => m.length > 2 && m.startsWith(n)));
+    const ref = PLAN_COMPTABLE.filter(([n]) => feuille(n) && !deja.has(n))
+      .map(([compte, libelle]) => ({ compte, libelle, horsPlan: true }));
+    return du.concat(ref);
+  }
+
   // Chercher un compte par NUMÉRO ou par NOM pendant la frappe. L'ordre n'est pas décoratif : celui
   // qui tape « 411 » veut le compte 411, pas « Achats 411xx » ; celui qui tape « client » veut les
   // comptes dont le nom commence par là. Un classement au hasard rend la liste inutilisable, et on
   // retourne taper le numéro de mémoire — ce que cette liste existe précisément pour éviter.
-  function comptesQuiCorrespondent(plan, q, max) {
+  // `contexte` (facultatif) : le libellé de la ligne qu'on écrit — une ligne de relevé. Parmi les
+  // comptes qui répondent à ce qu'on a TAPÉ, ceux que le libellé nomme aussi passent devant, et le
+  // disent (`parLibelle`) : « frais » sur « FRAIS TENUE DE COMPTE » proposait 608, frais d'achat, en
+  // tête — un débutant prend le premier (vu en guidant, 26/09). Le libellé ne fait jamais entrer un
+  // compte que la frappe n'a pas trouvé : il classe, il ne choisit pas.
+  function dansLeLibelle(numero, contexte) {
+    if (!contexte) return false;
+    const ctx = ' ' + sansAccents(contexte).replace(/[^a-z0-9]+/g, ' ').trim() + ' ';
+    return motsCourantsDe(numero).some(w => ctx.includes(' ' + w + ' '));
+  }
+  function comptesQuiCorrespondent(plan, q, max, contexte) {
     const terme = sansAccents(q).trim();
     const n = Math.max(1, Number(max) || 12);
     const tous = (Array.isArray(plan) ? plan : []).filter(c => c && c.compte && !c.desactive);
@@ -1439,11 +1669,15 @@
       if (numero.startsWith(terme)) return 1;
       if (lib.startsWith(terme)) return 2;
       if (mots.every(m => numero.includes(m) || lib.includes(m))) return 3;
+      // Le mot qu'on emploie, pas celui du plan : « loyer » ne trouvait pas « Locations » (vu au
+      // guide, un comptable débutant, 10.14.1). Après les numéros et les noms, jamais avant.
+      const courants = motsCourantsDe(numero);
+      if (courants.length && mots.every(m => courants.some(w => w.split(' ').some(x => x.startsWith(m))))) return 4;
       return -1;
     };
-    return tous.map(c => ({ c, r: rang(c) })).filter(x => x.r >= 0)
-      .sort((a, b) => a.r - b.r || (a.c.compte < b.c.compte ? -1 : 1))
-      .slice(0, n).map(x => x.c);
+    return tous.map(c => ({ c, r: rang(c), l: dansLeLibelle(c.compte, contexte) })).filter(x => x.r >= 0)
+      .sort((a, b) => (b.l - a.l) || a.r - b.r || (a.c.compte < b.c.compte ? -1 : 1))
+      .slice(0, n).map(x => (x.l ? { ...x.c, parLibelle: true } : x.c));
   }
 
   // Modifier un brouillard. Le garde-fou est ici, pas dans l'écran : `modifierEcriture` est le seul
@@ -2012,23 +2246,29 @@
   function planDepuisCsv(rows) {
     const r = Array.isArray(rows) ? rows : [];
     if (!r.length) return { comptes: [], ignorees: [], motif: 'Le fichier est vide.' };
-    const col = colonnesPar(r[0], {
+    const ALIAS = {
       compte: ['compte', 'numero', 'numerodecompte', 'ncompte', 'code'],
       libelle: ['libelle', 'intitule', 'nom', 'designation'],
       nature: ['nature', 'type', 'classe'],
       parent: ['parent', 'rattachea', 'collectif']
-    });
+    };
+    // Un plan exporté d'un autre logiciel porte souvent un titre au-dessus du tableau (IMP-01).
+    const h = ligneDEntete(r, l => { const c = colonnesPar(l, ALIAS); return c.compte !== undefined && c.libelle !== undefined; });
+    const col = colonnesPar(r[h], ALIAS);
     if (col.compte === undefined || col.libelle === undefined) {
       return { comptes: [], ignorees: [], motif: 'Il faut au moins une colonne « Compte » et une colonne « Libellé ».' };
     }
     const comptes = [], ignorees = [], vus = new Set();
-    r.slice(1).forEach((ligne, i) => {
+    r.slice(h + 1).forEach((ligne, i) => {
+      // Le numéro de ligne est celui du TABLEUR (la rangée le porte), pas un rang recompté.
+      const no = ligne.no || (h + i + 2);
       const n = String(ligne[col.compte] || '').trim();
       const lib = String(ligne[col.libelle] || '').trim();
       if (!n && !lib) return;                                  // ligne vide : on n'en parle pas
-      if (!/^\d{1,12}$/.test(n)) { ignorees.push({ ligne: i + 2, motif: `« ${n || '(vide)'} » n'est pas un numéro de compte`, valeur: n }); return; }
-      if (!lib) { ignorees.push({ ligne: i + 2, motif: `le compte ${n} n'a pas de libellé`, valeur: n }); return; }
-      if (vus.has(n)) { ignorees.push({ ligne: i + 2, motif: `le compte ${n} figure deux fois`, valeur: n }); return; }
+      if (ligneDeTotal(n)) return;                            // « Total classe 4 » : un total, pas un compte
+      if (!/^\d{1,12}$/.test(n)) { ignorees.push({ ligne: no, motif: `« ${n || '(vide)'} » n'est pas un numéro de compte`, valeur: n }); return; }
+      if (!lib) { ignorees.push({ ligne: no, motif: `le compte ${n} n'a pas de libellé`, valeur: n }); return; }
+      if (vus.has(n)) { ignorees.push({ ligne: no, motif: `le compte ${n} figure deux fois`, valeur: n }); return; }
       vus.add(n);
       const nat = col.nature !== undefined ? normEntete(ligne[col.nature]) : '';
       comptes.push({
@@ -2044,20 +2284,23 @@
   function balanceDepuisCsv(rows) {
     const r = Array.isArray(rows) ? rows : [];
     if (!r.length) return { lignes: [], ignorees: [], motif: 'Le fichier est vide.' };
-    const col = colonnesPar(r[0], {
+    const ALIAS = {
       compte: ['compte', 'numero', 'numerodecompte', 'ncompte', 'code'],
       libelle: ['libelle', 'intitule', 'nom', 'designation'],
       debit: ['debit', 'soldedebit', 'debiteur', 'soldedebiteur'],
       credit: ['credit', 'soldecredit', 'crediteur', 'soldecrediteur']
-    });
+    };
+    // « Balance générale au 31/12/2025 » au-dessus du tableau : on cherche la ligne des titres (IMP-01).
+    const h = ligneDEntete(r, l => { const c = colonnesPar(l, ALIAS); return c.compte !== undefined && c.debit !== undefined && c.credit !== undefined; });
+    const col = colonnesPar(r[h], ALIAS);
     if (col.compte === undefined || col.debit === undefined || col.credit === undefined) {
       return { lignes: [], ignorees: [], motif: 'Il faut les colonnes « Compte », « Débit » et « Crédit ».' };
     }
     const lignes = [], ignorees = [];
-    r.slice(1).forEach((ligne, i) => {
+    r.slice(h + 1).forEach((ligne, i) => {
       const n = String(ligne[col.compte] || '').trim();
-      if (!n) return;
-      if (!/^\d{1,12}$/.test(n)) { ignorees.push({ ligne: i + 2, motif: `« ${n} » n'est pas un numéro de compte`, valeur: n }); return; }
+      if (!n || ligneDeTotal(n)) return;                     // « Total général » : un total, pas un compte
+      if (!/^\d{1,12}$/.test(n)) { ignorees.push({ ligne: ligne.no || (h + i + 2), motif: `« ${n} » n'est pas un numéro de compte`, valeur: n }); return; }
       const d = nombreDepuisCsv(ligne[col.debit]), c = nombreDepuisCsv(ligne[col.credit]);
       if (!d && !c) return;                                    // un compte à zéro n'ouvre rien
       lignes.push({ compte: n, libelle: col.libelle !== undefined ? String(ligne[col.libelle] || '').trim() : '', debit: round3(d), credit: round3(c) });
@@ -2100,33 +2343,100 @@
     return { colonnes: col, manque, entetes: (tete || []).map(t => txt(t)) };
   }
 
+  // Une ligne de relevé qui n'est pas un MOUVEMENT : « Solde initial », « Nouveau solde », « Total
+  // des mouvements ». Les compter comme des mouvements fausserait tout le relevé — un solde de
+  // 5 000 lu comme un versement, un total qui double chaque colonne. On les reconnaît au mot qui
+  // COMMENCE la ligne, et « solde » seulement suivi d'un mot de solde : « SOLDE FACTURE 123 » est un
+  // vrai mouvement, un règlement qui solde une facture.
+  const motsLigne = v => String(v == null ? '' : v).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ').trim();
+  const SUITE_SOLDE = /^(initial|final|au|du|a|debut|de debut|fin|de fin|precedent|anterieur|reporte|report|crediteur|debiteur|disponible|comptable|d ouverture|de cloture|actuel|en date|nouveau|de depart)\b/;
+  function ligneDeSolde(texte) {
+    const t = motsLigne(texte);
+    const m = /^(ancien |nouveau |nouvel )?solde(?: (.*))?$/.exec(t);
+    return !!m && (!!m[1] || !m[2] || SUITE_SOLDE.test(m[2]));
+  }
+  function ligneDeTotal(texte) { return /^(sous )?totale?s?\b|^totaux\b/.test(motsLigne(texte)); }
+  // Un montant écrit dans une cellule, et SEULEMENT un montant : la date d'un « Solde au 31/10/2026 »
+  // n'en est pas un (lue par `nombreDepuisCsv`, elle donnait 31 102 026).
+  function celluleMontant(v) {
+    const s = txt(v);
+    if (!/\d/.test(s) || /\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}/.test(s)) return null;
+    const m = /^([+\-−]?)\s*([\d\s  .,]+?)\s*(dt|tnd|d|db|c|cr)?\s*([+\-−]?)$/i.exec(s);
+    if (!m) return null;
+    let n = nombreDepuisCsv(m[2]);
+    const signe = (m[1] || m[4] || '').replace('−', '-');
+    const suffixe = (m[3] || '').toLowerCase();
+    if (signe === '-' || suffixe === 'd' || suffixe === 'db') n = -n;
+    return round3(n);
+  }
+  // Le solde que porte une ligne « Solde… » : dans la colonne Débit, il est débiteur (négatif pour la
+  // banque, c'est un découvert) ; dans Crédit ou Montant, tel qu'il est écrit ; sinon, le montant
+  // qu'on trouve ailleurs sur la ligne.
+  function montantDeSolde(l, col) {
+    const lu = k => (col[k] !== undefined ? celluleMontant(l[col[k]]) : null);
+    const d = lu('debit'), c = lu('credit'), m = lu('montant');
+    if (d) return -Math.abs(d);
+    if (c) return Math.abs(c);
+    if (m) return m;
+    for (let i = l.length - 1; i >= 0; i--) {
+      if (i === col.date || i === col.libelle) continue;
+      const v = celluleMontant(l[i]);
+      if (v) return v;
+    }
+    return null;
+  }
+
   // Le signe est celui de la BANQUE : un crédit bancaire (l'argent entre) est positif, un débit
   // négatif. C'est le seul endroit du livre où un montant porte un signe, et c'est voulu : un
   // relevé se relit à côté de son original papier, et l'inverser rendrait la comparaison
   // impossible. La conversion en débit/crédit comptable se fait au rapprochement, pas ici.
+  //
+  // 10.14.1 (IMP-01) — un relevé tel que la banque l'exporte : des lignes de présentation au-dessus
+  // du tableau (la ligne des TITRES se cherche), et des lignes de solde et de total dedans ou autour.
+  // Les soldes que la banque écrit sont RENDUS (`soldes`) : c'est exactement ce que la fenêtre
+  // demandait de recopier du relevé papier. Les totaux ne sont ni des mouvements ni des soldes.
   function releveDepuisCsv(rows, assoc) {
     const r = (Array.isArray(rows) ? rows : []).filter(l => Array.isArray(l) && l.some(c => txt(c)));
-    if (!r.length) return { lignes: [], ignorees: [], colonnes: {}, motif: 'Le fichier est vide.' };
-    const devine = colonnesReleve(r[0]);
+    if (!r.length) return { lignes: [], ignorees: [], colonnes: {}, soldes: { debut: null, fin: null }, motif: 'Le fichier est vide.' };
+    const h = ligneDEntete(r, l => {
+      const c = colonnesReleve(l).colonnes;
+      return c.date !== undefined && (c.montant !== undefined || c.debit !== undefined || c.credit !== undefined);
+    });
+    const devine = colonnesReleve(r[h]);
     const col = (assoc && Object.keys(assoc).length) ? assoc : devine.colonnes;
     const aDate = col.date !== undefined, aLib = col.libelle !== undefined;
     const aMontant = col.montant !== undefined;
     const aDC = col.debit !== undefined && col.credit !== undefined;
     if (!aDate || !aLib || (!aMontant && !aDC)) {
       return {
-        lignes: [], ignorees: [], colonnes: col, entetes: devine.entetes, manque: devine.manque,
+        lignes: [], ignorees: [], colonnes: col, entetes: devine.entetes, manque: devine.manque, ligneTitres: (r[h] && r[h].no) || h + 1,
+        soldes: { debut: null, fin: null },
         motif: 'Ce fichier n\'a pas les colonnes attendues : il faut une date, un libellé, et un montant (ou un débit et un crédit). Associe-les à la main, je retiendrai l\'association pour cette banque.'
       };
     }
-    const lignes = [], ignorees = [];
-    r.slice(1).forEach((l, i) => {
+    const lignes = [], ignorees = [], soldesLus = [];
+    let totaux = 0;
+    // Une rangée « Solde… » au-dessus des titres (le résumé de la banque) compte aussi.
+    const estSolde = l => ligneDeSolde(l[col.libelle]) || l.some(c => ligneDeSolde(c));
+    r.slice(0, h).forEach(l => {
+      if (estSolde(l)) { const v = montantDeSolde(l, col); if (v != null) soldesLus.push({ rang: -1, texte: motsLigne(l.join(' ')), montant: v }); }
+    });
+    r.slice(h + 1).forEach((l, i) => {
+      const no = l.no || (h + i + 2);
+      if (estSolde(l)) {
+        const v = montantDeSolde(l, col);
+        if (v != null) soldesLus.push({ rang: lignes.length, texte: motsLigne(l.join(' ')), montant: v });
+        return;
+      }
+      if (ligneDeTotal(l[col.libelle]) || ligneDeTotal(l[col.date]) || ligneDeTotal(l.find(c => txt(c)))) { totaux++; return; }
       const date = dateDepuisCsv(l[col.date]);
       const libelle = txt(l[col.libelle]);
       const montant = aMontant
         ? round3(nombreDepuisCsv(l[col.montant]))
         : round3(nombreDepuisCsv(l[col.credit]) - nombreDepuisCsv(l[col.debit]));
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { ignorees.push({ ligne: i + 2, motif: `date illisible (« ${txt(l[col.date]).slice(0, 20)} »)` }); return; }
-      if (!montant) { ignorees.push({ ligne: i + 2, motif: 'montant nul ou illisible' }); return; }
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { ignorees.push({ ligne: no, motif: `date illisible (« ${txt(l[col.date]).slice(0, 20)} »)` }); return; }
+      if (!montant) { ignorees.push({ ligne: no, motif: 'montant nul ou illisible' }); return; }
       lignes.push({
         id: '', date, libelle, montant,
         reference: col.reference !== undefined ? txt(l[col.reference]) : '',
@@ -2134,7 +2444,18 @@
         ecritureId: ''
       });
     });
-    return { lignes, ignorees, colonnes: col, entetes: devine.entetes, motif: '' };
+    // Début ou fin : le mot le dit (« initial », « nouveau »…) ; sinon la PLACE — avant le premier
+    // mouvement c'est le départ, après le dernier c'est l'arrivée.
+    const soldes = { debut: null, fin: null };
+    soldesLus.forEach(s => {
+      const debut = /initial|debut|depart|precedent|anterieur|ancien|report|ouverture/.test(s.texte);
+      const fin = /final|\bfin\b|nouveau|nouvel|cloture|actuel/.test(s.texte);
+      if (debut && !fin) { if (soldes.debut == null) soldes.debut = s.montant; return; }
+      if (fin && !debut) { soldes.fin = s.montant; return; }
+      if (s.rang <= 0 && soldes.debut == null) soldes.debut = s.montant;
+      else if (s.rang >= lignes.length) soldes.fin = s.montant;
+    });
+    return { lignes, ignorees, totaux, colonnes: col, entetes: devine.entetes, ligneTitres: (r[h] && r[h].no) || h + 1, soldes, motif: '' };
   }
 
   // Le contrôle qui décide si un relevé entre : `soldeDebut + Σ montants = soldeFin`. Un relevé
@@ -2856,6 +3177,11 @@
     const posee = (livre.declarations || []).find(x => x.periode === p) || null;
     out.ecart = ecartDeclaration(posee, out);
     out.controles = controlesDeclaration(livre, p, { ...cases, au, comptes, existante, passees: duMois, auBrouillard, complement: out.complement, posee, ecart: out.ecart }, o);
+    // 10.14.1 — un mois sans TVA n'a pas d'écriture à passer : le bouton vert « Écrire l'écriture du
+    // mois » l'apprenait par un refus rouge APRÈS le clic. La réponse vit ici, construite par la MÊME
+    // fonction que celle qui écrira (`ecritureDeclaration`) : le bouton s'éteint en le disant, et le
+    // pont refuse par la même phrase.
+    out.rienAEcrire = !existante && !((ecritureDeclaration(livre, out) || {}).lignes || []).length;
     return out;
   }
 
@@ -2916,7 +3242,9 @@
     }
     // Rien de retenu ce mois (aucun salaire, aucune retenue opérée) : la rubrique le DIT, avec son
     // zéro connu. Un titre sans une ligne dessous se lisait comme une case perdue (26/09).
-    if (!rs.length) rs.push(ligne({ cle: 'rs0', libelle: 'Aucune retenue ce mois : ni salaire, ni honoraires, loyers ou achats retenus', montant: 0 }));
+    // Son zéro se colle dans la case de la RUBRIQUE : la phrase n'est pas une case du portail, et
+    // « colle-le dans la case « Aucune retenue ce mois… » » envoyait chercher ce qui n'existe pas.
+    if (!rs.length) rs.push(ligne({ cle: 'rs0', libelle: 'Aucune retenue ce mois : ni salaire, ni honoraires, loyers ou achats retenus', montant: 0, caseCopie: 'Retenue à la source' }));
     // 2 et 3. La TFP et le FOPROLOS, avec leur base quand les bulletins la donnent.
     const taxe = (k, champTaux) => {
       const x = c[k] || {};
@@ -3043,6 +3371,7 @@
   // L'écriture de déclaration, au DERNIER jour du mois. Elle solde la TVA du mois et porte le net
   // au 4365, timbre et retenues opérées compris — c'est ce qui fait que le compte « à décaisser »
   // dit vraiment ce qu'il faut payer.
+  const MOTIF_RIEN_A_ECRIRE = 'Ce mois ne porte aucune TVA : il n\'y a pas d\'écriture à passer.';
   function ecritureDeclaration(livre, decl) {
     const c = decl.cases;
     const collectee = c.tvaCollectee.montant || 0;
@@ -6380,8 +6709,8 @@
     lettrer, delettrer, prochaineLettre, balanceOuverture, lignesDuLivre,
     planDepuisCsv, balanceDepuisCsv,
     // La saisie (9.3.0)
-    premierDuMoisSuivant, ajouterMoisIso, sansAccents, soldeDeLignes, comptesQuiCorrespondent,
-    modifierEcriture, supprimerEcriture, analyserImportEcritures, appliquerImportEcritures, lireFichierTexte, validerLot, extourner, prevoirExtourne, chercherEcritures, ceQuePorte,
+    premierDuMoisSuivant, ajouterMoisIso, sansAccents, soldeDeLignes, comptesQuiCorrespondent, comptesProposables, MOTS_COURANTS, motsCourantsDe,
+    modifierEcriture, supprimerEcriture, analyserImportEcritures, appliquerImportEcritures, lireFichierTexte, texteDeClasseur, rangeesDeTexte, separateurCsv, validerLot, extourner, prevoirExtourne, chercherEcritures, ceQuePorte,
     guideValide, ecritureDepuisGuide, occurrencesAGenerer,
     correspondanceValide, compteCorrespondant, appliquerCorrespondance,
     // La banque (9.5.0)
@@ -6392,7 +6721,7 @@
     echeancierDepuisLignes, balanceAgeeDepuisLignes,
     // La déclaration mensuelle (9.6.0)
     COMPTES_FISCAUX, CASES_A_VERIFIER, mouvementCompte, declarationMensuelle, controlesDeclaration,
-    ecritureDeclaration, ecritureComplementDeclaration, ecartDeclaration, phraseEcartDeclaration, LIBELLES_CASES_DECL, formulaireMensuel, RUBRIQUES_FORMULAIRE,
+    ecritureDeclaration, MOTIF_RIEN_A_ECRIRE, ecritureComplementDeclaration, ecartDeclaration, phraseEcartDeclaration, LIBELLES_CASES_DECL, formulaireMensuel, RUBRIQUES_FORMULAIRE,
     poserDeclaration, pointerDeclaration, etatDuMois,
     // Les immobilisations et l'inventaire (9.7.0)
     IMMO_METHODES, COMPTES_IMMO, IMMO_A_VERIFIER,

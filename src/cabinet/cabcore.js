@@ -922,6 +922,52 @@
   // On accepte le point-virgule et la tabulation (ce que produisent Excel et Numbers en français).
   const ENTETE_NOM = /^(noms?( (du|de la) (client|dossier|société|entreprise))?|clients?|raison sociale|soci[ée]t[ée]s?|d[ée]nomination( sociale)?|entreprises?|dossiers?)$/i;
   const ENTETE_COLONNE = /^(matricule( fiscal)?|m\.? ?f\.?|identifiant( fiscal| unique)?|e-?mails?|courriel|t[ée]l[ée]phone|t[ée]l\.?|portable|gsm)$/i;
+  // Un matricule fiscal tunisien : sept chiffres et une lettre, suivis ou non du code TVA, de la
+  // catégorie et du numéro d'établissement (« 1234567A/M/A/000 »). Sept chiffres seuls passent aussi :
+  // c'est ainsi qu'un client le recopie souvent.
+  const RE_MATRICULE = /^\d{7}\s*[A-Za-z]?(\s*[/.-]?\s*[A-Za-z]\s*[/.-]?\s*[A-Za-z]\s*[/.-]?\s*\d{3})?$/;
+  const RE_TELEPHONE = /^\+?[\d\s().-]{6,}$/;
+  const TITRES_DOSSIER = [
+    ['name', /^(noms?( (du|de la) (client|dossier|soci[ée]t[ée]|entreprise))?|clients?|raison sociale|soci[ée]t[ée]s?|d[ée]nomination( sociale)?|entreprises?|dossiers?)$/i],
+    ['matricule', /^(matricule( fiscal)?|m\.? ?f\.?|identifiant( fiscal| unique)?|code tva)$/i],
+    ['email', /^(e-?mails?|courriel|adresse (e-?mail|[ée]lectronique)|mail)$/i],
+    ['phone', /^(t[ée]l[ée]phone|t[ée]l\.?|portable|gsm|mobile|num[ée]ro de t[ée]l[ée]phone)$/i]
+  ];
+  // Les titres d'Excel décident des colonnes. Une colonne qu'on ne sait pas lire (Adresse, Ville…)
+  // est ignorée et NOMMÉE, jamais versée dans un autre champ.
+  function carteDesTitres(cols, ignorees) {
+    const carte = {};
+    cols.forEach((c, i) => {
+      const t = TITRES_DOSSIER.find(([, re]) => re.test(c));
+      if (t && carte[t[0]] === undefined) carte[t[0]] = i;
+      else if (c) ignorees.push(c);
+    });
+    if (carte.name === undefined) carte.name = 0;
+    return carte;
+  }
+  function champsParTitres(cols, carte) {
+    const lu = k => (carte[k] === undefined ? '' : (cols[carte[k]] || ''));
+    return { name: lu('name'), matricule: lu('matricule'), email: lu('email'), phone: lu('phone') };
+  }
+  // Sans titres : le nom d'abord, puis chaque cellule selon ce qu'elle EST — un « @ » est un email,
+  // une suite de chiffres un téléphone, et seul ce qui ressemble à un matricule en devient un.
+  function champsDevines(cols) {
+    const f = { name: cols[0] || '', matricule: '', email: '', phone: '' };
+    cols.slice(1).forEach(v => {
+      if (!v) return;
+      if (v.includes('@')) { if (!f.email) f.email = v; return; }
+      if (!f.matricule && RE_MATRICULE.test(v)) { f.matricule = v; return; }
+      if (RE_TELEPHONE.test(v)) { if (!f.phone) f.phone = v; }
+    });
+    return f;
+  }
+  // Une adresse email qui ne peut pas recevoir de mail : sans « @ », sans domaine, ou sans point
+  // après l'arobase (« amira@gmail »). On le SIGNALE, on ne refuse pas : c'est une faute de frappe
+  // qu'on voit tout de suite, pas une règle qu'on impose.
+  function emailDouteux(v) {
+    const s = String(v || '').trim();
+    return !!s && !/^[^\s@]+@[^\s@]+\.[^\s@.]{2,}$/.test(s);
+  }
   function parseDossierLines(text, existants) {
     const vus = new Set((existants || []).map(d => d.id));
     // 10.14.1 — la clé d'un dossier est son matricule quand il en a un : « Pharmacie El Menzah »
@@ -936,37 +982,28 @@
       const mf = String(f.matricule || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
       return parNom.get(n).some(m => !m || !mf || m === mf);
     };
-    const out = [], ignorés = [];
-    let premiere = true;
+    const out = [], ignorés = [], colonnesIgnorees = [];
+    // 10.14.1 (IMP-02) — trois défauts trouvés en collant une vraie liste Excel, à la souris :
+    //  - le séparateur `\s*[;\t]\s*` avalait une cellule VIDE : entre deux tabulations, `\s*` mange la
+    //    première, et toute la ligne se décalait d'une colonne. Le Café sans matricule prenait son
+    //    TÉLÉPHONE pour matricule — c'est-à-dire pour identifiant de dossier (MF:22333444) ;
+    //  - une ligne de titres était reconnue… puis jetée : l'ordre des colonnes d'Excel, qu'elle
+    //    donnait en toutes lettres, n'était pas lu, et une colonne Adresse finissait en matricule ;
+    //  - toute cellule qu'on ne savait pas classer devenait le matricule.
+    // Désormais : une tabulation sépare exactement (une cellule vide reste vide), les titres
+    // décident des colonnes quand il y en a, et seul ce qui RESSEMBLE à un matricule en devient un.
+    const cellules = ligne => (ligne.includes('\t') ? ligne.split('\t') : ligne.split(';')).map(c => String(c || '').trim());
+    let carte = null, premiere = true;
     String(text || '').split(/\r?\n/).forEach(ligne => {
-      const l = ligne.trim();
-      if (!l) return;
-      const cols = l.split(/\s*[;\t]\s*/);
+      if (!ligne.trim()) return;
+      const cols = cellules(ligne);
       // Une ligne d'entête copiée avec le tableau ne doit pas devenir un client nommé « Nom ». On la
-      // reconnaît à son premier titre, OU (26/09) à un titre de colonne ailleurs : un comptable copie
-      // « Nom du client | Matricule | E-mail » tel qu'il l'a dans Excel, et « Nom du client » devenait
-      // un dossier. Seule la PREMIÈRE ligne non vide peut en être une : un client appelé « Société »
-      // plus bas reste un client.
+      // reconnaît à son premier titre, OU à un titre de colonne ailleurs. Seule la PREMIÈRE ligne non
+      // vide peut en être une : un client appelé « Société » plus bas reste un client.
       const titre = premiere && (ENTETE_NOM.test(cols[0]) || cols.slice(1).some(c => ENTETE_COLONNE.test(c)));
       premiere = false;
-      if (titre) return;
-      // Les colonnes arrivent parfois dans le désordre. Mais la DEUXIÈME reste le matricule tant
-      // qu'elle n'est pas manifestement une adresse : un matricule tunisien écrit en chiffres seuls
-      // (« 1234567 ») ressemble à un numéro de téléphone, et l'ancienne heuristique le déplaçait
-      // dans le téléphone puis effaçait le matricule — c'est-à-dire l'identifiant du dossier.
-      const f = { name: cols[0] || '', matricule: '', email: '', phone: '' };
-      const reste = [];
-      cols.slice(1).forEach((c, i) => {
-        const v = String(c || '').trim();
-        if (!v) return;
-        if (i === 0 && !v.includes('@')) { f.matricule = v; return; }
-        reste.push(v);
-      });
-      reste.forEach(v => {
-        if (v.includes('@')) { if (!f.email) f.email = v; return; }
-        if (/^\+?[\d\s().-]{6,}$/.test(v)) { if (!f.phone) f.phone = v; return; }
-        if (!f.matricule) f.matricule = v;
-      });
+      if (titre) { carte = carteDesTitres(cols, colonnesIgnorees); return; }
+      const f = carte ? champsParTitres(cols, carte) : champsDevines(cols);
       if (!f.name) return;
       const d = newDossier(f);
       if (vus.has(d.id) || memeNom(f)) return ignorés.push(f.name);
@@ -975,7 +1012,7 @@
       parNom.set(n, (parNom.get(n) || []).concat([String(f.matricule || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase()]));
       out.push(d);
     });
-    return { dossiers: out, ignorés };
+    return { dossiers: out, ignorés, colonnesIgnorees };
   }
 
   // Enregistrer qu'on a relancé. Le geste existait, la trace non : on cliquait « Écrire », le mail
@@ -2268,7 +2305,7 @@
     migrate, migrateDossier, dossierKey, packSummary, filePack, demoDossiers, rebaserPaquet, checkIntegrity, HORS_MANIFESTE,
     justificatifsDuPaquet, justificatifsDeLigne,
     exemplePerime, verdictMotDePasse,
-    newDossier, parseDossierLines, noteRelance, portfolio, caDuPortefeuille, relanceDue, relanceRows, accuseMail,
+    newDossier, parseDossierLines, emailDouteux, noteRelance, portfolio, caDuPortefeuille, relanceDue, relanceRows, accuseMail,
     parseCsv, verdictOrigine, csvDangereux, toCsvLine, csvMontant, csvDate, mergeEcritures, ecrituresPlan,
     DEFAULT_DEADLINES, deadlineSettings, echeances, dayOf,
     TVA_PERIODES, migrateRegime, regimes, regimeDe, choixRegimes, regimeEnPhrase, periodeTva, deposeCnss,

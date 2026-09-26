@@ -800,12 +800,13 @@ t('10.14.0 : un fichier CSV se lit dans SON encodage — Windows-1252 d\'Excel, 
   assert.strictEqual(C.lireFichierTexte(u16, 'a.txt').texte, 'Café;1', 'l\'export « Texte Unicode » d\'Excel est de l\'UTF-16');
   const xlsx = C.lireFichierTexte(Buffer.from('PK\u0003\u0004reste'), 'Clients.xlsx');
   assert.strictEqual(xlsx.ok, false);
-  assert.ok(/« Clients\.xlsx » est un classeur/.test(xlsx.motif) && /copie-les et colle-les ici/.test(xlsx.motif), 'le refus dit quoi faire : ' + xlsx.motif);
+  // Sans lecteur de ZIP (une page sans Node), le classeur se refuse avec le geste qui marche.
+  assert.ok(/« Clients\.xlsx » est un classeur/.test(xlsx.motif) && /Enregistrer sous/.test(xlsx.motif) && /coller ici/.test(xlsx.motif), 'le refus dit quoi faire : ' + xlsx.motif);
   // Le processus principal passe par cette fonction, et rend un refus plutôt qu'une exception.
   const main = lireSource('src', 'main.js');
   const h = main.slice(main.indexOf("ipcMain.handle('file:openText'"), main.indexOf("ipcMain.handle('shell:open'"));
   assert.ok(h.length > 200 && h.length < 2500, 'la tranche du handler est introuvable');
-  assert.ok(/lireFichierTexte\(fs\.readFileSync\(p\), nom\)/.test(h), 'le fichier ouvert ne passe plus par le décodeur');
+  assert.ok(/lireFichierTexte\(fs\.readFileSync\(p\), nom, \{ dezipper: zipRead \}\)/.test(h), 'le fichier ouvert ne passe plus par le décodeur, ou ne sait plus lire un classeur Excel');
   assert.ok(!/throw /.test(h), 'un mauvais fichier n\'est pas une panne : il se refuse avec sa phrase');
   assert.ok(/openText: \(opts\) => ipcRenderer\.invoke\('file:openText'/.test(lireSource('src', 'preload.js')), 'le pont n\'expose pas l\'ouverture du fichier');
 });

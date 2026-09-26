@@ -108,6 +108,13 @@ t('nouveautés : les deux applications la présentent, après le démarrage, jam
     assert.ok(/installationNeuve:/.test(appel) && /peutMontrer:/.test(appel), `${nom} : ni installation neuve, ni écran libre`);
     assert.ok(/modal/.test(appel) && /#setup/.test(appel) && /Visite\.enCours/.test(appel), `${nom} : la carte passerait par-dessus une fenêtre, l'assistant ou une visite`);
   });
+  // L'assistant remplit la société AVANT que la carte se décide : « installation neuve » se retient
+  // avant lui, sinon le tout premier écran d'un débutant s'ouvrait sur « Ce qui change pour toi »
+  // (vu à la souris, 10.14.1). Le Cabinet le fait par `r.created`.
+  const iP = app.indexOf('const premierLancement = OB.needsSetup(data)'), iS = app.indexOf('await runSetup()', iP);
+  assert.ok(iP > 0 && iS > iP, 'l\'installation neuve ne se retient pas avant l\'assistant');
+  assert.ok(/installationNeuve: premierLancement \|\|/.test(app), 'la carte des nouveautés ne sait pas que l\'assistant vient de tourner');
+  assert.ok(/installationNeuve: !!r\.created \|\|/.test(cab));
   const ie = lireSource('src/renderer/index.html'), ic = lireSource('src/cabinet/renderer/index.html');
   assert.ok(ie.indexOf('nouveautes.js') > 0 && ie.indexOf('nouveautes.js') < ie.indexOf('src="app.js"'));
   assert.ok(ic.indexOf('renderer/nouveautes.js') > 0 && ic.indexOf('renderer/nouveautes.js') < ic.indexOf('src="app.js"'));

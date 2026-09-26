@@ -376,6 +376,11 @@
   // dernière fenêtre de la pile ne contient pas l'endroit que la visite montre. L'anneau et la bulle
   // restaient alors dessinés sur la question et cachaient son texte (vu à la souris, 10.14.1). La
   // visite se range, comme devant une liste ouverte, le temps qu'on y réponde.
+  function fenetreOuverte() {
+    let fs = [];
+    try { fs = [...document.querySelectorAll('.modal')].filter(x => visible(x) && !(els.bulle && els.bulle.contains(x))); } catch (_) { fs = []; }
+    return fs[fs.length - 1] || null;
+  }
   function fenetreQuiCouvre(el) {
     if (!el || !el.isConnected) return null;
     let fs = [];
@@ -911,6 +916,13 @@
       return { icon: 'reprendre', label: r ? 'Reprendre : ' + bas(v.titre) : v.titre, hint, note: r ? 'en pause' : v.duree || '',
         fait: !m && !r && !!(x.fait && x.fait(v)), off: !!m, run: () => (r ? x.lancer(v, r.i) : x.lancer(v)) };
     };
+    // Ce qu'on peut faire MAINTENANT passe devant ce qui attend un préalable : « Rapprocher la banque »,
+    // grisé faute de relevé, était en tête au-dessus de « Importer le relevé » qui le débloque (vu en
+    // guidant un débutant, 26/09). L'ordre du contenu est gardé à l'intérieur de chaque moitié.
+    const ordre = l => {
+      const m = v => { try { return !!(x.manque && x.manque(v)); } catch (_) { return false; } };
+      return l.filter(v => !m(v)).concat(l.filter(m));
+    };
     const actions = [];
     // Ce qui parle de LA page vient d'abord, ensemble : sa visite et son article. L'article en bas d'une
     // longue liste se perdait sous les gestes (vu à la souris sur l'accueil : sept gestes, l'article
@@ -927,11 +939,11 @@
       }
       if (x.article) actions.push({ icon: 'texte', label: `Lire l'article « ${x.article.titre} »`, hint: 'Le pourquoi, les règles et les pièges de cette page, expliqués en détail.', run: x.article.ouvrir });
     }
-    if (g.ici.length) { actions.push({ titre: 'Ce que tu peux faire ici' }); g.ici.forEach(v => actions.push(geste(v))); }
+    if (g.ici.length) { actions.push({ titre: 'Ce que tu peux faire ici' }); ordre(g.ici).forEach(v => actions.push(geste(v))); }
     g.ailleurs.forEach(a => {
       const nom = (x.libelleOnglet && x.libelleOnglet(a.onglet)) || a.onglet.cle;
       actions.push({ titre: `Sur l'onglet « ${nom} »` });
-      a.gestes.forEach(v => actions.push(geste(v)));
+      ordre(a.gestes).forEach(v => actions.push(geste(v)));
     });
     if (x.tout) {
       if (actions.length) actions.push({ sep: true });
@@ -1208,10 +1220,40 @@
     cur.essai = { x: ev.clientX, y: ev.clientY };
     dessinerBulle();
   }
+  // La TOUCHE qu'une étape « valeur » annonce (« Tape le jour, puis Entrée ») est un geste : elle
+  // fait avancer, une fois la case remplie. Sans elle, la bulle disait « puis Entrée », la personne
+  // appuyait sur Entrée — et la visite restait sur « J'attends ton geste », sans « Suivant » quand
+  // une liste s'était ouverte dessous (vu au guide, un comptable débutant, 10.14.1). Pure.
+  function toucheAvance(e, key, shift) {
+    // Une étape « valeur », ou une étape à LIRE posée sur une case (la pièce, facultative) : jamais
+    // un clic attendu, que la touche ne remplace pas.
+    if (!e || !e.touche || (estFaire(e) && e.faire !== 'valeur')) return false;
+    if (key === 'Tab' && shift) return false;
+    return [].concat(e.touche).includes(key);
+  }
+  function avancerAuClavier(ev) {
+    if (!cur || cur.fin || !ev || ev.isTrusted === false) return;
+    const e = etape();
+    if (!toucheAvance(e, ev.key, ev.shiftKey)) return;
+    const el = cibleDe(e);
+    if (!el || !(el === ev.target || (el.contains && el.contains(ev.target)))) return;
+    const i = cur.i;
+    // Après l'application : c'est souvent la touche elle-même qui remplit la case (Tab solde la pièce).
+    setTimeout(() => {
+      if (!cur || cur.fin || cur.i !== i) return;
+      if (e.faire === 'valeur') {
+        let pret = false;
+        try { pret = typeof e.fait === 'function' ? !!e.fait() : !!String(el.value || '').trim(); } catch (_) { pret = false; }
+        if (!pret) return;
+        cur.pret = true;
+      }
+      suivant();
+    }, 90);
+  }
   if (typeof document !== 'undefined') {
     document.addEventListener('pointerdown', noterGeste, true);
     document.addEventListener('input', noterGeste, true);
-    document.addEventListener('keydown', ev => { if (ev.key === 'Enter' || ev.key === ' ') noterGeste(ev); }, true);
+    document.addEventListener('keydown', ev => { if (ev.key === 'Enter' || ev.key === ' ') noterGeste(ev); avancerAuClavier(ev); }, true);
   }
   // Le clic sur la cible se lit en CAPTURE, avant que la page ne le traite : un bouton qui redessine
   // la page aura disparu au moment où l'on regarderait.
@@ -1274,7 +1316,12 @@
     const listes = cur.fin ? [] : listesOuvertes();
     const couvre = cur.fin || cur.essai ? null : fenetreQuiCouvre(zoneEl);
     if (couvre) listes.push(couvre);
-    const mini = !cur.fin && (!!cur.essai || listes.length > 0);
+    // La FIN attend que la fenêtre ouverte par le dernier geste se referme : la carte « Ta pièce est
+    // validée » se posait par-dessus le compte rendu qui donne le numéro — ce qu'on vient de faire,
+    // caché par sa propre célébration (vu à la souris, 10.14.1). En attendant, la bulle réduite.
+    const finAttend = !!cur.fin && !!fenetreOuverte();
+    if (finAttend) listes.push(fenetreOuverte());
+    const mini = finAttend || (!cur.fin && (!!cur.essai || listes.length > 0));
     if (mini !== !!cur.mini || !!couvre !== !!cur.couvert) { cur.mini = mini; cur.couvert = !!couvre; dessinerBulle(); }
     let r = null;
     if (zoneEl) {
@@ -1454,7 +1501,12 @@
   }
   // Ce que l'hôte retient d'une étape : le nombre d'étapes connues, et s'il reste une page à lire —
   // auquel cas ce nombre n'est pas un total.
-  const compteDe = c => ({ n: c && c.p ? c.p.etapes.length : 0, attente: !!(c && c.p && enAttenteDe(c.p.etapes, c.i)) });
+  // Le point d'arrêt retient le TITRE de l'étape, pas seulement son rang (10.14.1) : une visite qui
+  // gagne des étapes d'une version à l'autre rangerait sinon la reprise sur une autre étape — vu en
+  // suivant « Déclarer la TVA » : arrêtée au portail, elle reprenait sur « Préparer », en sautant
+  // l'étape du brouillard qui la précède désormais.
+  const compteDe = c => ({ n: c && c.p ? c.p.etapes.length : 0, attente: !!(c && c.p && enAttenteDe(c.p.etapes, c.i)),
+    titre: c && c.p && c.p.etapes[c.i] ? String(c.p.etapes[c.i].titre || '') : '' });
   // Où reprend une visite en pause, et ce qu'on peut en dire (PUR : « Me guider » des deux
   // applications l'appelle). Une visite de page se RELIT : l'étape retenue dépasse les deux étapes
   // de sa définition, et son total n'est connu que si la page avait fini d'être lue. La version
@@ -1463,7 +1515,16 @@
   function pointDeReprise(v, r) {
     const etapes = (v && v.etapes) || [];
     const lue = enAttenteDe(etapes, -1);
-    const brut = Math.max(0, Math.floor(Number(r && r.i) || 0));
+    let brut = Math.max(0, Math.floor(Number(r && r.i) || 0));
+    // Le rang ne désigne plus la même étape (la visite a changé depuis l'arrêt) : on la retrouve par
+    // son titre, et si elle n'existe plus, on repart du début — jamais d'une étape au hasard.
+    const titre = r && r.titre ? String(r.titre) : '';
+    let change = false;
+    if (titre && !lue && !(etapes[brut] && String(etapes[brut].titre || '') === titre)) {
+      const j = etapes.findIndex(e => String(e.titre || '') === titre);
+      brut = j >= 0 ? j : 0;
+      change = j < 0;
+    }
     const n = Math.floor(Number(r && r.n) || 0);
     // Le plafond : le nombre d'étapes connu quand on s'est arrêté (une page relue), sinon la définition.
     const plafond = lue ? (n > 0 ? n : brut + 1) : etapes.length;
@@ -1473,7 +1534,7 @@
     const i = lue ? arret : etapeAvecPage(etapes, arret);
     const sur = lue ? (r && r.attente === false && n > 0 ? n : 0) : etapes.length;
     return { i, sur, texte: sur > 1 ? `Étape ${i + 1} sur ${sur}` : `Étape ${i + 1}`,
-      note: i < arret ? `tu étais à l'étape ${arret + 1} : on repart de l'écran où ce geste commence` : '' };
+      note: change ? 'la visite a changé depuis : on repart du début' : i < arret ? `tu étais à l'étape ${arret + 1} : on repart de l'écran où ce geste commence` : '' };
   }
 
   // ---------- le dessin de la bulle ----------
@@ -1530,9 +1591,10 @@
     const p = cur.p, n = p.etapes.length;
     // Une étape NOUVELLE s'anime en entrant (le texte glisse du côté où l'on va) ; un simple
     // rafraîchissement — un champ rempli, une liste chargée — ne rejoue pas l'animation.
-    const cle = cur.fin ? 'fin' : cur.i + (cur.perdu ? 'p' : '') + (cur.attente ? 'a' : '');
+    const cle = cur.fin ? (cur.mini ? 'fin-attend' : 'fin') : cur.i + (cur.perdu ? 'p' : '') + (cur.attente ? 'a' : '');
     const neuve = cur.dessine !== cle;
     cur.dessine = cle;
+    if (cur.fin && cur.mini) { dessinerFinAttente(p); return; }
     if (cur.fin) { dessinerFin(p, neuve); return; }
     const e = etape();
     const faire = estFaire(e);
@@ -1676,18 +1738,39 @@
     const dernier = cur.i === cur.p.etapes.length - 1;
     els.bulle.className = 'visite-bulle mini' + (faire ? ' faire' : '');
     teinter(els.bulle, coul);
-    const titre = essai ? 'Vas-y, essaie' : cur.couvert ? 'La visite t\'attend' : faire ? 'À toi' : 'La visite t\'attend';
-    const texte = essai
+    // Le titre de l'étape plutôt que « À toi » : quand une liste s'ouvre sous la case (les comptes de
+    // la grille), la bulle réduite était tout ce qu'on lisait — « À toi » ne disait pas ce qu'on fait.
+    const titre = essai ? 'Vas-y, essaie' : cur.couvert ? 'La visite t\'attend' : faire ? (nettoie(e.titre || '') || 'À toi') : 'La visite t\'attend';
+    // Une case déjà remplie n'attend plus rien : la bulle réduite (une liste s'est ouverte sous la
+    // case) garde « Suivant », sinon elle disait « J'attends ton geste » d'un geste déjà fait.
+    const rempli = faire && !essai && !cur.couvert && e.faire === 'valeur' && !!cur.pret;
+    const texte = rempli
+      ? `C'est rempli${e.touche ? ` : appuie sur <kbd>${[].concat(e.touche)[0] === 'Tab' ? 'Tab' : 'Entrée'}</kbd>, ou clique` : ' : clique'} sur <b>« ${h(e.bouton || 'C\'est fait')} »</b>.`
+      : essai
       ? `Clique, ouvre, choisis : je m'efface le temps que tu regardes. Quand tu as vu, reprends l'étape <b>« ${h(e.titre || '')} »</b>.`
       : cur.couvert ? 'Une question s\'est ouverte par-dessus : réponds-y d\'abord — la visite reprend juste après, là où tu en étais.'
       : faire ? (e.action ? action(e) : '') : 'Une liste est ouverte : choisis, ou appuie sur <kbd>Échap</kbd> pour la refermer — la visite reprend juste après.';
     const pied = cur.couvert && !essai ? '' : essai
       ? `<button type="button" class="vb-lien" data-v="suiv">${dernier ? 'Terminer la visite' : 'Étape suivante ›'}</button><button type="button" class="vb-suiv" data-v="reprendre">Reprendre la visite</button>`
+      : rempli ? `<button type="button" class="vb-lien" data-v="passer">Passer cette étape</button><button type="button" class="vb-suiv" data-v="suiv">${h(e.bouton || 'C\'est fait')}</button>`
       : faire ? '<button type="button" class="vb-lien" data-v="passer">Passer cette étape</button><span class="vb-attente" role="status"><span class="vb-points-attente" aria-hidden="true"><i></i><i></i><i></i></span>J\'attends ton geste</span>' : '';
     els.bulle.innerHTML = `<i class="vb-pointe" hidden></i>
       <div class="vb-haut">${tete(essai ? ICONE_MAIN : iconeDe(coul), t.sur, titre, 'fermer', 'Mettre la visite en pause (Échap)')}</div>
       <div class="vb-corps"><div class="vb-texte">${texte}</div></div>
       ${pied ? `<div class="vb-pied">${pied}</div>` : ''}`;
+    typographier(els.bulle);
+  }
+
+  // La fin qui ATTEND : le dernier geste a ouvert une fenêtre (un compte rendu, une confirmation) ;
+  // on la laisse lire, et la carte de fin vient quand elle se referme.
+  function dessinerFinAttente(p) {
+    cur.items = [];
+    const coul = couleurDe(Math.max(0, p.etapes.length - 1));
+    els.bulle.className = 'visite-bulle mini';
+    teinter(els.bulle, coul);
+    els.bulle.innerHTML = `<i class="vb-pointe" hidden></i>
+      <div class="vb-haut">${tete(iconeDe(coul), h(p.titre || 'Visite guidée'), 'La visite t\'attend', 'fermer', 'Mettre la visite en pause (Échap)')}</div>
+      <div class="vb-corps"><div class="vb-texte">Lis ce que la fenêtre te dit, puis ferme-la : la visite se termine juste après.</div></div>`;
     typographier(els.bulle);
   }
 
@@ -2063,7 +2146,7 @@
   const etapeCourante = () => { const e = etape(); if (!e) return null; const c = Object.assign({}, e); delete c.el; return c; };
 
   const api = { installer, lancer, quitter, enCours, etapeCourante, suivant, precedent, chapitreSuivant, reprendre, gestePasse, consequenceDuGeste, gesteQuiOuvre, issueDeFin, phrasePasses, texteDeFin, selonFin, finsHonnetes,
-    pagesDuGeste, ongletDuGeste, guideDeLaPage, dansLeGuide, menuDuGuide, placerBulle, placerPres, largeurPres, zoneDeLaCase, placerMini, typo, chevauche, decouperHaut, trousDeListe, hautPourBulle, hautPourCouper, viseLaCible, estFaire, decider, enAttenteDe, compteDe, pointDeReprise, etapeAvecPage, repriseDuGeste, changementDePage, versLaReprise, dejaRempliDe, normNom, nomsCites, lieuDe, ouvrirOnglet,
+    toucheAvance, pagesDuGeste, ongletDuGeste, guideDeLaPage, dansLeGuide, menuDuGuide, placerBulle, placerPres, largeurPres, zoneDeLaCase, placerMini, typo, chevauche, decouperHaut, trousDeListe, hautPourBulle, hautPourCouper, viseLaCible, estFaire, decider, enAttenteDe, compteDe, pointDeReprise, etapeAvecPage, repriseDuGeste, changementDePage, versLaReprise, dejaRempliDe, normNom, nomsCites, lieuDe, ouvrirOnglet,
     chapitres, resoudre, visible, listerControles, etapesDeLaVue, blocsDe, cheminDe, PATIENCE, PATIENCE_FACULTATIVE, CONTROLES,
     nettoie, libelleDe, resumeBulle, routeDe, expliqueur, zoneur, phraseDuHaut, texteDuHaut };
   global.Visite = api;

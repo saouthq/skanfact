@@ -1516,19 +1516,24 @@ ipcMain.handle('cab:reprendre', (_e, { dossierId, annee, du, au, plan, ouverture
 // Un CSV enregistré par Excel sous Windows est en Windows-1252 : lu comme de l'UTF-8, l'entête
 // « Libellé » devenait « Libell� », la colonne ne s'associait plus, et le plan importé arrivait
 // sans ses noms (10.14.1). Le décodeur est celui de l'app entreprise, déplacé dans compta.js.
+// Un classeur Excel (.xlsx) se lit aussi (10.14.1, IMP-01) : sa première feuille devient le même
+// texte qu'un CSV, et un comptable n'a plus à « enregistrer sous » avant d'importer.
 function lireTexteFichier(chemin, code) {
-  const r = KC.lireFichierTexte(fs.readFileSync(chemin), path.basename(chemin));
+  const r = KC.lireFichierTexte(fs.readFileSync(chemin), path.basename(chemin), { dezipper: Z.zipRead });
   if (!r.ok) throw erreur(code, r.motif);
   return r.texte;
 }
+// Le séparateur se DÉDUIT (point-virgule, tabulation, virgule) : un export de banque ou de
+// tableur n'est pas toujours en point-virgule.
 function lireCsvFichier(chemin, code) {
-  return K.parseCsv(lireTexteFichier(chemin, code || 'ERR-CAB-027'));
+  return KC.rangeesDeTexte(lireTexteFichier(chemin, code || 'ERR-CAB-027'));
 }
+const FILTRE_TABLEUR = [{ name: 'Tableur (Excel .xlsx ou CSV)', extensions: ['xlsx', 'csv', 'txt'] }];
 
 ipcMain.handle('cab:importerPlan', async (_e, { dossierId, annee, chemin } = {}) => {
   requireOpen();
   droitBlock(dossierId, 'saisie');
-  const f = chemin || (await dialog.showOpenDialog({ title: 'Importer un plan de comptes', filters: [{ name: 'CSV', extensions: ['csv', 'txt'] }], properties: ['openFile'] })).filePaths[0];
+  const f = chemin || (await dialog.showOpenDialog({ title: 'Importer un plan de comptes', filters: FILTRE_TABLEUR, properties: ['openFile'] })).filePaths[0];
   if (!f) return { annule: true };
   const r = KC.planDepuisCsv(lireCsvFichier(f));
   if (r.motif) throw erreur('ERR-CAB-027', r.motif);
@@ -1549,7 +1554,7 @@ ipcMain.handle('cab:importerPlan', async (_e, { dossierId, annee, chemin } = {})
 ipcMain.handle('cab:importerBalance', async (_e, { dossierId, annee, chemin } = {}) => {
   requireOpen();
   droitBlock(dossierId, 'saisie');
-  const f = chemin || (await dialog.showOpenDialog({ title: 'Importer une balance d\'ouverture', filters: [{ name: 'CSV', extensions: ['csv', 'txt'] }], properties: ['openFile'] })).filePaths[0];
+  const f = chemin || (await dialog.showOpenDialog({ title: 'Importer une balance d\'ouverture', filters: FILTRE_TABLEUR, properties: ['openFile'] })).filePaths[0];
   if (!f) return { annule: true };
   const r = KC.balanceDepuisCsv(lireCsvFichier(f, 'ERR-CAB-023'));
   if (r.motif) throw erreur('ERR-CAB-023', r.motif);
@@ -1563,7 +1568,7 @@ ipcMain.handle('cab:importerBalance', async (_e, { dossierId, annee, chemin } = 
 ipcMain.handle('cab:lireEcrituresTableur', async (_e, { dossierId, annee, chemin } = {}) => {
   requireOpen();
   droitBlock(dossierId, 'saisie');
-  const f = chemin || (await dialog.showOpenDialog({ title: 'Importer des écritures depuis un tableur', filters: [{ name: 'CSV ou texte', extensions: ['csv', 'txt'] }], properties: ['openFile'] })).filePaths[0];
+  const f = chemin || (await dialog.showOpenDialog({ title: 'Importer des écritures depuis un tableur', filters: FILTRE_TABLEUR, properties: ['openFile'] })).filePaths[0];
   if (!f) return { annule: true };
   const o = ouvrirLivre(dossierId, annee);
   if (!o.livre) throw erreur('ERR-CAB-026', 'Ce dossier n\'a pas encore de livre pour cet exercice.');
@@ -1661,11 +1666,14 @@ ipcMain.handle('cab:lireReleve', async (_e, { chemin, assoc } = {}) => {
   requireOpen();
   const f = chemin || (await dialog.showOpenDialog({
     title: 'Importer un relevé bancaire',
-    filters: [{ name: 'Relevé (CSV)', extensions: ['csv', 'txt'] }], properties: ['openFile']
+    filters: FILTRE_TABLEUR, properties: ['openFile']
   })).filePaths[0];
   if (!f) return { annule: true };
   const brut = fs.readFileSync(f);
-  const r = KC.releveDepuisCsv(K.parseCsv(brut.toString('utf8').replace(/^﻿/, '')), assoc);
+  // Le relevé passe par le MÊME lecteur que les autres imports (10.14.1, IMP-01) : Windows-1252
+  // d'une banque tunisienne, classeur Excel, séparateur deviné. Il n'était lu qu'en UTF-8 et en
+  // point-virgule.
+  const r = KC.releveDepuisCsv(lireCsvFichier(f, 'ERR-CAB-040'), assoc);
   // L'empreinte est celle des OCTETS du fichier : c'est elle qui empêche d'importer deux fois le
   // même relevé, et elle doit donc être insensible à la façon dont on l'a relu.
   return { ...r, fichier: f, empreinte: crypto.createHash('sha256').update(brut).digest('hex') };
@@ -1811,8 +1819,8 @@ ipcMain.handle('cab:ecrireDeclaration', (_e, { dossierId, annee, periode } = {})
     ecrireLeLivre(dossierId, o.livre, 'complément de déclaration', periode);
     return { ok: true, id: c.id, complement: true, livre: ouvrirLivre(dossierId, annee).livre };
   }
+  if (d.rienAEcrire) throw erreur('ERR-CAB-042', KC.MOTIF_RIEN_A_ECRIRE);
   const brouillon = KC.ecritureDeclaration(o.livre, d);
-  if (!brouillon.lignes.length) throw erreur('ERR-CAB-042', 'Ce mois ne porte aucune TVA : il n\'y a pas d\'écriture à passer.');
   const e = KC.ajouterEcriture(o.livre, brouillon, quiSuisJe(), Date.now());
   posee.ecritureId = e.id;
   ecrireLeLivre(dossierId, o.livre, 'écriture de déclaration', periode);

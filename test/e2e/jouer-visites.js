@@ -68,8 +68,10 @@ async function jouer(win, id, { ouvrirGuide, apresLancement, fautes, compte }) {
       const essai = s.faire.essai || {};
       if (s.cible === false) { await attendre(700); continue; }       // la cible arrive (une fenêtre s'ouvre)
       const el = (await win.evaluateHandle(() => window.Visite.resoudre(window.Visite.etapeCourante().cible))).asElement();
-      if (s.faire.mode === 'valeur' || essai.taper || essai.choisir != null) {
+      if (s.faire.mode === 'valeur' || essai.taper || essai.touche || essai.choisir != null) {
         if (el && essai.taper) { await el.click({ clickCount: 3 }).catch(() => {}); await win.keyboard.type(String(essai.taper)); }
+        // Une touche (Tab qui solde la pièce) : jouée DANS la case, comme la bulle le demande.
+        if (el && essai.touche) { await el.focus().catch(() => {}); await win.keyboard.press(String(essai.touche)); }
         // Une liste : on choisit l'option par sa valeur, ou la première proposée quand la valeur est un identifiant tiré au hasard.
         if (el && essai.choisir != null) {
           // « premier » : la première option qui a une valeur et qu'on PROPOSE (une option cachée n'est pas un choix).
