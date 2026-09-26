@@ -6316,6 +6316,22 @@
       ${sus.banque.length || sus.livre.length ? `<p class="small mt">${sus.avant
         ? `Les suspens expliquent <b>${esc(money(sus.ecartSuspens))}</b> de l'écart : ${esc(money(sus.totalBanque))} côté banque − ${esc(money(sus.totalLivre))} côté livre. Le reste, <b>${esc(money(sus.avant))}</b>, vient d'avant les relevés importés.`
         : `Les suspens expliquent tout l'écart : <b>${esc(money(sus.totalBanque))}</b> côté banque − <b>${esc(money(sus.totalLivre))}</b> côté livre = <b>${esc(money(sus.ecartSuspens))}</b>.`}</p>` : ''}
+    </div>
+    ${motsRetenusPanel()}`;
+  }
+
+  // 10.14.1 — Les mots retenus en écrivant depuis un relevé n'avaient AUCUN écran : une règle apprise
+  // par erreur (un mot trop courant, le mauvais compte) proposait le mauvais compte pour toujours,
+  // sans moyen de la retirer. Ils se relisent ici, sous le relevé où ils servent, et se retirent.
+  function motsRetenusPanel() {
+    const table = (Array.isArray(S.libelles) ? S.libelles : []).filter(x => x && x.motif && x.compte);
+    if (!table.length) return '';
+    const nom = nomDeCompte();
+    return `<div class="panel mt"><h2>Les mots retenus ${info('bq.mots')}</h2>
+      <p class="small muted">Pour tous tes clients : une ligne de relevé qui contient le mot se voit proposer le compte. Rien n'est écrit sans toi.</p>
+      <div class="scroll-x"><table class="list compact"><thead><tr><th class="nw">Mot</th><th class="nw">Compte proposé</th><th>Intitulé</th><th></th></tr></thead>
+      <tbody>${table.map(x => `<tr><td class="nw"><b>${esc(x.motif)}</b>${KC.motifDeLibelle(x.motif) ? '' : ' <span class="muted small">trop courant : ne propose plus rien</span>'}</td>
+        <td class="nw">${esc(x.compte)}</td><td class="tronq">${esc(nom(x.compte))}</td>${RowMenu.cellule('MOT:' + x.motif)}</tr>`).join('')}</tbody></table></div>
     </div>`;
   }
 
@@ -6356,6 +6372,17 @@
     };
     // UNE seule table d'actions par racine : `bindRowMenus` écrase la précédente en silence (9.4.8).
     bindRowMenus(el, cle => {
+      if (cle.startsWith('MOT:')) {
+        const mot = cle.slice(4);
+        return [{ icon: 'supprimer', label: 'Retirer ce mot', hint: 'Les prochains relevés ne proposeront plus ce compte ; les écritures déjà passées ne bougent pas', run: async () => {
+          const avant = Array.isArray(S.libelles) ? S.libelles.slice() : [];
+          try {
+            S = await api.saveBanque({ libelles: avant.filter(x => x.motif !== mot) });
+            drawLivres(root, dossier);
+            toastUndo(`« ${mot} » ne proposera plus de compte.`, async () => { S = await api.saveBanque({ libelles: avant }); drawLivres(root, dossier); });
+          } catch (e) { toast(plainError(e), 'error'); }
+        } }];
+      }
       if (cle.startsWith('REL:')) {
         const rel = releves.find(x => x.id === cle.slice(4));
         if (!rel) return [];

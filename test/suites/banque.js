@@ -369,4 +369,25 @@ t('10.14.1 : une écriture rapprochée se ventile, la ligne que le relevé dési
   assert.strictEqual(faux.ok, false, 'déplacer la ligne de banque vers un autre compte défait ce que le relevé désigne');
   assert.strictEqual(lien.ligne, 2, 'un refus ne touche pas au lien');
 });
+// 10.14.1 (test humain du 26/09) : un mot retenu par erreur (« FACTURE », le mauvais compte)
+// proposait le mauvais compte pour toujours — la table n'avait aucun écran. Elle se relit sous le
+// relevé où elle sert, et chaque mot se retire, avec un « Annuler » (ce qui se répare, 7.12.0).
+t('10.14.1 : les mots retenus se relisent et se retirent depuis l\'onglet Banque', () => {
+  const fs = require('fs');
+  const sans = x => x.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
+  const app = sans(fs.readFileSync(require.resolve('../../src/cabinet/renderer/app.js'), 'utf8'));
+  const vue = app.slice(app.indexOf('function vueBanque('), app.indexOf('function motsRetenusPanel('));
+  assert.ok(vue.length > 500 && /\$\{motsRetenusPanel\(\)\}/.test(vue), 'l\'onglet Banque pose le panneau des mots retenus');
+  const panneau = app.slice(app.indexOf('function motsRetenusPanel('), app.indexOf('function brancherBanque('));
+  assert.ok(panneau.length > 200 && panneau.length < 3000, 'tranche du panneau');
+  assert.ok(/info\('bq\.mots'\)/.test(panneau), 'le titre porte sa bulle');
+  assert.ok(/RowMenu\.cellule\('MOT:'/.test(panneau), 'chaque mot porte son geste');
+  assert.ok(/motifDeLibelle\(x\.motif\)/.test(panneau), 'un mot trop courant le dit sur sa ligne');
+  const branche = app.slice(app.indexOf("cle.startsWith('MOT:')"), app.indexOf("cle.startsWith('REL:')"));
+  assert.ok(branche.length > 100 && branche.length < 1500, 'tranche du geste');
+  assert.ok(/saveBanque\(\{\s*libelles:\s*avant\.filter\(x => x\.motif !== mot\)/.test(branche), 'on ne retire que CE mot');
+  assert.ok(/toastUndo\([\s\S]*saveBanque\(\{\s*libelles:\s*avant\s*\}\)/.test(branche), '« Annuler » rend la table d\'avant');
+  const guide = fs.readFileSync(require.resolve('../../src/cabinet/renderer/cabguide.js'), 'utf8');
+  assert.ok(/'bq\.mots':\s*\{\s*a:\s*'banque'/.test(guide), 'la bulle existe et mène à l\'article de la banque');
+});
 };

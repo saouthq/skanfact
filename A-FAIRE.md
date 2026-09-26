@@ -223,8 +223,9 @@ et au moteur), puis en stable quand Skander valide.*
   606 était retenu), l'intitulé du compte tapé, le solde de départ daté au soir de la veille, les
   numéros dits à la validation, écart à zéro. **Restent à parcourir** : la paie et la CNSS d'un
   client hors SkanFact, la clôture de son premier exercice, et « Guide-moi » écran par écran sur ce
-  cabinet neuf. Noté : la table des mots retenus n'a pas d'écran où la relire et la corriger — une
-  règle apprise par erreur ne se retire qu'en en retenant une autre plus longue.
+  cabinet neuf. ~~La table des mots retenus n'a pas d'écran~~ **faite (26/09)** : panneau « Les mots
+  retenus » sous le relevé (compte proposé, intitulé, « trop courant » dit sur la ligne), « Retirer
+  ce mot » avec « Annuler », vu à la souris.
   Constats notés sans les corriger : la TFP et le FOPROLOS d'un livre sans aucun salaire disent
   « — à vérifier » là où la masse salariale vaut zéro ; le compte 5311 s'intitule « Banques et
   établissements financiers » (le plan de référence lit le préfixe 53 — À VÉRIFIER avec le pilote) ;
