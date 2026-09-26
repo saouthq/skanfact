@@ -518,4 +518,82 @@ t('10.14.0 Cabinet : les Échéances d\'un cabinet qui A des clients ne disent p
   const trois = dessiner([{ id: 'a', name: 'A' }, { id: 'b', name: 'B' }, { id: 'c', name: 'C' }]);
   assert.ok(/Tes 3 clients ne sont encore dans aucun/.test(trois) && /Choisir un client à tenir/.test(trois), 'plusieurs : ' + trois);
 });
+// Vu à la souris (10.14.1) : « Déclarer les régimes de mes clients » ouvrait l'onglet « Comptabilité »
+// des Réglages pour un panneau rangé dans « Mon cabinet ». Les deux tables (où l'application range un
+// panneau, ce que la visite ouvre) vivent dans deux fichiers : elles se confrontent, étape par étape.
+t('10.14.1 Cabinet : une visite qui ouvre un onglet des Réglages vise un panneau rangé dans CET onglet', () => {
+  const verif = require('../onglets-visites.js');
+  const plein = { state: () => ({ cabinet: { name: 'X' }, dossiers: [{ id: 'A' }] }), dossier: () => 'A', estExemple: () => true,
+    cleSecours: () => null, copieExterne: () => false, Visite: V };
+  const r = verif({ visites: CV.parcours(plein), app, table: /'(pan-[a-z]+)': \{ onglet: '([a-z]+)'/g, appel: 'panneauReg', page: '#/reglages', barre: '#set-tabs' });
+  assert.ok(r.panneaux >= 12 && r.identifiants >= 30, `les tables n'ont pas été lues : ${r.panneaux} panneaux, ${r.identifiants} identifiants`);
+  assert.ok(r.controles >= 30, 'contrôles confrontés : ' + r.controles);
+  assert.deepStrictEqual(r.fautes, []);
+});
+
+// Vu à la souris (10.14.1) : la visite des régimes se disait « Bravo » dès qu'on avait posé les lignes
+// de base — sans les avoir enregistrées. Rien n'était gardé, et la visite affirmait le contraire.
+t('10.14.1 Cabinet : la visite des régimes ne se dit réussie qu\'une fois les régimes ENREGISTRÉS', () => {
+  let etat = { cabinet: { name: 'X' }, dossiers: [{ id: 'A' }], settings: { regimes: [] } };
+  const ctx2 = { state: () => etat, dossier: () => 'A', estExemple: () => true, cleSecours: () => null, copieExterne: () => false, Visite: V };
+  const v = CV.parcours(ctx2).find(x => x.id === 'regimes');
+  assert.ok(v && typeof v.mesure === 'function' && typeof v.but === 'function', 'la visite n\'a plus de quoi dire si elle a réussi');
+  const avant = v.mesure();
+  assert.strictEqual(v.but(avant), false, 'rien enregistré : la visite se dit réussie');
+  const save = v.etapes[v.etapes.length - 1];
+  assert.ok(save.cible === '#sr-reg-save' && save.faire === 'clic' && typeof save.fait === 'function', 'la dernière étape n\'est plus l\'enregistrement');
+  save.avant();
+  assert.strictEqual(save.fait(), false, 'le clic sur « Enregistrer » passe pour fait avant que rien ne change');
+  etat = { ...etat, settings: { regimes: [{ id: 'reel', label: 'Régime réel' }] } };
+  assert.strictEqual(save.fait(), true, 'les régimes enregistrés ne font pas avancer la visite');
+  assert.strictEqual(v.but(avant), true, 'des régimes enregistrés ne font pas une visite réussie');
+});
+
+// Vu à la souris (10.14.1) : un régime déclaré dans les Réglages (« Régime exonéré ») n'était proposé
+// sur AUCUNE fiche de client : ses règles ne servaient jamais. Et l'en-tête écrivait « régime Régime réel ».
+t('10.14.1 Cabinet : la fiche d\'un client propose les régimes du cabinet, et l\'en-tête les dit en français', () => {
+  const st = { settings: { regimes: [{ id: 'reel', label: 'Réel (BIC)' }, { id: 'exonere', label: 'Régime exonéré' }] } };
+  const ch = K.choixRegimes(st, '');
+  assert.deepStrictEqual(ch.map(r => r.id), ['reel', 'forfaitaire', 'autre', 'exonere'], 'un régime déclaré n\'est pas proposé');
+  assert.strictEqual(ch[0].label, 'Réel (BIC)', 'le nom que le cabinet a donné au régime de départ est ignoré');
+  assert.strictEqual(ch[1].label, 'Régime forfaitaire');
+  const retire = K.choixRegimes(st, 'bnc');
+  assert.ok(retire.some(r => r.id === 'bnc' && /retiré des réglages/.test(r.label)), 'un régime retiré disparaît de la fiche qui le porte : la rouvrir changerait le régime du client');
+  assert.strictEqual(K.choixRegimes({}, '').length, 3, 'sans réglage, les trois régimes de départ');
+  assert.strictEqual(K.regimeEnPhrase('Régime réel'), 'régime réel');
+  assert.strictEqual(K.regimeEnPhrase('Régime exonéré'), 'régime exonéré');
+  assert.strictEqual(K.regimeEnPhrase('Autre / à préciser'), 'régime autre / à préciser');
+  assert.strictEqual(K.regimeEnPhrase('BNC'), 'régime BNC', 'un sigle perd sa majuscule');
+  assert.strictEqual(K.regimeEnPhrase(''), '');
+  // L'écran : la fiche et son en-tête lisent la même liste, jamais les trois régimes de départ seuls.
+  const code = app.replace(/\/\/[^\n]*/g, '');
+  assert.ok(!/<select id="f-regime">[\s\S]{0,120}K\.REGIMES\b/.test(code) && !/labelOf\(K\.REGIMES\b/.test(code), 'la fiche ou l\'en-tête relit les trois régimes de départ');
+  assert.ok(/<select id="f-regime">[\s\S]{0,120}K\.choixRegimes\(S, d\.regime\)/.test(code), 'la liste de la fiche ne lit plus les régimes du cabinet');
+  assert.ok(/K\.regimeEnPhrase\(labelOf\(K\.choixRegimes\(S, dossier\.regime\), dossier\.regime\)\)/.test(code), 'l\'en-tête de la fiche ne dit plus le régime choisi');
+});
+
+// Vu à la souris (10.14.1) : « ✓ enregistré », posé AVANT le bouton dans un panneau des Réglages, le
+// poussait de sa largeur au moment où il apparaît — « Enregistrer les régimes » glissait de 84 px sous
+// le curseur (règle H-E1 : ce qui apparaît ne pousse rien).
+t('10.14.1 Cabinet : « ✓ enregistré » passe APRÈS le bouton d\'un panneau, il ne le pousse pas', () => {
+  const sans = f => lireSource(...f).replace(/\/\*[\s\S]*?\*\//g, '');
+  const cab = sans(['src', 'cabinet', 'renderer', 'cabinet.css']);
+  assert.ok(/(^|\n)\.panel \.modal-actions \{[^}]*display:\s*flex/.test(cab), 'la rangée d\'un panneau n\'est plus une rangée flex : `order` n\'y ferait rien');
+  assert.ok(/(^|\n)\.panel \.modal-actions > \.saved \{[^}]*\border:\s*[1-9]/.test(cab), '« ✓ enregistré » repasse devant le bouton');
+  // Et c'est bien DEVANT le bouton, dans le gabarit, qu'il est posé : sans cela la règle ne protège rien.
+  const posees = [...app.matchAll(/<div class="modal-actions"><span class="saved"/g)].length;
+  assert.ok(posees >= 5, 'marques « enregistré » lues : ' + posees);
+});
+
+// Vu à la souris (10.14.1) : l'onglet « Mon cabinet » des Réglages range ses cinq panneaux dans une
+// <section> sans titre. La visite de la page la lisait d'un bloc — une seule étape « Ton cabinet » de
+// treize boutons. Un conteneur sans titre à lui se traverse : ses panneaux sont les blocs.
+t('10.14.1 : un conteneur sans titre (DIV, SECTION d\'onglet) se traverse, ses panneaux sont les étapes', () => {
+  const vj = lireSource('src', 'renderer', 'visite.js').replace(/\/\/[^\n]*/g, '');
+  const bloc = vj.slice(vj.indexOf('function blocsDe('), vj.indexOf('const titreDe'));
+  assert.ok(bloc.length > 200 && bloc.length < 2000, 'tranche inattendue : ' + bloc.length);
+  const m = /\(\/\^\(([A-Z|]+)\)\$\/\.test\(c\.tagName\) && !c\.querySelector\(':scope > h2, :scope > h3'\)\)+ \{ walk\(c, prof \+ 1\)/.exec(bloc);
+  assert.ok(m, 'la traversée des conteneurs sans titre a disparu');
+  assert.deepStrictEqual(m[1].split('|').sort(), ['DIV', 'SECTION'], 'une SECTION d\'onglet n\'est plus traversée : ' + m[1]);
+});
 };

@@ -2029,20 +2029,31 @@ body.dark .scroll-x table.list:has(td.row-actions) thead th:last-child { box-sha
    Trois couches : l'ombre SOUS les fenêtres (390 : une fenêtre ouverte reste lisible, c'est déjà
    elle qui assombrit la page), l'anneau et la bulle AU-DESSUS (891, 892 : on peut désigner un champ
    d'une fenêtre), sous la bulle « i » (900) et le message passager (950), qui se lisent par-dessus.
-   L'ombre est un TROU : un cadre transparent dont l'ombre portée couvre tout le reste — la cible
-   reste à pleine lumière quelle que soit sa couche. Rien de tout ça ne prend le clic, sauf la bulle :
-   on n'est jamais enfermé dans une visite.
+   L'ombre est un VOILE PERCÉ (10.14.1) : un dessin plein écran dont le masque découpe un trou pour
+   la zone de l'étape, et un trou pour chaque bouton que la bulle NOMME — ils sont en pleine lumière,
+   cliquables. L'ancienne ombre portée autour d'un seul cadre ne savait percer qu'un trou : un bouton
+   cité hors de la zone restait dans le noir (Skander, 26/09/2026 : « pas qu'elle s'affiche en sombre
+   en arrière-plan »). Rien de tout ça ne prend le clic, sauf la bulle : on n'est jamais enfermé.
    L'habillage (Skander, 24/09/2026 : « wow, beau, attirant ») : chaque chapitre porte la COULEUR de
    son domaine — les sept couleurs de l'Aide, `th-<nom>`, qui savent déjà se retourner en sombre —,
    le projecteur GLISSE d'une cible à la suivante, le texte entre du côté où l'on va, et la fin se
    fête. Tout ce qui bouge s'arrête pour qui a demandé moins d'animations. */
-#visite-trou { position: fixed; z-index: 390; border-radius: 14px; pointer-events: none;
-  box-shadow: 0 0 0 200vmax rgba(10, 18, 28, .5); animation: vb-voile .35s ease both; }
+#visite-voile { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index: 390; pointer-events: none; overflow: visible;
+  animation: vb-voile .35s ease both; }
+#visite-voile .vv-ombre { fill: rgba(10, 18, 28, .5); }
 @keyframes vb-voile { from { opacity: 0; } }
+/* Les boutons nommés hors de la zone : un anneau fin, sans pulsation — l'œil les trouve, ils ne
+   crient pas. Sous la bulle (892), au niveau de l'anneau principal. */
+#visite-nommes { position: fixed; inset-block-start: 0; inset-inline-start: 0; width: 0; height: 0; z-index: 891; pointer-events: none; }
+#visite-nommes .visite-nomme { position: fixed; border-radius: 9px; pointer-events: none; border: 2px solid var(--th);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--th) 18%, transparent); }
 #visite-anneau { position: fixed; z-index: 891; border-radius: 14px; pointer-events: none; border: 2px solid var(--th);
   box-shadow: 0 0 0 5px color-mix(in srgb, var(--th) 22%, transparent), 0 0 34px 2px color-mix(in srgb, var(--th) 36%, transparent); }
-#visite-trou.glisse, #visite-anneau.glisse { transition: top .45s cubic-bezier(.2, .8, .2, 1), inset .45s cubic-bezier(.2, .8, .2, 1),
+#visite-anneau.glisse { transition: top .45s cubic-bezier(.2, .8, .2, 1), inset .45s cubic-bezier(.2, .8, .2, 1),
   left .45s cubic-bezier(.2, .8, .2, 1), width .45s cubic-bezier(.2, .8, .2, 1), height .45s cubic-bezier(.2, .8, .2, 1); }
+/* Le trou du voile glisse comme l'anneau : ses coordonnées sont des propriétés CSS du rectangle. */
+#visite-voile.glisse .vv-trou { transition: x .45s cubic-bezier(.2, .8, .2, 1), y .45s cubic-bezier(.2, .8, .2, 1),
+  width .45s cubic-bezier(.2, .8, .2, 1), height .45s cubic-bezier(.2, .8, .2, 1); }
 #visite-anneau.pulse { animation: visite-pulse 1.8s cubic-bezier(.2, .8, .2, 1) infinite; }
 @keyframes visite-pulse {
   0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--th) 55%, transparent), 0 0 26px 0 color-mix(in srgb, var(--th) 30%, transparent); }
@@ -2052,6 +2063,9 @@ body.dark .scroll-x table.list:has(td.row-actions) thead th:last-child { box-sha
 /* Le second anneau : le bouton dont parle la ligne survolée de la bulle — plus fin, en pointillé. */
 #visite-point { position: fixed; z-index: 891; border-radius: 9px; pointer-events: none;
   border: 2px dashed var(--th); background: color-mix(in srgb, var(--th) 9%, transparent); }
+/* Un nom cliqué dans la bulle : son bouton clignote un instant, pour qu'on le trouve. */
+#visite-point.flash { border-style: solid; animation: vb-flash .45s ease-in-out 3; }
+@keyframes vb-flash { 50% { background: color-mix(in srgb, var(--th) 32%, transparent); box-shadow: 0 0 0 6px color-mix(in srgb, var(--th) 25%, transparent); } }
 
 .visite-bulle { position: fixed; z-index: 892; width: 388px; max-width: calc(100vw - 24px); box-sizing: border-box;
   background: var(--panel); color: var(--text); border: 1px solid color-mix(in srgb, var(--th) 24%, var(--border)); border-radius: 18px;
@@ -2063,6 +2077,14 @@ body.dark .scroll-x table.list:has(td.row-actions) thead th:last-child { box-sha
 .visite-bulle.fin { width: 440px; }
 /* Un GESTE attendu se reconnaît de loin : le cadre prend la couleur du domaine. */
 .visite-bulle.faire { border-color: color-mix(in srgb, var(--th) 50%, var(--border)); }
+/* La bulle EN RETRAIT (10.14.1) : pendant qu'on essaie ce qu'elle montre, ou qu'une liste est ouverte,
+   elle se range dans un coin, en petit — ce qu'on vient d'ouvrir se voit en entier. */
+.visite-bulle.mini { width: 330px; }
+.visite-bulle.mini .vb-haut { padding: 11px 12px 10px 13px; }
+.visite-bulle.mini .vb-ico { width: 30px; height: 30px; border-radius: 9px; }
+.visite-bulle.mini .vb-ico svg { width: 16px; height: 16px; }
+.visite-bulle.mini .vb-corps { padding: 11px 15px 0; font-size: 13.5px; }
+.visite-bulle.mini .vb-pied { padding: 11px 15px 13px; }
 .visite-bulle .vb-pointe { position: absolute; width: 14px; height: 14px; background: var(--panel);
   border: 1px solid color-mix(in srgb, var(--th) 24%, var(--border)); transform: rotate(45deg); border-radius: 3px; }
 .visite-bulle .vb-pointe.teinte { background: var(--th-bg); }
@@ -2121,6 +2143,20 @@ body.dark .scroll-x table.list:has(td.row-actions) thead th:last-child { box-sha
   animation: vb-tape 1.4s ease-in-out infinite; transform-origin: 60% 80%; }
 @keyframes vb-tape { 0%, 100% { transform: translateY(0); } 40% { transform: translateY(2px) scale(.92); } }
 .visite-bulle .vb-action { font-size: 14px; }
+/* Le geste déjà fait en entrant : on le dit, sans l'attente animée. */
+.visite-bulle .vb-afaire.fait { border-style: solid; }
+.visite-bulle .vb-afaire.fait .vb-atoi svg { animation: none; }
+/* Un nom de bouton cité dans la bulle est un LIEN vers ce bouton : le survoler l'éclaire, le
+   cliquer l'amène à l'écran. Souligné en pointillé, comme un mot qu'on peut toucher. */
+.visite-bulle .vb-nomme { color: var(--text); font-weight: 650; cursor: pointer; border-radius: 4px;
+  text-decoration: underline dotted; text-decoration-thickness: 2px; text-underline-offset: 3px;
+  text-decoration-color: color-mix(in srgb, var(--th) 70%, transparent); }
+.visite-bulle .vb-nomme:hover, .visite-bulle .vb-nomme:focus-visible { background: var(--th-bg); outline: none;
+  text-decoration-color: var(--th); }
+/* « Tu peux cliquer ce qui est éclairé » : une fois par visite, en petit. */
+.visite-bulle .vb-essai-note { display: flex; gap: 8px; align-items: flex-start; margin-block-start: 12px; font-size: 12.5px; line-height: 1.45; color: var(--muted); }
+.visite-bulle .vb-essai-note svg { flex: none; width: 16px; height: 16px; margin-block-start: 1px; fill: none; stroke: color-mix(in srgb, var(--th) 85%, var(--text));
+  stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
 .visite-bulle .vb-prochain { display: flex; align-items: center; gap: 7px; margin-block-start: 12px; font-size: 12.5px; color: var(--muted); }
 .visite-bulle .vb-prochain::before { content: ''; width: 14px; height: 2px; border-radius: 2px; background: var(--th); opacity: .6; }
 .visite-bulle .vb-prochain b { color: var(--text); font-weight: 650; }
@@ -2184,6 +2220,9 @@ body.dark .scroll-x table.list:has(td.row-actions) thead th:last-child { box-sha
 .visite-bulle.fin .vb-haut { display: flex; align-items: center; gap: 13px; padding: 18px 14px 15px 18px; }
 .visite-bulle .vb-medaille { flex: none; width: 52px; height: 52px; }
 .visite-bulle .vb-medaille svg { display: block; width: 52px; height: 52px; }
+/* Le but n'est pas atteint : pas de coche, un « i » calme — on dit ce qui manque, on ne gronde pas. */
+.visite-bulle .vb-medaille.info { display: grid; place-items: center; border-radius: 50%; background: var(--th); color: #fff; }
+.visite-bulle .vb-medaille.info svg { width: 28px; height: 28px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
 .visite-bulle .vb-m-rond { fill: var(--th); transform-origin: 26px 26px; animation: vb-pop .5s cubic-bezier(.2, 1.4, .4, 1) both; }
 .visite-bulle .vb-m-coche { fill: none; stroke: #fff; stroke-width: 4; stroke-linecap: round; stroke-linejoin: round;
   stroke-dasharray: 36; stroke-dashoffset: 36; animation: vb-trace .45s .28s ease-out forwards; }
@@ -2231,19 +2270,19 @@ body.dark .scroll-x table.list:has(td.row-actions) thead th:last-child { box-sha
   100% { opacity: 0; transform: translate(calc(var(--x) * 1.15), calc(var(--y) + 170px)) rotate(var(--r)); }
 }
 body.dark .visite-bulle { box-shadow: 0 30px 70px -20px rgba(0, 0, 0, .75), 0 12px 28px -14px rgba(0, 0, 0, .5); }
-body.dark #visite-trou { box-shadow: 0 0 0 200vmax rgba(0, 0, 0, .6); }
+body.dark #visite-voile .vv-ombre { fill: rgba(0, 0, 0, .6); }
 /* En sombre, les teintes des domaines sont CLAIRES : le texte posé dessus passe au foncé. */
 body.dark .visite-bulle .vb-ico, body.dark .visite-bulle .vb-suiv, body.dark .visite-bulle .vb-atoi,
-body.dark .visite-bulle .vb-item:hover .vb-num, body.dark .visite-bulle .vb-item:focus .vb-num { color: #0d1418; }
+body.dark .visite-bulle .vb-item:hover .vb-num, body.dark .visite-bulle .vb-item:focus .vb-num, body.dark .visite-bulle .vb-medaille.info { color: #0d1418; }
 body.dark .visite-bulle .vb-m-coche { stroke: #0d1418; }
 @media (prefers-reduced-motion: reduce) {
-  #visite-trou, #visite-anneau.pulse, .visite-bulle, .visite-bulle .vb-corps, .visite-bulle .vb-ico, .visite-bulle .vb-ou, .visite-bulle .vb-atoi svg,
+  #visite-voile, #visite-anneau.pulse, #visite-point.flash, .visite-bulle, .visite-bulle .vb-corps, .visite-bulle .vb-ico, .visite-bulle .vb-ou, .visite-bulle .vb-atoi svg,
   .visite-bulle .vb-points-attente i, .visite-bulle .vb-squelette i, .visite-bulle .vb-m-rond, .visite-bulle .vb-progres b, .visite-bulle .vb-jauge i { animation: none !important; }
   .visite-bulle .vb-m-coche { animation: none !important; stroke-dashoffset: 0; }
-  #visite-trou.glisse, #visite-anneau.glisse, .visite-bulle.glisse, .visite-bulle .vb-suite, .visite-bulle .vb-suiv { transition: none; }
+  #visite-voile.glisse .vv-trou, #visite-anneau.glisse, .visite-bulle.glisse, .visite-bulle .vb-suite, .visite-bulle .vb-suiv { transition: none; }
   #visite-fete { display: none; }
 }
-@media print { #visite-trou, #visite-anneau, #visite-point, .visite-bulle, #visite-fete { display: none !important; } }
+@media print { #visite-voile, #visite-nommes, #visite-anneau, #visite-point, .visite-bulle, #visite-fete { display: none !important; } }
 
 /* La ligne « Première fois sur cette page ? » : calme (ni orange ni vert), sous l'en-tête, à la
    couleur du domaine de la page. Elle ne porte pas le bouton principal de la page — U-11 : un seul

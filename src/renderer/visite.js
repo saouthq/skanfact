@@ -167,6 +167,76 @@
   // Une étape est-elle « faire » ? Une seule définition, pour le dessin ET pour les tests.
   const estFaire = e => !!(e && (e.faire === 'clic' || e.faire === 'valeur' || typeof e.fait === 'function' && e.faire !== 'regarder'));
 
+  // ---------- ce que la visite fait de l'étape, à chaque tour (PUR : les tests le jouent) ----------
+  // Skander, 26/09/2026 : « des fois il passe tout seul sans que j'ai appuyé sur suivant ». Trois
+  // chemins avançaient sans lui, et chacun se trompait de preuve :
+  //   - une étape FACULTATIVE se sautait dès que sa zone manquait — y compris une zone qu'on venait de
+  //     voir et que la personne avait vidée (une recherche, un filtre, un onglet) : la visite d'une
+  //     page se terminait d'elle-même, sur « Tu connais cette page ». Elle ne se saute plus qu'à
+  //     l'ENTRÉE, pour une zone jamais venue ; une zone perdue se DIT ;
+  //   - la « prise d'avance » (une étape plus loin déjà à l'écran) sautait sur un simple redessin de
+  //     la page : elle exige maintenant un GESTE de la personne pendant l'étape ;
+  //   - un geste déjà fait en entrant (une fenêtre déjà ouverte) faisait passer l'étape sans qu'on
+  //     l'ait lue : l'étape le dit (« c'est déjà fait ») et attend « Suivant ». Seul le passage du
+  //     non-fait au fait, pendant l'étape, avance tout seul — c'est le geste qu'on attendait.
+  // Et pendant un ESSAI (la personne clique ce que la bulle lui montre), rien n'avance ni ne se perd.
+  // `s` : { cible, el, vu, facultatif, faire, mode, aFait, fait, faitAvant, entree, clic, clicRecent,
+  //         geste, essai, t } — rend 'sauter' | 'avance' | 'valeur' | 'dejaFait' | 'avancer' |
+  //         'attendre' | 'perdu' | 'present' | null.
+  function decider(s) {
+    if (!s || s.essai) return null;
+    if (!s.el && s.cible && s.facultatif && !s.vu && s.t > PATIENCE_FACULTATIVE) return 'sauter';
+    if (!s.el && s.cible && s.faire && s.geste && s.t > 500) return 'avance';
+    if (s.mode === 'valeur') return 'valeur';
+    if (s.aFait) {
+      if (s.fait && s.entree) return 'dejaFait';
+      if (s.fait && s.faitAvant === false) return 'avancer';
+    } else if (s.mode === 'clic' && s.clic) return 'avancer';
+    // Le clic vient d'avoir lieu : la page qu'il ouvre fait disparaître la cible, ce n'est pas se
+    // perdre — le tour suivant le comptera comme fait.
+    if (s.mode === 'clic' && !s.aFait && s.clicRecent) return 'attendre';
+    if (s.cible && !s.el && s.t > PATIENCE) return 'perdu';
+    return 'present';
+  }
+
+  // ---------- la bulle en retrait (PUR : les tests le jouent) ----------
+  // Quand la personne ESSAIE (elle clique ce que la bulle lui montre) ou qu'une liste s'ouvre, la
+  // bulle se range dans un coin, en petit, pour ne rien couvrir : le coin le plus proche du bas à
+  // droite qui ne touche ni la liste ouverte, ni l'endroit du clic, ni la cible du geste attendu.
+  function placerMini(ecran, bulle, evites) {
+    const W = ecran.w, H = ecran.h, bw = bulle.w, bh = bulle.h;
+    const coins = [
+      { x: W - MARGE - bw, y: H - MARGE - bh, cote: 'bas-droite' },
+      { x: W - MARGE - bw, y: MARGE, cote: 'haut-droite' },
+      { x: MARGE, y: H - MARGE - bh, cote: 'bas-gauche' },
+      { x: MARGE, y: MARGE, cote: 'haut-gauche' }
+    ].map(c => ({ x: Math.round(Math.max(MARGE, c.x)), y: Math.round(Math.max(MARGE, c.y)), cote: c.cote }));
+    for (const c of coins) {
+      const r = { l: c.x, t: c.y, r: c.x + bw, b: c.y + bh };
+      if (!(evites || []).some(z => z && chevauche(r, z))) return c;
+    }
+    return coins[0];
+  }
+
+  // ---------- les boutons que la bulle NOMME (PUR : les tests le jouent) ----------
+  // « Clique sur « + Ligne vide » » : le bouton cité doit être en PLEINE LUMIÈRE, pas sous le voile —
+  // Skander, 26/09/2026 : « quand le guide me parle d'une action il faut que je puisse appuyer dessus
+  // pour la découvrir, et pas qu'elle s'affiche en sombre en arrière-plan ». Un nom se compare sans
+  // ce qui le décore (« + », « ▾ », « … », les accents, la casse) : « Ajouter depuis le catalogue »
+  // désigne le bouton « Ajouter depuis le catalogue… ».
+  const normNom = t => String(t == null ? '' : t).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+    .replace(/[\u00a0\u202f]/g, ' ').replace(/^[\s+✕×›‹←→✎↑↓]+/, '').replace(/[\s▾▸…→›.:]+$/, '').replace(/\s+/g, ' ').trim();
+  // Les noms cités entre guillemets français dans un texte (HTML ou non), dans l'ordre, chacun une fois.
+  function nomsCites(texte) {
+    const t = String(texte == null ? '' : texte).replace(/<[^>]+>/g, '');
+    const out = [];
+    for (const m of t.matchAll(/«[\s\u00a0\u202f]*([^«»]{2,80}?)[\s\u00a0\u202f]*»/g)) {
+      const n = m[1].trim();
+      if (n && !out.includes(n)) out.push(n);
+    }
+    return out;
+  }
+
   // Les CHAPITRES d'une visite (PUR) : une étape qui porte `chapitre` en ouvre un, les suivantes en
   // font partie jusqu'au prochain. Une visite sans chapitre en a un seul, sans titre.
   function chapitres(etapes) {
@@ -190,6 +260,7 @@
     lancerSuite: null,                          // lancer la visite qui suit (l'hôte peut charger d'abord)
     expliquer: () => null,                      // un contrôle → { cle, nom, texte } ou null
     action: () => {},                           // une action de fin de visite (« passer à mes données »)
+    remettre: '',                               // le bouton qui réaffiche une liste vidée par une recherche ou un filtre
     // L'habillage (10.14.0, « quelque chose de wow et beau ») : la COULEUR d'une visite (un nom de
     // thème de la feuille de style, `th-<nom>`), son ICÔNE, où en est le parcours de la personne, les
     // visites à proposer à la fin, et si la fin se FÊTE. Tous facultatifs : sans eux, la visite est
@@ -209,6 +280,8 @@
   const ICONE_DEFAUT = SVG('<circle cx="12" cy="12" r="9"/><path d="M15.6 8.4l-2.1 5.1-5.1 2.1 2.1-5.1z"/>');
   const ICONE_PERDU = SVG('<path d="M12 3.5l9.5 16.5h-19z"/><path d="M12 10v4.5"/><path d="M12 17.4v.1"/>');
   const ICONE_MAIN = SVG('<path d="M8.5 12.5V5.8a1.6 1.6 0 0 1 3.2 0v5.4"/><path d="M11.7 10.8V9.3a1.6 1.6 0 0 1 3.2 0v2"/><path d="M14.9 11.3v-.6a1.6 1.6 0 0 1 3.2 0v4.1a6.2 6.2 0 0 1-6.2 6.2h-.6a6.2 6.2 0 0 1-5-2.6l-2.4-3.4a1.6 1.6 0 0 1 2.6-1.9l1.9 2.4"/>');
+  const ICONE_COCHE = SVG('<path d="M5 12.5l4.5 4.5L19 7.5"/>');
+  const ICONE_INFO = SVG('<circle cx="12" cy="12" r="9"/><path d="M12 11v5.5"/><path d="M12 7.6v.1"/>');
   const FLECHE = SVG('<path d="M5 12h13"/><path d="M13 6.5l5.5 5.5-5.5 5.5"/>');
   const FLECHE_G = SVG('<path d="M19 12H6"/><path d="M11 6.5L5.5 12l5.5 5.5"/>');
 
@@ -260,10 +333,64 @@
     return p instanceof RegExp ? p.test(hash) : (hash === p || hash.startsWith(p + '/'));
   };
 
+  // La cible d'une étape : l'ÉLÉMENT qu'on a lu sur l'écran quand il est encore là (une page lue bloc
+  // par bloc garde le sien), sinon son sélecteur. Un chemin de rang (« le 3e bloc ») se décale dès
+  // qu'un bloc apparaît au-dessus ; l'élément, lui, ne ment pas tant qu'il est dans la page.
+  const cibleDe = e => {
+    if (!e) return null;
+    if (e.el && e.el.isConnected && visible(e.el)) return e.el;
+    return resoudre(e.cible);
+  };
+  const zoneDe = e => (e && e.zone ? (resoudre(e.zone) || cibleDe(e)) : cibleDe(e));
+
+  // Les listes ouvertes par-dessus la page (une liste déroulante, un calendrier, un menu d'actions,
+  // les suggestions du catalogue, la liste d'un sélecteur) : la bulle ne se pose jamais dessus.
+  // L'hôte peut en déclarer d'autres (`hote.listes`).
+  const LISTES_OUVERTES = '.combo-pop:not([hidden]), .cal-pop:not([hidden]), .sugg-pop:not([hidden]), .row-menu, .lm-pop';
+  function listesOuvertes() {
+    let sel = LISTES_OUVERTES;
+    try { const x = hote.listes && hote.listes(); if (x) sel += ', ' + x; } catch (_) { /* la liste par défaut suffit */ }
+    let l = [];
+    try { l = [...document.querySelectorAll(sel)]; } catch (_) { l = []; }
+    return l.filter(el => visible(el) && !(els.bulle && els.bulle.contains(el)));
+  }
+
+  // Les boutons que la bulle nomme « entre guillemets », trouvés sur l'écran par leur nom — plus
+  // ceux que l'étape désigne elle-même (`eclairer`). Un nom qu'aucun bouton visible ne porte ne
+  // s'éclaire pas : on n'invente pas de cible.
+  const NOMMABLES = 'button, a[href], [role=button], [role=tab], .combo-btn, select, summary';
+  function nommesDe(e, texte) {
+    const out = [];
+    const ajouter = (el, nom) => {
+      if (!el || !visible(el) || el.closest('#visite-bulle, #visite-nommes')) return;
+      if (out.some(x => x.el === el)) return;
+      out.push({ el, nom: nom || '' });
+    };
+    const explicites = e && e.eclairer ? (Array.isArray(e.eclairer) ? e.eclairer : [e.eclairer]) : [];
+    for (const s of explicites) {
+      let l = [];
+      try { l = document.querySelectorAll(s); } catch (_) { l = []; }
+      for (const el of l) if (visible(el)) { ajouter(el, ''); break; }
+    }
+    const noms = nomsCites(texte);
+    if (noms.length && typeof document !== 'undefined') {
+      let tous = [];
+      try { tous = [...document.querySelectorAll(NOMMABLES)].filter(el => visible(el) && !el.closest('#visite-bulle')); } catch (_) { tous = []; }
+      const nomDe = el => [normNom(libelleDe(el)), normNom(el.textContent)];
+      for (const n of noms) {
+        const cle = normNom(n);
+        if (!cle) continue;
+        const el = tous.find(x => nomDe(x).includes(cle));
+        if (el) ajouter(el, n);
+      }
+    }
+    return out.slice(0, 8);
+  }
+
   // Les contrôles d'une étape « liste », dans l'ordre de l'écran, chacun une fois : le même bouton
   // répété sur chaque ligne (« Actions ») ne se dit qu'une fois, grâce à la clé que rend l'hôte.
   function candidats(e) {
-    const racine = resoudre(e.zone || e.cible);
+    const racine = zoneDe(e);
     if (!racine) return [];
     const sel = typeof e.liste === 'string' ? e.liste : CONTROLES;
     try { return [...(racine.matches(sel) ? [racine] : []), ...racine.querySelectorAll(sel)]; } catch (_) { return []; }
@@ -278,9 +405,17 @@
       try { x = hote.expliquer(el); } catch (_) { x = null; }
       if (!x || !x.texte) continue;
       const cle = x.cle || x.nom || x.texte;
-      if (vus.has(cle)) continue;
+      if (vus.has(cle)) {
+        // Deux contrôles DISTINCTS qui partagent une explication (le jour de dépôt de la TVA et celui
+        // de la CNSS) se disent une fois, mais s'éclairent tous les deux : le second restait dans
+        // l'ombre (vu à la souris, 10.14.1). Le même bouton répété sur chaque LIGNE d'un tableau
+        // (« Actions ») ne s'éclaire qu'une fois — trente trous dans une colonne ne montrent rien.
+        const deja = out.find(o => o.cle === cle);
+        if (deja && !(el.closest && el.closest('tbody tr')) && deja.autres.length < 3) deja.autres.push(el);
+        continue;
+      }
       vus.add(cle);
-      out.push({ el, nom: x.nom || '', texte: x.texte });
+      out.push({ el, nom: x.nom || '', texte: x.texte, cle, autres: [] });
     }
     return out;
   }
@@ -288,7 +423,22 @@
   function creer() {
     if (els.bulle && els.bulle.isConnected) return;
     const mk = (id, cls) => { const d = document.createElement('div'); d.id = id; if (cls) d.className = cls; document.body.appendChild(d); return d; };
-    els.trou = mk('visite-trou');
+    // Le VOILE : un dessin plein écran percé de TROUS — la zone de l'étape, et chaque bouton que la
+    // bulle nomme. Une ombre portée autour d'un seul cadre (la version d'avant) ne savait percer
+    // qu'un trou : les boutons cités hors de la zone restaient dans le noir (10.14.1, S-02).
+    const NS = 'http://www.w3.org/2000/svg';
+    els.voile = document.createElementNS(NS, 'svg');
+    els.voile.id = 'visite-voile';
+    els.voile.setAttribute('aria-hidden', 'true');
+    els.voile.setAttribute('focusable', 'false');
+    els.voile.innerHTML = '<defs><mask id="visite-masque" maskUnits="userSpaceOnUse" x="0" y="0" width="100%" height="100%">'
+      + '<rect x="0" y="0" width="100%" height="100%" fill="#fff"/><rect class="vv-trou" rx="14" ry="14" fill="#000"/><g class="vv-extras"></g></mask></defs>'
+      + '<rect class="vv-ombre" x="0" y="0" width="100%" height="100%" mask="url(#visite-masque)"/>';
+    document.body.appendChild(els.voile);
+    els.trou = els.voile.querySelector('.vv-trou');
+    els.extras = els.voile.querySelector('.vv-extras');
+    // Les anneaux fins des boutons nommés (hors de la zone) : l'œil les trouve sans chercher.
+    els.nommes = mk('visite-nommes');
     els.anneau = mk('visite-anneau');
     els.point = mk('visite-point');
     els.point.hidden = true;
@@ -298,7 +448,9 @@
     els.bulle.setAttribute('aria-live', 'polite');
     els.bulle.addEventListener('keydown', e => {
       const item = e.target.closest && e.target.closest('.vb-item');
+      const nm = e.target.closest && e.target.closest('.vb-nomme');
       if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); quitter(); }
+      else if (nm && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); montrerNomme(Number(nm.dataset.n)); }
       else if (item && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
         e.preventDefault();
         const it = [...els.bulle.querySelectorAll('.vb-item')];
@@ -340,20 +492,41 @@
       else if (v === 'fin') terminer();
       else if (v === 'suite') lancerSuite(b.dataset.id);
       else if (v === 'action') agir(b.dataset.id);
+      else if (v === 'reprendre') reprendre();
+      else if (v === 'recommencer') recommencer();
+      else if (v === 'abandon') { arreterSansBruit(); }
+      else if (v === 'nomme') montrerNomme(Number(b.dataset.n));
+      else if (v === 'remettre') remettre();
     });
-    // Survoler (ou parcourir au clavier) une ligne de la liste éclaire le bouton dont elle parle.
+    // Survoler (ou parcourir au clavier) une ligne de la liste éclaire le bouton dont elle parle — et
+    // survoler un NOM cité dans le texte éclaire le bouton qu'il désigne.
     const pointer = ev => {
       if (!cur) return;
       const it = ev.target.closest && ev.target.closest('.vb-item');
       const k = it ? Number(it.dataset.k) : -1;
       if (k !== cur.pointe) { cur.pointe = k; if (k >= 0 && cur.items && cur.items[k]) amenerAlEcran(cur.items[k].el); }
+      const nm = ev.target.closest && ev.target.closest('.vb-nomme');
+      cur.pointeN = nm ? Number(nm.dataset.n) : -1;
     };
     els.bulle.addEventListener('mouseover', pointer);
     els.bulle.addEventListener('focusin', pointer);
-    els.bulle.addEventListener('mouseleave', () => { if (cur && !els.bulle.contains(document.activeElement)) cur.pointe = -1; });
+    // Quitter la bulle éteint le second anneau — sauf si l'on parcourt la liste AU CLAVIER. Le
+    // curseur posé d'office sur « Suivant » ne compte pas : avec lui, l'anneau restait allumé sur le
+    // dernier bouton survolé pendant qu'on tapait ailleurs (vu à la souris, 10.14.1).
+    const eteindre = () => { if (cur) { cur.pointe = -1; cur.pointeN = -1; } };
+    els.bulle.addEventListener('mouseleave', () => {
+      const f = document.activeElement;
+      if (!(f && els.bulle.contains(f) && f.closest && f.closest('.vb-item, .vb-nomme'))) eteindre();
+    });
+    els.bulle.addEventListener('focusout', ev => {
+      const vers = ev.relatedTarget;
+      if (vers && els.bulle.contains(vers)) return;
+      if (!els.bulle.matches(':hover')) eteindre();
+    });
   }
   function retirer() {
-    ['trou', 'anneau', 'point', 'bulle', 'fete'].forEach(k => { if (els[k]) els[k].remove(); els[k] = null; });
+    ['voile', 'nommes', 'anneau', 'point', 'bulle', 'fete'].forEach(k => { if (els[k]) els[k].remove(); els[k] = null; });
+    els.trou = null; els.extras = null;
     cancelAnimationFrame(boucle); clearInterval(logique); clearTimeout(glisseT); clearTimeout(feteT);
     boucle = 0; logique = 0; glisseT = 0; feteT = 0;
   }
@@ -361,7 +534,7 @@
   // sauter : l'œil suit le mouvement, et on voit d'où l'on vient. Seulement le temps du glissement —
   // le reste du temps, ils suivent la page qui défile image par image, sans retard.
   function glisser() {
-    const cibles = [els.trou, els.anneau, els.bulle].filter(Boolean);
+    const cibles = [els.voile, els.anneau, els.bulle].filter(Boolean);
     cibles.forEach(n => n.classList.add('glisse'));
     clearTimeout(glisseT);
     glisseT = setTimeout(() => cibles.forEach(n => n && n.classList.remove('glisse')), 480);
@@ -407,7 +580,19 @@
     // disparu.
     try { cur.mesure0 = typeof p.mesure === 'function' ? p.mesure() : null; } catch (_) { cur.mesure0 = null; }
     creer();
-    entrer(Math.max(0, Math.min(Number(depart) || 0, copie.etapes.length - 1)), 1);
+    // Une visite de page reprise au milieu : l'étape où l'on s'était arrêté (le sixième bloc, dans le
+    // deuxième onglet) n'existe qu'une fois la page RELUE. On la vise, et chaque lecture rapproche
+    // (`viser`, repris après chaque dépliage) — la version d'avant reprenait au premier bloc, pendant
+    // que « Me guider » annonçait « Étape 2 sur 2 » (vu à la souris, 10.14.1).
+    const d = Math.max(0, Number(depart) || 0);
+    if (d > copie.etapes.length - 1 && enAttenteDe(copie.etapes, -1)) cur.viser = d;
+    const dd = Math.min(d, copie.etapes.length - 1);
+    // Une visite de GESTE reprise au milieu : l'écran de son étape (la fenêtre ouverte, le brouillon
+    // du devis) n'existe plus quand on revient de « Me guider ». Reprise là, la bulle se perdait de vue
+    // et ne proposait qu'« Arrêter la visite » (vu à la souris, 10.14.1). On reprend sur place si la
+    // cible est à l'écran, sinon à la dernière étape qui dit où aller (`etapeAvecPage`).
+    const ici = copie.etapes[dd];
+    entrer(cur.viser != null || (ici && cibleDe(ici) && pageOk(ici)) ? dd : etapeAvecPage(copie.etapes, dd), 1);
     boucle = requestAnimationFrame(image);
     logique = setInterval(verifier, 180);
     return true;
@@ -426,6 +611,9 @@
     if (i < 0) i = 0;
     if (i >= cur.p.etapes.length) { finir(); return; }
     cur.i = i; cur.t0 = Date.now(); cur.defile = false; cur.couper = false; cur.clic = 0; cur.pret = false; cur.perdu = false; cur.pointe = -1; cur.sens = sens;
+    // Ce qui ne vaut que pour l'étape qu'on quitte : un essai en cours, un geste, la zone déjà vue,
+    // l'état du geste à l'entrée, les boutons nommés.
+    cur.essai = null; cur.geste = 0; cur.vu = false; cur.faitAvant = undefined; cur.dejaFait = false; cur.dejaRempli = false; cur.mini = false; cur.nommes = []; cur.pointeN = -1;
     // La première étape apparaît ; les suivantes glissent depuis la précédente.
     if (cur.vues++ > 0) glisser();
     const e = etape();
@@ -433,10 +621,18 @@
     // « faire » laisse l'adresse telle qu'elle est — c'est le geste de la personne qui doit y mener.
     const premiere = cur.premiere; cur.premiere = false;
     const dest = pageDe(e);
-    if (dest && typeof dest === 'string' && !pageOk(e) && (!estFaire(e) || i === 0 || premiere)) {
+    const surPlace = pageOk(e);
+    if (dest && typeof dest === 'string' && !surPlace && (!estFaire(e) || i === 0 || premiere)) {
       try { hote.aller(dest); } catch (_) { /* l'hôte a refusé : la bulle le dira */ }
     }
-    try { hote.etape(cur.p, cur.i); } catch (_) { /* l'hôte retient où l'on en est ; s'il n'y arrive pas, la visite continue */ }
+    // La page est DÉJÀ à l'écran (la visite part de la page qu'elle présente) : on lit tout de suite
+    // les blocs qui suivent, pour que « Étape 1 sur 5 » dise le vrai compte — la version d'avant
+    // annonçait « 1 sur 2 », puis « 2 sur 5 » (vu à la souris, 10.14.1). Seulement sur place, et pour
+    // une lecture sans préparation (`avant`) : un écran qu'on vient de demander n'est pas encore dessiné.
+    if (surPlace && !e.avant && typeof e.deplier !== 'function') anticiper(i);
+    // L'hôte retient où l'on en est — et le compte, quand on le connaît : une page encore à lire n'a
+    // pas de « sur N » (`pointDeReprise`).
+    try { hote.etape(cur.p, cur.i, compteDe(cur)); } catch (_) { /* l'hôte retient où l'on en est ; s'il n'y arrive pas, la visite continue */ }
     // `avant` prépare l'écran (ouvrir un onglet, dérouler un menu). Il peut être asynchrone : tant
     // qu'il travaille, l'anneau ne désigne rien — il désignerait l'écran d'avant.
     let r = null;
@@ -454,12 +650,17 @@
           if (cur !== moi || cur.i !== iMoi) return;
           cur.attente = false; cur.t0 = Date.now(); cur.defile = false; cur.couper = false;
           if (deplier) {
-            let neuves = [];
-            try { neuves = (e.deplier() || []).filter(Boolean); } catch (_) { neuves = []; }
-            if (neuves.length && e.chapitre && !neuves[0].chapitre) neuves[0] = Object.assign({}, neuves[0], { chapitre: e.chapitre });
-            if (neuves.length && e.couleur && !neuves[0].couleur) neuves[0] = Object.assign({}, neuves[0], { couleur: e.couleur });
+            const neuves = etapesDepliees(e);
             cur.p.etapes.splice(iMoi, 1, ...neuves);
             cur.chaps = chapitres(cur.p.etapes);
+            // Une reprise vise une étape plus loin : on lit les onglets qui la précèdent, un par un,
+            // puis on s'y arrête. Si la page a changé depuis (moins de blocs), on s'arrête au dernier.
+            if (cur.viser != null) {
+              const r = versLaReprise(cur.p.etapes, iMoi, cur.viser);
+              if (r.fini) cur.viser = null;
+              entrer(r.i, 1);
+              return;
+            }
             // Rien à montrer sur cet écran : on continue dans le sens où l'on allait.
             entrer(neuves.length ? iMoi : iMoi + (sens < 0 ? -1 : 0), sens < 0 ? -1 : 1);
             return;
@@ -469,11 +670,77 @@
     } else cur.attente = false;
     dessinerBulle();
   }
+  // Les étapes qu'un `deplier` rend, prêtes à entrer dans la visite. Elles héritent de la page de
+  // l'étape qui les porte (« M'y ramener » sait où aller) et de ce qui prépare l'écran (l'onglet de
+  // leur chapitre, rouvert par `retablir` — jamais par `avant`, qui rendrait chaque bloc asynchrone).
+  function etapesDepliees(e) {
+    let neuves = [];
+    try { neuves = (e.deplier() || []).filter(Boolean); } catch (_) { neuves = []; }
+    neuves = neuves.map((x, k) => {
+      const o = Object.assign({}, x);
+      if (!o.page && e.page) o.page = e.page;
+      if (!o.retablir && !o.avant && (e.retablir || e.avant)) o.retablir = e.retablir || e.avant;
+      if (k === 0 && e.chapitre && !o.chapitre) o.chapitre = e.chapitre;
+      if (k === 0 && e.couleur && !o.couleur) o.couleur = e.couleur;
+      return o;
+    });
+    return neuves;
+  }
+  // Lire tout de suite la page qui est déjà à l'écran : l'étape de lecture qui SUIT l'étape courante
+  // (la présentation d'une page, puis ses blocs) se remplace par les blocs, sans attendre d'y arriver.
+  function anticiper(i) {
+    if (!cur) return;
+    const j = i + 1, x = cur.p.etapes[j];
+    if (!x || typeof x.deplier !== 'function' || x.avant || !pageOk(x)) return;
+    const neuves = etapesDepliees(x);
+    if (!neuves.length) return;
+    cur.p.etapes.splice(j, 1, ...neuves);
+    cur.chaps = chapitres(cur.p.etapes);
+  }
   function suivant(passer) {
     if (!cur) return;
     const e = etape();
     if (!passer && e && e.faire === 'valeur' && !cur.pret) return;
     entrer(cur.i + 1, 1);
+  }
+  // La personne a fini d'ESSAYER : la bulle revient à sa place, sur l'étape où elle était — sur sa
+  // page, et son onglet, si l'essai l'en a éloignée.
+  function reprendre() {
+    if (!cur) return;
+    const e = etape();
+    cur.essai = null; cur.mini = false; cur.geste = 0;
+    if (e && !cur.fin) {
+      const dest = typeof e.retour === 'string' ? e.retour : pageDe(e);
+      if (dest && typeof dest === 'string' && !pageOk(e)) { try { hote.aller(dest); } catch (_) { /* rien */ } }
+      const prep = e.retablir || e.avant;
+      if (typeof prep === 'function') { try { prep(); } catch (_) { /* rien */ } }
+    }
+    cur.t0 = Date.now(); cur.perdu = false; cur.defile = false; cur.couper = false;
+    dessinerBulle();
+  }
+  // Refaire la visite depuis le début — celle d'origine, pas la copie dépliée en route.
+  function recommencer() {
+    if (!cur) return;
+    const p = hote.parcours(cur.p.id) || cur.p;
+    arreterSansBruit();
+    lancer(p, 0);
+  }
+  // Un nom cité dans la bulle, cliqué : on amène son bouton à l'écran et on le fait clignoter.
+  function montrerNomme(k) {
+    const x = cur && cur.nommes && cur.nommes[k];
+    if (!x || !x.el || !x.el.isConnected) return;
+    try { x.el.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } catch (_) { /* rien */ }
+    cur.pointeN = k;
+    cur.flash = Date.now();
+  }
+  // Une zone de la page perdue parce que la liste a été vidée (une recherche, un filtre) : un clic la
+  // réaffiche — le bouton de la page qui efface la recherche et les filtres, que l'hôte désigne.
+  function remettre() {
+    if (!cur) return;
+    const b = hote.remettre ? resoudre(hote.remettre) : null;
+    if (b) { try { b.click(); } catch (_) { /* rien */ } }
+    cur.t0 = Date.now(); cur.perdu = false; cur.defile = false; cur.couper = false;
+    dessinerBulle();
   }
   function precedent() {
     if (!cur || !peutReculer()) return;
@@ -496,8 +763,9 @@
     const e = etape(); if (!e) return;
     const dest = typeof e.retour === 'string' ? e.retour : pageDe(e);
     if (dest && typeof dest === 'string') { try { hote.aller(dest); } catch (_) { /* rien */ } }
-    if (typeof e.avant === 'function') { try { e.avant(); } catch (_) { /* rien */ } }
-    cur.t0 = Date.now(); cur.perdu = false; cur.defile = false; cur.couper = false;
+    const prep = e.retablir || e.avant;
+    if (typeof prep === 'function') { try { prep(); } catch (_) { /* rien */ } }
+    cur.t0 = Date.now(); cur.perdu = false; cur.defile = false; cur.couper = false; cur.essai = null; cur.mini = false;
     dessinerBulle();
   }
   function lancerSuite(id) {
@@ -519,7 +787,15 @@
     // milieu de l'écran avec « Terminé » et plus rien à faire (7.27.0 : chaque écran finit par le
     // geste suivant).
     if (!cur) return;
-    cur.i = cur.p.etapes.length; cur.fin = true;
+    cur.i = cur.p.etapes.length; cur.fin = true; cur.essai = null; cur.mini = false;
+    // Une visite qui a un BUT (« un client de plus ») ne félicite que si le but est atteint : fermer
+    // la fenêtre sans enregistrer, ou passer les étapes, n'est pas « Ton client est enregistré ».
+    cur.echec = false;
+    if (typeof cur.p.but === 'function') {
+      let ok = false;
+      try { ok = !!cur.p.but(cur.mesure0); } catch (_) { ok = false; }
+      cur.echec = !ok;
+    }
     dessinerBulle();
   }
   function terminer() {
@@ -529,10 +805,10 @@
   }
   function quitter() {
     if (!cur) return;
-    const p = cur.p, i = cur.i;
+    const p = cur.p, i = cur.i, compte = compteDe(cur);
     if (cur.fin) { terminer(); return; }
     arreterSansBruit();
-    hote.interrompu(p, i);
+    hote.interrompu(p, i, compte);
   }
   function arreterSansBruit() { cur = null; retirer(); }
 
@@ -552,45 +828,83 @@
       try { atteint = !!cur.p.but(cur.mesure0); } catch (_) { atteint = false; }
       if (atteint) { finir(); return; }
     }
-    const el = resoudre(e.cible);
-    // Une étape facultative dont la zone n'existe pas sur cet écran se saute, dans le sens où l'on va.
-    if (!el && e.cible && e.facultatif && Date.now() - cur.t0 > PATIENCE_FACULTATIVE) { entrer(cur.i + (cur.sens || 1), cur.sens || 1); return; }
+    const el = cibleDe(e);
+    if (el) cur.vu = true;
+    // Le geste est fait ? La preuve de l'étape (`fait`), relevée à chaque tour — et son état à
+    // l'ENTRÉE, qui dit si le geste était déjà fait avant qu'on le demande.
+    let faitFn = false;
+    if (typeof e.fait === 'function') { try { faitFn = !!e.fait(); } catch (_) { faitFn = false; } }
+    const entree = cur.faitAvant === undefined;
+    // Le clic ne suffit que quand rien d'autre ne prouve le geste. Une étape qui dit ce qui le
+    // prouve (`fait`) attend CETTE preuve : un « Enregistrer » refusé (un champ manque) garde sa
+    // fenêtre ouverte, un choix de fichier peut être annulé — et la visite passait à la suite en
+    // décrivant ce qui n'existait pas (vu à l'écran, 10.14.0 : « Où il est rangé » sur une liste vide).
+    const s = {
+      cible: !!e.cible, el: !!el, vu: cur.vu, facultatif: !!e.facultatif, faire: estFaire(e), mode: e.faire || '',
+      aFait: typeof e.fait === 'function', fait: faitFn, faitAvant: entree ? undefined : cur.faitAvant, entree,
+      clic: !!(cur.clic && Date.now() - cur.clic > 80), clicRecent: !!cur.clic,
+      geste: !!cur.geste, essai: !!cur.essai, t: Date.now() - cur.t0
+    };
+    let d = decider(s);
+    cur.faitAvant = faitFn;
+    // Le geste qu'on disait « déjà fait » a été défait : l'étape redevient une demande.
+    if (cur.dejaFait && !faitFn && typeof e.fait === 'function') { cur.dejaFait = false; dessinerBulle(); }
+    // Une étape facultative dont la zone n'est jamais venue sur cet écran se saute, dans le sens où l'on va.
+    if (d === 'sauter') { entrer(cur.i + (cur.sens || 1), cur.sens || 1); return; }
     // La cible a disparu parce qu'on a pris de l'avance (deux champs remplis d'un coup, une fenêtre
-    // validée par Entrée) : si l'une des étapes suivantes est déjà à l'écran, on y va.
-    if (!el && e.cible && estFaire(e) && Date.now() - cur.t0 > 500) {
+    // validée par Entrée) : si l'une des étapes suivantes est déjà à l'écran, on y va. Sinon, on juge
+    // l'étape comme si de rien n'était — un clic sur la cible qui a changé la page la fait avancer.
+    if (d === 'avance') {
       const etapes = cur.p.etapes;
       for (let j = cur.i + 1; j < Math.min(etapes.length, cur.i + 5); j++) {
         const f = etapes[j];
         let garder = true;
         try { garder = !f.si || !!f.si(); } catch (_) { garder = false; }
-        if (garder && f.cible && pageOk(f) && resoudre(f.cible)) { entrer(j, 1); return; }
+        if (garder && f.cible && pageOk(f) && cibleDe(f)) { entrer(j, 1); return; }
       }
+      d = decider(Object.assign({}, s, { geste: false }));
     }
-    // Le geste est fait ?
-    let fait = false;
-    if (typeof e.fait === 'function') { try { fait = !!e.fait(); } catch (_) { fait = false; } }
-    // Le clic ne suffit que quand rien d'autre ne prouve le geste. Une étape qui dit ce qui le
-    // prouve (`fait`) attend CETTE preuve : un « Enregistrer » refusé (un champ manque) garde sa
-    // fenêtre ouverte, un choix de fichier peut être annulé — et la visite passait à la suite en
-    // décrivant ce qui n'existait pas (vu à l'écran, 10.14.0 : « Où il est rangé » sur une liste vide).
-    if (e.faire === 'clic' && typeof e.fait !== 'function' && cur.clic && Date.now() - cur.clic > 80) fait = true;
-    if (e.faire === 'valeur') {
-      const pret = typeof e.fait === 'function' ? fait : !!(el && String(el.value || '').trim());
-      if (pret !== cur.pret) { cur.pret = pret; dessinerBulle(); }
+    if (d === 'valeur') {
+      const pret = typeof e.fait === 'function' ? faitFn : !!(el && String(el.value || '').trim());
+      // Déjà rempli en arrivant (une prestation prise au catalogue remplit la désignation, le client
+      // est déjà choisi) : la bulle le DIT, au lieu de demander d'écrire ce qui est écrit (vu à la
+      // souris, 10.14.1). Vidé ensuite, l'étape redevient une demande.
+      const dejaRempli = dejaRempliDe(pret, entree, cur.dejaRempli);
+      if (pret !== cur.pret || dejaRempli !== !!cur.dejaRempli) { cur.pret = pret; cur.dejaRempli = dejaRempli; dessinerBulle(); }
       return;
     }
-    if (fait && (estFaire(e) || e.fait)) { entrer(cur.i + 1, 1); return; }
-    // Le clic vient d'avoir lieu : la page qu'il ouvre fait disparaître la cible, ce n'est pas se
-    // perdre — le tour suivant le comptera comme fait.
-    if (e.faire === 'clic' && typeof e.fait !== 'function' && cur.clic) return;
+    if (d === 'avancer') { entrer(cur.i + 1, 1); return; }
+    if (d === 'dejaFait') { cur.dejaFait = true; dessinerBulle(); return; }
+    if (d === 'attendre' || d === null) return;
     // La cible a-t-elle disparu ? Pas tout de suite : une fenêtre met un instant à s'ouvrir.
-    const perdu = !!e.cible && !el && Date.now() - cur.t0 > PATIENCE;
+    const perdu = d === 'perdu';
     if (perdu !== cur.perdu) { cur.perdu = perdu; dessinerBulle(); return; }
     // Une liste dont les boutons ont changé (un onglet redessiné, une liste chargée) se redit. On
     // compte les contrôles BRUTS — sans demander d'explication à l'hôte toutes les 180 ms.
-    if (e.liste && el && !cur.perdu && compterBruts(e) !== cur.bruts) dessinerBulle();
+    if (e.liste && el && !cur.perdu && !cur.mini && compterBruts(e) !== cur.bruts) dessinerBulle();
     // Le bouton nommé dans « À toi » est arrivé (ou a changé de nom) : on redit la phrase.
-    if (el && typeof e.action === 'string' && e.action.includes('{bouton}') && libelleCible(e) !== cur.libelle) dessinerBulle();
+    if (el && !cur.mini && typeof e.action === 'string' && e.action.includes('{bouton}') && libelleCible(e) !== cur.libelle) dessinerBulle();
+  }
+  // Les gestes de la PERSONNE pendant l'étape — jamais ceux de la visite (un onglet qu'elle ouvre
+  // elle-même par `click()` n'est pas un geste : `isTrusted` est faux). Un geste autorise la « prise
+  // d'avance » ; un clic sur un contrôle de la page, pendant qu'on REGARDE, ouvre l'ESSAI.
+  // Taper dans un champ n'en ouvre pas : on écrit là où la bulle le montre, rien ne s'ouvre dessous.
+  const INTERACTIF = 'button, a[href], select, summary, label, [role=button], [role=tab], [role=option], [role=menuitem], [data-open], tr[data-id], .combo-btn, input[type=checkbox], input[type=radio], input[type=file]';
+  function noterGeste(ev) {
+    if (!cur || cur.fin || !ev || ev.isTrusted === false) return;
+    const t = ev.target;
+    if (!t || !t.closest || t.closest('#visite-bulle')) return;
+    cur.geste = Date.now();
+    if (ev.type !== 'pointerdown' || cur.essai || cur.attente) return;
+    const e = etape();
+    if (!e || estFaire(e) || !t.closest(INTERACTIF)) return;
+    cur.essai = { x: ev.clientX, y: ev.clientY };
+    dessinerBulle();
+  }
+  if (typeof document !== 'undefined') {
+    document.addEventListener('pointerdown', noterGeste, true);
+    document.addEventListener('input', noterGeste, true);
+    document.addEventListener('keydown', ev => { if (ev.key === 'Enter' || ev.key === ' ') noterGeste(ev); }, true);
   }
   // Le clic sur la cible se lit en CAPTURE, avant que la page ne le traite : un bouton qui redessine
   // la page aura disparu au moment où l'on regarderait.
@@ -613,20 +927,51 @@
     window.scrollBy(0, dy);
   }
   const poser = (node, r) => Object.assign(node.style, { left: r.l + 'px', top: r.t + 'px', width: Math.max(0, r.r - r.l) + 'px', height: Math.max(0, r.b - r.t) + 'px' });
+  // Un TROU du voile : ses coordonnées sont des propriétés CSS du rectangle SVG — c'est ce qui les
+  // fait glisser d'une étape à l'autre (une transition CSS), comme le reste du projecteur.
+  const poserTrou = (node, r) => Object.assign(node.style, { x: r.l + 'px', y: r.t + 'px', width: Math.max(0, r.r - r.l) + 'px', height: Math.max(0, r.b - r.t) + 'px' });
+  const RIEN = { l: 0, t: 0, r: 0, b: 0 };
+  const dedans = (a, b) => a.l >= b.l - 2 && a.r <= b.r + 2 && a.t >= b.t - 2 && a.b <= b.b + 2;
+  // Ce qu'on éclaire d'un contrôle décrit par la liste : son CHAMP entier (le libellé, sa bulle « i »
+  // et la case), pas la seule case — sinon « Nom du cabinet » s'allume sans son nom. Un conteneur
+  // plus haut qu'un champ ordinaire n'est pas un champ : on garde le contrôle seul.
+  function cadreDe(el) {
+    if (!el || !el.isConnected || !visible(el)) return null;
+    const f = el.closest ? el.closest('.field, label.check') : null;
+    if (f && f !== el) { const b = f.getBoundingClientRect(); if (b.height > 0 && b.height <= 160) return f; }
+    return el;
+  }
+  // Les trous d'une étape « liste » (PUR : les tests le jouent) : chaque contrôle décrit, visible à
+  // l'écran, hors de la partie éclairée, et pas deux fois le même endroit.
+  function trousDeListe(rects, r, ecran) {
+    const out = [];
+    for (const rx of rects || []) {
+      if (!rx || rx.b < 0 || rx.t > ecran.h || rx.r < 0 || rx.l > ecran.w) continue;
+      if (r && dedans(rx, r)) continue;
+      if (out.some(o => dedans(rx, o))) continue;
+      out.push(rx);
+    }
+    return out;
+  }
 
   function positionner() {
     if (!els.bulle) return;
     const e = cur.fin ? {} : etape();
     if (!e) return;
     const W = window.innerWidth, H = window.innerHeight;
-    const el = cur.fin || cur.attente ? null : resoudre(e.cible);
+    const el = cur.fin || cur.attente ? null : cibleDe(e);
     const zoneEl = el && e.zone ? (resoudre(e.zone) || el) : el;
     const faire = estFaire(e) && !cur.fin;
+    // En RETRAIT pendant un essai, ou quand une liste est ouverte par-dessus la page : la bulle se
+    // range dans un coin et rien ne s'assombrit — ce qu'on vient d'ouvrir se voit en entier.
+    const listes = cur.fin ? [] : listesOuvertes();
+    const mini = !cur.fin && (!!cur.essai || listes.length > 0);
+    if (mini !== !!cur.mini) { cur.mini = mini; dessinerBulle(); }
     let r = null;
     if (zoneEl) {
       // Amener la cible à l'écran UNE fois par étape : la ramener à chaque image empêcherait de
       // faire défiler la page pour regarder autour.
-      if (!cur.defile) {
+      if (!cur.defile && !cur.mini) {
         cur.defile = true;
         const rr = zoneEl.getBoundingClientRect();
         if (rr.top < 60 || rr.bottom > H - 40) { try { zoneEl.scrollIntoView({ block: rr.height > H * 0.7 ? 'start' : 'center', inline: 'nearest' }); } catch (_) { /* rien */ } }
@@ -649,27 +994,69 @@
       // un geste : la cible d'un geste est un bouton, jamais un bloc.
       if (!faire && (cur.couper || (r.b - r.t > H * 0.62 && r.r - r.l > W * 0.45))) r = decouperHaut(r, H, cur.couper ? els.bulle.offsetHeight : 0);
     }
-    const trou = els.trou, anneau = els.anneau, point = els.point;
+    const anneau = els.anneau, point = els.point;
     // L'ombre : seulement quand on REGARDE. Pendant un geste, rien ne s'assombrit — une liste qui
-    // s'ouvre sous la cible doit rester lisible et cliquable.
-    const ombre = !faire && (r || !e.cible || cur.fin || cur.perdu);
-    trou.hidden = !ombre;
-    if (ombre) {
-      if (r && !cur.perdu) poser(trou, r);
-      else poser(trou, { l: W / 2, t: H / 2, r: W / 2, b: H / 2 });
+    // s'ouvre sous la cible doit rester lisible et cliquable ; pendant un essai non plus.
+    const ombre = !faire && !cur.mini && (r || !e.cible || cur.fin || cur.perdu);
+    els.voile.toggleAttribute('hidden', !ombre);
+    // Les boutons que la bulle NOMME, hors de la zone : un trou chacun dans le voile (ils sont en
+    // pleine lumière, on voit qu'on peut les cliquer), et un anneau fin qui attire l'œil.
+    const nommes = !cur.fin && !cur.perdu && !cur.mini && !faire ? (cur.nommes || []) : [];
+    const horsZone = [];
+    for (const x of nommes) {
+      if (!x.el || !x.el.isConnected || !visible(x.el)) continue;
+      const rx = rect(x.el, 4);
+      if (rx.b < 0 || rx.t > H || rx.r < 0 || rx.l > W) continue;
+      if (r && dedans(rx, r)) continue;
+      horsZone.push(rx);
     }
-    anneau.hidden = !r || cur.perdu;
-    anneau.classList.toggle('pulse', faire);
+    // Les contrôles que la LISTE de la bulle décrit, hors de la partie éclairée : un trou chacun,
+    // sans anneau. Un grand panneau se DÉCOUPE pour laisser la place de la bulle (`decouperHaut`), et
+    // la liste parlait d'« Email du cabinet » ou du « Jour de relance » restés dans l'ombre, sous la
+    // découpe (vu à la souris dans les Réglages du Cabinet, 10.14.1) — Skander : « quand le guide me
+    // parle d'une action, il faut que je puisse appuyer dessus, pas qu'elle s'affiche en sombre ».
+    const trous = ombre && !cur.fin && !cur.perdu && !cur.mini && !faire
+      ? horsZone.concat(trousDeListe((cur.items || []).flatMap(x => [x.el, ...(x.autres || [])]).map(cadreDe).filter(Boolean).map(c => rect(c, 4)), r, { w: W, h: H }))
+      : horsZone;
+    if (ombre) {
+      poserTrou(els.trou, r && !cur.perdu ? r : { l: W / 2, t: H / 2, r: W / 2, b: H / 2 });
+      const NS = 'http://www.w3.org/2000/svg';
+      while (els.extras.childNodes.length < trous.length) {
+        const t = document.createElementNS(NS, 'rect');
+        t.setAttribute('rx', '9'); t.setAttribute('ry', '9'); t.setAttribute('fill', '#000');
+        els.extras.appendChild(t);
+      }
+      [...els.extras.childNodes].forEach((t, k) => poserTrou(t, trous[k] || RIEN));
+    }
+    while (els.nommes.childNodes.length < horsZone.length) { const d = document.createElement('div'); d.className = 'visite-nomme'; els.nommes.appendChild(d); }
+    [...els.nommes.childNodes].forEach((d, k) => { d.hidden = !horsZone[k]; if (horsZone[k]) poser(d, horsZone[k]); });
+    // Pendant un ESSAI, pas d'anneau : la page a pu changer, et le même sélecteur désignerait
+    // l'en-tête d'un autre écran (vu à la souris : « Nouveau devis » cerclé comme « Le haut de la page »).
+    anneau.hidden = !r || cur.perdu || !!cur.essai;
+    anneau.classList.toggle('pulse', faire && !cur.mini);
     if (r) poser(anneau, r);
-    // Le second anneau : le bouton dont parle la ligne survolée de la bulle.
+    // Le second anneau : le bouton dont parle la ligne survolée de la bulle — ou le nom survolé
+    // dans son texte (il clignote un instant quand on clique ce nom).
     const it = cur.pointe >= 0 && cur.items ? cur.items[cur.pointe] : null;
-    const vu = it && it.el && it.el.isConnected && visible(it.el);
+    const nm = !it && cur.pointeN >= 0 && cur.nommes ? cur.nommes[cur.pointeN] : null;
+    const cibleP = (it && it.el) || (nm && nm.el) || null;
+    const vu = !!cibleP && cibleP.isConnected && visible(cibleP) && !cur.mini;
     point.hidden = !vu;
-    if (vu) poser(point, rect(it.el, 3));
+    point.classList.toggle('flash', !!(vu && nm && cur.flash && Date.now() - cur.flash < 1400));
+    if (vu) poser(point, rect(cibleP, 3));
     const bw = els.bulle.offsetWidth, bh = els.bulle.offsetHeight;
-    const champ = el && /^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName) || (el && el.classList && el.classList.contains('combo-btn'));
-    const fen = r && !cur.perdu && zoneEl && zoneEl.closest ? zoneEl.closest('.modal') : null;
-    const pos = placerPres(cur.perdu ? null : r, fen ? rect(fen, 0) : null, { w: bw, h: bh }, { w: W, h: H }, { pref: e.cote, reserveDessous: faire && champ });
+    let pos;
+    if (cur.mini) {
+      // Le coin qui ne couvre ni la liste ouverte, ni l'endroit du clic, ni la cible du geste attendu.
+      const evites = listes.map(x => rect(x, 8));
+      if (cur.essai) evites.push({ l: cur.essai.x - 40, t: cur.essai.y - 40, r: cur.essai.x + 40, b: cur.essai.y + 40 });
+      if (faire && r) evites.push(r);
+      pos = placerMini({ w: W, h: H }, { w: bw, h: bh }, evites);
+    } else {
+      const champ = el && /^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName) || (el && el.classList && el.classList.contains('combo-btn'));
+      const fen = r && !cur.perdu && zoneEl && zoneEl.closest ? zoneEl.closest('.modal') : null;
+      pos = placerPres(cur.perdu ? null : r, fen ? rect(fen, 0) : null, { w: bw, h: bh }, { w: W, h: H }, { pref: e.cote, reserveDessous: faire && champ });
+    }
     els.bulle.style.left = pos.x + 'px';
     els.bulle.style.top = pos.y + 'px';
     els.bulle.dataset.cote = pos.cote;
@@ -693,6 +1080,51 @@
     }
   }
 
+  // Reste-t-il, après l'étape `i`, une page à LIRE sur l'écran (PUR : les tests le jouent) ? Son
+  // nombre de blocs n'est connu qu'une fois la page dessinée : le total ne se donne pas avant.
+  const enAttenteDe = (etapes, i) => (etapes || []).some((x, j) => j > i && x && typeof x.deplier === 'function');
+  // Où aller après une lecture, quand une reprise vise une étape plus loin (PUR) : le prochain onglet
+  // à lire avant elle — ses blocs n'existent qu'une fois ouvert —, sinon l'étape elle-même (la
+  // dernière, si la page a rapetissé depuis). Les onglets arrivent DANS la lecture qu'on vient de
+  // faire : on cherche dès l'étape qui vient d'être remplacée.
+  function versLaReprise(etapes, depuis, viser) {
+    const l = etapes || [];
+    const k = l.findIndex((x, j) => j >= depuis && j <= viser && x && typeof x.deplier === 'function');
+    return k >= 0 ? { i: k, fini: false } : { i: Math.max(0, Math.min(viser, l.length - 1)), fini: true };
+  }
+  // Une case « à remplir » déjà remplie en ARRIVANT se dit (PUR) ; remplie pendant l'étape, c'est le
+  // geste attendu ; vidée ensuite, l'étape redevient une demande — et le reste.
+  const dejaRempliDe = (pret, entree, avant) => !!pret && (!!entree || !!avant);
+  // La dernière étape, en remontant depuis `i`, qui dit où aller (sa page) : c'est d'elle qu'une
+  // visite arrêtée au milieu d'un geste peut repartir.
+  function etapeAvecPage(etapes, i) {
+    for (let j = Math.min(i, (etapes || []).length - 1); j > 0; j--) if (typeof pageDe(etapes[j]) === 'string') return j;
+    return 0;
+  }
+  // Ce que l'hôte retient d'une étape : le nombre d'étapes connues, et s'il reste une page à lire —
+  // auquel cas ce nombre n'est pas un total.
+  const compteDe = c => ({ n: c && c.p ? c.p.etapes.length : 0, attente: !!(c && c.p && enAttenteDe(c.p.etapes, c.i)) });
+  // Où reprend une visite en pause, et ce qu'on peut en dire (PUR : « Me guider » des deux
+  // applications l'appelle). Une visite de page se RELIT : l'étape retenue dépasse les deux étapes
+  // de sa définition, et son total n'est connu que si la page avait fini d'être lue. La version
+  // d'avant écrivait « Étape 2 sur 2 » d'une page arrêtée au premier de ses blocs, et reprenait au
+  // premier bloc quel que soit celui où l'on s'était arrêté (vu à la souris, 10.14.1).
+  function pointDeReprise(v, r) {
+    const etapes = (v && v.etapes) || [];
+    const lue = enAttenteDe(etapes, -1);
+    const brut = Math.max(0, Math.floor(Number(r && r.i) || 0));
+    const n = Math.floor(Number(r && r.n) || 0);
+    // Le plafond : le nombre d'étapes connu quand on s'est arrêté (une page relue), sinon la définition.
+    const plafond = lue ? (n > 0 ? n : brut + 1) : etapes.length;
+    const arret = Math.min(brut, Math.max(0, plafond - 1));
+    // Un geste arrêté au milieu repart de l'étape qui ouvre son écran (le même calcul que `lancer`,
+    // depuis « Me guider » où aucune cible d'un geste n'est à l'écran) — et la carte le dit.
+    const i = lue ? arret : etapeAvecPage(etapes, arret);
+    const sur = lue ? (r && r.attente === false && n > 0 ? n : 0) : etapes.length;
+    return { i, sur, texte: sur > 1 ? `Étape ${i + 1} sur ${sur}` : `Étape ${i + 1}`,
+      note: i < arret ? `tu étais à l'étape ${arret + 1} : on repart de l'écran où ce geste commence` : '' };
+  }
+
   // ---------- le dessin de la bulle ----------
   // Trois étages, toujours les mêmes, pour que l'œil sache où chercher : l'EN-TÊTE teinté à la couleur
   // du chapitre (son dessin, « Chapitre 3 sur 12 », le nom du chapitre, et la barre de progression
@@ -704,17 +1136,22 @@
     const k = chapitreDe(chaps, cur.i), c = chaps[k];
     const dansChap = cur.i - c.debut + 1, tailleChap = c.fin - c.debut + 1;
     const avecChapitres = chaps.length > 1;
-    const sur = avecChapitres ? `Chapitre ${k + 1} sur ${chaps.length}` : n > 1 ? `Étape ${cur.i + 1} sur ${n}` : 'Visite guidée';
+    // Une page encore à LIRE plus loin (ses blocs ne sont connus qu'une fois à l'écran) : on ne donne
+    // pas un total qui va changer — « Étape 1 sur 2 », puis « Étape 2 sur 5 », se lisait comme une
+    // erreur (vu à la souris, 10.14.1).
+    const enAttente = !avecChapitres && enAttenteDe(p.etapes, cur.i);
+    const sur = avecChapitres ? `Chapitre ${k + 1} sur ${chaps.length}` : enAttente ? `Étape ${cur.i + 1}` : n > 1 ? `Étape ${cur.i + 1} sur ${n}` : 'Visite guidée';
     const lieu = (avecChapitres && c.titre) || p.titre || '';
     // La barre : un segment par chapitre (celui en cours se remplit étape par étape), sinon un segment
-    // par étape, sinon — au-delà de douze étapes — une seule jauge.
+    // par étape, sinon — au-delà de douze étapes, ou quand le compte n'est pas encore connu — une seule jauge.
     let segs;
     if (avecChapitres) segs = chaps.map((_, j) => (j < k ? 100 : j > k ? 0 : Math.round(dansChap / tailleChap * 100)));
+    else if (enAttente) segs = [Math.min(30, Math.round((cur.i + 1) / (n + 4) * 100))];
     else if (n <= 12) segs = Array.from({ length: n }, (_, j) => (j <= cur.i ? 100 : 0));
     else segs = [Math.round((cur.i + 1) / n * 100)];
-    const courant = avecChapitres ? k : n <= 12 ? cur.i : 0;
+    const courant = avecChapitres ? k : (n <= 12 && !enAttente) ? cur.i : 0;
     // Le segment courant se REMPLIT depuis sa valeur précédente quand on avance : on voit le progrès.
-    const avant = cur.sens > 0 ? (avecChapitres ? (dansChap > 1 ? Math.round((dansChap - 1) / tailleChap * 100) : 0) : n > 12 ? Math.round(cur.i / n * 100) : 0) : null;
+    const avant = cur.sens > 0 ? (avecChapitres ? (dansChap > 1 ? Math.round((dansChap - 1) / tailleChap * 100) : 0) : (n > 12 && !enAttente) ? Math.round(cur.i / n * 100) : 0) : null;
     const barre = `<div class="vb-progres${segs.length > 1 ? '' : ' seul'}" aria-hidden="true">${segs.map((v, j) =>
       `<i class="${j < courant ? 'fait' : j === courant ? 'ici' : ''}"><b style="--p:${v}%${j === courant && avant != null ? `;--p0:${avant}%` : ''}"></b></i>`).join('')}</div>`;
     // Le compte du pied dit l'étape DANS le chapitre ; sans chapitre, l'en-tête dit déjà « Étape 2 sur 6 ».
@@ -750,7 +1187,8 @@
     const faire = estFaire(e);
     const t = enTete(p);
     const coul = couleurDe(cur.i);
-    [els.anneau, els.point, els.trou].forEach(x => teinter(x, coul));
+    [els.anneau, els.point, els.voile, els.nommes].forEach(x => teinter(x, coul));
+    if (cur.mini) { dessinerMini(e, t, coul, faire); return; }
     if (cur.attente && typeof e.deplier === 'function') {
       cur.items = [];
       els.bulle.className = 'visite-bulle';
@@ -772,14 +1210,20 @@
     const chapSuiv = t.avecChapitres && !t.dernierChap && !faire && !cur.perdu
       ? `<div class="vb-pied2"><button type="button" class="vb-lien" data-v="chapitre" title="Aller au début du chapitre suivant">Passer au chapitre suivant ›</button></div>` : '';
     const suivant = `<button type="button" class="vb-suiv" data-v="suiv">${dernier ? 'Terminer' : `Suivant${FLECHE}`}</button>`;
+    // Une zone de page perdue avec une liste vidée : le remède est de réafficher la liste, pas de
+    // naviguer — on est déjà sur la bonne page.
+    const remise = cur.perdu && e.liste && hote.remettre ? resoudre(hote.remettre) : null;
     const pied = cur.perdu ? `
         <button type="button" class="vb-lien" data-v="passer">Passer cette étape</button>
-        ${pageDe(e) || e.retour ? '<button type="button" class="vb-suiv" data-v="retour">M\'y ramener</button>' : '<button type="button" class="vb-suiv" data-v="fermer">Arrêter la visite</button>'}`
+        ${remise ? '<button type="button" class="vb-suiv" data-v="remettre">Réafficher toute la liste</button>'
+          : pageDe(e) || e.retour ? '<button type="button" class="vb-suiv" data-v="retour">M\'y ramener</button>' : '<button type="button" class="vb-suiv" data-v="fermer">Arrêter la visite</button>'}`
       : faire ? `
         <button type="button" class="vb-lien" data-v="passer">Passer cette étape</button>
         ${e.faire === 'valeur'
           ? `<button type="button" class="vb-suiv" data-v="suiv" ${cur.pret ? '' : 'disabled'}>${h(e.bouton || 'C\'est fait')}</button>`
-          : '<span class="vb-attente" role="status"><span class="vb-points-attente" aria-hidden="true"><i></i><i></i><i></i></span>J\'attends ton geste</span>'}`
+          : cur.dejaFait
+            ? `<button type="button" class="vb-suiv" data-v="suiv">${dernier ? 'Terminer' : `Suivant${FLECHE}`}</button>`
+            : '<span class="vb-attente" role="status"><span class="vb-points-attente" aria-hidden="true"><i></i><i></i><i></i></span>J\'attends ton geste</span>'}`
       : `
         ${peutReculer() ? `<button type="button" class="vb-prec" data-v="prec">${FLECHE_G}Précédent</button>` : '<span class="vb-vide"></span>'}
         ${t.compteur ? `<span class="vb-compte">${t.compteur}</span>` : ''}
@@ -794,21 +1238,98 @@
       <div class="vb-corps">
       ${cur.perdu
         ? `<h3 id="visite-titre">On s'est perdus de vue</h3>
-           <div class="vb-texte">${e.perdu || 'L\'endroit que je voulais te montrer n\'est plus à l\'écran : tu as peut-être changé de page ou fermé une fenêtre. Pas de souci — je peux t\'y ramener, ou tu passes cette étape.'}</div>`
+           <div class="vb-texte">${e.perdu || 'L\'endroit que je voulais te montrer n\'est plus à l\'écran : tu as peut-être changé de page ou fermé une fenêtre. Pas de souci — je peux t\'y ramener, ou tu passes cette étape.'}${remise ? '<p><b>Réafficher toute la liste</b> efface la recherche et les filtres : ce que je voulais te montrer revient.</p>'
+             : e.liste ? '<p>Remets l\'écran comme il était pour le revoir, ou passe cette étape.</p>' : ''}</div>`
         : `<h3 id="visite-titre">${h(e.titre || '')}</h3>
            ${e.texte ? `<div class="vb-texte">${e.texte}</div>` : ''}
            ${liste}
-           ${faire && e.action ? `<div class="vb-afaire"><span class="vb-atoi">${ICONE_MAIN}À toi</span><span class="vb-action">${action(e)}</span></div>` : ''}
+           ${faire && e.action ? (cur.dejaFait
+             ? `<div class="vb-afaire fait"><span class="vb-atoi">${ICONE_COCHE}Déjà fait</span><span class="vb-action">C'est déjà fait : ${action(e)} Tu peux passer à la suite.</span></div>`
+             : e.faire === 'valeur' && cur.dejaRempli
+               ? `<div class="vb-afaire fait"><span class="vb-atoi">${ICONE_COCHE}Déjà rempli</span><span class="vb-action">Cette case est déjà remplie : garde ce qui est écrit ou change-le, puis clique sur <b>« ${h(e.bouton || 'C\'est fait')} »</b>.</span></div>`
+               : `<div class="vb-afaire"><span class="vb-atoi">${ICONE_MAIN}À toi</span><span class="vb-action">${action(e)}</span></div>`) : ''}
+           ${noteEssai(e, faire) ? `<div class="vb-essai-note">${ICONE_MAIN}<span>Tu peux cliquer ce qui est éclairé pour l'essayer : je m'efface le temps que tu regardes, puis tu reprends la visite.</span></div>` : ''}
            ${t.prochain && !faire ? `<div class="vb-prochain">Ensuite : <b>${h(t.prochain)}</b></div>` : ''}`}
       </div>
       <div class="vb-pied">${pied}</div>${chapSuiv}${astuce}`;
     typographier(els.bulle);
+    // Les boutons que le texte NOMME : trouvés sur l'écran, éclairés, et chaque nom devient un lien
+    // qui montre son bouton (survol : un anneau ; clic : on l'amène à l'écran).
+    cur.nommes = cur.perdu ? [] : nommesDe(e, [...els.bulle.querySelectorAll('.vb-texte, .vb-action')].map(x => x.textContent).join(' '));
+    lierNommes(els.bulle, cur.nommes);
     // Pendant un geste, le curseur reste dans l'application : lui voler le focus empêcherait de
     // taper dans le champ que la bulle désigne. Quand on regarde, il va sur « Suivant » — sauf si
     // l'on regarde un CHAMP : on a peut-être envie d'y écrire tout de suite.
-    const cibleEl = resoudre(e.cible);
+    const cibleEl = cibleDe(e);
     const champ = cibleEl && /^(INPUT|SELECT|TEXTAREA)$/.test(cibleEl.tagName);
-    if (!faire && !cur.perdu && !champ) focaliser('.vb-suiv');
+    if ((!faire || cur.dejaFait) && !cur.perdu && !champ) focaliser('.vb-suiv');
+  }
+
+  // « Tu peux cliquer ce qui est éclairé » se dit UNE fois par visite, sur la première étape qui
+  // éclaire quelque chose — le redire à chaque bulle, c'est une phrase qu'on apprend à sauter.
+  function noteEssai(e, faire) {
+    if (faire || cur.perdu || !e || !e.cible) return false;
+    if (cur.noteEssai === undefined) cur.noteEssai = cur.i;
+    return cur.noteEssai === cur.i;
+  }
+
+  // Chaque nom cité dans la bulle, et qu'un bouton de l'écran porte, devient un LIEN vers ce bouton.
+  function lierNommes(racine, nommes) {
+    if (!racine || !nommes || !nommes.length || typeof document === 'undefined' || !document.createTreeWalker) return;
+    const cles = nommes.map(x => normNom(x.nom));
+    for (const zone of racine.querySelectorAll('.vb-texte, .vb-action')) {
+      const it = document.createTreeWalker(zone, 4 /* NodeFilter.SHOW_TEXT */);
+      const noeuds = [];
+      let n;
+      while ((n = it.nextNode())) if (/«/.test(n.nodeValue) && !n.parentNode.closest('.vb-nomme')) noeuds.push(n);
+      for (const noeud of noeuds) {
+        const v = noeud.nodeValue;
+        const re = /«[\s\u00a0\u202f]*([^«»]{2,80}?)[\s\u00a0\u202f]*»/g;
+        let m, dernier = 0;
+        const frag = document.createDocumentFragment();
+        let touche = false;
+        while ((m = re.exec(v))) {
+          const k = cles.indexOf(normNom(m[1]));
+          if (k < 0) continue;
+          touche = true;
+          frag.appendChild(document.createTextNode(v.slice(dernier, m.index)));
+          const s = document.createElement('span');
+          s.className = 'vb-nomme';
+          s.dataset.v = 'nomme'; s.dataset.n = String(k);
+          s.setAttribute('role', 'button'); s.setAttribute('tabindex', '0');
+          s.title = 'Montrer ce bouton';
+          s.textContent = m[0];
+          frag.appendChild(s);
+          dernier = m.index + m[0].length;
+        }
+        if (!touche) continue;
+        frag.appendChild(document.createTextNode(v.slice(dernier)));
+        noeud.parentNode.replaceChild(frag, noeud);
+      }
+    }
+  }
+
+  // La bulle EN RETRAIT : pendant un essai (la personne clique ce qu'on lui montre), ou pendant
+  // qu'une liste est ouverte. Petite, dans un coin, sans rien assombrir : on la voit, elle ne cache
+  // rien — et elle dit comment reprendre.
+  function dessinerMini(e, t, coul, faire) {
+    cur.items = [];
+    const essai = !!cur.essai;
+    const dernier = cur.i === cur.p.etapes.length - 1;
+    els.bulle.className = 'visite-bulle mini' + (faire ? ' faire' : '');
+    teinter(els.bulle, coul);
+    const titre = essai ? 'Vas-y, essaie' : faire ? 'À toi' : 'La visite t\'attend';
+    const texte = essai
+      ? `Clique, ouvre, choisis : je m'efface le temps que tu regardes. Quand tu as vu, reprends l'étape <b>« ${h(e.titre || '')} »</b>.`
+      : faire ? (e.action ? action(e) : '') : 'Une liste est ouverte : choisis, ou appuie sur <kbd>Échap</kbd> pour la refermer — la visite reprend juste après.';
+    const pied = essai
+      ? `<button type="button" class="vb-lien" data-v="suiv">${dernier ? 'Terminer la visite' : 'Étape suivante ›'}</button><button type="button" class="vb-suiv" data-v="reprendre">Reprendre la visite</button>`
+      : faire ? '<button type="button" class="vb-lien" data-v="passer">Passer cette étape</button><span class="vb-attente" role="status"><span class="vb-points-attente" aria-hidden="true"><i></i><i></i><i></i></span>J\'attends ton geste</span>' : '';
+    els.bulle.innerHTML = `<i class="vb-pointe" hidden></i>
+      <div class="vb-haut">${tete(essai ? ICONE_MAIN : iconeDe(coul), t.sur, titre, 'fermer', 'Mettre la visite en pause (Échap)')}</div>
+      <div class="vb-corps"><div class="vb-texte">${texte}</div></div>
+      ${pied ? `<div class="vb-pied">${pied}</div>` : ''}`;
+    typographier(els.bulle);
   }
 
   // La DERNIÈRE bulle : une réussite se voit. Une médaille qui se dessine, des confettis la première
@@ -817,7 +1338,28 @@
   // à faire (7.27.0 : chaque écran finit par le geste suivant).
   function dessinerFin(p, neuve) {
     const coul = couleurVisite(p);
-    [els.anneau, els.point, els.trou].forEach(x => teinter(x, coul));
+    [els.anneau, els.point, els.voile, els.nommes].forEach(x => teinter(x, coul));
+    cur.nommes = [];
+    // Le but n'est pas atteint : on ne félicite pas, on dit ce qui manque et on propose de refaire.
+    if (cur.echec) {
+      cur.items = [];
+      els.bulle.className = 'visite-bulle fin echec' + (neuve ? ' entre' : '');
+      teinter(els.bulle, coul);
+      els.bulle.innerHTML = `<i class="vb-pointe" hidden></i>
+        <div class="vb-haut">
+          <div class="vb-medaille info" aria-hidden="true">${ICONE_INFO}</div>
+          <div class="vb-fin-ou"><span class="vb-sur">Visite finie</span><span class="vb-lieu">${h(p.titre || '')}</span></div>
+          <button type="button" class="vb-fermer" data-v="abandon" aria-label="Fermer la visite" title="Fermer">${SVG('<path d="M6 6l12 12M18 6L6 18"/>')}</button>
+        </div>
+        <div class="vb-corps">
+          <h3 id="visite-titre">Ce n'est pas encore fait</h3>
+          <div class="vb-texte">${p.echec || 'La visite est allée jusqu\'au bout, mais rien n\'a été enregistré : la fenêtre s\'est peut-être fermée sans « Enregistrer », ou une étape a été passée. Tu peux la refaire maintenant — ou plus tard, depuis « Me guider ».'}</div>
+        </div>
+        <div class="vb-pied"><button type="button" class="vb-prec" data-v="abandon">Fermer</button><button type="button" class="vb-suiv" data-v="recommencer">Recommencer la visite${FLECHE}</button></div>`;
+      typographier(els.bulle);
+      focaliser('[data-v="recommencer"]');
+      return;
+    }
     let ids = null;
     try { ids = typeof hote.suites === 'function' ? hote.suites(p) : null; } catch (_) { ids = null; }
     const suites = (ids || p.suite || []).map(id => hote.parcours(id)).filter(Boolean).slice(0, 3);
@@ -914,10 +1456,15 @@
     const esc = x => (global.CSS && global.CSS.escape ? global.CSS.escape(x) : String(x).replace(/[^\w-]/g, '\\$&'));
     const parts = [];
     let n = el;
+    // Une classe que ce bloc est seul à porter parmi ses voisins le désigne mieux que son rang : un
+    // bloc qui apparaît au-dessus (un bandeau, une ligne d'aide) décale tous les rangs d'en dessous.
+    const ETATS = /^(on|active|open|ouvert|up|glisse|th-.*)$/;
     while (n && n !== racine && n.parentElement) {
       if (n.id) { parts.unshift('#' + esc(n.id)); return parts.join(' > '); }
       const par = n.parentElement;
-      parts.unshift(`${n.tagName.toLowerCase()}:nth-child(${[...par.children].indexOf(n) + 1})`);
+      const voisins = [...par.children].filter(x => x !== n);
+      const cls = [...n.classList].find(c => !ETATS.test(c) && !voisins.some(v => v.classList && v.classList.contains(c)));
+      parts.unshift(cls ? `${n.tagName.toLowerCase()}.${esc(cls)}` : `${n.tagName.toLowerCase()}:nth-child(${[...par.children].indexOf(n) + 1})`);
       n = par;
     }
     if (racine && racine.id) parts.unshift('#' + esc(racine.id));
@@ -930,7 +1477,10 @@
         if (!visible(c) || c.closest('#visite-bulle')) continue;
         if (exclure && c.matches(exclure)) continue;
         if (c.matches(BLOCS)) { out.push(c); continue; }
-        if (prof < 4 && c.children.length && (c.matches(DESCENDRE) || (c.tagName === 'DIV' && !c.querySelector(':scope > h2, :scope > h3')))) { walk(c, prof + 1); continue; }
+        // Un conteneur sans titre à lui (une DIV, une SECTION d'onglet) se traverse : ses panneaux sont
+        // les blocs. Les Réglages du Cabinet rangent chaque onglet dans une <section> — lue d'un bloc,
+        // ses cinq panneaux devenaient une seule étape « Ton cabinet » de treize boutons (10.14.1).
+        if (prof < 4 && c.children.length && (c.matches(DESCENDRE) || (/^(DIV|SECTION)$/.test(c.tagName) && !c.querySelector(':scope > h2, :scope > h3')))) { walk(c, prof + 1); continue; }
         if (c.querySelector(CONTROLES) || c.querySelector(':scope > h2, :scope > h3')) out.push(c);
       }
     };
@@ -956,7 +1506,11 @@
       try { z = hote.zone ? hote.zone(b) : null; } catch (_) { z = null; }
       const titre = (z && z.titre) || titreDe(b) || '';
       const texte = (z && z.texte) || '';
-      const etape = { cible: sel, liste: true, facultatif: true, titre, texte, cote: b.getBoundingClientRect().width > window.innerWidth * 0.55 ? 'dessous' : undefined };
+      // Le bloc lu sur l'écran EXISTE : il n'est pas facultatif. S'il disparaît en route (une
+      // recherche qui vide la liste, un onglet changé), la visite le DIT au lieu de sauter l'étape en
+      // silence — et de finir d'elle-même sur « Tu connais cette page » (vu à la souris, 10.14.1).
+      const etape = { cible: sel, el: b, liste: true, titre, texte, cote: b.getBoundingClientRect().width > window.innerWidth * 0.55 ? 'dessous' : undefined,
+        perdu: `Je ne retrouve plus <b>${h(titre || 'ce bloc')}</b> à l'écran : une recherche ou un filtre a peut-être tout masqué, ou tu as changé d'onglet.` };
       // Un bloc qui n'a ni explication ni contrôle expliqué n'apprend rien : on ne s'y arrête pas.
       let n = 0;
       try { n = listerControles(etape).length; } catch (_) { n = 0; }
@@ -1098,7 +1652,8 @@
       return null;
     };
   }
-  // Le titre et le mot d'un bloc de l'écran (pour les visites de page), lus dans la table `ZONES`.
+  // Le titre et le mot d'un bloc de l'écran (pour les visites de page), lus dans la table `ZONES`. Un
+  // mot peut être une FONCTION du bloc : il dit alors ce que CE bloc montre (le haut d'une page, plus bas).
   function zoneur(ZONES) {
     return function zone(el) {
       for (const z of ZONES) {
@@ -1106,11 +1661,33 @@
         try { ok = el.matches(z.sel); } catch (_) { ok = false; }
         if (ok) {
           const titre = z.sel === '.banner' ? nettoie((el.querySelector('b') || el).textContent).slice(0, 80) : z.titre;
-          return { titre: titre || z.titre, texte: z.texte };
+          let texte = z.texte;
+          if (typeof texte === 'function') { try { texte = texte(el); } catch (_) { texte = ''; } }
+          return { titre: titre || z.titre, texte: texte || '' };
         }
       }
       return null;
     };
+  }
+  // Le haut d'une page, dit tel qu'il EST (10.14.1). « Un seul est vert, c'est l'étape suivante » était
+  // écrit pour TOUTES les pages : faux sur celles dont le vert est plus bas (un état vide qui porte son
+  // bouton, U-11) et sur celles qui n'en ont pas (des Réglages au repos) — la bulle promettait un bouton
+  // que l'œil cherchait en vain. `phraseDuHaut` est pure ; `texteDuHaut` lit l'écran et lui passe ce
+  // qu'il y voit, nommé : un « bouton vert » sans son nom ne se retrouve pas d'un coup d'œil.
+  function phraseDuHaut(o) {
+    const x = o || {};
+    const vert = x.vertHaut ? ` Le bouton vert, <b>« ${h(x.vertHaut)} »</b>, est l'étape suivante : c'est le geste qu'on attend de toi ici.`
+      : x.vertBas ? ` Aucun n'est vert ici : l'étape suivante est plus bas, en vert — <b>« ${h(x.vertBas)} »</b>.`
+      : ' Aucun n\'est vert : sur cette page, rien ne presse — chaque geste attend que tu en aies besoin.';
+    return 'Le titre dit où tu es ; à droite, les gestes de la page.' + vert + (x.suite ? ' ' + x.suite : '');
+  }
+  function texteDuHaut(el, suite) {
+    const lab = b => nettoie(b.textContent || '').slice(0, 60);
+    const vif = b => visible(b) && !b.disabled;
+    const haut = [...el.querySelectorAll('.btn-primary')].find(vif);
+    const vue = (el.closest && el.closest('#view')) || document;
+    const bas = haut ? null : [...vue.querySelectorAll('.btn-primary')].find(b => vif(b) && !el.contains(b));
+    return phraseDuHaut({ vertHaut: haut ? lab(haut) : '', vertBas: bas ? lab(bas) : '', suite });
   }
 
   // Ce que l'hôte peut demander : où en est-on ? (pour la palette, la barre, les tests)
@@ -1123,11 +1700,12 @@
 
   // L'étape courante, telle qu'elle est écrite : l'instrument `e2e:cabinet-visites` en a besoin pour
   // JOUER le geste qu'elle demande (sa cible, son essai) — une copie, jamais l'objet du parcours.
-  const etapeCourante = () => { const e = etape(); return e ? Object.assign({}, e) : null; };
+  // Sans l'élément lu sur l'écran (`el`) : une copie qui traverse le pont de l'instrument se sérialise.
+  const etapeCourante = () => { const e = etape(); if (!e) return null; const c = Object.assign({}, e); delete c.el; return c; };
 
-  const api = { installer, lancer, quitter, enCours, etapeCourante, suivant, precedent, chapitreSuivant, placerBulle, placerPres, typo, chevauche, decouperHaut, hautPourBulle, hautPourCouper, viseLaCible, estFaire, lieuDe, ouvrirOnglet,
+  const api = { installer, lancer, quitter, enCours, etapeCourante, suivant, precedent, chapitreSuivant, reprendre, placerBulle, placerPres, placerMini, typo, chevauche, decouperHaut, trousDeListe, hautPourBulle, hautPourCouper, viseLaCible, estFaire, decider, enAttenteDe, compteDe, pointDeReprise, etapeAvecPage, versLaReprise, dejaRempliDe, normNom, nomsCites, lieuDe, ouvrirOnglet,
     chapitres, resoudre, visible, listerControles, etapesDeLaVue, blocsDe, cheminDe, PATIENCE, PATIENCE_FACULTATIVE, CONTROLES,
-    nettoie, libelleDe, resumeBulle, routeDe, expliqueur, zoneur };
+    nettoie, libelleDe, resumeBulle, routeDe, expliqueur, zoneur, phraseDuHaut, texteDuHaut };
   global.Visite = api;
   if (typeof module === 'object' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);

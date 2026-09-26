@@ -91,6 +91,34 @@ et au moteur), puis en stable quand Skander valide.*
     le disque si l'application est tuée pendant la saisie ; la liste des mouvements de Trésorerie
     n'a pas de champ de recherche ; sous Linux (qui n'est pas une plateforme livrée) l'écran dit
     « l'Explorateur ».
+- **Fait, prouvé et testé à la souris (26/09, S-02 — la visite guidée, première moitié)** :
+  - **Elle ne passe plus toute seule** : seul un GESTE de la personne fait avancer (un redessin de la
+    page, une zone vue puis vidée, un geste déjà fait en entrant ne sautent plus d'étape — « Déjà
+    fait » attend « Suivant ») ; pendant qu'on essaie ce que la bulle montre, rien n'avance.
+  - **Ce que la bulle montre se clique** : le voile est un masque PERCÉ (la zone, chaque bouton nommé
+    « entre guillemets » avec son anneau, et chaque contrôle que la liste décrit — même hors d'une
+    zone coupée, même quand deux contrôles partagent une phrase, comme les jours de dépôt TVA et
+    CNSS) ; pendant un essai ou une liste ouverte, pas de voile, la bulle se range en retrait.
+  - **Reprendre** : une visite de page reprend à l'étape où l'on s'était arrêté ; un geste arrêté au
+    milieu repart de l'écran où il commence, et « Me guider » le dit ; « Déjà rempli » au lieu de
+    « écris la désignation » d'une case remplie ; « Étape 1 » (pas « 1 sur 2 ») d'une page encore à lire.
+  - **Des fins honnêtes** : une visite qui finit sur « Enregistrer » ne félicite que si c'est
+    enregistré (les régimes du Cabinet : `mesure`/`but` et l'étape d'enregistrement).
+  - **Le haut de page dit ce qu'il EST** : le bouton vert nommé, « plus bas, en vert — … », ou
+    « aucun n'est vert » (`texteDuHaut`) — la promesse « un seul est vert » était fausse sur les
+    Réglages du Cabinet.
+  - **Réglages du Cabinet** : la visite lit un panneau par étape (la `<section>` d'onglet se
+    traverse) ; « Déclarer les régimes » ouvre le BON onglet (un test confronte, dans les deux
+    applications, l'onglet ouvert au panneau visé : `test/onglets-visites.js`) ; un régime déclaré se
+    choisit enfin sur la fiche d'un client (`choixRegimes`), et l'en-tête dit « régime exonéré » (plus
+    « régime Régime réel ») ; « ✓ enregistré » ne pousse plus le bouton de 84 px.
+  - 18 preuves par réintroduction pour la dernière partie ; `npm test` 1519 OK, lint propre.
+  - **Reste de S-02** : des fins honnêtes (`mesure`/`but`/geste final) pour les autres gestes guidés
+    des deux applications (émettre, régler, avoir, mot de passe, clôturer, envoyer, relancer,
+    bulletin, immobilisation, compte…) avec une règle générale tenue par un test ; les textes des
+    actions beaucoup plus explicatifs (ce que fait le bouton, quand s'en servir, ce qui se passe
+    après) — « Ouvre un devis vierge » ne suffit pas ; relancer `e2e:couverture` et
+    `e2e:cabinet-couverture`.
 - **Cabinet — 84 champs sans bulle « i »** (trouvés en portant la sonde de l'app entreprise au
   Cabinet, le jumeau manquant) : salarié, bulletin, bien, cession, écriture de trésorerie, questions,
   réouverture, mots de passe… À écrire dans `cabguide.js` (chaque bulle dit ce que le CODE fait du
@@ -128,11 +156,10 @@ et au moteur), puis en stable quand Skander valide.*
    la case pour la voir. Le canal bêta doit prendre la plus récente des deux (bêta ou stable), dans
    les DEUX applications (`beta` et `cabinet-beta`) — relais, repli GitHub et `canalDe` compris.~~
    **Fait (S-01, § 0.1)** — en ligne quand le relais sera déployé avec la stable.
-2. **La visite guidée passe parfois toute seule à l'étape suivante** sans qu'on ait appuyé sur
-   « Suivant ». Trouver pourquoi (une preuve `fait` déjà vraie en entrant ? une étape « faire » qui
-   se valide sur un clic ailleurs ? une minuterie ?) et corriger dans le moteur (`visite.js`).
-3. **Quand la visite montre un bouton ou parle d'une action, on doit pouvoir CLIQUER dessus** pour
-   la découvrir — pas le voir assombri derrière le voile.
+2. ~~**La visite guidée passe parfois toute seule à l'étape suivante** sans qu'on ait appuyé sur
+   « Suivant ».~~ **Fait (S-02, § 0.1).**
+3. ~~**Quand la visite montre un bouton ou parle d'une action, on doit pouvoir CLIQUER dessus** pour
+   la découvrir — pas le voir assombri derrière le voile.~~ **Fait (S-02, § 0.1).**
 4. **Remplacer « Comprendre cette page » par « Guide-moi »** : une liste de TOUTES les actions qu'on
    peut faire sur la page, chacune lançant sa visite ou son geste guidé — l'assistant toujours à
    portée de main.

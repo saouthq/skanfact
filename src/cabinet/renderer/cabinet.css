@@ -145,6 +145,11 @@
 /* « ✓ enregistré » posé à côté du bouton : le message passager au bas de l'écran recouvrait
    justement le bouton Enregistrer des Réglages. */
 .saved { color: var(--success); font-size: 12.5px; font-weight: 600; }
+/* Dans un PANNEAU les boutons partent de la gauche : le « ✓ enregistré » posé AVANT eux les poussait
+   de sa largeur au moment où il apparaît — « Enregistrer les régimes » glissait de 84 px sous le
+   curseur (vu à la souris, 10.14.1 ; règle H-E1 : ce qui apparaît ne pousse rien). Il passe après.
+   Dans une fenêtre, la rangée part de la droite : le message qui naît devant ne déplace rien. */
+.panel .modal-actions > .saved { order: 1; }
 .grow { flex: 1; }
 .modal-actions.wrap { flex-wrap: wrap; }
 /* Un champ pour deux chiffres n'a pas besoin de la moitié de l'écran. */

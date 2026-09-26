@@ -206,8 +206,15 @@ t('10.14.0 : un onglet se clique quand sa page est DESSINÉE — jamais sur l\'�
   } finally { global.document = vieuxDoc; global.setTimeout = vieuxTimer; }
   // Et les deux usages passent par lui : les visites écrites à la main, et les onglets d'une page lus
   // sur l'écran par le moteur.
+  // Joué, pas recopié : une étape qui ouvre un onglet passe par `ouvrirOnglet` (la forme du raccourci a
+  // changé en 10.14.1 — il PORTE désormais sa barre et son onglet, que `test/onglets-visites.js` lit).
   const vs = lireSource('src', 'renderer', 'visites.js'), vj = lireSource('src', 'renderer', 'visite.js');
-  assert.ok(/const onglet = \(barre, cle\) => \(\) => ctx\.Visite\.ouvrirOnglet\(barre, cle\);/.test(vs), 'les visites cliquent encore l\'onglet sans attendre sa page');
+  const appels = [];
+  const espion = Object.assign({}, V, { ouvrirOnglet: (b, c) => { appels.push([b, c]); return Promise.resolve(true); } });
+  const etOnglet = S.parcours(Object.assign({}, ctx, { Visite: espion })).flatMap(v => v.etapes || []).find(e => e.avant && e.avant.barre);
+  assert.ok(etOnglet, 'aucune étape n\'ouvre plus un onglet par le raccourci');
+  etOnglet.avant();
+  assert.deepStrictEqual(appels, [[etOnglet.avant.barre, etOnglet.avant.cle]], 'les visites cliquent encore l\'onglet sans attendre sa page');
   assert.ok(/avant: \(\) => ouvrirOnglet\(barre, cle\),/.test(vj), 'les onglets lus sur l\'écran cliquent encore sans attendre');
   assert.ok(!/button\[data-tab="\$\{cle\}"\]`\); if \(bt/.test(vs + vj), 'un clic d\'onglet sans attente subsiste');
 });
@@ -358,7 +365,7 @@ t('10.14.0 : un panneau large que la bulle ne peut pas longer se découpe au lie
   assert.strictEqual(V.hautPourCouper({ l: 262, t: 100, r: 700, b: 700 }, bulle, ecran), null, 'une zone étroite se découpe pour rien');
   assert.strictEqual(V.hautPourCouper({ l: 254, t: 319, r: 1395, b: 646 }, { w: 388, h: 322 }, { w: 1440, h: 873 }), null, 'une zone que le défilement suffit à séparer se découpe pour rien');
   const vj = lireSource('src', 'renderer', 'visite.js');
-  const i = vj.indexOf('if (!cur.defile) {');
+  const i = vj.search(/if \(!cur\.defile\b[^\n]*\) \{/);
   const zone = vj.slice(i, vj.indexOf('\n      }\n', i) + 400);
   assert.ok(/hautPourCouper\(/.test(zone) && /cur\.couper = true/.test(zone), 'le moteur ne découpe pas les panneaux larges');
 });
@@ -421,7 +428,7 @@ t('10.14.0 : une zone large et haute laisse la place de sa bulle — on fait dé
   assert.strictEqual(V.hautPourBulle({ l: 262, t: 60, r: 1396, b: 700 }, bulle, ecran), null, 'une zone trop haute pour sa bulle fait défiler pour rien');
   // Et le moteur s'en sert, APRÈS avoir amené la zone à l'écran (sinon il mesure l'écran d'avant).
   const vj = lireSource('src', 'renderer', 'visite.js');
-  const i = vj.indexOf('if (!cur.defile) {');
+  const i = vj.search(/if \(!cur\.defile\b[^\n]*\) \{/);
   const zone = vj.slice(i, vj.indexOf('\n      }', i));
   assert.ok(i > 0 && zone.indexOf('scrollIntoView') > 0 && zone.indexOf('scrollIntoView') < zone.indexOf('hautPourBulle(') && /defilerDe\(zoneEl, /.test(zone),
     'le défilement ne libère plus la place de la bulle, ou mesure avant d\'avoir amené la zone à l\'écran');
@@ -828,10 +835,12 @@ t('10.14.0 : chaque libellé qu\'une visite cite « entre guillemets » existe d
 // fenêtre encore ouverte. Un clic n'est pas un geste fait : quand l'étape dit ce qui le prouve, c'est
 // cette preuve qui décide.
 t('10.14.0 : une étape « clique » qui dit ce qui prouve le geste attend cette preuve, pas le clic', () => {
-  const vj = lireSource('src', 'renderer', 'visite.js').replace(/\/\/[^\n]*/g, '');
-  const regle = vj.split('\n').filter(l => /cur\.clic/.test(l) && /fait = true/.test(l));
-  assert.strictEqual(regle.length, 1, 'la règle du clic : ' + regle.length + ' ligne(s)');
-  assert.ok(/typeof e\.fait !== 'function'/.test(regle[0]), 'le clic suffit encore quand l\'étape a sa preuve : ' + regle[0].trim());
+  // La règle vit dans `decider` depuis la 10.14.1 : on la JOUE, au lieu de lire une ligne de source.
+  const base = { cible: true, el: true, faire: true, mode: 'clic', t: 1000, faitAvant: false, entree: false };
+  assert.strictEqual(V.decider({ ...base, aFait: false, clic: true, clicRecent: true }), 'avancer', 'sans preuve, le clic doit suffire');
+  const d = V.decider({ ...base, aFait: true, fait: false, clic: true, clicRecent: true });
+  assert.notStrictEqual(d, 'avancer', 'le clic suffit encore quand l\'étape a sa preuve');
+  assert.strictEqual(V.decider({ ...base, aFait: true, fait: true, clic: true, clicRecent: true }), 'avancer', 'la preuve, elle, fait avancer');
   // Ce qui peut s'annuler ou se refuser porte sa preuve : un choix de fichier ou de dossier, le bouton
   // principal d'une fenêtre (un refus la garde ouverte), la fabrication d'un paquet.
   const annulables = [];
@@ -977,9 +986,321 @@ t('10.14.0 : un geste « clique sur une ligne » se reconnaît sur n\'importe qu
   // Et le clic écouté en capture passe par cette règle, pas par la seule première cible.
   const vj = lireSource('src', 'renderer', 'visite.js');
   assert.ok(/if \(viseLaCible\(e\.cible, resoudre\(e\.cible\), ev\.target\)\) cur\.clic = Date\.now\(\);/.test(vj), 'le clic ne passe plus par viseLaCible');
-  // Un clic qui vient d'avoir lieu n'est pas « se perdre » : la page qu'il ouvre fait disparaître la cible.
+  // Un clic qui vient d'avoir lieu n'est pas « se perdre » : la page qu'il ouvre fait disparaître la
+  // cible. La règle vit dans `decider` (10.14.1) — on la joue — et le moteur lit ce verdict AVANT de
+  // dire « perdus de vue ».
+  const d = V.decider({ cible: true, el: false, faire: true, mode: 'clic', aFait: false, clic: false, clicRecent: true, t: V.PATIENCE + 500 });
+  assert.strictEqual(d, 'attendre', 'un clic qui change de page passe encore pour « perdus de vue » : ' + d);
   const v = vj.slice(vj.indexOf('function verifier('), vj.indexOf("document.addEventListener('click'"));
-  assert.ok(v.indexOf("if (e.faire === 'clic' && typeof e.fait !== 'function' && cur.clic) return;") > 0 &&
-    v.indexOf("if (e.faire === 'clic' && typeof e.fait !== 'function' && cur.clic) return;") < v.indexOf('const perdu ='), 'un clic qui change de page passe encore pour « perdus de vue »');
+  assert.ok(v.indexOf("'attendre'") > 0 && v.indexOf("'attendre'") < v.indexOf('const perdu ='), 'le moteur dit « perdus de vue » avant d\'avoir attendu la page qu\'ouvre le clic');
+});
+
+// ============================================================================================
+// 10.14.1 (S-02) — Skander, 26/09/2026 : « des fois il passe tout seul sans que j'ai appuyé sur
+// suivant », et « quand le guide montre un bouton ou me parle d'une action, il faut que je puisse
+// appuyer dessus pour la découvrir, et pas qu'elle s'affiche en sombre en arrière-plan ».
+// La décision de chaque tour vit dans `decider`, PURE : on la joue ici, cas par cas.
+
+// Reproduit à la souris : la visite de la page Devis, un filtre de statut qui vide la liste — la
+// zone lue sur l'écran disparaissait, l'étape (marquée facultative) se sautait, puis la suivante, et
+// la visite finissait d'elle-même sur « Tu connais cette page ».
+t('10.14.1 : une zone qu\'on a VUE puis vidée ne fait pas avancer la visite — elle le dit', () => {
+  const P = V.PATIENCE, PF = V.PATIENCE_FACULTATIVE;
+  assert.ok(PF < P, 'les deux patiences doivent se distinguer, sinon le test ne discrimine rien');
+  const zone = { cible: true, el: false, vu: true, facultatif: false, faire: false, mode: '', aFait: false, geste: true };
+  assert.strictEqual(V.decider({ ...zone, t: PF + 100 }), 'present', 'une zone vue puis perdue se saute encore');
+  assert.strictEqual(V.decider({ ...zone, t: P + 100 }), 'perdu', 'une zone perdue ne se dit pas');
+  // Même facultative, une zone qu'on a vue ne se saute pas : c'est la personne qui l'a vidée.
+  assert.strictEqual(V.decider({ ...zone, facultatif: true, t: P + 100 }), 'perdu', 'une zone facultative vue se saute quand on la vide');
+  // Seule une zone facultative JAMAIS venue sur cet écran se saute — vite, rien ne l'attend.
+  assert.strictEqual(V.decider({ ...zone, facultatif: true, vu: false, t: PF + 100 }), 'sauter', 'une zone facultative jamais venue ne se saute plus');
+  // Et un bloc LU sur l'écran n'est jamais facultatif : il existe, et sa perte a sa phrase.
+  const vj = lireSource('src', 'renderer', 'visite.js').replace(/\/\/[^\n]*/g, '');
+  const f = vj.slice(vj.indexOf('function etapesDeLaVue('), vj.indexOf('function ouvrirOnglet('));
+  assert.ok(f.length > 800, 'tranche introuvable');
+  assert.ok(!/facultatif\s*:/.test(f), 'les blocs d\'une page redeviennent facultatifs : une recherche qui vide la liste fait finir la visite');
+  assert.ok(/perdu:\s*`/.test(f), 'un bloc perdu n\'a plus sa phrase');
+});
+
+t('10.14.1 : un geste DÉJÀ fait en entrant se dit et attend « Suivant » ; seul le geste fait pendant l\'étape avance tout seul', () => {
+  const base = { cible: true, el: true, faire: true, mode: '', aFait: true, t: 400 };
+  assert.strictEqual(V.decider({ ...base, fait: true, entree: true }), 'dejaFait', 'une étape dont le geste est déjà fait passe sans être lue');
+  assert.notStrictEqual(V.decider({ ...base, fait: true, entree: false, faitAvant: true }), 'avancer', 'un état resté vrai fait avancer : il n\'y a pas eu de geste');
+  assert.strictEqual(V.decider({ ...base, fait: true, entree: false, faitAvant: false }), 'avancer', 'le geste fait pendant l\'étape doit avancer');
+  assert.notStrictEqual(V.decider({ ...base, fait: false, entree: false, faitAvant: true }), 'avancer', 'défaire le geste fait avancer');
+});
+
+t('10.14.1 : la prise d\'avance exige un GESTE de la personne — un redessin de la page ne saute aucune étape', () => {
+  const base = { cible: true, el: false, faire: true, mode: 'valeur', aFait: false, t: 2000 };
+  assert.notStrictEqual(V.decider({ ...base, geste: false }), 'avance', 'une cible disparue par un redessin fait sauter des étapes');
+  assert.strictEqual(V.decider({ ...base, geste: true }), 'avance', 'après un geste (Entrée, deux champs d\'un coup), la visite doit pouvoir rattraper');
+  // Rien à rattraper : on juge l'étape SANS le geste — un clic sur la cible qui change la page avance.
+  assert.strictEqual(V.decider({ ...base, mode: 'clic', geste: false, clic: true, clicRecent: true }), 'avancer', 'un clic sur la cible n\'avance plus');
+  const vj = lireSource('src', 'renderer', 'visite.js').replace(/\/\/[^\n]*/g, '');
+  const v = vj.slice(vj.indexOf('function verifier('), vj.indexOf('function noterGeste('));
+  const i = v.indexOf("if (d === 'avance')");
+  assert.ok(i > 0, 'le moteur ne tente plus de rattraper');
+  const bloc = v.slice(i, v.indexOf("if (d === 'valeur')", i));
+  assert.ok(/geste: false/.test(bloc) && /decider\(/.test(bloc), 'rien à rattraper : le verdict ne se refait pas sans le geste, et le clic sur la cible n\'avance plus');
+});
+
+t('10.14.1 : pendant qu\'on ESSAIE ce que la bulle montre, rien n\'avance ni ne se perd', () => {
+  const tous = { cible: true, el: false, vu: true, facultatif: true, faire: true, mode: 'clic', aFait: true, fait: true, faitAvant: false, clic: true, clicRecent: true, geste: true, t: V.PATIENCE * 3 };
+  assert.strictEqual(V.decider({ ...tous, essai: true }), null, 'un essai fait bouger la visite');
+  assert.notStrictEqual(V.decider({ ...tous, essai: false }), null, 'les données doivent discriminer : sans essai, ce tour décide quelque chose');
+});
+
+t('10.14.1 : la bulle EN RETRAIT se range dans un coin qui ne couvre ni la liste ouverte, ni l\'endroit du clic', () => {
+  const ecran = { w: 1440, h: 900 }, bulle = { w: 330, h: 170 };
+  const rect = p => ({ l: p.x, t: p.y, r: p.x + bulle.w, b: p.y + bulle.h });
+  const dedans = p => p.x >= 12 && p.y >= 12 && p.x + bulle.w <= ecran.w - 12 && p.y + bulle.h <= ecran.h - 12;
+  const libre = V.placerMini(ecran, bulle, []);
+  assert.strictEqual(libre.cote, 'bas-droite', 'sans rien à éviter, en bas à droite');
+  assert.ok(dedans(libre), 'la bulle sort de l\'écran');
+  // Une liste déroulante ouverte en bas à droite (le statut d'une liste, un calendrier) : ailleurs.
+  const liste = { l: 1100, t: 600, r: 1430, b: 890 };
+  const p1 = V.placerMini(ecran, bulle, [liste]);
+  assert.ok(!V.chevauche(rect(p1), liste), 'la bulle couvre la liste ouverte : ' + JSON.stringify(p1));
+  assert.ok(dedans(p1));
+  // La liste ET l'endroit du clic en haut à droite : un coin de gauche.
+  const clic = { l: 1290, t: 20, r: 1370, b: 100 };
+  const p2 = V.placerMini(ecran, bulle, [liste, clic]);
+  assert.ok(!V.chevauche(rect(p2), liste) && !V.chevauche(rect(p2), clic), 'la bulle couvre la liste ou le clic : ' + JSON.stringify(p2));
+  assert.ok(/gauche/.test(p2.cote), 'les données doivent discriminer : il ne reste qu\'un coin de gauche');
+  // Un petit écran reste un écran : jamais dehors.
+  assert.ok(V.placerMini({ w: 360, h: 300 }, bulle, [liste]).x >= 12, 'sur un petit écran, la bulle sort par la gauche');
+});
+
+t('10.14.1 : un bouton cité « entre guillemets » se reconnaît sans ce qui le décore', () => {
+  const N = V.normNom;
+  assert.strictEqual(N('+ Ligne vide'), N('Ligne vide'), 'le « + » d\'un bouton d\'ajout empêche de le reconnaître');
+  assert.strictEqual(N('Ajouter depuis le catalogue…'), N('Ajouter depuis le catalogue'), 'les points de suspension empêchent de le reconnaître');
+  assert.strictEqual(N('Émettre la facture ▾'), 'emettre la facture', 'accents, casse et flèche de menu');
+  assert.strictEqual(N('Net à payer'), 'net a payer', 'les espaces insécables séparent les mots');
+  assert.notStrictEqual(N('Enregistrer'), N('Enregistrer le brouillon'), 'deux boutons différents se confondent');
+  const cites = V.nomsCites('Clique sur <b>« Enregistrer »</b>, puis « + Ligne vide » — et encore « Enregistrer ».');
+  assert.deepStrictEqual(cites, ['Enregistrer', '+ Ligne vide'], 'les noms cités, dans l\'ordre, chacun une fois : ' + JSON.stringify(cites));
+  assert.deepStrictEqual(V.nomsCites('Aucun bouton cité ici.'), []);
+});
+
+t('10.14.1 : une page encore à LIRE ne donne pas un total qui va changer — « Étape 1 », pas « Étape 1 sur 2 »', () => {
+  const lire = { titre: 'Les blocs', deplier: () => [] };
+  const et = [{ titre: 'La page' }, lire];
+  assert.ok(V.enAttenteDe(et, 0), 'une page à lire plus loin ne se voit pas');
+  assert.ok(!V.enAttenteDe(et, 1), 'une page déjà atteinte compte encore');
+  assert.ok(!V.enAttenteDe([{ titre: 'a' }, { titre: 'b' }], 0), 'une visite écrite étape par étape se croit en attente');
+  const vj = lireSource('src', 'renderer', 'visite.js');
+  const e = vj.slice(vj.indexOf('function enTete('), vj.indexOf('function lieuDe('));
+  assert.ok(/enAttenteDe\(p\.etapes, cur\.i\)/.test(e) && /enAttente \? `Étape \$\{cur\.i \+ 1\}`/.test(e), 'l\'en-tête ne lit plus la règle : il annonce un total qui va changer');
+});
+
+t('10.14.1 : le voile est PERCÉ — la zone et chaque bouton nommé en pleine lumière, en clair comme en sombre', () => {
+  const vj = lireSource('src', 'renderer', 'visite.js').replace(/\/\/[^\n]*/g, '');
+  const css = lireSource('src', 'renderer', 'style.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  // L'ancienne ombre portée autour d'un seul cadre ne savait percer qu'un trou.
+  assert.ok(!/visite-trou/.test(vj) && !/#visite-trou/.test(css), 'l\'ancien voile à un seul trou est revenu');
+  assert.ok(/<mask id="visite-masque"/.test(vj) && /mask="url\(#visite-masque\)"/.test(vj), 'le voile n\'est plus un masque percé');
+  // Les boutons nommés hors de la zone reçoivent chacun leur trou, et leur anneau.
+  const pos = vj.slice(vj.indexOf('function positionner('), vj.indexOf('function enTete('));
+  // Les trous : les boutons nommés hors de la zone, puis les contrôles que la liste décrit (10.14.1).
+  assert.ok(/horsZone\.push\(/.test(pos) && /els\.extras/.test(pos) && /const trous = [^;]*horsZone\.concat\(/.test(pos) && /poserTrou\(t, trous\[k\]/.test(pos), 'les boutons nommés restent dans l\'ombre');
+  assert.ok(/visite-nomme/.test(vj), 'les boutons nommés n\'ont plus d\'anneau');
+  // L'ombre a sa couleur dans les DEUX thèmes (une couleur écrite en dur a sa jumelle sombre).
+  assert.ok(/#visite-voile \.vv-ombre \{ fill: rgba/.test(css) && /body\.dark #visite-voile \.vv-ombre \{ fill: rgba/.test(css), 'l\'ombre n\'a pas sa couleur en clair ET en sombre');
+  // Pendant un essai ou une liste ouverte, pas d'ombre : ce qu'on vient d'ouvrir se voit en entier.
+  assert.ok(/const ombre = !faire && !cur\.mini/.test(pos), 'le voile reste pendant qu\'on essaie, ou sur une liste ouverte');
+  // Une liste ouverte par-dessus la page met la bulle en retrait (celles des deux applications).
+  ['.combo-pop', '.cal-pop', '.sugg-pop', '.row-menu', '.lm-pop'].forEach(sel =>
+    assert.ok(vj.includes(sel), 'une liste ouverte que la bulle couvrirait : ' + sel));
+});
+
+// Vu à l'écran : « Ton client est enregistré » s'affichait après « Annuler ». Une visite dont le
+// dernier geste se fait dans une FENÊTRE (Annuler la ferme aussi) porte son BUT, et la fin le vérifie.
+t('10.14.1 : une visite qui se termine sur « Enregistrer » dans une fenêtre ne félicite que si c\'est enregistré', () => {
+  const sans = [];
+  visites.forEach(v => {
+    if (v.type !== 'faire') return;
+    const et = (v.etapes || []).filter(Boolean);
+    const der = et[et.length - 1];
+    if (!der || der.faire !== 'clic') return;
+    const cibles = [].concat(der.cible || []).join(' ');
+    const fermeFenetre = /aucuneFenetre\(\)/.test(String(der.fait || ''));
+    if (/#modal-root|\.modal/.test(cibles) && fermeFenetre && typeof v.but !== 'function') sans.push(v.id);
+  });
+  assert.deepStrictEqual(sans, [], 'des visites félicitent une fenêtre fermée par « Annuler »');
+  const vj = lireSource('src', 'renderer', 'visite.js');
+  const fin = vj.slice(vj.indexOf('function finir('), vj.indexOf('function terminer('));
+  assert.ok(/cur\.echec = !ok/.test(fin), 'la fin ne vérifie plus le but');
+  assert.ok(/Ce n'est pas encore fait|Ce n\\'est pas encore fait/.test(vj) && /data-v="recommencer"/.test(vj), 'un but manqué n\'a plus sa fin honnête');
+});
+
+// Vu à la souris (10.14.1) : « Me guider » annonçait « Étape 2 sur 2 » d'une visite de page arrêtée
+// au cinquième de ses blocs, et « Reprendre » repartait du premier bloc. Une page se RELIT : le
+// compte n'est connu que si elle avait fini d'être lue, et la reprise rouvre les onglets qui
+// précèdent l'étape visée.
+t('10.14.1 : une visite de page reprend à l\'étape où l\'on s\'était arrêté, et « Me guider » ne donne pas un total inconnu', () => {
+  const page = { id: 'page-devis', type: 'page', etapes: [{ page: '#/devis', titre: 'Les devis' }, { page: '#/devis', titre: 'Les devis', deplier: () => [] }] };
+  let r = V.pointDeReprise(page, { i: 5, n: 14, attente: false });
+  assert.deepStrictEqual([r.i, r.sur, r.texte], [5, 14, 'Étape 6 sur 14'], 'une page lue jusqu\'au bout : ' + JSON.stringify(r));
+  r = V.pointDeReprise(page, { i: 5, n: 9, attente: true });
+  assert.deepStrictEqual([r.i, r.sur, r.texte], [5, 0, 'Étape 6'], 'une page qui se lisait encore annonce un total qui va changer : ' + JSON.stringify(r));
+  // Une pause d'avant la 10.14.1 ne porte pas de compte : jamais « sur 2 », la taille de la DÉFINITION.
+  r = V.pointDeReprise(page, { i: 1 });
+  assert.strictEqual(r.texte, 'Étape 2', 'une reprise sans compte annonce la taille de la définition : ' + r.texte);
+  // La reprise rejoint l'étape en lisant les onglets qui la précèdent, un par un.
+  const o = n => ({ titre: n, deplier: () => [] }), b = n => ({ titre: n });
+  let et = [b('intro'), b('b1'), b('b2'), b('onglets'), o('o1'), o('o2')];
+  assert.deepStrictEqual(V.versLaReprise(et, 1, 7), { i: 4, fini: false }, 'le premier onglet n\'est pas rouvert avant l\'étape visée');
+  et = [b('intro'), b('b1'), b('b2'), b('onglets'), b('o1b1'), b('o1b2'), o('o2')];
+  assert.deepStrictEqual(V.versLaReprise(et, 4, 7), { i: 6, fini: false }, 'le second onglet est sauté');
+  et = [b('intro'), b('b1'), b('b2'), b('onglets'), b('o1b1'), b('o1b2'), b('o2b1'), b('o2b2')];
+  assert.deepStrictEqual(V.versLaReprise(et, 6, 7), { i: 7, fini: true }, 'la reprise ne s\'arrête pas sur l\'étape visée');
+  // La page a rapetissé depuis (moins de blocs) : on s'arrête au dernier, jamais hors de la visite.
+  assert.deepStrictEqual(V.versLaReprise(et, 6, 20), { i: 7, fini: true }, 'une étape visée qui n\'existe plus sort de la visite');
+  // Le moteur s'en sert : `lancer` vise l'étape au-delà de la définition, et le dépliage la rejoint.
+  const vj = lireSource('src', 'renderer', 'visite.js').replace(/\/\/[^\n]*/g, '');
+  const lancer = vj.slice(vj.indexOf('function lancer('), vj.indexOf('function entrer('));
+  assert.ok(/enAttenteDe\(copie\.etapes, -1\)\) cur\.viser = d/.test(lancer), 'lancer ne vise plus l\'étape d\'une page à relire');
+  const entrer = vj.slice(vj.indexOf('function entrer('), vj.indexOf('function etapesDepliees('));
+  assert.ok(/versLaReprise\(cur\.p\.etapes, iMoi, cur\.viser\)/.test(entrer), 'le dépliage ne rejoint plus l\'étape visée');
+  // Les deux applications retiennent le compte, et « Me guider » lit la même fonction.
+  ['src/renderer/app.js', 'src/cabinet/renderer/app.js'].forEach(f => {
+    const a = lireSource(...f.split('/'));
+    assert.ok(/etape: \(p, i, compte\) => visitesPoser\(e => \{ e\.reprise = Object\.assign\(\{ id: p\.id, i \}, compte \|\| \{\}\)/.test(a), f + ' : le compte de la visite n\'est plus retenu');
+    assert.ok(/interrompu: \(p, i, compte\)/.test(a), f + ' : la pause ne retient pas le compte');
+    assert.ok(/Visite\.pointDeReprise\(reprise, et\.reprise\)/.test(a), f + ' : « Me guider » recalcule la reprise lui-même');
+    assert.ok(!/Étape \$\{repriseI \+ 1\} sur \$\{reprise\.etapes\.length\}/.test(a), f + ' : « Étape n sur <taille de la définition> » est revenu');
+  });
+});
+
+// Vu à la souris (10.14.1) : « Faire un devis » mis en pause à l'étape 5, repris depuis « Me guider »
+// le lendemain — le brouillon n'existait plus, la bulle se perdait de vue et ne proposait
+// qu'« Arrêter la visite ». Un geste repart de l'écran où il commence, et la carte le dit.
+t('10.14.1 : un geste arrêté au milieu repart de l\'étape qui ouvre son écran, et « Me guider » le dit', () => {
+  const geste = { id: 'g', type: 'faire', etapes: [
+    { page: '#/devis', cible: '#new', faire: 'clic' }, { cible: '#client', faire: 'valeur' }, { cible: '#objet', faire: 'valeur' },
+    { cible: '#lignes' }, { cible: '#save', faire: 'clic' }] };
+  const r = V.pointDeReprise(geste, { i: 3 });
+  assert.strictEqual(r.i, 0, 'la reprise d\'un geste retombe au milieu, sur un écran qui n\'existe plus : ' + r.i);
+  assert.strictEqual(r.texte, 'Étape 1 sur 5');
+  assert.ok(/étape 4/.test(r.note), 'la carte ne dit plus où l\'on s\'était arrêté : ' + r.note);
+  // La dernière étape qui dit où aller, pas forcément la première — et une page écrite par une
+  // fonction compte ; un motif (RegExp) ne se rejoint pas, il ne compte pas.
+  const deux = { etapes: [{ page: '#/a' }, { cible: 'x' }, { page: () => '#/b', cible: 'y' }, { cible: 'z' }, { page: /^#\/c/, cible: 'w' }] };
+  assert.strictEqual(V.etapeAvecPage(deux.etapes, 3), 2, 'une page donnée par une fonction ne compte pas');
+  assert.strictEqual(V.etapeAvecPage(deux.etapes, 4), 2, 'un motif de page se prend pour une adresse');
+  assert.strictEqual(V.pointDeReprise(deux, { i: 2 }).note, '', 'une reprise exacte annonce un retour en arrière');
+  // Une visite dont chaque étape a sa page (la découverte) reprend exactement.
+  const dec = { etapes: [{ page: '#/a' }, { page: '#/a', cible: 'x' }, { page: '#/b', cible: 'y' }] };
+  assert.strictEqual(V.pointDeReprise(dec, { i: 2 }).i, 2);
+  // Le moteur fait le même calcul au lancement, sauf quand la cible de l'étape est déjà à l'écran.
+  const vj = lireSource('src', 'renderer', 'visite.js').replace(/\/\/[^\n]*/g, '');
+  const lancer = vj.slice(vj.indexOf('function lancer('), vj.indexOf('function entrer('));
+  assert.ok(/cibleDe\(ici\) && pageOk\(ici\)\) \? dd : etapeAvecPage\(copie\.etapes, dd\)/.test(lancer), 'lancer reprend au milieu d\'un geste dont l\'écran n\'existe plus');
+});
+
+// Vu à la souris (10.14.1) : une prestation prise au catalogue remplit la désignation, et l'étape
+// suivante demandait « Écris la désignation » d'une case déjà écrite.
+t('10.14.1 : une case déjà remplie en arrivant se dit « Déjà rempli » au lieu de demander de l\'écrire', () => {
+  assert.strictEqual(V.dejaRempliDe(true, true, false), true, 'remplie en arrivant');
+  assert.strictEqual(V.dejaRempliDe(true, false, false), false, 'remplie PENDANT l\'étape : c\'est le geste attendu, pas « déjà »');
+  assert.strictEqual(V.dejaRempliDe(true, false, true), true, 'l\'étape oublie qu\'elle était déjà remplie');
+  assert.strictEqual(V.dejaRempliDe(false, false, true), false, 'une case vidée reste « déjà remplie »');
+  const vj = lireSource('src', 'renderer', 'visite.js');
+  const ver = vj.slice(vj.indexOf('function verifier('), vj.indexOf('const INTERACTIF'));
+  assert.ok(/dejaRempliDe\(pret, entree, cur\.dejaRempli\)/.test(ver), 'la vérification ne mesure plus la case à l\'entrée');
+  assert.ok(/e\.faire === 'valeur' && cur\.dejaRempli/.test(vj) && /Déjà rempli/.test(vj), 'la bulle ne dit plus « Déjà rempli »');
+  // Et la case dont la bulle propose de taper reste en pleine lumière.
+  const pd = parId('premier-devis');
+  const lig = pd.etapes.find(e => e.titre === 'Ajouter une ligne');
+  assert.ok(lig && /data-k="label"/.test(String(lig.eclairer || '')), 'la désignation, dont la bulle parle, reste dans l\'ombre');
+});
+// Vu à la souris (10.14.1) : les deux jours de dépôt des Réglages (TVA et CNSS) partagent une
+// explication — la bulle les disait en une ligne, et le SECOND restait dans l'ombre ; et quand la zone
+// d'une étape est coupée (un grand panneau), les contrôles que la bulle décrit plus bas restaient
+// sombres, sous le voile : on ne pouvait pas cliquer ce qu'on lisait (« il faut que je puisse appuyer
+// dessus pour la découvrir, et pas qu'elle s'affiche en sombre en arrière-plan »).
+t('10.14.1 : chaque contrôle que la bulle décrit s\'éclaire — deux qui partagent une phrase, et ceux qu\'une zone coupée laisse dehors', () => {
+  // Un faux écran, sans Electron : deux champs de jour (même explication), un bouton, et « Actions »
+  // répété sur trois lignes d'un tableau.
+  const boite = (l, tp, w, hh) => ({ left: l, top: tp, right: l + w, bottom: tp + hh, width: w, height: hh, x: l, y: tp });
+  const noeud = (nom, cle, r, ligne) => ({ nom, cle, isConnected: true, matches: () => false,
+    closest: sel => (ligne && sel === 'tbody tr') ? {} : null, getBoundingClientRect: () => r, contains: () => false });
+  const tva = noeud('TVA : jour de dépôt', 'jour', boite(100, 100, 80, 30));
+  const cnss = noeud('CNSS : jour de dépôt', 'jour', boite(300, 100, 80, 30));
+  const bouton = noeud('Enregistrer', 'save', boite(100, 200, 120, 34));
+  const lignes = [0, 1, 2].map(i => noeud('Actions', 'rowmenu', boite(600, 300 + i * 40, 80, 30), true));
+  const racine = { isConnected: true, matches: () => false, closest: () => null, contains: () => true,
+    getBoundingClientRect: () => boite(0, 0, 1000, 600), querySelectorAll: () => [tva, cnss, bouton, ...lignes] };
+  const avant = global.getComputedStyle;
+  global.getComputedStyle = () => ({ visibility: 'visible', display: 'block', opacity: '1' });
+  V.installer({ expliquer: el => ({ cle: el.cle, nom: el.nom, texte: 'Ce que fait ' + el.nom }) });
+  try {
+    const l = V.listerControles({ el: racine, liste: true });
+    assert.deepStrictEqual(l.map(x => x.nom), ['TVA : jour de dépôt', 'Enregistrer', 'Actions'], 'la bulle ne dit plus chaque explication une fois');
+    assert.deepStrictEqual(l[0].autres, [cnss], 'le second champ qui partage la phrase reste dans l\'ombre');
+    assert.deepStrictEqual(l[2].autres, [], 'le même bouton de chaque ligne s\'éclaire autant de fois qu\'il y a de lignes');
+  } finally {
+    global.getComputedStyle = avant;
+    V.installer({ expliquer: () => null });
+  }
+  // Une zone coupée : ce que la liste décrit HORS de la zone reçoit son trou, une fois ; ce qui est
+  // déjà dans la zone ou hors de l'écran, non.
+  const ecran = { w: 1440, h: 900 };
+  const zone = { l: 100, t: 100, r: 600, b: 400 };
+  const dansZone = { l: 120, t: 120, r: 200, b: 150 };
+  const dehors = { l: 700, t: 120, r: 800, b: 150 };
+  const dansLeTrou = { l: 710, t: 125, r: 790, b: 145 };
+  const horsEcran = { l: 700, t: 950, r: 800, b: 990 };
+  const ailleurs = { l: 100, t: 500, r: 300, b: 540 };
+  assert.deepStrictEqual(V.trousDeListe([dansZone, dehors, dansLeTrou, horsEcran, ailleurs], zone, ecran), [dehors, ailleurs]);
+  assert.deepStrictEqual(V.trousDeListe([dansZone, dehors], null, ecran), [dansZone, dehors], 'sans zone, chaque contrôle reçoit son trou');
+  // Le voile les perce : les contrôles de la liste ET leurs jumeaux (`autres`) passent par trousDeListe.
+  const vj = lireSource('src', 'renderer', 'visite.js').replace(/\/\/[^\n]*/g, '');
+  assert.ok(/trousDeListe\(\(cur\.items \|\| \[\]\)\.flatMap\(x => \[x\.el, \.\.\.\(x\.autres \|\| \[\]\)\]\)/.test(vj), 'le voile ne perce plus les contrôles que la bulle décrit');
+});
+
+// Vu à la souris (10.14.1) : « À droite, les gestes de la page : un seul est vert, c'est l'étape
+// suivante » était écrit pour TOUTES les pages. Sur les Réglages du Cabinet, aucun bouton n'est vert en
+// haut (le vert est plus bas, « Enregistrer ma clé… ») : la bulle promettait un bouton introuvable.
+t('10.14.1 : le haut d\'une page se dit tel qu\'il EST — le bouton vert nommé, plus bas, ou absent', () => {
+  const p1 = V.phraseDuHaut({ vertHaut: '+ Nouveau devis' });
+  assert.ok(/« \+ Nouveau devis »/.test(p1) && /l'étape suivante/.test(p1), p1);
+  const p2 = V.phraseDuHaut({ vertBas: 'Enregistrer ma clé…' });
+  assert.ok(/Aucun n'est vert ici/.test(p2) && /plus bas/.test(p2) && /Enregistrer ma clé…/.test(p2), p2);
+  const p3 = V.phraseDuHaut({});
+  assert.ok(/Aucun n'est vert/.test(p3) && !/étape suivante est/.test(p3), p3);
+  assert.ok(/&lt;b&gt;/.test(V.phraseDuHaut({ vertHaut: '<b>' })), 'un nom de bouton n\'est pas échappé');
+  [p1, p2, p3].forEach(p => assert.ok(!/un seul est vert/.test(p), 'la promesse générale est revenue : ' + p));
+  // Et la phrase est lue sur l'ÉCRAN : un faux en-tête, puis la zone des deux applications.
+  const boite = { width: 120, height: 34 };
+  const bt = (nom, eteint) => ({ textContent: nom, disabled: !!eteint, isConnected: true, closest: () => null, getBoundingClientRect: () => boite });
+  const avant = global.getComputedStyle;
+  global.getComputedStyle = () => ({ visibility: 'visible', display: 'block', opacity: '1' });
+  try {
+    const vue = { querySelectorAll: () => [bt('Enregistrer ma clé…')] };
+    const tete = verts => ({ matches: s => s === '.page-head', querySelectorAll: () => verts, querySelector: () => null, closest: () => vue, contains: () => false });
+    assert.ok(/« \+ Nouveau devis »/.test(V.texteDuHaut(tete([bt('+ Nouveau devis')]))), 'le vert du haut n\'est pas nommé');
+    assert.ok(/plus bas/.test(V.texteDuHaut(tete([bt('Éteint', true)]))), 'un vert éteint passe pour l\'étape suivante');
+    const CV = require('../../src/cabinet/renderer/cabvisites.js');
+    [['SkanFact', S], ['Cabinet', CV]].forEach(([nom, M]) => {
+      const z = M.zone(tete([bt('+ Nouveau devis')]));
+      assert.ok(z && /« \+ Nouveau devis »/.test(z.texte) && !/un seul est vert/.test(z.texte), nom + ' : le haut de la page ne se lit plus sur l\'écran : ' + (z && z.texte));
+    });
+  } finally {
+    global.getComputedStyle = avant;
+  }
+});
+
+// Vu à la souris (10.14.1) : « Déclarer les régimes de mes clients » ouvrait l'onglet « Comptabilité »
+// des Réglages pour un panneau rangé dans « Mon cabinet » — la bulle cherchait un panneau caché, et la
+// visite se perdait à sa première étape. Les deux tables (où l'application range un panneau, ce que la
+// visite ouvre) vivent dans deux fichiers : elles se confrontent ici, et dans le Cabinet.
+t('10.14.1 : une visite qui ouvre un onglet des Paramètres vise un panneau rangé dans CET onglet', () => {
+  const verif = require('../onglets-visites.js');
+  const r = verif({ visites, app: lireSource('src', 'renderer', 'app.js'), table: /'(p-[a-z]+)': \{ onglet: '([a-z]+)'/g, appel: 'panneau', page: '#/parametres', barre: '#set-tabs' });
+  assert.ok(r.panneaux >= 20 && r.identifiants >= 30, `les tables n'ont pas été lues : ${r.panneaux} panneaux, ${r.identifiants} identifiants`);
+  assert.ok(r.controles >= 20, 'contrôles confrontés : ' + r.controles);
+  assert.deepStrictEqual(r.fautes, []);
 });
 };

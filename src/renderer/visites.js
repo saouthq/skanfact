@@ -149,9 +149,12 @@
   // Le titre et le mot d'un bloc, quand son intitulé ne suffit pas. Premier qui correspond gagne :
   // les plus précis d'abord.
   const ZONES = [
-    { sel: '.demo-banner', titre: "Tu es dans l'exemple", texte: "Rien de ce que tu fais ici ne compte. « Visite guidée » te fait faire le tour ; « Quitter l'exemple » te rend tes vraies données." },
+    // Cette phrase ne se lit que PENDANT une visite, et le bandeau retire alors son bouton « Visite
+    // guidée » (on y est déjà) : elle ne cite que ce qui est à l'écran (10.14.1).
+    { sel: '.demo-banner', titre: "Tu es dans l'exemple", texte: "Une entreprise inventée, pleine de données : essaie tout, rien de ce que tu fais ici ne compte, et tes vraies données sont à l'abri. « Quitter l'exemple » te les rend quand tu veux." },
     { sel: '#guide-band', titre: "La visite de cette page", texte: "Proposée les trois premières fois que tu ouvres une page. Tu la retrouves ensuite dans « Me guider »." },
-    { sel: '.page-head', titre: "Le haut de la page", texte: "Le titre dit où tu es. À droite, les gestes de la page : <b>un seul est vert</b>, c'est l'étape suivante. « Comprendre cette page » ouvre son article d'Aide." },
+    // Dit tel qu'il EST : le bouton vert nommé, ou son absence (`texteDuHaut`, 10.14.1).
+    { sel: '.page-head', titre: "Le haut de la page", texte: el => M.texteDuHaut(el, el.querySelector('.help-link') ? "« Comprendre cette page » ouvre son article d'Aide." : '') },
     { sel: '#bal-vues', titre: "Les quatre vues de la balance", texte: "La même balance, lue de quatre façons." },
     { sel: '.tabs', titre: "Les onglets", texte: "La page se range en onglets. Je vais te les ouvrir un par un ; « Passer au chapitre suivant » en saute un." },
     { sel: '.filters', titre: "Retrouver une ligne", texte: "La recherche lit le numéro, le nom et l'objet pendant que tu tapes ; les listes filtrent par statut et par année. « n sur N » dit combien de lignes tu gardes." },
@@ -563,6 +566,12 @@
   b('#upd-check', "Cherche tout de suite une nouvelle version.");
   b('#upd-changelog', "Ce qui a changé dans chaque version.");
   b('#upd-beta', "Reçois les versions d'essai avant tout le monde (une sauvegarde est prise avant).", { nom: 'Versions d\'essai' });
+  // 10.14.1 — les boutons que le panneau montre selon l'état (prête, interrompue, en panne) : aucun
+  // ne s'expliquait, parce qu'aucun parcours ne met l'application dans ces états.
+  b('#upd-install', "Redémarre SkanFact sur la nouvelle version, déjà téléchargée et vérifiée.");
+  b('#upd-retry', "Relance le téléchargement qui s'est interrompu.");
+  b('#upd-releases', "Ouvre la page des versions publiées.");
+  b('#upd-log', "Ouvre le journal de l'application : c'est lui qui dit ce qui a bloqué.");
   b('#ocr-key', "Active la lecture des photos de factures (demande une clé d'accès payante).");
   b('#ocr-off', "Désactive la lecture et efface la clé.");
 
@@ -764,11 +773,18 @@
     const combo = nom => `[data-combo="${nom}"] .combo-btn`;
     const valeur = sel => { const el = $(sel); return el ? String(el.value || '').trim() : ''; };
     const nb = liste => (data()[liste] || []).length;
+    // Le BUT d'une visite se mesure sur les données (10.14.1) : « Annuler » ferme la fenêtre aussi,
+    // et une fin qui félicite une fenêtre fermée sans rien enregistrer dit le contraire du vrai.
+    const paiements = () => (data().documents || []).reduce((n, d) => n + ((d && d.payments) || []).length, 0);
+    const marque = () => ['logo', 'stampImage', 'accentColor', 'primaryColor'].map(k => String(((data().company || {})[k]) || ''));
     // Le nombre de paquets à l'entrée de l'étape « Fabriquer » : sa preuve est un paquet DE PLUS.
     let paquetsAvant = 0;
     // L'onglet se clique quand la page qui le porte est DESSINÉE (`Visite.ouvrirOnglet`, 10.14.0) :
     // cliqué aussitôt après `aller()`, il visait l'écran d'avant et ne trouvait rien.
-    const onglet = (barre, cle) => () => ctx.Visite.ouvrirOnglet(barre, cle);
+    // La fonction PORTE son onglet (`barre`, `cle`) : un test confronte chaque cible de panneau à
+    // l'onglet où l'application le range — la visite des régimes du Cabinet ouvrait « Comptabilité »
+    // pour un panneau rangé dans « Mon cabinet », et se perdait (vu à la souris, 10.14.1).
+    const onglet = (barre, cle) => Object.assign(() => ctx.Visite.ouvrirOnglet(barre, cle), { barre, cle });
 
     const L = [];
     const visite = v => { L.push(v); return v; };
@@ -953,6 +969,7 @@
       resume: 'Ton logo, ton cachet et ta couleur, réglés en regardant ta prochaine facture.',
       mots: ['logo', 'cachet', 'signature', 'couleur', 'accent', 'marque', 'image', 'apparence', 'personnaliser'],
       suite: ['premier-client', 'premier-devis'],
+      mesure: () => marque(), but: m0 => aucuneFenetre() && !!m0 && marque().some((x, k) => x !== m0[k]),
       bravo: 'Ta facture est à ton image',
       conclusion: 'Chaque devis et chaque facture portent maintenant tes couleurs. La même fenêtre se rouvre depuis Paramètres → Documents → « Changer le logo, le cachet ou les couleurs… ».',
       etapes: [
@@ -1019,8 +1036,10 @@
         { cible: 'input[name="subject"]', cote: 'dessous', faire: 'valeur',
           titre: 'L\'objet', texte: 'Une ligne qui dit de quoi il s\'agit : ton client la lira en premier.',
           action: 'Écris l\'objet du devis, puis clique sur <b>« C\'est fait »</b>.', essai: { taper: 'Réfection de la vitrine' } },
-        { cible: ['#cat-pick .combo-btn', '#add-line'], cote: 'dessus', titre: 'Ajouter une ligne',
-          texte: '« Ajouter depuis le catalogue » reprend une prestation déjà décrite, avec son prix. « + Ligne vide » en crée une à la main. Tu peux aussi taper directement dans la désignation : SkanFact te propose ce qui ressemble dans ton catalogue.' },
+        // La case de la désignation est éclairée aussi : la bulle propose d'y taper, elle ne reste pas
+        // dans l'ombre (10.14.1 — « ce dont le guide parle, je dois pouvoir cliquer dessus »).
+        { cible: ['#cat-pick .combo-btn', '#add-line'], cote: 'dessus', titre: 'Ajouter une ligne', eclairer: '#lines tr:first-child input[data-k="label"]',
+          texte: '« Ajouter depuis le catalogue » reprend une prestation déjà décrite, avec son prix. « + Ligne vide » en crée une à la main. Tu peux aussi taper directement dans la désignation (la case éclairée plus bas) : SkanFact te propose ce qui ressemble dans ton catalogue.' },
         { cible: '#lines tr:first-child input[data-k="label"]', cote: 'dessous', faire: 'valeur',
           titre: 'La désignation', texte: 'Ce que tu vends, en quelques mots. « + description » sous la case ajoute une phrase plus longue.',
           action: 'Écris la désignation de la première ligne.', essai: { taper: 'Pose de vitrage' } },
@@ -1119,6 +1138,7 @@
       suite: ['relancer', 'page-tresorerie'],
       si: () => !!ctx.premier('factureOuverte'),
       manque: { texte: 'Aucune facture n\'attend de paiement — émets d\'abord une facture.', visite: 'emettre' },
+      mesure: () => paiements(), but: n0 => paiements() > n0 && aucuneFenetre(),
       bravo: 'Le paiement est noté',
       conclusion: 'La facture est passée à « payée » (ou « partielle »), et l\'argent est arrivé dans ta trésorerie — tout seul.',
       etapes: [

@@ -1619,6 +1619,30 @@
 
   const regimes = state => ((state && state.settings && state.settings.regimes) || []).filter(r => r.id && r.label);
   const regimeDe = (state, dossier) => regimes(state).find(r => r.id === String((dossier && dossier.regime) || '')) || null;
+  // Les régimes qu'une fiche de client peut PORTER : les trois de départ — sous le nom que le cabinet
+  // leur a donné s'il les a déclarés —, puis chaque régime qu'il a écrit lui-même. Jusqu'à la 10.14.1,
+  // la fiche ne proposait que les trois de départ : un régime ajouté par « Ajouter un régime » ne
+  // pouvait être porté par AUCUN client, et ses règles ne servaient jamais (vu en déroulant la visite
+  // des Réglages). Un régime que le dossier porte encore mais que les réglages ont retiré reste dans
+  // la liste, nommé comme tel : une liste dont aucune option ne correspond retient la première, en
+  // silence, et rouvrir la fiche changerait le régime du client (8.3.0).
+  function choixRegimes(state, actuel) {
+    const decl = regimes(state);
+    const out = REGIMES.map(r => { const d = decl.find(x => x.id === r.id); return { id: r.id, label: d ? d.label : r.label }; });
+    decl.forEach(d => { if (!out.some(x => x.id === d.id)) out.push({ id: d.id, label: d.label }); });
+    const a = String(actuel || '');
+    if (a && !out.some(x => x.id === a)) out.push({ id: a, label: a + ' (retiré des réglages)' });
+    return out;
+  }
+  // Le régime dans une PHRASE (l'en-tête de la fiche) : « régime réel », jamais « régime Régime réel »
+  // — le libellé d'une liste porte déjà le mot, parce qu'il s'y lit seul. La majuscule tombe au milieu
+  // d'une phrase, sauf sur un sigle (« BNC » reste « BNC »).
+  function regimeEnPhrase(label) {
+    const l = String(label || '').trim();
+    if (!l) return '';
+    const bas = /^\p{Lu}\p{Ll}/u.test(l) ? l.charAt(0).toLowerCase() + l.slice(1) : l;
+    return /^régime(\s|$)/i.test(l) ? bas : 'régime ' + bas;
+  }
 
   // La périodicité de TVA qui s'applique VRAIMENT à un dossier : celle de son régime quand le
   // cabinet en a déclaré une, sinon celle posée sur sa fiche, sinon mensuelle. Le régime prime sur
@@ -2149,7 +2173,7 @@
     newDossier, parseDossierLines, noteRelance, portfolio, caDuPortefeuille, relanceDue, relanceRows, accuseMail,
     parseCsv, verdictOrigine, csvDangereux, toCsvLine, mergeEcritures, ecrituresPlan,
     DEFAULT_DEADLINES, deadlineSettings, echeances, dayOf,
-    TVA_PERIODES, migrateRegime, regimes, regimeDe, periodeTva, deposeCnss,
+    TVA_PERIODES, migrateRegime, regimes, regimeDe, choixRegimes, regimeEnPhrase, periodeTva, deposeCnss,
     dossierMonths, debutDeMission, dossierRow, dossierList, cabinetTodo, premiersPas, relanceMail, pairingFile,
     INDEX_STABLES, nomIndex, releasePourIndex, releasePourIndexRelue, moisManquants,
     // Le cabinet à plusieurs (9.9.0)

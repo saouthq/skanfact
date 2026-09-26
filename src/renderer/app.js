@@ -15164,6 +15164,9 @@
     expliquer: el => SkanVisites.expliquer(el, { G }),
     zone: el => SkanVisites.zone(el),
     action: id => actionDeVisite(id),
+    // Une liste vidée par une recherche ou un filtre pendant la visite d'une page : ce bouton la
+    // réaffiche, et la bulle le propose au lieu de « M'y ramener » (on est déjà sur la page).
+    remettre: '#reset-f',
     couleur: p => SkanVisites.couleurDe(p),
     icone: iconeVisite,
     // « Tes premiers pas » se lisent sur les DONNÉES, comme sur l'accueil : une étape faite sans la
@@ -15188,13 +15191,14 @@
     // La fête : la PREMIÈRE fois qu'on réussit un geste (ou la découverte). La visite d'une page n'en
     // est pas un — des confettis toutes les deux minutes ne veulent plus rien dire.
     fete: p => p.type !== 'page' && !visitesEtat().faites[p.id],
-    etape: (p, i) => visitesPoser(e => { e.reprise = { id: p.id, i }; }),
+    // L'étape où l'on en est, et le compte quand on le connaît (`Visite.pointDeReprise`).
+    etape: (p, i, compte) => visitesPoser(e => { e.reprise = Object.assign({ id: p.id, i }, compte || {}); }),
     fini: p => {
       visitesPoser(e => { e.faites[p.id] = C.today(); if (e.reprise && e.reprise.id === p.id) e.reprise = null; });
       if (location.hash === '#/guide') render(true);
     },
-    interrompu: (p, i) => {
-      visitesPoser(e => { e.reprise = { id: p.id, i: Math.max(0, i) }; });
+    interrompu: (p, i, compte) => {
+      visitesPoser(e => { e.reprise = Object.assign({ id: p.id, i: Math.max(0, i) }, compte || {}); });
       toast('Visite mise en pause. Tu la reprends quand tu veux depuis « Me guider », en bas du menu.');
       if (location.hash === '#/guide') render(true);
     }
@@ -15304,7 +15308,10 @@
     const pagesFaites = pages.filter(v => et.faites[v.id]).length;
     const gestesFaits = gestes.filter(v => et.faites[v.id]).length;
     const reprise = et.reprise && visiteParId(et.reprise.id);
-    const repriseI = reprise ? Math.min(Math.max(0, et.reprise.i || 0), reprise.etapes.length - 1) : 0;
+    // Où la visite reprendra, et ce qu'on en sait : « Étape 6 sur 14 », ou « Étape 6 » d'une page
+    // qui se relira — jamais « Étape 2 sur 2 » d'une page arrêtée au premier de ses blocs (10.14.1).
+    const rep = reprise ? Visite.pointDeReprise(reprise, et.reprise) : null;
+    const repriseI = rep ? rep.i : 0;
     const exemple = C.estDemo(data);
     const pp = lesPas();
     const pas = pasSuivant();
@@ -15313,7 +15320,7 @@
     // découverte, tant qu'elle n'est pas faite ; sinon le premier pas qui manque ; sinon rien — tout
     // se vaut, c'est la personne qui choisit.
     const prochain = reprise
-      ? { etiq: 'En pause', label: libelleVisite(reprise, 'reprendre'), titre: reprise.titre, sous: `Étape ${repriseI + 1} sur ${reprise.etapes.length}`, run: () => lancerVisite(reprise, repriseI) }
+      ? { etiq: 'En pause', label: libelleVisite(reprise, 'reprendre'), titre: reprise.titre, sous: rep.note ? `${rep.texte} — ${rep.note}` : rep.texte, run: () => lancerVisite(reprise, repriseI) }
       : dec && !et.faites.decouvrir
         ? { etiq: 'Pour commencer', label: exemple ? 'Commencer la découverte' : 'Charger l\'exemple et découvrir', titre: dec.titre, sous: `${dec.duree} · ${pl(Visite.chapitres(dec.etapes).length, 'chapitre')}`, run: () => lancerVisite(dec) }
         : pas
@@ -15338,7 +15345,7 @@
         <svg viewBox="0 0 120 120" aria-hidden="true"><circle class="g-an-fond" cx="60" cy="60" r="${R}"/><circle class="g-an-plein" cx="60" cy="60" r="${R}" style="--circ:${CIRC.toFixed(1)};--off:${(CIRC * (1 - pct)).toFixed(1)}"/></svg>
         <span class="g-an-t"><b>${aFait}<small> / ${aTotal}</small></b><span>${aQuoi}</span></span></div>`;
     const statut = v => et.faites[v.id] ? '<span class="g-etat fait">Fait</span>'
-      : reprise && reprise.id === v.id ? `<span class="g-etat encours">En pause · ${repriseI + 1}/${v.etapes.length}</span>` : '';
+      : reprise && reprise.id === v.id ? `<span class="g-etat encours">En pause · ${rep.sur ? `${repriseI + 1}/${rep.sur}` : `étape ${repriseI + 1}`}</span>` : '';
     // Une visite qui n'a encore rien à montrer (aucune facture à encaisser) garde sa ligne, bouton
     // éteint, et DIT pourquoi — par la même fonction que celle qui refuserait au lancement (9.4.5).
     // La visite qui fabrique ce qui manque est proposée à côté.

@@ -2205,7 +2205,7 @@
       // forme `${/* … */''}` n'a rien à y faire, et casse le fichier.
       dossier.email ? esc(dossier.email) : '<button type="button" class="lien-manque" data-ident="1">email à renseigner</button>',
       dossier.phone ? esc(dossier.phone) : '<button type="button" class="lien-manque" data-ident="1">téléphone à renseigner</button>',
-      labelOf(K.REGIMES, dossier.regime) ? 'régime ' + esc(labelOf(K.REGIMES, dossier.regime)) : '',
+      esc(K.regimeEnPhrase(labelOf(K.choixRegimes(S, dossier.regime), dossier.regime))),
       labelOf(K.TVA_PERIODS, dossier.tvaPeriod) ? 'TVA ' + esc(labelOf(K.TVA_PERIODS, dossier.tvaPeriod)) : '',
       dossier.from ? 'mission depuis ' + esc(K.monthLabel(dossier.from)) : '',
       dossier.fees ? esc(money(dossier.fees)) + ' / mois' : ''
@@ -7775,7 +7775,7 @@
         <label class="field">${lbl('Téléphone', 'd.phone')}<input type="tel" id="f-phone" value="${esc(d.phone || '')}" placeholder="+216 …"></label>
         <label class="field span-2">${lbl('Interlocuteur', 'd.contact')}<input type="text" id="f-contact" value="${esc(d.contact || '')}" placeholder="La personne que tu appelles"></label>
         <label class="field">${lbl('Régime fiscal', 'd.regime')}<select id="f-regime">
-          <option value="">— non précisé —</option>${K.REGIMES.map(r => `<option value="${esc(r.id)}" ${d.regime === r.id ? 'selected' : ''}>${esc(r.label)}</option>`).join('')}</select></label>
+          <option value="">— non précisé —</option>${K.choixRegimes(S, d.regime).map(r => `<option value="${esc(r.id)}" ${d.regime === r.id ? 'selected' : ''}>${esc(r.label)}</option>`).join('')}</select></label>
         <label class="field">${lbl('TVA', 'd.tvaPeriod')}<select id="f-tva">
           <option value="">— non précisé —</option>${K.TVA_PERIODS.map(r => `<option value="${esc(r.id)}" ${d.tvaPeriod === r.id ? 'selected' : ''}>${esc(r.label)}</option>`).join('')}</select></label>
         <label class="field">${lbl('Début de mission', 'd.from')}<input type="text" id="f-from" value="${esc(K.moisAffiche(d.from))}" placeholder="01/2026" inputmode="numeric"></label>
@@ -10296,6 +10296,9 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
       expliquer: el => CV.expliquer(el, { G }),
       zone: el => CV.zone(el),
       action: id => actionDeVisite(id),
+      // Le jumeau de l'app entreprise : une liste vidée par une recherche ou un filtre se réaffiche
+      // d'un clic depuis la bulle, au lieu de faire perdre la visite.
+      remettre: '#reset-f',
       couleur: p => CV.couleurDe(p),
       icone: iconeVisite,
       progres: p => {
@@ -10313,13 +10316,14 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
         return (neuves.length ? neuves : ids).slice(0, 3);
       },
       fete: p => p.type !== 'page' && !visitesEtat().faites[p.id],
-      etape: (p, i) => visitesPoser(e => { e.reprise = { id: p.id, i }; }),
+      // L'étape où l'on en est, et le compte quand on le connaît (`Visite.pointDeReprise`).
+      etape: (p, i, compte) => visitesPoser(e => { e.reprise = Object.assign({ id: p.id, i }, compte || {}); }),
       fini: p => {
         visitesPoser(e => { e.faites[p.id] = K.today(); if (e.reprise && e.reprise.id === p.id) e.reprise = null; });
         if (location.hash === '#/guide') render();
       },
-      interrompu: (p, i) => {
-        visitesPoser(e => { e.reprise = { id: p.id, i: Math.max(0, i) }; });
+      interrompu: (p, i, compte) => {
+        visitesPoser(e => { e.reprise = Object.assign({ id: p.id, i: Math.max(0, i) }, compte || {}); });
         toast('Visite mise en pause. Tu la reprends quand tu veux depuis « Me guider », dans le menu.');
         if (location.hash === '#/guide') render();
       }
@@ -10364,13 +10368,15 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
     const pages = toutes.filter(v => v.type === 'page');
     const nbFaites = toutes.filter(v => et.faites[v.id]).length;
     const reprise = et.reprise && visiteParId(et.reprise.id);
-    const repriseI = reprise ? Math.min(Math.max(0, et.reprise.i || 0), reprise.etapes.length - 1) : 0;
+    // Où la visite reprendra, et ce qu'on en sait (`Visite.pointDeReprise`, la même que SkanFact).
+    const rep = reprise ? Visite.pointDeReprise(reprise, et.reprise) : null;
+    const repriseI = rep ? rep.i : 0;
     const exemple = (S.dossiers || []).some(d => d.demo);
     const pp = lesPas();
     const dec = visiteParId('decouvrir');
     const pas = pp.suivante && visiteParId(PAS_VISITES[pp.suivante.action]);
     const prochain = reprise
-      ? { etiq: 'En pause', label: 'Reprendre', titre: reprise.titre, sous: `Étape ${repriseI + 1} sur ${reprise.etapes.length}`, run: () => lancerVisite(reprise, repriseI) }
+      ? { etiq: 'En pause', label: 'Reprendre', titre: reprise.titre, sous: rep.note ? `${rep.texte} — ${rep.note}` : rep.texte, run: () => lancerVisite(reprise, repriseI) }
       : dec && !et.faites.decouvrir
         ? { etiq: 'Pour commencer', label: exemple ? 'Commencer la découverte' : 'Charger l\'exemple et découvrir', titre: dec.titre, sous: `${dec.duree} · ${pl(Visite.chapitres(dec.etapes).length, 'chapitre')}`, run: () => lancerVisite(dec) }
         : pas && !visiteManque(pas)
@@ -10385,7 +10391,7 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
     const pct = aTotal ? aFait / aTotal : 0;
     const R = 52, CIRC = 2 * Math.PI * R;
     const statut = v => et.faites[v.id] ? '<span class="g-etat fait">Fait</span>'
-      : reprise && reprise.id === v.id ? `<span class="g-etat encours">En pause · ${repriseI + 1}/${v.etapes.length}</span>` : '';
+      : reprise && reprise.id === v.id ? `<span class="g-etat encours">En pause · ${rep.sur ? `${repriseI + 1}/${rep.sur}` : `étape ${repriseI + 1}`}</span>` : '';
     const libelle = v => et.faites[v.id] ? 'Refaire' : reprise && reprise.id === v.id ? 'Recommencer' : 'Commencer';
     const bouton = v => {
       const m = visiteManque(v);

@@ -140,7 +140,8 @@
     { sel: '#demo-banner', titre: 'Des dossiers d\'exemple', texte: 'Ils sont fictifs : rien de ce que tu fais dessus ne compte. Ils disparaissent au premier vrai paquet, ou d\'un clic.' },
     { sel: '#guide-band', titre: 'La visite de cet écran', texte: 'Proposée les trois premières fois que tu l\'ouvres. Tu la retrouves ensuite dans « Me guider ».' },
     { sel: '.premiers-pas', titre: 'Tes premiers pas', texte: 'L\'ordre des choses pour démarrer le Cabinet. Chaque étape se coche <b>toute seule</b> quand c\'est fait.' },
-    { sel: '.page-head', titre: 'Le haut de l\'écran', texte: 'Le titre dit où tu es. À droite, les gestes de la page : <b>un seul est vert</b>, c\'est l\'étape suivante.' },
+    // Dit tel qu'il EST : le bouton vert nommé, ou son absence (`texteDuHaut`, 10.14.1).
+    { sel: '.page-head', titre: 'Le haut de l\'écran', texte: el => M.texteDuHaut(el) },
     { sel: '#d-tabs', titre: 'Les trois onglets du dossier', texte: 'Suivi, Comptabilité, Paquets : l\'onglet vit dans l\'adresse, « ← » revient dessus.' },
     { sel: '#c-groupes', titre: 'Les trois groupes', texte: 'Saisir, Consulter, Déclarer et clôturer : l\'ordre du mois. Le chiffre sur un groupe dit ce qui y attend une décision.' },
     { sel: '.tabs', titre: 'Les onglets', texte: 'L\'écran se range en onglets. Je vais te les ouvrir un par un ; « Passer au chapitre suivant » en saute un.' },
@@ -315,6 +316,28 @@
   b('#e-from, #e-to', 'Le début et la fin de la période exportée.', { nom: 'Période', cle: 'periode' });
   b('#pr-collab', 'Ne montre que les dossiers confiés à ce collaborateur.', { nom: 'Collaborateur' });
   b('#pr-vers-dossiers', 'Revient à la liste des dossiers.');
+  b('#pr-mois', 'Combien de mois le tableau montre : six, douze ou vingt-quatre.', { nom: 'Nombre de mois' });
+  b('input[data-sel]', 'Coche ce client pour le relancer avec les autres, d\'un seul geste : le bouton de groupe, au-dessus de la liste, écrit à tous les cochés.', { nom: 'Cocher', cle: 'cocher-relance' });
+  b('[data-relq]', 'Ouvre les Relances sur ces clients-là seulement : ceux à qui il manque des pièces pour cette échéance.', { nom: 'Les relancer', cle: 'relq' });
+  b('[data-saisir-tenu]', 'Ce client est tenu au cabinet : il n\'envoie rien. Ouvre directement la saisie de son mois, au lieu de le relancer.', { nom: 'Ouvrir sa saisie', cle: 'saisir-tenu' });
+  b('[data-vers-production]', 'Ouvre la Production, qui nomme mois par mois les dossiers tenus au cabinet encore à saisir.', { nom: 'Voir dans la Production', cle: 'vers-production' });
+  b('[data-depot]', 'Note que cette déclaration est déposée : l\'échéance cesse de réclamer. C\'est un pense-bête — le Cabinet ne dépose rien à ta place. Un second clic l\'annule.', { nom: 'Marquer déposée', cle: 'depot' });
+  b('#e-last', 'Règle la période sur le dernier mois terminé.');
+  b('#e-year', 'Règle la période sur toute l\'année.');
+  b('.help-art', 'Ouvre cet article de l\'Aide.', { nom: 'Un article', cle: 'help-art' });
+  b('[data-ident]', 'Ouvre la fiche du client pour compléter ce qui manque : sans email ni téléphone, aucune relance ne peut partir.', { nom: 'À renseigner', cle: 'ident' });
+  b('[data-vers]', 'Ouvre l\'onglet nommé de ce dossier.', { nom: 'Voir', cle: 'vers-onglet' });
+  b('#rel', 'Écrit la relance de ce client pour les mois qui manquent : le mail est prêt, tu le relis avant de l\'envoyer.');
+  b('#lv-mode', 'Ce que les livres montrent : l\'exercice entier, un seul mois, ou une période du… au…', { nom: 'Période' });
+  b('#lv-annee', 'L\'exercice affiché.', { nom: 'Exercice' });
+  b('#lv-mois', 'Le mois affiché.', { nom: 'Mois' });
+  b('#lv-du, #lv-au', 'Le premier et le dernier mois de la période affichée.', { nom: 'Du… au…', cle: 'lv-intervalle' });
+  b('#lv-journal', 'Ne garde que les pièces d\'un journal : ventes, achats, banque, opérations diverses…', { nom: 'Journal' });
+  b('#lv-csv', 'Enregistre ce que tu vois dans un fichier CSV, que tout tableur ouvre.');
+  b('#lv-tous', 'Ouvre la page Écritures, qui regroupe dans un seul fichier les écritures de tous tes clients sur une période.');
+  b('#lv-compte', 'N\'affiche qu\'un compte ; « Tous les comptes » les remet tous.', { nom: 'Compte', route: 'compta-grand-livre' });
+  b('#lv-compte', 'Le compte dont tu rapproches les pièces : les clients (411) par défaut, ou un fournisseur, un compte d\'attente.', { nom: 'Compte à lettrer', route: 'compta-lettrage' });
+  b('#lv-aux', 'Passe de la balance générale à la balance auxiliaire — un solde par client et par fournisseur —, et retour.');
 
   // ---------- les réglages ----------
   b('#set-tabs button', null, { onglet: true });
@@ -343,6 +366,48 @@
   b('#i-pick', 'Choisit le dossier où tu ranges les paquets reçus : le Cabinet y regarde à chaque retour.');
   b('#i-off', 'Arrête de surveiller la boîte de réception.');
   b('[data-restore]', 'Restaure cette sauvegarde, après t\'avoir dit ce que tu perdrais. L\'état actuel est mis de côté d\'abord.', { nom: 'Restaurer', cle: 'restaurer' });
+
+  // 10.14.1 — ce que la visite passait sous silence. Un bloc dont aucun contrôle n'est expliqué
+  // n'apprend rien, et le moteur le SAUTE : le panneau des régimes disparaissait de la visite des
+  // Réglages, et l'onglet Comptabilité ne disait rien de ses boutons (vu à la souris).
+  b('[data-somm]', 'Descend au panneau nommé, dans cet onglet.', { nom: 'Le sommaire', cle: 'somm' });
+  b('[data-cl-sec]', 'Descend à la partie nommée de cet écran.', { nom: 'Le sommaire', cle: 'cl-sec' });
+  b('#rec-go', 'Enregistre ta clé de secours : sans elle, si cet ordinateur disparaît, plus aucun paquet déjà reçu ne pourra être rouvert.');
+  b('[data-touche-reset]', 'Remet la touche que le Cabinet propose au départ pour ce geste.', { nom: 'Remettre d\'origine', cle: 'touche-reset' });
+  b('#sr-save', 'Enregistre la grille : les touches, le journal proposé à l\'ouverture et la façon de taper la date. La saisie les suit aussitôt.');
+  b('#sr-guide-new', 'Écrit un guide d\'écriture : les comptes et le libellé d\'une pièce qui revient (le loyer, les honoraires), préremplis ensuite dans la saisie.');
+  b('#sr-corr-add', 'Ajoute une ligne : un compte tel que ton client l\'écrit, et le compte de ton plan où il doit aller.');
+  b('#sr-corr-save', 'Enregistre la correspondance : elle traduit les comptes à l\'import des paquets et à l\'export — jamais une écriture déjà validée.');
+  b('#sr-cycles-add', 'Ajoute un cycle de révision : son nom et les comptes qu\'il révise. Dès que tu en écris un, ta liste remplace les sept proposés.');
+  b('#sr-cycles-reset', 'Revient aux sept cycles proposés. Rien ne change dans tes dossiers avant « Enregistrer ma méthode ».');
+  b('#sr-quest-add', 'Ajoute une question à ton questionnaire de fin d\'exercice : elle se pose ensuite sur chaque exercice, d\'un clic.');
+  b('#sr-quest-save', 'Enregistre ta méthode — les cycles et le questionnaire. La Révision de chaque dossier les suit.');
+  b('#sr-liasse-ouvrir', 'Ouvre le modèle de liasse : chaque rubrique et les comptes qu\'elle lit. Ta version remplace la nôtre, et un compte qu\'aucune rubrique ne lit est montré.');
+  b('#sr-reg-add', 'Ajoute une ligne vide à la table : un régime que tu écris toi-même.');
+  b('#sr-reg-base', 'Pose trois régimes à compléter — réel, forfaitaire, et un « autre » — SANS aucune règle : c\'est toi qui dis ce que chacun dépose. Rien n\'est enregistré avant « Enregistrer les régimes ».');
+  b('#sr-reg-save', 'Enregistre tes régimes : les Échéances ne réclament plus à chaque client que ce que son régime dépose.');
+  b('#sr-regimes input[data-k="id"]', 'L\'identifiant du régime, un mot court sans espace. C\'est lui que la fiche d\'un client retient : le changer détache les clients qui portaient l\'ancien.', { nom: 'Identifiant du régime', cle: 'rg-id' });
+  b('#sr-regimes input[data-k="label"]', 'Le nom du régime, tel que la fiche d\'un client le propose.', { nom: 'Nom du régime', cle: 'rg-label' });
+  b('#sr-regimes select[data-k="tva"]', 'Quand ce régime dépose sa TVA : chaque mois, chaque trimestre, jamais — ou comme la fiche du client le dit.', { nom: 'TVA', cle: 'rg-tva' });
+  b('#sr-regimes input[data-k="cnss"]', 'Coché, les clients de ce régime déposent la CNSS chaque trimestre ; décoché, les Échéances ne la leur réclament plus.', { nom: 'CNSS', cle: 'rg-cnss' });
+  b('#sr-regimes input[data-k="annuelles"]', 'Les échéances annuelles de ce régime, écrites nom@JJ-MM et séparées par un point-virgule : « Déclaration annuelle@25-04 ». Elles portent sur l\'exercice écoulé.', { nom: 'Échéances annuelles', cle: 'rg-annuelles' });
+  b('#sr-regimes [data-rgx]', 'Retire ce régime de la table. Rien ne change avant « Enregistrer les régimes ».', { nom: 'Retirer', cle: 'rg-retirer' });
+  b('#sr-cycles input[data-k="id"]', 'L\'identifiant du cycle, un mot court sans espace.', { nom: 'Identifiant du cycle', cle: 'cy-id' });
+  b('#sr-cycles input[data-k="label"]', 'Le nom du cycle, tel que la Révision l\'affiche.', { nom: 'Nom du cycle', cle: 'cy-label' });
+  b('#sr-cycles input[data-k="prefixes"]', 'Les débuts de comptes que ce cycle révise, séparés par une espace (5 53 54). Quand deux cycles réclament un compte, le préfixe le plus long l\'emporte.', { nom: 'Préfixes de comptes', cle: 'cy-prefixes' });
+  b('#sr-cycles [data-cyx]', 'Retire ce cycle de ta méthode. Rien ne change avant « Enregistrer ma méthode ».', { nom: 'Retirer', cle: 'cy-retirer' });
+  b('#sr-quest input[data-q]', 'Une question que tu poses à chaque client en fin d\'exercice : dans la Révision d\'un dossier, elle se pose d\'un clic.', { nom: 'Question', cle: 'quest' });
+  b('#sr-quest [data-qx]', 'Retire cette question. Rien ne change avant « Enregistrer ma méthode ».', { nom: 'Retirer', cle: 'quest-retirer' });
+  b('#sr-corr input[data-k="de"]', 'Le compte tel que ton client l\'écrit dans ses paquets.', { nom: 'Compte du client', cle: 'corr-de' });
+  b('#sr-corr input[data-k="vers"]', 'Le compte de ton plan où il doit aller.', { nom: 'Compte du cabinet', cle: 'corr-vers' });
+  b('#sr-corr input[data-k="prefixe"]', 'Coché, la ligne vaut pour toute la famille : 411 traduit aussi 411001, 411002… La correspondance la plus précise gagne.', { nom: 'Toute la famille', cle: 'corr-prefixe' });
+  b('#sr-corr [data-cs]', 'Retire cette correspondance. Rien ne change avant « Enregistrer la correspondance ».', { nom: 'Retirer', cle: 'corr-retirer' });
+  b('#u-check', 'Cherche tout de suite une nouvelle version. Le Cabinet cherche aussi tout seul, régulièrement.');
+  b('#u-beta', 'Reçois les versions d\'essai avant tout le monde ; une sauvegarde est prise avant. Décocher te ramène à la version stable.', { nom: 'Versions d\'essai' });
+  b('#u-install', 'Redémarre le Cabinet sur la nouvelle version, déjà téléchargée et vérifiée.');
+  b('#u-retry', 'Relance le téléchargement qui s\'est interrompu.');
+  b('#u-releases', 'Ouvre la page des versions publiées.');
+  b('#u-log', 'Ouvre le journal de l\'application : c\'est lui qui dit ce qui a bloqué.');
 
   // ---------- l'aide et le guide ----------
   b('#aide-q, #guide-q', 'Tape un mot ou une question : la recherche lit le contenu.', { nom: 'Chercher' });
@@ -416,7 +481,10 @@
     const aucuneFenetre = () => !document.querySelector('#modal-root .modal');
     const reels = () => (S().dossiers || []).filter(d => !d.demo);
     const paquets = () => reels().reduce((n, d) => n + (d.packs || []).length, 0);
-    const onglet = (barre, cle) => () => ctx.Visite.ouvrirOnglet(barre, cle);
+    // La fonction PORTE son onglet (`barre`, `cle`) : un test confronte chaque cible de panneau à
+    // l'onglet où l'application le range — la visite des régimes du Cabinet ouvrait « Comptabilité »
+    // pour un panneau rangé dans « Mon cabinet », et se perdait (vu à la souris, 10.14.1).
+    const onglet = (barre, cle) => Object.assign(() => ctx.Visite.ouvrirOnglet(barre, cle), { barre, cle });
     // L'adresse d'un écran dans un dossier : celui qu'on regarde s'il convient, sinon celui de l'exemple.
     const dans = (sorte, suite) => () => { const id = ctx.dossier(sorte); return id ? '#/dossier/' + encodeURIComponent(id) + '/' + suite : null; };
     const DOSSIER_MANQUE = {
@@ -1374,20 +1442,35 @@
       ]
     });
 
+    // Le BUT est un régime ENREGISTRÉ : « Partir des trois régimes proposés » ne fait que remplir la
+    // table, et la visite se terminait là sur « Tes régimes sont déclarés » — rien ne l'était. Elle
+    // ouvrait en plus l'onglet Comptabilité pour un panneau rangé dans « Mon cabinet », et se perdait
+    // à sa première étape (vu à la souris, 10.14.1 ; un test confronte désormais chaque onglet ouvert
+    // au panneau visé).
+    const regimesEnregistres = () => JSON.stringify(((S().settings || {}).regimes) || []);
+    let regimesAvant = '';
     visite({
-      id: 'regimes', theme: 'cabinet', type: 'faire', duree: '1 min', page: '#/reglages',
+      id: 'regimes', theme: 'cabinet', type: 'faire', duree: '2 min', page: '#/reglages',
       titre: 'Déclarer les régimes de mes clients',
       resume: 'Ce que chaque régime dépose, et quand : les échéances suivent.',
       mots: ['regime', 'forfaitaire', 'reel', 'echeances', 'tva', 'periodicite'],
       suite: ['echeance-deposee', 'fiche-client'],
+      mesure: () => regimesEnregistres(),
+      but: avant => regimesEnregistres() !== avant && ((S().settings || {}).regimes || []).length > 0,
       bravo: 'Tes régimes sont déclarés',
-      conclusion: 'Tant qu\'aucun régime n\'est déclaré, le calendrier traite tous tes clients pareil. SkanFact n\'écrit aucune règle de droit : les périodicités et les dates sont les tiennes. À VÉRIFIER.',
+      conclusion: 'Les Échéances ne réclament plus à chaque client que ce que son régime dépose. Reste à dire, sur la fiche de chaque client, quel régime il porte. SkanFact n\'écrit aucune règle de droit : les périodicités et les dates sont les tiennes. À VÉRIFIER.',
       etapes: [
-        { page: '#/reglages', avant: onglet('#set-tabs', 'compta'), cible: '#pan-regimes', cote: 'dessus', titre: 'Les régimes et leurs échéances',
-          texte: 'Un régime dit ce qu\'il dépose (TVA mensuelle ou non, CNSS) ; la fiche du client dit son régime.' },
+        { page: '#/reglages', avant: onglet('#set-tabs', 'cabinet'), cible: '#pan-regimes', cote: 'dessus', titre: 'Les régimes et leurs échéances',
+          texte: 'Un régime dit ce qu\'il dépose, et quand : la TVA (chaque mois, chaque trimestre, ou jamais pour un forfaitaire), la CNSS, et ses échéances annuelles. La fiche de chaque client dit son régime ; tant que tu n\'en déclares aucun, les Échéances réclament la TVA mensuelle et la CNSS à tout le monde.' },
         { page: '#/reglages', cible: ['#sr-reg-base', '#sr-reg-add'], cote: 'dessus', faire: 'clic', facultatif: true,
-          titre: 'Partir des régimes proposés', texte: 'Trois régimes à relire et corriger, jamais une vérité.',
-          action: 'Clique sur <b>« Partir des trois régimes proposés »</b>.', essai: { clic: true } }
+          titre: 'Poser les lignes', texte: '« Partir des trois régimes proposés » pose trois lignes — réel, forfaitaire, et un « autre » — <b>sans aucune règle</b>. « Ajouter un régime » pose une ligne vide, pour un régime que tu écris toi-même.',
+          action: 'Clique sur <b>« Partir des trois régimes proposés »</b>, ou sur <b>« Ajouter un régime »</b>.', essai: { clic: true } },
+        { page: '#/reglages', cible: '#sr-regimes table', cote: 'dessus', facultatif: true, titre: 'Ce que chacun dépose',
+          texte: 'Pour chaque ligne : la <b>TVA</b> (« Pas de TVA » pour un forfaitaire qui n\'en dépose pas), la case <b>CNSS</b>, et les <b>échéances annuelles</b> écrites nom@JJ-MM, séparées par un point-virgule — « Déclaration annuelle@25-04 ».' },
+        { page: '#/reglages', cible: '#sr-reg-save', cote: 'dessus', faire: 'clic', fait: () => ((S().settings || {}).regimes || []).length > 0 && regimesEnregistres() !== regimesAvant,
+          avant: () => { regimesAvant = regimesEnregistres(); },
+          titre: 'Enregistrer', texte: 'Tant que ce n\'est pas enregistré, rien ne change : les Échéances continuent de réclamer la même chose à tout le monde.',
+          action: 'Clique sur <b>« Enregistrer les régimes »</b>.', essai: { clic: true } }
       ]
     });
 
