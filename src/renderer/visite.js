@@ -1849,6 +1849,10 @@
     let fete = false;
     try { fete = neuve && !!hote.fete(p); } catch (_) { fete = false; }
     if (fete) feter();
+    // Le geste est FAIT dès que la carte de réussite s'affiche : attendre « Terminer » laissait, à qui
+    // fermait l'application sur cette carte, une visite « arrêtée à l'étape 2 sur 2 » à reprendre
+    // (vu en guidant un débutant, 26/09). Après les confettis, qui lisent « déjà fait ».
+    if (neuve) { try { hote.fini(p); } catch (_) { /* « Terminer » l'enregistrera */ } }
   }
 
   // Les confettis : une gerbe d'une seconde, partie du haut de la bulle, qui ne prend aucun clic et

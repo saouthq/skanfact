@@ -6263,7 +6263,7 @@
     <div class="stats">
       <div class="stat"><div class="lbl">Rapproché</div><div class="val ok">${parNiveau.certain}</div><div class="sub">sur ${pl(R.lignes.length, 'ligne')}</div></div>
       <div class="stat"><div class="lbl">À trancher</div><div class="val ${parNiveau.probable + parNiveau['a-confirmer'] ? 'due' : ''}">${parNiveau.probable + parNiveau['a-confirmer']}</div><div class="sub">probables et ambiguïtés</div></div>
-      <div class="stat"><div class="lbl">Sans réponse</div><div class="val ${parNiveau.aucun ? 'due' : ''}">${parNiveau.aucun}</div><div class="sub">rien dans le livre en face</div></div>
+      <div class="stat"><div class="lbl">Sans réponse</div><div class="val ${parNiveau.aucun ? 'due' : ''}" id="bq-sans-reponse">${parNiveau.aucun}</div><div class="sub">rien dans le livre en face</div></div>
       ${/* L'écart du rapprochement classique : le solde de fin du relevé moins le solde comptable
             du compte à la même date (T-06). Il PEUT tomber à zéro, et c'est ce qui en fait un
             indicateur. Ce que les suspens n'expliquent pas vient d'avant le premier relevé, et on
@@ -6939,7 +6939,7 @@
     const host = input.closest('td') || input.parentElement;
     if (!host) return;
     host.classList.add('sugg-host');
-    let pop = null, sel = 0, items = [];
+    let pop = null, sel = 0, items = [], choisiAuClavier = false;
     const fermer = () => { if (pop) pop.remove(); pop = null; items = []; };
     const dessiner = () => {
       items = KC.comptesQuiCorrespondent(planDe(), input.value, 8, contexteDe ? contexteDe() : '');
@@ -6962,18 +6962,21 @@
       });
     };
     const choisir = c => { if (!c) return; input.value = c.compte; fermer(); onPick(c); };
-    input.addEventListener('input', () => { sel = 0; dessiner(); });
-    input.addEventListener('focus', () => { sel = 0; dessiner(); });
+    input.addEventListener('input', () => { sel = 0; choisiAuClavier = false; dessiner(); });
+    input.addEventListener('focus', () => { sel = 0; choisiAuClavier = false; dessiner(); });
     input.addEventListener('blur', () => setTimeout(fermer, 120));
     input.addEventListener('keydown', ev => {
       if (!pop || !items.length) return;
-      if (ev.key === 'ArrowDown') { ev.preventDefault(); sel = (sel + 1) % items.length; dessiner(); }
-      else if (ev.key === 'ArrowUp') { ev.preventDefault(); sel = (sel - 1 + items.length) % items.length; dessiner(); }
+      if (ev.key === 'ArrowDown') { ev.preventDefault(); choisiAuClavier = true; sel = (sel + 1) % items.length; dessiner(); }
+      else if (ev.key === 'ArrowUp') { ev.preventDefault(); choisiAuClavier = true; sel = (sel - 1 + items.length) % items.length; dessiner(); }
       else if (ev.key === 'Escape') { ev.preventDefault(); ev.stopPropagation(); fermer(); }
       else if (ev.key === 'Enter' || ev.key === 'Tab') {
         // Entrée et Tab CHOISISSENT quand une liste est ouverte : sans ça, il faudrait la souris
         // pour prendre ce qu'on vient de chercher, et la grille cesserait d'être au clavier.
-        if (items[sel]) { ev.preventDefault(); choisir(items[sel]); }
+        // Sur un champ VIDE, rien n'a été cherché : Tab ne prend que ce que le libellé nomme ou ce
+        // qu'on a désigné aux flèches — sinon « Tab pour passer » posait le premier compte du plan.
+        if (items[sel] && (input.value.trim() || items[sel].parLibelle || choisiAuClavier)) { ev.preventDefault(); choisir(items[sel]); }
+        else fermer();
       }
     });
   }
@@ -10933,8 +10936,12 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
         const et = visitesEtat();
         const pp = lesPas();
         const pas = pp.suivante && PAS_VISITES[pp.suivante.action];
-        const ids = [pas, ...(p.suite || [])].filter((id, i, a) => id && id !== p.id && a.indexOf(id) === i && visiteParId(id) && !visiteManque(visiteParId(id)));
-        const neuves = ids.filter(id => !et.faites[id]);
+        // Ce que l'écran RÉCLAME maintenant passe devant, même déjà appris : une ligne « Sans réponse »
+        // attend son écriture, et la proposer derrière deux visites neuves la faisait oublier (26/09).
+        let presse = [];
+        try { presse = typeof p.pressee === 'function' ? (p.pressee() || []) : []; } catch (_) { presse = []; }
+        const ids = [...presse, pas, ...(p.suite || [])].filter((id, i, a) => id && id !== p.id && a.indexOf(id) === i && visiteParId(id) && !visiteManque(visiteParId(id)));
+        const neuves = ids.filter(id => presse.includes(id) || !et.faites[id]);
         return (neuves.length ? neuves : ids).slice(0, 3);
       },
       fete: p => p.type !== 'page' && !visitesEtat().faites[p.id],

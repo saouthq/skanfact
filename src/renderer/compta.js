@@ -1660,7 +1660,14 @@
     const terme = sansAccents(q).trim();
     const n = Math.max(1, Number(max) || 12);
     const tous = (Array.isArray(plan) ? plan : []).filter(c => c && c.compte && !c.desactive);
-    if (!terme) return tous.slice().sort((a, b) => (a.compte < b.compte ? -1 : 1)).slice(0, n);
+    // Champ vide : ce que le libellé de la ligne nomme passe devant (« PRLV STEG » → 606), puis le plan.
+    // Sans ça, la liste s'ouvrait sur « 101 Capital social » en surbrillance, et Tab le prenait pour un
+    // prélèvement STEG (vu en guidant un débutant, 26/09).
+    if (!terme) {
+      return tous.map(c => ({ c, l: dansLeLibelle(c.compte, contexte) }))
+        .sort((a, b) => (b.l - a.l) || (a.c.compte < b.c.compte ? -1 : 1))
+        .slice(0, n).map(x => (x.l ? { ...x.c, parLibelle: true } : x.c));
+    }
     const mots = terme.split(/\s+/).filter(Boolean);
     const rang = c => {
       const numero = String(c.compte);

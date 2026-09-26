@@ -8477,6 +8477,18 @@ lots ; le détail de ce qui reste vit dans `A-FAIRE.md` § 0.
     champ, et l'anneau recouvrait le verdict en dessous. La cible est le libellé entier (`label:has`),
     et l'étape attend qu'on ait écrit (`fait`). Chaque case que le formulaire demande a son étape —
     la banque n'en avait pas.
+  - **Une fin ne dit pas « Tu sais » en laissant le travail à moitié** : après « Rapprocher », la ligne
+    « Sans réponse » est une écriture qui MANQUE. La conclusion le dit (fonction, lue sur la carte
+    `#bq-sans-reponse`), et `pressee` met « Écrire une ligne du relevé » devant les visites neuves —
+    même apprise une fois : ce que l'écran RÉCLAME passe avant la nouveauté. Le titre reste « Tu sais
+    rapprocher » : un titre calculé est une affirmation, et la règle des fins honnêtes l'exige prouvée.
+  - **Une case VIDE n'a rien cherché** : la liste s'ouvrait sur « 101 Capital social » en surbrillance,
+    et « Tab prend le premier » posait le capital sur un prélèvement STEG — dans la grille aussi, sur
+    toute cellule de compte qu'on traversait au clavier. Sur un champ vide, le compte que le libellé
+    nomme passe devant (`parLibelle`), et Tab ne prend que lui ou ce qu'on a désigné aux flèches.
+  - **Une réussite s'enregistre à sa carte de fin, pas au clic sur « Terminer »** : fermer
+    l'application sur « Tu sais rapprocher » laissait une pause « à l'étape 2 sur 2 ». Après les
+    confettis, qui lisent « déjà fait » ; jamais sur une fin ratée.
 
 ## Pistes pour la suite (non demandées)
 

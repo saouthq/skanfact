@@ -544,6 +544,12 @@
       const n = typeof ctx.releves === 'function' ? ctx.releves(id) : null;
       return n === null || n > 0;
     };
+    // Les lignes du relevé ouvert que le livre n'explique pas : la carte « Sans réponse » de l'écran,
+    // lue telle qu'elle s'affiche (0 hors de la banque).
+    const sansReponse = () => {
+      const v = typeof document !== 'undefined' && document.querySelector('#bq-sans-reponse');
+      return v ? (Number(String(v.textContent || '').replace(/\D/g, '')) || 0) : 0;
+    };
     const RELEVE_MANQUE = {
       get texte() { return ctx.dossier('livre') ? 'Il faut d\'abord le relevé de la banque dans le livre : importe-le, la visite le fait avec toi.' : DOSSIER_MANQUE.livre.texte; },
       get visite() { return ctx.dossier('livre') ? 'importer-releve' : DOSSIER_MANQUE.livre.visite; }
@@ -1021,8 +1027,16 @@
       mots: ['banque', 'releve', 'rapprochement', 'rapprocher', 'suspens'],
       si: aUnReleve, manque: RELEVE_MANQUE,
       suite: ['page-compta-banque', 'page-compta-lettrage'],
+      // Une ligne restée « Sans réponse » après le rapprochement est une écriture qui MANQUE : la fin le
+      // dit et propose d'abord de l'écrire (vu en guidant un débutant : « Tu sais rapprocher » au-dessus
+      // d'une ligne que rien n'avait rapprochée, et « Et maintenant ? » proposait le lettrage).
+      pressee: () => (sansReponse() ? ['ecrire-ligne-releve'] : []),
       bravo: 'Tu sais rapprocher',
-      conclusion: 'Ce qui reste non rapproché — les suspens — doit expliquer tout l\'écart entre la banque et le livre. Sinon, il manque une écriture.',
+      conclusion: () => {
+        const n = sansReponse();
+        if (!n) return 'Ce qui reste non rapproché — les suspens — doit expliquer tout l\'écart entre la banque et le livre. Sinon, il manque une écriture.';
+        return (n === 1 ? 'Une ligne reste' : n + ' lignes restent') + ' <b>« Sans réponse »</b> : rien au même montant dans le livre. C\'est une écriture qui <b>manque</b> — un prélèvement, des frais, un virement que personne n\'a saisi. Elle s\'écrit depuis le menu de la ligne, et elle est rapprochée du même geste.';
+      },
       etapes: [
         { page: dans('livre', 'comptabilite/banque'), cible: ['#bq-releve', '#bq-import'], cote: 'dessous', titre: 'Le relevé à rapprocher',
           texte: 'Chaque relevé importé se choisit ici. Il est entré parce qu\'il <b>tombe juste</b> : ses deux soldes et ses lignes se bouclent. Ses lignes cherchent maintenant chacune leur écriture dans le livre.' },

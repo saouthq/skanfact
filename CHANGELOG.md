@@ -45,6 +45,12 @@ Publiée en **bêta** : elle touche au moteur comptable (retenue à la source, d
 - **La visite « Importer le relevé » fait remplir chaque case** : le nom de la banque a son étape, le
   solde de fin attend qu'on l'ait écrit, et cliquer dans une case pour y taper ne fait plus partir la
   bulle.
+- **Après « Rapprocher », une ligne restée « Sans réponse » se dit** : c'est une écriture qui manque,
+  et « Écrire une ligne du relevé » est proposé en premier.
+- **La contrepartie d'une ligne de banque propose d'abord le compte que son libellé nomme** (« PRLV
+  STEG » → 606) ; sur une case vide, Tab ne pose plus le premier compte du plan (« 101 Capital social »).
+- **Une visite réussie compte comme faite dès sa carte de fin** : fermer l'application avant
+  « Terminer » ne la laisse plus « en pause à l'étape 2 sur 2 ».
 
 **Pour l'entreprise (SkanFact)**
 - **Un acompte demandé en montant fait ce montant**, timbre compris (500 DT demandés faisaient 501,002).

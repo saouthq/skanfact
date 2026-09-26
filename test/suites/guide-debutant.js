@@ -38,6 +38,21 @@ t('10.14.1 : le libellé de la ligne CLASSE les comptes proposés — il n\'en a
   assert.deepStrictEqual(comptes('frais', ''), comptes('frais'));
 });
 
+t('10.14.1 : un champ de compte VIDE propose ce que le libellé nomme, et Tab n\'y prend pas le premier compte du plan', () => {
+  // Vu en guidant un débutant : « Écrire » la ligne « PRLV STEG 4455 » ouvrait la liste sur « 101 Capital
+  // social » en surbrillance, et la bulle disait « Tab prend le premier ».
+  const steg = K.comptesQuiCorrespondent(plan, '', 8, 'PRLV STEG 4455');
+  assert.strictEqual(steg[0].compte, '606', 'le libellé ne passe pas devant sur un champ vide');
+  assert.ok(steg[0].parLibelle, 'le compte proposé par le libellé ne le DIT pas');
+  const rien = K.comptesQuiCorrespondent(plan, '', 8, 'VIR XYZ');
+  assert.ok(rien.length && !rien.some(c => c.parLibelle), 'un libellé qui ne nomme rien invente une proposition');
+  // Tab sur un champ vide ne choisit que ce que le libellé nomme ou ce qu'on a désigné aux flèches.
+  const f = cab.slice(cab.indexOf('function suggererCompte('), cab.indexOf('function vueSaisie('));
+  assert.ok(f.length > 1500 && f.length < 6000, 'tranche inattendue : ' + f.length);
+  assert.ok(/if \(items\[sel\] && \(input\.value\.trim\(\) \|\| items\[sel\]\.parLibelle \|\| choisiAuClavier\)\)/.test(f), 'Tab prend le premier compte du plan sur un champ vide');
+  assert.ok(/ArrowDown'\) \{ ev\.preventDefault\(\); choisiAuClavier = true;/.test(f), 'désigner aux flèches ne compte plus comme un choix');
+});
+
 t('10.14.1 : chaque mot courant désigne un compte que le plan connaît', () => {
   // Le plan de référence nomme par préfixe (le plus long gagne) : un compte « connu » est un compte
   // que ce plan sait NOMMER.
@@ -94,6 +109,44 @@ t('10.14.1 : un geste bancaire attend son relevé, et dit quelle visite l\'impor
     // « Je ne sais pas » (livre pas encore lu) n'est pas « non » : on propose.
     assert.strictEqual(avec(null).find(x => x.id === id).si(), true, id + ' caché faute de savoir');
   }
+});
+
+t('10.14.1 : après « Rapprocher », une ligne « Sans réponse » se dit, et son écriture est proposée en premier', () => {
+  // Vu en guidant un débutant : « Tu sais rapprocher » au-dessus d'une ligne que rien n'avait rapprochée,
+  // et « Et maintenant ? » proposait la visite de la page et le lettrage — jamais l'écriture qui manque,
+  // parce qu'elle avait déjà été apprise une fois.
+  const vs = CV.parcours({ state: () => ({ cabinet: {}, dossiers: [] }), dossier: () => 'D1', estExemple: () => false,
+    cleSecours: () => null, copieExterne: () => false, Visite: V, releves: () => 1 });
+  const r = vs.find(x => x.id === 'rapprocher');
+  const avant = global.document;
+  try {
+    global.document = { querySelector: s => (s === '#bq-sans-reponse' ? { textContent: '2' } : null), querySelectorAll: () => [] };
+    assert.deepStrictEqual(r.pressee(), ['ecrire-ligne-releve'], 'l\'écriture qui manque n\'est pas proposée');
+    assert.ok(/2 lignes restent[\s\S]*Sans réponse[\s\S]*manque/.test(r.conclusion()), 'la fin ne dit pas ce qui reste : ' + r.conclusion());
+    global.document = { querySelector: s => (s === '#bq-sans-reponse' ? { textContent: '0' } : null), querySelectorAll: () => [] };
+    assert.deepStrictEqual(r.pressee(), [], 'une écriture proposée quand tout est rapproché');
+    assert.ok(!/Sans réponse/.test(r.conclusion()), 'la fin parle d\'une ligne qui n\'existe pas');
+  } finally { if (avant === undefined) delete global.document; else global.document = avant; }
+  // L'écran porte le compte que la visite lit, et « Me guider » garde ce qui est pressé même déjà fait.
+  assert.ok(/id="bq-sans-reponse">\$\{parNiveau\.aucun\}/.test(cab), 'la carte « Sans réponse » ne porte plus son identifiant');
+  const z = cab.slice(cab.indexOf('suites: p => {'), cab.indexOf('fete: p =>'));
+  assert.ok(z.length > 200 && z.length < 1500, 'tranche inattendue : ' + z.length);
+  assert.ok(/const ids = \[\.\.\.presse, pas,/.test(z), 'ce qui est pressé ne passe pas devant');
+  assert.ok(/ids\.filter\(id => presse\.includes\(id\) \|\| !et\.faites\[id\]\)/.test(z), 'une visite déjà apprise est écartée même quand l\'écran la réclame');
+});
+
+t('10.14.1 : la réussite d\'une visite s\'enregistre dès sa carte de fin — pas au clic sur « Terminer »', () => {
+  // Fermer l'application sur la carte « Tu sais rapprocher » laissait une visite « arrêtée à l'étape
+  // 2 sur 2 » à reprendre dans « Guide-moi ». La carte de réussite enregistre le geste ; une fin ratée
+  // (la branche `echec`, qui sort avant) ne l'enregistre jamais.
+  const vj = moteur.replace(/\/\/[^\n]*/g, '');
+  const f = vj.slice(vj.indexOf('function dessinerFin('), vj.indexOf('function feter('));
+  assert.ok(f.length > 1500 && f.length < 9000, 'tranche inattendue : ' + f.length);
+  const echec = f.indexOf('if (cur.echec) {'), retour = f.indexOf('return;', echec), fete = f.indexOf('hote.fete(p)');
+  const fini = f.search(/if \(neuve\) \{ try \{ hote\.fini\(p\); \}/);
+  assert.ok(echec >= 0 && retour > echec, 'la fin ratée ne sort plus avant la réussite');
+  assert.ok(fini > retour, 'la carte de réussite n\'enregistre pas la visite (ou une fin ratée l\'enregistre)');
+  assert.ok(fini > fete, 'la visite s\'enregistre avant les confettis, qui lisent « déjà fait »');
 });
 
 t('10.14.1 : la visite de la TVA fait préparer, dit son brouillard, et saute l\'écriture d\'un mois sans TVA', () => {
