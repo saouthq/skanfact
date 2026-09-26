@@ -18,6 +18,33 @@ et au moteur), puis en stable quand Skander valide.*
 
 ### 0.1 Ce que je suis en train de faire (10.14.1)
 
+> **📍 REPRISE LUNDI 28/09 — où je me suis arrêté le 26/09 au soir** (Skander : « note où tu es
+> arrivé afin de continuer lundi avec les tests »). Dernier commit poussé sur `beta` : `634d1be`
+> (visite « Faire un devis » complète), `npm test` 1 669 verts, lint à zéro, dépôt propre.
+>
+> **Le test en cours** : le parcours d'un débutant qui vient d'installer SkanFact et ne connaît rien
+> à la comptabilité, fait **UNIQUEMENT par la bulle** (« Guide-moi » / « Me guider »), jamais en
+> cliquant soi-même là où on sait qu'il faut cliquer. Le Cabinet a été fait avant (voir plus bas) ;
+> l'app entreprise neuve est faite jusqu'à **« Faire un devis » → « Ton devis est prêt »**.
+>
+> **À faire lundi, dans cet ordre, toujours au guide et prouvé à la souris** :
+> 1. Envoyer le devis (visite « Envoyer », menu « Plus ▾ » depuis la P2).
+> 2. Le transformer en facture, l'émettre (récapitulatif), l'encaisser (paiement, reste à zéro).
+> 3. La copie de sécurité (« Tes premiers pas », juste après le premier devis).
+> 4. Puis chaque autre visite de l'app entreprise, page par page, comme pour le Cabinet.
+>
+> **Petits constats notés, pas encore corrigés** : la bulle de l'étape « Quantité » couvre les
+> colonnes Unité et TVA de la ligne ; « Étape 2 sur 24 » s'affiche quand l'étape 1 est sautée
+> (lancée depuis un devis neuf) — le compte devrait partir de l'étape où l'on entre.
+>
+> **Outils** (scratchpad, perdus si la session change — ils se réécrivent en dix lignes) :
+> `e.sh` (capture/clic/taper/touche sur `SKANFACT_ECRAN`), `ev.js` (CDP 9222/9223),
+> `une-suite.js`, `preuve.py`. Recharger l'app après une édition et VÉRIFIER que le code chargé est
+> le neuf (`SkanVisites.parcours(...)`), sinon on juge l'ancien.
+>
+> Tâches ouvertes reportées : #256–#263, #266, #270, #280, #281, #285, #288 ; e2e des visites des
+> deux applications (#198, #212) reportés sur décision de Skander (24/09).
+
 - **Fait, prouvé et testé à la souris (26/09)** :
   - **C1** — un bien au bilan sans être au tableau des immobilisations (ligne d'achat sans fiche,
     bien pas encore en service, en service avant sa facture) : page, contrôle de clôture, action,
