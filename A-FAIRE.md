@@ -204,6 +204,15 @@ et au moteur), puis en stable quand Skander valide.*
   garage (2 nouvelles, 1 validée corrigée, 1 déséquilibrée, 2 lignes écartées). Reste : **l'app
   entreprise n'a pas ce geste** (elle ne tient pas de livre : ce n'est pas un manque tant qu'aucun
   client ne le demande), et **un fichier .xlsx est refusé** en le disant — l'enregistrer en CSV.
+- ~~**La console et la licence Cabinet offerte, sans limite**~~ **Fait (26/09)** : récapitulatif
+  (« offerte : rien à encaisser »), clé envoyée tout de suite, « offerte » dans Ventes et sur la
+  fiche, pas d'« Impayées », mail « dossiers sans limite », renouvellement qui garde la case,
+  empreinte en cinq groupes, cadre du bloc de la clé. Vu à la souris jusqu'au Cabinet (clé collée :
+  « Couverts : sans limite »). Constats restés : **le formulaire d'émission sans client dit « crée-le
+  d'abord » sans bouton sur place** ; **l'app entreprise n'a pas de lien vers le portail CNSS** ; le
+  texte du champ mot de passe du Cabinet est centré ; la carte « 0 / 0 à jour » s'affiche sur un
+  portefeuille de dossiers hors SkanFact (vrai, mais pas utile) ; « Postes 0 » dans la console est
+  attendu (le Cabinet local ne s'annonce pas).
 - **PERF-01** (la fenêtre « Nouvelle opération diverse » gelait 15,5 s sur dix ans ; corrigé par le
   lot de `comptesProposes`) : le vérifier à la souris sur l'exemple de cinq ans.
 - **Le Cabinet, parcouru par moi-même** (les agents n'y ont rien trouvé : ça ne vaut pas preuve).

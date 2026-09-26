@@ -4216,6 +4216,77 @@ ta('10.8.0 : la console émet « sans limite » sans réclamer un quota qui ne s
   assert.strictEqual(P.libelleLicence({ type: 'cabinet', dossiers_hors: 5 }), 'Cabinet — 5 dossiers hors SkanFact');
 });
 
+// 10.14.1 — UNE LICENCE OFFERTE n'est ni « à encaisser », ni un impayé, et sa clé part tout de suite.
+//
+// Trouvé à la souris en émettant la licence sans limite d'un cabinet pilote, au prix de zéro : la
+// clé émise se résumait « Cabinet — 0 dossiers hors SkanFact » (la page recopiait le libellé sans
+// la branche « sans limite » que le serveur porte), « 0,000 TND HT, à encaisser », « Pas envoyée
+// par mail : la vente n'est pas encore payée », et la fiche du client comptait une vente impayée.
+// Quatre écrans, quatre façons de dire la même chose fausse — et un geste « Marquer payée » sur
+// zéro dinar pour que la clé parte.
+ta('10.14.1 : une licence offerte part tout de suite, et rien ne la dit impayée', async () => {
+  const P = await import('../plateforme/skanfact-api.mjs');
+  const { baseD1 } = require('./d1-sqlite');
+  const srv = lic.generateKeys(), master = lic.generateKeys();
+  const ADMIN = 'Z'.repeat(30);
+  const mails = [];
+  const vraiFetch = globalThis.fetch;
+  globalThis.fetch = async (url, o) => { mails.push(JSON.parse(o.body)); return new Response(JSON.stringify({ id: 'm_1' }), { status: 200 }); };
+  const env = { DB: baseD1(), ADMIN_SECRET: ADMIN, APP_SECRET: 'app-secret-zzzzzzzzzzzz', SRV_PRIVATE_KEY: srv.privateKey, RESEND_API_KEY: 're_test',
+    LICENCE_PUBLIC_KEYS: JSON.stringify([{ kid: 'master', publicKey: master.publicKey }, { kid: 'srv-1', publicKey: srv.publicKey }]) };
+  const call = async (m, p2, corps) => {
+    const r = await P.default.fetch(new Request('https://x' + p2, { method: m, headers: { 'x-skanfact-admin': ADMIN }, body: corps ? JSON.stringify(corps) : undefined }), env);
+    return { status: r.status, j: await r.json() };
+  };
+  try {
+    const c = await call('POST', '/v1/admin/clients', { nom: 'Cabinet Pilote', email: 'pilote@cabinet.tn' });
+    const offerte = await call('POST', '/v1/admin/licences', { clientId: c.j.client.id, type: 'cabinet', duree: '1a', prix: 0, illimite: true,
+      cabinet: '5E02-4823-9115-44BC-21A3' });
+    assert.strictEqual(offerte.status, 201, JSON.stringify(offerte.j));
+    assert.strictEqual(offerte.j.mail.envoye, true, 'une licence offerte n\'attend aucun paiement : ' + JSON.stringify(offerte.j.mail));
+    assert.strictEqual(mails.length, 1);
+    // Une vente PAYANTE non encaissée, elle, attend toujours — la règle ne s'est pas ouverte à tout.
+    const due = await call('POST', '/v1/admin/licences', { clientId: c.j.client.id, type: 'cabinet', duree: '1a', prix: 500, dossiersHors: 5,
+      cabinet: '5E02-4823-9115-44BC-21A3' });
+    assert.strictEqual(due.j.mail.envoye, false, 'une vente payante non encaissée ne part pas');
+    assert.strictEqual(mails.length, 1);
+    const liste = await call('GET', '/v1/admin/clients');
+    const moi = liste.j.lignes.find(x => x.id === c.j.client.id);
+    assert.strictEqual(Number(moi.impayees), 1, 'seule la vente payante compte comme impayée, jamais l\'offerte');
+    // Le mail qui part au cabinet dit ce qu'on lui donne — jamais « 0 dossiers ».
+    const m = mails[0];
+    assert.ok(/sans limite/.test(m.subject) && !/\b0 dossier/.test(m.subject + m.text), 'le mail d\'une licence sans limite : ' + m.subject + '\n' + m.text);
+    // Renouveler une licence sans limite la garde sans limite, sans réclamer de quota.
+    const ren = await call('POST', '/v1/admin/licences/' + offerte.j.licence.id + '/renouveler', { duree: '1a', prix: 0 });
+    assert.strictEqual(ren.status, 201, JSON.stringify(ren.j));
+    assert.strictEqual(ren.j.licence.illimite, 1, 'le renouvellement garde « sans limite »');
+  } finally { globalThis.fetch = vraiFetch; }
+
+  // La page : ses trois lecteurs d'une vente passent par UNE règle, et son libellé d'une licence
+  // est celui du serveur au caractère près.
+  const src = lireSource('plateforme', 'skanfact-api.mjs');
+  const i = src.indexOf('  var estCabinet = function');
+  const j = src.indexOf('  // Un champ du formulaire se montre', i);
+  assert.ok(i > 0 && j > i && j - i < 4000, 'tranche introuvable ou démesurée : ' + (j - i));
+  const vm = require('vm');
+  const ctx = { h: x => String(x), jour: x => x, etat: { offres: {} } };
+  vm.runInNewContext(src.slice(i, j), ctx);
+  assert.strictEqual(ctx.libOffre({ type: 'cabinet', illimite: 1 }), P.libelleLicence({ type: 'cabinet', illimite: 1 }));
+  assert.strictEqual(ctx.libOffre({ type: 'cabinet', dossiers_hors: 5 }), P.libelleLicence({ type: 'cabinet', dossiers_hors: 5 }));
+  assert.strictEqual(ctx.etatVente({ montant_ht: 0 }), 'offerte');
+  assert.strictEqual(ctx.etatVente({ montant_ht: 500 }), 'à encaisser');
+  assert.strictEqual(ctx.etatVente({ montant_ht: 500, payee_le: '2026-09-26' }), 'payée le 2026-09-26');
+  assert.strictEqual(ctx.aEncaisser({ montant_ht: 0 }), false);
+  const page = src.slice(src.indexOf('const CONSOLE_HTML = '));
+  const resultat = page.slice(page.indexOf('function montrerResultat'), page.indexOf('function copier('));
+  assert.ok(resultat.length > 500 && /\(aEncaisser\(v\)\s*\n\s*\? '<button id="cle-payee"/.test(resultat),
+    'le bouton « Marquer payée » de la clé émise suit aEncaisser() — une licence offerte n\'a rien à encaisser');
+  // Le bloc du résultat garde sa classe `panel` : l'écraser par « ok » lui retirait cadre et marge,
+  // et la rangée de boutons touchait la carte d'en dessous à zéro pixel.
+  const ecrit = [...page.matchAll(/\bel\.className = '([^']*)'/g)].map(m => m[1]);
+  assert.ok(ecrit.length >= 2 && ecrit.every(c => /\bpanel\b/.test(c)), 'le résultat perd sa classe panel : ' + JSON.stringify(ecrit));
+});
+
 // 10.8.0 — UN `var` LOCAL NE MASQUE PAS UNE FONCTION DU MODULE.
 //
 // Le piège, rencontré en livrant « sans limite » : la page portait déjà `estCabinet(lic)` au niveau

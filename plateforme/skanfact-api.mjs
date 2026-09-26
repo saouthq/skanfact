@@ -1061,9 +1061,14 @@ export function mailLicence(o) {
   // phrase est celle du gabarit `licenceCabinet` de l'application (un test les compare).
   if (x.type === 'cabinet') {
     const n = Math.max(0, Number(x.dossiersHors) || 0);
-    const quota = n + ' dossier' + (n === 1 ? '' : 's') + ' hors SkanFact en plus des trois gratuits';
+    // « Sans limite » est un ÉTAT, jamais un quota de zéro (10.8.0) : sans cette branche, le mail
+    // qu'on envoie aux premiers cabinets disait « Votre licence SkanFact Cabinet — 0 dossiers » et
+    // « 0 dossiers hors SkanFact en plus des trois gratuits » — le contraire de ce qu'on leur donne.
+    const illimite = x.illimite === true || Number(x.illimite) === 1;
+    const quota = illimite ? 'dossiers hors SkanFact sans limite'
+      : n + ' dossier' + (n === 1 ? '' : 's') + ' hors SkanFact en plus des trois gratuits';
     return {
-      sujet: 'Votre licence SkanFact Cabinet — ' + n + ' dossier' + (n === 1 ? '' : 's'),
+      sujet: 'Votre licence SkanFact Cabinet — ' + (illimite ? 'dossiers sans limite' : n + ' dossier' + (n === 1 ? '' : 's')),
       texte: 'Bonjour,\n\n'
         + 'Voici votre clé de licence SkanFact Cabinet (' + quota + fin + ') :\n\n'
         + String(x.cle || '') + '\n\n'
@@ -1900,10 +1905,15 @@ export function atelierLicences(env, valeurs) {
       venteId, o.client.id, id, o.e.montant, null, o.e.devise, o.e.payeeLe || null, o.e.payeeLe ? o.e.moyen : null);
     await journaliser(env, o.motif ? 'licence.' + o.motif : 'licence.emise', {
       client_id: o.client.id, licence_id: id,
-      detail: libelleLicence(o.e) + (o.e.exp ? ' jusqu\'au ' + fmtJour(o.e.exp) : ' à vie') + ' — ' + fmtMontant(o.e.montant, o.e.devise) + ' HT'
+      detail: libelleLicence(o.e) + (o.e.exp ? ' jusqu\'au ' + fmtJour(o.e.exp) : ' à vie') + ' — '
+        + (Number(o.e.montant) > 0 ? fmtMontant(o.e.montant, o.e.devise) + ' HT' : 'offerte')
         + (o.remplace ? ' (remplace ' + o.remplace.id + ')' : '')
     });
-    const mail = o.e.payeeLe ? await envoyerSiPossible(id, o.maintenant) : { envoye: false, raison: 'la vente n\'est pas encore payée' };
+    // Une licence OFFERTE (montant nul — les premiers cabinets, 10.8.0) n'a rien à encaisser : sa
+    // clé part comme celle d'une vente payée. Sinon elle attendait un « Marquer payée » sur zéro
+    // dinar, et le client restait compté « impayé » d'une vente qui n'avait pas de prix.
+    const aEncaisser = !o.e.payeeLe && Number(o.e.montant) > 0;
+    const mail = !aEncaisser ? await envoyerSiPossible(id, o.maintenant) : { envoye: false, raison: 'la vente n\'est pas encore payée' };
     return { ok: true, status: 201, corps: {
       licence: { id, client: o.client.nom, matricule: o.client.matricule, email: o.client.email, kid: ks.kid, empreinte, offre: o.e.offre,
         type: o.e.type, dossiers_hors: o.e.type === 'cabinet' ? o.e.dossiersHors : null,
@@ -2080,7 +2090,7 @@ async function repondreAdmin(r, request, env) {
         'SELECT c.id, c.nom, c.matricule, c.email, c.tel, c.adresse, c.notes, c.cree_le,' +
         ' (SELECT COUNT(*) FROM licences l WHERE l.client_id = c.id AND l.revoquee_le IS NULL' +
         '   AND NOT EXISTS (SELECT 1 FROM licences r2 WHERE r2.remplace_id = l.id)) AS licences,' +
-        ' (SELECT COUNT(*) FROM ventes v WHERE v.client_id = c.id AND v.payee_le IS NULL) AS impayees,' +
+        ' (SELECT COUNT(*) FROM ventes v WHERE v.client_id = c.id AND v.payee_le IS NULL AND v.montant_ht > 0) AS impayees,' +
         ' (SELECT MAX(s.quand) FROM suivis s WHERE s.sujet = \'client:\' || c.id) AS vu_le' +
         ' FROM clients c ORDER BY c.cree_le DESC LIMIT 500') });
     }
@@ -2468,7 +2478,10 @@ async function repondreAdmin(r, request, env) {
         const depart = l.fin && l.fin > aujourdhui ? l.fin : aujourdhui;
         n = nettoyerEmission({ ...corps, type: l.type, offre: l.offre, remise: corps.remise == null ? 0 : corps.remise, cabinet: l.cabinet_empreinte || '',
           // Le quota se garde tel quel, sauf si le formulaire en propose un autre.
-          dossiersHors: cab ? (corps.dossiersHors == null || corps.dossiersHors === '' ? l.dossiers_hors : corps.dossiersHors) : 0 }, depart);
+          dossiersHors: cab ? (corps.dossiersHors == null || corps.dossiersHors === '' ? l.dossiers_hors : corps.dossiersHors) : 0,
+          // « Sans limite » se garde comme le quota : un renouvellement sans l'avis contraire du
+          // formulaire reste sans limite. Sinon il repartait avec un quota de zéro, refusé.
+          illimite: cab && (corps.illimite == null ? Number(l.illimite) === 1 : corps.illimite) }, depart);
         if (!n.ok) return json({ erreur: n.erreur }, 400);
         n.e.debut = depart;
         motif = 'renouvellement';
@@ -4006,7 +4019,7 @@ const CONSOLE_HTML = `<!doctype html>
   };
 
   function formClient() {
-    formulaire('Nouveau client', 'Le nom et le matricule fiscal vont DANS la clé : elle ne s\\u2019activera que sur le dossier qui porte ce matricule. L\\u2019adresse e-mail sert à envoyer la clé.',
+    formulaire('Nouveau client', 'Pour une entreprise, le nom et le matricule fiscal vont DANS la clé : elle ne s\\u2019activera que sur le dossier qui porte ce matricule. Pour un cabinet comptable, c\\u2019est son empreinte qui compte, demandée à l\\u2019émission : son matricule peut rester vide. L\\u2019adresse e-mail sert à envoyer la clé.',
       champ('nom', 'Raison sociale *', 'maxlength="120"', true) +
       champ('matricule', 'Matricule fiscal', 'placeholder="1234567A/M/P/000" maxlength="30"') +
       champ('email', 'E-mail', 'type="email" maxlength="200"') +
@@ -4027,8 +4040,26 @@ const CONSOLE_HTML = `<!doctype html>
   // (Aucun backtick dans un commentaire d'ici : cette page est un template literal, et un backtick
   // le referme — le fichier entier cesse alors d'être lisible. Quatrième fois, CLAUDE.md § 7.31.0.)
   var estCabinet = function (l) { return !!l && l.type === 'cabinet'; };
+  // L'état d'une vente, en UN endroit pour les quatre écrans qui le disent (la clé émise, la liste
+  // des ventes, la fiche du client, son menu) : payée, offerte, ou à encaisser. Une vente à
+  // montant NUL n'a rien à encaisser — une licence offerte n'est pas un impayé.
+  var aEncaisser = function (v) { return !!v && !v.payee_le && Number(v.montant_ht) > 0; };
+  var etatVente = function (v) {
+    if (v && v.payee_le) return 'payée le ' + jour(v.payee_le);
+    return aEncaisser(v) ? 'à encaisser' : 'offerte';
+  };
+  var pastilleVente = function (v) {
+    var cls = v && v.payee_le ? 'a' : (aEncaisser(v) ? 'w' : 'e');
+    return '<span class="pill ' + cls + '">' + h(etatVente(v)) + '</span>';
+  };
   var libOffre = function (l) {
-    if (estCabinet(l)) { var n = Number(l.dossiers_hors) || 0; return 'Cabinet — ' + n + ' dossier' + (n === 1 ? '' : 's') + ' hors SkanFact'; }
+    if (estCabinet(l)) {
+      // « Sans limite » est un ÉTAT, pas un quota de zéro (10.8.0) : sans cette branche, la clé
+      // émise se résumait « 0 dossiers hors SkanFact » — le contraire exact de ce qu'on venait
+      // de vendre. Le même libellé que libelleLicence() côté serveur, au caractère près.
+      if (l.illimite === true || Number(l.illimite) === 1) return 'Cabinet — dossiers sans limite';
+      var n = Number(l.dossiers_hors) || 0; return 'Cabinet — ' + n + ' dossier' + (n === 1 ? '' : 's') + ' hors SkanFact';
+    }
     return etat && etat.offres[l.offre] ? etat.offres[l.offre].label : l.offre;
   };
   // Un champ du formulaire se montre ou se cache par son STYLE : la règle label.f{display:block} de
@@ -4073,9 +4104,9 @@ const CONSOLE_HTML = `<!doctype html>
     // Le quota d'un cabinet, en plus des trois gratuits. Le prix d'un dossier n'est proposé que
     // s'il est réglé (PRIX_CABINET_DOSSIER) : les tarifs du Cabinet ne sont pas fixés, et un chiffre
     // inventé ici deviendrait un tarif par simple préremplissage.
-    var champQuota = function (valeur, cache) {
+    var champQuota = function (valeur, cache, sansLimite) {
       return '<label class="c w" id="f-sans-limite"' + (cache ? ' style="display:none"' : '') + '>'
-        + '<input type="checkbox" name="illimite"> Sans limite de dossiers</label>'
+        + '<input type="checkbox" name="illimite"' + (sansLimite ? ' checked' : '') + '> Sans limite de dossiers</label>'
         + '<label class="f" id="f-quota"' + (cache ? ' style="display:none"' : '') + '><span>Dossiers hors SkanFact couverts, en plus des 3 gratuits *</span>'
         + '<input name="dossiersHors" type="number" min="1" max="5000" step="1" value="' + h(valeur == null ? '' : valeur) + '"></label>';
     };
@@ -4129,7 +4160,9 @@ const CONSOLE_HTML = `<!doctype html>
         (cab ? ' Le quota se garde tel quel — modifie-le ici si le cabinet a pris des clients.' : ' La remise de parrainage ne s\\u2019applique qu\\u2019à la première année.');
       champs = '<label class="f"><span>Durée</span><select name="duree">' + durees + '</select></label>' +
         champDateCond('dateLibre', 'Date de fin') +
-        (cab ? champQuota(lic.dossiers_hors, false) : '') +
+        // Une licence « sans limite » se renouvelle sans limite : la case arrive cochée. Décochée
+        // d'office, le formulaire réclamait un quota qu'on ne vend pas à ce cabinet.
+        (cab ? champQuota(lic.dossiers_hors, false, Number(lic.illimite) === 1) : '') +
         champPrix(prixPropose(cab ? 'cabinet' : 'entreprise', lic.offre, lic.dossiers_hors), 'proposé d\\u2019après l\\u2019offre en cours') +
         paiement;
       ok = 'Renouveler';
@@ -4179,16 +4212,19 @@ const CONSOLE_HTML = `<!doctype html>
       if (cabinet && !val('cabinet')) return '';
       var sansLimite = !!(document.querySelector('#form [name="illimite"]') || {}).checked;
       var quoi = cabinet
-        ? (sansLimite ? 'dossiers hors SkanFact SANS LIMITE'
-          : (val('dossiersHors') ? val('dossiersHors') + ' dossiers hors SkanFact' : ''))
+        ? (sansLimite ? 'Licence de cabinet, dossiers hors SkanFact sans limite'
+          : (val('dossiersHors') ? 'Licence de cabinet, ' + val('dossiersHors') + ' dossiers hors SkanFact en plus des gratuits' : ''))
         : (etat.offres[val('offre')] || {}).label;
       if (!quoi) return '';
       var d = val('duree'), dl = val('dateLibre');
       var jusque = d === 'vie' ? 'à vie' : (dl ? 'jusqu\\u2019au ' + jour(dl)
         : (etat.durees.filter(function (x) { return x.id === d; })[0] || {}).label || '');
       var remise = val('parrain') ? ' Remise de parrainage : ' + t.remiseParrainage + ' %.' : '';
+      // Pour un cabinet, l'empreinte EST le sujet de la clé : on la relit ici, une faute de frappe
+      // donnerait une clé que le cabinet refuserait (« autre cabinet »).
       return '<strong>' + h(quoi) + ' pour ' + h(qui) + '</strong>, ' + h(jusque) + ', '
-        + h(montant(prix, t.devise)) + ' HT.' + h(remise)
+        + (prix > 0 ? h(montant(prix, t.devise)) + ' HT.' + h(remise) : 'offerte : rien à encaisser, la clé part tout de suite.')
+        + (cabinet ? '<br>Empreinte du cabinet : <strong class="mono">' + h(val('cabinet')) + '</strong>' : '')
         + '<br>La clé sera signée et <strong>ne pourra pas être reprise</strong>'
         + (val('payee') ? ' ; la vente étant payée, elle part par mail tout de suite.' : '.');
     };
@@ -4345,16 +4381,19 @@ const CONSOLE_HTML = `<!doctype html>
     var mail = j.mail || {};
     var v = j.vente;
     var cle = String(j.cle || '');
-    el.className = 'ok';
+    // « panel ok », jamais « ok » seul : écraser la classe retirait au bloc son cadre et sa marge,
+    // et la rangée « Copier la clé » venait toucher la carte « Encaissé » à zéro pixel — puis
+    // chaque clé ouverte ensuite (« Voir la clé ») s'affichait nue, sans cadre, jusqu'au rechargement.
+    el.className = 'panel ok';
     el.innerHTML = '<h2><span class="coche" aria-hidden="true">\\u2713</span> Clé émise pour ' + h(l.client) + '</h2>' +
       '<p class="why">' + h(libOffre(l)) + (l.fin ? ', jusqu\\u2019au ' + jour(l.fin) : ', à vie') +
-      ' — ' + h(montant(v ? v.montant_ht : l.prix, l.devise)) + ' HT' + (v && v.payee_le ? ', payée le ' + jour(v.payee_le) : ', à encaisser') + '.</p>' +
+      ' — ' + (v && !v.payee_le && !aEncaisser(v) ? 'offerte' : h(montant(v ? v.montant_ht : l.prix, l.devise)) + ' HT, ' + etatVente(v)) + '.</p>' +
       blocCle(cle, l.kid) +
       '<p class="note' + (mail.envoye ? ' bon' : '') + '">' + (mail.envoye ? '\\u2713 Envoyée par mail à ' + h(mail.a) + '.' : 'Pas envoyée par mail : ' + h(mail.raison || '') + '.') + '</p>' +
       '<div class="row">' +
       // Le geste SUIVANT passe devant : quand la vente n'est pas payée, c'est l'encaissement qui
       // débloque l'envoi, et c'est lui le bouton principal.
-      (v && !v.payee_le
+      (aEncaisser(v)
         ? '<button id="cle-payee" class="btn p" type="button">Marquer payée et envoyer la clé\\u2026</button>'
           + '<button id="cle-copier" class="btn" type="button">Copier la clé</button>'
         : '<button id="cle-copier" class="btn p" type="button">Copier la clé</button>') +
@@ -4362,7 +4401,7 @@ const CONSOLE_HTML = `<!doctype html>
     el.hidden = false;
     brancherCle(cle);
     if ($('cle-payee')) $('cle-payee').onclick = function () { payee(v); };
-    $('cle-fermer').onclick = function () { el.hidden = true; el.className = ''; el.innerHTML = ''; };
+    $('cle-fermer').onclick = function () { el.hidden = true; el.className = 'panel'; el.innerHTML = ''; };
     el.scrollIntoView({ block: 'nearest' });
   }
   function copier(texte, bouton) {
@@ -4753,22 +4792,21 @@ const CONSOLE_HTML = `<!doctype html>
       // relances et gonfler le total « En attente » de rien du tout. Une licence de cabinet part
       // à zéro tant que les tarifs ne sont pas fixés — c'est le cas normal, pas un impayé.
       { k: 'payee_le', t: 'État', brut: true, f: function (v, r) {
-          if (v) return '<span class="pill a">payée le ' + jour(v) + '</span>';
-          if (!(Number(r.montant_ht) > 0)) return '<span class="pill e">sans montant</span>';
-          return '<span class="pill w">à encaisser</span>';
+          return pastilleVente(r);
         } },
       { k: 'moyen', t: 'Moyen' },
-      { k: 'facture_skanfact', t: 'Facture', f: function (v) { return v || 'à établir'; } },
+      // Une vente OFFERTE n'a rien à facturer : « à établir » y réclamerait une facture à zéro.
+      { k: 'facture_skanfact', t: 'Facture', f: function (v, r) { return v || (r.payee_le || aEncaisser(r) ? 'à établir' : '\u2014'); } },
       // Encaisser est le geste de cet écran : « Marquer payée » reste visible, et c'est lui qui
       // envoie la clé. Une vente déjà payée n'a plus qu'à être facturée — le bouton visible change
       // donc avec l'état de la ligne, parce qu'un libellé décrit le geste SUIVANT (7.19.0).
       { k: 'id', t: 'Actions', brut: true, a: true, f: function (v, r) {
           var actes = [];
-          if (!r.payee_le) {
+          if (aEncaisser(r)) {
             actes.push({ act: 'payee', lib: 'Marquer payée', quoi: 'la clé part par mail dans la seconde' });
             actes.push({ act: 'ecrire', lib: 'Relancer…', quoi: 'préparer le mail d\\u2019impayé' });
           }
-          if (!r.facture_skanfact) actes.push({ act: 'facturee', lib: 'N\\u00b0 de facture…', quoi: 'celui que tu as établi dans SkanFact' });
+          if (!r.facture_skanfact && (r.payee_le || aEncaisser(r))) actes.push({ act: 'facturee', lib: 'N\\u00b0 de facture…', quoi: 'celui que tu as établi dans SkanFact' });
           return celluleActions(r.id, actes);
         } }
     ],
@@ -4876,8 +4914,15 @@ const CONSOLE_HTML = `<!doctype html>
     ],
     cabinets: [
       { k: 'client', t: 'Cabinet', tr: true },
-      { k: 'cabinet_empreinte', t: 'Empreinte', m: true },
-      { k: 'dossiers_hors', t: 'Dossiers couverts', n: true, i: 'Le quota vendu à ce cabinet, en plus des trois dossiers hors SkanFact gratuits. C\\u2019est ce qu\\u2019on lui facture : jamais ses postes, qui sont illimités.' },
+      // L'empreinte s'écrit comme le cabinet la LIT dans ses Réglages — cinq groupes de quatre, en
+      // capitales —, parce qu'on la compare au téléphone. La base range la forme nue.
+      { k: 'cabinet_empreinte', t: 'Empreinte', m: true, f: function (v) {
+          var nu = String(v || '').replace(/[^0-9a-f]/gi, '').toUpperCase();
+          return nu.length === 20 ? nu.match(/.{4}/g).join('-') : (v || '\u2014');
+        } },
+      { k: 'dossiers_hors', t: 'Dossiers couverts', n: true, f: function (v, r) {
+          return r.illimite === true || Number(r.illimite) === 1 ? 'sans limite' : String(Number(v) || 0);
+        }, i: 'Le quota vendu à ce cabinet, en plus des trois dossiers hors SkanFact gratuits. C\\u2019est ce qu\\u2019on lui facture : jamais ses postes, qui sont illimités.' },
       { k: 'parraines', t: 'Clients parrainés', n: true, i: 'Les entreprises dont la licence porte l\\u2019empreinte de ce cabinet. « Amené » n\\u2019est pas « payé » : la colonne d\\u2019à côté dit combien ont réglé.' },
       { k: 'payants', t: 'dont payants', n: true, brut: true,
         i: 'Parmi les clients parrainés, ceux dont au moins une vente est encaissée. Vendre en passant par les cabinets est le modèle du produit — c\\u2019est ici qu\\u2019on voit s\\u2019il fonctionne.',
@@ -4946,7 +4991,7 @@ const CONSOLE_HTML = `<!doctype html>
     cabinets: { g: 'Ventes', t: 'Cabinets', h: 'Cabinets comptables',
       but: 'Ce qu\\u2019on vend à un cabinet est un QUOTA de dossiers hors SkanFact, jamais des postes.' },
     clients: { g: 'Ventes', t: 'Clients', h: 'Clients',
-      but: 'Le nom et le matricule entrent dans la clé : un client peut acheter deux fois, renouveler, changer de matricule.' },
+      but: 'Le nom et le matricule d\\u2019une entreprise entrent dans sa clé ; un cabinet, lui, est désigné par son empreinte. Un client peut acheter deux fois, renouveler, changer de matricule.' },
     activations: { g: 'Traces', t: 'Activations', h: 'Activations',
       but: 'Un ordinateur, une application, une date. C\\u2019est ce que les postes annoncent d\\u2019eux-mêmes — rien de plus.' },
     evenements: { g: 'Traces', t: 'Journal', h: 'Journal',
@@ -5128,7 +5173,7 @@ const CONSOLE_HTML = `<!doctype html>
                   + '<span class="q">' + h(pl(g.nbAttente, 'vente') + ' livrée' + (g.nbAttente > 1 ? 's' : '') + ', rien d\\u2019encaissé') + '</span></div>' : '');
           }).join('')
         : '<div class="sous"><span class="eyebrow">Encaissé</span><span class="n">—</span>'
-          + '<span class="q">Aucune vente : les montants apparaîtront ici.</span></div>';
+          + '<span class="q">Rien d\\u2019encaissé pour l\\u2019instant : les montants apparaîtront ici.</span></div>';
       Array.prototype.forEach.call($('argent').querySelectorAll('[data-t]'), function (el) {
         var aller = function () { onglet = el.dataset.t; dessiner(); };
         el.onclick = aller;
@@ -5384,7 +5429,7 @@ const CONSOLE_HTML = `<!doctype html>
       }), 'Aucune licence : ce client n\\u2019a encore rien acheté.'));
       html += bloc('Ventes', table(['Montant HT', 'État', 'Moyen', 'Facture'], (d.ventes || []).map(function (v) {
         return '<tr><td class="num">' + h(montant(v.montant_ht, v.devise)) + '</td><td>'
-          + (v.payee_le ? '<span class="pill a">payée le ' + h(jour(v.payee_le)) + '</span>' : '<span class="pill w">à encaisser</span>')
+          + pastilleVente(v)
           + '</td><td>' + h(v.moyen || '—') + '</td><td>' + h(v.facture_skanfact || 'à établir') + '</td></tr>';
       }), 'Aucune vente enregistrée.'));
       html += bloc('Ses postes', table(['Application', 'Ordinateur', 'Système', 'Version', 'Dernier signe'], (d.postes || []).map(function (p) {

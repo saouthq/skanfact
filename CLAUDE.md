@@ -8352,6 +8352,18 @@ lots ; le détail de ce qui reste vit dans `A-FAIRE.md` § 0.
   les validées) ; et **le Cabinet ne lisait ses imports qu'en UTF-8** — un CSV d'Excel sous Windows
   est en Windows-1252 : `lireFichierTexte` a déménagé dans compta.js (core le réexporte à
   l'identité), et le plan et la balance de reprise passent par lui aussi.
+- **Une licence OFFERTE n'est pas un impayé** (la console, préparée pour les trois comptables qui
+  testent le Cabinet avec une licence sans limite). Une licence à 0 DT disait « 0,000 TND HT, à
+  encaisser », gardait sa clé (l'envoi attendait « Marquer payée »), gonflait « Impayées », et son
+  mail annonçait « 0 dossiers ». Une seule règle, des deux côtés du worker : **ce qui est à encaisser
+  a un montant** (`aEncaisser` dans la page, `montant_ht > 0` dans la requête des impayés, l'envoi
+  immédiat à l'émission) — une vente offerte se dit « offerte », part tout de suite, et ne propose ni
+  « Marquer payée » ni « Relancer ». **Un libellé recopié côté page diverge du serveur** : `libOffre`
+  ignorait `illimite` que `libelleLicence` connaissait (« Cabinet — 0 dossiers ») ; un test les
+  compare sur chaque cas. Un renouvellement garde « sans limite » quand on ne dit rien, et le
+  formulaire coche la case. **Un `className` écrit en entier écrase la classe de mise en page** :
+  `el.className = 'ok'` retirait `panel` au bloc de la clé émise, qui touchait la carte d'en dessous.
+  Et l'empreinte d'un cabinet s'affiche comme elle se dicte (cinq groupes de quatre), pas nue.
 
 ## Pistes pour la suite (non demandées)
 
