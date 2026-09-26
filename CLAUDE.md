@@ -8591,6 +8591,14 @@ lots ; le détail de ce qui reste vit dans `A-FAIRE.md` § 0.
   d'absence donnait 20. Le Cabinet écrit ses montants dans des champs TEXTE (`.num`) : sa règle vise les
   deux formes. Le test la JOUE sur une fausse page (clic, Tab, Entrée, lecture seule, `mouseup`) ; aucun
   parcours ne l'aurait vue, ils posent la valeur au lieu de la taper.
+- **Une case que le formulaire PROPOSE s'explique, une case vide se fait taper** (« Ajouter un bien »,
+  au guide) : le test lit les cases obligatoires de la fiche et distingue celles qui ont une valeur par
+  défaut NON vide (`f.compte || '22'`) — ma première version prenait `f.libelle || ''` pour une case
+  proposée, et le test ne pouvait plus exiger la désignation. Et **ce que le guide fait taper révèle ce
+  qui bouge** : l'aperçu du plan passait d'une ligne à trois pendant la frappe et poussait « Ajouter »
+  de 41 px (H-E1, une fenêtre de plus) ; il réserve sa place (`annonce-stable encadre`, `.ok-box` y
+  perd sa marge). Une bulle qui parle d'un chiffre explique aussi ce qui étonne : trois ans en mars
+  font quatre exercices.
 
 ## Pistes pour la suite (non demandées)
 

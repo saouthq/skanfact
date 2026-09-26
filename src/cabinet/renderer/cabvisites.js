@@ -1848,8 +1848,9 @@
       ]
     });
 
+    const fenetreBien = () => !!corr('#modal-root #im');
     visite({
-      id: 'biens', theme: 'saisir', type: 'faire', duree: '1 min',
+      id: 'biens', theme: 'saisir', type: 'faire', duree: '3 min',
       page: dans('saisie', 'comptabilite/immobilisations'),
       titre: 'Ajouter un bien et ses dotations',
       resume: 'Un bien que le client garde plusieurs années : son plan, puis ses dotations en fin d\'exercice.',
@@ -1857,10 +1858,39 @@
       si: () => !!ctx.dossier('saisie'), manque: DOSSIER_MANQUE.saisie,
       suite: ['inventaire', 'cloturer'],
       bravo: 'Tu sais tenir les biens',
-      conclusion: 'Un dégressif sans taux est refusé en nommant le taux : aucun coefficient n\'est écrit dans le code. Une cession sort l\'actif ; son prix arrive par la facture ou le relevé.',
+      // 10.14.1 — la fin disait ce que le code refuse, pas ce qui reste à faire : la dotation passée
+      // attend en brouillard, et ne compte qu'une fois validée.
+      conclusion: 'Les dotations passées par le bouton des écritures d\'inventaire attendent <b>en brouillard</b>, dans la Saisie : elles comptent une fois le brouillard validé. Un dégressif sans taux est refusé en nommant le taux ; une cession sort l\'actif, et son prix arrive par la facture ou le relevé.',
       etapes: [
-        { page: dans('saisie', 'comptabilite/immobilisations'), cible: ['#im-neuf', '#im-neuf2'], cote: 'dessous', titre: 'Ajouter un bien',
-          texte: 'Sa valeur, sa mise en service, sa durée, sa méthode : le plan s\'affiche pendant la saisie.' },
+        // 10.14.1 — suivie au guide, la visite montrait « Ajouter un bien… » et laissait le débutant seul
+        // devant une fenêtre de seize cases. Les cases qui font le plan ont chacune leur bulle.
+        { page: dans('saisie', 'comptabilite/immobilisations'), cible: ['#im-neuf', '#im-neuf2'], cote: 'dessous', faire: 'clic',
+          si: () => !fenetreBien(),
+          titre: 'Ajouter un bien', texte: 'Un <b>bien</b> est ce que le client garde plusieurs années (un véhicule, un ordinateur, un local) : il ne passe pas en charge d\'un coup, il s\'amortit.',
+          action: 'Clique sur <b>« Ajouter un bien… »</b>.', essai: { clic: true } },
+        { page: dans('saisie', 'comptabilite/immobilisations'), cible: '#modal-root [name="libelle"]', cote: 'droite', faire: 'valeur', bouton: 'Suivant', si: fenetreBien,
+          titre: 'Sa désignation', texte: 'Ce qu\'est le bien, comme sur la facture d\'achat : c\'est le nom qu\'il portera dans le tableau.',
+          action: 'Tape la désignation du bien.', essai: { taper: 'Ordinateur portable' } },
+        { page: dans('saisie', 'comptabilite/immobilisations'), cible: '#modal-root [name="famille"]', cote: 'droite', facultatif: true, si: fenetreBien,
+          titre: 'Sa famille', texte: 'Choisir une famille <b>propose</b> sa durée d\'usage (matériel informatique : 3 ans…). La durée reste la tienne : elle se corrige juste à côté.' },
+        { page: dans('saisie', 'comptabilite/immobilisations'), cible: '#modal-root [name="duree"]', cote: 'droite', faire: 'valeur', bouton: 'Suivant', si: fenetreBien,
+          titre: 'Sa durée', texte: 'Le nombre d\'<b>années</b> sur lesquelles il s\'amortit. <b>À VÉRIFIER</b> avec les durées admises pour chaque famille.',
+          action: 'Tape sa durée, en années.', essai: { taper: '3' } },
+        { page: dans('saisie', 'comptabilite/immobilisations'), cible: '#modal-root [name="dateMiseEnService"]', cote: 'droite', faire: 'valeur', bouton: 'Suivant', si: fenetreBien,
+          titre: 'Sa mise en service', texte: 'Le jour où le bien a commencé à servir, <b>JJ/MM/AAAA</b> : l\'amortissement de la première année se compte à partir de ce jour (prorata).',
+          action: 'Tape sa date de mise en service.', essai: { taper: '01/03/2026' } },
+        { page: dans('saisie', 'comptabilite/immobilisations'), cible: '#modal-root [name="valeur"]', cote: 'droite', faire: 'valeur', bouton: 'Suivant', si: fenetreBien,
+          titre: 'Sa valeur', texte: 'Le prix <b>hors taxes</b> de la facture d\'achat — la TVA se récupère, elle ne s\'amortit pas (sauf si le client ne la récupère pas).',
+          action: 'Tape sa valeur d\'acquisition HT.', essai: { taper: '3 000' } },
+        { page: dans('saisie', 'comptabilite/immobilisations'), cible: '#modal-root [name="methode"]', cote: 'droite', facultatif: true, si: fenetreBien,
+          titre: 'Sa méthode', texte: '<b>Linéaire</b> : la même dotation chaque année — c\'est le cas courant. Le dégressif demande son taux, qu\'aucun chiffre n\'impose ici.' },
+        { page: dans('saisie', 'comptabilite/immobilisations'), cible: '#modal-root [name="compte"]', cote: 'droite', facultatif: true, si: fenetreBien,
+          titre: 'Ses comptes', texte: 'Le compte du bien (22), de son amortissement (28) et de sa dotation (681) sont <b>proposés</b> : change-les seulement si ton plan en a d\'autres.' },
+        { page: dans('saisie', 'comptabilite/immobilisations'), cible: '#modal-root #im-apercu', cote: 'dessus', si: fenetreBien,
+          titre: 'Son plan', texte: 'Le plan d\'amortissement se résume ici pendant la saisie : le nombre d\'exercices, la première et la dernière dotation. Un bien mis en service <b>en cours d\'année</b> s\'étale sur un exercice de plus que sa durée — la première et la dernière année sont partielles (prorata).' },
+        { page: dans('saisie', 'comptabilite/immobilisations'), cible: '#modal-root #ok', cote: 'dessus', faire: 'clic', si: fenetreBien, fait: () => aucuneFenetre(),
+          titre: 'Ajouter le bien', texte: 'Il rejoint le tableau des biens de l\'exercice. Une case refusée devient rouge et dit pourquoi.',
+          action: 'Clique sur <b>« Ajouter »</b>.', essai: { clic: true } },
         { page: dans('saisie', 'comptabilite/immobilisations'), cible: '#im-ecrire', cote: 'dessous', faire: 'clic', facultatif: true,
           titre: 'Les écritures d\'inventaire', texte: 'Les dotations de l\'exercice, en brouillard au 31 décembre. Elles se réclament au dernier mois ; le bouton les prépare plus tôt si tu veux.',
           action: 'Clique sur le bouton des écritures d\'inventaire.', essai: { clic: true } }

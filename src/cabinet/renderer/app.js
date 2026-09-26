@@ -5526,7 +5526,9 @@
         <b>déjà amorti</b>${deja28 ? ` : le compte 28 en reprend ${esc(money(deja28))} au même jour` : ''}. Indique sa <b>vraie</b> date de
         mise en service, pas le 1<sup>er</sup> janvier : c'est elle qui reconstitue ce qui a déjà été amorti. Un parc
         entier se reprend mieux bien par bien — une fiche par bien, chacune à sa date.</div>` : ''}
-      <div id="im-apercu" class="small muted"></div>
+      ${/* 10.14.1 — l'aperçu passe d'une ligne (ce qui manque) à trois (le plan) : sans hauteur
+            réservée, « Ajouter » descendait de 41 px sous le curseur et la fenêtre défilait. */''}
+      <div id="im-apercu" class="small muted annonce-stable encadre"></div>
       <div class="modal-actions"><button class="btn" data-close>Annuler</button>
         <button class="btn btn-primary" id="ok">${neuf ? 'Ajouter' : 'Enregistrer'}</button></div>`,
     (rootModal, close) => {

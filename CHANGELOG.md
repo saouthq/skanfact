@@ -78,6 +78,15 @@ Publiée en **bêta** : elle touche au moteur comptable (retenue à la source, d
   « Le fichier CNSS attend 2 corrections » et se taisait. Le matricule CNSS de l'employeur (dans la fiche
   du client) et le numéro d'assuré de chaque salarié se tapent maintenant bulle par bulle, et un dossier
   déjà complet va droit au fichier ; la dernière bulle dit pourquoi le bouton peut être grisé.
+- **« Ajouter un bien et ses dotations » fait remplir la fiche du bien, case par case** : la visite
+  montrait « Ajouter un bien… » et laissait le débutant seul devant seize cases. La désignation, la
+  durée, la mise en service et la valeur se tapent bulle par bulle ; la famille, la méthode et les
+  comptes proposés s'expliquent ; le plan se relit avant « Ajouter » — et la bulle dit pourquoi un bien
+  de trois ans mis en service en mars s'étale sur quatre exercices. La fin dit ce qui reste : la
+  dotation attend en brouillard, elle compte une fois validée.
+- **Le plan d'un bien ne pousse plus « Ajouter » sous le curseur** : l'aperçu passait d'une ligne (ce
+  qui manque) à trois (le plan) et « Ajouter » descendait de 41 px pendant la saisie. Il réserve sa
+  place (vérifié à la souris : « Ajouter » ne bouge plus d'un pixel du premier au dernier chiffre).
 - **La déclaration s'ouvre sur un mois PASSÉ**, jamais sur un mois à venir : un brouillard daté du
   20 octobre (un prélèvement saisi d'avance) faisait ouvrir l'écran de septembre sur octobre, un mois
   qui n'est pas encore là. Le mois de travail est le dernier mois qui a des données jusqu'au mois

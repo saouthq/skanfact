@@ -285,9 +285,12 @@ et au moteur), puis en stable quand Skander valide.*
     dépôt et le paiement de la TVA au guide, la page Échéances qui lit le dépôt d'un client, et **la paie
     faite case par case au guide** (salarié, brut, embauche, bulletin, écriture) — ce qui a trouvé le
     champ de nombre prérempli qui donnait 20 jours d'absence pour « 2 » (+ 23 preuves) ; puis la CNSS
-    du trimestre, qui fait corriger au guide le matricule employeur et le numéro d'assuré (+ 5 preuves).
-  - **Cabinet, encore à jouer au guide** : immobilisations, inventaire, révision,
-    clôture, liasse. Petits : la bulle « Sa famille » n'éclaire que « Enfants à charge ».
+    du trimestre, qui fait corriger au guide le matricule employeur et le numéro d'assuré (+ 5 preuves) ;
+    puis un bien, fiche remplie au guide et plan relu, dont l'aperçu poussait « Ajouter » de 41 px
+    (+ 5 preuves).
+  - **Cabinet, encore à jouer au guide** : inventaire, révision,
+    clôture, liasse. Petits : la bulle « Sa famille » n'éclaire que « Enfants à charge » ; « Ses comptes »
+    (bien) n'éclaire que le compte du bien, pas l'amortissement ni la dotation.
   - **Cabinet, vu et pas encore corrigé** : le message « Copié » recouvre le bas de la bulle une
     seconde ; la ligne « Quotidienne · sans les livres » des sauvegardes se lit comme une anomalie ;
     un « Écart » rouge pendant la saisie d'une pièce qu'on n'a pas finie ; le cercle de la visite

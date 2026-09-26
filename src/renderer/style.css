@@ -415,7 +415,7 @@ main { --main-haut: 32px; flex: 1; overflow-y: auto; padding: var(--main-haut) 3
 /* Une phrase et le geste qui la lève, dans une rangée qui passe à la ligne sans coller le bouton
    sous le texte (T-56, 9.8.8). Partagée par les deux applications (10.14.1). */
 .ctrl-geste { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; }
-.annonce-stable.encadre > .warn-box, .annonce-stable.encadre > p { margin: 0; }
+.annonce-stable.encadre > .warn-box, .annonce-stable.encadre > .ok-box, .annonce-stable.encadre > p { margin: 0; }
 /* Toute la ligne d'une grille, quel que soit son nombre de colonnes. La classe était posée par le
    formulaire d'un contrat récurrent et n'existait nulle part : « Notes sur la facture » tenait dans
    un tiers de la fenêtre, et « Contrat actif… » sur quatre lignes à côté (10.12.0). */

@@ -747,4 +747,39 @@ t('10.14.1 : « Préparer la CNSS » fait corriger au guide ce qui bloque le fic
     enreg.forEach(e => assert.ok(typeof e.fait === 'function', 'un « Enregistrer » avance sur le clic seul'));
   } finally { if (avant === undefined) delete global.document; else global.document = avant; }
 });
+
+// Suivie au guide, « Ajouter un bien et ses dotations » montrait « Ajouter un bien… » puis laissait le
+// débutant seul devant seize cases. Chaque case OBLIGATOIRE de la fiche du bien — lue dans le
+// formulaire — a son étape : à taper quand rien ne la remplit, expliquée quand elle est proposée
+// (le compte 22). « Ajouter » est prouvé par la fenêtre refermée, et l'aperçu qui grandit réserve sa
+// place : sans ça, « Ajouter » descendait de 41 px sous le curseur au moment où le plan paraissait.
+t('10.14.1 : « Ajouter un bien » fait remplir au guide chaque case obligatoire de la fiche, et « Ajouter » ne bouge pas', () => {
+  const V2 = require('../../src/renderer/visite.js');
+  const ctx = { state: () => ({ cabinet: {}, dossiers: [] }), dossier: () => 'D', estExemple: () => false, cleSecours: () => null, copieExterne: () => false, Visite: V2 };
+  const v = CV.parcours(ctx).find(x => x.id === 'biens');
+  assert.ok(v && v.type === 'faire', 'les biens ne sont plus un parcours guidé');
+  const app = lireSource('src', 'cabinet', 'renderer', 'app.js');
+  const f = app.indexOf('function immoForm(');
+  const form = app.slice(f, app.indexOf('function vuePaie(', f));
+  assert.ok(form.length > 3000 && form.length < 14000, 'tranche du formulaire suspecte : ' + form.length);
+  const obligatoires = [...form.matchAll(/field obligatoire[^>]*>[\s\S]{0,200}?<(?:input|select) name="([^"]+)"/g)].map(m => m[1]);
+  assert.deepStrictEqual(obligatoires.slice().sort(), ['compte', 'dateMiseEnService', 'duree', 'libelle', 'valeur'], 'les cases obligatoires de la fiche ont changé : ' + obligatoires);
+  // Une case obligatoire que le formulaire propose (une valeur par défaut NON vide, `f.compte || '22'`)
+  // s'explique ; les autres se tapent.
+  const preremplie = n => new RegExp('<input name="' + n + '"[^>]*value="\\$\\{esc\\(f\\.' + n + ' \\|\\| \'[^\']').test(form);
+  obligatoires.forEach(n => {
+    const e = v.etapes.find(x => x.cible === '#modal-root [name="' + n + '"]');
+    assert.ok(e, 'la case obligatoire « ' + n + ' » n\'a aucune étape dans la visite');
+    if (!preremplie(n)) assert.ok(e.faire === 'valeur' && !e.facultatif, 'la case « ' + n + ' » est à taper, et la visite ne la fait pas taper');
+  });
+  assert.ok(preremplie('compte'), 'le compte du bien n\'est plus proposé : son étape doit le faire taper');
+  const ajouter = v.etapes.filter(e => e.cible === '#modal-root #ok');
+  assert.strictEqual(ajouter.length, 1);
+  assert.ok(ajouter[0].faire === 'clic' && typeof ajouter[0].fait === 'function', '« Ajouter » avance sur le clic seul');
+  assert.ok(v.etapes.some(e => e.cible === '#modal-root #im-apercu'), 'le plan n\'est plus montré avant d\'ajouter');
+  // L'aperçu réserve la hauteur de son encadré (règle 10.12.0 des annonces vivantes).
+  assert.ok(/<div id="im-apercu" class="[^"]*\bannonce-stable encadre\b/.test(form), 'l\'aperçu du plan ne réserve plus sa place : « Ajouter » bouge sous le curseur');
+  const css = lireSource('src', 'renderer', 'style.css');
+  assert.ok(/\.annonce-stable\.encadre > \.ok-box/.test(css), 'l\'encadré vert du plan garde sa marge et dépasse la place réservée');
+});
 };
