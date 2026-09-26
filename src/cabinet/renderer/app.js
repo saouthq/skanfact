@@ -5667,7 +5667,7 @@
       // Le geste vit dans une rangée flex, pas dans la phrase (règle 9.8.8, T-56) : à 1280 px il
       // passait à la ligne collé sous le texte, à 3 px (mesuré par e2e:cabinet-rendu).
       (c.ids || []).map(id => `<button type="button" class="btn btn-sm" data-sal-cnss="${esc(id)}">Renseigner le n° de ${esc(nomDe(id))}…</button>`).join('')}</div>`).join('')}
-      <div class="small muted">Ces contrôles NOMMENT, ils ne bloquent rien : un mois traité avec deux manques signalés vaut mieux qu'un mois jamais traité.</div></div>` : ''}
+      <div class="small muted">Un signalement, pas un blocage : tu peux établir les bulletins et passer l'écriture du mois quand même.</div></div>` : ''}
     ${etatsNormaux.length ? `<p class="small muted mb">${etatsNormaux.map(c => `${esc(c.quoi)} — ${esc(c.detail)}`).join(' · ')}</p>` : ''}
     ${/* Le geste vit dans une rangée flex, pas dans la phrase (T-56) : passé à la ligne, le bouton se
          collait sous le texte, à zéro pixel (vu au test humain, 10.14.1). */''}
@@ -5742,10 +5742,13 @@
     <div class="panel mt"><h2>La masse salariale de l'exercice ${info('pa.masse')}</h2>
       ${/* U-24 — un tableau de zéros n'apprend rien : sans bulletin sur l'exercice, on le dit. */''}
       ${!anneeEntiere.count ? `<div class="empty mini">Aucun bulletin sur l'exercice ${esc(s.annee)} : la masse salariale se calcule dès le premier.</div>` : `
+      ${/* « Versé » est un ÉTAT (10.12.0) : le Cabinet lit les bulletins, pas leur paiement — le net
+            reste au 425 tant que la banque ne l'a pas soldé. La masse dit donc ce que les bulletins
+            portent, jamais ce qui est sorti. */''}
       <table class="list compact"><tbody>
-        <tr><td>Brut versé</td><td class="r nw">${esc(money(anneeEntiere.brut))}</td></tr>
+        <tr><td>Salaires bruts</td><td class="r nw">${esc(money(anneeEntiere.brut))}</td></tr>
         <tr><td>Retenues salariales (CNSS, IRPP, CSS)</td><td class="r nw">${esc(money(KC.round3(anneeEntiere.cnssSalarie + anneeEntiere.irpp + anneeEntiere.css)))}</td></tr>
-        <tr><td>Net versé au personnel</td><td class="r nw">${esc(money(anneeEntiere.net))}</td></tr>
+        <tr><td>Net des bulletins</td><td class="r nw">${esc(money(anneeEntiere.net))}</td></tr>
         <tr><td>Charges patronales (CNSS, accident, TFP, FOPROLOS)</td><td class="r nw">${esc(money(anneeEntiere.chargesPatronales))}</td></tr>
         <tr class="dc-total"><td><b>Coût employeur</b></td><td class="r nw"><b>${esc(money(anneeEntiere.cout))}</b></td></tr>
       </tbody></table>
