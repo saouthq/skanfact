@@ -8518,6 +8518,18 @@ lots ; le détail de ce qui reste vit dans `A-FAIRE.md` § 0.
     premiers pas en attente ou pas. `decouvrirDabord` (les deux applications, même règle) : la
     découverte mène si l'exemple est chargé ou si aucun premier pas n'est prêt. Une règle posée sur
     une liste se cherche dans chaque écran qui CHOISIT dans cette liste.
+  - **Une date qui ÉCARTE doit écarter dans chaque lecteur.** Le début de mission décidait des mois
+    d'un client sur SkanFact (`dossierMonths`) et pas de ceux d'un client tenu au cabinet, que
+    `productionDuDossier` prend dans l'exercice du livre — janvier compris. Un cabinet qui reprend un
+    client en septembre voyait les déclarations de son prédécesseur en rouge, et la bulle du champ
+    promettait le contraire. Un mois d'avant la mission qui PORTE des écritures reste : c'est du
+    travail fait. Et la page qui montre le rouge dit le geste qui l'écarte (le bouton ouvre la fiche
+    le curseur dans la case) — une fonction à part, parce que la borne de `drawEcheances` (9.4.6)
+    l'a demandé : c'est la fonction qu'on sort, pas la borne qu'on relève.
+  - **Une bulle ne sait pas ce qui presse** : « Aucun n'est vert : rien ne presse » se lisait
+    au-dessus d'une échéance rouge à deux jours. L'absence d'un vert dit qu'aucun geste n'est choisi
+    pour toi, jamais que rien n'est urgent. Et « Ouvre ce qui est nommé » ne nomme rien : un lien se
+    dit par sa page.
 
 ## Pistes pour la suite (non demandées)
 

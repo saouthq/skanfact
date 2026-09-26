@@ -8846,6 +8846,26 @@
     typographie(view);
   }
 
+  // 26/09 — un client TENU AU CABINET sans début de mission se voit réclamer toute l'année, depuis
+  // janvier : un cabinet qui le reprend en septembre voyait en rouge les déclarations de son
+  // prédécesseur. Ce qui les écarte existe — le « Début de mission » de la fiche — et la page le dit,
+  // sous « Déjà passées », là où le rouge se lit, avec le bouton qui ouvre la fiche sur cette case.
+  function aideDebutDeMission(passees) {
+    const sansDebut = [...new Set(passees.flatMap(e => e.aSaisirIds || []))]
+      .map(id => (S.dossiers || []).find(d => d.id === id)).filter(d => d && !d.from);
+    return sansDebut.length ? `<div class="ctrl-geste small mb" id="ec-mission">
+        <span class="muted">Déjà déclarées par ton prédécesseur ? Le « Début de mission » de la fiche écarte d'ici les mois d'avant toi.</span>
+        ${sansDebut.slice(0, 3).map(d => `<button class="btn btn-sm" data-mission="${esc(d.id)}" aria-label="${esc('Renseigner le début de mission — ' + d.name)}">Début de mission — ${esc(d.name)}</button>`).join('')}</div>` : '';
+  }
+  function brancherAideDebutDeMission(view) {
+    $$('[data-mission]', view).forEach(b2 => {
+      b2.onclick = () => {
+        const d = (S.dossiers || []).find(x => x.id === b2.dataset.mission);
+        if (d) dossierForm(d, { focus: '#f-from' });   // l'enregistrement redessine la page
+      };
+    });
+  }
+
   function drawEcheances(view) {
     const liste = K.echeances(S, null, { employeurs: employeursConnus(), tenus: tenusConnus() });
     const prochaines = liste.filter(e => !e.passee);
@@ -8908,6 +8928,7 @@
     };
 
     const jours = K.deadlineSettings(S);
+    const aideMission = aideDebutDeMission(passees);
     view.innerHTML = `
       ${/* 10.12.0 (U-21, U-13) — ce qui vaut pour TOUTES les cartes se dit UNE fois, en tête : « Un
             pense-bête : SkanFact ne dépose rien à ta place » se répétait sous chacune, et le rappel
@@ -8922,7 +8943,7 @@
         ${prochaines.length ? `<div class="ech-list">${prochaines.map(carte).join('')}</div>`
           : '<div class="empty mini">Rien dans les trois prochains mois.</div>'}</div>
 
-      ${passees.length ? `<div class="panel"><h2>Déjà passées ${info('ec.passees')}</h2>
+      ${passees.length ? `<div class="panel"><h2>Déjà passées ${info('ec.passees')}</h2>${aideMission}
         <div class="ech-list">${passees.slice(0, 8).map(carte).join('')}</div></div>` : ''}`;
 
     // Le pointage : on écrit, puis on propose de défaire. Au moment où l'on comprend qu'on s'est
@@ -8961,6 +8982,7 @@
       b2.onclick = () => { location.hash = '#/dossier/' + encodeURIComponent(b2.dataset.saisirTenu) + '/comptabilite/saisie'; };
     });
     $$('[data-vers-production]', view).forEach(b2 => { b2.onclick = () => { location.hash = '#/production'; }; });
+    brancherAideDebutDeMission(view);
   }
 
   // ---------- écritures regroupées ----------

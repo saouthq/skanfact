@@ -1484,6 +1484,8 @@ t('10.14.1 : le haut d\'une page se dit tel qu\'il EST — le bouton vert nommé
   assert.ok(/Aucun n'est vert ici/.test(p2) && /plus bas/.test(p2) && /Enregistrer ma clé…/.test(p2), p2);
   const p3 = V.phraseDuHaut({});
   assert.ok(/Aucun n'est vert/.test(p3) && !/étape suivante est/.test(p3), p3);
+  // 26/09 — sans vert, la bulle ne sait pas si quelque chose presse : elle ne l'affirme pas.
+  assert.ok(!/rien ne presse/.test(p3), 'une page sans vert n\'est pas une page sans urgence : ' + p3);
   assert.ok(/&lt;b&gt;/.test(V.phraseDuHaut({ vertHaut: '<b>' })), 'un nom de bouton n\'est pas échappé');
   [p1, p2, p3].forEach(p => assert.ok(!/un seul est vert/.test(p), 'la promesse générale est revenue : ' + p));
   // Et la phrase est lue sur l'ÉCRAN : un faux en-tête, puis la zone des deux applications.

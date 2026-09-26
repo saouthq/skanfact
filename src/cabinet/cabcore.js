@@ -443,11 +443,18 @@
     if (tenu) {
       const dernier = addMonth(String(todayIso || today()).slice(0, 7), -1);   // le mois en cours n'est jamais dû
       const vus = new Set(liste.map(m => m.month));
+      // 26/09 — un mois AVANT le début de mission n'est pas à saisir ici : un client repris en
+      // septembre avait mai, juin et juillet « à saisir » en rouge dans les Échéances, alors que ces
+      // déclarations sont celles du prédécesseur — et la fiche promettait l'inverse (« Avant le début
+      // de mission : rien n'est réclamé »). Un mois de ce temps-là qui PORTE des écritures reste : c'est
+      // du travail fait, pas une réclamation.
+      const mission = dossier.from ? debutDeMission(dossier, todayIso) : '';
       exercices.forEach(ex => {
         const du = String((ex && ex.du) || '').slice(0, 7);
         const au = String((ex && ex.au) || '').slice(0, 7);
         if (!/^\d{4}-\d{2}$/.test(du) || !/^\d{4}-\d{2}$/.test(au)) return;
         monthsBetween(du, au < dernier ? au : dernier).forEach(m => {
+          if (mission && m < mission && !(Number((parMois[m] || {}).ecritures) > 0)) return;
           if (!vus.has(m)) { vus.add(m); liste.push({ month: m, label: monthLabel(m), pack: null, state: 'tenu' }); }
         });
       });

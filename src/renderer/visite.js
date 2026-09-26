@@ -2127,7 +2127,8 @@
       }
       // 4. un bouton de calendrier, un lien vers une page
       if (el.matches('.d-btn, [aria-label="Ouvrir le calendrier"]')) return { cle: 'cal', nom: 'Calendrier', texte: "Ouvre le calendrier pour choisir la date." };
-      if (el.matches('a[href^="#/"]')) return { cle: 'lien:' + (el.getAttribute('href') || '').split('/')[1], nom: lab, texte: "Ouvre ce qui est nommé." };
+      // 26/09 — « Ouvre ce qui est nommé » ne disait rien à un débutant : le lien NOMME sa page, la bulle aussi.
+      if (el.matches('a[href^="#/"]')) return { cle: 'lien:' + (el.getAttribute('href') || '').split('/')[1], nom: lab, texte: lab ? `Emmène à la page « ${lab} ».` : 'Emmène à la page qu\'il nomme.' };
       return null;
     };
   }
@@ -2157,7 +2158,9 @@
     const x = o || {};
     const vert = x.vertHaut ? ` Le bouton vert, <b>« ${h(x.vertHaut)} »</b>, est l'étape suivante : c'est le geste qu'on attend de toi ici.`
       : x.vertBas ? ` Aucun n'est vert ici : l'étape suivante est plus bas, en vert — <b>« ${h(x.vertBas)} »</b>.`
-      : ' Aucun n\'est vert : sur cette page, rien ne presse — chaque geste attend que tu en aies besoin.';
+      // 26/09 — « rien ne presse » se lisait au-dessus d'une TVA due dans deux jours, en rouge : l'absence
+      // d'un vert dit qu'aucun geste n'est choisi pour toi, jamais que rien n'est urgent.
+      : ' Aucun n\'est vert : aucun geste n\'est choisi pour toi ici — c\'est ce que la page te montre qui dit par où commencer.';
     return 'Le titre dit où tu es ; à droite, les gestes de la page.' + vert + (x.suite ? ' ' + x.suite : '');
   }
   function texteDuHaut(el, suite) {

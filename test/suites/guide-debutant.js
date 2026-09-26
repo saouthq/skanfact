@@ -392,4 +392,55 @@ t('10.14.1 : « Me guider » ne met pas la découverte devant un premier pas du 
   assert.strictEqual(entR({ dec, et: nonFaite, exemple: true, pas: { visite: {} } }), true);
   assert.strictEqual(entR({ dec, et: nonFaite, exemple: false, pas: null }), true);
 });
+
+t('10.14.1 : un lien d\'une phrase se dit par la page où il mène — jamais « ce qui est nommé »', () => {
+  // Les Échéances : « ils se règlent dans Réglages » — la bulle disait « Ouvre ce qui est nommé ».
+  const lien = (href, txt) => ({ id: '', dataset: {}, textContent: txt,
+    getAttribute: a => (a === 'href' ? href : null),
+    matches: s => String(s).split(',').map(x => x.trim()).some(x => x === 'a[href^="#/"]'),
+    classList: { contains: () => false }, closest: () => null, querySelector: () => null,
+    cloneNode: () => ({ querySelectorAll: () => [], textContent: txt }) });
+  const S = require('../../src/renderer/visites.js');
+  const a = CV.expliquer(lien('#/reglages', 'Réglages'), { route: () => 'echeances', G: { INFO: {} } });
+  const b = S.expliquer(lien('#/clients', 'Clients'), { route: () => 'dashboard', G: { INFO: {} } });
+  assert.ok(a && /« Réglages »/.test(a.texte) && !/ce qui est nommé/.test(a.texte), JSON.stringify(a));
+  assert.ok(b && /« Clients »/.test(b.texte), JSON.stringify(b));
+});
+
+t('10.14.1 : un client repris en cours d\'année ne se voit rien réclamer avant son début de mission', () => {
+  // Un cabinet qui reprend la Boulangerie en septembre voyait mai, juin et juillet « à saisir » en
+  // rouge sous « Déjà passées » : les déclarations de son prédécesseur. Le « Début de mission » de la
+  // fiche promettait l'inverse (« rien n'est réclamé »), et ne changeait rien aux Échéances.
+  const C = require('../../src/cabinet/cabcore.js');
+  const index = { exercices: [{ annee: 2026, du: '2026-01-01', au: '2026-12-31', production: {
+    '2026-03': { ecritures: 4, validees: 4, brouillards: 0 }
+  } }] };
+  const sans = { id: 'B', name: 'Boulangerie', matricule: 'B', manual: true, packs: [] };
+  const avec = { ...sans, from: '2026-08' };
+  const mois = d => C.productionDuDossier(d, index, '2026-09-26', 10).map(m => m.mois);
+  // Sans début de mission : tout l'exercice, de janvier à août.
+  assert.deepStrictEqual(mois(sans), ['2026-01', '2026-02', '2026-03', '2026-04', '2026-05', '2026-06', '2026-07', '2026-08']);
+  // Avec début de mission en août : août seulement — et mars, qui PORTE des écritures, reste.
+  assert.deepStrictEqual(mois(avec), ['2026-03', '2026-08'], 'les mois d\'avant la mission restent à saisir');
+  // Les Échéances lisent la même chose : la TVA de mai ne réclame plus la Boulangerie.
+  const tva = (d, lab) => C.echeances(C.migrate({ dossiers: [d] }), '2026-09-26', { avant: 5, apres: 1, tenus: { B: index } })
+    .find(e => e.label === lab);
+  const mai = tva(sans, 'TVA de mai 2026');
+  assert.ok(mai && mai.aSaisir.includes('Boulangerie'), 'sans début de mission, mai est bien à saisir : ' + JSON.stringify(mai));
+  const maiAvec = tva(avec, 'TVA de mai 2026');
+  assert.ok(!maiAvec || !maiAvec.aSaisir.includes('Boulangerie'), 'la TVA de mai réclame encore un client repris en août');
+  const aout = tva(avec, 'TVA d\'août 2026');
+  assert.ok(aout && aout.aSaisir.includes('Boulangerie'), 'août, lui, reste à saisir');
+});
+
+t('10.14.1 : « Déjà passées » dit comment écarter les mois du prédécesseur, et ouvre la fiche sur la case', () => {
+  const debut = cab.indexOf('function aideDebutDeMission(');
+  const zone = cab.slice(debut, cab.indexOf('// ---------- écritures regroupées', debut));
+  assert.ok(debut > 0 && zone.length > 500 && zone.length < 16000, 'tranche inattendue');
+  assert.ok(/const aideMission = aideDebutDeMission\(passees\);/.test(zone) && /brancherAideDebutDeMission\(view\);/.test(zone),
+    'la page ne pose ni ne branche plus l\'aide');
+  assert.ok(/filter\(d => d && !d\.from\)/.test(zone), 'l\'aide se montre même quand le début de mission est posé');
+  assert.ok(/<h2>Déjà passées \$\{info\('ec\.passees'\)\}<\/h2>\$\{aideMission\}/.test(zone), 'l\'aide ne vit plus sous « Déjà passées »');
+  assert.ok(/dossierForm\(d, \{ focus: '#f-from' \}\)/.test(zone), 'le bouton n\'ouvre pas la fiche sur « Début de mission »');
+});
 };

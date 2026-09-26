@@ -66,6 +66,14 @@ Publiée en **bêta** : elle touche au moteur comptable (retenue à la source, d
   premiers pas attend (tes clients, un premier livre, la copie de sécurité), c'est lui le prochain
   geste proposé, dans les deux applications. La découverte reste dans les grands départs, et elle
   revient en tête quand l'exemple est chargé ou quand tes premiers pas sont faits.
+- **Un client repris en cours d'année ne te réclame plus les déclarations de ton prédécesseur.** Un
+  client tenu au cabinet voyait tous les mois depuis janvier « à saisir », en rouge sous « Déjà
+  passées », même avec un début de mission en septembre. Le « Début de mission » de la fiche écarte
+  désormais ces mois des Échéances et de la Production (un mois d'avant que tu as saisi reste compté),
+  et « Déjà passées » te le dit, avec un bouton qui ouvre la fiche du client sur cette case.
+- **La visite d'une page sans bouton vert ne dit plus « rien ne presse »** — c'était écrit au-dessus
+  d'une TVA due dans deux jours. Et un lien dans une phrase se dit par la page où il mène (« Emmène à
+  la page « Réglages » ») au lieu de « Ouvre ce qui est nommé ».
 
 **Pour l'entreprise (SkanFact)**
 - **Un acompte demandé en montant fait ce montant**, timbre compris (500 DT demandés faisaient 501,002).
