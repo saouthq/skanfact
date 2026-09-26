@@ -289,8 +289,14 @@ et au moteur), puis en stable quand Skander valide.*
     puis un bien, fiche remplie au guide et plan relu, dont l'aperçu poussait « Ajouter » de 41 px
     (+ 5 preuves) ; puis l'inventaire, lignes tapées au guide, même aperçu qui poussait « Enregistrer »
     de 54 px (+ 5 preuves) ; puis la révision, du cycle à la question, qui sautait sa première étape sur
-    les comptes cachés du volet « hors cycle » et laissait une révision arrêtée sans vert (+ 5 preuves).
-  - **Cabinet, encore à jouer au guide** : clôture, liasse. Révision : une fois arrêtée, la ligne de la
+    les comptes cachés du volet « hors cycle » et laissait une révision arrêtée sans vert (+ 5 preuves) ; puis la clôture,
+    dont les contrôles « à voir » ne portaient aucun geste (+ 6 preuves) ; puis la liasse, dont le taux
+    se demandait par une consigne jamais affichée et dont la bulle réduite couvrait les boutons du
+    modèle (+ 8 preuves).
+  - **Cabinet, tout joué au guide.** À vérifier encore : « Me guider » marque « Clôturer un exercice —
+    Fait » après « Annuler » (marquage trop généreux ?) ; une étape « faire » n'a pas de « Précédent » ;
+    Guide-moi d'une visite en pause ne propose pas « Recommencer ». Les toasts de refus du modèle de
+    liasse ne montrent pas leur case (`refus()`). Révision : une fois arrêtée, la ligne de la
     période passe sur deux rangées (la date et l'auteur s'ajoutent) — sans conséquence sous le curseur
     (la fenêtre était ouverte), à resserrer un jour. Le nom de l'auteur, sans collaborateur déclaré, est
     celui de l'ordinateur (« vm » sur la machine de test). Petits : la bulle « Sa famille » n'éclaire que « Enfants à charge » ; « Ses comptes »

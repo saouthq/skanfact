@@ -219,7 +219,11 @@
   // Quand la personne ESSAIE (elle clique ce que la bulle lui montre) ou qu'une liste s'ouvre, la
   // bulle se range dans un coin, en petit, pour ne rien couvrir : le coin le plus proche du bas à
   // droite qui ne touche ni la liste ouverte, ni l'endroit du clic, ni la cible du geste attendu.
-  function placerMini(ecran, bulle, evites) {
+  // `essentiels` : ce qui ne se couvre JAMAIS, même quand tous les coins touchent une zone à éviter —
+  // les boutons d'une fenêtre ouverte. Une fenêtre qui prend tout l'écran rend les quatre coins
+  // « occupés » ; retomber alors sur le premier coin posait la bulle sur « Annuler » et
+  // « Enregistrer », c'est-à-dire sur le geste qu'elle demandait (10.14.1, le modèle de liasse).
+  function placerMini(ecran, bulle, evites, essentiels) {
     const W = ecran.w, H = ecran.h, bw = bulle.w, bh = bulle.h;
     const coins = [
       { x: W - MARGE - bw, y: H - MARGE - bh, cote: 'bas-droite' },
@@ -229,7 +233,11 @@
     ].map(c => ({ x: Math.round(Math.max(MARGE, c.x)), y: Math.round(Math.max(MARGE, c.y)), cote: c.cote }));
     for (const c of coins) {
       const r = { l: c.x, t: c.y, r: c.x + bw, b: c.y + bh };
-      if (!(evites || []).some(z => z && chevauche(r, z))) return c;
+      if (!(evites || []).concat(essentiels || []).some(z => z && chevauche(r, z))) return c;
+    }
+    for (const c of coins) {
+      const r = { l: c.x, t: c.y, r: c.x + bw, b: c.y + bh };
+      if (!(essentiels || []).some(z => z && chevauche(r, z))) return c;
     }
     return coins[0];
   }
@@ -1469,7 +1477,11 @@
       const evites = listes.map(x => rect(x, 8));
       if (cur.essai) evites.push({ l: cur.essai.x - 40, t: cur.essai.y - 40, r: cur.essai.x + 40, b: cur.essai.y + 40 });
       if (faire && r) evites.push(r);
-      pos = placerMini({ w: W, h: H }, { w: bw, h: bh }, evites);
+      // Les boutons d'une fenêtre ouverte ne se couvrent jamais : c'est par eux que la bulle réduite
+      // demande de la refermer (« La visite t'attend », « Une question s'est ouverte ») — posée
+      // dessus, elle cachait « Annuler » et « Enregistrer » du modèle de liasse.
+      const essentiels = [...document.querySelectorAll('.modal-actions')].filter(visible).map(m => rect(m, 8));
+      pos = placerMini({ w: W, h: H }, { w: bw, h: bh }, evites, essentiels);
     } else {
       const champ = el && /^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName) || (el && el.classList && el.classList.contains('combo-btn'));
       pos = placerPres(cur.perdu ? null : r, fenEl ? rect(fenEl, 0) : null, { w: bw, h: bh }, { w: W, h: H }, { pref: e.cote, reserveDessous: faire && champ });

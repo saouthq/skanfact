@@ -4326,6 +4326,15 @@
     dotations: 'Les dotations aux amortissements', amortissements: 'Le tableau d\'amortissement et le compte 28',
     equilibre: 'L\'équilibre de la balance'
   };
+  // 10.14.1 (joué au guide) — un contrôle « à voir » disait quoi faire (« Valide-les », « Prépare-les
+  // dans l'onglet Déclaration ») sans porter le geste : un débutant ne sait pas où est l'écran nommé.
+  // Chaque contrôle mène à l'écran où il se règle (7.15.0 : ce qu'un écran nomme, il l'ouvre).
+  const GESTE_CONTROLE = {
+    brouillard: ['saisie', 'Voir le brouillard', 'sa-brouillard'], attente: ['grand-livre', 'Ouvrir le grand livre'],
+    tva: ['declaration', 'Préparer la déclaration'], declarations: ['declaration', 'Ouvrir la déclaration'],
+    tiers: ['balance', 'Ouvrir la balance'], dotations: ['immobilisations', 'Passer les dotations'],
+    amortissements: ['immobilisations', 'Ouvrir les biens'], equilibre: ['balance', 'Ouvrir la balance']
+  };
 
   function vueCloture(dossier) {
     const s = livresState;
@@ -4432,7 +4441,7 @@
     `<table class="list compact"><tbody>${(d.controles || []).map(c => `<tr>
         <td class="nw">${c.ok ? '<span class="badge b-paid">ok</span>' : '<span class="badge b-late">à voir</span>'}</td>
         <td>${esc(LIBELLE_CONTROLE[c.id] || c.id)}</td>
-        <td class="small muted">${esc(c.detail || 'rien à signaler')}</td></tr>`).join('')}</tbody></table>`)}
+        <td class="small muted">${!c.ok && GESTE_CONTROLE[c.id] ? `<div class="ctrl-geste"><span>${esc(c.detail || '')}</span><button type="button" class="btn btn-sm" data-ctrl="${esc(c.id)}">${esc(GESTE_CONTROLE[c.id][1])}</button></div>` : esc(c.detail || 'rien à signaler')}</td></tr>`).join('')}</tbody></table>`)}
     ${section('etats', 'cl-sec-etats', `<h2>Les états financiers</h2>${info('cl.etats')}`,
     `résultat ${money0(e.resultat)} · ${e.equilibre ? 'actif = passif' : 'actif et passif diffèrent'}`, `
       <p class="small muted">Déduits de la <b>balance</b>, rubrique par rubrique — la présentation d'ensemble
@@ -4545,6 +4554,13 @@
     }; });
     const rep = $('#cl-reprise', el);
     if (rep) rep.onclick = () => repriseForm(root, dossier);
+    // Le geste amène à l'écran, et au PANNEAU quand il en nomme un (7.18.0) : le brouillard vit sous
+    // la grille de saisie, hors de l'écran à l'arrivée.
+    $$('[data-ctrl]', el).forEach(b => { b.onclick = () => {
+      const [onglet, , panneau] = GESTE_CONTROLE[b.dataset.ctrl];
+      if (panneau) pageFocus = panneau;
+      allerSousOnglet(root, dossier, onglet);
+    }; });
     const vli = $('#cl-liasse', el);
     if (vli) vli.onclick = () => allerSousOnglet(root, dossier, 'liasse');
     const fus = $('#cl-fusion', el);
@@ -4749,7 +4765,7 @@
       </div>
       <h3 class="eyebrow mt">Retraitements</h3>
       ${L.retraitements.length
-    ? `<table class="list compact"><tbody>${L.retraitements.map(r => `<tr>
+    ? `<table class="list compact" id="li-rt-table"><tbody>${L.retraitements.map(r => `<tr>
           <td class="nw small">${esc(nature(r.nature))}</td><td>${esc(r.libelle)}</td>
           <td class="r nw">${money0(r.montant)}</td>
           <td class="row-actions"><button type="button" class="btn btn-sm" data-rtx="${esc(r.id)}">Retirer la ligne</button></td></tr>`).join('')}</tbody></table>`
@@ -7113,7 +7129,7 @@
             repliables, le choix retenu. Un comptable qui les connaît n'a pas à les relire à chaque
             pièce ; un débutant les trouve à l'endroit du geste. */''}
       <details class="sa-touches" id="sa-touches"${prefs.get('saTouches', true) === false ? '' : ' open'}><summary>Les touches de la grille</summary>${aideTouches()}</details>
-      <h2 class="mt">Le brouillard ${info('sa.brouillard')}</h2>
+      <h2 class="mt" id="sa-brouillard">Le brouillard ${info('sa.brouillard')}</h2>
       ${/* Les lots proposés sont ceux qui EXISTENT dans le brouillard (T-29) : « Valider tout le
             journal VT » quand le seul brouillard est en BQ ouvrait une fenêtre pour dire qu'il n'y
             avait rien à faire — un bouton vif qui ne peut rien valider de ce qui est affiché. Le

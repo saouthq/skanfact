@@ -790,7 +790,9 @@ t('T-49 : le geste qui allonge la grille vit sous la grille, avant la barre qui 
   const iGrille = app.indexOf('<tbody id="sa-lignes">');
   const iAjout = app.indexOf('<div class="sa-ajout">');
   const iPied = app.indexOf('<div class="sa-pied">');
-  const iBrouillard = app.indexOf('<h2 class="mt">Le brouillard');
+  // Le titre du brouillard, quels que soient ses attributs (il porte un id depuis la 10.14.1 : les
+  // contrôles de clôture y descendent).
+  const iBrouillard = app.search(/<h2 class="mt"[^>]*>Le brouillard/);
   [iGrille, iAjout, iPied, iBrouillard].forEach(i => assert.ok(i > 0, 'un repère du gabarit de saisie a disparu'));
   assert.ok(iGrille < iAjout, '« + Ajouter une ligne » doit suivre la grille qu\'il allonge');
   assert.ok(iAjout < iPied, 'il doit précéder la barre qui CLÔT la pièce, sinon on le cherche au-dessus d\'un bouton qui enregistre');

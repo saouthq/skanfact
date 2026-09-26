@@ -96,6 +96,21 @@ Publiée en **bêta** : elle touche au moteur comptable (retenue à la source, d
   cycle, ouvrir le menu d'un compte, le signer, écrire une note de revue, poser une question au client et
   arrêter la révision, chaque geste prouvé par ce qu'il enregistre. La visite ne vise plus jamais une
   ligne d'un volet replié, sur aucun écran. Une note vide montre sa case au lieu d'un message seul.
+- **« Clôturer un exercice » se fait au guide, et chaque contrôle « à voir » porte son geste** : la
+  visite n'était qu'un regard, et une ligne comme « 2 mois sans déclaration préparée… Prépare-les dans
+  l'onglet Déclaration » ne menait nulle part. Chaque contrôle en défaut porte maintenant son bouton
+  (« Voir le brouillard », « Préparer la déclaration », « Passer les dotations », « Ouvrir la balance »…),
+  qui ouvre l'écran où il se règle — et descend au brouillard quand c'est lui. La visite fait ouvrir la
+  question de clôture, la fait relire, et laisse la clôture elle-même en choix : « Annuler » ou « Passer
+  cette étape » ne changent rien.
+- **« Établir la liasse » se fait au guide** : l'étape du taux d'impôt donnait sa consigne dans une
+  ligne que la visite n'affiche que pour un geste — on ne savait pas qu'il fallait taper. Elle le dit
+  maintenant dans son texte (aucun taux n'est proposé : il dépend du droit). Le retraitement ajouté se
+  montre dans son tableau avant de passer au modèle de rubriques, et la fenêtre du modèle, ouverte en
+  dernier, a son étape qui dit comment la refermer sans rien changer.
+- **La bulle réduite ne couvre plus les boutons d'une fenêtre** : devant une fenêtre qui prend tout
+  l'écran (le modèle de liasse), « La visite t'attend » se posait sur « Annuler » et « Enregistrer ».
+  Elle cherche d'abord un coin qui ne couvre rien, puis un coin qui laisse au moins les boutons libres.
 - **Une révision arrêtée garde son étape suivante** : une question pas encore partie laissait l'écran
   sans aucun bouton vert une fois la révision arrêtée ; « Envoyer les questions au client… » reste vert.
 - **Le plan d'un bien ne pousse plus « Ajouter » sous le curseur** : l'aperçu passait d'une ligne (ce

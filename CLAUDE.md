@@ -8609,6 +8609,23 @@ lots ; le détail de ce qui reste vit dans `A-FAIRE.md` § 0.
   fermé (et `checkVisibility()` quand elle existe), et une condition d'étape passe par `Visite.resoudre`,
   jamais par un `querySelector` nu. Et **l'étape suivante ne s'éteint pas avec l'état qui la précède** :
   une révision arrêtée perdait tout vert alors qu'une question attendait son envoi (U-11).
+- **Un contrôle qui dit « fais ceci dans l'onglet X » porte le bouton de X** (7.15.0, re-trouvée dans la
+  clôture du Cabinet) : un débutant ne sait pas où est l'onglet nommé. `GESTE_CONTROLE` donne à chacun
+  des contrôles son écran — et son panneau quand il en a un (`pageFocus`, le brouillard sous la
+  grille) ; un test lit les contrôles que le MOTEUR produit et exige un libellé et un geste pour chacun.
+  Un geste irréversible guidé (la clôture) se conduit jusqu'à la question, et la question reste un
+  choix : l'étape de confirmation est facultative et dit comment NE PAS le faire.
+- **Une consigne qu'on n'affiche pas n'existe pas** : le moteur ne montre `action` que sur une étape
+  `faire`. Sur une étape à regarder (le taux d'impôt de la liasse, qui ne se propose pas : il dépend
+  du droit), elle était écrite et jamais lue — on ne savait pas qu'il fallait taper. La consigne va
+  dans le texte, et un test interdit `action` sur une étape qui n'est pas un geste, dans les deux
+  applications. **Un geste fait se montre** : la ligne de retraitement ajoutée passait sous la visite
+  qui repartait en haut de la page ; l'étape d'après l'éclaire, et son texte vaut aussi quand
+  l'ajout a été passé.
+- **Une bulle réduite laisse libres les boutons d'une fenêtre** (`placerMini`, `essentiels`) : devant
+  une fenêtre qui prend tout l'écran, aucun coin n'évite la fenêtre, et le premier coin tombait sur
+  « Annuler ». On cherche un coin qui ne couvre rien, puis un coin qui ne couvre pas les
+  `.modal-actions` — ce qu'on doit pouvoir cliquer passe avant ce qu'on doit pouvoir lire.
 
 ## Pistes pour la suite (non demandées)
 

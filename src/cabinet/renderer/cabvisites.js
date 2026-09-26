@@ -398,6 +398,7 @@
   // Réglages, et l'onglet Comptabilité ne disait rien de ses boutons (vu à la souris).
   b('[data-somm]', 'Descend au panneau nommé, dans cet onglet.', { nom: 'Le sommaire', cle: 'somm' });
   b('[data-cl-sec]', 'Descend à la partie nommée de cet écran.', { nom: 'Le sommaire', cle: 'cl-sec' });
+  b('[data-ctrl]', 'Ouvre l\'écran où ce contrôle se règle : la saisie, la déclaration, les biens ou la balance.', { nom: 'Régler ce point', cle: 'cl-ctrl' });
   b('#rec-go', 'Enregistre ta clé de secours : sans elle, si cet ordinateur disparaît, plus aucun paquet déjà reçu ne pourra être rouvert.');
   b('[data-touche-reset]', 'Remet la touche que le Cabinet propose au départ pour ce geste.', { nom: 'Remettre d\'origine', cle: 'touche-reset' });
   b('#sr-save', 'Enregistre la grille : les touches, le journal proposé à l\'ouverture et la façon de taper la date. La saisie les suit aussitôt.');
@@ -1311,9 +1312,14 @@
       ]
     });
 
+    // 10.14.1 — suivie au guide, la clôture n'était qu'un regard : « ils nomment ce qui manque »,
+    // puis le bouton. Un débutant ne savait ni régler un contrôle « à voir » (aucun geste sur la
+    // ligne), ni ce que la question récapitule. Chaque contrôle porte désormais son bouton, la
+    // question se lit, et la clôture elle-même reste un CHOIX : l'étape est facultative et dit
+    // quand ne pas cliquer.
+    const fenetreCloture = () => !!corr('#modal-root #ok') && /Clôturer l.exercice/.test((corr('#modal-root h2') || {}).textContent || '');
     visite({
-      id: 'cloturer', theme: 'declarer', type: 'faire', duree: '2 min', pages: ['compta'],
-      sansGeste: 'Clôturer fige un exercice : un geste irréversible ne se fait jamais par réflexe, dans une visite.',
+      id: 'cloturer', theme: 'declarer', type: 'faire', duree: '3 min', pages: ['compta'],
       page: dans('livre', 'comptabilite/exercice'),
       titre: 'Clôturer un exercice',
       resume: 'Les contrôles, la clôture, et le fichier qui part chez le client.',
@@ -1321,12 +1327,19 @@
       si: () => !!ctx.dossier('livre'), manque: DOSSIER_MANQUE.livre,
       suite: ['page-compta-exercice', 'page-compta-liasse'],
       bravo: 'Tu connais la clôture',
-      conclusion: 'La clôture est définitive et tracée. Une réouverture exige un motif : c\'est la seule trace qui explique pourquoi un chiffre a changé.',
+      conclusion: 'Une clôture est tracée : elle se rouvre, mais avec un motif — c\'est la seule trace qui explique pourquoi un chiffre a changé. Une fois close, « Le dossier pour le client… » écrit le fichier qui lui porte ses à-nouveaux.',
       etapes: [
-        { page: dans('livre', 'comptabilite/exercice'), cible: ['#c-livres .panel'], cote: 'dessus', titre: 'Les contrôles',
-          texte: 'Ils nomment ce qui manque — un brouillard non validé, une banque non rapprochée, des dotations non passées — <b>sans jamais bloquer</b>.' },
-        { page: dans('livre', 'comptabilite/exercice'), cible: ['#cl-cloturer', '#c-livres .panel'], cote: 'dessus', titre: 'Clôturer',
-          texte: 'Un récapitulatif d\'abord, puis la clôture. Le fichier de clôture part chez le client : <b>ses à-nouveaux et les tiens</b> sont alors les mêmes.' }
+        { page: dans('livre', 'comptabilite/exercice'), cible: ['#cl-sec-controles', '#c-livres .panel'], cote: 'dessus', titre: 'Les contrôles',
+          texte: 'Avant de clôturer, les contrôles : un brouillard non validé, une déclaration pas préparée, des dotations pas passées… Une ligne <b>« à voir »</b> porte son bouton, qui ouvre l\'écran où elle se règle. Ils <b>ne bloquent jamais</b> : un exercice clos avec des manques signalés vaut mieux qu\'un exercice jamais clos.' },
+        { page: dans('livre', 'comptabilite/exercice'), cible: '#cl-cloturer', cote: 'dessous', faire: 'clic', fait: fenetreCloture,
+          titre: 'Clôturer', texte: 'La clôture ne part pas au premier clic : une question récapitule d\'abord ce qui va se passer.',
+          action: 'Clique sur <b>« Clôturer l\'exercice… »</b>.', essai: { clic: true } },
+        { page: dans('livre', 'comptabilite/exercice'), cible: '#modal-root .modal', cote: 'droite', si: fenetreCloture, titre: 'Relis la question',
+          texte: 'Elle dit si l\'exercice court encore (une clôture avant le 31 décembre refusera les écritures d\'ici là), et redit les contrôles « à voir ». Après la clôture, plus aucune écriture de l\'exercice ne bouge.' },
+        { page: dans('livre', 'comptabilite/exercice'), cible: '#modal-root #ok', cote: 'dessus', faire: 'clic', facultatif: true, si: fenetreCloture, fait: () => aucuneFenetre(),
+          titre: 'Clôturer, ou pas encore',
+          texte: 'Clique seulement si l\'exercice est vraiment fini. Sinon, <b>« Annuler »</b> ou <b>« Passer cette étape »</b> : rien ne change, et tu reviendras ici en fin d\'année.',
+          action: 'Clique sur <b>« Clôturer »</b> — ou passe cette étape.', essai: { clic: true } }
       ]
     });
 
@@ -1992,8 +2005,13 @@
       ]
     });
 
+    // 10.14.1 — suivie au guide, la liasse n'était que trois regards : un débutant ne savait ni où
+    // taper le taux, ni comment ajouter un retraitement. Chaque case se fait maintenant au guide ; le
+    // taux reste FACULTATIF et sans valeur proposée (aucun taux d'impôt n'est écrit dans le Cabinet,
+    // 10.0.0), et le retraitement aussi — tout dossier n'en a pas.
+    const fenetreRt = () => !!corr('#modal-root #rt-montant');
     visite({
-      id: 'liasse', theme: 'declarer', type: 'faire', duree: '2 min',
+      id: 'liasse', theme: 'declarer', type: 'faire', duree: '3 min',
       page: dans('livre', 'comptabilite/liasse'),
       titre: 'Établir la liasse',
       resume: 'Le bilan et le résultat rubrique par rubrique, les retraitements, et l\'impôt.',
@@ -2003,13 +2021,43 @@
       bravo: 'Tu sais établir la liasse',
       conclusion: 'Aucun taux d\'impôt n\'est écrit dans le Cabinet : tant qu\'il n\'est pas saisi, l\'impôt vaut « — » avec sa raison. Ce qu\'aucune rubrique ne capte est montré, jamais perdu. À VÉRIFIER avec ton modèle.',
       etapes: [
-        { page: dans('livre', 'comptabilite/liasse'), cible: ['#li-rt-add', '#c-livres .panel'], cote: 'dessous', titre: 'Les retraitements',
-          texte: 'Réintégrations et déductions : un montant toujours positif, dont la NATURE dit le sens.' },
-        { page: dans('livre', 'comptabilite/liasse'), cible: ['#li-taux', '#c-livres .panel'], cote: 'dessous', titre: 'Le taux d\'impôt',
-          texte: 'Celui de ton client, selon sa forme et son secteur. Vide, l\'impôt n\'est pas calculé.' },
-        { page: dans('livre', 'comptabilite/liasse'), cible: '#li-modele', cote: 'dessous', faire: 'clic', titre: 'Le modèle de rubriques',
+        { page: dans('livre', 'comptabilite/liasse'), cible: ['#c-livres [data-rub]', '#c-livres .panel'], cote: 'dessous', titre: 'Les rubriques',
+          texte: 'Le bilan et le résultat, rubrique par rubrique, déduits de la balance. Un montant <b>souligné</b> s\'ouvre sur les comptes qui l\'ont rempli : c\'est là qu\'on vérifie une rubrique qui étonne.' },
+        // Une étape « regarder », pas un geste : un geste attendu porte son essai, et aucun taux
+        // ne se propose ici — le taux dépend du droit (règle 10.0.0). On tape, puis Suivant.
+        { page: dans('livre', 'comptabilite/liasse'), cible: '#li-taux', cote: 'dessous', titre: 'Le taux d\'impôt',
+          texte: 'Celui de ton client, selon sa forme juridique et son secteur — <b>à vérifier</b> dans la loi de finances de l\'année. Vide, l\'impôt n\'est pas calculé et la ligne dit pourquoi.<br><br>Tape-le dans la case éclairée, en pour cent sans le signe %, puis <b>Suivant</b>. Tu ne le connais pas encore ? <b>Suivant</b> directement : tu le poseras plus tard.' },
+        { page: dans('livre', 'comptabilite/liasse'), cible: '#li-taux-ok', cote: 'dessous', faire: 'clic', facultatif: true,
+          si: () => !!((corr('#li-taux') || {}).value || '').trim(), titre: 'Enregistrer le taux',
+          texte: 'L\'impôt se calcule sur le résultat fiscal, retraitements compris.',
+          action: 'Clique sur <b>« Enregistrer le taux »</b>.', essai: { clic: true } },
+        { page: dans('livre', 'comptabilite/liasse'), cible: '#li-rt-add', cote: 'dessus', faire: 'clic', facultatif: true, fait: fenetreRt,
+          titre: 'Un retraitement', texte: 'Ce qui se réintègre (une amende non déductible) ou se déduit du résultat comptable pour faire le résultat fiscal. Rien n\'est proposé : chaque ligne dépend du droit.',
+          action: 'Clique sur <b>« Ajouter un retraitement… »</b> — ou passe cette étape s\'il n\'y en a pas.', essai: { clic: true } },
+        { page: dans('livre', 'comptabilite/liasse'), cible: '#modal-root #rt-nature', cote: 'droite', si: fenetreRt, titre: 'Sa nature',
+          texte: 'Réintégration ou déduction : c\'est la nature qui dit le sens. La phrase sous la fenêtre explique celle qui est choisie.' },
+        { page: dans('livre', 'comptabilite/liasse'), cible: '#modal-root #rt-montant', cote: 'droite', faire: 'valeur', si: fenetreRt, titre: 'Son montant',
+          texte: 'Toujours <b>positif</b> : une réintégration de −200 serait une déduction déguisée que personne ne relirait comme telle.',
+          action: 'Tape le montant.', essai: { taper: '200' } },
+        { page: dans('livre', 'comptabilite/liasse'), cible: '#modal-root #rt-libelle', cote: 'droite', faire: 'valeur', si: fenetreRt, titre: 'Ce que c\'est',
+          texte: 'Ce qu\'un contrôleur lira : dis ce qui est réintégré ou déduit, et pourquoi.',
+          action: 'Écris le libellé.', essai: { taper: 'Amende fiscale non déductible' } },
+        { page: dans('livre', 'comptabilite/liasse'), cible: '#modal-root #rt-ok', cote: 'dessus', faire: 'clic', si: fenetreRt, fait: () => aucuneFenetre(),
+          titre: 'Ajouter', texte: 'La ligne rejoint les retraitements, et le résultat fiscal se refait. « Retirer la ligne » la reprend.',
+          action: 'Clique sur <b>« Ajouter »</b>.', essai: { clic: true } },
+        // Le geste fait, on MONTRE ce qu'il a produit : sans cette étape, la visite partait en haut
+        // de la page et la ligne ajoutée n'était vue de personne. Le texte vaut aussi quand l'ajout a
+        // été passé et que des lignes existaient déjà : « La ligne est prise » aurait parlé d'un geste
+        // qui n'a pas eu lieu.
+        { page: dans('livre', 'comptabilite/liasse'), cible: '#li-rt-table', cote: 'dessous', si: () => !!corr('#li-rt-table'),
+          titre: 'Les retraitements posés', texte: 'Chaque ligne entre dans les réintégrations ou les déductions, et le résultat fiscal se refait juste au-dessus. « Retirer la ligne » la reprend si tu t\'es trompé.' },
+        { page: dans('livre', 'comptabilite/liasse'), cible: '#li-modele', cote: 'dessous', faire: 'clic', facultatif: true, titre: 'Le modèle de rubriques',
           texte: 'Chaque rubrique dit quels comptes elle prend, et dans quel sens. <b>Ta table remplace la nôtre</b>, entièrement.',
-          action: 'Ouvre le modèle : tu peux le refermer sans rien changer.', essai: { clic: true } }
+          action: 'Ouvre le modèle : tu peux le refermer sans rien changer.', essai: { clic: true } },
+        // Un geste qui OUVRE une fenêtre en dernier a son étape : sans elle, la carte de fin la
+        // recouvrait (10.14.0).
+        { page: dans('livre', 'comptabilite/liasse'), cible: '#modal-root .modal', cote: 'droite', si: () => !!corr('#modal-root #sr-liasse'),
+          titre: 'Le modèle, rubrique par rubrique', texte: 'Chaque ligne porte un code, un libellé, les préfixes de comptes qu\'elle prend et le sens de solde. Pour refermer sans rien changer : « Annuler ». Pour repartir des rubriques proposées : « Reprendre le modèle proposé ».' }
       ]
     });
 

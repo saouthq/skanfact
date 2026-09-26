@@ -858,4 +858,63 @@ t('10.14.1 : « Réviser un dossier » se fait au guide, du cycle à la question
   assert.strictEqual(jouer({ aEnvoyer: false, d: { faite: true } }), '');
   assert.strictEqual(jouer({ aEnvoyer: true, d: { faite: false } }), 'envoyer');
 });
+// Suivie au guide, la clôture n'était qu'un regard, et un contrôle « à voir » disait quoi faire
+// (« Prépare-les dans l'onglet Déclaration ») sans porter le geste. Chaque contrôle mène à l'écran où
+// il se règle ; la visite fait ouvrir la question, la fait relire, et laisse la clôture en CHOIX.
+t('10.14.1 : « Clôturer un exercice » se fait au guide, et chaque contrôle « à voir » porte son geste', () => {
+  const V2 = require('../../src/renderer/visite.js');
+  const ctx = { state: () => ({ cabinet: {}, dossiers: [] }), dossier: () => 'D', estExemple: () => false, cleSecours: () => null, copieExterne: () => false, Visite: V2 };
+  const v = CV.parcours(ctx).find(x => x.id === 'cloturer');
+  assert.ok(v && v.type === 'faire' && !v.sansGeste, 'la clôture n\'est plus un parcours guidé');
+  const ouvre = v.etapes.find(e => e.cible === '#cl-cloturer');
+  assert.ok(ouvre && ouvre.faire === 'clic' && typeof ouvre.fait === 'function', '« Clôturer l\'exercice… » avance sur le clic seul');
+  const conf = v.etapes.find(e => e.cible === '#modal-root #ok');
+  assert.ok(conf && conf.facultatif && typeof conf.fait === 'function', 'la confirmation de la clôture est imposée, ou avance sur le clic seul');
+  assert.ok(/Annuler/.test(conf.texte) && /Passer cette étape/.test(conf.texte), 'la dernière étape ne dit pas comment ne PAS clôturer');
+  // Chaque contrôle que le moteur produit a un libellé et un geste, vers un écran qui existe.
+  const app = lireSource('src', 'cabinet', 'renderer', 'app.js');
+  const table = nom => { const i = app.indexOf('const ' + nom + ' = {'); return require('vm').runInNewContext('(' + app.slice(i + ('const ' + nom + ' = ').length, app.indexOf('};', i) + 1) + ')'); };
+  const LIB = table('LIBELLE_CONTROLE'), GESTE = table('GESTE_CONTROLE');
+  const i0 = app.indexOf('const GROUPES_COMPTA = [');
+  const onglets = [...app.slice(i0, app.indexOf('];', i0)).matchAll(/'([a-z-]+)'/g)].map(m => m[1]);
+  const compta = lireSource('src', 'renderer', 'compta.js');
+  const f = compta.indexOf('function controlesCloture(');
+  const ids = [...compta.slice(f, compta.indexOf('\n  }\n', f)).matchAll(/id: '([a-z]+)'/g)].map(m => m[1]);
+  assert.ok(ids.length >= 8, 'tranche des contrôles suspecte : ' + ids);
+  ids.forEach(id => {
+    assert.ok(LIB[id], 'le contrôle « ' + id + ' » n\'a pas de libellé : l\'écran affiche son identifiant');
+    assert.ok(GESTE[id], 'le contrôle « ' + id + ' » n\'a pas de geste : l\'écran le nomme sans l\'ouvrir');
+    assert.ok(onglets.includes(GESTE[id][0]), 'le geste du contrôle « ' + id + ' » mène à un écran qui n\'existe pas : ' + GESTE[id][0]);
+  });
+  // La ligne « à voir » POSE son bouton, et le bouton est branché.
+  assert.ok(/!c\.ok && GESTE_CONTROLE\[c\.id\] \? [^:]*data-ctrl=/.test(app), 'une ligne « à voir » ne porte plus son bouton');
+  assert.ok(/\$\$\('\[data-ctrl\]', el\)\.forEach\(b => \{ b\.onclick/.test(app), 'le bouton d\'un contrôle n\'est plus branché');
+  // Un panneau nommé par le geste existe à l'arrivée.
+  Object.values(GESTE).filter(g => g[2]).forEach(g => assert.ok(app.includes('id="' + g[2] + '"'), 'le geste vise un panneau qui n\'existe pas : ' + g[2]));
+});
+// Suivie au guide, la liasse demandait un taux par une consigne que le moteur n'affichait pas (une
+// étape « regarder » ne montre pas son action), ajoutait un retraitement sans jamais le montrer, et
+// finissait sur le modèle de rubriques recouvert par la carte de fin.
+t('10.14.1 : « Établir la liasse » se fait au guide, taux, retraitement et modèle', () => {
+  const V2 = require('../../src/renderer/visite.js');
+  const ctx = { state: () => ({ cabinet: {}, dossiers: [] }), dossier: () => 'D', estExemple: () => false, cleSecours: () => null, copieExterne: () => false, Visite: V2 };
+  const v = CV.parcours(ctx).find(x => x.id === 'liasse');
+  assert.ok(v && v.type === 'faire', 'la liasse n\'est plus un parcours guidé');
+  const et = v.etapes, idx = c => et.findIndex(e => (Array.isArray(e.cible) ? e.cible : [e.cible]).includes(c));
+  // Le taux : aucune valeur proposée (le taux dépend du droit), et la consigne vit dans le TEXTE.
+  const taux = et[idx('#li-taux')];
+  assert.ok(taux && !taux.faire && !taux.essai, 'le taux d\'impôt est devenu un geste avec un essai : un taux serait proposé');
+  assert.ok(/Tape-le/.test(taux.texte) && /Suivant/.test(taux.texte), 'l\'étape du taux ne dit plus comment le poser');
+  const ok = et[idx('#li-taux-ok')];
+  assert.ok(ok && typeof ok.si === 'function', '« Enregistrer le taux » est demandé même quand la case est vide');
+  // Le retraitement ajouté se MONTRE, après « Ajouter », et la table porte l'identifiant visé.
+  const ajout = idx('#modal-root #rt-ok'), table = idx('#li-rt-table');
+  assert.ok(ajout >= 0 && table > ajout, 'la visite ne montre plus la ligne ajoutée');
+  assert.ok(typeof et[table].si === 'function', 'la table des retraitements est visée même quand il n\'y en a aucune');
+  const app = lireSource('src', 'cabinet', 'renderer', 'app.js');
+  assert.ok(app.includes('id="li-rt-table"'), 'la table des retraitements ne porte plus l\'identifiant que la visite vise');
+  // Le dernier geste ouvre le modèle : l'étape d'après le montre, et dit comment refermer.
+  const der = et[et.length - 1];
+  assert.ok(idx('#li-modele') === et.length - 2 && der.si && /Annuler/.test(der.texte), 'la fenêtre du modèle, ouverte en dernier, n\'a plus son étape');
+});
 };

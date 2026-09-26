@@ -108,6 +108,12 @@ t('10.14.0 : chaque geste attendu porte l\'essai qui le rejoue, et chaque visite
   const sansEssai = [];
   visites.forEach(v => v.etapes.forEach((e, i) => { if (V.estFaire(e) && !e.essai) sansEssai.push(v.id + '#' + i); }));
   assert.deepStrictEqual(sansEssai, [], 'des gestes sans essai : ' + sansEssai.join(', '));
+  // 10.14.1 — une CONSIGNE (`action`) ne s'affiche que sur une étape où l'on fait : le moteur la pose
+  // dans le bloc « À toi » (`faire && e.action`). Écrite sur une étape à regarder, elle ne se lit
+  // nulle part — « Tape le taux… » ne s'affichait pas, et le débutant ne savait pas quoi faire.
+  const consignesMortes = [];
+  visites.forEach(v => v.etapes.forEach((e, i) => { if (e.action && !V.estFaire(e)) consignesMortes.push(v.id + '#' + i); }));
+  assert.deepStrictEqual(consignesMortes, [], 'des consignes jamais affichées (une étape à regarder dit tout dans son texte) : ' + consignesMortes.join(', '));
   // Une visite qui peut ne rien avoir à montrer (`si`) porte sa raison (`manque`) : « Me guider »
   // éteint son bouton EN DISANT pourquoi (règle 9.4.5), et la palette ne la propose pas.
   const muettes = visites.filter(v => typeof v.si === 'function' && !(v.manque && v.manque.texte)).map(v => v.id);
@@ -1131,6 +1137,24 @@ t('10.14.1 : la bulle EN RETRAIT se range dans un coin qui ne couvre ni la liste
   assert.ok(/gauche/.test(p2.cote), 'les données doivent discriminer : il ne reste qu\'un coin de gauche');
   // Un petit écran reste un écran : jamais dehors.
   assert.ok(V.placerMini({ w: 360, h: 300 }, bulle, [liste]).x >= 12, 'sur un petit écran, la bulle sort par la gauche');
+});
+
+t('10.14.1 : la bulle en retrait ne couvre jamais les boutons d\'une fenêtre, même quand la fenêtre prend tout l\'écran', () => {
+  // Le modèle de liasse : une fenêtre de 1240 × 760, sa barre « Annuler / Enregistrer » en bas, et
+  // « La visite t'attend » qui demande de la refermer. Les quatre coins touchent la fenêtre : la
+  // bulle retombait sur le premier — en bas à droite, sur les boutons.
+  const ecran = { w: 1440, h: 873 }, bulle = { w: 330, h: 115 };
+  const rect = p => ({ l: p.x, t: p.y, r: p.x + bulle.w, b: p.y + bulle.h });
+  const fenetre = { l: 92, t: 78, r: 1350, b: 860 };
+  const boutons = { l: 120, t: 778, r: 1305, b: 829 };
+  const sans = V.placerMini(ecran, bulle, [fenetre]);
+  assert.ok(V.chevauche(rect(sans), boutons), 'les données doivent discriminer : sans la priorité, le coin retenu couvre les boutons');
+  const p = V.placerMini(ecran, bulle, [fenetre], [boutons]);
+  assert.ok(!V.chevauche(rect(p), boutons), 'la bulle couvre les boutons de la fenêtre : ' + JSON.stringify(p));
+  // Les boutons comptent aussi quand rien d'autre n'est à éviter : le premier coin qui les laisse libres.
+  assert.strictEqual(V.placerMini(ecran, bulle, [], [boutons]).cote, 'haut-droite');
+  // Et sans boutons, rien ne change : en bas à droite, comme avant.
+  assert.strictEqual(V.placerMini(ecran, bulle, []).cote, 'bas-droite');
 });
 
 t('10.14.1 : un bouton cité « entre guillemets » se reconnaît sans ce qui le décore', () => {

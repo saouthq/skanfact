@@ -118,6 +118,12 @@ t('10.14.0 Cabinet : chaque geste attendu porte son essai ; une visite qui peut 
   const sansEssai = [];
   visites.forEach(v => v.etapes.forEach((e, i) => { if (V.estFaire(e) && !e.essai) sansEssai.push(v.id + '#' + i); }));
   assert.deepStrictEqual(sansEssai, [], 'des gestes sans essai : ' + sansEssai.join(', '));
+  // 10.14.1 — une CONSIGNE (`action`) ne s'affiche que sur une étape où l'on fait : le moteur la pose
+  // dans le bloc « À toi » (`faire && e.action`). Écrite sur une étape à regarder, elle ne se lit
+  // nulle part — « Tape le taux… » ne s'affichait pas, et le débutant ne savait pas quoi faire.
+  const consignesMortes = [];
+  visites.forEach(v => v.etapes.forEach((e, i) => { if (e.action && !V.estFaire(e)) consignesMortes.push(v.id + '#' + i); }));
+  assert.deepStrictEqual(consignesMortes, [], 'des consignes jamais affichées (une étape à regarder dit tout dans son texte) : ' + consignesMortes.join(', '));
   const muettes = visites.filter(v => typeof v.si === 'function' && !(v.manque && v.manque.texte)).map(v => v.id);
   assert.deepStrictEqual(muettes, [], 'des visites qui peuvent se taire sans dire pourquoi : ' + muettes.join(', '));
   const vides = visites.filter(v => typeof v.si === 'function' && !v.si()).map(v => v.id);
