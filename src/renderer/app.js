@@ -6680,8 +6680,8 @@
         return [
           { icon: 'ouvrir', label: 'Ouvrir la facture', hint: 'Ses lignes, ses paiements, ses relances', run: () => navigate('#/doc/' + id) },
           { sep: true },
-          { icon: 'cloche', label: 'Relancer par email', hint: `Ton de niveau ${x.level} — ${C.REMINDER_LABELS[x.level]}`, run: () => sendReminder(x) },
-          { icon: 'telephone', label: 'Noter un appel téléphonique', hint: 'Ce que le client a répondu, et quand rappeler', run: () => phoneReminderForm(x, draw) },
+          { icon: 'cloche', cle: 'relancer-mail', label: 'Relancer par email', hint: `Ton de niveau ${x.level} — ${C.REMINDER_LABELS[x.level]}`, run: () => sendReminder(x) },
+          { icon: 'telephone', cle: 'relancer-appel', label: 'Noter un appel téléphonique', hint: 'Ce que le client a répondu, et quand rappeler', run: () => phoneReminderForm(x, draw) },
           { sep: true },
           { icon: 'argent', label: 'Paiement reçu', hint: `Reste ${C.money(x.remaining, docCur(x.doc))}`, run: () => paymentForm(x.doc, draw) },
           { icon: 'horloge', label: x.snoozed ? 'Changer la date de report' : 'Ne pas relancer avant…', hint: 'La facture sort de la liste jusqu\'à cette date', run: () => snoozeForm(x, draw) },
@@ -15003,7 +15003,9 @@
   const visitesPoser = modif => { const e = visitesEtat(); modif(e); prefs.set(VISITES_PREF, e); };
   let VISITES = null;
   const visites = () => VISITES || (VISITES = SkanVisites.parcours({
-    data: () => data, premier: premierObjet, estDemo: () => C.estDemo(data), editeur: () => !!licence.editeur, Visite, G
+    data: () => data, premier: premierObjet, estDemo: () => C.estDemo(data), editeur: () => !!licence.editeur, Visite, G,
+    // Les données sont-elles déjà chiffrées ? La visite du mot de passe n'a alors plus rien à faire.
+    chiffre: () => !!security.encrypted
   }));
   const visiteParId = id => visites().find(v => v.id === id) || null;
   // Les visites qui concernent CE poste : celle des licences n'existe que chez l'éditeur.
@@ -15046,6 +15048,14 @@
       case 'factureBrouillon': return lien('#/doc/', recent(factures.filter(d => d.status === 'brouillon')));
       case 'factureOuverte': return lien('#/doc/', recent(factures.filter(d => ['retard', 'partielle', 'envoyée'].includes(st(d)))));
       case 'factureEmise': return lien('#/doc/', recent(factures.filter(d => d.status !== 'brouillon' && st(d) !== 'annulée')));
+      // Ce qu'une visite « faire » doit trouver pour avoir un sens (10.14.1) : une facture en retard à
+      // relancer, un achat qui attend son règlement, un mois terminé à clôturer. Sans eux, la visite
+      // dit POURQUOI elle ne peut pas se lancer, au lieu de finir sur un geste impossible.
+      case 'factureRetard': return lien('#/doc/', recent(factures.filter(d => st(d) === 'retard')));
+      case 'achatDu': return lien('#/achat/', recent((data.purchases || []).filter(p => {
+        try { return C.purchaseBalance(p, co, data).remaining > 0.0005; } catch (_) { return false; }
+      })));
+      case 'moisACloturer': return C.closableMonths(data, C.today()).length ? '#/compta' : null;
       case 'client': { const n = parCle(docs, 'clientId'); return lien('#/client/', plusRempli(data.clients || [], c => n.get(c.id) || 0)); }
       case 'contrat': return lien('#/contrat/', (data.recurring || []).find(r => r.active !== false) || (data.recurring || [])[0]);
       case 'fournisseur': { const n = parCle(data.purchases || [], 'supplierId'); return lien('#/fournisseur/', plusRempli(data.suppliers || [], s => n.get(s.id) || 0)); }

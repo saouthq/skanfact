@@ -607,7 +607,11 @@ t('10.14.0 : la visite « Envoyer » connaît les deux questions qui peuvent pr�
   const S = require('../../src/renderer/visites.js');
   const v = S.parcours({ data: () => ({ clients: [], documents: [], catalog: [] }), premier: () => null, estDemo: () => false, editeur: () => false, Visite: V, G: { INFO: {} } }).find(x => x.id === 'envoyer');
   const cibles = v.etapes.map(e => e.cible);
-  const iEx = cibles.indexOf('#demo-q'), iMsg = cibles.indexOf('#msg-choix'), iRelis = v.etapes.findIndex(e => /Relis avant/.test(e.titre));
+  // La question de l'exemple se reconnaît à ce qui la fait paraître (`si`), pas à sa cible : depuis la
+  // 10.14.1 la cible est le bouton que la bulle demande de cliquer (« Continuer quand même », #b).
+  const iEx = v.etapes.findIndex(e => typeof e.si === 'function' && /#demo-q/.test(String(e.si)));
+  const iMsg = cibles.indexOf('#msg-choix'), iRelis = v.etapes.findIndex(e => /Relis avant/.test(e.titre));
+  assert.strictEqual(iEx > 0 && v.etapes[iEx].cible, '#modal-root .modal #b', 'l\'anneau de la question de l\'exemple n\'est plus sur « Continuer quand même »');
   assert.ok(iEx > 0 && iMsg > iEx && iRelis > iMsg, 'l\'ordre des étapes ne suit plus celui des questions : ' + cibles.join(' → '));
   [v.etapes[iEx], v.etapes[iMsg]].forEach(e => assert.ok(typeof e.si === 'function' && typeof e.fait === 'function', 'une question qui n\'est pas toujours posée doit être une étape conditionnelle : ' + e.cible));
   // Le marqueur que l'étape attend est bien posé sur la question de l'exemple.

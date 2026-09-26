@@ -449,6 +449,14 @@ input:where(:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=r
 input:hover, select:hover, textarea:hover { border-color: #d5dbe3; }
 input:focus, select:focus, textarea:focus { outline: none; border-color: var(--primary); background: #fff; box-shadow: 0 0 0 3px rgba(15,157,143,.15); }
 textarea { resize: vertical; min-height: 68px; }
+/* Deux champs posés l'un sous l'autre dans une fenêtre, sans grille : sans écart, le libellé du second
+   se collait à la case du premier (« Rôle » sous « Nom », 0 px — vu à la souris, 10.14.1). Les marges
+   se fondent avec celle de ce qui précède : sous un titre, rien ne s'ajoute. */
+.modal > * + .field { margin-block-start: 14px; }
+/* Une valeur courte se lit en gras dans sa case (le libellé est gris, la valeur ressort) ; un TEXTE
+   long — le message d'une relance, des notes, des conditions — se lit mal en gras sur dix lignes.
+   Une zone de texte d'un formulaire reprend la graisse de la lecture (10.14.1, vu dans la relance). */
+.field textarea { font-weight: 400; line-height: 1.5; }
 input.num { text-align: end; font-variant-numeric: tabular-nums; }
 /* Un sélecteur de couleur étiré sur toute la largeur du champ ressemble à un trait de séparation,
    pas à un bouton qu'on clique. Il garde la taille d'une pastille. (Il était étiré sur 537 px tant
@@ -2153,6 +2161,10 @@ body.dark .scroll-x table.list:has(td.row-actions) thead th:last-child { box-sha
   text-decoration-color: color-mix(in srgb, var(--th) 70%, transparent); }
 .visite-bulle .vb-nomme:hover, .visite-bulle .vb-nomme:focus-visible { background: var(--th-bg); outline: none;
   text-decoration-color: var(--th); }
+/* On revient au geste qui ouvrait ce que l'étape montrait : la bulle dit pourquoi, une fois, au-dessus
+   du texte de l'étape. */
+.visite-bulle .vb-note { margin-block-end: 8px; padding: 6px 10px; border-radius: 8px; font-size: 12.5px; line-height: 1.45;
+  color: var(--text); background: var(--th-bg); border-inline-start: 3px solid var(--th); }
 /* « Tu peux cliquer ce qui est éclairé » : une fois par visite, en petit. */
 .visite-bulle .vb-essai-note { display: flex; gap: 8px; align-items: flex-start; margin-block-start: 12px; font-size: 12.5px; line-height: 1.45; color: var(--muted); }
 .visite-bulle .vb-essai-note svg { flex: none; width: 16px; height: 16px; margin-block-start: 1px; fill: none; stroke: color-mix(in srgb, var(--th) 85%, var(--text));
@@ -2183,8 +2195,13 @@ body.dark .scroll-x table.list:has(td.row-actions) thead th:last-child { box-sha
 @keyframes vb-reflet { to { background-position: -200% 0; } }
 
 /* Le pied : précédent, le compte, suivant — toujours à la même place. */
-.visite-bulle .vb-pied { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 14px 18px 16px; }
+.visite-bulle .vb-pied { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 14px 18px 16px; flex-wrap: wrap; }
 .visite-bulle .vb-pied button { white-space: nowrap; }
+/* Un bouton qui nomme une étape (« Revenir à « Déclarer un collaborateur » ») peut être plus long que
+   la place qui reste à côté du lien : il passe à la ligne, calé à droite, au lieu de sortir de la
+   bulle (vu à la souris, 10.14.1). Plus large que la bulle entière, son texte se replie. */
+.visite-bulle .vb-pied .vb-suiv { margin-inline-start: auto; max-width: 100%; }
+.visite-bulle .vb-pied .vb-suiv[data-v="regeste"] { white-space: normal; text-align: start; }
 /* Un espaceur : sans « Précédent », il garde le compteur au milieu et « Suivant » au bout. */
 .visite-bulle .vb-vide { flex: none; inline-size: 0; }
 .visite-bulle .vb-compte { font-size: 12px; font-weight: 700; color: var(--muted); font-variant-numeric: tabular-nums; letter-spacing: .3px; }

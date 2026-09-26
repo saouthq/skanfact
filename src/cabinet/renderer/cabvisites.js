@@ -481,6 +481,17 @@
     const aucuneFenetre = () => !document.querySelector('#modal-root .modal');
     const reels = () => (S().dossiers || []).filter(d => !d.demo);
     const paquets = () => reels().reduce((n, d) => n + (d.packs || []).length, 0);
+    // Ce que chaque geste laisse dans l'ÉTAT (10.14.1) : une fin qui affirme un fait le prouve par
+    // l'un d'eux — « Annuler » ferme la fenêtre aussi. Un test (Visite.finsHonnetes) le tient.
+    const derniereRelance = () => (S().dossiers || []).reduce((m, d) => Math.max(m, ...((d.relances || []).map(r => Number(r.at) || 0)), 0), 0);
+    const collaborateursActifs = () => (S().collaborateurs || []).filter(c => c && c.actif !== false).length;
+    const nomEnregistre = () => {
+      const n = String((S().cabinet || {}).name || '').trim();
+      const el = document.querySelector('#c-name');
+      return !!n && (!el || String(el.value || '').trim() === n);
+    };
+    const nbEcritures = () => (typeof ctx.ecritures === 'function' ? ctx.ecritures() : 0);
+    let ecrituresAvant = -1;
     // La fonction PORTE son onglet (`barre`, `cle`) : un test confronte chaque cible de panneau à
     // l'onglet où l'application le range — la visite des régimes du Cabinet ouvrait « Comptabilité »
     // pour un panneau rangé dans « Mon cabinet », et se perdait (vu à la souris, 10.14.1).
@@ -659,6 +670,9 @@
       resume: 'Le nom, l\'adresse et le téléphone qui signent tes relances et le fichier de tes clients.',
       mots: ['nom', 'cabinet', 'coordonnees', 'email', 'telephone'],
       suite: ['ajouter-client', 'appairage'],
+      // Nommé quand le nom est ENREGISTRÉ — celui qu'on voit dans la case, pas un nom tapé et laissé là.
+      preuve: nomEnregistre,
+      echec: 'Le nom du cabinet n\'est pas enregistré : sans « Enregistrer mon cabinet », il ne signe ni tes relances ni ton fichier d\'appairage.',
       bravo: 'Ton cabinet a son nom',
       conclusion: 'Il signe désormais tes relances et le fichier d\'appairage que tes clients importent.',
       etapes: [
@@ -666,8 +680,8 @@
           titre: 'Le nom du cabinet', texte: 'Tel qu\'il doit apparaître en bas de tes relances.', action: 'Tape le nom de ton cabinet.', essai: { taper: 'Cabinet Essai' } },
         { page: '#/reglages', cible: '#c-email', cote: 'droite', titre: 'Son adresse', facultatif: true,
           texte: 'Tes clients répondent à cette adresse ; elle entre dans le fichier d\'appairage.' },
-        { page: '#/reglages', cible: '#c-save', cote: 'dessus', faire: 'clic',
-          titre: 'Enregistrer', texte: 'Une modification ne compte qu\'une fois enregistrée.', action: 'Clique sur <b>« Enregistrer mon cabinet »</b>.', essai: { clic: true } }
+        { page: '#/reglages', cible: '#c-save', cote: 'dessus', faire: 'clic', fait: nomEnregistre,
+          titre: 'Enregistrer', texte: 'Tant que ce n\'est pas enregistré, rien n\'a changé : le nom, l\'adresse et le téléphone signent tes relances et entrent dans le fichier que tes clients importent.', action: 'Clique sur <b>« Enregistrer mon cabinet »</b>.', essai: { clic: true } }
       ]
     });
 
@@ -702,6 +716,9 @@
       suite: ['cle-secours', 'recevoir-paquet'],
       si: () => !!String((S().cabinet || {}).name || '').trim(),
       manque: { texte: 'Il faut d\'abord nommer ton cabinet : le nom entre dans le fichier.', visite: 'nommer-cabinet' },
+      mesure: () => String((S().cabinet || {}).pairingExportedAt || ''),
+      preuve: avant => String((S().cabinet || {}).pairingExportedAt || '') !== avant,
+      echec: 'Le fichier n\'a pas été enregistré : le choix de l\'endroit a peut-être été annulé.',
       bravo: 'Le fichier est prêt',
       conclusion: 'Joins le fichier au message avant de l\'envoyer : il ne contient rien de secret. S\'ils te lisent au téléphone l\'empreinte qu\'ils voient, et qu\'elle correspond, c\'est bien à toi qu\'ils envoient.',
       etapes: [
@@ -723,6 +740,8 @@
       resume: 'Le fichier qui rouvre tes paquets si cet ordinateur disparaît.',
       mots: ['cle', 'secours', 'perdre', 'recuperer', 'ordinateur', 'securite'],
       suite: ['copie-externe', 'changer-ordinateur'],
+      preuve: () => ctx.cleSecours() === true,
+      echec: 'Ta clé de secours n\'est pas enregistrée — c\'est le choix de l\'endroit, au bout de la fenêtre, qui l\'écrit. Sans elle, perdre cet ordinateur rendrait illisibles les paquets déjà reçus.',
       bravo: 'Ta clé de secours est enregistrée',
       conclusion: 'Range-la ailleurs que sur cet ordinateur — une clé USB, un coffre, un autre poste — avec son mot de passe noté à part.',
       etapes: [
@@ -739,6 +758,8 @@
       resume: 'Une copie automatique hors de cet ordinateur, à chaque enregistrement.',
       mots: ['copie', 'externe', 'usb', 'icloud', 'onedrive', 'sauvegarde', 'abri'],
       suite: ['sauvegardes', 'cle-secours'],
+      preuve: () => !!ctx.copieExterne(),
+      echec: 'Aucun dossier de copie n\'est choisi : le choix a peut-être été annulé. Tes données ne vivent encore que sur cet ordinateur.',
       bravo: 'Ton cabinet est à l\'abri',
       conclusion: 'La base, les livres, les sauvegardes et les paquets y sont recopiés à chaque enregistrement.',
       etapes: [
@@ -756,6 +777,8 @@
       resume: 'Le fichier du mois qu\'un client t\'envoie depuis SkanFact : vérifié, rangé, prêt à lire.',
       mots: ['paquet', 'skanpack', 'importer', 'recevoir', 'mail', 'glisser'],
       suite: ['page-dossier-paquets', 'page-compta-journal'],
+      mesure: () => paquets(), preuve: n0 => paquets() > n0,
+      echec: 'Aucun paquet n\'est importé — c\'est le choix d\'un paquet (un fichier .skanpack) qui l\'importe. S\'il a été refusé, la fenêtre qui l\'a refusé disait pourquoi.',
       bravo: 'Le paquet est rangé',
       conclusion: 'Il est vérifié pièce par pièce, rangé dans le dossier du client, et ses écritures sont prêtes pour son livre.',
       etapes: [
@@ -774,6 +797,11 @@
       mots: ['saisir', 'saisie', 'ecriture', 'piece', 'clavier', 'grille', 'brouillard'],
       si: () => !!ctx.dossier('hors'), manque: DOSSIER_MANQUE.hors,
       suite: ['page-compta-saisie', 'page-compta-journal'],
+      // Une écriture de plus dans le livre OUVERT, comptée à l'étape « Enregistrer » : à l'entrée de la
+      // visite, le livre du dossier n'est peut-être pas encore lu (10.14.1).
+      mesure: () => { ecrituresAvant = -1; return null; },
+      preuve: () => ecrituresAvant >= 0 && nbEcritures() > ecrituresAvant,
+      echec: 'La pièce n\'est pas enregistrée — c\'est « Enregistrer en brouillard » qui la range. Il s\'éteint tant qu\'elle ne tombe pas juste, et dit pourquoi juste au-dessus de lui.',
       bravo: 'Ta pièce est enregistrée',
       conclusion: 'Elle est en brouillard : elle se corrige encore. Tu la valideras seule, ou par lot avec les autres — elle recevra alors son numéro.',
       etapes: [
@@ -786,7 +814,8 @@
         { page: dans('hors', 'comptabilite/saisie'), cible: ['#sa-lignes', '#c-livres .panel'], cote: 'dessus', titre: 'Les lignes',
           texte: 'Un compte (tape ses premiers chiffres), un montant au débit ou au crédit. <b>Tab sur la dernière ligne solde la pièce</b> : le Cabinet pose l\'écart dans la bonne colonne.' },
         { page: dans('hors', 'comptabilite/saisie'), cible: '#sa-ok', cote: 'dessus', faire: 'clic',
-          titre: 'Enregistrer en brouillard', texte: 'Le bouton reste éteint tant que la pièce ne tombe pas juste — et il dit pourquoi.', action: 'Clique sur <b>« Enregistrer en brouillard »</b>.', essai: { clic: true } }
+          avant: () => { ecrituresAvant = nbEcritures(); }, fait: () => ecrituresAvant >= 0 && nbEcritures() > ecrituresAvant,
+          titre: 'Enregistrer en brouillard', texte: 'Le bouton reste éteint tant que la pièce ne tombe pas juste — et il dit pourquoi, juste au-dessus de lui. En brouillard, la pièce se corrige encore : elle n\'a pas de numéro.', action: 'Clique sur <b>« Enregistrer en brouillard »</b>.', essai: { clic: true } }
       ]
     });
 
@@ -795,14 +824,23 @@
       titre: 'Relancer un client',
       resume: 'Le mail qui réclame les mois manquants, tout prêt.',
       mots: ['relancer', 'relance', 'retard', 'mail', 'manquant'],
-      bravo: 'Ta relance est prête',
-      conclusion: 'Le mail s\'ouvre dans ta messagerie : tu le relis et tu l\'envoies. La relance est notée dans l\'historique du client.',
+      // Une relance NOTÉE : la visite finissait sur le bouton « Écrire », facultatif, et disait « Ta
+      // relance est prête » d'un mail que personne n'avait ouvert (10.14.1).
+      mesure: () => derniereRelance(), but: t0 => derniereRelance() > t0 && aucuneFenetre(),
+      echec: 'Aucune relance n\'est notée — c\'est « Ouvrir dans ma messagerie » qui la note sur le dossier.',
+      bravo: 'Ta relance est notée',
+      conclusion: 'Le mail s\'est ouvert dans ta messagerie : relis-le et envoie-le — le Cabinet ne peut pas le faire à ta place. La relance est notée dans l\'historique du client, avec les mois qu\'elle réclamait.',
       suite: ['page-relances'],
       etapes: [
         { page: '#/relances', cible: ['#view table.list', '#view .panel'], cote: 'dessus', titre: 'Qui te doit un mois',
           texte: 'Chaque client qui ne t\'a pas envoyé un mois terminé, ou seulement du provisoire. Le mois en cours n\'est jamais réclamé.' },
-        { page: '#/relances', cible: '#view [data-rel]', cote: 'gauche', faire: 'clic', facultatif: true,
-          titre: 'Écrire', texte: 'Le mail nomme les mois qui manquent — l\'intervalle, au-delà de trois.', action: 'Clique sur <b>« Écrire »</b> au bout d\'une ligne.', essai: { clic: true } }
+        { page: '#/relances', cible: '#view [data-rel]', cote: 'gauche', faire: 'clic', fait: () => !!document.querySelector('#modal-root #r-body'),
+          titre: 'Écrire', texte: 'Le mail nomme les mois qui manquent — l\'intervalle, au-delà de trois — et il est signé du nom de ton cabinet.', action: 'Clique sur <b>« Écrire »</b> au bout d\'une ligne.', essai: { clic: true } },
+        { cible: '#modal-root .modal', cote: 'gauche', titre: 'Relis avant d\'envoyer',
+          texte: '<b>Destinataire</b> : l\'adresse de la fiche (corrige-la ici, elle se retiendra). <b>Objet</b> et <b>message</b> se changent librement. <b>Copier</b> met le texte dans le presse-papiers, <b>WhatsApp</b> l\'envoie par là quand le client a un numéro.' },
+        { cible: '#modal-root .modal #ok', cote: 'dessus', faire: 'clic',
+          titre: 'Ouvrir dans ta messagerie', texte: 'Ta messagerie s\'ouvre avec le mail tout prêt, et la relance se note dans l\'historique du client.',
+          action: 'Clique sur <b>« Ouvrir dans ma messagerie »</b>.', fait: () => aucuneFenetre(), essai: { clic: true } }
       ]
     });
 
@@ -955,13 +993,23 @@
       resume: 'Tes collaborateurs, leur rôle, et le cabinet sur plusieurs postes.',
       mots: ['equipe', 'collaborateur', 'role', 'plusieurs', 'poste', 'saisisseur', 'superviseur'],
       suite: ['licence', 'page-production'],
-      bravo: 'Ton équipe peut travailler',
-      conclusion: 'Chaque écriture validée porte le nom de qui l\'a validée. Un saisisseur saisit et ne valide pas ; aucune lecture n\'est jamais fermée.',
+      // Un collaborateur de plus : le geste était facultatif, et la fin disait « Ton équipe peut
+      // travailler » d'une équipe que personne n'avait déclarée (10.14.1).
+      mesure: () => collaborateursActifs(), but: n0 => collaborateursActifs() > n0 && aucuneFenetre(),
+      echec: 'Personne n\'est déclaré — c\'est « Ajouter », dans la fenêtre, qui déclare un collaborateur.',
+      bravo: 'Ton équipe est déclarée',
+      conclusion: 'Chaque écriture validée porte le nom de qui l\'a validée. Un saisisseur saisit et ne valide pas ; aucune lecture n\'est jamais fermée. Sur un autre poste, la liste « Je suis », dans le même panneau, dit qui est assis devant.',
       etapes: [
         { page: '#/reglages', avant: onglet('#set-tabs', 'cabinet'), cible: '#pan-equipe', cote: 'dessus', titre: 'L\'équipe',
-          texte: 'Tant que personne n\'est déclaré, <b>rien n\'est restreint</b>. Le premier collaborateur déclaré devient l\'identité de ce poste.' },
-        { page: '#/reglages', cible: '#eq-add', cote: 'dessus', faire: 'clic', facultatif: true,
-          titre: 'Déclarer un collaborateur', texte: 'Son nom et son rôle : saisie, validation, supervision.', action: 'Clique sur <b>« Ajouter un collaborateur… »</b>.', essai: { clic: true } }
+          texte: 'Tant que personne n\'est déclaré, <b>rien n\'est restreint</b> : un cabinet d\'une personne n\'a personne à qui donner un droit. Le premier collaborateur déclaré devient l\'identité de ce poste.' },
+        { page: '#/reglages', cible: '#eq-add', cote: 'dessus', faire: 'clic', fait: () => !!document.querySelector('#modal-root #eq-nom'),
+          titre: 'Déclarer un collaborateur', texte: 'Commence par toi : tes écritures validées porteront ton nom.', action: 'Clique sur <b>« Ajouter un collaborateur… »</b>.', essai: { clic: true } },
+        { cible: '#modal-root #eq-nom', cote: 'droite', faire: 'valeur', bouton: 'Suivant',
+          titre: 'Son nom', texte: 'Tel qu\'il apparaîtra sur les écritures qu\'il valide, et dans la piste d\'audit.', action: 'Tape son nom.', essai: { taper: 'Amine Ben Salah' } },
+        { cible: '#modal-root #eq-role', cote: 'droite', titre: 'Son rôle',
+          texte: '<b>Saisie</b> : saisir et corriger, pas valider. <b>Validation</b> : valider aussi. <b>Supervision</b> : tout, la clôture et l\'équipe comprises. La phrase sous la liste dit ce que le rôle ouvre.' },
+        { cible: '#modal-root #eq-ok', cote: 'dessus', faire: 'clic',
+          titre: 'Ajouter', texte: 'Il fait partie du cabinet dès maintenant.', action: 'Clique sur <b>« Ajouter »</b>.', fait: () => aucuneFenetre(), essai: { clic: true } }
       ]
     });
 
@@ -972,7 +1020,7 @@
       resume: 'Le dossier où tu enregistres les pièces jointes : le Cabinet y regarde tout seul.',
       mots: ['boite', 'reception', 'dossier', 'surveiller', 'paquets', 'mail'],
       suite: ['recevoir-paquet'],
-      bravo: 'Ta boîte de réception est posée',
+      bravo: 'Tu sais où poser ta boîte de réception',
       conclusion: 'À chaque retour sur la fenêtre, le Cabinet regarde ce dossier et te propose les paquets arrivés. Il n\'importe jamais tout seul.',
       etapes: [
         { page: '#/reglages', avant: onglet('#set-tabs', 'donnees'), cible: '#pan-inbox', cote: 'dessus', titre: 'La boîte de réception',
@@ -1431,12 +1479,16 @@
       resume: 'Les touches, le journal proposé, la date : ce qui s\'apprend par les doigts se règle.',
       mots: ['touches', 'clavier', 'grille', 'saisie', 'raccourci', 'journal', 'reglage'],
       suite: ['saisir-piece', 'guide-saisie'],
+      // Réglée quand elle est ENREGISTRÉE : l'enregistrement date le réglage (`regleLe`, 10.14.0).
+      mesure: () => String(((S().settings || {}).saisie || {}).regleLe || ''),
+      preuve: avant => String(((S().settings || {}).saisie || {}).regleLe || '') !== avant,
+      echec: 'La grille n\'a pas été enregistrée : sans « Enregistrer la grille de saisie », elle garde ses touches d\'avant.',
       bravo: 'Ta grille est réglée',
       conclusion: 'Une touche se règle en appuyant dessus, pas en l\'écrivant. Échap rend la main.',
       etapes: [
         { page: '#/reglages', avant: onglet('#set-tabs', 'compta'), cible: '#pan-saisie', cote: 'dessus', titre: 'La grille',
           texte: 'Champ suivant, ligne suivante, solder, recopier la ligne du dessus, enregistrer et valider : <b>chaque touche se choisit</b>, comme dans ton logiciel d\'avant.' },
-        { page: '#/reglages', cible: '#sr-save', cote: 'dessus', faire: 'clic', facultatif: true,
+        { page: '#/reglages', cible: '#sr-save', cote: 'dessus', faire: 'clic',
           titre: 'Enregistrer', texte: 'La grille suit ces touches dans tous les dossiers.',
           action: 'Clique sur <b>« Enregistrer la grille de saisie »</b>.', essai: { clic: true } }
       ]
@@ -1480,7 +1532,7 @@
       resume: 'Tes cycles, tes rattachements de comptes, et ton questionnaire de fin d\'exercice.',
       mots: ['methode', 'revision', 'cycles', 'questionnaire', 'fin exercice'],
       suite: ['reviser'],
-      bravo: 'Ta méthode est écrite',
+      bravo: 'Tu sais où écrire ta méthode',
       conclusion: 'Le questionnaire part vide : ta méthode t\'appartient. Ta table des cycles remplace les sept proposés, entièrement — jamais un mélange.',
       etapes: [
         { page: '#/reglages', avant: onglet('#set-tabs', 'compta'), cible: '#pan-questionnaire', cote: 'dessus', titre: 'La méthode',
@@ -1496,7 +1548,7 @@
       resume: 'Un compte du client vers le tien, à l\'import comme à l\'export.',
       mots: ['correspondance', 'compte', 'plan comptable', 'traduire', 'import', 'export'],
       suite: ['recevoir-paquet', 'exporter-ecritures'],
-      bravo: 'Ta correspondance est posée',
+      bravo: 'Tu sais traduire les comptes',
       conclusion: 'La correspondance la plus précise gagne (411001 avant 411). Elle traduit à l\'import et à l\'export, jamais en réécrivant une écriture validée.',
       etapes: [
         { page: '#/reglages', avant: onglet('#set-tabs', 'compta'), cible: '#pan-comptes', cote: 'dessus', titre: 'La correspondance',
@@ -1528,7 +1580,7 @@
       resume: 'Clair, sombre, ou comme ton ordinateur.',
       mots: ['apparence', 'theme', 'sombre', 'clair', 'nuit', 'couleur'],
       suite: ['mises-a-jour'],
-      bravo: 'Ton apparence est choisie',
+      bravo: 'Tu sais choisir ton apparence',
       conclusion: 'Elle s\'applique tout de suite, avant d\'être enregistrée : on choisit une apparence en la voyant.',
       etapes: [
         { page: '#/reglages', avant: onglet('#set-tabs', 'app'), cible: '#pan-theme', cote: 'dessous', titre: 'L\'apparence',

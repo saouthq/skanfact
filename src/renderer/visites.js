@@ -777,6 +777,18 @@
     // et une fin qui félicite une fenêtre fermée sans rien enregistrer dit le contraire du vrai.
     const paiements = () => (data().documents || []).reduce((n, d) => n + ((d && d.payments) || []).length, 0);
     const marque = () => ['logo', 'stampImage', 'accentColor', 'primaryColor'].map(k => String(((data().company || {})[k]) || ''));
+    // Ce que chaque geste laisse dans les DONNÉES (10.14.1) : la fin d'une visite se juge là, jamais
+    // sur une fenêtre fermée — « Annuler » la ferme aussi. Chaque visite dont la fin affirme un fait
+    // (« Ta facture est émise ») le prouve par l'un d'eux ; un test le tient.
+    const nbType = type => (data().documents || []).filter(d => d && d.type === type).length;
+    const emises = type => (data().documents || []).filter(d => d && d.type === type && d.status && d.status !== 'brouillon').length;
+    const envois = () => (data().documents || []).reduce((n, d) => n + ((d && d.emails) || []).length, 0);
+    const relancesNotees = () => (data().documents || []).reduce((n, d) => n + ((d && d.reminders) || []).length, 0);
+    const reglements = () => (data().purchases || []).reduce((n, x) => n + ((x && x.payments) || []).length, 0);
+    const bulletins = () => (data().payslips || []).length;
+    // Les Paramètres sont enregistrés quand leur barre « Modifications non enregistrées » a disparu.
+    const parametresEnregistres = () => { const b = $('#save-bar'); return !(b && !b.hidden); };
+    const ficheComplete = () => { const c = data().company || {}; return ['name', 'matricule', 'address'].every(k => String(c[k] || '').trim()); };
     // Le nombre de paquets à l'entrée de l'étape « Fabriquer » : sa preuve est un paquet DE PLUS.
     let paquetsAvant = 0;
     // L'onglet se clique quand la page qui le porte est DESSINÉE (`Visite.ouvrirOnglet`, 10.14.0) :
@@ -945,6 +957,10 @@
       resume: 'Raison sociale, matricule fiscal, adresse, RIB : ce qui s\'imprime sur chaque document.',
       mots: ['societe', 'entreprise', 'matricule', 'rib', 'adresse', 'fiche', 'logo'],
       suite: ['premier-client', 'sauvegarde'],
+      // La fiche est à jour quand ce qui s'imprime y est ET qu'elle est enregistrée — jugé à la fin : une
+      // fiche déjà complète en arrivant est déjà à jour, sans rien retaper (10.14.1).
+      preuve: () => ficheComplete() && parametresEnregistres(),
+      echec: 'Ta fiche n\'est pas encore complète, ou pas encore enregistrée : il y faut ta raison sociale, ton matricule fiscal et ton adresse, puis « Enregistrer » dans la barre en bas de l\'écran.',
       bravo: 'Ta fiche est à jour',
       conclusion: 'Tout ce que tu viens de saisir s\'imprime en haut de tes devis et factures. Tu peux le changer à tout moment.',
       etapes: [
@@ -956,8 +972,11 @@
           titre: 'L\'adresse', texte: 'Celle du siège, sur deux lignes : elle s\'imprime telle quelle.', action: 'Tape ton adresse.', essai: { taper: '12 rue de la Liberté\n1002 Tunis' } },
         { page: '#/parametres', cible: ['#view input[name="rib"]', '#view [name="rib"]'], cote: 'droite', titre: 'Ton RIB',
           texte: 'Il s\'imprime sur tes factures pour que tes clients te paient par virement : vérifie-le deux fois. SkanFact contrôle sa clé et te prévient s\'il paraît faux.', facultatif: true },
-        { page: '#/parametres', cible: ['#save-set', '.save-bar .btn-primary', '#set-save'], cote: 'dessus', faire: 'clic',
-          titre: 'Enregistrer', texte: 'Une modification ne compte qu\'une fois enregistrée.', action: 'Clique sur <b>« Enregistrer »</b>.', essai: { clic: true } }
+        // Rien de modifié, rien à enregistrer : l'étape ne se pose que si la barre le réclame. Et elle ne
+        // passe qu'une fois la barre partie — un « Enregistrer » refusé (un champ faux) la garde.
+        { page: '#/parametres', si: () => !parametresEnregistres(), cible: '#save-bar #save', cote: 'dessus', faire: 'clic',
+          titre: 'Enregistrer', texte: 'Tant que tu n\'as pas enregistré, rien n\'a changé : la barre en bas de l\'écran le rappelle, et « Abandonner les modifications » remettrait tout comme avant. Une fois enregistrée, ta fiche s\'imprime sur tes prochaines pièces.',
+          action: 'Clique sur <b>« Enregistrer »</b>, dans la barre en bas de l\'écran.', fait: parametresEnregistres, essai: { clic: true } }
       ]
     });
 
@@ -1024,6 +1043,9 @@
       resume: 'Du client à l\'aperçu : les lignes, les prix, la TVA, et l\'enregistrement.',
       mots: ['devis', 'proposition', 'offre', 'prix', 'premier', 'faire un devis'],
       suite: ['envoyer', 'devis-facture'],
+      // Un devis de plus dans tes pièces : sans « Enregistrer », il n'existe nulle part (10.14.1).
+      mesure: () => nbType('devis'), preuve: n0 => nbType('devis') > n0,
+      echec: 'Le devis n\'a pas été enregistré : sans « Enregistrer », il n\'a ni numéro ni place dans la liste de tes devis.',
       bravo: 'Ton devis est prêt',
       conclusion: 'Il a reçu son numéro. Il reste à l\'envoyer à ton client — puis, quand il dit oui, à le transformer en facture d\'un clic.',
       etapes: [
@@ -1065,8 +1087,12 @@
       suite: ['devis-facture'],
       si: () => !!(ctx.premier('devisBrouillon') || ctx.premier('devis')),
       manque: { texte: 'Il te faut d\'abord un devis à envoyer.', visite: 'premier-devis' },
-      bravo: 'C\'est parti',
-      conclusion: 'Le devis passe à « envoyé ». Quand ton client répond, note sa réponse depuis le menu « Actions » de la liste — ou facture directement.',
+      // SkanFact PRÉPARE le message ; c'est ta messagerie qui l'envoie. La fin le dit tel quel, et ne
+      // félicite qu'un envoi noté sur la pièce (10.14.1) — « Annuler » ferme aussi la fenêtre.
+      mesure: () => envois(), but: n0 => envois() > n0 && aucuneFenetre(),
+      echec: 'Le message n\'est pas préparé — c\'est « Ouvrir dans la messagerie », dans la fenêtre du mail, qui le prépare. Rien n\'est parti, et la pièce n\'a pas changé.',
+      bravo: 'Ton message est prêt',
+      conclusion: 'Il t\'attend dans ta messagerie, PDF joint : relis-le et clique sur « Envoyer » — SkanFact ne peut pas le faire à ta place. De ce côté, la pièce est notée envoyée ; quand ton client répond à un devis, note sa réponse depuis le menu « Actions » de la liste, ou facture directement.',
       etapes: [
         // 10.14.0 — sur un devis déjà envoyé, l'envoi n'est plus l'étape suivante : il vit dans
         // « Plus ▾ » (la barre tient ainsi sur une rangée). La visite ouvre d'abord le menu.
@@ -1075,20 +1101,24 @@
           action: 'Clique sur <b>« Plus ▾ »</b>.', fait: () => { const l = $('#more-list'); return !!(l && !l.hidden); }, essai: { clic: true } },
         { page: () => ctx.premier('devisBrouillon') || ctx.premier('devis'), cible: '#email', cote: 'dessous', faire: 'clic',
           titre: 'Envoyer par mail', texte: 'SkanFact prépare le mail dans ta messagerie, avec le PDF joint et un texte poli (que tu changes dans Paramètres → Envois).',
-          action: 'Clique sur <b>« Email »</b>.', essai: { clic: true } },
+          // Fait quand une fenêtre s'ouvre : « Annuler » dans la question qui suit y ramène (10.14.1).
+          action: 'Clique sur <b>« Email »</b>.', fait: () => !aucuneFenetre(), essai: { clic: true } },
         // Deux questions peuvent précéder la fenêtre d'envoi (10.14.0) : l'exemple le rappelle avant
         // tout envoi, et un Mac demande sa messagerie la toute première fois. Sans ces étapes, la
         // bulle « Relis avant d'envoyer » décrivait un destinataire et un objet à côté d'une question
         // qui n'en porte aucun.
-        { si: () => !!$('#demo-q'), cible: '#demo-q', zone: '#modal-root .modal', cote: 'gauche', faire: 'clic',
+        { si: () => !!$('#demo-q'), cible: '#modal-root .modal #b', zone: '#modal-root .modal', cote: 'gauche', faire: 'clic',
           titre: 'Des données d\'exemple', texte: 'Avant tout envoi depuis l\'exemple, SkanFact te le rappelle : ces clients et leurs adresses sont inventés.',
           action: 'Pour la visite, <b>« Continuer quand même »</b> : rien ne part tant que tu n\'as pas cliqué sur Envoyer dans ta messagerie.',
-          fait: () => !$('#demo-q'), essai: { clic: true } },
+          fait: () => !$('#demo-q') && !aucuneFenetre(), essai: { clic: true } },
         { si: () => !!$('#msg-choix'), cible: '#msg-choix', zone: '#modal-root .modal', cote: 'gauche', faire: 'clic',
           titre: 'Ta messagerie', texte: 'La toute première fois seulement : Mail, qui joint le PDF tout seul, ou ta messagerie habituelle. Tu pourras changer d\'avis dans Paramètres → Envois.',
           action: 'Choisis celle avec laquelle tu écris.', fait: () => !$('#msg-choix'), essai: { clic: true } },
         { cible: '#modal-root .modal', cote: 'gauche', titre: 'Relis avant d\'envoyer',
-          texte: 'Le destinataire, l\'objet, le texte : tout se relit ici, puis s\'ouvre dans ta messagerie. Rien ne part sans toi.' }
+          texte: '<b>Destinataire</b> : l\'adresse de la fiche du client (corrige-la ici, elle se retiendra). <b>Objet</b> et <b>message</b> : un texte poli, rempli avec le numéro, le montant et l\'échéance — change ce que tu veux. <b>Joindre le PDF</b> : la pièce part telle que ton client la verra, sans le tampon « Brouillon ».' },
+        { si: () => fenetre('par email'), cible: '#modal-root .modal #ok', cote: 'dessus', faire: 'clic',
+          titre: 'Ouvrir dans ta messagerie', texte: 'Ta messagerie s\'ouvre avec le message tout prêt. <b>Rien ne part tant que tu n\'as pas cliqué sur « Envoyer » dans ta messagerie</b> : tu peux encore tout relire.',
+          action: 'Clique sur <b>« Ouvrir dans la messagerie »</b>.', fait: () => aucuneFenetre(), essai: { clic: true } }
       ]
     });
 
@@ -1100,6 +1130,9 @@
       suite: ['emettre', 'encaisser'],
       si: () => !!(ctx.premier('devisAccepte') || ctx.premier('devis')),
       manque: { texte: 'Il te faut d\'abord un devis — accepté par ton client, de préférence.', visite: 'premier-devis' },
+      // Une facture de plus : jugée à la FIN, pour que l'étape qui montre le brouillon se lise (10.14.1).
+      mesure: () => nbType('facture'), preuve: n0 => nbType('facture') > n0,
+      echec: 'Aucune facture n\'a été créée : le devis n\'a pas été facturé.',
       bravo: 'Ta facture est prête',
       conclusion: 'Elle est en brouillon : relis-la, puis <b>« Émettre la facture »</b> lui donne son numéro définitif.',
       etapes: [
@@ -1119,6 +1152,10 @@
       suite: ['encaisser', 'envoyer'],
       si: () => !!ctx.premier('factureBrouillon'),
       manque: { texte: 'Il te faut une facture en brouillon — transforme un devis accepté, ou crée une facture.', visite: 'devis-facture' },
+      // Une facture ÉMISE de plus — pas une fenêtre ouverte : la visite finissait sur le récapitulatif,
+      // et félicitait une facture restée en brouillon (10.14.1).
+      mesure: () => emises('facture'), but: n0 => emises('facture') > n0 && aucuneFenetre(),
+      echec: 'La facture n\'est pas émise — c\'est « Émettre », dans le récapitulatif, qui la numérote et la fige. Elle reste en brouillon : tu peux encore tout y changer.',
       bravo: 'Ta facture est émise',
       conclusion: 'Elle a son numéro, elle compte dans ton chiffre d\'affaires et ta TVA, et elle ne se modifie plus : une erreur se corrigerait par un avoir.',
       etapes: [
@@ -1126,7 +1163,12 @@
           titre: 'Émettre', texte: 'Un récapitulatif s\'affiche d\'abord : à qui, quand, combien. C\'est le dernier moment pour relire.',
           action: 'Clique sur <b>« Émettre la facture »</b>.', fait: () => fenetre('mettre') || fenetre('Émettre'), essai: { clic: true } },
         { cible: '#modal-root .modal', cote: 'gauche', titre: 'Le récapitulatif',
-          texte: 'Relis le client, la date, l\'échéance et le montant. Une fois émise, la facture ne se modifie plus — elle se corrigerait par un avoir.' }
+          texte: 'Relis-le ligne par ligne : <b>le client</b> (c\'est à lui qu\'elle est due), <b>la date</b> (celle qui compte pour ta TVA du mois), <b>l\'échéance</b> (le jour où elle passera « en retard ») et <b>le net à payer</b>. S\'il manque quelque chose sur ta fiche — un RIB, un matricule —, un avertissement orange le dit ici, avant qu\'il soit trop tard.' },
+        { si: () => !!$('#modal-root #num-suite'), cible: '#modal-root #num-suite', cote: 'gauche', facultatif: true, titre: 'Ta toute première facture ici',
+          texte: 'Tu facturais déjà avant SkanFact ? Ce bouton fait suivre ta dernière facture, au lieu de repartir à 001 : une série de factures doit rester continue. Sinon, laisse-le.' },
+        { cible: '#modal-root .modal #ok', cote: 'dessus', faire: 'clic',
+          titre: 'Émettre', texte: 'La facture reçoit son <b>numéro définitif</b>, entre dans ton chiffre d\'affaires et ta TVA du mois, et <b>ne se modifie plus</b> : une erreur se corrigerait par un avoir. « Annuler » la laisse en brouillon.',
+          action: 'Clique sur <b>« Émettre »</b>.', fait: () => aucuneFenetre(), essai: { clic: true } }
       ]
     });
 
@@ -1153,19 +1195,41 @@
     });
 
     visite({
-      id: 'relancer', theme: 'ventes', type: 'faire', duree: '1 min', page: '#/relances',
+      id: 'relancer', theme: 'ventes', type: 'faire', duree: '2 min', page: '#/relances',
       titre: 'Relancer un client',
       resume: 'Une facture en retard : le mail au bon ton, prêt à partir.',
       mots: ['relance', 'retard', 'impaye', 'rappel'],
       suite: ['encaisser'],
-      bravo: 'Relance préparée',
-      conclusion: 'La relance est notée sur la facture : la prochaine passera au niveau suivant, avec un ton un peu plus ferme.',
+      si: () => !!ctx.premier('factureRetard'),
+      manque: { texte: 'Aucune facture n\'est en retard — personne à relancer, tant mieux.' },
+      // Une relance de plus, notée sur la facture — par mail ou par téléphone. La visite finissait sur le
+      // menu ouvert et félicitait une relance que personne n'avait faite (10.14.1).
+      mesure: () => relancesNotees(), but: n0 => relancesNotees() > n0 && aucuneFenetre(),
+      echec: 'Aucune relance n\'est notée — c\'est « Ouvrir dans la messagerie » (ou « Enregistrer », pour un appel) qui la note sur la facture.',
+      bravo: 'Ta relance est notée',
+      conclusion: 'Pour un mail, il ne reste qu\'à cliquer sur « Envoyer » dans ta messagerie. La relance est notée sur la facture : la prochaine passera au niveau suivant, avec un ton un peu plus ferme.',
       etapes: [
-        { page: '#/relances', titre: 'Les relances', texte: 'Les factures en retard, classées par ancienneté. À chaque niveau son ton — rappel, relance, dernière relance.' },
-        { page: '#/relances', cible: '#view table.list [data-rowmenu]', cote: 'gauche', faire: 'clic', facultatif: true,
-          titre: 'Le menu de la ligne', texte: '« Relancer par email » prépare le mail au bon ton ; « Noter un appel » garde la trace d\'un coup de fil.',
+        { page: '#/relances', titre: 'Les relances', texte: 'Les factures <b>en retard</b>, de la plus ancienne à la plus récente. Chaque ligne dit de combien de jours, et à quel <b>niveau</b> tu en es : 1 un rappel aimable, 2 une relance ferme, 3 la dernière relance avant d\'autres démarches.' },
+        { page: '#/relances', cible: '#view table.list [data-rowmenu]', cote: 'gauche', faire: 'clic',
+          titre: 'Le menu de la ligne', texte: 'Tout ce qu\'on peut faire pour une facture en retard vit dans son menu : la relancer, noter un appel, un paiement reçu, ou la mettre en pause.',
           action: 'Clique sur <b>« Actions »</b> au bout d\'une ligne.', fait: () => !!$('.row-menu'), essai: { clic: true } },
-        { cible: '.row-menu', cote: 'gauche', titre: 'Choisis', texte: 'Chaque geste a sa phrase. « Ne pas relancer avant… » met une facture en pause si le client a promis de payer.' }
+        { cible: '.row-menu [data-act="relancer-mail"]', zone: '.row-menu', cote: 'gauche', faire: 'clic',
+          titre: 'Relancer par email', texte: 'Le mail est écrit au ton du niveau de la facture. Tu préfères appeler ? <b>« Noter un appel téléphonique »</b>, juste en dessous, garde la trace de ce que le client a répondu — ça compte aussi comme une relance.',
+          // Fait quand une fenêtre s'ouvre (la question de l'exemple, le choix de messagerie ou le mail) :
+          // un menu refermé n'est pas une relance commencée.
+          action: 'Clique sur <b>« Relancer par email »</b>.', fait: () => !$('.row-menu') && !aucuneFenetre(), essai: { clic: true } },
+        { si: () => !!$('#demo-q'), cible: '#modal-root .modal #b', zone: '#modal-root .modal', cote: 'gauche', faire: 'clic',
+          titre: 'Des données d\'exemple', texte: 'Avant tout envoi depuis l\'exemple, SkanFact te le rappelle : ces clients et leurs adresses sont inventés.',
+          action: 'Pour la visite, <b>« Continuer quand même »</b> : rien ne part tant que tu n\'as pas cliqué sur Envoyer dans ta messagerie.',
+          fait: () => !$('#demo-q') && !aucuneFenetre(), essai: { clic: true } },
+        { si: () => !!$('#msg-choix'), cible: '#msg-choix', zone: '#modal-root .modal', cote: 'gauche', faire: 'clic',
+          titre: 'Ta messagerie', texte: 'La toute première fois seulement : Mail, qui joint le PDF tout seul, ou ta messagerie habituelle.',
+          action: 'Choisis celle avec laquelle tu écris.', fait: () => !$('#msg-choix'), essai: { clic: true } },
+        { si: () => !!$('#modal-root #mf'), cible: '#modal-root .modal', cote: 'gauche', titre: 'Relis ta relance',
+          texte: 'Le texte suit le niveau de la facture, avec son numéro, son montant et son retard. Adoucis-le si tu connais bien le client : c\'est ton nom qui signe.' },
+        { si: () => !!$('#modal-root #mf'), cible: '#modal-root .modal #ok', cote: 'dessus', faire: 'clic',
+          titre: 'Ouvrir dans ta messagerie', texte: 'La relance s\'ouvre dans ta messagerie et <b>se note sur la facture</b> : la prochaine passera au niveau suivant.',
+          action: 'Clique sur <b>« Ouvrir dans la messagerie »</b>.', fait: () => aucuneFenetre(), essai: { clic: true } }
       ]
     });
 
@@ -1176,13 +1240,24 @@
       mots: ['avoir', 'corriger', 'annuler', 'erreur', 'remise', 'retour'],
       si: () => !!ctx.premier('factureEmise'),
       manque: { texte: 'Il te faut une facture émise — c\'est elle que l\'avoir corrige.', visite: 'emettre' },
-      bravo: 'L\'avoir est prêt',
-      conclusion: 'Émets-le comme une facture : il retire ce qu\'il faut de ton chiffre d\'affaires et de ta TVA.',
+      // Un avoir de plus, enregistré : la visite s'arrêtait sur l'avoir tout juste ouvert, jamais
+      // enregistré, et disait « L'avoir est prêt » (10.14.1). Elle s'arrête au BROUILLON : l'émettre est
+      // un geste irréversible qui se décide en relisant, pas dans une visite.
+      mesure: () => nbType('avoir'), preuve: n0 => nbType('avoir') > n0,
+      echec: 'L\'avoir n\'a pas été enregistré : sans « Enregistrer le brouillon », il n\'existe nulle part et la facture n\'est pas corrigée.',
+      bravo: 'Ton avoir est enregistré',
+      conclusion: 'Il est en brouillon, sans numéro : relis-le, puis « Émettre l\'avoir » lui donne son numéro définitif. C\'est à ce moment-là qu\'il retire ce qu\'il faut de ton chiffre d\'affaires et de ta TVA — et, une fois émis, il ne se modifie plus.',
       etapes: [
         { page: () => ctx.premier('factureEmise'), cible: ['#lock-credit', '#credit'], cote: 'dessous', faire: 'clic',
-          titre: 'Corriger par un avoir', texte: 'L\'avoir reprend les lignes de la facture : tu gardes ce qu\'il faut annuler (tout, ou une partie).',
-          action: 'Clique sur {bouton}.', essai: { clic: true } },
-        { cible: '#modal-root .modal, #issue', cote: 'gauche', titre: 'L\'avoir', texte: 'Ajuste les lignes et le motif, puis émets-le.' }
+          titre: 'Corriger par un avoir', texte: 'Une facture émise ne se modifie jamais : ton client l\'a reçue, et elle compte déjà dans ta TVA. On la corrige par un <b>avoir</b>, une pièce qui retire ce qu\'il faut.',
+          action: 'Clique sur {bouton}.', fait: () => /^#\/doc\/new\/avoir/.test(hash()), essai: { clic: true } },
+        { cible: '#lines', cote: 'dessus', titre: 'Ce que l\'avoir retire',
+          texte: 'Il reprend <b>toutes</b> les lignes de la facture. Garde ce qu\'il faut annuler : tout, pour une facture faite par erreur ; une ligne ou une quantité, pour un retour ou un geste commercial. Retire le reste.' },
+        { cible: '#view input[name="creditReason"]', cote: 'dessous', facultatif: true, titre: 'Le motif',
+          texte: 'Une erreur de facturation, une remise commerciale, un retour de marchandise : il s\'imprime sur l\'avoir, et ton client comme ton comptable sauront pourquoi.' },
+        { cible: '#save', cote: 'dessous', faire: 'clic',
+          titre: 'Enregistrer le brouillon', texte: 'L\'avoir est gardé <b>en brouillon</b> : il n\'a pas encore de numéro et tu peux encore tout y changer. Rien ne bouge dans ta TVA tant qu\'il n\'est pas émis.',
+          action: 'Clique sur <b>« Enregistrer le brouillon »</b>.', fait: () => /^#\/doc\/(?!new)/.test(hash()), essai: { clic: true } }
       ]
     });
 
@@ -1232,6 +1307,9 @@
       resume: 'Le justificatif d\'abord, puis le fournisseur, les lignes, la TVA récupérable.',
       mots: ['achat', 'facture fournisseur', 'depense', 'tva deductible', 'justificatif'],
       suite: ['regler'],
+      // Un achat de plus : sans « Enregistrer », il ne compte nulle part (10.14.1).
+      mesure: () => nb('purchases'), preuve: n0 => nb('purchases') > n0,
+      echec: 'L\'achat n\'a pas été enregistré : sans « Enregistrer », il ne compte ni dans ta TVA récupérable, ni dans ce que tu dois.',
       bravo: 'Ton achat est enregistré',
       conclusion: 'Sa TVA compte dans ce que tu récupères ce mois-ci, et ce que tu dois au fournisseur est suivi dans « À payer ».',
       etapes: [
@@ -1256,13 +1334,26 @@
       titre: 'Régler un fournisseur',
       resume: 'Tu as payé : le montant, le mode, la date.',
       mots: ['regler', 'payer', 'fournisseur', 'reglement'],
+      si: () => !!ctx.premier('achatDu'),
+      manque: { texte: 'Tu ne dois rien à tes fournisseurs pour l\'instant — aucun achat n\'attend de règlement.', visite: 'achat' },
+      // Un règlement de plus sur un achat — la visite finissait sur la fenêtre ouverte (10.14.1).
+      mesure: () => reglements(), but: n0 => reglements() > n0 && aucuneFenetre(),
+      echec: 'Aucun règlement n\'est noté — c\'est « Enregistrer », dans la fenêtre du règlement, qui le note. Ce que tu dois n\'a pas bougé.',
       bravo: 'Le règlement est noté',
-      conclusion: 'Ce que tu dois se met à jour, et l\'argent sort de ta trésorerie.',
+      conclusion: 'Ce que tu dois au fournisseur a diminué d\'autant, et l\'argent est sorti du compte que tu as choisi : ta trésorerie le montre déjà.',
       etapes: [
-        { page: '#/achats', cible: ['[data-payx]', '#pay-h'], cote: 'gauche', faire: 'clic', facultatif: true,
-          titre: 'Ce que tu dois', texte: 'Le panneau « À payer » liste ce qui reste dû, échéance par échéance. « Régler » note ton paiement.',
-          action: 'Clique sur <b>« Régler »</b> sur une ligne.', fait: () => !!$('#modal-root .modal'), essai: { clic: true } },
-        { cible: '#modal-root .modal', cote: 'gauche', titre: 'Le règlement', texte: 'Le reste dû est proposé ; change le montant pour un règlement partiel, puis enregistre.' }
+        { page: '#/achats', cible: ['#pay-h', '.panel:has([data-payx])'], cote: 'dessous', titre: 'Ce que tu dois',
+          texte: 'Le panneau <b>« À payer »</b> liste ce qui reste dû à tes fournisseurs, de l\'échéance la plus proche à la plus lointaine. Une ligne en retard se voit en premier.' },
+        { page: '#/achats', cible: '[data-payx]', cote: 'gauche', faire: 'clic',
+          titre: 'Régler', texte: 'Tu as payé ce fournisseur (virement, chèque, espèces) : c\'est ici qu\'on le note, pour que ce que tu dois se mette à jour.',
+          action: 'Clique sur <b>« Régler »</b> au bout d\'une ligne.', fait: () => fenetre('Régler'), essai: { clic: true } },
+        { cible: '#modal-root .modal input[name="amount"]', cote: 'droite', titre: 'Le montant',
+          texte: 'Déjà rempli avec ce qui reste dû. Tu n\'as payé qu\'une partie ? Change-le : le reste restera dû, et visible.' },
+        { cible: ['#modal-root .modal [name="accountId"]', '#modal-root .modal [name="method"]'], cote: 'droite', facultatif: true, titre: 'D\'où part l\'argent',
+          texte: 'Le compte et le mode : c\'est ce qui dit de quel compte l\'argent sort — ta banque ou ta caisse. La date est celle de ton paiement.' },
+        { cible: '#modal-root .modal #ok', cote: 'dessus', faire: 'clic',
+          titre: 'Enregistrer', texte: 'Le règlement se note sur l\'achat, et sort de ta trésorerie.',
+          action: 'Clique sur <b>« Enregistrer »</b>.', fait: () => aucuneFenetre(), essai: { clic: true } }
       ]
     });
 
@@ -1295,6 +1386,9 @@
       resume: 'Une copie automatique vers une clé USB, iCloud ou OneDrive.',
       mots: ['sauvegarde', 'copie', 'usb', 'icloud', 'onedrive', 'securite', 'perte'],
       suite: ['motdepasse'],
+      // La copie est posée quand « Retirer » l'est : jugé à la fin (10.14.1).
+      preuve: () => { const r = $('#ext-remove'); return !!(r && !r.hidden); },
+      echec: 'Aucun dossier de copie n\'est choisi : le choix a peut-être été annulé. Sans lui, tes données ne vivent que sur cet ordinateur.',
       bravo: 'Tes données sont à l\'abri',
       conclusion: 'À chaque enregistrement, SkanFact recopie tes données dans ce dossier. Si ton ordinateur tombe en panne, tout est là.',
       etapes: [
@@ -1322,13 +1416,28 @@
       titre: 'Protéger mes données par un mot de passe',
       resume: 'Sans lui, personne ne peut ouvrir tes données — pas même depuis une copie.',
       mots: ['mot de passe', 'securite', 'chiffrer', 'proteger', 'verrouiller'],
+      // Déjà chiffrées : il n'y a plus rien à activer — le changer se fait depuis le même panneau.
+      si: () => !(ctx.chiffre && ctx.chiffre()),
+      manque: { texte: 'Tes données sont déjà protégées par un mot de passe. Pour le changer, Paramètres → Sécurité et données → « Changer le mot de passe… ».' },
+      // Protégées quand le panneau propose « Changer le mot de passe » — la visite finissait sur la
+      // fenêtre à peine ouverte, et félicitait des données restées en clair (10.14.1).
+      preuve: () => !!$('#sec-change') && aucuneFenetre(),
+      echec: 'Tes données ne sont pas chiffrées — c\'est « Enregistrer », dans la fenêtre du mot de passe, qui les chiffre. Elles restent lisibles par qui ouvre cet ordinateur ou ta copie.',
       bravo: 'Tes données sont protégées',
-      conclusion: 'Retiens-le bien : sans lui, tes données ne s\'ouvrent plus, et personne ne peut le retrouver.',
+      conclusion: 'Retiens-le bien : sans lui, tes données ne s\'ouvrent plus, et personne ne peut le retrouver. SkanFact te le demandera à chaque ouverture.',
       etapes: [
-        { page: '#/parametres', avant: onglet('#set-tabs', 'donnees'), cible: ['#sec-set', '#sec-change'], cote: 'dessous', faire: 'clic',
-          titre: 'Activer un mot de passe', texte: 'Tes données et tes sauvegardes sont chiffrées : sans le mot de passe, personne ne peut les lire.',
-          action: 'Clique sur {bouton}.', essai: { clic: true } },
-        { cible: '#modal-root .modal', cote: 'gauche', titre: 'Choisis-le bien', texte: 'Il n\'y a <b>aucun moyen</b> de le retrouver si tu l\'oublies : note-le dans un endroit sûr.' }
+        { page: '#/parametres', avant: onglet('#set-tabs', 'donnees'), cible: '#sec-set', cote: 'dessous', faire: 'clic',
+          titre: 'Activer un mot de passe', texte: 'Tes données, tes sauvegardes et ta copie de sécurité seront <b>chiffrées</b> : sans le mot de passe, personne ne peut les lire — ni quelqu\'un qui emprunte ton ordinateur, ni qui trouve ta clé USB.',
+          action: 'Clique sur <b>« Activer un mot de passe… »</b>.', fait: () => !!$('#modal-root [name="password"]'), essai: { clic: true } },
+        { cible: '#modal-root .modal input[name="password"]', cote: 'droite', faire: 'valeur', bouton: 'Suivant',
+          titre: 'Le mot de passe', texte: 'Six caractères au moins ; une phrase que toi seul connais est plus sûre qu\'un mot court. Il n\'y a <b>aucun moyen</b> de le retrouver si tu l\'oublies : note-le dans un endroit sûr, loin de l\'ordinateur.',
+          action: 'Tape ton mot de passe.', essai: { taper: 'Visite-2026' } },
+        { cible: '#modal-root .modal input[name="confirm"]', cote: 'droite', faire: 'valeur', bouton: 'Suivant',
+          titre: 'La confirmation', texte: 'Le même, une seconde fois : c\'est ce qui évite une faute de frappe que tu ne pourrais plus jamais rattraper.',
+          action: 'Tape-le une seconde fois.', essai: { taper: 'Visite-2026' } },
+        { cible: '#modal-root .modal #ok', cote: 'dessus', faire: 'clic',
+          titre: 'Enregistrer', texte: 'SkanFact chiffre tes données et leurs sauvegardes. À la prochaine ouverture, il te demandera ce mot de passe.',
+          action: 'Clique sur <b>« Enregistrer »</b>.', fait: () => aucuneFenetre(), essai: { clic: true } }
       ]
     });
 
@@ -1378,7 +1487,7 @@
       resume: 'Ta messagerie, tes modèles de messages, l\'adresse de ton comptable.',
       mots: ['mail', 'email', 'messagerie', 'modele', 'envoi', 'message', 'outlook', 'gmail'],
       suite: ['relier-comptable', 'envoyer'],
-      bravo: 'Tes envois sont réglés',
+      bravo: 'Tu sais où se règlent tes envois',
       conclusion: 'Chaque envoi se prépare dans ta messagerie, pièce jointe comprise : tu relis, et tu envoies. Rien ne part sans toi.',
       etapes: [
         { page: '#/parametres', avant: onglet('#set-tabs', 'envois'), cible: '#p-envoi', cote: 'dessus', titre: 'Comment partent tes mails',
@@ -1396,14 +1505,24 @@
       resume: 'Une fois déclaré, le mois se fige : plus rien ne change en silence.',
       mots: ['cloturer', 'cloture', 'mois', 'figer', 'declaration'],
       suite: ['paquet'],
+      si: () => !!ctx.premier('moisACloturer'),
+      manque: { texte: 'Aucun mois n\'est à clôturer — un mois se clôture une fois terminé, et ceux qui le sont le sont déjà.' },
+      // Un mois clôturé de plus : la date de clôture avance. Le geste était facultatif, et la fin disait
+      // « Le mois est clôturé » d'un mois que personne n'avait clôturé (10.14.1).
+      mesure: () => String(data().closedUntil || ''), but: m0 => String(data().closedUntil || '') > String(m0 || '') && aucuneFenetre(),
+      echec: 'Aucun mois n\'est clôturé — c\'est « Clôturer », dans la question qui récapitule les dates, qui le fige.',
       bravo: 'Le mois est clôturé',
-      conclusion: 'Plus aucune pièce datée de ce mois ne peut changer. Il reste à envoyer son paquet à ton comptable.',
+      conclusion: 'Plus aucune pièce datée de ce mois ne peut être créée, modifiée ni supprimée : ce que tu as déclaré ne bougera plus. Il reste à envoyer son paquet à ton comptable.',
       etapes: [
         { page: '#/compta', avant: onglet('#c-tabs', 'clotures'), cible: '#view .panel', cote: 'dessus', titre: 'Les contrôles',
-          texte: 'Avant de clôturer, SkanFact vérifie : brouillons oubliés, achats sans justificatif, relevé non pointé. Il <b>nomme sans bloquer</b> — c\'est toi qui décides.' },
-        { page: '#/compta', cible: '#do-close', cote: 'dessous', faire: 'clic', facultatif: true,
-          titre: 'Clôturer', texte: 'Le bouton nomme le mois.', action: 'Clique sur {bouton}.', essai: { clic: true } },
-        { cible: '#modal-root .modal', cote: 'gauche', titre: 'Confirme', texte: 'Une période se rouvre, mais avec un motif : c\'est la trace qui expliquera pourquoi un chiffre a changé.' }
+          texte: 'Avant de clôturer, SkanFact vérifie le mois : un brouillon oublié, un achat sans justificatif, un relevé non pointé. Il <b>nomme sans bloquer</b> — chaque point a son bouton pour le régler, et c\'est toi qui décides.' },
+        { page: '#/compta', cible: '#do-close', cote: 'dessous', faire: 'clic',
+          titre: 'Clôturer', texte: 'Le bouton nomme le mois qu\'il clôturera : toujours le plus ancien qui ne l\'est pas encore — on clôture dans l\'ordre.',
+          action: 'Clique sur {bouton}.', fait: () => fenetre('Clôturer'), essai: { clic: true } },
+        { cible: '#modal-root .modal', cote: 'gauche', titre: 'Ce que ça change',
+          texte: 'La question dit les dates exactes que la clôture figera. Un mois clôturé <b>se rouvre</b> si besoin, mais avec un motif : c\'est la trace qui expliquera pourquoi un chiffre a changé après avoir été déclaré.' },
+        { cible: '#modal-root .modal #ok', cote: 'dessus', faire: 'clic',
+          titre: 'Clôturer', texte: 'Le mois se fige tout de suite.', action: 'Clique sur <b>« Clôturer »</b>.', fait: () => aucuneFenetre(), essai: { clic: true } }
       ]
     });
 
@@ -1416,6 +1535,11 @@
       resume: 'Un fichier : journaux, pièces et justificatifs — zéro ressaisie de son côté.',
       mots: ['paquet', 'comptable', 'cabinet', 'envoyer', 'mois', 'skanpack', 'fichier'],
       suite: ['repondre-comptable', 'relier-comptable'],
+      // Un paquet de plus — jugé à la FIN, pour que « L'envoyer » et « Où est le fichier » se lisent
+      // encore après la fabrication (10.14.1). Le geste était facultatif, et la fin disait « Le paquet
+      // est prêt » d'un paquet jamais fabriqué.
+      mesure: () => nb('packs'), preuve: n0 => nb('packs') > n0,
+      echec: 'Aucun paquet n\'est fabriqué — c\'est « Fabriquer le paquet » qui l\'écrit. Ton comptable n\'a rien reçu de ce mois.',
       bravo: 'Le paquet est prêt',
       conclusion: 'Ton comptable reçoit tout, déjà écrit. Ses questions reviendront sur la bonne pièce — « Répondre aux questions de mon comptable » te montre comment y répondre.',
       etapes: [
@@ -1425,7 +1549,7 @@
           texte: 'Un justificatif absent, une pièce restée en brouillon : chaque manque a son bouton. Tu peux envoyer quand même — la page de garde le dira à ton comptable, c\'est mieux qu\'un dossier qu\'il croit complet.' },
         { page: '#/compta', si: () => questionsOuvertes().length > 0, cible: '#p-questions', cote: 'dessus', facultatif: true, titre: 'Ses questions d\'abord',
           texte: 'Réponds avant de fabriquer : tes réponses partent <b>dans ce paquet</b>.' },
-        { page: '#/compta', cible: ['#cab-build'], cote: 'dessous', faire: 'clic', facultatif: true,
+        { page: '#/compta', cible: ['#cab-build'], cote: 'dessous', faire: 'clic',
           avant: () => { paquetsAvant = nb('packs'); },
           titre: 'Fabriquer le paquet', texte: 'Un seul fichier, chiffré pour ton cabinet s\'il est relié — sinon protégé par un mot de passe, si tu en choisis un.', action: 'Clique sur {bouton}.',
           fait: () => nb('packs') > paquetsAvant, essai: { clic: true } },
@@ -1446,13 +1570,20 @@
       resume: 'Son adresse, et s\'il utilise SkanFact Cabinet, son fichier d\'appairage : tes paquets partent chiffrés pour lui seul.',
       mots: ['comptable', 'cabinet', 'appairage', 'relier', 'skanpair', 'empreinte', 'adresse'],
       suite: ['paquet', 'repondre-comptable'],
-      bravo: 'Ton comptable est relié',
-      conclusion: 'Chaque mois, Comptabilité → Cabinet → « Fabriquer le paquet » lui prépare son envoi — la visite « Envoyer le mois à mon comptable » te le montre. Ses questions et sa clôture te reviendront, signées.',
+      // Relié quand son adresse est ENREGISTRÉE ; et la fin dit ce qui l'est vraiment : l'adresse seule,
+      // ou l'adresse et son fichier d'appairage (10.14.1).
+      preuve: () => !!String((data().company || {}).accountantEmail || '').trim() && parametresEnregistres(),
+      echec: 'L\'adresse de ton comptable n\'est pas enregistrée : sans « Enregistrer » dans la barre en bas de l\'écran, elle n\'est gardée nulle part.',
+      bravo: () => cabinetRelie() ? 'Ton comptable est relié' : 'Ton comptable a son adresse',
+      conclusion: () => cabinetRelie()
+        ? 'Chaque mois, Comptabilité → Cabinet → « Fabriquer le paquet » lui prépare son envoi, chiffré pour lui seul — la visite « Envoyer le mois à mon comptable » te le montre. Ses questions et sa clôture te reviendront, signées.'
+        : 'Tes journaux et le paquet du mois partiront à cette adresse. S\'il utilise SkanFact Cabinet, demande-lui son fichier d\'appairage : tes paquets seront alors chiffrés pour lui seul, et ses questions te reviendront sur la bonne pièce.',
       etapes: [
         { page: '#/parametres', avant: onglet('#set-tabs', 'envois'), cible: '#view input[name="accountantEmail"]', cote: 'droite', faire: 'valeur', bouton: 'Suivant',
           titre: 'Son adresse', texte: 'C\'est là que partiront tes journaux et le paquet du mois.', action: 'Tape l\'adresse de ton comptable.', essai: { taper: 'comptable@cabinet-exemple.tn' } },
-        { page: '#/parametres', cible: '.save-bar .btn-primary', cote: 'dessus', faire: 'clic', facultatif: true,
-          titre: 'Enregistrer', texte: 'Une modification ne compte qu\'une fois enregistrée.', action: 'Clique sur <b>« Enregistrer »</b>.', essai: { clic: true } },
+        { page: '#/parametres', si: () => !parametresEnregistres(), cible: '#save-bar #save', cote: 'dessus', faire: 'clic',
+          titre: 'Enregistrer', texte: 'Tant que tu n\'as pas enregistré, l\'adresse n\'est gardée nulle part : la barre en bas de l\'écran le rappelle.',
+          action: 'Clique sur <b>« Enregistrer »</b>, dans la barre en bas de l\'écran.', fait: parametresEnregistres, essai: { clic: true } },
         { page: '#/parametres', cible: '#p-cabinet', cote: 'dessus', titre: 'S\'il utilise SkanFact Cabinet',
           texte: 'SkanFact Cabinet est l\'application de ton comptable, gratuite pour les dossiers de ses clients sur SkanFact. Demande-lui son <b>fichier d\'appairage</b> : il l\'exporte depuis son application.' },
         { page: '#/parametres', si: () => !cabinetRelie(), cible: '#cab-import', cote: 'dessous', faire: 'clic', facultatif: true,
@@ -1529,12 +1660,24 @@
       titre: 'Établir les bulletins du mois',
       resume: 'Calculés à partir des fiches, des congés et des avances.',
       mots: ['bulletin', 'paie', 'salaire', 'mois'],
+      si: () => nb('employees') > 0,
+      manque: { texte: 'Il te faut d\'abord un salarié — ses bulletins se calculent à partir de sa fiche.', visite: 'salarie' },
+      // Établis quand le mois n'en réclame plus aucun — la visite ne faisait que MONTRER le bouton, et
+      // disait « Les bulletins sont établis » (10.14.1). Jugé à la fin, sur la page de la paie.
+      mesure: () => bulletins(), preuve: n0 => bulletins() > n0 || !$('#p-gen'),
+      echec: 'Aucun bulletin n\'est établi — c\'est « Établir », dans la question, qui les crée. Les bulletins du mois manquent toujours.',
       bravo: 'Les bulletins sont établis',
-      conclusion: 'Quand le salaire est versé, « Marquer payé » le fait sortir de ta trésorerie.',
+      conclusion: 'Chacun s\'ouvre pour être relu, et ses primes s\'ajoutent bulletin par bulletin. Quand le salaire est versé, « Marquer payé » le fait sortir de ta trésorerie. Fais valider le premier par ton comptable.',
       etapes: [
         { page: '#/paie', avant: onglet('#p-tabs', 'bulletins'), cible: ['#p-gen', '#view .panel'], cote: 'dessous', titre: 'Ce qui manque',
-          texte: 'SkanFact sait quels bulletins manquent pour le mois : <b>« Établir les … bulletins manquants »</b> (le bouton dit combien) les fait d\'un coup, à partir des fiches et des congés.' },
-        { page: '#/paie', cible: '#view table.list', cote: 'dessus', facultatif: true, titre: 'Les bulletins du mois', texte: 'Chacun s\'ouvre pour être relu, et s\'exporte en PDF.' }
+          texte: 'SkanFact sait quels bulletins manquent pour le mois choisi : chaque salarié actif ce mois-là en attend un. Le bouton dit combien.' },
+        { page: '#/paie', si: () => !!$('#p-gen'), cible: '#p-gen', cote: 'dessous', faire: 'clic',
+          titre: 'Établir les bulletins', texte: 'Le brut vient de chaque fiche (proratisé pour une entrée ou une sortie en cours de mois) ; les absences non payées et les échéances d\'avance sont reprises toutes seules.',
+          action: 'Clique sur {bouton}.', fait: () => fenetre('tablir'), essai: { clic: true } },
+        { si: () => fenetre('tablir'), cible: '#modal-root .modal #ok', cote: 'dessus', faire: 'clic',
+          titre: 'Établir', texte: 'Les bulletins sont créés, <b>non payés</b> : c\'est toi qui marqueras chacun comme réglé, le jour du virement.',
+          action: 'Clique sur <b>« Établir »</b>.', fait: () => aucuneFenetre(), essai: { clic: true } },
+        { page: '#/paie', cible: '#view table.list', cote: 'dessus', facultatif: true, titre: 'Les bulletins du mois', texte: 'Chacun s\'ouvre pour être relu, et s\'exporte en PDF pour ton salarié.' }
       ]
     });
 
@@ -1550,7 +1693,10 @@
         { page: '#/immos', cible: '#new-imm', cote: 'dessous', faire: 'clic', titre: 'Nouveau bien', texte: '',
           action: 'Clique sur <b>« + Nouveau bien »</b>.', fait: () => !!$('#modal-root .modal'), essai: { clic: true } },
         { cible: '#modal-root .modal', cote: 'gauche', titre: 'Sa fiche',
-          texte: 'Son nom, sa famille (la durée d\'usage est proposée), son prix et sa date de mise en service. <b>Le plan d\'amortissement s\'affiche pendant que tu tapes.</b>' }
+          texte: 'Son nom, sa famille (la durée d\'usage est proposée — change-la si ton comptable en décide une autre), son prix hors taxe et sa date de mise en service. <b>Le plan d\'amortissement s\'affiche pendant que tu tapes</b> : chaque année, la part du prix qui entre dans tes charges.' },
+        { cible: '#modal-root .modal .modal-actions .btn-primary', cote: 'dessus', faire: 'clic',
+          titre: 'Enregistrer', texte: 'Le bien entre dans ton tableau des immobilisations, et son amortissement de l\'année dans ton résultat.',
+          action: 'Clique sur <b>« Enregistrer »</b>.', fait: () => aucuneFenetre(), essai: { clic: true } }
       ]
     });
 
@@ -1606,7 +1752,10 @@
       etapes: [
         { page: '#/tresorerie', cible: ['#first-acc', '#new-acc'], cote: 'dessous', faire: 'clic', titre: 'Nouveau compte', texte: '',
           action: 'Clique sur {bouton}.', fait: () => !!$('#modal-root .modal'), essai: { clic: true } },
-        { cible: '#modal-root .modal', cote: 'gauche', titre: 'Le compte', texte: 'Son nom, sa banque, son RIB — repris de ta fiche société quand elle les porte — et son solde de départ : celui de ton relevé à la date de départ.' }
+        { cible: '#modal-root .modal', cote: 'gauche', titre: 'Le compte', texte: 'Son nom, sa banque, son RIB — repris de ta fiche société quand elle les porte — et son <b>solde de départ</b> : celui de ton relevé à la date de départ. C\'est lui qui fait que le solde affiché tombera juste sur ton relevé.' },
+        { cible: '#modal-root .modal .modal-actions .btn-primary', cote: 'dessus', faire: 'clic',
+          titre: 'Enregistrer', texte: 'Le compte apparaît dans ta trésorerie ; chaque paiement noté dessus y arrivera tout seul.',
+          action: 'Clique sur <b>« Enregistrer »</b>.', fait: () => aucuneFenetre(), essai: { clic: true } }
       ]
     });
 
@@ -1615,7 +1764,7 @@
       titre: 'Rapprocher mon relevé bancaire',
       resume: 'Cocher ce qui apparaît sur le relevé : ce qui reste est à regarder.',
       mots: ['rapprocher', 'rapprochement', 'releve', 'pointer', 'banque'],
-      bravo: 'C\'est pointé',
+      bravo: 'Tu sais rapprocher ton relevé',
       conclusion: 'Quand le solde du relevé et celui de SkanFact tombent juste, ta banque est rapprochée.',
       etapes: [
         { page: '#/tresorerie', avant: onglet('#t-tabs', 'rapprochement'), cible: '#stmt', cote: 'dessous', titre: 'Le solde du relevé',
@@ -1629,7 +1778,7 @@
       titre: 'Choisir ce qui s\'affiche dans le menu',
       resume: 'Masque ce dont tu n\'as pas besoin ; rien n\'est supprimé.',
       mots: ['modules', 'menu', 'masquer', 'afficher'],
-      bravo: 'Ton menu est à ta mesure',
+      bravo: 'Tu sais choisir ton menu',
       conclusion: 'Un module masqué garde ses données, et revient d\'un clic.',
       etapes: [
         { page: '#/modules', cible: '#view', zone: '#view', titre: 'Tous les modules', texte: 'Coche ce que tu veux voir dans le menu. La paie, le stock, les immobilisations… n\'apparaissent que si tu en as besoin.' }

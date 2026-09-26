@@ -187,6 +187,10 @@
     if (!s || s.essai) return null;
     if (!s.el && s.cible && s.facultatif && !s.vu && s.t > PATIENCE_FACULTATIVE) return 'sauter';
     if (!s.el && s.cible && s.faire && s.geste && s.t > 500) return 'avance';
+    // Ce que le geste d'avant avait ouvert s'est refermé (un « Annuler » cliqué pendant qu'on le
+    // regardait) : l'étape n'a plus rien à montrer, et elle ne le sera pas en attendant — sauf si son
+    // PROPRE geste vient d'avoir lieu (« Émettre » ferme le récapitulatif, et c'est le geste attendu).
+    if (s.cible && !s.el && s.defait && !(s.aFait && s.fait && s.faitAvant === false)) return 'perdu';
     if (s.mode === 'valeur') return 'valeur';
     if (s.aFait) {
       if (s.fait && s.entree) return 'dejaFait';
@@ -497,6 +501,7 @@
       else if (v === 'abandon') { arreterSansBruit(); }
       else if (v === 'nomme') montrerNomme(Number(b.dataset.n));
       else if (v === 'remettre') remettre();
+      else if (v === 'regeste') revenirAuGeste();
     });
     // Survoler (ou parcourir au clavier) une ligne de la liste éclaire le bouton dont elle parle — et
     // survoler un NOM cité dans le texte éclaire le bouton qu'il désigne.
@@ -605,15 +610,25 @@
       const e = cur.p.etapes[i];
       let garder = true;
       try { garder = !e.si || !!e.si(); } catch (_) { garder = false; }
+      // Après un geste PASSÉ, ce qu'il aurait ouvert ne s'est pas ouvert : l'étape qui le décrivait se
+      // saute avec lui (`consequenceDuGeste`). La première étape qui a de quoi montrer lève la règle.
+      if (garder && sens > 0 && cur.consequences) {
+        const dest = pageDe(e);
+        const seMene = !!dest && typeof dest === 'string' && !pageOk(e) && !estFaire(e);
+        if (consequenceDuGeste(e, { present: !!cibleDe(e), seMene })) garder = false;
+        else cur.consequences = false;
+      }
       if (garder) break;
       i += sens;
     }
+    if (sens < 0) cur.consequences = false;
     if (i < 0) i = 0;
     if (i >= cur.p.etapes.length) { finir(); return; }
     cur.i = i; cur.t0 = Date.now(); cur.defile = false; cur.couper = false; cur.clic = 0; cur.pret = false; cur.perdu = false; cur.pointe = -1; cur.sens = sens;
     // Ce qui ne vaut que pour l'étape qu'on quitte : un essai en cours, un geste, la zone déjà vue,
     // l'état du geste à l'entrée, les boutons nommés.
     cur.essai = null; cur.geste = 0; cur.vu = false; cur.faitAvant = undefined; cur.dejaFait = false; cur.dejaRempli = false; cur.mini = false; cur.nommes = []; cur.pointeN = -1;
+    cur.note = cur.noteProchaine || ''; cur.noteProchaine = ''; cur.defait = false;
     // La première étape apparaît ; les suivantes glissent depuis la précédente.
     if (cur.vues++ > 0) glisser();
     const e = etape();
@@ -701,7 +716,111 @@
     if (!cur) return;
     const e = etape();
     if (!passer && e && e.faire === 'valeur' && !cur.pret) return;
+    // Un GESTE passé sans être fait se retient : la fin ne félicite pas ce qui n'a pas eu lieu
+    // (« Passer cette étape » sur « Enregistrer », puis « Ta fiche est à jour » — 10.14.1).
+    if (passer && gestePasse(e, cur)) {
+      (cur.passes = cur.passes || []).push(nettoie(e.titre || '') || 'une étape');
+      cur.consequences = true;
+    }
     entrer(cur.i + 1, 1);
+  }
+  // Le geste qui a ouvert ce qu'une étape montre : le plus proche, avant elle, qu'on FAIT (pas
+  // facultatif). Pure. -1 quand il n'y en a pas.
+  function gesteQuiOuvre(etapes, i) {
+    for (let k = Math.min(i, (etapes || []).length) - 1; k >= 0; k--) {
+      const g = etapes[k];
+      if (g && estFaire(g) && !g.facultatif) return k;
+    }
+    return -1;
+  }
+  // Ce geste est-il DÉFAIT ? Sa preuve (`fait`) dit non — une fenêtre annulée, un menu refermé. Une
+  // étape qui mène à sa page ou prépare son écran a de quoi se montrer seule : elle n'en dépend pas.
+  function sourceDefaite(e) {
+    if (!cur || !e || !e.cible || typeof e.avant === 'function' || typeof e.deplier === 'function') return false;
+    const dest = pageDe(e);
+    if (dest && typeof dest === 'string' && !pageOk(e) && !estFaire(e)) return false;
+    const k = gesteQuiOuvre(cur.p.etapes, cur.i);
+    const g = k >= 0 ? cur.p.etapes[k] : null;
+    if (!g || typeof g.fait !== 'function') return false;
+    try { return !g.fait(); } catch (_) { return false; }
+  }
+  // Une étape DÉPEND-elle du geste qu'on vient de passer ? Oui quand sa cible n'est pas à l'écran et
+  // que rien ne l'y amènera : ni sa propre page (une étape « regarder » y mène seule), ni une
+  // préparation (`avant`, `deplier`). Passer « Émettre la facture » laissait la visite décrire, au
+  // milieu de l'écran, un récapitulatif qui ne s'était jamais ouvert, puis viser son bouton « Émettre »
+  // (vu à la souris, 10.14.1). Pure : l'écran lui dit ce qu'il voit.
+  function consequenceDuGeste(e, vu) {
+    if (!e || !e.cible) return false;
+    if (typeof e.avant === 'function' || typeof e.deplier === 'function') return false;
+    if (vu && vu.seMene) return false;
+    return !(vu && vu.present);
+  }
+  // Une étape « Passer » la laisse-t-elle NON faite ? Un geste d'une visite « faire », pas facultatif,
+  // dont ni la preuve (`fait`), ni la case remplie (`valeur`), ni un « Déjà fait » ne disent qu'il l'est.
+  function gestePasse(e, c) {
+    if (!e || !c || !c.p || c.p.type !== 'faire' || e.facultatif || !estFaire(e) || c.dejaFait) return false;
+    if (e.faire === 'valeur') return !c.pret;
+    if (typeof e.fait === 'function') { try { return !e.fait(); } catch (_) { return true; } }
+    return true;
+  }
+  // L'issue d'une visite, PURE (les tests la jouent) : un but atteint félicite, un but manqué le dit ;
+  // sans but, un geste passé ne se félicite pas non plus.
+  // La règle des fins, lue sur le CONTENU (les tests des deux applications l'appellent) : une fin qui
+  // affirme un fait (« Ta facture est émise ») a un but ou une preuve ; un but ou une preuve qui
+  // compare à l'entrée a sa mesure ; et un but — qui termine la visite dès qu'il est atteint — ne suit
+  // aucune étape qu'on regarde : elle serait sautée (celles-là se jugent à la fin, par une preuve).
+  function finsHonnetes(visites) {
+    const savoir = /^(Tu sais|Tu connais|Tu suis|Tu as fait le tour|Te voilà)/;
+    const r = { sansPreuve: [], sansMesure: [], coupees: [], causes: [], affirmatives: 0 };
+    // Une fin ratée dit l'ÉTAT et le geste qui le fait — jamais une cause qu'elle n'a pas vue : « la
+    // fenêtre s'est fermée sans « Émettre » » était faux quand on avait passé le geste qui l'ouvre
+    // (10.14.1). « peut-être » laisse la cause possible ; l'affirmer, non.
+    const cause = /s['’]est ferm|n['’]a pas été cliqu|(?<!peut-être )été annulé|reste éteint tant/;
+    (visites || []).filter(v => v && v.type === 'faire').forEach(v => {
+      const affirme = typeof v.bravo === 'function' || !savoir.test(String(v.bravo || ''));
+      const but = typeof v.but === 'function', preuve = typeof v.preuve === 'function';
+      if (affirme) r.affirmatives++;
+      if (typeof v.echec === 'string' && cause.test(v.echec)) r.causes.push(`${v.id} — « ${v.echec.slice(0, 70)}… »`);
+      if (affirme && !but && !preuve) r.sansPreuve.push(`${v.id} — « ${v.bravo} »`);
+      if (((but && v.but.length) || (preuve && v.preuve.length)) && typeof v.mesure !== 'function') r.sansMesure.push(v.id);
+      if (but) {
+        const et = (v.etapes || []).filter(Boolean);
+        let dernier = -1;
+        et.forEach((e, i) => { if (estFaire(e) && !e.facultatif) dernier = i; });
+        const apres = et.slice(dernier + 1).filter(e => !e.facultatif);
+        if (dernier >= 0 && apres.length) r.coupees.push(`${v.id} — « ${apres[0].titre || ''} »`);
+      }
+    });
+    return r;
+  }
+  // Le mot de la fin peut dépendre de ce qui a été fait (« Ton comptable est relié » seulement si son
+  // fichier l'est) : une fonction se lit au moment de la fin, jamais au lancement.
+  function selonFin(x) {
+    if (typeof x !== 'function') return x || '';
+    try { return x() || ''; } catch (_) { return ''; }
+  }
+  function issueDeFin(butAtteint, passes) {
+    if (butAtteint === true) return 'bravo';
+    if (butAtteint === false) return 'echec';
+    return (passes || []).length ? 'passe' : 'bravo';
+  }
+  function phrasePasses(passes) {
+    const l = [...new Set(passes || [])].map(t => `« ${h(t)} »`);
+    if (!l.length) return '';
+    const liste = l.length === 1 ? l[0] : l.slice(0, -1).join(', ') + ' et ' + l[l.length - 1];
+    return `Tu as passé ${liste} : ${l.length > 1 ? 'ces gestes ne sont donc pas faits' : 'ce geste n\'est donc pas fait'}.`;
+  }
+  // Le texte d'une fin qui n'est pas un bravo : ce qui a été passé, puis ce qui manque (le mot de la
+  // visite, sinon la phrase générale), puis le chemin pour la refaire — dit une fois.
+  const REFAIRE = 'Tu peux refaire la visite maintenant — ou plus tard, depuis « Me guider ».';
+  const ECHEC_GENERAL = 'La visite est allée jusqu\'au bout, mais rien n\'a été enregistré : la fenêtre s\'est peut-être fermée sans « Enregistrer », ou une étape a été passée.';
+  function texteDeFin(issue, passes, echec) {
+    if (issue === 'bravo') return '';
+    const passe = phrasePasses(passes);
+    // La phrase générale devine une cause (« la fenêtre s'est peut-être fermée… ») : quand un geste a
+    // été passé, la cause est connue et vient d'être dite.
+    const manque = issue === 'passe' || (!echec && passe) ? '' : String(echec || ECHEC_GENERAL).replace(/\s*Tu peux (?:la )?refaire la visite[^.]*\.\s*$/, '');
+    return [passe, manque, REFAIRE].filter(Boolean).join(' ');
   }
   // La personne a fini d'ESSAYER : la bulle revient à sa place, sur l'étape où elle était — sur sa
   // page, et son onglet, si l'essai l'en a éloignée.
@@ -709,6 +828,9 @@
     if (!cur) return;
     const e = etape();
     cur.essai = null; cur.mini = false; cur.geste = 0;
+    // L'essai a refermé ce que l'étape montrait (« Annuler » dans le récapitulatif) : reprendre, c'est
+    // revenir au geste qui l'ouvre — l'étape décrirait sinon une fenêtre qui n'est plus là.
+    if (e && !cur.fin && e.cible && !cibleDe(e) && sourceDefaite(e)) { revenirAuGeste(); return; }
     if (e && !cur.fin) {
       const dest = typeof e.retour === 'string' ? e.retour : pageDe(e);
       if (dest && typeof dest === 'string' && !pageOk(e)) { try { hote.aller(dest); } catch (_) { /* rien */ } }
@@ -717,6 +839,34 @@
     }
     cur.t0 = Date.now(); cur.perdu = false; cur.defile = false; cur.couper = false;
     dessinerBulle();
+  }
+  // Revenir au geste qui ouvrait ce que l'étape montrait, en le disant.
+  const RETOUR_GESTE = 'Ce que je te montrais s\'est refermé — une fenêtre annulée, peut-être. On revient au geste qui l\'ouvre, ou tu passes cette étape.';
+  // Le geste à refaire : celui qui ouvrait ce que l'étape montrait — et, s'il n'est plus faisable
+  // d'ici, celui qui le rendait faisable. « Relancer par email » vit dans un menu que l'« Annuler » a
+  // refermé : on revient à « Actions », qui le rouvre. Le bouton et le geste lisent la MÊME réponse.
+  function gesteARefaire() {
+    if (!cur) return -1;
+    let k = gesteQuiOuvre(cur.p.etapes, cur.i);
+    while (k > 0) {
+      const g = cur.p.etapes[k];
+      if (!g.cible || cibleDe(g) || pageDe(g) || typeof g.avant === 'function' || typeof g.deplier === 'function') break;
+      const j = gesteQuiOuvre(cur.p.etapes, k);
+      const src = j >= 0 ? cur.p.etapes[j] : null;
+      let tient = true;
+      if (src && typeof src.fait === 'function') { try { tient = !!src.fait(); } catch (_) { tient = true; } }
+      if (!src || tient) break;
+      k = j;
+    }
+    return k;
+  }
+  function revenirAuGeste() {
+    if (!cur) return;
+    const k = gesteARefaire();
+    if (k < 0) { reprendre(); return; }
+    cur.consequences = false;
+    cur.noteProchaine = 'Ce que je te montrais s\'est refermé : on reprend au geste qui l\'ouvre.';
+    entrer(k, 1);
   }
   // Refaire la visite depuis le début — celle d'origine, pas la copie dépliée en route.
   function recommencer() {
@@ -790,12 +940,18 @@
     cur.i = cur.p.etapes.length; cur.fin = true; cur.essai = null; cur.mini = false;
     // Une visite qui a un BUT (« un client de plus ») ne félicite que si le but est atteint : fermer
     // la fenêtre sans enregistrer, ou passer les étapes, n'est pas « Ton client est enregistré ».
-    cur.echec = false;
-    if (typeof cur.p.but === 'function') {
-      let ok = false;
-      try { ok = !!cur.p.but(cur.mesure0); } catch (_) { ok = false; }
-      cur.echec = !ok;
+    // Le but se relève à chaque tour et TERMINE la visite dès qu'il est atteint ; une PREUVE
+    // (`preuve`) ne se juge qu'ici, à la fin — pour une visite qui explique encore après le geste
+    // (le paquet fabriqué, puis où le trouver), ou dont le résultat peut être vrai dès l'entrée (une
+    // fiche déjà complète : « Ta fiche est à jour » est vrai, sans rien retaper).
+    let butAtteint = null;
+    const juge = typeof cur.p.but === 'function' ? cur.p.but : typeof cur.p.preuve === 'function' ? cur.p.preuve : null;
+    if (juge) {
+      try { butAtteint = !!juge(cur.mesure0); } catch (_) { butAtteint = false; }
     }
+    const issue = issueDeFin(butAtteint, cur.passes);
+    cur.echec = issue !== 'bravo';
+    cur.passe = texteDeFin(issue, cur.passes, selonFin(cur.p.echec));
     dessinerBulle();
   }
   function terminer() {
@@ -843,7 +999,8 @@
       cible: !!e.cible, el: !!el, vu: cur.vu, facultatif: !!e.facultatif, faire: estFaire(e), mode: e.faire || '',
       aFait: typeof e.fait === 'function', fait: faitFn, faitAvant: entree ? undefined : cur.faitAvant, entree,
       clic: !!(cur.clic && Date.now() - cur.clic > 80), clicRecent: !!cur.clic,
-      geste: !!cur.geste, essai: !!cur.essai, t: Date.now() - cur.t0
+      geste: !!cur.geste, essai: !!cur.essai, t: Date.now() - cur.t0,
+      defait: !el && !!e.cible && sourceDefaite(e)
     };
     let d = decider(s);
     cur.faitAvant = faitFn;
@@ -877,8 +1034,12 @@
     if (d === 'dejaFait') { cur.dejaFait = true; dessinerBulle(); return; }
     if (d === 'attendre' || d === null) return;
     // La cible a-t-elle disparu ? Pas tout de suite : une fenêtre met un instant à s'ouvrir.
+    // Perdue parce que le geste d'avant est défait : la bulle propose de le refaire. Jugé ICI, après la
+    // « prise d'avance » — un « Annuler » cliqué pendant l'étape est un geste, et la première décision
+    // était « avance » (vu à la souris, 10.14.1 : « On s'est perdus de vue » au lieu de « Revenir à »).
     const perdu = d === 'perdu';
-    if (perdu !== cur.perdu) { cur.perdu = perdu; dessinerBulle(); return; }
+    const defait = perdu && !!s.defait;
+    if (perdu !== cur.perdu || defait !== !!cur.defait) { cur.perdu = perdu; cur.defait = defait; dessinerBulle(); return; }
     // Une liste dont les boutons ont changé (un onglet redessiné, une liste chargée) se redit. On
     // compte les contrôles BRUTS — sans demander d'explication à l'hôte toutes les 180 ms.
     if (e.liste && el && !cur.perdu && !cur.mini && compterBruts(e) !== cur.bruts) dessinerBulle();
@@ -1213,9 +1374,12 @@
     // Une zone de page perdue avec une liste vidée : le remède est de réafficher la liste, pas de
     // naviguer — on est déjà sur la bonne page.
     const remise = cur.perdu && e.liste && hote.remettre ? resoudre(hote.remettre) : null;
+    // Ce qu'un geste avait ouvert s'est refermé : le remède est de refaire CE geste.
+    const source = cur.perdu && cur.defait ? cur.p.etapes[gesteARefaire()] : null;
     const pied = cur.perdu ? `
         <button type="button" class="vb-lien" data-v="passer">Passer cette étape</button>
         ${remise ? '<button type="button" class="vb-suiv" data-v="remettre">Réafficher toute la liste</button>'
+          : source ? `<button type="button" class="vb-suiv" data-v="regeste">Revenir à « ${h(nettoie(source.titre || '') || 'l\'étape d\'avant')} »</button>`
           : pageDe(e) || e.retour ? '<button type="button" class="vb-suiv" data-v="retour">M\'y ramener</button>' : '<button type="button" class="vb-suiv" data-v="fermer">Arrêter la visite</button>'}`
       : faire ? `
         <button type="button" class="vb-lien" data-v="passer">Passer cette étape</button>
@@ -1237,10 +1401,14 @@
       <div class="vb-haut">${tete(cur.perdu ? ICONE_PERDU : iconeDe(coul), t.sur, cur.perdu ? t.lieu : lieuDe(t.lieu, e.titre, p), 'fermer', 'Mettre la visite en pause (Échap) — tu la reprendras depuis « Me guider »')}${t.barre}</div>
       <div class="vb-corps">
       ${cur.perdu
-        ? `<h3 id="visite-titre">On s'est perdus de vue</h3>
+        ? source
+          ? `<h3 id="visite-titre">Ça s'est refermé</h3>
+           <div class="vb-texte">${RETOUR_GESTE}</div>`
+          : `<h3 id="visite-titre">On s'est perdus de vue</h3>
            <div class="vb-texte">${e.perdu || 'L\'endroit que je voulais te montrer n\'est plus à l\'écran : tu as peut-être changé de page ou fermé une fenêtre. Pas de souci — je peux t\'y ramener, ou tu passes cette étape.'}${remise ? '<p><b>Réafficher toute la liste</b> efface la recherche et les filtres : ce que je voulais te montrer revient.</p>'
              : e.liste ? '<p>Remets l\'écran comme il était pour le revoir, ou passe cette étape.</p>' : ''}</div>`
         : `<h3 id="visite-titre">${h(e.titre || '')}</h3>
+           ${cur.note ? `<div class="vb-note" role="status">${h(cur.note)}</div>` : ''}
            ${e.texte ? `<div class="vb-texte">${e.texte}</div>` : ''}
            ${liste}
            ${faire && e.action ? (cur.dejaFait
@@ -1353,7 +1521,7 @@
         </div>
         <div class="vb-corps">
           <h3 id="visite-titre">Ce n'est pas encore fait</h3>
-          <div class="vb-texte">${p.echec || 'La visite est allée jusqu\'au bout, mais rien n\'a été enregistré : la fenêtre s\'est peut-être fermée sans « Enregistrer », ou une étape a été passée. Tu peux la refaire maintenant — ou plus tard, depuis « Me guider ».'}</div>
+          <div class="vb-texte">${cur.passe}</div>
         </div>
         <div class="vb-pied"><button type="button" class="vb-prec" data-v="abandon">Fermer</button><button type="button" class="vb-suiv" data-v="recommencer">Recommencer la visite${FLECHE}</button></div>`;
       typographier(els.bulle);
@@ -1379,8 +1547,8 @@
         <button type="button" class="vb-fermer" data-v="fin" aria-label="Fermer la visite" title="Fermer">${SVG('<path d="M6 6l12 12M18 6L6 18"/>')}</button>
       </div>
       <div class="vb-corps">
-        <h3 id="visite-titre">${h(p.bravo || 'C\'est fait !')}</h3>
-        <div class="vb-texte">${p.conclusion || 'Tu sais maintenant le faire. Tu retrouveras cette visite, et toutes les autres, dans « Me guider ».'}</div>
+        <h3 id="visite-titre">${h(selonFin(p.bravo) || 'C\'est fait !')}</h3>
+        <div class="vb-texte">${selonFin(p.conclusion) || 'Tu sais maintenant le faire. Tu retrouveras cette visite, et toutes les autres, dans « Me guider ».'}</div>
         ${pr && pr.total ? `<div class="vb-parcours"><div class="vb-parcours-t"><b>${h(pr.titre || 'Ton parcours')}</b><span>${pr.fait} / ${pr.total}</span></div>
           <span class="vb-jauge"><i style="--p:${pct}%"></i></span>${pr.texte ? `<span class="vb-parcours-s">${h(pr.texte)}</span>` : ''}</div>` : ''}
         ${actions.length ? `<div class="vb-actions">${actions.map(a => `<button type="button" class="${a.principal ? 'vb-suiv' : 'vb-suite simple'}" data-v="action" data-id="${h(a.id)}">${a.principal ? `${h(a.label)}${FLECHE}` : `<span class="vb-suite-t"><b>${h(a.label)}</b>${a.detail ? `<span>${h(a.detail)}</span>` : ''}</span>`}</button>`).join('')}</div>` : ''}
@@ -1703,7 +1871,7 @@
   // Sans l'élément lu sur l'écran (`el`) : une copie qui traverse le pont de l'instrument se sérialise.
   const etapeCourante = () => { const e = etape(); if (!e) return null; const c = Object.assign({}, e); delete c.el; return c; };
 
-  const api = { installer, lancer, quitter, enCours, etapeCourante, suivant, precedent, chapitreSuivant, reprendre, placerBulle, placerPres, placerMini, typo, chevauche, decouperHaut, trousDeListe, hautPourBulle, hautPourCouper, viseLaCible, estFaire, decider, enAttenteDe, compteDe, pointDeReprise, etapeAvecPage, versLaReprise, dejaRempliDe, normNom, nomsCites, lieuDe, ouvrirOnglet,
+  const api = { installer, lancer, quitter, enCours, etapeCourante, suivant, precedent, chapitreSuivant, reprendre, gestePasse, consequenceDuGeste, gesteQuiOuvre, issueDeFin, phrasePasses, texteDeFin, selonFin, finsHonnetes, placerBulle, placerPres, placerMini, typo, chevauche, decouperHaut, trousDeListe, hautPourBulle, hautPourCouper, viseLaCible, estFaire, decider, enAttenteDe, compteDe, pointDeReprise, etapeAvecPage, versLaReprise, dejaRempliDe, normNom, nomsCites, lieuDe, ouvrirOnglet,
     chapitres, resoudre, visible, listerControles, etapesDeLaVue, blocsDe, cheminDe, PATIENCE, PATIENCE_FACULTATIVE, CONTROLES,
     nettoie, libelleDe, resumeBulle, routeDe, expliqueur, zoneur, phraseDuHaut, texteDuHaut };
   global.Visite = api;

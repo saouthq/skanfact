@@ -10147,6 +10147,8 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
     state: () => S, dossier: dossierPour, exercices: exercicesDe, estExemple: () => (S.dossiers || []).some(d => d.demo),
     cleSecours: () => (recoveryAt === undefined ? null : recoveryAt !== null),
     copieExterne: () => !!(backupInfo && backupInfo.external && backupInfo.external.dir),
+    // Le nombre d'écritures du livre ouvert : la preuve qu'une pièce a été enregistrée (10.14.1).
+    ecritures: () => ((livresState.livre && livresState.livre.ecritures) || []).length,
     Visite
   }));
   const visiteParId = id => visites().find(v => v.id === id) || null;

@@ -113,12 +113,34 @@ et au moteur), puis en stable quand Skander valide.*
     choisit enfin sur la fiche d'un client (`choixRegimes`), et l'en-tête dit « régime exonéré » (plus
     « régime Régime réel ») ; « ✓ enregistré » ne pousse plus le bouton de 84 px.
   - 18 preuves par réintroduction pour la dernière partie ; `npm test` 1519 OK, lint propre.
-  - **Reste de S-02** : des fins honnêtes (`mesure`/`but`/geste final) pour les autres gestes guidés
-    des deux applications (émettre, régler, avoir, mot de passe, clôturer, envoyer, relancer,
-    bulletin, immobilisation, compte…) avec une règle générale tenue par un test ; les textes des
-    actions beaucoup plus explicatifs (ce que fait le bouton, quand s'en servir, ce qui se passe
-    après) — « Ouvre un devis vierge » ne suffit pas ; relancer `e2e:couverture` et
-    `e2e:cabinet-couverture`.
+- **Fait, prouvé et testé à la souris (26/09, S-02 — la visite guidée, seconde moitié)** :
+  - **Des fins honnêtes pour tous les gestes guidés** des deux applications (émettre, régler, avoir,
+    mot de passe, clôturer, envoyer, relancer, bulletin, paquet, équipe, pièce saisie…) : une fin qui
+    affirme un fait a un `but` ou une `preuve` ; un geste PASSÉ ne se félicite pas et la fin le nomme ;
+    une fin ratée dit l'état et le geste qui le fait, jamais une cause devinée — la règle
+    (`finsHonnetes`) est tenue dans les deux applications.
+  - **Après un geste passé, la visite saute ce qu'il aurait ouvert** (plus de récapitulatif décrit
+    alors qu'il ne s'est jamais ouvert) ; **ce qui s'est refermé pendant qu'on le regardait** se dit
+    « Ça s'est refermé » avec « Revenir à « … » » (le geste qui l'ouvre). Vérifié à la souris :
+    Émettre (passé, fait, annulé), Relancer (annulé dans la question de l'exemple, puis fait
+    jusqu'au bout), et au Cabinet « Travailler à plusieurs » (annulé, revenu, déclaré).
+  - Trois visites neuves ne se lancent que quand elles ont un sens : une facture EN RETARD à relancer,
+    un achat DÛ à régler, un mois À CLÔTURER — sinon elles disent pourquoi. La visite du mot de passe
+    sait si les données sont déjà chiffrées. Un test confronte clé par clé ce que les visites
+    demandent à ce que chaque application leur prête (`premier`, `chiffre`, `ecritures`, les sortes
+    de dossier du Cabinet, l'entrée de menu « Relancer par email » visée par sa clé).
+  - Fenêtres : deux champs empilés ne se touchent plus (14 px) ; une zone de texte ne s'écrit plus en
+    gras. 38 preuves par réintroduction ; `npm test` 1524 OK, lint propre.
+  - **Vu pendant le test à la souris, à traiter** : la ligne « Reportées » des Relances est pâlie
+    jusqu'à son bouton « Actions », qui paraît éteint ; les numéros de « Échéances dans les 7 jours »
+    ne s'ouvrent pas (du texte) ; l'anneau d'une étape posé sur une case recouvre son libellé
+    (« Rôle ») — éclairer le `.field` entier ; la fenêtre du mail dit « l'Explorateur » sous Linux
+    (juste sous Windows, plateforme livrée).
+  - **Reste de S-02** : les textes des actions beaucoup plus explicatifs (ce que fait le bouton, quand
+    s'en servir, ce qui se passe après) — « Ouvre un devis vierge » ne suffit pas ; relancer
+    `e2e:couverture` et `e2e:cabinet-couverture`. Quand `e2e:visites` tournera (§ 4 bis), la visite
+    « motdepasse » chiffrera le profil du robot (essai « Visite-2026 ») : les visites suivantes
+    trouveront l'écran de verrouillage.
 - **Cabinet — 84 champs sans bulle « i »** (trouvés en portant la sonde de l'app entreprise au
   Cabinet, le jumeau manquant) : salarié, bulletin, bien, cession, écriture de trésorerie, questions,
   réouverture, mots de passe… À écrire dans `cabguide.js` (chaque bulle dit ce que le CODE fait du

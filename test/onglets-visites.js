@@ -12,7 +12,9 @@
 // par étape, l'onglet ouvert, et confronte chaque cible `#id` au panneau qui la contient — le panneau
 // lui-même, ou le dernier panneau ouvert avant l'identifiant dans la page des réglages.
 // ============================================================================================
-module.exports = function ongletsDesVisites({ visites, app, table, appel, page, barre }) {
+// `hors` : les identifiants posés sous la barre d'onglets, hors de tout panneau (la barre
+// « Enregistrer » des Paramètres) — nommés par l'appelant, jamais devinés.
+module.exports = function ongletsDesVisites({ visites, app, table, appel, page, barre, hors }) {
   const ongletDe = new Map([...app.matchAll(table)].map(m => [m[1], m[2]]));
   const marques = [...app.matchAll(new RegExp(appel + "\\('([a-z][\\w-]*)'", 'g'))];
   const panneauDe = new Map();
@@ -36,7 +38,7 @@ module.exports = function ongletsDesVisites({ visites, app, table, appel, page, 
       if (!onglet) continue;
       for (const c of [].concat(e.cible || [], e.zone || []).filter(x => typeof x === 'string')) {
         const m = /#([a-z][\w-]*)/.exec(c);
-        if (!m) continue;
+        if (!m || (hors || []).includes(m[1])) continue;
         const pan = ongletDe.has(m[1]) ? m[1] : panneauDe.get(m[1]);
         if (!pan || !ongletDe.has(pan)) continue;
         controles++;

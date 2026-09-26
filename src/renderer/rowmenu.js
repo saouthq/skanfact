@@ -141,8 +141,10 @@
     const m = document.createElement('div');
     m.className = 'row-menu';
     m.setAttribute('role', 'menu');
+    // `cle` (facultatif) nomme l'action pour qui doit la DÉSIGNER sans lire son libellé — une visite
+    // guidée qui dit « Clique sur « Relancer par email » » éclaire CETTE entrée, pas la troisième du menu.
     m.innerHTML = actions.map((a, i) => a.sep ? '<hr>'
-      : `<button type="button" role="menuitem" data-i="${i}"${a.danger ? ' class="danger"' : ''}>
+      : `<button type="button" role="menuitem" data-i="${i}"${a.cle ? ` data-act="${h(a.cle)}"` : ''}${a.danger ? ' class="danger"' : ''}>
           ${ico(a.icon)}<span class="rm-t"><span class="rm-l">${h(a.label)}</span>${a.hint ? `<span class="rm-h">${h(a.hint)}</span>` : ''}</span></button>`).join('');
     document.body.appendChild(m);
     // Un menu ouvert DANS une fenêtre passe au-dessus d'elle (10.14.1, S-04) : à sa couche 70, il

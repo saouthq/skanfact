@@ -8139,6 +8139,55 @@ lots ; le détail de ce qui reste vit dans `A-FAIRE.md` § 0.
 - **Un refus qui renvoie aux Réglages montre la case, une fois le panneau chargé** (REF-01, le
   10.13.0 d'un cran plus loin) : le panneau s'affiche « Chargement… » avant de grandir ; viser la
   case avant la fin de la lecture amène à la case d'au-dessus.
+- **La visite guidée ne passe plus toute seule** (S-02, « le guide passe tout seul sans que j'aie
+  appuyé sur Suivant ») : seul un GESTE de la personne fait avancer. Un redessin de la page, une zone
+  vue puis vidée, un geste déjà fait en entrant n'avancent plus rien — « Déjà fait » attend
+  « Suivant ». Et **ce que la bulle nomme se clique** : le voile est un masque PERCÉ (la zone, chaque
+  bouton cité « entre guillemets » avec son anneau, chaque contrôle que la liste décrit) ; un bouton
+  montré assombri derrière le voile est un bouton qu'on ne peut pas découvrir.
+- **Une fin qui AFFIRME un fait le prouve par les données** — un `but` (relevé à chaque tour, il
+  termine la visite dès qu'il est atteint) ou une `preuve` (jugée à la fin, pour une visite qui
+  explique encore après le geste). « Ta fiche est à jour » d'une fiche jamais enregistrée, « Ta
+  facture est émise » d'une facture restée en brouillon : la fin disait ce qu'elle espérait. Une
+  visite qui ne fait que montrer dit « Tu sais… ». `finsHonnetes` tient la règle dans les DEUX
+  applications, et elle refuse aussi un `but` suivi d'étapes à regarder (elles seraient coupées).
+- **Un geste PASSÉ ne se félicite pas, et ce qu'il aurait ouvert se saute avec lui.** « Passer cette
+  étape » sur « Émettre la facture » laissait la visite décrire, au milieu de l'écran, un
+  récapitulatif qui ne s'était jamais ouvert, puis viser son bouton. Le geste passé se retient (la
+  fin le NOMME : « Tu as passé « Émettre » ») et l'étape qui en dépendait (sa cible absente, rien ne
+  l'y amènera — ni sa page, ni une préparation) se saute, dans le sens où l'on va
+  (`consequenceDuGeste`). Vu à la souris, jamais par un test : un parcours ne passe pas une étape.
+- **Ce qu'un geste avait ouvert peut se refermer PENDANT qu'on le regarde** (« Annuler » dans le
+  récapitulatif) : l'étape se dit perdue tout de suite — « Ça s'est refermé » — et propose
+  « Revenir à « X » », le geste qui l'ouvre (`gesteQuiOuvre`, jamais un facultatif ; on remonte tant
+  que la source est elle-même défaite). Le PROPRE geste de l'étape n'est pas une défaite : « Émettre »
+  ferme le récapitulatif, et c'est le geste attendu. D'où l'ordre dans `decider` : l'exception avant
+  la règle, et `defait` calculé APRÈS la décision « avance » — calculé avant, il disait « perdu » un
+  tour trop tôt et la bulle montrait le texte général.
+- **Une fin ratée dit l'ÉTAT et le geste qui le fait — jamais une cause qu'elle n'a pas vue.** « La
+  fenêtre s'est fermée sans « Émettre » » était faux quand on avait passé le geste qui l'ouvre ;
+  « La facture n'est pas émise — c'est « Émettre », dans le récapitulatif, qui la numérote » est vrai
+  dans tous les cas. La règle se lit sur le contenu des deux applications (`finsHonnetes().causes`) :
+  « peut-être » laisse une cause possible, l'affirmer non. Et la phrase générale se tait quand un geste
+  a été passé : la cause vient d'être dite.
+- **Ce qu'une visite demande à son contexte, l'application le prête — clé par clé.** Trois visites
+  neuves demandaient `ctx.premier('factureRetard')`, `'achatDu'`, `'moisACloturer'` : une clé que
+  `premierObjet` ne connaît pas rend `null`, et la visite ne se lance JAMAIS, sans une erreur ni un
+  test qui tombe. Un test lit chaque `ctx.X` des deux fichiers de visites contre ce que chaque
+  application passe à `parcours`, chaque clé de `premier` contre les `case` de `premierObjet`, chaque
+  sorte de dossier du Cabinet contre ce que `dossierPour` JUGE (pas contre son repli sur la vitrine,
+  qui répond à tout), et chaque entrée de menu visée par sa clé (`[data-act="…"]`, posée par
+  `rowmenu.js` depuis `cle`) contre un menu qui la pose. Une visite qui dit « Clique sur « Relancer
+  par email » » éclaire CETTE entrée, pas la troisième du menu.
+- **Une question que la visite traverse s'éclaire sur le bouton qu'elle demande de cliquer**
+  (« Continuer quand même », `#b`), pas sur son titre : l'anneau sur un titre fait chercher où cliquer.
+- **Deux champs empilés dans une fenêtre sans grille se touchaient** (0 px entre « Nom » et « Rôle ») :
+  `.modal > * + .field` ; et **un TEXTE long se lit mal en gras** — une zone de texte d'un formulaire
+  reprend la graisse de la lecture (le message d'une relance, dix lignes en 600).
+- Piège de preuve, **la troisième fois** (10.0.0, 9.6.1) : la preuve de la règle « un `but` ne coupe
+  pas d'étapes » est restée VERTE — la visite choisie n'avait aucune étape après son geste, donc le
+  défaut ne pouvait rien y couper. Refaite sur une visite qui en a une, elle tombe. **Une preuve se
+  pose sur des données où le défaut a quelque chose à abîmer.**
 - Pièges de méthode re-rencontrés : un bandeau « Première fois sur cet écran ? » qu'on ferme fait
   REMONTER tout ce qui suit — on remesure avant le clic suivant (q-rect), sinon le clic tombe une
   ligne plus haut ; un objet créé dans un `vm` a un autre prototype, on compare par aller-retour JSON ;

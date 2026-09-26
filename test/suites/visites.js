@@ -1125,13 +1125,135 @@ t('10.14.1 : une visite qui se termine sur « Enregistrer » dans une fenêtre n
     if (!der || der.faire !== 'clic') return;
     const cibles = [].concat(der.cible || []).join(' ');
     const fermeFenetre = /aucuneFenetre\(\)/.test(String(der.fait || ''));
-    if (/#modal-root|\.modal/.test(cibles) && fermeFenetre && typeof v.but !== 'function') sans.push(v.id);
+    // Le but (relevé à chaque tour) ou la preuve (jugée à la fin) : l'un ou l'autre regarde les DONNÉES.
+    if (/#modal-root|\.modal/.test(cibles) && fermeFenetre && typeof v.but !== 'function' && typeof v.preuve !== 'function') sans.push(v.id);
   });
   assert.deepStrictEqual(sans, [], 'des visites félicitent une fenêtre fermée par « Annuler »');
   const vj = lireSource('src', 'renderer', 'visite.js');
   const fin = vj.slice(vj.indexOf('function finir('), vj.indexOf('function terminer('));
-  assert.ok(/cur\.echec = !ok/.test(fin), 'la fin ne vérifie plus le but');
+  // La fin passe par l'issue PURE (`issueDeFin`) : c'est elle que les tests ci-dessous jouent.
+  // Le but (ou la preuve, jugée à la fin seulement) décide ; son absence laisse juger les gestes passés.
+  assert.ok(/const juge = typeof cur\.p\.but === 'function' \? cur\.p\.but : typeof cur\.p\.preuve === 'function' \? cur\.p\.preuve : null/.test(fin)
+    && /butAtteint = !!juge\(cur\.mesure0\)/.test(fin), 'la fin ne vérifie plus le but ni la preuve');
+  assert.ok(/const issue = issueDeFin\(butAtteint, cur\.passes\)/.test(fin) && /cur\.echec = issue !== 'bravo'/.test(fin), 'la fin ne décide plus par issueDeFin');
   assert.ok(/Ce n'est pas encore fait|Ce n\\'est pas encore fait/.test(vj) && /data-v="recommencer"/.test(vj), 'un but manqué n\'a plus sa fin honnête');
+});
+
+// Skander, 26/09 : la visite « Compléter ma fiche société », « Passer cette étape » sur
+// « Enregistrer », et la fin disait « Ta fiche est à jour ». Un GESTE passé sans être fait se retient ;
+// la fin ne félicite pas ce qui n'a pas eu lieu, et elle NOMME ce qui a été passé.
+t('10.14.1 : un geste PASSÉ sans être fait ne se félicite pas — la fin le nomme', () => {
+  const faire = { p: { type: 'faire' } };
+  // Un geste d'une visite « faire » : passé, il n'est pas fait.
+  assert.strictEqual(V.gestePasse({ faire: 'clic', titre: 'Enregistrer' }, faire), true, 'un clic passé n\'est pas un geste passé');
+  // … sauf si sa preuve dit qu'il est fait (un geste fait autrement, puis « Passer »).
+  assert.strictEqual(V.gestePasse({ faire: 'clic', fait: () => true }, faire), false, 'un geste prouvé fait compte comme passé');
+  assert.strictEqual(V.gestePasse({ faire: 'clic', fait: () => false }, faire), true);
+  // Une preuve qui plante ne prouve rien.
+  assert.strictEqual(V.gestePasse({ faire: 'clic', fait: () => { throw new Error('x'); } }, faire), true);
+  // Une case : passée VIDE, elle n'est pas remplie ; déjà remplie (`pret`), elle l'est.
+  assert.strictEqual(V.gestePasse({ faire: 'valeur' }, Object.assign({ pret: false }, faire)), true);
+  assert.strictEqual(V.gestePasse({ faire: 'valeur' }, Object.assign({ pret: true }, faire)), false);
+  // Ni une étape facultative, ni une étape qu'on regarde, ni un geste « Déjà fait », ni une visite de page.
+  assert.strictEqual(V.gestePasse({ faire: 'clic', facultatif: true }, faire), false, 'une étape facultative se passe sans reproche');
+  assert.strictEqual(V.gestePasse({ titre: 'Regarder' }, faire), false, 'une étape qu\'on regarde n\'est pas un geste');
+  assert.strictEqual(V.gestePasse({ faire: 'clic' }, { p: { type: 'faire' }, dejaFait: true }), false);
+  assert.strictEqual(V.gestePasse({ faire: 'clic' }, { p: { type: 'page' } }), false, 'une visite de page ne réclame aucun geste');
+  // L'issue : un but atteint félicite même si une étape a été passée (le geste s'est fait ailleurs) ;
+  // un but manqué échoue ; sans but, un geste passé ne se félicite pas.
+  assert.strictEqual(V.issueDeFin(true, ['Enregistrer']), 'bravo');
+  assert.strictEqual(V.issueDeFin(false, []), 'echec');
+  assert.strictEqual(V.issueDeFin(null, ['Enregistrer']), 'passe');
+  assert.strictEqual(V.issueDeFin(null, []), 'bravo');
+  assert.strictEqual(V.issueDeFin(null, undefined), 'bravo');
+  // La phrase nomme ce qui a été passé — une fois chacun, accordée.
+  const un = V.phrasePasses(['Enregistrer']);
+  assert.ok(/Tu as passé « Enregistrer » : ce geste n'est donc pas fait\./.test(un), un);
+  const deux = V.phrasePasses(['Le nom', 'Enregistrer', 'Le nom']);
+  assert.ok(/« Le nom » et « Enregistrer » : ces gestes ne sont donc pas faits\./.test(deux), deux);
+  assert.strictEqual(V.phrasePasses([]), '');
+  // La phrase échappe ce qu'elle cite (un titre vient du contenu).
+  assert.ok(!/<b>/.test(V.phrasePasses(['<b>x</b>'])), 'la phrase n\'échappe plus le titre');
+  // Le moteur : « Passer » retient le geste, et la fin affiche la phrase avant tout texte d'échec.
+  const vj = lireSource('src', 'renderer', 'visite.js');
+  const suiv = vj.slice(vj.indexOf('function suivant(passer)'), vj.indexOf('function gestePasse(')).replace(/^\s*\/\/.*$/gm, '');
+  assert.ok(/if \(passer && gestePasse\(e, cur\)\) \{\s*\(cur\.passes = cur\.passes \|\| \[\]\)\.push\(/.test(suiv), '« Passer » ne retient plus le geste passé');
+  assert.ok(/cur\.passe = texteDeFin\(issue, cur\.passes, selonFin\(cur\.p\.echec\)\)/.test(vj), 'la fin ne compose plus son texte');
+  assert.ok(/<div class="vb-texte">\$\{cur\.passe\}<\/div>/.test(vj), 'la fin n\'affiche plus ce qui a été passé');
+  // Le texte d'une fin honnête : ce qui a été passé, puis ce qui manque, puis le chemin pour refaire —
+  // dit UNE fois, même quand le mot de la visite le disait déjà.
+  const refaire = /Tu peux refaire la visite maintenant — ou plus tard, depuis « Me guider »\./g;
+  const passe = V.texteDeFin('passe', ['Enregistrer'], 'Rien n\'est enregistré.');
+  assert.ok(/^Tu as passé « Enregistrer »/.test(passe) && !/Rien n'est enregistré/.test(passe), 'un geste passé sans but ne dit que ce qui a été passé : ' + passe);
+  const echec = V.texteDeFin('echec', ['Le nom'], 'Ta fiche n\'est pas complète. Tu peux refaire la visite maintenant — ou plus tard, depuis « Me guider ».');
+  assert.ok(/^Tu as passé « Le nom »[^]*Ta fiche n'est pas complète\./.test(echec), echec);
+  assert.strictEqual((echec.match(refaire) || []).length, 1, 'le chemin pour refaire se dit deux fois : ' + echec);
+  assert.ok(/rien n'a été enregistré/.test(V.texteDeFin('echec', [], '')), 'un but manqué sans mot de la visite n\'a plus sa phrase générale');
+  assert.strictEqual(V.texteDeFin('bravo', ['x'], 'y'), '');
+});
+
+// Vu à la souris (10.14.1) : « Passer cette étape » sur « Émettre la facture », et la visite décrivait,
+// au milieu de l'écran, un récapitulatif qui ne s'était jamais ouvert — puis visait son bouton. Ce
+// qu'un geste passé aurait ouvert ne s'est pas ouvert : l'étape qui le décrivait se saute avec lui. Et
+// la fin ne devine plus une cause qu'elle n'a pas vue (« la fenêtre s'est fermée sans « Émettre » »).
+t('10.14.1 : après un geste passé, la visite saute ce qu\'il aurait ouvert — et la fin ne devine pas de cause', () => {
+  // L'étape qui décrit la fenêtre ouverte par le geste : sa cible n'est pas là, rien ne l'y amènera.
+  assert.strictEqual(V.consequenceDuGeste({ cible: '#modal-root .modal' }, { present: false }), true, 'le récapitulatif jamais ouvert se décrirait');
+  // Sa cible est là (un champ du même formulaire) : l'étape a de quoi montrer.
+  assert.strictEqual(V.consequenceDuGeste({ cible: '#x' }, { present: true }), false);
+  // Une étape qui mène à sa page, ou qui prépare l'écran, a de quoi montrer.
+  assert.strictEqual(V.consequenceDuGeste({ cible: '#x' }, { present: false, seMene: true }), false);
+  assert.strictEqual(V.consequenceDuGeste({ cible: '#x', avant: () => {} }, { present: false }), false);
+  assert.strictEqual(V.consequenceDuGeste({ cible: '#x', deplier: () => [] }, { present: false }), false);
+  // Un texte sans cible se lit au milieu de l'écran : il ne dépend d'aucun geste.
+  assert.strictEqual(V.consequenceDuGeste({ titre: 'Le mot de la fin' }, { present: false }), false);
+  // Le moteur : « Passer » arme la règle, et `entrer` saute ce qui en dépend, dans le sens où l'on va.
+  const vj = lireSource('src', 'renderer', 'visite.js');
+  const code = x => x.replace(/^\s*\/\/.*$/gm, '');
+  const suiv = code(vj.slice(vj.indexOf('function suivant(passer)'), vj.indexOf('function consequenceDuGeste(')));
+  assert.ok(/if \(passer && gestePasse\(e, cur\)\) \{[^}]*cur\.consequences = true/.test(suiv), '« Passer » n\'arme plus la règle des conséquences');
+  const ent = code(vj.slice(vj.indexOf('function entrer(i, sens)'), vj.indexOf('function etapesDepliees(')));
+  assert.ok(/garder && sens > 0 && cur\.consequences\)[^]*if \(consequenceDuGeste\(e, \{ present: !!cibleDe\(e\), seMene \}\)\) garder = false/.test(ent), 'entrer ne saute plus ce qu\'un geste passé aurait ouvert');
+  // « Annuler » cliqué PENDANT qu'on regarde le récapitulatif : ce que le geste avait ouvert s'est
+  // refermé. Le geste qui l'ouvrait est le plus proche qu'on FAIT, avant l'étape (pas un facultatif).
+  const et = [{ faire: 'clic', titre: 'Émettre', fait: () => false }, { cible: '#modal-root .modal', titre: 'Le récapitulatif' },
+    { faire: 'clic', facultatif: true, titre: 'Numéro' }, { cible: '#ok', faire: 'clic', titre: 'Émettre' }];
+  assert.strictEqual(V.gesteQuiOuvre(et, 1), 0);
+  assert.strictEqual(V.gesteQuiOuvre(et, 3), 0, 'un geste facultatif n\'ouvre pas ce qui suit');
+  assert.strictEqual(V.gesteQuiOuvre(et, 0), -1);
+  // Défait : l'étape se dit perdue TOUT DE SUITE (pas après la patience), et le bouton « Revenir à »
+  // y ramène — sauf si c'est son PROPRE geste qui vient d'avoir lieu (« Émettre » ferme le récapitulatif).
+  const base2 = { cible: true, el: false, faire: true, mode: 'clic', aFait: true, fait: true, entree: true, t: 10 };
+  assert.strictEqual(V.decider({ ...base2, defait: true }), 'perdu', 'une étape dont le geste d\'avant est défait se dit « Déjà fait »');
+  assert.strictEqual(V.decider({ ...base2, defait: false }), 'dejaFait');
+  assert.strictEqual(V.decider({ ...base2, defait: true, entree: false, faitAvant: false }), 'avancer', 'le geste attendu, fait, se prend pour une fenêtre défaite');
+  assert.strictEqual(V.decider({ cible: true, el: false, faire: false, mode: '', t: 10, defait: true }), 'perdu', 'une étape qu\'on regarde décrit une fenêtre refermée');
+  assert.strictEqual(V.decider({ cible: true, el: false, faire: true, mode: 'valeur', t: 10, defait: true }), 'perdu', 'une case d\'une fenêtre refermée attend qu\'on la remplisse');
+  assert.strictEqual(V.decider({ ...base2, defait: true, essai: true }), null, 'pendant un essai, rien ne se perd');
+  // Le moteur : le tour lit le geste source, la reprise d'un essai y revient, la bulle perdue le propose.
+  const tour = code(vj.slice(vj.indexOf('function verifier()'), vj.indexOf('function noterGeste(')));
+  assert.ok(/defait: !el && !!e\.cible && sourceDefaite\(e\)/.test(tour), 'le tour ne lit plus si le geste d\'avant est défait');
+  const rep = code(vj.slice(vj.indexOf('function reprendre()'), vj.indexOf('function recommencer()')));
+  assert.ok(/!cibleDe\(e\) && sourceDefaite\(e\)\) \{ revenirAuGeste\(\); return; \}/.test(rep), 'reprendre après un essai décrit une fenêtre refermée');
+  assert.ok(/data-v="regeste"/.test(vj) && /v === 'regeste'\) revenirAuGeste\(\)/.test(vj), 'la bulle perdue ne propose plus de revenir au geste');
+  // La phrase générale devine une cause : quand un geste a été passé, la cause est dite, elle se tait.
+  const t1 = V.texteDeFin('echec', ['Émettre'], '');
+  assert.ok(/^Tu as passé « Émettre »/.test(t1) && !/s'est peut-être fermée/.test(t1), t1);
+  // Les mots d'échec des visites disent l'état et le geste qui le fait — jamais une cause.
+  assert.deepStrictEqual(V.finsHonnetes(visites).causes, [], 'une fin ratée devine une cause qu\'un geste passé démentirait');
+});
+
+// Skander, 26/09 : « le guide passe tout seul », et la fin disait « Ta fiche est à jour » d'une fiche
+// jamais enregistrée, « Ta facture est émise » d'une facture restée en brouillon, « Le mois est
+// clôturé » d'un mois que personne n'avait clôturé. Une fin qui AFFIRME un fait le prouve par les
+// DONNÉES — un but (relevé à chaque tour) ou une preuve (jugée à la fin) ; une visite qui ne fait que
+// MONTRER le dit (« Tu sais… »). La même règle tient le Cabinet (cabvisites.js).
+t('10.14.1 : une fin qui affirme un fait le prouve par les données — sinon elle dit « Tu sais »', () => {
+  const r = V.finsHonnetes(visites);
+  assert.deepStrictEqual(r.sansPreuve, [], 'des visites affirment un fait sans le prouver');
+  assert.deepStrictEqual(r.sansMesure, [], 'un but relatif sans sa mesure d\'entrée');
+  assert.deepStrictEqual(r.coupees, [], 'un but atteint couperait les étapes qui le suivent — jugez-le à la fin (preuve)');
+  assert.ok(r.affirmatives >= 20, 'la règle ne voit plus assez de visites : ' + r.affirmatives);  // mesuré : 24
 });
 
 // Vu à la souris (10.14.1) : « Me guider » annonçait « Étape 2 sur 2 » d'une visite de page arrêtée
@@ -1298,9 +1420,68 @@ t('10.14.1 : le haut d\'une page se dit tel qu\'il EST — le bouton vert nommé
 // visite ouvre) vivent dans deux fichiers : elles se confrontent ici, et dans le Cabinet.
 t('10.14.1 : une visite qui ouvre un onglet des Paramètres vise un panneau rangé dans CET onglet', () => {
   const verif = require('../onglets-visites.js');
-  const r = verif({ visites, app: lireSource('src', 'renderer', 'app.js'), table: /'(p-[a-z]+)': \{ onglet: '([a-z]+)'/g, appel: 'panneau', page: '#/parametres', barre: '#set-tabs' });
+  // La barre d'enregistrement des Paramètres vit SOUS les onglets, hors de tout panneau : nommée.
+  const r = verif({ visites, app: lireSource('src', 'renderer', 'app.js'), table: /'(p-[a-z]+)': \{ onglet: '([a-z]+)'/g, appel: 'panneau', page: '#/parametres', barre: '#set-tabs', hors: ['save-bar'] });
   assert.ok(r.panneaux >= 20 && r.identifiants >= 30, `les tables n'ont pas été lues : ${r.panneaux} panneaux, ${r.identifiants} identifiants`);
   assert.ok(r.controles >= 20, 'contrôles confrontés : ' + r.controles);
   assert.deepStrictEqual(r.fautes, []);
+});
+
+// Écrit en 10.14.1 : trois visites neuves demandaient à l'application une facture EN RETARD, un achat
+// DÛ et un mois À CLÔTURER (`ctx.premier('factureRetard')`…), et la visite du mot de passe si les
+// données sont déjà chiffrées (`ctx.chiffre`). Une clé que l'application ne connaît pas rend `null` :
+// la visite ne se lance JAMAIS, sans un mot — ni erreur, ni test qui tombe. Ce que les visites
+// demandent à leur contexte se confronte à ce que chaque application leur prête, clé par clé, et
+// l'entrée de menu qu'une visite désigne par sa clé (`[data-act="…"]`) existe dans un menu.
+t('10.14.1 : ce que les visites demandent à leur contexte, chaque application le prête — clé par clé', () => {
+  const sansCommentaires = x => x.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  const prete = (litteral, cle) => new RegExp('(^|[\\s,{])' + cle + '\\s*(:|,|$)', 'm').test(litteral);
+  const litteralDe = (src, debut) => {
+    const i = src.indexOf(debut);
+    assert.ok(i > 0, 'appel introuvable : ' + debut);
+    const bloc = sansCommentaires(src.slice(i + debut.length, src.indexOf('}))', i)));
+    assert.ok(bloc.length > 40 && bloc.length < 1200, 'tranche inattendue (' + bloc.length + ') : ' + debut);
+    return bloc;
+  };
+  // L'application entreprise.
+  const app = lireSource('src', 'renderer', 'app.js');
+  const vs = sansCommentaires(lireSource('src', 'renderer', 'visites.js'));
+  const litE = litteralDe(app, 'SkanVisites.parcours({');
+  const demandesE = [...new Set([...vs.matchAll(/ctx\.([A-Za-z]\w*)/g)].map(m => m[1]))];
+  assert.ok(demandesE.includes('premier') && demandesE.includes('chiffre'), 'la lecture des demandes ne voit plus rien : ' + demandesE);
+  assert.deepStrictEqual(demandesE.filter(c => !prete(litE, c)), [], 'une visite demande à l\'application ce qu\'elle ne prête pas');
+  // Chaque objet qu'une visite demande à `premier` a son cas dans `premierObjet`.
+  const po = app.slice(app.indexOf('function premierObjet('), app.indexOf('function premierObjet(') + 9000);
+  const cas = new Set([...po.matchAll(/case '([A-Za-z]\w*)':/g)].map(m => m[1]));
+  const cles = [...new Set([...vs.matchAll(/ctx\.premier\('([A-Za-z]\w*)'\)/g)].map(m => m[1]))];
+  assert.ok(cles.length >= 10 && cas.size >= 10, `les tables n'ont pas été lues : ${cles.length} clés, ${cas.size} cas`);
+  assert.deepStrictEqual(cles.filter(k => !cas.has(k)), [], 'une visite demande un objet que premierObjet ne connaît pas : elle ne se lancerait jamais');
+  // Une entrée de menu désignée par sa clé : la clé est posée par un menu (`cle: '…'`), et le menu la
+  // transforme en `data-act` (rowmenu.js).
+  const rm = sansCommentaires(lireSource('src', 'renderer', 'rowmenu.js'));
+  assert.ok(/\$\{a\.cle \? ` data-act="\$\{h\(a\.cle\)\}"` : ''\}/.test(rm), 'le menu d\'une ligne ne pose plus la clé de ses actions');
+  const actes = [...new Set([...vs.matchAll(/\.row-menu \[data-act="([\w-]+)"\]/g)].map(m => m[1]))];
+  assert.ok(actes.length >= 1, 'aucune entrée de menu désignée par sa clé : la lecture ne voit plus rien');
+  assert.deepStrictEqual(actes.filter(a => !new RegExp(`cle: '${a}'`).test(app)), [], 'une visite désigne une entrée de menu qu\'aucun menu ne pose');
+  // Le Cabinet.
+  const CV = require('../../src/cabinet/renderer/cabvisites.js');
+  const cab = lireSource('src', 'cabinet', 'renderer', 'app.js');
+  const cvs = sansCommentaires(lireSource('src', 'cabinet', 'renderer', 'cabvisites.js'));
+  const litC = litteralDe(cab, 'CV.parcours({');
+  const demandesC = [...new Set([...cvs.matchAll(/ctx\.([A-Za-z]\w*)/g)].map(m => m[1]))];
+  assert.ok(demandesC.includes('dossier') && demandesC.includes('ecritures'), 'la lecture des demandes du Cabinet ne voit plus rien : ' + demandesC);
+  assert.deepStrictEqual(demandesC.filter(c => !prete(litC, c)), [], 'une visite du Cabinet demande à l\'application ce qu\'elle ne prête pas');
+  // Chaque sorte de dossier qu'une visite demande, `dossierPour` sait la reconnaître — dans ce qui JUGE
+  // un dossier (`convient`), pas dans le repli sur la vitrine de l'exemple, qui répond à tout.
+  const dp = cab.slice(cab.indexOf('function dossierPour('), cab.indexOf('function exercicesDe('));
+  const juge = dp.slice(dp.indexOf('const convient'), dp.indexOf('const ouvert'));
+  assert.ok(juge.length > 80 && juge.length < 600, 'tranche inattendue de convient : ' + juge.length);
+  const connues = new Set([...juge.matchAll(/sorte === '([a-z]+)'/g)].map(m => m[1]));
+  const sortes = new Set([
+    ...[...cvs.matchAll(/(?:dans|ctx\.dossier|ctx\.exercices)\('([a-z]+)'/g)].map(m => m[1]),
+    ...Object.values(CV.PAGES || {}).map(P => P && P.dossier).filter(Boolean)
+  ]);
+  assert.ok(sortes.size >= 3 && connues.size >= 3, `les sortes n'ont pas été lues : ${[...sortes]} / ${[...connues]}`);
+  assert.deepStrictEqual([...sortes].filter(s => !connues.has(s)), [], 'une visite du Cabinet demande une sorte de dossier que dossierPour ne reconnaît pas');
 });
 };

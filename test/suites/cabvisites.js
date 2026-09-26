@@ -588,6 +588,27 @@ t('10.14.1 Cabinet : « ✓ enregistré » passe APRÈS le bouton d\'un panneau,
 // Vu à la souris (10.14.1) : l'onglet « Mon cabinet » des Réglages range ses cinq panneaux dans une
 // <section> sans titre. La visite de la page la lisait d'un bloc — une seule étape « Ton cabinet » de
 // treize boutons. Un conteneur sans titre à lui se traverse : ses panneaux sont les blocs.
+// La règle des fins de l'application entreprise (visites.js), tenue ici aussi : « Ta relance est
+// prête » d'un mail jamais ouvert, « Ton équipe peut travailler » d'une équipe jamais déclarée,
+// « Ta grille est réglée » d'une grille jamais enregistrée (10.14.1). Une fin qui AFFIRME un fait le
+// prouve par l'état ; une visite qui ne fait que montrer dit « Tu sais… ».
+t('10.14.1 Cabinet : une fin qui affirme un fait le prouve par l\'état — sinon elle dit « Tu sais »', () => {
+  const r = V.finsHonnetes(visites);
+  assert.deepStrictEqual(r.sansPreuve, [], 'des visites affirment un fait sans le prouver');
+  assert.deepStrictEqual(r.sansMesure, [], 'un but relatif sans sa mesure d\'entrée');
+  assert.deepStrictEqual(r.coupees, [], 'un but atteint couperait les étapes qui le suivent — jugez-le à la fin (preuve)');
+  assert.ok(r.affirmatives >= 10, 'la règle ne voit plus assez de visites : ' + r.affirmatives);  // mesuré : 11
+  // Une fin ratée dit l'état et le geste qui le fait — jamais une cause qu'un geste passé démentirait
+  // (« la fenêtre s'est fermée sans « Ajouter » », dit d'une fenêtre jamais ouverte — 10.14.1).
+  assert.deepStrictEqual(r.causes, [], 'une fin ratée devine une cause qu\'un geste passé démentirait');
+  // La pièce saisie se compte dans le livre OUVERT, à l'étape « Enregistrer » : à l'entrée de la visite,
+  // le livre du dossier n'est peut-être pas encore lu, et le compte d'entrée serait faux.
+  const saisir = parId('saisir-piece');
+  const ok = saisir.etapes.find(e => e.cible === '#sa-ok');
+  assert.ok(ok && typeof ok.avant === 'function' && typeof ok.fait === 'function', 'l\'enregistrement de la pièce ne se mesure plus à son étape');
+  assert.ok(/ecritures: \(\) => \(\(livresState\.livre && livresState\.livre\.ecritures\) \|\| \[\]\)\.length/.test(app), 'le Cabinet ne prête plus le compte des écritures du livre ouvert');
+});
+
 t('10.14.1 : un conteneur sans titre (DIV, SECTION d\'onglet) se traverse, ses panneaux sont les étapes', () => {
   const vj = lireSource('src', 'renderer', 'visite.js').replace(/\/\/[^\n]*/g, '');
   const bloc = vj.slice(vj.indexOf('function blocsDe('), vj.indexOf('const titreDe'));
