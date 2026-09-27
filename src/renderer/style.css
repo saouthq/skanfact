@@ -2612,3 +2612,53 @@ body.dark .g-ligne.faite .g-l-ico { color: #0d1418; }
 .teif-manques li > span { flex: 1 1 auto; }
 .teif-manques li > .btn { flex: 0 0 auto; }
 .teif-suite { margin: 10px 0; padding-inline-start: 22px; display: flex; flex-direction: column; gap: 6px; }
+
+/* ---------- La caisse (10.15.0) ----------
+   Deux colonnes : ce qu'on vend à gauche (le champ de scan en tête, qui garde le curseur), le ticket
+   en cours à droite, le total en gros — c'est lui que le client regarde. Les boutons d'articles ont
+   une taille de doigt : un comptoir s'utilise aussi à l'écran tactile. */
+.caisse { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(340px, 1fr); gap: 18px; align-items: start; }
+@media (max-width: 1100px) { .caisse { grid-template-columns: 1fr; } }
+.cs-scan input { font-size: 17px; padding-block: 12px; }
+.cs-articles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-top: 14px; }
+.cs-art { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-height: 84px; padding: 11px 12px; text-align: start;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-sm); color: var(--text); cursor: pointer; font: inherit; }
+.cs-art:hover { border-color: var(--primary); background: var(--primary-soft); }
+.cs-art:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.cs-art-nom { font-weight: 600; line-height: 1.25; overflow-wrap: anywhere; }
+.cs-art-prix { font-variant-numeric: tabular-nums; color: var(--primary); font-weight: 600; margin-top: auto; }
+/* Un article sans prix le dit en orange : la couleur de la tuile (0,1,0) l'emporterait sur .warn-text posée plus haut. */
+.cs-art-prix.warn-text { color: var(--warning); }
+.cs-art-stock { font-size: 12px; color: var(--muted); }
+.cs-plus { grid-column: 1 / -1; }
+.cs-lignes input.num { width: 72px; }
+/* La zone des lignes a une hauteur FIXE : sans elle, chaque article scanné repoussait les boutons de
+   paiement d'une ligne (45 px au premier), et le clic visé sur « Carte » tombait à côté (H-E1). Au-delà
+   de trois lignes, la zone défile ; les totaux et « Encaisser » ne bougent plus. */
+.cs-zone { position: relative; height: 170px; overflow-y: auto; scrollbar-gutter: stable; border-radius: 10px; }
+.cs-lignes th { white-space: nowrap; }
+.cs-zone table.list { margin: 0; }
+.cs-vide { padding: 14px 0; height: 100%; box-sizing: border-box; margin: 0; display: grid; place-items: center; text-align: center;
+  border: 1px dashed var(--border); border-radius: 10px; }
+.cs-totaux { display: grid; gap: 4px; margin: 14px 0 12px; font-variant-numeric: tabular-nums; }
+.cs-totaux > div { display: flex; justify-content: space-between; gap: 12px; }
+.cs-total { font-size: 24px; font-weight: 700; padding-top: 8px; border-top: 1px solid var(--border); }
+.cs-modes { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; }
+.cs-mode { font: inherit; padding: 9px 16px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel); color: var(--text); cursor: pointer; }
+.cs-mode.on { background: var(--primary); border-color: var(--primary); color: #fff; font-weight: 600; }
+.cs-recu { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 14px; align-items: end; }
+/* Le reçu ne sert qu'aux espèces, mais sa PLACE reste : passer à « Carte » faisait remonter tout le
+   bas du ticket de 66 px, et « Encaisser » avec lui, sous le curseur (H-E1). */
+.cs-recu { min-height: 66px; }
+.cs-sans-recu { grid-column: 1 / -1; align-self: center; margin: 0; }
+.cs-rendre { display: flex; flex-direction: column; align-items: flex-end; padding-bottom: 6px; }
+.cs-rendre strong { font-size: 20px; font-variant-numeric: tabular-nums; }
+.cs-client { margin-top: 10px; }
+.cs-motif { min-height: 2lh; margin: 10px 0 6px; }
+.cs-go { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.cs-encaisser { font-size: 16px; padding: 12px 22px; }
+.cs-dernier { margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--line); display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.cs-apercu { width: 330px; height: 460px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: #fff; display: block; margin: 0 auto 6px; }
+/* Le ticket reste sous les yeux pendant qu'on fait défiler les articles. */
+.cs-droite { position: sticky; top: 0; }
+@media (max-width: 1100px) { .cs-droite { position: static; } }

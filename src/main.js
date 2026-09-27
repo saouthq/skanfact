@@ -2320,6 +2320,48 @@ ipcMain.handle('pdf:export', async (_e, { html, suggestedName }) => {
   return filePath;
 });
 
+// ---------- le ticket de caisse (10.15.0) ----------
+// Une bande de papier de 58 ou 80 mm : sa hauteur est celle de son contenu, mesurée une fois la page
+// posée. Imprimer passe par la fenêtre d'impression du SYSTÈME — c'est là qu'on choisit l'imprimante
+// à tickets —, jamais en silence : une impression qui part sans qu'on la voie, sur la mauvaise
+// imprimante, gâche une rame de papier A4. Le PDF sert à envoyer un ticket, ou à l'imprimer ailleurs.
+async function fenetreTicket(html) {
+  const tmp = path.join(app.getPath('temp'), `skanfact-ticket-${process.pid}-${Date.now()}.html`);
+  fs.writeFileSync(tmp, String(html || ''), 'utf8');
+  const win = pdfWindow();
+  try { await win.loadFile(tmp); } finally { try { fs.unlinkSync(tmp); } catch {} }
+  const px = await win.webContents.executeJavaScript('Math.ceil(document.documentElement.scrollHeight)').catch(() => 600);
+  return { win, hauteurMm: Math.max(60, Math.ceil(Number(px) * 25.4 / 96) + 4) };
+}
+ipcMain.handle('ticket:print', async (_e, { html, largeur } = {}) => {
+  const { win, hauteurMm } = await fenetreTicket(html);
+  const l = Number(largeur) === 58 ? 58 : 80;
+  try {
+    return await new Promise(resolve => win.webContents.print({
+      silent: false, printBackground: true, margins: { marginType: 'none' },
+      pageSize: { width: l * 1000, height: hauteurMm * 1000 }
+    }, (ok, raison) => resolve({ ok: !!ok, annule: !ok && /cancel/i.test(String(raison || '')), raison: ok ? '' : String(raison || '') })));
+  } finally { win.destroy(); }
+});
+ipcMain.handle('ticket:pdf', async (_e, { html, largeur, suggestedName } = {}) => {
+  const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
+    title: 'Enregistrer le ticket en PDF',
+    defaultPath: path.join(app.getPath('documents'), String(suggestedName || 'ticket.pdf').replace(/[\\/:*?"<>|]/g, '_')),
+    filters: [{ name: 'PDF', extensions: ['pdf'] }]
+  });
+  if (canceled || !filePath) return null;
+  const { win, hauteurMm } = await fenetreTicket(html);
+  const l = Number(largeur) === 58 ? 58 : 80;
+  try {
+    const pdf = await win.webContents.printToPDF({
+      printBackground: true, margins: { top: 0, bottom: 0, left: 0, right: 0 },
+      pageSize: { width: l / 25.4, height: hauteurMm / 25.4 }
+    });
+    fs.writeFileSync(filePath, pdf);
+  } finally { win.destroy(); }
+  return filePath;
+});
+
 // Export groupé (journal des ventes) : tous les PDF dans un dossier choisi par l'utilisateur.
 ipcMain.handle('pdf:exportMany', async (_e, { files, folderName }) => {
   const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {

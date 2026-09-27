@@ -759,7 +759,10 @@ module.exports = ({ t, assert, lireSource }) => {
     // La fenêtre enregistre la quantité SIGNÉE, jamais le nombre tapé, et le libellé suit la nature.
     const app = code('src', 'renderer', 'app.js');
     const i = app.indexOf('function adjustForm(');
-    const zone = app.slice(i, app.indexOf('\n  routes.stock = ', i));
+    // Bornée sur la FIN de la fonction (la première déclaration de premier niveau qui suit), jamais
+    // sur un voisin nommé : la caisse (10.15.0) s'est glissée entre adjustForm et routes.stock (10.4.0).
+    const apres = app.slice(i + 20).search(/\n  (?:function |routes\.\w+ = |const \w+ = )/);
+    const zone = app.slice(i, i + 20 + apres);
     assert.ok(zone.length > 1500 && zone.length < 9000, 'tranche adjustForm introuvable (' + zone.length + ')');
     assert.ok(/stockAdjustments\.push\(\{[^}]*qty: qte\b/.test(zone), 'le mouvement enregistre le nombre tapé au lieu de la quantité signée');
     assert.ok(/const qte = C\.qteMouvement\(v\.source, v\.qty\)/.test(zone), 'l\'enregistrement ne passe pas par qteMouvement');

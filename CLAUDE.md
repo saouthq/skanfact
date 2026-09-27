@@ -8779,6 +8779,50 @@ porte `cab:savePaie`, fenêtre « Taux par contrat… ».
 - **Un chiffre qui baisse dit pourquoi** : l'annonce de la fiche salarié nomme le régime appliqué, sinon
   un coût employeur plus bas qu'hier se lit comme une erreur.
 
+**Puis la caisse (H5)** : le module `caisse` (proposé au commerce, à la restauration, à la beauté),
+`routes.caisse` à deux onglets (Vendre ; Tickets et bilan du jour). Un **ticket** est une facture
+(`type: 'facture'`, `ticket: true`) émise et réglée dans le même geste, dans sa propre série
+(`PREFIX.ticket`, TIC-AAAA-NNN, `serieDe` dans `nextNumber` et `etatNumerotation`). Moteur dans
+core.js : `ticketDeCaisse`, `totauxDuPanier`, `motifEncaissement` (la MÊME fonction éteint le bouton
+et refuse), `comptesDeCaisse`/`compteDuMode`, `bilanCaisse` (avec `tiroir` = solde du compte caisse le
+soir, fond compris), `remboursementDeTicket` (un avoir `creditOf` le ticket + un paiement négatif),
+`resteARendre`, `articleParCode`/`normCode`, `ticketHtml`/`bilanCaisseHtml` (80 ou 58 mm). Réglages :
+Paramètres → Documents → « Caisse et tickets » (`caisseLargeur`, `caisseTimbre` — faux par défaut, À
+VÉRIFIER —, `caissePied`). Tests : `test/suites/caisse.js`, et la vérité comptable par deux chemins.
+
+- **Une vente sans client reste une vente** : Marges par client et Top clients ignoraient les tickets
+  sans `clientId`, et la vérité comptable l'a dit (−80 ≠ 46). La clé « Vente au comptoir »
+  (`CLIENT_COMPTOIR`) les regroupe, et son lien mène à la caisse, pas à une fiche qui n'existe pas.
+- **`vers()` de l'app entreprise RENVOIE une fonction** : six `vers('#/caisse')` jamais appelés, vus à
+  la souris — « Caisse créée » sous un bandeau resté là, des onglets morts. Un test interdit la forme
+  jetée (appel sans `()` ni affectation).
+- **Les options de `modal()` vont en QUATRIÈME position.** `{ garde: false }` passé en troisième
+  devenait `onDismiss`, et `onDismiss()` levait à la fermeture : « Rendre un article… » fermait
+  l'aperçu et n'ouvrait RIEN, sans une ligne à l'écran. Le lint ne voit pas une signature ; un test lit
+  chaque appel de `modal()` des deux applications par l'analyseur d'ESLint (espree) et refuse un objet
+  en troisième argument.
+- **La carte et le chèque vont à la banque ou nulle part** (vu à la souris, sur un poste sans compte
+  bancaire) : `compteDuMode` repliait la carte sur le seul compte existant, la caisse, et un
+  remboursement par carte sortait du TIROIR — il annonçait 17,850 DT de moins que ce qu'il contenait.
+  Le test de la première version gravait le défaut (« sans banque, la carte tombe dans le seul
+  compte ») : retourné. Sans banque, l'encaissement et le remboursement refusent AVANT de prendre un
+  numéro (6.0.0), et le refus porte « Créer mon compte bancaire », qui passe par `modeleCompte()`
+  (213d) — c'est le compteur des portes vers un compte neuf qui l'a exigé.
+- **Un montant tapé au comptoir se lit comme on le tape** (`montantTape` : « 50,5 », « 1 000 ») — H-3,
+  la troisième fois ; vide n'est pas zéro reçu, illisible se dit.
+- **Un article sans prix ne part pas gratuit** : le stock sortirait, rien n'entrerait. La tuile dit
+  « prix à fixer », et un clic ouvre la fiche le curseur dans le prix (`catalogForm(…, { focus })`).
+- **Ce qui répond au geste ne bouge pas sous lui, à la caisse aussi** (H-E1) : chaque article scanné
+  repoussait les boutons de paiement d'une ligne ; la zone des lignes a une hauteur FIXE et défile
+  (la ligne scannée reste visible), l'en-tête ne se replie pas sous la barre de défilement
+  (`scrollbar-gutter: stable`), la place du reçu reste en carte et en chèque — elle y dit « rien à
+  rendre » plutôt que de laisser un trou —, et « Rembourser 17,850 DT » réserve sa largeur. Mesuré :
+  « Carte » à la même hauteur avant et après cinq articles.
+- **Un bouton qui ne peut rien faire s'éteint** : « Rembourser » était vert sans aucune quantité
+  choisie ; l'annonce dit pourquoi (9.4.5).
+- **Le bilan dit ce qu'on compte le soir** : « Le tiroir doit contenir X, fond de caisse compris », et
+  un montant négatif se nomme (« rendu aux clients par carte »), il ne garde pas la phrase du positif.
+
 ## Pistes pour la suite (non demandées)
 
 - Séparation des installateurs arm64 / x64 pour diviser par deux les 222 Mo du dmg universel.

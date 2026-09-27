@@ -19,7 +19,7 @@
   // pour les unités de ligne. Aucun calcul ne lit cette liste — elle ne remplit qu'un menu.
   const WITHHOLDING_RATES = [0, 0.5, 1, 1.5, 2.5, 3, 5, 10, 15, 20, 25];
   const PAYMENT_METHODS = [['virement', 'Virement'], ['cheque', 'Chèque'], ['especes', 'Espèces'], ['traite', 'Traite'], ['carte', 'Carte'], ['autre', 'Autre']];
-  const PREFIX = { devis: 'DEV', facture: 'FAC', avoir: 'AVO', proforma: 'PRO', commande: 'BC', livraison: 'BL', contrat: 'CTR' };
+  const PREFIX = { devis: 'DEV', facture: 'FAC', avoir: 'AVO', proforma: 'PRO', commande: 'BC', livraison: 'BL', contrat: 'CTR', ticket: 'TIC' };
   const TITLES = { devis: 'Devis', facture: 'Facture', avoir: 'Avoir', proforma: 'Facture proforma', commande: 'Bon de commande', livraison: 'Bon de livraison', contrat: 'Contrat de prestation' };
   // Les quatre types ajoutés en 2.6.0. Aucun n'a de valeur comptable : ils n'entrent ni dans le journal
   // des ventes, ni dans la TVA, ni dans le chiffre d'affaires. Seules la facture et l'avoir comptent.
@@ -349,6 +349,10 @@
     { id: 'fichiers', label: 'Clients et catalogue', toujours: true,
       quoi: 'Les gens à qui tu vends et ce que tu vends.',
       pages: ['clients', 'catalogue'] },
+    { id: 'caisse', label: 'Caisse',
+      quoi: 'Vendre au comptoir : scanner ou choisir un article, encaisser, imprimer un ticket de 80 mm.',
+      pages: ['caisse'],
+      compte: d => (d.documents || []).filter(estTicket).length },
     { id: 'pieces', label: 'Proforma, bons et contrats',
       quoi: 'Les pièces qui entourent la facture : proforma, bon de commande, bon de livraison, contrat à signer, et la facturation qui se répète toute seule.',
       pages: ['autres', 'contrats'],
@@ -410,6 +414,8 @@
       quoi: 'Réclamer l\'argent du travail fait : la pièce officielle, numérotée et définitive.' },
     { id: 'relances', titre: 'Relances', module: 'ventes', famille: 'Vendre',
       quoi: 'Les factures en retard de paiement, et le message à envoyer pour chacune.' },
+    { id: 'caisse', titre: 'Caisse', module: 'caisse', famille: 'Vendre',
+      quoi: 'Vendre au comptoir : le panier, l\'encaissement, le ticket, et le bilan de la journée.' },
     { id: 'clients', titre: 'Clients', module: 'fichiers', famille: 'Vendre',
       quoi: 'Les gens et les entreprises à qui tu vends : coordonnées, historique, ce qu\'ils te doivent.' },
     { id: 'catalogue', titre: 'Catalogue', module: 'fichiers', famille: 'Vendre',
@@ -870,20 +876,20 @@
   // ligne — sinon un garagiste ou un restaurateur découvrirait Achats et Stock par hasard, six mois
   // plus tard, alors que ce sont les deux modules de son quotidien.
   const MODULES_PAR_ACTIVITE = {
-    commerce: ['achats', 'stock', 'pilotage'],
+    commerce: ['achats', 'stock', 'pilotage', 'caisse'],
     artisanat: ['achats', 'stock', 'pieces'],
     batiment: ['achats', 'pieces', 'pilotage'],
     informatique: ['achats', 'pieces'],
     conseil: ['pieces'],
     sante: ['achats'],
-    restauration: ['achats', 'stock', 'paie'],          // matières premières, et du personnel
+    restauration: ['achats', 'stock', 'paie', 'caisse'], // matières premières, du personnel, et le comptoir
     transport: ['achats', 'immos', 'pilotage'],         // les véhicules sont des immobilisations
     immobilier: ['pieces', 'pilotage'],
     juridique: ['pieces'],
     comptabilite: ['pieces'],
     architecture: ['pieces', 'pilotage'],               // le suivi se fait par affaire
     communication: ['pieces', 'pilotage'],
-    beaute: ['achats', 'stock'],                        // produits revendus et consommables
+    beaute: ['achats', 'stock', 'caisse'],              // produits revendus au comptoir, et consommables
     automobile: ['achats', 'stock', 'pieces'],          // pièces détachées : du stock, et des devis
     autre: []
   };
@@ -1337,9 +1343,10 @@
     const year = (dateIso || today()).slice(0, 4);
     const key = `${type}-${year}`;
     const prefix = PREFIX[type] || 'DOC';
-    // On repart du max existant pour éviter un doublon si le compteur est incohérent.
+    // On repart du max existant pour éviter un doublon si le compteur est incohérent. La SÉRIE décide
+    // (10.15.0) : un ticket de caisse est une facture, mais il a sa numérotation à lui.
     const existing = data.documents
-      .filter(d => d.type === type && d.number && d.number.startsWith(`${prefix}-${year}-`))
+      .filter(d => serieDe(d) === type && d.number && d.number.startsWith(`${prefix}-${year}-`))
       .map(d => parseInt(d.number.split('-')[2], 10) || 0);
     const fromDocs = existing.length ? Math.max(...existing) : 0;
     const fromCounter = data.counters[key] || 0;
@@ -1363,7 +1370,7 @@
     const year = String(annee || today().slice(0, 4));
     const prefix = PREFIX[type] || 'DOC';
     const numeros = (d.documents || [])
-      .filter(x => x.type === type && x.number && x.number.startsWith(`${prefix}-${year}-`))
+      .filter(x => serieDe(x) === type && x.number && x.number.startsWith(`${prefix}-${year}-`))
       .map(x => parseInt(x.number.split('-')[2], 10) || 0);
     const derniereIci = numeros.length ? Math.max(...numeros) : 0;
     const compteur = Number((d.counters || {})[`${type}-${year}`]) || 0;
@@ -1757,7 +1764,7 @@
         vatByRate[r0].base = round3(vatByRate[r0].base + ecart);
       } else ecartConversion = ecart;
       return {
-        id: d.id, date: d.date, number: d.number, type: d.type, typeLabel: TITLES[d.type], client: clientName(d.clientId), clientId: d.clientId || '', subject: d.subject || '',
+        id: d.id, date: d.date, number: d.number, type: d.type, typeLabel: estTicket(d) ? 'Ticket' : TITLES[d.type], client: clientName(d.clientId) || (estTicket(d) ? CLIENT_COMPTOIR : ''), clientId: d.clientId || '', subject: d.subject || '',
         ht: round3(VAT_RATES.reduce((a, r) => a + vatByRate[r].base, 0)), vatByRate, tva, timbre, ttc, ecartConversion,
         rs: round3(t.withholding * sign), net: round3(t.netToPay * sign), status, statusLabel: statusLabel(status),
         paid: bal ? round3(bal.paid * rate) : 0, remaining: bal ? round3(bal.remaining * rate) : 0, currency: d.currency || company.currency, rate,
@@ -1789,7 +1796,7 @@
       const rs = Number(d.withholdingRate) > 0 ? retenueSubie(d, data, company) : null;
       pays.forEach(({ p, i }) => {
         const m = PAYMENT_METHODS.find(x => x[0] === p.method);
-        rows.push({ id: p.id, date: p.date, number: d.number, client: clientName(d.clientId), clientId: d.clientId || '', amount: montantRegle(d, p, company), amountTiers: toBase(d, Number(p.amount) || 0, company), rs: rs ? round3(toBase(d, rs.parts[cleReglement(p, i)] || 0, company)) : 0, remboursement: estRemboursement(p), method: m ? m[1] : (p.method || ''), reference: p.reference || '', note: p.note || '', docId: d.id, currency: d.currency || company.currency, accountId: p.accountId || '' });
+        rows.push({ id: p.id, date: p.date, number: d.number, client: clientName(d.clientId) || (estTicket(d) ? CLIENT_COMPTOIR : ''), clientId: d.clientId || '', amount: montantRegle(d, p, company), amountTiers: toBase(d, Number(p.amount) || 0, company), rs: rs ? round3(toBase(d, rs.parts[cleReglement(p, i)] || 0, company)) : 0, remboursement: estRemboursement(p), method: m ? m[1] : (p.method || ''), reference: p.reference || '', note: p.note || '', docId: d.id, currency: d.currency || company.currency, accountId: p.accountId || '' });
       });
     });
     return rows.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
@@ -2030,7 +2037,8 @@
     const totals = {};
     (data.documents || []).filter(d => (d.type === 'facture' || d.type === 'avoir') && d.status !== 'brouillon' && d.status !== 'annulée' && inPeriod(d.date, fromIso, toIso))
       .forEach(d => { totals[d.clientId] = round3((totals[d.clientId] || 0) + (d.type === 'avoir' ? -1 : 1) * toBase(d, computeTotals(d, company).netHT, company)); });
-    const name = id => ((data.clients || []).find(c => c.id === id) || {}).name || '—';
+    // Les tickets sans client se rangent sous « Vente au comptoir » (10.15.0), jamais sous « — ».
+    const name = id => id ? ((data.clients || []).find(c => c.id === id) || {}).name || '—' : CLIENT_COMPTOIR;
     return Object.keys(totals).map(id => ({ clientId: id, name: name(id), ht: totals[id] })).sort((a, b) => b.ht - a.ht).slice(0, limit || 5);
   }
 
@@ -2809,9 +2817,14 @@
   // Marge agrégée sur une période, par client ou par prestation.
   function marginBy(data, company, fromIso, toIso, dimension, limit) {
     const acc = {};
-    const clientName = id => ((data.clients || []).find(c => c.id === id) || {}).name || '—';
+    // Une vente sans client (un ticket de caisse, et l'avoir qui le rembourse) est une vente au
+    // comptoir : l'écarter faisait dire à la page Marges un autre chiffre d'affaires que les
+    // Statistiques dès la première vente en caisse (10.15.0, trouvé par la vérité comptable).
+    const COMPTOIR = '__comptoir__';
+    const clientName = id => id === COMPTOIR ? CLIENT_COMPTOIR : ((data.clients || []).find(c => c.id === id) || {}).name || '—';
     issuedIn(data, fromIso, toIso).forEach(d => {
       const sign = d.type === 'avoir' ? -1 : 1;
+      const clientKey = d.clientId || COMPTOIR;
       const t = computeTotals(d, company);
       const factor = facteurRemise(t);
       t.lines.forEach(l => {
@@ -2820,19 +2833,19 @@
         // les Statistiques dès qu'un acompte et son solde tombaient dans deux périodes (10.14.0).
         // Ils n'ont pas de coût, et ils ne comptent pas comme des lignes « sans coût connu ».
         if (l.noDiscount) {
-          const key = dimension === 'client' ? d.clientId : '__acomptes__';
+          const key = dimension === 'client' ? clientKey : '__acomptes__';
           if (!key) return;
           const a = acc[key] || (acc[key] = {
-            key, label: dimension === 'client' ? clientName(d.clientId) : 'Acomptes facturés (repris au solde)',
+            key, label: dimension === 'client' ? clientName(clientKey) : 'Acomptes facturés (repris au solde)',
             revenue: 0, cost: 0, lines: 0, costed: 0
           });
           a.revenue = round3(a.revenue + sign * toBase(d, l.ht, company));
           return;
         }
-        const key = dimension === 'client' ? d.clientId : (l.label || '').trim().toLowerCase();
+        const key = dimension === 'client' ? clientKey : (l.label || '').trim().toLowerCase();
         if (!key) return;
         const a = acc[key] || (acc[key] = {
-          key, label: dimension === 'client' ? clientName(d.clientId) : (l.label || '').trim(),
+          key, label: dimension === 'client' ? clientName(clientKey) : (l.label || '').trim(),
           revenue: 0, cost: 0, lines: 0, costed: 0
         });
         const c = lineCost(l, data, d, company);
@@ -7143,7 +7156,9 @@
   const NOT_COPIED = ['payments', 'emails', 'reminders', 'remindAfter', 'withholdingCertificate', 'deposit',
     'settles', 'recurringId', 'creditOf', 'creditOfNumber', 'creditReason', 'attachments', 'clauses',
     // L'instant d'émission appartient à la pièce émise : une pièce tirée d'elle naît brouillon.
-    'issuedTs', 'regimeTva'];
+    'issuedTs', 'regimeTva',
+    // Un ticket de caisse (10.15.0) : une pièce tirée de lui est une pièce ordinaire, pas un second ticket.
+    'ticket', 'caisse'];
 
   // La retenue à la source proposée pour un client : la sienne s'il en a une (même 0 %), sinon celle
   // de la société. UNE règle pour l'éditeur (`clientWithholding`) et pour les conversions.
@@ -9582,11 +9597,299 @@
     return Object.assign({ id: uid(), name: '', contact: '', matricule: '', address: '', phone: '', email: '', notes: '', withholdingRate: '' }, extra || {});
   }
   function articleVierge(company, extra, jour) {
-    return Object.assign({ id: uid(), label: '', description: '', unit: '', unitPrice: 0, unitCost: 0, vatRate: defaultVat(company),
+    return Object.assign({ id: uid(), label: '', description: '', code: '', unit: '', unitPrice: 0, unitCost: 0, vatRate: defaultVat(company),
       tracked: false, minStock: 0, location: '', initialQty: 0, initialCost: 0, initialDate: jour || today(),
       serialized: false, warrantyMonths: 0 }, extra || {});
   }
 
+  // ---------- la caisse (10.15.0, H5 de l'étude Hesabi) ----------
+  //
+  // Vendre au comptoir : un article scanné ou cliqué, un panier, un paiement, un ticket de 80 mm.
+  // Un ticket n'est PAS un nouveau type de pièce : c'est une facture (`type: 'facture'`) marquée
+  // `ticket`, émise et réglée dans le même geste. C'est ce qui rend juste, sans une ligne de plus,
+  // tout ce qui lit une vente : le journal des ventes, la TVA collectée, le chiffre d'affaires, les
+  // statistiques, la sortie de stock au coût moyen, l'encaissement en caisse, les écritures et le
+  // paquet du comptable. Un nouveau type aurait demandé de le nommer dans quatre-vingts lecteurs —
+  // et le premier oublié aurait vendu sans déclarer (règle 10.2.0 : le sens d'une pièce se porte
+  // dans ce que les lecteurs lisent déjà, jamais dans leur mémoire).
+  //
+  // Ce qui change : une SÉRIE à elle (TIC-AAAA-NNN) — un ticket ne consomme jamais un numéro de
+  // facture, sinon la série légale des factures aurait des trous ; pas de client obligatoire (on
+  // vend à un passant) ; pas de timbre par défaut (À VÉRIFIER : le droit de timbre porte sur les
+  // factures, un réglage l'ajoute) ; jamais de retenue à la source ; et il ne se liste pas avec les
+  // factures (cent tickets par jour noieraient la liste) — il vit dans la page Caisse.
+  const CLIENT_COMPTOIR = 'Vente au comptoir';
+  const MODES_CAISSE = [['especes', 'Espèces'], ['carte', 'Carte'], ['cheque', 'Chèque']];
+  function estTicket(d) { return !!(d && d.type === 'facture' && d.ticket); }
+  // La série d'une pièce décide de son numéro : un ticket a la sienne.
+  function serieDe(d) { return estTicket(d) ? 'ticket' : (d || {}).type; }
+  function titreDePiece(d, company, lang) { return estTicket(d) ? (lang === 'en' ? 'Receipt' : 'Ticket') : docLabel((d || {}).type, company, lang); }
+  // Un code-barres se compare sans ses espaces et sans la casse : une douchette tape « 6191234567890 »,
+  // une étiquette imprimée « 619 1234 567890 », et une référence maison « ref-12 » vaut « REF-12 ».
+  function normCode(v) { return String(v == null ? '' : v).replace(/\s+/g, '').toUpperCase(); }
+  function articleParCode(data, code) {
+    const k = normCode(code);
+    if (!k) return null;
+    return ((data || {}).catalog || []).find(c => normCode(c.code) === k) || null;
+  }
+  // Le compte où va chaque mode : les espèces dans la CAISSE, la carte et le chèque à la banque. Sans
+  // compte de caisse, un paiement en espèces tomberait sur le compte par défaut — la banque — et le
+  // solde de la Trésorerie ne retomberait jamais sur l'argent du tiroir. La page le dit, et propose
+  // de créer la caisse avant la première vente.
+  function comptesDeCaisse(data) {
+    const acc = ((data || {}).accounts || []).filter(a => !a.archived);
+    const caisse = acc.find(a => a.kind === 'caisse');
+    const banque = acc.find(a => a.isDefault && a.kind !== 'caisse') || acc.find(a => a.kind !== 'caisse');
+    return { especes: caisse ? caisse.id : null, banque: banque ? banque.id : null };
+  }
+  function compteDuMode(data, mode) {
+    const c = comptesDeCaisse(data);
+    // La carte et le chèque arrivent à la BANQUE, jamais dans le tiroir : sans compte bancaire, il
+    // n'y a pas de compte, et l'encaissement le refuse (vu à la souris : un remboursement par carte
+    // sortait de la caisse, et le tiroir annonçait 17,850 DT de moins que ce qu'il contenait).
+    return mode === 'especes' ? c.especes : c.banque;
+  }
+  // Une ligne de panier tirée du catalogue : son prix HT et son taux, ramené à zéro sous un régime
+  // qui ne facture pas de TVA (7.22.0).
+  function ligneDePanier(item, company) {
+    return { itemId: item.id, label: item.label || '', unit: item.unit || '', qty: 1,
+      unitPrice: Number(item.unitPrice) || 0, vatRate: tauxPourRegime(company, Number(item.vatRate) || 0) };
+  }
+  // Un montant TAPÉ au comptoir : « 50,5 », « 50.5 », « 1 000 » — la virgule est la décimale de
+  // l'utilisateur (H-3, 10.12.0). Vide vaut null (rien de reçu n'est pas zéro reçu) ; illisible, NaN,
+  // pour que le refus le dise au lieu de compter zéro.
+  function montantTape(v) {
+    if (v == null) return null;
+    return typeof v === 'number' ? v : Compta.nombreStrict(v);
+  }
+  // Le panier, calculé par `computeTotals` — la même fonction que la facture : un total annoncé au
+  // comptoir et un total déclaré ne peuvent pas diverger (règle 6.8.1).
+  function totauxDuPanier(lignes, company, opts) {
+    const o = opts || {};
+    const co = company || {};
+    const doc = { type: 'facture', ticket: true, lines: lignes || [], discountRate: 0,
+      applyStamp: !!co.caisseTimbre, stampFee: co.caisseTimbre ? (Number(co.stampFee) || 0) : 0, currency: co.currency };
+    const t = computeTotals(doc, co);
+    const recu = montantTape(o.recu);
+    const rendu = recu == null || !isFinite(recu) ? null : round3(recu - t.netToPay);
+    return { ...t, recu, rendu, manque: rendu != null && rendu < 0 ? round3(-rendu) : 0 };
+  }
+  // Ce qui empêche d'encaisser — la MÊME fonction pour le bouton éteint et pour le refus (9.4.5).
+  const MOTIF_SANS_BANQUE = 'Aucun compte bancaire : la carte et le chèque arrivent sur ta banque, pas dans le tiroir. Crée ton compte bancaire, ou encaisse en espèces.';
+  function motifEncaissement(data, company, lignes, opts) {
+    const o = opts || {};
+    const ls = (lignes || []).filter(l => (Number(l.qty) || 0) !== 0);
+    if (!ls.length) return 'Le panier est vide : scanne ou choisis un article.';
+    if (ls.some(l => !(Number(l.qty) > 0))) return 'Une quantité est négative : un retour se fait par un avoir, depuis la liste des tickets.';
+    // Un article SANS PRIX partirait gratuitement : le stock sortirait, rien n'entrerait. C'est presque
+    // toujours un prix oublié au catalogue (l'assistant en propose un sans prix), jamais un cadeau.
+    const sansPrix = ls.find(l => !(Number(l.unitPrice) > 0));
+    if (sansPrix) return `« ${String(sansPrix.label || 'Article').trim()} » n'a pas de prix : fixe-le au catalogue, puis rajoute-le.`;
+    const mode = o.mode || 'especes';
+    if (!MODES_CAISSE.some(m => m[0] === mode)) return 'Choisis le mode de paiement.';
+    if (mode === 'especes' && !comptesDeCaisse(data).especes) return 'Aucun compte de caisse : crée-le pour que les espèces aillent dans le tiroir, pas à la banque.';
+    if (mode !== 'especes' && !comptesDeCaisse(data).banque) return MOTIF_SANS_BANQUE;
+    if (mode === 'especes' && o.recu !== '' && o.recu != null) {
+      const t = totauxDuPanier(ls, company, { recu: o.recu });
+      if (!isFinite(t.recu)) return 'Le montant reçu n\'est pas un nombre : tape-le comme 50 ou 50,500.';
+      if (t.manque > 0) return `Il manque ${money(t.manque, (company || {}).currency)} : le montant reçu est plus petit que le total.`;
+    }
+    return '';
+  }
+  // Le ticket, émis et réglé. Il PREND un numéro : l'appelant ne l'appelle qu'après ses garde-fous
+  // (licence, clôture), comme `issue()` avant `nextNumber` (règle 6.0.0).
+  function ticketDeCaisse(data, company, lignes, opts) {
+    const o = opts || {};
+    const co = company || {};
+    const jour = o.date || today();
+    const mode = o.mode || 'especes';
+    const ls = (lignes || []).filter(l => (Number(l.qty) || 0) > 0).map(l => ({
+      itemId: l.itemId || '', label: String(l.label || '').trim() || 'Article', unit: l.unit || '',
+      qty: Number(l.qty) || 0, unitPrice: Number(l.unitPrice) || 0, vatRate: Number(l.vatRate) || 0 }));
+    const t = totauxDuPanier(ls, co, { recu: o.recu });
+    const maintenant = o.maintenant || Date.now();
+    const doc = {
+      id: uid(), type: 'facture', ticket: true, number: nextNumber(data, 'ticket', jour), date: jour, dueDate: jour,
+      clientId: o.clientId || '', subject: '', reference: '', lines: ls, discountRate: 0,
+      applyStamp: !!co.caisseTimbre, stampFee: co.caisseTimbre ? (Number(co.stampFee) || 0) : 0,
+      regimeTva: regimeOf(co).id, status: 'envoyée', notes: '', withholdingRate: 0,
+      lang: 'fr', currency: co.currency, exchangeRate: '', createdAt: maintenant, issuedTs: maintenant,
+      caisse: { mode, recu: t.recu, rendu: t.rendu },
+      payments: [{ id: uid(), date: jour, amount: t.netToPay, method: mode, accountId: compteDuMode(data, mode) || '', reference: '', note: 'Encaissé en caisse' }]
+    };
+    return doc;
+  }
+  // Les tickets d'un jour, et ce que le tiroir doit contenir le soir : le bilan de fin de journée
+  // (le « Z » des caisses enregistreuses). Un ticket remboursé par un avoir compte au jour du
+  // remboursement : l'argent est sorti ce jour-là.
+  function bilanCaisse(data, company, jour) {
+    const j = jour || today();
+    const docs = (data || {}).documents || [];
+    const tickets = docs.filter(d => estTicket(d) && d.date === j && d.status !== 'brouillon');
+    const parMode = {};
+    MODES_CAISSE.forEach(m => { parMode[m[0]] = 0; });
+    let total = 0, articles = 0, tva = 0;
+    tickets.forEach(d => {
+      const t = computeTotals(d, company);
+      total += t.netToPay; tva += t.totalVAT;
+      articles += (d.lines || []).reduce((s, l) => s + (Number(l.qty) || 0), 0);
+    });
+    // L'argent réellement encaissé ce jour, mode par mode — remboursements compris (montant négatif).
+    let rembourse = 0;
+    docs.filter(estTicket).forEach(d => (d.payments || []).forEach(p => {
+      if (p.date !== j) return;
+      const k = parMode[p.method] !== undefined ? p.method : 'especes';
+      parMode[k] = round3(parMode[k] + (Number(p.amount) || 0));
+      if (Number(p.amount) < 0) rembourse = round3(rembourse - Number(p.amount));
+    }));
+    // Ce que le tiroir doit contenir CE SOIR : le solde du compte de caisse au jour dit, par la même
+    // fonction que la Trésorerie — fond de caisse, jours précédents, dépôts en banque compris. Les
+    // seules espèces du jour ne disent pas ce qu'on doit compter en fermant.
+    const caisseId = comptesDeCaisse(data).especes;
+    const tiroir = caisseId ? accountBalance(data, company, caisseId, j).balance : null;
+    return { jour: j, nombre: tickets.length, total: round3(total), tva: round3(tva), articles: round3(articles),
+      parMode, rembourse, especes: parMode.especes, tiroir, tickets };
+  }
+  // Ce qu'un ticket peut encore rendre, article par article : ce qui a été vendu, moins ce que ses
+  // avoirs ont déjà repris. On ne rend pas deux fois le même stylo.
+  function resteARendre(data, ticket) {
+    const repris = {};
+    ((data || {}).documents || []).filter(d => d.type === 'avoir' && d.creditOf === ticket.id && d.status !== 'brouillon')
+      .forEach(a => (a.lines || []).forEach((l, i) => {
+        const k = l.ligneTicket != null ? l.ligneTicket : i;
+        repris[k] = round3((repris[k] || 0) + (Number(l.qty) || 0));
+      }));
+    return (ticket.lines || []).map((l, i) => ({ i, label: l.label, unit: l.unit || '', vendu: Number(l.qty) || 0,
+      rendu: repris[i] || 0, reste: round3(Math.max(0, (Number(l.qty) || 0) - (repris[i] || 0))) }));
+  }
+  // Rendre un article au comptoir : un AVOIR sur le ticket (la série légale des avoirs), et l'argent
+  // rendu comme un règlement NÉGATIF sur le ticket — la règle du trop-perçu (10.14.0) : le reste du
+  // ticket revient à zéro, la caisse voit une sortie, et l'article revient au stock par l'avoir.
+  // `qtes` : { indexDeLigne: quantité rendue }. Prend un numéro : garde-fous d'abord (règle 6.0.0).
+  function remboursementDeTicket(data, company, ticket, qtes, opts) {
+    const o = opts || {};
+    const co = company || {};
+    const jour = o.date || today();
+    const mode = o.mode || 'especes';
+    const reste = resteARendre(data, ticket);
+    const lignes = [];
+    reste.forEach(r => {
+      const q = Math.min(r.reste, Math.max(0, Number((qtes || {})[r.i]) || 0));
+      if (!(q > 0)) return;
+      const l = ticket.lines[r.i];
+      lignes.push({ itemId: l.itemId || '', label: l.label, unit: l.unit || '', qty: q, unitPrice: Number(l.unitPrice) || 0, vatRate: Number(l.vatRate) || 0, ligneTicket: r.i });
+    });
+    if (!lignes.length) return { ok: false, motif: 'Choisis au moins un article à rendre.' };
+    // Le compte d'où sort l'argent rendu, AVANT de prendre le numéro de l'avoir (6.0.0) : sans lui,
+    // un avoir numéroté partirait sans que l'argent sorte d'aucun compte.
+    if (!compteDuMode(data, mode)) return { ok: false, motif: mode === 'especes' ? 'Aucun compte de caisse : crée la caisse, ou rends l\'argent par carte ou par chèque.' : MOTIF_SANS_BANQUE };
+    const maintenant = o.maintenant || Date.now();
+    const avoir = {
+      id: uid(), type: 'avoir', number: nextNumber(data, 'avoir', jour), status: 'émis', date: jour, dueDate: '',
+      clientId: ticket.clientId || '', subject: `Retour sur le ticket ${ticket.number}`, reference: '',
+      creditOf: ticket.id, creditOfNumber: ticket.number, creditReason: String(o.motif || '').trim(),
+      lines: lignes, discountRate: 0, applyStamp: false, stampFee: 0, regimeTva: ticket.regimeTva || regimeOf(co).id,
+      notes: '', withholdingRate: 0, lang: 'fr', currency: ticket.currency || co.currency, exchangeRate: '',
+      payments: [], createdAt: maintenant, issuedTs: maintenant
+    };
+    const montant = computeTotals(avoir, co).netToPay;
+    const paiement = { id: uid(), date: jour, amount: -montant, method: mode, accountId: compteDuMode(data, mode), reference: avoir.number, note: `Rendu sur le ticket ${ticket.number}` };
+    return { ok: true, avoir, paiement, montant };
+  }
+  // L'heure d'un ticket : l'instant de l'encaissement, dans l'heure LOCALE du comptoir (un instant se
+  // lit dans le calendrier de l'utilisateur, règle 5.2.3).
+  function heureDuTicket(d) {
+    const ts = Number((d || {}).issuedTs) || 0;
+    if (ts < 1e11) return '';
+    const t = new Date(ts);
+    return `${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}`;
+  }
+  // Le ticket imprimé : une bande de 80 mm (ou 58 mm) de papier thermique. Tout y est TTC — c'est ce
+  // que lit un client au comptoir — et la TVA se détaille par taux au pied, comme la loi le veut
+  // d'une pièce de vente (À VÉRIFIER : les mentions exigées d'un ticket de caisse).
+  function ticketHtml(d, company, opts) {
+    const o = opts || {};
+    const co = company || {};
+    const cur = d.currency || co.currency;
+    const m = n => money(n, cur);
+    const t = computeTotals(d, co);
+    const largeur = Number(co.caisseLargeur) === 58 ? 58 : 80;
+    const cl = (o.clientName || '').trim();
+    const ca = d.caisse || {};
+    const mode = (MODES_CAISSE.find(x => x[0] === ca.mode) || PAYMENT_METHODS.find(x => x[0] === ca.mode) || [null, ''])[1];
+    const tva = Object.keys(t.vatByRate).map(Number).filter(r => t.vatByRate[r].base).sort((a, b) => a - b);
+    const pied = String(co.caissePied || '').trim() || 'Merci de votre visite.';
+    return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>${escapeHtml(d.number || 'Ticket')}</title><style>
+      @page { size: ${largeur}mm auto; margin: 0; }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; background: #fff; color: #000; }
+      body { width: ${largeur}mm; padding: 4mm 3.5mm 6mm; font: 11px/1.35 "Helvetica Neue", Arial, sans-serif; }
+      .c { text-align: center; }
+      .co { font-weight: 700; font-size: 14px; }
+      .muted { color: #333; }
+      hr { border: 0; border-top: 1px dashed #000; margin: 2.5mm 0; }
+      table { width: 100%; border-collapse: collapse; }
+      td { vertical-align: top; padding: 0.4mm 0; }
+      td.r { text-align: right; white-space: nowrap; padding-inline-start: 2mm; }
+      .q { font-size: 10px; color: #333; }
+      .tot td { font-size: 15px; font-weight: 700; padding-top: 1mm; }
+      .exemple { border: 1px solid #000; text-align: center; font-weight: 700; margin-bottom: 2mm; padding: 1mm; }
+    </style></head><body>
+      ${o.exemple ? '<div class="exemple">EXEMPLE — pas un vrai ticket</div>' : ''}
+      <div class="c co">${escapeHtml(co.name || '')}</div>
+      <div class="c muted">${escapeHtml(co.address || '').replace(/\n/g, '<br>')}${co.phone ? '<br>Tél. ' + escapeHtml(co.phone) : ''}${co.matricule ? '<br>MF ' + escapeHtml(co.matricule) : ''}</div>
+      <hr>
+      <table><tr><td><b>Ticket ${escapeHtml(d.number || '')}</b></td><td class="r">${escapeHtml(fmtDate(d.date))}${heureDuTicket(d) ? ' ' + heureDuTicket(d) : ''}</td></tr></table>
+      ${cl ? `<div>Client : ${escapeHtml(cl)}</div>` : ''}
+      <hr>
+      <table>${t.lines.map(l => `<tr><td>${escapeHtml(l.label)}<div class="q">${escapeHtml(String(l.qty).replace('.', ','))} × ${m(l.qty ? round3(l.ttc / l.qty) : 0)}</div></td><td class="r">${m(l.ttc)}</td></tr>`).join('')}</table>
+      <hr>
+      <table>
+        <tr><td>Total HT</td><td class="r">${m(t.netHT)}</td></tr>
+        ${tva.map(r => `<tr><td>TVA ${r} % sur ${m(t.vatByRate[r].base)}</td><td class="r">${m(t.vatByRate[r].vat)}</td></tr>`).join('')}
+        ${t.stamp ? `<tr><td>Timbre fiscal</td><td class="r">${m(t.stamp)}</td></tr>` : ''}
+        <tr class="tot"><td>TOTAL TTC</td><td class="r">${m(t.netToPay)}</td></tr>
+      </table>
+      <hr>
+      <table>
+        <tr><td>${escapeHtml(mode || 'Payé')}</td><td class="r">${m(ca.recu != null && ca.mode === 'especes' ? ca.recu : t.netToPay)}</td></tr>
+        ${ca.mode === 'especes' && ca.rendu ? `<tr><td>Rendu</td><td class="r">${m(ca.rendu)}</td></tr>` : ''}
+      </table>
+      <hr>
+      <div class="c">${escapeHtml(pied).replace(/\n/g, '<br>')}</div>
+    </body></html>`;
+  }
+  // Le bilan de la journée, sur la même bande de papier : ce que le tiroir doit contenir.
+  function bilanCaisseHtml(bilan, company) {
+    const co = company || {};
+    const cur = co.currency;
+    const m = n => money(n, cur);
+    const largeur = Number(co.caisseLargeur) === 58 ? 58 : 80;
+    return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Bilan de caisse ${escapeHtml(fmtDate(bilan.jour))}</title><style>
+      @page { size: ${largeur}mm auto; margin: 0; }
+      html, body { margin: 0; background: #fff; color: #000; }
+      body { width: ${largeur}mm; padding: 4mm 3.5mm 6mm; font: 11px/1.4 "Helvetica Neue", Arial, sans-serif; }
+      .c { text-align: center; } .co { font-weight: 700; font-size: 14px; }
+      hr { border: 0; border-top: 1px dashed #000; margin: 2.5mm 0; }
+      table { width: 100%; border-collapse: collapse; } td.r { text-align: right; white-space: nowrap; }
+      .tot td { font-weight: 700; font-size: 14px; }
+    </style></head><body>
+      <div class="c co">${escapeHtml(co.name || '')}</div>
+      <div class="c">Bilan de caisse du ${escapeHtml(fmtDate(bilan.jour))}</div>
+      <hr>
+      <table>
+        <tr><td>Tickets</td><td class="r">${bilan.nombre}</td></tr>
+        <tr><td>Articles vendus</td><td class="r">${String(bilan.articles).replace('.', ',')}</td></tr>
+        <tr><td>Dont TVA</td><td class="r">${m(bilan.tva)}</td></tr>
+        <tr class="tot"><td>Ventes TTC</td><td class="r">${m(bilan.total)}</td></tr>
+      </table>
+      <hr>
+      <table>${MODES_CAISSE.map(([k, l]) => `<tr><td>${l}</td><td class="r">${m(bilan.parMode[k] || 0)}</td></tr>`).join('')}
+        ${bilan.rembourse ? `<tr><td>Dont remboursé</td><td class="r">− ${m(bilan.rembourse)}</td></tr>` : ''}</table>
+      <hr>
+      ${bilan.tiroir != null ? `<table class="tot"><tr><td>Le tiroir doit contenir</td><td class="r">${m(bilan.tiroir)}</td></tr></table><div class="c">fond de caisse et jours précédents compris</div>` : `<div class="c">Espèces du jour : <b>${m(bilan.especes)}</b></div>`}
+    </body></html>`;
+  }
   // ---------- l'import depuis un tableur (10.14.0) ----------
   //
   // Quelqu'un qui démarre sur SkanFact a presque toujours DÉJÀ une liste : ses clients dans un
@@ -9995,6 +10298,7 @@
 
   const api = {
     enLot, duLot,
+    CLIENT_COMPTOIR, MODES_CAISSE, estTicket, serieDe, titreDePiece, normCode, articleParCode, comptesDeCaisse, compteDuMode, ligneDePanier, totauxDuPanier, motifEncaissement, MOTIF_SANS_BANQUE, ticketDeCaisse, bilanCaisse, heureDuTicket, resteARendre, remboursementDeTicket, ticketHtml, bilanCaisseHtml,
     VAT_RATES, WITHHOLDING_RATES, PAYMENT_METHODS, PREFIX, TITLES, DEFAULT_DATA, DEFAULT_COMPANY, ACTIVITIES, STATUSES, STATUT_ENVOI, DISPLAY_STATUSES, STATUS_LABELS,
     REGIMES, regimeOf, regimeSuggere, tfpSuggere, assujettiTVA, mentionTVA, estLiberal, docLabel, ribAttendu,
     DOC_FILTRES, docFiltre,

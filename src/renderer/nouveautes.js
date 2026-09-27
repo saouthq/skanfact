@@ -23,7 +23,8 @@
         'Un fournisseur t\'envoie sa facture El Fatoora ? Dans un achat neuf, « Lire une e-facture… » la lit et remplit l\'achat : tu n\'as plus qu\'à relire.',
         'Une facture, un devis ou une relance partent aussi par WhatsApp : « Envoyer par WhatsApp… », dans « Plus ▾ », avec le même message que l\'email.',
         'Comptabilité → Écritures → « Fichier FEC… » : tes écritures dans le format que les logiciels de ton comptable importent.',
-        'La paie connaît le contrat saisonnier et le CIVP : leurs taux se règlent dans Barèmes, et chaque bulletin garde le sien.'
+        'La paie connaît le contrat saisonnier et le CIVP : leurs taux se règlent dans Barèmes, et chaque bulletin garde le sien.',
+        'Tu vends au comptoir ? Le module Caisse scanne le code-barres, rend la monnaie, imprime un ticket de 80 mm et dit le soir ce que le tiroir doit contenir.'
       ],
       cabinet: [
         'Le livre-journal d\'un client s\'exporte en fichier FEC, dans le menu « Exporter » : les écritures validées, prêtes pour Sage, EBP ou Cegid.',

@@ -360,13 +360,16 @@ t('10.14.0 : le compte bancaire naît de la fiche société — une fois, et jam
   assert.ok(C.compteDepuisFiche({ bank: 'Attijari' }, [{ bank: 'BIAT' }]));
 });
 
-t('10.14.0 : les TROIS portes d\'un compte passent par la même fonction, et le compte né de la fiche n\'attend que son solde', () => {
+t('10.14.0 : les portes d\'un compte neuf passent par la même fonction, et le compte né de la fiche n\'attend que son solde', () => {
   assert.ok(/const modeleCompte = \(\) => C\.compteDepuisFiche\(company\(\), data\.accounts\);/.test(code), 'le modèle du compte ne vient plus de la fiche');
   // Le paiement, l'état vide de la Trésorerie, « + Compte » : chacun appelle le modèle au moment du clic.
   assert.ok(/\$\('#pf-compte', root\)\.onclick = \(\) => accountForm\(null, a => \{[\s\S]{0,200}\}, modeleCompte\(\)\);/.test(code), 'le paiement ne passe plus par le modèle');
   assert.ok(/\$\('#first-acc'\)\.onclick = \(\) => accountForm\(null, \(\) => render\(\), modeleCompte\(\)\);/.test(code), 'l\'état vide de la Trésorerie ouvre encore un compte vide');
   assert.ok(/\$\('#new-acc'\)\.onclick = \(\) => accountForm\(null, \(\) => render\(\), modeleCompte\(\)\);/.test(code), '« + Compte » ignore la fiche');
-  assert.strictEqual((code.match(/accountForm\(null,/g) || []).length, 3, 'une quatrième porte vers un compte neuf est apparue sans le modèle');
+  // 10.15.0 (H5) : la caisse ouvre le compte bancaire qui manque à la carte et au chèque — une quatrième
+  // porte, qui passe par le même modèle (le compteur l'a vue avant la relecture).
+  assert.ok(/\$\('#cs-creer-banque'\)\.onclick = \(\) => accountForm\(null, \(\) => drawTicket\(\), modeleCompte\(\)\);/.test(code), 'la caisse ouvre un compte vide');
+  assert.strictEqual((code.match(/accountForm\(null,/g) || []).length, 4, 'une cinquième porte vers un compte neuf est apparue sans le modèle');
   // Le bouton NOMME la banque, et l'état vide dit d'où vient ce qu'il propose.
   assert.ok(/id="first-acc">\+ \$\{libelleCompteDepuisFiche\('Créer le compte', 'Créer mon premier compte'\)\}/.test(code));
   assert.ok(/id="tre-depuis-fiche">Ta fiche société porte déjà/.test(code), 'l\'état vide ne dit pas que la fiche porte déjà la banque');

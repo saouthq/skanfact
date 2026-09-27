@@ -66,6 +66,27 @@ Publiée en **bêta** : c'est un format de fichier officiel.
   taux plus tard ne réécrit aucun bulletin remis. La fiche du salarié et l'aperçu du bulletin disent
   le régime appliqué ; la déclaration CNSS et l'écriture de paie suivent les montants du bulletin.
   **À VÉRIFIER** avec ton comptable : les exonérations de chaque dispositif, et leur durée.
+- **La caisse** (module « Caisse », proposé d'office aux commerces, à la restauration et à la beauté) :
+  vendre au comptoir en scannant un **code-barres** à la douchette (le champ « Code-barres » de
+  chaque article du Catalogue, lu sans espaces ni majuscules) ou en cliquant l'article. Le panier se
+  compte en TTC ; on choisit **Espèces, Carte ou Chèque**, on tape ce que le client tend (« 50,5 »
+  comme « 50.5 ») et SkanFact dit la **monnaie à rendre** ; `Ctrl` + `Entrée` encaisse. Chaque vente
+  est un **ticket** numéroté dans sa propre série (TIC-2026-001), jamais dans celle des factures,
+  réglé dans le même geste — c'est une vente comme une autre pour la TVA, le chiffre d'affaires, le
+  stock, les marges et le paquet du comptable (« Vente au comptoir » quand on ne nomme pas le
+  client). Le ticket s'imprime sur **papier thermique 80 mm ou 58 mm**, ou s'enregistre en PDF.
+- **L'argent va au bon endroit** : les espèces dans le compte « Caisse » (créé depuis la page, avec
+  son fond de caisse), la carte et le chèque à la banque — **jamais dans le tiroir**. Sans compte
+  bancaire, la carte et le chèque sont refusés avec le bouton qui le crée, et le panier attend.
+- **Le bilan du soir** (onglet « Tickets et bilan du jour ») : les ventes, la TVA, ce qui est entré
+  mode par mode, et **ce que le tiroir doit contenir**, fond de caisse compris. Il s'imprime.
+- **Rendre un article** : depuis le ticket, on choisit quoi et comment on rembourse ; un **avoir**
+  est établi, l'article revient au stock, l'argent sort du bon compte, et on ne rend jamais deux fois
+  le même article. Le montant se lit **avant** de valider.
+- Un article **sans prix** ne se vend pas gratuitement : la caisse ouvre sa fiche, le curseur dans
+  le prix. Réglages dans Paramètres → Documents → « Caisse et tickets » : largeur du papier, message
+  en bas du ticket, et le timbre fiscal (**pas de timbre par défaut sur un ticket — À VÉRIFIER** avec
+  ton comptable).
 - Dans SkanFact Cabinet, les exports d'un livre vivent dans **un menu « Exporter ▾ »** : la barre du
   livre-journal tient de nouveau sur une rangée. Un menu posé dans une barre (« Exporter », « Imprimer
   la fiche ») a désormais l'allure d'un bouton, et non celle d'un bouton éteint.

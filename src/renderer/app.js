@@ -41,6 +41,8 @@
     peekBackup: async () => ({ ok: false, error: 'indisponible' }), restoreBackup: async () => ({ ok: false, error: 'indisponible' }),
     pickLogo: async () => null,
     exportPdf: async (html) => { const w = window.open('', '_blank'); w.document.write(html); w.document.close(); w.print(); return null; },
+    imprimerTicket: async (html) => { const w = window.open('', '_blank'); w.document.write(html); w.document.close(); w.print(); return { ok: true }; },
+    ticketPdf: async () => null,
     exportPdfMany: async () => null, saveText: async () => null, exportPdfSilent: async () => null, saveTextSilent: async () => null, composeMail: async () => ({ state: 'mailto' }),
     openPath: async () => {}, showInFolder: async () => {}, setDirty: () => {},
     changelog: async () => '', onMenuAction: () => {}, setTitle: () => {},
@@ -500,7 +502,7 @@
   const balance = doc => C.invoiceBalance(doc, data, data.company);
   // Le nom d'une pièce À L'ÉCRAN est celui qu'elle imprime (10.14.1, MR-09) : une profession libérale
   // émet une note d'honoraires, et l'éditeur, le retour et la fenêtre disaient « Facture FAC-… ».
-  const docLabel = doc => `${C.docLabel(doc.type, company())} ${doc.number || '(brouillon)'}`;
+  const docLabel = doc => `${C.titreDePiece(doc, company())} ${doc.number || '(brouillon)'}`;
   // « la facture » ou « la note d'honoraires » : le même nom dans les boutons que sur la pièce.
   const laPiece = () => C.estLiberal(company()) ? 'la note d\'honoraires' : 'la facture';
   // « Facture créé en brouillon » : le participe s'accorde avec la pièce (10.12.0). Seules la facture
@@ -1285,10 +1287,15 @@
     const q = String(query || '').trim();
     const words = sansAccents(q).split(/\s+/).filter(Boolean);
     const correspond = c => {
-      const hay = sansAccents(`${c.label || ''} ${c.description || ''}`), serre = hay.replace(/\s+/g, '');
+      const hay = sansAccents(`${c.label || ''} ${c.description || ''} ${c.code || ''}`), serre = hay.replace(/\s+/g, '');
       return words.every(w => hay.includes(w) || serre.includes(w.replace(/\s+/g, '')));
     };
-    const shown = words.length ? (items || []).filter(correspond).slice(0, 8) : [];
+    // Un code-barres tapé ou scanné (10.15.0) désigne UN article : il passe en tête, avant les
+    // désignations qui le contiennent par hasard.
+    // (La règle de `C.normCode`, écrite ici : un test joue cette fonction seule, sans le moteur.)
+    const nc = v => String(v == null ? '' : v).replace(/\s+/g, '').toUpperCase();
+    const parCode = q ? (items || []).find(c => nc(c.code) && nc(c.code) === nc(q)) : null;
+    const shown = words.length ? [parCode, ...(items || []).filter(c => c !== parCode && correspond(c))].filter(Boolean).slice(0, 8) : [];
     const exact = shown.some(c => sansAccents(c.label).trim() === sansAccents(q));
     const creer = !!peutCreer && q.length >= 2 && !exact && (shown.length > 0 || !!demandee);
     return { shown, creer, query: q };
@@ -1661,7 +1668,7 @@
     tresorerie: 'Trésorerie', stats: 'Statistiques', compta: 'Comptabilité', parametres: 'Paramètres', aide: 'Aide', doc: 'le document', licences: 'Licences',
     achats: 'Achats et dépenses', achat: 'l\'achat', fournisseurs: 'Fournisseurs', fournisseur: 'la fiche fournisseur',
     marges: 'Marges', affaire: 'l\'affaire', immos: 'Immobilisations', immo: 'l\'immobilisation',
-    stock: 'Stock', article: 'l\'article', garanties: 'Garanties', paie: 'Paie', salarie: 'la fiche du salarié',
+    stock: 'Stock', caisse: 'la Caisse', article: 'l\'article', garanties: 'Garanties', paie: 'Paie', salarie: 'la fiche du salarié',
     modules: 'Tous les modules'
   };
   // Le retour NOMME la pièce ou la fiche où il mène (10.12.0). Sur la facture tirée d'un devis, il
@@ -1763,6 +1770,7 @@
     fournisseurs: '<path d="M3 9l2-5h14l2 5"/><path d="M4 9h16v11H4z"/><path d="M9 20v-6h6v6"/>',
     clients: '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/>',
     catalogue: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 4v16"/>',
+    caisse: '<path d="M4 10h16l-1 10H5z"/><path d="M8 10V6h8v4"/><path d="M8 14h2M12 14h2M16 14h0M8 17h8"/>',
     tresorerie: '<rect x="2" y="6" width="20" height="13" rx="2"/><path d="M2 10h20"/><circle cx="17" cy="15" r="1.5"/>',
     marges: '<path d="M3 17l5-5 4 3 8-8"/><path d="M15 7h5v5"/><path d="M3 21h18"/>',
     paie: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.3 3-5.5 6.5-5.5s6.5 2.2 6.5 5.5"/><path d="M17 4h5v6h-5z"/><path d="M18.5 6.5h2"/>',
@@ -2771,7 +2779,9 @@
     const expiredQuotes = sentQuotes.filter(d => effStatus(d) === 'expiré');
     const pendingQuotes = sentQuotes.filter(d => effStatus(d) === 'envoyé');
     const sumQ = list => list.reduce((s, d) => s + enDinars(d, C.computeTotals(d, company()).totalTTC), 0);
-    const recent = data.documents.slice().sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.createdAt || 0) - (a.createdAt || 0)).slice(0, 8);
+    // Les tickets de caisse n'y entrent pas (10.15.0) : un commerce en fait cent par jour, et ils ont leur page.
+    const pieces = data.documents.filter(d => !C.estTicket(d));
+    const recent = pieces.slice().sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.createdAt || 0) - (a.createdAt || 0)).slice(0, 8);
     const series = C.monthlySeries(data, company(), C.today(), 12);
     const from12 = C.addMonths(C.today(), -12, 1);
     const qs = C.quoteStats(data, from12, C.today());
@@ -2820,10 +2830,10 @@
           </div>
         </div>
         <div class="panel"><h2>Top clients ${year} (HT) ${info('dash.top')}</h2>
-          ${top.length ? `<ul class="rank">${top.map(x => `<li><a class="name" href="#/client/${h(x.clientId)}" title="Ouvrir la fiche de ${h(x.name)}">${h(x.name)}</a><span class="bar"><i style="width:${largeurRang(x.ht, topMax)}%"></i></span><span class="amt">${C.money(x.ht, cur)}</span></li>`).join('')}</ul>` : '<p class="small muted">Aucune facture émise cette année. Ton premier devis accepté la remplira.</p>'}
+          ${top.length ? `<ul class="rank">${top.map(x => `<li><a class="name" href="${x.clientId ? '#/client/' + h(x.clientId) : '#/caisse'}" title="${x.clientId ? 'Ouvrir la fiche de ' + h(x.name) : 'Ouvrir la caisse'}">${h(x.name)}</a><span class="bar"><i style="width:${largeurRang(x.ht, topMax)}%"></i></span><span class="amt">${C.money(x.ht, cur)}</span></li>`).join('')}</ul>` : '<p class="small muted">Aucune facture émise cette année. Ton premier devis accepté la remplira.</p>'}
         </div>
       </div>`}
-      ${!recent.length ? '' : `<div class="panel"><h2>Documents récents <span class="small muted">— les ${recent.length} dernières pièces sur ${data.documents.length}</span></h2>${docTable(recent, { noFoot: true })}
+      ${!recent.length ? '' : `<div class="panel"><h2>Documents récents <span class="small muted">— les ${recent.length} dernières pièces sur ${pieces.length}</span></h2>${docTable(recent, { noFoot: true })}
         <div class="inline mt"><a class="btn btn-sm" href="#/factures">Toutes les factures</a><a class="btn btn-sm" href="#/devis">Tous les devis</a></div></div>`}
       ${/* « Et maintenant » redisait la suite À CÔTÉ des premiers pas, et pas la même : « + Créer ton
          premier devis » en vert sous « Remplir le catalogue » en vert. Deux panneaux qui se
@@ -3303,7 +3313,7 @@
   function duplicateDoc(doc) {
     const isQ = doc.type === 'devis';
     const numbered = isQ || C.EXTRA_TYPES.includes(doc.type);   // ces pièces portent un numéro dès l'enregistrement
-    const copy = { ...deepCopy(doc), id: C.uid(), number: '', status: 'brouillon', date: C.today(), createdAt: Date.now(), issuedTs: undefined, regimeTva: undefined, payments: [], emails: [], reminders: [], attachments: [], withholdingCertificate: false, fromQuoteId: undefined, fromQuoteNumber: undefined, fromDocId: undefined, fromDocType: undefined, fromDocNumber: undefined, deposit: undefined, settles: undefined, recurringId: undefined };
+    const copy = { ...deepCopy(doc), id: C.uid(), number: '', status: 'brouillon', date: C.today(), createdAt: Date.now(), issuedTs: undefined, regimeTva: undefined, payments: [], emails: [], reminders: [], attachments: [], withholdingCertificate: false, ticket: undefined, caisse: undefined, fromQuoteId: undefined, fromQuoteNumber: undefined, fromDocId: undefined, fromDocType: undefined, fromDocNumber: undefined, deposit: undefined, settles: undefined, recurringId: undefined };
     if (copy.dueDate) copy.dueDate = C.addDays(copy.date, C.delaiJours(isQ ? company().quoteValidityDays : company().paymentTermsDays, 30));
     if (numbered) copy.number = C.nextNumber(data, doc.type, copy.date);
     data.documents.push(copy); save(true);
@@ -3323,7 +3333,9 @@
     const isQ = type === 'devis';
     const s = listState[type];
     const { cols } = docColumns({ quotes: isQ, q: () => s.q });
-    const mine = data.documents.filter(d => isQ ? d.type === 'devis' : (d.type === 'facture' || d.type === 'avoir'));
+    // Un ticket de caisse (10.15.0) est une facture, mais il vit dans la page Caisse : cent tickets par
+    // jour noieraient la liste des factures, où l'on vient chercher ce qu'un client doit.
+    const mine = data.documents.filter(d => isQ ? d.type === 'devis' : ((d.type === 'facture' && !C.estTicket(d)) || d.type === 'avoir'));
     const years = Array.from(new Set(mine.map(d => (d.date || '').slice(0, 4)).filter(Boolean))).sort().reverse();
     const thisYear = C.today().slice(0, 4);
     // Par défaut on montre l'année en cours si elle contient quelque chose : une liste courte se lit, une liste de trois ans ne se lit pas.
@@ -5761,6 +5773,7 @@
       <form id="kf" class="grid-2">
         <label class="field span-2 obligatoire">${lbl('Désignation', 'cat.catalog')}<input type="text" name="label" value="${h(it.label)}"></label>
         <label class="field span-2">${lbl('Description', 'cat.description')}<textarea name="description">${h(it.description || '')}</textarea></label>
+        <label class="field span-2">${lbl('Code-barres ou référence', 'cat.code')}<input type="text" name="code" id="cat-code" value="${h(it.code || '')}" autocomplete="off" spellcheck="false" placeholder="Scanne l'étiquette, ou tape la référence"></label>
         ${/* La phrase de marge parle des deux prix : elle vit SOUS eux. Elle tombait entre la TVA et
            l'Unité, qui occupaient chacune une rangée à moitié vide — on la lisait comme une remarque
            sur la TVA (10.12.0, parcours d'une menuiserie). Les prix disent leur unité (9.4.8). */''}
@@ -5795,6 +5808,9 @@
         <button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
       (root, close) => {
         let unit = it.unit || '';
+        // Ouverte pour UNE case (le prix qui manque, depuis la caisse), elle y met le curseur : modal()
+        // ne reprend pas un curseur déjà posé dans la fenêtre (10.13.0).
+        if (opts.focus) { const c = $(`[name=${opts.focus}]`, root); if (c) c.focus(); }
         if ($('#del-cat', root)) $('#del-cat', root).onclick = async () => {
           const used = data.documents.filter(d => (d.lines || []).some(l => l.itemId === it.id
             || (l.label || '').trim().toLowerCase() === (it.label || '').trim().toLowerCase())).length;
@@ -5807,6 +5823,13 @@
           save(true); close(); if (done) done(null);
         };
         bindUnitSelect($('#cat-unit', root), () => unit, u => { unit = u; });
+        // Une douchette tape le code PUIS Entrée : dans une fenêtre, Entrée enregistrerait une fiche à
+        // moitié remplie. Ici Entrée passe au champ suivant, comme on l'attend d'un scan.
+        $('#cat-code', root).addEventListener('keydown', e => {
+          if (e.key !== 'Enter') return;
+          e.preventDefault(); e.stopPropagation();
+          const suiv = $('input[name=unitPrice]', root); if (suiv) suiv.focus();
+        });
         // La marge se montre pendant la saisie : c'est le moment où on se rend compte qu'on vend à perte.
         const hint = () => {
           const v = formValues($('#kf', root));
@@ -5841,6 +5864,10 @@
         $('#ok', root).onclick = () => {
           const v = formValues($('#kf', root));
           if (!v.label.trim()) return refus('#kf input[name=label]', 'La désignation est obligatoire : c\'est elle qui s\'écrit sur la ligne du devis.');
+          // Un code désigne UN article : deux fiches au même code, et la caisse vendrait l'une pour l'autre.
+          v.code = String(v.code || '').trim();
+          const meme = v.code && data.catalog.find(c => c.id !== it.id && C.normCode(c.code) === C.normCode(v.code));
+          if (meme) return refus('#cat-code', `Ce code est déjà celui de « ${meme.label} » : un code désigne un seul article, sinon la caisse vendrait l'un pour l'autre.`);
           if (v.tracked && already && already.moves.length > 1) { v.initialQty = it.initialQty; v.initialCost = it.initialCost; }
           // Un stock de départ EST un mouvement de stock (core.stockMovements en fabrique un) : il
           // passe par le garde-fou de l'offre comme un ajustement, la première fois seulement.
@@ -6031,7 +6058,7 @@
       } }
     ];
     const draw = dansUnLot(drawList('#list-wrap', catalogState.presta, prestaCols, () => data.catalog.slice(), {
-      noun: 'prestation', placeholder: 'Rechercher une prestation…', text: c => `${c.label} ${c.description || ''} ${c.unit || ''}`,
+      noun: 'prestation', placeholder: 'Rechercher une prestation…', text: c => `${c.label} ${c.description || ''} ${c.unit || ''} ${c.code || ''}`,
       // 10.12.0 (H-E26, vu au test humain) — deux chiffres du pied mentaient sans rien casser :
       // « moyenne 58,333 DT » faisait la moyenne de 25 DT de l'heure, d'un lot à 0 DT et d'une pièce
       // à 150 DT — un prix moyen n'a de sens que dans UNE unité (un agrégat porte son unité, 7.0.1) ;
@@ -7303,6 +7330,7 @@
     'p-marque': { onglet: 'documents', titre: 'Image de marque (sur tes documents)', mots: 'logo cachet signature couleur accent marque entete image' },
     'p-textes': { onglet: 'documents', titre: 'Textes imprimés sur les documents', mots: 'pied de page footer conditions mentions anglais english' },
     'p-objectifs': { onglet: 'documents', titre: 'Objectifs et statistiques', mots: 'objectif chiffre affaires client endormi dormant statistiques' },
+    'p-caisse': { onglet: 'documents', titre: 'Caisse et tickets', mots: 'caisse ticket comptoir imprimante thermique 80 mm 58 mm papier timbre message douchette' },
     'p-envoi': { onglet: 'envois', titre: 'Envoi des emails', mots: 'mail messagerie apple mailto envoyer piece jointe' },
     'p-comptable': { onglet: 'envois', titre: 'Ton comptable', mots: 'comptable email adresse envoyer journaux' },
     'p-modeles': { onglet: 'envois', titre: 'Modèles de messages', mots: 'modele message objet relance rappel email gabarit variables' },
@@ -7340,6 +7368,7 @@
       ['Comptabilité', '#/compta', v => { comptaState.tab = v; }, COMPTA_TABS],
       ['Paie', '#/paie', v => { paieState.tab = v; }, PAIE_TABS],
       ['Stock', '#/stock', v => { stockState.tab = v; }, STOCK_TABS],
+      ['Caisse', '#/caisse', v => { caisseState.tab = v; }, CAISSE_TABS],
       ['Marges', '#/marges', v => { margeState.tab = v; }, MARGE_TABS],
       ['Trésorerie', '#/tresorerie', v => { tresoState.tab = v; }, TRESO_TABS],
       ['Immobilisations', '#/immos', v => { immoState.tab = v; }, IMMO_TABS],
@@ -7413,7 +7442,7 @@
     const actions = [
       ['Nouveau devis', () => navigate('#/doc/new/devis')], ['Nouvelle facture', () => navigate('#/doc/new/facture')], ['Nouvel avoir', () => navigate('#/doc/new/avoir')],
       ['Accueil', () => navigate('#/dashboard')], ['Devis', () => navigate('#/devis')], ['Factures', () => navigate('#/factures')], ['Relances', () => navigate('#/relances')],
-      ['Facturation récurrente (contrats qui refacturent)', () => navigate('#/contrats')], ['Achats et dépenses', () => navigate('#/achats')], ['Nouvelle facture d\'achat', () => navigate('#/achat/new')], ['Nouvelle dépense', () => navigate('#/achat/new/-/depense')], ['Fournisseurs', () => navigate('#/fournisseurs')], ['Trésorerie', () => navigate('#/tresorerie')], ['Marges et rentabilité', () => navigate('#/marges')], ['Paie', () => navigate('#/paie')], ['Nouveau salarié', () => employeeForm(null, () => render())], ['Stock', () => navigate('#/stock')], ['Garanties', () => navigate('#/garanties')], ['Entrée de numéros de série', () => serialIntakeForm(null, () => render())], ['Mouvement de stock', () => adjustForm(null, () => render())], ['Immobilisations', () => navigate('#/immos')], ['Nouvelle immobilisation', () => assetForm(null, a => navigate('#/immo/' + a.id))], ['Nouvelle affaire', () => projectForm(null, p => navigate('#/affaire/' + p.id))], ['Nouveau fournisseur', () => supplierForm(null, () => render())], ['Proformas', () => navigate('#/autres/proforma')], ['Bons de commande', () => navigate('#/autres/commande')], ['Bons de livraison', () => navigate('#/autres/livraison')], ['Contrats à signer', () => navigate('#/autres/contrat')], ['Clients', () => navigate('#/clients')], ['Catalogue', () => navigate('#/catalogue')], ['Statistiques', () => navigate('#/stats')], ['Comptabilité', () => navigate('#/compta')], ['Paramètres', () => navigate('#/parametres')],
+      ['Facturation récurrente (contrats qui refacturent)', () => navigate('#/contrats')], ['Achats et dépenses', () => navigate('#/achats')], ['Nouvelle facture d\'achat', () => navigate('#/achat/new')], ['Nouvelle dépense', () => navigate('#/achat/new/-/depense')], ['Fournisseurs', () => navigate('#/fournisseurs')], ['Trésorerie', () => navigate('#/tresorerie')], ['Marges et rentabilité', () => navigate('#/marges')], ['Paie', () => navigate('#/paie')], ['Nouveau salarié', () => employeeForm(null, () => render())], ['Caisse', () => navigate('#/caisse')], ['Stock', () => navigate('#/stock')], ['Garanties', () => navigate('#/garanties')], ['Entrée de numéros de série', () => serialIntakeForm(null, () => render())], ['Mouvement de stock', () => adjustForm(null, () => render())], ['Immobilisations', () => navigate('#/immos')], ['Nouvelle immobilisation', () => assetForm(null, a => navigate('#/immo/' + a.id))], ['Nouvelle affaire', () => projectForm(null, p => navigate('#/affaire/' + p.id))], ['Nouveau fournisseur', () => supplierForm(null, () => render())], ['Proformas', () => navigate('#/autres/proforma')], ['Bons de commande', () => navigate('#/autres/commande')], ['Bons de livraison', () => navigate('#/autres/livraison')], ['Contrats à signer', () => navigate('#/autres/contrat')], ['Clients', () => navigate('#/clients')], ['Catalogue', () => navigate('#/catalogue')], ['Statistiques', () => navigate('#/stats')], ['Comptabilité', () => navigate('#/compta')], ['Paramètres', () => navigate('#/parametres')],
       ['Aide et guide', () => navigate('#/aide')], ['Me guider (visites guidées)', () => navigate('#/guide')], ['Nouveau client', () => clientForm(null, () => render())],
       ['Importer mes clients depuis un tableur', () => importerTableau('clients', () => render(true))], ['Importer mon catalogue depuis un tableur', () => importerTableau('catalogue', () => render(true))],
       ['Ta facture à ton image (logo, cachet, couleurs)', () => imageDeMarque(() => render(true))],
@@ -7553,6 +7582,11 @@
   const closeMenus = () => $$('.more-list').forEach(l => l.hidden = true);
   document.addEventListener('keydown', e => {
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); openPalette(); }
+    // ⌘↵ à la caisse (10.15.0) : encaisser sans lâcher le clavier, la douchette dans l'autre main.
+    // Jamais par-dessus une fenêtre : Entrée y appartient à la question posée.
+    else if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && location.hash.startsWith('#/caisse') && !modalClose && $('#cs-encaisser')) {
+      e.preventDefault(); $('#cs-encaisser').click();
+    }
     // ⌘⇧A : voir le document en grand. Ailleurs que dans un éditeur, on le DIT plutôt que de ne
     // rien faire — un raccourci silencieux fait douter du clavier avant de faire douter de l'app.
     else if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'a') {
@@ -10705,6 +10739,325 @@
       });
   }
 
+  // ---------- la caisse (10.15.0, H5 de l'étude Hesabi) ----------
+  //
+  // Vendre au comptoir en trois gestes : l'article (scanné par une douchette, cherché ou cliqué), le
+  // paiement, le ticket. La douchette USB se comporte comme un clavier — elle tape le code puis
+  // Entrée —, donc le champ du haut garde le curseur après chaque article : on scanne à la suite
+  // sans toucher la souris. Le panier survit à un changement de page (on va vérifier un prix, on
+  // revient), et il ne vit qu'en mémoire : un ticket n'existe qu'une fois encaissé.
+  const caisseState = { tab: 'vendre', panier: [], mode: 'especes', recu: '', clientId: '', q: '', jour: '', dernierId: null };
+  const CAISSE_TABS = [['vendre', 'Vendre'], ['tickets', 'Tickets et bilan du jour']];
+  function imprimerTicketDe(doc) {
+    const html = C.ticketHtml(doc, company(), { clientName: doc.clientId ? clientName(doc.clientId) : '', exemple: C.estDemo(data) });
+    return Promise.resolve(bridge.imprimerTicket(html, company().caisseLargeur)).then(r => {
+      if (r && !r.ok && !r.annule && r.raison) toast('L\'impression n\'a pas pu partir : ' + r.raison, true);
+    }).catch(e => toast(plainError(e), true));
+  }
+  function ticketEnPdf(doc) {
+    const html = C.ticketHtml(doc, company(), { clientName: doc.clientId ? clientName(doc.clientId) : '', exemple: C.estDemo(data) });
+    return Promise.resolve(bridge.ticketPdf(html, company().caisseLargeur, `${doc.number}.pdf`))
+      .then(p => { if (p) toast('Ticket enregistré : ' + p); }).catch(e => toast(plainError(e), true));
+  }
+  // La caisse, créée d'ici : la page qui en a besoin est celle où on la crée (7.14.0). Le fond de
+  // caisse est l'argent déjà dans le tiroir au premier jour — c'est de lui que partira le compte.
+  function creerCaisse(done) {
+    modal(`<h2>Créer la caisse</h2>
+      <p class="small">Les espèces encaissées au comptoir vont dans ce compte, pas à la banque : c'est ce qui permet à SkanFact de dire, le soir, combien le tiroir doit contenir.</p>
+      <form id="ccf" class="grid-2">
+        <label class="field span-2 obligatoire">${lbl('Nom', 'cs.nomCaisse')}<input type="text" name="name" value="Caisse"></label>
+        ${field(lbl(`Fond de caisse au départ (${h(C.normCurrency(company().currency))})`, 'cs.fond'), 'opening', 0, 'number', 'step="0.001" min="0" class="num"')}
+      </form>
+      <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Créer la caisse</button></div>`,
+    (root, close) => {
+      $('#ok', root).onclick = () => {
+        const v = formValues($('#ccf', root));
+        if (!String(v.name || '').trim()) return refus($('[name=name]', root), 'Donne un nom à ce compte.');
+        const a = { id: C.uid(), name: v.name.trim(), kind: 'caisse', bank: '', rib: '', opening: Number(v.opening) || 0, openingDate: C.today(),
+          isDefault: !data.accounts.length, statementBalance: '', notes: '' };
+        data.accounts.push(a);
+        save(true); close(); toast('Caisse créée : les espèces y arrivent désormais.'); if (done) done(a);
+      };
+    });
+  }
+  function ticketApercu(doc) {
+    const reste = C.resteARendre(data, doc);
+    const peutRendre = reste.some(r => r.reste > 0);
+    modal(`<h2>Ticket ${h(doc.number)}</h2>
+      <iframe class="cs-apercu" title="Aperçu du ticket ${h(doc.number)}" sandbox></iframe>
+      <div class="modal-actions">
+        ${peutRendre ? '<button class="btn" id="tk-rendre" style="margin-inline-end:auto">Rendre un article…</button>' : ''}
+        <button class="btn" data-close>Fermer</button>
+        <button class="btn" id="tk-pdf">Enregistrer en PDF</button>
+        <button class="btn btn-primary" id="tk-print">Imprimer le ticket</button></div>`,
+    (root, close) => {
+      $('iframe', root).srcdoc = C.ticketHtml(doc, company(), { clientName: doc.clientId ? clientName(doc.clientId) : '', exemple: C.estDemo(data) });
+      $('#tk-print', root).onclick = () => imprimerTicketDe(doc);
+      $('#tk-pdf', root).onclick = () => ticketEnPdf(doc);
+      if ($('#tk-rendre', root)) $('#tk-rendre', root).onclick = () => { close(); rendreForm(doc); };
+    }, null, { garde: false });
+  }
+  // Rendre un article : on choisit quoi (jamais plus que ce qui reste à rendre), comment on rend
+  // l'argent, et le montant se lit AVANT de valider (9.4.2).
+  function rendreForm(doc) {
+    const reste = C.resteARendre(data, doc).filter(r => r.reste > 0);
+    const cur = company().currency;
+    const modeOrig = (doc.caisse || {}).mode || 'especes';
+    modal(`<h2>Rendre sur le ticket ${h(doc.number)}</h2>
+      <p class="small muted">Un avoir est établi sur le ticket, l'article revient au stock, et l'argent rendu sort du compte du mode choisi.</p>
+      <table class="list compact" id="rd-t"><thead><tr><th>Article</th><th class="r">Vendu</th><th class="r">Déjà rendu</th><th class="r" style="width:110px">À rendre</th></tr></thead><tbody>
+        ${reste.map(r => `<tr><td>${h(r.label)}</td><td class="r">${pct(r.vendu)}</td><td class="r">${pct(r.rendu)}</td>
+          <td class="r"><input type="number" class="num" data-rd="${r.i}" min="0" max="${r.reste}" step="1" value="0" aria-label="Quantité rendue : ${h(r.label)}"></td></tr>`).join('')}
+      </tbody></table>
+      <form id="rdf" class="grid-2 mt">
+        <label class="field">${lbl('Rendu en', 'cs.modeRendu')}<select name="mode">${C.MODES_CAISSE.map(([k, l]) => `<option value="${k}" ${k === modeOrig ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+        <label class="field">${lbl('Motif', 'cs.motif')}<input type="text" name="motif" placeholder="Article défectueux, échange…"></label>
+      </form>
+      <p class="annonce-stable" id="rd-annonce"></p>
+      <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok" disabled style="min-width:14em;justify-content:center">Rembourser</button></div>`,
+    (root, close) => {
+      const qtes = () => { const o = {}; $$('[data-rd]', root).forEach(i => { o[i.dataset.rd] = Math.min(Number(i.max) || 0, Math.max(0, Number(i.value) || 0)); }); return o; };
+      const annonce = () => {
+        const q = qtes();
+        const lignes = reste.filter(r => q[r.i] > 0).map(r => ({ ...doc.lines[r.i], qty: q[r.i] }));
+        const t = C.computeTotals({ type: 'avoir', lines: lignes, applyStamp: false, currency: doc.currency }, company());
+        $('#rd-annonce', root).innerHTML = lignes.length
+          ? `À rendre au client : <b>${C.money(t.netToPay, cur)}</b>.`
+          : '<span class="muted">Indique la quantité rendue sur la ligne de l\'article.</span>';
+        // Rien de choisi : le bouton s'éteint (9.4.5) et l'annonce dit pourquoi ; sa largeur est
+        // réservée, sinon le montant qui s'y écrit pousse « Annuler » sous le curseur (H-E1).
+        $('#ok', root).textContent = lignes.length ? `Rembourser ${C.money(t.netToPay, cur)}` : 'Rembourser';
+        $('#ok', root).disabled = !lignes.length;
+      };
+      root.addEventListener('input', annonce); annonce();
+      $('#ok', root).onclick = () => {
+        const v = formValues($('#rdf', root));
+        if (closedBlock(C.today(), 'Ce remboursement')) return;
+        if (licenceBlock('Émettre un avoir sur un ticket', 'caisse')) return;
+        const r = C.remboursementDeTicket(data, company(), doc, qtes(), { mode: v.mode, motif: v.motif });
+        // Le refus montre la case qui le règle : le mode quand c'est le compte qui manque, sinon la quantité.
+        if (!r.ok) return refus(C.compteDuMode(data, v.mode) ? $('[data-rd]', root) : $('[name=mode]', root), r.motif);
+        data.documents.push(r.avoir);
+        doc.payments = (doc.payments || []).concat([r.paiement]);
+        save(true); close();
+        toast(`Avoir ${r.avoir.number} : ${C.money(r.montant, cur)} rendus.`);
+        vers('#/caisse')();
+      };
+    });
+  }
+
+  routes.caisse = () => {
+    const s = caisseState;
+    const cur = company().currency;
+    if (!s.jour) s.jour = C.today();
+    const comptes = C.comptesDeCaisse(data);
+    const articles = (data.catalog || []).slice().sort((a, b) => String(a.label || '').localeCompare(String(b.label || ''), 'fr'));
+    const ttcDe = it => C.computeTotals({ type: 'facture', applyStamp: false, lines: [C.ligneDePanier(it, company())] }, company()).totalTTC;
+    $('#view').innerHTML = `
+      <div class="page-head"><h1>Caisse</h1>
+        <div class="actions" id="cs-actions"></div></div>
+      ${comptes.especes ? '' : `<div class="banner warn"><span>Aucun compte de caisse : sans lui, les espèces encaissées iraient sur ton compte bancaire, et le soir SkanFact ne saurait pas ce que le tiroir doit contenir.</span>
+        <button class="btn btn-sm btn-primary" id="cs-creer">Créer la caisse</button></div>`}
+      <div class="tabs" id="cs-tabs" role="tablist" aria-label="La caisse">${CAISSE_TABS.map(([id, label]) =>
+        `<button role="tab" data-tab="${id}" class="${id === s.tab ? 'active' : ''}">${label}</button>`).join('')}</div>
+      <div id="cs-body"></div>`;
+    if ($('#cs-creer')) $('#cs-creer').onclick = () => creerCaisse(() => vers('#/caisse')());
+    $$('#cs-tabs [data-tab]').forEach(b => { b.onclick = () => { s.tab = b.dataset.tab; vers('#/caisse')(); }; });
+
+    // ---- Vendre ----
+    const drawVendre = () => {
+      if (!articles.length) {
+        $('#cs-actions').innerHTML = '';
+        $('#cs-body').innerHTML = etatVide('Ce que tu vends au comptoir', [
+          'La caisse vend les articles de ton <b>Catalogue</b> : chacun avec son prix et, pour la douchette, son <b>code-barres</b>.',
+          'Crée ton premier article — il arrive tout de suite dans la caisse.'], [['cs-new-art', '+ Nouvel article', true]]);
+        $('#cs-new-art').onclick = () => catalogForm(null, () => vers('#/caisse')());
+        return;
+      }
+      $('#cs-actions').innerHTML = '';
+      $('#cs-body').innerHTML = `<div class="caisse">
+        <div class="panel">
+          <label class="field cs-scan">${lbl('Scanne un code-barres, ou cherche un article', 'cs.scan')}
+            <input type="text" id="cs-scan" autocomplete="off" spellcheck="false" placeholder="Code-barres, référence ou nom de l'article" value="${h(s.q)}"></label>
+          <div class="cs-articles" id="cs-articles" role="list"></div>
+        </div>
+        <div class="panel cs-droite" id="cs-ticket"></div>
+      </div>`;
+      const drawArticles = () => {
+        const q = s.q.trim();
+        const liste = q ? articles.filter(a => C.correspondRecherche(`${a.label} ${a.code || ''} ${a.description || ''}`, q)) : articles;
+        const vus = liste.slice(0, 60);
+        $('#cs-articles').innerHTML = vus.length
+          ? vus.map(a => {
+            const st = a.tracked ? C.stockOf(data, a.id) : null;
+            return `<button type="button" class="cs-art" data-art="${h(a.id)}" role="listitem">
+              <span class="cs-art-nom">${h(a.label)}</span>
+              ${Number(a.unitPrice) > 0 ? `<span class="cs-art-prix">${C.money(ttcDe(a), cur)}</span>` : '<span class="cs-art-prix warn-text">prix à fixer</span>'}
+              ${st ? `<span class="cs-art-stock ${st.qty <= 0 ? 'warn-text' : ''}">${st.qty <= 0 ? 'rupture' : 'en stock : ' + pct(st.qty)}</span>` : ''}
+            </button>`;
+          }).join('') + (liste.length > vus.length ? `<p class="small muted cs-plus">${liste.length - vus.length} autres articles : précise la recherche.</p>` : '')
+          : `<p class="small muted">Aucun article ne correspond à « ${h(q)} ». <button type="button" class="btn btn-sm" id="cs-creer-art">+ Créer cet article</button></p>`;
+        $$('#cs-articles [data-art]').forEach(b => { b.onclick = () => { ajouter(articles.find(a => a.id === b.dataset.art)); }; });
+        if ($('#cs-creer-art')) $('#cs-creer-art').onclick = () => {
+          const code = C.normCode(q) && /\d{4,}/.test(q) ? q : '';
+          catalogForm(articleNeuf(code ? { code } : { label: q }), it => { if (it) { s.q = ''; ajouter(it); vers('#/caisse')(); } });
+        };
+      };
+      const ajouter = it => {
+        if (!it) return;
+        // Un article sans prix ne part pas gratuitement : sa fiche s'ouvre pour qu'on le fixe, et il
+        // entre dans le ticket une fois le prix enregistré (la même règle que `motifEncaissement`).
+        if (!(Number(it.unitPrice) > 0)) {
+          toast(`« ${it.label} » n'a pas encore de prix : fixe-le, il entrera dans le ticket.`);
+          catalogForm(it, maj => { if (maj && Number(maj.unitPrice) > 0) ajouter(maj); vers('#/caisse')(); }, { focus: 'unitPrice' });
+          return;
+        }
+        const deja = s.panier.find(l => l.itemId === it.id);
+        if (deja) deja.qty = C.round3((Number(deja.qty) || 0) + 1);
+        else s.panier.push(C.ligneDePanier(it, company()));
+        s.vise = deja ? s.panier.indexOf(deja) : s.panier.length - 1;
+        drawTicket();
+      };
+      const drawTicket = () => {
+        const t = C.totauxDuPanier(s.panier, company(), { recu: s.mode === 'especes' ? s.recu : '' });
+        const motif = C.motifEncaissement(data, company(), s.panier, { mode: s.mode, recu: s.mode === 'especes' ? s.recu : '' });
+        const dernier = s.dernierId ? data.documents.find(d => d.id === s.dernierId) : null;
+        $('#cs-ticket').innerHTML = `<h2>Ticket en cours ${info('cs.ticket')}</h2>
+          <div class="cs-zone" id="cs-zone">${s.panier.length ? `<table class="list compact cs-lignes"><thead><tr><th>Article</th><th class="r" style="width:96px">Qté</th><th class="r">Total TTC</th><th></th></tr></thead><tbody>
+            ${s.panier.map((l, i) => `<tr><td>${h(l.label)}</td>
+              <td class="r"><input type="number" class="num" data-qte="${i}" min="0" step="1" value="${h(String(l.qty))}" aria-label="Quantité : ${h(l.label)}"></td>
+              <td class="r nw">${C.money(t.lines[i] ? t.lines[i].ttc : 0, cur)}</td>
+              <td class="r"><button type="button" class="btn btn-sm btn-ghost" data-ret="${i}" aria-label="Retirer ${h(l.label)}">Retirer</button></td></tr>`).join('')}
+          </tbody></table>` : '<p class="small muted cs-vide">Scanne un article, ou clique-le à gauche : il s\'ajoute ici.</p>'}</div>
+          <div class="cs-totaux">
+            <div><span>Total HT</span><span>${C.money(t.netHT, cur)}</span></div>
+            <div><span>TVA</span><span>${C.money(t.totalVAT, cur)}</span></div>
+            ${t.stamp ? `<div><span>Timbre fiscal</span><span>${C.money(t.stamp, cur)}</span></div>` : ''}
+            <div class="cs-total"><span>Total TTC</span><span>${C.money(t.netToPay, cur)}</span></div>
+          </div>
+          <div class="cs-modes" role="radiogroup" aria-label="Mode de paiement">${C.MODES_CAISSE.map(([k, l]) =>
+            `<button type="button" role="radio" aria-checked="${s.mode === k}" class="cs-mode${s.mode === k ? ' on' : ''}" data-mode="${k}">${l}</button>`).join('')}
+            ${info('cs.mode')}</div>
+          <div class="cs-recu">${s.mode === 'especes' ? `
+            <label class="field">${lbl(`Reçu du client (${h(C.normCurrency(cur))})`, 'cs.recu')}<input type="text" inputmode="decimal" class="num" id="cs-recu" value="${h(s.recu)}" placeholder="facultatif"></label>
+            <div class="cs-rendre"><span class="small muted">À rendre</span><strong id="cs-rendu">${t.rendu != null && t.rendu >= 0 ? C.money(t.rendu, cur) : '—'}</strong></div>`
+            // La place du reçu reste en carte et en chèque (H-E1 : « Encaisser » ne bouge pas), et elle
+            // dit ce qui est vrai de ce mode plutôt que de laisser un trou.
+            : `<p class="small muted cs-sans-recu">${s.mode === 'carte' ? 'Réglé par carte : rien à rendre, l\'argent arrive sur ta banque.' : 'Réglé par chèque : rien à rendre, le chèque se remet ensuite en banque.'}</p>`}
+          </div>
+          <div class="field cs-client">${lbl('Client (facultatif)', 'cs.client')}<div id="cs-cl">${combo({ name: 'csClient', value: s.clientId, items: [], placeholder: 'Vente au comptoir', search: 'Rechercher un client…' })}</div></div>
+          <p class="small muted cs-motif" id="cs-motif">${motif ? h(motif) : ''}${motif === C.MOTIF_SANS_BANQUE ? ' <button type="button" class="btn btn-sm" id="cs-creer-banque">Créer mon compte bancaire</button>' : ''}</p>
+          <div class="cs-go">
+            <button class="btn btn-primary cs-encaisser" id="cs-encaisser" ${motif ? 'disabled' : ''}>Encaisser ${s.panier.length ? C.money(t.netToPay, cur) : ''}</button>
+            <span class="small muted">${clavierLocal('<kbd>⌘</kbd> + <kbd>↵</kbd>')}</span>
+            ${s.panier.length ? '<button type="button" class="btn btn-sm" id="cs-vider">Vider le panier</button>' : ''}
+          </div>
+          ${dernier ? `<div class="cs-dernier small">Dernier ticket : <b>${h(dernier.number)}</b> · ${C.money(C.computeTotals(dernier, company()).netToPay, cur)}${dernier.caisse && dernier.caisse.rendu ? ` · à rendre ${C.money(dernier.caisse.rendu, cur)}` : ''}
+            <button type="button" class="btn btn-sm" id="cs-print-last">Imprimer le ticket</button></div>` : ''}`;
+        bindCombo($('#cs-cl [data-combo]'), { items: [{ v: '', label: 'Vente au comptoir', vide: true }].concat(clientItems()), placeholder: 'Vente au comptoir', onPick: v => { s.clientId = v || ''; } });
+        $$('[data-qte]', $('#cs-ticket')).forEach(inp => {
+          inp.onchange = () => { const i = Number(inp.dataset.qte); const q = Number(inp.value); if (!(q > 0)) s.panier.splice(i, 1); else s.panier[i].qty = q; drawTicket(); };
+        });
+        $$('[data-ret]', $('#cs-ticket')).forEach(b => { b.onclick = () => { s.panier.splice(Number(b.dataset.ret), 1); drawTicket(); scan(); }; });
+        $$('[data-mode]', $('#cs-ticket')).forEach(b => { b.onclick = () => { s.mode = b.dataset.mode; drawTicket(); }; });
+        const recu = $('#cs-recu');
+        // Le montant reçu se tape pendant que le client tend son billet : seules la monnaie à rendre et
+        // le bouton suivent la frappe — redessiner le ticket ferait perdre le curseur (7.17.0).
+        if (recu) recu.oninput = () => {
+          s.recu = recu.value;
+          const tt = C.totauxDuPanier(s.panier, company(), { recu: s.recu });
+          $('#cs-rendu').textContent = tt.rendu != null && tt.rendu >= 0 ? C.money(tt.rendu, cur) : '—';
+          const m = C.motifEncaissement(data, company(), s.panier, { mode: s.mode, recu: s.recu });
+          $('#cs-motif').textContent = m;
+          $('#cs-encaisser').disabled = !!m;
+        };
+        if ($('#cs-vider')) $('#cs-vider').onclick = () => { s.panier = []; s.recu = ''; drawTicket(); scan(); };
+        // Le refus « aucun compte bancaire » porte le geste qui le règle (7.0.0) : le compte se crée
+        // par-dessus la caisse, et le panier attend.
+        if ($('#cs-creer-banque')) $('#cs-creer-banque').onclick = () => accountForm(null, () => drawTicket(), modeleCompte());
+        $('#cs-encaisser').onclick = encaisser;
+        if ($('#cs-print-last')) $('#cs-print-last').onclick = () => imprimerTicketDe(dernier);
+        // La ligne qu'on vient de scanner reste sous les yeux, même au-delà de ce que la zone montre.
+        const z = $('#cs-zone'), tr = s.vise != null && z ? $$('tbody tr', z)[s.vise] : null;
+        if (tr) { const bas = tr.offsetTop + tr.offsetHeight; if (bas > z.scrollTop + z.clientHeight) z.scrollTop = bas - z.clientHeight; }
+        s.vise = null;
+      };
+      const scan = () => { const i = $('#cs-scan'); if (i) i.focus(); };
+      const encaisser = () => {
+        const b = $('#cs-encaisser');
+        if (!b || b.disabled || b.dataset.busy) return;
+        const recu = s.mode === 'especes' ? s.recu : '';
+        const motif = C.motifEncaissement(data, company(), s.panier, { mode: s.mode, recu });
+        if (motif) { toast(motif, true); return; }
+        // Avant le numéro : un refus après `nextNumber` trouerait la série des tickets (6.0.0).
+        if (closedBlock(C.today(), 'Ce ticket')) return;
+        if (licenceBlock('Émettre un ticket de caisse', 'caisse')) return;
+        b.dataset.busy = '1';
+        const t = C.ticketDeCaisse(data, company(), s.panier, { mode: s.mode, recu: recu === '' ? null : recu, clientId: s.clientId });
+        data.documents.push(t);
+        save(true);
+        s.panier = []; s.recu = ''; s.clientId = ''; s.dernierId = t.id;
+        const rendu = t.caisse && t.caisse.rendu ? ` — à rendre ${C.money(t.caisse.rendu, cur)}` : '';
+        toast(`Ticket ${t.number} encaissé${rendu}`);
+        drawTicket(); scan();
+      };
+      const scanIn = $('#cs-scan');
+      scanIn.oninput = () => { s.q = scanIn.value; drawArticles(); };
+      scanIn.onkeydown = e => {
+        if (e.key === 'Escape' && scanIn.value) { e.preventDefault(); e.stopPropagation(); scanIn.value = ''; s.q = ''; drawArticles(); return; }
+        if (e.key !== 'Enter' || e.ctrlKey || e.metaKey) return;
+        e.preventDefault();
+        const q = scanIn.value.trim();
+        if (!q) return;
+        // Un code connu désigne UN article ; sinon un seul résultat de recherche fait l'affaire. Plusieurs
+        // résultats : la liste reste filtrée, on choisit d'un clic.
+        const parCode = C.articleParCode(data, q);
+        const liste = parCode ? [parCode] : articles.filter(a => C.correspondRecherche(`${a.label} ${a.code || ''}`, q));
+        if (liste.length === 1) { ajouter(liste[0]); scanIn.value = ''; s.q = ''; drawArticles(); }
+        else if (!liste.length) toast(`Aucun article ne porte le code « ${q} ».`, true);
+      };
+      drawArticles(); drawTicket(); scan();
+    };
+
+    // ---- Tickets et bilan du jour ----
+    const drawTickets = () => {
+      const b = C.bilanCaisse(data, company(), s.jour);
+      $('#cs-actions').innerHTML = b.nombre || b.rembourse ? '<button class="btn" id="cs-bilan-print">Imprimer le bilan du jour</button>' : '';
+      $('#cs-body').innerHTML = `
+        <div class="filters">${dateFieldHtml(lbl('Jour', 'cs.jour'), 'csJour', s.jour, {})}</div>
+        <div class="stats">
+          <div class="stat"><div class="lbl">Ventes TTC ${info('cs.bilan')}</div><div class="val">${C.money(b.total, cur)}</div><div class="sub">${pl(b.nombre, 'ticket')}${b.nombre ? ' · dont TVA ' + C.money(b.tva, cur) : ''}${b.rembourse ? ' · rendu aux clients : ' + C.money(b.rembourse, cur) : ''}</div></div>
+          <div class="stat"><div class="lbl">Espèces du jour</div><div class="val">${C.money(b.parMode.especes, cur)}</div><div class="sub">${b.tiroir != null ? `Le tiroir doit contenir <b>${C.money(b.tiroir, cur)}</b> ce soir, fond de caisse compris` : 'aucun compte de caisse'}</div></div>
+          <div class="stat"><div class="lbl">Carte</div><div class="val">${C.money(b.parMode.carte, cur)}</div><div class="sub">${b.parMode.carte < 0 ? 'rendu aux clients par carte' : 'versé par ta banque'}</div></div>
+          <div class="stat"><div class="lbl">Chèques</div><div class="val">${C.money(b.parMode.cheque, cur)}</div><div class="sub">${b.parMode.cheque < 0 ? 'rendu aux clients par chèque' : 'à remettre en banque'}</div></div>
+        </div>
+        <div class="panel"><h2>Les tickets du ${h(C.fmtDate(s.jour))}</h2>
+          ${b.tickets.length ? `<div class="scroll-x"><table class="list compact" id="cs-liste"><thead><tr><th>Ticket</th><th>Heure</th><th>Articles</th><th>Paiement</th><th class="r">Total TTC</th></tr></thead><tbody>
+            ${b.tickets.slice().sort((x, y) => (y.issuedTs || 0) - (x.issuedTs || 0)).map(d => {
+              const tt = C.computeTotals(d, company());
+              const mode = (C.MODES_CAISSE.find(x => x[0] === (d.caisse || {}).mode) || [0, '—'])[1];
+              const rendus = C.resteARendre(data, d).some(r => r.rendu > 0);
+              return `<tr class="clickable" data-tk="${h(d.id)}"><td><strong>${h(d.number)}</strong>${rendus ? '<div class="small muted">article rendu</div>' : ''}</td>
+                <td class="nw">${h(C.heureDuTicket(d) || '—')}</td>
+                <td class="tronq">${h((d.lines || []).map(l => (l.qty !== 1 ? pct(l.qty) + ' × ' : '') + l.label).join(', '))}</td>
+                <td>${h(mode)}${d.clientId ? `<div class="small muted">${h(clientName(d.clientId))}</div>` : ''}</td>
+                <td class="r nw">${C.money(tt.netToPay, cur)}</td></tr>`;
+            }).join('')}
+          </tbody></table></div>` : `<p class="small muted">Aucun ticket ce jour-là. ${s.jour === C.today() ? '<button type="button" class="btn btn-sm btn-primary" id="cs-aller-vendre">Ouvrir la caisse</button>' : ''}</p>`}
+        </div>`;
+      bindDateFields($('#cs-body'));
+      const j = $('#cs-body [name=csJour]');
+      if (j) j.addEventListener('change', () => { if (j.value) { s.jour = j.value; drawTickets(); } });
+      $$('#cs-liste [data-tk]').forEach(tr => { tr.onclick = () => { const d = data.documents.find(x => x.id === tr.dataset.tk); if (d) ticketApercu(d); }; });
+      if ($('#cs-aller-vendre')) $('#cs-aller-vendre').onclick = () => { s.tab = 'vendre'; vers('#/caisse')(); };
+      if ($('#cs-bilan-print')) $('#cs-bilan-print').onclick = () => {
+        Promise.resolve(bridge.imprimerTicket(C.bilanCaisseHtml(C.bilanCaisse(data, company(), s.jour), company()), company().caisseLargeur))
+          .catch(e => toast(plainError(e), true));
+      };
+    };
+    if (s.tab === 'tickets') drawTickets(); else drawVendre();
+  };
+
   routes.stock = () => {
     const cur = company().currency;
     const s = stockState;
@@ -11956,6 +12309,13 @@
           Object.assign(a, v, { opening: Number(v.opening) || 0 });
           if (a.isDefault) data.accounts.forEach(x => { if (x.id !== a.id) x.isDefault = false; });
           else if (!data.accounts.some(x => x.isDefault && x.id !== a.id)) a.isDefault = true;   // il en faut toujours un
+          // Une caisse créée la première (10.15.0, H5 : « Créer la caisse » avant tout compte bancaire) est
+          // le compte par défaut faute d'autre : le premier compte BANCAIRE reprend ce rôle, sinon les
+          // virements des clients continueraient d'arriver dans le tiroir.
+          if (!acc && a.kind !== 'caisse' && !a.isDefault) {
+            const d = data.accounts.find(x => x.isDefault);
+            if (d && d.kind === 'caisse') { d.isDefault = false; a.isDefault = true; }
+          }
           if (!acc) data.accounts.push(a);
           save(true); close(); if (done) done(a);
         };
@@ -12555,7 +12915,7 @@
             : '<div class="empty">Aucune vente sur cette période.</div>'}
           </div>
           <div class="panel"><h2>Meilleurs clients (HT) ${info('stat.clients')}</h2>
-            ${clients.length ? `<ul class="rank">${clients.map(x => `<li><a class="name" href="#/client/${h(x.clientId)}">${h(x.name)}</a><span class="bar"><i style="width:${largeurRang(x.ht, clientMax)}%"></i></span><span class="amt">${C.money(x.ht, cur)}</span></li>`).join('')}</ul>
+            ${clients.length ? `<ul class="rank">${clients.map(x => `<li><a class="name" href="${x.clientId ? '#/client/' + h(x.clientId) : '#/caisse'}">${h(x.name)}</a><span class="bar"><i style="width:${largeurRang(x.ht, clientMax)}%"></i></span><span class="amt">${C.money(x.ht, cur)}</span></li>`).join('')}</ul>
             ${clients.length > 1 ? `<p class="small ${clients[0].ht / Math.max(1, cur1.ht) > 0.5 ? 'warn-text' : 'muted'} mt">Ton premier client pèse ${Math.round(clients[0].ht / Math.max(1, cur1.ht) * 100)} % du chiffre d'affaires.${clients[0].ht / Math.max(1, cur1.ht) > 0.5 ? ' C\'est beaucoup : perdre ce client ferait très mal.' : ''}</p>` : ''}`
             : '<div class="empty">Aucun client facturé sur cette période.</div>'}
           </div>
@@ -14499,6 +14859,13 @@
           ${field(lbl(`Objectif de chiffre d'affaires HT par an (${C.normCurrency(c.currency)})`, 'stat.target'), 'revenueTarget', Number(c.revenueTarget) > 0 ? c.revenueTarget : '', 'number', 'step="1" min="0" class="num montant" placeholder="aucun objectif"')}
           ${field(lbl('Un client est « endormi » après (jours)', 'stat.dormant'), 'dormantDays', c.dormantDays || 180, 'number', 'min="1" class="num"')}
         </div></div>
+        ${panneau('p-caisse')}
+          <p class="small muted mb">Ces réglages ne servent qu'aux tickets de la page Caisse : tes devis et tes factures n'en dépendent pas.</p>
+          <div class="grid-2">
+            <label class="field">${lbl('Largeur du papier', 'cs.largeur')}<select name="caisseLargeur"><option value="80" ${Number(c.caisseLargeur) !== 58 ? 'selected' : ''}>80 mm (le plus courant)</option><option value="58" ${Number(c.caisseLargeur) === 58 ? 'selected' : ''}>58 mm</option></select></label>
+            <label class="check" style="align-self:end"><input type="checkbox" name="caisseTimbre" ${c.caisseTimbre ? 'checked' : ''}> Timbre fiscal sur chaque ticket ${info('cs.timbre')}</label>
+            <label class="field span-2">${lbl('Message en bas du ticket', 'cs.pied')}<textarea name="caissePied" rows="2" placeholder="Merci de votre visite.">${h(c.caissePied || '')}</textarea></label>
+          </div></div>
         </section>
 
         <section data-pane="envois" hidden>
@@ -14785,6 +15152,7 @@
       // Le seuil de retenue (9.1.1). Un seuil négatif n'a pas de sens et un seuil vidé veut dire
       // « aucun » : les deux retombent sur 0, la valeur qui ne fait rien.
       data.company.withholdingThreshold = Math.max(0, Number(data.company.withholdingThreshold) || 0);
+      data.company.caisseLargeur = Number(data.company.caisseLargeur) === 58 ? 58 : 80;
       save(true); applyTheme(); $('#brand-company').textContent = data.company.name || 'Ton entreprise';
       accorderNomDossier();     // le dossier porte le nom de la société, pas « Mon entreprise »
       // La licence est attachée au matricule fiscal : une fiche société modifiée se revérifie.

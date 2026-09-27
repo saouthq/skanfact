@@ -639,7 +639,10 @@ module.exports = async ({ t, ta, assert, lireSource }) => {
     // Sans métier libéral, rien ne change.
     assert.ok(/^Facture FAC-2026-001/.test(core.emailFor('facture', doc, {}, { ...co, activity: 'informatique' }).subject));
     // L'écran : le nom d'une pièce passe par core.docLabel, et les modèles affichés sont ceux qui partiront.
-    assert.ok(/const docLabel = doc => `\$\{C\.docLabel\(doc\.type, company\(\)\)\}/.test(app), 'l\'écran nomme la pièce par TITLES');
+    // (Retourné en 10.15.0 : un ticket de caisse a son nom ; titreDePiece le dit, et laisse toute
+    // autre pièce à docLabel — la règle est « le nom vient du métier », pas la forme de l'appel.)
+    assert.ok(/const docLabel = doc => `\$\{C\.(?:docLabel\(doc\.type|titreDePiece\(doc), company\(\)\)\}/.test(app), 'l\'écran nomme la pièce par TITLES');
+    assert.strictEqual(core.titreDePiece({ type: 'facture' }, co), core.docLabel('facture', co), 'hors ticket, titreDePiece doit rendre le nom du métier');
     assert.ok(/const t = C\.modeleMail\(c, k, lg === 'en'\);/.test(app), 'les Paramètres montrent un modèle qui ne partira pas');
     assert.ok(/isInv \? 'Émettre ' \+ laPiece\(\)/.test(app) && !/'Émettre la facture'/.test(app), 'le bouton dit « Émettre la facture » sous une note d\'honoraires');
     assert.ok(/— \$\{modeles\.length\} messages/.test(app), 'le compte des modèles est écrit à la main');

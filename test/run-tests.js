@@ -9875,7 +9875,8 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     // les rangeait sous « Net à payer ». Huit pièces sur deux cents ne font pas un total.
     assert.ok(/\$\{opts\.noFoot \? '' : `<tfoot>/.test(app), 'docTable n\'a plus de mode « sans pied »');
     assert.ok(/docTable\(recent, \{ noFoot: true \}\)/.test(app), '« Documents récents » affiche encore un total');
-    assert.ok(/les \$\{recent\.length\} dernières pièces sur \$\{data\.documents\.length\}/.test(app),
+    // 10.15.0 : les tickets de caisse n'y entrent pas — le compte porte sur les pièces qu'il résume.
+    assert.ok(/les \$\{recent\.length\} dernières pièces sur \$\{pieces\.length\}/.test(app) && /const pieces = data\.documents\.filter\(d => !C\.estTicket\(d\)\)/.test(app),
       '« Documents récents » ne dit pas qu\'il n\'est qu\'un extrait');
   });
 
@@ -14749,6 +14750,7 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
   require('./suites/whatsapp.js')({ t, assert, lireSource });
   require('./suites/fec.js')({ t, assert, lireSource });
   require('./suites/paie-contrats.js')({ t, assert, lireSource });
+  require('./suites/caisse.js')({ t, assert, lireSource });
   // Asynchrone depuis 213d (la messagerie au premier envoi) : elle est ATTENDUE, sinon son `ta` part détaché (8.4.0).
   await require('./suites/assistant.js')({ t, ta, assert, lireSource });
   // Celle-ci reçoit `ta` en plus : elle interroge le vrai worker sur une vraie base SQLite.

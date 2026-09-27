@@ -58,7 +58,7 @@
   // comme « Vendre », la paie rose comme « Ton équipe »). Un test exige une couleur par page.
   const COULEUR_PAGE = {
     dashboard: 'commencer', devis: 'vendre', factures: 'vendre', relances: 'encaisser', contrats: 'vendre', autres: 'vendre',
-    clients: 'vendre', catalogue: 'vendre', fournisseurs: 'acheter', achats: 'acheter', stock: 'acheter', garanties: 'acheter',
+    clients: 'vendre', catalogue: 'vendre', caisse: 'vendre', fournisseurs: 'acheter', achats: 'acheter', stock: 'acheter', garanties: 'acheter',
     immos: 'acheter', tresorerie: 'encaisser', marges: 'piloter', stats: 'piloter', paie: 'equipe', compta: 'declarer',
     licences: 'piloter', modules: 'commencer', parametres: 'piloter', aide: 'commencer', guide: 'commencer',
     doc: 'vendre', client: 'vendre', contrat: 'vendre', fournisseur: 'acheter', achat: 'acheter', affaire: 'piloter',
@@ -99,6 +99,8 @@
       texte: "<p>Chaque fournisseur a sa fiche : ses achats, ce que tu lui dois, et ses conditions de paiement.</p>" },
     achats: { titre: "Achats et dépenses", resume: "Les factures de tes fournisseurs et tes dépenses du quotidien.",
       texte: "<p>Tout ce que tu paies : factures d'achat, dépenses (carburant, fournitures), avoirs et acomptes de tes fournisseurs.</p><p>C'est d'ici que vient la <b>TVA que tu récupères</b> — un achat oublié, c'est de la TVA payée deux fois.</p>" },
+    caisse: { titre: "La caisse", resume: "Vendre au comptoir : scanner, encaisser, rendre la monnaie, imprimer le ticket.",
+      texte: "<p>Pour vendre au comptoir sans faire de facture : tu scannes ou tu touches les articles, tu choisis le mode de paiement, et le ticket sort.</p><p>Chaque ticket est une vente comme une autre : il entre dans ton chiffre d'affaires, ta TVA, ton stock et ta caisse. Le soir, le <b>bilan du jour</b> dit ce qui est entré, mode par mode.</p>" },
     stock: { titre: "Le stock", resume: "Ce qui dort sur l'étagère, ce qui entre, ce qui sort.",
       texte: "<p>Tes articles suivis en stock : ce qui entre par tes achats, ce qui sort par tes ventes, leur valeur, et ce qu'il faut recommander.</p><p>Acheter de la marchandise n'est pas une charge : c'est la vente qui la fait sortir.</p>" },
     garanties: { titre: "Les garanties", resume: "Le matériel vendu par numéro de série, et ses garanties.",
@@ -189,6 +191,8 @@
     'paie:declarations': "La CNSS du trimestre et la déclaration d'employeur de l'année : ce qu'il faut déposer, et quand.",
     'paie:registre': "Le registre du personnel : tous ceux qui ont travaillé pour toi, entrées et sorties.",
     'paie:baremes': "Les taux : CNSS, IRPP, frais professionnels. Ils ne sont écrits nulle part en dur — ton comptable les vérifie une fois.",
+    'caisse:vendre': "Le comptoir : les articles à gauche, le ticket en cours à droite, et « Encaisser ».",
+    'caisse:tickets': "Les tickets d'un jour, et son bilan : ce qui est entré en espèces, par carte, par chèque, et ce qui a été rendu.",
     'stock:etat': "L'état du stock : chaque article suivi, sa quantité, son coût moyen et sa valeur.",
     'stock:mouvements': "Chaque entrée (achat) et chaque sortie (vente, casse, inventaire), dans l'ordre.",
     'stock:series': "Le matériel suivi numéro par numéro : en stock, chez quel client, sous garantie jusqu'à quand.",
@@ -430,6 +434,29 @@
   b('[data-pdf]', "Le bulletin en PDF.", { nom: 'PDF' });
   b('[data-ee]', "Modifie la fiche du salarié.", { nom: 'Modifier', cle: 'ee' });
   b('[data-file]', "Note que la déclaration est déposée.", { nom: 'Marquer déposée' });
+
+  // ---------- caisse ----------
+  b('#cs-scan', "Scanne un code-barres (la douchette tape le code puis Entrée), ou tape une référence ou un nom : l'article entre dans le ticket.", { nom: 'Scanner' });
+  b('[data-art]', "Ajoute cet article au ticket ; un second clic en ajoute un de plus.", { route: 'caisse', nom: 'Un article', cle: 'cs-art' });
+  b('[data-qte]', "Le nombre de cet article dans le ticket ; à zéro, la ligne part.", { route: 'caisse', nom: 'Quantité', cle: 'cs-qte' });
+  b('[data-ret]', "Retire cette ligne du ticket en cours.", { route: 'caisse', nom: 'Retirer' });
+  b('[data-mode]', "Comment le client paie : les espèces vont dans ta caisse, la carte et le chèque à la banque.", { route: 'caisse', nom: 'Mode de paiement', cle: 'cs-mode' });
+  b('#cs-recu', "Ce que le client te tend, en espèces : SkanFact calcule la monnaie à rendre.", { nom: 'Reçu' });
+  b('#cs-encaisser', "Enregistre la vente : le ticket prend son numéro, le paiement entre dans ta caisse ou à la banque, le stock baisse.");
+  b('#cs-vider', "Vide le ticket en cours sans rien enregistrer.");
+  b('#cs-print-last', "Imprime le dernier ticket encaissé.");
+  b('#cs-creer', "Crée le compte « Caisse » : c'est là que tes ventes en espèces s'additionnent.");
+  b('#cs-creer-banque', "Crée ton compte bancaire : c'est là qu'arrivent les paiements par carte et par chèque, jamais dans le tiroir. Le panier attend pendant ce temps.");
+  b('#cs-new-art', "Ajoute un article au catalogue, avec son prix et son code-barres.");
+  b('#cs-creer-art', "Crée l'article que tu viens de chercher, prêt à vendre.");
+  b('#cs-bilan-print', "Imprime le bilan du jour : les tickets, le total, la TVA et ce qui est entré mode par mode.");
+  b('#cs-aller-vendre', "Revient au comptoir pour vendre.");
+  b('[data-tk]', "Ouvre ce ticket : le réimprimer, l'enregistrer en PDF, ou rendre un article.", { route: 'caisse', nom: 'Un ticket', cle: 'tk' });
+  b('#tk-print', "Imprime ce ticket sur ton imprimante de caisse.");
+  b('#tk-pdf', "Enregistre ce ticket en PDF, pour l'envoyer au client.");
+  b('#tk-rendre', "Le client rapporte un article : SkanFact fait l'avoir et sort l'argent rendu.");
+  b('[data-rd]', "Combien d'exemplaires de cet article le client rapporte.", { route: 'caisse', nom: 'Quantité rendue', cle: 'rd' });
+  b('#cat-code', "Le code-barres de l'article (ou ta référence) : scanné à la caisse, il met l'article dans le ticket.", { nom: 'Code-barres' });
 
   // ---------- stock ----------
   b('#st-new', "Crée un article suivi en stock.");

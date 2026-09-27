@@ -38,6 +38,8 @@ contextBridge.exposeInMainWorld('skanfact', {
   saveText: (suggestedName, content) => ipcRenderer.invoke('file:saveText', { suggestedName, content }),
   openText: (opts) => ipcRenderer.invoke('file:openText', opts || {}),
   exportPdfSilent: (html, name) => ipcRenderer.invoke('pdf:exportSilent', { html, name }),
+  imprimerTicket: (html, largeur) => ipcRenderer.invoke('ticket:print', { html, largeur }),
+  ticketPdf: (html, largeur, suggestedName) => ipcRenderer.invoke('ticket:pdf', { html, largeur, suggestedName }),
   saveTextSilent: (name, content) => ipcRenderer.invoke('file:saveSilent', { name, content }),
   composeMail: (opts) => ipcRenderer.invoke('mail:compose', opts),
   ouvrirWhatsApp: (opts) => ipcRenderer.invoke('whatsapp:ouvrir', opts),

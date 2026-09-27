@@ -174,6 +174,21 @@
     'ed.project': { t: 'Affaire', d: 'Rattache ce document à un chantier ou à un projet, pour comparer plus tard ce qu\'il a rapporté à ce qu\'il a coûté. Facultatif : une vente simple n\'a pas besoin d\'affaire. Utile dès qu\'il y a des achats en face.' },
     'ed.margin': { t: 'Marge estimée', d: 'Ce qu\'il resterait de ce document une fois retiré le <b>coût de revient</b> de chaque ligne (celui du catalogue, ou celui recopié sur la ligne). C\'est une estimation : elle ne tient pas compte du loyer, des salaires ni des frais généraux. Pour une marge exacte, rattache ce document à une <b>affaire</b> et rattaches-y aussi les achats correspondants.' },
     'buy.project': { t: 'Affaire', d: 'Rattache cet achat au chantier pour lequel tu l\'as fait. C\'est ce rattachement qui rend la marge exacte : sans lui, l\'affaire semblera plus rentable qu\'elle ne l\'est.' },
+    'cat.code': { t: 'Code-barres ou référence', d: 'Le code imprimé sous le code-barres de l\'article (EAN à 13 chiffres le plus souvent), ou ta propre référence. À la caisse, une douchette le lit et l\'article arrive dans le ticket sans rien taper. Clique dans la case et scanne l\'étiquette : Entrée passe au prix, la fiche ne s\'enregistre pas toute seule. Un code désigne un seul article : deux fiches au même code sont refusées.' },
+    'cs.scan': { t: 'Scanner ou chercher', d: 'Une douchette USB se comporte comme un clavier : elle tape le code-barres puis Entrée, et l\'article entre dans le ticket. Tu peux aussi taper un nom ou une référence : un seul résultat s\'ajoute avec Entrée, plusieurs restent affichés pour que tu cliques le bon. Le curseur revient ici après chaque article, pour scanner à la suite. Échap vide la case.' },
+    'cs.ticket': { t: 'Le ticket en cours', d: 'Tout est en TTC, parce que c\'est ce que le client paie et lit. Change une quantité dans sa case ; « Retirer » enlève la ligne. Rien n\'est enregistré tant que tu n\'as pas cliqué « Encaisser » : le panier reste là si tu vas voir une autre page, et disparaît si tu fermes l\'application.' },
+    'cs.mode': { t: 'Mode de paiement', d: 'Les espèces vont dans ton compte de caisse, la carte et le chèque sur ton compte bancaire par défaut : c\'est ce qui permet, le soir, de savoir ce que le tiroir doit contenir. Un paiement en plusieurs modes se fait en deux tickets.' },
+    'cs.recu': { t: 'Reçu du client', d: 'Facultatif. Tape le billet que le client te tend : SkanFact affiche la monnaie à rendre, et l\'imprime sur le ticket. Si le montant est plus petit que le total, « Encaisser » s\'éteint et dit combien il manque.' },
+    'cs.client': { t: 'Client', d: 'Facultatif : une vente au comptoir n\'a pas besoin de client. Choisis-en un pour qu\'il apparaisse sur sa fiche et dans ses statistiques. S\'il te faut une facture à son nom, fais une vraie facture depuis la page Factures : un ticket n\'en est pas une.' },
+    'cs.bilan': { t: 'Le bilan du jour', d: 'Ce que la caisse a vendu ce jour-là, et comment on t\'a payé. La carte « Espèces » est ce que le tiroir doit contenir EN PLUS du fond de caisse : compte-le le soir, un écart se voit tout de suite. Les remboursements du jour sont déjà retirés.' },
+    'cs.jour': { t: 'Le jour', d: 'Choisis une autre date pour revoir ses tickets et son bilan. Un ticket d\'un mois clôturé se relit et se réimprime ; il ne se rembourse plus.' },
+    'cs.timbre': { t: 'Timbre fiscal sur les tickets', d: 'Décoché, les tickets ne portent pas de timbre : le droit de timbre porte sur les factures. Coche-le si ton comptable te dit que tes tickets en portent. À VÉRIFIER avec ton comptable.' },
+    'cs.largeur': { t: 'Largeur du papier', d: 'La largeur du rouleau de ton imprimante à tickets : 80 mm pour la plupart, 58 mm pour les petites. Le ticket s\'imprime par la fenêtre d\'impression de ton ordinateur, où tu choisis l\'imprimante.' },
+    'cs.pied': { t: 'Message en bas du ticket', d: 'Une phrase imprimée à la fin de chaque ticket : un remerciement, tes horaires, ta politique d\'échange. Vide, le ticket dit « Merci de votre visite. »' },
+    'cs.nomCaisse': { t: 'Nom de la caisse', d: 'Le nom du compte où arrivent les espèces. Il apparaît dans la Trésorerie, à côté de tes comptes bancaires.' },
+    'cs.fond': { t: 'Fond de caisse', d: 'L\'argent déjà dans le tiroir le jour où tu commences : la monnaie pour rendre. Le solde de la caisse part de ce montant, et chaque vente en espèces s\'y ajoute.' },
+    'cs.modeRendu': { t: 'Rendu en', d: 'Comment tu rends l\'argent : en espèces il sort de la caisse, par carte ou chèque de la banque. Par défaut, le mode du ticket.' },
+    'cs.motif': { t: 'Motif', d: 'Facultatif : pourquoi l\'article revient. Il s\'imprime sur l\'avoir et sert à s\'en souvenir.' },
     'cat.cost': { t: 'Coût de revient HT', d: 'Ce que cette prestation ou cet article te coûte : prix d\'achat de la marchandise, sous-traitance, matériel. Facultatif, mais c\'est lui qui permet de calculer la marge sur les ventes qui ne sont pas rattachées à une affaire. Pour une prestation où tu ne vends que ton temps, laisse 0 : la marge affichée sera alors le prix de vente.' },
     'soc.due': { t: 'Déclarations à déposer', d: 'Les déclarations sociales dont l\'échéance approche ou est passée. <b>SkanFact ne dépose rien</b> et ne se connecte à aucune administration : il prépare le tableau et te rappelle la date. « Marquer déposée » sert uniquement à faire taire le rappel une fois que tu l\'as fait. <em>À VÉRIFIER avec ton comptable : les dates et les modalités de dépôt.</em>' },
     'soc.cnss': { t: 'Déclaration CNSS trimestrielle', d: 'Le tableau à recopier ou à envoyer : un salarié par ligne, avec son assiette, la part retenue sur son salaire, la part à ta charge et l\'accident du travail. <b>Le total est ce que tu dois verser à la CNSS</b>, les deux parts confondues. Échéance usuelle : le 15 du mois suivant la fin du trimestre — <em>à VÉRIFIER.</em>', a: 'declarations' },
@@ -847,6 +862,28 @@
 <h3>Ce que cette page ne dit pas</h3>
 <p>Elle ne calcule pas ton bénéfice fiscal : ni provisions, ni impôt. Son résultat est celui de l'onglet TVA de la Comptabilité, au millime — les amortissements et le coût des marchandises vendues y sont, comptés jour par jour en cours d'année. Une marchandise mise en stock sur un article suivi, ou un bien immobilisé, n'est pas une charge de la période : c'est sa sortie, ou son amortissement, qui en devient une. Et la moins-value d'un bien cédé se lit sur sa propre ligne, hors des charges fixes : une cession n'arrive pas tous les ans. Le vrai résultat, c'est ton comptable qui l'établit en fin d'année.</p>
 <p>Elle ne compte pas non plus <b>ton</b> salaire si tu ne t'en verses pas. Une activité qui dégage 20 000 DT de marge sur l'année en te faisant travailler tous les week-ends n'est pas rentable : elle est juste mal payée.</p>`
+    },
+    {
+      id: 'caisse', title: 'Vendre au comptoir', sub: 'Scanner, encaisser, imprimer le ticket, et compter le tiroir le soir',
+      body: `
+<p>Deux onglets : <b>Vendre</b> et <b>Tickets et bilan du jour</b>. La page apparaît quand le module <b>Caisse</b> est coché (Paramètres → L'application → Ce que l'application t'affiche) ; elle l'est d'office pour le commerce, la restauration et la beauté.</p>
+<h3>Avant la première vente</h3>
+<ul>
+  <li><b>Créer la caisse</b> : le compte où arrivent les espèces, avec ton fond de caisse. La page le propose tant qu'il n'existe pas — sans lui, les espèces iraient sur ton compte bancaire.</li>
+  <li><b>Ton catalogue</b> : la caisse vend les articles du Catalogue, à leur prix. Pour la douchette, donne à chaque article son <b>code-barres</b> (le champ « Code-barres ou référence » de sa fiche : clique dedans et scanne l'étiquette).</li>
+  <li><b>L'imprimante à tickets</b> : SkanFact imprime par la fenêtre d'impression de ton ordinateur. La largeur du papier (80 ou 58 mm) se règle dans Paramètres → Documents → Caisse et tickets.</li>
+</ul>
+<h3>Une vente</h3>
+<p>Scanne l'article : il entre dans le ticket, et le curseur revient pour le suivant. Sans douchette, tape son nom ou clique sa case. Choisis le mode — espèces, carte, chèque —, tape au besoin le billet reçu pour lire la monnaie à rendre, puis <b>Encaisser</b> (ou <kbd>⌘</kbd> + <kbd>↵</kbd>). Le ticket prend son numéro (TIC-2026-001…), s'enregistre payé, et « Imprimer le ticket » l'imprime.</p>
+<h3>Ce qu'un ticket fait tout seul</h3>
+<p>Un ticket est une vente comme une facture : il entre dans le chiffre d'affaires, dans la TVA collectée du mois, dans les écritures et le paquet de ton comptable. Il sort les articles suivis du stock, au coût moyen. Les espèces arrivent dans la caisse, la carte et le chèque à la banque. Il ne se range pas avec les factures — cent tickets par jour noieraient la liste — et il a <b>sa propre numérotation</b> : il ne prend jamais un numéro de facture.</p>
+<p>Un ticket n'est pas une facture. Un client qui en veut une à son nom : fais-lui une facture depuis la page Factures. Le timbre fiscal n'est pas porté par défaut sur les tickets ; <em>À VÉRIFIER avec ton comptable</em> : les mentions obligatoires d'un ticket et le droit de timbre.</p>
+<h3>Rendre un article</h3>
+<p>Onglet <b>Tickets et bilan du jour</b> → clique le ticket → <b>Rendre un article…</b>. Tu choisis quoi (jamais plus que ce qui a été vendu), comment tu rends l'argent, et le montant se lit avant de valider. SkanFact établit un <b>avoir</b> sur le ticket, remet l'article en stock, et fait sortir l'argent du compte du mode choisi.</p>
+<h3>Le soir : le bilan</h3>
+<p>Le bilan du jour dit ce que la caisse a vendu, et comment on t'a payé. La carte <b>Espèces</b> est ce que le tiroir doit contenir en plus du fond de caisse : compte-le, un écart se voit tout de suite. « Imprimer le bilan du jour » le sort sur le même rouleau.</p>
+<h3>Ce que la caisse ne fait pas</h3>
+<p>Pas de paiement en plusieurs modes sur un même ticket (fais deux tickets), pas de remise au comptoir, pas de tiroir-caisse commandé par l'imprimante. Et un ticket ne s'envoie pas à la TTN : la facture électronique concerne les factures.</p>`
     },
     {
       id: 'stock', title: 'Tenir son stock sans y passer ses soirées', sub: 'Suivi automatique, coût moyen, inventaire',
@@ -1538,7 +1575,7 @@ rencontres. Si un mot affiché dans l'application manque ici, c'est un défaut :
       articles: ['devis', 'facture', 'avoir', 'acompte', 'contrats', 'etranger', 'pieces'] },
     { id: 'encaisser', label: 'Encaisser', sub: 'Être payé, relancer sans se fâcher, et savoir ce qu\'il reste en caisse.',
       icon: '<rect x="2" y="6" width="20" height="13" rx="2"/><path d="M2 10h20"/><circle cx="17" cy="15" r="1.5"/>',
-      articles: ['paiements', 'tresorerie'] },
+      articles: ['paiements', 'tresorerie', 'caisse'] },
     { id: 'acheter', label: 'Acheter, stocker, équiper', sub: 'L\'argent qui sort, ce qui dort sur l\'étagère, et ce que tu gardes.',
       icon: '<path d="M3 8l9-4 9 4v8l-9 4-9-4z"/><path d="M3 8l9 4 9-4"/><path d="M12 12v8"/>',
       articles: ['achats', 'stock', 'series', 'immobilisations', 'lecture'] },
@@ -1571,6 +1608,7 @@ rencontres. Si un mot affiché dans l'application manque ici, c'est un défaut :
     tresorerie: { label: 'Ouvrir la trésorerie', hash: '#/tresorerie' },
     achats: { label: 'Voir mes achats', hash: '#/achats' },
     stock: { label: 'Ouvrir le stock', hash: '#/stock' },
+    caisse: { label: 'Ouvrir la caisse', hash: '#/caisse' },
     series: { label: 'Voir les garanties', hash: '#/garanties' },
     immobilisations: { label: 'Voir mes immobilisations', hash: '#/immos' },
     lecture: { label: 'Saisir un achat', hash: '#/achats' },
@@ -1601,7 +1639,7 @@ rencontres. Si un mot affiché dans l'application manque ici, c'est un défaut :
     clients: 'gestion', client: 'gestion', catalogue: 'gestion',
     achats: 'achats', achat: 'achats', fournisseurs: 'achats', fournisseur: 'achats',
     tresorerie: 'tresorerie', marges: 'marges', affaire: 'marges',
-    paie: 'paie', salarie: 'conges', stock: 'stock', article: 'stock', garanties: 'series',
+    paie: 'paie', salarie: 'conges', stock: 'stock', caisse: 'caisse', article: 'stock', garanties: 'series',
     immos: 'immobilisations', immo: 'immobilisations', stats: 'statistiques',
     compta: 'compta', parametres: 'donnees', modules: 'gestion', licences: 'licence'
   };
@@ -1633,6 +1671,7 @@ rencontres. Si un mot affiché dans l'application manque ici, c'est un défaut :
   // article qui existe, et que chaque règle serve au moins une fois.
   const ARTICLE_PAR_CLE = [
     [/^pay\.(bank|terms|rib)$/, 'paiements'],
+    [/^(cs\.|cat\.code$)/, 'caisse'],
     [/^pay\./, 'paie'],
     [/^(co|ap)\./, 'demarrer'],
     [/^doc\.(quoteValidity|quoteTerms)$/, 'devis'],

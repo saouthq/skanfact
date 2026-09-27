@@ -1351,6 +1351,28 @@ t('10.14.0 : tout ce que l\'exemple ne porte pas — timbre exonéré, tous les 
   const e = ecarts(d);
   assert.deepStrictEqual(e, [], `${e.length} écart(s) :\n  ${e.slice(0, 30).join('\n  ')}`);
 });
+t('10.15.0 (H5) : la caisse — des tickets, en espèces et par carte, et un article rendu — dit les mêmes chiffres par deux chemins et au Cabinet', () => {
+  // Un ticket est une facture émise et réglée dans le même geste (sa série à part) : tout ce qui lit
+  // une vente doit le compter sans le connaître. Le scénario pose une vente en espèces avec monnaie
+  // rendue, une vente par carte, et un retour — l'avoir ET l'argent qui sort de la caisse.
+  const d = scenarioComplet(), co = d.company;
+  const art = id => core.ligneDePanier(d.catalog.find(c => c.id === id), co);
+  const t1 = core.ticketDeCaisse(d, co, [{ ...art('bois'), qty: 3 }, { ...art('vis'), qty: 2 }], { mode: 'especes', recu: 200, date: '2026-03-12', maintenant: 1 });
+  d.documents.push(t1);
+  const t2 = core.ticketDeCaisse(d, co, [{ ...art('bois'), qty: 1 }], { mode: 'carte', date: '2026-03-12', maintenant: 2 });
+  d.documents.push(t2);
+  const r = core.remboursementDeTicket(d, co, t1, { 0: 1 }, { mode: 'especes', date: '2026-03-20', maintenant: 3 });
+  assert.ok(r.ok, r.motif);
+  d.documents.push(r.avoir);
+  t1.payments.push(r.paiement);
+  // Les données discriminent : deux modes, deux comptes, un rendu non nul, un retour partiel.
+  assert.deepStrictEqual([t1.number, t2.number], ['TIC-2026-001', 'TIC-2026-002']);
+  assert.strictEqual(t1.payments[0].accountId, 'k');
+  assert.strictEqual(t2.payments[0].accountId, 'b');
+  assert.ok(t1.caisse.rendu > 0, 'la monnaie rendue');
+  const e = ecarts(d);
+  assert.deepStrictEqual(e, [], `${e.length} écart(s) :\n  ${e.slice(0, 30).join('\n  ')}`);
+});
 t('10.14.0 : un virement de la banque vers la caisse sort de l\'une, entre dans l\'autre — une écriture 54 / 532, aucun effet sur le résultat', () => {
   // Il n'existait aucun geste pour alimenter la caisse : « Retrait » passe au compte courant de
   // l'associé (4421) — le gérant devait l'argent, et la caisse ne recevait rien.
