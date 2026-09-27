@@ -1,0 +1,319 @@
+# Vision et architecture de SkanFact
+
+*Document de cadrage, version 1 — 27/09/2026. Écrit après l'étude de marché (`ETUDE-MARCHE.md`) et
+une recherche technique sur Odoo, ERPNext, les bases de données partagées entre clients, la
+synchronisation hors ligne, et la signature électronique en Tunisie. Il ne remplace encore aucun
+plan existant : Skander décide lesquels il remplace.*
+
+*Rien dans ce document n'est codé. C'est le plan qu'on valide avant la première ligne.*
+
+---
+
+## 1. La vision
+
+**SkanFact devient la plateforme tunisienne où une entreprise gère tout son travail — vendre,
+acheter, encaisser, payer ses employés, déclarer — et où son comptable travaille dans les mêmes
+données, depuis un ordinateur, un navigateur ou pendant une coupure, avec des chiffres toujours
+justes et un prix par entreprise.**
+
+### Ce qui sera possible
+
+- Le chef d'entreprise fait un devis, le transforme en facture, et la facture est **signée et
+  envoyée à la TTN en un clic** ; le numéro El Fatoora et le QR code reviennent sur le PDF, qui part
+  par WhatsApp ou par mail.
+- L'employé encaisse à la caisse **même quand internet est coupé** ; tout remonte au retour du réseau.
+- Le comptable voit la pièce **dès qu'elle existe**, la valide, pose sa question sur la pièce,
+  prépare la TVA, la retenue à la source, la CNSS, la clôture et la liasse — **sans rien retaper**.
+- Un **groupe** passe d'une société à l'autre ; chaque personne a ses **droits** (le vendeur voit les
+  ventes, pas la paie).
+- Depuis **n'importe quel navigateur**, on consulte, on facture, on valide.
+- Les déclarations sortent **au format de l'administration**, prêtes à déposer — et partent
+  directement quand l'administration l'accepte.
+
+### Nos points forts face au marché (voir `ETUDE-MARCHE.md`)
+
+1. **Le seul hybride** : utilisable pendant une coupure ET en ligne. Hesabi, Swiver, Finco,
+   Pennylane sont uniquement web ; les coupures tunisiennes sont documentées jusqu'en 2026.
+2. **Le comptable dans les mêmes données, gratuitement pour lui.** Personne ne le fait en Tunisie.
+3. **Le plus complet** : facturation, stock, caisse, paie, trésorerie, comptabilité complète,
+   cabinet — déjà écrit et tenu par plus de 1 700 tests.
+4. **Des chiffres prouvés** : la fiscalité tunisienne contrôlée par deux calculs indépendants
+   (`test/suites/verite-comptable.js`).
+5. **Un prix par entreprise**, pas par utilisateur (le piège reproché à Odoo), facture électronique
+   comprise dans chaque offre payante.
+6. **Utilisable sans formation** : visites guidées sur chaque geste.
+7. **Un journal inaltérable** (voir § 4.4) : personne, pas même nous, ne peut réécrire le passé.
+
+---
+
+## 2. Ce qu'Odoo nous apprend
+
+Odoo sert des millions d'utilisateurs. On copie ce qui marche, on évite ce qui coince.
+
+| Ce qu'Odoo fait | Ce qu'on en retient |
+|---|---|
+| **Un seul modèle de données partagé par toutes les « applications »** (une facture, un article, un client sont des enregistrements du même moteur) | **On le copie.** C'est ce qui supprime la ressaisie entre modules. |
+| **Modules qui s'étendent les uns les autres par héritage** (un module modifie le modèle, les vues, les droits d'un autre) | **On le fait plus strict.** Chez Odoo, cette liberté rend chaque mise à jour douloureuse (« chaque version sautée multiplie l'effort par ~1,5 », sources dans l'étude). Chez nous : des **points d'extension déclarés**, jamais un module qui réécrit l'intérieur d'un autre. Les besoins particuliers d'un client passent par des **champs personnalisés** (données), pas par du code. |
+| **Une base PostgreSQL par client** (dbfilter), aussi chez ERPNext (« sites ») | **On ne le copie pas tel quel** : au-delà de quelques milliers de bases, les migrations et la maintenance deviennent un chantier. Voir § 4.2. |
+| **Workers en processus** : ~1 worker pour ~25 utilisateurs internes, 150–200 Mo par worker, un worker à part pour le temps réel | Node.js tient beaucoup plus de connexions par processus ; mais on garde l'idée : **les travaux longs (rapports, envois TTN, clôtures) partent dans une file d'attente**, jamais dans la requête de l'utilisateur. |
+| **ORM lent sur les gros volumes**, champs calculés qui se recalculent en cascade, lenteur avec 200+ modules | **On garde la main sur le SQL** pour les états lourds (balance, grand livre, TVA), avec des **totaux tenus à jour** plutôt que recalculés à chaque affichage. On mesure avant d'écrire (déjà notre règle : `npm run charge`). |
+| **Caisse hors ligne** : données chargées à l'ouverture de session, commandes gardées dans le navigateur (IndexedDB), resynchronisées ; **impossible d'ouvrir une nouvelle session hors ligne** ; des conflits entre copie locale et serveur signalés dans leur suivi de bugs | **On copie le principe**, en réglant d'avance ce qui a coûté à Odoo : série de tickets **propre à chaque caisse**, chaque vente **identifiée de façon unique à sa création** (jamais deux fois enregistrée), et la règle écrite de ce qui marche hors ligne (§ 4.5). |
+| **Journal comptable scellé par une chaîne d'empreintes** (SHA-256, « restrictive audit trail », rapport d'inaltérabilité) | **On le copie, par défaut et partout** (§ 4.4). Chez Odoo c'est une option ; chez nous c'est la règle. |
+| **Facture électronique par pays** dans un cadre commun (envois en file, reprises, suivi du statut) | **On le copie** pour la TTN, la TEJ, la CNSS (§ 5). |
+| **Prix par utilisateur, intégrateur quasi obligatoire, support jugé lent** | **Notre opposé** : prix par entreprise, démarrage seul grâce aux visites, support tunisien. |
+
+---
+
+## 3. L'architecture en un schéma
+
+```
+ NAVIGATEUR (web)      APPLICATION DE BUREAU                         TÉLÉPHONE (plus tard)
+ rien à installer      = la même application web dans une coque      consulter, devis,
+                       + un « agent local » : clé USB de signature,  photo de justificatif
+                         imprimante de tickets, tiroir, douchette
+        │                         │                                         │
+        └──────── copie locale chiffrée + file d'envoi (hors ligne) ────────┘
+                                  │  synchronisation (HTTPS)
+┌─────────────────────────── SERVEUR SKANFACT (en Tunisie) ────────────────────────────┐
+│  API publique — nos propres écrans passent par elle (les intégrations seront gratuites) │
+│  Un seul programme serveur, rangé en modules : Ventes · Achats · Stock · Caisse ·      │
+│  Paie · Trésorerie · Comptabilité · Cabinet · Groupe · Pilotage                        │
+│  Moteur de calcul tunisien (le même code que dans l'application) — c'est lui qui fait foi│
+│  Comptes → organisations (groupe, cabinet) → entreprises → utilisateurs et droits      │
+│  Journal inaltérable (chaîne d'empreintes) · piste d'audit                             │
+│  File de travaux : envois TTN / TEJ / CNSS, PDF, rapports lourds, mails, sauvegardes   │
+│  PostgreSQL (données) · stockage de fichiers (justificatifs, PDF, XML signés, 10 ans)  │
+└──────────────────────────────────────────────────────────────────────────────────────┘
+        │                    │                   │                    │
+   TTN El Fatoora       TunTrust DigiGo      TEJ / e-jibaya /     Konnect (paiement
+   (envoi, référence,   (signature à         CNSS (fichiers au    de l'abonnement)
+    QR code)             distance, OTP)       bon format)
+```
+
+---
+
+## 4. Les choix techniques, un par un
+
+### 4.1 Une seule application (web installable), pas deux
+
+Une application web qui s'installe et fonctionne hors ligne. L'application de bureau est **la même**,
+dans une coque, avec un **agent local** réservé à ce qu'un navigateur ne sait pas faire : la clé USB
+de signature, l'imprimante thermique, le tiroir-caisse. Un seul code à écrire et à tester ; le web
+n'est jamais en retard sur le bureau.
+
+### 4.2 La base de données : partagée, isolée, et découpable
+
+Trois façons de ranger les clients dans PostgreSQL :
+
+| | Une base par client (Odoo, ERPNext) | Un schéma par client | **Tables partagées + identifiant d'entreprise + sécurité par ligne (RLS)** |
+|---|---|---|---|
+| Isolation | Maximale | Bonne | **Garantie par la base elle-même** (chaque requête ne voit que son entreprise) |
+| Tient à 50 000 entreprises | Non sans gros outillage | Non (au-delà de quelques centaines, fichiers et maintenance explosent) | **Oui** |
+| Mise à jour du schéma | Une par client | Une par client | **Une seule** |
+| Exporter / restaurer UN client | Facile | Facile | **À outiller** (on l'écrit dès le départ) |
+
+**Choix : tables partagées avec sécurité par ligne**, plus deux garde-fous :
+- **un outil d'export et de restauration d'une seule entreprise**, écrit dès le socle (c'est aussi
+  la promesse « tes données restent à toi ») ;
+- **des « cellules »** : un groupe d'entreprises par serveur de base. Le jour où un serveur est plein,
+  on en ouvre un second, sans rien réécrire (c'est ce que font les très gros, par groupes de clients).
+
+Piège connu, écrit ici pour ne pas l'oublier : **le super-utilisateur de la base contourne la
+sécurité par ligne** ; l'application ne se connecte jamais avec lui, et un test le vérifie.
+
+### 4.3 L'argent en nombres entiers
+
+Aujourd'hui, notre moteur calcule en nombres à virgule et arrondit au millime (`round3`). Ça tient
+grâce à des milliers de tests, mais c'est la source classique d'erreurs dans un logiciel d'argent
+(0,1 + 0,2 ≠ 0,3). **Dans la nouvelle base, tout montant est un entier en millimes** (en centimes
+pour une devise à deux décimales), et chaque devise déclare son nombre de décimales. Le moteur
+convertit à l'entrée et à la sortie. C'est un **point qui bloquerait plus tard** s'il n'était pas
+décidé maintenant.
+
+### 4.4 Le journal inaltérable
+
+Chaque écriture validée, chaque facture émise, chaque ticket est scellé par une empreinte qui dépend
+de la précédente. Modifier le passé casse la chaîne, et ça se voit. Une correction se fait par une
+écriture de plus (contre-passation), **jamais en réécrivant** — c'est déjà notre règle depuis la 9.2.0.
+C'est la base de la future caisse certifiée, de la confiance des comptables et d'un contrôle fiscal.
+
+### 4.5 Ce qui marche pendant une coupure (et ce qui attend)
+
+| Hors ligne | Au retour du réseau |
+|---|---|
+| Caisse (tickets, série propre à la caisse) | Envoi des tickets au serveur |
+| Devis, brouillons, saisie comptable en brouillard | Validation définitive, numéro légal |
+| Consultation de ce qui est déjà sur le poste | Mise à jour avec ce que les autres ont fait |
+| Préparation d'une facture | **Numéro, signature, envoi à la TTN** (la TTN exige internet) |
+
+Règles de synchronisation, choisies pour la comptabilité :
+- **le serveur fait foi** ; le poste garde une **file d'envoi** de ses gestes ;
+- chaque geste porte un **identifiant unique** : envoyé deux fois, il n'est enregistré qu'une fois ;
+- **pas de fusion automatique « à la Google Docs »** (les CRDT sont faits pour du texte, pas pour une
+  comptabilité) : une pièce validée existe ou pas ; deux modifications d'un même brouillon sont
+  **gardées toutes les deux** et signalées (notre règle de la 9.9.0) ;
+- un poste hors ligne garde ses droits **quelques jours au plus** ; un poste volé se **révoque** et
+  s'efface à la reconnexion.
+
+Modèle de référence pour la numérotation hors ligne : l'Arabie saoudite (ZATCA) — une série et un
+compteur par caisse, chaque ticket chaîné au précédent, déclaration à l'administration dans les
+24 heures. **À VÉRIFIER** : ce que la Tunisie exige pour la caisse certifiée.
+
+Moteur de synchronisation : **à choisir pendant le cadrage** entre un moteur éprouvé qui s'appuie sur
+PostgreSQL (PowerSync est le plus mûr en 2026 ; Zero et ElectricSQL sont les alternatives) et notre
+propre file d'envoi. Critère : le serveur doit pouvoir **refuser** un geste (une clôture, un droit
+manquant) — c'est exactement ce que font PowerSync et Zero.
+
+### 4.6 Un seul programme serveur, bien découpé
+
+Pas de dizaines de petits services : **un programme, rangé en modules**, comme Odoo et comme Shopify.
+Les travaux longs partent dans une **file de travaux** (envois TTN, PDF, rapports, mails,
+sauvegardes). On découpera un module en service à part seulement si une mesure l'exige.
+
+### 4.7 L'API d'abord
+
+Nos écrans utilisent l'API que les intégrations utiliseront. Shopify, WooCommerce, les banques
+viendront plus tard — mais l'API existera déjà, testée chaque jour par nos propres écrans.
+
+### 4.8 Les outils
+
+- **TypeScript** (JavaScript avec des types vérifiés) : sur deux ans et 100 000 lignes, il évite toute
+  une famille de défauts que nos tests attrapent aujourd'hui trop tard.
+- **Une vraie bibliothèque d'interface** : les 19 000 lignes de `src/renderer/app.js` en un seul bloc
+  ne tiendront pas vingt modules.
+- **On garde le moteur** (`core.js` et `compta.js`, ~17 500 lignes) **et ses tests** : c'est la vraie
+  valeur du projet. Il est porté, pas réécrit.
+- ⚠ **Décision qui revient à Skander** : ces deux points renversent deux règles de `CLAUDE.md`
+  (« JS pur, pas de React » et « stockage JSON, pas de base de données »).
+
+---
+
+## 5. La signature électronique, l'ANCE et la TTN
+
+Ce que la recherche a établi (sources dans `ETUDE-MARCHE.md` et dans ce document) :
+
+- La facture TEIF est signée en **XAdES** par un certificat qualifié (TunTrust, sous l'ANCE), puis
+  envoyée à la TTN par un **service web (SOAP)** ; la TTN rend une **référence et un QR code**, à
+  imprimer et à archiver **10 ans**.
+- **DigiGo** (TunTrust) est une **signature à distance** : le certificat est gardé dans le coffre de
+  TunTrust, chaque signature est autorisée par un **code reçu sur le téléphone**. Un éditeur peut
+  l'intégrer par une **API**, après une **adhésion auprès de l'ANCE comme « entité d'intégration »**.
+- Swiver a obtenu en septembre 2026 une **homologation ANCE** pour signer depuis son application.
+
+Nos trois chemins, dans l'ordre :
+
+1. **DigiGo intégré (le chemin principal)** : marche depuis le web, le bureau et plus tard le
+   téléphone ; le client autorise avec le code reçu sur son téléphone ; aucune clé à brancher.
+2. **Clé USB du client** (celle qu'il utilise déjà pour la CNSS) : signée par l'agent local de
+   l'application de bureau ; la clé ne quitte jamais son poste.
+3. **Signature par le serveur** après homologation ANCE, pour qui le demande et l'autorise (comme
+   Swiver) — la clé serveur vit alors dans un **module matériel de sécurité**, jamais dans un fichier.
+
+Dans les trois cas, le **serveur** envoie à la TTN, relance si la TTN ne répond pas (sans jamais
+envoyer deux fois la même facture), garde le statut, imprime la référence et le QR code, et archive le
+XML signé en stockage non modifiable pendant 10 ans.
+
+**Démarches à lancer pendant le cadrage** (elles prennent des semaines) : adhésion ANCE « entité
+d'intégration » DigiGo ; adhésion et accès technique El Fatoora (environnement de test) ;
+homologation ANCE de l'application ; déclaration INPDP ; format et procédure de la **caisse
+enregistreuse certifiée**. Chacune est **À VÉRIFIER** directement auprès de l'organisme.
+
+---
+
+## 6. Performances : les budgets écrits d'avance
+
+Règle déjà appliquée au projet depuis la 9.1.0 : **on écrit le seuil avant de mesurer**, et une
+mesure qui dépasse change le plan, pas le seuil.
+
+| Geste | Budget |
+|---|---|
+| Ouvrir l'application (poste déjà synchronisé) | < 2 s |
+| Afficher une liste, une fiche | < 300 ms côté serveur (95 % des requêtes) |
+| Taper une ligne dans la grille de saisie | < 100 ms (local, sans attendre le serveur) |
+| Encaisser un ticket à la caisse | < 200 ms, en ligne ou hors ligne |
+| Balance, grand livre, TVA du mois d'une PME (10 ans d'historique) | < 1 s |
+| Balance consolidée d'un cabinet de 60 dossiers | < 5 s |
+| Rattrapage après une journée de coupure (un magasin) | < 1 min |
+| Envoi d'une facture à la TTN | en file, résultat visible en moins d'une minute quand la TTN répond |
+
+**Estimation de volume à valider par un test de charge** : une PME fait de l'ordre de quelques milliers
+de pièces par an et quelques dizaines de milliers de lignes d'écriture ; un commerce avec caisse, des
+dizaines de milliers de tickets. À 50 000 entreprises, les grandes tables (lignes d'écriture, tickets)
+atteignent **le milliard de lignes** : elles seront **partitionnées** (par période) dès le départ, et
+les cellules du § 4.2 répartissent la charge. Un serveur bien dimensionné devrait tenir **plusieurs
+milliers de PME** ; le chiffre exact se mesure, il ne se devine pas.
+
+---
+
+## 7. Ce qui pourrait nous bloquer — et la parade décidée maintenant
+
+| # | Risque | Parade |
+|---|---|---|
+| R1 | Arrondis faux dans un logiciel d'argent | Montants en entiers (§ 4.3) ; invariants « deux chemins, un chiffre » gardés |
+| R2 | Un client voit les données d'un autre | Sécurité par ligne dans la base + tests qui essaient de lire l'entreprise d'à côté |
+| R3 | Base trop grosse, requêtes lentes | Partitionnement dès le départ, cellules, budgets mesurés à chaque version |
+| R4 | Numérotation légale cassée par le hors ligne | Séries par caisse ; numéro de facture donné par le serveur ; à VÉRIFIER auprès d'un comptable |
+| R5 | Double envoi d'une facture à la TTN | Identifiant unique par envoi ; file avec reprise ; statut suivi |
+| R6 | Signature bloquée par une démarche administrative | Démarches lancées pendant le cadrage ; trois chemins de signature |
+| R7 | Mises à jour qui cassent les personnalisations (le mal d'Odoo) | Points d'extension déclarés ; personnalisation par champs, pas par code |
+| R8 | Perte de données (panne, erreur, rançongiciel +140 % en Tunisie) | Sauvegarde continue de la base (restauration à la minute près), copie chiffrée hors du serveur, **exercice de restauration réel chaque mois** |
+| R9 | Hébergement tunisien sans base de données gérée | On exploite nous-mêmes, très outillé (réplique, surveillance, alertes) ; ou base gérée en Europe avec autorisation INPDP — **décision à prendre** |
+| R10 | Obligations légales découvertes trop tard (INPDP, audit de cybersécurité ANCS pour un hébergeur, caisse certifiée) | Liste « À VÉRIFIER » traitée pendant le cadrage, avec un juriste |
+| R11 | Une seule personne pour tout faire (support, incidents, ventes) | Architecture la plus simple qui tient ; surveillance automatique ; prévoir un humain pour le support avant le lancement |
+| R12 | L'arabe demandé plus tard | Textes traduisibles et mise en page « sens de lecture » dès le départ (déjà commencé : CSS logique depuis la 9.4.10) |
+| R13 | Dates et fuseaux horaires | Déjà une règle du projet (5.2.3) : une date est un jour du calendrier, arithmétique en UTC |
+| R14 | Les 3 comptables pilotes attendent (2 mois annoncés) | Leur faire tester l'application actuelle pendant la construction, et le socle serveur dès qu'il tient |
+| R15 | Les données actuelles des utilisateurs | Outil de reprise des fichiers JSON et des livres du Cabinet vers le serveur, testé sur l'exemple de 5 ans |
+| R16 | Piratage et copie | La valeur est sur le serveur (données, sauvegardes, comptable, TTN) ; dépôt repassé en privé |
+
+---
+
+## 8. Les limites qu'on accepte
+
+- Pas d'édition **simultanée** d'une même pièce par deux personnes (un brouillon est tenu par une
+  personne ; l'autre voit qu'il est ouvert).
+- Pas de microservices, pas de Kubernetes au départ.
+- Le téléphone vient **après** le web et le bureau.
+- Les intégrations (Shopify, banques…) viennent **après** le lancement ; seule l'API est prête avant.
+- Pas de promesse « tout marche hors ligne » : la liste du § 4.5 fait foi, et l'écran le dit.
+
+---
+
+## 9. Décisions qui reviennent à Skander
+
+1. **TypeScript et une bibliothèque d'interface** (renverse deux règles de `CLAUDE.md`).
+2. **Hébergement** : tout en Tunisie (plus sûr juridiquement) ou base gérée en Europe avec
+   autorisation INPDP (plus sûr techniquement).
+3. **Budget** : ~1 000 DT/mois de fonctionnement au lancement, 10 000 à 20 000 DT de frais uniques
+   (certificats, juriste, audit de sécurité) — ordres de grandeur à affiner.
+4. **Qui lance les démarches** ANCE, TTN, INPDP (elles demandent le représentant de la société).
+
+## 10. La suite du cadrage
+
+1. Tes décisions du § 9.
+2. Les entretiens terrain (questionnaire en annexe de `ETUDE-MARCHE.md`).
+3. Le modèle de données détaillé et le système de modules.
+4. Les droits utilisateurs, geste par geste.
+5. Le choix du moteur de synchronisation, avec un petit prototype mesuré.
+6. Le plan de reprise des données actuelles.
+7. La feuille de route et le budget détaillés.
+
+---
+
+## Sources de la recherche technique (27/09/2026)
+
+- Odoo, sizing et multi-client : [Odoo 19 — System configuration](https://www.odoo.com/documentation/19.0/administration/on_premise/deploy.html), [How many Odoo workers (Skysize)](https://www.skysize.io/blog/guides-5/how-many-odoo-workers-do-you-need-35), [Odoo multi-tenant (OEC.sh)](https://oec.sh/blog/odoo-multi-tenant-architecture)
+- Odoo, performances : [Hidden performance killers (SGEEDE)](https://sgeede.com/blog/sgeede-knowledge-4/hidden-performance-killers-in-odoo-what-most-developers-dont-notice-193), [Odoo slow — diagnose (DeployMonkey)](https://deploymonkey.com/blog/fix-odoo-slow-performance), [Forum Odoo — huge data](https://www.odoo.com/forum/help-1/reason-why-odoo-being-slow-when-there-is-huge-data-inside-the-database-87498)
+- Odoo, caisse hors ligne : [Forum — POS offline mode](https://www.odoo.com/forum/help-1/how-is-the-point-of-sale-offline-mode-working-218314), [Issue #189836 — IndexedDB en conflit](https://github.com/odoo/odoo/issues/189836), [PR #288974 — garder les commandes hors ligne](https://github.com/odoo/odoo/pull/288974)
+- Odoo, inaltérabilité : [Data inalterability check report (Odoo 19)](https://www.odoo.com/documentation/19.0/applications/finance/accounting/reporting/data_inalterability.html), [PR #36304 — hash sur account.move](https://github.com/odoo/odoo/pull/36304)
+- ERPNext : [Frappe — multitenancy](https://docs.frappe.io/framework/user/en/bench/guides/setup-multitenancy), [Scaling ERPNext (livre blanc)](https://erpnext.com/files/Scaling%20ERPNext.pdf)
+- Multi-client sur PostgreSQL : [PlanetScale — approaches to tenancy](https://planetscale.com/blog/approaches-to-tenancy-in-postgres), [RLS vs schema-per-tenant (dev.to)](https://dev.to/itsjayanth/multi-tenant-postgresql-row-level-security-vs-schema-per-tenant-when-to-use-which-3joe)
+- Synchronisation : [ElectricSQL vs PowerSync](https://powersync.com/blog/electricsql-vs-powersync), [ElectricSQL vs PowerSync vs Zero 2026](https://trybuildpilot.com/648-electric-sql-vs-powersync-vs-zero-2026)
+- Argent en entiers, grand livre : [Divvy — building a ledger](https://blog.divvyhomes.com/building-your-own-ledger-system-pointers-and-pitfalls/), [Fintech engineering handbook](https://w.pitula.me/fintech-engineering-handbook/)
+- Caisse hors ligne réglementée (modèle) : [Dynamics 365 — factures simplifiées Arabie saoudite](https://learn.microsoft.com/en-us/dynamics365/commerce/localizations/mea/emea-sau-simplified-e-invoices), [POS integration with ZATCA](https://invoiceq.com/en/e-invoicing-articles/pos-integration-with-zatca/)
+- Signature et TTN : [TunTrust — DigiGo](https://www.tuntrust.tn/fr/solutions/digigo), [Certificats numériques en Tunisie 2026 (Noqta)](https://noqta.tn/en/blog/certificat-numerique-tunisie-tuntrust-ance-2026), [Intégration ERP et TTN/TEIF](https://www.elfatoora.digital/integration-erp-facture-electronique-tunisie.php?lang=en), [VATupdate — El Fatoora 2026](https://www.vatupdate.com/2026/01/01/tunisia-2026-electronic-invoicing-el-fatoora-ttn-compliance-guide-for-service-providers/)
+- Hébergement, INPDP, coupures, cybersécurité : notes `research_notes/Étude de marché SkanFact Tunisie/hebergement_technique.md` et `cadre_legal.md`.
+
+*Limite honnête : plusieurs sites (notamment digigo.tuntrust.tn et les sites officiels tunisiens) sont
+bloqués depuis l'environnement de travail ; ces points viennent de résumés de recherche et restent
+À VÉRIFIER à la source.*
