@@ -357,7 +357,7 @@
   b('#lv-mois', 'Le mois affiché.', { nom: 'Mois' });
   b('#lv-du, #lv-au', 'Le premier et le dernier mois de la période affichée.', { nom: 'Du… au…', cle: 'lv-intervalle' });
   b('#lv-journal', 'Ne garde que les pièces d\'un journal : ventes, achats, banque, opérations diverses…', { nom: 'Journal' });
-  b('#lv-csv', 'Enregistre ce que tu vois dans un fichier CSV, que tout tableur ouvre.');
+  b('[data-rowmenu="EXP"]', 'Enregistre ce que tu vois dans un fichier CSV, que tout tableur ouvre — et, sur le livre-journal, le fichier FEC : les écritures validées de l\'exercice, que Sage, EBP ou Cegid importent tels quels.', { nom: 'Exporter', cle: 'rowmenu-export' });
   b('#lv-reimport', 'Le retour de l\'export : le livre-journal corrigé dans ton tableur et enregistré en CSV. SkanFact montre d\'abord ce qu\'il fera — pièces nouvelles, brouillards corrigés, validées changées —, puis tout entre en brouillard. Rien n\'est supprimé.');
   b('#imp-corriger', 'Une validée ne se modifie jamais : cochée, cette case la contre-passe au jour du geste et pose ta version en brouillard, pour que tu la valides. Décochée, la validée reste telle quelle.', { nom: 'Contre-passer les validées changées' });
   b('#lv-tous', 'Ouvre la page Écritures, qui regroupe dans un seul fichier les écritures de tous tes clients sur une période.');

@@ -6841,8 +6841,13 @@
   // la boucle. Il fallait connaître la page Écritures et y aller par le menu.
   // `reimport` (10.14.1) : le retour de l'aller-retour, posé À CÔTÉ de l'export qu'il reprend — on
   // exporte, on corrige dans Excel, on réimporte, et les deux gestes se lisent ensemble.
-  const barreLivres = (controles, libelleExport, reimport) => `<div class="filters">${controles}
-    <button class="btn btn-sm btn-ghost" id="lv-csv">${esc(libelleExport)}</button>
+  // H3 (10.15.0) — les exports du livre vivent dans UN menu « Exporter ▾ ». Posé en bouton à côté du
+  // CSV, « Fichier FEC… » faisait passer la barre du livre-journal sur deux rangées à 1440 px (mesuré :
+  // 1 207 px pour 1 079), et « Exporter les écritures de tous les clients… » tombait seul dessous. Un
+  // menu occupe la largeur d'un bouton quoi qu'il contienne (7.28.0) ; sur un écran qui n'a qu'un
+  // export, rowmenu.js en fait un bouton nommé (7.29.0), donc rien n'y change.
+  const barreLivres = (controles, libelleExport, reimport) => `<div class="filters" data-export="${esc(libelleExport)}"${reimport ? ' data-fec' : ''}>${controles}
+    ${RowMenu.bouton('EXP', 'Exporter', 'btn btn-sm btn-ghost')}${reimport ? info('lv.fec') : ''}
     ${reimport ? `<button class="btn btn-sm btn-ghost" id="lv-reimport" title="Le livre-journal exporté, corrigé dans ton tableur puis enregistré en CSV : ce qu'il change entre en brouillard, rien n'est supprimé">Réimporter depuis un tableur…</button>` : ''}
     ${/* Un libellé décrit l'écran d'ARRIVÉE (7.29.0). L'ancien libellé (« Regrouper… ») se lisait comme
           « donner à chacun son sous-compte » — deux lecteurs sur deux (T-42) — alors qu'il quitte le
@@ -8030,7 +8035,6 @@
     });
     const a = $('#lv-aux', el); if (a) a.onclick = () => { s.aux = !s.aux; s.page = 1; redraw(); };
     const ar = $('#lv-aux-role', el); if (ar) ar.onchange = () => { s.auxRole = ar.value; s.page = 1; redraw(); };
-    const x = $('#lv-csv', el); if (x) x.onclick = () => exporterLivre(lignes);
     const ri = $('#lv-reimport', el); if (ri) ri.onclick = () => importerTableur(root, dossier);
     const tt = $('#lv-tous', el); if (tt) tt.onclick = () => vers('#/ecritures');
     // Le lettrage automatique (9.5.0). Il DIT ce qu'il a posé et ce qu'il a laissé : « 12 lignes
@@ -8051,6 +8055,16 @@
     bindPager(el, redraw, s);
     // « Ouvrir la pièce dans le paquet » : seulement si on sait DANS QUEL paquet elle vit.
     bindRowMenus(el, cle => {
+      // Les exports de la barre (H3) : la MÊME table que les lignes — une seconde table sur cette
+      // racine écraserait la première (9.4.8). Le FEC ne se propose que s'il y a un livre : il porte
+      // les validées de l'exercice, qu'un paquet lu seul n'a pas.
+      if (cle === 'EXP') {
+        const barre = $('.filters[data-export]', el);
+        return [
+          { icon: 'extraire', label: barre ? barre.dataset.export : 'Exporter en CSV', cle: 'export-csv', hint: 'Ce que tu vois, dans un fichier CSV que tout tableur ouvre', run: () => exporterLivre(lignes) },
+          s.livre && barre && barre.hasAttribute('data-fec') ? { icon: 'extraire', label: 'Fichier FEC…', cle: 'export-fec', hint: 'Les écritures validées de l\'exercice, au format que Sage, EBP ou Cegid importent', run: () => exporterFec() } : null
+        ];
+      }
       // Sur le LIVRE, la clé désigne l'écriture : c'est elle qui se valide et se contre-passe.
       // Une validée n'offre JAMAIS « Modifier » ni « Supprimer » — elle se contre-passe, et c'est
       // toute la différence entre une comptabilité et un tableur.
@@ -8075,6 +8089,45 @@
       return actionsJustifsClient({ piece, mois, journal, date }).concat([{ icon: 'loupe', label: 'Voir dans le paquet', court: 'Paquet', hint: `${piece} · ${moisLabelCourt(mois)}`,
         run: () => openPack(dossier, mois) }]);
     });
+  }
+
+  // H3 — le fichier des écritures (FEC) du livre : l'EXERCICE entier, les seules validées, jamais le
+  // filtre ni la recherche de l'écran (un fichier normé suit l'ordre de ses numéros). Les brouillards
+  // ne partent pas, et la question le dit AVANT d'enregistrer (9.4.2) : un comptable qui croit avoir
+  // tout exporté découvrirait le trou chez son autre logiciel. La date de validation est celle que
+  // le livre a écrite (`valideeLe`).
+  async function exporterFec() {
+    const s = livresState;
+    if (!s.livre) return;
+    const toutes = KC.lignesDuLivre(s.livre, { brouillard: true });
+    const brouillards = new Set(toutes.filter(l => l.statut === 'brouillard').map(l => l.ecritureId)).size;
+    const plus = brouillards > 1;
+    if (brouillards && !await confirmDialog(plus ? 'Des pièces en brouillard' : 'Une pièce en brouillard',
+      `<p>${esc(pl(brouillards, 'pièce reste', 'pièces restent'))} en brouillard sur cet exercice : le fichier FEC ne porte que des écritures validées, ${plus ? 'elles ne partiront pas' : 'elle ne partira pas'}. ${plus ? 'Valide-les' : 'Valide-la'} d'abord dans la Saisie si le logiciel qui reçoit le fichier doit ${plus ? 'les' : 'la'} porter.</p>`,
+      'Exporter sans les brouillards')) return;
+    const valideLe = new Map((s.livre.ecritures || []).map(e => [e.id, e.valideeLe ? KC.jourDeLInstant(e.valideeLe) : '']));
+    const nom = nomDeCompte();
+    const r = KC.fichierFec(toutes.filter(l => l.statut !== 'brouillard'), {
+      identifiant: (s.data.dossier || {}).matricule || (s.data.dossier || {}).name || '',
+      fin: (s.livre.exercice || {}).au,
+      decimales: 3,
+      nomJournal: c => ((s.livre.journaux || KC.JOURNAUX_PAR_DEFAUT).find(j => j.code === c) || {}).libelle || c,
+      nomCompte: (c, l) => nom(c, l.tiers),
+      // Un sous-compte de tiers (411001) est son propre compte auxiliaire ; un collectif nu n'en a
+      // pas — on n'invente pas un code qu'aucun livre ne porte.
+      aux: l => (l.tiers && /^4[01]/.test(String(l.account)) && String(l.account).length > 3) ? { num: l.account, lib: l.tiers } : null,
+      dateValidation: p => valideLe.get((p.lignes[0] || {}).ecritureId) || p.date
+    });
+    if (!r.ok) {
+      const refus = r.refus.slice(0, 8).map(x => `• ${x.piece} : ${x.motif}`).join('\n');
+      if (r.vide) infoDialog('Rien à exporter', 'Aucune écriture validée sur cet exercice.');
+      else infoDialog('Le fichier FEC ne peut pas s\'écrire', `${pl(r.refus.length, 'pièce')} ne passerai${r.refus.length > 1 ? 'ent' : 't'} pas l'import d'un logiciel comptable :\n\n${refus}`);
+      return;
+    }
+    try {
+      const f = await api.exportFec(r.texte, r.nom);
+      if (f) toast(`Fichier FEC enregistré : ${pl(r.pieces, 'pièce')}, ${pl(r.lignes, 'ligne')}.`);
+    } catch (e) { toast(plainError(e), 'error'); }
   }
 
   async function exporterLivre(lignes) {

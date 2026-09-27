@@ -62,7 +62,7 @@ Légende : ✅ nous l'avons · ◐ nous l'avons en partie · ❌ nous ne l'avons
 |---|---|---|
 | Écritures automatiques depuis factures, paiements, paie | oui | ✅ (avec la retenue à son fait générateur, le change, le stock, les amortissements) |
 | Journal, grand livre, balance, bilan, résultat | oui | ✅ |
-| **Export FEC** | oui | ❌ → **H3** (À VÉRIFIER : exigé par la DGI tunisienne ? c'est une norme française) |
+| **Export FEC** | oui | ★ depuis la 10.15.0 (**H3**) : dans les DEUX applications, par UN seul fabricant ; seules les écritures validées et équilibrées partent, et ce qui empêche le fichier se nomme (À VÉRIFIER : la DGI tunisienne ne l'exige pas — c'est le format d'échange que les logiciels connaissent) |
 | Rapprochement bancaire | non documenté | ★ relevés de toutes les banques, automatique « certain » seulement, suspens |
 | Lettrage, balance âgée | non documenté | ★ |
 | Immobilisations, dégressif, cessions | non documenté | ★ |
@@ -113,7 +113,7 @@ l'envoi à la TTN en un clic, TEJ, la caisse, l'arabe, et « sur mon téléphone
 |---|---|---|
 | **H1** ✅ | Importer la **facture TEIF d'un fournisseur** en achat, sans IA — livré en 10.15.0 | L'e-facture devient obligatoire : chaque client recevra des XML. Les lire exactement vaut mieux qu'un import « IA » |
 | **H2** ✅ | **Envoyer par WhatsApp** — livré en 10.15.0 | Le canal réel en Tunisie ; petit geste, gros effet en démonstration |
-| **H3** | **Export FEC** (entreprise et Cabinet) | Hesabi l'affiche ; un comptable le demandera |
+| **H3** ✅ | **Export FEC** (entreprise et Cabinet) — livré en 10.15.0 | Hesabi l'affiche ; un comptable le demandera |
 | **H4** | Contrat **saisonnier** et **CIVP** en paie | Deux lignes, et une case de moins dans le comparatif |
 | **H5** | **Caisse** : vente comptoir, ticket 80 mm, code-barres, douchette | Les commerces : un marché que nous ne touchons pas du tout |
 | **H6** | Calculateur de prix (coût + coefficient ou marge → prix) | Hesabi le vend en Pro |

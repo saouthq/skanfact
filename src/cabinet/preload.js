@@ -169,6 +169,7 @@ contextBridge.exposeInMainWorld('cabinet', {
   importRecovery: (password) => ipcRenderer.invoke('cab:importRecovery', password),
   recoveryStatus: () => ipcRenderer.invoke('cab:recoveryStatus'),
   exportCsv: (rows, name) => ipcRenderer.invoke('cab:exportCsv', { rows, name }),
+  exportFec: (texte, nom) => ipcRenderer.invoke('cab:exportFec', { texte, nom }),
   fichierCnss: (o) => ipcRenderer.invoke('cab:fichierCnss', o || {}),
 
   // contacter un client

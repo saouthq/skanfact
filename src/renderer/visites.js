@@ -505,6 +505,7 @@
   b('[data-onglet]', "Ouvre l'onglet cité.", { nom: 'Lien' });
   b('#ecr-od', "Saisis une opération diverse (une écriture que tes pièces ne produisent pas).");
   b('#ecr-csv', "Exporte les écritures en CSV, pour le logiciel de ton comptable.");
+  b('#ecr-fec', "Écrit les écritures de la période au format FEC, que Sage, EBP ou Cegid importent tels quels.");
   b('#ecr-mail', "Envoie les écritures à ton comptable.");
   b('#ecr-plan', "Les numéros de comptes que SkanFact emploie : ton comptable peut les changer.");
   b('#ecr-central-csv', "Exporte le journal centralisateur.");

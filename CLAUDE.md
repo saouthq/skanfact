@@ -8729,6 +8729,34 @@ dans app.js, `whatsapp:ouvrir` dans main.js.
 - Piège de lanceur : la suite `test/suites/whatsapp.js` n'était pas chargée — le garde-fou « suite
   écrite et jamais chargée » (9.4.10) l'a nommée au premier `npm test`.
 
+**Puis le fichier des écritures, FEC (H3)** : `compta.fichierFec(lignes, opts)` (dix-huit colonnes,
+tabulations, virgule décimale sans séparateur de milliers, AAAAMMJJ, UTF-8 sans BOM, CRLF), servi par
+`core.fecEntreprise` (la période de l'onglet Écritures) et par `exporterFec` du Cabinet (l'exercice du
+livre, `cab:exportFec`). **À VÉRIFIER** : une norme française que la Tunisie n'exige pas.
+
+- **Un format d'échange a UN fabricant, et chaque application lui PRÊTE ses tables** (nom d'un
+  journal, nom d'un compte, auxiliaire, date de validation, décimales) : deux fabricants auraient deux
+  formats, et le fichier qu'un comptable importe dépendrait de l'application qui l'a écrit.
+- **Un fichier normé ne sort pas faux** : une pièce sans numéro, déséquilibrée ou à la date illisible
+  EMPÊCHE le fichier en la nommant ; un brouillard est écarté, et le Cabinet le dit AVANT
+  d'enregistrer (9.4.2). Un logiciel qui refuse l'import le dira de toute façon — mais sans dire quoi.
+- **Un montant se compte en unités entières** (`fecMontant`), jamais `toFixed` sur un flottant ; et un
+  libellé qui commence par `=` est neutralisé comme dans les CSV (9.1.1) — un FEC s'ouvre aussi dans
+  un tableur.
+- **Un bouton de plus dans une barre peut la faire passer sur deux rangées** : « Fichier FEC… » posé
+  à côté du CSV poussait « Exporter les écritures de tous les clients… » seul dessous (1 207 px pour
+  1 079). Les exports vont dans UN menu « Exporter ▾ » — la même table d'actions que les lignes de la
+  vue (9.4.8) ; sur un écran qui n'a qu'un export, rowmenu.js en fait un bouton nommé (7.29.0).
+- **Un menu posé dans une BARRE prend l'allure du bouton qu'il côtoie** (`.row-menu-btn.btn`) : gris
+  et à 90 %, « Exporter ▾ » se lisait comme un bouton éteint, et « Imprimer la fiche » d'un dossier
+  comme un texte, depuis la 9.4.8. Seul le menu d'une LIGNE reste discret au repos.
+- **Une question s'accorde à ce qu'elle compte, titre compris** : « Des pièces en brouillard » au-dessus
+  de « 1 pièce reste », et « Valide-les » d'une seule — vu en posant UN brouillard à la souris.
+- **Un message dit le mot de l'écran** : « écritures » dans le message, « Pièces » sur la carte ; les
+  deux disent « pièces ».
+- Preuve restée verte, puis refaite : le test du « sans BOM » cherchait le caractère, la source porte
+  l'échappement `﻿` — il cherche les deux formes.
+
 ## Pistes pour la suite (non demandées)
 
 - Séparation des installateurs arm64 / x64 pour diviser par deux les 222 Mo du dmg universel.

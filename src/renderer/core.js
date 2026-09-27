@@ -6670,6 +6670,37 @@
     return journalEntries(data, company, period, opts).map(e => ({ ...e, numero: nums[cleDePiece(e)] || 0, exercice: y }));
   }
 
+  // Le fichier des écritures (FEC, H3) de la période : le livre-journal, numéroté dans l'exercice,
+  // passé au constructeur partagé (`Compta.fichierFec`). Ce que l'entreprise sait et que le
+  // constructeur ne sait pas lui est prêté ici : le nom de chaque compte (le plan réglé), le compte
+  // auxiliaire d'un tiers (411 + son code figé, 8.8.0), la devise (trois décimales pour le dinar).
+  // `ValidDate` porte la date de la pièce : SkanFact ne VALIDE pas une écriture, il la déduit d'une
+  // pièce émise — et le fichier le dit (`provisoire`) tant qu'un mois de la période n'est pas clôturé,
+  // parce que les numéros d'un mois ouvert peuvent encore bouger (8.9.0).
+  function fecEntreprise(data, company, period) {
+    const acc = chartAccounts(data);
+    const codesC = codesAuxiliaires((data && data.clients) || []);
+    const codesF = codesAuxiliaires((data && data.suppliers) || []);
+    const lignes = livreJournal(data, company, period, {});
+    const r = Compta.fichierFec(lignes, {
+      identifiant: (company && company.matricule) || '',
+      fin: period && period.to,
+      decimales: decimalsFor(company && company.currency),
+      nomJournal: journalLabel,
+      nomCompte: (account, l) => accountLabel(data, account, l.tiers),
+      aux: l => {
+        if (!l.tiersId || (l.role !== 'clients' && l.role !== 'fournisseurs')) return null;
+        const code = (l.role === 'clients' ? codesC : codesF)[l.tiersId];
+        if (!code) return null;
+        const col = l.role === 'clients' ? acc.clients : acc.fournisseurs;
+        return { num: String(l.account || '').length > col.length ? String(l.account) : col + code, lib: l.tiers || '' };
+      }
+    });
+    const clos = closedUntil(data);
+    r.provisoire = !!(r.au && (!clos || r.au > clos));
+    return r;
+  }
+
   // Le journal centralisateur : mois par mois, journal par journal, le total débit et crédit.
   // C'est le récapitulatif que le livre-journal coté et paraphé reprend.
   function journalCentralisateur(data, company, year, opts) {
@@ -9975,7 +10006,7 @@
     // Les justificatifs (10.14.1, S-04)
     nomsJustificatifs, justificatifsDe, sansJustificatif, referenceAchat,
     DEFAULT_ACCOUNTS, ACCOUNT_LABELS, ENTRY_JOURNALS, journalLabel, chartAccounts, journalEntries,
-    entriesBalance, entriesByAccount, entryCsvColumns, MOVE_ACCOUNTS, COMPTES_CONTREPARTIE, journalDeCompte, clotureValide,
+    entriesBalance, entriesByAccount, entryCsvColumns, fecEntreprise, MOVE_ACCOUNTS, COMPTES_CONTREPARTIE, journalDeCompte, clotureValide,
     // Les questions du cabinet (9.10.0)
     QUESTION_ATTENDUS, QUESTION_RELANCE, questionsValides, fusionnerQuestionsRecues,
     questionsDeLaPiece, repondreQuestion, reponsesAEnvoyer, reponsesApres, questionsSansReponse, verdictEnvoiCabinet,

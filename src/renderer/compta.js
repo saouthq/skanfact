@@ -6701,6 +6701,99 @@
       `le compte ${cPers} porte ce net au ${fmtJour(finMois)} : le règlement des salaires n'est pas encore écrit.`, 1);
     return out;
   }
+
+  // ---------------------------------------------------------------- le fichier des écritures (H3)
+  //
+  // Le FEC (« fichier des écritures comptables ») est la norme française de l'article A.47 A-1 du
+  // LPF : dix-huit colonnes, une ligne par ligne d'écriture, séparées par une tabulation. La
+  // Tunisie ne l'exige pas (À VÉRIFIER avec le comptable) ; il est pourtant la langue commune des
+  // logiciels comptables — Sage, EBP, Cegid et la plupart des outils de révision l'importent tels
+  // quels. C'est ce qui fait sa valeur ici : un cabinet qui tient ses dossiers ailleurs reprend nos
+  // écritures sans une ligne de ressaisie, et un contrôleur qui le demande l'obtient.
+  //
+  // UN constructeur pour les deux applications : il prend des LIGNES (le contrat de
+  // `entreesDepuisCsv`), jamais `data` — la règle de découpage de la 9.1.0. Ce que chaque
+  // application sait mieux que lui (le nom d'un compte, le code d'un tiers, la date de validation)
+  // lui est prêté par l'appelant.
+  //
+  // Ce qu'il REFUSE, parce qu'un logiciel qui l'importe le refusera aussi (la règle du TEIF, 10.15.0 :
+  // un fichier qu'un tiers refusera ne s'écrit pas) : une pièce en brouillard (le FEC ne porte que
+  // des écritures validées), une pièce sans numéro, une pièce déséquilibrée. Chaque refus nomme sa
+  // pièce.
+  const FEC_COLONNES = ['JournalCode', 'JournalLib', 'EcritureNum', 'EcritureDate', 'CompteNum', 'CompteLib',
+    'CompAuxNum', 'CompAuxLib', 'PieceRef', 'PieceDate', 'EcritureLib', 'Debit', 'Credit',
+    'EcritureLet', 'DateLet', 'ValidDate', 'Montantdevise', 'Idevise'];
+  // Un champ du FEC ne contient ni tabulation ni retour à la ligne (ce sont ses séparateurs), et
+  // une cellule qu'un tableur exécuterait reçoit son apostrophe (9.1.1 : le fichier peut s'ouvrir
+  // dans Excel).
+  const fecTexte = v => {
+    const t = String(v == null ? '' : v).replace(/[\t\r\n]+/g, ' ').replace(/\s{2,}/g, ' ').trim();
+    return csvDangereux(t) ? '\'' + t : t;
+  };
+  // AAAAMMJJ, sans séparateur. Une date illisible reste vide : le refus la nommera.
+  const fecDate = iso => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || '')); return m ? m[1] + m[2] + m[3] : ''; };
+  // La virgule décimale, aucun séparateur de milliers, et le nombre de décimales de la devise
+  // (trois pour le dinar : le millime compte). Compté en unités entières — jamais `toFixed` sur un
+  // flottant, qui arrondit 1,0005 vers le bas.
+  function fecMontant(n, decimales) {
+    const d = decimales == null ? 3 : decimales;
+    const f = Math.pow(10, d);
+    const u = Math.round(Math.abs(num(n)) * f + 1e-7);
+    const ent = Math.floor(u / f), dec = String(u % f).padStart(d, '0');
+    return (num(n) < 0 && u ? '-' : '') + ent + (d ? ',' + dec : '');
+  }
+  // Le nom que la norme donne au fichier : l'identifiant de l'entreprise, « FEC », la date de
+  // clôture. En France, le SIREN ; ici le matricule fiscal compacté (À VÉRIFIER : aucune règle
+  // tunisienne ne le fixe).
+  const fecNom = (identifiant, fin) => `${String(identifiant || '').toUpperCase().replace(/[^0-9A-Z]/g, '') || 'SKANFACT'}FEC${fecDate(fin) || '00000000'}.txt`;
+
+  function fichierFec(lignes, opts) {
+    const o = opts || {};
+    const nomJournal = o.nomJournal || (c => c);
+    const nomCompte = o.nomCompte || (() => '');
+    const aux = o.aux || (() => null);
+    const validation = o.dateValidation || (p => p.date);
+    const dec = o.decimales == null ? 3 : o.decimales;
+    const j = journalDepuisLignes(lignes || []);
+    const refus = [];
+    j.pieces.forEach(p => {
+      const nom = `${p.journal || '?'} ${p.piece || '(sans référence)'} du ${fmtJour(p.date)}`;
+      if (p.lignes.some(l => l.statut === 'brouillard')) refus.push({ piece: nom, motif: 'encore en brouillard : le FEC ne porte que des écritures validées' });
+      else if (!p.numero) refus.push({ piece: nom, motif: 'sans numéro d\'écriture' });
+      else if (!p.equilibree) refus.push({ piece: nom, motif: `déséquilibrée (débit ${fmtMontant(p.debit)}, crédit ${fmtMontant(p.credit)})` });
+      else if (!fecDate(p.date)) refus.push({ piece: nom, motif: 'sans date lisible' });
+    });
+    const nom = fecNom(o.identifiant, o.fin || (j.pieces.length ? j.pieces[j.pieces.length - 1].date : ''));
+    if (refus.length || !j.pieces.length) {
+      return { ok: false, refus, nom, pieces: j.pieces.length, lignes: 0, debit: j.debit, credit: j.credit,
+        vide: !j.pieces.length };
+    }
+    // L'ordre de la norme est celui des numéros : c'est l'ordre dans lequel les écritures ont été
+    // validées, et un contrôle le vérifie (aucun trou, aucun retour en arrière).
+    const pieces = j.pieces.slice().sort((a, b) => a.numero - b.numero || a.date.localeCompare(b.date));
+    const rangs = [FEC_COLONNES.join('\t')];
+    pieces.forEach(p => {
+      const valide = fecDate(validation(p)) || fecDate(p.date);
+      p.lignes.forEach(l => {
+        const a = aux(l) || null;
+        rangs.push([
+          fecTexte(p.journal), fecTexte(nomJournal(p.journal)), String(p.numero), fecDate(p.date),
+          fecTexte(l.account), fecTexte(nomCompte(l.account, l)),
+          fecTexte(a ? a.num : ''), fecTexte(a ? a.lib : ''),
+          fecTexte(p.piece || String(p.numero)), fecDate(l.pieceDate || p.date),
+          fecTexte(l.label || l.libellePiece || p.piece), fecMontant(l.debit, dec), fecMontant(l.credit, dec),
+          fecTexte(l.lettre), l.lettre && l.dateLettre ? fecDate(l.dateLettre) : '', valide,
+          '', ''
+        ].join('\t'));
+      });
+    });
+    return {
+      ok: true, refus: [], nom, texte: rangs.join('\r\n') + '\r\n',
+      pieces: pieces.length, lignes: rangs.length - 1, debit: j.debit, credit: j.credit,
+      du: pieces.reduce((m, p) => (!m || p.date < m ? p.date : m), ''),
+      au: pieces.reduce((m, p) => (p.date > m ? p.date : m), '')
+    };
+  }
   return {
     round3, fmtMontant, fmtJour, jourDeLInstant, fmtMois, deMois, cleDePiece, csvDangereux, nombreDepuisCsv, nombreStrict, dateDepuisCsv,
     ecritureValide, entreesDepuisCsv,
@@ -6744,6 +6837,8 @@
     biensAReprendre, salariesAReprendre, reporterBiens, reporterSalaries, ouvrirExerciceSuivant,
     anEnVigueur, livreSuivantVide, ecartAnouveaux, lignesComplementAnouveaux, poserComplementAnouveaux, etatExerciceSuivant, dateDuMiroir,
     etatsDepuisLignes, groupesDesEtats, sigDepuisLignes, dossierDeCloture, clotureValide,
+    // Le fichier des écritures (H3)
+    FEC_COLONNES, fichierFec, fecMontant, fecNom,
     // La liasse et l'annuel (10.0.0)
     LIASSE_ETATS, MODELE_LIASSE, RETRAITEMENTS,
     modeleLiasse, migrerModeleLiasse, rubriqueDuCompte, liasseDepuisLignes,

@@ -1176,6 +1176,12 @@ th.row-actions-h { width: 1%; }
   padding: 4px 9px; cursor: pointer; font: inherit; font-size: 12.5px; font-weight: 600;
   color: var(--muted); opacity: .9; transition: opacity .12s, background .12s, color .12s;
 }
+/* H3 (10.15.0) — un menu posé dans une BARRE (l'en-tête d'une fiche, la barre d'un livre) prend
+   l'allure du bouton qu'il côtoie : gris et à 90 %, « Exporter ▾ » se lisait comme un bouton éteint
+   à côté de « Réimporter… », et « Imprimer la fiche » comme un texte à côté de « Modifier la fiche ».
+   Seul le menu d'une LIGNE reste discret au repos (la ligne survolée l'allume). */
+.row-menu-btn.btn { color: var(--text); opacity: 1; padding: 9px 15px; font-size: 13px; border-radius: 10px; }
+.row-menu-btn.btn.btn-sm { padding: 6px 11px; font-size: 12px; border-radius: 8px; }
 .row-menu-btn svg { stroke: currentColor; fill: none; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
 /* Le bouton visible que la ligne a le droit de garder, et le menu juste après : sans cette règle
    ils se touchent, parce que `td.actions .btn + .btn` ne voit pas `.row-menu-btn`. */

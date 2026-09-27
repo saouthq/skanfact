@@ -3265,6 +3265,22 @@ ipcMain.handle('cab:fichierCnss', async (_e, { dossierId, annee, trimestre } = {
   return { ok: true, path: dest, nom: f.nom, lignes: f.lignes, total: f.total, avertissements: f.avertissements, renomme: dest !== filePath };
 });
 
+// H3 — le fichier des écritures (FEC) : un fichier texte à tabulations, nommé par la norme
+// (matricule, « FEC », date de clôture). Pas de BOM : un logiciel comptable lit la première ligne
+// comme la liste des dix-huit colonnes, et trois octets invisibles devant « JournalCode » la
+// rendraient méconnaissable.
+ipcMain.handle('cab:exportFec', async (_e, { texte, nom } = {}) => {
+  requireOpen();
+  const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
+    title: 'Enregistrer le fichier des écritures (FEC)',
+    defaultPath: path.join(app.getPath('documents'), path.basename(String(nom || 'FEC.txt'))),
+    filters: [{ name: 'Fichier des écritures (FEC)', extensions: ['txt'] }]
+  });
+  if (canceled || !filePath) return null;
+  fs.writeFileSync(filePath, String(texte || ''), 'utf8');
+  return { path: filePath };
+});
+
 ipcMain.handle('cab:exportCsv', async (_e, { rows, name } = {}) => {
   requireOpen();
   const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {

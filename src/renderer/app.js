@@ -13128,6 +13128,7 @@
           <div class="inline mt">
             <button class="btn btn-primary" id="ecr-od">Saisir une opération diverse…</button>
             <button class="btn" id="ecr-csv" ${bal.lines ? '' : 'disabled'}>Exporter en CSV</button>
+            <button class="btn" id="ecr-fec" ${bal.lines ? '' : 'disabled'}>Fichier FEC…</button>${info('ecr.fec')}
             <button class="btn" id="ecr-mail" ${bal.lines ? '' : 'disabled'}>Envoyer au comptable</button>
             <button class="btn btn-ghost" id="ecr-plan">Plan de comptes…</button>
           </div>
@@ -13190,6 +13191,21 @@
       $('#ecr-csv').onclick = async () => {
         const f = await bridge.saveText(`ecritures-${tag}.csv`, C.toCsv(sorted, C.entryCsvColumns()));
         if (f) toast('Exporté : ' + f.split(/[\\/]/).pop());
+      };
+      // H3 — le fichier des écritures (FEC) : la période ENTIÈRE, jamais la page ni le tri de l'écran
+      // (un fichier normé suit l'ordre de ses numéros). Un refus se dit avant d'enregistrer, pièce
+      // par pièce ; un mois non clôturé se dit après, parce que ses numéros peuvent encore bouger.
+      $('#ecr-fec').onclick = async () => {
+        const r = C.fecEntreprise(data, company(), p);
+        if (!r.ok) {
+          infoDialog(r.vide ? 'Rien à exporter' : 'Le fichier FEC ne peut pas s\'écrire',
+            r.vide ? 'Aucune écriture sur cette période.'
+              : `${pl(r.refus.length, 'pièce')} ne passerai${r.refus.length > 1 ? 'ent' : 't'} pas l'import d'un logiciel comptable :\n\n${r.refus.slice(0, 8).map(x => `• ${x.piece} : ${x.motif}`).join('\n')}${r.refus.length > 8 ? `\n… et ${r.refus.length - 8} autres.` : ''}`);
+          return;
+        }
+        const f = await bridge.saveText(r.nom, r.texte);
+        if (!f) return;
+        toast(`Fichier FEC enregistré : ${pl(r.pieces, 'pièce')}, ${pl(r.lignes, 'ligne')}.${r.provisoire ? ' Des mois de la période ne sont pas clôturés : leurs numéros peuvent encore bouger.' : ''}`);
       };
       if ($('#ecr-central-csv')) $('#ecr-central-csv').onclick = async () => {
         const f = await bridge.saveText(`centralisateur-${exo}.csv`, C.toCsv(C.centralisateurRows(central), C.centralisateurCsvColumns(central.journaux)));

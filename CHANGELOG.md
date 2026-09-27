@@ -46,6 +46,20 @@ Publiée en **bêta** : c'est un format de fichier officiel.
   dans son dossier, tu le glisses dans la conversation — la fenêtre le dit **avant** le geste.
   L'envoi se note dans l'historique de la pièce (« Envoyé par WhatsApp »), et un brouillon s'émet
   d'abord, comme pour l'email.
+- **Le fichier des écritures (FEC)**, pour qu'un autre logiciel reprenne la comptabilité sans rien
+  retaper : dans SkanFact, Comptabilité → Écritures → « Fichier FEC… » (la période choisie) ; dans
+  SkanFact Cabinet, le livre-journal d'un client → « Exporter ▾ → Fichier FEC… » (l'exercice entier).
+  Dix-huit colonnes séparées par des tabulations, montants à la virgule sans séparateur de milliers,
+  dates AAAAMMJJ, le nom `<matricule>FEC<fin de période>.txt` — le format que Sage, EBP et Cegid
+  importent. Les numéros sont ceux du livre-journal, les sous-comptes clients et fournisseurs partent
+  en compte auxiliaire. Ne partent que des écritures **validées et équilibrées** : un brouillard est
+  écarté (le Cabinet le dit **avant** d'enregistrer), une pièce sans numéro ou déséquilibrée empêche
+  le fichier en la nommant. Un libellé qui commencerait par « = » est neutralisé, comme dans les CSV.
+  **À VÉRIFIER** : le FEC est une norme française ; l'administration tunisienne ne l'exige pas
+  aujourd'hui, mais c'est le format d'échange que les logiciels comptables connaissent.
+- Dans SkanFact Cabinet, les exports d'un livre vivent dans **un menu « Exporter ▾ »** : la barre du
+  livre-journal tient de nouveau sur une rangée. Un menu posé dans une barre (« Exporter », « Imprimer
+  la fiche ») a désormais l'allure d'un bouton, et non celle d'un bouton éteint.
 - Depuis le jeu d'exemple, l'envoi d'un email par l'éditeur ne pose plus **deux fois** la question
   « Ce sont des données d'exemple » (une fois suffit).
 
