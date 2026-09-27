@@ -281,6 +281,18 @@ milliers de PME** ; le chiffre exact se mesure, il ne se devine pas.
 
 ## 9. Décisions qui reviennent à Skander
 
+**Décidé le 27/09/2026 :**
+- **Hébergement en Tunisie**, copie de secours comprise (un second centre de données tunisien) : pas
+  de transfert de données à l'étranger. La **déclaration du traitement** auprès de l'INPDP reste à
+  faire (**À VÉRIFIER**) ; seule l'autorisation de transfert disparaît.
+- **Budget accepté** (ordres de grandeur ci-dessous).
+- **Les démarches sont lancées par le père de Skander.** Deux d'entre elles doivent partir **pendant**
+  le développement, parce que le code en a besoin pour être testé : l'**accès à l'environnement de
+  test El Fatoora (TTN)** et l'**adhésion « entité d'intégration » DigiGo auprès de l'ANCE**.
+  L'homologation ANCE, la déclaration INPDP et la caisse certifiée se font en fin de développement.
+
+**Reste à décider :**
+
 1. **TypeScript et une bibliothèque d'interface** (renverse deux règles de `CLAUDE.md`).
 2. **Hébergement** : tout en Tunisie (plus sûr juridiquement) ou base gérée en Europe avec
    autorisation INPDP (plus sûr techniquement).
