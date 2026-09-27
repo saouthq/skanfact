@@ -67,18 +67,18 @@
     const mk = (name, matricule, address, phone, email, withholdingRate, extra) =>
       ({ id: C.uid(), name, contact: '', matricule, address, phone, email, notes: '', withholdingRate: withholdingRate == null ? '' : withholdingRate, ...(extra || {}) });
     d.clients = [
-      mk('Clinique Les Jasmins', '1234567A/M/000', 'Avenue Habib Bourguiba\n2080 Ariana', '+216 71 700 100', 'direction@clinique-jasmins.tn', 1.5,
+      mk('Clinique Les Jasmins', '1234567A/A/M/000', 'Avenue Habib Bourguiba\n2080 Ariana', '+216 71 700 100', 'direction@clinique-jasmins.tn', 1.5,
         { contact: 'Dr Leïla Mansour, directrice', notes: 'Contrat de maintenance mensuel, facturé le 1er du mois. Prévenir 48 h avant toute intervention sur le réseau.' }),
-      mk('Pharmacie Centrale El Menzah', '2345678B/A/000', '12 rue Ibn Khaldoun\n1004 El Menzah', '+216 71 234 567', 'pharmacie.menzah@gmail.com'),
-      mk('Cabinet Ben Salah Avocats', '3456789C/P/000', 'Immeuble Le Palmier, Lac 2\n1053 Tunis', '+216 71 960 200', 'contact@bensalah-avocats.tn', 1.5,
+      mk('Pharmacie Centrale El Menzah', '2345678B/A/M/000', '12 rue Ibn Khaldoun\n1004 El Menzah', '+216 71 234 567', 'pharmacie.menzah@gmail.com'),
+      mk('Cabinet Ben Salah Avocats', '3456789C/A/P/000', 'Immeuble Le Palmier, Lac 2\n1053 Tunis', '+216 71 960 200', 'contact@bensalah-avocats.tn', 1.5,
         { contact: 'Me Sonia Ben Salah', notes: 'Applique la retenue à la source (1,5 %) : demander l\'attestation à chaque règlement.' }),
-      mk('Lemon Beach Hammamet', '4567890D/A/000', 'Zone touristique\n8050 Hammamet', '+216 72 280 300', 'hello@lemonbeach.tn', '',
+      mk('Lemon Beach Hammamet', '4567890D/A/M/000', 'Zone touristique\n8050 Hammamet', '+216 72 280 300', 'hello@lemonbeach.tn', '',
         { contact: 'M. Sami Gharbi, directeur', notes: 'Règle souvent en retard : un appel est plus efficace qu\'un email.' }),
-      mk('Restaurant Dar El Jeld', '5678901E/A/000', '5 rue Dar El Jeld, Médina\n1006 Tunis', '+216 71 560 916', 'reservation@dareljeld.tn'),
+      mk('Restaurant Dar El Jeld', '5678901E/A/M/000', '5 rue Dar El Jeld, Médina\n1006 Tunis', '+216 71 560 916', 'reservation@dareljeld.tn'),
       mk('Mohamed Trabelsi', 'CIN 09876543', 'Résidence Les Oliviers, Bloc B\n2092 El Manar', '+216 98 765 432', 'm.trabelsi@outlook.com', 0),
       mk('Nova Digital Ltd', 'GB 123 4567 89', '20 Eastbourne Terrace\nLondon W2 6LG, United Kingdom', '+44 20 7946 0958', 'ops@novadigital.co.uk', 0,
         { contact: 'James Whitfield, CTO', lang: 'en', currency: 'EUR', notes: 'Client étranger : documents en anglais, facturation en euros. Export de services facturé sans TVA — À VÉRIFIER avec le comptable.' }),
-      mk('École Internationale Les Lauriers', '6789012F/A/000', 'Rue du Lac Léman, Les Berges du Lac\n1053 Tunis', '+216 71 861 400', 'admin@leslauriers.tn', 1.5, { contact: 'M. Karim Hached, intendant' })
+      mk('École Internationale Les Lauriers', '6789012F/A/M/000', 'Rue du Lac Léman, Les Berges du Lac\n1053 Tunis', '+216 71 861 400', 'admin@leslauriers.tn', 1.5, { contact: 'M. Karim Hached, intendant' })
     ];
     // Cinq ans de clients : ceux d'aujourd'hui, et tous ceux d'avant — dont certains ne commandent
     // plus depuis longtemps (c'est ce qui remplit la liste, et c'est ce qui la rend vraie).

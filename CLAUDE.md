@@ -448,7 +448,7 @@ Le propriétaire veut un rendu « beau et épuré, couleurs claires ». Palette 
 
 - Electron + JS pur, pas de React/Vite ; stockage JSON, pas SQLite.
 - La lecture de photo de facture (4.2.0) est **éteinte par défaut** et le restera : aucune requête réseau sans clé saisie par l'utilisateur, et l'app ne remplit jamais les données toute seule.
-- Pas d'e-facture TTN/El Fatoora tant que Skander ne le demande pas. À VÉRIFIER avec son comptable : la Tunisie généralise la facture électronique pour les assujettis TVA.
+- ~~Pas d'e-facture TTN/El Fatoora tant que Skander ne le demande pas.~~ **Demandé le 27/09/2026** (« s'aligner avec les concurrents d'abord ») : la 10.15.0 écrit le fichier TEIF 1.8.8 d'une pièce émise. SkanFact **ne signe pas et ne dépose rien** (certificat TunTrust/DigiGo et plateforme El Fatoora restent chez l'utilisateur). À VÉRIFIER avec son comptable : qui est tenu à la facture électronique, et depuis quand.
 - Dépôt **public** depuis le 13/09/2026, pour que les publications soient gratuites ; il pourra redevenir privé (`src/depot.js`). Le relais de mise à jour fonctionne à l'identique dans les deux cas.
 
 ## Contexte fiscal (À VÉRIFIER avec le comptable)
@@ -8662,8 +8662,32 @@ lots ; le détail de ce qui reste vit dans `A-FAIRE.md` § 0.
   de là renvoyait à la liste recliquer « Nouveau devis » — on croyait le devis perdu. La première étape
   porte `si` : déjà dans un devis neuf, elle se saute.
 
+### 10.15.0 — La facture électronique (TEIF)
+
+`src/renderer/teif.js` (UMD, `window.SkanTeif`, se sert de core.js) : `teifXml(doc, client, company,
+opts)` rend `{ ok, xml, nom, bloquants, remarques }` — **aucun fichier tant que `ok` est faux**.
+Montants lus dans `computeTotals` (jamais recalculés), matricule par `lireMatricule` (treize
+caractères, regex du XSD), identifiant client par `lireIdentifiantClient` (MF I-01, CIN I-02,
+carte de séjour I-03, étranger I-04). Le XSD 1.8.8 (version XSD 1.0, dépôt MIT) vit dans
+`test/fixtures/teif/` pour les tests seulement ; `xmllint` valide les 278 pièces émises de l'exemple.
+
+Règles apprises, à ne pas recasser :
+
+- **Une pièce légale se construit sur les chiffres de la pièce, jamais sur un second calcul** : le
+  résidu d'une remise globale tombe sur la dernière ligne remisable, et un test vérifie les trois
+  relations (Σ lignes = HT, HT + Σ TVA = TTC, TVA = base × taux au millime) sur chaque pièce.
+- **Un fichier qu'un tiers refusera ne s'écrit pas** : le refus nomme la case et ouvre la fiche qui
+  la porte (`refus()` sur le champ), dans l'ordre refus → question de l'exemple → enregistrement.
+- **Un fichier officiel ne part pas de l'exemple sans la question** (`demoBlock`, 7.6.0).
+- **Le jeu d'exemple portait des matricules tronqués** (« 1234567A ») que la TTN refuserait :
+  84 refus au premier passage. Un exemple doit être accepté par le format qu'il démontre.
+- **La signature et le dépôt ne sont pas notre métier** : signer demande le certificat de
+  l'entreprise, déposer demande ses accès à El Fatoora. La fenêtre de fin le dit en deux gestes.
+- Reste à faire (A-FAIRE § 0.4) : les certificats de retenue TEJ (le XSD officiel n'est publié que
+  sur jibaya.tn), le retour de la TTN (référence et QR sur le PDF), l'export par lot.
+
 ## Pistes pour la suite (non demandées)
 
 - Séparation des installateurs arm64 / x64 pour diviser par deux les 222 Mo du dmg universel.
 - Signature Apple et Windows (certificats payants) : supprimerait les avertissements au premier lancement et permettrait d'utiliser Squirrel sur Mac.
-- Export TEIF si l'e-facture devient obligatoire.
+- ~~Export TEIF si l'e-facture devient obligatoire.~~ Livré en 10.15.0 ; restent la signature et le dépôt directs (certificat et accès de l'utilisateur).

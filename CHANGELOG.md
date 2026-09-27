@@ -7,6 +7,26 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 10.15.0-beta.1 — 27/09/2026
+
+**La facture électronique : le fichier El Fatoora (TEIF) d'une facture ou d'un avoir émis.**
+Publiée en **bêta** : c'est un format de fichier officiel.
+
+- **« Plus ▾ → Fichier pour El Fatoora (TEIF)… »** sur toute facture et tout avoir émis : SkanFact
+  écrit le fichier XML au format **TEIF 1.8.8** publié par la TTN — émetteur et destinataire,
+  lignes, TVA par taux, timbre, remise, retenue à la source, montants en toutes lettres, référence
+  de la facture corrigée pour un avoir. Chaque fichier du jeu d'exemple (278 pièces) est validé
+  contre le schéma officiel.
+- **Ce qui manque se dit avant, avec le bouton qui le règle** : un matricule fiscal incomplet (la
+  TTN veut les treize caractères : 1234567A/A/M/000), un client sans identifiant. « Ouvrir ma
+  fiche » ou « Ouvrir la fiche du client » amène à la case, qui se montre en rouge.
+- **Il reste deux gestes, faits avec les outils de ton entreprise** : signer le fichier (certificat
+  TunTrust, sur clé ou avec DigiGo) et le déposer sur El Fatoora, qui rend la facture validée avec
+  sa référence et son code QR. SkanFact ne signe pas et ne dépose rien. **À VÉRIFIER** avec ton
+  comptable : qui est tenu à la facture électronique, et depuis quand.
+- Depuis le jeu d'exemple, SkanFact demande avant de fabriquer le fichier : la société, les clients
+  et les montants y sont inventés.
+
 ## 10.14.1-beta.1 — 26/09/2026
 
 **Une deuxième vérification, écran par écran, et le Cabinet prêt pour ses premiers comptables.**

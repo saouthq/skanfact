@@ -309,6 +309,8 @@
   b('#serials', "Note les numéros de série qui partent avec cette pièce : la garantie court à partir d'ici.");
   b('#make-recurring', "Fait de cette facture un contrat : SkanFact préparera la même chaque mois (ou trimestre).");
   b('#credit', "Corrige cette facture émise par un avoir, total ou partiel.");
+  b('#teif', "Fabrique le fichier électronique TEIF de cette pièce, à signer puis déposer sur El Fatoora.");
+  b('#teif-montrer', "Ouvre le dossier où le fichier El Fatoora vient d'être enregistré.");
   b('#lock-credit', "Une facture émise ne se modifie pas : elle se corrige par un avoir. Ce bouton le prépare.");
   b('#unlock', "Rouvre cette pièce pour la modifier. Réservé à ce qui n'engage pas ta comptabilité : une facture émise, elle, se corrige par un avoir.");
   b('#lock-unlock', "Rouvre cette pièce pour la modifier malgré son envoi.");

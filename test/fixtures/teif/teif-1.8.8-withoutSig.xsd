@@ -1,0 +1,971 @@
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:vc="http://www.w3.org/2007/XMLSchema-versioning" elementFormDefault="qualified" attributeFormDefault="unqualified">
+	<xs:annotation>
+		<xs:documentation>version 1.8.8 (ajout controle MF) et suppression de la virgule dans le format du montant</xs:documentation>
+	</xs:annotation>
+	<xs:element name="TEIF">
+		<xs:complexType>
+			<xs:sequence>
+				<xs:element name="InvoiceHeader" type="HeaderType"/>
+				<xs:element name="InvoiceBody" type="BodyType"/>
+				<xs:element name="AdditionnalDocuments" type="AdRefType" minOccurs="0"/>
+				<xs:element name="RefTtnVal" type="RefTtnType" minOccurs="0"/>
+			</xs:sequence>
+			<xs:attribute name="version" use="required">
+				<xs:simpleType>
+					<xs:restriction base="DataStringType_6">
+						<xs:enumeration value="1.8.1"/>
+						<xs:enumeration value="1.8.2"/>
+						<xs:enumeration value="1.8.3"/>
+						<xs:enumeration value="1.8.4"/>
+						<xs:enumeration value="1.8.5"/>
+						<xs:enumeration value="1.8.6"/>
+						<xs:enumeration value="1.8.7"/>
+						<xs:enumeration value="1.8.8"/>
+					</xs:restriction>
+				</xs:simpleType>
+			</xs:attribute>
+			<xs:attribute name="controlingAgency" use="required">
+				<xs:simpleType>
+					<xs:restriction base="DataStringType_20">
+						<xs:enumeration value="TTN"/>
+						<xs:enumeration value="Tunisie TradeNet"/>
+					</xs:restriction>
+				</xs:simpleType>
+			</xs:attribute>
+		</xs:complexType>
+	</xs:element>
+	<xs:complexType name="BodyType">
+		<xs:sequence>
+			<xs:element name="Bgm" type="BgmType"/>
+			<xs:element name="Dtm" type="DtmType"/>
+			<xs:element name="PartnerSection" type="PartType"/>
+			<xs:element name="LocSection" type="LocSectionType" minOccurs="0"/>
+			<xs:element name="PytSection" type="PytInfoType" minOccurs="0"/>
+			<xs:element name="Ftx" type="FtxType" minOccurs="0"/>
+			<xs:element name="SpecialConditions" type="SpecialConditionsType" minOccurs="0"/>
+			<xs:element name="LinSection" type="LinSegType"/>
+			<xs:element name="InvoiceMoa" type="MoaInvoiceType"/>
+			<xs:element name="InvoiceTax" type="TaxInvoiceType"/>
+			<xs:element name="InvoiceAlc" type="AlcInvoiceType" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="HeaderType">
+		<xs:sequence>
+			<xs:element name="MessageSenderIdentifier" type="PartnerIdentifierTestType" nillable="false"/>
+			<xs:element name="MessageRecieverIdentifier">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="NotNullDataStringType_35">
+							<xs:attribute name="type">
+								<xs:simpleType>
+									<xs:restriction base="NotNullDataStringType_6">
+										<xs:enumeration value="I-01"/>
+										<xs:enumeration value="I-02"/>
+										<xs:enumeration value="I-03"/>
+										<xs:enumeration value="I-04"/>
+									</xs:restriction>
+								</xs:simpleType>
+							</xs:attribute>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="BgmType">
+		<xs:sequence>
+			<xs:element name="DocumentIdentifier" type="NotNullDataStringType_70" nillable="false"/>
+			<xs:element name="DocumentType">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="NotNullDataStringType_35">
+							<xs:attribute name="code">
+								<xs:simpleType>
+									<xs:restriction base="DataStringType_6">
+										<xs:enumeration value="I-11"/>
+										<xs:enumeration value="I-12"/>
+										<xs:enumeration value="I-13"/>
+										<xs:enumeration value="I-14"/>
+										<xs:enumeration value="I-15"/>
+										<xs:enumeration value="I-16"/>
+									</xs:restriction>
+								</xs:simpleType>
+							</xs:attribute>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="DocumentReferences" type="DocRffType" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="DtmDetailType">
+		<xs:simpleContent>
+			<xs:extension base="NotNullDataStringType_20">
+				<xs:attribute name="functionCode" use="required">
+					<xs:simpleType>
+						<xs:restriction base="DataStringType_6">
+							<xs:enumeration value="I-31"/>
+							<xs:enumeration value="I-32"/>
+							<xs:enumeration value="I-33"/>
+							<xs:enumeration value="I-34"/>
+							<xs:enumeration value="I-35"/>
+							<xs:enumeration value="I-36"/>
+							<xs:enumeration value="I-37"/>
+							<xs:enumeration value="I-38"/>
+						</xs:restriction>
+					</xs:simpleType>
+				</xs:attribute>
+				<xs:attribute name="format" use="required">
+					<xs:simpleType>
+						<xs:restriction base="DataStringType_20">
+							<xs:enumeration value="ddMMyy"/>
+							<xs:enumeration value="ddMMyyHHmm"/>
+							<xs:enumeration value="ddMMyy-ddMMyy"/>
+						</xs:restriction>
+					</xs:simpleType>
+				</xs:attribute>
+			</xs:extension>
+		</xs:simpleContent>
+	</xs:complexType>
+	<xs:complexType name="DtmType">
+		<xs:sequence>
+			<xs:element name="DateText" type="DtmDetailType" maxOccurs="unbounded"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="PaiType">
+		<xs:sequence>
+			<xs:element name="PaiConditionCode" type="NotNullDataStringType_6"/>
+			<xs:element name="PaiMeansCode" type="NotNullDataStringType_6"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="SpecialConditionsType">
+		<xs:sequence>
+			<xs:element name="SpecialCondition" maxOccurs="unbounded">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="DataStringType_200"/>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="FtxType">
+		<xs:sequence>
+			<xs:element name="FreeTextDetail" type="FtxDetailType" maxOccurs="unbounded"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="FtxDetailType">
+		<xs:sequence>
+			<xs:element name="FreeTexts" type="DataStringType_500" maxOccurs="unbounded"/>
+		</xs:sequence>
+		<xs:attribute name="subjectCode" use="required">
+			<xs:simpleType>
+				<xs:restriction base="DataStringType_6">
+					<xs:enumeration value="I-41"/>
+					<xs:enumeration value="I-42"/>
+					<xs:enumeration value="I-43"/>
+					<xs:enumeration value="I-44"/>
+					<xs:enumeration value="I-45"/>
+					<xs:enumeration value="I-46"/>
+					<xs:enumeration value="I-47"/>
+					<xs:enumeration value="I-48"/>
+				</xs:restriction>
+			</xs:simpleType>
+		</xs:attribute>
+	</xs:complexType>
+	<xs:complexType name="PartType">
+		<xs:sequence>
+			<xs:element name="PartnerDetails" type="PartDetailType" maxOccurs="unbounded"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="PartDetailType">
+		<xs:sequence>
+			<xs:element name="Nad" type="NadType"/>
+			<xs:element name="Loc" type="LocType" minOccurs="0" maxOccurs="unbounded"/>
+			<xs:element name="RffSection" type="RefGrpType" minOccurs="0" maxOccurs="unbounded"/>
+			<xs:element name="CtaSection" type="CtaGrpType" minOccurs="0" maxOccurs="unbounded"/>
+		</xs:sequence>
+		<xs:attribute name="functionCode" use="required">
+			<xs:simpleType>
+				<xs:restriction base="DataStringType_6">
+					<xs:enumeration value="I-61"/>
+					<xs:enumeration value="I-62"/>
+					<xs:enumeration value="I-63"/>
+					<xs:enumeration value="I-64"/>
+					<xs:enumeration value="I-65"/>
+					<xs:enumeration value="I-66"/>
+					<xs:enumeration value="I-67"/>
+					<xs:enumeration value="I-68"/>
+				</xs:restriction>
+			</xs:simpleType>
+		</xs:attribute>
+		<!-- Detail parteners -->
+	</xs:complexType>
+	<xs:complexType name="PartDetailTestType">
+		<xs:sequence>
+			<xs:element name="Nad" type="NadTestType"/>
+			<xs:element name="Loc" type="LocType" minOccurs="0" maxOccurs="unbounded"/>
+			<xs:element name="RffSection" type="RefGrpType" minOccurs="0" maxOccurs="unbounded"/>
+			<xs:element name="CtaSection" type="CtaGrpType" minOccurs="0" maxOccurs="unbounded"/>
+		</xs:sequence>
+		<xs:attribute name="functionCode" use="required">
+			<xs:simpleType>
+				<xs:restriction base="DataStringType_6">
+					<xs:enumeration value="I-61"/>
+					<xs:enumeration value="I-62"/>
+					<xs:enumeration value="I-63"/>
+					<xs:enumeration value="I-64"/>
+					<xs:enumeration value="I-65"/>
+					<xs:enumeration value="I-66"/>
+					<xs:enumeration value="I-67"/>
+					<xs:enumeration value="I-68"/>
+				</xs:restriction>
+			</xs:simpleType>
+		</xs:attribute>
+		<!-- Detail parteners -->
+	</xs:complexType>
+	<xs:complexType name="NadType">
+		<xs:sequence>
+			<xs:element name="PartnerIdentifier" type="PartnerIdentifierType"/>
+			<xs:element name="PartnerName" minOccurs="0">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="DataStringType_200">
+							<xs:attribute name="nameType" use="required">
+								<xs:simpleType>
+									<xs:restriction base="DataStringType_20">
+										<xs:enumeration value="Physical"/>
+										<xs:enumeration value="Qualification"/>
+									</xs:restriction>
+								</xs:simpleType>
+							</xs:attribute>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="PartnerAdresses" type="AdressesType" minOccurs="0" maxOccurs="unbounded"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="NadTestType">
+		<xs:sequence>
+			<xs:element name="PartnerIdentifier" type="PartnerIdentifierTestType"/>
+			<xs:element name="PartnerName" minOccurs="0">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="DataStringType_200">
+							<xs:attribute name="nameType" use="required">
+								<xs:simpleType>
+									<xs:restriction base="DataStringType_20">
+										<xs:enumeration value="Physical"/>
+										<xs:enumeration value="Qualification"/>
+									</xs:restriction>
+								</xs:simpleType>
+							</xs:attribute>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="PartnerAdresses" type="AdressesType" minOccurs="0" maxOccurs="unbounded"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="AdressesType">
+		<xs:sequence>
+			<xs:element name="AdressDescription" type="DataStringType_500"/>
+			<xs:element name="Street" type="DataStringType_35" minOccurs="0"/>
+			<xs:element name="CityName" type="DataStringType_35" minOccurs="0"/>
+			<xs:element name="PostalCode" type="DataStringType_17" minOccurs="0"/>
+			<xs:element name="Country">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="NotNullDataStringType_6">
+							<xs:attribute name="codeList">
+								<xs:simpleType>
+									<xs:restriction base="DataStringType_20">
+										<xs:enumeration value="ISO_3166-1"/>
+									</xs:restriction>
+								</xs:simpleType>
+							</xs:attribute>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+		</xs:sequence>
+		<xs:attribute name="lang" type="LangEnumType"/>
+	</xs:complexType>
+	<xs:complexType name="LocType">
+		<xs:simpleContent>
+			<xs:extension base="DataStringType_200">
+				<xs:attribute name="functionCode" use="required">
+					<xs:simpleType>
+						<xs:restriction base="DataStringType_6">
+							<xs:enumeration value="I-51"/>
+							<xs:enumeration value="I-52"/>
+							<xs:enumeration value="I-53"/>
+							<xs:enumeration value="I-54"/>
+							<xs:enumeration value="I-55"/>
+							<xs:enumeration value="I-56"/>
+							<xs:enumeration value="I-57"/>
+							<xs:enumeration value="I-58"/>
+							<xs:enumeration value="I-59"/>
+						</xs:restriction>
+					</xs:simpleType>
+				</xs:attribute>
+			</xs:extension>
+		</xs:simpleContent>
+	</xs:complexType>
+	<xs:complexType name="FiiType">
+		<xs:sequence>
+			<xs:element name="AccountHolder" type="AcountHolderType" minOccurs="0"/>
+			<xs:element name="InstitutionIdentification" type="InstitutionIdentificationType" minOccurs="0"/>
+			<xs:element name="Country" minOccurs="0">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="DataStringType_6">
+							<xs:attribute name="codeList">
+								<xs:simpleType>
+									<xs:restriction base="DataStringType_20">
+										<xs:enumeration value="ISO_3166-1"/>
+									</xs:restriction>
+								</xs:simpleType>
+							</xs:attribute>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+		</xs:sequence>
+		<xs:attribute name="functionCode" use="required">
+			<xs:simpleType>
+				<xs:restriction base="DataStringType_6">
+					<xs:enumeration value="I-141"/>
+					<xs:enumeration value="I-142"/>
+					<xs:enumeration value="I-143"/>
+				</xs:restriction>
+			</xs:simpleType>
+		</xs:attribute>
+	</xs:complexType>
+	<xs:complexType name="AcountHolderType">
+		<xs:sequence>
+			<xs:element name="AccountNumber" type="NotNullDataStringType_20"/>
+			<xs:element name="OwnerIdentifier" type="DataStringType_70" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="InstitutionIdentificationType">
+		<xs:sequence>
+			<xs:element name="BranchIdentifier" type="DataStringType_17" minOccurs="0"/>
+			<xs:element name="InstitutionName" type="DataStringType_70" minOccurs="0"/>
+		</xs:sequence>
+		<xs:attribute name="nameCode" type="DataStringType_11" use="required"/>
+	</xs:complexType>
+	<xs:complexType name="MoaType">
+		<xs:sequence>
+			<xs:element name="Amount">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="monetaryAmountType">
+							<xs:attribute name="currencyIdentifier" type="xs:string" use="required"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="AmountDescription" minOccurs="0">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="DataStringType_500">
+							<xs:attribute name="lang" type="LangEnumType"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+		</xs:sequence>
+		<xs:attribute name="currencyCodeList" use="required">
+			<xs:simpleType>
+				<xs:restriction base="DataStringType_20">
+					<xs:enumeration value="ISO_4217"/>
+				</xs:restriction>
+			</xs:simpleType>
+		</xs:attribute>
+		<xs:attribute name="amountTypeCode" use="required">
+			<xs:simpleType>
+				<xs:restriction base="DataStringType_6">
+					<xs:enumeration value="I-171"/>
+					<xs:enumeration value="I-172"/>
+					<xs:enumeration value="I-173"/>
+					<xs:enumeration value="I-174"/>
+					<xs:enumeration value="I-175"/>
+					<xs:enumeration value="I-176"/>
+					<xs:enumeration value="I-177"/>
+					<xs:enumeration value="I-178"/>
+					<xs:enumeration value="I-179"/>
+					<xs:enumeration value="I-180"/>
+					<xs:enumeration value="I-181"/>
+					<xs:enumeration value="I-182"/>
+					<xs:enumeration value="I-183"/>
+					<xs:enumeration value="I-184"/>
+					<xs:enumeration value="I-185"/>
+					<xs:enumeration value="I-186"/>
+					<xs:enumeration value="I-187"/>
+					<xs:enumeration value="I-188"/>
+				</xs:restriction>
+			</xs:simpleType>
+		</xs:attribute>
+	</xs:complexType>
+	<xs:complexType name="RefTtnType">
+		<xs:sequence>
+			<xs:element name="ReferenceTTN">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="DataStringType_70">
+							<xs:attribute name="refID" use="required">
+								<xs:simpleType>
+									<xs:restriction base="DataStringType_6">
+										<xs:enumeration value="I-81"/>
+										<xs:enumeration value="I-82"/>
+										<xs:enumeration value="I-83"/>
+										<xs:enumeration value="I-84"/>
+										<xs:enumeration value="I-85"/>
+										<xs:enumeration value="I-86"/>
+										<xs:enumeration value="I-87"/>
+										<xs:enumeration value="I-88"/>
+										<xs:enumeration value="I-89"/>
+										<xs:enumeration value="I-80"/>
+									</xs:restriction>
+								</xs:simpleType>
+							</xs:attribute>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="ReferenceCEV" type="DataStringType_4000"/>
+			<xs:element name="ReferenceDate" type="DtmType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="RefGrpType">
+		<xs:sequence>
+			<xs:element name="Reference">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="NotNullDataStringType_200">
+							<xs:attribute name="refID" use="required">
+								<xs:simpleType>
+									<xs:restriction base="DataStringType_6">
+										<xs:enumeration value="I-81"/>
+										<xs:enumeration value="I-82"/>
+										<xs:enumeration value="I-83"/>
+										<xs:enumeration value="I-84"/>
+										<xs:enumeration value="I-85"/>
+										<xs:enumeration value="I-86"/>
+										<xs:enumeration value="I-87"/>
+										<xs:enumeration value="I-88"/>
+										<xs:enumeration value="I-89"/>
+										<xs:enumeration value="I-80"/>
+										<xs:enumeration value="I-811"/>
+										<xs:enumeration value="I-812"/>
+										<xs:enumeration value="I-813"/>
+										<xs:enumeration value="I-814"/>
+										<xs:enumeration value="I-815"/>
+										<xs:enumeration value="I-816"/>
+										<xs:enumeration value="I-817"/>
+									</xs:restriction>
+								</xs:simpleType>
+							</xs:attribute>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="ReferenceDate" type="DtmType" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="CtaGrpType">
+		<xs:sequence>
+			<xs:element name="Contact" type="CtaType"/>
+			<xs:element name="Communication" type="ComType" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="CtaType">
+		<xs:sequence>
+			<xs:element name="ContactIdentifier" type="DataStringType_17"/>
+			<xs:element name="ContactName" type="DataStringType_200"/>
+		</xs:sequence>
+		<xs:attribute name="functionCode">
+			<xs:simpleType>
+				<xs:restriction base="DataStringType_6">
+					<xs:enumeration value="I-91"/>
+					<xs:enumeration value="I-92"/>
+					<xs:enumeration value="I-93"/>
+					<xs:enumeration value="I-94"/>
+				</xs:restriction>
+			</xs:simpleType>
+		</xs:attribute>
+	</xs:complexType>
+	<xs:complexType name="ComType">
+		<xs:sequence>
+			<xs:element name="ComMeansType">
+				<xs:simpleType>
+					<xs:restriction base="DataStringType_6">
+						<xs:enumeration value="I-101"/>
+						<xs:enumeration value="I-102"/>
+						<xs:enumeration value="I-103"/>
+						<xs:enumeration value="I-104"/>
+					</xs:restriction>
+				</xs:simpleType>
+			</xs:element>
+			<xs:element name="ComAdress" type="DataStringType_500"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="TaxType">
+		<xs:sequence>
+			<xs:element name="TaxTypeName">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="NotNullDataStringType_200">
+							<xs:attribute name="code" use="required">
+								<xs:simpleType>
+									<xs:restriction base="DataStringType_6">
+										<xs:enumeration value="I-161"/>
+										<xs:enumeration value="I-162"/>
+										<xs:enumeration value="I-163"/>
+										<xs:enumeration value="I-164"/>
+										<xs:enumeration value="I-165"/>
+										<xs:enumeration value="I-166"/>
+										<xs:enumeration value="I-167"/>
+										<xs:enumeration value="I-168"/>
+										<xs:enumeration value="I-169"/>
+										<xs:enumeration value="I-160"/>
+										<xs:enumeration value="I-1601"/>
+										<xs:enumeration value="I-1602"/>
+										<xs:enumeration value="I-1603"/>
+									</xs:restriction>
+								</xs:simpleType>
+							</xs:attribute>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<!-- To specify the basis on which a duty or tax or fee will be assessed -->
+			<xs:element name="TaxCategory" type="DataStringType_6" minOccurs="0"/>
+			<!-- Code specifying a duty or tax or fee category-->
+			<xs:element name="TaxDetails" type="TaxRateDetailType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="TaxRateDetailType">
+		<xs:sequence>
+			<xs:element name="TaxRate" type="NotNullDataStringType_5"/>
+			<xs:element name="TaxRateBasis" type="DataStringType_35" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="PytSegType">
+		<xs:sequence>
+			<xs:element name="Pyt" type="PytType" minOccurs="0"/>
+			<xs:element name="PytDtm" type="DtmType" minOccurs="0"/>
+			<xs:element name="PytMoa" type="MoaType" minOccurs="0"/>
+			<xs:element name="PytPai" type="PaiType" minOccurs="0"/>
+			<xs:element name="PytFii" type="FiiType" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="PytType">
+		<xs:sequence>
+			<xs:element name="PaymentTearmsTypeCode" type="NotNullDataStringType_6"/>
+			<xs:element name="PaymentTearmsDescription" type="DataStringType_500" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="PcdType">
+		<xs:sequence>
+			<xs:element name="Percentage" type="NotNullDataStringType_5"/>
+			<xs:element name="PercentageBasis" type="NotNullDataStringType_35"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="AlcType">
+		<xs:sequence>
+			<xs:element name="AllowanceIdentifier" type="DataStringType_35" minOccurs="0"/>
+			<xs:element name="SpecialServices" minOccurs="0">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="DataStringType_200">
+							<xs:attribute name="lang" type="LangEnumType"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+		</xs:sequence>
+		<xs:attribute name="allowanceCode">
+			<xs:simpleType>
+				<xs:restriction base="DataStringType_6">
+					<xs:enumeration value="I-151"/>
+					<xs:enumeration value="I-152"/>
+					<xs:enumeration value="I-153"/>
+					<xs:enumeration value="I-154"/>
+					<xs:enumeration value="I-155"/>
+				</xs:restriction>
+			</xs:simpleType>
+		</xs:attribute>
+	</xs:complexType>
+	<xs:complexType name="QtyType">
+		<xs:sequence>
+			<xs:element name="Quantity">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="NotNullDataStringType_35">
+							<xs:attribute name="measurementUnit" type="DataStringType_8" use="required"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="LinSegType">
+		<xs:sequence>
+			<xs:element name="Lin" type="LinType" maxOccurs="unbounded"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="LinType">
+		<xs:sequence>
+			<xs:element name="ItemIdentifier" type="NotNullDataStringType_35"/>
+			<xs:element name="LinImd" type="ImdType"/>
+			<xs:element name="LinApi" type="ApiSegType" minOccurs="0"/>
+			<xs:element name="LinQty" type="QtyType"/>
+			<xs:element name="LinDtm" type="DtmType" minOccurs="0"/>
+			<xs:element name="LinTax" type="TaxType"/>
+			<xs:element name="LinAlc" type="LinAlcDetailsType" minOccurs="0"/>
+			<xs:element name="LinMoa" type="MoaLinType"/>
+			<xs:element name="LinFtx" type="FtxType" minOccurs="0"/>
+			<xs:element name="SubLin" type="LinType" minOccurs="0" maxOccurs="unbounded"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="ImdType">
+		<xs:sequence>
+			<xs:element name="ItemCode" type="NotNullDataStringType_35"/>
+			<xs:element name="ItemDescription" type="DataStringType_500"/>
+		</xs:sequence>
+		<xs:attribute name="lang" type="LangEnumType"/>
+	</xs:complexType>
+	<xs:complexType name="ApiSegType">
+		<xs:sequence>
+			<xs:element name="ApiDetails" type="ApiType" maxOccurs="unbounded"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="ApiType">
+		<xs:sequence>
+			<xs:element name="ApiCode" type="DataStringType_50"/>
+			<xs:element name="ApiDescription" type="DataStringType_500"/>
+		</xs:sequence>
+		<xs:attribute name="lang" type="LangEnumType"/>
+	</xs:complexType>
+	<xs:complexType name="MoaInvoiceType">
+		<xs:sequence>
+			<xs:element name="AmountDetails" type="MoaDetailsType" maxOccurs="unbounded"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MoaLinType">
+		<xs:sequence>
+			<xs:element name="MoaDetails" type="MoaDetailsType" maxOccurs="unbounded"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MoaDetailsType">
+		<xs:sequence>
+			<xs:element name="Moa" type="MoaType"/>
+			<xs:element name="RffDtm" type="RefGrpType" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="TaxInvoiceType">
+		<xs:sequence>
+			<xs:element name="InvoiceTaxDetails" type="TaxDetailsType" maxOccurs="unbounded"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="TaxDetailsType">
+		<xs:sequence>
+			<xs:element name="Tax" type="TaxType"/>
+			<xs:element name="AmountDetails" type="MoaDetailsType" maxOccurs="unbounded"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="AlcInvoiceType">
+		<xs:sequence>
+			<xs:element name="AllowanceDetails" type="AlcDetailsType" maxOccurs="unbounded"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="LinAlcDetailsType">
+		<xs:sequence>
+			<xs:element name="Alc" type="AlcType"/>
+			<xs:element name="Pcd" type="PcdType"/>
+			<xs:element name="Ftx" type="FtxType" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="AlcDetailsType">
+		<xs:sequence>
+			<xs:element name="Alc" type="AlcType"/>
+			<xs:element name="Moa" type="MoaType"/>
+			<xs:element name="Ftx" type="FtxType" minOccurs="0"/>
+			<xs:element name="TaxAlc" type="TaxDetailsType" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="PytInfoType">
+		<xs:sequence>
+			<xs:element name="PytSectionDetails" type="PytSegType" maxOccurs="unbounded"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="AdRefType">
+		<xs:sequence>
+			<xs:element name="AdditionnalDocumentIdentifier" type="DataStringType_35"/>
+			<xs:element name="AdditionnalDocumentName" type="DataStringType_50"/>
+			<xs:element name="AdditionnalDocumentDate" type="DtmType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:simpleType name="CryptoBinary">
+		<xs:restriction base="xs:base64Binary"/>
+	</xs:simpleType>
+	<xs:complexType name="LocSectionType">
+		<xs:sequence>
+			<xs:element name="LocDetails" type="LocType" maxOccurs="unbounded"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="DocRffType">
+		<xs:sequence>
+			<xs:element name="DocumentReference" type="RefGrpType" maxOccurs="unbounded"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="PartnerIdentifierType">
+		<xs:simpleContent>
+			<xs:extension base="NotNullDataStringType_35">
+				<xs:attribute name="type" use="required">
+					<xs:simpleType>
+						<xs:restriction base="DataStringType_6">
+							<xs:minLength value="1"/>
+							<xs:enumeration value="I-01"/>
+							<xs:enumeration value="I-02"/>
+							<xs:enumeration value="I-03"/>
+							<xs:enumeration value="I-04"/>
+						</xs:restriction>
+					</xs:simpleType>
+				</xs:attribute>
+			</xs:extension>
+		</xs:simpleContent>
+	</xs:complexType>
+	<xs:complexType name="PartnerIdentifierTestType">
+		<xs:simpleContent>
+			<xs:extension base="NotNullDataStringType_35">
+				<xs:attribute name="type" use="required">
+					<xs:simpleType>
+						<xs:restriction base="DataStringType_6">
+							<xs:minLength value="1"/>
+							<xs:enumeration value="I-01"/>
+							<xs:enumeration value="I-02"/>
+							<xs:enumeration value="I-03"/>
+							<xs:enumeration value="I-04"/>
+						</xs:restriction>
+					</xs:simpleType>
+				</xs:attribute>
+			</xs:extension>
+		</xs:simpleContent>
+	</xs:complexType>
+	<xs:complexType name="SenderIdentifierTestType">
+		<xs:simpleContent>
+			<xs:extension base="NotNullDataStringType_35">
+				<xs:attribute name="type" use="required">
+					<xs:simpleType>
+						<xs:restriction base="DataStringType_6">
+							<xs:minLength value="1"/>
+							<xs:enumeration value="I-01"/>
+							<xs:enumeration value="I-02"/>
+							<xs:enumeration value="I-03"/>
+							<xs:enumeration value="I-04"/>
+						</xs:restriction>
+					</xs:simpleType>
+				</xs:attribute>
+			</xs:extension>
+		</xs:simpleContent>
+	</xs:complexType>
+	<!-- 
+___________Matricule fiscale tunisienne__________________-->
+	<xs:complexType name="TNMF_Type">
+		<xs:simpleContent>
+			<xs:extension base="PatternOf_TNMF">
+				<xs:attribute name="type" type="xs:string" use="required"/>
+			</xs:extension>
+		</xs:simpleContent>
+	</xs:complexType>
+	<xs:simpleType name="PatternOf_TNMF">
+		<xs:restriction base="xs:string">
+			<xs:pattern value="[0-9]{7}[ABCDEFGHJKLMNPQRSTVWXYZ][ABDNP][CMNPE][0-9]{3}"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<!--
+_____________Carte d'Identité Nationnale ________________
+-->
+	<xs:complexType name="CINTN_Type">
+		<xs:simpleContent>
+			<xs:extension base="PatternOf_CINTN">
+				<xs:attribute name="type" type="xs:string" use="required"/>
+			</xs:extension>
+		</xs:simpleContent>
+	</xs:complexType>
+	<xs:simpleType name="PatternOf_CINTN">
+		<xs:restriction base="xs:string">
+			<xs:pattern value="[0-9]{8}"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<!-- 
+_______________Carte de séjour_______________________
+-->
+	<xs:complexType name="CSTN_Type">
+		<xs:simpleContent>
+			<xs:extension base="PatternOf_CSTN">
+				<xs:attribute name="type" type="xs:string" use="required"/>
+			</xs:extension>
+		</xs:simpleContent>
+	</xs:complexType>
+	<xs:simpleType name="PatternOf_CSTN">
+		<xs:restriction base="xs:string">
+			<xs:pattern value="[0-9]{9}"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<!-- 
+________Champ libre pour les types inconnus____________
+-->
+	<xs:complexType name="UnknownM_Type">
+		<xs:simpleContent>
+			<xs:extension base="xs:string">
+				<xs:attribute name="type" type="xs:string" use="required"/>
+			</xs:extension>
+		</xs:simpleContent>
+	</xs:complexType>
+	<!-- *************************************************************************************************************************** *********************************************************Common String types*********************************************** *********************************************************************************************************************************-->
+	<xs:simpleType name="DataStringType_6">
+		<xs:restriction base="xs:string">
+			<xs:maxLength value="6"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="NotNullDataStringType_6">
+		<xs:restriction base="xs:string">
+			<xs:minLength value="1"/>
+			<xs:maxLength value="6"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="DataStringType_500">
+		<xs:restriction base="xs:string">
+			<xs:maxLength value="500"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="DataStringType_50">
+		<xs:restriction base="xs:string">
+			<xs:maxLength value="50"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="DataStringType_200">
+		<xs:restriction base="xs:string">
+			<xs:maxLength value="200"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="NotNullDataStringType_200">
+		<xs:restriction base="xs:string">
+			<xs:minLength value="1"/>
+			<xs:maxLength value="200"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="DataStringType_17">
+		<xs:restriction base="xs:string">
+			<xs:maxLength value="17"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="DataStringType_8">
+		<xs:restriction base="xs:string">
+			<xs:maxLength value="8"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="DataStringType_5">
+		<xs:restriction base="xs:string">
+			<xs:maxLength value="5"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="NotNullDataStringType_5">
+		<xs:restriction base="xs:string">
+			<xs:minLength value="1"/>
+			<xs:maxLength value="5"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="DataStringType_70">
+		<xs:restriction base="xs:string">
+			<xs:maxLength value="70"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="NotNullDataStringType_70">
+		<xs:restriction base="xs:string">
+			<xs:minLength value="1"/>
+			<xs:maxLength value="70"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="DataStringType_15">
+		<xs:restriction base="xs:string">
+			<xs:maxLength value="15"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="DataStringType_20">
+		<xs:restriction base="xs:string">
+			<xs:maxLength value="20"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="NotNullDataStringType_20">
+		<xs:restriction base="xs:string">
+			<xs:minLength value="1"/>
+			<xs:maxLength value="20"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="DataStringType_12">
+		<xs:restriction base="xs:string">
+			<xs:maxLength value="12"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="DataStringType_9">
+		<xs:restriction base="xs:string">
+			<xs:maxLength value="9"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="DataStringType_100">
+		<xs:restriction base="xs:string">
+			<xs:maxLength value="100"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="DataStringType_4">
+		<xs:restriction base="xs:string">
+			<xs:maxLength value="4"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="DataStringType_35">
+		<xs:restriction base="xs:string">
+			<xs:maxLength value="35"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="NotNullDataStringType_35">
+		<xs:restriction base="xs:string">
+			<xs:minLength value="1"/>
+			<xs:maxLength value="35"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="DataStringType_11">
+		<xs:restriction base="xs:string">
+			<xs:maxLength value="11"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="NotNullDataStringType_11">
+		<xs:restriction base="xs:string">
+			<xs:minLength value="1"/>
+			<xs:maxLength value="11"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="DataStringType_4000">
+		<xs:restriction base="xs:string">
+			<xs:maxLength value="4000"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="LangEnumType">
+		<xs:restriction base="DataStringType_6">
+			<xs:enumeration value="fr"/>
+			<xs:enumeration value="en"/>
+			<xs:enumeration value="ar"/>
+			<xs:enumeration value="or"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="monetaryAmountType">
+		<xs:restriction base="xs:string">
+			<xs:pattern value="-?[0-9]{1,15}([.][0-9]{1,5})?"/>
+		</xs:restriction>
+	</xs:simpleType>
+</xs:schema>

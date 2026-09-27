@@ -2,6 +2,17 @@
 
 **F-9.1.1-06 · TEST-9.1.1-009 · écrit le 16/09/2026, sur le code de la 9.1.1.**
 
+> **Mise à jour du 27/09/2026 (10.15.0).** Skander a demandé l'export ; le schéma officiel
+> **TEIF 1.8.8** a été lu, et `src/renderer/teif.js` l'écrit (validé par `xmllint` sur les 278
+> pièces émises de l'exemple). Ce que les tableaux ci-dessous annonçaient comme écarts s'est réglé
+> ainsi : l'adresse en un seul champ passe dans `AdressDescription` (le schéma l'accepte) ; le code
+> pays est déduit (TN, sauf identifiant étranger) ; le matricule doit avoir ses **treize caractères**
+> (`1234567A/A/M/000`) et un matricule incomplet **refuse** le fichier en ouvrant la fiche ; un
+> particulier se désigne par sa CIN (I-02) ou sa carte de séjour (I-03), un client étranger par son
+> identifiant (I-04). Restent hors de SkanFact : la **signature** XAdES (certificat TunTrust de
+> l'entreprise) et le **dépôt** sur El Fatoora. Le reste de ce document est l'analyse de la 9.1.1,
+> gardée telle quelle.
+
 ## Pourquoi ce document existe
 
 La Tunisie généralise progressivement la facture électronique pour les assujettis TVA

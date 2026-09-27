@@ -357,6 +357,27 @@ et au moteur), puis en stable quand Skander valide.*
   118–129 ; accents de 77–79 ; réécrire 132) ; relancer `e2e:couverture` et `e2e:cabinet-couverture`
   (boutons neufs `#hf-gerant-go`, `#nd-coller`).
 
+### 0.4 La facture électronique et TEJ (demandé le 27/09/2026 : « s'aligner avec les concurrents d'abord »)
+
+**Fait (10.15.0-beta.1)** : le fichier TEIF 1.8.8 d'une facture ou d'un avoir émis (« Plus ▾ »),
+validé contre le schéma officiel sur les 278 pièces de l'exemple, refus nommés avant le fichier,
+question de l'exemple, fenêtre de fin qui dit les deux gestes restants. Testé à la souris.
+
+**À faire, dans l'ordre :**
+1. **Les certificats de retenue TEJ** (XML DeclarationsRS). Bloqué : les schémas officiels
+   (`TEJDeclarationRS_v1.0.xsd`, `TEJISOPaysDevises.xsd`, `TEJRSCodesOperations_v1.0.xsd`) et le
+   cahier des charges ne sont publiés que sur jibaya.tn, inaccessible d'ici. **Skander les
+   télécharge et me les donne** (ils restent hors dépôt, sauf publics). La structure lue ailleurs
+   (déclarant, période, certificats par bénéficiaire, opérations, montants en millimes) est à
+   confronter au XSD avant d'écrire une ligne.
+2. **Le retour de la TTN** : importer le XML validé (RefTtnVal, code QR) et l'imprimer sur le PDF.
+   Demande un vrai fichier rendu par El Fatoora (Skander, avec son abonnement).
+3. **L'export par lot** (un mois de factures d'un coup), et un panneau « Prêt pour El Fatoora » dans
+   les Paramètres (matricule complet, certificat, abonnement).
+4. **Ce que Skander doit obtenir, hors code** : un certificat de signature TunTrust (clé ou DigiGo),
+   l'abonnement El Fatoora chez Tunisie TradeNet, l'accès TEJ. **À VÉRIFIER** avec le comptable :
+   qui est tenu à la facture électronique, et depuis quand.
+
 ### 0.3 La question de Skander du 26/09 : « et après la comptabilité, le comptable transfère à l'État ? »
 
 *Il veut que le comptable dépose SANS RESSAISIE (DIRECTION.md, « zéro ressaisie »), CNSS comme
@@ -793,7 +814,7 @@ absente~~ (« Vendue le », en tête).
 - Les trois pistes jamais demandées, gardées pour mémoire : séparer les installateurs arm64 / x64
   (les 222 Mo du dmg universel), la signature Apple et Windows (certificats payants — mais elle
   passe **avant la première vente**, cf. `QUESTIONS.md` : un expert-comptable ne clique pas sur
-  « Exécuter quand même »), et l'export TEIF si l'e-facture devient obligatoire.
+  « Exécuter quand même »). ~~L'export TEIF~~ : livré en 10.15.0 (§ 0.4).
 
 ## 4 bis. Reporté le 24/09/2026 : ce qui vient après la visite guidée
 

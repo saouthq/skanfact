@@ -16,6 +16,13 @@
   // la leur seule. Une phrase = un geste qui change, dit du côté de celui qui le fait.
   const NOTES = [
     {
+      version: '10.15.0',
+      entreprise: [
+        'Une facture ou un avoir émis donne son fichier pour El Fatoora, dans « Plus ▾ » : prêt à signer, puis à déposer.',
+        'Si un matricule fiscal est incomplet, SkanFact le dit avant le fichier et ouvre la fiche à corriger.'
+      ]
+    },
+    {
       version: '10.14.1',
       commun: [
         '« Guide-moi », en haut de chaque page, liste tout ce que tu peux faire ici et te montre où cliquer, pas à pas.',

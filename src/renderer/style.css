@@ -2598,3 +2598,11 @@ body.dark .g-ligne.faite .g-l-ico { color: #0d1418; }
 #nouveautes .nouv-actions { display: flex; justify-content: flex-end; margin-block-start: 14px; }
 @keyframes nouv-entre { from { opacity: 0; transform: translateY(12px); } }
 @media (prefers-reduced-motion: reduce) { #nouveautes, #nouveautes.sort { animation: none; transition: none; } }
+
+/* La facture électronique (10.15.0) : ce qui manque avant le fichier El Fatoora, chaque point avec
+   le bouton qui ouvre la fiche à corriger, sur la même ligne ; puis les deux gestes qui restent. */
+.teif-manques { list-style: none; padding: 0; margin: 12px 0; display: flex; flex-direction: column; gap: 10px; }
+.teif-manques li { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.teif-manques li > span { flex: 1 1 auto; }
+.teif-manques li > .btn { flex: 0 0 auto; }
+.teif-suite { margin: 10px 0; padding-inline-start: 22px; display: flex; flex-direction: column; gap: 6px; }

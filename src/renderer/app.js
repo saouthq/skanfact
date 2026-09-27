@@ -3612,7 +3612,9 @@
     // dans « Plus ▾ », en tête. La barre d'un bon de commande ou d'un bon de livraison portait huit
     // commandes et passait sur deux rangées à 1440 px (1 216 px pour 1 129) — 37 px de formulaire en
     // moins sur chaque pièce, pour un geste qu'on ne fait qu'une fois par pièce.
-    const avecPlus = !isNew && (!isAv || !figee);
+    // Un avoir émis a désormais son « Plus ▾ » : il porte le fichier El Fatoora (10.15.0), le seul
+    // geste qui reste sur une pièce qui ne se modifie plus.
+    const avecPlus = !isNew && (!isAv || !figee || (locked && doc.status !== 'annulée'));
     const convDansPlus = convertibles.length > 0 && suiteExtra !== 'transform' && avecPlus;
     // Même règle pour l'envoi d'un devis ou d'une pièce annexe : un bouton quand c'est l'étape
     // suivante (le brouillon numéroté à envoyer), une entrée de « Plus ▾ » sinon — un devis déjà
@@ -3656,6 +3658,7 @@
             ${hasSerials ? `<button id="serials">Numéros de série livrés…</button>` : ''}
             ${isInv ? `<div class="ml-ligne"><button id="make-recurring">Rendre récurrent (contrat)…</button>${info('ed.recurring')}</div>` : ''}
             ${locked && isInv && doc.status !== 'annulée' ? `<button id="credit">Créer un avoir…</button>` : ''}
+            ${locked && (isInv || isAv) && doc.status !== 'annulée' ? `<div class="ml-ligne"><button id="teif">Fichier pour El Fatoora (TEIF)…</button>${info('ed.teif')}</div>` : ''}
             ${canUnlock ? `<button id="unlock">Modifier malgré l'émission…</button>` : ''}
             ${!figee ? `<button id="del" class="danger">Supprimer</button>` : ''}
           </div></div>` : ''}
@@ -4685,6 +4688,7 @@
       sendByEmail(d);
     };
     if ($('#as-template')) $('#as-template').onclick = () => saveAsTemplate(doc);
+    if ($('#teif')) $('#teif').onclick = () => exporterTeif(docById(doc.id) || doc);
     if ($('#make-recurring')) $('#make-recurring').onclick = () => recurrenceForm(recurrenceFromInvoice(doc), () => { toast('Contrat créé'); navigate('#/contrats'); });
     if ($('#more-btn')) $('#more-btn').onclick = e => { e.stopPropagation(); const l = $('#more-list'); const open = l.hidden; closeMenus(); l.hidden = !open; };
     $$('#more-list button:not(.i)').forEach(b => b.addEventListener('click', () => { $('#more-list').hidden = true; }));
@@ -5072,6 +5076,57 @@
             close(); toast(messageOuvert(rm, 'le relevé'));
           } catch (e) { b.disabled = false; b.textContent = 'Envoyer au client…'; toast(plainError(e), true); }
         };
+      });
+  }
+
+  // ---------- la facture électronique : le fichier TEIF pour El Fatoora (10.15.0) ----------
+  // SkanFact fabrique le fichier ; il ne le signe pas et ne le dépose pas (le certificat et
+  // l'abonnement à la TTN sont ceux de l'entreprise). Ce qui manque se dit AVANT, avec le bouton qui
+  // mène à la case — jamais un fichier à moitié juste que la TTN refuserait le jour de l'échéance.
+  async function exporterTeif(doc) {
+    const T = window.SkanTeif;
+    const cl = clientById(doc.clientId);
+    const orig = doc.type === 'avoir' && doc.creditOf ? docById(doc.creditOf) : null;
+    const r = T.teifXml(doc, cl, company(), { facture: orig });
+    if (!r.ok) {
+      modal(`<h2>Avant le fichier El Fatoora</h2>
+        <p>La facture électronique identifie l'émetteur et le destinataire par leur matricule fiscal
+        complet. ${r.bloquants.length > 1 ? 'Ces points empêchent' : 'Ce point empêche'} de fabriquer un fichier que la TTN accepterait :</p>
+        <ul class="teif-manques">${r.bloquants.map((b, i) => `<li><span>${h(b.message)}</span>${/^(societe|client)[:]?/.test(b.cible) && !(b.cible === 'client' && !cl)
+          ? `<button class="btn btn-sm" data-teif-go="${i}">${b.cible.startsWith('societe') ? 'Ouvrir ma fiche' : 'Ouvrir la fiche du client'}</button>` : ''}</li>`).join('')}</ul>
+        <div class="modal-actions"><button class="btn btn-primary" data-close>Fermer</button></div>`,
+        (root, close) => {
+          $('[data-close]', root).onclick = close;
+          $$('[data-teif-go]', root).forEach(btn => { btn.onclick = () => {
+            const b = r.bloquants[Number(btn.dataset.teifGo)];
+            close();
+            if (b.cible.startsWith('societe')) { allerParametres('societe', 'p-identite:' + (b.cible.split(':')[1] || 'matricule')); return; }
+            clientForm(cl, () => render());
+            const champ = b.cible.split(':')[1];
+            if (champ) setTimeout(() => { const i = $$(`.modal [name=${champ}]`).pop(); if (i) refus(i, b.message); }, 60);
+          }; });
+        });
+      return;
+    }
+    // Un fichier fait pour être signé et déposé à la TTN part de l'ordinateur : depuis l'exemple, il
+    // porterait une société, des clients et des montants inventés (règle 7.6.0). Le refus passe avant.
+    if (await demoBlock('Fabriquer un fichier El Fatoora')) return;
+    const chemin = await bridge.saveText(r.nom, r.xml);
+    if (!chemin) return;
+    modal(`<h2>Le fichier El Fatoora est prêt</h2>
+      <p><b>${h(r.nom)}</b> est enregistré. Il reste deux gestes, faits avec les outils de ton entreprise :</p>
+      <ol class="teif-suite">
+        <li><b>Le signer</b> avec ta signature électronique (certificat TunTrust, sur clé ou avec DigiGo).</li>
+        <li><b>Le déposer</b> sur la plateforme El Fatoora de Tunisie TradeNet. Elle te rend la facture
+        validée, avec sa référence et son code QR : c'est elle qui fait foi, garde-la.</li>
+      </ol>
+      ${r.remarques.length ? `<p class="small">À relire : ${r.remarques.map(x => h(x.message)).join(' ')}</p>` : ''}
+      <p class="small muted">Le fichier suit le format TEIF ${h(T.VERSION)} publié par la TTN. Qui est tenu à la
+      facture électronique, et depuis quand : À VÉRIFIER avec ton comptable.</p>
+      <div class="modal-actions"><button class="btn" id="teif-montrer">Montrer le fichier</button><button class="btn btn-primary" data-close>Fermer</button></div>`,
+      (root, close) => {
+        $('[data-close]', root).onclick = close;
+        $('#teif-montrer', root).onclick = () => { bridge.showInFolder(chemin); };
       });
   }
 

@@ -25,7 +25,9 @@ t('nouveautés : une fois par version, jamais à une installation neuve, jamais 
   // Déjà vue : plus rien. Une bêta compte comme sa version.
   assert.deepStrictEqual(N.aMontrer(v, v, 'entreprise', false), []);
   assert.deepStrictEqual(N.aMontrer(v, v + '-beta.3', 'entreprise', false), []);
-  assert.strictEqual(N.aMontrer('10.14.0', v + '-beta.3', 'entreprise', false).length, 1);
+  // Vue la version d'avant : la version en cours seule.
+  const avant = N.NOTES[1] ? N.NOTES[1].version : '10.14.0';
+  assert.strictEqual(N.aMontrer(avant, v + '-beta.3', 'entreprise', false).length, 1);
   // Revenir en arrière (sortie de la bêta) ne remontre rien.
   assert.deepStrictEqual(N.aMontrer('99.0.0', v, 'entreprise', false), []);
   // Les versions comparées en NOMBRES : 10.14.1 est plus récente que 9.99.9.
@@ -34,7 +36,9 @@ t('nouveautés : une fois par version, jamais à une installation neuve, jamais 
 });
 
 t('nouveautés : chaque application ne lit que ses phrases, et les communes', () => {
-  const n = N.NOTES[0];
+  // Une version qui a des phrases des trois sortes (la plus récente n'en a pas toujours).
+  const n = N.NOTES.find(x => x.commun && x.entreprise && x.cabinet);
+  assert.ok(n, 'aucune version ne porte des phrases communes, d\'entreprise et du Cabinet');
   const e = N.aMontrer('', n.version, 'entreprise', false)[0].points;
   const c = N.aMontrer('', n.version, 'cabinet', false)[0].points;
   assert.deepStrictEqual(e, n.commun.concat(n.entreprise));
