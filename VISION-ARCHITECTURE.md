@@ -354,6 +354,59 @@ milliers de PME** ; le chiffre exact se mesure, il ne se devine pas.
 
 ---
 
+## 12. La console d'administration et le site (ajouté le 27/09/2026)
+
+*Décidé le 27/09/2026 : une seule session Claude écrit le produit, la console ET le site
+(dépôt `saouthq/skanfact-site`). La console doit devenir « un meilleur système ».*
+
+### Ce que la console fait aujourd'hui, et pourquoi ça ne suffira pas
+
+Aujourd'hui la console est un worker Cloudflare avec une base D1 (`plateforme/`). Elle signe et
+révoque des **clés de licence hors ligne**, suit les postes qui s'annoncent, les ventes, les commandes
+Konnect, les prospects, la santé des canaux de mise à jour, et garde un export et un pli scellé.
+C'est le bon outil pour une application qu'on installe sur chaque ordinateur.
+
+Trois choses changent avec la nouvelle plateforme :
+1. **Plus de clé de licence** : l'entreprise a un **abonnement** sur le serveur. Ce qu'elle a payé,
+   les modules ouverts et la date de fin se lisent au même endroit que ses données.
+2. **La console gère des clients vivants**, et plus seulement des clés. Elle voit les entreprises,
+   leurs abonnements, leurs factures, l'état du service. Et, quand le client l'a accepté, elle ouvre
+   son dossier pour l'aider.
+3. **Ses données sont personnelles** (noms, e-mails, matricules des clients). Elles suivent la
+   décision d'hébergement : en Tunisie. La D1 actuelle est chez Cloudflare, hors de Tunisie :
+   **À VÉRIFIER** pour l'application actuelle, et à ne pas reconduire.
+
+### Ce que la nouvelle console doit faire (cible, à détailler en `docs/cadrage/10-console.md`)
+
+| Domaine | Ce qu'elle permet |
+|---|---|
+| Clients | Organisations, entreprises, cabinets ; fiche complète ; historique commercial ; parrainage d'un cabinet |
+| Abonnements | Offres, modules, essai, renouvellement sans prélèvement (relances, coupure douce, lecture seule), avoirs et remboursements |
+| Nos factures | Émises en TEIF, signées, envoyées à la TTN par le même moteur que celui des clients (§ 11, point 6) |
+| Paiement | Konnect, virement, chèque ; rapprochement ; relances |
+| Support | Tickets, WhatsApp et e-mail rattachés au client. Accès au dossier d'un client **en lecture, seulement avec son accord, limité dans le temps et tracé**, avec le nom de la personne qui l'ouvre |
+| Service | Santé des serveurs, file de travaux, envois TTN/CNSS en échec, sauvegardes et exercice de restauration, incidents, page d'état publique |
+| Mesure | Usage par écran et blocages (§ 11, point 14), **sans jamais lire le contenu** ; entonnoir essai → client ; départs |
+| Équipe | Plusieurs comptes (Skander, son père, support) avec des rôles ; double authentification obligatoire ; journal de chaque geste |
+| Application actuelle | Tant qu'elle vit, la console garde les licences hors ligne et la reprise des utilisateurs vers la plateforme |
+
+**Règle d'architecture** : la console est un **module du même serveur** (même base, même code
+métier). Elle a sa propre porte d'entrée (adresse, connexion et rôles séparés). Elle n'a **aucun**
+passe-droit sur la sécurité par ligne. Chaque accès aux données d'une entreprise passe par une
+fonction qui vérifie l'accord et écrit la trace.
+
+### Le site (`skanfact-site`)
+
+- Il reste **statique** : rapide, bien référencé, et il ne tombe pas si le serveur tombe. Il est
+  hébergé à part du produit.
+- Il devient la porte d'entrée : présentation, tarifs, **inscription** (qui crée l'essai sur la
+  plateforme), centre d'aide (les mêmes articles que dans l'application), page d'état du service,
+  pages légales (conditions, confidentialité, contrat de traitement), et reprise des données
+  (Excel, concurrents).
+- **Il ne vend rien qui n'existe pas encore.** Jusqu'au lancement, il continue de présenter
+  l'application actuelle. La nouvelle offre n'y paraît que lorsqu'elle est livrable. Les tarifs
+  suivent `docs/cadrage/07-offres-et-prix.md` quand il sera validé.
+
 ## Sources de la recherche technique (27/09/2026)
 
 - Odoo, sizing et multi-client : [Odoo 19 — System configuration](https://www.odoo.com/documentation/19.0/administration/on_premise/deploy.html), [How many Odoo workers (Skysize)](https://www.skysize.io/blog/guides-5/how-many-odoo-workers-do-you-need-35), [Odoo multi-tenant (OEC.sh)](https://oec.sh/blog/odoo-multi-tenant-architecture)

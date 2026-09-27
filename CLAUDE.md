@@ -62,13 +62,13 @@ Détail et raisons dans `VISION-ARCHITECTURE.md` ; ne pas les rediscuter sans qu
 | `docs/application-actuelle/` | Ce qui sert encore à l'app v10 : `A-FAIRE.md` (carnet), `TARIFS-REFERENCE.md` (contrat avec le site), `TESTS-TERRAIN.md`, `e-facture-controle.md`, `CLAUDE-HISTORIQUE.md` |
 | `docs/archives/ancienne-vision/` | Plans de l'ancienne vision (cahier des charges, direction, plans, questions, versions à venir) — lecture seule |
 | `src/` | L'application actuelle : `src/main.js` + `src/renderer/` (entreprise), `src/cabinet/` (Cabinet). Moteur : `src/renderer/core.js`, `src/renderer/compta.js` |
-| `plateforme/` | Worker Cloudflare de la console éditeur (licences, ventes, paiement Konnect) |
+| `plateforme/` | Worker Cloudflare de la console éditeur actuelle (licences, ventes, paiement Konnect). La console cible est décrite dans `VISION-ARCHITECTURE.md` § 12 |
 | `worker/` | Relais de mise à jour |
 | `test/` | `npm test` (`test/run-tests.js` + `test/suites/`), parcours `test/e2e/`, charges |
 | `scripts/` | Publication, icônes, exemple du Cabinet, outils de test humain (`scripts/humain/`) |
 | `CHANGELOG.md` | Notes de version (lues par la publication : ne pas déplacer) |
 
-`TARIFS-REFERENCE.md` a quitté la racine : prévenir la session qui écrit le site `skanfact.tn`.
+**Le site** `skanfact.tn` vit dans le dépôt `saouthq/skanfact-site` (`/home/user/skanfact-site`), et c'est **cette même session** qui l'écrit (décidé le 27/09/2026). `TARIFS-REFERENCE.md` (désormais dans `docs/application-actuelle/`) reste le contrat entre l'application actuelle et le site.
 
 ## Règles de travail (permanentes)
 
