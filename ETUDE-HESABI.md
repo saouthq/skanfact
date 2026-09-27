@@ -50,7 +50,7 @@ Légende : ✅ nous l'avons · ◐ nous l'avons en partie · ❌ nous ne l'avons
 |---|---|---|
 | Fichier TEIF (El Fatoora) | oui | ✅ depuis la 10.15.0, validé contre le XSD officiel sur 278 pièces |
 | **Signature XAdES + envoi automatique à la TTN** | **oui, via NGSign** | ❌ — demande un contrat NGSign (ou DigiGo) : § 4 |
-| **Recevoir la facture TEIF d'un fournisseur** | import « IA » (PDF, image, **XML**) | ❌ → **H1**, et nous le ferons **sans IA** : un XML se lit exactement, il ne se devine pas |
+| **Recevoir la facture TEIF d'un fournisseur** | import « IA » (PDF, image, **XML**) | ★ depuis la 10.15.0 (**H1**), **sans IA** : le XML se lit exactement, hors ligne, chaque montant recompté, le fournisseur créé depuis la facture |
 | **TEJ** (certificats de retenue, XML mensuel) | oui, et en masse pour un cabinet | ❌ — bloqué sur les schémas officiels (jibaya.tn) : § 4 |
 | Attestations d'exonération de retenue | oui | ❌ → H7 |
 | Déclaration mensuelle TVA / RS / TFP / FOPROLOS | non documenté en détail | ★ Cabinet : formulaire officiel 2026 case par case, montants copiables pour le portail, complément d'écriture si une pièce arrive après |
@@ -111,7 +111,7 @@ l'envoi à la TTN en un clic, TEJ, la caisse, l'arabe, et « sur mon téléphone
 
 | # | Quoi | Pourquoi d'abord |
 |---|---|---|
-| **H1** | Importer la **facture TEIF d'un fournisseur** en achat, sans IA | L'e-facture devient obligatoire : chaque client recevra des XML. Les lire exactement vaut mieux qu'un import « IA » |
+| **H1** ✅ | Importer la **facture TEIF d'un fournisseur** en achat, sans IA — livré en 10.15.0 | L'e-facture devient obligatoire : chaque client recevra des XML. Les lire exactement vaut mieux qu'un import « IA » |
 | **H2** | **Envoyer par WhatsApp** | Le canal réel en Tunisie ; petit geste, gros effet en démonstration |
 | **H3** | **Export FEC** (entreprise et Cabinet) | Hesabi l'affiche ; un comptable le demandera |
 | **H4** | Contrat **saisonnier** et **CIVP** en paie | Deux lignes, et une case de moins dans le comparatif |

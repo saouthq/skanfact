@@ -4219,8 +4219,11 @@
     const r = read || {};
     const t = todayIso || today();
     const norm = x => (x || '').trim().toLowerCase();
+    // Le matricule se compare sans ses séparateurs : « 1234567A/A/M/000 » sur la fiche et
+    // « 1234567AAM000 » dans une facture électronique désignent la même entreprise (H1).
+    const mf = x => String(x || '').toUpperCase().replace(/[^0-9A-Z]/g, '');
     // Le fournisseur se reconnaît d'abord au matricule (unique), ensuite au nom (approximatif).
-    const supplier = (data.suppliers || []).find(s2 => r.matricule && norm(s2.matricule) === norm(r.matricule))
+    const supplier = (data.suppliers || []).find(s2 => r.matricule && mf(s2.matricule) && mf(s2.matricule) === mf(r.matricule))
       || (data.suppliers || []).find(s2 => r.supplier && norm(s2.name) === norm(r.supplier))
       || null;
     let lines = (Array.isArray(r.lines) ? r.lines : []).map(l => ({
@@ -4256,7 +4259,13 @@
         date,
         dueDate: parseDateInput(r.dueDate || '') || '',
         subject: r.subject || '',
-        fees: ocrNumber(r.fees)
+        fees: ocrNumber(r.fees),
+        // Ce qu'une facture électronique dit de plus qu'une photo (H1) : la devise, la nature (un avoir),
+        // la facture qu'un avoir diminue et la référence de validation de la TTN.
+        currency: r.currency ? normCurrency(r.currency) : '',
+        kind: r.kind === 'avoir' ? 'avoir' : 'facture',
+        refFacture: r.refFacture || '',
+        refTtn: r.refTtn || ''
       },
       lines, computedHT, readHT, warnings
     };

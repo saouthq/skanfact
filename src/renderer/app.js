@@ -8198,6 +8198,8 @@
           ${!isNew && C.purchaseBalance(stored, company(), data).remaining > 0.0005 ? '<button class="btn btn-primary" id="pay">Enregistrer un règlement</button>' : ''}
           ${!isNew && C.purchaseBalance(stored, company(), data).remaining < -0.0005 ? '<button class="btn btn-primary" id="recu">Remboursement reçu…</button>' : ''}
           <button class="btn" id="attach-top">Joindre un justificatif…</button>${info('ed.attachments')}
+          ${/* Une pièce déjà saisie ne se relit pas par-dessus : la lecture la remplacerait. */''}
+          ${clos || !isNew ? '' : `<button class="btn" id="teif-lire">Lire une e-facture…</button>${info('buy.teif')}`}
           <button class="btn" id="photo" hidden>Lire une photo…</button>${info('ocr.photo')}
           ${clos ? '' : `<button class="btn ${isNew ? 'btn-primary' : ''}" id="save">Enregistrer</button>`}
           ${isNew ? '' : `<div class="more"><button class="btn" id="more-btn">Plus ▾</button><div class="more-list" id="more-list" hidden>
@@ -8606,13 +8608,29 @@
     // Ce que la relecture a validé entre dans la pièce EN COURS, puis la page se redessine avec
     // elle : `render()` repartirait de la pièce enregistrée (ou d'une pièce neuve et vide) et
     // jetterait tout. La reprise relaie `p` à la page qui se redessine.
-    const appliquerLecture = async (values, file) => {
+    // `quoi` nomme ce qui a été joint : un fichier XML n'est pas une photo.
+    const appliquerLecture = async (values, file, quoi) => {
       Object.assign(p, values.head);
       p.lines = values.lines;
       const jointe = await joindreFichier(file);
       achatReprise = { hash: location.hash, p, isNew };
       render(true);
-      toast(jointe ? 'Facture pré-remplie et photo jointe — vérifie avant d\'enregistrer' : 'Facture pré-remplie — vérifie avant d\'enregistrer');
+      toast(jointe ? `Facture pré-remplie et ${quoi || 'photo'} jointe — vérifie avant d'enregistrer` : 'Facture pré-remplie — vérifie avant d\'enregistrer');
+    };
+    // --- lire la facture électronique (TEIF) d'un fournisseur (H1)
+    // Aucun réseau, aucune clé : le XML se lit sur le poste et chaque montant se recompte. La même
+    // relecture que pour une photo — rien n'entre dans les données avant « Utiliser ces informations ».
+    if ($('#teif-lire')) $('#teif-lire').onclick = async () => {
+      if (!bridge.openText) return;
+      let r;
+      try { r = await bridge.openText({ title: 'Choisir la facture électronique (XML) du fournisseur', filtre: 'xml' }); }
+      catch (e) { return toast(plainError(e), true); }
+      if (!r || r.canceled) return;
+      if (!r.ok) return infoDialog('Ce fichier ne se lit pas', r.motif);
+      const l = window.SkanTeif.lireTeif(r.texte, company());
+      if (!l.ok) return infoDialog('Ce n\'est pas une facture électronique', l.motif + ' Choisis le fichier XML que le fournisseur ou la plateforme El Fatoora t\'a envoyé.');
+      const fichier = { name: r.nom, path: r.chemin || '' };
+      ocrReviewForm(l.lecture, fichier, values => appliquerLecture(values, fichier, 'facture électronique'), { source: 'teif', remarques: l.remarques });
     };
     $('#photo').onclick = async () => {
       let file;
@@ -11022,8 +11040,12 @@
   // ---------- validation de ce qui a été lu sur la photo (4.2.0) ----------
   // C'est ici que se joue la règle la plus importante du module : l'application ne remplit jamais toute
   // seule. Elle montre ce qu'elle a cru lire, signale ce qui ne colle pas, et attend un clic.
-  function ocrReviewForm(read, file, done) {
-    const cur = company().currency;
+  // `o.source` vaut 'teif' pour une facture électronique (H1) : la même relecture, mais ce qui a été lu
+  // est EXACT (un XML ne se devine pas) et ses remarques sont celles du recomptage, pas d'une machine.
+  function ocrReviewForm(read, file, done, o) {
+    o = o || {};
+    const teif = o.source === 'teif';
+    const cur = (read && read.currency && C.normCurrency(read.currency)) || company().currency;
     // Toute la normalisation (nombres, dates, reconnaissance du fournisseur, avertissements) vit dans
     // core.js : elle est testable sans Electron, ce qui compte quand on manipule ce qu'une machine a cru lire.
     const prep = C.ocrToPurchase(read, data);
@@ -11033,8 +11055,11 @@
     const computed = () => C.round3(lines.reduce((a, l) => a + l.qty * l.unitPrice, 0));
     const gapHT = () => prep.readHT == null ? null : C.round3(computed() - prep.readHT);
 
-    modal(`<h2>Ce que SkanFact a lu</h2>
-      <p class="small muted">Lu sur « ${h(file.name)} ». <b>Rien n'est encore entré dans tes données.</b> Vérifie, corrige si besoin, puis valide — l'écran d'achat s'ouvrira pré-rempli et tu pourras encore tout changer.</p>
+    const autre = head.kind === 'avoir' && head.refFacture
+      ? data.purchases.find(x => x.kind !== 'avoir' && x.number === head.refFacture && (!head.supplierId || x.supplierId === head.supplierId)) : null;
+    modal(`<h2>${teif ? (head.kind === 'avoir' ? 'La facture d\'avoir électronique' : 'La facture électronique') + (head.number ? ' ' + h(head.number) : '') : 'Ce que SkanFact a lu'}</h2>
+      <p class="small muted">${teif ? `Lue dans « ${h(file.name)} », sans rien envoyer nulle part : chaque montant a été recompté.` : `Lu sur « ${h(file.name)} ».`} <b>Rien n'est encore entré dans tes données.</b> Vérifie, corrige si besoin, puis valide — l'écran d'achat s'ouvrira pré-rempli et tu pourras encore tout changer.</p>
+      ${(o.remarques || []).length ? `<ul class="teif-manques">${o.remarques.map(m => `<li><span>${h(m)}</span></li>`).join('')}</ul>` : ''}
       <div id="ocr-warn"></div>
       <form id="orf" class="grid-2">
         <div class="field span-2 obligatoire">${lbl('Fournisseur', 'ocr.supplier')}
@@ -11062,7 +11087,9 @@
           onAdd: saisi => supplierForm(null, sup => {
             supCombo.setItems(data.suppliers.map(x => ({ v: x.id, label: x.name, text: x.name })));
             supCombo.setValue(sup.id);
-          }, head.supplierName && !head.supplierId ? { name: saisi || head.supplierName, matricule: head.matricule || '' } : { name: saisi })
+          }, head.supplierName && !head.supplierId ? Object.assign({ name: saisi || head.supplierName, matricule: head.matricule || '' },
+            // Une facture électronique porte aussi l'adresse et les contacts du fournisseur : la fiche naît complète.
+            teif && read.fournisseur ? { address: read.fournisseur.adresse || '', phone: read.fournisseur.telephone || '', email: read.fournisseur.email || '' } : {}) : { name: saisi })
         });
         bindCombo($('[data-combo=category]', root), { items: C.expenseCategories(data).map(c => ({ v: c, label: c })), placeholder: '— À choisir —' });
         bindDateFields(root);
@@ -11087,7 +11114,8 @@
           $('#ocr-warn', root).innerHTML = [
             !$('input[name=supplierId]', root).value ? 'Aucun fournisseur reconnu : choisis-le, ou crée-le depuis la liste.' : '',
             g != null && Math.abs(g) > 0.005 ? `Les lignes lues totalisent ${C.money(computed(), cur)} alors que la pièce annonce ${C.money(prep.readHT, cur)} : un écart de ${C.money(g, cur)}. Corrige avant de valider.` : '',
-            !read.number ? 'Aucun numéro de facture lu : saisis-le, il est obligatoire pour la déduction de TVA.' : ''
+            !read.number ? 'Aucun numéro de facture lu : saisis-le, il est obligatoire pour la déduction de TVA.' : '',
+            head.kind === 'avoir' && head.refFacture && !autre ? `La facture ${head.refFacture} que cet avoir diminue n'est pas dans tes achats : l'avoir sera enregistré sans y être rattaché.` : ''
           ].filter(Boolean).map(m => `<p class="small warn-text">${m}</p>`).join('');
         };
         drawLines();
@@ -11097,8 +11125,13 @@
           const v = formValues($('#orf', root));
           if (!v.supplierId) return refus($('[name=supplierId]', root), 'Choisis le fournisseur : sans lui, l\'achat n\'est rattaché à personne.');
           close();
+          const extra = teif ? {
+            kind: head.kind, achatLie: autre ? autre.id : '',
+            ...(head.currency && head.currency !== C.normCurrency(company().currency) ? { currency: head.currency } : {}),
+            ...(head.refTtn ? { notes: `Référence TTN : ${head.refTtn}` } : {})
+          } : {};
           done({ head: { supplierId: v.supplierId, number: v.number || '', date: v.date || C.today(), dueDate: v.dueDate || '',
-            subject: v.subject || '', category: v.category || '', fees: Number(v.fees) || 0 }, lines });
+            subject: v.subject || '', category: v.category || '', fees: Number(v.fees) || 0, ...extra }, lines });
         };
       });
   }

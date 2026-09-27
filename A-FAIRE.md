@@ -362,6 +362,11 @@ et au moteur), puis en stable quand Skander valide.*
 **Fait (10.15.0-beta.1)** : le fichier TEIF 1.8.8 d'une facture ou d'un avoir émis (« Plus ▾ »),
 validé contre le schéma officiel sur les 278 pièces de l'exemple, refus nommés avant le fichier,
 question de l'exemple, fenêtre de fin qui dit les deux gestes restants. Testé à la souris.
+Et la **lecture d'une facture TEIF reçue** (H1 de `ETUDE-HESABI.md`) : « Lire une e-facture… »
+dans un achat neuf, montants recomptés, fournisseur créé depuis la facture, refus d'un XML qui n'en
+est pas une. Testé à la souris sur une facture fabriquée (604,330 DT recomptés à la main). **À
+confronter à un vrai fichier reçu d'El Fatoora** (signé, avec RefTtnVal) dès qu'un fournisseur en
+envoie un à Skander.
 
 **À faire, dans l'ordre :**
 1. **Les certificats de retenue TEJ** (XML DeclarationsRS). Bloqué : les schémas officiels

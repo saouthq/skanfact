@@ -38,6 +38,13 @@
   // REFUSE : on le dit plutôt que de fabriquer un fichier voué au rejet.
   const MF_TEIF = /^[0-9]{7}[ABCDEFGHJKLMNPQRSTVWXYZ][ABDNP][CMNP]000$/;
   function compacterMF(s) { return String(s == null ? '' : s).toUpperCase().replace(/[\s/.\-_]/g, ''); }
+  // La forme qu'on lit sur une facture et qu'on recopie sur une fiche : 1234567A/A/M/000. Le fichier
+  // l'écrit compactée (le schéma l'exige) ; un fournisseur créé depuis une facture lue ne doit pas
+  // garder un « 1234567AAM000 » que personne ne reconnaît. Ce qui n'est pas un matricule reste tel quel.
+  function mfLisible(s) {
+    const v = compacterMF(s);
+    return MF_TEIF.test(v) ? `${v.slice(0, 8)}/${v[8]}/${v[9]}/${v.slice(10)}` : String(s == null ? '' : s).trim();
+  }
 
   // Ce qu'on peut dire d'un matricule saisi : la forme TEIF, ou ce qui lui manque, en français.
   function lireMatricule(s) {
@@ -312,6 +319,213 @@
     return `TEIF_${mf.ok ? mf.valeur + '_' : ''}${num}.xml`;
   }
 
+  // ---------- lire la facture électronique d'un FOURNISSEUR (H1, étude Hesabi) ----------
+  // Un fichier TEIF reçu se LIT exactement : il ne se devine pas. Hesabi l'annonce comme un « import
+  // IA » ; ici, aucun service extérieur, aucun réseau, et chaque montant lu se recompte avant d'être
+  // proposé. La lecture rend la forme que la relecture d'une photo connaît déjà (`ocrToPurchase`) :
+  // une seule fenêtre de relecture, une seule façon de proposer un achat. RIEN n'est enregistré ici.
+
+  // Un analyseur XML MINIMAL, suffisant pour un TEIF et sûr : aucune entité n'est développée hors des
+  // cinq du XML et des références numériques (un DOCTYPE est refusé — c'est par lui que passent les
+  // attaques « milliard de rires »), et un fichier mal formé est refusé plutôt que lu à moitié.
+  // Pur, sans DOMParser : il tourne pareil dans l'application et dans les tests.
+  function decoder(s) {
+    return String(s).replace(/&(#x[0-9a-fA-F]+|#[0-9]+|amp|lt|gt|quot|apos);/g, (m, e) => {
+      if (e === 'amp') return '&'; if (e === 'lt') return '<'; if (e === 'gt') return '>';
+      if (e === 'quot') return '"'; if (e === 'apos') return '\'';
+      const n = e[1] === 'x' ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
+      return Number.isFinite(n) && n > 0 && n <= 0x10ffff ? String.fromCodePoint(n) : m;
+    });
+  }
+  const local = nom => String(nom).split(':').pop();
+  function analyserXml(texte) {
+    let s = String(texte || '').replace(/^﻿/, '');
+    if (/<!DOCTYPE/i.test(s)) return { ok: false, motif: 'le fichier déclare un DOCTYPE : une facture électronique n\'en porte pas' };
+    s = s.replace(/<\?[\s\S]*?\?>/g, '').replace(/<!--[\s\S]*?-->/g, '');
+    const racine = { nom: '#', attrs: {}, enfants: [], texte: '' };
+    const pile = [racine];
+    const re = /<!\[CDATA\[([\s\S]*?)\]\]>|<(\/?)([A-Za-z_][\w:.-]*)((?:\s+[\w:.-]+\s*=\s*(?:"[^"]*"|'[^']*'))*)\s*(\/?)>|([^<]+)|(<)/g;
+    let m;
+    while ((m = re.exec(s))) {
+      const haut = pile[pile.length - 1];
+      if (m[1] != null) { haut.texte += m[1]; continue; }
+      if (m[7]) return { ok: false, motif: 'le fichier n\'est pas un XML bien formé (un « < » ouvre une balise illisible)' };
+      if (m[6] != null) { haut.texte += decoder(m[6]); continue; }
+      const fermante = m[2] === '/', nom = local(m[3]), auto = m[5] === '/';
+      if (fermante) {
+        if (pile.length < 2 || haut.nom !== nom) return { ok: false, motif: `le fichier n'est pas un XML bien formé (balise « ${nom} » fermée sans avoir été ouverte)` };
+        haut.texte = haut.texte.trim();
+        pile.pop();
+        continue;
+      }
+      const attrs = {};
+      (m[4] || '').replace(/([\w:.-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g, (x, k, a, b) => { attrs[local(k)] = decoder(a != null ? a : b); return x; });
+      const noeud = { nom, attrs, enfants: [], texte: '' };
+      haut.enfants.push(noeud);
+      if (!auto) pile.push(noeud);
+    }
+    if (pile.length !== 1) return { ok: false, motif: `le fichier est tronqué (la balise « ${pile[pile.length - 1].nom} » n'est jamais fermée)` };
+    if (racine.enfants.length !== 1) return { ok: false, motif: 'le fichier ne contient pas un seul document XML' };
+    return { ok: true, racine: racine.enfants[0] };
+  }
+  const fils = (n, nom) => (n && n.enfants ? n.enfants.filter(e => e.nom === nom) : []);
+  const fil = (n, ...chemin) => chemin.reduce((x, nom) => (x ? fils(x, nom)[0] || null : null), n);
+  const texteDe = n => (n ? String(n.texte || '').trim() : '');
+  function chercher(n, nom) {
+    if (!n) return null;
+    if (n.nom === nom) return n;
+    for (const e of n.enfants || []) { const r = chercher(e, nom); if (r) return r; }
+    return null;
+  }
+
+  // ddMMyy, ddMMyyyy, ddMMyyHHmm : le jour du calendrier seul, en AAAA-MM-JJ (règle 5.2.3 : aucune heure).
+  function dateLue(txt) {
+    const t = String(txt || '').replace(/\s+/g, '');
+    const m = /^(\d{2})(\d{2})(\d{2}|\d{4})(\d{4})?$/.exec(t.slice(0, 12)) || /^(\d{2})(\d{2})(\d{2})/.exec(t);
+    if (!m) return '';
+    const an = m[3].length === 4 ? m[3] : '20' + m[3];
+    const iso = `${an}-${m[2]}-${m[1]}`;
+    const d = new Date(iso + 'T00:00:00Z');
+    return !isNaN(d) && d.toISOString().slice(0, 10) === iso ? iso : '';
+  }
+  const nombreLu = txt => { const n = Number(String(txt || '').trim()); return Number.isFinite(n) ? n : null; };
+  const deviseLue = iso => { const v = String(iso || '').trim().toUpperCase(); return !v || v === 'TND' ? 'DT' : v; };
+
+  // Le montant d'un code dans une liste de MoaDetails / AmountDetails.
+  function montants(n) {
+    const r = {};
+    let devise = '';
+    const visiter = x => {
+      if (x.nom === 'Moa' && x.attrs.amountTypeCode) {
+        const a = fil(x, 'Amount');
+        const v = nombreLu(texteDe(a));
+        if (v != null && r[x.attrs.amountTypeCode] == null) r[x.attrs.amountTypeCode] = v;
+        if (a && a.attrs.currencyIdentifier && !devise) devise = a.attrs.currencyIdentifier;
+      }
+      (x.enfants || []).forEach(visiter);
+    };
+    if (n) visiter(n);
+    return { r, devise };
+  }
+
+  // Rend { ok, motif } pour un fichier qui n'est pas lisible, sinon { ok: true, lecture, remarques }.
+  // `lecture` a la forme attendue par `ocrToPurchase` (supplier, matricule, number, date, dueDate,
+  // subject, currency, fees, totalHT, totalTTC, lines), plus ce qu'un TEIF dit de plus.
+  // `company` (facultatif) sert à vérifier que la facture t'est bien adressée.
+  function lireTeif(xml, company) {
+    const a = analyserXml(xml);
+    if (!a.ok) return { ok: false, motif: `Ce fichier ne se lit pas : ${a.motif}.` };
+    const tef = a.racine;
+    if (tef.nom !== 'TEIF') return { ok: false, motif: `Ce fichier n'est pas une facture électronique TEIF (son élément principal est « ${tef.nom} »).` };
+    const corps = fil(tef, 'InvoiceBody');
+    if (!corps) return { ok: false, motif: 'Cette facture électronique n\'a pas de corps (InvoiceBody) : le fichier est incomplet.' };
+    const remarques = [];
+
+    const bgm = fil(corps, 'Bgm');
+    const typeCode = (fil(bgm, 'DocumentType') || { attrs: {} }).attrs.code || '';
+    const kind = typeCode === 'I-12' ? 'avoir' : 'facture';
+    const number = texteDe(fil(bgm, 'DocumentIdentifier'));
+    const refs = fils(fil(bgm, 'DocumentReferences'), 'DocumentReference').map(r => fil(r, 'Reference')).filter(Boolean);
+    const refFacture = texteDe(refs.find(r => r.attrs.refID === 'I-89'));
+
+    const dates = {};
+    fils(fil(corps, 'Dtm'), 'DateText').forEach(d => { const iso = dateLue(texteDe(d)); if (iso && !dates[d.attrs.functionCode]) dates[d.attrs.functionCode] = iso; });
+
+    const parties = fils(fil(corps, 'PartnerSection'), 'PartnerDetails');
+    const partie = code => {
+      const p = parties.find(x => x.attrs.functionCode === code);
+      if (!p) return null;
+      const nad = fil(p, 'Nad');
+      const id = fil(nad, 'PartnerIdentifier');
+      const adr = fil(nad, 'PartnerAdresses');
+      const adresse = adr ? ['AdressDescription', 'Street', 'CityName', 'PostalCode'].map(k => texteDe(fil(adr, k))).filter(Boolean).join(', ') : '';
+      const com = type => { const c = fils(p, 'CtaSection').map(s => fil(s, 'Communication')).find(x => x && texteDe(fil(x, 'ComMeansType')) === type); return c ? texteDe(fil(c, 'ComAdress')) : ''; };
+      const rc = fils(p, 'RffSection').map(s => fil(s, 'Reference')).find(r => r && r.attrs.refID === 'I-815');
+      return { identifiant: mfLisible(texteDe(id)), type: id ? id.attrs.type || '' : '', nom: texteDe(fil(nad, 'PartnerName')), adresse,
+        telephone: com('I-101'), email: com('I-103'), rc: texteDe(rc) };
+    };
+    const fournisseur = partie('I-62') || { identifiant: mfLisible(texteDe(fil(tef, 'InvoiceHeader', 'MessageSenderIdentifier'))), nom: '' };
+    const acheteur = partie('I-64');
+
+    // La facture t'est-elle adressée ? Comparée sur le matricule compacté, jamais sur le nom.
+    const ident = x => { const r = lireIdentifiantClient(x); return r.ok ? r.valeur : compacterMF(x); };
+    const nous = company && company.matricule ? ident(company.matricule) : '';
+    if (nous && acheteur && acheteur.identifiant && ident(acheteur.identifiant) !== nous) {
+      remarques.push(`Cette facture est adressée à « ${acheteur.nom || acheteur.identifiant} » (${acheteur.identifiant}), pas à ta société : vérifie que c'est bien la tienne avant de la saisir.`);
+    }
+
+    let devise = '';
+    const lignes = fils(fil(corps, 'LinSection'), 'Lin').map((l, k) => {
+      const imd = fil(l, 'LinImd');
+      const q = fil(l, 'LinQty', 'Quantity');
+      const qty = nombreLu(texteDe(q)) || 1;
+      const taux = nombreLu(texteDe(fil(l, 'LinTax', 'TaxDetails', 'TaxRate'))) || 0;
+      const m = montants(fil(l, 'LinMoa'));
+      if (!devise) devise = m.devise;
+      const remise = nombreLu(texteDe(fil(l, 'LinAlc', 'Pcd', 'Percentage'))) || 0;
+      // Le prix unitaire proposé est le NET de la ligne divisé par la quantité : c'est ce qui refait
+      // exactement le HT de la facture, remise comprise (un achat n'a pas de remise par ligne).
+      const ht = m.r['I-171'];
+      const pu = ht != null ? ht / qty : (m.r['I-183'] || 0) * (1 - remise / 100);
+      return { label: texteDe(fil(imd, 'ItemDescription')) || texteDe(fil(imd, 'ItemCode')) || `Ligne ${k + 1}`,
+        qty, unit: q ? q.attrs.measurementUnit || '' : '', unitPrice: Math.round(pu * 1e6) / 1e6, vatRate: taux, ht };
+    });
+
+    const tot = montants(fil(corps, 'InvoiceMoa'));
+    if (!devise) devise = tot.devise;
+    const cur = deviseLue(devise);
+    const rd = C.arrondiDevise(cur);
+    const totalHT = tot.r['I-176'] != null ? tot.r['I-176'] : null;
+    const totalTTC = tot.r['I-180'] != null ? tot.r['I-180'] : null;
+
+    let timbre = 0;
+    const tva = {}, autres = [];
+    fils(fil(corps, 'InvoiceTax'), 'InvoiceTaxDetails').forEach(t => {
+      const nomTaxe = fil(t, 'Tax', 'TaxTypeName');
+      const code = nomTaxe ? nomTaxe.attrs.code || '' : '';
+      const taux = nombreLu(texteDe(fil(t, 'Tax', 'TaxDetails', 'TaxRate'))) || 0;
+      const m = montants(t);
+      const montant = m.r['I-178'] || 0;
+      if (code === 'I-1601') timbre = rd(timbre + montant);
+      else if (code === 'I-1602') tva[taux] = { base: m.r['I-177'] || 0, vat: montant };
+      else if (montant) autres.push({ nom: texteDe(nomTaxe) || code, montant });
+    });
+
+    // Chaque chiffre se RECOMPTE : une facture électronique juste tombe au millime, et un écart se dit.
+    const sommeLignes = rd(lignes.reduce((s, l) => s + (l.ht != null ? l.ht : l.qty * l.unitPrice), 0));
+    if (totalHT != null && Math.abs(rd(sommeLignes - totalHT)) > 0.0005) remarques.push(`Les lignes totalisent ${C.money(sommeLignes, cur)} HT alors que la facture annonce ${C.money(totalHT, cur)} HT.`);
+    Object.keys(tva).forEach(r => {
+      const attendu = rd(tva[r].base * Number(r) / 100);
+      if (Math.abs(rd(attendu - tva[r].vat)) > 0.0015) remarques.push(`La TVA à ${r} % vaut ${C.money(tva[r].vat, cur)} sur la facture ; ${r} % de ${C.money(tva[r].base, cur)} font ${C.money(attendu, cur)}.`);
+      if (!C.VAT_RATES.includes(Number(r))) remarques.push(`Le taux de TVA ${r} % n'est pas un taux que SkanFact propose : vérifie la ligne avant d'enregistrer.`);
+    });
+    const totalTVA = rd(Object.keys(tva).reduce((s, r) => s + tva[r].vat, 0));
+    const autresTotal = rd(autres.reduce((s, x) => s + x.montant, 0));
+    if (totalHT != null && totalTTC != null && Math.abs(rd(totalHT + totalTVA + timbre + autresTotal - totalTTC)) > 0.0015) {
+      remarques.push(`Hors taxes, TVA et timbre font ${C.money(rd(totalHT + totalTVA + timbre + autresTotal), cur)}, et la facture annonce ${C.money(totalTTC, cur)} TTC.`);
+    }
+    if (autres.length) remarques.push(`Autres taxes sur la facture (${autres.map(x => `${x.nom} ${C.money(x.montant, cur)}`).join(', ')}) : elles sont comptées avec le timbre, dans « Timbre et frais ». À VÉRIFIER avec ton comptable.`);
+    if (cur !== 'DT') remarques.push(`La facture est en ${cur} : saisis le taux de change sur l'achat avant de l'enregistrer.`);
+    if (kind === 'avoir') remarques.push(`C'est une facture d'AVOIR${refFacture ? ` sur la facture ${refFacture}` : ''} : elle diminue ce que tu dois au fournisseur.`);
+
+    const libres = fils(fil(corps, 'Ftx'), 'FreeTextDetail');
+    const objet = texteDe(fil(libres.find(x => x.attrs.subjectCode === 'I-41'), 'FreeTexts'));
+    const refTtn = texteDe(chercher(tef, 'RefTtnVal'));
+    const signe = !!chercher(tef, 'Signature');
+    if (!signe) remarques.push('Ce fichier n\'est pas signé : ce n\'est pas encore la facture validée par la TTN. Garde aussi celle que la plateforme t\'enverra.');
+
+    return {
+      ok: true, remarques,
+      lecture: {
+        supplier: fournisseur.nom || '', matricule: fournisseur.identifiant || '', number, kind,
+        date: dates['I-31'] || '', dueDate: dates['I-32'] || '', subject: objet, currency: cur,
+        fees: rd(timbre + autresTotal), totalHT, totalTTC, refFacture, refTtn, signe,
+        fournisseur, acheteur, vatByRate: tva, autresTaxes: autres,
+        lines: lignes.map(({ label, qty, unit, unitPrice, vatRate }) => ({ label, qty, unit, unitPrice, vatRate }))
+      }
+    };
+  }
+
   return { VERSION, MF_TEIF, compacterMF, lireMatricule, lireIdentifiantClient, deviseIso, dateTeif, montantTeif, uniteTeif,
-    controleTeif, teifXml, nomFichierTeif, echapper };
+    controleTeif, teifXml, nomFichierTeif, echapper, analyserXml, lireTeif, mfLisible };
 });

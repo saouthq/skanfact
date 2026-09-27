@@ -19,7 +19,8 @@
       version: '10.15.0',
       entreprise: [
         'Une facture ou un avoir émis donne son fichier pour El Fatoora, dans « Plus ▾ » : prêt à signer, puis à déposer.',
-        'Si un matricule fiscal est incomplet, SkanFact le dit avant le fichier et ouvre la fiche à corriger.'
+        'Si un matricule fiscal est incomplet, SkanFact le dit avant le fichier et ouvre la fiche à corriger.',
+        'Un fournisseur t\'envoie sa facture El Fatoora ? Dans un achat neuf, « Lire une e-facture… » la lit et remplit l\'achat : tu n\'as plus qu\'à relire.'
       ]
     },
     {

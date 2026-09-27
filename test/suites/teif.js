@@ -228,4 +228,135 @@ t('TEIF : le geste vit sur une facture ou un avoir émis, et le refus passe AVAN
   const html = lireSource('src', 'renderer', 'index.html');
   assert.ok(html.indexOf('src="core.js"') > 0 && html.indexOf('src="core.js"') < html.indexOf('src="teif.js"'), 'teif.js chargé avant core.js');
 });
+
+// ---------- lire la facture électronique d'un fournisseur (H1, étude Hesabi) ----------
+const nous = { matricule: '1871165H/A/M/000' };   // l'acheteur des factures ci-dessous
+t('TEIF lu : chaque facture et chaque avoir de l\'exemple, écrits puis RELUS, redonnent leurs montants au millime', () => {
+  const data = D.buildDemoData(societe(), '2026-09-20');
+  let n = 0;
+  for (const d of data.documents.filter(x => ['facture', 'avoir'].includes(x.type) && x.number && x.status !== 'brouillon' && x.status !== 'annulée')) {
+    const cl = data.clients.find(c => c.id === d.clientId);
+    const orig = d.creditOf ? data.documents.find(x => x.id === d.creditOf) : null;
+    const r = T.teifXml(d, cl, data.company, { facture: orig });
+    if (!r.ok) continue;
+    n++;
+    const l = T.lireTeif(r.xml, { matricule: cl.matricule });
+    assert.ok(l.ok, d.number + ' : ' + l.motif);
+    const t0 = C.computeTotals(d, data.company), lu = l.lecture;
+    assert.strictEqual(lu.number, d.number);
+    assert.strictEqual(lu.date, d.date, d.number + ' : date');
+    assert.strictEqual(lu.kind, d.type === 'avoir' ? 'avoir' : 'facture');
+    if (d.type === 'avoir' && d.creditOfNumber) assert.strictEqual(lu.refFacture, d.creditOfNumber);
+    assert.strictEqual(lu.totalHT, t0.netHT, d.number + ' : HT');
+    assert.strictEqual(lu.totalTTC, t0.totalTTC, d.number + ' : TTC');
+    assert.strictEqual(lu.fees, t0.stamp, d.number + ' : timbre');
+    // Les lignes proposées refont le HT : c'est ce que l'achat comptera.
+    const refait = C.round3(lu.lines.reduce((s, x) => s + C.round3(x.qty * x.unitPrice), 0));
+    assert.ok(Math.abs(refait - t0.netHT) <= 0.0015, `${d.number} : les lignes refont ${refait} pour ${t0.netHT}`);
+    // Une facture juste ne déclenche aucune remarque de recomptage.
+    assert.deepStrictEqual(l.remarques.filter(x => !/signé|en EUR|en USD|AVOIR|taux de change/.test(x)), [], d.number);
+  }
+  assert.ok(n > 250, 'l\'exemple ne donne que ' + n + ' fichiers');
+});
+
+t('TEIF lu : une facture calculée à la main — remise, deux taux, timbre, reconnue comme adressée à nous', () => {
+  const d = facture({ discountRate: 10, lines: [
+    { label: 'Pose de parquet', qty: 12.5, unitPrice: 38.5, vatRate: 19, unit: 'm²' },
+    { label: 'Plinthes', qty: 3, unitPrice: 20, vatRate: 7 }] });
+  const r = T.teifXml(d, client(), societe());
+  const l = T.lireTeif(r.xml, nous);
+  assert.ok(l.ok);
+  // 481,250 + 60 = 541,250 HT brut ; remise 10 % : 487,125 HT. TVA : 433,125 × 19 % = 82,294 ; 54 × 7 % = 3,78.
+  assert.strictEqual(l.lecture.totalHT, 487.125);
+  assert.strictEqual(l.lecture.vatByRate[19].base, 433.125);
+  assert.strictEqual(l.lecture.vatByRate[7].vat, 3.78);
+  assert.strictEqual(l.lecture.totalTTC, 487.125 + 82.294 + 3.78 + 1);
+  assert.strictEqual(l.lecture.fees, 1);
+  assert.strictEqual(l.lecture.supplier, 'Menuiserie Essai SARL');
+  // Le fichier l'écrit compacté ; la fiche du fournisseur le reçoit tel qu'on le lit sur une facture.
+  assert.strictEqual(l.lecture.matricule, '1234567A/A/M/000', 'le matricule lu garde sa forme compactée, que personne ne reconnaît');
+  assert.strictEqual(T.mfLisible('1234567AAM000'), '1234567A/A/M/000');
+  assert.strictEqual(T.mfLisible('FR12345678901'), 'FR12345678901', 'ce qui n\'est pas un matricule tunisien reste tel quel');
+  assert.strictEqual(T.mfLisible('09876543'), '09876543', 'une carte d\'identité reste telle quelle');
+  assert.strictEqual(l.lecture.fournisseur.rc, 'B12345');
+  assert.strictEqual(l.lecture.fournisseur.email, 'contact@essai.tn');
+  assert.deepStrictEqual(l.remarques.filter(x => !/signé/.test(x)), [], 'la facture est adressée à nous : ' + l.remarques.join(' | '));
+  // Adressée à un autre matricule : on le dit, en nommant l'acheteur.
+  const autre = T.lireTeif(r.xml, { matricule: '7654321B/A/M/000' });
+  assert.ok(autre.remarques.some(x => /pas à ta société/.test(x) && /Clinique Les Jasmins/.test(x)));
+});
+
+t('TEIF lu : un montant faux sur la facture se DIT (recomptage), il ne passe pas en silence', () => {
+  const r = T.teifXml(facture(), client(), societe());
+  // 481,25 HT à 19 % = 91,438 de TVA ; on écrit 91,500 dans le bloc de taxes.
+  const fausse = r.xml.replace(/(<AmountDetails>\s*<Moa [^>]*amountTypeCode="I-178">\s*<Amount [^>]*>)91\.438(<)/, '$191.500$2');
+  assert.notStrictEqual(fausse, r.xml, 'le montant de TVA n\'a pas été trouvé dans le fichier');
+  const l = T.lireTeif(fausse, nous);
+  assert.ok(l.remarques.some(x => /La TVA à 19 %/.test(x)), l.remarques.join(' | '));
+  assert.ok(l.remarques.some(x => /annonce .* TTC/.test(x)), 'le TTC ne se recompte pas');
+});
+
+t('TEIF lu : un fichier qui n\'est pas une facture électronique est refusé avec sa raison, jamais lu à moitié', () => {
+  assert.match(T.lireTeif('<?xml version="1.0"?><Facture><x/></Facture>').motif, /pas une facture électronique TEIF/);
+  assert.match(T.lireTeif('<TEIF><InvoiceBody><Bgm>').motif, /tronqué/);
+  assert.match(T.lireTeif('<!DOCTYPE x [<!ENTITY a "b">]><TEIF/>').motif, /DOCTYPE/);
+  assert.match(T.lireTeif('ceci n\'est pas du xml < du tout').motif, /bien formé/);
+  assert.match(T.lireTeif('<TEIF></TEIF>').motif, /corps/);
+  // Les entités du XML et un bloc CDATA se lisent ; les préfixes de nom (ds:) sont ignorés.
+  const a = T.analyserXml('<a x="1 &amp; 2"><b>L&apos;&#233;t&#xE9;</b><![CDATA[<brut>]]><ds:c/></a>');
+  assert.ok(a.ok);
+  assert.strictEqual(a.racine.attrs.x, '1 & 2');
+  assert.strictEqual(a.racine.enfants[0].texte, 'L\'été');
+  assert.strictEqual(a.racine.texte, '<brut>');
+  assert.strictEqual(a.racine.enfants[1].nom, 'c');
+});
+
+t('TEIF lu : la facture validée par la TTN (signée, avec sa référence) ne réclame plus rien', () => {
+  const r = T.teifXml(facture(), client(), societe());
+  const nonSigne = T.lireTeif(r.xml, nous);
+  assert.ok(nonSigne.remarques.some(x => /pas signé/.test(x)));
+  const valide = r.xml.replace('</TEIF>', '<RefTtnVal>TTN-2026-000123</RefTtnVal><ds:Signature xmlns:ds="http://www.w3.org/2000/09/xmldsig#"><ds:SignatureValue>abc</ds:SignatureValue></ds:Signature></TEIF>');
+  const l = T.lireTeif(valide, nous);
+  assert.ok(l.lecture.signe);
+  assert.strictEqual(l.lecture.refTtn, 'TTN-2026-000123');
+  assert.ok(!l.remarques.some(x => /pas signé/.test(x)));
+});
+
+t('TEIF lu : le fournisseur se reconnaît à son matricule écrit avec ou sans séparateurs, puis devient un achat', () => {
+  const r = T.teifXml(facture(), client(), societe());
+  const l = T.lireTeif(r.xml, nous);
+  const data = { suppliers: [{ id: 's9', name: 'Autre nom commercial', matricule: '1234567 A/A/M/000' }], company: { currency: 'DT' } };
+  const p = C.ocrToPurchase(l.lecture, data, '2026-09-27');
+  assert.strictEqual(p.head.supplierId, 's9', 'le matricule compacté n\'a pas reconnu le fournisseur');
+  assert.strictEqual(p.head.number, 'FAC-2026-014');
+  assert.strictEqual(p.head.date, '2026-03-04');
+  assert.strictEqual(p.head.dueDate, '2026-04-03');
+  assert.strictEqual(p.head.fees, 1);
+  assert.strictEqual(p.head.kind, 'facture');
+  assert.strictEqual(p.computedHT, 481.25);
+  assert.deepStrictEqual(p.warnings, []);
+  // Un avoir reste un avoir.
+  const av = T.teifXml(Object.assign(facture(), { type: 'avoir', number: 'AVO-2026-002', creditOfNumber: 'FAC-2026-014', applyStamp: false }), client(), societe());
+  const pa = C.ocrToPurchase(T.lireTeif(av.xml, nous).lecture, data, '2026-09-27');
+  assert.strictEqual(pa.head.kind, 'avoir');
+  assert.strictEqual(pa.head.refFacture, 'FAC-2026-014');
+});
+
+t('TEIF lu : le geste vit dans l\'éditeur d\'achat, lit sur le poste, et passe par la relecture', () => {
+  const brut = lireSource('src', 'renderer', 'app.js');
+  const app = brut.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
+  assert.match(app, /id="teif-lire">Lire une e-facture…<\/button>\$\{info\('buy\.teif'\)\}/);
+  // Seulement sur une pièce NEUVE : relue par-dessus une pièce saisie, la lecture la remplacerait.
+  assert.match(app, /\$\{clos \|\| !isNew \? '' : `<button class="btn" id="teif-lire">/, 'la lecture est proposée sur une pièce déjà saisie');
+  const h = app.slice(app.indexOf("$('#teif-lire').onclick"), app.indexOf("$('#photo').onclick"));
+  assert.ok(h.length > 200 && h.length < 2000, 'tranche inattendue : ' + h.length);
+  assert.match(h, /filtre: 'xml'/, 'le sélecteur ne propose pas les fichiers XML');
+  assert.match(h, /SkanTeif\.lireTeif\(r\.texte, company\(\)\)/);
+  assert.match(h, /ocrReviewForm\(l\.lecture, fichier, [\s\S]{0,120}source: 'teif'/, 'la lecture ne passe pas par la relecture');
+  assert.ok(!/bridge\.ocrRead|fetch\(/.test(h), 'la lecture d\'un XML ne doit rien envoyer');
+  // Le processus principal rend le chemin, pour joindre le fichier à l'achat comme justificatif.
+  const main = lireSource('src', 'main.js');
+  const m = main.slice(main.indexOf("ipcMain.handle('file:openText'"), main.indexOf("ipcMain.handle('shell:open'"));
+  assert.match(m, /o\.filtre === 'xml'\) return Object\.assign\(\{ nom, chemin: p \}/);
+});
 };

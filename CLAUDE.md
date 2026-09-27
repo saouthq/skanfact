@@ -8686,6 +8686,28 @@ Règles apprises, à ne pas recasser :
 - Reste à faire (A-FAIRE § 0.4) : les certificats de retenue TEJ (le XSD officiel n'est publié que
   sur jibaya.tn), le retour de la TTN (référence et QR sur le PDF), l'export par lot.
 
+**Et la lecture d'une facture TEIF reçue (H1, l'étude Hesabi, `ETUDE-HESABI.md`)** : `analyserXml`
+(un analyseur minimal : aucun DOCTYPE, les cinq entités et les références numériques, CDATA,
+préfixes retirés, un fichier mal formé est refusé plutôt que lu à moitié) et `lireTeif(xml,
+company)`, qui rend la forme qu'`ocrToPurchase` attend — la même relecture que la photo, et rien
+n'entre avant « Utiliser ces informations ».
+
+- **Un XML se lit, il ne se devine pas** : Hesabi l'importe « par IA », nous le lisons exactement,
+  hors ligne. Et chaque chiffre se **recompte** (lignes, TVA par taux au millime et demi, HT + TVA +
+  timbre = TTC) : une facture juste tombe au millime, un écart se dit — c'est la règle de l'export
+  (« une pièce légale se construit sur ses chiffres ») vue de l'autre côté.
+- **Un matricule se compare compacté, et s'affiche lisible** : le fichier l'écrit en treize
+  caractères (le schéma l'exige), la fiche du fournisseur le reçoit en `1234567A/A/M/000`
+  (`mfLisible`) — « 1472411DAM000 » sur une fiche, personne ne le reconnaît. `ocrToPurchase`
+  compare par `[^0-9A-Z]` retiré : un fournisseur saisi avec des barres est retrouvé.
+- **Le message dit ce qui a été joint** : « photo jointe » sur un fichier XML était faux (le toast
+  de la photo, repris tel quel).
+- **Un bouton neuf dans un en-tête se mesure avec le retour le plus long** : venu d'un achat, le
+  retour dit « ← Achat BS-2026-0418 », et « Lire une facture électronique… » faisait passer l'en-tête
+  sur deux rangées — le clic suivant tombait à côté (H-E1, une fois de plus). Libellé raccourci
+  (« Lire une e-facture… »), et le bouton n'existe que sur un achat NEUF : relu par-dessus une pièce
+  saisie, il la remplacerait.
+
 ## Pistes pour la suite (non demandées)
 
 - Séparation des installateurs arm64 / x64 pour diviser par deux les 222 Mo du dmg universel.

@@ -26,6 +26,16 @@ Publiée en **bêta** : c'est un format de fichier officiel.
   comptable : qui est tenu à la facture électronique, et depuis quand.
 - Depuis le jeu d'exemple, SkanFact demande avant de fabriquer le fichier : la société, les clients
   et les montants y sont inventés.
+- **Recevoir la facture électronique d'un fournisseur** : dans un achat neuf, « Lire une
+  e-facture… » ouvre le fichier XML (TEIF) que le fournisseur ou El Fatoora t'a envoyé. SkanFact en
+  lit le fournisseur (reconnu par son matricule, écrit avec ou sans barres), le numéro, les dates,
+  l'objet, chaque ligne, la TVA par taux et le timbre — **sur ton ordinateur, sans rien envoyer et
+  sans rien deviner** : un XML se lit exactement. Chaque montant est **recompté** (lignes, TVA par
+  taux, total TTC) et un écart se dit ; une facture adressée à une autre société, un fichier non
+  signé par la TTN, une devise étrangère ou un avoir le disent aussi. Tu relis, puis l'achat se
+  remplit et le fichier est joint comme justificatif. Un fournisseur inconnu se crée d'un clic,
+  avec son matricule, son adresse, son téléphone et son email lus sur la facture. Un fichier qui
+  n'est pas une facture électronique est refusé avec sa raison.
 
 ## 10.14.1-beta.1 — 26/09/2026
 
