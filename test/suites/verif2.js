@@ -606,7 +606,11 @@ module.exports = async ({ t, ta, assert, lireSource }) => {
     assert.strictEqual(d.documents.find(x => x.id === 'b').regimeTva, undefined, 'un brouillon ne se fige pas');
     assert.strictEqual(d.documents.find(x => x.id === 'c').regimeTva, undefined);
     // L'émission le fige, et une pièce tirée d'une émise ne l'emporte pas.
-    assert.ok(/doc\.regimeTva = C\.regimeOf\(company\(\)\)\.id;\s*\n\s*doc\.status = isInv/.test(app), 'l\'émission ne fige pas le régime');
+    // La RÈGLE : dans `issue()`, le régime se fige AVANT le statut émis — quelle que soit la ligne qui
+    // les sépare (10.15.0 : la mention d'exonération de retenue s'y fige aussi).
+    const emettre = app.slice(app.indexOf('function issue()'), app.indexOf('function issue()') + 3000);
+    const iFige = emettre.indexOf('doc.regimeTva = C.regimeOf(company()).id;'), iStatut = emettre.indexOf('doc.status = isInv');
+    assert.ok(iFige > 0 && iStatut > iFige, 'l\'émission ne fige pas le régime');
     assert.ok(!('regimeTva' in core.convertDoc({ ...emise, id: 'x', type: 'proforma' }, 'facture', forfait, '2026-09-01')), 'une conversion emporte le régime figé');
     assert.ok(/issuedTs: undefined, regimeTva: undefined,/.test(app), '« Dupliquer » emporte le régime figé');
   });

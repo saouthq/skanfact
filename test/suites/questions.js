@@ -196,7 +196,10 @@ module.exports = ({ t, assert }) => {
     assert.strictEqual(f('<b>/'), '&lt;b>/<wbr>', 'échappé AVANT de poser les coupures');
     assert.strictEqual(f(undefined), '');
     assert.ok(/key: 'mf', cls: 'mf', label: 'MF \/ CIN', get: r => `\$\{mfCoupable\(r\.c\.matricule\)\}/.test(app), 'la liste des clients coupe le matricule');
-    assert.ok(/key: 'mf', cls: 'mf', label: 'Matricule', get: r => `\$\{mfCoupable\(r\.s\.matricule\)\}/.test(app), 'la liste des fournisseurs aussi');
+    // La RÈGLE, pas la forme (10.15.0) : la colonne gagne l'exonération de retenue à côté du matricule,
+    // et l'assertion qui recopiait sa première ligne tombait sur du code juste.
+    const colSup = (app.match(/key: 'mf', cls: 'mf', label: 'Matricule', get: [^\n]+/) || [''])[0];
+    assert.ok(/mfCoupable\(r\.s\.matricule\)/.test(colSup), 'la liste des fournisseurs aussi');
     // … mais seulement quand la place manque : sur un écran large, une ligne.
     const css = fs.readFileSync(path.join(__dirname, '../../src/renderer/style.css'), 'utf8');
     assert.ok(/@media \(min-width: 1340px\) \{ td\.mf wbr \{ display: none; \} \}/.test(css), 'au-dessus de 1340 px le matricule tient sur une ligne (nowrap ne suffit pas : Chrome coupe à un <wbr>)');

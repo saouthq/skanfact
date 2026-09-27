@@ -2753,6 +2753,131 @@
       .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
   }
 
+  // ---------- attestations d'exonération de retenue à la source (10.15.0, H7) ----------
+  // Un tiers qui détient une attestation d'exonération (ou de non-soumission) de la retenue à la
+  // source la présente à qui le paie : tant qu'elle est valable, on ne lui retient rien. Deux côtés :
+  //   • un FOURNISSEUR exonéré — l'achat propose 0 % tant que l'attestation couvre sa date ;
+  //   • L'ENTREPRISE elle-même — ses factures portent la mention, pour que le client ne retienne rien.
+  // Une attestation a une fin (`au`) : sans elle, on ne saurait jamais quand recommencer à retenir,
+  // et c'est précisément l'oubli qu'un contrôle relève. Chacune se garde (`exonerationsRS[]`) : une
+  // attestation expirée dit POURQUOI un achat de l'an dernier ne portait aucune retenue.
+  // SkanFact ne décide jamais seul : il propose le taux et prévient d'un écart, sans rien réécrire —
+  // un taux saisi sur une pièce reste celui de la pièce (règle 7.1.x). À VÉRIFIER avec le comptable :
+  // la forme de l'attestation et ce qu'elle couvre (tous les paiements, ou certains seulement).
+  const JOUR_ISO = /^\d{4}-\d{2}-\d{2}$/;
+  function attestationsRS(tiers) {
+    return ((tiers && tiers.exonerationsRS) || [])
+      .filter(a => a && JOUR_ISO.test(a.au || '') && (!a.du || JOUR_ISO.test(a.du)))
+      .slice().sort((a, b) => a.au.localeCompare(b.au) || (a.du || '').localeCompare(b.du || ''));
+  }
+  // L'attestation qui couvre ce jour, sinon null. Plusieurs peuvent se chevaucher (un renouvellement
+  // reçu avant la fin du précédent) : on rend celle qui va le plus loin.
+  function exonerationRS(tiers, iso) {
+    if (!iso || !JOUR_ISO.test(iso)) return null;
+    const l = attestationsRS(tiers).filter(a => (!a.du || a.du <= iso) && iso <= a.au);
+    return l.length ? l[l.length - 1] : null;
+  }
+  function derniereAttestationRS(tiers) {
+    const l = attestationsRS(tiers);
+    return l.length ? l[l.length - 1] : null;
+  }
+  // Le taux à PROPOSER sur un achat de ce fournisseur daté de `iso` : 0 quand une attestation le
+  // couvre, sinon celui de sa fiche. Un taux proposé, jamais imposé : la pièce garde le sien.
+  function tauxRetenueFournisseur(sup, iso) {
+    if (!sup) return 0;
+    if (exonerationRS(sup, iso)) return 0;
+    return Number(sup.withholdingRate) || 0;
+  }
+  // L'état d'une attestation vu d'un jour, pour une phrase et sa couleur : `valide`, `bientot`
+  // (moins de 30 jours), `expiree`, ou null sans aucune attestation.
+  function etatExonerationRS(tiers, today) {
+    const d = derniereAttestationRS(tiers);
+    if (!d) return null;
+    const jour = today || today();
+    const couvre = exonerationRS(tiers, jour);
+    // Une attestation qui finit bientôt n'est plus à réclamer quand la SUIVANTE est déjà saisie : on
+    // l'a reçue avant la fin de la première, c'est exactement ce qu'on voulait.
+    if (couvre) return { etat: daysBetween(jour, couvre.au) <= 30 && d.au <= couvre.au ? 'bientot' : 'valide', attestation: couvre, jours: daysBetween(jour, couvre.au) };
+    if (d.au < jour) return { etat: 'expiree', attestation: d, jours: -daysBetween(d.au, jour) };
+    return { etat: 'future', attestation: d, jours: daysBetween(jour, d.du || d.au) };
+  }
+  // Les attestations à renouveler : celles qui finissent dans les 30 jours, et celles finies depuis
+  // moins de 60 jours sans relève — au-delà, la réclamer ne sert plus à rien, l'écart est déjà dans
+  // les pièces. Un fournisseur qui n'a plus aucun achat depuis un an ne réclame rien : on ne court
+  // pas après l'attestation de quelqu'un chez qui on n'achète plus.
+  function exonerationsAFaire(data, company, today) {
+    const jour = today || today();
+    const out = [];
+    const juger = (tiers, qui) => {
+      const e = etatExonerationRS(tiers, jour);
+      if (!e) return;
+      if (e.etat === 'bientot') out.push({ qui, id: tiers.id || '', nom: tiers.name || '', attestation: e.attestation, etat: 'bientot', au: e.attestation.au, jours: e.jours });
+      else if (e.etat === 'expiree' && e.jours >= -60) out.push({ qui, id: tiers.id || '', nom: tiers.name || '', attestation: e.attestation, etat: 'expiree', au: e.attestation.au, jours: e.jours });
+    };
+    if (company) juger(company, 'entreprise');
+    const unAn = addDays(jour, -365);
+    (data.suppliers || []).forEach(s => {
+      const actif = (data.purchases || []).some(p => p.supplierId === s.id && (p.date || '') >= unAn);
+      if (actif) juger(s, 'fournisseur');
+    });
+    return out.sort((a, b) => a.au.localeCompare(b.au));
+  }
+  // Ce que l'écran d'un achat (ou d'un règlement, à sa date) dit de l'exonération du fournisseur :
+  // `{ ton: 'ok' | 'warn', texte }`, ou null s'il n'y a rien à dire. Il ne change aucun taux — un taux
+  // saisi reste celui de la pièce — il prévient d'un écart dans les DEUX sens : une retenue sur un
+  // fournisseur exonéré, et une attestation expirée alors que la pièce ne retient plus rien.
+  function noteExonerationRS(sup, iso, taux) {
+    if (!sup || !iso) return null;
+    const a = exonerationRS(sup, iso);
+    const n = a && a.numero ? ` (attestation n°\u00a0${a.numero})` : '';
+    if (a) {
+      return Number(taux) > 0
+        ? { ton: 'warn', texte: `Ce fournisseur est exonéré de retenue jusqu'au ${fmtDate(a.au)}${n} : vérifie ce taux, aucune retenue n'est à opérer.` }
+        : { ton: 'ok', texte: `Aucune retenue : fournisseur exonéré jusqu'au ${fmtDate(a.au)}${n}.` };
+    }
+    const fiche = Number(sup.withholdingRate) || 0;
+    const passee = attestationsRS(sup).filter(x => x.au < iso).pop();
+    if (passee && fiche > 0 && !(Number(taux) > 0)) {
+      return { ton: 'warn', texte: `L'attestation d'exonération de ce fournisseur a expiré le ${fmtDate(passee.au)} : sa retenue de ${String(fiche).replace('.', ',')} % s'applique de nouveau, sauf s'il t'en a remis une autre.` };
+    }
+    return null;
+  }
+  // Ce que les trois champs d'une fiche font de la liste (pur : la fiche fournisseur et celle de
+  // l'entreprise l'appellent). La fiche montre la DERNIÈRE attestation :
+  //   • un numéro neuf ajoute une attestation — l'ancienne reste, elle explique les pièces d'avant ;
+  //   • le même numéro (ou aucun) corrige la dernière — une date mal tapée ne fait pas un doublon ;
+  //   • les trois champs vidés retirent la dernière — c'est le seul geste pour défaire une saisie.
+  // Rend `{ liste }`, ou le refus `{ champ, motif }` : une attestation sans fin n'en est pas une.
+  function appliquerAttestationRS(liste, saisie) {
+    const numero = String((saisie && saisie.numero) || '').trim();
+    const du = (saisie && saisie.du) || '', au = (saisie && saisie.au) || '';
+    const avant = Array.isArray(liste) ? liste.filter(Boolean) : [];
+    const derniere = derniereAttestationRS({ exonerationsRS: avant });
+    if (!numero && !du && !au) return { liste: derniere ? avant.filter(x => x !== derniere) : avant };
+    if (!JOUR_ISO.test(au)) return { champ: 'au', motif: 'Donne la date de fin de validité de l\'attestation : sans elle, SkanFact ne saurait pas quand reprendre la retenue.' };
+    if (du && !JOUR_ISO.test(du)) return { champ: 'du', motif: 'La date de début n\'est pas lisible.' };
+    if (du && du > au) return { champ: 'du', motif: 'L\'attestation commence après sa fin : vérifie les deux dates.' };
+    if (derniere && (!numero || !derniere.numero || derniere.numero === numero)) {
+      return { liste: avant.map(x => x === derniere ? Object.assign({}, x, { numero: numero || x.numero || '', du, au }) : x) };
+    }
+    return { liste: avant.concat([{ id: uid(), numero, du, au }]) };
+  }
+  // La mention que porte une FACTURE de l'entreprise exonérée : seulement si l'attestation couvre la
+  // date de la pièce ET que la pièce ne porte aucune retenue — une mention « exonéré » au-dessus d'une
+  // ligne « Retenue à la source 1 % » serait une pièce qui se contredit (10.12.0, H-E23).
+  function mentionExonerationRS(doc, company) {
+    if (!doc || doc.type !== 'facture') return null;
+    if (Number(doc.withholdingRate) > 0) return null;
+    // Une pièce émise garde la mention de son émission (règle 7.1.x) : changer d'attestation ne
+    // réécrit pas une facture déjà envoyée.
+    if (doc.exonerationRS !== undefined) return doc.exonerationRS || null;
+    // Une facture émise avant la 10.15.0 n'a rien figé : elle est partie sans mention, et une
+    // attestation saisie aujourd'hui ne doit pas la lui ajouter après coup.
+    if (doc.number && doc.status && doc.status !== 'brouillon') return null;
+    const a = exonerationRS(company, doc.date);
+    return a ? { numero: a.numero || '', au: a.au } : null;
+  }
+
   // ---------- marges et rentabilité (3.4.0) ----------
   // Le chiffre d'affaires ne dit rien de la santé d'une entreprise : vendre 100 000 DT en achetant
   // pour 95 000 DT, c'est travailler pour rien. Ce bloc répond à « qu'est-ce qui me reste ? ».
@@ -7225,7 +7350,10 @@
     // L'instant d'émission appartient à la pièce émise : une pièce tirée d'elle naît brouillon.
     'issuedTs', 'regimeTva',
     // Un ticket de caisse (10.15.0) : une pièce tirée de lui est une pièce ordinaire, pas un second ticket.
-    'ticket', 'caisse'];
+    'ticket', 'caisse',
+    // La mention d'exonération de retenue se fige à l'émission (10.15.0, H7) : une pièce tirée d'une
+    // facture émise se juge à SA date, pas avec l'attestation de l'autre.
+    'exonerationRS'];
 
   // La retenue à la source proposée pour un client : la sienne s'il en a une (même 0 %), sinon celle
   // de la société. UNE règle pour l'éditeur (`clientWithholding`) et pour les conversions.
@@ -8188,6 +8316,26 @@
       detail: `${fmt(round3(wOut.reduce((s, x) => s + x.amount, 0)))} retenus à tes fournisseurs. Sans attestation de ta part, ils ne peuvent pas la déduire.`,
       count: wOut.length, route: '#/achats', docs: []
     });
+    // Les attestations d'exonération de retenue qui finissent (10.15.0, H7) : la tienne — sans elle,
+    // tes clients recommencent à te retenir — et celles de tes fournisseurs — sans elles, c'est toi
+    // qui dois recommencer à leur retenir. Une ligne pour chaque côté : le geste n'est pas le même.
+    const exos = exonerationsAFaire(data, company, t);
+    const exoCo = exos.find(x => x.qui === 'entreprise');
+    if (exoCo) out.push({
+      id: 'exoneration-entreprise', level: 'warn',
+      label: exoCo.etat === 'expiree' ? 'Ton attestation d\'exonération de retenue a expiré' : 'Ton attestation d\'exonération de retenue finit bientôt',
+      detail: exoCo.etat === 'expiree'
+        ? `Elle a pris fin le ${fmtDate(exoCo.au)} : tes factures ne portent plus la mention, et tes clients te retiennent de nouveau. Demande la suivante, puis saisis-la.`
+        : `Elle finit le ${fmtDate(exoCo.au)}. Demande la suivante avant : sans elle, tes clients recommencent à te retenir.`,
+      count: 1, route: '#/parametres', docs: []
+    });
+    const exoSup = exos.filter(x => x.qui === 'fournisseur');
+    if (exoSup.length) out.push({
+      id: 'exonerations-fournisseurs', level: 'info',
+      label: `${exoSup.length} attestation${exoSup.length > 1 ? 's' : ''} d'exonération de fournisseur à renouveler`,
+      detail: exoSup.map(x => `${x.nom || 'Fournisseur'} (${x.etat === 'expiree' ? 'expirée le' : 'finit le'} ${fmtDate(x.au)})`).join(', ') + ' : sans la suivante, la retenue de sa fiche s\'applique de nouveau à ses règlements.',
+      count: exoSup.length, route: '#/fournisseurs', docs: []
+    });
 
     const soon = (data.documents || []).filter(d => d.type === 'facture' && ['envoyée', 'partielle'].includes(effectiveStatus(d, data, company, t))
       && d.dueDate && d.dueDate >= t && daysBetween(t, d.dueDate) <= 7);
@@ -8912,7 +9060,7 @@
       deposit: 'Acompte', depositOf: '% du devis', depositAmountOf: 'TTC du devis', balance: 'Solde', balanceOf: 'du devis', afterQuote: 'Suite au devis', reference: 'Référence', cancels: 'Annule / rectifie',
       billedTo: 'Facturé à', preparedFor: 'Préparé pour', client: 'Client', subject: 'Objet', designation: 'Désignation', qty: 'Qté', unitPrice: 'Prix unit. HT', vat: 'TVA', lineTotal: 'Total HT',
       payment: 'Règlement', bank: 'Banque', rib: 'RIB', motif: 'Motif', creditText: (n, nom) => `Cet avoir vient en déduction de ${nom || 'la facture'} ${n}`, creditFreeText: 'Cet avoir n\'est rattaché à aucune facture : il est à valoir sur une prochaine facture, ou remboursé', conditions: 'Conditions', validText: d => `Devis valable jusqu'au ${d}.`,
-      subtotal: 'Total HT', discount: 'Remise', netHT: 'Net HT', on: 'sur', stamp: 'Timbre fiscal', totalTTC: 'Total TTC', withholding: 'Retenue à la source', netToPay: 'Net à payer', creditAmount: 'Montant de l\'avoir',
+      subtotal: 'Total HT', discount: 'Remise', netHT: 'Net HT', on: 'sur', stamp: 'Timbre fiscal', totalTTC: 'Total TTC', withholding: 'Retenue à la source', exoRS: (n, d) => `Exonéré de la retenue à la source${n ? ` — attestation n°\u00a0${n}` : ''}, valable jusqu'au ${d}.`, netToPay: 'Net à payer', creditAmount: 'Montant de l\'avoir',
       wordsInvoice: 'Arrêtée la présente facture à la somme de', wordsFees: 'Arrêtée la présente note d\'honoraires à la somme de', wordsCredit: 'Arrêté le présent avoir à la somme de', wordsQuote: 'Arrêté le présent devis à la somme de', wordsDoc: 'Arrêté le présent document à la somme de',
       approve: 'Bon pour accord', approveSub: 'Date, signature et cachet du client', stampSign: 'Cachet et signature', provider: 'Le prestataire', draft: 'Brouillon', paid: 'Payée', cancelled: 'Annulée', mf: 'MF', mfCin: 'MF / CIN', rate: 'Taux',
       proforma: 'Facture proforma', commande: 'Bon de commande', livraison: 'Bon de livraison', contrat: 'Contrat de prestation',
@@ -8929,7 +9077,7 @@
       deposit: 'Deposit', depositOf: '% of quote', depositAmountOf: 'incl. VAT, of quote', balance: 'Balance', balanceOf: 'of quote', afterQuote: 'Following quote', reference: 'Reference', cancels: 'Cancels / corrects',
       billedTo: 'Billed to', preparedFor: 'Prepared for', client: 'Client', subject: 'Subject', designation: 'Description', qty: 'Qty', unitPrice: 'Unit price', vat: 'VAT', lineTotal: 'Total excl. VAT',
       payment: 'Payment', bank: 'Bank', rib: 'Account (RIB)', motif: 'Reference', creditText: (n, nom) => `This credit note is deducted from ${nom || 'invoice'} ${n}`, creditFreeText: 'This credit note is not attached to any invoice: it may be applied to a future invoice, or refunded', conditions: 'Terms', validText: d => `This quote is valid until ${d}.`,
-      subtotal: 'Subtotal excl. VAT', discount: 'Discount', netHT: 'Net excl. VAT', on: 'on', stamp: 'Stamp duty', totalTTC: 'Total incl. VAT', withholding: 'Withholding tax', netToPay: 'Amount due', creditAmount: 'Credit amount',
+      subtotal: 'Subtotal excl. VAT', discount: 'Discount', netHT: 'Net excl. VAT', on: 'on', stamp: 'Stamp duty', totalTTC: 'Total incl. VAT', withholding: 'Withholding tax', exoRS: (n, d) => `Exempt from withholding tax${n ? ` — certificate no.\u00a0${n}` : ''}, valid until ${d}.`, netToPay: 'Amount due', creditAmount: 'Credit amount',
       wordsInvoice: 'Total amount in words:', wordsFees: 'Total amount in words:', wordsCredit: 'Total amount in words:', wordsQuote: 'Total amount in words:', wordsDoc: 'Total amount in words:',
       approve: 'Approved — signature', approveSub: 'Date, signature and stamp of the client', stampSign: 'Stamp and signature', provider: 'Provider', draft: 'Draft', paid: 'Paid', cancelled: 'Cancelled', mf: 'Tax ID', mfCin: 'Tax ID', rate: 'Rate',
       proforma: 'Proforma invoice', commande: 'Purchase order', livraison: 'Delivery note', contrat: 'Service agreement',
@@ -8979,6 +9127,8 @@
     const coTva = regimePourPiece(doc, company);
     const showVat = assujettiTVA(coTva) || t.totalVAT > 0;
     const mentionSansTva = showVat ? '' : mentionTVA(coTva, lang);
+    // L'exonération de retenue de l'entreprise (10.15.0, H7), sur une facture qui n'en porte aucune.
+    const exoRS = mentionExonerationRS(doc, company);
     const pct = n => String(n).replace('.', lang === 'en' ? '.' : ',');
     const foreign = cur !== (company.currency || 'DT') && Number(doc.exchangeRate) > 0;
 
@@ -9270,6 +9420,7 @@
           ${doc.number ? `<div class="row"><span>${L.motif}</span><span>${escapeHtml(doc.number)}</span></div>` : ''}
           ${paymentTerms ? `<div class="terms">${nl2br(paymentTerms)}</div>` : ''}
         </div>` : ''}
+        ${exoRS ? `<div class="info"><span class="k">${L.withholding}</span><div class="terms">${L.exoRS(escapeHtml(exoRS.numero || ''), fmtDate(exoRS.au))}</div></div>` : ''}
         ${isCredit ? `
         <div class="info"><span class="k">${L.avoir}</span>
           ${doc.creditOfNumber ? L.creditText(escapeHtml(doc.creditOfNumber), estLiberal(company) ? (lang === 'en' ? 'fee note' : 'la note d\'honoraires') : '') : L.creditFreeText}${doc.creditReason ? ' — ' + escapeHtml(doc.creditReason) : ''}.
@@ -9616,6 +9767,29 @@
   }
   // Comprend ce que l'utilisateur tape : 12/03/2026, 12-3-26, 12032026, 12/03 (année en cours),
   // 12 (mois en cours), ou une date ISO collée. Renvoie '' si la date n'existe pas (31/02).
+  // Le confort de frappe d'un champ date (10.15.0) : les barres s'écrivent toutes seules sur une suite
+  // de chiffres (« 12032026 » → 12/03/2026), et celles qu'on TAPE se respectent. L'ancien masque
+  // jetait les barres tapées et redécoupait les chiffres deux par deux : « 1/1/2026 », la façon la
+  // plus naturelle d'écrire le premier janvier, devenait « 11/20/26 », puis « Date incomprise ». Vu à
+  // la souris en saisissant une attestation ; un parcours qui pose la valeur ne passe jamais ici.
+  // Rien d'autre que des chiffres et des barres : on ne touche pas (le départ du champ jugera).
+  function masqueDate(v) {
+    const txt = String(v == null ? '' : v);
+    if (/[^\d/]/.test(txt)) return txt;
+    const morceaux = txt.split('/');
+    const segs = [];
+    let cur = '';
+    morceaux.forEach((m, i) => {
+      for (const c of m) {
+        if (segs.length < 2 && cur.length === 2) { segs.push(cur); cur = ''; }
+        cur += c;
+      }
+      // Une barre tapée ferme le jour ou le mois en cours, même d'un seul chiffre.
+      if (i < morceaux.length - 1 && segs.length < 2) { segs.push(cur); cur = ''; }
+    });
+    if (segs.length === 2) cur = cur.slice(0, 4);
+    return segs.concat([cur]).join('/');
+  }
   function parseDateInput(text, todayIso) {
     const s = String(text == null ? '' : text).trim();
     if (!s) return '';
@@ -10415,7 +10589,7 @@
     SERIAL_STATUSES, serialStatusLabel, WARRANTY_CHOICES, serializedItems, warrantyEnd, serialView,
     serialList, availableSerials, clientFleet, warrantiesEnding, serialGap, serialGaps,
     mergeData, trackDeletion, MERGE_LISTS, LIST_LABELS, LIST_PLURIELS, compteListe, piecesLiees,
-    purchaseTotals, purchaseBalance, retenueDesReglements, retenueAOperer, retenueChrono, regularisationsRetenueAchats, retenueSubie, retenueASubir, regularisationsRetenueVentes, retenuesDeLaPeriode, attestationsARecevoir, purchaseStatus, achatDoublon, facturesDuDevis, payablesList, purchaseJournal, purchaseSummary, supplierSummary, withholdingsToIssue, supplierPayments,
+    purchaseTotals, purchaseBalance, retenueDesReglements, retenueAOperer, retenueChrono, regularisationsRetenueAchats, retenueSubie, retenueASubir, regularisationsRetenueVentes, retenuesDeLaPeriode, attestationsARecevoir, purchaseStatus, achatDoublon, facturesDuDevis, payablesList, purchaseJournal, purchaseSummary, supplierSummary, withholdingsToIssue, attestationsRS, exonerationRS, derniereAttestationRS, tauxRetenueFournisseur, etatExonerationRS, exonerationsAFaire, noteExonerationRS, masqueDate, appliquerAttestationRS, mentionExonerationRS, supplierPayments,
     periodBounds, issuedIn, salesTotals, revenueByMonth, topItems, clientMovement, AGING_BUCKETS, agedReceivables, releveClient, releveHtml, mailReleve, payerRanking, quoteFunnel, objectiveProgress,
     amountToWords, intToWords, intToWordsEn, documentHtml, fitToPage, paginate, pageCount,
     MODULES, PAGES, moduleById, pageById, pageTitle, moduleCount, moduleCounts, modulesRevenus, moduleOn, moduleWhy, navPages, familleNavOuverte, FAMILLES_OUVERTES_AU_DEBUT,

@@ -373,6 +373,11 @@
     'sup.email': { t: 'Email', d: 'Pour écrire à ce fournisseur : elle se lit sur sa fiche et dans la liste des fournisseurs. Elle ne s\'imprime sur aucune de tes pièces.' },
     'sup.address': { t: 'Adresse', d: 'Se lit sur sa fiche. Elle ne s\'imprime sur aucune de tes pièces.' },
     'sup.notes': { t: 'Notes internes', d: 'Ce qu\'il faut se rappeler de ce fournisseur — un contact, un délai de livraison, une remise négociée. Elles ne s\'impriment nulle part.' },
+    'sup.exoRS': { t: 'Attestation d\'exonération du fournisseur', d: 'Si ce fournisseur t\'a remis une attestation d\'exonération (ou de non-soumission) de retenue à la source, note-la ici. Tant qu\'elle est valable, un achat chez lui propose <b>0 %</b> de retenue, et SkanFact prévient si tu en saisis une quand même. Elle a une fin : « À faire » te rappelle de demander la suivante trente jours avant. Une nouvelle attestation (autre numéro) s\'ajoute, l\'ancienne reste pour expliquer les achats d\'avant. <em>À VÉRIFIER avec ton comptable.</em>' },
+    'co.exoRS': { t: 'Ton attestation d\'exonération', d: 'Si ton entreprise détient une attestation d\'exonération de retenue à la source, note-la ici. Tant qu\'elle court, tes factures <b>sans retenue</b> portent la mention « Exonéré de la retenue à la source », avec son numéro et sa date de fin — ton client sait qu\'il ne doit rien retenir. Une facture qui porte quand même une retenue est signalée avant l\'émission. La mention se fige à l\'émission : renouveler l\'attestation ne réécrit pas une facture déjà envoyée. <em>À VÉRIFIER avec ton comptable.</em>' },
+    'exo.numero': { t: 'Numéro de l\'attestation', d: 'Celui imprimé sur l\'attestation. Il s\'imprime dans la mention d\'exonération de tes factures. Un <b>autre</b> numéro ajoute une nouvelle attestation (l\'ancienne reste) ; le même numéro corrige la dernière. Vider les trois cases retire la dernière attestation.' },
+    'exo.du': { t: 'Valable à partir du', d: 'Le premier jour couvert par l\'attestation. Facultatif : vide, elle vaut depuis toujours jusqu\'à sa date de fin.' },
+    'exo.au': { t: 'Valable jusqu\'au', d: 'Le <b>dernier jour</b> couvert. Obligatoire dès qu\'une attestation est saisie : sans fin, SkanFact ne saurait pas quand la retenue reprend. Les pièces datées après cette date ne sont plus exonérées.' },
     'sup.withholding': { t: 'Retenue à la source à opérer', d: 'Quand tu paies certains prestataires (comptable, avocat, consultant), la loi te demande de <b>retenir</b> un pourcentage et de le reverser toi-même au fisc. Tu paies moins au fournisseur, et tu lui remets une attestation. Qui doit retenir et à quel taux : <em>À VÉRIFIER avec ton comptable.</em> Laisse « Aucune » dans le doute — et si son taux n\'est pas dans la liste, « Autre taux… » te laisse le saisir.' },
     'sup.total': { t: 'Acheté HT', d: 'Le total hors taxes de tout ce que tu as acheté chez ce fournisseur depuis le début, toutes années confondues.' },
     'sup.due': { t: 'Reste à payer', d: 'Ce que tu dois encore verser à ce fournisseur, tous achats confondus, <b>net</b> de ce que tu détiens chez lui : un avoir pas encore déduit d\'une facture, ou une facture payée plus que son montant. Si ses factures portent une retenue à la source, la carte la dit à côté : tu la garderas en payant pour la reverser à l\'État, et son compte la porte jusque-là. Quand il est en ta faveur, la carte le dit : c\'est à toi de le récupérer — en déduction de sa prochaine facture, ou par un remboursement. La part en retard est signalée : c\'est elle qui abîme une relation commerciale.' },
@@ -678,7 +683,14 @@
 <p>C'est celle qui surprend le plus. Certains clients — sociétés, administrations — ne te versent pas la totalité : ils gardent un pourcentage et le reversent au fisc <b>en ton nom</b>. Sur une facture de 1 190,000 DT toutes taxes, plus 1,000 DT de timbre, avec 1,5 % de retenue : le client garde 17,850 DT (1,5 % de 1 190,000, le timbre n'y entre pas) et tu reçois 1 173,150 DT.</p>
 <p><b>Ce n'est pas une perte</b>, à une condition : ton client doit te remettre une <b>attestation de retenue à la source</b>. Elle prouve que cet argent a été versé pour toi et te permet de le déduire de ton impôt. Sans attestation, tu paies deux fois.</p>
 <p>SkanFact suit ces attestations : <b>Comptabilité → Retenues à la source</b> liste celles que tu n'as pas encore reçues. Réclame-les, elles ne viennent pas toutes seules.</p>
-<p>Règle le taux dans la fiche de chaque client : il s'appliquera à toutes ses factures. Les taux proposés (0,5 · 1 · 1,5 · 2,5 · 3 · 5 · 10 · 15 · 20 · 25 %) sont ceux qu'on rencontre le plus souvent ; ils dépendent de la nature de la prestation, du régime de ton client et de la loi de finances de l'année. Si celui qu'on t'applique n'est pas dans la liste, choisis <b>« Autre taux… »</b> et tape-le : il restera proposé ensuite. <em>À VÉRIFIER avec ton comptable : SkanFact ne devine aucun taux, il applique celui que tu poses.</em></p>`
+<p>Règle le taux dans la fiche de chaque client : il s'appliquera à toutes ses factures. Les taux proposés (0,5 · 1 · 1,5 · 2,5 · 3 · 5 · 10 · 15 · 20 · 25 %) sont ceux qu'on rencontre le plus souvent ; ils dépendent de la nature de la prestation, du régime de ton client et de la loi de finances de l'année. Si celui qu'on t'applique n'est pas dans la liste, choisis <b>« Autre taux… »</b> et tape-le : il restera proposé ensuite. <em>À VÉRIFIER avec ton comptable : SkanFact ne devine aucun taux, il applique celui que tu poses.</em></p>
+<h3>L'attestation d'exonération</h3>
+<p>Certaines entreprises détiennent une <b>attestation d'exonération</b> (ou de non-soumission) de la retenue à la source, valable jusqu'à une date. Tant qu'elle court, on ne leur retient rien.</p>
+<ul>
+  <li><b>Ton fournisseur en a une ?</b> Saisis-la sur sa fiche : numéro et dates. Un achat daté dans sa validité propose alors 0 % de retenue, et SkanFact prévient si tu en mets une quand même — ou si l'attestation a expiré avant le règlement.</li>
+  <li><b>Ton entreprise en a une ?</b> Saisis-la dans <b>Paramètres → Mon entreprise → Régime fiscal et TVA</b>. Tes factures sans retenue portent alors la mention « Exonéré de la retenue à la source », avec le numéro et la date de fin : ton client sait qu'il ne doit rien retenir.</li>
+</ul>
+<p>Une attestation a une fin. « À faire » te prévient trente jours avant, pour la tienne comme pour celles de tes fournisseurs. SkanFact ne change jamais un taux tout seul : il le propose et il prévient. <em>À VÉRIFIER avec ton comptable : ce que ton attestation couvre exactement.</em></p>`
     },
     {
       id: 'acompte', title: 'Acompte et solde', sub: 'Faire financer le chantier par le chantier',
@@ -1683,6 +1695,7 @@ rencontres. Si un mot affiché dans l'application manque ici, c'est un défaut :
     [/^pay\.(bank|terms|rib)$/, 'paiements'],
     [/^(cs\.|cat\.code$)/, 'caisse'],
     [/^pay\./, 'paie'],
+    [/^(exo\.|co\.exoRS$|sup\.exoRS$)/, 'fiscal'],
     [/^(co|ap)\./, 'demarrer'],
     [/^doc\.(quoteValidity|quoteTerms)$/, 'devis'],
     [/^doc\.(currency|en)$/, 'etranger'],

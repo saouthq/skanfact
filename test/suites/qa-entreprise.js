@@ -2021,7 +2021,15 @@ module.exports = ({ t, assert, lireSource }) => {
     assert.ok(cibles.length >= 2, 'aucun renvoi « panneau:champ » : ' + cibles.length);
     cibles.forEach(([pan, champ]) => {
       assert.ok(new RegExp(`'${pan}': \\{ onglet:`).test(app), `le renvoi vise un panneau qui n'existe pas : ${pan}`);
-      assert.ok(new RegExp(`name="${champ}"|, '${champ}', `).test(reglages), `le renvoi vise une case qui n'existe pas : ${pan}:${champ}`);
+      // La case peut être posée par une fonction partagée (l'attestation d'exonération sert la fiche
+      // fournisseur ET les Paramètres) : elle compte si les Paramètres APPELLENT cette fonction.
+      const poseIci = new RegExp(`name="${champ}"|, '${champ}', `).test(reglages);
+      const parAide = [...app.matchAll(/\n([ ]*)function ([A-Za-z]+)\(/g)].some(m => {
+        const [, retrait, nom] = m;
+        const corps = app.slice(m.index, app.indexOf('\n' + retrait + '}', m.index + 1));
+        return corps.length < 8000 && corps.includes(`, '${champ}', `) && reglages.includes(nom + '(');
+      });
+      assert.ok(poseIci || parAide, `le renvoi vise une case qui n'existe pas : ${pan}:${champ}`);
     });
     assert.ok(/const amenerChamp = spec => \{[\s\S]{0,200}reg\.montrer\(vise\);[\s\S]{0,120}el\.focus\(\)/.test(reglages), 'le renvoi amène le panneau sans y mettre le curseur');
     assert.ok(/if \(settingsFocus\) \{ const spec = settingsFocus; settingsFocus = ''; amenerChamp\(spec\); \}/.test(reglages), 'un renvoi venu d\'une autre page ne passe pas par la même porte');

@@ -6,7 +6,41 @@ Il ne remplace pas `VERSIONS-A-VENIR.md`, qui inventorie les VERSIONS à écrire
 constats isolés, les dettes et les décisions en attente. Une ligne en sort quand elle est faite, ou
 quand elle devient une version.*
 
-Dernière relecture : 26/09/2026.
+Dernière relecture : 27/09/2026.
+
+---
+
+## 00. ARRÊT DU 27/09/2026 — à reprendre (quota à 98 %, discussion « nouvelle vision » avant tout)
+
+*Écrit à la demande de Skander : « note ce qu'il te reste et les tests qui restent ». Aucun
+développement neuf avant la discussion de cadrage.*
+
+**H7 — les attestations d'exonération de retenue à la source (écrit, commité, pas publié)**
+- Reste à coder : dans Paramètres → Régime fiscal et TVA, l'état de l'attestation de l'entreprise
+  ne se RELIT pas après « Enregistrer » (il faut changer d'onglet) ; et quand une attestation
+  suivante est déjà saisie, l'état doit dire « la suivante (n° …) prend le relais le … » au lieu
+  d'annoncer une fin sans suite (`etatAttestationHtml`, app.js).
+- Reste à tester à la souris : la mention d'exonération sur l'aperçu et le PDF d'une facture émise
+  à 0 % ; l'avertissement d'émission quand une retenue > 0 est posée malgré une attestation valide.
+- Reste à prouver par réintroduction : la couleur `.totals-box table td.warn-text` (orange), le
+  focus + sélection de « Saisir la nouvelle » (`p-regime:exoNumero`), l'espace insécable « n° ».
+- Déjà validé à la souris : fiche et liste fournisseur, taux proposé à 0 et note dans l'achat,
+  avertissement orange à 1,5 %, note du règlement qui suit sa date, saisie de l'attestation de
+  l'entreprise, ligne « À faire » et son focus, ajout d'une seconde attestation.
+- Puis : CHANGELOG 10.15.0-beta.x, `nouveautes.js`, section CLAUDE.md, `ETUDE-HESABI.md`, et
+  publication bêta (vérifier les index beta.yml, beta-mac.yml, cabinet-beta.yml, cabinet-beta-mac.yml).
+
+**H8 — l'interface en arabe** : pas commencée (étude Hesabi, dernier point).
+
+**En attente de Skander** : NGSign/DigiGo (signature TEIF), XSD officiel du TEJ (jibaya.tn),
+décisions portail / mobile, accord sur les prix (NE PAS toucher `PLAN-COMMERCIAL.md` avant accord).
+
+**Tâches ouvertes de la session** : #256–#263, #266, #270, #280, #281, #285, #288, #290 ; #198 et
+#212 (e2e des visites, reportés — voir § 4 bis).
+
+**Tests qui restent** : les tests du lundi 28/09 (un débutant qui suit UNIQUEMENT le guide, dans les
+deux applications) ; `e2e:visites` et `e2e:cabinet-visites` (reportés) ; relancer tous les parcours
+e2e avant la stable 10.15.0.
 
 ---
 

@@ -1455,11 +1455,10 @@
       };
       btn.onclick = () => (pop.hidden ? openCal() : closeCal());
       // Confort de frappe : les séparateurs s'écrivent tout seuls, rien n'est validé avant de quitter le champ.
+      // Les barres TAPÉES se respectent (10.15.0) : « 1/1/2026 » reste le premier janvier.
       txt.oninput = () => {
-        const d = txt.value.replace(/\D/g, '').slice(0, 8);
-        if (txt.value.replace(/[\d/]/g, '') === '' && d.length >= 3) {
-          txt.value = d.length > 4 ? `${d.slice(0, 2)}/${d.slice(2, 4)}/${d.slice(4)}` : `${d.slice(0, 2)}/${d.slice(2)}`;
-        }
+        const m = C.masqueDate(txt.value);
+        if (m !== txt.value) txt.value = m;
       };
       txt.onblur = () => {
         const iso = C.parseDateInput(txt.value);
@@ -3313,7 +3312,7 @@
   function duplicateDoc(doc) {
     const isQ = doc.type === 'devis';
     const numbered = isQ || C.EXTRA_TYPES.includes(doc.type);   // ces pièces portent un numéro dès l'enregistrement
-    const copy = { ...deepCopy(doc), id: C.uid(), number: '', status: 'brouillon', date: C.today(), createdAt: Date.now(), issuedTs: undefined, regimeTva: undefined, payments: [], emails: [], reminders: [], attachments: [], withholdingCertificate: false, ticket: undefined, caisse: undefined, fromQuoteId: undefined, fromQuoteNumber: undefined, fromDocId: undefined, fromDocType: undefined, fromDocNumber: undefined, deposit: undefined, settles: undefined, recurringId: undefined };
+    const copy = { ...deepCopy(doc), id: C.uid(), number: '', status: 'brouillon', date: C.today(), createdAt: Date.now(), issuedTs: undefined, regimeTva: undefined, exonerationRS: undefined, payments: [], emails: [], reminders: [], attachments: [], withholdingCertificate: false, ticket: undefined, caisse: undefined, fromQuoteId: undefined, fromQuoteNumber: undefined, fromDocId: undefined, fromDocType: undefined, fromDocNumber: undefined, deposit: undefined, settles: undefined, recurringId: undefined };
     if (copy.dueDate) copy.dueDate = C.addDays(copy.date, C.delaiJours(isQ ? company().quoteValidityDays : company().paymentTermsDays, 30));
     if (numbered) copy.number = C.nextNumber(data, doc.type, copy.date);
     data.documents.push(copy); save(true);
@@ -4409,6 +4408,10 @@
       // d'un devis, d'un contrat ou d'un modèle nés sous un autre régime. C'est juste si tout est exonéré ;
       // sinon la pièce émise garderait ses 0 % pour toujours — on le dit pendant qu'elle se corrige.
       if (C.factureSansTvaSuspecte(doc, co)) w.push(`Aucune ligne de ${laPiece().replace(/^la /, 'cette ')} ne porte de TVA, alors que ton entreprise en facture (${C.defaultVat(co)}\u00a0% par défaut). C'est juste si tout est exonéré ; si elle vient d'un devis, d'un contrat ou d'un modèle nés quand tu ne facturais pas de TVA, corrige le taux de ses lignes avant d'émettre.`);
+      // Une retenue sur une facture d'une entreprise EXONÉRÉE (10.15.0, H7) : le client retiendrait ce
+      // qu'il n'a pas à retenir, et l'attestation ne vaut que si la facture ne dit pas le contraire.
+      const exoCo = isInv && Number(doc.withholdingRate) > 0 ? C.exonerationRS(co, doc.date) : null;
+      if (exoCo) w.push(`Ton entreprise est exonérée de retenue à la source jusqu'au ${C.fmtDate(exoCo.au)}${exoCo.numero ? ` (attestation n°\u00a0${exoCo.numero})` : ''}, mais cette facture porte une retenue de ${pct(doc.withholdingRate)} % : le client la retiendrait. Mets-la à 0 % — la facture portera alors la mention d'exonération.`);
       // Deux délais sur la même pièce (10.12.0, H-E23) : on MONTRE la phrase, on ne la réécrit pas.
       const deuxDelais = C.delaisContradictoires(co, doc);
       if (deuxDelais) w.push(`Tes conditions de paiement disent « ${deuxDelais} », mais cette facture est à régler avant le ${C.fmtDate(doc.dueDate)} : les deux s'impriment sur la pièce, et se contredisent. Le délai s'imprime déjà tout seul — la phrase peut se contenter du moyen de paiement (Paramètres → Mon entreprise).`);
@@ -4520,6 +4523,9 @@
       if (doc.stampFee === undefined || doc.stampFee === null || doc.stampFee === '') doc.stampFee = Number(company().stampFee) || 0;
       // Le régime de TVA aussi (10.14.1, MR-06) : il décide de la colonne TVA et de la mention légale.
       doc.regimeTva = C.regimeOf(company()).id;
+      // La mention d'exonération de retenue aussi (10.15.0, H7) : renouveler ou retirer l'attestation
+      // ne réécrit pas une facture déjà envoyée. `null` dit « émise sans mention ».
+      if (doc.type === 'facture') { const libre = Object.assign({}, doc); delete libre.exonerationRS; doc.exonerationRS = C.mentionExonerationRS(libre, company()); }
       doc.status = isInv ? 'envoyée' : 'émis';
       // L'INSTANT de l'émission : c'est lui qui ordonne la sortie de stock dans sa journée (rapport QA
       // E-10) — un brouillon créé le matin et émis le soir, après un achat, sort après cet achat.
@@ -7283,6 +7289,13 @@
     'fournisseurs-retard': { label: 'Voir les achats', run: vers('#/achats', () => filtreAchats('retard')) },
     'fournisseurs-echeances': { label: 'Voir les achats', run: vers('#/achats', () => filtreAchats('à payer')) },
     'attestations-fournisseurs': { label: 'Voir la liste', run: vers('#/compta', () => { comptaState.tab = 'achats'; }) },
+    // Les attestations d'exonération de retenue (10.15.0, H7) : la tienne se renouvelle là où elle se
+    // saisit (le panneau fiscal), celle d'un fournisseur sur SA fiche — la première qui finit.
+    'exoneration-entreprise': { label: 'Saisir la nouvelle', run: () => allerParametres('societe', 'p-regime:exoNumero') },
+    'exonerations-fournisseurs': { label: 'Ouvrir le fournisseur', run: () => {
+      const x = C.exonerationsAFaire(data, company(), C.today()).find(y => y.qui === 'fournisseur');
+      navigate(x && x.id ? '#/fournisseur/' + x.id : '#/fournisseurs');
+    } },
     'stock-negatif': { label: 'Voir les alertes', run: vers('#/stock', () => { stockState.tab = 'alertes'; }) },
     'stock-bas': { label: 'Voir les alertes', run: vers('#/stock', () => { stockState.tab = 'alertes'; }) },
     'series-ecart': { label: 'Voir les numéros', run: vers('#/stock', () => { stockState.tab = 'series'; }) },
@@ -7856,6 +7869,48 @@
   const supplierById = id => data.suppliers.find(s => s.id === id);
   const supplierName = id => (supplierById(id) || {}).name || '—';
 
+  // ---------- attestation d'exonération de retenue (10.15.0, H7) ----------
+  // UNE écriture pour la fiche d'un fournisseur et celle de l'entreprise : trois champs, la même règle
+  // (`C.appliquerAttestationRS`). La fiche montre la dernière attestation, et dit son état à côté du
+  // titre — posé dans sa ligne, il ne pousse rien (règle 10.14.0 : une remarque qui dépend d'une
+  // valeur vit dans la ligne de son titre).
+  function etatAttestationHtml(tiers, qui) {
+    const e = C.etatExonerationRS(tiers, C.today());
+    if (!e) return '';
+    const au = C.fmtDate(e.attestation.au);
+    if (e.etat === 'valide') return `<span class="ok-text">Valable jusqu'au ${au}</span>`;
+    if (e.etat === 'bientot') return `<span class="warn-text">Finit le ${au}${e.jours > 0 ? `, dans ${pl(e.jours, 'jour')}` : ", aujourd'hui"} : demande la suivante</span>`;
+    if (e.etat === 'expiree') return `<span class="warn-text">Expirée le ${au} : ${qui === 'entreprise' ? 'tes factures ne portent plus la mention' : 'ses achats reprennent la retenue de sa fiche'}</span>`;
+    return `<span class="muted">Valable à partir du ${C.fmtDate(e.attestation.du || e.attestation.au)}</span>`;
+  }
+  function champsAttestationRS(tiers, qui) {
+    const a = C.derniereAttestationRS(tiers) || {};
+    const etat = etatAttestationHtml(tiers, qui);
+    return `<div class="span-2 exo-rs">
+        <div class="exo-titre">${lbl('Attestation d\'exonération de retenue', qui === 'entreprise' ? 'co.exoRS' : 'sup.exoRS')}${etat ? `<span class="small">${etat}</span>` : ''}</div>
+        <div class="grid-3">
+          ${field(lbl('N° d\'attestation', 'exo.numero'), 'exoNumero', a.numero || '', 'text', 'placeholder="ex. 2026/0142"')}
+          ${dateFieldHtml(lbl('Valable du', 'exo.du'), 'exoDu', a.du || '')}
+          ${dateFieldHtml(lbl('Jusqu\'au', 'exo.au'), 'exoAu', a.au || '')}
+        </div>
+      </div>`;
+  }
+  // Lit les trois champs de `v`, les RETIRE de `v` (ils ne sont pas des champs de la fiche), et rend
+  // la liste à poser — ou le refus, déjà montré sur sa case (7.20.0).
+  function lireAttestationRS(tiers, v, root) {
+    const saisie = { numero: v.exoNumero, du: v.exoDu, au: v.exoAu };
+    delete v.exoNumero; delete v.exoDu; delete v.exoAu;
+    const r = C.appliquerAttestationRS(tiers.exonerationsRS, saisie);
+    if (r.motif) {
+      const nom = r.champ === 'au' ? 'exoAu' : 'exoDu';
+      const hid = $(`input[name=${nom}]`, root);
+      const box = hid && hid.closest('.datefield');
+      refus((box && $('.d-txt', box)) || hid, r.motif);
+      return null;
+    }
+    return r.liste;
+  }
+
   function supplierForm(supplier, done, preset) {
     const s = supplier || Object.assign({ id: C.uid(), name: '', contact: '', matricule: '', address: '', phone: '', email: '', rib: '', bank: '', notes: '', paymentTermsDays: '', withholdingRate: '' }, preset || {});
     modal(`<h2>${supplier ? 'Modifier le fournisseur' : 'Nouveau fournisseur'}</h2>
@@ -7867,6 +7922,7 @@
         ${field(lbl('Email', 'sup.email'), 'email', s.email || '', 'email')}
         ${field(lbl('Délai de paiement accordé (jours)', 'sup.terms'), 'paymentTermsDays', s.paymentTermsDays == null ? '' : s.paymentTermsDays, 'number', 'min="0" class="num" placeholder="30"')}
         <label class="field">${lbl('Retenue à la source à opérer', 'sup.withholding')}${withholdingSelect('withholdingRate', s.withholdingRate, { vide: 'Aucune', sansZero: true })}</label>
+        ${champsAttestationRS(s, 'fournisseur')}
         ${field(lbl('Banque', 'pay.bank'), 'bank', s.bank || '')}
         ${ribField('RIB du fournisseur', s.rib)}
         <label class="field span-2">${lbl('Adresse', 'sup.address')}<textarea name="address">${h(s.address || '')}</textarea></label>
@@ -7879,9 +7935,12 @@
         $('#ok', root).onclick = () => {
           const v = formValues($('#sf', root));
           if (!v.name.trim()) return refus('#sf input[name=name]', 'Le nom est obligatoire : c\'est lui qui apparaît sur chaque achat.');
+          const exos = lireAttestationRS(s, v, root);
+          if (!exos) return;
           // La porte va DANS le formulaire, sur la branche création : il s'ouvre depuis trois pages.
           if (!supplier && licenceBlock('Créer un fournisseur', 'achats')) return;
           Object.assign(s, v, {
+            exonerationsRS: exos,
             withholdingRate: v.withholdingRate === '' ? '' : Number(v.withholdingRate),
             paymentTermsDays: v.paymentTermsDays === '' ? '' : Number(v.paymentTermsDays)
           });
@@ -7906,7 +7965,9 @@
     const s = supplierState;
     const cols = [
       { key: 'name', label: 'Nom', asc: true, val: r => r.s.name.toLowerCase(), get: r => `<strong>${h(r.s.name)}</strong>${r.s.contact ? `<div class="small muted">${h(r.s.contact)}</div>` : ''}` },
-      { key: 'mf', cls: 'mf', label: 'Matricule', get: r => `${mfCoupable(r.s.matricule)}${Number(r.s.withholdingRate) ? `<div class="small muted">RS ${pct(r.s.withholdingRate)} %</div>` : ''}` },
+      // La retenue sous le matricule, et l'exonération qui la suspend (10.15.0, H7) : « RS 1,5 % » d'un
+      // fournisseur exonéré dirait l'inverse de ce que l'achat proposera.
+      { key: 'mf', cls: 'mf', label: 'Matricule', get: r => { const exo = C.exonerationRS(r.s, C.today()); return `${mfCoupable(r.s.matricule)}${exo ? `<div class="small ok-text">Exonéré jusqu'au ${C.fmtDate(exo.au)}</div>` : Number(r.s.withholdingRate) ? `<div class="small muted">RS ${pct(r.s.withholdingRate)} %</div>` : ''}`; } },
       { key: 'contact', label: 'Contact', get: r => `<span class="small">${h(r.s.phone || '')}${r.s.phone && r.s.email ? '<br>' : ''}${r.s.email ? `<span class="ellipse" title="${h(r.s.email)}">${h(r.s.email)}</span>` : ''}</span>` },
       { key: 'count', label: 'Achats', r: true, val: r => r.sum.count, get: r => r.sum.count || '<span class="muted">—</span>' },
       { key: 'ht', label: 'Acheté HT', r: true, val: r => r.sum.ht, get: r => r.sum.ht ? C.money(r.sum.ht, cur) : '<span class="muted">—</span>' },
@@ -7976,6 +8037,7 @@
     if (!s) return navigate('#/fournisseurs');
     const cur = company().currency;
     const sum = C.supplierSummary(data, company(), s.id, C.today());
+    const attSup = C.derniereAttestationRS(s);
     const mine = data.purchases.filter(p => p.supplierId === s.id);
     const draw = dansUnLot(() => {
       const { cols } = purchaseColumns({ hideSupplier: true });
@@ -8010,6 +8072,7 @@
             <div><span>Banque</span><span>${h(s.bank || '—')}</span></div>
             <div><span>RIB</span><span>${h(s.rib || '—')}</span></div>
             <div><span>Retenue à la source</span><span>${Number(s.withholdingRate) ? pct(s.withholdingRate) + ' %' : 'aucune'}</span></div>
+            ${attSup ? `<div><span>Exonération</span><span>${etatAttestationHtml(s, 'fournisseur')}${attSup.numero ? ` <span class="small muted nw">— n°\u00a0${h(attSup.numero)}</span>` : ''}</span></div>` : ''}
           </div>
           ${s.address ? `<p class="small muted mt">${C.nl2br(s.address)}</p>` : ''}
           <h3 class="sub-h">Notes internes ${info('cl.notes')}</h3>
@@ -8239,7 +8302,8 @@
       id: C.uid(), kind: C.PURCHASE_KINDS.some(k => k[0] === kind) ? kind : 'facture', supplierId: supplierId || '', number: '',
       date, dueDate: kind === 'depense' || kind === 'avoir' ? '' : C.addDays(date, days),
       subject: '', category: '', notes: '', fees: 0, achatLie: '',
-      withholdingRate: sup && Number(sup.withholdingRate) ? Number(sup.withholdingRate) : 0,
+      // Un fournisseur couvert par une attestation d'exonération ce jour-là se voit proposer 0 % (H7).
+      withholdingRate: sup ? C.tauxRetenueFournisseur(sup, date) : 0,
       // Côté ACHAT, le taux est celui du FOURNISSEUR, pas le nôtre : une entreprise exonérée paie
       // quand même la TVA de ses fournisseurs. Le réglage `defaultVatRate` ne s'applique donc pas ici.
       lines: [{ label: '', qty: 1, unit: '', unitPrice: 0, vatRate: 19, destination: 'charge', deductible: true }],
@@ -8286,6 +8350,10 @@
     const reste = Math.max(0, resteHors);
     const aRecuperer = C.round3(Math.max(0, -resteHors));
     const avecRs = !rend && Number(p.withholdingRate) > 0;
+    // Une attestation d'exonération se juge au jour du PAIEMENT (10.15.0, H7) : c'est là que la
+    // retenue naît (10.14.0), donc c'est ici que l'écart se dit — jamais corrigé en silence.
+    const supRs = rend ? null : supplierById(p.supplierId);
+    const avecExo = !!(supRs && C.derniereAttestationRS(supRs));
     modal(`<h2>${rend ? (r0 ? 'Modifier le remboursement' : `Remboursement de ${h(p.number || 'cet achat')}`) : r0 ? 'Modifier le règlement' : `Régler ${h(p.number || 'cet achat')}`}</h2>
       <p class="small muted">${h(supplierName(p.supplierId))} · ${rend
         ? `${p.kind === 'avoir' ? `avoir de ${C.money(b.totals.netToPay, cur)}` : `payé ${C.money(b.paid, cur)} pour ${C.money(b.totals.netToPay, cur)}`} · à récupérer ${C.money(aRecuperer, cur)}`
@@ -8298,22 +8366,26 @@
         ${accountFieldHtml(r0 ? r0.accountId || '' : '')}
         ${field(lbl('Référence', 'buy.payReference'), 'reference', r0 ? r0.reference || '' : '', 'text', 'placeholder="N° de chèque, référence du virement…"')}
         <label class="field span-2">${lbl('Note', 'buy.payNote')}<input type="text" name="note" value="${h(r0 ? r0.note || '' : '')}"></label>
-        ${avecRs ? '<p class="small span-2 annonce-stable" id="spf-rs" aria-live="polite"></p>' : ''}
+        ${avecRs || avecExo ? '<p class="small span-2 annonce-stable" id="spf-rs" aria-live="polite"></p>' : ''}
       </form>
       <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
       (root, close) => { brancherTauxReglement(root, p, rend, rend ? 'Reçu' : 'Payé');
       // Ce que CE règlement retient pour l'État, dit AVANT de l'enregistrer (9.4.2) et recalculé
       // pendant la frappe : la retenue naît au paiement (10.14.0), donc c'est ici qu'elle se décide
       // — et le mois de la date choisie est celui de la déclaration qui la reverse.
-      if (avecRs) {
+      if (avecRs || avecExo) {
         const annoncer = () => {
           const v = formValues($('#spf', root));
-          const essai = { ...p, payments: (p.payments || []).filter(x => !r0 || x.id !== r0.id).concat([{ id: '__essai', date: v.date || C.today(), amount: Number(v.amount) || 0 }]) };
-          const part = C.retenueDesReglements(essai, company(), data).parts.__essai || 0;
           const d0 = v.date || C.today();
-          $('#spf-rs', root).innerHTML = part > 0.0005
+          let part = 0;
+          if (avecRs) {
+            const essai = { ...p, payments: (p.payments || []).filter(x => !r0 || x.id !== r0.id).concat([{ id: '__essai', date: d0, amount: Number(v.amount) || 0 }]) };
+            part = C.retenueDesReglements(essai, company(), data).parts.__essai || 0;
+          }
+          const note = avecExo ? C.noteExonerationRS(supRs, d0, p.withholdingRate) : null;
+          $('#spf-rs', root).innerHTML = (part > 0.0005
             ? `Ce règlement retient <b>${C.money(part, cur)}</b> de retenue à la source : tu la reverses à l'État avec la déclaration de ${C.MONTHS_FR[Number(d0.slice(5, 7)) - 1]} ${d0.slice(0, 4)}, et tu en remets l'attestation au fournisseur.`
-            : '';
+            : '') + (note ? ` <span class="${note.ton === 'warn' ? 'warn-text' : 'muted'}">${h(note.texte)}</span>` : '');
         };
         $('#spf', root).addEventListener('input', annoncer);
         $('#spf', root).addEventListener('change', annoncer);
@@ -8646,6 +8718,9 @@
       const dest = p.kind === 'acompte' ? [] : C.LINE_DESTINATIONS.filter(([k]) => t.byDestination[k] > 0.0005);
       // Un avoir libre que le fournisseur a remboursé ne se rattache plus à rien (10.14.0).
       const avoirRendu = p.kind === 'avoir' && C.avoirRembourse(p, C.purchaseBalance(p, company(), data));
+      // L'exonération du fournisseur à la date de la pièce (10.15.0, H7) : dite à côté de la retenue,
+      // dans les deux sens — une retenue sur un exonéré, une attestation expirée sans retenue.
+      const noteRs = p.kind === 'avoir' || p.kind === 'acompte' ? null : C.noteExonerationRS(supplierById(p.supplierId), p.date, p.withholdingRate);
       $('#b-totals').innerHTML = `<table>
         <tr><td>Total HT</td><td>${C.money(t.totalHT, cur)}</td></tr>
         <tr><td>TVA</td><td>${C.money(t.totalVAT, cur)}</td></tr>
@@ -8653,6 +8728,7 @@
           : t.deductibleVAT !== t.totalVAT ? `<tr><td>dont TVA déductible</td><td>${C.money(t.deductibleVAT, cur)}</td></tr>` : ''}
         ${t.fees ? `<tr><td>Timbre et frais</td><td>${C.money(t.fees, cur)}</td></tr>` : ''}
         ${t.withholding ? `<tr><td>Total TTC</td><td>${C.money(t.totalTTC, cur)}</td></tr><tr><td>Retenue opérée ${pct(t.withholdingRate)}%</td><td>${C.money(-t.withholding, cur)}</td></tr>` : ''}
+        ${noteRs ? `<tr><td colspan="2" class="small ${noteRs.ton === 'warn' ? 'warn-text' : 'muted'}" id="b-exo"><div class="note-totaux">${h(noteRs.texte)}</div></td></tr>` : ''}
         <tr class="grand"><td>${p.kind === 'avoir' ? 'Montant de l\'avoir' : p.kind === 'acompte' ? 'Montant de l\'acompte' : 'Net à payer'}</td><td>${C.money(t.netToPay, cur)}</td></tr>
         ${p.kind === 'avoir' ? `<tr><td colspan="2" class="small muted">${p.achatLie ? 'Ce montant vient EN MOINS de la facture ' + h((purchaseById(p.achatLie) || {}).number || 'rattachée') + '.' : avoirRendu ? 'Le fournisseur te l\'a remboursé : il n\'y a plus rien à déduire d\'une facture.' : 'Ce montant vient EN MOINS — rattache-le à une facture pour qu\'il la diminue, ou note son remboursement.'}</td></tr>` : ''}
         ${p.kind === 'acompte' ? `<tr><td colspan="2" class="small muted">Une avance, pas une charge : elle se soldera${p.achatLie ? ' sur la facture ' + h((purchaseById(p.achatLie) || {}).number || 'rattachée') : ' le jour où tu la rattacheras à sa facture'}.</td></tr>` : ''}
@@ -8797,7 +8873,8 @@
             p.dueDate = C.addDays(p.date, delaiAchat(p.supplierId)); dueAuto = p.dueDate;
             poserDateField(head, 'dueDate', p.dueDate);
           }
-          if (Number(sup.withholdingRate)) { p.withholdingRate = Number(sup.withholdingRate); $('select[name=withholdingRate]', head).value = String(p.withholdingRate); }
+          // Le taux PROPOSÉ (10.15.0, H7) : 0 quand une attestation couvre la date de la pièce.
+          if (Number(sup.withholdingRate) || C.exonerationRS(sup, p.date)) { p.withholdingRate = C.tauxRetenueFournisseur(sup, p.date); $('select[name=withholdingRate]', head).value = String(p.withholdingRate); }
         }
       }
       refresh();
@@ -14947,6 +15024,7 @@
           <label class="field">${lbl('TVA des nouvelles lignes', 'doc.defaultVat')}<select name="defaultVatRate" ${C.assujettiTVA(c) ? '' : 'disabled'}>${C.VAT_RATES.map(v => `<option value="${v}" ${C.defaultVat(c) === v ? 'selected' : ''}>${v} %</option>`).join('')}</select></label>
         </div>
         <div id="regime-note">${noteRegime(c)}</div>
+        <div class="grid-2 mt">${champsAttestationRS(c, 'entreprise')}</div>
         <div id="regime-achats"></div>
         <div id="regime-catalogue"></div>
         <div id="regime-sources"></div>
@@ -15238,7 +15316,9 @@
     const amenerChamp = spec => {
       const [vise, champ] = String(spec).split(':');
       reg.montrer(vise);
-      if (champ) setTimeout(() => { const el = $(`#pf [name="${champ}"]`); if (el) el.focus(); }, 80);
+      // Le champ visé reçoit le curseur, et ce qu'il contient déjà est sélectionné : « Saisir la
+      // nouvelle » attestation remplace l'ancien numéro à la première frappe (10.15.0, H7).
+      if (champ) setTimeout(() => { const el = $(`#pf [name="${champ}"]`); if (el) { el.focus(); if (el.value && typeof el.select === 'function') el.select(); } }, 80);
       // Les panneaux qui se remplissent APRÈS le dessin (la version et l'état des mises à jour,
       // l'achat de la licence) poussent ce qui est dessous : la palette amenait « Licence » et le
       // laissait 900 px sous le bord (10.14.0). On revise une fois qu'ils ont fini — la règle du
@@ -15290,6 +15370,10 @@
       for (const el of nums) { const r = numEssai(el); if (!r.ok) { refus(el, r.motif); return false; } }
       nums.forEach(el => { C.poserNumerotation(data, el.dataset.num, anneeNum, el.value); el.dataset.avant = el.value.trim(); });
       const v = formValues($('#pf'));
+      // L'attestation d'exonération de retenue (10.15.0, H7) : ses trois champs ne sont pas des
+      // réglages de la fiche, et une attestation sans fin se refuse avant d'écrire quoi que ce soit.
+      const exosCo = lireAttestationRS(data.company, v, $('#pf'));
+      if (!exosCo) return false;
       // Le taux des nouvelles lignes d'une entreprise qui ne facture pas de TVA est AFFICHÉ à 0 %,
       // grisé : c'est ce que ses lignes porteront, pas un réglage qu'elle a choisi (10.14.0). Le
       // ranger écrasait son vrai taux — et le jour où elle passait au réel, chaque ligne naissait à
@@ -15297,7 +15381,7 @@
       if (!C.assujettiTVA({ ...data.company, ...v })) delete v.defaultVatRate;
       const et = {}, eten = {};
       Object.keys(v).forEach(k => { const m = k.match(/^(et|eten)_(\w+)_(subject|body)$/); if (m) { const bag = m[1] === 'et' ? et : eten; bag[m[2]] = bag[m[2]] || {}; bag[m[2]][m[3]] = v[k]; delete v[k]; } });
-      Object.assign(data.company, v, { emailTemplates: et, emailTemplatesEn: eten });
+      Object.assign(data.company, v, { emailTemplates: et, emailTemplatesEn: eten, exonerationsRS: exosCo });
       // Un champ `type=number` vidé rend la CHAÎNE VIDE, pas zéro. Trois réglages étaient bornés
       // ici et trois autres du même bloc ne l'étaient pas : vider le timbre fiscal le mettait
       // silencieusement à 0 sur toutes les factures à venir, et vider un délai donnait 0 jour sur

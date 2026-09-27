@@ -9044,7 +9044,7 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
   // et le message dit quoi faire — l'allonger pour un vrai appel, corriger le texte sinon.
   t('aucun écran n\'écrit « 1 facture(s) »', () => {
     const APPELS = ['String', 'push', 'done', 'bodyFor', 'balance', 'nPoint', 'escapeHtml', 'nl2br',
-      'statusLabel', 'payslipDate', 'test', 'exec', 'indexOf', 'br', 'normNom', 'trim', 'esc', 'h', 'Number', 'has'];
+      'statusLabel', 'payslipDate', 'test', 'exec', 'indexOf', 'br', 'normNom', 'trim', 'esc', 'h', 'Number', 'has', 'derniereAttestationRS'];
     // On lit la source avec ses CHAÎNES : `codeSeulement` les vide, or c'est très exactement dedans
     // que vivent les pluriels — première version de ce test, qui ne pouvait donc pas échouer, et je
     // ne l'ai su qu'en réintroduisant le défaut. Seuls les commentaires partent, parce qu'ils citent
@@ -14752,6 +14752,7 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
   require('./suites/paie-contrats.js')({ t, assert, lireSource });
   require('./suites/caisse.js')({ t, assert, lireSource });
   require('./suites/prix.js')({ t, assert, lireSource });
+  require('./suites/exoneration.js')({ t, assert, lireSource });
   // Asynchrone depuis 213d (la messagerie au premier envoi) : elle est ATTENDUE, sinon son `ta` part détaché (8.4.0).
   await require('./suites/assistant.js')({ t, ta, assert, lireSource });
   // Celle-ci reçoit `ta` en plus : elle interroge le vrai worker sur une vraie base SQLite.

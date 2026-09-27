@@ -729,6 +729,10 @@ table.lignes-doc th { padding-bottom: 4px; }
 /* La phrase sous le taux d'un article, chez qui ne facture pas de TVA : une précision, pas un libellé. */
 .field .taux-regime { font-weight: 400; }
 .regime-cat { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; }
+/* Une remarque qui PRÉVIENT sous les totaux garde sa couleur : la règle des cellules (0,1,2, et
+   0,2,3 en sombre) battait `.warn-text`, et l'avertissement d'une retenue sur un fournisseur
+   exonéré (10.15.0, H7) se lisait gris comme une simple note. */
+.totals-box table td.warn-text, body.dark .totals-box table td.warn-text { color: var(--warning); }
 .totals-box .note-totaux { max-width: 17rem; margin-inline-start: auto; white-space: normal; line-height: 1.35; }
 .catalog-pick { display: flex; gap: 8px; align-items: center; margin: 4px 0 14px; }
 
@@ -2680,4 +2684,10 @@ body.dark .g-ligne.faite .g-l-ico { color: #0d1418; }
 .prix-rang { display: flex; align-items: flex-start; gap: 12px; }
 .prix-rang > .annonce-stable { flex: 1 1 auto; min-width: 0; }
 .prix-rang > .btn { flex: 0 0 auto; }
+/* L'attestation d'exonération de retenue (10.15.0, H7) : un titre qui porte son état sur sa ligne,
+   puis les trois champs. L'état vit À CÔTÉ du titre : sous les champs, il pousserait le bouton. */
+.exo-rs { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; }
+.exo-titre { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; font-weight: 600; }
+.exo-titre > .small { font-weight: 400; }
+.exo-rs .grid-3 { gap: 10px 14px; }
 .modal.pc-modal { width: min(760px, calc(100vw - 32px)); }
