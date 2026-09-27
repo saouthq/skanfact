@@ -1,6 +1,6 @@
 # Vision et architecture de SkanFact
 
-*Document de cadrage, version 1 — 27/09/2026. Écrit après l'étude de marché (`ETUDE-MARCHE.md`) et
+*Document de cadrage, version 1 — 27/09/2026. Écrit après l'étude de marché (`docs/etudes/ETUDE-MARCHE.md`) et
 une recherche technique sur Odoo, ERPNext, les bases de données partagées entre clients, la
 synchronisation hors ligne, et la signature électronique en Tunisie. Il ne remplace encore aucun
 plan existant : Skander décide lesquels il remplace.*
@@ -30,7 +30,7 @@ justes et un prix par entreprise.**
 - Les déclarations sortent **au format de l'administration**, prêtes à déposer — et partent
   directement quand l'administration l'accepte.
 
-### Nos points forts face au marché (voir `ETUDE-MARCHE.md`)
+### Nos points forts face au marché (voir `docs/etudes/ETUDE-MARCHE.md`)
 
 1. **Le seul hybride** : utilisable pendant une coupure ET en ligne. Hesabi, Swiver, Finco,
    Pennylane sont uniquement web ; les coupures tunisiennes sont documentées jusqu'en 2026.
@@ -190,7 +190,7 @@ viendront plus tard — mais l'API existera déjà, testée chaque jour par nos 
 
 ## 5. La signature électronique, l'ANCE et la TTN
 
-Ce que la recherche a établi (sources dans `ETUDE-MARCHE.md` et dans ce document) :
+Ce que la recherche a établi (sources dans `docs/etudes/ETUDE-MARCHE.md` et dans ce document) :
 
 - La facture TEIF est signée en **XAdES** par un certificat qualifié (TunTrust, sous l'ANCE), puis
   envoyée à la TTN par un **service web (SOAP)** ; la TTN rend une **référence et un QR code**, à
@@ -306,7 +306,7 @@ milliers de PME** ; le chiffre exact se mesure, il ne se devine pas.
 ## 10. La suite du cadrage
 
 1. Tes décisions du § 9.
-2. Les entretiens terrain (questionnaire en annexe de `ETUDE-MARCHE.md`).
+2. Les entretiens terrain (questionnaire en annexe de `docs/etudes/ETUDE-MARCHE.md`).
 3. Le modèle de données détaillé et le système de modules.
 4. Les droits utilisateurs, geste par geste.
 5. Le choix du moteur de synchronisation, avec un petit prototype mesuré.
@@ -366,7 +366,7 @@ milliers de PME** ; le chiffre exact se mesure, il ne se devine pas.
 - Argent en entiers, grand livre : [Divvy — building a ledger](https://blog.divvyhomes.com/building-your-own-ledger-system-pointers-and-pitfalls/), [Fintech engineering handbook](https://w.pitula.me/fintech-engineering-handbook/)
 - Caisse hors ligne réglementée (modèle) : [Dynamics 365 — factures simplifiées Arabie saoudite](https://learn.microsoft.com/en-us/dynamics365/commerce/localizations/mea/emea-sau-simplified-e-invoices), [POS integration with ZATCA](https://invoiceq.com/en/e-invoicing-articles/pos-integration-with-zatca/)
 - Signature et TTN : [TunTrust — DigiGo](https://www.tuntrust.tn/fr/solutions/digigo), [Certificats numériques en Tunisie 2026 (Noqta)](https://noqta.tn/en/blog/certificat-numerique-tunisie-tuntrust-ance-2026), [Intégration ERP et TTN/TEIF](https://www.elfatoora.digital/integration-erp-facture-electronique-tunisie.php?lang=en), [VATupdate — El Fatoora 2026](https://www.vatupdate.com/2026/01/01/tunisia-2026-electronic-invoicing-el-fatoora-ttn-compliance-guide-for-service-providers/)
-- Hébergement, INPDP, coupures, cybersécurité : notes `research_notes/Étude de marché SkanFact Tunisie/hebergement_technique.md` et `cadre_legal.md`.
+- Hébergement, INPDP, coupures, cybersécurité : notes `docs/etudes/notes-de-recherche/marche-2026/hebergement_technique.md` et `cadre_legal.md`.
 
 *Limite honnête : plusieurs sites (notamment digigo.tuntrust.tn et les sites officiels tunisiens) sont
 bloqués depuis l'environnement de travail ; ces points viennent de résumés de recherche et restent

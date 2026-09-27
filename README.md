@@ -4,7 +4,9 @@ Logiciel de devis et factures pour une petite entreprise, pensé pour le context
 
 **Aucune entreprise n'est écrite en dur** : au premier démarrage, un assistant demande la raison sociale, le matricule fiscal, l'activité et les règles de facturation, puis propose un catalogue de départ et la mise en place de la sauvegarde externe. La même application sert donc à plusieurs personnes, chacune sur son ordinateur, avec ses propres données et sa propre numérotation.
 
-Pas d'e-facture (TTN / TEIF) : l'outil produit des PDF classiques.
+Depuis la 10.15.0, SkanFact écrit le fichier TEIF d'une facture émise ; il ne le signe pas et ne le dépose pas (le certificat et le compte El Fatoora restent chez l'utilisateur).
+
+**Où va SkanFact.** Cette application est en entretien. Une nouvelle plateforme (serveur, application web installable, hors ligne, modules) est en cours de cadrage : voir `VISION-ARCHITECTURE.md` et `docs/cadrage/`.
 
 ## Droits d'utilisation
 
@@ -24,7 +26,7 @@ Concrètement, sans accord écrit du propriétaire :
 - ❌ tu ne peux pas le **réutiliser** dans un autre produit, commercial ou non.
 
 Pour un usage en entreprise ou un partenariat avec un cabinet comptable, passe par une issue — le
-modèle prévu est décrit dans `PLAN-CABINET.md`.
+modèle prévu est décrit dans `VISION-ARCHITECTURE.md`.
 
 À ne pas confondre avec les **clés de licence client** (section plus bas) : celles-ci gèrent
 l'activation de l'application chez un utilisateur, pas les droits sur le code source.

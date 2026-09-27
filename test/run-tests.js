@@ -12516,7 +12516,9 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     // Un index qui pointe vers une section disparue est exactement le défaut que ce projet combat
     // depuis la 7.3.0 : « une phrase affichée que rien ne tient est un bug ». Ici c'est pire, parce
     // que c'est MOI qui le lis à chaque session, et qu'un renvoi mort me ferait chercher pour rien.
-    const md = lireSource('CLAUDE.md');
+    // Depuis le 27/09/2026 (nouvelle vision), l'ancien CLAUDE.md vit dans les documents de l'application
+    // actuelle : il reste la mémoire des règles apprises, et son index doit rester juste.
+    const md = lireSource('docs', 'application-actuelle', 'CLAUDE-HISTORIQUE.md');
     const i = md.indexOf('## Index thématique');
     const j = md.indexOf('## Règles de travail');
     assert.ok(i > 0 && j > i, 'l\'index doit exister et précéder les règles de travail');
@@ -12559,7 +12561,8 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     // Les documents cités existent tous sur le disque : un plan renommé laisserait un renvoi mort.
     (index.match(/`[A-Z][A-Z-]+\.md`/g) || []).forEach(d => {
       const nom = d.replace(/`/g, '');
-      assert.ok(require('fs').existsSync(require('path').join(__dirname, '..', nom)),
+      const ou = ['.', 'docs/application-actuelle', 'docs/archives/ancienne-vision', 'docs/etudes'];
+      assert.ok(ou.some(d => require('fs').existsSync(require('path').join(__dirname, '..', d, nom))),
         'l\'index cite un document qui n\'existe pas : ' + nom);
     });
   });
@@ -12801,7 +12804,7 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     // modèle porte ce qu'un format officiel exigerait. C'est ce qui permettra de décider si
     // l'export TEIF est un chantier d'une semaine ou de trois mois, le jour où l'obligation
     // tombera — au lieu de le découvrir ce jour-là.
-    const doc = fs.readFileSync(path.join(__dirname, '..', 'docs', 'e-facture-controle.md'), 'utf8');
+    const doc = fs.readFileSync(path.join(__dirname, '..', 'docs', 'application-actuelle', 'e-facture-controle.md'), 'utf8');
     assert.ok(doc.length > 3000, 'le contrôle e-facture est trop court pour dire quoi que ce soit');
     const lignes = doc.split('\n').filter(l => /^\|/.test(l) && /\|\s*(oui|non|partiel)\b/i.test(l));
     assert.ok(lignes.length >= 25, `seulement ${lignes.length} champ(s) contrôlé(s)`);
@@ -14897,7 +14900,7 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
       (net.match(/ERR-[A-Z]+-\d+/g) || []).forEach(c => codesUtilises.add(c));
     }
     assert.ok(codesUtilises.size >= 40, 'trop peu de codes posés (' + codesUtilises.size + ')');
-    const cahier = new Set(lireSource('CAHIER-DES-CHARGES.md').match(/ERR-[A-Z]+-\d+/g) || []);
+    const cahier = new Set(lireSource('docs', 'archives', 'ancienne-vision', 'CAHIER-DES-CHARGES.md').match(/ERR-[A-Z]+-\d+/g) || []);
     const absents = [...codesUtilises].filter(c => !cahier.has(c)).sort();
     assert.deepStrictEqual(absents, [], 'code(s) posés dans le code et absents de la Partie 10 du cahier');
   });
