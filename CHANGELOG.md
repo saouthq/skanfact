@@ -36,6 +36,18 @@ Publiée en **bêta** : c'est un format de fichier officiel.
   remplit et le fichier est joint comme justificatif. Un fournisseur inconnu se crée d'un clic,
   avec son matricule, son adresse, son téléphone et son email lus sur la facture. Un fichier qui
   n'est pas une facture électronique est refusé avec sa raison.
+- **Envoyer par WhatsApp** : une facture, un devis ou n'importe quelle pièce part dans la conversation
+  du client (« Plus ▾ → Envoyer par WhatsApp… », le menu d'une ligne de liste), et une facture en
+  retard se relance de la même façon depuis la page Relances. Le numéro vient de la fiche client et
+  se met tout seul au format international (98 123 456 → +216 98 123 456) ; un numéro qu'on ne peut
+  pas deviner (un numéro étranger sans son indicatif) est refusé en disant comment l'écrire, un fixe
+  se signale. Le message est **le même que celui de l'email** (Paramètres → Envois), modifiable avant
+  de partir. Un lien WhatsApp ne peut pas joindre de fichier : SkanFact prépare le PDF et le montre
+  dans son dossier, tu le glisses dans la conversation — la fenêtre le dit **avant** le geste.
+  L'envoi se note dans l'historique de la pièce (« Envoyé par WhatsApp »), et un brouillon s'émet
+  d'abord, comme pour l'email.
+- Depuis le jeu d'exemple, l'envoi d'un email par l'éditeur ne pose plus **deux fois** la question
+  « Ce sont des données d'exemple » (une fois suffit).
 
 ## 10.14.1-beta.1 — 26/09/2026
 

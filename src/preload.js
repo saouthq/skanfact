@@ -40,6 +40,7 @@ contextBridge.exposeInMainWorld('skanfact', {
   exportPdfSilent: (html, name) => ipcRenderer.invoke('pdf:exportSilent', { html, name }),
   saveTextSilent: (name, content) => ipcRenderer.invoke('file:saveSilent', { name, content }),
   composeMail: (opts) => ipcRenderer.invoke('mail:compose', opts),
+  ouvrirWhatsApp: (opts) => ipcRenderer.invoke('whatsapp:ouvrir', opts),
   addAttachments: (docId) => ipcRenderer.invoke('attach:add', docId),
   // Lecture d'une photo de facture (4.2.0). `ocrRead` est le SEUL appel qui sort de l'ordinateur,
   // et il échoue proprement tant qu'aucune clé n'a été saisie.

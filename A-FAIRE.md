@@ -367,6 +367,10 @@ dans un achat neuf, montants recomptés, fournisseur créé depuis la facture, r
 est pas une. Testé à la souris sur une facture fabriquée (604,330 DT recomptés à la main). **À
 confronter à un vrai fichier reçu d'El Fatoora** (signé, avec RefTtnVal) dès qu'un fournisseur en
 envoie un à Skander.
+Et l'**envoi par WhatsApp** (H2) : pièces et relances, le message du modèle d'email, le PDF préparé
+à glisser (un lien `wa.me` ne joint pas de fichier). Testé à la souris (numéro faux refusé, fixe
+signalé, historique « Envoyé par WhatsApp »). **À VÉRIFIER sur un vrai poste** : l'ouverture de
+WhatsApp Desktop par le lien (Linux sans WhatsApp ne peut pas le montrer).
 
 **À faire, dans l'ordre :**
 1. **Les certificats de retenue TEJ** (XML DeclarationsRS). Bloqué : les schémas officiels

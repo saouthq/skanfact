@@ -3243,7 +3243,8 @@
       const d = docById(id); if (!d) return [];
       const a = [{ icon: 'ouvrir', label: 'Ouvrir', hint: 'Voir la pièce et la modifier', run: () => navigate('#/doc/' + id) },
                  { icon: 'pdf', label: 'Exporter en PDF', hint: 'Le document tel que ton client le recevra', run: () => exportPdf(d) }];
-      if (d.number) a.push({ icon: 'email', label: 'Envoyer par email', hint: 'Le PDF est joint au message', run: () => sendByEmail(d) });
+      if (d.number) a.push({ icon: 'email', label: 'Envoyer par email', hint: 'Le PDF est joint au message', run: () => sendByEmail(d) },
+        { icon: 'message', label: 'Envoyer par WhatsApp', hint: 'Le message s\'ouvre dans WhatsApp ; le PDF est prêt à glisser', run: () => sendByWhatsApp(d) });
       // `restOf` vit dans `docColumns` : ici on repasse par `balance`, la même source.
       const reste = d.type === 'facture' && d.status !== 'brouillon' ? balance(d).remaining : 0;
       if (d.type === 'facture' && d.status !== 'annulée' && reste > 0.0005)
@@ -3653,6 +3654,7 @@
           ${!figee && (isInv || isAv) ? `<button class="btn btn-primary" id="issue">${isInv ? 'Émettre ' + laPiece() : 'Émettre l\'avoir'}</button> ${info('ed.issue')}` : ''}
           ${avecPlus ? `<div class="more"><button class="btn" id="more-btn" aria-label="Autres actions">Plus ▾</button><div class="more-list" id="more-list" hidden>
             ${emailDansPlus ? `<button id="email">Envoyer par email…</button>` : ''}
+            <div class="ml-ligne"><button id="wa">Envoyer par WhatsApp…</button>${info('wa.envoi')}</div>
             ${convDansPlus ? `<div class="ml-titre">Transformer en…</div>${convBoutons}<div class="ml-sep"></div>` : ''}
             ${!isAv ? `<button id="dup">Dupliquer</button><button id="as-template">Enregistrer comme modèle…</button>` : ''}
             ${hasSerials ? `<button id="serials">Numéros de série livrés…</button>` : ''}
@@ -4660,10 +4662,11 @@
     brancherQuestions();
     if ($('#lock-unlock')) $('#lock-unlock').onclick = () => { const u = $('#unlock'); if (u) u.onclick(); };
     if ($('#lock-uncancel')) $('#lock-uncancel').onclick = () => { const u = $('#uncancel'); if (u) u.onclick(); };
-    if ($('#email')) $('#email').onclick = async () => {
+    // Email et WhatsApp partent par la MÊME porte : un brouillon sans numéro ne part par aucun des deux.
+    const envoyerPar = (envoi, geste) => async () => {
       // La porte de l'exemple AVANT tout le reste : sinon on explique d'abord comment émettre une
       // facture de démonstration, ce qui n'a pas de sens, et on refuse seulement à la fin.
-      if (await demoBlock('Envoyer un email')) return;
+      if (await demoBlock(geste)) return;
       const d = docById(doc.id) || doc;
       // Un brouillon de facture ou d'avoir n'a pas de numéro : il ne part pas. On le DIT, et on
       // propose le geste qui débloque, au lieu de faire disparaître le bouton.
@@ -4681,12 +4684,14 @@
               close();
               if (!issue()) return;
               render();
-              sendByEmail(docById(doc.id) || doc);
+              envoi(docById(doc.id) || doc, null, null, null, { exempleAccepte: true });
             };
           });
       }
-      sendByEmail(d);
+      envoi(d, null, null, null, { exempleAccepte: true });
     };
+    if ($('#email')) $('#email').onclick = envoyerPar(sendByEmail, 'Envoyer un email');
+    if ($('#wa')) $('#wa').onclick = envoyerPar(sendByWhatsApp, 'Envoyer par WhatsApp');
     if ($('#as-template')) $('#as-template').onclick = () => saveAsTemplate(doc);
     if ($('#teif')) $('#teif').onclick = () => exporterTeif(docById(doc.id) || doc);
     if ($('#make-recurring')) $('#make-recurring').onclick = () => recurrenceForm(recurrenceFromInvoice(doc), () => { toast('Contrat créé'); navigate('#/contrats'); });
@@ -6243,8 +6248,11 @@
     if (c === 'a') { demoSortie(); return true; }
     return c !== 'b';                          // fermer la fenêtre vaut « ne rien faire »
   }
-  async function sendByEmail(doc, kind, extra, afterSend) {
-    if (await demoBlock('Envoyer un email')) return;
+  // `o.exempleAccepte` : la question de l'exemple a déjà été posée par l'appelant (la porte de
+  // l'éditeur la pose AVANT d'expliquer un brouillon sans numéro). La reposer ici faisait répondre
+  // deux fois « Continuer quand même » pour un seul envoi.
+  async function sendByEmail(doc, kind, extra, afterSend, o) {
+    if (!(o && o.exempleAccepte) && await demoBlock('Envoyer un email')) return;
     const client = clientById(doc.clientId);
     if (!client) return toast('Choisis un client.', true);
     // La messagerie AVANT la fenêtre : sa dernière phrase dit ce qui va se passer (« s'ouvre dans
@@ -6288,9 +6296,67 @@
         } catch (e) { b.disabled = false; b.textContent = 'Ouvrir dans la messagerie'; toast(plainError(e), true); }
       }; });
   }
-  function sendReminder(item) {
+  function sendReminder(item, canal) {
     const level = item.level;
-    sendByEmail(item.doc, 'relance' + level, { jours: item.daysLate }, stored => { stored.reminders = stored.reminders || []; stored.reminders.push({ date: C.today(), level }); });
+    (canal === 'whatsapp' ? sendByWhatsApp : sendByEmail)(item.doc, 'relance' + level, { jours: item.daysLate }, stored => { stored.reminders = stored.reminders || []; stored.reminders.push({ date: C.today(), level }); });
+  }
+
+  // ---------- WhatsApp (10.15.0, H2) ----------
+  // Le canal réel en Tunisie. Le message vient du MÊME modèle que l'email (Paramètres → Envois) : un
+  // texte qu'on règle une fois, deux canaux. Un lien WhatsApp ne porte pas de fichier : le PDF est
+  // préparé et montré dans son dossier, et la fenêtre le dit AVANT le geste — pas après, quand on
+  // cherche la pièce jointe dans la conversation.
+  async function sendByWhatsApp(doc, kind, extra, afterSend, o) {
+    if (!(o && o.exempleAccepte) && await demoBlock('Envoyer par WhatsApp')) return;
+    const client = clientById(doc.clientId);
+    if (!client) return toast('Choisis un client.', true);
+    kind = kind || doc.type;
+    const m = C.emailFor(kind, doc, client, company(), extra, data);
+    const titre = kind === 'relanceDevis' ? 'Relancer le devis ' + h(doc.number) + ' par WhatsApp'
+      : /^relance\d$/.test(kind) ? C.REMINDER_LABELS[Number(kind.slice(-1))] + ' par WhatsApp — ' + h(doc.number)
+      : 'Envoyer ' + h(docLabel(doc)) + ' par WhatsApp';
+    modal(`<h2>${titre}</h2>
+      <form id="wf" class="grid-2">
+        <label class="field obligatoire">${lbl('Numéro WhatsApp', 'wa.numero')}<input type="tel" name="tel" value="${h(client.phone || '')}" placeholder="98 123 456"></label>
+        <label class="check" style="align-self:end"><input type="checkbox" name="attach" checked> <span>Préparer le PDF à glisser</span></label>
+        <p class="small muted span-2 annonce-stable" id="wf-num"></p>
+        <label class="field span-2">${lbl('Message', 'wa.message')}<textarea name="body" rows="9">${h(m.body)}</textarea></label>
+      </form>
+      <p class="small muted">WhatsApp s'ouvre sur la conversation, le message déjà écrit. Un lien ne peut pas y joindre de fichier : le PDF s'affiche dans ${EXPLORATEUR}, glisse-le dans la conversation. Le texte vient du modèle d'email (Paramètres → Envois).</p>
+      <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Ouvrir WhatsApp</button></div>`,
+      (root, close) => {
+        const tel = $('[name=tel]', root);
+        const dire = () => {
+          const r = C.numeroWhatsApp(tel.value), el = $('#wf-num', root);
+          el.textContent = r.ok ? `Le message partira vers +${r.numero}.${r.fixe ? ' C\'est un numéro fixe : il n\'a en général pas WhatsApp — À VÉRIFIER.' : ''}`
+            : r.vide ? 'Le numéro du client n\'est pas sur sa fiche : tape-le, il y sera gardé.' : r.motif.charAt(0).toUpperCase() + r.motif.slice(1) + '.';
+        };
+        tel.addEventListener('input', dire); dire();
+        $('#ok', root).onclick = async () => {
+          const v = formValues($('#wf', root));
+          const n = C.numeroWhatsApp(v.tel);
+          if (!n.ok) return refus(tel, n.vide ? 'Le numéro WhatsApp du client manque.' : n.motif.charAt(0).toUpperCase() + n.motif.slice(1) + '.');
+          const b = $('#ok', root); b.disabled = true; b.textContent = 'Préparation…';
+          try {
+            // Même règle que l'email : envoyer fait passer la pièce de brouillon à envoyée, et le PDF
+            // est celui de la pièce ENVOYÉE, sans le tampon « BROUILLON ».
+            const envoi = C.STATUT_ENVOI[doc.type];
+            const passe = !!envoi && doc.status === 'brouillon';
+            const telle = passe ? { ...doc, status: envoi } : doc;
+            let fichier = null;
+            if (v.attach) fichier = await bridge.exportPdfSilent(C.documentHtml(telle, client, company(), { stampText: stampFor(telle) }), docFileName(telle));
+            await bridge.ouvrirWhatsApp({ numero: n.numero, texte: v.body, fichier });
+            if (!String(client.phone || '').trim()) client.phone = v.tel.trim();
+            const stored = docById(doc.id) || doc;
+            stored.emails = stored.emails || []; stored.emails.push({ date: C.today(), to: '+' + n.numero, kind, canal: 'whatsapp' });
+            if (passe && stored.status === 'brouillon') { stored.status = envoi; if (doc !== stored) doc.status = envoi; }
+            if (afterSend) afterSend(stored);
+            save(true); close();
+            toast(fichier ? `WhatsApp s'ouvre sur la conversation : glisse le PDF qui s'affiche dans ${EXPLORATEUR}` : 'WhatsApp s\'ouvre sur la conversation');
+            render();
+          } catch (e) { b.disabled = false; b.textContent = 'Ouvrir WhatsApp'; toast(plainError(e), true); }
+        };
+      });
   }
 
   // ---------- contrats récurrents ----------
@@ -6882,6 +6948,7 @@
           { icon: 'ouvrir', label: 'Ouvrir la facture', hint: 'Ses lignes, ses paiements, ses relances', run: () => navigate('#/doc/' + id) },
           { sep: true },
           { icon: 'cloche', cle: 'relancer-mail', label: 'Relancer par email', hint: `Ton de niveau ${x.level} — ${C.REMINDER_LABELS[x.level]}`, run: () => sendReminder(x) },
+          { icon: 'message', cle: 'relancer-whatsapp', label: 'Relancer par WhatsApp', hint: `Le même message, dans la conversation du client`, run: () => sendReminder(x, 'whatsapp') },
           { icon: 'telephone', cle: 'relancer-appel', label: 'Noter un appel téléphonique', hint: 'Ce que le client a répondu, et quand rappeler', run: () => phoneReminderForm(x, draw) },
           { sep: true },
           { icon: 'argent', label: 'Paiement reçu', hint: `Reste ${C.money(x.remaining, docCur(x.doc))}`, run: () => paymentForm(x.doc, draw) },

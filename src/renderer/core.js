@@ -8538,11 +8538,15 @@
       const what = inv.deposit ? `Facture d'acompte ${acompteDit(inv.deposit, inv.currency)}` : inv.settles ? 'Facture de solde' : 'Facture';
       ev.push({ date: inv.date, kind: 'facture', label: `${what} ${inv.number || '(brouillon)'} établie`, detail: inv.status === 'brouillon' ? 'pas encore émise' : '', id: inv.id });
     });
-    (doc.emails || []).forEach(e => ev.push({
-      date: e.date, kind: /^relance/.test(e.kind) ? 'relance' : 'email',
-      label: /^relance/.test(e.kind) ? (REMINDER_LABELS[Number(e.kind.slice(-1))] || 'Relance') + ' par email' : 'Envoyé par email',
-      detail: e.to || ''
-    }));
+    // Un envoi dit son CANAL : « par email » sur un message parti par WhatsApp serait une histoire fausse.
+    (doc.emails || []).forEach(e => {
+      const par = e.canal === 'whatsapp' ? 'par WhatsApp' : 'par email';
+      ev.push({
+        date: e.date, kind: /^relance/.test(e.kind) ? 'relance' : 'email',
+        label: /^relance/.test(e.kind) ? (REMINDER_LABELS[Number(e.kind.slice(-1))] || 'Relance') + ' ' + par : 'Envoyé ' + par,
+        detail: e.to || ''
+      });
+    });
     (doc.reminders || []).filter(r => r.channel && r.channel !== 'email').forEach(r => ev.push({
       date: r.date, kind: 'relance', label: (REMINDER_LABELS[r.level] || 'Relance') + ' par téléphone', detail: r.note || ''
     }));
@@ -8666,6 +8670,34 @@
       .replace(/,?[ \t]*(?:reprenant votre demande[ \t]+)?concernant[ \t]*:[ \t]*\{objet\}/g, '')
       .replace(/[ \t]*for:[ \t]*\{objet\}/g, '')
       .replace(/[ \t]*—[ \t]*\{objet\}/g, '');
+  }
+
+  // ---------- WhatsApp (10.15.0, H2 de l'étude Hesabi) ----------
+  // Le canal réel en Tunisie. WhatsApp veut le numéro au format international, sans « + » ni espace
+  // (21698123456) : un numéro tunisien s'écrit de huit chiffres, on lui met l'indicatif ; un numéro
+  // étranger se tape avec le sien (+33…, 0033…) — sans lui on ne devine pas le pays, on le DIT.
+  // Un fixe tunisien commence par 7 et n'a en général pas WhatsApp : on le signale sans refuser
+  // (un standard peut avoir WhatsApp Business) — À VÉRIFIER avec le client.
+  function numeroWhatsApp(tel) {
+    const brut = String(tel == null ? '' : tel).trim();
+    if (!brut) return { ok: false, vide: true, motif: 'aucun numéro de téléphone' };
+    let v = brut.replace(/[\s().\-/]/g, '');
+    if (!/^\+?\d+$/.test(v)) return { ok: false, motif: `« ${brut} » n'est pas un numéro que WhatsApp reconnaît : huit chiffres pour la Tunisie, ou l'indicatif du pays devant (+33…)` };
+    if (/^\+/.test(v)) v = v.slice(1);
+    else if (/^00/.test(v)) v = v.slice(2);
+    else if (/^\d{8}$/.test(v)) v = '216' + v;
+    // Sans « + » ni « 00 », seul un numéro tunisien se reconnaît : « 06 12 34 56 78 » est un numéro
+    // national d'un AUTRE pays, et l'envoyer tel quel ouvrirait une conversation avec personne.
+    else if (/^216/.test(v) && v.length !== 11) return { ok: false, motif: `« ${brut} » : un numéro tunisien a huit chiffres après l'indicatif 216` };
+    else if (!/^216\d{8}$/.test(v)) return { ok: false, motif: `« ${brut} » : ajoute l'indicatif du pays devant (+33…, 00216…) — sans lui, on ne sait pas à qui il appartient` };
+    if (!/^\d{8,15}$/.test(v)) return { ok: false, motif: `« ${brut} » n'est pas un numéro que WhatsApp reconnaît : huit chiffres pour la Tunisie, ou l'indicatif du pays devant (+33…)` };
+    if (/^216/.test(v) && v.length !== 11) return { ok: false, motif: `« ${brut} » : un numéro tunisien a huit chiffres après l'indicatif 216` };
+    return { ok: true, numero: v, fixe: /^2167/.test(v) };
+  }
+  // Le lien qui ouvre la conversation, message prérempli. Un lien ne porte pas de fichier : le PDF se
+  // glisse à la main, et l'écran le dit.
+  function lienWhatsApp(numero, texte) {
+    return 'https://wa.me/' + String(numero) + (texte ? '?text=' + encodeURIComponent(texte) : '');
   }
 
   // ---------- montant en lettres (français) ----------
@@ -9957,7 +9989,7 @@
     estRemboursementAchat, avoirRembourse, aRattacherAchat, nextNumber, isLocked, isIssued, computeTotals, creditsFor, invoiceBalance, estRemboursement, titreQuestion, gesteQuestion, dateDernierReglement, motifVerrou, delaisContradictoires, effectiveStatus,
     depositLines, depositLinesMontant, acompteDit, settlementLines, salesJournal, vatSummary, paymentsJournal, toCsv, migrateData,
     PERIODS, MONTHS_FR, MONTHS_SHORT, monthLabel, deLibelle, addMonths, nextRecurrenceDate, dueRecurrences, catchUpRecurrence, fillTemplate, buildRecurringInvoice,
-    reminderLevel, REMINDER_LABELS, daysBetween, overdueInvoices, facturesAVenir, todoList, companyGaps, verifRib, documentHistory, DEFAULT_EMAIL_TEMPLATES, DEFAULT_EMAIL_TEMPLATES_EN, emailFor,
+    reminderLevel, REMINDER_LABELS, daysBetween, overdueInvoices, facturesAVenir, todoList, companyGaps, verifRib, documentHistory, DEFAULT_EMAIL_TEMPLATES, DEFAULT_EMAIL_TEMPLATES_EN, emailFor, numeroWhatsApp, lienWhatsApp,
     CURRENCIES, DEVISES_NOMS, libelleDevise, TYPES_NUMEROTES, etatNumerotation, poserNumerotation, premiereNumerotation, normCurrency, decimalsFor, arrondiDevise, prixDuCatalogue, toBase, rateOf, missingRate, monthKeys, monthlySeries, topClients, quoteStats, avgPaymentDelay, clientSummary, I18N,
     EXTRA_TYPES, SALES_TYPES, CONVERSIONS, CONVERSION_LABELS, convertDoc, retenueDuClient, derivedDocs, chaineDePieces, DEFAULT_CLAUSES, CLAUSE_LABELS,
     PURCHASE_KINDS, PURCHASE_LIES, piecesLieesAchat, LINE_DESTINATIONS, DEFAULT_EXPENSE_CATEGORIES, PURCHASE_STATUSES, expenseCategories,

@@ -8708,6 +8708,27 @@ n'entre avant « Utiliser ces informations ».
   (« Lire une e-facture… »), et le bouton n'existe que sur un achat NEUF : relu par-dessus une pièce
   saisie, il la remplacerait.
 
+**Puis l'envoi par WhatsApp (H2)** : `core.numeroWhatsApp` (huit chiffres tunisiens → 216, `00`
+vaut `+`, un fixe se signale sans être refusé, un numéro qu'on ne sait pas situer est refusé en
+disant comment l'écrire), `core.lienWhatsApp` (`https://wa.me/<numéro>?text=`), `sendByWhatsApp`
+dans app.js, `whatsapp:ouvrir` dans main.js.
+
+- **Le processus principal ne rouvre jamais une adresse venue de la page** : il reçoit un numéro et
+  un texte, REVÉRIFIE le numéro, fabrique le lien par le moteur et l'ouvre. `openExternal` d'une URL
+  fournie par l'écran est une porte ouverte sur n'importe quel protocole.
+- **Un canal de plus n'est pas un message de plus** : le texte vient du modèle d'email
+  (`C.emailFor`), modifiable avant le geste — deux modèles pour le même envoi divergeraient.
+- **Ce qu'un lien ne peut pas faire se dit avant le geste** : `wa.me` n'accepte aucun fichier ; le
+  PDF est exporté (`envois/`) et montré dans son dossier, et la fenêtre l'annonce au-dessus du bouton.
+- **Une porte partagée par deux canaux ne pose sa question qu'une fois** : `envoyerPar` pose la
+  question de l'exemple, et passe `exempleAccepte` à la fonction d'envoi — l'email la reposait
+  depuis toujours (deux « Continuer quand même » pour un envoi), vu en jouant WhatsApp à la souris.
+- **Un numéro national d'un autre pays ne se devine pas** : « 06 12 34 56 78 » (un portable
+  français) passait pour un numéro tunisien de dix chiffres. Seuls huit chiffres, ou 216 + huit,
+  sont tunisiens sans indicatif ; un 216 de la mauvaise longueur se dit comme tel.
+- Piège de lanceur : la suite `test/suites/whatsapp.js` n'était pas chargée — le garde-fou « suite
+  écrite et jamais chargée » (9.4.10) l'a nommée au premier `npm test`.
+
 ## Pistes pour la suite (non demandées)
 
 - Séparation des installateurs arm64 / x64 pour diviser par deux les 222 Mo du dmg universel.

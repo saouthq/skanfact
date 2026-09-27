@@ -459,6 +459,9 @@
     'cat.snipText': { t: 'Texte', d: 'Il s\'ajoute à la fin des notes du document au moment où tu l\'insères, et s\'imprime avec elles. Le modifier ici ne change pas les documents où tu l\'as déjà inséré.' },
     'mail.to': { t: 'Destinataire', d: 'Pré-rempli avec l\'email de la fiche du client. Si sa fiche n\'en avait pas, l\'adresse que tu tapes y est enregistrée pour les envois suivants. L\'envoi est noté, avec cette adresse, dans l\'historique de la pièce.' },
     'mail.objet': { t: 'Objet du mail', d: 'Proposé par le modèle de ce message (Paramètres → Envois). Ce que tu changes ici ne vaut que pour cet envoi : le modèle ne bouge pas. Le message s\'ouvre ensuite dans ta messagerie, où tu le relis avant de l\'envoyer.' },
+    'wa.envoi': { t: 'Envoyer par WhatsApp', d: 'Ouvre WhatsApp sur la conversation du client, le message déjà écrit (le même modèle que l\'email, Paramètres → Envois). Un lien WhatsApp ne peut pas joindre de fichier : SkanFact prépare le PDF et l\'affiche dans son dossier, tu le glisses dans la conversation. L\'envoi fait passer la pièce en « envoyée » et se note dans son historique, « par WhatsApp ».' },
+    'wa.numero': { t: 'Numéro WhatsApp', d: 'Pré-rempli avec le téléphone de la fiche du client. Huit chiffres pour un numéro tunisien (l\'indicatif 216 est ajouté), ou l\'indicatif du pays devant pour un numéro étranger (+33…). S\'il manquait sur la fiche, celui que tu tapes y est gardé. Un numéro fixe (qui commence par 7) n\'a en général pas WhatsApp.' },
+    'wa.message': { t: 'Message', d: 'Le texte du modèle d\'email de cette pièce (Paramètres → Envois), sans l\'objet. Adapte-le si besoin : ça ne vaut que pour cet envoi. Il arrive dans WhatsApp déjà écrit ; c\'est toi qui appuies sur « Envoyer ».' },
     'mail.message': { t: 'Message', d: 'Le texte du mail, déjà rempli par le modèle (Paramètres → Envois). Adapte-le si besoin : ça ne vaut que pour cet envoi, et SkanFact ne garde pas ce texte. Il s\'ouvre dans ta messagerie, qui l\'envoie une fois que tu l\'as relu.' },
     'rel.niveauTel': { t: 'Niveau de la relance', d: 'Proposé d\'après le retard : rappel, relance ou dernière relance. Il sert de trace — colonne « Dernière relance » et historique de la facture. Le niveau de la relance suivante se calcule toujours sur les jours de retard, pas sur celui-ci.' },
     'rel.noteTel': { t: 'Ce qui a été dit', d: 'La réponse du client : une promesse, une date, un désaccord. Elle s\'affiche sous la dernière relance dans les Relances et dans l\'historique de la facture, pour que tu la retrouves avant de rappeler. Le client ne la voit jamais.' },
@@ -546,6 +549,7 @@
 <p>Elle vient <b>juste après ton premier devis</b> : c'est le moment où il existe enfin quelque chose à protéger. <b>Paramètres → Données et sécurité → Choisir un dossier</b>, puis un dossier dans iCloud Drive (Mac), OneDrive (Windows) ou sur une clé USB. À chaque enregistrement, tout y est recopié ; une copie qui échoue le dit en rouge, et l'étape reste à faire. Fais-le maintenant, pas « plus tard » : c'est la seule étape dont l'oubli coûte tout. Le même écran liste tes sauvegardes et sait <b>revenir en arrière</b>.</p>
 <h3>L'envoyer à ton client</h3>
 <p>Le bouton <b>Email</b> prépare le message avec le PDF joint, et fait passer le devis en « envoyé ». Si tu l'envoies autrement — WhatsApp, impression, main propre — l'application te demande après l'export si elle doit le marquer envoyé : réponds oui, sinon elle ne le relancera jamais et ne le comptera pas dans tes statistiques.</p>
+<p><b>Par WhatsApp</b> : « Plus ▾ → Envoyer par WhatsApp… » (ou le menu « Actions » d'une ligne de la liste) ouvre la conversation du client avec le message déjà écrit — le même texte que l'email, réglé une fois dans Paramètres → Envois. Un lien WhatsApp ne peut pas joindre de fichier : le PDF s'affiche dans son dossier, glisse-le dans la conversation. Le devis passe en « envoyé », et l'historique dit « par WhatsApp ». Une relance part de la même façon, depuis la page Relances.</p>
 <h3>Transformer un devis accepté en facture</h3>
 <p>Quand le client dit oui, passe le devis en « accepté » : le bouton <b>Facturer ce devis</b> devient le bouton vert de l'écran, et il existe aussi sur chaque ligne de la liste. La facture reprend tout, sans ressaisie. Voir <a href="#/aide/facture">La facture : réclamer ton argent</a>.</p>
 <h3>Relier ton comptable (facultatif)</h3>
@@ -1630,6 +1634,7 @@ rencontres. Si un mot affiché dans l'application manque ici, c'est un défaut :
     [/^doc\.(currency|en)$/, 'etranger'],
     [/^doc\./, 'facture'],
     [/^(mail|rel)\./, 'paiements'],
+    [/^wa\./, 'demarrer'],
     [/^upd\./, 'support'],
     [/^sec\./, 'donnees'],
     [/^data\.(dossiers|shared|device)$/, 'deux'],

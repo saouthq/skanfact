@@ -40,7 +40,7 @@ Légende : ✅ nous l'avons · ◐ nous l'avons en partie · ❌ nous ne l'avons
 | Acompte / solde, facture récurrente, relances | non documenté | ★ acomptes en montant exact, soldes, contrats récurrents, relances graduées, relance téléphonique |
 | Documents en anglais, en devise, écart de change | non documenté | ★ FR/EN, toute devise, taux du jour au règlement, écart de change en 655/755 |
 | Envoi par email | oui | ✅ (Mail sur Mac, messagerie par défaut ailleurs) |
-| **Envoi par WhatsApp** | **oui** | ❌ → **H2** |
+| **Envoi par WhatsApp** | **oui** | ★ depuis la 10.15.0 (**H2**) : pièces ET relances, le message du modèle d'email, le numéro remis au format international et revérifié par le processus principal |
 | **Portail client en ligne** (le client consulte ses factures) | **oui** | ❌ — suppose un serveur qui garde les factures des clients : décision de Skander (§ 4) |
 | Calculateur de chiffrage des devis | oui (Pro) | ◐ coût d'achat, marge estimée en direct, pas de « coefficient » → H6 |
 
@@ -112,7 +112,7 @@ l'envoi à la TTN en un clic, TEJ, la caisse, l'arabe, et « sur mon téléphone
 | # | Quoi | Pourquoi d'abord |
 |---|---|---|
 | **H1** ✅ | Importer la **facture TEIF d'un fournisseur** en achat, sans IA — livré en 10.15.0 | L'e-facture devient obligatoire : chaque client recevra des XML. Les lire exactement vaut mieux qu'un import « IA » |
-| **H2** | **Envoyer par WhatsApp** | Le canal réel en Tunisie ; petit geste, gros effet en démonstration |
+| **H2** ✅ | **Envoyer par WhatsApp** — livré en 10.15.0 | Le canal réel en Tunisie ; petit geste, gros effet en démonstration |
 | **H3** | **Export FEC** (entreprise et Cabinet) | Hesabi l'affiche ; un comptable le demandera |
 | **H4** | Contrat **saisonnier** et **CIVP** en paie | Deux lignes, et une case de moins dans le comparatif |
 | **H5** | **Caisse** : vente comptoir, ticket 80 mm, code-barres, douchette | Les commerces : un marché que nous ne touchons pas du tout |

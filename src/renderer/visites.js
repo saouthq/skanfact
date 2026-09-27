@@ -286,6 +286,7 @@
   b('#save', "Garde la pièce. Un devis reçoit son numéro ; une facture reste un brouillon sans numéro tant que tu ne l'as pas émise.", { route: 'doc' });
   b('#issue', "Donne à la pièce son numéro définitif et la verrouille. Un récapitulatif s'affiche d'abord : à qui, quand, combien.");
   b('#email', "Prépare le mail dans ta messagerie, avec le PDF joint : tu relis, et tu envoies.");
+  b('#wa', "Ouvre WhatsApp sur la conversation du client, le message déjà écrit ; le PDF s'affiche dans son dossier, à glisser.");
   // La question du premier envoi, sur Mac (10.14.0).
   b('#msg-mail', "Tes messages s'ouvriront dans Mail, l'application d'Apple, le PDF déjà joint.");
   b('#msg-autre', "Tes messages s'ouvriront dans ta messagerie par défaut ; le PDF s'affiche à côté, pour que tu le glisses dedans.");

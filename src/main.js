@@ -1644,7 +1644,7 @@ ipcMain.handle('ocr:read', async (_e, { path: file } = {}) => {
 
 // ---------- PDF ----------
 
-const { fitToPage, paginate, canalDe, jourDeLInstant, lireFichierTexte } = require('./renderer/core.js');
+const { fitToPage, paginate, canalDe, jourDeLInstant, lireFichierTexte, lienWhatsApp } = require('./renderer/core.js');
 
 // Rend un document HTML en PDF A4. Le HTML passe par un fichier temporaire : une URL data:
 // est limitée en taille (logo en base64).
@@ -2393,6 +2393,16 @@ ipcMain.handle('mail:compose', async (_e, { to, subject, body, attachment, attac
   await shell.openExternal(url);
   if (files.length) shell.showItemInFolder(files[0]);
   return { state: 'mailto' };
+});
+
+// Envoi par WhatsApp (10.15.0) : le processus principal fabrique LUI-MÊME le lien, à partir d'un
+// numéro qu'il revérifie — il n'ouvre jamais une adresse venue de la page. Un lien ne porte pas de
+// fichier : le PDF préparé se montre dans son dossier, pour être glissé dans la conversation.
+ipcMain.handle('whatsapp:ouvrir', async (_e, { numero, texte, fichier } = {}) => {
+  if (!/^\d{8,15}$/.test(String(numero || ''))) throw erreur('ERR-ENT-087', 'Ce numéro n\'est pas un numéro WhatsApp.');
+  await shell.openExternal(lienWhatsApp(numero, String(texte || '')));
+  if (fichier && fs.existsSync(fichier)) shell.showItemInFolder(fichier);
+  return { ok: true };
 });
 
 // Enregistrement d'un fichier texte (CSV pour le comptable).
