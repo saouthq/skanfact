@@ -87,6 +87,16 @@ Publiée en **bêta** : c'est un format de fichier officiel.
   le prix. Réglages dans Paramètres → Documents → « Caisse et tickets » : largeur du papier, message
   en bas du ticket, et le timbre fiscal (**pas de timbre par défaut sur un ticket — À VÉRIFIER** avec
   ton comptable).
+- **Calculer un prix depuis son coût** : « Calculer le prix… » dans la fiche d'une prestation, et
+  « Calculer les prix… » au-dessus des lignes d'un devis ou d'une facture. Ton coût, ta règle — un
+  **coefficient** (× 1,6), une **marge sur le coût** (+ 60 %), un **taux de marque** (37,5 %) ou le
+  **prix TTC** que tu veux afficher — et, si tu veux, un **arrondi** du prix que voit le client
+  (au 0,500 DT supérieur, au dinar…), toujours vers le haut pour ne jamais rogner la marge. La
+  fenêtre montre le prix HT et TTC, la marge par unité et la marge dite de trois façons. Des **frais
+  par unité** (transport, douane) s'ajoutent au coût, et le coût de revient enregistré les comprend.
+  Sur une pièce, « Toutes les lignes qui ont un coût » chiffre le devis entier d'un geste, avec le
+  prix actuel et le nouveau côte à côte ; une ligne sans coût garde son prix. SkanFact retient ta
+  dernière règle. Hors régime de TVA, le prix affiché est le prix HT et le taux n'est jamais touché.
 - Dans SkanFact Cabinet, les exports d'un livre vivent dans **un menu « Exporter ▾ »** : la barre du
   livre-journal tient de nouveau sur une rangée. Un menu posé dans une barre (« Exporter », « Imprimer
   la fiche ») a désormais l'allure d'un bouton, et non celle d'un bouton éteint.

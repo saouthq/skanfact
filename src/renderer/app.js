@@ -3754,6 +3754,7 @@
               ${templatesFor(doc.type).length ? `<div id="tpl-pick">${combo({ items: [], placeholder: 'Depuis un modèle…', search: 'Rechercher un modèle…' })}</div>` : ''}
               <div id="cat-pick">${combo({ items: [], placeholder: 'Ajouter depuis le catalogue…', search: 'Rechercher une prestation…' })}</div>
               <button class="btn btn-sm" id="add-line">+ Ligne vide</button>
+              ${isAv ? '' : '<button class="btn btn-sm" id="calc-prix">Calculer les prix…</button>'}
             </div>`}
             <!-- La grille des lignes se range selon la place qu'elle a (10.12.0) : à côté de l'aperçu,
                  la désignation prend toute la largeur et les chiffres passent dessous ; sans
@@ -3936,6 +3937,28 @@
       refreshTotals();
     }
     if ($('#add-line')) $('#add-line').onclick = () => { doc.lines.push(C.newLine(company())); touch(); drawLines(); $$('input[data-k=label]', linesBody).pop().focus(); };
+    // Chiffrer une pièce (H6) : le coût de chaque ligne — le sien, sinon celui du catalogue, dans la
+    // devise de la pièce (`lineCost`) — et une règle appliquée à une ligne ou à toutes celles qui ont un
+    // coût. Le calculateur rend les prix ; la pièce n'est enregistrée qu'à « Enregistrer ».
+    if ($('#calc-prix')) $('#calc-prix').onclick = () => {
+      const coutUnitaire = l => {
+        if (l.unitCost !== '' && l.unitCost != null && Number(l.unitCost) > 0) return Number(l.unitCost);
+        const q = Number(l.qty) || 0;
+        return q ? C.round3(C.lineCost(Object.assign({}, l, { unitCost: '' }), data, doc, company()) / q) : 0;
+      };
+      const lignes = doc.lines.map(l => ({ label: l.label || '', cout: coutUnitaire(l), tva: Number(l.vatRate) || 0, prix: Number(l.unitPrice) || 0 }));
+      const figee = !C.assujettiTVA(company());
+      prixCalculForm({ lignes, devise: cur, tvaFigee: figee }, res => {
+        const poser = (i, r) => {
+          const l = doc.lines[i]; if (!l) return;
+          l.unitPrice = r.ht; l.unitCost = r.coutComplet;
+          if (!figee) l.vatRate = r.tva;
+        };
+        if (res.lignes) res.lignes.forEach(x => poser(x.i, x.r)); else poser(res.i, res.r);
+        touch(); drawLines();
+        toast(res.lignes ? `${pl(res.lignes.length, 'prix calculé', 'prix calculés')} : enregistre la pièce pour les garder.` : 'Prix calculé : enregistre la pièce pour le garder.');
+      });
+    };
     // Catalogue, modèles et textes : listes de choix qui ne gardent pas de valeur (reset), avec recherche.
     // La liste affiche les prix dans la devise de la pièce : elle se redessine quand la devise change.
     const itemsCatalogue = () => data.catalog.slice().sort((a, b) => a.label.localeCompare(b.label, 'fr')).map(c => ({
@@ -5761,6 +5784,128 @@
       };
     });
   }
+  // ---------- Le calculateur de prix (10.15.0, H6) ----------
+  // Un coût, une règle (coefficient, marge, taux de marque ou prix TTC visé), un arrondi du prix que
+  // le client voit : le prix HT sort, avec sa marge dite de trois façons — les commerçants ne parlent
+  // pas tous la même. Le calcul est `C.calculPrix`, pur et testé ; cette fenêtre ne fait que l'afficher.
+  // Deux usages : la fiche d'un article (UN prix) et l'éditeur d'une pièce (une ligne, ou toutes les
+  // lignes qui ont un coût d'un seul geste — le chiffrage d'un devis). La règle choisie est retenue
+  // (`company.calculPrix`) : on chiffre toujours avec le même coefficient.
+  // `o` : { devise, decimales, cout, frais, tva, sujet } pour un prix seul ; { lignes: [{ label, cout,
+  // tva, prix }] } pour une pièce. `done(r)` reçoit le résultat (un prix) ou { lignes: [{ i, r }] }.
+  function prixCalculForm(o, done) {
+    const dev = o.devise || company().currency || 'DT';
+    const dec = o.decimales != null ? o.decimales : C.decimalsFor(dev);
+    const regle = Object.assign({ mode: 'coef', valeur: '', arrondi: 0 }, company().calculPrix || {});
+    const lignes = o.lignes || null;
+    const avecCout = lignes ? lignes.map((l, i) => ({ l, i })).filter(x => Number(x.l.cout) > 0) : [];
+    const choix0 = lignes ? (avecCout.length > 1 ? 'toutes' : String((avecCout[0] || { i: 0 }).i)) : null;
+    const nomLigne = (l, i) => `Ligne ${i + 1}${l.label ? ' — ' + (l.label.length > 40 ? l.label.slice(0, 39) + '…' : l.label) : ''}`;
+    // L'unité se lit comme une phrase : un « × » seul à droite d'une case se prend pour « effacer ».
+    const unite = mode => mode === 'coef' ? 'fois le coût' : mode === 'marge' ? '% du coût' : mode === 'marque' ? '% du prix' : h(dev) + ' TTC';
+    const nombre = x => x === '' || x == null ? '' : pct(x);
+    modal(`<h2>Calculer le prix de vente</h2>
+      ${o.sujet ? `<p class="small muted">Pour « ${h(o.sujet)} ». Le prix calculé remplace le prix HT ; rien n'est enregistré avant « Enregistrer ».</p>` : ''}
+      <form id="pc" class="grid-2">
+        ${lignes ? `<label class="field span-2">${lbl('Appliquer à', 'prix.cible')}<select name="cible">
+          ${avecCout.length > 1 ? `<option value="toutes" ${choix0 === 'toutes' ? 'selected' : ''}>Toutes les lignes qui ont un coût (${avecCout.length})</option>` : ''}
+          ${lignes.map((l, i) => `<option value="${i}" ${choix0 === String(i) ? 'selected' : ''}>${h(nomLigne(l, i))}</option>`).join('')}</select></label>` : ''}
+        <label class="field" id="pc-cout-f">${lbl(`Coût de revient HT (${h(dev)})`, 'prix.cout')}<input type="text" inputmode="decimal" name="cout" class="num" value="${h(nombre(o.cout || ''))}" autocomplete="off"></label>
+        <label class="field" id="pc-frais-f">${lbl(`Frais par unité HT (${h(dev)})`, 'prix.frais')}<input type="text" inputmode="decimal" name="frais" class="num" value="${h(nombre(o.frais || ''))}" placeholder="transport, douane…" autocomplete="off"></label>
+        <label class="field">${lbl('Méthode', 'prix.mode')}<select name="mode">${C.MODES_PRIX.map(m => `<option value="${m.id}" ${m.id === regle.mode ? 'selected' : ''}>${h(m.label)}</option>`).join('')}</select></label>
+        <label class="field obligatoire">${lbl('Valeur', 'prix.valeur')}<span class="avec-unite"><input type="text" inputmode="decimal" name="valeur" class="num" value="${h(nombre(regle.valeur))}" autocomplete="off"><span class="unite-champ" id="pc-unite">${unite(regle.mode)}</span></span></label>
+        ${/* Hors régime de TVA, le prix affiché EST le prix HT : la TVA vaut 0 et ne se choisit pas
+           (un taux grisé n'est pas un taux choisi, 10.14.0 — le calculateur ne le rend donc pas). */''}
+        <label class="field" id="pc-tva-f">${lbl('TVA', 'prix.tva')}<select name="tva" ${o.tvaFigee ? `disabled title="${h(`Ton régime (${C.regimeOf(company()).court.toLowerCase()}) ne facture pas de TVA.`)}"` : ''}>${lignes ? '<option value="" disabled>celle de chaque ligne</option>' : ''}${C.VAT_RATES.map(r => `<option value="${r}" ${(o.tvaFigee ? 0 : Number(o.tva)) === r ? 'selected' : ''}>${r}%</option>`).join('')}</select></label>
+        <label class="field">${lbl('Arrondir le prix affiché', 'prix.arrondi')}<select name="arrondi">${C.ARRONDIS_PRIX.map(a => `<option value="${a}" ${Number(regle.arrondi) === a ? 'selected' : ''}>${a ? 'au ' + C.money(a, dev) + ' supérieur' : 'Pas d\'arrondi'}</option>`).join('')}</select></label>
+      </form>
+      <p class="small muted mt" id="pc-aide"></p>
+      <div class="pc-resultat" id="pc-res" aria-live="polite"></div>
+      <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok" style="min-width:12em;justify-content:center">Appliquer ce prix</button></div>`,
+    (root, close) => {
+      // Sur une pièce, la fenêtre a la largeur de son tableau DÈS l'ouverture : elle s'élargissait au
+      // moment où l'on choisissait « Toutes les lignes », et tout bougeait sous le curseur.
+      if (lignes) { const m = root.querySelector('.modal'); if (m) m.classList.add('pc-modal'); }
+      const form = $('#pc', root), ok = $('#ok', root);
+      const lire = x => { const n = Number(String(x == null ? '' : x).replace(/\s/g, '').replace(',', '.')); return Number.isFinite(n) ? n : NaN; };
+      let dernier = null;
+      const calculer = () => {
+        const v = formValues(form);
+        const cible = lignes ? v.cible : null;
+        const toutes = cible === 'toutes';
+        // « Toutes les lignes » prend le coût et la TVA de CHAQUE ligne : les deux cases restent à leur
+        // place, éteintes, et le disent. Les cacher faisait remonter la méthode et la valeur sous le
+        // curseur au moment où l'on choisit la cible (H-E1, vu à la souris).
+        const cCout = $('[name=cout]', root), cTva = $('[name=tva]', root);
+        cCout.disabled = toutes; cCout.placeholder = toutes ? 'celui de chaque ligne' : '';
+        if (toutes) cCout.value = '';
+        cTva.disabled = toutes || !!o.tvaFigee;
+        // Éteinte sur « toutes les lignes », la TVA ne montre pas un « 0 % » qu'aucune ligne n'a : elle
+        // dit qu'elle vient de chaque ligne.
+        if (toutes) cTva.value = '';
+        // Des frais par unité ne sont pas les mêmes pour une huile et un sac de farine : sur toutes les
+        // lignes, ils se règlent ligne par ligne, pas d'un seul chiffre.
+        const cFrais = $('[name=frais]', root);
+        cFrais.disabled = toutes; cFrais.placeholder = toutes ? 'ligne par ligne' : 'transport, douane…';
+        if (toutes) cFrais.value = '';
+        $('#pc-unite', root).innerHTML = unite(v.mode);
+        $('#pc-aide', root).textContent = (C.MODES_PRIX.find(m => m.id === v.mode) || {}).aide || '';
+        const regleV = { mode: v.mode, valeur: lire(v.valeur), arrondi: Number(v.arrondi) || 0, decimales: dec, frais: lire(v.frais) || 0 };
+        const res = $('#pc-res', root);
+        if (toutes) {
+          const calc = avecCout.map(({ l, i }) => ({ i, l, r: C.calculPrix(Object.assign({}, regleV, { cout: l.cout, tva: o.tvaFigee ? 0 : l.tva })) }));
+          const refus = calc.find(c => !c.r.ok);
+          dernier = refus ? null : { lignes: calc.map(c => ({ i: c.i, r: c.r })), regle: regleV };
+          const sans = lignes.length - avecCout.length;
+          res.innerHTML = refus ? `<p class="small warn-text">${h(refus.r.motif)}</p>`
+            : `<table class="list compact"><thead><tr><th>Ligne</th><th class="r">Coût</th><th class="r">Prix actuel</th><th class="r">Nouveau prix HT</th><th class="r">Marge / coût</th></tr></thead><tbody>
+              ${calc.map(c => `<tr><td class="tronq" title="${h(c.l.label || '')}">${h(nomLigne(c.l, c.i))}</td><td class="r nw">${C.money(c.r.coutComplet, dev)}</td><td class="r nw muted">${C.money(c.l.prix || 0, dev)}</td><td class="r nw"><b>${C.money(c.r.ht, dev)}</b></td><td class="r nw ${c.r.perte ? 'warn-text' : ''}">${pct(c.r.tauxMarge)} %</td></tr>`).join('')}</tbody></table>
+              ${sans ? `<p class="small muted mt">${pl(sans, 'ligne sans coût reste', 'lignes sans coût restent')} à son prix : sans coût, aucun prix ne se calcule.</p>` : ''}`;
+          ok.textContent = refus ? 'Appliquer ce prix' : `Appliquer à ${pl(calc.length, 'ligne')}`;
+          ok.disabled = !dernier;
+          return;
+        }
+        const r = C.calculPrix(Object.assign({}, regleV, { cout: lire(v.cout) || 0, tva: o.tvaFigee ? 0 : Number(v.tva) || 0 }));
+        dernier = r.ok ? { r, i: cible == null ? null : Number(cible), regle: regleV } : null;
+        ok.textContent = 'Appliquer ce prix'; ok.disabled = !r.ok;
+        if (!r.ok) { res.innerHTML = `<p class="small ${lire(v.valeur) > 0 || v.mode === 'marque' ? 'warn-text' : 'muted'}">${h(r.motif)}</p>`; return; }
+        res.innerHTML = `<div class="pc-grille">
+            <div><span class="eyebrow">Prix HT</span><b class="pc-prix">${C.money(r.ht, dev)}</b></div>
+            <div><span class="eyebrow">Prix TTC</span><b>${C.money(r.ttc, dev)}</b></div>
+            <div><span class="eyebrow">Marge par unité</span><b class="${r.perte ? 'warn-text' : ''}">${C.money(r.marge, dev)}</b></div>
+            <div><span class="eyebrow">Marge sur le coût</span>${r.tauxMarge == null ? '—' : pct(r.tauxMarge) + ' %'}</div>
+            <div><span class="eyebrow">Taux de marque</span>${r.tauxMarque == null ? '—' : pct(r.tauxMarque) + ' %'}</div>
+            <div><span class="eyebrow">Coefficient</span>${r.coef == null ? '—' : '× ' + pct(r.coef)}</div>
+          </div>
+          ${r.perte ? '<p class="small warn-text mt">À ce prix, tu vends à perte.</p>'
+            : !r.exact ? `<p class="small muted mt">Aucun prix HT ne donne exactement ${C.money(r.ttc, dev)} TTC à ${pct(r.tva)} % : c'est le plus proche.</p>` : ''}`;
+      };
+      // La ligne choisie apporte son coût et sa TVA : on ne recopie pas à la main ce que la pièce sait.
+      const surCible = () => {
+        const v = formValues(form);
+        if (lignes && v.cible !== 'toutes') {
+          const l = lignes[Number(v.cible)] || {};
+          $('[name=cout]', root).value = nombre(Number(l.cout) > 0 ? l.cout : '');
+          if (!o.tvaFigee) $('[name=tva]', root).value = String(Number(l.tva) || 0);
+        }
+        calculer();
+      };
+      form.oninput = calculer;
+      form.onchange = e => { if (e.target.name === 'cible') surCible(); else calculer(); };
+      form.onsubmit = e => e.preventDefault();
+      // Sur une pièce, la ligne proposée à l'ouverture apporte son coût comme une ligne choisie : sans
+      // ça, la fenêtre s'ouvrait sur « donne d'abord le coût » à côté d'une ligne qui en a un (vu à la souris).
+      if (lignes) surCible(); else calculer();
+      if (!lire($('[name=valeur]', root).value)) $('[name=valeur]', root).focus();
+      ok.onclick = () => {
+        if (!dernier) return refus($('[name=valeur]', root), $('#pc-res', root).textContent.trim() || 'Tape la valeur de la règle.');
+        const { mode, valeur, arrondi } = dernier.regle;
+        data.company.calculPrix = { mode, valeur, arrondi };
+        save(true); close(); done(dernier);
+      };
+    }, null, { garde: false });
+  }
+
   function catalogForm(item, done, opts) {
     opts = opts || {};
     const neuf = !item || !!opts.creation;
@@ -5779,7 +5924,9 @@
            sur la TVA (10.12.0, parcours d'une menuiserie). Les prix disent leur unité (9.4.8). */''}
         ${field(lbl(`Prix unitaire HT (${h(company().currency || 'DT')})`, 'cat.price'), 'unitPrice', it.unitPrice, 'number', 'step="0.001" min="0" class="num"')}
         ${field(lbl(`Coût de revient HT (${h(company().currency || 'DT')})`, 'cat.cost'), 'unitCost', it.unitCost || 0, 'number', 'step="0.001" min="0" class="num"')}
-        <div class="span-2 annonce-stable" id="marge-hint"></div>
+        ${/* Le calculateur vit À CÔTÉ de la phrase de marge (H6) : c'est là qu'on lit qu'un prix ne va
+           pas, et c'est là qu'on veut le refaire. Même rangée : il ne pousse rien. */''}
+        <div class="span-2 prix-rang"><div class="annonce-stable" id="marge-hint"></div><button type="button" class="btn btn-sm" id="cat-calc">Calculer le prix…</button></div>
         <label class="field">${lbl('TVA', 'cat.vat')}<select name="vatRate">${C.VAT_RATES.map(r => `<option value="${r}" ${Number(it.vatRate) === r ? 'selected' : ''}>${r}%</option>`).join('')}</select>${C.assujettiTVA(company()) ? '' : `<span class="small muted taux-regime">Sur tes devis et factures : 0\u00a0%, ton régime ne facture pas de TVA.</span>`}</label>
         <div class="field">${lbl('Unité', 'ed.unit')}<select name="unit" id="cat-unit">${unitOptions(it.unit || '', C.usedUnits(data))}</select></div>
         <label class="check span-2"><input type="checkbox" name="tracked" ${suit.tracked ? 'checked' : ''}> Suivi en stock ${info('stk.tracked')}</label>
@@ -5845,6 +5992,21 @@
           el.innerHTML = `<span class="small ${m <= 0 ? 'warn-text' : 'ok-text'}">Marge : <strong>${C.money(m, company().currency)}</strong> par unité, soit ${pct(r)} %${m <= 0 ? ' — tu vends à perte.' : ''}</span>`;
         };
         $('#kf', root).oninput = hint; hint();
+        // Le calculateur part du coût et de la TVA de la fiche, et y rend le prix — et le coût de revient
+        // quand on y a ajouté des frais : un coût de revient COMPREND le transport et la douane.
+        $('#cat-calc', root).onclick = () => {
+          const v = formValues($('#kf', root));
+          const figee = !C.assujettiTVA(company());
+          prixCalculForm({ cout: Number(v.unitCost) || '', tva: Number(v.vatRate) || 0, tvaFigee: figee, sujet: v.label.trim() }, ({ r }) => {
+            $('input[name=unitPrice]', root).value = r.ht;
+            $('input[name=unitCost]', root).value = r.coutComplet;
+            if (!figee) {
+              $('select[name=vatRate]', root).value = String(r.tva);
+              $('select[name=vatRate]', root).dispatchEvent(new Event('change', { bubbles: true }));
+            }
+            $('#kf', root).dispatchEvent(new Event('input', { bubbles: true }));
+          });
+        };
         // Le bloc stock n'apparaît que si l'article est suivi : inutile d'imposer quatre champs de plus
         // à qui ne vend que des prestations.
         const caseStock = $('input[name=tracked]', root), caseSerie = $('input[name=serialized]', root);

@@ -446,6 +446,8 @@
   b('#cs-vider', "Vide le ticket en cours sans rien enregistrer.");
   b('#cs-print-last', "Imprime le dernier ticket encaissé.");
   b('#cs-creer', "Crée le compte « Caisse » : c'est là que tes ventes en espèces s'additionnent.");
+  b('#cat-calc', "Ouvre le calculateur : ton coût, ta règle (coefficient, marge, taux de marque ou prix TTC visé) et l'arrondi donnent le prix HT, rendu à la fiche avec son coût.");
+  b('#calc-prix', "Chiffre la pièce depuis les coûts : une ligne, ou toutes celles qui ont un coût d'un seul geste. Les prix changent dans l'éditeur ; « Enregistrer » les garde.");
   b('#cs-creer-banque', "Crée ton compte bancaire : c'est là qu'arrivent les paiements par carte et par chèque, jamais dans le tiroir. Le panier attend pendant ce temps.");
   b('#cs-new-art', "Ajoute un article au catalogue, avec son prix et son code-barres.");
   b('#cs-creer-art', "Crée l'article que tu viens de chercher, prêt à vendre.");

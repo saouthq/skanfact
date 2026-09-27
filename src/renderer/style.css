@@ -2662,3 +2662,22 @@ body.dark .g-ligne.faite .g-l-ico { color: #0d1418; }
 /* Le ticket reste sous les yeux pendant qu'on fait défiler les articles. */
 .cs-droite { position: sticky; top: 0; }
 @media (max-width: 1100px) { .cs-droite { position: static; } }
+
+/* ---------- Le calculateur de prix (10.15.0, H6) ---------- */
+/* Le résultat change à chaque frappe, et d'une seule ligne (« tape un coefficient ») à un tableau
+   de lignes : sa hauteur est FIXE, sinon « Appliquer ce prix » descendrait sous le curseur (H-E1). */
+.pc-resultat { height: 190px; overflow-y: auto; margin-block-start: 10px; padding: 12px 14px;
+  border: 1px solid var(--border); border-radius: 10px; background: var(--bg); box-sizing: border-box; }
+.pc-resultat > p { margin: 0; }
+.pc-resultat table.list { margin: 0; }
+.pc-grille { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 16px; font-variant-numeric: tabular-nums; }
+.pc-grille > div { display: flex; flex-direction: column; gap: 2px; }
+.pc-prix { font-size: 20px; }
+/* Le champ dit son unité à côté de lui (9.4.8) : ×, %, ou le prix TTC dans sa devise. */
+.avec-unite { display: flex; align-items: center; gap: 8px; }
+.avec-unite > input { flex: 1 1 auto; min-width: 0; }
+.unite-champ { flex: 0 0 auto; min-width: 6.5em; color: var(--muted); font-size: 13px; }
+.prix-rang { display: flex; align-items: flex-start; gap: 12px; }
+.prix-rang > .annonce-stable { flex: 1 1 auto; min-width: 0; }
+.prix-rang > .btn { flex: 0 0 auto; }
+.modal.pc-modal { width: min(760px, calc(100vw - 32px)); }

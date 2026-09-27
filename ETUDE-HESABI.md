@@ -42,7 +42,7 @@ Légende : ✅ nous l'avons · ◐ nous l'avons en partie · ❌ nous ne l'avons
 | Envoi par email | oui | ✅ (Mail sur Mac, messagerie par défaut ailleurs) |
 | **Envoi par WhatsApp** | **oui** | ★ depuis la 10.15.0 (**H2**) : pièces ET relances, le message du modèle d'email, le numéro remis au format international et revérifié par le processus principal |
 | **Portail client en ligne** (le client consulte ses factures) | **oui** | ❌ — suppose un serveur qui garde les factures des clients : décision de Skander (§ 4) |
-| Calculateur de chiffrage des devis | oui (Pro) | ◐ coût d'achat, marge estimée en direct, pas de « coefficient » → H6 |
+| Calculateur de chiffrage des devis | oui (Pro) | ★ 10.15.0 (H6) : coefficient, marge, taux de marque ou TTC visé, arrondi du prix affiché, frais par unité, et le devis entier chiffré d'un geste — dans tous les plans |
 
 ### 2.2 Facture électronique et déclarations
 
@@ -116,7 +116,7 @@ l'envoi à la TTN en un clic, TEJ, la caisse, l'arabe, et « sur mon téléphone
 | **H3** ✅ | **Export FEC** (entreprise et Cabinet) — livré en 10.15.0 | Hesabi l'affiche ; un comptable le demandera |
 | **H4** ✅ | Contrat **saisonnier** et **CIVP** en paie — livré en 10.15.0, avec des taux réglables par contrat dans les deux applications | Deux lignes, et une case de moins dans le comparatif |
 | **H5** ✅ | **Caisse** : vente comptoir, ticket 80 mm, code-barres, douchette — livré en 10.15.0, avec le bilan du tiroir et le retour d'un article par avoir | Les commerces : un marché que nous ne touchons pas du tout |
-| **H6** | Calculateur de prix (coût + coefficient ou marge → prix) | Hesabi le vend en Pro |
+| **H6** ✅ | **Calculateur de prix** — livré en 10.15.0 : fiche d'article et lignes d'une pièce (une ou toutes), quatre règles, arrondi du TTC, frais par unité | Hesabi le vend en Pro ; ici, dans toutes les offres |
 | **H7** | Attestations d'exonération de retenue (fournisseur/client, dates de validité) | Complète la retenue, avant TEJ |
 | **H8** | Interface en **arabe** | Gros chantier ; la traduction se relit par un arabophone |
 

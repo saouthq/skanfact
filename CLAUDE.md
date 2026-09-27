@@ -8823,6 +8823,31 @@ VÉRIFIER —, `caissePied`). Tests : `test/suites/caisse.js`, et la vérité co
 - **Le bilan dit ce qu'on compte le soir** : « Le tiroir doit contenir X, fond de caisse compris », et
   un montant négatif se nomme (« rendu aux clients par carte »), il ne garde pas la phrase du positif.
 
+**Puis le calculateur de prix (H6)** : `C.calculPrix` (pur, core.js) et `prixCalculForm` (app.js),
+ouvert depuis la fiche d'une prestation (`#cat-calc`) et depuis l'éditeur d'une pièce (`#calc-prix`,
+une ligne ou « toutes les lignes qui ont un coût »). Ce que le lot a appris :
+
+- **Un prix se calcule en unités minimales ENTIÈRES** (le millime, le centime) : un flottant arrondi
+  deux fois donne un TTC qui ne retombe pas sur le prix d'étiquette. L'arrondi porte sur le prix que
+  voit le client (le TTC), toujours AU-DESSUS — un arrondi ne rogne jamais la marge demandée.
+- **Une recherche défensive qui ne sert jamais se mesure, puis se retire** : chercher le HT parmi
+  `base ± 1` millime était inutile — si `round(h × t) = cible`, alors `h = round(cible / t)`, vérifié
+  sur 530 000 prix aux trois taux, et la preuve par réintroduction restait verte. Un filtre qu'aucun
+  test ne peut faire tomber est le miroir d'un test qui ne peut pas échouer (7.2.0).
+- **Un « × » seul à droite d'une case se lit « effacer »** : l'unité d'une valeur s'écrit en phrase
+  (« fois le coût », « % du coût », « % du prix », « DT TTC »).
+- **Une fenêtre qui s'ouvre sur une ligne apporte le coût de cette ligne** : elle s'ouvrait sur
+  « donne d'abord le coût » à côté d'une ligne qui en avait un (vu à la souris).
+- **Changer de mode ne déplace rien** (H-E1, deux fois dans la même fenêtre) : passer à « toutes les
+  lignes » cachait le coût et la TVA — tout remontait sous le curseur — et le tableau élargissait la
+  fenêtre (`.modal:has(table.list)`). Les cases restent, éteintes, et disent qu'elles viennent de
+  chaque ligne ; la fenêtre d'une pièce a sa largeur dès l'ouverture (`.pc-modal`), et son résultat
+  une hauteur fixe. Une case éteinte ne montre pas une valeur qu'aucune ligne n'a (« 0 % ») : une
+  option « celle de chaque ligne » la remplace.
+- **Hors régime, le calculateur ne touche jamais au taux** (10.14.0) : la TVA vaut 0 et s'éteint, et
+  ni la fiche ni la pièce ne réécrivent leur taux. Les deux appelants et chaque calcul de la fenêtre
+  sont tenus par un test.
+
 ## Pistes pour la suite (non demandées)
 
 - Séparation des installateurs arm64 / x64 pour diviser par deux les 222 Mo du dmg universel.

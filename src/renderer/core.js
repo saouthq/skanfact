@@ -2814,6 +2814,73 @@
     };
   }
 
+  // ---------- Le calculateur de prix (10.15.0, H6) ----------
+  // Un prix de vente se DÉDUIT d'un coût et d'une règle que le commerçant choisit : un coefficient
+  // (× 1,6), une marge sur le coût (+ 60 %), un taux de marque (la marge rapportée au prix de vente,
+  // 37,5 % pour le même prix), ou un prix TTC qu'on vise en rayon. Aucune règle n'est écrite en dur
+  // (5.0.0) : le calculateur applique celle qu'on lui donne, et `company.calculPrix` retient la
+  // dernière. Le prix se calcule en UNITÉS MINIMALES entières (le millime, le centime) : un flottant
+  // arrondi deux fois donne un TTC qui ne retombe pas sur le prix d'étiquette.
+  const MODES_PRIX = [
+    { id: 'coef', label: 'Coefficient', court: '×', aide: 'Prix HT = coût × coefficient. Un coefficient de 1,6 revient à une marge de 60 % sur le coût.' },
+    { id: 'marge', label: 'Marge sur le coût (%)', court: '%', aide: 'Prix HT = coût + le pourcentage du coût. 60 % sur un coût de 100 donne 160.' },
+    { id: 'marque', label: 'Taux de marque (%)', court: '%', aide: 'La marge rapportée au PRIX DE VENTE : 37,5 % de marque sur un coût de 100 donne 160, dont 60 de marge.' },
+    { id: 'ttc', label: 'Prix TTC visé', court: 'TTC', aide: 'Le prix que le client paiera, TVA comprise : le calculateur en retire la TVA.' }
+  ];
+  const ARRONDIS_PRIX = [0, 0.1, 0.5, 1, 5, 10];
+  function calculPrix(o) {
+    o = o || {};
+    const dec = o.decimales != null ? Number(o.decimales) : 3, u = Math.pow(10, dec);
+    const vers = x => Math.round((Number(x) || 0) * u * (1 + 4 * Number.EPSILON));
+    const coutU = vers(o.cout), fraisU = vers(o.frais), completU = coutU + fraisU;
+    const tva = Math.max(0, Number(o.tva) || 0), t = 1 + tva / 100;
+    const mode = MODES_PRIX.some(m => m.id === o.mode) ? o.mode : 'coef';
+    const v = Number(String(o.valeur == null ? '' : o.valeur).replace(',', '.'));
+    const pasU = Math.max(0, vers(o.arrondi));
+    const refus = motif => ({ ok: false, motif, mode });
+    if (coutU < 0 || fraisU < 0) return refus('Un coût se compte en positif.');
+    if (!Number.isFinite(v) || v <= 0) {
+      return refus(mode === 'ttc' ? 'Tape le prix TTC que tu vises.' : mode === 'coef' ? 'Tape un coefficient : 1,6 par exemple.' : 'Tape le pourcentage : 60 par exemple.');
+    }
+    if (mode !== 'ttc' && completU <= 0) return refus('Donne d\'abord le coût : le prix se calcule à partir de ce que la chose te coûte.');
+    if (mode === 'marque' && v >= 100) return refus('Un taux de marque de 100 % ou plus voudrait dire un coût nul : la marge est une part du prix, elle ne peut pas en être la totalité.');
+    // Le prix HT « brut », avant arrondi, en unités minimales (fraction permise).
+    const brut = mode === 'coef' ? completU * v
+      : mode === 'marge' ? completU * (1 + v / 100)
+      : mode === 'marque' ? completU / (1 - v / 100)
+      : (v * u) / t;
+    // Le prix qu'on arrondit est celui que le client VOIT : TTC s'il y a de la TVA. Arrondir AU-DESSUS :
+    // un arrondi ne rogne jamais la marge qu'on a demandée. Le HT se retrouve ensuite de sorte que
+    // HT × (1 + TVA) retombe EXACTEMENT sur le prix d'étiquette, quand un tel HT existe.
+    const pret = x => Math.ceil(x - 1e-6);
+    let htU, ttcU, exact = true;
+    const ttcDe = h => Math.round(h * t);
+    if (pasU > 0 || mode === 'ttc') {
+      let cible = mode === 'ttc' ? Math.round(v * u) : pret(brut * t);
+      if (pasU > 0) cible = Math.ceil(cible / pasU - 1e-9) * pasU;
+      // Si un HT h donne `cible` (round(h × t) = cible), alors |cible / t − h| < 0,5 / t < 0,5 : h est
+      // forcément round(cible / t). Un seul essai suffit — vérifié sur 530 000 prix aux trois taux.
+      htU = Math.round(cible / t);
+      ttcU = ttcDe(htU);
+      exact = ttcU === cible;
+    } else {
+      htU = pret(brut);
+      ttcU = ttcDe(htU);
+    }
+    const ht = htU / u, ttc = ttcU / u, cout = completU / u;
+    const margeU = htU - completU;
+    return {
+      ok: true, mode, decimales: dec,
+      cout, frais: fraisU / u, coutComplet: cout,
+      ht, ttc, tva, exact,
+      marge: margeU / u,
+      tauxMarge: completU > 0 ? Math.round(margeU / completU * 1000) / 10 : null,
+      tauxMarque: htU > 0 ? Math.round(margeU / htU * 1000) / 10 : null,
+      coef: completU > 0 ? Math.round(htU / completU * 1000) / 1000 : null,
+      perte: completU > 0 && margeU < 0
+    };
+  }
+
   // Marge agrégée sur une période, par client ou par prestation.
   function marginBy(data, company, fromIso, toIso, dimension, limit) {
     const acc = {};
@@ -10330,7 +10397,7 @@
     PURCHASE_KINDS, PURCHASE_LIES, piecesLieesAchat, LINE_DESTINATIONS, DEFAULT_EXPENSE_CATEGORIES, PURCHASE_STATUSES, expenseCategories,
     vatReturn, vatChain, reportTvaDebut, DEFAULT_FISCAL_DEADLINES, fiscalDeadlines, nextDeadline, upcomingFiscal, calendrierFiscal, dateLimiteSociale, dateLimiteDeclarationSociale, fiscalFilingId, fiscalDone, echeanceSociale, socialesDeposees, simpleResult,
     ACCOUNT_KINDS, MOVE_KINDS, virementVers, virementCotes, tauxDuReglement, montantRegle, ecartDuReglement, compteDepuisFiche, cashMovements, accountBalance, cashPosition, cashForecast, reconciliation,
-    lineCost, documentMargin, marginBy, PROJECT_STATUSES, projectMargin, projectList, recurringProfitability, piecesDuContrat, contratSuivi,
+    lineCost, documentMargin, MODES_PRIX, ARRONDIS_PRIX, calculPrix, marginBy, PROJECT_STATUSES, projectMargin, projectList, recurringProfitability, piecesDuContrat, contratSuivi,
     DEFAULT_FIXED_CATEGORIES, isFixedCategory, breakEven,
     DEFAULT_ASSET_CLASSES, assetClassLabel, assetClassYears, days360, assetSchedule, assetYear,
     assetCumulated, assetNBV, disposalResult, assetsList, assetTotals, assetsToCreate, immosEnAttente, immosHorsTableau, ligneDeFiche, biensADiminuer, depreciationFor,
