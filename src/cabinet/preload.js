@@ -73,6 +73,7 @@ contextBridge.exposeInMainWorld('cabinet', {
   saveGuides: (guides, dossierId) => ipcRenderer.invoke('cab:saveGuides', { guides, dossierId }),
   saveCorrespondance: (table, dossierId) => ipcRenderer.invoke('cab:saveCorrespondance', { table, dossierId }),
   saveAbonnements: (dossierId, abonnements) => ipcRenderer.invoke('cab:saveAbonnements', { dossierId, abonnements }),
+  savePaie: (dossierId, regimesContrat) => ipcRenderer.invoke('cab:savePaie', { dossierId, regimesContrat }),
   genererAbonnements: (o) => ipcRenderer.invoke('cab:genererAbonnements', o || {}),
   dernierJournal: (dossierId, journal) => ipcRenderer.invoke('cab:dernierJournal', { dossierId, journal }),
   // 10.12.0 (U-09) — les dossiers dont une pièce commencée n'est pas enregistrée : la fermeture de

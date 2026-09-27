@@ -76,7 +76,7 @@ Légende : ✅ nous l'avons · ◐ nous l'avons en partie · ❌ nous ne l'avons
 | **SKU / code-barres** | oui | ❌ → **H5** |
 | **Caisse (POS) avec ticket 80 mm** | oui (tous plans) | ❌ → **H5** |
 | Import de catalogue par IA (PDF, photo) | oui | ◐ import de tableur (clients et catalogue) ; lecture de photo en pause |
-| Paie CDI, CDD, CIVP, Karama, saisonniers | oui | ◐ CDI, CDD, SIVP, Karama, stage — **saisonnier** manque → **H4** |
+| Paie CDI, CDD, CIVP, Karama, saisonniers | oui | ✓ CDI, CDD, saisonnier, CIVP, SIVP, Karama, stage — taux réglables par contrat, figés sur le bulletin (10.15.0) |
 | Congés, avances, attestations, solde de tout compte | non documenté | ★ |
 
 ### 2.5 Plateforme
@@ -114,7 +114,7 @@ l'envoi à la TTN en un clic, TEJ, la caisse, l'arabe, et « sur mon téléphone
 | **H1** ✅ | Importer la **facture TEIF d'un fournisseur** en achat, sans IA — livré en 10.15.0 | L'e-facture devient obligatoire : chaque client recevra des XML. Les lire exactement vaut mieux qu'un import « IA » |
 | **H2** ✅ | **Envoyer par WhatsApp** — livré en 10.15.0 | Le canal réel en Tunisie ; petit geste, gros effet en démonstration |
 | **H3** ✅ | **Export FEC** (entreprise et Cabinet) — livré en 10.15.0 | Hesabi l'affiche ; un comptable le demandera |
-| **H4** | Contrat **saisonnier** et **CIVP** en paie | Deux lignes, et une case de moins dans le comparatif |
+| **H4** ✅ | Contrat **saisonnier** et **CIVP** en paie — livré en 10.15.0, avec des taux réglables par contrat dans les deux applications | Deux lignes, et une case de moins dans le comparatif |
 | **H5** | **Caisse** : vente comptoir, ticket 80 mm, code-barres, douchette | Les commerces : un marché que nous ne touchons pas du tout |
 | **H6** | Calculateur de prix (coût + coefficient ou marge → prix) | Hesabi le vend en Pro |
 | **H7** | Attestations d'exonération de retenue (fournisseur/client, dates de validité) | Complète la retenue, avant TEJ |

@@ -317,6 +317,9 @@
   // ---------- paie, biens, inventaire ----------
   b('#pa-bulletin, #pa-bulletin2', 'Établit le bulletin d\'un salarié pour le mois choisi.', { nom: 'Bulletin', cle: 'bulletin' });
   b('#pa-salarie, #pa-salarie2', 'Déclare un salarié : son contrat, son salaire, son numéro CNSS.', { nom: 'Salarié', cle: 'salarie' });
+  b('#pa-regimes', 'Règle pour ce client les taux d\'un contrat particulier (CIVP, Karama, saisonnier) : une case vide garde le taux général, 0 exonère.', { nom: 'Taux par contrat', cle: 'regimes' });
+  b('[data-rc]', 'Le taux que CE contrat applique à la place du taux général. Vide : le taux général ; 0 : exonéré.', { nom: 'Taux du contrat', cle: 'regime-taux' });
+  b('[data-rc-irpp]', 'Coché : les bulletins de ce contrat ne retiennent pas d\'IRPP.', { nom: 'Sans IRPP', cle: 'regime-irpp' });
   b('#pa-ecrire', 'Passe l\'écriture de paie du mois en brouillard.');
   b('#pa-mois', 'Le mois de paie affiché.', { nom: 'Mois' });
   b('#pa-trim', 'Le trimestre de la CNSS affiché : un salarié par ligne, son assiette et ses cotisations.', { nom: 'Trimestre' });

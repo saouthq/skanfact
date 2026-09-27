@@ -8757,6 +8757,28 @@ livre, `cab:exportFec`). **À VÉRIFIER** : une norme française que la Tunisie 
 - Preuve restée verte, puis refaite : le test du « sans BOM » cherchait le caractère, la source porte
   l'échappement `﻿` — il cherche les deux formes.
 
+**Puis les contrats aux règles particulières (H4)** : `CONTRACT_TYPES` gagne saisonnier et CIVP ; les
+réglages de paie portent `regimesContrat: { <contrat>: { cnssEmployee, cnssEmployer, accidentRate,
+tfpRate, foprolosRate, solidarity, sansIrpp } }`, qui part VIDE (9.1.1 : aucune exonération n'est
+écrite). `regimeDuContrat`, `normaliserRegimes`, `libelleRegime` (compta.js, réexportés) ;
+`computePayslip` fusionne le régime par-dessus le barème et FIGE `contrat` et `regime` dans le calcul
+(5.0.0). Entreprise : Barèmes → « Les contrats aux règles particulières ». Cabinet : `dossier.paie`,
+porte `cab:savePaie`, fenêtre « Taux par contrat… ».
+
+- **Une case vide n'est pas un zéro** : vide garde le taux général, 0 exonère (la règle du 7.1.0 et du
+  « — » de la 9.6.0, dans une grille de taux). Seules les valeurs 0..100 sont gardées, « sans IRPP »
+  seulement s'il vaut exactement `true`, et le CDI ne se règle jamais.
+- **Un champ lu et jamais gardé, encore** (le défaut `matricule` de la 6.8.0) : `KC.baremesPaie` lisait
+  `dossier.paie` depuis la 10.3.0 et `migrateDossier` ne le gardait pas — un réglage posé aurait été
+  jeté au prochain chargement. Il entre dans la liste, et le test l'exige.
+- **Deux applications, deux noms de champ** (`contract` / `contrat`) : le moteur lit les deux, et un
+  salarié SANS contrat vaut `cdi` — sans ce repli, le test de parité paie-cabinet (10.3.0) tombait, les
+  deux applications figeant deux contrats différents pour le même salarié.
+- **« Contrat Contrat Karama »**, vu à la souris dans l'aperçu : le NOM du contrat porte déjà le mot. La
+  phrase commence par le nom, et un test interdit l'ancienne forme dans les deux applications.
+- **Un chiffre qui baisse dit pourquoi** : l'annonce de la fiche salarié nomme le régime appliqué, sinon
+  un coût employeur plus bas qu'hier se lit comme une erreur.
+
 ## Pistes pour la suite (non demandées)
 
 - Séparation des installateurs arm64 / x64 pour diviser par deux les 222 Mo du dmg universel.

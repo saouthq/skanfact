@@ -9454,7 +9454,7 @@
           const v = formValues($('#ef', root));
           const c = C.computePayslip({ ...e, ...v, children: Number(v.children) || 0 }, {}, C.payrollSettings(data));
           $('#ef-hint', root).innerHTML = Number(v.grossSalary) > 0
-            ? `<span class="small muted">Sur ce brut : net d'environ <b>${C.money(c.net, cur)}</b> pour le salarié, coût de <b>${C.money(c.employerCost, cur)}</b> pour l'entreprise. <em>À VÉRIFIER avec ton comptable.</em></span>`
+            ? `<span class="small muted">Sur ce brut : net d'environ <b>${C.money(c.net, cur)}</b> pour le salarié, coût de <b>${C.money(c.employerCost, cur)}</b> pour l'entreprise${c.regime ? ` — ${h(C.contractLabel(c.contrat).split(' —')[0])} : ${h(C.libelleRegime(c.regime))} (Barèmes)` : ''}. <em>À VÉRIFIER avec ton comptable.</em></span>`
             : '<span class="small muted">Saisis le brut mensuel pour voir le net et le coût employeur.</span>';
         };
         $('#ef', root).oninput = $('#ef', root).onchange = hint; hint();
@@ -9564,7 +9564,9 @@
               ${c.tfp || c.foprolos ? `<div class="vat-line sub-line"><span class="muted">dont TFP ${C.money(c.tfp, cur)} et FOPROLOS ${C.money(c.foprolos, cur)} ${info('pay.tfp')}</span><span class="num muted"></span></div>` : ''}
               <div class="vat-line"><span><b>Coût pour l'entreprise</b></span><span class="num"><b>${C.money(c.employerCost, cur)}</b></span></div>
             </div>
-            <p class="small muted mt">Barème appliqué : CNSS ${pct(c.rates.cnssEmployee)} % salarié / ${pct(c.rates.cnssEmployer)} % employeur, IRPP progressif sur ${C.money(c.annualTaxable, cur)} imposables à l'année. <em>À VÉRIFIER avec ton comptable</em> — ces taux se règlent dans l'onglet Barèmes.</p>`;
+            <p class="small muted mt">Barème appliqué : CNSS ${pct(c.rates.cnssEmployee)} % salarié / ${pct(c.rates.cnssEmployer)} % employeur, ${c.regime && c.regime.sansIrpp ? 'sans IRPP' : `IRPP progressif sur ${C.money(c.annualTaxable, cur)} imposables à l'année`}. <em>À VÉRIFIER avec ton comptable</em> — ces taux se règlent dans l'onglet Barèmes.</p>
+            ${/* H4 — un taux qui s'écarte du barème sans explication se lit comme une erreur de calcul. */''}
+            ${c.regime ? `<p class="small mt" id="bf-regime"><b>${h(C.contractLabel(c.contrat).split(' —')[0])}</b> : ${h(C.libelleRegime(c.regime))} — le régime réglé dans Barèmes → Les contrats aux règles particulières.</p>` : ''}`;
         };
         drawSmall('#bf-bon', bonuses, 'bon'); drawSmall('#bf-ded', deductions, 'ded'); calc();
         $('#add-bon', root).onclick = () => { bonuses.push({ label: '', amount: 0, taxable: true }); drawSmall('#bf-bon', bonuses, 'bon'); calc(); };
@@ -10371,6 +10373,20 @@
             </div>
             <p class="small muted mt">La TFP et le FOPROLOS sont des taxes patronales sur la masse salariale, déclarées chaque mois avec la TVA. <em>À VÉRIFIER avec ton comptable : 1 % de TFP pour les industries manufacturières, 2 % ailleurs.</em></p>
           </div>
+          ${/* H4 (10.15.0) — un CIVP, un contrat Karama, un saisonnier peuvent être exonérés d'une
+                partie des charges ou de l'impôt. Aucune de ces règles n'est écrite : la table part
+                vide, une case vide veut dire « le taux ci-dessus », et chaque bulletin du contrat
+                suit ce qui est réglé ici — figé avec son calcul. */''}
+          <div class="panel"><h2>Les contrats aux règles particulières ${info('pay.regimes')}</h2>
+            <p class="small">Laisse une case <b>vide</b> pour appliquer le taux général ci-dessus ; mets <b>0</b> pour une exonération. Chaque bulletin d'un salarié sous ce contrat suivra la ligne. <em>À VÉRIFIER avec ton comptable : SkanFact ne connaît aucune de ces exonérations, elles changent d'un dispositif et d'une année à l'autre.</em></p>
+            <div class="scroll-x"><table class="list compact" id="rf-rc"><thead><tr><th>Contrat</th>${C.REGIME_TAUX.map(([, lab]) => `<th class="r nw">${h(lab)} (%)</th>`).join('')}<th class="nw">Sans IRPP</th></tr></thead>
+              <tbody>${C.CONTRACT_TYPES.filter(([k]) => k !== 'cdi').map(([k, lab]) => {
+                const r = C.regimeDuContrat(st, k);
+                const nom = lab.split(' —')[0];
+                return `<tr><td class="nw" title="${h(lab)}">${h(nom)}</td>${C.REGIME_TAUX.map(([t, tl]) => `<td class="r"><input type="number" class="num" data-rc="${k}" data-k="${t}" value="${r[t] != null ? r[t] : ''}" placeholder="${h(pct(st[t]))}" step="0.01" min="0" max="100" style="width:78px" aria-label="${h(nom)} : ${h(tl)} (%)"></td>`).join('')}
+                  <td><input type="checkbox" data-rc-irpp="${k}" ${r.sansIrpp ? 'checked' : ''} aria-label="${h(nom)} : exonéré d'IRPP"></td></tr>`;
+              }).join('')}</tbody></table></div>
+          </div>
           <div class="panel"><h2>Impôt sur le revenu</h2>
             <div class="grid-3">
               ${num('solidarity', 'Contribution de solidarité (%)', 'pay.solidarity')}
@@ -10437,6 +10453,11 @@
         const out = {};
         ['cnssEmployee', 'cnssEmployer', 'accidentRate', 'tfpRate', 'foprolosRate', 'solidarity', 'proRate', 'proCap', 'headOfFamily', 'perChild', 'maxChildren', 'leaveDaysPerYear', 'workedDays']
           .forEach(k => { out[k] = Number(v[k]) || 0; });
+        // Les régimes des contrats (H4) : une case vide n'est pas un zéro — elle laisse le taux général.
+        const rc = {};
+        $$('#rf-rc [data-rc]').forEach(i => { if (i.value.trim() !== '' && !i.validity.badInput) (rc[i.dataset.rc] = rc[i.dataset.rc] || {})[i.dataset.k] = Number(i.value); });
+        $$('#rf-rc [data-rc-irpp]').forEach(i => { if (i.checked) (rc[i.dataset.rcIrpp] = rc[i.dataset.rcIrpp] || {}).sansIrpp = true; });
+        out.regimesContrat = C.normaliserRegimes(rc);
         return out;
       };
       // Le garde-fou des Paramètres (7.30.0), porté ici : le bouton « Enregistrer » vivait trois

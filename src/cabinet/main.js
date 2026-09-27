@@ -3035,6 +3035,17 @@ ipcMain.handle('cab:genererAbonnements', (_e, { dossierId, annee, jusquA } = {})
   return { ...bilan, livre: ouvrirLivre(dossierId, annee).livre };
 });
 
+// 10.15.0 (H4) — les taux de paie par contrat de CE dossier. Normalisés par le moteur de paie (le
+// même que celui qui calcule) : un contrat inconnu, un taux hors 0..100 ou une case vide ne sont
+// jamais gardés — une case vide veut dire « le taux général », pas zéro.
+ipcMain.handle('cab:savePaie', (_e, { dossierId, regimesContrat } = {}) => {
+  requireOpen();
+  droitBlock(dossierId, 'saisie');
+  const d = dossierDe(dossierId);
+  d.paie = { ...(d.paie || {}), regimesContrat: KC.normaliserRegimes(regimesContrat || {}) };
+  return save();
+});
+
 // Le dernier journal utilisé sur CE dossier, pour le proposer à l'ouverture de la grille. C'est un
 // confort, pas une donnée comptable : il ne part dans aucun export et ne change aucun chiffre.
 ipcMain.handle('cab:dernierJournal', (_e, { dossierId, journal } = {}) => {

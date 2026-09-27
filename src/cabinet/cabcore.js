@@ -231,6 +231,11 @@
       // rôle général : le seul cas où ça se verrait est celui où ça compte — quelqu'un qui n'avait
       // pas le droit de valider ici l'aurait à nouveau, sans un mot.
       droits: (d.droits && typeof d.droits === 'object' && !Array.isArray(d.droits)) ? d.droits : {},
+      // 10.15.0 (H4) — les barèmes de paie propres à CE dossier, dont les taux par contrat (CIVP,
+      // Karama, saisonnier). Lus depuis la 10.3.0 (`KC.baremesPaie(dossier.paie)`) et jamais gardés :
+      // absent d'ici, un régime réglé serait jeté au prochain chargement, et le bulletin suivant
+      // retiendrait la CNSS d'un CIVP exonéré sans que rien ne le dise.
+      paie: (d.paie && typeof d.paie === 'object' && !Array.isArray(d.paie)) ? d.paie : {},
       audit: Array.isArray(d.audit) ? d.audit : [],
       packs: Array.isArray(d.packs) ? d.packs.map(sansSignatureIntruse) : []
     };

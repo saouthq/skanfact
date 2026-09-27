@@ -169,7 +169,8 @@
     'pa.cin': { t: 'Le numéro de CIN', d: 'Gardé sur la fiche : la déclaration d\'employeur annuelle le demande pour chaque bénéficiaire.' },
     'pa.numCnss': { t: 'Le numéro d\'assuré CNSS', d: 'Huit chiffres au plus, puis la clé sur deux. Inutile pour calculer un bulletin ; sans lui, le fichier CNSS du trimestre ne sort pas.' },
     'pa.poste': { t: 'Le poste occupé', d: 'Gardé sur la fiche et montré dans la liste des salariés. Il n\'entre dans aucun calcul.' },
-    'pa.contrat': { t: 'Le type de contrat', d: 'Gardé sur la fiche. Il ne change aucun taux : les cotisations suivent les barèmes de la paie.' },
+    'pa.contrat': { a: 'paie', t: 'Le type de contrat', d: 'CDI, CDD, saisonnier, CIVP, Karama… Un contrat sans règle propre suit le barème général. Un CIVP ou un contrat Karama peut être exonéré d\'une partie des charges ou de l\'impôt : le régime se règle pour ce client dans « Taux par contrat… », au-dessus de la liste des salariés, et chaque bulletin du contrat le suit.' },
+    'pa.regimes': { a: 'paie', t: 'Les taux par contrat', d: 'Pour CE client, les taux qu\'un contrat applique à la place du barème général : CNSS salarié et employeur, accident, TFP, FOPROLOS, solidarité, et « sans IRPP ». Une case vide garde le taux général ; 0 veut dire exonéré. Le CDI suit toujours le barème. Un bulletin garde les taux avec lesquels il a été établi. À VÉRIFIER avec les textes du dispositif : SkanFact Cabinet ne connaît aucune exonération d\'avance.' },
     'pa.brut': { t: 'Le salaire brut mensuel', d: 'Proposé à chaque nouveau bulletin, qui reste modifiable mois par mois.' },
     'pa.embauche': { t: 'La date d\'embauche', d: 'Le salarié ne compte qu\'à partir d\'elle : un mois antérieur ne lui réclame pas de bulletin.' },
     'pa.sortie': { t: 'La date de sortie', d: 'Après elle, le salarié ne compte plus et ne passe pas à l\'exercice suivant. Ses bulletins restent.' },
@@ -483,6 +484,12 @@
       <p class="small">Un bulletin garde une <b>copie</b> de son calcul, taux compris : changer un barème l'an prochain
       ne réécrira jamais un bulletin déjà remis. Un salarié qui part devient inactif, jamais effacé — son nom vit sur ses
       bulletins.</p>
+      <h3>Les contrats aux règles particulières</h3>
+      <p class="small">Un <b>CIVP</b>, un contrat <b>Karama</b>, un <b>saisonnier</b> : certains dispositifs exonèrent
+      l'employeur d'une partie des charges, ou le salarié de l'IRPP. <b>Taux par contrat…</b>, au-dessus de la liste des
+      salariés, règle pour ce client les taux de chaque contrat : une case vide garde le taux général, <b>0</b> exonère.
+      L'aperçu d'un bulletin dit le régime appliqué, et le bulletin le garde avec son calcul. <em>À VÉRIFIER : aucune
+      exonération n'est écrite d'avance — elles dépendent du dispositif, de sa durée et de l'année.</em></p>
       <h3>L'écriture et la CNSS</h3>
       <p class="small"><b>Passer l'écriture de paie</b> la pose en brouillard au dernier jour du mois, équilibrée ; chaque
       bulletin retient celle qui le porte, et le bouton s'éteint en le disant — la repasser compterait la paie deux fois.

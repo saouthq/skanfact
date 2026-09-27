@@ -6068,15 +6068,63 @@
   // les valeurs livrées sont INDICATIVES (« À VÉRIFIER avec le comptable »), et un bulletin garde
   // une COPIE de ce qui a servi à le calculer.
 
+  // H4 (10.15.0) — le contrat SAISONNIER et le CIVP, qui a pris la suite du SIVP. La clé `sivp` reste :
+  // des salariés la portent, et un contrat en cours garde le nom sous lequel il a été signé.
   const CONTRACT_TYPES = [
     ['cdi', 'CDI — contrat à durée indéterminée'],
     ['cdd', 'CDD — contrat à durée déterminée'],
-    ['sivp', 'SIVP — stage d\'initiation à la vie professionnelle'],
+    ['saisonnier', 'Saisonnier — contrat pour une saison ou une campagne'],
+    ['civp', 'CIVP — contrat d\'initiation à la vie professionnelle'],
+    ['sivp', 'SIVP (ancien dispositif) — stage d\'initiation à la vie professionnelle'],
     ['karama', 'Contrat Karama'],
     ['stage', 'Stage'],
     ['autre', 'Autre']
   ];
   const contractLabel = k => (CONTRACT_TYPES.find(x => x[0] === k) || [, k])[1];
+
+  // Le RÉGIME d'un type de contrat (H4, 10.15.0) : les taux qui s'écartent du barème général pour ce
+  // contrat, et l'exonération d'impôt. Un CIVP, un contrat Karama peuvent être exonérés de charges —
+  // la règle dépend du dispositif, de l'année et parfois de l'entreprise, donc AUCUNE n'est écrite ici :
+  // la table part VIDE (la valeur par défaut d'une règle qu'on ne connaît pas est celle qui ne fait
+  // rien, 9.1.1), le comptable la règle une fois, et chaque bulletin de ce contrat la suit. Une case
+  // vide veut dire « comme le barème général », jamais zéro. À VÉRIFIER avec le comptable.
+  const REGIME_TAUX = [
+    ['cnssEmployee', 'CNSS salarié'], ['cnssEmployer', 'CNSS employeur'], ['accidentRate', 'Accident'],
+    ['tfpRate', 'TFP'], ['foprolosRate', 'FOPROLOS'], ['solidarity', 'Solidarité']
+  ];
+  const contratRegle = k => CONTRACT_TYPES.some(c => c[0] === k) && k !== 'cdi';
+  function regimeDuContrat(baremes, contrat) {
+    const r = (((baremes || {}).regimesContrat) || {})[contrat];
+    const out = {};
+    if (!r || typeof r !== 'object' || !contratRegle(contrat)) return out;
+    REGIME_TAUX.forEach(([k]) => {
+      const v = r[k];
+      if (v === '' || v == null) return;
+      const n = Number(v);
+      if (Number.isFinite(n) && n >= 0 && n <= 100) out[k] = n;
+    });
+    if (r.sansIrpp === true) out.sansIrpp = true;
+    return out;
+  }
+  // Le régime en mots, pour le dire là où il agit (l'aperçu d'un bulletin, la fiche du salarié) : un
+  // taux qui diffère du barème sans explication se lit comme une erreur de calcul.
+  function libelleRegime(regime) {
+    const r = regime || {};
+    const morceaux = REGIME_TAUX.filter(([k]) => r[k] != null)
+      .map(([k, lab]) => `${lab} ${String(r[k]).replace('.', ',')} %`);
+    if (r.sansIrpp) morceaux.push('sans IRPP');
+    return morceaux.join(', ');
+  }
+  // Ce qui s'enregistre : les seuls contrats connus, les seuls taux connus, rien de vide. Un régime
+  // qui ne change rien n'est pas gardé — il ferait croire au bulletin qu'un régime s'applique.
+  function normaliserRegimes(x) {
+    const out = {};
+    Object.keys(x || {}).forEach(k => {
+      const r = regimeDuContrat({ regimesContrat: x }, k);
+      if (Object.keys(r).length) out[k] = r;
+    });
+    return out;
+  }
 
   // Valeurs de départ, toutes modifiables. Régime tunisien, secteur non agricole.
   // À VÉRIFIER avec le comptable : chacune de ces lignes peut changer d'une loi de finances à l'autre.
@@ -6128,9 +6176,13 @@
   // { gross, bonuses:[{label, amount, taxable}], deductions:[{label, amount}], absentDays, workedDays }
   // Retourne TOUT le détail, pour que le bulletin imprimé et l'écran disent exactement la même chose.
   function computePayslip(employee, input, settings) {
-    const s = settings || DEFAULT_PAYROLL;
     const i = input || {};
     const emp = employee || {};
+    // H4 — le régime du contrat remplace les taux qu'il fixe, et eux seuls. L'app entreprise nomme le
+    // champ `contract`, le Cabinet `contrat` : le moteur lit les deux.
+    const contrat = String(emp.contract || emp.contrat || 'cdi');
+    const regime = regimeDuContrat(settings, contrat);
+    const s = { ...(settings || DEFAULT_PAYROLL), ...regime };
     const baseGross = round3(Number(i.gross != null ? i.gross : emp.grossSalary) || 0);
     const workedDays = Number(i.workedDays) || 26;      // jours ouvrables du mois, modifiable
     const absent = Math.max(0, Number(i.absentDays) || 0);
@@ -6152,7 +6204,7 @@
     const children = Math.min(Number(emp.children) || 0, Number(s.maxChildren) || 0);
     const family = round3((emp.headOfFamily ? (Number(s.headOfFamily) || 0) : 0) + children * (Number(s.perChild) || 0));
     const annualTaxable = round3(Math.max(0, annualAfterCnss - pro - family));
-    const irppYear = irppAnnual(annualTaxable, s.brackets);
+    const irppYear = regime.sansIrpp ? 0 : irppAnnual(annualTaxable, s.brackets || DEFAULT_PAYROLL.brackets);
     const irpp = round3(irppYear / 12);
     const css = round3(annualTaxable * (Number(s.solidarity) || 0) / 100 / 12);
 
@@ -6176,6 +6228,9 @@
       annualTaxable, irppYear, irpp, css,
       deductions, otherDeductions, net,
       cnssEmployer, accident, tfp, foprolos, employerCharges, employerCost,
+      // Le régime appliqué est FIGÉ avec le calcul (5.0.0) : changer la table plus tard ne réécrit
+      // pas un bulletin remis, et le bulletin dit pourquoi ses taux diffèrent du barème.
+      contrat, regime: Object.keys(regime).length ? regime : null,
       rates: {
         cnssEmployee: Number(s.cnssEmployee) || 0, cnssEmployer: Number(s.cnssEmployer) || 0,
         accidentRate: Number(s.accidentRate) || 0, solidarity: Number(s.solidarity) || 0,
@@ -6311,7 +6366,7 @@
       gross: x.brut, workedDays: x.joursTravailles, absentDays: x.joursAbsence,
       bonuses: (x.primes || []).map(p => ({ label: p.label, amount: p.amount, taxable: p.taxable !== false })),
       deductions: (x.retenues || []).map(d => ({ label: d.label, amount: d.amount }))
-    }, { grossSalary: s.brut, headOfFamily: s.chefDeFamille, children: s.enfants }, baremesPaie(baremes));
+    }, { grossSalary: s.brut, headOfFamily: s.chefDeFamille, children: s.enfants, contrat: s.contrat }, baremesPaie(baremes));
   }
 
   // La saisie d'un mois de paie, dans les termes du MOTEUR (`computePayslip`) : c'est ce qui permet
@@ -6356,7 +6411,7 @@
       bonuses: (bulletin.primes || []).map(p => ({ label: String(p.label || 'Prime'), amount: round3(Number(p.amount) || 0), taxable: p.taxable !== false })),
       deductions: (bulletin.retenues || []).map(d => ({ label: String(d.label || 'Retenue'), amount: round3(Number(d.amount) || 0) }))
     };
-    const emp = { grossSalary: s.brut, headOfFamily: s.chefDeFamille, children: s.enfants };
+    const emp = { grossSalary: s.brut, headOfFamily: s.chefDeFamille, children: s.enfants, contrat: s.contrat };
     const b = {
       id: String(bulletin.id || ('bul-' + (Number(quand) || 0) + '-' + livre.bulletins.length)),
       salarieId: s.id, annee: Number(bulletin.annee), mois: Number(bulletin.mois),
@@ -6856,7 +6911,7 @@
     // Le cabinet à plusieurs (9.9.0)
     fusionnerLivres, empreinteEcriture,
     // La paie (10.3.0)
-    CONTRACT_TYPES, contractLabel, DEFAULT_PAYROLL, baremesPaie,
+    CONTRACT_TYPES, contractLabel, REGIME_TAUX, regimeDuContrat, normaliserRegimes, libelleRegime, DEFAULT_PAYROLL, baremesPaie,
     irppAnnual, computePayslip, employerChargesOf,
     COMPTES_PAIE, MOIS_PAIE, moisPaie, TRIMESTRES_PAIE,
     salarieValide, normaliserSalarie, ajouterSalarie, retirerSalarie, salariesActifs,

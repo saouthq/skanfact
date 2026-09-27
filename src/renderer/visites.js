@@ -414,6 +414,8 @@
   b('#reg-csv', "Exporte le registre du personnel.");
   b('#add-br', "Ajoute une tranche au barème de l'IRPP.");
   b('[data-b]', "Une tranche du barème : jusqu'à quel revenu, et à quel taux.", { nom: 'Tranches', cle: 'tranche' });
+  b('[data-rc]', "Le taux que CE contrat applique à la place du taux général. Vide : le taux général ; 0 : exonéré.", { nom: 'Taux du contrat', cle: 'regime-taux' });
+  b('[data-rc-irpp]', "Coché : les bulletins de ce contrat ne retiennent pas d'IRPP.", { nom: 'Sans IRPP', cle: 'regime-irpp' });
   b('[data-brm]', "Retire cette tranche.", { nom: 'Retirer la tranche', cle: 'brm' });
   b('#rf-reset', "Remet les taux livrés avec SkanFact.");
   b('#rf-cancel', "Oublie les modifications de la page.");

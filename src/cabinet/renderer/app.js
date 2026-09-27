@@ -5761,6 +5761,7 @@
     ${/* Empilés, pas côte à côte (règle 3.4.0) : deux tableaux de cinq et six colonnes dans un
           `.split` débordaient chacun de leur moitié — 107 et 46 px à 1440 — et coupaient les noms. */''}
     <div class="panel mt"><h2>Les salariés ${info('pa.salaries')}</h2>
+        ${regimesDuDossier(dossier)}
         ${(L.salaries || []).length
     ? `<div class="scroll-x"><table class="list compact"><thead><tr><th>Nom</th><th class="nw">N° CNSS</th>
         <th>Poste</th><th class="nw">Contrat</th><th class="r nw">Brut mensuel</th><th class="row-actions-h"></th></tr></thead>
@@ -5869,6 +5870,8 @@
       if (x) salarieForm(root, dossier, x, { focus: 'cnss' });
     }; });
     [$('#pa-bulletin', el), $('#pa-bulletin2', el)].forEach(b => { if (b) b.onclick = () => bulletinForm(root, dossier, null); });
+    const rg = $('#pa-regimes', el);
+    if (rg) rg.onclick = () => regimesForm(root, dossier);
     $$('[data-pa-emp]', el).forEach(b => { b.onclick = () => dossierForm(dossier, { focus: b.dataset.paEmp === 'code' ? '#f-cnss-code' : '#f-cnss' }); });
     $$('[data-pa-sal]', el).forEach(b => { b.onclick = () => {
       const x = (s.livre.salaries || []).find(y => y.id === b.dataset.paSal);
@@ -5961,6 +5964,57 @@
       <p class="small muted mt">Les taux affichés sont ceux qui ont servi le jour où ce bulletin a été établi : ils sont
       figés avec lui. <b>À VÉRIFIER</b> — les barèmes changent à chaque loi de finances.</p>
       <div class="modal-actions"><button class="btn btn-primary" data-close>Fermer</button></div>`);
+  }
+
+  // 10.15.0 (H4) — les contrats aux règles particulières (CIVP, Karama, saisonnier). Le panneau DIT
+  // ce qui s'écarte du barème : un bulletin de CIVP sans CNSS employeur, sans la ligne qui l'explique,
+  // se lit comme une erreur de calcul. Aucune règle n'est écrite d'avance (9.1.1) : la table part vide.
+  function regimesDuDossier(dossier) {
+    const bar = (dossier.paie || {});
+    const actifs = KC.CONTRACT_TYPES.filter(([k]) => k !== 'cdi')
+      .map(([k, lab]) => ({ nom: lab.split(' —')[0], r: KC.regimeDuContrat(bar, k) }))
+      .filter(x => Object.keys(x.r).length);
+    return `<div class="small mb ctrl-geste" id="pa-regimes-bloc"><span>${actifs.length
+      ? actifs.map(x => `<b>${esc(x.nom)}</b> : ${esc(KC.libelleRegime(x.r))}`).join(' · ')
+      : 'Tous les contrats suivent le barème général.'} ${info('pa.regimes')}</span>
+      <button type="button" class="btn btn-sm" id="pa-regimes">Taux par contrat…</button></div>`;
+  }
+
+  function regimesForm(root, dossier) {
+    const bar = KC.baremesPaie(dossier.paie || {});
+    const pct = n => String(n).replace('.', ',');
+    const contrats = KC.CONTRACT_TYPES.filter(([k]) => k !== 'cdi');
+    modal(`<h2>Taux par contrat</h2>
+      <p class="small">Laisse une case <b>vide</b> pour appliquer le taux général (en gris) ; mets <b>0</b> pour une exonération.
+      Chaque bulletin de ce client pour un salarié sous ce contrat suivra la ligne, et gardera ses taux une fois établi.
+      <b>À VÉRIFIER</b> : SkanFact ne connaît aucune de ces exonérations — elles changent d'un dispositif et d'une année à l'autre.</p>
+      <div class="scroll-x"><table class="list compact" id="rc-t"><thead><tr><th>Contrat</th>${KC.REGIME_TAUX.map(([, lab]) => `<th class="r nw">${esc(lab)} (%)</th>`).join('')}<th class="nw">Sans IRPP</th></tr></thead>
+        <tbody>${contrats.map(([k, lab]) => {
+    const r = KC.regimeDuContrat(bar, k);
+    const nom = lab.split(' —')[0];
+    return `<tr><td class="nw" title="${esc(lab)}">${esc(nom)}</td>${KC.REGIME_TAUX.map(([t, tl]) => `<td class="r"><input type="text" inputmode="decimal" class="num" data-rc="${k}" data-k="${t}" value="${r[t] != null ? esc(pct(r[t])) : ''}" placeholder="${esc(pct(bar[t]))}" style="width:72px" aria-label="${esc(nom)} : ${esc(tl)} (%)"></td>`).join('')}
+          <td><input type="checkbox" data-rc-irpp="${k}" ${r.sansIrpp ? 'checked' : ''} aria-label="${esc(nom)} : sans IRPP"></td></tr>`;
+  }).join('')}</tbody></table></div>
+      <div class="modal-actions"><button class="btn" data-close>Annuler</button>
+        <button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
+    (layer, close) => {
+      $('.modal', layer).classList.add('cab-large');
+      $('#ok', layer).onclick = async () => {
+        const rc = {};
+        for (const i of $$('[data-rc]', layer)) {
+          const t = i.value.trim();
+          if (!t) continue;
+          const n = Number(t.replace(/\s/g, '').replace(',', '.'));
+          if (!Number.isFinite(n) || n < 0 || n > 100) return refus(i, `« ${t} » n'est pas un taux entre 0 et 100. Laisse la case vide pour le taux général.`);
+          (rc[i.dataset.rc] = rc[i.dataset.rc] || {})[i.dataset.k] = n;
+        }
+        $$('[data-rc-irpp]', layer).forEach(i => { if (i.checked) (rc[i.dataset.rcIrpp] = rc[i.dataset.rcIrpp] || {}).sansIrpp = true; });
+        try {
+          S = await api.savePaie(dossier.id, rc);
+          close(); toast('Taux par contrat enregistrés.'); render();
+        } catch (e) { toast(plainError(e), 'error'); }
+      };
+    });
   }
 
   function salarieForm(root, dossier, x, opts) {
@@ -6076,7 +6130,7 @@
       const maj = () => {
         const v = lire();
         const sal = (L.salaries || []).find(x => x.id === v.salarieId) || {};
-        const c = KC.computePayslip({ grossSalary: sal.brut, headOfFamily: sal.chefDeFamille, children: sal.enfants },
+        const c = KC.computePayslip({ grossSalary: sal.brut, headOfFamily: sal.chefDeFamille, children: sal.enfants, contrat: sal.contrat },
           { gross: v.brut, workedDays: v.joursTravailles, absentDays: v.joursAbsence,
             bonuses: v.primes.map(p => ({ label: p.label, amount: p.amount, taxable: p.taxable })),
             deductions: v.retenues.map(d => ({ label: d.label, amount: d.amount })) },
@@ -6089,7 +6143,7 @@
         // attend que la case se lise, et le refus dessous dit laquelle.
         apercu.innerHTML = illisible ? '<b>Net à payer —</b> <span class="small muted">— un montant ne se lit pas encore.</span>' : `<b>Net à payer ${esc(money(c.net))}</b>
           <span class="small muted">— brut ${esc(money(c.gross))}, retenues ${esc(money(KC.round3(c.cnssEmployee + c.irpp + c.css + c.otherDeductions)))},
-          coût employeur ${esc(money(c.employerCost))}</span>`;
+          coût employeur ${esc(money(c.employerCost))}</span>${c.regime ? `<div class="small mt" id="bf-regime"><b>${esc(KC.contractLabel(c.contrat).split(' —')[0])}</b> : ${esc(KC.libelleRegime(c.regime))} — réglé dans « Taux par contrat… ».</div>` : ''}`;
         const refus = $('#bf-refus', rootModal);
         refus.hidden = verdict.ok;
         refus.textContent = verdict.ok ? '' : verdict.motif;

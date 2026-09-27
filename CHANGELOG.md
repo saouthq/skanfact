@@ -57,6 +57,15 @@ Publiée en **bêta** : c'est un format de fichier officiel.
   le fichier en la nommant. Un libellé qui commencerait par « = » est neutralisé, comme dans les CSV.
   **À VÉRIFIER** : le FEC est une norme française ; l'administration tunisienne ne l'exige pas
   aujourd'hui, mais c'est le format d'échange que les logiciels comptables connaissent.
+- **La paie des contrats aux règles particulières** : le contrat **saisonnier** et le **CIVP**
+  rejoignent la liste (avec le SIVP et Karama). Leurs taux ne sont écrits nulle part dans SkanFact :
+  ils se règlent contrat par contrat — dans SkanFact, Paie → Barèmes → « Les contrats aux règles
+  particulières » ; dans SkanFact Cabinet, la paie d'un client → « Taux par contrat… ». Une case
+  **vide** garde le taux général, **0** exonère, et « sans IRPP » ne retient pas l'impôt. Le CDI suit
+  toujours le barème. Chaque bulletin **garde le régime avec lequel il a été calculé** : changer un
+  taux plus tard ne réécrit aucun bulletin remis. La fiche du salarié et l'aperçu du bulletin disent
+  le régime appliqué ; la déclaration CNSS et l'écriture de paie suivent les montants du bulletin.
+  **À VÉRIFIER** avec ton comptable : les exonérations de chaque dispositif, et leur durée.
 - Dans SkanFact Cabinet, les exports d'un livre vivent dans **un menu « Exporter ▾ »** : la barre du
   livre-journal tient de nouveau sur une rangée. Un menu posé dans une barre (« Exporter », « Imprimer
   la fiche ») a désormais l'allure d'un bouton, et non celle d'un bouton éteint.
