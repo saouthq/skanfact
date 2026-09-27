@@ -35,4 +35,5 @@ chacun validé à son tour. Un document validé porte en tête : `Validé par Sk
 | 27/09/2026 | TypeScript et bibliothèque d'interface | § 9 |
 | 27/09/2026 | Hébergement en Tunisie (secours compris), budget accepté, démarches par le père de Skander | § 9 |
 | 27/09/2026 | Une seule session écrit le produit, la console et le site ; la console devient un module du serveur, sans passe-droit sur la RLS ; le site reste statique | `VISION-ARCHITECTURE.md` § 12 |
+| 27/09/2026 | Les dépôts de l'application et du site restent publics (GitHub Actions gratuit) | `CLAUDE.md` |
 | 27/09/2026 | Dépôt rangé : ancienne vision archivée, `CLAUDE.md` réécrit | ce dossier, `CLAUDE.md` |

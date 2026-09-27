@@ -95,8 +95,8 @@ Détail et raisons dans `VISION-ARCHITECTURE.md` ; ne pas les rediscuter sans qu
 - Jamais une donnée de plus dans ce qui part vers un serveur sans que la liste soit comptée et
   décidée.
 - Les PDF et formulaires officiels reçus ne se commitent pas.
-- Le dépôt est **public** (interrupteur unique : `src/depot.js`). La nouvelle vision prévoit de le
-  repasser en privé : décision à prendre avec Skander (coût GitHub Actions).
+- Le dépôt est **public** (interrupteur unique : `src/depot.js`), et le site aussi. **Décidé le
+  27/09/2026 : ils restent publics** (le projet est peu connu, et GitHub Actions reste gratuit).
 
 **Git et publication**
 - Branche de travail **`beta`** ; `git push -u origin beta` (réessayer 4 fois avec attente en cas
