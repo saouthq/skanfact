@@ -291,7 +291,10 @@ milliers de PME** ; le chiffre exact se mesure, il ne se devine pas.
   test El Fatoora (TTN)** et l'**adhésion « entité d'intégration » DigiGo auprès de l'ANCE**.
   L'homologation ANCE, la déclaration INPDP et la caisse certifiée se font en fin de développement.
 
-**Reste à décider :**
+- **TypeScript et une bibliothèque d'interface : validés.** Les règles « JS pur » et « stockage
+  JSON » de `CLAUDE.md` valent pour l'application actuelle ; la nouvelle plateforme suit ce document.
+
+**Décisions du 27/09/2026 (rappel des questions posées) :**
 
 1. **TypeScript et une bibliothèque d'interface** (renverse deux règles de `CLAUDE.md`).
 2. **Hébergement** : tout en Tunisie (plus sûr juridiquement) ou base gérée en Europe avec
@@ -309,6 +312,45 @@ milliers de PME** ; le chiffre exact se mesure, il ne se devine pas.
 5. Le choix du moteur de synchronisation, avec un petit prototype mesuré.
 6. Le plan de reprise des données actuelles.
 7. La feuille de route et le budget détaillés.
+
+---
+
+## 11. Ce qu'on risquait d'oublier (relu le 27/09/2026)
+
+**À traiter pendant le cadrage**
+1. **L'application actuelle vit encore deux ans.** Ses utilisateurs (et les trois comptables) ont
+   besoin des corrections et des changements de la **loi de finances 2027 et 2028**. On prévoit un
+   temps d'entretien réservé, sans nouvelles fonctions.
+2. **Reprendre les données des concurrents** : Excel, Sage, Ciel, Hesabi… Personne ne change de
+   logiciel s'il doit tout retaper. C'est un argument de vente autant qu'un outil.
+3. **La langue arabe** : interface et, surtout, pièces bilingues arabe/français si des clients ou
+   l'administration les demandent (**À VÉRIFIER** avec les entretiens).
+4. **Le rythme de développement dépend du quota Claude** : 18 à 24 mois supposent un usage
+   quotidien ; le budget doit l'inclure.
+5. **Un `CLAUDE.md` neuf pour la nouvelle plateforme** : l'actuel dépasse 3 000 lignes d'histoire ;
+   chaque session le relit en entier. Le nouveau projet garde les règles, pas le récit.
+
+**À traiter avant le lancement**
+6. **Nos propres factures sont électroniques** : SkanFact vend des abonnements à des entreprises
+   tunisiennes, donc émet lui-même des factures TEIF signées via la TTN. Et **aucun prélèvement
+   automatique** n'existe en Tunisie : prévoir le renouvellement, les relances et la coupure douce.
+7. **Nous devenons « sous-traitant » des données de nos clients** : contrat de traitement, conditions
+   générales, politique de confidentialité, droit d'accès et de suppression — face à l'obligation de
+   garder les pièces **10 ans**. Règle proposée : un client qui arrête garde un **accès en lecture et
+   l'export complet** ; rien n'est effacé avant la fin de la durée légale sans sa demande écrite.
+8. **Responsabilité en cas d'erreur de calcul** : clause de limitation dans les conditions, et une
+   **assurance responsabilité civile professionnelle** (**À VÉRIFIER** avec un assureur).
+9. **Dépôt de la marque SkanFact** (INNORPI) avant la communication publique.
+10. **Réversibilité** : l'engagement écrit que le client récupère toutes ses données dans un format
+    ouvert, et ce qui se passe si SkanFact s'arrête (le « pli scellé » existe déjà côté licences).
+11. **L'exploitation** : environnements de test et de production séparés, mises à jour sans
+    coupure, surveillance et alertes, page d'état du service, **exercice de restauration mensuel**.
+12. **Un audit de sécurité externe** (test d'intrusion) avant d'ouvrir le serveur au public.
+13. **Le support** : canal (WhatsApp Business, e-mail), horaires, délais de réponse ; un humain avant
+    le lancement.
+14. **Mesurer l'usage** (quels écrans servent, où l'on bloque), avec l'accord des clients et sans
+    jamais lire leurs données.
+15. **Le label Startup Act** : avantages fiscaux et financement possibles (**À VÉRIFIER**).
 
 ---
 
