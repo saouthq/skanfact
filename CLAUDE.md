@@ -59,7 +59,11 @@ Détail et raisons dans `VISION-ARCHITECTURE.md` ; ne pas les rediscuter sans qu
   `src/renderer` et `src/cabinet/renderer` (branche `beta`) copiés tels quels, branchés sur le serveur
   par un point de contact neuf ; seuls ce point de contact, les gestes officiels (numéroter, émettre,
   valider, signer : par le serveur) et la mise en page du téléphone s'adaptent. Une correction faite
-  dans la v10 se recopie dans la plateforme. Les écrans nouveaux (connexion, modules des vagues) en React.
+  dans la v10 ne se recopie plus d'elle-même : la copie se fait UNE fois (dernière beta), puis la
+  plateforme devient la seule maison des écrans (Skander, 28/09/2026) ; une correction urgente de la
+  v10 en entretien se reporte à la main si elle la concerne. Aucun lien vivant entre les deux dépôts ;
+  `skanfact` ne se supprime jamais (la v10 en service, ses mises à jour, le cadrage), il s'archivera.
+  Les écrans nouveaux (connexion, modules des vagues) en React.
 - **Prix par entreprise**, pas par utilisateur, modules payants, facture électronique incluse.
   Grille décidée le 28/09/2026 par délégation : `docs/cadrage/07-offres-et-prix.md`.
 - **Signature** : DigiGo intégré (chemin principal), clé USB via l'agent local, signature serveur
