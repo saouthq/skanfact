@@ -49,7 +49,8 @@ de trois (la vague 1 débordait), budget et J0 remis à jour.*
 
 **Jalon J0** : le cadrage est validé document par document, le prototype a tranché, et le **dépôt de
 la plateforme** existe avec son intégration continue (`12`). C'est à partir de J0 que « le premier
-code » est autorisé.
+code » est autorisé. **Atteint le 28/09/2026** : le dépôt existe, avec ses vérifications, et le
+socle a commencé (cloisonnement des entreprises par la base, prouvé).
 
 ### Étape 1 — Le socle (mois 1 à 4)
 
