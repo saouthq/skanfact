@@ -2,7 +2,10 @@
 
 *Proposé le 28/09/2026, relu le même jour contre tout le dépôt. **Validé le 28/09/2026**, après la
 relecture demandée par Skander. Suit `VISION-ARCHITECTURE.md` (§ 4.6 et § 4.7),
-`01-modele-de-donnees.md` et `07-offres-et-prix.md`.*
+`01-modele-de-donnees.md` et `07-offres-et-prix.md`. **Complété le même jour, après validation**,
+pour suivre `14-fonctions-et-integrations.md` (l'alignement sur Hesabi, les métiers, les
+intégrations) : le tableau des modules, les événements, les fournisseurs et le § 11. Ces ajouts sont
+**à revalider**.*
 
 ## En bref (pour Skander)
 
@@ -51,35 +54,45 @@ Tout ce dont les modules ont besoin, et ce qui porte les promesses de la platefo
 - le **moteur d'écritures** : chaque pièce produit ses écritures, même sans le module Comptabilité
   (§ 8) ; et la **validation du mois** (numéro, empreinte, mois fermé), le geste qui précède une
   déclaration (`01` § 14, règle 4) ;
-- les **fichiers**, les **envois** (e-mail, WhatsApp), les **notifications**, la **file de travaux** ;
+- les **fichiers**, les **envois** (e-mail, WhatsApp, SMS), les **notifications**, la **file de travaux** ;
+- la **lecture de documents** (photo, PDF, tableur, facture TEIF), sur nos serveurs (`14` § 2.3) ;
+- l'**accord d'un responsable au-delà d'un seuil** (`03` D11) ;
 - la **piste d'audit** et le **journal inaltérable** ;
 - la **recherche** (Ctrl K), l'**aide**, les **visites guidées**, les **champs personnalisés** ;
-- la **synchronisation** hors ligne, l'**API**, l'**export d'une entreprise** ;
+- la **synchronisation** hors ligne, l'**API publique** avec ses clés et ses avis d'événement
+  (`14` § 2.5), l'**export d'une entreprise** ;
+- le **catalogue de textes** et les langues (`14` § 5) ;
 - l'**abonnement** vu du client (son offre, ses factures SkanFact, le paiement).
 
 ### Les modules
 
 | Module | Contient | Dépend de | Offre (`07`) |
 |---|---|---|---|
-| **Ventes** | Devis, proforma, commandes, bons de livraison, factures, avoirs, notes d'honoraires ; règlements reçus ; chèques et traites ; relances ; contrats récurrents ; **facture électronique signée et envoyée à la TTN** ; retenue subie et attestations | Socle | Essentiel |
-| **Achats** | Factures d'achat, avoirs, acomptes, dépenses ; règlements versés ; retenue opérée et **certificats TEJ** ; lecture d'une facture TEIF reçue | Socle | Essentiel |
-| **Trésorerie** | Comptes (banque, caisse), mouvements, virements entre comptes, relevés importés, rapprochement, prévision | Socle | Essentiel |
+| **Ventes** | Devis (par sections), proforma, commandes (livrées en plusieurs fois, reliquats), bons de livraison, factures (plusieurs livraisons en une), avoirs, notes d'honoraires ; prix par client, par catégorie et **par quantité** ; **encours autorisé** ; calculateur de prix ; règlements reçus ; chèques et traites ; relances ; contrats récurrents ; **facture électronique signée et envoyée à la TTN** ; retenue subie et attestations ; **espace client** et **paiement en ligne** (Konnect) (`14` § 2.1, 2.2) ; en vague 1 : situations de travaux et retenue de garantie, suivi commercial (`14` § 3) | Socle | Essentiel |
+| **Achats** | **Demandes de prix, commandes fournisseurs, réceptions** (même partielles) ; factures d'achat rapprochées de la réception, avoirs, acomptes, dépenses ; règlements versés ; retenue opérée et **certificats TEJ** ; lecture d'une facture TEIF, d'une photo ou d'un PDF ; en vague 2 : notes de frais | Socle | Essentiel |
+| **Trésorerie** | Comptes (banque, caisse, portefeuille électronique comme Konnect, titres-restaurant à remettre), mouvements, virements entre comptes, relevés importés, rapprochement, prévision | Socle | Essentiel |
 | **Déclarations** | TVA du mois (cases prêtes à copier), retenues à la source, timbre, TFP et FOPROLOS, calendrier fiscal ; **les salaires du mois** saisis en total quand la paie est faite ailleurs (§ 3, M4) | Ventes, Achats | Essentiel |
-| **Pilotage** | Tableau de bord, statistiques, marges par client, par article et par affaire | Ventes | Essentiel |
-| **Stock** | Emplacements, mouvements, transferts, inventaires, lots, numéros de série et garanties, coût moyen | Ventes, Achats (il écoute leurs pièces, § 4) ; remplit un point du Pilotage | Complet, ou + 120 DT |
-| **Caisse** | Caisses, sessions, tickets hors ligne, ticket 80 mm, douchette, tiroir, Z de caisse | Ventes, Stock (§ 4), Trésorerie | Complet, ou + 180 DT par caisse |
+| **Pilotage** | Tableau de bord, statistiques, marges par client, par article et par affaire, **balance âgée**, **tableau de bord du groupe** (les sociétés du groupe où la personne a ce droit, `14` § 3.6) | Ventes | Essentiel |
+| **Stock** | Emplacements, mouvements, transferts, inventaires, lots, numéros de série et garanties, coût moyen, **recettes et kits** (un article composé sort ses composants), articles au poids | Ventes, Achats (il écoute leurs pièces, § 4) ; remplit un point du Pilotage | Essentiel |
+| **Caisse** | Caisses, sessions, tickets hors ligne, ticket 80 mm, douchette, tiroir, Z de caisse ; **mode restaurant** : salles et tables, quatre façons de vendre, envoi en cuisine par zone, suppléments et formules, addition partagée ; titres-restaurant ; terminal de paiement non connecté (`14` § 3.1) | Ventes, Stock (§ 4), Trésorerie | Essentiel (1 caisse), + 120 DT par caisse |
 | **Paie** | Salariés, contrats, bulletins, absences, avances, CNSS trimestrielle (fichier), déclaration d'employeur | Trésorerie ; remplit un point du Pilotage | Complet, ou + 150 DT |
-| **Comptabilité complète** | Saisie, livre-journal, grand livre, balance, lettrage, OD, immobilisations, clôture d'exercice, états financiers, liasse, révision | Achats (il écoute leurs pièces pour proposer les immobilisations) | Complet, ou + 150 DT ; **toujours ouvert au cabinet** (§ 8) |
-| **Cabinet** | Portefeuille, production, échéances de tous les clients, relances, affectation des collaborateurs, questions au client | Comptabilité complète | Espace du cabinet (§ 8 et `07`) |
-| **Groupe** (plus tard) | Consolidation, ventes entre sociétés, tableau de bord du groupe | Pilotage, Comptabilité complète | À décider le jour venu |
-| **Intégrations** (plus tard) | Boutiques en ligne, banques, autres logiciels, par l'API et les avis d'événement | API du socle | À décider le jour venu |
+| **Comptabilité complète** | Saisie, livre-journal, grand livre, balance, lettrage, OD, immobilisations, clôture d'exercice, états financiers, liasse, révision, export FEC | Achats (il écoute leurs pièces pour proposer les immobilisations) | Complet, ou + 150 DT ; **toujours ouvert au cabinet** (§ 8) |
+| **Cabinet** | Portefeuille, production, échéances de tous les clients, relances, affectation des collaborateurs, questions au client ; **lettres de mission et honoraires**, **dépôts groupés** (`14` § 2.4) | Comptabilité complète | Espace du cabinet (§ 8 et `07`) |
+| **Réservations** (vague 1) | Choses et personnes qu'on réserve (un agenda par personne ou par poste, un matériel, une salle), créneaux, prise de rendez-vous en ligne, rappels ; en vague 2 : la location (période, caution, état au départ et au retour) | Ventes, Trésorerie | Complet, ou + 120 DT |
+| **Production** (vague 2) | Ordres de fabrication : composants consommés, article fini produit, coût de revient figé | Stock, Achats | Complet, ou + 120 DT |
+| **Projets** (vague 2) | Temps passé, budget et facturation au temps, sur les affaires (l'axe « Affaires » du `01` § 14) | Ventes, Paie (le coût d'une heure, s'il est ouvert) | Complet, ou + 120 DT |
+| **Groupe** (vague 3) | Consolidation, ventes entre sociétés reliées toutes seules | Pilotage, Comptabilité complète | À décider le jour venu |
+| **Intégrations** (vague 1 et suivantes) | Boutiques en ligne, sociétés de livraison, autres prestataires de paiement, WhatsApp automatique, connecteurs sans code, dans l'ordre du `14` § 4 ; chacune remplit un point de branchement déclaré (§ 4.3) | API du socle ; les points de Ventes, Achats et Stock | Selon l'intégration, à décider avec chacune |
+| **Hôtellerie** (à la fin) | Chambres, séjours (décision de Skander du 28/09/2026 : quand tout le reste est fini) | Réservations, Caisse | À décider le jour venu |
 
 **Ce qui n'est pas un module** : la facture électronique, la retenue à la source et la TVA. Ce sont
 des obligations, donc elles vivent dans Ventes, Achats et Déclarations, qui sont dans toutes les
 offres payantes (règle de `07`).
 
-**« Dépend de » parle du code, pas de l'offre.** La Caisse s'appuie sur le code du Stock même chez
-un client qui n'a pas acheté le Stock : ses articles ne sont alors simplement pas suivis en stock.
+**« Dépend de » parle du code, pas de l'offre.** La Caisse s'appuie sur le code du Stock même pour
+un article qui n'est pas suivi en stock (un service, un café au comptoir) : rien n'en sort, c'est tout.
+De même, les Projets appellent la Paie pour le coût d'une heure ; sans bulletin, ce coût reste vide
+et l'écran le dit, jamais un chiffre inventé.
 
 **Les dépendances vont dans un seul sens** : un module ne dépend que du socle et des modules placés
 **au-dessus** de lui dans le tableau, jamais d'un module placé en dessous. Un test le vérifie à chaque
@@ -168,9 +181,11 @@ Deux moments possibles :
 | `piece_vente.avoir_emis` | Ventes | Stock (retour) | Même opération |
 | `reglement.enregistre` | Ventes, Achats | Trésorerie (mouvement du compte) | Même opération |
 | `reglement.impaye` | Ventes | Trésorerie (chèque ou traite revenu) | Même opération |
-| `piece_achat.enregistree` | Achats | Stock (entrée), Comptabilité complète (fiche d'immobilisation **proposée**, jamais créée d'office) | Stock : même opération ; proposition : après |
-| `ticket.encaisse`, `session_caisse.fermee` | Caisse | Intégrations (plus tard) | Après |
-| `bulletin.remis` | Paie | Intégrations (plus tard) | Après |
+| `piece_achat.enregistree` | Achats | Stock (entrée, **sauf** si une réception l'a déjà faite), Comptabilité complète (fiche d'immobilisation **proposée**, jamais créée d'office) | Stock : même opération ; proposition : après |
+| `reception.validee` | Achats | Stock (entrée) | Même opération |
+| `ticket.encaisse`, `session_caisse.fermee` | Caisse | Intégrations | Après |
+| `bulletin.remis` | Paie | Intégrations, Projets (le coût d'une heure) | Après |
+| `piece_vente.emise`, `reglement.enregistre` (le même événement que plus haut) | Ventes | **Avis d'événement de l'API** vers les adresses de l'entreprise (`14` § 2.5) | Après |
 | `ecriture.validee` | Socle (moteur d'écritures) | Journal inaltérable, Déclarations (le mois peut se déclarer), Cabinet (production) | Même opération |
 | `mois.cloture` / `exercice.cloture` | Socle (le mois : demandé par l'entreprise ou le cabinet ; l'exercice : par la Comptabilité complète ou le cabinet) | Tous ; le socle refuse ensuite tout geste daté avant | Même opération |
 | `abonnement.change` | Socle | Tous (modules ouverts, écrans) | Même opération |
@@ -202,8 +217,14 @@ ligne garde au plus un bouton visible, et ce qui apparaît ne pousse rien sous l
 ### 4.3 Les fournisseurs : « voici ce que je sais faire, pour qui en a besoin »
 
 Des fonctions publiques qu'un module offre aux autres, avec une forme fixée. Exemples :
-- Stock : `quantiteDisponible(article, emplacement)`, `sortir(…)`, `entrer(…)`, et il remplit le
-  point « coût d'un article » que le Pilotage déclare ;
+- Stock : `quantiteDisponible(article, emplacement)`, `sortir(…)`, `entrer(…)`, `composants(article)`
+  (la recette ou le kit d'un article composé), et il remplit le point « coût d'un article » que le
+  Pilotage déclare ;
+- Ventes : `encours(tiers)`, `creerCommande(…)` (appelé par les Intégrations pour une commande de
+  boutique) ; il **déclare** trois points : « prestataire de paiement » (qu'il remplit lui-même pour
+  Konnect au lancement, et que les Intégrations remplissent pour les autres), « société de
+  livraison » et « boutique en ligne » (remplis par les Intégrations, `14` § 4) ;
+- Achats : `recevoir(…)` (une réception, appelée par le Stock pour un réassort) ;
 - Trésorerie : `comptePourMode(mode, etablissement)`, `enregistrerMouvement(…)` (appelé par la
   Caisse et la Paie) ;
 - Paie : remplit le point « charges du mois » que le Pilotage déclare (§ 2) ;
@@ -313,14 +334,16 @@ Règle (principe 3 de `07`) : **ce que le cabinet fait pour son client ne se fac
 
 ## 11. À VÉRIFIER, et à décider plus tard
 
-1. **Groupe et consolidation** : ce qu'un groupe tunisien attend (consolidation légale ou simple
-   tableau de bord ?). Entretiens.
-2. **Intégrations** : lesquelles d'abord (boutique en ligne, banques ?). Entretiens.
+1. **Groupe et consolidation** : le tableau de bord du groupe est au lancement ; ce qu'un groupe
+   tunisien attend de plus (consolidation légale ?) se décide avant la vague 3. Entretiens.
+2. **Intégrations** : l'ordre est proposé au `14` § 4 ; les entretiens peuvent le changer.
 3. **Une paie faite par le cabinet** pour un client en Essentiel : vérifier auprès des cabinets
    pilotes que c'est bien ainsi qu'ils veulent travailler.
 4. **Les salaires saisis en total** dans Déclarations : quelles cases ils doivent remplir exactement
    (retenue sur salaires, TFP, FOPROLOS ; la CNSS est trimestrielle et vit dans la Paie). À VÉRIFIER
    avec un comptable.
+5. **Les métiers** : tout ce que le `14` § 7 laisse à vérifier (caisse et commandes de table,
+   retenue de garantie, titres-restaurant, caution, cartes cadeaux).
 
 ## 12. Décisions de ce document
 
@@ -334,3 +357,4 @@ Règle (principe 3 de `07`) : **ce que le cabinet fait pour son client ne se fac
 | 28/09/2026 (proposé) | Le moteur d'écritures et la validation du mois sont dans le socle, ouverts à toutes les offres ; les salaires du mois se saisissent en total dans Déclarations quand la paie est faite ailleurs ; le cabinet a toujours Comptabilité complète, Déclarations et Paie sur ses dossiers |
 | 28/09/2026 (proposé) | Champs personnalisés en données, jamais dans un calcul ; nouveautés allumées par entreprise |
 | 28/09/2026 (proposé) | Un module masqué où l'on enregistre quelque chose revient au menu, et l'application le dit ; un client qui arrête son abonnement : le cabinet continue en dossier tenu |
+| 28/09/2026 (par délégation, après validation, `14`) | Ventes, Achats, Stock, Caisse, Pilotage et Cabinet complétés pour être au niveau de Hesabi et des métiers du lancement (restauration, commerces, grossistes) ; Stock et une caisse passent dans Essentiel ; quatre modules nouveaux : Réservations (vague 1), Production et Projets (vague 2), Hôtellerie (à la fin) ; Groupe en vague 3 ; Intégrations dans l'ordre du `14` § 4 |

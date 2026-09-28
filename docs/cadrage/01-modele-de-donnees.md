@@ -1,7 +1,8 @@
 # 01 — Le modèle de données de la nouvelle plateforme
 
 *Proposition du 28/09/2026, relue le même jour (§ 23). **Validé par Skander le 28/09/2026.** Ce document suit `VISION-ARCHITECTURE.md`,
-qui fait foi en cas de désaccord.*
+qui fait foi en cas de désaccord. Complété le même jour, après validation, pour suivre le `14`
+(§ 24, **à revalider**).*
 
 ## En bref (pour Skander)
 
@@ -262,11 +263,11 @@ Règles (reprises de l'application actuelle, 6.0.0 et 9.2.0) :
 | `piece_vente` | Entreprise, établissement, **type** (devis, proforma, commande, livraison, facture, avoir, note d'honoraires), statut saisi (brouillon, envoyé, accepté, refusé, émise, abandonnée — **une facture émise ne s'annule jamais** : un avoir total la solde), **série et numéro** (vides jusqu'à l'émission pour facture et avoir), tiers, dates (pièce, échéance, validité), devise, **taux figé**, langue, conditions, objet, notes, remise globale, affaire, **totaux** (HT, TVA par taux, timbre, retenue, TTC, net à payer — natifs et en devise de base), **copie figée** (JSON : société, tiers, règles appliquées), statut de paiement **calculé** (R8), empreinte (R9), `extra` | Émise → scellée (R6) |
 | `ligne_vente` | Pièce, rang, article, désignation, description, quantité, unité, **prix unitaire (6 décimales)**, remise de ligne, **code TVA** et taux figé, montants calculés (HT, TVA, TTC), `sans_remise` (déduction d'acompte), compte de vente, axe analytique | — |
 | `lien_piece` | Pièce d'origine → pièce produite, **nature** (conversion, acompte, solde, avoir de, relance de) | C'est ce qui rend lisible toute la chaîne d'une vente, jamais un champ recopié à la main (défaut E-03 de la 10.12.0) |
-| `reglement` | Entreprise, **sens** (reçu ou versé), tiers, compte de trésorerie, date, montant **tel que la banque l'a bougé**, devise, **taux du jour**, mode (espèces, chèque, virement, carte, traite, Konnect), référence, remboursement ou non, **date d'échéance et état d'un chèque ou d'une traite** (en portefeuille, remis en banque, encaissé, impayé) | En Tunisie, un chèque se donne souvent à une date future et une traite a son échéance : le règlement existe dès la remise, l'argent n'arrive à la banque qu'à l'encaissement, et un impayé rouvre la facture | `affectation` | Règlement → pièce, montant affecté (dans la devise de la pièce), **retenue à la source subie ou opérée** sur cette part | La retenue **naît au règlement** (son fait générateur), jamais à la facture (10.14.0). Un règlement en devise porte son taux du jour ; l'écart avec le taux de la pièce part en gain ou perte de change |
+| `reglement` | Entreprise, **sens** (reçu ou versé), tiers, compte de trésorerie, date, montant **tel que la banque l'a bougé**, devise, **taux du jour**, mode (espèces, chèque, virement, carte, traite, paiement en ligne, titre-restaurant, paiement à la livraison), référence, remboursement ou non, **date d'échéance et état d'un chèque ou d'une traite** (en portefeuille, remis en banque, encaissé, impayé) | En Tunisie, un chèque se donne souvent à une date future et une traite a son échéance : le règlement existe dès la remise, l'argent n'arrive à la banque qu'à l'encaissement, et un impayé rouvre la facture | `affectation` | Règlement → pièce, montant affecté (dans la devise de la pièce), **retenue à la source subie ou opérée** sur cette part | La retenue **naît au règlement** (son fait générateur), jamais à la facture (10.14.0). Un règlement en devise porte son taux du jour ; l'écart avec le taux de la pièce part en gain ou perte de change |
 | `attestation_retenue` | Tiers, pièce(s), montant, date, reçue ou émise, fichier, certificat TEJ (identifiant, statut) | — |
 | `envoi_ttn` | Pièce, **identifiant d'envoi unique** (jamais deux envois de la même facture), statut (en file, signée, envoyée, acceptée, refusée), référence TTN, **QR code**, fichier XML signé, erreurs, tentatives, dates | Relances automatiques sans doublon (risque R5 de la vision) |
 | `signature` | Objet signé, méthode (DigiGo, clé USB, serveur), certificat (émetteur, numéro, validité), signataire, instant, fichier | — |
-| `relance` | Pièce, niveau, canal (e-mail, téléphone, WhatsApp, courrier), date, reportée au, note | — |
+| `relance` | Pièce, niveau, canal (e-mail, téléphone, WhatsApp, SMS, courrier), date, reportée au, note | — |
 | `contrat_recurrent` | Tiers, lignes modèles, fréquence, jour, prochaine date, dernière pièce émise, actif, devise | — |
 | `modele_piece`, `texte_type` | Modèles de devis, textes réutilisables | Entreprise |
 
@@ -281,7 +282,7 @@ calculé et mis en cache (R8). L'**affaire** d'une pièce est une section de l'a
 
 | Table | Contenu | Règles |
 |---|---|---|
-| `piece_achat` | Entreprise, établissement, **nature** (facture, avoir, acompte, dépense sans facture), fournisseur, **numéro du fournisseur**, **référence interne** (quand le fournisseur n'en donne pas), dates, devise, taux figé, **TVA récupérable** (figée selon le régime à la date), affaire, totaux, copie figée, statut de règlement calculé, origine (saisie, photo, **facture TEIF reçue**) | Une facture TEIF reçue garde son XML d'origine (fichier) |
+| `piece_achat` | Entreprise, établissement, **nature** (demande de prix, commande, réception, facture, avoir, acompte, dépense sans facture), fournisseur, **numéro du fournisseur**, **référence interne** (quand le fournisseur n'en donne pas), dates, devise, taux figé, **TVA récupérable** (figée selon le régime à la date), affaire, totaux, copie figée, statut de règlement calculé, origine (saisie, photo, **facture TEIF reçue**) | Une facture TEIF reçue garde son XML d'origine (fichier) |
 | `ligne_achat` | Désignation, article, quantité, prix, code TVA, **destination** (charge, stock, immobilisation), déductible ou non, compte, catégorie de dépense, axe analytique | — |
 | (règlements) | Même `reglement` et `affectation` que les ventes, sens « versé » | La retenue **opérée** naît au règlement |
 
@@ -321,7 +322,7 @@ comptable : un résumé par jour plutôt que par session.
 
 | Table | Contenu |
 |---|---|
-| `compte_tresorerie` | Entreprise, nature (banque, caisse, portefeuille électronique), banque, **RIB** (contrôlé), devise, compte comptable (532…, 54…), par défaut, actif |
+| `compte_tresorerie` | Entreprise, nature (banque, caisse, portefeuille électronique, titres-restaurant à remettre, transporteur qui encaisse à la livraison), banque, **RIB** (contrôlé), devise, compte comptable (532…, 54…), par défaut, actif |
 | `mouvement_libre` | Ce qui n'est ni une pièce ni un règlement : apport, prélèvement, frais bancaires, **virement entre deux comptes** (un mouvement, deux côtés), impôt payé, salaire hors bulletin ; contrepartie comptable ; pièce justificative |
 | `releve_bancaire` | Compte, période, solde de début et de fin, fichier importé, format reconnu |
 | `ligne_releve` | Date, libellé, montant **signé comme la banque** (entrée positive), référence |
@@ -429,7 +430,7 @@ Cabinet suit déjà depuis la 9.2.0 (brouillard, puis validation).
 | `parametre` | Réglages de l'entreprise non fiscaux (thème des pièces, textes, préférences), clé → valeur |
 | `module_actif` | Entreprise, module, **ouvert** depuis, fermé depuis, source (abonnement, essai). C'est le « module ouvert » de `02` § 1 ; ce que le cabinet a toujours sur ses dossiers (`02` § 8) se déduit du mandat, il ne s'écrit pas ici. Le « module affiché » (le menu) est une préférence, dans `parametre` |
 | `drapeau` | Nouveauté, entreprise, allumée depuis (`02` § 7 : une nouveauté s'essaie d'abord chez des volontaires) |
-| `cle_api`, `webhook` | Clés d'accès à l'API pour une intégration (empreinte seulement, droits, expiration) et les adresses à prévenir quand un objet change. Vides au lancement ; la forme est posée parce que l'API vient d'abord (vision § 4.7) |
+| `cle_api`, `webhook` | Clés d'accès à l'API pour une intégration (empreinte seulement, droits, expiration) et les adresses à prévenir quand un objet change. **Ouvertes au lancement** (`14` § 2.5) ; chaque envoi d'avis est suivi dans `envoi_webhook` (§ 24) |
 
 ---
 
@@ -584,3 +585,95 @@ actuelle range vraiment.
 | L'API vient d'abord, mais aucune table pour ses clés | `cle_api` et `webhook` (§ 17) |
 | La correspondance oubliait l'état du Cabinet, les dossiers hors SkanFact, le crédit de TVA saisi et les comptes auxiliaires | Ajoutés (§ 20) |
 | Deux renvois faux : « § 18 » pour le découpage (c'est le § 19), et « R5 » qui désignait deux choses différentes | Corrigés |
+
+---
+
+## 24. Ce que le document 14 ajoute (28/09/2026, après validation)
+
+*Ajouté le même jour, pour suivre `14-fonctions-et-integrations.md` : l'alignement sur Hesabi, les
+métiers, les intégrations et les langues. **À revalider.** Les tables des vagues 1 à 3 sont
+écrites **dès maintenant**, pour que les faire plus tard ne demande jamais de reprendre le modèle ;
+elles restent vides jusqu'à leur vague. Toutes suivent les règles du § 2 (entreprise sur chaque
+ligne, sécurité par ligne, argent en entiers, pièce émise scellée).*
+
+**Champs ajoutés aux tables existantes** (en plus de ceux déjà corrigés plus haut : modes de
+règlement, canal SMS, natures d'achat et de compte de trésorerie, clés d'API ouvertes) :
+
+| Table | Ajout |
+|---|---|
+| `entreprise` | Raison sociale et adresse **en arabe** (facultatives) |
+| `article` | Désignation **en arabe** (facultative) ; **composé** (une recette, un kit : § 24.3) ; zone de préparation par défaut (§ 24.4) |
+| `tiers_parametres` | **Encours autorisé**, et ce qui se passe au-delà (avertir, ou demander l'accord d'un responsable) |
+| `tiers_role` | Le rôle **prospect** (vague 1) |
+| `liste_prix` | **Paliers de quantité** : un prix à partir de 10, de 100… |
+| `ligne_vente` | **Nature** de la ligne (article, titre de section, sous-total, texte) : les devis par sections |
+| `lien_piece` | Vaut aussi pour les **achats** (commande → réception → facture) |
+| `ticket` | Façon de vendre (table, comptoir, emporter, livraison), table et couverts, serveur, **QR code et identifiant du module de sécurisation** (selon le cahier des charges, `05` § 3.7) |
+| `paiement_ticket` | Émetteur d'un titre-restaurant ; référence du terminal de paiement |
+
+### 24.1 L'espace client et le paiement en ligne (lancement)
+
+| Table | Contenu | Règles |
+|---|---|---|
+| `acces_client` | Entreprise, tiers, **portée** (une pièce, ou tout le compte), jeton (**empreinte seulement**), créé par, expire le, révoqué le, dernière visite | Ne lit que les pièces **émises** de **ce** tiers (`14` § 2.1) ; chaque visite laisse sa trace |
+| `prestataire_paiement` | Entreprise, prestataire (Konnect au lancement), identifiant du compte marchand, **clé chiffrée** (jamais relue), compte de trésorerie qui reçoit, actif | L'argent va chez l'entreprise, jamais chez SkanFact |
+| `paiement_en_ligne` | Pièce(s), prestataire, identifiant chez le prestataire, montant demandé, statut (créé, payé, expiré, échoué), **preuve** (la réponse du prestataire, relue chez lui), règlement créé | Un paiement ne crée son règlement qu'une fois prouvé ; jamais deux règlements pour le même identifiant |
+
+### 24.2 Lire un document (lancement)
+
+| Table | Contenu | Règles |
+|---|---|---|
+| `lecture_document` | Fichier, nature (photo, PDF, tableur, TEIF), moteur et sa version, texte lu, **champs proposés avec l'endroit où ils ont été lus**, confirmés par et le, pièce créée | Rien ne devient une pièce sans confirmation (`14` § 2.3) ; le texte lu se garde avec le fichier |
+
+### 24.3 Stock : recettes, kits, fabrication
+
+| Table | Contenu | Quand |
+|---|---|---|
+| `nomenclature` | Article composé, composant, quantité, unité, perte prévue ; **usage** (sortie à la vente, ou fabrication) | Lancement (vente) ; vague 2 (fabrication) |
+| `ordre_fabrication` | Article, quantité, nomenclature **figée**, composants consommés et article produit (des `mouvement_stock`), main d'œuvre et frais, **coût de revient figé**, statut | Vague 2 |
+
+### 24.4 Caisse : le restaurant (lancement)
+
+| Table | Contenu | Règles |
+|---|---|---|
+| `salle`, `table_salle` | Établissement, salle ; table, places, position sur le plan | L'état d'une table (libre, commande prise, en cours, à encaisser) est **calculé** (R8) |
+| `zone_preparation` | Cuisine, bar, pizza… et son imprimante | — |
+| `groupe_options`, `option_article` | Choix obligatoires ou facultatifs d'un article (cuisson, suppléments), avec leur prix ; **formule** : un article fait de choix par groupe, à prix fixe | Un supplément payant est une ligne du ticket, calculée par le moteur (`02` M3) |
+| `commande_salle`, `ligne_commande_salle` | Caisse, table ou façon de vendre, couverts, serveur, ouverte le ; lignes : article, options, quantité, note, **envoyée en cuisine le**, zone, annulée par et pourquoi | **Pas une pièce légale** : elle devient un ou plusieurs tickets à l'encaissement (addition partagée). La somme des tickets vaut la commande. **À VÉRIFIER** avec le cahier des charges : faut-il l'enregistrer ou la transmettre avant l'encaissement ? |
+
+### 24.5 Achats, frais et accords (lancement, sauf mention)
+
+| Table | Contenu | Quand |
+|---|---|---|
+| `lien_ligne` | Ligne d'origine → ligne produite, quantité : les **reliquats** d'une commande livrée en plusieurs fois, et le rapprochement commande → réception → facture | Lancement |
+| `demande_accord` | Objet, geste, seuil dépassé, demandé par, accordé ou refusé par, quand, motif (`03` D11) | Lancement |
+| `note_frais`, `ligne_note_frais` | Membre, justificatif (photo), montant, catégorie, statut (soumise, acceptée, refusée, remboursée), dépense produite | Vague 2 |
+
+### 24.6 Le cabinet (lancement)
+
+| Table | Contenu | Règles |
+|---|---|---|
+| `lettre_mission` | Mandat, missions (tenue, révision, paie, déclarations, conseil), **honoraires** (forfait et périodicité, prix par bulletin, par pièce au-delà d'un nombre), dates, signée le, fichier | Produit un `contrat_recurrent` dans **la société du cabinet**, qui facture ses honoraires (`14` § 2.4) |
+
+Les dépôts groupés n'ont pas de table à eux : ce sont des `travail` de la file (§ 16), un par
+dossier, rassemblés sous un même lot.
+
+### 24.7 L'API et les intégrations
+
+| Table | Contenu | Quand |
+|---|---|---|
+| `envoi_webhook` | Adresse prévenue, événement, tentative, statut, réponse reçue, prochain essai | Lancement |
+| `integration` | Entreprise, partenaire (boutique, livraison, paiement), réglages, **liste de ce qui part** (montrée à l'entreprise), allumée par et le, éteinte le | Vague 1 |
+| `expedition` | Bon de livraison, société de livraison, référence du colis, statut, montant à encaisser à la livraison, reversement rapproché | Vague 1 |
+
+### 24.8 Réservations, projets, suivi commercial, fidélité
+
+| Table | Contenu | Quand |
+|---|---|---|
+| `ressource` | Ce qu'on réserve : une personne, un poste, un matériel, une salle (plus tard, une chambre : `14` § 3.7) | Vague 1 |
+| `disponibilite` | Horaires d'une ressource, fermetures | Vague 1 |
+| `reservation` | Ressource(s), tiers, début, fin, statut (demandée, confirmée, honorée, annulée, absent), acompte, pièce de vente liée | Vague 1 |
+| `caution` | Réservation, reçue le, montant, rendue ou retenue, quand, pourquoi | Vague 2 (location). Pas un chiffre d'affaires (**À VÉRIFIER**) |
+| `opportunite`, `activite` | Tiers prospect, étape, montant espéré, prochaine action ; appels, visites, rappels | Vague 1 |
+| `temps_passe` | Membre, affaire (la section de l'axe « Affaires », § 14), date, durée, facturable, taux, facturé par quelle pièce | Vague 2 |
+| `programme_fidelite`, `mouvement_points` ; `carte_cadeau` | Règles de points, points gagnés et utilisés par client ; numéro, montant, solde d'une carte cadeau | Vague 2. Une carte cadeau vendue n'est pas un chiffre d'affaires avant d'être utilisée (**À VÉRIFIER**) |

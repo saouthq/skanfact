@@ -3,7 +3,9 @@
 *Proposé le 28/09/2026, relu le même jour contre tout le dépôt. **Validé par Skander le 28/09/2026.** Suit `VISION-ARCHITECTURE.md` (§ 4.2, § 6, risques
 R2, R8, R9, R11, § 11 points 11 et 12, § 12), `03-droits.md`, `04-hors-ligne-et-synchro.md` et
 `05-obligations-legales.md` (§ 4.3 et 4.4). Source principale :
-`docs/etudes/notes-de-recherche/marche-2026/hebergement_technique.md`.*
+`docs/etudes/notes-de-recherche/marche-2026/hebergement_technique.md`. Complété le même jour, après
+validation, pour suivre le `14` : les portes de plus vers l'extérieur et la lecture de documents
+(§ 3), l'agent local au restaurant (§ 10). **À revalider.***
 
 ## En bref (pour Skander)
 
@@ -132,6 +134,12 @@ outils précis est fait dans le document 12.
   serveur tombe, la page d'état le dit quand même. Elle ne contient aucune donnée de client.
 - Le **formulaire d'inscription** du site envoie **directement** au serveur en Tunisie : aucune donnée
   ne passe par l'hébergeur du site, qui est hors de Tunisie (`05` § 4.3).
+- **Trois portes de plus vers l'extérieur** (ajouté le 28/09/2026, `14`) : l'**espace client** (des
+  liens secrets, révocables, qui ne lisent que les pièces émises d'un tiers), l'**API publique**
+  (clés, limites d'appels) et les **avis de paiement de Konnect** (jamais crus sur parole : le
+  paiement est toujours relu chez Konnect). Toutes trois entrent dans l'audit externe (§ 10).
+- La **lecture de documents** (`14` § 2.3) lit des fichiers venus de l'extérieur : elle tourne **à
+  part** du programme, sans accès à la base, et ne rend que du texte et des champs proposés.
 
 ---
 
@@ -316,7 +324,8 @@ Vision R11 : une seule personne pour tout faire. La parade :
   au budget (document 09).
 - **L'agent local** (clé USB, imprimante, tiroir, douchette : vision § 4.1) n'écoute que sur le poste
   lui-même, n'accepte que l'application appairée, et ne fait que ce qu'il déclare : signer, imprimer,
-  ouvrir le tiroir.
+  ouvrir le tiroir. Au restaurant, il **envoie** aux imprimantes de cuisine du réseau local, sans
+  rien écouter de ce réseau (`14` § 3.1).
 - **Les fichiers reçus** (pièces jointes, relevés, factures TEIF de fournisseurs) sont vérifiés
   avant d'être lus : type réel, taille, et jamais exécutés.
 

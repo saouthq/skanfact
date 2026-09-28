@@ -23,6 +23,11 @@ chacun validé à son tour. Un document validé porte en tête : `Validé par Sk
 | 11 | `11-site.md` | Le site : pages, inscription, centre d'aide, page d'état, pages légales, reprise des données (§ 12) | **Proposé le 28/09/2026, à valider** |
 | 12 | `12-pile-technique.md` | Les outils précis (serveur, bibliothèque d'interface, migrations de base, file de travaux, moteur de synchro, PDF, mails et WhatsApp, recherche, surveillance), où vit le code (ce dépôt ou un dépôt neuf), les environnements (test, production), l'intégration continue et la stratégie de tests. À décider **avant** la première ligne de code | **Proposé le 28/09/2026, à valider** |
 | 13 | `13-mise-sur-le-marche.md` | Cibles par ordre d'urgence, canaux (cabinets, revendeurs de caisse, contenu, WhatsApp, parrainage), transformer un essai en client, lancement en trois temps, objectifs de la première année | **Proposé le 28/09/2026** (par délégation) |
+| 14 | `14-fonctions-et-integrations.md` | Tout ce que fait SkanFact : Hesabi fonction par fonction, les six manques ajoutés au lancement (espace client et paiement en ligne, lecture de documents, cabinet complet, API, téléphone, arabe préparé), les métiers (restauration, commerces, bâtiment, fabrication, rendez-vous, location ; hôtellerie à la fin), les intégrations et leur ordre, les langues, ce que ça coûte | **Proposé le 28/09/2026** (par délégation) |
+
+**Le 28/09/2026, après validation**, le `14` a complété les documents 00, 01 (§ 24), 02, 03, 04, 05,
+06 et 08 (une ligne), déjà validés : chacun le dit en tête, et **ces ajouts sont à revalider**. Il a aussi revu le
+07 (prix), le 09 (calendrier), le 11, le 12 et le 13.
 
 ## En parallèle (Skander et son père)
 
@@ -30,6 +35,8 @@ chacun validé à son tour. Un document validé porte en tête : `Validé par Sk
 - Lancer les trois démarches qui serviront pendant le développement : accès test El Fatoora (TTN),
   adhésion « entité d'intégration » DigiGo auprès de l'ANCE, et inscription fournisseur sur la
   plateforme d'homologation des caisses (`05` § 5). Les questions à poser à chacun : `05` § 6.
+- Et, dès que la société qui portera SkanFact est choisie : la demande du **label Startup**
+  (`05` § 4.8).
 
 ## Journal des décisions
 
@@ -48,5 +55,7 @@ chacun validé à son tour. Un document validé porte en tête : `Validé par Sk
 | 28/09/2026 | Obligations légales (05), validé : carte des obligations et de ce qu'on en sait, questions par interlocuteur ; **inscription fournisseur à la plateforme d'homologation des caisses dès maintenant** | `05-obligations-legales.md`, vision § 9 |
 | 28/09/2026 | Sécurité et hébergement (06), validé : deux centres en Tunisie chez deux opérateurs (EO Data Center proposé en principal, sur devis), objectifs de perte et de reprise, copie intouchable, restauration mesurée chaque mois, aucun accès à la base hors urgence tracée | `06-securite-et-hebergement.md` |
 | 28/09/2026 | Reprise de l'existant (08), validé : moteur et tests portés au millime, reprise acceptée seulement à chiffres identiques, dossier v10 en lecture seule au passage ; personne ne paie la v10 aujourd'hui | `08-reprise-de-l-existant.md` |
+| 28/09/2026 | Par délégation, à la demande de Skander (« tout ce que Hesabi a, il nous le faut ») : tout Hesabi au lancement, plus l'espace client et le paiement en ligne, la lecture de documents en Tunisie, le cabinet complet, l'API, le téléphone ; restauration et commerces au lancement ; trois vagues après, puis l'hôtellerie (**décision de Skander**) ; l'arabe plus tard, l'infrastructure maintenant (**décision de Skander**) ; lancement à 27 mois (30 avec la marge) ; Essentiel avec le stock et une caisse | `14-fonctions-et-integrations.md` |
+| 28/09/2026 | Les dépôts restent publics (Skander, confirmé le 28/09 : « personne ne nous connaît, on publie gratuitement ») | `CLAUDE.md`, `12` § 1 |
 | 27/09/2026 | Les dépôts de l'application et du site restent publics (GitHub Actions gratuit) | `CLAUDE.md` |
 | 27/09/2026 | Dépôt rangé : ancienne vision archivée, `CLAUDE.md` réécrit | ce dossier, `CLAUDE.md` |

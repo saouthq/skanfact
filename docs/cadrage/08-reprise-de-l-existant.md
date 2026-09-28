@@ -209,7 +209,7 @@ et `TARIFS-REFERENCE.md` pour la v10) :
 
 | v10 | Plateforme | Ce qui change pour le client |
 |---|---|---|
-| **Indépendant**, 390 DT/an | **Essentiel**, 390 DT/an | Il gagne la facture électronique signée et envoyée, la retenue avec TEJ, le comptable dans les mêmes données, le web et le hors-ligne. Le stock, la paie et les immobilisations, en **lecture seule** dans la v10, se prennent **en module** (`07`) |
+| **Indépendant**, 390 DT/an | **Essentiel**, 390 DT/an | Il gagne la facture électronique signée et envoyée, la retenue avec TEJ, le comptable dans les mêmes données, le web et le hors-ligne, et (depuis le 28/09/2026, `14`) **le stock et une caisse**. La paie et les immobilisations, en **lecture seule** dans la v10, se prennent **en module** (`07`) |
 | **Entreprise**, 690 DT/an | **Complet**, 690 DT/an | Tout, comme aujourd'hui, avec la caisse et la comptabilité complète comprises |
 | Option Comptabilité (9.1.0) | Module Comptabilité complète, ou compris dans Complet | — |
 

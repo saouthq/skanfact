@@ -3,7 +3,8 @@
 *Proposé le 28/09/2026. **À valider par Skander.** Détaille `VISION-ARCHITECTURE.md` § 12 (« Le site »).
 Le site vit dans le dépôt `saouthq/skanfact-site` ; ses règles de travail sont dans son `CLAUDE.md`,
 et sa description page par page dans son `README.md`. Même session pour l'application, la console et
-le site (décision du 27/09).*
+le site (décision du 27/09). Complété le même jour pour suivre le `14` : pages de métiers,
+d'intégrations et pour les développeurs ; le site en arabe en vague 1.*
 
 ## En bref (pour Skander)
 
@@ -53,6 +54,9 @@ Les pages d'aujourd'hui sont décrites dans le `README.md` du site. Ce qu'elles 
 | **Sécurité et hébergement** | Ce que fait le `06`, **en chiffres mesurés** : hébergement en Tunisie, sauvegardes, dernier exercice de restauration réussi et sa date |
 | **Reprendre mes données** | Depuis l'application actuelle, Excel ou un autre logiciel (`08`) |
 | **Contrat de traitement**, **réversibilité** | Les engagements écrits avec le juriste (`05` § 4.5) |
+| **Métiers** : une page par métier du lancement (restaurant et café, commerce, grossiste, prestataire de services, cabinet) | Ce que SkanFact fait pour ce métier, avec des écrans vrais (`14` § 3). Un métier des vagues n'a sa page **qu'une fois livré** |
+| **Intégrations** | La liste de ce qui se branche, **allumé ou pas encore** (jamais une intégration annoncée avant d'exister), et ce qui part chez chaque partenaire (`14` § 4) |
+| **Développeurs** | La documentation de l'API, générée depuis le code, et l'entreprise d'essai (`14` § 2.5) |
 
 ---
 
@@ -141,7 +145,8 @@ Elles sont dans son `CLAUDE.md` et ne changent pas :
 vers nos serveurs en Tunisie ; `skanfact.tn` et la page d'état restent chez l'hébergeur du site (`00`,
 `06`).
 
-**Plus tard** : le site en **arabe** (vision R12), quand les entretiens l'auront demandé.
+**En vague 1** : le site en **arabe**, avec l'interface (`14` § 5). Le site est écrit dès maintenant
+sans « gauche » ni « droite » dans ses styles, pour qu'il se retourne sans être refait.
 
 ---
 
@@ -161,3 +166,4 @@ vers nos serveurs en Tunisie ; `skanfact.tn` et la page d'état restent chez l'h
 | 28/09/2026 (proposé) | Aucune donnée de personne sur le site ; les formulaires vont directement au serveur en Tunisie ; l'appel à l'API de GitHub disparaît ; aucune mesure d'audience tierce |
 | 28/09/2026 (proposé) | Une seule aide pour l'application et le site ; des tarifs tirés de la console ; un test pour chacun contre la divergence |
 | 28/09/2026 (proposé) | Pas de liste d'attente avec adresses avant la déclaration INPDP |
+| 28/09/2026 (par délégation, `14`) | Pages de métiers, d'intégrations et pour les développeurs au lancement ; rien d'une vague n'est annoncé avant d'être livré ; site en arabe en vague 1 |

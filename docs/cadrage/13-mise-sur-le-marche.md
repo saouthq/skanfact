@@ -4,7 +4,8 @@
 projet »). Répond à sa demande du 26/09 : « faire un plan afin de pouvoir quand même gagner de
 l'argent et ramener du monde ». Sources : `docs/etudes/ETUDE-MARCHE.md` (§ « Un marché de 225 000
 employeurs », § « Canaux de mise sur le marché », § « Ce qu'il faut pour être le meilleur ») et
-`docs/etudes/notes-de-recherche/marche-2026/marche_taille_canaux.md`. Les prix sont ceux de `07`.*
+`docs/etudes/notes-de-recherche/marche-2026/marche_taille_canaux.md`. Les prix sont ceux de `07`.
+Complété le même jour pour suivre le `14` (cibles 3, 4 et 5).*
 
 ## En bref (pour Skander)
 
@@ -52,9 +53,9 @@ fonctionnement (`09` § 4.4).
 |---|---|---|---|---|
 | 1 | **Cabinets comptables** | Chaque cabinet amène des dizaines de clients ; Sage Coala, encore utilisé, est arrêté par son éditeur | Gratuit pour ses clients abonnés, plus de ressaisie, la paie et les déclarations de tous ses dossiers au même endroit, la reprise de ses dossiers | Cabinet (`07`) |
 | 2 | **Prestataires de services** (libéraux, conseil, informatique, agences) | Facture électronique obligatoire depuis le 1er janvier 2026, amende par facture papier | La facture signée et envoyée à la TTN en un clic, la retenue à la source et TEJ, le prix | Essentiel |
-| 3 | **Restaurants, cafés, salons de thé, boulangeries** | Caisse certifiée obligatoire (calendrier 2025 à 2028) | Une caisse homologuée qui marche pendant les coupures, avec tables et cuisine (`02`), le stock matière, la comptabilité avec | Essentiel + Caisse, ou Complet |
-| 4 | **Commerces, grossistes, distributeurs** | Caisse obligatoire pour le réel mensuel avant juillet 2027 ; stock et prix par client | Caisse, stock multi-dépôts, grilles de prix, bons de commande, marges | Essentiel ou Complet |
-| 5 | **PME avec salariés** (bâtiment, fabrication, transport…) | Paie, CNSS, déclarations, plusieurs utilisateurs | Tout dans un seul outil, prix par entreprise, droits par personne | Complet |
+| 3 | **Restaurants, cafés, salons de thé, boulangeries** | Caisse certifiée obligatoire (calendrier 2025 à 2028) | Une caisse homologuée qui marche pendant les coupures, avec tables et cuisine, suppléments, addition partagée et titres-restaurant (`14` § 3.1), le stock matière par recette, la comptabilité avec | Essentiel (une caisse comprise), ou Complet |
+| 4 | **Commerces, grossistes, distributeurs** | Caisse obligatoire pour le réel mensuel avant juillet 2027 ; stock et prix par client | Caisse, stock multi-dépôts, prix par client et par quantité, encours, commandes clients et fournisseurs, réceptions, marges (`14` § 3.2) ; plus tard, les boutiques en ligne et la livraison (`14` § 4) | Essentiel ou Complet |
+| 5 | **PME avec salariés** (bâtiment, fabrication, transport…) | Paie, CNSS, déclarations, plusieurs utilisateurs | Tout dans un seul outil, prix par entreprise, droits par personne ; les situations de travaux en vague 1, la fabrication en vague 2 (`14` § 3.3, 3.4) | Complet |
 | 6 | **Groupes de sociétés** | Plusieurs matricules, les mêmes personnes | Passer d'une société à l'autre, fiches partagées, −20 % dès la deuxième société, tableau de bord du groupe | Complet par société |
 
 ---

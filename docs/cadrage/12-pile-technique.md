@@ -2,7 +2,9 @@
 
 *Proposé le 28/09/2026. **À valider par Skander.** Suit `VISION-ARCHITECTURE.md` (§ 4, § 8 : pas de
 microservices ni de Kubernetes ; § 9 : TypeScript et une bibliothèque d'interface, validés le
-27/09) et les documents 01 à 11. **À décider avant la première ligne de code** (J0, `09`).*
+27/09) et les documents 01 à 11. **À décider avant la première ligne de code** (J0, `09`). Complété
+le même jour pour suivre le `14` (lecture de documents, API publique, téléphone, langue factice,
+imprimantes de cuisine).*
 
 ## En bref (pour Skander)
 
@@ -38,7 +40,7 @@ skanfact-plateforme/
   moteur/        le calcul tunisien porté (pièces, TVA, retenue, paie, écritures), sans dépendance
   serveur/       le programme unique, rangé par module (socle, ventes, achats…, console)
   web/           l'application (écrans, copie locale, file d'envoi)
-  bureau/        la coque et l'agent local (clé USB, imprimante, tiroir, douchette)
+  bureau/        la coque et l'agent local (clé USB, imprimantes, tiroir, douchette)
   aide/          les articles d'aide, une seule fois (`11` § 4)
   base/          migrations, règles de sécurité par ligne
   exploitation/  installation des serveurs, sauvegardes, bascule, fiches d'incident
@@ -75,6 +77,9 @@ skanfact-plateforme/
 | **Mots de passe** : empreinte **Argon2id** ; la liste des mots de passe volés est **téléchargée et gardée chez nous** | `03` § 6 : rien ne sort, même pas un début d'empreinte | — |
 | **Code sur le téléphone** : SMS (fournisseur tunisien) ou application d'authentification (TOTP) | `03` § 6 | — |
 | **E-mails** : un serveur d'envoi **en Tunisie**, par la file de travaux | `05` § 4.3 | **À VÉRIFIER** : fournisseur, délivrabilité |
+| **Lecture de documents** : un moteur de lecture libre (**PaddleOCR** ou **Tesseract**, qui lisent tous deux le français et l'arabe), sur **nos** serveurs, dans la file de travaux | `14` § 2.3 : aucune image ne sort de Tunisie | Le seuil du § 10 non atteint : on garde le TEIF et le tableur, et on n'annonce pas la lecture de photo |
+| **API publique** : documentation générée depuis les schémas Zod ; avis d'événement **signés**, renvoyés par la file de travaux ; limites d'appels par clé | `14` § 2.5 | — |
+| **Paiement en ligne** : l'API de Konnect (créer un paiement, puis **relire** son état chez Konnect) | `14` § 2.2 ; déjà fait pour nos abonnements dans la v10 (10.9.0) | **À VÉRIFIER** : un compte marchand par entreprise |
 
 ---
 
@@ -85,7 +90,8 @@ skanfact-plateforme/
 | **React** | La bibliothèque d'interface la plus répandue ; validé le 27/09 (« une vraie bibliothèque d'interface ») | — |
 | **Mantine** pour les composants (boutons, champs, fenêtres, dates) | Complet, accessible, gère l'**écriture de droite à gauche** (l'arabe, vision R12) sans travail en plus | Un manque bloquant découvert au prototype |
 | **TanStack Table et Virtual** pour les listes et la **grille de saisie** | Sans habillage imposé : on garde nos règles d'interface (un seul bouton principal, rien ne pousse sous le curseur) ; tient des dizaines de milliers de lignes (saturation 10.14.0) | — |
-| **Textes traduisibles dès le premier écran** (catalogue de messages), propriétés CSS « de début et de fin » | Vision R12 : l'arabe plus tard, sans tout reprendre (c'est déjà la règle depuis la 9.4.10) | — |
+| **Textes traduisibles dès le premier écran** (catalogue de messages), propriétés CSS « de début et de fin » ; une **langue factice** (40 % plus longue, de droite à gauche) photographiée à chaque version ; des **polices libres qui contiennent l'arabe** (famille Noto), aussi dans les PDF | Vision R12 et décision de Skander du 28/09 : l'arabe plus tard, l'infrastructure maintenant (`14` § 5) | — |
+| **Écrans pensés pour le téléphone** : la mise en page suit la largeur ; l'instrument de rendu photographie chaque écran à la largeur d'un téléphone (390 points) et d'un ordinateur (1 440) ; des cibles d'au moins 44 points pour un doigt | `14` § 2.6 | — |
 | **Application installable** (service worker) | `00` : la même application dans le navigateur, installée, ou dans la coque | — |
 | **Copie locale** : **SQLite dans le navigateur** (version WebAssembly, stockée dans le système de fichiers privé du navigateur) | Une vraie base sur le poste, chiffrable, rapide (budget de 100 ms à la frappe, vision § 6) | **Le prototype du `04` § 9 tranche**, avec le stockage persistant (`04` § 4) |
 | **Synchronisation** : écriture par **notre file d'opérations** ; lecture par **notre propre chemin** de préférence | `04` § 9.1 et 9.2 : une seule porte pour les droits | **Le prototype tranche** entre notre chemin et PowerSync |
@@ -98,7 +104,7 @@ skanfact-plateforme/
 | Choix | Pourquoi | Ce qui le remettrait en cause |
 |---|---|---|
 | **Electron** pour la coque | On le connaît (toute la v10) ; l'agent local tourne dans le même programme ; les mises à jour savent déjà se faire | Une coque plus légère (Tauri) ne vaut pas de réapprendre un autre langage pour une seule personne |
-| **Agent local** : clé USB de signature par l'interface standard des jetons cryptographiques (PKCS#11), imprimante de tickets en ESC/POS, tiroir par l'imprimante, douchette comme un clavier | Les protocoles du matériel vendu en Tunisie (note de recherche `hebergement_technique.md`) | **À VÉRIFIER** : les pilotes des clés USB TunTrust sur Windows et Mac |
+| **Agent local** : clé USB de signature par l'interface standard des jetons cryptographiques (PKCS#11), imprimante de tickets en ESC/POS, **imprimantes de cuisine** (plusieurs, sur le réseau du restaurant ou en USB), tiroir par l'imprimante, douchette comme un clavier ; en vague 2, la balance | Les protocoles du matériel vendu en Tunisie (note de recherche `hebergement_technique.md`) ; le restaurant (`14` § 3.1) | **À VÉRIFIER** : les pilotes des clés USB TunTrust sur Windows et Mac |
 | **Application signée** (Apple, Microsoft) | `06` § 10 : un prérequis, pas une option | — |
 
 ---
@@ -144,6 +150,7 @@ Tout ce qui fait la qualité de la v10 est porté (`08` § 1) :
 | **Hors ligne** : coupure, double envoi, conflit, révocation (`04` § 9.3) | Playwright | Chaque nuit |
 | **Secrets** : aucun dans le dépôt | Un chercheur de secrets, qui arrête la construction | À chaque envoi |
 | **Test humain** : refaire à la souris et regarder l'écran (décision du 24/09) | Les outils de `scripts/humain/`, adaptés au navigateur | Avant d'annoncer quoi que ce soit |
+| **Téléphone et langue factice** : chaque écran photographié à deux largeurs et dans la langue factice ; aucune phrase écrite en dur dans un écran (`14` § 2.6 et § 5) | L'instrument de rendu, porté | À chaque envoi |
 
 **L'intégration continue tourne sur GitHub Actions** : gratuite pour un dépôt public (décision du
 27/09). Une construction rouge **ne se contourne jamais** : on ne saute pas un test, on ne le met pas
@@ -158,9 +165,10 @@ de côté. Chaque test se prouve en réintroduisant son défaut.
 - **Pas de moteur de recherche à part**, pas de cache à part : PostgreSQL suffit tant qu'une mesure ne
   dit pas le contraire.
 - **Pas d'ORM qui cache le SQL** : vision § 2.
-- **Pas d'intelligence artificielle dans le produit au lancement.** La lecture de photo de facture de
-  la v10 envoie une image à l'étranger : elle ne revient qu'avec un service en Tunisie, ou avec
-  l'autorisation de l'INPDP (`05` § 4.3).
+- **Pas d'intelligence artificielle qui écrit dans le produit au lancement** (un assistant). Elle ne
+  viendra qu'hébergée en Tunisie, ou avec l'autorisation de l'INPDP (`05` § 4.3). La **lecture de
+  documents**, elle, est au lancement, **sur nos serveurs** (§ 3, `14` § 2.3) : c'est ainsi que la
+  lecture de photo de la v10 revient sans qu'une image sorte de Tunisie.
 
 ---
 
@@ -172,6 +180,11 @@ de côté. Chaque test se prouve en réintroduisant son défaut.
 4. **La licence de MinIO** pour notre usage.
 5. **La recherche en arabe** avec PostgreSQL.
 6. **Le fournisseur d'e-mails et de SMS** en Tunisie (`03` § 6).
+7. **Le moteur de lecture de documents** : PaddleOCR ou Tesseract, choisi sur un lot de vraies
+   factures tunisiennes prêtées **avec l'accord** de leurs propriétaires ; retenu s'il lit juste le
+   matricule, la date et le total sur **au moins 9 factures sur 10** (`14` § 2.3).
+8. **Les polices arabes** dans les PDF imprimés par Chromium.
+9. **L'API de Konnect** pour le compte marchand de chaque entreprise (`14` § 2.2).
 
 ## 11. Décisions de ce document
 
@@ -184,3 +197,4 @@ de côté. Chaque test se prouve en réintroduisant son défaut.
 | 28/09/2026 (proposé) | Electron pour la coque et l'agent local ; application signée |
 | 28/09/2026 (proposé) | Serveurs dédiés, Docker Compose, Ansible, pgBackRest, réplication PostgreSQL avec bascule par script, MinIO, SOPS, Prometheus et Grafana ; tout chez nous, en Tunisie |
 | 28/09/2026 (proposé) | Quatre environnements, jamais de donnée réelle hors production ; tous les tests de la v10 portés ; intégration continue sur GitHub Actions, jamais contournée |
+| 28/09/2026 (par délégation, `14`) | Lecture de documents par un moteur libre sur nos serveurs ; API publique documentée depuis le code, avis signés ; langue factice et largeur de téléphone photographiées à chaque version ; imprimantes de cuisine dans l'agent local |

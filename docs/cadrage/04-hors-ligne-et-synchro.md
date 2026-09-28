@@ -4,7 +4,8 @@
 relecture demandée par Skander. Suit `VISION-ARCHITECTURE.md` (§ 4.5, § 6, § 8),
 `01-modele-de-donnees.md` (R15, § 6 numérotation, § 10 caisse, § 17 `operation`), `02-modules.md`
 (§ 4 : le stock sorti par la caisse, aussi hors ligne) et `03-droits.md` (D8 : les droits hors
-ligne).*
+ligne). **Complété le même jour, après validation**, pour suivre le `14` : la salle d'un restaurant
+et ce qui attend le réseau (§ 1). **À revalider.***
 
 ## En bref (pour Skander)
 
@@ -45,6 +46,7 @@ jamais après.
 | Geste | Hors ligne | Au retour du réseau |
 |---|---|---|
 | **Encaisser à la caisse** (ticket, retour avec le code d'un responsable, tiroir, imprimante) | ✓, complet | Les tickets remontent, dans l'ordre |
+| **La salle d'un restaurant** : prendre une commande, l'envoyer aux imprimantes de cuisine, partager l'addition (`14` § 3.1) | ✓, **sur la caisse** : c'est elle qui tient la salle et parle aux imprimantes par le réseau du restaurant (l'agent local) | Les commandes et les tickets remontent |
 | Un client demande une **facture pour son ticket** | ✓, préparée et liée au ticket (le ticket suffit comme preuve d'achat en attendant) | Émise : numéro, signature, TTN |
 | Ouvrir et fermer une **session de caisse**, imprimer le Z | ✓ (**À VÉRIFIER** avec la caisse certifiée, `01` § 10) | La session et son Z remontent |
 | **Devis, proforma, commande, bon de livraison** : créer, modifier, imprimer, envoyer plus tard | ✓, avec un numéro (§ 3.2) | Enregistrés sur le serveur |
@@ -71,6 +73,10 @@ jamais après.
 | Inviter, retirer un membre, changer un rôle, le mandat, l'abonnement | Les droits se décident sur le serveur (`03` D2) |
 | Export complet | Il doit contenir tout, pas ce que le poste a |
 | Chercher dans ce qui n'est pas sur le poste | Le poste n'a qu'une partie des données (§ 2) |
+| Prendre une commande **sur le téléphone d'un serveur** | La salle se tient sur la caisse pendant la coupure ; le téléphone le dit, et le serveur passe par la caisse (`14` § 3.1) |
+| L'**espace client**, le **paiement en ligne** d'une facture | Ils vivent sur le serveur, pour le client de l'entreprise (`14` § 2.1, 2.2) |
+| **Lire une photo ou un PDF** de facture | La lecture se fait sur nos serveurs, en Tunisie (`14` § 2.3). La photo, elle, se prend hors ligne et part au retour du réseau |
+| L'**API**, les **avis d'événement**, les **intégrations** | Ils parlent au serveur, jamais au poste |
 
 ---
 

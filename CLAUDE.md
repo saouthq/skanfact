@@ -19,8 +19,10 @@ y cherche le **pourquoi** d'une règle, on ne le relit pas à chaque session.*
 1. **Phase de cadrage.** Aucun développement neuf tant que le cadrage n'est pas validé par Skander,
    document par document. Plan, état de chaque document et journal des décisions :
    `docs/cadrage/README.md` (c'est là qu'on regarde où on en est).
-2. **Nouvelle plateforme à construire** (18 à 24 mois, pas de lancement public avant qu'elle soit
-   complète) : `VISION-ARCHITECTURE.md` fait foi.
+2. **Nouvelle plateforme à construire** (27 mois au plan, 30 avec la marge, pas de lancement public
+   avant qu'elle soit complète : `docs/cadrage/09-feuille-de-route.md`) : `VISION-ARCHITECTURE.md`
+   fait foi. Tout ce qu'elle fait, au lancement et dans les vagues qui suivent :
+   `docs/cadrage/14-fonctions-et-integrations.md`.
 3. **L'application actuelle** (SkanFact et SkanFact Cabinet, Electron, v10.x) passe en
    **entretien** : corrections, lois de finances, et les trois comptables pilotes (tests reportés
    de deux mois, annoncé le 27/09/2026). Pas de nouvelles fonctions sans demande explicite.
@@ -32,7 +34,9 @@ Détail et raisons dans `VISION-ARCHITECTURE.md` ; ne pas les rediscuter sans qu
 
 - **Un serveur qui fait foi** ; une application **web installable** qui marche pendant les coupures
   (liste exacte de ce qui marche hors ligne : § 4.5) ; l'application de bureau est **la même** dans une
-  coque, avec un agent local (clé USB de signature, imprimante, tiroir, douchette). Mobile plus tard.
+  coque, avec un agent local (clé USB de signature, imprimante, tiroir, douchette). Les écrans du
+  quotidien marchent sur téléphone dès le lancement ; l'application des magasins vient plus tard
+  (`docs/cadrage/14-fonctions-et-integrations.md` § 2.6).
 - **Des modules sur un socle commun**, comme Odoo, mais avec des **points d'extension déclarés**
   (jamais un module qui réécrit l'intérieur d'un autre) et des champs personnalisés en données.
 - **PostgreSQL**, tables partagées + identifiant d'entreprise + **sécurité par ligne (RLS)**,
@@ -51,8 +55,14 @@ Détail et raisons dans `VISION-ARCHITECTURE.md` ; ne pas les rediscuter sans qu
 - **Budget** accepté (~1 000 DT/mois au lancement, 10 à 20 kDT de frais uniques, à affiner).
 - **Démarches** (père de Skander), **dès maintenant** : accès test El Fatoora, adhésion DigiGo, et
   inscription fournisseur sur la plateforme d'homologation des caisses (décidé le 28/09/2026) ;
-  INPDP avant la première donnée réelle d'un client ; homologations ANCE et caisse en fin de
-  développement. Détail et questions par interlocuteur : `docs/cadrage/05-obligations-legales.md`.
+  INPDP avant la première donnée réelle d'un client ; le label Startup dès que la société qui porte
+  SkanFact est choisie ; homologations ANCE et caisse en fin de développement. Détail et questions
+  par interlocuteur : `docs/cadrage/05-obligations-legales.md`.
+- **Tout ce que Hesabi a, au lancement, et plus** (demande de Skander, 28/09/2026) : espace client et
+  paiement en ligne, lecture de documents sur nos serveurs, cabinet complet, API, téléphone ;
+  restauration et commerces au lancement ; trois vagues après, puis l'**hôtellerie à la fin** ;
+  **l'arabe plus tard, l'infrastructure maintenant** (catalogue de textes, langue factice testée).
+  Détail : `docs/cadrage/14-fonctions-et-integrations.md`.
 - Les règles « JS pur, pas de React » et « stockage JSON, pas SQLite » de l'ancien fichier ne valent
   plus que pour l'application actuelle.
 
@@ -100,7 +110,8 @@ Détail et raisons dans `VISION-ARCHITECTURE.md` ; ne pas les rediscuter sans qu
   décidée.
 - Les PDF et formulaires officiels reçus ne se commitent pas.
 - Le dépôt est **public** (interrupteur unique : `src/depot.js`), et le site aussi. **Décidé le
-  27/09/2026 : ils restent publics** (le projet est peu connu, et GitHub Actions reste gratuit).
+  27/09/2026 : ils restent publics** (le projet est peu connu, et GitHub Actions reste gratuit) ;
+  reconfirmé le 28/09/2026, y compris pour le futur dépôt de la plateforme.
 
 **Git et publication**
 - Branche de travail **`beta`** ; `git push -u origin beta` (réessayer 4 fois avec attente en cas

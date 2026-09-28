@@ -5,7 +5,9 @@
 donc à SkanFact), ce qu'elle impose à SkanFact lui-même, et les démarches à lancer. Sources :
 `docs/etudes/notes-de-recherche/marche-2026/cadre_legal.md`, `docs/etudes/ETUDE-MARCHE.md` (§ « 2026
 impose un calendrier légal serré » et « À vérifier »), `docs/application-actuelle/e-facture-controle.md`,
-et deux recherches faites le 28/09/2026 (§ 9).*
+et deux recherches faites le 28/09/2026 (§ 9). **Complété le même jour, après validation**, pour
+suivre le `14` : la restauration et la caisse (§ 3.7), les flux des intégrations (§ 4.3), le Startup
+Act (§ 4.8), une démarche (§ 5) et des questions (§ 6). **À revalider.***
 
 ## En bref (pour Skander)
 
@@ -219,7 +221,10 @@ un dépôt automatique ? Quelles pénalités de retard ?
 - **proposition** : avancer cette démarche **au début du développement**. La décision du 27/09
   (vision § 9) la plaçait en fin de développement. Il faut s'inscrire comme fournisseur et
   télécharger le cahier des charges maintenant, pour que la caisse soit conçue juste du premier
-  coup.
+  coup ;
+- **les premiers visés sont les restaurants et les cafés** : la caisse sort donc **avec son mode
+  restaurant** (salle, tables, cuisine, addition partagée : `14` § 3.1), sinon elle ne sert pas à
+  ceux qui en ont besoin en premier.
 
 **À VÉRIFIER** (plateforme NACEF, DGI) :
 1. le contenu du cahier des charges : chaînage, numérotation, **délai de transmission** au système
@@ -229,7 +234,10 @@ un dépôt automatique ? Quelles pénalités de retard ?
 3. les conditions pour être fournisseur accrédité : forme juridique, coût, délai, obligations
    après homologation (mises à jour : chaque nouvelle version doit-elle être homologuée ?) ;
 4. le périmètre : seulement la consommation sur place, ou aussi le commerce de détail ;
-5. les sanctions pour le commerçant et pour le fournisseur.
+5. les sanctions pour le commerçant et pour le fournisseur ;
+6. une **commande prise à table** et pas encore encaissée (la « note ») : doit-elle être enregistrée
+   ou transmise avant l'encaissement ? Le QR code et l'identifiant du module de sécurisation sur
+   chaque ticket (`01` § 24).
 
 **Règle produit** : **tant que la caisse n'est pas homologuée, le produit ne la dit pas
 certifiée.** L'écran et le site disent « caisse » ; « caisse certifiée » n'apparaît qu'avec le numéro
@@ -306,8 +314,16 @@ fiscaliste **avant** de publier les prix TTC sur le site.
   lien : `03` § 6), Konnect pour le paiement. Chacun doit être en Tunisie, ou déclaré et autorisé.
   C'est la règle du projet : aucune donnée ne part sans que la liste soit comptée et décidée ;
 - la lecture de photo de facture de l'application actuelle envoie une image à un service à
-  l'étranger, avec l'accord de l'utilisateur. **Elle ne passe pas à la plateforme telle quelle** : un
-  jour, soit un service en Tunisie, soit une autorisation INPDP ;
+  l'étranger, avec l'accord de l'utilisateur. **Elle ne passe pas à la plateforme telle quelle.**
+  Décidé le 28/09/2026 (`14` § 2.3) : la lecture se fait **sur nos serveurs en Tunisie** ; aucune
+  image ne sort ;
+- **les flux ajoutés par le `14`** (§ 4 de ce document-là, qui les liste un par un) : Konnect pour
+  les factures des clients (le montant et la référence, vers le compte de l'entreprise) ; WhatsApp
+  **par lien**, qui ne passe pas par nous ; puis, dans les vagues, les boutiques en ligne, les
+  sociétés de livraison (l'adresse du client de nos clients : c'est l'entreprise qui décide de
+  l'envoyer, SkanFact agit pour elle, au titre du contrat de traitement), WhatsApp automatique et
+  les assistants d'IA extérieurs (**hors de Tunisie** : avis du juriste, et autorisation de l'INPDP
+  s'il le faut). **Aucun ne s'ouvre avant d'être compté ici** ;
 - la **paie** contient des données sensibles (CIN, salaires, parfois la santé : congés maladie).
   Elle a les protections du `03` (D10).
 
@@ -350,6 +366,26 @@ Trois points sont **À VÉRIFIER** avec l'Ordre (déjà listés dans `00`, `01`,
 - ce que l'ancien cabinet peut relire après la fin d'un mandat, et à qui appartient le travail d'un
   **dossier tenu** jamais rejoint (`01` § 4, `03` § 3.5).
 
+### 4.8 Le Startup Act (loi 2018-20)
+
+**Ce qu'on sait** (Rapporté, sources secondaires, § 9) :
+- le **label Startup** se demande sur startup.gov.tn. Conditions : société de **moins de 8 ans**,
+  **moins de 100 salariés**, total du bilan et chiffre d'affaires **sous 15 millions de dinars**,
+  capital détenu **à plus des deux tiers** par des personnes physiques ou des fonds
+  d'investissement, et un modèle **fortement innovant**, notamment technologique ;
+- avantages annoncés, pendant la durée du label (8 ans au plus) : **exonération de l'impôt sur les
+  sociétés**, **prise en charge des cotisations sociales** de l'employeur et des salariés, une
+  **bourse** pour un fondateur pendant un an (de 1 000 à 5 000 DT par mois selon une source), un
+  **congé pour créer** une startup, la prise en charge des frais de brevet ;
+- des amendements (« Startup Act 2.0 ») sont en discussion en 2026.
+
+**Ce que ça change pour nous** : SkanFact coche probablement les cases (une plateforme logicielle
+neuve, tunisienne, hébergée en Tunisie). Le label allégerait nettement le budget du `09` § 4.
+
+**À VÉRIFIER** (juriste, comptable) : quelle société portera SkanFact, et si elle est éligible
+(date de création, capital) ; ce qu'on perd ou garde si l'on grandit ; l'effet des amendements
+2026.
+
 ---
 
 ## 5. Les démarches, dans l'ordre
@@ -365,6 +401,7 @@ troisième est **nouvelle** (§ 3.7).
 | Dès maintenant | Rendez-vous avec un **comptable** et un **juriste** (liste § 6) | Beaucoup de décisions du cadrage attendent leurs réponses |
 | Pendant le développement | Adhésion de **notre société** à El Fatoora, et son certificat | Nos factures d'abonnement (§ 4.1) |
 | Pendant le développement | Schémas TEJ (retenue, liasse) et format CNSS à jour | Les fichiers officiels (§ 3.3 à 3.6) |
+| **Dès que la société qui porte SkanFact est choisie** (ajouté le 28/09/2026) | **Demande du label Startup** (§ 4.8) | Ses avantages courent pendant la durée du label : plus tôt il est obtenu, plus il sert |
 | Avant la communication publique | **Dépôt de la marque** à l'INNORPI | Protéger le nom avant de le montrer |
 | **Avant la première donnée réelle d'un client** (les pilotes compris) | **Déclarations INPDP** | Traiter des données de personnes sans déclaration, même en test, n'est pas permis (À VÉRIFIER avec l'INPDP : le cas d'un essai sur des données fictives) |
 | Avant le lancement | **Homologation ANCE** de la signature serveur (si elle est retenue) | Troisième chemin de signature (vision § 5) |
@@ -389,6 +426,9 @@ rendez-vous en règle beaucoup. Chaque réponse s'écrit **dans le document d'or
 8. Les blocs de numéros pour les devis hors ligne (`04` § 3.2).
 9. Le cours des devises de la Banque centrale : lequel, et comment l'obtenir chaque jour (`01` § 21).
 10. Une paie faite par le cabinet pour un client en Essentiel (`02` § 11).
+11. Les nouveaux métiers (`14` § 7) : la retenue de garantie et l'avance de démarrage du bâtiment,
+    la commission des titres-restaurant, la caution d'une location, les cartes cadeaux.
+12. Le paiement en ligne par un client qui fait une retenue à la source (`14` § 2.2).
 
 **Le juriste**
 1. La procédure de reprise d'un compte de propriétaire (départ, décès, conflit) (`03` D4).
@@ -399,6 +439,9 @@ rendez-vous en règle beaucoup. Chaque réponse s'écrit **dans le document d'or
 4. Le rôle Lecture pour un banquier ou un associé : faut-il un accord écrit (`03` § 11).
 5. Le périmètre de l'audit de cybersécurité obligatoire (§ 4.4).
 6. L'assurance responsabilité civile professionnelle (avec un assureur).
+7. Le **Startup Act** : la société qui porte SkanFact, son éligibilité (§ 4.8).
+8. Les flux vers l'étranger des intégrations : WhatsApp automatique, Shopify, assistants d'IA
+   (§ 4.3, `14` § 4).
 
 **Le fiscaliste** (ou le comptable, s'il tranche)
 1. La TVA sur notre abonnement (`07`, § 4.2).
@@ -413,7 +456,7 @@ rendez-vous en règle beaucoup. Chaque réponse s'écrit **dans le document d'or
 
 **La DGI** : TEJ (§ 3.3), e-jibaya (§ 3.4), liasse (§ 3.5).
 
-**La plateforme NACEF (caisse)** : les cinq questions du § 3.7.
+**La plateforme NACEF (caisse)** : les six questions du § 3.7.
 
 **La CNSS** : les trois questions du § 3.6.
 
@@ -460,6 +503,9 @@ faites le 28/09/2026 pour ce document :
 - TTN : [Edicom — état des lieux](https://edicomgroup.com/blog/status-electronic-invoicing-tunisia),
   [eFactureTN — guide 2026](https://efacturetn.com/fr/blog/facturation-electronique-tunisie-2026-guide-conformite-el-fatoora),
   [Tekru — intergiciel libre El Fatoora](https://tekru.net/fr/blog/facturation-electronique-en-tunisie-tekru-technologiespublie-un-middleware-open-source-pour-accelerer-ladoption-del-fatoora-en-partenariat-avec-ngsign/).
+- Startup Act : [Startup Tunisia — critères du label](https://support.startup.gov.tn/support/solutions/articles/73000565084-quels-sont-les-crit%C3%A8res-pour-obtenir-le-label-startup-),
+  [Tunisie Entreprise — label, conditions et avantages](https://www.tunisie-entreprise.com/guides/startup-act-tunisie/),
+  [amendements 2026](https://maitre-haifaguedhami.me/actualites/startup-act-tunisie-amendements-2026).
 
 *Limite honnête : ce sont encore des sources secondaires. Le texte des décisions et les cahiers des
 charges se lisent sur les plateformes officielles, ce que la démarche du § 5 permet.*
@@ -476,3 +522,4 @@ charges se lisent sur les plateformes officielles, ce que la démarche du § 5 p
 | 28/09/2026 (proposé) | Chaque flux de données qui sort est compté ; la lecture de photo de facture ne passe pas à la plateforme sans service en Tunisie ou autorisation INPDP |
 | 28/09/2026 (proposé) | Hébergeur labellisé N-Cloud de préférence ; audit de cybersécurité annuel au budget en attendant l'avis du juriste |
 | 28/09/2026 (proposé) | Une veille par loi de finances, publiée avant le 1er janvier, relue par un comptable |
+| 28/09/2026 (par délégation, `14`) | La caisse sort avec son mode restaurant ; la lecture de documents se fait en Tunisie ; chaque flux d'une intégration est compté ici avant d'être ouvert ; demande du label Startup dès que la société qui porte SkanFact est choisie |

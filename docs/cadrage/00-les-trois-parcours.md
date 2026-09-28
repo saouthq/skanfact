@@ -2,7 +2,9 @@
 
 *Proposé le 28/09/2026, à la question de Skander : « Je suis comptable, comment j'accède à l'app ?
 Je suis une entreprise, comment j'y accède ? Je suis Skander, comment je gère tout ? » **Validé par
-Skander le 28/09/2026.** C'est la vue d'ensemble que les autres documents du cadrage détaillent.*
+Skander le 28/09/2026.** C'est la vue d'ensemble que les autres documents du cadrage détaillent.
+Complété le même jour, après validation, pour suivre le `14` : le rôle Serveur et le téléphone
+(**à revalider**).*
 
 ## Les adresses
 
@@ -17,7 +19,8 @@ société **et** travailler dans un cabinet : elle passe de l'une à l'autre par
 se reconnecter.
 
 **Trois façons d'ouvrir l'application, pour les mêmes données** :
-1. dans un **navigateur**, depuis n'importe quel ordinateur ;
+1. dans un **navigateur**, depuis n'importe quel ordinateur, et depuis un **téléphone** pour les
+   gestes du quotidien (ajouté le 28/09/2026, `14` § 2.6) ;
 2. **installée** depuis le navigateur (une icône sur le bureau ou sur le téléphone), et elle
    continue de marcher pendant une coupure (liste exacte : vision § 4.5) ;
 3. l'**application de bureau**, pour qui a une caisse (imprimante de tickets, tiroir, douchette) ou
@@ -161,7 +164,7 @@ pour trois dossiers qu'il tient lui-même, puis 60 DT par dossier, plafonné à 
 - **Obligatoire** pour : l'équipe SkanFact (console), **tous les comptables** (ils ouvrent les
   dossiers de plusieurs entreprises), le **propriétaire** et les **administrateurs** d'une entreprise,
   et quiconque a accès à la **paie**.
-- **Proposé, pas imposé** pour les autres (vendeur, caissier, magasinier).
+- **Proposé, pas imposé** pour les autres (vendeur, caissier, serveur, magasinier).
 - **Comment** : un code par **SMS** par défaut (c'est ce que les banques tunisiennes ont habitué tout
   le monde à faire), ou une application d'authentification pour qui préfère. Le code n'est demandé
   **qu'à la première connexion d'un appareil**, puis tous les 30 jours : un appareil reconnu ne
@@ -177,6 +180,7 @@ pour trois dossiers qu'il tient lui-même, puis 60 DT par dossier, plafonné à 
 | Administrateur | Tout, sauf l'abonnement |
 | Commercial | Devis, factures, clients, relances. Ni achats, ni paie, ni banque |
 | Caissier | La caisse de son établissement, et rien d'autre |
+| Serveur (ajouté le 28/09/2026, `14` § 3.1) | La salle d'un restaurant : prendre les commandes, les envoyer en cuisine ; il n'encaisse que si on le lui permet |
 | Magasinier | Le stock, les réceptions, les inventaires |
 | Comptabilité interne | Achats, banque, déclarations, écritures. Pas la paie |
 | Paie | Salariés, bulletins, déclarations sociales |

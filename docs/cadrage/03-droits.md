@@ -4,7 +4,9 @@
 relecture demandée par Skander. Suit `00-les-trois-parcours.md` (les rôles et le
 code sur le téléphone, décidés le 28/09/2026), `01-modele-de-donnees.md` (§ 4 : `membre`, `mandat`,
 `mandat_affectation`, `appareil` ; § 17 : `audit`) et `02-modules.md` (M1 : chaque module déclare ses
-gestes).*
+gestes). **Complété le même jour, après validation**, pour suivre `14-fonctions-et-integrations.md` :
+la règle D11, le rôle Serveur, le § 2.3, les gestes du cabinet (§ 3.1 et 3.2), le § 4.1, le § 4.2 et
+le § 8. Ces ajouts sont **à revalider**.*
 
 ## En bref (pour Skander)
 
@@ -106,11 +108,21 @@ support. Ceux qui y touchent ont le code sur le téléphone (décision du 28/09/
 de la paie sont tracées (pas seulement les modifications), et les changements préviennent le
 propriétaire (§ 7).
 
+**D11. Au-delà d'un seuil, un geste demande l'accord d'un responsable.** C'est la règle de la
+caisse (le « code d'un responsable », § 2.1), étendue à tout ce qui engage l'argent : une remise, une
+vente au-delà de l'encours d'un client, une commande fournisseur, un retour. Le propriétaire ou
+l'administrateur règle les seuils. **Par défaut, il n'y a pas de seuil**, sauf à la caisse où la
+remise permise vaut 0 % : la valeur par défaut est celle qui ne change rien à ce que la personne
+pouvait déjà faire. L'accord se donne sur place (le code à 4 chiffres, sur le même poste) ou à
+distance (une notification, accepter ou refuser) ; il laisse sa trace (`01` § 24.5, `demande_accord`),
+et la pièce porte les deux noms.
+
 ---
 
 ## 2. Les rôles dans une entreprise
 
-Les huit rôles décidés le 28/09/2026 (`00`). Les mots du parcours du `00` (vendeur, caisse,
+Les huit rôles décidés le 28/09/2026 (`00`), et un neuvième, **Serveur**, ajouté le même jour pour
+la restauration (`14` § 3.1 ; ses gestes : § 2.3). Les mots du parcours du `00` (vendeur, caisse,
 comptabilité interne, gérant) désignent les mêmes rôles : vendeur = Commercial, gérant =
 Administrateur.
 
@@ -120,6 +132,7 @@ Administrateur.
 | **Administrateur** (A) | Tout, sauf l'abonnement, le choix du comptable et la propriété | Obligatoire |
 | **Commercial** (C) | Vendre : devis, factures, clients, relances | Proposé |
 | **Caissier** (K) | La caisse de son établissement | Proposé ; code à 4 chiffres pour changer de caissier |
+| **Serveur** (S) | La salle : prendre les commandes, les envoyer en cuisine ; il n'encaisse pas, sauf si on le lui permet (§ 2.3) | Proposé ; code à 4 chiffres, comme le caissier |
 | **Magasinier** (M) | Le stock : réceptions, livraisons, transferts, inventaires | Proposé |
 | **Comptabilité interne** (I) | Achats, banque, déclarations, écritures. Pas la paie | Proposé |
 | **Paie** (Pa) | Salariés, bulletins, déclarations sociales | Obligatoire |
@@ -281,6 +294,31 @@ d'émettre, deux cas :
 
 S'il existe, c'est le chemin le plus simple pour une équipe.
 
+### 2.3 Les gestes ajoutés par le document 14 (28/09/2026)
+
+Le **Serveur** (S) n'a que les gestes de la salle ci-dessous ; partout ailleurs, il n'a rien. Le
+propriétaire peut lui cocher « peut encaisser » : il a alors aussi les gestes du Caissier.
+
+| Geste | P | A | C | K | S | M | I | Pa | L |
+|---|---|---|---|---|---|---|---|---|---|
+| **Ventes** : donner ou retirer l'accès d'un client à son espace (`14` § 2.1) | ✓ | ✓ | ✓ | — | — | — | ✓ | — | — |
+| Brancher le compte de paiement en ligne de l'entreprise (Konnect) | ✓ | ✓ *prévient P* | — | — | — | — | — | — | — |
+| Vendre au-delà de l'encours autorisé d'un client | ✓ | ✓ | *accord (D11)* | *accord (D11)* | — | — | — | — | — |
+| **Achats** : demande de prix, commande fournisseur | ✓ | ✓ | — | — | — | *prépare* | ✓ | — | — |
+| Valider une réception | ✓ | ✓ | — | — | — | ✓ | ✓ | — | — |
+| Lire une facture en photo ou en PDF, puis la confirmer | ✓ | ✓ | — | — | — | — | ✓ | — | — |
+| **La salle** : voir le plan de salle | ✓ | ✓ | — | ✓ | ✓ | — | — | — | voir |
+| Prendre une commande, l'envoyer en cuisine, transférer ou regrouper des tables | ✓ | ✓ | — | ✓ | ✓ | — | — | — | — |
+| Annuler une ligne **déjà partie en cuisine** | ✓ | ✓ | — | *code d'un responsable* | *code d'un responsable* | — | — | — | — |
+| Partager l'addition, encaisser | ✓ | ✓ | — | ✓ | *si « peut encaisser »* | — | — | — | — |
+| Plan de salle, zones de préparation, suppléments et formules | ✓ | ✓ | — | — | — | — | — | — | — |
+| **Seuils d'accord** (D11) : les régler | ✓ | ✓ | — | — | — | — | — | — | — |
+| **API** : créer, révoquer une clé ; choisir les adresses des avis (§ 8) | ✓ | ✓ *prévient P* | — | — | — | — | — | — | — |
+| **Intégrations** (vague 1) : en allumer, en éteindre une, voir ce qui part | ✓ | ✓ *prévient P* | — | — | — | — | — | — | — |
+
+Les gestes des modules des vagues (Réservations, Production, Projets, suivi commercial, notes de
+frais) s'écriront **avec leur module** (`02` M1), avant sa vague, dans ce même tableau.
+
 ---
 
 ## 3. Les rôles dans un cabinet
@@ -315,6 +353,7 @@ d'une seule personne n'a rien à régler : il est associé.
 | Bulletins, déclarations sociales | ✓ | — | — | ✓ |
 | Clôturer l'exercice, états financiers, liasse ; **rouvrir** (avec un motif) | ✓ | — | — | — |
 | Exporter la comptabilité (FEC, balance, grand livre) | ✓ | ✓ | — | — |
+| **Dépôts groupés** : préparer la déclaration ou le fichier TEJ de plusieurs dossiers en un geste (`14` § 2.4) | ✓ | *ses dossiers* | — | — |
 
 ### 3.2 Les gestes du cabinet lui-même
 
@@ -324,6 +363,7 @@ d'une seule personne n'a rien à régler : il est associé.
 | Confier un dossier, poser un rôle par dossier | ✓ | — |
 | Accepter un mandat, créer un dossier tenu, inviter un client à rejoindre son dossier | ✓ | — |
 | Abonnement du cabinet, code cabinet | ✓ | — |
+| **Lettres de mission et honoraires** : les écrire, les faire signer, facturer (`14` § 2.4) | ✓ | — |
 | Voir le portefeuille | Tous les dossiers | Ses dossiers confiés |
 
 ### 3.3 Ce que le cabinet ne fait jamais chez son client
@@ -395,7 +435,22 @@ compte :
   abonnés, et son équipe est illimitée), l'équipe SkanFact, un membre retiré, une invitation pas
   encore acceptée ;
 - à la quatrième invitation, l'écran dit **avant** l'envoi ce que coûte l'utilisateur en plus, avec
-  le bouton qui l'ajoute. Il ne refuse pas une fois l'invitation partie.
+  le bouton qui l'ajoute. Il ne refuse pas une fois l'invitation partie ;
+- **exception, ajoutée le 28/09/2026** (`14`, par délégation) : un **caissier** ou un **serveur** qui
+  ne travaille **que sur les caisses** de l'entreprise ne compte pas. C'est la caisse qui se paie
+  (`07`) : un restaurant de huit serveurs ne doit pas payer huit utilisateurs. Dès qu'on lui donne
+  un autre rôle, il compte ;
+- ne compte pas non plus : le **visiteur de l'espace client** (§ 4.2).
+
+### 4.2 Le visiteur de l'espace client
+
+Le client d'une entreprise qui ouvre son lien (`14` § 2.1) n'est **pas un membre** : il n'a ni
+compte, ni rôle, ni mot de passe. La porte (D2) le reconnaît par son lien, et ne lui laisse que :
+- **lire** les pièces émises **de son tiers** (celles de la pièce, ou tout le compte selon le lien) ;
+- **payer en ligne**, si l'entreprise l'a activé.
+
+Le lien est secret, révocable, et expire ; chaque visite laisse sa trace. Un lien qui ne vaut plus
+le dit, sans révéler s'il a existé.
 
 ---
 
@@ -487,8 +542,8 @@ piste raconte les gestes. Les deux se vérifient séparément.
 
 ## 8. Les clés de l'API
 
-Quand les intégrations viendront (`02` § 2), une clé d'API (`cle_api`, `01` § 17) se traite comme
-une personne :
+**Dès le lancement** (`14` § 2.5), une clé d'API (`cle_api`, `01` § 17) se traite comme une
+personne :
 - elle appartient à **une entreprise**, et elle porte **une liste de gestes**, comme un rôle ;
 - seuls le propriétaire et l'administrateur la créent. Elle ne se montre **qu'une fois**, expire, et
   se révoque ;

@@ -69,10 +69,10 @@ Odoo sert des millions d'utilisateurs. On copie ce qui marche, on évite ce qui 
 ## 3. L'architecture en un schéma
 
 ```
- NAVIGATEUR (web)      APPLICATION DE BUREAU                         TÉLÉPHONE (plus tard)
- rien à installer      = la même application web dans une coque      consulter, devis,
-                       + un « agent local » : clé USB de signature,  photo de justificatif
-                         imprimante de tickets, tiroir, douchette
+ NAVIGATEUR (web)      APPLICATION DE BUREAU                         TÉLÉPHONE (navigateur)
+ rien à installer      = la même application web dans une coque      devis, encaisser, photo,
+                       + un « agent local » : clé USB de signature,  commande à table ;
+                         imprimantes, tiroir, douchette              magasins d'applis : plus tard
         │                         │                                         │
         └──────── copie locale chiffrée + file d'envoi (hors ligne) ────────┘
                                   │  synchronisation (HTTPS)
@@ -88,9 +88,9 @@ Odoo sert des millions d'utilisateurs. On copie ce qui marche, on évite ce qui 
 └──────────────────────────────────────────────────────────────────────────────────────┘
   (La liste complète des modules, dont Intégrations après le lancement : `docs/cadrage/02-modules.md` § 2.)
         │                    │                   │                    │
-   TTN El Fatoora       TunTrust DigiGo      TEJ / e-jibaya /     Konnect (paiement
-   (envoi, référence,   (signature à         CNSS (fichiers au    de l'abonnement)
-    QR code)             distance, OTP)       bon format)
+   TTN El Fatoora       TunTrust DigiGo      TEJ / e-jibaya /     Konnect (abonnements,
+   (envoi, référence,   (signature à         CNSS (fichiers au    et factures payées
+    QR code)             distance, OTP)       bon format)          par les clients)
 ```
 
 ---
@@ -278,8 +278,13 @@ milliers de PME** ; le chiffre exact se mesure, il ne se devine pas.
 - Pas d'édition **simultanée** d'une même pièce par deux personnes (un brouillon est tenu par une
   personne ; l'autre voit qu'il est ouvert).
 - Pas de microservices, pas de Kubernetes au départ.
-- Le téléphone vient **après** le web et le bureau.
-- Les intégrations (Shopify, banques…) viennent **après** le lancement ; seule l'API est prête avant.
+- L'application **des magasins** (App Store, Google Play) vient après le lancement ; les écrans du
+  quotidien marchent sur téléphone, dans le navigateur, **dès le lancement** (revu le 28/09/2026,
+  `docs/cadrage/14-fonctions-et-integrations.md` § 2.6).
+- Les intégrations de boutiques en ligne, de livraison et d'autres paiements viennent **après** le
+  lancement, dans l'ordre du `14` § 4 ; l'**API publique** (clés comprises), Konnect et les
+  obligations sont là au lancement (revu le 28/09/2026). Pas de connexion bancaire directe : aucune
+  banque tunisienne n'en ouvre.
 - Pas de promesse « tout marche hors ligne » : la liste du § 4.5 fait foi, et l'écran le dit.
 
 ---
@@ -316,6 +321,13 @@ milliers de PME** ; le chiffre exact se mesure, il ne se devine pas.
   la v10 sans rien forcer (`docs/cadrage/00-les-trois-parcours.md`).
 - Tiers et articles propres à chaque société, partage possible dans un groupe ; plusieurs
   établissements dès le départ ; fin de mandat d'un cabinet (`docs/cadrage/01-modele-de-donnees.md`).
+- **S'aligner sur Hesabi, et aller plus loin** (demande de Skander, 28/09/2026 ;
+  `docs/cadrage/14-fonctions-et-integrations.md`) : tout ce que Hesabi annonce est au lancement,
+  plus l'espace client et le paiement en ligne des factures, la lecture de documents sur nos
+  serveurs, le cabinet complet, l'API, le téléphone ; la restauration et les commerces au lancement ;
+  trois vagues après, puis **l'hôtellerie à la fin** et **l'arabe plus tard, l'infrastructure
+  maintenant** (deux décisions de Skander). Lancement à 27 mois après le premier code (30 avec la
+  marge) ; Essentiel comprend le stock et une caisse.
 
 ## 10. La suite du cadrage
 
@@ -335,9 +347,11 @@ annexe de `docs/etudes/ETUDE-MARCHE.md`) et les deux démarches qui servent pend
 2. **Reprendre les données des concurrents** : Excel, Sage, Ciel, Hesabi… Personne ne change de
    logiciel s'il doit tout retaper. C'est un argument de vente autant qu'un outil.
 3. **La langue arabe** : interface et, surtout, pièces bilingues arabe/français si des clients ou
-   l'administration les demandent (**À VÉRIFIER** avec les entretiens).
-4. **Le rythme de développement dépend du quota Claude** : 18 à 24 mois supposent un usage
-   quotidien ; le budget doit l'inclure.
+   l'administration les demandent (**À VÉRIFIER** avec les entretiens). **Décidé le 28/09/2026** :
+   l'infrastructure dès la première ligne, l'interface en arabe dans la première vague après le
+   lancement (`docs/cadrage/14-fonctions-et-integrations.md` § 5).
+4. **Le rythme de développement dépend du quota Claude** : 27 à 30 mois (revu le 28/09/2026,
+   `docs/cadrage/09-feuille-de-route.md`) supposent un usage quotidien ; le budget doit l'inclure.
 5. ~~**Un `CLAUDE.md` neuf pour la nouvelle plateforme.**~~ **Fait le 27/09/2026** : le fichier
    garde les règles ; le récit est dans `docs/application-actuelle/CLAUDE-HISTORIQUE.md`.
 
