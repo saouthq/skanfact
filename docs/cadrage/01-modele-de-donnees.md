@@ -175,10 +175,10 @@ finances 2027 et 2028 se fera sans toucher au code.
 | `entreprise` | Organisation, raison sociale, forme juridique, **matricule fiscal** (13 caractères, contrôlé), régime fiscal, activité, **devise de base**, **fuseau**, début d'exercice, RIB, logo, cachet, langue des pièces, **date de début sur SkanFact** | Le matricule est unique **pour une entreprise active** (deux comptes pour la même société = une erreur signalée, pas un refus silencieux). Le **régime fiscal** change dans le temps (forfait → réel) : il vit dans `regle_entreprise`, avec sa date d'effet. La **devise de base** ne change plus une fois la première pièce émise |
 | `etablissement` | Entreprise, code, nom, type, adresse, **matricule secondaire** (code établissement), téléphone, actif | Une entreprise a au moins un établissement : le siège, créé avec elle |
 | `utilisateur` | E-mail (unique), nom, **téléphone vérifié**, langue, **double authentification** (SMS ou application), mot de passe (empreinte seulement), dernière connexion | Global, sans entreprise : une personne, un compte |
-| `membre` | Utilisateur, organisation **ou** entreprise, rôle (un seul **propriétaire** par entreprise, transférable), établissements autorisés (liste, vide = tous), **code de caisse** à 4 chiffres (empreinte seulement), actif, invité par, depuis | Détail des rôles et des droits : document 03 |
+| `membre` | Utilisateur, organisation **ou** entreprise, **rôles** (un ou plusieurs, `03` D7 ; un seul **propriétaire** par entreprise, transférable), établissements autorisés (liste, vide = tous), **code de caisse** à 4 chiffres (empreinte seulement), actif, invité par, depuis | Détail des rôles et des droits : document 03 |
 | `invitation` | E-mail, cible, rôle, jeton (empreinte), expire le, acceptée le | Une invitation n'expose jamais la liste des membres |
-| `mandat` | Cabinet (organisation), entreprise cliente, **accordé par** (utilisateur du client), début, fin, périmètre (compta, paie, déclarations), statut (proposé, actif, terminé) | Voir ci-dessous |
-| `mandat_affectation` | Mandat, membre du cabinet, rôle sur ce dossier (saisie, révision, supervision) | Un collaborateur du cabinet ne voit que les dossiers qui lui sont confiés, sauf s'il est superviseur (règle 9.9.0) |
+| `mandat` | Cabinet (organisation), entreprise cliente, **accordé par** (utilisateur du client), début, fin, périmètre (comptabilité, déclarations, saisie des achats, paie : `03` § 3.4), statut (proposé, actif, terminé) | Voir ci-dessous |
+| `mandat_affectation` | Mandat, membre du cabinet, rôle sur ce dossier (`saisie`, `revision`, `supervision`, `paie` : `03` § 3) | Un collaborateur du cabinet ne voit que les dossiers qui lui sont confiés, sauf s'il est superviseur (règle 9.9.0) |
 | `appareil` | Utilisateur, nom, type (navigateur, bureau), premier vu, dernier vu, **reconnu jusqu'au** (le code sur le téléphone n'est redemandé qu'après), **révoqué le**, clé publique de l'appareil | Un appareil révoqué efface ses données locales à la reconnexion |
 | `session` | Utilisateur, appareil, ouverte le, expire le, IP | — |
 
@@ -554,7 +554,9 @@ quelque chose en silence.
 ## 23. Ce que la relecture du 28/09/2026 a corrigé
 
 *Ajouté après la validation, le même jour, à la relecture du document 02 : `module_actif` distingue
-le module ouvert du module affiché, et la table `drapeau` (§ 17). Rien d'autre ne change.*
+le module ouvert du module affiché, et la table `drapeau` (§ 17). Puis, pour le document 03 : un
+membre peut avoir plusieurs rôles, le périmètre du mandat compte la saisie des achats, et le rôle
+`paie` s'ajoute aux affectations du cabinet (§ 4). Rien d'autre ne change.*
 
 Relu en entier, ligne par ligne, contre `VISION-ARCHITECTURE.md` et contre ce que l'application
 actuelle range vraiment.

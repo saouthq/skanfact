@@ -11,8 +11,8 @@ chacun validé à son tour. Un document validé porte en tête : `Validé par Sk
 |---|---|---|---|
 | 0 | `00-les-trois-parcours.md` | Comment l'entreprise, le comptable et Skander accèdent à la plateforme et s'en servent (la vue d'ensemble) | **Validé par Skander le 28/09/2026** |
 | 1 | `01-modele-de-donnees.md` | Organisations, entreprises, établissements, utilisateurs ; pièces, lignes, écritures, tiers, articles, stock, paie ; argent en entiers ; identifiants ; **règles fiscales datées** (taux et barèmes par date d'effet, pour les lois de finances) ; tables de la console ; partitionnement | **Validé par Skander le 28/09/2026** |
-| 2 | `02-modules.md` | Le socle et les modules, leurs points d'extension, les champs personnalisés, les offres | **Proposé le 28/09/2026, à valider** |
-| 3 | `03-droits.md` | Rôles, droits geste par geste, par entreprise ; piste d'audit ; double authentification | À faire |
+| 2 | `02-modules.md` | Le socle et les modules, leurs points d'extension, les champs personnalisés, les offres | **Validé le 28/09/2026** (après relecture de tout le dépôt) |
+| 3 | `03-droits.md` | Rôles, droits geste par geste, par entreprise ; piste d'audit ; double authentification | **Proposé le 28/09/2026, à valider** |
 | 4 | `04-hors-ligne-et-synchro.md` | Ce qui marche hors ligne, file d'envoi, numérotation, choix du moteur de synchro (prototype mesuré) | À faire |
 | 5 | `05-obligations-legales.md` | TTN/TEIF, DigiGo/ANCE, TEJ, e-jibaya, CNSS, caisse certifiée, INPDP, conservation 10 ans — chaque point À VÉRIFIER | À faire |
 | 6 | `06-securite-et-hebergement.md` | Hébergement tunisien, sauvegardes, restauration, surveillance, audit | À faire |
@@ -40,5 +40,6 @@ chacun validé à son tour. Un document validé porte en tête : `Validé par Sk
 | 28/09/2026 | Tiers et articles propres à chaque société (partage possible dans un groupe) ; plusieurs établissements dès le départ ; fin de mandat d'un cabinet : accès retiré, travail gardé et signé | `01-modele-de-donnees.md` § 22 |
 | 28/09/2026 | Par délégation de Skander : essai 30 jours ; Essentiel 390 DT/an, Complet 690 DT/an ; cabinet gratuit pour ses clients abonnés + 3 dossiers, puis 60 DT/dossier plafonné à 1 990 DT ; code sur le téléphone obligatoire pour comptables, propriétaires, administrateurs, paie ; rôles ; code cabinet au lieu d'un annuaire ; passage de la v10 sans rien forcer | `00-les-trois-parcours.md`, `07-offres-et-prix.md` |
 | 28/09/2026 | Skander valide le cadrage proposé : les trois parcours (00), le modèle de données (01) et les décisions prises par délégation | `00-les-trois-parcours.md`, `01-modele-de-donnees.md` |
+| 28/09/2026 | Modules (02), validé après relecture : socle et douze modules, points de branchement déclarés, validation du mois dans le socle, salaires saisis en total sans le module Paie | `02-modules.md` |
 | 27/09/2026 | Les dépôts de l'application et du site restent publics (GitHub Actions gratuit) | `CLAUDE.md` |
 | 27/09/2026 | Dépôt rangé : ancienne vision archivée, `CLAUDE.md` réécrit | ce dossier, `CLAUDE.md` |

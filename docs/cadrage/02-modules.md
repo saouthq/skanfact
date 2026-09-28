@@ -1,6 +1,7 @@
 # 02 — Les modules
 
-*Proposé le 28/09/2026. **À valider par Skander.** Suit `VISION-ARCHITECTURE.md` (§ 4.6 et § 4.7),
+*Proposé le 28/09/2026, relu le même jour contre tout le dépôt. **Validé le 28/09/2026**, après la
+relecture demandée par Skander. Suit `VISION-ARCHITECTURE.md` (§ 4.6 et § 4.7),
 `01-modele-de-donnees.md` et `07-offres-et-prix.md`.*
 
 ## En bref (pour Skander)
