@@ -290,13 +290,14 @@ milliers de PME** ; le chiffre exact se mesure, il ne se devine pas.
   de transfert de données à l'étranger. La **déclaration du traitement** auprès de l'INPDP reste à
   faire (**À VÉRIFIER**) ; seule l'autorisation de transfert disparaît.
 - **Budget accepté** (ordres de grandeur ci-dessous).
-- **Les démarches sont lancées par le père de Skander.** Deux d'entre elles doivent partir **pendant**
-  le développement, parce que le code en a besoin pour être testé : l'**accès à l'environnement de
-  test El Fatoora (TTN)** et l'**adhésion « entité d'intégration » DigiGo auprès de l'ANCE**.
-  L'homologation ANCE, la déclaration INPDP et la caisse certifiée se font en fin de développement.
-  *Proposé le 28/09/2026 (`docs/cadrage/05-obligations-legales.md` § 3.7) : la caisse passe par une
-  plateforme d'homologation avec tests d'intégration ; l'inscription du fournisseur et le cahier des
-  charges se feraient dès le cadrage. À valider par Skander.*
+- **Les démarches sont lancées par le père de Skander.** Trois d'entre elles partent **dès
+  maintenant**, pour être prêtes pendant le développement, parce que le code en a besoin pour être
+  testé : l'**accès à l'environnement de test El Fatoora (TTN)**, l'**adhésion « entité
+  d'intégration » DigiGo auprès de l'ANCE**, et (**décidé le 28/09/2026**, `docs/cadrage/05-obligations-legales.md`
+  § 3.7) l'**inscription comme fournisseur sur la plateforme d'homologation des caisses** avec le
+  cahier des charges, puisque la caisse s'y raccorde par des tests d'intégration. La déclaration INPDP
+  se fait avant la première donnée réelle d'un client (pilotes compris) ; l'homologation ANCE de la
+  signature serveur et l'homologation de la caisse, en fin de développement.
 
 - **TypeScript et une bibliothèque d'interface : validés.** Les règles « JS pur » et « stockage
   JSON » de `CLAUDE.md` valent pour l'application actuelle ; la nouvelle plateforme suit ce document.

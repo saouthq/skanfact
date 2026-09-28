@@ -1,6 +1,7 @@
 # 05 — Les obligations légales
 
-*Proposé le 28/09/2026. **À valider par Skander.** Rassemble ce que la loi impose à nos clients (et
+*Proposé le 28/09/2026, relu le même jour contre tout le dépôt. **Validé par Skander le
+28/09/2026**, avec l'inscription anticipée à la plateforme d'homologation des caisses. Rassemble ce que la loi impose à nos clients (et
 donc à SkanFact), ce qu'elle impose à SkanFact lui-même, et les démarches à lancer. Sources :
 `docs/etudes/notes-de-recherche/marche-2026/cadre_legal.md`, `docs/etudes/ETUDE-MARCHE.md` (§ « 2026
 impose un calendrier légal serré » et « À vérifier »), `docs/application-actuelle/e-facture-controle.md`,
@@ -96,6 +97,9 @@ treize caractères, CIN ou carte de séjour pour un particulier, identifiant pou
   (vision R5) ;
 - l'**état** de chaque facture : préparée, signée, envoyée, **acceptée** (identifiant et QR code),
   **refusée** (motif) ;
+- **le fichier est contrôlé contre le schéma TEIF avant la prise du numéro** (`01` § 6 : le contrôle
+  passe avant l'attribution), avec les identités et les champs obligatoires. Un refus de la TTN
+  devient ainsi l'exception, pas la règle ;
 - **une facture refusée par la TTN** garde son numéro, puisqu'un numéro ne se reprend pas (`01`
   § 6). Elle reste « refusée », avec le motif et le bouton qui corrige. La correction passe par un
   avoir et une nouvelle facture, ou par un renvoi si la TTN le permet. **À VÉRIFIER** avec la TTN :
@@ -355,14 +359,14 @@ troisième est **nouvelle** (§ 3.7).
 
 | Quand | Démarche | Pourquoi à ce moment |
 |---|---|---|
-| **Pendant le cadrage** | Adhésion ANCE « entité d'intégration » DigiGo | Le code de signature a besoin de l'environnement de test |
-| **Pendant le cadrage** | Accès à l'environnement de test El Fatoora (TTN) | Le code d'envoi a besoin de l'environnement de test |
-| **Pendant le cadrage** (nouveau) | **Inscription fournisseur sur la plateforme NACEF**, téléchargement du cahier des charges de la caisse | La caisse se conçoit d'après ce cahier des charges ; les tests d'intégration se font pendant le développement |
-| Pendant le cadrage | Rendez-vous avec un **comptable** et un **juriste** (liste § 6) | Beaucoup de décisions du cadrage attendent leurs réponses |
+| **Dès maintenant** | Adhésion ANCE « entité d'intégration » DigiGo | Le code de signature a besoin de l'environnement de test |
+| **Dès maintenant** | Accès à l'environnement de test El Fatoora (TTN) | Le code d'envoi a besoin de l'environnement de test |
+| **Dès maintenant** (décidé le 28/09/2026) | **Inscription fournisseur sur la plateforme NACEF**, téléchargement du cahier des charges de la caisse | La caisse se conçoit d'après ce cahier des charges ; les tests d'intégration se font pendant le développement |
+| Dès maintenant | Rendez-vous avec un **comptable** et un **juriste** (liste § 6) | Beaucoup de décisions du cadrage attendent leurs réponses |
 | Pendant le développement | Adhésion de **notre société** à El Fatoora, et son certificat | Nos factures d'abonnement (§ 4.1) |
 | Pendant le développement | Schémas TEJ (retenue, liasse) et format CNSS à jour | Les fichiers officiels (§ 3.3 à 3.6) |
 | Avant la communication publique | **Dépôt de la marque** à l'INNORPI | Protéger le nom avant de le montrer |
-| Avant le lancement | **Déclarations INPDP** | Avant de traiter des données de clients |
+| **Avant la première donnée réelle d'un client** (les pilotes compris) | **Déclarations INPDP** | Traiter des données de personnes sans déclaration, même en test, n'est pas permis (À VÉRIFIER avec l'INPDP : le cas d'un essai sur des données fictives) |
 | Avant le lancement | **Homologation ANCE** de la signature serveur (si elle est retenue) | Troisième chemin de signature (vision § 5) |
 | Avant le lancement | **Homologation de la caisse** | Pour vendre une caisse certifiée |
 | Avant le lancement | Contrats et pages légales (§ 4.5) ; audit de sécurité externe | Vision § 11 |
@@ -464,8 +468,9 @@ charges se lisent sur les plateformes officielles, ce que la démarche du § 5 p
 
 | Date | Décision |
 |---|---|
+| 28/09/2026 (relecture) | Le fichier TEIF est contrôlé avant la prise du numéro ; la déclaration INPDP se fait avant la première donnée réelle, pilotes compris |
 | 28/09/2026 (proposé) | Chaque obligation porte son état de connaissance ; une obligation « Rapportée » suffit pour concevoir, jamais pour promettre |
-| 28/09/2026 (proposé) | **Avancer l'inscription à la plateforme d'homologation des caisses au cadrage** (au lieu de la fin du développement, décision du 27/09) ; « caisse certifiée » ne s'affiche qu'avec un numéro d'homologation |
+| 28/09/2026 (**validé par Skander**) | **Avancer l'inscription à la plateforme d'homologation des caisses** à maintenant (au lieu de la fin du développement, décision du 27/09) ; « caisse certifiée » ne s'affiche qu'avec un numéro d'homologation |
 | 28/09/2026 (proposé) | Une entreprise non obligée à la facture électronique n'est pas forcée ; une obligée voit avant d'émettre ce qui manque à son adhésion |
 | 28/09/2026 (proposé) | Nos factures partent par notre propre plateforme ; la TVA et la retenue sur notre abonnement se tranchent avant de publier les prix TTC |
 | 28/09/2026 (proposé) | Chaque flux de données qui sort est compté ; la lecture de photo de facture ne passe pas à la plateforme sans service en Tunisie ou autorisation INPDP |

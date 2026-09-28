@@ -49,8 +49,10 @@ Détail et raisons dans `VISION-ARCHITECTURE.md` ; ne pas les rediscuter sans qu
   après homologation ANCE. Envoi TTN par le serveur, archivage 10 ans.
 - **Hébergement en Tunisie**, copie de secours comprise (un second centre de données tunisien).
 - **Budget** accepté (~1 000 DT/mois au lancement, 10 à 20 kDT de frais uniques, à affiner).
-- **Démarches** (père de Skander) : accès test El Fatoora et adhésion DigiGo **pendant** le
-  développement ; homologation ANCE, INPDP, caisse certifiée en fin de développement.
+- **Démarches** (père de Skander), **dès maintenant** : accès test El Fatoora, adhésion DigiGo, et
+  inscription fournisseur sur la plateforme d'homologation des caisses (décidé le 28/09/2026) ;
+  INPDP avant la première donnée réelle d'un client ; homologations ANCE et caisse en fin de
+  développement. Détail et questions par interlocuteur : `docs/cadrage/05-obligations-legales.md`.
 - Les règles « JS pur, pas de React » et « stockage JSON, pas SQLite » de l'ancien fichier ne valent
   plus que pour l'application actuelle.
 
