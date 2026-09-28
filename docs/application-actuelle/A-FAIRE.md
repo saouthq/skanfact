@@ -1,5 +1,7 @@
 # Ce qui reste à faire
 
+> *Rangement du 27/09/2026 : les documents cités ici sans chemin (`DIRECTION.md`, `QUESTIONS.md`, `PLAN-*.md`, `VERSIONS-A-VENIR.md`, `CAHIER-DES-CHARGES.md`) sont dans `docs/archives/ancienne-vision/` ; `ETUDE-HESABI.md` et `ETUDE-MARCHE.md` dans `docs/etudes/`.*
+
 *Le carnet des choses repérées et pas encore traitées, sur les TROIS surfaces du produit :
 les deux applications (`skanfact`), le site (`skanfact-site`) et la plateforme (console + relais).
 Il ne remplace pas `VERSIONS-A-VENIR.md`, qui inventorie les VERSIONS à écrire : ici vivent les

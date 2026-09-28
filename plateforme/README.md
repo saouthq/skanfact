@@ -1,5 +1,7 @@
 # Le plan de contrôle — mode d'emploi
 
+> *Rangement du 27/09/2026 : les documents cités ici sans chemin (`DIRECTION.md`, `QUESTIONS.md`, `PLAN-*.md`, `VERSIONS-A-VENIR.md`, `CAHIER-DES-CHARGES.md`) sont dans `docs/archives/ancienne-vision/` ; `ETUDE-HESABI.md` et `ETUDE-MARCHE.md` dans `docs/etudes/`.*
+
 Tout se fait depuis le site de Cloudflare, **sans terminal**. Même principe que `worker/README.md`,
 qui porte déjà le relais de mise à jour : c'est le même compte, tu n'as rien de nouveau à créer.
 

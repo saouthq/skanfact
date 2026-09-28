@@ -13,7 +13,7 @@ affirmation marketing d'un éditeur (chiffres de clients, "le meilleur", compara
 comme telle. Avant toute publication publique d'un comparatif, revérifier chaque ligne en ouvrant les sites
 directement depuis un poste sans ce blocage.
 
-L'étude Hesabi déjà présente dans le dépôt (`/home/user/skanfact/ETUDE-HESABI.md`, 27/09/2026) a été relue et
+L'étude Hesabi déjà présente dans le dépôt (`docs/etudes/ETUDE-HESABI.md`, 27/09/2026) a été relue et
 n'est pas refaite : ce document la complète (faits d'entreprise, absents de l'étude initiale) et couvre Swiver et
 Finco, absents jusqu'ici.
 

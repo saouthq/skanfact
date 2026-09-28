@@ -1,5 +1,7 @@
 # Tarifs SkanFact — la référence
 
+> *Rangement du 27/09/2026 : les documents cités ici sans chemin (`DIRECTION.md`, `QUESTIONS.md`, `PLAN-*.md`, `VERSIONS-A-VENIR.md`, `CAHIER-DES-CHARGES.md`) sont dans `docs/archives/ancienne-vision/` ; `ETUDE-HESABI.md` et `ETUDE-MARCHE.md` dans `docs/etudes/`.*
+
 *État du code au 23/09/2026, version 10.9.2 — publiée en stable.*
 
 Ce document dit ce que le **code fait**, pour que la page Tarifs de `skanfact.tn` ne promette rien

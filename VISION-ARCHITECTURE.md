@@ -1,9 +1,10 @@
 # Vision et architecture de SkanFact
 
-*Document de cadrage, version 1 — 27/09/2026. Écrit après l'étude de marché (`docs/etudes/ETUDE-MARCHE.md`) et
+*Document de cadrage, version 1 — 27/09/2026, relu le 28/09/2026. Écrit après l'étude de marché (`docs/etudes/ETUDE-MARCHE.md`) et
 une recherche technique sur Odoo, ERPNext, les bases de données partagées entre clients, la
-synchronisation hors ligne, et la signature électronique en Tunisie. Il ne remplace encore aucun
-plan existant : Skander décide lesquels il remplace.*
+synchronisation hors ligne, et la signature électronique en Tunisie. **Il fait foi** : les plans de
+l'ancienne vision sont rangés dans `docs/archives/ancienne-vision/`, et le détail de chaque sujet
+vit dans `docs/cadrage/`.*
 
 *Rien dans ce document n'est codé. C'est le plan qu'on valide avant la première ligne.*
 
@@ -34,7 +35,8 @@ justes et un prix par entreprise.**
 
 1. **Le seul hybride** : utilisable pendant une coupure ET en ligne. Hesabi, Swiver, Finco,
    Pennylane sont uniquement web ; les coupures tunisiennes sont documentées jusqu'en 2026.
-2. **Le comptable dans les mêmes données, gratuitement pour lui.** Personne ne le fait en Tunisie.
+2. **Le comptable dans les mêmes données, gratuitement pour les dossiers de ses clients abonnés**
+   (`docs/cadrage/07-offres-et-prix.md`). Personne ne le fait en Tunisie.
 3. **Le plus complet** : facturation, stock, caisse, paie, trésorerie, comptabilité complète,
    cabinet — déjà écrit et tenu par plus de 1 700 tests.
 4. **Des chiffres prouvés** : la fiscalité tunisienne contrôlée par deux calculs indépendants
@@ -294,24 +296,26 @@ milliers de PME** ; le chiffre exact se mesure, il ne se devine pas.
 - **TypeScript et une bibliothèque d'interface : validés.** Les règles « JS pur » et « stockage
   JSON » de `CLAUDE.md` valent pour l'application actuelle ; la nouvelle plateforme suit ce document.
 
-**Décisions du 27/09/2026 (rappel des questions posées) :**
+**Ordres de grandeur du budget** : ~1 000 DT/mois de fonctionnement au lancement, 10 000 à
+20 000 DT de frais uniques (certificats, juriste, audit de sécurité), à affiner dans
+`docs/cadrage/09-feuille-de-route.md`.
 
-1. **TypeScript et une bibliothèque d'interface** (renverse deux règles de `CLAUDE.md`).
-2. **Hébergement** : tout en Tunisie (plus sûr juridiquement) ou base gérée en Europe avec
-   autorisation INPDP (plus sûr techniquement).
-3. **Budget** : ~1 000 DT/mois de fonctionnement au lancement, 10 000 à 20 000 DT de frais uniques
-   (certificats, juriste, audit de sécurité) — ordres de grandeur à affiner.
-4. **Qui lance les démarches** ANCE, TTN, INPDP (elles demandent le représentant de la société).
+**Décidé le 28/09/2026, par délégation de Skander** (révisable après les entretiens) :
+- Essai de 30 jours ; **Essentiel 390 DT/an**, **Complet 690 DT/an** ; le cabinet est gratuit pour
+  ses clients abonnés et pour trois dossiers tenus, puis 60 DT par dossier, plafonné à 1 990 DT
+  (`docs/cadrage/07-offres-et-prix.md`).
+- Code de connexion sur le téléphone obligatoire pour les comptables, les propriétaires, les
+  administrateurs et la paie ; les rôles ; un **code cabinet** au lieu d'un annuaire ; le passage de
+  la v10 sans rien forcer (`docs/cadrage/00-les-trois-parcours.md`).
+- Tiers et articles propres à chaque société, partage possible dans un groupe ; plusieurs
+  établissements dès le départ ; fin de mandat d'un cabinet (`docs/cadrage/01-modele-de-donnees.md`).
 
 ## 10. La suite du cadrage
 
-1. Tes décisions du § 9.
-2. Les entretiens terrain (questionnaire en annexe de `docs/etudes/ETUDE-MARCHE.md`).
-3. Le modèle de données détaillé et le système de modules.
-4. Les droits utilisateurs, geste par geste.
-5. Le choix du moteur de synchronisation, avec un petit prototype mesuré.
-6. Le plan de reprise des données actuelles.
-7. La feuille de route et le budget détaillés.
+La liste des documents, leur ordre et leur état vivent dans `docs/cadrage/README.md` (un seul
+endroit, pour qu'ils ne divergent pas). En parallèle : les entretiens terrain (questionnaire en
+annexe de `docs/etudes/ETUDE-MARCHE.md`) et les deux démarches qui servent pendant le développement
+(accès test El Fatoora, adhésion DigiGo).
 
 ---
 
@@ -327,8 +331,8 @@ milliers de PME** ; le chiffre exact se mesure, il ne se devine pas.
    l'administration les demandent (**À VÉRIFIER** avec les entretiens).
 4. **Le rythme de développement dépend du quota Claude** : 18 à 24 mois supposent un usage
    quotidien ; le budget doit l'inclure.
-5. **Un `CLAUDE.md` neuf pour la nouvelle plateforme** : l'actuel dépasse 3 000 lignes d'histoire ;
-   chaque session le relit en entier. Le nouveau projet garde les règles, pas le récit.
+5. ~~**Un `CLAUDE.md` neuf pour la nouvelle plateforme.**~~ **Fait le 27/09/2026** : le fichier
+   garde les règles ; le récit est dans `docs/application-actuelle/CLAUDE-HISTORIQUE.md`.
 
 **À traiter avant le lancement**
 6. **Nos propres factures sont électroniques** : SkanFact vend des abonnements à des entreprises
@@ -404,8 +408,9 @@ fonction qui vérifie l'accord et écrit la trace.
   pages légales (conditions, confidentialité, contrat de traitement), et reprise des données
   (Excel, concurrents).
 - **Il ne vend rien qui n'existe pas encore.** Jusqu'au lancement, il continue de présenter
-  l'application actuelle. La nouvelle offre n'y paraît que lorsqu'elle est livrable. Les tarifs
-  suivent `docs/cadrage/07-offres-et-prix.md` quand il sera validé.
+  l'application actuelle. La nouvelle offre n'y paraît que lorsqu'elle est livrable ; ses tarifs sont ceux
+  de `docs/cadrage/07-offres-et-prix.md`. D'ici là, le site annonce ceux de l'application actuelle
+  (`docs/application-actuelle/TARIFS-REFERENCE.md`).
 
 ## Sources de la recherche technique (27/09/2026)
 

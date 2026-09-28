@@ -52,8 +52,7 @@ se reconnecter.
   à l'autre en haut de l'écran.
 
 **Mon comptable**
-- Menu « Mon comptable » : je tape l'e-mail de mon cabinet, ou je le choisis dans la liste des
-  cabinets inscrits.
+- Menu « Mon comptable » : je tape le **code cabinet** que mon comptable m'a donné, ou son e-mail.
 - Le cabinet accepte, et il voit mes pièces **au moment où je les crée**. Il n'y a plus de paquet
   à envoyer chaque mois.
 - Ses questions s'affichent **en face de la pièce** qu'elles visent ; je réponds au même endroit.
@@ -72,7 +71,8 @@ se reconnecter.
 
 **Le premier jour**
 1. Sur `skanfact.tn`, je clique « Je suis comptable ». Je crée mon compte et mon **cabinet** (nom,
-   matricule, adresse).
+   matricule, adresse). Mon cabinet reçoit son **code cabinet** (par exemple `CAB-7F3K`), que je
+   donne à mes clients.
 2. J'invite mes collaborateurs, chacun avec son rôle (saisie, révision, supervision).
 3. J'arrive sur mon **portefeuille** : la liste de mes dossiers, ce qui manque, ce qui est en retard,
    les échéances fiscales de tous mes clients.
@@ -91,7 +91,9 @@ se reconnecter.
 - Mes questions au client se posent sur la pièce. Il les voit, il répond, je suis prévenu.
 - J'affecte chaque dossier à un collaborateur ; chacun voit les siens, le superviseur voit tout.
 
-**Ce que je paie** : à décider dans le document 07 (offres et prix).
+**Ce que je paie** : rien pour les dossiers de mes clients abonnés ni pour trois dossiers que je
+tiens moi-même ; au-delà, 60 DT par dossier et par an, jamais plus de 1 990 DT par an
+(`07-offres-et-prix.md`).
 
 ---
 

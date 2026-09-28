@@ -31,7 +31,7 @@ updates:
           - patch
     ignore:
       # Electron majeur se met à jour à la main : chaque saut change le moteur de rendu, et le
-      # document PDF doit être revérifié page par page (voir « fitToPage » dans CLAUDE.md).
+      # document PDF doit être revérifié page par page (voir « fitToPage » dans docs/application-actuelle/CLAUDE-HISTORIQUE.md).
       - dependency-name: electron
         update-types:
           - version-update:semver-major

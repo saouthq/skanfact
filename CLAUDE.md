@@ -14,10 +14,11 @@ y cherche le **pourquoi** d'une règle, on ne le relit pas à chaque session.*
   tunisiennes, avec leur cabinet comptable dans les mêmes données.
 - Ce qui est incertain (fiscal, légal, social) s'écrit **« À VÉRIFIER »**, jamais comme un fait.
 
-## Où on en est (27/09/2026)
+## Où on en est (28/09/2026)
 
 1. **Phase de cadrage.** Aucun développement neuf tant que le cadrage n'est pas validé par Skander,
-   document par document. Plan du cadrage : `docs/cadrage/README.md`.
+   document par document. Plan, état de chaque document et journal des décisions :
+   `docs/cadrage/README.md` (c'est là qu'on regarde où on en est).
 2. **Nouvelle plateforme à construire** (18 à 24 mois, pas de lancement public avant qu'elle soit
    complète) : `VISION-ARCHITECTURE.md` fait foi.
 3. **L'application actuelle** (SkanFact et SkanFact Cabinet, Electron, v10.x) passe en
