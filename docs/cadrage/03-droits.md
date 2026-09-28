@@ -1,6 +1,7 @@
 # 03 — Les droits : qui peut faire quoi
 
-*Proposé le 28/09/2026. **À valider par Skander.** Suit `00-les-trois-parcours.md` (les rôles et le
+*Proposé le 28/09/2026, relu le même jour contre tout le dépôt. **Validé le 28/09/2026**, après la
+relecture demandée par Skander. Suit `00-les-trois-parcours.md` (les rôles et le
 code sur le téléphone, décidés le 28/09/2026), `01-modele-de-donnees.md` (§ 4 : `membre`, `mandat`,
 `mandat_affectation`, `appareil` ; § 17 : `audit`) et `02-modules.md` (M1 : chaque module déclare ses
 gestes).*
@@ -56,10 +57,17 @@ Le commercial n'a pas la Paie dans son menu : ce n'est pas son métier. L'assist
 bouton « Valider », car il en voit l'effet tous les jours. S'il clique, le refus lui dit qui peut
 valider. Cacher un bouton qu'on s'attend à trouver fait croire à une panne.
 
+À ne pas confondre avec l'**offre** : un module fermé par l'abonnement se voit toujours, en lecture
+(`02` § 1, « une offre ne masque jamais rien »). Seul le **rôle** peut retirer un module du menu
+d'une personne.
+
 **D4. Personne n'est enfermé dehors.**
 - Une entreprise a **toujours un propriétaire**. On ne retire pas le dernier : on **transfère** la
   propriété, et le nouveau propriétaire doit accepter.
 - Un cabinet a **toujours un associé**. On ne retire pas le dernier.
+- **Seule exception : le dossier tenu.** Un cabinet peut créer le dossier d'un client qui n'est pas
+  sur SkanFact (`01` § 20). Cette entreprise n'a **aucun membre** côté client. L'associé du cabinet
+  en répond jusqu'à ce que le client la rejoigne. Le client en devient alors le propriétaire (§ 3.5).
 - Un propriétaire qui a perdu son téléphone et son adresse e-mail (départ d'un associé, décès,
   conflit) passe par une **procédure de reprise** tenue par la console, sur pièces justificatives.
   **À VÉRIFIER** avec un juriste : quelles pièces (extrait du registre, procès-verbal, pièce
@@ -137,14 +145,16 @@ module ne paraît pas) ; *en italique*, une condition.
 | Champs personnalisés, modules affichés au menu | ✓ | ✓ | — | — | — | — | — | — |
 | Inviter, retirer un membre, changer un rôle | ✓ | ✓ *jusqu'à A* | — | — | — | — | — | — |
 | Transférer la propriété | ✓ | — | — | — | — | — | — | — |
-| Abonnement, paiement, modules achetés | ✓ | voir | — | — | — | — | — | — |
+| Changer d'offre, acheter un module | ✓ | voir | — | — | — | — | — | — |
+| Payer une échéance de l'abonnement | ✓ | ✓ | — | — | — | — | — | — |
 | Choisir le cabinet, fixer son périmètre, arrêter le mandat | ✓ | — | — | — | — | — | — | — |
 | Accorder un accès au support | ✓ | ✓ *prévient P* | — | — | — | — | — | — |
-| **Export complet** de l'entreprise | ✓ | ✓ *prévient P* | — | — | — | — | — | — |
+| **Export complet** de l'entreprise (jamais bloqué par l'abonnement, même en lecture seule : `07`) | ✓ | ✓ *prévient P* | — | — | — | — | — | — |
 | Exporter une liste (CSV) qu'on voit | ✓ | ✓ | ✓ | — | ✓ | ✓ | ✓ | ✓ |
 | Lire la piste d'audit de toute l'entreprise | ✓ | ✓ | — | — | — | — | — | — |
 | Lire sa propre activité | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| Répondre à une question du cabinet (toute personne qui voit la pièce visée) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | — |
+| Supprimer un **brouillon** (jamais une pièce émise, `01` R6) | ✓ | ✓ | *les siens* | — | *les siens* | *les siens* | *les siens* | — |
+| Répondre à une question du cabinet (toute personne qui voit la pièce visée, sauf Lecture) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | — |
 | Résilier l'abonnement | ✓ | — | — | — | — | — | — | — |
 
 **Ventes**
@@ -343,6 +353,22 @@ La paie est **décochée par défaut** : elle montre les salaires de chacun, et 
 décidant (D5). Seul le **propriétaire** accorde ou change le mandat (décision du 28/09/2026, `00`).
 Chaque changement est tracé et prévient les deux côtés.
 
+### 3.5 Le dossier tenu (client pas encore sur SkanFact)
+
+- Le cabinet le crée, et il y a **tous les gestes du § 3.1**. Le périmètre est complet ; il n'y a
+  personne côté client pour l'accepter.
+- Les ventes de ce client sont émises **ailleurs** (sur papier ou dans un autre logiciel). Le cabinet
+  les **enregistre** : il saisit les écritures ou importe les pièces. Il ne les **émet** jamais au
+  nom du client. Il n'y a ni numéro SkanFact, ni signature, ni envoi à la TTN (§ 3.3 : la vente reste
+  le geste du client).
+- Quand le client **rejoint** son dossier (`00` § 2), il en devient le **propriétaire**. Il voit le
+  périmètre du mandat et peut le changer (§ 3.4) ; la paie reste ouverte si le cabinet la faisait
+  déjà, et le client peut la décocher.
+- Si le mandat s'arrête **avant** que le client ait rejoint le dossier, le dossier n'est pas effacé.
+  Il reste en lecture pour l'associé, et le client peut le réclamer par la procédure de reprise (D4).
+  **À VÉRIFIER** avec l'Ordre : à qui appartient le travail d'un dossier tenu quand le client ne l'a
+  jamais rejoint.
+
 ---
 
 ## 4. Les groupes et les personnes qui ont plusieurs casquettes
@@ -357,6 +383,18 @@ Chaque changement est tracé et prévient les deux côtés.
   sauf s'il a transféré l'une d'elles.
 - Les fiches **partagées** du groupe (`01` § 5) : pour les modifier, il faut le droit dans **toutes**
   les sociétés qui les partagent, sinon la modification est refusée en disant où le droit manque.
+
+### 4.1 Qui compte comme « utilisateur » dans l'offre
+
+L'offre Essentiel compte **3 utilisateurs**, puis 30 DT par an pour chacun en plus (`07`). Voici qui
+compte :
+- **compte** : chaque membre **actif** de l'entreprise, quel que soit son rôle, Lecture et Caissier
+  compris. Une personne compte une fois par entreprise, même avec plusieurs rôles (D7) ;
+- **ne compte jamais** : les collaborateurs du cabinet (le cabinet est gratuit pour ses clients
+  abonnés, et son équipe est illimitée), l'équipe SkanFact, un membre retiré, une invitation pas
+  encore acceptée ;
+- à la quatrième invitation, l'écran dit **avant** l'envoi ce que coûte l'utilisateur en plus, avec
+  le bouton qui l'ajoute. Il ne refuse pas une fois l'invitation partie.
 
 ---
 
@@ -397,9 +435,17 @@ Ce qui est décidé depuis le 28/09/2026 (`00`), et ce que ce document ajoute.
 | Session sur un appareil reconnu | Elle se ferme après **12 heures** d'inaction ; le poste de caisse reste ouvert |
 | Changer de caissier | Code à **4 chiffres**, sur un poste de caisse déjà reconnu, pour un membre qui a le rôle Caissier (ou pour le code d'un responsable, § 2.1) |
 | Erreurs de mot de passe ou de code | Après 5 erreurs, une attente qui s'allonge (1 min, 5 min, 15 min…), **jamais un blocage définitif** : sinon n'importe qui bloquerait le compte d'un autre. Le titulaire est prévenu |
-| Téléphone perdu | Un membre : le propriétaire ou un administrateur réinitialise son code, et le membre en choisit un nouveau. Le propriétaire ou un comptable : la procédure de reprise (D4) |
+| Codes de secours | À la mise en place du code sur le téléphone, la personne reçoit **10 codes de secours** à usage unique, à imprimer ou à garder |
+| Téléphone perdu | Avec un code de secours, la personne se reconnecte et déclare son nouveau téléphone. Sans code de secours : la procédure de reprise (D4), sur pièces. **Un administrateur ne réinitialise jamais le code d'un autre** : le compte est unique et sert aussi dans d'autres entreprises et d'autres cabinets. Un administrateur retire seulement l'accès à **son** entreprise |
 | Appareil perdu ou volé | Chacun **révoque** ses appareils ; le propriétaire et l'administrateur peuvent retirer l'accès d'un membre à l'entreprise. Les données locales s'effacent à la reconnexion (vision § 4.5) |
 | Départ d'un employé | On le retire : l'accès tombe **immédiatement**, et tout ce qu'il a fait reste signé de son nom |
+
+**Ce qui part chez le fournisseur de SMS** (règle du projet : « jamais une donnée de plus dans ce qui
+part vers un serveur sans que la liste soit comptée et décidée ») : **le numéro de téléphone et le
+code**, rien d'autre. Ni le nom, ni l'entreprise, ni l'adresse e-mail. Le message dit seulement « Ton
+code SkanFact : 482 913 ». Même règle pour le fournisseur d'e-mails de connexion : l'adresse et le
+lien, rien d'autre. Les deux fournisseurs doivent être **en Tunisie** (décision d'hébergement du
+27/09/2026).
 
 **À VÉRIFIER** : le fournisseur de SMS tunisien, son prix par message et sa fiabilité (document 12).
 Le budget du SMS est faible grâce aux appareils reconnus, mais il existe.
@@ -426,7 +472,7 @@ aussi chaque **lecture** (D10).
 - un transfert de propriété demandé ;
 - un export complet ;
 - un accès accordé au support, un mandat de cabinet donné, changé ou arrêté ;
-- le code sur le téléphone désactivé ou réinitialisé pour un membre.
+- un membre qui a perdu son téléphone et s'est reconnecté par un code de secours.
 
 **Combien de temps** : la trace des gestes sur les pièces et les écritures vit **aussi longtemps que
 les pièces** (10 ans au moins, **À VÉRIFIER**). Les connexions et les lectures ordinaires vivent
@@ -492,7 +538,9 @@ Détail de la reprise : document 08.
 5. **L'ancien cabinet relit-il les exercices qu'il a signés** : déjà listé (`01` § 4), Ordre des
    experts-comptables.
 6. **Fournisseur de SMS** : prix, fiabilité, délai de livraison (document 12).
-7. **Rôle Lecture pour un banquier ou un associé** : faut-il un accord écrit du propriétaire (secret
+7. **Travail d'un dossier tenu** quand le client ne l'a jamais rejoint et que le mandat s'arrête :
+   à qui appartient-il ? Ordre des experts-comptables (§ 3.5).
+8. **Rôle Lecture pour un banquier ou un associé** : faut-il un accord écrit du propriétaire (secret
    des affaires) ? Juriste.
 
 ## 12. Décisions de ce document
@@ -508,3 +556,5 @@ Détail de la reprise : document 08.
 | 28/09/2026 (proposé) | Aucun « se connecter en tant que » ; le support lit seulement, 48 heures au plus, avec l'accord du client, chaque page tracée ; personne chez SkanFact n'écrit dans les données d'un client |
 | 28/09/2026 (proposé) | Mot de passe de 10 caractères au moins, vérifié contre les listes de mots de passe volés ; jamais de blocage définitif ; session de 12 h sur un appareil reconnu, 30 min ailleurs |
 | 28/09/2026 (proposé) | Lectures de la paie tracées ; écritures de paie en totaux du mois ; gestes sensibles qui préviennent le propriétaire |
+| 28/09/2026 (relecture) | Dossier tenu : aucun membre côté client, l'associé en répond, le client en devient propriétaire en le rejoignant ; le cabinet y enregistre les ventes émises ailleurs, sans jamais les émettre |
+| 28/09/2026 (relecture) | Qui compte comme utilisateur dans l'offre ; codes de secours, et aucun administrateur ne réinitialise le code d'un autre ; seuls le numéro et le code partent chez le fournisseur de SMS |

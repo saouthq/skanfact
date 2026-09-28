@@ -45,7 +45,8 @@ Les quatre modules pris un par un coûtent 990 DT : **Complet (690 DT) est toujo
 dès qu'on en veut deux.
 
 **Au-delà de l'offre** :
-- Utilisateur supplémentaire (Essentiel) : **30 DT par an**.
+- Utilisateur supplémentaire (Essentiel) : **30 DT par an**. Qui compte comme utilisateur :
+  `03-droits.md` § 4.1 (jamais les collaborateurs du cabinet).
 - Établissement supplémentaire : **120 DT par an** (avec sa série de tickets ; la caisse se paie à part).
 - Salarié au-delà de 20 (Complet) : **12 DT par an**.
 
