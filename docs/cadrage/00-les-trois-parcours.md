@@ -146,13 +146,65 @@ chacun leur compte et leur rôle. Chaque geste y est enregistré.
 
 ---
 
-## Ce qui reste à décider (et où)
+## Les décisions du 28/09/2026
 
-| Question | Document |
+*Prises par Claude, **par délégation de Skander** (« je te laisse me donner ton avis et décider à ma
+place »). Révisables après les entretiens terrain.*
+
+**1. Essai, prix, cabinet** : voir `07-offres-et-prix.md`. En une ligne : essai de 30 jours tout
+ouvert ; Essentiel 390 DT/an, Complet 690 DT/an ; le cabinet est gratuit pour ses clients abonnés et
+pour trois dossiers qu'il tient lui-même, puis 60 DT par dossier, plafonné à 1 990 DT par an.
+
+**2. Le code de connexion sur le téléphone**
+- **Obligatoire** pour : l'équipe SkanFact (console), **tous les comptables** (ils ouvrent les
+  dossiers de plusieurs entreprises), le **propriétaire** et les **administrateurs** d'une entreprise,
+  et quiconque a accès à la **paie**.
+- **Proposé, pas imposé** pour les autres (vendeur, caissier, magasinier).
+- **Comment** : un code par **SMS** par défaut (c'est ce que les banques tunisiennes ont habitué tout
+  le monde à faire), ou une application d'authentification pour qui préfère. Le code n'est demandé
+  **qu'à la première connexion d'un appareil**, puis tous les 30 jours : un appareil reconnu ne
+  redemande rien.
+- **À la caisse** : un caissier change de session avec un **code à 4 chiffres** sur un poste déjà
+  reconnu. Taper un mot de passe entre deux clients ne se ferait pas.
+
+**3. Les rôles (le détail geste par geste ira dans le document 03)**
+
+| Dans une entreprise | Ce qu'il fait |
 |---|---|
-| Durée de l'essai, prix, ce que paie un cabinet | 07 — offres et prix |
-| Le code de connexion sur le téléphone : obligatoire pour qui (le gérant ? la paie ? tout le monde ?) | 03 — droits |
-| Les rôles exacts dans une entreprise et dans un cabinet | 03 — droits |
-| Le choix d'un cabinet dans une « liste des cabinets inscrits » : un annuaire public, ou seulement par e-mail ? | 03 — droits (et l'Ordre des experts-comptables : **À VÉRIFIER**) |
-| Le passage des utilisateurs de l'application actuelle | 08 — reprise de l'existant |
-| Les écrans de la console | 10 — console |
+| Propriétaire | Tout, y compris l'abonnement et le choix du comptable. Un seul, transférable |
+| Administrateur | Tout, sauf l'abonnement |
+| Commercial | Devis, factures, clients, relances. Ni achats, ni paie, ni banque |
+| Caissier | La caisse de son établissement, et rien d'autre |
+| Magasinier | Le stock, les réceptions, les inventaires |
+| Comptabilité interne | Achats, banque, déclarations, écritures. Pas la paie |
+| Paie | Salariés, bulletins, déclarations sociales |
+| Lecture | Tout voir, rien changer (un associé, un banquier) |
+
+Chaque rôle peut être **limité à un ou plusieurs établissements**.
+
+| Dans un cabinet | Ce qu'il fait |
+|---|---|
+| Associé (superviseur) | Tous les dossiers, l'équipe, l'abonnement du cabinet ; valide et clôture |
+| Collaborateur | Ses dossiers : saisie, révision, validation, déclarations |
+| Assistant de saisie | Ses dossiers : saisit, ne valide pas |
+| Paie | Ses dossiers : la paie et les déclarations sociales |
+
+Ce sont les trois rôles du Cabinet actuel (saisie, révision, supervision, 9.9.0), plus la paie.
+
+**4. Comment une entreprise trouve son comptable** : **pas d'annuaire public au lancement.** Chaque
+cabinet a un **code cabinet** court (par exemple `CAB-7F3K`) qu'il donne à ses clients ; l'entreprise
+le tape, ou tape l'e-mail du cabinet. C'est plus simple que le fichier d'appairage d'aujourd'hui, et
+ça ne fait pas de publicité pour un cabinet. **À VÉRIFIER** avec l'Ordre des experts-comptables : ce
+qu'un annuaire aurait le droit de montrer. S'il est permis, il viendra plus tard, et seuls les
+cabinets qui le demandent y paraîtront.
+
+**5. Les utilisateurs de l'application actuelle (v10)**
+- **Rien n'est forcé.** L'application actuelle continue de marcher, hors ligne, jusqu'à la fin de sa
+  licence.
+- Un bouton « **Passer à la plateforme** » envoie, avec l'accord de l'utilisateur, son fichier de
+  données vers le serveur, qui crée son entreprise **avec tout son historique** (le détail : document 08).
+- **Le temps de licence qui reste devient du temps d'abonnement.** Personne ne paie deux fois.
+- Même chose pour SkanFact Cabinet : dossiers, livres et paquets reçus sont repris.
+
+**6. Les écrans de la console** : ils suivent le parcours du § 3 ci-dessus, et seront dessinés dans
+le document 10.

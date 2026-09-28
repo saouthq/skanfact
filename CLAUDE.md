@@ -43,6 +43,7 @@ Détail et raisons dans `VISION-ARCHITECTURE.md` ; ne pas les rediscuter sans qu
 - **TypeScript** et **une vraie bibliothèque d'interface** (validés le 27/09/2026). On **garde et on
   porte le moteur** `core.js` / `compta.js` et ses tests ; les écrans seront refaits.
 - **Prix par entreprise**, pas par utilisateur, modules payants, facture électronique incluse.
+  Grille décidée le 28/09/2026 par délégation : `docs/cadrage/07-offres-et-prix.md`.
 - **Signature** : DigiGo intégré (chemin principal), clé USB via l'agent local, signature serveur
   après homologation ANCE. Envoi TTN par le serveur, archivage 10 ans.
 - **Hébergement en Tunisie**, copie de secours comprise (un second centre de données tunisien).
