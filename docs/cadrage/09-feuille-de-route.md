@@ -1,6 +1,6 @@
 # 09 — La feuille de route et le budget
 
-*Proposé le 28/09/2026. **À valider par Skander.** Suit `VISION-ARCHITECTURE.md` (§ 9 : budget
+*Proposé le 28/09/2026. **Validé par Skander le 28/09/2026**, après la seconde relecture. Suit `VISION-ARCHITECTURE.md` (§ 9 : budget
 accepté ; § 11, point 4 : le rythme dépend du quota Claude ; risques R11, R14) et les documents 00 à
 08. Les étapes sont données **en mois après le premier code**, pas en dates : la date du premier
 code dépend de la fin du cadrage (§ 1, J0). **Revu le même jour** pour suivre le `14` (l'alignement
