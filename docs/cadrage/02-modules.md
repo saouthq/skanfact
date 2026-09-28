@@ -5,7 +5,7 @@ relecture demandée par Skander. Suit `VISION-ARCHITECTURE.md` (§ 4.6 et § 4.7
 `01-modele-de-donnees.md` et `07-offres-et-prix.md`. **Complété le même jour, après validation**,
 pour suivre `14-fonctions-et-integrations.md` (l'alignement sur Hesabi, les métiers, les
 intégrations) : le tableau des modules, les événements, les fournisseurs et le § 11. Ces ajouts sont
-**à revalider**. Vagues relues le même jour (quatre au lieu de trois, `09` § 1).*
+**revalidés par délégation de Skander le 28/09/2026**. Vagues relues le même jour (quatre au lieu de trois, `09` § 1).*
 
 ## En bref (pour Skander)
 

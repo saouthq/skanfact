@@ -16,9 +16,10 @@ y cherche le **pourquoi** d'une règle, on ne le relit pas à chaque session.*
 
 ## Où on en est (28/09/2026)
 
-1. **Phase de cadrage.** Aucun développement neuf tant que le cadrage n'est pas validé par Skander,
-   document par document. Plan, état de chaque document et journal des décisions :
-   `docs/cadrage/README.md` (c'est là qu'on regarde où on en est).
+1. **Fin du cadrage (J0).** Tous les documents sont validés (le 28/09/2026 ; 10 à 15 par
+   délégation). Avant le premier code de la plateforme : le **prototype de synchronisation**
+   (`docs/cadrage/04-hors-ligne-et-synchro.md` § 9.3) et les premières démarches du père de
+   Skander. État et journal des décisions : `docs/cadrage/README.md`.
 2. **Nouvelle plateforme à construire** (25 mois au plan, 28 avec la marge, pas de lancement public
    avant qu'elle soit complète : `docs/cadrage/09-feuille-de-route.md`) : `VISION-ARCHITECTURE.md`
    fait foi. Tout ce qu'elle fait, au lancement et dans les vagues qui suivent :
@@ -58,8 +59,8 @@ Détail et raisons dans `VISION-ARCHITECTURE.md` ; ne pas les rediscuter sans qu
   (`docs/cadrage/09-feuille-de-route.md` § 4).
 - **Démarches** (père de Skander), **dès maintenant** : accès test El Fatoora, adhésion DigiGo, et
   inscription fournisseur sur la plateforme d'homologation des caisses (décidé le 28/09/2026) ;
-  INPDP avant la première donnée réelle d'un client ; le dépôt de la marque et le label Startup dès
-  que la société qui porte SkanFact est choisie ; homologations ANCE et caisse en fin de développement. Détail et questions
+  INPDP avant la première donnée réelle d'un client ; le dépôt de la marque et le label Startup
+  pour la société qui porte SkanFact (la société actuelle de Skander, choisie le 28/09/2026) ; homologations ANCE et caisse en fin de développement. Détail et questions
   par interlocuteur : `docs/cadrage/05-obligations-legales.md`.
 - **Tout ce que Hesabi a, au lancement, et plus** (demande de Skander, 28/09/2026) : espace client et
   paiement en ligne, lecture de documents sur nos serveurs, cabinet complet, API, téléphone ;

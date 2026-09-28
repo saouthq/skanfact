@@ -4,7 +4,7 @@
 meilleur possible »). Répond à la demande de Skander du même jour : « il faut s'aligner avec Hesabi,
 donc tout ce qu'ils ont, il nous le faut aussi » ; l'hôtellerie « à la fin, quand tout sera fini » ;
 « l'arabe pour plus tard, mais préparer l'infrastructure qui va l'accueillir » ; « l'intégration de
-plusieurs autres outils, comme fait Hesabi ». **À valider par Skander.** Les documents 00 à 09,
+plusieurs autres outils, comme fait Hesabi ». **Validé par délégation de Skander le 28/09/2026** (« relis-les à ma place et valide toi si c'est bon »), après deux relectures complètes du dépôt le même jour. Les documents 00 à 09,
 11 à 13, la vision et `CLAUDE.md` ont été mis à jour pour le suivre. **Relu le même jour contre tout
 le dépôt** : les vagues passent de trois à quatre (la vague 1 débordait, `09` § 1).*
 

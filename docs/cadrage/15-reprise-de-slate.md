@@ -1,6 +1,8 @@
 # 15 — Slate devient la partie restaurant de SkanFact
 
-*Décidé par Skander le 28/09/2026 : « oui je suis d'accord sur ce choix, et on lui refera un
+*Décidé par Skander le 28/09/2026 ; le détail est **validé par délégation de Skander le même jour**
+(« relis-les à ma place et valide toi si c'est bon »), après deux relectures complètes du dépôt. Sa
+phrase : « oui je suis d'accord sur ce choix, et on lui refera un
 rebranding, mais au moins on a une base et on ne part pas de 0 ». Slate est l'application pour
 restaurateurs que Skander a commencée il y a quelques mois (dépôt privé `saouthq/Slate`, dernière
 modification le 15/07/2026). Ce document dit ce qu'on en reprend, ce qu'on change, et quand. Suit

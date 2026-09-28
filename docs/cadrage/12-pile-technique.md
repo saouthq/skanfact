@@ -1,8 +1,8 @@
 # 12 — La pile technique
 
-*Proposé le 28/09/2026. **À valider par Skander.** Suit `VISION-ARCHITECTURE.md` (§ 4, § 8 : pas de
+*Proposé le 28/09/2026. **Validé par délégation de Skander le 28/09/2026** (« relis-les à ma place et valide toi si c'est bon »), après deux relectures complètes du dépôt le même jour. Suit `VISION-ARCHITECTURE.md` (§ 4, § 8 : pas de
 microservices ni de Kubernetes ; § 9 : TypeScript et une bibliothèque d'interface, validés le
-27/09) et les documents 01 à 11. **À décider avant la première ligne de code** (J0, `09`). Complété
+27/09) et les documents 01 à 11. **À décider avant la première ligne de code** (J0, `09`) : deux points restent suspendus au prototype (la synchronisation et l'arabe avec les outils d'interface, § 4). Complété
 le même jour pour suivre le `14` (lecture de documents, API publique, téléphone, langue factice,
 imprimantes de cuisine).*
 

@@ -2,7 +2,7 @@
 
 *Proposé le 28/09/2026, décidé par Claude **par délégation de Skander** (« c'est toi le chef du
 projet »). Répond à sa demande du 26/09 : « faire un plan afin de pouvoir quand même gagner de
-l'argent et ramener du monde ». Sources : `docs/etudes/ETUDE-MARCHE.md` (§ « Un marché de 225 000
+l'argent et ramener du monde ». **Validé par délégation de Skander le 28/09/2026** (« relis-les à ma place et valide toi si c'est bon »), après deux relectures complètes du dépôt le même jour. Sources : `docs/etudes/ETUDE-MARCHE.md` (§ « Un marché de 225 000
 employeurs », § « Canaux de mise sur le marché », § « Ce qu'il faut pour être le meilleur ») et
 `docs/etudes/notes-de-recherche/marche-2026/marche_taille_canaux.md`. Les prix sont ceux de `07`.
 Complété le même jour pour suivre le `14` (cibles 3, 4 et 5). **Revu à la relecture du même jour** :

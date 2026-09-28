@@ -42,7 +42,7 @@ de trois (la vague 1 débordait), budget et J0 remis à jour.*
 |---|---|
 | Documents 09 à 15 validés, et les ajouts du 28/09 aux documents 00 à 08 revalidés (`README`) | Claude, Skander |
 | **Prototype de synchronisation** mesuré (`04` § 9.3), qui tranche l'outil de lecture : 2 à 3 semaines, sur le serveur de test (pas de coût en plus) | Claude |
-| Démarches lancées : El Fatoora (test), DigiGo (intégration), plateforme des caisses (`05` § 5) ; le **dépôt de la marque** SkanFact à l'INNORPI, et le label Startup, dès que la société est choisie (`05` § 4.6 et § 4.8) | Père de Skander |
+| Démarches lancées : El Fatoora (test), DigiGo (intégration), plateforme des caisses (`05` § 5) ; le **dépôt de la marque** SkanFact à l'INNORPI et le label Startup, pour la société actuelle de Skander, choisie le 28/09/2026 (`05` § 4.6 et § 4.8) | Père de Skander |
 | Rendez-vous comptable et juriste avec la liste du `05` § 6 | Père de Skander, Skander |
 | Devis de deux hébergeurs (`06` § 2.3) | Père de Skander |
 | Entretiens terrain (questionnaire de l'étude de marché) | Skander, son père |

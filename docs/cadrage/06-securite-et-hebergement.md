@@ -5,7 +5,7 @@ R2, R8, R9, R11, § 11 points 11 et 12, § 12), `03-droits.md`, `04-hors-ligne-e
 `05-obligations-legales.md` (§ 4.3 et 4.4). Source principale :
 `docs/etudes/notes-de-recherche/marche-2026/hebergement_technique.md`. Complété le même jour, après
 validation, pour suivre le `14` : les portes de plus vers l'extérieur et la lecture de documents
-(§ 3), l'agent local au restaurant (§ 10). **À revalider.***
+(§ 3), l'agent local au restaurant (§ 10). **Revalidé par délégation de Skander le 28/09/2026.***
 
 ## En bref (pour Skander)
 
@@ -370,4 +370,4 @@ Vision R11 : une seule personne pour tout faire. La parade :
 | 28/09/2026 (proposé) | Une fiche écrite par type d'incident ; pli scellé étendu au serveur ; une seconde personne formée avant le lancement |
 | 28/09/2026 (relecture) | Les serveurs de base ne s'ouvrent que par l'accès d'urgence ; l'inscription du site va directement au serveur en Tunisie ; sauvegardes longues et droit à l'effacement à trancher avec le juriste |
 | 28/09/2026 (proposé) | Application de bureau signée ; audit externe avant l'ouverture, puis chaque année |
-| 28/09/2026 (par délégation, `14`, **à revalider**) | Trois portes de plus au lancement (espace client, API, avis de Konnect), deux en vague 1 (réservation, commande en ligne), toutes dans l'audit ; la lecture de documents tourne à part, sans accès à la base ; l'agent local envoie aux imprimantes de cuisine sans écouter le réseau |
+| 28/09/2026 (par délégation, `14`, revalidé par délégation) | Trois portes de plus au lancement (espace client, API, avis de Konnect), deux en vague 1 (réservation, commande en ligne), toutes dans l'audit ; la lecture de documents tourne à part, sans accès à la base ; l'agent local envoie aux imprimantes de cuisine sans écouter le réseau |

@@ -1,6 +1,6 @@
 # 10 — La console
 
-*Proposé le 28/09/2026. **À valider par Skander.** Détaille `VISION-ARCHITECTURE.md` § 12 et le
+*Proposé le 28/09/2026. **Validé par délégation de Skander le 28/09/2026** (« relis-les à ma place et valide toi si c'est bon »), après deux relectures complètes du dépôt le même jour. Détaille `VISION-ARCHITECTURE.md` § 12 et le
 parcours « Je suis Skander » (`00` § 3). Ses tables sont au `01` § 18 (schéma `plateforme`), ses rôles
 au `03` § 5, sa sécurité au `06`. Elle reprend ce qui marche dans la console actuelle
 (`plateforme/`, versions 10.4.0 à 10.9.0). Relu le même jour contre tout le dépôt : les compteurs

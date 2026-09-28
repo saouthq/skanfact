@@ -7,7 +7,7 @@ donc à SkanFact), ce qu'elle impose à SkanFact lui-même, et les démarches à
 impose un calendrier légal serré » et « À vérifier »), `docs/application-actuelle/e-facture-controle.md`,
 et deux recherches faites le 28/09/2026 (§ 9). **Complété le même jour, après validation**, pour
 suivre le `14` : la restauration et la caisse (§ 3.7), les flux des intégrations (§ 4.3), le Startup
-Act (§ 4.8), une démarche (§ 5) et des questions (§ 6). **À revalider.***
+Act (§ 4.8), une démarche (§ 5) et des questions (§ 6). **Revalidé par délégation de Skander le 28/09/2026.***
 
 ## En bref (pour Skander)
 
@@ -391,8 +391,13 @@ Trois points sont **À VÉRIFIER** avec l'Ordre (déjà listés dans `00`, `01`,
 **Ce que ça change pour nous** : SkanFact coche probablement les cases (une plateforme logicielle
 neuve, tunisienne, hébergée en Tunisie). Le label allégerait nettement le budget du `09` § 4.
 
-**À VÉRIFIER** (juriste, comptable) : quelle société portera SkanFact, et si elle est éligible
-(date de création, capital) ; ce qu'on perd ou garde si l'on grandit ; l'effet des amendements
+**La société qui porte SkanFact** est choisie (Skander, 28/09/2026) : **sa société actuelle**, une
+SUARL au régime réel. Les démarches qui l'attendaient (marque, label Startup, adhésion de l'éditeur à
+El Fatoora) peuvent partir.
+
+**À VÉRIFIER** (juriste, comptable) : que son **objet social** couvre l'édition et la vente d'un
+logiciel en ligne (il annonce aujourd'hui la gestion d'installations informatiques), sinon le
+modifier ; son éligibilité au label (date de création, capital) ; ce qu'on perd ou garde si l'on grandit ; l'effet des amendements
 2026.
 
 ---
@@ -533,3 +538,4 @@ charges se lisent sur les plateformes officielles, ce que la démarche du § 5 p
 | 28/09/2026 (proposé) | Une veille par loi de finances, publiée avant le 1er janvier, relue par un comptable |
 | 28/09/2026 (par délégation, `14` ; revu par Skander, `15`) | La caisse de comptoir sort au lancement, le mode restaurant en vague 1 ; la lecture de documents se fait en Tunisie ; chaque flux d'une intégration est compté ici avant d'être ouvert ; demande du label Startup dès que la société qui porte SkanFact est choisie |
 | 28/09/2026 (relecture) | Le dépôt de la marque avance : dès que la société est choisie, parce que le nom est déjà public |
+| 28/09/2026 (**Skander**) | SkanFact est porté par la société actuelle de Skander ; son objet social et son éligibilité au label Startup sont à vérifier |

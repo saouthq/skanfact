@@ -1,6 +1,6 @@
 # 11 — Le site
 
-*Proposé le 28/09/2026. **À valider par Skander.** Détaille `VISION-ARCHITECTURE.md` § 12 (« Le site »).
+*Proposé le 28/09/2026. **Validé par délégation de Skander le 28/09/2026** (« relis-les à ma place et valide toi si c'est bon »), après deux relectures complètes du dépôt le même jour. Détaille `VISION-ARCHITECTURE.md` § 12 (« Le site »).
 Le site vit dans le dépôt `saouthq/skanfact-site` ; ses règles de travail sont dans son `CLAUDE.md`,
 et sa description page par page dans son `README.md`. Même session pour l'application, la console et
 le site (décision du 27/09). Complété le même jour pour suivre le `14` : pages de métiers,

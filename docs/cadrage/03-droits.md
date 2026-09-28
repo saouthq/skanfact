@@ -6,7 +6,7 @@ code sur le téléphone, décidés le 28/09/2026), `01-modele-de-donnees.md` (§
 `mandat_affectation`, `appareil` ; § 17 : `audit`) et `02-modules.md` (M1 : chaque module déclare ses
 gestes). **Complété le même jour, après validation**, pour suivre `14-fonctions-et-integrations.md` :
 la règle D11, le rôle Serveur, le § 2.3, les gestes du cabinet (§ 3.1 et 3.2), le § 4.1, le § 4.2 et
-le § 8. Ces ajouts sont **à revalider**.*
+le § 8. Ces ajouts sont **revalidés par délégation de Skander le 28/09/2026**.*
 
 ## En bref (pour Skander)
 
@@ -615,4 +615,4 @@ Détail de la reprise : document 08.
 | 28/09/2026 (proposé) | Lectures de la paie tracées ; écritures de paie en totaux du mois ; gestes sensibles qui préviennent le propriétaire |
 | 28/09/2026 (relecture) | Dossier tenu : aucun membre côté client, l'associé en répond, le client en devient propriétaire en le rejoignant ; le cabinet y enregistre les ventes émises ailleurs, sans jamais les émettre |
 | 28/09/2026 (relecture) | Qui compte comme utilisateur dans l'offre ; codes de secours, et aucun administrateur ne réinitialise le code d'un autre ; seuls le numéro et le code partent chez le fournisseur de SMS |
-| 28/09/2026 (par délégation, `14`, **à revalider**) | D11 (l'accord d'un responsable au-delà d'un seuil) ; le rôle Serveur et les gestes de la salle (vague 1) ; espace client, paiement en ligne, lecture de documents, API et intégrations au tableau des gestes ; un caissier ou un serveur qui ne travaille que sur les caisses ne compte pas comme utilisateur ; le visiteur de l'espace client n'est pas un membre |
+| 28/09/2026 (par délégation, `14`, revalidé par délégation) | D11 (l'accord d'un responsable au-delà d'un seuil) ; le rôle Serveur et les gestes de la salle (vague 1) ; espace client, paiement en ligne, lecture de documents, API et intégrations au tableau des gestes ; un caissier ou un serveur qui ne travaille que sur les caisses ne compte pas comme utilisateur ; le visiteur de l'espace client n'est pas un membre |

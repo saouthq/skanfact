@@ -1,6 +1,6 @@
 # Le cadrage de la nouvelle plateforme
 
-*Ouvert le 27/09/2026. Rien ne se code tant que le cadrage n'est pas validé par Skander.*
+*Ouvert le 27/09/2026. Rien ne se code tant que le cadrage n'est pas validé par Skander. **Tous les documents sont validés depuis le 28/09/2026** (10 à 15 par délégation) ; J0 attend le prototype de synchronisation et les premières démarches (`09` § 1).*
 
 La référence est `VISION-ARCHITECTURE.md` (à la racine). Ce dossier reçoit un document par sujet,
 chacun validé à son tour. Un document validé porte en tête : `Validé par Skander le JJ/MM/AAAA`.
@@ -19,16 +19,16 @@ chacun validé à son tour. Un document validé porte en tête : `Validé par Sk
 | 7 | `07-offres-et-prix.md` | Grille par entreprise et par module, cabinets, essai, impayés, fondateurs | **Décidé le 28/09/2026 par délégation** (révisable après les entretiens) |
 | 8 | `08-reprise-de-l-existant.md` | Ce qu'on garde du moteur et des tests ; reprise des données des utilisateurs actuels et des concurrents | **Validé par Skander le 28/09/2026** |
 | 9 | `09-feuille-de-route.md` | Étapes, jalons, budget détaillé | **Validé par Skander le 28/09/2026** |
-| 10 | `10-console.md` | La console d'administration : clients, abonnements, nos factures TEIF, paiement, support avec accord tracé, santé du service, mesure, équipe (`VISION-ARCHITECTURE.md` § 12). Ses tables entrent dans le 01 | **Proposé le 28/09/2026, à valider** |
-| 11 | `11-site.md` | Le site : pages, inscription, centre d'aide, page d'état, pages légales, reprise des données (§ 12) | **Proposé le 28/09/2026, à valider** |
-| 12 | `12-pile-technique.md` | Les outils précis (serveur, bibliothèque d'interface, migrations de base, file de travaux, moteur de synchro, PDF, mails et WhatsApp, recherche, surveillance), où vit le code (ce dépôt ou un dépôt neuf), les environnements (test, production), l'intégration continue et la stratégie de tests. À décider **avant** la première ligne de code | **Proposé le 28/09/2026, à valider** |
-| 13 | `13-mise-sur-le-marche.md` | Cibles par ordre de priorité (à notre lancement, elles auront déjà un logiciel), canaux (cabinets, revendeurs de caisse, contenu, WhatsApp, parrainage), transformer un essai en client, lancement en trois temps, objectifs de la première année | **Proposé le 28/09/2026** (par délégation) |
-| 14 | `14-fonctions-et-integrations.md` | Tout ce que fait SkanFact : Hesabi fonction par fonction, les six manques ajoutés au lancement (espace client et paiement en ligne, lecture de documents, cabinet complet, API, téléphone, arabe préparé), les métiers (restauration, commerces, bâtiment, fabrication, rendez-vous, location ; hôtellerie à la fin), les intégrations et leur ordre, les langues, ce que ça coûte | **Proposé le 28/09/2026** (par délégation) |
-| 15 | `15-reprise-de-slate.md` | Slate, l'application pour restaurateurs de Skander, devient la partie restaurant de SkanFact : inventaire écran par écran, ce qui change (hébergement, argent, droits), outils d'interface, rebranding | **Décidé par Skander le 28/09/2026** (le détail par délégation) |
+| 10 | `10-console.md` | La console d'administration : clients, abonnements, nos factures TEIF, paiement, support avec accord tracé, santé du service, mesure, équipe (`VISION-ARCHITECTURE.md` § 12). Ses tables entrent dans le 01 | **Validé par délégation de Skander le 28/09/2026** |
+| 11 | `11-site.md` | Le site : pages, inscription, centre d'aide, page d'état, pages légales, reprise des données (§ 12) | **Validé par délégation de Skander le 28/09/2026** |
+| 12 | `12-pile-technique.md` | Les outils précis (serveur, bibliothèque d'interface, migrations de base, file de travaux, moteur de synchro, PDF, mails et WhatsApp, recherche, surveillance), où vit le code (ce dépôt ou un dépôt neuf), les environnements (test, production), l'intégration continue et la stratégie de tests. À décider **avant** la première ligne de code | **Validé par délégation de Skander le 28/09/2026** |
+| 13 | `13-mise-sur-le-marche.md` | Cibles par ordre de priorité (à notre lancement, elles auront déjà un logiciel), canaux (cabinets, revendeurs de caisse, contenu, WhatsApp, parrainage), transformer un essai en client, lancement en trois temps, objectifs de la première année | **Validé par délégation de Skander le 28/09/2026** |
+| 14 | `14-fonctions-et-integrations.md` | Tout ce que fait SkanFact : Hesabi fonction par fonction, les six manques ajoutés au lancement (espace client et paiement en ligne, lecture de documents, cabinet complet, API, téléphone, arabe préparé), les métiers (restauration, commerces, bâtiment, fabrication, rendez-vous, location ; hôtellerie à la fin), les intégrations et leur ordre, les langues, ce que ça coûte | **Validé par délégation de Skander le 28/09/2026** |
+| 15 | `15-reprise-de-slate.md` | Slate, l'application pour restaurateurs de Skander, devient la partie restaurant de SkanFact : inventaire écran par écran, ce qui change (hébergement, argent, droits), outils d'interface, rebranding | **Validé par délégation de Skander le 28/09/2026** |
 
 **Le 28/09/2026, après validation**, le `14` et le `15` ont complété les documents 00, 01 (§ 24), 02,
-03, 04, 05, 06 et 08 (une ligne), déjà validés : chacun le dit en tête, et **ces ajouts sont à
-revalider**. Ils ont aussi revu le 07 (prix), le 09 (calendrier), le 10, le 11, le 12 et le 13.
+03, 04, 05, 06 et 08 (une ligne), déjà validés : chacun le dit en tête, et ces ajouts sont **revalidés par délégation de
+Skander le 28/09/2026**. Ils ont aussi revu le 07 (prix), le 09 (calendrier), le 10, le 11, le 12 et le 13.
 
 **Relu en entier le 28/09/2026** (demande de Skander : « relire tout ce qu'on a mis dans le dépôt
 pour voir si tout concorde et que tout y est ») : les vagues passent de trois à quatre (`09` § 1), le
@@ -70,3 +70,4 @@ lettres de mission dans le parcours du comptable).
 | 28/09/2026 | Relecture complète du dépôt (demande de Skander) : **quatre vagues** au lieu de trois (la vague 1 garde la restauration, l'arabe, les rendez-vous et les messages) ; budget, démarches et flux remis d'accord dans la vision, `CLAUDE.md` et les documents ; les manques ajoutés | `09` § 1, `14`, ce dossier |
 | 28/09/2026 | **Skander** : la partie restaurant reste en français seulement. Seconde relecture complète : la mise sur le marché revue (au lancement fin 2028, les obligations de 2026 à 2028 seront passées : on vend un changement, avec la reprise des données des concurrents à l'étape 3) ; marque déposée dès que la société est choisie ; frais uniques corrigés (26 000 DT au plus) ; audit annuel compté ; manques comblés (geste des recettes, dépendances des intégrations, tests du site, point mort dans la console) | `09`, `13`, `05`, `14` § 5, `15` |
 | 28/09/2026 | **Skander valide la feuille de route (09)** : cinq étapes, lancement au mois 25 (28 avec la marge), quatre vagues, budget en estimations | `09-feuille-de-route.md` |
+| 28/09/2026 | **Skander** : SkanFact est porté par sa société actuelle (objet social et label Startup à vérifier) ; il délègue la validation des documents restants : **10 à 15 validés et les ajouts aux 00 à 08 revalidés par délégation**, après deux relectures complètes. **Le cadrage est complet** ; restent les démarches et le prototype de synchronisation (J0) | `05` § 4.8, ce dossier |

@@ -4,7 +4,7 @@
 Je suis une entreprise, comment j'y accède ? Je suis Skander, comment je gère tout ? » **Validé par
 Skander le 28/09/2026.** C'est la vue d'ensemble que les autres documents du cadrage détaillent.
 Complété le même jour, après validation, pour suivre le `14` : le rôle Serveur, le téléphone, et
-les lettres de mission et honoraires du cabinet (**à revalider**).*
+les lettres de mission et honoraires du cabinet (**revalidés par délégation de Skander le 28/09/2026**).*
 
 ## Les adresses
 

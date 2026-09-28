@@ -5,7 +5,7 @@ relecture demandée par Skander. Suit `VISION-ARCHITECTURE.md` (§ 4.5, § 6, §
 `01-modele-de-donnees.md` (R15, § 6 numérotation, § 10 caisse, § 17 `operation`), `02-modules.md`
 (§ 4 : le stock sorti par la caisse, aussi hors ligne) et `03-droits.md` (D8 : les droits hors
 ligne). **Complété le même jour, après validation**, pour suivre le `14` : la salle d'un restaurant
-et ce qui attend le réseau (§ 1). **À revalider.***
+et ce qui attend le réseau (§ 1). **Revalidé par délégation de Skander le 28/09/2026.***
 
 ## En bref (pour Skander)
 

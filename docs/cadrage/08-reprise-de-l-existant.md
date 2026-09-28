@@ -4,7 +4,7 @@
 risque R15, § 11 points 1 et 2), `00-les-trois-parcours.md` (décision 5 : le passage de la v10),
 `01-modele-de-donnees.md` (§ 20 : où va chaque donnée de la v10, R16 : l'origine),
 `07-offres-et-prix.md`. Complété le même jour, après validation, pour suivre le `14` : une ligne du
-§ 4 (Essentiel comprend le stock et une caisse). **À revalider.***
+§ 4 (Essentiel comprend le stock et une caisse). **Revalidé par délégation de Skander le 28/09/2026.***
 
 ## En bref (pour Skander)
 

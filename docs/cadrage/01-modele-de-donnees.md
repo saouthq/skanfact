@@ -2,7 +2,7 @@
 
 *Proposition du 28/09/2026, relue le même jour (§ 23). **Validé par Skander le 28/09/2026.** Ce document suit `VISION-ARCHITECTURE.md`,
 qui fait foi en cas de désaccord. Complété le même jour, après validation, pour suivre le `14`
-(§ 24, **à revalider**).*
+(§ 24, **revalidés par délégation de Skander le 28/09/2026**).*
 
 ## En bref (pour Skander)
 
@@ -554,7 +554,7 @@ quelque chose en silence.
 | 28/09/2026 (proposé) | Règles fiscales en table, avec dates d'effet ; une loi de finances = des lignes neuves |
 | 28/09/2026 (proposé) | SkanFact est une entreprise de sa propre plateforme : nos factures sont des pièces de vente |
 | 28/09/2026 (proposé) | Une facture émise ne s'annule jamais (avoir total) ; une caisse n'est tenue que par un appareil à la fois ; une déclaration se prépare sur des écritures validées |
-| 28/09/2026 (par délégation, `14` et `15`, **à revalider**) | Les tables du § 24 : espace client, paiement en ligne, lecture de documents, recettes, restaurant, accords, lettres de mission, API, et celles des vagues, écrites dès maintenant ; une commande de salle n'est pas une pièce légale ; une carte cadeau et une caution ne sont pas un chiffre d'affaires (À VÉRIFIER) |
+| 28/09/2026 (par délégation, `14` et `15`, revalidé par délégation) | Les tables du § 24 : espace client, paiement en ligne, lecture de documents, recettes, restaurant, accords, lettres de mission, API, et celles des vagues, écrites dès maintenant ; une commande de salle n'est pas une pièce légale ; une carte cadeau et une caution ne sont pas un chiffre d'affaires (À VÉRIFIER) |
 
 ---
 
@@ -594,7 +594,7 @@ actuelle range vraiment.
 ## 24. Ce que le document 14 ajoute (28/09/2026, après validation)
 
 *Ajouté le même jour, pour suivre `14-fonctions-et-integrations.md` : l'alignement sur Hesabi, les
-métiers, les intégrations et les langues. **À revalider.** Les tables des vagues (`09` § 1) sont
+métiers, les intégrations et les langues. **Revalidé par délégation de Skander le 28/09/2026.** Les tables des vagues (`09` § 1) sont
 écrites **dès maintenant**, pour que les faire plus tard ne demande jamais de reprendre le modèle ;
 elles restent vides jusqu'à leur vague. Toutes suivent les règles du § 2 (entreprise sur chaque
 ligne, sécurité par ligne, argent en entiers, pièce émise scellée).*
