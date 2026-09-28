@@ -964,6 +964,16 @@ l'ordre proposé.
   10.13.0-beta.1 tournaient au même moment. Et le relancement de tous les parcours de la 10.14.0
   (plus haut, avec les deux instruments de visites).
 
+## 4 ter. Connu et volontairement non corrigé (28/09/2026)
+
+- **Un millime de trop ou de moins, en virgule flottante.** Le banc de la plateforme
+  (`saouthq/skanfact-plateforme`, `tests/moteur/banc-v10.test.ts`) a trouvé 3 pièces sur 20 000
+  tirées au hasard où `computeTotals` se trompe d'un millime : un demi-millime exact manqué (15,7895
+  écrit 15,789) ou une valeur juste sous la moitié poussée au-dessus par la correction « 1 + 4 ε ».
+  Aucune pièce de l'exemple n'est touchée. **Pas de correction dans la v10** : elle recalcule chaque
+  pièce à la lecture, et changer l'arrondi réécrirait le total de factures déjà envoyées. La reprise
+  vers la plateforme garde les montants de la v10 pour une pièce émise (`docs/cadrage/08` § 2.3).
+
 ## 5. Les dettes d'outillage
 
 - **`skanfact.tn` est injoignable depuis une session Claude** (le proxy le bloque, `api.skanfact.tn`

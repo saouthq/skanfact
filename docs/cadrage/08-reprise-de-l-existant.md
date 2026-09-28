@@ -139,6 +139,15 @@ Un écart qui vient d'un **défaut de l'ancienne version** (le passage en entier
 se « corrige » pas en silence : il est expliqué dans le rapport, et le client choisit, aidé par son
 comptable s'il en a un.
 
+**Le premier défaut de ce genre est connu (banc du 28/09/2026).** La v10 calcule en virgule flottante :
+dans de rares pièces où des montants se compensent (une déduction d'acompte, une remise répartie), elle
+manque un demi-millime exact ou arrondit au-dessus une valeur juste en dessous, et se trompe **d'un
+millime** (3 pièces sur 20 000 tirées au hasard, aucune des 432 de l'exemple de cinq ans ; le détail
+est dans le banc de la plateforme). Pour une **pièce émise**, la reprise garde les montants de la v10
+(c'est ce que le client a reçu, `01` R7) ; le rapport la nomme, avec le millime et sa raison. La v10
+n'est **pas** corrigée : elle recalcule ses pièces à chaque lecture, et la corriger changerait le total
+de factures déjà envoyées.
+
 ### 2.4 Les cabinets (SkanFact Cabinet)
 
 | Ce qu'a le cabinet | Ce que ça devient |
@@ -280,3 +289,4 @@ Seuils, écrits d'avance (règle du projet : on mesure avant) ; `migrateData` es
 | 28/09/2026 (proposé) | Concurrents : fiches, pièces ouvertes, soldes d'ouverture et suite de numérotation d'abord ; historique facultatif en lecture seule ; lecture du FEC pour les cabinets |
 | 28/09/2026 (relecture) | Personne ne paie la v10 aujourd'hui : pas de crédit ni de prix fondateur à prévoir pour d'anciens clients ; le bouton « Passer à la plateforme » est la seule fonction nouvelle de la v10, en fin de développement |
 | 28/09/2026 (proposé) | Fin de la v10 annoncée 12 mois à l'avance ; elle continue de s'ouvrir et d'exporter après |
+| 28/09/2026 (délégation) | Le banc a trouvé le premier défaut de l'ancien moteur (un millime, virgule flottante, 3 pièces sur 20 000) : une pièce émise garde les montants de la v10, le rapport de reprise la nomme ; la v10 n'est pas corrigée (elle réécrirait des factures envoyées) |
