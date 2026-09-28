@@ -103,6 +103,10 @@ invariant la vérifie (règle « deux chemins, un chiffre »).
 l'empreinte de son contenu **et** celle de la pièce précédente de sa série. Modifier le passé casse la
 chaîne, et un contrôle quotidien le voit. La chaîne suit la numérotation : une par série de factures,
 une par caisse, et une par exercice pour les écritures (elles sont numérotées dans l'exercice, § 14).
+*Formule retenue au premier code (28/09/2026)* : contenu = SHA-256 de la forme canonique de la pièce
+(clés triées, sans espace, **entiers seulement**) ; empreinte = SHA-256(empreinte précédente ‖ contenu),
+en hexadécimal, la première précédente valant 64 « 0 ». Assez simple pour qu'un poste de caisse hors
+ligne la refasse à l'identique ; le contrôle refait les liens dans la base et le contenu depuis les pièces.
 
 **R10. La piste d'audit est différente du journal inaltérable.** Elle trace **chaque geste** : qui,
 quand, depuis quel poste, quel objet, ce qui a changé (avant → après). Elle concerne aussi les
