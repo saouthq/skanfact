@@ -166,6 +166,7 @@ module ne paraît pas) ; *en italique*, une condition.
 | **Export complet** de l'entreprise (jamais bloqué par l'abonnement, même en lecture seule : `07`) | ✓ | ✓ *prévient P* | — | — | — | — | — | — |
 | Exporter une liste (CSV) qu'on voit | ✓ | ✓ | ✓ | — | ✓ | ✓ | ✓ | ✓ |
 | Lire la piste d'audit de toute l'entreprise | ✓ | ✓ | — | — | — | — | — | — |
+| Créer, voir et révoquer les **clés de l'API** (§ 8) | ✓ | ✓ *prévient P* | — | — | — | — | — | — |
 | Lire sa propre activité | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Supprimer un **brouillon** (jamais une pièce émise, `01` R6) | ✓ | ✓ | *les siens* | — | *les siens* | *les siens* | *les siens* | — |
 | Répondre à une question du cabinet (toute personne qui voit la pièce visée, sauf Lecture) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | — |
@@ -616,3 +617,4 @@ Détail de la reprise : document 08.
 | 28/09/2026 (relecture) | Dossier tenu : aucun membre côté client, l'associé en répond, le client en devient propriétaire en le rejoignant ; le cabinet y enregistre les ventes émises ailleurs, sans jamais les émettre |
 | 28/09/2026 (relecture) | Qui compte comme utilisateur dans l'offre ; codes de secours, et aucun administrateur ne réinitialise le code d'un autre ; seuls le numéro et le code partent chez le fournisseur de SMS |
 | 28/09/2026 (par délégation, `14`, revalidé par délégation) | D11 (l'accord d'un responsable au-delà d'un seuil) ; le rôle Serveur et les gestes de la salle (vague 1) ; espace client, paiement en ligne, lecture de documents, API et intégrations au tableau des gestes ; un caissier ou un serveur qui ne travaille que sur les caisses ne compte pas comme utilisateur ; le visiteur de l'espace client n'est pas un membre |
+| 28/09/2026 (étape 1, application du § 8) | Le geste « clés de l'API » au tableau du socle (P et A, qui prévient P) ; une clé ne reçoit que des gestes permis à celui qui la crée, et jamais ceux qui gouvernent l'entreprise (équipe, propriété, cabinet, support, abonnement, offre, RIB, export complet, les clés elles-mêmes) ; elle expire dans l'année ; ses gestes portent le nom de celui qui l'a créée, et sa trace le nom de la clé |
