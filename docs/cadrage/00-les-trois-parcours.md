@@ -206,6 +206,7 @@ cabinets qui le demandent y paraîtront.
 - Un bouton « **Passer à la plateforme** » envoie, avec l'accord de l'utilisateur, son fichier de
   données vers le serveur, qui crée son entreprise **avec tout son historique** (le détail : document 08).
 - **Le temps de licence qui reste devient du temps d'abonnement.** Personne ne paie deux fois.
+  (Au 28/09/2026, personne ne paie encore l'application actuelle : `08` § 4.)
 - Même chose pour SkanFact Cabinet : dossiers, livres et paquets reçus sont repris.
 
 **6. Les écrans de la console** : ils suivent le parcours du § 3 ci-dessus, et seront dessinés dans

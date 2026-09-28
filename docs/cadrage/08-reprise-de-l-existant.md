@@ -1,6 +1,6 @@
 # 08 — La reprise de l'existant
 
-*Proposé le 28/09/2026. **À valider par Skander.** Suit `VISION-ARCHITECTURE.md` (§ 4.3, § 4.8,
+*Proposé le 28/09/2026, relu le même jour contre tout le dépôt. **Validé par Skander le 28/09/2026.** Suit `VISION-ARCHITECTURE.md` (§ 4.3, § 4.8,
 risque R15, § 11 points 1 et 2), `00-les-trois-parcours.md` (décision 5 : le passage de la v10),
 `01-modele-de-donnees.md` (§ 20 : où va chaque donnée de la v10, R16 : l'origine),
 `07-offres-et-prix.md`.*
@@ -73,7 +73,9 @@ se vérifie de l'autre.
 
 ### 2.1 Le parcours « Passer à la plateforme » (décision 5 du `00`)
 
-1. Dans l'application actuelle, un bouton **« Passer à la plateforme »**. Il explique ce qui va se
+1. Dans l'application actuelle, un bouton **« Passer à la plateforme »**. C'est la seule fonction
+   nouvelle que la v10 recevra pendant son entretien (décision 5 du `00`), et elle n'arrive qu'à la
+   fin du développement, quand la plateforme sait recevoir. Il explique ce qui va se
    passer, ce qui est envoyé (le fichier de données et les pièces jointes) et ce qui ne l'est pas.
 2. **Un essai à blanc d'abord** : le fichier est envoyé et **repris sur le serveur sans rien
    créer**. Le serveur renvoie le **rapport de reprise** (§ 2.3) : ce qui passe, les chiffres comparés,
@@ -86,7 +88,8 @@ se vérifie de l'autre.
    vit maintenant sur la plateforme, depuis le … », avec le lien. Le fichier local **n'est jamais
    effacé** : il reste lisible, et il reste la preuve de ce qui a été envoyé.
 5. **Le temps de licence qui reste devient du temps d'abonnement** (décision du 28/09) :
-   `abonnement.credit_v10` (`01` § 18). Le calcul est affiché avant la confirmation.
+   `abonnement.credit_v10` (`01` § 18). Le calcul est affiché avant la confirmation. Aujourd'hui
+   personne ne paie (§ 4) : le cas ne se présentera que si une licence est vendue avant le lancement.
 
 **Ce qui ne passe jamais** : le **jeu d'exemple**. Un fichier marqué exemple (`estDemo`) est refusé,
 avec le message qui explique. Une fausse entreprise ne doit pas devenir une vraie.
@@ -208,12 +211,12 @@ et `TARIFS-REFERENCE.md` pour la v10) :
 |---|---|---|
 | **Indépendant**, 390 DT/an | **Essentiel**, 390 DT/an | Il gagne la facture électronique signée et envoyée, la retenue avec TEJ, le comptable dans les mêmes données, le web et le hors-ligne. Le stock, la paie et les immobilisations, en **lecture seule** dans la v10, se prennent **en module** (`07`) |
 | **Entreprise**, 690 DT/an | **Complet**, 690 DT/an | Tout, comme aujourd'hui, avec la caisse et la comptabilité complète comprises |
-| Option Comptabilité (9.1.0) | Module Comptabilité complète, ou compris dans Complet | Rien à racheter : le crédit restant couvre |
+| Option Comptabilité (9.1.0) | Module Comptabilité complète, ou compris dans Complet | — |
 
-**Proposition (à valider par Skander, car c'est un prix)** : chaque client **payant** de la v10 qui
-passe à la plateforme compte parmi les **clients fondateurs** (`07` : prix garanti deux ans),
-dans la limite des places. C'est la manière la plus simple de remercier ceux qui ont cru au produit
-avant tout le monde.
+**Aujourd'hui, personne ne paie l'application actuelle** (Skander, 28/09/2026 : elle est encore en
+phase de développement, avec les trois comptables pilotes). Il n'y a donc ni crédit de licence à
+reprendre, ni « ancien client » à traiter à part. La règle du `00` (le temps payé devient du temps
+d'abonnement) reste écrite pour le cas où une licence serait vendue avant le lancement.
 
 **Le message aux clients** (écrit dans le document 11, pour le site et l'application) dit
 honnêtement : ce qui s'ajoute, ce qui devient un module, et ce que devient leur licence.
@@ -274,5 +277,5 @@ Seuils, écrits d'avance (règle du projet : on mesure avant) ; `migrateData` es
 | 28/09/2026 (proposé) | Factures v10 reprises comme émises, « hors TTN », la série continue ; la chaîne d'empreintes commence à la reprise |
 | 28/09/2026 (proposé) | Client et cabinet qui passent tous les deux : le livre du cabinet fait foi pour les périodes qu'il a validées, les pièces du client pour le reste |
 | 28/09/2026 (proposé) | Concurrents : fiches, pièces ouvertes, soldes d'ouverture et suite de numérotation d'abord ; historique facultatif en lecture seule ; lecture du FEC pour les cabinets |
-| 28/09/2026 (**à valider**, prix) | Les clients payants de la v10 qui passent comptent parmi les fondateurs |
+| 28/09/2026 (relecture) | Personne ne paie la v10 aujourd'hui : pas de crédit ni de prix fondateur à prévoir pour d'anciens clients ; le bouton « Passer à la plateforme » est la seule fonction nouvelle de la v10, en fin de développement |
 | 28/09/2026 (proposé) | Fin de la v10 annoncée 12 mois à l'avance ; elle continue de s'ouvrir et d'exporter après |
