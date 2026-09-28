@@ -202,5 +202,6 @@ de côté. Chaque test se prouve en réintroduisant son défaut.
 | 28/09/2026 (proposé) | Serveurs dédiés, Docker Compose, Ansible, pgBackRest, réplication PostgreSQL avec bascule par script, MinIO, SOPS, Prometheus et Grafana ; tout chez nous, en Tunisie |
 | 28/09/2026 (proposé) | Quatre environnements, jamais de donnée réelle hors production ; tous les tests de la v10 portés ; intégration continue sur GitHub Actions, jamais contournée |
 | 28/09/2026 (**Skander**) | Arabe abandonné : shadcn, Tailwind et Base UI confirmés sans réserve ; la langue factice n'est plus que 40 % plus longue (`14` § 5) |
+| 28/09/2026 (**Skander**) | **L'interface de la v10 est gardée** : sa feuille de style reprise telle quelle et chaque écran repris du sien (vision § 4.8) ; React, Tailwind et Base UI restent les outils, les couleurs de Tailwind branchées sur celles de la v10 ; les écrans de Slate prendront cette identité |
 | 28/09/2026 (prototype) | Copie locale : SQLite WebAssembly dans l'espace privé du navigateur (OPFS), tenu par un worker ; lecture par notre propre chemin ; PowerSync en plan B (`04` § 9.4) |
 | 28/09/2026 (par délégation, `14`) | Lecture de documents par un moteur libre sur nos serveurs ; API publique documentée depuis le code, avis signés ; langue factice et largeur de téléphone photographiées à chaque version ; imprimantes de cuisine dans l'agent local |

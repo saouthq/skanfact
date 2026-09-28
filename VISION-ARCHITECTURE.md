@@ -191,6 +191,12 @@ viendront plus tard — mais l'API existera déjà, testée chaque jour par nos 
   ne tiendront pas vingt modules.
 - **On garde le moteur** (`core.js` et `compta.js`, ~17 500 lignes) **et ses tests** : c'est la vraie
   valeur du projet. Il est porté, pas réécrit.
+- **On garde l'interface de la v10** (Skander, 28/09/2026 : « je veux garder la même UI et UX », « c'était
+  parfait »), à partir de la branche `beta` (la plus complète), pour l'entreprise comme pour le Cabinet : sa
+  feuille de style (`src/renderer/style.css`) reprise telle quelle, mode sombre compris ;
+  chaque écran repris de son écran v10 (même structure, mêmes noms de styles, mêmes textes, mêmes aides) ;
+  les visites guidées reprises. Ce qui change est le branchement aux données (le serveur, page par page,
+  à plusieurs) ; le menu se replie sur un téléphone. Les écrans de Slate prendront cette identité.
 - **Validé par Skander le 27/09/2026** (§ 9). Les outils précis (serveur, interface, migrations,
   file de travaux, synchronisation, PDF, mails) se choisissent dans `docs/cadrage/12-pile-technique.md`.
 
