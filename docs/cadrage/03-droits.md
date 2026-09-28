@@ -90,7 +90,7 @@ limite d'établissements s'applique à tous.
 
 **D8. Les droits suivent le poste hors ligne, mais le serveur a le dernier mot.** Le poste garde les
 droits de sa dernière synchronisation, pour une durée bornée (vision § 4.5 : « quelques jours au
-plus » ; le chiffre est fixé dans le document 04). Chaque geste est **revérifié à son arrivée** sur
+plus » ; le `04` § 7 fixe 7 jours pour une caisse et 72 heures pour un autre poste). Chaque geste est **revérifié à son arrivée** sur
 le serveur. Si le droit a été retiré entre-temps, le geste est refusé, et le poste le montre dans
 « À reprendre ». Il n'est jamais perdu en silence. Un membre retiré voit les données de cette
 entreprise **effacées de ses postes** à leur reconnexion.

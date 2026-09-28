@@ -148,6 +148,8 @@ C'est la base de la future caisse certifiée, de la confiance des comptables et 
 | Consultation de ce qui est déjà sur le poste | Mise à jour avec ce que les autres ont fait |
 | Préparation d'une facture | **Numéro, signature, envoi à la TTN** (la TTN exige internet) |
 
+La liste détaillée, qui fait foi, et les règles de conflit : `docs/cadrage/04-hors-ligne-et-synchro.md`.
+
 Règles de synchronisation, choisies pour la comptabilité :
 - **le serveur fait foi** ; le poste garde une **file d'envoi** de ses gestes ;
 - chaque geste porte un **identifiant unique** : envoyé deux fois, il n'est enregistré qu'une fois ;

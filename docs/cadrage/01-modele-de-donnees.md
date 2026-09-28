@@ -237,6 +237,7 @@ fiche dans chaque société qui l'utilise, et les pièces déjà émises ne boug
 |---|---|
 | `serie` | Entreprise, établissement (facultatif), **type de pièce**, préfixe (FAC, DEV, AVO, TIC…), remise à zéro (annuelle ou jamais), format, **caisse** pour une série de tickets |
 | `compteur` | Série, période (année), dernier numéro attribué |
+| `bloc_numeros` | Série non légale, appareil, premier et dernier numéro du bloc, numéros utilisés (`04` § 3.2) |
 
 Règles (reprises de l'application actuelle, 6.0.0 et 9.2.0) :
 - **Le contrôle passe avant l'attribution** : on vérifie tout (clôture, droits, données), puis on
@@ -248,7 +249,9 @@ Règles (reprises de l'application actuelle, 6.0.0 et 9.2.0) :
 - **Une série commencée ailleurs continue** : on peut dire « mon dernier numéro était FAC-2026-147 »
   (213b de l'application actuelle).
 - **Un numéro qu'on n'a pas encore pris se lit, il ne se réserve pas** (aperçu de la prochaine
-  facture).
+  facture). Cela vaut pour les pièces légales ; une série **non légale** (devis, commande, bon de
+  livraison) peut donner à un appareil un **bloc de numéros** pour travailler hors ligne
+  (`04` § 3.2, table `bloc_numeros`).
 
 ---
 
@@ -421,7 +424,7 @@ Cabinet suit déjà depuis la 9.2.0 (brouillard, puis validation).
 |---|---|
 | `audit` | Qui, quand, appareil, entreprise, objet, action, avant → après (R10). **Partitionnée par mois** |
 | `chaine` | Par série : dernière empreinte, contrôle du jour (R9) |
-| `operation` | Chaque geste venu d'un poste : **identifiant unique**, appareil, révision vue, statut (accepté, refusé et pourquoi), résultat. C'est ce qui fait qu'un geste envoyé deux fois ne compte qu'une fois |
+| `operation` | Chaque geste venu d'un poste : **identifiant unique**, appareil, **numéro d'ordre dans l'appareil**, révision vue, instant sur le poste et instant de réception, version du format, statut (accepté, refusé et pourquoi, mis de côté, **en quarantaine** pour un appareil révoqué : `04` § 7), résultat. C'est ce qui fait qu'un geste envoyé deux fois ne compte qu'une fois |
 | `champ_personnalise` | Entreprise, objet, nom, libellé, type, liste de valeurs, obligatoire (R13) |
 | `parametre` | Réglages de l'entreprise non fiscaux (thème des pièces, textes, préférences), clé → valeur |
 | `module_actif` | Entreprise, module, **ouvert** depuis, fermé depuis, source (abonnement, essai). C'est le « module ouvert » de `02` § 1 ; ce que le cabinet a toujours sur ses dossiers (`02` § 8) se déduit du mandat, il ne s'écrit pas ici. Le « module affiché » (le menu) est une préférence, dans `parametre` |
@@ -556,7 +559,8 @@ quelque chose en silence.
 *Ajouté après la validation, le même jour, à la relecture du document 02 : `module_actif` distingue
 le module ouvert du module affiché, et la table `drapeau` (§ 17). Puis, pour le document 03 : un
 membre peut avoir plusieurs rôles, le périmètre du mandat compte la saisie des achats, et le rôle
-`paie` s'ajoute aux affectations du cabinet (§ 4). Rien d'autre ne change.*
+`paie` s'ajoute aux affectations du cabinet (§ 4). Puis, pour le document 04 : les blocs de
+numéros des séries non légales (§ 6) et les champs de `operation` (§ 17). Rien d'autre ne change.*
 
 Relu en entier, ligne par ligne, contre `VISION-ARCHITECTURE.md` et contre ce que l'application
 actuelle range vraiment.
