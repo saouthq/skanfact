@@ -1,6 +1,6 @@
 # 01 — Le modèle de données de la nouvelle plateforme
 
-*Proposition du 28/09/2026, relue le même jour (§ 23). **À valider par Skander.** Ce document suit `VISION-ARCHITECTURE.md`,
+*Proposition du 28/09/2026, relue le même jour (§ 23). **Validé par Skander le 28/09/2026.** Ce document suit `VISION-ARCHITECTURE.md`,
 qui fait foi en cas de désaccord.*
 
 ## En bref (pour Skander)

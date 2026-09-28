@@ -29,7 +29,7 @@ Prix hors taxes. La TVA s'ajoute (**À VÉRIFIER** : taux applicable à un abonn
 | Offre | Par an | Par mois | Ce qu'elle contient |
 |---|---|---|---|
 | **Essai** | 0 | — | **30 jours**, sans carte, **tout ouvert**, avec l'exemple à découvrir |
-| **Essentiel** | **390 DT** | 39 DT | Devis, factures, avoirs, clients, catalogue ; achats, dépenses, fournisseurs ; banque et trésorerie ; relances ; **facture électronique signée et envoyée à la TTN** ; **retenue à la source et certificats TEJ** ; **TVA du mois prête à déclarer** ; le comptable dans les mêmes données ; web, installée, bureau, hors ligne ; **3 utilisateurs** ; 1 établissement |
+| **Essentiel** | **390 DT** | 39 DT | Devis, factures, avoirs, clients, catalogue ; achats, dépenses, fournisseurs ; banque et trésorerie ; relances ; tableau de bord, statistiques et marges ; **facture électronique signée et envoyée à la TTN** ; **retenue à la source et certificats TEJ** ; **TVA du mois prête à déclarer** ; le comptable dans les mêmes données ; web, installée, bureau, hors ligne ; **3 utilisateurs** ; 1 établissement |
 | **Complet** | **690 DT** | 69 DT | Tout Essentiel **+ tous les modules** : stock, caisse (1 caisse), paie (jusqu'à 20 salariés), comptabilité complète ; **utilisateurs illimités** ; 2 établissements |
 
 **Les modules, pour qui prend Essentiel** (par an, hors taxes) :

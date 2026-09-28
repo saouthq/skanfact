@@ -1,8 +1,8 @@
 # 00 — Les trois parcours : l'entreprise, le comptable, Skander
 
 *Proposé le 28/09/2026, à la question de Skander : « Je suis comptable, comment j'accède à l'app ?
-Je suis une entreprise, comment j'y accède ? Je suis Skander, comment je gère tout ? » **À valider
-par Skander.** C'est la vue d'ensemble que les autres documents du cadrage détaillent.*
+Je suis une entreprise, comment j'y accède ? Je suis Skander, comment je gère tout ? » **Validé par
+Skander le 28/09/2026.** C'est la vue d'ensemble que les autres documents du cadrage détaillent.*
 
 ## Les adresses
 
