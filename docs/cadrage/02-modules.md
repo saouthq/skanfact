@@ -48,7 +48,8 @@ Tout ce dont les modules ont besoin, et ce qui porte les promesses de la platefo
 - les **règles fiscales datées** et les référentiels (devises, cours, plan comptable) ;
 - le **moteur de calcul** (porté depuis `core.js` et `compta.js`) ;
 - le **moteur d'écritures** : chaque pièce produit ses écritures, même sans le module Comptabilité
-  (§ 8) ;
+  (§ 8) ; et la **validation du mois** (numéro, empreinte, mois fermé), le geste qui précède une
+  déclaration (`01` § 14, règle 4) ;
 - les **fichiers**, les **envois** (e-mail, WhatsApp), les **notifications**, la **file de travaux** ;
 - la **piste d'audit** et le **journal inaltérable** ;
 - la **recherche** (Ctrl K), l'**aide**, les **visites guidées**, les **champs personnalisés** ;
@@ -62,12 +63,12 @@ Tout ce dont les modules ont besoin, et ce qui porte les promesses de la platefo
 | **Ventes** | Devis, proforma, commandes, bons de livraison, factures, avoirs, notes d'honoraires ; règlements reçus ; chèques et traites ; relances ; contrats récurrents ; **facture électronique signée et envoyée à la TTN** ; retenue subie et attestations | Socle | Essentiel |
 | **Achats** | Factures d'achat, avoirs, acomptes, dépenses ; règlements versés ; retenue opérée et **certificats TEJ** ; lecture d'une facture TEIF reçue | Socle | Essentiel |
 | **Trésorerie** | Comptes (banque, caisse), mouvements, virements entre comptes, relevés importés, rapprochement, prévision | Socle | Essentiel |
-| **Déclarations** | TVA du mois (cases prêtes à copier), retenues à la source, timbre, calendrier fiscal | Ventes, Achats | Essentiel |
+| **Déclarations** | TVA du mois (cases prêtes à copier), retenues à la source, timbre, TFP et FOPROLOS, calendrier fiscal ; **les salaires du mois** saisis en total quand la paie est faite ailleurs (§ 3, M4) | Ventes, Achats | Essentiel |
 | **Pilotage** | Tableau de bord, statistiques, marges par client, par article et par affaire | Ventes | Essentiel |
 | **Stock** | Emplacements, mouvements, transferts, inventaires, lots, numéros de série et garanties, coût moyen | Ventes, Achats (il écoute leurs pièces, § 4) ; remplit un point du Pilotage | Complet, ou + 120 DT |
 | **Caisse** | Caisses, sessions, tickets hors ligne, ticket 80 mm, douchette, tiroir, Z de caisse | Ventes, Stock (§ 4), Trésorerie | Complet, ou + 180 DT par caisse |
 | **Paie** | Salariés, contrats, bulletins, absences, avances, CNSS trimestrielle (fichier), déclaration d'employeur | Trésorerie ; remplit un point du Pilotage | Complet, ou + 150 DT |
-| **Comptabilité complète** | Saisie, livre-journal, grand livre, balance, lettrage, OD, immobilisations, clôtures mensuelles et d'exercice, états financiers, liasse, révision | Achats (il écoute leurs pièces pour proposer les immobilisations) | Complet, ou + 150 DT ; **toujours ouvert au cabinet** (§ 8) |
+| **Comptabilité complète** | Saisie, livre-journal, grand livre, balance, lettrage, OD, immobilisations, clôture d'exercice, états financiers, liasse, révision | Achats (il écoute leurs pièces pour proposer les immobilisations) | Complet, ou + 150 DT ; **toujours ouvert au cabinet** (§ 8) |
 | **Cabinet** | Portefeuille, production, échéances de tous les clients, relances, affectation des collaborateurs, questions au client | Comptabilité complète | Espace du cabinet (§ 8 et `07`) |
 | **Groupe** (plus tard) | Consolidation, ventes entre sociétés, tableau de bord du groupe | Pilotage, Comptabilité complète | À décider le jour venu |
 | **Intégrations** (plus tard) | Boutiques en ligne, banques, autres logiciels, par l'API et les avis d'événement | API du socle | À décider le jour venu |
@@ -75,6 +76,9 @@ Tout ce dont les modules ont besoin, et ce qui porte les promesses de la platefo
 **Ce qui n'est pas un module** : la facture électronique, la retenue à la source et la TVA. Ce sont
 des obligations, donc elles vivent dans Ventes, Achats et Déclarations, qui sont dans toutes les
 offres payantes (règle de `07`).
+
+**« Dépend de » parle du code, pas de l'offre.** La Caisse s'appuie sur le code du Stock même chez
+un client qui n'a pas acheté le Stock : ses articles ne sont alors simplement pas suivis en stock.
 
 **Les dépendances vont dans un seul sens** : un module ne dépend que du socle et des modules placés
 **au-dessus** de lui dans le tableau, jamais d'un module placé en dessous. Un test le vérifie à chaque
@@ -109,6 +113,13 @@ se calcule. C'est la condition des invariants « deux chemins, un chiffre ».
 porte : pour chaque module payant, on le ferme sur l'exemple complet, et **aucune case d'aucune
 déclaration** ne doit bouger. Si elle bouge, ce module porte une obligation et il n'a pas le droit
 d'être payant.
+
+Le cas qui l'a fait écrire : **la paie**. La déclaration mensuelle porte la retenue sur les salaires,
+la TFP et le FOPROLOS, calculées sur les bulletins. Une entreprise en Essentiel qui a des salariés,
+sans le module Paie et sans cabinet qui la fait, aurait des cases vides. D'où, dans Déclarations, **les
+salaires du mois saisis en total** (brut imposable, retenue, base des taxes) quand aucun bulletin
+n'existe pour ce mois. C'est la règle de la 10.7.0 (les Achats sortis de l'offre payante parce qu'ils
+portaient la TVA déductible), appliquée d'avance.
 
 **M5. Fermer un module ne cache rien et n'efface rien.** Tout ce qui a été créé reste lisible,
 exportable, et continue de compter dans les écritures et les déclarations. Rouvrir le module
@@ -159,8 +170,8 @@ Deux moments possibles :
 | `piece_achat.enregistree` | Achats | Stock (entrée), Comptabilité complète (fiche d'immobilisation **proposée**, jamais créée d'office) | Stock : même opération ; proposition : après |
 | `ticket.encaisse`, `session_caisse.fermee` | Caisse | Intégrations (plus tard) | Après |
 | `bulletin.remis` | Paie | Intégrations (plus tard) | Après |
-| `ecriture.validee` | Socle (moteur d'écritures) | Journal inaltérable, Cabinet (production) | Même opération |
-| `mois.cloture` / `exercice.cloture` | Socle (demandé par la Comptabilité complète ou le cabinet) | Tous ; le socle refuse ensuite tout geste daté avant | Même opération |
+| `ecriture.validee` | Socle (moteur d'écritures) | Journal inaltérable, Déclarations (le mois peut se déclarer), Cabinet (production) | Même opération |
+| `mois.cloture` / `exercice.cloture` | Socle (le mois : demandé par l'entreprise ou le cabinet ; l'exercice : par la Comptabilité complète ou le cabinet) | Tous ; le socle refuse ensuite tout geste daté avant | Même opération |
 | `abonnement.change` | Socle | Tous (modules ouverts, écrans) | Même opération |
 
 Le ticket de caisse sort son stock **par un appel**, pas par un événement, et **aussi hors ligne** :
@@ -169,9 +180,9 @@ le poste tient une copie des règles de stock et rejoue l'appel au retour du ré
 Ce qui ne passe **pas** par un événement, parce que c'est l'affaire du module lui-même : l'envoi à la
 TTN et la retenue (dans Ventes et Achats), les relances (dans Ventes), les écritures (appel au
 moteur du socle, ci-dessus), et les notifications, comme une question du cabinet à son client
-(appel au socle). **Les déclarations se calculent sur les pièces**, comme aujourd'hui : elles
-n'attendent pas que les écritures soient validées, sinon il faudrait la Comptabilité complète pour
-déclarer (contraire à M4).
+(appel au socle). **Une déclaration se prépare sur les écritures validées du mois** (`01` § 14,
+règle 4). La validation du mois est donc un geste **du socle**, ouvert dans toutes les offres : si
+elle vivait dans la Comptabilité complète, il faudrait l'acheter pour déclarer (contraire à M4).
 
 ### 4.2 Les emplacements d'écran : « ici, un autre module peut se montrer »
 
@@ -224,7 +235,7 @@ Pour qu'un client adapte SkanFact **sans une ligne de code** (règle R13 de `01`
 |---|---|
 | **Ouvrir** un module (achat, essai, changement d'offre) | Immédiat, sans rechargement de données. Le module apparaît au menu, et sa visite guidée se propose une fois |
 | **Fermer** un module (fin d'abonnement, offre plus petite) | Lecture seule dans ce module (M5) : l'écran dit pourquoi, avec le bouton qui le rouvre. Rien n'est effacé ni caché |
-| **Masquer** un module du menu (préférence) | Seulement le menu (§ 1) ; la palette et les adresses y mènent toujours |
+| **Masquer** un module du menu (préférence) | Seulement le menu (§ 1) ; la palette et les adresses y mènent toujours. Si on enregistre quelque chose dans un module masqué (par la palette, ou depuis un autre écran), il **revient au menu et l'application le dit** : c'est un événement, pas un réglage qui se rallume tout seul (le piège de la 7.12.0, `modulesRevenus`) |
 | **Fin de l'abonnement entier** | Lecture seule partout, export complet toujours possible (`07`) |
 
 **Un module fermé continue de recevoir les événements dont dépend l'exactitude des chiffres.**
@@ -259,6 +270,9 @@ Règle (principe 3 de `07`) : **ce que le cabinet fait pour son client ne se fac
   fait la paie voit ses bulletins en **lecture** (ils le concernent), sans pouvoir en créer.
 - Un dossier tenu par le cabinet pour un client **non abonné** est facturé au cabinet (`07`), avec
   tous les modules.
+- Si l'abonnement du client **s'arrête**, le client passe en lecture seule (`07`), et le cabinet
+  aussi sur ce dossier. Pour continuer à le tenir, le cabinet le prend comme **dossier tenu**
+  (`07`) ; le jour où le client se réabonne, le dossier redevient gratuit pour le cabinet.
 - Le **moteur d'écritures est dans le socle** pour cette raison : sans lui, un client en Essentiel ne
   produirait pas les écritures dont son comptable a besoin.
 
@@ -289,6 +303,7 @@ Règle (principe 3 de `07`) : **ce que le cabinet fait pour son client ne se fac
 | Salariés et paie | Paie |
 | Trésorerie | Trésorerie |
 | Pilotage (statistiques, marges) | Pilotage |
+| Comptabilité, la partie ouverte à tous (TVA, écritures, calendrier fiscal, clôtures du mois, paquet du comptable) | Déclarations, et le socle (écritures, validation du mois) ; le paquet disparaît : le comptable est dans les mêmes données |
 | Comptabilité (onglets payants de la 9.1.0) | Comptabilité complète |
 | SkanFact Cabinet (l'application entière) | Module Cabinet + Comptabilité complète, dans la même plateforme |
 | Menu raccourci selon le métier (`MODULES_PAR_ACTIVITE`) | « Module affiché » (§ 1), repris tel quel |
@@ -302,6 +317,9 @@ Règle (principe 3 de `07`) : **ce que le cabinet fait pour son client ne se fac
 2. **Intégrations** : lesquelles d'abord (boutique en ligne, banques ?). Entretiens.
 3. **Une paie faite par le cabinet** pour un client en Essentiel : vérifier auprès des cabinets
    pilotes que c'est bien ainsi qu'ils veulent travailler.
+4. **Les salaires saisis en total** dans Déclarations : quelles cases ils doivent remplir exactement
+   (retenue sur salaires, TFP, FOPROLOS ; la CNSS est trimestrielle et vit dans la Paie). À VÉRIFIER
+   avec un comptable.
 
 ## 12. Décisions de ce document
 
@@ -312,5 +330,6 @@ Règle (principe 3 de `07`) : **ce que le cabinet fait pour son client ne se fac
 | 28/09/2026 (proposé) | Le calcul d'un montant n'est jamais un point de branchement ; fermer un module ne fausse aucune déclaration (test) |
 | 28/09/2026 (proposé) | « Module ouvert » (l'offre) et « module affiché » (le métier) sont deux notions séparées |
 | 28/09/2026 (proposé) | Un module fermé : lecture seule pour l'utilisateur, mais les chiffres continuent d'être tenus |
-| 28/09/2026 (proposé) | Le moteur d'écritures est dans le socle et chaque module l'appelle ; les déclarations se calculent sur les pièces ; le cabinet a toujours Comptabilité complète, Déclarations et Paie sur ses dossiers |
+| 28/09/2026 (proposé) | Le moteur d'écritures et la validation du mois sont dans le socle, ouverts à toutes les offres ; les salaires du mois se saisissent en total dans Déclarations quand la paie est faite ailleurs ; le cabinet a toujours Comptabilité complète, Déclarations et Paie sur ses dossiers |
 | 28/09/2026 (proposé) | Champs personnalisés en données, jamais dans un calcul ; nouveautés allumées par entreprise |
+| 28/09/2026 (proposé) | Un module masqué où l'on enregistre quelque chose revient au menu, et l'application le dit ; un client qui arrête son abonnement : le cabinet continue en dossier tenu |

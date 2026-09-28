@@ -424,7 +424,8 @@ Cabinet suit déjà depuis la 9.2.0 (brouillard, puis validation).
 | `operation` | Chaque geste venu d'un poste : **identifiant unique**, appareil, révision vue, statut (accepté, refusé et pourquoi), résultat. C'est ce qui fait qu'un geste envoyé deux fois ne compte qu'une fois |
 | `champ_personnalise` | Entreprise, objet, nom, libellé, type, liste de valeurs, obligatoire (R13) |
 | `parametre` | Réglages de l'entreprise non fiscaux (thème des pièces, textes, préférences), clé → valeur |
-| `module_actif` | Entreprise, module, actif depuis, source (abonnement, essai) |
+| `module_actif` | Entreprise, module, **ouvert** depuis, fermé depuis, source (abonnement, essai). C'est le « module ouvert » de `02` § 1 ; ce que le cabinet a toujours sur ses dossiers (`02` § 8) se déduit du mandat, il ne s'écrit pas ici. Le « module affiché » (le menu) est une préférence, dans `parametre` |
+| `drapeau` | Nouveauté, entreprise, allumée depuis (`02` § 7 : une nouveauté s'essaie d'abord chez des volontaires) |
 | `cle_api`, `webhook` | Clés d'accès à l'API pour une intégration (empreinte seulement, droits, expiration) et les adresses à prévenir quand un objet change. Vides au lancement ; la forme est posée parce que l'API vient d'abord (vision § 4.7) |
 
 ---
@@ -551,6 +552,9 @@ quelque chose en silence.
 ---
 
 ## 23. Ce que la relecture du 28/09/2026 a corrigé
+
+*Ajouté après la validation, le même jour, à la relecture du document 02 : `module_actif` distingue
+le module ouvert du module affiché, et la table `drapeau` (§ 17). Rien d'autre ne change.*
 
 Relu en entier, ligne par ligne, contre `VISION-ARCHITECTURE.md` et contre ce que l'application
 actuelle range vraiment.

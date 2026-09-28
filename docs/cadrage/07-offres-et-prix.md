@@ -29,7 +29,7 @@ Prix hors taxes. La TVA s'ajoute (**À VÉRIFIER** : taux applicable à un abonn
 | Offre | Par an | Par mois | Ce qu'elle contient |
 |---|---|---|---|
 | **Essai** | 0 | — | **30 jours**, sans carte, **tout ouvert**, avec l'exemple à découvrir |
-| **Essentiel** | **390 DT** | 39 DT | Devis, factures, avoirs, clients, catalogue ; achats, dépenses, fournisseurs ; banque et trésorerie ; relances ; tableau de bord, statistiques et marges ; **facture électronique signée et envoyée à la TTN** ; **retenue à la source et certificats TEJ** ; **TVA du mois prête à déclarer** ; le comptable dans les mêmes données ; web, installée, bureau, hors ligne ; **3 utilisateurs** ; 1 établissement |
+| **Essentiel** | **390 DT** | 39 DT | Devis, factures, avoirs, clients, catalogue ; achats, dépenses, fournisseurs ; banque et trésorerie ; relances ; tableau de bord, statistiques et marges ; **facture électronique signée et envoyée à la TTN** ; **retenue à la source et certificats TEJ** ; **déclaration du mois prête** (TVA, retenues, taxes sur les salaires) ; le comptable dans les mêmes données ; web, installée, bureau, hors ligne ; **3 utilisateurs** ; 1 établissement |
 | **Complet** | **690 DT** | 69 DT | Tout Essentiel **+ tous les modules** : stock, caisse (1 caisse), paie (jusqu'à 20 salariés), comptabilité complète ; **utilisateurs illimités** ; 2 établissements |
 
 **Les modules, pour qui prend Essentiel** (par an, hors taxes) :
@@ -39,7 +39,7 @@ Prix hors taxes. La TVA s'ajoute (**À VÉRIFIER** : taux applicable à un abonn
 | Stock | + 120 DT | Au prix d'un module de caisse local (Gastevo : 25-35 DT/mois par module) |
 | Caisse | + 180 DT par caisse | Une caisse de plus = un poste de vente de plus |
 | Paie | + 150 DT jusqu'à 10 salariés, puis + 12 DT par salarié et par an | La paie coûte en travail de mise à jour (lois de finances, CNSS) |
-| Comptabilité complète (grand livre, états, clôture, liasse) | + 150 DT | Pour l'entreprise **sans** cabinet ; avec un cabinet, c'est le cabinet qui tient la comptabilité |
+| Comptabilité complète (grand livre, états, clôture d'exercice, liasse) | + 150 DT | Pour l'entreprise **sans** cabinet ; avec un cabinet, c'est le cabinet qui tient la comptabilité |
 
 Les quatre modules pris un par un coûtent 990 DT : **Complet (690 DT) est toujours plus avantageux**
 dès qu'on en veut deux.

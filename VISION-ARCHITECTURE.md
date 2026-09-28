@@ -78,8 +78,8 @@ Odoo sert des millions d'utilisateurs. On copie ce qui marche, on évite ce qui 
                                   │  synchronisation (HTTPS)
 ┌─────────────────────────── SERVEUR SKANFACT (en Tunisie) ────────────────────────────┐
 │  API publique — nos propres écrans passent par elle (les intégrations seront gratuites) │
-│  Un seul programme serveur, rangé en modules : Ventes · Achats · Stock · Caisse ·      │
-│  Paie · Trésorerie · Comptabilité · Cabinet · Groupe · Pilotage                        │
+│  Un seul programme serveur, rangé en modules : Ventes · Achats · Trésorerie ·          │
+│  Déclarations · Pilotage · Stock · Caisse · Paie · Comptabilité · Cabinet · Groupe     │
 │  Moteur de calcul tunisien (le même code que dans l'application) — c'est lui qui fait foi│
 │  Comptes → organisations (groupe, cabinet) → entreprises → utilisateurs et droits      │
 │  Journal inaltérable (chaîne d'empreintes) · piste d'audit                             │
