@@ -57,10 +57,10 @@ plutôt que refaire).*
 | **Fiche client du restaurant**, fusion des doublons, étiquettes | ≈ 5 000 lignes | **Fusionnée** avec la fiche client de SkanFact (`01` § 5) : un seul client pour la réservation, le ticket et la facture | Vague 1 |
 | **Horaires, fermetures, exceptions, réglages du service**, dont le **Ramadan** | dans les réglages | Repris | Vague 1 |
 | **Acompte de réservation** (prépaiement Konnect) | petite | Repris sur le paiement en ligne du `14` § 2.2 (compte Konnect de l'entreprise, preuve relue chez Konnect) | Vague 1 |
-| **Vente à emporter et livraison en ligne** (commande par le client sur une page) | ≈ 3 000 lignes | Reprise avec les boutiques en ligne | Vague 1 |
+| **Vente à emporter et livraison en ligne** (commande par le client sur une page) | ≈ 3 000 lignes | Reprise comme la page de commande du restaurant ; les boutiques WooCommerce et Shopify suivent en vague 2 (`14` § 4) | Vague 1 |
 | **Messages WhatsApp reçus**, conversations | petite | Repris avec WhatsApp automatique (données chez Meta, hors de Tunisie : avis du juriste) | Vague 1 |
-| **Campagnes marketing**, segments, désinscription | ≈ 5 400 lignes | Reprises avec le suivi commercial | Vague 1 |
-| **Avis clients** (demande d'avis, synchronisation) | ≈ 2 300 lignes | Repris ; la synchronisation avec Google ou TripAdvisor se compte comme un flux vers l'étranger (`05` § 4.3) | Vague 1 |
+| **Campagnes marketing**, segments, désinscription | ≈ 5 400 lignes | Reprises ; le suivi des prospects suit en vague 2 (`14` § 3.6) | Vague 1 |
+| **Avis clients** (demande d'avis, synchronisation) | ≈ 2 300 lignes | Repris ; la synchronisation avec Google ou TripAdvisor est un flux vers l'étranger, compté avant d'être ouvert (`05` § 4.3, `14` § 4) | Vague 1 |
 | **Bons cadeaux** | petite | Repris avec les cartes cadeaux du `14` § 3.2 (qui avancent de la vague 2 à la vague 1) | Vague 1 |
 | **Menus numériques** | ≈ 1 000 lignes | Reliés au catalogue de SkanFact (un article, un prix, une TVA) | Vague 1 |
 | **Statistiques, revenus, tableau de bord** | ≈ 4 300 lignes | Idées et écrans repris dans le Pilotage ; les chiffres viennent des tickets et des pièces, **jamais d'un second calcul** | Lancement (les idées), vague 1 (ce qui est propre au restaurant) |
@@ -132,8 +132,8 @@ auraient vu Slate. **Aucun nom nouveau n'est public** avant le dépôt de la mar
 2. **Les secrets** du projet Supabase (clés, WhatsApp, Konnect) : les **révoquer** quand Slate
    s'arrête, pour qu'aucune clé ne reste valable.
 3. **L'arabe** avec shadcn, Tailwind et Base UI (§ 4), au prototype.
-4. **Les rappels par SMS** : le prix par message, pour les compter dans l'offre ou les facturer
-   (`07`).
+4. **Les rappels par SMS** : le prix par message, **refacturé** à l'entreprise qui les envoie, jamais
+   caché dans notre prix (`14` § 6) ; le fournisseur (`03` § 11).
 
 ## 8. Décisions de ce document
 

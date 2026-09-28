@@ -5,7 +5,8 @@ meilleur possible »). Répond à la demande de Skander du même jour : « il fa
 donc tout ce qu'ils ont, il nous le faut aussi » ; l'hôtellerie « à la fin, quand tout sera fini » ;
 « l'arabe pour plus tard, mais préparer l'infrastructure qui va l'accueillir » ; « l'intégration de
 plusieurs autres outils, comme fait Hesabi ». **À valider par Skander.** Les documents 00 à 09,
-11 à 13, la vision et `CLAUDE.md` ont été mis à jour pour le suivre.*
+11 à 13, la vision et `CLAUDE.md` ont été mis à jour pour le suivre. **Relu le même jour contre tout
+le dépôt** : les vagues passent de trois à quatre (la vague 1 débordait, `09` § 1).*
 
 *Ce que ce document dit des concurrents, ce sont **leurs affirmations** : leurs sites (hesabi.tn,
 swiver.io, caissa.tn, tn-pos.com…) sont bloqués depuis l'environnement de travail, on les lit par les
@@ -29,16 +30,16 @@ moteurs de recherche. Avant toute comparaison publique, on ouvre leur essai et o
   **fabrication**, les **rendez-vous**, la **location**, le temps passé : dans les vagues qui suivent
   le lancement. L'**hôtellerie à la toute fin**, comme tu l'as demandé.
 - **Les intégrations.** Au lancement : l'administration (TTN, DigiGo, TEJ, CNSS, caisse), Konnect,
-  WhatsApp, l'e-mail, les relevés de banque, l'API. Ensuite, dans l'ordre : les boutiques en ligne
-  (WooCommerce, Shopify), les sociétés de livraison (Intigo, First Delivery), un autre paiement
-  (Flouci), WhatsApp automatique.
+  WhatsApp, l'e-mail, les relevés de banque, l'API. Ensuite, dans l'ordre : WhatsApp automatique et
+  les SMS de rappel (avec la restauration), puis les boutiques en ligne (WooCommerce, Shopify), les
+  sociétés de livraison (Intigo, First Delivery) et un autre paiement (Flouci).
 - **L'arabe** : l'infrastructure dès la première ligne de code, avec un test qui la prouve à chaque
   version ; l'interface en arabe dans la première vague après le lancement.
 - **Ce que ça coûte** : le lancement passe de **22 à 25 mois** au plan (28 avec la marge), `09`. Et
   l'offre Essentiel (390 DT) comprend désormais **le stock et une caisse**, comme Hesabi Starter au
   même prix, mais avec la facture électronique et TEJ qu'ils vendent 790 DT (`07`).
 
-**Les cinq moments** utilisés dans ce document :
+**Les six moments** utilisés dans ce document :
 
 | Moment | Quand (`09`) |
 |---|---|
@@ -46,7 +47,8 @@ moteurs de recherche. Avant toute comparaison publique, on ouvre leur essai et o
 | **Vague 1** | Environ **6 mois** après J5 |
 | **Vague 2** | Environ **12 mois** après J5 |
 | **Vague 3** | Environ **18 mois** après J5 |
-| **À la fin** | Après la vague 3 : l'hôtellerie |
+| **Vague 4** | Environ **24 mois** après J5 |
+| **À la fin** | Après la vague 4 : l'hôtellerie |
 
 Chaque fonction d'une vague a **sa forme posée dès maintenant** dans le modèle de données (`01`
 § 24) : la faire plus tard ne demandera jamais de tout reprendre.
@@ -71,11 +73,11 @@ Chaque fonction d'une vague a **sa forme posée dès maintenant** dans le modèl
 | Portail du cabinet : tous les clients, bascule dans un dossier, calendrier fiscal, TEJ en masse, **honoraires** (Cabinet, 2 490 DT) | Tout, **gratuit** pour les dossiers abonnés ; plus les **lettres de mission**, la **facturation des honoraires** et les **dépôts groupés** (§ 2.4) | Lancement | `02`, Cabinet ; `07` |
 | **Portail client** : le client consulte ses factures (Starter) | L'**espace client**, avec le **paiement en ligne** (§ 2.1 et 2.2) | Lancement | § 2.1 |
 | Plusieurs utilisateurs, rôles ; 3 en Starter, illimités en Pro | Neuf rôles et des droits par personne ; 3 en Essentiel, illimités en Complet | Lancement | `03` § 2 |
-| Arabe (de droite à gauche), français, anglais | Infrastructure au lancement ; **interface en arabe** en vague 1, en anglais en vague 3 ; pièces en anglais dès le lancement (§ 5) | Lancement, vague 1, vague 3 | § 5 |
+| Arabe (de droite à gauche), français, anglais | Infrastructure au lancement ; **interface en arabe** en vague 1, en anglais en vague 4 ; pièces en anglais dès le lancement (§ 5) | Lancement, vague 1, vague 4 | § 5 |
 | Envoi par WhatsApp | Oui (déjà dans la v10, 10.15.0) | Lancement | § 4 |
 | Tableaux de bord, rapports exportables | Pilotage, et **toute liste s'exporte** en Excel | Lancement | `02`, Pilotage |
 | Clés d'API (Pro) | **API publique documentée**, clés et avis d'événement (§ 2.5) | Lancement | § 2.5 |
-| Sur téléphone, tablette et ordinateur | Les écrans du quotidien pensés pour le téléphone (§ 2.6) ; l'application des magasins en vague 3 | Lancement, vague 3 | § 2.6 |
+| Sur téléphone, tablette et ordinateur | Les écrans du quotidien pensés pour le téléphone (§ 2.6) ; l'application des magasins en vague 4 | Lancement, vague 4 | § 2.6 |
 | Essai de 14 jours | 30 jours | — | `07` |
 
 **Ce qu'on a et qu'ils n'annoncent pas** : le travail **pendant une coupure** ; le rapprochement
@@ -117,7 +119,7 @@ Le client d'une entreprise (son client à elle) ouvre un lien et voit, sans rien
   Une fois prouvé, le **règlement se crée tout seul**, sur un compte de trésorerie « Konnect »
   (portefeuille électronique, `01` § 11). Le virement de Konnect vers la banque est un virement entre
   comptes, et la commission une charge.
-- **Flouci** en vague 1, **ClicToPay** et **e-Dinar** en vague 3 : chacun remplit le même point de
+- **Flouci** en vague 2, **ClicToPay** et **e-Dinar** en vague 4 : chacun remplit le même point de
   branchement, le « prestataire de paiement » (`02` § 4.3). **Paymee** attend : une source dit que
   ses comptes marchands ont été gelés par la Banque centrale (**À VÉRIFIER**).
 
@@ -155,7 +157,7 @@ moteur de lecture libre (choisi au `12` § 3). Aucune image ne sort.
 - **Les dépôts groupés** : préparer en un geste la déclaration du mois ou le fichier TEJ de
   **plusieurs dossiers**, chacun contrôlé et tracé à part. Un dossier qui bloque se nomme ; il
   n'empêche pas les autres.
-- **Le temps passé par dossier** viendra avec le module Projets (vague 2), que le cabinet utilise
+- **Le temps passé par dossier** viendra avec le module Projets (vague 3), que le cabinet utilise
   dans sa propre société.
 
 ### 2.5 L'API publique, dès le lancement
@@ -176,7 +178,7 @@ lancement**, dans toutes les offres payantes.
 
 Le cadrage disait « le téléphone après le web et le bureau ». **Décision : les écrans du quotidien
 marchent sur téléphone dès le lancement**, dans le navigateur ou installés sur l'écran d'accueil. Ce
-qui attend, c'est seulement l'application **des magasins** (App Store, Google Play), en vague 3.
+qui attend, c'est seulement l'application **des magasins** (App Store, Google Play), en vague 4.
 - **Pensés pour le téléphone** : faire et envoyer un devis ou une facture, encaisser un règlement,
   photographier un justificatif (§ 2.3), consulter l'accueil, les soldes et « À faire », répondre au
   comptable, **la caisse sur tablette** ; en vague 1, **prendre une commande à table** (§ 3.1).
@@ -241,21 +243,21 @@ sécurisation sur chaque ticket.
 | Stock par dépôt, transferts (déjà au `02`) | Lancement |
 | **Cartes cadeaux** (déjà écrites dans Slate, `15`) | Vague 1 |
 | **Fidélité** (points), **promotions** datées | Vague 2 |
-| **Balance connectée** à la caisse ; étiquettes de balance lues à la douchette | Vague 2 |
-| Tournées de livraison, prise de commande par un représentant sur la route | Vague 3 |
+| **Balance connectée** à la caisse ; étiquettes de balance lues à la douchette | Vague 3 |
+| Tournées de livraison, prise de commande par un représentant sur la route | Vague 4 |
 
 ### 3.3 La fabrication et les ateliers
 
 - **Recettes et kits** au lancement : un article **composé** d'autres articles (un plat, un coffret,
   un meuble en kit) sort ses composants du stock quand il est vendu.
-- **Ordres de fabrication** en vague 2 (module Production) : consommer les composants, produire
+- **Ordres de fabrication** en vague 3 (module Production) : consommer les composants, produire
   l'article fini, et figer son **coût de revient** (composants, main d'œuvre, frais).
 
 ### 3.4 Le bâtiment et les chantiers
 
 - Au lancement : **devis par sections** (titres et sous-totaux), suivi par chantier (l'axe analytique
   « Affaires » existe déjà, `01` § 14), acomptes et soldes.
-- En vague 1 : les **situations de travaux** (on facture l'avancement, en pourcentage du marché, avec
+- En vague 2 : les **situations de travaux** (on facture l'avancement, en pourcentage du marché, avec
   le cumul), la **retenue de garantie** (retenue sur chaque situation, libérée à la réception) et
   l'**avance de démarrage** remboursée au fil des situations. **À VÉRIFIER** avec un comptable : les
   taux et le traitement en marché public et privé.
@@ -264,11 +266,11 @@ sécurisation sur chaque ticket.
 
 - **Prestataires** (cible n° 2) : tout est au lancement (note d'honoraires, retenue, facture
   électronique, récurrent). Le **temps passé** et la facturation au temps viennent avec le module
-  **Projets** (vague 2).
+  **Projets** (vague 3).
 - **Rendez-vous** (coiffure, esthétique, santé, garages, auto-écoles) : module **Réservations**,
-  en vague 1, avec les restaurants (repris de Slate, `15`) et les rendez-vous : un agenda par personne ou par poste, une page de prise de rendez-vous, le rappel au
-  client, l'encaissement au passage.
-- **Location** (matériel, voitures, salles) : le même module, en vague 2 : une chose réservée sur une
+  en vague 1, avec les restaurants (repris de Slate, `15`) : un agenda par personne ou par poste,
+  une page de prise de rendez-vous, le rappel au client, l'encaissement au passage.
+- **Location** (matériel, voitures, salles) : le même module, en vague 3 : une chose réservée sur une
   période, la **caution** (reçue puis rendue ou retenue ; ce n'est pas un chiffre d'affaires,
   **À VÉRIFIER** avec un comptable), l'état au départ et au retour, la facture à la durée.
 
@@ -279,10 +281,10 @@ sécurisation sur chaque ticket.
 | **Balance âgée** : ce que chaque client doit, par ancienneté (déjà dans la v10, 9.5.0) | Lancement |
 | **L'accord d'un responsable au-delà d'un seuil** (remise, encours, commande, retour), la règle de la caisse étendue à tout (`03` D11) | Lancement |
 | **Tableau de bord du groupe** : les chiffres de toutes les sociétés d'un groupe, dans la devise de base (le `13` le promet à la cible n° 6) | Lancement |
-| **Suivi commercial** : prospects, opportunités, prochaine action, rappels | Vague 1 |
-| **Notes de frais** : le salarié photographie son justificatif, un responsable l'accepte, le remboursement suit | Vague 2 |
+| **Suivi commercial** : prospects, opportunités, prochaine action, rappels (les campagnes et les avis de Slate, eux, viennent en vague 1 avec la restauration) | Vague 2 |
+| **Notes de frais** : le salarié photographie son justificatif, un responsable l'accepte, le remboursement suit | Vague 3 |
 | **Rapports à la carte** : choisir ses colonnes et ses filtres | Vague 3 |
-| **Groupe complet** : consolidation, ventes entre sociétés reliées toutes seules | Vague 3 |
+| **Groupe complet** : consolidation, ventes entre sociétés reliées toutes seules | Vague 4 |
 
 ### 3.7 L'hôtellerie (à la fin)
 
@@ -307,11 +309,11 @@ est une chose qu'on réserve sur une période, comme une salle ou une voiture. R
 |---|---|---|---|
 | **Administration** | TTN (El Fatoora), DigiGo et TunTrust, TEJ, e-jibaya (cases à copier), CNSS (fichier), plateforme des caisses | Ce que la loi demande (`05` § 3) | Lancement |
 | **Paiement des factures** | Konnect | Montant, référence de la facture | Lancement |
-| | Flouci | Idem | Vague 1 |
+| | Flouci | Idem | Vague 2 |
 | | Paymee, **si** ses comptes marchands sont rouverts (gelés par la Banque centrale selon une source) | Idem | **À VÉRIFIER** |
-| | ClicToPay (SMT), e-Dinar (La Poste) | Idem ; leur API est **À VÉRIFIER** | Vague 3 |
+| | ClicToPay (SMT), e-Dinar (La Poste) | Idem ; leur API est **À VÉRIFIER** | Vague 4 |
 | **Terminal de paiement bancaire** | Non connecté : le montant se tape sur le terminal, le ticket garde « carte » et la référence | Rien | Lancement |
-| | Connecté, quand une banque publie un protocole | À décider | Vague 3, **À VÉRIFIER** |
+| | Connecté, quand une banque publie un protocole | À décider | Vague 4, **À VÉRIFIER** |
 | **Titres-restaurant** | Pluxee | Rien (un moyen de paiement et une remise) | Lancement |
 | **Messages** | E-mail, par notre serveur en Tunisie | Le message et la pièce | Lancement |
 | | WhatsApp **par lien** : le message s'ouvre dans le WhatsApp de l'utilisateur, qui l'envoie lui-même | Rien ne passe par nous | Lancement |
@@ -319,14 +321,15 @@ est une chose qu'on réserve sur une période, comme une salle ou une voiture. R
 | | WhatsApp **automatique** (l'API de Meta, par un prestataire) | Numéro, message ; **hors de Tunisie** | Vague 1, après l'avis du juriste |
 | **Banque** | Relevés de chaque banque tunisienne importés en fichier | Rien | Lancement |
 | | Connexion directe : **aucune API bancaire publique trouvée en Tunisie** | — | Rien de promis ; revu chaque année |
-| **Boutiques en ligne** | WooCommerce (le plus répandu avec les paiements tunisiens), Shopify | Commandes, articles, stock | Vague 1 |
-| | PrestaShop | Idem | Vague 3 |
-| **Livraison** | Intigo (API et modules pour les boutiques, confirmés) ; First Delivery (**paiement à la livraison** reversé chaque jour ; son API est **À VÉRIFIER**) | Adresse, colis, montant à encaisser | Vague 1 |
-| | Navex, Aramex | Idem | Vague 2 |
+| **Boutiques en ligne** | WooCommerce (le plus répandu avec les paiements tunisiens), Shopify | Commandes, articles, stock | Vague 2 |
+| | PrestaShop | Idem | Vague 4 |
+| **Livraison** | Intigo (API et modules pour les boutiques, confirmés) ; First Delivery (**paiement à la livraison** reversé chaque jour ; son API est **À VÉRIFIER**) | Adresse, colis, montant à encaisser | Vague 2 |
+| | Navex, Aramex | Idem | Vague 3 |
+| **Avis en ligne** | Google, TripAdvisor (la demande d'avis de Slate, `15`) | Le nom du lieu, l'avis ; **hors de Tunisie** | Vague 1, après l'avis du juriste |
 | **Autres logiciels** | Export FEC, Excel, CSV ; reprise depuis Sage, Ciel, Hesabi (`08`) | Ce qu'on exporte soi-même | Lancement |
-| | Connecteurs sans code (Zapier, Make, n8n), par les avis d'événement | Ce que l'entreprise choisit | Vague 2 |
-| | Odoo, échange continu | À décider | Vague 3, si des clients le demandent |
-| **Assistants d'IA extérieurs** | Accès en lecture par le protocole MCP, **allumé par l'entreprise** | Ce qu'elle choisit ; **hors de Tunisie** en général | Vague 3, après l'avis du juriste |
+| | Connecteurs sans code (Zapier, Make, n8n), par les avis d'événement | Ce que l'entreprise choisit | Vague 3 |
+| | Odoo, échange continu | À décider | Vague 4, si des clients le demandent |
+| **Assistants d'IA extérieurs** | Accès en lecture par le protocole MCP, **allumé par l'entreprise** | Ce qu'elle choisit ; **hors de Tunisie** en général | Vague 4, après l'avis du juriste |
 | **Stockage et agenda** (Google Drive, Dropbox, Google Agenda) | **Non**, par défaut : ce serait des données à l'étranger | — | Seulement sur une demande précise, avec l'autorisation |
 
 **Une boutique en ligne branchée**, concrètement : une commande de la boutique devient une **commande
@@ -359,7 +362,7 @@ Décision de Skander (28/09/2026) : **l'arabe plus tard, l'infrastructure mainte
 **Ensuite** :
 - **Vague 1** : l'interface, l'aide et les visites **en arabe**, traduites puis **relues par un
   arabophone** ; les **pièces bilingues** arabe et français ; le site en arabe (`11`).
-- **Vague 3** : l'interface **en anglais** (les pièces en anglais existent dès le lancement, comme
+- **Vague 4** : l'interface **en anglais** (les pièces en anglais existent dès le lancement, comme
   dans la v10).
 
 **À VÉRIFIER** (entretiens) : les chiffres attendus en arabe (0-9 ou ٠-٩) ; les mentions obligatoires
@@ -400,7 +403,8 @@ par l'entreprise qui les utilise, jamais cachés dans notre prix.
 6. **Les titres-restaurant** : traitement de la commission de l'émetteur (comptable).
 7. **La caution** d'une location et les **cartes cadeaux** : ni l'une ni l'autre n'est un chiffre
    d'affaires à la réception ? TVA ? (comptable).
-8. **WhatsApp automatique, Shopify, assistants d'IA** : données hors de Tunisie (juriste, INPDP).
+8. **WhatsApp automatique, Shopify, avis en ligne, assistants d'IA** : données hors de Tunisie
+   (juriste, INPDP).
 9. **La qualité de la lecture de documents**, mesurée sur de vraies factures prêtées avec accord
    (`12` § 10).
 10. **Les terminaux de paiement** : un protocole ouvert chez une banque tunisienne ?
@@ -433,9 +437,10 @@ par l'entreprise qui les utilise, jamais cachés dans notre prix.
 | 28/09/2026 (par délégation) | Tout ce que Hesabi annonce est au lancement ; les six manques (espace client, lecture de documents, cabinet complet, API, téléphone, arabe préparé) y sont ajoutés |
 | 28/09/2026 (par délégation) | Paiement en ligne des factures par Konnect au lancement, sur le compte de l'entreprise ; jamais d'argent de client chez SkanFact ; le paiement se prouve auprès du prestataire |
 | 28/09/2026 (par délégation) | La lecture de photos et de PDF se fait sur nos serveurs en Tunisie, avec confirmation de la personne ; pas d'IA qui écrit au lancement |
-| 28/09/2026 (par délégation, **revu le même jour par Skander**) | La restauration en vague 1, avec Slate ; caisse de comptoir, commerces et grossistes au lancement ; bâtiment, rendez-vous et suivi commercial en vague 1 ; fabrication, location, projets en vague 2 ; groupe complet en vague 3 ; **hôtellerie à la fin (décision de Skander)** |
+| 28/09/2026 (par délégation, **revu le même jour par Skander**) | La restauration en vague 1, avec Slate ; caisse de comptoir, commerces et grossistes au lancement ; bâtiment, rendez-vous et suivi commercial en vague 1 ; fabrication, location, projets en vague 2 ; groupe complet en vague 3 ; **hôtellerie à la fin (décision de Skander)** (vagues revues à la dernière ligne) |
 | 28/09/2026 (par délégation) | Intégrations dans l'ordre du § 4, chacune allumée par l'entreprise, chaque flux compté avant d'être ouvert |
 | 28/09/2026 | **L'arabe plus tard, l'infrastructure maintenant (décision de Skander)** : catalogue de textes, mise en page début et fin, langue factice testée à chaque version ; interface arabe en vague 1 |
-| 28/09/2026 (par délégation) | Les écrans du quotidien marchent sur téléphone dès le lancement ; l'application des magasins en vague 3 |
+| 28/09/2026 (par délégation) | Les écrans du quotidien marchent sur téléphone dès le lancement ; l'application des magasins en vague 3 (vague 4 depuis la relecture) |
 | 28/09/2026 (par délégation) | Lancement à 25 mois au plan, 28 avec la marge (après le passage du restaurant en vague 1) ; Essentiel comprend le stock et une caisse |
 | 28/09/2026 (**Skander**, `15`) | Slate, l'application pour restaurateurs de Skander, entre dans SkanFact comme sa partie restaurant ; **en vague 1**, une fois la base stable (entreprise, cabinet, console) ; cartes cadeaux en vague 1 |
+| 28/09/2026 (par délégation, relecture) | **Quatre vagues** (`09` § 1) : vague 1, la restauration avec Slate, l'arabe, les rendez-vous, WhatsApp automatique et les SMS ; vague 2, le bâtiment, le suivi commercial, les boutiques, la livraison, Flouci, la fidélité, l'écran de cuisine ; vague 3, Production, Projets, la location, les notes de frais, la balance, Navex et Aramex, les connecteurs, les rapports ; vague 4, le groupe, l'anglais, les applications des magasins, PrestaShop, ClicToPay et e-Dinar, le terminal connecté, Odoo, l'IA, les tournées ; puis l'hôtellerie |

@@ -36,7 +36,7 @@ Les pages d'aujourd'hui sont décrites dans le `README.md` du site. Ce qu'elles 
 | `facturation.html`, `gestion.html`, `tunisie.html`, `excel.html` | **Mis à jour** : mêmes sujets, avec la plateforme | Elles attirent des visiteurs |
 | `cabinet.html`, `comptables.html`, `pour-votre-client.html` | **Réécrits** : code cabinet, gratuit pour les clients abonnés, dossiers tenus, parrainage (`00`, `07`) | Le cabinet est notre premier canal |
 | Guides (`guide-*.html`) | **Gardés et relus** : ils attirent des visiteurs et ils aident | Chaque règle fiscale reste « À VÉRIFIER avec ton comptable » |
-| `questions.html`, `limites.html` | **Réécrits** : les limites de la plateforme (vision § 8) : ce qui marche hors ligne (`04` § 1), le mobile plus tard | Une limite dite avant vaut mieux qu'une découverte |
+| `questions.html`, `limites.html` | **Réécrits** : les limites de la plateforme (vision § 8) : ce qui marche hors ligne (`04` § 1) ; le téléphone marche dès le lancement, seule l'application des magasins vient plus tard (`14` § 2.6) | Une limite dite avant vaut mieux qu'une découverte |
 | `nouveautes.html` | Les nouveautés de la **plateforme** ; celles de la v10 archivées | — |
 | `visite.html` | Une visite de la plateforme sur l'**entreprise d'exemple** | — |
 | `vos-donnees.html`, `confidentialite.html` | **Réécrits** pour la plateforme (§ 3) | Le serveur change tout |
@@ -54,7 +54,7 @@ Les pages d'aujourd'hui sont décrites dans le `README.md` du site. Ce qu'elles 
 | **Sécurité et hébergement** | Ce que fait le `06`, **en chiffres mesurés** : hébergement en Tunisie, sauvegardes, dernier exercice de restauration réussi et sa date |
 | **Reprendre mes données** | Depuis l'application actuelle, Excel ou un autre logiciel (`08`) |
 | **Contrat de traitement**, **réversibilité** | Les engagements écrits avec le juriste (`05` § 4.5) |
-| **Métiers** : une page par métier du lancement (commerce, grossiste, prestataire de services, cabinet ; restaurant et café en vague 1) | Ce que SkanFact fait pour ce métier, avec des écrans vrais (`14` § 3). Un métier des vagues n'a sa page **qu'une fois livré** |
+| **Métiers** : une page par métier du lancement (commerce, grossiste, prestataire de services, cabinet) ; la page restaurant et café le jour où la vague 1 est livrée | Ce que SkanFact fait pour ce métier, avec des écrans vrais (`14` § 3). Un métier des vagues n'a sa page **qu'une fois livré** |
 | **Intégrations** | La liste de ce qui se branche, **allumé ou pas encore** (jamais une intégration annoncée avant d'exister), et ce qui part chez chaque partenaire (`14` § 4) |
 | **Développeurs** | La documentation de l'API, générée depuis le code, et l'entreprise d'essai (`14` § 2.5) |
 

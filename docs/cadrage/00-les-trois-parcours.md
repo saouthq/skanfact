@@ -3,8 +3,8 @@
 *Proposé le 28/09/2026, à la question de Skander : « Je suis comptable, comment j'accède à l'app ?
 Je suis une entreprise, comment j'y accède ? Je suis Skander, comment je gère tout ? » **Validé par
 Skander le 28/09/2026.** C'est la vue d'ensemble que les autres documents du cadrage détaillent.
-Complété le même jour, après validation, pour suivre le `14` : le rôle Serveur et le téléphone
-(**à revalider**).*
+Complété le même jour, après validation, pour suivre le `14` : le rôle Serveur, le téléphone, et
+les lettres de mission et honoraires du cabinet (**à revalider**).*
 
 ## Les adresses
 
@@ -93,6 +93,12 @@ se reconnecter.
   avec les montants à copier sur le portail, paie, immobilisations, révision, clôture, liasse.
 - Mes questions au client se posent sur la pièce. Il les voit, il répond, je suis prévenu.
 - J'affecte chaque dossier à un collaborateur ; chacun voit les siens, le superviseur voit tout.
+- Je prépare en un geste la déclaration du mois ou le fichier TEJ de **plusieurs dossiers** ; un
+  dossier qui bloque est nommé, il n'arrête pas les autres (ajouté le 28/09/2026, `14` § 2.4).
+
+**Mes honoraires** (ajouté le 28/09/2026, `14` § 2.4) : chaque dossier a sa **lettre de mission**
+(missions, honoraires, dates), que mon client peut signer par DigiGo. Elle facture mes honoraires
+toute seule, depuis la société de mon cabinet, en factures électroniques.
 
 **Ce que je paie** : rien pour les dossiers de mes clients abonnés ni pour trois dossiers que je
 tiens moi-même ; au-delà, 60 DT par dossier et par an, jamais plus de 1 990 DT par an

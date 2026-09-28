@@ -43,7 +43,7 @@ Prix hors taxes. La TVA s'ajoute (**À VÉRIFIER** : taux applicable à un abonn
 | Caisse supplémentaire | + 120 DT par caisse | Une caisse de plus = un poste de vente de plus (la première est dans Essentiel) |
 | Paie | + 150 DT jusqu'à 10 salariés, puis + 12 DT par salarié et par an | La paie coûte en travail de mise à jour (lois de finances, CNSS) |
 | Comptabilité complète (grand livre, états, clôture d'exercice, liasse) | + 150 DT | Pour l'entreprise **sans** cabinet ; avec un cabinet, c'est le cabinet qui tient la comptabilité |
-| Réservations, Production, Projets (à leur sortie, vagues 1 et 2) | + 120 DT chacun | Un métier de plus, au prix d'un module |
+| Réservations, Production, Projets (à leur sortie : vague 1, puis vague 3) | + 120 DT chacun | Un métier de plus, au prix d'un module |
 
 Paie et comptabilité complète prises ensemble coûtent 300 DT, soit **le prix de Complet** (390 + 300
 = 690 DT) : Complet est donc **toujours au moins aussi avantageux** dès qu'on en veut deux, avec en

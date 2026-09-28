@@ -5,7 +5,8 @@ accepté ; § 11, point 4 : le rythme dépend du quota Claude ; risques R11, R14
 08. Les étapes sont données **en mois après le premier code**, pas en dates : la date du premier
 code dépend de la fin du cadrage (§ 1, J0). **Revu le même jour** pour suivre le `14` (l'alignement
 sur Hesabi, les métiers, les intégrations) : les étapes 1 à 5 s'allongent, et les vagues qui suivent
-le lancement sont écrites (§ 1).*
+le lancement sont écrites (§ 1). **Relu le même jour contre tout le dépôt** : quatre vagues au lieu
+de trois (la vague 1 débordait), budget et J0 remis à jour.*
 
 ## En bref (pour Skander)
 
@@ -17,14 +18,17 @@ le lancement sont écrites (§ 1).*
   (`05` § 5).
 - **Les comptables pilotes** passent sur la plateforme à l'étape 3 (mois 16), en parallèle de
   l'application actuelle, avec leur accord.
-- **Après le lancement, trois vagues** de six mois chacune (la restauration avec Slate, l'arabe, les
-  rendez-vous, le bâtiment, les boutiques en ligne, la fabrication…), puis l'hôtellerie à la fin
-  (§ 1, `14`).
-- **Budget** : de l'ordre de **1 000 DT par mois** en fonctionnement au lancement, et **11 à 24 kDT** de
-  frais uniques connus sur toute la durée, dans l'ordre de grandeur du 27/09 (10 à 20 kDT). S'y
-  ajouteront des frais **encore inconnus** (homologation de la caisse, DigiGo, ANCE), qui le feront
-  probablement dépasser. **Chaque ligne est une estimation**, à remplacer par un devis.
-- **Point mort** : environ **31 abonnements Essentiel** (ou 18 Complet) couvrent 1 000 DT par mois.
+- **Après le lancement, quatre vagues** d'environ six mois chacune : d'abord la restauration avec
+  Slate et l'arabe ; puis le bâtiment, le suivi commercial, les boutiques en ligne et la livraison ;
+  puis la fabrication, les projets et la location ; puis le groupe, l'anglais et les applications
+  des magasins. L'hôtellerie vient à la fin (§ 1, `14`).
+- **Budget** : de **800 à 1 650 DT par mois** en fonctionnement au lancement (l'ordre de grandeur du
+  27/09 était ~1 000 DT ; la lecture de documents en Tunisie ajoute un serveur), et **12,5 à 27 kDT**
+  de frais uniques connus jusqu'au lancement, matériel de caisse compris (le 27/09 : 10 à 20 kDT).
+  S'y ajouteront des frais **encore inconnus** (homologation de la caisse, DigiGo, ANCE), qui le
+  feront probablement dépasser. **Chaque ligne est une estimation**, à remplacer par un devis (§ 4).
+- **Point mort** : environ **31 abonnements Essentiel** (ou 18 Complet) couvrent 1 000 DT par mois ;
+  51 Essentiel (ou 29 Complet) pour le haut de la fourchette.
 - **Le label Startup** (`05` § 4.8), s'il est obtenu, allège nettement ce budget.
 
 ---
@@ -35,9 +39,9 @@ le lancement sont écrites (§ 1).*
 
 | À faire | Qui |
 |---|---|
-| Documents 10, 11 et 12 validés | Claude, Skander |
+| Documents 09 à 15 validés, et les ajouts du 28/09 aux documents 00 à 08 revalidés (`README`) | Claude, Skander |
 | **Prototype de synchronisation** mesuré (`04` § 9.3), qui tranche l'outil de lecture | Claude |
-| Démarches lancées : El Fatoora (test), DigiGo (intégration), plateforme des caisses (`05` § 5) | Père de Skander |
+| Démarches lancées : El Fatoora (test), DigiGo (intégration), plateforme des caisses (`05` § 5) ; le label Startup dès que la société est choisie (`05` § 4.8) | Père de Skander |
 | Rendez-vous comptable et juriste avec la liste du `05` § 6 | Père de Skander, Skander |
 | Devis de deux hébergeurs (`06` § 2.3) | Père de Skander |
 | Entretiens terrain (questionnaire de l'étude de marché) | Skander, son père |
@@ -132,17 +136,23 @@ plus incertain de toute la feuille de route.
 - la caisse homologuée. Si elle ne l'est pas encore, **on lance sans le mot « certifiée »** (`05`
   § 3.7), et la caisse est vendue seulement là où l'obligation ne s'applique pas encore.
 
-### Après le lancement : trois vagues, puis l'hôtellerie
+### Après le lancement : quatre vagues, puis l'hôtellerie
 
 Le détail et les raisons sont au `14` ; chaque vague a sa forme déjà posée dans le modèle (`01`
 § 24). Rien de tout cela n'est **promis** avant d'être fait : le site ne l'annonce qu'une fois livré
 (`11`).
 
+**Pourquoi quatre** (relecture du 28/09/2026, par délégation) : avec toute la restauration, l'arabe,
+le bâtiment, les boutiques, la livraison et le suivi commercial, la vague 1 faisait le travail de
+deux vagues en six mois. Elle garde **la restauration et l'arabe**, ce qui va avec (rendez-vous,
+rappels, WhatsApp automatique) ; le reste glisse d'une vague, dans le même ordre.
+
 | Vague (après J5) | Ce qu'elle apporte |
 |---|---|
-| **Vague 1** (environ 6 mois) | **La restauration, avec Slate** (`15`) : plan de salle, service du jour, réservations et widget, mode restaurant de la caisse (tables, cuisine, suppléments, addition partagée), imprimantes de cuisine ; l'interface **en arabe**, relue par un arabophone, les pièces bilingues, le site en arabe ; le module **Réservations** étendu aux rendez-vous ; ce que Slate a déjà écrit (vente en ligne, campagnes, avis, bons cadeaux, menus : `15`) ; le **bâtiment** (situations de travaux, retenue de garantie) ; le **suivi commercial** ; **WooCommerce** et **Shopify** ; **Intigo** et **First Delivery** ; **Flouci** ; WhatsApp automatique ; SMS de relance et de rappel |
-| **Vague 2** (environ 12 mois) | Les modules **Production** et **Projets** ; la **location** ; les notes de frais ; la fidélité, les cartes cadeaux et les promotions ; l'écran de cuisine et la réservation de table ; la balance connectée ; Navex et Aramex ; les connecteurs sans code |
-| **Vague 3** (environ 18 mois) | Le module **Groupe** (consolidation) ; l'**application des magasins** (App Store, Google Play) ; l'interface **en anglais** ; PrestaShop ; ClicToPay, e-Dinar ; le terminal de paiement connecté ; les rapports à la carte ; Odoo ; les assistants d'IA extérieurs ; les tournées de livraison |
+| **Vague 1** (environ 6 mois) | **La restauration, avec Slate** (`15`) : plan de salle, service du jour, réservations et widget, rappels, liste d'attente, mode restaurant de la caisse (tables, cuisine, suppléments, addition partagée), imprimantes de cuisine ; ce que Slate a déjà écrit (page de commande en ligne, campagnes, avis, bons et cartes cadeaux, menus : `15`) ; le module **Réservations** étendu aux **rendez-vous** ; l'interface **en arabe**, relue par un arabophone, les pièces bilingues, le site en arabe ; **WhatsApp automatique** ; SMS de relance et de rappel |
+| **Vague 2** (environ 12 mois) | Le **bâtiment** (situations de travaux, retenue de garantie, avance de démarrage) ; le **suivi commercial** (prospects, opportunités) ; **WooCommerce** et **Shopify** ; **Intigo** et **First Delivery** ; **Flouci** ; la fidélité et les promotions ; l'écran de cuisine |
+| **Vague 3** (environ 18 mois) | Les modules **Production** et **Projets** ; la **location** ; les notes de frais ; la balance connectée ; Navex et Aramex ; les connecteurs sans code ; les rapports à la carte |
+| **Vague 4** (environ 24 mois) | Le module **Groupe** (consolidation) ; l'**application des magasins** (App Store, Google Play) ; l'interface **en anglais** ; PrestaShop ; ClicToPay, e-Dinar ; le terminal de paiement connecté ; Odoo ; les assistants d'IA extérieurs ; les tournées de livraison |
 | **À la fin** | L'**hôtellerie** (décision de Skander, 28/09/2026) |
 
 ---
@@ -150,7 +160,7 @@ Le détail et les raisons sont au `14` ; chaque vague a sa forme déjà posée d
 ## 2. Le temps réservé à l'application actuelle
 
 La v10 vit pendant toute la construction (vision § 11, point 1) :
-- **les lois de finances 2027 et 2028**, publiées en décembre : elles passent **avant** le travail
+- **les lois de finances 2027, 2028 et 2029**, publiées en décembre : elles passent **avant** le travail
   sur la plateforme, chaque décembre (`05` § 7) ;
 - les **corrections** que les pilotes trouvent ;
 - **environ un jour sur dix** du travail y est réservé. Quand il n'y en a pas besoin, il revient à la
@@ -199,7 +209,7 @@ remplace par le vrai chiffre dès qu'il est connu, dans ce document, avec sa dat
 | Site de secours (autre opérateur, autre ville) | 200 à 400 DT | **Devis nécessaire** |
 | Stockage des sauvegardes et des archives de 10 ans | 50 à 150 DT | Grandit avec les clients |
 | Lecture de documents (un serveur de calcul de plus, `14` § 2.3) | 100 à 250 DT | Mesurée au prototype ; en Tunisie, comme le reste |
-| SMS (codes de connexion) | 30 à 100 DT | Faible grâce aux appareils reconnus (`03` § 6) ; prix par message **À VÉRIFIER** |
+| SMS (codes de connexion) | 30 à 100 DT | Faible grâce aux appareils reconnus (`03` § 6) ; prix par message **À VÉRIFIER**. Les SMS de relance et de rappel (vague 1) sont refacturés à l'entreprise qui les envoie (`14` § 6) |
 | E-mails, surveillance, nom de domaine | 20 à 50 DT | |
 | **Total** | **≈ 800 à 1 650 DT** | Un peu au-dessus de l'ordre de grandeur du 27/09 (~1 000 DT), à cause de la lecture de documents |
 
@@ -253,8 +263,9 @@ la source que des clients pourraient faire sur nos factures (`05` § 4.2, **À V
 | Date | Décision |
 |---|---|
 | 28/09/2026 (proposé) | Cinq étapes après J0, chacune fermée par un jalon mesuré et vu à l'écran ; lancement (J5) 22 mois après le premier code au plan, 24 au plus avec la marge |
+| 28/09/2026 (par délégation, `14`) | **Revu** : lancement à 27 mois au plan, 30 avec la marge, pour tout ce que Hesabi a et les métiers du lancement ; pilotes au mois 16 ; trois vagues après J5, puis l'hôtellerie ; budget de fonctionnement ≈ 800 à 1 650 DT par mois ; demande du label Startup (calendrier et vagues revus aux deux lignes suivantes) |
 | 28/09/2026 (**Skander**, `15`) | Slate et toute la restauration en **vague 1**, après une base stable ; l'étape 4 garde la caisse de comptoir ; lancement à **25 mois au plan, 28 avec la marge** |
-| 28/09/2026 (par délégation, `14`) | **Revu** : lancement à 27 mois au plan, 30 avec la marge, pour tout ce que Hesabi a et les métiers du lancement ; pilotes au mois 16 ; trois vagues après J5, puis l'hôtellerie ; budget de fonctionnement ≈ 800 à 1 650 DT par mois ; demande du label Startup |
+| 28/09/2026 (par délégation, relecture) | **Quatre vagues** au lieu de trois : la vague 1 garde la restauration, l'arabe, les rendez-vous et les messages ; le bâtiment, le suivi commercial, les boutiques, la livraison et Flouci passent en vague 2 ; la fabrication, les projets et la location en vague 3 ; le groupe, l'anglais et les applications des magasins en vague 4 |
 | 28/09/2026 (proposé) | Les pilotes passent à J3, en parallèle de la v10 pendant deux mois au moins ; déclaration INPDP avant |
 | 28/09/2026 (proposé) | Un jalon manqué déplace les dates, jamais son contenu ; jamais de lancement sans l'accusé réel de la TTN ; lancement possible sans le mot « certifiée » si l'homologation de la caisse tarde |
 | 28/09/2026 (proposé) | Environ un jour sur dix réservé à la v10 ; les lois de finances passent avant tout chaque décembre |

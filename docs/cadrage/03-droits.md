@@ -314,7 +314,7 @@ propriétaire peut lui cocher « peut encaisser » : il a alors aussi les gestes
 | Plan de salle, zones de préparation, suppléments et formules | ✓ | ✓ | — | — | — | — | — | — | — |
 | **Seuils d'accord** (D11) : les régler | ✓ | ✓ | — | — | — | — | — | — | — |
 | **API** : créer, révoquer une clé ; choisir les adresses des avis (§ 8) | ✓ | ✓ *prévient P* | — | — | — | — | — | — | — |
-| **Intégrations** (vague 1) : en allumer, en éteindre une, voir ce qui part | ✓ | ✓ *prévient P* | — | — | — | — | — | — | — |
+| **Intégrations** (vague 1 et suivantes) : en allumer, en éteindre une, voir ce qui part | ✓ | ✓ *prévient P* | — | — | — | — | — | — | — |
 
 Les gestes des modules des vagues (Réservations, Production, Projets, suivi commercial, notes de
 frais) s'écriront **avec leur module** (`02` M1), avant sa vague, dans ce même tableau.
@@ -614,3 +614,4 @@ Détail de la reprise : document 08.
 | 28/09/2026 (proposé) | Lectures de la paie tracées ; écritures de paie en totaux du mois ; gestes sensibles qui préviennent le propriétaire |
 | 28/09/2026 (relecture) | Dossier tenu : aucun membre côté client, l'associé en répond, le client en devient propriétaire en le rejoignant ; le cabinet y enregistre les ventes émises ailleurs, sans jamais les émettre |
 | 28/09/2026 (relecture) | Qui compte comme utilisateur dans l'offre ; codes de secours, et aucun administrateur ne réinitialise le code d'un autre ; seuls le numéro et le code partent chez le fournisseur de SMS |
+| 28/09/2026 (par délégation, `14`, **à revalider**) | D11 (l'accord d'un responsable au-delà d'un seuil) ; le rôle Serveur et les gestes de la salle (vague 1) ; espace client, paiement en ligne, lecture de documents, API et intégrations au tableau des gestes ; un caissier ou un serveur qui ne travaille que sur les caisses ne compte pas comme utilisateur ; le visiteur de l'espace client n'est pas un membre |

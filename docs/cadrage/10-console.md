@@ -3,7 +3,8 @@
 *Proposé le 28/09/2026. **À valider par Skander.** Détaille `VISION-ARCHITECTURE.md` § 12 et le
 parcours « Je suis Skander » (`00` § 3). Ses tables sont au `01` § 18 (schéma `plateforme`), ses rôles
 au `03` § 5, sa sécurité au `06`. Elle reprend ce qui marche dans la console actuelle
-(`plateforme/`, versions 10.4.0 à 10.9.0).*
+(`plateforme/`, versions 10.4.0 à 10.9.0). Relu le même jour contre tout le dépôt : les compteurs
+du `14` (§ 4) et les idées de la console de Slate (§ 5).*
 
 ## En bref (pour Skander)
 
@@ -211,6 +212,7 @@ liste, fermée :
 | Offre, modules, options, états, échéances, paiements, factures SkanFact | Gérer l'abonnement |
 | Membres : nom, e-mail, rôle, dernière connexion | Savoir à qui parler, compter les utilisateurs (`03` § 4.1) |
 | **Comptes** : pièces émises par mois, salariés comptés, caisses, établissements, place occupée | Facturer les options (`07`), dimensionner le service |
+| **Compteurs du `14`** : SMS envoyés, documents lus, appels à l'API, intégrations allumées (leur nom, jamais ce qui y passe) | Refacturer les SMS (`14` § 6), dimensionner la lecture de documents et l'API, savoir quelles intégrations servent |
 | Demandes de support et nos réponses | Le support |
 | Mesures d'usage **sans contenu** (§ 2.9) | Améliorer le produit |
 
@@ -231,6 +233,7 @@ le client (§ 2.7). Un test vérifie que les écrans de la console ne lisent que
 | Export de la base et pli scellé | Remplacés par les sauvegardes du serveur (`06` § 4) ; le pli scellé est étendu au serveur (`06` § 9.3) |
 | Base chez Cloudflare, **hors de Tunisie** (vision § 12) | En Tunisie, dans le schéma `plateforme`. Les données personnelles de la D1 (prospects, acheteurs) y sont **reprises puis effacées** de la D1. La D1 ne garde que les licences v10 tant qu'elle vit (**À VÉRIFIER** : `05` § 4.3) |
 | Un secret d'administration unique | Un compte par personne, un rôle, le code sur le téléphone |
+| La console de Slate (restaurants, supervision, support, audit ; `15` § 2) | Des **idées d'écran** reprises, pas le code : elle vivait dans l'application des clients, ce que la vision § 12 interdit |
 
 ---
 
@@ -251,3 +254,4 @@ le client (§ 2.7). Un test vérifie que les écrans de la console ne lisent que
 | 28/09/2026 (proposé) | Chaque geste confirmé, motivé et tracé ; un mois offert est un avoir, jamais une facture effacée |
 | 28/09/2026 (proposé) | Nos factures sont celles de l'entreprise SkanFact sur la plateforme ; la console ne refait ni factures, ni aide, ni règles |
 | 28/09/2026 (proposé) | Les données personnelles de la D1 actuelle sont reprises en Tunisie puis effacées de la D1 |
+| 28/09/2026 (relecture) | La liste fermée du § 4 compte aussi les SMS envoyés, les documents lus, les appels à l'API et les intégrations allumées, sans leur contenu |

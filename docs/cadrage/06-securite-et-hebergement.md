@@ -137,7 +137,10 @@ outils précis est fait dans le document 12.
 - **Trois portes de plus vers l'extérieur** (ajouté le 28/09/2026, `14`) : l'**espace client** (des
   liens secrets, révocables, qui ne lisent que les pièces émises d'un tiers), l'**API publique**
   (clés, limites d'appels) et les **avis de paiement de Konnect** (jamais crus sur parole : le
-  paiement est toujours relu chez Konnect). Toutes trois entrent dans l'audit externe (§ 10).
+  paiement est toujours relu chez Konnect). Toutes trois entrent dans l'audit externe (§ 10). En
+  vague 1, deux de plus, ouvertes à tous : le **widget public de réservation** et la **page de
+  commande** du restaurant (`15`), avec des limites de débit ; elles entrent dans l'audit de
+  l'année.
 - La **lecture de documents** (`14` § 2.3) lit des fichiers venus de l'extérieur : elle tourne **à
   part** du programme, sans accès à la base, et ne rend que du texte et des champs proposés.
 
@@ -207,7 +210,7 @@ dans la base).
 | Les disques des serveurs | Chiffrés |
 | Les sauvegardes | Chiffrées avant de partir, avec une clé qui ne voyage pas avec elles |
 | Les mots de passe | Jamais gardés, seulement une empreinte lente à calculer (conçue pour résister aux essais en masse) |
-| Les secrets de nos clients (jetons DigiGo, clés d'API) | Chiffrés dans la base, avec une clé qui vit hors de la base |
+| Les secrets de nos clients (jetons DigiGo, clés d'API, clé du compte Konnect de l'entreprise, réglages des intégrations : `14` § 2.2 et § 4) | Chiffrés dans la base, avec une clé qui vit hors de la base |
 | La copie sur le poste | Chiffrée avec la clé de l'appareil (`04` § 2) |
 
 **Les clés** vivent dans un **coffre** sur les serveurs, jamais dans le dépôt ni dans un fichier de
@@ -367,3 +370,4 @@ Vision R11 : une seule personne pour tout faire. La parade :
 | 28/09/2026 (proposé) | Une fiche écrite par type d'incident ; pli scellé étendu au serveur ; une seconde personne formée avant le lancement |
 | 28/09/2026 (relecture) | Les serveurs de base ne s'ouvrent que par l'accès d'urgence ; l'inscription du site va directement au serveur en Tunisie ; sauvegardes longues et droit à l'effacement à trancher avec le juriste |
 | 28/09/2026 (proposé) | Application de bureau signée ; audit externe avant l'ouverture, puis chaque année |
+| 28/09/2026 (par délégation, `14`, **à revalider**) | Trois portes de plus au lancement (espace client, API, avis de Konnect), deux en vague 1 (réservation, commande en ligne), toutes dans l'audit ; la lecture de documents tourne à part, sans accès à la base ; l'agent local envoie aux imprimantes de cuisine sans écouter le réseau |

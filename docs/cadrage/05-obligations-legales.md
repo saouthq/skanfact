@@ -23,8 +23,9 @@ Ce qu'il faut retenir :
    de résultat : sans l'accusé de la TTN, la facture n'a pas de valeur fiscale.
 2. **La caisse certifiée n'est pas une formalité de fin de projet.** Elle passe par une plateforme
    d'homologation du ministère des Finances, avec un cahier des charges, des **tests d'intégration**
-   avec un système central, et une demande d'accréditation du fournisseur. **Je propose d'avancer
-   cette démarche au début du développement**, et non à la fin comme décidé le 27/09 (§ 3.7).
+   avec un système central, et une demande d'accréditation du fournisseur. **Cette démarche est
+   avancée au début du développement** (validé par Skander le 28/09/2026), et non à la fin comme
+   décidé le 27/09 (§ 3.7, § 5).
 3. **Les attestations de retenue à la source passent par TEJ.** Une attestation mal établie coûte
    30 % de la retenue, 50 DT au moins. Le produit doit produire le fichier officiel.
 4. **SkanFact lui-même** doit émettre des factures électroniques, déclarer ses traitements à
@@ -218,7 +219,7 @@ un dépôt automatique ? Quelles pénalités de retard ?
 - c'est un **raccordement technique à l'administration**, comme la TTN, pas une étiquette posée à la
   fin. Nos choix du `04` (tickets numérotés et chaînés sur la caisse, 7 jours hors ligne, session
   ouverte hors ligne) doivent être **confrontés au cahier des charges** avant d'écrire la caisse ;
-- **proposition** : avancer cette démarche **au début du développement**. La décision du 27/09
+- **décidé le 28/09/2026** (validé par Skander) : avancer cette démarche **au début du développement**. La décision du 27/09
   (vision § 9) la plaçait en fin de développement. Il faut s'inscrire comme fournisseur et
   télécharger le cahier des charges maintenant, pour que la caisse soit conçue juste du premier
   coup ;
@@ -321,11 +322,14 @@ fiscaliste **avant** de publier les prix TTC sur le site.
   image ne sort ;
 - **les flux ajoutés par le `14`** (§ 4 de ce document-là, qui les liste un par un) : Konnect pour
   les factures des clients (le montant et la référence, vers le compte de l'entreprise) ; WhatsApp
-  **par lien**, qui ne passe pas par nous ; puis, dans les vagues, les boutiques en ligne, les
-  sociétés de livraison (l'adresse du client de nos clients : c'est l'entreprise qui décide de
-  l'envoyer, SkanFact agit pour elle, au titre du contrat de traitement), WhatsApp automatique et
-  les assistants d'IA extérieurs (**hors de Tunisie** : avis du juriste, et autorisation de l'INPDP
-  s'il le faut). **Aucun ne s'ouvre avant d'être compté ici** ;
+  **par lien**, qui ne passe pas par nous ; puis, dans les vagues : les **SMS** de relance, de
+  rappel et des campagnes (le numéro et le texte, chez un fournisseur en Tunisie de préférence), les
+  boutiques en ligne, les sociétés de livraison (l'adresse du client de nos clients : c'est
+  l'entreprise qui décide de l'envoyer, SkanFact agit pour elle, au titre du contrat de traitement),
+  les autres prestataires de paiement (Flouci, puis ClicToPay et e-Dinar), et, **hors de Tunisie**,
+  WhatsApp automatique (Meta), Shopify, les **avis en ligne** (Google, TripAdvisor) et les assistants
+  d'IA extérieurs (avis du juriste, et autorisation de l'INPDP s'il le faut). **Aucun ne s'ouvre
+  avant d'être compté ici** ;
 - la **paie** contient des données sensibles (CIN, salaires, parfois la santé : congés maladie).
   Elle a les protections du `03` (D10).
 

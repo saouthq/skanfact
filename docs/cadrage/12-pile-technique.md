@@ -105,7 +105,7 @@ skanfact-plateforme/
 | Choix | Pourquoi | Ce qui le remettrait en cause |
 |---|---|---|
 | **Electron** pour la coque | On le connaît (toute la v10) ; l'agent local tourne dans le même programme ; les mises à jour savent déjà se faire | Une coque plus légère (Tauri) ne vaut pas de réapprendre un autre langage pour une seule personne |
-| **Agent local** : clé USB de signature par l'interface standard des jetons cryptographiques (PKCS#11), imprimante de tickets en ESC/POS, en vague 1, les **imprimantes de cuisine** (plusieurs, sur le réseau du restaurant ou en USB), tiroir par l'imprimante, douchette comme un clavier ; en vague 2, la balance | Les protocoles du matériel vendu en Tunisie (note de recherche `hebergement_technique.md`) ; le restaurant (`14` § 3.1) | **À VÉRIFIER** : les pilotes des clés USB TunTrust sur Windows et Mac |
+| **Agent local** : clé USB de signature par l'interface standard des jetons cryptographiques (PKCS#11), imprimante de tickets en ESC/POS, en vague 1, les **imprimantes de cuisine** (plusieurs, sur le réseau du restaurant ou en USB), tiroir par l'imprimante, douchette comme un clavier ; en vague 3, la balance | Les protocoles du matériel vendu en Tunisie (note de recherche `hebergement_technique.md`) ; le restaurant (`14` § 3.1) | **À VÉRIFIER** : les pilotes des clés USB TunTrust sur Windows et Mac |
 | **Application signée** (Apple, Microsoft) | `06` § 10 : un prérequis, pas une option | — |
 
 ---

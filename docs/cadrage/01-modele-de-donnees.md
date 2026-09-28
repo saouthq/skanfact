@@ -20,7 +20,8 @@ Les trois réponses de ce matin sont appliquées :
    données du client, avec son nom dessus (§ 4, mandats). **À VÉRIFIER** auprès de l'Ordre des
    experts-comptables.
 
-Le modèle compte **un peu plus de 100 tables**, rangées en 16 domaines (§ 3 à § 18). Les plus grosses (lignes d'écriture,
+Le modèle compte **un peu plus de 100 tables**, rangées en 16 domaines (§ 3 à § 18), et le § 24 en
+ajoute **une quarantaine** pour le `14` et le `15` (dont celles des vagues, vides jusqu'à leur tour). Les plus grosses (lignes d'écriture,
 tickets, piste d'audit) sont prévues pour atteindre **le milliard de lignes**. Elles sont découpées
 par mois dès le premier jour.
 
@@ -552,6 +553,7 @@ quelque chose en silence.
 | 28/09/2026 (proposé) | Règles fiscales en table, avec dates d'effet ; une loi de finances = des lignes neuves |
 | 28/09/2026 (proposé) | SkanFact est une entreprise de sa propre plateforme : nos factures sont des pièces de vente |
 | 28/09/2026 (proposé) | Une facture émise ne s'annule jamais (avoir total) ; une caisse n'est tenue que par un appareil à la fois ; une déclaration se prépare sur des écritures validées |
+| 28/09/2026 (par délégation, `14` et `15`, **à revalider**) | Les tables du § 24 : espace client, paiement en ligne, lecture de documents, recettes, restaurant, accords, lettres de mission, API, et celles des vagues, écrites dès maintenant ; une commande de salle n'est pas une pièce légale ; une carte cadeau et une caution ne sont pas un chiffre d'affaires (À VÉRIFIER) |
 
 ---
 
@@ -591,7 +593,7 @@ actuelle range vraiment.
 ## 24. Ce que le document 14 ajoute (28/09/2026, après validation)
 
 *Ajouté le même jour, pour suivre `14-fonctions-et-integrations.md` : l'alignement sur Hesabi, les
-métiers, les intégrations et les langues. **À revalider.** Les tables des vagues 1 à 3 sont
+métiers, les intégrations et les langues. **À revalider.** Les tables des vagues (`09` § 1) sont
 écrites **dès maintenant**, pour que les faire plus tard ne demande jamais de reprendre le modèle ;
 elles restent vides jusqu'à leur vague. Toutes suivent les règles du § 2 (entreprise sur chaque
 ligne, sécurité par ligne, argent en entiers, pièce émise scellée).*
@@ -604,7 +606,7 @@ règlement, canal SMS, natures d'achat et de compte de trésorerie, clés d'API 
 | `entreprise` | Raison sociale et adresse **en arabe** (facultatives) |
 | `article` | Désignation **en arabe** (facultative) ; **composé** (une recette, un kit : § 24.3) ; zone de préparation par défaut (§ 24.4) |
 | `tiers_parametres` | **Encours autorisé**, et ce qui se passe au-delà (avertir, ou demander l'accord d'un responsable) |
-| `tiers_role` | Le rôle **prospect** (vague 1) |
+| `tiers_role` | Le rôle **prospect** (vague 2) |
 | `liste_prix` | **Paliers de quantité** : un prix à partir de 10, de 100… |
 | `ligne_vente` | **Nature** de la ligne (article, titre de section, sous-total, texte) : les devis par sections |
 | `lien_piece` | Vaut aussi pour les **achats** (commande → réception → facture) |
@@ -629,8 +631,8 @@ règlement, canal SMS, natures d'achat et de compte de trésorerie, clés d'API 
 
 | Table | Contenu | Quand |
 |---|---|---|
-| `nomenclature` | Article composé, composant, quantité, unité, perte prévue ; **usage** (sortie à la vente, ou fabrication) | Lancement (vente) ; vague 2 (fabrication) |
-| `ordre_fabrication` | Article, quantité, nomenclature **figée**, composants consommés et article produit (des `mouvement_stock`), main d'œuvre et frais, **coût de revient figé**, statut | Vague 2 |
+| `nomenclature` | Article composé, composant, quantité, unité, perte prévue ; **usage** (sortie à la vente, ou fabrication) | Lancement (vente) ; vague 3 (fabrication) |
+| `ordre_fabrication` | Article, quantité, nomenclature **figée**, composants consommés et article produit (des `mouvement_stock`), main d'œuvre et frais, **coût de revient figé**, statut | Vague 3 |
 
 ### 24.4 Caisse : le restaurant (vague 1, avec Slate : `15`)
 
@@ -647,7 +649,7 @@ règlement, canal SMS, natures d'achat et de compte de trésorerie, clés d'API 
 |---|---|---|
 | `lien_ligne` | Ligne d'origine → ligne produite, quantité : les **reliquats** d'une commande livrée en plusieurs fois, et le rapprochement commande → réception → facture | Lancement |
 | `demande_accord` | Objet, geste, seuil dépassé, demandé par, accordé ou refusé par, quand, motif (`03` D11) | Lancement |
-| `note_frais`, `ligne_note_frais` | Membre, justificatif (photo), montant, catégorie, statut (soumise, acceptée, refusée, remboursée), dépense produite | Vague 2 |
+| `note_frais`, `ligne_note_frais` | Membre, justificatif (photo), montant, catégorie, statut (soumise, acceptée, refusée, remboursée), dépense produite | Vague 3 |
 
 ### 24.6 Le cabinet (lancement)
 
@@ -663,18 +665,21 @@ dossier, rassemblés sous un même lot.
 | Table | Contenu | Quand |
 |---|---|---|
 | `envoi_webhook` | Adresse prévenue, événement, tentative, statut, réponse reçue, prochain essai | Lancement |
-| `integration` | Entreprise, partenaire (boutique, livraison, paiement), réglages, **liste de ce qui part** (montrée à l'entreprise), allumée par et le, éteinte le | Vague 1 |
-| `expedition` | Bon de livraison, société de livraison, référence du colis, statut, montant à encaisser à la livraison, reversement rapproché | Vague 1 |
+| `integration` | Entreprise, partenaire (boutique, livraison, paiement), réglages, **liste de ce qui part** (montrée à l'entreprise), allumée par et le, éteinte le | Vague 1 (WhatsApp automatique, avis en ligne), puis chaque vague (`14` § 4) |
+| `expedition` | Bon de livraison, société de livraison, référence du colis, statut, montant à encaisser à la livraison, reversement rapproché | Vague 2 |
 
-### 24.8 Réservations, projets, suivi commercial, fidélité
+### 24.8 Réservations, projets, suivi commercial, clients du restaurant, fidélité
 
 | Table | Contenu | Quand |
 |---|---|---|
-| `ressource` | Ce qu'on réserve : une table (restaurants, repris de Slate : `15`), une personne, un poste, un matériel, une salle (plus tard, une chambre : `14` § 3.7) | Vague 1 |
+| `ressource` | Ce qu'on réserve : une table (au restaurant, elle désigne une `table_salle` du § 24.4, pour qu'une table n'existe qu'une fois ; repris de Slate : `15`), une personne, un poste, un matériel, une salle (plus tard, une chambre : `14` § 3.7) | Vague 1 |
 | `disponibilite` | Horaires d'une ressource, fermetures, exceptions (dont le Ramadan) | Vague 1 |
 | `reservation` | Ressource(s), tiers, début, fin, couverts, statut (demandée, confirmée, reconfirmée, arrivée, à table, honorée, annulée, absent), rappels envoyés, acompte, pièce de vente liée | Vague 1 (d'après les tables de Slate : `15`) |
 | `liste_attente` | Tiers, couverts, souhait d'heure, statut | Vague 1 |
-| `caution` | Réservation, reçue le, montant, rendue ou retenue, quand, pourquoi | Vague 2 (location). Pas un chiffre d'affaires (**À VÉRIFIER**) |
-| `opportunite`, `activite` | Tiers prospect, étape, montant espéré, prochaine action ; appels, visites, rappels | Vague 1 |
-| `temps_passe` | Membre, affaire (la section de l'axe « Affaires », § 14), date, durée, facturable, taux, facturé par quelle pièce | Vague 2 |
-| `programme_fidelite`, `mouvement_points` ; `carte_cadeau` | Règles de points, points gagnés et utilisés par client ; numéro, montant, solde d'une carte cadeau | Vague 2. Une carte cadeau vendue n'est pas un chiffre d'affaires avant d'être utilisée (**À VÉRIFIER**) |
+| `caution` | Réservation, reçue le, montant, rendue ou retenue, quand, pourquoi | Vague 3 (location). Pas un chiffre d'affaires (**À VÉRIFIER**) |
+| `opportunite`, `activite` | Tiers prospect, étape, montant espéré, prochaine action ; appels, visites, rappels | Vague 2 |
+| `temps_passe` | Membre, affaire (la section de l'axe « Affaires », § 14), date, durée, facturable, taux, facturé par quelle pièce | Vague 3 |
+| `programme_fidelite`, `mouvement_points` ; `carte_cadeau` | Règles de points, points gagnés et utilisés par client ; numéro, montant, solde d'une carte cadeau | Fidélité : vague 2 ; carte cadeau : vague 1 (les bons cadeaux de Slate). Une carte cadeau vendue n'est pas un chiffre d'affaires avant d'être utilisée (**À VÉRIFIER**) |
+| `campagne`, `segment`, `desinscription` | Message, canal (SMS, e-mail, WhatsApp), clients visés (un segment : une règle sur leurs fiches), envoyée le ; les clients qui ne veulent plus rien recevoir | Vague 1 (Slate). Jamais d'envoi à un client désinscrit ; chaque canal compté avant d'être ouvert (`05` § 4.3) |
+| `demande_avis`, `avis` | Réservation ou ticket d'origine, envoyée le ; note, texte, source (notre page, Google, TripAdvisor), réponse | Vague 1 (Slate) |
+| `conversation`, `message` | Tiers, canal (WhatsApp), sens, texte, reçu ou envoyé le | Vague 1 (Slate), avec WhatsApp automatique |

@@ -23,12 +23,18 @@ chacun validé à son tour. Un document validé porte en tête : `Validé par Sk
 | 11 | `11-site.md` | Le site : pages, inscription, centre d'aide, page d'état, pages légales, reprise des données (§ 12) | **Proposé le 28/09/2026, à valider** |
 | 12 | `12-pile-technique.md` | Les outils précis (serveur, bibliothèque d'interface, migrations de base, file de travaux, moteur de synchro, PDF, mails et WhatsApp, recherche, surveillance), où vit le code (ce dépôt ou un dépôt neuf), les environnements (test, production), l'intégration continue et la stratégie de tests. À décider **avant** la première ligne de code | **Proposé le 28/09/2026, à valider** |
 | 13 | `13-mise-sur-le-marche.md` | Cibles par ordre d'urgence, canaux (cabinets, revendeurs de caisse, contenu, WhatsApp, parrainage), transformer un essai en client, lancement en trois temps, objectifs de la première année | **Proposé le 28/09/2026** (par délégation) |
-| 15 | `15-reprise-de-slate.md` | Slate, l'application pour restaurateurs de Skander, devient la partie restaurant de SkanFact : inventaire écran par écran, ce qui change (hébergement, argent, droits), outils d'interface, rebranding | **Décidé par Skander le 28/09/2026** (le détail par délégation) |
 | 14 | `14-fonctions-et-integrations.md` | Tout ce que fait SkanFact : Hesabi fonction par fonction, les six manques ajoutés au lancement (espace client et paiement en ligne, lecture de documents, cabinet complet, API, téléphone, arabe préparé), les métiers (restauration, commerces, bâtiment, fabrication, rendez-vous, location ; hôtellerie à la fin), les intégrations et leur ordre, les langues, ce que ça coûte | **Proposé le 28/09/2026** (par délégation) |
+| 15 | `15-reprise-de-slate.md` | Slate, l'application pour restaurateurs de Skander, devient la partie restaurant de SkanFact : inventaire écran par écran, ce qui change (hébergement, argent, droits), outils d'interface, rebranding | **Décidé par Skander le 28/09/2026** (le détail par délégation) |
 
-**Le 28/09/2026, après validation**, le `14` a complété les documents 00, 01 (§ 24), 02, 03, 04, 05,
-06 et 08 (une ligne), déjà validés : chacun le dit en tête, et **ces ajouts sont à revalider**. Il a aussi revu le
-07 (prix), le 09 (calendrier), le 11, le 12 et le 13.
+**Le 28/09/2026, après validation**, le `14` et le `15` ont complété les documents 00, 01 (§ 24), 02,
+03, 04, 05, 06 et 08 (une ligne), déjà validés : chacun le dit en tête, et **ces ajouts sont à
+revalider**. Ils ont aussi revu le 07 (prix), le 09 (calendrier), le 10, le 11, le 12 et le 13.
+
+**Relu en entier le 28/09/2026** (demande de Skander : « relire tout ce qu'on a mis dans le dépôt
+pour voir si tout concorde et que tout y est ») : les vagues passent de trois à quatre (`09` § 1), le
+budget, les démarches et les flux de données sont remis d'accord partout, et ce qui manquait est
+ajouté (les tables des campagnes, avis et messages de Slate ; les compteurs de la console ; les
+lettres de mission dans le parcours du comptable).
 
 ## En parallèle (Skander et son père)
 
@@ -47,6 +53,8 @@ chacun validé à son tour. Un document validé porte en tête : `Validé par Sk
 | 27/09/2026 | TypeScript et bibliothèque d'interface | § 9 |
 | 27/09/2026 | Hébergement en Tunisie (secours compris), budget accepté, démarches par le père de Skander | § 9 |
 | 27/09/2026 | Une seule session écrit le produit, la console et le site ; la console devient un module du serveur, sans passe-droit sur la RLS ; le site reste statique | `VISION-ARCHITECTURE.md` § 12 |
+| 27/09/2026 | Les dépôts de l'application et du site restent publics (GitHub Actions gratuit) | `CLAUDE.md` |
+| 27/09/2026 | Dépôt rangé : ancienne vision archivée, `CLAUDE.md` réécrit | ce dossier, `CLAUDE.md` |
 | 28/09/2026 | Tiers et articles propres à chaque société (partage possible dans un groupe) ; plusieurs établissements dès le départ ; fin de mandat d'un cabinet : accès retiré, travail gardé et signé | `01-modele-de-donnees.md` § 22 |
 | 28/09/2026 | Par délégation de Skander : essai 30 jours ; Essentiel 390 DT/an, Complet 690 DT/an ; cabinet gratuit pour ses clients abonnés + 3 dossiers, puis 60 DT/dossier plafonné à 1 990 DT ; code sur le téléphone obligatoire pour comptables, propriétaires, administrateurs, paie ; rôles ; code cabinet au lieu d'un annuaire ; passage de la v10 sans rien forcer | `00-les-trois-parcours.md`, `07-offres-et-prix.md` |
 | 28/09/2026 | Skander valide le cadrage proposé : les trois parcours (00), le modèle de données (01) et les décisions prises par délégation | `00-les-trois-parcours.md`, `01-modele-de-donnees.md` |
@@ -59,5 +67,4 @@ chacun validé à son tour. Un document validé porte en tête : `Validé par Sk
 | 28/09/2026 | Par délégation, à la demande de Skander (« tout ce que Hesabi a, il nous le faut ») : tout Hesabi au lancement, plus l'espace client et le paiement en ligne, la lecture de documents en Tunisie, le cabinet complet, l'API, le téléphone ; restauration et commerces au lancement ; trois vagues après, puis l'hôtellerie (**décision de Skander**) ; l'arabe plus tard, l'infrastructure maintenant (**décision de Skander**) ; lancement à 27 mois (30 avec la marge) ; Essentiel avec le stock et une caisse | `14-fonctions-et-integrations.md` |
 | 28/09/2026 | **Skander** : Slate entre dans SkanFact comme sa partie restaurant (rebranding à faire), **en vague 1**, après une base stable (entreprise, cabinet, console) ; lancement à 25 mois au plan (28 avec la marge) ; la plateforme prend les outils d'interface de Slate, sous réserve de l'arabe | `15-reprise-de-slate.md` |
 | 28/09/2026 | Les dépôts restent publics (Skander, confirmé le 28/09 : « personne ne nous connaît, on publie gratuitement ») | `CLAUDE.md`, `12` § 1 |
-| 27/09/2026 | Les dépôts de l'application et du site restent publics (GitHub Actions gratuit) | `CLAUDE.md` |
-| 27/09/2026 | Dépôt rangé : ancienne vision archivée, `CLAUDE.md` réécrit | ce dossier, `CLAUDE.md` |
+| 28/09/2026 | Relecture complète du dépôt (demande de Skander) : **quatre vagues** au lieu de trois (la vague 1 garde la restauration, l'arabe, les rendez-vous et les messages) ; budget, démarches et flux remis d'accord dans la vision, `CLAUDE.md` et les documents ; les manques ajoutés | `09` § 1, `14`, ce dossier |

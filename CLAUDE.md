@@ -52,7 +52,9 @@ Détail et raisons dans `VISION-ARCHITECTURE.md` ; ne pas les rediscuter sans qu
 - **Signature** : DigiGo intégré (chemin principal), clé USB via l'agent local, signature serveur
   après homologation ANCE. Envoi TTN par le serveur, archivage 10 ans.
 - **Hébergement en Tunisie**, copie de secours comprise (un second centre de données tunisien).
-- **Budget** accepté (~1 000 DT/mois au lancement, 10 à 20 kDT de frais uniques, à affiner).
+- **Budget** accepté le 27/09 (~1 000 DT/mois, 10 à 20 kDT de frais uniques), affiné le 28/09 :
+  800 à 1 650 DT/mois au lancement, 12,5 à 27 kDT de frais uniques connus
+  (`docs/cadrage/09-feuille-de-route.md` § 4).
 - **Démarches** (père de Skander), **dès maintenant** : accès test El Fatoora, adhésion DigiGo, et
   inscription fournisseur sur la plateforme d'homologation des caisses (décidé le 28/09/2026) ;
   INPDP avant la première donnée réelle d'un client ; le label Startup dès que la société qui porte
@@ -60,8 +62,9 @@ Détail et raisons dans `VISION-ARCHITECTURE.md` ; ne pas les rediscuter sans qu
   par interlocuteur : `docs/cadrage/05-obligations-legales.md`.
 - **Tout ce que Hesabi a, au lancement, et plus** (demande de Skander, 28/09/2026) : espace client et
   paiement en ligne, lecture de documents sur nos serveurs, cabinet complet, API, téléphone ;
-  commerces au lancement ; la restauration en vague 1 ; puis deux autres vagues et l'**hôtellerie
-  à la fin** ;
+  commerces au lancement ; **quatre vagues** après (la restauration et l'arabe en vague 1 ; le
+  bâtiment, les boutiques et la livraison en vague 2 ; la fabrication, les projets et la location
+  en vague 3 ; le groupe et l'anglais en vague 4), puis l'**hôtellerie à la fin** ;
   **l'arabe plus tard, l'infrastructure maintenant** (catalogue de textes, langue factice testée).
   Détail : `docs/cadrage/14-fonctions-et-integrations.md`.
 - **Slate** (dépôt privé `saouthq/Slate`, l'application pour restaurateurs de Skander) **devient la

@@ -19,8 +19,8 @@ Complété le même jour pour suivre le `14` (cibles 3, 4 et 5).*
   3. « Tout est dedans, et ça coûte moins cher que les autres. »
 - **Le premier canal, c'est le cabinet comptable.** Gratuit pour lui, avec ses clients qui ont
   −20 % la première année. Jamais de commission versée au comptable.
-- **Le deuxième, ce sont les revendeurs de matériel de caisse** pour les restaurants et les
-  commerces. Eux peuvent être rémunérés.
+- **Le deuxième, ce sont les revendeurs de matériel de caisse** pour les commerces, puis pour les
+  restaurants à partir de la vague 1. Eux peuvent être rémunérés.
 - **On ne lance pas à froid** : d'abord les trois cabinets pilotes et leurs clients (J3), puis
   **100 entreprises fondatrices** sur invitation, puis le public (J5).
 - **On mesure tout, sans lire les données des clients** : combien s'inscrivent, combien utilisent
@@ -55,7 +55,7 @@ fonctionnement (`09` § 4.4).
 | 2 | **Prestataires de services** (libéraux, conseil, informatique, agences) | Facture électronique obligatoire depuis le 1er janvier 2026, amende par facture papier | La facture signée et envoyée à la TTN en un clic, la retenue à la source et TEJ, le prix | Essentiel |
 | 3 | **Restaurants, cafés, salons de thé, boulangeries** (**à partir de la vague 1**, `15`) | Caisse certifiée obligatoire (calendrier 2025 à 2028) : à notre arrivée, ils seront déjà équipés ; on les prend sur l'offre complète | Une caisse homologuée qui marche pendant les coupures, avec tables et cuisine, suppléments, addition partagée et titres-restaurant (`14` § 3.1), les **réservations en ligne** et le plan de salle (repris de Slate, `15`), le stock matière par recette, la comptabilité avec | Essentiel (une caisse comprise), ou Complet |
 | 4 | **Commerces, grossistes, distributeurs** | Caisse obligatoire pour le réel mensuel avant juillet 2027 ; stock et prix par client | Caisse, stock multi-dépôts, prix par client et par quantité, encours, commandes clients et fournisseurs, réceptions, marges (`14` § 3.2) ; plus tard, les boutiques en ligne et la livraison (`14` § 4) | Essentiel ou Complet |
-| 5 | **PME avec salariés** (bâtiment, fabrication, transport…) | Paie, CNSS, déclarations, plusieurs utilisateurs | Tout dans un seul outil, prix par entreprise, droits par personne ; les situations de travaux en vague 1, la fabrication en vague 2 (`14` § 3.3, 3.4) | Complet |
+| 5 | **PME avec salariés** (bâtiment, fabrication, transport…) | Paie, CNSS, déclarations, plusieurs utilisateurs | Tout dans un seul outil, prix par entreprise, droits par personne ; les situations de travaux en vague 2, la fabrication en vague 3 (`14` § 3.3, 3.4) | Complet |
 | 6 | **Groupes de sociétés** | Plusieurs matricules, les mêmes personnes | Passer d'une société à l'autre, fiches partagées, −20 % dès la deuxième société, tableau de bord du groupe | Complet par société |
 
 ---
@@ -213,7 +213,7 @@ changer s'il ne marche pas.
 3. WhatsApp Business : conditions et lieu de traitement des messages (`05` § 4.3).
 4. Le **label Startup Act** (moins de 8 ans d'existence, moins de 100 salariés, au moins les deux
    tiers du capital aux fondateurs ou à des investisseurs) : la société de Skander y est-elle
-   éligible, et qu'apporte-t-il (financements, avantages fiscaux) ? `05`, `09`.
+   éligible, et qu'apporte-t-il (financements, avantages fiscaux) ? `05` § 4.8, `09`.
 
 ## 11. Décisions de ce document
 

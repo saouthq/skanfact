@@ -5,7 +5,7 @@ relecture demandée par Skander. Suit `VISION-ARCHITECTURE.md` (§ 4.6 et § 4.7
 `01-modele-de-donnees.md` et `07-offres-et-prix.md`. **Complété le même jour, après validation**,
 pour suivre `14-fonctions-et-integrations.md` (l'alignement sur Hesabi, les métiers, les
 intégrations) : le tableau des modules, les événements, les fournisseurs et le § 11. Ces ajouts sont
-**à revalider**.*
+**à revalider**. Vagues relues le même jour (quatre au lieu de trois, `09` § 1).*
 
 ## En bref (pour Skander)
 
@@ -68,20 +68,20 @@ Tout ce dont les modules ont besoin, et ce qui porte les promesses de la platefo
 
 | Module | Contient | Dépend de | Offre (`07`) |
 |---|---|---|---|
-| **Ventes** | Devis (par sections), proforma, commandes (livrées en plusieurs fois, reliquats), bons de livraison, factures (plusieurs livraisons en une), avoirs, notes d'honoraires ; prix par client, par catégorie et **par quantité** ; **encours autorisé** ; calculateur de prix ; règlements reçus ; chèques et traites ; relances ; contrats récurrents ; **facture électronique signée et envoyée à la TTN** ; retenue subie et attestations ; **espace client** et **paiement en ligne** (Konnect) (`14` § 2.1, 2.2) ; en vague 1 : situations de travaux et retenue de garantie, suivi commercial (`14` § 3) | Socle | Essentiel |
-| **Achats** | **Demandes de prix, commandes fournisseurs, réceptions** (même partielles) ; factures d'achat rapprochées de la réception, avoirs, acomptes, dépenses ; règlements versés ; retenue opérée et **certificats TEJ** ; lecture d'une facture TEIF, d'une photo ou d'un PDF ; en vague 2 : notes de frais | Socle | Essentiel |
+| **Ventes** | Devis (par sections), proforma, commandes (livrées en plusieurs fois, reliquats), bons de livraison, factures (plusieurs livraisons en une), avoirs, notes d'honoraires ; prix par client, par catégorie et **par quantité** ; **encours autorisé** ; calculateur de prix ; règlements reçus ; chèques et traites ; relances ; contrats récurrents ; **facture électronique signée et envoyée à la TTN** ; retenue subie et attestations ; **espace client** et **paiement en ligne** (Konnect) (`14` § 2.1, 2.2) ; en vague 1 : campagnes, avis et cartes cadeaux (repris de Slate, `15`) ; en vague 2 : situations de travaux et retenue de garantie, suivi commercial, fidélité et promotions (`14` § 3) | Socle | Essentiel |
+| **Achats** | **Demandes de prix, commandes fournisseurs, réceptions** (même partielles) ; factures d'achat rapprochées de la réception, avoirs, acomptes, dépenses ; règlements versés ; retenue opérée et **certificats TEJ** ; lecture d'une facture TEIF, d'une photo ou d'un PDF ; en vague 3 : notes de frais | Socle | Essentiel |
 | **Trésorerie** | Comptes (banque, caisse, portefeuille électronique comme Konnect, titres-restaurant à remettre), mouvements, virements entre comptes, relevés importés, rapprochement, prévision | Socle | Essentiel |
 | **Déclarations** | TVA du mois (cases prêtes à copier), retenues à la source, timbre, TFP et FOPROLOS, calendrier fiscal ; **les salaires du mois** saisis en total quand la paie est faite ailleurs (§ 3, M4) | Ventes, Achats | Essentiel |
 | **Pilotage** | Tableau de bord, statistiques, marges par client, par article et par affaire, **balance âgée**, **tableau de bord du groupe** (les sociétés du groupe où la personne a ce droit, `14` § 3.6) | Ventes | Essentiel |
 | **Stock** | Emplacements, mouvements, transferts, inventaires, lots, numéros de série et garanties, coût moyen, **recettes et kits** (un article composé sort ses composants), articles au poids | Ventes, Achats (il écoute leurs pièces, § 4) ; remplit un point du Pilotage | Essentiel |
-| **Caisse** | Caisses, sessions, tickets hors ligne, ticket 80 mm, douchette, tiroir, Z de caisse ; en vague 1, le **mode restaurant** (`15`) : salles et tables, quatre façons de vendre, envoi en cuisine par zone, suppléments et formules, addition partagée ; titres-restaurant ; terminal de paiement non connecté (`14` § 3.1) | Ventes, Stock (§ 4), Trésorerie | Essentiel (1 caisse), + 120 DT par caisse |
+| **Caisse** | Caisses, sessions, tickets hors ligne, ticket 80 mm, douchette, tiroir, Z de caisse ; en vague 1, le **mode restaurant** (`15`) : salles et tables, quatre façons de vendre, envoi en cuisine par zone, suppléments et formules, addition partagée ; titres-restaurant ; terminal de paiement non connecté (`14` § 3.1) ; en vague 2, l'écran de cuisine ; en vague 3, la balance connectée | Ventes, Stock (§ 4), Trésorerie | Essentiel (1 caisse), + 120 DT par caisse |
 | **Paie** | Salariés, contrats, bulletins, absences, avances, CNSS trimestrielle (fichier), déclaration d'employeur | Trésorerie ; remplit un point du Pilotage | Complet, ou + 150 DT |
 | **Comptabilité complète** | Saisie, livre-journal, grand livre, balance, lettrage, OD, immobilisations, clôture d'exercice, états financiers, liasse, révision, export FEC | Achats (il écoute leurs pièces pour proposer les immobilisations) | Complet, ou + 150 DT ; **toujours ouvert au cabinet** (§ 8) |
 | **Cabinet** | Portefeuille, production, échéances de tous les clients, relances, affectation des collaborateurs, questions au client ; **lettres de mission et honoraires**, **dépôts groupés** (`14` § 2.4) | Comptabilité complète | Espace du cabinet (§ 8 et `07`) |
-| **Réservations** (vague 1 : restaurants, repris de Slate, `15`, et rendez-vous) | Choses et personnes qu'on réserve (une table, un agenda par personne ou par poste, un matériel, une salle), créneaux, widget public de réservation, rappels, liste d'attente, service du jour ; en vague 2 : la location (période, caution, état au départ et au retour) | Ventes, Trésorerie | Complet, ou + 120 DT |
-| **Production** (vague 2) | Ordres de fabrication : composants consommés, article fini produit, coût de revient figé | Stock, Achats | Complet, ou + 120 DT |
-| **Projets** (vague 2) | Temps passé, budget et facturation au temps, sur les affaires (l'axe « Affaires » du `01` § 14) | Ventes, Paie (le coût d'une heure, s'il est ouvert) | Complet, ou + 120 DT |
-| **Groupe** (vague 3) | Consolidation, ventes entre sociétés reliées toutes seules | Pilotage, Comptabilité complète | À décider le jour venu |
+| **Réservations** (vague 1 : restaurants, repris de Slate, `15`, et rendez-vous) | Choses et personnes qu'on réserve (une table, un agenda par personne ou par poste, un matériel, une salle), créneaux, widget public de réservation, rappels, liste d'attente, service du jour ; en vague 3 : la location (période, caution, état au départ et au retour) | Ventes, Trésorerie, Caisse (la table du restaurant, l'encaissement au passage) | Complet, ou + 120 DT |
+| **Production** (vague 3) | Ordres de fabrication : composants consommés, article fini produit, coût de revient figé | Stock, Achats | Complet, ou + 120 DT |
+| **Projets** (vague 3) | Temps passé, budget et facturation au temps, sur les affaires (l'axe « Affaires » du `01` § 14) | Ventes, Paie (le coût d'une heure, s'il est ouvert) | Complet, ou + 120 DT |
+| **Groupe** (vague 4) | Consolidation, ventes entre sociétés reliées toutes seules | Pilotage, Comptabilité complète | À décider le jour venu |
 | **Intégrations** (vague 1 et suivantes) | Boutiques en ligne, sociétés de livraison, autres prestataires de paiement, WhatsApp automatique, connecteurs sans code, dans l'ordre du `14` § 4 ; chacune remplit un point de branchement déclaré (§ 4.3) | API du socle ; les points de Ventes, Achats et Stock | Selon l'intégration, à décider avec chacune |
 | **Hôtellerie** (à la fin) | Chambres, séjours (décision de Skander du 28/09/2026 : quand tout le reste est fini) | Réservations, Caisse | À décider le jour venu |
 
@@ -335,7 +335,7 @@ Règle (principe 3 de `07`) : **ce que le cabinet fait pour son client ne se fac
 ## 11. À VÉRIFIER, et à décider plus tard
 
 1. **Groupe et consolidation** : le tableau de bord du groupe est au lancement ; ce qu'un groupe
-   tunisien attend de plus (consolidation légale ?) se décide avant la vague 3. Entretiens.
+   tunisien attend de plus (consolidation légale ?) se décide avant la vague 4. Entretiens.
 2. **Intégrations** : l'ordre est proposé au `14` § 4 ; les entretiens peuvent le changer.
 3. **Une paie faite par le cabinet** pour un client en Essentiel : vérifier auprès des cabinets
    pilotes que c'est bien ainsi qu'ils veulent travailler.
@@ -358,4 +358,4 @@ Règle (principe 3 de `07`) : **ce que le cabinet fait pour son client ne se fac
 | 28/09/2026 (proposé) | Champs personnalisés en données, jamais dans un calcul ; nouveautés allumées par entreprise |
 | 28/09/2026 (proposé) | Un module masqué où l'on enregistre quelque chose revient au menu, et l'application le dit ; un client qui arrête son abonnement : le cabinet continue en dossier tenu |
 | 28/09/2026 (**Skander**, `15`) | Slate devient la partie restaurant, en vague 1 avec le mode restaurant de la caisse, après une base stable |
-| 28/09/2026 (par délégation, après validation, `14`) | Ventes, Achats, Stock, Caisse, Pilotage et Cabinet complétés pour être au niveau de Hesabi et des métiers du lancement (restauration, commerces, grossistes) ; Stock et une caisse passent dans Essentiel ; quatre modules nouveaux : Réservations (vague 1), Production et Projets (vague 2), Hôtellerie (à la fin) ; Groupe en vague 3 ; Intégrations dans l'ordre du `14` § 4 |
+| 28/09/2026 (par délégation, après validation, `14`) | Ventes, Achats, Stock, Caisse, Pilotage et Cabinet complétés pour être au niveau de Hesabi et des métiers du lancement (commerces et grossistes ; la restauration en vague 1, ligne précédente) ; Stock et une caisse passent dans Essentiel ; quatre modules nouveaux : Réservations (vague 1), Production et Projets (vague 2), Hôtellerie (à la fin) ; Groupe en vague 3 ; Intégrations dans l'ordre du `14` § 4 (depuis la relecture : Production et Projets en vague 3, Groupe en vague 4) |

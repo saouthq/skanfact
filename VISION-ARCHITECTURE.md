@@ -71,7 +71,7 @@ Odoo sert des millions d'utilisateurs. On copie ce qui marche, on évite ce qui 
 ```
  NAVIGATEUR (web)      APPLICATION DE BUREAU                         TÉLÉPHONE (navigateur)
  rien à installer      = la même application web dans une coque      devis, encaisser, photo,
-                       + un « agent local » : clé USB de signature,  commande à table ;
+                       + un « agent local » : clé USB de signature,  salle en vague 1 ;
                          imprimantes, tiroir, douchette              magasins d'applis : plus tard
         │                         │                                         │
         └──────── copie locale chiffrée + file d'envoi (hors ligne) ────────┘
@@ -218,10 +218,12 @@ Dans les trois cas, le **serveur** envoie à la TTN, relance si la TTN ne répon
 envoyer deux fois la même facture), garde le statut, imprime la référence et le QR code, et archive le
 XML signé en stockage non modifiable pendant 10 ans.
 
-**Démarches à lancer pendant le cadrage** (elles prennent des semaines) : adhésion ANCE « entité
-d'intégration » DigiGo ; adhésion et accès technique El Fatoora (environnement de test) ;
-homologation ANCE de l'application ; déclaration INPDP ; format et procédure de la **caisse
-enregistreuse certifiée**. Chacune est **À VÉRIFIER** directement auprès de l'organisme.
+**Les démarches** (elles prennent des semaines ; ordre et détail : `docs/cadrage/05-obligations-legales.md`
+§ 5, et § 9 ci-dessous) : **dès maintenant**, l'adhésion ANCE « entité d'intégration » DigiGo,
+l'accès de test El Fatoora et l'inscription comme fournisseur sur la plateforme d'homologation de la
+**caisse enregistreuse certifiée** ; la déclaration INPDP **avant la première donnée réelle** d'un
+client ; l'homologation ANCE de la signature serveur et celle de la caisse **en fin de
+développement**. Chacune est **À VÉRIFIER** directement auprès de l'organisme.
 
 ---
 
@@ -308,9 +310,11 @@ milliers de PME** ; le chiffre exact se mesure, il ne se devine pas.
 - **TypeScript et une bibliothèque d'interface : validés.** Les règles « JS pur » et « stockage
   JSON » de `CLAUDE.md` valent pour l'application actuelle ; la nouvelle plateforme suit ce document.
 
-**Ordres de grandeur du budget** : ~1 000 DT/mois de fonctionnement au lancement, 10 000 à
-20 000 DT de frais uniques (certificats, juriste, audit de sécurité), à affiner dans
-`docs/cadrage/09-feuille-de-route.md`.
+**Ordres de grandeur du budget** (acceptés le 27/09) : ~1 000 DT/mois de fonctionnement au
+lancement, 10 000 à 20 000 DT de frais uniques (certificats, juriste, audit de sécurité). **Affinés
+le 28/09** dans `docs/cadrage/09-feuille-de-route.md` § 4 : 800 à 1 650 DT par mois (la lecture de
+documents en Tunisie ajoute un serveur) et 12 500 à 27 000 DT de frais uniques connus, matériel de
+caisse compris, sans les frais encore inconnus des démarches.
 
 **Décidé le 28/09/2026, par délégation de Skander** (révisable après les entretiens) :
 - Essai de 30 jours ; **Essentiel 390 DT/an**, **Complet 690 DT/an** ; le cabinet est gratuit pour
@@ -325,8 +329,9 @@ milliers de PME** ; le chiffre exact se mesure, il ne se devine pas.
   `docs/cadrage/14-fonctions-et-integrations.md`) : tout ce que Hesabi annonce est au lancement,
   plus l'espace client et le paiement en ligne des factures, la lecture de documents sur nos
   serveurs, le cabinet complet, l'API, le téléphone ; les commerces au lancement ;
-  trois vagues après, puis **l'hôtellerie à la fin** et **l'arabe plus tard, l'infrastructure
-  maintenant** (deux décisions de Skander). Lancement à 25 mois après le premier code (28 avec la
+  **quatre vagues** après (trois au départ, quatre depuis la relecture du 28/09 : `09` § 1), puis
+  **l'hôtellerie à la fin** et **l'arabe plus tard, l'infrastructure maintenant** (deux décisions
+  de Skander). Lancement à 25 mois après le premier code (28 avec la
   marge) ; Essentiel comprend le stock et une caisse.
 - **Slate, l'application pour restaurateurs de Skander, devient la partie restaurant de SkanFact**
   (décision de Skander, 28/09/2026 ; `docs/cadrage/15-reprise-de-slate.md`), **en vague 1**, une
@@ -337,8 +342,10 @@ milliers de PME** ; le chiffre exact se mesure, il ne se devine pas.
 
 La liste des documents, leur ordre et leur état vivent dans `docs/cadrage/README.md` (un seul
 endroit, pour qu'ils ne divergent pas). En parallèle : les entretiens terrain (questionnaire en
-annexe de `docs/etudes/ETUDE-MARCHE.md`) et les deux démarches qui servent pendant le développement
-(accès test El Fatoora, adhésion DigiGo).
+annexe de `docs/etudes/ETUDE-MARCHE.md`) et les trois démarches qui servent pendant le
+développement (accès test El Fatoora, adhésion DigiGo, inscription à la plateforme d'homologation
+des caisses), plus le label Startup dès que la société qui porte SkanFact est choisie
+(`docs/cadrage/05-obligations-legales.md` § 4.8).
 
 ---
 
@@ -346,7 +353,8 @@ annexe de `docs/etudes/ETUDE-MARCHE.md`) et les deux démarches qui servent pend
 
 **À traiter pendant le cadrage**
 1. **L'application actuelle vit encore deux ans.** Ses utilisateurs (et les trois comptables) ont
-   besoin des corrections et des changements de la **loi de finances 2027 et 2028**. On prévoit un
+   besoin des corrections et des changements des **lois de finances 2027, 2028 et 2029** (revu le
+   28/09/2026 avec le calendrier du `09`). On prévoit un
    temps d'entretien réservé, sans nouvelles fonctions.
 2. **Reprendre les données des concurrents** : Excel, Sage, Ciel, Hesabi… Personne ne change de
    logiciel s'il doit tout retaper. C'est un argument de vente autant qu'un outil.
@@ -379,7 +387,8 @@ annexe de `docs/etudes/ETUDE-MARCHE.md`) et les deux démarches qui servent pend
     le lancement.
 14. **Mesurer l'usage** (quels écrans servent, où l'on bloque), avec l'accord des clients et sans
     jamais lire leurs données.
-15. **Le label Startup Act** : avantages fiscaux et financement possibles (**À VÉRIFIER**).
+15. **Le label Startup Act** : avantages fiscaux et financement possibles (**À VÉRIFIER** ; ce qu'on
+    en sait : `docs/cadrage/05-obligations-legales.md` § 4.8).
 
 ---
 

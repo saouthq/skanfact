@@ -3,7 +3,8 @@
 *Proposé le 28/09/2026, relu le même jour contre tout le dépôt. **Validé par Skander le 28/09/2026.** Suit `VISION-ARCHITECTURE.md` (§ 4.3, § 4.8,
 risque R15, § 11 points 1 et 2), `00-les-trois-parcours.md` (décision 5 : le passage de la v10),
 `01-modele-de-donnees.md` (§ 20 : où va chaque donnée de la v10, R16 : l'origine),
-`07-offres-et-prix.md`.*
+`07-offres-et-prix.md`. Complété le même jour, après validation, pour suivre le `14` : une ligne du
+§ 4 (Essentiel comprend le stock et une caisse). **À revalider.***
 
 ## En bref (pour Skander)
 
