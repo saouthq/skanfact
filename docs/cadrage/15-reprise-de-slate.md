@@ -91,7 +91,9 @@ plutôt que refaire).*
 6. **Les tests.** Les 371 tests de Slate et ses tests d'isolation entre restaurants sont **portés**
    avec le code qu'ils protègent, et chacun se prouve en réintroduisant son défaut (règle du projet).
 7. **Les textes.** Slate a déjà ses textes dans un fichier (`src/i18n/fr.json`) : ils rejoignent le
-   catalogue de textes (`14` § 5), prêts pour l'arabe.
+   catalogue de textes (`14` § 5). **La partie restaurant reste en français seulement** (décision de
+   Skander, 28/09/2026) : pas de traduction en arabe, et ses écrans sont dispensés du test de droite
+   à gauche ; le catalogue garde seulement la porte ouverte.
 
 ---
 
@@ -143,3 +145,4 @@ auraient vu Slate. **Aucun nom nouveau n'est public** avant le dépôt de la mar
 | 28/09/2026 (**Skander**, le même jour) | **La partie restaurant vient en vague 1**, après une base stable (entreprise, cabinet, console) : plan de salle, service du jour, réservations et widget, rappels, liste d'attente, fiche client fusionnée, mode restaurant de la caisse, vente en ligne, WhatsApp, campagnes, avis, bons cadeaux, menus |
 | 28/09/2026 (par délégation) | Les données passent sur nos serveurs en Tunisie, l'argent en entiers, les droits du `03`, les tests portés |
 | 28/09/2026 (par délégation) | La plateforme prend les outils d'interface de Slate (shadcn, Tailwind, Base UI), sous réserve de l'arabe au prototype |
+| 28/09/2026 (**Skander**) | La partie restaurant reste **en français seulement** : pas d'arabe pour Slate ni pour le mode restaurant de la caisse (`14` § 5) |

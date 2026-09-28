@@ -336,7 +336,8 @@ caisse compris, sans les frais encore inconnus des démarches.
 - **Slate, l'application pour restaurateurs de Skander, devient la partie restaurant de SkanFact**
   (décision de Skander, 28/09/2026 ; `docs/cadrage/15-reprise-de-slate.md`), **en vague 1**, une
   fois l'entreprise, le cabinet et la console stables : plan de salle, réservations, service du
-  jour et mode restaurant de la caisse, sur nos serveurs en Tunisie.
+  jour et mode restaurant de la caisse, sur nos serveurs en Tunisie. La partie restaurant reste **en
+  français seulement** (décision de Skander, 28/09/2026).
 
 ## 10. La suite du cadrage
 

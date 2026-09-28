@@ -145,7 +145,8 @@ Elles sont dans son `CLAUDE.md` et ne changent pas :
 vers nos serveurs en Tunisie ; `skanfact.tn` et la page d'état restent chez l'hébergeur du site (`00`,
 `06`).
 
-**En vague 1** : le site en **arabe**, avec l'interface (`14` § 5). Le site est écrit dès maintenant
+**En vague 1** : le site en **arabe**, avec l'interface (`14` § 5) ; les pages du restaurant restent
+en français, comme la partie restaurant du produit. Le site est écrit dès maintenant
 sans « gauche » ni « droite » dans ses styles, pour qu'il se retourne sans être refait.
 
 ---

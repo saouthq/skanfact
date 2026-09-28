@@ -362,6 +362,12 @@ Décision de Skander (28/09/2026) : **l'arabe plus tard, l'infrastructure mainte
 **Ensuite** :
 - **Vague 1** : l'interface, l'aide et les visites **en arabe**, traduites puis **relues par un
   arabophone** ; les **pièces bilingues** arabe et français ; le site en arabe (`11`).
+- **La partie restaurant reste en français seulement** (décision de Skander, 28/09/2026) : les
+  écrans de la salle, du plan de salle, du service du jour et de la cuisine, le mode restaurant de
+  la caisse, les réservations du restaurant et leur widget public, la page de commande, les menus,
+  les campagnes et les avis (tout ce qui vient de Slate, `15`). Ses textes passent quand même par
+  le catalogue (une seule règle pour tout le code) : ajouter l'arabe un jour ne demanderait que la
+  traduction. Ces écrans sont dispensés du test de la langue factice de droite à gauche.
 - **Vague 4** : l'interface **en anglais** (les pièces en anglais existent dès le lancement, comme
   dans la v10).
 
@@ -439,6 +445,7 @@ par l'entreprise qui les utilise, jamais cachés dans notre prix.
 | 28/09/2026 (par délégation) | La lecture de photos et de PDF se fait sur nos serveurs en Tunisie, avec confirmation de la personne ; pas d'IA qui écrit au lancement |
 | 28/09/2026 (par délégation, **revu le même jour par Skander**) | La restauration en vague 1, avec Slate ; caisse de comptoir, commerces et grossistes au lancement ; bâtiment, rendez-vous et suivi commercial en vague 1 ; fabrication, location, projets en vague 2 ; groupe complet en vague 3 ; **hôtellerie à la fin (décision de Skander)** (vagues revues à la dernière ligne) |
 | 28/09/2026 (par délégation) | Intégrations dans l'ordre du § 4, chacune allumée par l'entreprise, chaque flux compté avant d'être ouvert |
+| 28/09/2026 (**Skander**) | La partie restaurant (Slate et le mode restaurant de la caisse) reste **en français seulement** ; le reste de l'interface passe en arabe en vague 1 (§ 5) |
 | 28/09/2026 | **L'arabe plus tard, l'infrastructure maintenant (décision de Skander)** : catalogue de textes, mise en page début et fin, langue factice testée à chaque version ; interface arabe en vague 1 |
 | 28/09/2026 (par délégation) | Les écrans du quotidien marchent sur téléphone dès le lancement ; l'application des magasins en vague 3 (vague 4 depuis la relecture) |
 | 28/09/2026 (par délégation) | Lancement à 25 mois au plan, 28 avec la marge (après le passage du restaurant en vague 1) ; Essentiel comprend le stock et une caisse |

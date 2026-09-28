@@ -70,6 +70,7 @@ Détail et raisons dans `VISION-ARCHITECTURE.md` ; ne pas les rediscuter sans qu
 - **Slate** (dépôt privé `saouthq/Slate`, l'application pour restaurateurs de Skander) **devient la
   partie restaurant de SkanFact**, **en vague 1**, une fois la base stable (décision de Skander,
   28/09/2026) : on reprend ses écrans et ses tests dans la plateforme, en Tunisie, avec l'argent en entiers ; il prend l'identité de SkanFact.
+  La partie restaurant reste **en français seulement** (pas d'arabe).
   Détail : `docs/cadrage/15-reprise-de-slate.md`.
 - Les règles « JS pur, pas de React » et « stockage JSON, pas SQLite » de l'ancien fichier ne valent
   plus que pour l'application actuelle.
