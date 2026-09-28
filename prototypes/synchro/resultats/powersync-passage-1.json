@@ -1,0 +1,58 @@
+{
+  "date": "2026-09-28T13:36:24.378Z",
+  "candidat": "PowerSync 1.26.1 (Open Edition, auto-hébergé), client @powersync/node",
+  "machine": "4 cœurs, 17 Go",
+  "copieServeur_s": 11.178185027,
+  "propagation_ms": 189,
+  "duree_jeton_s": 300,
+  "resultats": [
+    {
+      "epreuve": "Première copie d'une PME (13 mois + fiches) sur 4 Mbit/s",
+      "seuil": "< 60 s",
+      "mesure": "13.5 s",
+      "tenu": true,
+      "detail": "50360 lignes, 6.0 Mo transférés"
+    },
+    {
+      "epreuve": "Place prise sur le poste par une PME",
+      "seuil": "< 200 Mo",
+      "mesure": "89.9 Mo",
+      "tenu": true,
+      "detail": "PowerSync garde chaque ligne en JSON, plus son journal d'opérations"
+    },
+    {
+      "epreuve": "Poste d'un commercial : lignes de paie reçues",
+      "seuil": "0",
+      "mesure": "0",
+      "tenu": true,
+      "detail": "le poste « paie » en reçoit 260 ; mais la règle vit ici en double (sync-config.yaml ET la base)"
+    },
+    {
+      "epreuve": "Aucune ligne d'une autre entreprise",
+      "seuil": "0",
+      "mesure": "0",
+      "tenu": true
+    },
+    {
+      "epreuve": "Encaisser un ticket hors ligne (500 tickets)",
+      "seuil": "< 200 ms",
+      "mesure": "max 702.4 ms",
+      "tenu": false,
+      "detail": "médiane 1.72 ms, 95 % sous 4.17 ms"
+    },
+    {
+      "epreuve": "Rattrapage après une journée de coupure (500 tickets) sur 4 Mbit/s",
+      "seuil": "< 60 s",
+      "mesure": "2.0 s",
+      "tenu": true,
+      "detail": "500 tickets sur le serveur, 0 alerte de chaîne ; 312 ko (montée par notre file, descente par PowerSync)"
+    },
+    {
+      "epreuve": "Appareil révoqué : données effacées après la reconnexion",
+      "seuil": "< 1 min",
+      "mesure": "266.7 s",
+      "tenu": false,
+      "detail": "client créé après la révocation reçu par l'appareil volé : OUI ; jeton de 300 s : c'est lui qui fixe le délai"
+    }
+  ]
+}

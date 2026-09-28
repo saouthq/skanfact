@@ -1,0 +1,21 @@
+{
+  "name": "skanfact-prototype-synchro",
+  "private": true,
+  "type": "module",
+  "description": "Prototype de synchronisation (docs/cadrage/04-hors-ligne-et-synchro.md § 9.3). Jetable : il tranche un choix, il ne devient pas du code de la plateforme.",
+  "scripts": {
+    "notre-chemin": "node --experimental-strip-types --experimental-sqlite --no-warnings mesures/notre-chemin.ts",
+    "powersync": "node --experimental-strip-types --experimental-sqlite --no-warnings mesures/powersync.ts",
+    "navigateur": "node --experimental-strip-types --experimental-sqlite --no-warnings mesures/navigateur.ts",
+    "preuves": "bash mesures/preuves.sh"
+  },
+  "dependencies": {
+    "@powersync/node": "1.1.0",
+    "better-sqlite3": "12.11.1",
+    "pg": "8.16.3"
+  },
+  "devDependencies": {
+    "@sqlite.org/sqlite-wasm": "3.53.4-build1",
+    "playwright": "1.56.0"
+  }
+}

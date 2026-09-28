@@ -32,8 +32,8 @@ Les idées qui comptent :
    stock sorti sur le poste.
 7. **Une facture ne s'émet pas hors ligne** : son numéro, sa signature et son envoi à la TTN
    demandent le serveur. Elle se prépare entièrement, et part d'un geste au retour du réseau.
-8. **Le choix de l'outil de synchronisation se fait sur un prototype mesuré**, avec des seuils
-   écrits avant de mesurer (§ 9).
+8. **Le choix de l'outil de synchronisation s'est fait sur un prototype mesuré**, avec des seuils
+   écrits avant de mesurer (§ 9). **Fait le 28/09/2026 : on garde notre propre chemin** (§ 9.4).
 
 ---
 
@@ -167,8 +167,9 @@ propose, avec le bouton.
 - **Le stockage du navigateur peut être vidé par le navigateur lui-même** (Safari, par exemple, peut
   effacer les données d'un site qu'on n'a pas ouvert depuis sept jours). L'application installée demande donc le
   **stockage persistant**. Si le navigateur le refuse, l'écran le dit, et le hors-ligne est limité à
-  la consultation. **Pour une caisse, l'application de bureau est recommandée.** **À VÉRIFIER** sur
-  les navigateurs du marché pendant le prototype.
+  la consultation. **Pour une caisse, l'application de bureau est recommandée.** Le prototype l'a
+  vu (§ 9.4) : Chromium **n'accorde pas** le stockage persistant à une page non installée. **À
+  VÉRIFIER** sur Safari et Firefox, et sur Chromium une fois l'application installée.
 
 ---
 
@@ -308,7 +309,7 @@ copie des données (§ 2).
 | **PowerSync** (auto-hébergé) | Lit les changements de PostgreSQL, et tient une base SQLite sur le poste, selon des règles de synchronisation | Le plus mûr en 2026 (vision § 4.5) ; SQLite local, navigateur et bureau | Nos droits (rôle, établissement, paie cachée) doivent être réécrits dans **ses** règles : deux endroits pour une même règle, ce que D2 interdit. Un service de plus à héberger en Tunisie. **À VÉRIFIER** : sa licence en auto-hébergement |
 | **ElectricSQL**, **Zero** | Même famille (vision § 4.5) | — | Mêmes objections, et moins mûrs |
 
-**Préférence, à confirmer par le prototype : notre propre chemin de lecture.** La raison principale,
+**Préférence, confirmée par le prototype le 28/09/2026 (§ 9.4) : notre propre chemin de lecture.** La raison principale,
 c'est la règle D2 du `03` : une seule porte pour les droits. Un outil qui garde ses propres règles de
 filtrage en crée une seconde, et deux règles finissent toujours par diverger. C'est la leçon du
 projet depuis la 6.8.0 : deux tables séparées divergent toujours.
@@ -334,6 +335,35 @@ l'exemple de cinq ans de l'application actuelle, et un magasin fictif de 500 tic
 Un seuil dépassé **change le plan, pas le seuil**. Le prototype a lieu **avant la validation** du
 document 12 (pile technique), qui en reprend le résultat. Sa durée et son coût sont au `09` § 1 (J0).
 
+### 9.4 Le résultat du prototype (28/09/2026)
+
+Tout est dans `prototypes/synchro/README.md` (le code, les bancs, les bilans chiffrés dans
+`resultats/`). En résumé, sur une PME de 50 360 lignes et une connexion freinée à 4 Mbit/s :
+
+| Mesure (seuil) | Notre chemin (Node) | Notre chemin (navigateur) | PowerSync |
+|---|---|---|---|
+| Première copie (< 60 s) | 10,9 s | 12,3 s | 13,2 s |
+| Place sur le poste (< 200 Mo) | 14,9 Mo | 13,4 Mo | 89,9 Mo |
+| Paie reçue par un commercial (0) | 0 | — (même serveur) | 0 |
+| Encaisser un ticket (< 200 ms) | 4,2 ms | 7,9 ms | 16–17 ms |
+| Rattrapage de 500 tickets (< 1 min) | 1,6 s | 1,3 s | 1,7–2,3 s |
+| Appareil révoqué (< 1 min) | 0,15 s | 0,14 s | 267 s avec un jeton de 5 min (manqué) ; 0,2 s avec un jeton de 30 s |
+| Geste renvoyé, brouillon, version précédente | tenus | tenus (même serveur) | même code que notre chemin (ses écritures passent par notre file) |
+
+**Les deux candidats tiennent les seuils** (PowerSync à condition d'un jeton de 30 s). Les huit
+défauts du serveur et les deux du navigateur ont été réintroduits un par un : chaque épreuve tombe.
+
+**Décision : notre propre chemin de lecture.** Ce n'est pas la vitesse qui tranche, c'est ce que le
+§ 9.2 annonçait et que le prototype a vu : PowerSync lit la base avec un utilisateur qui **passe
+au-dessus** de la sécurité par ligne, et nos règles de droits (entreprise, paie) doivent être
+**réécrites** dans ses règles et dans le jeton, ce que `03` D2 interdit ; il prend **six fois plus de
+place** sur le poste ; c'est **un service de plus** à héberger et à surveiller en Tunisie.
+
+On lui prend une idée : **le poste est prévenu** quand quelque chose change (PowerSync le fait en
+0,1 à 0,2 s ; notre chemin attend que le poste demande). Notre serveur ajoutera un petit canal
+« il y a du neuf depuis la révision N », sans rien changer aux droits. **PowerSync reste le plan B.**
+La compression des réponses (3,8 Mo au lieu de 16,8 Mo pour la première copie) fait partie du chemin.
+
 ---
 
 ## 10. Ce qu'on reprend de l'application actuelle
@@ -354,10 +384,13 @@ document 12 (pile technique), qui en reprend le résultat. Sa durée et son coû
    format du Z (`01` § 21). Tout se confronte au cahier des charges de la plateforme d'homologation
    des caisses (`05` § 3.7), avant d'écrire la caisse.
 2. **Stockage persistant** des navigateurs (Safari, Chrome, Firefox ; ordinateur et téléphone) :
-   vérifié pendant le prototype.
+   Chromium, mesuré au prototype, garde la copie à la fermeture mais **refuse** le stockage persistant
+   à une page non installée. Restent Safari, Firefox, les téléphones, et l'application installée.
 3. **Régularisation d'un ticket arrivé après la fermeture du mois** : acceptable pour un comptable
    et en cas de contrôle ?
-4. **Licence de PowerSync** en auto-hébergement, si le prototype le retient.
+4. **Licence de PowerSync** en auto-hébergement : FSL-1.1 (tout usage sauf revendre un service
+   concurrent de PowerSync ; Apache 2.0 deux ans après chaque version), client sous Apache 2.0. Le
+   prototype ne l'a pas retenu : à faire relire par un juriste seulement si le plan B sert.
 5. **Blocs de numéros par appareil** pour les devis : aucune règle ne l'interdit pour une pièce sans
    valeur fiscale ? Comptable.
 
@@ -374,3 +407,4 @@ document 12 (pile technique), qui en reprend le résultat. Sa durée et son coû
 | 28/09/2026 (proposé) | Droits gardés hors ligne : 7 jours pour une caisse, 72 heures pour un autre poste ; appareil révoqué : effacé, et ses gestes en quarantaine jusqu'à la décision du propriétaire |
 | 28/09/2026 (relecture) | Un fait (ticket, règlement) n'est jamais refusé : régularisé, ou en attente de la décision du propriétaire ; facture demandée sur un ticket préparée hors ligne, émise au retour |
 | 28/09/2026 (proposé) | Écriture par notre file d'opérations ; lecture : notre propre chemin de préférence, départagé avec PowerSync par un prototype aux seuils écrits d'avance |
+| 28/09/2026 (prototype) | **Notre propre chemin de lecture**, mesuré (12 seuils sur 12, et 6 sur 6 dans le navigateur), avec réponses compressées et un canal qui prévient le poste ; PowerSync, qui tient aussi les seuils avec un jeton de 30 s, est écarté pour la double règle de droits, la place sur le poste et le service de plus ; il reste le plan B (§ 9.4) |

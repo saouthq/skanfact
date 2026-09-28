@@ -2,7 +2,7 @@
 
 *Proposé le 28/09/2026. **Validé par délégation de Skander le 28/09/2026** (« relis-les à ma place et valide toi si c'est bon »), après deux relectures complètes du dépôt le même jour. Suit `VISION-ARCHITECTURE.md` (§ 4, § 8 : pas de
 microservices ni de Kubernetes ; § 9 : TypeScript et une bibliothèque d'interface, validés le
-27/09) et les documents 01 à 11. **À décider avant la première ligne de code** (J0, `09`) : deux points restent suspendus au prototype (la synchronisation et l'arabe avec les outils d'interface, § 4). Complété
+27/09) et les documents 01 à 11. **À décider avant la première ligne de code** (J0, `09`) : deux points étaient suspendus au prototype ; **la synchronisation et la copie locale sont tranchées le 28/09/2026** (`04` § 9.4) ; reste l'arabe avec les outils d'interface (§ 4). Complété
 le même jour pour suivre le `14` (lecture de documents, API publique, téléphone, langue factice,
 imprimantes de cuisine).*
 
@@ -19,8 +19,8 @@ l'ordre :
    notre temps de développement (vision § 11, point 4).
 5. **Garder la main sur les calculs et sur le SQL** : c'est la leçon d'Odoo (vision § 2).
 
-Chaque choix dit **pourquoi**, et **ce qui le remettrait en cause**. Deux choix attendent le
-**prototype** du `04` § 9 : l'outil de synchronisation et le stockage sur le poste.
+Chaque choix dit **pourquoi**, et **ce qui le remettrait en cause**. L'outil de synchronisation et
+le stockage sur le poste ont été **tranchés par le prototype** du `04` § 9, le 28/09/2026.
 
 ---
 
@@ -94,8 +94,8 @@ skanfact-plateforme/
 | **Textes traduisibles dès le premier écran** (catalogue de messages), propriétés CSS « de début et de fin » ; une **langue factice** (40 % plus longue, de droite à gauche) photographiée à chaque version ; des **polices libres qui contiennent l'arabe** (famille Noto), aussi dans les PDF | Vision R12 et décision de Skander du 28/09 : l'arabe plus tard, l'infrastructure maintenant (`14` § 5) | — |
 | **Écrans pensés pour le téléphone** : la mise en page suit la largeur ; l'instrument de rendu photographie chaque écran à la largeur d'un téléphone (390 points) et d'un ordinateur (1 440) ; des cibles d'au moins 44 points pour un doigt | `14` § 2.6 | — |
 | **Application installable** (service worker) | `00` : la même application dans le navigateur, installée, ou dans la coque | — |
-| **Copie locale** : **SQLite dans le navigateur** (version WebAssembly, stockée dans le système de fichiers privé du navigateur) | Une vraie base sur le poste, chiffrable, rapide (budget de 100 ms à la frappe, vision § 6) | **Le prototype du `04` § 9 tranche**, avec le stockage persistant (`04` § 4) |
-| **Synchronisation** : écriture par **notre file d'opérations** ; lecture par **notre propre chemin** de préférence | `04` § 9.1 et 9.2 : une seule porte pour les droits | **Le prototype tranche** entre notre chemin et PowerSync |
+| **Copie locale** : **SQLite dans le navigateur** (version WebAssembly, stockée dans le système de fichiers privé du navigateur) | Une vraie base sur le poste, chiffrable, rapide (budget de 100 ms à la frappe, vision § 6) | **Mesuré au prototype le 28/09/2026** (`04` § 9.4) : 13,4 Mo pour une PME, 7,9 ms au pire pour un ticket, la copie survit à la fermeture. Reste le stockage persistant, refusé par Chromium à une page non installée (`04` § 4) |
+| **Synchronisation** : écriture par **notre file d'opérations** ; lecture par **notre propre chemin** (« tout ce qui a changé depuis N », réponses compressées, et un canal qui prévient le poste) | `04` § 9.1 et 9.2 : une seule porte pour les droits ; **confirmé par le prototype** le 28/09/2026 (`04` § 9.4) | PowerSync, qui tient aussi les seuils, reste le plan B si notre chemin coûte trop à écrire |
 | **Visites guidées** : le moteur de la v10 (`visite.js`), porté | Il a fait ses preuves ; chaque geste expliqué (`02` M6) | — |
 
 ---
@@ -176,7 +176,7 @@ de côté. Chaque test se prouve en réintroduisant son défaut.
 
 ## 10. À VÉRIFIER
 
-1. **Le prototype** du `04` § 9.3 : synchronisation et stockage sur le poste.
+1. **Le prototype** du `04` § 9.3 : **fait le 28/09/2026** (`04` § 9.4). Reste le stockage persistant sur Safari, Firefox et les téléphones.
 2. **La signature XAdES** acceptée par la TTN, avec la bibliothèque choisie.
 3. **Les pilotes des clés USB** TunTrust (Windows, Mac) pour l'agent local.
 4. **La licence de MinIO** pour notre usage.
@@ -200,4 +200,5 @@ de côté. Chaque test se prouve en réintroduisant son défaut.
 | 28/09/2026 (proposé) | Electron pour la coque et l'agent local ; application signée |
 | 28/09/2026 (proposé) | Serveurs dédiés, Docker Compose, Ansible, pgBackRest, réplication PostgreSQL avec bascule par script, MinIO, SOPS, Prometheus et Grafana ; tout chez nous, en Tunisie |
 | 28/09/2026 (proposé) | Quatre environnements, jamais de donnée réelle hors production ; tous les tests de la v10 portés ; intégration continue sur GitHub Actions, jamais contournée |
+| 28/09/2026 (prototype) | Copie locale : SQLite WebAssembly dans l'espace privé du navigateur (OPFS), tenu par un worker ; lecture par notre propre chemin ; PowerSync en plan B (`04` § 9.4) |
 | 28/09/2026 (par délégation, `14`) | Lecture de documents par un moteur libre sur nos serveurs ; API publique documentée depuis le code, avis signés ; langue factice et largeur de téléphone photographiées à chaque version ; imprimantes de cuisine dans l'agent local |

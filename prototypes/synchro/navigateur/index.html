@@ -1,0 +1,12 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Poste du prototype</title>
+<p>Poste du prototype de synchronisation : la base vit dans un worker.</p>
+<script type="module">
+  const worker = new Worker('/poste.js', { type: 'module' });
+  let suivant = 0;
+  const attente = new Map();
+  worker.onmessage = (e) => { const { id, ok, valeur, erreur } = e.data; const p = attente.get(id); attente.delete(id); ok ? p.ok(valeur) : p.ko(new Error(erreur)); };
+  window.poste = (action, args) => new Promise((ok, ko) => { const id = ++suivant; attente.set(id, { ok, ko }); worker.postMessage({ id, action, args }); });
+  window.pret = true;
+</script>

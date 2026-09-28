@@ -1,0 +1,51 @@
+{
+  "date": "2026-09-28T13:51:26.003Z",
+  "candidat": "notre chemin, poste dans le navigateur",
+  "navigateur": "Chrome/141.0.7390.37",
+  "sqlite": "3.53.4",
+  "stockage": "OPFS (opfs-sahpool)",
+  "machine": "4 cœurs, 17 Go",
+  "resultats": [
+    {
+      "epreuve": "Première copie d'une PME dans le navigateur, sur 4 Mbit/s",
+      "seuil": "< 60 s",
+      "mesure": "12.3 s",
+      "tenu": true,
+      "detail": "50360 lignes, 11 pages, 3.8 Mo transférés"
+    },
+    {
+      "epreuve": "Place prise dans le navigateur par une PME",
+      "seuil": "< 200 Mo",
+      "mesure": "13.4 Mo",
+      "tenu": true
+    },
+    {
+      "epreuve": "La copie survit à la fermeture du navigateur",
+      "seuil": "rien de perdu",
+      "mesure": "1500 fiches sur 1500",
+      "tenu": true,
+      "detail": "rouverte en 98 ms ; stockage « persistant » accordé par le navigateur : non (Chrome/141.0.7390.37, sans installation)"
+    },
+    {
+      "epreuve": "Encaisser un ticket hors ligne dans le navigateur (500 tickets)",
+      "seuil": "< 200 ms",
+      "mesure": "max 7.9 ms",
+      "tenu": true,
+      "detail": "médiane 3.10 ms, 95 % sous 5.50 ms ; ticket et geste écrits ensemble"
+    },
+    {
+      "epreuve": "Rattrapage de 500 tickets depuis le navigateur, sur 4 Mbit/s",
+      "seuil": "< 60 s",
+      "mesure": "1.3 s",
+      "tenu": true,
+      "detail": "500 gestes acquittés, 500 tickets sur le serveur, 0 alerte de chaîne"
+    },
+    {
+      "epreuve": "Appareil révoqué : la copie du navigateur est effacée",
+      "seuil": "< 1 min",
+      "mesure": "0.14 s",
+      "tenu": true,
+      "detail": "fichiers restants juste après : 0 ; fiches retrouvées à la réouverture : 0"
+    }
+  ]
+}

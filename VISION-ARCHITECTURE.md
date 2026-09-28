@@ -167,7 +167,10 @@ compteur par caisse, chaque ticket chaîné au précédent, déclaration à l'ad
 Moteur de synchronisation : **à choisir pendant le cadrage** entre un moteur éprouvé qui s'appuie sur
 PostgreSQL (PowerSync est le plus mûr en 2026 ; Zero et ElectricSQL sont les alternatives) et notre
 propre file d'envoi. Critère : le serveur doit pouvoir **refuser** un geste (une clôture, un droit
-manquant) — c'est exactement ce que font PowerSync et Zero.
+manquant) — c'est exactement ce que font PowerSync et Zero. **Choisi le 28/09/2026 sur un prototype
+mesuré** : notre propre chemin de lecture, avec notre file d'opérations ; PowerSync tient aussi les
+seuils mais oblige à écrire nos droits une seconde fois, il reste le plan B
+(`docs/cadrage/04-hors-ligne-et-synchro.md` § 9.4, `prototypes/synchro/`).
 
 ### 4.6 Un seul programme serveur, bien découpé
 

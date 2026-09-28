@@ -17,9 +17,11 @@ y cherche le **pourquoi** d'une règle, on ne le relit pas à chaque session.*
 ## Où on en est (28/09/2026)
 
 1. **Fin du cadrage (J0).** Tous les documents sont validés (le 28/09/2026 ; 10 à 15 par
-   délégation). Avant le premier code de la plateforme : le **prototype de synchronisation**
-   (`docs/cadrage/04-hors-ligne-et-synchro.md` § 9.3) et les premières démarches du père de
-   Skander. État et journal des décisions : `docs/cadrage/README.md`.
+   délégation). Le **prototype de synchronisation** est fait (28/09/2026 : notre propre chemin
+   retenu, PowerSync en plan B ; `docs/cadrage/04-hors-ligne-et-synchro.md` § 9.4, code et bancs dans
+   `prototypes/synchro/`). Avant le premier code de la plateforme : l'essai de l'arabe avec les
+   outils d'interface (`12` § 4) et les premières démarches du père de Skander. État et journal des
+   décisions : `docs/cadrage/README.md`.
 2. **Nouvelle plateforme à construire** (25 mois au plan, 28 avec la marge, pas de lancement public
    avant qu'elle soit complète : `docs/cadrage/09-feuille-de-route.md`) : `VISION-ARCHITECTURE.md`
    fait foi. Tout ce qu'elle fait, au lancement et dans les vagues qui suivent :
@@ -87,6 +89,7 @@ Détail et raisons dans `VISION-ARCHITECTURE.md` ; ne pas les rediscuter sans qu
 | `docs/application-actuelle/` | Ce qui sert encore à l'app v10 : `A-FAIRE.md` (carnet), `TARIFS-REFERENCE.md` (contrat avec le site), `TESTS-TERRAIN.md`, `e-facture-controle.md`, `CLAUDE-HISTORIQUE.md` |
 | `docs/archives/ancienne-vision/` | Plans de l'ancienne vision (cahier des charges, direction, plans, questions, versions à venir) — lecture seule |
 | `src/` | L'application actuelle : `src/main.js` + `src/renderer/` (entreprise), `src/cabinet/` (Cabinet). Moteur : `src/renderer/core.js`, `src/renderer/compta.js` |
+| `prototypes/synchro/` | Le prototype de synchronisation (jetable) : bancs, preuves et résultats mesurés du 28/09/2026 |
 | `plateforme/` | Worker Cloudflare de la console éditeur actuelle (licences, ventes, paiement Konnect). La console cible est décrite dans `VISION-ARCHITECTURE.md` § 12 |
 | `worker/` | Relais de mise à jour |
 | `test/` | `npm test` (`test/run-tests.js` + `test/suites/`), parcours `test/e2e/`, charges |

@@ -1,0 +1,95 @@
+{
+  "date": "2026-09-28T13:37:22.723Z",
+  "candidat": "notre chemin",
+  "machine": "4 cœurs, 17 Go",
+  "volumes": {
+    "tiers": "1700",
+    "articles": "700",
+    "pieces": "8800",
+    "lignes": "44000",
+    "bulletins": "325"
+  },
+  "resultats": [
+    {
+      "epreuve": "Première copie d'une PME (13 mois + fiches) sur 4 Mbit/s",
+      "seuil": "< 60 s",
+      "mesure": "10.9 s",
+      "tenu": true,
+      "detail": "50360 lignes, 11 pages, 3.8 Mo transférés"
+    },
+    {
+      "epreuve": "Place prise sur le poste par une PME",
+      "seuil": "< 200 Mo",
+      "mesure": "14.9 Mo",
+      "tenu": true
+    },
+    {
+      "epreuve": "Poste d'un commercial : lignes de paie reçues",
+      "seuil": "0",
+      "mesure": "0",
+      "tenu": true,
+      "detail": "le poste « paie » en reçoit 260 (contrôle : la paie existe bien) ; lignes d'une autre entreprise reçues : 0"
+    },
+    {
+      "epreuve": "Aucune ligne d'une autre entreprise, par la même porte",
+      "seuil": "0",
+      "mesure": "0",
+      "tenu": true
+    },
+    {
+      "epreuve": "Encaisser un ticket hors ligne (500 tickets)",
+      "seuil": "< 200 ms",
+      "mesure": "max 4.2 ms",
+      "tenu": true,
+      "detail": "médiane 0.61 ms, 95 % sous 1.75 ms ; chaque ticket et son geste écrits sur disque ensemble"
+    },
+    {
+      "epreuve": "Rattrapage après une journée de coupure (500 tickets) sur 4 Mbit/s",
+      "seuil": "< 60 s",
+      "mesure": "1.6 s",
+      "tenu": true,
+      "detail": "500 gestes acquittés, 500 tickets sur le serveur, 0 alerte de chaîne, 500 lignes redescendues, 265 ko"
+    },
+    {
+      "epreuve": "Un même geste envoyé trois fois",
+      "seuil": "compté une fois",
+      "mesure": "1 ticket",
+      "tenu": true,
+      "detail": "réponses : accepte, deja, deja"
+    },
+    {
+      "epreuve": "Une file écrite par la version précédente de l'application",
+      "seuil": "acceptée",
+      "mesure": "accepte",
+      "tenu": true,
+      "detail": "total relu sur le serveur : 7777 millimes"
+    },
+    {
+      "epreuve": "Deux postes modifient le même brouillon hors ligne",
+      "seuil": "une version gardée, l'autre dans « À reprendre », aucune perdue",
+      "mesure": "gardée : « Version du poste 1 » ; mise de côté : 1",
+      "tenu": true,
+      "detail": "réponses accepte puis mis-de-cote ; le poste 2 voit 1 ligne dans « À reprendre »"
+    },
+    {
+      "epreuve": "Une fiche modifiée sur deux postes, deux champs différents",
+      "seuil": "les deux changements gardés",
+      "mesure": "+216 71 000 001 / 9 avenue Habib Bourguiba, Tunis",
+      "tenu": true
+    },
+    {
+      "epreuve": "Écritures simultanées de 8 postes pendant qu'un 9e lit",
+      "seuil": "copie identique au serveur",
+      "mesure": "0 fiche différente",
+      "tenu": true,
+      "detail": "204 lectures pendant les écritures, 400 envois de 2 gestes"
+    },
+    {
+      "epreuve": "Appareil révoqué : données effacées après la reconnexion",
+      "seuil": "< 1 min",
+      "mesure": "0.15 s",
+      "tenu": true,
+      "detail": "copie effacée : oui ; gestes en quarantaine : 1 ; appliqués d'office : aucun"
+    }
+  ]
+}

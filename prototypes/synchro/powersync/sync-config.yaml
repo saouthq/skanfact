@@ -1,0 +1,25 @@
+# Les règles de synchro de PowerSync pour le même modèle que « notre chemin ».
+#
+# C'est ici que se voit le point faible annoncé au 04 § 9.3 : PowerSync lit la base par la
+# réplication logique, avec un utilisateur qui PASSE AU-DESSUS de la sécurité par ligne (RLS). Le
+# filtre « ton entreprise, et la paie seulement si ton rôle y a droit » doit donc être RÉÉCRIT ici,
+# une seconde fois, à côté des règles de la base (base/schema.sql). Deux copies d'une règle de
+# sécurité : c'est exactement ce que la décision D2 du 03 voulait éviter.
+config:
+  edition: 3
+
+streams:
+  entreprise:
+    auto_subscribe: true
+    queries:
+      - SELECT * FROM proto.tiers WHERE entreprise = auth.parameter('entreprise')
+      - SELECT * FROM proto.article WHERE entreprise = auth.parameter('entreprise')
+      - SELECT * FROM proto.piece WHERE entreprise = auth.parameter('entreprise')
+      - SELECT * FROM proto.ligne_piece WHERE entreprise = auth.parameter('entreprise')
+      - SELECT * FROM proto.ticket WHERE entreprise = auth.parameter('entreprise')
+      - SELECT * FROM proto.a_reprendre WHERE entreprise = auth.parameter('entreprise')
+  # La paie : la règle du rôle, réécrite (le jeton porte « paie: true » pour le propriétaire et la paie).
+  paie:
+    auto_subscribe: true
+    queries:
+      - SELECT * FROM proto.bulletin WHERE entreprise = auth.parameter('entreprise') AND auth.parameter('paie') = true

@@ -1,0 +1,30 @@
+# Le service PowerSync du prototype (image journeyapps/powersync-service), lancé par
+# mesures/powersync.ts sur le réseau de la machine. Aucun secret ici : la clé qui signe les jetons
+# est tirée au hasard à chaque mesure et passée par une variable d'environnement.
+telemetry:
+  disable_telemetry_sharing: true
+
+replication:
+  connections:
+    - type: postgresql
+      uri: !env PS_DATA_SOURCE_URI
+      sslmode: disable
+
+storage:
+  type: postgresql
+  uri: !env PS_STORAGE_SOURCE_URI
+  sslmode: disable
+
+port: !env PS_PORT
+
+sync_config:
+  path: sync-config.yaml
+
+client_auth:
+  audience: ["powersync"]
+  jwks:
+    keys:
+      - kty: oct
+        alg: HS256
+        kid: prototype
+        k: !env PS_JWT_K

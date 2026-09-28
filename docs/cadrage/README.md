@@ -1,6 +1,6 @@
 # Le cadrage de la nouvelle plateforme
 
-*Ouvert le 27/09/2026. Rien ne se code tant que le cadrage n'est pas validé par Skander. **Tous les documents sont validés depuis le 28/09/2026** (10 à 15 par délégation) ; J0 attend le prototype de synchronisation et les premières démarches (`09` § 1).*
+*Ouvert le 27/09/2026. Rien ne se code tant que le cadrage n'est pas validé par Skander. **Tous les documents sont validés depuis le 28/09/2026** (10 à 15 par délégation) ; le prototype de synchronisation est fait (28/09/2026, `04` § 9.4) ; J0 attend l'essai de l'arabe avec les outils d'interface et les premières démarches (`09` § 1).*
 
 La référence est `VISION-ARCHITECTURE.md` (à la racine). Ce dossier reçoit un document par sujet,
 chacun validé à son tour. Un document validé porte en tête : `Validé par Skander le JJ/MM/AAAA`.
@@ -71,3 +71,4 @@ lettres de mission dans le parcours du comptable).
 | 28/09/2026 | **Skander** : la partie restaurant reste en français seulement. Seconde relecture complète : la mise sur le marché revue (au lancement fin 2028, les obligations de 2026 à 2028 seront passées : on vend un changement, avec la reprise des données des concurrents à l'étape 3) ; marque déposée dès que la société est choisie ; frais uniques corrigés (26 000 DT au plus) ; audit annuel compté ; manques comblés (geste des recettes, dépendances des intégrations, tests du site, point mort dans la console) | `09`, `13`, `05`, `14` § 5, `15` |
 | 28/09/2026 | **Skander valide la feuille de route (09)** : cinq étapes, lancement au mois 25 (28 avec la marge), quatre vagues, budget en estimations | `09-feuille-de-route.md` |
 | 28/09/2026 | **Skander** : SkanFact est porté par sa société actuelle (objet social et label Startup à vérifier) ; il délègue la validation des documents restants : **10 à 15 validés et les ajouts aux 00 à 08 revalidés par délégation**, après deux relectures complètes. **Le cadrage est complet** ; restent les démarches et le prototype de synchronisation (J0) | `05` § 4.8, ce dossier |
+| 28/09/2026 | **Prototype de synchronisation fait** (« vasy go ») : notre chemin tient 12 seuils sur 12 sous Node et 6 sur 6 dans Chromium, PowerSync 7 sur 7 avec un jeton de 30 s ; **on garde notre propre chemin** (une seule règle de droits, six fois moins de place sur le poste, pas de service en plus), avec réponses compressées et un canal qui prévient le poste ; PowerSync en plan B. Restent pour J0 : l'arabe avec les outils d'interface, et les démarches | `04` § 9.4, `12` § 4, `prototypes/synchro/` |
