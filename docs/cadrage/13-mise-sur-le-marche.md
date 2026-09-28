@@ -10,9 +10,9 @@ Complété le même jour pour suivre le `14` (cibles 3, 4 et 5).*
 ## En bref (pour Skander)
 
 - **Qui on vise d'abord** : ceux que la loi presse en 2026. Les **prestataires de services**, parce
-  que la facture électronique est obligatoire pour eux depuis janvier. Les **restaurants et cafés**,
-  parce que la caisse certifiée l'est depuis juillet. Et les **cabinets comptables**, qui amènent
-  leurs clients.
+  que la facture électronique est obligatoire pour eux depuis janvier. Les **commerces**, que la
+  caisse certifiée gagne jusqu'en 2028. Et les **cabinets comptables**, qui amènent leurs clients.
+  Les **restaurants et cafés** viennent en vague 1, avec la partie restaurant (`15`).
 - **Ce qu'on promet**, trois phrases qu'on prouve en démonstration :
   1. « Ça marche même quand Internet tombe. »
   2. « Ton comptable travaille dans les mêmes données, gratuitement. »
@@ -53,7 +53,7 @@ fonctionnement (`09` § 4.4).
 |---|---|---|---|---|
 | 1 | **Cabinets comptables** | Chaque cabinet amène des dizaines de clients ; Sage Coala, encore utilisé, est arrêté par son éditeur | Gratuit pour ses clients abonnés, plus de ressaisie, la paie et les déclarations de tous ses dossiers au même endroit, la reprise de ses dossiers | Cabinet (`07`) |
 | 2 | **Prestataires de services** (libéraux, conseil, informatique, agences) | Facture électronique obligatoire depuis le 1er janvier 2026, amende par facture papier | La facture signée et envoyée à la TTN en un clic, la retenue à la source et TEJ, le prix | Essentiel |
-| 3 | **Restaurants, cafés, salons de thé, boulangeries** | Caisse certifiée obligatoire (calendrier 2025 à 2028) | Une caisse homologuée qui marche pendant les coupures, avec tables et cuisine, suppléments, addition partagée et titres-restaurant (`14` § 3.1), les **réservations en ligne** et le plan de salle (repris de Slate, `15`), le stock matière par recette, la comptabilité avec | Essentiel (une caisse comprise), ou Complet |
+| 3 | **Restaurants, cafés, salons de thé, boulangeries** (**à partir de la vague 1**, `15`) | Caisse certifiée obligatoire (calendrier 2025 à 2028) : à notre arrivée, ils seront déjà équipés ; on les prend sur l'offre complète | Une caisse homologuée qui marche pendant les coupures, avec tables et cuisine, suppléments, addition partagée et titres-restaurant (`14` § 3.1), les **réservations en ligne** et le plan de salle (repris de Slate, `15`), le stock matière par recette, la comptabilité avec | Essentiel (une caisse comprise), ou Complet |
 | 4 | **Commerces, grossistes, distributeurs** | Caisse obligatoire pour le réel mensuel avant juillet 2027 ; stock et prix par client | Caisse, stock multi-dépôts, prix par client et par quantité, encours, commandes clients et fournisseurs, réceptions, marges (`14` § 3.2) ; plus tard, les boutiques en ligne et la livraison (`14` § 4) | Essentiel ou Complet |
 | 5 | **PME avec salariés** (bâtiment, fabrication, transport…) | Paie, CNSS, déclarations, plusieurs utilisateurs | Tout dans un seul outil, prix par entreprise, droits par personne ; les situations de travaux en vague 1, la fabrication en vague 2 (`14` § 3.3, 3.4) | Complet |
 | 6 | **Groupes de sociétés** | Plusieurs matricules, les mêmes personnes | Passer d'une société à l'autre, fiches partagées, −20 % dès la deuxième société, tableau de bord du groupe | Complet par société |
@@ -220,6 +220,7 @@ changer s'il ne marche pas.
 | Date | Décision |
 |---|---|
 | 28/09/2026 (par délégation) | Cibles par ordre d'urgence : cabinets, prestataires de services, restauration, commerces, PME avec salariés, groupes |
+| 28/09/2026 (Skander, `15`) | La restauration est visée à partir de la vague 1 ; au lancement, les commerces passent devant |
 | 28/09/2026 (par délégation) | Canaux : cabinets (sans commission), revendeurs de caisse (20 % de la première année, à vérifier), contenu et comparatifs vérifiés, WhatsApp, parrainage (un mois offert) |
 | 28/09/2026 (par délégation) | Essai piloté par quatre gestes d'activation, avec message au 3e jour, appel au 10e, proposition au 25e |
 | 28/09/2026 (par délégation) | Lancement en trois temps : pilotes (J3), 100 fondateurs sur invitation, public (J5) |

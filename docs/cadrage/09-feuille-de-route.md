@@ -9,16 +9,17 @@ le lancement sont écrites (§ 1).*
 
 ## En bref (pour Skander)
 
-- **Cinq étapes, 27 mois au plan et 30 avec la marge** (22 et 24 avant l'alignement sur Hesabi du
-  28/09, `14` § 6), et **pas de lancement public avant que tout soit là** (décision du 27/09). Chaque étape se termine par un **jalon vérifiable** : on ne passe à la suivante que si le
+- **Cinq étapes, 25 mois au plan et 28 avec la marge** (22 et 24 avant l'alignement sur Hesabi du
+  28/09, `14` § 6 ; la restauration passe en vague 1, `15`), et **pas de lancement public avant que tout soit là** (décision du 27/09). Chaque étape se termine par un **jalon vérifiable** : on ne passe à la suivante que si le
   jalon est tenu, mesuré et vu à l'écran.
 - **Ce qui fixe le calendrier, ce n'est pas le code.** Ce sont les **démarches** (TTN, DigiGo,
   plateforme des caisses, INPDP) et le **quota Claude**. D'où les démarches lancées **dès maintenant**
   (`05` § 5).
 - **Les comptables pilotes** passent sur la plateforme à l'étape 3 (mois 16), en parallèle de
   l'application actuelle, avec leur accord.
-- **Après le lancement, trois vagues** de six mois chacune (l'arabe, les rendez-vous, le bâtiment, les
-  boutiques en ligne, la fabrication…), puis l'hôtellerie à la fin (§ 1, `14`).
+- **Après le lancement, trois vagues** de six mois chacune (la restauration avec Slate, l'arabe, les
+  rendez-vous, le bâtiment, les boutiques en ligne, la fabrication…), puis l'hôtellerie à la fin
+  (§ 1, `14`).
 - **Budget** : de l'ordre de **1 000 DT par mois** en fonctionnement au lancement, et **11 à 24 kDT** de
   frais uniques connus sur toute la durée, dans l'ordre de grandeur du 27/09 (10 à 20 kDT). S'y
   ajouteront des frais **encore inconnus** (homologation de la caisse, DigiGo, ANCE), qui le feront
@@ -100,23 +101,21 @@ l'écran (règle du projet).
 leurs vrais dossiers repris de la v10, **en parallèle** de la v10 pendant au moins deux mois. Chaque
 écart entre les deux est un défaut, écrit et corrigé.
 
-### Étape 4 — Le stock, la caisse, le restaurant, le bureau (mois 17 à 23)
+### Étape 4 — Le stock, la caisse, le bureau (mois 17 à 21)
 
 - Module **Stock** (`02`), avec les **recettes et les kits**.
 - Module **Caisse**, conçu d'après le **cahier des charges de la plateforme d'homologation** (`05`
-  § 3.7), et ses tests d'intégration avec le système central ; avec son **mode restaurant** (salle,
-  tables, cuisine, suppléments, addition partagée, titres-restaurant : `14` § 3.1) ; les
-  **réservations de restaurant**, le plan de salle et le service du jour, **repris de Slate** (`15`).
+  § 3.7), et ses tests d'intégration avec le système central : la **caisse de comptoir**, conçue pour
+  recevoir le mode restaurant en vague 1 (`15`).
 - **L'application de bureau**, signée (`06` § 10), et l'**agent local** : clé USB de signature,
-  imprimante de tickets, **imprimantes de cuisine**, tiroir, douchette.
+  imprimante de tickets, tiroir, douchette.
 
 **Jalon J4** : la caisse passe les **tests d'intégration** de l'administration, et la demande
-d'homologation est déposée. Une journée de magasin fictive **et un service de restaurant fictif**
-(tables, cuisine, addition partagée), chacun avec une coupure, remontent en moins d'une minute
-(vision § 6). **L'homologation elle-même dépend de l'administration** : c'est le jalon le
+d'homologation est déposée. Une journée de magasin fictive, avec une coupure, remonte en moins d'une
+minute (vision § 6). **L'homologation elle-même dépend de l'administration** : c'est le jalon le
 plus incertain de toute la feuille de route.
 
-### Étape 5 — Tout ce qu'il faut pour ouvrir (mois 22 à 27)
+### Étape 5 — Tout ce qu'il faut pour ouvrir (mois 20 à 25)
 
 - **La console** complète (`10`) et **nos propres factures** électroniques (`05` § 4.1).
 - **Le site** de la plateforme (`11`), avec ses pages de métiers, d'intégrations et pour les
@@ -141,7 +140,7 @@ Le détail et les raisons sont au `14` ; chaque vague a sa forme déjà posée d
 
 | Vague (après J5) | Ce qu'elle apporte |
 |---|---|
-| **Vague 1** (environ 6 mois) | L'interface **en arabe**, relue par un arabophone, les pièces bilingues, le site en arabe ; le module **Réservations** étendu aux rendez-vous ; ce que Slate a déjà écrit (vente en ligne, campagnes, avis, bons cadeaux, menus : `15`) ; le **bâtiment** (situations de travaux, retenue de garantie) ; le **suivi commercial** ; **WooCommerce** et **Shopify** ; **Intigo** et **First Delivery** ; **Flouci** ; WhatsApp automatique ; SMS de relance et de rappel |
+| **Vague 1** (environ 6 mois) | **La restauration, avec Slate** (`15`) : plan de salle, service du jour, réservations et widget, mode restaurant de la caisse (tables, cuisine, suppléments, addition partagée), imprimantes de cuisine ; l'interface **en arabe**, relue par un arabophone, les pièces bilingues, le site en arabe ; le module **Réservations** étendu aux rendez-vous ; ce que Slate a déjà écrit (vente en ligne, campagnes, avis, bons cadeaux, menus : `15`) ; le **bâtiment** (situations de travaux, retenue de garantie) ; le **suivi commercial** ; **WooCommerce** et **Shopify** ; **Intigo** et **First Delivery** ; **Flouci** ; WhatsApp automatique ; SMS de relance et de rappel |
 | **Vague 2** (environ 12 mois) | Les modules **Production** et **Projets** ; la **location** ; les notes de frais ; la fidélité, les cartes cadeaux et les promotions ; l'écran de cuisine et la réservation de table ; la balance connectée ; Navex et Aramex ; les connecteurs sans code |
 | **Vague 3** (environ 18 mois) | Le module **Groupe** (consolidation) ; l'**application des magasins** (App Store, Google Play) ; l'interface **en anglais** ; PrestaShop ; ClicToPay, e-Dinar ; le terminal de paiement connecté ; les rapports à la carte ; Odoo ; les assistants d'IA extérieurs ; les tournées de livraison |
 | **À la fin** | L'**hôtellerie** (décision de Skander, 28/09/2026) |
@@ -217,7 +216,7 @@ remplace par le vrai chiffre dès qu'il est connu, dans ce document, avec sa dat
 | Dépôt de la marque (INNORPI) | quelques centaines de DT, **À VÉRIFIER** | Étape 5 |
 | Assurance responsabilité civile professionnelle | **À VÉRIFIER** (par an) | Étape 5 |
 | Relecture de l'interface en arabe par un arabophone | 1 000 à 3 000 DT | Vague 1 |
-| Imprimantes de tickets et de cuisine, tiroir, douchette, tablette, pour tester la caisse et le restaurant | 1 500 à 3 000 DT | Étape 4 |
+| Imprimantes de tickets et de cuisine, tiroir, douchette, tablette, pour tester la caisse et le restaurant | 1 500 à 3 000 DT | Étape 4 (comptoir), vague 1 (cuisine) |
 | **Total connu** | **≈ 12 500 à 27 000 DT** jusqu'au lancement (certificats comptés sur deux ans, matériel de caisse compris), sans les lignes « inconnu » ni « À VÉRIFIER » ; plus 1 000 à 3 000 DT pour l'arabe en vague 1 | |
 
 ### 4.4 Le point mort
@@ -254,7 +253,7 @@ la source que des clients pourraient faire sur nos factures (`05` § 4.2, **À V
 | Date | Décision |
 |---|---|
 | 28/09/2026 (proposé) | Cinq étapes après J0, chacune fermée par un jalon mesuré et vu à l'écran ; lancement (J5) 22 mois après le premier code au plan, 24 au plus avec la marge |
-| 28/09/2026 (**Skander**, `15`) | Slate repris dans l'étape 4 : réservations de restaurant au lancement, calendrier inchangé au plan (le plan de salle déjà écrit paie le reste), à mesurer au prototype |
+| 28/09/2026 (**Skander**, `15`) | Slate et toute la restauration en **vague 1**, après une base stable ; l'étape 4 garde la caisse de comptoir ; lancement à **25 mois au plan, 28 avec la marge** |
 | 28/09/2026 (par délégation, `14`) | **Revu** : lancement à 27 mois au plan, 30 avec la marge, pour tout ce que Hesabi a et les métiers du lancement ; pilotes au mois 16 ; trois vagues après J5, puis l'hôtellerie ; budget de fonctionnement ≈ 800 à 1 650 DT par mois ; demande du label Startup |
 | 28/09/2026 (proposé) | Les pilotes passent à J3, en parallèle de la v10 pendant deux mois au moins ; déclaration INPDP avant |
 | 28/09/2026 (proposé) | Un jalon manqué déplace les dates, jamais son contenu ; jamais de lancement sans l'accusé réel de la TTN ; lancement possible sans le mot « certifiée » si l'homologation de la caisse tarde |

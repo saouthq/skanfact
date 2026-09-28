@@ -632,7 +632,7 @@ règlement, canal SMS, natures d'achat et de compte de trésorerie, clés d'API 
 | `nomenclature` | Article composé, composant, quantité, unité, perte prévue ; **usage** (sortie à la vente, ou fabrication) | Lancement (vente) ; vague 2 (fabrication) |
 | `ordre_fabrication` | Article, quantité, nomenclature **figée**, composants consommés et article produit (des `mouvement_stock`), main d'œuvre et frais, **coût de revient figé**, statut | Vague 2 |
 
-### 24.4 Caisse : le restaurant (lancement)
+### 24.4 Caisse : le restaurant (vague 1, avec Slate : `15`)
 
 | Table | Contenu | Règles |
 |---|---|---|
@@ -670,10 +670,10 @@ dossier, rassemblés sous un même lot.
 
 | Table | Contenu | Quand |
 |---|---|---|
-| `ressource` | Ce qu'on réserve : une table (au lancement, pour les restaurants : `15`), une personne, un poste, un matériel, une salle (plus tard, une chambre : `14` § 3.7) | Lancement (tables) ; vague 1 |
-| `disponibilite` | Horaires d'une ressource, fermetures, exceptions (dont le Ramadan) | Lancement (restaurants) ; vague 1 |
-| `reservation` | Ressource(s), tiers, début, fin, couverts, statut (demandée, confirmée, reconfirmée, arrivée, à table, honorée, annulée, absent), rappels envoyés, acompte, pièce de vente liée | Lancement (restaurants, d'après les tables de Slate : `15`) ; vague 1 |
-| `liste_attente` | Tiers, couverts, souhait d'heure, statut | Lancement (restaurants) |
+| `ressource` | Ce qu'on réserve : une table (restaurants, repris de Slate : `15`), une personne, un poste, un matériel, une salle (plus tard, une chambre : `14` § 3.7) | Vague 1 |
+| `disponibilite` | Horaires d'une ressource, fermetures, exceptions (dont le Ramadan) | Vague 1 |
+| `reservation` | Ressource(s), tiers, début, fin, couverts, statut (demandée, confirmée, reconfirmée, arrivée, à table, honorée, annulée, absent), rappels envoyés, acompte, pièce de vente liée | Vague 1 (d'après les tables de Slate : `15`) |
+| `liste_attente` | Tiers, couverts, souhait d'heure, statut | Vague 1 |
 | `caution` | Réservation, reçue le, montant, rendue ou retenue, quand, pourquoi | Vague 2 (location). Pas un chiffre d'affaires (**À VÉRIFIER**) |
 | `opportunite`, `activite` | Tiers prospect, étape, montant espéré, prochaine action ; appels, visites, rappels | Vague 1 |
 | `temps_passe` | Membre, affaire (la section de l'axe « Affaires », § 14), date, durée, facturable, taux, facturé par quelle pièce | Vague 2 |

@@ -324,7 +324,7 @@ Vision R11 : une seule personne pour tout faire. La parade :
   au budget (document 09).
 - **L'agent local** (clé USB, imprimante, tiroir, douchette : vision § 4.1) n'écoute que sur le poste
   lui-même, n'accepte que l'application appairée, et ne fait que ce qu'il déclare : signer, imprimer,
-  ouvrir le tiroir. Au restaurant, il **envoie** aux imprimantes de cuisine du réseau local, sans
+  ouvrir le tiroir. Au restaurant (vague 1), il **envoie** aux imprimantes de cuisine du réseau local, sans
   rien écouter de ce réseau (`14` § 3.1).
 - **Les fichiers reçus** (pièces jointes, relevés, factures TEIF de fournisseurs) sont vérifiés
   avant d'être lus : type réel, taille, et jamais exécutés.

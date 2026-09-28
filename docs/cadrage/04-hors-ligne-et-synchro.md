@@ -46,7 +46,7 @@ jamais après.
 | Geste | Hors ligne | Au retour du réseau |
 |---|---|---|
 | **Encaisser à la caisse** (ticket, retour avec le code d'un responsable, tiroir, imprimante) | ✓, complet | Les tickets remontent, dans l'ordre |
-| **La salle d'un restaurant** : prendre une commande, l'envoyer aux imprimantes de cuisine, partager l'addition (`14` § 3.1) | ✓, **sur la caisse** : c'est elle qui tient la salle et parle aux imprimantes par le réseau du restaurant (l'agent local) | Les commandes et les tickets remontent |
+| **La salle d'un restaurant** (vague 1) : prendre une commande, l'envoyer aux imprimantes de cuisine, partager l'addition (`14` § 3.1) | ✓, **sur la caisse** : c'est elle qui tient la salle et parle aux imprimantes par le réseau du restaurant (l'agent local) | Les commandes et les tickets remontent |
 | Un client demande une **facture pour son ticket** | ✓, préparée et liée au ticket (le ticket suffit comme preuve d'achat en attendant) | Émise : numéro, signature, TTN |
 | Ouvrir et fermer une **session de caisse**, imprimer le Z | ✓ (**À VÉRIFIER** avec la caisse certifiée, `01` § 10) | La session et son Z remontent |
 | **Devis, proforma, commande, bon de livraison** : créer, modifier, imprimer, envoyer plus tard | ✓, avec un numéro (§ 3.2) | Enregistrés sur le serveur |

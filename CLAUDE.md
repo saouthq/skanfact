@@ -19,7 +19,7 @@ y cherche le **pourquoi** d'une règle, on ne le relit pas à chaque session.*
 1. **Phase de cadrage.** Aucun développement neuf tant que le cadrage n'est pas validé par Skander,
    document par document. Plan, état de chaque document et journal des décisions :
    `docs/cadrage/README.md` (c'est là qu'on regarde où on en est).
-2. **Nouvelle plateforme à construire** (27 mois au plan, 30 avec la marge, pas de lancement public
+2. **Nouvelle plateforme à construire** (25 mois au plan, 28 avec la marge, pas de lancement public
    avant qu'elle soit complète : `docs/cadrage/09-feuille-de-route.md`) : `VISION-ARCHITECTURE.md`
    fait foi. Tout ce qu'elle fait, au lancement et dans les vagues qui suivent :
    `docs/cadrage/14-fonctions-et-integrations.md`.
@@ -60,12 +60,13 @@ Détail et raisons dans `VISION-ARCHITECTURE.md` ; ne pas les rediscuter sans qu
   par interlocuteur : `docs/cadrage/05-obligations-legales.md`.
 - **Tout ce que Hesabi a, au lancement, et plus** (demande de Skander, 28/09/2026) : espace client et
   paiement en ligne, lecture de documents sur nos serveurs, cabinet complet, API, téléphone ;
-  restauration et commerces au lancement ; trois vagues après, puis l'**hôtellerie à la fin** ;
+  commerces au lancement ; la restauration en vague 1 ; puis deux autres vagues et l'**hôtellerie
+  à la fin** ;
   **l'arabe plus tard, l'infrastructure maintenant** (catalogue de textes, langue factice testée).
   Détail : `docs/cadrage/14-fonctions-et-integrations.md`.
 - **Slate** (dépôt privé `saouthq/Slate`, l'application pour restaurateurs de Skander) **devient la
-  partie restaurant de SkanFact** (décision de Skander, 28/09/2026) : on reprend ses écrans et ses
-  tests dans la plateforme, en Tunisie, avec l'argent en entiers ; il prend l'identité de SkanFact.
+  partie restaurant de SkanFact**, **en vague 1**, une fois la base stable (décision de Skander,
+  28/09/2026) : on reprend ses écrans et ses tests dans la plateforme, en Tunisie, avec l'argent en entiers ; il prend l'identité de SkanFact.
   Détail : `docs/cadrage/15-reprise-de-slate.md`.
 - Les règles « JS pur, pas de React » et « stockage JSON, pas SQLite » de l'ancien fichier ne valent
   plus que pour l'application actuelle.

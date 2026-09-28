@@ -222,9 +222,11 @@ un dépôt automatique ? Quelles pénalités de retard ?
   (vision § 9) la plaçait en fin de développement. Il faut s'inscrire comme fournisseur et
   télécharger le cahier des charges maintenant, pour que la caisse soit conçue juste du premier
   coup ;
-- **les premiers visés sont les restaurants et les cafés** : la caisse sort donc **avec son mode
-  restaurant** (salle, tables, cuisine, addition partagée : `14` § 3.1), sinon elle ne sert pas à
-  ceux qui en ont besoin en premier.
+- **les premiers visés sont les restaurants et les cafés**, mais ils seront obligés et équipés bien
+  avant notre lancement. La caisse de comptoir sort au lancement ; le **mode restaurant** (salle,
+  tables, cuisine, addition partagée : `14` § 3.1) vient en vague 1 avec Slate (`15`), décision de
+  Skander du 28/09/2026. Le cahier des charges se lit quand même dès maintenant, pour que la caisse
+  soit conçue juste pour les deux.
 
 **À VÉRIFIER** (plateforme NACEF, DGI) :
 1. le contenu du cahier des charges : chaînage, numérotation, **délai de transmission** au système
@@ -522,4 +524,4 @@ charges se lisent sur les plateformes officielles, ce que la démarche du § 5 p
 | 28/09/2026 (proposé) | Chaque flux de données qui sort est compté ; la lecture de photo de facture ne passe pas à la plateforme sans service en Tunisie ou autorisation INPDP |
 | 28/09/2026 (proposé) | Hébergeur labellisé N-Cloud de préférence ; audit de cybersécurité annuel au budget en attendant l'avis du juriste |
 | 28/09/2026 (proposé) | Une veille par loi de finances, publiée avant le 1er janvier, relue par un comptable |
-| 28/09/2026 (par délégation, `14`) | La caisse sort avec son mode restaurant ; la lecture de documents se fait en Tunisie ; chaque flux d'une intégration est compté ici avant d'être ouvert ; demande du label Startup dès que la société qui porte SkanFact est choisie |
+| 28/09/2026 (par délégation, `14` ; revu par Skander, `15`) | La caisse de comptoir sort au lancement, le mode restaurant en vague 1 ; la lecture de documents se fait en Tunisie ; chaque flux d'une intégration est compté ici avant d'être ouvert ; demande du label Startup dès que la société qui porte SkanFact est choisie |

@@ -180,7 +180,7 @@ pour trois dossiers qu'il tient lui-même, puis 60 DT par dossier, plafonné à 
 | Administrateur | Tout, sauf l'abonnement |
 | Commercial | Devis, factures, clients, relances. Ni achats, ni paie, ni banque |
 | Caissier | La caisse de son établissement, et rien d'autre |
-| Serveur (ajouté le 28/09/2026, `14` § 3.1) | La salle d'un restaurant : prendre les commandes, les envoyer en cuisine ; il n'encaisse que si on le lui permet |
+| Serveur (ajouté le 28/09/2026, pour la restauration en vague 1 : `14` § 3.1) | La salle d'un restaurant : prendre les commandes, les envoyer en cuisine ; il n'encaisse que si on le lui permet |
 | Magasinier | Le stock, les réceptions, les inventaires |
 | Comptabilité interne | Achats, banque, déclarations, écritures. Pas la paie |
 | Paie | Salariés, bulletins, déclarations sociales |

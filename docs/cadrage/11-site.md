@@ -54,7 +54,7 @@ Les pages d'aujourd'hui sont décrites dans le `README.md` du site. Ce qu'elles 
 | **Sécurité et hébergement** | Ce que fait le `06`, **en chiffres mesurés** : hébergement en Tunisie, sauvegardes, dernier exercice de restauration réussi et sa date |
 | **Reprendre mes données** | Depuis l'application actuelle, Excel ou un autre logiciel (`08`) |
 | **Contrat de traitement**, **réversibilité** | Les engagements écrits avec le juriste (`05` § 4.5) |
-| **Métiers** : une page par métier du lancement (restaurant et café, commerce, grossiste, prestataire de services, cabinet) | Ce que SkanFact fait pour ce métier, avec des écrans vrais (`14` § 3). Un métier des vagues n'a sa page **qu'une fois livré** |
+| **Métiers** : une page par métier du lancement (commerce, grossiste, prestataire de services, cabinet ; restaurant et café en vague 1) | Ce que SkanFact fait pour ce métier, avec des écrans vrais (`14` § 3). Un métier des vagues n'a sa page **qu'une fois livré** |
 | **Intégrations** | La liste de ce qui se branche, **allumé ou pas encore** (jamais une intégration annoncée avant d'exister), et ce qui part chez chaque partenaire (`14` § 4) |
 | **Développeurs** | La documentation de l'API, générée depuis le code, et l'entreprise d'essai (`14` § 2.5) |
 

@@ -89,7 +89,7 @@ skanfact-plateforme/
 |---|---|---|
 | **React** | La bibliothèque d'interface la plus répandue ; validé le 27/09 (« une vraie bibliothèque d'interface ») | — |
 | **shadcn, Tailwind et Base UI** pour les composants (boutons, champs, fenêtres, dates) — **les outils de Slate** (revu le 28/09/2026, `15` § 4 ; Mantine était proposé avant) | On garde les écrans déjà écrits dans Slate au lieu de les refaire ; Tailwind écrit « début » et « fin », pas « gauche » et « droite » | **L'arabe au prototype** : si la langue factice ne tient pas, on revient à Mantine |
-| **Konva** pour dessiner le plan de salle | Déjà utilisé par l'éditeur de plan de Slate (`15` § 2) | — |
+| **Konva** pour dessiner le plan de salle (vague 1) | Déjà utilisé par l'éditeur de plan de Slate (`15` § 2) | — |
 | **TanStack Table et Virtual** pour les listes et la **grille de saisie** | Sans habillage imposé : on garde nos règles d'interface (un seul bouton principal, rien ne pousse sous le curseur) ; tient des dizaines de milliers de lignes (saturation 10.14.0) | — |
 | **Textes traduisibles dès le premier écran** (catalogue de messages), propriétés CSS « de début et de fin » ; une **langue factice** (40 % plus longue, de droite à gauche) photographiée à chaque version ; des **polices libres qui contiennent l'arabe** (famille Noto), aussi dans les PDF | Vision R12 et décision de Skander du 28/09 : l'arabe plus tard, l'infrastructure maintenant (`14` § 5) | — |
 | **Écrans pensés pour le téléphone** : la mise en page suit la largeur ; l'instrument de rendu photographie chaque écran à la largeur d'un téléphone (390 points) et d'un ordinateur (1 440) ; des cibles d'au moins 44 points pour un doigt | `14` § 2.6 | — |
@@ -105,7 +105,7 @@ skanfact-plateforme/
 | Choix | Pourquoi | Ce qui le remettrait en cause |
 |---|---|---|
 | **Electron** pour la coque | On le connaît (toute la v10) ; l'agent local tourne dans le même programme ; les mises à jour savent déjà se faire | Une coque plus légère (Tauri) ne vaut pas de réapprendre un autre langage pour une seule personne |
-| **Agent local** : clé USB de signature par l'interface standard des jetons cryptographiques (PKCS#11), imprimante de tickets en ESC/POS, **imprimantes de cuisine** (plusieurs, sur le réseau du restaurant ou en USB), tiroir par l'imprimante, douchette comme un clavier ; en vague 2, la balance | Les protocoles du matériel vendu en Tunisie (note de recherche `hebergement_technique.md`) ; le restaurant (`14` § 3.1) | **À VÉRIFIER** : les pilotes des clés USB TunTrust sur Windows et Mac |
+| **Agent local** : clé USB de signature par l'interface standard des jetons cryptographiques (PKCS#11), imprimante de tickets en ESC/POS, en vague 1, les **imprimantes de cuisine** (plusieurs, sur le réseau du restaurant ou en USB), tiroir par l'imprimante, douchette comme un clavier ; en vague 2, la balance | Les protocoles du matériel vendu en Tunisie (note de recherche `hebergement_technique.md`) ; le restaurant (`14` § 3.1) | **À VÉRIFIER** : les pilotes des clés USB TunTrust sur Windows et Mac |
 | **Application signée** (Apple, Microsoft) | `06` § 10 : un prérequis, pas une option | — |
 
 ---

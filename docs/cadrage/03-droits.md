@@ -122,7 +122,7 @@ et la pièce porte les deux noms.
 ## 2. Les rôles dans une entreprise
 
 Les huit rôles décidés le 28/09/2026 (`00`), et un neuvième, **Serveur**, ajouté le même jour pour
-la restauration (`14` § 3.1 ; ses gestes : § 2.3). Les mots du parcours du `00` (vendeur, caisse,
+la restauration (`14` § 3.1 ; ses gestes : § 2.3), qui sert **à partir de la vague 1**. Les mots du parcours du `00` (vendeur, caisse,
 comptabilité interne, gérant) désignent les mêmes rôles : vendeur = Commercial, gérant =
 Administrateur.
 
@@ -296,7 +296,7 @@ S'il existe, c'est le chemin le plus simple pour une équipe.
 
 ### 2.3 Les gestes ajoutés par le document 14 (28/09/2026)
 
-Le **Serveur** (S) n'a que les gestes de la salle ci-dessous ; partout ailleurs, il n'a rien. Le
+Les gestes de **la salle** viennent en vague 1, avec la restauration (`15`). Le **Serveur** (S) n'a que les gestes de la salle ci-dessous ; partout ailleurs, il n'a rien. Le
 propriétaire peut lui cocher « peut encaisser » : il a alors aussi les gestes du Caissier.
 
 | Geste | P | A | C | K | S | M | I | Pa | L |

@@ -324,13 +324,14 @@ milliers de PME** ; le chiffre exact se mesure, il ne se devine pas.
 - **S'aligner sur Hesabi, et aller plus loin** (demande de Skander, 28/09/2026 ;
   `docs/cadrage/14-fonctions-et-integrations.md`) : tout ce que Hesabi annonce est au lancement,
   plus l'espace client et le paiement en ligne des factures, la lecture de documents sur nos
-  serveurs, le cabinet complet, l'API, le téléphone ; la restauration et les commerces au lancement ;
+  serveurs, le cabinet complet, l'API, le téléphone ; les commerces au lancement ;
   trois vagues après, puis **l'hôtellerie à la fin** et **l'arabe plus tard, l'infrastructure
-  maintenant** (deux décisions de Skander). Lancement à 27 mois après le premier code (30 avec la
+  maintenant** (deux décisions de Skander). Lancement à 25 mois après le premier code (28 avec la
   marge) ; Essentiel comprend le stock et une caisse.
 - **Slate, l'application pour restaurateurs de Skander, devient la partie restaurant de SkanFact**
-  (décision de Skander, 28/09/2026 ; `docs/cadrage/15-reprise-de-slate.md`) : plan de salle,
-  réservations et service du jour repris au lancement, sur nos serveurs en Tunisie.
+  (décision de Skander, 28/09/2026 ; `docs/cadrage/15-reprise-de-slate.md`), **en vague 1**, une
+  fois l'entreprise, le cabinet et la console stables : plan de salle, réservations, service du
+  jour et mode restaurant de la caisse, sur nos serveurs en Tunisie.
 
 ## 10. La suite du cadrage
 
@@ -353,7 +354,7 @@ annexe de `docs/etudes/ETUDE-MARCHE.md`) et les deux démarches qui servent pend
    l'administration les demandent (**À VÉRIFIER** avec les entretiens). **Décidé le 28/09/2026** :
    l'infrastructure dès la première ligne, l'interface en arabe dans la première vague après le
    lancement (`docs/cadrage/14-fonctions-et-integrations.md` § 5).
-4. **Le rythme de développement dépend du quota Claude** : 27 à 30 mois (revu le 28/09/2026,
+4. **Le rythme de développement dépend du quota Claude** : 25 à 28 mois (revu le 28/09/2026,
    `docs/cadrage/09-feuille-de-route.md`) supposent un usage quotidien ; le budget doit l'inclure.
 5. ~~**Un `CLAUDE.md` neuf pour la nouvelle plateforme.**~~ **Fait le 27/09/2026** : le fichier
    garde les règles ; le récit est dans `docs/application-actuelle/CLAUDE-HISTORIQUE.md`.

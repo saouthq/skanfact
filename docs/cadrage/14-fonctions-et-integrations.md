@@ -22,10 +22,10 @@ moteurs de recherche. Avant toute comparaison publique, on ouvre leur essai et o
 - **On va plus loin qu'eux** : hors ligne, rapprochement bancaire, lettrage, immobilisations,
   clôture et liasse, relances, devises, journal inaltérable, comptable gratuit, et le **paiement en
   ligne d'une facture par Konnect** (Swiver l'a, Hesabi ne l'annonce pas).
-- **Les métiers.** La **restauration** arrive **avec la caisse**, parce que la caisse certifiée est
-  obligatoire **d'abord pour les restaurants et les cafés** : plan de salle, tables, cuisine,
-  suppléments, addition partagée, titres-restaurant. Les **commerces et grossistes** aussi au
-  lancement : prix par quantité, encours, commandes fournisseurs, réceptions. Le **bâtiment**, la
+- **Les métiers.** Au lancement, la **caisse de comptoir** et les **commerces et grossistes** : prix
+  par quantité, encours, commandes fournisseurs, réceptions. La **restauration** (plan de salle,
+  tables, cuisine, réservations, repris de Slate : `15`) arrive **en vague 1**, une fois la base
+  stable (décision de Skander, 28/09/2026). Le **bâtiment**, la
   **fabrication**, les **rendez-vous**, la **location**, le temps passé : dans les vagues qui suivent
   le lancement. L'**hôtellerie à la toute fin**, comme tu l'as demandé.
 - **Les intégrations.** Au lancement : l'administration (TTN, DigiGo, TEJ, CNSS, caisse), Konnect,
@@ -34,7 +34,7 @@ moteurs de recherche. Avant toute comparaison publique, on ouvre leur essai et o
   (Flouci), WhatsApp automatique.
 - **L'arabe** : l'infrastructure dès la première ligne de code, avec un test qui la prouve à chaque
   version ; l'interface en arabe dans la première vague après le lancement.
-- **Ce que ça coûte** : le lancement passe de **22 à 27 mois** au plan (30 avec la marge), `09`. Et
+- **Ce que ça coûte** : le lancement passe de **22 à 25 mois** au plan (28 avec la marge), `09`. Et
   l'offre Essentiel (390 DT) comprend désormais **le stock et une caisse**, comme Hesabi Starter au
   même prix, mais avec la facture électronique et TEJ qu'ils vendent 790 DT (`07`).
 
@@ -65,7 +65,7 @@ Chaque fonction d'une vague a **sa forme posée dès maintenant** dans le modèl
 | Export FEC (Pro) | Oui (déjà dans la v10, 10.15.0) | Lancement | `02`, Comptabilité complète ; `03` § 3.1 |
 | Paie : CDI, CDD, CIVP, Karama, saisonniers ; CNSS, IRPP, TFP (Pro) | Oui, plus le fichier CNSS au format DS 2012 et la déclaration d'employeur | Lancement | `05` § 3.6 |
 | Stock : code-barres, mouvements automatiques, alertes, export Excel (Starter) | Oui, plus dépôts, transferts, lots, numéros de série, coût moyen, **recettes et kits** ; **dans Essentiel** | Lancement | `02`, Stock ; `07` |
-| Caisse web, ticket 80 mm, plusieurs moyens de paiement, WhatsApp (Starter) | Oui, **hors ligne**, certifiée dès l'homologation, avec le **mode restaurant** ; **une caisse dans Essentiel** | Lancement | `02`, Caisse ; § 3.1 |
+| Caisse web, ticket 80 mm, plusieurs moyens de paiement, WhatsApp (Starter) | Oui, **hors ligne**, certifiée dès l'homologation ; **une caisse dans Essentiel** ; le **mode restaurant** en vague 1 (§ 3.1) | Lancement | `02`, Caisse |
 | Import « IA » : tableur, PDF, image, XML (Pro) | Tableur avec les colonnes reconnues ; facture TEIF lue **exactement** ; **photo et PDF lus sur nos serveurs en Tunisie** (§ 2.3) | Lancement | § 2.3 |
 | Chiffrage d'un devis (Pro) | Le calculateur de prix de la v10 (coefficient, marge, marque, TTC visé), dans toutes les offres | Lancement | `02`, Ventes |
 | Portail du cabinet : tous les clients, bascule dans un dossier, calendrier fiscal, TEJ en masse, **honoraires** (Cabinet, 2 490 DT) | Tout, **gratuit** pour les dossiers abonnés ; plus les **lettres de mission**, la **facturation des honoraires** et les **dépôts groupés** (§ 2.4) | Lancement | `02`, Cabinet ; `07` |
@@ -179,7 +179,7 @@ marchent sur téléphone dès le lancement**, dans le navigateur ou installés s
 qui attend, c'est seulement l'application **des magasins** (App Store, Google Play), en vague 3.
 - **Pensés pour le téléphone** : faire et envoyer un devis ou une facture, encaisser un règlement,
   photographier un justificatif (§ 2.3), consulter l'accueil, les soldes et « À faire », répondre au
-  comptable, **la caisse sur tablette**, **prendre une commande à table** (§ 3.1).
+  comptable, **la caisse sur tablette** ; en vague 1, **prendre une commande à table** (§ 3.1).
 - **Utilisables mais pensés pour l'ordinateur** : la saisie comptable, la révision, la liasse, la
   paie complète. Sur un petit écran, ils le disent.
 - **Prouvé à chaque version** : l'instrument de rendu de la v10, porté, photographie chaque écran à
@@ -192,25 +192,32 @@ qui attend, c'est seulement l'application **des magasins** (App Store, Google Pl
 
 ## 3. Les métiers
 
-### 3.1 La restauration (au lancement, avec la caisse)
+### 3.1 La restauration (vague 1, avec Slate)
 
-**Pourquoi au lancement** : la caisse certifiée vise **d'abord** la consommation sur place
-(restaurants, cafés, salons de thé, snacks, boulangeries), `05` § 3.7 ; c'est notre cible n° 3
-(`13` § 2). Une caisse sans tables ne leur sert à rien. Les caisses tunisiennes spécialisées le font
+**Pourquoi en vague 1 et pas au lancement** (décision de Skander, 28/09/2026) : l'entreprise, le
+cabinet et la console sont le cœur, et on les rend **stables d'abord** ; la restauration est un
+métier complet qui s'ajoute ensuite, en reprenant Slate (`15`). Et le calendrier de la caisse
+certifiée le permet : à notre lancement, les restaurants et cafés seront **déjà** obligés depuis
+plus de deux ans (`05` § 3.7) et déjà équipés. On ne les prendra pas sur l'urgence, mais sur
+l'offre complète : la caisse, les réservations, le stock et la comptabilité au même endroit.
+
+**Pourquoi en vague 1 et pas à la fin** : Slate est déjà écrit, et un code qu'on laisse dormir
+coûte plus cher à reprendre chaque mois ; la caisse de comptoir, elle, est déjà là au lancement.
+Une caisse sans tables ne sert à rien à un restaurant. Les caisses tunisiennes spécialisées le font
 déjà : TN-POS Resto Pro annonce le plan de salle, les quatre façons de vendre et plusieurs
 imprimantes de cuisine ; Caissa, le terminal de paiement.
 
 | Ce qu'il faut | Quand |
 |---|---|
-| **Plan de salle** : salles, tables, places ; l'état de chaque table en couleur (libre, commande prise, en cours, à encaisser) | Lancement |
-| **Quatre façons de vendre** : à table, au comptoir, à emporter, en livraison | Lancement |
-| **La commande part en cuisine** : chaque article va à **sa** zone (cuisine, bar, pizza), sur **son** imprimante | Lancement |
-| **Suppléments et options** (cuisson, sans oignon, supplément fromage) et **formules** (entrée, plat, dessert à prix fixe) | Lancement |
-| **Transférer ou regrouper** des tables ; **partager l'addition** par convive ou par plat | Lancement |
-| **Titres-restaurant** (chèques et cartes Pluxee) comme moyen de paiement, avec la remise à l'émetteur et sa commission | Lancement |
-| **La recette** d'un plat sort ses ingrédients du stock (§ 3.3) | Lancement |
-| Annuler une ligne **déjà partie en cuisine** : avec le **code d'un responsable** (`03` § 2.3) | Lancement |
-| **Réservations** (widget public, rappels, liste d'attente, table attribuée) et **service du jour**, repris de Slate (`15`) | Lancement |
+| **Plan de salle** : salles, tables, places ; l'état de chaque table en couleur (libre, commande prise, en cours, à encaisser) | Vague 1 |
+| **Quatre façons de vendre** : à table, au comptoir, à emporter, en livraison | Vague 1 (le comptoir : lancement) |
+| **La commande part en cuisine** : chaque article va à **sa** zone (cuisine, bar, pizza), sur **son** imprimante | Vague 1 |
+| **Suppléments et options** (cuisson, sans oignon, supplément fromage) et **formules** (entrée, plat, dessert à prix fixe) | Vague 1 |
+| **Transférer ou regrouper** des tables ; **partager l'addition** par convive ou par plat | Vague 1 |
+| **Titres-restaurant** (chèques et cartes Pluxee) comme moyen de paiement, avec la remise à l'émetteur et sa commission (les épiceries en acceptent aussi) | Lancement |
+| **La recette** d'un plat sort ses ingrédients du stock (§ 3.3 : les recettes et kits sont au lancement) | Vague 1 |
+| Annuler une ligne **déjà partie en cuisine** : avec le **code d'un responsable** (`03` § 2.3) | Vague 1 |
+| **Réservations** (widget public, rappels, liste d'attente, table attribuée) et **service du jour**, repris de Slate (`15`) | Vague 1 |
 | **Écran de cuisine** (à la place du papier) | Vague 2 |
 
 **Pendant une coupure**, la salle se tient **sur la caisse** : c'est elle qui prend les commandes et
@@ -259,8 +266,7 @@ sécurisation sur chaque ticket.
   électronique, récurrent). Le **temps passé** et la facturation au temps viennent avec le module
   **Projets** (vague 2).
 - **Rendez-vous** (coiffure, esthétique, santé, garages, auto-écoles) : module **Réservations**,
-  ouvert au lancement pour les restaurants (repris de Slate, `15`) et étendu aux rendez-vous en
-  vague 1 : un agenda par personne ou par poste, une page de prise de rendez-vous, le rappel au
+  en vague 1, avec les restaurants (repris de Slate, `15`) et les rendez-vous : un agenda par personne ou par poste, une page de prise de rendez-vous, le rappel au
   client, l'encaissement au passage.
 - **Location** (matériel, voitures, salles) : le même module, en vague 2 : une chose réservée sur une
   période, la **caution** (reçue puis rendue ou retenue ; ce n'est pas un chiffre d'affaires,
@@ -364,13 +370,14 @@ en arabe sur une pièce (`05` § 3.9).
 ## 6. Ce que ça coûte
 
 **Le calendrier** (`09`) : ajouter au lancement l'espace client, le paiement en ligne, la lecture de
-documents, le cabinet complet, l'API, le téléphone, la restauration et les commerces **repousse le
-lancement d'environ cinq mois : 27 mois au plan après le premier code, 30 avec la marge** (au lieu
-de 22 et 24). Les pilotes passent à la plateforme au mois 16 au lieu du mois 14.
+documents, le cabinet complet, l'API, le téléphone et les commerces **repousse le lancement
+d'environ trois mois : 25 mois au plan après le premier code, 28 avec la marge** (au lieu de 22 et
+24). Les pilotes passent à la plateforme au mois 16 au lieu du mois 14. La restauration, en vague 1,
+n'allonge pas le lancement.
 
 **Les prix** (`07`, par délégation, révisables après les entretiens) :
-- **Essentiel (390 DT par an)** comprend désormais **le stock et une caisse** (avec le mode
-  restaurant), l'espace client, le paiement en ligne, la lecture de documents et l'API. C'est le prix
+- **Essentiel (390 DT par an)** comprend désormais **le stock et une caisse** (le mode restaurant
+  s'y ajoute en vague 1), l'espace client, le paiement en ligne, la lecture de documents et l'API. C'est le prix
   de Hesabi Starter, avec ce que Hesabi vend dans son offre à 790 DT (facture électronique, TEJ,
   lecture de documents, API).
 - **Complet (690 DT par an)** : tout, plus la paie, la comptabilité complète, les modules de métier
@@ -426,9 +433,9 @@ par l'entreprise qui les utilise, jamais cachés dans notre prix.
 | 28/09/2026 (par délégation) | Tout ce que Hesabi annonce est au lancement ; les six manques (espace client, lecture de documents, cabinet complet, API, téléphone, arabe préparé) y sont ajoutés |
 | 28/09/2026 (par délégation) | Paiement en ligne des factures par Konnect au lancement, sur le compte de l'entreprise ; jamais d'argent de client chez SkanFact ; le paiement se prouve auprès du prestataire |
 | 28/09/2026 (par délégation) | La lecture de photos et de PDF se fait sur nos serveurs en Tunisie, avec confirmation de la personne ; pas d'IA qui écrit au lancement |
-| 28/09/2026 (par délégation) | La restauration arrive avec la caisse ; commerces et grossistes au lancement ; bâtiment, rendez-vous et suivi commercial en vague 1 ; fabrication, location, projets en vague 2 ; groupe complet en vague 3 ; **hôtellerie à la fin (décision de Skander)** |
+| 28/09/2026 (par délégation, **revu le même jour par Skander**) | La restauration en vague 1, avec Slate ; caisse de comptoir, commerces et grossistes au lancement ; bâtiment, rendez-vous et suivi commercial en vague 1 ; fabrication, location, projets en vague 2 ; groupe complet en vague 3 ; **hôtellerie à la fin (décision de Skander)** |
 | 28/09/2026 (par délégation) | Intégrations dans l'ordre du § 4, chacune allumée par l'entreprise, chaque flux compté avant d'être ouvert |
 | 28/09/2026 | **L'arabe plus tard, l'infrastructure maintenant (décision de Skander)** : catalogue de textes, mise en page début et fin, langue factice testée à chaque version ; interface arabe en vague 1 |
 | 28/09/2026 (par délégation) | Les écrans du quotidien marchent sur téléphone dès le lancement ; l'application des magasins en vague 3 |
-| 28/09/2026 (par délégation) | Lancement à 27 mois au plan, 30 avec la marge ; Essentiel comprend le stock et une caisse |
-| 28/09/2026 (**Skander**, `15`) | Slate, l'application pour restaurateurs de Skander, entre dans SkanFact comme sa partie restaurant : réservations de restaurant au lancement ; cartes cadeaux en vague 1 |
+| 28/09/2026 (par délégation) | Lancement à 25 mois au plan, 28 avec la marge (après le passage du restaurant en vague 1) ; Essentiel comprend le stock et une caisse |
+| 28/09/2026 (**Skander**, `15`) | Slate, l'application pour restaurateurs de Skander, entre dans SkanFact comme sa partie restaurant ; **en vague 1**, une fois la base stable (entreprise, cabinet, console) ; cartes cadeaux en vague 1 |
