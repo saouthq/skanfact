@@ -270,7 +270,7 @@ milliers de PME** ; le chiffre exact se mesure, il ne se devine pas.
 | R9 | Hébergement tunisien sans base de données gérée | **Décidé le 27/09/2026 : tout en Tunisie.** On exploite donc nous-mêmes, très outillé (réplique, surveillance, alertes, restauration mensuelle) |
 | R10 | Obligations légales découvertes trop tard (INPDP, audit de cybersécurité ANCS pour un hébergeur, caisse certifiée) | Liste « À VÉRIFIER » traitée pendant le cadrage, avec un juriste |
 | R11 | Une seule personne pour tout faire (support, incidents, ventes) | Architecture la plus simple qui tient ; surveillance automatique ; prévoir un humain pour le support avant le lancement |
-| R12 | L'arabe demandé plus tard | Textes traduisibles et mise en page « sens de lecture » dès le départ (déjà commencé : CSS logique depuis la 9.4.10) |
+| R12 | L'arabe demandé plus tard | **Abandonné** par Skander le 28/09/2026 ; les textes restent dans un catalogue (pour l'anglais) et les champs arabes facultatifs restent en base |
 | R13 | Dates et fuseaux horaires | Déjà une règle du projet (5.2.3) : une date est un jour du calendrier, arithmétique en UTC |
 | R14 | Les 3 comptables pilotes attendent (2 mois annoncés) | Leur faire tester l'application actuelle pendant la construction, et le socle serveur dès qu'il tient |
 | R15 | Les données actuelles des utilisateurs | Outil de reprise des fichiers JSON et des livres du Cabinet vers le serveur, testé sur l'exemple de 5 ans |
@@ -333,8 +333,7 @@ caisse compris, sans les frais encore inconnus des démarches.
   plus l'espace client et le paiement en ligne des factures, la lecture de documents sur nos
   serveurs, le cabinet complet, l'API, le téléphone ; les commerces au lancement ;
   **quatre vagues** après (trois au départ, quatre depuis la relecture du 28/09 : `09` § 1), puis
-  **l'hôtellerie à la fin** et **l'arabe plus tard, l'infrastructure maintenant** (deux décisions
-  de Skander). Lancement à 25 mois après le premier code (28 avec la
+  **l'hôtellerie à la fin** (décision de Skander) ; **l'arabe est abandonné** (Skander, même jour). Lancement à 25 mois après le premier code (28 avec la
   marge) ; Essentiel comprend le stock et une caisse.
 - **Slate, l'application pour restaurateurs de Skander, devient la partie restaurant de SkanFact**
   (décision de Skander, 28/09/2026 ; `docs/cadrage/15-reprise-de-slate.md`), **en vague 1**, une
@@ -362,10 +361,9 @@ des caisses), plus le label Startup dès que la société qui porte SkanFact est
    temps d'entretien réservé, sans nouvelles fonctions.
 2. **Reprendre les données des concurrents** : Excel, Sage, Ciel, Hesabi… Personne ne change de
    logiciel s'il doit tout retaper. C'est un argument de vente autant qu'un outil.
-3. **La langue arabe** : interface et, surtout, pièces bilingues arabe/français si des clients ou
-   l'administration les demandent (**À VÉRIFIER** avec les entretiens). **Décidé le 28/09/2026** :
-   l'infrastructure dès la première ligne, l'interface en arabe dans la première vague après le
-   lancement (`docs/cadrage/14-fonctions-et-integrations.md` § 5).
+3. **La langue arabe** : **abandonnée** par Skander le 28/09/2026. Reste **À VÉRIFIER** avec le
+   comptable : une mention en arabe est-elle obligatoire sur une pièce ? Si oui, elle s'imprime depuis
+   des champs facultatifs (`docs/cadrage/14-fonctions-et-integrations.md` § 5).
 4. **Le rythme de développement dépend du quota Claude** : 25 à 28 mois (revu le 28/09/2026,
    `docs/cadrage/09-feuille-de-route.md`) supposent un usage quotidien ; le budget doit l'inclure.
 5. ~~**Un `CLAUDE.md` neuf pour la nouvelle plateforme.**~~ **Fait le 27/09/2026** : le fichier

@@ -4,7 +4,8 @@
 Le site vit dans le dépôt `saouthq/skanfact-site` ; ses règles de travail sont dans son `CLAUDE.md`,
 et sa description page par page dans son `README.md`. Même session pour l'application, la console et
 le site (décision du 27/09). Complété le même jour pour suivre le `14` : pages de métiers,
-d'intégrations et pour les développeurs ; le site en arabe en vague 1.*
+d'intégrations et pour les développeurs. Le site en arabe prévu en vague 1 est **abandonné** avec
+l'arabe (Skander, 28/09/2026).*
 
 ## En bref (pour Skander)
 
@@ -145,9 +146,7 @@ Elles sont dans son `CLAUDE.md` et ne changent pas :
 vers nos serveurs en Tunisie ; `skanfact.tn` et la page d'état restent chez l'hébergeur du site (`00`,
 `06`).
 
-**En vague 1** : le site en **arabe**, avec l'interface (`14` § 5) ; les pages du restaurant restent
-en français, comme la partie restaurant du produit. Le site est écrit dès maintenant
-sans « gauche » ni « droite » dans ses styles, pour qu'il se retourne sans être refait.
+Le site reste **en français** : l'arabe est abandonné (Skander, 28/09/2026, `14` § 5).
 
 ---
 
@@ -168,3 +167,4 @@ sans « gauche » ni « droite » dans ses styles, pour qu'il se retourne sans �
 | 28/09/2026 (proposé) | Une seule aide pour l'application et le site ; des tarifs tirés de la console ; un test pour chacun contre la divergence |
 | 28/09/2026 (proposé) | Pas de liste d'attente avec adresses avant la déclaration INPDP |
 | 28/09/2026 (par délégation, `14`) | Pages de métiers, d'intégrations et pour les développeurs au lancement ; rien d'une vague n'est annoncé avant d'être livré ; site en arabe en vague 1 |
+| 28/09/2026 (**Skander**) | Pas de site en arabe : l'arabe est abandonné |

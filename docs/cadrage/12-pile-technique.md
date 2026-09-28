@@ -2,7 +2,7 @@
 
 *Proposé le 28/09/2026. **Validé par délégation de Skander le 28/09/2026** (« relis-les à ma place et valide toi si c'est bon »), après deux relectures complètes du dépôt le même jour. Suit `VISION-ARCHITECTURE.md` (§ 4, § 8 : pas de
 microservices ni de Kubernetes ; § 9 : TypeScript et une bibliothèque d'interface, validés le
-27/09) et les documents 01 à 11. **À décider avant la première ligne de code** (J0, `09`) : deux points étaient suspendus au prototype ; **la synchronisation et la copie locale sont tranchées le 28/09/2026** (`04` § 9.4) ; reste l'arabe avec les outils d'interface (§ 4). Complété
+27/09) et les documents 01 à 11. **À décider avant la première ligne de code** (J0, `09`) : deux points étaient suspendus au prototype ; **la synchronisation et la copie locale sont tranchées le 28/09/2026** (`04` § 9.4) ; l'essai de l'arabe avec les outils d'interface **n'a plus lieu d'être** : Skander a abandonné l'arabe le même jour (`14` § 5). Complété
 le même jour pour suivre le `14` (lecture de documents, API publique, téléphone, langue factice,
 imprimantes de cuisine).*
 
@@ -88,10 +88,10 @@ skanfact-plateforme/
 | Choix | Pourquoi | Ce qui le remettrait en cause |
 |---|---|---|
 | **React** | La bibliothèque d'interface la plus répandue ; validé le 27/09 (« une vraie bibliothèque d'interface ») | — |
-| **shadcn, Tailwind et Base UI** pour les composants (boutons, champs, fenêtres, dates) — **les outils de Slate** (revu le 28/09/2026, `15` § 4 ; Mantine était proposé avant) | On garde les écrans déjà écrits dans Slate au lieu de les refaire ; Tailwind écrit « début » et « fin », pas « gauche » et « droite » | **L'arabe au prototype** : si la langue factice ne tient pas, on revient à Mantine |
+| **shadcn, Tailwind et Base UI** pour les composants (boutons, champs, fenêtres, dates) — **les outils de Slate** (revu le 28/09/2026, `15` § 4 ; Mantine était proposé avant) | On garde les écrans déjà écrits dans Slate au lieu de les refaire ; Tailwind écrit « début » et « fin », pas « gauche » et « droite » | — (la réserve sur l'arabe est levée : arabe abandonné le 28/09/2026, `14` § 5) |
 | **Konva** pour dessiner le plan de salle (vague 1) | Déjà utilisé par l'éditeur de plan de Slate (`15` § 2) | — |
 | **TanStack Table et Virtual** pour les listes et la **grille de saisie** | Sans habillage imposé : on garde nos règles d'interface (un seul bouton principal, rien ne pousse sous le curseur) ; tient des dizaines de milliers de lignes (saturation 10.14.0) | — |
-| **Textes traduisibles dès le premier écran** (catalogue de messages), propriétés CSS « de début et de fin » ; une **langue factice** (40 % plus longue, de droite à gauche) photographiée à chaque version ; des **polices libres qui contiennent l'arabe** (famille Noto), aussi dans les PDF | Vision R12 et décision de Skander du 28/09 : l'arabe plus tard, l'infrastructure maintenant (`14` § 5) | — |
+| **Textes traduisibles dès le premier écran** (catalogue de messages), propriétés CSS « de début et de fin » ; une **langue factice** (40 % plus longue) photographiée à chaque version ; des **polices libres** (famille Noto) dans les PDF, qui impriment aussi un nom saisi en arabe | Pour l'anglais en vague 4 ; l'arabe est abandonné (Skander, 28/09/2026, `14` § 5) | — |
 | **Écrans pensés pour le téléphone** : la mise en page suit la largeur ; l'instrument de rendu photographie chaque écran à la largeur d'un téléphone (390 points) et d'un ordinateur (1 440) ; des cibles d'au moins 44 points pour un doigt | `14` § 2.6 | — |
 | **Application installable** (service worker) | `00` : la même application dans le navigateur, installée, ou dans la coque | — |
 | **Copie locale** : **SQLite dans le navigateur** (version WebAssembly, stockée dans le système de fichiers privé du navigateur) | Une vraie base sur le poste, chiffrable, rapide (budget de 100 ms à la frappe, vision § 6) | **Mesuré au prototype le 28/09/2026** (`04` § 9.4) : 13,4 Mo pour une PME, 7,9 ms au pire pour un ticket, la copie survit à la fermeture. Reste le stockage persistant, refusé par Chromium à une page non installée (`04` § 4) |
@@ -180,12 +180,12 @@ de côté. Chaque test se prouve en réintroduisant son défaut.
 2. **La signature XAdES** acceptée par la TTN, avec la bibliothèque choisie.
 3. **Les pilotes des clés USB** TunTrust (Windows, Mac) pour l'agent local.
 4. **La licence de MinIO** pour notre usage.
-5. **La recherche en arabe** avec PostgreSQL.
+5. ~~La recherche en arabe avec PostgreSQL.~~ Sans objet : arabe abandonné (28/09/2026).
 6. **Le fournisseur d'e-mails et de SMS** en Tunisie (`03` § 6).
 7. **Le moteur de lecture de documents** : PaddleOCR ou Tesseract, choisi sur un lot de vraies
    factures tunisiennes prêtées **avec l'accord** de leurs propriétaires ; retenu s'il lit juste le
    matricule, la date et le total sur **au moins 9 factures sur 10** (`14` § 2.3).
-8. **Les polices arabes** dans les PDF imprimés par Chromium.
+8. **Un nom saisi en arabe** s'imprime-t-il juste dans les PDF de Chromium (police Noto) ?
 9. **L'API de Konnect** pour le compte marchand de chaque entreprise (`14` § 2.2).
 
 ## 11. Décisions de ce document
@@ -200,5 +200,6 @@ de côté. Chaque test se prouve en réintroduisant son défaut.
 | 28/09/2026 (proposé) | Electron pour la coque et l'agent local ; application signée |
 | 28/09/2026 (proposé) | Serveurs dédiés, Docker Compose, Ansible, pgBackRest, réplication PostgreSQL avec bascule par script, MinIO, SOPS, Prometheus et Grafana ; tout chez nous, en Tunisie |
 | 28/09/2026 (proposé) | Quatre environnements, jamais de donnée réelle hors production ; tous les tests de la v10 portés ; intégration continue sur GitHub Actions, jamais contournée |
+| 28/09/2026 (**Skander**) | Arabe abandonné : shadcn, Tailwind et Base UI confirmés sans réserve ; la langue factice n'est plus que 40 % plus longue (`14` § 5) |
 | 28/09/2026 (prototype) | Copie locale : SQLite WebAssembly dans l'espace privé du navigateur (OPFS), tenu par un worker ; lecture par notre propre chemin ; PowerSync en plan B (`04` § 9.4) |
 | 28/09/2026 (par délégation, `14`) | Lecture de documents par un moteur libre sur nos serveurs ; API publique documentée depuis le code, avis signés ; langue factice et largeur de téléphone photographiées à chaque version ; imprimantes de cuisine dans l'agent local |

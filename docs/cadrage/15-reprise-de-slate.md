@@ -26,8 +26,8 @@ plutôt que refaire).*
   par recette, la facture électronique, la comptabilité.
 - **Le nom Slate disparaît** : la partie restaurant porte la marque SkanFact (le nom exact de
   l'offre restaurant se choisit avec le rebranding, § 6).
-- **Ses outils d'interface deviennent ceux de toute la plateforme** (shadcn, Tailwind, Base UI), à
-  confirmer au prototype sur l'arabe (`12` § 4) : c'est ce qui permet de garder ses écrans au lieu de
+- **Ses outils d'interface deviennent ceux de toute la plateforme** (shadcn, Tailwind, Base UI),
+  confirmés sans réserve depuis l'abandon de l'arabe (`12` § 4) : c'est ce qui permet de garder ses écrans au lieu de
   les refaire.
 
 ---
@@ -93,19 +93,17 @@ plutôt que refaire).*
 6. **Les tests.** Les 371 tests de Slate et ses tests d'isolation entre restaurants sont **portés**
    avec le code qu'ils protègent, et chacun se prouve en réintroduisant son défaut (règle du projet).
 7. **Les textes.** Slate a déjà ses textes dans un fichier (`src/i18n/fr.json`) : ils rejoignent le
-   catalogue de textes (`14` § 5). **La partie restaurant reste en français seulement** (décision de
-   Skander, 28/09/2026) : pas de traduction en arabe, et ses écrans sont dispensés du test de droite
-   à gauche ; le catalogue garde seulement la porte ouverte.
+   catalogue de textes (`14` § 5). La partie restaurant est en français, comme toute la plateforme
+   (l'arabe est abandonné, Skander, 28/09/2026).
 
 ---
 
 ## 4. Les outils d'interface
 
 Slate est construit avec **shadcn, Tailwind et Base UI** ; le `12` proposait **Mantine**. Pour garder
-les écrans de Slate au lieu de les refaire, **la plateforme prend les outils de Slate**, à une
-condition vérifiée au prototype (J0) : l'écriture de droite à gauche (l'arabe) doit tenir, avec la
-langue factice du `14` § 5. Tailwind sait écrire « début » et « fin » au lieu de « gauche » et
-« droite » ; Slate en utilise déjà une partie.
+les écrans de Slate au lieu de les refaire, **la plateforme prend les outils de Slate**. La
+condition posée d'abord (l'écriture de droite à gauche devait tenir) est **levée** : Skander a
+abandonné l'arabe le 28/09/2026 (`14` § 5).
 
 ---
 
@@ -135,7 +133,7 @@ auraient vu Slate. **Aucun nom nouveau n'est public** avant le dépôt de la mar
    production, il ne contient que des données de développement (Skander, 28/09/2026).
 2. **Les secrets** du projet Supabase (clés, WhatsApp, Konnect) : les **révoquer** quand Slate
    s'arrête, pour qu'aucune clé ne reste valable.
-3. **L'arabe** avec shadcn, Tailwind et Base UI (§ 4), au prototype.
+3. ~~L'arabe avec shadcn, Tailwind et Base UI (§ 4).~~ Sans objet : arabe abandonné (28/09/2026).
 4. **Les rappels par SMS** : le prix par message, **refacturé** à l'entreprise qui les envoie, jamais
    caché dans notre prix (`14` § 6) ; le fournisseur (`03` § 11).
 
@@ -148,3 +146,4 @@ auraient vu Slate. **Aucun nom nouveau n'est public** avant le dépôt de la mar
 | 28/09/2026 (par délégation) | Les données passent sur nos serveurs en Tunisie, l'argent en entiers, les droits du `03`, les tests portés |
 | 28/09/2026 (par délégation) | La plateforme prend les outils d'interface de Slate (shadcn, Tailwind, Base UI), sous réserve de l'arabe au prototype |
 | 28/09/2026 (**Skander**) | La partie restaurant reste **en français seulement** : pas d'arabe pour Slate ni pour le mode restaurant de la caisse (`14` § 5) |
+| 28/09/2026 (**Skander**) | L'arabe est abandonné pour toute la plateforme : les outils de Slate sont pris sans réserve (§ 4) |

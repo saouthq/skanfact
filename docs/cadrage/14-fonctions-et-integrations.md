@@ -19,7 +19,8 @@ moteurs de recherche. Avant toute comparaison publique, on ouvre leur essai et o
   manquaient au cadrage ou n'y étaient qu'à moitié. Elles sont ajoutées au lancement** : l'**espace client** (le client
   de nos clients voit et paie ses factures en ligne), la **lecture d'une facture en photo ou en
   PDF**, les **lettres de mission et les honoraires** du cabinet, les **clés d'API**, les écrans
-  pensés pour le **téléphone**, et la **préparation de l'arabe**.
+  pensés pour le **téléphone**, et un **catalogue de textes** qui prépare l'anglais (l'arabe
+  prévu d'abord a été **abandonné** par Skander le 28/09/2026, § 5).
 - **On va plus loin qu'eux** : hors ligne, rapprochement bancaire, lettrage, immobilisations,
   clôture et liasse, relances, devises, journal inaltérable, comptable gratuit, et le **paiement en
   ligne d'une facture par Konnect** (Swiver l'a, Hesabi ne l'annonce pas).
@@ -33,8 +34,9 @@ moteurs de recherche. Avant toute comparaison publique, on ouvre leur essai et o
   WhatsApp, l'e-mail, les relevés de banque, l'API. Ensuite, dans l'ordre : WhatsApp automatique et
   les SMS de rappel (avec la restauration), puis les boutiques en ligne (WooCommerce, Shopify), les
   sociétés de livraison (Intigo, First Delivery) et un autre paiement (Flouci).
-- **L'arabe** : l'infrastructure dès la première ligne de code, avec un test qui la prouve à chaque
-  version ; l'interface en arabe dans la première vague après le lancement.
+- **L'arabe est abandonné** (décision de Skander, 28/09/2026) : SkanFact reste en français, avec
+  l'anglais en vague 4. Seules les mentions en arabe qu'une loi imposerait sur une pièce restent
+  **À VÉRIFIER** (§ 5).
 - **Ce que ça coûte** : le lancement passe de **22 à 25 mois** au plan (28 avec la marge), `09`. Et
   l'offre Essentiel (390 DT) comprend désormais **le stock et une caisse**, comme Hesabi Starter au
   même prix, mais avec la facture électronique et TEJ qu'ils vendent 790 DT (`07`).
@@ -73,7 +75,7 @@ Chaque fonction d'une vague a **sa forme posée dès maintenant** dans le modèl
 | Portail du cabinet : tous les clients, bascule dans un dossier, calendrier fiscal, TEJ en masse, **honoraires** (Cabinet, 2 490 DT) | Tout, **gratuit** pour les dossiers abonnés ; plus les **lettres de mission**, la **facturation des honoraires** et les **dépôts groupés** (§ 2.4) | Lancement | `02`, Cabinet ; `07` |
 | **Portail client** : le client consulte ses factures (Starter) | L'**espace client**, avec le **paiement en ligne** (§ 2.1 et 2.2) | Lancement | § 2.1 |
 | Plusieurs utilisateurs, rôles ; 3 en Starter, illimités en Pro | Neuf rôles et des droits par personne ; 3 en Essentiel, illimités en Complet | Lancement | `03` § 2 |
-| Arabe (de droite à gauche), français, anglais | Infrastructure au lancement ; **interface en arabe** en vague 1, en anglais en vague 4 ; pièces en anglais dès le lancement (§ 5) | Lancement, vague 1, vague 4 | § 5 |
+| Arabe (de droite à gauche), français, anglais | Français au lancement ; **interface en anglais** en vague 4 ; pièces en anglais dès le lancement ; **pas d'arabe** (abandonné par Skander le 28/09/2026, § 5) | Lancement, vague 4 | § 5 |
 | Envoi par WhatsApp | Oui (déjà dans la v10, 10.15.0) | Lancement | § 4 |
 | Tableaux de bord, rapports exportables | Pilotage, et **toute liste s'exporte** en Excel | Lancement | `02`, Pilotage |
 | Clés d'API (Pro) | **API publique documentée**, clés et avis d'événement (§ 2.5) | Lancement | § 2.5 |
@@ -341,38 +343,36 @@ comme un relevé.
 
 ## 5. Les langues
 
-Décision de Skander (28/09/2026) : **l'arabe plus tard, l'infrastructure maintenant.**
+Décision de Skander (28/09/2026) : d'abord « l'arabe plus tard, l'infrastructure maintenant », puis
+le même jour : **l'arabe est abandonné.** SkanFact est en **français**, avec l'**anglais en vague 4**.
+Pas d'interface en arabe, pas de site en arabe, pas de relecture par un arabophone, pas de test de
+droite à gauche.
 
 **Dès la première ligne de code** :
 - **Aucune phrase écrite dans un écran** : chaque texte visible vient d'un **catalogue de textes**
   (une clé, et sa version française). Un test fait tomber la construction si une phrase est écrite
   en dur, comme celui qui exige une bulle « i » sur chaque champ.
-- **La mise en page ne dit jamais « gauche » ni « droite »**, mais « début » et « fin » (c'est déjà
-  la règle de la v10 depuis la 9.4.10), et la bibliothèque d'interface sait écrire de droite à gauche
-  (`12` § 4).
+- **La mise en page dit « début » et « fin »** plutôt que « gauche » et « droite » (c'est déjà la
+  règle de la v10 depuis la 9.4.10) : une habitude gratuite, qui ne coûte aucun test.
 - **Une langue pour tester** : à chaque version, l'application est photographiée dans une langue
-  factice, **40 % plus longue et de droite à gauche**. Si un texte est coupé ou qu'un bloc déborde,
-  la construction tombe. C'est ainsi qu'on sait que l'arabe tiendra **avant** d'en traduire un mot.
+  factice **40 % plus longue** (l'anglais et les longs noms de sociétés débordent comme elle). Si un
+  texte est coupé ou qu'un bloc déborde, la construction tombe.
 - **Les dates, les nombres et les montants** se mettent en forme selon la langue, jamais à la main.
-- **Les données** : nom en arabe des tiers (existe déjà), **désignation en arabe des articles**,
-  raison sociale et adresse en arabe de l'entreprise (`01` § 24). Les PDF savent écrire l'arabe, avec
-  une police libre qui le contient.
+- **Les données** : les champs en arabe **facultatifs** restent (nom des tiers, désignation des
+  articles, raison sociale et adresse de l'entreprise, `01` § 24) : ils ne coûtent presque rien, et
+  servent si une mention en arabe est un jour imposée. Les PDF utilisent une police libre qui contient
+  l'arabe, pour qu'un nom saisi en arabe s'imprime.
 - **La langue de chaque personne** est déjà dans sa fiche (`01` § 4).
 
 **Ensuite** :
-- **Vague 1** : l'interface, l'aide et les visites **en arabe**, traduites puis **relues par un
-  arabophone** ; les **pièces bilingues** arabe et français ; le site en arabe (`11`).
-- **La partie restaurant reste en français seulement** (décision de Skander, 28/09/2026) : les
-  écrans de la salle, du plan de salle, du service du jour et de la cuisine, le mode restaurant de
-  la caisse, les réservations du restaurant et leur widget public, la page de commande, les menus,
-  les campagnes et les avis (tout ce qui vient de Slate, `15`). Ses textes passent quand même par
-  le catalogue (une seule règle pour tout le code) : ajouter l'arabe un jour ne demanderait que la
-  traduction. Ces écrans sont dispensés du test de la langue factice de droite à gauche.
+- **La partie restaurant** (tout ce qui vient de Slate, `15`) est en français, comme le reste ; ses
+  textes passent par le même catalogue.
 - **Vague 4** : l'interface **en anglais** (les pièces en anglais existent dès le lancement, comme
   dans la v10).
 
-**À VÉRIFIER** (entretiens) : les chiffres attendus en arabe (0-9 ou ٠-٩) ; les mentions obligatoires
-en arabe sur une pièce (`05` § 3.9).
+**À VÉRIFIER** (comptable) : une mention en arabe est-elle **obligatoire** sur une pièce (`05`
+§ 3.9) ? Si oui, elle s'imprime depuis les champs facultatifs ci-dessus ; l'interface reste en
+français.
 
 ---
 
@@ -392,8 +392,7 @@ n'allonge pas le lancement.
 - **Complet (690 DT par an)** : tout, plus la paie, la comptabilité complète, les modules de métier
   des vagues (Réservations, Production, Projets), deux caisses, des utilisateurs illimités.
 
-**Le budget** (`09` § 4) : un serveur de plus pour la lecture de documents ; la relecture de
-l'arabe par un arabophone en vague 1 ; les frais de chaque partenaire (Konnect, SMS, WhatsApp) payés
+**Le budget** (`09` § 4) : un serveur de plus pour la lecture de documents ; les frais de chaque partenaire (Konnect, SMS, WhatsApp) payés
 par l'entreprise qui les utilise, jamais cachés dans notre prix.
 
 ---
@@ -414,7 +413,7 @@ par l'entreprise qui les utilise, jamais cachés dans notre prix.
 9. **La qualité de la lecture de documents**, mesurée sur de vraies factures prêtées avec accord
    (`12` § 10).
 10. **Les terminaux de paiement** : un protocole ouvert chez une banque tunisienne ?
-11. **L'arabe** : chiffres et mentions obligatoires (§ 5).
+11. **Les mentions en arabe** : obligatoires ou non sur une pièce (§ 5) ; l'interface, elle, reste en français.
 12. **Paymee** (comptes gelés ?) et l'**API de First Delivery** (§ 4).
 
 ## 8. Sources
@@ -446,8 +445,9 @@ par l'entreprise qui les utilise, jamais cachés dans notre prix.
 | 28/09/2026 (par délégation, **revu le même jour par Skander**) | La restauration en vague 1, avec Slate ; caisse de comptoir, commerces et grossistes au lancement ; bâtiment, rendez-vous et suivi commercial en vague 1 ; fabrication, location, projets en vague 2 ; groupe complet en vague 3 ; **hôtellerie à la fin (décision de Skander)** (vagues revues à la dernière ligne) |
 | 28/09/2026 (par délégation) | Intégrations dans l'ordre du § 4, chacune allumée par l'entreprise, chaque flux compté avant d'être ouvert |
 | 28/09/2026 (**Skander**) | La partie restaurant (Slate et le mode restaurant de la caisse) reste **en français seulement** ; le reste de l'interface passe en arabe en vague 1 (§ 5) |
-| 28/09/2026 | **L'arabe plus tard, l'infrastructure maintenant (décision de Skander)** : catalogue de textes, mise en page début et fin, langue factice testée à chaque version ; interface arabe en vague 1 |
+| 28/09/2026 | **L'arabe plus tard, l'infrastructure maintenant (décision de Skander)** : catalogue de textes, mise en page début et fin, langue factice testée à chaque version ; interface arabe en vague 1 (**remplacé** le même jour, ligne suivante) |
+| 28/09/2026 (**Skander**) | **L'arabe est abandonné** (« j'ai dit abandonner arabe ») : ni interface, ni site, ni relecture, ni test de droite à gauche ; restent le catalogue de textes (pour l'anglais en vague 4), la langue factice 40 % plus longue, les champs arabes facultatifs, et les mentions obligatoires en arabe **À VÉRIFIER** (§ 5) |
 | 28/09/2026 (par délégation) | Les écrans du quotidien marchent sur téléphone dès le lancement ; l'application des magasins en vague 3 (vague 4 depuis la relecture) |
 | 28/09/2026 (par délégation) | Lancement à 25 mois au plan, 28 avec la marge (après le passage du restaurant en vague 1) ; Essentiel comprend le stock et une caisse |
 | 28/09/2026 (**Skander**, `15`) | Slate, l'application pour restaurateurs de Skander, entre dans SkanFact comme sa partie restaurant ; **en vague 1**, une fois la base stable (entreprise, cabinet, console) ; cartes cadeaux en vague 1 |
-| 28/09/2026 (par délégation, relecture) | **Quatre vagues** (`09` § 1) : vague 1, la restauration avec Slate, l'arabe, les rendez-vous, WhatsApp automatique et les SMS ; vague 2, le bâtiment, le suivi commercial, les boutiques, la livraison, Flouci, la fidélité, l'écran de cuisine ; vague 3, Production, Projets, la location, les notes de frais, la balance, Navex et Aramex, les connecteurs, les rapports ; vague 4, le groupe, l'anglais, les applications des magasins, PrestaShop, ClicToPay et e-Dinar, le terminal connecté, Odoo, l'IA, les tournées ; puis l'hôtellerie |
+| 28/09/2026 (par délégation, relecture) | **Quatre vagues** (`09` § 1) : vague 1, la restauration avec Slate, l'arabe (abandonné depuis), les rendez-vous, WhatsApp automatique et les SMS ; vague 2, le bâtiment, le suivi commercial, les boutiques, la livraison, Flouci, la fidélité, l'écran de cuisine ; vague 3, Production, Projets, la location, les notes de frais, la balance, Navex et Aramex, les connecteurs, les rapports ; vague 4, le groupe, l'anglais, les applications des magasins, PrestaShop, ClicToPay et e-Dinar, le terminal connecté, Odoo, l'IA, les tournées ; puis l'hôtellerie |

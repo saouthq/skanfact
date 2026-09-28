@@ -19,7 +19,7 @@ de trois (la vague 1 débordait), budget et J0 remis à jour.*
 - **Les comptables pilotes** passent sur la plateforme à l'étape 3 (mois 16), en parallèle de
   l'application actuelle, avec leur accord.
 - **Après le lancement, quatre vagues** d'environ six mois chacune : d'abord la restauration avec
-  Slate et l'arabe ; puis le bâtiment, le suivi commercial, les boutiques en ligne et la livraison ;
+  Slate ; puis le bâtiment, le suivi commercial, les boutiques en ligne et la livraison ;
   puis la fabrication, les projets et la location ; puis le groupe, l'anglais et les applications
   des magasins. L'hôtellerie vient à la fin (§ 1, `14`).
 - **Budget** : de **800 à 1 650 DT par mois** en fonctionnement au lancement (l'ordre de grandeur du
@@ -147,12 +147,13 @@ Le détail et les raisons sont au `14` ; chaque vague a sa forme déjà posée d
 
 **Pourquoi quatre** (relecture du 28/09/2026, par délégation) : avec toute la restauration, l'arabe,
 le bâtiment, les boutiques, la livraison et le suivi commercial, la vague 1 faisait le travail de
-deux vagues en six mois. Elle garde **la restauration et l'arabe**, ce qui va avec (rendez-vous,
-rappels, WhatsApp automatique) ; le reste glisse d'une vague, dans le même ordre.
+deux vagues en six mois. Elle garde **la restauration**, ce qui va avec (rendez-vous, rappels,
+WhatsApp automatique) ; le reste glisse d'une vague, dans le même ordre. **L'arabe est abandonné**
+(Skander, 28/09/2026, `14` § 5) : la vague 1 s'allège d'autant, et ce temps sert de marge.
 
 | Vague (après J5) | Ce qu'elle apporte |
 |---|---|
-| **Vague 1** (environ 6 mois) | **La restauration, avec Slate** (`15`) : plan de salle, service du jour, réservations et widget, rappels, liste d'attente, mode restaurant de la caisse (tables, cuisine, suppléments, addition partagée), imprimantes de cuisine ; ce que Slate a déjà écrit (page de commande en ligne, campagnes, avis, bons et cartes cadeaux, menus : `15`) ; le module **Réservations** étendu aux **rendez-vous** ; l'interface **en arabe** (sauf la partie restaurant, qui reste en français), relue par un arabophone, les pièces bilingues, le site en arabe ; **WhatsApp automatique** ; SMS de relance et de rappel |
+| **Vague 1** (environ 6 mois) | **La restauration, avec Slate** (`15`) : plan de salle, service du jour, réservations et widget, rappels, liste d'attente, mode restaurant de la caisse (tables, cuisine, suppléments, addition partagée), imprimantes de cuisine ; ce que Slate a déjà écrit (page de commande en ligne, campagnes, avis, bons et cartes cadeaux, menus : `15`) ; le module **Réservations** étendu aux **rendez-vous** ; **WhatsApp automatique** ; SMS de relance et de rappel |
 | **Vague 2** (environ 12 mois) | Le **bâtiment** (situations de travaux, retenue de garantie, avance de démarrage) ; le **suivi commercial** (prospects, opportunités) ; **WooCommerce** et **Shopify** ; **Intigo** et **First Delivery** ; **Flouci** ; la fidélité et les promotions ; l'écran de cuisine |
 | **Vague 3** (environ 18 mois) | Les modules **Production** et **Projets** ; la **location** ; les notes de frais ; la balance connectée ; Navex et Aramex ; les connecteurs sans code ; les rapports à la carte |
 | **Vague 4** (environ 24 mois) | Le module **Groupe** (consolidation) ; l'**application des magasins** (App Store, Google Play) ; l'interface **en anglais** ; PrestaShop ; ClicToPay, e-Dinar ; le terminal de paiement connecté ; Odoo ; les assistants d'IA extérieurs ; les tournées de livraison |
@@ -229,9 +230,8 @@ remplace par le vrai chiffre dès qu'il est connu, dans ce document, avec sa dat
 | Homologation de la caisse, adhésion DigiGo, homologation ANCE éventuelle | **Inconnu** | Étapes 0 à 5 |
 | Dépôt de la marque (INNORPI) | quelques centaines de DT, **À VÉRIFIER** | **Dès que la société est choisie** : le nom est déjà public (`05` § 4.6) |
 | Assurance responsabilité civile professionnelle | **À VÉRIFIER** (par an) | Étape 5 |
-| Relecture de l'interface en arabe par un arabophone | 1 000 à 3 000 DT | Vague 1 |
 | Imprimantes de tickets et de cuisine, tiroir, douchette, tablette, pour tester la caisse et le restaurant | 1 500 à 3 000 DT | Étape 4 (comptoir), vague 1 (cuisine) |
-| **Total connu** | **≈ 12 500 à 26 000 DT** jusqu'au lancement (certificats comptés sur deux ans, matériel de caisse compris), sans les lignes « inconnu » ni « À VÉRIFIER » ; plus 1 000 à 3 000 DT pour l'arabe en vague 1 | |
+| **Total connu** | **≈ 12 500 à 26 000 DT** jusqu'au lancement (certificats comptés sur deux ans, matériel de caisse compris), sans les lignes « inconnu » ni « À VÉRIFIER » (la relecture en arabe, 1 000 à 3 000 DT en vague 1, disparaît avec l'arabe) | |
 
 ### 4.4 Le point mort
 

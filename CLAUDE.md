@@ -19,9 +19,9 @@ y cherche le **pourquoi** d'une règle, on ne le relit pas à chaque session.*
 1. **Fin du cadrage (J0).** Tous les documents sont validés (le 28/09/2026 ; 10 à 15 par
    délégation). Le **prototype de synchronisation** est fait (28/09/2026 : notre propre chemin
    retenu, PowerSync en plan B ; `docs/cadrage/04-hors-ligne-et-synchro.md` § 9.4, code et bancs dans
-   `prototypes/synchro/`). Avant le premier code de la plateforme : l'essai de l'arabe avec les
-   outils d'interface (`12` § 4) et les premières démarches du père de Skander. État et journal des
-   décisions : `docs/cadrage/README.md`.
+   `prototypes/synchro/`). **L'arabe est abandonné** (Skander, 28/09/2026). Les démarches sont
+   entre les mains du père de Skander, qui dira quand elles sont prêtes (ça prendra du temps). État et
+   journal des décisions : `docs/cadrage/README.md`.
 2. **Nouvelle plateforme à construire** (25 mois au plan, 28 avec la marge, pas de lancement public
    avant qu'elle soit complète : `docs/cadrage/09-feuille-de-route.md`) : `VISION-ARCHITECTURE.md`
    fait foi. Tout ce qu'elle fait, au lancement et dans les vagues qui suivent :
@@ -66,15 +66,15 @@ Détail et raisons dans `VISION-ARCHITECTURE.md` ; ne pas les rediscuter sans qu
   par interlocuteur : `docs/cadrage/05-obligations-legales.md`.
 - **Tout ce que Hesabi a, au lancement, et plus** (demande de Skander, 28/09/2026) : espace client et
   paiement en ligne, lecture de documents sur nos serveurs, cabinet complet, API, téléphone ;
-  commerces au lancement ; **quatre vagues** après (la restauration et l'arabe en vague 1 ; le
+  commerces au lancement ; **quatre vagues** après (la restauration en vague 1 ; le
   bâtiment, les boutiques et la livraison en vague 2 ; la fabrication, les projets et la location
   en vague 3 ; le groupe et l'anglais en vague 4), puis l'**hôtellerie à la fin** ;
-  **l'arabe plus tard, l'infrastructure maintenant** (catalogue de textes, langue factice testée).
+  **pas d'arabe** (abandonné par Skander le 28/09/2026 ; restent le catalogue de textes pour
+  l'anglais, les champs arabes facultatifs, et les mentions en arabe si la loi les impose, À VÉRIFIER).
   Détail : `docs/cadrage/14-fonctions-et-integrations.md`.
 - **Slate** (dépôt privé `saouthq/Slate`, l'application pour restaurateurs de Skander) **devient la
   partie restaurant de SkanFact**, **en vague 1**, une fois la base stable (décision de Skander,
   28/09/2026) : on reprend ses écrans et ses tests dans la plateforme, en Tunisie, avec l'argent en entiers ; il prend l'identité de SkanFact.
-  La partie restaurant reste **en français seulement** (pas d'arabe).
   Détail : `docs/cadrage/15-reprise-de-slate.md`.
 - Les règles « JS pur, pas de React » et « stockage JSON, pas SQLite » de l'ancien fichier ne valent
   plus que pour l'application actuelle.
