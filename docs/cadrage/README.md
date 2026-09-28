@@ -9,6 +9,7 @@ chacun validé à son tour. Un document validé porte en tête : `Validé par Sk
 
 | # | Document | Sujet | État |
 |---|---|---|---|
+| 0 | `00-les-trois-parcours.md` | Comment l'entreprise, le comptable et Skander accèdent à la plateforme et s'en servent (la vue d'ensemble) | **Proposé le 28/09/2026, à valider** |
 | 1 | `01-modele-de-donnees.md` | Organisations, entreprises, établissements, utilisateurs ; pièces, lignes, écritures, tiers, articles, stock, paie ; argent en entiers ; identifiants ; **règles fiscales datées** (taux et barèmes par date d'effet, pour les lois de finances) ; tables de la console ; partitionnement | **Proposé le 28/09/2026, à valider** |
 | 2 | `02-modules.md` | Le socle et les modules, leurs points d'extension, les champs personnalisés, les offres | À faire |
 | 3 | `03-droits.md` | Rôles, droits geste par geste, par entreprise ; piste d'audit ; double authentification | À faire |
