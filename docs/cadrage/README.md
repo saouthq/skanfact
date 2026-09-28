@@ -13,7 +13,7 @@ chacun validé à son tour. Un document validé porte en tête : `Validé par Sk
 | 1 | `01-modele-de-donnees.md` | Organisations, entreprises, établissements, utilisateurs ; pièces, lignes, écritures, tiers, articles, stock, paie ; argent en entiers ; identifiants ; **règles fiscales datées** (taux et barèmes par date d'effet, pour les lois de finances) ; tables de la console ; partitionnement | **Validé par Skander le 28/09/2026** |
 | 2 | `02-modules.md` | Le socle et les modules, leurs points d'extension, les champs personnalisés, les offres | **Validé le 28/09/2026** (après relecture de tout le dépôt) |
 | 3 | `03-droits.md` | Rôles, droits geste par geste, par entreprise ; piste d'audit ; double authentification | **Validé le 28/09/2026** (après relecture de tout le dépôt) |
-| 4 | `04-hors-ligne-et-synchro.md` | Ce qui marche hors ligne, file d'envoi, numérotation, choix du moteur de synchro (prototype mesuré) | **Proposé le 28/09/2026, à valider** |
+| 4 | `04-hors-ligne-et-synchro.md` | Ce qui marche hors ligne, file d'envoi, numérotation, choix du moteur de synchro (prototype mesuré) | **Validé le 28/09/2026** (après relecture de tout le dépôt) |
 | 5 | `05-obligations-legales.md` | TTN/TEIF, DigiGo/ANCE, TEJ, e-jibaya, CNSS, caisse certifiée, INPDP, conservation 10 ans — chaque point À VÉRIFIER | À faire |
 | 6 | `06-securite-et-hebergement.md` | Hébergement tunisien, sauvegardes, restauration, surveillance, audit | À faire |
 | 7 | `07-offres-et-prix.md` | Grille par entreprise et par module, cabinets, essai, impayés, fondateurs | **Décidé le 28/09/2026 par délégation** (révisable après les entretiens) |
@@ -42,5 +42,6 @@ chacun validé à son tour. Un document validé porte en tête : `Validé par Sk
 | 28/09/2026 | Skander valide le cadrage proposé : les trois parcours (00), le modèle de données (01) et les décisions prises par délégation | `00-les-trois-parcours.md`, `01-modele-de-donnees.md` |
 | 28/09/2026 | Modules (02), validé après relecture : socle et douze modules, points de branchement déclarés, validation du mois dans le socle, salaires saisis en total sans le module Paie | `02-modules.md` |
 | 28/09/2026 | Droits (03), validé après relecture : une seule porte sur le serveur, tableau des gestes par rôle, le cabinet n'émet ni n'encaisse, support en lecture 48 h, dossier tenu, qui compte comme utilisateur | `03-droits.md` |
+| 28/09/2026 | Hors-ligne (04), validé après relecture : la liste de ce qui marche fait foi, factures jamais hors ligne, un fait n'est jamais refusé, caisse 7 jours et autres postes 72 h, outil de synchro départagé par un prototype | `04-hors-ligne-et-synchro.md` |
 | 27/09/2026 | Les dépôts de l'application et du site restent publics (GitHub Actions gratuit) | `CLAUDE.md` |
 | 27/09/2026 | Dépôt rangé : ancienne vision archivée, `CLAUDE.md` réécrit | ce dossier, `CLAUDE.md` |

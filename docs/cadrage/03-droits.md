@@ -92,7 +92,8 @@ limite d'établissements s'applique à tous.
 droits de sa dernière synchronisation, pour une durée bornée (vision § 4.5 : « quelques jours au
 plus » ; le `04` § 7 fixe 7 jours pour une caisse et 72 heures pour un autre poste). Chaque geste est **revérifié à son arrivée** sur
 le serveur. Si le droit a été retiré entre-temps, le geste est refusé, et le poste le montre dans
-« À reprendre ». Il n'est jamais perdu en silence. Un membre retiré voit les données de cette
+« À reprendre ». Il n'est jamais perdu en silence. **Exception : un fait** (un ticket encaissé, de
+l'argent reçu) n'est jamais refusé. Il attend la décision du propriétaire (`04` § 5.1). Un membre retiré voit les données de cette
 entreprise **effacées de ses postes** à leur reconnexion.
 
 **D9. Personne n'agit au nom d'un autre.** Il n'existe aucun bouton « se connecter en tant que ».

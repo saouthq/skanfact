@@ -1,6 +1,7 @@
 # 04 — Le hors-ligne et la synchronisation
 
-*Proposé le 28/09/2026. **À valider par Skander.** Suit `VISION-ARCHITECTURE.md` (§ 4.5, § 6, § 8),
+*Proposé le 28/09/2026, relu le même jour contre tout le dépôt. **Validé le 28/09/2026**, après la
+relecture demandée par Skander. Suit `VISION-ARCHITECTURE.md` (§ 4.5, § 6, § 8),
 `01-modele-de-donnees.md` (R15, § 6 numérotation, § 10 caisse, § 17 `operation`), `02-modules.md`
 (§ 4 : le stock sorti par la caisse, aussi hors ligne) et `03-droits.md` (D8 : les droits hors
 ligne).*
@@ -19,14 +20,18 @@ Les idées qui comptent :
    bouton qui débloque. L'écran dit en permanence combien de gestes attendent d'être envoyés.
 3. **Rien ne se double.** Chaque geste a un identifiant créé sur le poste : envoyé deux fois, il ne
    compte qu'une fois.
-4. **On ne fusionne jamais deux versions d'une même pièce en une troisième.** On garde celle du
+4. **Un fait n'est jamais refusé.** Un ticket encaissé ou de l'argent reçu pendant la coupure ont
+   eu lieu : le serveur les garde toujours, même si le mois a été fermé, le droit retiré ou
+   l'abonnement échu entre-temps. Il les **régularise** ou les met **en attente de décision**, jamais
+   à la poubelle.
+5. **On ne fusionne jamais deux versions d'une même pièce en une troisième.** On garde celle du
    serveur, on met l'autre de côté, et on le dit. C'est la règle de l'application actuelle depuis la
    3.2.0.
-5. **La caisse marche toute seule** pendant la coupure : tickets numérotés par la caisse, chaînés,
+6. **La caisse marche toute seule** pendant la coupure : tickets numérotés par la caisse, chaînés,
    stock sorti sur le poste.
-6. **Une facture ne s'émet pas hors ligne** : son numéro, sa signature et son envoi à la TTN
+7. **Une facture ne s'émet pas hors ligne** : son numéro, sa signature et son envoi à la TTN
    demandent le serveur. Elle se prépare entièrement, et part d'un geste au retour du réseau.
-7. **Le choix de l'outil de synchronisation se fait sur un prototype mesuré**, avec des seuils
+8. **Le choix de l'outil de synchronisation se fait sur un prototype mesuré**, avec des seuils
    écrits avant de mesurer (§ 9).
 
 ---
@@ -40,6 +45,7 @@ jamais après.
 | Geste | Hors ligne | Au retour du réseau |
 |---|---|---|
 | **Encaisser à la caisse** (ticket, retour avec le code d'un responsable, tiroir, imprimante) | ✓, complet | Les tickets remontent, dans l'ordre |
+| Un client demande une **facture pour son ticket** | ✓, préparée et liée au ticket (le ticket suffit comme preuve d'achat en attendant) | Émise : numéro, signature, TTN |
 | Ouvrir et fermer une **session de caisse**, imprimer le Z | ✓ (**À VÉRIFIER** avec la caisse certifiée, `01` § 10) | La session et son Z remontent |
 | **Devis, proforma, commande, bon de livraison** : créer, modifier, imprimer, envoyer plus tard | ✓, avec un numéro (§ 3.2) | Enregistrés sur le serveur |
 | **Facture, avoir** : préparer entièrement, voir l'aperçu | ✓, **sans numéro** | « Émettre » : numéro, signature, TTN |
@@ -152,8 +158,8 @@ propose, avec le bouton.
   en attente ». Chaque pièce pas encore envoyée le porte sur elle.
 - **Fermer la session, se déconnecter ou vider le navigateur avec des gestes en attente** : l'écran
   prévient **avant**, et propose d'attendre le réseau.
-- **Le stockage du navigateur peut être vidé par le navigateur lui-même** (Safari efface les données
-  d'un site qu'on n'ouvre pas pendant sept jours). L'application installée demande donc le
+- **Le stockage du navigateur peut être vidé par le navigateur lui-même** (Safari, par exemple, peut
+  effacer les données d'un site qu'on n'a pas ouvert depuis sept jours). L'application installée demande donc le
   **stockage persistant**. Si le navigateur le refuse, l'écran le dit, et le hors-ligne est limité à
   la consultation. **Pour une caisse, l'application de bureau est recommandée.** **À VÉRIFIER** sur
   les navigateurs du marché pendant le prototype.
@@ -166,7 +172,7 @@ propose, avec le bouton.
 |---|---|
 | **Un ticket, une pièce émise, une écriture validée** | Pas de conflit possible : c'est scellé (`01` R6). Un ticket est un fait, il est toujours accepté (voir § 6 pour le mois fermé) |
 | **Un brouillon** (devis, facture préparée, achat, écriture au brouillard) | En ligne, un brouillon est **tenu par une personne** : l'autre voit qu'il est ouvert et par qui (vision § 8). Si deux personnes l'ont modifié **hors ligne** : on garde la version arrivée la première au serveur. L'autre est **mise de côté**, jamais jetée : elle s'affiche dans « À reprendre », à côté de la première, avec « Garder celle-ci » |
-| **Une fiche** (client, fournisseur, article) | Fusion **champ par champ** : l'un a changé le téléphone, l'autre l'adresse, les deux changements sont gardés. Si **le même champ** a changé des deux côtés, on garde la version du serveur, et l'autre est mise de côté et signalée. Le RIB d'un fournisseur ne se fusionne jamais : un conflit sur un RIB est **toujours** signalé au propriétaire (`03` § 7) |
+| **Une fiche** (client, fournisseur, article) | Fusion **champ par champ** (c'est ainsi que se lit `01` R15 pour une fiche : rien n'est écrasé, puisque seuls les champs que l'autre n'a pas touchés se fusionnent) : l'un a changé le téléphone, l'autre l'adresse, les deux changements sont gardés. Si **le même champ** a changé des deux côtés, on garde la version du serveur, et l'autre est mise de côté et signalée. Le RIB d'un fournisseur ne se fusionne jamais : un conflit sur un RIB est **toujours** signalé au propriétaire (`03` § 7) |
 | **Un règlement sur une facture** qui a changé entre-temps (avoir total, soldée ailleurs) | Le règlement est accepté (l'argent a été reçu) ; s'il dépasse le reste dû, il devient un **trop-perçu** signalé, jamais une affectation forcée |
 | **Le stock** | Les mouvements s'additionnent : aucun conflit. Une quantité qui passe sous zéro est **signalée**, jamais refusée. La vente a eu lieu |
 | **Un réglage** (fiche société, séries, régime) | Réservé au propriétaire et à l'administrateur (`03`), donc rarement hors ligne. Si c'est le cas : version du serveur, l'autre mise de côté et signalée |
@@ -176,7 +182,22 @@ faits pour du texte. Une facture fusionnée à partir de deux versions serait un
 personne n'a écrite (vision § 4.5). La règle vient de l'application actuelle, 3.2.0 : **on ne
 fusionne jamais deux versions d'une même pièce en une troisième**.
 
-### 5.1 « À reprendre »
+### 5.1 Un fait n'est jamais refusé
+
+Un **ticket** encaissé et un **règlement** reçu ou versé sont des faits : l'argent a bougé. Le serveur
+ne les jette donc jamais, quelle que soit la raison :
+
+| Ce qui a changé pendant la coupure | Ce qui arrive au fait |
+|---|---|
+| Le mois a été fermé | Accepté, régularisé dans le premier mois ouvert (§ 6) |
+| La personne a été retirée de l'entreprise, ou son rôle réduit | **En attente de décision** : le propriétaire l'accepte (la vente a eu lieu) ou la rejette, avec un motif. La piste d'audit garde les deux |
+| L'appareil a été révoqué | En quarantaine, même décision (§ 7) |
+| L'abonnement est passé en lecture seule | Accepté : c'est un fait, et jamais de données en otage (`07`). La caisse apprend la lecture seule à la synchronisation, et c'est **ensuite** qu'elle cesse d'encaisser |
+
+Les autres gestes (un brouillon, une fiche, une saisie) peuvent être refusés : ils vont dans « À
+reprendre », où l'on peut les refaire.
+
+### 5.2 « À reprendre »
 
 Chaque geste refusé ou mis de côté arrive dans « À reprendre ». Chaque ligne y dit :
 - **ce qui** a été refusé ;
@@ -344,4 +365,5 @@ technique), qui en reprend le résultat. Sa durée et son coût vont dans le doc
 | 28/09/2026 (proposé) | Jamais de fusion de deux versions d'une pièce ; fiches fusionnées champ par champ, sauf un RIB ; « À reprendre » pour tout refus ou version mise de côté |
 | 28/09/2026 (proposé) | Ticket ou règlement arrivé après la fermeture d'un mois : accepté, régularisé dans le premier mois ouvert ; la clôture nomme les postes qui n'ont pas remonté |
 | 28/09/2026 (proposé) | Droits gardés hors ligne : 7 jours pour une caisse, 72 heures pour un autre poste ; appareil révoqué : effacé, et ses gestes en quarantaine jusqu'à la décision du propriétaire |
+| 28/09/2026 (relecture) | Un fait (ticket, règlement) n'est jamais refusé : régularisé, ou en attente de la décision du propriétaire ; facture demandée sur un ticket préparée hors ligne, émise au retour |
 | 28/09/2026 (proposé) | Écriture par notre file d'opérations ; lecture : notre propre chemin de préférence, départagé avec PowerSync par un prototype aux seuils écrits d'avance |
