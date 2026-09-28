@@ -15,7 +15,7 @@ chacun validé à son tour. Un document validé porte en tête : `Validé par Sk
 | 3 | `03-droits.md` | Rôles, droits geste par geste, par entreprise ; piste d'audit ; double authentification | **Validé le 28/09/2026** (après relecture de tout le dépôt) |
 | 4 | `04-hors-ligne-et-synchro.md` | Ce qui marche hors ligne, file d'envoi, numérotation, choix du moteur de synchro (prototype mesuré) | **Validé le 28/09/2026** (après relecture de tout le dépôt) |
 | 5 | `05-obligations-legales.md` | TTN/TEIF, DigiGo/ANCE, TEJ, e-jibaya, CNSS, caisse certifiée, INPDP, conservation 10 ans — chaque point À VÉRIFIER | **Validé par Skander le 28/09/2026** |
-| 6 | `06-securite-et-hebergement.md` | Hébergement tunisien, sauvegardes, restauration, surveillance, audit | **Proposé le 28/09/2026, à valider** |
+| 6 | `06-securite-et-hebergement.md` | Hébergement tunisien, sauvegardes, restauration, surveillance, audit | **Validé par Skander le 28/09/2026** |
 | 7 | `07-offres-et-prix.md` | Grille par entreprise et par module, cabinets, essai, impayés, fondateurs | **Décidé le 28/09/2026 par délégation** (révisable après les entretiens) |
 | 8 | `08-reprise-de-l-existant.md` | Ce qu'on garde du moteur et des tests ; reprise des données des utilisateurs actuels et des concurrents | À faire |
 | 9 | `09-feuille-de-route.md` | Étapes, jalons, budget détaillé | À faire |
@@ -45,5 +45,6 @@ chacun validé à son tour. Un document validé porte en tête : `Validé par Sk
 | 28/09/2026 | Droits (03), validé après relecture : une seule porte sur le serveur, tableau des gestes par rôle, le cabinet n'émet ni n'encaisse, support en lecture 48 h, dossier tenu, qui compte comme utilisateur | `03-droits.md` |
 | 28/09/2026 | Hors-ligne (04), validé après relecture : la liste de ce qui marche fait foi, factures jamais hors ligne, un fait n'est jamais refusé, caisse 7 jours et autres postes 72 h, outil de synchro départagé par un prototype | `04-hors-ligne-et-synchro.md` |
 | 28/09/2026 | Obligations légales (05), validé : carte des obligations et de ce qu'on en sait, questions par interlocuteur ; **inscription fournisseur à la plateforme d'homologation des caisses dès maintenant** | `05-obligations-legales.md`, vision § 9 |
+| 28/09/2026 | Sécurité et hébergement (06), validé : deux centres en Tunisie chez deux opérateurs (EO Data Center proposé en principal, sur devis), objectifs de perte et de reprise, copie intouchable, restauration mesurée chaque mois, aucun accès à la base hors urgence tracée | `06-securite-et-hebergement.md` |
 | 27/09/2026 | Les dépôts de l'application et du site restent publics (GitHub Actions gratuit) | `CLAUDE.md` |
 | 27/09/2026 | Dépôt rangé : ancienne vision archivée, `CLAUDE.md` réécrit | ce dossier, `CLAUDE.md` |

@@ -1,6 +1,6 @@
 # 06 — La sécurité et l'hébergement
 
-*Proposé le 28/09/2026. **À valider par Skander.** Suit `VISION-ARCHITECTURE.md` (§ 4.2, § 6, risques
+*Proposé le 28/09/2026, relu le même jour contre tout le dépôt. **Validé par Skander le 28/09/2026.** Suit `VISION-ARCHITECTURE.md` (§ 4.2, § 6, risques
 R2, R8, R9, R11, § 11 points 11 et 12, § 12), `03-droits.md`, `04-hors-ligne-et-synchro.md` et
 `05-obligations-legales.md` (§ 4.3 et 4.4). Source principale :
 `docs/etudes/notes-de-recherche/marche-2026/hebergement_technique.md`.*
@@ -130,6 +130,8 @@ outils précis est fait dans le document 12.
   sur le téléphone (`03` § 6).
 - Le **site** et la **page d'état** vivent **ailleurs** (le site est statique, vision § 12) : si le
   serveur tombe, la page d'état le dit quand même. Elle ne contient aucune donnée de client.
+- Le **formulaire d'inscription** du site envoie **directement** au serveur en Tunisie : aucune donnée
+  ne passe par l'hébergeur du site, qui est hors de Tunisie (`05` § 4.3).
 
 ---
 
@@ -154,6 +156,8 @@ le chiffre.
   revenir **à n'importe quelle minute** des **35 derniers jours**. Une sauvegarde complète chaque
   nuit.
 - **Plus loin dans le temps** : une sauvegarde par mois, gardée 12 mois ; une par an, gardée 10 ans.
+  Une sauvegarde contient les données d'un client qui aurait demandé leur suppression : **À VÉRIFIER**
+  avec le juriste, en même temps que la question du `05` § 3.8 (conservation contre effacement).
 - **Les fichiers** (PDF, XML signés, accusés de la TTN, pièces jointes) : copiés sur le site de
   secours. Ceux qui ont une valeur légale sont dans un **stockage où rien ne peut être modifié ni
   effacé avant 10 ans** (vision § 5 ; `05` § 3.8).
@@ -211,7 +215,7 @@ leurs règles (`CLAUDE.md` : jamais remplacées, jamais régénérées).
 |---|---|
 | **Le programme** | Ce que ses rôles de base permettent, sous la sécurité par ligne (S2) |
 | **La mise en production** | Seul chemin normal pour changer quelque chose : le code passe les tests, puis il est déployé par un script (§ 8) |
-| **Skander, et plus tard une personne « technique »** (`03` § 5) | Se connecte aux serveurs par une clé personnelle **et** le code sur le téléphone, par une seule porte d'entrée qui enregistre tout |
+| **Skander, et plus tard une personne « technique »** (`03` § 5) | Se connecte aux **serveurs du programme et de la surveillance** par une clé personnelle **et** le code sur le téléphone, par une seule porte d'entrée qui enregistre tout. Les **serveurs de base de données** ne s'ouvrent que par l'accès d'urgence (ligne suivante) : qui a la main sur un serveur de base peut techniquement tout lire, et le rôle technique n'a droit à **aucune** donnée de client (`03` § 5) |
 | **L'accès d'urgence à la base** | Existe, mais chaque ouverture est **tracée** et **prévient une seconde personne** (le père de Skander au lancement). Elle sert à réparer, jamais à lire un dossier par curiosité |
 | **Le support** | Jamais les serveurs. Il lit un dossier seulement avec l'accord du client (`03` § 5) |
 
@@ -240,7 +244,9 @@ Ce qui est mesuré en permanence, et ce qui réveille :
 | Connexions : essais ratés en masse, pays inhabituels | Au-dessus d'un seuil réglé |
 
 Les alertes arrivent **sur le téléphone** (`00` § 3), avec ce qu'il faut faire, écrit dans la
-procédure (S5). La **page d'état** publique se met à jour pendant un incident.
+procédure (S5). Une alerte ne contient aucune donnée de client (S4). Le service qui vérifie de
+l'extérieur que le site répond ne voit qu'une adresse publique de santé, rien d'autre ; il est
+compté dans la liste des flux qui sortent (`05` § 4.3). La **page d'état** publique se met à jour pendant un incident.
 
 ---
 
@@ -350,4 +356,5 @@ Vision R11 : une seule personne pour tout faire. La parade :
 | 28/09/2026 (proposé) | Accès aux serveurs par une seule porte avec clé personnelle et code sur le téléphone ; accès d'urgence tracé et signalé à une seconde personne ; test et production séparés, jamais de donnée réelle en test |
 | 28/09/2026 (proposé) | Mises à jour sans coupure, base modifiée en deux temps, retour arrière en un geste ; correctifs de sécurité chaque mois, 48 heures pour une faille grave |
 | 28/09/2026 (proposé) | Une fiche écrite par type d'incident ; pli scellé étendu au serveur ; une seconde personne formée avant le lancement |
+| 28/09/2026 (relecture) | Les serveurs de base ne s'ouvrent que par l'accès d'urgence ; l'inscription du site va directement au serveur en Tunisie ; sauvegardes longues et droit à l'effacement à trancher avec le juriste |
 | 28/09/2026 (proposé) | Application de bureau signée ; audit externe avant l'ouverture, puis chaque année |
