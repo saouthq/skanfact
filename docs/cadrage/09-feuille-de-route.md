@@ -66,7 +66,7 @@ socle a commencé (cloisonnement des entreprises par la base, prouvé).
 - **Export et restauration d'une entreprise** (vision § 4.2), sauvegardes et premier exercice de
   restauration sur l'environnement de test (`06` § 4).
 
-**Jalon J1** : sur le serveur de test, une facture est créée, calculée et émise (sans TTN), **au même
+**Jalon J1** (**atteint le 28/09/2026**, sur la base des tests) : sur le serveur de test, une facture est créée, calculée et émise (sans TTN), **au même
 millime** que la v10 sur l'exemple de cinq ans. Une entreprise est exportée puis restaurée à
 l'identique. Et un test prouve qu'un membre d'une entreprise ne lit rien de sa voisine.
 

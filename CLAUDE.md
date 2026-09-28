@@ -21,7 +21,9 @@ y cherche le **pourquoi** d'une règle, on ne le relit pas à chaque session.*
    retenu, PowerSync en plan B ; `docs/cadrage/04-hors-ligne-et-synchro.md` § 9.4, code et bancs dans
    `prototypes/synchro/`). **L'arabe est abandonné** (Skander, 28/09/2026). **J0 atteint le
    28/09/2026 : l'étape 1 (le socle) a commencé** dans `saouthq/skanfact-plateforme`
-   (`/home/user/skanfact-plateforme`, qui a son propre `CLAUDE.md`). Les démarches sont
+   (`/home/user/skanfact-plateforme`, qui a son propre `CLAUDE.md`). **J1 atteint le 28/09/2026**
+   (facture émise au millime de la v10 sur l'exemple de cinq ans, entreprise exportée puis
+   restaurée à l'identique, voisine qui ne lit rien). Les démarches sont
    entre les mains du père de Skander, qui dira quand elles sont prêtes (ça prendra du temps). État et
    journal des décisions : `docs/cadrage/README.md`.
 2. **Nouvelle plateforme à construire** (25 mois au plan, 28 avec la marge, pas de lancement public
