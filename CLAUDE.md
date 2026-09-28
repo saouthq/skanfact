@@ -54,11 +54,12 @@ Détail et raisons dans `VISION-ARCHITECTURE.md` ; ne pas les rediscuter sans qu
   l'utilisent ; ses clés sont ouvertes au lancement, les intégrations avec des partenaires viennent
   dans les vagues : `docs/cadrage/14-fonctions-et-integrations.md` § 2.5 et § 4).
 - **TypeScript** et **une vraie bibliothèque d'interface** (validés le 27/09/2026). On **garde et on
-  porte le moteur** `core.js` / `compta.js` et ses tests. **Les écrans gardent l'interface de la v10**
-  (Skander, 28/09/2026 ; à partir de la branche `beta`, entreprise et Cabinet) : sa feuille de style
-  reprise telle quelle, chaque écran repris du sien (même structure, mêmes noms de styles, mêmes
-  textes), ses visites guidées ; seul le branchement aux données change, et le menu se replie sur
-  téléphone.
+  porte le moteur** `core.js` / `compta.js` et ses tests. **L'interface de la plateforme EST le code
+  de la v10** (Skander, 28/09/2026 : « récupérer le même code et l'adapter ») : les fichiers de
+  `src/renderer` et `src/cabinet/renderer` (branche `beta`) copiés tels quels, branchés sur le serveur
+  par un point de contact neuf ; seuls ce point de contact, les gestes officiels (numéroter, émettre,
+  valider, signer : par le serveur) et la mise en page du téléphone s'adaptent. Une correction faite
+  dans la v10 se recopie dans la plateforme. Les écrans nouveaux (connexion, modules des vagues) en React.
 - **Prix par entreprise**, pas par utilisateur, modules payants, facture électronique incluse.
   Grille décidée le 28/09/2026 par délégation : `docs/cadrage/07-offres-et-prix.md`.
 - **Signature** : DigiGo intégré (chemin principal), clé USB via l'agent local, signature serveur

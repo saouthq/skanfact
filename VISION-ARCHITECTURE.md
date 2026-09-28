@@ -191,6 +191,11 @@ viendront plus tard — mais l'API existera déjà, testée chaque jour par nos 
   ne tiendront pas vingt modules.
 - **On garde le moteur** (`core.js` et `compta.js`, ~17 500 lignes) **et ses tests** : c'est la vraie
   valeur du projet. Il est porté, pas réécrit.
+- **On reprend le CODE de l'interface v10** (Skander, 28/09/2026 : « récupérer le même code et l'adapter, pas
+  réécrire un code qui lui ressemble ») : ses fichiers de la branche `beta` tournent tels quels dans le
+  navigateur (essai fait), branchés sur le serveur par un point de contact neuf ; seuls ce point de
+  contact, les gestes officiels (numéroter, émettre, valider, signer : par le serveur) et la mise en
+  page du téléphone s'adaptent. Précise la décision ci-dessous.
 - **On garde l'interface de la v10** (Skander, 28/09/2026 : « je veux garder la même UI et UX », « c'était
   parfait »), à partir de la branche `beta` (la plus complète), pour l'entreprise comme pour le Cabinet : sa
   feuille de style (`src/renderer/style.css`) reprise telle quelle, mode sombre compris ;
