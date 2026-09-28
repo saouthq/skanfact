@@ -20,7 +20,7 @@ chacun validé à son tour. Un document validé porte en tête : `Validé par Sk
 | 8 | `08-reprise-de-l-existant.md` | Ce qu'on garde du moteur et des tests ; reprise des données des utilisateurs actuels et des concurrents | **Validé par Skander le 28/09/2026** |
 | 9 | `09-feuille-de-route.md` | Étapes, jalons, budget détaillé | **Proposé le 28/09/2026, à valider** |
 | 10 | `10-console.md` | La console d'administration : clients, abonnements, nos factures TEIF, paiement, support avec accord tracé, santé du service, mesure, équipe (`VISION-ARCHITECTURE.md` § 12). Ses tables entrent dans le 01 | **Proposé le 28/09/2026, à valider** |
-| 11 | `11-site.md` | Le site : pages, inscription, centre d'aide, page d'état, pages légales, reprise des données (§ 12) | À faire |
+| 11 | `11-site.md` | Le site : pages, inscription, centre d'aide, page d'état, pages légales, reprise des données (§ 12) | **Proposé le 28/09/2026, à valider** |
 | 12 | `12-pile-technique.md` | Les outils précis (serveur, bibliothèque d'interface, migrations de base, file de travaux, moteur de synchro, PDF, mails et WhatsApp, recherche, surveillance), où vit le code (ce dépôt ou un dépôt neuf), les environnements (test, production), l'intégration continue et la stratégie de tests. À décider **avant** la première ligne de code | À faire |
 
 ## En parallèle (Skander et son père)
