@@ -219,8 +219,8 @@ leurs règles (`CLAUDE.md` : jamais remplacées, jamais régénérées).
 | **L'accès d'urgence à la base** | Existe, mais chaque ouverture est **tracée** et **prévient une seconde personne** (le père de Skander au lancement). Elle sert à réparer, jamais à lire un dossier par curiosité |
 | **Le support** | Jamais les serveurs. Il lit un dossier seulement avec l'accord du client (`03` § 5) |
 
-**Test et production sont séparés** (vision § 11, point 11) : deux environnements, deux jeux de
-secrets. **Jamais une donnée réelle de client en test** : on essaie sur l'exemple de cinq ans et sur
+**Test et production sont séparés** (vision § 11, point 11) : quatre environnements en tout (poste de
+développement, test, pré-production, production : `12` § 7), chacun avec ses propres secrets. **Jamais une donnée réelle de client en test** : on essaie sur l'exemple de cinq ans et sur
 des données fabriquées.
 
 ---

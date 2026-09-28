@@ -86,6 +86,7 @@ Odoo sert des millions d'utilisateurs. On copie ce qui marche, on évite ce qui 
 │  File de travaux : envois TTN / TEJ / CNSS, PDF, rapports lourds, mails, sauvegardes   │
 │  PostgreSQL (données) · stockage de fichiers (justificatifs, PDF, XML signés, 10 ans)  │
 └──────────────────────────────────────────────────────────────────────────────────────┘
+  (La liste complète des modules, dont Intégrations après le lancement : `docs/cadrage/02-modules.md` § 2.)
         │                    │                   │                    │
    TTN El Fatoora       TunTrust DigiGo      TEJ / e-jibaya /     Konnect (paiement
    (envoi, référence,   (signature à         CNSS (fichiers au    de l'abonnement)
