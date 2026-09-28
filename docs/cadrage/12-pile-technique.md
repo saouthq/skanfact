@@ -88,7 +88,8 @@ skanfact-plateforme/
 | Choix | Pourquoi | Ce qui le remettrait en cause |
 |---|---|---|
 | **React** | La bibliothèque d'interface la plus répandue ; validé le 27/09 (« une vraie bibliothèque d'interface ») | — |
-| **Mantine** pour les composants (boutons, champs, fenêtres, dates) | Complet, accessible, gère l'**écriture de droite à gauche** (l'arabe, vision R12) sans travail en plus | Un manque bloquant découvert au prototype |
+| **shadcn, Tailwind et Base UI** pour les composants (boutons, champs, fenêtres, dates) — **les outils de Slate** (revu le 28/09/2026, `15` § 4 ; Mantine était proposé avant) | On garde les écrans déjà écrits dans Slate au lieu de les refaire ; Tailwind écrit « début » et « fin », pas « gauche » et « droite » | **L'arabe au prototype** : si la langue factice ne tient pas, on revient à Mantine |
+| **Konva** pour dessiner le plan de salle | Déjà utilisé par l'éditeur de plan de Slate (`15` § 2) | — |
 | **TanStack Table et Virtual** pour les listes et la **grille de saisie** | Sans habillage imposé : on garde nos règles d'interface (un seul bouton principal, rien ne pousse sous le curseur) ; tient des dizaines de milliers de lignes (saturation 10.14.0) | — |
 | **Textes traduisibles dès le premier écran** (catalogue de messages), propriétés CSS « de début et de fin » ; une **langue factice** (40 % plus longue, de droite à gauche) photographiée à chaque version ; des **polices libres qui contiennent l'arabe** (famille Noto), aussi dans les PDF | Vision R12 et décision de Skander du 28/09 : l'arabe plus tard, l'infrastructure maintenant (`14` § 5) | — |
 | **Écrans pensés pour le téléphone** : la mise en page suit la largeur ; l'instrument de rendu photographie chaque écran à la largeur d'un téléphone (390 points) et d'un ordinateur (1 440) ; des cibles d'au moins 44 points pour un doigt | `14` § 2.6 | — |
@@ -194,6 +195,7 @@ de côté. Chaque test se prouve en réintroduisant son défaut.
 | 28/09/2026 (proposé) | TypeScript et Node.js ; argent en `bigint`, dates avec `Temporal` ; le moteur sans dépendance |
 | 28/09/2026 (proposé) | Fastify, Zod, PostgreSQL, Kysely et SQL écrit à la main, pg-boss ; PDF par Chromium ; signature et envoi TTN écrits par nous |
 | 28/09/2026 (proposé) | React, Mantine, TanStack Table ; textes traduisibles dès le départ ; copie locale et synchronisation tranchées par le prototype |
+| 28/09/2026 (`15`) | shadcn, Tailwind et Base UI à la place de Mantine, pour reprendre les écrans de Slate, sous réserve de l'arabe au prototype ; Konva pour le plan de salle |
 | 28/09/2026 (proposé) | Electron pour la coque et l'agent local ; application signée |
 | 28/09/2026 (proposé) | Serveurs dédiés, Docker Compose, Ansible, pgBackRest, réplication PostgreSQL avec bascule par script, MinIO, SOPS, Prometheus et Grafana ; tout chez nous, en Tunisie |
 | 28/09/2026 (proposé) | Quatre environnements, jamais de donnée réelle hors production ; tous les tests de la v10 portés ; intégration continue sur GitHub Actions, jamais contournée |

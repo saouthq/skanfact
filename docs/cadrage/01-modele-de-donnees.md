@@ -670,9 +670,10 @@ dossier, rassemblés sous un même lot.
 
 | Table | Contenu | Quand |
 |---|---|---|
-| `ressource` | Ce qu'on réserve : une personne, un poste, un matériel, une salle (plus tard, une chambre : `14` § 3.7) | Vague 1 |
-| `disponibilite` | Horaires d'une ressource, fermetures | Vague 1 |
-| `reservation` | Ressource(s), tiers, début, fin, statut (demandée, confirmée, honorée, annulée, absent), acompte, pièce de vente liée | Vague 1 |
+| `ressource` | Ce qu'on réserve : une table (au lancement, pour les restaurants : `15`), une personne, un poste, un matériel, une salle (plus tard, une chambre : `14` § 3.7) | Lancement (tables) ; vague 1 |
+| `disponibilite` | Horaires d'une ressource, fermetures, exceptions (dont le Ramadan) | Lancement (restaurants) ; vague 1 |
+| `reservation` | Ressource(s), tiers, début, fin, couverts, statut (demandée, confirmée, reconfirmée, arrivée, à table, honorée, annulée, absent), rappels envoyés, acompte, pièce de vente liée | Lancement (restaurants, d'après les tables de Slate : `15`) ; vague 1 |
+| `liste_attente` | Tiers, couverts, souhait d'heure, statut | Lancement (restaurants) |
 | `caution` | Réservation, reçue le, montant, rendue ou retenue, quand, pourquoi | Vague 2 (location). Pas un chiffre d'affaires (**À VÉRIFIER**) |
 | `opportunite`, `activite` | Tiers prospect, étape, montant espéré, prochaine action ; appels, visites, rappels | Vague 1 |
 | `temps_passe` | Membre, affaire (la section de l'axe « Affaires », § 14), date, durée, facturable, taux, facturé par quelle pièce | Vague 2 |

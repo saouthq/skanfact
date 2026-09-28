@@ -210,7 +210,8 @@ imprimantes de cuisine ; Caissa, le terminal de paiement.
 | **Titres-restaurant** (chèques et cartes Pluxee) comme moyen de paiement, avec la remise à l'émetteur et sa commission | Lancement |
 | **La recette** d'un plat sort ses ingrédients du stock (§ 3.3) | Lancement |
 | Annuler une ligne **déjà partie en cuisine** : avec le **code d'un responsable** (`03` § 2.3) | Lancement |
-| **Écran de cuisine** (à la place du papier), **réservation de table** | Vague 2 |
+| **Réservations** (widget public, rappels, liste d'attente, table attribuée) et **service du jour**, repris de Slate (`15`) | Lancement |
+| **Écran de cuisine** (à la place du papier) | Vague 2 |
 
 **Pendant une coupure**, la salle se tient **sur la caisse** : c'est elle qui prend les commandes et
 les envoie aux imprimantes de cuisine, par le réseau du restaurant (l'agent local, `12` § 5). Les
@@ -231,7 +232,8 @@ sécurisation sur chaque ticket.
 | **Commandes clients** livrées en plusieurs fois, **reliquats** suivis, **plusieurs bons de livraison en une facture** | Lancement |
 | Côté achats : **demande de prix, commande fournisseur, réception** (même partielle), et la facture rapprochée de la réception (un écart de quantité ou de prix se signale) | Lancement |
 | Stock par dépôt, transferts (déjà au `02`) | Lancement |
-| **Fidélité** (points), **cartes cadeaux**, **promotions** datées | Vague 2 |
+| **Cartes cadeaux** (déjà écrites dans Slate, `15`) | Vague 1 |
+| **Fidélité** (points), **promotions** datées | Vague 2 |
 | **Balance connectée** à la caisse ; étiquettes de balance lues à la douchette | Vague 2 |
 | Tournées de livraison, prise de commande par un représentant sur la route | Vague 3 |
 
@@ -256,7 +258,8 @@ sécurisation sur chaque ticket.
 - **Prestataires** (cible n° 2) : tout est au lancement (note d'honoraires, retenue, facture
   électronique, récurrent). Le **temps passé** et la facturation au temps viennent avec le module
   **Projets** (vague 2).
-- **Rendez-vous** (coiffure, esthétique, santé, garages, auto-écoles) : module **Réservations** en
+- **Rendez-vous** (coiffure, esthétique, santé, garages, auto-écoles) : module **Réservations**,
+  ouvert au lancement pour les restaurants (repris de Slate, `15`) et étendu aux rendez-vous en
   vague 1 : un agenda par personne ou par poste, une page de prise de rendez-vous, le rappel au
   client, l'encaissement au passage.
 - **Location** (matériel, voitures, salles) : le même module, en vague 2 : une chose réservée sur une
@@ -428,3 +431,4 @@ par l'entreprise qui les utilise, jamais cachés dans notre prix.
 | 28/09/2026 | **L'arabe plus tard, l'infrastructure maintenant (décision de Skander)** : catalogue de textes, mise en page début et fin, langue factice testée à chaque version ; interface arabe en vague 1 |
 | 28/09/2026 (par délégation) | Les écrans du quotidien marchent sur téléphone dès le lancement ; l'application des magasins en vague 3 |
 | 28/09/2026 (par délégation) | Lancement à 27 mois au plan, 30 avec la marge ; Essentiel comprend le stock et une caisse |
+| 28/09/2026 (**Skander**, `15`) | Slate, l'application pour restaurateurs de Skander, entre dans SkanFact comme sa partie restaurant : réservations de restaurant au lancement ; cartes cadeaux en vague 1 |

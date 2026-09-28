@@ -328,6 +328,9 @@ milliers de PME** ; le chiffre exact se mesure, il ne se devine pas.
   trois vagues après, puis **l'hôtellerie à la fin** et **l'arabe plus tard, l'infrastructure
   maintenant** (deux décisions de Skander). Lancement à 27 mois après le premier code (30 avec la
   marge) ; Essentiel comprend le stock et une caisse.
+- **Slate, l'application pour restaurateurs de Skander, devient la partie restaurant de SkanFact**
+  (décision de Skander, 28/09/2026 ; `docs/cadrage/15-reprise-de-slate.md`) : plan de salle,
+  réservations et service du jour repris au lancement, sur nos serveurs en Tunisie.
 
 ## 10. La suite du cadrage
 

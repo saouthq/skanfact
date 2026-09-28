@@ -105,7 +105,8 @@ leurs vrais dossiers repris de la v10, **en parallèle** de la v10 pendant au mo
 - Module **Stock** (`02`), avec les **recettes et les kits**.
 - Module **Caisse**, conçu d'après le **cahier des charges de la plateforme d'homologation** (`05`
   § 3.7), et ses tests d'intégration avec le système central ; avec son **mode restaurant** (salle,
-  tables, cuisine, suppléments, addition partagée, titres-restaurant : `14` § 3.1).
+  tables, cuisine, suppléments, addition partagée, titres-restaurant : `14` § 3.1) ; les
+  **réservations de restaurant**, le plan de salle et le service du jour, **repris de Slate** (`15`).
 - **L'application de bureau**, signée (`06` § 10), et l'**agent local** : clé USB de signature,
   imprimante de tickets, **imprimantes de cuisine**, tiroir, douchette.
 
@@ -140,7 +141,7 @@ Le détail et les raisons sont au `14` ; chaque vague a sa forme déjà posée d
 
 | Vague (après J5) | Ce qu'elle apporte |
 |---|---|
-| **Vague 1** (environ 6 mois) | L'interface **en arabe**, relue par un arabophone, les pièces bilingues, le site en arabe ; le module **Réservations** (rendez-vous) ; le **bâtiment** (situations de travaux, retenue de garantie) ; le **suivi commercial** ; **WooCommerce** et **Shopify** ; **Intigo** et **First Delivery** ; **Flouci** ; WhatsApp automatique ; SMS de relance et de rappel |
+| **Vague 1** (environ 6 mois) | L'interface **en arabe**, relue par un arabophone, les pièces bilingues, le site en arabe ; le module **Réservations** étendu aux rendez-vous ; ce que Slate a déjà écrit (vente en ligne, campagnes, avis, bons cadeaux, menus : `15`) ; le **bâtiment** (situations de travaux, retenue de garantie) ; le **suivi commercial** ; **WooCommerce** et **Shopify** ; **Intigo** et **First Delivery** ; **Flouci** ; WhatsApp automatique ; SMS de relance et de rappel |
 | **Vague 2** (environ 12 mois) | Les modules **Production** et **Projets** ; la **location** ; les notes de frais ; la fidélité, les cartes cadeaux et les promotions ; l'écran de cuisine et la réservation de table ; la balance connectée ; Navex et Aramex ; les connecteurs sans code |
 | **Vague 3** (environ 18 mois) | Le module **Groupe** (consolidation) ; l'**application des magasins** (App Store, Google Play) ; l'interface **en anglais** ; PrestaShop ; ClicToPay, e-Dinar ; le terminal de paiement connecté ; les rapports à la carte ; Odoo ; les assistants d'IA extérieurs ; les tournées de livraison |
 | **À la fin** | L'**hôtellerie** (décision de Skander, 28/09/2026) |
@@ -253,6 +254,7 @@ la source que des clients pourraient faire sur nos factures (`05` § 4.2, **À V
 | Date | Décision |
 |---|---|
 | 28/09/2026 (proposé) | Cinq étapes après J0, chacune fermée par un jalon mesuré et vu à l'écran ; lancement (J5) 22 mois après le premier code au plan, 24 au plus avec la marge |
+| 28/09/2026 (**Skander**, `15`) | Slate repris dans l'étape 4 : réservations de restaurant au lancement, calendrier inchangé au plan (le plan de salle déjà écrit paie le reste), à mesurer au prototype |
 | 28/09/2026 (par délégation, `14`) | **Revu** : lancement à 27 mois au plan, 30 avec la marge, pour tout ce que Hesabi a et les métiers du lancement ; pilotes au mois 16 ; trois vagues après J5, puis l'hôtellerie ; budget de fonctionnement ≈ 800 à 1 650 DT par mois ; demande du label Startup |
 | 28/09/2026 (proposé) | Les pilotes passent à J3, en parallèle de la v10 pendant deux mois au moins ; déclaration INPDP avant |
 | 28/09/2026 (proposé) | Un jalon manqué déplace les dates, jamais son contenu ; jamais de lancement sans l'accusé réel de la TTN ; lancement possible sans le mot « certifiée » si l'homologation de la caisse tarde |

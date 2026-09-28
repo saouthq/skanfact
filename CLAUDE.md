@@ -63,6 +63,10 @@ Détail et raisons dans `VISION-ARCHITECTURE.md` ; ne pas les rediscuter sans qu
   restauration et commerces au lancement ; trois vagues après, puis l'**hôtellerie à la fin** ;
   **l'arabe plus tard, l'infrastructure maintenant** (catalogue de textes, langue factice testée).
   Détail : `docs/cadrage/14-fonctions-et-integrations.md`.
+- **Slate** (dépôt privé `saouthq/Slate`, l'application pour restaurateurs de Skander) **devient la
+  partie restaurant de SkanFact** (décision de Skander, 28/09/2026) : on reprend ses écrans et ses
+  tests dans la plateforme, en Tunisie, avec l'argent en entiers ; il prend l'identité de SkanFact.
+  Détail : `docs/cadrage/15-reprise-de-slate.md`.
 - Les règles « JS pur, pas de React » et « stockage JSON, pas SQLite » de l'ancien fichier ne valent
   plus que pour l'application actuelle.
 
