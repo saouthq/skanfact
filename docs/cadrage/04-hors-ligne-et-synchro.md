@@ -345,7 +345,8 @@ technique), qui en reprend le résultat. Sa durée et son coût vont dans le doc
 ## 11. À VÉRIFIER
 
 1. **Caisse certifiée** : session ouverte hors ligne, délai maximal de transmission des tickets,
-   format du Z (`01` § 21).
+   format du Z (`01` § 21). Tout se confronte au cahier des charges de la plateforme d'homologation
+   des caisses (`05` § 3.7), avant d'écrire la caisse.
 2. **Stockage persistant** des navigateurs (Safari, Chrome, Firefox ; ordinateur et téléphone) :
    vérifié pendant le prototype.
 3. **Régularisation d'un ticket arrivé après la fermeture du mois** : acceptable pour un comptable

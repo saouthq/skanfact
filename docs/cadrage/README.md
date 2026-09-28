@@ -14,7 +14,7 @@ chacun validé à son tour. Un document validé porte en tête : `Validé par Sk
 | 2 | `02-modules.md` | Le socle et les modules, leurs points d'extension, les champs personnalisés, les offres | **Validé le 28/09/2026** (après relecture de tout le dépôt) |
 | 3 | `03-droits.md` | Rôles, droits geste par geste, par entreprise ; piste d'audit ; double authentification | **Validé le 28/09/2026** (après relecture de tout le dépôt) |
 | 4 | `04-hors-ligne-et-synchro.md` | Ce qui marche hors ligne, file d'envoi, numérotation, choix du moteur de synchro (prototype mesuré) | **Validé le 28/09/2026** (après relecture de tout le dépôt) |
-| 5 | `05-obligations-legales.md` | TTN/TEIF, DigiGo/ANCE, TEJ, e-jibaya, CNSS, caisse certifiée, INPDP, conservation 10 ans — chaque point À VÉRIFIER | À faire |
+| 5 | `05-obligations-legales.md` | TTN/TEIF, DigiGo/ANCE, TEJ, e-jibaya, CNSS, caisse certifiée, INPDP, conservation 10 ans — chaque point À VÉRIFIER | **Proposé le 28/09/2026, à valider** |
 | 6 | `06-securite-et-hebergement.md` | Hébergement tunisien, sauvegardes, restauration, surveillance, audit | À faire |
 | 7 | `07-offres-et-prix.md` | Grille par entreprise et par module, cabinets, essai, impayés, fondateurs | **Décidé le 28/09/2026 par délégation** (révisable après les entretiens) |
 | 8 | `08-reprise-de-l-existant.md` | Ce qu'on garde du moteur et des tests ; reprise des données des utilisateurs actuels et des concurrents | À faire |

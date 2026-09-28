@@ -294,6 +294,9 @@ milliers de PME** ; le chiffre exact se mesure, il ne se devine pas.
   le développement, parce que le code en a besoin pour être testé : l'**accès à l'environnement de
   test El Fatoora (TTN)** et l'**adhésion « entité d'intégration » DigiGo auprès de l'ANCE**.
   L'homologation ANCE, la déclaration INPDP et la caisse certifiée se font en fin de développement.
+  *Proposé le 28/09/2026 (`docs/cadrage/05-obligations-legales.md` § 3.7) : la caisse passe par une
+  plateforme d'homologation avec tests d'intégration ; l'inscription du fournisseur et le cahier des
+  charges se feraient dès le cadrage. À valider par Skander.*
 
 - **TypeScript et une bibliothèque d'interface : validés.** Les règles « JS pur » et « stockage
   JSON » de `CLAUDE.md` valent pour l'application actuelle ; la nouvelle plateforme suit ce document.

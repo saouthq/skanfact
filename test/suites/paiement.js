@@ -112,11 +112,11 @@ module.exports = async ({ ta, assert }) => {
     const P = await API();
     const vu = JSON.stringify(P.etatCommandePublic({
       id: 'cmd_1', etat: 'payee', offre: 'entreprise', montant_ttc: 822.1, devise: 'TND',
-      email: 'skander@skancyber.tn', cle: 'SKAN1.charge.signature', licence_id: 'abcd1234'
+      email: 'skander@exemple.tn', cle: 'SKAN1.charge.signature', licence_id: 'abcd1234'
     }));
     assert.ok(!/SKAN1/.test(vu), 'la clé part par mail : une référence de commande voyage dans une adresse, qui se partage');
-    assert.ok(!/skander@skancyber\.tn/.test(vu), 'l\'adresse entière n\'a pas à s\'apprendre à qui a récupéré le lien');
-    assert.ok(/^s\*+r$/.test(JSON.parse(vu).phrase.match(/à (\S+)@skancyber/)[1]), 'assez pour qu\'on reconnaisse SON adresse : ' + vu);
+    assert.ok(!/skander@exemple\.tn/.test(vu), 'l\'adresse entière n\'a pas à s\'apprendre à qui a récupéré le lien');
+    assert.ok(/^s\*+r$/.test(JSON.parse(vu).phrase.match(/à (\S+)@exemple/)[1]), 'assez pour qu\'on reconnaisse SON adresse : ' + vu);
     assert.ok(!/abcd1234/.test(vu), 'l\'identifiant de la licence n\'a rien à faire sur une page publique');
     // Payé et pas livré : on le DIT. Le client a donné son argent, il a le droit de savoir que
     // quelque chose cloche — et de savoir que nous le savons.
