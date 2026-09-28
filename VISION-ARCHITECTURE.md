@@ -183,8 +183,8 @@ viendront plus tard — mais l'API existera déjà, testée chaque jour par nos 
   ne tiendront pas vingt modules.
 - **On garde le moteur** (`core.js` et `compta.js`, ~17 500 lignes) **et ses tests** : c'est la vraie
   valeur du projet. Il est porté, pas réécrit.
-- ⚠ **Décision qui revient à Skander** : ces deux points renversent deux règles de `CLAUDE.md`
-  (« JS pur, pas de React » et « stockage JSON, pas de base de données »).
+- **Validé par Skander le 27/09/2026** (§ 9). Les outils précis (serveur, interface, migrations,
+  file de travaux, synchronisation, PDF, mails) se choisissent dans `docs/cadrage/12-pile-technique.md`.
 
 ---
 
@@ -257,14 +257,14 @@ milliers de PME** ; le chiffre exact se mesure, il ne se devine pas.
 | R6 | Signature bloquée par une démarche administrative | Démarches lancées pendant le cadrage ; trois chemins de signature |
 | R7 | Mises à jour qui cassent les personnalisations (le mal d'Odoo) | Points d'extension déclarés ; personnalisation par champs, pas par code |
 | R8 | Perte de données (panne, erreur, rançongiciel +140 % en Tunisie) | Sauvegarde continue de la base (restauration à la minute près), copie chiffrée hors du serveur, **exercice de restauration réel chaque mois** |
-| R9 | Hébergement tunisien sans base de données gérée | On exploite nous-mêmes, très outillé (réplique, surveillance, alertes) ; ou base gérée en Europe avec autorisation INPDP — **décision à prendre** |
+| R9 | Hébergement tunisien sans base de données gérée | **Décidé le 27/09/2026 : tout en Tunisie.** On exploite donc nous-mêmes, très outillé (réplique, surveillance, alertes, restauration mensuelle) |
 | R10 | Obligations légales découvertes trop tard (INPDP, audit de cybersécurité ANCS pour un hébergeur, caisse certifiée) | Liste « À VÉRIFIER » traitée pendant le cadrage, avec un juriste |
 | R11 | Une seule personne pour tout faire (support, incidents, ventes) | Architecture la plus simple qui tient ; surveillance automatique ; prévoir un humain pour le support avant le lancement |
 | R12 | L'arabe demandé plus tard | Textes traduisibles et mise en page « sens de lecture » dès le départ (déjà commencé : CSS logique depuis la 9.4.10) |
 | R13 | Dates et fuseaux horaires | Déjà une règle du projet (5.2.3) : une date est un jour du calendrier, arithmétique en UTC |
 | R14 | Les 3 comptables pilotes attendent (2 mois annoncés) | Leur faire tester l'application actuelle pendant la construction, et le socle serveur dès qu'il tient |
 | R15 | Les données actuelles des utilisateurs | Outil de reprise des fichiers JSON et des livres du Cabinet vers le serveur, testé sur l'exemple de 5 ans |
-| R16 | Piratage et copie | La valeur est sur le serveur (données, sauvegardes, comptable, TTN) ; dépôt repassé en privé |
+| R16 | Piratage et copie | La valeur est sur le serveur (données, sauvegardes, comptable, TTN). Dépôts publics pour l'instant (décision du 27/09/2026) ; où vivra le code du serveur : `docs/cadrage/12-pile-technique.md` |
 
 ---
 

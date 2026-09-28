@@ -9,7 +9,7 @@ chacun validé à son tour. Un document validé porte en tête : `Validé par Sk
 
 | # | Document | Sujet | État |
 |---|---|---|---|
-| 1 | `01-modele-de-donnees.md` | Organisations, entreprises, utilisateurs ; pièces, lignes, écritures, tiers, articles, stock, paie ; argent en entiers ; identifiants ; partitionnement | À faire (commence le 28/09/2026) |
+| 1 | `01-modele-de-donnees.md` | Organisations, entreprises, établissements, utilisateurs ; pièces, lignes, écritures, tiers, articles, stock, paie ; argent en entiers ; identifiants ; **règles fiscales datées** (taux et barèmes par date d'effet, pour les lois de finances) ; tables de la console ; partitionnement | En cours (commencé le 28/09/2026) |
 | 2 | `02-modules.md` | Le socle et les modules, leurs points d'extension, les champs personnalisés, les offres | À faire |
 | 3 | `03-droits.md` | Rôles, droits geste par geste, par entreprise ; piste d'audit ; double authentification | À faire |
 | 4 | `04-hors-ligne-et-synchro.md` | Ce qui marche hors ligne, file d'envoi, numérotation, choix du moteur de synchro (prototype mesuré) | À faire |
@@ -20,6 +20,7 @@ chacun validé à son tour. Un document validé porte en tête : `Validé par Sk
 | 9 | `09-feuille-de-route.md` | Étapes, jalons, budget détaillé | À faire |
 | 10 | `10-console.md` | La console d'administration : clients, abonnements, nos factures TEIF, paiement, support avec accord tracé, santé du service, mesure, équipe (`VISION-ARCHITECTURE.md` § 12). Ses tables entrent dans le 01 | À faire |
 | 11 | `11-site.md` | Le site : pages, inscription, centre d'aide, page d'état, pages légales, reprise des données (§ 12) | À faire |
+| 12 | `12-pile-technique.md` | Les outils précis (serveur, bibliothèque d'interface, migrations de base, file de travaux, moteur de synchro, PDF, mails et WhatsApp, recherche, surveillance), où vit le code (ce dépôt ou un dépôt neuf), les environnements (test, production), l'intégration continue et la stratégie de tests. À décider **avant** la première ligne de code | À faire |
 
 ## En parallèle (Skander et son père)
 
