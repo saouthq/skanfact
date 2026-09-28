@@ -23,10 +23,11 @@ de trois (la vague 1 débordait), budget et J0 remis à jour.*
   puis la fabrication, les projets et la location ; puis le groupe, l'anglais et les applications
   des magasins. L'hôtellerie vient à la fin (§ 1, `14`).
 - **Budget** : de **800 à 1 650 DT par mois** en fonctionnement au lancement (l'ordre de grandeur du
-  27/09 était ~1 000 DT ; la lecture de documents en Tunisie ajoute un serveur), et **12,5 à 27 kDT**
+  27/09 était ~1 000 DT ; la lecture de documents en Tunisie ajoute un serveur), et **12,5 à 26 kDT**
   de frais uniques connus jusqu'au lancement, matériel de caisse compris (le 27/09 : 10 à 20 kDT).
   S'y ajouteront des frais **encore inconnus** (homologation de la caisse, DigiGo, ANCE), qui le
-  feront probablement dépasser. **Chaque ligne est une estimation**, à remplacer par un devis (§ 4).
+  feront probablement dépasser, et, **chaque année après le lancement**, l'audit de sécurité et les
+  certificats (6 000 à 12 000 DT par an, § 4.3). **Chaque ligne est une estimation**, à remplacer par un devis (§ 4).
 - **Point mort** : environ **31 abonnements Essentiel** (ou 18 Complet) couvrent 1 000 DT par mois ;
   51 Essentiel (ou 29 Complet) pour le haut de la fourchette.
 - **Le label Startup** (`05` § 4.8), s'il est obtenu, allège nettement ce budget.
@@ -40,8 +41,8 @@ de trois (la vague 1 débordait), budget et J0 remis à jour.*
 | À faire | Qui |
 |---|---|
 | Documents 09 à 15 validés, et les ajouts du 28/09 aux documents 00 à 08 revalidés (`README`) | Claude, Skander |
-| **Prototype de synchronisation** mesuré (`04` § 9.3), qui tranche l'outil de lecture | Claude |
-| Démarches lancées : El Fatoora (test), DigiGo (intégration), plateforme des caisses (`05` § 5) ; le label Startup dès que la société est choisie (`05` § 4.8) | Père de Skander |
+| **Prototype de synchronisation** mesuré (`04` § 9.3), qui tranche l'outil de lecture : 2 à 3 semaines, sur le serveur de test (pas de coût en plus) | Claude |
+| Démarches lancées : El Fatoora (test), DigiGo (intégration), plateforme des caisses (`05` § 5) ; le **dépôt de la marque** SkanFact à l'INNORPI, et le label Startup, dès que la société est choisie (`05` § 4.6 et § 4.8) | Père de Skander |
 | Rendez-vous comptable et juriste avec la liste du `05` § 6 | Père de Skander, Skander |
 | Devis de deux hébergeurs (`06` § 2.3) | Père de Skander |
 | Entretiens terrain (questionnaire de l'étude de marché) | Skander, son père |
@@ -98,7 +99,9 @@ l'écran (règle du projet).
 - **Comptabilité complète** : validation, lettrage, clôtures, états, **liasse en XML** (`05` § 3.5).
 - **Paie** et **CNSS** (`05` § 3.6).
 - **L'outil de reprise** de la v10 (entreprise et Cabinet), avec l'essai à blanc et le rapport
-  (`08` § 2).
+  (`08` § 2), **et celui des concurrents** (`08` § 3) : fiches, pièces ouvertes et soldes d'ouverture
+  par tableur, lecture du FEC pour les cabinets, puis les exports de Sage, Ciel ou Hesabi appris sur
+  de vrais fichiers. C'est lui qui rend le changement de logiciel possible (`13` § 2).
 - Le **site de secours** en place, et la **première bascule** jouée (`06` § 4.3).
 
 **Jalon J3** : **les trois comptables pilotes travaillent sur la plateforme**, avec leur accord et sur
@@ -125,7 +128,6 @@ plus incertain de toute la feuille de route.
 - **Le site** de la plateforme (`11`), avec ses pages de métiers, d'intégrations et pour les
   développeurs ; les **pages légales** et les contrats (`05` § 4.5).
 - **L'audit de sécurité externe** (`06` § 10) et ses corrections.
-- **Dépôt de la marque** à l'INNORPI, avant toute communication publique (`05` § 4.6).
 - Le bouton **« Passer à la plateforme »** dans la v10 (`08` § 2.1).
 - **Une seconde personne** formée au support et aux fiches d'incident (`06` § 9.3).
 
@@ -133,6 +135,7 @@ plus incertain de toute la feuille de route.
 - trois exercices de restauration réussis d'affilée ;
 - l'audit sans défaut grave ouvert ;
 - les pilotes qui disent oui ;
+- la reprise d'un concurrent réussie sur de vrais fichiers, à chiffres identiques (`08` § 3.3) ;
 - la caisse homologuée. Si elle ne l'est pas encore, **on lance sans le mot « certifiée »** (`05`
   § 3.7), et la caisse est vendue seulement là où l'obligation ne s'applique pas encore.
 
@@ -177,6 +180,7 @@ Chaque correction de calcul faite dans la v10 est **aussi portée** dans le nouv
 | L'accès de test TTN ou DigiGo tarde | L'étape 2 ne peut pas finir la facture électronique | Tout le reste de l'étape avance ; la file d'envoi se teste contre un simulateur écrit d'après la documentation. **Jamais de lancement sans l'accusé réel de la TTN** |
 | Le cahier des charges de la caisse impose autre chose que notre `04` | L'étape 4 change de forme | C'est pour ça que l'inscription est faite **dès maintenant** : on le saura avant d'écrire la caisse |
 | L'homologation de la caisse tarde | J5 sans « certifiée » | Voir J5 |
+| **Toutes les obligations de caisse seront en vigueur avant notre lancement** (généralisation le 1er juillet 2028, `05` § 3.7), et la facture électronique depuis 2026 | Au lancement, nos cibles ont déjà un outil : on vend un **changement**, pas une mise en conformité | La reprise des données d'un concurrent (`08` § 3) est prête au lancement ; le `13` vise ceux qui changent |
 | Le quota Claude baisse ou coûte plus cher | Tout ralentit | Le budget suit le quota réel (§ 4) ; les étapes gardent leur ordre, seules les durées s'allongent |
 | Un pilote se retire | Moins de retours réels | Les entretiens terrain (J0) servent aussi à trouver d'autres cabinets |
 | Un devis d'hébergement bien au-dessus | Budget | On compare au § 4 ; un seul site pendant le développement, le second à l'étape 3 |
@@ -208,7 +212,7 @@ remplace par le vrai chiffre dès qu'il est connu, dans ce document, avec sa dat
 | Site principal (serveurs dédiés, EO Data Center ou équivalent) | 400 à 700 DT | **Devis nécessaire** (`06` § 2.2) |
 | Site de secours (autre opérateur, autre ville) | 200 à 400 DT | **Devis nécessaire** |
 | Stockage des sauvegardes et des archives de 10 ans | 50 à 150 DT | Grandit avec les clients |
-| Lecture de documents (un serveur de calcul de plus, `14` § 2.3) | 100 à 250 DT | Mesurée au prototype ; en Tunisie, comme le reste |
+| Lecture de documents (un serveur de calcul de plus, `14` § 2.3) | 100 à 250 DT | Se précise avec l'essai du moteur de lecture (`12` § 10) ; en Tunisie, comme le reste |
 | SMS (codes de connexion) | 30 à 100 DT | Faible grâce aux appareils reconnus (`03` § 6) ; prix par message **À VÉRIFIER**. Les SMS de relance et de rappel (vague 1) sont refacturés à l'entreprise qui les envoie (`14` § 6) |
 | E-mails, surveillance, nom de domaine | 20 à 50 DT | |
 | **Total** | **≈ 800 à 1 650 DT** | Un peu au-dessus de l'ordre de grandeur du 27/09 (~1 000 DT), à cause de la lecture de documents |
@@ -219,15 +223,15 @@ remplace par le vrai chiffre dès qu'il est connu, dans ce document, avec sa dat
 |---|---|---|
 | Juriste : contrats, pages légales, procédure de reprise de compte, avis sur l'audit ANCS | 3 000 à 6 000 DT | Étapes 0 et 5 |
 | Comptable : réponses du `05` § 6, relecture des lois de finances | 1 000 à 3 000 DT | Tout au long |
-| **Audit de sécurité externe** (test d'intrusion) | 5 000 à 10 000 DT | Étape 5 |
+| **Audit de sécurité externe** (test d'intrusion) | 5 000 à 10 000 DT | Étape 5, **puis chaque année** (`06` § 10) |
 | Certificats de signature de l'application (Apple, Microsoft) | 1 000 à 2 000 DT par an | Étape 4 |
 | Certificat TunTrust de notre société (nos factures) | **À VÉRIFIER** | Étape 5 |
 | Homologation de la caisse, adhésion DigiGo, homologation ANCE éventuelle | **Inconnu** | Étapes 0 à 5 |
-| Dépôt de la marque (INNORPI) | quelques centaines de DT, **À VÉRIFIER** | Étape 5 |
+| Dépôt de la marque (INNORPI) | quelques centaines de DT, **À VÉRIFIER** | **Dès que la société est choisie** : le nom est déjà public (`05` § 4.6) |
 | Assurance responsabilité civile professionnelle | **À VÉRIFIER** (par an) | Étape 5 |
 | Relecture de l'interface en arabe par un arabophone | 1 000 à 3 000 DT | Vague 1 |
 | Imprimantes de tickets et de cuisine, tiroir, douchette, tablette, pour tester la caisse et le restaurant | 1 500 à 3 000 DT | Étape 4 (comptoir), vague 1 (cuisine) |
-| **Total connu** | **≈ 12 500 à 27 000 DT** jusqu'au lancement (certificats comptés sur deux ans, matériel de caisse compris), sans les lignes « inconnu » ni « À VÉRIFIER » ; plus 1 000 à 3 000 DT pour l'arabe en vague 1 | |
+| **Total connu** | **≈ 12 500 à 26 000 DT** jusqu'au lancement (certificats comptés sur deux ans, matériel de caisse compris), sans les lignes « inconnu » ni « À VÉRIFIER » ; plus 1 000 à 3 000 DT pour l'arabe en vague 1 | |
 
 ### 4.4 Le point mort
 
@@ -237,6 +241,7 @@ Avec les prix du `07` (hors taxes) :
 |---|---|
 | 1 000 DT par mois (12 000 DT par an) | **≈ 31** abonnements Essentiel (390 DT), **ou ≈ 18** Complet (690 DT) |
 | 1 650 DT par mois (haut de la fourchette) | ≈ 51 Essentiel, ou ≈ 29 Complet |
+| **En plus, chaque année après le lancement** : l'audit de sécurité (5 000 à 10 000 DT) et les certificats de l'application (1 000 à 2 000 DT) | ≈ 15 à 31 Essentiel de plus, ou ≈ 9 à 17 Complet |
 
 Ce calcul ne compte ni le temps de Skander ni le quota Claude. Il ne compte pas non plus la retenue à
 la source que des clients pourraient faire sur nos factures (`05` § 4.2, **À VÉRIFIER**).
@@ -270,3 +275,4 @@ la source que des clients pourraient faire sur nos factures (`05` § 4.2, **À V
 | 28/09/2026 (proposé) | Un jalon manqué déplace les dates, jamais son contenu ; jamais de lancement sans l'accusé réel de la TTN ; lancement possible sans le mot « certifiée » si l'homologation de la caisse tarde |
 | 28/09/2026 (proposé) | Environ un jour sur dix réservé à la v10 ; les lois de finances passent avant tout chaque décembre |
 | 28/09/2026 (proposé) | Budget en estimations, remplacées par les devis au fil de l'eau ; point mort ≈ 31 Essentiel ou 18 Complet pour 1 000 DT par mois |
+| 28/09/2026 (relecture) | Frais uniques corrigés (26 000 DT au plus, pas 27 000) ; audit et certificats comptés chaque année après le lancement ; marque déposée dès que la société est choisie ; reprise des concurrents à l'étape 3 et condition de J5, puisque nos cibles auront déjà un logiciel au lancement |

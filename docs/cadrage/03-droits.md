@@ -230,6 +230,7 @@ mandat, la validation est à l'entreprise.
 |---|---|---|---|---|---|---|---|---|
 | Voir les quantités disponibles | ✓ | ✓ | voir | voir | ✓ | voir | — | voir |
 | Mouvements (dont les **réceptions** de marchandise), transferts, lots et numéros de série | ✓ | ✓ | — | — | ✓ | — | — | — |
+| **Recettes et kits** : créer, modifier une nomenclature (ce qu'un article composé sort du stock) | ✓ | ✓ | — | — | ✓ | — | — | — |
 | Compter un inventaire | ✓ | ✓ | — | — | ✓ | — | — | — |
 | **Valider** un inventaire (l'écart devient une écriture) | ✓ | ✓ | — | — | — | ✓ | — | — |
 

@@ -28,7 +28,7 @@ Les pages d'aujourd'hui sont décrites dans le `README.md` du site. Ce qu'elles 
 
 | Aujourd'hui | Au lancement | Pourquoi |
 |---|---|---|
-| `index.html` (accueil) | **Réécrit** : la plateforme, ses trois façons de s'ouvrir, le hors-ligne, le comptable dans les mêmes données | Le message change (vision § 1) |
+| `index.html` (accueil) | **Réécrit** : la plateforme, ses trois façons de s'ouvrir, le hors-ligne, le comptable dans les mêmes données, l'espace client et le paiement en ligne des factures (`14` § 2.1, 2.2) | Le message change (vision § 1) |
 | `tarifs.html` | **Réécrit** d'après `07` : Essentiel, Complet, modules, cabinets | Nouvelle grille |
 | `acheter.html`, `paiement-ok.html`, `paiement-echec.html` | **Retirés** : on s'abonne et on paie **dans l'application** | Plus de clé à acheter (vision § 12) |
 | `telecharger.html` | **« Installer »** : l'application installable depuis le navigateur, et l'application de bureau (caisse, clé USB) | Trois façons d'ouvrir (`00`) |

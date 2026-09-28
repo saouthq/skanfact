@@ -5,18 +5,25 @@ projet »). Répond à sa demande du 26/09 : « faire un plan afin de pouvoir qu
 l'argent et ramener du monde ». Sources : `docs/etudes/ETUDE-MARCHE.md` (§ « Un marché de 225 000
 employeurs », § « Canaux de mise sur le marché », § « Ce qu'il faut pour être le meilleur ») et
 `docs/etudes/notes-de-recherche/marche-2026/marche_taille_canaux.md`. Les prix sont ceux de `07`.
-Complété le même jour pour suivre le `14` (cibles 3, 4 et 5).*
+Complété le même jour pour suivre le `14` (cibles 3, 4 et 5). **Revu à la relecture du même jour** :
+à notre lancement (fin 2028, `09`), les obligations de 2026 à 2028 seront déjà en vigueur ; on ne
+vend plus une mise en conformité, mais un changement de logiciel.*
 
 ## En bref (pour Skander)
 
-- **Qui on vise d'abord** : ceux que la loi presse en 2026. Les **prestataires de services**, parce
-  que la facture électronique est obligatoire pour eux depuis janvier. Les **commerces**, que la
-  caisse certifiée gagne jusqu'en 2028. Et les **cabinets comptables**, qui amènent leurs clients.
-  Les **restaurants et cafés** viennent en vague 1, avec la partie restaurant (`15`).
+- **Qui on vise d'abord** : les **cabinets comptables**, qui amènent leurs clients ; puis les
+  **prestataires de services** et les **commerces**. Les **restaurants et cafés** viennent en vague 1,
+  avec la partie restaurant (`15`).
+- **Ce qui a changé avec le calendrier** : nous lançons vers fin 2028. La facture électronique sera
+  obligatoire depuis presque trois ans, et la caisse certifiée généralisée depuis juillet 2028. **Nos
+  cibles auront déjà un logiciel.** On ne les prendra pas sur l'urgence : on les prendra parce que
+  SkanFact fait mieux (hors ligne, comptable dans les mêmes données, tout au même endroit) et parce
+  que **changer est facile** : leurs données reprises, chiffres comparés (`08` § 3).
 - **Ce qu'on promet**, trois phrases qu'on prouve en démonstration :
   1. « Ça marche même quand Internet tombe. »
   2. « Ton comptable travaille dans les mêmes données, gratuitement. »
-  3. « Tout est dedans, et ça coûte moins cher que les autres. »
+  3. « Tout est dedans, à un prix par entreprise, pas par personne. » (« Moins cher que les autres »
+     ne se dira qu'avec une comparaison vérifiée à la date, règle du § 9.)
 - **Le premier canal, c'est le cabinet comptable.** Gratuit pour lui, avec ses clients qui ont
   −20 % la première année. Jamais de commission versée au comptable.
 - **Le deuxième, ce sont les revendeurs de matériel de caisse** pour les commerces, puis pour les
@@ -38,7 +45,7 @@ D'après l'étude de marché (sources secondaires, **À VÉRIFIER** pour les chi
 | **Employeurs affiliés à la CNSS** | **≈ 224 900** | Le cœur de la cible : ils ont des salariés, donc une paie et des déclarations |
 | PME de 6 à 199 salariés | ≈ 15 000 à 20 000 | Les plus rentables : Complet, modules, plusieurs utilisateurs |
 | Régime forfaitaire | ≈ 500 000 | Hors cible au lancement : peu de besoins, faible prix |
-| Prestataires de services soumis à la facture électronique (LF 2026) | ≈ 380 000 | Urgence légale |
+| Prestataires de services soumis à la facture électronique (LF 2026) | ≈ 380 000 | Obligés depuis 2026 : équipés à notre lancement, à convaincre de changer |
 | Comptables (CCT) | ≈ 2 800 membres | Le canal ; le nombre d'experts-comptables (OECT) reste **à trouver** |
 
 **Marché visé** : de 100 000 à 225 000 entreprises selon l'étude. Il suffit d'en convaincre **une
@@ -47,16 +54,25 @@ fonctionnement (`09` § 4.4).
 
 ---
 
-## 2. Les cibles, par ordre d'urgence
+## 2. Les cibles, par ordre de priorité
 
-| Ordre | Cible | Pourquoi maintenant | Ce qui la convainc | Offre naturelle |
+| Ordre | Cible | Où elle en sera à notre lancement (fin 2028) | Ce qui la convainc | Offre naturelle |
 |---|---|---|---|---|
-| 1 | **Cabinets comptables** | Chaque cabinet amène des dizaines de clients ; Sage Coala, encore utilisé, est arrêté par son éditeur | Gratuit pour ses clients abonnés, plus de ressaisie, la paie et les déclarations de tous ses dossiers au même endroit, la reprise de ses dossiers | Cabinet (`07`) |
-| 2 | **Prestataires de services** (libéraux, conseil, informatique, agences) | Facture électronique obligatoire depuis le 1er janvier 2026, amende par facture papier | La facture signée et envoyée à la TTN en un clic, la retenue à la source et TEJ, le prix | Essentiel |
+| 1 | **Cabinets comptables** | Chaque cabinet amène des dizaines de clients ; ceux dont l'outil vieillit cherchent à changer (Sage Coala, encore utilisé, serait arrêté par son éditeur : **À VÉRIFIER**) | Gratuit pour ses clients abonnés, plus de ressaisie, la paie et les déclarations de tous ses dossiers au même endroit, la reprise de ses dossiers | Cabinet (`07`) |
+| 2 | **Prestataires de services** (libéraux, conseil, informatique, agences) | Obligés à la facture électronique depuis janvier 2026 : ils l'émettent déjà, avec un autre logiciel ou le portail de la TTN, souvent sans comptabilité reliée | La facture signée et envoyée à la TTN en un clic, la retenue à la source et TEJ, le prix | Essentiel |
 | 3 | **Restaurants, cafés, salons de thé, boulangeries** (**à partir de la vague 1**, `15`) | Caisse certifiée obligatoire (calendrier 2025 à 2028) : à notre arrivée, ils seront déjà équipés ; on les prend sur l'offre complète | Une caisse homologuée qui marche pendant les coupures, avec tables et cuisine, suppléments, addition partagée et titres-restaurant (`14` § 3.1), les **réservations en ligne** et le plan de salle (repris de Slate, `15`), le stock matière par recette, la comptabilité avec | Essentiel (une caisse comprise), ou Complet |
-| 4 | **Commerces, grossistes, distributeurs** | Caisse obligatoire pour le réel mensuel avant juillet 2027 ; stock et prix par client | Caisse, stock multi-dépôts, prix par client et par quantité, encours, commandes clients et fournisseurs, réceptions, marges (`14` § 3.2) ; plus tard, les boutiques en ligne et la livraison (`14` § 4) | Essentiel ou Complet |
+| 4 | **Commerces, grossistes, distributeurs** | Caisse certifiée obligatoire pour tous au 1er juillet 2028 : ils seront équipés, souvent d'une caisse seule, sans stock ni comptabilité reliés | Caisse, stock multi-dépôts, prix par client et par quantité, encours, commandes clients et fournisseurs, réceptions, marges (`14` § 3.2) ; plus tard, les boutiques en ligne et la livraison (`14` § 4) | Essentiel ou Complet |
 | 5 | **PME avec salariés** (bâtiment, fabrication, transport…) | Paie, CNSS, déclarations, plusieurs utilisateurs | Tout dans un seul outil, prix par entreprise, droits par personne ; les situations de travaux en vague 2, la fabrication en vague 3 (`14` § 3.3, 3.4) | Complet |
 | 6 | **Groupes de sociétés** | Plusieurs matricules, les mêmes personnes | Passer d'une société à l'autre, fiches partagées, −20 % dès la deuxième société, tableau de bord du groupe | Complet par société |
+
+**Ce que ça change** (relecture du 28/09/2026) : puisque chaque cible aura déjà un outil, trois choses
+passent devant :
+- **la reprise des données d'un concurrent** (`08` § 3), faite avec le client, chiffres comparés :
+  c'est elle qui rend le changement possible ;
+- **ce que les autres ne font pas** : le travail pendant une coupure, le comptable dans les mêmes
+  données, la caisse, le stock et la comptabilité au même endroit (`14` § 1) ;
+- **les obligations qui tomberont après 2028** (chaque loi de finances, `05` § 7) : ce seront les
+  vraies occasions « d'urgence », et on les suit dès maintenant.
 
 ---
 
@@ -174,12 +190,12 @@ changer s'il ne marche pas.
 
 | Indicateur | Objectif | Où on le lit |
 |---|---|---|
-| Entreprises abonnées | 100 à 6 mois, 300 à 12 mois | Console, `10` § 2.2 |
-| Cabinets partenaires actifs | 20 à 12 mois | Console |
+| Entreprises abonnées (les 100 fondateurs compris) | 150 à 6 mois, 300 à 12 mois | Console, `10` § 2.2 |
+| Cabinets partenaires actifs (les 20 fondateurs compris) | 40 à 12 mois | Console |
 | Essais activés (au moins 2 des 4 gestes du § 4) | La moitié des inscrits | Console, mesure sans contenu |
 | Essais transformés en abonnement | Un sur quatre | Console |
 | Départs | Moins de 1 sur 10 par an | Console |
-| Point mort (≈ 31 Essentiel ou 18 Complet, `09` § 4.4) | Avant le 6e mois | Console |
+| Point mort (≈ 31 Essentiel ou 18 Complet pour 1 000 DT par mois, plus les frais annuels, `09` § 4.4) | Avant le 6e mois | Console, `10` § 2.2 (revenus face aux coûts) |
 
 ---
 
@@ -225,3 +241,4 @@ changer s'il ne marche pas.
 | 28/09/2026 (par délégation) | Essai piloté par quatre gestes d'activation, avec message au 3e jour, appel au 10e, proposition au 25e |
 | 28/09/2026 (par délégation) | Lancement en trois temps : pilotes (J3), 100 fondateurs sur invitation, public (J5) |
 | 28/09/2026 (par délégation) | Objectifs de première année écrits d'avance, lus dans la console |
+| 28/09/2026 (relecture) | Le lancement tombe fin 2028, après les obligations de 2026 à 2028 : les cibles se prennent sur le changement (reprise des données, ce que les autres ne font pas), plus sur l'urgence ; « moins cher » seulement avec une comparaison vérifiée ; objectifs de première année fondateurs compris (150 puis 300 entreprises, 40 cabinets) |

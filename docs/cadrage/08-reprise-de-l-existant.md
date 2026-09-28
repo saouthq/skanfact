@@ -190,7 +190,7 @@ Il ne crée jamais de nouvelle écriture dans une période qu'un autre logiciel 
 | Source | Ce qu'on reprend | Comment |
 |---|---|---|
 | **Tableur** (Excel, CSV, copier-coller) | Fiches, factures ouvertes, soldes, stock | Déjà en partie dans la v10 (clients et catalogue collés, 213e) : on reconnaît les colonnes, on montre un aperçu, on demande ce qu'on ne devine pas |
-| **Fichier d'écritures comptables** (FEC ou équivalent, balance) | Balance d'ouverture, historique comptable | Pour les **cabinets** qui quittent un autre logiciel : l'étude de marché signale que Sage Coala, encore utilisé, est arrêté par son éditeur. La v10 sait déjà **écrire** le FEC (H3) ; on apprend à le **lire** |
+| **Fichier d'écritures comptables** (FEC ou équivalent, balance) | Balance d'ouverture, historique comptable | Pour les **cabinets** qui quittent un autre logiciel : l'étude de marché signale que Sage Coala, encore utilisé, serait arrêté par son éditeur (**À VÉRIFIER**). La v10 sait déjà **écrire** le FEC (H3) ; on apprend à le **lire** |
 | **Factures TEIF reçues ou émises** | Achats (déjà dans la v10, H1), historique des ventes | Le format officiel est le même pour tous : c'est la reprise la plus fiable |
 | **Relevés bancaires** | Mouvements, rapprochement | Déjà dans la v10 (9.5.0, lignes d'en-tête des banques comprises) |
 | **Exports des logiciels concurrents** (Sage, Ciel, Hesabi, Swiver…) | Selon ce que chacun exporte | **À VÉRIFIER** : les formats réels. On les apprend sur des fichiers fournis par les pilotes et les premiers clients, jamais en devinant |

@@ -71,7 +71,7 @@ marché : tout ce qui n'a pas été lu à la source se reformule prudemment.
 | 4.3 | Données personnelles (loi organique 2004-63) | SkanFact | Déclarations INPDP, contrat de traitement, hébergement en Tunisie | Rapporté | INPDP, juriste |
 | 4.4 | Audit de cybersécurité (décret-loi 2023-17) | Hébergeurs et prestataires cloud | Budget et calendrier | **Incertain** (périmètre) | ANCS, juriste |
 | 4.5 | Contrats et pages légales | SkanFact | Conditions, confidentialité, contrat de traitement, réversibilité | À écrire | Juriste |
-| 4.6 | Marque, nom de domaine | SkanFact | Dépôt INNORPI avant la communication publique | À faire | INNORPI |
+| 4.6 | Marque, nom de domaine | SkanFact | Dépôt INNORPI **dès que la société est choisie** (le nom est déjà public) | À faire | INNORPI |
 | 4.7 | Déontologie des experts-comptables | Les cabinets | Pas de commission, pas d'annuaire au lancement, accès après mandat | **Incertain** | Ordre des experts-comptables |
 
 ---
@@ -361,7 +361,10 @@ l'obligation d'audit nous vise. Le détail va dans le document 06.
 
 ### 4.6 La marque
 
-Dépôt de **SkanFact** à l'INNORPI **avant** toute communication publique (vision § 11, point 9). Le
+Dépôt de **SkanFact** à l'INNORPI **dès que la société qui porte SkanFact est choisie** (revu le
+28/09/2026 : le nom est **déjà public**, par l'application actuelle, le site et le dépôt ; attendre la
+fin du développement le laisserait sans protection deux ans de plus). Le nom de l'offre restaurant se
+dépose avant d'être montré (`15` § 6). Le
 nom de domaine `skanfact.tn` est déjà à nous.
 
 ### 4.7 La déontologie des experts-comptables
@@ -408,7 +411,7 @@ troisième est **nouvelle** (§ 3.7).
 | Pendant le développement | Adhésion de **notre société** à El Fatoora, et son certificat | Nos factures d'abonnement (§ 4.1) |
 | Pendant le développement | Schémas TEJ (retenue, liasse) et format CNSS à jour | Les fichiers officiels (§ 3.3 à 3.6) |
 | **Dès que la société qui porte SkanFact est choisie** (ajouté le 28/09/2026) | **Demande du label Startup** (§ 4.8) | Ses avantages courent pendant la durée du label : plus tôt il est obtenu, plus il sert |
-| Avant la communication publique | **Dépôt de la marque** à l'INNORPI | Protéger le nom avant de le montrer |
+| **Dès que la société qui porte SkanFact est choisie** (revu le 28/09/2026) | **Dépôt de la marque** à l'INNORPI | Le nom est déjà public : chaque mois sans dépôt le laisse sans protection |
 | **Avant la première donnée réelle d'un client** (les pilotes compris) | **Déclarations INPDP** | Traiter des données de personnes sans déclaration, même en test, n'est pas permis (À VÉRIFIER avec l'INPDP : le cas d'un essai sur des données fictives) |
 | Avant le lancement | **Homologation ANCE** de la signature serveur (si elle est retenue) | Troisième chemin de signature (vision § 5) |
 | Avant le lancement | **Homologation de la caisse** | Pour vendre une caisse certifiée |
@@ -529,3 +532,4 @@ charges se lisent sur les plateformes officielles, ce que la démarche du § 5 p
 | 28/09/2026 (proposé) | Hébergeur labellisé N-Cloud de préférence ; audit de cybersécurité annuel au budget en attendant l'avis du juriste |
 | 28/09/2026 (proposé) | Une veille par loi de finances, publiée avant le 1er janvier, relue par un comptable |
 | 28/09/2026 (par délégation, `14` ; revu par Skander, `15`) | La caisse de comptoir sort au lancement, le mode restaurant en vague 1 ; la lecture de documents se fait en Tunisie ; chaque flux d'une intégration est compté ici avant d'être ouvert ; demande du label Startup dès que la société qui porte SkanFact est choisie |
+| 28/09/2026 (relecture) | Le dépôt de la marque avance : dès que la société est choisie, parce que le nom est déjà public |

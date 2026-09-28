@@ -64,7 +64,9 @@ Ce qui demande une action, **le plus urgent en haut**, chaque ligne avec son bou
 Au-dessus d'« À décider », une bande de chiffres, **chacun calculé par la même fonction que l'écran
 qu'il ouvre** (règle du projet : un compteur et la liste qu'il annonce viennent de la même fonction) :
 - inscriptions de la semaine, essais en cours, essais transformés ;
-- abonnements actifs, par offre ; revenus du mois (encaissés, pas facturés) ;
+- abonnements actifs, par offre ; revenus du mois (encaissés, pas facturés), **face aux coûts du
+  mois** (saisis à la main, d'après les factures reçues, `09` § 4) : c'est là que se lit le point
+  mort (`13` § 7) ;
 - demandes de support ouvertes ;
 - état du service (vert **seulement** si tout ce qui est mesuré l'est : une mesure qui manque
   s'affiche « non mesuré », jamais « vert », comme la santé des canaux de la 10.4.0).

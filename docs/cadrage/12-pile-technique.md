@@ -150,6 +150,7 @@ Tout ce qui fait la qualité de la v10 est porté (`08` § 1) :
 | **Charge**, avec les seuils écrits d'avance (vision § 6) | Un outil de charge, comme `npm run charge` aujourd'hui | Avant chaque version |
 | **Hors ligne** : coupure, double envoi, conflit, révocation (`04` § 9.3) | Playwright | Chaque nuit |
 | **Secrets** : aucun dans le dépôt | Un chercheur de secrets, qui arrête la construction | À chaque envoi |
+| **Site** : les pages d'aide comparées aux articles de l'application, la page Tarifs comparée à la grille de la console (`11` § 4 et § 6) | Un test dans le dépôt du site | À chaque publication du site |
 | **Test humain** : refaire à la souris et regarder l'écran (décision du 24/09) | Les outils de `scripts/humain/`, adaptés au navigateur | Avant d'annoncer quoi que ce soit |
 | **Téléphone et langue factice** : chaque écran photographié à deux largeurs et dans la langue factice ; aucune phrase écrite en dur dans un écran (`14` § 2.6 et § 5) | L'instrument de rendu, porté | À chaque envoi |
 

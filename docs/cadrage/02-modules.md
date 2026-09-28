@@ -82,7 +82,7 @@ Tout ce dont les modules ont besoin, et ce qui porte les promesses de la platefo
 | **Production** (vague 3) | Ordres de fabrication : composants consommés, article fini produit, coût de revient figé | Stock, Achats | Complet, ou + 120 DT |
 | **Projets** (vague 3) | Temps passé, budget et facturation au temps, sur les affaires (l'axe « Affaires » du `01` § 14) | Ventes, Paie (le coût d'une heure, s'il est ouvert) | Complet, ou + 120 DT |
 | **Groupe** (vague 4) | Consolidation, ventes entre sociétés reliées toutes seules | Pilotage, Comptabilité complète | À décider le jour venu |
-| **Intégrations** (vague 1 et suivantes) | Boutiques en ligne, sociétés de livraison, autres prestataires de paiement, WhatsApp automatique, connecteurs sans code, dans l'ordre du `14` § 4 ; chacune remplit un point de branchement déclaré (§ 4.3) | API du socle ; les points de Ventes, Achats et Stock | Selon l'intégration, à décider avec chacune |
+| **Intégrations** (vague 1 et suivantes) | Boutiques en ligne, sociétés de livraison, autres prestataires de paiement, WhatsApp automatique, connecteurs sans code, dans l'ordre du `14` § 4 ; chacune remplit un point de branchement déclaré (§ 4.3) | API du socle ; les points de Ventes, Achats et Stock ; les événements de Caisse et de Paie (§ 4) | Selon l'intégration, à décider avec chacune |
 | **Hôtellerie** (à la fin) | Chambres, séjours (décision de Skander du 28/09/2026 : quand tout le reste est fini) | Réservations, Caisse | À décider le jour venu |
 
 **Ce qui n'est pas un module** : la facture électronique, la retenue à la source et la TVA. Ce sont

@@ -331,8 +331,8 @@ l'exemple de cinq ans de l'application actuelle, et un magasin fictif de 500 tic
 | Deux postes modifient le même brouillon hors ligne | Une version gardée, l'autre dans « À reprendre », aucune perdue |
 | Une file écrite par la version précédente de l'application | Acceptée |
 
-Un seuil dépassé **change le plan, pas le seuil**. Le prototype a lieu **avant** le document 12 (pile
-technique), qui en reprend le résultat. Sa durée et son coût vont dans le document 09.
+Un seuil dépassé **change le plan, pas le seuil**. Le prototype a lieu **avant la validation** du
+document 12 (pile technique), qui en reprend le résultat. Sa durée et son coût sont au `09` § 1 (J0).
 
 ---
 

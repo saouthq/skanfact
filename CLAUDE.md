@@ -44,7 +44,8 @@ Détail et raisons dans `VISION-ARCHITECTURE.md` ; ne pas les rediscuter sans qu
 - **L'argent en entiers** (millimes, centimes selon la devise). Jamais de nombre à virgule en base.
 - **Journal inaltérable** (chaîne d'empreintes) sur les écritures, factures et tickets.
 - **Un seul programme serveur rangé en modules** + file de travaux ; **l'API d'abord** (nos écrans
-  l'utilisent, les intégrations viendront plus tard).
+  l'utilisent ; ses clés sont ouvertes au lancement, les intégrations avec des partenaires viennent
+  dans les vagues : `docs/cadrage/14-fonctions-et-integrations.md` § 2.5 et § 4).
 - **TypeScript** et **une vraie bibliothèque d'interface** (validés le 27/09/2026). On **garde et on
   porte le moteur** `core.js` / `compta.js` et ses tests ; les écrans seront refaits.
 - **Prix par entreprise**, pas par utilisateur, modules payants, facture électronique incluse.
@@ -53,12 +54,12 @@ Détail et raisons dans `VISION-ARCHITECTURE.md` ; ne pas les rediscuter sans qu
   après homologation ANCE. Envoi TTN par le serveur, archivage 10 ans.
 - **Hébergement en Tunisie**, copie de secours comprise (un second centre de données tunisien).
 - **Budget** accepté le 27/09 (~1 000 DT/mois, 10 à 20 kDT de frais uniques), affiné le 28/09 :
-  800 à 1 650 DT/mois au lancement, 12,5 à 27 kDT de frais uniques connus
+  800 à 1 650 DT/mois au lancement, 12,5 à 26 kDT de frais uniques connus
   (`docs/cadrage/09-feuille-de-route.md` § 4).
 - **Démarches** (père de Skander), **dès maintenant** : accès test El Fatoora, adhésion DigiGo, et
   inscription fournisseur sur la plateforme d'homologation des caisses (décidé le 28/09/2026) ;
-  INPDP avant la première donnée réelle d'un client ; le label Startup dès que la société qui porte
-  SkanFact est choisie ; homologations ANCE et caisse en fin de développement. Détail et questions
+  INPDP avant la première donnée réelle d'un client ; le dépôt de la marque et le label Startup dès
+  que la société qui porte SkanFact est choisie ; homologations ANCE et caisse en fin de développement. Détail et questions
   par interlocuteur : `docs/cadrage/05-obligations-legales.md`.
 - **Tout ce que Hesabi a, au lancement, et plus** (demande de Skander, 28/09/2026) : espace client et
   paiement en ligne, lecture de documents sur nos serveurs, cabinet complet, API, téléphone ;

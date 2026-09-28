@@ -313,7 +313,7 @@ milliers de PME** ; le chiffre exact se mesure, il ne se devine pas.
 **Ordres de grandeur du budget** (acceptés le 27/09) : ~1 000 DT/mois de fonctionnement au
 lancement, 10 000 à 20 000 DT de frais uniques (certificats, juriste, audit de sécurité). **Affinés
 le 28/09** dans `docs/cadrage/09-feuille-de-route.md` § 4 : 800 à 1 650 DT par mois (la lecture de
-documents en Tunisie ajoute un serveur) et 12 500 à 27 000 DT de frais uniques connus, matériel de
+documents en Tunisie ajoute un serveur) et 12 500 à 26 000 DT de frais uniques connus, matériel de
 caisse compris, sans les frais encore inconnus des démarches.
 
 **Décidé le 28/09/2026, par délégation de Skander** (révisable après les entretiens) :
@@ -378,7 +378,8 @@ des caisses), plus le label Startup dès que la société qui porte SkanFact est
    l'export complet** ; rien n'est effacé avant la fin de la durée légale sans sa demande écrite.
 8. **Responsabilité en cas d'erreur de calcul** : clause de limitation dans les conditions, et une
    **assurance responsabilité civile professionnelle** (**À VÉRIFIER** avec un assureur).
-9. **Dépôt de la marque SkanFact** (INNORPI) avant la communication publique.
+9. **Dépôt de la marque SkanFact** (INNORPI) : **dès que la société est choisie** (revu le
+   28/09/2026 : le nom est déjà public).
 10. **Réversibilité** : l'engagement écrit que le client récupère toutes ses données dans un format
     ouvert, et ce qui se passe si SkanFact s'arrête (le « pli scellé » existe déjà côté licences).
 11. **L'exploitation** : environnements de test et de production séparés, mises à jour sans
