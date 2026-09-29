@@ -119,8 +119,8 @@ Détail et raisons dans `VISION-ARCHITECTURE.md` ; ne pas les rediscuter sans qu
   `scripts/humain/lancer.sh entreprise|cabinet`, `scripts/humain/ecran.sh capture` (et LIRE l'image),
   `clic`, `taper`, `touche`, `defiler`. Rien ne s'annonce « réglé » avant d'avoir été refait à la
   souris et vu à l'écran. Un test vert ne suffit pas.
-- **Agents et workflows en `sonnet`** (quota). Ce qu'un agent trouve se **revérifie soi-même**.
-  Quand Skander dit « vérifie toi-même », pas d'agent.
+- **Pas d'agents ni de workflows** (Skander, 29/09/2026 : « ça coûte beaucoup de quota ») : Claude
+  conçoit, relit et vérifie lui-même, revues comprises. Seule exception : Skander le demande.
 - **Prix et plans commerciaux** : on en parle d'abord ; on ne modifie un plan qu'après accord.
 - **Chaque décision de cadrage s'écrit** (dans `VISION-ARCHITECTURE.md` § 9 ou `docs/cadrage/`),
   avec sa date.
