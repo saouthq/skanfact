@@ -184,7 +184,10 @@ de côté. Chaque test se prouve en réintroduisant son défaut.
 6. **Le fournisseur d'e-mails et de SMS** en Tunisie (`03` § 6).
 7. **Le moteur de lecture de documents** : PaddleOCR ou Tesseract, choisi sur un lot de vraies
    factures tunisiennes prêtées **avec l'accord** de leurs propriétaires ; retenu s'il lit juste le
-   matricule, la date et le total sur **au moins 9 factures sur 10** (`14` § 2.3).
+   matricule, la date et le total sur **au moins 9 factures sur 10** (`14` § 2.3). *30/09/2026 (brique
+   84) : Tesseract 5 (français) et Poppler sont branchés pour construire la lecture, et le banc qui
+   mesure le seuil est prêt (`npm run banc:lecture`, le lot hors du dépôt) : 6 sur 6 sur nos pièces
+   d'essai inventées ; la mesure sur le vrai lot, et PaddleOCR sur ce même lot, restent à faire.*
 8. **Un nom saisi en arabe** s'imprime-t-il juste dans les PDF de Chromium (police Noto) ?
 9. **L'API de Konnect** pour le compte marchand de chaque entreprise (`14` § 2.2).
 
