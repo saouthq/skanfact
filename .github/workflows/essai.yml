@@ -113,7 +113,7 @@ jobs:
       # Quatorze jours : un essai n'a pas vocation à durer, et une version d'essai qui traîne
       # trois mois finit par être confondue avec la vraie.
       - name: Attacher les installeurs au run
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: skanfact-essai-${{ runner.os }}
           retention-days: 14
