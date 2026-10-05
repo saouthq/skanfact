@@ -127,6 +127,41 @@ auraient vu Slate. **Aucun nom nouveau n'est public** avant le dépôt de la mar
 
 ---
 
+## 6 bis. Nickel : la liste de contrôle du métier (05/10/2026)
+
+Nickel est l'ancien logiciel de caisse de Skander, fait pour les restaurants et les traiteurs (en
+France : euros, TVA 10 et 20 %). **Il n'en reste que les programmes compilés (WinDev), plus le code**
+(perdu). Il est rangé dans le dépôt **privé** `saouthq/nickel-caisse`, avec une description écrite de
+ses écrans (`DOC/01-CAISSE-Ni-Tact.md`), le nom de ses 113 tables (`specs-prepa/docs/MODELE-DONNEES-REEL.md`)
+et ses réglages. **Ce dépôt contient des données de vrais clients** (sauvegardes) : rien n'en sort, rien
+n'en est recopié dans nos dépôts publics.
+
+**Ce qu'on en fait** : pas de code (il n'y en a pas), pas de reprise. Il sert de **liste de contrôle**
+au travail neuf de la vague 1 (décision du 01/10/2026 : le métier du restaurant reste à construire). Ce
+qu'un restaurant a vraiment utilisé pendant cinq ans, et que la caisse en mode restaurant devra savoir
+faire, ou dire pourquoi non :
+- **La salle** : salles (restaurant, brasserie, terrasse), tables ouvertes avec leur montant en cours,
+  serveur et nombre de couverts ; « Nouvelle table » ; transférer une commande d'une table à une autre.
+- **La commande** : familles puis articles en tuiles ; la quantité tapée avant l'article ; menus et
+  formules composés ; notes et options (obligatoires ou non) ; recherche par code et code-barres.
+- **La cuisine** : chaque article a son **poste** (cuisine, desserts, bar, terrasse…), et son bon part à
+  **l'imprimante de ce poste** ; l'envoi se fait **par suites** (apéritif, entrée, plat, dessert :
+  « envoyer la suite ») ; un bon de cuisine porte l'heure et un numéro.
+- **L'addition** : ticket provisoire (l'addition avant de payer) ; **offert** une ligne ou toute la
+  note (avec son motif) ; remise ; annulation d'une ligne.
+- **Le paiement** : plusieurs modes sur une même note (espèces, chèque, carte, virement, **tickets
+  restaurant**), le rendu de monnaie, **sur le compte du client** (débiteur), et ce qui sort de la
+  caisse sans être payé (offert, perte) compté à part.
+- **La journée** : service du midi et du soir comptés à part ; caisse par serveur ; ventes du jour,
+  journal des ventes ; Z quotidien ; chiffre d'affaires par famille (cave, cuisine, bar…) ; nombre de
+  couverts et moyenne par couvert.
+- **Autour** : tablette du serveur (prise de commande à table), réservations, liste d'attente, fidélité,
+  bons cadeaux, traiteur avec **arrhes**, vente à emporter.
+
+**Ce qui ne passe pas tel quel** : les taux et règles françaises (NF 525, TVA 10/20 %) ; en Tunisie, les
+taux viennent des réglages, et la réglementation des caisses est celle de l'homologation (`05`). La
+**boucherie** (vente au poids, balance, étiquettes à prix) n'y est pas : elle reste à étudier à part.
+
 ## 7. À VÉRIFIER
 
 1. ~~Des données réelles sur le projet Supabase de Slate ?~~ **Réglé** : Slate n'a jamais été en
@@ -148,3 +183,4 @@ auraient vu Slate. **Aucun nom nouveau n'est public** avant le dépôt de la mar
 | 28/09/2026 (**Skander**) | La partie restaurant reste **en français seulement** : pas d'arabe pour Slate ni pour le mode restaurant de la caisse (`14` § 5) |
 | 28/09/2026 (**Skander**) | L'arabe est abandonné pour toute la plateforme : les outils de Slate sont pris sans réserve (§ 4) |
 | 01/10/2026 (**Skander**) | **Slate est aujourd'hui un logiciel de réservation** : ce qu'il apporte, ce sont les réservations, le widget, les rappels, le plan de salle et le service du jour. **Tout le métier du restaurant reste à construire** dans SkanFact en vague 1 : la prise de commande à table, l'envoi en cuisine (écran et bons), les suppléments, l'addition partagée, les recettes et le stock, la caisse en mode restaurant. Le plan de la vague 1 le compte comme du travail neuf, pas comme une reprise |
+| 05/10/2026 (**Skander** : pas de reprise ; par délégation : l'usage) | **Nickel**, l'ancienne caisse de Skander (restaurants et traiteurs), n'a plus de code : il ne se reprend pas. Sa description écrite sert de **liste de contrôle** au métier du restaurant de la vague 1 (§ 6 bis) ; ses données de clients ne sortent pas de son dépôt privé |
