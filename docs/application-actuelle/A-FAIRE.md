@@ -12,6 +12,24 @@ Dernière relecture : 27/09/2026.
 
 ---
 
+## 000. À FAIRE PLUS TARD — le ménage de la v10 sur Cloudflare (décidé par Skander le 05/10/2026)
+
+Personne n'a acheté ni n'utilise la v10 (Skander, 05/10/2026) ; la base des licences (D1 `skanfact`) ne contient que
+ses essais (1 client, 3 licences, 1 vente, à confirmer avec lui). Les trois comptables pilotes testeront la
+plateforme. « Le noter pour plus tard, comme ça on n'oublie pas » : à faire quand Skander le dira, **dans cet ordre** :
+
+1. **Le site d'abord** (`saouthq/skanfact-site`) : les pages Acheter et Télécharger ne proposent plus la v10 (« bientôt »,
+   inscription aux tests) ; le formulaire de contact passe par `skanfact-maj` (`RELAIS_CONTACT` dans `assets/site.js`) :
+   le remplacer (lien vers l'e-mail, puis la plateforme) AVANT de supprimer le worker.
+2. **Ce dépôt** : arrêter les déploiements automatiques de `plateforme/` (worker `skanfact-api`) et de `worker/`
+   (`skanfact-maj`), sinon ils reviennent au prochain envoi.
+3. **Une copie de la base D1 `skanfact`**, gardée en privé (elle contient un e-mail) : jamais dans un dépôt public.
+4. **Supprimer** : la base D1 `skanfact` et le bucket R2 `skanfact-sauvegardes` (Claude peut le faire), puis les workers
+   `skanfact-api` et `skanfact-maj` (Skander, dans le tableau de bord : Workers → le worker → Settings → Delete).
+5. Ne PAS toucher aux workers et buckets `skanecom-…` (SkanEcom). Le bucket `skanecom-prototype-vitrine-…`, sans
+   worker, est à voir avec qui gère SkanEcom.
+6. Écrire la décision dans le journal du cadrage (`docs/cadrage/README.md`), avec sa date.
+
 ## 00. ARRÊT DU 27/09/2026 — à reprendre (quota à 98 %, discussion « nouvelle vision » avant tout)
 
 *Écrit à la demande de Skander : « note ce qu'il te reste et les tests qui restent ». Aucun
