@@ -161,6 +161,24 @@ moteur de lecture libre (choisi au `12` § 3). Aucune image ne sort.
   n'empêche pas les autres.
 - **Le temps passé par dossier** viendra avec le module Projets (vague 3), que le cabinet utilise
   dans sa propre société.
+- **La messagerie entre le cabinet et l'entreprise** (décidée par Skander le 09/10/2026, sur les
+  maquettes « Messages » et « Boîte du cabinet ») :
+  - côté entreprise, une conversation « Mon comptable » ;
+  - **chaque message peut s'accrocher à une pièce** (une facture, un achat). Elle part des questions
+    du cabinet sur une pièce, qui existent déjà ;
+  - **la photo d'un reçu envoyée par le client se range dans ses achats**, au lieu de se perdre
+    dans la conversation ;
+  - **tout reste daté dans le dossier** : qui a demandé quoi, et quand ;
+  - côté cabinet, **une seule boîte pour tous les clients**, triée en « À traiter » et « Attend le
+    client » ;
+  - **une alerte par e-mail** dit seulement « tu as un nouveau message », jamais son contenu ;
+  - pas de « en train d'écrire… » au début : un message qui arrive dans la minute suffit.
+
+  **À VÉRIFIER** :
+  - combien de temps on garde ces messages (INPDP) ;
+  - qui, dans l'entreprise, les lit (le propriétaire, l'administrateur, et à qui il les ouvre).
+
+  Au lancement, construite après l'onboarding.
 
 ### 2.5 L'API publique, dès le lancement
 
@@ -450,4 +468,5 @@ par l'entreprise qui les utilise, jamais cachés dans notre prix.
 | 28/09/2026 (par délégation) | Les écrans du quotidien marchent sur téléphone dès le lancement ; l'application des magasins en vague 3 (vague 4 depuis la relecture) |
 | 28/09/2026 (par délégation) | Lancement à 25 mois au plan, 28 avec la marge (après le passage du restaurant en vague 1) ; Essentiel comprend le stock et une caisse |
 | 28/09/2026 (**Skander**, `15`) | Slate, l'application pour restaurateurs de Skander, entre dans SkanFact comme sa partie restaurant ; **en vague 1**, une fois la base stable (entreprise, cabinet, console) ; cartes cadeaux en vague 1 |
+| 09/10/2026 (**Skander**) | La messagerie entre le cabinet et l'entreprise, au lancement (§ 2.4) : une conversation par entreprise, des messages accrochés aux pièces, la photo d'un reçu rangée dans les achats, une boîte du cabinet pour tous ses clients, une alerte par e-mail sans le contenu ; construite après l'onboarding |
 | 28/09/2026 (par délégation, relecture) | **Quatre vagues** (`09` § 1) : vague 1, la restauration avec Slate, l'arabe (abandonné depuis), les rendez-vous, WhatsApp automatique et les SMS ; vague 2, le bâtiment, le suivi commercial, les boutiques, la livraison, Flouci, la fidélité, l'écran de cuisine ; vague 3, Production, Projets, la location, les notes de frais, la balance, Navex et Aramex, les connecteurs, les rapports ; vague 4, le groupe, l'anglais, les applications des magasins, PrestaShop, ClicToPay et e-Dinar, le terminal connecté, Odoo, l'IA, les tournées ; puis l'hôtellerie |

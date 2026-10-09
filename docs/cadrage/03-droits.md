@@ -486,10 +486,11 @@ Ce qui est décidé depuis le 28/09/2026 (`00`), et ce que ce document ajoute.
 
 | Sujet | Règle |
 |---|---|
-| Compte | Un par personne, une adresse e-mail, un **téléphone vérifié** |
+| Compte | Un par personne, une adresse e-mail **vérifiée par un code** à la création du compte (09/10/2026 : elle prouve que l'adresse est juste, sans quoi le mot de passe oublié partirait chez un autre) ; le téléphone, seulement pour qui active le code |
 | Mot de passe | **10 caractères au moins**. Refusé s'il figure dans une liste de mots de passe déjà volés : la vérification se fait sur notre serveur, sans jamais envoyer le mot de passe ailleurs. Gardé en empreinte seulement (`01` § 4) |
-| Code sur le téléphone | **Obligatoire** : propriétaire, administrateur, paie, tous les comptables, l'équipe SkanFact. **Proposé** aux autres. Par SMS par défaut, ou par une application d'authentification |
-| Appareil reconnu | Le code n'est redemandé qu'à la première connexion d'un appareil, puis **tous les 30 jours** (`appareil.reconnu_jusqu_au`) |
+| Code sur le téléphone | **Obligatoire** : tous les comptables d'un cabinet, l'équipe SkanFact. **Recommandé**, jamais imposé, dans une entreprise, quel que soit le rôle (décision de Skander du 09/10/2026 : l'imposer dès l'inscription arrêtait un débutant avant même l'essai). Il se propose dans les premiers pas (« Protège ton compte — recommandé ») et s'active ou se désactive dans Paramètres → Ton compte. Par une application d'authentification ; par SMS quand un fournisseur sera choisi |
+| Désactiver le code | Il faut le code du moment, ou un code de secours, puis **un e-mail part** : « le code a été désactivé ; ce n'est pas toi ? ». Qui n'a que le mot de passe ne peut pas l'enlever. Impossible tant qu'un rôle l'exige (cabinet, équipe SkanFact) |
+| Appareil reconnu | Le code n'est redemandé qu'à la première connexion d'un appareil, puis **tous les 30 jours** (`appareil.reconnu_jusqu_au`). **Sans code sur le téléphone**, la première connexion d'un appareil inconnu demande un **code envoyé par e-mail** (09/10/2026), et l'appareil est ensuite reconnu 30 jours : un mot de passe volé ne suffit pas |
 | Ordinateur d'un autre | « Ce n'est pas mon ordinateur » : rien n'est gardé sur le poste, pas de hors-ligne, et la session se ferme après **30 minutes** d'inaction |
 | Session sur un appareil reconnu | Elle se ferme après **12 heures** d'inaction ; le poste de caisse reste ouvert |
 | Changer de caissier | Code à **4 chiffres**, sur un poste de caisse déjà reconnu, pour un membre qui a le rôle Caissier (ou pour le code d'un responsable, § 2.1) |
@@ -503,8 +504,13 @@ Ce qui est décidé depuis le 28/09/2026 (`00`), et ce que ce document ajoute.
 part vers un serveur sans que la liste soit comptée et décidée ») : **le numéro de téléphone et le
 code**, rien d'autre. Ni le nom, ni l'entreprise, ni l'adresse e-mail. Le message dit seulement « Ton
 code SkanFact : 482 913 ». Même règle pour le fournisseur d'e-mails de connexion : l'adresse et le
-lien, rien d'autre. Les deux fournisseurs doivent être **en Tunisie** (décision d'hébergement du
-27/09/2026).
+lien ou le code, rien d'autre. Les deux fournisseurs doivent être **en Tunisie** (décision
+d'hébergement du 27/09/2026), ou déclarés et autorisés par l'INPDP (`05` § 4.3). Le choix du
+fournisseur d'e-mails est étudié dans `docs/etudes/ENVOI-EMAILS.md` (09/10/2026). **Tant qu'aucun
+n'est branché**, les codes par e-mail ne se demandent pas (on ne demande jamais ce qu'on ne sait pas
+envoyer) : sur le serveur d'essai, sans relais, la création du compte et un appareil inconnu passent
+sans code. **Le lancement attend le relais** : sans lui, un compte d'entreprise sans code du
+téléphone ne serait protégé que par son mot de passe.
 
 **À VÉRIFIER** : le fournisseur de SMS tunisien, son prix par message et sa fiabilité (document 12).
 Le budget du SMS est faible grâce aux appareils reconnus, mais il existe.
@@ -620,4 +626,5 @@ Détail de la reprise : document 08.
 | 28/09/2026 (par délégation, `14`, revalidé par délégation) | D11 (l'accord d'un responsable au-delà d'un seuil) ; le rôle Serveur et les gestes de la salle (vague 1) ; espace client, paiement en ligne, lecture de documents, API et intégrations au tableau des gestes ; un caissier ou un serveur qui ne travaille que sur les caisses ne compte pas comme utilisateur ; le visiteur de l'espace client n'est pas un membre |
 | 28/09/2026 (étape 1, application du § 8) | Le geste « clés de l'API » au tableau du socle (P et A, qui prévient P) ; une clé ne reçoit que des gestes permis à celui qui la crée, et jamais ceux qui gouvernent l'entreprise (équipe, propriété, cabinet, support, abonnement, offre, RIB, export complet, les clés elles-mêmes) ; elle expire dans l'année ; ses gestes portent le nom de celui qui l'a créée, et sa trace le nom de la clé |
 | 28/09/2026 (étape 1, `14` § 2.5) | Le geste « avis d'événement » au tableau du socle (P et A, qui prévient P), jamais donné à une clé de l'API : un abonnement choisit où partent les données de l'entreprise |
+| 09/10/2026 (Skander, sur les maquettes de l'onboarding) | Le code sur le téléphone devient **facultatif dans une entreprise** (recommandé, jamais imposé, quel que soit le rôle) et reste **obligatoire pour les comptables d'un cabinet et l'équipe SkanFact** ; il s'active et se désactive dans Paramètres → Ton compte, et le désactiver demande le code (ou un code de secours) puis prévient par e-mail ; l'adresse e-mail se **vérifie par un code** à la création du compte ; sans code sur le téléphone, un **appareil inconnu** demande un code par e-mail, puis reste reconnu 30 jours. Remplace la ligne « Code sur le téléphone » du 28/09/2026 (obligatoire aussi pour le propriétaire, l'administrateur et la paie) |
 | 30/09/2026 (par délégation, étape 2, brique 99) | Le dossier de l'application s'ouvre pour chaque membre, qui n'en lit et n'en écrit que les parties que ses rôles permettent (la règle par partie : `docs/droits-dossier.md` de la plateforme) ; une partie sans règle reste au propriétaire et à l'administrateur ; l'écran ne renvoie jamais ce que la personne ne peut pas écrire et le lui refuse avant le geste ; la série de numéros d'une facture ou d'un avoir naît avec la première pièce, même émise par un commercial (créer une autre série reste à P et A) |
