@@ -173,6 +173,8 @@ moteur de lecture libre (choisi au `12` § 3). Aucune image ne sort.
     client » ;
   - **une alerte par e-mail** dit seulement « tu as un nouveau message », jamais son contenu ;
   - pas de « en train d'écrire… » au début : un message qui arrive dans la minute suffit.
+  - **construite le 09/10/2026** : ce qui en est fait, décision par décision, dans
+    `skanfact-plateforme/docs/messagerie.md` (journal : `README.md`).
 
   **À VÉRIFIER** :
   - combien de temps on garde ces messages (INPDP) ;
