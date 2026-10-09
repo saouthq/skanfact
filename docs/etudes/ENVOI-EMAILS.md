@@ -6,6 +6,10 @@ avant de signer. Ce qui touche à la loi est **À VÉRIFIER** avec un juriste.*
 
 ## En bref (pour Skander)
 
+**Décidé par Skander le 09/10/2026 : Resend pour le serveur d'essai** (« je suis d'accord pour resend oui »). Le
+branchement se fait d'une ligne, dans la console du serveur : `exploitation/courriel.sh` du dépôt
+`skanfact-plateforme` (son `docs/mise-en-ligne.md`, H). Le relais du lancement reste à faire en Tunisie.
+
 - **Pour le serveur d'essai, tout de suite : Resend.** Gratuit, dix minutes de réglage, aucune
   ligne de code : notre serveur parle déjà la langue des relais d'e-mails (SMTP). Cela débloque
   le mot de passe oublié, le code de la création du compte et celui d'un nouvel appareil. Une seule
