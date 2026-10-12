@@ -161,6 +161,7 @@ module ne paraît pas) ; *en italique*, une condition.
 | Transférer la propriété | ✓ | — | — | — | — | — | — | — |
 | Changer d'offre, acheter un module | ✓ | voir | — | — | — | — | — | — |
 | Payer une échéance de l'abonnement | ✓ | ✓ | — | — | — | — | — | — |
+| Voir l'abonnement en détail : ses prix, son histoire (son **état** — essai, échéance, lecture seule — se lit par tous, avec l'accueil ; 12/10/2026) | ✓ | ✓ | — | — | — | — | — | — |
 | Choisir le cabinet, fixer son périmètre, arrêter le mandat | ✓ | — | — | — | — | — | — | — |
 | Accorder un accès au support | ✓ | ✓ *prévient P* | — | — | — | — | — | — |
 | **Export complet** de l'entreprise (jamais bloqué par l'abonnement, même en lecture seule : `07`) | ✓ | ✓ *prévient P* | — | — | — | — | — | — |
