@@ -488,8 +488,8 @@ Ce qui est décidé depuis le 28/09/2026 (`00`), et ce que ce document ajoute.
 |---|---|
 | Compte | Un par personne, une adresse e-mail **vérifiée par un code** à la création du compte (09/10/2026 : elle prouve que l'adresse est juste, sans quoi le mot de passe oublié partirait chez un autre) ; le téléphone, seulement pour qui active le code |
 | Mot de passe | **10 caractères au moins**. Refusé s'il figure dans une liste de mots de passe déjà volés : la vérification se fait sur notre serveur, sans jamais envoyer le mot de passe ailleurs. Gardé en empreinte seulement (`01` § 4) |
-| Code sur le téléphone | **Obligatoire** : tous les comptables d'un cabinet, l'équipe SkanFact. **Recommandé**, jamais imposé, dans une entreprise, quel que soit le rôle (décision de Skander du 09/10/2026 : l'imposer dès l'inscription arrêtait un débutant avant même l'essai). Il se propose dans les premiers pas (« Protège ton compte — recommandé ») et s'active ou se désactive dans Paramètres → Ton compte. Par une application d'authentification ; par SMS quand un fournisseur sera choisi |
-| Désactiver le code | Il faut le code du moment, ou un code de secours, puis **un e-mail part** : « le code a été désactivé ; ce n'est pas toi ? ». Qui n'a que le mot de passe ne peut pas l'enlever. Impossible tant qu'un rôle l'exige (cabinet, équipe SkanFact) |
+| Code sur le téléphone | **Obligatoire** : tous les comptables d'un cabinet, l'équipe SkanFact. **Recommandé**, jamais imposé, dans une entreprise, quel que soit le rôle (décision de Skander du 09/10/2026 : l'imposer dès l'inscription arrêtait un débutant avant même l'essai). Il se propose dans les premiers pas (« Protège ton compte — recommandé ») et s'active ou se désactive dans Paramètres → Ton compte. Par une application d'authentification ; par SMS quand un fournisseur sera choisi. **Depuis le 12/10/2026 (Skander), le code de connexion est au choix** : **par e-mail par défaut** (rien à installer : sur un appareil inconnu, un code part à l'adresse vérifiée), **par SMS** (WinSMS) ou **par une application** ; le choix se fait dans Paramètres → Ton compte. **Le comptable d'un cabinet aussi** peut garder l'e-mail : le code par e-mail lui tient lieu de code ; seul un serveur qui n'envoie pas d'e-mails exige encore de lui le SMS ou une application |
+| Désactiver le code | Il faut le code du moment, ou un code de secours, puis **un e-mail part** : « le code a été désactivé ; ce n'est pas toi ? ». Qui n'a que le mot de passe ne peut pas l'enlever. Impossible tant qu'un rôle l'exige (cabinet, équipe SkanFact). Depuis le 12/10/2026, avec un relais d'e-mails, « désactiver » veut dire **revenir au code par e-mail** (« Ton code de connexion arrive désormais par e-mail »), et le comptable d'un cabinet le peut aussi ; quitter le SMS se prouve par un code reçu par SMS (10 minutes, une fois) ou un code de secours |
 | Appareil reconnu | Le code n'est redemandé qu'à la première connexion d'un appareil, puis **tous les 30 jours** (`appareil.reconnu_jusqu_au`). **Sans code sur le téléphone**, la première connexion d'un appareil inconnu demande un **code envoyé par e-mail** (09/10/2026), et l'appareil est ensuite reconnu 30 jours : un mot de passe volé ne suffit pas |
 | Ordinateur d'un autre | « Ce n'est pas mon ordinateur » : rien n'est gardé sur le poste, pas de hors-ligne, et la session se ferme après **30 minutes** d'inaction |
 | Session sur un appareil reconnu | Elle se ferme après **12 heures** d'inaction ; le poste de caisse reste ouvert |
@@ -514,6 +514,15 @@ téléphone ne serait protégé que par son mot de passe.
 
 **À VÉRIFIER** : le fournisseur de SMS tunisien, son prix par message et sa fiabilité (document 12).
 Le budget du SMS est faible grâce aux appareils reconnus, mais il existe.
+
+**Décidé par Skander le 12/10/2026** : **WinSMS** pour les SMS (le plus utilisé et le moins cher des fournisseurs
+tunisiens comparés ; un pack de 1 500 SMS, environ 75 DT HT), et **Resend gardé** pour les e-mails, y compris sur le
+serveur aux vraies données. Ce qui part chez WinSMS : le numéro et un texte qui ne porte que le code (« Ton code
+SkanFact : 482 913 »), rien d'autre ; chaque SMS se compte, **5 par heure et 20 par jour au plus** pour une même
+personne (À VÉRIFIER à l'usage). **À VÉRIFIER** : la forme exacte de la réponse de l'API de WinSMS (non publiée ; le
+script de branchement la montre et demande si le SMS d'essai est arrivé) ; le nom d'expéditeur « SkanFact » (environ
+18 jours chez WinSMS) ; **l'autorisation de l'INPDP** pour Resend, qui garde l'adresse et le code aux États-Unis, à
+demander avec la déclaration, avant la première donnée réelle (`05` § 4.3).
 
 ---
 
@@ -602,7 +611,8 @@ Détail de la reprise : document 08.
 4. **Conservation des traces** qui concernent des personnes : INPDP (§ 7).
 5. **L'ancien cabinet relit-il les exercices qu'il a signés** : déjà listé (`01` § 4), Ordre des
    experts-comptables.
-6. **Fournisseur de SMS** : prix, fiabilité, délai de livraison (document 12).
+6. **Fournisseur de SMS** : prix, fiabilité, délai de livraison (document 12). Choisi le 12/10/2026 : WinSMS ; reste à
+   vérifier la fiabilité et le délai à l'usage, et la forme de sa réponse (§ 6).
 7. **Travail d'un dossier tenu** quand le client ne l'a jamais rejoint et que le mandat s'arrête :
    à qui appartient-il ? Ordre des experts-comptables (§ 3.5).
 8. **Rôle Lecture pour un banquier ou un associé** : faut-il un accord écrit du propriétaire (secret
@@ -627,4 +637,5 @@ Détail de la reprise : document 08.
 | 28/09/2026 (étape 1, application du § 8) | Le geste « clés de l'API » au tableau du socle (P et A, qui prévient P) ; une clé ne reçoit que des gestes permis à celui qui la crée, et jamais ceux qui gouvernent l'entreprise (équipe, propriété, cabinet, support, abonnement, offre, RIB, export complet, les clés elles-mêmes) ; elle expire dans l'année ; ses gestes portent le nom de celui qui l'a créée, et sa trace le nom de la clé |
 | 28/09/2026 (étape 1, `14` § 2.5) | Le geste « avis d'événement » au tableau du socle (P et A, qui prévient P), jamais donné à une clé de l'API : un abonnement choisit où partent les données de l'entreprise |
 | 09/10/2026 (Skander, sur les maquettes de l'onboarding) | Le code sur le téléphone devient **facultatif dans une entreprise** (recommandé, jamais imposé, quel que soit le rôle) et reste **obligatoire pour les comptables d'un cabinet et l'équipe SkanFact** ; il s'active et se désactive dans Paramètres → Ton compte, et le désactiver demande le code (ou un code de secours) puis prévient par e-mail ; l'adresse e-mail se **vérifie par un code** à la création du compte ; sans code sur le téléphone, un **appareil inconnu** demande un code par e-mail, puis reste reconnu 30 jours. Remplace la ligne « Code sur le téléphone » du 28/09/2026 (obligatoire aussi pour le propriétaire, l'administrateur et la paie) |
+| 12/10/2026 (Skander) | **Le code de connexion au choix** : par e-mail par défaut, par SMS (WinSMS) ou par une application, pour tous, le comptable d'un cabinet compris quand le serveur envoie des e-mails ; Resend gardé pour les e-mails, aussi avec de vraies données (À VÉRIFIER : l'INPDP) ; le serveur de production exige le relais d'e-mails, le SMS reste facultatif. Complète la ligne du 09/10/2026 |
 | 30/09/2026 (par délégation, étape 2, brique 99) | Le dossier de l'application s'ouvre pour chaque membre, qui n'en lit et n'en écrit que les parties que ses rôles permettent (la règle par partie : `docs/droits-dossier.md` de la plateforme) ; une partie sans règle reste au propriétaire et à l'administrateur ; l'écran ne renvoie jamais ce que la personne ne peut pas écrire et le lui refuse avant le geste ; la série de numéros d'une facture ou d'un avoir naît avec la première pièce, même émise par un commercial (créer une autre série reste à P et A) |
