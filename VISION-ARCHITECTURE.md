@@ -1,5 +1,7 @@
 # Vision et architecture de SkanFact
 
+> **Déménagé le 13/10/2026 dans `saouthq/skanfact-plateforme`** (même chemin), où il continue. Personne n'utilise plus la v10 : ce dépôt est archivé, cette copie n'est plus mise à jour.
+
 *Document de cadrage, version 1 — 27/09/2026, relu le 28/09/2026. Écrit après l'étude de marché (`docs/etudes/ETUDE-MARCHE.md`) et
 une recherche technique sur Odoo, ERPNext, les bases de données partagées entre clients, la
 synchronisation hors ligne, et la signature électronique en Tunisie. **Il fait foi** : les plans de

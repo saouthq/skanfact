@@ -1,5 +1,7 @@
 # Le cadrage de la nouvelle plateforme
 
+> **Déménagé le 13/10/2026 dans `saouthq/skanfact-plateforme`** (même chemin), où il continue. Personne n'utilise plus la v10 : ce dépôt est archivé, cette copie n'est plus mise à jour.
+
 *Ouvert le 27/09/2026. Rien ne se code tant que le cadrage n'est pas validé par Skander. **Tous les documents sont validés depuis le 28/09/2026** (10 à 15 par délégation) ; le prototype de synchronisation est fait (28/09/2026, `04` § 9.4) ; l'arabe est abandonné (Skander, 28/09/2026) ; **J0 est atteint le 28/09/2026** : le dépôt `saouthq/skanfact-plateforme` existe avec ses vérifications automatiques, et l'étape 1 (le socle) a commencé. Les démarches continuent en parallèle (`09` § 1).*
 
 La référence est `VISION-ARCHITECTURE.md` (à la racine). Ce dossier reçoit un document par sujet,

@@ -12568,6 +12568,17 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
   });
 
 
+  t('le CLAUDE.md reste court : il est relu à chaque échange de chaque session', () => {
+    // Le 13/10/2026, la conversation se compactait toutes les dix minutes : la session était repartie de `main`,
+    // dont le CLAUDE.md pesait encore 784 Ko (toute l'histoire 1.0 → 10.14), relus à CHAQUE échange ; la version
+    // courte n'existait que sur `beta`. Le récit d'une version va dans docs/application-actuelle/CLAUDE-HISTORIQUE.md ;
+    // ici n'entre qu'une règle qui vaut pour tout, en une ligne.
+    const octets = Buffer.byteLength(lireSource('CLAUDE.md'), 'utf8');
+    assert.ok(octets <= 25000, `CLAUDE.md pèse ${octets} octets (plafond 25 000) : le récit d'une version va dans ` +
+      'docs/application-actuelle/CLAUDE-HISTORIQUE.md');
+    assert.ok(lireSource('CLAUDE.md').includes('CLAUDE-HISTORIQUE.md'), 'le CLAUDE.md court renvoie à l\'historique');
+  });
+
   // ---------------------------------------------------------------- l'option Comptabilité (9.1.0)
 
   t('9.1.0 : l\'option voyage dans la clé signée, et le doute profite au client', () => {

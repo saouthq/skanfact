@@ -1,8 +1,14 @@
 # SkanFact — consignes pour Claude
 
+> **Dépôt archivé le 13/10/2026.** Personne n'utilise plus la v10 (Skander). Tout le travail vit dans `saouthq/skanfact-plateforme` : le code, le cadrage (`VISION-ARCHITECTURE.md`, `docs/cadrage/`, `docs/etudes/`), les leçons de la v10 (`docs/lecons-v10.md`) et la source figée des écrans (`web/v10/source/`). **Une session s'ouvre sur `skanfact-plateforme`**, pas ici ; ce dépôt ne se supprime pas (la v10 installée lit ses mises à jour).
+
 *Réécrit le 27/09/2026, au passage à la nouvelle vision. L'ancien fichier (≈ 8 800 lignes, toute
 l'histoire des versions 1.0 → 10.15) vit dans `docs/application-actuelle/CLAUDE-HISTORIQUE.md` : on
 y cherche le **pourquoi** d'une règle, on ne le relit pas à chaque session.*
+
+*Ce fichier est relu à CHAQUE échange de chaque session : il reste sous 25 000 octets (un test le tient). Une
+session repartie de `main` relit l'ancien fichier de 784 Ko (13/10/2026 : la conversation se compactait toutes les
+dix minutes) : la branche par défaut du dépôt doit être `beta`, sinon la session se remet sur `beta` dès son début.*
 
 ## Qui, quoi, comment
 
